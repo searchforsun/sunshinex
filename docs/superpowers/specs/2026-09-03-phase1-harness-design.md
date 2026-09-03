@@ -8,7 +8,7 @@
 
 ### 1.1 背景
 
-SunshineX 采用 Harness / Loop / Graph 三层嵌套范式，Harness 是底座，Loop 与 Graph 都运行其上。当前仓库已有骨架：`src/` 下占位实现了 skills 加载、三级记忆、工具注册表、Loop/Graph 引擎、模型适配、存储、插件加载，但 Harness 四大基础能力（项目感知、工具、安全、记忆）尚未形成可运行的闭环。
+SunshineX 采用 Harness / Loop / Graph 三层嵌套范式，Harness 是底座，Loop 与 Graph 都运行其上。当前仓库已有骨架：`src/` 下占位实现了 skills 加载、三级记忆、工具注册表、Loop/Graph 引擎、模型适配、存储、插件加载，但 Harness 四大基础能力（项目感知、工具、安全、上下文与记忆）尚未形成可运行的闭环。
 
 ### 1.2 目标
 
@@ -21,7 +21,7 @@ SunshineX 采用 Harness / Loop / Graph 三层嵌套范式，Harness 是底座�
 - 项目感知引擎：目录扫描、依赖解析、SUNSHINE.md 配置、Git 读取
 - 统一工具框架：注册表 + 内置工具集（read/write/grep/exec/glob）
 - 安全管控：命令策略（允许/拒绝）+ 沙箱执行 + dry-run 预览
-- 记忆体系：三级记忆 + 三级 KV 缓存
+- 上下文与记忆管理：分层指令加载 + 自动记忆（索引+主题文件）+ 上下文窗口管理
 - 可插拔接口：StorageAdapter / Sandbox / ModelAdapter
 - 测试与自检：单元测试 + 门面集成测试 + selfcheck 扩展
 
@@ -44,26 +44,30 @@ SunshineX 采用 Harness / Loop / Graph 三层嵌套范式，Harness 是底座�
 
 | 能力 | 模块 | 职责 |
 |------|------|------|
-| 项目感知 | `harness/context.ts` | 目录扫描、依赖解析、SUNSHINE.md、Git 读取 |
+| 项目感知 | `harness/perception.ts` | 目录扫描、依赖解析、SUNSHINE.md、Git 读取 |
 | 统一工具 | `harness/tools.ts` + `harness/tools/` | 工具注册表（带执行器）+ 内置工具集 |
 | 安全管控 | `harness/security.ts` + `sandbox.ts` + `dryrun.ts` | 命令策略、沙箱执行、dry-run 预览 |
-| 记忆 | `harness/memory.ts` + `cache.ts` | 三级记忆 + 三级 KV 缓存 |
+| 上下文与记忆 | `harness/context/` | 分层指令 + 自动记忆 + 上下文窗口管理 |
 
 阶段一完成后的目录：
 
 ```text
 src/
   harness/
-    index.ts      # Harness 门面，聚合四大能力（新增）
-    context.ts    # 项目感知引擎（新增）
-    tools.ts      # 工具注册表，扩展执行器签名（改造）
-    tools/        # 内置工具集：read/write/grep/exec/glob（新增）
-    security.ts   # 命令策略：允许/拒绝规则（新增）
-    sandbox.ts    # 沙箱执行，process 隔离（新增）
-    dryrun.ts     # dry-run 预览（新增）
-    memory.ts     # 三级记忆（已有）
-    cache.ts      # 三级 KV 缓存（新增）
-    skills.ts     # 技能加载（已有，保留）
+    index.ts        # Harness 门面，聚合四大能力（新增）
+    perception.ts   # 项目感知引擎（新增）
+    tools.ts        # 工具注册表，扩展执行器签名（改造）
+    tools/          # 内置工具集：read/write/grep/exec/glob（新增）
+    security.ts     # 命令策略：允许/拒绝规则（新增）
+    sandbox.ts      # 沙箱执行，process 隔离（新增）
+    dryrun.ts       # dry-run 预览（新增）
+    context/        # 上下文与记忆管理（新增）
+      loader.ts     #   分层指令加载（SUNSHINE.md 多 scope + @import）
+      rules.ts      #   path-scoped 规则
+      auto-memory.ts#   自动记忆（索引 + 主题文件）
+      window.ts     #   上下文窗口（token 预算 + compaction）
+      session.ts    #   会话状态（持久化 + 恢复）
+    skills.ts       # 技能加载（已有，保留）
   storage/
     adapter.ts    # StorageAdapter 接口（新增）
     store.ts      # LocalStore 实现（已有，改造为适配器）
@@ -76,14 +80,13 @@ src/
 
 ```ts
 interface Harness {
-  context: ContextEngine;   // 项目感知
-  tools: ToolRegistry;      // 统一工具
-  security: SecurityGuard;  // 安全
-  sandbox: Sandbox;         // 沙箱执行
-  dryrun: DryRun;           // dry-run 预览
-  memory: Memory;           // 三级记忆
-  cache: Cache;             // 三级 KV 缓存
-  skills: SkillsLoader;     // 技能（沿用）
+  perception: PerceptionEngine;  // 项目感知
+  tools: ToolRegistry;           // 统一工具
+  security: SecurityGuard;       // 安全
+  sandbox: Sandbox;              // 沙箱执行
+  dryrun: DryRun;                // dry-run 预览
+  context: ContextManager;       // 上下文与记忆管理
+  skills: SkillsLoader;          // 技能（沿用）
 }
 ```
 
@@ -120,8 +123,7 @@ flowchart LR
   P -->|允许| S["Sandbox<br/>process 隔离执行"]
   P -->|拒绝| E["拒绝结果"]
   S --> D["DryRun<br/>可选预览"]
-  S --> M["Memory<br/>记录执行轨迹"]
-  S --> C["Cache<br/>写入/读取"]
+  S --> M["ContextManager<br/>记录轨迹 + 记忆"]
   S --> OUT["返回结果"]
 ```
 
@@ -133,7 +135,7 @@ flowchart LR
 sequenceDiagram
   participant C as CLI/上层
   participant H as Harness
-  participant CTX as ContextEngine
+  participant CTX as PerceptionEngine
   participant T as ToolRegistry
   participant S as Sandbox
 
@@ -171,8 +173,8 @@ type Result<T> =
 
 | 层级 | 内容 | 工具 |
 |------|------|------|
-| 单元测试 | 每个模块核心逻辑：安全规则、缓存 TTL、记忆读写、解析器 | `node --test`（Node 内置，零依赖） |
-| 集成测试 | 门面装配：`new Harness()` → 感知 → 工具执行 → 记忆轨迹 | 同上 |
+| 单元测试 | 每个模块核心逻辑：安全规则、上下文窗口估算、自动记忆索引、指令解析器 | `node --test`（Node 内置，零依赖） |
+| 集成测试 | 门面装配：`new Harness()` → 感知 → 工具执行 → 上下文记录 | 同上 |
 | 自检 | `npm run selfcheck` 覆盖四大能力实例化 + 一次端到端工具调用 | 已有，扩展 |
 
 ## 6. 验收标准（进入阶段二的门槛）
@@ -181,8 +183,71 @@ type Result<T> =
 2. `npm run test` 通过（新增，`node --test`）
 3. `npm run selfcheck` 输出四大能力 + 一次真实沙箱执行结果
 4. 危险命令（`rm -rf /` 等）被 `SecurityGuard` 拦截并返回结构化错误
+5. 上下文窗口：指令/自动记忆按序加载、`shouldCompact` 正确触发、`compact` 产出结构化摘要
 
-## 7. 关键决策记录
+## 7. 上下文与记忆管理（吸收 Claude Code 设计）
+
+Harness 的核心不是「三级记忆存储」，而是**上下文与记忆管理**——决定什么内容进入上下文窗口、何时进入、如何压缩、如何跨会话恢复。本节吸收 Claude Code 的成熟设计，替代原先「三级记忆一带而过」的粗略规划。
+
+### 7.1 Claude Code 调研结论
+
+| 机制 | Claude Code 设计 | 关键点 |
+|------|-----------------|--------|
+| 分层持久指令 | `CLAUDE.md` 多 scope | managed → user → project → local，从广到具体；`@path` import 递归 4 层 |
+| 按需规则 | `.claude/rules/` + `paths:` frontmatter | path-scoped，命中匹配文件才加载，省上下文 |
+| 自动记忆 | Auto memory | Agent 自己写，四类 type：`user`/`feedback`/`project`/`reference` |
+| 记忆索引 | `MEMORY.md` + topic files | 索引常驻（限 200 行/25KB），详情按需读；跳过可从代码推导的内容 |
+| 窗口压缩 | 自动 `/compact` | 接近上限自动摘要；system prompt 不变，指令/记忆从磁盘重注入，最近 5 文件重读 |
+| 会话恢复 | session + transcript | 本地持久化，resume / branch / 命名 |
+
+### 7.2 SunshineX 吸收方案
+
+将「记忆」能力升级为「上下文与记忆管理」模块组 `harness/context/`：
+
+```text
+harness/context/
+  loader.ts      # 分层指令加载：SUNSHINE.md 多 scope + @import
+  rules.ts       # path-scoped 规则（.sunshine/rules/ + paths frontmatter）
+  auto-memory.ts # 自动记忆：MEMORY.md 索引 + topic files，四类 type
+  window.ts      # 上下文窗口：token 预算 + compaction 摘要
+  session.ts     # 会话状态：持久化 + 恢复 + 命名
+```
+
+五模块对应关系：
+
+| SunshineX 机制 | 对标 Claude Code | 阶段一落地 |
+|---------------|-----------------|-----------|
+| ContextLoader | CLAUDE.md 分层 + @import | SUNSHINE.md 多 scope 解析 + import 展开 |
+| RulesRegistry | .claude/rules/ + paths | 规则目录扫描 + glob 匹配按需加载 |
+| AutoMemory | Auto memory + MEMORY.md | 索引 + topic 文件，四类 type，200 行/25KB 上限 |
+| ContextWindow | 自动 compaction | token 估算 + 触发压缩 + 摘要重注入 |
+| SessionStore | session 持久化 | 本地 transcript 读写 + 恢复 |
+
+关键设计原则（吸收自 Claude Code）：
+
+1. **指令是上下文，不是强约束**：SUNSHINE.md 引导行为；强制拦截走 SecurityGuard（对齐 Claude Code「CLAUDE.md 是 context，PreToolUse hook 才是 enforcement」）。
+2. **索引 + 详情分离**：自动记忆用索引文件（常驻、限量）+ topic 文件（按需），避免记忆膨胀挤占上下文。
+3. **按需加载**：path-scoped 规则与 topic 记忆都在命中时才加载，上下文预算是第一约束。
+4. **压缩保底**：窗口接近上限自动 compaction，摘要 + 从磁盘重注入指令/记忆/最近文件，会话不因满窗口中断。
+
+### 7.3 上下文窗口预算（阶段一最小实现）
+
+```ts
+interface ContextBudget {
+  total: number;        // 总预算（token 估算）
+  used: number;         // 已用
+  reserve: number;      // 预留（供压缩与工具输出）
+}
+
+interface ContextWindow {
+  estimate(items: ContextItem[]): number;   // token 估算（字符/4 近似）
+  shouldCompact(budget: ContextBudget): boolean;
+  compact(history: ContextItem[]): Promise<ContextSummary>; // 结构化摘要
+  reinject(): ContextItem[];                // 重注入指令/记忆/最近文件
+}
+```
+
+## 8. 关键决策记录
 
 | 决策 | 结论 |
 |------|------|
