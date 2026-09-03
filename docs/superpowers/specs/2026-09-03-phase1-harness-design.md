@@ -20,8 +20,9 @@ SunshineX 采用 Harness / Loop / Graph 三层嵌套范式，Harness 是底座�
 
 - 项目感知引擎：目录扫描、依赖解析、SUNSHINE.md 配置、Git 读取
 - 统一工具框架：注册表 + 内置工具集（read/write/grep/exec/glob）
-- 安全管控：命令策略（允许/拒绝）+ 沙箱执行 + dry-run 预览
+- 安全与权限：三态规则引擎（allow/ask/deny）+ PreToolUse 决策点 + 沙箱执行 + dry-run + 凭据 mask
 - 上下文与记忆管理：分层指令加载 + 自动记忆（索引+主题文件）+ 上下文窗口管理
+- 最小 Reactor：observe→think→act→observe 驱动循环（阶段一验收载体）
 - 可插拔接口：StorageAdapter / Sandbox / ModelAdapter
 - 测试与自检：单元测试 + 门面集成测试 + selfcheck 扩展
 
@@ -40,14 +41,15 @@ SunshineX 采用 Harness / Loop / Graph 三层嵌套范式，Harness 是底座�
 
 ## 2. 模块划分与目录结构
 
-四大能力各落一个边界清晰的模块，外加一个 Harness 门面统一对外。
+四大能力（感知/工具/安全/上下文与记忆）各落一个边界清晰的模块，外加一个 Harness 门面统一对外、一个最小 Reactor 驱动循环。
 
 | 能力 | 模块 | 职责 |
 |------|------|------|
 | 项目感知 | `harness/perception.ts` | 目录扫描、依赖解析、SUNSHINE.md、Git 读取 |
 | 统一工具 | `harness/tools.ts` + `harness/tools/` | 工具注册表（带执行器）+ 内置工具集 |
-| 安全管控 | `harness/security.ts` + `sandbox.ts` + `dryrun.ts` | 命令策略、沙箱执行、dry-run 预览 |
+| 安全与权限 | `harness/security/` | 三态规则引擎 + 沙箱 + dry-run + 凭据 mask |
 | 上下文与记忆 | `harness/context/` | 分层指令 + 自动记忆 + 上下文窗口管理 |
+| 驱动循环 | `harness/reactor.ts` | 最小 observe→think→act→observe 循环 |
 
 阶段一完成后的目录：
 
@@ -58,9 +60,15 @@ src/
     perception.ts   # 项目感知引擎（新增）
     tools.ts        # 工具注册表，扩展执行器签名（改造）
     tools/          # 内置工具集：read/write/grep/exec/glob（新增）
-    security.ts     # 命令策略：允许/拒绝规则（新增）
-    sandbox.ts      # 沙箱执行，process 隔离（新增）
-    dryrun.ts       # dry-run 预览（新增）
+    security/       # 安全与权限（新增）
+      policy.ts     #   权限规则引擎（deny→ask→allow）
+      rules.ts      #   规则解析（Tool(specifier) + 通配符）
+      modes.ts      #   权限模式
+      guard.ts      #   PreToolUse 决策点
+      sandbox.ts    #   沙箱执行（process 隔离）
+      dryrun.ts     #   dry-run 预览
+      credentials.ts#   凭据 mask（预留）
+    reactor.ts      # 最小驱动循环（新增）
     context/        # 上下文与记忆管理（新增）
       loader.ts     #   分层指令加载（SUNSHINE.md 多 scope + @import）
       rules.ts      #   path-scoped 规则
@@ -82,11 +90,12 @@ src/
 interface Harness {
   perception: PerceptionEngine;  // 项目感知
   tools: ToolRegistry;           // 统一工具
-  security: SecurityGuard;       // 安全
+  security: SecurityGuard;       // 安全（PreToolUse 决策点）
   sandbox: Sandbox;              // 沙箱执行
   dryrun: DryRun;                // dry-run 预览
   context: ContextManager;       // 上下文与记忆管理
   skills: SkillsLoader;          // 技能（沿用）
+  reactor: Reactor;              // 最小驱动循环
 }
 ```
 
@@ -118,16 +127,16 @@ interface ModelAdapter {          // 沿用已有
 
 ```mermaid
 flowchart LR
-  U["调用方<br/>Loop/Graph/CLI"] --> R["ToolRegistry<br/>查找工具"]
-  R --> P["SecurityGuard<br/>策略校验"]
-  P -->|允许| S["Sandbox<br/>process 隔离执行"]
-  P -->|拒绝| E["拒绝结果"]
+  U["调用方<br/>Reactor/CLI"] --> R["ToolRegistry<br/>查找工具"]
+  R --> P["SecurityGuard<br/>preToolUse 决策"]
+  P -->|allow| S["Sandbox<br/>隔离执行"]
+  P -->|deny| E["拒绝 + 原因"]
   S --> D["DryRun<br/>可选预览"]
-  S --> M["ContextManager<br/>记录轨迹 + 记忆"]
+  S --> M["ContextManager<br/>记录轨迹"]
   S --> OUT["返回结果"]
 ```
 
-关键约定：**工具只声明、不直接执行**——`ToolRegistry` 里的工具是「元数据 + 执行器」，执行器统一经过 `SecurityGuard → Sandbox → DryRun` 这条链，保证安全与预览能力对所有工具生效。
+关键约定：**工具只声明、不直接执行**——`ToolRegistry` 里的工具是「元数据 + 执行器」，执行器统一经过 `SecurityGuard.preToolUse → Sandbox → DryRun` 这条链，保证安全与预览能力对所有工具生效。完整链路（含 ask 分支与权限模式）见第 8 章。
 
 ### 3.4 数据流（单次感知 + 执行）
 
@@ -173,8 +182,8 @@ type Result<T> =
 
 | 层级 | 内容 | 工具 |
 |------|------|------|
-| 单元测试 | 每个模块核心逻辑：安全规则、上下文窗口估算、自动记忆索引、指令解析器 | `node --test`（Node 内置，零依赖） |
-| 集成测试 | 门面装配：`new Harness()` → 感知 → 工具执行 → 上下文记录 | 同上 |
+| 单元测试 | 每个模块核心逻辑：权限规则引擎、上下文窗口估算、自动记忆索引、指令解析器 | `node --test`（Node 内置，零依赖） |
+| 集成测试 | 门面装配：`new Harness()` → 感知 → Reactor 循环 → 工具执行 → 上下文记录 | 同上 |
 | 自检 | `npm run selfcheck` 覆盖四大能力实例化 + 一次端到端工具调用 | 已有，扩展 |
 
 ## 6. 验收标准（进入阶段二的门槛）
@@ -184,6 +193,7 @@ type Result<T> =
 3. `npm run selfcheck` 输出四大能力 + 一次真实沙箱执行结果
 4. 危险命令（`rm -rf /` 等）被 `SecurityGuard` 拦截并返回结构化错误
 5. 上下文窗口：指令/自动记忆按序加载、`shouldCompact` 正确触发、`compact` 产出结构化摘要
+6. 最小闭环：`reactor.run(task)` 端到端跑通（ScriptedAdapter 驱动一次完整 observe→think→act→observe）
 
 ## 7. 上下文与记忆管理（吸收 Claude Code 设计）
 
@@ -247,7 +257,127 @@ interface ContextWindow {
 }
 ```
 
-## 8. 关键决策记录
+## 8. 安全与权限模型（吸收 Claude Code）
+
+阶段一原设计只有「命令黑名单」，离生产级太薄。本节吸收 Claude Code 的权限系统与沙箱设计，落地为分层的安全管控。
+
+### 8.1 Claude Code 调研结论
+
+| 机制 | Claude Code 设计 | 关键点 |
+|------|-----------------|--------|
+| 工具分级 | 只读 / Bash / 文件修改 / 网络 | 只读默认放行，其余默认询问 |
+| 规则引擎 | allow / ask / deny 三态 | 求值顺序 deny → ask → allow，首个匹配生效，specificity 不改变顺序 |
+| 规则语法 | `Tool(specifier)` | 通配符、复合命令感知、wrapper 剥离、只读命令内置集 |
+| 权限模式 | manual / plan / auto / acceptEdits / dontAsk | 控制「哪些询问、哪些自动」 |
+| 强制边界 | PreToolUse hook | 工具调用前决策点，可 deny + 附原因 |
+| Bash 沙箱 | OS 级强制 | 文件系统层 + 网络层双层隔离、凭据 mask、unsandboxed 回退 |
+
+核心原则：**权限由运行时强制，不由模型决定**——`SUNSHINE.md` 是上下文（引导行为），`SecurityGuard`/`Policy` 才是强制（enforcement），与第 7 章「指令是上下文，不是强约束」一脉相承。
+
+### 8.2 SunshineX 吸收方案
+
+安全管控从两个文件升级为 `harness/security/` 模块组：
+
+```text
+harness/security/
+  policy.ts       # 权限规则引擎（allow/ask/deny，deny→ask→allow 求值）
+  rules.ts        # 规则解析：Tool(specifier) + 通配符 + 复合命令感知
+  modes.ts        # 权限模式：manual / plan / dontAsk（阶段一）
+  guard.ts        # PreToolUse 决策点（enforcement 层，对齐 hook 语义）
+  sandbox.ts      # 沙箱执行：process 隔离（文件/网络双层，零依赖近似）
+  dryrun.ts       # dry-run 预览
+  credentials.ts  # 凭据保护：环境变量/文件 mask（预留）
+```
+
+```ts
+type PermissionDecision = 'allow' | 'ask' | 'deny';
+
+interface PolicyEngine {
+  // 求值顺序：deny → ask → allow，首个匹配生效
+  decide(toolName: string, specifier: string): PermissionDecision;
+  add(decision: PermissionDecision, rule: string): void; // 如 deny "Bash(rm *)"
+}
+
+interface SecurityGuard {          // PreToolUse 决策点
+  preToolUse(tool: string, input: unknown):
+    { allowed: true } | { allowed: false; reason: string };
+}
+```
+
+阶段一实现（零依赖，对齐 Claude Code 语义但用 process 隔离近似 OS 级强制）：
+
+| Claude Code | SunshineX 阶段一 |
+|------------|-----------------|
+| allow/ask/deny 规则 | `PolicyEngine` 三态规则，deny→ask→allow 求值 |
+| `Bash(rm *)` 语法 | `rules.ts` 通配符 + 复合命令拆分 + 常用 wrapper 剥离 |
+| 只读命令内置集 | 内置只读白名单（ls/cat/pwd/grep/find/...）默认 allow |
+| PreToolUse hook | `SecurityGuard.preToolUse` 决策点，deny 附原因 |
+| 权限模式 | manual（默认）/ plan（只读）/ dontAsk（未批准即拒） |
+| Bash 沙箱（Seatbelt/bubblewrap） | `sandbox.ts` process 隔离 + 路径/网络白名单（Docker 预留） |
+| 凭据 mask | `credentials.ts` 环境变量 mask（预留接口） |
+
+### 8.3 工具执行链路（含 PreToolUse 决策点）
+
+```mermaid
+flowchart LR
+  R["Reactor/上层"] --> T["ToolRegistry 查找"]
+  T --> G["SecurityGuard<br/>preToolUse 决策"]
+  G -->|deny| E["拒绝 + 原因"]
+  G -->|ask| Q["按权限模式处理<br/>manual 询问 / plan 只读 / dontAsk 拒绝"]
+  G -->|allow| S["Sandbox 隔离执行"]
+  S --> D["DryRun 预览"]
+  S --> C["ContextManager 记录轨迹"]
+  S --> OUT["结果"]
+```
+
+## 9. 最小 Reactor（Harness 驱动层）
+
+阶段一若只有被动底座，验收只能验证「组件可实例化」，验证不了「能干活」。因此加入一个最小 Reactor 驱动底座，形成端到端闭环。它**不是**阶段二的 Loop Engine，而是最薄的线性循环。
+
+### 9.1 定位与边界
+
+| 维度 | 阶段一 Reactor | 阶段二 Loop Engine |
+|------|---------------|-------------------|
+| 形态 | 线性单循环 | 四类节点（agent/check/gate/router） |
+| 循环 | observe → think → act → observe | 节点调度 + 流转控制 |
+| 决策 | 单步 action（ScriptedAdapter 脚本化） | 多步 + 校验 + 路由 |
+| 终止 | maxSteps + 预算 | 四重终止（验收/迭代/超时/Token） |
+| 模板 | 无 | 三大专用模板 |
+| 可被 Graph 嵌入 | 否 | 是 |
+
+### 9.2 四步循环
+
+```mermaid
+flowchart LR
+  O1["observe<br/>ContextManager 装配上下文"] --> T["think<br/>ModelAdapter 决策下一步"]
+  T --> A["act<br/>ToolRegistry → SecurityGuard → Sandbox"]
+  A --> O2["observe<br/>结果写回 + 终止判定"]
+  O2 -->|未终止| T
+  O2 -->|终止| DONE["返回结果"]
+```
+
+```ts
+interface Reactor {
+  run(task: Task, opts?: { maxSteps?: number }): Promise<RunResult>;
+}
+
+interface Task { goal: string; }
+
+interface RunResult {
+  steps: StepRecord[];      // 每步的 think/act/observe 轨迹
+  done: boolean;            // 是否正常终止
+  reply?: string;           // 终态输出
+}
+```
+
+关键设计：
+
+1. **think 经 ModelAdapter**：阶段一无真实 LLM，提供 `ScriptedAdapter`（脚本化决策：预置 action 序列逐步回放）用于验收与测试，真实模型接口不变，接入真实 LLM 时无需改 Reactor。
+2. **act 复用安全链**：所有 action 统一走 `SecurityGuard.preToolUse → Sandbox`，保证最小闭环也受权限管控。
+3. **observe 写回 context**：每步轨迹进入 ContextManager（会话记忆），为阶段二 Loop Engine 的「状态管理」打好基础。
+4. **终止保底**：maxSteps（默认 8）+ 预算，防止死循环，不做阶段二的四重终止。
+
+## 10. 关键决策记录
 
 | 决策 | 结论 |
 |------|------|
