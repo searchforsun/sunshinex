@@ -35,9 +35,9 @@ SunshineX 采用 Harness / Loop / Graph 三层嵌套范式，Harness 是底座�
 
 ### 1.4 约束
 
-- 零新增 npm 依赖：仅使用 Node 内置模块（fs / path / child_process / node:test）
+- 零新增 npm 依赖：仅使用 Node 内置模块（fs / path / child_process / node:test / fetch）
 - TypeScript strict 模式，禁止无理由 any
-- 所有 IO 集中在 adapter/store 内
+- 所有 IO 集中在 adapter/store 内；模型调用经 Node 内置 fetch 直连 OpenAI 兼容 API（需外网，无外网时降级）
 
 ## 2. 模块划分与目录结构
 
@@ -79,7 +79,8 @@ src/
   storage/
     adapter.ts    # StorageAdapter 接口（新增）
     store.ts      # LocalStore 实现（已有，改造为适配器）
-  model/adapter.ts  # 已有，保留
+  model/
+    adapter.ts    # ModelAdapter 接口 + OpenAIAdapter + Stub/Scripted（改造）
 ```
 
 ## 3. 接口与数据流
@@ -121,7 +122,7 @@ interface ModelAdapter {          // 沿用已有
 
 - `StorageAdapter`：默认 `FileStore`（改造已有 LocalStore），预留 `sqlite`。
 - `Sandbox`：默认 `ProcessSandbox`（Node child_process + 超时 + 输出截断），预留 `docker`。
-- `ModelAdapter`：已有，阶段一不扩展，仅通过路由接入。
+- `ModelAdapter`：新增 `OpenAIAdapter`（真实推理发动机）+ 保留 `StubAdapter`（离线兜底）/ `ScriptedAdapter`（测试脚本化），详见 3.5。
 
 ### 3.3 工具执行链路
 
@@ -158,6 +159,41 @@ sequenceDiagram
   H-->>C: 结果 + 记忆轨迹
 ```
 
+### 3.5 模型适配层（OpenAI 兼容，最简单配置）
+
+「发动机」：`OpenAIAdapter` 用 Node 内置 `fetch` 直连 OpenAI 兼容 REST API，**零 npm 依赖**（不引入 openai SDK）。
+
+```ts
+interface LLMConfig {
+  provider: 'openai' | 'stub' | 'scripted';
+  baseURL?: string;      // 默认 https://api.openai.com/v1
+  apiKey?: string;       // 默认读 OPENAI_API_KEY
+  model?: string;        // 默认 gpt-4o-mini
+}
+
+class OpenAIAdapter implements ModelAdapter {
+  readonly provider = 'openai';
+  constructor(private cfg: LLMConfig) {}
+  async complete(prompt: string): Promise<string> {
+    // POST {baseURL}/chat/completions
+    // body: { model, messages: [{ role: 'user', content: prompt }] }
+    // 解析 choices[0].message.content
+  }
+}
+```
+
+配置来源（环境变量优先，`baseURL` 可配即天然兼容所有 OpenAI 兼容服务）：
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `OPENAI_API_KEY` | （无） | API Key，缺失时降级 |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | 兼容 DeepSeek / 通义 / 本地 Ollama 等 |
+| `OPENAI_MODEL` | `gpt-4o-mini` | 模型名 |
+
+决策协议：`complete()` 请求模型返回 JSON——`{ "tool": string, "input": unknown, "done": boolean }`，Reactor 解析 JSON 得到 action；解析失败记入轨迹并判为 done。
+
+降级链：`OpenAIAdapter`（有 key 且网络可用）→ `ScriptedAdapter`（测试脚本化）→ `StubAdapter`（离线兜底）。无 key 或网络失败**不阻断自检**，返回结构化错误并按降级链兜底。
+
 ## 4. 错误处理
 
 统一结果类型，避免异常穿透到上层：
@@ -193,7 +229,7 @@ type Result<T> =
 3. `npm run selfcheck` 输出四大能力 + 一次真实沙箱执行结果
 4. 危险命令（`rm -rf /` 等）被 `SecurityGuard` 拦截并返回结构化错误
 5. 上下文窗口：指令/自动记忆按序加载、`shouldCompact` 正确触发、`compact` 产出结构化摘要
-6. 最小闭环：`reactor.run(task)` 端到端跑通（ScriptedAdapter 驱动一次完整 observe→think→act→observe）
+6. 最小闭环：`reactor.run(task)` 端到端跑通（有 `OPENAI_API_KEY` 时真实推理；无 key 时 ScriptedAdapter 驱动一次完整 observe→think→act→observe）
 
 ## 7. 上下文与记忆管理（吸收 Claude Code 设计）
 
@@ -340,7 +376,7 @@ flowchart LR
 |------|---------------|-------------------|
 | 形态 | 线性单循环 | 四类节点（agent/check/gate/router） |
 | 循环 | observe → think → act → observe | 节点调度 + 流转控制 |
-| 决策 | 单步 action（ScriptedAdapter 脚本化） | 多步 + 校验 + 路由 |
+| 决策 | 单步 action（OpenAIAdapter 真实推理，无 key 降级 Scripted） | 多步 + 校验 + 路由 |
 | 终止 | maxSteps + 预算 | 四重终止（验收/迭代/超时/Token） |
 | 模板 | 无 | 三大专用模板 |
 | 可被 Graph 嵌入 | 否 | 是 |
@@ -372,7 +408,7 @@ interface RunResult {
 
 关键设计：
 
-1. **think 经 ModelAdapter**：阶段一无真实 LLM，提供 `ScriptedAdapter`（脚本化决策：预置 action 序列逐步回放）用于验收与测试，真实模型接口不变，接入真实 LLM 时无需改 Reactor。
+1. **think 经 ModelAdapter（真实发动机）**：默认 `OpenAIAdapter` 直连 OpenAI 兼容 API 真实推理；无 key / 无网络时降级 `ScriptedAdapter`（脚本化）或 `StubAdapter`，保证离线也能验收与测试。
 2. **act 复用安全链**：所有 action 统一走 `SecurityGuard.preToolUse → Sandbox`，保证最小闭环也受权限管控。
 3. **observe 写回 context**：每步轨迹进入 ContextManager（会话记忆），为阶段二 Loop Engine 的「状态管理」打好基础。
 4. **终止保底**：maxSteps（默认 8）+ 预算，防止死循环，不做阶段二的四重终止。
