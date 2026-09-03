@@ -1,0 +1,15 @@
+{
+  "name": "sunshinex-agent",
+  "version": "0.1.0",
+  "description": "SunshineX 通用 AI Agent 工程化骨架（Harness/Loop/Graph 三层范式）",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "selfcheck": "npm run build && node dist/index.js --selfcheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}
