@@ -77,3 +77,22 @@ test('模型调用异常时 done=false 并保留错误信息', async () => {
   assert.equal(r.done, false);
   assert.ok(r.reply && r.reply.includes('网络错误'));
 });
+
+test('Reactor prompt 经 Context.assemble 串起 SUNSHINE.md 指令', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor5-'));
+  fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), '# 规范\n禁用 any 类型\n');
+  const store = new FileStore(tmp);
+  const sandbox = new ProcessSandbox();
+  const guard = new SecurityGuard(new PolicyEngine(), 'manual');
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(sandbox, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+
+  let captured = '';
+  const adapter = { provider: 'capture', complete: async (p: string) => { captured = p; return '{"done":true}'; } };
+  const reactor = new Reactor({ registry, guard, sandbox, context, model: adapter });
+
+  const r = await reactor.run({ goal: 'x' });
+  assert.equal(r.done, true);
+  assert.ok(captured.includes('禁用 any 类型'), 'prompt 应包含 SUNSHINE.md 指令');
+});

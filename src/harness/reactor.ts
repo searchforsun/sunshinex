@@ -35,18 +35,18 @@ export class Reactor {
     let reply: string | undefined;
 
     for (let step = 1; step <= maxSteps; step++) {
-      // observe: 上下文压缩稳定性检查（阶段一无真实摘要，reinject 为空时不丢历史）
-      const history = this.assemble(task, steps);
-      const est = this.deps.context.window.estimate(history);
+      // observe: 上下文统一装配 + 压缩稳定性检查
+      const items = this.deps.context.assemble(task.goal, this.toHistory(steps));
+      const est = this.deps.context.window.estimate(items);
       if (this.deps.context.window.shouldCompact({ total: 200_000, used: est.used, reserve: 40_000 })) {
-        const chunks = await this.deps.context.window.compact(history);
+        const chunks = await this.deps.context.window.compact(items);
         this.deps.context.window.verifyChecksum(chunks);
       }
 
       // think: 经 ModelAdapter 决策（带动作协议 prompt）
       let raw: string;
       try {
-        raw = await this.deps.model.complete(this.buildPrompt(task, steps));
+        raw = await this.deps.model.complete(this.buildPrompt(items));
       } catch (e) {
         reply = e instanceof Error ? e.message : '模型调用失败';
         break;
@@ -84,11 +84,9 @@ export class Reactor {
     return { steps, done, reply };
   }
 
-  private buildPrompt(task: Task, steps: StepRecord[]): string {
+  private buildPrompt(items: ContextItem[]): string {
     const tools = this.deps.registry.list().map((t) => `- ${t.name}: ${t.description}`).join('\n');
-    const historyText = steps.length === 0
-      ? '(暂无)'
-      : steps.map((s) => `步骤${s.step} ${s.action ?? '(模型输出)'}：${s.observation}`).join('\n');
+    const contextText = items.map((i) => i.content).join('\n');
     return [
       '你是 SunshineX 智能体，通过调用工具完成任务。',
       '可用工具：',
@@ -98,18 +96,13 @@ export class Reactor {
       '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}',
       '2) 任务完成：{"done":true,"reply":"<最终答复>"}',
       '',
-      `目标：${task.goal}`,
-      '',
-      '已执行步骤（观察结果）：',
-      historyText,
+      '上下文：',
+      contextText,
     ].join('\n');
   }
 
-  private assemble(task: Task, steps: StepRecord[]): ContextItem[] {
-    return [
-      { kind: 'instruction', content: task.goal },
-      ...steps.map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` })),
-    ];
+  private toHistory(steps: StepRecord[]): ContextItem[] {
+    return steps.map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
   }
 
   private parse(raw: string): ParseResult {
