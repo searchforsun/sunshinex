@@ -110,7 +110,7 @@ export type PermissionDecision = 'allow' | 'ask' | 'deny';
 
 /** 上下文条目 */
 export interface ContextItem {
-  kind: 'instruction' | 'memory' | 'history' | 'tool';
+  kind: 'system' | 'instruction' | 'memory' | 'history' | 'tool' | 'result';
   content: string;
   meta?: Record<string, unknown>;
 }
@@ -972,7 +972,7 @@ git commit -m "feat: 统一工具框架与内置工具集"
 - Produces:
   - `loader.ts`：`class ContextLoader { constructor(root: string); load(): ContextItem[]; }`（SUNSHINE.md 多 scope + `@path` import 展开）
   - `auto-memory.ts`：`class AutoMemory { constructor(store: StorageAdapter); index(): string[]; record(type: string, text: string): void; }`
-  - `window.ts`：`interface ContextBudget { total: number; used: number; reserve: number; }`、`interface ContextSummary { summary: string; }`、`class ContextWindow { estimate(items: ContextItem[]): number; shouldCompact(b: ContextBudget): boolean; compact(items: ContextItem[]): Promise<ContextSummary>; reinject(): ContextItem[]; }`
+  - `window.ts`：`interface ContextBudget { total: number; used: number; reserve: number; }`、`interface ContextItemEstimate { id: string; weight: number; }`、`interface ContextChunk { id: string; summary: string; type: string; priority: number; }`、`class ContextWindow { estimate(items: ContextItem[]): { used: number; items: ContextItemEstimate[] }; shouldCompact(b: ContextBudget): boolean; compact(items: ContextItem[], opts?: { force?: boolean }): Promise<ContextChunk[]>; verifyChecksum(chunks: ContextChunk[]): boolean; reinject(): ContextItem[]; }`
   - `index.ts`：`class ContextManager { constructor(root: string, store: StorageAdapter); loader: ContextLoader; memory: AutoMemory; window: ContextWindow; }`
 
 - [ ] **Step 1: 写失败测试**
@@ -985,9 +985,20 @@ import assert from 'node:assert/strict';
 import { ContextWindow } from './window';
 import { ContextItem } from '../../types';
 
-test('estimate 用字符/4 近似 token', () => {
+test('estimate 按 kind 加权估算 token', () => {
   const w = new ContextWindow();
-  assert.equal(w.estimate([{ kind: 'history', content: 'abcd' }]), 1);
+  const est = w.estimate([{ kind: 'instruction', content: 'abcd' }]);
+  assert.equal(est.used, 2); // ceil(4 字符 × 1.2 / 4) = ceil(1.2) = 2
+  assert.equal(est.items.length, 1);
+  assert.equal(est.items[0].weight, 1.2);
+  assert.ok(est.items[0].id.length > 0);
+});
+
+test('estimate 返回逐项 chunk id（可重现）', () => {
+  const w = new ContextWindow();
+  const a = w.estimate([{ kind: 'history', content: 'hello' }]);
+  const b = w.estimate([{ kind: 'history', content: 'hello' }]);
+  assert.equal(a.items[0].id, b.items[0].id);
 });
 
 test('used 超过 total 时 shouldCompact 为 true', () => {
@@ -996,11 +1007,31 @@ test('used 超过 total 时 shouldCompact 为 true', () => {
   assert.equal(w.shouldCompact({ total: 100, used: 50, reserve: 10 }), false);
 });
 
-test('compact 产出结构化摘要', async () => {
+test('compact 产出结构化 chunk 并过滤 priority=0', async () => {
   const w = new ContextWindow();
-  const items: ContextItem[] = [{ kind: 'history', content: '用户说你好' }, { kind: 'history', content: '助手回复' }];
-  const s = await w.compact(items);
-  assert.ok(s.summary.length > 0);
+  const items: ContextItem[] = [
+    { kind: 'history', content: '用户说你好' },
+    { kind: 'history', content: '重复的冗余日志 x'.repeat(50) },
+  ];
+  const chunks = await w.compact(items);
+  assert.ok(chunks.length >= 1);
+  assert.ok(chunks.every((c) => c.priority > 0));
+  assert.ok(chunks.every((c) => c.id.length > 0));
+});
+
+test('verifyChecksum 对相同 chunks 返回 true', () => {
+  const w = new ContextWindow();
+  const chunks = [{ id: 'a', summary: 'x', type: 'history', priority: 1 }];
+  assert.equal(w.verifyChecksum(chunks), false); // 首次记录
+  assert.equal(w.verifyChecksum(chunks), true);  // 内容未变
+});
+
+test('compact 摘要可重现（相同输入产生相同 chunk id）', async () => {
+  const w = new ContextWindow();
+  const items: ContextItem[] = [{ kind: 'instruction', content: '## 规则一\n内容' }];
+  const a = await w.compact(items);
+  const b = await w.compact(items);
+  assert.deepEqual(a.map((c) => c.id), b.map((c) => c.id));
 });
 ```
 
@@ -1014,6 +1045,7 @@ Expected: FAIL —— 找不到模块 `./window`
 创建 `src/harness/context/window.ts`：
 
 ```ts
+import * as crypto from 'crypto';
 import { ContextItem } from '../../types';
 
 export interface ContextBudget {
@@ -1022,31 +1054,131 @@ export interface ContextBudget {
   reserve: number;
 }
 
-export interface ContextSummary {
-  summary: string;
+export interface ContextItemEstimate {
+  id: string;
+  weight: number;
 }
 
-/** 上下文窗口：token 估算 + compaction 摘要 + 重注入 */
+export interface ContextChunk {
+  id: string;
+  summary: string;
+  type: string;
+  priority: number;
+}
+
+const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
+  system: 1.0,
+  instruction: 1.2,
+  memory: 0.8,
+  history: 0.5,
+  tool: 0.7,
+  result: 0.6,
+};
+
+/** 上下文窗口：加权 token 估算 + 分块 compaction + checksum 重注入（Claude Code 稳定性增强） */
 export class ContextWindow {
-  estimate(items: ContextItem[]): number {
-    return Math.ceil(items.reduce((n, i) => n + i.content.length, 0) / 4);
+  private lastChecksum: string | null = null;
+
+  /** 加权估算：used = Σ ceil(content.length * weight / 4)；逐项返回 chunk id */
+  estimate(items: ContextItem[]): { used: number; items: ContextItemEstimate[] } {
+    const out: ContextItemEstimate[] = [];
+    let used = 0;
+    for (const it of items) {
+      const weight = KIND_WEIGHT[it.kind] ?? 0.5;
+      used += Math.ceil((it.content.length * weight) / 4);
+      out.push({ id: this.chunkId(it.content), weight });
+    }
+    return { used, items: out };
   }
 
   shouldCompact(b: ContextBudget): boolean {
     return b.used > b.total - b.reserve;
   }
 
-  async compact(items: ContextItem[]): Promise<ContextSummary> {
-    // 阶段一：结构化摘要 = 拼接内容截断（真实模型摘要留阶段二）
-    const joined = items.map((i) => i.content).join('\n');
-    return { summary: joined.slice(0, 2000) };
+  async compact(items: ContextItem[], opts?: { force?: boolean }): Promise<ContextChunk[]> {
+    if (!opts?.force && !this.shouldCompact({ total: 200_000, used: this.estimate(items).used, reserve: 40_000 })) {
+      return [];
+    }
+    const chunks = this.chunkByMarkdown(items);
+    const merged = this.mergeChunks(chunks);
+    const kept = merged.filter((c) => c.priority > 0);
+    this.lastChunks = kept;
+    return kept;
+  }
+
+  verifyChecksum(chunks: ContextChunk[]): boolean {
+    const hash = crypto.createHash('sha256').update(JSON.stringify(chunks)).digest('hex');
+    if (this.lastChecksum === hash) return true;
+    this.lastChecksum = hash;
+    return false;
   }
 
   reinject(): ContextItem[] {
-    return []; // 阶段一：重注入由 ContextManager 调用 loader.load() + memory 索引实现
+    // 阶段一：system prompt 不重注入（hardcode）；
+    // SUNSHINE.md / MEMORY.md / 最近 5 文件的重读由 ContextManager 协调，
+    // 本方法返回压缩摘要作为新 history（摘要本身由 ContextManager 注入）。
+    return [];
+  }
+
+  private chunkId(content: string): string {
+    return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+  }
+
+  /** 按 ## / ### / --- / > 边界切分 */
+  private chunkByMarkdown(items: ContextItem[]): ContextChunk[] {
+    const out: ContextChunk[] = [];
+    for (const it of items) {
+      const lines = it.content.split(/\r?\n/);
+      let cur = '';
+      const flush = () => {
+        if (cur.trim().length === 0) return;
+        out.push({ id: this.chunkId(cur), summary: cur.trim().slice(0, 2000), type: it.kind, priority: this.priority(cur) });
+        cur = '';
+      };
+      for (const l of lines) {
+        if (/^(#{2,3}\s|---|>)/.test(l)) { flush(); cur = l; }
+        else cur += (cur ? '\n' : '') + l;
+      }
+      flush();
+    }
+    return out;
+  }
+
+  /** priority：极短/高度重复内容判为 0，其余为 1 */
+  private priority(content: string): number {
+    if (content.trim().length < 4) return 0;
+    const words = content.trim().split(/\s+/);
+    if (words.length >= 4 && new Set(words).size <= 2) return 0; // 冗余重复
+    return 1;
+  }
+
+  /** 去重合并：相同 id 或 Jaccard > 0.9 合并 */
+  private mergeChunks(chunks: ContextChunk[]): ContextChunk[] {
+    const out: ContextChunk[] = [];
+    for (const c of chunks) {
+      const dup = out.find((o) => o.id === c.id || this.jaccard(o.summary, c.summary) > 0.9);
+      if (dup) {
+        if (c.summary.length > dup.summary.length) dup.summary = c.summary;
+        dup.priority = Math.max(dup.priority, c.priority);
+      } else {
+        out.push({ ...c });
+      }
+    }
+    return out;
+  }
+
+  private jaccard(a: string, b: string): number {
+    const sa = new Set(a.split(/\s+/).filter(Boolean));
+    const sb = new Set(b.split(/\s+/).filter(Boolean));
+    if (sa.size === 0 || sb.size === 0) return 0;
+    let inter = 0;
+    for (const w of sa) if (sb.has(w)) inter++;
+    return inter / (sa.size + sb.size - inter);
   }
 }
 ```
+
+> 阶段一 `summary` 为「截断文本」近似，chunk id / priority / checksum / 加权逻辑为真实实现；真实 LLM 摘要留阶段二。
 
 创建 `src/harness/context/loader.ts`：
 
@@ -1423,7 +1555,19 @@ export class Reactor {
 
     for (let step = 1; step <= maxSteps; step++) {
       // observe: 装配上下文（阶段一：直接注入任务与历史轨迹）
-      const history = this.assemble(task, steps);
+      let history = this.assemble(task, steps);
+
+      // 压缩稳定性集成：observe 后检查预算，必要时压缩并重注入（对齐 spec 9.3）
+      const est = this.deps.context.window.estimate(history);
+      if (this.deps.context.window.shouldCompact({ total: 200_000, used: est.used, reserve: 40_000 })) {
+        const chunks = await this.deps.context.window.compact(history);
+        if (!this.deps.context.window.verifyChecksum(chunks)) {
+          history = [
+            { kind: 'instruction' as const, content: task.goal },
+            ...this.deps.context.window.reinject(),
+          ];
+        }
+      }
 
       // think: 经 ModelAdapter 决策
       let action: Action;

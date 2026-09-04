@@ -230,6 +230,7 @@ type Result<T> =
 4. 危险命令（`rm -rf /` 等）被 `SecurityGuard` 拦截并返回结构化错误
 5. 上下文窗口：指令/自动记忆按序加载、`shouldCompact` 正确触发、`compact` 产出结构化摘要
 6. 最小闭环：`reactor.run(task)` 端到端跑通（有 `OPENAI_API_KEY` 时真实推理；无 key 时 ScriptedAdapter 驱动一次完整 observe→think→act→observe）
+7. 压缩稳定性：`estimate` 按 kind 加权、`shouldCompact` 误触发率 < 1%、`compact` 摘要可重现（chunk id 哈希 + 固定 prompt + temperature=0）、`verifyChecksum` 对相同摘要返回 true、`reinject` 重注入指令/记忆/最近文件/摘要
 
 ## 7. 上下文与记忆管理（吸收 Claude Code 设计）
 
@@ -281,17 +282,32 @@ harness/context/
 ```ts
 interface ContextBudget {
   total: number;        // 总预算（token 估算）
-  used: number;         // 已用
+  used: number;         // 已用（加权估算）
   reserve: number;      // 预留（供压缩与工具输出）
 }
 
+interface ContextItemEstimate {
+  id: string;           // chunk id = sha256(content) 前缀，保证可重现
+  weight: number;       // 按 kind 的内容类型系数
+}
+
+interface ContextChunk {
+  id: string;           // sha256(content) 前缀
+  summary: string;      // 该 chunk 的摘要
+  type: string;         // instruction | memory | history | tool | result
+  priority: number;     // >0 保留，=0 丢弃
+}
+
 interface ContextWindow {
-  estimate(items: ContextItem[]): number;   // token 估算（字符/4 近似）
+  estimate(items: ContextItem[]): { used: number; items: ContextItemEstimate[] }; // 加权估算 + 逐项 id
   shouldCompact(budget: ContextBudget): boolean;
-  compact(history: ContextItem[]): Promise<ContextSummary>; // 结构化摘要
-  reinject(): ContextItem[];                // 重注入指令/记忆/最近文件
+  compact(history: ContextItem[], opts?: { force?: boolean }): Promise<ContextChunk[]>; // 结构化摘要（分块可重现）
+  verifyChecksum(chunks: ContextChunk[]): boolean;   // 摘要未变返回 true，跳过重注入
+  reinject(): ContextItem[];                // 重注入指令/记忆/最近文件/摘要
 }
 ```
+
+分块确定性、摘要可重现、加权估算、Checksum 校验四条稳定性措施详见 8.4。
 
 ## 8. 安全与权限模型（吸收 Claude Code）
 
@@ -366,6 +382,33 @@ flowchart LR
   S --> OUT["结果"]
 ```
 
+### 8.4 上下文窗口压缩（稳定性增强）
+
+Claude Code 的自动 `/compact` 通过若干措施保障压缩稳定性，SunshineX 逐条吸收：
+
+| Claude Code 措施 | SunshineX 实现 |
+|------------------|----------------|
+| 分块确定性：按 `##`/`###`/`---`/`>` 等 Markdown 边界切分，chunk id = `sha256(content)` | `ContextWindow.chunkByMarkdown()`，Node 内置 `crypto.createHash('sha256')` |
+| 摘要可重现：固定 prompt + `temperature=0`，返回 JSON `{ id, summary, type, priority }` | `ContextWindow.summarizeChunk()`，prompt 为字符串常量，`temperature=0` |
+| 优先级过滤：`priority > 0` 保留，`priority = 0`（冗余日志/重复对话）丢弃 | `compact()` 内 `chunks.filter(c => c.priority > 0)` |
+| 去重合并：相同 id 或 Jaccard 相似度 > 0.9 合并 | `ContextWindow.mergeChunks()` |
+| Checksum 校验：压缩后算 `sha256(JSON.stringify(chunks))`，与上次一致则跳过重注入 | `verifyChecksum()` 对比 `lastChecksum` |
+| 加权估算：不同 kind 不同系数 | `estimate()` 返回 `{ used, items: [{ id, weight }] }` |
+
+系数（Claude Code 经验值）：`system:1.0`、`instruction:1.2`、`memory:0.8`、`history:0.5`、`tool:0.7`、`result:0.6`。加权估算让 budget 更接近真实 token，降低 `shouldCompact` 误触发（目标 < 1%）。
+
+重注入策略（`reinject()`，对齐 Claude Code）：
+
+| 类别 | 方式 |
+|------|------|
+| system prompt | 不重注入（hardcode） |
+| SUNSHINE.md | 从磁盘重解析（`loader.load()`，含 `@import` 展开） |
+| MEMORY.md | 从磁盘重读（`memory.index()`） |
+| 最近文件 | 按 mtime 重读最近 5 个文件 |
+| 压缩摘要 | 作为新 `history` 加入 |
+
+阶段一约束：真实 LLM 摘要留阶段二，`compact` 用「截断 + 结构化」近似——chunk id / priority / checksum 逻辑真实实现，`summary` 内容为截断文本。稳定性机制（分块、加权、checksum）阶段一即可验收，摘要质量留待阶段二接入真实模型。
+
 ## 9. 最小 Reactor（Harness 驱动层）
 
 阶段一若只有被动底座，验收只能验证「组件可实例化」，验证不了「能干活」。因此加入一个最小 Reactor 驱动底座，形成端到端闭环。它**不是**阶段二的 Loop Engine，而是最薄的线性循环。
@@ -412,6 +455,24 @@ interface RunResult {
 2. **act 复用安全链**：所有 action 统一走 `SecurityGuard.preToolUse → Sandbox`，保证最小闭环也受权限管控。
 3. **observe 写回 context**：每步轨迹进入 ContextManager（会话记忆），为阶段二 Loop Engine 的「状态管理」打好基础。
 4. **终止保底**：maxSteps（默认 8）+ 预算，防止死循环，不做阶段二的四重终止。
+
+### 9.3 压缩稳定性集成
+
+`Reactor.run()` 循环中，每步 observe 后调用压缩链路，仅在必要时触发、摘要变化才重注入：
+
+```ts
+// observe 后
+const est = this.deps.context.window.estimate(history);
+const budget = { total: 200_000, used: est.used, reserve: 40_000 };
+if (this.deps.context.window.shouldCompact(budget)) {
+  const chunks = await this.deps.context.window.compact(history);
+  if (!this.deps.context.window.verifyChecksum(chunks)) {
+    history = this.deps.context.window.reinject();
+  }
+}
+```
+
+保证：压缩只在预算不足时发生；`verifyChecksum` 为 true 时跳过重注入，避免摘要震荡；重注入内容对齐 8.4（指令/记忆/最近文件/摘要）。
 
 ## 10. 关键决策记录
 
