@@ -78,8 +78,11 @@ deny 仍走既有 `COMMAND_DENIED` 流程，reason 说明越界；不新增错�
 现状 `verifyChecksum` 语义为「首次调用注册基线并返回 false，内容相同再次调用返回 true」，且 Reactor 忽略返回值——压缩产物实际未闭环。1B 收紧为：
 
 - 首次调用：注册基线，**视为通过**（不抛错、不返回 false）；
-- 后续调用：与基线一致 → 通过；不一致（摘要漂移，压缩非确定性）→ **抛错中止本轮**，禁止带病继续；
-- compact 算法本身不改（分块确定性、摘要可重现的设计约束见 2026-09-03 spec 8.4，1B 只收紧校验消费）。
+- 后续调用：与基线一致 → **幂等重放**：`applyCompaction` 识别为同一压缩事件的重复触发，不重复注入摘要/重读条目、不重复记入记忆；
+- 与基线不同 → **新一轮压缩**：更新基线并正常进入注入流程（长会话多次压缩合法）；
+- 摘要可重现性校验（内容漂移检测）由幂等重放与 chunk id 可重现性测试覆盖；compact 算法本身不改（分块确定性、摘要可重现的设计约束见 2026-09-03 spec 8.4，1B 只收紧校验消费）。
+
+> 注：原评审稿为「不一致即抛错中止本轮」。该语义与 B1 多轮压缩闭环矛盾（长会话第二次压缩的 chunks 必然与首次不同，按字面将中止整个 run），已裁决修正为上述「不同=新一轮、相同=幂等重放」语义。
 
 ### 3.2 摘要回流
 
@@ -134,7 +137,7 @@ flowchart TB
 - `chain.test`：越界 deny（`../x`、绝对路径越出 root）；越界 allow 返回 safePath；Glob 不做路径校验；maskResult 各模式命中与无匹配原样；
 - `builtin` 集成：read 经 safePath 执行成功；read `.env` 类内容输出已脱敏；
 - `window.test`：verifyChecksum 首次注册通过、一致通过、漂移抛错；摘要文本含 checksum 标记；
-- `context.test`：trackFile 去重与 LRU 上限 5；applyCompaction 后 assemble 并入摘要 + 重读条目；重读失败跳过；
+- `context.test`：trackFile 去重与 LRU 上限 5；applyCompaction 后 assemble 并入摘要 + 重读条目；重读失败跳过；重复 applyCompaction（相同 chunks）幂等：不重复注入、记忆不重复记录
 - `reactor.test`：压缩水位线（压缩点前 steps 不进 history、摘要作为 history 前缀出现）；Read 成功后 trackFile 被调用。
 
 ## 6. 验收标准（可证伪）
