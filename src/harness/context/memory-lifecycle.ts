@@ -1,7 +1,7 @@
 import { StorageAdapter } from '../../storage/adapter';
 
-/** 自动记忆：索引 + 主题文件（四类 type，阶段一简化为索引列表） */
-export class AutoMemory {
+/** 统一记忆生命周期：索引 + 主题文件（working/episodic/skill 三级流转留待 1E） */
+export class MemoryLifecycle {
   constructor(private store: StorageAdapter) {}
 
   index(): string[] {
