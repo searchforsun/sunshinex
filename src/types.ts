@@ -36,3 +36,32 @@ export type LoopResult = 'pass' | 'fail' | 'retry' | 'done';
 
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
+
+/** 工具类别：read/write/bash/network */
+export type ToolCategory = 'read' | 'write' | 'bash' | 'network';
+
+/** 工具输入 */
+export interface ToolInput {
+  [key: string]: unknown;
+}
+
+/** 沙箱执行结果 */
+export interface ExecResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}
+
+/** 权限决策 */
+export type PermissionDecision = 'allow' | 'ask' | 'deny';
+
+/** 上下文条目 */
+export interface ContextItem {
+  kind: 'system' | 'instruction' | 'memory' | 'history' | 'tool' | 'result';
+  content: string;
+  meta?: Record<string, unknown>;
+}
+
+/** 工具执行器签名（经安全链执行） */
+export type ToolExecutor = (input: ToolInput) => Promise<ExecResult>;
