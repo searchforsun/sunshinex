@@ -179,29 +179,31 @@ sequenceDiagram
 
 ## 7. 分阶段实施路线
 
-先串主链，再补深度：
+以下 A-E 均为 ROADMAP 阶段一「Harness 底座核心」内部的子阶段（记作 1A-1E），不是 ROADMAP 的独立全局阶段。先串主链，再补深度：
 
 ```mermaid
 graph LR
-  A[阶段A 串主链<br/>assemble+Safety链+单一Memory] --> B[阶段B 补深度<br/>reinject/mask/越界校验]
-  B --> C[阶段C 内嵌路由<br/>ModelRouter入Loop]
-  C --> D[阶段D 多后端<br/>Docker/SSH接口]
-  D --> E[阶段E 记忆沉淀<br/>三级生命周期完整]
+  A[1A 串主链<br/>assemble+Safety链+单一Memory] --> B[1B 补深度<br/>reinject/mask/越界校验]
+  B --> C[1C 内嵌路由<br/>ModelRouter入Loop]
+  C --> D[1D 多后端<br/>Docker/SSH接口]
+  D --> E[1E 记忆沉淀<br/>三级生命周期完整]
 ```
 
-| 阶段 | 交付 | 对应验收 |
+| 子阶段 | 交付 | 对应验收 |
 | --- | --- | --- |
-| A 串主链 | `Context.assemble()` 串起 loader/rules/memory；`SafetyChain` 统一；删除内存 Map 版 `memory.ts` | A1 A2 A3 A4 |
-| B 补深度 | `reinject()` 落地 + 压缩重注入；credentials mask；root 越界校验 | A3 强化 |
-| C 内嵌路由 | ModelRouter 收敛进 Loop 决策 | A5 |
-| D 多后端 | Tool 后端接口抽象（process 现行，Docker/SSH 预留） | A2 扩展 |
-| E 记忆沉淀 | working→episodic→skill 三级流转完整 | A4 完整 |
+| 1A 串主链 | `Context.assemble()` 串起 loader/rules/memory；`SafetyChain` 统一；删除内存 Map 版 `memory.ts` | A1 A2 A3 A4 |
+| 1B 补深度 | `reinject()` 落地 + 压缩重注入；credentials mask；root 越界校验 | A3 强化 |
+| 1C 内嵌路由 | ModelRouter 收敛进 Loop 决策 | A5 |
+| 1D 多后端 | Tool 后端接口抽象（process 现行，Docker/SSH 预留） | A2 扩展 |
+| 1E 记忆沉淀 | working→episodic→skill 三级流转完整 | A4 完整 |
 
-本 spec 是总纲：阶段 A-E 不在同一个 plan 内一次实现，后续按阶段拆分 plan，每个阶段走独立的 spec→plan→实现循环。
+本 spec 是总纲：子阶段 1A-1E 不在同一个 plan 内一次实现，后续按子阶段拆分 plan，每个子阶段走独立的 spec→plan→实现循环。
+
+**与 ROADMAP 6 阶段的映射**：1A-1E 全部归属阶段一「Harness 底座核心」；其中 1E 的技能沉淀机制（skill 级）是阶段四「技能系统」生态化的前置，两者为先后关系而非重复。
 
 ## 8. 边界与约束
 
 - **依赖政策**：安全隔离与凭据处理允许引入成熟开源库，其余保持零新增 npm 依赖；测试沿用 `node --test`、`tsc strict`。
-- **不做的事**：阶段 D 只做 Tool 后端接口抽象，不实现真实 Docker/SSH 后端；阶段 E 的完整记忆沉淀留到对应阶段 spec 展开。
+- **不做的事**：子阶段 1D 只做 Tool 后端接口抽象，不实现真实 Docker/SSH 后端；1E 的完整记忆沉淀留到对应阶段 spec 展开。
 - **与 Phase 1 spec 的关系**：本 spec 是 Phase 1 之上的演进总纲，不推翻已交付内容；Phase 1 各模块作为「环节原料」被重组进主链。
-- **与后续 spec 的关系**：每个阶段可拆出独立 spec，本 spec 只定义统一主链与无旁路验收，不写环节内部实现细节。
+- **与后续 spec 的关系**：每个子阶段可拆出独立 spec，本 spec 只定义统一主链与无旁路验收，不写环节内部实现细节。
