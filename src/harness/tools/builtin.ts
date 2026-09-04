@@ -1,11 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegisteredTool } from '../tools';
-import { Sandbox } from '../security/sandbox';
+import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
 
 /** 内置工具集：read/write/grep/glob/exec；文件路径与 shell 工作目录均以 root 为基准，与感知引擎一致 */
-export function builtinTools(sandbox: Sandbox, root: string): RegisteredTool[] {
+export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[] {
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
   const resolve = (p: unknown): string => path.resolve(root, String(p ?? ''));
 
@@ -16,7 +16,7 @@ export function builtinTools(sandbox: Sandbox, root: string): RegisteredTool[] {
       category: 'bash',
       executor: async (input: ToolInput) => {
         const cmd = String(input.command ?? '');
-        const r = await sandbox.run(cmd, { cwd: root });
+        const r = await safety.run(cmd, { cwd: root });
         if (r.ok) return r.value;
         throw new Error(`${r.error.code}: ${r.error.message}`);
       },

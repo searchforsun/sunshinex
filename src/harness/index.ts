@@ -7,6 +7,7 @@ import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
 import { PermissionMode } from './security/modes';
 import { DryRun } from './security/dryrun';
+import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
@@ -27,6 +28,7 @@ export class Harness {
   readonly security: SecurityGuard;
   readonly sandbox: ProcessSandbox;
   readonly dryrun: DryRun;
+  readonly safety: SafetyChain;
   readonly context: ContextManager;
   readonly reactor: Reactor;
 
@@ -36,14 +38,14 @@ export class Harness {
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();
     this.sandbox = new ProcessSandbox();
-    for (const t of builtinTools(this.sandbox, base)) this.tools.register(t);
     this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk');
     this.dryrun = new DryRun();
+    this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun);
+    for (const t of builtinTools(this.safety, base)) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.reactor = new Reactor({
       registry: this.tools,
-      guard: this.security,
-      sandbox: this.sandbox,
+      safety: this.safety,
       context: this.context,
       model: opts.model ?? new StubAdapter(),
     });

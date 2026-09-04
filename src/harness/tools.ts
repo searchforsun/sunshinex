@@ -1,7 +1,6 @@
 import { ToolSpec, ToolCategory, ToolInput, ToolExecutor, ExecResult } from '../types';
 import { Result, ok, fail } from '../result';
-import { SecurityGuard } from './security/guard';
-import { Sandbox } from './security/sandbox';
+import { SafetyChain } from './security/chain';
 
 /** 内置工具名（小写）→ 安全链规范名：guard/policy 沿用 Bash/Read/Grep/Glob/Write 语法 */
 const CANONICAL_TOOL_NAMES: Record<string, string> = {
@@ -41,12 +40,12 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  async execute(name: string, input: ToolInput, guard: SecurityGuard, sandbox: Sandbox): Promise<Result<ExecResult>> {
+  async execute(name: string, input: ToolInput, safety: SafetyChain): Promise<Result<ExecResult>> {
     const tool = this.tools.get(name);
     if (!tool) return fail('TOOL_NOT_FOUND', `工具未注册：${name}`);
 
     const canonical = CANONICAL_TOOL_NAMES[name] ?? name;
-    const decision = guard.preToolUse(canonical, input);
+    const decision = safety.evaluate(canonical, input);
     if (!decision.allowed) return fail('COMMAND_DENIED', decision.reason ?? '命令被安全策略拦截');
 
     try {

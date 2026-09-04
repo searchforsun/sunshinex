@@ -2,8 +2,7 @@ import { ContextItem, ExecResult } from '../types';
 import { Result } from '../result';
 import { ModelAdapter } from '../model/adapter';
 import { ToolRegistry } from './tools';
-import { SecurityGuard } from './security/guard';
-import { Sandbox } from './security/sandbox';
+import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 
 export interface Task { goal: string; }
@@ -12,8 +11,7 @@ export interface RunResult { steps: StepRecord[]; done: boolean; reply?: string;
 
 export interface ReactorDeps {
   registry: ToolRegistry;
-  guard: SecurityGuard;
-  sandbox: Sandbox;
+  safety: SafetyChain;
   context: ContextManager;
   model: ModelAdapter;
 }
@@ -74,7 +72,7 @@ export class Reactor {
       }
 
       // act: 经安全链执行
-      const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.guard, this.deps.sandbox);
+      const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
       const observation = this.describe(r);
       steps.push({ step, action: action.tool, observation });
       // observe: 写回记忆
