@@ -1,7 +1,7 @@
 # SunshineX 开发路线图（Roadmap）
 
 > 本文档从全局视角规划 SunshineX 从骨架到 v1.0 的完整落地路径，共 6 个阶段、28 周。
-> 依据：《SunshineX 通用 AI Agent 项目工程化设计方案》（README.md）。
+> 依据：《SunshineX 通用 AI Agent 项目工程化设计方案》（docs/Arch-Plan.md）与《统一运行时主链设计》（docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md）。
 > 每个阶段以「可交付 + 可自检」为验收原则，阶段未通过自检不得进入下一阶段。
 
 ## 1. 总览
@@ -124,16 +124,19 @@ flowchart TB
 
 ## 5. 当前进度
 
-基于现有骨架，阶段一已部分完成：
+阶段一（Harness 底座核心）已全部完成：
 
 - [x] 工程骨架（package.json / tsconfig / .gitignore）
 - [x] 项目规范（CLAUDE.md / SUNSHINE.md）
 - [x] 核心类型与配置解析器（src/types.ts / src/config.ts）
-- [x] Harness 基础件（skills / memory / tools）
+- [x] Harness 底座（perception / reactor / tools / security / context / memory / skills）
 - [x] Loop / Graph / Model / Storage / Plugins 模块占位
 - [x] 示例技能与插件（skills/example-skill、plugins/demo）
 - [x] 骨架自检（`npm run selfcheck` 通过）
 - [x] 阶段一其余任务（三级 KV 缓存、项目深度感知引擎、沙箱与 dry-run 等）
+- [x] 模型 SDK 接入 DeepSeek 兼容 OpenAI 协议（`.env` 配置，零新增依赖）
+
+当前基线：`npm run build`（tsc strict）零报错、40 个测试全绿、`npm run selfcheck` 通过。统一运行时主链设计已定稿（`docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md`），按「串主链 → 补深度 → 内嵌路由 → 多后端 → 记忆沉淀」五个阶段（A-E）推进，待拆实施计划。
 
 ## 6. 验证策略
 

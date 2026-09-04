@@ -20,7 +20,8 @@ export class SecurityGuard {
     if (decision === 'allow') return { allowed: true };
 
     // decision === 'ask'
-    if (this.mode === 'dontAsk') return { allowed: false, reason: 'COMMAND_DENIED: dontAsk 模式拒绝未批准操作' };
+    // dontAsk：不询问用户，自动批准未 deny 的操作（deny 规则仍拦截），即「最大权限」
+    if (this.mode === 'dontAsk') return { allowed: true };
     if (this.mode === 'plan') {
       if (tool !== 'Read' && tool !== 'Grep' && tool !== 'Glob') {
         return { allowed: false, reason: 'COMMAND_DENIED: plan 模式仅允许只读操作' };

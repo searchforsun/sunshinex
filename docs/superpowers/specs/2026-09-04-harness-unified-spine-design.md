@@ -53,7 +53,8 @@ graph LR
   L -->|Action| T[3. Tool<br/>统一动作面]
   T -->|Action| S[4. Safety<br/>统一安全链]
   S -->|GuardDecision| T
-  T -->|ExecResult| M[5. Memory<br/>统一记忆生命周期]
+  T -->|ExecResult| L
+  L -->|MemoryRecord| M[5. Memory<br/>统一记忆生命周期]
   M -->|MemoryIndex| C
 ```
 

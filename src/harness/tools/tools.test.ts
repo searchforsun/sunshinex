@@ -9,7 +9,7 @@ test('execute 经安全链：dangerous 命令被拦截', async () => {
   const sandbox = new ProcessSandbox();
   const guard = new SecurityGuard();
   const registry = new ToolRegistry();
-  for (const t of builtinTools(sandbox)) registry.register(t);
+  for (const t of builtinTools(sandbox, process.cwd())) registry.register(t);
 
   const r = await registry.execute('exec', { command: 'rm -rf /' }, guard, sandbox);
   assert.equal(r.ok, false);
@@ -20,7 +20,7 @@ test('execute 经安全链：只读命令放行', async () => {
   const sandbox = new ProcessSandbox();
   const guard = new SecurityGuard();
   const registry = new ToolRegistry();
-  for (const t of builtinTools(sandbox)) registry.register(t);
+  for (const t of builtinTools(sandbox, process.cwd())) registry.register(t);
 
   const r = await registry.execute('exec', { command: 'echo ok' }, guard, sandbox);
   assert.equal(r.ok, true);
