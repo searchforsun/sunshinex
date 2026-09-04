@@ -12,6 +12,52 @@ export class StubAdapter implements ModelAdapter {
   }
 }
 
+export interface LLMConfig {
+  provider: 'openai' | 'stub' | 'scripted';
+  baseURL?: string;
+  apiKey?: string;
+  model?: string;
+}
+
+/** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API */
+export class OpenAIAdapter implements ModelAdapter {
+  readonly provider = 'openai';
+  private baseURL: string;
+  private apiKey: string;
+  private model: string;
+
+  constructor(private cfg: LLMConfig) {
+    this.baseURL = cfg.baseURL ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+    this.apiKey = cfg.apiKey ?? process.env.OPENAI_API_KEY ?? '';
+    this.model = cfg.model ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+  }
+
+  async complete(prompt: string): Promise<string> {
+    if (!this.apiKey) throw new Error('OPENAI_API_KEY 未配置');
+    const resp = await fetch(`${this.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: prompt }] }),
+    });
+    if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
+    const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    return data.choices?.[0]?.message?.content ?? '';
+  }
+}
+
+/** 脚本化适配器：预置决策序列逐步回放（测试/离线兜底） */
+export class ScriptedAdapter implements ModelAdapter {
+  readonly provider = 'scripted';
+  private i = 0;
+  constructor(private steps: string[]) {}
+
+  async complete(_prompt: string): Promise<string> {
+    const s = this.steps[this.i];
+    this.i = Math.min(this.i + 1, this.steps.length - 1);
+    return s ?? '{"done":true}';
+  }
+}
+
 /** 三档算力路由：small/medium/large */
 export type ModelTier = 'small' | 'medium' | 'large';
 
