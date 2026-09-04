@@ -79,7 +79,7 @@ graph LR
 | --- | --- |
 | 做什么 | 决定「模型此刻能看到什么」；唯一入口负责 收集→分层→预算→注入→压缩→重注入 |
 | 怎么用 | 单一 `assemble()` 方法，Reactor 每轮只调用它获取 prompt 上下文 |
-| 依赖什么 | Memory 回流（记忆索引注入）；文件系统只读感知 |
+| 依赖什么 | Memory 回流（记忆索引注入）；项目结构感知（初始化 source，非动作性读取） |
 | 能力本质 | Claude Code 的分层指令 + 路径规则 + 自动记忆 → 统一为「上下文来源 source」 |
 | 无旁路约束 | 任何进 prompt 的内容必经此管线（反例：Reactor 直接拼 goal/steps 即不合格） |
 
@@ -91,7 +91,7 @@ graph LR
 | --- | --- |
 | 做什么 | 观察→思考→选择动作；复杂度感知→算力档位路由作为循环内决策 |
 | 怎么用 | `Reactor.run(goal)` 驱动，每轮 produce 一个 `Action` |
-| 依赖什么 | Context 输出（prompt）、Tool（动作面）、Memory（结果沉淀） |
+| 依赖什么 | Context 输出（AssembledContext，含 prompt）、Tool（动作面）、Memory（结果沉淀） |
 | 能力本质 | Codex 的算力路由 → 循环内决策，而非游离模块 |
 | 无旁路约束 | 无游离路由模块（反例：存在独立调用的 ModelRouter 即不合格） |
 
@@ -101,7 +101,7 @@ graph LR
 
 | 维度 | 定义 |
 | --- | --- |
-| 做什么 | 所有「做事」的统一接口（感知、执行、记忆读写） |
+| 做什么 | 所有「做事」的统一接口（只读动作 read/grep/glob/list、执行、记忆读写） |
 | 怎么用 | 单一 `ToolExecutor` 协议（name + input + exec），多执行后端是它的后端实现 |
 | 依赖什么 | Safety 守门（执行前必经） |
 | 能力本质 | Codex 多执行后端（process / Docker / SSH）作为 Tool 后端 |
