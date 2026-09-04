@@ -1,22 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { FileStore, StorageAdapter } from './adapter';
 
-/** 本地存储底座：JSON 文件读写占位（含 KV / 记忆 / 日志接口） */
-export class LocalStore {
-  constructor(private baseDir: string) {}
-
-  private ensure(): void {
-    fs.mkdirSync(this.baseDir, { recursive: true });
+/** @deprecated 使用 FileStore，保留别名兼容旧引用 */
+export class LocalStore implements StorageAdapter {
+  private delegate: StorageAdapter;
+  constructor(baseDir: string) {
+    this.delegate = new FileStore(baseDir);
   }
-
-  read<T>(key: string, fallback: T): T {
-    const p = path.join(this.baseDir, `${key}.json`);
-    if (!fs.existsSync(p)) return fallback;
-    return JSON.parse(fs.readFileSync(p, 'utf8')) as T;
-  }
-
-  write<T>(key: string, value: T): void {
-    this.ensure();
-    fs.writeFileSync(path.join(this.baseDir, `${key}.json`), JSON.stringify(value, null, 2));
-  }
+  read<T>(key: string, fallback: T): T { return this.delegate.read(key, fallback); }
+  write<T>(key: string, value: T): void { this.delegate.write(key, value); }
 }
