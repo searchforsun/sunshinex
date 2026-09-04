@@ -20,3 +20,10 @@ test('通配符匹配子命令', () => {
   assert.equal(p.decide('Bash', 'git status'), 'allow');
   assert.equal(p.decide('Bash', 'rm x'), 'ask');
 });
+
+test('? 单字符通配', () => {
+  const p = new PolicyEngine();
+  p.add('deny', 'Bash(rm ?)');
+  assert.equal(p.decide('Bash', 'rm x'), 'deny');
+  assert.equal(p.decide('Bash', 'rm xy'), 'ask');
+});

@@ -1,9 +1,17 @@
 /** glob 转正则（支持 * 与 ?） */
 export function globMatch(pattern: string, s: string): boolean {
-  const re = new RegExp(
-    '^' + pattern.split('*').map(escapeRegExp).join('.*').split('?').join('.') + '$'
-  );
+  const re = new RegExp('^' + globToRegex(pattern) + '$');
   return re.test(s);
+}
+
+function globToRegex(pattern: string): string {
+  let out = '';
+  for (const ch of pattern) {
+    if (ch === '*') out += '.*';
+    else if (ch === '?') out += '.';
+    else out += escapeRegExp(ch);
+  }
+  return out;
 }
 
 function escapeRegExp(s: string): string {
