@@ -1,10 +1,10 @@
 import { ContextItem, ExecResult } from '../types';
 import { Result } from '../result';
 import { ModelAdapter } from '../model/adapter';
-import { ToolRegistry } from '../tools';
-import { SecurityGuard } from '../security/guard';
-import { Sandbox } from '../security/sandbox';
-import { ContextManager } from '../context';
+import { ToolRegistry } from './tools';
+import { SecurityGuard } from './security/guard';
+import { Sandbox } from './security/sandbox';
+import { ContextManager } from './context';
 
 export interface Task { goal: string; }
 export interface StepRecord { step: number; action?: string; observation: string; }
