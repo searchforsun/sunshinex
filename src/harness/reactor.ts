@@ -18,7 +18,11 @@ export interface ReactorDeps {
   model: ModelAdapter;
 }
 
-interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; }
+interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; }
+
+type ParseResult =
+  | { ok: true; action: Action }
+  | { ok: false; raw: string };
 
 /** 最小 Reactor：observe → think → act → observe 线性循环 */
 export class Reactor {
@@ -31,47 +35,74 @@ export class Reactor {
     let reply: string | undefined;
 
     for (let step = 1; step <= maxSteps; step++) {
-      // observe: 装配上下文（阶段一：直接注入任务与历史轨迹）
-      let history = this.assemble(task, steps);
-
-      // 压缩稳定性集成：observe 后检查预算，必要时压缩并重注入（对齐 spec 9.3）
+      // observe: 上下文压缩稳定性检查（阶段一无真实摘要，reinject 为空时不丢历史）
+      const history = this.assemble(task, steps);
       const est = this.deps.context.window.estimate(history);
       if (this.deps.context.window.shouldCompact({ total: 200_000, used: est.used, reserve: 40_000 })) {
         const chunks = await this.deps.context.window.compact(history);
-        if (!this.deps.context.window.verifyChecksum(chunks)) {
-          history = [
-            { kind: 'instruction' as const, content: task.goal },
-            ...this.deps.context.window.reinject(),
-          ];
-        }
+        this.deps.context.window.verifyChecksum(chunks);
       }
 
-      // think: 经 ModelAdapter 决策
-      let action: Action;
+      // think: 经 ModelAdapter 决策（带动作协议 prompt）
+      let raw: string;
       try {
-        const raw = await this.deps.model.complete(JSON.stringify({ goal: task.goal, history }));
-        action = this.parse(raw);
+        raw = await this.deps.model.complete(this.buildPrompt(task, steps));
       } catch (e) {
-        action = { done: true };
         reply = e instanceof Error ? e.message : '模型调用失败';
+        break;
       }
 
-      if (action.done) { done = true; reply = reply ?? '完成'; break; }
+      const parsed = this.parse(raw);
+      if (!parsed.ok) {
+        // 模型未按 JSON 输出：把原文回填为观察，给模型一次自我纠正机会
+        steps.push({ step, observation: `模型输出非 JSON（截断）：${raw.slice(0, 400)}` });
+        this.deps.context.memory.record('project', `step ${step}: 模型输出未解析`);
+        continue;
+      }
+
+      const action = parsed.action;
+      if (action.done) {
+        done = true;
+        reply = action.reply ?? '完成';
+        break;
+      }
+
+      if (!action.tool) {
+        steps.push({ step, observation: '动作缺少 tool 字段' });
+        this.deps.context.memory.record('project', `step ${step}: 动作缺 tool`);
+        continue;
+      }
 
       // act: 经安全链执行
-      let observation: string;
-      if (!action.tool) { observation = '无动作'; }
-      else {
-        const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.guard, this.deps.sandbox);
-        observation = this.describe(r);
-      }
-
+      const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.guard, this.deps.sandbox);
+      const observation = this.describe(r);
       steps.push({ step, action: action.tool, observation });
       // observe: 写回记忆
       this.deps.context.memory.record('project', `step ${step}: ${observation}`);
     }
 
     return { steps, done, reply };
+  }
+
+  private buildPrompt(task: Task, steps: StepRecord[]): string {
+    const tools = this.deps.registry.list().map((t) => `- ${t.name}: ${t.description}`).join('\n');
+    const historyText = steps.length === 0
+      ? '(暂无)'
+      : steps.map((s) => `步骤${s.step} ${s.action ?? '(模型输出)'}：${s.observation}`).join('\n');
+    return [
+      '你是 SunshineX 智能体，通过调用工具完成任务。',
+      '可用工具：',
+      tools,
+      '',
+      '每次只回复一个 JSON 对象，不要输出任何其它文字。格式二选一：',
+      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}',
+      '2) 任务完成：{"done":true,"reply":"<最终答复>"}',
+      '',
+      `目标：${task.goal}`,
+      '',
+      '已执行步骤（观察结果）：',
+      historyText,
+    ].join('\n');
   }
 
   private assemble(task: Task, steps: StepRecord[]): ContextItem[] {
@@ -81,17 +112,20 @@ export class Reactor {
     ];
   }
 
-  private parse(raw: string): Action {
+  private parse(raw: string): ParseResult {
     try {
       const j = JSON.parse(raw) as Action;
-      return { tool: j.tool, input: j.input, done: j.done === true };
+      return { ok: true, action: { tool: j.tool, input: j.input, done: j.done === true, reply: j.reply } };
     } catch {
-      return { done: true };
+      return { ok: false, raw };
     }
   }
 
   private describe(r: Result<ExecResult>): string {
-    if (r.ok) return r.value.stdout || 'ok';
-    return `${r.error.code}: ${r.error.message}`;
+    if (r.ok) {
+      const out = r.value.stdout || r.value.stderr || 'ok';
+      return out.length > 2000 ? `${out.slice(0, 2000)}\n...(截断)` : out;
+    }
+    return r.error.message.startsWith(r.error.code) ? r.error.message : `${r.error.code}: ${r.error.message}`;
   }
 }

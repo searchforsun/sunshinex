@@ -17,31 +17,44 @@ export interface LLMConfig {
   baseURL?: string;
   apiKey?: string;
   model?: string;
+  timeoutMs?: number;
 }
 
-/** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API */
+/** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API，带超时控制 */
 export class OpenAIAdapter implements ModelAdapter {
   readonly provider = 'openai';
   private baseURL: string;
   private apiKey: string;
   private model: string;
+  private timeoutMs: number;
 
   constructor(private cfg: LLMConfig) {
     this.baseURL = cfg.baseURL ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
     this.apiKey = cfg.apiKey ?? process.env.OPENAI_API_KEY ?? '';
     this.model = cfg.model ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+    this.timeoutMs = cfg.timeoutMs ?? 60_000;
   }
 
   async complete(prompt: string): Promise<string> {
     if (!this.apiKey) throw new Error('OPENAI_API_KEY 未配置');
-    const resp = await fetch(`${this.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: prompt }] }),
-    });
-    if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
-    const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return data.choices?.[0]?.message?.content ?? '';
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    try {
+      const resp = await fetch(`${this.baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+        body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: prompt }] }),
+        signal: ctrl.signal,
+      });
+      if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
+      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      return data.choices?.[0]?.message?.content ?? '';
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') throw new Error('模型调用超时');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 
