@@ -7,6 +7,7 @@ import { RulesRegistry } from './rules';
 import { MemoryLifecycle } from './memory-lifecycle';
 import { ContextWindow, ContextChunk } from './window';
 import { SessionStore } from './session';
+import { maskText } from '../security/chain';
 
 const RECENT_LIMIT = 5;
 const REREAD_MAX_LINES = 500;
@@ -52,7 +53,8 @@ export class ContextManager {
       try {
         const abs = path.resolve(this.root, rel);
         const lines = fs.readFileSync(abs, 'utf8').split(/\r?\n/).slice(0, REREAD_MAX_LINES);
-        items.push({ kind: 'memory', content: `[重读] ${rel}:\n${lines.join('\n')}` });
+        // 重读是文件内容直入上下文的旁路，必须过与工具结果相同的凭据脱敏模式集（B3）
+        items.push({ kind: 'memory', content: maskText(`[重读] ${rel}:\n${lines.join('\n')}`) });
       } catch {
         // 文件已删除或不可读：跳过该文件
       }

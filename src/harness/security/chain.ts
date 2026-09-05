@@ -18,7 +18,8 @@ const MASK_PATTERNS: RegExp[] = [
   /(?:api[_-]?key|secret|token|password)\s*[=:]\s*\S+/gi,
 ];
 
-function maskText(text: string): string {
+/** 导出给重读等链外安全通道复用同一模式集（唯一权威定义在链内） */
+export function maskText(text: string): string {
   let out = text;
   for (const re of MASK_PATTERNS) out = out.replace(re, '***');
   return out;

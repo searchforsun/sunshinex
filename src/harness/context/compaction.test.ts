@@ -77,3 +77,16 @@ test('重读截断为每文件前 500 行', async () => {
   assert.ok(reread.content.includes('line499'));
   assert.ok(!reread.content.includes('line500'));
 });
+
+test('重读条目内容过凭据脱敏（密钥不进上下文）', async () => {
+  const { root, cm } = setup();
+  fs.writeFileSync(path.join(root, 'secret.env'), 'DEEPSEEK_API_KEY=sk-abcdefghijklmnopqrst1234\n普通内容');
+  cm.trackFile('secret.env');
+  const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
+  await cm.applyCompaction(chunks);
+  const reread = cm.assemble('g').find((i) => i.content.startsWith('[重读] secret.env'));
+  assert.ok(reread, '重读条目应存在');
+  assert.ok(!reread.content.includes('sk-abcdefghijklmnopqrst1234'), '密钥明文不得进入重读条目');
+  assert.ok(reread.content.includes('***'), '命中片段应替换为 ***');
+  assert.ok(reread.content.includes('普通内容'), '非敏感内容应保留');
+});
