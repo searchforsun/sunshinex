@@ -1,4 +1,7 @@
 /** 模型适配层：统一推理接口，多后端可插拔 */
+import { ModelTier } from '../types';
+
+export type { ModelTier };
 export interface ModelAdapter {
   readonly provider: string;
   complete(prompt: string): Promise<string>;
@@ -72,18 +75,31 @@ export class ScriptedAdapter implements ModelAdapter {
 }
 
 /** 三档算力路由：small/medium/large */
-export type ModelTier = 'small' | 'medium' | 'large';
 
 export class ModelRouter {
   private adapters = new Map<ModelTier, ModelAdapter>();
+  private fallback: ModelAdapter | null = null;
+
+  /** 默认档：所有未显式绑定的档位回退到此 adapter */
+  bindDefault(adapter: ModelAdapter): this {
+    this.fallback = adapter;
+    return this;
+  }
 
   bind(tier: ModelTier, adapter: ModelAdapter): void {
     this.adapters.set(tier, adapter);
   }
 
+  /** 该档已绑定 → 直取；未绑定但有默认 → 回退默认；两者皆无 → 抛错（装配错误快速失败） */
   resolve(tier: ModelTier): ModelAdapter {
     const a = this.adapters.get(tier);
-    if (!a) throw new Error(`no adapter bound for tier ${tier}`);
-    return a;
+    if (a) return a;
+    if (this.fallback) return this.fallback;
+    throw new Error(`no adapter bound for tier ${tier}`);
+  }
+
+  /** 显式绑定档快照（不含默认回退） */
+  boundTiers(): ModelTier[] {
+    return [...this.adapters.keys()];
   }
 }

@@ -34,6 +34,9 @@ export interface LoopContext {
 /** Loop 节点执行结果 */
 export type LoopResult = 'pass' | 'fail' | 'retry' | 'done';
 
+/** 三档算力档位（模型路由） */
+export type ModelTier = 'small' | 'medium' | 'large';
+
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 

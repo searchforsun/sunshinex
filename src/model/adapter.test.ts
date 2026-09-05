@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'http';
 import { ScriptedAdapter, StubAdapter, OpenAIAdapter } from './adapter';
+import { ModelRouter } from './adapter';
+import { ModelTier } from '../types';
 
 test('ScriptedAdapter 依次回放脚本', async () => {
   const a = new ScriptedAdapter(['{"tool":"read","done":false}', '{"done":true}']);
@@ -29,4 +31,29 @@ test('OpenAIAdapter 超时时抛「模型调用超时」', async () => {
   const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', timeoutMs: 300 });
   await assert.rejects(() => a.complete('hi'), /模型调用超时/);
   srv.close();
+});
+
+test('ModelRouter 未绑定档位回退默认 adapter', () => {
+  const def = new StubAdapter();
+  const r = new ModelRouter();
+  r.bindDefault(def);
+  assert.equal(r.resolve('small'), def);
+  assert.equal(r.resolve('large'), def);
+});
+
+test('ModelRouter 无默认且档位未绑定 → 抛错', () => {
+  const r = new ModelRouter();
+  assert.throws(() => r.resolve('small'), /no adapter/);
+});
+
+test('boundTiers 返回显式绑定快照（不含默认）', () => {
+  const r = new ModelRouter();
+  r.bindDefault(new StubAdapter());
+  r.bind('large', new StubAdapter());
+  assert.deepEqual(r.boundTiers(), ['large']);
+});
+
+test('ModelTier 自 types 登记且 adapter 侧可用', () => {
+  const tiers: ModelTier[] = ['small', 'medium', 'large'];
+  assert.equal(tiers.length, 3);
 });
