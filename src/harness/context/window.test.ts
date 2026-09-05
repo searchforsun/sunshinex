@@ -37,11 +37,33 @@ test('compact 产出结构化 chunk 并过滤 priority=0', async () => {
   assert.ok(chunks.every((c) => c.id.length > 0));
 });
 
-test('verifyChecksum 对相同 chunks 返回 true', () => {
+test('verifyChecksum 三态：first 注册 / replay 重放 / new 新一轮', () => {
   const w = new ContextWindow();
-  const chunks = [{ id: 'a', summary: 'x', type: 'history', priority: 1 }];
-  assert.equal(w.verifyChecksum(chunks), false); // 首次记录
-  assert.equal(w.verifyChecksum(chunks), true);  // 内容未变
+  const a = [{ id: 'a', summary: 'x', type: 'history', priority: 1 }];
+  const b = [{ id: 'b', summary: 'y', type: 'history', priority: 1 }];
+  assert.equal(w.verifyChecksum(a), 'first');
+  assert.equal(w.verifyChecksum(a), 'replay');
+  assert.equal(w.verifyChecksum(b), 'new');
+  assert.equal(w.verifyChecksum(b), 'replay');
+  assert.equal(w.verifyChecksum(a), 'new');
+});
+
+test('checksum 返回基线前 16 位，未注册时为 null', () => {
+  const w = new ContextWindow();
+  assert.equal(w.checksum(), null);
+  w.verifyChecksum([{ id: 'a', summary: 'x', type: 'history', priority: 1 }]);
+  assert.match(w.checksum() ?? '', /^[0-9a-f]{16}$/);
+});
+
+test('summarize/reinject 产出带 checksum 标记的压缩摘要条目', async () => {
+  const w = new ContextWindow();
+  const items: ContextItem[] = [{ kind: 'instruction', content: '## 规则一\n重要背景内容' }];
+  const chunks = await w.compact(items);
+  const out = w.reinject(chunks);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].kind, 'history');
+  assert.match(out[0].content, /^\[压缩摘要 checksum=[0-9a-f]{16}\]/);
+  assert.ok(out[0].content.includes('重要背景内容'));
 });
 
 test('compact 摘要可重现（相同输入产生相同 chunk id）', async () => {
