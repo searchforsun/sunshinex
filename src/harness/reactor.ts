@@ -26,19 +26,22 @@ type ParseResult =
 export class Reactor {
   constructor(private deps: ReactorDeps) {}
 
-  async run(task: Task, opts?: { maxSteps?: number }): Promise<RunResult> {
+  async run(task: Task, opts?: { maxSteps?: number; budget?: { total: number; reserve: number } }): Promise<RunResult> {
     const maxSteps = opts?.maxSteps ?? 8;
+    const budget = opts?.budget ?? { total: 200_000, reserve: 40_000 };
     const steps: StepRecord[] = [];
+    let compactedUpTo = 0; // 压缩水位线：此前 steps 已由摘要代表，不再进入 history
     let done = false;
     let reply: string | undefined;
 
     for (let step = 1; step <= maxSteps; step++) {
-      // observe: 上下文统一装配 + 压缩稳定性检查
-      const items = this.deps.context.assemble(task.goal, this.toHistory(steps));
+      // observe: 上下文统一装配（仅取水位线后的 steps；压缩注入块由 ContextManager 并入）
+      const items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
       const est = this.deps.context.window.estimate(items);
-      if (this.deps.context.window.shouldCompact({ total: 200_000, used: est.used, reserve: 40_000 })) {
+      if (this.deps.context.window.shouldCompact({ total: budget.total, used: est.used, reserve: budget.reserve })) {
         const chunks = await this.deps.context.window.compact(items);
-        this.deps.context.window.verifyChecksum(chunks);
+        await this.deps.context.applyCompaction(chunks); // checksum 门禁 + 摘要/重读注入（幂等重放内部跳过）
+        compactedUpTo = steps.length;
       }
 
       // think: 经 ModelAdapter 决策（带动作协议 prompt）
@@ -75,6 +78,10 @@ export class Reactor {
       const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
       const observation = this.describe(r);
       steps.push({ step, action: action.tool, observation });
+      if (r.ok && (action.tool === 'read' || action.tool === 'grep')) {
+        const p = (action.input ?? {}).path;
+        if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
+      }
       // observe: 写回记忆
       this.deps.context.memory.record('project', `step ${step}: ${observation}`);
     }
@@ -99,8 +106,10 @@ export class Reactor {
     ].join('\n');
   }
 
-  private toHistory(steps: StepRecord[]): ContextItem[] {
-    return steps.map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
+  private toHistory(steps: StepRecord[], fromStep: number): ContextItem[] {
+    return steps
+      .filter((s) => s.step > fromStep)
+      .map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
   }
 
   private parse(raw: string): ParseResult {
