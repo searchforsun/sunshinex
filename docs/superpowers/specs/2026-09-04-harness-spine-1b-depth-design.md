@@ -1,7 +1,7 @@
 # 1B 补深度设计：压缩重注入、凭据脱敏、root 越界校验
 
 > 日期：2026-09-04
-> 状态：已评审通过（待实施）
+> 状态：已实施交付（2026-09-05 端到端验收通过；实现提交链 7b81bc8→62c7f53→907d273→a3916ae→e879135→3fb250d）
 > 关联：docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md（统一主链总纲）、docs/superpowers/specs/2026-09-03-phase1-harness-design.md（8.4/9.3 压缩稳定性）、docs/superpowers/plans/2026-09-04-phase1-harness-spine-1a.md（1A 已交付）
 
 ## 1. 概述
@@ -41,7 +41,7 @@
 - `SafetyChain` 构造新增 `root` 注入；`SecurityGuard` 保持无状态，不持有 root；
 - `evaluate(tool, input)` 对文件工具（canonical 名 `Read`/`Write`/`Grep`）执行：
   - 绝对路径解析：`abs = path.resolve(root, String(input.path ?? ''))`；
-  - 越界判据：`abs !== root && !abs.startsWith(root + path.sep)` → deny（reason 指明越界路径与 root）；
+  - 越界判据：`abs !== root && !abs.startsWith(root + path.sep)` → deny（reason 指明越界绝对路径）；
   - allow 时返回 `safePath: abs`，供工具直接执行，**删除 builtin 内各自的二次 resolve**（消除双轨解析）；
 - `Glob`：以 root 为 walk 根天然不出界，仅需 root 透传，无路径校验点、无 `safePath`；
 - `Exec`（Bash）：不做命令串路径扫描（见 1.3）。
@@ -69,7 +69,9 @@ deny 仍走既有 `COMMAND_DENIED` 流程，reason 说明越界；不新增错�
   - `AKIA[0-9A-Z]{16}`（AWS）；
   - `-----BEGIN [A-Z ]*PRIVATE KEY-----` 至 `-----END [A-Z ]*PRIVATE KEY-----` 的块；
   - JSON/键值形态：`"(api[_-]?key|secret|token|password)"\s*:\s*"[^"]+"` 与 `(api[_-]?key|secret|token|password)\s*[=:]\s*\S+`；
-- 脱敏在结果跨链出口一处生效：observation → history 与 `memory.record` 的内容天然洁净，上下文与记忆无需第二套过滤（单一代收点）。
+- 脱敏在结果跨链出口一处生效：observation → history 与 `memory.record` 的内容天然洁净，上下文与记忆无需第二套过滤（单一代收点）；
+- 模式集权威定义唯一：`maskText`（chain.ts 内置并由安全链导出），所有「内容直入上下文」的通道必须复用同一模式集，包括不经 execute 出口的旁路（如 ContextManager 重读）；
+- 旁路边界（1B 验收 B3 实证后补强）：重读条目若不过模式集，最近文件中的密钥将以明文进入上下文，违反单一代收点目标；该缺口已修复并有回归用例（重读条目内容过凭据脱敏）覆盖。
 
 ## 3. 压缩重注入（Context 管线）
 
@@ -98,7 +100,7 @@ deny 仍走既有 `COMMAND_DENIED` 流程，reason 说明越界；不新增错�
 
 - `ContextManager` 新增 `trackFile(relPath: string)`：记录最近读取文件，去重、LRU 上限 5；
 - 上报点：Reactor act 阶段执行成功后，若 `action.tool` 为 `Read` 或 `Grep` 且 input.path 存在，调用 `context.trackFile(input.path)`（记录相对 root 的路径）；
-- `applyCompaction` 触发重读：对最近 ≤5 个文件逐个重读内容，**每文件截断前 500 行**，产出 `kind: 'memory'` 条目（`[重读] <relPath>: ...`）；重读条目与摘要 item **作为一个整体注入块**，固定位于 goal 之后、history 之前（kind 仅作语义标注，块位置不因 kind 改变）；
+- `applyCompaction` 触发重读：对最近 ≤5 个文件逐个重读内容，**每文件截断前 500 行**，产出 `kind: 'memory'` 条目（`[重读] <relPath>: ...`），内容过统一凭据脱敏模式集（见 2.3，重读属不经 execute 出口的旁路通道）；重读条目与摘要 item **作为一个整体注入块**，固定位于 goal 之后、history 之前（kind 仅作语义标注，块位置不因 kind 改变）；
 - 重读失败（文件已删除/不可读）跳过该文件，不视为错误。
 
 ### 3.4 数据流
@@ -110,8 +112,8 @@ flowchart TB
   B -- 是 --> D[window.compact 产出摘要 chunks]
   D --> E[context.applyCompaction]
   E --> F{verifyChecksum 通过?}
-  F -- 漂移 --> G[抛错中止本轮]
-  F -- 通过 --> H[摘要 item + 重读最近 ≤5 文件, 每 ≤500 行, kind memory]
+  F -- replay(与基线一致) --> G[幂等重放: 不重复注入/不重复记录]
+  F -- first/new --> H[摘要 item + 重读最近 ≤5 文件, 每 ≤500 行, kind memory, 内容过 mask]
   H --> I[memory.record compaction]
   C --> J[Read/Grep 成功 → context.trackFile]
   J --> K[act: safety.evaluate 越界校验 → safePath → 执行 → maskResult 脱敏]
@@ -122,10 +124,11 @@ flowchart TB
 
 | 文件 | 改动 |
 |---|---|
-| `src/harness/security/chain.ts` | 构造注入 root；evaluate 越界校验 + safePath；新增 maskResult；preview 输出过 mask |
+| `src/harness/security/chain.ts` | 构造注入 root；evaluate 越界校验 + safePath；新增 maskResult；preview 输出过 mask；maskText 导出供重读通道复用 |
 | `src/harness/security/guard.ts` | GuardDecision 扩展 `safePath?: string` |
+| `src/harness/tools.ts` | execute 注入 safePath（路径单轨）；结果出口统一 maskResult 脱敏 |
 | `src/harness/tools/builtin.ts` | read/write/grep 消费 safePath（删除自 resolve）；结果经 maskResult 脱敏 |
-| `src/harness/context/window.ts` | verifyChecksum 语义收紧（首次注册通过、漂移抛错）；新增摘要文本产出（summarize） |
+| `src/harness/context/window.ts` | verifyChecksum 三态语义（first 注册基线 / replay 幂等重放 / new 新一轮）；新增 checksum() 观测与摘要产出（summarize/reinject） |
 | `src/harness/context/index.ts` | applyCompaction / trackFile / compacted 并入 assemble |
 | `src/harness/reactor.ts` | 压缩接 applyCompaction；act 后 trackFile；水位线后 history |
 | `src/types.ts` | 不动（GuardDecision 定义在 guard.ts；无新增共享类型） |
@@ -136,8 +139,8 @@ flowchart TB
 
 - `chain.test`：越界 deny（`../x`、绝对路径越出 root）；越界 allow 返回 safePath；Glob 不做路径校验；maskResult 各模式命中与无匹配原样；
 - `builtin` 集成：read 经 safePath 执行成功；read `.env` 类内容输出已脱敏；
-- `window.test`：verifyChecksum 首次注册通过、一致通过、漂移抛错；摘要文本含 checksum 标记；
-- `context.test`：trackFile 去重与 LRU 上限 5；applyCompaction 后 assemble 并入摘要 + 重读条目；重读失败跳过；重复 applyCompaction（相同 chunks）幂等：不重复注入、记忆不重复记录
+- `window.test`：verifyChecksum 三态（first 注册 / replay 重放 / new 新一轮）；checksum() 基线观测；摘要产出含 checksum 标记；
+- `context.test`：trackFile 去重与 LRU 上限 5；applyCompaction 后 assemble 并入摘要 + 重读条目；重读失败跳过；重复 applyCompaction（相同 chunks）幂等：不重复注入、记忆不重复记录；重读条目内容过凭据脱敏（密钥不进上下文）
 - `reactor.test`：压缩水位线（压缩点前 steps 不进 history、摘要作为 history 前缀出现）；Read 成功后 trackFile 被调用。
 
 ## 6. 验收标准（可证伪）
@@ -146,6 +149,6 @@ flowchart TB
 |---|---|---|
 | B1 | 压缩后摘要必然进入后续轮 prompt，且压缩点前原文不再出现 | compact 产物被丢弃，下一轮仍注入全量 history |
 | B2 | 压缩后最近读取文件被重读注入（每文件 ≤500 行，≤5 个） | 压缩后模型丢失文件内容且无重读 |
-| B3 | read/grep/exec/dryrun 输出跨链必脱敏 | 密钥明文出现在上下文或记忆中 |
+| B3 | 工具结果（read/grep/exec/dryrun）与重读条目内容跨链必脱敏 | 密钥明文出现在上下文或记忆中 |
 | B4 | 文件路径 resolve 后越出 root 即 deny | `../x` 读到 root 外文件 |
-| B5 | 摘要漂移（checksum 不一致）时中止本轮 | 带病继续注入不可信摘要 |
+| B5 | checksum 三态门禁：与基线一致→幂等重放（不重复注入/记录）；不一致→新一轮压缩正常注入 | 相同压缩事件重复注入/重复记入记忆；漂移被误判为错误中止 |
