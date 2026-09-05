@@ -210,3 +210,43 @@ test('非法 tier 值被忽略且不中断循环', async () => {
   assert.equal(large.calls.length, 0, '非法档位不得被路由');
   assert.equal(small.calls.length, 2, '回落信号档/默认回退');
 });
+
+test('run 收尾清退 working：done 形态 episodic 保留、working 清零', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-done-'));
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  context.memory.record('compaction', '种子事件：跨任务保留');
+  const reactor = new Reactor({
+    registry,
+    safety,
+    context,
+    model: new ScriptedAdapter([
+      '{"tool":"exec","input":{"command":"echo a"},"done":false}',
+      '{"done":true}',
+    ]),
+  });
+  const r = await reactor.run({ goal: 'x' });
+  assert.equal(r.done, true);
+  const c = context.memory.counts();
+  assert.equal(c.working, 0, 'working 已随任务收尾清退');
+  assert.equal(c.episodic, 1, 'episodic 跨任务保留');
+});
+
+test('run 收尾清退 working：maxSteps 耗尽形态同样清退', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-max-'));
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({
+    registry,
+    safety,
+    context,
+    model: new ScriptedAdapter(['{"tool":"exec","input":{"command":"echo a"},"done":false}']),
+  });
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 1 });
+  assert.equal(r.done, false);
+  assert.equal(context.memory.counts().working, 0);
+});

@@ -14,6 +14,7 @@ test('端到端：感知 → Reactor → 工具执行 → 记忆记录', async (
     '{"done":true}',
   ]);
   const h = new Harness({ root, model });
+  h.context.memory.record('compaction', '种子事件：e2e 记忆保留验证');
 
   const perceived = h.perception.scan();
   assert.ok(perceived.files.includes('a.txt'));

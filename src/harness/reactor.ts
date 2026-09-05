@@ -96,6 +96,8 @@ export class Reactor {
       this.deps.context.memory.record('project', `step ${step}: ${observation}`);
     }
 
+    // 任务收尾：清退 working 层（done 与 maxSteps 耗尽共用此出口）
+    this.deps.context.memory.endTask();
     return { steps, done, reply };
   }
 
