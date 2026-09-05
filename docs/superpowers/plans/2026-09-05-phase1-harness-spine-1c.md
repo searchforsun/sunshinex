@@ -30,7 +30,7 @@
 
 **Goal**: Router 具备「绑定档直取 / 未绑定回默认 / 双无抛错」三态 resolve；ModelTier 类型迁入 types.ts；为 Task 2 提供路由底座。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `src/model/adapter.test.ts` 在文件头部 import 区追加：
 
@@ -68,11 +68,11 @@ test('ModelTier 自 types 登记且 adapter 侧可用', () => {
 });
 ```
 
-- [ ] **Step 2: 红灯确认**
+- [x] **Step 2: 红灯确认**
 
 `npm run build 2>&1 | grep 'error TS'`：预期 `TS2551/TS2339`——`ModelRouter` 无 `bindDefault`/`boundTiers`，types 无 `ModelTier`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 1. `src/types.ts`：在文件合适分区（与 Loop 相关类型同级）登记：
 
@@ -115,11 +115,11 @@ export class ModelRouter {
 }
 ```
 
-- [ ] **Step 4: 全绿确认**
+- [x] **Step 4: 全绿确认**
 
 `npm run build 2>&1 | grep -c 'error TS'`（期望 0）且 `npm test 2>&1 | grep -E '^# (tests|pass|fail)'` 期望 73/73/0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/types.ts src/model/adapter.ts src/model/adapter.test.ts
@@ -132,7 +132,7 @@ git commit -m "feat(harness): ModelRouter 回退语义与 ModelTier 类型登记
 
 **Goal**: 档位成为循环内决策——每轮 observe 用已有 estimate 产物计算信号建议档；上一轮 reply 合法 `tier` 作为下一轮一次性偏好覆盖；complete 经 `router.resolve(effectiveTier)`；prompt 注入服务档位行；StepRecord 记录每步实际服务档位。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `src/harness/reactor.test.ts`：
 
@@ -160,11 +160,17 @@ function makeReactor(
 /** 可编回复的 capture adapter：记录 prompt、按需切换回复 */
 function mkCap() {
   const calls: string[] = [];
-  let reply = '{"done":true,"reply":"ok"}';
+  const queue: string[] = [];
   return {
     calls,
-    set(r: string) { reply = r; },
-    adapter: { provider: 'cap', complete: async (p: string) => { calls.push(p); return reply; } },
+    set(...rs: string[]) { queue.push(...rs); },
+    adapter: {
+      provider: 'cap',
+      complete: async (p: string) => {
+        calls.push(p);
+        return queue.length > 0 ? queue.shift()! : '{"done":true,"reply":"ok"}';
+      },
+    },
   };
 }
 
@@ -235,11 +241,11 @@ test('非法 tier 值被忽略且不中断循环', async () => {
 });
 ```
 
-- [ ] **Step 2: 红灯确认**
+- [x] **Step 2: 红灯确认**
 
 `npm run build 2>&1 | grep 'error TS'`：预期 ReactorDeps 无 `router`、StepRecord 无 `tier`、buildPrompt 参数不匹配。
 
-- [ ] **Step 3: 实现（src/harness/reactor.ts）**
+- [x] **Step 3: 实现（src/harness/reactor.ts）**
 
 1. import：`import { ModelRouter, ModelTier } from '../model/adapter';`（ModelTier 亦可自 types 导入，二者等价）。
 2. `ReactorDeps` 增 `router?: ModelRouter;`
@@ -267,7 +273,7 @@ think：
 raw = await router.resolve(effectiveTier).complete(this.buildPrompt(items, effectiveTier));
 ```
 
-parse 成功后（含 done 分支之前）：
+parse 成功后（含 done 分支之前）——注意 parse 白名单式重建 action 时必须显式携带 tier（`tier: j.tier`），否则一次性偏好永远为空（T2 实测踩坑，红灯定位后补上）：
 
 ```ts
 prefTier = action.tier === 'small' || action.tier === 'medium' || action.tier === 'large' ? action.tier : undefined;
@@ -283,11 +289,11 @@ prefTier = action.tier === 'small' || action.tier === 'medium' || action.tier ==
 
 注意：档位行只存在于模型请求串，不产生 ContextItem、不参与 estimate/压缩/checksum（循环元信息而非任务上下文，不得扰动 1B checksum 基线）。
 
-- [ ] **Step 4: 全绿确认**
+- [x] **Step 4: 全绿确认**
 
 `npm run build` 零报错；`npm test` 期望 77/77/0；`npm run selfcheck` 通过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/harness/reactor.ts src/harness/reactor.test.ts
@@ -313,3 +319,27 @@ git commit -m "feat(harness): 档位收敛进 Loop 决策——信号建议+模�
 3. 回退语义是否破坏既有 adapter 行为？——`resolve` 无绑定时原抛错路径仅剩「无默认无绑定」装配错误场景；原语义用例本就不存在（adapter.test 无 ModelRouter 用例）。
 4. 一次性偏好的消费时机？——本轮开头取用即清空，本轮 reply 重新声明；避免陈旧偏好驻留。
 5. ratio 口径是否与压缩同源？——是，均用本轮 run 的 budget.total，无第二套预算。
+
+---
+
+## 执行记录（2026-09-05 回写）
+
+两个任务全部完成。实现提交链：93fe719（T1 ModelRouter 回退语义与 ModelTier 登记）→ 9384497（T2 Reactor 内嵌路由）。
+
+### 与本文档的偏差
+
+1. **parse 白名单丢弃 tier（T2 实测踩坑）**：本文 T2 Step 3 原实现要点未写明「parse 重建 action 时需显式携带 `tier: j.tier`」，首轮落地后「一次性偏好」用例红灯（large.calls=0）定位补上，Step 3 第 7 点已同步。
+2. **mkCap fixture 改队列式**：本文 T2 Step 1 原 mkCap 为静态回复，多轮用例中模型永不返回 done，三个用例因此失败。实际改为回复队列（`set(...rs)` 逐轮消费，耗尽即 `{"done":true}`），上文代码块已同步，用例断言逻辑不变。
+3. **过程记录**：T2 子代理执行超时（5 分钟），改动已大部分落盘（红灯已确认、实现已完成、未提交），主线程接手验证（发现并修复偏差 1/2）后提交。
+
+### 验收结果（C1–C5 / A5）
+
+| 编号 | 结果 |
+|---|---|
+| C1 档位循环内决策 | 通过（信号路由 + 偏好用例） |
+| C2 模型参与决策 | 通过（一次性偏好生效、非法值忽略） |
+| C3 回退安全 | 通过（仅默认绑定与 1B 等价；既有用例零改动全绿） |
+| C4 无游离路由 / A5 | 通过（grep 复核：生产代码仅 reactor.ts 消费） |
+| C5 可观测 | 通过（StepRecord.tier + prompt 档位行） |
+
+全量 `node --test` 77/77 通过；`npm run build` 零报错；`npm run selfcheck` 通过；1B 关键回归（压缩闭环/水位线/checksum 三态）无回归。
