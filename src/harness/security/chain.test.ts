@@ -138,3 +138,18 @@ test('evaluate 以 rootReal 为基准：root 经符号链接传入时判界仍�
   assert.equal(c.evaluate('Read', { path: 'a.txt' }).allowed, true);
   assert.equal(c.evaluate('Read', { path: '../sibling.txt' }).allowed, false);
 });
+
+test('resolveSafe 判界异常按拒绝处理（spec 2.1 兜底条款）', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
+  fs.writeFileSync(path.join(root, 'a.txt'), 'x');
+  const fsRaw = require('fs') as { realpathSync: unknown };
+  const orig = fsRaw.realpathSync;
+  fsRaw.realpathSync = () => { throw new Error('EACCES: permission denied (simulated)'); };
+  try {
+    const d = chain(root).evaluate('Read', { path: 'a.txt' });
+    assert.equal(d.allowed, false);
+    if (!d.allowed) assert.match(d.reason, /路径判界失败/);
+  } finally {
+    fsRaw.realpathSync = orig;
+  }
+});

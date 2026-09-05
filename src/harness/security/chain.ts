@@ -37,7 +37,12 @@ export class SafetyChain {
     private dryrun: DryRun,
     private readonly root: string,
   ) {
-    this.rootReal = fs.existsSync(root) ? fs.realpathSync(root) : root;
+    // root 可能经符号链接传入；不存在时原样回退；归一遇异常（如权限类）同样防御性原样回退（spec 2.1 兜底条款同源，evaluate 判界层再统一兜底）
+    try {
+      this.rootReal = fs.existsSync(root) ? fs.realpathSync(root) : root;
+    } catch {
+      this.rootReal = root;
+    }
   }
 
   evaluate(tool: string, input: unknown): GuardDecision {
@@ -51,16 +56,21 @@ export class SafetyChain {
     return { allowed: true };
   }
 
-  /** 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal（spec 2.1） */
+  /** 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal；异常按拒绝处理不放行（spec 2.1 兜底条款） */
   private resolveSafe(raw: unknown): GuardDecision {
-    const abs = path.resolve(this.root, String(raw ?? ''));
-    let anchor = abs;
-    while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
-    const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
-    if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
-      return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
+    try {
+      const abs = path.resolve(this.root, String(raw ?? ''));
+      let anchor = abs;
+      while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
+      const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
+      if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
+        return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
+      }
+      return { allowed: true, safePath: real };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { allowed: false, reason: `COMMAND_DENIED: 路径判界失败：${msg.slice(0, 120)}` };
     }
-    return { allowed: true, safePath: real };
   }
 
   run(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {
