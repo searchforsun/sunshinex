@@ -1,7 +1,7 @@
 # 1E 记忆沉淀设计：working→episodic→skill 三级生命周期
 
 > 日期：2026-09-05
-> 状态：评审稿（随实施回写定稿）
+> 状态：已实施交付（2026-09-05 端到端验收通过；提交链 a54236e → bcfcd1f）
 > 关联：docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md（统一主链总纲，本阶段对应验收 A4 完整）
 > 执行方式：subagent-driven 逐任务实施（沿用 1B/1C/1D 流程）
 

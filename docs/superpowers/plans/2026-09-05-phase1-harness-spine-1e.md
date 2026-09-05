@@ -32,7 +32,7 @@
 
 **Goal**: `MemoryLifecycle` 升级为三层分键（working/episodic/skill）+ record 路由 + 聚合 index + promote/endTask/counts + legacy 迁移；既有 2 用例与 compaction/assemble 断言零改动兼容。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `src/harness/context/memory-lifecycle.test.ts` 文件末尾追加 6 组用例：
 
@@ -93,11 +93,11 @@ test('legacy 单桶索引自动迁移：按前缀路由，legacy 键清空且幂
 });
 ```
 
-- [ ] **Step 2: 红灯确认**
+- [x] **Step 2: 红灯确认**
 
 `npm run build 2>&1 | grep 'error TS'`：预期 `TS2339`——`promote`/`endTask`/`counts` 不存在。既有 2 用例此时仍绿（接口未变）。
 
-- [ ] **Step 3: 实现（memory-lifecycle.ts 重写）**
+- [x] **Step 3: 实现（memory-lifecycle.ts 重写）**
 
 ```ts
 import { StorageAdapter } from '../../storage/adapter';
@@ -183,11 +183,11 @@ export class MemoryLifecycle {
 }
 ```
 
-- [ ] **Step 4: 全绿确认**
+- [x] **Step 4: 全绿确认**
 
 `npm run build` 零报错；`npm test` 期望 **88/88/0**（82 既有零改动 + 6 新增）。特别核对 compaction.test 的 `compaction:` 断言与 assemble.test 的 `includes` 断言不受聚合顺序影响。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/harness/context/memory-lifecycle.ts src/harness/context/memory-lifecycle.test.ts
@@ -200,7 +200,7 @@ git commit -m "feat(harness): MemoryLifecycle 三级生命周期——分层路�
 
 **Goal**: run 收尾调用 `endTask()`（done 与 maxSteps 耗尽共用同一 return 点）；reactor.test 补收尾用例；e2e 种子行适配（断言零改动）；A4 grep 复核。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 1. `src/harness/reactor.test.ts` 末尾追加（import 沿用既有，无新增）：
 
@@ -252,11 +252,11 @@ test('run 收尾清退 working：maxSteps 耗尽形态同样清退', async () =>
   h.context.memory.record('compaction', '种子事件：e2e 记忆保留验证');
 ```
 
-- [ ] **Step 2: 红灯确认**
+- [x] **Step 2: 红灯确认**
 
 `npm run build` 零报错（endTask 已在 T1 存在）；`npm test` 预期 2 个新用例失败：`c.working` 实际 1（run 未清退）。e2e 用例此时失败（种子在但 working 未清退不影响它——它是绿灯项，仅断言核对）。
 
-- [ ] **Step 3: 实现（reactor.ts 一行）**
+- [x] **Step 3: 实现（reactor.ts 一行）**
 
 `run()` 的收尾 return（`return { steps, done, reply };`）之前插入：
 
@@ -265,11 +265,11 @@ test('run 收尾清退 working：maxSteps 耗尽形态同样清退', async () =>
     this.deps.context.memory.endTask();
 ```
 
-- [ ] **Step 4: 全绿确认**
+- [x] **Step 4: 全绿确认**
 
 `npm run build` 零报错；`npm test` 期望 **90/90/0**（88 + 2）；`npm run selfcheck` 通过。
 
-- [ ] **Step 5: 提交 + A4 结构复核**
+- [x] **Step 5: 提交 + A4 结构复核**
 
 ```bash
 grep -rn "'memory\." src --include='*.ts' | grep -v memory-lifecycle | grep -v test   # 期望空：memory.* 键仅 MemoryLifecycle 读写
@@ -296,3 +296,27 @@ git commit -m "feat(harness): run 收尾清退 working 层——三级记忆生�
 3. StorageAdapter 是否变更？——否；spec 所述「删除 legacy 键」以「写空数组」落实（接口无删除语义，空数组读取等价于不存在，且防重复迁移）。
 4. endTask 挂点是否覆盖全部退出路径？——run 仅一个 return（done break 与 maxSteps 耗尽殊途同归），挂点在 return 前一行即全覆盖。
 5. 聚合顺序对 1B 压缩重读/1C 档位是否有影响？——否；压缩重读条目走 ContextManager 注入块与 memory 分层无关；档位信号只读 estimate。
+
+---
+
+## 执行记录（2026-09-05 回写）
+
+两个任务全部完成。实现提交链：a54236e（T1 MemoryLifecycle 三级生命周期）→ bcfcd1f（T2 run 收尾清退 working 层）。
+
+### 与本文档的偏差
+
+无实现偏差。两处过程说明：
+1. T2 的 A4 结构复核命令末尾追加 `; echo "exit=$?"` 以显式证明 grep 零匹配（grep 退出码 1 = 零命中），判定语义不变。
+2. e2e 种子行为计划内装配适配（断言零改动），红灯阶段该用例保持绿，符合「回归守护而非红灯项」预期。
+
+### 验收结果（E1–E4 / A4 完整）
+
+| 编号 | 结果 |
+|---|---|
+| E1 三级分层 | 通过（record 按主题路由 project→working / 其余→episodic；promote 未命中不产生 skill 条目） |
+| E2 沉淀回流 | 通过（promote 提升 episodic→skill；聚合注入 skill 优先；跨 MemoryLifecycle 实例持久） |
+| E3 working 易失 | 通过（done 与 maxSteps 耗尽双形态收尾清退；episodic/skill 跨任务保留） |
+| E4 迁移兼容 | 通过（legacy 单桶索引按前缀路由迁移、legacy 键写空幂等；既有用例零改动全绿） |
+| A4 完整 | 通过（grep 复核：`memory.*` 键仅 MemoryLifecycle 读写，无生产旁路） |
+
+全量 `node --test` 90/90 通过（82 既有零改动 + 8 新增）；`npm run build` 零报错；`npm run selfcheck` 通过。端到端探针：legacy 迁移 → Reactor 闭环 → run 收尾清退 → promote 沉淀 → 新实例读取聚合（skill 优先）全链贯通。
