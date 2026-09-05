@@ -30,9 +30,9 @@
 
 ### Task 1: ToolBackend 接口与 process 后端文件 IO 迁入
 
-**Goal**: `ToolBackend` 落 types.ts；ProcessSandbox 扩展为 process 后端（exec 不动 + 文件三方法 + glob 迁入）；旧 `Sandbox` 接口删除。本任务不动 chain/builtin（T2 消费）。
+**Goal**: `ToolBackend` 落 types.ts；ProcessSandbox 扩展为 process 后端（exec 不动 + 文件三方法 + glob 迁入）；旧 `Sandbox` 接口删除。（执行修正：本任务实际包含 chain 最小适配——删 Sandbox 接口与 run 改名 exec 必然破坏 chain.ts 编译，见执行记录·偏差 1。）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `src/harness/security/sandbox.test.ts` 头部 import 区追加：
 
@@ -73,11 +73,11 @@ test('listFiles glob 语义：** 跨目录段、跳过 node_modules', () => {
 
 （若测试文件缺 `os`/`path`/`fs` import，补齐。）
 
-- [ ] **Step 2: 红灯确认**
+- [x] **Step 2: 红灯确认**
 
 `npm run build 2>&1 | grep 'error TS'`：预期 `TS2339`——`ToolBackend` 不存在、`ProcessSandbox` 缺 `name/readFile/writeFile/listFiles`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 1. `src/types.ts`：文件内合适分区（ExecResult 附近）登记并导出：
 
@@ -185,11 +185,11 @@ function escapeRegExp(s: string): string {
 }
 ```
 
-- [ ] **Step 4: 全绿确认**
+- [x] **Step 4: 全绿确认**
 
 `npm run build` 零报错；`npm test` 期望 80/80/0（既有 77 用例零改动全绿——`run` 方法消失会导致 chain.test 若引用 `.run` 编译失败即暴露消费点，属预期红灯引导，届时同步 T1 范围内最小修复并记录）。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/types.ts src/harness/security/sandbox.ts src/harness/security/sandbox.test.ts
@@ -200,9 +200,9 @@ git commit -m "feat(harness): ToolBackend 接口与 process 后端文件 IO（1D
 
 ### Task 2: SafetyChain 执行面切换与 builtin 去双轨
 
-**Goal**: chain 构造改 ToolBackend、`run` 委托 `backend.exec`、暴露 `backend`；builtin 文件工具改经 `safety.backend`，删净 fs 直连；探针后端实证可替换（D2）。
+**Goal**: builtin 文件工具改经 `safety.backend`，删净 fs 直连；探针后端实证可替换（D2）。（chain 适配已提前在 T1 完成，见执行记录·偏差 1；T2 复核阶段另行修正 chain.backend 可见性与 builtin 取私绕行，见偏差 2。）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `src/harness/tools/tools.test.ts` 头部 import 区追加：
 
@@ -255,11 +255,11 @@ test('D2 后端可替换：探针 stub 注入即换', async () => {
 
 （若测试文件已 import 上述符号则去重；`DryRun`/`SecurityGuard`/`PolicyEngine` 等按该文件既有 import 为准。）
 
-- [ ] **Step 2: 红灯确认**
+- [x] **Step 2: 红灯确认**
 
 `npm run build 2>&1 | grep 'error TS'`：预期 `TS2551/TS2339`——SafetyChain 第二参不接受 `ToolBackend`（构造签名仍是旧 Sandbox 或 `.run` 不存在导致 probe 缺方法）、`safety.backend` 不存在。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 1. `src/harness/security/chain.ts`：
 
@@ -290,11 +290,11 @@ export class SafetyChain {
 - glob：`const matches = safety.backend.listFiles(root, String(input.pattern ?? '*'));`
 - 删除文件尾部 `findFiles` 与 `globToRegex`（逻辑已迁 sandbox.ts）
 
-- [ ] **Step 4: 全绿确认**
+- [x] **Step 4: 全绿确认**
 
 `npm run build` 零报错；`npm test` 期望 82/82/0（既有用例零改动全绿：chain/tools/stability/reactor 全部以 ProcessSandbox 传入，类型兼容即回归证明）；`npm run selfcheck` 通过。
 
-- [ ] **Step 5: 提交 + A2 扩展结构复核**
+- [x] **Step 5: 提交 + A2 扩展结构复核**
 
 ```bash
 grep -n 'fs\.' src/harness/tools/ | grep -v test   # 期望仅 builtin.ts 无命中（fs 引用只在 sandbox.ts 后端实现）
@@ -320,3 +320,27 @@ git commit -m "feat(harness): 执行面统一——chain 切 ToolBackend，built
 3. 档位行/checksum/水位线是否受影响？——否；1B/1C 语义零触碰。
 4. glob 行为是否逐字节一致？——globToRegex 与 findFiles 逐行搬迁，T2 用例 `**/*.txt` 断言兜底。
 5. Docker/SSH 预留形态？——仅接口 + 注入位，无空壳类（D3 复核兜底）。
+
+
+---
+
+## 执行记录（2026-09-05 回写）
+
+两个任务全部完成。实现提交链：d0f0306（T1 ToolBackend 接口与 process 后端文件 IO）→ 525b340（T2 执行面统一——chain 公开 backend、builtin 文件工具去 fs 直连）。
+
+### 与本文档的偏差
+
+1. **T1/T2 边界修正（本文疏漏）**：Task 1 原写「本任务不动 chain/builtin（T2 消费）」，但删除 `Sandbox` 接口与 `run` 改名 `exec` 必然破坏 chain.ts 编译（chain 引用 Sandbox 类型并调用 `sandbox.run`）。实际执行将 chain 的编译必需适配（import 切 ToolBackend、构造参类型、`run` 委托 `backend.exec`、暴露 backend）提前并入 T1；T2 聚焦 builtin 切换与探针用例。上文两个 Goal 行已同步标注。
+2. **chain.backend 可见性修正（T1 交付口径偏差）**：T1 将 `backend` 实现为 `private readonly`，与本文「暴露 `readonly backend`」及 spec 2.3 不符，builtin 侧被迫以 `safety['backend'] as unknown as ToolBackend` 括号取私绕行。主线程复核时根治：chain 改公开 `readonly backend`，builtin 撤销取私 hack 改为 `safety.backend` 正常消费，并清理遗留的 `escapeRegExp` 死函数（glob 逻辑已随 glob 工具迁入后端）。
+3. **过程记录**：T2 子代理执行中被取消，但改动已大部分落盘（用例已追加、builtin 已切换、死函数已删、未提交）；主线程接手完成偏差 2 的修正、全量验证与提交。
+
+### 验收结果（D1–D3 / A2 扩展）
+
+| 编号 | 结果 |
+|---|---|
+| D1 执行面统一 | 通过（E2E 探针：write/read/glob/exec 四路 IO 均经后端；`grep 'fs\.' src/harness/tools/` 工具声明面零命中） |
+| D2 后端可替换 | 通过（探针 stub 注入即换单测；探针后端驱动 Reactor 闭环完成） |
+| D3 预留不残渣 | 通过（无 Docker/SSH 空壳类；仅接口注释预留） |
+| A2 扩展 | 通过（所有执行经 Tool.execute 且 IO 经统一后端；B3 回归：探针后端读含凭据文件输出 `***`，换后端不破脱敏） |
+
+全量 `node --test` 82/82 通过（80 既有 + 2 新增）；`npm run build` 零报错；`npm run selfcheck` 通过；提交均为显式 `git add`，工作区无残渣。
