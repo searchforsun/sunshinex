@@ -14,14 +14,19 @@ import { FileStore } from '../storage/adapter';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { ModelRouter } from '../model/adapter';
 
-function makeReactor(tmp: string, adapter: { provider: string; complete: (p: string) => Promise<string> }): Reactor {
+function makeReactor(
+  tmp: string,
+  adapter: { provider: string; complete: (p: string) => Promise<string> },
+  router?: ModelRouter,
+): Reactor {
   const store = new FileStore(tmp);
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
-  return new Reactor({ registry, safety, context, model: adapter });
+  return new Reactor({ registry, safety, context, model: adapter, ...(router ? { router } : {}) });
 }
 
 test('Reactor 用 ScriptedAdapter 跑通端到端闭环', async () => {
@@ -121,4 +126,87 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
   // 摘要会浓缩保留 step 1 文本（B1 摘要回流的预期语义）；水位线断言只针对原始 history 行（prompt 中 history 项总是以 \n 前缀拼接）
   assert.ok(!prompts[2].includes('\n1: read -> '), '水位线应滤掉压缩点前的原始 history 行');
   assert.ok(prompts[2].includes('2: exec -> step2'), '水位线后的 history 保留');
+});
+
+/** 可编回复的 capture adapter：记录 prompt、按需切换回复 */
+function mkCap() {
+  const calls: string[] = [];
+  const queue: string[] = [];
+  return {
+    calls,
+    set(...rs: string[]) { queue.push(...rs); },
+    adapter: {
+      provider: 'cap',
+      complete: async (p: string) => {
+        calls.push(p);
+        return queue.length > 0 ? queue.shift()! : '{"done":true,"reply":"ok"}';
+      },
+    },
+  };
+}
+
+test('reply.tier 作为下一轮一次性偏好路由到对应 adapter', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-pref-'));
+  const small = mkCap(), large = mkCap();
+  const router = new ModelRouter();
+  router.bindDefault(small.adapter);
+  router.bind('large', large.adapter);
+  small.set('{"tool":"exec","input":{"command":"echo a"},"done":false,"tier":"large"}');
+  large.set('{"tool":"exec","input":{"command":"echo b"},"done":false}');
+  const reactor = makeReactor(tmp, small.adapter, router);
+
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  assert.equal(large.calls.length, 1, '第二轮消费一次性偏好路由 large');
+  assert.equal(small.calls.length, 2, '首轮 small + 第三轮偏好已消费回落（medium→默认回退）');
+  assert.ok(small.calls[0].includes('当前服务档位：small'), 'prompt 含本轮服务档位');
+  assert.ok(large.calls[0].includes('当前服务档位：large'));
+  if (r.steps[0] && r.steps[1]) {
+    assert.equal(r.steps[0].tier, 'small');
+    assert.equal(r.steps[1].tier, 'large');
+  } else {
+    assert.fail('应有至少两步记录');
+  }
+});
+
+test('复杂度信号：ratio≥0.6 无偏好升档 large', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-sig-'));
+  const small = mkCap(), large = mkCap();
+  const router = new ModelRouter();
+  router.bindDefault(small.adapter);
+  router.bind('large', large.adapter);
+  const reactor = makeReactor(tmp, small.adapter, router);
+
+  await reactor.run({ goal: 'x'.repeat(2000) }, { maxSteps: 1, budget: { total: 300, reserve: 40 } });
+  assert.equal(large.calls.length, 1, 'est.used=600/total=300 → ratio≥0.6 → large');
+  assert.equal(small.calls.length, 0);
+});
+
+test('仅默认绑定的 router 行为与 1B 等价', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-fb-'));
+  const cap = mkCap();
+  cap.set('{"tool":"exec","input":{"command":"echo hi"},"done":false}');
+  const router = new ModelRouter();
+  router.bindDefault(cap.adapter);
+  const reactor = makeReactor(tmp, cap.adapter, router);
+
+  const r = await reactor.run({ goal: 'echo hi' });
+  assert.equal(r.done, true);
+  assert.equal(cap.calls.length, 2);
+  assert.ok(r.steps.every((s) => s.tier !== undefined), '每步记录实际服务档位');
+});
+
+test('非法 tier 值被忽略且不中断循环', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-bad-'));
+  const small = mkCap(), large = mkCap();
+  const router = new ModelRouter();
+  router.bindDefault(small.adapter);
+  router.bind('large', large.adapter);
+  small.set('{"tool":"exec","input":{"command":"echo x"},"done":false,"tier":"huge"}');
+  const reactor = makeReactor(tmp, small.adapter, router);
+
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 2 });
+  assert.equal(r.done, true);
+  assert.equal(large.calls.length, 0, '非法档位不得被路由');
+  assert.equal(small.calls.length, 2, '回落信号档/默认回退');
 });

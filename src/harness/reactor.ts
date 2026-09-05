@@ -1,12 +1,12 @@
 import { ContextItem, ExecResult } from '../types';
 import { Result } from '../result';
-import { ModelAdapter } from '../model/adapter';
+import { ModelAdapter, ModelRouter, ModelTier } from '../model/adapter';
 import { ToolRegistry } from './tools';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 
 export interface Task { goal: string; }
-export interface StepRecord { step: number; action?: string; observation: string; }
+export interface StepRecord { step: number; action?: string; observation: string; tier?: ModelTier; }
 export interface RunResult { steps: StepRecord[]; done: boolean; reply?: string; }
 
 export interface ReactorDeps {
@@ -14,9 +14,10 @@ export interface ReactorDeps {
   safety: SafetyChain;
   context: ContextManager;
   model: ModelAdapter;
+  router?: ModelRouter;
 }
 
-interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; }
+interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; tier?: unknown; }
 
 type ParseResult =
   | { ok: true; action: Action }
@@ -30,6 +31,8 @@ export class Reactor {
     const maxSteps = opts?.maxSteps ?? 8;
     const budget = opts?.budget ?? { total: 200_000, reserve: 40_000 };
     const steps: StepRecord[] = [];
+    const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
+    let prefTier: ModelTier | undefined; // 模型一次性偏好：仅影响下一轮
     let compactedUpTo = 0; // 压缩水位线：此前 steps 已由摘要代表，不再进入 history
     let done = false;
     let reply: string | undefined;
@@ -44,10 +47,16 @@ export class Reactor {
         compactedUpTo = steps.length;
       }
 
+      // 档位决策（循环内）：模型一次性偏好优先，否则复杂度信号建议
+      const ratio = est.used / budget.total;
+      const tierStar: ModelTier = ratio >= 0.6 ? 'large' : step <= 2 && ratio < 0.2 ? 'small' : 'medium';
+      const effectiveTier = prefTier ?? tierStar;
+      prefTier = undefined; // 一次性消费
+
       // think: 经 ModelAdapter 决策（带动作协议 prompt）
       let raw: string;
       try {
-        raw = await this.deps.model.complete(this.buildPrompt(items));
+        raw = await router.resolve(effectiveTier).complete(this.buildPrompt(items, effectiveTier));
       } catch (e) {
         reply = e instanceof Error ? e.message : '模型调用失败';
         break;
@@ -56,12 +65,13 @@ export class Reactor {
       const parsed = this.parse(raw);
       if (!parsed.ok) {
         // 模型未按 JSON 输出：把原文回填为观察，给模型一次自我纠正机会
-        steps.push({ step, observation: `模型输出非 JSON（截断）：${raw.slice(0, 400)}` });
+        steps.push({ step, observation: `模型输出非 JSON（截断）：${raw.slice(0, 400)}`, tier: effectiveTier });
         this.deps.context.memory.record('project', `step ${step}: 模型输出未解析`);
         continue;
       }
 
       const action = parsed.action;
+      prefTier = action.tier === 'small' || action.tier === 'medium' || action.tier === 'large' ? action.tier : undefined;
       if (action.done) {
         done = true;
         reply = action.reply ?? '完成';
@@ -69,7 +79,7 @@ export class Reactor {
       }
 
       if (!action.tool) {
-        steps.push({ step, observation: '动作缺少 tool 字段' });
+        steps.push({ step, observation: '动作缺少 tool 字段', tier: effectiveTier });
         this.deps.context.memory.record('project', `step ${step}: 动作缺 tool`);
         continue;
       }
@@ -77,7 +87,7 @@ export class Reactor {
       // act: 经安全链执行
       const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
       const observation = this.describe(r);
-      steps.push({ step, action: action.tool, observation });
+      steps.push({ step, action: action.tool, observation, tier: effectiveTier });
       if (r.ok && (action.tool === 'read' || action.tool === 'grep')) {
         const p = (action.input ?? {}).path;
         if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
@@ -89,10 +99,11 @@ export class Reactor {
     return { steps, done, reply };
   }
 
-  private buildPrompt(items: ContextItem[]): string {
+  private buildPrompt(items: ContextItem[], tier: ModelTier): string {
     const tools = this.deps.registry.list().map((t) => `- ${t.name}: ${t.description}`).join('\n');
     const contextText = items.map((i) => i.content).join('\n');
     return [
+      `当前服务档位：${tier}；如需调整下一轮算力，在回复 JSON 中加 "tier": "small|medium|large"`,
       '你是 SunshineX 智能体，通过调用工具完成任务。',
       '可用工具：',
       tools,
@@ -115,7 +126,7 @@ export class Reactor {
   private parse(raw: string): ParseResult {
     try {
       const j = JSON.parse(raw) as Action;
-      return { ok: true, action: { tool: j.tool, input: j.input, done: j.done === true, reply: j.reply } };
+      return { ok: true, action: { tool: j.tool, input: j.input, done: j.done === true, reply: j.reply, tier: j.tier } };
     } catch {
       return { ok: false, raw };
     }
