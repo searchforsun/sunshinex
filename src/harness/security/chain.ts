@@ -29,7 +29,7 @@ export function maskText(text: string): string {
 export class SafetyChain {
   constructor(
     private guard: SecurityGuard,
-    private readonly backend: ToolBackend,
+    readonly backend: ToolBackend,
     private dryrun: DryRun,
     private readonly root: string,
   ) {}
