@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
 import { ToolBackend } from '../../types';
@@ -27,12 +28,17 @@ export function maskText(text: string): string {
 
 /** 统一安全链：guard 守门 → 路径边界 → 后端执行 + dryrun 预览（mask 出口见 maskResult） */
 export class SafetyChain {
+  /** 判界基准：root 归一后真实路径（root 可能位于符号链接路径上；不存在时原样回退） */
+  private readonly rootReal: string;
+
   constructor(
     private guard: SecurityGuard,
     readonly backend: ToolBackend,
     private dryrun: DryRun,
     private readonly root: string,
-  ) {}
+  ) {
+    this.rootReal = fs.existsSync(root) ? fs.realpathSync(root) : root;
+  }
 
   evaluate(tool: string, input: unknown): GuardDecision {
     const decision = this.guard.preToolUse(tool, input);
@@ -40,13 +46,21 @@ export class SafetyChain {
 
     if (PATH_TOOLS.has(tool)) {
       const raw = typeof input === 'object' && input !== null ? (input as { path?: unknown }).path : undefined;
-      const abs = path.resolve(this.root, String(raw ?? ''));
-      if (abs !== this.root && !abs.startsWith(this.root + path.sep)) {
-        return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root：${abs}` };
-      }
-      return { allowed: true, safePath: abs };
+      return this.resolveSafe(raw);
     }
     return { allowed: true };
+  }
+
+  /** 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal（spec 2.1） */
+  private resolveSafe(raw: unknown): GuardDecision {
+    const abs = path.resolve(this.root, String(raw ?? ''));
+    let anchor = abs;
+    while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
+    const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
+    if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
+      return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
+    }
+    return { allowed: true, safePath: real };
   }
 
   run(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {

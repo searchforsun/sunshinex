@@ -88,3 +88,53 @@ test('preview 输出过 mask', () => {
   assert.ok(!out.includes('abcdefgh12345678'));
   assert.match(out, /\*\*\*/);
 });
+
+test('evaluate 对 root 内符号链接指向 root 外目标的 Read deny（reason 含真实路径）', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
+  fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOPSECRET');
+  fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(root, 'link.txt'));
+  const d = chain(root).evaluate('Read', { path: 'link.txt' });
+  assert.equal(d.allowed, false);
+  if (!d.allowed) {
+    assert.match(d.reason, /越出项目 root/);
+    assert.match(d.reason, /真实路径/);
+    assert.ok(d.reason.includes('secret.txt'));
+  }
+});
+
+test('evaluate 对符号链接父目录下的 Write deny', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
+  fs.symlinkSync(outside, path.join(root, 'escdir'));
+  const d = chain(root, 'dontAsk').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
+  assert.equal(d.allowed, false);
+  if (!d.allowed) assert.match(d.reason, /越出项目 root/);
+});
+
+test('evaluate 对指向 root 内目标的符号链接路径放行（反向场景）', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
+  fs.writeFileSync(path.join(root, 'in.txt'), 'x');
+  fs.symlinkSync(path.join(root, 'in.txt'), path.join(outside, 'alias.txt'));
+  const d = chain(root).evaluate('Read', { path: path.join(outside, 'alias.txt') });
+  assert.equal(d.allowed, true);
+});
+
+test('evaluate 对多级新建路径的 Write 放行（逐级上溯回归）', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
+  const d = chain(root, 'dontAsk').evaluate('Write', { path: 'a/b/c.txt', content: 'x' });
+  assert.equal(d.allowed, true);
+  if (d.allowed) assert.equal(d.safePath, path.join(root, 'a/b/c.txt'));
+});
+
+test('evaluate 以 rootReal 为基准：root 经符号链接传入时判界仍正确', () => {
+  const outer = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-root-'));
+  const ws = path.join(outer, 'ws');
+  fs.mkdirSync(ws);
+  fs.writeFileSync(path.join(ws, 'a.txt'), 'x');
+  fs.symlinkSync(ws, path.join(outer, 'link'));
+  const c = chain(path.join(outer, 'link'));
+  assert.equal(c.evaluate('Read', { path: 'a.txt' }).allowed, true);
+  assert.equal(c.evaluate('Read', { path: '../sibling.txt' }).allowed, false);
+});
