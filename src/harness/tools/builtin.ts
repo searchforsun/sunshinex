@@ -4,10 +4,9 @@ import { RegisteredTool } from '../tools';
 import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
 
-/** 内置工具集：read/write/grep/glob/exec；文件路径与 shell 工作目录均以 root 为基准，与感知引擎一致 */
+/** 内置工具集：read/write/grep/glob/exec；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准 */
 export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[] {
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
-  const resolve = (p: unknown): string => path.resolve(root, String(p ?? ''));
 
   return [
     {
@@ -25,14 +24,14 @@ export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[
       name: 'read',
       description: '读取文件内容',
       category: 'read',
-      executor: async (input: ToolInput) => execOut(fs.readFileSync(resolve(input.path), 'utf8')),
+      executor: async (input: ToolInput) => execOut(fs.readFileSync(String(input.path), 'utf8')),
     },
     {
       name: 'write',
       description: '写入文件内容',
       category: 'write',
       executor: async (input: ToolInput) => {
-        const target = resolve(input.path);
+        const target = String(input.path);
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, String(input.content ?? ''));
         return execOut('written');
@@ -43,8 +42,8 @@ export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[
       description: '在文件中搜索正则',
       category: 'read',
       executor: async (input: ToolInput) => {
-        const { pattern, path: p } = input as { pattern: string; path: string };
-        const content = fs.readFileSync(resolve(p), 'utf8');
+        const { pattern } = input as { pattern: string };
+        const content = fs.readFileSync(String(input.path), 'utf8');
         const lines = content.split('\n').filter((l) => new RegExp(pattern).test(l));
         return execOut(lines.join('\n'));
       },

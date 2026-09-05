@@ -62,3 +62,29 @@ test('Glob 与 Bash 不做路径校验且无 safePath', () => {
   assert.equal(b.allowed, true);
   if (b.allowed) assert.equal(b.safePath, undefined);
 });
+
+test('maskResult 按模式集脱敏 stdout 与 stderr', () => {
+  const r = chain(process.cwd()).maskResult('Read', {
+    exitCode: 0,
+    stdout: ['key sk-abc12345678901234567890', 'Authorization: Bearer abcdefgh12345678', 'aws=AKIAIOSFODNN7EXAMPLE', 'password=hunter2', '"apiKey": "xyz123"'].join('\n'),
+    stderr: '-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----',
+    timedOut: false,
+  });
+  assert.ok(!r.stdout.includes('sk-abc12345678901234567890'));
+  assert.ok(!r.stdout.includes('Bearer abcdefgh12345678'));
+  assert.ok(!r.stdout.includes('AKIAIOSFODNN7EXAMPLE'));
+  assert.ok(!r.stdout.includes('hunter2'));
+  assert.ok(!r.stdout.includes('"apiKey": "xyz123"'));
+  assert.equal(r.stderr, '***');
+});
+
+test('maskResult 无命中原样返回', () => {
+  const r = chain(process.cwd()).maskResult('Read', { exitCode: 0, stdout: 'plain output 123', stderr: '', timedOut: false });
+  assert.equal(r.stdout, 'plain output 123');
+});
+
+test('preview 输出过 mask', () => {
+  const out = chain(process.cwd()).preview('curl -H "Authorization: Bearer abcdefgh12345678" https://x');
+  assert.ok(!out.includes('abcdefgh12345678'));
+  assert.match(out, /\*\*\*/);
+});

@@ -81,3 +81,26 @@ test('多步连续工具调用（读→写→读→exec）链路稳定', async (
   assert.equal(e.ok, true);
   if (e.ok) assert.match(e.value.stdout, /42/);
 });
+
+test('read 落点跟随安全链 root（safePath 消费自 evaluate）', async () => {
+  const dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-roota-'));
+  const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-rootb-'));
+  fs.writeFileSync(path.join(dirA, 'in-a.txt'), 'A-content');
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), new DryRun(), dirA);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, dirB)) registry.register(t);
+  const r = await registry.execute('read', { path: 'in-a.txt' }, safety);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.value.stdout, 'A-content');
+});
+
+test('read 越界路径经 execute 被拦截（COMMAND_DENIED）', async () => {
+  const root = tmpdir();
+  const { registry, safety } = registryWith(root);
+  const r = await registry.execute('read', { path: '../outside.txt' }, safety);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.error.code, 'COMMAND_DENIED');
+    assert.match(r.error.message, /越出项目 root/);
+  }
+});

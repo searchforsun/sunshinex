@@ -48,8 +48,12 @@ export class ToolRegistry {
     const decision = safety.evaluate(canonical, input);
     if (!decision.allowed) return fail('COMMAND_DENIED', decision.reason ?? '命令被安全策略拦截');
 
+    // 文件工具：evaluate 已校验并返回 safePath（绝对路径），executor 直接消费，消除二次解析双轨
+    const execInput: ToolInput = decision.safePath !== undefined ? { ...input, path: decision.safePath } : input;
+
     try {
-      return ok(await tool.executor(input));
+      const result = await tool.executor(execInput);
+      return ok(safety.maskResult(canonical, result));
     } catch (e) {
       return fail('EXEC_FAILED', e instanceof Error ? e.message : '工具执行失败');
     }
