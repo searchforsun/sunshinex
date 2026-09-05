@@ -2,7 +2,7 @@ import { PolicyEngine } from './policy';
 import { READONLY_WHITELIST, PermissionMode } from './modes';
 
 export type GuardDecision =
-  | { allowed: true }
+  | { allowed: true; safePath?: string }
   | { allowed: false; reason: string };
 
 /** PreToolUse 决策点（enforcement 层） */

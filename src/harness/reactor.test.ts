@@ -17,7 +17,7 @@ import * as path from 'path';
 
 function makeReactor(tmp: string, adapter: { provider: string; complete: (p: string) => Promise<string> }): Reactor {
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun());
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);

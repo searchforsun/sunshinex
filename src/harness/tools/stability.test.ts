@@ -16,7 +16,7 @@ function tmpdir(): string {
 }
 
 function registryWith(root: string): { registry: ToolRegistry; safety: SafetyChain } {
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), new DryRun());
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   // dontAsk：最大权限，验证工具执行链本身而非权限拦截

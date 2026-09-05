@@ -8,7 +8,7 @@ import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 
 test('execute 经安全链：dangerous 命令被拦截', async () => {
-  const safety = new SafetyChain(new SecurityGuard(), new ProcessSandbox(), new DryRun());
+  const safety = new SafetyChain(new SecurityGuard(), new ProcessSandbox(), new DryRun(), process.cwd());
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, process.cwd())) registry.register(t);
 
@@ -18,7 +18,7 @@ test('execute 经安全链：dangerous 命令被拦截', async () => {
 });
 
 test('execute 经安全链：只读命令放行', async () => {
-  const safety = new SafetyChain(new SecurityGuard(), new ProcessSandbox(), new DryRun());
+  const safety = new SafetyChain(new SecurityGuard(), new ProcessSandbox(), new DryRun(), process.cwd());
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, process.cwd())) registry.register(t);
 
@@ -28,7 +28,7 @@ test('execute 经安全链：只读命令放行', async () => {
 
 test('未注册工具返回 TOOL_NOT_FOUND', async () => {
   const registry = new ToolRegistry();
-  const r = await registry.execute('nope', {}, new SafetyChain(new SecurityGuard(), new ProcessSandbox(), new DryRun()));
+  const r = await registry.execute('nope', {}, new SafetyChain(new SecurityGuard(), new ProcessSandbox(), new DryRun(), process.cwd()));
   assert.equal(r.ok, false);
   if (!r.ok) assert.equal(r.error.code, 'TOOL_NOT_FOUND');
 });

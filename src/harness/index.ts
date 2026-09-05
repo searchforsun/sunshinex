@@ -40,7 +40,7 @@ export class Harness {
     this.sandbox = new ProcessSandbox();
     this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk');
     this.dryrun = new DryRun();
-    this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun);
+    this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
     for (const t of builtinTools(this.safety, base)) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.reactor = new Reactor({
