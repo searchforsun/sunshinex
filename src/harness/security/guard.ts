@@ -1,5 +1,5 @@
 import { PolicyEngine } from './policy';
-import { READONLY_WHITELIST, PermissionMode } from './modes';
+import { READONLY_WHITELIST, PermissionMode, DESTRUCTIVE_COMMANDS, DESTRUCTIVE_PIPE } from './modes';
 
 export type GuardDecision =
   | { allowed: true; safePath?: string }
@@ -17,6 +17,9 @@ export class SecurityGuard {
     const decision = this.policy.decide(tool, specifier);
 
     if (decision === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: deny 规则匹配' };
+    if (tool === 'Bash' && this.isDestructiveCommand(specifier)) {
+      return { allowed: false, reason: `COMMAND_DENIED: 破坏性命令被安全底线拦截：${specifier.slice(0, 80)}` };
+    }
     if (decision === 'allow') return { allowed: true };
 
     // decision === 'ask'
@@ -47,5 +50,19 @@ export class SecurityGuard {
     const first = specifier.trim().split(/\s+/)[0] ?? '';
     const base = first.split('/').pop() ?? first;
     return READONLY_WHITELIST.includes(base);
+  }
+
+  /** 破坏性命令底线：首 token basename 归一（防 /bin/rm 绕过）；递归删除/写盘/电源/下载执行管道即拒（spec 2.2） */
+  private isDestructiveCommand(cmd: string): boolean {
+    const tokens = cmd.trim().split(/\s+/);
+    const first = tokens[0] ?? '';
+    const base = first.split('/').pop() ?? first;
+    if (base === 'rm') {
+      const recursive = tokens.slice(1).some((t) => t === '--recursive' || /^-[a-zA-Z]*[rR]/.test(t));
+      if (recursive) return true;
+    }
+    if (base.startsWith('mkfs')) return true;
+    if (DESTRUCTIVE_COMMANDS.includes(base)) return true;
+    return DESTRUCTIVE_PIPE.test(cmd);
   }
 }
