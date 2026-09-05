@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
-import { Sandbox } from './sandbox';
+import { ToolBackend } from '../../types';
 import { DryRun } from './dryrun';
 import { ExecResult } from '../../types';
 import { Result } from '../../result';
@@ -25,11 +25,11 @@ export function maskText(text: string): string {
   return out;
 }
 
-/** 统一安全链：guard 守门 → 路径边界 → sandbox 执行 + dryrun 预览（mask 出口见 maskResult） */
+/** 统一安全链：guard 守门 → 路径边界 → 后端执行 + dryrun 预览（mask 出口见 maskResult） */
 export class SafetyChain {
   constructor(
     private guard: SecurityGuard,
-    private sandbox: Sandbox,
+    private readonly backend: ToolBackend,
     private dryrun: DryRun,
     private readonly root: string,
   ) {}
@@ -50,7 +50,7 @@ export class SafetyChain {
   }
 
   run(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {
-    return this.sandbox.run(cmd, opts);
+    return this.backend.exec(cmd, opts);
   }
 
   /** 工具结果跨链的唯一脱敏出口：stdout 与 stderr 统一过凭据模式集 */

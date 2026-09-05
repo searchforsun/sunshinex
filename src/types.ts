@@ -1,3 +1,5 @@
+import type { Result } from './result';
+
 /** 多角色子 Agent 角色枚举 */
 export type AgentRole = 'planner' | 'developer' | 'tester' | 'reviewer';
 
@@ -54,6 +56,17 @@ export interface ExecResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+}
+
+/** Tool 执行后端：命令与文件 IO 的统一执行面（process 现行，Docker/SSH 预留接口位） */
+export interface ToolBackend {
+  /** 后端标识，如 process / docker / ssh */
+  readonly name: string;
+  exec(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>>;
+  readFile(absPath: string): string;
+  /** 写入含父目录自动创建（维持现行 write 语义） */
+  writeFile(absPath: string, content: string): void;
+  listFiles(root: string, pattern: string): string[];
 }
 
 /** 权限决策 */
