@@ -79,7 +79,7 @@ function repairRouter(target = 'agent'): LoopEngineNode {
 export function codeRefactorTemplate(deps: LoopDeps, opts?: TemplateOpts): LoopTemplate {
   return assemble(
     'code-refactor',
-    [execAgent(deps), checkNode(deps, { ruleCheckers: opts?.ruleCheckers }), repairRouter()],
+    [execAgentWithReply(deps), checkNode(deps, { ruleCheckers: opts?.ruleCheckers }), repairRouter()],
     deps,
     opts,
   );
@@ -89,7 +89,7 @@ export function codeRefactorTemplate(deps: LoopDeps, opts?: TemplateOpts): LoopT
 export function testLoopTemplate(deps: LoopDeps, opts?: TemplateOpts): LoopTemplate {
   return assemble(
     'test-loop',
-    [execAgent(deps), checkNode(deps, { ruleCheckers: opts?.ruleCheckers }), repairRouter()],
+    [execAgentWithReply(deps), checkNode(deps, { ruleCheckers: opts?.ruleCheckers }), repairRouter()],
     deps,
     opts,
   );

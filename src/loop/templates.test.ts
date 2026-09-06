@@ -106,3 +106,23 @@ test('T5-3 代码审查模板：审查产出 → gate 结论断言 → fixer 修
   assert.equal(r.status, 'done');
   assert.ok(!fs.readFileSync(path.join(root, 'risky.js'), 'utf8').includes('eval'));
 });
+
+test('T5-4 test-loop 模板：agent 结论落 ctx.state.agentReply（模型判据证据通道）', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-t5-reply-'));
+  const model = new ScriptedAdapter([
+    `{"done":true,"reply":"结论：目标文件已按要求修改完成"}`,
+  ]);
+  let replySeen: string | undefined;
+  const tpl = testLoopTemplate(makeDeps(root, model), {
+    ruleCheckers: {
+      c1: async ({ ctx }) => {
+        replySeen = typeof ctx.state.agentReply === 'string' ? ctx.state.agentReply : undefined;
+        return true;
+      },
+    },
+  });
+  const r = await tpl.engine.run('示例目标（验收标准：c1=实现符合要求）');
+  assert.equal(r.status, 'done');
+  assert.equal(typeof replySeen, 'string', 'check 执行时 agentReply 应已落 state');
+  assert.ok(replySeen !== undefined && replySeen.length > 0, 'agentReply 应含 agent 结论供判据证据');
+});
