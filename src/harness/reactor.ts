@@ -34,17 +34,32 @@ export class Reactor {
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
     let prefTier: ModelTier | undefined; // 模型一次性偏好：仅影响下一轮
     let compactedUpTo = 0; // 压缩水位线：此前 steps 已由摘要代表，不再进入 history
+    let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
     let done = false;
     let reply: string | undefined;
 
     for (let step = 1; step <= maxSteps; step++) {
-      // observe: 上下文统一装配（仅取水位线后的 steps；压缩注入块由 ContextManager 并入）
-      const items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
-      const est = this.deps.context.window.estimate(items);
-      if (this.deps.context.window.shouldCompact({ total: budget.total, used: est.used, reserve: budget.reserve })) {
-        const chunks = await this.deps.context.window.compact(items);
-        await this.deps.context.applyCompaction(chunks); // checksum 门禁 + 摘要/重读注入（幂等重放内部跳过）
-        compactedUpTo = steps.length;
+      // observe: 装配 → 估算 → 滞回门 → 收敛环（spec §2.2：压缩当轮即以收敛后上下文组装）
+      let items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
+      let est = this.deps.context.window.estimate(items);
+      const overThreshold = () =>
+        this.deps.context.window.shouldCompact({ total: budget.total, used: est.used, reserve: budget.reserve });
+      // 滞回门（跨步节流，环外判定一次）：≥2 新步开闸；est > total 硬越限应急旁路——保证全程 est ≤ total（C1）
+      const gateOpen = step - lastCompactStep >= 2 || est.used > budget.total;
+      if (gateOpen && overThreshold()) {
+        // 收敛环（环内不受滞回限制）：压缩 → 重注入 → 重装配重估；续环条件为硬越限（est > total）越阈即止，至多 2 轮
+        let rounds = 0;
+        do {
+          const chunks = await this.deps.context.window.compact(items, {
+            summaryTokenBudget: Math.floor(budget.reserve / 2),
+          });
+          await this.deps.context.applyCompaction(chunks, { rereadTokenBudget: Math.floor(budget.reserve / 2) });
+          compactedUpTo = steps.length;
+          lastCompactStep = step;
+          items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
+          est = this.deps.context.window.estimate(items);
+          rounds++;
+        } while (rounds < 2 && est.used > budget.total);
       }
 
       // 档位决策（循环内）：模型一次性偏好优先，否则复杂度信号建议
