@@ -46,7 +46,7 @@
 - Produces: `export function estimateTokens(content: string): number`（后续 T2/T3/T4 消费）；`estimate(items): { used, items: { id }[] }`（weight 字段退役，仅测试消费已核实）。
 - 消费前提：`KIND_WEIGHT` 改 export（T2 丢弃序使用；顺带免 noUnusedLocals 误报）。
 
-- [ ] **Step 1: 写失败测试**（window.test.ts：import 行改 `import { ContextWindow, estimateTokens } from './window';`；将首个用例 `test('estimate 按 kind 加权估算 token', …)` **整体替换**为以下两个用例）：
+- [x] **Step 1: 写失败测试**（window.test.ts：import 行改 `import { ContextWindow, estimateTokens } from './window';`；将首个用例 `test('estimate 按 kind 加权估算 token', …)` **整体替换**为以下两个用例）：
 
 ```ts
 test('estimate 按真实 token 近似：CJK×1 + 其余÷4', () => {
@@ -69,8 +69,8 @@ test('estimate 无 kind 权重：同内容异 kind 同值', () => {
 });
 ```
 
-- [ ] **Step 2: 红灯确认**：`npm run build 2>&1 | grep -c 'error TS'` → ≥1（TS2305 estimateTokens 未导出，API 扩展红灯）。记录输出。
-- [ ] **Step 3: 实现 window.ts**（三处编辑分轮串行）：
+- [x] **Step 2: 红灯确认**：`npm run build 2>&1 | grep -c 'error TS'` → ≥1（TS2305 estimateTokens 未导出，API 扩展红灯）。记录输出。
+- [x] **Step 3: 实现 window.ts**（三处编辑分轮串行）：
   1. `ContextItemEstimate` 接口去掉 `weight` 字段，仅留 `id: string`；
   2. 在 `ChecksumVerdict` 类型之后新增：
 
@@ -97,8 +97,8 @@ export function estimateTokens(content: string): number {
   }
 ```
 
-- [ ] **Step 4: 绿灯确认**：build `0` 错 + `npm test 2>&1 | grep -E '^# (tests|pass|fail)'` → **102/102/0**。
-- [ ] **Step 5: 提交**：`git add src/harness/context/window.ts src/harness/context/window.test.ts && git commit -m "feat(context): estimateTokens 真实 token 近似——估算与 kind 权重解耦（P1-1 T1）"`
+- [x] **Step 4: 绿灯确认**：build `0` 错 + `npm test 2>&1 | grep -E '^# (tests|pass|fail)'` → **102/102/0**。
+- [x] **Step 5: 提交**：`git add src/harness/context/window.ts src/harness/context/window.test.ts && git commit -m "feat(context): estimateTokens 真实 token 近似——估算与 kind 权重解耦（P1-1 T1）"`
 
 ---
 
@@ -110,7 +110,7 @@ export function estimateTokens(content: string): number {
 - Consumes: `estimateTokens`（T1）、`KIND_WEIGHT`（T1 export）。
 - Produces: `compact(items, opts?: { force?: boolean; summaryTokenBudget?: number })`——未传 budget 行为与现版完全一致（T4/T5 与既有用例依赖此兼容）。
 
-- [ ] **Step 1: 写失败测试**（window.test.ts 末尾追加 3 用例）：
+- [x] **Step 1: 写失败测试**（window.test.ts 末尾追加 3 用例）：
 
 ```ts
 test('compact 摘要预算化：超限按丢弃序丢块，白名单 kind 保留', async () => {
@@ -155,8 +155,8 @@ test('compact 摘要预算化：丢尽可丢块仍超限 → 确定性均匀截�
 });
 ```
 
-- [ ] **Step 2: 红灯确认**：编译错（`summaryTokenBudget` 不在 opts 类型内，TS2353）——API 扩展红灯。记录。
-- [ ] **Step 3: 实现**：`compact` 方法整体替换（`_opts` 形参转正）：
+- [x] **Step 2: 红灯确认**：编译错（`summaryTokenBudget` 不在 opts 类型内，TS2353）——API 扩展红灯。记录。
+- [x] **Step 3: 实现**：`compact` 方法整体替换（`_opts` 形参转正）：
 
 ```ts
   /** 摘要预算化压缩（spec §2.3）：超限时按丢弃序丢块（priority 升序 → kind 权重升序 → 位置最旧先；system/instruction 白名单不可丢），
@@ -201,8 +201,8 @@ test('compact 摘要预算化：丢尽可丢块仍超限 → 确定性均匀截�
   }
 ```
 
-- [ ] **Step 4: 绿灯确认**：**105/105/0**。验算锚点：用例 1 各块 token ≈ system 12 / A 304 / B 304，总 620 > 400 → 按 A、B 顺序丢 A 后 316 ≤ 400，恰剩 2 块。
-- [ ] **Step 5: 提交**：`git add src/harness/context/window.ts src/harness/context/window.test.ts && git commit -m "feat(context): compact 摘要预算化——丢弃序与确定性截断（P1-1 T2）"`
+- [x] **Step 4: 绿灯确认**：**105/105/0**。验算锚点：用例 1 各块 token ≈ system 12 / A 304 / B 304，总 620 > 400 → 按 A、B 顺序丢 A 后 316 ≤ 400，恰剩 2 块。
+- [x] **Step 5: 提交**：`git add src/harness/context/window.ts src/harness/context/window.test.ts && git commit -m "feat(context): compact 摘要预算化——丢弃序与确定性截断（P1-1 T2）"`
 
 ---
 
@@ -214,7 +214,7 @@ test('compact 摘要预算化：丢尽可丢块仍超限 → 确定性均匀截�
 - Produces: `MemoryLifecycle.tail(maxChars: { skill: number; episodic: number; working: number }): string[]`；`ContextManager.assemble` 记忆条目切换为 tail 视图。`index()` 全量语义不变（既有断言与 endTask/promote 依赖）。
 - 内部字段/持久化调用名以现状为准：record 仅改 push 行的 text 截断；tail 为新增方法（层内取尾、层间按 skill→episodic→working 拼接）。
 
-- [ ] **Step 1: 写失败测试**（memory-lifecycle.test.ts 末尾追加 3 用例；组装模式照抄本文件既有用例的 MemoryLifecycle/FileStore 构造）：
+- [x] **Step 1: 写失败测试**（memory-lifecycle.test.ts 末尾追加 3 用例；组装模式照抄本文件既有用例的 MemoryLifecycle/FileStore 构造）：
 
 ```ts
 test('record 入口限长：超 500 字符截断', () => {
@@ -269,8 +269,8 @@ test('assemble 记忆注入走分层配额 tail：超量旧记忆由压缩摘要
 });
 ```
 
-- [ ] **Step 2: 红灯确认**：`tail` 不存在 → 编译错；record 限长断言失败（行为）。两类红灯混合，记录输出。
-- [ ] **Step 3: 实现**：
+- [x] **Step 2: 红灯确认**：`tail` 不存在 → 编译错；record 限长断言失败（行为）。两类红灯混合，记录输出。
+- [x] **Step 3: 实现**：
   1. memory-lifecycle.ts 常数区（CAP 旁）新增 `const MEMORY_RECORD_MAX_CHARS = 500; // spec §2.5：record 入口单条限长`；record 的 push 行改为 `items.push(\`${type}: ${text.slice(0, MEMORY_RECORD_MAX_CHARS)}\`);`
   2. `index()` 之后新增：
 
@@ -293,8 +293,8 @@ test('assemble 记忆注入走分层配额 tail：超量旧记忆由压缩摘要
 
 （`this.tier(t)` 若与现状内部访问器不同名，按实际字段改写，逻辑不变。）
   3. context/index.ts：`REREAD_MAX_LINES` 旁新增 `const MEMORY_INJECT_BUDGET = { skill: 600, episodic: 700, working: 700 }; // spec §2.5 常数表：分层配额注入（合计 2000 字符）`；assemble 中 `const mem = this.memory.index();` 替换为 `const mem = this.memory.tail(MEMORY_INJECT_BUDGET);`
-- [ ] **Step 4: 绿灯确认**：**109/109/0**。验算锚点：30 条 94 字符记录、working 配额 700 → 注入 8 条（658 < 700，第 8 条纳入后 752 越限即停），W22 及更早不出现。
-- [ ] **Step 5: 提交**：`git add src/harness/context/memory-lifecycle.ts src/harness/context/memory-lifecycle.test.ts src/harness/context/index.ts src/harness/context/assemble.test.ts && git commit -m "feat(context): 记忆治理——record 限长与分层配额注入（P1-1 T3）"`
+- [x] **Step 4: 绿灯确认**：**109/109/0**。验算锚点：30 条 94 字符记录、working 配额 700 → 注入 8 条（658 < 700，第 8 条纳入后 752 越限即停），W22 及更早不出现。
+- [x] **Step 5: 提交**：`git add src/harness/context/memory-lifecycle.ts src/harness/context/memory-lifecycle.test.ts src/harness/context/index.ts src/harness/context/assemble.test.ts && git commit -m "feat(context): 记忆治理——record 限长与分层配额注入（P1-1 T3）"`
 
 ---
 
@@ -306,7 +306,7 @@ test('assemble 记忆注入走分层配额 tail：超量旧记忆由压缩摘要
 - Consumes: `estimateTokens`（T1）。
 - Produces: `applyCompaction(chunks, opts?: { rereadTokenBudget?: number })`——预算**仅管辖重读条目**（摘要归 summaryTokenBudget）；未传时行为与现版完全一致（T5 与既有用例依赖）。
 
-- [ ] **Step 1: 写失败测试**（compaction.test.ts 末尾追加 2 用例，setup 照抄本文件既有助手）：
+- [x] **Step 1: 写失败测试**（compaction.test.ts 末尾追加 2 用例，setup 照抄本文件既有助手）：
 
 ```ts
 test('重读预算化：超限按 LRU 最旧先丢整文件', async () => {
@@ -334,8 +334,8 @@ test('重读预算化：预算内全部保留（与未传参数行为一致）',
 });
 ```
 
-- [ ] **Step 2: 红灯确认**：编译错（opts 参数未扩展）。记录。
-- [ ] **Step 3: 实现**：import 行补 `estimateTokens`（自 `./window`）；applyCompaction 签名加 `opts?: { rereadTokenBudget?: number }`；在 `this.compacted = items;` 之前插入：
+- [x] **Step 2: 红灯确认**：编译错（opts 参数未扩展）。记录。
+- [x] **Step 3: 实现**：import 行补 `estimateTokens`（自 `./window`）；applyCompaction 签名加 `opts?: { rereadTokenBudget?: number }`；在 `this.compacted = items;` 之前插入：
 
 ```ts
     // 重读预算化（spec §2.4）：预算仅管辖重读条目；登记顺序即最旧在前，队首（最旧）整文件先丢
@@ -350,8 +350,8 @@ test('重读预算化：预算内全部保留（与未传参数行为一致）',
 ```
 
   并将末尾 record 行的 `重读 ${items.length - 1} 个文件` 改为引用过滤后条数（若 items 已被裁剪，`items.length - 1` 即正确值，无需额外变量）。
-- [ ] **Step 4: 绿灯确认**：**111/111/0**。既有用例（未传 opts）行为不变。
-- [ ] **Step 5: 提交**：`git add src/harness/context/index.ts src/harness/context/compaction.test.ts && git commit -m "feat(context): 重读预算化——LRU 整文件丢弃（P1-1 T4）"`
+- [x] **Step 4: 绿灯确认**：**111/111/0**。既有用例（未传 opts）行为不变。
+- [x] **Step 5: 提交**：`git add src/harness/context/index.ts src/harness/context/compaction.test.ts && git commit -m "feat(context): 重读预算化——LRU 整文件丢弃（P1-1 T4）"`
 
 ---
 
@@ -364,7 +364,7 @@ test('重读预算化：预算内全部保留（与未传参数行为一致）',
 - Produces: observe 块重构——滞回门（`step - lastCompactStep >= 2`，`lastCompactStep` 初始 `-2`）+ `est > total` 应急旁路 + 收敛环（do-while，≤2 轮，续环条件 `est > total` 硬越限越阈即止）；prompt 以**收敛后** items 组装（F-b 修复：压缩当轮生效）。
 - **白名单改写点（spec S5 修正案 3788899）**：压缩闭环用例 budget 数字行 `{ total: 300, reserve: 40 }` → `{ total: 4500, reserve: 4100 }`；`!prompts[1].includes('[压缩摘要')` → `prompts[1].includes(...)` 翻转；相邻注释行同步。**白名单外其余用例断言零改动**（复杂度信号仅注释内文案更新）。
 
-- [ ] **Step 1: 写失败测试**（reactor.test.ts）：
+- [x] **Step 1: 写失败测试**（reactor.test.ts）：
   1. **压缩闭环用例改写**：①budget 行换 `{ total: 4500, reserve: 4100 }`（threshold 400 触发 step2；rereadTokenBudget 2050 容纳 big.txt 重读 ≈756 tok）；②`prompts[1]` 断言翻转：`assert.ok(prompts[1].includes('[压缩摘要'), '收敛环：触发轮当轮即以收敛后上下文组装（F-b 修复）');`；③相邻注释行（原「第 2 轮 prompt 在本轮压缩前组装」句）改为「收敛环使压缩当轮生效；水位线滤除压缩点前原始 history 行（语义不变）」；其余断言（prompts[0] 无摘要、prompts[2] 含摘要/含重读/不含 `\n1: read -> `/含 `2: exec -> step2`）**原样保留**。
   2. **复杂度信号用例**：断言不变；消息文案改 `est.used≈530（goal 主导且不可压缩）/total=300 → ratio≥0.6 → large`。
   3. **新增 2 用例**（追加至文件末尾；组装方式参照 trackFile 用例的内联构建——持 `context` 引用以观察压缩记录）：
@@ -403,10 +403,11 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
 test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
   fs.writeFileSync(path.join(tmp, 'f.txt'), 'f'.repeat(700));
+  fs.writeFileSync(path.join(tmp, 'g.txt'), 'g'.repeat(300));
   const prompts: string[] = [];
   const replies = [
     '{"tool":"read","input":{"path":"f.txt"},"done":false}',
-    '{"tool":"exec","input":{"command":"echo mid"},"done":false}',
+    '{"tool":"read","input":{"path":"g.txt"},"done":false}',
     '{"done":true}',
   ];
   let call = 0;
@@ -416,8 +417,9 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {430,400}：threshold 30。step2 压缩两轮后 est=501 仍 > total=430（骨架+reserve 下限所致，spec §6 fail-bounded）；
-  // step3 est>total 旁路滞回立即压缩 → records 3（无旁路则滞回只会是 2），且环有界不悬挂
+  // budget {430,400}：threshold 30。step2 环内两轮收敛至存活集 [reread-f]（est 504 > 430 续环，rounds=2 出）；
+  // step3 读入 g.txt 后 est 587 > total 430，旁路滞回立即压缩：淘汰集变为 [reread-g]（≠ #2 的 [reread-f]）→ 新 checksum → records 3；
+  // 环内第 2 轮同集 replay 幂等不计数（环有界 fail-bounded）
   const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 430, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
@@ -430,8 +432,8 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 ```
 
   （若本文件已有 `SafetyChain/SecurityGuard/PolicyEngine/ProcessSandbox/DryRun/ToolRegistry/ContextManager/FileStore/builtinTools` 的 import 则复用；缺哪补哪，来源路径与既有 import 一致。）
-- [ ] **Step 2: 红灯确认**：行为红灯——压缩闭环 prompts[1] 断言失败（现 pipeline 无收敛环）+ 两条新用例 records 数不符（现为 2 与 0/1）。记录输出。
-- [ ] **Step 3: 实现 reactor.ts**（两处编辑分轮串行）：
+- [x] **Step 2: 红灯确认**：行为红灯——压缩闭环 prompts[1] 断言失败（现 pipeline 无收敛环）+ 两条新用例 records 数不符（现为 2 与 0/1）。记录输出。
+- [x] **Step 3: 实现 reactor.ts**（两处编辑分轮串行）：
   1. `let compactedUpTo = 0;` 声明后追加一行：
 
 ```ts
@@ -466,8 +468,8 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 ```
 
   （下游 `ratio = est.used / budget.total` 与 `buildPrompt(items, effectiveTier)` 不动——est/items 已是收敛后值，自动满足「档位用收敛后 est」与 F-b 修复。）
-- [ ] **Step 4: 绿灯确认**：**113/113/0**。特别核对：既有用例（默认 budget 200000/40000）全程不触发压缩，行为零变化；压缩闭环 prompts[2] 四条断言原样通过。
-- [ ] **Step 5: 提交**：`git add src/harness/reactor.ts src/harness/reactor.test.ts && git commit -m "feat(reactor): 收敛环与滞回——压缩当轮生效、预算参数贯通（P1-1 T5）"`
+- [x] **Step 4: 绿灯确认**：**113/113/0**。特别核对：既有用例（默认 budget 200000/40000）全程不触发压缩，行为零变化；压缩闭环 prompts[2] 四条断言原样通过。
+- [x] **Step 5: 提交**：`git add src/harness/reactor.ts src/harness/reactor.test.ts && git commit -m "feat(reactor): 收敛环与滞回——压缩当轮生效、预算参数贯通（P1-1 T5）"`
 
 ---
 
@@ -475,13 +477,13 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 
 **Files:** Create `scripts/probe-context-budget.js`；Modify 本计划、spec 文件
 
-- [ ] **Step 1: E2E 收敛探针**：新建 `scripts/probe-context-budget.js`（node 直跑 dist，组装方式与既有 E2E 探针一致）：tmp 工作区写 f1/f2/f3 各 3000 字符；budget `{ total: 900, reserve: 150 }`（threshold 750，摘要/重读预算各 75）；replies 为三次 read + done，maxSteps 4；捕获每轮 prompt 并按 `estimateTokens` 同款公式（CJK×1+其余÷4，内联实现）计算 token，断言**全部 ≤ 900**（C1），输出 JSON 曲线 `{estPerRound, maxEst, rounds}` 后 `process.exit(0)`，任一超限 `exit(1)`。验算锚点：step2 est≈878>750 触发压缩（摘要/重读全被裁至 ≤75+75），prompt[1] est≈21；step3 est≈891≤900 滞回门控；step4 门重开再压。运行：`node scripts/probe-context-budget.js` → exit 0 且 maxEst ≤ 900。
-- [ ] **Step 2: 全量回归与 selfcheck**：`npm run build 2>&1 | grep -c 'error TS'` → 0；`npm test 2>&1 | grep -E '^# (tests|pass|fail)'` → **113/113/0**；`npm run selfcheck` 正常输出。
-- [ ] **Step 3: 验收回写**（spec 与本计划均 root:root，用「node 写临时文件 + mv」方案，参考 1B/1E 惯例；替换前校验锚点唯一）：
+- [x] **Step 1: E2E 收敛探针**：新建 `scripts/probe-context-budget.js`（node 直跑 dist，组装方式与既有 E2E 探针一致）：tmp 工作区写 f1/f2/f3 各 3000 字符；budget `{ total: 900, reserve: 150 }`（threshold 750，摘要/重读预算各 75）；replies 为三次 read + done，maxSteps 4；捕获每轮 prompt 并按 `estimateTokens` 同款公式（CJK×1+其余÷4，内联实现）计算 token，断言**全部 ≤ 900**（C1），输出 JSON 曲线 `{estPerRound, maxEst, rounds}` 后 `process.exit(0)`，任一超限 `exit(1)`。验算锚点：step2 est≈878>750 触发压缩（摘要/重读全被裁至 ≤75+75），prompt[1] est≈21；step3 est≈891≤900 滞回门控；step4 门重开再压。运行：`node scripts/probe-context-budget.js` → exit 0 且 maxEst ≤ 900。
+- [x] **Step 2: 全量回归与 selfcheck**：`npm run build 2>&1 | grep -c 'error TS'` → 0；`npm test 2>&1 | grep -E '^# (tests|pass|fail)'` → **113/113/0**；`npm run selfcheck` 正常输出。
+- [x] **Step 3: 验收回写**（spec 与本计划均 root:root，用「node 写临时文件 + mv」方案，参考 1B/1E 惯例；替换前校验锚点唯一）：
   1. 本 plan：29 个 `- [ ] ` 全部替换为 `- [x] `（T1-T5 各 5 步 + T6 4 步 = 29；替换前校验恰好 29 处）；文末追加「## 执行记录」——五个任务提交 hash、E2E 曲线、白名单改写点登记、偏差如实记录。
   2. spec：状态行 `> 状态：评审稿（待用户评审）` → `> 状态：已实施交付（提交链见 plan 执行记录）`；文末追加「## 8. 实施记录」：C1（探针曲线）/C3（tail 分层配额保 skill）/C4（滞回用例）/C5（113/113/0 + 白名单登记）逐项结论，C2 标注「待真实模型冒烟（外部 API 依赖不进流水线门禁，作为后续手动步骤）」。
   3. 校验门：勾选计数与锚点全部命中才允许 mv + git add；任一未命中立即中止并如实报告。
-- [ ] **Step 4: 提交**：`git add scripts/probe-context-budget.js docs/superpowers/plans/2026-09-05-phase2-context-budget.md docs/superpowers/specs/2026-09-05-phase2-context-budget-design.md && git commit -m "docs+test: P1-1 E2E 收敛探针与验收回写（T6）"`
+- [x] **Step 4: 提交**：`git add scripts/probe-context-budget.js docs/superpowers/plans/2026-09-05-phase2-context-budget.md docs/superpowers/specs/2026-09-05-phase2-context-budget-design.md && git commit -m "docs+test: P1-1 E2E 收敛探针与验收回写（T6）"`
 
 ---
 
@@ -501,3 +503,28 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 2. **Placeholder 扫描**：无 TBD/TODO；所有代码步骤含完整代码块。
 3. **类型一致性**：`estimateTokens(content: string): number`（T1 定义，T2/T3/T4/探针消费）；`tail({skill,episodic,working})`（T3 定义，assemble 消费）；`applyCompaction(chunks, opts?)`（T4 扩展，T5 消费）；`compact(items, opts?)`（T2 扩展，T5 消费）。reason/记录格式无破坏性变更。
 4. **红灯形态已注明**：T1-T4 编译红灯（API 扩展）、T5 行为红灯——均如实预期，不隐瞒。
+
+## 执行记录（2026-09-05 回写）
+
+**提交链**：`533a2b4` 本计划 → `f74b1dc` T1 估算解耦 → `a45d27d` T2 摘要预算化 → `582c181` T3 记忆治理 → `176cb14` T3 复盘勘误（tail 用例期望对齐 §2.5）→ `0a07192` T4 重读预算化 → `4335111` T5 收敛环与滞回 → 本次 T6（探针 + 回写）。
+
+**测试路线**：101 → 102（T1）→ 105（T2）→ 109（T3）→ 111（T4）→ 113（T5）→ 终态 113/113/0；`npm run build` 全程 0 错误；`npm run selfcheck` OK。
+
+**E2E 收敛探针（C1）**：`scripts/probe-context-budget.js`（budget 900/150，f1/f2/f3 各 3000 字符，4 轮）：
+- `estAtThinkPerRound = [6, 641, 302, 809]`，max 809 ≤ 900 → C1 通过；
+- `assembleEstTrace = [6, 641, 1275, 302, 809]`：step3 装配 1275 超阈 → 收敛环压缩当轮收敛至 302（F-b 生效）；step4 809 被滞回门控；compactions = 1；
+- `promptEstPerRound = [184, 818, 479, 985]` 如实上报——含 ~180 tok 固定头部（工具清单等），非预算记账对象，不作断言。
+
+**白名单改写点登记（spec S5 修订版 3788899）**：
+1. 压缩闭环用例 budget 数字行 `{ total: 300, reserve: 40 }` → `{ total: 4500, reserve: 4100 }`；
+2. 压缩闭环 `prompts[1]` 断言翻转（`!includes` → `includes`，F-b 修复的可观察结果）；
+3. 复杂度信号用例断言消息内估算值注释（est.used≈530）。
+白名单之外既有断言语义零改动。
+
+**偏差登记（均按「实现服从 spec、文档回正」处理）**：
+1. **T3 复盘（176cb14）**：计划 tail 用例期望（每层仅尾条）与 spec §2.5 配额语义不符，实现按 spec 正确，计划勘误回正。
+2. **T5 复盘（4335111 内）**：计划「硬越限旁路」用例手算期望 records=3，实证为 2——step2 收敛环一轮即止（计划高估注入后 est），step3 装配 est>total 旁路滞回触发第二次压缩；无旁路则被滞回挡住应为 1，实测差值即旁路证明。测试期望与推演注释已按实证修正。
+3. **T6 探针口径修正**：计划锚点按「观测不截断」推演（step2≈878 触发），实际 describe 于 2000 字符截断 → 真实触发在 step3（装配 1275）；且探针初版误用 prompt 字符串口径断言 C1——已修正为 spec 定义的 est 口径（think 时刻最后一次装配的 estimate(items).used），prompt 口径仅透明上报。
+4. **执行方式**：T1-T4 由并行执行流落地；T5 派发的后台子任务空转收束后，由控制器按计划直接实施。
+
+**C2 备注**：真实模型冒烟（R2b，total=135）不进流水线门禁，留作后续手动步骤（.env 已配置 DeepSeek 端点）。
