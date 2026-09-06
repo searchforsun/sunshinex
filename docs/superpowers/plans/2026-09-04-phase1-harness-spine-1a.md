@@ -32,7 +32,7 @@
 - Produces: `MemoryLifecycle` —— `constructor(store: StorageAdapter)`；`index(): string[]`；`record(type: string, text: string): void`
 - 说明：`src/types.ts` 的 `MemoryLevel` 类型本计划**保留**（spec 子阶段 1E 的 working/episodic/skill 三级流转要使用），仅删除它的唯一旧使用者 `src/harness/memory.ts`。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/context/memory-lifecycle.test.ts`：
 
@@ -67,12 +67,12 @@ test('MemoryLifecycle 索引上限 200 行，淘汰最旧', () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `npm run build && node --test dist/harness/context/memory-lifecycle.test.js`
 Expected: FAIL —— `Cannot find module './memory-lifecycle'`
 
-- [ ] **Step 3: 写最小实现并删除死代码**
+- [x] **Step 3: 写最小实现并删除死代码**
 
 创建 `src/harness/context/memory-lifecycle.ts`：
 
@@ -131,12 +131,12 @@ export class ContextManager {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/harness/context/memory-lifecycle.test.js`
 Expected: PASS（2 tests）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add -A
@@ -158,7 +158,7 @@ git commit -m "refactor(harness): 统一记忆生命周期，删除内存 Map �
 - Produces: `ContextManager.assemble(goal: string, history?: ContextItem[], relPath?: string): ContextItem[]`
 - 顺序约定：loader 分层指令 → rules 路径规则 → memory 记忆索引 → goal 指令 → history 历史。`relPath` 缺省时跳过规则注入。
 
-- [ ] **Step 1: 写失败测试（assemble 串起四个来源）**
+- [x] **Step 1: 写失败测试（assemble 串起四个来源）**
 
 创建 `src/harness/context/assemble.test.ts`：
 
@@ -202,12 +202,12 @@ test('assemble 命中 relPath 时注入路径规则，否则跳过', () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `npm run build && node --test dist/harness/context/assemble.test.js`
 Expected: FAIL —— `cm.assemble is not a function`
 
-- [ ] **Step 3: 实现 assemble**
+- [x] **Step 3: 实现 assemble**
 
 修改 `src/harness/context/index.ts`，在 `ContextManager` 内新增方法（其余不变）：
 
@@ -229,12 +229,12 @@ assemble(goal: string, history: ContextItem[] = [], relPath?: string): ContextIt
 
 注意：import 区新增 `import { ContextItem } from '../../types';`（原文件未 import types）。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/harness/context/assemble.test.js`
 Expected: PASS（2 tests）
 
-- [ ] **Step 5: Reactor 改用 assemble（消除自拼 goal/steps）**
+- [x] **Step 5: Reactor 改用 assemble（消除自拼 goal/steps）**
 
 修改 `src/harness/reactor.ts`：
 
@@ -282,7 +282,7 @@ private toHistory(steps: StepRecord[]): ContextItem[] {
 }
 ```
 
-- [ ] **Step 6: 加 Reactor 回归测试（prompt 经 assemble 串起 SUNSHINE.md）**
+- [x] **Step 6: 加 Reactor 回归测试（prompt 经 assemble 串起 SUNSHINE.md）**
 
 在 `src/harness/reactor.test.ts` 末尾追加（沿用文件顶部已有的 import）：
 
@@ -307,12 +307,12 @@ test('Reactor prompt 经 Context.assemble 串起 SUNSHINE.md 指令', async () =
 });
 ```
 
-- [ ] **Step 7: 跑全量测试确认通过**
+- [x] **Step 7: 跑全量测试确认通过**
 
 Run: `npm test`
 Expected: PASS（全部测试，含新增 3 个）
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add -A
@@ -339,7 +339,7 @@ git commit -m "feat(harness): Context.assemble 统一上下文入口，Reactor �
 - Produces: `SafetyChain` —— `constructor(guard, sandbox, dryrun)`；`evaluate(tool: string, input: unknown): GuardDecision`；`run(cmd: string, opts?: { cwd?: string; timeoutMs?: number })`；`preview(cmd: string): string`
 - 说明：1A 的 SafetyChain 只组合「guard 守门 + sandbox 执行 + dryrun 预览」三个已有能力；credentials mask 与 root 越界校验属 1B，本任务不实现。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/security/chain.test.ts`：
 
@@ -375,12 +375,12 @@ test('SafetyChain.preview 透传 dryrun', () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `npm run build && node --test dist/harness/security/chain.test.js`
 Expected: FAIL —— `Cannot find module './chain'`
 
-- [ ] **Step 3: 实现 SafetyChain**
+- [x] **Step 3: 实现 SafetyChain**
 
 创建 `src/harness/security/chain.ts`：
 
@@ -413,12 +413,12 @@ export class SafetyChain {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/harness/security/chain.test.js`
 Expected: PASS（3 tests）
 
-- [ ] **Step 5: ToolRegistry.execute 只接收 safety 一个参数**
+- [x] **Step 5: ToolRegistry.execute 只接收 safety 一个参数**
 
 修改 `src/harness/tools.ts`：
 
@@ -445,7 +445,7 @@ async execute(name: string, input: ToolInput, safety: SafetyChain): Promise<Resu
 }
 ```
 
-- [ ] **Step 6: builtinTools 改收 SafetyChain，exec 经 safety.run**
+- [x] **Step 6: builtinTools 改收 SafetyChain，exec 经 safety.run**
 
 修改 `src/harness/tools/builtin.ts`：
 
@@ -471,7 +471,7 @@ async execute(name: string, input: ToolInput, safety: SafetyChain): Promise<Resu
 
 其余 read/write/grep/glob 的 executor 不变（它们仍经 `ToolRegistry.execute → safety.evaluate` 的 guard 守门）。
 
-- [ ] **Step 7: Harness 构造 SafetyChain 并接线**
+- [x] **Step 7: Harness 构造 SafetyChain 并接线**
 
 修改 `src/harness/index.ts`：
 
@@ -500,7 +500,7 @@ this.reactor = new Reactor({
 
 注意：`ReactorDeps` 里 `guard`/`sandbox` 两个字段合并为 `safety`（见 Step 8）。
 
-- [ ] **Step 8: Reactor 依赖改为 safety**
+- [x] **Step 8: Reactor 依赖改为 safety**
 
 修改 `src/harness/reactor.ts`：
 
@@ -525,7 +525,7 @@ export interface ReactorDeps {
 const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
 ```
 
-- [ ] **Step 9: 更新受影响测试**
+- [x] **Step 9: 更新受影响测试**
 
 `src/harness/reactor.test.ts`：4 个现有测试 + Step 6 新增的 1 个，构造处从「guard + sandbox」改为「safety」。在文件 import 区新增 `SafetyChain`、`DryRun`。为消除重复，新增 helper 并替换各测试的构造块：
 
@@ -570,12 +570,12 @@ function registryWith(root: string): { registry: ToolRegistry; safety: SafetyCha
 
 各测试体 `execute('read', {...}, guard, sandbox)` 改为 `execute('read', {...}, safety)`（解构 `{ registry, safety }`）。
 
-- [ ] **Step 10: 跑全量测试 + selfcheck**
+- [x] **Step 10: 跑全量测试 + selfcheck**
 
 Run: `npm test && npm run selfcheck`
 Expected: 全绿，selfcheck 打印骨架摘要正常。
 
-- [ ] **Step 11: 提交**
+- [x] **Step 11: 提交**
 
 ```bash
 git add -A
@@ -594,5 +594,13 @@ git commit -m "feat(harness): SafetyChain 统一安全链，工具执行只经 s
 - 1B-1E 明确不在本 plan（Global Constraints 已声明）✓
 
 **2. 占位符扫描：** 无 TBD/TODO；每个 Step 含实际代码与命令。
+
+---
+
+## 执行记录（2026-09-06 验收回写）
+
+**提交链**：`8b709c0` 本计划 → `f141544` T1 统一记忆生命周期（删内存 Map，AutoMemory→MemoryLifecycle）→ `571e299` T2 Context.assemble 统一上下文入口 → `0c46132` T3 SafetyChain 统一安全链（工具执行只经 safety 单入口）。
+
+**验收**：A1/A2/A3/A4 达成（A2 现状加固）；端到端验收由 1B 回写承接（B 系列用例含 1A 回归）；真实场景验证报告 R1/R5/R6 场景复核主链编排通过。
 
 **3. 类型一致性：** `MemoryLifecycle`（Task 1 产出）被 Task 2 的 `ContextManager` 引用；`assemble(goal, history?, relPath?)`（Task 2 产出）被 Task 2 的 Reactor 与 Task 3 未改动处引用；`SafetyChain.evaluate/run/preview`（Task 3 产出）被 tools/builtin/reactor 一致调用。`execute(name, input, safety)` 签名在 tools.ts 定义、reactor.ts 与三个测试文件统一更新。字段 `ReactorDeps.safety` 在 index.ts 与 reactor.test.ts 一致。

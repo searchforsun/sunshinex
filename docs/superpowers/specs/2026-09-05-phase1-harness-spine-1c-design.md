@@ -1,7 +1,7 @@
 # 1C 内嵌路由设计：算力档位收敛进 Loop 决策
 
 > 日期：2026-09-05
-> 状态：评审稿（随实施回写定稿）
+> 状态：已实施交付（2026-09-05 端到端验收通过：提交链 93fe719 → 9384497；A5 无游离路由经 grep 复核；R4 真实模型档位自报弱为已知边界，scripted 全绿）
 > 关联：docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md（统一主链总纲，本阶段对应验收 A5）、docs/superpowers/specs/2026-09-04-harness-spine-1b-depth-design.md（1B 补深度，本阶段档位信号消费其 estimate 产物）
 > 执行方式：subagent-driven 逐任务实施（沿用 1A/1B 流程）
 

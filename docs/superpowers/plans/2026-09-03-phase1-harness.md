@@ -31,7 +31,7 @@
   - `src/result.ts` 导出 `type Result<T>`、`function ok<T>(value: T): Result<T>`、`function fail<T>(code: string, message: string): Result<T>`
   - `src/types.ts` 新增 `ToolSpec` 扩展（带 `category`、`executor`）、`ExecResult`、`ToolInput`、`ContextItem`、`PermissionDecision` 等类型（后续任务按需引用）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/result.test.ts`：
 
@@ -56,12 +56,12 @@ test('fail() 返回 error 结果并携带 code/message', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/result.test.ts`
 Expected: FAIL —— 找不到模块 `./result`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/result.ts`：
 
@@ -79,12 +79,12 @@ export function fail<T>(code: string, message: string): Result<T> {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/result.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 扩展 types.ts 并提交**
+- [x] **Step 5: 扩展 types.ts 并提交**
 
 在 `src/types.ts` 末尾追加（不改动已有导出，避免破坏现有 index.ts）：
 
@@ -140,7 +140,7 @@ git commit -m "feat: 新增 Result 结果类型与全局类型扩展"
   - `interface StorageAdapter { read<T>(key: string, fallback: T): T; write<T>(key: string, value: T): void; }`
   - `class FileStore implements StorageAdapter { constructor(baseDir: string); read<T>(...): T; write<T>(...): void; }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/storage/adapter.test.ts`：
 
@@ -170,12 +170,12 @@ test('FileStore 未写入时返回 fallback', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/storage/adapter.test.ts`
 Expected: FAIL —— 找不到模块 `./adapter`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/storage/adapter.ts`：
 
@@ -209,12 +209,12 @@ export class FileStore implements StorageAdapter {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/storage/adapter.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 改造 store.ts 并提交**
+- [x] **Step 5: 改造 store.ts 并提交**
 
 将 `src/storage/store.ts` 的 `LocalStore` 改为 re-export `FileStore`（保持向后兼容别名）：
 
@@ -256,7 +256,7 @@ git commit -m "feat: 新增 StorageAdapter 接口与 FileStore 实现"
   - `interface Perceived { files: string[]; dependencies: string[]; project: ProjectContext | null; gitBranch: string | null; }`
   - `class PerceptionEngine { constructor(root: string); scan(): Perceived; }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/perception.test.ts`：
 
@@ -288,12 +288,12 @@ test('无 package.json 时 dependencies 为空数组（降级）', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/harness/perception.test.ts`
 Expected: FAIL —— 找不到模块 `./perception`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/harness/perception.ts`：
 
@@ -360,12 +360,12 @@ export class PerceptionEngine {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/harness/perception.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run build && node --test src/harness/perception.test.ts
@@ -388,7 +388,7 @@ git commit -m "feat: 项目感知引擎（目录扫描/依赖/SUNSHINE.md/Git）
   - `src/harness/security/rules.ts`：`function globMatch(pattern: string, s: string): boolean`、`function parseRule(rule: string): { tool: string; specifier: string | null }`
   - `src/harness/security/policy.ts`：`class PolicyEngine { add(decision: PermissionDecision, rule: string): void; decide(tool: string, specifier: string): PermissionDecision; }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/security/policy.test.ts`：
 
@@ -417,12 +417,12 @@ test('通配符匹配子命令', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/harness/security/policy.test.ts`
 Expected: FAIL —— 找不到模块 `./policy`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/harness/security/rules.ts`：
 
@@ -488,12 +488,12 @@ export class PolicyEngine {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/harness/security/policy.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run build && node --test src/harness/security/policy.test.ts
@@ -516,7 +516,7 @@ git commit -m "feat: 三态权限规则引擎（deny→ask→allow）"
   - `src/harness/security/modes.ts`：`type PermissionMode = 'manual' | 'plan' | 'dontAsk'`、`const READONLY_WHITELIST: string[]`
   - `src/harness/security/guard.ts`：`class SecurityGuard { constructor(policy?: PolicyEngine, mode?: PermissionMode); preToolUse(tool: string, input: unknown): { allowed: boolean; reason?: string }; }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/security/guard.test.ts`：
 
@@ -548,12 +548,12 @@ test('plan 模式下写工具被拒', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/harness/security/guard.test.ts`
 Expected: FAIL —— 找不到模块 `./guard`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/harness/security/modes.ts`：
 
@@ -622,12 +622,12 @@ export class SecurityGuard {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/harness/security/guard.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run build && node --test src/harness/security/guard.test.ts
@@ -651,7 +651,7 @@ git commit -m "feat: 权限模式与 SecurityGuard 决策点"
   - `class ProcessSandbox implements Sandbox`
   - `class DryRun { preview(cmd: string): string; }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/security/sandbox.test.ts`：
 
@@ -681,12 +681,12 @@ test('DryRun 预览返回原命令', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/harness/security/sandbox.test.ts`
 Expected: FAIL —— 找不到模块 `./sandbox`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/harness/security/sandbox.ts`：
 
@@ -732,12 +732,12 @@ export class DryRun {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/harness/security/sandbox.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run build && node --test src/harness/security/sandbox.test.ts
@@ -760,7 +760,7 @@ git commit -m "feat: ProcessSandbox 沙箱与 DryRun 预览"
   - `src/harness/tools.ts`：`interface RegisteredTool extends ToolSpec { category: ToolCategory; executor: ToolExecutor; }`、`class ToolRegistry { register(...); get(name): RegisteredTool | undefined; execute(name, input, guard, sandbox): Promise<Result<ExecResult>>; list(): RegisteredTool[]; }`
   - `src/harness/tools/builtin.ts`：`function builtinTools(sandbox: Sandbox): RegisteredTool[]`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/tools/tools.test.ts`：
 
@@ -801,12 +801,12 @@ test('未注册工具返回 TOOL_NOT_FOUND', async () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/harness/tools/tools.test.ts`
 Expected: FAIL —— 现有 tools.ts 无 execute 方法
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 修改 `src/harness/tools.ts`：
 
@@ -941,12 +941,12 @@ function findFiles(pattern: string): string[] {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/harness/tools/tools.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run build && node --test src/harness/tools/tools.test.ts
@@ -975,7 +975,7 @@ git commit -m "feat: 统一工具框架与内置工具集"
   - `window.ts`：`interface ContextBudget { total: number; used: number; reserve: number; }`、`interface ContextItemEstimate { id: string; weight: number; }`、`interface ContextChunk { id: string; summary: string; type: string; priority: number; }`、`class ContextWindow { estimate(items: ContextItem[]): { used: number; items: ContextItemEstimate[] }; shouldCompact(b: ContextBudget): boolean; compact(items: ContextItem[], opts?: { force?: boolean }): Promise<ContextChunk[]>; verifyChecksum(chunks: ContextChunk[]): boolean; reinject(): ContextItem[]; }`
   - `index.ts`：`class ContextManager { constructor(root: string, store: StorageAdapter); loader: ContextLoader; memory: AutoMemory; window: ContextWindow; }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/context/window.test.ts`：
 
@@ -1035,12 +1035,12 @@ test('compact 摘要可重现（相同输入产生相同 chunk id）', async () 
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/harness/context/window.test.ts`
 Expected: FAIL —— 找不到模块 `./window`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/harness/context/window.ts`：
 
@@ -1312,12 +1312,12 @@ export class ContextManager {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/harness/context/window.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run build && node --test src/harness/context/window.test.ts
@@ -1341,7 +1341,7 @@ git commit -m "feat: 上下文与记忆管理模块组（loader/auto-memory/wind
   - `class ScriptedAdapter implements ModelAdapter`（`constructor(steps: string[])`，`complete` 依次回放）
   - `StubAdapter`（保留）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/model/adapter.test.ts`：
 
@@ -1367,12 +1367,12 @@ test('OpenAIAdapter 无 key 时 complete 抛错', async () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/model/adapter.test.ts`
 Expected: FAIL —— `ScriptedAdapter` / `OpenAIAdapter` 未定义
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 在 `src/model/adapter.ts` 追加（保留 `StubAdapter` 与 `ModelRouter`）：
 
@@ -1424,12 +1424,12 @@ export class ScriptedAdapter implements ModelAdapter {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test src/model/adapter.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 npm run build && node --test src/model/adapter.test.ts
@@ -1458,7 +1458,7 @@ git commit -m "feat: OpenAI 兼容适配层与 ScriptedAdapter"
   - `interface Harness`（门面，聚合五大能力）
   - `class Harness { static create(opts: HarnessOptions): Harness; }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/harness/reactor.test.ts`：
 
@@ -1511,12 +1511,12 @@ test('Reactor 达到 maxSteps 强制终止', async () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test src/harness/reactor.test.ts`
 Expected: FAIL —— 找不到模块 `./reactor`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/harness/reactor.ts`：
 
@@ -1701,12 +1701,12 @@ function selfcheck(): void {
 
 > 注意：`node --test src/**/*.test.ts` 的 glob 由 shell 展开；若 shell 不支持，改用 `node --test`（自动发现 `*.test.ts` 需 Node 22+ 的 test runner glob 支持）。若两者都不生效，改用 `node --test src/` 显式目录。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `npm run build && node --test src/harness/reactor.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: 全量自检并提交**
+- [x] **Step 5: 全量自检并提交**
 
 ```bash
 npm run build && npm run test && npm run selfcheck
@@ -1726,7 +1726,7 @@ git commit -m "feat: 最小 Reactor、Harness 门面与 selfcheck 集成"
 - Consumes: `Harness`、`ScriptedAdapter`
 - Produces: 端到端验收测试
 
-- [ ] **Step 1: 写端到端测试**
+- [x] **Step 1: 写端到端测试**
 
 创建 `src/e2e.test.ts`：
 
@@ -1758,12 +1758,12 @@ test('端到端：感知 → Reactor → 工具执行 → 记忆记录', async (
 });
 ```
 
-- [ ] **Step 2: 运行测试确认通过**
+- [x] **Step 2: 运行测试确认通过**
 
 Run: `npm run build && node --test src/e2e.test.ts`
 Expected: PASS
 
-- [ ] **Step 3: 更新 ROADMAP 进度并提交**
+- [x] **Step 3: 更新 ROADMAP 进度并提交**
 
 在 `docs/ROADMAP.md` 阶段一任务清单中，将已实现项勾选（三级 KV 缓存、统一工具框架、项目深度感知引擎、沙箱、dry-run、模型适配层、记忆体系、最小 Reactor），未实现项（凭据 mask 完整实现、OS 级沙箱）保留未勾选。
 
@@ -1778,3 +1778,13 @@ git commit -m "test: 端到端验收测试与进度文档更新"
 ## 完成标准
 
 全部任务完成后，`npm run build`、`npm run test`、`npm run selfcheck` 三项必须零报错通过，满足 spec 第 6 章验收标准的 1/2/3/4/5/6 条。
+
+---
+
+## 执行记录（2026-09-06 验收回写）
+
+**实施方式**：总计划 11 个任务经后续多个子阶段计划分批实施——基础闭环（Task 1-11）按本计划直序落地（提交链 `7ab5584`→`1385fb4`→`1b2a918`→`ba725f6`→`9d983bd`→`74a9105`→`1079ec5`→`b44a5bc`→`fcdd043`→`72338ce`/`d33d696`→`c095dcc`），随后按统一主线路线拆分子阶段计划（1A-1E，见 specs/plans 对应文件）逐阶段深化并各自独立回写；真实场景验证（`421f5e0` 报告）暴露的 P0-1 symlink 逃逸与破坏性命令底线由安全收尾补丁计划修复回写，P1 压缩预算失守由 Phase 2 压缩预算闭环计划（P1-1）修复回写。
+
+**验收对照（spec §6 第 1-7 条）**：1-3 build/test/selfcheck 零报错（终验 113/113/0）；4 危险命令拦截（安全收尾 T2 + R3 场景）；5 上下文窗口（1B 补深度 + P1-1 预算化）；6 最小闭环（真实模型双轮探针 R1b/R2b）；7 压缩稳定性（P1-1 六任务 + C2 真实模型冒烟）。
+
+**状态**：本计划全部 53 项勾选完成，Phase 1 底座进入阶段二（统一运行时主链与后续深化均已实施交付）。
