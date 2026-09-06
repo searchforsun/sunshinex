@@ -1,15 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ContextWindow } from './window';
+import { ContextWindow, estimateTokens } from './window';
 import { ContextItem } from '../../types';
 
-test('estimate 按 kind 加权估算 token', () => {
+test('estimate 按真实 token 近似：CJK×1 + 其余÷4', () => {
   const w = new ContextWindow();
+  assert.equal(estimateTokens('abcd'), 1); // ceil(4/4)
+  assert.equal(estimateTokens('你好'), 2); // CJK 逐字
+  assert.equal(estimateTokens('ab你好'), 3); // 2 + ceil(2/4)
+  assert.equal(estimateTokens(''), 0);
   const est = w.estimate([{ kind: 'instruction', content: 'abcd' }]);
-  assert.equal(est.used, 2); // ceil(4 字符 × 1.2 / 4) = ceil(1.2) = 2
+  assert.equal(est.used, 1, '无 kind 权重：4 ASCII → 1');
   assert.equal(est.items.length, 1);
-  assert.equal(est.items[0].weight, 1.2);
   assert.ok(est.items[0].id.length > 0);
+});
+
+test('estimate 无 kind 权重：同内容异 kind 同值', () => {
+  const w = new ContextWindow();
+  const a = w.estimate([{ kind: 'history', content: '同长内容' }]);
+  const b = w.estimate([{ kind: 'system', content: '同长内容' }]);
+  assert.equal(a.used, b.used);
 });
 
 test('estimate 返回逐项 chunk id（可重现）', () => {

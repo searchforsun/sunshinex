@@ -4,6 +4,12 @@ import { ContextItem } from '../../types';
 /** checksum 校验三态结论：first=首次注册基线；replay=幂等重放；new=检测到新一轮压缩 */
 export type ChecksumVerdict = 'first' | 'replay' | 'new';
 
+/** 真实 token 近似：CJK（中文/全角区）×1 + 其余 ÷4（spec §2.1，零依赖近似口径） */
+export function estimateTokens(content: string): number {
+  const cjk = (content.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g) ?? []).length;
+  return cjk + Math.ceil((content.length - cjk) / 4);
+}
+
 export interface ContextBudget {
   total: number;
   used: number;
@@ -12,7 +18,6 @@ export interface ContextBudget {
 
 export interface ContextItemEstimate {
   id: string;
-  weight: number;
 }
 
 export interface ContextChunk {
@@ -22,7 +27,8 @@ export interface ContextChunk {
   priority: number;
 }
 
-const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
+/** 权重表：estimate 已退役权重语义，现供 compact 丢弃序使用（T2 起消费） */
+export const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
   system: 1.0,
   instruction: 1.2,
   memory: 0.8,
@@ -35,14 +41,13 @@ const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
 export class ContextWindow {
   private lastChecksum: string | null = null;
 
-  /** 加权估算：used = Σ ceil(content.length * weight / 4)；逐项返回 chunk id */
+  /** 估算：used = Σ estimateTokens(content)（真实 token 近似，无 kind 权重；权重语义退役为 compact 丢弃优先级） */
   estimate(items: ContextItem[]): { used: number; items: ContextItemEstimate[] } {
     const out: ContextItemEstimate[] = [];
     let used = 0;
     for (const it of items) {
-      const weight = KIND_WEIGHT[it.kind] ?? 0.5;
-      used += Math.ceil((it.content.length * weight) / 4);
-      out.push({ id: this.chunkId(it.content), weight });
+      used += estimateTokens(it.content);
+      out.push({ id: this.chunkId(it.content) });
     }
     return { used, items: out };
   }
