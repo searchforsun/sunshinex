@@ -73,13 +73,13 @@ flowchart TB
 
 **目标**：实现 DAG 工作流编排、多角色 Agent 协作、全链路流水线。
 
-- [ ] DAG 工作流核心引擎：节点调度、依赖解析、并发控制
-- [ ] 四种流程模式：串行、并行、分支、汇合
-- [ ] 多角色子 Agent：规划师、开发者、测试工程师、审查员
-- [ ] 软件工程全链路流水线模板
-- [ ] CI/CD 集成节点
-- [ ] 人工审批节点与错误局部化
-- [ ] 工作流模板体系
+- [x] DAG 工作流核心引擎：节点调度、依赖解析、并发控制
+- [x] 四种流程模式：串行、并行、分支、汇合
+- [x] 多角色子 Agent：规划师、开发者、测试工程师、审查员
+- [x] 软件工程全链路流水线模板
+- [x] CI/CD 集成节点
+- [x] 人工审批节点与错误局部化
+- [x] 工作流模板体系
 
 **交付物**：Graph 编排引擎、多角色协作、全链路流水线模板。
 **验收**：DAG 环检测生效，多角色协作流水线可编排执行，Loop 子流程可嵌入 Graph 节点。
@@ -157,7 +157,7 @@ flowchart TB
 |---------|---------|---------|
 | `src/agent/harness/` | 已建 `src/harness/`（skills/memory/tools） | 阶段一 |
 | `src/agent/loop/` | 已建 `src/loop/`（engine + 四类节点 + 三模板，实装） | 阶段二 ✓ |
-| `src/agent/graph/` | 已建 `src/graph/`（engine/agents）占位 | 阶段三 |
+| `src/agent/graph/` | 已实装 engine/nodes/agents/workflow/templates（五节点链 + WorkflowDef 装配） | 阶段三 |
 | `src/model/` | 已建 adapter + 三档路由占位 | 阶段一 |
 | `src/storage/` | 已建 store.ts 占位 | 阶段一 |
 | `src/plugins/` | 已建 loader.ts | 阶段四 |

@@ -1,7 +1,7 @@
 # 阶段三设计：Graph 编排层与多角色协作
 
 > 日期：2026-09-06
-> 状态：评审稿（供用户评审，确认后转入 writing-plans）
+> 状态：已实施交付（实施链 f905fa5 → 3f4188a → 247e5b2 → a0cdfa2；终态门禁 build 0 / 149-149-0 / selfcheck 0）
 > 上游：`docs/Arch-Plan.md` §2.1.2/§3.3/§4.1/第三阶段、`docs/ROADMAP.md` 阶段三、统一运行时主链（零旁路）、Loop Engine（阶段二交付）
 > 基线：HEAD `acb5095`，全量 129/129/0，`src/graph/` 为占位（topo 环检测可复用，其余待实装）
 
