@@ -114,6 +114,21 @@ export interface GraphTermination {
 /** Graph 节点依赖容器（结构复用 LoopDeps 五件套，模型/工具/上下文同源零旁路） */
 export type GraphDeps = import('./loop/engine').LoopDeps;
 
+/** 工作流节点定义（数据形态；经 validateWorkflow 校验、instantiateWorkflow 装配执行） */
+export interface GraphNodeDef {
+  id: string;
+  kind: GraphNodeKind;
+  deps: string[];
+  config: Record<string, unknown>;
+}
+
+/** 工作流定义：零依赖数据契约（TS 类型 + 手写校验器等义 JSON Schema 语义，spec §3.6） */
+export interface WorkflowDef {
+  name: string;
+  nodes: GraphNodeDef[];
+  termination: GraphTermination;
+}
+
 /** 三档算力档位（模型路由） */
 export type ModelTier = 'small' | 'medium' | 'large';
 
