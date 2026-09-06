@@ -92,7 +92,7 @@ async compact(items: ContextItem[], opts?: { force?: boolean; summaryTokenBudget
 ```
 
 - 生成 chunks（chunkByMarkdown → mergeChunks → priority>0）后，若 `Σ estimateTokens(c.summary) > summaryTokenBudget`：
-  1. **丢弃序**：`priority` 升序 → kind 权重升序（history 0.5 → result 0.6 → tool 0.7 → memory 0.8 → instruction 1.2 → system 1.0 中取权重序）→ 位置最旧先丢；**白名单 kind = system / instruction 不可丢**。
+  1. **丢弃序**：`priority` 升序 → kind 权重升序（history 0.5 → result 0.6 → tool 0.7 → memory 0.8 → system 1.0 → instruction 1.2）→ 位置最旧先丢；**白名单 kind = system / instruction 不可丢**。
   2. 丢尽可丢块仍超限 → 逐块确定性截断 summary（按预算比例均匀截断，长度确定性计算——保 checksum 确定性）。
 - 未传 `summaryTokenBudget` 时保持现行为（既有调用/测试兼容）。
 - 每 chunk 的 2000 字符单块截断保留；总量由 budget 约束。
@@ -103,7 +103,7 @@ async compact(items: ContextItem[], opts?: { force?: boolean; summaryTokenBudget
 async applyCompaction(chunks: ContextChunk[], opts?: { rereadTokenBudget?: number }): Promise<void>
 ```
 
-- 注入块装配（摘要 + 重读条目）后，若 `Σ estimateTokens(注入块) > rereadTokenBudget`：按 LRU 最旧先丢**整文件**重读条目，直至预算内。
+- 预算作用域：`rereadTokenBudget` **仅管辖重读条目**（摘要部分由 `summaryTokenBudget` 管辖，各占 reserve/2——见 §2.2）。重读条目装配后，若 `Σ estimateTokens(重读条目) > rereadTokenBudget`：按 LRU 最旧先丢**整文件**重读条目，直至预算内。
 - 单文件仍截 `REREAD_MAX_LINES = 500` 行；`maskText` 脱敏（B3）保持；压缩事件记忆条目格式不变。
 - 未传参数保持现行为（兼容既有测试）。
 
@@ -153,6 +153,7 @@ flowchart TD
 | `src/harness/context/window.test.ts` | 估算新口径精确断言；摘要预算化（丢弃序/确定性） |
 | `src/harness/context/compaction.test.ts` | 重读预算化用例 |
 | `src/harness/context/memory-lifecycle.test.ts` | record 限长；tail 分层配额 |
+| `src/harness/context/assemble.test.ts` | assemble 注入切换为分层配额 tail（旧记忆由摘要代表） |
 | `src/harness/reactor.test.ts` | 收敛环（注入后仍超 → 二轮收敛）；滞回；水位线语义保持 |
 | 1C/1B 既有断言 | **数字重校白名单**：档位 ratio 与预算数字按新口径适配（仅数字行），断言语义零改动 |
 
