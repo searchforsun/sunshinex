@@ -492,7 +492,7 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 | 编号 | 判据 | 对应用例/步骤 |
 |---|---|---|
 | C1 收敛性 | E2E 探针全轮次 est ≤ total（budget 900/150） | Task 6 Step 1 |
-| C2 语义保持 | R2b 真实场景结论正确（total=135） | 真实模型冒烟（后续手动步骤，执行记录登记） |
+| C2 语义保持 | R2b 真实场景结论正确（total=135） | 已通过（真实模型冒烟，见执行记录 C2 备注） |
 | C3 价值保持 | tail 分层配额用例（skill 保配额）；compaction 记录格式不变 | Task 3 Step 1 |
 | C4 滞回 | 收敛环用例 records===1（次新步被门控） | Task 5 Step 1 |
 | C5 零回归 | 113/113/0 + tsc strict 零报错；白名单外断言零改动 | 各任务绿灯门 |
@@ -527,4 +527,4 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 3. **T6 探针口径修正**：计划锚点按「观测不截断」推演（step2≈878 触发），实际 describe 于 2000 字符截断 → 真实触发在 step3（装配 1275）；且探针初版误用 prompt 字符串口径断言 C1——已修正为 spec 定义的 est 口径（think 时刻最后一次装配的 estimate(items).used），prompt 口径仅透明上报。
 4. **执行方式**：T1-T4 由并行执行流落地；T5 派发的后台子任务空转收束后，由控制器按计划直接实施。
 
-**C2 备注**：真实模型冒烟（R2b，total=135）不进流水线门禁，留作后续手动步骤（.env 已配置 DeepSeek 端点）。
+**C2 备注**：真实模型冒烟已执行通过（scripts/probe-r2b-smoke.js，DeepSeek 真实端点，手动执行不进门禁）：budget {135,45} 下模型 8 轮自主收敛，done=true 且正确答复口令 7391（C2 语义保持）；compact 调用 12 次，checksum 幂等去重后 records=1，每轮 prompt 摘要块 ≤1（幂等不回归）；est 全程有界（max 395）。total=135 档在大观测后处于 fail-bounded 区（mem 尾注回灌所致，spec §6 有界退出），严格 C1≤total 由 900/150 档 E2E 探针承载。
