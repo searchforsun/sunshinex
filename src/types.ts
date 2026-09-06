@@ -89,6 +89,8 @@ export interface GraphContext {
   tokensUsed: number;
   startedAt: number;
   results: Record<string, GraphNodeOutput>;
+  /** 当前生效终止参数（引擎注入；resume 调预算后同步）——节点预算换算的依据 */
+  termination: GraphTermination;
 }
 
 /** Graph 运行结果（results 为数据流观测面，随结果返回） */

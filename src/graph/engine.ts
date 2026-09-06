@@ -87,7 +87,7 @@ export class GraphEngine {
 
   async run(goal: string, opts: { dryRun?: boolean; state?: Record<string, unknown> } = {}): Promise<GraphRunResult> {
     if (!this.ctx) {
-      this.ctx = { state: { goal, ...(opts.state ?? {}) }, tokensUsed: 0, startedAt: Date.now(), results: {} };
+      this.ctx = { state: { goal, ...(opts.state ?? {}) }, tokensUsed: 0, startedAt: Date.now(), results: {}, termination: this.term };
       this.completed.clear();
       this.steps = 0;
     } else if (opts.state) {
@@ -109,7 +109,10 @@ export class GraphEngine {
         ...approvals,
       };
     }
-    if (opts.budget) this.term = { ...this.term, ...opts.budget };
+    if (opts.budget) {
+      this.term = { ...this.term, ...opts.budget };
+      if (this.ctx) this.ctx.termination = this.term;
+    }
     return this.walk(this.layers());
   }
 
