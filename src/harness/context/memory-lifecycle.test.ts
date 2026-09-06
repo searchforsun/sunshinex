@@ -81,3 +81,41 @@ test('legacy 单桶索引自动迁移：按前缀路由，legacy 键清空且幂
   const m2 = new MemoryLifecycle(store);
   assert.deepEqual(m2.counts(), { working: 1, episodic: 1, skill: 0 });
 });
+
+test('record 入口限长：超 500 字符截断', () => {
+  const m = new MemoryLifecycle(new FileStore(tmpdir()));
+  m.record('project', 'X'.repeat(800));
+  assert.deepEqual(m.index(), [`project: ${'X'.repeat(500)}`]);
+});
+
+test('tail 分层配额：层内取尾、层间按价值梯度拼接（skill→episodic→working）', () => {
+  const m = new MemoryLifecycle(new FileStore(tmpdir()));
+  m.record('compaction', '沉淀事实');
+  m.promote('沉淀事实'); // → skill 层
+  m.record('compaction', 'E1');
+  m.record('compaction', 'E2'); // episodic 尾部 E2
+  m.record('project', 'W1');
+  m.record('project', 'W2');
+  m.record('project', 'W3'); // working 尾部 W3
+  const t = m.tail({ skill: 600, episodic: 700, working: 700 });
+  // 简报笔误修正：此用例用的是生产配额（600/700/700），条目合计均远低于配额，软上限语义下应全量按
+  // skill→episodic→working 梯度返回 6 条；「每层只留尾条」只在配额收紧时发生（见下一条软上限用例与锚点 313×3）。
+  assert.deepEqual(t, [
+    'compaction: 沉淀事实',
+    'compaction: E1',
+    'compaction: E2',
+    'project: W1',
+    'project: W2',
+    'project: W3',
+  ]);
+  assert.equal(m.index().length, 6, 'index() 全量语义不受影响');
+});
+
+test('tail 配额为软上限：整条纳入，最新一条永不因配额丢弃', () => {
+  const m = new MemoryLifecycle(new FileStore(tmpdir()));
+  for (let i = 1; i <= 5; i++) m.record('project', `W${i}: ${'x'.repeat(300)}`);
+  const t = m.tail({ skill: 0, episodic: 0, working: 700 });
+  assert.equal(t.length, 3, '每条 313 字符：取尾 2 条后 618 < 700，第 3 条纳入后越限即停（软上限）');
+  assert.ok(t[0].startsWith('project: W3:'));
+  assert.ok(t[2].startsWith('project: W5:'));
+});

@@ -35,3 +35,14 @@ test('assemble 命中 relPath 时注入路径规则，否则跳过', () => {
   assert.ok(hit.some((i) => i.content.includes('本规则仅 src 生效')));
   assert.ok(!miss.some((i) => i.content.includes('本规则仅 src 生效')));
 });
+
+test('assemble 记忆注入走分层配额 tail：超量旧记忆由压缩摘要代表而非全量叠加', () => {
+  const { cm } = setup();
+  for (let i = 1; i <= 30; i++) cm.memory.record('project', `W${i}: ${'x'.repeat(80)}`);
+  const items = cm.assemble('完成任务');
+  const mem = items.find((i) => i.kind === 'memory');
+  assert.ok(mem, '应有记忆条目');
+  assert.ok(mem.content.includes('W30'), '最新记忆保留');
+  assert.ok(!mem.content.includes('W1:'), '配额外最旧记忆不再注入');
+  assert.ok(!mem.content.includes('W15:'), '配额窗口外记忆不再注入');
+});

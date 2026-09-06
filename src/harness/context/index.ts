@@ -11,6 +11,7 @@ import { maskText } from '../security/chain';
 
 const RECENT_LIMIT = 5;
 const REREAD_MAX_LINES = 500;
+const MEMORY_INJECT_BUDGET = { skill: 600, episodic: 700, working: 700 }; // spec §2.5 常数表：分层配额注入（合计 2000 字符）
 
 /** 上下文与记忆管理门面 */
 export class ContextManager {
@@ -68,7 +69,7 @@ export class ContextManager {
     const items: ContextItem[] = [];
     items.push(...this.loader.load());
     if (relPath) items.push(...this.rules.forPath(relPath));
-    const mem = this.memory.index();
+    const mem = this.memory.tail(MEMORY_INJECT_BUDGET);
     if (mem.length > 0) items.push({ kind: 'memory', content: mem.join('\n') });
     items.push({ kind: 'instruction', content: goal });
     items.push(...this.compacted);

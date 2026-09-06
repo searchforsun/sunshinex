@@ -10,6 +10,7 @@ const TIER_KEY: Record<MemoryTier, string> = {
 };
 const LEGACY_KEY = 'memory.index';
 const CAP: Record<MemoryTier, number> = { working: 200, episodic: 200, skill: 50 };
+const MEMORY_RECORD_MAX_CHARS = 500; // spec §2.5：record 入口单条限长
 
 /** 统一记忆生命周期：working→episodic→skill 三级流转（A4 唯一记忆面，memory.* 键仅此类读写） */
 export class MemoryLifecycle {
@@ -28,7 +29,7 @@ export class MemoryLifecycle {
   record(type: string, text: string): void {
     const t: MemoryTier = type === 'project' ? 'working' : 'episodic';
     const items = this.tier(t);
-    items.push(`${type}: ${text}`);
+    items.push(`${type}: ${text.slice(0, MEMORY_RECORD_MAX_CHARS)}`);
     if (items.length > CAP[t]) items.shift();
     this.save(t, items);
   }
@@ -36,6 +37,21 @@ export class MemoryLifecycle {
   /** 聚合视图：skill → episodic → working（注入顺序 = 价值梯度） */
   index(): string[] {
     return [...this.tier('skill'), ...this.tier('episodic'), ...this.tier('working')];
+  }
+
+  /** 分层配额注入视图（spec §2.5）：各层内取尾（最新优先，软上限——整条纳入，最新一条永不因配额丢弃），层间按价值梯度拼接 skill→episodic→working */
+  tail(maxChars: { skill: number; episodic: number; working: number }): string[] {
+    const take = (t: MemoryTier): string[] => {
+      const items = this.tier(t);
+      const out: string[] = [];
+      let used = 0;
+      for (let i = items.length - 1; i >= 0 && used < maxChars[t]; i--) {
+        out.unshift(items[i]);
+        used += items[i].length;
+      }
+      return out;
+    };
+    return [...take('skill'), ...take('episodic'), ...take('working')];
   }
 
   /** episodic → skill 显式沉淀：按子串匹配第一条命中条目，原样移入 skill 层（上限 50 FIFO） */
