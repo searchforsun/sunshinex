@@ -310,3 +310,35 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
     'step3 硬越限旁路触发第三次压缩',
   );
 });
+
+test('ScriptedAdapter 全程 → tokensUsed 字段存在且为 0', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-p2-t1-scripted-'));
+  const adapter = new ScriptedAdapter([
+    '{"tool":"exec","input":{"command":"echo a"},"done":false}',
+    '{"done":true}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'g' });
+  assert.equal(r.done, true);
+  assert.ok('tokensUsed' in r, 'tokensUsed 字段应存在（接线证明）');
+  assert.equal(r.tokensUsed, 0, 'scripted 无真实用量，回传 0，全程聚合应为 0');
+});
+
+test('FakeAdapter 上报非零 usage → tokensUsed 聚合累加（5+7=12）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-p2-t1-usage-'));
+  const usages = [5, 7];
+  let call = 0;
+  const adapter = {
+    provider: 'usage-fake',
+    complete: async (p: string, hooks?: { onUsage?: (tokens: number) => void }) => {
+      hooks?.onUsage?.(usages[call++] ?? 0);
+      return call <= 2 ? '{"tool":"exec","input":{"command":"echo x"},"done":false}' : '{"done":true}';
+    },
+  };
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  assert.equal(r.tokensUsed, 12, '两轮 usage 5 与 7 应聚合为 12');
+});

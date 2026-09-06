@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'http';
-import { ScriptedAdapter, StubAdapter, OpenAIAdapter } from './adapter';
+import { ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage } from './adapter';
 import { ModelRouter } from './adapter';
 import { ModelTier } from '../types';
 
@@ -56,4 +56,14 @@ test('boundTiers 返回显式绑定快照（不含默认）', () => {
 test('ModelTier 自 types 登记且 adapter 侧可用', () => {
   const tiers: ModelTier[] = ['small', 'medium', 'large'];
   assert.equal(tiers.length, 3);
+});
+
+test('extractUsage 有 usage → 返回 total_tokens', () => {
+  assert.equal(extractUsage({ usage: { total_tokens: 42 } }), 42);
+});
+
+test('extractUsage 无 usage/非数字 → 返回 0', () => {
+  assert.equal(extractUsage({}), 0);
+  assert.equal(extractUsage({ usage: { total_tokens: 'abc' } }), 0);
+  assert.equal(extractUsage(null), 0);
 });

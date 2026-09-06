@@ -2,15 +2,27 @@
 import { ModelTier } from '../types';
 
 export type { ModelTier };
+/** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
+export interface UsageHooks {
+  onUsage?: (tokens: number) => void;
+}
+
 export interface ModelAdapter {
   readonly provider: string;
-  complete(prompt: string): Promise<string>;
+  complete(prompt: string, hooks?: UsageHooks): Promise<string>;
+}
+
+/** 从 OpenAI 兼容响应 JSON 解析 usage.total_tokens；缺失/非数字回 0（无占位计数） */
+export function extractUsage(data: unknown): number {
+  const tokens = (data as { usage?: { total_tokens?: unknown } } | null)?.usage?.total_tokens;
+  return typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : 0;
 }
 
 /** 占位适配器：不实际调用云端，返回标记文本 */
 export class StubAdapter implements ModelAdapter {
   readonly provider = 'stub';
-  async complete(prompt: string): Promise<string> {
+  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+    hooks?.onUsage?.(0); // 占位适配器无真实用量
     return `[stub reply] ${prompt}`;
   }
 }
@@ -38,7 +50,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.timeoutMs = cfg.timeoutMs ?? 60_000;
   }
 
-  async complete(prompt: string): Promise<string> {
+  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
     if (!this.apiKey) throw new Error('OPENAI_API_KEY 未配置');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
@@ -51,6 +63,7 @@ export class OpenAIAdapter implements ModelAdapter {
       });
       if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
       const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      hooks?.onUsage?.(extractUsage(data));
       return data.choices?.[0]?.message?.content ?? '';
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') throw new Error('模型调用超时');
@@ -67,7 +80,8 @@ export class ScriptedAdapter implements ModelAdapter {
   private i = 0;
   constructor(private steps: string[]) {}
 
-  async complete(_prompt: string): Promise<string> {
+  async complete(_prompt: string, hooks?: UsageHooks): Promise<string> {
+    hooks?.onUsage?.(0); // 脚本化回放无真实用量
     const s = this.steps[this.i];
     this.i = Math.min(this.i + 1, this.steps.length - 1);
     return s ?? '{"done":true}';

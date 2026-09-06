@@ -7,7 +7,7 @@ import { ContextManager } from './context';
 
 export interface Task { goal: string; }
 export interface StepRecord { step: number; action?: string; observation: string; tier?: ModelTier; }
-export interface RunResult { steps: StepRecord[]; done: boolean; reply?: string; }
+export interface RunResult { steps: StepRecord[]; done: boolean; reply?: string; tokensUsed?: number; }
 
 export interface ReactorDeps {
   registry: ToolRegistry;
@@ -37,6 +37,7 @@ export class Reactor {
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
     let done = false;
     let reply: string | undefined;
+    let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
 
     for (let step = 1; step <= maxSteps; step++) {
       // observe: 装配 → 估算 → 滞回门 → 收敛环（spec §2.2：压缩当轮即以收敛后上下文组装）
@@ -69,9 +70,10 @@ export class Reactor {
       prefTier = undefined; // 一次性消费
 
       // think: 经 ModelAdapter 决策（带动作协议 prompt）
+      const prompt = this.buildPrompt(items, effectiveTier);
       let raw: string;
       try {
-        raw = await router.resolve(effectiveTier).complete(this.buildPrompt(items, effectiveTier));
+        raw = await router.resolve(effectiveTier).complete(prompt, { onUsage: (t) => { tokensUsed += t; } });
       } catch (e) {
         reply = e instanceof Error ? e.message : '模型调用失败';
         break;
@@ -113,7 +115,7 @@ export class Reactor {
 
     // 任务收尾：清退 working 层（done 与 maxSteps 耗尽共用此出口）
     this.deps.context.memory.endTask();
-    return { steps, done, reply };
+    return { steps, done, reply, tokensUsed };
   }
 
   private buildPrompt(items: ContextItem[], tier: ModelTier): string {
