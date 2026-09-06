@@ -5,7 +5,7 @@ import { ContextItem } from '../../types';
 import { ContextLoader } from './loader';
 import { RulesRegistry } from './rules';
 import { MemoryLifecycle } from './memory-lifecycle';
-import { ContextWindow, ContextChunk } from './window';
+import { ContextWindow, ContextChunk, estimateTokens } from './window';
 import { SessionStore } from './session';
 import { maskText } from '../security/chain';
 
@@ -47,7 +47,7 @@ export class ContextManager {
   }
 
   /** 压缩重注入：checksum 门禁 → 摘要 + 重读最近文件 → 注入块（生效于后续轮次 assemble） */
-  async applyCompaction(chunks: ContextChunk[]): Promise<void> {
+  async applyCompaction(chunks: ContextChunk[], opts?: { rereadTokenBudget?: number }): Promise<void> {
     if (this.window.verifyChecksum(chunks) === 'replay') return; // 同一压缩事件幂等重放
     const items: ContextItem[] = [...this.window.reinject(chunks)];
     for (const rel of this.recent) {
@@ -59,6 +59,15 @@ export class ContextManager {
       } catch {
         // 文件已删除或不可读：跳过该文件
       }
+    }
+    // 重读预算化（spec §2.4）：预算仅管辖重读条目；登记顺序即最旧在前，队首（最旧）整文件先丢
+    const budget = opts?.rereadTokenBudget;
+    if (budget !== undefined) {
+      const tokens = (cs: ContextItem[]) => cs.reduce((s, i) => s + estimateTokens(i.content), 0);
+      const rereads = items.slice(1);
+      while (rereads.length > 0 && tokens(rereads) > budget) rereads.shift();
+      items.length = 1;
+      items.push(...rereads);
     }
     this.compacted = items;
     this.memory.record('compaction', `摘要 checksum=${this.window.checksum() ?? 'unknown'}，重读 ${items.length - 1} 个文件`);
