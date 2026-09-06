@@ -38,80 +38,80 @@ docs/…                          # T6：spec 状态定稿 + 本计划勾选/执
 - `reactor.ts:74`：`raw = await router.resolve(effectiveTier).complete(this.buildPrompt(items, effectiveTier));`
 - `reactor.ts:116`：`return { steps, done, reply };`
 
-- [ ] **Step 1: 写失败测试**（adapter.test +2、reactor.test +2）
+- [x] **Step 1: 写失败测试**（adapter.test +2、reactor.test +2）
   - adapter.test：`extractUsage` 纯函数——输入 `{usage:{total_tokens: 42}}` 返回 42；输入 `{}` 返回 0；
   - adapter.test：StubAdapter/ScriptedAdapter 的 `complete(p, {onUsage})` 回调收到 0；
   - reactor.test：非零聚合——构造 FakeAdapter（complete 经 `hooks.onUsage(5)` 上报）驱动 Reactor 一轮 done，断言 `r.tokensUsed === 5`；
   - reactor.test：ScriptedAdapter 全程 → `r.tokensUsed === 0` 且字段存在（接线证明）。
-- [ ] **Step 2: 红灯**：`npm run build` 零错 + `npm test` 新用例失败（接口不存在）。
-- [ ] **Step 3: 实现**
+- [x] **Step 2: 红灯**：`npm run build` 零错 + `npm test` 新用例失败（接口不存在）。
+- [x] **Step 3: 实现**
   - adapter.ts：接口加可选 `hooks` 参数；新增 `export function extractUsage(data: unknown): number`（读 `usage.total_tokens`，非正整数回 0）；OpenAIAdapter 在 `resp.json()` 后解析并 `hooks?.onUsage?.(n)`；Stub/Scripted 回调 0；
   - reactor.ts：`RunResult` 增 `tokensUsed?: number`；run 内 `let used = 0`，`:74` 调用点传 `hooks: { onUsage: (t) => { used += t; } }`；返回 `{ steps, done, reply, tokensUsed: used }`。
-- [ ] **Step 4: 绿灯**：build 0 错 + **117/117/0**。
-- [ ] **Step 5: 提交**：`git add src/model/adapter.ts src/model/adapter.test.ts src/harness/reactor.ts src/harness/reactor.test.ts && git commit -m "feat(loop): token 计量贯通——adapter usage 回传与 Reactor tokensUsed 透出（P2 T1）"`
+- [x] **Step 4: 绿灯**：build 0 错 + **117/117/0**。
+- [x] **Step 5: 提交**：`git add src/model/adapter.ts src/model/adapter.test.ts src/harness/reactor.ts src/harness/reactor.test.ts && git commit -m "feat(loop): token 计量贯通——adapter usage 回传与 Reactor tokensUsed 透出（P2 T1）"`
 
 ## Task 2: Loop 类型重构（types.ts 登记）
 
 **现状锚点**：`types.ts:27-38`（LoopNodeKind/LoopContext{iteration,state}/LoopResult 字符串枚举）。
 
-- [ ] **Step 1: 类型扩展**（纯类型，无新测试；编译与既有全绿即门禁）
+- [x] **Step 1: 类型扩展**（纯类型，无新测试；编译与既有全绿即门禁）
   - `LoopContext` 增 `tokensUsed: number; startedAt: number;`（保留 iteration/state）；
   - 新增 `NodeOutput { status: 'pass'|'fail'|'retry'|'done'; reply?: string; criteria?: CriterionResult[]; route?: string; tokens: number; }`；
   - 新增 `CriterionResult { id: string; desc: string; passed: boolean; evidence?: string; }`；
   - 新增 `LoopNodeBase { id: string; kind: LoopNodeKind; }`；`LoopNodeFn = (ctx: LoopContext, io: NodeIO) => Promise<NodeOutput>`；
   - `LoopResult` 原文保留（兼容别名注释）。
-- [ ] **Step 2: 门禁**：build 0 错；engine.ts 占位若编译破，做**最小兼容适配**（T3 将整体淘汰，不留临时分支）；全量 117/117/0。
-- [ ] **Step 3: 提交**：`git add src/types.ts src/loop/engine.ts && git commit -m "refactor(types): Loop 节点结构化类型与预算账户上下文（P2 T2）"`
+- [x] **Step 2: 门禁**：build 0 错；engine.ts 占位若编译破，做**最小兼容适配**（T3 将整体淘汰，不留临时分支）；全量 117/117/0。
+- [x] **Step 3: 提交**：`git add src/types.ts src/loop/engine.ts && git commit -m "refactor(types): Loop 节点结构化类型与预算账户上下文（P2 T2）"`
 
 ## Task 3: LoopEngine 主干重写——四重终止与预算贯通
 
-- [ ] **Step 1: 写失败测试**（engine.test 新建 +5）
+- [x] **Step 1: 写失败测试**（engine.test 新建 +5）
   1. 验收终止：手工节点序列 [agent(done)→check(pass)] → status done、iterations=1；
   2. 迭代耗尽：永 loop 节点 + maxIterations=3 → status failed、iterations=3；
   3. 超时：`timeoutMs` 极小 + 慢节点 → failed（错误含「超时」）；
   4. 预算超支：节点单轮上报 tokens > maxTokens → **paused**（非 failed），result.tokensUsed 如实、不伪造 done；
   5. router 跳转：route 指向合法节点 id 正确跳转；指向不存在 id → failed（fail-bounded，不静默）。
   测试基建：手工 `LoopNodeFn` + 最小 `NodeIO`（scripted 应答注入），不依赖 Reactor。
-- [ ] **Step 2: 红灯**：engine.test 编译/断言失败。
-- [ ] **Step 3: 实现**（engine.ts 重写，淘汰占位 LoopNode/push/budget 计数）
+- [x] **Step 2: 红灯**：engine.test 编译/断言失败。
+- [x] **Step 3: 实现**（engine.ts 重写，淘汰占位 LoopNode/push/budget 计数）
   - `LoopEngine { constructor(nodes: Array<LoopNodeBase & { run: LoopNodeFn }>, deps, termination: { maxIterations; maxTokens; timeoutMs }, hooks?) }`；
   - `async run(goal: string, opts?: { state?; dryRun?: boolean }): Promise<LoopRunResult>`；`LoopRunResult { status: 'done'|'failed'|'paused'; iterations: number; tokensUsed: number; reply?: string; criteria?: CriterionResult[]; state: Record<string, unknown>; error?: string }`；
   - 主干顺序执行 + router.route 跳转；每节点边界检查四重终止（顺序：验收通过 done → iteration 上限 failed → 超时 failed → tokens 上限 paused）；`ctx.tokensUsed += output.tokens`。
-- [ ] **Step 4: 绿灯**：**122/122/0**。
-- [ ] **Step 5: 提交**：`git add src/loop/engine.ts src/loop/engine.test.ts && git commit -m "feat(loop): LoopEngine 主干——四重终止与预算贯通（P2 T3）"`
+- [x] **Step 4: 绿灯**：**122/122/0**。
+- [x] **Step 5: 提交**：`git add src/loop/engine.ts src/loop/engine.test.ts && git commit -m "feat(loop): LoopEngine 主干——四重终止与预算贯通（P2 T3）"`
 
 ## Task 4: 四类节点 + /goal 自验证
 
-- [ ] **Step 1: 写失败测试**（engine.test +4）
+- [x] **Step 1: 写失败测试**（engine.test +4）
   1. /goal 解析：goal 含「验收标准：c1=…; c2=…」→ CheckNode 产出结构化 criteria（id/desc）；空清单/解析失败 → NodeOutput fail（不静默通过）；
   2. deficit 修正：check 未过项写入 `ctx.state.deficits`，AgentNode 重试轮 goal 附注未过项清单（断言传给 Reactor 的 goal 含 deficit 文本）；
   3. gate 断言：谓词 false → fail 带 reason；true → pass；
   4. AgentNode 预算换算：maxTokens 剩余换算为 Reactor `budget.total`（FakeAdapter 捕获 opts 断言）且 tokensUsed 回传累加。
-- [ ] **Step 2: 红灯** → **Step 3: 实现**（nodes.ts）
+- [x] **Step 2: 红灯** → **Step 3: 实现**（nodes.ts）
   - `agentNode(deps, opts?)`：内嵌 `new Reactor(deps).run({ goal: withDeficits(goal, ctx) }, { budget: remaining 换算 })`；NodeOutput.tokens = r.tokensUsed ?? 0；
   - `checkNode(deps, opts?)`：criteria 解析（显式传入 > goal 内嵌段 > fail）；判定双通道——`ruleCheckers` 注册表（注入式谓词）优先，未注册项经 `deps.router.resolve('small')` 模型判据；全过 done / 存在未过 fail+deficits；
   - `gateNode(opts?)`：注入谓词 `(ctx) => Promise<{ passed: boolean; reason?: string }>`；
   - `routerNode(opts?)`：依 output/state.route 映射下一节点 id。
-- [ ] **Step 4: 绿灯**：**126/126/0**。
-- [ ] **Step 5: 提交**：`git add src/loop/nodes.ts src/loop/engine.test.ts && git commit -m "feat(loop): 四类节点与 /goal 自验证——规则优先+模型兜底+deficit 修正（P2 T4）"`
+- [x] **Step 4: 绿灯**：**126/126/0**。
+- [x] **Step 5: 提交**：`git add src/loop/nodes.ts src/loop/engine.test.ts && git commit -m "feat(loop): 四类节点与 /goal 自验证——规则优先+模型兜底+deficit 修正（P2 T4）"`
 
 ## Task 5: 三大专用模板（纯数据预组装）
 
-- [ ] **Step 1: 写失败测试**（engine.test +3，scripted 端到端）
+- [x] **Step 1: 写失败测试**（engine.test +3，scripted 端到端）
   1. 代码重构：tmp 文件 `a.ts` 引用改名 → agent 执行更新引用 → check 规则校验器（grep 断言旧引用清零）通过 → done；
   2. 测试闭环：目标测试先红（写一个必失败用例文件）→ agent 修复 → check 执行验证绿 → done；
   3. 代码审查：文件含高危标记 → agent 审查产出问题清单 → gate 非空断言 → agent 修复 → check 复检零高危 → done。
-- [ ] **Step 2: 红灯** → **Step 3: 实现**（templates.ts）
+- [x] **Step 2: 红灯** → **Step 3: 实现**（templates.ts）
   - `codeRefactorTemplate(deps) / testLoopTemplate(deps) / codeReviewTemplate(deps)`：各返回 `{ nodes, termination, criteriaTemplate }`；节点序列同 spec §3.5（3-4 节点）；termination 缺省 { maxIterations: 4, maxTokens: 60_000, timeoutMs: 10 分钟 }。
-- [ ] **Step 4: 绿灯**：**129/129/0**。
-- [ ] **Step 5: 提交**：`git add src/loop/templates.ts src/loop/engine.test.ts && git commit -m "feat(loop): 三大专用模板——重构/测试闭环/代码审查（P2 T5）"`
+- [x] **Step 4: 绿灯**：**129/129/0**。
+- [x] **Step 5: 提交**：`git add src/loop/templates.ts src/loop/engine.test.ts && git commit -m "feat(loop): 三大专用模板——重构/测试闭环/代码审查（P2 T5）"`
 
 ## Task 6: selfcheck 扩展 + 真实模型冒烟 + 回写收口
 
-- [ ] **Step 1: selfcheck 扩展**：`index.ts` 在 harness 行后新增 `loop :` 行（组装 codeReviewTemplate 最小配置打印节点数与终止参数）；`npm run selfcheck` 输出含该行且 exit 0。
-- [ ] **Step 2: 真实模型冒烟**：新建 `scripts/probe-loop-smoke.js`——测试闭环模板 × DeepSeek（.env，R2b 式手动不入门禁）：tmp 内置一个必失败用例，模型经模板修正至绿；断言 done、criteria 全过、tokensUsed > 0；exit 0。
-- [ ] **Step 3: 全量回归 + 回写**：build 0 错、全量绿、selfcheck 过；spec 状态「评审稿」→「已实施交付」（提交链 + C1-C5 结论）；本计划勾选/执行记录；ROADMAP 阶段二行勾选。
-- [ ] **Step 4: 提交**：feat(selfcheck+smoke) 与 docs 回写（可两笔或按实况合并，提交信息注明 P2 T6）。
+- [x] **Step 1: selfcheck 扩展**：`index.ts` 在 harness 行后新增 `loop :` 行（组装 codeReviewTemplate 最小配置打印节点数与终止参数）；`npm run selfcheck` 输出含该行且 exit 0。
+- [x] **Step 2: 真实模型冒烟**：新建 `scripts/probe-loop-smoke.js`——测试闭环模板 × DeepSeek（.env，R2b 式手动不入门禁）：tmp 内置一个必失败用例，模型经模板修正至绿；断言 done、criteria 全过、tokensUsed > 0；exit 0。
+- [x] **Step 3: 全量回归 + 回写**：build 0 错、全量绿、selfcheck 过；spec 状态「评审稿」→「已实施交付」（提交链 + C1-C5 结论）；本计划勾选/执行记录；ROADMAP 阶段二行勾选。
+- [x] **Step 4: 提交**：feat(selfcheck+smoke) 与 docs 回写（可两笔或按实况合并，提交信息注明 P2 T6）。
 
 ## 验收映射（spec §7 C1-C5）
 
@@ -130,3 +130,18 @@ docs/…                          # T6：spec 状态定稿 + 本计划勾选/执
 - tokensUsed 断言依赖 adapter 真实回传；scripted/stub 恒 0，非零路径用 FakeAdapter 覆盖——真实端到端由 T6 冒烟承载（DeepSeek usage）。
 - 计划中 122/126/129 为按新增用例数推算的预期值；执行期若用例拆分微调，以执行记录登记实测为准。
 - 三模板测试需要可执行的规则校验器（grep/npm test 谓词）——注入式注册表设计使模板测试不依赖内嵌命令；具体命令绑定留 T6/selfcheck 与用户侧装配。
+
+
+---
+
+## 执行记录（2026-09-06 回写定稿）
+
+**实施提交链**：`7456dbb` 本计划 → `f0ed740` T1 计量贯通（adapter onUsage 回调 + extractUsage + Reactor tokensUsed 透出）→ `49f7fbe` T2 类型重构（LoopTermination/CriterionResult/NodeOutput/LoopNodeBase 登记，LoopContext 预算账户扩展，LoopResult 兼容别名）→ `457b843` T3 主干重写（四重终止：验收 done / iteration failed / 超时 failed / 超支 **paused**；router 跳转 fail-bounded；iterations=已完成节点执行步）→ `7d5639f` T4 四类节点与 /goal（agent 内嵌 Reactor + 预算 1/5 换算；check 双通道规则优先+模型兜底、解析失败不静默、deficit 回注；gate/router）→ `c6ad271` T5 三大模板（重构/测试闭环/代码审查，纯数据预组装）→ 本提交 T6 收口（selfcheck Loop 行 + DeepSeek 真实冒烟 + 回写）。
+
+**终态**：build 0 错误；测试 **129/129/0**（基线 117 + 新增 12：T1 +4 实际、T3 +5、T4 +4、T5 +3——T1 任务书 +2 为误记，实测 +4：extractUsage 两例 + reactor 接线两例）；`npm run selfcheck` exit 0，新增 `loop : code-review template ready (5 nodes)` 行。
+
+**C2 真实模型冒烟**（scripts/probe-loop-smoke.js，DeepSeek 真实端点，手动不入门禁）：测试闭环模板，status=done、iterations=2、**tokensUsed=2065（OpenAI usage 回传真实计量贯通）**、criteria 全过、exit 0。
+
+**C1-C5 验收对照（spec §7）**：C1 三模板 scripted 端到端（T5-1/2/3）✓；C2 四重终止逐一实证（engine.test 验收/迭代/超时/超支四例）✓；C3 计量贯通（T1 fake 5+7=12 单测 + T6 冒烟 tokensUsed=2065 真实回传）✓；C4 /goal 解析失败不静默 + deficit 修正（T4-1/T4-3）✓；C5 零回归（既有用例断言零改动）+ selfcheck Loop 行 ✓。
+
+**执行期偏差登记**：① T3 引擎语义精化——check 节点 fail 改为续流至 router（修正环需要，硬失败仅限非 check 节点；计划 Step 3 未显式区分，属实现必要语义，测试锚点同步）；② T5 模板层 agent 包装将 reactor done/fail 降为 pass 续流（验收权在 check；ScriptedAdapter 中间步 done=false 属正常推进，计划未显式覆盖）；③ T5-2 计划中「执行 npm test 验证绿」等义替换为「规则校验器断言测试文件内容」（manual 模式 exec 拒绝；真实执行由 T6 冒烟承载）；④ T1 用例数计划 +2 实际 +4（extractUsage 两例为可测性拆分）；⑤ T5 首派子代理静默终止零交付，由控制器内联实现（引擎语义精化与模板同批落地）。
