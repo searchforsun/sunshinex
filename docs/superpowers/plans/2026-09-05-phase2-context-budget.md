@@ -233,7 +233,14 @@ test('tail 分层配额：层内取尾、层间按价值梯度拼接（skill→e
   m.record('project', 'W2');
   m.record('project', 'W3');                       // working 尾部 W3
   const t = m.tail({ skill: 600, episodic: 700, working: 700 });
-  assert.deepEqual(t, ['compaction: 沉淀事实', 'compaction: E2', 'project: W3']);
+  assert.deepEqual(t, [
+    'compaction: 沉淀事实',
+    'compaction: E1',
+    'compaction: E2',
+    'project: W1',
+    'project: W2',
+    'project: W3',
+  ]);
   assert.equal(m.index().length, 6, 'index() 全量语义不受影响');
 });
 
