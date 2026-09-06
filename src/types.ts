@@ -69,6 +69,49 @@ export interface LoopNodeBase {
 /** Loop 节点执行结果（兼容别名，NodeOutput.status 引用） */
 export type LoopResult = 'pass' | 'fail' | 'retry' | 'done';
 
+/* ===== Graph 编排层（阶段三） ===== */
+
+/** Graph 节点类型 */
+export type GraphNodeKind = 'loop' | 'agent' | 'gate' | 'ci';
+
+/** 节点执行产物（节点间数据流载体） */
+export interface GraphNodeOutput {
+  nodeId: string;
+  status: 'pass' | 'failed' | 'skipped' | 'paused';
+  reply?: string;
+  tokens: number;
+  criteria?: CriterionResult[];
+}
+
+/** Graph 运行上下文：状态 + 预算账户 + 数据流表 */
+export interface GraphContext {
+  state: Record<string, unknown>;
+  tokensUsed: number;
+  startedAt: number;
+  results: Record<string, GraphNodeOutput>;
+}
+
+/** Graph 运行结果（results 为数据流观测面，随结果返回） */
+export interface GraphRunResult {
+  status: 'done' | 'failed' | 'paused';
+  iterations: number;
+  tokensUsed: number;
+  failedNodes: string[];
+  pendingGates: string[];
+  reply?: string;
+  results: Record<string, GraphNodeOutput>;
+}
+
+/** Graph 终止参数 */
+export interface GraphTermination {
+  maxNodes: number;
+  maxTokens: number;
+  timeoutMs: number;
+}
+
+/** Graph 节点依赖容器（结构复用 LoopDeps 五件套，模型/工具/上下文同源零旁路） */
+export type GraphDeps = import('./loop/engine').LoopDeps;
+
 /** 三档算力档位（模型路由） */
 export type ModelTier = 'small' | 'medium' | 'large';
 
