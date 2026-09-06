@@ -156,7 +156,7 @@ flowchart TB
 | 目标目录 | 当前状态 | 对应阶段 |
 |---------|---------|---------|
 | `src/agent/harness/` | 已建 `src/harness/`（skills/memory/tools） | 阶段一 |
-| `src/agent/loop/` | 已建 `src/loop/engine.ts` 占位 | 阶段二 |
+| `src/agent/loop/` | 已建 `src/loop/`（engine + 四类节点 + 三模板，实装） | 阶段二 ✓ |
 | `src/agent/graph/` | 已建 `src/graph/`（engine/agents）占位 | 阶段三 |
 | `src/model/` | 已建 adapter + 三档路由占位 | 阶段一 |
 | `src/storage/` | 已建 store.ts 占位 | 阶段一 |
