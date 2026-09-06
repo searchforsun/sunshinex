@@ -27,13 +27,46 @@ export interface ProjectContext {
 /** Loop 节点类型 */
 export type LoopNodeKind = 'agent' | 'check' | 'gate' | 'router';
 
-/** Loop 迭代上下文 */
+/** Loop 迭代上下文（预算账户：tokensUsed 累计、startedAt 起始时钟、termination 终止参数） */
 export interface LoopContext {
   iteration: number;
   state: Record<string, unknown>;
+  tokensUsed: number;
+  startedAt: number;
+  termination: LoopTermination;
 }
 
-/** Loop 节点执行结果 */
+/** Loop 终止参数（迭代上限 / token 预算 / 超时） */
+export interface LoopTermination {
+  maxIterations: number;
+  maxTokens: number;
+  timeoutMs: number;
+}
+
+/** 验收标准单条判定结果 */
+export interface CriterionResult {
+  id: string;
+  desc: string;
+  passed: boolean;
+  evidence?: string;
+}
+
+/** Loop 节点结构化输出 */
+export interface NodeOutput {
+  status: LoopResult;
+  reply?: string;
+  criteria?: CriterionResult[];
+  route?: string;
+  tokens: number;
+}
+
+/** Loop 节点公共字段 */
+export interface LoopNodeBase {
+  id: string;
+  kind: LoopNodeKind;
+}
+
+/** Loop 节点执行结果（兼容别名，NodeOutput.status 引用） */
 export type LoopResult = 'pass' | 'fail' | 'retry' | 'done';
 
 /** 三档算力档位（模型路由） */
