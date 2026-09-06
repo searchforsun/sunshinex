@@ -56,10 +56,45 @@ export class ContextWindow {
     return b.used > b.total - b.reserve;
   }
 
-  async compact(items: ContextItem[], _opts?: { force?: boolean }): Promise<ContextChunk[]> {
+  /** 摘要预算化压缩（spec §2.3）：超限时按丢弃序丢块（priority 升序 → kind 权重升序 → 位置最旧先；system/instruction 白名单不可丢），
+   *  丢尽可丢块仍超限 → 确定性均匀截断（二分最大统一保留长度 L，保 checksum 确定性）。未传 summaryTokenBudget 保持既有行为。 */
+  async compact(items: ContextItem[], opts?: { force?: boolean; summaryTokenBudget?: number }): Promise<ContextChunk[]> {
     const chunks = this.chunkByMarkdown(items);
     const merged = this.mergeChunks(chunks);
-    return merged.filter((c) => c.priority > 0);
+    const kept = merged.filter((c) => c.priority > 0);
+    const budget = opts?.summaryTokenBudget;
+    if (budget === undefined) return kept;
+    const tokensOf = (cs: ContextChunk[]) => cs.reduce((s, c) => s + estimateTokens(c.summary), 0);
+    if (tokensOf(kept) <= budget) return kept;
+    const order = kept
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) => c.type !== 'system' && c.type !== 'instruction')
+      .sort(
+        (a, b) =>
+          a.c.priority - b.c.priority ||
+          (KIND_WEIGHT[a.c.type as ContextItem['kind']] ?? 0.5) - (KIND_WEIGHT[b.c.type as ContextItem['kind']] ?? 0.5) ||
+          a.i - b.i,
+      );
+    const dropped = new Set<ContextChunk>();
+    let out = kept;
+    for (const { c } of order) {
+      if (tokensOf(out) <= budget) break;
+      dropped.add(c);
+      out = out.filter((x) => x !== c);
+    }
+    if (tokensOf(out) > budget) {
+      const maxLen = Math.max(...out.map((c) => c.summary.length));
+      let lo = 0;
+      let hi = maxLen;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        const t = out.reduce((s, c) => s + estimateTokens(c.summary.slice(0, mid)), 0);
+        if (t <= budget) lo = mid;
+        else hi = mid - 1;
+      }
+      out = out.map((c) => ({ ...c, summary: c.summary.slice(0, lo) }));
+    }
+    return out;
   }
 
   /** checksum 门禁（三态）：first=注册基线；replay=同一压缩事件幂等重放；new=新一轮压缩并更新基线 */

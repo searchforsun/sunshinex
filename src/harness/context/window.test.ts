@@ -83,3 +83,44 @@ test('compact 摘要可重现（相同输入产生相同 chunk id）', async () 
   const b = await w.compact(items);
   assert.deepEqual(a.map((c) => c.id), b.map((c) => c.id));
 });
+
+test('compact 摘要预算化：超限按丢弃序丢块，白名单 kind 保留', async () => {
+  const w = new ContextWindow();
+  const items: ContextItem[] = [
+    { kind: 'system', content: '## 系统规则\n系统级锚点内容' },
+    { kind: 'history', content: '## 旧块A\n' + 'A'.repeat(1200) },
+    { kind: 'history', content: '## 旧块B\n' + 'B'.repeat(1200) },
+  ];
+  const chunks = await w.compact(items, { summaryTokenBudget: 400 });
+  assert.equal(chunks.length, 2, '应恰好丢弃一个 history 块');
+  assert.ok(chunks.some((c) => c.type === 'system'), '白名单 system 块保留');
+  const joined = chunks.map((c) => c.summary).join('\n');
+  assert.ok(joined.includes('旧块B'), '位置最旧的 A 先被丢弃，B 保留');
+  assert.ok(!joined.includes('AAAA'), '被丢弃块不出现');
+});
+
+test('compact 摘要预算化：未传 summaryTokenBudget 行为不变', async () => {
+  const w = new ContextWindow();
+  const items: ContextItem[] = [
+    { kind: 'history', content: '## 块一\n' + 'x'.repeat(1200) },
+    { kind: 'history', content: '## 块二\n' + 'y'.repeat(1200) },
+  ];
+  const a = await w.compact(items);
+  const b = await w.compact(items, { force: true });
+  assert.deepEqual(a.map((c) => c.id), b.map((c) => c.id));
+  assert.equal(a.length, 2);
+});
+
+test('compact 摘要预算化：丢尽可丢块仍超限 → 确定性均匀截断', async () => {
+  const w = new ContextWindow();
+  const items: ContextItem[] = [
+    { kind: 'system', content: '## 系统\n' + 'S'.repeat(1200) },
+    { kind: 'history', content: '## 历史\n' + 'H'.repeat(1200) },
+  ];
+  const chunks = await w.compact(items, { summaryTokenBudget: 100 });
+  const t = chunks.reduce((s, c) => s + estimateTokens(c.summary), 0);
+  assert.ok(t <= 100, `截断后 Σ token ${t} 应 ≤ 100`);
+  assert.ok(chunks.some((c) => c.type === 'system'), 'system 块可截断但不丢弃');
+  const again = await w.compact(items, { summaryTokenBudget: 100 });
+  assert.deepEqual(chunks.map((c) => c.summary), again.map((c) => c.summary), '同输入确定性一致');
+});
