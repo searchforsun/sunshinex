@@ -104,7 +104,8 @@ export class LoopEngine {
         return this.finish(ctx, 'done', { reply: out.reply, criteria: out.criteria });
       }
 
-      if (out.status === 'fail') {
+      // check 节点 fail = 验收未过（续流至 router 修正环，fail-bounded 由迭代/超时兜底）；其余节点 fail = 硬失败
+      if (out.status === 'fail' && node.kind !== 'check') {
         return this.finish(ctx, 'failed', {
           error: `节点 ${node.id} fail：${out.reply ?? '（无说明）'}`,
         });
