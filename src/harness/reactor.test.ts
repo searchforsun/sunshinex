@@ -283,11 +283,12 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
 
 test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
-  fs.writeFileSync(path.join(tmp, 'f.txt'), 'f'.repeat(700));
+  fs.writeFileSync(path.join(tmp, 'f.txt'), 'f'.repeat(400));
+  fs.writeFileSync(path.join(tmp, 'g.txt'), 'g'.repeat(300));
   const prompts: string[] = [];
   const replies = [
     '{"tool":"read","input":{"path":"f.txt"},"done":false}',
-    '{"tool":"exec","input":{"command":"echo mid"},"done":false}',
+    '{"tool":"read","input":{"path":"g.txt"},"done":false}',
     '{"done":true}',
   ];
   let call = 0;
@@ -297,14 +298,15 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {430,400}：threshold 30。step2 收敛环一轮即止（重注入后 est ≤ total），step3 装配 est > total 硬越限旁路滞回立即压缩；
-  // records 2 = step2×1 + step3 旁路×1：无旁路则 step3 被滞回门挡住应为 1——差值即旁路语义的证明（spec §2.2/C1，计划手算期望已勘误）
+  // budget {430,400}：threshold 30。step2 est=209>30 触发收敛环，一轮后 est=348≤430 即止（records 1）；
+  // step3 读 g 后 est=506>430 硬越限旁路（滞回门 3-2=1<2 闭）压缩 records 2，est=526 仍越限续环：存活集变 [reread f, reread g]（新 checksum）→ records 3，rounds=2 环止；
+  // 若无旁路（对比 f=700/g=1200 时 est=970 且存活集与 #2 恒等被判 replay）：records 只会是 1——差值即旁路语义的证明（spec §2.2/C1，环有界 fail-bounded）
   const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 430, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.equal(
     context.memory.index().filter((l) => l.startsWith('compaction: 摘要')).length,
-    2,
-    'step3 硬越限旁路滞回触发第二次压缩（无旁路则滞回挡住为 1）',
+    3,
+    'step3 硬越限旁路触发第三次压缩',
   );
 });
