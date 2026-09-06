@@ -5,6 +5,10 @@ import {
   LoopTermination,
   NodeOutput,
 } from '../types';
+import { ModelAdapter, ModelRouter } from '../model/adapter';
+import { ToolRegistry } from '../harness/tools';
+import { SafetyChain } from '../harness/security/chain';
+import { ContextManager } from '../harness/context';
 
 /** 节点执行函数：async 或同步返回皆可；input 为上一节点输出（首轮 null） */
 export type LoopNodeFn = (ctx: LoopContext, input: NodeOutput | null) => Promise<NodeOutput> | NodeOutput;
@@ -12,8 +16,14 @@ export type LoopNodeFn = (ctx: LoopContext, input: NodeOutput | null) => Promise
 /** 节点：公共字段 + 执行函数（淘汰占位 LoopNode 接口） */
 export type LoopEngineNode = LoopNodeBase & { run: LoopNodeFn };
 
-/** 依赖容器（T3 宽松形态占位，T4 落 nodes.ts 时收紧为显式接口） */
-export type LoopDeps = Record<string, unknown>;
+/** 依赖容器（T4 收紧：显式五件套；router 可选，为档位判据与模型兜底提供注入位） */
+export interface LoopDeps {
+  safety: SafetyChain;
+  registry: ToolRegistry;
+  context: ContextManager;
+  model: ModelAdapter;
+  router?: ModelRouter;
+}
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */
 export interface LoopRunResult {
