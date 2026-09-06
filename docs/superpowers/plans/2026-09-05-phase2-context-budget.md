@@ -402,7 +402,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
 
 test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
-  fs.writeFileSync(path.join(tmp, 'f.txt'), 'f'.repeat(700));
+  fs.writeFileSync(path.join(tmp, 'f.txt'), 'f'.repeat(400));
   fs.writeFileSync(path.join(tmp, 'g.txt'), 'g'.repeat(300));
   const prompts: string[] = [];
   const replies = [
@@ -417,9 +417,9 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {430,400}：threshold 30。step2 环内两轮收敛至存活集 [reread-f]（est 504 > 430 续环，rounds=2 出）；
-  // step3 读入 g.txt 后 est 587 > total 430，旁路滞回立即压缩：淘汰集变为 [reread-g]（≠ #2 的 [reread-f]）→ 新 checksum → records 3；
-  // 环内第 2 轮同集 replay 幂等不计数（环有界 fail-bounded）
+  // budget {430,400}：threshold 30。step2 est=209>30 触发收敛环，一轮后 est=348≤430 即止（records 1）；
+  // step3 读 g 后 est=506>430 硬越限旁路（滞回门 3-2=1<2 闭）压缩 records 2，est=526 仍越限续环：存活集变 [reread f, reread g]（新 checksum）→ records 3，rounds=2 环止；
+  // 若无旁路（对比 f=700/g=1200 时 est=970 且存活集与 #2 恒等被判 replay）：records 只会是 1——差值即旁路语义的证明（spec §2.2/C1，环有界 fail-bounded）
   const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 430, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
@@ -506,7 +506,7 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 
 ## 执行记录（2026-09-05 回写）
 
-**提交链**：`533a2b4` 本计划 → `f74b1dc` T1 估算解耦 → `a45d27d` T2 摘要预算化 → `582c181` T3 记忆治理 → `176cb14` T3 复盘勘误（tail 用例期望对齐 §2.5）→ `0a07192` T4 重读预算化 → `4335111` T5 收敛环与滞回 → 本次 T6（探针 + 回写）。
+**提交链**：`533a2b4` 本计划 → `f74b1dc` T1 估算解耦 → `a45d27d` T2 摘要预算化 → `582c181` T3 记忆治理 → `176cb14` T3 复盘勘误（tail 用例期望对齐 §2.5）→ `0a07192` T4 重读预算化 → `4335111` T5 收敛环与滞回 → 本次 T6（探针 + 回写）→ `2c35e2b` T5 复盘强化（硬越限用例 records 2→3，场景 f=400+g.txt）。
 
 **测试路线**：101 → 102（T1）→ 105（T2）→ 109（T3）→ 111（T4）→ 113（T5）→ 终态 113/113/0；`npm run build` 全程 0 错误；`npm run selfcheck` OK。
 
@@ -523,7 +523,7 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
 
 **偏差登记（均按「实现服从 spec、文档回正」处理）**：
 1. **T3 复盘（176cb14）**：计划 tail 用例期望（每层仅尾条）与 spec §2.5 配额语义不符，实现按 spec 正确，计划勘误回正。
-2. **T5 复盘（4335111 内）**：计划「硬越限旁路」用例手算期望 records=3，实证为 2——step2 收敛环一轮即止（计划高估注入后 est），step3 装配 est>total 旁路滞回触发第二次压缩；无旁路则被滞回挡住应为 1，实测差值即旁路证明。测试期望与推演注释已按实证修正。
+2. **T5 复盘（4335111 + 2c35e2b）**：计划「硬越限旁路」用例锚点经历两轮实证修正——4335111 按 checksum 幂等去重实证勘误为 records=2（f=700 场景 step3 压缩集与 step2 收敛点恒等判 replay）；2c35e2b 复盘后将场景强化为 f=400+g.txt（step2 一轮即止，step3 旁路压缩后 est 仍越限续环，存活集变 [reread f, reread g] 产生新 checksum），records 恢复为 3 且旁路差值证明更直接（无旁路则恒为 1），验证强度高于初版与计划原稿。
 3. **T6 探针口径修正**：计划锚点按「观测不截断」推演（step2≈878 触发），实际 describe 于 2000 字符截断 → 真实触发在 step3（装配 1275）；且探针初版误用 prompt 字符串口径断言 C1——已修正为 spec 定义的 est 口径（think 时刻最后一次装配的 estimate(items).used），prompt 口径仅透明上报。
 4. **执行方式**：T1-T4 由并行执行流落地；T5 派发的后台子任务空转收束后，由控制器按计划直接实施。
 
