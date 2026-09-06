@@ -60,28 +60,27 @@ estimate(items): { used: number; items } // used = Σ estimateTokens(it.content)
 ```ts
 let items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
 let est = this.deps.context.window.estimate(items);
-let stepsSinceCompact = Number.MAX_SAFE_INTEGER; // 初始视为可压（首步允许触发）
+let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
 const overThreshold = () => this.deps.context.window.shouldCompact({ total: budget.total, used: est.used, reserve: budget.reserve });
 
 // 滞回门（跨步节流，环外判定一次）：≥2 新步开闸防连轮压缩；est > total 硬越限应急旁路——保证全程 est ≤ total（C1）
-const gateOpen = stepsSinceCompact >= 2 || est.used > budget.total;
+const gateOpen = step - lastCompactStep >= 2 || est.used > budget.total;
 
 if (gateOpen && overThreshold()) {
-  // 收敛环（环内不受滞回限制）：压缩 → 重注入 → 重装配重估；新摘要判 new 吸收旧摘要，至多 2 轮有界防呆
-  for (let rounds = 0; rounds < 2 && overThreshold(); rounds++) {
+  // 收敛环（环内不受滞回限制）：压缩 → 重注入 → 重装配重估；续环条件为硬越限（est > total）越阈即止——防对摘要的重复再压缩，至多 2 轮有界
+  for (let rounds = 0; rounds < 2 && est.used > budget.total; rounds++) {
     const chunks = await this.deps.context.window.compact(items, { summaryTokenBudget: Math.floor(budget.reserve / 2) });
     await this.deps.context.applyCompaction(chunks, { rereadTokenBudget: Math.floor(budget.reserve / 2) });
     compactedUpTo = steps.length;
-    stepsSinceCompact = 0;
+    lastCompactStep = step;
     items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
     est = this.deps.context.window.estimate(items);
   }
 }
-stepsSinceCompact++; // 每步末尾自增：压缩后 1 → 下步 2 → 重新开闸
 ```
 
-- **滞回与应急线**：`stepsSinceCompact >= 2` 开闸防同批条目连轮压缩；`est > total` 硬越限旁路滞回直接压缩——「全程 est ≤ total」（C1）不被滞回破坏。
-- **收敛保证**：每轮压缩输入包含上一轮注入块（新摘要判 `new`，吸收旧摘要）；摘要 ≤ summaryTokenBudget、重读 ≤ rereadTokenBudget ⇒ 注入块合计 ≤ reserve，压缩后 est ≈ 装配骨架 + 注入块 ≤ total。至多 2 轮有界；装配骨架自身超阈（loader/rules 巨大）属配置异常，本设计 fail-bounded（环有界退出，见 §6）。
+- **滞回与应急线**：`step - lastCompactStep >= 2` 开闸防同批条目连轮压缩；`est > total` 硬越限旁路滞回直接压缩——「全程 est ≤ total」（C1）不被滞回破坏。
+- **收敛保证**：每轮压缩输入包含上一轮注入块（新摘要判 `new`，吸收旧摘要）；摘要 ≤ summaryTokenBudget、重读 ≤ rereadTokenBudget ⇒ 注入块合计 ≤ reserve，压缩后 est ≈ 装配骨架 + 注入块 ≤ total；触发轮的 prompt 以收敛后 items 组装——压缩当轮即生效（F-b 修复的可观察结果，见 §4.7 白名单）。至多 2 轮有界；装配骨架自身超阈（loader/rules 巨大）属配置异常，本设计 fail-bounded（环有界退出，见 §6）。
 - **档位信号**：`ratio = est.used / budget.total` 用收敛后的 est。
 - checksum 三态门禁语义不变：确定性丢弃/截断 ⇒ 同输入同 hash，幂等重放保持。
 
@@ -130,12 +129,12 @@ async applyCompaction(chunks: ContextChunk[], opts?: { rereadTokenBudget?: numbe
 flowchart TD
   A[observe: assemble + estimate] --> B{est > total-reserve?}
   B -- 否 --> H[档位决策 + think]
-  B -- 是 --> C{stepsSinceCompact >= 2?}
+  B -- 是 --> C{≥2 新步 或 est>total?}
   C -- 否 --> H
   C -- 是 --> D[compact 摘要预算化 + applyCompaction 重读预算化]
   D --> E[水位线/滞回计数更新]
   E --> F[重装配 + 重估]
-  F --> G{仍超阈 且 轮次<2?}
+  F --> G{est > total 且 轮次<2?}
   G -- 是 --> D
   G -- 否 --> H
   M[memory.record 限长500] --> T[tail 分层配额 600/700/700]
@@ -166,8 +165,8 @@ flowchart TD
 3. **重读预算**：5 个大文件超 rereadTokenBudget → 最旧文件整条被丢、最新保留；单文件 500 行截断保持；mask 不回归。
 4. **记忆治理**：record 超 500 截断；tail 配额（working 超配额取尾、skill 至配额全保、层间顺序 skill→episodic→working）；index() 仍全量。
 5. **收敛环**：scripted 大观测多步场景，注入后仍超阈 → 第二轮压缩 → est ≤ 阈值；压缩轮内有界（≤2）。
-6. **滞回**：压缩后下一新步不立即再压（stepsSinceCompact < 2 被 skip），第 2 新步起恢复触发资格。
-7. **档位重校**：1C 档位用例按新口径重校数字（白名单登记）。
+6. **滞回**：压缩后下一新步不立即再压（step − lastCompactStep < 2 被 skip），第 2 新步起恢复触发资格。
+7. **档位与压缩闭环重校**：1C 档位用例按新口径重校数字；压缩闭环用例 budget 数字行重校、prompts[1] 断言按 F-b 新语义翻转（均登记白名单）。
 8. **E2E 探针（验收）**：scripted R2 型场景（多文件全文汇总、budget 900/150）全轮次 prompt est ≤ total；对照旧失控曲线（20658 字符级）。
 
 ## 5. 验收标准
@@ -178,7 +177,7 @@ flowchart TD
 | C2 语义保持 | R2b 场景任务结论正确（total=135）；checksum 三态/幂等不回归 | 压缩后任务失败或摘要重复注入 |
 | C3 价值保持 | 存在 skill 记忆时注入含 skill 行（配额内不因 tail 丢失）；compaction 记录格式不变 | skill 被尾部裁剪丢弃 |
 | C4 滞回 | 任意两次压缩事件间隔 ≥2 新步 | 同批条目连轮压缩 |
-| C5 零回归 | 既有用例除数字重校白名单外断言零改动；build/selfcheck 绿 | 断言语义被修改 |
+| C5 零回归 | 既有用例除「重校白名单」外断言零改动（白名单 = 数字行 + 压缩闭环用例 prompts[1] 断言随 F-b 修复翻转）；build/selfcheck 绿 | 断言语义被修改 |
 
 ## 6. 不做的事与边界
 
