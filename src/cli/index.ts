@@ -1,6 +1,7 @@
 import { runSelfcheck } from './commands/selfcheck';
 import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
+import { loadEnv } from '../config/env';
 
 /** CLI 参数解析：仅内置约定，零依赖。--flag=v 或 --flag v → 字符串；--flag（末尾无值）→ true；其余为 positional */
 export interface CliArgs {
@@ -37,6 +38,7 @@ const USAGE = `SunshineX CLI
   sunshinex pipeline <dir> [--yes]        五节点全链路流水线，gate 审批交互（--yes 跳过交互直接批准）`;
 
 async function main(): Promise<void> {
+  loadEnv();
   const args = parseArgs(process.argv.slice(2));
   switch (args.command) {
     case 'selfcheck':

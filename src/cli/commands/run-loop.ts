@@ -6,7 +6,7 @@ import { LoopTemplate, codeRefactorTemplate, codeReviewTemplate, testLoopTemplat
 import { OpenAIAdapter, ScriptedAdapter, StubAdapter } from '../../model/adapter';
 import type { CliArgs } from '../index';
 
-/** 统一装配（Task 3 复用）：root 为项目目录；--model 可选 openai|scripted|stub，缺省 openai（读 .env） */
+/** 统一装配（Task 3 复用）：root 为项目目录；--model 可选 openai|scripted|stub，缺省 openai（配置由 CLI 入口 loadEnv 从 .env 装载，已导出环境变量优先） */
 export function buildDeps(root: string, flags: Record<string, string | boolean>): LoopDeps {
   const h = new Harness({ root, mode: 'dontAsk' });
   const model =
