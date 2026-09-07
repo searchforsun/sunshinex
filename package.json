@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "description": "SunshineX 通用 AI Agent 工程化骨架（Harness/Loop/Graph 三层范式）",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=22.9.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "npm run build && node --test 'dist/**/*.test.js'",
-    "selfcheck": "npm run build && node dist/index.js --selfcheck",
+    "selfcheck": "npm run build && node --env-file-if-exists=.env dist/cli/index.js selfcheck",
     "cli": "npm run build && node --env-file-if-exists=.env dist/cli/index.js"
   },
   "devDependencies": {

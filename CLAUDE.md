@@ -103,3 +103,12 @@ SUNSHINE.md          # 项目业务配置
 - **放宽不等于无界**：预算记账、错误局部化、fail-bounded 语义全部保留——上限是安全网而非期望路径；长任务的正确形态是「宽预算 + 验收收敛」，而非「频繁触界中断」。
 - **新增参数时**：缺省值须按长任务场景论证并对齐上述量级；测试与探针可用显式小值构造边界用例，但不得因测试便利反推缩水产品缺省值；**各层缺省须同量级一致——单层缩水即整链瓶颈**（入口/模板层的显式覆盖值视同产品缺省，须同等论证）。
 - 已知长任务敏感点：模型慢响应（adapter timeoutMs）、长命令执行（sandbox exec 超时与 maxBuffer）、复杂多文件任务（Reactor maxSteps、Loop 修正环轮数、Graph 全链路终止参数）、各 CLI 命令与模板内嵌节点的显式覆盖值。调整任一处须同步评估其余层级的一致性。
+
+## 12. 平台兼容性目标
+
+以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX 为基线，Windows 原生为已登记待适配项（经 WSL 可完整使用）。
+
+- **版本下限**：Node.js ≥ 22.9（`npm run cli` 依赖 `--env-file-if-exists`；以 `package.json` 的 `engines` 为准），实测基线 22 LTS 与 24.x。
+- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；npm scripts 保持零 shell 语法依赖（仅 `&&`）；glob/正则匹配须关注平台路径分隔符（现状 `globToRegex` 仅认 `/`，Windows 原生适配时须先归一化再匹配）。
+- **已知差异（如实登记，不虚构兼容）**：`exec` 命令执行面依赖 `/bin/sh`——Linux/macOS 原生可用，Windows 原生不可用（需 WSL 或待 `ProcessSandbox` 平台分支落地）；`npm install --cache .npm-cache` 仅为沙箱等 HOME 不可写环境的约束，本地开发直接 `npm install`；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
+- **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 README 平台支持矩阵与部署指引。

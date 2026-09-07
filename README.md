@@ -78,6 +78,28 @@ npm run cli -- pipeline tests/fixtures/demo --yes --goal "实现 add 函数并�
 
 需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，DeepSeek 兼容 OpenAI 协议）。
 
+## 平台兼容性
+
+一份代码，三平台部署：安装、构建、自检与 CLI 基础命令在 Windows / macOS / Linux 全平台可用；工具 `exec` 的命令执行面以 POSIX 为基线，Windows 原生为已登记待适配项。
+
+| 能力 | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| 安装 / 构建 / 自检 | 支持 | 支持 | 支持 |
+| CLI（selfcheck / run / pipeline） | 支持 | 支持 | 支持（单行命令） |
+| 工具 exec 命令执行面 | 支持 | 支持 | 需 WSL（原生待适配） |
+
+部署条件（三平台通用）：
+
+1. Node.js ≥ 22.9（`npm run cli` 依赖 `--env-file-if-exists`，下限登记于 `package.json` `engines`），实测基线 22 LTS 与 24.x。
+2. `dist/` 不入库：新检出须先 `npm install` + `npm run build`（`npm run cli` 已内置自动构建，可直接执行）。
+3. 复制 `.env.example` 为 `.env` 并填入真实 `OPENAI_API_KEY`（Windows 用 `copy`，macOS/Linux 用 `cp`）；未配置密钥时可用 `--model stub` 先验证链路。
+4. `npm install --cache .npm-cache` 仅为沙箱等 HOME 不可写环境的约束，本地开发直接 `npm install`。
+
+Windows 注意事项：
+
+- 本页 CLI 示例均为单行，PowerShell/cmd 直接粘贴可用；bash 风格续行符 `\` 在 PowerShell 中无效。
+- `exec` 工具的命令执行面依赖 `/bin/sh`——原生 Windows 暂不可用（WSL 内可完整使用全部能力），`ProcessSandbox` 平台分支已在 ROADMAP 登记为待适配项。
+
 ## 文档导航
 
 | 文档 | 内容 |
