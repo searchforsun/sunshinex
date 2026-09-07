@@ -18,8 +18,15 @@ export class MemoryLifecycle {
     this.migrate();
   }
 
+  /** 分层读：.data 位于项目 root 内，Agent 可经 write 工具写入任意 JSON——形态非法一律隔离为空，不崩执行面 */
+  private readStrings(key: string): string[] {
+    const v: unknown = this.store.read<unknown>(key, []);
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === 'string');
+  }
+
   private tier(t: MemoryTier): string[] {
-    return this.store.read<string[]>(TIER_KEY[t], []);
+    return this.readStrings(TIER_KEY[t]);
   }
 
   private save(t: MemoryTier, items: string[]): void {

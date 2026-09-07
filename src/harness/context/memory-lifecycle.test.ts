@@ -119,3 +119,15 @@ test('tail 配额为软上限：整条纳入，最新一条永不因配额丢弃
   assert.ok(t[0].startsWith('project: W3:'));
   assert.ok(t[2].startsWith('project: W5:'));
 });
+
+test('tier 读路径形态隔离：.data 被污染为非数组时执行面不崩（真实缺陷回归）', () => {
+  const dir = tmpdir();
+  const store = new FileStore(dir);
+  store.write('memory.working', { task: '污染对象' });
+  store.write('memory.episodic', ['ok', 42, null]);
+  const m = new MemoryLifecycle(store);
+  assert.doesNotThrow(() => m.tail({ skill: 600, episodic: 700, working: 700 }));
+  assert.deepEqual(m.counts(), { working: 0, episodic: 1, skill: 0 });
+  m.record('compaction', '隔离后可正常写入');
+  assert.deepEqual(m.counts(), { working: 0, episodic: 2, skill: 0 });
+});
