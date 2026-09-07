@@ -8,7 +8,7 @@
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "npm run build && node --test 'dist/**/*.test.js'",
     "selfcheck": "npm run build && node dist/index.js --selfcheck",
-    "cli": "node --env-file-if-exists=.env dist/cli/index.js"
+    "cli": "npm run build && node --env-file-if-exists=.env dist/cli/index.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

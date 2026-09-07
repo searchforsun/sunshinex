@@ -69,6 +69,7 @@ npm run start                    # 运行入口（自动从 .env 加载模型配
 
 ```bash
 npm install --cache .npm-cache
+copy .env.example .env   # 填入真实 OPENAI_API_KEY（Windows；macOS/Linux 用 cp）
 npm run build
 npm run cli -- selfcheck                                   # 骨架自检
 npm run cli -- run tests/fixtures/demo --template test-loop \
