@@ -9,6 +9,20 @@ import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
 import { DryRun } from './dryrun';
 
+/** 平台能力探测：Windows 建 symlink 需管理员或开发者模式，无权限时测试跳过（断言目标与平台无关） */
+export function canSymlink(): boolean {
+  if (process.platform !== 'win32') return true;
+  const probeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-probe-'));
+  try {
+    fs.symlinkSync(probeRoot, path.join(probeRoot, 'probe'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(probeRoot, { recursive: true, force: true });
+  }
+}
+
 function chain(root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-')), mode: 'manual' | 'dontAsk' = 'manual'): SafetyChain {
   return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), new DryRun(), root);
 }
@@ -89,7 +103,7 @@ test('preview 输出过 mask', () => {
   assert.match(out, /\*\*\*/);
 });
 
-test('evaluate 对 root 内符号链接指向 root 外目标的 Read deny（reason 含真实路径）', () => {
+test('evaluate 对 root 内符号链接指向 root 外目标的 Read deny（reason 含真实路径）', { skip: !canSymlink() }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
   fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOPSECRET');
@@ -103,7 +117,7 @@ test('evaluate 对 root 内符号链接指向 root 外目标的 Read deny（reas
   }
 });
 
-test('evaluate 对符号链接父目录下的 Write deny', () => {
+test('evaluate 对符号链接父目录下的 Write deny', { skip: !canSymlink() }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
   fs.symlinkSync(outside, path.join(root, 'escdir'));
@@ -112,7 +126,7 @@ test('evaluate 对符号链接父目录下的 Write deny', () => {
   if (!d.allowed) assert.match(d.reason, /越出项目 root/);
 });
 
-test('evaluate 对指向 root 内目标的符号链接路径放行（反向场景）', () => {
+test('evaluate 对指向 root 内目标的符号链接路径放行（反向场景）', { skip: !canSymlink() }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
   fs.writeFileSync(path.join(root, 'in.txt'), 'x');
@@ -128,7 +142,7 @@ test('evaluate 对多级新建路径的 Write 放行（逐级上溯回归）', (
   if (d.allowed) assert.equal(d.safePath, path.join(root, 'a/b/c.txt'));
 });
 
-test('evaluate 以 rootReal 为基准：root 经符号链接传入时判界仍正确', () => {
+test('evaluate 以 rootReal 为基准：root 经符号链接传入时判界仍正确', { skip: !canSymlink() }, () => {
   const outer = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-root-'));
   const ws = path.join(outer, 'ws');
   fs.mkdirSync(ws);

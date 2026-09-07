@@ -64,7 +64,8 @@ test('glob 以 root 为基准并返回相对路径', async () => {
   if (r.ok) {
     const files = r.value.stdout.split('\n').filter(Boolean);
     assert.ok(files.includes('a.ts'), `应含 a.ts，实际 ${files.join(',')}`);
-    assert.ok(files.includes(path.join('x', 'b.ts')));
+    // glob 产物统一 / 分隔（跨平台一致，模型消费友好）
+    assert.ok(files.includes('x/b.ts'), `应含 x/b.ts，实际 ${files.join(',')}`);
   }
 });
 
