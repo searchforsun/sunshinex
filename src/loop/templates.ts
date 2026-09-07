@@ -3,7 +3,7 @@ import { LoopDeps, LoopEngine, LoopEngineNode } from './engine';
 import { agentNode, checkNode, gateNode, routerNode } from './nodes';
 
 /** 三大模板缺省终止参数（opts.termination 可按项覆盖） */
-const DEFAULT_TERMINATION: LoopTermination = { maxIterations: 4, maxTokens: 60_000, timeoutMs: 600_000 };
+const DEFAULT_TERMINATION: LoopTermination = { maxIterations: 100, maxTokens: 1_000_000, timeoutMs: 7_200_000 };
 
 /** 模板产物：纯数据预组装（节点序列 + 终止参数）+ 就绪引擎 */
 export interface LoopTemplate {

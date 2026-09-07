@@ -28,7 +28,7 @@ export class Reactor {
   constructor(private deps: ReactorDeps) {}
 
   async run(task: Task, opts?: { maxSteps?: number; budget?: { total: number; reserve: number } }): Promise<RunResult> {
-    const maxSteps = opts?.maxSteps ?? 8;
+    const maxSteps = opts?.maxSteps ?? 200;
     const budget = opts?.budget ?? { total: 200_000, reserve: 40_000 };
     const steps: StepRecord[] = [];
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);

@@ -4,7 +4,7 @@ import { makeGateNode, makeLoopNode, RuleChecker } from './nodes';
 import { makeRoleAgent } from './agents';
 
 /** 全链路流水线缺省终止参数（opts.termination 可按项覆盖） */
-const DEFAULT_TERMINATION: GraphTermination = { maxNodes: 12, maxTokens: 120_000, timeoutMs: 600_000 };
+const DEFAULT_TERMINATION: GraphTermination = { maxNodes: 500, maxTokens: 2_000_000, timeoutMs: 14_400_000 };
 
 /** 模板产物：纯数据预组装（节点序列 + 终止参数）+ 就绪引擎 */
 export interface GraphTemplate {
@@ -33,7 +33,6 @@ export function softwarePipelineTemplate(deps: GraphDeps, opts: PipelineOpts = {
       template: 'test-loop',
       goal: opts.goal,
       ruleCheckers: opts.ruleCheckers,
-      termination: { maxIterations: 10 },
       deps: ['developer'],
     }),
     makeRoleAgent('reviewer', deps, { maxSteps: opts.maxSteps, deps: ['test-verify'] }),

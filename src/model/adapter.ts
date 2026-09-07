@@ -47,7 +47,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.baseURL = cfg.baseURL ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
     this.apiKey = cfg.apiKey ?? process.env.OPENAI_API_KEY ?? '';
     this.model = cfg.model ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
-    this.timeoutMs = cfg.timeoutMs ?? 60_000;
+    this.timeoutMs = cfg.timeoutMs ?? 600_000;
   }
 
   async complete(prompt: string, hooks?: UsageHooks): Promise<string> {

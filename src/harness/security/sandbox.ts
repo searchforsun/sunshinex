@@ -9,9 +9,9 @@ export class ProcessSandbox implements ToolBackend {
   readonly name = 'process';
 
   async exec(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {
-    const timeoutMs = opts?.timeoutMs ?? 30_000;
+    const timeoutMs = opts?.timeoutMs ?? 1_800_000;
     return new Promise((resolve) => {
-      execFile('/bin/sh', ['-c', cmd], { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      execFile('/bin/sh', ['-c', cmd], { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code === 'ETIMEDOUT' || (err as { killed?: boolean }).killed) {

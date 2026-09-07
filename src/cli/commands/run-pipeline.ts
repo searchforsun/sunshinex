@@ -26,8 +26,6 @@ export function runPipelineAssembly(
   return softwarePipelineTemplate(deps, {
     goal: opts.goal,
     ruleCheckers: opts.ruleCheckers as never,
-    maxSteps: 8,
-    termination: { maxTokens: 200_000, timeoutMs: 600_000 },
   });
 }
 
