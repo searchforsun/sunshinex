@@ -124,19 +124,16 @@ flowchart TB
 
 ## 5. 当前进度
 
-阶段一（Harness 底座核心）已全部完成：
+阶段一至三已全部完成，阶段四待启动：
 
-- [x] 工程骨架（package.json / tsconfig / .gitignore）
-- [x] 项目规范（CLAUDE.md / SUNSHINE.md）
-- [x] 核心类型与配置解析器（src/types.ts / src/config.ts）
-- [x] Harness 底座（perception / reactor / tools / security / context / memory / skills）
-- [x] Loop / Graph / Model / Storage / Plugins 模块占位
-- [x] 示例技能与插件（skills/example-skill、plugins/demo）
-- [x] 骨架自检（`npm run selfcheck` 通过）
-- [x] 阶段一其余任务（三级 KV 缓存、项目深度感知引擎、沙箱与 dry-run 等）
+- [x] 阶段一 Harness 底座（perception / reactor / tools / security / context / memory / skills；统一运行时主链 1A-1E、Context Budget、安全加固全链交付，详见 specs/ 各设计文档）
+- [x] 阶段二 Loop Engine（engine + Agent/Check/Gate/Router 四类节点、重构 / 测试闭环 / 代码审查三模板、/goal 自我验证、CLI run）
+- [x] 阶段三 Graph 编排（DAG 引擎 + loop/agent/gate/ci 四类节点、五节点软件工程流水线、pause/resume 与预算跨层贯通、CLI pipeline）
 - [x] 模型 SDK 接入 DeepSeek 兼容 OpenAI 协议（`.env` 配置，零新增依赖）
 
-当前基线：npm run build（tsc strict）零报错、161 个测试全绿、npm run selfcheck 通过（含 loop/graph 模板就绪行）；CLI 执行面已接入（selfcheck / run / pipeline）。统一运行时主链设计已定稿（`docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md`），按「串主链 → 补深度 → 内嵌路由 → 多后端 → 记忆沉淀」五个阶段（A-E）推进，待拆实施计划。
+当前基线：npm run build（tsc strict）零报错、161 个测试全绿、npm run selfcheck 通过；CLI 执行面 selfcheck / run / pipeline 三命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
+
+下一步：阶段四（MCP 工具兼容、向量知识库、CLI 专项命令、技能模板体系完善）。
 
 ## 6. 验证策略
 
@@ -158,8 +155,8 @@ flowchart TB
 | `src/agent/harness/` | 已建 `src/harness/`（skills/memory/tools） | 阶段一 |
 | `src/agent/loop/` | 已建 `src/loop/`（engine + 四类节点 + 三模板，实装） | 阶段二 ✓ |
 | `src/agent/graph/` | 已实装 engine/nodes/agents/workflow/templates（五节点链 + WorkflowDef 装配） | 阶段三 |
-| `src/model/` | 已建 adapter + 三档路由占位 | 阶段一 |
-| `src/storage/` | 已建 store.ts 占位 | 阶段一 |
+| `src/model/` | 已实装（adapter + 三档路由 bind/resolve/回退语义） | 阶段一 ✓ |
+| `src/storage/` | 已实装（LocalStore 本地 JSON 存储底座） | 阶段一 ✓ |
 | `src/plugins/` | 已建 loader.ts | 阶段四 |
 | `src/cli/` | 已建（selfcheck / run / pipeline，实装） | 阶段二 ✓ |
 | `src/gui/` | 未建 | 阶段五 |

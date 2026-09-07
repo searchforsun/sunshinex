@@ -6,3 +6,6 @@ dist/
 .DS_Store
 .superpowers/
 .env
+
+# 长任务真实模型冒烟的演示目标项目（验证产物与运行痕迹不入库）
+.longtask/
