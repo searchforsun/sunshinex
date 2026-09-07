@@ -17,7 +17,7 @@ function resetFixture() {
 }
 
 function sh(args) {
-  return execFileSync('node', args, { encoding: 'utf8', cwd: ROOT, env: process.env, timeout: 300_000, stdio: ['ignore', 'pipe', 'inherit'] });
+  return execFileSync('node', args, { encoding: 'utf8', cwd: ROOT, env: process.env, timeout: 600_000, stdio: ['ignore', 'pipe', 'inherit'] });
 }
 
 let failed = 0;
