@@ -72,10 +72,8 @@ npm install --cache .npm-cache
 copy .env.example .env   # 填入真实 OPENAI_API_KEY（Windows；macOS/Linux 用 cp）
 npm run build
 npm run cli -- selfcheck                                   # 骨架自检
-npm run cli -- run tests/fixtures/demo --template test-loop \
-  --goal "修正 math.test.js 断言使其通过（验收标准：c1=断言 add(1,2)===3）"   # Loop 修正环
-npm run cli -- pipeline tests/fixtures/demo --yes \
-  --goal "实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）"  # 全链路流水线
+npm run cli -- run tests/fixtures/demo --template test-loop --goal "修正 math.test.js 断言使其通过（验收标准：c1=断言 add(1,2)===3）"   # Loop 修正环（PowerShell/cmd 请保持单行）
+npm run cli -- pipeline tests/fixtures/demo --yes --goal "实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）"  # 全链路流水线（PowerShell/cmd 请保持单行）
 ```
 
 需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，DeepSeek 兼容 OpenAI 协议）。
