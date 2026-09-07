@@ -64,7 +64,7 @@ flowchart TB
 - [x] `/goal` 自我验证机制（规则校验器优先 + 模型判据兜底 + deficit 定向修正）
 - [x] 三大专用 Loop 模板：代码重构、测试闭环、代码审查
 - [x] 终止控制与成本管控模块（四重终止保护，超支 pause 不伪造完成）
-- [ ] CLI 专项命令接入
+- [x] CLI 专项命令接入
 
 **交付物**：完整可用 Loop Engine、三大专用场景模板、CLI 可执行。
 **验收**：Loop 闭环跑通「生成→校验→修正→终止」，三大模板各可端到端演示。
@@ -136,7 +136,7 @@ flowchart TB
 - [x] 阶段一其余任务（三级 KV 缓存、项目深度感知引擎、沙箱与 dry-run 等）
 - [x] 模型 SDK 接入 DeepSeek 兼容 OpenAI 协议（`.env` 配置，零新增依赖）
 
-当前基线：`npm run build`（tsc strict）零报错、40 个测试全绿、`npm run selfcheck` 通过。统一运行时主链设计已定稿（`docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md`），按「串主链 → 补深度 → 内嵌路由 → 多后端 → 记忆沉淀」五个阶段（A-E）推进，待拆实施计划。
+当前基线：npm run build（tsc strict）零报错、161 个测试全绿、npm run selfcheck 通过（含 loop/graph 模板就绪行）；CLI 执行面已接入（selfcheck / run / pipeline）。统一运行时主链设计已定稿（`docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md`），按「串主链 → 补深度 → 内嵌路由 → 多后端 → 记忆沉淀」五个阶段（A-E）推进，待拆实施计划。
 
 ## 6. 验证策略
 
@@ -161,6 +161,8 @@ flowchart TB
 | `src/model/` | 已建 adapter + 三档路由占位 | 阶段一 |
 | `src/storage/` | 已建 store.ts 占位 | 阶段一 |
 | `src/plugins/` | 已建 loader.ts | 阶段四 |
-| `src/cli/`、`src/gui/`、`src/server/` | 未建 | 阶段二 / 五 |
+| `src/cli/` | 已建（selfcheck / run / pipeline，实装） | 阶段二 ✓ |
+| `src/gui/` | 未建 | 阶段五 |
+| `src/server/` | 未建 | 按需 |
 
 > 说明：骨架目录与 README 目标目录存在命名差异（如 `src/harness` vs `src/agent/harness`），随各阶段开发逐步迁移对齐。

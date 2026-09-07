@@ -65,6 +65,20 @@ npm run selfcheck                # 编译 + 骨架自检
 npm run start                    # 运行入口（自动从 .env 加载模型配置）
 ```
 
+## Quick Start（CLI）
+
+```bash
+npm install --cache .npm-cache
+npm run build
+npm run cli -- selfcheck                                   # 骨架自检
+npm run cli -- run tests/fixtures/demo --template test-loop \
+  --goal "修正 math.test.js 断言使其通过（验收标准：c1=断言 add(1,2)===3）"   # Loop 修正环
+npm run cli -- pipeline tests/fixtures/demo --yes \
+  --goal "实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）"  # 全链路流水线
+```
+
+需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，DeepSeek 兼容 OpenAI 协议）。
+
 ## 文档导航
 
 | 文档 | 内容 |
