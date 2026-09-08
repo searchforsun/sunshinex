@@ -132,11 +132,11 @@
 **Interfaces:**
 - `chunkMarkdown(text): string[]`——标题/段落聚合，块 ≤1200 字符、重叠 ~100
 
-- [ ] Step 1: 失败测试——标题聚合/超长切分/重叠边界/空文本
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(knowledge): Markdown 感知分块器 chunkMarkdown`
+- [x] Step 1: 失败测试——标题聚合/超长切分/重叠边界/空文本
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(knowledge): Markdown 感知分块器 chunkMarkdown`（已完成：4985d1d，基线 219/219/0）
 
 ---
 
@@ -150,11 +150,11 @@
 - `registerVectorBackend(name, factory)` + `createVectorBackend(name)`——未注册 → 装配期抛错（fail-fast，禁静默回退）
 - `LocalJsonVectorStore`：FileStore 之上，向量归一化 + 暴力余弦
 
-- [ ] Step 1: 失败测试——注册/创建/未注册 fail-fast；upsert→search topK 语义；归一化余弦排序
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(knowledge): VectorStore 接缝——注册表 fail-fast + local-json 余弦后端`
+- [x] Step 1: 失败测试——注册/创建/未注册 fail-fast；upsert→search topK 语义；归一化余弦排序
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(knowledge): VectorStore 接缝——注册表 fail-fast + local-json 余弦后端`（已完成：dd32ebb，基线实测 225/225/0）
 
 ---
 
@@ -166,11 +166,11 @@
 **Interfaces:**
 - `runVectorStoreConformance(create: () => VectorStore)`——写入/召回/TopK 语义/持久化/损坏恢复；P1 sqlite-vec 复用同一套件
 
-- [ ] Step 1: 失败测试——套件对 local-json 跑，暴露缺口（如损坏恢复）为红
-- [ ] Step 2: 确认红
-- [ ] Step 3: 补齐 local-json 缺口至全绿
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(knowledge): VectorStore conformance 契约套件——local-json 全绿`
+- [x] Step 1: 失败测试——套件对 local-json 跑，暴露缺口（如损坏恢复）为红
+- [x] Step 2: 确认红
+- [x] Step 3: 补齐 local-json 缺口至全绿
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(knowledge): VectorStore conformance 契约套件——local-json 全绿`（已完成：5ff88fe，损坏恢复降级归属后端边界；基线实测 226/226/0，注：5ff88fe 提交信息中误记 232，以此为准）
 
 ---
 
