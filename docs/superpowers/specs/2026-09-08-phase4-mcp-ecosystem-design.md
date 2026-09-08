@@ -1,7 +1,7 @@
 # 阶段四设计：MCP 生态与全场景能力
 
 > 日期：2026-09-08
-> 状态：评审中（三处推荐默认待用户裁决，见 §6-R1）
+> 状态：评审中 v2（v2 增补「外部依赖可插拔」设计原则；待裁决项见 §6-R1）
 > 上游：`docs/Arch-Plan.md` §2.1.4/§3.5/§4.2–4.5、`docs/ROADMAP.md` 阶段四、统一运行时主链（零旁路）
 > 基线：HEAD `ace3fd4`，全量 175/175/0，src 中无 MCP/向量/技能调度实现（grep 证实）
 
@@ -15,6 +15,7 @@
 - **技能是上下文而非代码**：技能调度 = 首帧 context 注入（Claude Code 式），不是独立执行通道；Loop/Graph 语义零改动。
 - **能力并入既有面**：git/数据库等开发操作由 exec 工具覆盖，不造平行专项工具（避免同能力双通道）。
 - **数据可控优先**：知识库索引内容只在用户显式指定时采集；embedding 端点可配置为本地 OpenAI 兼容实现（如 Ollama），实现全本地化。
+- **外部依赖可插拔（v2 增补）**：一切外部依赖（向量存储、embedding 提供方、MCP 传输与 SDK、模型后端）一律收敛在内部接口之后——缺省零依赖实现，替换后端不改主链；模型层已是既有范例（OpenAI/Scripted/Stub 三实现同接口）。每个接缝配一致性测试套件，可插拔性由「第二个真实后端通过套件」证明，而非口头接口（落地样例见 §3.4）。
 
 ## 2. 现状与差距
 
@@ -69,23 +70,28 @@ export class McpHost {
 - **可观测路由**：`router.route(hint?: RouteHint)` 增量接口，hint 携带复杂度/角色信号（Graph 角色预设已产出建议档位，此处收敛为正式入参）；决策记录 `RouteDecision { tier, reason }` 随 run 结果返回并落 ledger。
 - **成本与命中率记账**：UsageHooks 聚合到 harness 层 per-run ledger（storage key `runs/<id>`）；session 缓存增加 hit/miss 计数器；selfcheck 输出汇总行。
 - **前缀稳定化**：context 组装器固定 system 与工具 schema 段顺序，提升 provider 端 KV 前缀缓存命中（DeepSeek/OpenAI 隐式缓存均受益）。
-- **流式提前**（推荐默认：纳入本阶段）：`ModelAdapter.completeStream(req, onDelta): Promise<Completion>`，SSE 解析零依赖（body reader 按 `data:` 行切分）；scripted/stub 适配器同步支持（scripted 逐字吐出）；既有 `complete()` 签名不动。理由：阶段五 TUI 硬依赖 token 流，接口改造放在本阶段（路由/缓存同域施工）比留到阶段五风险低。
+- **流式提前**（推荐默认：纳入本阶段）：`ModelAdapter.completeStream(req, onDelta): Promise<Completion>`，SSE 解析零依赖（body reader 按 `data:` 行切分）；scripted/stub 适配器同步支持（scripted 逐字吐出）；既有 `complete()` 签名不动——此接缝即「外部依赖可插拔」在模型层的既有范例（多后端同接口）。理由：阶段五 TUI 硬依赖 token 流，接口改造放在本阶段（路由/缓存同域施工）比留到阶段五风险低。
 
-### 3.4 本地向量知识库（推荐默认：零依赖 JSON + 余弦）
+### 3.4 本地向量知识库（可插拔后端；缺省零依赖 JSON + 余弦）
 
 ```text
 src/harness/knowledge/
-  embed.ts    # EmbeddingClient：OpenAI 兼容 /embeddings；.env 键 EMBEDDING_BASE_URL/EMBEDDING_API_KEY/EMBEDDING_MODEL（缺省回退 OPENAI_*；DeepSeek 无此端点，需另行配置）
-  chunk.ts    # Markdown 感知分块：标题/段落聚合，块 ≤1200 字符，重叠 ~100 字符
-  store.ts    # VectorStore 接口 + LocalJsonVectorStore（FileStore 之上，向量归一化 + 暴力余弦）
-  index.ts    # KnowledgeBase：indexDir(dir) / search(query, topK) / stats()
+  embed.ts      # EmbeddingProvider 接口 + OpenAI 兼容默认实现（/embeddings；.env 键 EMBEDDING_BASE_URL/EMBEDDING_API_KEY/EMBEDDING_MODEL，缺省回退 OPENAI_*；DeepSeek 无此端点，需另行配置）
+  chunk.ts      # Markdown 感知分块：标题/段落聚合，块 ≤1200 字符，重叠 ~100 字符
+  store.ts      # VectorStore 接口 + 后端注册表 + LocalJsonVectorStore（FileStore 之上，归一化向量 + 暴力余弦）
+  backends/
+    sqlite-vec.ts  # 可选后端（P1 独立任务）：SQLite 系向量检索，驱动以最小 spike 定案
+  index.ts      # KnowledgeBase：indexDir(dir) / search(query, topK) / stats()；按 KB_BACKEND 配置装配后端
 ```
 
+- **后端可插拔**：`VectorStore` 是唯一存储接缝，后端经注册表按配置装配（`.env` 键 `KB_BACKEND`，缺省 `local-json`）；新增后端 = 一个实现文件 + 注册一行，主链零改动。候选：`local-json`（零依赖缺省与回归基线）/ `sqlite-vec`（better-sqlite3 + sqlite-vec 预编译，或 Node ≥22.9 内置 `node:sqlite`，以最小 spike 择一）/ chromadb（仅留位，不引入）。
+- **一致性测试套件**：`store.conformance.ts` 定义全后端必过的契约用例（写入/召回/TopK 语义/持久化/损坏恢复）；缺省后端与新后端共用同一断言集——可插拔由「第二个真实后端全绿」证明，而非口头接口。
+- **EmbeddingProvider 同接缝可插拔**：接口仅 `embed(texts): Promise<number[][]>`；默认指向 OpenAI 兼容端点，可换本地推理或桩实现（测试注入），换装不触及知识库与其余主链。
 - **主链接入**：内置工具 `kb_search`（category `read`，仅本地索引检索；查询向量化属 model 域调用）——Loop/Graph/Reactor 经同一工具面消费知识，不开旁路。
 - **数据可控口径（明示）**：索引仅覆盖用户显式指定目录；分块文本将发送至所配置 embedding 端点；端点可指向本地实现实现全本地化；`.env` 不入库（既有纪律）。
-- **规模声明**：JSON 暴力余弦适用于 ≤5 万块；`VectorStore` 接口为 sqlite-vec 预留换装位，本阶段不引入原生依赖。
-- **降级语义**：未配置 embedding 端点时 `kb_search` 返回 `Result.fail` 明确提示配置缺失，不阻塞其他工具。
-- **测试**：EmbeddingClient 以 scripted 桩注入（不发真实网络）；自检用例对已知文档断言 top-3 命中。
+- **规模与交付节奏**：`local-json` 暴力余弦适用于 ≤5 万块，先行交付并作为回归基线；`sqlite-vec` 后端在核心链路验收后作为 P1 任务补入，成功信号 = conformance 全绿 + 1 万块检索 P95 进入两位数毫秒量级。
+- **降级与 fail-fast**：未配置 embedding 端点时 `kb_search` 返回 `Result.fail` 明确提示配置缺失，不阻塞其他工具；`KB_BACKEND` 指向未注册后端时装配期即报错，不静默回退。
+- **测试**：EmbeddingProvider 以桩注入（不发真实网络）；conformance 套件对 `local-json` 全绿；自检用例对已知文档断言 top-3 命中。
 
 ### 3.5 技能模板调度
 
@@ -116,7 +122,7 @@ export function resolveSkill(skillsDir: string, id: string,
 1. **MCP 全链路**：mock stdio server 完成 handshake → tools/list → 注册 → 经安全链 tools/call；断言：白名单外 server 拒绝、超时返回 fail、结果脱敏、`mcp__` 命名无冲突。
 2. **工具面**：目录 grep（glob 过滤 + 行上限）与 webfetch（白名单外拒绝、正文截断）链上测试通过。
 3. **路由/缓存/流式**：RouteDecision 随 run 可查；selfcheck 输出缓存命中率与成本汇总；completeStream 在 scripted 下逐 token 回调断言通过。
-4. **知识库**：示例文档集 index → search top-3 命中注入用例；未配置端点时明确降级。
+4. **知识库**：示例文档集 index → search top-3 命中注入用例；未配置端点时明确降级；conformance 套件对 `local-json` 全绿；`KB_BACKEND` 指向未注册后端时装配期 fail-fast 断言。
 5. **技能调度**：示例技能经 skillRef 完成 scripted 任务；缺参数/未注册 id 给出明确错误。
 6. **门禁**：`npm run build` 0 报错、全量测试 0 失败、selfcheck 全绿（新增 mcp/tools/kb/skill 四行）。
 7. **文档同步**：ROADMAP 阶段四测试基线数修正（164→当时实测）、CLAUDE.md 依赖登记。
@@ -126,14 +132,14 @@ export function resolveSkill(skillsDir: string, id: string,
 - MCP HTTP/SSE 传输与 OAuth 授权流（接口留位，实现随需）
 - CLI 专项命令（chat/edit/test/review/doc）→ 阶段五与 TUI 同面交付（推荐默认，见 §6-R1）
 - 记忆→技能自动沉淀闭环
-- chromadb / sqlite-vec / 任何向量库原生依赖
+- 缺省路径外的任何强制依赖：`sqlite-vec`/chromadb 仅作为可插拔后端按需引入（§3.4），缺省交付保持零依赖
 - 知识库多集合权限、远端知识库、增量爬取
 
 ## 6. 风险与开放问题
 
 | # | 项 | 状态/缓解 |
 | --- | --- | --- |
-| R1 | 三处推荐默认待裁决：① MCP=官方 SDK；② 知识库=零依赖 JSON 余弦；③ 范围=五条+流式提前、CLI 留阶段五 | 评审时逐条确认，任一推翻仅影响对应小节，架构不动 |
+| R1 | 待裁决项：① MCP=官方 SDK；② 知识库=可插拔后端，缺省 `local-json`，SQLite 系作为 P1 第二后端；③ 范围=五条+流式提前、CLI 留阶段五 | 评审时逐条确认，任一推翻仅影响对应小节，架构与接缝不动 |
 | R2 | SDK 依赖体积与供应链审计 | 锁定版本；登记用途边界；stdio 传输仅本地 spawn |
 | R3 | embedding 端点不可用 | kb_search 明确降级（Result.fail），不阻塞主链 |
 | R4 | dontAsk 模式下外部工具误放行 | 白名单空=全禁 + 参数体积/超时双闸门；策略测试覆盖 |
