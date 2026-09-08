@@ -17,6 +17,7 @@
 - 缺省交付零依赖路径：sqlite-vec/chromadb 不进 P0（P1 独立 plan）；`KB_BACKEND` 指向未注册后端装配期 fail-fast，禁止静默回退。
 - 外部工具安全闸门：`mode: 'dontAsk'` 不豁免（白名单空 = 全禁、参数体积上限、单次超时、结果统一过 mask 出口）。
 - 仅通过 sandbox 工具读写 `/workspace/wt-59f36a81fc`；禁止写 `/skills`。
+- 子任务粒度：每个子任务（Task xN）执行目标 ≤15 分钟（含红绿测试与提交）；预估超限即再拆，禁止跨域合并成大任务。
 
 ---
 
@@ -59,101 +60,270 @@
 - [x] Step 2: 确认红
 - [x] Step 3: 最小实现（grep 递归复用 `glob` 遍历逻辑；webfetch 用 `fetch` + 白名单闸门 + 截断）
 - [x] Step 4: 确认绿 + 全量不回归
-- [x] Step 5: 提交 `feat(tools): 目录级 grep（glob 过滤+行上限）与 webfetch（域名白名单闸门）`（已完成：09a1983 实现 + ddde526 死代码清理，基线 199/199/0）
+- [x] Step 5: 提交 `feat(tools): 目录级 grep（glob 过滤+行上限）与 webfetch（域名白名单闸门）`（已完成：09a1983 实现 + ddde526 死代码清理，基线 199/199/0）（已完成：09a1983 + ddde526 死代码清理，基线 199/199/0）
 
 ---
 
-### Task 3: 路由可观测、缓存计数与模型流式
+### Task 3: 路由可观测、缓存计数与模型流式（按 ≤15min 拆分为 3a/3b/3c）
+
+---
+
+### Task 3a: session 缓存命中率计数 + selfcheck 行（目标 ≤15min）
 
 **Files:**
-- Modify: `src/model/adapter.ts`、`src/harness/context/session.ts`、`src/cli/commands/selfcheck.ts`
-- Create: `src/model/stream.test.ts`、`src/model/route-decision.test.ts`、`src/harness/context/session-hitrate.test.ts`
+- Modify: `src/harness/context/session.ts`、`src/cli/commands/selfcheck.ts`
+- Create: `src/harness/context/session-hitrate.test.ts`
 
 **Interfaces:**
-- `ModelRouter.route(hint?: { complexity?: 'low'|'mid'|'high'; role?: string }): RouteDecision`——决策留痕（tier + reason），随 run 结果返回
-- `ModelAdapter.completeStream(req, onDelta: (t: string) => void): Promise<Completion>`——OpenAI 适配器以 `stream: true` + SSE `data:` 行解析（零依赖 reader）；`ScriptedAdapter` 逐字吐出；`complete()` 签名不动
-- `SessionStore` 增量：`hit/miss` 计数器 + `hitRate(): number`；selfcheck 追加「缓存命中率」汇总行
+- `SessionStore` 增量：hit/miss 计数器 + `hitRate(): number`（零样本返回 0）
+- selfcheck 追加「缓存命中率」汇总行（无样本显示 0.0，不得崩溃）
 
-- [ ] Step 1: 失败测试——scripted `completeStream` 逐 token 回调序列断言；`route(hint)` 决策与 reason 留痕断言；session 命中率计数断言
+- [ ] Step 1: 失败测试——hit/miss 计数、hitRate 边界（含零样本）
 - [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（SSE 解析：`for await` body reader 按 `\n\n` 分帧、`data: [DONE]` 终止；router 决策记录进 run ledger）
+- [ ] Step 3: 最小实现 + selfcheck 汇总行
 - [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(model): RouteHint 决策留痕、completeStream 流式（SSE 零依赖）、缓存命中率计数`
+- [ ] Step 5: 提交 `feat(context): session 缓存命中率计数与 selfcheck 汇总行`
 
 ---
 
-### Task 4: 向量知识库核心（local-json，可插拔接缝）
+### Task 3b: RouteHint 决策留痕（目标 ≤15min）
 
 **Files:**
-- Create: `src/harness/knowledge/embed.ts`、`chunk.ts`、`store.ts`、`store.conformance.ts`、`index.ts`（+ 各自 `.test.ts`）
-- Modify: `src/harness/tools/builtin.ts`（新增 `kb_search`）、`src/cli/commands/selfcheck.ts`
+- Modify: `src/model/adapter.ts`
+- Create: `src/model/route-decision.test.ts`
 
 **Interfaces:**
-- `EmbeddingProvider`（Task 1 类型）：默认实现 `OpenAICompatEmbeddings`（`POST {EMBEDDING_BASE_URL}/embeddings`，批量入参）；测试以桩注入，不发真实网络
-- `chunk.ts`：`chunkMarkdown(text): string[]`——标题/段落聚合，块 ≤1200 字符、重叠 ~100
-- `store.ts`：`VectorStore` 接口（`upsert(id, vec, meta)` / `search(vec, topK): KbHit[]` / `size()` / `load()` / `flush()`）+ 后端注册表 `registerVectorBackend(name, factory)` + `createVectorBackend(name)`（未注册 → 抛装配错误，fail-fast）+ `LocalJsonVectorStore`（FileStore 之上，向量归一化 + 暴力余弦）
-- `store.conformance.ts`：`runVectorStoreConformance(create: () => VectorStore)`——全后端必过契约（写入/召回/TopK 语义/持久化/损坏恢复），本任务对 `local-json` 全绿，P1 sqlite-vec 复用
-- `index.ts`：`KnowledgeBase { indexDir(dir): Promise<number>; search(query, topK): Promise<KbHit[]>; stats() }`
-- `kb_search` 内置工具（category `read`）：入参 `{ query, topK? }`；embedding 端点未配置 → `Result.fail('kb_not_configured')` 降级，不阻塞其他工具
+- `ModelRouter.route(hint?: { complexity?: 'low'|'mid'|'high'; role?: string }): RouteDecision`，`RouteDecision { tier, reason }`；reason 说明依据（hint 命中或缺省回退）；决策随返回值供 run 层留痕
 
-- [ ] Step 1: 失败测试——conformance 套件对 local-json 跑红（实现缺失）；chunk 边界用例（标题聚合/超长切分/重叠）；`kb_search` 未配置端点降级断言
+- [ ] Step 1: 失败测试——complexity/role 各档映射 + 缺省回退 + reason 非空
 - [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（注册表 + local-json + conformance 全绿）
-- [ ] Step 4: 确认绿（conformance PASS + 已知文档 top-3 命中用例 PASS）
-- [ ] Step 5: 提交 `feat(knowledge): 向量知识库 local-json 后端——可插拔注册表+conformance 契约套件+kb_search 工具`
+- [ ] Step 3: 最小实现（静态映射，不引入启发式）
+- [ ] Step 4: 确认绿 + 全量不回归
+- [ ] Step 5: 提交 `feat(model): RouteHint 决策留痕——route(hint) 返回 tier+reason`
 
 ---
 
-### Task 5: 技能模板调度 —— resolveSkill 与 skillRef 首帧注入
+### Task 3c: completeStream 流式（SSE 零依赖，目标 ≤15min）
 
 **Files:**
-- Modify: `src/harness/skills.ts`、`src/loop/engine.ts`（请求侧 skillRef）、`src/runtime.ts`（buildDeps 接线）、`src/cli/commands/selfcheck.ts`
+- Modify: `src/model/adapter.ts`
+- Create: `src/model/stream.test.ts`
+
+**Interfaces:**
+- `ModelAdapter.completeStream(req, onDelta: (t: string) => void): Promise<Completion>`——OpenAI 适配器 `stream: true`，SSE 解析（`for await` body reader 按 `\n\n` 分帧、`data: [DONE]` 终止、delta 提取）；`ScriptedAdapter` 逐字吐出；`complete()` 签名不动
+
+- [ ] Step 1: 失败测试——scripted 逐 token 序列断言；SSE 分帧解析以注入 reader 桩测试（不发真实网络）
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现
+- [ ] Step 4: 确认绿 + 全量不回归
+- [ ] Step 5: 提交 `feat(model): completeStream 流式——SSE 零依赖解析 + scripted 逐字输出`
+
+---
+
+### Task 4: 向量知识库核心（按 ≤15min 拆分为 4a–4f）
+
+---
+
+### Task 4a: chunkMarkdown 分块器（目标 ≤10min）
+
+**Files:**
+- Create: `src/harness/knowledge/chunk.ts`、`chunk.test.ts`
+
+**Interfaces:**
+- `chunkMarkdown(text): string[]`——标题/段落聚合，块 ≤1200 字符、重叠 ~100
+
+- [ ] Step 1: 失败测试——标题聚合/超长切分/重叠边界/空文本
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现
+- [ ] Step 4: 确认绿
+- [ ] Step 5: 提交 `feat(knowledge): Markdown 感知分块器 chunkMarkdown`
+
+---
+
+### Task 4b: VectorStore 接缝 + 注册表 + local-json 后端（目标 ≤15min）
+
+**Files:**
+- Create: `src/harness/knowledge/store.ts`、`store.test.ts`
+
+**Interfaces:**
+- `VectorStore`：`upsert(id, vec, meta)` / `search(vec, topK): KbHit[]` / `size()` / `load()` / `flush()`
+- `registerVectorBackend(name, factory)` + `createVectorBackend(name)`——未注册 → 装配期抛错（fail-fast，禁静默回退）
+- `LocalJsonVectorStore`：FileStore 之上，向量归一化 + 暴力余弦
+
+- [ ] Step 1: 失败测试——注册/创建/未注册 fail-fast；upsert→search topK 语义；归一化余弦排序
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现
+- [ ] Step 4: 确认绿
+- [ ] Step 5: 提交 `feat(knowledge): VectorStore 接缝——注册表 fail-fast + local-json 余弦后端`
+
+---
+
+### Task 4c: conformance 契约套件（目标 ≤10min）
+
+**Files:**
+- Create: `src/harness/knowledge/store.conformance.ts`、`store.local-json.conformance.test.ts`
+
+**Interfaces:**
+- `runVectorStoreConformance(create: () => VectorStore)`——写入/召回/TopK 语义/持久化/损坏恢复；P1 sqlite-vec 复用同一套件
+
+- [ ] Step 1: 失败测试——套件对 local-json 跑，暴露缺口（如损坏恢复）为红
+- [ ] Step 2: 确认红
+- [ ] Step 3: 补齐 local-json 缺口至全绿
+- [ ] Step 4: 确认绿
+- [ ] Step 5: 提交 `feat(knowledge): VectorStore conformance 契约套件——local-json 全绿`
+
+---
+
+### Task 4d: KnowledgeBase 编排（目标 ≤15min）
+
+**Files:**
+- Create: `src/harness/knowledge/index.ts`、`index.test.ts`
+
+**Interfaces:**
+- `KnowledgeBase { indexDir(dir): Promise<number>; search(query, topK): Promise<KbHit[]>; stats() }`——indexDir：读目录 md/txt → chunk → embed → upsert；search：query→embed→topK；`EmbeddingProvider` 桩注入，不发真实网络
+
+- [ ] Step 1: 失败测试——临时目录索引后已知查询 top-3 命中
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现
+- [ ] Step 4: 确认绿
+- [ ] Step 5: 提交 `feat(knowledge): KnowledgeBase 编排——indexDir/search/stats（桩注入）`
+
+---
+
+### Task 4e: OpenAICompatEmbeddings 默认 Provider（目标 ≤10min）
+
+**Files:**
+- Create: `src/harness/knowledge/embed.ts`、`embed.test.ts`
+
+**Interfaces:**
+- `OpenAICompatEmbeddings implements EmbeddingProvider`——`POST {EMBEDDING_BASE_URL}/embeddings`（Bearer 鉴权、model 取 `EMBEDDING_MODEL`，缺省回退 `OPENAI_*`），批量入参；测试用本地 http server 或注入 fetch 桩
+
+- [ ] Step 1: 失败测试——请求头/体断言 + `data[].embedding` 提取 + 非法响应 fail
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现
+- [ ] Step 4: 确认绿
+- [ ] Step 5: 提交 `feat(knowledge): OpenAICompatEmbeddings 默认 Provider——/embeddings 批量适配`
+
+---
+
+### Task 4f: kb_search 内置工具 + selfcheck 行（目标 ≤15min）
+
+**Files:**
+- Modify: `src/harness/tools/builtin.ts`、`src/cli/commands/selfcheck.ts`
+- Create: `src/harness/tools/kb-search.test.ts`
+
+**Interfaces:**
+- `kb_search`（category `read`）：入参 `{ query, topK? }`；embedding 未配置 → `Result.fail('kb_not_configured')` 降级不阻塞；结果过 mask 出口
+
+- [ ] Step 1: 失败测试——配置齐（桩）返回 topK；未配置降级 fail；category=read
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现 + selfcheck 知识库行
+- [ ] Step 4: 确认绿 + 全量不回归
+- [ ] Step 5: 提交 `feat(knowledge): kb_search 内置工具——未配置降级 + selfcheck 行`
+
+---
+
+### Task 5: 技能模板调度（按 ≤15min 拆分为 5a/5b）
+
+---
+
+### Task 5a: resolveSkill 参数化解析 + 示例技能（目标 ≤15min）
+
+**Files:**
+- Modify: `src/harness/skills.ts`
 - Create: `src/harness/skills.resolve.test.ts`、`skills/examples/hello-sunshine/skill.md`
 
 **Interfaces:**
-- `resolveSkill(skillsDir, id, params?): Result<ResolvedSkill>`——`ResolvedSkill { manifest; body }`；未注册 id / `{{param}}` 缺参 → `fail`（明确错误信息）
-- Loop 请求侧增量：请求可携 `skillRef: SkillRef`，assemble 首帧注入技能正文（参数替换后），Loop/Graph 执行语义零改动
-- `runtime.buildDeps`：调用 `loadSkills(root/skills)` 装入 Harness，暴露 `skills.list()/get(id)`
-- 示例技能 `skills/examples/hello-sunshine/skill.md`（frontmatter 含 `kind: prompt` 与 `params: name`）；selfcheck 以 scripted 模型走通一次 skillRef 调度并断言注入内容
+- `resolveSkill(skillsDir, id, params?): Result<ResolvedSkill>`，`ResolvedSkill { manifest, body }`；未注册 id / `{{param}}` 缺参 → fail（明确错误）；示例技能 frontmatter 含 `kind: prompt`、`params: name`
 
-- [ ] Step 1: 失败测试——resolve 命中/未注册/缺参三态断言；scripted 任务经 skillRef 注入后输出含技能正文标记
+- [ ] Step 1: 失败测试——命中/未注册/缺参三态 + `{{name}}` 替换
 - [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（参数 `{{name}}` 替换 + 首帧注入 + 装配接线 + 示例技能）
-- [ ] Step 4: 确认绿 + selfcheck 新增技能调度行
-- [ ] Step 5: 提交 `feat(skills): 技能模板调度——resolveSkill 参数化 + skillRef 首帧注入 + 装配接线`
+- [ ] Step 3: 最小实现 + 示例技能物料
+- [ ] Step 4: 确认绿
+- [ ] Step 5: 提交 `feat(skills): resolveSkill 参数化解析——三态语义 + 示例技能`
 
 ---
 
-### Task 6: MCP 官方 SDK 接入（安全闸门 + mock 全链路）
+### Task 5b: skillRef 首帧注入 + 装配接线 + selfcheck（目标 ≤15min）
+
+**Files:**
+- Modify: `src/loop/engine.ts`、`src/runtime.ts`、`src/cli/commands/selfcheck.ts`
+- Create: `src/loop/skill-ref.test.ts`
+
+**Interfaces:**
+- Loop 请求可携 `skillRef: SkillRef`；assemble 首帧注入解析后正文（参数已替换）；Loop/Graph 执行语义零改动
+- `runtime.buildDeps`：`loadSkills(root/skills)` 装入 Harness，暴露 `skills.list()/get(id)`
+
+- [ ] Step 1: 失败测试——scripted 任务带 skillRef 输出含正文标记；未注册 id fail；不带 skillRef 不回归
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现（注入 + 接线 + selfcheck 技能调度行）
+- [ ] Step 4: 确认绿 + 全量不回归
+- [ ] Step 5: 提交 `feat(skills): skillRef 首帧注入 + buildDeps 装配接线 + selfcheck 行`
+
+---
+
+### Task 6: MCP 官方 SDK 接入（按 ≤15min 拆分为 6a/6b/6c）
+
+---
+
+### Task 6a: mock stdio JSON-RPC server（目标 ≤10min）
+
+**Files:**
+- Create: `scripts/mock-mcp-server.js`
+
+**Interfaces:**
+- 纯 Node 零依赖 stdio JSON-RPC：`initialize` → `tools/list`（echo 工具）→ `tools/call`；`--delay <ms>` 慢速模式（超时用例）；`--name <name>` 改名（越权用例）；按行 JSON 解析、按行回写
+
+- [ ] Step 1: 脚本冒烟——echo 往返 + 慢速延迟生效断言
+- [ ] Step 2: 提交 `test(mcp): mock stdio JSON-RPC server——echo/慢速/改名三模式（零网络）`
+
+---
+
+### Task 6b: SDK 安装 + McpHost 注册链（目标 ≤15min）
 
 **Files:**
 - Modify: `package.json`、`CLAUDE.md`（依赖登记段）
-- Create: `src/harness/mcp/client.ts`、`client.test.ts`、`scripts/mock-mcp-server.js`（测试专用 stdio JSON-RPC 脚本，零网络）
+- Create: `src/harness/mcp/client.ts`、`client.register.test.ts`
 
 **Interfaces:**
-- `McpHost { constructor(servers: McpServerConfig[], registry: ToolRegistry, chain: SafetyChain); registerTools(): Promise<number>; close(): Promise<void> }`——懒 spawn、handshake、`tools/list` → `registry.register`，工具规范名 `mcp__<server>__<tool>`（category `external`）
-- 调用执行器：单次超时 30s、参数 JSON ≤64KB、白名单 = SUNSHINE.md 服务器清单本身（空 = 全禁）、失败返回 `Result.fail`（分域错误契约，不拖垮 Loop/Graph）
-- SDK 安装（首步）：`npm install --cache .npm-cache @modelcontextprotocol/sdk` 并锁版本；**失败回退 R6 预案**：自研最小 stdio JSON-RPC 客户端实现同接口，commit 注明降级
-- `mock-mcp-server.js`：实现 `initialize` → `tools/list`（一个 echo 工具）→ `tools/call` 的最小 JSON-RPC server，供测试零网络全链路
+- `McpHost { constructor(servers, registry, chain); registerTools(): Promise<number>; close(): Promise<void> }`——懒 spawn → handshake → `tools/list` → `registry.register`（规范名 `mcp__<server>__<tool>`，category `external`）
+- 首步安装：`npm install --cache .npm-cache @modelcontextprotocol/sdk` 并锁版本；失败走 R6 回退：自研最小 stdio JSON-RPC 客户端同接口，commit 注明降级
 
 - [ ] Step 0: 安装 SDK（或记录回退决策）
-- [ ] Step 1: 失败测试——mock server 全链路：handshake → tools/list 注册数断言 → 经 `registry.execute`（走 SafetyChain）调用 echo 返回脱敏结果；越权 server（不在清单）拒绝；慢 server 超时 fail
+- [ ] Step 1: 失败测试——mock server 注册链：注册数 + 规范名断言
 - [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（McpHost + 策略分支 + `CANONICAL_TOOL_NAMES` 不动，`mcp__` 名走 external 策略）
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(mcp): McpHost 官方 SDK 接入——external 安全闸门+懒连接+mock stdio 全链路测试`
+- [ ] Step 3: 最小实现
+- [ ] Step 4: 确认绿
+- [ ] Step 5: 提交 `feat(mcp): McpHost 注册链——官方 SDK 接缝 + mcp__ 命名登记`
 
 ---
 
-### Task 7: 收口 —— selfcheck 门禁与文档同步
+### Task 6c: 调用闸门 + 全链路（目标 ≤15min）
+
+**Files:**
+- Modify: `src/harness/mcp/client.ts`、`src/harness/security/policy.ts`（external 分支）
+- Create: `src/harness/mcp/client.call.test.ts`
+
+**Interfaces:**
+- 经 `registry.execute`（走 SafetyChain）调用：单次超时 30s、参数 JSON ≤64KB、白名单 = SUNSHINE.md 服务器清单（空 = 全禁）、结果统一 mask、失败 `Result.fail`（分域契约，不拖垮 Loop/Graph）
+
+- [ ] Step 1: 失败测试——echo 全链路脱敏；越权 server 拒绝；慢 server 超时 fail；超体积参数拒绝
+- [ ] Step 2: 确认红
+- [ ] Step 3: 最小实现（external 策略分支 + 执行器）
+- [ ] Step 4: 确认绿 + 全量不回归
+- [ ] Step 5: 提交 `feat(mcp): 调用闸门与全链路——超时/体积/白名单/mask 四闸`
+
+---
+
+### Task 7: 收口 —— selfcheck 门禁与文档同步（目标 ≤15min）
 
 **Files:**
 - Modify: `src/cli/commands/selfcheck.ts`、`docs/ROADMAP.md`、`CLAUDE.md`
 
-- [ ] Step 1: selfcheck 新增四行：MCP（服务器清单解析 + mock 注册）、工具面（grep/webfetch）、知识库（conformance + top-3 命中）、技能（skillRef 调度）
+- [ ] Step 1: selfcheck 新增 MCP 行（清单解析 + mock 注册数）
 - [ ] Step 2: ROADMAP 阶段四测试基线数修正为实测值；CLAUDE.md 目录树增 `harness/mcp/`、`harness/knowledge/`，依赖登记 `@modelcontextprotocol/sdk`（用途/边界/回退）
 - [ ] Step 3: 全量门禁：`npm run build` 0 报错、`node --test` 全绿、`npm run selfcheck` 全行通过
-- [ ] Step 4: 提交 `chore(phase4): selfcheck 四行门禁 + ROADMAP/CLAUDE.md 文档同步`
+- [ ] Step 4: 提交 `chore(phase4): selfcheck MCP 行 + ROADMAP/CLAUDE.md 文档同步`
 
 ---
 
@@ -166,9 +336,9 @@
 
 | spec 验收 | 承接任务 |
 | --- | --- |
-| §4-1 MCP 全链路 | Task 6 |
+| §4-1 MCP 全链路 | Task 6a–6c |
 | §4-2 工具面 | Task 2 |
-| §4-3 路由/缓存/流式 | Task 3 |
-| §4-4 知识库 | Task 4（sqlite-vec 部分留 P1） |
-| §4-5 技能调度 | Task 5 |
+| §4-3 路由/缓存/流式 | Task 3a–3c |
+| §4-4 知识库 | Task 4a–4f（sqlite-vec 部分留 P1） |
+| §4-5 技能调度 | Task 5a–5b |
 | §4-6 门禁 / §4-7 文档 | Task 7（各任务门禁随提交持续验证） |
