@@ -108,7 +108,7 @@ flowchart TB
 - [ ] plan-mode：先出执行计划、用户确认后再动代码（复用 Graph 规划节点）
 - [ ] 待办清单展示：任务拆解与状态实时同步（数据源为 Graph 节点状态）
 - [ ] 权限与审批终端化：deny/ask/allow 实时询问，gate 审批在会话内完成
-- [ ] 终端渲染选型：零依赖 ANSI 渲染 vs 轻量 TUI 库（按零依赖纪律取舍）
+- [ ] 终端渲染选型：原生 ANSI 渲染 vs 成熟 TUI 库（如 Ink/blessed 一类候选），按依赖引入原则评审定案
 
 **5B 桌面端 GUI（对标 Codex 工作台）**：
 

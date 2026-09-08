@@ -59,6 +59,7 @@ SUNSHINE.md          # 项目业务配置
 - 所有 IO（文件/网络/命令）集中在对应 adapter/store 内
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
+- 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
 
 ## 6. 技能与插件规范
 

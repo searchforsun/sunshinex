@@ -44,7 +44,7 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
   - plan-mode：先出执行计划、用户确认后再动代码（复用 Graph 规划节点）
   - 待办清单展示：任务拆解与状态实时同步（数据源为 Graph 节点状态）
   - 权限与审批终端化：deny/ask/allow 实时询问、gate 审批在会话内完成
-  - 终端渲染选型：零依赖 ANSI vs 轻量 TUI 库（按零新增依赖纪律取舍，开工前定案）
+  - 终端渲染选型：原生 ANSI vs 成熟 TUI 库（如 Ink/blessed 一类候选），按依赖引入原则评审定案
 - **GUI 桌面端（对标 Codex 工作台，阶段五 5B）**：Electron，对话交互、代码预览与 diff、工作流可视化看板（任务委派式）、项目记忆/技能/插件管理
 - **三面同源**：CLI/TUI/GUI 共享同一 Harness/Loop/Graph 运行时与数据底座（配置、任务、记忆、日志），交互面只是同一运行时的不同壳
 
@@ -118,7 +118,7 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 
 ### 3.2 交互层
 - CLI（已交付）：零依赖自研（node:readline + 内置 argv 解析），无 commander/inquirer/chalk 等第三方依赖
-- TUI（阶段五 5A）：终端渲染选型待定案——零依赖 ANSI 渲染 vs 轻量 TUI 库（零新增依赖纪律优先）
+- TUI（阶段五 5A）：终端渲染选型待定案——原生 ANSI 渲染 vs 成熟 TUI 库（如 Ink/blessed），按依赖引入原则评审
 - GUI（阶段五 5B，规划选型）：Electron 28+、Vue3 + Vite + Naive UI、Monaco Editor、@antv/g6（流程可视化）、diff2html/monaco-diff（diff 预览）
 
 ### 3.3 Graph编排层
@@ -129,7 +129,7 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 - 自研Loop Engine、规则校验器、测试执行器、diff生成器
 - 验收标准解析器、Token预算控制器
 
-### 3.5 Harness运行时层（核心已零依赖实装；以下第三方库为规划选型池，引入须过零新增依赖纪律评审）
+### 3.5 Harness运行时层（核心能力当前以 node: 内置自研实装；以下第三方库为候选选型池，引入按依赖引入原则评审）
 - **项目感知（已交付零依赖）**：自研目录/依赖/SUNSHINE.md/Git 扫描；tree-sitter、depcheck、simple-git 为规划增强
 - **MCP兼容（阶段四）**：@modelcontextprotocol/sdk
 - **执行后端**：本地进程（已交付）；isolated-vm、dockerode、ssh2 为规划

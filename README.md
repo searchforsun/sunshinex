@@ -48,7 +48,7 @@ src/
 
 - **统一主链，而非能力拼接**：Claude Code 的指令分层/路径规则、Codex 的算力路由/多执行后端、Hermes 的持久记忆/自我验证，均被拆解为「能力本质」后映射到主链对应环节（Context / Loop / Tool / Safety / Memory），通过统一接口协同。
 - **单一数据流、无旁路**：上下文只能从 Context 进、动作只能从 Tool 出、执行必经 Safety、记忆只走 Memory，每条验收可证伪（反例即不合格）。
-- **工程纪律**：TypeScript strict、CommonJS、`node --test`、TDD 先行、零新增依赖（安全隔离与凭据处理除外）。
+- **工程纪律**：TypeScript strict、CommonJS、`node --test`、TDD 先行；依赖引入从克制不从封闭——优先 node: 内置，允许引入优秀且必要的第三方依赖（详见 CLAUDE.md 依赖引入原则）。
 - **生产级底座**：项目感知、权限三态（deny→ask→allow）、dry-run、上下文窗口压缩（分块确定性 + checksum）、模型 SDK 可插拔。
 
 ## 最终产品形态（v1.0 个人开发者版）
