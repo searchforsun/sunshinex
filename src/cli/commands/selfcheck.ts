@@ -14,6 +14,7 @@ export function runSelfcheck(_args: CliArgs): void {
   console.log('files   :', perceived.files.length, 'deps:', perceived.dependencies.length);
   console.log('tools   :', h.tools.list().map((t) => t.name).join(', '));
   console.log('harness :', [h.perception, h.tools, h.security, h.sandbox, h.dryrun, h.context, h.reactor].length, 'modules ready');
+  console.log('context :', `缓存命中率 ${h.context.session.hitRate().toFixed(1)}`);
   const loopReady = codeReviewTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
   console.log('loop    :', `${loopReady.name} template ready (${loopReady.nodes.length} nodes)`);
   const graphReady = softwarePipelineTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
