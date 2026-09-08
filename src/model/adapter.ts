@@ -1,5 +1,5 @@
 /** 模型适配层：统一推理接口，多后端可插拔 */
-import { ModelTier } from '../types';
+import { ModelTier, RouteDecision } from '../types';
 
 export type { ModelTier };
 /** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
@@ -88,6 +88,25 @@ export class ScriptedAdapter implements ModelAdapter {
   }
 }
 
+/** 路由提示：调用方对本次任务的算力信号（Graph 角色/复杂度） */
+export interface RouteHint {
+  complexity?: 'low' | 'mid' | 'high';
+  role?: string;
+}
+
+/** 业务规则：评审/编码类角色需要更强模型，规划类居中 */
+const ROLE_TIER: Record<string, ModelTier> = {
+  critic: 'large',
+  coder: 'large',
+  planner: 'medium',
+};
+
+const COMPLEXITY_TIER: Record<NonNullable<RouteHint['complexity']>, ModelTier> = {
+  low: 'small',
+  mid: 'medium',
+  high: 'large',
+};
+
 /** 三档算力路由：small/medium/large */
 
 export class ModelRouter {
@@ -115,5 +134,21 @@ export class ModelRouter {
   /** 显式绑定档快照（不含默认回退） */
   boundTiers(): ModelTier[] {
     return [...this.adapters.keys()];
+  }
+
+  /** 提示感知路由：role 优先于 complexity，均缺省回退 medium；reason 留痕决策依据 */
+  route(hint?: RouteHint): RouteDecision {
+    let tier: ModelTier = 'medium';
+    let source = 'default:medium';
+    if (hint?.role && ROLE_TIER[hint.role]) {
+      tier = ROLE_TIER[hint.role];
+      source = `role:${hint.role}`;
+    } else if (hint?.complexity) {
+      tier = COMPLEXITY_TIER[hint.complexity];
+      source = `complexity:${hint.complexity}`;
+    }
+    const bound = this.adapters.has(tier);
+    const reason = bound ? source : `${source} fallback:default`;
+    return { tier, reason, adapterProvider: this.resolve(tier).provider, bound };
   }
 }

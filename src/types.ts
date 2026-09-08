@@ -142,10 +142,14 @@ export type MemoryLevel = 'working' | 'episodic' | 'skill';
 /** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具） */
 export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external';
 
-/** 模型路由决策留痕（tier + reason，随 run 结果可观测） */
+/** 模型路由决策留痕（tier + reason + 实际承载适配器，随 run 结果可观测） */
 export interface RouteDecision {
   tier: ModelTier;
   reason: string;
+  /** 该档是否显式绑定适配器（false = 回退默认档） */
+  bound: boolean;
+  /** 实际承载适配器的 provider（回退时为默认适配器的 provider） */
+  adapterProvider: string;
 }
 
 /** 知识库命中条目（kb_search 出参；score 为归一化相似度） */
