@@ -23,3 +23,18 @@ test('无 package.json 时 dependencies 为空数组（降级）', () => {
   const p = new PerceptionEngine(dir).scan();
   assert.deepEqual(p.dependencies, []);
 });
+
+test('scan 跳过工具链与运行时产物目录（.pnpm-store/node_modules/.data/.longtask 等）', () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, 'src.ts'), '');
+  for (const skip of ['.pnpm-store', 'node_modules', '.data', '.longtask']) {
+    fs.mkdirSync(path.join(dir, skip, 'inner'), { recursive: true });
+    fs.writeFileSync(path.join(dir, skip, 'inner', 'artifact.bin'), '');
+  }
+  const p = new PerceptionEngine(dir).scan();
+  assert.ok(p.files.includes('src.ts'));
+  assert.ok(!p.files.some((f) => f.includes('.pnpm-store/')), '.pnpm-store 应被跳过');
+  assert.ok(!p.files.some((f) => f.includes('node_modules/')), 'node_modules 应被跳过');
+  assert.ok(!p.files.some((f) => f.includes('.data/')), '.data 应被跳过');
+  assert.ok(!p.files.some((f) => f.includes('.longtask/')), '.longtask 应被跳过');
+});

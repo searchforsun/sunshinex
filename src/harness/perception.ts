@@ -10,6 +10,9 @@ export interface Perceived {
   gitBranch: string | null;
 }
 
+/** 感知扫描跳过目录：与 .gitignore 口径一致——依赖/构建产物/包管理器 store/运行时数据/长任务演示目标不入感知 */
+const SCAN_SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.pnpm-store', '.npm-cache', '.data', '.longtask']);
+
 /** 项目感知引擎：目录扫描 + 依赖解析 + SUNSHINE.md + Git 分支（降级不抛） */
 export class PerceptionEngine {
   constructor(private root: string) {}
@@ -27,7 +30,7 @@ export class PerceptionEngine {
     const out: string[] = [];
     const walk = (dir: string) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist') continue;
+        if (SCAN_SKIP_DIRS.has(e.name)) continue;
         const full = path.join(dir, e.name);
         if (e.isDirectory()) walk(full);
         else out.push(path.relative(this.root, full));
