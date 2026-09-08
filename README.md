@@ -19,9 +19,10 @@ graph LR
 
 ```text
 src/
-  index.ts            # 入口 + --selfcheck 自检
+  index.ts            # 运行入口（自动装载 .env）
   types.ts            # 全局共享类型
   config.ts           # SUNSHINE.md 解析
+  config/env.ts       # 零依赖 .env 装载（已导出环境变量优先）
   result.ts           # Result 统一结果类型
   harness/            # 运行时底座（核心闭环已落地）
     index.ts          # Harness 门面
@@ -29,15 +30,16 @@ src/
     reactor.ts        # 最小闭环引擎（observe→think→act）
     tools.ts          # 工具注册表
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec）
-    memory.ts         # 三级记忆（待统一收敛）
+    memory.ts         # 三级记忆（统一生命周期，经 context/memory-lifecycle）
     skills.ts         # 技能加载
     security/         # guard/policy/modes/sandbox/dryrun
     context/          # loader/rules/auto-memory/window/session
-  loop/engine.ts      # Loop 引擎（占位）
-  graph/              # DAG 编排（engine/agents，占位）
+  loop/               # Loop 引擎（engine + 四类节点 + 三大模板，已实装）
+  graph/              # DAG 编排（engine/agents/nodes/templates，已实装）
   model/adapter.ts    # 模型适配 + 三档算力路由
   storage/            # 本地 JSON 存储底座
   plugins/loader.ts   # 插件加载
+  cli/                # CLI 执行面（selfcheck / run / pipeline）
 ```
 
 分层依赖：`graph → loop → harness → model / storage / plugins`。Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。
@@ -51,7 +53,7 @@ src/
 
 ## 最终产品形态（v1.0 个人开发者版）
 
-- **双端入口**：CLI 专项命令（`chat/edit/test/review/doc/run`）+ Electron 桌面端。
+- **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台）；CLI 专项命令（`chat/edit/test/review/doc/run`）随阶段四扩展。
 - **云本地分工**：DeepSeek 兼容 OpenAI 协议（`.env` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
 - **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚。
@@ -77,34 +79,12 @@ pnpm cli -- pipeline tests/fixtures/demo --yes --goal "实现 add 函数并保�
 
 需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，DeepSeek 兼容 OpenAI 协议）。CLI 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。
 
-## 平台兼容性
-
-一份代码，三平台部署：安装、构建、自检与 CLI 基础命令在 Windows / macOS / Linux 全平台可用；工具 `exec` 的命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持（`resolveShell()` 自动探测，无需 WSL）。
-
-| 能力 | Linux | macOS | Windows |
-|------|-------|-------|---------|
-| 安装 / 构建 / 自检 | 支持 | 支持 | 支持 |
-| CLI（selfcheck / run / pipeline） | 支持 | 支持 | 支持（单行命令） |
-| 工具 exec 命令执行面 | 支持 | 支持 | 支持（Git Bash 自动探测） |
-
-部署条件（三平台通用）：
-
-1. Node.js ≥ 22.9（`pnpm cli` 依赖 `--env-file-if-exists`，下限登记于 `package.json` `engines`），实测基线 22 LTS 与 24.x。
-2. `dist/` 不入库：新检出须先 `pnpm install` + `pnpm build`（`pnpm cli` 已内置自动构建，可直接执行）。
-3. 复制 `.env.example` 为 `.env` 并填入真实 `OPENAI_API_KEY`（Windows 用 `copy`，macOS/Linux 用 `cp`）；未配置密钥时可用 `--model stub` 先验证链路。
-4. 包管理器统一 pnpm（`packageManager` 钉版，corepack 启用后自动对齐版本）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用。
-
-Windows 注意事项：
-
-- 本页 CLI 示例均为单行，PowerShell/cmd 直接粘贴可用；bash 风格续行符 `\` 在 PowerShell 中无效。
-- `exec` 命令执行面由 `resolveShell()` 按序解析：`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容 shell，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ 探测 Git Bash（`Git\bin\bash.exe`，随 Git for Windows 标准安装）→ 无 Git 时 `ComSpec` 兜底（`/c`，仅保证不崩，sh 语义命令不保证可用）。
-- 推荐安装 Git for Windows 后直接使用（自动探测生效）；WSL 内按 Linux 口径亦完整可用。便携版/自定义安装位置：设置环境变量 `SUNSHINEX_SHELL` 指向 `bash.exe`/`sh.exe` 即可。
-
 ## 文档导航
 
 | 文档 | 内容 |
 |------|------|
 | `docs/Arch-Plan.md` | 架构设计方案与分阶段规划（原 README 全文） |
+| `docs/PLATFORM.md` | 平台兼容性与部署条件（三平台矩阵、exec shell 解析、部署清单） |
 | `docs/ROADMAP.md` | 开发路线图（6 阶段、28 周） |
 | `docs/superpowers/specs/` | 设计 spec（阶段一底座 + 统一运行时主链） |
 | `CLAUDE.md` | AI 协作规范 |

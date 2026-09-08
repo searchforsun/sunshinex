@@ -13,11 +13,11 @@ SunshineX 是一款对齐2026年AI Agent三层工程范式、融合业界三大�
 ### 1.2 核心设计理念（融合三大Agent能力）
 | 参考产品/范式 | 吸收核心优势 | SunshineX自研落地与增强 |
 |--------------|-------------|------------------------|
-| Harness Engineering | 生产级运行时、统一工具接入、状态持久化、安全管控 | 自研完整Harness运行时，新增项目深度感知、MCP协议兼容、多执行后端、dry-run预览四大能力 |
+| Harness Engineering | 生产级运行时、统一工具接入、状态持久化、安全管控 | 自研完整Harness运行时，新增项目深度感知、dry-run预览（已交付）与MCP协议兼容、多执行后端（阶段四规划） |
 | Loop Engineering | 生成-校验-修正闭环、成本管控、终止控制 | 自研Loop Engine，新增测试闭环、代码重构、代码审查三大专用模板；内置/goal自我验证机制 |
 | Graph Engineering | DAG流程拓扑、多节点协作、错误局部化、子流程嵌套 | 自研Graph编排引擎，新增多角色子Agent编排、软件工程全链路流水线、CI/CD集成节点 |
 | OpenAI Codex | 分层模型算力、全链路软件工程、多环境执行 | 落地三档算力路由、跨文件重构、测试闭环、多执行后端；轻量化实现系统级控制 |
-| Claude Code | 全代码库感知、项目约定配置、持久记忆、dry-run、MCP | 落地项目扫描器、sunshinex.md配置、跨会话项目记忆、预览模式、MCP工具兼容 |
+| Claude Code | 全代码库感知、项目约定配置、持久记忆、dry-run、MCP | 落地项目扫描器、SUNSHINE.md配置、跨会话项目记忆、预览模式、MCP工具兼容 |
 | Hermes Agent | 模型无关、持久化进化、技能系统、自我验证 | 强化模型无关架构、三级持久记忆、标准化技能体系、目标自检机制 |
 
 ### 1.3 核心目标
@@ -36,16 +36,24 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 
 > 核心嵌套关系：Graph节点可嵌入完整Loop子流程；所有Loop和Graph均运行在Harness底座之上，由Harness统一提供项目感知、工具、状态、安全、记忆能力。
 
-#### 2.1.1 上层交互层（双端统一）
-- **CLI端**：支持`edit/test/doc/review`等专项命令（对齐Claude Code），支持管道调用、静默模式、dry-run参数
-- **GUI端**：Electron桌面端，支持对话交互、流程可视化、代码diff预览、项目记忆管理、技能管理
+#### 2.1.1 上层交互层（CLI + TUI + GUI 三面统一）
+- **CLI 基础执行面（已交付）**：`selfcheck / run / pipeline`——骨架自检、Loop 修正环、五节点全链路流水线；支持管道调用、静默审批（--yes）、模型选型（--model）；`chat/edit/test/review/doc` 专项命令随阶段四扩展（对齐 Claude Code）
+- **TUI 交互式终端（对标 Claude Code，v1.0 默认入口，阶段五 5A）**：
+  - 会话 REPL：连续对话式任务下达，会话内多任务上下文延续
+  - 流式输出：模型 token 流与工具调用事件（exec/read/write）逐条实时渲染
+  - plan-mode：先出执行计划、用户确认后再动代码（复用 Graph 规划节点）
+  - 待办清单展示：任务拆解与状态实时同步（数据源为 Graph 节点状态）
+  - 权限与审批终端化：deny/ask/allow 实时询问、gate 审批在会话内完成
+  - 终端渲染选型：零依赖 ANSI vs 轻量 TUI 库（按零新增依赖纪律取舍，开工前定案）
+- **GUI 桌面端（对标 Codex 工作台，阶段五 5B）**：Electron，对话交互、代码预览与 diff、工作流可视化看板（任务委派式）、项目记忆/技能/插件管理
+- **三面同源**：CLI/TUI/GUI 共享同一 Harness/Loop/Graph 运行时与数据底座（配置、任务、记忆、日志），交互面只是同一运行时的不同壳
 
 #### 2.1.2 Graph编排层（多角色协作+全链路流程）
 对应Graph Engineering范式，吸收Claude Code多Agent编排、Codex全链路软件工程能力：
 - **DAG工作流引擎**：支持串行、并行、分支、汇合、子流程嵌套
 - **多角色子Agent编排**：内置规划师、开发者、测试工程师、审查员四种专项角色，可自动分工协作
 - **软件工程全链路模板**：内置「需求分析→架构设计→编码实现→测试验证→代码审查→交付」完整流水线模板
-- **CI/CD集成节点**：支持触发GitHub Actions、GitLab CI，接收执行结果
+- **CI/CD集成节点（骨架已建）**：工作流内 ci 节点可编排执行；GitHub Actions、GitLab CI 平台级触发为规划（v1.0 经 gh CLI 注入）
 - **人工审批节点**：关键步骤、重大变更自动暂停，等待用户确认
 - **错误局部化**：节点失败仅回退当前节点，不影响全局流程
 
@@ -64,20 +72,20 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 对应Harness Engineering范式，吸收Claude Code项目感知、Hermes持久记忆、Codex多环境执行、MCP协议：
 - **项目深度感知引擎**：
   - 自动扫描项目目录结构、解析依赖树、识别技术栈
-  - 读取`sunshinex.md`项目配置，注入编码规范、架构原则、行为边界
+  - 读取`SUNSHINE.md`项目配置，注入编码规范、架构原则、行为边界
   - 解析Git提交历史，理解项目演进与决策背景
   - 跨会话持久项目记忆：记住项目约定、历史修改、用户偏好
 - **统一动作执行面**：
   - 内置工具集：文件操作、Shell、Git、网络、数据库、数据处理
-  - MCP协议兼容：支持接入第三方MCP工具与服务
-  - 多执行后端：本地进程、Docker沙箱、远程SSH，按需匹配隔离等级
+  - MCP协议兼容（规划，阶段四）：支持接入第三方MCP工具与服务
+  - 多执行后端：本地进程已交付（POSIX sh 基线，Windows 经 Git Bash 自动探测）；Docker沙箱、远程SSH为规划（按需匹配隔离等级）
 - **三级持久化记忆体系**：
   - 技能级：成功任务沉淀为可复用技能模板
   - 项目级：项目规范、依赖、历史决策、修改记录
   - 用户级：偏好、习惯、常用配置
 - **安全管控中心**：
   - dry-run预览模式：所有文件修改、系统操作默认生成预览，用户确认后应用
-  - 分级沙箱：JS/TS用isolated-vm，多语言用Docker容器
+  - 分级沙箱：已交付路径越界校验（safePath）、权限三态（deny→ask→allow）与 dry-run 预览；isolated-vm/Docker 容器隔离为规划增强
   - 细粒度权限：工具级、文件级、网络级权限管控
   - 审计日志：全操作可追溯
 - **容错治理模块**：自动重试、退避策略、降级兜底、故障定位
@@ -94,7 +102,7 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 - **Token管理**：限流、计费、上下文窗口自动适配
 
 #### 2.1.6 基础设施层
-本地文件存储、向量知识库、KV缓存、SQLite数据库、图数据存储、日志存储
+本地文件存储与 JSON KV 底座（已交付）；向量知识库、SQLite、图数据存储为规划（阶段四起）
 
 ### 2.2 核心架构优势
 1. **业界能力深度融合**：集Codex工程化编码、Claude Code项目感知、Hermes持久进化三大优势于一体
@@ -106,12 +114,12 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 
 ## 三、技术栈选型（增强版）
 ### 3.1 核心底层
-- Node.js 20+ LTS、TypeScript 5.x、pnpm、ESLint + Prettier + Husky
+- Node.js ≥ 22.9（engines 登记，实测基线 22 LTS / 24.x）、TypeScript strict、pnpm（packageManager 钉版）、node:test（测试零框架依赖；ESLint/Husky 暂未引入）
 
 ### 3.2 交互层
-- CLI：commander、inquirer、chalk、ora、diff-cli（diff预览）
-- GUI：Electron 28+、Vue3 + Vite + Naive UI、Monaco Editor、@antv/g6（流程可视化）
-- Diff预览：diff2html、monaco-diff
+- CLI（已交付）：零依赖自研（node:readline + 内置 argv 解析），无 commander/inquirer/chalk 等第三方依赖
+- TUI（阶段五 5A）：终端渲染选型待定案——零依赖 ANSI 渲染 vs 轻量 TUI 库（零新增依赖纪律优先）
+- GUI（阶段五 5B，规划选型）：Electron 28+、Vue3 + Vite + Naive UI、Monaco Editor、@antv/g6（流程可视化）、diff2html/monaco-diff（diff 预览）
 
 ### 3.3 Graph编排层
 - 自研DAG引擎、JSON Schema工作流定义、异步事件调度器
@@ -121,18 +129,18 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 - 自研Loop Engine、规则校验器、测试执行器、diff生成器
 - 验收标准解析器、Token预算控制器
 
-### 3.5 Harness运行时层
-- **项目感知**：tree-sitter（多语言解析）、depcheck（依赖扫描）、simple-git（Git操作）
-- **MCP兼容**：@modelcontextprotocol/sdk
-- **执行后端**：isolated-vm、dockerode、ssh2
-- **状态记忆**：better-sqlite3、keyv、文件系统
-- **上下文缓存**：lru-cache、xxhash、chromadb（向量匹配）
-- **安全管控**：权限拦截中间件、审计日志系统
+### 3.5 Harness运行时层（核心已零依赖实装；以下第三方库为规划选型池，引入须过零新增依赖纪律评审）
+- **项目感知（已交付零依赖）**：自研目录/依赖/SUNSHINE.md/Git 扫描；tree-sitter、depcheck、simple-git 为规划增强
+- **MCP兼容（阶段四）**：@modelcontextprotocol/sdk
+- **执行后端**：本地进程（已交付）；isolated-vm、dockerode、ssh2 为规划
+- **状态记忆（已交付零依赖）**：文件系统 JSON 底座 + 统一记忆生命周期；better-sqlite3、keyv 为规划
+- **上下文缓存（已交付零依赖）**：自研三级缓存 + checksum 门禁；lru-cache、xxhash、chromadb（向量匹配）为规划
+- **安全管控（已交付）**：safePath 路径门禁、权限三态、dry-run、凭据脱敏；审计回滚为规划
 
 ### 3.6 存储与模型
-- 关系库：better-sqlite3
-- 向量库：chromadb
-- 模型SDK：openai + 多模型适配器
+- 关系库（规划）：better-sqlite3（当前为文件系统 JSON 底座）
+- 向量库（规划，阶段四）：chromadb
+- 模型SDK：自研 OpenAI 兼容适配器（内置 fetch 直连、三档算力路由，DeepSeek 实测通过）；多模型适配器为规划
 
 ## 四、核心功能模块设计
 ### 4.1 Graph编排层核心能力
@@ -164,14 +172,14 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 ### 4.3 Harness运行时层核心能力
 #### 4.3.1 项目深度感知
 - 自动项目扫描：识别语言、框架、依赖、配置文件
-- `sunshinex.md`项目约定：统一配置技术栈、编码规范、目录规则、禁止操作
+- `SUNSHINE.md`项目约定：统一配置技术栈、编码规范、目录规则、禁止操作
 - 持久项目记忆：跨会话记住项目上下文、历史修改、决策原因
 - Git历史感知：读取提交记录、分支信息，理解项目演进
 
 #### 4.3.2 统一执行与工具
-- 内置50+开发工具：文件、Shell、Git、网络、数据库、文本处理
-- MCP协议兼容：一键接入第三方MCP工具与服务
-- 三档执行环境：本地进程（低隔离）、Docker沙箱（中隔离）、远程SSH（高隔离）
+- 内置基础工具集（已交付）：read/write/grep/glob/exec 五件套；开发全场景工具集（Git、网络、数据库、文本处理等）随阶段四扩展
+- MCP协议兼容（阶段四）：一键接入第三方MCP工具与服务
+- 三档执行环境：本地进程已交付（POSIX sh 基线 + Windows Git Bash 自动探测）；Docker沙箱（中隔离）、远程SSH（高隔离）为规划
 - 工具自动匹配：基于语义+规则自动匹配任务与工具
 
 #### 4.3.3 三级持久记忆
@@ -198,7 +206,7 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 - 任务自动化：批量处理、定时任务、工作流自动化
 
 ### 4.5 CLI专项命令
-对齐Claude Code专项命令设计：
+已交付基础执行面：`sunshinex selfcheck / run / pipeline`（骨架自检、Loop 修正环、五节点流水线）。以下对齐 Claude Code 的专项命令为规划，随阶段四扩展：
 - `sunshinex chat`：通用对话
 - `sunshinex edit`：代码编辑与重构
 - `sunshinex test`：生成并运行测试
@@ -213,7 +221,7 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 - 项目初始化与工程化规范
 - 三级KV缓存与上下文管理
 - 统一工具框架与内置基础工具集
-- 项目深度感知引擎：目录扫描、依赖解析、sunshinex.md配置、Git读取
+- 项目深度感知引擎：目录扫描、依赖解析、SUNSHINE.md配置、Git读取
 - 三级持久化记忆体系
 - 分级沙箱与权限管控
 - dry-run预览机制
@@ -250,14 +258,11 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 - 技能模板体系完善
 - 交付物：MCP兼容、全场景基础能力、技能系统
 
-### 第五阶段：GUI桌面端开发（第23-26周）
-**核心目标**：完成Electron桌面端，实现可视化交互
-- 对话交互、代码预览、diff对比
-- 工作流可视化编排与实时监控
-- 项目记忆管理、技能管理、插件管理
-- 双端数据同步：配置、任务、记忆、日志
-- 系统托盘、全局快捷键、消息通知
-- 交付物：完整功能桌面端、双端数据互通
+### 第五阶段：终端双端——TUI + GUI（第23-26周）
+**核心目标**：交付两种交互面——5A 交互式 TUI 对标 Claude Code（v1.0 默认入口，优先交付）、5B 桌面端 GUI 对标 Codex 工作台；双端共享同一运行时与数据底座
+- TUI：会话 REPL、流式输出（token 流 + 工具调用事件）、plan-mode、待办清单展示、权限审批终端化、终端渲染选型定案
+- GUI：对话交互、代码预览、diff对比、工作流可视化看板、记忆/技能/插件管理、双端数据同步、托盘与通知
+- 交付物：交互式 TUI（默认入口）+ 完整功能桌面端，CLI/TUI/GUI 三面数据互通
 
 ### 第六阶段：测试优化与发布（第27-28周）
 **核心目标**：全量测试、性能优化、打包发布
@@ -268,6 +273,8 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 - 交付物：v1.0正式版本、完整文档、安装包
 
 ## 六、项目目录架构（增强版）
+
+> 以下为目标目录架构（规划示意）。当前实装为 src/ 扁平分层：`src/harness`（perception/reactor/tools/security/context）、`src/loop`、`src/graph`、`src/model`、`src/storage`、`src/plugins`、`src/cli`，详见 README「当前架构」。
 ```
 sunshinex/
 ├── bin/                      # CLI入口
@@ -325,7 +332,7 @@ sunshinex/
 | 编码能力 | 跨文件重构、测试闭环、代码审查 | 系统级架构重构、全栈端到端开发 |
 | 项目感知 | 单项目深度感知、持久记忆 | 多项目并行、团队共享上下文 |
 | 协作能力 | 单用户多角色Agent协作 | 多人+多Agent混合协作、冲突处理 |
-| 入口 | CLI + Electron桌面端 | VSCode/JetBrains插件、Web端 |
+| 入口 | CLI + TUI（默认入口）+ Electron桌面端 | VSCode/JetBrains插件、Web端 |
 | 生态 | MCP协议、内置工具集 | 插件市场、企业级集成 |
 | 部署 | 本地单机部署 | 团队级服务器部署、高可用 |
 | 系统交互 | 文件、Shell、Git、数据库 | 系统级UI操控、内置浏览器、远程桌面 |
