@@ -78,11 +78,11 @@
 - `SessionStore` 增量：hit/miss 计数器 + `hitRate(): number`（零样本返回 0）
 - selfcheck 追加「缓存命中率」汇总行（无样本显示 0.0，不得崩溃）
 
-- [ ] Step 1: 失败测试——hit/miss 计数、hitRate 边界（含零样本）
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现 + selfcheck 汇总行
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(context): session 缓存命中率计数与 selfcheck 汇总行`
+- [x] Step 1: 失败测试——hit/miss 计数、hitRate 边界（含零样本）
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现 + selfcheck 汇总行
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(context): session 缓存命中率计数与 selfcheck 汇总行`（已完成：f27848e）
 
 ---
 
@@ -95,11 +95,11 @@
 **Interfaces:**
 - `ModelRouter.route(hint?: { complexity?: 'low'|'mid'|'high'; role?: string }): RouteDecision`，`RouteDecision { tier, reason }`；reason 说明依据（hint 命中或缺省回退）；决策随返回值供 run 层留痕
 
-- [ ] Step 1: 失败测试——complexity/role 各档映射 + 缺省回退 + reason 非空
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（静态映射，不引入启发式）
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(model): RouteHint 决策留痕——route(hint) 返回 tier+reason`
+- [x] Step 1: 失败测试——complexity/role 各档映射 + 缺省回退 + reason 非空
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现（静态映射，不引入启发式）
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(model): RouteHint 决策留痕——route(hint) 返回 tier+reason`（已完成：90221e0）
 
 ---
 
