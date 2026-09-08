@@ -55,11 +55,11 @@
 - 新增 `webfetch` 工具（category `network`）：入参 `{ url }`；域名白名单（Task 1 的 `parseNetworkAllowlist`）不在名单 → guard 拒绝；正文截断上限 100_000 字符；结果过 `maskResult` 出口
 - 复用既有 `CANONICAL_TOOL_NAMES` 追加 `webfetch` 映射；不新增 git/db 专项工具（exec 已覆盖）
 
-- [ ] Step 1: 失败测试——目录 grep 命中多文件并按 glob 过滤、超 200 行截断断言；webfetch 白名单外拒绝、名单内（本地 mock http server）命中并截断；`external` 类工具在白名单空时 evaluate 拒绝
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（grep 递归复用 `glob` 遍历逻辑；webfetch 用 `fetch` + 白名单闸门 + 截断）
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(tools): 目录级 grep（glob 过滤+行上限）与 webfetch（域名白名单闸门）`
+- [x] Step 1: 失败测试——目录 grep 命中多文件并按 glob 过滤、超 200 行截断断言；webfetch 白名单外拒绝、名单内（本地 mock http server）命中并截断；`external` 类工具在白名单空时 evaluate 拒绝
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现（grep 递归复用 `glob` 遍历逻辑；webfetch 用 `fetch` + 白名单闸门 + 截断）
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(tools): 目录级 grep（glob 过滤+行上限）与 webfetch（域名白名单闸门）`（已完成：09a1983 实现 + ddde526 死代码清理，基线 199/199/0）
 
 ---
 
