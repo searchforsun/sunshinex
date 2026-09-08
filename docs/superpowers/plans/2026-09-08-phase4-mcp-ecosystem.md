@@ -35,11 +35,11 @@
 - `parseSunshinex` 增量函数：`parseMcpServers(doc): McpServerConfig[]`（「MCP 服务器」分区，行式 `name | command | args...`）、`parseNetworkAllowlist(doc): string[]`（「网络白名单」分区，每行一个域名）；分区缺省 = 空数组（空 = 全禁，安全缺省）
 - env 键：`KB_BACKEND`（缺省 `local-json`）、`EMBEDDING_BASE_URL/EMBEDDING_API_KEY/EMBEDDING_MODEL`（缺省回退 `OPENAI_*`）
 
-- [ ] Step 1: 写失败测试——SUNSHINE.md 样例含「MCP 服务器 / 网络白名单」分区，断言解析出 `McpServerConfig[]` 与域名数组；分区缺失断言空数组；非法行断言跳过不抛
-- [ ] Step 2: `npm run build && node --test dist/config.*.test.js` 确认红
-- [ ] Step 3: 最小实现 types 增量 + 两个解析函数 + env 键读取
-- [ ] Step 4: 确认绿（新测试 PASS 且全量不回归）
-- [ ] Step 5: 提交 `feat(types): 阶段四类型与配置脚手架——network/external 类别、MCP/白名单分区解析、KB/embedding env 键`
+- [x] Step 1: 写失败测试——SUNSHINE.md 样例含「MCP 服务器 / 网络白名单」分区，断言解析出 `McpServerConfig[]` 与域名数组；分区缺失断言空数组；非法行断言跳过不抛
+- [x] Step 2: `npm run build && node --test dist/config.*.test.js` 确认红
+- [x] Step 3: 最小实现 types 增量 + 两个解析函数 + env 键读取
+- [x] Step 4: 确认绿（新测试 PASS 且全量不回归）
+- [x] Step 5: 提交 `feat(types): 阶段四类型与配置脚手架——network/external 类别、MCP/白名单分区解析、KB/embedding env 键`（已完成：083ac89，基线 183/183/0）
 
 ---
 
