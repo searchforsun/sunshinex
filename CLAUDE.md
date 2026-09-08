@@ -106,9 +106,9 @@ SUNSHINE.md          # 项目业务配置
 
 ## 12. 平台兼容性目标
 
-以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX 为基线，Windows 原生为已登记待适配项（经 WSL 可完整使用）。
+以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持（`resolveShell()` 自动探测，无 Git 时 `ComSpec` 兜底）。
 
 - **版本下限**：Node.js ≥ 22.9（`npm run cli` 依赖 `--env-file-if-exists`；以 `package.json` 的 `engines` 为准），实测基线 22 LTS 与 24.x。
-- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；npm scripts 保持零 shell 语法依赖（仅 `&&`）；glob/正则匹配须关注平台路径分隔符（现状 `globToRegex` 仅认 `/`，Windows 原生适配时须先归一化再匹配）。
-- **已知差异（如实登记，不虚构兼容）**：`exec` 命令执行面依赖 `/bin/sh`——Linux/macOS 原生可用，Windows 原生不可用（需 WSL 或待 `ProcessSandbox` 平台分支落地）；`npm install --cache .npm-cache` 仅为沙箱等 HOME 不可写环境的约束，本地开发直接 `npm install`；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
+- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；npm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔——`listFiles` 对 `path.relative` 结果先归一化再匹配（Windows 反斜杠进入正则前转为 `/`，POSIX 为 no-op）。
+- **已知差异（如实登记，不虚构兼容）**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ Windows 探测 `Git\bin\bash.exe`（Git Bash）→ 无 Git 时 `ComSpec`（`/c`，仅兜底不崩，sh 语义命令不保证可用）→ POSIX `/bin/sh`；`npm install --cache .npm-cache` 仅为沙箱等 HOME 不可写环境的约束，本地开发直接 `npm install`；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
 - **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 README 平台支持矩阵与部署指引。

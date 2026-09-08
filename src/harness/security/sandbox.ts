@@ -46,9 +46,9 @@ export class ProcessSandbox implements ToolBackend {
         const full = path.join(d, e.name);
         if (e.isDirectory()) walk(full);
         else {
-          const rel = path.relative(root, full);
-          // glob 语义以 / 为分隔符，Windows 产物归一（POSIX 上 path.sep 即 /，原样）
-          if (re.test(rel)) out.push(rel.split(path.sep).join('/'));
+          // glob 语义统一 / 分隔：Windows 反斜杠产物先归一化再匹配（POSIX 上为 no-op），匹配与输出口径一致
+          const rel = path.relative(root, full).split(path.sep).join('/');
+          if (re.test(rel)) out.push(rel);
         }
       }
     };
