@@ -26,19 +26,34 @@ pnpm install    # 安装依赖
 
 ```text
 src/
-  index.ts            # 入口 + --selfcheck 自检
+  index.ts            # npm/pnpm start 入口（自动装载 .env）
+  cli/                # CLI 执行面（selfcheck / run / pipeline）
   types.ts            # 全局共享类型
+  result.ts           # Result 统一结果类型
   config.ts           # SUNSHINE.md 解析器
+  config/env.ts       # 零依赖 .env 装载（已导出环境变量优先）
   harness/
+    index.ts          # Harness 门面
+    perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
+    reactor.ts        # 最小闭环引擎（observe→think→act）
     skills.ts         # 技能加载（skills/{id}/skill.md）
-    memory.ts         # 三级记忆（working/episodic/skill）
     tools.ts          # 工具注册表（MCP 挂载点）
-  loop/engine.ts      # Loop 闭环引擎（生成→校验→修正）
+    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec）
+    memory-lifecycle.ts # 统一记忆生命周期
+    security/         # guard/policy/modes/sandbox/dryrun/chain
+    context/          # loader/rules/window/session/auto-memory/memory-lifecycle
+  loop/
+    engine.ts         # Loop 闭环引擎（生成→校验→修正）
+    nodes.ts          # 四类节点（Agent/Check/Gate/Router）+ /goal 判据
+    templates.ts      # 三大模板（重构/测试闭环/代码审查）
   graph/
     engine.ts         # DAG 拓扑执行（含环检测）
+    nodes.ts          # 四类节点（loop/agent/gate/ci）
     agents.ts         # 多角色子 Agent
+    workflow.ts       # WorkflowDef 装配
+    templates.ts      # 五节点软件工程流水线
   model/adapter.ts    # 模型适配 + 三档算力路由
-  storage/store.ts    # 本地 JSON 存储底座
+  storage/            # 本地 JSON 存储底座（adapter.ts）
   plugins/loader.ts   # 插件加载（plugins/{id}/plugin.json）
 skills/               # 用户技能目录
 plugins/              # 用户插件目录

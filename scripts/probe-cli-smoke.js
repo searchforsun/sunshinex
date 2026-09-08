@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// P2-CLI 部署冒烟：CLI 执行面 × DeepSeek（外部 API 依赖不进流水线门禁，手动执行）——
+// P2-CLI 部署冒烟：CLI 执行面 × OpenAI 协议兼容模型（外部 API 依赖不进流水线门禁，手动执行）——
 //   node --env-file-if-exists=.env scripts/probe-cli-smoke.js
 // 断言：1) selfcheck 退出码 0 且含 graph 行；2) run 命令 fixtures 修正环 done 且 tokensUsed>0；
 //       3) pipeline 命令 --yes 全链路 resume: done。每项真实冒烟前重置物料，保证可重复执行。

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// P2-T6 真实模型冒烟：测试闭环模板 × DeepSeek（外部 API 依赖不进流水线门禁，手动执行）——
+// P2-T6 真实模型冒烟：测试闭环模板 × OpenAI 协议兼容模型（外部 API 依赖不进流水线门禁，手动执行）——
 //   node --env-file-if-exists=.env scripts/probe-loop-smoke.js
 // 场景：tmp 工作区 math.js 实现正确 + 首版错误测试（assert add(1,2)===4）；
 // 模板修正环：agent 修复测试 → check 规则校验（断言修正后内容）→ done。

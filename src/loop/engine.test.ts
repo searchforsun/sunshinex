@@ -102,7 +102,7 @@ test('LoopEngine 迭代耗尽：永循环节点 + maxIterations=3 → failed、i
         kind: 'agent',
         run: () => {
           calls += 1;
-          return { status: 'retry' as const, tokens: 0 };
+          return { status: 'pass' as const, tokens: 0 };
         },
       },
     ],
@@ -124,7 +124,7 @@ test('LoopEngine 超时：timeoutMs=5 + 慢节点（30ms 延时）→ failed 且
         kind: 'agent',
         run: async () => {
           await new Promise((resolve) => setTimeout(resolve, 30));
-          return { status: 'retry' as const, tokens: 0 };
+          return { status: 'pass' as const, tokens: 0 };
         },
       },
       scriptedNode('check', 'check', [{ status: 'pass', tokens: 0 }]),
@@ -140,7 +140,7 @@ test('LoopEngine 超时：timeoutMs=5 + 慢节点（30ms 延时）→ failed 且
 test('LoopEngine 预算超支：单轮 tokens 超 maxTokens → paused（非 failed），tokensUsed 如实', async () => {
   const engine = new LoopEngine(
     [
-      scriptedNode('agent', 'agent', [{ status: 'retry', tokens: 150 }]),
+      scriptedNode('agent', 'agent', [{ status: 'pass', tokens: 150 }]),
       scriptedNode('check', 'check', [{ status: 'pass', tokens: 0 }]),
     ],
     {} as LoopDeps,
@@ -156,7 +156,7 @@ test('LoopEngine 预算超支：单轮 tokens 超 maxTokens → paused（非 fai
 test('LoopEngine router：合法 route 正确跳转；未知 route fail-bounded 报错', async () => {
   const good = new LoopEngine(
     [
-      scriptedNode('n1', 'router', [{ status: 'retry', route: 'n3', tokens: 0 }]),
+      scriptedNode('n1', 'router', [{ status: 'pass', route: 'n3', tokens: 0 }]),
       scriptedNode('n2', 'router', [{ status: 'fail', reply: 'wrong-node', tokens: 0 }]),
       scriptedNode('n3', 'agent', [{ status: 'done', reply: 'routed', tokens: 0 }]),
     ],
@@ -169,7 +169,7 @@ test('LoopEngine router：合法 route 正确跳转；未知 route fail-bounded 
   assert.equal(ok.iterations, 2); // n1 → n3：两个节点执行步
 
   const bad = new LoopEngine(
-    [scriptedNode('n1', 'router', [{ status: 'retry', route: 'ghost', tokens: 0 }])],
+    [scriptedNode('n1', 'router', [{ status: 'pass', route: 'ghost', tokens: 0 }])],
     {} as LoopDeps,
     term(),
   );

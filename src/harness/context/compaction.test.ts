@@ -80,7 +80,7 @@ test('重读截断为每文件前 500 行', async () => {
 
 test('重读条目内容过凭据脱敏（密钥不进上下文）', async () => {
   const { root, cm } = setup();
-  fs.writeFileSync(path.join(root, 'secret.env'), 'DEEPSEEK_API_KEY=sk-abcdefghijklmnopqrst1234\n普通内容');
+  fs.writeFileSync(path.join(root, 'secret.env'), 'TEST_API_KEY=sk-abcdefghijklmnopqrst1234\n普通内容');
   cm.trackFile('secret.env');
   const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
   await cm.applyCompaction(chunks);

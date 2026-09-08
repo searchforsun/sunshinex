@@ -40,7 +40,7 @@ test('未注册工具返回 TOOL_NOT_FOUND', async () => {
 
 test('read 敏感文件内容经 execute 出口已脱敏', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mask-'));
-  fs.writeFileSync(path.join(root, 'secret.env'), 'DEEPSEEK_API_KEY=sk-abcdefghijklmnopqrst1234\n');
+  fs.writeFileSync(path.join(root, 'secret.env'), 'TEST_API_KEY=sk-abcdefghijklmnopqrst1234\n');
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);

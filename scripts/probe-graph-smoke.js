@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// P3-T5 真实模型冒烟：全链路流水线模板 × DeepSeek（外部 API 依赖不进流水线门禁，手动执行）——
+// P3-T5 真实模型冒烟：全链路流水线模板 × OpenAI 协议兼容模型（外部 API 依赖不进流水线门禁，手动执行）——
 //   node --env-file-if-exists=.env scripts/probe-graph-smoke.js
 // 场景：tmp 工作区 math.js 实现正确 + 首版错误测试（assert add(1,2)===4）；
 // 流水线：planner → developer → test-verify（内嵌 testLoop，规则通道）→ reviewer → 交付 gate paused → resume(approve) → done。
@@ -87,7 +87,7 @@ const { softwarePipelineTemplate } = require('../dist/graph/templates');
     console.log('冒烟断言未满足：', JSON.stringify({ status: r2.status, failedNodes: r2.failedNodes, tokensUsed: r2.tokensUsed, criteriaOk }, null, 2));
     process.exit(1);
   }
-  console.log('P3 graph smoke OK：全链路 × DeepSeek done，预算账目一致（', r2.tokensUsed, 'tokens），gate resume 闭环。');
+  console.log('P3 graph smoke OK：全链路 × OpenAI 协议兼容模型 done，预算账目一致（', r2.tokensUsed, 'tokens），gate resume 闭环。');
 })().catch((e) => {
   console.error('smoke error:', e);
   process.exit(1);

@@ -66,8 +66,8 @@ export interface LoopNodeBase {
   kind: LoopNodeKind;
 }
 
-/** Loop 节点执行结果（兼容别名，NodeOutput.status 引用） */
-export type LoopResult = 'pass' | 'fail' | 'retry' | 'done';
+/** Loop 节点执行结果（NodeOutput.status 引用） */
+export type LoopResult = 'pass' | 'fail' | 'done';
 
 /* ===== Graph 编排层（阶段三） ===== */
 
@@ -135,8 +135,8 @@ export type ModelTier = 'small' | 'medium' | 'large';
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
-/** 工具类别：read/write/bash/network */
-export type ToolCategory = 'read' | 'write' | 'bash' | 'network';
+/** 工具类别：read/write/bash（network 预留，暂无内置工具使用） */
+export type ToolCategory = 'read' | 'write' | 'bash';
 
 /** 工具输入 */
 export interface ToolInput {

@@ -54,7 +54,7 @@ src/
 ## 最终产品形态（v1.0 个人开发者版）
 
 - **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台）；CLI 专项命令（`chat/edit/test/review/doc/run`）随阶段四扩展。
-- **云本地分工**：DeepSeek 兼容 OpenAI 协议（`.env` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
+- **云本地分工**：任意 OpenAI 协议兼容供应商（`.env` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
 - **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚。
 
@@ -77,7 +77,7 @@ pnpm cli -- run tests/fixtures/demo --template test-loop --goal "修正 math.tes
 pnpm cli -- pipeline tests/fixtures/demo --yes --goal "实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）"  # 全链路流水线（PowerShell/cmd 请保持单行）
 ```
 
-需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，DeepSeek 兼容 OpenAI 协议）。CLI 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。
+需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，任意 OpenAI 协议兼容供应商）。CLI 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。
 
 ## 文档导航
 
