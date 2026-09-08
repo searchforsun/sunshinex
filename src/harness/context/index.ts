@@ -23,6 +23,7 @@ export class ContextManager {
 
   private compacted: ContextItem[] = [];
   private recent: string[] = [];
+  private pendingSkill: string | null = null;
 
   constructor(private readonly root: string, store: StorageAdapter) {
     this.loader = new ContextLoader(root);
@@ -73,9 +74,18 @@ export class ContextManager {
     this.memory.record('compaction', `摘要 checksum=${this.window.checksum() ?? 'unknown'}，重读 ${items.length - 1} 个文件`);
   }
 
-  /** 统一装配上下文：loader 分层指令 → rules 路径规则 → memory 记忆 → goal → 压缩注入块 → history */
+  /** 技能首帧注入槽：set 后的下一次 assemble 首位携带（kind=system），消费即清——技能正文不随后续帧重复 */
+  setSkillBlock(content: string): void {
+    this.pendingSkill = content;
+  }
+
+  /** 统一装配上下文：技能首帧块（如有）→ loader 分层指令 → rules 路径规则 → memory 记忆 → goal → 压缩注入块 → history */
   assemble(goal: string, history: ContextItem[] = [], relPath?: string): ContextItem[] {
     const items: ContextItem[] = [];
+    if (this.pendingSkill !== null) {
+      items.push({ kind: 'system', content: this.pendingSkill });
+      this.pendingSkill = null;
+    }
     items.push(...this.loader.load());
     if (relPath) items.push(...this.rules.forPath(relPath));
     const mem = this.memory.tail(MEMORY_INJECT_BUDGET);

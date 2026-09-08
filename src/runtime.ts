@@ -9,5 +9,5 @@ export function buildDeps(root: string, flags: Record<string, string | boolean>)
     flags.model === 'scripted' ? new ScriptedAdapter([]) :
     flags.model === 'stub' ? new StubAdapter() :
     new OpenAIAdapter({ provider: 'openai' });
-  return { safety: h.safety, registry: h.tools, context: h.context, model };
+  return { safety: h.safety, registry: h.tools, context: h.context, model, skills: h.skills };
 }

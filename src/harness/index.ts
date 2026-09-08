@@ -14,6 +14,7 @@ import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
+import { SkillsFacade, createSkillsFacade } from './skills';
 
 export interface HarnessOptions {
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
@@ -33,6 +34,7 @@ export class Harness {
   readonly safety: SafetyChain;
   readonly context: ContextManager;
   readonly reactor: Reactor;
+  readonly skills: SkillsFacade;
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
@@ -54,5 +56,6 @@ export class Harness {
       context: this.context,
       model: opts.model ?? new StubAdapter(),
     });
+    this.skills = createSkillsFacade(base);
   }
 }

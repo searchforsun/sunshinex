@@ -41,6 +41,22 @@ export function loadSkills(root: string): SkillManifest[] {
     .filter((s): s is SkillManifest => s !== null);
 }
 
+/** 技能门面：装配根暴露 list/get/resolve 三能力（Harness.skills；结构兼容 LoopDeps.skills） */
+export interface SkillsFacade {
+  list(): SkillManifest[];
+  get(id: string): SkillManifest | undefined;
+  resolve(id: string, params?: Record<string, string>): Result<ResolvedSkill>;
+}
+
+export function createSkillsFacade(root: string): SkillsFacade {
+  const dir = path.join(root, 'skills');
+  return {
+    list: () => loadSkills(root),
+    get: (id) => loadSkills(root).find((s) => s.id === id),
+    resolve: (id, params) => resolveSkill(dir, id, params),
+  };
+}
+
 /** 解析后的技能：清单 + 占位符已替换的正文（供 Loop 首帧注入） */
 export interface ResolvedSkill {
   manifest: SkillManifest;

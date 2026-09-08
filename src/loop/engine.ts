@@ -4,8 +4,11 @@ import {
   LoopNodeBase,
   LoopTermination,
   NodeOutput,
+  SkillRef,
 } from '../types';
 import { ModelAdapter, ModelRouter } from '../model/adapter';
+import { Result } from '../result';
+import { ResolvedSkill } from '../harness/skills';
 import { ToolRegistry } from '../harness/tools';
 import { SafetyChain } from '../harness/security/chain';
 import { ContextManager } from '../harness/context';
@@ -16,13 +19,19 @@ export type LoopNodeFn = (ctx: LoopContext, input: NodeOutput | null) => Promise
 /** 节点：公共字段 + 执行函数（淘汰占位 LoopNode 接口） */
 export type LoopEngineNode = LoopNodeBase & { run: LoopNodeFn };
 
-/** 依赖容器（T4 收紧：显式五件套；router 可选，为档位判据与模型兜底提供注入位） */
+/** 技能解析接缝：skillRef 调度的装配位（缺省不启用；结构兼容 SkillsFacade） */
+export interface SkillResolver {
+  resolve(id: string, params?: Record<string, string>): Result<ResolvedSkill>;
+}
+
+/** 依赖容器（T4 收紧：显式五件套；router/skills 可选——档位兜底与技能调度为渐进装配位） */
 export interface LoopDeps {
   safety: SafetyChain;
   registry: ToolRegistry;
   context: ContextManager;
   model: ModelAdapter;
   router?: ModelRouter;
+  skills?: SkillResolver;
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */
@@ -59,11 +68,22 @@ export class LoopEngine {
     if (this.nodes.length === 0) throw new Error('LoopEngine: 节点清单为空');
   }
 
-  /** 运行至终态；dryRun 经 ctx.state.__dryRun 透传给节点 */
+  /** 运行至终态；dryRun 经 ctx.state.__dryRun 透传给节点；skillRef 触发技能首帧注入（解析失败即 failed，不静默） */
   async run(
     goal: string,
-    opts?: { state?: Record<string, unknown>; dryRun?: boolean },
+    opts?: { state?: Record<string, unknown>; dryRun?: boolean; skillRef?: SkillRef },
   ): Promise<LoopRunResult> {
+    if (opts?.skillRef) {
+      if (!this.deps.skills) {
+        return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: 'SKILL_NOT_CONFIGURED: LoopDeps 未装配技能解析器（skills）' };
+      }
+      const resolved = this.deps.skills.resolve(opts.skillRef.id, opts.skillRef.params);
+      if (!resolved.ok) {
+        return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: `${resolved.error.code}: ${resolved.error.message}` };
+      }
+      const m = resolved.value.manifest;
+      this.deps.context.setSkillBlock(`[Skill] ${m.name}（id=${m.id} v${m.version}）\n${resolved.value.body}`);
+    }
     const ctx: LoopContext = {
       iteration: 0,
       state: { ...(opts?.state ?? {}), goal, ...(opts?.dryRun ? { __dryRun: true } : {}) },

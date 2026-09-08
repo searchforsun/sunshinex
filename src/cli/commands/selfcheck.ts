@@ -18,6 +18,8 @@ export function runSelfcheck(_args: CliArgs): void {
   console.log('context :', `缓存命中率 ${h.context.session.hitRate().toFixed(1)}`);
   const kbEnv = resolveKbEnv(process.env as Record<string, string | undefined>);
   console.log('knowledge:', `kb_search ready (backend=${kbEnv.backend}, embedding=${kbEnv.embeddingBaseUrl && kbEnv.embeddingApiKey ? 'configured' : '未配置→调用时降级'})`);
+  const skillHello = h.skills.resolve('hello-sunshine', { name: 'selfcheck' });
+  console.log('skills  :', `${h.skills.list().length} loaded, resolve=${skillHello.ok ? 'ok' : 'fail'}`);
   const loopReady = codeReviewTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
   console.log('loop    :', `${loopReady.name} template ready (${loopReady.nodes.length} nodes)`);
   const graphReady = softwarePipelineTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
