@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { buildDeps, resolveTemplate } from './run-loop';
+import { buildDeps } from '../../runtime';
+import { resolveTemplate } from './run-loop';
 import { ScriptedAdapter } from '../../model/adapter';
 
 test('buildDeps：装配四件套且内置工具已注册', () => {

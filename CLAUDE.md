@@ -32,6 +32,7 @@ src/
   cli/                # CLI 执行面（selfcheck / run / pipeline）
   types.ts            # 全局共享类型
   result.ts           # Result 统一结果类型
+  runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
   config.ts           # SUNSHINE.md 解析器
   config/env.ts       # 零依赖 .env 装载（已导出环境变量优先）
   harness/

@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as readline from 'node:readline/promises';
 import { GraphTemplate, softwarePipelineTemplate } from '../../graph/templates';
 import { LoopDeps } from '../../loop/engine';
-import { buildDeps } from './run-loop';
+import { buildDeps } from '../../runtime';
 import type { GraphRunResult } from '../../types';
 import type { CliArgs } from '../index';
 

@@ -1,20 +1,9 @@
 import * as path from 'path';
-import { Harness } from '../../harness';
 import { LoopDeps } from '../../loop/engine';
 import { LoopContext } from '../../types';
 import { LoopTemplate, codeRefactorTemplate, codeReviewTemplate, testLoopTemplate } from '../../loop/templates';
-import { OpenAIAdapter, ScriptedAdapter, StubAdapter } from '../../model/adapter';
+import { buildDeps } from '../../runtime';
 import type { CliArgs } from '../index';
-
-/** 统一装配（Task 3 复用）：root 为项目目录；--model 可选 openai|scripted|stub，缺省 openai（配置由 CLI 入口 loadEnv 从 .env 装载，已导出环境变量优先） */
-export function buildDeps(root: string, flags: Record<string, string | boolean>): LoopDeps {
-  const h = new Harness({ root, mode: 'dontAsk' });
-  const model =
-    flags.model === 'scripted' ? new ScriptedAdapter([]) :
-    flags.model === 'stub' ? new StubAdapter() :
-    new OpenAIAdapter({ provider: 'openai' });
-  return { safety: h.safety, registry: h.tools, context: h.context, model };
-}
 
 /** 规则校验器 opts：与 loop 模板 TemplateOpts.ruleCheckers 同构 */
 export interface TemplateRuleOpts {

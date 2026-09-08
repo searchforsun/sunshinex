@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { confirmApprovals, runPipelineAssembly } from './run-pipeline';
 import { softwarePipelineTemplate } from '../../graph/templates';
-import { buildDeps } from './run-loop';
+import { buildDeps } from '../../runtime';
 import { ScriptedAdapter } from '../../model/adapter';
 
 test('confirmApprovals：y 批准 / n 拒绝 / 多 gate 逐个询问', async () => {
