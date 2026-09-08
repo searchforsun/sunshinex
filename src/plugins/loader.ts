@@ -19,8 +19,12 @@ export function loadPlugins(root: string): PluginManifest[] {
     .map((d) => {
       const f = path.join(dir, d.name, 'plugin.json');
       if (!fs.existsSync(f)) return null;
-      const raw = JSON.parse(fs.readFileSync(f, 'utf8')) as PluginManifest;
-      return { ...raw, id: d.name };
+      try {
+        const raw = JSON.parse(fs.readFileSync(f, 'utf8')) as PluginManifest;
+        return { ...raw, id: d.name };
+      } catch {
+        return null; // 单个清单损坏降级为跳过该插件，不阻断整体加载（与感知依赖解析降级同姿态）
+      }
     })
     .filter((p): p is PluginManifest => p !== null);
 }

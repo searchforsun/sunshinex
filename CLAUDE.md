@@ -68,7 +68,8 @@ SUNSHINE.md          # 项目业务配置
 - 分层依赖方向：graph → loop → harness → model / storage / plugins
 - Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上
 - 插件与技能通过「目录约定」加载，第三方工具经 MCP 接入
-- 业务逻辑尚未落地处均为占位实现，替换时保持现有接口不变
+- 错误通道分域：工具与安全域返回 `Result`（可预期失败显式化）；引擎（Reactor/Loop/Graph）在节点边界 `catch` 后转为节点状态与 `reply` 字段（不可预期失败集中化），两条通道不得跨域混用
+- 运行时装配收敛于 `src/runtime.ts`（buildDeps），交互面（CLI/TUI/GUI）只做参数解析与呈现，新增交互面复用同一装配根
 
 ## 5. 编码规范
 
