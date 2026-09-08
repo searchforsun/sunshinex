@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { ToolRegistry } from './tools';
@@ -6,6 +7,7 @@ import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
 import { PermissionMode } from './security/modes';
+import { parseNetworkAllowlist, parseSunshinex } from '../config';
 import { DryRun } from './security/dryrun';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
@@ -38,7 +40,10 @@ export class Harness {
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();
     this.sandbox = new ProcessSandbox();
-    this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk');
+    // SUNSHINE.md「网络白名单」注入 guard：文件缺失视为空白名单（webfetch 全禁，缺省安全）
+    const sunshinePath = path.join(base, 'SUNSHINE.md');
+    const sunshineDoc = parseSunshinex(fs.existsSync(sunshinePath) ? fs.readFileSync(sunshinePath, 'utf-8') : '');
+    this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk', parseNetworkAllowlist(sunshineDoc));
     this.dryrun = new DryRun();
     this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
     for (const t of builtinTools(this.safety, base)) this.tools.register(t);

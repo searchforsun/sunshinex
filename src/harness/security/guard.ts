@@ -10,6 +10,10 @@ export class SecurityGuard {
   constructor(
     private policy: PolicyEngine = new PolicyEngine(),
     private mode: PermissionMode = 'manual',
+    /** webfetch 域名白名单（源自 SUNSHINE.md「网络白名单」分区）；空 = 全禁（缺省安全） */
+    private webAllowlist: string[] = [],
+    /** 已登记 MCP 服务器名（源自 SUNSHINE.md「MCP 服务器」分区）；空 = mcp__ 工具全禁 */
+    private mcpServers: string[] = [],
   ) {}
 
   preToolUse(tool: string, input: unknown): GuardDecision {
@@ -19,6 +23,17 @@ export class SecurityGuard {
     if (decision === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: deny 规则匹配' };
     if (tool === 'Bash' && this.isDestructiveCommand(specifier)) {
       return { allowed: false, reason: `COMMAND_DENIED: 破坏性命令被安全底线拦截：${specifier.slice(0, 80)}` };
+    }
+    // 类别硬底线与破坏性命令同级：先于 allow 规则求值，策略规则不可豁免；dontAsk 模式同样不豁免（免审批 ≠ 免策略）
+    if (tool === 'WebFetch') {
+      const denied = this.checkWebFetch(input);
+      if (denied) return denied;
+    }
+    if (tool.startsWith('mcp__')) {
+      const server = tool.split('__')[1] ?? '';
+      if (!this.mcpServers.includes(server)) {
+        return { allowed: false, reason: `COMMAND_DENIED: MCP 服务器未登记，外部工具默认拒绝：${server || '(空)'}` };
+      }
     }
     if (decision === 'allow') return { allowed: true };
 
@@ -64,5 +79,24 @@ export class SecurityGuard {
     if (base.startsWith('mkfs')) return true;
     if (DESTRUCTIVE_COMMANDS.includes(base)) return true;
     return DESTRUCTIVE_PIPE.test(cmd);
+  }
+
+  /** webfetch 三重闸门：URL 合法 → 仅 http/https → 域名白名单（空 = 全禁）；返回拒绝决策，放行返回 null */
+  private checkWebFetch(input: unknown): GuardDecision | null {
+    let raw = '';
+    if (typeof input === 'object' && input !== null) raw = String((input as { url?: unknown }).url ?? '');
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      return { allowed: false, reason: 'COMMAND_DENIED: WebFetch URL 非法' };
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { allowed: false, reason: `COMMAND_DENIED: WebFetch 仅允许 http/https：${parsed.protocol}` };
+    }
+    if (!this.webAllowlist.includes(parsed.hostname)) {
+      return { allowed: false, reason: `COMMAND_DENIED: WebFetch 域名不在白名单：${parsed.hostname}` };
+    }
+    return null;
   }
 }

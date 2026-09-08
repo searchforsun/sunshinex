@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { RegisteredTool } from '../tools';
 import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
@@ -36,13 +38,35 @@ export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[
     },
     {
       name: 'grep',
-      description: '在文件中搜索正则',
+      description: '正则搜索：path 为文件时输出裸命中行；为目录时递归检索并输出 相对路径:行号:行',
       category: 'read',
       executor: async (input: ToolInput) => {
-        const { pattern } = input as { pattern: string };
-        const content = backend.readFile(String(input.path));
-        const lines = content.split('\n').filter((l) => new RegExp(pattern).test(l));
-        return execOut(lines.join('\n'));
+        const { pattern, glob: globFilter } = input as { pattern: string; glob?: string };
+        const target = String(input.path ?? '.');
+        if (!fs.statSync(target).isDirectory()) {
+          const content = backend.readFile(target);
+          const lines = content.split('\n').filter((l) => new RegExp(pattern).test(l));
+          return execOut(lines.join('\n'));
+        }
+        // 目录模式复用后端遍历：与 glob 工具同一跳过集（node_modules/.git/dist），glob 过滤与遍历匹配口径一致
+        const files = backend.listFiles(target, globFilter ?? '**/*');
+        const re = new RegExp(pattern);
+        const out: string[] = [];
+        for (const rel of files) {
+          let content: string;
+          try {
+            content = backend.readFile(path.join(target, rel));
+          } catch {
+            continue; // 不可读文件（权限/二进制）跳过，不中断整体检索
+          }
+          const lines = content.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (!re.test(lines[i])) continue;
+            if (out.length >= 200) return execOut(out.join('\n') + '\ntruncated: true');
+            out.push(`${rel}:${i + 1}:${lines[i]}`);
+          }
+        }
+        return execOut(out.join('\n'));
       },
     },
     {
@@ -50,6 +74,17 @@ export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[
       description: '按 glob 模式列出文件',
       category: 'read',
       executor: async (input: ToolInput) => execOut(backend.listFiles(root, String(input.pattern ?? '*')).join('\n')),
+    },
+    {
+      name: 'webfetch',
+      description: '抓取白名单内域名的网页正文（域名闸门在安全链 guard；正文截断 10 万字符）',
+      category: 'network',
+      executor: async (input: ToolInput) => {
+        const res = await fetch(String(input.url ?? ''));
+        if (!res.ok) throw new Error(`WEBFETCH_HTTP_${res.status}`);
+        const text = await res.text();
+        return execOut(text.slice(0, 100_000));
+      },
     },
   ];
 }

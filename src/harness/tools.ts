@@ -9,6 +9,7 @@ const CANONICAL_TOOL_NAMES: Record<string, string> = {
   write: 'Write',
   grep: 'Grep',
   glob: 'Glob',
+  webfetch: 'WebFetch',
 };
 
 export interface RegisteredTool extends ToolSpec {
