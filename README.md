@@ -59,24 +59,23 @@ src/
 ## 快速开始
 
 ```bash
-npm install --cache .npm-cache   # HOME 不可写，需指定缓存目录
-npm run build                    # tsc 严格模式编译
-npm run selfcheck                # 编译 + 骨架自检
-npm run start                    # 运行入口（自动从 .env 加载模型配置）
+corepack enable                  # 启用 Node 自带 corepack（pnpm 版本由 package.json 钉定）
+pnpm install                     # 安装依赖（.npmrc 已固定 store 到仓内 .pnpm-store）
+pnpm build                       # tsc 严格模式编译
+pnpm selfcheck                   # 编译 + 骨架自检
+pnpm start                       # 运行入口（自动从 .env 加载模型配置）
 ```
 
 ## Quick Start（CLI）
 
 ```bash
-npm install --cache .npm-cache
 copy .env.example .env   # 填入真实 OPENAI_API_KEY（Windows；macOS/Linux 用 cp）
-npm run build
-npm run cli -- selfcheck                                   # 骨架自检
-npm run cli -- run tests/fixtures/demo --template test-loop --goal "修正 math.test.js 断言使其通过（验收标准：c1=断言 add(1,2)===3）"   # Loop 修正环（PowerShell/cmd 请保持单行）
-npm run cli -- pipeline tests/fixtures/demo --yes --goal "实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）"  # 全链路流水线（PowerShell/cmd 请保持单行）
+pnpm cli -- selfcheck                                   # 骨架自检
+pnpm cli -- run tests/fixtures/demo --template test-loop --goal "修正 math.test.js 断言使其通过（验收标准：c1=断言 add(1,2)===3）"   # Loop 修正环（PowerShell/cmd 请保持单行）
+pnpm cli -- pipeline tests/fixtures/demo --yes --goal "实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）"  # 全链路流水线（PowerShell/cmd 请保持单行）
 ```
 
-需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，DeepSeek 兼容 OpenAI 协议）。CLI 与 `npm run start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。
+需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，DeepSeek 兼容 OpenAI 协议）。CLI 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。
 
 ## 平台兼容性
 
@@ -90,10 +89,10 @@ npm run cli -- pipeline tests/fixtures/demo --yes --goal "实现 add 函数并�
 
 部署条件（三平台通用）：
 
-1. Node.js ≥ 22.9（`npm run cli` 依赖 `--env-file-if-exists`，下限登记于 `package.json` `engines`），实测基线 22 LTS 与 24.x。
-2. `dist/` 不入库：新检出须先 `npm install` + `npm run build`（`npm run cli` 已内置自动构建，可直接执行）。
+1. Node.js ≥ 22.9（`pnpm cli` 依赖 `--env-file-if-exists`，下限登记于 `package.json` `engines`），实测基线 22 LTS 与 24.x。
+2. `dist/` 不入库：新检出须先 `pnpm install` + `pnpm build`（`pnpm cli` 已内置自动构建，可直接执行）。
 3. 复制 `.env.example` 为 `.env` 并填入真实 `OPENAI_API_KEY`（Windows 用 `copy`，macOS/Linux 用 `cp`）；未配置密钥时可用 `--model stub` 先验证链路。
-4. `npm install --cache .npm-cache` 仅为沙箱等 HOME 不可写环境的约束，本地开发直接 `npm install`。
+4. 包管理器统一 pnpm（`packageManager` 钉版，corepack 启用后自动对齐版本）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用。
 
 Windows 注意事项：
 

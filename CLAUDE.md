@@ -14,13 +14,13 @@
 ## 2. 常用命令
 
 ```bash
-npm run build      # 编译 TS 到 dist/（tsc -p tsconfig.json）
-npm run start      # 运行入口（node dist/index.js）
-npm run selfcheck  # 编译并运行骨架自检
-npm install        # 安装依赖
+pnpm build      # 编译 TS 到 dist/（tsc -p tsconfig.json）
+pnpm start      # 运行入口（node dist/index.js）
+pnpm selfcheck  # 编译并运行骨架自检
+pnpm install    # 安装依赖
 ```
 
-> 注意：本环境 HOME 不可写，安装依赖需 `npm install --cache .npm-cache`。
+> 包管理器统一 pnpm：版本由 `packageManager` 字段钉定（Node 自带 corepack，`corepack enable` 后直接使用 `pnpm`）；项目 `.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用。
 
 ## 3. 目录结构
 
@@ -57,7 +57,7 @@ SUNSHINE.md          # 项目业务配置
 - TypeScript 开启 strict，禁止无理由使用 any
 - 一个文件只承担一个职责，模块边界清晰
 - 所有 IO（文件/网络/命令）集中在对应 adapter/store 内
-- 写操作前评估影响面；改动后运行 `npm run selfcheck` 自检
+- 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
 
 ## 6. 技能与插件规范
@@ -68,9 +68,9 @@ SUNSHINE.md          # 项目业务配置
 
 ## 7. 提交与验证
 
-- 提交前必须通过 `npm run build`（tsc 严格模式零报错）
+- 提交前必须通过 `pnpm build`（tsc 严格模式零报错）
 - 涉及加载/解析逻辑时，补充示例物料并确保 `--selfcheck` 输出正确
-- `.npm-cache/`、`.data/`、`node_modules/`、`dist/` 不入库
+- `.pnpm-store/`、`.npm-cache/`、`.data/`、`node_modules/`、`dist/` 不入库
 
 ## 8. 边界与约束
 
@@ -93,7 +93,7 @@ SUNSHINE.md          # 项目业务配置
 - 禁止补丁式修改：追溯根因重构，禁用临时 if/开关变量/复制粘贴兜底；同一 bug 反复 2–3 轮仍复发，即质疑架构与提示词，而非靠代码过滤兜底。
 - 代码自解释：命名清晰表意；注释只写业务规则与决策背景（为什么），不复述代码逻辑。
 - 无残渣：清理死代码、未用 import/字段、注释掉的代码；上新删旧，不留悬空引用。
-- 部署一致性：本地与服务器代码一致，交付前校验；改动后按本项目约定验证（`npm run build` + `npm run selfcheck`）。
+- 部署一致性：本地与服务器代码一致，交付前校验；改动后按本项目约定验证（`pnpm build` + `pnpm selfcheck`）。
 
 ## 11. 长任务设计取向
 
@@ -108,7 +108,7 @@ SUNSHINE.md          # 项目业务配置
 
 以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持（`resolveShell()` 自动探测，无 Git 时 `ComSpec` 兜底）。
 
-- **版本下限**：Node.js ≥ 22.9（`npm run cli` 依赖 `--env-file-if-exists`；以 `package.json` 的 `engines` 为准），实测基线 22 LTS 与 24.x。
-- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；npm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔——`listFiles` 对 `path.relative` 结果先归一化再匹配（Windows 反斜杠进入正则前转为 `/`，POSIX 为 no-op）。
-- **已知差异（如实登记，不虚构兼容）**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ Windows 探测 `Git\bin\bash.exe`（Git Bash）→ 无 Git 时 `ComSpec`（`/c`，仅兜底不崩，sh 语义命令不保证可用）→ POSIX `/bin/sh`；`npm install --cache .npm-cache` 仅为沙箱等 HOME 不可写环境的约束，本地开发直接 `npm install`；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
+- **版本下限**：Node.js ≥ 22.9（`pnpm cli` 依赖 `--env-file-if-exists`；以 `package.json` 的 `engines` 为准），实测基线 22 LTS 与 24.x。
+- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔——`listFiles` 对 `path.relative` 结果先归一化再匹配（Windows 反斜杠进入正则前转为 `/`，POSIX 为 no-op）。
+- **已知差异（如实登记，不虚构兼容）**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ Windows 探测 `Git\bin\bash.exe`（Git Bash）→ 无 Git 时 `ComSpec`（`/c`，仅兜底不崩，sh 语义命令不保证可用）→ POSIX `/bin/sh`；包管理器统一 pnpm（`packageManager` 钉版）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
 - **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 README 平台支持矩阵与部署指引。
