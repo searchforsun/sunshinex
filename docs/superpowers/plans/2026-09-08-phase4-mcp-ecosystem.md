@@ -112,11 +112,11 @@
 **Interfaces:**
 - `ModelAdapter.completeStream(req, onDelta: (t: string) => void): Promise<Completion>`——OpenAI 适配器 `stream: true`，SSE 解析（`for await` body reader 按 `\n\n` 分帧、`data: [DONE]` 终止、delta 提取）；`ScriptedAdapter` 逐字吐出；`complete()` 签名不动
 
-- [ ] Step 1: 失败测试——scripted 逐 token 序列断言；SSE 分帧解析以注入 reader 桩测试（不发真实网络）
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(model): completeStream 流式——SSE 零依赖解析 + scripted 逐字输出`
+- [x] Step 1: 失败测试——scripted 逐 token 序列断言；SSE 分帧解析以注入 reader 桩测试（不发真实网络）
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(model): completeStream 流式——SSE 零依赖解析 + scripted 逐字输出`（已完成：ba34f27，本地 http SSE mock 全链路含跨 chunk 半帧用例，基线 214/214/0）
 
 ---
 
