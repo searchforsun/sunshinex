@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "test": "npm run build && node --test 'dist/**/*.test.js'",
+    "test": "npm run build && node --test \"dist/**/*.test.js\"",
     "selfcheck": "npm run build && node --env-file-if-exists=.env dist/cli/index.js selfcheck",
     "cli": "npm run build && node --env-file-if-exists=.env dist/cli/index.js"
   },

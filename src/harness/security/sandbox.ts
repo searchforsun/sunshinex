@@ -10,8 +10,9 @@ export class ProcessSandbox implements ToolBackend {
 
   async exec(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {
     const timeoutMs = opts?.timeoutMs ?? 1_800_000;
+    const shell = resolveShell();
     return new Promise((resolve) => {
-      execFile('/bin/sh', ['-c', cmd], { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
+      execFile(shell.file, [shell.scriptFlag, cmd], { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
         if (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code === 'ETIMEDOUT' || (err as { killed?: boolean }).killed) {
@@ -46,7 +47,8 @@ export class ProcessSandbox implements ToolBackend {
         if (e.isDirectory()) walk(full);
         else {
           const rel = path.relative(root, full);
-          if (re.test(rel)) out.push(rel);
+          // glob 语义以 / 为分隔符，Windows 产物归一（POSIX 上 path.sep 即 /，原样）
+          if (re.test(rel)) out.push(rel.split(path.sep).join('/'));
         }
       }
     };
@@ -84,4 +86,21 @@ function globToRegex(pattern: string): string {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** 平台 shell 解析：sh 风格命令统一经 POSIX shell 执行；Windows 优先 Git Bash（bash 兼容 sh），缺省探测，SUNSHINEX_SHELL 显式覆盖（须为 POSIX 兼容 shell，传 -c） */
+function resolveShell(): { file: string; scriptFlag: string } {
+  const override = process.env.SUNSHINEX_SHELL;
+  if (override && override.trim().length > 0) return { file: override, scriptFlag: '-c' };
+  if (process.platform === 'win32') {
+    const candidates = [
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+      'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return { file: c, scriptFlag: '-c' };
+    }
+    return { file: process.env.ComSpec ?? 'cmd.exe', scriptFlag: '/c' };
+  }
+  return { file: '/bin/sh', scriptFlag: '-c' };
 }
