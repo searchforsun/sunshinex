@@ -43,9 +43,13 @@ export class LocalJsonVectorStore implements VectorStore {
   }
 
   load(): void {
-    const data = this.storage.read<Record<string, VecEntry> | null>(STORE_KEY, null);
-    if (!data) return;
-    this.entries = new Map(Object.entries(data));
+    // 契约：损坏存储降级为空库不抛（索引可由 indexDir 全量重建）；解析容错归属后端边界，通用 FileStore 保持严格
+    try {
+      const data = this.storage.read<Record<string, VecEntry> | null>(STORE_KEY, null);
+      this.entries = data ? new Map(Object.entries(data)) : new Map();
+    } catch {
+      this.entries = new Map();
+    }
   }
 
   flush(): void {
