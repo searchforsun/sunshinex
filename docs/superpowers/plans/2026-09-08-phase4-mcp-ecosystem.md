@@ -182,11 +182,11 @@
 **Interfaces:**
 - `KnowledgeBase { indexDir(dir): Promise<number>; search(query, topK): Promise<KbHit[]>; stats() }`——indexDir：读目录 md/txt → chunk → embed → upsert；search：query→embed→topK；`EmbeddingProvider` 桩注入，不发真实网络
 
-- [ ] Step 1: 失败测试——临时目录索引后已知查询 top-3 命中
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(knowledge): KnowledgeBase 编排——indexDir/search/stats（桩注入）`
+- [x] Step 1: 失败测试——临时目录索引后已知查询 top-3 命中
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(knowledge): KnowledgeBase 编排——indexDir/search/stats（桩注入）`（已完成：484bd2b，含分块器句子边界演进，基线 231/231/0）
 
 ---
 
@@ -198,11 +198,11 @@
 **Interfaces:**
 - `OpenAICompatEmbeddings implements EmbeddingProvider`——`POST {EMBEDDING_BASE_URL}/embeddings`（Bearer 鉴权、model 取 `EMBEDDING_MODEL`，缺省回退 `OPENAI_*`），批量入参；测试用本地 http server 或注入 fetch 桩
 
-- [ ] Step 1: 失败测试——请求头/体断言 + `data[].embedding` 提取 + 非法响应 fail
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(knowledge): OpenAICompatEmbeddings 默认 Provider——/embeddings 批量适配`
+- [x] Step 1: 失败测试——请求头/体断言 + `data[].embedding` 提取 + 非法响应 fail
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(knowledge): OpenAICompatEmbeddings 默认 Provider——/embeddings 批量适配`（已完成：5f0de97，基线 235/235/0）
 
 ---
 
@@ -215,11 +215,11 @@
 **Interfaces:**
 - `kb_search`（category `read`）：入参 `{ query, topK? }`；embedding 未配置 → `Result.fail('kb_not_configured')` 降级不阻塞；结果过 mask 出口
 
-- [ ] Step 1: 失败测试——配置齐（桩）返回 topK；未配置降级 fail；category=read
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现 + selfcheck 知识库行
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(knowledge): kb_search 内置工具——未配置降级 + selfcheck 行`
+- [x] Step 1: 失败测试——配置齐（桩）返回 topK；未配置降级 fail；category=read
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现 + selfcheck 知识库行
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(knowledge): kb_search 内置工具——未配置降级 + selfcheck 行`（已完成：899c35e，工具域 CodedToolError 带码错误通道，基线 239/239/0）
 
 ---
 
