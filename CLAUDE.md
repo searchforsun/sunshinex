@@ -79,6 +79,7 @@ SUNSHINE.md          # 项目业务配置
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
+- **已登记依赖**：`@modelcontextprotocol/sdk` ^1.30.0 —— MCP 官方客户端（stdio 传输）。用途：阶段四第三方工具接入（懒 spawn → 握手身份校验 → tools/list → tools/call）；边界：依赖收敛于 `src/harness/mcp/client.ts` 接缝内（替换客户端实现不动主链），仅本地 stdio spawn，HTTP/SSE 传输未启用；回退预案：自研最小 stdio JSON-RPC 客户端同接口（spec §6-R6）
 
 ## 6. 技能与插件规范
 
