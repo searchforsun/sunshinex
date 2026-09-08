@@ -35,3 +35,28 @@ export function loadEnv(dir: string = process.cwd()): number {
   }
   return loaded;
 }
+
+/**
+ * 解析知识库/embedding 环境配置：
+ * - KB_BACKEND 缺省 'local-json'（零依赖路径缺省，未注册后端由装配层 fail-fast）
+ * - EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_MODEL 未显式配置时回退同名 OPENAI_* 键（远端供给允许复用通用网关凭据）
+ * 注入式解析（禁止读真实 .env / process.env）：由调用方（Task 4 装配层）自行合并 .env 文本与进程环境后传入。
+ */
+export function resolveKbEnv(
+  env: Record<string, string | undefined>,
+): { backend: string; embeddingBaseUrl?: string; embeddingApiKey?: string; embeddingModel?: string } {
+  const pick = (key: string, fallbackKey: string): string | undefined => {
+    const v = env[key] ?? env[fallbackKey];
+    return v !== undefined && v.length > 0 ? v : undefined;
+  };
+  const embeddingBaseUrl = pick('EMBEDDING_BASE_URL', 'OPENAI_BASE_URL');
+  const embeddingApiKey = pick('EMBEDDING_API_KEY', 'OPENAI_API_KEY');
+  const embeddingModel = pick('EMBEDDING_MODEL', 'OPENAI_MODEL');
+  const backend = env['KB_BACKEND'];
+  return {
+    backend: backend !== undefined && backend.length > 0 ? backend : 'local-json',
+    ...(embeddingBaseUrl !== undefined && { embeddingBaseUrl }),
+    ...(embeddingApiKey !== undefined && { embeddingApiKey }),
+    ...(embeddingModel !== undefined && { embeddingModel }),
+  };
+}

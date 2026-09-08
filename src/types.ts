@@ -15,6 +15,10 @@ export interface SkillManifest {
   name: string;
   description: string;
   version: string;
+  /** 技能模板形参名列表（阶段四技能调度：skillRef.params 按 manifest.params 白名单过滤） */
+  params?: string[];
+  /** 技能形态（阶段四：prompt = 上下文注入模板；缺省视作 prompt） */
+  kind?: 'prompt';
 }
 
 /** 项目上下文（SUNSHINE.md 解析结果） */
@@ -135,8 +139,40 @@ export type ModelTier = 'small' | 'medium' | 'large';
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
-/** 工具类别：read/write/bash（network 预留，暂无内置工具使用） */
-export type ToolCategory = 'read' | 'write' | 'bash';
+/** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具） */
+export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external';
+
+/** 模型路由决策留痕（tier + reason，随 run 结果可观测） */
+export interface RouteDecision {
+  tier: ModelTier;
+  reason: string;
+}
+
+/** 知识库命中条目（kb_search 出参；score 为归一化相似度） */
+export interface KbHit {
+  id: string;
+  text: string;
+  score: number;
+}
+
+/** 技能引用（运行时上下文注入载体：id 定位技能，params 填充 manifest.params 模板形参） */
+export interface SkillRef {
+  id: string;
+  params?: Record<string, string>;
+}
+
+/** MCP 服务器装配配置（SUNSHINE.md「MCP 服务器」分区解析产物） */
+export interface McpServerConfig {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+/** Embedding 供给端接缝（阶段四向量知识库：local-json 后端与未来远端实现均实现此接口） */
+export interface EmbeddingProvider {
+  embed(texts: string[]): Promise<number[][]>;
+}
 
 /** 工具输入 */
 export interface ToolInput {

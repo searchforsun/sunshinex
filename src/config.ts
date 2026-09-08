@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ProjectContext } from './types';
+import { McpServerConfig, ProjectContext } from './types';
 
 export interface SunshinexDoc {
   sections: Record<string, string[]>;
@@ -44,4 +44,28 @@ export function loadSunshinex(root: string): ProjectContext | null {
   const name = doc.sections['项目名称']?.[0] ?? 'sunshinex';
   const architecture = doc.sections['架构原则'] ?? [];
   return { name, rules, architecture };
+}
+
+/** 取 SUNSHINE.md 指定标题分区的正文行；分区缺失返回空数组 */
+function sectionLines(doc: SunshinexDoc, title: string): string[] {
+  return doc.sections[title] ?? [];
+}
+
+/** 解析「MCP 服务器」分区为 McpServerConfig[]：行式 `name | command | args...`，args 按空格切分；name 或 command 缺失的行跳过不抛（装配面宁可少配不可错配） */
+export function parseMcpServers(doc: SunshinexDoc): McpServerConfig[] {
+  const servers: McpServerConfig[] = [];
+  for (const line of sectionLines(doc, 'MCP 服务器')) {
+    const parts = line.split('|').map((p) => p.trim());
+    const name = parts[0] ?? '';
+    const command = parts[1] ?? '';
+    if (!name || !command) continue;
+    const args = line.split('|').slice(2).join('|').trim().split(/\s+/).filter((a) => a.length > 0);
+    servers.push(args.length > 0 ? { name, command, args } : { name, command });
+  }
+  return servers;
+}
+
+/** 解析「网络白名单」分区为域名数组（每行一个，trim）；空数组语义 = 全禁（安全缺省，禁用闸门 Task 2 落地） */
+export function parseNetworkAllowlist(doc: SunshinexDoc): string[] {
+  return sectionLines(doc, '网络白名单').map((l) => l.trim());
 }
