@@ -289,12 +289,12 @@
 - `McpHost { constructor(servers, registry, chain); registerTools(): Promise<number>; close(): Promise<void> }`——懒 spawn → handshake → `tools/list` → `registry.register`（规范名 `mcp__<server>__<tool>`，category `external`）
 - 首步安装：`npm install --cache .npm-cache @modelcontextprotocol/sdk` 并锁版本；失败走 R6 回退：自研最小 stdio JSON-RPC 客户端同接口，commit 注明降级
 
-- [ ] Step 0: 安装 SDK（或记录回退决策）
-- [ ] Step 1: 失败测试——mock server 注册链：注册数 + 规范名断言
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(mcp): McpHost 注册链——官方 SDK 接缝 + mcp__ 命名登记`
+- [x] Step 0: 安装 SDK（@modelcontextprotocol/sdk@1.30.0 装成；R6 回退未触发）
+- [x] Step 1: 失败测试——mock server 注册链：注册数 + 规范名断言
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(mcp): McpHost 官方 SDK 注册链——懒 spawn→握手身份校验→tools/list→mcp__ 规范名注册`（c6ec58b，250/250/0）
 
 ---
 
@@ -307,11 +307,11 @@
 **Interfaces:**
 - 经 `registry.execute`（走 SafetyChain）调用：单次超时 30s、参数 JSON ≤64KB、白名单 = SUNSHINE.md 服务器清单（空 = 全禁）、结果统一 mask、失败 `Result.fail`（分域契约，不拖垮 Loop/Graph）
 
-- [ ] Step 1: 失败测试——echo 全链路脱敏；越权 server 拒绝；慢 server 超时 fail；超体积参数拒绝
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（external 策略分支 + 执行器）
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(mcp): 调用闸门与全链路——超时/体积/白名单/mask 四闸`
+- [x] Step 1: 失败测试——echo 全链路脱敏；越权 server 拒绝；慢 server 超时 fail；超体积参数拒绝
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现（external 策略分支 + 执行器，6b 已内置四闸；本任务补全链路断言与握手身份锚点）
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(mcp): 调用闸门全链路——超时/体积/白名单/mask 四闸 + 握手身份校验锚点`（ad166e3，256/256/0）
 
 ---
 
@@ -320,10 +320,10 @@
 **Files:**
 - Modify: `src/cli/commands/selfcheck.ts`、`docs/ROADMAP.md`、`CLAUDE.md`
 
-- [ ] Step 1: selfcheck 新增 MCP 行（清单解析 + mock 注册数）
-- [ ] Step 2: ROADMAP 阶段四测试基线数修正为实测值；CLAUDE.md 目录树增 `harness/mcp/`、`harness/knowledge/`，依赖登记 `@modelcontextprotocol/sdk`（用途/边界/回退）
-- [ ] Step 3: 全量门禁：`npm run build` 0 报错、`node --test` 全绿、`npm run selfcheck` 全行通过
-- [ ] Step 4: 提交 `chore(phase4): selfcheck MCP 行 + ROADMAP/CLAUDE.md 文档同步`
+- [x] Step 1: selfcheck 新增 MCP 行（清单解析 + mock 注册数）——`mcp : N servers configured, N tools registered`
+- [x] Step 2: ROADMAP 阶段四测试基线数修正为实测值（164→256）；CLAUDE.md 目录树增 `harness/mcp/`、`harness/knowledge/`，依赖登记 `@modelcontextprotocol/sdk`（用途/边界/回退，6b 已入）
+- [x] Step 3: 全量门禁：`npm run build` 0 报错、`node --test` 全绿、`npm run selfcheck` 全行通过
+- [x] Step 4: 提交 `chore(phase4): selfcheck MCP 行 + ROADMAP/CLAUDE.md 文档同步`（本收口批）
 
 ---
 

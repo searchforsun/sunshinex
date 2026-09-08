@@ -11,7 +11,7 @@ export interface Perceived {
 }
 
 /** 感知扫描跳过目录（单一事实源）：依赖/构建产物/包管理器 store/运行时数据/过程物料/长任务演示目标不入感知；与仓库 .gitignore 的目录条目由 perception.test.ts 绑定测试锚定——.gitignore 新增目录须同步此处，否则绑定测试红 */
-export const SCAN_SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.pnpm-store', '.npm-cache', '.data', '.superpowers', '.longtask']);
+export const SCAN_SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.pnpm-store', '.npm-cache', '.data', '.superpowers', '.longtask', '.corepack']);
 
 /** 项目感知引擎：目录扫描 + 依赖解析 + SUNSHINE.md + Git 分支（降级不抛） */
 export class PerceptionEngine {

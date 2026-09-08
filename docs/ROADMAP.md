@@ -142,7 +142,7 @@ flowchart TB
 - [x] 阶段三 Graph 编排（DAG 引擎 + loop/agent/gate/ci 四类节点、五节点软件工程流水线、pause/resume 与预算跨层贯通、CLI pipeline）
 - [x] 模型 SDK 接入 DeepSeek 兼容 OpenAI 协议（`.env` 配置，零新增依赖）
 
-当前基线：npm run build（tsc strict）零报错、164 个测试全绿、npm run selfcheck 通过；CLI 执行面 selfcheck / run / pipeline 三命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
+当前基线：npm run build（tsc strict）零报错、256 个测试全绿、npm run selfcheck 通过；CLI 执行面 selfcheck / run / pipeline 三命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
 
 下一步：阶段四（MCP 工具兼容、向量知识库、CLI 专项命令、技能模板体系完善）。
 

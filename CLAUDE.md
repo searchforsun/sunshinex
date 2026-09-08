@@ -39,12 +39,13 @@ src/
     index.ts          # Harness 门面
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     reactor.ts        # 最小闭环引擎（observe→think→act）
-    skills.ts         # 技能加载（skills/{id}/skill.md）
-    tools.ts          # 工具注册表（MCP 挂载点）
-    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec）
-    memory-lifecycle.ts # 统一记忆生命周期
+    skills.ts         # 技能加载与调度（skills/{id}/skill.md；resolveSkill 参数化 + skillRef 首帧注入）
+    tools.ts          # 工具注册表（统一执行面 + 安全链）
+    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/kb_search）
+    mcp/              # MCP 客户端（官方 SDK 接缝：懒 spawn + 握手身份校验 + external 登记制）
+    knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed Provider / KnowledgeBase 编排）
     security/         # guard/policy/modes/sandbox/dryrun/chain
-    context/          # loader/rules/window/session/auto-memory/memory-lifecycle
+    context/          # loader/rules/window/session/compaction/memory-lifecycle
   loop/
     engine.ts         # Loop 闭环引擎（生成→校验→修正）
     nodes.ts          # 四类节点（Agent/Check/Gate/Router）+ /goal 判据
