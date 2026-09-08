@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { RegisteredTool } from '../tools';
+import { RegisteredTool, CodedToolError } from '../tools';
 import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
+import { KnowledgeBase } from '../knowledge/index';
 
-/** 内置工具集：read/write/grep/glob/exec；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准 */
-export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[] {
+/** 内置工具集：read/write/grep/glob/exec/webfetch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准 */
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase): RegisteredTool[] {
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
   const backend = safety.backend;
 
@@ -84,6 +85,16 @@ export function builtinTools(safety: SafetyChain, root: string): RegisteredTool[
         if (!res.ok) throw new Error(`WEBFETCH_HTTP_${res.status}`);
         const text = await res.text();
         return execOut(text.slice(0, 100_000));
+      },
+    },
+    {
+      name: 'kb_search',
+      description: '本地向量知识库检索：入参 { query, topK? }，stdout 为 KbHit[] JSON；未配置时以 kb_not_configured 降级（不阻塞其他工具）',
+      category: 'read',
+      executor: async (input: ToolInput) => {
+        if (!kb) throw new CodedToolError('kb_not_configured', '知识库未配置：需 EMBEDDING_* 环境并完成 indexDir 索引');
+        const hits = await kb.search(String(input.query ?? ''), Number(input.topK ?? 5));
+        return execOut(JSON.stringify(hits));
       },
     },
   ];

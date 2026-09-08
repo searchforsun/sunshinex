@@ -17,6 +17,13 @@ export interface RegisteredTool extends ToolSpec {
   executor: ToolExecutor;
 }
 
+/** 工具域带码错误：executor 以业务错误码中止执行（registry 转译为同码 Result.fail，降级语义不再笼统 EXEC_FAILED） */
+export class CodedToolError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+  }
+}
+
 /** 统一执行面：工具注册表（工具只声明，不直接执行） */
 export class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
@@ -56,6 +63,7 @@ export class ToolRegistry {
       const result = await tool.executor(execInput);
       return ok(safety.maskResult(canonical, result));
     } catch (e) {
+      if (e instanceof CodedToolError) return fail(e.code, e.message);
       return fail('EXEC_FAILED', e instanceof Error ? e.message : '工具执行失败');
     }
   }

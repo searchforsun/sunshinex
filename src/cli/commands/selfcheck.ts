@@ -2,6 +2,7 @@ import { Harness } from '../../harness';
 import { softwarePipelineTemplate } from '../../graph/templates';
 import { codeReviewTemplate } from '../../loop/templates';
 import { StubAdapter } from '../../model/adapter';
+import { resolveKbEnv } from '../../config/env';
 import type { CliArgs } from '../index';
 
 /** 骨架自检：实例化 Harness 门面，聚合五大能力并打印骨架摘要 */
@@ -15,6 +16,8 @@ export function runSelfcheck(_args: CliArgs): void {
   console.log('tools   :', h.tools.list().map((t) => t.name).join(', '));
   console.log('harness :', [h.perception, h.tools, h.security, h.sandbox, h.dryrun, h.context, h.reactor].length, 'modules ready');
   console.log('context :', `缓存命中率 ${h.context.session.hitRate().toFixed(1)}`);
+  const kbEnv = resolveKbEnv(process.env as Record<string, string | undefined>);
+  console.log('knowledge:', `kb_search ready (backend=${kbEnv.backend}, embedding=${kbEnv.embeddingBaseUrl && kbEnv.embeddingApiKey ? 'configured' : '未配置→调用时降级'})`);
   const loopReady = codeReviewTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
   console.log('loop    :', `${loopReady.name} template ready (${loopReady.nodes.length} nodes)`);
   const graphReady = softwarePipelineTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
