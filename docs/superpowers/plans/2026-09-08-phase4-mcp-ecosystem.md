@@ -231,16 +231,16 @@
 
 **Files:**
 - Modify: `src/harness/skills.ts`
-- Create: `src/harness/skills.resolve.test.ts`、`skills/examples/hello-sunshine/skill.md`
+- Create: `src/harness/skills.resolve.test.ts`、`skills/hello-sunshine/skill.md`（示例落点修正：加载器为平铺 `{id}` 目录语义，`examples/` 嵌套目录会被当作单层 id 过滤，实际物料放平铺路径）
 
 **Interfaces:**
 - `resolveSkill(skillsDir, id, params?): Result<ResolvedSkill>`，`ResolvedSkill { manifest, body }`；未注册 id / `{{param}}` 缺参 → fail（明确错误）；示例技能 frontmatter 含 `kind: prompt`、`params: name`
 
-- [ ] Step 1: 失败测试——命中/未注册/缺参三态 + `{{name}}` 替换
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现 + 示例技能物料
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(skills): resolveSkill 参数化解析——三态语义 + 示例技能`
+- [x] Step 1: 失败测试——命中/未注册/缺参三态 + `{{name}}` 替换
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现 + 示例技能物料
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(skills): resolveSkill 参数化解析——三态语义 + 示例技能`（已完成：6458479，白名单外占位符原样保留，实测基线 244/244/0）
 
 ---
 
@@ -254,11 +254,11 @@
 - Loop 请求可携 `skillRef: SkillRef`；assemble 首帧注入解析后正文（参数已替换）；Loop/Graph 执行语义零改动
 - `runtime.buildDeps`：`loadSkills(root/skills)` 装入 Harness，暴露 `skills.list()/get(id)`
 
-- [ ] Step 1: 失败测试——scripted 任务带 skillRef 输出含正文标记；未注册 id fail；不带 skillRef 不回归
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现（注入 + 接线 + selfcheck 技能调度行）
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(skills): skillRef 首帧注入 + buildDeps 装配接线 + selfcheck 行`
+- [x] Step 1: 失败测试——scripted 任务带 skillRef 输出含正文标记；未注册 id fail；不带 skillRef 不回归
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现（注入 + 接线 + selfcheck 技能调度行）
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(skills): skillRef 首帧注入 + buildDeps 装配接线 + selfcheck 行`（已完成：85ca7f9，LoopDeps.skills 解析接缝失败即 failed + ContextManager 一次性技能槽消费即清，基线 248/248/0）
 
 ---
 
