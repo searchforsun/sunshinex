@@ -17,7 +17,9 @@
 pnpm build      # 编译 TS 到 dist/（tsc -p tsconfig.json）
 pnpm start      # 运行入口（node dist/index.js）
 pnpm selfcheck  # 编译并运行骨架自检
-pnpm install    # 安装依赖
+pnpm test      # 编译 + 全量单测（node --test）
+pnpm cli       # CLI 执行面（内置自动构建，自动装载 .env）
+pnpm install   # 安装依赖
 ```
 
 > 包管理器统一 pnpm：版本由 `packageManager` 字段钉定（Node 自带 corepack，`corepack enable` 后直接使用 `pnpm`）；项目 `.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用。
@@ -86,7 +88,7 @@ SUNSHINE.md          # 项目业务配置
 
 - 提交前必须通过 `pnpm build`（tsc 严格模式零报错）
 - 涉及加载/解析逻辑时，补充示例物料并确保 `--selfcheck` 输出正确
-- `.pnpm-store/`、`.npm-cache/`、`.data/`、`node_modules/`、`dist/` 不入库
+- `.pnpm-store/`、`.npm-cache/`、`.data/`、`.longtask/`、`node_modules/`、`dist/` 不入库
 
 ## 8. 边界与约束
 
