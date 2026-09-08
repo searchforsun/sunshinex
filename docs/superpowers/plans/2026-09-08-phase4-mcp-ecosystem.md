@@ -274,8 +274,8 @@
 **Interfaces:**
 - 纯 Node 零依赖 stdio JSON-RPC：`initialize` → `tools/list`（echo 工具）→ `tools/call`；`--delay <ms>` 慢速模式（超时用例）；`--name <name>` 改名（越权用例）；按行 JSON 解析、按行回写
 
-- [ ] Step 1: 脚本冒烟——echo 往返 + 慢速延迟生效断言
-- [ ] Step 2: 提交 `test(mcp): mock stdio JSON-RPC server——echo/慢速/改名三模式（零网络）`
+- [x] Step 1: 脚本冒烟——echo 往返 + 慢速延迟生效断言（--delay 实测 624ms，--name 改名生效）
+- [x] Step 2: 提交 `test(mcp): mock stdio JSON-RPC server——echo/慢速/改名三模式（零网络）`（已完成：be9b0e4）
 
 ---
 
