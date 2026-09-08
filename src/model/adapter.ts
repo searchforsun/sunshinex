@@ -25,6 +25,12 @@ export class StubAdapter implements ModelAdapter {
     hooks?.onUsage?.(0); // 占位适配器无真实用量
     return `[stub reply] ${prompt}`;
   }
+
+  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
+    const out = await this.complete(prompt, hooks);
+    onDelta(out);
+    return out;
+  }
 }
 
 export interface LLMConfig {
@@ -72,6 +78,54 @@ export class OpenAIAdapter implements ModelAdapter {
       clearTimeout(timer);
     }
   }
+
+  /** 流式补全：stream:true SSE 输出，\n\n 分帧缓冲（容忍跨 chunk 半帧），data:[DONE] 终止；usage 取自携带用量的事件帧 */
+  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
+    if (!this.apiKey) throw new Error('OPENAI_API_KEY 未配置');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    try {
+      const resp = await fetch(`${this.baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+        body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: prompt }], stream: true }),
+        signal: ctrl.signal,
+      });
+      if (!resp.ok || !resp.body) throw new Error(`OpenAI 请求失败：${resp.status}`);
+      let full = '';
+      let buffer = '';
+      const decoder = new TextDecoder();
+      for await (const chunk of resp.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+        for (const frame of frames) {
+          for (const line of frame.split('\n')) {
+            const data = line.replace(/^data:\s*/, '');
+            if (!data || data === '[DONE]') continue;
+            try {
+              const ev = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+              const delta = ev.choices?.[0]?.delta?.content;
+              if (delta) {
+                full += delta;
+                onDelta(delta);
+              }
+              const usage = extractUsage(ev);
+              if (usage > 0) hooks?.onUsage?.(usage);
+            } catch {
+              // 非 JSON 的 data 行（服务端注释/心跳）忽略，不中断流
+            }
+          }
+        }
+      }
+      return full;
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') throw new Error('模型调用超时');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 /** 脚本化适配器：预置决策序列逐步回放（测试/离线兜底） */
@@ -85,6 +139,16 @@ export class ScriptedAdapter implements ModelAdapter {
     const s = this.steps[this.i];
     this.i = Math.min(this.i + 1, this.steps.length - 1);
     return s ?? '{"done":true}';
+  }
+
+  /** 无流式通道：当前步逐字回调投递（压测消费端增量处理路径），返回全文 */
+  async completeStream(_prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
+    hooks?.onUsage?.(0); // 脚本化回放无真实用量
+    const s = this.steps[this.i];
+    this.i = Math.min(this.i + 1, this.steps.length - 1);
+    const text = s ?? '{"done":true}';
+    for (const ch of text) onDelta(ch);
+    return text;
   }
 }
 
