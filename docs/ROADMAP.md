@@ -103,12 +103,12 @@ flowchart TB
 
 **5A 交互式 TUI（对标 Claude Code）**：
 
-- [ ] 交互式会话 REPL：连续对话式任务下达，会话内多任务上下文延续
-- [ ] 流式输出：模型 token 流与工具调用事件（exec/read/write）逐条实时渲染
-- [ ] plan-mode：先出执行计划、用户确认后再动代码（复用 Graph 规划节点）
-- [ ] 待办清单展示：任务拆解与状态实时同步（数据源为 Graph 节点状态）
-- [ ] 权限与审批终端化：deny/ask/allow 实时询问，gate 审批在会话内完成
-- [ ] 终端渲染选型：原生 ANSI 渲染 vs 成熟 TUI 库（如 Ink/blessed 一类候选），按依赖引入原则评审定案
+- [x] 交互式会话 REPL：连续对话式任务下达，会话内多任务上下文延续（Task 4/5：sunshinex tui 入口 + SessionController 连续任务/FIFO 排队，会话底座同源）
+- [x] 流式输出：模型 token 流与工具调用事件（exec/read/write）逐条实时渲染（Task 1/5：SessionEvents 贯通；工具事件实时上屏，token 首版以完整回复落屏、逐字增量留增强）
+- [x] plan-mode：先出执行计划、用户确认后再动代码（Task 6：/plan → planner 产计划 → 确认卡 → 逐项执行；plan 定案以 planner 角色替代五节点 pipeline）
+- [x] 待办清单展示：任务拆解与状态实时同步（Task 6：待办面板实时勾选；数据源为计划条目状态——逐项执行定案的等价映射）
+- [x] 权限与审批终端化：deny/ask/allow 实时询问，gate 审批在会话内完成（Task 2/4/5：guard asker 注入 + y/a/n 键盘裁决 + 审批模态；deny 规则与硬底线不因 asker 豁免）
+- [x] 终端渲染选型：原生 ANSI 渲染 vs 成熟 TUI 库（如 Ink/blessed 一类候选），按依赖引入原则评审定案（Task 5：Ink 定案——ink@^3.2.0 CJS 兼容线，R1 冒烟过；ink@4+ ESM-only 冲突已修订）
 
 **5B 桌面端 GUI（对标 Codex 工作台）**：
 
@@ -143,9 +143,9 @@ flowchart TB
 - [x] 模型 SDK 接入 OpenAI 协议兼容供应商（`.env` 配置，零新增依赖）
 - [x] 阶段四 MCP 生态与全场景能力（P1：stdio 注册链 + 安全闸门 + sqlite-vec 知识库；P1b：HTTP/SSE 传输 + 记忆→技能沉淀闭环；P4R：路由观测 + 成本账本 + 前缀稳定化）
 
-当前基线：npm run build（tsc strict）零报错、299 个测试全绿、npm run selfcheck 通过（含 learned / usage 汇总行）；CLI 执行面 selfcheck / run / pipeline 三命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
+当前基线：npm run build（tsc strict）零报错、324 个测试全绿、npm run selfcheck 通过（含 learned / usage / tui 汇总行）；CLI 执行面 selfcheck / run / pipeline / tui 四命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
 
-下一步：阶段五终端双端——TUI 对标 Claude Code、GUI 对标 Codex（共享同一数据底座）；随行开放项：自动技能筛选与 AI 语义聚类（随记忆深化）。
+下一步：阶段五 5B 桌面端 GUI——对标 Codex 工作台（复用 SessionEvents 事件面与 asker 契约，CLI/TUI/GUI 三面同源）；随行开放项：token 逐字增量上屏、自动技能筛选与 AI 语义聚类（随记忆深化）。
 
 ## 6. 验证策略
 
