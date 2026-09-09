@@ -4,6 +4,7 @@ import {
   LoopNodeBase,
   LoopTermination,
   NodeOutput,
+  SessionEvent,
   SkillRef,
 } from '../types';
 import { ModelAdapter, ModelRouter } from '../model/adapter';
@@ -32,6 +33,8 @@ export interface LoopDeps {
   model: ModelAdapter;
   router?: ModelRouter;
   skills?: SkillResolver;
+  /** 事件流旁路（5A TUI/GUI 公共地基）：透传给循环内构造的 Reactor；缺省零副作用 */
+  onEvent?: (e: SessionEvent) => void;
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */

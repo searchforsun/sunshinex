@@ -1,4 +1,4 @@
-import { AgentRole, GraphDeps, GraphNodeOutput } from '../types';
+import { AgentRole, GraphDeps, GraphNodeOutput, SessionEvent } from '../types';
 import { GraphNode } from './engine';
 import { toReactorBudget } from '../loop/nodes';
 import { Reactor } from '../harness/reactor';
@@ -10,6 +10,11 @@ export const ROLE_PRESETS: Record<AgentRole, { label: string; framing: string }>
   tester: { label: '测试工程师', framing: '测试用例生成、执行与失败分析' },
   reviewer: { label: '审查员', framing: '规范、逻辑与安全审查，产出审查报告' },
 };
+
+/** 角色 Agent 事件发射器：deps 注入即透传，缺省空转（Graph onEvent 贯通点） */
+function makeAgentEmitter(deps: GraphDeps): ((e: SessionEvent) => void) | undefined {
+  return deps.onEvent;
+}
 
 export interface RoleAgentOpts {
   maxSteps?: number;
@@ -39,6 +44,7 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
         context: deps.context,
         model: deps.model,
         ...(deps.router ? { router: deps.router } : {}),
+        ...(deps.onEvent ? { onEvent: deps.onEvent } : {}),
       });
       const result = await reactor.run({ goal: task }, { maxSteps: opts.maxSteps, budget });
       return {
