@@ -6,10 +6,12 @@ import { codeReviewTemplate } from '../../loop/templates';
 import { StubAdapter } from '../../model/adapter';
 import { resolveKbEnv } from '../../config/env';
 import { parseMcpServers, parseSunshinex } from '../../config';
+import { createRuntime } from '../../tui/runtime';
+import { SessionEvent } from '../../types';
 import type { CliArgs } from '../index';
 
 /** 骨架自检：实例化 Harness 门面，聚合五大能力并打印骨架摘要 */
-export function runSelfcheck(_args: CliArgs): void {
+export async function runSelfcheck(_args: CliArgs): Promise<void> {
   const h = new Harness({ root: process.cwd() });
   const perceived = h.perception.scan();
   console.log('SunshineX skeleton selfcheck OK');
@@ -30,6 +32,10 @@ export function runSelfcheck(_args: CliArgs): void {
   console.log('learned :', h.skills.learnedCount());
   const usage = h.ledger.summary();
   console.log('usage  :', `${usage.runs} runs / ${usage.tokens} tokens`);
+  const tuiEvents: SessionEvent[] = [];
+  const tuiRt = createRuntime({ root: process.cwd(), model: new StubAdapter(), onEvent: (e) => tuiEvents.push(e) });
+  await tuiRt.runTask('selfcheck tui 冒烟');
+  console.log('tui     :', `headless 事件流 OK（${tuiEvents.length} 事件）`);
   const loopReady = codeReviewTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
   console.log('loop    :', `${loopReady.name} template ready (${loopReady.nodes.length} nodes)`);
   const graphReady = softwarePipelineTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });

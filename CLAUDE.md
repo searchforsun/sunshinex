@@ -83,6 +83,7 @@ SUNSHINE.md          # 项目业务配置
 - 新增共享类型需在 `src/types.ts` 登记
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
 - **已登记依赖**：`@modelcontextprotocol/sdk` ^1.30.0 —— MCP 官方客户端（stdio / streamable http / sse 三传输）。用途：阶段四第三方工具接入（懒 spawn → 握手身份校验 → tools/list → tools/call）；边界：依赖收敛于 `src/harness/mcp/client.ts` 接缝内（替换客户端实现不动主链），transport 工厂按 SUNSHINE.md 配置分支三传输；回退预案：自研最小 stdio JSON-RPC 客户端同接口（spec §6-R6）
+- **已登记依赖**：ink ^3.2.0 + react ^18.3.1 —— 终端渲染框架（组件化 TUI）。用途：阶段五 5A `sunshinex tui` 交互式会话终端渲染层；边界：仅渲染层（组件/入口），运行时零接触，依赖收敛于 `src/tui/`；回退预案：Renderer 接缝退原生 ANSI 最小面（spec §6-R1，SessionController 纯逻辑不受影响）
 - **已登记依赖**：sqlite-vec ^0.1.9 —— sqlite-vec 向量扩展（vec0 虚拟表 KNN）。用途：阶段四 P1 `KB_BACKEND=sqlite-vec` 向量后端；加载路径：node:sqlite（Node 22.14 内置）`loadExtension` + `allowExtension: true`（缺省关闭，安全缺省）；边界：单进程本地库、插入走 hex 字面量（vec0 xUpdate 参数化绑定限制，spike 已证）、依赖收敛于 store 接缝内；回退预案：local-json（`KB_BACKEND` 缺省即回退，禁静默切换）
 
 ## 6. 技能与插件规范
