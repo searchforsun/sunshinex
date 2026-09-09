@@ -152,6 +152,31 @@ export interface RouteDecision {
   adapterProvider: string;
 }
 
+/** TUI/GUI 公共事件面（阶段五 5A SessionEvents；运行时唯一旁路，缺省不发射） */
+export type SessionEventType =
+  | 'token' | 'tool-call' | 'tool-result' | 'step'
+  | 'route' | 'approval-request' | 'approval-resolved'
+  | 'done' | 'error';
+
+export interface SessionEvent {
+  type: SessionEventType;
+  /** token 增量文本 / step 动作摘要 / error 原因 */
+  text?: string;
+  /** 结构化载荷：tool 名与输入摘要、RouteDecision、done 统计等 */
+  payload?: Record<string, unknown>;
+  ts: number;
+}
+
+/** 终端化审批请求（guard asker 注入点契约，Task 2 接入） */
+export interface ApprovalRequest {
+  id: string;
+  kind: 'command' | 'mcp' | 'webfetch' | 'write';
+  subject: string;
+  reason?: string;
+}
+
+export type ApprovalDecision = 'allow' | 'always' | 'deny';
+
 /** 知识库命中条目（kb_search 出参；score 为归一化相似度） */
 export interface KbHit {
   id: string;

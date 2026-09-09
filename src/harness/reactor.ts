@@ -1,6 +1,6 @@
-import { ContextItem, ExecResult, RouteDecision } from '../types';
+import { ContextItem, ExecResult, RouteDecision, SessionEvent } from '../types';
 import { Result } from '../result';
-import { ModelAdapter, ModelRouter, ModelTier, RouteHint } from '../model/adapter';
+import { ModelAdapter, ModelRouter, ModelTier, RouteHint, UsageHooks } from '../model/adapter';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
@@ -20,6 +20,8 @@ export interface ReactorDeps {
   settle?: (r: { goal: string; reply: string }) => void;
   /** per-run 成本账本（可选）：run 收尾聚合落 runs/<id>；缺省不落账 */
   ledger?: RunLedger;
+  /** 事件流旁路（TUI/GUI 公共地基）：发射即旁路，不注入零副作用；主链/账本语义不受影响 */
+  onEvent?: (e: SessionEvent) => void;
 }
 
 interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; tier?: unknown; }
@@ -81,15 +83,17 @@ export class Reactor {
       lastRoute = prefTier
         ? { tier: prefTier, reason: 'model:preference', bound: router.boundTiers().includes(prefTier), adapterProvider: router.resolve(prefTier).provider }
         : decision;
+      this.emit('route', undefined, { tier: lastRoute.tier, reason: lastRoute.reason });
       prefTier = undefined; // 一次性消费
 
       // think: 经 ModelAdapter 决策（带动作协议 prompt）
       const prompt = this.buildPrompt(items, effectiveTier);
       let raw: string;
       try {
-        raw = await router.resolve(effectiveTier).complete(prompt, { onUsage: (t) => { tokensUsed += t; } });
+        raw = await this.callModel(router.resolve(effectiveTier), prompt, { onUsage: (t) => { tokensUsed += t; } });
       } catch (e) {
         reply = e instanceof Error ? e.message : '模型调用失败';
+        this.emit('error', reply);
         break;
       }
 
@@ -102,6 +106,7 @@ export class Reactor {
       }
 
       const action = parsed.action;
+      this.emit('step', action.tool ?? (action.done ? 'done' : '（无动作）'), { step });
       prefTier = action.tier === 'small' || action.tier === 'medium' || action.tier === 'large' ? action.tier : undefined;
       if (action.done) {
         done = true;
@@ -116,8 +121,10 @@ export class Reactor {
       }
 
       // act: 经安全链执行
+      this.emit('tool-call', action.tool, { input: action.input });
       const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
       const observation = this.describe(r);
+      this.emit('tool-result', observation.slice(0, 200), { ok: r.ok });
       steps.push({ step, action: action.tool, observation, tier: effectiveTier });
       if (r.ok && (action.tool === 'read' || action.tool === 'grep')) {
         const p = (action.input ?? {}).path;
@@ -152,7 +159,27 @@ export class Reactor {
         // 账本失败不倒灌任务成败
       }
     }
+    // 收尾事件：done 必发（正常/异常路径共用出口）；error 已在失败点提前发出
+    this.emit('done', reply, { steps: steps.length, tokensUsed });
     return { steps, done, reply, tokensUsed, route: lastRoute };
+  }
+
+  /** 事件发射器：仅旁路通知；onEvent 缺省为零开销空转 */
+  private emit(type: SessionEvent['type'], text?: string, payload?: Record<string, unknown>): void {
+    this.deps.onEvent?.({ type, text, payload, ts: Date.now() });
+  }
+
+  /** 模型调用：优先 completeStream（token 增量逐段发射）；适配器未实现时降级 complete（token 整段一次发） */
+  private async callModel(adapter: ModelAdapter, prompt: string, hooks: UsageHooks): Promise<string> {
+    const streamable = adapter as ModelAdapter & {
+      completeStream?: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks) => Promise<string>;
+    };
+    if (typeof streamable.completeStream === 'function') {
+      return streamable.completeStream(prompt, (t) => this.emit('token', t), hooks);
+    }
+    const out = await adapter.complete(prompt, hooks);
+    this.emit('token', out);
+    return out;
   }
 
   private buildPrompt(items: ContextItem[], tier: ModelTier): string {
