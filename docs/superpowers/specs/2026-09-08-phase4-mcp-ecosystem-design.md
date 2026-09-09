@@ -37,7 +37,7 @@
 
 ```ts
 // src/harness/mcp/client.ts —— MCP 宿主（懒连接；错误走分域 Result 契约）
-export interface McpServerConfig { name: string; command: string; args?: string[]; env?: Record<string, string>; }
+export interface McpServerConfig { name: string; command?: string; args?: string[]; env?: Record<string, string>; transport?: 'stdio' | 'http' | 'sse'; url?: string; }
 export interface McpToolRef { server: string; name: string; description?: string; inputSchema: unknown; }
 
 export class McpHost {
@@ -55,7 +55,7 @@ export class McpHost {
   - `mode: 'dontAsk'` 下外部工具不豁免以上闸门（免审批 ≠ 免策略）。
 - **配置面**：SUNSHINE.md 新增「MCP 服务器」「网络白名单」分区，行式条目（`name | command | args...`），由 `src/config.ts` 新增专用解析函数产出 `McpServerConfig[]`——既有解析器保持「分区 + 按行收集」纯文本语义不变，单一配置入口不破。
 - **生命周期**：首次 `registerTools` 懒 spawn；server 崩溃/调用失败返回 `Result.fail`（错误局部化接管，不拖垮 Loop/Graph）。
-- **测试**：零网络——仓库内脚本 mock stdio JSON-RPC server，覆盖 handshake → tools/list → 注册 → 经链调用 → 脱敏/超时/越权断言。
+- **测试**：零外部网络——仓库内脚本 mock stdio JSON-RPC server 与 HTTP/SSE server（node:http 零依赖，port 0 临时端口），覆盖 handshake → tools/list → 注册 → 经链调用 → 脱敏/超时/越权断言（stdio 与 http/sse 同链路）。
 
 ### 3.2 内置工具集扩展
 
@@ -145,3 +145,4 @@ export function resolveSkill(skillsDir: string, id: string,
 | R4 | dontAsk 模式下外部工具误放行 | 白名单空=全禁 + 参数体积/超时双闸门；策略测试覆盖 |
 | R5 | 技能沉淀闭环（成功任务 → 技能模板） | 开放问题，随阶段五记忆深化再设计 |
 | R6 | 官方 SDK 与 Node ≥22.9 兼容性 | 实施首任务先做连通性冒烟，失败则回退自研 stdio 子集（备选方案已在 R1-①） |
+��在 R1-①） |
