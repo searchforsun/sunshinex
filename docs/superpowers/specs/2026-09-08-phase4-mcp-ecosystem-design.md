@@ -67,10 +67,10 @@ export class McpHost {
 
 ### 3.3 模型路由、缓存与流式
 
-- **可观测路由**：`router.route(hint?: RouteHint)` 增量接口，hint 携带复杂度/角色信号（Graph 角色预设已产出建议档位，此处收敛为正式入参）；决策记录 `RouteDecision { tier, reason }` 随 run 结果返回并落 ledger。
-- **成本与命中率记账**：UsageHooks 聚合到 harness 层 per-run ledger（storage key `runs/<id>`）；session 缓存增加 hit/miss 计数器；selfcheck 输出汇总行。
-- **前缀稳定化**：context 组装器固定 system 与工具 schema 段顺序，提升 provider 端 KV 前缀缓存命中（DeepSeek/OpenAI 隐式缓存均受益）。
-- **流式提前**（推荐默认：纳入本阶段）：`ModelAdapter.completeStream(req, onDelta): Promise<Completion>`，SSE 解析零依赖（body reader 按 `data:` 行切分）；scripted/stub 适配器同步支持（scripted 逐字吐出）；既有 `complete()` 签名不动——此接缝即「外部依赖可插拔」在模型层的既有范例（多后端同接口）。理由：阶段五 TUI 硬依赖 token 流，接口改造放在本阶段（路由/缓存同域施工）比留到阶段五风险低。
+- **可观测路由**：`router.route(hint?: RouteHint)` 增量接口，hint 携带复杂度/角色信号（Graph 角色预设已产出建议档位，此处收敛为正式入参）；决策记录 `RouteDecision { tier, reason }` 随 run 结果返回并落 ledger。**已交付（P4R）**：`run opts.routeHint` 正式入参，`RunResult.route` 携带实际生效决策（模型偏好以 `model:preference` 留痕）。
+- **成本与命中率记账**：UsageHooks 聚合到 harness 层 per-run ledger（storage key `runs/<id>`）；session 缓存增加 hit/miss 计数器；selfcheck 输出汇总行。**已交付（P4R）**：`RunLedger` 落 `runs/<id>` + `runs/_index`，`Harness.ledger`/`ReactorDeps.ledger` 装配面，selfcheck `usage` 行。
+- **前缀稳定化**：context 组装器固定 system 与工具 schema 段顺序，提升 provider 端 KV 前缀缓存命中（DeepSeek/OpenAI 隐式缓存均受益）。**已交付（P4R）**：buildPrompt 稳定段前置、工具清单按名序、档位提示移尾。
+- **流式提前**（推荐默认：纳入本阶段）：`ModelAdapter.completeStream(req, onDelta): Promise<Completion>`，SSE 解析零依赖（body reader 按 `data:` 行切分）；scripted/stub 适配器同步支持（scripted 逐字吐出）；既有 `complete()` 签名不动——此接缝即「外部依赖可插拔」在模型层的既有范例（多后端同接口）。**已交付**：三适配器 `completeStream` 全实现。理由：阶段五 TUI 硬依赖 token 流，接口改造放在本阶段（路由/缓存同域施工）比留到阶段五风险低。
 
 ### 3.4 本地向量知识库（可插拔后端；缺省零依赖 JSON + 余弦）
 
@@ -129,9 +129,8 @@ export function resolveSkill(skillsDir: string, id: string,
 
 ## 5. 边界与不做
 
-- MCP HTTP/SSE 传输与 OAuth 授权流（接口留位，实现随需）
+- MCP OAuth 授权流（接口留位，实现随需；HTTP/SSE 传输已随 P1b 交付，§3.1 同步）
 - CLI 专项命令（chat/edit/test/review/doc）→ 阶段五与 TUI 同面交付（推荐默认，见 §6-R1）
-- 记忆→技能自动沉淀闭环
 - 缺省路径外的任何强制依赖：`sqlite-vec`/chromadb 仅作为可插拔后端按需引入（§3.4），缺省交付保持零依赖
 - 知识库多集合权限、远端知识库、增量爬取
 

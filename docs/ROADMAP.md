@@ -89,8 +89,8 @@ flowchart TB
 **目标**：兼容 MCP 协议，完善全场景业务能力，优化体验。
 
 - [x] MCP 协议兼容，支持第三方工具接入（P1：官方 SDK stdio 注册链；P1b：HTTP/SSE 传输交付，spec §3.1 同步）
-- [ ] 补充内置工具集，覆盖开发全场景
-- [ ] 优化模型路由与缓存策略
+- [x] 补充内置工具集，覆盖开发全场景（P1：grep 目录级升级 + webfetch 网络工具；git/db 专项明确不做，spec §3.2）
+- [x] 优化模型路由与缓存策略（P4R：可观测路由 route(hint) + RunResult 决策面 + per-run 成本账本 runs/<id> + 前缀稳定化；流式接缝三适配器全实现，spec §3.3）
 - [x] 本地向量知识库增强（P1：sqlite-vec 可插拔后端已交付，conformance 双后端全绿）
 - [x] 技能模板体系完善（P1：模板调度+示例技能；P1b：记忆→技能沉淀闭环——写入面+成功钩子+双根合并；自动筛选/AI 语义聚类留阶段五）
 
@@ -141,10 +141,11 @@ flowchart TB
 - [x] 阶段二 Loop Engine（engine + Agent/Check/Gate/Router 四类节点、重构 / 测试闭环 / 代码审查三模板、/goal 自我验证、CLI run）
 - [x] 阶段三 Graph 编排（DAG 引擎 + loop/agent/gate/ci 四类节点、五节点软件工程流水线、pause/resume 与预算跨层贯通、CLI pipeline）
 - [x] 模型 SDK 接入 DeepSeek 兼容 OpenAI 协议（`.env` 配置，零新增依赖）
+- [x] 阶段四 MCP 生态与全场景能力（P1：stdio 注册链 + 安全闸门 + sqlite-vec 知识库；P1b：HTTP/SSE 传输 + 记忆→技能沉淀闭环；P4R：路由观测 + 成本账本 + 前缀稳定化）
 
-当前基线：npm run build（tsc strict）零报错、289 个测试全绿、npm run selfcheck 通过；CLI 执行面 selfcheck / run / pipeline 三命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
+当前基线：npm run build（tsc strict）零报错、299 个测试全绿、npm run selfcheck 通过（含 learned / usage 汇总行）；CLI 执行面 selfcheck / run / pipeline 三命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
 
-下一步：阶段四（MCP 工具兼容、向量知识库、CLI 专项命令、技能模板体系完善）。
+下一步：阶段五终端双端——TUI 对标 Claude Code、GUI 对标 Codex（共享同一数据底座）；随行开放项：自动技能筛选与 AI 语义聚类（随记忆深化）。
 
 ## 6. 验证策略
 
