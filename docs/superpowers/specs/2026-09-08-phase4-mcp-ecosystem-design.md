@@ -110,7 +110,7 @@ export function resolveSkill(skillsDir: string, id: string,
 ```
 
 - **装配接线**：`buildDeps` 调用 `loadSkills(root/skills)`；示例技能随仓库交付（`skills/examples/`），selfcheck 以 scripted 模型走通一次 skillRef 调度。
-- **记忆→技能自动沉淀**：不做，转开放问题（§6-R5）。
+- **记忆→技能沉淀闭环**：已随 P1b 交付（LearnedSkillStore + Reactor 成功钩子 + 双根合并三件套，定案见 §6-R5）。
 
 ### 3.6 类型与依赖登记
 
@@ -143,6 +143,6 @@ export function resolveSkill(skillsDir: string, id: string,
 | R2 | SDK 依赖体积与供应链审计 | 锁定版本；登记用途边界；stdio 传输仅本地 spawn |
 | R3 | embedding 端点不可用 | kb_search 明确降级（Result.fail），不阻塞主链 |
 | R4 | dontAsk 模式下外部工具误放行 | 白名单空=全禁 + 参数体积/超时双闸门；策略测试覆盖 |
-| R5 | 技能沉淀闭环（成功任务 → 技能模板） | 开放问题，随阶段五记忆深化再设计 |
+| R5 | 技能沉淀闭环（成功任务 → 技能模板） | 已定案（P1b）：LearnedSkillStore 写入 `.data/skills`（slug 确定性 id、撞名 `-2`、FIFO 50 对齐 CAP.skill）+ Reactor done 路径一次 settle（失败路径零触发、抛错吞掉记 episodic 不倒灌任务成败）+ SkillsFacade 双根合并（用户技能恒优先）；自动技能筛选与 AI 语义聚类仍留阶段五 |
 | R6 | 官方 SDK 与 Node ≥22.9 兼容性 | 实施首任务先做连通性冒烟，失败则回退自研 stdio 子集（备选方案已在 R1-①） |
 ��在 R1-①） |
