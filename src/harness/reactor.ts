@@ -15,6 +15,8 @@ export interface ReactorDeps {
   context: ContextManager;
   model: ModelAdapter;
   router?: ModelRouter;
+  /** 成功沉淀钩子：仅 done 且有 reply 时触发一次；抛错被吞并记 episodic（沉淀失败不倒灌任务成败） */
+  settle?: (r: { goal: string; reply: string }) => void;
 }
 
 interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; tier?: unknown; }
@@ -115,6 +117,14 @@ export class Reactor {
 
     // 任务收尾：清退 working 层（done 与 maxSteps 耗尽共用此出口）
     this.deps.context.memory.endTask();
+    // 成功沉淀钩子：maxSteps 耗尽 / 模型失败路径不触发；抛错吞掉记 episodic，不倒灌任务成败
+    if (done && reply && this.deps.settle) {
+      try {
+        this.deps.settle({ goal: task.goal, reply });
+      } catch (e) {
+        this.deps.context.memory.record('settle', `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     return { steps, done, reply, tokensUsed };
   }
 

@@ -15,6 +15,7 @@ import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
+import { LearnedSkillStore } from './skills/learned';
 
 export interface HarnessOptions {
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
@@ -22,6 +23,8 @@ export interface HarnessOptions {
   model?: ModelAdapter;
   /** 权限模式，默认 dontAsk：不询问、自动批准未 deny 的操作（最大权限，供测试/受信场景） */
   mode?: PermissionMode;
+  /** 学习惯例沉淀开关（缺省 true）：成功任务写入 .data/skills 学习技能；测试/纯执行场景可关 */
+  learnSkills?: boolean;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -55,6 +58,9 @@ export class Harness {
       safety: this.safety,
       context: this.context,
       model: opts.model ?? new StubAdapter(),
+      ...(opts.learnSkills ?? true
+        ? { settle: (r: { goal: string; reply: string }) => new LearnedSkillStore(base).settle(r.goal, r.reply) }
+        : {}),
     });
     this.skills = createSkillsFacade(base);
   }
