@@ -25,10 +25,11 @@ const ROLE_COLOR = {
   system: 'yellow',
 } as const;
 
-const STATUS_LABEL = {
+const STATUS_LABEL: Record<TuiState['status'], string> = {
   idle: '空闲',
   running: '运行中',
   'awaiting-approval': '等待审批',
+  'awaiting-plan': '待确认计划',
   error: '出错',
 } as const;
 
@@ -44,6 +45,11 @@ export function App({ controller }: { controller: SessionController }): JSX.Elem
     if (state.status === 'awaiting-approval') {
       const d = approvalKeyToDecision(input);
       if (d) controller.resolveApproval(d);
+      return;
+    }
+    if (state.status === 'awaiting-plan') {
+      if (input === 'y') void controller.confirmPlan(true);
+      if (input === 'n') void controller.confirmPlan(false);
       return;
     }
     if (key.return) {

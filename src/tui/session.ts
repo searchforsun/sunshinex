@@ -14,7 +14,7 @@ export interface TodoItem {
   done: boolean;
 }
 
-export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'error';
+export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting-plan' | 'error';
 
 export interface TuiState {
   messages: ChatItem[];
@@ -37,6 +37,8 @@ export class SessionController {
   private listeners = new Set<(s: TuiState) => void>();
   private queue: { goal: string; resolve: () => void }[] = [];
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
+  /** 挂起的计划确认卡（/plan 流程）；confirmPlan 裁决后清除 */
+  private pendingPlan?: { items: string[] };
   /** 裁决权注入（SessionOpts.asker）：挂起语义不变，回填后咨询并以其为最终裁决 */
   private autoAsker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 
@@ -111,6 +113,71 @@ export class SessionController {
     }
   }
 
+  /** 计划确认卡裁决：true 逐项执行（待办同步勾选），false 放弃回 idle */
+  async confirmPlan(yes: boolean): Promise<void> {
+    const pending = this.pendingPlan;
+    if (!pending) return;
+    this.pendingPlan = undefined;
+    if (!yes) {
+      this.state = { ...this.state, status: 'idle' };
+      this.pushMsg('system', '已放弃执行计划，回到输入态');
+      return;
+    }
+    await this.runPlanItems(pending.items);
+  }
+
+  private async startPlanFlow(goal: string): Promise<void> {
+    this.state = { ...this.state, status: 'running' };
+    this.notify();
+    let planText = '';
+    try {
+      const r = await this.runtime.runTask('仅输出编号执行计划（每行形如「1. xxx」），不要执行任何步骤。目标：' + goal);
+      planText = r.reply ?? '';
+    } catch (e) {
+      this.pushMsg('system', '规划失败：' + (e instanceof Error ? e.message : String(e)));
+      this.state = { ...this.state, status: 'idle' };
+      this.notify();
+      return;
+    }
+    const items = planText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => /^\d+[.、]\s*/.test(l))
+      .map((l) => l.replace(/^\d+[.、]\s*/, '').trim())
+      .filter((l) => l.length > 0);
+    if (items.length === 0) {
+      this.pushMsg('system', '规划未产出编号步骤（每行需形如「1. xxx」），已取消');
+      this.state = { ...this.state, status: 'idle' };
+      this.notify();
+      return;
+    }
+    this.pendingPlan = { items };
+    const card = ['计划确认卡（/plan）', ...items.map((t, i) => i + 1 + '. ' + t), '共 ' + items.length + ' 项，确认后逐项执行'].join('\n');
+    this.pushMsg('system', card);
+    this.state = { ...this.state, status: 'awaiting-plan' };
+    this.notify();
+  }
+
+  /** 逐项执行计划：每项一个 run，完成即勾选待办（宁停不误：单项失败即暂停，剩余保持未完成） */
+  private async runPlanItems(items: string[]): Promise<void> {
+    this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
+    this.notify();
+    for (let i = 0; i < items.length; i++) {
+      try {
+        const r = await this.runtime.runTask(items[i]);
+        const todos = [...this.state.todos];
+        todos[i] = { ...todos[i], done: true };
+        this.state = { ...this.state, todos };
+        this.pushMsg('assistant', r.reply ?? '已完成：' + items[i]);
+      } catch (e) {
+        this.pushMsg('system', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停');
+        break;
+      }
+    }
+    this.state = { ...this.state, status: 'idle' };
+    this.notify();
+  }
+
   private async runTaskFlow(goal: string): Promise<void> {
     this.state = { ...this.state, status: 'running' };
     this.notify();
@@ -156,6 +223,19 @@ export class SessionController {
       const chunks = await this.runtime.harness.context.window.compact(items, { summaryTokenBudget: 2000 });
       await this.runtime.harness.context.applyCompaction(chunks, { rereadTokenBudget: 2000 });
       this.pushMsg('system', `已压缩：${chunks.length} 个摘要块重注入`);
+      return;
+    }
+    if (cmd === '/plan') {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', '当前有任务进行中，暂不能开始规划');
+        return;
+      }
+      const goal = text.slice(cmd.length).trim();
+      if (!goal) {
+        this.pushMsg('system', '用法：/plan <目标>——先规划产出编号步骤，确认后逐项执行');
+        return;
+      }
+      await this.startPlanFlow(goal);
       return;
     }
     this.pushMsg('system', `未知命令：${cmd}（/help 查看清单）`);
