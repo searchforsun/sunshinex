@@ -40,6 +40,8 @@ export class Harness {
   readonly dryrun: DryRun;
   readonly safety: SafetyChain;
   readonly context: ContextManager;
+  /** 主模型适配器（TUI/GUI 装配 planner 等子运行时复用） */
+  readonly model: ModelAdapter;
   readonly reactor: Reactor;
   readonly skills: SkillsFacade;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
@@ -60,11 +62,12 @@ export class Harness {
     this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
     for (const t of builtinTools(this.safety, base)) this.tools.register(t);
     this.context = new ContextManager(base, store);
+    this.model = opts.model ?? new StubAdapter();
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,
       context: this.context,
-      model: opts.model ?? new StubAdapter(),
+      model: this.model,
       ledger,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.learnSkills ?? true

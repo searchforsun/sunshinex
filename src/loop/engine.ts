@@ -13,6 +13,7 @@ import { ResolvedSkill } from '../harness/skills';
 import { ToolRegistry } from '../harness/tools';
 import { SafetyChain } from '../harness/security/chain';
 import { ContextManager } from '../harness/context';
+import { RunLedger } from '../harness/ledger';
 
 /** 节点执行函数：async 或同步返回皆可；input 为上一节点输出（首轮 null） */
 export type LoopNodeFn = (ctx: LoopContext, input: NodeOutput | null) => Promise<NodeOutput> | NodeOutput;
@@ -35,6 +36,8 @@ export interface LoopDeps {
   skills?: SkillResolver;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给循环内构造的 Reactor；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;
+  /** per-run 成本账本透传：Loop/Graph 内构造的 Reactor 同样落 runs/<id>（成本观测不分通道） */
+  ledger?: RunLedger;
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */

@@ -143,7 +143,7 @@ flowchart TB
 - [x] 模型 SDK 接入 OpenAI 协议兼容供应商（`.env` 配置，零新增依赖）
 - [x] 阶段四 MCP 生态与全场景能力（P1：stdio 注册链 + 安全闸门 + sqlite-vec 知识库；P1b：HTTP/SSE 传输 + 记忆→技能沉淀闭环；P4R：路由观测 + 成本账本 + 前缀稳定化）
 
-当前基线：npm run build（tsc strict）零报错、324 个测试全绿、npm run selfcheck 通过（含 learned / usage / tui 汇总行）；CLI 执行面 selfcheck / run / pipeline / tui 四命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
+当前基线：npm run build（tsc strict）零报错、325 个测试全绿、npm run selfcheck 通过（含 learned / usage / tui 汇总行）；CLI 执行面 selfcheck / run / pipeline / tui 四命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
 
 下一步：阶段五 5B 桌面端 GUI——对标 Codex 工作台（复用 SessionEvents 事件面与 asker 契约，CLI/TUI/GUI 三面同源）；随行开放项：token 逐字增量上屏、自动技能筛选与 AI 语义聚类（随记忆深化）。
 

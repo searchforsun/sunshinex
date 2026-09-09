@@ -45,6 +45,7 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
         model: deps.model,
         ...(deps.router ? { router: deps.router } : {}),
         ...(deps.onEvent ? { onEvent: deps.onEvent } : {}),
+        ...(deps.ledger ? { ledger: deps.ledger } : {}),
       });
       const result = await reactor.run({ goal: task }, { maxSteps: opts.maxSteps, budget });
       return {

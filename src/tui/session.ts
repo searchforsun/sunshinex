@@ -1,4 +1,5 @@
-import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, GraphContext, SessionEvent } from '../types';
+import { makeRoleAgent } from '../graph/agents';
 import { TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
@@ -131,8 +132,28 @@ export class SessionController {
     this.notify();
     let planText = '';
     try {
-      const r = await this.runtime.runTask('仅输出编号执行计划（每行形如「1. xxx」），不要执行任何步骤。目标：' + goal);
-      planText = r.reply ?? '';
+      // 规划走 Graph planner 角色节点（spec 定案：复用角色预设而非 pipeline 全链）；
+      // 事件经 deps.onEvent 透传上屏，规划 run 同样落账本（成本观测不因换通道丢失）
+      const h = this.runtime.harness;
+      const deps = {
+        safety: h.safety,
+        registry: h.tools,
+        context: h.context,
+        model: h.model,
+        ledger: h.ledger,
+        onEvent: (e: SessionEvent) => this.onEvent(e),
+      };
+      const planner = makeRoleAgent('planner', deps, { maxSteps: 6 });
+      const ctx: GraphContext = {
+        state: { goal },
+        tokensUsed: 0,
+        startedAt: Date.now(),
+        results: {},
+        termination: { maxNodes: 10, maxTokens: 200_000, timeoutMs: 600_000 },
+      };
+      const out = await planner.run(ctx, deps, {});
+      if (out.status !== 'pass') throw new Error(out.reply ?? '规划节点未完成');
+      planText = out.reply ?? '';
     } catch (e) {
       this.pushMsg('system', '规划失败：' + (e instanceof Error ? e.message : String(e)));
       this.state = { ...this.state, status: 'idle' };
