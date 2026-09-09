@@ -1,5 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { ToolRegistry, CodedToolError, RegisteredTool } from '../tools';
 import { ExecResult, McpServerConfig, ToolCategory, ToolInput } from '../../types';
 
@@ -34,7 +37,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, code: string, message: string
 }
 
 /**
- * MCP 宿主：官方 SDK stdio 接缝（依赖收敛于本文件，替换客户端实现不动主链）。
+ * MCP 宿主：官方 SDK 传输接缝（stdio / streamable http / sse 三分支收敛于本文件，替换客户端实现不动主链）。
  * 注册链 = 懒 spawn → 握手身份校验（配置名 ≠ serverInfo.name 即拒，防冒名绕过 guard 登记制）
  * → tools/list → 以 mcp__<server>__<tool> 规范名注册（category external，闸门在 guard）。
  */
@@ -47,20 +50,40 @@ export class McpHost {
     private opts: McpHostOptions = {},
   ) {}
 
+  /** 传输工厂：stdio/http/sse 三分支收敛一处；形态字段缺失或 url 非法均装配期 fail-fast（与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输） */
+  private makeTransport(cfg: McpServerConfig): Transport {
+    const fail = (msg: string): CodedToolError =>
+      new CodedToolError('MCP_CONNECT_FAILED', `MCP 服务器连接失败（${cfg.name}）：${msg}`);
+    switch (cfg.transport ?? 'stdio') {
+      case 'http':
+      case 'sse': {
+        if (!cfg.url) throw fail(`${cfg.transport} 传输缺少 url`);
+        try {
+          const url = new URL(cfg.url);
+          return cfg.transport === 'sse' ? new SSEClientTransport(url) : new StreamableHTTPClientTransport(url);
+        } catch (e) {
+          throw fail(`无效 url：${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      case 'stdio':
+      default:
+        if (!cfg.command) throw fail('stdio 传输缺少 command');
+        return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [] });
+    }
+  }
+
   /** 逐服务器连接并注册工具，返回注册数；任一环节失败即抛（装配期 fail-fast，禁静默缺漏） */
   async registerTools(): Promise<number> {
     let count = 0;
     for (const cfg of this.servers) {
       if (this.conns.has(cfg.name)) throw new CodedToolError('MCP_DUP_SERVER', `MCP 服务器名重复：${cfg.name}`);
-      // 非stdio形态（url 型配置）在传输工厂落地前装配期 fail-fast，禁静默按 stdio 误连
-      if (cfg.command === undefined) {
-        throw new CodedToolError('MCP_CONNECT_FAILED', `MCP 服务器连接失败（${cfg.name}）：配置缺少 stdio command`);
-      }
-      const transport = new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [] });
+      const transport = this.makeTransport(cfg);
       const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
       try {
         await client.connect(transport);
       } catch (e) {
+        // 失败路径须显式关闭半开传输：SSE 的 EventSource 重连循环会残留 Socket 句柄，挂住测试进程不退出
+        await client.close().catch(() => {});
         const msg = e instanceof Error ? e.message : String(e);
         throw new CodedToolError('MCP_CONNECT_FAILED', `MCP 服务器连接失败（${cfg.name}）：${msg.slice(0, 120)}`);
       }
