@@ -329,7 +329,7 @@
 
 ## P1（后续独立 plan，不在本计划展开）
 
-- **T8 sqlite-vec 可插拔后端**：驱动 spike（`better-sqlite3`+sqlite-vec vs `node:sqlite`）→ `backends/sqlite-vec.ts` → 复跑 `store.conformance.ts` 全绿 → 成功信号：conformance 全绿 + 1 万块检索 P95 两位数毫秒。
+- [x] **T8 sqlite-vec 可插拔后端（已交付，P1）**：spike 择定 `node:sqlite`+扩展零编译路线；`store.sqlite-vec.ts` vec0 KNN 后端注册 `KB_BACKEND`；conformance 契约套件（含损坏恢复降级）双后端全绿；1 万块检索 P95 基准留后续实测。详见 `plans/2026-09-09-phase4-p1-sqlite-vec.md`（G1 `c47120a` / G2 `5777342` / G3 `03b1444`）。
 - MCP HTTP/SSE 传输、记忆→技能沉淀闭环（spec §5 边界留位）。
 
 ## 验收对照（spec §4）
@@ -339,6 +339,6 @@
 | §4-1 MCP 全链路 | Task 6a–6c |
 | §4-2 工具面 | Task 2 |
 | §4-3 路由/缓存/流式 | Task 3a–3c |
-| §4-4 知识库 | Task 4a–4f（sqlite-vec 部分留 P1） |
+| §4-4 知识库 | Task 4a–4f（sqlite-vec 部分已由 P1 交付） |
 | §4-5 技能调度 | Task 5a–5b |
 | §4-6 门禁 / §4-7 文档 | Task 7（各任务门禁随提交持续验证） |

@@ -46,11 +46,11 @@
 **Interfaces:**
 - `SqliteVecStore implements VectorStore`——vec0 虚拟表持久化于 `KB_DATA_DIR/vectors.db`；`upsert(id, vec, meta)` / `search(vec, topK): KbHit[]`（vec0 `MATCH` KNN，距离→相似度语义与 local-json 对齐：分值越大越相关）/ `size()` / `load()`（幂等重开）/ `flush()`
 
-- [ ] Step 1: 失败测试——构造 + upsert/search/size 基本语义（临时目录）
-- [ ] Step 2: 确认红
-- [ ] Step 3: 最小实现
-- [ ] Step 4: 确认绿
-- [ ] Step 5: 提交 `feat(knowledge): SqliteVecStore——vec0 KNN 后端 + KB_BACKEND 注册`
+- [x] Step 1: 失败测试——构造 + upsert/search/size 基本语义（临时目录）
+- [x] Step 2: 确认红
+- [x] Step 3: 最小实现
+- [x] Step 4: 确认绿
+- [x] Step 5: 提交 `feat(knowledge): SqliteVecStore——vec0 KNN 后端 + KB_BACKEND 注册`
 
 ---
 
@@ -64,11 +64,11 @@
 - `runVectorStoreConformance(create)` 契约套件直接跑 sqlite-vec 后端（写入/召回/TopK/幂等/持久化/损坏恢复全绿）——损坏恢复用例：锁库/坏文件 → `Result.fail` 而非崩溃
 - 切换用例：`KB_BACKEND=sqlite-vec` 下 KnowledgeBase index/search 语义与 local-json 一致
 
-- [ ] Step 1: 失败测试——conformance 套件 + 切换用例
-- [ ] Step 2: 确认红
-- [ ] Step 3: 补齐后端缺口至全绿
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(knowledge): sqlite-vec 过 conformance 契约 + KB_BACKEND 切换`
+- [x] Step 1: 失败测试——conformance 套件 + 切换用例
+- [x] Step 2: 确认红
+- [x] Step 3: 补齐后端缺口至全绿
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(knowledge): sqlite-vec 过 conformance 契约 + KB_BACKEND 切换`
 
 ---
 
@@ -77,9 +77,9 @@
 **Files:**
 - Modify: `docs/ROADMAP.md`（P1 项状态 + 测试基线数）、`docs/superpowers/plans/2026-09-08-phase4-mcp-ecosystem.md`（P1 段勾选/状态）、`docs/superpowers/specs/2026-09-08-phase4-mcp-ecosystem-design.md`（§5-R5 状态）
 
-- [ ] Step 1: ROADMAP 基线数修正为实测值；两处文档状态同步
-- [ ] Step 2: 全量门禁：`npm run build` 0 报错、`node --test` 全绿、`npm run selfcheck` 全行通过
-- [ ] Step 3: 提交 `docs(phase4-p1): ROADMAP/计划/spec 状态同步——sqlite-vec 后端交付`
+- [x] Step 1: ROADMAP 基线数修正为实测值；两处文档状态同步
+- [x] Step 2: 全量门禁：`npm run build` 0 报错、`node --test` 全绿、`npm run selfcheck` 全行通过
+- [x] Step 3: 提交 `docs(phase4-p1): ROADMAP/计划/spec 状态同步——sqlite-vec 后端交付`
 
 ---
 

@@ -89,7 +89,7 @@ src/harness/knowledge/
 - **EmbeddingProvider 同接缝可插拔**：接口仅 `embed(texts): Promise<number[][]>`；默认指向 OpenAI 兼容端点，可换本地推理或桩实现（测试注入），换装不触及知识库与其余主链。
 - **主链接入**：内置工具 `kb_search`（category `read`，仅本地索引检索；查询向量化属 model 域调用）——Loop/Graph/Reactor 经同一工具面消费知识，不开旁路。
 - **数据可控口径（明示）**：索引仅覆盖用户显式指定目录；分块文本将发送至所配置 embedding 端点；端点可指向本地实现实现全本地化；`.env` 不入库（既有纪律）。
-- **规模与交付节奏**：`local-json` 暴力余弦适用于 ≤5 万块，先行交付并作为回归基线；`sqlite-vec` 后端在核心链路验收后作为 P1 任务补入，成功信号 = conformance 全绿 + 1 万块检索 P95 进入两位数毫秒量级。
+- **规模与交付节奏**：`local-json` 暴力余弦适用于 ≤5 万块，先行交付并作为回归基线；`sqlite-vec` 后端在核心链路验收后作为 P1 任务补入，成功信号 = conformance 全绿 + 1 万块检索 P95 两位数毫秒。**已交付（P1）**：`node:sqlite` + sqlite-vec 零编译路线（spike 择定），conformance 双后端全绿；1 万块 P95 基准留后续实测（plans/2026-09-09-phase4-p1-sqlite-vec.md）。
 - **降级与 fail-fast**：未配置 embedding 端点时 `kb_search` 返回 `Result.fail` 明确提示配置缺失，不阻塞其他工具；`KB_BACKEND` 指向未注册后端时装配期即报错，不静默回退。
 - **测试**：EmbeddingProvider 以桩注入（不发真实网络）；conformance 套件对 `local-json` 全绿；自检用例对已知文档断言 top-3 命中。
 
@@ -139,7 +139,7 @@ export function resolveSkill(skillsDir: string, id: string,
 
 | # | 项 | 状态/缓解 |
 | --- | --- | --- |
-| R1 | 待裁决项已全部定案：① MCP=官方 SDK（1.30.0 入册，R6 未触发）；② 知识库=可插拔后端，缺省 `local-json` 已交付，SQLite 系留 P1；③ 范围=五条+流式提前（ba34f27）、CLI 留阶段五 | 实施期逐条落地；任一推翻仅影响对应小节，架构与接缝不动 |
+| R1 | 待裁决项已全部定案：① MCP=官方 SDK（1.30.0 入册，R6 未触发）；② 知识库=可插拔后端，缺省 `local-json` 与 `sqlite-vec`（P1）均已交付且 conformance 双后端全绿；③ 范围=五条+流式提前（ba34f27）、CLI 留阶段五 | 实施期逐条落地；任一推翻仅影响对应小节，架构与接缝不动 |
 | R2 | SDK 依赖体积与供应链审计 | 锁定版本；登记用途边界；stdio 传输仅本地 spawn |
 | R3 | embedding 端点不可用 | kb_search 明确降级（Result.fail），不阻塞主链 |
 | R4 | dontAsk 模式下外部工具误放行 | 白名单空=全禁 + 参数体积/超时双闸门；策略测试覆盖 |
