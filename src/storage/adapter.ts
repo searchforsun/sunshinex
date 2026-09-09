@@ -10,10 +10,6 @@ export interface StorageAdapter {
 export class FileStore implements StorageAdapter {
   constructor(private baseDir: string) {}
 
-  private ensure(): void {
-    fs.mkdirSync(this.baseDir, { recursive: true });
-  }
-
   read<T>(key: string, fallback: T): T {
     const p = path.join(this.baseDir, `${key}.json`);
     if (!fs.existsSync(p)) return fallback;
@@ -21,7 +17,7 @@ export class FileStore implements StorageAdapter {
   }
 
   write<T>(key: string, value: T): void {
-    this.ensure();
+    fs.mkdirSync(path.dirname(path.join(this.baseDir, `${key}.json`)), { recursive: true });
     fs.writeFileSync(path.join(this.baseDir, `${key}.json`), JSON.stringify(value, null, 2));
   }
 }

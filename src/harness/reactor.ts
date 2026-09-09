@@ -2,6 +2,7 @@ import { ContextItem, ExecResult, RouteDecision } from '../types';
 import { Result } from '../result';
 import { ModelAdapter, ModelRouter, ModelTier, RouteHint } from '../model/adapter';
 import { ToolRegistry } from './tools';
+import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 
@@ -17,6 +18,8 @@ export interface ReactorDeps {
   router?: ModelRouter;
   /** 成功沉淀钩子：仅 done 且有 reply 时触发一次；抛错被吞并记 episodic（沉淀失败不倒灌任务成败） */
   settle?: (r: { goal: string; reply: string }) => void;
+  /** per-run 成本账本（可选）：run 收尾聚合落 runs/<id>；缺省不落账 */
+  ledger?: RunLedger;
 }
 
 interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; tier?: unknown; }
@@ -41,6 +44,7 @@ export class Reactor {
     let done = false;
     let reply: string | undefined;
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
+    const startedAt = Date.now();
 
     for (let step = 1; step <= maxSteps; step++) {
       // observe: 装配 → 估算 → 滞回门 → 收敛环（spec §2.2：压缩当轮即以收敛后上下文组装）
@@ -131,6 +135,21 @@ export class Reactor {
         this.deps.settle({ goal: task.goal, reply });
       } catch (e) {
         this.deps.context.memory.record('settle', `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    // per-run 成本账本：tokens/路由决策/时长随收尾落 runs/<id>；落账失败不倒灌任务结果（存储同源，此处吞错）
+    if (this.deps.ledger) {
+      try {
+        this.deps.ledger.record({
+          goal: task.goal,
+          done,
+          steps: steps.length,
+          tokensUsed,
+          durationMs: Date.now() - startedAt,
+          ...(lastRoute ? { route: { tier: lastRoute.tier, reason: lastRoute.reason } } : {}),
+        });
+      } catch {
+        // 账本失败不倒灌任务成败
       }
     }
     return { steps, done, reply, tokensUsed, route: lastRoute };

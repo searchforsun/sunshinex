@@ -16,6 +16,7 @@ import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { LearnedSkillStore } from './skills/learned';
+import { RunLedger } from './ledger';
 
 export interface HarnessOptions {
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
@@ -38,10 +39,13 @@ export class Harness {
   readonly context: ContextManager;
   readonly reactor: Reactor;
   readonly skills: SkillsFacade;
+  /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
+  readonly ledger: RunLedger;
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
     const store = new FileStore(path.join(base, '.data'));
+    const ledger = new RunLedger(store);
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();
     this.sandbox = new ProcessSandbox();
@@ -58,10 +62,12 @@ export class Harness {
       safety: this.safety,
       context: this.context,
       model: opts.model ?? new StubAdapter(),
+      ledger,
       ...(opts.learnSkills ?? true
         ? { settle: (r: { goal: string; reply: string }) => new LearnedSkillStore(base).settle(r.goal, r.reply) }
         : {}),
     });
+    this.ledger = ledger;
     this.skills = createSkillsFacade(base);
   }
 }

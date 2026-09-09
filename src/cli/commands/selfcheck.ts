@@ -28,6 +28,8 @@ export function runSelfcheck(_args: CliArgs): void {
   const skillHello = h.skills.resolve('hello-sunshine', { name: 'selfcheck' });
   console.log('skills  :', `${h.skills.list().length} loaded, resolve=${skillHello.ok ? 'ok' : 'fail'}`);
   console.log('learned :', h.skills.learnedCount());
+  const usage = h.ledger.summary();
+  console.log('usage  :', `${usage.runs} runs / ${usage.tokens} tokens`);
   const loopReady = codeReviewTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
   console.log('loop    :', `${loopReady.name} template ready (${loopReady.nodes.length} nodes)`);
   const graphReady = softwarePipelineTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
