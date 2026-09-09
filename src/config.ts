@@ -51,16 +51,40 @@ function sectionLines(doc: SunshinexDoc, title: string): string[] {
   return doc.sections[title] ?? [];
 }
 
-/** 解析「MCP 服务器」分区为 McpServerConfig[]：行式 `name | command | args...`，args 按空格切分；name 或 command 缺失的行跳过不抛（装配面宁可少配不可错配） */
+/** 解析「MCP 服务器」分区为 McpServerConfig[]：行式 `name | endpoint [| 传输标记与 args]`。endpoint 以 http(s):// 开头为远程行（缺省 transport:http，可用 transport:sse 覆盖）；否则为 stdio 命令行（缺省不落 transport 字段，显式 transport:stdio 才注入），args 按空格切分。非法 transport 值或传输与形态矛盾的行整行跳过不抛（装配面宁可少配不可错配） */
 export function parseMcpServers(doc: SunshinexDoc): McpServerConfig[] {
   const servers: McpServerConfig[] = [];
   for (const line of sectionLines(doc, 'MCP 服务器')) {
     const parts = line.split('|').map((p) => p.trim());
     const name = parts[0] ?? '';
-    const command = parts[1] ?? '';
-    if (!name || !command) continue;
-    const args = line.split('|').slice(2).join('|').trim().split(/\s+/).filter((a) => a.length > 0);
-    servers.push(args.length > 0 ? { name, command, args } : { name, command });
+    const endpoint = parts[1] ?? '';
+    if (!name || !endpoint) continue;
+
+    let transport: McpServerConfig['transport'];
+    let malformed = false;
+    const rest: string[] = [];
+    for (const seg of parts.slice(2)) {
+      const mark = /^transport:(.+)$/.exec(seg);
+      if (!mark) {
+        rest.push(seg);
+      } else if (mark[1] === 'stdio' || mark[1] === 'http' || mark[1] === 'sse') {
+        transport = mark[1];
+      } else {
+        malformed = true;
+      }
+    }
+
+    if (/^https?:\/\//.test(endpoint)) {
+      if (malformed || transport === 'stdio') continue;
+      servers.push({ name, url: endpoint, transport: transport ?? 'http' });
+    } else {
+      if (malformed || transport === 'http' || transport === 'sse') continue;
+      const args = rest.join(' ').split(/\s+/).filter((a) => a.length > 0);
+      const server: McpServerConfig = { name, command: endpoint };
+      if (args.length > 0) server.args = args;
+      if (transport === 'stdio') server.transport = 'stdio';
+      servers.push(server);
+    }
   }
   return servers;
 }

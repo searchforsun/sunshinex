@@ -165,12 +165,14 @@ export interface SkillRef {
   params?: Record<string, string>;
 }
 
-/** MCP 服务器装配配置（SUNSHINE.md「MCP 服务器」分区解析产物） */
+/** MCP 服务器装配配置（SUNSHINE.md「MCP 服务器」分区解析产物）。transport 缺省 = stdio（既有配置零改动）；url 仅远程传输（http/sse）使用，command/args 仅 stdio 使用 */
 export interface McpServerConfig {
   name: string;
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  transport?: 'stdio' | 'http' | 'sse';
+  url?: string;
 }
 
 /** Embedding 供给端接缝（阶段四向量知识库：local-json 后端与未来远端实现均实现此接口） */

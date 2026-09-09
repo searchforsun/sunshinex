@@ -52,6 +52,10 @@ export class McpHost {
     let count = 0;
     for (const cfg of this.servers) {
       if (this.conns.has(cfg.name)) throw new CodedToolError('MCP_DUP_SERVER', `MCP 服务器名重复：${cfg.name}`);
+      // 非stdio形态（url 型配置）在传输工厂落地前装配期 fail-fast，禁静默按 stdio 误连
+      if (cfg.command === undefined) {
+        throw new CodedToolError('MCP_CONNECT_FAILED', `MCP 服务器连接失败（${cfg.name}）：配置缺少 stdio command`);
+      }
       const transport = new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [] });
       const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
       try {
