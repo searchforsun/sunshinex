@@ -25,9 +25,13 @@ export function parseSkillFrontmatter(md: string): Omit<SkillManifest, 'id'> {
   };
 }
 
-/** 扫描 skills/{id}/skill.md，返回技能清单 */
-export function loadSkills(root: string): SkillManifest[] {
-  const dir = path.join(root, 'skills');
+/** 学习技能目录（LearnedSkillStore 写入面与双根合并共用的唯一定位，.data 已 gitignore 不入库） */
+export function learnedSkillsDir(root: string): string {
+  return path.join(root, '.data', 'skills');
+}
+
+/** 扫描单根目录下 {id}/skill.md */
+function loadSkillsFrom(dir: string): SkillManifest[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir, { withFileTypes: true })
@@ -41,19 +45,35 @@ export function loadSkills(root: string): SkillManifest[] {
     .filter((s): s is SkillManifest => s !== null);
 }
 
+/** 扫描 skills/{id}/skill.md，返回技能清单（用户根与学习根合并；id 撞名用户恒优先，学习产物被遮蔽不抛） */
+export function loadSkills(root: string): SkillManifest[] {
+  const user = loadSkillsFrom(path.join(root, 'skills'));
+  const userIds = new Set(user.map((s) => s.id));
+  const learned = loadSkillsFrom(learnedSkillsDir(root)).filter((s) => !userIds.has(s.id));
+  return [...user, ...learned];
+}
+
 /** 技能门面：装配根暴露 list/get/resolve 三能力（Harness.skills；结构兼容 LoopDeps.skills） */
 export interface SkillsFacade {
   list(): SkillManifest[];
   get(id: string): SkillManifest | undefined;
   resolve(id: string, params?: Record<string, string>): Result<ResolvedSkill>;
+  /** 学习技能条数（双根合并视角被遮蔽的也计入；无 .data/skills 目录返回 0） */
+  learnedCount(): number;
 }
 
 export function createSkillsFacade(root: string): SkillsFacade {
-  const dir = path.join(root, 'skills');
+  const userDir = path.join(root, 'skills');
+  const learnedDir = learnedSkillsDir(root);
   return {
     list: () => loadSkills(root),
     get: (id) => loadSkills(root).find((s) => s.id === id),
-    resolve: (id, params) => resolveSkill(dir, id, params),
+    resolve: (id, params) => {
+      const r = resolveSkill(userDir, id, params);
+      // 用户根已注册（含缺参 SKILL_PARAM_MISSING）不回退；仅未注册（SKILL_NOT_FOUND）才找学习根：用户技能恒优先
+      return r.ok || r.error.code !== 'SKILL_NOT_FOUND' ? r : resolveSkill(learnedDir, id, params);
+    },
+    learnedCount: () => loadSkillsFrom(learnedDir).length,
   };
 }
 
