@@ -27,11 +27,11 @@
 **Interfaces:**
 - 冒烟脚本：`:memory:` 打开 DatabaseSync → `loadExtension(require.resolve('sqlite-vec'))` → 建 `vec0` 虚拟表（float[4]）→ 插入 2 向量 + KNN 查询（`MATCH` + `k = ?`）往返断言
 
-- [ ] Step 1: 安装 `sqlite-vec`（npm install --cache .npm-cache，锁版本）
-- [ ] Step 2: 失败测试——probe 断言（vec0 建表/插入/KNN 往返）
-- [ ] Step 3: 确认红 → 写 probe 脚本至绿
-- [ ] Step 4: 确认绿 + 全量不回归
-- [ ] Step 5: 提交 `feat(knowledge): sqlite-vec 驱动 spike——vec0 loadExtension 冒烟 + 选型落库（node:sqlite 零编译路线）`
+- [x] Step 1: 安装 `sqlite-vec`（锁版本）——实际经 corepack pnpm add（npm arborist 对 pnpm 布局报 isDescendantOf，spike 记录在案）
+- [x] Step 2: 失败测试——probe 断言（vec0 建表/插入/KNN 往返）
+- [x] Step 3: 确认红 → 写 probe 脚本至绿
+- [x] Step 4: 确认绿 + 全量不回归
+- [x] Step 5: 提交 `feat(knowledge): sqlite-vec 驱动 spike——vec0 loadExtension 冒烟 + 选型落库（node:sqlite 零编译路线，probe 258/258/0）`（已完成：依赖 ^0.1.9 登记 + 锁同步 18 条目 + CLAUDE.md 依赖登记）
 
 **验收：** probe 绿；CLAUDE.md 依赖登记含「sqlite-vec（P1 向量后端扩展，经 node:sqlite loadExtension 加载；边界：单进程本地）」。
 
