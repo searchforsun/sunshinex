@@ -129,10 +129,14 @@ export class Reactor {
   }
 
   private buildPrompt(items: ContextItem[], tier: ModelTier): string {
-    const tools = this.deps.registry.list().map((t) => `- ${t.name}: ${t.description}`).join('\n');
+    // 段序固定「身份 → 工具清单 → 输出协议 → 上下文 → 档位提示」：稳定段前置提升 provider 端 KV 前缀缓存命中，
+    // 档位随步变化置于尾部，避免每步击穿前缀；工具清单按名排序，产出与注册顺序无关
+    const tools = [...this.deps.registry.list()]
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .map((t) => `- ${t.name}: ${t.description}`)
+      .join('\n');
     const contextText = items.map((i) => i.content).join('\n');
     return [
-      `当前服务档位：${tier}；如需调整下一轮算力，在回复 JSON 中加 "tier": "small|medium|large"`,
       '你是 SunshineX 智能体，通过调用工具完成任务。',
       '可用工具：',
       tools,
@@ -143,6 +147,8 @@ export class Reactor {
       '',
       '上下文：',
       contextText,
+      '',
+      `当前服务档位：${tier}；如需调整下一轮算力，在回复 JSON 中加 "tier": "small|medium|large"`,
     ].join('\n');
   }
 
