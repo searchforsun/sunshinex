@@ -39,10 +39,12 @@ src/
     index.ts          # Harness 门面
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     reactor.ts        # 最小闭环引擎（observe→think→act）
+    ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
     skills.ts         # 技能加载与调度（skills/{id}/skill.md；resolveSkill 参数化 + skillRef 首帧注入）
+    skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀 .data/skills/{id}/skill.md，FIFO 上限）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/kb_search）
-    mcp/              # MCP 客户端（官方 SDK 接缝：懒 spawn + 握手身份校验 + external 登记制）
+    mcp/              # MCP 客户端（官方 SDK 接缝：stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
     knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed Provider / KnowledgeBase 编排）
     security/         # guard/policy/modes/sandbox/dryrun/chain
     context/          # loader/rules/window/session/compaction/memory-lifecycle
@@ -80,7 +82,7 @@ SUNSHINE.md          # 项目业务配置
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
-- **已登记依赖**：`@modelcontextprotocol/sdk` ^1.30.0 —— MCP 官方客户端（stdio 传输）。用途：阶段四第三方工具接入（懒 spawn → 握手身份校验 → tools/list → tools/call）；边界：依赖收敛于 `src/harness/mcp/client.ts` 接缝内（替换客户端实现不动主链），仅本地 stdio spawn，HTTP/SSE 传输未启用；回退预案：自研最小 stdio JSON-RPC 客户端同接口（spec §6-R6）
+- **已登记依赖**：`@modelcontextprotocol/sdk` ^1.30.0 —— MCP 官方客户端（stdio / streamable http / sse 三传输）。用途：阶段四第三方工具接入（懒 spawn → 握手身份校验 → tools/list → tools/call）；边界：依赖收敛于 `src/harness/mcp/client.ts` 接缝内（替换客户端实现不动主链），transport 工厂按 SUNSHINE.md 配置分支三传输；回退预案：自研最小 stdio JSON-RPC 客户端同接口（spec §6-R6）
 - **已登记依赖**：sqlite-vec ^0.1.9 —— sqlite-vec 向量扩展（vec0 虚拟表 KNN）。用途：阶段四 P1 `KB_BACKEND=sqlite-vec` 向量后端；加载路径：node:sqlite（Node 22.14 内置）`loadExtension` + `allowExtension: true`（缺省关闭，安全缺省）；边界：单进程本地库、插入走 hex 字面量（vec0 xUpdate 参数化绑定限制，spike 已证）、依赖收敛于 store 接缝内；回退预案：local-json（`KB_BACKEND` 缺省即回退，禁静默切换）
 
 ## 6. 技能与插件规范

@@ -140,7 +140,7 @@ flowchart TB
 - [x] 阶段一 Harness 底座（perception / reactor / tools / security / context / memory / skills；统一运行时主链 1A-1E、Context Budget、安全加固全链交付，详见 specs/ 各设计文档）
 - [x] 阶段二 Loop Engine（engine + Agent/Check/Gate/Router 四类节点、重构 / 测试闭环 / 代码审查三模板、/goal 自我验证、CLI run）
 - [x] 阶段三 Graph 编排（DAG 引擎 + loop/agent/gate/ci 四类节点、五节点软件工程流水线、pause/resume 与预算跨层贯通、CLI pipeline）
-- [x] 模型 SDK 接入 DeepSeek 兼容 OpenAI 协议（`.env` 配置，零新增依赖）
+- [x] 模型 SDK 接入 OpenAI 协议兼容供应商（`.env` 配置，零新增依赖）
 - [x] 阶段四 MCP 生态与全场景能力（P1：stdio 注册链 + 安全闸门 + sqlite-vec 知识库；P1b：HTTP/SSE 传输 + 记忆→技能沉淀闭环；P4R：路由观测 + 成本账本 + 前缀稳定化）
 
 当前基线：npm run build（tsc strict）零报错、299 个测试全绿、npm run selfcheck 通过（含 learned / usage 汇总行）；CLI 执行面 selfcheck / run / pipeline 三命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。

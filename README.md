@@ -24,18 +24,22 @@ src/
   config.ts           # SUNSHINE.md 解析
   config/env.ts       # 零依赖 .env 装载（已导出环境变量优先）
   result.ts           # Result 统一结果类型
+  runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
   harness/            # 运行时底座（核心闭环已落地）
     index.ts          # Harness 门面
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     reactor.ts        # 最小闭环引擎（observe→think→act）
-    tools.ts          # 工具注册表
-    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec）
-    memory.ts         # 三级记忆（统一生命周期，经 context/memory-lifecycle）
-    skills.ts         # 技能加载
-    security/         # guard/policy/modes/sandbox/dryrun
-    context/          # loader/rules/auto-memory/window/session
+    ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
+    skills.ts         # 技能加载与调度（resolveSkill 参数化 + skillRef 首帧注入）
+    skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀 .data/skills/{id}/skill.md，FIFO 上限）
+    tools.ts          # 工具注册表（统一执行面 + 安全链）
+    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/kb_search）
+    mcp/              # MCP 客户端（stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
+    knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed / KnowledgeBase）
+    security/         # guard/policy/modes/sandbox/dryrun/chain
+    context/          # loader/rules/window/session/compaction/memory-lifecycle
   loop/               # Loop 引擎（engine + 四类节点 + 三大模板，已实装）
-  graph/              # DAG 编排（engine/agents/nodes/templates，已实装）
+  graph/              # DAG 编排（engine/agents/nodes/workflow/templates，已实装）
   model/adapter.ts    # 模型适配 + 三档算力路由
   storage/            # 本地 JSON 存储底座
   plugins/loader.ts   # 插件加载
