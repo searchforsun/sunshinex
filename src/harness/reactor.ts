@@ -1,13 +1,13 @@
-import { ContextItem, ExecResult } from '../types';
+import { ContextItem, ExecResult, RouteDecision } from '../types';
 import { Result } from '../result';
-import { ModelAdapter, ModelRouter, ModelTier } from '../model/adapter';
+import { ModelAdapter, ModelRouter, ModelTier, RouteHint } from '../model/adapter';
 import { ToolRegistry } from './tools';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 
 export interface Task { goal: string; }
 export interface StepRecord { step: number; action?: string; observation: string; tier?: ModelTier; }
-export interface RunResult { steps: StepRecord[]; done: boolean; reply?: string; tokensUsed?: number; }
+export interface RunResult { steps: StepRecord[]; done: boolean; reply?: string; tokensUsed?: number; /** 路由观测：本 run 实际生效的最后一次决策（模型偏好覆盖时以偏好为准） */ route?: RouteDecision; }
 
 export interface ReactorDeps {
   registry: ToolRegistry;
@@ -29,11 +29,12 @@ type ParseResult =
 export class Reactor {
   constructor(private deps: ReactorDeps) {}
 
-  async run(task: Task, opts?: { maxSteps?: number; budget?: { total: number; reserve: number } }): Promise<RunResult> {
+  async run(task: Task, opts?: { maxSteps?: number; budget?: { total: number; reserve: number }; routeHint?: RouteHint }): Promise<RunResult> {
     const maxSteps = opts?.maxSteps ?? 200;
     const budget = opts?.budget ?? { total: 200_000, reserve: 40_000 };
     const steps: StepRecord[] = [];
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
+    let lastRoute: RouteDecision | undefined; // 路由观测：实际生效的最后一次决策（随 run 结果返回）
     let prefTier: ModelTier | undefined; // 模型一次性偏好：仅影响下一轮
     let compactedUpTo = 0; // 压缩水位线：此前 steps 已由摘要代表，不再进入 history
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
@@ -65,10 +66,17 @@ export class Reactor {
         } while (rounds < 2 && est.used > budget.total);
       }
 
-      // 档位决策（循环内）：模型一次性偏好优先，否则复杂度信号建议
+      // 档位决策（循环内）：模型一次性偏好优先，否则经 route() 正式入参决策——外部 hint 的 role 优先，
+      // 复杂度信号缺省时以实时预算占比推导（同原 tierStar 语义），决策留痕随 run 结果返回
       const ratio = est.used / budget.total;
-      const tierStar: ModelTier = ratio >= 0.6 ? 'large' : step <= 2 && ratio < 0.2 ? 'small' : 'medium';
-      const effectiveTier = prefTier ?? tierStar;
+      const decision = router.route({
+        ...(opts?.routeHint ?? {}),
+        complexity: opts?.routeHint?.complexity ?? (ratio >= 0.6 ? 'high' : step <= 2 && ratio < 0.2 ? 'low' : 'mid'),
+      });
+      const effectiveTier = prefTier ?? decision.tier;
+      lastRoute = prefTier
+        ? { tier: prefTier, reason: 'model:preference', bound: router.boundTiers().includes(prefTier), adapterProvider: router.resolve(prefTier).provider }
+        : decision;
       prefTier = undefined; // 一次性消费
 
       // think: 经 ModelAdapter 决策（带动作协议 prompt）
@@ -125,7 +133,7 @@ export class Reactor {
         this.deps.context.memory.record('settle', `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    return { steps, done, reply, tokensUsed };
+    return { steps, done, reply, tokensUsed, route: lastRoute };
   }
 
   private buildPrompt(items: ContextItem[], tier: ModelTier): string {
