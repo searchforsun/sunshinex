@@ -1,9 +1,10 @@
 import { PolicyEngine } from './policy';
 import { READONLY_WHITELIST, PermissionMode, DESTRUCTIVE_COMMANDS, DESTRUCTIVE_PIPE } from './modes';
+import { ApprovalDecision, ApprovalRequest } from '../../types';
 
 export type GuardDecision =
   | { allowed: true; safePath?: string }
-  | { allowed: false; reason: string };
+  | { allowed: false; reason: string; /** manual 模式 ask 标记：非硬底线拒绝，可被 asker 交互豁免 */ ask?: boolean };
 
 /** PreToolUse 决策点（enforcement 层） */
 export class SecurityGuard {
@@ -49,7 +50,58 @@ export class SecurityGuard {
     // manual 模式：只读白名单放行，其余 ask（阶段一 CLI 未实现交互，ask 视为放行只读、拒绝写）
     if (tool === 'Bash' && this.isReadonlyCommand(specifier)) return { allowed: true };
     if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return { allowed: true };
-    return { allowed: false, reason: 'COMMAND_DENIED: manual 模式需交互确认（阶段一未实现）' };
+    return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual 模式需交互确认（阶段一未实现）' };
+  }
+
+  private asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
+  /** 会话级 always 登记面（内存态；会话结束由调用方 clearSessionAllows，不落盘） */
+  private sessionAllows = new Set<string>();
+  private seq = 0;
+
+  /** 终端化审批注入（TUI/GUI 装配点）；传 undefined 即卸载回阶段一语义 */
+  setAsker(asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>): void {
+    this.asker = asker;
+  }
+
+  clearSessionAllows(): void {
+    this.sessionAllows.clear();
+  }
+
+  /** 异步决策：与 preToolUse 同口径；仅 manual ask 标记拒绝接入 asker（deny/硬底线不被交互豁免，宁停不误） */
+  async preToolUseAsync(tool: string, input: unknown): Promise<GuardDecision> {
+    const sync = this.preToolUse(tool, input);
+    if (sync.allowed) return sync;
+    if (!sync.ask) return sync;
+    const subject = this.approvalSubject(tool, input);
+    if (tool === 'Bash' && this.sessionAllows.has(subject)) return { allowed: true };
+    if (!this.asker) return sync;
+    const req: ApprovalRequest = {
+      id: `ap-${++this.seq}`,
+      kind: tool === 'Bash' ? 'command' : tool.startsWith('mcp__') ? 'mcp' : tool === 'WebFetch' ? 'webfetch' : 'write',
+      subject,
+      reason: 'manual 模式需交互确认',
+    };
+    let d: ApprovalDecision;
+    try {
+      d = await this.asker(req);
+    } catch (e) {
+      return { allowed: false, reason: `COMMAND_DENIED: asker 异常（${e instanceof Error ? e.message : String(e)}）` };
+    }
+    if (d === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: 用户拒绝' };
+    if (d === 'always') this.sessionAllows.add(subject);
+    return { allowed: true };
+  }
+
+  /** 审批 subject 提取：Bash 取命令行，write 类取 path，webfetch 取 url */
+  private approvalSubject(tool: string, input: unknown): string {
+    if (tool === 'Bash') return this.extractSpecifier(tool, input);
+    if (typeof input === 'object' && input !== null) {
+      const p = (input as { path?: unknown }).path;
+      if (typeof p === 'string') return p;
+      const u = (input as { url?: unknown }).url;
+      if (typeof u === 'string') return u;
+    }
+    return this.extractSpecifier(tool, input);
   }
 
   private extractSpecifier(tool: string, input: unknown): string {

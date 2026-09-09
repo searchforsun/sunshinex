@@ -56,6 +56,18 @@ export class SafetyChain {
     return { allowed: true };
   }
 
+  /** 异步决策：与 evaluate 同一语义，但 guard 段走 preToolUseAsync（manual ask 标记接入终端化审批） */
+  async evaluateAsync(tool: string, input: unknown): Promise<GuardDecision> {
+    const decision = await this.guard.preToolUseAsync(tool, input);
+    if (!decision.allowed) return decision;
+
+    if (PATH_TOOLS.has(tool)) {
+      const raw = typeof input === 'object' && input !== null ? (input as { path?: unknown }).path : undefined;
+      return this.resolveSafe(raw);
+    }
+    return { allowed: true };
+  }
+
   /** 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal；异常按拒绝处理不放行（spec 2.1 兜底条款） */
   private resolveSafe(raw: unknown): GuardDecision {
     try {

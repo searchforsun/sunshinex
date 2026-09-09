@@ -53,7 +53,7 @@ export class ToolRegistry {
     if (!tool) return fail('TOOL_NOT_FOUND', `工具未注册：${name}`);
 
     const canonical = CANONICAL_TOOL_NAMES[name] ?? name;
-    const decision = safety.evaluate(canonical, input);
+    const decision = await safety.evaluateAsync(canonical, input);
     if (!decision.allowed) return fail('COMMAND_DENIED', decision.reason ?? '命令被安全策略拦截');
 
     // 文件工具：evaluate 已校验并返回 safePath（绝对路径），executor 直接消费，消除二次解析双轨
