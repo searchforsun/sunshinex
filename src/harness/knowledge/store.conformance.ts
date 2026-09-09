@@ -26,10 +26,10 @@ export function runVectorStoreConformance(create: () => VectorStore, opts: Confo
   assert.equal(s.search([1, 0], 99).length, 3, 'topK 超库容应返回全部');
   assert.equal(s.size(), 3);
 
-  // 幂等覆盖：同 id upsert 不增容、内容以最新为准
-  s.upsert('a', [0, 1], { text: 'alpha-v2' });
+  // 幂等覆盖：同 id upsert 不增容、内容以最新为准（覆盖向量取严格唯一最近，平局序不可作为契约）
+  s.upsert('a', [0.9, 0.9], { text: 'alpha-v2' });
   assert.equal(s.size(), 3, '同 id 覆盖不应增加容量');
-  assert.equal(s.search([0, 1], 1)[0].text, 'alpha-v2');
+  assert.equal(s.search([0.9, 0.9], 1)[0].text, 'alpha-v2');
 
   // 持久化往返：flush 后经独立实例 load 可完整检索
   s.flush();
@@ -37,7 +37,7 @@ export function runVectorStoreConformance(create: () => VectorStore, opts: Confo
   assert.equal(s2.size(), 0, '新实例在 load 前应为空');
   s2.load();
   assert.equal(s2.size(), 3, 'load 后应恢复全部条目');
-  assert.equal(s2.search([0, 1], 1)[0].text, 'alpha-v2', '持久化后检索语义一致');
+  assert.equal(s2.search([0.9, 0.9], 1)[0].text, 'alpha-v2', '持久化后检索语义一致');
 
   // 损坏恢复：存储损坏后 load 不抛、回退空库（索引可由 indexDir 重建，不阻塞装配）
   if (opts.corruptStorage) {
