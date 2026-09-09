@@ -7,6 +7,7 @@ import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
 import { PermissionMode } from './security/modes';
+import { SessionEvent } from '../types';
 import { parseNetworkAllowlist, parseSunshinex } from '../config';
 import { DryRun } from './security/dryrun';
 import { SafetyChain } from './security/chain';
@@ -24,6 +25,8 @@ export interface HarnessOptions {
   model?: ModelAdapter;
   /** 权限模式，默认 dontAsk：不询问、自动批准未 deny 的操作（最大权限，供测试/受信场景） */
   mode?: PermissionMode;
+  /** 事件流旁路（5A TUI/GUI 公共地基）：透传给 Reactor；缺省零副作用 */
+  onEvent?: (e: SessionEvent) => void;
   /** 学习惯例沉淀开关（缺省 true）：成功任务写入 .data/skills 学习技能；测试/纯执行场景可关 */
   learnSkills?: boolean;
 }
@@ -63,6 +66,7 @@ export class Harness {
       context: this.context,
       model: opts.model ?? new StubAdapter(),
       ledger,
+      ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.learnSkills ?? true
         ? { settle: (r: { goal: string; reply: string }) => new LearnedSkillStore(base).settle(r.goal, r.reply) }
         : {}),
