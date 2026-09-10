@@ -74,3 +74,79 @@ test('App：dontAsk 任务终态渲染（无审批卡）', async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('App：键盘驱动回车提交（斜杠命令与自然语言任务均触达控制器）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-app3-'));
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"kb-reply"}']) });
+    const { write, unmount } = render(<App controller={ctrl} />);
+    await new Promise((r) => setTimeout(r, 200)); // 等挂载：ink 未接管 stdin 时首段输入会丢失
+    write('/help');
+    await new Promise((r) => setTimeout(r, 150)); // 文本与回车须分事件且留刷新间隙（探针实证 150ms 稳定）；同块连发会让 key.return 读到未刷新的旧 buffer
+    write('\r');
+    await waitFor(() => ctrl.getState().messages.some((m) => m.text.includes('/new 新会话')), 5000);
+    write('跑个任务');
+    await new Promise((r) => setTimeout(r, 150));
+    write('\r');
+    await ctrl.waitIdle();
+    assert.ok(ctrl.getState().messages.some((m) => m.role === 'assistant' && m.text.includes('kb-reply')), '回车提交的任务应执行并产出答复');
+    unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：键盘 y 在审批卡上裁决放行（write 真实落盘）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-app4-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      mode: 'manual',
+      model: new ScriptedAdapter([
+        '{"tool":"write","input":{"path":"kb.txt","content":"kb"},"done":false}',
+        '{"done":true,"reply":"kb-ok"}',
+      ]),
+    });
+    const { write, unmount } = render(<App controller={ctrl} />);
+    await new Promise((r) => setTimeout(r, 200));
+    write('写个文件');
+    await new Promise((r) => setTimeout(r, 150));
+    write('\r');
+    await waitFor(() => ctrl.getState().approval !== undefined, 5000);
+    await new Promise((r) => setTimeout(r, 150)); // 等重渲染：审批态分支的 handler 闭包就位
+    write('y'); // 审批态拦截输入，按键即裁决、无需回车
+    await ctrl.waitIdle();
+    assert.equal(fs.readFileSync(path.join(tmp, 'kb.txt'), 'utf8'), 'kb', '键盘 y 放行后 write 应真实落盘');
+    unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：键盘 y 在计划卡上确认执行（待办全勾）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-app5-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"1. 步甲\\n2. 步乙"}',
+        '{"done":true,"reply":"步甲完成"}',
+        '{"done":true,"reply":"步乙完成"}',
+      ]),
+    });
+    const { write, unmount } = render(<App controller={ctrl} />);
+    await new Promise((r) => setTimeout(r, 200));
+    write('/plan 演练');
+    await new Promise((r) => setTimeout(r, 150));
+    write('\r');
+    await waitFor(() => ctrl.getState().status === 'awaiting-plan', 5000);
+    await new Promise((r) => setTimeout(r, 150)); // 等重渲染：计划态分支的 handler 闭包就位
+    write('y');
+    await ctrl.waitIdle(15000);
+    const st = ctrl.getState();
+    assert.ok(st.todos.length === 2 && st.todos.every((t) => t.done), '键盘 y 确认后计划应逐项执行并全勾');
+    unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
