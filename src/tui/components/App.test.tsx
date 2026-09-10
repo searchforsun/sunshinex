@@ -47,7 +47,7 @@ test('App：manual 审批流终态渲染（消息流/工具卡/助手答复/状�
     const { lastFrame, unmount } = render(<App controller={ctrl} />);
     const frame = lastFrame() ?? '';
     assert.match(frame, /\[你\] 写个文件/);
-    assert.match(frame, /\[工具\] \[OK\]/);
+    assert.match(frame, /\[工具\] WRITE a\.txt/);
     assert.match(frame, /\[助手\] ok/);
     assert.match(frame, /空闲/);
     unmount();
