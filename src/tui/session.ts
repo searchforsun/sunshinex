@@ -14,6 +14,8 @@ export interface ChatItem {
   kind?: 'call' | 'result';
   /** tool 结果行成功标记 */
   ok?: boolean;
+  /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation */
+  detail?: string;
 }
 
 export interface TodoItem {
@@ -338,7 +340,11 @@ export class SessionController {
         this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call' });
         return;
       case 'tool-result':
-        this.pushMsg('tool', e.text ?? '', { kind: 'result', ok: e.payload?.ok === true });
+        this.pushMsg('tool', e.text ?? '', {
+          kind: 'result',
+          ok: e.payload?.ok === true,
+          detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
+        });
         return;
       // 说明：reactor 的 step 事件仅携带动作名，与 ⏺ 工具行信息重复，故不上屏（spec §4.3 括号注明 step 行由 plan 流程产出）
       case 'step':
@@ -363,7 +369,7 @@ export class SessionController {
     }
   }
 
-  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok'>>): void {
+  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'detail'>>): void {
     this.state = {
       ...this.state,
       messages: [...this.state.messages, { role, text, ts: Date.now(), ...(extra ?? {}) }],
@@ -392,7 +398,7 @@ export class SessionController {
     this.state = { ...this.state, live: undefined };
     if (live.kind === 'thinking') {
       const secs = Math.max(1, Math.round((Date.now() - live.startedAt) / 1000));
-      this.pushMsg('thinking', `Thought for ${secs}s`);
+      this.pushMsg('thinking', `Thought for ${secs}s`, { detail: live.text });
       return;
     }
     this.notify();
@@ -415,3 +421,4 @@ export class SessionController {
     for (const cb of this.listeners) cb(this.state);
   }
 }
+
