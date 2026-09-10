@@ -3,8 +3,9 @@ import { Box, Text } from 'ink';
 import { ChatItem, LiveBlock } from '../session';
 import { bandLines } from '../text-band';
 import { ToolRow } from './ToolRow';
+import { MarkdownText } from './MarkdownText';
 
-/** 消息区：用户整行底色带（无标签）/ 助手裸文本 / 工具两行 / 思考折叠行 / 系统 ! 行 / 计划步骤行 + 实时区 */
+/** 消息区：用户整行底色带（无标签）/ 助手 Markdown 排版 / 工具两行 / 思考折叠行 / 系统 ! 行 / 计划步骤行 + 实时区 */
 export function MessageList({ messages, live, columns }: { messages: ChatItem[]; live?: LiveBlock; columns: number }): JSX.Element {
   if (messages.length === 0 && !live) {
     return <Text dimColor>SunshineX TUI — 输入任务或 /help 查看命令</Text>;
@@ -16,7 +17,7 @@ export function MessageList({ messages, live, columns }: { messages: ChatItem[];
           <MessageRow item={m} columns={columns} />
         </Box>
       ))}
-      {live ? <LiveArea live={live} /> : null}
+      {live ? <LiveArea live={live} columns={columns} /> : null}
     </Box>
   );
 }
@@ -31,16 +32,16 @@ function MessageRow({ item, columns }: { item: ChatItem; columns: number }): JSX
       </Box>
     );
   }
-  if (item.role === 'assistant') return <Text>{item.text}</Text>;
+  if (item.role === 'assistant') return <MarkdownText text={item.text} columns={columns} />;
   if (item.role === 'system') return <Text color="yellow">! {item.text}</Text>;
   if (item.role === 'thinking') return <Text dimColor italic>✻ {item.text}</Text>;
   if (item.role === 'step') return <Text color="cyan">▶ {item.text}</Text>;
   return <ToolRow item={item} />;
 }
 
-/** 实时区：答复草稿原样上屏；思考滚动只显示末尾 6 行（避免长思考撑爆视口） */
-function LiveArea({ live }: { live: LiveBlock }): JSX.Element {
-  if (live.kind === 'reply') return <Text>{live.text}</Text>;
+/** 实时区：答复草稿走 Markdown 排版（未闭合块由解析器降级）；思考滚动只显示末尾 6 行（避免长思考撑爆视口） */
+function LiveArea({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element {
+  if (live.kind === 'reply') return <MarkdownText text={live.text} columns={columns} />;
   const tail = live.text.split('\n').slice(-6).map((l) => `✻ ${l}`).join('\n');
   return <Text dimColor italic>{tail}</Text>;
 }
