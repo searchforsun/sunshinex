@@ -47,7 +47,7 @@ test('App：manual 审批流终态渲染（消息流/工具卡/助手答复/状�
     const { lastFrame, unmount } = render(<App controller={ctrl} />);
     const frame = lastFrame() ?? '';
     assert.match(frame, /写个文件/);        // 用户消息（整行底色带，无 [你] 标签）
-    assert.match(frame, /⏺ WRITE a\.txt/); // 工具调用行（英文动词）
+    assert.match(frame, /⏺ \[WRITE\] a\.txt/); // 工具调用行（英文动词 + 方括号高亮）
     assert.match(frame, /✓/);              // 工具结果行（成功）
     assert.match(frame, /ok/);             // 助手裸文本答复
     assert.match(frame, /空闲/);           // 状态栏状态词

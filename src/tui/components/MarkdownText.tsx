@@ -25,14 +25,25 @@ function Heading({ level, inlines }: { level: number; inlines: MdInline[] }): JS
   return <Text bold dimColor><Inline nodes={inlines} /></Text>;
 }
 
-/** 围栏代码块：逐行底色带 + 首行语言标签（diff 红绿在 Task 8 扩展） */
+/** diff 行着色：行首 + 绿 / - 红 / @@ 青 / 其余（含空格上下文）暗灰 */
+export function diffLineColor(line: string): 'green' | 'red' | 'cyan' | 'gray' {
+  if (line.startsWith('+')) return 'green';
+  if (line.startsWith('-')) return 'red';
+  if (line.startsWith('@@')) return 'cyan';
+  return 'gray';
+}
+
+/** 围栏代码块：逐行底色带 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色 */
 function Fence({ lang, code, columns }: { lang: string; code: string; columns: number }): JSX.Element {
   const lines = code.split('\n');
+  const isDiff = lang === 'diff' || lang === 'patch';
   return (
     <Box flexDirection="column">
       {lang ? <Text dimColor>{lang}</Text> : null}
       {lines.map((line, i) => (
-        <Text key={i} backgroundColor="gray" dimColor>{' ' + line}</Text>
+        <Text key={i} backgroundColor="gray" color={isDiff ? diffLineColor(line) : undefined} dimColor={!isDiff}>
+          {' ' + line}
+        </Text>
       ))}
     </Box>
   );

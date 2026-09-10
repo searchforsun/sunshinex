@@ -42,7 +42,7 @@ test('App：消息区新渲染口径（去标签/工具两行/助手裸文本）
     await ctrl.waitIdle();
     const { lastFrame, unmount } = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
     const frame = lastFrame() ?? '';
-    assert.match(frame, /⏺ WRITE a\.txt/); // 工具调用行英文动词
+    assert.match(frame, /⏺ \[WRITE\] a\.txt/); // 工具调用行英文动词 + 方括号高亮
     assert.match(frame, /✓/);              // 工具结果行成功
     assert.match(frame, /写个文件/);        // 用户消息（色带）
     assert.match(frame, /ok/);             // 助手裸文本答复
