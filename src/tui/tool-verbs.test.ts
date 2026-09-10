@@ -27,3 +27,11 @@ test('toolCallLine：超长 target 截断到 60 字符', () => {
   assert.equal(line.length, 'READ '.length + 61);
   assert.ok(line.endsWith('…'));
 });
+
+test('toolCallLine：grep 带 path 仍取 pattern 代表字段', () => {
+  assert.equal(toolCallLine('grep', { path: '.', pattern: 'needle' }), 'GREP needle');
+});
+
+test('toolCallLine：exec 取 command 首段而非 path', () => {
+  assert.equal(toolCallLine('exec', { command: 'npm test', path: '/x' }), 'EXEC npm');
+});

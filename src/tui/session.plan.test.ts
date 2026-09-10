@@ -21,6 +21,7 @@ test('/plan：规划（planner 节点）→ 确认 → 逐项执行 → 待办�
     });
     await ctrl.submit('/plan 做一件事');
     assert.equal(ctrl.getState().status, 'awaiting-plan');
+    assert.ok(ctrl.getState().metrics.turnStartedAt > 0, '规划阶段应重置本轮计时起点');
     assert.match(ctrl.getState().messages.at(-1)?.text ?? '', /步骤A/);
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();

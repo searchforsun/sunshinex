@@ -157,7 +157,11 @@ export class SessionController {
   }
 
   private async startPlanFlow(goal: string): Promise<void> {
-    this.state = { ...this.state, status: 'running' };
+    this.state = {
+      ...this.state,
+      status: 'running',
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0 },
+    };
     this.notify();
     let planText = '';
     try {
