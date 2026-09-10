@@ -133,7 +133,7 @@ export function App({ controller, banner }: { controller: SessionController; ban
         </Box>
       ) : null}
       <InputBox buffer={buffer} placeholder={inputPlaceholder(state.status)} active={state.status === 'idle' || state.status === 'error'} />
-      <StatusBar metrics={state.metrics} status={state.status} todos={state.todos} />
+      <StatusBar metrics={state.metrics} status={state.status} todos={state.todos} model={info.model} />
     </Box>
   );
 }
