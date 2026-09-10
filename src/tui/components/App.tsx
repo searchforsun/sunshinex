@@ -32,6 +32,7 @@ export function inputPlaceholder(status: TuiState['status']): string {
 export function App({ controller, banner }: { controller: SessionController; banner?: BannerInfo }): JSX.Element {
   const [state, setState] = React.useState<TuiState>(controller.getState());
   const [buffer, setBuffer] = React.useState('');
+  const [expandAll, setExpandAll] = React.useState(false);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
@@ -46,6 +47,11 @@ export function App({ controller, banner }: { controller: SessionController; ban
     if (state.status === 'awaiting-plan') {
       if (input === 'y') void controller.confirmPlan(true);
       if (input === 'n') void controller.confirmPlan(false);
+      return;
+    }
+    if (key.tab) {
+      // Tab 分流：/ 前缀留待斜杠补全（Task 6），否则 idle/error 态切换展开
+      if (state.status === 'idle' || state.status === 'error') setExpandAll((e) => !e);
       return;
     }
     if (key.return) {
@@ -64,7 +70,7 @@ export function App({ controller, banner }: { controller: SessionController; ban
   return (
     <Box flexDirection="column">
       <Banner info={info} columns={columns} />
-      <MessageList messages={state.messages} live={state.live} columns={columns} />
+      <MessageList messages={state.messages} live={state.live} columns={columns} expandAll={expandAll} />
       {state.status === 'running' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />
       ) : null}
