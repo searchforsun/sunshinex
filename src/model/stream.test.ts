@@ -76,3 +76,23 @@ test('OpenAIAdapter.completeStream：非流式 HTTP 错误照常抛出', async (
     srv.close();
   }
 });
+
+test('OpenAIAdapter.completeStream：reasoning_content/reasoning 经 onReasoning 回传，不混入 content', async () => {
+  const srv = await startSse([
+    'data: ' + JSON.stringify({ choices: [{ delta: { reasoning_content: '先想' } }] }) + '\n\n',
+    'data: ' + JSON.stringify({ choices: [{ delta: { reasoning: '一步' } }] }) + '\n\n',
+    'data: ' + JSON.stringify({ choices: [{ delta: { content: '答复' } }] }) + '\n\n',
+    'data: [DONE]\n\n',
+  ]);
+  try {
+    const a = new OpenAIAdapter({ provider: 'openai', baseURL: srv.url, apiKey: 'k', model: 'm' });
+    const deltas: string[] = [];
+    const reasons: string[] = [];
+    const full = await a.completeStream('p', (t) => deltas.push(t), { onReasoning: (t) => reasons.push(t) });
+    assert.equal(full, '答复');
+    assert.deepEqual(deltas, ['答复']);
+    assert.deepEqual(reasons, ['先想', '一步']);
+  } finally {
+    srv.close();
+  }
+});

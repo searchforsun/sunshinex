@@ -5,6 +5,8 @@ export type { ModelTier };
 /** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
 export interface UsageHooks {
   onUsage?: (tokens: number) => void;
+  /** 思考增量（SSE reasoning_content / reasoning 键）；端点不回传则永不触发 */
+  onReasoning?: (delta: string) => void;
 }
 
 export interface ModelAdapter {
@@ -104,11 +106,13 @@ export class OpenAIAdapter implements ModelAdapter {
             const data = line.replace(/^data:\s*/, '');
             if (!data || data === '[DONE]') continue;
             try {
-              const ev = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
-              const delta = ev.choices?.[0]?.delta?.content;
-              if (delta) {
-                full += delta;
-                onDelta(delta);
+              const ev = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string; reasoning?: string } }> };
+              const d = ev.choices?.[0]?.delta;
+              const reason = d?.reasoning_content ?? d?.reasoning;
+              if (reason) hooks?.onReasoning?.(reason);
+              if (d?.content) {
+                full += d.content;
+                onDelta(d.content);
               }
               const usage = extractUsage(ev);
               if (usage > 0) hooks?.onUsage?.(usage);

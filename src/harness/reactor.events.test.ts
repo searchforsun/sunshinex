@@ -13,7 +13,7 @@ import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
-import { ModelAdapter, ScriptedAdapter } from '../model/adapter';
+import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import { SessionEvent } from '../types';
 
 function makeReactor(tmp: string, adapter: ModelAdapter, onEvent?: (e: SessionEvent) => void): Reactor {
@@ -80,6 +80,39 @@ test('事件流：模型失败路径发 error 再 done（error 仅失败出现�
     const types = events.map((e) => e.type);
     assert.ok(types.includes('error'), '失败路径应发 error');
     assert.equal(types[types.length - 1], 'done', 'error 后仍收尾 done');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('事件流：usage/reasoning 事件随流式调用发射（载荷 turnTotal 累计）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ev4-'));
+  try {
+    const events: SessionEvent[] = [];
+    const probe: ModelAdapter & {
+      completeStream: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks) => Promise<string>;
+    } = {
+      provider: 'probe',
+      complete: async () => '{"done":true,"reply":"ok"}',
+      completeStream: async (_p, onDelta, hooks) => {
+        hooks?.onReasoning?.('想一想');
+        const text = '{"done":true,"reply":"ok"}';
+        for (const ch of text) onDelta(ch);
+        hooks?.onUsage?.(7);
+        return text;
+      },
+    };
+    const r = await makeReactor(tmp, probe, (e) => events.push(e)).run({ goal: 'g' }, { maxSteps: 2 });
+    assert.equal(r.done, true);
+    assert.equal(r.tokensUsed, 7, 'run 结果应累计 usage');
+    const usage = events.filter((e) => e.type === 'usage');
+    assert.equal(usage.length, 1, 'usage 事件应随模型调用发射');
+    assert.deepEqual(usage[0]?.payload, { tokens: 7, turnTotal: 7 }, 'usage 载荷含单次用量与累计');
+    assert.deepEqual(
+      events.filter((e) => e.type === 'reasoning').map((e) => e.text),
+      ['想一想'],
+      'reasoning 增量应透传为事件',
+    );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

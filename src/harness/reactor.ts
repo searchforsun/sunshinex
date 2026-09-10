@@ -90,7 +90,13 @@ export class Reactor {
       const prompt = this.buildPrompt(items, effectiveTier);
       let raw: string;
       try {
-        raw = await this.callModel(router.resolve(effectiveTier), prompt, { onUsage: (t) => { tokensUsed += t; } });
+        raw = await this.callModel(router.resolve(effectiveTier), prompt, {
+          onUsage: (t) => {
+            tokensUsed += t;
+            this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed });
+          },
+          onReasoning: (t) => this.emit('reasoning', t),
+        });
       } catch (e) {
         reply = e instanceof Error ? e.message : '模型调用失败';
         this.emit('error', reply);

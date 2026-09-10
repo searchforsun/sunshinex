@@ -154,13 +154,13 @@ export interface RouteDecision {
 
 /** TUI/GUI 公共事件面（阶段五 5A SessionEvents；运行时唯一旁路，缺省不发射） */
 export type SessionEventType =
-  | 'token' | 'tool-call' | 'tool-result' | 'step'
+  | 'token' | 'reasoning' | 'usage' | 'tool-call' | 'tool-result' | 'step'
   | 'route' | 'approval-request' | 'approval-resolved'
   | 'done' | 'error';
 
 export interface SessionEvent {
   type: SessionEventType;
-  /** token 增量文本 / step 动作摘要 / error 原因 */
+  /** token/reasoning 增量文本 / step 动作摘要 / error 原因 */
   text?: string;
   /** 结构化载荷：tool 名与输入摘要、RouteDecision、done 统计等 */
   payload?: Record<string, unknown>;
