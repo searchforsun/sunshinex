@@ -85,6 +85,8 @@ SUNSHINE.md          # 项目业务配置
 - **已登记依赖**：`@modelcontextprotocol/sdk` ^1.30.0 —— MCP 官方客户端（stdio / streamable http / sse 三传输）。用途：阶段四第三方工具接入（懒 spawn → 握手身份校验 → tools/list → tools/call）；边界：依赖收敛于 `src/harness/mcp/client.ts` 接缝内（替换客户端实现不动主链），transport 工厂按 SUNSHINE.md 配置分支三传输；回退预案：自研最小 stdio JSON-RPC 客户端同接口（spec §6-R6）
 - **已登记依赖**：ink ^3.2.0 + react ^18.3.1 —— 终端渲染框架（组件化 TUI）。用途：阶段五 5A `sunshinex tui` 交互式会话终端渲染层；边界：仅渲染层（组件/入口），运行时零接触，依赖收敛于 `src/tui/`；回退预案：Renderer 接缝退原生 ANSI 最小面（spec §6-R1，SessionController 纯逻辑不受影响）
 - **已登记依赖**：sqlite-vec ^0.1.9 —— sqlite-vec 向量扩展（vec0 虚拟表 KNN）。用途：阶段四 P1 `KB_BACKEND=sqlite-vec` 向量后端；加载路径：node:sqlite（Node 22.14 内置）`loadExtension` + `allowExtension: true`（缺省关闭，安全缺省）；边界：单进程本地库、插入走 hex 字面量（vec0 xUpdate 参数化绑定限制，spike 已证）、依赖收敛于 store 接缝内；回退预案：local-json（`KB_BACKEND` 缺省即回退，禁静默切换）
+- **已登记依赖**：markdown-it ^15.0.1 —— Markdown 解析器（CommonMark token 流）。用途：阶段五 5B TUI 正文 Markdown 解析（块级/行内 token 流 → `MdBlock`/`MdInline` IR）；边界：依赖收敛于 `src/tui/markdown.ts` 解析层（含预处理补偿顿号列表、七级标题归 6、未闭合围栏降级段落三处 spec 语义），渲染层 `MarkdownText.tsx` 只消费 IR 不感知库；回退预案：IR 稳定，替换解析实现（含自研轻量解析器）不动 IR 与渲染层
+- **已登记依赖**：highlight.js ^11.12.0 —— 语法高亮引擎。用途：阶段五 5B 围栏代码块语法高亮（token 树 scope → `HiKind` 四类着色）；边界：依赖收敛于 `src/tui/highlight.ts`（单行高亮纯函数，产出 `HiSpan[]`，未知语言/异常整行 plain），渲染层 `MarkdownText.tsx` 只消费 `HiSpan`；回退预案：`HiSpan` 接口稳定，替换实现（含轻量正则关键字高亮）不动渲染层
 
 ## 6. 技能与插件规范
 

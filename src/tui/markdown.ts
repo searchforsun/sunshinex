@@ -1,3 +1,4 @@
+import MarkdownIt from 'markdown-it';
 import { displayWidth } from './text-band';
 
 /** 行内节点：加粗/斜体/行内代码/删除线，可嵌套（code 内不再嵌套解析） */
@@ -18,73 +19,291 @@ export type MdBlock =
   | { type: 'table'; headers: MdInline[][]; rows: MdInline[][][] }
   | { type: 'hr' };
 
-/** 行内解析：按 bold → strike → code → italic 优先级扫描；任何未闭合标记按字面输出（不吞字） */
-export function parseInline(text: string): MdInline[] {
+/** markdown-it 解析器实例：关闭链接/图片/HTML/自动链接/引用定义/setext 标题，保留目标语法子集 */
+const md = new MarkdownIt().disable([
+  'link',
+  'image',
+  'html_inline',
+  'html_block',
+  'autolink',
+  'linkify',
+  'reference',
+  'lheading',
+]);
+
+/** markdown-it token 类型（从实例方法返回值推导，规避 CJS 命名空间类型访问差异） */
+type MdToken = ReturnType<typeof md.parse>[number];
+
+/** 找到与 open 配对的 close token 下标（处理同型嵌套）；未找到返回 children.length */
+function findClose(children: MdToken[], start: number, openType: string, closeType: string): number {
+  let depth = 1;
+  for (let i = start; i < children.length; i++) {
+    const t = children[i];
+    if (t.type === openType) depth++;
+    else if (t.type === closeType) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return children.length;
+}
+
+/** 行内 token 序列 → MdInline[]（递归下降，处理 strong/em/s 的 open/close 配对） */
+function inlineChildrenToMdInline(children: MdToken[]): MdInline[] {
   const out: MdInline[] = [];
   let i = 0;
-  const buf: string[] = [];
-  const flush = (): void => {
-    if (buf.length > 0) {
-      out.push({ kind: 'text', text: buf.join('') });
-      buf.length = 0;
-    }
-  };
-  while (i < text.length) {
-    if (text[i] === '`') {
-      const end = text.indexOf('`', i + 1);
-      if (end > i) {
-        flush();
-        out.push({ kind: 'code', text: text.slice(i + 1, end) });
-        i = end + 1;
-        continue;
-      }
-      buf.push(text[i]);
+  while (i < children.length) {
+    const t = children[i];
+    if (t.type === 'text') {
+      if (t.content) out.push({ kind: 'text', text: t.content });
       i++;
       continue;
     }
-    if (text.startsWith('**', i) || text.startsWith('__', i)) {
-      const marker = text.slice(i, i + 2);
-      const close = text.indexOf(marker, i + 2);
-      if (close > i) {
-        flush();
-        out.push({ kind: 'bold', children: parseInline(text.slice(i + 2, close)) });
-        i = close + 2;
-        continue;
-      }
-      buf.push(marker);
-      i += 2;
-      continue;
-    }
-    if (text.startsWith('~~', i)) {
-      const close = text.indexOf('~~', i + 2);
-      if (close > i) {
-        flush();
-        out.push({ kind: 'strike', children: parseInline(text.slice(i + 2, close)) });
-        i = close + 2;
-        continue;
-      }
-      buf.push('~~');
-      i += 2;
-      continue;
-    }
-    if (text[i] === '*' || text[i] === '_') {
-      const marker = text[i];
-      const close = text.indexOf(marker, i + 1);
-      if (close > i) {
-        flush();
-        out.push({ kind: 'italic', children: parseInline(text.slice(i + 1, close)) });
-        i = close + 1;
-        continue;
-      }
-      buf.push(text[i]);
+    if (t.type === 'code_inline') {
+      out.push({ kind: 'code', text: t.content });
       i++;
       continue;
     }
-    buf.push(text[i]);
+    if (t.type === 'softbreak' || t.type === 'hardbreak') {
+      out.push({ kind: 'text', text: '\n' });
+      i++;
+      continue;
+    }
+    if (t.type === 'strong_open') {
+      const end = findClose(children, i + 1, 'strong_open', 'strong_close');
+      out.push({ kind: 'bold', children: inlineChildrenToMdInline(children.slice(i + 1, end)) });
+      i = end + 1;
+      continue;
+    }
+    if (t.type === 'em_open') {
+      const end = findClose(children, i + 1, 'em_open', 'em_close');
+      out.push({ kind: 'italic', children: inlineChildrenToMdInline(children.slice(i + 1, end)) });
+      i = end + 1;
+      continue;
+    }
+    if (t.type === 's_open') {
+      const end = findClose(children, i + 1, 's_open', 's_close');
+      out.push({ kind: 'strike', children: inlineChildrenToMdInline(children.slice(i + 1, end)) });
+      i = end + 1;
+      continue;
+    }
+    // 其它 token（link/image 已关闭，理论不出现）：透传 content
+    if (t.content) out.push({ kind: 'text', text: t.content });
     i++;
   }
-  flush();
   return out;
+}
+
+/** 行内解析：委托 markdown-it（未闭合标记由 markdown-it 自动按字面回退，不吞字） */
+export function parseInline(text: string): MdInline[] {
+  const tokens = md.parseInline(text, {});
+  const inline = tokens.find((t) => t.type === 'inline');
+  return inline && inline.children ? inlineChildrenToMdInline(inline.children) : [];
+}
+
+/** 转义围栏符（``` / ~~~），使 markdown-it 将其视为普通段落文本（未闭合围栏降级用） */
+function escapeFence(line: string): string {
+  return line.replace(/(```|~~~)/, (m) => m.split('').map((c) => '\\' + c).join(''));
+}
+
+/** 预处理：补偿 markdown-it 不覆盖的 spec 语义（顿号列表、七级标题归 6、未闭合围栏降级段落） */
+function preprocess(text: string): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // 围栏：整块原样跳过（已闭合）或转义开栏行整体降级（未闭合），避免内容被后续规则误改
+    const fence = /^\s*(```|~~~)\s*(.*)$/.exec(line);
+    if (fence) {
+      const fenceChar = fence[1];
+      let j = i + 1;
+      let closed = false;
+      while (j < lines.length) {
+        if (lines[j].trim().startsWith(fenceChar)) {
+          closed = true;
+          break;
+        }
+        j++;
+      }
+      if (closed) {
+        for (let k = i; k <= j; k++) out.push(lines[k]);
+        i = j + 1;
+      } else {
+        out.push(escapeFence(line));
+        for (let k = i + 1; k < lines.length; k++) out.push(lines[k]);
+        i = lines.length;
+      }
+      continue;
+    }
+    // 统一无序列表 marker（`* `/`+ ` → `- `），避免 markdown-it 按 marker 拆分多个 list
+    const ul = /^(\s*)[*+]\s+/.exec(line);
+    if (ul) {
+      out.push(`${ul[1]}- ${line.slice(ul[0].length)}`);
+      i++;
+      continue;
+    }
+    // 顿号有序列表：`3、丙` → `3. 丙`（英文点号需空格才被 markdown-it 识别）
+    const dn = /^(\s*)(\d+)、\s*(.*)$/.exec(line);
+    if (dn) {
+      out.push(`${dn[1]}${dn[2]}. ${dn[3]}`);
+      i++;
+      continue;
+    }
+    // 七级及以上标题：`#######` → `######`（级别归 6）
+    const h7 = /^(\s*)#{7,}\s+(.*)$/.exec(line);
+    if (h7) {
+      out.push(`${h7[1]}###### ${h7[2]}`);
+      i++;
+      continue;
+    }
+    out.push(line);
+    i++;
+  }
+  return out.join('\n');
+}
+
+/** 列表块 → items（嵌套 list 平铺进 items，保持 IR 扁平形状） */
+function parseListBlock(tokens: MdToken[], i: number): { ordered: boolean; items: MdInline[][]; next: number } {
+  const open = tokens[i];
+  const ordered = open.type === 'ordered_list_open';
+  const closeType = ordered ? 'ordered_list_close' : 'bullet_list_close';
+  const level = open.level;
+  const items: MdInline[][] = [];
+  let j = i + 1;
+  while (j < tokens.length) {
+    const t = tokens[j];
+    if (t.type === closeType && t.level === level) return { ordered, items, next: j + 1 };
+    if (t.type === 'list_item_open') {
+      const item = parseListItem(tokens, j + 1, t.level);
+      items.push(item.inlines, ...item.nested);
+      j = item.next;
+      continue;
+    }
+    j++;
+  }
+  return { ordered, items, next: j };
+}
+
+/** 列表项 → 正文 inline（取首个 inline，跳过其内部嵌套 list） */
+function parseListItem(tokens: MdToken[], i: number, itemLevel: number): { inlines: MdInline[]; nested: MdInline[][]; next: number } {
+  let inlines: MdInline[] = [];
+  const nested: MdInline[][] = [];
+  let gotInline = false;
+  let j = i;
+  while (j < tokens.length) {
+    const t = tokens[j];
+    if (t.type === 'list_item_close' && t.level === itemLevel) return { inlines, nested, next: j + 1 };
+    if (t.type === 'inline' && !gotInline && t.children) {
+      inlines = inlineChildrenToMdInline(t.children);
+      gotInline = true;
+    } else if (t.type === 'bullet_list_open' || t.type === 'ordered_list_open') {
+      const sub = parseListBlock(tokens, j);
+      nested.push(...sub.items);
+      j = sub.next;
+      continue;
+    }
+    j++;
+  }
+  return { inlines, nested, next: j };
+}
+
+/** 引用块 → 合并多行 inline（softbreak 已转 \n，多段之间补 \n） */
+function parseBlockquote(tokens: MdToken[], i: number): { inlines: MdInline[]; next: number } {
+  const level = tokens[i].level;
+  const inlines: MdInline[] = [];
+  let j = i + 1;
+  while (j < tokens.length) {
+    const t = tokens[j];
+    if (t.type === 'blockquote_close' && t.level === level) break;
+    if (t.type === 'inline' && t.children) {
+      if (inlines.length > 0) inlines.push({ kind: 'text', text: '\n' });
+      inlines.push(...inlineChildrenToMdInline(t.children));
+    }
+    j++;
+  }
+  while (j < tokens.length && !(tokens[j].type === 'blockquote_close' && tokens[j].level === level)) j++;
+  return { inlines, next: j + 1 };
+}
+
+/** 表格块 → headers/rows */
+function parseTableBlock(tokens: MdToken[], i: number): { headers: MdInline[][]; rows: MdInline[][][]; next: number } {
+  const level = tokens[i].level;
+  const headers: MdInline[][] = [];
+  const rows: MdInline[][][] = [];
+  let currentRow: MdInline[][] = [];
+  let inHeader = false;
+  let j = i + 1;
+  while (j < tokens.length) {
+    const t = tokens[j];
+    if (t.type === 'table_close' && t.level === level) break;
+    if (t.type === 'thead_open') inHeader = true;
+    else if (t.type === 'tbody_open') inHeader = false;
+    else if (t.type === 'tr_open') currentRow = [];
+    else if (t.type === 'tr_close') {
+      if (inHeader) headers.push(...currentRow);
+      else rows.push(currentRow);
+    } else if (t.type === 'th_open' || t.type === 'td_open') {
+      const inline = tokens[j + 1];
+      if (inline && inline.type === 'inline' && inline.children) currentRow.push(inlineChildrenToMdInline(inline.children));
+    }
+    j++;
+  }
+  while (j < tokens.length && !(tokens[j].type === 'table_close' && tokens[j].level === level)) j++;
+  return { headers, rows, next: j + 1 };
+}
+
+/** 解析 Markdown 为块序列（纯函数，零 IO）；未闭合围栏由预处理降级为段落（流式容错） */
+export function parseMarkdown(text: string): MdBlock[] {
+  const tokens = md.parse(preprocess(text), {});
+  const blocks: MdBlock[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (t.type === 'heading_open') {
+      const level = Math.min(Number(t.tag.slice(1)), 6) as 1 | 2 | 3 | 4 | 5 | 6;
+      const inline = tokens[i + 1];
+      blocks.push({ type: 'heading', level, inlines: inline && inline.children ? inlineChildrenToMdInline(inline.children) : [] });
+      i += 3;
+      continue;
+    }
+    if (t.type === 'paragraph_open') {
+      const inline = tokens[i + 1];
+      blocks.push({ type: 'paragraph', inlines: inline && inline.children ? inlineChildrenToMdInline(inline.children) : [] });
+      i += 3;
+      continue;
+    }
+    if (t.type === 'fence') {
+      blocks.push({ type: 'fence', lang: t.info ?? '', code: t.content.replace(/\n$/, '') });
+      i += 1;
+      continue;
+    }
+    if (t.type === 'bullet_list_open' || t.type === 'ordered_list_open') {
+      const res = parseListBlock(tokens, i);
+      blocks.push({ type: 'list', ordered: res.ordered, items: res.items });
+      i = res.next;
+      continue;
+    }
+    if (t.type === 'blockquote_open') {
+      const res = parseBlockquote(tokens, i);
+      blocks.push({ type: 'quote', inlines: res.inlines });
+      i = res.next;
+      continue;
+    }
+    if (t.type === 'table_open') {
+      const res = parseTableBlock(tokens, i);
+      blocks.push({ type: 'table', headers: res.headers, rows: res.rows });
+      i = res.next;
+      continue;
+    }
+    if (t.type === 'hr') {
+      blocks.push({ type: 'hr' });
+      i += 1;
+      continue;
+    }
+    i++;
+  }
+  return blocks;
 }
 
 /** 行内序列递归拼纯文本（表格对齐、降级渲染、宽度计算用） */
@@ -95,150 +314,6 @@ export function inlineText(inlines: MdInline[]): string {
     else out += inlineText(n.children);
   }
   return out;
-}
-
-/** 表格分隔行判定：仅含 | - : 与空白，且至少一个 - */
-function isTableSeparator(l: string): boolean {
-  const t = l.trim();
-  return /^\|?[\s:|-]+\|?$/.test(t) && t.includes('-');
-}
-
-/** 表格行切分为单元格（去首尾 | 后按 | 分割并 trim） */
-function splitRow(l: string): string[] {
-  let s = l.trim();
-  if (s.startsWith('|')) s = s.slice(1);
-  if (s.endsWith('|')) s = s.slice(0, -1);
-  return s.split('|').map((c) => c.trim());
-}
-
-const isBlank = (l: string): boolean => l.trim() === '';
-const isFenceStart = (l: string): boolean => /^\s*(```|~~~)/.test(l);
-const isHeading = (l: string): boolean => /^#{1,}\s+/.test(l);
-const isHr = (l: string): boolean => /^\s*(---|\*\*\*|___)\s*$/.test(l);
-const isQuote = (l: string): boolean => /^\s*>\s?/.test(l);
-const isUl = (l: string): boolean => /^\s*[-*+]\s+/.test(l);
-/** 有序列表项正文提取：中文顿号后空格可选（`3、丙`），英文点号后需空格（`3.丙` 不视为列表） */
-function matchOl(l: string): string | undefined {
-  const t = l.trimStart();
-  const dn = /^\d+、\s*(.*)$/.exec(t);
-  if (dn) return dn[1];
-  const en = /^\d+\.\s+(.*)$/.exec(t);
-  return en ? en[1] : undefined;
-}
-const isOl = (l: string): boolean => matchOl(l) !== undefined;
-/** 段落收集需排除的「明确块起始」行（表格行不排除：非表格的 | 行应归段落，真表格由主循环 table 分支先行捕获） */
-const isBlockStart = (l: string): boolean =>
-  isFenceStart(l) || isHeading(l) || isHr(l) || isQuote(l) || isUl(l) || isOl(l);
-
-/** 解析 Markdown 为块序列（纯函数，零 IO）；未闭合围栏降级为段落（流式容错） */
-export function parseMarkdown(text: string): MdBlock[] {
-  const lines = text.split('\n');
-  const blocks: MdBlock[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-
-    const fenceMatch = /^\s*(```|~~~)\s*(.*)$/.exec(line);
-    if (fenceMatch) {
-      const fenceChar = fenceMatch[1];
-      const lang = fenceMatch[2].trim();
-      const codeLines: string[] = [];
-      let j = i + 1;
-      let closed = false;
-      while (j < lines.length) {
-        if (lines[j].trim().startsWith(fenceChar)) {
-          closed = true;
-          break;
-        }
-        codeLines.push(lines[j]);
-        j++;
-      }
-      if (closed) {
-        blocks.push({ type: 'fence', lang, code: codeLines.join('\n') });
-        i = j + 1;
-      } else {
-        // 未闭合：把开栏行与已收集行按原文降级为普通段落（不二次解析，避免围栏反引号被误吞）
-        blocks.push({ type: 'paragraph', inlines: [{ kind: 'text', text: [line, ...codeLines].join('\n') }] });
-        i = j;
-      }
-      continue;
-    }
-
-    const headingMatch = /^(#{1,})\s+(.*)$/.exec(line);
-    if (headingMatch) {
-      const level = Math.min(headingMatch[1].length, 6) as 1 | 2 | 3 | 4 | 5 | 6;
-      blocks.push({ type: 'heading', level, inlines: parseInline(headingMatch[2]) });
-      i++;
-      continue;
-    }
-
-    if (isHr(line)) {
-      blocks.push({ type: 'hr' });
-      i++;
-      continue;
-    }
-
-    if (isQuote(line)) {
-      const quoteLines: string[] = [];
-      while (i < lines.length && isQuote(lines[i])) {
-        quoteLines.push(lines[i].replace(/^\s*>\s?/, ''));
-        i++;
-      }
-      blocks.push({ type: 'quote', inlines: parseInline(quoteLines.join('\n')) });
-      continue;
-    }
-
-    if (isUl(line)) {
-      const items: MdInline[][] = [];
-      while (i < lines.length) {
-        const m = /^\s*[-*+]\s+(.*)$/.exec(lines[i]);
-        if (!m) break;
-        items.push(parseInline(m[1]));
-        i++;
-      }
-      blocks.push({ type: 'list', ordered: false, items });
-      continue;
-    }
-    if (isOl(line)) {
-      const items: MdInline[][] = [];
-      while (i < lines.length) {
-        const body = matchOl(lines[i]);
-        if (body === undefined) break;
-        items.push(parseInline(body));
-        i++;
-      }
-      blocks.push({ type: 'list', ordered: true, items });
-      continue;
-    }
-
-    // 表格：| 开头且下一行为分隔行
-    if (line.trimStart().startsWith('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      const headers = splitRow(line).map((c) => parseInline(c));
-      const rows: MdInline[][][] = [];
-      let j = i + 2;
-      while (j < lines.length && lines[j].trimStart().startsWith('|')) {
-        rows.push(splitRow(lines[j]).map((c) => parseInline(c)));
-        j++;
-      }
-      blocks.push({ type: 'table', headers, rows });
-      i = j;
-      continue;
-    }
-
-    if (isBlank(line)) {
-      i++;
-      continue;
-    }
-
-    // 段落：连续非空且非块起始的行合并
-    const paraLines: string[] = [];
-    while (i < lines.length && !isBlank(lines[i]) && !isBlockStart(lines[i])) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-    blocks.push({ type: 'paragraph', inlines: parseInline(paraLines.join('\n')) });
-  }
-  return blocks;
 }
 
 /** 单元格按显示宽度补齐 */

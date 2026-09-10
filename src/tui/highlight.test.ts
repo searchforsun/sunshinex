@@ -44,7 +44,7 @@ test('highlightLine：sql -- 注释与关键字', () => {
 });
 
 test('highlightLine：未知语言整行 plain', () => {
-  assert.deepEqual(highlightLine('rust', 'fn main() {}'), [
+  assert.deepEqual(highlightLine('foobar', 'fn main() {}'), [
     { text: 'fn main() {}', kind: 'plain' },
   ]);
 });
