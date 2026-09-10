@@ -1,13 +1,19 @@
 import { ApprovalDecision, ApprovalRequest, GraphContext, SessionEvent } from '../types';
 import { makeRoleAgent } from '../graph/agents';
 import { TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
+import { ReplyStreamExtractor } from './stream-extractor';
+import { toolCallLine } from './tool-verbs';
 
-export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
+export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
 export interface ChatItem {
   role: ChatRole;
   text: string;
   ts: number;
+  /** tool 行细分：call（⏺ 调用行）/ result（⎿ 结果行） */
+  kind?: 'call' | 'result';
+  /** tool 结果行成功标记 */
+  ok?: boolean;
 }
 
 export interface TodoItem {
@@ -17,11 +23,26 @@ export interface TodoItem {
 
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting-plan' | 'error';
 
+export interface StatusMetrics {
+  turnStartedAt: number;
+  turnTokens: number;
+  runs: number;
+  hitRate: number;
+}
+
+export interface LiveBlock {
+  kind: 'reply' | 'thinking';
+  text: string;
+  startedAt: number;
+}
+
 export interface TuiState {
   messages: ChatItem[];
   approval?: ApprovalRequest;
   todos: TodoItem[];
   status: SessionStatus;
+  metrics: StatusMetrics;
+  live?: LiveBlock;
 }
 
 export interface SessionOpts extends TuiRuntimeOpts {
@@ -34,7 +55,13 @@ const SLASH_HELP = '命令：/new 新会话（软重置） · /compact 压缩上
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
   readonly runtime: TuiRuntime;
-  private state: TuiState = { messages: [], todos: [], status: 'idle' };
+  private readonly extractor = new ReplyStreamExtractor((t) => this.appendLive('reply', t));
+  private state: TuiState = {
+    messages: [],
+    todos: [],
+    status: 'idle',
+    metrics: { turnStartedAt: 0, turnTokens: 0, runs: 0, hitRate: 0 },
+  };
   private listeners = new Set<(s: TuiState) => void>();
   private queue: { goal: string; resolve: () => void }[] = [];
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
@@ -66,6 +93,7 @@ export class SessionController {
     };
     this.autoAsker = opts.asker;
     if (opts.mode === 'manual') this.runtime.harness.security.setAsker(suspendAsker);
+    this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
   }
 
   getState(): TuiState {
@@ -87,6 +115,7 @@ export class SessionController {
       return;
     }
     this.pushMsg('user', text);
+    this.extractor.reset();
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval') {
       this.pushMsg('system', `已排队：${text}`);
       return new Promise<void>((resolve) => this.queue.push({ goal: text, resolve }));
@@ -184,6 +213,12 @@ export class SessionController {
     this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
     this.notify();
     for (let i = 0; i < items.length; i++) {
+      this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
+      this.state = {
+        ...this.state,
+        metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0 },
+      };
+      this.notify();
       try {
         const r = await this.runtime.runTask(items[i]);
         const todos = [...this.state.todos];
@@ -200,7 +235,12 @@ export class SessionController {
   }
 
   private async runTaskFlow(goal: string): Promise<void> {
-    this.state = { ...this.state, status: 'running' };
+    this.state = {
+      ...this.state,
+      status: 'running',
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0 },
+      live: undefined,
+    };
     this.notify();
     try {
       await this.runtime.runTask(goal);
@@ -234,7 +274,19 @@ export class SessionController {
     }
     if (cmd === '/new') {
       this.runtime.harness.security.clearSessionAllows();
-      this.state = { messages: [], todos: [], status: 'idle' };
+      this.extractor.reset();
+      this.state = {
+        messages: [],
+        todos: [],
+        status: 'idle',
+        metrics: {
+          turnStartedAt: 0,
+          turnTokens: 0,
+          runs: this.state.metrics.runs,
+          hitRate: this.state.metrics.hitRate,
+        },
+        live: undefined,
+      };
       this.pushMsg('system', '软重置：消息与待办已清空，会话级审批登记已清除（记忆与账本保留）');
       return;
     }
@@ -263,22 +315,95 @@ export class SessionController {
   }
 
   private onEvent(e: SessionEvent): void {
-    if (e.type === 'tool-result') {
-      this.pushMsg('tool', `[${e.payload?.ok ? 'OK' : '失败'}] ${e.text ?? ''}`);
-      return;
-    }
-    if (e.type === 'error') {
-      this.pushMsg('system', `错误：${e.text ?? '（无说明）'}`);
-      return;
-    }
-    if (e.type === 'done' && e.text) {
-      // token 流式增量首版不上屏（增量渲染为后续增强）；收尾以完整 reply 落消息
-      this.pushMsg('assistant', e.text);
+    switch (e.type) {
+      case 'token':
+        this.extractor.feed(e.text ?? '');
+        return;
+      case 'reasoning':
+        this.appendLive('thinking', e.text ?? '');
+        return;
+      case 'usage': {
+        const total = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : this.state.metrics.turnTokens;
+        this.state = { ...this.state, metrics: { ...this.state.metrics, turnTokens: total } };
+        this.notify();
+        return;
+      }
+      case 'tool-call':
+        this.closeLive();
+        this.extractor.reset();
+        this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call' });
+        return;
+      case 'tool-result':
+        this.pushMsg('tool', e.text ?? '', { kind: 'result', ok: e.payload?.ok === true });
+        return;
+      // 说明：reactor 的 step 事件仅携带动作名，与 ⏺ 工具行信息重复，故不上屏（spec §4.3 括号注明 step 行由 plan 流程产出）
+      case 'step':
+        return;
+      case 'done': {
+        const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
+        this.closeLive();
+        this.extractor.reset();
+        const finalText = e.text && e.text.length > 0 ? e.text : draft;
+        if (finalText) this.pushMsg('assistant', finalText);
+        this.refreshMetrics();
+        return;
+      }
+      case 'error':
+        this.closeLive();
+        this.extractor.reset();
+        this.pushMsg('system', `错误：${e.text ?? '（无说明）'}`);
+        this.refreshMetrics();
+        return;
+      default:
+        return; // route / approval-* 不落消息区
     }
   }
 
-  private pushMsg(role: ChatRole, text: string): void {
-    this.state = { ...this.state, messages: [...this.state.messages, { role, text, ts: Date.now() }] };
+  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok'>>): void {
+    this.state = {
+      ...this.state,
+      messages: [...this.state.messages, { role, text, ts: Date.now(), ...(extra ?? {}) }],
+    };
+    this.notify();
+  }
+
+  /** 追加实时区内容：同类续接；异类先收束旧块（thinking 折叠为摘要行，reply 交由 done 定稿避免重复） */
+  private appendLive(kind: LiveBlock['kind'], delta: string): void {
+    if (!delta) return;
+    const live = this.state.live;
+    if (live && live.kind !== kind) this.closeLive();
+    const cur = this.state.live;
+    if (cur && cur.kind === kind) {
+      this.state = { ...this.state, live: { ...cur, text: cur.text + delta } };
+    } else {
+      this.state = { ...this.state, live: { kind, text: delta, startedAt: Date.now() } };
+    }
+    this.notify();
+  }
+
+  /** 收束实时区：thinking 折叠为一行摘要；reply 不落消息（终稿由 done 接管） */
+  private closeLive(): void {
+    const live = this.state.live;
+    if (!live) return;
+    this.state = { ...this.state, live: undefined };
+    if (live.kind === 'thinking') {
+      const secs = Math.max(1, Math.round((Date.now() - live.startedAt) / 1000));
+      this.pushMsg('thinking', `Thought for ${secs}s`);
+      return;
+    }
+    this.notify();
+  }
+
+  /** done/error 后刷新账本 runs 与上下文命中率 */
+  private refreshMetrics(): void {
+    this.state = {
+      ...this.state,
+      metrics: {
+        ...this.state.metrics,
+        runs: this.runtime.harness.ledger.summary().runs,
+        hitRate: this.runtime.harness.context.session.hitRate(),
+      },
+    };
     this.notify();
   }
 

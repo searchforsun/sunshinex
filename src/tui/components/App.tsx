@@ -16,6 +16,8 @@ const ROLE_TAG = {
   assistant: '助手',
   tool: '工具',
   system: '系统',
+  thinking: '思考',
+  step: '步骤',
 } as const;
 
 const ROLE_COLOR = {
@@ -23,6 +25,8 @@ const ROLE_COLOR = {
   assistant: 'green',
   tool: 'gray',
   system: 'yellow',
+  thinking: 'gray',
+  step: 'cyan',
 } as const;
 
 const STATUS_LABEL: Record<TuiState['status'], string> = {
