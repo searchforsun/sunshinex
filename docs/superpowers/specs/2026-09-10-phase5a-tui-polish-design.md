@@ -59,10 +59,12 @@
 ╭─ ❯ ──────────────────────────────╮
 │ 帮我写个部署脚本_                 │
 ╰──────────────────────────────────╯
- ↑1.2k tokens · runs 5 · ctx 命中率 83% · ✻ Pondering
+ ↑1.2k tokens · runs 5 · ctx 命中率 83% · 运行中
 ```
 
 ### 3.2 消息渲染规则（本阶段唯一权威口径）
+
+前缀（`⏺` / `⎿` / `✻` / `▶` / `!`）、缩进与着色一律由渲染层补齐；归约层（SessionController）的消息文本只存原始正文。
 
 | role / kind | 渲染 | 颜色 |
 | --- | --- | --- |
@@ -151,6 +153,8 @@ export class ReplyStreamExtractor {
 - `ignore`：吞掉直到 `reset()`；
 - `plain`：原文透传（含空白），直至 `reset()`。
 
+键判定以滚动窗口内**首次出现**者为准：协议以 `"tool"` 为首键，故工具入参的字符串内即使出现 `"reply"` 字样也不会误判为答复流。
+
 提取器是纯状态机，零 IO、零依赖，可完全单测；`controller` 拿到的答复文本仅用于**流式显示**，终稿一律以 `done` 事件载荷为准（见 §5），因此提取误差不影响消息终态。
 
 ### 4.3 会话归约（改 `src/tui/session.ts`）
@@ -204,10 +208,10 @@ export interface TuiState {
 | `tool-result` | push `{ role: 'tool', kind: 'result', text, ok: payload.ok }` |
 | `step` | push `{ role: 'step', text }`（plan 逐项执行时由 `confirmPlan` 直接 push，见下） |
 | `done` | 折叠 thinking；清 `live`；push `{ role: 'assistant', text }`（终稿，权威来源）；刷新 metrics（`hitRate`、`runs`） |
-| `error` | 折叠 thinking；清 `live`；push `{ role: 'system', text: '! 错误：…' }`（渲染层补前缀） |
+| `error` | 折叠 thinking；清 `live`；push `{ role: 'system', text: '错误：…' }`（`! ` 前缀由渲染层补） |
 | `route` / `approval-*` | 忽略（不刷屏；审批由 `approval` 字段驱动模态） |
 
-**thinking 折叠**：`collapseThinking()` 把 `live.kind === 'thinking'` 转为一条 `{ role: 'thinking', text: 'Thought for Ns' }`（N 由 `Date.now() - startedAt` 取秒），实时区清空。
+**thinking 折叠**：`collapseThinking()` 把 `live.kind === 'thinking'` 转为一条 `{ role: 'thinking', text: 'Thought for Ns' }`（N 由 `Date.now() - startedAt` 取秒；`✻ ` 前缀由渲染层补），实时区清空。
 
 **metrics 刷新点**：构造函数初始化（`runs: ledger.summary().runs`, `hitRate: 0`）；`submit()` 起始重置 `turnStartedAt = Date.now()`、`turnTokens = 0`；`done` / `error` 时刷 `hitRate = harness.context.session.hitRate()` 与 `runs = harness.ledger.summary().runs`。
 
@@ -222,18 +226,18 @@ export interface TuiState {
 | `Banner.tsx` | 启动横幅 | `Banner({ info }: { info: BannerInfo })` |
 | `MessageList.tsx` | 消息区（含 live 区与空态提示） | `MessageList({ messages, live, columns })` |
 | `ToolRow.tsx` | 工具调用/结果两行 | `ToolRow({ item })` |
-| `InputBox.tsx` | 边框输入框 | `InputBox({ buffer, status, onSubmit })` |
-| `StatusBar.tsx` | 状态栏 | `StatusBar({ metrics, status, startedAt, tokens })` |
-| `Spinner.tsx` | 帧动画与动词 | `Spinner({ startedAt, tokens, active })` |
-| `App.tsx`（改） | 装配 + 键盘分发 | `App({ controller, banner? })` |
+| `InputBox.tsx` | 边框输入框（纯展示；键盘分发仍在 App 的单一 useInput） | `InputBox({ buffer, placeholder, active })` |
+| `StatusBar.tsx` | 状态栏 | `StatusBar({ metrics, status })` |
+| `Spinner.tsx` | 运行态活动行（帧动画 + 动词 + elapsed + ↑tokens） | `Spinner({ startedAt, tokens })` |
+| `App.tsx`（改） | 装配 + 键盘分发 | `App({ controller, banner }: { controller: SessionController; banner?: BannerInfo })` |
 
-**布局**：`<Box flexDirection="column">` 依次为 Banner → MessageList → InputBox → StatusBar。`columns` 取自 `useStdout().stdout.columns ?? 80`（ink3 顶层导出已确认）。
+**布局**：`<Box flexDirection="column">` 依次为 Banner → MessageList →（运行态插入活动行 `Spinner`）→ InputBox → StatusBar。`columns` 取自 `useStdout().stdout.columns ?? 80`（ink3 顶层导出已确认）。状态栏固定显示 `↑{turnTokens} tokens · runs {runs} · ctx 命中率 {p}% · <状态词>`（状态词如「运行中 / 空闲 / 等待审批 / 待确认计划 / 出错」，不重复动画）。
 
 **ink3 兼容约束（已核实）**：`Text` 支持 `backgroundColor`（`Text.d.ts` 已声明）；`Box` 在 ink3.2 **未**暴露 `backgroundColor` → 用户消息色带用 `<Text backgroundColor="gray">` + 补空格至 `columns` 实现。
 
 **Spinner**：帧序 `['✻','✽','✶','✳','✢']`（160ms/帧），动词轮换 `['Pondering','Brewing','Weaving','Distilling']`（每 2s 换一个）；elapsed 由 `startedAt` 计算（跨重渲染稳定，不用组件内累计）；`active = status === 'running'`。定时器用 `useEffect` + `setInterval`（App 已在用 `useEffect`，ink3 + React 18 可用）。
 
-**InputBox 提示态**：`awaiting-approval` → `等待审批：y 放行 / a 本会话放行 / n 拒绝`；`awaiting-plan` → `计划待确认：y 执行 / n 放弃`；`running` → `运行中…（输入将排队）`；空闲且空缓冲 → `输入任务，Enter 发送 · /help 查看命令`。
+**InputBox 提示态**（App 依 `status` 计算出 `placeholder` 传入）：`awaiting-approval` → `等待审批：y 放行 / a 本会话放行 / n 拒绝`；`awaiting-plan` → `计划待确认：y 执行 / n 放弃`；`running` → `运行中…（输入将排队）`；空闲且空缓冲 → `输入任务，Enter 发送 · /help 查看命令`。
 
 ### 4.5 纯函数工具（新增，可单测）
 
@@ -241,7 +245,7 @@ export interface TuiState {
 | --- | --- | --- |
 | `src/tui/tool-verbs.ts` | `toolCallLine(tool: string, input: unknown): string` | 动词映射：`exec→EXEC`（target=命令首段）、`read→READ`（path）、`write→WRITE`（path）、`grep→GREP`（pattern）、`glob→GLOB`（pattern）、`webfetch→FETCH`（url）、`kb_search→SEARCH`（query）、`mcp__*→MCP`、其余大写原名；target 缺失时回退 `JSON.stringify(input)` 截 60 字符 |
 | `src/tui/text-band.ts` | `displayWidth(s: string): number`、`bandLines(text: string, columns: number): string[]` | CJK 记宽 2；按 `columns - 2` 折行后逐行左右各补 1 空格并补齐到 `columns`，供底色带渲染 |
-| `src/tui/banner-info.ts` | `interface BannerInfo { version; model; root }`、`defaultBannerInfo(): BannerInfo` | version 读 `package.json`（失败回退 `'0.1.0'`）；model 读 `OPENAI_MODEL`（缺失显示 `未配置`）；root 取 `process.cwd()` |
+| `src/tui/banner-info.ts` | `interface BannerInfo { version: string; model: string; root: string }`、`buildBannerInfo(input?: { version?: string; model?: string; root?: string }): BannerInfo` | 纯组装（version 缺省 `'0.1.0'`、model 读 `OPENAI_MODEL`（缺失显示「未配置」）、root 取 `process.cwd()`）；version 的真实读取放在装配层 `entry.ts`（`fs.readFileSync(path.join(__dirname, '../../package.json'))` + try/catch 回退），经 props 注入，本模块保持纯函数可测 |
 
 ## 5. 数据流
 
@@ -292,11 +296,11 @@ sequenceDiagram
 | `src/tui/text-band.test.ts` | CJK 宽度；折行；补齐至 columns |
 | `src/tui/session.stream.test.ts` | token → live.reply 累积；reasoning → thinking → 折叠；usage → turnTokens；tool-call/result 两行形态；done 清 live 且以 done 全文定稿；plan 步骤行 |
 | `src/tui/components/App.visual.test.tsx` | 横幅内容；用户消息色带；助手裸文本（无 `[助手]`）；工具两行；状态栏 tokens/runs/命中率 |
-| 既有 5A 用例（328） | 全量保持绿（键盘回归、审批、plan、runtime 接缝） |
+| 既有 5A 用例 | 全量保持通过（键盘回归、审批、plan、runtime 接缝）；其中依赖旧角色标签的断言（`[助手]` / `[系统]` / `[OK]` 等）按新渲染口径修订，断言意图（内容出现）不变 |
 
 **验收标准**：
 
-1. `npm run build`（tsc strict）零报错；`npm test` 全绿（328 + 新增用例）；
+1. `npm run build`（tsc strict）零报错；`npm test` 全绿（新增用例 + 既有用例中标签断言的修订）；
 2. `npm run selfcheck` 保持通过，`tui` 行扩展为含合成 `token`/`reasoning`/`usage` 事件流的冒烟（断言提取出的答复文本正确、无异常）；
 3. 真实终端手工验收：启动见横幅；答复增量逐字出现且不出现 JSON 协议；端点支持时见思考流与折叠行；工具步骤为英文两行；输入框带边框；状态栏显示本轮 tokens / runs / 命中率。
 
