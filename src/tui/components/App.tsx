@@ -1,7 +1,13 @@
 import * as React from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import { ApprovalDecision } from '../../types';
 import { SessionController, TuiState } from '../session';
+import { BannerInfo, buildBannerInfo } from '../banner-info';
+import { Banner } from './Banner';
+import { MessageList } from './MessageList';
+import { InputBox } from './InputBox';
+import { StatusBar } from './StatusBar';
+import { Spinner } from './Spinner';
 
 /** 审批键盘映射：y 放行一次 / a 本会话放行 / n 拒绝（纯函数，独立单测） */
 export function approvalKeyToDecision(input: string): ApprovalDecision | undefined {
@@ -11,38 +17,24 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
   return undefined;
 }
 
-const ROLE_TAG = {
-  user: '你',
-  assistant: '助手',
-  tool: '工具',
-  system: '系统',
-  thinking: '思考',
-  step: '步骤',
-} as const;
+/** 输入框占位文案（按会话状态分流；纯函数便于断言） */
+export function inputPlaceholder(status: TuiState['status']): string {
+  switch (status) {
+    case 'awaiting-approval': return '等待审批：y 放行一次 / a 本会话放行 / n 拒绝';
+    case 'awaiting-plan': return '计划待确认：y 执行 / n 放弃';
+    case 'running': return '运行中…（输入将排队）';
+    case 'error': return '上次任务出错；输入新任务继续';
+    default: return '输入任务，Enter 发送 · /help 查看命令';
+  }
+}
 
-const ROLE_COLOR = {
-  user: 'cyan',
-  assistant: 'green',
-  tool: 'gray',
-  system: 'yellow',
-  thinking: 'gray',
-  step: 'cyan',
-} as const;
-
-const STATUS_LABEL: Record<TuiState['status'], string> = {
-  idle: '空闲',
-  running: '运行中',
-  'awaiting-approval': '等待审批',
-  'awaiting-plan': '待确认计划',
-  error: '出错',
-} as const;
-
-/** Ink 渲染层（纯渲染）：状态全量来自 controller 订阅，业务逻辑零本地 */
-export function App({ controller }: { controller: SessionController }): JSX.Element {
+/** Ink 渲染层（纯渲染 + 单一 useInput 键盘分发）：状态全量来自 controller 订阅 */
+export function App({ controller, banner }: { controller: SessionController; banner?: BannerInfo }): JSX.Element {
   const [state, setState] = React.useState<TuiState>(controller.getState());
   const [buffer, setBuffer] = React.useState('');
-  // ink3 挂载 react-reconciler@0.26（useSyncExternalStore 不可用），订阅走 useState 强刷（事件驱动，与节流帧解耦）
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
+  const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
+  const columns = useStdout().stdout?.columns ?? 80;
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') return; // 退出由入口层 SIGINT 统一处理
@@ -69,21 +61,13 @@ export function App({ controller }: { controller: SessionController }): JSX.Elem
     if (input && !key.ctrl && !key.meta) setBuffer((b) => b + input);
   });
 
-  const doneTodos = state.todos.filter((t) => t.done).length;
-
   return (
     <Box flexDirection="column">
-      <Box flexDirection="column">
-        {state.messages.length === 0 ? (
-          <Text dimColor>SunshineX TUI — 输入任务或 /help 查看命令</Text>
-        ) : (
-          state.messages.map((m, i) => (
-            <Text key={i} color={ROLE_COLOR[m.role]}>
-              [{ROLE_TAG[m.role]}] {m.text}
-            </Text>
-          ))
-        )}
-      </Box>
+      <Banner info={info} columns={columns} />
+      <MessageList messages={state.messages} live={state.live} columns={columns} />
+      {state.status === 'running' ? (
+        <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />
+      ) : null}
       {state.approval ? (
         <Box borderStyle="round" flexDirection="column" paddingX={1}>
           <Text bold>
@@ -93,11 +77,8 @@ export function App({ controller }: { controller: SessionController }): JSX.Elem
           <Text dimColor>y 放行一次 · a 本会话放行 · n 拒绝</Text>
         </Box>
       ) : null}
-      <Text dimColor>
-        [{STATUS_LABEL[state.status]}]{' '}
-        {state.status === 'awaiting-approval' ? '按 y/a/n 裁决' : `> ${buffer}`}
-        {state.todos.length > 0 ? ` · 待办 ${doneTodos}/${state.todos.length}` : ''}
-      </Text>
+      <InputBox buffer={buffer} placeholder={inputPlaceholder(state.status)} active={state.status === 'idle' || state.status === 'error'} />
+      <StatusBar metrics={state.metrics} status={state.status} todos={state.todos} />
     </Box>
   );
 }

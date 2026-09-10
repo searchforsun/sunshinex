@@ -46,10 +46,13 @@ test('App：manual 审批流终态渲染（消息流/工具卡/助手答复/状�
 
     const { lastFrame, unmount } = render(<App controller={ctrl} />);
     const frame = lastFrame() ?? '';
-    assert.match(frame, /\[你\] 写个文件/);
-    assert.match(frame, /\[工具\] WRITE a\.txt/);
-    assert.match(frame, /\[助手\] ok/);
-    assert.match(frame, /空闲/);
+    assert.match(frame, /写个文件/);        // 用户消息（整行底色带，无 [你] 标签）
+    assert.match(frame, /⏺ WRITE a\.txt/); // 工具调用行（英文动词）
+    assert.match(frame, /✓/);              // 工具结果行（成功）
+    assert.match(frame, /ok/);             // 助手裸文本答复
+    assert.match(frame, /空闲/);           // 状态栏状态词
+    assert.ok(!frame.includes('[你]'), '不得出现 [你] 角色标签');
+    assert.ok(!frame.includes('[助手]'), '助手答复应为裸文本');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -66,8 +69,9 @@ test('App：dontAsk 任务终态渲染（无审批卡）', async () => {
 
     const { lastFrame, unmount } = render(<App controller={ctrl} />);
     const frame = lastFrame() ?? '';
-    assert.match(frame, /\[助手\] done-reply/);
+    assert.match(frame, /done-reply/);
     assert.match(frame, /空闲/);
+    assert.ok(!frame.includes('[助手]'), '助手答复应为裸文本');
     assert.ok(!frame.includes('审批'), 'dontAsk 不应出现审批模态');
     unmount();
   } finally {
