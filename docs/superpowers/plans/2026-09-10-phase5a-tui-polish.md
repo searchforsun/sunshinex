@@ -424,8 +424,8 @@ export class ReplyStreamExtractor {
   private stepInReply(ch: string): void {
     if (this.unicode.length > 0) {
       this.unicode += ch;
-      if (this.unicode.length === 4) {
-        const code = parseInt(this.unicode, 16);
+      if (this.unicode.length === 5) {
+        const code = parseInt(this.unicode.slice(1), 16);
         this.emit(Number.isNaN(code) ? '' : String.fromCharCode(code));
         this.unicode = '';
       }
@@ -436,7 +436,7 @@ export class ReplyStreamExtractor {
       if (ch === 'n') this.emit('\n');
       else if (ch === 't') this.emit('\t');
       else if (ch === 'r') this.emit('\r');
-      else if (ch === 'u') this.unicode = '';
+      else if (ch === 'u') this.unicode = 'u';
       else this.emit(ch); // \" \\ \/ 及其它：转义后取原字符
       return;
     }
