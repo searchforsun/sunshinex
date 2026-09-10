@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { MdBlock, MdInline, parseMarkdown, inlineText, alignTable } from '../markdown';
-import { bandLines } from '../text-band';
+import { highlightLine, HiKind } from '../highlight';
 
 /** 行内节点 → Ink JSX：加粗/斜体/删除线/行内代码（反色底）/裸文本 */
 function Inline({ nodes }: { nodes: MdInline[] }): JSX.Element {
@@ -33,18 +33,41 @@ export function diffLineColor(line: string): 'green' | 'red' | 'cyan' | 'gray' {
   return 'gray';
 }
 
-/** 围栏代码块：逐行底色带 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色 */
+/** HiKind → ink 前景色映射（高亮 token 着色） */
+const HI_COLOR: Record<HiKind, string> = {
+  keyword: 'magenta',
+  string: 'green',
+  comment: 'gray',
+  number: 'yellow',
+  plain: '',
+};
+
+/** 围栏代码块：逐行底色带 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色，其余已知语言按 token 高亮 */
 function Fence({ lang, code, columns }: { lang: string; code: string; columns: number }): JSX.Element {
   const lines = code.split('\n');
   const isDiff = lang === 'diff' || lang === 'patch';
   return (
     <Box flexDirection="column">
       {lang ? <Text dimColor>{lang}</Text> : null}
-      {lines.map((line, i) => (
-        <Text key={i} backgroundColor="gray" color={isDiff ? diffLineColor(line) : undefined} dimColor={!isDiff}>
-          {' ' + line}
-        </Text>
-      ))}
+      {lines.map((line, i) => {
+        if (isDiff) {
+          return (
+            <Text key={i} backgroundColor="gray" color={diffLineColor(line)}>
+              {' ' + line}
+            </Text>
+          );
+        }
+        const spans = highlightLine(lang, line);
+        const known = spans.length > 1 || spans[0].kind !== 'plain';
+        return (
+          <Text key={i} backgroundColor="gray" dimColor={!known}>
+            {' '}
+            {spans.map((s, j) => (
+              <Text key={j} color={HI_COLOR[s.kind] || undefined} dimColor={s.kind === 'comment'}>{s.text}</Text>
+            ))}
+          </Text>
+        );
+      })}
     </Box>
   );
 }
