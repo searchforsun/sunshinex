@@ -130,7 +130,7 @@ export class Reactor {
       this.emit('tool-call', action.tool, { input: action.input });
       const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
       const observation = this.describe(r);
-      this.emit('tool-result', observation.slice(0, 200), { ok: r.ok });
+      this.emit('tool-result', observation.slice(0, 200), { ok: r.ok, full: observation });
       steps.push({ step, action: action.tool, observation, tier: effectiveTier });
       if (r.ok && (action.tool === 'read' || action.tool === 'grep')) {
         const p = (action.input ?? {}).path;

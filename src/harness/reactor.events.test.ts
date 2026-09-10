@@ -117,3 +117,25 @@ test('事件流：usage/reasoning 事件随流式调用发射（载荷 turnTotal
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('事件流：tool-result 载荷含 full（完整 observation），text 仍 200 截断', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ev5-'));
+  try {
+    const longContent = 'L'.repeat(250);
+    const filePath = path.join(tmp, 'long.txt');
+    fs.writeFileSync(filePath, longContent, 'utf8');
+    const events: SessionEvent[] = [];
+    const r = await makeReactor(tmp, new ScriptedAdapter([
+      `{"tool":"read","input":{"path":"${filePath}"},"done":false}`,
+      '{"done":true,"reply":"ok"}',
+    ]), (e) => events.push(e)).run({ goal: '读长文件' }, { maxSteps: 3 });
+    assert.equal(r.done, true);
+    const result = events.find((e) => e.type === 'tool-result');
+    assert.ok(result, '应存在 tool-result 事件');
+    assert.equal((result.text ?? '').length, 200, 'text 应为 200 字符截断摘要');
+    assert.equal(result.payload?.full, longContent, 'payload.full 应为完整 observation');
+    assert.equal(result.payload?.ok, true, 'payload.ok 保持既有语义');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
