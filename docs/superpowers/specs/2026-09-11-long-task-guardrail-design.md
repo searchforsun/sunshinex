@@ -67,6 +67,8 @@ const out = await planner.run(ctx, deps, {});
 | D3 | 4h 口径 | **单次提交**计时（记在 run 上，`deadlineAt = startedAt + timeoutMs`） |
 | D4 | 护栏分层 | **内建进 Reactor**（每步边界判定），编排层注入剩余限额；不新增编排层 |
 | D5 | 入口接线 | **一条主链 + 任务形态驱动**：入口提交 → LoopEngine（内嵌 Reactor）；**不暴露引擎开关**，保留 `/plan` 作人类确认点 |
+| D6 | graph 入口 | **专有模式** `/pipeline <流程名>`：默认始终 Loop，仅显式进入才转 graph；**不自动转化** |
+| D7 | 判定顺序 | 统一为 **超时 → 预算 → 迭代/步数**（时间优先）。与 graph 既有顺序（预算→超时→步数）的差异仅在「同时越限时报告哪一条」 |
 
 D5 的取舍说明：引擎是实现细节，把 `/goal`、`/graph` 做成用户可见命令等于把内部结构固化成产品接口，与「单一数据流、不提供几套实现逻辑」冲突。Claude Code 亦无引擎开关，其 Plan Mode 对应本项目已有的 `/plan`；分层嵌套本身已表达包含关系（Graph 可嵌入 Loop 子流程），无需并列开关。
 
@@ -202,6 +204,8 @@ export function guardrailStop(input: {
 - 回归：`toReactorBudget` 既有断言不变；Loop/Graph 现有 termination 行为不变。
 - TUI：未完成终止必须上屏；`runtime.ts` 不再出现字面量 `12`；`/plan` 规划段经引擎（H1 落地后）。
 - 端到端：慢 adapter + 极小 `deadlineAt`，验证「到点收敛且可见」。
+- 专有模式：`/pipeline <流程名>` 触发 GraphEngine；节点开始 / 结束上屏；gate 走既有审批面并能 `resume`。
+- 判定顺序：同时越限时按 **超时 → 预算 → 迭代/步数** 报告。
 
 ## 10. 明确不做
 
@@ -222,6 +226,7 @@ export function guardrailStop(input: {
 5. `src/tui/runtime.ts`：`runTask` 改走 Loop 模板；删除字面量 `12`。
 6. `src/tui/session.ts`：`runTaskFlow` 消费返回值并上屏未完成原因；`/plan` 规划段并入同一链（H1）。
 7. 测试补齐与既有断言回归。
+8. **（B+）专有模式**：`GraphHooks` 补 `onNodeStart`；`/pipeline <流程名>` 命令 + 节点事件 / gate 到会话流的映射；TUI 侧复用既有审批面。
 
 ## 12. 风险
 
