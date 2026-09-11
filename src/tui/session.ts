@@ -1,5 +1,4 @@
-import { ApprovalDecision, ApprovalRequest, GraphContext, SessionEvent } from '../types';
-import { makeRoleAgent } from '../graph/agents';
+import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { ReplyStreamExtractor } from './stream-extractor';
 import { toolCallLine } from './tool-verbs';
@@ -170,28 +169,16 @@ export class SessionController {
     this.notify();
     let planText = '';
     try {
-      // 规划走 Graph planner 角色节点（spec 定案：复用角色预设而非 pipeline 全链）；
-      // 事件经 deps.onEvent 透传上屏，规划 run 同样落账本（成本观测不因换通道丢失）
-      const h = this.runtime.harness;
-      const deps = {
-        safety: h.safety,
-        registry: h.tools,
-        context: h.context,
-        model: h.model,
-        ledger: h.ledger,
-        onEvent: (e: SessionEvent) => this.onEvent(e),
-      };
-      const planner = makeRoleAgent('planner', deps, { maxSteps: 6 });
-      const ctx: GraphContext = {
-        state: { goal },
-        tokensUsed: 0,
-        startedAt: Date.now(),
-        results: {},
-        termination: { maxNodes: 10, maxTokens: 200_000, timeoutMs: 600_000 },
-      };
-      const out = await planner.run(ctx, deps, {});
-      if (out.status !== 'pass') throw new Error(out.reply ?? '规划节点未完成');
-      planText = out.reply ?? '';
+      // 规划段与执行段同链（H1）：经主链的 Loop 长任务模板。
+      // 原实现是裸调 graph 角色节点——手工构造的 termination 无人读取（装饰性），
+      // 且 loop → graph 会形成反向依赖；角色框定改为提示词级（依赖方向保持 graph → loop → harness）。
+      const r = await this.runtime.runTask(
+        `为下面的目标产出编号步骤计划，每行形如「1. 步骤」；只输出步骤行，不要解释、不要代码块。\n目标：${goal}`,
+      );
+      if (!r.done) {
+        throw new Error(describeIncomplete(r.stopReason) || '规划未完成');
+      }
+      planText = r.reply ?? '';
     } catch (e) {
       this.pushMsg('system', '规划失败：' + (e instanceof Error ? e.message : String(e)));
       this.state = { ...this.state, status: 'idle' };
