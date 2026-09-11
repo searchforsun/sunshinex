@@ -62,6 +62,8 @@ export interface NodeOutput {
   criteria?: CriterionResult[];
   route?: string;
   tokens: number;
+  /** 内层执行的终止原因（agent 节点透传 Reactor 的 stopReason） */
+  stopReason?: StopReason;
 }
 
 /** Loop 节点公共字段 */
@@ -106,6 +108,8 @@ export interface GraphRunResult {
   pendingGates: string[];
   reply?: string;
   results: Record<string, GraphNodeOutput>;
+  /** 终止原因（新增）：done=全部完成；其余为护栏越限或 gate 挂起 */
+  stopReason?: StopReason;
 }
 
 /** Graph 终止参数 */

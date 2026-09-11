@@ -5,7 +5,9 @@ import type {
   GraphNodeOutput,
   GraphRunResult,
   GraphTermination,
+  StopReason,
 } from '../types';
+import { guardrailStop } from '../harness/guardrail';
 
 export type { GraphDeps, GraphTermination };
 
@@ -138,10 +140,20 @@ export class GraphEngine {
         runnable.push(node);
       }
       if (runnable.length === 0) continue;
-      // 边界三查（层边界；顺序固定：预算 → 超时 → 步数；并发层内不做中途打断）
-      if (ctx.tokensUsed >= this.term.maxTokens) return this.finish('paused', 'Token 预算超支，已暂停');
-      if (Date.now() - ctx.startedAt > this.term.timeoutMs) return this.finish('failed', `执行超时（超过 ${this.term.timeoutMs}ms）`);
-      if (this.steps >= this.term.maxNodes) return this.finish('failed', `节点步数耗尽（maxNodes=${this.term.maxNodes}）`);
+      // 边界三查（层边界）：统一判定函数，顺序 超时 → 预算 → 步数（D7 时间优先；并发层内不做中途打断）
+      const hit = guardrailStop({
+        now: Date.now(),
+        deadlineAt: ctx.startedAt + this.term.timeoutMs,
+        tokensUsed: ctx.tokensUsed,
+        tokenCap: this.term.maxTokens,
+        iteration: this.steps,
+        maxIterations: this.term.maxNodes,
+      });
+      if (hit === 'deadline')
+        return this.finish('failed', `执行超时（超过 ${this.term.timeoutMs}ms）`, { stopReason: 'deadline' });
+      if (hit === 'budget') return this.finish('paused', 'Token 预算超支，已暂停', { stopReason: 'budget' });
+      if (hit === 'max-steps')
+        return this.finish('failed', `节点步数耗尽（maxNodes=${this.term.maxNodes}）`, { stopReason: 'max-steps' });
       await Promise.allSettled(
         runnable.map(async (node) => {
           const inputs: Record<string, GraphNodeOutput> = {};
@@ -180,20 +192,23 @@ export class GraphEngine {
     const ctx = this.ctx!;
     const all = Object.values(ctx.results);
     const pausedGates = all.filter((r) => r.status === 'paused').map((r) => r.nodeId);
-    if (pausedGates.length > 0) return this.finish('paused', `等待人工审批：${pausedGates.join(', ')}`, pausedGates);
+    if (pausedGates.length > 0)
+      return this.finish('paused', `等待人工审批：${pausedGates.join(', ')}`, { pendingGates: pausedGates });
     const failedNodes = all.filter((r) => r.status === 'failed').map((r) => r.nodeId);
-    if (failedNodes.length > 0) return this.finish('failed', `存在失败节点：${failedNodes.join(', ')}`, [], failedNodes);
-    return this.finish('done', '全部节点完成');
+    if (failedNodes.length > 0)
+      return this.finish('failed', `存在失败节点：${failedNodes.join(', ')}`, { failedNodes });
+    return this.finish('done', '全部节点完成', { stopReason: 'done' });
   }
 
   private finish(
     status: GraphRunResult['status'],
     reply: string,
-    pendingGates: string[] = [],
-    failedNodes?: string[],
+    opts: { pendingGates?: string[]; failedNodes?: string[]; stopReason?: StopReason } = {},
   ): GraphRunResult {
     const ctx = this.ctx!;
-    const failed = failedNodes ?? Object.values(ctx.results).filter((r) => r.status === 'failed').map((r) => r.nodeId);
+    const pendingGates = opts.pendingGates ?? [];
+    const failed =
+      opts.failedNodes ?? Object.values(ctx.results).filter((r) => r.status === 'failed').map((r) => r.nodeId);
     return {
       status,
       iterations: this.steps,
@@ -202,6 +217,7 @@ export class GraphEngine {
       pendingGates,
       reply,
       results: ctx.results,
+      ...(opts.stopReason !== undefined ? { stopReason: opts.stopReason } : {}),
     };
   }
 }
