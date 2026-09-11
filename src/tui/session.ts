@@ -1,8 +1,9 @@
 import { ApprovalDecision, ApprovalRequest, GraphContext, SessionEvent } from '../types';
 import { makeRoleAgent } from '../graph/agents';
-import { TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
+import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { ReplyStreamExtractor } from './stream-extractor';
 import { toolCallLine } from './tool-verbs';
+import { describeIncomplete } from './stop-reason';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -50,6 +51,8 @@ export interface TuiState {
 export interface SessionOpts extends TuiRuntimeOpts {
   /** manual 模式审批回调（终端化审批装配点；渲染层注入交互实现） */
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
+  /** 运行时注入位：缺省自建 createRuntime(opts)；测试可注入假实现以隔离长任务 */
+  runtime?: TuiRuntime;
 }
 
 const SLASH_HELP = '命令：/new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /help 本清单';
@@ -73,7 +76,7 @@ export class SessionController {
   private autoAsker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 
   constructor(opts: SessionOpts) {
-    this.runtime = createRuntime({
+    this.runtime = opts.runtime ?? createRuntime({
       root: opts.root,
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.mode ? { mode: opts.mode } : {}),
@@ -226,7 +229,13 @@ export class SessionController {
       };
       this.notify();
       try {
-        const r = await this.runtime.runTask(items[i]);
+        const r: RunOutcome = await this.runtime.runTask(items[i]);
+        if (!r.done) {
+          const note = describeIncomplete(r.stopReason);
+          if (note.length > 0) this.pushMsg('system', note);
+          this.pushMsg('system', `步骤未完成：${items[i]}；剩余步骤暂停`);
+          break;
+        }
         const todos = [...this.state.todos];
         todos[i] = { ...todos[i], done: true };
         this.state = { ...this.state, todos };
@@ -249,7 +258,9 @@ export class SessionController {
     };
     this.notify();
     try {
-      await this.runtime.runTask(goal);
+      const r = await this.runtime.runTask(goal);
+      const note = describeIncomplete(r.stopReason);
+      if (!r.done && note.length > 0) this.pushMsg('system', note);
     } catch (e) {
       this.pushMsg('system', `发生错误：${e instanceof Error ? e.message : String(e)}`);
       this.state = { ...this.state, status: 'error' };
