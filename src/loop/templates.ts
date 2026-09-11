@@ -116,3 +116,25 @@ export function codeReviewTemplate(deps: LoopDeps, opts?: TemplateOpts): LoopTem
   ];
   return assemble('code-review', nodes, deps, opts);
 }
+
+/** 长任务时间兜底：4h（对齐 Graph DEFAULT_TERMINATION.timeoutMs，D3 单次提交计时口径） */
+export const LONG_TASK_TIMEOUT_MS = 14_400_000;
+
+export interface LongTaskOpts extends TemplateOpts {
+  /** 单次 agent 的步数上限；缺省交给 Reactor 的 200 */
+  agentMaxSteps?: number;
+}
+
+/**
+ * 长任务：单 agent 节点，**无 check 节点**（D1：完成以模型自报 done 为准，不引入校验环节）。
+ * 用 `agentNode` 而非 `execAgent` —— 后者把状态强制降为 pass（为 agent+check 模板设计），
+ * 在单节点模板下会让引擎绕回自身直到 maxIterations 耗尽。同时本模板显式把时间兜底提到 4h，
+ * 覆盖 Loop 层缺省的 2h（避免同一入口两套时长）。
+ */
+export function longTaskTemplate(deps: LoopDeps, opts?: LongTaskOpts): LoopTemplate {
+  const agentOpts = opts?.agentMaxSteps !== undefined ? { maxSteps: opts.agentMaxSteps } : {};
+  return assemble('long-task', [agentNode(deps, agentOpts)], deps, {
+    ...opts,
+    termination: { timeoutMs: LONG_TASK_TIMEOUT_MS, ...(opts?.termination ?? {}) },
+  });
+}
