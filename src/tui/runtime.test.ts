@@ -65,3 +65,14 @@ test('createRuntime：不传 onApproval 时 manual 保持阶段一拒绝语义�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('createRuntime：model 透传到 harness.model（TUI 装配链不静默回落 stub）', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt4-'));
+  try {
+    const m = new ScriptedAdapter(['{"done":true,"reply":"ok"}']);
+    const rt = createRuntime({ root: tmp, model: m });
+    assert.equal(rt.harness.model, m, '模型装配不得在接缝处丢失');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

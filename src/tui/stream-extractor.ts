@@ -5,9 +5,11 @@ const TOOL_KEY = '"tool"';
 const REPLY_KEY = '"reply"';
 /** seek 态滚动窗口长度：保证跨 chunk 分裂的键（如 `"rep` + `ly"`）仍可识别 */
 const TAIL = 8;
+/** plain 回退上限（字符）：协议违规输出仅透出前 N 个，超出即截断——防异常输出/提示词回显灌屏 */
+export const PLAIN_LIMIT = 2000;
 
 /**
- * 增量协议提取器：模型输出的 JSON 协议骨架不上屏，只透出 reply 字段文本。
+ * 增量协议提取器：模型输出的 JSON 协议骨架不上屏，只透出 reply 字段文本；协议违规（非 JSON）输出有限透传。
  * 纯状态机（零 IO、零依赖）：供渲染层逐段刷新，终稿仍以 done 载荷为准。
  */
 export class ReplyStreamExtractor {
@@ -19,6 +21,8 @@ export class ReplyStreamExtractor {
   private escaped = false;    // in-reply 态：上一字符是否为未消费的反斜杠
   private unicode = '';       // \uXXXX 累积缓冲
   private out = '';
+  private plainEmitted = 0;   // plain 回退已透出字符数（达 PLAIN_LIMIT 即截断收口）
+  private truncated = false;  // 截断提示是否已补发（只补一次）
 
   constructor(private readonly onReplyDelta: (text: string) => void) {}
 
@@ -37,6 +41,8 @@ export class ReplyStreamExtractor {
     this.escaped = false;
     this.unicode = '';
     this.out = '';
+    this.plainEmitted = 0;
+    this.truncated = false;
   }
 
   /** 消费一段原始增量（可任意切分）；提取出的 reply 文本按段回调 */
@@ -48,6 +54,30 @@ export class ReplyStreamExtractor {
 
   private emit(text: string): void {
     this.out += text;
+  }
+
+  /** plain 回退专用发射：带总长上限，超限即截断并补一次提示——异常输出（含提示词回显）不得整段灌屏 */
+  private emitPlain(text: string): void {
+    const remain = PLAIN_LIMIT - this.plainEmitted;
+    if (remain <= 0) {
+      this.emitTruncateHint();
+      return;
+    }
+    if (text.length <= remain) {
+      this.plainEmitted += text.length;
+      this.emit(text);
+      return;
+    }
+    this.emit(text.slice(0, remain));
+    this.plainEmitted = PLAIN_LIMIT;
+    this.emitTruncateHint();
+  }
+
+  /** 截断提示只补一次（逐字符流式下 remain 先归零，不能只靠溢出分支判定） */
+  private emitTruncateHint(): void {
+    if (this.truncated) return;
+    this.truncated = true;
+    this.emit('\n…（输出超长，已截断）');
   }
 
   private step(ch: string): void {
@@ -62,7 +92,7 @@ export class ReplyStreamExtractor {
         this.stepInReply(ch);
         return;
       case 'plain':
-        this.emit(ch);
+        this.emitPlain(ch);
         return;
       default: // ignore / settled：协议剩余骨架一律吞掉
         return;
@@ -77,9 +107,9 @@ export class ReplyStreamExtractor {
       }
       this.sawLead = true;
       if (ch !== '{') {
-        // 协议违规：非 JSON 输出按原文透传（补发已跳过的前导空白）
+        // 协议违规：非 JSON 输出有限透传（补发已跳过的前导空白，受 PLAIN_LIMIT 约束）
         this.mode = 'plain';
-        this.emit(this.lead + ch);
+        this.emitPlain(this.lead + ch);
         return;
       }
     }

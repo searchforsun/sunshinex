@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { buildDeps } from '../../runtime';
+import { buildDeps, buildModel } from '../../runtime';
 import { resolveTemplate } from './run-loop';
 import { ScriptedAdapter } from '../../model/adapter';
 
@@ -42,4 +42,12 @@ test('run-loop：ScriptedAdapter 驱动 test-loop 修正环 done（离线端到�
   const r = await tpl.engine.run('修正测试断言（验收标准：c1=断言 add(1,2)===3）');
   assert.equal(r.status, 'done');
   assert.equal(r.tokensUsed, 0);
+});
+
+test('buildModel：缺省 openai 且带展示标签，--model=stub 走占位适配器', () => {
+  assert.equal(buildModel({ model: 'stub' }).provider, 'stub');
+  assert.equal(buildModel({ model: 'scripted' }).provider, 'scripted');
+  const oa = buildModel({});
+  assert.equal(oa.provider, 'openai');
+  assert.ok(oa.label && oa.label.startsWith('openai · '), 'banner 应显示真实模型标签');
 });

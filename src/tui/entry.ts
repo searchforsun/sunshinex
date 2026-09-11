@@ -5,6 +5,7 @@ import { render } from 'ink';
 import { App } from './components/App';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
+import { buildModel } from '../runtime';
 import type { CliArgs } from '../cli';
 
 /** 读根 package.json 版本（失败回退 undefined，由 buildBannerInfo 兜底） */
@@ -23,8 +24,9 @@ export async function runTui(args: CliArgs): Promise<void> {
   const root = args.positional[0] ?? process.cwd();
   const modeFlag = typeof args.flags.mode === 'string' ? args.flags.mode : undefined;
   const mode = modeFlag === 'dontAsk' || modeFlag === 'plan' ? modeFlag : 'manual';
-  const ctrl = new SessionController({ root, mode });
-  const banner = buildBannerInfo({ version: readPackageVersion(), root });
+  const model = buildModel(args.flags);
+  const ctrl = new SessionController({ root, mode, model });
+  const banner = buildBannerInfo({ version: readPackageVersion(), root, model: model.label ?? model.provider });
   const instance = render(React.createElement(App, { controller: ctrl, banner }));
   const shutdown = (): void => {
     instance.unmount();

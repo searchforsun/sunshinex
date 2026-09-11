@@ -28,12 +28,13 @@ test('ScriptedAdapter.completeStream：逐字吐出且回调拼接等于全文',
   assert.equal(await a.completeStream('', () => {}), '世界');
 });
 
-test('StubAdapter.completeStream：单次回调全文', async () => {
+test('StubAdapter.completeStream：单次回调全文且不回显 prompt', async () => {
   const a = new StubAdapter();
   const deltas: string[] = [];
-  const full = await a.completeStream('q', (t) => deltas.push(t));
-  assert.equal(full, '[stub reply] q');
-  assert.deepEqual(deltas, ['[stub reply] q']);
+  const full = await a.completeStream('PROMPT-MARK', (t) => deltas.push(t));
+  assert.deepEqual(deltas, [full], '单次回调全文');
+  assert.ok(full.includes('"done":true'), '应回协议 JSON');
+  assert.ok(!full.includes('PROMPT-MARK'), '回显 prompt 会把系统提示词泄露到界面');
 });
 
 test('OpenAIAdapter.completeStream：SSE delta 聚合 + usage 回传', async () => {

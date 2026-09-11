@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ReplyStreamExtractor } from './stream-extractor';
+import { PLAIN_LIMIT, ReplyStreamExtractor } from './stream-extractor';
 
 /** 喂入若干片段，返回拼接后的提取文本与提取器终态 */
 function collect(chunks: string[]): { out: string; ex: ReplyStreamExtractor } {
@@ -55,4 +55,22 @@ test('提取器：转义引号不触发收束（\\" 不终止 reply）', () => {
   const { out, ex } = collect(['{"reply":"say \\"hi\\" now"}']);
   assert.equal(out, 'say "hi" now');
   assert.equal(ex.currentMode, 'settled');
+});
+
+test('提取器：协议违规输出超长即截断（不整段灌屏）', () => {
+  let out = '';
+  const ex = new ReplyStreamExtractor((t) => { out += t; });
+  ex.feed('x'.repeat(PLAIN_LIMIT + 500));
+  assert.equal(ex.currentMode, 'plain');
+  assert.ok(out.startsWith('xxxx'), '前段应透出');
+  assert.ok(out.length < PLAIN_LIMIT + 500, '超长应截断');
+  assert.ok(out.includes('已截断'), '应给出截断提示');
+});
+
+test('提取器：协议违规输出未超限则全文透传', () => {
+  let out = '';
+  const ex = new ReplyStreamExtractor((t) => { out += t; });
+  ex.feed('短文本');
+  assert.equal(out, '短文本');
+  assert.ok(!out.includes('已截断'));
 });

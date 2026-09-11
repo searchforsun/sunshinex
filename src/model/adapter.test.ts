@@ -11,9 +11,13 @@ test('ScriptedAdapter 依次回放脚本', async () => {
   assert.equal(await a.complete('p'), '{"done":true}');
 });
 
-test('StubAdapter 返回标记文本', async () => {
+test('StubAdapter：回协议 JSON（done+reply），不回显提示词', async () => {
   const a = new StubAdapter();
-  assert.match(await a.complete('hi'), /stub/);
+  const out = await a.complete('PROMPT-SECRET');
+  const parsed = JSON.parse(out) as { done: boolean; reply: string };
+  assert.equal(parsed.done, true);
+  assert.ok(parsed.reply.length > 0, '应给出可读提示');
+  assert.ok(!out.includes('PROMPT-SECRET'), '回显 prompt 会把系统提示词泄露到界面');
 });
 
 test('OpenAIAdapter 无 key 时 complete 抛错', async () => {

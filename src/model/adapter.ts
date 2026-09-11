@@ -11,6 +11,8 @@ export interface UsageHooks {
 
 export interface ModelAdapter {
   readonly provider: string;
+  /** 展示标签（banner/日志）：缺省回退 provider；openai 侧为「模型名」 */
+  readonly label?: string;
   complete(prompt: string, hooks?: UsageHooks): Promise<string>;
 }
 
@@ -20,12 +22,13 @@ export function extractUsage(data: unknown): number {
   return typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : 0;
 }
 
-/** 占位适配器：不实际调用云端，返回标记文本 */
+/** 占位适配器：不实际调用云端。回协议内 JSON（done+reply），绝不回显 prompt——回显会把系统提示词经渲染层泄露到界面 */
 export class StubAdapter implements ModelAdapter {
   readonly provider = 'stub';
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+  readonly label = 'stub（未接入真实模型）';
+  async complete(_prompt: string, hooks?: UsageHooks): Promise<string> {
     hooks?.onUsage?.(0); // 占位适配器无真实用量
-    return `[stub reply] ${prompt}`;
+    return '{"done":true,"reply":"[stub] 未接入真实模型：请在 .env 配置 OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL 后重试"}';
   }
 
   async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
@@ -46,6 +49,8 @@ export interface LLMConfig {
 /** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API，带超时控制 */
 export class OpenAIAdapter implements ModelAdapter {
   readonly provider = 'openai';
+  /** banner/状态栏展示标签：openai · <模型名> */
+  readonly label: string;
   private baseURL: string;
   private apiKey: string;
   private model: string;
@@ -55,6 +60,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.baseURL = cfg.baseURL ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
     this.apiKey = cfg.apiKey ?? process.env.OPENAI_API_KEY ?? '';
     this.model = cfg.model ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+    this.label = `openai · ${this.model}`;
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
   }
 
