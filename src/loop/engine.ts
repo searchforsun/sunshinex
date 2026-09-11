@@ -56,7 +56,7 @@ export interface LoopRunResult {
   stopReason?: StopReason;
 }
 
-/** Loop 引擎：主干顺序执行 + router 跳转；每节点边界四重终止检查（验收→迭代→超时→预算） */
+/** Loop 引擎：主干顺序执行 + router 跳转；每节点边界四重终止检查（验收→超时→预算→迭代） */
 export class LoopEngine {
   private nodes: LoopEngineNode[];
   private index: Map<string, number>;

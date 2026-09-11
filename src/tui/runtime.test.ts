@@ -154,7 +154,7 @@ test('createRuntime：主链归属钉死——探针证明不触碰 harness.reac
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt8-'));
   const orig = Reactor.prototype.run;
   const calls: Array<{ self: Reactor; opts: ReactorOpts | undefined }> = [];
-  // 唯一处类型逃逸（局限在此函数表达式）：原型补丁的 this 语义 TS 不保留，故断言回原方法签名；未引入 any
+  // 本文件唯一处类型逃逸（局限在此函数表达式）：原型补丁的 this 语义 TS 不保留，故断言回原方法签名；未引入 any
   Reactor.prototype.run = function (this: Reactor, ...args: Parameters<Reactor['run']>): ReturnType<Reactor['run']> {
     calls.push({ self: this, opts: args[1] });
     return orig.call(this, ...args);

@@ -117,7 +117,7 @@ export function codeReviewTemplate(deps: LoopDeps, opts?: TemplateOpts): LoopTem
   return assemble('code-review', nodes, deps, opts);
 }
 
-/** 长任务时间兜底：4h（对齐 Graph DEFAULT_TERMINATION.timeoutMs，D3 单次提交计时口径） */
+/** 长任务时间兜底：4h（对齐 Graph `DEFAULT_TERMINATION.timeoutMs`（src/graph/templates.ts:7），D3 单次提交计时口径） */
 export const LONG_TASK_TIMEOUT_MS = 14_400_000;
 
 export interface LongTaskOpts extends TemplateOpts {

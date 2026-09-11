@@ -2,7 +2,7 @@ import { Harness } from '../harness';
 import { LoopDeps } from '../loop/engine';
 import { longTaskTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, SessionEvent, StopReason } from '../types';
+import { ApprovalDecision, ApprovalRequest, RunOutcome, SessionEvent } from '../types';
 
 export interface TuiRuntimeOpts {
   root: string;
@@ -15,13 +15,8 @@ export interface TuiRuntimeOpts {
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 }
 
-/** TUI 提交的收口投影：只暴露会话层需要的「是否完成 / 终答 / 用量 / 终止原因」，不泄漏引擎结果内部形态 */
-export interface RunOutcome {
-  done: boolean;
-  reply?: string;
-  tokensUsed: number;
-  stopReason?: StopReason;
-}
+/** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
+export type { RunOutcome };
 
 export interface TuiRuntime {
   harness: Harness;

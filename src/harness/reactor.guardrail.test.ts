@@ -67,7 +67,7 @@ test('Reactor：tokenCap=0 → 立即按预算收敛（累计量纲，与窗口 
   });
 });
 
-test('Reactor：未给 tokenCap 时窗口 budget 不构成硬停（跑完即 done）', async () => {
+test('Reactor：未给 tokenCap 时窗口 budget 不构成硬停（收于 max-steps）', async () => {
   await withTmp(async (tmp) => {
     const r = await new Reactor(makeDeps(tmp, new ScriptedAdapter([CALL, CALL, CALL]))).run(
       { goal: '调两次工具后被步数拦住' },

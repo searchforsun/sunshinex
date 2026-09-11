@@ -473,10 +473,10 @@ test('GraphEngine：预算越限 → paused 且 stopReason=budget', async () => 
 Run: `npm run build && node --test dist/loop/engine.guardrail.test.js dist/graph/engine.guardrail.test.js`
 Expected: FAIL —— `stopReason` 不存在（编译报错）
 
-- [ ] **Step 3: 在 `src/types.ts` 登记四处字段（两个结果类型 + 两个节点输出）**
+- [ ] **Step 3: 登记四处字段（`src/types.ts` 三处 + `src/loop/engine.ts` 一处）**
 
 ```ts
-// LoopRunResult 内追加
+// 【收尾订正】LoopRunResult 不在 src/types.ts 内——该字段落在 src/loop/engine.ts
   /** 终止原因（新增）：done=验收通过；其余为护栏越限或模型失败 */
   stopReason?: StopReason;
 ```
@@ -490,6 +490,8 @@ Expected: FAIL —— `stopReason` 不存在（编译报错）
   /** 内层执行的终止原因（agent 节点透传 Reactor 的 stopReason） */
   stopReason?: StopReason;
 ```
+
+> **【收尾订正】类型归属**：`LoopRunResult` 实际定义在 `src/loop/engine.ts`（**不是** `src/types.ts`）。故本轮 3 处字段落在 `src/types.ts`（`NodeOutput` / `GraphRunResult` / `StopReason`），`LoopRunResult.stopReason` 落在 `src/loop/engine.ts`。**若照原计划字面把四处全写进 `src/types.ts`，会造出 `LoopRunResult` 的重复定义**（编译报错），务必按上述归属落位。
 
 > `GraphNodeOutput` **不加**该字段：本计划范围内 graph 的原因由引擎边界三查提供（见 Step 5 的用例）。graph 节点级原因透传属 B+（`/pipeline` 要显示「哪个节点为何停」）的内容，届时随该计划补，避免现在留下没人读的字段。
 
@@ -1047,7 +1049,7 @@ test('createRuntime：未完成时返回结构化 stopReason（不再只有 done
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `npm run build && node --test dist/tui/runtime.test.js`
-Expected: FAIL —— `r.stopReason` 为 `undefined`
+Expected: FAIL —— 【收尾订正】原猜测不成立：旧 `runTask` 返回的正是 `Reactor.RunResult`，而 Task 2 已给它加上 `stopReason`，故本步两条新用例「绿之前也绿」，不构成「主链经 Loop」的证据；判别力由加固轮三条断言承担（用例 7/8/9：缺省步数 12 vs 200、命中 `harness.reactor`、透出 `steps/route`）。详见 task-8-report.md
 
 - [ ] **Step 3: 实现**
 
@@ -1130,7 +1132,7 @@ Expected: 零报错
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/tui/runtime.test.js`
-Expected: `# pass 6`、`# fail 0`
+Expected: `# pass 9`、`# fail 0` —— 【收尾订正】原计数 `# pass 6` 过时：加固轮 +3（用例 7/8/9）
 
 - [ ] **Step 6: 跑全量回归**
 
@@ -1318,7 +1320,7 @@ import { describeIncomplete } from './stop-reason';
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/tui/stop-reason.test.js dist/tui/session.incomplete.test.js`
-Expected: `# pass 4`、`# fail 0`
+Expected: `# pass 5`、`# fail 0` —— 【收尾订正】原计数 `# pass 4` 失真：第 3 条用例（runPlanItems 未完成不得报成功）为实施者新增，超出 brief 模板的 2 条
 
 - [ ] **Step 6: 跑全量回归**
 
@@ -1389,7 +1391,7 @@ test('会话层：/plan 规划段经主链产出编号步骤并进确认卡', as
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `npm run build && node --test dist/tui/session.plan.test.js`
-Expected: FAIL —— 规划段仍走 `makeRoleAgent('planner')` 裸节点，`runs` 断言与落账本路径不符（或规划文案不含规划指令）
+Expected: FAIL —— 【收尾订正】原猜测不成立：`runs === 1` 在旧形态下亦成立（旧路径同样透传 ledger），brief 建议的 `this !== harness.reactor` 口径旧形态亦为真，故本条原断言零判别力；实测红因是 `waitIdle` 超时（`/plan` 按设计停在 `awaiting-plan`，非 idle 必抛）。判别力改由「规划期 Reactor 入参探针」承担（goal 含规划指令 / `maxSteps` 6→undefined / `deadlineAt` +600000→+14400000）。详见 task-8-report.md
 
 - [ ] **Step 3: 改 `startPlanFlow`**
 
@@ -1413,7 +1415,7 @@ Expected: FAIL —— 规划段仍走 `makeRoleAgent('planner')` 裸节点，`ru
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/tui/session.plan.test.js`
-Expected: `# pass 1`、`# fail 0`
+Expected: `# pass 5`、`# fail 0` —— 【收尾订正】原计数 `# pass 1` 失真：同名测试文件已存在并含 3 条既有用例，本任务追加 2 条
 
 - [ ] **Step 5: 跑全量回归 + 骨架自检**
 

@@ -251,3 +251,11 @@ export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-e
 
 /** 护栏可返回的越限原因（不含「正常完成」与「模型失败」——那两类由调用方判定） */
 export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget'>;
+
+/** TUI 提交的收口投影：只暴露会话层需要的「是否完成 / 终答 / 用量 / 终止原因」，不泄漏引擎结果内部形态 */
+export interface RunOutcome {
+  done: boolean;
+  reply?: string;
+  tokensUsed: number;
+  stopReason?: StopReason;
+}

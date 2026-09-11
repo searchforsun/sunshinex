@@ -9,13 +9,13 @@ import { ScriptedAdapter } from '../model/adapter';
 import { Reactor, ReactorOpts } from '../harness/reactor';
 import { LONG_TASK_TIMEOUT_MS } from '../loop/templates';
 
-test('/plan：规划（planner 节点）→ 确认 → 逐项执行 → 待办同步', async () => {
+test('/plan：规划（经主链长任务模板）→ 确认 → 逐项执行 → 待办同步', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan1-'));
   try {
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
-        // 规划轮：planner 节点经 Reactor JSON 协议产出计划（reply 携带编号步骤）
+        // 规划轮：经主链长任务模板（Loop 内嵌 Reactor）+ Reactor JSON 协议产出计划（reply 携带编号步骤）
         '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}',
         // 执行轮：逐项 run
         '{"done":true,"reply":"步骤A 完成"}',
@@ -126,7 +126,7 @@ test('会话层：/plan 规划段经主链——探针证明不走 graph 角色�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-probe-'));
   const orig = Reactor.prototype.run;
   const calls: Array<{ self: Reactor; goal: string; opts: ReactorOpts | undefined; at: number }> = [];
-  // 唯一处类型逃逸（局限在此函数表达式）：原型补丁的 this 语义 TS 不保留，故断言回原方法签名；未引入 any
+  // 仓内两处之一（另见 src/tui/runtime.test.ts）类型逃逸（局限在此函数表达式）：原型补丁的 this 语义 TS 不保留，故断言回原方法签名；未引入 any
   Reactor.prototype.run = function (this: Reactor, ...args: Parameters<Reactor['run']>): ReturnType<Reactor['run']> {
     calls.push({ self: this, goal: String(args[0].goal), opts: args[1], at: Date.now() });
     return orig.call(this, ...args);

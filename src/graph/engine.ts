@@ -27,7 +27,7 @@ export interface GraphHooks {
   onNodeEnd?: (node: GraphNode, output: GraphNodeOutput) => void;
 }
 
-/** Graph 引擎：Kahn 分层并发调度 + 数据流 + 错误局部化 + 预算/超时/步数边界 + 断点续跑 */
+/** Graph 引擎：Kahn 分层并发调度 + 数据流 + 错误局部化 + 超时/预算/步数边界 + 断点续跑 */
 export class GraphEngine {
   private nodes = new Map<string, GraphNode>();
   private completed = new Set<string>();
