@@ -6,11 +6,23 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { TuiRuntime, RunOutcome } from './runtime';
 import { Harness } from '../harness';
-import { ScriptedAdapter } from '../model/adapter';
 
-/** 假运行时：只兑现会话层真正消费的契约 */
+/**
+ * 假运行时：只兑现会话层真正消费的契约。
+ * 规划轮按 goal 分流：命中规划指令即回编号步骤计划（规划段并入主链后同样经 runTask）；
+ * 其余调用（计划项执行）恒回传入的 outcome，供未完成路径断言。
+ */
 function fakeRuntime(harness: Harness, outcome: RunOutcome): TuiRuntime {
-  return { harness, runTask: async () => outcome };
+  const planOutcome: RunOutcome = {
+    done: true,
+    reply: '1. 第一步\n2. 第二步',
+    tokensUsed: 0,
+    stopReason: 'done',
+  };
+  return {
+    harness,
+    runTask: async (goal: string) => (goal.includes('编号步骤计划') ? planOutcome : outcome),
+  };
 }
 
 function tmpdir(prefix: string): string {
@@ -55,12 +67,9 @@ test('会话层：完成后不追加未完成提示', async () => {
 test('会话层：规划项未完成不得报成功（runPlanItems）', async () => {
   const tmp = tmpdir('sunshinex-inc3-');
   try {
-    // 规划通道走真实 planner（ScriptedAdapter 回放编号计划），仅计划项执行由假 runtime 兑现
-    const harness = new Harness({
-      root: tmp,
-      mode: 'dontAsk',
-      model: new ScriptedAdapter(['{"done":true,"reply":"1. 第一步\\n2. 第二步"}']),
-    });
+    // 规划轮由假 runtime 按 goal 分流兑现（回编号步骤计划，见 fakeRuntime）；
+    // 仅计划项执行回未完成 outcome——本用例断言的是后者不得被报成功
+    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
     const ctrl = new SessionController({
       root: tmp,
       runtime: fakeRuntime(harness, { done: false, tokensUsed: 0, stopReason: 'budget' }),
