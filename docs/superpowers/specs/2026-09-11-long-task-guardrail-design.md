@@ -155,6 +155,27 @@ flowchart TB
 - **gate → 审批**：graph 的 gate 节点产出 `pendingGates`、以 `paused` 收尾，再以 `resume(approvals)` 续跑（`run-pipeline.ts`）。TUI 侧映射到**既有**审批面（`approval-request` / `approval-resolved` + 挂起 asker），不新造审批通道。
 - **范围**：本条只做「按名字跑已注册流程 + 把节点边界与 gate 接进现有会话流」；节点内部仍走各自的 Reactor，护栏随 A 阶段一并对齐。
 
+### 5.4 运行态流程展示（钉底单行进度条）
+
+- **位置**：**输入框下侧、状态栏上方**；常驻一行。
+- **形态**：节点状态以「状态序列」表达，**不做带连线的图**——终端宽高约束下 DAG 连线不可靠；等价信息用序列更稳、更可读。
+- **布局**：
+
+  ```text
+    ⏺ [dev] ✔ developer · 12.4k tok · 22s
+  > 输入任务，Enter 发送 · /help 查看命令
+    流程 planner ✓ → developer ◐ → test-verify · → reviewer · → delivery-gate ·
+    ↑12k · 38.2s · openai · deepseek-flash · runs 6 · 空闲
+  ```
+
+- **状态字符**：`·` 未开始 / `◐` 运行中 / `✓` 成功 / `✘` 失败 / `⊘` 跳过。
+- **并发语义**：Graph 逐层 `Promise.allSettled` 并发，一层内可能多节点同时在跑 → 进度条展示**活跃集合**（`◐ developer ◐ test-verify`），同层内按 `id` 排序以避免刷新抖动。
+- **Loop 同样适用**：Loop 为单游标顺序执行、链路更短，同一组件直接复用（节点 kind：agent / check / gate / router）。
+- **展开**：`⏎` 或快捷键把单行展开为多行面板（每节点一行：状态 + tokens + 耗时），再按收起；展开态不持久化。节点详情仍按 §5.3 推正文 `step` 行，进度条只承载「当前」。
+- **窄终端**：宽度不足时从**尾部**截断，并以 `…(+N)` 标注剩余节点数；**当前活跃节点优先保留**（不截断）。
+- **承载**：新增 TUI 组件（拟名 `FlowStrip`），输入即 §5.3 的节点事件；**不引入第二套事件源**。
+- **阶段归属**：标为**阶段 C**，可独立验收，与护栏主线（A / B）解耦；即使 C 延后，A / B 仍完整可用。
+
 ## 6. 接口
 
 ```ts
@@ -222,6 +243,7 @@ export function guardrailStop(input: {
 - 端到端：慢 adapter + 极小 `deadlineAt`，验证「到点收敛且可见」。
 - 专有模式：`/pipeline <流程名>` 触发 GraphEngine；节点开始 / 结束上屏；gate 走既有审批面并能 `resume`。
 - 判定顺序：同时越限时按 **超时 → 预算 → 迭代/步数** 报告。
+- 展示（阶段 C）：进度条活跃集合渲染（并发层多节点同显）、窄终端尾部截断且活跃节点保留、`⏎` 展开 / 收起切换。
 
 ## 10. 明确不做
 
@@ -243,6 +265,7 @@ export function guardrailStop(input: {
 6. `src/tui/session.ts`：`runTaskFlow` 消费返回值并上屏未完成原因；`/plan` 规划段并入同一链（H1）。
 7. 测试补齐与既有断言回归。
 8. **（B+）专有模式**：`GraphHooks` 补 `onNodeStart`；`/pipeline <流程名>` 命令 + 节点事件 / gate 到会话流的映射；TUI 侧复用既有审批面。
+9. **（C）运行态展示**：`FlowStrip` 组件（钉底单行，位于输入框下侧）+ 展开态；复用第 8 项的事件源。
 
 ## 12. 风险
 
@@ -250,3 +273,4 @@ export function guardrailStop(input: {
 - **模板新增**：长任务 Loop 模板与既有 `code-refactor` / `test-loop` / `code-review` 的终止参数口径需保持一致（2h vs 4h），避免同一入口两套时长。
 - **D7 的行为差异**：graph 既有顺序（预算→超时→步数）被统一为超时优先，仅在「同时越限」时改变报告原因——影响面小，但需在 plan 中显式声明。
 - **专有模式是新增面**：`/pipeline` 引入「TUI 跑多阶段流程」这条此前不存在的路径（含 gate 审批与 `resume`）。建议在 plan 中单列一段、与 A/B 并列，避免与护栏主线耦合。
+- **钉底条永久占位**：常驻 1 行、展开 N 行，矮终端上需实测退化策略（尾部截断 + `…(+N)`）；若观感不佳，回落为「仅在状态栏加当前节点字段」。
