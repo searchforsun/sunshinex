@@ -202,19 +202,19 @@ export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-e
 // RunResult 增补：stopReason?: StopReason
 ```
 
-单一判定纯函数（供 Reactor 每步与 Loop/Graph 节点边界共用）：
+单一判定纯函数（供 Reactor 每步与 Loop/Graph 节点边界共用）。`iteration` 按**已完成**单位数传入，与两引擎既有比较语义一致：
 
 ```ts
 export function guardrailStop(input: {
-  step: number; maxSteps: number;
   now: number; deadlineAt?: number;
-  tokensUsed: number; maxTokens?: number;
-}): 'max-steps' | 'deadline' | 'budget' | null;
+  tokensUsed: number; tokenCap?: number;
+  iteration: number; maxIterations?: number;
+}): StopReason | null;   // 'deadline' | 'budget' | 'max-steps'
 ```
 
-判定顺序**对齐 `loop/engine.ts` 既有顺序**：迭代 → 超时 → 预算。
+判定顺序按 **D7：超时 → 预算 → 迭代/步数**（时间优先）。判定只返回原因、不产生状态，由调用方映射到各自词汇——Reactor → `stopReason`；Loop → `paused` / `failed`；Graph 同构。
 
-调用约定：Reactor 侧以 `budget.total` 作为 `maxTokens` 实参（`budget` 为 `{total, reserve}`，硬边界取 `total`）。判定只返回原因、不产生状态，由调用方映射到各自词汇——Reactor → `stopReason`；Loop → `paused` / `failed`；Graph 同构。
+**`tokenCap` 与 `budget` 是两个量纲，不得合并**：`budget.total` 是**上下文窗口**阈值（Reactor 缺省 200k，用于压缩判定），`tokenCap` 是**累计** token 硬上限（与 Loop/Graph 的 `maxTokens` 同量纲）。若让 `budget.total` 兼作累计硬停，长任务会在 200k 累计处被误杀——正是本轮要修的问题。
 
 ## 7. 判定与预算透传
 
