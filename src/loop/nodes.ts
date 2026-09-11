@@ -105,10 +105,24 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
     run: async (ctx: LoopContext, input: NodeOutput | null): Promise<NodeOutput> => {
       // 注：NodeOutput 无 goal 字段（计划笔误），engine.run 已把 goal 写入 ctx.state，agentNode 从 state 取
       const goal = withDeficits(typeof ctx.state.goal === 'string' ? ctx.state.goal : '', ctx);
-      const budget = toReactorBudget(ctx.termination.maxTokens - ctx.tokensUsed);
+      const remaining = Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed);
+      const budget = toReactorBudget(remaining);
       const reactor = new Reactor(deps);
-      const r = await reactor.run({ goal }, { maxSteps: opts?.maxSteps, budget });
-      return { status: r.done ? 'done' : 'fail', reply: r.reply, tokens: r.tokensUsed ?? 0 };
+      const r = await reactor.run(
+        { goal },
+        {
+          maxSteps: opts?.maxSteps,
+          budget,
+          tokenCap: remaining,
+          deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
+        },
+      );
+      return {
+        status: r.done ? 'done' : 'fail',
+        reply: r.reply,
+        tokens: r.tokensUsed ?? 0,
+        ...(r.stopReason !== undefined ? { stopReason: r.stopReason } : {}),
+      };
     },
   };
 }

@@ -37,7 +37,8 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
       const task = `${goal}\n\n你的角色：${preset.label}（${role}），职责：${preset.framing}。${
         upstream ? `\n上游产出（作为输入上下文）：\n${upstream}` : ''
       }`;
-      const budget = toReactorBudget(Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed));
+      const remaining = Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed);
+      const budget = toReactorBudget(remaining);
       const reactor = new Reactor({
         safety: deps.safety,
         registry: deps.registry,
@@ -47,7 +48,15 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
         ...(deps.onEvent ? { onEvent: deps.onEvent } : {}),
         ...(deps.ledger ? { ledger: deps.ledger } : {}),
       });
-      const result = await reactor.run({ goal: task }, { maxSteps: opts.maxSteps, budget });
+      const result = await reactor.run(
+        { goal: task },
+        {
+          maxSteps: opts.maxSteps,
+          budget,
+          tokenCap: remaining,
+          deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
+        },
+      );
       return {
         nodeId: role,
         status: result.done ? 'pass' : 'failed',
