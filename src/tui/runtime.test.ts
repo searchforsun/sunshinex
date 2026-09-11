@@ -76,3 +76,30 @@ test('createRuntime：model 透传到 harness.model（TUI 装配链不静默回�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('createRuntime：主链经 Loop——不做任何事也走长任务模板（iterations 可观测）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt5-'));
+  try {
+    const rt = createRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const r = await rt.runTask('做一件事');
+    assert.equal(r.done, true);
+    assert.equal(r.stopReason, 'done');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('createRuntime：未完成时返回结构化 stopReason（不再只有 done=false）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt6-'));
+  try {
+    const rt = createRuntime({
+      root: tmp,
+      model: new ScriptedAdapter(['{"tool":"glob","input":{"pattern":"*"},"done":false}']),
+    });
+    const r = await rt.runTask('一直调工具', { maxSteps: 1 });
+    assert.equal(r.done, false);
+    assert.equal(r.stopReason, 'max-steps');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

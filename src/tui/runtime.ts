@@ -1,7 +1,8 @@
 import { Harness } from '../harness';
+import { LoopDeps } from '../loop/engine';
+import { longTaskTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
-import { RunResult } from '../harness/reactor';
+import { ApprovalDecision, ApprovalRequest, SessionEvent, StopReason } from '../types';
 
 export interface TuiRuntimeOpts {
   root: string;
@@ -14,9 +15,17 @@ export interface TuiRuntimeOpts {
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 }
 
+/** TUI 提交的收口投影：只暴露会话层需要的「是否完成 / 终答 / 用量 / 终止原因」，不泄漏引擎结果内部形态 */
+export interface RunOutcome {
+  done: boolean;
+  reply?: string;
+  tokensUsed: number;
+  stopReason?: StopReason;
+}
+
 export interface TuiRuntime {
   harness: Harness;
-  runTask(goal: string, opts?: { maxSteps?: number }): Promise<RunResult>;
+  runTask(goal: string, opts?: { maxSteps?: number }): Promise<RunOutcome>;
 }
 
 /** TUI 运行时接缝：同进程装配 Harness（数据底座 .data 天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
@@ -28,8 +37,28 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
   });
   if (opts.mode === 'manual' && opts.onApproval) harness.security.setAsker(opts.onApproval);
+
+  // 主链唯一入口（D5）：提交经 Loop 长任务模板（内嵌 Reactor），不再直连 harness.reactor
+  const loopDeps: LoopDeps = {
+    safety: harness.safety,
+    registry: harness.tools,
+    context: harness.context,
+    model: harness.model,
+    ...(harness.ledger ? { ledger: harness.ledger } : {}),
+    ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+  };
+
   return {
     harness,
-    runTask: (goal, o) => harness.reactor.run({ goal }, { maxSteps: o?.maxSteps ?? 12 }),
+    runTask: async (goal, o) => {
+      const tpl = longTaskTemplate(loopDeps, o?.maxSteps !== undefined ? { agentMaxSteps: o.maxSteps } : {});
+      const r = await tpl.engine.run(goal);
+      return {
+        done: r.status === 'done',
+        ...(r.reply !== undefined ? { reply: r.reply } : {}),
+        tokensUsed: r.tokensUsed,
+        ...(r.stopReason !== undefined ? { stopReason: r.stopReason } : {}),
+      };
+    },
   };
 }
