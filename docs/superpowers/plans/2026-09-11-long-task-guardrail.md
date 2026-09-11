@@ -913,14 +913,41 @@ test('longTaskTemplate：单 agent 节点，模型自报 done 即结束（不回
   });
 });
 
-test('longTaskTemplate：节点内超时 → failed，且同样只跑一次', async () => {
+// 需在文件顶部 import：import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
+
+/** 回传真实用量的适配器：累计量纲的 tokenCap 依赖 adapter usage，ScriptedAdapter 恒回 0 则永不可达 */
+class UsageAdapter implements ModelAdapter {
+  readonly provider = 'usage';
+  calls = 0;
+  constructor(private inner: ModelAdapter, private tokensPerCall: number) {}
+  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+    this.calls += 1;
+    hooks?.onUsage?.(this.tokensPerCall);
+    return this.inner.complete(prompt, hooks);
+  }
+}
+
+test('longTaskTemplate：时间兜底置 0 → 引擎边界先行收敛（模板覆盖必须生效）', async () => {
   await withTmp(async (tmp) => {
     const tpl = longTaskTemplate(makeDeps(tmp, new ScriptedAdapter(['{"done":true,"reply":"不该被调用"}'])), {
       termination: { timeoutMs: 0 },
     });
     const r = await tpl.engine.run('来不及了');
     assert.equal(r.status, 'failed');
-    assert.equal(r.iterations, 1);
+    assert.equal(r.stopReason, 'deadline');
+    assert.equal(r.iterations, 0, 'timeoutMs=0 → deadlineAt=startedAt：首节点前即收敛（Task 3 已冻结语义）');
+  });
+});
+
+test('longTaskTemplate：节点内收敛同样只跑一次（不回绕）', async () => {
+  await withTmp(async (tmp) => {
+    // 越限必须落在「节点内部」：引擎边界用 maxTokens 判定，故取 maxTokens=1 让引擎放行、由节点内 tokenCap 收口
+    const model = new UsageAdapter(new ScriptedAdapter(['{"tool":"glob","input":{"pattern":"*"},"done":false}']), 1);
+    const tpl = longTaskTemplate(makeDeps(tmp, model), { termination: { maxTokens: 1 } });
+    const r = await tpl.engine.run('预算极小');
+    assert.equal(r.status, 'failed');
+    assert.equal(r.stopReason, 'budget');
+    assert.equal(r.iterations, 1, '节点内收敛也必须一步即终态（execAgent 的 pass 降级会导致此处为 100）');
   });
 });
 ```
