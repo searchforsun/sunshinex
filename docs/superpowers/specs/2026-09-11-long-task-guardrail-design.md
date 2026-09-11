@@ -48,7 +48,7 @@ const r = await reactor.run({ goal }, { maxSteps: opts?.maxSteps, budget });
 ### 1.3 附带发现：装饰性 termination
 
 ```ts
-// src/tui/session.ts:186-189
+// src/tui/session.ts:187（termination 行）
 const ctx: GraphContext = {
   state: { goal }, tokensUsed: 0, startedAt: Date.now(), results: {},
   termination: { maxNodes: 10, maxTokens: 200_000, timeoutMs: 600_000 },
@@ -74,6 +74,7 @@ D5 的取舍说明：引擎是实现细节，把 `/goal`、`/graph` 做成用户
 
 - **H1**：`/plan` 的**规划段**（现为裸节点调用）并入同一条链——走单 agent 的 Loop 模板，保留 `planner` 角色框定；执行段（`runPlanItems`）本就走 `runTask`，随主链一并归位。
   备选：规划段改为 `GraphEngine` 单节点模板（形式统一，但为单节点引入图引擎）。
+  **缺省按推荐项执行**：评审如无异议即视为采纳，§5.2 与 §11 第 6 项依此展开。
 
 ## 4. 分层与目标链路
 
@@ -119,7 +120,7 @@ flowchart TB
 | --- | --- | --- |
 | CLI `pipeline` | GraphEngine（`run-pipeline.ts:48`） | ✓ |
 | CLI `run --template` | LoopEngine（`loop/templates.ts:28`） | ✓ |
-| Graph 内 `test-verify` | LoopEngine 子流程（`graph/templates.ts:35`） | ✓ |
+| Graph 内 `test-verify` | LoopEngine 子流程（`graph/templates.ts` 内 `makeLoopNode('test-verify')`） | ✓ |
 | **TUI `runTask`** | Reactor 直连 | 仅 `maxSteps`（值 12） |
 | **TUI `/plan` 规划段** | 裸节点 | **无引擎 → 一项都不生效** |
 | TUI `/plan` 执行段 | Reactor 直连（每项一次） | 同 `runTask` |
@@ -174,11 +175,13 @@ export function guardrailStop(input: {
 
 判定顺序**对齐 `loop/engine.ts` 既有顺序**：迭代 → 超时 → 预算。
 
+调用约定：Reactor 侧以 `budget.total` 作为 `maxTokens` 实参（`budget` 为 `{total, reserve}`，硬边界取 `total`）。判定只返回原因、不产生状态，由调用方映射到各自词汇——Reactor → `stopReason`；Loop → `paused` / `failed`；Graph 同构。
+
 ## 7. 判定与预算透传
 
 | 入口 | maxSteps | budget | deadlineAt |
 | --- | --- | --- | --- |
-| TUI → 长任务 Loop 模板 | 跟随 Reactor 缺省 `200`（可配），**删除字面量 12** | 模板 termination 换算 | `startedAt + 4h`（模板 termination，可配） |
+| TUI → 长任务 Loop 模板（命名 `long-task`） | 跟随 Reactor 缺省 `200`（可配），**删除字面量 12** | 模板 termination 换算 | `startedAt + 4h`：模板 termination **显式覆盖** Loop 缺省 2h（`loop/templates.ts:6`） |
 | Loop `agentNode` | 保持 `opts?.maxSteps` | `toReactorBudget(剩余 token)` **不变** | `ctx.startedAt + termination.timeoutMs`（**新增透传**） |
 | Graph agent 节点 | 同上 | 同上 | 同上 |
 
@@ -209,6 +212,8 @@ export function guardrailStop(input: {
 - 不改 Loop/Graph 的验收节点与拓扑。
 
 ## 11. 影响面与迁移顺序
+
+按两个可独立验收的阶段推进：**阶段 A = 护栏内建（下列 1–3）**，**阶段 B = 接线与可见性（下列 4–7）**。A 完成后底座可独立验证（Reactor 三种 `stopReason`），B 依赖 A。
 
 1. `src/harness/reactor.ts`：`ReactorLimits` / `ReactorOpts` / `stopReason` / 每步判定（含 `guardrailStop` 抽为纯函数）。
 2. `src/loop/engine.ts`、`src/graph/engine.ts`：节点边界检查改为调用同一纯函数（消除两份重复实现）。
