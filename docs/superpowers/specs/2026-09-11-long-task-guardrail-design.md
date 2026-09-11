@@ -137,7 +137,23 @@ flowchart TB
 | CLI `pipeline` | GraphEngine →（agent 节点）Reactor | Reactor 内建 + Graph 节点边界复用同一判定 |
 | CLI `run --template` | LoopEngine → Reactor | Reactor 内建 + Loop 节点边界复用同一判定 |
 | TUI 提交 / `/plan` 执行段 | LoopEngine（长任务模板）→ Reactor | 同上，`deadlineAt` 由模板 termination 注入 |
+| TUI `/pipeline <流程名>` | GraphEngine（注册流程模板）→ 节点内嵌 Reactor | Reactor 内建 + Graph 层边界复用同一判定 |
 | TUI `/plan` 规划段 | 同一条 Loop 链（H1） | 同上 |
+
+### 5.3 graph 专有模式（`/pipeline <流程名>`）
+
+- **触发面**：会话命令 `/pipeline <流程名>`，指向已注册的流程模板（如 `software-pipeline`）。**默认始终 Loop**，不按任务形态自动升级——形态判定是启发式，而「隐形切换引擎」正是本轮在修的那类不可见行为，且它与 D1（不引入校验环节）同源。
+- **命名口径**：按「流程」而非引擎命名。用户选的是「按多阶段流程跑」，不是「用 GraphEngine」，因此不构成 D5 所说的引擎开关。
+- **可见性（必须先补，否则又是一个装饰品）**：graph 的进展目前**没有任何对外通道**——`GraphHooks` 只有 `onNodeEnd?.(node, output)`（`graph/engine.ts:24-25`），且 CLI 未接；TUI 事件面（`types.ts:156`）也没有「节点 / 层」概念。专有模式必须同期定义映射：
+
+  | 图侧 | 会话侧 |
+  | --- | --- |
+  | 节点开始（需新增 `onNodeStart`） | `step`：`▸ <id>(<kind>)` |
+  | 节点结束 | `step`：`✔/✘ <id> <status> tokens=<n>` |
+  | 层边界三查终止 | `done`（携带 `stopReason`）+ 上屏原因 |
+
+- **gate → 审批**：graph 的 gate 节点产出 `pendingGates`、以 `paused` 收尾，再以 `resume(approvals)` 续跑（`run-pipeline.ts`）。TUI 侧映射到**既有**审批面（`approval-request` / `approval-resolved` + 挂起 asker），不新造审批通道。
+- **范围**：本条只做「按名字跑已注册流程 + 把节点边界与 gate 接进现有会话流」；节点内部仍走各自的 Reactor，护栏随 A 阶段一并对齐。
 
 ## 6. 接口
 
@@ -232,3 +248,5 @@ export function guardrailStop(input: {
 
 - **语义变更面**：`budget` 从「压缩阈值」升级为「硬边界」，可能让既有长会话更早收敛——需以现有测试与一次真实长会话验证。
 - **模板新增**：长任务 Loop 模板与既有 `code-refactor` / `test-loop` / `code-review` 的终止参数口径需保持一致（2h vs 4h），避免同一入口两套时长。
+- **D7 的行为差异**：graph 既有顺序（预算→超时→步数）被统一为超时优先，仅在「同时越限」时改变报告原因——影响面小，但需在 plan 中显式声明。
+- **专有模式是新增面**：`/pipeline` 引入「TUI 跑多阶段流程」这条此前不存在的路径（含 gate 审批与 `resume`）。建议在 plan 中单列一段、与 A/B 并列，避免与护栏主线耦合。
