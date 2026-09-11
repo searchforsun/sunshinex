@@ -1,4 +1,6 @@
 import { ContextItem, ExecResult, RouteDecision, SessionEvent } from '../types';
+import { guardrailStop } from './guardrail';
+import { StopReason } from '../types';
 import { Result } from '../result';
 import { ModelAdapter, ModelRouter, ModelTier, RouteHint, UsageHooks } from '../model/adapter';
 import { ToolRegistry } from './tools';
@@ -8,7 +10,30 @@ import { ContextManager } from './context';
 
 export interface Task { goal: string; }
 export interface StepRecord { step: number; action?: string; observation: string; tier?: ModelTier; }
-export interface RunResult { steps: StepRecord[]; done: boolean; reply?: string; tokensUsed?: number; /** 路由观测：本 run 实际生效的最后一次决策（模型偏好覆盖时以偏好为准） */ route?: RouteDecision; }
+export interface RunResult {
+  steps: StepRecord[];
+  done: boolean;
+  reply?: string;
+  tokensUsed?: number;
+  /** 路由观测：本 run 实际生效的最后一次决策（模型偏好覆盖时以偏好为准） */
+  route?: RouteDecision;
+  /** 终止原因（新增）：done=正常完成；model-error=模型失败；其余为护栏越限 */
+  stopReason?: StopReason;
+}
+
+/** 显式限额：maxSteps/tokenCap/deadlineAt 为硬边界，budget 仅用于上下文窗口压缩判定（两量纲） */
+export interface ReactorLimits {
+  maxSteps?: number;
+  budget?: { total: number; reserve: number };
+  /** 累计 token 硬上限（与编排层 maxTokens 同量纲） */
+  tokenCap?: number;
+  /** 绝对截止时刻（ms epoch） */
+  deadlineAt?: number;
+}
+
+export interface ReactorOpts extends ReactorLimits {
+  routeHint?: RouteHint;
+}
 
 export interface ReactorDeps {
   registry: ToolRegistry;
@@ -34,9 +59,11 @@ type ParseResult =
 export class Reactor {
   constructor(private deps: ReactorDeps) {}
 
-  async run(task: Task, opts?: { maxSteps?: number; budget?: { total: number; reserve: number }; routeHint?: RouteHint }): Promise<RunResult> {
+  async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
     const maxSteps = opts?.maxSteps ?? 200;
     const budget = opts?.budget ?? { total: 200_000, reserve: 40_000 };
+    const tokenCap = opts?.tokenCap;
+    const deadlineAt = opts?.deadlineAt;
     const steps: StepRecord[] = [];
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
     let lastRoute: RouteDecision | undefined; // 路由观测：实际生效的最后一次决策（随 run 结果返回）
@@ -48,7 +75,20 @@ export class Reactor {
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
     const startedAt = Date.now();
 
-    for (let step = 1; step <= maxSteps; step++) {
+    let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error 在各自分支覆盖
+    for (let step = 1; ; step++) {
+      const hit = guardrailStop({
+        now: Date.now(),
+        ...(deadlineAt !== undefined ? { deadlineAt } : {}),
+        tokensUsed,
+        ...(tokenCap !== undefined ? { tokenCap } : {}),
+        iteration: step - 1, // 已完成步数：与 maxSteps 的既有语义一致（step 从 1 起）
+        maxIterations: maxSteps,
+      });
+      if (hit) {
+        stopReason = hit;
+        break;
+      }
       // observe: 装配 → 估算 → 滞回门 → 收敛环（spec §2.2：压缩当轮即以收敛后上下文组装）
       let items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
       let est = this.deps.context.window.estimate(items);
@@ -100,6 +140,7 @@ export class Reactor {
       } catch (e) {
         reply = e instanceof Error ? e.message : '模型调用失败';
         this.emit('error', reply);
+        stopReason = 'model-error';
         break;
       }
 
@@ -117,6 +158,7 @@ export class Reactor {
       if (action.done) {
         done = true;
         reply = action.reply ?? '完成';
+        stopReason = 'done';
         break;
       }
 
@@ -166,8 +208,8 @@ export class Reactor {
       }
     }
     // 收尾事件：done 必发（正常/异常路径共用出口）；error 已在失败点提前发出
-    this.emit('done', reply, { steps: steps.length, tokensUsed });
-    return { steps, done, reply, tokensUsed, route: lastRoute };
+    this.emit('done', reply, { steps: steps.length, tokensUsed, stopReason });
+    return { steps, done, reply, tokensUsed, route: lastRoute, stopReason };
   }
 
   /** 事件发射器：仅旁路通知；onEvent 缺省为零开销空转 */
