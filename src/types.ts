@@ -241,3 +241,9 @@ export interface ContextItem {
 
 /** 工具执行器签名（经安全链执行） */
 export type ToolExecutor = (input: ToolInput) => Promise<ExecResult>;
+
+/** 终止原因：done=正常完成；model-error=模型调用失败；其余为护栏触发（D7 顺序：超时 → 预算 → 迭代/步数） */
+export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-error';
+
+/** 护栏可返回的越限原因（不含「正常完成」与「模型失败」——那两类由调用方判定） */
+export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget'>;
