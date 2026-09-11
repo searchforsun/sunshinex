@@ -833,7 +833,7 @@ Expected: FAIL —— 模型被调用了（`calls` 为 1），节点状态为 `d
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/loop/nodes.guardrail.test.js dist/graph/agents.guardrail.test.js`
-Expected: `# pass 3`、`# fail 0`
+Expected: `# pass 4`、`# fail 0`
 
 - [ ] **Step 6: 跑全量回归**
 
@@ -988,7 +988,7 @@ export function longTaskTemplate(deps: LoopDeps, opts?: LongTaskOpts): LoopTempl
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `npm run build && node --test dist/loop/templates.long-task.test.js`
-Expected: `# pass 3`、`# fail 0`
+Expected: `# pass 4`、`# fail 0`
 
 - [ ] **Step 5: 提交**
 
