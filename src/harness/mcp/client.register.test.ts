@@ -14,7 +14,7 @@ import { McpHost } from './client';
 function makeFixture(serverNames: string[]): { registry: ToolRegistry; safety: SafetyChain; host: McpHost } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-'));
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk', [], serverNames),
+    new SecurityGuard(new PolicyEngine(), 'dontAsk', serverNames),
     new ProcessSandbox(),
     new DryRun(),
     root,

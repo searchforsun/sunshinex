@@ -83,10 +83,10 @@ class StubProvider implements WebSearchProvider {
   }
 }
 
-function registryFor(allowlist: string[], provider?: WebSearchProvider): { registry: ToolRegistry; safety: SafetyChain } {
+function registryFor(provider?: WebSearchProvider): { registry: ToolRegistry; safety: SafetyChain } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-websearch-'));
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk', allowlist),
+    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
     new ProcessSandbox(),
     new DryRun(),
     root,
@@ -97,12 +97,12 @@ function registryFor(allowlist: string[], provider?: WebSearchProvider): { regis
 }
 
 test('websearch：行式输出、count 钳制与空结果降级（stub 不发网络）', async () => {
-  await withEnv({ WEBSEARCH_ENDPOINT: 'http://127.0.0.1:9/', WEBSEARCH_PROVIDER: undefined }, async () => {
+  {
     const stub = new StubProvider([
       { title: 'A', url: 'https://a.dev', snippet: 's1' },
       { title: 'B', url: 'https://b.dev', snippet: 's2' },
     ]);
-    const { registry, safety } = registryFor(['127.0.0.1'], stub);
+    const { registry, safety } = registryFor(stub);
 
     const r = await registry.execute('websearch', { query: '部署', count: 99 }, safety);
     assert.ok(r.ok);
@@ -112,24 +112,23 @@ test('websearch：行式输出、count 钳制与空结果降级（stub 不发网
     const r2 = await registry.execute('websearch', { query: 'x', count: 'abc' }, safety);
     assert.ok(r2.ok);
     assert.equal(stub.calls[1]?.count, 5);
-  });
+  }
 });
 
-test('websearch：空白名单全禁（缺省安全，不发起请求）', async () => {
-  await withEnv({ WEBSEARCH_ENDPOINT: undefined, WEBSEARCH_PROVIDER: undefined }, async () => {
-    const { registry, safety } = registryFor([], new StubProvider([]));
+test('websearch：端点非 http/https 在 guard 拒绝（协议底线保留）', async () => {
+  await withEnv({ WEBSEARCH_ENDPOINT: 'ftp://127.0.0.1/q' }, async () => {
+    const { registry, safety } = registryFor(new StubProvider([]));
     const r = await registry.execute('websearch', { query: 'x' }, safety);
     assert.ok(!r.ok);
-    if (!r.ok) assert.equal(r.error.code, 'COMMAND_DENIED');
+    if (!r.ok) assert.match(r.error.message, /http\/https/);
   });
 });
 
-test('websearch：端点覆盖 + Harness 白名单注入，全链路走本地 mock', async () => {
+test('websearch：Harness 零配置 + 端点覆盖，全链路走本地 mock', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-ws-'));
-  fs.writeFileSync(path.join(root, 'SUNSHINE.md'), '# 网络白名单\n\n127.0.0.1\n');
   const srv = await startEngine(FIXTURE);
   try {
-    await withEnv({ WEBSEARCH_ENDPOINT: srv.url, WEBSEARCH_PROVIDER: undefined }, async () => {
+    await withEnv({ WEBSEARCH_ENDPOINT: srv.url }, async () => {
       const { Harness } = await import('../index');
       const h = new Harness({ root, mode: 'dontAsk' });
       const r = await h.tools.execute('websearch', { query: 'sunshine' }, h.safety);

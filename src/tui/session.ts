@@ -1,9 +1,12 @@
 import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { ReplyStreamExtractor } from './stream-extractor';
+import { stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
-import { initSunshine } from '../harness/sunshine-init';
+import { sunshineInitGoal } from '../harness/sunshine-init';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -41,6 +44,8 @@ export interface LiveBlock {
   kind: 'reply' | 'thinking';
   text: string;
   startedAt: number;
+  /** 流式正文已入档水位：预览只渲染 slice(committedLen) 的未入档尾段，避免与滚动缓冲重复 */
+  committedLen?: number;
 }
 
 export interface TuiState {
@@ -59,7 +64,7 @@ export interface SessionOpts extends TuiRuntimeOpts {
   runtime?: TuiRuntime;
 }
 
-const SLASH_HELP = '命令：/init 生成并装载 SUNSHINE.md · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /help 本清单';
+const SLASH_HELP = '命令：/init 分析生成/完善 SUNSHINE.md · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /help 本清单';
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
@@ -67,6 +72,8 @@ export class SessionController {
   /** 项目根：/init 生成 SUNSHINE.md 的基准目录（与 runtime 装配同源） */
   private readonly root: string;
   private readonly extractor = new ReplyStreamExtractor((t) => this.appendLive('reply', t));
+  /** 流式正文已入档水位（done 终稿前缀长度）：安全点切块入档用，reset 回合随 extractor 一并归零 */
+  private committedLen = 0;
   private state: TuiState = {
     messages: [],
     todos: [],
@@ -130,6 +137,7 @@ export class SessionController {
     }
     this.pushMsg('user', text);
     this.extractor.reset();
+        this.committedLen = 0;
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval') {
       this.pushMsg('system', `已排队：${text}`);
       return new Promise<void>((resolve) => this.queue.push({ goal: text, resolve }));
@@ -197,7 +205,6 @@ export class SessionController {
     const items = planText
       .split('\n')
       .map((l) => l.trim())
-      .filter((l) => /^\d+[.、]\s*/.test(l))
       .map((l) => l.replace(/^\d+[.、]\s*/, '').trim())
       .filter((l) => l.length > 0);
     if (items.length === 0) {
@@ -290,17 +297,23 @@ export class SessionController {
       return;
     }
     if (cmd === '/init') {
-      // 确定性文件操作，零模型调用：生成骨架或确认已有；装载走 ContextLoader 每轮 assemble 从磁盘读取，写盘即对后续轮次生效
-      try {
-        const r = initSunshine(this.root);
-        this.pushMsg(
-          'system',
-          r.created
-            ? `已生成 ${r.path}：基于项目感知写入 SUNSHINE.md 骨架，后续每轮上下文自动装载`
-            : `已存在 ${r.path}，跳过生成；该文件随每轮上下文装配自动装载`,
-        );
-      } catch (e) {
-        this.pushMsg('system', '/init 失败：' + (e instanceof Error ? e.message : String(e)));
+      // Claude Code /init 同款模型驱动：发起真实分析任务，模型自行 read/ls/grep 感知代码库并 write 生成/完善 SUNSHINE.md；
+      // 写盘经安全链（manual 模式经 asker 审批），装载走 ContextLoader 每轮 assemble 从磁盘读取，写盘即对后续轮次生效
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', '当前有任务进行中，暂不能执行 /init');
+        return;
+      }
+      const p = path.join(this.root, 'SUNSHINE.md');
+      const existed = fs.existsSync(p);
+      const goal = sunshineInitGoal(this.root, existed);
+      this.pushMsg('user', goal); // 对标 Claude Code：/init 展开后的完整提示词作为本轮用户消息上屏
+      await this.runTaskFlow(goal);
+      // 回执只按落盘事实（模型经安全链 write；任务中断时不虚报成功）
+      const written = fs.existsSync(p);
+      if (written) {
+        this.pushMsg('system', existed ? '已写入 SUNSHINE.md（完善）：随每轮上下文自动装载' : '已写入 SUNSHINE.md（新建）：随每轮上下文自动装载');
+      } else {
+        this.pushMsg('system', 'SUNSHINE.md 未生成：任务未完成，可重新执行 /init');
       }
       return;
     }
@@ -312,6 +325,7 @@ export class SessionController {
     if (cmd === '/new') {
       this.runtime.harness.security.clearSessionAllows();
       this.extractor.reset();
+        this.committedLen = 0;
       this.state = {
         messages: [],
         todos: [],
@@ -356,6 +370,7 @@ export class SessionController {
     switch (e.type) {
       case 'token':
         this.extractor.feed(e.text ?? '');
+        if (this.state.live?.kind === 'reply') this.flushReply();
         return;
       case 'reasoning':
         this.appendLive('thinking', e.text ?? '');
@@ -372,6 +387,7 @@ export class SessionController {
       case 'tool-call':
         this.closeLive();
         this.extractor.reset();
+        this.committedLen = 0;
         this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call' });
         return;
       case 'tool-result':
@@ -389,13 +405,20 @@ export class SessionController {
         this.closeLive();
         this.extractor.reset();
         const finalText = e.text && e.text.length > 0 ? e.text : draft;
-        if (finalText) this.pushMsg('assistant', finalText);
+        // 流式切块已入档的部分按前缀去重；终稿兜底补齐尾段（含非流式整段场景），水位归零
+        let tail = finalText;
+        if (this.committedLen > 0 && finalText.startsWith(draft.slice(0, this.committedLen))) {
+          tail = finalText.slice(this.committedLen);
+        }
+        if (tail.length > 0) this.pushMsg('assistant', tail);
+        this.committedLen = 0;
         this.refreshMetrics();
         return;
       }
       case 'error':
         this.closeLive();
         this.extractor.reset();
+        this.committedLen = 0;
         this.pushMsg('system', `错误：${e.text ?? '（无说明）'}`);
         this.refreshMetrics();
         return;
@@ -426,6 +449,30 @@ export class SessionController {
       return;
     }
     this.notifyThrottled();
+  }
+
+  /**
+   * 流式正文安全点增量入档：以「空行段落边界优先、围栏代码块不切、超长段兜底」切块推进水位，
+   * 每块一次 pushMsg（对标 Claude Code 打字机式滚动出稿——正文随生成滚入滚动缓冲，不再等 done 整段落屏）。
+   */
+  private flushReply(): void {
+    const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
+    if (!draft) return;
+    const seg = stableReplySegment(draft, this.committedLen);
+    if (seg === null) return;
+    const committed = this.committedLen + seg.length;
+    if (seg.trim().length > 0) {
+      // 原样入档（含边界换行）：分块拼接 === 终稿，不留重复也不丢段落空行；纯空白段只推进水位
+      this.state = {
+        ...this.state,
+        messages: [...this.state.messages, { role: 'assistant', text: seg, ts: Date.now(), seq: ++this.msgSeq }],
+      };
+      this.notify();
+    }
+    this.committedLen = committed;
+    if (this.state.live?.kind === 'reply') {
+      this.state = { ...this.state, live: { ...this.state.live, committedLen: committed } };
+    }
   }
 
   /** 收束实时区：thinking 折叠为一行摘要；reply 不落消息（终稿由 done 接管） */

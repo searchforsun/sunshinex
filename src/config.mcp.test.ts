@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSunshinex, parseMcpServers, parseNetworkAllowlist } from './config';
+import { parseSunshinex, parseMcpServers } from './config';
 
 test('parseMcpServers：行式 name | command | args...，args 按空格切分，无 args 段省略字段', () => {
   const doc = parseSunshinex([
@@ -35,16 +35,3 @@ test('parseMcpServers：name 或 command 缺失的行跳过不抛（安全缺省
   assert.deepEqual(parseMcpServers(doc), [{ name: 'ok', command: 'echo', args: ['hi'] }]);
 });
 
-test('parseNetworkAllowlist：每行一个域名（trim）', () => {
-  const doc = parseSunshinex([
-    '## 网络白名单',
-    'api.example.com',
-    '  cdn.example.org  ',
-    'registry.npmjs.org',
-  ].join('\n'));
-  assert.deepEqual(parseNetworkAllowlist(doc), ['api.example.com', 'cdn.example.org', 'registry.npmjs.org']);
-});
-
-test('parseNetworkAllowlist：分区缺失返回 []（空 = 全禁安全缺省，禁用逻辑 Task 2 落地）', () => {
-  assert.deepEqual(parseNetworkAllowlist(parseSunshinex('## 其他\nx')), []);
-});

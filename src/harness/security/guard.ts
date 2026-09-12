@@ -12,8 +12,6 @@ export class SecurityGuard {
   constructor(
     private policy: PolicyEngine = new PolicyEngine(),
     private mode: PermissionMode = 'manual',
-    /** webfetch 域名白名单（源自 SUNSHINE.md「网络白名单」分区）；空 = 全禁（缺省安全） */
-    private webAllowlist: string[] = [],
     /** 已登记 MCP 服务器名（源自 SUNSHINE.md「MCP 服务器」分区）；空 = mcp__ 工具全禁 */
     private mcpServers: string[] = [],
   ) {}
@@ -149,7 +147,7 @@ export class SecurityGuard {
     return DESTRUCTIVE_PIPE.test(cmd);
   }
 
-  /** webfetch 三重闸门：URL 合法 → 仅 http/https → 域名白名单（空 = 全禁）；返回拒绝决策，放行返回 null */
+  /** webfetch 卫生底线：URL 合法 → 仅 http/https（不做域名限制）；返回拒绝决策，放行返回 null */
   private checkWebFetch(input: unknown): GuardDecision | null {
     let raw = '';
     if (typeof input === 'object' && input !== null) raw = String((input as { url?: unknown }).url ?? '');
@@ -162,13 +160,10 @@ export class SecurityGuard {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return { allowed: false, reason: `COMMAND_DENIED: WebFetch 仅允许 http/https：${parsed.protocol}` };
     }
-    if (!this.webAllowlist.includes(parsed.hostname)) {
-      return { allowed: false, reason: `COMMAND_DENIED: WebFetch 域名不在白名单：${parsed.hostname}` };
-    }
     return null;
   }
 
-  /** websearch 闸门：判界对象是引擎端点（与 Provider 同源解析，见 websearch-endpoint）——端点非法、非 http/https 或引擎主机不在白名单即拒；空名单 = 全禁（缺省安全） */
+  /** websearch 卫生底线：判界对象是引擎端点（与 Provider 同源解析，见 websearch-endpoint）——端点非法或非 http/https 即拒 */
   private checkWebSearch(): GuardDecision | null {
     let parsed: URL;
     try {
@@ -178,9 +173,6 @@ export class SecurityGuard {
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return { allowed: false, reason: `COMMAND_DENIED: WebSearch 仅允许 http/https 端点：${parsed.protocol}` };
-    }
-    if (!this.webAllowlist.includes(parsed.hostname)) {
-      return { allowed: false, reason: `COMMAND_DENIED: WebSearch 引擎主机不在白名单：${parsed.hostname}` };
     }
     return null;
   }

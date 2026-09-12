@@ -76,9 +76,10 @@ test('App：Static 语义——横幅与已入档历史只打印一次，动态�
     // 横幅只随挂载打印一次（旧行为：每帧全量重绘时横幅在 stdout 上出现多次）
     const bannerCount = all.split('SunshineX TUI v1.0.0').length - 1;
     assert.ok(bannerCount === 1, `横幅应恰好打印一次，实际 ${bannerCount} 次`);
+    assert.ok(all.includes('任务甲') && all.includes('任务乙'), '两轮消息均以 Static 终稿入滚动缓冲');
+    assert.equal(all.split('任务甲').length - 1, 1, '每条消息只打印一次');
     const frame = lastFrame() ?? '';
-    assert.match(frame, /任务乙/, '动态帧应包含当前轮消息');
-    assert.ok(!frame.includes('任务甲'), '已入档的上一轮消息不应回占动态帧');
+    assert.ok(!frame.includes('任务甲') && !frame.includes('任务乙'), '动态帧零消息渲染（全部入 Static）');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

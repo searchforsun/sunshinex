@@ -1,49 +1,21 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { PerceptionEngine } from './perception';
+/**
+ * /init 目标构造器（纯函数）：构造 Claude Code /init 同款的模型驱动分析任务——
+ * 模型在主链（Reactor → 工具面）里自行 read/grep 感知代码库并 write 生成/完善 SUNSHINE.md，
+ * 写盘经安全链（manual 模式经 asker 审批）。本模块只产出 goal 文本，不做任何 IO。
+ */
 
-export interface SunshineInitResult {
-  /** true=新生成骨架；false=文件已存在，跳过不覆盖 */
-  created: boolean;
-  /** SUNSHINE.md 绝对路径 */
-  path: string;
-}
-
-/** /init 骨架模板（纯函数，独立单测）：分区名与 loadSunshinex 提取口径对齐——「项目名称」供 name、「架构原则」条目供 architecture、「编码规范」下 `- ` 条目供 rules；占位说明行不用 `- ` 开头，避免骨架提示被当作正式规则注入上下文 */
-export function sunshineTemplate(name: string, fileCount: number, deps: string[]): string {
-  const depLine =
-    deps.length === 0
-      ? '依赖未检出（无 package.json 或空依赖）'
-      : `依赖 ${deps.length} 项：${deps.slice(0, 6).join('、')}${deps.length > 6 ? ' 等' : ''}`;
+/** /init 任务目标：产出贴合本项目的 SUNSHINE.md（新建或完善既有文件，完成后如实汇报落点） */
+export function sunshineInitGoal(root: string, exists: boolean): string {
+  const action = exists
+    ? `项目根已存在 ${root} 下的 SUNSHINE.md：先 read 读取现状，保留用户已写内容，分析代码库后将缺失/过时的分区补充完善（已有分区可修订表述，不得整体覆盖推翻）。`
+    : `项目根 ${root} 下还没有 SUNSHINE.md：分析代码库后从零生成它。`;
   return [
-    '# 项目名称',
-    name,
-    '',
-    '# 架构原则',
-    `- 感知扫描（SunshineX /init 生成）：${fileCount} 个源码文件，${depLine}（本节请按项目实际修订）`,
-    '',
-    '# 编码规范',
-    '（每行一条以 `- ` 开头的规则将注入 Agent 上下文，请按团队约定补充）',
-    '',
+    '请分析当前项目并生成/完善项目根的 SUNSHINE.md（项目配置文件，框架以 # 分区解析，每轮注入 Agent 上下文）。',
+    action,
+    '步骤要求：',
+    '1. 先感知现状：读 package.json（或等价清单）、README、目录结构（可用 ls/grep/read），弄清项目用途、技术栈与分层。',
+    '2. 用 write 写出/完善 SUNSHINE.md，分区至少包含：「项目名称」（单行名）、「项目概述」（2-3 句话）、「架构原则」（每行一条，以 - 开头，写真实分层/模块约定）、「编码规范」（每行一条，以 - 开头，写可执行的关键约束）；内容必须来自对代码库的实际观察，禁止编造不存在的模块或命令。',
+    '3. MCP 服务器登记制安全分区不要自行添加；已有则原样保留。',
+    '4. 完成后用一句话 reply 汇报：新建还是完善、写入了哪些分区。',
   ].join('\n');
-}
-
-function readPackageName(root: string): string | null {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { name?: unknown };
-    return typeof pkg.name === 'string' && pkg.name.trim() !== '' ? pkg.name.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-/** /init 核心：基于项目感知生成 SUNSHINE.md 骨架。走确定性模板而非模型生成——命令零模型调用、结果稳定可测；
- *  「加载到上下文」无需额外装载步骤：ContextLoader 每轮 assemble 时从磁盘读取，写盘即对后续轮次生效 */
-export function initSunshine(root: string): SunshineInitResult {
-  const p = path.join(root, 'SUNSHINE.md');
-  if (fs.existsSync(p)) return { created: false, path: p };
-  const perceived = new PerceptionEngine(root).scan();
-  const name = readPackageName(root) ?? path.basename(path.resolve(root));
-  fs.writeFileSync(p, sunshineTemplate(name, perceived.files.length, perceived.dependencies), 'utf8');
-  return { created: true, path: p };
 }

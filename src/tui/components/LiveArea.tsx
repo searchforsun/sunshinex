@@ -1,39 +1,36 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { LiveBlock } from '../session';
+import { bandLines } from '../text-band';
 
-/** 思考实时滚动固定行数：块高恒定，增量到达时不再上下跳动 */
-const THINK_TAIL_LINES = 6;
-/** 答复流式预览固定行数：动态区帧高必须有界（超出终端高度即在滚动缓冲烙下重影），完整答复收束后一次性入档 */
+/** 答复流式预览固定行数：动态区帧高必须有界；已入档前缀由 committedLen 排除，预览只呈现生成中的未入档尾段 */
 const REPLY_PREVIEW_LINES = 8;
 
 /**
- * 动态实时区：答复草稿以纯文本末 N 行预览（Markdown 排版在收束入档时定稿）；
- * 思考滚动固定 6 行（不足补空行，块高恒定不跳动）。
+ * 动态实时区：流式正文按安全点切块增量入档（session.flushReply，段落边界优先、围栏不切、超长段兜底），
+ * 此处仅预览未入档尾段（末 N 行），Markdown 排版在各块入档时定稿；
+ * 思考固定单行末条增量——过程默认折叠，全文经翻阅可见。
  */
-export function LiveArea({ live }: { live: LiveBlock }): JSX.Element {
+export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element {
   if (live.kind === 'reply') {
-    const lines = live.text.split('\n');
+    const pending = live.text.slice(live.committedLen ?? 0);
+    const lines = pending.split('\n');
     const overflow = Math.max(0, lines.length - REPLY_PREVIEW_LINES);
     const tail = lines.slice(-REPLY_PREVIEW_LINES);
     return (
       <Box flexDirection="column">
-        {overflow > 0 ? <Text dimColor>… 流式预览末 {REPLY_PREVIEW_LINES} 行（收束后完整入档）</Text> : null}
+        {overflow > 0 ? <Text dimColor>… 上文已入档（滚动缓冲可回看）</Text> : null}
         {tail.map((l, i) => (
           <Text key={i}>{l}</Text>
         ))}
       </Box>
     );
   }
-  const tail = live.text.split('\n').slice(-THINK_TAIL_LINES);
-  while (tail.length < THINK_TAIL_LINES) tail.unshift('');
+  const lastLine = live.text.split('\n').pop() ?? '';
+  const line = bandLines(lastLine, Math.max(16, columns - 8))[0] ?? '';
   return (
-    <Box flexDirection="column">
-      {tail.map((l, i) => (
-        <Text key={i} dimColor italic>
-          {l.length > 0 ? `✻ ${l}` : ' '}
-        </Text>
-      ))}
-    </Box>
+    <Text dimColor italic>
+      {line.length > 0 ? `✻ ${line}` : '✻ …'}
+    </Text>
   );
 }

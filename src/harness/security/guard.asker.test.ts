@@ -5,7 +5,7 @@ import { PolicyEngine } from './policy';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
 
 function manualGuard(policy?: PolicyEngine): SecurityGuard {
-  return new SecurityGuard(policy ?? new PolicyEngine(), 'manual', [], []);
+  return new SecurityGuard(policy ?? new PolicyEngine(), 'manual');
 }
 
 test('asker：manual 非白名单操作走交互裁决（allow/deny/always 三态 + 会话级登记）', async () => {

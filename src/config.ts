@@ -89,7 +89,3 @@ export function parseMcpServers(doc: SunshinexDoc): McpServerConfig[] {
   return servers;
 }
 
-/** 解析「网络白名单」分区为域名数组（每行一个，trim）；空数组语义 = 全禁（安全缺省，禁用闸门 Task 2 落地） */
-export function parseNetworkAllowlist(doc: SunshinexDoc): string[] {
-  return sectionLines(doc, '网络白名单').map((l) => l.trim());
-}

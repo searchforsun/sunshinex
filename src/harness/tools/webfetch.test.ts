@@ -27,10 +27,10 @@ function startServer(body: string): Promise<{ url: string; close: () => void }> 
   });
 }
 
-function registryWithAllowlist(allowlist: string[]): { registry: ToolRegistry; safety: SafetyChain; root: string } {
+function registryFor(): { registry: ToolRegistry; safety: SafetyChain; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-webfetch-'));
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk', allowlist),
+    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
     new ProcessSandbox(),
     new DryRun(),
     root,
@@ -40,10 +40,10 @@ function registryWithAllowlist(allowlist: string[]): { registry: ToolRegistry; s
   return { registry, safety, root };
 }
 
-test('webfetch：白名单内域名抓取成功', async () => {
+test('webfetch：http 端点抓取成功', async () => {
   const srv = await startServer('hello sunshine');
   try {
-    const { registry, safety } = registryWithAllowlist(['127.0.0.1']);
+    const { registry, safety } = registryFor();
     const r = await registry.execute('webfetch', { url: srv.url }, safety);
     assert.ok(r.ok);
     assert.equal(r.value.stdout, 'hello sunshine');
@@ -55,7 +55,7 @@ test('webfetch：白名单内域名抓取成功', async () => {
 test('webfetch：正文超 10 万字符截断', async () => {
   const srv = await startServer('x'.repeat(150_000));
   try {
-    const { registry, safety } = registryWithAllowlist(['127.0.0.1']);
+    const { registry, safety } = registryFor();
     const r = await registry.execute('webfetch', { url: srv.url }, safety);
     assert.ok(r.ok);
     assert.equal(r.value.stdout.length, 100_000);
@@ -64,47 +64,28 @@ test('webfetch：正文超 10 万字符截断', async () => {
   }
 });
 
-test('webfetch：白名单外域名在 guard 拒绝，不发起网络请求', async () => {
-  const { registry, safety } = registryWithAllowlist(['127.0.0.1']);
-  const r = await registry.execute('webfetch', { url: 'http://example.com/x' }, safety);
+test('webfetch：非法 scheme 在 guard 拒绝', async () => {
+  const { registry, safety } = registryFor();
+  const r = await registry.execute('webfetch', { url: 'ftp://example.com/x' }, safety);
   assert.ok(!r.ok);
   if (!r.ok) assert.equal(r.error.code, 'COMMAND_DENIED');
 });
 
-test('webfetch：空白名单全禁（缺省安全）', async () => {
-  const srv = await startServer('no');
-  try {
-    const { registry, safety } = registryWithAllowlist([]);
-    const r = await registry.execute('webfetch', { url: srv.url }, safety);
-    assert.ok(!r.ok);
-    if (!r.ok) assert.equal(r.error.code, 'COMMAND_DENIED');
-  } finally {
-    srv.close();
-  }
+test('webfetch：URL 非法拒绝', async () => {
+  const { registry, safety } = registryFor();
+  const r = await registry.execute('webfetch', { url: 'not-a-url' }, safety);
+  assert.ok(!r.ok);
+  if (!r.ok) assert.equal(r.error.code, 'COMMAND_DENIED');
 });
 
-test('Harness 装配：SUNSHINE.md 网络白名单注入 guard', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-wl-'));
-  fs.writeFileSync(path.join(root, 'SUNSHINE.md'), '# 网络白名单\n\n127.0.0.1\n');
+test('Harness 装配：无 SUNSHINE.md 时 webfetch 开箱可用', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-nowl-'));
   const srv = await startServer('ok-data');
   try {
     const h = new Harness({ root, mode: 'dontAsk' });
     const r = await h.tools.execute('webfetch', { url: srv.url }, h.safety);
     assert.ok(r.ok);
     assert.equal(r.value.stdout, 'ok-data');
-  } finally {
-    srv.close();
-  }
-});
-
-test('Harness 装配：无 SUNSHINE.md 时 webfetch 全禁', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-nowl-'));
-  const srv = await startServer('no');
-  try {
-    const h = new Harness({ root, mode: 'dontAsk' });
-    const r = await h.tools.execute('webfetch', { url: srv.url }, h.safety);
-    assert.ok(!r.ok);
-    if (!r.ok) assert.equal(r.error.code, 'COMMAND_DENIED');
   } finally {
     srv.close();
   }

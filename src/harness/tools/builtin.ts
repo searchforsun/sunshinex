@@ -79,7 +79,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'webfetch',
-      description: '抓取白名单内域名的网页正文（域名闸门在安全链 guard；正文截断 10 万字符）',
+      description: '抓取网页正文：入参 { url }，仅允许 http/https（协议底线在安全链 guard）；正文截断 10 万字符',
       category: 'network',
       executor: async (input: ToolInput) => {
         const res = await fetch(String(input.url ?? ''));
@@ -90,7 +90,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'websearch',
-      description: '搜索网页：入参 { query, count? }（count 缺省 5，上限 10），stdout 为 标题/URL/摘要 行式列表；引擎端点域名同受安全链白名单闸门约束',
+      description: '搜索网页：入参 { query, count? }（count 缺省 5，上限 10），stdout 为 标题/URL/摘要 行式列表；引擎端点仅允许 http/https',
       category: 'network',
       executor: async (input: ToolInput) => {
         const provider = webSearch ?? resolveWebSearchProvider();

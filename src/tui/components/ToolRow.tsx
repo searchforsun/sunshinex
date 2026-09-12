@@ -1,13 +1,15 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { ChatItem } from '../session';
+import { bandLines } from '../text-band';
 
 /**
  * 工具行：调用行 ⏺ [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
- * 展开（实时/历史/翻阅选中）态直接展示完整 observation，摘要不重复上屏；
- * 仅翻阅视口折叠块显示摘要与 [Tab 展开] 提示。
+ * 默认折叠为单行摘要（首行 + 剩余行数 + Tab 翻阅提示）——执行细节不刷屏，全文经历史翻阅展开；
+ * 仅翻阅视口选中轮渲染完整 observation（marker 行不重复 200 字摘要前缀）。
+ * detail 缺失时 text 即全部内容（≤200 字摘要），无折叠必要、直接展示。
  */
-export function ToolRow({ item, collapsed }: { item: ChatItem; collapsed: boolean }): JSX.Element {
+export function ToolRow({ item, columns, collapsed }: { item: ChatItem; columns: number; collapsed: boolean }): JSX.Element {
   if (item.kind === 'call') {
     const sp = item.text.indexOf(' ');
     const verb = sp > 0 ? item.text.slice(0, sp) : item.text;
@@ -22,23 +24,35 @@ export function ToolRow({ item, collapsed }: { item: ChatItem; collapsed: boolea
       </Text>
     );
   }
-  const hasDetail = item.detail !== undefined;
-  const expanded = !collapsed && hasDetail;
+  const body = item.detail ?? item.text;
+  const lines = body.split('\n');
+  if (collapsed && item.detail) {
+    // 行宽预算：前缀「  ⎿ ✓ 」6 列 + 尾缀提示「…（+N 行 · Tab 翻阅）」约 22–24 列，
+    // 总长须 ≤ 终端列宽，否则 ink 折行把提示串截成两段
+    const budget = Math.max(16, columns - 32);
+    const first = bandLines(lines[0], budget)[0];
+    const clipped = first !== lines[0];
+    const more = lines.length - 1 + (clipped ? 1 : 0);
+    return (
+      <Text color={item.ok ? 'green' : 'red'}>
+        {'  ⎿ '}
+        {item.ok ? '✓' : '✗'}
+        {` ${first}${clipped ? '…' : ''}`}
+        {more > 0 ? <Text dimColor>（+{more} 行 · Tab 翻阅）</Text> : null}
+      </Text>
+    );
+  }
   return (
     <Box flexDirection="column">
       <Text color={item.ok ? 'green' : 'red'}>
         {'  ⎿ '}
         {item.ok ? '✓' : '✗'}
-        {expanded ? '' : ` ${item.text}`}
-        {collapsed && hasDetail ? <Text dimColor> [Tab 展开]</Text> : null}
       </Text>
-      {expanded && item.detail
-        ? item.detail.split('\n').map((l, i) => (
-            <Text key={i} dimColor>
-              {'    ' + l}
-            </Text>
-          ))
-        : null}
+      {lines.map((l, i) => (
+        <Text key={i} dimColor>
+          {'    ' + l}
+        </Text>
+      ))}
     </Box>
   );
 }

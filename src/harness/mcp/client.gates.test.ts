@@ -21,7 +21,7 @@ interface FixtureOpts {
 function makeFixture(opts: FixtureOpts): { registry: ToolRegistry; safety: SafetyChain; host: McpHost } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-gates-'));
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk', [], opts.guardServers),
+    new SecurityGuard(new PolicyEngine(), 'dontAsk', opts.guardServers),
     new ProcessSandbox(),
     new DryRun(),
     root,
