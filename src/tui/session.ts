@@ -305,9 +305,9 @@ export class SessionController {
       }
       const p = path.join(this.root, 'SUNSHINE.md');
       const existed = fs.existsSync(p);
-      const goal = sunshineInitGoal(this.root, existed);
-      this.pushMsg('user', goal); // 对标 Claude Code：/init 展开后的完整提示词作为本轮用户消息上屏
-      await this.runTaskFlow(goal);
+      // 提示词属内部实现不上屏，仅一行启动提示；分析过程经工具实时流可见
+      this.pushMsg('system', existed ? '/init：分析项目，完善 SUNSHINE.md…' : '/init：分析项目，生成 SUNSHINE.md…');
+      await this.runTaskFlow(sunshineInitGoal(this.root, existed));
       // 回执只按落盘事实（模型经安全链 write；任务中断时不虚报成功）
       const written = fs.existsSync(p);
       if (written) {
@@ -397,9 +397,12 @@ export class SessionController {
           detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
         });
         return;
-      // 说明：reactor 的 step 事件仅携带动作名，与 ⏺ 工具行信息重复，故不上屏（spec §4.3 括号注明 step 行由 plan 流程产出）
-      case 'step':
+      case 'step': {
+        // phase 阶段行：模型主动播报的当前进度（1-2 行），先于对应动作/答复上屏；无 phase 的 step 与工具行信息重复，不上屏
+        const phase = typeof e.payload?.phase === 'string' ? e.payload.phase.trim().slice(0, 200) : '';
+        if (phase) this.pushMsg('step', phase);
         return;
+      }
       case 'done': {
         const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
         this.closeLive();

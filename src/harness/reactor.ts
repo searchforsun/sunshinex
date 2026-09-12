@@ -49,7 +49,7 @@ export interface ReactorDeps {
   onEvent?: (e: SessionEvent) => void;
 }
 
-interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; tier?: unknown; }
+interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; tier?: unknown; phase?: string; }
 
 type ParseResult =
   | { ok: true; action: Action }
@@ -157,7 +157,7 @@ export class Reactor {
       }
 
       const action = parsed.action;
-      this.emit('step', action.tool ?? (action.done ? 'done' : '（无动作）'), { step });
+      this.emit('step', action.tool ?? (action.done ? 'done' : '（无动作）'), { step, phase: action.phase });
       prefTier = action.tier === 'small' || action.tier === 'medium' || action.tier === 'large' ? action.tier : undefined;
       if (action.done) {
         done = true;
@@ -244,7 +244,9 @@ export class Reactor {
     const contextText = items.map((i) => i.content).join('\n');
     return [
       '你是 SunshineX 智能体，通过调用工具完成任务。',
-      '最终答复（reply 字段）使用 GFM 输出：对比、多字段枚举类信息优先用标准 GFM 表格呈现，渲染层将其绘为整齐全框线。',
+      // 输出约定（跨交互面通用）：唯一格式耦合点是 Markdown 本身；呈现效果由 TUI/GUI 各自负责，提示词不感知渲染层
+      '最终答复（reply 字段）使用 Markdown 输出；对比、多字段枚举类信息优先用表格呈现。',
+      '每次回复的 JSON 可选携带 "phase":"<当前阶段简述>"：一句话说明你此刻正在做什么（1-2 行内，如"正在分析项目结构"），会作为进度行展示给用户；无需时不携带。',
       '可用工具：',
       tools,
       '',
@@ -268,7 +270,7 @@ export class Reactor {
   private parse(raw: string): ParseResult {
     try {
       const j = JSON.parse(raw) as Action;
-      return { ok: true, action: { tool: j.tool, input: j.input, done: j.done === true, reply: j.reply, tier: j.tier } };
+      return { ok: true, action: { tool: j.tool, input: j.input, done: j.done === true, reply: j.reply, tier: j.tier, phase: typeof j.phase === 'string' ? j.phase : undefined } };
     } catch {
       return { ok: false, raw };
     }

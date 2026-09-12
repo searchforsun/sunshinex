@@ -342,3 +342,28 @@ test('FakeAdapter 上报非零 usage → tokensUsed 聚合累加（5+7=12）', a
   assert.equal(r.done, true);
   assert.equal(r.tokensUsed, 12, '两轮 usage 5 与 7 应聚合为 12');
 });
+
+test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-phase-'));
+  const prompts: string[] = [];
+  const stepPhases: unknown[] = [];
+  const replies = [
+    '{"tool":"exec","input":{"command":"echo hi"},"done":false,"phase":"正在执行回声验证"}',
+    '{"done":true,"reply":"ok"}',
+  ];
+  let call = 0;
+  const adapter = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[Math.min(call++, replies.length - 1)]; } };
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({
+    registry, safety, context, model: adapter,
+    onEvent: (e) => { if (e.type === 'step') stepPhases.push(e.payload?.phase); },
+  });
+
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 2 });
+  assert.equal(r.done, true);
+  assert.ok(stepPhases.includes('正在执行回声验证'), 'tool 步 phase 应随 step 事件透传');
+  assert.ok(prompts[0].includes('"phase"'), 'prompt 稳定段应注入 phase 约定行');
+});

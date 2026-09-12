@@ -113,8 +113,8 @@ test('会话控制器：/init 走模型任务生成 SUNSHINE.md（新建）', as
     await ctrl.waitIdle();
     const s = ctrl.getState();
     assert.ok(fs.existsSync(path.join(tmp, 'SUNSHINE.md')), '模型应经 write 工具写入 SUNSHINE.md');
-    const first = s.messages.find((m) => m.role === 'user');
-    assert.ok(first?.text.includes('SUNSHINE.md') && first?.text.includes('从零生成'), 'goal 应为模型驱动的分析任务');
+    assert.ok(!s.messages.some((m) => m.role === 'user'), 'goal 提示词属内部实现，不应上屏');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init：分析项目，生成')), '应只有一行启动提示');
     assert.ok(
       s.messages.some((m) => m.role === 'system' && m.text.includes('已写入 SUNSHINE.md（新建）')),
       '完成应提示新建落盘',
@@ -141,8 +141,8 @@ test('会话控制器：/init 已有 SUNSHINE.md 走完善语义且不覆盖原�
     await ctrl.submit('/init');
     await ctrl.waitIdle();
     const s = ctrl.getState();
-    const first = s.messages.find((m) => m.role === 'user');
-    assert.ok(first?.text.includes('补充完善'), '已存在时应下发完善语义');
+    assert.ok(!s.messages.some((m) => m.role === 'user'), 'goal 提示词属内部实现，不应上屏');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init：分析项目，完善')), '已存在时应进入完善流程');
     assert.ok(
       s.messages.some((m) => m.role === 'system' && m.text.includes('已写入 SUNSHINE.md（完善）')),
       '完成应提示完善落盘',
@@ -192,6 +192,27 @@ test('会话控制器：流式答复安全点切块增量入档，done 尾段补
     assert.ok(chunks.length >= 2, `长答复应分块入档（got ${chunks.length} 块）`);
     assert.equal(chunks.join(''), reply, '分块 + 尾段拼接应无损等于终稿（无重复无丢失）');
     assert.equal(s.status, 'idle');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话控制器：done 步携带 phase → step 阶段行上屏且先于答复', async () => {
+  const tmp = tmpdir('sunshinex-sess-phase-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"完成。","phase":"正在汇总结论"}']),
+    });
+    await ctrl.submit('做个任务');
+    await ctrl.waitIdle();
+    const s = ctrl.getState();
+    const steps = s.messages.filter((m) => m.role === 'step');
+    assert.equal(steps.length, 1, 'phase 阶段行应上屏');
+    assert.equal(steps[0]?.text, '正在汇总结论');
+    const stepIdx = s.messages.findIndex((m) => m.role === 'step');
+    const replyIdx = s.messages.findIndex((m) => m.role === 'assistant');
+    assert.ok(stepIdx >= 0 && replyIdx > stepIdx, '阶段行应先于答复入档');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
