@@ -54,3 +54,7 @@ test('highlightLine：未闭合字符串按字面透传不吞字', () => {
   const text = spans.map((s: HiSpan) => s.text).join('');
   assert.equal(text, 'const s = "未闭合');
 });
+
+test('highlightLine：空行返回非空结果（整行 plain，不产生空数组）', () => {
+  assert.deepEqual(highlightLine('ts', ''), [{ text: '', kind: 'plain' }]);
+});

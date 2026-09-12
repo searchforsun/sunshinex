@@ -56,7 +56,8 @@ export function highlightLine(lang: string, line: string): HiSpan[] {
     const emitter = result._emitter as unknown as { root: HiNode };
     const spans: HiSpan[] = [];
     flatten(emitter.root, 'plain', spans);
-    return mergeSpans(spans);
+    // 输出不变量：非空且完整覆盖原文；空行等场景 hljs token 树为空，回退整行 plain
+    return spans.length > 0 ? mergeSpans(spans) : [{ text: line, kind: 'plain' }];
   } catch {
     return [{ text: line, kind: 'plain' }];
   }
