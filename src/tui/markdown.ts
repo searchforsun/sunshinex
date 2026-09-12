@@ -1,5 +1,5 @@
+import CliTable3 from 'cli-table3';
 import MarkdownIt from 'markdown-it';
-import { displayWidth } from './text-band';
 
 /** 行内节点：加粗/斜体/行内代码/删除线，可嵌套（code 内不再嵌套解析） */
 export type MdInline =
@@ -316,27 +316,41 @@ export function inlineText(inlines: MdInline[]): string {
   return out;
 }
 
-/** 单元格按显示宽度补齐 */
-function padCell(s: string, w: number): string {
-  return s + ' '.repeat(Math.max(0, w - displayWidth(s)));
+/** 单元格规范化：去 VS16 变体选择符。⚠️/❤️ 等含 VS16 的歧义宽 emoji，string-width 记宽 2 而
+ * Windows 控制台等终端按窄字符渲染，测量与显示不一致会导致表格边框错位；表格内统一按文本呈现（宽 1） */
+export function stripVariationSelector(s: string): string {
+  return s.replace(/\uFE0F/g, '');
 }
 
-/** 表格按显示宽度对齐：返回 [表头, 分隔线, ...数据行]；列数 × 最小宽(2) 超 columns 时返回空数组（降级信号） */
+/** 表格边框：圆角 box-drawing（对标 Claude Code 输出风格），着色由渲染层负责，此处只出素字符 */
+const TABLE_CHARS = {
+  top: '─',
+  'top-mid': '┬',
+  'top-left': '╭',
+  'top-right': '╮',
+  bottom: '─',
+  'bottom-mid': '┴',
+  'bottom-left': '╰',
+  'bottom-right': '╯',
+  left: '│',
+  'left-mid': '├',
+  mid: '─',
+  'mid-mid': '┼',
+  right: '│',
+  'right-mid': '┤',
+  middle: '│',
+};
+
+/** 表格按显示宽度对齐（cli-table3 + string-width，与 ink 测量同源）：返回 [顶边框, 表头, 表头分隔线,
+ * 数据行（行间以实线分隔）, 底边框]；空表头或列数 × 最小宽(2) 超 columns 时返回空数组（降级信号，渲染层回退逐行原文） */
 export function alignTable(headers: string[], rows: string[][], columns: number): string[] {
-  const all = [headers, ...rows];
-  const colCount = Math.max(1, ...all.map((r) => r.length));
-  if (colCount * 2 > columns) return [];
-  const widths: number[] = [];
-  for (let c = 0; c < colCount; c++) {
-    let w = 0;
-    for (const r of all) w = Math.max(w, displayWidth(r[c] ?? ''));
-    widths.push(w);
-  }
-  const renderRow = (cells: string[]): string =>
-    '| ' + widths.map((w, c) => padCell(cells[c] ?? '', w)).join(' | ') + ' |';
-  const out: string[] = [];
-  out.push(renderRow(headers));
-  out.push('|' + widths.map((w) => '-'.repeat(w + 2)).join('|') + '|');
-  for (const r of rows) out.push(renderRow(r));
-  return out;
+  const colCount = headers.length;
+  if (colCount === 0 || colCount * 2 > columns) return [];
+  const table = new CliTable3({
+    head: headers.map(stripVariationSelector),
+    style: { head: [], border: [] },
+    chars: TABLE_CHARS,
+  });
+  for (const r of rows) table.push(r.map((c) => stripVariationSelector(c ?? '')));
+  return table.toString().split('\n');
 }

@@ -98,6 +98,7 @@ test('事件流：usage/reasoning 事件随流式调用发射（载荷 turnTotal
         hooks?.onReasoning?.('想一想');
         const text = '{"done":true,"reply":"ok"}';
         for (const ch of text) onDelta(ch);
+        hooks?.onCache?.(3);
         hooks?.onUsage?.(7);
         return text;
       },
@@ -107,7 +108,7 @@ test('事件流：usage/reasoning 事件随流式调用发射（载荷 turnTotal
     assert.equal(r.tokensUsed, 7, 'run 结果应累计 usage');
     const usage = events.filter((e) => e.type === 'usage');
     assert.equal(usage.length, 1, 'usage 事件应随模型调用发射');
-    assert.deepEqual(usage[0]?.payload, { tokens: 7, turnTotal: 7 }, 'usage 载荷含单次用量与累计');
+    assert.deepEqual(usage[0]?.payload, { tokens: 7, turnTotal: 7, cacheHitTotal: 3 }, 'usage 载荷含单次用量/累计/缓存命中累计');
     assert.deepEqual(
       events.filter((e) => e.type === 'reasoning').map((e) => e.text),
       ['想一想'],

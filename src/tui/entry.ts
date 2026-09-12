@@ -27,6 +27,8 @@ export async function runTui(args: CliArgs): Promise<void> {
   const model = buildModel(args.flags);
   const ctrl = new SessionController({ root, mode, model });
   const banner = buildBannerInfo({ version: readPackageVersion(), root, model: model.label ?? model.provider });
+  // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
+  process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
   const instance = render(React.createElement(App, { controller: ctrl, banner }));
   const shutdown = (): void => {
     instance.unmount();

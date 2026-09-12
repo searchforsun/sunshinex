@@ -31,3 +31,18 @@ test('bandLines：多行 + 折行各自补齐', () => {
   assert.equal(lines[1], ' bb   ');
   assert.ok(lines.every((l) => displayWidth(l) === 6));
 });
+
+test('displayWidth：emoji 序列按图素簇计宽（✅/⚠️/国旗/ZWJ 家族）', () => {
+  assert.equal(displayWidth('✅'), 2);
+  assert.equal(displayWidth('⚠️'), 2);
+  assert.equal(displayWidth('🇨🇳'), 2);
+  assert.equal(displayWidth('👨‍👩‍👧'), 2);
+  assert.equal(displayWidth('✅⚠️中a'), 7);
+});
+
+test('wrapByWidth：emoji 序列不拆散（图素簇为最小单元）', () => {
+  // 两个国旗各占 1 簇 2 列，宽度 3 装不下第二个
+  assert.deepEqual(wrapByWidth('🇨🇳🇨🇳', 3), ['🇨🇳', '🇨🇳']);
+  assert.deepEqual(wrapByWidth('⚠️⚠️', 2), ['⚠️', '⚠️']);
+  assert.deepEqual(wrapByWidth('👨‍👩‍👧x', 2), ['👨‍👩‍👧', 'x']);
+});

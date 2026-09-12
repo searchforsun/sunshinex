@@ -6,6 +6,7 @@ import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { Banner } from './Banner';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
+import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
 import { Spinner } from './Spinner';
 
@@ -133,6 +134,7 @@ export function App({ controller, banner }: { controller: SessionController; ban
         </Box>
       ) : null}
       <InputBox buffer={buffer} placeholder={inputPlaceholder(state.status)} active={state.status === 'idle' || state.status === 'error'} />
+      <TodoList todos={state.todos} />
       <StatusBar metrics={state.metrics} status={state.status} todos={state.todos} model={info.model} />
     </Box>
   );

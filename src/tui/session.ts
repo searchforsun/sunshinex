@@ -28,6 +28,8 @@ export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting
 export interface StatusMetrics {
   turnStartedAt: number;
   turnTokens: number;
+  /** 本轮 prompt 缓存命中 tokens（usage 事件 cacheHitTotal 聚合；状态栏缓存命中率的分子与分母同源） */
+  turnCacheTokens: number;
   runs: number;
   hitRate: number;
 }
@@ -64,7 +66,7 @@ export class SessionController {
     messages: [],
     todos: [],
     status: 'idle',
-    metrics: { turnStartedAt: 0, turnTokens: 0, runs: 0, hitRate: 0 },
+    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, runs: 0, hitRate: 0 },
   };
   private listeners = new Set<(s: TuiState) => void>();
   private queue: { goal: string; resolve: () => void }[] = [];
@@ -164,7 +166,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0 },
     };
     this.notify();
     let planText = '';
@@ -181,8 +183,7 @@ export class SessionController {
       planText = r.reply ?? '';
     } catch (e) {
       this.pushMsg('system', '规划失败：' + (e instanceof Error ? e.message : String(e)));
-      this.state = { ...this.state, status: 'idle' };
-      this.notify();
+      this.closeTask();
       return;
     }
     const items = planText
@@ -193,8 +194,7 @@ export class SessionController {
       .filter((l) => l.length > 0);
     if (items.length === 0) {
       this.pushMsg('system', '规划未产出编号步骤（每行需形如「1. xxx」），已取消');
-      this.state = { ...this.state, status: 'idle' };
-      this.notify();
+      this.closeTask();
       return;
     }
     this.pendingPlan = { items };
@@ -212,7 +212,7 @@ export class SessionController {
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
       this.state = {
         ...this.state,
-        metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0 },
+        metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0 },
       };
       this.notify();
       try {
@@ -232,7 +232,17 @@ export class SessionController {
         break;
       }
     }
-    this.state = { ...this.state, status: 'idle' };
+    this.closeTask();
+  }
+
+  /** 任务收束：回 idle 并停表（turnStartedAt=0，idle 态不再显示耗时）。本轮 tokens/缓存命中保留为上一轮统计（下次提交进 running 时重置）；error 态保留现场便于回看出错时刻 */
+  private closeTask(): void {
+    if (this.state.status !== 'running' && this.state.status !== 'awaiting-plan') return;
+    this.state = {
+      ...this.state,
+      status: 'idle',
+      metrics: { ...this.state.metrics, turnStartedAt: 0 },
+    };
     this.notify();
   }
 
@@ -240,7 +250,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0 },
       live: undefined,
     };
     this.notify();
@@ -248,10 +258,12 @@ export class SessionController {
       const r = await this.runtime.runTask(goal);
       const note = describeIncomplete(r.stopReason);
       if (!r.done && note.length > 0) this.pushMsg('system', note);
+      this.closeTask();
     } catch (e) {
       this.pushMsg('system', `发生错误：${e instanceof Error ? e.message : String(e)}`);
       this.state = { ...this.state, status: 'error' };
       this.notify();
+      return; // error 态保留计时现场（sticky），下次提交进 running 时重置
     }
   }
 
@@ -261,8 +273,6 @@ export class SessionController {
       await this.runTaskFlow(next.goal);
       next.resolve();
     }
-    this.state = { ...this.state, status: 'idle' };
-    this.notify();
   }
 
   private async handleSlash(text: string): Promise<void> {
@@ -286,6 +296,7 @@ export class SessionController {
         metrics: {
           turnStartedAt: 0,
           turnTokens: 0,
+          turnCacheTokens: 0,
           runs: this.state.metrics.runs,
           hitRate: this.state.metrics.hitRate,
         },
@@ -328,7 +339,10 @@ export class SessionController {
         return;
       case 'usage': {
         const total = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : this.state.metrics.turnTokens;
-        this.state = { ...this.state, metrics: { ...this.state.metrics, turnTokens: total } };
+        const cacheTotal = typeof e.payload?.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : this.state.metrics.turnCacheTokens;
+        const m = this.state.metrics;
+        if (total === m.turnTokens && cacheTotal === m.turnCacheTokens) return; // 数值未变的重复 usage 不触发重渲染
+        this.state = { ...this.state, metrics: { ...m, turnTokens: total, turnCacheTokens: cacheTotal } };
         this.notify();
         return;
       }
@@ -385,8 +399,10 @@ export class SessionController {
       this.state = { ...this.state, live: { ...cur, text: cur.text + delta } };
     } else {
       this.state = { ...this.state, live: { kind, text: delta, startedAt: Date.now() } };
+      this.notify(); // 块首帧即时上屏：保证流式可观测与首字延迟，后续增量并入合帧窗口
+      return;
     }
-    this.notify();
+    this.notifyThrottled();
   }
 
   /** 收束实时区：thinking 折叠为一行摘要；reply 不落消息（终稿由 done 接管） */
@@ -402,21 +418,40 @@ export class SessionController {
     this.notify();
   }
 
-  /** done/error 后刷新账本 runs 与上下文命中率 */
+  /** done/error 后刷新账本 runs 与本轮缓存命中率（prompt 缓存命中 tokens / 本轮总 tokens；无 usage 回传时为 0） */
   private refreshMetrics(): void {
+    const m = this.state.metrics;
     this.state = {
       ...this.state,
       metrics: {
-        ...this.state.metrics,
+        ...m,
         runs: this.runtime.harness.ledger.summary().runs,
-        hitRate: this.runtime.harness.context.session.hitRate(),
+        hitRate: m.turnTokens > 0 ? Math.min(1, m.turnCacheTokens / m.turnTokens) : 0,
       },
     };
     this.notify();
   }
 
+  /** 高频增量（token/reasoning 逐 delta）合帧节流窗口：约 80ms 通知一次，终态与结构事件仍即时放行 */
+  private static readonly NOTIFY_THROTTLE_MS = 80;
+  private notifyTimer?: NodeJS.Timeout;
+
   private notify(): void {
+    if (this.notifyTimer) {
+      clearTimeout(this.notifyTimer);
+      this.notifyTimer = undefined;
+    }
     for (const cb of this.listeners) cb(this.state);
+  }
+
+  /** 增量合帧：窗口内多次状态变更只通知一次（监听方取到的总是最新状态）；定时器不持有进程引用 */
+  private notifyThrottled(): void {
+    if (this.notifyTimer) return;
+    this.notifyTimer = setTimeout(() => {
+      this.notifyTimer = undefined;
+      this.notify();
+    }, SessionController.NOTIFY_THROTTLE_MS);
+    this.notifyTimer.unref();
   }
 }
 

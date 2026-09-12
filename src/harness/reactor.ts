@@ -73,6 +73,7 @@ export class Reactor {
     let done = false;
     let reply: string | undefined;
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
+    let cacheHitTokens = 0; // prompt 缓存命中累计（adapter onCache 回传聚合）
     const startedAt = Date.now();
 
     let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error 在各自分支覆盖
@@ -131,9 +132,12 @@ export class Reactor {
       let raw: string;
       try {
         raw = await this.callModel(router.resolve(effectiveTier), prompt, {
+          onCache: (c) => {
+            cacheHitTokens += c;
+          },
           onUsage: (t) => {
             tokensUsed += t;
-            this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed });
+            this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens });
           },
           onReasoning: (t) => this.emit('reasoning', t),
         });

@@ -5,6 +5,8 @@ export type { ModelTier };
 /** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
 export interface UsageHooks {
   onUsage?: (tokens: number) => void;
+  /** prompt 缓存命中 tokens（OpenAI 标准 usage.prompt_tokens_details.cached_tokens；端点不回传则永不触发） */
+  onCache?: (tokens: number) => void;
   /** 思考增量（SSE reasoning_content / reasoning 键）；端点不回传则永不触发 */
   onReasoning?: (delta: string) => void;
 }
@@ -20,6 +22,13 @@ export interface ModelAdapter {
 export function extractUsage(data: unknown): number {
   const tokens = (data as { usage?: { total_tokens?: unknown } } | null)?.usage?.total_tokens;
   return typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : 0;
+}
+
+/** 从 OpenAI 标准响应解析 prompt 缓存命中 tokens：仅认 usage.prompt_tokens_details.cached_tokens（缺失或三方私有字段一律回 0，不做任何第三方 API 适配） */
+export function extractCacheTokens(data: unknown): number {
+  const usage = (data as { usage?: Record<string, unknown> } | null)?.usage;
+  const cached = (usage?.prompt_tokens_details as { cached_tokens?: unknown } | undefined)?.cached_tokens;
+  return typeof cached === 'number' && Number.isFinite(cached) ? cached : 0;
 }
 
 /** 占位适配器：不实际调用云端。回协议内 JSON（done+reply），绝不回显 prompt——回显会把系统提示词经渲染层泄露到界面 */
@@ -77,6 +86,7 @@ export class OpenAIAdapter implements ModelAdapter {
       });
       if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
       const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      hooks?.onCache?.(extractCacheTokens(data)); // 缓存命中先于 usage 回传，订阅方聚合时序一致
       hooks?.onUsage?.(extractUsage(data));
       return data.choices?.[0]?.message?.content ?? '';
     } catch (e) {
@@ -96,7 +106,13 @@ export class OpenAIAdapter implements ModelAdapter {
       const resp = await fetch(`${this.baseURL}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: prompt }], stream: true }),
+        body: JSON.stringify({
+          model: this.model,
+          messages: [{ role: 'user', content: prompt }],
+          stream: true,
+          // 流式末帧携带 usage（OpenAI 兼容约定）；缺省不回传会导致流式 tokens 计时恒 0
+          stream_options: { include_usage: true },
+        }),
         signal: ctrl.signal,
       });
       if (!resp.ok || !resp.body) throw new Error(`OpenAI 请求失败：${resp.status}`);
@@ -120,6 +136,8 @@ export class OpenAIAdapter implements ModelAdapter {
                 full += d.content;
                 onDelta(d.content);
               }
+              const cached = extractCacheTokens(ev);
+              if (cached > 0) hooks?.onCache?.(cached);
               const usage = extractUsage(ev);
               if (usage > 0) hooks?.onUsage?.(usage);
             } catch {

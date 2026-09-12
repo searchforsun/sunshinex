@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseMarkdown, parseInline, inlineText, alignTable, MdBlock, MdInline } from './markdown';
+import { displayWidth } from './text-band';
 
 test('parseMarkdown：标题各级别', () => {
   const blocks = parseMarkdown('# 一级\n## 二级\n### 三级\n###### 六级\n####### 七级归六');
@@ -99,21 +100,23 @@ test('inlineText：递归拼纯文本', () => {
   assert.equal(inlineText(inlines), '加粗尾');
 });
 
-test('alignTable：CJK 宽度对齐，表头/分隔线/数据行齐全', () => {
+test('alignTable：全框线，数据行间以实线分隔', () => {
   const out = alignTable(['环境', '副本'], [['生产', '3'], ['测试', '2']], 100);
-  assert.equal(out.length, 4);
-  assert.match(out[0], /环境/);
-  assert.match(out[0], /副本/);
-  assert.match(out[1], /-/);
-  assert.match(out[2], /生产/);
-  assert.match(out[3], /测试/);
+  assert.deepEqual(out, [
+    '╭──────┬──────╮',
+    '│ 环境 │ 副本 │',
+    '├──────┼──────┤',
+    '│ 生产 │ 3    │',
+    '├──────┼──────┤',
+    '│ 测试 │ 2    │',
+    '╰──────┴──────╯',
+  ]);
 });
 
-test('alignTable：列对齐（CJK 记 2 宽）', () => {
-  const out = alignTable(['环境', '副本'], [['生产', '3'], ['测试', '2']], 100);
-  // 列宽按「环境/生产/测试」max=2、副本列 max=2（「副本」宽 4，数据「3/2」宽 1，故补齐到 4）
-  const data = out[2];
-  assert.equal(data, '| 生产 | 3    |');
+test('alignTable：行间分隔线贯通（├/┼/┤）', () => {
+  const out = alignTable(['a', 'b'], [['1', '2'], ['3', '4']], 100);
+  assert.equal(out.length, 7);
+  assert.equal(out[4], '├───┼───┤');
 });
 
 test('alignTable：超宽（列数×2 > columns）返回空数组', () => {
@@ -121,8 +124,25 @@ test('alignTable：超宽（列数×2 > columns）返回空数组', () => {
   assert.deepEqual(out, []);
 });
 
+test('alignTable：空表头返回空数组（降级信号）', () => {
+  const out = alignTable([], [], 100);
+  assert.deepEqual(out, []);
+});
+
 test('alignTable：列缺失按空串补齐', () => {
   const out = alignTable(['a', 'b'], [['1']], 100);
-  assert.equal(out.length, 3);
-  assert.equal(out[2], '| 1 |   |');
+  assert.equal(out.length, 5);
+  assert.equal(out[3], '│ 1 │   │');
+});
+
+test('alignTable：emoji 单元格去 VS16 按文本呈现对齐', () => {
+  const out = alignTable(['检查', '数量'], [['✅', '3'], ['⚠️', '12']], 100);
+  assert.equal(out.length, 7);
+  assert.equal(out[1], '│ 检查 │ 数量 │');
+  assert.equal(out[3], '│ ✅   │ 3    │');
+  // ⚠️ 含 VS16：string-width 记宽 2、控制台常按窄渲染致错位；规范化为 ⚠（宽 1）使测量与渲染同口径
+  assert.equal(out[5], '│ ⚠    │ 12   │');
+  assert.ok(!out.some((l) => l.includes('\uFE0F')), 'VS16 变体选择符不应出现在表格输出');
+  // 行等宽须按显示宽度判：字符串 length 因 CJK/emoji 计数不等
+  assert.equal(new Set(out.map((l) => displayWidth(l))).size, 1);
 });

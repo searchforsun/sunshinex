@@ -1,41 +1,28 @@
-/** 显示宽度：CJK/全角记 2，其余记 1（终端色带补齐与折行按显示宽度计算） */
+import stringWidth from 'string-width';
+
+/** 显示宽度：委托 string-width（与 ink 同源口径：CJK/全角/emoji 序列记 2，零宽记 0），色带补齐与表格对齐统一走它 */
 export function displayWidth(s: string): number {
-  let w = 0;
-  for (const ch of s) {
-    const c = ch.codePointAt(0) ?? 0;
-    w += isWide(c) ? 2 : 1;
-  }
-  return w;
+  return stringWidth(s);
 }
 
-function isWide(c: number): boolean {
-  return (
-    (c >= 0x1100 && c <= 0x115f) ||
-    (c >= 0x2e80 && c <= 0xa4cf) ||
-    (c >= 0xac00 && c <= 0xd7a3) ||
-    (c >= 0xf900 && c <= 0xfaff) ||
-    (c >= 0xfe30 && c <= 0xfe6f) ||
-    (c >= 0xff00 && c <= 0xff60) ||
-    (c >= 0xffe0 && c <= 0xffe6) ||
-    (c >= 0x20000 && c <= 0x3fffd)
-  );
-}
+/** 图素簇切分器：终端按图素簇渲染（Segmenter 默认粒度即 grapheme），emoji 序列/国旗/ZWJ 家族不可拆散计宽 */
+const graphemes = new Intl.Segmenter();
 
-/** 按显示宽度折行（不拆宽字符）；width<=0 时返回原文本单行 */
+/** 按显示宽度折行：以图素簇为最小显示单元（不拆 CJK 宽字符与 emoji 序列）；width<=0 时返回原文本单行 */
 export function wrapByWidth(text: string, width: number): string[] {
   if (width <= 0) return [text];
   const lines: string[] = [];
   let cur = '';
   let w = 0;
-  for (const ch of text) {
-    const cw = isWide(ch.codePointAt(0) ?? 0) ? 2 : 1;
-    if (w + cw > width && cur.length > 0) {
+  for (const { segment } of graphemes.segment(text)) {
+    const uw = displayWidth(segment);
+    if (w + uw > width && cur.length > 0) {
       lines.push(cur);
       cur = '';
       w = 0;
     }
-    cur += ch;
-    w += cw;
+    cur += segment;
+    w += uw;
   }
   lines.push(cur);
   return lines;

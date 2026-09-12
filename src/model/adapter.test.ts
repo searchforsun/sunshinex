@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'http';
-import { ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage } from './adapter';
+import { ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage, extractCacheTokens } from './adapter';
 import { ModelRouter } from './adapter';
 import { ModelTier } from '../types';
 
@@ -70,4 +70,18 @@ test('extractUsage 无 usage/非数字 → 返回 0', () => {
   assert.equal(extractUsage({}), 0);
   assert.equal(extractUsage({ usage: { total_tokens: 'abc' } }), 0);
   assert.equal(extractUsage(null), 0);
+});
+
+test('extractCacheTokens：OpenAI 标准 prompt_tokens_details.cached_tokens', () => {
+  assert.equal(extractCacheTokens({ usage: { prompt_tokens_details: { cached_tokens: 64 } } }), 64);
+});
+
+test('extractCacheTokens：三方私有字段（如 DeepSeek prompt_cache_hit_tokens）不识别，一律回 0', () => {
+  assert.equal(extractCacheTokens({ usage: { prompt_cache_hit_tokens: 128 } }), 0);
+});
+
+test('extractCacheTokens：缺失/非法回 0', () => {
+  assert.equal(extractCacheTokens({}), 0);
+  assert.equal(extractCacheTokens({ usage: {} }), 0);
+  assert.equal(extractCacheTokens(null), 0);
 });

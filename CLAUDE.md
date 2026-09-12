@@ -10,6 +10,7 @@
 - 技术栈：TypeScript（strict）+ Node.js，CommonJS 模块
 - 定位：云端推理，本地负责编排、执行、安全与记忆
 - 对标：OpenAI Codex / Claude Code / Hermes
+- 交互面对标：TUI 对标 Claude Code（已基于 ink + React 开源栈交付），GUI 对标 Codex 工作台（规划中）——最外层 TUI/GUI 一律优先复用成熟开源组件，不重复造轮子（见 §12）
 
 ## 2. 常用命令
 
@@ -87,6 +88,7 @@ SUNSHINE.md          # 项目业务配置
 - **已登记依赖**：sqlite-vec ^0.1.9 —— sqlite-vec 向量扩展（vec0 虚拟表 KNN）。用途：阶段四 P1 `KB_BACKEND=sqlite-vec` 向量后端；加载路径：node:sqlite（Node 22.14 内置）`loadExtension` + `allowExtension: true`（缺省关闭，安全缺省）；边界：单进程本地库、插入走 hex 字面量（vec0 xUpdate 参数化绑定限制，spike 已证）、依赖收敛于 store 接缝内；回退预案：local-json（`KB_BACKEND` 缺省即回退，禁静默切换）
 - **已登记依赖**：markdown-it ^15.0.1 —— Markdown 解析器（CommonMark token 流）。用途：阶段五 5B TUI 正文 Markdown 解析（块级/行内 token 流 → `MdBlock`/`MdInline` IR）；边界：依赖收敛于 `src/tui/markdown.ts` 解析层（含预处理补偿顿号列表、七级标题归 6、未闭合围栏降级段落三处 spec 语义），渲染层 `MarkdownText.tsx` 只消费 IR 不感知库；回退预案：IR 稳定，替换解析实现（含自研轻量解析器）不动 IR 与渲染层
 - **已登记依赖**：highlight.js ^11.12.0 —— 语法高亮引擎。用途：阶段五 5B 围栏代码块语法高亮（token 树 scope → `HiKind` 四类着色）；边界：依赖收敛于 `src/tui/highlight.ts`（单行高亮纯函数，产出 `HiSpan[]`，未知语言/异常整行 plain），渲染层 `MarkdownText.tsx` 只消费 `HiSpan`；回退预案：`HiSpan` 接口稳定，替换实现（含轻量正则关键字高亮）不动渲染层
+- **规划选型（GUI，未引入）**：Electron ≥ 28（桌面壳）+ Vue 3 + Vite + Naive UI（界面组件库）+ Monaco Editor（代码预览/diff）+ @antv/g6（工作流可视化）+ diff2html（diff 渲染）——GUI 落地前为候选名单，实际引入时按上方引入标准逐项转正登记（Arch-Plan §2.1.1）
 
 ## 6. 技能与插件规范
 
@@ -132,7 +134,29 @@ SUNSHINE.md          # 项目业务配置
 - **新增参数时**：缺省值须按长任务场景论证并对齐上述量级；测试与探针可用显式小值构造边界用例，但不得因测试便利反推缩水产品缺省值；**各层缺省须同量级一致——单层缩水即整链瓶颈**（入口/模板层的显式覆盖值视同产品缺省，须同等论证）。
 - 已知长任务敏感点：模型慢响应（adapter timeoutMs）、长命令执行（sandbox exec 超时与 maxBuffer）、复杂多文件任务（Reactor maxSteps、Loop 修正环轮数、Graph 全链路终止参数）、各 CLI 命令与模板内嵌节点的显式覆盖值。调整任一处须同步评估其余层级的一致性。
 
-## 12. 平台兼容性目标
+## 12. 交互面构建规范（TUI / GUI）
+
+最外层交互面（TUI/GUI）是对产品的第一印象，质量基线对标明星产品：TUI 对标 Claude Code、GUI 对标 Codex 工作台。好用易用优先于实现优雅；能复用成熟开源组件就复用，不重复造轮子——自研仅限开源件覆盖不到的胶水层与接缝。
+
+- **开源优先原则**：新增任何交互能力前，先调研是否有维护活跃的开源组件；有则直接采用，无足量合格开源件时才自研，且须在接缝处隔离实现（可替换）。选型引入标准沿用 §5 依赖引入原则。
+- **组件选型登记**：
+
+| 层位 | 开源件 | 状态 | 用途与收敛边界 |
+|------|--------|------|----------------|
+| TUI 渲染 | ink + React | 已引入 | 组件化终端渲染，收敛于 `src/tui/`（仅渲染层，运行时零接触） |
+| TUI Markdown | markdown-it | 已引入 | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` |
+| TUI 高亮 | highlight.js | 已引入 | 代码块语法高亮，收敛于 `src/tui/highlight.ts` |
+| TUI 宽度 | string-width | 已引入 | 中英混排/全角字符宽度测量 |
+| GUI 桌面壳 | Electron | 规划选型 | 桌面容器，未来收敛于 `src/gui/` |
+| GUI 组件库 | Vue 3 + Vite + Naive UI | 规划选型 | 界面组件（对话、看板、表单） |
+| GUI 编辑器 | Monaco Editor | 规划选型 | 代码预览与 diff 编辑 |
+| GUI 可视化 | @antv/g6 | 规划选型 | 工作流 DAG 可视化看板 |
+
+- **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
+- **体验基线**：交互细节向对标产品看齐——快捷键符合终端惯例、输出有渲染降级（窄终端/无色彩环境不花屏）、状态与错误信息用户可读；体验取舍拿不准时以「明星产品怎么做」为参照。
+- **引入流程**：新依赖登记 `package.json`，在 README/Arch-Plan 标注用途，`pnpm build` + `pnpm test` 全量验证后方可交付；规划选型转正时同步更新本表状态。
+
+## 13. 平台兼容性目标
 
 以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持（`resolveShell()` 自动探测，无 Git 时 `ComSpec` 兜底）。
 

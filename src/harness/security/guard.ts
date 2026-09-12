@@ -54,8 +54,15 @@ export class SecurityGuard {
   }
 
   private asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
-  /** 会话级 always 登记面（内存态；会话结束由调用方 clearSessionAllows，不落盘） */
+  /** 会话级 always 登记面（内存态；会话结束由调用方 clearSessionAllows，不落盘）。键经 allowKey 归一 */
   private sessionAllows = new Set<string>();
+
+  /** 放行登记键：Bash 归一为命令族（首 token basename，放行 npm run build 即放行本会话 npm 族），其余工具用 subject 原样（path/url） */
+  private allowKey(tool: string, subject: string): string {
+    if (tool !== 'Bash') return subject;
+    const first = subject.trim().split(/\s+/)[0] ?? '';
+    return first.split('/').pop() ?? first;
+  }
   private seq = 0;
 
   /** 终端化审批注入（TUI/GUI 装配点）；传 undefined 即卸载回阶段一语义 */
@@ -73,7 +80,8 @@ export class SecurityGuard {
     if (sync.allowed) return sync;
     if (!sync.ask) return sync;
     const subject = this.approvalSubject(tool, input);
-    if (tool === 'Bash' && this.sessionAllows.has(subject)) return { allowed: true };
+    // 会话级放行对所有审批类工具生效（此前仅 Bash 且按完整命令行匹配，'a' 后同族命令仍逐步询问）
+    if (this.sessionAllows.has(this.allowKey(tool, subject))) return { allowed: true };
     if (!this.asker) return sync;
     const req: ApprovalRequest = {
       id: `ap-${++this.seq}`,
@@ -88,7 +96,7 @@ export class SecurityGuard {
       return { allowed: false, reason: `COMMAND_DENIED: asker 异常（${e instanceof Error ? e.message : String(e)}）` };
     }
     if (d === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: 用户拒绝' };
-    if (d === 'always') this.sessionAllows.add(subject);
+    if (d === 'always') this.sessionAllows.add(this.allowKey(tool, subject));
     return { allowed: true };
   }
 

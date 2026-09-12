@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
-import { MdBlock, MdInline, parseMarkdown, inlineText, alignTable } from '../markdown';
+import { MdBlock, MdInline, parseMarkdown, inlineText, alignTable, stripVariationSelector } from '../markdown';
 import { highlightLine, HiKind } from '../highlight';
 
 /** 行内节点 → Ink JSX：加粗/斜体/删除线/行内代码（反色底）/裸文本 */
@@ -98,18 +98,37 @@ function Quote({ inlines }: { inlines: MdInline[] }): JSX.Element {
   );
 }
 
-/** 表格：alignTable 对齐输出（表头加粗）；超宽降级为逐行原文 */
+/** 表格行拆段渲染：纯框线行（顶边/分隔/底边）整行暗色；内容行的 │ 边框字符暗色、单元格常规。
+ * 对标 Claude Code 输出：框线弱化不喧宾夺主，表头由调用方 bold 加粗 */
+function TableLine({ line, bold }: { line: string; bold?: boolean }): JSX.Element {
+  if (!line.includes('│')) {
+    return <Text dimColor bold={bold}>{line}</Text>;
+  }
+  const segs = line.split('│');
+  return (
+    <Text bold={bold}>
+      {segs.map((seg, i) => (
+        <React.Fragment key={i}>
+          {i > 0 ? <Text dimColor>│</Text> : null}
+          {seg}
+        </React.Fragment>
+      ))}
+    </Text>
+  );
+}
+
+/** 表格：alignTable 圆角框线输出（表头加粗、边框暗色）；超宽降级为逐行原文 */
 function Table({ headers, rows, columns }: { headers: MdInline[][]; rows: MdInline[][][]; columns: number }): JSX.Element {
   const headerTexts = headers.map(inlineText);
   const rowTexts = rows.map((r) => r.map(inlineText));
   const aligned = alignTable(headerTexts, rowTexts, columns);
   if (aligned.length === 0) {
-    // 超宽降级：逐行输出原始单元格（` | ` 连接，不强制对齐）
+    // 超宽降级：逐行输出原始单元格（` | ` 连接，不强制对齐；与对齐路径同口径去 VS16）
     const all = [headerTexts, ...rowTexts];
     return (
       <Box flexDirection="column">
         {all.map((cells, i) => (
-          <Text key={i} bold={i === 0}>{cells.join(' | ')}</Text>
+          <Text key={i} bold={i === 0}>{cells.map(stripVariationSelector).join(' | ')}</Text>
         ))}
       </Box>
     );
@@ -117,7 +136,7 @@ function Table({ headers, rows, columns }: { headers: MdInline[][]; rows: MdInli
   return (
     <Box flexDirection="column">
       {aligned.map((line, i) => (
-        <Text key={i} bold={i === 0}>{line}</Text>
+        <TableLine key={i} line={line} bold={i === 1} />
       ))}
     </Box>
   );
