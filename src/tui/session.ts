@@ -3,6 +3,7 @@ import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime
 import { ReplyStreamExtractor } from './stream-extractor';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
+import { initSunshine } from '../harness/sunshine-init';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -10,11 +11,13 @@ export interface ChatItem {
   role: ChatRole;
   text: string;
   ts: number;
+  /** 全局单调序号：TUI Static 区 key 的唯一性来源，跨 /new 递增不回绕 */
+  seq: number;
   /** tool 行细分：call（⏺ 调用行）/ result（⎿ 结果行） */
   kind?: 'call' | 'result';
   /** tool 结果行成功标记 */
   ok?: boolean;
-  /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation */
+  /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation（入档后折叠打印，供后续 transcript 视图） */
   detail?: string;
 }
 
@@ -56,11 +59,13 @@ export interface SessionOpts extends TuiRuntimeOpts {
   runtime?: TuiRuntime;
 }
 
-const SLASH_HELP = '命令：/new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /help 本清单';
+const SLASH_HELP = '命令：/init 生成并装载 SUNSHINE.md · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /help 本清单';
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
   readonly runtime: TuiRuntime;
+  /** 项目根：/init 生成 SUNSHINE.md 的基准目录（与 runtime 装配同源） */
+  private readonly root: string;
   private readonly extractor = new ReplyStreamExtractor((t) => this.appendLive('reply', t));
   private state: TuiState = {
     messages: [],
@@ -70,6 +75,8 @@ export class SessionController {
   };
   private listeners = new Set<(s: TuiState) => void>();
   private queue: { goal: string; resolve: () => void }[] = [];
+  /** 消息全局单调序号（Static 区 key 唯一性来源）；/new 清空消息但不回绕 */
+  private msgSeq = 0;
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 挂起的计划确认卡（/plan 流程）；confirmPlan 裁决后清除 */
   private pendingPlan?: { items: string[] };
@@ -77,6 +84,7 @@ export class SessionController {
   private autoAsker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 
   constructor(opts: SessionOpts) {
+    this.root = opts.root;
     this.runtime = opts.runtime ?? createRuntime({
       root: opts.root,
       ...(opts.model ? { model: opts.model } : {}),
@@ -281,6 +289,21 @@ export class SessionController {
       this.pushMsg('system', SLASH_HELP);
       return;
     }
+    if (cmd === '/init') {
+      // 确定性文件操作，零模型调用：生成骨架或确认已有；装载走 ContextLoader 每轮 assemble 从磁盘读取，写盘即对后续轮次生效
+      try {
+        const r = initSunshine(this.root);
+        this.pushMsg(
+          'system',
+          r.created
+            ? `已生成 ${r.path}：基于项目感知写入 SUNSHINE.md 骨架，后续每轮上下文自动装载`
+            : `已存在 ${r.path}，跳过生成；该文件随每轮上下文装配自动装载`,
+        );
+      } catch (e) {
+        this.pushMsg('system', '/init 失败：' + (e instanceof Error ? e.message : String(e)));
+      }
+      return;
+    }
     if (cmd === '/status') {
       const s = this.runtime.harness.ledger.summary();
       this.pushMsg('system', `账本：${s.runs} runs / ${s.tokens} tokens；消息 ${this.state.messages.length} 条；待办 ${this.state.todos.length} 项`);
@@ -384,7 +407,7 @@ export class SessionController {
   private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'detail'>>): void {
     this.state = {
       ...this.state,
-      messages: [...this.state.messages, { role, text, ts: Date.now(), ...(extra ?? {}) }],
+      messages: [...this.state.messages, { role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) }],
     };
     this.notify();
   }

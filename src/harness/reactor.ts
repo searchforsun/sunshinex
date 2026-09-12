@@ -244,6 +244,7 @@ export class Reactor {
     const contextText = items.map((i) => i.content).join('\n');
     return [
       '你是 SunshineX 智能体，通过调用工具完成任务。',
+      '最终答复（reply 字段）使用 GFM 输出：对比、多字段枚举类信息优先用标准 GFM 表格呈现，渲染层将其绘为整齐全框线。',
       '可用工具：',
       tools,
       '',

@@ -1,61 +1,168 @@
 import * as React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Static, Text } from 'ink';
 import { ChatItem, LiveBlock } from '../session';
 import { bandLines } from '../text-band';
+import { BannerInfo } from '../banner-info';
+import { Banner } from './Banner';
+import { ChatRound, reviewWindow, splitRounds } from '../history-view';
 import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
+import { LiveArea } from './LiveArea';
 
-/** 视口渲染预算：ink3 逐帧全量重绘，帧高超过终端高度时会在滚动缓冲残留重复行——历史不删，仅当前视口渲染最近消息 */
-const MAX_RENDERED_MESSAGES = 30;
-/** 思考实时滚动固定行数：块高恒定，增量到达时不再上下跳动 */
-const THINK_TAIL_LINES = 6;
+/**
+ * Static 区条目：横幅（首条）+ 已入档轮——打印一次后不再重绘（Claude Code 同款机制），
+ * 滚动缓冲中每条内容只出现一次。
+ */
+export type TranscriptEntry = { kind: 'banner'; info: BannerInfo } | { kind: 'round'; round: ChatRound };
 
-/** 消息区：用户整行底色带（无标签）/ 助手 Markdown 排版 / 工具两行 / 思考折叠行 / 系统 ! 行 / 计划步骤行 + 实时区 */
-export function MessageList({ messages, live, columns, expandAll }: { messages: ChatItem[]; live?: LiveBlock; columns: number; expandAll: boolean }): JSX.Element {
-  if (messages.length === 0 && !live) {
-    return <Text dimColor>SunshineX TUI — 输入任务或 /help 查看命令</Text>;
-  }
-  const overflow = Math.max(0, messages.length - MAX_RENDERED_MESSAGES);
-  const shown = overflow > 0 ? messages.slice(-MAX_RENDERED_MESSAGES) : messages;
+/** 入档水位：已入档轮次数。只进不退（Static 游标 append-only），仅 /new 清空时随重挂归零 */
+function sealRounds(rounds: ChatRound[]): number {
+  return rounds.length === 0 ? 0 : rounds.length - 1;
+}
+
+/**
+ * 消息区分层：横幅与已收口轮走 ink Static 一次上屏（打印后不再重绘，滚动缓冲零重影）；
+ * 动态区只承载末轮答复 + 实时流，帧高只随当前轮增长、不随对话轮数累积——
+ * ink3 在 outputHeight >= stdout.rows 时会 clearTerminal 整屏重写（Windows 控制台下重影来源），
+ * 层级切分让该路径实际不可达。历史内容默认全展开（思考全文、工具结果全文）。
+ */
+export function MessageList({
+  messages,
+  live,
+  columns,
+  banner,
+  review,
+  reviewEnd,
+  expandedRound,
+}: {
+  messages: ChatItem[];
+  live?: LiveBlock;
+  columns: number;
+  banner: BannerInfo;
+  review: boolean;
+  reviewEnd: number;
+  expandedRound: number;
+}): JSX.Element {
+  const rounds = splitRounds(messages);
+  const [seal, setSeal] = React.useState(0);
+  // 渲染期派生水位（React 受控派生 state 模式）：水位只进不退；/new 收缩交给 Static epoch 重挂
+  const sealed = Math.max(seal, sealRounds(rounds));
+  const epochRef = React.useRef(0);
+  const prevLenRef = React.useRef(0);
+  if (messages.length < prevLenRef.current) epochRef.current += 1;
+  prevLenRef.current = messages.length;
+  if (sealed !== seal) setSeal(sealed);
+  const closed = rounds.slice(0, sealed);
+  const open = sealed < rounds.length ? rounds[sealed] : undefined;
+  const entries: TranscriptEntry[] = [
+    { kind: 'banner', info: banner },
+    ...closed.map((round) => ({ kind: 'round' as const, round })),
+  ];
   return (
     <Box flexDirection="column">
-      {overflow > 0 ? <Text dimColor>… 已滚出最早 {overflow} 条（仅视口渲染，历史保留）</Text> : null}
-      {shown.map((m, i) => (
-        <Box key={`${m.ts}-${i}`} marginBottom={1}>
-          <MessageRow item={m} columns={columns} expandAll={expandAll} />
+      <Static key={epochRef.current} items={entries}>
+        {(entry) =>
+          entry.kind === 'banner' ? (
+            <Box key="banner">
+              <Banner info={entry.info} columns={columns} />
+            </Box>
+          ) : (
+            <Box key={`r-${entry.round.start}`} marginBottom={1}>
+              <RoundItems items={entry.round.items} columns={columns} collapsed={false} />
+            </Box>
+          )
+        }
+      </Static>
+      {review ? (
+        <ReviewArea rounds={rounds} endIdx={reviewEnd} expandedRound={expandedRound} columns={columns} />
+      ) : open ? (
+        <Box marginBottom={1}>
+          <RoundItems items={open.items} columns={columns} collapsed={false} />
+        </Box>
+      ) : null}
+      {live ? <LiveArea live={live} /> : null}
+    </Box>
+  );
+}
+
+/** 单轮消息组：实时/历史恒展开；仅翻阅视口中未选中的轮折叠（摘要 + [Tab 展开] 提示） */
+function RoundItems({ items, columns, collapsed }: { items: ChatItem[]; columns: number; collapsed: boolean }): JSX.Element {
+  return (
+    <Box flexDirection="column">
+      {items.map((m, i) => (
+        <MessageRow key={`${m.seq}-${i}`} item={m} columns={columns} collapsed={collapsed} />
+      ))}
+    </Box>
+  );
+}
+
+/** 翻阅视口：默认最近 6 轮，↑↓ 逐轮追踪窗口滑动；同时仅展开一块（expandedRound） */
+function ReviewArea({
+  rounds,
+  endIdx,
+  expandedRound,
+  columns,
+}: {
+  rounds: ChatRound[];
+  endIdx: number;
+  expandedRound: number;
+  columns: number;
+}): JSX.Element {
+  const { start, end, view } = reviewWindow(rounds, endIdx);
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>
+        ── 历史翻阅 · 第 {start + 1}–{end + 1} 轮 / 共 {rounds.length} 轮 · ↑↓ 翻阅 · Tab 展开末轮 · Esc 返回 ──
+      </Text>
+      {view.map((r, i) => (
+        <Box key={r.start} marginBottom={1}>
+          <RoundItems items={r.items} columns={columns} collapsed={start + i !== expandedRound} />
         </Box>
       ))}
-      {live ? <LiveArea live={live} columns={columns} /> : null}
     </Box>
   );
 }
 
 /** 行级 memo：高频增量帧只重渲染受影响的行（messages append-only，item 引用稳定） */
-const MessageRow = React.memo(function MessageRow({ item, columns, expandAll }: { item: ChatItem; columns: number; expandAll: boolean }): JSX.Element {
+const MessageRow = React.memo(function MessageRow({
+  item,
+  columns,
+  collapsed,
+}: {
+  item: ChatItem;
+  columns: number;
+  collapsed: boolean;
+}): JSX.Element {
   if (item.role === 'user') {
     return (
       <Box flexDirection="column">
         {bandLines(item.text, columns).map((line, i) => (
-          <Text key={i} backgroundColor="gray">{line}</Text>
+          <Text key={i} backgroundColor="gray">
+            {line}
+          </Text>
         ))}
       </Box>
     );
   }
   if (item.role === 'assistant') return <MarkdownText text={item.text} columns={columns} />;
   if (item.role === 'system') return <Text color="yellow">! {item.text}</Text>;
-  if (item.role === 'thinking') return <ThinkingRow item={item} expandAll={expandAll} />;
+  if (item.role === 'thinking') return <ThinkingRow item={item} collapsed={collapsed} />;
   if (item.role === 'step') return <Text color="cyan">▶ {item.text}</Text>;
-  return <ToolRow item={item} expandAll={expandAll} />;
+  return <ToolRow item={item} collapsed={collapsed} />;
 });
 
-/** 思考行：折叠态 ✻ Thought for Ns（可展开全文） */
-function ThinkingRow({ item, expandAll }: { item: ChatItem; expandAll: boolean }): JSX.Element {
-  if (expandAll && item.detail) {
+/** 思考行：实时/历史默认展开全文；仅翻阅折叠态显示摘要行（收束耗时统计） */
+function ThinkingRow({ item, collapsed }: { item: ChatItem; collapsed: boolean }): JSX.Element {
+  if (!collapsed && item.detail) {
     return (
       <Box flexDirection="column">
-        <Text dimColor italic>✻ {item.text}</Text>
+        <Text dimColor italic>
+          ✻ {item.text}
+        </Text>
         {item.detail.split('\n').map((l, i) => (
-          <Text key={i} dimColor italic>{'    ' + l}</Text>
+          <Text key={i} dimColor italic>
+            {'    ' + l}
+          </Text>
         ))}
       </Box>
     );
@@ -63,21 +170,7 @@ function ThinkingRow({ item, expandAll }: { item: ChatItem; expandAll: boolean }
   return (
     <Text dimColor italic>
       ✻ {item.text}
-      {item.detail !== undefined ? <Text dimColor> [Tab 展开]</Text> : null}
+      {collapsed && item.detail !== undefined ? <Text dimColor> [Tab 展开]</Text> : null}
     </Text>
-  );
-}
-
-/** 实时区：答复草稿走 Markdown 排版（未闭合块由解析器降级）；思考滚动固定 6 行（不足补空行，块高恒定不跳动） */
-function LiveArea({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element {
-  if (live.kind === 'reply') return <MarkdownText text={live.text} columns={columns} />;
-  const tail = live.text.split('\n').slice(-THINK_TAIL_LINES);
-  while (tail.length < THINK_TAIL_LINES) tail.unshift('');
-  return (
-    <Box flexDirection="column">
-      {tail.map((l, i) => (
-        <Text key={i} dimColor italic>{l.length > 0 ? `✻ ${l}` : ' '}</Text>
-      ))}
-    </Box>
   );
 }

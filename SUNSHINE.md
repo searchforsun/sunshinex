@@ -12,3 +12,12 @@ sunshinex
 - 使用 TypeScript，开启 strict 模式
 - 模块按 harness / loop / graph / model / storage / plugins 分层
 - 写操作前先评估影响面，改动后自检
+
+# 网络白名单
+html.duckduckgo.com
+api.bing.microsoft.com
+github.com
+raw.githubusercontent.com
+registry.npmjs.org
+nodejs.org
+developer.mozilla.org

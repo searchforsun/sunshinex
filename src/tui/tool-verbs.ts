@@ -6,6 +6,7 @@ const VERBS: Record<string, string> = {
   grep: 'GREP',
   glob: 'GLOB',
   webfetch: 'FETCH',
+  websearch: 'WEBSEARCH',
   kb_search: 'SEARCH',
 };
 
@@ -24,6 +25,7 @@ const TARGET_FIELD: Record<string, string> = {
   grep: 'pattern',
   glob: 'pattern',
   webfetch: 'url',
+  websearch: 'query',
   kb_search: 'query',
 };
 

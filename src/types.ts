@@ -174,7 +174,7 @@ export interface SessionEvent {
 /** 终端化审批请求（guard asker 注入点契约，Task 2 接入） */
 export interface ApprovalRequest {
   id: string;
-  kind: 'command' | 'mcp' | 'webfetch' | 'write';
+  kind: 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write';
   subject: string;
   reason?: string;
 }

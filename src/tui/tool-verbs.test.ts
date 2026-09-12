@@ -9,6 +9,7 @@ test('toolCallLine：已登记工具映射英文动词 + target 摘要', () => {
   assert.equal(toolCallLine('grep', { pattern: 'TODO' }), 'GREP TODO');
   assert.equal(toolCallLine('glob', { pattern: 'src/**/*.ts' }), 'GLOB src/**/*.ts');
   assert.equal(toolCallLine('webfetch', { url: 'https://x.dev' }), 'FETCH https://x.dev');
+  assert.equal(toolCallLine('websearch', { query: 'sunshine' }), 'WEBSEARCH sunshine');
   assert.equal(toolCallLine('kb_search', { query: '部署' }), 'SEARCH 部署');
 });
 

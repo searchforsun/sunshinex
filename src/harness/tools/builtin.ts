@@ -4,9 +4,10 @@ import { RegisteredTool, CodedToolError } from '../tools';
 import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
 import { KnowledgeBase } from '../knowledge/index';
+import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 
-/** 内置工具集：read/write/grep/glob/exec/webfetch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准 */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase): RegisteredTool[] {
+/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing） */
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider): RegisteredTool[] {
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
   const backend = safety.backend;
 
@@ -85,6 +86,19 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         if (!res.ok) throw new Error(`WEBFETCH_HTTP_${res.status}`);
         const text = await res.text();
         return execOut(text.slice(0, 100_000));
+      },
+    },
+    {
+      name: 'websearch',
+      description: '搜索网页：入参 { query, count? }（count 缺省 5，上限 10），stdout 为 标题/URL/摘要 行式列表；引擎端点域名同受安全链白名单闸门约束',
+      category: 'network',
+      executor: async (input: ToolInput) => {
+        const provider = webSearch ?? resolveWebSearchProvider();
+        const n = Number(input.count ?? 5);
+        const count = Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), 10) : 5;
+        const hits = await provider.search(String(input.query ?? ''), count);
+        if (hits.length === 0) return execOut('（无结果）');
+        return execOut(hits.map((h, i) => `${i + 1}. ${h.title}\n   ${h.url}\n   ${h.snippet}`).join('\n'));
       },
     },
     {

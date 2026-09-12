@@ -3,13 +3,13 @@ import { Box, Text } from 'ink';
 import { MdBlock, MdInline, parseMarkdown, inlineText, alignTable, stripVariationSelector } from '../markdown';
 import { highlightLine, HiKind } from '../highlight';
 
-/** 行内节点 → Ink JSX：加粗/斜体/删除线/行内代码（反色底）/裸文本 */
+/** 行内节点 → Ink JSX：加粗/斜体/删除线/行内代码（原色不铺底）/裸文本 */
 function Inline({ nodes }: { nodes: MdInline[] }): JSX.Element {
   return (
     <Text>
       {nodes.map((n, i) => {
         if (n.kind === 'text') return <Text key={i}>{n.text}</Text>;
-        if (n.kind === 'code') return <Text key={i} backgroundColor="gray">{n.text}</Text>;
+        if (n.kind === 'code') return <Text key={i}>{n.text}</Text>;
         if (n.kind === 'bold') return <Text key={i} bold><Inline nodes={n.children} /></Text>;
         if (n.kind === 'italic') return <Text key={i} italic><Inline nodes={n.children} /></Text>;
         return <Text key={i} strikethrough><Inline nodes={n.children} /></Text>;
@@ -42,7 +42,7 @@ const HI_COLOR: Record<HiKind, string> = {
   plain: '',
 };
 
-/** 围栏代码块：逐行底色带 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色，其余已知语言按 token 高亮 */
+/** 围栏代码块：原色不铺底 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色，其余已知语言按 token 高亮 */
 function Fence({ lang, code, columns }: { lang: string; code: string; columns: number }): JSX.Element {
   const lines = code.split('\n');
   const isDiff = lang === 'diff' || lang === 'patch';
@@ -52,16 +52,15 @@ function Fence({ lang, code, columns }: { lang: string; code: string; columns: n
       {lines.map((line, i) => {
         if (isDiff) {
           return (
-            <Text key={i} backgroundColor="gray" color={diffLineColor(line)}>
-              {' ' + line}
+            <Text key={i} color={diffLineColor(line)}>
+              {line}
             </Text>
           );
         }
         const spans = highlightLine(lang, line);
         const known = spans.length > 1 || spans[0].kind !== 'plain';
         return (
-          <Text key={i} backgroundColor="gray" dimColor={!known}>
-            {' '}
+          <Text key={i} dimColor={!known}>
             {spans.map((s, j) => (
               <Text key={j} color={HI_COLOR[s.kind] || undefined} dimColor={s.kind === 'comment'}>{s.text}</Text>
             ))}

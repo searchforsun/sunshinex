@@ -12,13 +12,14 @@ test('App：启动横幅 + 输入框 + 状态栏常驻渲染', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-vis1-'));
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"hi"}']) });
-    const { lastFrame, unmount } = render(
+    const { lastFrame, allOutput, unmount } = render(
       <App controller={ctrl} banner={{ version: '0.1.0', model: 'test-model', root: tmp }} />,
     );
+    const all = allOutput();
+    assert.match(all, /SunshineX TUI v0\.1\.0/); // 横幅入 Static 一次性打印
+    assert.match(all, /test-model/);
+    assert.match(all, /\/help 查看命令/);
     const frame = lastFrame() ?? '';
-    assert.match(frame, /SunshineX TUI v0\.1\.0/);
-    assert.match(frame, /test-model/);
-    assert.match(frame, /\/help 查看命令/);
     assert.match(frame, /❯/);          // 输入框提示符
     assert.match(frame, /↑0 tokens/);  // 状态栏本轮 tokens
     assert.match(frame, /缓存 \d+%/); // 状态栏缓存命中率
@@ -40,15 +41,44 @@ test('App：消息区新渲染口径（去标签/工具两行/助手裸文本）
     });
     await ctrl.submit('写个文件');
     await ctrl.waitIdle();
-    const { lastFrame, unmount } = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
+    const { allOutput, unmount } = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
+    const all = allOutput();
+    assert.match(all, /⏺ \[WRITE\] a\.txt/); // 工具调用行英文动词 + 方括号高亮
+    assert.match(all, /✓/);              // 工具结果行成功
+    assert.match(all, /写个文件/);        // 用户消息（色带）
+    assert.match(all, /ok/);             // 助手裸文本答复
+    assert.ok(!all.includes('[你]'), '不得出现 [你] 角色标签');
+    assert.ok(!all.includes('[助手]'), '助手答复应为裸文本');
+    assert.ok(!all.includes('[工具]'), '工具行应为 ⏺/⎿ 形态');
+    unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：Static 语义——横幅与已入档历史只打印一次，动态帧不含封存历史', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-vis3-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"第一轮答复"}',
+        '{"done":true,"reply":"第二轮答复"}',
+      ]),
+    });
+    const { lastFrame, allOutput, unmount } = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
+    await new Promise((r) => setTimeout(r, 200));
+    await ctrl.submit('任务甲');
+    await ctrl.waitIdle();
+    await ctrl.submit('任务乙');
+    await ctrl.waitIdle();
+    const all = allOutput();
+    // 横幅只随挂载打印一次（旧行为：每帧全量重绘时横幅在 stdout 上出现多次）
+    const bannerCount = all.split('SunshineX TUI v1.0.0').length - 1;
+    assert.ok(bannerCount === 1, `横幅应恰好打印一次，实际 ${bannerCount} 次`);
     const frame = lastFrame() ?? '';
-    assert.match(frame, /⏺ \[WRITE\] a\.txt/); // 工具调用行英文动词 + 方括号高亮
-    assert.match(frame, /✓/);              // 工具结果行成功
-    assert.match(frame, /写个文件/);        // 用户消息（色带）
-    assert.match(frame, /ok/);             // 助手裸文本答复
-    assert.ok(!frame.includes('[你]'), '不得出现 [你] 角色标签');
-    assert.ok(!frame.includes('[助手]'), '助手答复应为裸文本');
-    assert.ok(!frame.includes('[工具]'), '工具行应为 ⏺/⎿ 形态');
+    assert.match(frame, /任务乙/, '动态帧应包含当前轮消息');
+    assert.ok(!frame.includes('任务甲'), '已入档的上一轮消息不应回占动态帧');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

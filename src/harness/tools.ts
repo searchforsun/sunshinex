@@ -10,6 +10,7 @@ const CANONICAL_TOOL_NAMES: Record<string, string> = {
   grep: 'Grep',
   glob: 'Glob',
   webfetch: 'WebFetch',
+  websearch: 'WebSearch',
 };
 
 export interface RegisteredTool extends ToolSpec {

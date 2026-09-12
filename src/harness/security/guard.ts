@@ -1,5 +1,6 @@
 import { PolicyEngine } from './policy';
 import { READONLY_WHITELIST, PermissionMode, DESTRUCTIVE_COMMANDS, DESTRUCTIVE_PIPE } from './modes';
+import { resolveWebSearchEndpoint } from './websearch-endpoint';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
 
 export type GuardDecision =
@@ -28,6 +29,11 @@ export class SecurityGuard {
     // 类别硬底线与破坏性命令同级：先于 allow 规则求值，策略规则不可豁免；dontAsk 模式同样不豁免（免审批 ≠ 免策略）
     if (tool === 'WebFetch') {
       const denied = this.checkWebFetch(input);
+      if (denied) return denied;
+    }
+    // WebSearch 无用户 URL 入参，判界对象是引擎端点主机（与 Provider 同源解析，见 checkWebSearch）
+    if (tool === 'WebSearch') {
+      const denied = this.checkWebSearch();
       if (denied) return denied;
     }
     if (tool.startsWith('mcp__')) {
@@ -85,7 +91,7 @@ export class SecurityGuard {
     if (!this.asker) return sync;
     const req: ApprovalRequest = {
       id: `ap-${++this.seq}`,
-      kind: tool === 'Bash' ? 'command' : tool.startsWith('mcp__') ? 'mcp' : tool === 'WebFetch' ? 'webfetch' : 'write',
+      kind: tool === 'Bash' ? 'command' : tool.startsWith('mcp__') ? 'mcp' : tool === 'WebFetch' ? 'webfetch' : tool === 'WebSearch' ? 'websearch' : 'write',
       subject,
       reason: 'manual 模式需交互确认',
     };
@@ -108,6 +114,8 @@ export class SecurityGuard {
       if (typeof p === 'string') return p;
       const u = (input as { url?: unknown }).url;
       if (typeof u === 'string') return u;
+      const q = (input as { query?: unknown }).query;
+      if (typeof q === 'string') return q;
     }
     return this.extractSpecifier(tool, input);
   }
@@ -156,6 +164,23 @@ export class SecurityGuard {
     }
     if (!this.webAllowlist.includes(parsed.hostname)) {
       return { allowed: false, reason: `COMMAND_DENIED: WebFetch 域名不在白名单：${parsed.hostname}` };
+    }
+    return null;
+  }
+
+  /** websearch 闸门：判界对象是引擎端点（与 Provider 同源解析，见 websearch-endpoint）——端点非法、非 http/https 或引擎主机不在白名单即拒；空名单 = 全禁（缺省安全） */
+  private checkWebSearch(): GuardDecision | null {
+    let parsed: URL;
+    try {
+      parsed = new URL(resolveWebSearchEndpoint());
+    } catch {
+      return { allowed: false, reason: 'COMMAND_DENIED: WebSearch 引擎端点非法' };
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { allowed: false, reason: `COMMAND_DENIED: WebSearch 仅允许 http/https 端点：${parsed.protocol}` };
+    }
+    if (!this.webAllowlist.includes(parsed.hostname)) {
+      return { allowed: false, reason: `COMMAND_DENIED: WebSearch 引擎主机不在白名单：${parsed.hostname}` };
     }
     return null;
   }

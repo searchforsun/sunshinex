@@ -44,15 +44,16 @@ test('App：manual 审批流终态渲染（消息流/工具卡/助手答复/状�
     await ctrl.waitIdle();
     assert.equal(fs.readFileSync(path.join(tmp, 'a.txt'), 'utf8'), 'hi', '批准后 write 应真实落盘');
 
-    const { lastFrame, unmount } = render(<App controller={ctrl} />);
+    const { lastFrame, allOutput, unmount } = render(<App controller={ctrl} />);
+    const all = allOutput();
+    assert.match(all, /写个文件/);        // 用户消息（整行底色带，无 [你] 标签）
+    assert.match(all, /⏺ \[WRITE\] a\.txt/); // 工具调用行（英文动词 + 方括号高亮）
+    assert.match(all, /✓/);              // 工具结果行（成功）
+    assert.match(all, /ok/);             // 助手裸文本答复
     const frame = lastFrame() ?? '';
-    assert.match(frame, /写个文件/);        // 用户消息（整行底色带，无 [你] 标签）
-    assert.match(frame, /⏺ \[WRITE\] a\.txt/); // 工具调用行（英文动词 + 方括号高亮）
-    assert.match(frame, /✓/);              // 工具结果行（成功）
-    assert.match(frame, /ok/);             // 助手裸文本答复
     assert.match(frame, /空闲/);           // 状态栏状态词
-    assert.ok(!frame.includes('[你]'), '不得出现 [你] 角色标签');
-    assert.ok(!frame.includes('[助手]'), '助手答复应为裸文本');
+    assert.ok(!all.includes('[你]'), '不得出现 [你] 角色标签');
+    assert.ok(!all.includes('[助手]'), '助手答复应为裸文本');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -67,12 +68,11 @@ test('App：dontAsk 任务终态渲染（无审批卡）', async () => {
     await ctrl.waitIdle();
     assert.equal(ctrl.getState().approval, undefined, 'dontAsk 模式不应产生审批挂起');
 
-    const { lastFrame, unmount } = render(<App controller={ctrl} />);
-    const frame = lastFrame() ?? '';
-    assert.match(frame, /done-reply/);
-    assert.match(frame, /空闲/);
-    assert.ok(!frame.includes('[助手]'), '助手答复应为裸文本');
-    assert.ok(!frame.includes('审批'), 'dontAsk 不应出现审批模态');
+    const { lastFrame, allOutput, unmount } = render(<App controller={ctrl} />);
+    assert.match(allOutput(), /done-reply/);
+    assert.match(lastFrame() ?? '', /空闲/);
+    assert.ok(!allOutput().includes('[助手]'), '助手答复应为裸文本');
+    assert.ok(!allOutput().includes('审批'), 'dontAsk 不应出现审批模态');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

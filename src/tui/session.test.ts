@@ -99,6 +99,24 @@ test('会话控制器：斜杠命令 /help /status 产出 system 消息且不触
   }
 });
 
+test('会话控制器：/init 生成 SUNSHINE.md 骨架，再次调用提示已存在且不落 run 账', async () => {
+  const tmp = tmpdir('sunshinex-sess-init-');
+  try {
+    fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ name: 'demo-app' }));
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const runsBefore = ctrl.runtime.harness.ledger.summary().runs;
+    await ctrl.submit('/init');
+    await ctrl.submit('/init');
+    const s = ctrl.getState();
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('已生成')), '首次 /init 应提示生成');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('已存在')), '再次 /init 应提示已存在');
+    assert.ok(fs.existsSync(path.join(tmp, 'SUNSHINE.md')), 'SUNSHINE.md 应已写入项目根');
+    assert.equal(ctrl.runtime.harness.ledger.summary().runs, runsBefore, '/init 不消耗模型调用，不应落 run 账');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('会话控制器：/new 软重置清空消息与待办并清会话级审批登记', async () => {
   const tmp = tmpdir('sunshinex-sess5-');
   try {
