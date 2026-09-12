@@ -21,7 +21,8 @@ function readPackageVersion(): string | undefined {
 
 /** TUI 入口：同进程装配会话控制器与 Ink 渲染；manual 审批经键盘 y/a/n 在会话内裁决 */
 export async function runTui(args: CliArgs): Promise<void> {
-  const root = args.positional[0] ?? process.cwd();
+  // 相对路径立即收敛为绝对路径：root 全链路（工具沙箱 cwd、guard 边界、上下文工作目录事实）都以绝对路径为准
+  const root = path.resolve(args.positional[0] ?? process.cwd());
   const modeFlag = typeof args.flags.mode === 'string' ? args.flags.mode : undefined;
   const mode = modeFlag === 'dontAsk' || modeFlag === 'plan' ? modeFlag : 'manual';
   const model = buildModel(args.flags);

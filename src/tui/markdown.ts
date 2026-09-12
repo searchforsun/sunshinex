@@ -1,4 +1,5 @@
 import CliTable3 from 'cli-table3';
+import { displayWidth, wrapByWidth } from './text-band';
 import MarkdownIt from 'markdown-it';
 
 /** 行内节点：加粗/斜体/行内代码/删除线，可嵌套（code 内不再嵌套解析） */
@@ -346,11 +347,40 @@ const TABLE_CHARS = {
 export function alignTable(headers: string[], rows: string[][], columns: number): string[] {
   const colCount = headers.length;
   if (colCount === 0 || colCount * 2 > columns) return [];
-  const table = new CliTable3({
-    head: headers.map(stripVariationSelector),
-    style: { head: [], border: [] },
-    chars: TABLE_CHARS,
+  const build = (hs: string[], rs: string[][]): string[] => {
+    const table = new CliTable3({ head: hs, style: { head: [], border: [] }, chars: TABLE_CHARS });
+    for (const r of rs) table.push(r);
+    return table.toString().split('\n');
+  };
+  const h = headers.map(stripVariationSelector);
+  const r = rows.map((row) => row.map((c) => stripVariationSelector(c ?? '')));
+  const lines = build(h, r);
+  const widest = lines.reduce((m, l) => Math.max(m, displayWidth(l)), 0);
+  if (widest <= columns) return lines;
+  // 超宽：按列内容需求比例分配预算，单元格按显示宽度预折行（cli-table3 以多行单元格绘制，框线与行间分隔保持完整）
+  const inner = columns - (colCount + 1) - colCount * 2;
+  if (inner < colCount * 4) return []; // 预算过小仍降级（渲染层回退逐行原文）
+  const MIN_COL = 4;
+  const needs = h.map((_, c) => {
+    let m = displayWidth(h[c] ?? '');
+    for (const row of r) m = Math.max(m, displayWidth(row[c] ?? ''));
+    return Math.max(MIN_COL, m);
   });
-  for (const r of rows) table.push(r.map((c) => stripVariationSelector(c ?? '')));
-  return table.toString().split('\n');
+  const needSum = needs.reduce((a, b) => a + b, 0);
+  let widths = needs;
+  if (needSum > inner) {
+    // 等比压缩后若仍超预算（小列被 MIN_COL 托底抬高），从最宽列逐字符回收，保证总宽硬上限
+    widths = needs.map((n) => Math.max(MIN_COL, Math.floor((n / needSum) * inner)));
+    let sum = widths.reduce((a, b) => a + b, 0);
+    while (sum > inner) {
+      let maxI = 0;
+      for (let c = 1; c < widths.length; c++) if (widths[c] > widths[maxI]) maxI = c;
+      if (widths[maxI] <= MIN_COL) break;
+      widths[maxI] -= 1;
+      sum -= 1;
+    }
+  }
+  const wrapCell = (cell: string, c: number): string =>
+    cell.split('\n').flatMap((seg) => wrapByWidth(seg, widths[c])).join('\n');
+  return build(h.map(wrapCell), r.map((row) => row.map(wrapCell)));
 }

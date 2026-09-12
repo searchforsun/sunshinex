@@ -12,5 +12,5 @@ export function buildModel(flags: Record<string, string | boolean>): ModelAdapte
 /** 统一装配根（composition root）：CLI/TUI/GUI 三面共用的唯一运行时装配点；root 为项目目录 */
 export function buildDeps(root: string, flags: Record<string, string | boolean>): LoopDeps {
   const h = new Harness({ root, mode: 'dontAsk' });
-  return { safety: h.safety, registry: h.tools, context: h.context, model: buildModel(flags), skills: h.skills };
+  return { safety: h.safety, registry: h.tools, context: h.context, model: buildModel(flags), skills: h.skills, root };
 }

@@ -146,3 +146,28 @@ test('alignTable：emoji 单元格去 VS16 按文本呈现对齐', () => {
   // 行等宽须按显示宽度判：字符串 length 因 CJK/emoji 计数不等
   assert.equal(new Set(out.map((l) => displayWidth(l))).size, 1);
 });
+
+test('alignTable：超宽单元格按列预算折行，总宽不超终端且行分隔完整', () => {
+  const headers = ['模块', '现状与问题', '优化建议'];
+  const longText = '秒杀链路在库存扣减处存在超卖风险，且分布式事务回滚策略缺失，需要补齐 TCC 或本地消息表方案并完善幂等键设计';
+  const rows = [['订单服务', longText, '引入 Seata 或本地消息表，幂等键用组合键']];
+  const columns = 70;
+  const lines = alignTable(headers, rows, columns);
+  assert.ok(lines.length > 0, '不应降级为逐行原文');
+  for (const l of lines) {
+    assert.ok(displayWidth(l) <= columns, `行宽 ${displayWidth(l)} 超出 ${columns}：${l}`);
+  }
+  assert.ok(lines.some((l) => l.includes('─')), '应保持全框线形态');
+  // 折行跨行会切断词组：按列重组（内容行以 │ 分段、同列下标拼接）后校验每列语义完整
+  const colTexts: string[] = [];
+  for (const l of lines) {
+    if (!l.includes('│')) continue; // 纯框线行
+    l.split('│').forEach((c, i) => {
+      colTexts[i] = (colTexts[i] ?? '') + c;
+    });
+  }
+  const colContent = colTexts.join(' ').replace(/[^一-龥A-Za-z0-9]/g, '');
+  assert.ok(colContent.includes('本地消息表'), '第二列折行不丢内容');
+  assert.ok(colContent.includes('幂等键'), '第三列折行不丢内容');
+  assert.ok(lines.filter((l) => !l.includes('│')).length >= 2, '顶边/底边框线完整');
+});

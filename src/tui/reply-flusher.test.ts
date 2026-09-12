@@ -50,3 +50,23 @@ test('reply-flusher：无换行或已追平返回 null', () => {
   assert.equal(stableReplySegment('a\nb\n', 4), null);
   assert.equal(stableReplySegment('', 0), null);
 });
+
+test('reply-flusher：GFM 表格超兜底线也整表放行，不中途切割', () => {
+  const header = '| 模块 | 问题 | 建议 |';
+  const divider = '| --- | --- | --- |';
+  const rows = Array.from({ length: 30 }, (_, i) => `| 服务${i} | 问题${i} | 建议${i} |`);
+  const table = [header, divider, ...rows].join('\n');
+  const text = `前言。\n\n${table}\n\n后续。`;
+  assert.equal(
+    stableReplySegment(text, 0),
+    `前言。\n\n${table}\n\n`,
+    '32 行表格远超 24 行兜底：整表 + 空行一起放行',
+  );
+});
+
+test('reply-flusher：表格流式未完（尾行为表格行且无换行）不切，等待整表', () => {
+  const partial = ['| A | B |', '| --- | --- |', '| 行1 | 值 |', '| 行2 | 值'].join('\n');
+  const text = `前言。\n\n${partial}`;
+  const committed = '前言。\n\n'.length;
+  assert.equal(stableReplySegment(text, committed), null, '表格未闭合不切');
+});

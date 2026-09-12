@@ -39,6 +39,7 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     registry: harness.tools,
     context: harness.context,
     model: harness.model,
+    root: opts.root,
     ...(harness.ledger ? { ledger: harness.ledger } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
   };

@@ -35,6 +35,8 @@ export interface LoopDeps {
   registry: ToolRegistry;
   context: ContextManager;
   model: ModelAdapter;
+  /** 项目根绝对路径（环境事实注入：提示词告知模型工作目录，杜绝相对路径瞎拼） */
+  root?: string;
   router?: ModelRouter;
   skills?: SkillResolver;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给循环内构造的 Reactor；缺省零副作用 */

@@ -25,12 +25,17 @@ export class ContextManager {
   private recent: string[] = [];
   private pendingSkill: string | null = null;
 
-  constructor(private readonly root: string, store: StorageAdapter) {
-    this.loader = new ContextLoader(root);
-    this.rules = new RulesRegistry(root);
+  constructor(private readonly rootPath: string, store: StorageAdapter) {
+    this.loader = new ContextLoader(rootPath);
+    this.rules = new RulesRegistry(rootPath);
     this.memory = new MemoryLifecycle(store);
     this.window = new ContextWindow();
     this.session = new SessionStore(store);
+  }
+
+  /** 项目根绝对路径（环境事实注入与路径消歧的单一来源） */
+  get root(): string {
+    return this.rootPath;
   }
 
   /** 最近读取文件登记：去重 + LRU 上限 5（供压缩后重读） */

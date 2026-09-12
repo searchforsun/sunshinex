@@ -18,9 +18,8 @@ function Inline({ nodes }: { nodes: MdInline[] }): JSX.Element {
   );
 }
 
-/** 标题分级着色：1/2 加粗黄，3/4 加粗，5/6 加粗暗灰 */
+/** 标题分级：与正文同色不加彩，仅字形层级（1/4 加粗、5/6 加粗暗灰） */
 function Heading({ level, inlines }: { level: number; inlines: MdInline[] }): JSX.Element {
-  if (level <= 2) return <Text bold color="yellow"><Inline nodes={inlines} /></Text>;
   if (level <= 4) return <Text bold><Inline nodes={inlines} /></Text>;
   return <Text bold dimColor><Inline nodes={inlines} /></Text>;
 }
@@ -91,7 +90,7 @@ function Quote({ inlines }: { inlines: MdInline[] }): JSX.Element {
   return (
     <Box flexDirection="column">
       {lines.map((l, i) => (
-        <Text key={i} color="cyan">│ {l}</Text>
+        <Text key={i}>│ {l}</Text>
       ))}
     </Box>
   );

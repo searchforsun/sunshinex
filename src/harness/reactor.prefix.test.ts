@@ -74,16 +74,29 @@ test('前缀稳定化：档位提示移至尾部，跨档位步共享稳定前�
 });
 
 test('前缀稳定化：工具清单段序与注册顺序无关（按名固定）', async () => {
-  const t1 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-prefix2a-'));
-  const t2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-prefix2b-'));
+  // root 已作为环境事实注入 prompt：两台 reactor 须共用同一 root，仅保留注册顺序这一变量
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-prefix2-'));
   try {
-    const a = makeReactor(t1, scripted([DONE_REPLY]));
-    const b = makeReactor(t2, scripted([DONE_REPLY]), true);
+    const a = makeReactor(tmp, scripted([DONE_REPLY]));
+    const b = makeReactor(tmp, scripted([DONE_REPLY]), true);
     await a.reactor.run({ goal: 'g' }, { maxSteps: 2 });
     await b.reactor.run({ goal: 'g' }, { maxSteps: 2 });
     assert.equal(a.prompts[0], b.prompts[0], '同内容不同注册顺序应产出同一 prompt');
   } finally {
-    fs.rmSync(t1, { recursive: true, force: true });
-    fs.rmSync(t2, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('环境事实：提示词注入工作目录绝对路径与工具选择政策（相对 root 收敛为绝对）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-envfact-'));
+  try {
+    const { reactor, prompts } = makeReactor(tmp, scripted([DONE_REPLY]));
+    await reactor.run({ goal: 'g' }, { maxSteps: 2 });
+    const p = prompts[0];
+    assert.ok(p.includes(`当前工作目录（项目根）：${tmp}`), '提示词应含工作目录绝对路径（环境事实）');
+    assert.ok(p.includes('工具选择：'), '提示词应含工具选择政策（专用工具优先、exec 兜底）');
+    assert.ok(p.indexOf('当前工作目录') > p.indexOf('上下文：'), '工作目录属上下文段环境事实');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

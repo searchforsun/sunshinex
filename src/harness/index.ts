@@ -63,6 +63,7 @@ export class Harness {
       safety: this.safety,
       context: this.context,
       model: this.model,
+      root: base,
       ledger,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.learnSkills ?? true

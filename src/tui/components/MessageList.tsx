@@ -4,7 +4,7 @@ import { ChatItem, LiveBlock } from '../session';
 import { bandLines } from '../text-band';
 import { BannerInfo } from '../banner-info';
 import { Banner } from './Banner';
-import { ChatRound, reviewWindow, splitRounds } from '../history-view';
+import { ChatRound, reviewViewport, splitRounds } from '../history-view';
 import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
@@ -28,16 +28,15 @@ export function MessageList({
   columns,
   banner,
   review,
-  reviewEnd,
-  expandedRound,
+  focusBlock,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
   columns: number;
   banner: BannerInfo;
   review: boolean;
-  reviewEnd: number;
-  expandedRound: number;
+  /** 焦点块下标（collapsibleBlocks 序）：焦点块自动展开，最近 REVIEW_DEFAULT_EXPANDED 块默认展开 */
+  focusBlock: number;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -63,47 +62,48 @@ export function MessageList({
         }
       </Static>
       {review ? (
-        <ReviewArea rounds={splitRounds(messages)} endIdx={reviewEnd} expandedRound={expandedRound} columns={columns} />
+        <ReviewArea rounds={splitRounds(messages)} focusBlock={focusBlock} columns={columns} />
       ) : null}
       {live ? <LiveArea live={live} columns={columns} /> : null}
     </Box>
   );
 }
 
-/** 翻阅视口：默认最近 6 轮，↑↓ 逐轮追踪窗口滑动；同时仅展开一块（expandedRound） */
+/** 翻阅视口（块粒度）：窗口锚定焦点块所在轮向前至多 6 轮；展开集 = 最近 3 块 ∪ 焦点块（同时至多 4 块展开） */
 function ReviewArea({
   rounds,
-  endIdx,
-  expandedRound,
+  focusBlock,
   columns,
 }: {
   rounds: ChatRound[];
-  endIdx: number;
-  expandedRound: number;
+  focusBlock: number;
   columns: number;
 }): JSX.Element {
-  const { start, end, view } = reviewWindow(rounds, endIdx);
+  const { start, end, view, expanded } = reviewViewport(rounds, focusBlock);
   return (
     <Box flexDirection="column">
       <Text dimColor>
-        ── 历史翻阅 · 第 {start + 1}–{end + 1} 轮 / 共 {rounds.length} 轮 · ↑↓ 翻阅 · Tab 展开末轮 · Esc 返回 ──
+        ── 历史翻阅 · 第 {start + 1}–{end + 1} 轮 / 共 {rounds.length} 轮 · 默认展开最新 3 块 · ↑↓ 移动焦点 · ↓ 越底返回 · Esc 退出 ──
       </Text>
-      {view.map((r, i) => (
-        <Box key={r.start} marginBottom={1}>
-          <RoundItems items={r.items} columns={columns} collapsed={start + i !== expandedRound} />
-        </Box>
-      ))}
-    </Box>
-  );
-}
-
-/** 单轮消息组（仅翻阅视口使用）：选中轮展开全文，其余折叠摘要 */
-function RoundItems({ items, columns, collapsed }: { items: ChatItem[]; columns: number; collapsed: boolean }): JSX.Element {
-  return (
-    <Box flexDirection="column">
-      {items.map((m, i) => (
-        <MessageRow key={`${m.seq}-${i}`} item={m} columns={columns} collapsed={collapsed} />
-      ))}
+      {view.map((r, vi) => {
+        const ri = start + vi;
+        return (
+          <Box key={r.start} marginBottom={1} flexDirection="column">
+            {r.items.map((m, i) => {
+              const isCollapsed = !expanded.has(`${ri}:${i}`);
+              return (
+                <MessageRow
+                  key={`${m.seq}-${i}`}
+                  item={m}
+                  columns={columns}
+                  collapsed={isCollapsed}
+                  hint={isCollapsed ? '↑↓ 展开' : undefined}
+                />
+              );
+            })}
+          </Box>
+        );
+      })}
     </Box>
   );
 }
@@ -113,10 +113,13 @@ const MessageRow = React.memo(function MessageRow({
   item,
   columns,
   collapsed,
+  hint,
 }: {
   item: ChatItem;
   columns: number;
   collapsed: boolean;
+  /** 折叠提示文案：缺省「Tab 翻阅」（实时/入档），翻阅视口传「↑↓ 展开」 */
+  hint?: string;
 }): JSX.Element {
   if (item.role === 'user') {
     return (
@@ -131,13 +134,13 @@ const MessageRow = React.memo(function MessageRow({
   }
   if (item.role === 'assistant') return <MarkdownText text={item.text} columns={columns} />;
   if (item.role === 'system') return <Text color="yellow">! {item.text}</Text>;
-  if (item.role === 'thinking') return <ThinkingRow item={item} collapsed={collapsed} />;
-  if (item.role === 'step') return <Text color="cyan">▶ {item.text}</Text>;
-  return <ToolRow item={item} columns={columns} collapsed={collapsed} />;
+  if (item.role === 'thinking') return <ThinkingRow item={item} collapsed={collapsed} hint={hint} />;
+  if (item.role === 'step') return <Text dimColor>▶ {item.text}</Text>;
+  return <ToolRow item={item} columns={columns} collapsed={collapsed} hint={hint} />;
 });
 
-/** 思考行：默认折叠为单行摘要（收束耗时统计，对标 Claude Code 斜体单行）；翻阅选中轮展开全文 */
-function ThinkingRow({ item, collapsed }: { item: ChatItem; collapsed: boolean }): JSX.Element {
+/** 思考行：默认折叠为单行摘要（收束耗时统计，对标 Claude Code 斜体单行）；翻阅焦点块展开全文 */
+function ThinkingRow({ item, collapsed, hint = 'Tab 翻阅' }: { item: ChatItem; collapsed: boolean; hint?: string }): JSX.Element {
   if (!collapsed && item.detail) {
     return (
       <Box flexDirection="column">
@@ -155,7 +158,7 @@ function ThinkingRow({ item, collapsed }: { item: ChatItem; collapsed: boolean }
   return (
     <Text dimColor italic>
       ✻ {item.text}
-      {collapsed && item.detail !== undefined ? <Text dimColor> [Tab 翻阅]</Text> : null}
+      {collapsed && item.detail !== undefined ? <Text dimColor> [{hint}]</Text> : null}
     </Text>
   );
 }

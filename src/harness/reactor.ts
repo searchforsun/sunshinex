@@ -40,6 +40,8 @@ export interface ReactorDeps {
   safety: SafetyChain;
   context: ContextManager;
   model: ModelAdapter;
+  /** 项目根绝对路径（环境事实注入：提示词告知模型工作目录，杜绝相对路径瞎拼） */
+  root?: string;
   router?: ModelRouter;
   /** 成功沉淀钩子：仅 done 且有 reply 时触发一次；抛错被吞并记 episodic（沉淀失败不倒灌任务成败） */
   settle?: (r: { goal: string; reply: string }) => void;
@@ -49,7 +51,11 @@ export interface ReactorDeps {
   onEvent?: (e: SessionEvent) => void;
 }
 
-interface Action { tool?: string; input?: Record<string, unknown>; done: boolean; reply?: string; tier?: unknown; phase?: string; }
+/** 并行动作项：一轮同时执行的多个只读工具调用 */
+interface ParallelToolCall { tool: string; input?: Record<string, unknown>; }
+interface Action { tool?: string; input?: Record<string, unknown>; tools?: ParallelToolCall[]; done: boolean; reply?: string; tier?: unknown; phase?: string; }
+/** 并行只读上限：防单轮塞满列表拖长步时延（读操作轻量，8 足够） */
+const PARALLEL_READ_LIMIT = 8;
 
 type ParseResult =
   | { ok: true; action: Action }
@@ -157,13 +163,19 @@ export class Reactor {
       }
 
       const action = parsed.action;
-      this.emit('step', action.tool ?? (action.done ? 'done' : '（无动作）'), { step, phase: action.phase });
+      // 终稿步骤不透传 phase：阶段说明只属于工具动作步骤，答复流式入档中途不再插入阶段行
+      this.emit('step', action.tool ?? (action.done ? 'done' : '（无动作）'), { step, phase: action.done ? undefined : action.phase });
       prefTier = action.tier === 'small' || action.tier === 'medium' || action.tier === 'large' ? action.tier : undefined;
       if (action.done) {
         done = true;
         reply = action.reply ?? '完成';
         stopReason = 'done';
         break;
+      }
+
+      if (action.tools && action.tools.length > 0) {
+        await this.runParallelReads(step, action, steps, effectiveTier);
+        continue;
       }
 
       if (!action.tool) {
@@ -252,11 +264,14 @@ export class Reactor {
       '可用工具：',
       tools,
       '',
+      '工具选择：能用专用工具（read/grep/glob 等只读查询）就用专用工具，exec 只兜底没有专用工具覆盖的动作；单次查证不要用 exec 拼 cat/head/ls 组合拳。',
+      '',
       '每次只回复一个 JSON 对象，不要输出任何其它文字。格式二选一：',
-      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}',
+      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}；多个只读工具可一轮并行：{"tools":[{"tool":"<名>","input":{...}},...],"done":false}',
       '2) 任务完成：{"done":true,"reply":"<最终答复>"}',
       '',
       '上下文：',
+      `当前工作目录（项目根）：${this.deps.root ?? this.deps.context.root}`,
       contextText,
       '',
       `当前服务档位：${tier}；如需调整下一轮算力，在回复 JSON 中加 "tier": "small|medium|large"`,
@@ -269,10 +284,60 @@ export class Reactor {
       .map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
   }
 
+  /** 一轮并行多个只读工具（对标 Claude Code 的并行调用）：全部 category=read 才经 Promise.all 并行执行，
+   * 结果合并为单条观察回填（tool-call/result 事件仍逐工具发射，TUI 逐行上屏）；
+   * 混入非只读工具整体拒绝，观察回填供模型自纠——写/命令类有副作用与审批语义，不进并行面 */
+  private async runParallelReads(step: number, action: Action, steps: StepRecord[], tier: ModelTier): Promise<void> {
+    const calls = action.tools ?? [];
+    const denied =
+      calls.length > PARALLEL_READ_LIMIT
+        ? `并行调用超过上限 ${PARALLEL_READ_LIMIT} 项`
+        : calls.some((c) => this.deps.registry.get(c.tool)?.category !== 'read')
+          ? '并行调用仅限只读工具'
+          : '';
+    if (denied) {
+      const obs = `并行调用被拒绝：${denied}；请全部改为只读工具（read/grep/glob 等）或改用单工具调用重试`;
+      steps.push({ step, action: 'parallel', observation: obs, tier });
+      this.deps.context.memory.record('project', `step ${step}: ${obs}`);
+      return;
+    }
+    for (const c of calls) this.emit('tool-call', c.tool, { input: c.input });
+    const results = await Promise.all(calls.map((c) => this.deps.registry.execute(c.tool, c.input ?? {}, this.deps.safety)));
+    const parts: string[] = [];
+    results.forEach((r, i) => {
+      const obs = this.describe(r);
+      this.emit('tool-result', obs.slice(0, 200), { ok: r.ok, full: obs });
+      parts.push(`[${calls[i].tool}] ${obs}`);
+      const p = (calls[i].input ?? {}).path;
+      if (r.ok && (calls[i].tool === 'read' || calls[i].tool === 'grep') && typeof p === 'string' && p.length > 0) {
+        this.deps.context.trackFile(p);
+      }
+    });
+    const observation = `[并行 ${calls.length} 项]\n${parts.join('\n')}`;
+    steps.push({ step, action: calls.map((c) => c.tool).join('+'), observation, tier });
+    this.deps.context.memory.record('project', `step ${step}: ${observation}`);
+  }
+
   private parse(raw: string): ParseResult {
     try {
       const j = JSON.parse(raw) as Action;
-      return { ok: true, action: { tool: j.tool, input: j.input, done: j.done === true, reply: j.reply, tier: j.tier, phase: typeof j.phase === 'string' ? j.phase : undefined } };
+      const tools = Array.isArray(j.tools)
+        ? (j.tools as unknown[])
+            .filter((t): t is ParallelToolCall => !!t && typeof t === 'object' && typeof (t as ParallelToolCall).tool === 'string')
+            .map((t) => (t.input && typeof t.input === 'object' ? { tool: t.tool, input: t.input as Record<string, unknown> } : { tool: t.tool }))
+        : undefined;
+      return {
+        ok: true,
+        action: {
+          tool: j.tool,
+          input: j.input,
+          ...(tools && tools.length > 0 ? { tools } : {}),
+          done: j.done === true,
+          reply: j.reply,
+          tier: j.tier,
+          phase: typeof j.phase === 'string' ? j.phase : undefined,
+        },
+      };
     } catch {
       return { ok: false, raw };
     }

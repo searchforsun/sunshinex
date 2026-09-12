@@ -9,7 +9,7 @@ import { bandLines } from '../text-band';
  * 仅翻阅视口选中轮渲染完整 observation（marker 行不重复 200 字摘要前缀）。
  * detail 缺失时 text 即全部内容（≤200 字摘要），无折叠必要、直接展示。
  */
-export function ToolRow({ item, columns, collapsed }: { item: ChatItem; columns: number; collapsed: boolean }): JSX.Element {
+export function ToolRow({ item, columns, collapsed, hint = 'Tab 翻阅' }: { item: ChatItem; columns: number; collapsed: boolean; hint?: string }): JSX.Element {
   if (item.kind === 'call') {
     const sp = item.text.indexOf(' ');
     const verb = sp > 0 ? item.text.slice(0, sp) : item.text;
@@ -38,7 +38,7 @@ export function ToolRow({ item, columns, collapsed }: { item: ChatItem; columns:
         {'  ⎿ '}
         {item.ok ? '✓' : '✗'}
         {` ${first}${clipped ? '…' : ''}`}
-        {more > 0 ? <Text dimColor>（+{more} 行 · Tab 翻阅）</Text> : null}
+        {more > 0 ? <Text dimColor>（+{more} 行 · {hint}）</Text> : null}
       </Text>
     );
   }

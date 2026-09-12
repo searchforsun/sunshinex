@@ -3,7 +3,7 @@ import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
 import { ApprovalDecision } from '../../types';
 import { SessionController, TuiState } from '../session';
-import { splitRounds } from '../history-view';
+import { collapsibleBlocks, splitRounds } from '../history-view';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
@@ -50,8 +50,7 @@ export function App({ controller, banner }: { controller: SessionController; ban
   const [buffer, setBuffer] = React.useState('');
   const [cursor, setCursor] = React.useState(0);
   const [review, setReview] = React.useState(false);
-  const [reviewEnd, setReviewEnd] = React.useState(0);
-  const [expandedRound, setExpandedRound] = React.useState(-1);
+  const [focusBlock, setFocusBlock] = React.useState(0);
   const [history, setHistory] = React.useState<string[]>([]);
   const [histIdx, setHistIdx] = React.useState(-1);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
@@ -73,33 +72,24 @@ export function App({ controller, banner }: { controller: SessionController; ban
 
     const lastRoundIdx = splitRounds(state.messages).length - 1;
 
-    // 历史翻阅模态：↑↓ 逐轮追踪（越过底部即回实时），Tab 展开视口末轮（同时仅一块），Esc 返回；
-    // 其余按键先退出翻阅、再按普通输入处理，保证随手打字不被视图吞掉
+    // 块粒度历史翻阅：↑↓ 在思考/工具块间移动唯一焦点（焦点块自动展开，最近 3 块默认展开，同时至多 4 块展开）；
+    // ↓ 越过末块即回实时，Esc/Tab 退出；其余按键先退出翻阅再按普通输入处理，随手打字不被视图吞掉
     if (review) {
+      const blockCount = collapsibleBlocks(splitRounds(state.messages)).length;
       if (key.upArrow) {
-        setReviewEnd((e) => Math.max(0, e - 1));
-        setExpandedRound(-1);
+        setFocusBlock((f) => Math.max(0, f - 1));
         return;
       }
       if (key.downArrow) {
-        if (reviewEnd + 1 > lastRoundIdx) setReview(false);
-        else {
-          setReviewEnd(reviewEnd + 1);
-          setExpandedRound(-1);
-        }
+        if (focusBlock + 1 > blockCount - 1) setReview(false);
+        else setFocusBlock((f) => f + 1);
         return;
       }
-      if (key.tab) {
-        setExpandedRound((x) => (x === -1 ? reviewEnd : -1));
-        return;
-      }
-      if (key.escape) {
+      if (key.tab || key.escape) {
         setReview(false);
-        setExpandedRound(-1);
         return;
       }
       setReview(false);
-      setExpandedRound(-1);
     }
 
     // Tab 分流：/ 前缀 → 斜杠补全；否则空闲/出错态进入历史翻阅（视口停在最近 6 轮）
@@ -118,9 +108,9 @@ export function App({ controller, banner }: { controller: SessionController; ban
           setCursor(next.length);
         }
       } else if ((state.status === 'idle' || state.status === 'error') && lastRoundIdx >= 0) {
+        // 进入翻阅：焦点落在最后一个可折叠块（其所在轮为窗口末轮），最近 3 块由视口自动展开
+        setFocusBlock(Math.max(0, collapsibleBlocks(splitRounds(state.messages)).length - 1));
         setReview(true);
-        setReviewEnd(lastRoundIdx);
-        setExpandedRound(-1);
       }
       return;
     }
@@ -220,8 +210,7 @@ export function App({ controller, banner }: { controller: SessionController; ban
         live={state.live}
         columns={columns}
         review={review}
-        reviewEnd={reviewEnd}
-        expandedRound={expandedRound}
+        focusBlock={focusBlock}
       />
       {state.status === 'running' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />

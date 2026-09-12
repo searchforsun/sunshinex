@@ -197,7 +197,7 @@ test('会话控制器：流式答复安全点切块增量入档，done 尾段补
   }
 });
 
-test('会话控制器：done 步携带 phase → step 阶段行上屏且先于答复', async () => {
+test('会话控制器：done 步携带 phase → 不落阶段行（答复正文不被打断）', async () => {
   const tmp = tmpdir('sunshinex-sess-phase-');
   try {
     const ctrl = new SessionController({
@@ -208,11 +208,9 @@ test('会话控制器：done 步携带 phase → step 阶段行上屏且先于�
     await ctrl.waitIdle();
     const s = ctrl.getState();
     const steps = s.messages.filter((m) => m.role === 'step');
-    assert.equal(steps.length, 1, 'phase 阶段行应上屏');
-    assert.equal(steps[0]?.text, '正在汇总结论');
-    const stepIdx = s.messages.findIndex((m) => m.role === 'step');
-    const replyIdx = s.messages.findIndex((m) => m.role === 'assistant');
-    assert.ok(stepIdx >= 0 && replyIdx > stepIdx, '阶段行应先于答复入档');
+    assert.equal(steps.length, 0, '终稿步骤不透传 phase：阶段行不得插入答复正文');
+    const replies = s.messages.filter((m) => m.role === 'assistant');
+    assert.ok(replies.some((m) => m.text.includes('完成。')), '答复正文完整');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

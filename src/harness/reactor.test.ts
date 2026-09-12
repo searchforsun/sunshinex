@@ -349,7 +349,7 @@ test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', 
   const stepPhases: unknown[] = [];
   const replies = [
     '{"tool":"exec","input":{"command":"echo hi"},"done":false,"phase":"正在执行回声验证"}',
-    '{"done":true,"reply":"ok"}',
+    '{"done":true,"reply":"ok","phase":"汇总收尾"}',
   ];
   let call = 0;
   const adapter = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[Math.min(call++, replies.length - 1)]; } };
@@ -365,5 +365,60 @@ test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', 
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 2 });
   assert.equal(r.done, true);
   assert.ok(stepPhases.includes('正在执行回声验证'), 'tool 步 phase 应随 step 事件透传');
+  assert.equal(stepPhases[stepPhases.length - 1], undefined, 'done 步不透传 phase（阶段行不得插入答复正文）');
   assert.ok(prompts[0].includes('"phase"'), 'prompt 稳定段应注入 phase 约定行');
+});
+
+test('Reactor 支持一轮并行多个只读工具：Promise.all 执行、单条合并观察回填', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-par-'));
+  const adapter = new ScriptedAdapter([
+    '{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}',
+    '{"done":true,"reply":"已并行读取"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const events: string[] = [];
+  const r = await new Promise<Awaited<ReturnType<Reactor['run']>>>((resolve, reject) => {
+    const rr = new Reactor({
+      registry: (() => { const reg = new ToolRegistry(); for (const t of builtinTools(new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp), tmp)) reg.register(t); return reg; })(),
+      safety: new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp),
+      context: new ContextManager(tmp, new FileStore(tmp)),
+      model: adapter,
+      onEvent: (e) => events.push(e.type),
+    });
+    rr.run({ goal: '并行读' }).then(resolve, reject);
+  });
+  assert.equal(r.done, true);
+  const merged = r.steps.find((s) => s.action === 'glob+grep');
+  assert.ok(merged, '并行步应合并为单条观察回填');
+  assert.match(merged.observation, /\[并行 2 项\]/);
+  assert.match(merged.observation, /\[glob\]/, '各项结果应带工具名前缀');
+  const callCount = events.filter((t) => t === 'tool-call').length;
+  const resultCount = events.filter((t) => t === 'tool-result').length;
+  assert.equal(callCount, 2, 'tool-call 事件应逐工具发射');
+  assert.equal(resultCount, 2, 'tool-result 事件应逐工具发射');
+});
+
+test('并行混入非只读工具被整体拒绝，观察回填供模型自纠', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-pardeny-'));
+  const adapter = new ScriptedAdapter([
+    '{"tools":[{"tool":"read","input":{"path":"package.json"}},{"tool":"exec","input":{"command":"echo hi"}}],"done":false}',
+    '{"done":true,"reply":"已纠正"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '混入写' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  const deniedStep = r.steps.find((s) => s.observation.includes('并行调用被拒绝'));
+  assert.ok(deniedStep, '混入非只读应被整体拒绝并回填观察');
+});
+
+test('并行调用超过上限被拒绝', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-parcap-'));
+  const calls = Array.from({ length: 9 }, () => '{"tool":"glob","input":{"pattern":"*.ts"}}').join(',');
+  const adapter = new ScriptedAdapter([
+    `{"tools":[${calls}],"done":false}`,
+    '{"done":true}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '超限' }, { maxSteps: 2 });
+  assert.ok(r.steps.some((s) => s.observation.includes('并行调用超过上限')), '超上限应被拒绝');
 });
