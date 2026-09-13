@@ -14,6 +14,8 @@ export interface TuiLoopDeps {
   clearScreen(): void;
   /** 渲染一次交互面；retain 为跨重挂现场（挂载读初值、变化实时回写） */
   renderOnce(retain: RetainedUiState): InkLikeInstance;
+  /** 宿主注册「请求整屏重绘」出口：Tab 展开模式切换等非 resize 场景复用同一卸载→清屏→重挂路径 */
+  onRequestRepaint?: (request: () => void) => void;
   /** 防抖窗口覆盖（测试压短用；缺省 200ms，见 resize.ts） */
   debounceMs?: number;
 }
@@ -29,14 +31,17 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
   const retain = initialRetained();
   let repaintQueued = false;
   let current: InkLikeInstance | undefined;
+  // resize 与 Tab 模式切换共用同一条「卸载 → 清屏 → 重挂」路径：Static 历史按当前模式整屏重放
+  const requestRepaint = (): void => {
+    repaintQueued = true;
+    current?.unmount();
+  };
   const gate = createResizeGate({
     source: deps.stdout,
     debounceMs: deps.debounceMs,
-    onRepaint: () => {
-      repaintQueued = true;
-      current?.unmount();
-    },
+    onRepaint: requestRepaint,
   });
+  deps.onRequestRepaint?.(requestRepaint);
   try {
     let first = true;
     do {

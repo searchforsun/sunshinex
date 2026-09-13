@@ -369,7 +369,7 @@ test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', 
   assert.ok(prompts[0].includes('"phase"'), 'prompt 稳定段应注入 phase 约定行');
 });
 
-test('Reactor 支持一轮并行多个只读工具：Promise.all 执行、单条合并观察回填', async () => {
+test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行、单条合并观察回填', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-par-'));
   const adapter = new ScriptedAdapter([
     '{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}',
@@ -398,7 +398,7 @@ test('Reactor 支持一轮并行多个只读工具：Promise.all 执行、单条
   assert.equal(resultCount, 2, 'tool-result 事件应逐工具发射');
 });
 
-test('并行混入非只读工具被整体拒绝，观察回填供模型自纠', async () => {
+test('并行混入 exec 被整体拒绝，观察回填供模型自纠', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-pardeny-'));
   const adapter = new ScriptedAdapter([
     '{"tools":[{"tool":"read","input":{"path":"package.json"}},{"tool":"exec","input":{"command":"echo hi"}}],"done":false}',
@@ -408,7 +408,7 @@ test('并行混入非只读工具被整体拒绝，观察回填供模型自纠',
   const r = await reactor.run({ goal: '混入写' }, { maxSteps: 3 });
   assert.equal(r.done, true);
   const deniedStep = r.steps.find((s) => s.observation.includes('并行调用被拒绝'));
-  assert.ok(deniedStep, '混入非只读应被整体拒绝并回填观察');
+  assert.ok(deniedStep, '混入 exec 应被整体拒绝并回填观察');
 });
 
 test('并行调用超过上限被拒绝', async () => {
@@ -421,4 +421,30 @@ test('并行调用超过上限被拒绝', async () => {
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: '超限' }, { maxSteps: 2 });
   assert.ok(r.steps.some((s) => s.observation.includes('并行调用超过上限')), '超上限应被拒绝');
+});
+
+test('并行放宽为非 exec 均可：write 与 network 类同轮并行不被拒且真实执行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-parnx-'));
+  const outPath = path.join(tmp, 'out.txt');
+  const adapter = new ScriptedAdapter([
+    `{"tools":[{"tool":"write","input":{"path":${JSON.stringify(outPath)},"content":"hello"}},{"tool":"net-probe","input":{}}],"done":false}`,
+    '{"done":true,"reply":"已并行写探"}',
+  ]);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  registry.register({
+    name: 'net-probe',
+    description: '网络类并行替身（不发真实请求）',
+    category: 'network',
+    executor: async () => ({ exitCode: 0, stdout: 'pong', stderr: '', timedOut: false }),
+  });
+  const reactor = new Reactor({ registry, safety, context: new ContextManager(tmp, new FileStore(tmp)), model: adapter });
+  const r = await reactor.run({ goal: '并行写探' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  const merged = r.steps.find((s) => s.action === 'write+net-probe');
+  assert.ok(merged, 'write+network 应并行执行且不被拒');
+  assert.match(merged.observation, /\[write\]/);
+  assert.match(merged.observation, /\[net-probe\]/);
+  assert.equal(fs.readFileSync(outPath, 'utf8'), 'hello', 'write 应真实落盘');
 });

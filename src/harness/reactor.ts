@@ -51,11 +51,11 @@ export interface ReactorDeps {
   onEvent?: (e: SessionEvent) => void;
 }
 
-/** 并行动作项：一轮同时执行的多个只读工具调用 */
+/** 并行动作项：一轮同时执行的多个工具调用（除 exec 外均可并行） */
 interface ParallelToolCall { tool: string; input?: Record<string, unknown>; }
 interface Action { tool?: string; input?: Record<string, unknown>; tools?: ParallelToolCall[]; done: boolean; reply?: string; tier?: unknown; phase?: string; }
-/** 并行只读上限：防单轮塞满列表拖长步时延（读操作轻量，8 足够） */
-const PARALLEL_READ_LIMIT = 8;
+/** 并行调用上限：防单轮塞满列表拖长步时延（8 项足够覆盖常用组合） */
+const PARALLEL_TOOLS_LIMIT = 8;
 
 type ParseResult =
   | { ok: true; action: Action }
@@ -174,7 +174,7 @@ export class Reactor {
       }
 
       if (action.tools && action.tools.length > 0) {
-        await this.runParallelReads(step, action, steps, effectiveTier);
+        await this.runParallelTools(step, action, steps, effectiveTier);
         continue;
       }
 
@@ -267,7 +267,7 @@ export class Reactor {
       '工具选择：能用专用工具（read/grep/glob 等只读查询）就用专用工具，exec 只兜底没有专用工具覆盖的动作；单次查证不要用 exec 拼 cat/head/ls 组合拳。',
       '',
       '每次只回复一个 JSON 对象，不要输出任何其它文字。格式二选一：',
-      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}；多个只读工具可一轮并行：{"tools":[{"tool":"<名>","input":{...}},...],"done":false}',
+      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}；除 exec 外的多个工具可一轮并行：{"tools":[{"tool":"<名>","input":{...}},...],"done":false}',
       '2) 任务完成：{"done":true,"reply":"<最终答复>"}',
       '',
       '上下文：',
@@ -284,27 +284,32 @@ export class Reactor {
       .map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
   }
 
-  /** 一轮并行多个只读工具（对标 Claude Code 的并行调用）：全部 category=read 才经 Promise.all 并行执行，
+  /** 一轮并行多个工具（除 exec 外均可并行，对标 Claude Code 的并行调用）：经 Promise.all 并发执行，
    * 结果合并为单条观察回填（tool-call/result 事件仍逐工具发射，TUI 逐行上屏）；
-   * 混入非只读工具整体拒绝，观察回填供模型自纠——写/命令类有副作用与审批语义，不进并行面 */
-  private async runParallelReads(step: number, action: Action, steps: StepRecord[], tier: ModelTier): Promise<void> {
+   * exec 为命令类须单发独占执行（命令间有顺序与工作目录依赖），混入即整体拒绝，观察回填供模型自纠 */
+  private async runParallelTools(step: number, action: Action, steps: StepRecord[], tier: ModelTier): Promise<void> {
     const calls = action.tools ?? [];
     const denied =
-      calls.length > PARALLEL_READ_LIMIT
-        ? `并行调用超过上限 ${PARALLEL_READ_LIMIT} 项`
-        : calls.some((c) => this.deps.registry.get(c.tool)?.category !== 'read')
-          ? '并行调用仅限只读工具'
+      calls.length > PARALLEL_TOOLS_LIMIT
+        ? `并行调用超过上限 ${PARALLEL_TOOLS_LIMIT} 项`
+        : calls.some((c) => {
+            const cat = this.deps.registry.get(c.tool)?.category;
+            return cat === 'bash' || cat === undefined;
+          })
+          ? '并行调用仅限非 exec 工具（exec 须单发独占执行）'
           : '';
     if (denied) {
-      const obs = `并行调用被拒绝：${denied}；请全部改为只读工具（read/grep/glob 等）或改用单工具调用重试`;
+      const obs = `并行调用被拒绝：${denied}；请移除 exec 后重试，或改用单工具调用`;
       steps.push({ step, action: 'parallel', observation: obs, tier });
       this.deps.context.memory.record('project', `step ${step}: ${obs}`);
       return;
     }
-    for (const c of calls) this.emit('tool-call', c.tool, { input: c.input });
     const results = await Promise.all(calls.map((c) => this.deps.registry.execute(c.tool, c.input ?? {}, this.deps.safety)));
     const parts: string[] = [];
+    // 上屏按调用序成对流出（call+result 相邻）：执行本身仍是 Promise.all 并发，
+    // 但视图上每个工具行紧跟自己的结果行，不出现「调用行连排、结果行连排」的割裂
     results.forEach((r, i) => {
+      this.emit('tool-call', calls[i].tool, { input: calls[i].input });
       const obs = this.describe(r);
       this.emit('tool-result', obs.slice(0, 200), { ok: r.ok, full: obs });
       parts.push(`[${calls[i].tool}] ${obs}`);

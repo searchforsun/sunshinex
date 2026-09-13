@@ -32,8 +32,10 @@ export async function runTui(args: CliArgs): Promise<void> {
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
   // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，
-  // 终端缩放 reflow 后行数失配、旧帧擦不净即残影叠字）；输入与展开打印现场跨重挂保留
+  // 终端缩放 reflow 后行数失配、旧帧擦不净即残影叠字）；输入与展开模式现场跨重挂保留
   let current: { unmount(): void } | undefined;
+  // Tab 切换的展开模式：经宿主 onRequestRepaint 注入 tui-loop 的重绘出口（与 resize 共用卸载→清屏→重挂路径）
+  let requestRepaint: (() => void) | undefined;
   process.once('SIGINT', () => {
     current?.unmount();
     process.exit(0);
@@ -41,8 +43,11 @@ export async function runTui(args: CliArgs): Promise<void> {
   await runTuiLoop({
     stdout: process.stdout,
     clearScreen: () => process.stdout.write('\x1b[2J\x1b[3J\x1b[H'),
+    onRequestRepaint: (req) => {
+      requestRepaint = req;
+    },
     renderOnce: (retain) => {
-      const inst = render(React.createElement(App, { controller: ctrl, banner, retain }));
+      const inst = render(React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint }));
       current = inst;
       return inst;
     },

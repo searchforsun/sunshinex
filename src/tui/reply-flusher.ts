@@ -59,9 +59,11 @@ export function stableReplySegment(
     }
     const tableLine = /^\s*\|/.test(line);
     let tableClosedHere = false;
-    if (tableOpen && !tableLine) {
-      tableOpen = false; // 非表格行（含空行/流式尾行）闭合表格：恢复段落切分
-      tableClosedHere = true; // 整表已带换行完结：无论闭合行本身是否完整，表格本体均可立即放行
+    if (tableOpen && !tableLine && !(isLast && line === '')) {
+      // 非表格行闭合表格；流式尾部空 remainder（split('\n') 伪行、非真实行）不算闭合——
+      // 它只说明「上一行带换行完结」，表格是否还有后续数据行未知，切出会致表头块与表体分离降级
+      tableOpen = false;
+      tableClosedHere = true;
       closedLineStreak = 0;
     }
     if (isLast) {

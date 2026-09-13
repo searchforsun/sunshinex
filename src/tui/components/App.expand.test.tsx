@@ -34,9 +34,25 @@ function makeLongFile(tmp: string, name: string): string {
 
 /** L 总量口径（按段累计）：折叠摘要首行仅 ~68 连串（宽度截断），展开后全文 250——折行会切碎长串，必须按段累计 */
 const countL = (f: string): number => (f.match(/L{30,}/g) ?? []).reduce((a, b) => a + b.length, 0);
-/** 会话历史打印段头部计数（每次 Tab 触发追加一段） */
-const countDumpHeader = (f: string): number => (f.match(/会话历史（全展开）/g) ?? []).length;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** 门闩适配器：首轮 complete 挂起保持 running 态（release 放行），用于验证展开模式切换无状态门槛 */
+class GateAdapter implements ModelAdapter {
+  readonly provider = 'gate';
+  private turn = 0;
+  private resolveTurn!: () => void;
+  private readonly firstTurn = new Promise<void>((resolve) => (this.resolveTurn = resolve));
+  async complete(): Promise<string> {
+    if (this.turn++ === 0) await this.firstTurn;
+    return 'ok';
+  }
+  async completeStream(_prompt: string, onDelta: (t: string) => void): Promise<string> {
+    return this.complete();
+  }
+  release(): void {
+    this.resolveTurn();
+  }
+}
 
 test('App：实时/历史默认折叠——工具结果单行摘要，全文仅 Tab 展开打印可见', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-exp1-'));
@@ -70,55 +86,46 @@ test('App：实时/历史默认折叠——工具结果单行摘要，全文仅 
   }
 });
 
-test('App：Tab 展开打印——全会话历史全展开滚入滚动缓冲，可重复触发，动态帧保持干净', async () => {
+test('App：Tab 切换历史展开模式——运行中可切、回调触发、现场回写、可逆', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-exp2-'));
   try {
-    const [a, b, c, d, e] = ['a', 'b', 'c', 'd', 'e'].map((n) => makeLongFile(tmp, `${n}.txt`));
-    const ctrl = new SessionController({
-      root: tmp,
-      model: new ScriptedAdapter([
-        `{"tool":"read","input":{"path":"${a}"},"done":false}`,
-        `{"tool":"read","input":{"path":"${b}"},"done":false}`,
-        `{"tool":"read","input":{"path":"${c}"},"done":false}`,
-        '{"done":true,"reply":"r1"}',
-        `{"tool":"read","input":{"path":"${d}"},"done":false}`,
-        `{"tool":"read","input":{"path":"${e}"},"done":false}`,
-        '{"done":true,"reply":"r2"}',
-      ]),
-    });
-    await ctrl.submit('批量读甲');
-    await ctrl.waitIdle();
-    await ctrl.submit('批量读乙');
-    await ctrl.waitIdle();
-    const { lastFrame, allOutput, write, unmount } = render(
-      <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />,
+    const gate = new GateAdapter();
+    const ctrl = new SessionController({ root: tmp, model: gate });
+    const retain = { buffer: '', cursor: 0, expandAll: false, history: [], histIdx: -1 };
+    const repaints: number[] = [];
+    const { write, unmount } = render(
+      <App
+        controller={ctrl}
+        banner={{ version: '1.0.0', model: 'm', root: tmp }}
+        retain={retain}
+        onRequestRepaint={() => repaints.push(repaints.length + 1)}
+      />,
     );
-    await sleep(200);
-    assert.ok(!allOutput().includes('会话历史（全展开）'), 'Tab 前无打印段');
-    write('\t'); // 展开打印：全会话历史（5 个工具 observation 全文）一次性滚入滚动缓冲
+    await sleep(80);
+    void ctrl.submit('长任务');
     await sleep(150);
-    const after1 = allOutput();
-    assert.equal(countDumpHeader(after1), 1, '打印段出现一次');
-    const seg1 = after1.slice(after1.indexOf('会话历史（全展开）'));
-    assert.ok(countL(seg1) >= 1000, `5 个 observation 全文可见（got ${countL(seg1)}）`);
-    assert.ok(!(lastFrame() ?? '').includes('会话历史'), '打印段属滚动缓冲，动态帧不承载');
-    assert.match(lastFrame() ?? '', /空闲/, '打印后动态帧仍只剩输入框与状态栏');
-    write('\u001B[A'); // ↑ 归输入历史：无输入历史时缓冲纹丝不动
-    await sleep(100);
-    assert.equal(countDumpHeader(allOutput()), 1, '↑ 不触发任何翻阅行为（键位冲突解除）');
-    write('\t'); // 可重复触发：再次打印最新快照
-    await sleep(150);
-    const after2 = allOutput();
-    assert.equal(countDumpHeader(after2), 2, '第二次打印段追加');
-    const seg2 = after2.slice(after2.indexOf('会话历史（全展开）', after1.indexOf('会话历史（全展开）') + 1));
-    assert.ok(countL(seg2) >= 1000, `第二次打印段同样全展开（got ${countL(seg2)}）`);
+    assert.equal(ctrl.getState().status, 'running', '门闩适配器保持运行态');
+
+    write('\t'); // 运行中切到全展开模式
+    await sleep(80);
+    assert.equal(repaints.length, 1, '运行中 Tab 即触发整屏重绘（无状态门槛）');
+    assert.equal(retain.expandAll, true, '现场回写：重挂后保持展开模式');
+
+    gate.release();
+    await ctrl.waitIdle();
+    assert.equal(repaints.length, 1, '任务运行不触发重绘，模式切换只重绘一次');
+
+    write('\t'); // 再按切回折叠
+    await sleep(80);
+    assert.equal(repaints.length, 2, '再按再次重绘');
+    assert.equal(retain.expandAll, false, 'toggle 可逆');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('App：思考默认折叠为摘要行；Tab 展开打印显示思考全文', async () => {
+test('App：retain 展开模式恢复——挂载即全展开渲染历史块', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-exp3-'));
   try {
     const ctrl = new SessionController({
@@ -127,20 +134,17 @@ test('App：思考默认折叠为摘要行；Tab 展开打印显示思考全文'
     });
     await ctrl.submit('任务');
     await ctrl.waitIdle();
-    const { lastFrame, allOutput, write, unmount } = render(
-      <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />,
+    const { allOutput, unmount } = render(
+      <App
+        controller={ctrl}
+        banner={{ version: '1.0.0', model: 'm', root: tmp }}
+        retain={{ buffer: '', cursor: 0, expandAll: true, history: [], histIdx: -1 }}
+      />,
     );
-    await sleep(200);
-    const all = allOutput();
-    assert.ok(all.includes('Thought for'), '思考摘要行随 Static 入档');
-    assert.ok(!all.includes('先想再想'), '思考全文默认不展示');
-    assert.ok(!(lastFrame() ?? '').includes('Thought for'), '动态帧不承载消息');
-    write('\t'); // 展开打印：思考全文入缓冲
     await sleep(150);
-    const dumped = allOutput();
-    assert.equal(countDumpHeader(dumped), 1);
-    assert.ok(dumped.includes('先想再想'), '打印段包含思考全文');
-    assert.ok(!(lastFrame() ?? '').includes('先想再想'), '动态帧不承载打印段');
+    const all = allOutput();
+    assert.ok(all.includes('先想再想'), '展开模式下思考全文随 Static 重放可见');
+    assert.ok(all.includes('答复'), '重放含助手答复');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

@@ -18,7 +18,7 @@ export function Banner({ info, columns }: { info: BannerInfo; columns: number })
         <Text bold>SunshineX TUI v{info.version}</Text>
         <Text dimColor> · model {info.model}</Text>
       </Text>
-      <Text dimColor>  /help 查看命令 · /plan 先规划后执行 · Tab 展开打印历史</Text>
+      <Text dimColor>  /help 查看命令 · /plan 先规划后执行 · Tab 切换历史展开</Text>
     </Box>
   );
 }

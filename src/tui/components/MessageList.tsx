@@ -12,45 +12,35 @@ import { LiveArea } from './LiveArea';
  * Static 区条目：横幅（首条）+ 逐条消息（含当前轮）——打印一次后不再重绘（Claude Code 同款机制），
  * 滚动缓冲中每条内容只出现一次，动态帧不承载任何历史渲染。
  */
-export type TranscriptEntry =
-  | { kind: 'banner'; info: BannerInfo }
-  | { kind: 'message'; item: ChatItem }
-  | { kind: 'dump'; seq: number; anchorSeq: number; items: ChatItem[] };
+export type TranscriptEntry = { kind: 'banner'; info: BannerInfo } | { kind: 'message'; item: ChatItem };
 
 /**
  * 消息区逐消息分层：消息到达即入 Static 一次上屏，之后永不重绘；
  * 动态帧只剩实时流预览（回复末 8 行/思考单行）+ 输入框 + 状态栏，帧高有界且恒定——
  * ink3 在 outputHeight >= stdout.rows 时会 clearTerminal 整屏重写（超视口闪动/抖动/滚动位置丢失的根因），
  * 逐消息 Static 化让该路径实际不可达：流式中间态也以终稿形态滚入滚动缓冲，跟随滚动即可回看全部。
- * 思考过程与执行细节默认折叠为单行摘要；完整内容按 Tab 展开打印（Claude Code ctrl+o 同款：整段 transcript 全展开滚入缓冲）。
+ * 思考过程与执行细节默认折叠为单行摘要；Tab 切换展开模式（Claude Code ctrl+o 同款）：经 tui-loop 清屏重挂，
+ * Static 按全展开/折叠形态整屏重放，视口永远只有一份历史。
  */
 export function MessageList({
   messages,
   live,
   columns,
   banner,
-  dumps,
+  expandAll,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
   columns: number;
   banner: BannerInfo;
-  /** 展开打印段：每次 Tab 触发追加一条（全展开形态整段入缓冲一次，不重绘不重复）；anchorSeq 锚定触发时末条消息 */
-  dumps: Array<{ seq: number; anchorSeq: number; items: ChatItem[] }>;
+  /** Tab 切换的展开模式开关：true 时全部思考/工具块全展开渲染 */
+  expandAll: boolean;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
   if (messages.length < prevLenRef.current) epochRef.current += 1;
   prevLenRef.current = messages.length;
-  // entries 严格按时间序构建：dump 锚定在触发时最后一条消息之后（anchorSeq），
-  // 保证 Static 已打印游标只增不移——后续新消息只会追加，已打印的 dump 绝不重印
-  const entries: TranscriptEntry[] = [{ kind: 'banner', info: banner }];
-  for (const item of messages) {
-    entries.push({ kind: 'message', item });
-    for (const d of dumps) {
-      if (d.anchorSeq === item.seq) entries.push({ kind: 'dump', seq: d.seq, anchorSeq: d.anchorSeq, items: d.items });
-    }
-  }
+  const entries: TranscriptEntry[] = [{ kind: 'banner', info: banner }, ...messages.map((item) => ({ kind: 'message' as const, item }))];
   return (
     <Box flexDirection="column">
       <Static key={epochRef.current} items={entries}>
@@ -59,20 +49,9 @@ export function MessageList({
             <Box key="banner">
               <Banner info={entry.info} columns={columns} />
             </Box>
-          ) : entry.kind === 'dump' ? (
-            <Box key={`dump-${entry.seq}`} flexDirection="column" marginBottom={1}>
-              <Text dimColor>
-                ── 会话历史（全展开）· 共 {entry.items.length} 条 · 终端滚动回看 · 按 Tab 可再次打印 ──
-              </Text>
-              <Box flexDirection="column">
-                {entry.items.map((m) => (
-                  <MessageRow key={m.seq} item={m} columns={columns} collapsed={false} />
-                ))}
-              </Box>
-            </Box>
           ) : (
             <Box key={`m-${entry.item.seq}`} marginBottom={1}>
-              <MessageRow item={entry.item} columns={columns} collapsed />
+              <MessageRow item={entry.item} columns={columns} collapsed={!expandAll} />
             </Box>
           )
         }

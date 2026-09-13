@@ -5,8 +5,8 @@ import { bandLines } from '../text-band';
 
 /**
  * 工具行：调用行 ⏺ [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
- * 默认折叠为单行摘要（首行截断）——执行细节不刷屏，全文经 Tab 展开打印查看；
- * Tab 展开打印（会话历史整段入缓冲）时以全展开形态渲染完整 observation。
+ * 默认折叠为单行摘要（首行截断）——执行细节不刷屏，全文经 Tab 切换历史展开查看；
+ * Tab 切换历史展开（清屏重挂整屏重放）时以全展开形态渲染完整 observation。
  * detail 缺失时 text 即全部内容（≤200 字摘要），无折叠必要、直接展示。
  */
 export function ToolRow({ item, columns, collapsed }: { item: ChatItem; columns: number; collapsed: boolean }): JSX.Element {

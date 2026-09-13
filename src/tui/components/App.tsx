@@ -2,8 +2,7 @@ import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
 import { ApprovalDecision } from '../../types';
-import { SessionController, TuiState, ChatItem } from '../session';
-import { splitRounds } from '../history-view';
+import { SessionController, TuiState } from '../session';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
@@ -46,20 +45,27 @@ const HOME_SEQS = ['[H', 'OH', '[1~', '[7~'];
 const END_SEQS = ['[F', 'OF', '[4~', '[8~'];
 
 /** Ink 渲染层（纯渲染 + useInput 垫片键盘分发：垫片保留原始字节，退格/⌦ 经 key.raw 精确分流）：状态全量来自 controller 订阅；
- *  retain 为跨重挂现场（resize 整屏重绘时输入/展开打印不丢）：挂载读初值，每次渲染后实时回写 */
-export function App({ controller, banner, retain }: { controller: SessionController; banner?: BannerInfo; retain?: RetainedUiState }): JSX.Element {
+ *  retain 为跨重挂现场（resize/Tab 重挂时输入现场与展开模式不丢）：挂载读初值，每次渲染后实时回写 */
+export function App({
+  controller,
+  banner,
+  retain,
+  onRequestRepaint,
+}: {
+  controller: SessionController;
+  banner?: BannerInfo;
+  retain?: RetainedUiState;
+  /** 宿主注入的「请求整屏重绘」出口：Tab 切换展开模式后经此卸载→清屏→重挂，Static 按新模式重放 */
+  onRequestRepaint?: () => void;
+}): JSX.Element {
   const localRetain = React.useRef<RetainedUiState>(initialRetained());
   const store = retain ?? localRetain.current;
   const [state, setState] = React.useState<TuiState>(controller.getState());
   const [buffer, setBuffer] = React.useState(store.buffer);
   const [cursor, setCursor] = React.useState(store.cursor);
-  // Tab 展开打印（Claude Code ctrl+o 同款）：每次触发把全会话历史按全展开形态整段打印进滚动缓冲，
-  // 无翻阅模态态——↑↓ 永远归输入历史，无按键冲突；seq 递增计数保证 dump key 唯一，/new 清空会话时一并清理
-  const [dumps, setDumps] = React.useState(store.dumps);
-  const dumpSeqRef = React.useRef(0);
-  React.useEffect(() => {
-    if (state.messages.length === 0 && dumps.length > 0) setDumps([]);
-  }, [state.messages.length, dumps.length]);
+  // Tab 展开模式（Claude Code ctrl+o 同款）：布尔开关——切换时经 tui-loop 卸载→清屏→重挂整屏重放，
+  // Static 按展开/折叠形态整体重建，视口永远只有一份历史；无状态门槛，运行中随时可切
+  const [expandAll, setExpandAll] = React.useState(store.expandAll ?? false);
   const [history, setHistory] = React.useState<string[]>(store.history);
   const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
@@ -67,10 +73,20 @@ export function App({ controller, banner, retain }: { controller: SessionControl
   React.useEffect(() => {
     store.buffer = buffer;
     store.cursor = cursor;
-    store.dumps = dumps;
+    store.expandAll = expandAll;
     store.history = history;
     store.histIdx = histIdx;
   });
+  // Tab 模式切换 → 请求整屏重绘：本 effect 晚于回写 effect 执行（声明序），卸载前 retain 已持新值，
+  // 重挂的 renderOnce 读到的就是切换后的模式；首次挂载不触发（本来就渲染一次）
+  const expandAllInitRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!expandAllInitRef.current) {
+      expandAllInitRef.current = true;
+      return;
+    }
+    onRequestRepaint?.();
+  }, [expandAll]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
 
@@ -87,10 +103,8 @@ export function App({ controller, banner, retain }: { controller: SessionControl
       return;
     }
 
-    const lastRoundIdx = splitRounds(state.messages).length - 1;
-
-    // Tab 分流：/ 前缀 → 斜杠补全；否则空闲/出错态触发「会话历史全展开打印」（Claude Code ctrl+o 同款：
-    // 整段 transcript 按全展开形态一次性滚入滚动缓冲，用终端滚动回看）——无翻阅模态态，↑↓ 永远归输入历史
+    // Tab 分流：/ 前缀 → 斜杠补全；否则切换「会话历史展开模式」（Claude Code ctrl+o 同款：清屏后按全展开/折叠
+    // 形态整屏重放，视口永远只有一份历史）——无模态态，↑↓ 永远归输入历史，运行中随时可切
     if (key.tab) {
       if (buffer.startsWith('/')) {
         const token = buffer.trim();
@@ -105,10 +119,9 @@ export function App({ controller, banner, retain }: { controller: SessionControl
           setBuffer(next);
           setCursor(next.length);
         }
-      } else if ((state.status === 'idle' || state.status === 'error') && lastRoundIdx >= 0) {
-        // 触发展开打印：整段会话历史（含折叠的思考全文与工具 observation）一次性滚入滚动缓冲
-        const seq = ++dumpSeqRef.current;
-        setDumps((ds) => [...ds, { seq, anchorSeq: state.messages[state.messages.length - 1].seq, items: state.messages }]);
+      } else {
+        // 展开模式切换：翻转后经重挂整屏重放（Static 按新形态整体重建，视口永远只有一份），运行中随时可切
+        setExpandAll((v) => !v);
       }
       return;
     }
@@ -207,7 +220,7 @@ export function App({ controller, banner, retain }: { controller: SessionControl
         messages={state.messages}
         live={state.live}
         columns={columns}
-        dumps={dumps}
+        expandAll={expandAll}
       />
       {state.status === 'running' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />

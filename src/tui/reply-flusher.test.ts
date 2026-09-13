@@ -64,6 +64,23 @@ test('reply-flusher：GFM 表格超兜底线也整表放行，不中途切割', 
   );
 });
 
+test('reply-flusher：分帧流式——表头块不被伪行闭合过早切出（回归：表头框线块+散行表体）', () => {
+  const header = '| 桌面 | 技术选型 |';
+  const divider = '| --- | --- |';
+  // 帧 1：表头+分隔行刚写完（尾换行已到），数据行未到——尾部空 remainder 不得触发闭合
+  const frame1 = `前言。\n\n${header}\n${divider}\n`;
+  assert.equal(stableReplySegment(frame1, 0), '前言。\n\n', '表头块必须在数据行到达前滞留 pending');
+  // 帧 1b：数据行刚写完（尾换行已到）但表格是否结束未知——仍不得切
+  assert.equal(stableReplySegment(frame1 + '| 语言 | Java 21 |\n', 5), null, '表格未确认闭合不切');
+  // 帧 2：数据行到齐 + 真实空行 + 后续正文——整表随空行边界放行
+  const frame2 = frame1 + '| 语言 | Java 21 |\n| 框架 | Spring Boot 3 |\n\n正文继续。';
+  assert.equal(
+    stableReplySegment(frame2, 5),
+    `${header}\n${divider}\n| 语言 | Java 21 |\n| 框架 | Spring Boot 3 |\n\n`,
+    '数据行到齐后整表+空行边界一次成型',
+  );
+});
+
 test('reply-flusher：表格流式未完（尾行为表格行且无换行）不切，等待整表', () => {
   const partial = ['| A | B |', '| --- | --- |', '| 行1 | 值 |', '| 行2 | 值'].join('\n');
   const text = `前言。\n\n${partial}`;

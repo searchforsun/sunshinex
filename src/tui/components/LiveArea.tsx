@@ -25,7 +25,7 @@ function isStructuredTail(pending: string): boolean {
 /**
  * 动态实时区：流式正文按安全点切块增量入档（session.flushReply，段落边界优先、围栏不切、超长段兜底），
  * 此处仅预览未入档尾段（末 N 行），Markdown 排版在各块入档时定稿；
- * 思考流滚动显示末 6 行（按显示宽度折行取尾、不足补空行）——过程活性反馈，收束后折叠为摘要行，全文经 Tab 展开打印查看。
+ * 思考流滚动显示末 6 行（按显示宽度折行取尾、不足补空行）——过程活性反馈，收束后折叠为摘要行，全文经 Tab 切换历史展开查看。
  */
 export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element {
   if (live.kind === 'reply') {
