@@ -74,7 +74,9 @@ test('selfcheck 输出含学习技能行（learned: N，空目录显示 0 不崩
       timeout: 30_000,
     });
     assert.equal(p.status, 0, `selfcheck 退出码 ${p.status}：${p.stderr}`);
-    assert.match(p.stdout, /learned\s*:\s*0/, '应含 learned 行且空目录显示 0');
+    // selfcheck 数字行在 TTY/FORCE_COLOR 下带 ANSI 着色（管道缺省无色），断言前剥离保证用例 TTY 无关
+    const plain = p.stdout.replace(/\x1B\[[0-9;]*m/g, '');
+    assert.match(plain, /learned\s*:\s*0/, '应含 learned 行且空目录显示 0');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
