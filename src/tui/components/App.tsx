@@ -90,41 +90,28 @@ export function App({
     }
     onRequestRepaint?.();
   }, [expandAll, latestFull]);
-  // 正文锚点自动重绘：按「最近正文组前移」触发——▶ 行开启新组、正文收编当前组（连续切块并入同组）、
-  // 正文之后的新过程行开启下一组；新正文落定使最近正文组前移（历史组产生折叠变化）时整屏重绘一次。
-  // 正文流式切块并入同组不前移锚点，不会逐块重绘闪烁；Static 只增不删，折叠必须经重挂重放；首评只记录
-  const anchorInitRef = React.useRef(false);
-  const recentBodyGroupRef = React.useRef(-1);
+  // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）——上一段从全显转折叠，
+  // 需整屏重绘一次收拢（边跑边收，不等任务结束）；正文流式切块并入当前段不涨段数、不重绘防闪烁；
+  // Static 只增不删，折叠必须经重挂重放；首评只记录不触发（挂载本身即一次重放）
+  const segInitRef = React.useRef(false);
+  const segCountRef = React.useRef(0);
   React.useEffect(() => {
-    let g = -1;
-    let hasBody = false;
-    let recent = -1;
+    let seg = -1;
     const msgs = state.messages;
     for (let i = 0; i < msgs.length; i++) {
       const role = msgs[i].role;
-      if (role === 'step') {
-        g = g < 0 ? 0 : g + 1;
-        hasBody = false;
-      } else if (role === 'assistant') {
-        if (g < 0) g = 0;
-        else if (hasBody && msgs[i - 1].role !== 'assistant') {
-          g += 1;
-          hasBody = false;
-        }
-        hasBody = true;
-        recent = g;
-      } else {
-        if (g < 0) g = 0;
-        else if (hasBody) {
-          g += 1;
-          hasBody = false;
-        }
+      if (role === 'assistant') {
+        const prevIsAssistant = i > 0 && msgs[i - 1].role === 'assistant';
+        if (!prevIsAssistant) seg += 1;
+      } else if (role !== 'thinking' && role !== 'tool') {
+        seg += 1;
       }
     }
-    const changed = anchorInitRef.current && recent !== recentBodyGroupRef.current;
-    anchorInitRef.current = true;
-    recentBodyGroupRef.current = recent;
-    if (changed && recent >= 0) onRequestRepaint?.();
+    const segCount = seg + 1;
+    const changed = segInitRef.current && segCount !== segCountRef.current;
+    segInitRef.current = true;
+    segCountRef.current = segCount;
+    if (changed && segCount >= 2) onRequestRepaint?.();
   }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;

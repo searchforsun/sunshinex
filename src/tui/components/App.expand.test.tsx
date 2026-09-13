@@ -113,16 +113,16 @@ test('App：Tab 切换历史展开模式——运行中可切、回调触发、�
 
     gate.release();
     await ctrl.waitIdle();
-    assert.equal(repaints.length, 1, '任务运行不触发重绘，模式切换只重绘一次');
+    assert.equal(repaints.length, 2, '正文落定开新段触发一次段收拢重绘（边跑边收）');
 
     write('\t'); // 再按切回折叠
     await sleep(80);
-    assert.equal(repaints.length, 2, '再按再次重绘');
+    assert.equal(repaints.length, 3, '再按再次重绘');
     assert.equal(retain.expandAll, false, 'toggle 可逆');
 
     write('\u000f'); // Ctrl+O：第二层（内容深度）切换
     await sleep(80);
-    assert.equal(repaints.length, 3, 'Ctrl+O 同样触发整屏重绘');
+    assert.equal(repaints.length, 4, 'Ctrl+O 同样触发整屏重绘');
     assert.equal(retain.latestFull, true, '内容深度开关回写 retain');
     unmount();
   } finally {

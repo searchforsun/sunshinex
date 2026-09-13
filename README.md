@@ -95,11 +95,14 @@ sunshinex ../my-project         # 指定项目目录启动（= sunshinex tui <di
 ### 发版（维护者）
 
 ```bash
-scripts/release.sh             # 全量验证 → npm pack → 上传 GitHub Release（tag v<package.json 版本>）
-scripts/release.sh --dry-run   # 只验证 + 打包，不触网
+scripts/release.sh                        # 按 package.json 当前版本号发版（如 0.1.0 → tag v0.1.0）
+scripts/release.sh --bump patch           # 先递增版本号并随发版提交推送：patch 0.1.0→0.1.1（另有 minor/major）
+scripts/release.sh --version 0.2.0        # 指定版本号发版（写回 package.json，随发版提交推送）
+scripts/release.sh --dry-run              # 只验证 + 打包预览，不触网、不落库
+scripts/release.sh --version 0.1.0 --clobber  # 同版本重发：覆盖该 Release 的附件（链接不变）
 ```
 
-上传通道自动探测：优先 `gh` CLI（`gh auth login` 一次即可），或 `GITHUB_TOKEN=<pat> scripts/release.sh`（需 curl + jq）。正式发布要求工作区干净且已推送；发版前递增 `package.json` 版本号。安装链接里的版本随 Release 走，旧链接永远可回溯旧版。
+版本语义：**默认既不覆盖也不自动递增**——使用 `package.json` 当前版本号；每个版本对应一个新 tag + 新安装链接，旧版本链接永久可回溯、永不覆盖；同版本号重发属覆盖行为，须显式 `--clobber`。上传通道自动探测：优先 `gh` CLI（`gh auth login` 一次即可），或 `GITHUB_TOKEN=<pat> scripts/release.sh`（需 curl + jq）。正式发布要求工作区干净且已推送。
 
 `bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局配置 `~/.sunshinex/.env`（装一次、跨项目共享密钥），项目根 `.env` 按项目覆盖，优先级：已导出环境变量 > 项目级 > 全局级。`sunshinex selfcheck / run / pipeline` 等子命令用法不变。
 
