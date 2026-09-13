@@ -52,3 +52,14 @@ test('LiveArea：答复未入档超长时显示溢出提示且帧高有界', () 
   assert.ok(!frame.includes('行1\n'), '头部行不应显示');
   unmount();
 });
+
+test('LiveArea：表格行进入预览区即实时渲染（框线成形，非源码滚动）', () => {
+  const table = ['| 模块 | 结论 |', '| --- | --- |', '| 渲染层 | 实时成形 |', '| 切块层 | 整表放行 |'].join('\n');
+  const { lastFrame, unmount } = render(
+    <LiveArea live={{ kind: 'reply', text: table, committedLen: 0, startedAt: 0 }} columns={80} />,
+  );
+  const frame = lastFrame() ?? '';
+  assert.match(frame, /[─╭╰]/, '表格应以框线形态实时渲染');
+  assert.ok(!frame.includes('| 模块 |'), '不应以源码竖线形态滚动');
+  unmount();
+});

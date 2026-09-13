@@ -2,8 +2,9 @@ import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
 import { ApprovalDecision } from '../../types';
-import { SessionController, TuiState } from '../session';
-import { collapsibleBlocks, splitRounds } from '../history-view';
+import { SessionController, TuiState, ChatItem } from '../session';
+import { splitRounds } from '../history-view';
+import { initialRetained, RetainedUiState } from '../ui-state';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
@@ -44,16 +45,32 @@ export function inputPlaceholder(status: TuiState['status']): string {
 const HOME_SEQS = ['[H', 'OH', '[1~', '[7~'];
 const END_SEQS = ['[F', 'OF', '[4~', '[8~'];
 
-/** Ink 渲染层（纯渲染 + useInput 垫片键盘分发：垫片保留原始字节，退格/⌦ 经 key.raw 精确分流）：状态全量来自 controller 订阅 */
-export function App({ controller, banner }: { controller: SessionController; banner?: BannerInfo }): JSX.Element {
+/** Ink 渲染层（纯渲染 + useInput 垫片键盘分发：垫片保留原始字节，退格/⌦ 经 key.raw 精确分流）：状态全量来自 controller 订阅；
+ *  retain 为跨重挂现场（resize 整屏重绘时输入/展开打印不丢）：挂载读初值，每次渲染后实时回写 */
+export function App({ controller, banner, retain }: { controller: SessionController; banner?: BannerInfo; retain?: RetainedUiState }): JSX.Element {
+  const localRetain = React.useRef<RetainedUiState>(initialRetained());
+  const store = retain ?? localRetain.current;
   const [state, setState] = React.useState<TuiState>(controller.getState());
-  const [buffer, setBuffer] = React.useState('');
-  const [cursor, setCursor] = React.useState(0);
-  const [review, setReview] = React.useState(false);
-  const [focusBlock, setFocusBlock] = React.useState(0);
-  const [history, setHistory] = React.useState<string[]>([]);
-  const [histIdx, setHistIdx] = React.useState(-1);
+  const [buffer, setBuffer] = React.useState(store.buffer);
+  const [cursor, setCursor] = React.useState(store.cursor);
+  // Tab 展开打印（Claude Code ctrl+o 同款）：每次触发把全会话历史按全展开形态整段打印进滚动缓冲，
+  // 无翻阅模态态——↑↓ 永远归输入历史，无按键冲突；seq 递增计数保证 dump key 唯一，/new 清空会话时一并清理
+  const [dumps, setDumps] = React.useState(store.dumps);
+  const dumpSeqRef = React.useRef(0);
+  React.useEffect(() => {
+    if (state.messages.length === 0 && dumps.length > 0) setDumps([]);
+  }, [state.messages.length, dumps.length]);
+  const [history, setHistory] = React.useState<string[]>(store.history);
+  const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
+  // 现场回写：无依赖数组——每次渲染后同步最新值到 retain，重挂前的最后一帧即最新现场
+  React.useEffect(() => {
+    store.buffer = buffer;
+    store.cursor = cursor;
+    store.dumps = dumps;
+    store.history = history;
+    store.histIdx = histIdx;
+  });
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
 
@@ -72,27 +89,8 @@ export function App({ controller, banner }: { controller: SessionController; ban
 
     const lastRoundIdx = splitRounds(state.messages).length - 1;
 
-    // 块粒度历史翻阅：↑↓ 在思考/工具块间移动唯一焦点（焦点块自动展开，最近 3 块默认展开，同时至多 4 块展开）；
-    // ↓ 越过末块即回实时，Esc/Tab 退出；其余按键先退出翻阅再按普通输入处理，随手打字不被视图吞掉
-    if (review) {
-      const blockCount = collapsibleBlocks(splitRounds(state.messages)).length;
-      if (key.upArrow) {
-        setFocusBlock((f) => Math.max(0, f - 1));
-        return;
-      }
-      if (key.downArrow) {
-        if (focusBlock + 1 > blockCount - 1) setReview(false);
-        else setFocusBlock((f) => f + 1);
-        return;
-      }
-      if (key.tab || key.escape) {
-        setReview(false);
-        return;
-      }
-      setReview(false);
-    }
-
-    // Tab 分流：/ 前缀 → 斜杠补全；否则空闲/出错态进入历史翻阅（视口停在最近 6 轮）
+    // Tab 分流：/ 前缀 → 斜杠补全；否则空闲/出错态触发「会话历史全展开打印」（Claude Code ctrl+o 同款：
+    // 整段 transcript 按全展开形态一次性滚入滚动缓冲，用终端滚动回看）——无翻阅模态态，↑↓ 永远归输入历史
     if (key.tab) {
       if (buffer.startsWith('/')) {
         const token = buffer.trim();
@@ -108,9 +106,9 @@ export function App({ controller, banner }: { controller: SessionController; ban
           setCursor(next.length);
         }
       } else if ((state.status === 'idle' || state.status === 'error') && lastRoundIdx >= 0) {
-        // 进入翻阅：焦点落在最后一个可折叠块（其所在轮为窗口末轮），最近 3 块由视口自动展开
-        setFocusBlock(Math.max(0, collapsibleBlocks(splitRounds(state.messages)).length - 1));
-        setReview(true);
+        // 触发展开打印：整段会话历史（含折叠的思考全文与工具 observation）一次性滚入滚动缓冲
+        const seq = ++dumpSeqRef.current;
+        setDumps((ds) => [...ds, { seq, anchorSeq: state.messages[state.messages.length - 1].seq, items: state.messages }]);
       }
       return;
     }
@@ -209,8 +207,7 @@ export function App({ controller, banner }: { controller: SessionController; ban
         messages={state.messages}
         live={state.live}
         columns={columns}
-        review={review}
-        focusBlock={focusBlock}
+        dumps={dumps}
       />
       {state.status === 'running' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />

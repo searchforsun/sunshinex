@@ -32,13 +32,13 @@ function makeLongFile(tmp: string, name: string): string {
   return filePath;
 }
 
-/** 折叠提示计数：折叠的思考/工具块各带一处提示（实时/入档「Tab 翻阅」、翻阅视口「↑↓ 展开」）；展开后消失（头部文案不含这两串） */
-const countHint = (f: string): number => (f.match(/Tab 翻阅|↑↓ 展开/g) ?? []).length;
-/** L 总量口径（单帧）：折叠摘要首行仅 ~68 连串（宽度截断），展开后全文 250——折行会切碎长串，必须按段累计 */
+/** L 总量口径（按段累计）：折叠摘要首行仅 ~68 连串（宽度截断），展开后全文 250——折行会切碎长串，必须按段累计 */
 const countL = (f: string): number => (f.match(/L{30,}/g) ?? []).reduce((a, b) => a + b.length, 0);
+/** 会话历史打印段头部计数（每次 Tab 触发追加一段） */
+const countDumpHeader = (f: string): number => (f.match(/会话历史（全展开）/g) ?? []).length;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-test('App：实时/历史默认折叠——工具结果单行摘要，全文仅翻阅可见', async () => {
+test('App：实时/历史默认折叠——工具结果单行摘要，全文仅 Tab 展开打印可见', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-exp1-'));
   try {
     const filePath = makeLongFile(tmp, 'long.txt');
@@ -57,7 +57,8 @@ test('App：实时/历史默认折叠——工具结果单行摘要，全文仅�
     const all = allOutput();
     assert.match(all, /\[READ\]/, '调用行应显示工具名与路径');
     assert.match(all, /⎿ ✓/, '结果行应保留 ✓/✗ 状态');
-    assert.ok(all.includes('Tab 翻阅'), '折叠摘要应带翻阅提示');
+    assert.ok(!/\+\d+ 行 · Tab/.test(all), '工具结果摘要不再带「+N 行」尾缀');
+    assert.ok(!all.includes('[Tab'), '折叠摘要不再带翻阅/展开提示标记');
     assert.ok(!all.includes('L'.repeat(200)), '折叠摘要不应出现完整 observation');
     assert.ok(!all.includes('L'.repeat(250)), '全文（250 连 L）不应在实时/入档任何帧出现');
     const frame = lastFrame() ?? '';
@@ -69,7 +70,7 @@ test('App：实时/历史默认折叠——工具结果单行摘要，全文仅�
   }
 });
 
-test('App：Tab 历史翻阅（块粒度）——默认展开最新 3 块、↑↓ 移动唯一焦点、越底回实时', async () => {
+test('App：Tab 展开打印——全会话历史全展开滚入滚动缓冲，可重复触发，动态帧保持干净', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-exp2-'));
   try {
     const [a, b, c, d, e] = ['a', 'b', 'c', 'd', 'e'].map((n) => makeLongFile(tmp, `${n}.txt`));
@@ -89,45 +90,35 @@ test('App：Tab 历史翻阅（块粒度）——默认展开最新 3 块、↑�
     await ctrl.waitIdle();
     await ctrl.submit('批量读乙');
     await ctrl.waitIdle();
-    const { lastFrame, write, unmount } = render(
+    const { lastFrame, allOutput, write, unmount } = render(
       <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />,
     );
     await sleep(200);
-    write('\t'); // 进入翻阅：焦点=末块，默认展开最新 3 块（b2–b4），b0/b1 折叠
+    assert.ok(!allOutput().includes('会话历史（全展开）'), 'Tab 前无打印段');
+    write('\t'); // 展开打印：全会话历史（5 个工具 observation 全文）一次性滚入滚动缓冲
     await sleep(150);
-    const f1 = lastFrame() ?? '';
-    assert.match(f1, /历史翻阅/, 'Tab 应进入翻阅视图');
-    assert.equal(countHint(f1), 2, '仅最早的 2 块保持折叠（默认展开最新 3 块）');
-    const l1 = countL(f1);
-    assert.ok(l1 >= 750 && l1 < 1000, `默认展开 3 块全文（got ${l1}）`);
-    write('\u001B[A');
-    await sleep(120);
-    write('\u001B[A');
-    await sleep(120);
-    write('\u001B[A'); // 焦点移出默认区（b1）：窗口随动收窄至焦点所在轮，焦点块并入默认区展开（至多 4 块）
-    await sleep(150);
-    const f2 = lastFrame() ?? '';
-    assert.equal(countHint(f2), 1, '焦点上移后仅 b0 折叠（焦点块并入默认 3 块，展开 ≤4）');
-    const l2 = countL(f2);
-    assert.ok(l2 >= 250 && l2 < 700, `视口只渲染焦点所在轮（折叠 b0 摘要 + 展开 b1 全文，got ${l2}）`);
-    write('\u001B[A'); // 焦点=b0
-    await sleep(120);
-    const f3 = lastFrame() ?? '';
-    assert.equal(countHint(f3), 1, 'b0 展开后 b1 折叠，同时至多 4 块展开语义不变');
-    for (let i = 0; i < 5; i++) {
-      write('\u001B[B'); // ↓ 连按越过末块 → 回实时
-      await sleep(80);
-    }
+    const after1 = allOutput();
+    assert.equal(countDumpHeader(after1), 1, '打印段出现一次');
+    const seg1 = after1.slice(after1.indexOf('会话历史（全展开）'));
+    assert.ok(countL(seg1) >= 1000, `5 个 observation 全文可见（got ${countL(seg1)}）`);
+    assert.ok(!(lastFrame() ?? '').includes('会话历史'), '打印段属滚动缓冲，动态帧不承载');
+    assert.match(lastFrame() ?? '', /空闲/, '打印后动态帧仍只剩输入框与状态栏');
+    write('\u001B[A'); // ↑ 归输入历史：无输入历史时缓冲纹丝不动
     await sleep(100);
-    const f4 = lastFrame() ?? '';
-    assert.ok(!f4.includes('历史翻阅'), '↓ 越过末块应回实时视图');
+    assert.equal(countDumpHeader(allOutput()), 1, '↑ 不触发任何翻阅行为（键位冲突解除）');
+    write('\t'); // 可重复触发：再次打印最新快照
+    await sleep(150);
+    const after2 = allOutput();
+    assert.equal(countDumpHeader(after2), 2, '第二次打印段追加');
+    const seg2 = after2.slice(after2.indexOf('会话历史（全展开）', after1.indexOf('会话历史（全展开）') + 1));
+    assert.ok(countL(seg2) >= 1000, `第二次打印段同样全展开（got ${countL(seg2)}）`);
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('App：思考默认折叠为摘要行；翻阅焦点块默认展开看全文', async () => {
+test('App：思考默认折叠为摘要行；Tab 展开打印显示思考全文', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-exp3-'));
   try {
     const ctrl = new SessionController({
@@ -144,14 +135,12 @@ test('App：思考默认折叠为摘要行；翻阅焦点块默认展开看全�
     assert.ok(all.includes('Thought for'), '思考摘要行随 Static 入档');
     assert.ok(!all.includes('先想再想'), '思考全文默认不展示');
     assert.ok(!(lastFrame() ?? '').includes('Thought for'), '动态帧不承载消息');
-    write('\t'); // 翻阅：唯一思考块即焦点，进入即自动展开
+    write('\t'); // 展开打印：思考全文入缓冲
     await sleep(150);
-    const rev = lastFrame() ?? '';
-    assert.match(rev, /历史翻阅/);
-    assert.ok(rev.includes('先想再想'), '进入翻阅焦点块默认展开，思考全文可见');
-    write('\t'); // 翻阅态 Tab 即退出回实时
-    await sleep(150);
-    assert.ok(!(lastFrame() ?? '').includes('历史翻阅'), '翻阅态 Tab 应退出翻阅');
+    const dumped = allOutput();
+    assert.equal(countDumpHeader(dumped), 1);
+    assert.ok(dumped.includes('先想再想'), '打印段包含思考全文');
+    assert.ok(!(lastFrame() ?? '').includes('先想再想'), '动态帧不承载打印段');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

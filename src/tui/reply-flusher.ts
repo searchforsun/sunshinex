@@ -16,7 +16,7 @@ function isTableDivider(line: string): boolean {
  * 流式正文安全点切块（纯函数）：从 pending = text.slice(committedLen) 中取可入档子串，无安全点返回 null。
  * 规则（对标 Claude Code 打字机式滚动出稿）：
  * 1. 围栏代码块（行首 ```）开→闭之间零切点（含围栏内空行），闭合后恢复段落切分——整块入档保住高亮与结构；
- * 2. GFM 表格（表头+分隔行成对开启，空行/非表格行闭合）期间零切点——超兜底线的长表同样整表放行，防表体被切碎后中途降级为散行；
+ * 2. GFM 表格（表头+分隔行成对开启，空行/非表格行闭合）期间零切点——闭合即整表放行（切点回退至表格末行换行处，不等后续段落边界），防表体切碎降级或整表滞留预览区；
  * 3. 段落边界（空行）优先：切点取最靠后的边界（seg 含边界空行的换行）；
  * 4. 闭态区域连续超过 maxLines 个完整行仍无边界 → 按最近换行兜底切块（此后重新计数）；
  * 5. 返回值恒为 text 的严格中缀且原样保留换行——分块拼接 === 终稿，session 侧前缀去重不重复不丢失。
@@ -57,11 +57,17 @@ export function stableReplySegment(
       if (!isLast) offset += line.length + 1;
       continue;
     }
-    if (isLast) break; // 生成中的最后一行（无换行结尾）：永不切
     const tableLine = /^\s*\|/.test(line);
+    let tableClosedHere = false;
     if (tableOpen && !tableLine) {
-      tableOpen = false; // 非表格行（含空行）闭合表格：恢复段落切分
+      tableOpen = false; // 非表格行（含空行/流式尾行）闭合表格：恢复段落切分
+      tableClosedHere = true; // 整表已带换行完结：无论闭合行本身是否完整，表格本体均可立即放行
       closedLineStreak = 0;
+    }
+    if (isLast) {
+      // 生成中的最后一行（无换行结尾）永不切；但表格恰在此处闭合时，切点回退至表格末行换行处，整表立即入档
+      if (tableClosedHere) cut = offset;
+      break;
     }
     if (!tableOpen && tableLine && isTableDivider(lines[i + 1])) {
       tableOpen = true; // 表头 + 分隔行成对出现：表格开启（自表头行起保护，防表头与分隔行被分离）
@@ -71,8 +77,8 @@ export function stableReplySegment(
       offset = candidate; // 围栏/表格内容（含其内空行）：零切点，整块等待闭合后随边界放行
       continue;
     }
-    if (line === '') {
-      cut = candidate; // 段落边界：总是取最靠后的边界
+    if (tableClosedHere || line === '') {
+      cut = candidate; // 表格刚闭合（整表随切点放行）或段落边界：取最靠后的安全切点
       closedLineStreak = 0;
     } else {
       closedLineStreak += 1;

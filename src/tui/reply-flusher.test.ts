@@ -70,3 +70,16 @@ test('reply-flusher：表格流式未完（尾行为表格行且无换行）不�
   const committed = '前言。\n\n'.length;
   assert.equal(stableReplySegment(text, committed), null, '表格未闭合不切');
 });
+
+test('reply-flusher：表格闭合于内容行即整表放行（不等后续段落边界）', () => {
+  const header = '| 模块 | 问题 |';
+  const divider = '| --- | --- |';
+  const rows = ['| 服务A | 超卖风险 |', '| 服务B | 幂等缺失 |'];
+  const table = [header, divider, ...rows].join('\n');
+  // 表格后无空行直接跟正文（模型省略空行的常见输出）
+  const text = `前言。\n\n${table}\n正文紧跟表格。`;
+  const seg = stableReplySegment(text, 0);
+  assert.ok(seg !== null, '表格闭合于内容行应立即产生切点');
+  assert.ok(seg!.includes('| 服务B | 幂等缺失 |'), '切点应覆盖整张表');
+  assert.ok(!seg!.includes('正文紧跟'), '表格后的正文不入本段');
+});

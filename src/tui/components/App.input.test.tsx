@@ -7,6 +7,7 @@ import { render } from '../test-ink';
 import { App, slashCandidates, SLASH_COMMANDS } from './App';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
+import { initialRetained } from '../ui-state';
 
 test('slashCandidates：/ 前缀匹配命令清单，非 / 前缀返回空', () => {
   assert.deepEqual(slashCandidates('/'), SLASH_COMMANDS);
@@ -158,6 +159,33 @@ test('App：⌦ 删除光标处字符，退格删除光标前字符', async () =
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /❯ ▊c/, '退格应删除光标前字符');
     unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：retain 现场跨重挂保留（输入缓冲与历史不丢）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inp7-'));
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"x"}']) });
+    const retain = initialRetained();
+    const first = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} />);
+    await new Promise((r) => setTimeout(r, 200));
+    first.write('携带内容');
+    await new Promise((r) => setTimeout(r, 150));
+    first.write('\r');
+    await new Promise((r) => setTimeout(r, 200));
+    first.write('草稿');
+    await new Promise((r) => setTimeout(r, 150));
+    first.unmount();
+    // 模拟 resize 重挂：同一 retain 传入新实例
+    const second = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} />);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(second.lastFrame() ?? '', /❯ 草稿/, '重挂后输入缓冲应从 retain 恢复');
+    second.write('\u001B[A');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(second.lastFrame() ?? '', /❯ 携带内容/, '重挂后输入历史应从 retain 恢复');
+    second.unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

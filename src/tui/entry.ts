@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { render } from 'ink';
 import { App } from './components/App';
+import { runTuiLoop } from './tui-loop';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
 import { buildModel } from '../runtime';
@@ -30,11 +31,21 @@ export async function runTui(args: CliArgs): Promise<void> {
   const banner = buildBannerInfo({ version: readPackageVersion(), root, model: model.label ?? model.provider });
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
-  const instance = render(React.createElement(App, { controller: ctrl, banner }));
-  const shutdown = (): void => {
-    instance.unmount();
+  // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，
+  // 终端缩放 reflow 后行数失配、旧帧擦不净即残影叠字）；输入与展开打印现场跨重挂保留
+  let current: { unmount(): void } | undefined;
+  process.once('SIGINT', () => {
+    current?.unmount();
     process.exit(0);
-  };
-  process.once('SIGINT', shutdown);
-  await instance.waitUntilExit();
+  });
+  await runTuiLoop({
+    stdout: process.stdout,
+    clearScreen: () => process.stdout.write('\x1b[2J\x1b[3J\x1b[H'),
+    renderOnce: (retain) => {
+      const inst = render(React.createElement(App, { controller: ctrl, banner, retain }));
+      current = inst;
+      return inst;
+    },
+  });
+  process.exit(0);
 }
