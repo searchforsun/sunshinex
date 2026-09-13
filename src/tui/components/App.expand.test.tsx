@@ -143,7 +143,7 @@ test('App：retain 展开模式恢复——挂载即全展开渲染历史块', a
       <App
         controller={ctrl}
         banner={{ version: '1.0.0', model: 'm', root: tmp }}
-        retain={{ buffer: '', cursor: 0, expandAll: true, latestFull: false, history: [], histIdx: -1 }}
+        retain={{ buffer: '', cursor: 0, expandAll: true, latestFull: true, history: [], histIdx: -1 }}
       />,
     );
     await sleep(150);

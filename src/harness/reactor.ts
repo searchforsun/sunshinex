@@ -162,7 +162,6 @@ export class Reactor {
       if (!parsed.ok) {
         // 模型未按 JSON 输出：把原文回填为观察，给模型一次自我纠正机会
         steps.push({ step, observation: `模型输出非 JSON（截断）：${raw.slice(0, 400)}`, tier: effectiveTier });
-        this.deps.context.memory.record('project', `step ${step}: 模型输出未解析`);
         continue;
       }
 
@@ -184,7 +183,6 @@ export class Reactor {
 
       if (!action.tool) {
         steps.push({ step, observation: '动作缺少 tool 字段', tier: effectiveTier });
-        this.deps.context.memory.record('project', `step ${step}: 动作缺 tool`);
         continue;
       }
 
@@ -198,8 +196,7 @@ export class Reactor {
         const p = (action.input ?? {}).path;
         if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
       }
-      // observe: 写回记忆
-      this.deps.context.memory.record('project', `step ${step}: ${observation}`);
+      // 观察只入 history（单一来源）：memory 注入段位于 goal/history 之前，逐步写记忆会击穿其后全部 KV 前缀缓存
     }
 
     // 任务收尾：清退 working 层（done 与 maxSteps 耗尽共用此出口）
@@ -305,7 +302,6 @@ export class Reactor {
     if (denied) {
       const obs = `并行调用被拒绝：${denied}；请移除 exec 后重试，或改用单工具调用`;
       steps.push({ step, action: 'parallel', observation: obs, tier });
-      this.deps.context.memory.record('project', `step ${step}: ${obs}`);
       return;
     }
     const results = await Promise.all(calls.map((c) => this.deps.registry.execute(c.tool, c.input ?? {}, this.deps.safety)));
@@ -324,7 +320,6 @@ export class Reactor {
     });
     const observation = `[并行 ${calls.length} 项]\n${parts.join('\n')}`;
     steps.push({ step, action: calls.map((c) => c.tool).join('+'), observation, tier });
-    this.deps.context.memory.record('project', `step ${step}: ${observation}`);
   }
 
   private parse(raw: string): ParseResult {

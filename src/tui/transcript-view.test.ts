@@ -12,96 +12,107 @@ const item = (role: ChatItem['role'], text: string, extra?: Partial<ChatItem>): 
   ...extra,
 });
 
-test('锚点分组：默认态最近锚点组全行、历史组折叠为首个工具调用对', () => {
+test('桶模型：无 ▶ 行的调研会话——正文即锚点，历史桶折叠为首个思考+首个工具对', () => {
   const messages = [
-    item('user', '调研'),
+    item('user', '调研 deepseek-harness'),
+    item('tool', 'FETCH 404', { kind: 'call' }),
+    item('tool', 'EXEC_FAILED', { kind: 'result', ok: false }),
+    item('thinking', 'Thought for 6s', { detail: '思考一全文' }),
+    item('tool', 'FETCH readme', { kind: 'call' }),
+    item('tool', '# DeepSeek Harness', { kind: 'result', ok: true }),
+    item('assistant', '深入抓取官方文档：架构设计、开发指南与 Web UI 使用指南'),
+    item('tool', 'FETCH arch', { kind: 'call' }),
+    item('tool', '# Architecture', { kind: 'result', ok: true }),
+    item('assistant', '调研结论全文'),
+  ];
+  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: false });
+  assert.ok(d[0].visible, '用户输入恒显示');
+  assert.ok(d[6].visible && d[9].visible, '正文锚点恒显示');
+  assert.ok(d[1].visible && d[2].visible && d[3].visible, '历史桶保留首个工具对与首个思考行');
+  assert.ok(!d[4].visible && !d[5].visible, '历史桶其余过程行折叠隐藏');
+  assert.ok(d[7].visible && d[8].visible, '最近正文锚点桶全行');
+  assert.ok(!d[3].full && !d[8].full, 'latestFull=false 时内容保持摘要');
+});
+
+test('桶模型：Ctrl+O 仅最近正文锚点桶及其后展开全文，历史桶仍摘要', () => {
+  const messages = [
+    item('tool', 'FETCH a', { kind: 'call' }),
+    item('tool', 'ra', { kind: 'result', ok: true, detail: '全文A' }),
+    item('thinking', 'Thought for 6s', { detail: '思考全文A' }),
+    item('assistant', '正文一'),
+    item('tool', 'FETCH b', { kind: 'call' }),
+    item('tool', 'rb', { kind: 'result', ok: true, detail: '全文B' }),
+    item('thinking', 'Thought for 21s', { detail: '思考全文B' }),
+    item('assistant', '正文二'),
+  ];
+  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(d[1].visible && d[2].visible && d[3].visible, '历史桶保留首动作');
+  assert.ok(!d[1].full && !d[2].full, '历史桶内容保持摘要（不随 latestFull 展开）');
+  assert.ok(d[4].visible && d[5].visible && d[6].visible, '最近正文锚点桶全行');
+  assert.ok(d[5].full && d[6].full, '最近正文锚点桶思考与工具结果全文');
+  const folded = buildTranscriptDecisions(messages, { expandAll: true, latestFull: true });
+  assert.ok(folded[1].visible && !folded[1].full, 'Tab+Ctrl+O：历史桶全行仍摘要，全文仅最近桶');
+});
+
+test('桶模型：Tab 解除全部行折叠但内容保持摘要（与 Ctrl+O 正交）', () => {
+  const messages = [
+    item('tool', 'FETCH a', { kind: 'call' }),
+    item('tool', 'ra', { kind: 'result', ok: true, detail: '全文A' }),
+    item('assistant', '正文一'),
+    item('tool', 'FETCH b', { kind: 'call' }),
+    item('tool', 'rb', { kind: 'result', ok: true, detail: '全文B' }),
+    item('assistant', '正文二'),
+  ];
+  const d = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
+  assert.ok(d.every((s) => s.visible), 'Tab 解除全部行折叠');
+  assert.ok(d.every((s) => !s.full), 'Tab 不改变内容深度');
+});
+
+test('桶模型：进行中桶（正文未出）全行，正文落定后自动成为收拢对象', () => {
+  const messages = [
+    item('assistant', '正文一'),
+    item('tool', 'FETCH b', { kind: 'call' }),
+    item('tool', 'rb', { kind: 'result', ok: true, detail: '全文B' }),
+    item('tool', 'FETCH c', { kind: 'call' }),
+  ];
+  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(d[0].visible, '正文一恒显示');
+  assert.ok(d[1].visible && d[2].visible && d[3].visible, '进行中桶全行（流式动作行不消失）');
+  assert.ok(d[2].full && d[3].full, '进行中桶位于最近正文锚点之后，随 Ctrl+O 全文');
+});
+
+test('桶模型：无任何正文时全部视作进行中（全行摘要），latestFull 无作用域', () => {
+  const messages = [
+    item('user', '读文件'),
+    item('tool', 'READ a.txt', { kind: 'call' }),
+    item('tool', 'ok', { kind: 'result', ok: true, detail: '全文' }),
+  ];
+  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(d.every((s) => s.visible), '无正文锚点不折叠');
+  assert.ok(d.every((s) => !s.full), 'latestFull 无作用域');
+  const d2 = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
+  assert.ok(d2[2].full, '无组时沿用 expandAll 口径展开摘要');
+});
+
+test('桶模型：▶ 阶段行与 plan 逐步场景同样按正文锚点分组', () => {
+  const messages = [
     item('step', '检索阶段'),
     item('tool', 'READ a.txt', { kind: 'call' }),
     item('tool', 'ok', { kind: 'result', ok: true }),
     item('tool', 'READ b.txt', { kind: 'call' }),
     item('tool', 'ok2', { kind: 'result', ok: true }),
+    item('assistant', '阶段一结论'),
     item('step', '汇总阶段'),
-    item('assistant', '结论正文'),
-  ];
-  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: false });
-  assert.ok(d[0].visible, '序组（用户输入）不受折叠影响');
-  assert.ok(d[1].visible && d[6].visible, '▶ 阶段行恒可见（锚点标识）');
-  assert.ok(d[2].visible && d[3].visible, '历史组保留首个工具调用对');
-  assert.ok(!d[4].visible && !d[5].visible, '历史组非首个动作折叠隐藏');
-  assert.ok(d[7].visible, '最近锚点正文恒可见');
-  assert.ok(!d[2].full && !d[4].full, 'latestFull=false 时内容保持摘要');
-});
-
-test('锚点分组：Tab 只切行维度，Ctrl+O 只切最近锚点组内容深度，两键正交', () => {
-  const messages = [
-    item('step', '检索'), // g0
-    item('tool', 'READ a.txt', { kind: 'call' }), // 首个调用：保留
-    item('tool', 'r1', { kind: 'result', ok: true, detail: '全文A' }),
-    item('tool', 'READ c.txt', { kind: 'call' }), // 非首个：折叠
-    item('tool', 'r3', { kind: 'result', ok: true, detail: '全文C' }),
-    item('thinking', 'Thought for 1s', { detail: '思考全文' }), // 首个思考：保留
-    item('step', '汇总'), // g1（最近锚点组）
-    item('tool', 'READ b.txt', { kind: 'call' }),
-    item('tool', 'r2', { kind: 'result', ok: true, detail: '全文B' }),
-    item('thinking', 'Thought for 2s', { detail: '思考全文B' }),
-    item('assistant', '结论'),
-  ];
-  const collapsed = buildTranscriptDecisions(messages, { expandAll: false, latestFull: false });
-  assert.ok(!collapsed[3].visible && !collapsed[4].visible, '历史组非首个动作隐藏');
-  assert.ok(collapsed[1].visible && collapsed[2].visible && collapsed[5].visible, '历史组保留首个工具调用对与首个思考行');
-  assert.ok(collapsed[7].visible && collapsed[8].visible && collapsed[9].visible, '最近锚点组全行');
-  assert.ok(!collapsed[5].full && !collapsed[8].full, '默认内容全部摘要');
-
-  const expanded = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
-  assert.ok(expanded[3].visible && expanded[4].visible, 'Tab 后历史组全部动作可见');
-  assert.ok(!expanded[5].full && !expanded[8].full, 'Tab 仅行维度，内容仍摘要');
-
-  const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
-  assert.ok(!deep[3].visible, 'latestFull 不解除行折叠（正交）');
-  assert.ok(deep[8].full && deep[9].full, '最近锚点组思考与工具结果全文');
-  assert.ok(!deep[5].full, '历史组内容不随 latestFull 展开');
-
-  const both = buildTranscriptDecisions(messages, { expandAll: true, latestFull: true });
-  assert.ok(both[3].visible && both[8].full, '两键叠加：全行 + 最近锚点组全文');
-  assert.ok(!both[5].full, '历史组内容仍摘要（latestFull 作用域仅最近锚点组）');
-});
-
-test('锚点分组：进行中阶段（正文未出）保持全行，新阶段开始自动收拢上一阶段', () => {
-  const messages = [
-    item('step', '阶段一'), // g0
-    item('tool', 'READ a.txt', { kind: 'call' }),
-    item('tool', 'r1', { kind: 'result', ok: true, detail: '全文A' }),
     item('tool', 'READ c.txt', { kind: 'call' }),
-    item('tool', 'r3', { kind: 'result', ok: true, detail: '全文C' }),
-    item('assistant', '阶段一正文'),
-    item('step', '阶段二'), // g1（最近锚点组）
-    item('tool', 'READ b.txt', { kind: 'call' }),
-    item('tool', 'r2', { kind: 'result', ok: true, detail: '全文B' }),
-    item('tool', 'READ d.txt', { kind: 'call' }),
-    item('tool', 'r4', { kind: 'result', ok: true, detail: '全文D' }),
-    item('assistant', '阶段二正文'),
-    item('step', '阶段三'), // g2（进行中，正文未出）
-    item('tool', 'READ e.txt', { kind: 'call' }),
+    item('tool', 'ok3', { kind: 'result', ok: true, detail: '全文C' }),
+    item('assistant', '汇总正文'),
   ];
   const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: false });
-  assert.ok(!d[3].visible && !d[4].visible, '上一阶段（g0）非首个动作在锚点出现后自动收拢');
-  assert.ok(d[1].visible && d[2].visible && d[5].visible, '上一阶段保留首个工具对与正文');
-  assert.ok(d[7].visible && d[9].visible && d[11].visible, '最近锚点组（g1）全行');
-  assert.ok(d[12].visible && d[13].visible, '进行中组（g2）不折叠——流式动作行不消失');
-  const d2 = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
-  assert.ok(d2[3].visible && d2[4].visible, 'Tab 后上一阶段折叠的动作全部可见');
-});
-
-test('锚点分组：无阶段行时退化为 expandAll 口径，latestFull 无作用域', () => {
-  const messages = [
-    item('user', '读文件'),
-    item('tool', 'READ a.txt', { kind: 'call' }),
-    item('tool', 'ok', { kind: 'result', ok: true, detail: '全文' }),
-    item('assistant', '答复'),
-  ];
-  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
-  assert.ok(d[1].visible && d[2].visible, '无组不隐藏行');
-  assert.ok(!d[2].full, '无组时 latestFull 不生效');
-  const d2 = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
-  assert.ok(d2[2].full, 'expandAll 展开摘要（单步任务既有语义）');
+  assert.ok(d[1].visible && d[2].visible, '历史桶保留首个工具对');
+  assert.ok(!d[3].visible && !d[4].visible, '历史桶其余工具对折叠');
+  assert.ok(d[0].visible && d[6].visible, '▶ 阶段行恒可见');
+  assert.ok(d[5].visible && d[9].visible, '正文锚点恒显示');
+  const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(deep[7].full && deep[8].full, 'Ctrl+O 作用于最近正文锚点桶');
+  assert.ok(!deep[2].full, '历史桶不随 latestFull 展开');
 });

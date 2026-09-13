@@ -90,25 +90,21 @@ export function App({
     }
     onRequestRepaint?.();
   }, [expandAll, latestFull]);
-  // 阶段锚点自动重绘：新 ▶ 行到达且已有更早阶段（≥2 个阶段行）时整屏重绘一次——Static 只增不删，
-  // 「上一阶段折叠为锚点形态」必须经重挂重放；首评只记录不触发（挂载本身即一次重放），防同锚点重复触发
-  const observedStepRef = React.useRef<number | null>(null);
+  // 正文锚点自动重绘：按「已闭合桶数」（其后还有后继消息的正文锚点）触发——正文流式切块会连续推
+  // assistant 条目，逐块重绘会闪烁；下一阶段首行到达使最近正文锚点闭合（closed ≥1）时才整屏重绘一次，
+  // 收拢历史桶为「首个思考 + 首个工具对」；Static 只增不删，折叠必须经重挂重放；首评只记录不触发
+  const anchorInitRef = React.useRef(false);
+  const closedBucketsRef = React.useRef(0);
   React.useEffect(() => {
-    let lastStepSeq = -1;
-    let stepCount = 0;
-    for (const m of state.messages) {
-      if (m.role === 'step') {
-        stepCount += 1;
-        lastStepSeq = m.seq;
-      }
+    let closed = 0;
+    const msgs = state.messages;
+    for (let i = 0; i < msgs.length; i++) {
+      if (msgs[i].role === 'assistant' && i < msgs.length - 1) closed += 1;
     }
-    if (observedStepRef.current === null) {
-      observedStepRef.current = lastStepSeq;
-      return;
-    }
-    if (lastStepSeq === observedStepRef.current) return;
-    observedStepRef.current = lastStepSeq;
-    if (stepCount >= 2) onRequestRepaint?.();
+    const changed = anchorInitRef.current && closed !== closedBucketsRef.current;
+    anchorInitRef.current = true;
+    closedBucketsRef.current = closed;
+    if (changed && closed >= 1) onRequestRepaint?.();
   }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;

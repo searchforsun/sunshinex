@@ -267,9 +267,10 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {640,400}：threshold 240，摘要/重读预算各 200。step2 est=125(mem)+1(goal)+178(hist)=304>240 触发；
-  // 一轮收敛后 est=125+1+139+181=446≤640 即止；step3 est≈450>240 但滞回门（3-2=1<2）挡住，records 保持 1
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 640, reserve: 400 } });
+  // budget {480,400}：threshold 80，摘要/重读预算各 200。观察只入 history（不写记忆）后按新语义标定：
+  // step2 est=3(装配底数)+1(goal)+178(hist f×700)=182>80 触发；一轮收敛后 est≈200(摘要)+175(重读)+4≈379≤480 即止；
+  // step3 est≈382>80 但滞回门（3-2=1<2）挡住，records 保持 1
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 480, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.ok(prompts[1].includes('[压缩摘要'), '触发轮当轮以收敛后上下文组装');
@@ -283,8 +284,9 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
 
 test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
-  fs.writeFileSync(path.join(tmp, 'f.txt'), 'f'.repeat(400));
-  fs.writeFileSync(path.join(tmp, 'g.txt'), 'g'.repeat(300));
+  // CJK 1 字符=1 token 便于精算。budget {280,200}：threshold 80，摘要/重读预算各 100
+  fs.writeFileSync(path.join(tmp, 'f.txt'), '压'.repeat(80));
+  fs.writeFileSync(path.join(tmp, 'g.txt'), '压'.repeat(700));
   const prompts: string[] = [];
   const replies = [
     '{"tool":"read","input":{"path":"f.txt"},"done":false}',
@@ -298,16 +300,17 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {430,400}：threshold 30。step2 est=209>30 触发收敛环，一轮后 est=348≤430 即止（records 1）；
-  // step3 读 g 后 est=506>430 硬越限旁路（滞回门 3-2=1<2 闭）压缩 records 2，est=526 仍越限续环：存活集变 [reread f, reread g]（新 checksum）→ records 3，rounds=2 环止；
-  // 若无旁路（对比 f=700/g=1200 时 est=970 且存活集与 #2 恒等被判 replay）：records 只会是 1——差值即旁路语义的证明（spec §2.2/C1，环有界 fail-bounded）
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 430, reserve: 400 } });
+  // 观察只入 history 后按新语义标定：
+  // step2 est=1(goal)+83(hist f×80)=84>80 滞回门（2-0≥2）触发（records 1）；chunks=[goal,hist1]≤摘要预算 100 原样入摘要，收敛后 est≈178≤280 即止；
+  // step3 读 g 后 est≈178+703>280 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：chunks 变为含上一轮摘要条目（与 step2 的 [goal,hist1] 不同 → 非 replay），records 2；
+  // 收敛环有界：hist2 等可丢块丢尽后 est≈≤100+1≤280 环止（rounds=1，fail-bounded）
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 280, reserve: 200 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.equal(
     context.memory.index().filter((l) => l.startsWith('compaction: 摘要')).length,
-    3,
-    'step3 硬越限旁路触发第三次压缩',
+    2,
+    'step3 硬越限旁路在滞回门闭合时仍触发压缩；环有界即止',
   );
 });
 
@@ -459,4 +462,39 @@ test('并行放宽为非 exec 均可：write 与 network 类同轮并行不被�
   assert.match(merged.observation, /\[write\]/);
   assert.match(merged.observation, /\[net-probe\]/);
   assert.equal(fs.readFileSync(outPath, 'utf8'), 'hello', 'write 应真实落盘');
+});
+
+test('Reactor：多步运行相邻步 prompt 前缀稳定（记忆不逐步写入击穿 KV 前缀缓存）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-prefix-'));
+  const big = Array.from({ length: 60 }, (_, i) => `第${i}行：观察内容示例，正文具备一定长度以模拟真实观察。`).join('\n');
+  fs.writeFileSync(path.join(tmp, 'a.txt'), big);
+  fs.writeFileSync(path.join(tmp, 'b.txt'), big.replace(/观察/g, '材料'));
+  const prompts: string[] = [];
+  const replies = [
+    '{"tool":"read","input":{"path":"a.txt"},"done":false}',
+    '{"tool":"read","input":{"path":"b.txt"},"done":false}',
+    '{"done":true,"reply":"ok"}',
+  ];
+  let i = 0;
+  const adapter = {
+    provider: 'capture',
+    complete: async (p: string) => {
+      prompts.push(p);
+      return replies[Math.min(i++, replies.length - 1)];
+    },
+  };
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '读取两份材料并汇总要点' });
+  assert.equal(r.done, true);
+  assert.ok(prompts.length >= 3, '至少三轮 prompt 才能检验相邻步前缀');
+  for (let k = 1; k < prompts.length; k++) {
+    const a = prompts[k - 1];
+    const b = prompts[k];
+    let common = 0;
+    const n = Math.min(a.length, b.length);
+    while (common < n && a[common] === b[common]) common++;
+    // 不变式：相邻步除尾部档位行（允许随步变化）外全部前缀命中；中前部任何逐轮变化段都会击穿其后全部缓存
+    assert.ok(common >= a.length - 120, `step${k}->${k + 1} 可命中前缀 ${common}/${a.length}B 过低：上下文中前部存在逐轮变化段`);
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
 });
