@@ -4,10 +4,22 @@ import { LiveBlock } from '../session';
 import { wrapByWidth } from '../text-band';
 import { MarkdownText } from './MarkdownText';
 
+/** 生成中单块判定（宽松）：首尾行均为同一块语法标记（表格 | 行 / 围栏 ``` 行）即视为该块仍在生成中 */
+function isSingleOversizeBlock(tailText: string): boolean {
+  const lines = tailText.split('\n');
+  const first = lines[0]?.trimStart() ?? '';
+  const last = (lines[lines.length - 1] ?? '').trimStart();
+  if (first.startsWith('|') && last.startsWith('|')) return true;
+  if (first.startsWith('```') && last.startsWith('```')) return false; // 围栏闭合行到达=块已完，走正常渲染
+  return false;
+}
+
 /** 思考流滚动固定行数：块高恒定，增量到达时不再上下跳动（对标 Claude Code 思考滚动区） */
 const THINK_TAIL_LINES = 6;
 /** 答复流式预览固定行数：动态区帧高必须有界；已入档前缀由 committedLen 排除，预览只呈现生成中的未入档尾段 */
 const REPLY_PREVIEW_LINES = 8;
+/** 生成中块高度上限：单块（表格/围栏）行数超此值即转「一行框架 + 行数计数」占位，帧高不再随生成逐帧长高 */
+const MAX_BLOCK_PREVIEW_LINES = 6;
 
 /**
  * 动态实时区：流式正文按安全点切块增量入档（session.flushReply，段落边界优先、围栏不切、超长段兜底），
@@ -21,11 +33,23 @@ export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }
     const lines = pending.split('\n');
     const overflow = Math.max(0, lines.length - REPLY_PREVIEW_LINES);
     const tail = lines.slice(-REPLY_PREVIEW_LINES);
+    const tailText = tail.join('\n');
+    // 生成中的单块高度超限（典型：长表格逐行成形，框线重算+逐帧长高致整窗闪动）：
+    // 转一行框架占位（块类型 + 已生成行数），整表入档后以终稿形态一次成型呈现
+    if (lines.length > MAX_BLOCK_PREVIEW_LINES && isSingleOversizeBlock(tailText)) {
+      const kind = tail[0].trimStart().startsWith('|') ? '表格' : '代码块';
+      return (
+        <Box flexDirection="column">
+          {overflow > 0 ? <Text dimColor>… 上文已入档（滚动缓冲可回看）</Text> : null}
+          <Text dimColor>{'⎇ 生成中：' + kind + ' · 已 ' + lines.length + ' 行，完成后完整呈现'}</Text>
+        </Box>
+      );
+    }
     // 预览统一走 Markdown 渲染管线（与入档后同构）：粗体/列表/表格等生成期间即成形，不再按内容类型双轨分叉
     return (
       <Box flexDirection="column">
         {overflow > 0 ? <Text dimColor>… 上文已入档（滚动缓冲可回看）</Text> : null}
-        <MarkdownText text={tail.join('\n')} columns={columns} />
+        <MarkdownText text={tailText} columns={columns} />
       </Box>
     );
   }

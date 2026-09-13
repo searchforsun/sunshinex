@@ -90,21 +90,41 @@ export function App({
     }
     onRequestRepaint?.();
   }, [expandAll, latestFull]);
-  // 正文锚点自动重绘：按「已闭合桶数」（其后还有后继消息的正文锚点）触发——正文流式切块会连续推
-  // assistant 条目，逐块重绘会闪烁；下一阶段首行到达使最近正文锚点闭合（closed ≥1）时才整屏重绘一次，
-  // 收拢历史桶为「首个思考 + 首个工具对」；Static 只增不删，折叠必须经重挂重放；首评只记录不触发
+  // 正文锚点自动重绘：按「最近正文组前移」触发——▶ 行开启新组、正文收编当前组（连续切块并入同组）、
+  // 正文之后的新过程行开启下一组；新正文落定使最近正文组前移（历史组产生折叠变化）时整屏重绘一次。
+  // 正文流式切块并入同组不前移锚点，不会逐块重绘闪烁；Static 只增不删，折叠必须经重挂重放；首评只记录
   const anchorInitRef = React.useRef(false);
-  const closedBucketsRef = React.useRef(0);
+  const recentBodyGroupRef = React.useRef(-1);
   React.useEffect(() => {
-    let closed = 0;
+    let g = -1;
+    let hasBody = false;
+    let recent = -1;
     const msgs = state.messages;
     for (let i = 0; i < msgs.length; i++) {
-      if (msgs[i].role === 'assistant' && i < msgs.length - 1) closed += 1;
+      const role = msgs[i].role;
+      if (role === 'step') {
+        g = g < 0 ? 0 : g + 1;
+        hasBody = false;
+      } else if (role === 'assistant') {
+        if (g < 0) g = 0;
+        else if (hasBody && msgs[i - 1].role !== 'assistant') {
+          g += 1;
+          hasBody = false;
+        }
+        hasBody = true;
+        recent = g;
+      } else {
+        if (g < 0) g = 0;
+        else if (hasBody) {
+          g += 1;
+          hasBody = false;
+        }
+      }
     }
-    const changed = anchorInitRef.current && closed !== closedBucketsRef.current;
+    const changed = anchorInitRef.current && recent !== recentBodyGroupRef.current;
     anchorInitRef.current = true;
-    closedBucketsRef.current = closed;
-    if (changed && closed >= 1) onRequestRepaint?.();
+    recentBodyGroupRef.current = recent;
+    if (changed && recent >= 0) onRequestRepaint?.();
   }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
@@ -266,7 +286,7 @@ export function App({
         placeholder={inputPlaceholder(state.status)}
         active={state.status === 'idle' || state.status === 'error'}
       />
-      <TodoList todos={state.todos} />
+      <TodoList todos={state.todos} running={state.status === 'running'} />
       <StatusBar metrics={state.metrics} status={state.status} todos={state.todos} model={info.model} />
     </Box>
   );
