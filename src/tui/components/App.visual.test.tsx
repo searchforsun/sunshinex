@@ -22,7 +22,7 @@ test('App：启动横幅 + 输入框 + 状态栏常驻渲染', async () => {
     const frame = lastFrame() ?? '';
     assert.match(frame, /❯/);          // 输入框提示符
     assert.match(frame, /↑0 tokens/);  // 状态栏本轮 tokens
-    assert.match(frame, /缓存 \d+%/); // 状态栏缓存命中率
+    assert.match(frame, /cache \d+%/); // 状态栏缓存命中率（英文口径）
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

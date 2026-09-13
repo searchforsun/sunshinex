@@ -38,12 +38,12 @@ test('StatusBar：无 model 不显示模型段', () => {
 
 test('StatusBar：缓存命中率取 cached/prompt（分母不含输出 token）', () => {
   const f = frameOf(metrics({ turnTokens: 1300, turnPromptTokens: 1000, turnCacheTokens: 640 }), 'm');
-  assert.match(f, /缓存 64%/, '命中率应为 cached_tokens / prompt_tokens，而非 cached/total');
+  assert.match(f, /cache 64%/, '命中率应为 cached_tokens / prompt_tokens，而非 cached/total');
 });
 
 test('StatusBar：配置窗口时显示上下文占用段（used/window 百分比）', () => {
   const f = frameOf(metrics({ ctxUsed: 250_000 }), 'm', 'idle', { used: 250_000, window: 1_000_000 });
-  assert.match(f, /ctx 250k\/1000k（25%）/, '状态栏应显示 ctx 水位/窗口（百分比）');
+  assert.match(f, /ctx 250k\/1000k \(25%\)/, '状态栏应显示 ctx 水位/窗口（百分比）');
 });
 
 test('StatusBar：未配置窗口不显示上下文占用段', () => {

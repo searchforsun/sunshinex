@@ -4,11 +4,11 @@ import { SessionStatus, StatusMetrics, TodoItem } from '../session';
 import { formatTokens } from '../format';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
-  idle: '空闲',
-  running: '运行中',
-  'awaiting-approval': '等待审批',
-  'awaiting-plan': '待确认计划',
-  error: '出错',
+  idle: 'idle',
+  running: 'running',
+  'awaiting-approval': 'awaiting approval',
+  'awaiting-plan': 'awaiting plan',
+  error: 'error',
 };
 
 /** 底部状态栏：本轮 tokens · 上下文占用 · 耗时 · 模型名 · runs · 缓存命中率 · 待办进度 · 状态词（不重复活动行动画） */
@@ -35,11 +35,11 @@ export function StatusBar({
   return (
     <Text dimColor>
       {' '}↑{formatTokens(metrics.turnTokens)} tokens
-      {context ? ' · ctx ' + formatTokens(context.used) + '/' + formatTokens(context.window) + '（' + ctxPct + '%）' : ''}
+      {context ? ' · ctx ' + formatTokens(context.used) + '/' + formatTokens(context.window) + ' (' + ctxPct + '%)' : ''}
       {elapsed ? ` · ${elapsed}` : ''}
       {model ? ` · model ${model}` : ''}
-      {' · runs '}{metrics.runs} · 缓存 {hitPct}%
-      {todos && todos.length > 0 ? ` · 待办 ${done}/${todos.length}` : ''} · {STATUS_LABEL[status]}
+      {' · cache '}{hitPct}%
+      {todos && todos.length > 0 ? ` · todo ${done}/${todos.length}` : ''} · {STATUS_LABEL[status]}
     </Text>
   );
 }

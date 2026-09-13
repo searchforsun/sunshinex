@@ -79,7 +79,7 @@ test('App：实时/历史默认折叠——工具结果单行摘要，全文仅 
     assert.ok(!all.includes('L'.repeat(250)), '全文（250 连 L）不应在实时/入档任何帧出现');
     const frame = lastFrame() ?? '';
     assert.ok(!frame.includes('[READ]'), '消息全部入 Static，动态帧零消息渲染');
-    assert.match(frame, /空闲/, '动态帧只剩输入框与状态栏');
+    assert.match(frame, /idle/, '动态帧只剩输入框与状态栏（状态词英文口径）');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
