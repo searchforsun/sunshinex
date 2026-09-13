@@ -68,15 +68,15 @@ test('SqliteVecStore：维度不一致 fail-fast；损坏库 load 降级不抛',
   }
 });
 
-test('KB_BACKEND 注册：sqlite-vec 工厂经注册表可创建（KB_DATA_DIR 装配）', () => {
+test('SUNSHINEX_KB_BACKEND 注册：sqlite-vec 工厂经注册表可创建（SUNSHINEX_KB_DATA_DIR 装配）', () => {
   const dir = tmpDir();
-  process.env.KB_DATA_DIR = dir;
+  process.env.SUNSHINEX_KB_DATA_DIR = dir;
   try {
     const s = createVectorBackend('sqlite-vec', dummyStorage);
     assert.ok(s instanceof SqliteVecStore);
     assert.equal(s.size(), 0);
   } finally {
-    delete process.env.KB_DATA_DIR;
+    delete process.env.SUNSHINEX_KB_DATA_DIR;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

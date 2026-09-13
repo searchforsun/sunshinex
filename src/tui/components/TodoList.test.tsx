@@ -16,7 +16,8 @@ test('TodoList：运行中折叠为单行进度（帧高恒定，不随勾选增
   assert.ok(f1.includes('待办 2/4'), '单行进度应显示已完成/总数');
   assert.ok(f1.includes('遍历微服务目录'), '单行进度应含当前进行项');
   assert.ok(!f1.includes('输出架构总览'), '运行中不展开未开始项（帧高有界）');
-  assert.equal(f1.split('\n').length, 1, '运行中恰好单行');
+  // lastFrame 尾随换行不计：非空内容行恰好 1 行
+  assert.equal(f1.split('\n').filter((l) => l.trim().length > 0).length, 1, '运行中恰好单行');
   unmount();
 });
 

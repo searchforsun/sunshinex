@@ -12,7 +12,8 @@
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
     "selfcheck": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js selfcheck",
-    "cli": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js"
+    "cli": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js",
+    "prepublishOnly": "pnpm test && node --env-file-if-exists=.env dist/cli/index.js selfcheck"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -28,5 +29,14 @@
     "react": "^18.3.1",
     "sqlite-vec": "^0.1.9",
     "string-width": "4.2.3"
-  }
+  },
+  "bin": {
+    "sunshinex": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "TUI-MANUAL.md",
+    ".env.example"
+  ]
 }

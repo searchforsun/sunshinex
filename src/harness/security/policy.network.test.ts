@@ -23,23 +23,23 @@ test('WebSearch 闸门：缺省端点放行（无域名限制）', () => {
   assert.ok(g.preToolUse('WebSearch', { query: '部署' }).allowed);
 });
 
-test('WebSearch 闸门：WEBSEARCH_ENDPOINT 覆盖后按新端点判界', () => {
-  process.env.WEBSEARCH_ENDPOINT = 'http://127.0.0.1:9/search';
+test('WebSearch 闸门：SUNSHINEX_WEBSEARCH_ENDPOINT 覆盖后按新端点判界', () => {
+  process.env.SUNSHINEX_WEBSEARCH_ENDPOINT = 'http://127.0.0.1:9/search';
   try {
     const g = new SecurityGuard(undefined, 'dontAsk');
     assert.ok(g.preToolUse('WebSearch', { query: 'x' }).allowed);
   } finally {
-    delete process.env.WEBSEARCH_ENDPOINT;
+    delete process.env.SUNSHINEX_WEBSEARCH_ENDPOINT;
   }
 });
 
 test('WebSearch 闸门：覆盖端点非 http/https 拒绝', () => {
-  process.env.WEBSEARCH_ENDPOINT = 'ftp://127.0.0.1/q';
+  process.env.SUNSHINEX_WEBSEARCH_ENDPOINT = 'ftp://127.0.0.1/q';
   try {
     const g = new SecurityGuard(undefined, 'dontAsk');
     assert.equal(g.preToolUse('WebSearch', { query: 'x' }).allowed, false);
   } finally {
-    delete process.env.WEBSEARCH_ENDPOINT;
+    delete process.env.SUNSHINEX_WEBSEARCH_ENDPOINT;
   }
 });
 

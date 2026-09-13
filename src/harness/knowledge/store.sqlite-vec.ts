@@ -106,4 +106,4 @@ export class SqliteVecStore implements VectorStore {
   }
 }
 
-registerVectorBackend('sqlite-vec', () => new SqliteVecStore(process.env.KB_DATA_DIR ?? '.data/kb'));
+registerVectorBackend('sqlite-vec', () => new SqliteVecStore(process.env.SUNSHINEX_KB_DATA_DIR ?? '.data/kb'));

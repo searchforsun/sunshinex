@@ -28,11 +28,11 @@ export class DuckDuckGoProvider implements WebSearchProvider {
   }
 }
 
-/** 可选 Provider：Bing Web Search API v7（WEBSEARCH_PROVIDER=bing 时启用，需 BING_API_KEY） */
+/** 可选 Provider：Bing Web Search API v7（SUNSHINEX_WEBSEARCH_PROVIDER=bing 时启用，需 SUNSHINEX_BING_API_KEY） */
 export class BingProvider implements WebSearchProvider {
   constructor(
     private endpoint = BING_ENDPOINT,
-    private apiKey = process.env.BING_API_KEY ?? '',
+    private apiKey = process.env.SUNSHINEX_BING_API_KEY ?? '',
   ) {}
 
   async search(query: string, count: number): Promise<WebSearchHit[]> {
@@ -50,9 +50,9 @@ export class BingProvider implements WebSearchProvider {
   }
 }
 
-/** 按环境装配：WEBSEARCH_PROVIDER=bing 切 Bing，缺省 DuckDuckGo */
+/** 按环境装配：SUNSHINEX_WEBSEARCH_PROVIDER=bing 切 Bing，缺省 DuckDuckGo */
 export function resolveWebSearchProvider(): WebSearchProvider {
-  // Provider 与 guard 同源消费 WEBSEARCH_ENDPOINT 覆盖：判界主机与实际抓取主机必须一致
+  // Provider 与 guard 同源消费 SUNSHINEX_WEBSEARCH_ENDPOINT 覆盖：判界主机与实际抓取主机必须一致
   const endpoint = resolveWebSearchEndpoint();
   return isBingMode() ? new BingProvider(endpoint) : new DuckDuckGoProvider(endpoint);
 }

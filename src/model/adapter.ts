@@ -45,7 +45,7 @@ export class StubAdapter implements ModelAdapter {
   readonly label = 'stub（未接入真实模型）';
   async complete(_prompt: string, hooks?: UsageHooks): Promise<string> {
     hooks?.onUsage?.(0); // 占位适配器无真实用量
-    return '{"done":true,"reply":"[stub] 未接入真实模型：请在 .env 配置 OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL 后重试"}';
+    return '{"done":true,"reply":"[stub] 未接入真实模型：请在 .env 配置 SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL 后重试"}';
   }
 
   async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
@@ -74,15 +74,15 @@ export class OpenAIAdapter implements ModelAdapter {
   private timeoutMs: number;
 
   constructor(private cfg: LLMConfig) {
-    this.baseURL = cfg.baseURL ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
-    this.apiKey = cfg.apiKey ?? process.env.OPENAI_API_KEY ?? '';
-    this.model = cfg.model ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+    this.baseURL = cfg.baseURL ?? process.env.SUNSHINEX_BASE_URL ?? 'https://api.openai.com/v1';
+    this.apiKey = cfg.apiKey ?? process.env.SUNSHINEX_API_KEY ?? '';
+    this.model = cfg.model ?? process.env.SUNSHINEX_MODEL ?? 'gpt-4o-mini';
     this.label = `openai · ${this.model}`;
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
   }
 
   async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
-    if (!this.apiKey) throw new Error('OPENAI_API_KEY 未配置');
+    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY 未配置');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
@@ -108,7 +108,7 @@ export class OpenAIAdapter implements ModelAdapter {
 
   /** 流式补全：stream:true SSE 输出，\n\n 分帧缓冲（容忍跨 chunk 半帧），data:[DONE] 终止；usage 取自携带用量的事件帧 */
   async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
-    if (!this.apiKey) throw new Error('OPENAI_API_KEY 未配置');
+    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY 未配置');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {

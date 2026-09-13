@@ -4,21 +4,20 @@ import { LiveBlock } from '../session';
 import { wrapByWidth } from '../text-band';
 import { MarkdownText } from './MarkdownText';
 
-/** 生成中单块判定（宽松）：首尾行均为同一块语法标记（表格 | 行 / 围栏 ``` 行）即视为该块仍在生成中 */
-function isSingleOversizeBlock(tailText: string): boolean {
-  const lines = tailText.split('\n');
-  const first = lines[0]?.trimStart() ?? '';
-  const last = (lines[lines.length - 1] ?? '').trimStart();
-  if (first.startsWith('|') && last.startsWith('|')) return true;
-  if (first.startsWith('```') && last.startsWith('```')) return false; // 围栏闭合行到达=块已完，走正常渲染
-  return false;
+/** 尾部表格块收集：从末行向前收集连续 | 行（空行/非表格行截断）；末行非 | 行即无表格在生成 */
+function tailTableBlock(lines: string[]): { start: number; rows: string[] } | null {
+  const last = lines.length - 1;
+  if (last < 0 || !lines[last].trimStart().startsWith('|')) return null;
+  let start = last;
+  while (start > 0 && lines[start - 1].trimStart().startsWith('|')) start--;
+  return { start, rows: lines.slice(start) };
 }
 
 /** 思考流滚动固定行数：块高恒定，增量到达时不再上下跳动（对标 Claude Code 思考滚动区） */
 const THINK_TAIL_LINES = 6;
 /** 答复流式预览固定行数：动态区帧高必须有界；已入档前缀由 committedLen 排除，预览只呈现生成中的未入档尾段 */
 const REPLY_PREVIEW_LINES = 8;
-/** 生成中块高度上限：单块（表格/围栏）行数超此值即转「一行框架 + 行数计数」占位，帧高不再随生成逐帧长高 */
+/** 生成中表格封顶阈值：表格行数超此值即转「表头 + 尾部窗口」实时预览，帧高封顶不随生成逐帧长高 */
 const MAX_BLOCK_PREVIEW_LINES = 6;
 
 /**
@@ -31,25 +30,33 @@ export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }
     const pending = live.text.slice(live.committedLen ?? 0);
     if (pending.trim() === '') return <Box />;
     const lines = pending.split('\n');
-    const overflow = Math.max(0, lines.length - REPLY_PREVIEW_LINES);
-    const tail = lines.slice(-REPLY_PREVIEW_LINES);
-    const tailText = tail.join('\n');
-    // 生成中的单块高度超限（典型：长表格逐行成形，框线重算+逐帧长高致整窗闪动）：
-    // 转一行框架占位（块类型 + 已生成行数），整表入档后以终稿形态一次成型呈现
-    if (lines.length > MAX_BLOCK_PREVIEW_LINES && isSingleOversizeBlock(tailText)) {
-      const kind = tail[0].trimStart().startsWith('|') ? '表格' : '代码块';
+    const table = tailTableBlock(lines);
+    // 长表格生成中：表头 + 尾部窗口实时渲染（框线逐行成形、帧高封顶恒定）。
+    // 不整表渲染的原因：行数逐帧长高会带动动态区整体推移（整窗闪动），且中间行本就超出窗口不可见；
+    // 溢出提示如实报「生成中」——pending 是未入档尾段，谎称「已入档」会误导用户以为内容丢失
+    if (table !== null && table.rows.length > MAX_BLOCK_PREVIEW_LINES) {
+      const before = lines.slice(0, table.start);
+      const head = table.rows.slice(0, 2); // 表头 + 分隔行：列结构始终可见
+      const tailRows = table.rows.slice(-3); // 尾部最新行：逐行成形
+      const omitted = Math.max(0, before.length - 2) + (table.rows.length - head.length - tailRows.length);
       return (
         <Box flexDirection="column">
-          {overflow > 0 ? <Text dimColor>… 上文已入档（滚动缓冲可回看）</Text> : null}
-          <Text dimColor>{'⎇ 生成中：' + kind + ' · 已 ' + lines.length + ' 行，完成后完整呈现'}</Text>
+          {omitted > 0 ? <Text dimColor>{`… 上方 ${omitted} 行生成中`}</Text> : null}
+          {before.slice(-2).map((l, i) => (
+            <Text key={'b' + i}>{l}</Text>
+          ))}
+          <MarkdownText text={[...head, ...tailRows].join('\n')} columns={columns} />
+          <Text dimColor>{`⎇ 表格生成中 · 已 ${table.rows.length} 行`}</Text>
         </Box>
       );
     }
     // 预览统一走 Markdown 渲染管线（与入档后同构）：粗体/列表/表格等生成期间即成形，不再按内容类型双轨分叉
+    const overflow = Math.max(0, lines.length - REPLY_PREVIEW_LINES);
+    const tail = lines.slice(-REPLY_PREVIEW_LINES);
     return (
       <Box flexDirection="column">
-        {overflow > 0 ? <Text dimColor>… 上文已入档（滚动缓冲可回看）</Text> : null}
-        <MarkdownText text={tailText} columns={columns} />
+        {overflow > 0 ? <Text dimColor>{`… 上方 ${overflow} 行生成中`}</Text> : null}
+        <MarkdownText text={tail.join('\n')} columns={columns} />
       </Box>
     );
   }

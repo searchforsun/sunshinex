@@ -65,13 +65,24 @@ src/
 ## 快速开始
 
 ```bash
-copy .env.example .env         # 填入真实 OPENAI_API_KEY（Windows；macOS/Linux 用 cp）
+copy .env.example .env         # 填入真实 SUNSHINEX_API_KEY（Windows；macOS/Linux 用 cp）
 corepack enable                # 启用 Node 自带 corepack（pnpm 版本由 package.json 钉定）
 pnpm install                   # 安装依赖（.npmrc 已固定 store 到仓内 .pnpm-store）
 pnpm cli tui                   # 构建并启动交互式终端（对标 Claude Code：流式答复/工具审批/待办，manual 缺省）
 ```
 
-需配置 `.env`（OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，任意 OpenAI 协议兼容供应商）。`pnpm cli` 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。TUI 其他模式：`pnpm cli tui <dir> --mode=manual|dontAsk|plan`。
+需配置 `.env`（SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL，任意 OpenAI 协议兼容供应商）。`pnpm cli` 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。TUI 其他模式：`pnpm cli tui <dir> --mode=manual|dontAsk|plan`。
+
+### 全局安装（npm 安装后直接用 `sunshinex` 命令）
+
+```bash
+npm install -g sunshinex-agent  # 或本地发仓：npm pack && npm install -g sunshinex-agent-0.1.0.tgz
+sunshinex                       # 任意目录直接进入交互式终端（= sunshinex tui，对标 claude 裸命令）
+sunshinex --mode=manual         # 裸命令可直带权限模式（manual | dontAsk | plan）
+sunshinex tui ../my-project     # 指定项目目录启动
+```
+
+`bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局配置 `~/.sunshinex/.env`（装一次、跨项目共享密钥），项目根 `.env` 按项目覆盖，优先级：已导出环境变量 > 项目级 > 全局级。`sunshinex selfcheck / run / pipeline` 等子命令用法不变。
 
 ## 文档导航
 

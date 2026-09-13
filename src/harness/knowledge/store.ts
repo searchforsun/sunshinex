@@ -1,7 +1,7 @@
 import { StorageAdapter } from '../../storage/adapter';
 import { KbHit } from '../../types';
 
-/** 向量存储接缝：local-json / sqlite-vec 等后端实现同一契约，经注册表按 KB_BACKEND 装配（可插拔原则，spec §3.4） */
+/** 向量存储接缝：local-json / sqlite-vec 等后端实现同一契约，经注册表按 SUNSHINEX_KB_BACKEND 装配（可插拔原则，spec §3.4） */
 export interface VectorStore {
   upsert(id: string, vec: number[], meta: Record<string, unknown>): void;
   search(vec: number[], topK: number): KbHit[];

@@ -12,14 +12,14 @@ test('buildBannerInfo：version 空回退 FALLBACK_VERSION', () => {
   assert.equal(buildBannerInfo().version, FALLBACK_VERSION);
 });
 
-test('buildBannerInfo：model 缺省读 OPENAI_MODEL，缺失显示未配置', () => {
-  const prev = process.env.OPENAI_MODEL;
-  delete process.env.OPENAI_MODEL;
+test('buildBannerInfo：model 缺省读 SUNSHINEX_MODEL，缺失显示未配置', () => {
+  const prev = process.env.SUNSHINEX_MODEL;
+  delete process.env.SUNSHINEX_MODEL;
   try {
     assert.equal(buildBannerInfo({ version: '1.0.0' }).model, '未配置');
   } finally {
-    if (prev === undefined) delete process.env.OPENAI_MODEL;
-    else process.env.OPENAI_MODEL = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_MODEL;
+    else process.env.SUNSHINEX_MODEL = prev;
   }
 });
 

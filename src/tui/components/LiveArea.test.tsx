@@ -47,7 +47,7 @@ test('LiveArea：答复未入档超长时显示溢出提示且帧高有界', () 
     <LiveArea live={{ kind: 'reply', text, committedLen: 0, startedAt: 0 }} columns={80} />,
   );
   const frame = lastFrame() ?? '';
-  assert.match(frame, /上文已入档/, '应显示溢出提示');
+  assert.match(frame, /上方 4 行生成中/, '溢出提示应如实报生成中（不得谎称已入档）');
   assert.ok(frame.includes('行12'), '应显示末行');
   assert.ok(!frame.includes('行1\n'), '头部行不应显示');
   unmount();
@@ -73,4 +73,22 @@ test('LiveArea：预览统一 Markdown 渲染——粗体/列表生成期间即�
   assert.ok(frame.includes('可改进项') && frame.includes('Checkstyle'), '粗体与列表内容应显示');
   assert.ok(!frame.includes('**'), '粗体标记不得以源码星号形态出现');
   unmount();
+});
+
+test('LiveArea：长表格生成中表头+尾部窗口实时渲染（框线成形、帧高封顶、不谎报已入档）', () => {
+  const mk = (n: number) => ['| 模块名 | 端口 | 所属域 |', '| --- | --- | --- |'].concat(Array.from({ length: n }, (_, i) => `| 服务${i} | 930${i} | 域${i} |`)).join('\n');
+  const r1 = render(<LiveArea live={{ kind: 'reply', text: mk(12), committedLen: 0, startedAt: 0 }} columns={80} />);
+  const f1 = r1.lastFrame() ?? '';
+  assert.match(f1, /[─╭╰]/, '表格应以框线形态实时渲染');
+  assert.match(f1, /模块名/, '表头应始终保留（列结构可见）');
+  assert.match(f1, /服务11/, '尾部最新行应可见（逐行成形）');
+  assert.doesNotMatch(f1, /服务0 \|/, '中间行应被窗口省略');
+  assert.match(f1, /表格生成中 · 已 14 行/, '行数计数应如实');
+  assert.doesNotMatch(f1, /上文已入档/, '不得谎称已入档');
+  r1.unmount();
+  const r2 = render(<LiveArea live={{ kind: 'reply', text: mk(22), committedLen: 0, startedAt: 0 }} columns={80} />);
+  const nonEmpty = (f: string) => f.split('\n').filter((l) => l.trim().length > 0).length;
+  assert.equal(nonEmpty(r2.lastFrame() ?? ''), nonEmpty(f1), '帧高应封顶恒定（不随表格行数增长）');
+  assert.match(r2.lastFrame() ?? '', /服务21/, '尾部窗口应随生成滑动');
+  r2.unmount();
 });

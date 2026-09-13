@@ -116,7 +116,7 @@ test('websearch：行式输出、count 钳制与空结果降级（stub 不发网
 });
 
 test('websearch：端点非 http/https 在 guard 拒绝（协议底线保留）', async () => {
-  await withEnv({ WEBSEARCH_ENDPOINT: 'ftp://127.0.0.1/q' }, async () => {
+  await withEnv({ SUNSHINEX_WEBSEARCH_ENDPOINT: 'ftp://127.0.0.1/q' }, async () => {
     const { registry, safety } = registryFor(new StubProvider([]));
     const r = await registry.execute('websearch', { query: 'x' }, safety);
     assert.ok(!r.ok);
@@ -128,7 +128,7 @@ test('websearch：Harness 零配置 + 端点覆盖，全链路走本地 mock', a
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-ws-'));
   const srv = await startEngine(FIXTURE);
   try {
-    await withEnv({ WEBSEARCH_ENDPOINT: srv.url }, async () => {
+    await withEnv({ SUNSHINEX_WEBSEARCH_ENDPOINT: srv.url }, async () => {
       const { Harness } = await import('../index');
       const h = new Harness({ root, mode: 'dontAsk' });
       const r = await h.tools.execute('websearch', { query: 'sunshine' }, h.safety);

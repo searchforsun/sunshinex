@@ -4,7 +4,7 @@ import { EmbeddingProvider, KbHit } from '../../types';
 import { chunkMarkdown } from './chunk';
 import { VectorStore } from './store';
 
-const KB_EXTENSIONS = new Set(['.md', '.txt']);
+const SUNSHINEX_KB_EXTENSIONS = new Set(['.md', '.txt']);
 
 /** 知识库编排：目录 → 分块 → 向量化 → 存储；检索 = 查询向量化 + 库内余弦 TopK（embedding 桩注入，零真实网络） */
 export class KnowledgeBase {
@@ -50,7 +50,7 @@ export class KnowledgeBase {
       if (e.name.startsWith('.')) continue;
       const rel = relDir ? `${relDir}/${e.name}` : e.name;
       if (e.isDirectory()) out.push(...this.walkFiles(dir, rel));
-      else if (e.isFile() && KB_EXTENSIONS.has(path.extname(e.name))) out.push(rel);
+      else if (e.isFile() && SUNSHINEX_KB_EXTENSIONS.has(path.extname(e.name))) out.push(rel);
     }
     return out;
   }

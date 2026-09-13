@@ -25,8 +25,8 @@ test('conformance：sqlite-vec 后端全契约（写入/召回/TopK/幂等/持�
   }
 });
 
-/** KB_BACKEND 装配：注册表按名切换，未注册名 fail-fast（禁静默回退） */
-test('KB_BACKEND：createVectorBackend("sqlite-vec") 装配 SqliteVecStore 且可读写检索', () => {
+/** SUNSHINEX_KB_BACKEND 装配：注册表按名切换，未注册名 fail-fast（禁静默回退） */
+test('SUNSHINEX_KB_BACKEND：createVectorBackend("sqlite-vec") 装配 SqliteVecStore 且可读写检索', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-backend-switch-'));
   try {
     const storage = new FileStore(root);
@@ -40,7 +40,7 @@ test('KB_BACKEND：createVectorBackend("sqlite-vec") 装配 SqliteVecStore 且�
   }
 });
 
-test('KB_BACKEND：未注册后端名 fail-fast 抛错（错误配置在装配期暴露）', () => {
+test('SUNSHINEX_KB_BACKEND：未注册后端名 fail-fast 抛错（错误配置在装配期暴露）', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-backend-fastfail-'));
   try {
     assert.throws(() => createVectorBackend('no-such-backend', new FileStore(root)), /未注册的向量后端/);
