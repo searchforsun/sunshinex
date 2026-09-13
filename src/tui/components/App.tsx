@@ -32,11 +32,11 @@ export function slashCandidates(buffer: string): string[] {
 /** 输入框占位文案（按会话状态分流；纯函数便于断言） */
 export function inputPlaceholder(status: TuiState['status']): string {
   switch (status) {
-    case 'awaiting-approval': return '等待审批：y 放行一次 / a 本会话放行 / n 拒绝';
-    case 'awaiting-plan': return '计划待确认：y 执行 / n 放弃';
-    case 'running': return '运行中…（输入将排队）';
-    case 'error': return '上次任务出错；输入新任务继续';
-    default: return '输入任务，Enter 发送 · /help 查看命令';
+    case 'awaiting-approval': return 'Awaiting approval: y approve once / a allow for session / n deny';
+    case 'awaiting-plan': return 'Plan awaiting confirmation: y execute / n discard';
+    case 'running': return 'Running… (input will queue)';
+    case 'error': return 'Previous task failed; enter a new task to continue';
+    default: return 'Type a task, Enter to send · /help for commands';
   }
 }
 
@@ -289,10 +289,10 @@ export function App({
       {state.approval ? (
         <Box borderStyle="round" flexDirection="column" paddingX={1}>
           <Text bold>
-            审批 {state.approval.id}（{state.approval.kind}）
+            Approval {state.approval.id} ({state.approval.kind})
           </Text>
           <Text>{state.approval.subject}</Text>
-          <Text dimColor>y 放行一次 · a 本会话放行 · n 拒绝</Text>
+          <Text dimColor>y approve once · a allow for session · n deny</Text>
         </Box>
       ) : null}
       <InputBox

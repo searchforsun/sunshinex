@@ -69,7 +69,7 @@ export interface SessionOpts extends TuiRuntimeOpts {
   runtime?: TuiRuntime;
 }
 
-const SLASH_HELP = '命令：/init 分析生成/完善 SUNSHINE.md · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /help 本清单';
+const SLASH_HELP = 'Commands: /init analyze & write SUNSHINE.md · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /help show this list';
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
@@ -149,7 +149,7 @@ export class SessionController {
     this.extractor.reset();
         this.committedLen = 0;
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval') {
-      this.pushMsg('system', `已排队：${text}`);
+      this.pushMsg('system', `Queued: ${text}`);
       return new Promise<void>((resolve) => this.queue.push({ goal: text, resolve }));
     }
     await this.runTaskFlow(text);
@@ -170,7 +170,7 @@ export class SessionController {
   async waitIdle(timeoutMs = 10000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (this.state.status !== 'idle' || this.pendingApproval) {
-      if (Date.now() > deadline) throw new Error('waitIdle 超时');
+      if (Date.now() > deadline) throw new Error('waitIdle timeout');
       await new Promise((r) => setTimeout(r, 20));
     }
   }
@@ -182,7 +182,7 @@ export class SessionController {
     this.pendingPlan = undefined;
     if (!yes) {
       this.state = { ...this.state, status: 'idle' };
-      this.pushMsg('system', '已放弃执行计划，回到输入态');
+      this.pushMsg('system', 'Plan discarded, back to input');
       return;
     }
     await this.runPlanItems(pending.items);
@@ -206,11 +206,11 @@ export class SessionController {
         `为下面的目标产出编号步骤计划，每行形如「1. 步骤」；只输出步骤行，不要解释、不要代码块。\n目标：${goal}`,
       );
       if (!r.done) {
-        throw new Error(describeIncomplete(r.stopReason) || '规划未完成');
+        throw new Error(describeIncomplete(r.stopReason) || 'Planning incomplete');
       }
       planText = r.reply ?? '';
     } catch (e) {
-      this.pushMsg('system', '规划失败：' + (e instanceof Error ? e.message : String(e)));
+      this.pushMsg('system', 'Planning failed: ' + (e instanceof Error ? e.message : String(e)));
       this.closeTask();
       return;
     } finally {
@@ -222,12 +222,12 @@ export class SessionController {
       .map((l) => l.replace(/^\d+[.、]\s*/, '').trim())
       .filter((l) => l.length > 0);
     if (items.length === 0) {
-      this.pushMsg('system', '规划未产出编号步骤（每行需形如「1. xxx」），已取消');
+      this.pushMsg('system', 'No numbered steps produced (each line must be "1. xxx"), cancelled');
       this.closeTask();
       return;
     }
     this.pendingPlan = { items };
-    const card = ['计划确认卡（/plan）', ...items.map((t, i) => i + 1 + '. ' + t), '共 ' + items.length + ' 项，确认后逐项执行'].join('\n');
+    const card = ['Plan confirmation (/plan)', ...items.map((t, i) => i + 1 + '. ' + t), items.length + ' items; confirm to execute step by step'].join('\n');
     this.pushMsg('system', card);
     this.state = { ...this.state, status: 'awaiting-plan' };
     this.notify();
@@ -257,7 +257,7 @@ export class SessionController {
         if (!r.done) {
           const note = describeIncomplete(r.stopReason);
           if (note.length > 0) this.pushMsg('system', note);
-          this.pushMsg('system', `步骤未完成：${items[i]}；剩余步骤暂停`);
+          this.pushMsg('system', `Step incomplete: ${items[i]}; remaining steps paused`);
           break;
         }
         const todos = [...this.state.todos];
@@ -267,7 +267,7 @@ export class SessionController {
         if (r.reply) seed.push({ step: seed.length + 1, action: 'reply', observation: r.reply });
         // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
-        this.pushMsg('system', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停');
+        this.pushMsg('system', 'Step failed: ' + items[i] + ' (' + (e instanceof Error ? e.message : String(e)) + '); remaining steps paused');
         break;
       }
     }
@@ -300,7 +300,7 @@ export class SessionController {
       if (!r.done && note.length > 0) this.pushMsg('system', note);
       this.closeTask();
     } catch (e) {
-      this.pushMsg('system', `发生错误：${e instanceof Error ? e.message : String(e)}`);
+      this.pushMsg('system', `Error: ${e instanceof Error ? e.message : String(e)}`);
       this.state = { ...this.state, status: 'error' };
       this.notify();
       return; // error 态保留计时现场（sticky），下次提交进 running 时重置
@@ -325,26 +325,26 @@ export class SessionController {
       // Claude Code /init 同款模型驱动：发起真实分析任务，模型自行 read/ls/grep 感知代码库并 write 生成/完善 SUNSHINE.md；
       // 写盘经安全链（manual 模式经 asker 审批），装载走 ContextLoader 每轮 assemble 从磁盘读取，写盘即对后续轮次生效
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', '当前有任务进行中，暂不能执行 /init');
+        this.pushMsg('system', 'A task is running; /init unavailable now');
         return;
       }
       const p = path.join(this.root, 'SUNSHINE.md');
       const existed = fs.existsSync(p);
       // 提示词属内部实现不上屏，仅一行启动提示；分析过程经工具实时流可见
-      this.pushMsg('system', existed ? '/init：分析项目，完善 SUNSHINE.md…' : '/init：分析项目，生成 SUNSHINE.md…');
+      this.pushMsg('system', existed ? '/init: analyzing project, updating SUNSHINE.md…' : '/init: analyzing project, generating SUNSHINE.md…');
       await this.runTaskFlow(sunshineInitGoal(this.root, existed));
       // 回执只按落盘事实（模型经安全链 write；任务中断时不虚报成功）
       const written = fs.existsSync(p);
       if (written) {
-        this.pushMsg('system', existed ? '已写入 SUNSHINE.md（完善）：随每轮上下文自动装载' : '已写入 SUNSHINE.md（新建）：随每轮上下文自动装载');
+        this.pushMsg('system', existed ? 'SUNSHINE.md written (updated); auto-loaded into context each turn' : 'SUNSHINE.md written (created); auto-loaded into context each turn');
       } else {
-        this.pushMsg('system', 'SUNSHINE.md 未生成：任务未完成，可重新执行 /init');
+        this.pushMsg('system', 'SUNSHINE.md not written: task incomplete, rerun /init');
       }
       return;
     }
     if (cmd === '/status') {
       const s = this.runtime.harness.ledger.summary();
-      this.pushMsg('system', `账本：${s.runs} runs / ${s.tokens} tokens；消息 ${this.state.messages.length} 条；待办 ${this.state.todos.length} 项`);
+      this.pushMsg('system', `Ledger: ${s.runs} runs / ${s.tokens} tokens; messages: ${this.state.messages.length}; todos: ${this.state.todos.length}`);
       return;
     }
     if (cmd === '/new') {
@@ -366,7 +366,7 @@ export class SessionController {
         },
         live: undefined,
       };
-      this.pushMsg('system', '软重置：消息与待办已清空，会话级审批登记已清除（记忆与账本保留）');
+      this.pushMsg('system', 'Soft reset: messages and todos cleared, session approvals cleared (memory & ledger kept)');
       return;
     }
     if (cmd === '/compact') {
@@ -377,23 +377,23 @@ export class SessionController {
       await this.runtime.harness.context.applyCompaction(chunks, { rereadTokenBudget: 2000 });
       const after = this.runtime.harness.context.window.estimate(this.runtime.harness.context.assemble('', [])).used;
       this.state = { ...this.state, metrics: { ...this.state.metrics, ctxUsed: after } };
-      this.pushMsg('system', `已压缩：${chunks.length} 个摘要块重注入（水位 ${before} → ${after} tokens）`);
+      this.pushMsg('system', `Compressed: ${chunks.length} summary chunks re-injected (ctx ${before} → ${after} tokens)`);
       return;
     }
     if (cmd === '/plan') {
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', '当前有任务进行中，暂不能开始规划');
+        this.pushMsg('system', 'A task is running; planning unavailable now');
         return;
       }
       const goal = text.slice(cmd.length).trim();
       if (!goal) {
-        this.pushMsg('system', '用法：/plan <目标>——先规划产出编号步骤，确认后逐项执行');
+        this.pushMsg('system', 'Usage: /plan <goal> — plan numbered steps first, confirm, then execute step by step');
         return;
       }
       await this.startPlanFlow(goal);
       return;
     }
-    this.pushMsg('system', `未知命令：${cmd}（/help 查看清单）`);
+    this.pushMsg('system', `Unknown command: ${cmd} (/help for list)`);
   }
 
   private onEvent(e: SessionEvent): void {
@@ -470,7 +470,7 @@ export class SessionController {
         this.closeLive();
         this.extractor.reset();
         this.committedLen = 0;
-        this.pushMsg('system', `错误：${e.text ?? '（无说明）'}`);
+        this.pushMsg('system', `Error: ${e.text ?? '(no detail)'}`);
         this.refreshMetrics();
         return;
       default:

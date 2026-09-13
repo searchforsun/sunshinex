@@ -81,7 +81,7 @@ test('/plan：缺目标给用法提示；非 idle 拒绝并发规划', async () 
     });
     await ctrl.submit('/plan');
     assert.ok(
-      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('用法')),
+      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('Usage: /plan')),
       '缺目标应给用法提示',
     );
     // 运行中（审批挂起）拒绝并发规划
@@ -93,7 +93,7 @@ test('/plan：缺目标给用法提示；非 idle 拒绝并发规划', async () 
     }
     await ctrl.submit('/plan 并发规划');
     assert.ok(
-      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('暂不能开始规划')),
+      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('planning unavailable now')),
       '非 idle 应拒绝并发规划',
     );
     await ctrl.resolveApproval('deny');
@@ -123,7 +123,7 @@ test('会话层：/plan 规划段经主链产出编号步骤并进确认卡', as
       '确认前不应建待办（待办在确认后由 runPlanItems 建立）',
     );
     const texts = s.messages.map((m) => m.text).join('\n');
-    assert.match(texts, /计划确认卡/);
+    assert.match(texts, /Plan confirmation/);
     assert.match(texts, /改 A 文件/);
     assert.equal(rt.harness.ledger.summary().runs, 1, '规划 run 同样落账本（换通道不丢成本观测）');
   } finally {

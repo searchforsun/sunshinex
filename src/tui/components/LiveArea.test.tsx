@@ -47,7 +47,7 @@ test('LiveArea：答复未入档超长时显示溢出提示且帧高有界', () 
     <LiveArea live={{ kind: 'reply', text, committedLen: 0, startedAt: 0 }} columns={80} />,
   );
   const frame = lastFrame() ?? '';
-  assert.match(frame, /上方 4 行生成中/, '溢出提示应如实报生成中（不得谎称已入档）');
+  assert.match(frame, /\+4 lines \(generating\)/, '溢出提示应如实报生成中（不得谎称已入档）');
   assert.ok(frame.includes('行12'), '应显示末行');
   assert.ok(!frame.includes('行1\n'), '头部行不应显示');
   unmount();
@@ -83,7 +83,7 @@ test('LiveArea：长表格生成中表头+尾部窗口实时渲染（框线成�
   assert.match(f1, /模块名/, '表头应始终保留（列结构可见）');
   assert.match(f1, /服务11/, '尾部最新行应可见（逐行成形）');
   assert.doesNotMatch(f1, /服务0 \|/, '中间行应被窗口省略');
-  assert.match(f1, /表格生成中 · 已 14 行/, '行数计数应如实');
+  assert.match(f1, /table generating · 14 lines/, '行数计数应如实');
   assert.doesNotMatch(f1, /上文已入档/, '不得谎称已入档');
   r1.unmount();
   const r2 = render(<LiveArea live={{ kind: 'reply', text: mk(22), committedLen: 0, startedAt: 0 }} columns={80} />);

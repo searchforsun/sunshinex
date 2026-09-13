@@ -40,8 +40,8 @@ test('会话层：未完成终止必须上屏（R3）', async () => {
     await ctrl.submit('做一件事');
     await ctrl.waitIdle();
     const texts = ctrl.getState().messages.map((m) => m.text).join('\n');
-    assert.match(texts, /未完成终止/, '未完成终止必须对用户可见，不得静默');
-    assert.match(texts, /时间上限/);
+    assert.match(texts, /Incomplete:/, '未完成终止必须对用户可见，不得静默');
+    assert.match(texts, /time limit/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -58,7 +58,7 @@ test('会话层：完成后不追加未完成提示', async () => {
     await ctrl.submit('做一件事');
     await ctrl.waitIdle();
     const texts = ctrl.getState().messages.map((m) => m.text).join('\n');
-    assert.ok(!/未完成终止/.test(texts));
+    assert.ok(!/Incomplete:/.test(texts));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -79,8 +79,8 @@ test('会话层：规划项未完成不得报成功（runPlanItems）', async ()
     await ctrl.confirmPlan(true);
     const st = ctrl.getState();
     const texts = st.messages.map((m) => m.text).join('\n');
-    assert.match(texts, /未完成终止：token 预算耗尽/);
-    assert.match(texts, /步骤未完成：第一步/);
+    assert.match(texts, /Incomplete: token budget exhausted/);
+    assert.match(texts, /Step incomplete: 第一步/);
     assert.ok(!/已完成：/.test(texts), '未完成的规划项不得被报成功');
     assert.equal(st.todos[0]?.done, false, '未完成项不得勾选待办');
     assert.equal(st.todos[1]?.done, false, '剩余步骤保持未完成');

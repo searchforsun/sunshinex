@@ -7,11 +7,11 @@ import { StopReason } from '../types';
 export function describeIncomplete(stopReason: StopReason | undefined): string {
   switch (stopReason) {
     case 'deadline':
-      return '未完成终止：已达单次提交时间上限';
+      return 'Incomplete: submission time limit reached';
     case 'budget':
-      return '未完成终止：token 预算耗尽（可续跑）';
+      return 'Incomplete: token budget exhausted (resumable)';
     case 'max-steps':
-      return '未完成终止：已达步数上限';
+      return 'Incomplete: max steps reached';
     default:
       return '';
   }

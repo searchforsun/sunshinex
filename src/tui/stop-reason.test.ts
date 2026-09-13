@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { describeIncomplete } from './stop-reason';
 
 test('describeIncomplete：护栏原因各有明确文案', () => {
-  assert.match(describeIncomplete('deadline'), /时间上限/);
-  assert.match(describeIncomplete('budget'), /预算/);
-  assert.match(describeIncomplete('max-steps'), /步数上限/);
+  assert.match(describeIncomplete('deadline'), /time limit/);
+  assert.match(describeIncomplete('budget'), /budget exhausted/);
+  assert.match(describeIncomplete('max-steps'), /max steps/);
 });
 
 test('describeIncomplete：正常完成与模型失败不由本函数重复上屏', () => {

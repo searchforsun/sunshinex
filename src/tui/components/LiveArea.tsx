@@ -41,12 +41,12 @@ export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }
       const omitted = Math.max(0, before.length - 2) + (table.rows.length - head.length - tailRows.length);
       return (
         <Box flexDirection="column">
-          {omitted > 0 ? <Text dimColor>{`… 上方 ${omitted} 行生成中`}</Text> : null}
+          {omitted > 0 ? <Text dimColor>{`… +${omitted} lines (generating)`}</Text> : null}
           {before.slice(-2).map((l, i) => (
             <Text key={'b' + i}>{l}</Text>
           ))}
           <MarkdownText text={[...head, ...tailRows].join('\n')} columns={columns} />
-          <Text dimColor>{`⎇ 表格生成中 · 已 ${table.rows.length} 行`}</Text>
+          <Text dimColor>{`⎇ table generating · ${table.rows.length} lines`}</Text>
         </Box>
       );
     }
@@ -55,7 +55,7 @@ export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }
     const tail = lines.slice(-REPLY_PREVIEW_LINES);
     return (
       <Box flexDirection="column">
-        {overflow > 0 ? <Text dimColor>{`… 上方 ${overflow} 行生成中`}</Text> : null}
+        {overflow > 0 ? <Text dimColor>{`… +${overflow} lines (generating)`}</Text> : null}
         <MarkdownText text={tail.join('\n')} columns={columns} />
       </Box>
     );

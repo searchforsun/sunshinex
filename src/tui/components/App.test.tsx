@@ -88,7 +88,7 @@ test('App：键盘驱动回车提交（斜杠命令与自然语言任务均触�
     write('/help');
     await new Promise((r) => setTimeout(r, 150)); // 文本与回车须分事件且留刷新间隙（探针实证 150ms 稳定）；同块连发会让 key.return 读到未刷新的旧 buffer
     write('\r');
-    await waitFor(() => ctrl.getState().messages.some((m) => m.text.includes('/new 新会话')), 5000);
+    await waitFor(() => ctrl.getState().messages.some((m) => m.text.includes('/new new session')), 5000);
     write('跑个任务');
     await new Promise((r) => setTimeout(r, 150));
     write('\r');

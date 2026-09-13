@@ -77,7 +77,7 @@ export class ReplyStreamExtractor {
   private emitTruncateHint(): void {
     if (this.truncated) return;
     this.truncated = true;
-    this.emit('\n…（输出超长，已截断）');
+    this.emit('\n…(output too long, truncated)');
   }
 
   private step(ch: string): void {

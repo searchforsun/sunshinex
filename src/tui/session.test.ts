@@ -47,7 +47,7 @@ test('会话控制器：运行中 submit 进入 FIFO 队列并依序执行', asy
     await ctrl.waitIdle();
     const s = ctrl.getState();
     assert.equal(s.status, 'idle');
-    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('已排队')), '运行中提交应提示排队');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('Queued:')), '运行中提交应提示排队');
     const assistant = s.messages.filter((m) => m.role === 'assistant').map((m) => m.text).join('|');
     assert.ok(assistant.includes('第一件事完成') && assistant.includes('第二件事完成'), '两笔任务都应执行');
   } finally {
@@ -91,7 +91,7 @@ test('会话控制器：斜杠命令 /help /status 产出 system 消息且不触
     await ctrl.submit('/status');
     const s = ctrl.getState();
     assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/new')), '/help 应列命令清单');
-    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('账本')), '/status 应含账本摘要');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('Ledger:')), '/status 应含账本摘要');
     assert.equal(ctrl.runtime.harness.ledger.summary().runs, runsBefore, '斜杠命令不应落 run 账');
     assert.equal(s.status, 'idle');
   } finally {
@@ -117,9 +117,9 @@ test('会话控制器：/init 走模型任务生成 SUNSHINE.md（新建）', as
       s.messages.filter((m) => m.role === 'user').every((m) => m.text === '/init'),
       'goal 提示词属内部实现不上屏；用户斜杠输入本身应回显',
     );
-    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init：分析项目，生成')), '应只有一行启动提示');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init: analyzing project, generating')), '应只有一行启动提示');
     assert.ok(
-      s.messages.some((m) => m.role === 'system' && m.text.includes('已写入 SUNSHINE.md（新建）')),
+      s.messages.some((m) => m.role === 'system' && m.text.includes('SUNSHINE.md written (created)')),
       '完成应提示新建落盘',
     );
     assert.ok(s.messages.some((m) => m.role === 'assistant' && m.text.includes('项目名称')), '模型汇报应上屏');
@@ -148,9 +148,9 @@ test('会话控制器：/init 已有 SUNSHINE.md 走完善语义且不覆盖原�
       s.messages.filter((m) => m.role === 'user').every((m) => m.text === '/init'),
       'goal 提示词属内部实现不上屏；用户斜杠输入本身应回显',
     );
-    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init：分析项目，完善')), '已存在时应进入完善流程');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init: analyzing project, updating')), '已存在时应进入完善流程');
     assert.ok(
-      s.messages.some((m) => m.role === 'system' && m.text.includes('已写入 SUNSHINE.md（完善）')),
+      s.messages.some((m) => m.role === 'system' && m.text.includes('SUNSHINE.md written (updated)')),
       '完成应提示完善落盘',
     );
     const after = fs.readFileSync(path.join(tmp, 'SUNSHINE.md'), 'utf8');
@@ -170,7 +170,7 @@ test('会话控制器：/new 软重置清空消息与待办并清会话级审批
     await ctrl.submit('/new');
     const s = ctrl.getState();
     assert.ok(!s.messages.some((m) => m.role === 'user'), '用户消息应被清空');
-    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('软重置')), '应提示软重置');
+    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('Soft reset:')), '应提示软重置');
     assert.equal(s.todos.length, 0);
     assert.equal(s.status, 'idle');
   } finally {
