@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { TodoItem } from '../session';
@@ -21,7 +22,7 @@ export function TodoList({
   const done = todos.filter((t) => t.done).length;
   const current = todos.find((t) => !t.done);
   if (!expanded && current) {
-    const prefix = `todo ${done}/${todos.length} · ▸ `;
+    const prefix = t(`todo ${done}/${todos.length} · ▸ `, `待办 ${done}/${todos.length} · ▸ `);
     const text = wrapByWidth(current.text, Math.max(8, columns - 16))[0] ?? current.text;
     return (
       <Box paddingLeft={1}>
@@ -31,12 +32,12 @@ export function TodoList({
   }
   return (
     <Box flexDirection="column" paddingLeft={1}>
-      <Text dimColor>todo {done}/{todos.length}</Text>
-      {todos.map((t, i) =>
-        t.done ? (
-          <Text key={i} color="green">  ✓ {t.text}</Text>
+      <Text dimColor>{t(`todo ${done}/${todos.length}`, `待办 ${done}/${todos.length}`)}</Text>
+      {todos.map((item, i) =>
+        item.done ? (
+          <Text key={i} color="green">  ✓ {item.text}</Text>
         ) : (
-          <Text key={i}>  ▸ {t.text}</Text>
+          <Text key={i}>  ▸ {item.text}</Text>
         ),
       )}
     </Box>

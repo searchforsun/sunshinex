@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
+import { getLanguage, setLanguage } from '../i18n';
 import { createRuntime } from './runtime';
 import { ScriptedAdapter } from '../model/adapter';
 import { Reactor, ReactorOpts } from '../harness/reactor';
@@ -159,7 +160,7 @@ test('会话层：/plan 规划段经主链——探针证明不走 graph 角色�
       !/你的角色：规划师/.test(c.goal),
       '规划段不得再走 graph 角色节点框定（旧形态 goal 含「你的角色：规划师」；角色框定已降为提示词级）',
     );
-    assert.match(c.goal, /编号步骤计划/, '规划指令应经主链下发（主链提示词级角色框定）');
+    assert.match(c.goal, /numbered step plan/, '规划指令应经主链下发（主链提示词级角色框定）');
     assert.equal(c.opts?.maxSteps, undefined, '会话层不再硬填 maxSteps:6（旧形态为 6）');
     const ttl = c.opts?.deadlineAt !== undefined ? c.opts.deadlineAt - c.at : NaN;
     assert.ok(
@@ -232,13 +233,45 @@ test('/plan：模型上下文最小化——不见计划清单与阶段编号，
     const step2 = prompts[2];
     assert.ok(!step1.includes('2. 步骤B'), 'Step1 上下文不得出现后续步骤（模型只做当前指令）');
     assert.ok(!step1.includes('Step 1/2') && !step1.includes('1/2'), '指令行不得携带阶段编号');
-    assert.match(step1, /1: plan -> 当前指令：步骤A/, '当前指令走 history 尾部追加');
+    assert.match(step1, /1: plan -> Current instruction: 步骤A/, '当前指令走 history 尾部追加');
     assert.match(step2, /2: reply -> 步骤A 完成/, '前序只保留结论（reply）');
-    assert.match(step2, /3: plan -> 当前指令：步骤B/, '下一指令继续尾部追加');
+    assert.match(step2, /3: plan -> Current instruction: 步骤B/, '下一指令继续尾部追加');
     // goal 恒定（执行协议不含清单）：两轮 goal 段逐字节一致，前缀缓存连续
-    const goalOf = (p: string) => p.slice(p.indexOf('按计划逐步完成任务'), p.indexOf('\n', p.indexOf('按计划逐步完成任务')));
+    const goalOf = (p: string) => p.slice(p.indexOf('Execute the plan step by step'), p.indexOf('\n', p.indexOf('Execute the plan step by step')));
     assert.equal(goalOf(step1), goalOf(step2), 'goal 恒定执行协议，相邻步骤前缀连续');
   } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/plan：zh 语言——goal/当前指令走中文（zh 抽样；en 缺省不受影响，用后复原）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-planminimal-zh-'));
+  const prev = getLanguage();
+  try {
+    setLanguage('zh');
+    const prompts: string[] = [];
+    const replies = [
+      '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}',
+      '{"done":true,"reply":"步骤A 完成"}',
+      '{"done":true,"reply":"步骤B 完成"}',
+    ];
+    let call = 0;
+    const model = {
+      provider: 'minimal-script-zh',
+      complete: async (p: string) => {
+        prompts.push(p);
+        return replies[Math.min(call++, replies.length - 1)];
+      },
+    };
+    const ctrl = new SessionController({ root: tmp, model });
+    await ctrl.submit('/plan 做一件事');
+    await ctrl.confirmPlan(true);
+    await ctrl.waitIdle();
+    assert.match(prompts[1], /1: plan -> 当前指令：步骤A/, 'zh 下当前指令行走中文');
+    const goalOf = (p: string) => p.slice(p.indexOf('按计划逐步完成任务'), p.indexOf('\n', p.indexOf('按计划逐步完成任务')));
+    assert.equal(goalOf(prompts[1]), goalOf(prompts[2]), 'zh 下 goal 恒定，前缀连续');
+  } finally {
+    setLanguage(prev);
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

@@ -2,6 +2,7 @@ import { AgentRole, GraphDeps, WorkflowDef } from '../types';
 import { GraphEngine, GraphNode } from './engine';
 import { makeCiNode, makeGateNode, makeLoopNode } from './nodes';
 import { makeRoleAgent, ROLE_PRESETS } from './agents';
+import { pick } from '../i18n';
 
 const KINDS = ['loop', 'agent', 'gate', 'ci'] as const;
 
@@ -46,9 +47,9 @@ export function validateWorkflow(def: unknown): WorkflowValidateResult {
         if (typeof dep !== 'string' || !ids.includes(dep)) errors.push(`节点 ${id} 引用不存在的依赖：${String(dep)}`);
       }
       const config = (typeof n.config === 'object' && n.config !== null ? n.config : {}) as Record<string, unknown>;
-      if (kind === 'ci' && typeof config.command !== 'string') errors.push(`节点 ${id}（ci）缺少必填 command`);
+      if (kind === 'ci' && typeof config.command !== 'string') errors.push(pick(`Node ${id} (ci) requires a command`, `节点 ${id}（ci）缺少必填 command`));
       if (kind === 'agent' && !(typeof config.role === 'string' && config.role in ROLE_PRESETS)) {
-        errors.push(`节点 ${id}（agent）role 必须为 ${Object.keys(ROLE_PRESETS).join('/')}`);
+        errors.push(pick(`Node ${id} (agent) role must be one of ${Object.keys(ROLE_PRESETS).join('/')}`, `节点 ${id}（agent）role 必须为 ${Object.keys(ROLE_PRESETS).join('/')}`));
       }
     });
     // 环预检：Kahn 计数（仅统计工作流内已声明的依赖）

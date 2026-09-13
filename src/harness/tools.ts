@@ -1,4 +1,5 @@
 import { ToolSpec, ToolCategory, ToolInput, ToolExecutor, ExecResult } from '../types';
+import { pick } from '../i18n';
 import { Result, ok, fail } from '../result';
 import { SafetyChain } from './security/chain';
 
@@ -51,7 +52,7 @@ export class ToolRegistry {
 
   async execute(name: string, input: ToolInput, safety: SafetyChain): Promise<Result<ExecResult>> {
     const tool = this.tools.get(name);
-    if (!tool) return fail('TOOL_NOT_FOUND', `工具未注册：${name}`);
+    if (!tool) return fail('TOOL_NOT_FOUND', pick(`Tool not registered: ${name}`, `工具未注册：${name}`));
 
     const canonical = CANONICAL_TOOL_NAMES[name] ?? name;
     const decision = await safety.evaluateAsync(canonical, input);

@@ -21,7 +21,7 @@ function fakeRuntime(harness: Harness, outcome: RunOutcome): TuiRuntime {
   };
   return {
     harness,
-    runTask: async (goal: string) => (goal.includes('编号步骤计划') ? planOutcome : outcome),
+    runTask: async (goal: string) => (goal.includes('numbered step plan') ? planOutcome : outcome),
   };
 }
 

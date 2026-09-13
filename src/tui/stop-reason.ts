@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { StopReason } from '../types';
 
 /**
@@ -7,11 +8,11 @@ import { StopReason } from '../types';
 export function describeIncomplete(stopReason: StopReason | undefined): string {
   switch (stopReason) {
     case 'deadline':
-      return 'Incomplete: submission time limit reached';
+      return t('Incomplete: submission time limit reached', '未完成终止：已达单次提交时间上限');
     case 'budget':
-      return 'Incomplete: token budget exhausted (resumable)';
+      return t('Incomplete: token budget exhausted (resumable)', '未完成终止：token 预算耗尽（可续跑）');
     case 'max-steps':
-      return 'Incomplete: max steps reached';
+      return t('Incomplete: max steps reached', '未完成终止：已达步数上限');
     default:
       return '';
   }

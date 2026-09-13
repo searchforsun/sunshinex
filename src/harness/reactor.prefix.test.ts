@@ -58,7 +58,7 @@ test('前缀稳定化：档位提示移至尾部，跨档位步共享稳定前�
 
     // 档位提示应在上下文段之后（尾部），不再占据 KV 前缀首位
     for (const p of prompts) {
-      assert.ok(p.indexOf('当前服务档位') > p.indexOf('上下文：'), '档位提示应在上下文段之后');
+      assert.ok(p.indexOf('Current compute tier') > p.indexOf('Context:'), '档位提示应在上下文段之后');
     }
     // 第 1 轮 small、第 2 轮 large：两轮档位不同仍共享覆盖身份段与工具清单段的稳定前缀
     const p1 = prompts[0];
@@ -66,8 +66,8 @@ test('前缀稳定化：档位提示移至尾部，跨档位步共享稳定前�
     let common = 0;
     while (common < Math.min(p1.length, p2.length) && p1[common] === p2[common]) common++;
     const stableHead = p1.slice(0, common);
-    assert.ok(stableHead.startsWith('你是 SunshineX'), '稳定前缀应以身份段开头');
-    assert.ok(stableHead.includes('可用工具'), '稳定前缀应覆盖工具清单段');
+    assert.ok(stableHead.startsWith('You are SunshineX'), '稳定前缀应以身份段开头');
+    assert.ok(stableHead.includes('Available tools:'), '稳定前缀应覆盖工具清单段');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -93,9 +93,9 @@ test('环境事实：提示词注入工作目录绝对路径与工具选择政�
     const { reactor, prompts } = makeReactor(tmp, scripted([DONE_REPLY]));
     await reactor.run({ goal: 'g' }, { maxSteps: 2 });
     const p = prompts[0];
-    assert.ok(p.includes(`当前工作目录（项目根）：${tmp}`), '提示词应含工作目录绝对路径（环境事实）');
-    assert.ok(p.includes('工具选择：'), '提示词应含工具选择政策（专用工具优先、exec 兜底）');
-    assert.ok(p.indexOf('当前工作目录') > p.indexOf('上下文：'), '工作目录属上下文段环境事实');
+    assert.ok(p.includes(`Current working directory (project root): ${tmp}`), '提示词应含工作目录绝对路径（环境事实）');
+    assert.ok(p.includes('Tool choice:'), '提示词应含工具选择政策（专用工具优先、exec 兜底）');
+    assert.ok(p.indexOf('Current working directory') > p.indexOf('Context:'), '工作目录属上下文段环境事实');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

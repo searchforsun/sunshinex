@@ -55,3 +55,10 @@ test('resolveInvocation：已知子命令原样透传（tui/run/selfcheck/help �
   assert.equal(resolveInvocation(parseArgs(['selfcheck'])).command, 'selfcheck');
   assert.equal(resolveInvocation(parseArgs(['help'])).command, 'help');
 });
+
+test('resolveInvocation：--language 直通 flags，不影响目录直进语义', () => {
+  const a = resolveInvocation(parseArgs(['../my-project', '--language=zh']));
+  assert.equal(a.command, 'tui');
+  assert.deepEqual(a.positional, ['../my-project']);
+  assert.equal(a.flags.language, 'zh');
+});

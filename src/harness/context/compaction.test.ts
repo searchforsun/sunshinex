@@ -36,13 +36,13 @@ test('applyCompaction 注入摘要与重读条目，位于 goal 之后 history �
   const items = cm.assemble('目标G', [{ kind: 'history', content: '新步骤' }]);
   const goalIdx = items.findIndex((i) => i.content === '目标G');
   const histIdx = items.findIndex((i) => i.content === '新步骤');
-  const sumIdx = items.findIndex((i) => i.content.startsWith('[压缩摘要'));
+  const sumIdx = items.findIndex((i) => i.content.startsWith('[Compacted summary'));
   const reIdx = items.findIndex((i) => i.content.startsWith('[重读] notes.md'));
   assert.ok(sumIdx > goalIdx && sumIdx < histIdx, '摘要应位于 goal 与 history 之间');
   assert.ok(reIdx > goalIdx && reIdx < histIdx, '重读应位于 goal 与 history 之间');
   assert.ok(items[reIdx].content.includes('line1'));
-  assert.match(items[sumIdx].content, /^\[压缩摘要 checksum=[0-9a-f]{16}\]/);
-  assert.ok(cm.memory.index().some((l) => l.startsWith('compaction: 摘要 checksum=')));
+  assert.match(items[sumIdx].content, /^\[Compacted summary checksum=[0-9a-f]{16}\]/);
+  assert.ok(cm.memory.index().some((l) => l.startsWith('compaction: summary checksum=')));
 });
 
 test('重复 applyCompaction 相同 chunks 幂等：不重复注入、不重复记录', async () => {
@@ -50,7 +50,7 @@ test('重复 applyCompaction 相同 chunks 幂等：不重复注入、不重复�
   const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
   await cm.applyCompaction(chunks);
   await cm.applyCompaction(chunks);
-  assert.equal(cm.assemble('g').filter((i) => i.content.startsWith('[压缩摘要')).length, 1);
+  assert.equal(cm.assemble('g').filter((i) => i.content.startsWith('[Compacted summary')).length, 1);
   assert.equal(cm.memory.index().filter((l) => l.startsWith('compaction:')).length, 1);
 });
 
@@ -61,8 +61,8 @@ test('重读失败（文件缺失）跳过该文件，注入不受影响', async
   await assert.doesNotReject(() => cm.applyCompaction(chunks));
   const items = cm.assemble('g');
   assert.ok(!items.some((i) => i.content.startsWith('[重读] ghost.md')));
-  assert.ok(items.some((i) => i.content.startsWith('[压缩摘要')));
-  assert.ok(cm.memory.index().some((l) => l.includes('重读 0 个文件')));
+  assert.ok(items.some((i) => i.content.startsWith('[Compacted summary')));
+  assert.ok(cm.memory.index().some((l) => l.includes('reread 0 files')));
 });
 
 test('重读截断为每文件前 500 行', async () => {

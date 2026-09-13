@@ -72,7 +72,7 @@ test('summarize/reinject 产出带 checksum 标记的压缩摘要条目', async 
   const out = w.reinject(chunks);
   assert.equal(out.length, 1);
   assert.equal(out[0].kind, 'history');
-  assert.match(out[0].content, /^\[压缩摘要 checksum=[0-9a-f]{16}\]/);
+  assert.match(out[0].content, /^\[Compacted summary checksum=[0-9a-f]{16}\]/);
   assert.ok(out[0].content.includes('重要背景内容'));
 });
 

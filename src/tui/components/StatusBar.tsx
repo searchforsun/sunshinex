@@ -1,15 +1,21 @@
+import { t } from '../../i18n';
 import * as React from 'react';
 import { Text } from 'ink';
 import { SessionStatus, StatusMetrics, TodoItem } from '../session';
 import { formatTokens } from '../format';
 
-export const STATUS_LABEL: Record<SessionStatus, string> = {
-  idle: 'idle',
-  running: 'running',
-  'awaiting-approval': 'awaiting approval',
-  'awaiting-plan': 'awaiting plan',
-  error: 'error',
-};
+/** 状态词（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
+function statusLabel(status: SessionStatus): string {
+  const labels: Record<SessionStatus, [string, string]> = {
+    idle: ['idle', '空闲'],
+    running: ['running', '运行中'],
+    'awaiting-approval': ['awaiting approval', '等待审批'],
+    'awaiting-plan': ['awaiting plan', '待确认计划'],
+    error: ['error', '出错'],
+  };
+  const [en, zh] = labels[status];
+  return t(en, zh);
+}
 
 /** 底部状态栏：本轮 tokens · 上下文占用 · 耗时 · 模型名 · runs · 缓存命中率 · 待办进度 · 状态词（不重复活动行动画） */
 export function StatusBar({
@@ -39,7 +45,7 @@ export function StatusBar({
       {elapsed ? ` · ${elapsed}` : ''}
       {model ? ` · model ${model}` : ''}
       {' · cache '}{hitPct}%
-      {todos && todos.length > 0 ? ` · todo ${done}/${todos.length}` : ''} · {STATUS_LABEL[status]}
+      {todos && todos.length > 0 ? ` · todo ${done}/${todos.length}` : ''} · {statusLabel(status)}
     </Text>
   );
 }

@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { LiveBlock } from '../session';
@@ -41,12 +42,12 @@ export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }
       const omitted = Math.max(0, before.length - 2) + (table.rows.length - head.length - tailRows.length);
       return (
         <Box flexDirection="column">
-          {omitted > 0 ? <Text dimColor>{`… +${omitted} lines (generating)`}</Text> : null}
+          {omitted > 0 ? <Text dimColor>{t(`… +${omitted} lines (generating)`, `… 上方 ${omitted} 行生成中`)}</Text> : null}
           {before.slice(-2).map((l, i) => (
             <Text key={'b' + i}>{l}</Text>
           ))}
           <MarkdownText text={[...head, ...tailRows].join('\n')} columns={columns} />
-          <Text dimColor>{`⎇ table generating · ${table.rows.length} lines`}</Text>
+          <Text dimColor>{t(`⎇ table generating · ${table.rows.length} lines`, `⎇ 表格生成中 · 已 ${table.rows.length} 行`)}</Text>
         </Box>
       );
     }
@@ -55,7 +56,7 @@ export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }
     const tail = lines.slice(-REPLY_PREVIEW_LINES);
     return (
       <Box flexDirection="column">
-        {overflow > 0 ? <Text dimColor>{`… +${overflow} lines (generating)`}</Text> : null}
+        {overflow > 0 ? <Text dimColor>{t(`… +${overflow} lines (generating)`, `… 上方 ${overflow} 行生成中`)}</Text> : null}
         <MarkdownText text={tail.join('\n')} columns={columns} />
       </Box>
     );

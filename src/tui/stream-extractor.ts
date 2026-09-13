@@ -1,4 +1,6 @@
 /** 协议增量提取模式：seek 找键 → after-key 等冒号引号 → in-reply 透出 → settled 吞尾；ignore 工具回合；plain 协议违规原文透传 */
+import { t } from '../i18n';
+
 export type ExtractorMode = 'seek' | 'after-key' | 'in-reply' | 'settled' | 'ignore' | 'plain';
 
 const TOOL_KEY = '"tool"';
@@ -77,7 +79,7 @@ export class ReplyStreamExtractor {
   private emitTruncateHint(): void {
     if (this.truncated) return;
     this.truncated = true;
-    this.emit('\n…(output too long, truncated)');
+    this.emit(t('\n…(output too long, truncated)', '\n…（输出超长，已截断）'));
   }
 
   private step(ch: string): void {

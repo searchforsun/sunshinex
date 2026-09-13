@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
@@ -32,11 +33,11 @@ export function slashCandidates(buffer: string): string[] {
 /** 输入框占位文案（按会话状态分流；纯函数便于断言） */
 export function inputPlaceholder(status: TuiState['status']): string {
   switch (status) {
-    case 'awaiting-approval': return 'Awaiting approval: y approve once / a allow for session / n deny';
-    case 'awaiting-plan': return 'Plan awaiting confirmation: y execute / n discard';
-    case 'running': return 'Running… (input will queue)';
-    case 'error': return 'Previous task failed; enter a new task to continue';
-    default: return 'Type a task, Enter to send · /help for commands';
+    case 'awaiting-approval': return t('Awaiting approval: y approve once / a allow for session / n deny', '等待审批：y 放行一次 / a 本会话放行 / n 拒绝');
+    case 'awaiting-plan': return t('Plan awaiting confirmation: y execute / n discard', '计划待确认：y 执行 / n 放弃');
+    case 'running': return t('Running… (input will queue)', '运行中…（输入将排队）');
+    case 'error': return t('Previous task failed; enter a new task to continue', '上次任务出错；输入新任务继续');
+    default: return t('Type a task, Enter to send · /help for commands', '输入任务，Enter 发送 · /help 查看命令');
   }
 }
 
@@ -289,10 +290,10 @@ export function App({
       {state.approval ? (
         <Box borderStyle="round" flexDirection="column" paddingX={1}>
           <Text bold>
-            Approval {state.approval.id} ({state.approval.kind})
+            {t('Approval', '审批')} {state.approval.id} ({state.approval.kind})
           </Text>
           <Text>{state.approval.subject}</Text>
-          <Text dimColor>y approve once · a allow for session · n deny</Text>
+          <Text dimColor>{t('y approve once · a allow for session · n deny', 'y 放行一次 · a 本会话放行 · n 拒绝')}</Text>
         </Box>
       ) : null}
       <InputBox

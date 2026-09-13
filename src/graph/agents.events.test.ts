@@ -78,6 +78,6 @@ test('Graph 不注入 onEvent：角色节点零副作用照常完成', async () 
 });
 
 test('ROLE_PRESETS 框定不变（透传不改变角色语义）', () => {
-  assert.ok(ROLE_PRESETS.planner.label.length > 0);
-  assert.ok(ROLE_PRESETS.developer.framing.length > 0);
+  assert.ok(ROLE_PRESETS.planner.label.en.length > 0 && ROLE_PRESETS.planner.label.zh.length > 0);
+  assert.ok(ROLE_PRESETS.developer.framing.en.length > 0 && ROLE_PRESETS.developer.framing.zh.length > 0);
 });

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { render } from '../test-ink';
 import { StatusBar } from './StatusBar';
 import { StatusMetrics, SessionStatus } from '../session';
+import { setLanguage } from '../../i18n';
 
 function metrics(over: Partial<StatusMetrics>): StatusMetrics {
   return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, runs: 5, hitRate: 0.83, ctxUsed: 0, ...over };
@@ -49,4 +50,15 @@ test('StatusBar：配置窗口时显示上下文占用段（used/window 百分�
 test('StatusBar：未配置窗口不显示上下文占用段', () => {
   const f = frameOf(metrics({}), 'm');
   assert.ok(!f.includes('上下文'), '无 context 时不得显示该段');
+});
+
+test('StatusBar：zh 语言状态词中文（idle→空闲；用后复原）', () => {
+  setLanguage('zh');
+  try {
+    const f = frameOf(metrics({}), 'm', 'idle');
+    assert.match(f, /空闲/, 'zh 下状态词应为中文');
+    assert.ok(!/idle\b/.test(f), 'zh 下不得再出英文状态词');
+  } finally {
+    setLanguage('en');
+  }
 });

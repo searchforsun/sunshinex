@@ -1,4 +1,5 @@
 import { ContextItem, ExecResult, RouteDecision, SessionEvent } from '../types';
+import { pick } from '../i18n';
 import { guardrailStop } from './guardrail';
 import { StopReason } from '../types';
 import { Result } from '../result';
@@ -184,7 +185,7 @@ export class Reactor {
       const parsed = this.parse(raw);
       if (!parsed.ok) {
         // 模型未按 JSON 输出：把原文回填为观察，给模型一次自我纠正机会
-        steps.push({ step, observation: `模型输出非 JSON（截断）：${raw.slice(0, 400)}`, tier: effectiveTier });
+        steps.push({ step, observation: pick(`Model output is not valid JSON (truncated): ${raw.slice(0, 400)}`, `模型输出非 JSON（截断）：${raw.slice(0, 400)}`), tier: effectiveTier });
         continue;
       }
 
@@ -205,7 +206,7 @@ export class Reactor {
       }
 
       if (!action.tool) {
-        steps.push({ step, observation: '动作缺少 tool 字段', tier: effectiveTier });
+        steps.push({ step, observation: pick('Action is missing the tool field', '动作缺少 tool 字段'), tier: effectiveTier });
         continue;
       }
 
@@ -229,7 +230,7 @@ export class Reactor {
       try {
         this.deps.settle({ goal: task.goal, reply });
       } catch (e) {
-        this.deps.context.memory.record('settle', `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`);
+        this.deps.context.memory.record('settle', pick(`Skill settle failed (task outcome unaffected): ${e instanceof Error ? e.message : String(e)}`, `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`));
       }
     }
     // per-run 成本账本：tokens/路由决策/时长随收尾落 runs/<id>；落账失败不倒灌任务结果（存储同源，此处吞错）
@@ -278,27 +279,48 @@ export class Reactor {
       .map((t) => `- ${t.name}: ${t.description}`)
       .join('\n');
     const contextText = items.map((i) => i.content).join('\n');
+    // 稳定段双语（pick：en/zh 就地成对；语言经 --language 装配后全程恒定，同会话内不因语言分叉前缀）
     return [
-      '你是 SunshineX 智能体，通过调用工具完成任务。',
+      pick(
+        'You are SunshineX, a general-purpose agent that completes tasks by calling tools.',
+        '你是 SunshineX 智能体，通过调用工具完成任务。',
+      ),
       // 输出约定（跨交互面通用）：唯一格式耦合点是 Markdown 本身；呈现效果由 TUI/GUI 各自负责，提示词不感知渲染层
-      '最终答复（reply 字段）使用 Markdown 输出；对比、多字段枚举类信息优先用表格呈现。',
-      // phase 约定（进度行防刷屏）：模型每次都带 phase 会与工具行交错过密——截图实测每条工具行前都插了 ▶ 行。
-      // 只在「阶段切换」（进入与上一步不同的新阶段）时携带，并限制频次：连续动作同一阶段不重复报，非关键动作（单次查证/读文件）不报
-      '每次回复的 JSON 可选携带 "phase":"<当前阶段一句话>"：仅在进入新阶段时携带，随工具调用说明即将做什么；同阶段连续动作无需重复携带，简单单步动作不必携带。',
-      '可用工具：',
+      pick(
+        'Write the final answer (the reply field) in Markdown; prefer tables for comparisons and multi-field enumerations.',
+        '最终答复（reply 字段）使用 Markdown 输出；对比、多字段枚举类信息优先用表格呈现。',
+      ),
+      // phase 约定（进度行防刷屏）：仅「阶段切换」时携带，同阶段连续动作不重复报，非关键动作不报
+      pick(
+        'Each reply JSON may optionally carry "phase":"<one sentence naming the current stage>": include it only when entering a new stage, saying what the upcoming tool calls are for; do not repeat it for consecutive actions within the same stage, and skip it for trivial single-step actions.',
+        '每次回复的 JSON 可选携带 "phase":"<当前阶段一句话>"：仅在进入新阶段时携带，随工具调用说明即将做什么；同阶段连续动作无需重复携带，简单单步动作不必携带。',
+      ),
+      pick('Available tools:', '可用工具：'),
       tools,
       '',
-      '工具选择：能用专用工具（read/grep/glob 等只读查询）就用专用工具，exec 只兜底没有专用工具覆盖的动作；单次查证不要用 exec 拼 cat/head/ls 组合拳。',
+      pick(
+        'Tool choice: whenever a dedicated tool covers the action (read/grep/glob and other read-only queries), use it; exec is only the fallback for actions no dedicated tool covers; do not chain exec cat/head/ls for a single lookup.',
+        '工具选择：能用专用工具（read/grep/glob 等只读查询）就用专用工具，exec 只兜底没有专用工具覆盖的动作；单次查证不要用 exec 拼 cat/head/ls 组合拳。',
+      ),
       '',
-      '每次只回复一个 JSON 对象，不要输出任何其它文字。格式二选一：',
-      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}；除 exec 外的多个工具可一轮并行：{"tools":[{"tool":"<名>","input":{...}},...],"done":false}——并行时工具与入参都写在 tools 数组内，外层不得再有 tool 字段',
-      '2) 任务完成：{"done":true,"reply":"<最终答复>"}',
+      pick('Reply with exactly one JSON object and nothing else. Two forms:', '每次只回复一个 JSON 对象，不要输出任何其它文字。格式二选一：'),
+      pick(
+        '1) Tool call: {"tool":"<name>","input":{...},"done":false}; multiple non-exec tools may run in parallel in one round: {"tools":[{"tool":"<name>","input":{...}},...],"done":false} — in the parallel form, tools and inputs go inside the tools array and the outer object must not carry a tool field',
+        '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}；除 exec 外的多个工具可一轮并行：{"tools":[{"tool":"<名>","input":{...}},...],"done":false}——并行时工具与入参都写在 tools 数组内，外层不得再有 tool 字段',
+      ),
+      pick('2) Task done: {"done":true,"reply":"<final answer>"}', '2) 任务完成：{"done":true,"reply":"<最终答复>"}'),
       '',
-      '上下文：',
-      `当前工作目录（项目根）：${this.deps.root ?? this.deps.context.root}`,
+      pick('Context:', '上下文：'),
+      pick(
+        `Current working directory (project root): ${this.deps.root ?? this.deps.context.root}`,
+        `当前工作目录（项目根）：${this.deps.root ?? this.deps.context.root}`,
+      ),
       contextText,
       '',
-      `当前服务档位：${tier}；如需调整下一轮算力，在回复 JSON 中加 "tier": "small|medium|large"`,
+      pick(
+        `Current compute tier: ${tier}; to adjust next-round compute, add "tier": "small|medium|large" to the reply JSON`,
+        `当前服务档位：${tier}；如需调整下一轮算力，在回复 JSON 中加 "tier": "small|medium|large"`,
+      ),
     ].join('\n');
   }
 
@@ -315,15 +337,15 @@ export class Reactor {
     const calls = action.tools ?? [];
     const denied =
       calls.length > PARALLEL_TOOLS_LIMIT
-        ? `并行调用超过上限 ${PARALLEL_TOOLS_LIMIT} 项`
+        ? pick(`Parallel batch exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools`, `并行调用超过上限 ${PARALLEL_TOOLS_LIMIT} 项`)
         : calls.some((c) => {
             const cat = this.deps.registry.get(c.tool)?.category;
             return cat === 'bash' || cat === undefined;
           })
-          ? '并行调用仅限非 exec 工具（exec 须单发独占执行）'
+          ? pick('Parallel batch allows only non-exec tools (exec must run exclusively on its own)', '并行调用仅限非 exec 工具（exec 须单发独占执行）')
           : '';
     if (denied) {
-      const obs = `并行调用被拒绝：${denied}；请移除 exec 后重试，或改用单工具调用`;
+      const obs = pick(`Parallel batch rejected: ${denied}; remove exec and retry, or fall back to a single tool call`, `并行调用被拒绝：${denied}；请移除 exec 后重试，或改用单工具调用`);
       steps.push({ step, action: 'parallel', observation: obs, tier });
       return;
     }

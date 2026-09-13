@@ -4,6 +4,7 @@ import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
 import { runTui } from '../tui/entry';
 import { loadEnv, loadGlobalEnv } from '../config/env';
+import { parseLanguage, setLanguage, t } from '../i18n';
 
 /** CLI 参数解析：仅内置约定，零依赖。--flag=v 或 --flag v → 字符串；--flag（末尾无值）→ true；其余为 positional */
 export interface CliArgs {
@@ -49,13 +50,29 @@ export function resolveInvocation(args: CliArgs): CliArgs {
   return { command: 'tui', positional: [args.command, ...args.positional], flags: args.flags };
 }
 
-const USAGE = `SunshineX CLI
+/** CLI 帮助（运行期求值：语言随 --language 设定，禁止模块级 t() 冻结） */
+function usageText(): string {
+  return t(
+    `SunshineX CLI
+  sunshinex                               enter the interactive session terminal directly (= sunshinex tui, manual default)
+  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+                                         first arg that is not a subcommand is treated as the project dir (= sunshinex tui <dir>); --language UI & prompt language (default en)
+  sunshinex selfcheck                     skeleton self-check (perception/tools/security/context/Loop/Graph)
+  sunshinex run <dir> [--template=...]    run a Loop refinement template on the dir (goal via prompt or --goal)
+  sunshinex pipeline <dir> [--yes]        five-node full pipeline with interactive gate approvals (--yes auto-approves)
+  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+                              interactive session terminal (streaming/approvals/todos, manual default)`,
+    `SunshineX CLI
   sunshinex                               直接进入交互式会话终端（= sunshinex tui，manual 缺省）
-  sunshinex [dir] [--mode=manual|dontAsk|plan]   首参非子命令时视为项目目录直进终端（= sunshinex tui <dir>）
+  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+                                         首参非子命令时视为项目目录直进终端（= sunshinex tui <dir>）；--language 界面与提示词语言（缺省 en）
   sunshinex selfcheck                     骨架自检（感知/工具/安全/上下文/Loop/Graph 就绪）
   sunshinex run <dir> [--template=...]    在目录上运行 Loop 模板修正环（goal 走交互或 --goal）
   sunshinex pipeline <dir> [--yes]        五节点全链路流水线，gate 审批交互（--yes 跳过交互直接批准）
-  sunshinex tui [dir] [--mode=manual|dontAsk|plan] 交互式会话终端（流式/审批/待办，manual 缺省）`;
+  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+                              交互式会话终端（流式/审批/待办，manual 缺省）`,
+  );
+}
 
 async function main(): Promise<void> {
   // 三级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 .env > ~/.sunshinex/.env
@@ -63,8 +80,10 @@ async function main(): Promise<void> {
   loadEnv();
   loadGlobalEnv();
   const args = resolveInvocation(parseArgs(process.argv.slice(2)));
+  // 界面语言：--language=en|zh（缺省 en；zh 为全中文界面 + 中文模型侧提示词；先于任何输出与装配设定，--help 亦随语言）
+  setLanguage(parseLanguage(args.flags.language));
   if (args.flags.help === true || args.flags.h === true) {
-    console.log(USAGE);
+    console.log(usageText());
     return;
   }
   switch (args.command) {
@@ -77,7 +96,7 @@ async function main(): Promise<void> {
     case 'tui':
       return runTui(args);
     default:
-      console.log(USAGE);
+      console.log(usageText());
   }
 }
 

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { pick } from '../../i18n';
 import * as path from 'path';
 import { StorageAdapter } from '../../storage/adapter';
 import { ContextItem } from '../../types';
@@ -76,7 +77,7 @@ export class ContextManager {
       items.push(...rereads);
     }
     this.compacted = items;
-    this.memory.record('compaction', `摘要 checksum=${this.window.checksum() ?? 'unknown'}，重读 ${items.length - 1} 个文件`);
+    this.memory.record('compaction', pick(`summary checksum=${this.window.checksum() ?? 'unknown'}, reread ${items.length - 1} files`, `摘要 checksum=${this.window.checksum() ?? 'unknown'}，重读 ${items.length - 1} 个文件`));
   }
 
   /** 技能首帧注入槽：set 后的下一次 assemble 首位携带（kind=system），消费即清——技能正文不随后续帧重复 */

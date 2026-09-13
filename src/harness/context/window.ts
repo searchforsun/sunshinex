@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import { pick } from '../../i18n';
 import { ContextItem } from '../../types';
 
 /** checksum 校验三态结论：first=首次注册基线；replay=幂等重放；new=检测到新一轮压缩 */
@@ -118,7 +119,7 @@ export class ContextWindow {
   summarize(chunks: ContextChunk[]): ContextItem {
     const hash = crypto.createHash('sha256').update(JSON.stringify(chunks)).digest('hex').slice(0, 16);
     const text = chunks.map((c) => `- [${c.type}] ${c.summary}`).join('\n');
-    return { kind: 'history', content: `[压缩摘要 checksum=${hash}]\n${text}` };
+    return { kind: 'history', content: pick(`[Compacted summary checksum=${hash}]\n${text}`, `[压缩摘要 checksum=${hash}]\n${text}`) };
   }
 
   /** reinject 落地：由压缩 chunks 产出重注入条目（摘要；最近文件重读由 ContextManager 协调后追加） */

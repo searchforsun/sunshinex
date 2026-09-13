@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { BannerInfo } from '../banner-info';
@@ -18,7 +19,7 @@ export function Banner({ info, columns }: { info: BannerInfo; columns: number })
         <Text bold>SunshineX TUI v{info.version}</Text>
         <Text dimColor> · model {info.model}</Text>
       </Text>
-      <Text dimColor>  /help commands · /plan plan-then-execute · Tab expand/collapse · Ctrl+O recent detail</Text>
+      <Text dimColor>  {t('/help commands · /plan plan-then-execute · Tab expand/collapse · Ctrl+O recent detail', '/help 查看命令 · /plan 先规划后执行 · Tab 展开/折叠 · Ctrl+O 最近详情')}</Text>
     </Box>
   );
 }

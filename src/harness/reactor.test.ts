@@ -57,7 +57,7 @@ test('模型输出非 JSON 时不误判完成，而是记录观察并重试', as
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 3 });
   assert.equal(r.done, false);
   assert.equal(r.steps.length, 3);
-  assert.ok(r.steps.every((s) => s.observation.includes('非 JSON')));
+  assert.ok(r.steps.every((s) => s.observation.includes('not valid JSON')));
 });
 
 test('模型调用异常时 done=false 并保留错误信息', async () => {
@@ -119,9 +119,9 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 3, budget: { total: 4500, reserve: 4100 } });
   assert.equal(r.done, true);
   assert.ok(prompts.length >= 3, `应有 3 轮 prompt，实际 ${prompts.length}`);
-  assert.ok(!prompts[0].includes('[压缩摘要'), '第 1 轮不应有摘要（无历史可压缩）');
-  assert.ok(prompts[1].includes('[压缩摘要'), '收敛环：触发轮当轮即以收敛后上下文组装（F-b 修复）');
-  assert.ok(prompts[2].includes('[压缩摘要'), '第 3 轮应注入压缩摘要');
+  assert.ok(!prompts[0].includes('[Compacted summary'), '第 1 轮不应有摘要（无历史可压缩）');
+  assert.ok(prompts[1].includes('[Compacted summary'), '收敛环：触发轮当轮即以收敛后上下文组装（F-b 修复）');
+  assert.ok(prompts[2].includes('[Compacted summary'), '第 3 轮应注入压缩摘要');
   assert.ok(prompts[2].includes('[重读] big.txt'), '第 3 轮应注入最近文件重读');
   // 收敛环使压缩当轮生效；水位线滤除压缩点前原始 history 行（语义不变）
   assert.ok(!prompts[2].includes('\n1: read -> '), '水位线应滤掉压缩点前的原始 history 行');
@@ -159,8 +159,8 @@ test('reply.tier 作为下一轮一次性偏好路由到对应 adapter', async (
   assert.equal(r.done, true);
   assert.equal(large.calls.length, 1, '第二轮消费一次性偏好路由 large');
   assert.equal(small.calls.length, 2, '首轮 small + 第三轮偏好已消费回落（medium→默认回退）');
-  assert.ok(small.calls[0].includes('当前服务档位：small'), 'prompt 含本轮服务档位');
-  assert.ok(large.calls[0].includes('当前服务档位：large'));
+  assert.ok(small.calls[0].includes('Current compute tier: small'), 'prompt 含本轮服务档位');
+  assert.ok(large.calls[0].includes('Current compute tier: large'));
   if (r.steps[0] && r.steps[1]) {
     assert.equal(r.steps[0].tier, 'small');
     assert.equal(r.steps[1].tier, 'large');
@@ -273,10 +273,10 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 480, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
-  assert.ok(prompts[1].includes('[压缩摘要'), '触发轮当轮以收敛后上下文组装');
+  assert.ok(prompts[1].includes('[Compacted summary'), '触发轮当轮以收敛后上下文组装');
   assert.ok(prompts[1].includes('[重读] f.txt'), '预算内重读保留');
   assert.equal(
-    context.memory.index().filter((l) => l.startsWith('compaction: 摘要')).length,
+    context.memory.index().filter((l) => l.startsWith('compaction: summary')).length,
     1,
     '一轮收敛 + 次新步被滞回门控（无门控则为 2）',
   );
@@ -308,7 +308,7 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.equal(
-    context.memory.index().filter((l) => l.startsWith('compaction: 摘要')).length,
+    context.memory.index().filter((l) => l.startsWith('compaction: summary')).length,
     2,
     'step3 硬越限旁路在滞回门闭合时仍触发压缩；环有界即止',
   );
@@ -422,7 +422,7 @@ test('并行混入 exec 被整体拒绝，观察回填供模型自纠', async ()
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: '混入写' }, { maxSteps: 3 });
   assert.equal(r.done, true);
-  const deniedStep = r.steps.find((s) => s.observation.includes('并行调用被拒绝'));
+  const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
   assert.ok(deniedStep, '混入 exec 应被整体拒绝并回填观察');
 });
 
@@ -435,7 +435,7 @@ test('并行调用超过上限被拒绝', async () => {
   ]);
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: '超限' }, { maxSteps: 2 });
-  assert.ok(r.steps.some((s) => s.observation.includes('并行调用超过上限')), '超上限应被拒绝');
+  assert.ok(r.steps.some((s) => s.observation.includes('exceeds the limit')), '超上限应被拒绝');
 });
 
 test('并行放宽为非 exec 均可：write 与 network 类同轮并行不被拒且真实执行', async () => {

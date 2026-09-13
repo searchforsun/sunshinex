@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 export interface BannerInfo {
   version: string;
   model: string;
@@ -10,7 +12,7 @@ export const FALLBACK_VERSION = '0.1.0';
 export function buildBannerInfo(input: { version?: string; model?: string; root?: string } = {}): BannerInfo {
   return {
     version: input.version && input.version.length > 0 ? input.version : FALLBACK_VERSION,
-    model: input.model && input.model.length > 0 ? input.model : (process.env.SUNSHINEX_MODEL ?? 'not set'),
+    model: input.model && input.model.length > 0 ? input.model : (process.env.SUNSHINEX_MODEL ?? t('not set', '未配置')),
     root: input.root ?? process.cwd(),
   };
 }

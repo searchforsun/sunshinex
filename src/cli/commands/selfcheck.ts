@@ -9,6 +9,7 @@ import { parseMcpServers, parseSunshinex } from '../../config';
 import { SessionController } from '../../tui/session';
 import { ReplyStreamExtractor } from '../../tui/stream-extractor';
 import type { CliArgs } from '../index';
+import { t } from '../../i18n';
 
 /** 自检用流式适配器：合成 reasoning → token 逐字流 → usage 上报（离线、零网络，驱动流式管线冒烟） */
 class SelfcheckStreamAdapter implements ModelAdapter {
@@ -37,11 +38,14 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   const sunshinePath = path.join(process.cwd(), 'SUNSHINE.md');
   const mcpServers = fs.existsSync(sunshinePath) ? parseMcpServers(parseSunshinex(fs.readFileSync(sunshinePath, 'utf8'))) : [];
   const mcpToolCount = h.tools.list().filter((t) => t.name.startsWith('mcp__')).length;
-  console.log('mcp     :', `${mcpServers.length} servers configured, ${mcpToolCount} tools registered（登记制闸门，空 = 全禁）`);
+  console.log('mcp     :', t(
+    `${mcpServers.length} servers configured, ${mcpToolCount} tools registered (registry gate; empty = all denied)`,
+    `${mcpServers.length} servers configured, ${mcpToolCount} tools registered（登记制闸门，空 = 全禁）`,
+  ));
   console.log('harness :', [h.perception, h.tools, h.security, h.sandbox, h.dryrun, h.context, h.reactor].length, 'modules ready');
-  console.log('context :', `缓存命中率 ${h.context.session.hitRate().toFixed(1)}`);
+  console.log('context :', t(`cache hit rate ${h.context.session.hitRate().toFixed(1)}`, `缓存命中率 ${h.context.session.hitRate().toFixed(1)}`));
   const kbEnv = resolveKbEnv(process.env as Record<string, string | undefined>);
-  console.log('knowledge:', `kb_search ready (backend=${kbEnv.backend}, embedding=${kbEnv.embeddingBaseUrl && kbEnv.embeddingApiKey ? 'configured' : '未配置→调用时降级'})`);
+  console.log('knowledge:', `kb_search ready (backend=${kbEnv.backend}, embedding=${kbEnv.embeddingBaseUrl && kbEnv.embeddingApiKey ? 'configured' : t('not configured → degrades at call time', '未配置→调用时降级')})`);
   const skillHello = h.skills.resolve('hello-sunshine', { name: 'selfcheck' });
   console.log('skills  :', `${h.skills.list().length} loaded, resolve=${skillHello.ok ? 'ok' : 'fail'}`);
   console.log('learned :', h.skills.learnedCount());
@@ -62,7 +66,10 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   const ex = new ReplyStreamExtractor((t) => { extracted += t; });
   for (const chunk of ['{"done":true,"re', 'ply":"流式提取 OK"}']) ex.feed(chunk);
   if (extracted !== '流式提取 OK') throw new Error(`流式提取异常：${extracted}`);
-  console.log('tui     :', `流式管线 OK（${tuiState.messages.length} 条消息；答复「${tuiReply}」；思考折叠 ${tuiThink} 段；提取「${extracted}」）`);
+  console.log('tui     :', t(
+    `streaming pipeline OK (${tuiState.messages.length} messages; reply "${tuiReply}"; thinking folds ${tuiThink}; extracted "${extracted}")`,
+    `流式管线 OK（${tuiState.messages.length} 条消息；答复「${tuiReply}」；思考折叠 ${tuiThink} 段；提取「${extracted}」）`,
+  ));
   const loopReady = codeReviewTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
   console.log('loop    :', `${loopReady.name} template ready (${loopReady.nodes.length} nodes)`);
   const graphReady = softwarePipelineTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });

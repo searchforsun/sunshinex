@@ -106,10 +106,10 @@ test('makeLoopNode：内嵌测试闭环修正环收敛，预算贯通（Graph re
 
 test('makeRoleAgent：四角色框定进 Reactor prompt', async () => {
   const framingWords: Record<string, string> = {
-    planner: '需求拆解',
-    developer: '代码实现',
-    tester: '测试用例',
-    reviewer: '安全审查',
+    planner: 'requirement breakdown',
+    developer: 'code implementation',
+    tester: 'test case',
+    reviewer: 'security review',
   };
   for (const role of ['planner', 'developer', 'tester', 'reviewer'] as const) {
     const recording = new RecordingAdapter(new ScriptedAdapter(['{"done":true,"reply":"ok"}']));

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { pick } from '../../i18n';
 import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';
 import { SafetyChain } from '../security/chain';
@@ -14,7 +15,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
   return [
     {
       name: 'exec',
-      description: '在沙箱内执行 shell 命令',
+      description: pick('Execute a shell command inside the project sandbox', '在沙箱内执行 shell 命令'),
       category: 'bash',
       executor: async (input: ToolInput) => {
         const cmd = String(input.command ?? '');
@@ -25,13 +26,13 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'read',
-      description: '读取文件内容',
+      description: pick('Read file content', '读取文件内容'),
       category: 'read',
       executor: async (input: ToolInput) => execOut(backend.readFile(String(input.path))),
     },
     {
       name: 'write',
-      description: '写入文件内容',
+      description: pick('Write file content', '写入文件内容'),
       category: 'write',
       executor: async (input: ToolInput) => {
         backend.writeFile(String(input.path), String(input.content ?? ''));
@@ -40,7 +41,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'grep',
-      description: '正则搜索：path 为文件时输出裸命中行；为目录时递归检索并输出 相对路径:行号:行',
+      description: pick('Regex search: for a file path emit raw matching lines; for a directory search recursively and emit relativePath:line:line', '正则搜索：path 为文件时输出裸命中行；为目录时递归检索并输出 相对路径:行号:行'),
       category: 'read',
       executor: async (input: ToolInput) => {
         const { pattern, glob: globFilter } = input as { pattern: string; glob?: string };
@@ -73,13 +74,13 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'glob',
-      description: '按 glob 模式列出文件',
+      description: pick('List files matching a glob pattern', '按 glob 模式列出文件'),
       category: 'read',
       executor: async (input: ToolInput) => execOut(backend.listFiles(root, String(input.pattern ?? '*')).join('\n')),
     },
     {
       name: 'webfetch',
-      description: '抓取网页正文：入参 { url }，仅允许 http/https（协议底线在安全链 guard）；正文截断 10 万字符',
+      description: pick('Fetch a web page: input { url }, http/https only (protocol floor enforced by the security guard); body truncated at 100k chars', '抓取网页正文：入参 { url }，仅允许 http/https（协议底线在安全链 guard）；正文截断 10 万字符'),
       category: 'network',
       executor: async (input: ToolInput) => {
         const res = await fetch(String(input.url ?? ''));
@@ -90,7 +91,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'websearch',
-      description: '搜索网页：入参 { query, count? }（count 缺省 5，上限 10），stdout 为 标题/URL/摘要 行式列表；引擎端点仅允许 http/https',
+      description: pick('Web search: input { query, count? } (count default 5, max 10); stdout is title/URL/snippet lines; engine endpoint allows http/https only', '搜索网页：入参 { query, count? }（count 缺省 5，上限 10），stdout 为 标题/URL/摘要 行式列表；引擎端点仅允许 http/https'),
       category: 'network',
       executor: async (input: ToolInput) => {
         const provider = webSearch ?? resolveWebSearchProvider();
@@ -103,7 +104,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'kb_search',
-      description: '本地向量知识库检索：入参 { query, topK? }，stdout 为 KbHit[] JSON；未配置时以 kb_not_configured 降级（不阻塞其他工具）',
+      description: pick('Local vector knowledge-base search: input { query, topK? }, stdout is KbHit[] JSON; degrades to kb_not_configured when not configured (never blocks other tools)', '本地向量知识库检索：入参 { query, topK? }，stdout 为 KbHit[] JSON；未配置时以 kb_not_configured 降级（不阻塞其他工具）'),
       category: 'read',
       executor: async (input: ToolInput) => {
         if (!kb) throw new CodedToolError('kb_not_configured', '知识库未配置：需 EMBEDDING_* 环境并完成 indexDir 索引');
