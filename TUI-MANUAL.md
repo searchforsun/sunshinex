@@ -17,11 +17,14 @@ pnpm cli tui <dir>  # 在指定项目目录打开会话
 ## 二、正式安装使用（npm 全局）
 
 ```bash
-npm install -g sunshinex-agent   # 或 npm pack 后安装本地 tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.1.0/sunshinex-agent-0.1.0.tgz
+# 或 npm registry 正式发布后：npm install -g sunshinex-agent；或本地 npm pack 后装 tgz
 sunshinex                        # 任意目录直接进入终端
 sunshinex --mode=manual          # 指定权限模式（缺省 manual）
 sunshinex ../my-project          # 指定项目目录（= sunshinex tui <dir>，对标 claude <dir>）
 ```
+
+升级：重装新版 Release 链接即覆盖；发版维护流程见 README「发版」。
 
 ## 三、模型配置（两种方式通用）
 
