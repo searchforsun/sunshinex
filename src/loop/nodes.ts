@@ -1,4 +1,4 @@
-import { CriterionResult, LoopContext, NodeOutput } from '../types';
+import { CriterionResult, HistoryStep, LoopContext, NodeOutput } from '../types';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
 import { LoopDeps, LoopEngineNode } from './engine';
@@ -105,6 +105,9 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
     run: async (ctx: LoopContext, input: NodeOutput | null): Promise<NodeOutput> => {
       // 注：NodeOutput 无 goal 字段（计划笔误），engine.run 已把 goal 写入 ctx.state，agentNode 从 state 取
       const goal = withDeficits(typeof ctx.state.goal === 'string' ? ctx.state.goal : '', ctx);
+      // 跨 run 链式 history（前缀缓存连续性）：调用方经 state.seedHistory 注入上一 run 的步骤记录
+      const rawSeed = ctx.state.seedHistory;
+      const seedHistory = Array.isArray(rawSeed) ? (rawSeed as HistoryStep[]) : undefined;
       const remaining = Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed);
       const budget = toReactorBudget(remaining);
       const reactor = new Reactor(deps);
@@ -115,12 +118,14 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
           budget,
           tokenCap: remaining,
           deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
+          ...(seedHistory && seedHistory.length > 0 ? { seedHistory } : {}),
         },
       );
       return {
         status: r.done ? 'done' : 'fail',
         reply: r.reply,
         tokens: r.tokensUsed ?? 0,
+        history: r.steps,
         ...(r.stopReason !== undefined ? { stopReason: r.stopReason } : {}),
       };
     },

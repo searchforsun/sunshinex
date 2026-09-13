@@ -1,5 +1,6 @@
 import {
   CriterionResult,
+  HistoryStep,
   LimitReason,
   LoopContext,
   LoopNodeBase,
@@ -52,6 +53,8 @@ export interface LoopRunResult {
   tokensUsed: number;
   reply?: string;
   criteria?: CriterionResult[];
+  /** 步骤 history（done 时透传 agent 节点产物）：调用方链式 seed 下一 run 的前缀连续基座 */
+  history?: HistoryStep[];
   state: Record<string, unknown>;
   error?: string;
   /** 终止原因（新增）：done=验收通过；其余为护栏越限或模型失败 */
@@ -139,7 +142,7 @@ export class LoopEngine {
 
       // ① 验收通过：节点自报 done，或 check 节点全过（pass）→ 成功终态（每步后最先判定，优先于失败与上限）
       if (out.status === 'done' || (node.kind === 'check' && out.status === 'pass')) {
-        return this.finish(ctx, 'done', { reply: out.reply, criteria: out.criteria, stopReason: 'done' });
+        return this.finish(ctx, 'done', { reply: out.reply, criteria: out.criteria, history: out.history, stopReason: 'done' });
       }
 
       // check 节点 fail = 验收未过（续流至 router 修正环，fail-bounded 由迭代/超时兜底）；其余节点 fail = 硬失败
@@ -170,7 +173,7 @@ export class LoopEngine {
   private finish(
     ctx: LoopContext,
     status: LoopRunResult['status'],
-    extra: { reply?: string; criteria?: CriterionResult[]; error?: string; stopReason?: StopReason },
+    extra: { reply?: string; criteria?: CriterionResult[]; history?: HistoryStep[]; error?: string; stopReason?: StopReason },
   ): LoopRunResult {
     const r: LoopRunResult = {
       status,
@@ -180,6 +183,7 @@ export class LoopEngine {
     };
     if (extra.reply !== undefined) r.reply = extra.reply;
     if (extra.criteria !== undefined) r.criteria = extra.criteria;
+    if (extra.history !== undefined) r.history = extra.history;
     if (extra.error !== undefined) r.error = extra.error;
     if (extra.stopReason !== undefined) r.stopReason = extra.stopReason;
     return r;

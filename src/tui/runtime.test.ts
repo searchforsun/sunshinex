@@ -186,9 +186,40 @@ test('createRuntime：不泄漏引擎内部形态——RunOutcome 只投影会�
     for (const k of ['steps', 'route', 'iterations', 'state']) {
       assert.ok(!keys.includes(k), `RunOutcome 不得透出引擎内部字段：${k}`);
     }
-    const allowed = ['done', 'reply', 'tokensUsed', 'stopReason'];
+    const allowed = ['done', 'reply', 'tokensUsed', 'stopReason', 'history']; // history：链式续跑的会话层字段（RunOutcome 契约）
     assert.deepEqual(keys.filter((k) => !allowed.includes(k)), [], 'RunOutcome 仅暴露会话层需要的键');
   } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('createRuntime：seedHistory 链式下传至内层 Reactor + RunOutcome.history 返回', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt10-'));
+  const orig = Reactor.prototype.run;
+  const seeds: unknown[] = [];
+  Reactor.prototype.run = function (this: Reactor, ...args: Parameters<Reactor['run']>): ReturnType<Reactor['run']> {
+    seeds.push(args[1]?.seedHistory);
+    return orig.call(this, ...args);
+  } as Reactor['run'];
+  try {
+    const rt = createRuntime({
+      root: tmp,
+      // 首轮带一次工具调用：零工具步的 run 无 history 可产出（RunOutcome.history 契约：空则不投影）
+      model: new ScriptedAdapter(['{"tool":"glob","input":{"pattern":"*"},"done":false}', '{"done":true,"reply":"第一步结论"}']),
+    });
+    const r1 = await rt.runTask('做一件事');
+    assert.equal(r1.done, true);
+    assert.ok(r1.history && r1.history.length >= 1, 'RunOutcome 应携带 history 供链式续跑');
+    const r2 = await rt.runTask('继续做一件事', { seedHistory: r1.history });
+    assert.equal(r2.done, true);
+    assert.equal(seeds.length, 2, '探针应捕获两次 Reactor.run');
+    assert.ok(
+      Array.isArray(seeds[1]) && (seeds[1] as unknown[]).length === r1.history!.length,
+      'seedHistory 应下传到内层 Reactor（经 Loop state 中继）',
+    );
+    assert.ok(!Array.isArray(seeds[0]), '首轮未传 seed 时不得注入');
+  } finally {
+    Reactor.prototype.run = orig;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

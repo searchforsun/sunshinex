@@ -498,3 +498,77 @@ test('Reactor：多步运行相邻步 prompt 前缀稳定（记忆不逐步写�
   }
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('Reactor：跨 run seedHistory——相邻 run 前缀连续、RunResult 返回合并 history', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-seed-'));
+  const big = Array.from({ length: 40 }, (_, i) => `第${i}行：跨 run 承接观察内容，正文具备一定长度以模拟真实观察。`).join('\n');
+  fs.writeFileSync(path.join(tmp, 'a.txt'), big);
+  fs.writeFileSync(path.join(tmp, 'b.txt'), big.replace(/跨 run 承接/g, '第二段'));
+  const prompts: string[] = [];
+  const script = [
+    '{"tool":"read","input":{"path":"a.txt"},"done":false}',
+    '{"done":true,"reply":"第一段结论"}',
+    '{"tool":"read","input":{"path":"b.txt"},"done":false}',
+    '{"done":true,"reply":"第二段结论"}',
+  ];
+  let i = 0;
+  const adapter = {
+    provider: 'capture',
+    complete: async (p: string) => {
+      prompts.push(p);
+      return script[Math.min(i++, script.length - 1)];
+    },
+  };
+  const reactor = makeReactor(tmp, adapter);
+  const r1 = await reactor.run({ goal: '分段调研并逐段汇总' });
+  assert.equal(r1.done, true);
+  const seed = r1.steps;
+  assert.ok(seed.length >= 1, '首 run 应产出步骤记录');
+  const r2 = await reactor.run({ goal: '分段调研并逐段汇总' }, { seedHistory: seed });
+  assert.equal(r2.done, true);
+  // 前缀连续性：run2 首帧与 run1 末帧除尾部档位行外全部前缀命中（seed 续入 history、goal 与稳定段不动）
+  const a = prompts[prompts.length - 2];
+  const b = prompts[prompts.length - 1];
+  let common = 0;
+  const n = Math.min(a.length, b.length);
+  while (common < n && a[common] === b[common]) common++;
+  assert.ok(common >= a.length - 120, `跨 run 可命中前缀 ${common}/${a.length}B 过低：seed 未续入 history 或 goal 段漂移`);
+  // 合并 history：承接步 + 新步、步骤号连续
+  assert.equal(r2.steps.length, seed.length + 1, 'run2 steps 应含承接步 + 新步');
+  assert.equal(r2.steps[0].step, 1);
+  assert.equal(r2.steps[r2.steps.length - 1].step, r2.steps.length, '步骤号连续');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('Reactor：usage 为 per-request 全量值——同请求重复回传覆盖不重复累计', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-usage-'));
+  let call = 0;
+  const adapter = {
+    provider: 'usage-dup',
+    complete: async (
+      _p: string,
+      hooks?: { onUsage?: (t: number) => void; onCache?: (t: number) => void; onPrompt?: (t: number) => void },
+    ) => {
+      call += 1;
+      if (call === 1) {
+        // 首请求：工具调用（未完成），模拟端点在多个流式帧重复携带同一份 usage——覆盖语义下只计一次
+        hooks?.onCache?.(100);
+        hooks?.onPrompt?.(200);
+        hooks?.onUsage?.(300);
+        hooks?.onCache?.(100);
+        hooks?.onPrompt?.(200);
+        hooks?.onUsage?.(300);
+        return '{"tool":"glob","input":{"pattern":"*"},"done":false}';
+      }
+      // 次请求：真实累计应跨请求累加（首请求 300 + 本请求 30）
+      hooks?.onCache?.(10);
+      hooks?.onPrompt?.(20);
+      hooks?.onUsage?.(30);
+      return '{"done":true,"reply":"ok"}';
+    },
+  };
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 3 });
+  assert.equal(r.tokensUsed, 330, '重复回传覆盖语义：300 + 30，而非 300+300+30');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

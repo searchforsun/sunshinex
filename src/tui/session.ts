@@ -1,4 +1,4 @@
-import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, SessionEvent } from '../types';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { ReplyStreamExtractor } from './stream-extractor';
 import { stableReplySegment } from './reply-flusher';
@@ -78,6 +78,8 @@ export class SessionController {
   private committedLen = 0;
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
   private planReplyNoArchive = false;
+  /** usage 整场基线：每个模型轮开始前同步为当前累计，事件按「基线 + 本轮 per-run 值」聚合（/plan 步骤间不重置窗口） */
+  private usageBase = { tokens: 0, cache: 0, prompt: 0 };
   private state: TuiState = {
     messages: [],
     todos: [],
@@ -189,6 +191,7 @@ export class SessionController {
       status: 'running',
       metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
     };
+    this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.notify();
     let planText = '';
     this.planReplyNoArchive = true;
@@ -231,15 +234,25 @@ export class SessionController {
   private async runPlanItems(items: string[]): Promise<void> {
     this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
     this.notify();
+    // 前缀缓存连续性：/plan 全程同一 goal（含完整计划清单），步骤推进与上一轮结论走 history 尾部追加（seedHistory 链式），
+    // tokens/命中率窗口整场累计不按步骤重置——相邻步骤 prompt 呈「稳定段 + goal 前缀命中、仅尾部追加」形态
+    const planGoal = [
+      '按以下计划逐步完成任务：每轮完成当前 Step 的全部工作后即以 done 收束本轮，后续 Step 会在下一轮继续。',
+      ...items.map((t, i) => `${i + 1}. ${t}`),
+    ].join('\n');
+    const seed: HistoryStep[] = [];
     for (let i = 0; i < items.length; i++) {
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
       this.state = {
         ...this.state,
-        metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
+        metrics: { ...this.state.metrics, turnStartedAt: Date.now() },
       };
+      this.usageBase = { tokens: this.state.metrics.turnTokens, cache: this.state.metrics.turnCacheTokens, prompt: this.state.metrics.turnPromptTokens };
       this.notify();
+      seed.push({ step: seed.length + 1, action: 'plan', observation: `当前执行 Step ${i + 1}/${items.length}：${items[i]}` });
       try {
-        const r: RunOutcome = await this.runtime.runTask(items[i]);
+        const opts = seed.length > 0 ? { seedHistory: [...seed] } : undefined;
+        const r: RunOutcome = await this.runtime.runTask(planGoal, opts);
         if (!r.done) {
           const note = describeIncomplete(r.stopReason);
           if (note.length > 0) this.pushMsg('system', note);
@@ -249,6 +262,11 @@ export class SessionController {
         const todos = [...this.state.todos];
         todos[i] = { ...todos[i], done: true };
         this.state = { ...this.state, todos };
+        // reactor 返回的 history 以传入 seed 为前缀（承接后编号续起），只收新增尾段防重复
+        if (r.history && r.history.length > 0) {
+          seed.push(...r.history.slice(seed.length));
+        }
+        if (r.reply) seed.push({ step: seed.length + 1, action: 'reply', observation: r.reply });
         // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
         this.pushMsg('system', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停');
@@ -276,6 +294,7 @@ export class SessionController {
       metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
       live: undefined,
     };
+    this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.notify();
     try {
       const r = await this.runtime.runTask(goal);
@@ -385,12 +404,14 @@ export class SessionController {
         this.appendLive('thinking', e.text ?? '');
         return;
       case 'usage': {
-        const total = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : this.state.metrics.turnTokens;
-        const cacheTotal = typeof e.payload?.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : this.state.metrics.turnCacheTokens;
-        const promptTotal = typeof e.payload?.promptTotal === 'number' ? e.payload.promptTotal : this.state.metrics.turnPromptTokens;
+        if (typeof e.payload?.turnTotal !== 'number') return; // 无数值载荷不更新
+        // per-run 值叠加任务级基线：/plan 逐步执行整场累计（步骤切换不重置窗口，命中率按全程口径）
+        const t = this.usageBase.tokens + e.payload.turnTotal;
+        const c = this.usageBase.cache + (typeof e.payload.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : 0);
+        const p = this.usageBase.prompt + (typeof e.payload.promptTotal === 'number' ? e.payload.promptTotal : 0);
         const m = this.state.metrics;
-        if (total === m.turnTokens && cacheTotal === m.turnCacheTokens && promptTotal === m.turnPromptTokens) return; // 数值未变的重复 usage 不触发重渲染
-        this.state = { ...this.state, metrics: { ...m, turnTokens: total, turnCacheTokens: cacheTotal, turnPromptTokens: promptTotal } };
+        if (t === m.turnTokens && c === m.turnCacheTokens && p === m.turnPromptTokens) return; // 数值未变的重复 usage 不触发重渲染
+        this.state = { ...this.state, metrics: { ...m, turnTokens: t, turnCacheTokens: c, turnPromptTokens: p } };
         this.notify();
         return;
       }

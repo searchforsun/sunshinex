@@ -62,6 +62,8 @@ export interface NodeOutput {
   criteria?: CriterionResult[];
   route?: string;
   tokens: number;
+  /** 内层步骤 history（agent 节点透传，供调用方链式 seed 下一 run） */
+  history?: HistoryStep[];
   /** 内层执行的终止原因（agent 节点透传 Reactor 的 stopReason） */
   stopReason?: StopReason;
 }
@@ -253,9 +255,18 @@ export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-e
 export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget'>;
 
 /** TUI 提交的收口投影：只暴露会话层需要的「是否完成 / 终答 / 用量 / 终止原因」，不泄漏引擎结果内部形态 */
+/** 跨 run 链式执行的步骤记录（与 Reactor StepRecord 同形；类型自包含，types 层不反向依赖 harness） */
+export interface HistoryStep {
+  step: number;
+  action?: string;
+  observation: string;
+}
+
 export interface RunOutcome {
   done: boolean;
   reply?: string;
   tokensUsed: number;
   stopReason?: StopReason;
+  /** 本 run 的步骤 history：/plan 逐步执行经 seedHistory 续入下一 run（前缀缓存连续性） */
+  history?: HistoryStep[];
 }

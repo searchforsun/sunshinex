@@ -171,3 +171,37 @@ test('会话层：/plan 规划段经主链——探针证明不走 graph 角色�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('/plan：tokens 与命中率窗口整场累计——步骤间不重置（规划+各步共用一个窗口）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-planusage-'));
+  try {
+    const replies = [
+      '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}',
+      '{"done":true,"reply":"步骤A 完成"}',
+      '{"done":true,"reply":"步骤B 完成"}',
+    ];
+    let call = 0;
+    const model = {
+      provider: 'usage-script',
+      complete: async (
+        _p: string,
+        hooks?: { onUsage?: (t: number) => void; onCache?: (t: number) => void; onPrompt?: (t: number) => void },
+      ) => {
+        hooks?.onPrompt?.(1000);
+        hooks?.onCache?.(500);
+        hooks?.onUsage?.(30);
+        return replies[Math.min(call++, replies.length - 1)];
+      },
+    };
+    const ctrl = new SessionController({ root: tmp, model });
+    await ctrl.submit('/plan 做一件事');
+    await ctrl.confirmPlan(true);
+    await ctrl.waitIdle();
+    const m = ctrl.getState().metrics;
+    assert.equal(m.turnPromptTokens, 3000, '三次模型调用（规划+两步）prompt 整场累计，步骤间不重置');
+    assert.equal(m.turnCacheTokens, 1500, '缓存命中同样整场累计');
+    assert.equal(m.hitRate, 0.5, '命中率按整场口径');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

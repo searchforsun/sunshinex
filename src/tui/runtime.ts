@@ -2,7 +2,7 @@ import { Harness } from '../harness';
 import { LoopDeps } from '../loop/engine';
 import { longTaskTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, RunOutcome, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, RunOutcome, SessionEvent } from '../types';
 
 export interface TuiRuntimeOpts {
   root: string;
@@ -20,7 +20,8 @@ export type { RunOutcome };
 
 export interface TuiRuntime {
   harness: Harness;
-  runTask(goal: string, opts?: { maxSteps?: number }): Promise<RunOutcome>;
+  /** seedHistory：跨 run 链式 history（前缀缓存连续性）——/plan 逐步执行把上一步骤的 steps 续入下一 run */
+  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[] }): Promise<RunOutcome>;
 }
 
 /** TUI 运行时接缝：同进程装配 Harness（数据底座 .data 天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
@@ -48,12 +49,16 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     harness,
     runTask: async (goal, o) => {
       const tpl = longTaskTemplate(loopDeps, o?.maxSteps !== undefined ? { agentMaxSteps: o.maxSteps } : {});
-      const r = await tpl.engine.run(goal);
+      const r = await tpl.engine.run(
+        goal,
+        o?.seedHistory && o.seedHistory.length > 0 ? { state: { seedHistory: o.seedHistory } } : undefined,
+      );
       return {
         done: r.status === 'done',
         ...(r.reply !== undefined ? { reply: r.reply } : {}),
         tokensUsed: r.tokensUsed,
         ...(r.stopReason !== undefined ? { stopReason: r.stopReason } : {}),
+        ...(r.history !== undefined && r.history.length > 0 ? { history: r.history } : {}),
       };
     },
   };

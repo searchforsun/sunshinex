@@ -33,6 +33,9 @@ export interface ReactorLimits {
 
 export interface ReactorOpts extends ReactorLimits {
   routeHint?: RouteHint;
+  /** 前置 history（前缀缓存连续性）：跨 run 链式执行时把上一 run 的 steps 续入本 run history 头部，
+   * 使相邻 run 的 prompt 呈「前缀稳定 + 尾部追加」形态——/plan 逐步执行等同一目标多段执行场景用 */
+  seedHistory?: StepRecord[];
 }
 
 export interface ReactorDeps {
@@ -70,27 +73,33 @@ export class Reactor {
     const budget = opts?.budget ?? { total: 200_000, reserve: 40_000 };
     const tokenCap = opts?.tokenCap;
     const deadlineAt = opts?.deadlineAt;
-    const steps: StepRecord[] = [];
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
     let lastRoute: RouteDecision | undefined; // 路由观测：实际生效的最后一次决策（随 run 结果返回）
     let prefTier: ModelTier | undefined; // 模型一次性偏好：仅影响下一轮
     let compactedUpTo = 0; // 压缩水位线：此前 steps 已由摘要代表，不再进入 history
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
+    // seed 并入 steps（前缀缓存连续性）：跨 run 链式执行承接上一 run 的步骤记录，新步骤号续起，
+    // prompt 呈「稳定段→goal→history 尾部追加」形态；guardrail 迭代计数只约束本 run 新增步
+    const seed = opts?.seedHistory ?? [];
+    const steps: StepRecord[] = [...seed];
     let done = false;
     let reply: string | undefined;
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
     let cacheHitTokens = 0; // prompt 缓存命中累计（adapter onCache 回传聚合）
     let promptTokens = 0; // prompt tokens 累计（缓存命中率分母，与缓存命中同量纲）
+    let usageBase = 0; // per-request 覆盖语义基线：usage 是单请求全量值（流式末帧回传），跨请求累加、请求内覆盖
+    let cacheBase = 0;
+    let promptBase = 0;
     const startedAt = Date.now();
 
     let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error 在各自分支覆盖
-    for (let step = 1; ; step++) {
+    for (let step = seed.length + 1; ; step++) {
       const hit = guardrailStop({
         now: Date.now(),
         ...(deadlineAt !== undefined ? { deadlineAt } : {}),
         tokensUsed,
         ...(tokenCap !== undefined ? { tokenCap } : {}),
-        iteration: step - 1, // 已完成步数：与 maxSteps 的既有语义一致（step 从 1 起）
+        iteration: step - 1 - seed.length, // 已完成步数（不含 seed 承接步）：maxSteps 只约束本 run 新增步
         maxIterations: maxSteps,
       });
       if (hit) {
@@ -138,15 +147,20 @@ export class Reactor {
       const prompt = this.buildPrompt(items, effectiveTier);
       let raw: string;
       try {
+        // usage 为 per-request 全量值：聚合用「基线 + 本请求覆盖」而非盲目累加——
+        // 端点在多个流式帧重复携带 usage 时覆盖语义天然幂等，漏算与重复累计两类口径病一次消除
+        usageBase = tokensUsed;
+        cacheBase = cacheHitTokens;
+        promptBase = promptTokens;
         raw = await this.callModel(router.resolve(effectiveTier), prompt, {
           onCache: (c) => {
-            cacheHitTokens += c;
+            if (c > 0) cacheHitTokens = cacheBase + c; // 0 值忽略：占位/缺字段不得冲掉已累计的真实值
           },
           onPrompt: (p) => {
-            promptTokens += p;
+            if (p > 0) promptTokens = promptBase + p;
           },
           onUsage: (t) => {
-            tokensUsed += t;
+            if (t > 0) tokensUsed = usageBase + t;
             this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens, promptTotal: promptTokens });
           },
           onReasoning: (t) => this.emit('reasoning', t),
