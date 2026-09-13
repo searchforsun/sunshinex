@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs } from './index';
+import { parseArgs, resolveInvocation } from './index';
 
 test('parseArgs：无参数回退 tui（裸命令 sunshinex 直接进终端，对标 claude）', () => {
   assert.equal(parseArgs([]).command, 'tui');
@@ -33,4 +33,25 @@ test('parseArgs：--flag=value 与裸 positional 混排', () => {
   assert.deepEqual(a.positional, ['tests/fixtures/demo']);
   assert.equal(a.flags.template, 'test-loop');
   assert.equal(a.flags.mode, 'dontAsk');
+});
+
+test('resolveInvocation：sunshinex [dir] 目录直进终端，归一为 tui（对标 claude <dir>）', () => {
+  const a = resolveInvocation(parseArgs(['../my-project']));
+  assert.equal(a.command, 'tui');
+  assert.deepEqual(a.positional, ['../my-project']);
+});
+
+test('resolveInvocation：目录与权限模式混排（sunshinex ../my-project --mode=plan 形态）', () => {
+  const a = resolveInvocation(parseArgs(['../my-project', '--mode=plan']));
+  assert.equal(a.command, 'tui');
+  assert.deepEqual(a.positional, ['../my-project']);
+  assert.equal(a.flags.mode, 'plan');
+});
+
+test('resolveInvocation：已知子命令原样透传（tui/run/selfcheck/help 不受影响）', () => {
+  assert.equal(resolveInvocation(parseArgs(['tui', '../my-project'])).command, 'tui');
+  assert.deepEqual(resolveInvocation(parseArgs(['tui', '../my-project'])).positional, ['../my-project']);
+  assert.equal(resolveInvocation(parseArgs(['run', 'demo'])).command, 'run');
+  assert.equal(resolveInvocation(parseArgs(['selfcheck'])).command, 'selfcheck');
+  assert.equal(resolveInvocation(parseArgs(['help'])).command, 'help');
 });

@@ -36,9 +36,22 @@ export function parseArgs(argv: string[]): CliArgs {
   return { command: positional.shift() ?? 'tui', positional, flags };
 }
 
+/** 已知子命令清单：首个 positional 命中其一按子命令分发，否则视为项目目录直进 TUI */
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'tui', 'help'];
+
+/**
+ * 调用形态归一：非已知子命令的首个 positional 视为项目目录，归一为 tui 调用（对标 claude <dir>）。
+ * `sunshinex ../my-project --mode=plan` 与 `sunshinex tui ../my-project --mode=plan` 归一后完全同构；
+ * 已知子命令（含拼错的「疑似子命令」之外的一切目录路径）原样透传。
+ */
+export function resolveInvocation(args: CliArgs): CliArgs {
+  if (COMMANDS.includes(args.command)) return args;
+  return { command: 'tui', positional: [args.command, ...args.positional], flags: args.flags };
+}
+
 const USAGE = `SunshineX CLI
   sunshinex                               直接进入交互式会话终端（= sunshinex tui，manual 缺省）
-  sunshinex --mode=manual|dontAsk|plan    裸命令可直带权限模式 flag
+  sunshinex [dir] [--mode=manual|dontAsk|plan]   首参非子命令时视为项目目录直进终端（= sunshinex tui <dir>）
   sunshinex selfcheck                     骨架自检（感知/工具/安全/上下文/Loop/Graph 就绪）
   sunshinex run <dir> [--template=...]    在目录上运行 Loop 模板修正环（goal 走交互或 --goal）
   sunshinex pipeline <dir> [--yes]        五节点全链路流水线，gate 审批交互（--yes 跳过交互直接批准）
@@ -49,7 +62,7 @@ async function main(): Promise<void> {
   // 项目级先装、全局后装兜底——loadEnv 只填缺省键，后装者仅补缺不覆盖，顺序即优先级
   loadEnv();
   loadGlobalEnv();
-  const args = parseArgs(process.argv.slice(2));
+  const args = resolveInvocation(parseArgs(process.argv.slice(2)));
   if (args.flags.help === true || args.flags.h === true) {
     console.log(USAGE);
     return;

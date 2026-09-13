@@ -79,7 +79,7 @@ pnpm cli tui                   # 构建并启动交互式终端（对标 Claude 
 npm install -g sunshinex-agent  # 或本地发仓：npm pack && npm install -g sunshinex-agent-0.1.0.tgz
 sunshinex                       # 任意目录直接进入交互式终端（= sunshinex tui，对标 claude 裸命令）
 sunshinex --mode=manual         # 裸命令可直带权限模式（manual | dontAsk | plan）
-sunshinex tui ../my-project     # 指定项目目录启动
+sunshinex ../my-project         # 指定项目目录启动（= sunshinex tui <dir>，对标 claude <dir>）
 ```
 
 `bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局配置 `~/.sunshinex/.env`（装一次、跨项目共享密钥），项目根 `.env` 按项目覆盖，优先级：已导出环境变量 > 项目级 > 全局级。`sunshinex selfcheck / run / pipeline` 等子命令用法不变。

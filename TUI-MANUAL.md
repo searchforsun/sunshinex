@@ -20,7 +20,7 @@ pnpm cli tui <dir>  # 在指定项目目录打开会话
 npm install -g sunshinex-agent   # 或 npm pack 后安装本地 tgz
 sunshinex                        # 任意目录直接进入终端
 sunshinex --mode=manual          # 指定权限模式（缺省 manual）
-sunshinex tui ../my-project      # 指定项目目录
+sunshinex ../my-project          # 指定项目目录（= sunshinex tui <dir>，对标 claude <dir>）
 ```
 
 ## 三、模型配置（两种方式通用）
