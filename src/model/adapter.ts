@@ -5,6 +5,8 @@ export type { ModelTier };
 /** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
 export interface UsageHooks {
   onUsage?: (tokens: number) => void;
+  /** prompt tokens（缓存命中率分母，与 cached_tokens 同量纲；端点不回传则永不触发） */
+  onPrompt?: (tokens: number) => void;
   /** prompt 缓存命中 tokens（OpenAI 标准 usage.prompt_tokens_details.cached_tokens；端点不回传则永不触发） */
   onCache?: (tokens: number) => void;
   /** 思考增量（SSE reasoning_content / reasoning 键）；端点不回传则永不触发 */
@@ -21,6 +23,12 @@ export interface ModelAdapter {
 /** 从 OpenAI 兼容响应 JSON 解析 usage.total_tokens；缺失/非数字回 0（无占位计数） */
 export function extractUsage(data: unknown): number {
   const tokens = (data as { usage?: { total_tokens?: unknown } } | null)?.usage?.total_tokens;
+  return typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : 0;
+}
+
+/** 从 OpenAI 兼容响应 JSON 解析 usage.prompt_tokens（缓存命中率分母，与 cached_tokens 同量纲）；缺失/非数字回 0 */
+export function extractPromptTokens(data: unknown): number {
+  const tokens = (data as { usage?: { prompt_tokens?: unknown } } | null)?.usage?.prompt_tokens;
   return typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : 0;
 }
 
@@ -87,6 +95,7 @@ export class OpenAIAdapter implements ModelAdapter {
       if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
       const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
       hooks?.onCache?.(extractCacheTokens(data)); // 缓存命中先于 usage 回传，订阅方聚合时序一致
+      hooks?.onPrompt?.(extractPromptTokens(data));
       hooks?.onUsage?.(extractUsage(data));
       return data.choices?.[0]?.message?.content ?? '';
     } catch (e) {
@@ -138,6 +147,8 @@ export class OpenAIAdapter implements ModelAdapter {
               }
               const cached = extractCacheTokens(ev);
               if (cached > 0) hooks?.onCache?.(cached);
+              const ptokens = extractPromptTokens(ev);
+              if (ptokens > 0) hooks?.onPrompt?.(ptokens);
               const usage = extractUsage(ev);
               if (usage > 0) hooks?.onUsage?.(usage);
             } catch {

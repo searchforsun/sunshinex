@@ -6,7 +6,7 @@ import { StatusBar } from './StatusBar';
 import { StatusMetrics, SessionStatus } from '../session';
 
 function metrics(over: Partial<StatusMetrics>): StatusMetrics {
-  return { turnStartedAt: 0, turnTokens: 1200, turnCacheTokens: 0, runs: 5, hitRate: 0.83, ...over };
+  return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, runs: 5, hitRate: 0.83, ...over };
 }
 
 function frameOf(m: StatusMetrics, model?: string, status: SessionStatus = 'idle'): string {
@@ -36,7 +36,7 @@ test('StatusBar：无 model 不显示模型段', () => {
   assert.ok(!f.includes('model'), '无模型名不显示 model 字样');
 });
 
-test('StatusBar：本轮缓存命中率取 prompt 缓存真实占比', () => {
-  const f = frameOf(metrics({ turnTokens: 1000, turnCacheTokens: 640 }), 'm');
-  assert.match(f, /缓存 64%/, '命中率应为命中 tokens / 本轮 tokens');
+test('StatusBar：缓存命中率取 cached/prompt（分母不含输出 token）', () => {
+  const f = frameOf(metrics({ turnTokens: 1300, turnPromptTokens: 1000, turnCacheTokens: 640 }), 'm');
+  assert.match(f, /缓存 64%/, '命中率应为 cached_tokens / prompt_tokens，而非 cached/total');
 });

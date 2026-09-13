@@ -80,6 +80,7 @@ export class Reactor {
     let reply: string | undefined;
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
     let cacheHitTokens = 0; // prompt 缓存命中累计（adapter onCache 回传聚合）
+    let promptTokens = 0; // prompt tokens 累计（缓存命中率分母，与缓存命中同量纲）
     const startedAt = Date.now();
 
     let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error 在各自分支覆盖
@@ -141,9 +142,12 @@ export class Reactor {
           onCache: (c) => {
             cacheHitTokens += c;
           },
+          onPrompt: (p) => {
+            promptTokens += p;
+          },
           onUsage: (t) => {
             tokensUsed += t;
-            this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens });
+            this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens, promptTotal: promptTokens });
           },
           onReasoning: (t) => this.emit('reasoning', t),
         });

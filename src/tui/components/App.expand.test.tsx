@@ -91,7 +91,7 @@ test('App：Tab 切换历史展开模式——运行中可切、回调触发、�
   try {
     const gate = new GateAdapter();
     const ctrl = new SessionController({ root: tmp, model: gate });
-    const retain = { buffer: '', cursor: 0, expandAll: false, history: [], histIdx: -1 };
+    const retain = { buffer: '', cursor: 0, expandAll: false, latestFull: false, history: [], histIdx: -1 };
     const repaints: number[] = [];
     const { write, unmount } = render(
       <App
@@ -119,6 +119,11 @@ test('App：Tab 切换历史展开模式——运行中可切、回调触发、�
     await sleep(80);
     assert.equal(repaints.length, 2, '再按再次重绘');
     assert.equal(retain.expandAll, false, 'toggle 可逆');
+
+    write('\u000f'); // Ctrl+O：第二层（内容深度）切换
+    await sleep(80);
+    assert.equal(repaints.length, 3, 'Ctrl+O 同样触发整屏重绘');
+    assert.equal(retain.latestFull, true, '内容深度开关回写 retain');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -138,7 +143,7 @@ test('App：retain 展开模式恢复——挂载即全展开渲染历史块', a
       <App
         controller={ctrl}
         banner={{ version: '1.0.0', model: 'm', root: tmp }}
-        retain={{ buffer: '', cursor: 0, expandAll: true, history: [], histIdx: -1 }}
+        retain={{ buffer: '', cursor: 0, expandAll: true, latestFull: false, history: [], histIdx: -1 }}
       />,
     );
     await sleep(150);

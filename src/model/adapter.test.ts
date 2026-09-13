@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'http';
-import { ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage, extractCacheTokens } from './adapter';
+import { ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage, extractPromptTokens, extractCacheTokens } from './adapter';
 import { ModelRouter } from './adapter';
 import { ModelTier } from '../types';
 
@@ -64,6 +64,16 @@ test('ModelTier 自 types 登记且 adapter 侧可用', () => {
 
 test('extractUsage 有 usage → 返回 total_tokens', () => {
   assert.equal(extractUsage({ usage: { total_tokens: 42 } }), 42);
+});
+
+test('extractPromptTokens 有 usage → 返回 prompt_tokens', () => {
+  assert.equal(extractPromptTokens({ usage: { prompt_tokens: 30 } }), 30);
+});
+
+test('extractPromptTokens 无 usage/非数字 → 返回 0', () => {
+  assert.equal(extractPromptTokens({}), 0);
+  assert.equal(extractPromptTokens({ usage: { prompt_tokens: 'x' } }), 0);
+  assert.equal(extractPromptTokens(null), 0);
 });
 
 test('extractUsage 无 usage/非数字 → 返回 0', () => {

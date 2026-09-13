@@ -63,9 +63,11 @@ export function App({
   const [state, setState] = React.useState<TuiState>(controller.getState());
   const [buffer, setBuffer] = React.useState(store.buffer);
   const [cursor, setCursor] = React.useState(store.cursor);
-  // Tab 展开模式（Claude Code ctrl+o 同款）：布尔开关——切换时经 tui-loop 卸载→清屏→重挂整屏重放，
-  // Static 按展开/折叠形态整体重建，视口永远只有一份历史；无状态门槛，运行中随时可切
+  // 两层展开视图（Tab/Ctrl+O 正交，均经 tui-loop 卸载→清屏→重挂整屏重放，视口永远只有一份历史）：
+  // expandAll=第一层行折叠（历史阶段组只留「正文+首个工具对+首个思考行」↔ 全行）；
+  // latestFull=第二层内容深度（最近正文锚点阶段的思考与工具结果全文 ↔ 摘要）；无状态门槛，运行中随时可切
   const [expandAll, setExpandAll] = React.useState(store.expandAll ?? false);
+  const [latestFull, setLatestFull] = React.useState(store.latestFull ?? false);
   const [history, setHistory] = React.useState<string[]>(store.history);
   const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
@@ -74,6 +76,7 @@ export function App({
     store.buffer = buffer;
     store.cursor = cursor;
     store.expandAll = expandAll;
+    store.latestFull = latestFull;
     store.history = history;
     store.histIdx = histIdx;
   });
@@ -86,7 +89,27 @@ export function App({
       return;
     }
     onRequestRepaint?.();
-  }, [expandAll]);
+  }, [expandAll, latestFull]);
+  // 阶段锚点自动重绘：新 ▶ 行到达且已有更早阶段（≥2 个阶段行）时整屏重绘一次——Static 只增不删，
+  // 「上一阶段折叠为锚点形态」必须经重挂重放；首评只记录不触发（挂载本身即一次重放），防同锚点重复触发
+  const observedStepRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    let lastStepSeq = -1;
+    let stepCount = 0;
+    for (const m of state.messages) {
+      if (m.role === 'step') {
+        stepCount += 1;
+        lastStepSeq = m.seq;
+      }
+    }
+    if (observedStepRef.current === null) {
+      observedStepRef.current = lastStepSeq;
+      return;
+    }
+    if (lastStepSeq === observedStepRef.current) return;
+    observedStepRef.current = lastStepSeq;
+    if (stepCount >= 2) onRequestRepaint?.();
+  }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
 
@@ -120,9 +143,15 @@ export function App({
           setCursor(next.length);
         }
       } else {
-        // 展开模式切换：翻转后经重挂整屏重放（Static 按新形态整体重建，视口永远只有一份），运行中随时可切
+        // 第一层切换（行折叠）：翻转后经重挂整屏重放（Static 按新形态整体重建，视口永远只有一份），运行中随时可切
         setExpandAll((v) => !v);
       }
+      return;
+    }
+
+    // Ctrl+O：第二层切换（内容深度）——最近正文锚点阶段的思考与工具结果展开/收起为全文
+    if (key.ctrl && input === 'o') {
+      setLatestFull((v) => !v);
       return;
     }
 
@@ -221,6 +250,7 @@ export function App({
         live={state.live}
         columns={columns}
         expandAll={expandAll}
+        latestFull={latestFull}
       />
       {state.status === 'running' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />

@@ -146,16 +146,30 @@ export function MarkdownText({ text, columns }: { text: string; columns: number 
   return (
     <Box flexDirection="column">
       {blocks.map((b, i) => {
-        switch (b.type) {
-          case 'heading': return <Heading key={i} level={b.level} inlines={b.inlines} />;
-          case 'fence': return <Fence key={i} lang={b.lang} code={b.code} columns={columns} />;
-          case 'list': return <List key={i} ordered={b.ordered} items={b.items} />;
-          case 'quote': return <Quote key={i} inlines={b.inlines} />;
-          case 'table': return <Table key={i} headers={b.headers} rows={b.rows} columns={columns} />;
-          case 'hr': return <Text key={i} dimColor>{'─'.repeat(Math.max(1, columns))}</Text>;
-          default: return <Text key={i}><Inline nodes={b.inlines} /></Text>;
-        }
+        const block = renderBlock(b, columns);
+        // 块间一个空行档位：段落/标题/表格/列表之间的呼吸感（对标 Claude Code 版式，多块长文不再挤作一团）；
+        // 首块贴消息行首（消息级已有 marginBottom 分隔）
+        return i > 0 ? (
+          <Box key={i} marginTop={1}>
+            {block}
+          </Box>
+        ) : (
+          <React.Fragment key={i}>{block}</React.Fragment>
+        );
       })}
     </Box>
   );
+}
+
+/** 单块渲染（key 由 MarkdownText 的包装层提供） */
+function renderBlock(b: MdBlock, columns: number): JSX.Element {
+  switch (b.type) {
+    case 'heading': return <Heading level={b.level} inlines={b.inlines} />;
+    case 'fence': return <Fence lang={b.lang} code={b.code} columns={columns} />;
+    case 'list': return <List ordered={b.ordered} items={b.items} />;
+    case 'quote': return <Quote inlines={b.inlines} />;
+    case 'table': return <Table headers={b.headers} rows={b.rows} columns={columns} />;
+    case 'hr': return <Text dimColor>{'─'.repeat(Math.max(1, columns))}</Text>;
+    default: return <Text><Inline nodes={b.inlines} /></Text>;
+  }
 }

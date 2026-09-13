@@ -113,7 +113,10 @@ test('会话控制器：/init 走模型任务生成 SUNSHINE.md（新建）', as
     await ctrl.waitIdle();
     const s = ctrl.getState();
     assert.ok(fs.existsSync(path.join(tmp, 'SUNSHINE.md')), '模型应经 write 工具写入 SUNSHINE.md');
-    assert.ok(!s.messages.some((m) => m.role === 'user'), 'goal 提示词属内部实现，不应上屏');
+    assert.ok(
+      s.messages.filter((m) => m.role === 'user').every((m) => m.text === '/init'),
+      'goal 提示词属内部实现不上屏；用户斜杠输入本身应回显',
+    );
     assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init：分析项目，生成')), '应只有一行启动提示');
     assert.ok(
       s.messages.some((m) => m.role === 'system' && m.text.includes('已写入 SUNSHINE.md（新建）')),
@@ -141,7 +144,10 @@ test('会话控制器：/init 已有 SUNSHINE.md 走完善语义且不覆盖原�
     await ctrl.submit('/init');
     await ctrl.waitIdle();
     const s = ctrl.getState();
-    assert.ok(!s.messages.some((m) => m.role === 'user'), 'goal 提示词属内部实现，不应上屏');
+    assert.ok(
+      s.messages.filter((m) => m.role === 'user').every((m) => m.text === '/init'),
+      'goal 提示词属内部实现不上屏；用户斜杠输入本身应回显',
+    );
     assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/init：分析项目，完善')), '已存在时应进入完善流程');
     assert.ok(
       s.messages.some((m) => m.role === 'system' && m.text.includes('已写入 SUNSHINE.md（完善）')),

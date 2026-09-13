@@ -11,12 +11,12 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   error: '出错',
 };
 
-/** 底部状态栏：本轮 tokens · 耗时 · 模型名 · runs · 上下文命中率 · 待办进度 · 状态词（不重复活动行动画） */
+/** 底部状态栏：本轮 tokens · 耗时 · 模型名 · runs · 缓存命中率 · 待办进度 · 状态词（不重复活动行动画） */
 export function StatusBar({ metrics, status, todos, model }: { metrics: StatusMetrics; status: SessionStatus; todos?: TodoItem[]; model?: string }): JSX.Element {
   const done = (todos ?? []).filter((t) => t.done).length;
   const elapsed = metrics.turnStartedAt > 0 ? ((Date.now() - metrics.turnStartedAt) / 1000).toFixed(1) + 's' : '';
-  // 缓存命中率：本轮有 usage 时取 prompt 缓存命中真实占比，否则回退会话级统计
-  const hitPct = metrics.turnTokens > 0 ? Math.round((metrics.turnCacheTokens / metrics.turnTokens) * 100) : Math.round(metrics.hitRate * 100);
+  // 缓存命中率 = cached_tokens / prompt_tokens（分子分母同量纲；分母若混入输出 token 会系统性压低真实命中率），无 prompt 口径时回退会话级统计
+  const hitPct = metrics.turnPromptTokens > 0 ? Math.round((metrics.turnCacheTokens / metrics.turnPromptTokens) * 100) : Math.round(metrics.hitRate * 100);
   return (
     <Text dimColor>
       {' '}↑{formatTokens(metrics.turnTokens)} tokens

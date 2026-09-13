@@ -26,8 +26,22 @@ test('/plan：规划（经主链长任务模板）→ 确认 → 逐项执行 �
     assert.equal(ctrl.getState().status, 'awaiting-plan');
     assert.ok(ctrl.getState().metrics.turnStartedAt > 0, '规划阶段应重置本轮计时起点');
     assert.match(ctrl.getState().messages.at(-1)?.text ?? '', /步骤A/);
+    assert.ok(
+      ctrl.getState().messages.some((m) => m.role === 'user' && m.text === '/plan 做一件事'),
+      '用户斜杠输入应回显上屏（此前 /plan 整行蒸发）',
+    );
+    assert.equal(
+      ctrl.getState().messages.filter((m) => m.text.includes('步骤A')).length,
+      1,
+      '计划正文只以确认卡上屏一次（规划轮流式/终稿不重复入档）',
+    );
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
+    assert.equal(
+      ctrl.getState().messages.filter((m) => m.role === 'assistant' && m.text.includes('步骤A 完成')).length,
+      1,
+      '步骤正文只随流式管线入档一次（runPlanItems 不再重复上屏）',
+    );
     const todos = ctrl.getState().todos;
     assert.equal(todos.length, 2, '计划解析出两条待办');
     assert.ok(todos.every((t) => t.done), '逐项执行后全部完成');

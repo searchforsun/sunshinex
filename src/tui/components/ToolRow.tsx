@@ -4,7 +4,8 @@ import { ChatItem } from '../session';
 import { bandLines } from '../text-band';
 
 /**
- * 工具行：调用行 ⏺ [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
+ * 工具行：调用行 ● [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
+ * 图标用 ● 而非 ⏺：⏺ 带 emoji 呈现属性，终端以彩色字形渲染并忽略前景色（dim 调不暗、恒呈亮色）；● 无 emoji 变体，颜色跟随 dimColor。
  * 默认折叠为单行摘要（首行截断）——执行细节不刷屏，全文经 Tab 切换历史展开查看；
  * Tab 切换历史展开（清屏重挂整屏重放）时以全展开形态渲染完整 observation。
  * detail 缺失时 text 即全部内容（≤200 字摘要），无折叠必要、直接展示。
@@ -16,7 +17,7 @@ export function ToolRow({ item, columns, collapsed }: { item: ChatItem; columns:
     const target = sp > 0 ? item.text.slice(sp + 1) : '';
     return (
       <Text>
-        <Text dimColor>⏺ </Text>
+        <Text dimColor>● </Text>
         <Text color="cyan">
           [{verb}]
         </Text>

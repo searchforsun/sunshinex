@@ -16,7 +16,7 @@ export interface ChatItem {
   ts: number;
   /** 全局单调序号：TUI Static 区 key 的唯一性来源，跨 /new 递增不回绕 */
   seq: number;
-  /** tool 行细分：call（⏺ 调用行）/ result（⎿ 结果行） */
+  /** tool 行细分：call（● 调用行）/ result（⎿ 结果行） */
   kind?: 'call' | 'result';
   /** tool 结果行成功标记 */
   ok?: boolean;
@@ -34,8 +34,10 @@ export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting
 export interface StatusMetrics {
   turnStartedAt: number;
   turnTokens: number;
-  /** 本轮 prompt 缓存命中 tokens（usage 事件 cacheHitTotal 聚合；状态栏缓存命中率的分子与分母同源） */
+  /** 本轮 prompt 缓存命中 tokens（usage 事件 cacheHitTotal 聚合；状态栏缓存命中率的分子） */
   turnCacheTokens: number;
+  /** 本轮 prompt tokens（usage 事件 promptTotal 聚合；缓存命中率分母，与 turnCacheTokens 同量纲） */
+  turnPromptTokens: number;
   runs: number;
   hitRate: number;
 }
@@ -74,11 +76,13 @@ export class SessionController {
   private readonly extractor = new ReplyStreamExtractor((t) => this.appendLive('reply', t));
   /** 流式正文已入档水位（done 终稿前缀长度）：安全点切块入档用，reset 回合随 extractor 一并归零 */
   private committedLen = 0;
+  /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
+  private planReplyNoArchive = false;
   private state: TuiState = {
     messages: [],
     todos: [],
     status: 'idle',
-    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, runs: 0, hitRate: 0 },
+    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, runs: 0, hitRate: 0 },
   };
   private listeners = new Set<(s: TuiState) => void>();
   private queue: { goal: string; resolve: () => void }[] = [];
@@ -131,11 +135,12 @@ export class SessionController {
   async submit(input: string): Promise<void> {
     const text = input.trim();
     if (!text) return;
+    // 用户输入回显上屏（含斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
+    this.pushMsg('user', text);
     if (text.startsWith('/')) {
       await this.handleSlash(text);
       return;
     }
-    this.pushMsg('user', text);
     this.extractor.reset();
         this.committedLen = 0;
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval') {
@@ -182,10 +187,11 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
     };
     this.notify();
     let planText = '';
+    this.planReplyNoArchive = true;
     try {
       // 规划段与执行段同链（H1）：经主链的 Loop 长任务模板。
       // 原实现是裸调 graph 角色节点——手工构造的 termination 无人读取（装饰性），
@@ -201,6 +207,8 @@ export class SessionController {
       this.pushMsg('system', '规划失败：' + (e instanceof Error ? e.message : String(e)));
       this.closeTask();
       return;
+    } finally {
+      this.planReplyNoArchive = false;
     }
     const items = planText
       .split('\n')
@@ -227,7 +235,7 @@ export class SessionController {
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
       this.state = {
         ...this.state,
-        metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0 },
+        metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
       };
       this.notify();
       try {
@@ -241,7 +249,7 @@ export class SessionController {
         const todos = [...this.state.todos];
         todos[i] = { ...todos[i], done: true };
         this.state = { ...this.state, todos };
-        this.pushMsg('assistant', r.reply ?? '已完成：' + items[i]);
+        // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
         this.pushMsg('system', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停');
         break;
@@ -265,7 +273,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
       live: undefined,
     };
     this.notify();
@@ -334,6 +342,7 @@ export class SessionController {
           turnStartedAt: 0,
           turnTokens: 0,
           turnCacheTokens: 0,
+          turnPromptTokens: 0,
           runs: this.state.metrics.runs,
           hitRate: this.state.metrics.hitRate,
         },
@@ -378,9 +387,10 @@ export class SessionController {
       case 'usage': {
         const total = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : this.state.metrics.turnTokens;
         const cacheTotal = typeof e.payload?.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : this.state.metrics.turnCacheTokens;
+        const promptTotal = typeof e.payload?.promptTotal === 'number' ? e.payload.promptTotal : this.state.metrics.turnPromptTokens;
         const m = this.state.metrics;
-        if (total === m.turnTokens && cacheTotal === m.turnCacheTokens) return; // 数值未变的重复 usage 不触发重渲染
-        this.state = { ...this.state, metrics: { ...m, turnTokens: total, turnCacheTokens: cacheTotal } };
+        if (total === m.turnTokens && cacheTotal === m.turnCacheTokens && promptTotal === m.turnPromptTokens) return; // 数值未变的重复 usage 不触发重渲染
+        this.state = { ...this.state, metrics: { ...m, turnTokens: total, turnCacheTokens: cacheTotal, turnPromptTokens: promptTotal } };
         this.notify();
         return;
       }
@@ -407,6 +417,12 @@ export class SessionController {
         const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
         this.closeLive();
         this.extractor.reset();
+        if (this.planReplyNoArchive) {
+          // 规划轮终稿不重复入档：计划正文仅以确认卡形态上屏一次
+          this.committedLen = 0;
+          this.refreshMetrics();
+          return;
+        }
         const finalText = e.text && e.text.length > 0 ? e.text : draft;
         // 流式切块已入档的部分按前缀去重；终稿兜底补齐尾段（含非流式整段场景），水位归零
         let tail = finalText;
@@ -461,6 +477,14 @@ export class SessionController {
   private flushReply(): void {
     const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
     if (!draft) return;
+    if (this.planReplyNoArchive) {
+      // 规划轮正文不入档（只以确认卡上屏一次）：水位照常推进，live 预览维持「未入档尾段」口径
+      this.committedLen = draft.length;
+      if (this.state.live?.kind === 'reply') {
+        this.state = { ...this.state, live: { ...this.state.live, committedLen: draft.length } };
+      }
+      return;
+    }
     const seg = stableReplySegment(draft, this.committedLen);
     if (seg === null) return;
     const committed = this.committedLen + seg.length;
@@ -491,7 +515,7 @@ export class SessionController {
     this.notify();
   }
 
-  /** done/error 后刷新账本 runs 与本轮缓存命中率（prompt 缓存命中 tokens / 本轮总 tokens；无 usage 回传时为 0） */
+  /** done/error 后刷新账本 runs 与本轮缓存命中率（缓存命中 tokens / prompt tokens，分子分母同量纲；无 usage 回传时为 0） */
   private refreshMetrics(): void {
     const m = this.state.metrics;
     this.state = {
@@ -499,7 +523,7 @@ export class SessionController {
       metrics: {
         ...m,
         runs: this.runtime.harness.ledger.summary().runs,
-        hitRate: m.turnTokens > 0 ? Math.min(1, m.turnCacheTokens / m.turnTokens) : 0,
+        hitRate: m.turnPromptTokens > 0 ? Math.min(1, m.turnCacheTokens / m.turnPromptTokens) : 0,
       },
     };
     this.notify();

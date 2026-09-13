@@ -43,13 +43,13 @@ test('App：消息区新渲染口径（去标签/工具两行/助手裸文本）
     await ctrl.waitIdle();
     const { allOutput, unmount } = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
     const all = allOutput();
-    assert.match(all, /⏺ \[WRITE\] a\.txt/); // 工具调用行英文动词 + 方括号高亮
+    assert.match(all, /● \[WRITE\] a\.txt/); // 工具调用行英文动词 + 方括号高亮
     assert.match(all, /✓/);              // 工具结果行成功
     assert.match(all, /写个文件/);        // 用户消息（色带）
     assert.match(all, /ok/);             // 助手裸文本答复
     assert.ok(!all.includes('[你]'), '不得出现 [你] 角色标签');
     assert.ok(!all.includes('[助手]'), '助手答复应为裸文本');
-    assert.ok(!all.includes('[工具]'), '工具行应为 ⏺/⎿ 形态');
+    assert.ok(!all.includes('[工具]'), '工具行应为 ●/⎿ 形态');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
