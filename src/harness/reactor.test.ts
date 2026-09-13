@@ -1,0 +1,500 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { Reactor } from './reactor';
+import { ScriptedAdapter } from '../model/adapter';
+import { ProcessSandbox } from './security/sandbox';
+import { SecurityGuard } from './security/guard';
+import { PolicyEngine } from './security/policy';
+import { SafetyChain } from './security/chain';
+import { DryRun } from './security/dryrun';
+import { ToolRegistry } from './tools';
+import { builtinTools } from './tools/builtin';
+import { ContextManager } from './context';
+import { FileStore } from '../storage/adapter';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { ModelRouter } from '../model/adapter';
+
+function makeReactor(
+  tmp: string,
+  adapter: { provider: string; complete: (p: string) => Promise<string> },
+  router?: ModelRouter,
+): Reactor {
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+  return new Reactor({ registry, safety, context, model: adapter, ...(router ? { router } : {}) });
+}
+
+test('Reactor 用 ScriptedAdapter 跑通端到端闭环', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-'));
+  const adapter = new ScriptedAdapter(['{"tool":"exec","input":{"command":"echo hi"},"done":false}', '{"done":true}']);
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'echo hi' });
+  assert.equal(r.done, true);
+  assert.ok(r.steps.length >= 1);
+});
+
+test('Reactor 达到 maxSteps 强制终止', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor2-'));
+  const adapter = new ScriptedAdapter(['{"tool":"exec","input":{"command":"echo x"},"done":false}']);
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'loop' }, { maxSteps: 2 });
+  assert.equal(r.done, false);
+  assert.equal(r.steps.length, 2);
+});
+
+test('模型输出非 JSON 时不误判完成，而是记录观察并重试', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor3-'));
+  const adapter = new ScriptedAdapter(['这段不是 JSON，模型没理解协议']);
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 3 });
+  assert.equal(r.done, false);
+  assert.equal(r.steps.length, 3);
+  assert.ok(r.steps.every((s) => s.observation.includes('非 JSON')));
+});
+
+test('模型调用异常时 done=false 并保留错误信息', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor4-'));
+  const adapter = { provider: 'boom', complete: async () => { throw new Error('网络错误'); } };
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'x' });
+  assert.equal(r.done, false);
+  assert.ok(r.reply && r.reply.includes('网络错误'));
+});
+
+test('Reactor prompt 经 Context.assemble 串起 SUNSHINE.md 指令', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor5-'));
+  fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), '# 规范\n禁用 any 类型\n');
+
+  let captured = '';
+  const adapter = { provider: 'capture', complete: async (p: string) => { captured = p; return '{"done":true}'; } };
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'x' });
+  assert.equal(r.done, true);
+  assert.ok(captured.includes('禁用 any 类型'), 'prompt 应包含 SUNSHINE.md 指令');
+});
+
+test('Read 成功后 trackFile 登记路径（recentFiles 含该文件）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor6-'));
+  fs.writeFileSync(path.join(tmp, 'note.txt'), '笔记内容');
+  const adapter = new ScriptedAdapter(['{"tool":"read","input":{"path":"note.txt"},"done":false}', '{"done":true}']);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({ registry, safety, context, model: adapter });
+
+  const r = await reactor.run({ goal: 'x' });
+  assert.equal(r.done, true);
+  assert.deepEqual(context.recentFiles(), ['note.txt']);
+});
+
+test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 history', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor7-'));
+  fs.writeFileSync(path.join(tmp, 'big.txt'), 'X'.repeat(3000));
+
+  const prompts: string[] = [];
+  const replies = [
+    '{"tool":"read","input":{"path":"big.txt"},"done":false}',
+    '{"tool":"exec","input":{"command":"echo step2"},"done":false}',
+    '{"done":true,"reply":"ok"}',
+  ];
+  let call = 0;
+  const adapter = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[Math.min(call++, replies.length - 1)]; } };
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({ registry, safety, context, model: adapter });
+
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 3, budget: { total: 4500, reserve: 4100 } });
+  assert.equal(r.done, true);
+  assert.ok(prompts.length >= 3, `应有 3 轮 prompt，实际 ${prompts.length}`);
+  assert.ok(!prompts[0].includes('[压缩摘要'), '第 1 轮不应有摘要（无历史可压缩）');
+  assert.ok(prompts[1].includes('[压缩摘要'), '收敛环：触发轮当轮即以收敛后上下文组装（F-b 修复）');
+  assert.ok(prompts[2].includes('[压缩摘要'), '第 3 轮应注入压缩摘要');
+  assert.ok(prompts[2].includes('[重读] big.txt'), '第 3 轮应注入最近文件重读');
+  // 收敛环使压缩当轮生效；水位线滤除压缩点前原始 history 行（语义不变）
+  assert.ok(!prompts[2].includes('\n1: read -> '), '水位线应滤掉压缩点前的原始 history 行');
+  assert.ok(prompts[2].includes('2: exec -> step2'), '水位线后的 history 保留');
+});
+
+/** 可编回复的 capture adapter：记录 prompt、按需切换回复 */
+function mkCap() {
+  const calls: string[] = [];
+  const queue: string[] = [];
+  return {
+    calls,
+    set(...rs: string[]) { queue.push(...rs); },
+    adapter: {
+      provider: 'cap',
+      complete: async (p: string) => {
+        calls.push(p);
+        return queue.length > 0 ? queue.shift()! : '{"done":true,"reply":"ok"}';
+      },
+    },
+  };
+}
+
+test('reply.tier 作为下一轮一次性偏好路由到对应 adapter', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-pref-'));
+  const small = mkCap(), large = mkCap();
+  const router = new ModelRouter();
+  router.bindDefault(small.adapter);
+  router.bind('large', large.adapter);
+  small.set('{"tool":"exec","input":{"command":"echo a"},"done":false,"tier":"large"}');
+  large.set('{"tool":"exec","input":{"command":"echo b"},"done":false}');
+  const reactor = makeReactor(tmp, small.adapter, router);
+
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  assert.equal(large.calls.length, 1, '第二轮消费一次性偏好路由 large');
+  assert.equal(small.calls.length, 2, '首轮 small + 第三轮偏好已消费回落（medium→默认回退）');
+  assert.ok(small.calls[0].includes('当前服务档位：small'), 'prompt 含本轮服务档位');
+  assert.ok(large.calls[0].includes('当前服务档位：large'));
+  if (r.steps[0] && r.steps[1]) {
+    assert.equal(r.steps[0].tier, 'small');
+    assert.equal(r.steps[1].tier, 'large');
+  } else {
+    assert.fail('应有至少两步记录');
+  }
+});
+
+test('复杂度信号：ratio≥0.6 无偏好升档 large', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-sig-'));
+  const small = mkCap(), large = mkCap();
+  const router = new ModelRouter();
+  router.bindDefault(small.adapter);
+  router.bind('large', large.adapter);
+  const reactor = makeReactor(tmp, small.adapter, router);
+
+  await reactor.run({ goal: 'x'.repeat(2000) }, { maxSteps: 1, budget: { total: 300, reserve: 40 } });
+  assert.equal(large.calls.length, 1, 'est.used≈530（goal 主导且不可压缩）/total=300 → ratio≥0.6 → large');
+  assert.equal(small.calls.length, 0);
+});
+
+test('仅默认绑定的 router 行为与 1B 等价', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-fb-'));
+  const cap = mkCap();
+  cap.set('{"tool":"exec","input":{"command":"echo hi"},"done":false}');
+  const router = new ModelRouter();
+  router.bindDefault(cap.adapter);
+  const reactor = makeReactor(tmp, cap.adapter, router);
+
+  const r = await reactor.run({ goal: 'echo hi' });
+  assert.equal(r.done, true);
+  assert.equal(cap.calls.length, 2);
+  assert.ok(r.steps.every((s) => s.tier !== undefined), '每步记录实际服务档位');
+});
+
+test('非法 tier 值被忽略且不中断循环', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-bad-'));
+  const small = mkCap(), large = mkCap();
+  const router = new ModelRouter();
+  router.bindDefault(small.adapter);
+  router.bind('large', large.adapter);
+  small.set('{"tool":"exec","input":{"command":"echo x"},"done":false,"tier":"huge"}');
+  const reactor = makeReactor(tmp, small.adapter, router);
+
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 2 });
+  assert.equal(r.done, true);
+  assert.equal(large.calls.length, 0, '非法档位不得被路由');
+  assert.equal(small.calls.length, 2, '回落信号档/默认回退');
+});
+
+test('run 收尾清退 working：done 形态 episodic 保留、working 清零', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-done-'));
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  context.memory.record('compaction', '种子事件：跨任务保留');
+  const reactor = new Reactor({
+    registry,
+    safety,
+    context,
+    model: new ScriptedAdapter([
+      '{"tool":"exec","input":{"command":"echo a"},"done":false}',
+      '{"done":true}',
+    ]),
+  });
+  const r = await reactor.run({ goal: 'x' });
+  assert.equal(r.done, true);
+  const c = context.memory.counts();
+  assert.equal(c.working, 0, 'working 已随任务收尾清退');
+  assert.equal(c.episodic, 1, 'episodic 跨任务保留');
+});
+
+test('run 收尾清退 working：maxSteps 耗尽形态同样清退', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-max-'));
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({
+    registry,
+    safety,
+    context,
+    model: new ScriptedAdapter(['{"tool":"exec","input":{"command":"echo a"},"done":false}']),
+  });
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 1 });
+  assert.equal(r.done, false);
+  assert.equal(context.memory.counts().working, 0);
+});
+
+test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门控、records 收敛于 1', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor8-'));
+  fs.writeFileSync(path.join(tmp, 'f.txt'), 'f'.repeat(700));
+  const prompts: string[] = [];
+  const replies = [
+    '{"tool":"read","input":{"path":"f.txt"},"done":false}',
+    '{"tool":"exec","input":{"command":"echo mid"},"done":false}',
+    '{"done":true}',
+  ];
+  let call = 0;
+  const model = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[call++]; } };
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({ registry, safety, context, model });
+  // budget {480,400}：threshold 80，摘要/重读预算各 200。观察只入 history（不写记忆）后按新语义标定：
+  // step2 est=3(装配底数)+1(goal)+178(hist f×700)=182>80 触发；一轮收敛后 est≈200(摘要)+175(重读)+4≈379≤480 即止；
+  // step3 est≈382>80 但滞回门（3-2=1<2）挡住，records 保持 1
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 480, reserve: 400 } });
+  assert.equal(r.done, true);
+  assert.equal(prompts.length, 3);
+  assert.ok(prompts[1].includes('[压缩摘要'), '触发轮当轮以收敛后上下文组装');
+  assert.ok(prompts[1].includes('[重读] f.txt'), '预算内重读保留');
+  assert.equal(
+    context.memory.index().filter((l) => l.startsWith('compaction: 摘要')).length,
+    1,
+    '一轮收敛 + 次新步被滞回门控（无门控则为 2）',
+  );
+});
+
+test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
+  // CJK 1 字符=1 token 便于精算。budget {280,200}：threshold 80，摘要/重读预算各 100
+  fs.writeFileSync(path.join(tmp, 'f.txt'), '压'.repeat(80));
+  fs.writeFileSync(path.join(tmp, 'g.txt'), '压'.repeat(700));
+  const prompts: string[] = [];
+  const replies = [
+    '{"tool":"read","input":{"path":"f.txt"},"done":false}',
+    '{"tool":"read","input":{"path":"g.txt"},"done":false}',
+    '{"done":true}',
+  ];
+  let call = 0;
+  const model = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[call++]; } };
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({ registry, safety, context, model });
+  // 观察只入 history 后按新语义标定：
+  // step2 est=1(goal)+83(hist f×80)=84>80 滞回门（2-0≥2）触发（records 1）；chunks=[goal,hist1]≤摘要预算 100 原样入摘要，收敛后 est≈178≤280 即止；
+  // step3 读 g 后 est≈178+703>280 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：chunks 变为含上一轮摘要条目（与 step2 的 [goal,hist1] 不同 → 非 replay），records 2；
+  // 收敛环有界：hist2 等可丢块丢尽后 est≈≤100+1≤280 环止（rounds=1，fail-bounded）
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 280, reserve: 200 } });
+  assert.equal(r.done, true);
+  assert.equal(prompts.length, 3);
+  assert.equal(
+    context.memory.index().filter((l) => l.startsWith('compaction: 摘要')).length,
+    2,
+    'step3 硬越限旁路在滞回门闭合时仍触发压缩；环有界即止',
+  );
+});
+
+test('ScriptedAdapter 全程 → tokensUsed 字段存在且为 0', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-p2-t1-scripted-'));
+  const adapter = new ScriptedAdapter([
+    '{"tool":"exec","input":{"command":"echo a"},"done":false}',
+    '{"done":true}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'g' });
+  assert.equal(r.done, true);
+  assert.ok('tokensUsed' in r, 'tokensUsed 字段应存在（接线证明）');
+  assert.equal(r.tokensUsed, 0, 'scripted 无真实用量，回传 0，全程聚合应为 0');
+});
+
+test('FakeAdapter 上报非零 usage → tokensUsed 聚合累加（5+7=12）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-p2-t1-usage-'));
+  const usages = [5, 7];
+  let call = 0;
+  const adapter = {
+    provider: 'usage-fake',
+    complete: async (p: string, hooks?: { onUsage?: (tokens: number) => void }) => {
+      hooks?.onUsage?.(usages[call++] ?? 0);
+      return call <= 2 ? '{"tool":"exec","input":{"command":"echo x"},"done":false}' : '{"done":true}';
+    },
+  };
+  const reactor = makeReactor(tmp, adapter);
+
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  assert.equal(r.tokensUsed, 12, '两轮 usage 5 与 7 应聚合为 12');
+});
+
+test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-phase-'));
+  const prompts: string[] = [];
+  const stepPhases: unknown[] = [];
+  const replies = [
+    '{"tool":"exec","input":{"command":"echo hi"},"done":false,"phase":"正在执行回声验证"}',
+    '{"done":true,"reply":"ok","phase":"汇总收尾"}',
+  ];
+  let call = 0;
+  const adapter = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[Math.min(call++, replies.length - 1)]; } };
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({
+    registry, safety, context, model: adapter,
+    onEvent: (e) => { if (e.type === 'step') stepPhases.push(e.payload?.phase); },
+  });
+
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 2 });
+  assert.equal(r.done, true);
+  assert.ok(stepPhases.includes('正在执行回声验证'), 'tool 步 phase 应随 step 事件透传');
+  assert.equal(stepPhases[stepPhases.length - 1], undefined, 'done 步不透传 phase（阶段行不得插入答复正文）');
+  assert.ok(prompts[0].includes('"phase"'), 'prompt 稳定段应注入 phase 约定行');
+});
+
+test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行、单条合并观察回填', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-par-'));
+  const adapter = new ScriptedAdapter([
+    '{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}',
+    '{"done":true,"reply":"已并行读取"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const events: string[] = [];
+  const r = await new Promise<Awaited<ReturnType<Reactor['run']>>>((resolve, reject) => {
+    const rr = new Reactor({
+      registry: (() => { const reg = new ToolRegistry(); for (const t of builtinTools(new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp), tmp)) reg.register(t); return reg; })(),
+      safety: new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp),
+      context: new ContextManager(tmp, new FileStore(tmp)),
+      model: adapter,
+      onEvent: (e) => events.push(e.type),
+    });
+    rr.run({ goal: '并行读' }).then(resolve, reject);
+  });
+  assert.equal(r.done, true);
+  const merged = r.steps.find((s) => s.action === 'glob+grep');
+  assert.ok(merged, '并行步应合并为单条观察回填');
+  assert.match(merged.observation, /\[并行 2 项\]/);
+  assert.match(merged.observation, /\[glob\]/, '各项结果应带工具名前缀');
+  const callCount = events.filter((t) => t === 'tool-call').length;
+  const resultCount = events.filter((t) => t === 'tool-result').length;
+  assert.equal(callCount, 2, 'tool-call 事件应逐工具发射');
+  assert.equal(resultCount, 2, 'tool-result 事件应逐工具发射');
+});
+
+test('并行协议畸形归一：tools 被误装进单工具信封（{"tool":"tools"}）按并行动作执行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-tenv-'));
+  const adapter = new ScriptedAdapter([
+    '{"tool":"tools","input":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}',
+    '{"done":true,"reply":"已归一并行"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '畸形信封' }, { maxSteps: 2 });
+  assert.ok(r.steps.some((s) => s.action === 'glob+grep'), '畸形信封应归一为并行动作而非 TOOL_NOT_FOUND');
+  assert.ok(!r.steps.some((s) => s.observation.includes('TOOL_NOT_FOUND')), '不应出现工具未注册报错');
+});
+
+test('并行混入 exec 被整体拒绝，观察回填供模型自纠', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-pardeny-'));
+  const adapter = new ScriptedAdapter([
+    '{"tools":[{"tool":"read","input":{"path":"package.json"}},{"tool":"exec","input":{"command":"echo hi"}}],"done":false}',
+    '{"done":true,"reply":"已纠正"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '混入写' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  const deniedStep = r.steps.find((s) => s.observation.includes('并行调用被拒绝'));
+  assert.ok(deniedStep, '混入 exec 应被整体拒绝并回填观察');
+});
+
+test('并行调用超过上限被拒绝', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-parcap-'));
+  const calls = Array.from({ length: 9 }, () => '{"tool":"glob","input":{"pattern":"*.ts"}}').join(',');
+  const adapter = new ScriptedAdapter([
+    `{"tools":[${calls}],"done":false}`,
+    '{"done":true}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '超限' }, { maxSteps: 2 });
+  assert.ok(r.steps.some((s) => s.observation.includes('并行调用超过上限')), '超上限应被拒绝');
+});
+
+test('并行放宽为非 exec 均可：write 与 network 类同轮并行不被拒且真实执行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-parnx-'));
+  const outPath = path.join(tmp, 'out.txt');
+  const adapter = new ScriptedAdapter([
+    `{"tools":[{"tool":"write","input":{"path":${JSON.stringify(outPath)},"content":"hello"}},{"tool":"net-probe","input":{}}],"done":false}`,
+    '{"done":true,"reply":"已并行写探"}',
+  ]);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  registry.register({
+    name: 'net-probe',
+    description: '网络类并行替身（不发真实请求）',
+    category: 'network',
+    executor: async () => ({ exitCode: 0, stdout: 'pong', stderr: '', timedOut: false }),
+  });
+  const reactor = new Reactor({ registry, safety, context: new ContextManager(tmp, new FileStore(tmp)), model: adapter });
+  const r = await reactor.run({ goal: '并行写探' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  const merged = r.steps.find((s) => s.action === 'write+net-probe');
+  assert.ok(merged, 'write+network 应并行执行且不被拒');
+  assert.match(merged.observation, /\[write\]/);
+  assert.match(merged.observation, /\[net-probe\]/);
+  assert.equal(fs.readFileSync(outPath, 'utf8'), 'hello', 'write 应真实落盘');
+});
+
+test('Reactor：多步运行相邻步 prompt 前缀稳定（记忆不逐步写入击穿 KV 前缀缓存）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-prefix-'));
+  const big = Array.from({ length: 60 }, (_, i) => `第${i}行：观察内容示例，正文具备一定长度以模拟真实观察。`).join('\n');
+  fs.writeFileSync(path.join(tmp, 'a.txt'), big);
+  fs.writeFileSync(path.join(tmp, 'b.txt'), big.replace(/观察/g, '材料'));
+  const prompts: string[] = [];
+  const replies = [
+    '{"tool":"read","input":{"path":"a.txt"},"done":false}',
+    '{"tool":"read","input":{"path":"b.txt"},"done":false}',
+    '{"done":true,"reply":"ok"}',
+  ];
+  let i = 0;
+  const adapter = {
+    provider: 'capture',
+    complete: async (p: string) => {
+      prompts.push(p);
+      return replies[Math.min(i++, replies.length - 1)];
+    },
+  };
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '读取两份材料并汇总要点' });
+  assert.equal(r.done, true);
+  assert.ok(prompts.length >= 3, '至少三轮 prompt 才能检验相邻步前缀');
+  for (let k = 1; k < prompts.length; k++) {
+    const a = prompts[k - 1];
+    const b = prompts[k];
+    let common = 0;
+    const n = Math.min(a.length, b.length);
+    while (common < n && a[common] === b[common]) common++;
+    // 不变式：相邻步除尾部档位行（允许随步变化）外全部前缀命中；中前部任何逐轮变化段都会击穿其后全部缓存
+    assert.ok(common >= a.length - 120, `step${k}->${k + 1} 可命中前缀 ${common}/${a.length}B 过低：上下文中前部存在逐轮变化段`);
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

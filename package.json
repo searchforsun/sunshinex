@@ -1,0 +1,42 @@
+{
+  "name": "sunshinex-agent",
+  "version": "0.1.0",
+  "description": "SunshineX 通用 AI Agent 工程化骨架（Harness/Loop/Graph 三层范式）",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
+    "selfcheck": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js selfcheck",
+    "cli": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js",
+    "prepublishOnly": "pnpm test && node --env-file-if-exists=.env dist/cli/index.js selfcheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.31",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "cli-table3": "0.6.5",
+    "highlight.js": "^11.12.0",
+    "ink": "^3.2.0",
+    "markdown-it": "^15.0.1",
+    "react": "^18.3.1",
+    "sqlite-vec": "^0.1.9",
+    "string-width": "4.2.3"
+  },
+  "bin": {
+    "sunshinex": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "TUI-MANUAL.md",
+    ".env.example"
+  ]
+}

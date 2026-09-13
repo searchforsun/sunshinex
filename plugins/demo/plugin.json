@@ -1,0 +1,6 @@
+{
+  "id": "demo",
+  "name": "演示插件",
+  "version": "0.1.0",
+  "entry": "index.js"
+}
