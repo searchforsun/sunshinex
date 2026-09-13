@@ -90,28 +90,56 @@ export function App({
     }
     onRequestRepaint?.();
   }, [expandAll, latestFull]);
-  // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）——上一段从全显转折叠，
-  // 需整屏重绘一次收拢（边跑边收，不等任务结束）；正文流式切块并入当前段不涨段数、不重绘防闪烁；
+  // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）——上一段从全显转折叠。
+  // 防闪烁两层：①被收拢段不含思考/工具行时重绘前后画面零变化，直接跳过（连续 ▶ 行、计划卡、
+  // 上一任务正文段等无效触发全部过滤）；②400ms 防抖合并，锚点连续落定只画一次；
   // Static 只增不删，折叠必须经重挂重放；首评只记录不触发（挂载本身即一次重放）
   const segInitRef = React.useRef(false);
   const segCountRef = React.useRef(0);
+  const segDebounceRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   React.useEffect(() => {
     let seg = -1;
+    const segHasProcess: boolean[] = [];
     const msgs = state.messages;
     for (let i = 0; i < msgs.length; i++) {
       const role = msgs[i].role;
       if (role === 'assistant') {
         const prevIsAssistant = i > 0 && msgs[i - 1].role === 'assistant';
-        if (!prevIsAssistant) seg += 1;
+        if (!prevIsAssistant) {
+          seg += 1;
+          segHasProcess[seg] = false;
+        }
       } else if (role !== 'thinking' && role !== 'tool') {
         seg += 1;
+        segHasProcess[seg] = false;
+      } else if (seg < 0) {
+        seg = 0;
+        segHasProcess[seg] = false;
+      } else {
+        segHasProcess[seg] = true;
       }
     }
     const segCount = seg + 1;
     const changed = segInitRef.current && segCount !== segCountRef.current;
+    // 被收拢的段：上次计数与本次计数之间的旧尾段——只有含过程行时收拢才有画面变化
+    let collapseWorthy = false;
+    if (changed) {
+      const from = Math.max(0, segCountRef.current - 1);
+      for (let k = from; k < segCount - 1; k++) {
+        if (segHasProcess[k]) {
+          collapseWorthy = true;
+          break;
+        }
+      }
+    }
     segInitRef.current = true;
     segCountRef.current = segCount;
-    if (changed && segCount >= 2) onRequestRepaint?.();
+    if (!changed || !collapseWorthy) return;
+    if (segDebounceRef.current) clearTimeout(segDebounceRef.current);
+    segDebounceRef.current = setTimeout(() => {
+      segDebounceRef.current = undefined;
+      onRequestRepaint?.();
+    }, 400);
   }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
@@ -273,7 +301,7 @@ export function App({
         placeholder={inputPlaceholder(state.status)}
         active={state.status === 'idle' || state.status === 'error'}
       />
-      <TodoList todos={state.todos} running={state.status === 'running'} />
+      <TodoList todos={state.todos} expanded={expandAll || state.status !== 'running'} columns={columns} />
       <StatusBar metrics={state.metrics} status={state.status} todos={state.todos} model={info.model} />
     </Box>
   );

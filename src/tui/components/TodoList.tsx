@@ -1,23 +1,31 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { TodoItem } from '../session';
+import { wrapByWidth } from '../text-band';
 
 /**
- * 待办列表（输入框下侧常驻）：/plan 确认后逐项执行实时勾选——✓ 已完成 / ▸ 进行中。
- * 运行中折叠为单行进度：帧高恒定（勾选推进只改行内容不增减行数），消除每步勾选引起的动态区高度跳动与局部闪动；
- * 收束后展开全量清单供回看。
+ * 待办列表（输入框下侧常驻），两种形态，行数均恒定（不构成动态区高度波动源）：
+ * 紧凑（运行中默认）：单行「待办 n/N · ▸ 当前进行项」，文字按终端宽截断——勾选推进只改内容不增减行数；
+ * 展开（Tab 展开模式或任务收束后）：全量清单逐行 ✓ 已完成（绿）/ ▸ 进行中，行数 = 清单长度 + 1 恒定。
  */
-export function TodoList({ todos, running }: { todos: TodoItem[]; running?: boolean }): JSX.Element | null {
+export function TodoList({
+  todos,
+  expanded,
+  columns,
+}: {
+  todos: TodoItem[];
+  expanded: boolean;
+  columns: number;
+}): JSX.Element | null {
   if (todos.length === 0) return null;
   const done = todos.filter((t) => t.done).length;
   const current = todos.find((t) => !t.done);
-  if (running) {
+  if (!expanded && current) {
+    const prefix = `待办 ${done}/${todos.length} · ▸ `;
+    const text = wrapByWidth(current.text, Math.max(8, columns - 16))[0] ?? current.text;
     return (
       <Box paddingLeft={1}>
-        <Text dimColor>
-          {'待办 ' + done + '/' + todos.length}
-          {current ? ' · ▸ ' + current.text : ''}
-        </Text>
+        <Text>{prefix + text}</Text>
       </Box>
     );
   }
