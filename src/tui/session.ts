@@ -1,5 +1,6 @@
 import { ApprovalDecision, ApprovalRequest, HistoryStep, SessionEvent } from '../types';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
+import { estimateTokens } from '../harness/context/window';
 import { ReplyStreamExtractor } from './stream-extractor';
 import { stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
@@ -40,6 +41,8 @@ export interface StatusMetrics {
   turnPromptTokens: number;
   runs: number;
   hitRate: number;
+  /** 当前上下文占用水位估算 tokens（最新模型轮装配面估算；分母为 SUNSHINEX_CONTEXT_WINDOW 配置窗口） */
+  ctxUsed: number;
 }
 
 export interface LiveBlock {
@@ -84,7 +87,7 @@ export class SessionController {
     messages: [],
     todos: [],
     status: 'idle',
-    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, runs: 0, hitRate: 0 },
+    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, runs: 0, hitRate: 0, ctxUsed: 0 },
   };
   private listeners = new Set<(s: TuiState) => void>();
   private queue: { goal: string; resolve: () => void }[] = [];
@@ -234,12 +237,10 @@ export class SessionController {
   private async runPlanItems(items: string[]): Promise<void> {
     this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
     this.notify();
-    // 前缀缓存连续性：/plan 全程同一 goal（含完整计划清单），步骤推进与上一轮结论走 history 尾部追加（seedHistory 链式），
-    // tokens/命中率窗口整场累计不按步骤重置——相邻步骤 prompt 呈「稳定段 + goal 前缀命中、仅尾部追加」形态
-    const planGoal = [
-      '按以下计划逐步完成任务：每轮完成当前 Step 的全部工作后即以 done 收束本轮，后续 Step 会在下一轮继续。',
-      ...items.map((t, i) => `${i + 1}. ${t}`),
-    ].join('\n');
+    // 上下文最小化：goal 只承载恒定执行协议——完整计划清单与阶段编号不进模型上下文（模型见到全量清单会自行
+    // 重排/跳步，「Step 3/4」类自编进度即源于此），每轮只见「前序结论 + 当前指令」；goal 恒定且 seed 只做
+    // history 尾部追加，前缀缓存连续性不受影响。指令行不带编号，前序只保留结论（reply）不带全量观察
+    const planGoal = '按计划逐步完成任务：每轮只完成 history 末尾「当前指令」指定的单一任务，完成即以 done 收束本轮；不要执行、预判或重排后续任务。';
     const seed: HistoryStep[] = [];
     for (let i = 0; i < items.length; i++) {
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
@@ -249,7 +250,7 @@ export class SessionController {
       };
       this.usageBase = { tokens: this.state.metrics.turnTokens, cache: this.state.metrics.turnCacheTokens, prompt: this.state.metrics.turnPromptTokens };
       this.notify();
-      seed.push({ step: seed.length + 1, action: 'plan', observation: `当前执行 Step ${i + 1}/${items.length}：${items[i]}` });
+      seed.push({ step: seed.length + 1, action: 'plan', observation: `当前指令：${items[i]}` });
       try {
         const opts = seed.length > 0 ? { seedHistory: [...seed] } : undefined;
         const r: RunOutcome = await this.runtime.runTask(planGoal, opts);
@@ -262,10 +263,7 @@ export class SessionController {
         const todos = [...this.state.todos];
         todos[i] = { ...todos[i], done: true };
         this.state = { ...this.state, todos };
-        // reactor 返回的 history 以传入 seed 为前缀（承接后编号续起），只收新增尾段防重复
-        if (r.history && r.history.length > 0) {
-          seed.push(...r.history.slice(seed.length));
-        }
+        // 前序上下文只保留结论（reply）：全量观察不再进后续 prompt（防上下文随步骤膨胀、防历史轨迹干扰当前决策）
         if (r.reply) seed.push({ step: seed.length + 1, action: 'reply', observation: r.reply });
         // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
@@ -362,6 +360,7 @@ export class SessionController {
           turnTokens: 0,
           turnCacheTokens: 0,
           turnPromptTokens: 0,
+          ctxUsed: 0,
           runs: this.state.metrics.runs,
           hitRate: this.state.metrics.hitRate,
         },
@@ -373,9 +372,12 @@ export class SessionController {
     if (cmd === '/compact') {
       // 复用 Reactor 同款窗口压缩链：组装当前上下文 → 压缩 → 重注入（与自动压缩同一机制，手动即时触发）
       const items = this.runtime.harness.context.assemble('', []);
+      const before = this.runtime.harness.context.window.estimate(items).used;
       const chunks = await this.runtime.harness.context.window.compact(items, { summaryTokenBudget: 2000 });
       await this.runtime.harness.context.applyCompaction(chunks, { rereadTokenBudget: 2000 });
-      this.pushMsg('system', `已压缩：${chunks.length} 个摘要块重注入`);
+      const after = this.runtime.harness.context.window.estimate(this.runtime.harness.context.assemble('', [])).used;
+      this.state = { ...this.state, metrics: { ...this.state.metrics, ctxUsed: after } };
+      this.pushMsg('system', `已压缩：${chunks.length} 个摘要块重注入（水位 ${before} → ${after} tokens）`);
       return;
     }
     if (cmd === '/plan') {
@@ -403,6 +405,15 @@ export class SessionController {
       case 'reasoning':
         this.appendLive('thinking', e.text ?? '');
         return;
+      case 'ctx': {
+        // reactor 每轮装配后的占用水位（estimate 口径）：真实回传 usage.prompt_tokens 可用时优先（更准）
+        const used = typeof e.payload?.promptTokens === 'number' && e.payload.promptTokens > 0 ? e.payload.promptTokens : (typeof e.payload?.used === 'number' ? e.payload.used : this.state.metrics.ctxUsed);
+        const m = this.state.metrics;
+        if (used === m.ctxUsed) return;
+        this.state = { ...this.state, metrics: { ...m, ctxUsed: used } };
+        this.notify();
+        return;
+      }
       case 'usage': {
         if (typeof e.payload?.turnTotal !== 'number') return; // 无数值载荷不更新
         // per-run 值叠加任务级基线：/plan 逐步执行整场累计（步骤切换不重置窗口，命中率按全程口径）

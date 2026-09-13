@@ -70,7 +70,13 @@ export class Reactor {
 
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
     const maxSteps = opts?.maxSteps ?? 200;
-    const budget = opts?.budget ?? { total: 200_000, reserve: 40_000 };
+    // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
+    // （状态栏「上下文占用」分母与压缩/档位占比共用此基准），非法值静默回退内建缺省
+    const envWindow = Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? '');
+    const budget = opts?.budget ?? {
+      total: Number.isFinite(envWindow) && envWindow > 0 ? envWindow : 200_000,
+      reserve: Math.floor((Number.isFinite(envWindow) && envWindow > 0 ? envWindow : 200_000) / 5),
+    };
     const tokenCap = opts?.tokenCap;
     const deadlineAt = opts?.deadlineAt;
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
@@ -129,6 +135,9 @@ export class Reactor {
         } while (rounds < 2 && est.used > budget.total);
       }
 
+      // 上下文占用水位旁路上屏（估算口径，经 session 以真实 usage.promptTokens 优先消费）：
+      // 状态栏「上下文 used/窗口」的分子来源；事件为旁路通知，消费端缺省零开销
+      this.emit('ctx', undefined, { used: est.used });
       // 档位决策（循环内）：模型一次性偏好优先，否则经 route() 正式入参决策——外部 hint 的 role 优先，
       // 复杂度信号缺省时以实时预算占比推导（同原 tierStar 语义），决策留痕随 run 结果返回
       const ratio = est.used / budget.total;

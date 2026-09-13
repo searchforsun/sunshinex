@@ -162,7 +162,7 @@ export interface RouteDecision {
 export type SessionEventType =
   | 'token' | 'reasoning' | 'usage' | 'tool-call' | 'tool-result' | 'step'
   | 'route' | 'approval-request' | 'approval-resolved'
-  | 'done' | 'error';
+  | 'ctx' | 'done' | 'error';
 
 export interface SessionEvent {
   type: SessionEventType;

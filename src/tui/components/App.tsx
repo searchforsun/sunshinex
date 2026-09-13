@@ -302,7 +302,13 @@ export function App({
         active={state.status === 'idle' || state.status === 'error'}
       />
       <TodoList todos={state.todos} expanded={expandAll || state.status !== 'running'} columns={columns} />
-      <StatusBar metrics={state.metrics} status={state.status} todos={state.todos} model={info.model} />
+      <StatusBar
+        metrics={state.metrics}
+        status={state.status}
+        todos={state.todos}
+        model={info.model}
+        context={{ used: state.metrics.ctxUsed, window: Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
+      />
     </Box>
   );
 }

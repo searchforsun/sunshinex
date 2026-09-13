@@ -6,11 +6,11 @@ import { StatusBar } from './StatusBar';
 import { StatusMetrics, SessionStatus } from '../session';
 
 function metrics(over: Partial<StatusMetrics>): StatusMetrics {
-  return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, runs: 5, hitRate: 0.83, ...over };
+  return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, runs: 5, hitRate: 0.83, ctxUsed: 0, ...over };
 }
 
-function frameOf(m: StatusMetrics, model?: string, status: SessionStatus = 'idle'): string {
-  const { lastFrame, unmount } = render(<StatusBar metrics={m} status={status} todos={[]} model={model} />);
+function frameOf(m: StatusMetrics, model?: string, status: SessionStatus = 'idle', context?: { used: number; window: number }): string {
+  const { lastFrame, unmount } = render(<StatusBar metrics={m} status={status} todos={[]} model={model} context={context} />);
   const f = lastFrame() ?? '';
   unmount();
   return f;
@@ -39,4 +39,14 @@ test('StatusBar：无 model 不显示模型段', () => {
 test('StatusBar：缓存命中率取 cached/prompt（分母不含输出 token）', () => {
   const f = frameOf(metrics({ turnTokens: 1300, turnPromptTokens: 1000, turnCacheTokens: 640 }), 'm');
   assert.match(f, /缓存 64%/, '命中率应为 cached_tokens / prompt_tokens，而非 cached/total');
+});
+
+test('StatusBar：配置窗口时显示上下文占用段（used/window 百分比）', () => {
+  const f = frameOf(metrics({ ctxUsed: 250_000 }), 'm', 'idle', { used: 250_000, window: 1_000_000 });
+  assert.match(f, /ctx 250k\/1000k（25%）/, '状态栏应显示 ctx 水位/窗口（百分比）');
+});
+
+test('StatusBar：未配置窗口不显示上下文占用段', () => {
+  const f = frameOf(metrics({}), 'm');
+  assert.ok(!f.includes('上下文'), '无 context 时不得显示该段');
 });

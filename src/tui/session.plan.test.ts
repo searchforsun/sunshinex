@@ -205,3 +205,40 @@ test('/plan：tokens 与命中率窗口整场累计——步骤间不重置（�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('/plan：模型上下文最小化——不见计划清单与阶段编号，每轮只见前序结论+当前指令', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-planminimal-'));
+  try {
+    const prompts: string[] = [];
+    const replies = [
+      '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}',
+      '{"done":true,"reply":"步骤A 完成"}',
+      '{"done":true,"reply":"步骤B 完成"}',
+    ];
+    let call = 0;
+    const model = {
+      provider: 'minimal-script',
+      complete: async (p: string) => {
+        prompts.push(p);
+        return replies[Math.min(call++, replies.length - 1)];
+      },
+    };
+    const ctrl = new SessionController({ root: tmp, model });
+    await ctrl.submit('/plan 做一件事');
+    await ctrl.confirmPlan(true);
+    await ctrl.waitIdle();
+    // 两个执行轮的 prompt 不得包含计划清单全文（编号行「2. 步骤B」是清单形态）
+    const step1 = prompts[1];
+    const step2 = prompts[2];
+    assert.ok(!step1.includes('2. 步骤B'), 'Step1 上下文不得出现后续步骤（模型只做当前指令）');
+    assert.ok(!step1.includes('Step 1/2') && !step1.includes('1/2'), '指令行不得携带阶段编号');
+    assert.match(step1, /1: plan -> 当前指令：步骤A/, '当前指令走 history 尾部追加');
+    assert.match(step2, /2: reply -> 步骤A 完成/, '前序只保留结论（reply）');
+    assert.match(step2, /3: plan -> 当前指令：步骤B/, '下一指令继续尾部追加');
+    // goal 恒定（执行协议不含清单）：两轮 goal 段逐字节一致，前缀缓存连续
+    const goalOf = (p: string) => p.slice(p.indexOf('按计划逐步完成任务'), p.indexOf('\n', p.indexOf('按计划逐步完成任务')));
+    assert.equal(goalOf(step1), goalOf(step2), 'goal 恒定执行协议，相邻步骤前缀连续');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
