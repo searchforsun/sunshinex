@@ -267,7 +267,7 @@ export class Reactor {
       '工具选择：能用专用工具（read/grep/glob 等只读查询）就用专用工具，exec 只兜底没有专用工具覆盖的动作；单次查证不要用 exec 拼 cat/head/ls 组合拳。',
       '',
       '每次只回复一个 JSON 对象，不要输出任何其它文字。格式二选一：',
-      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}；除 exec 外的多个工具可一轮并行：{"tools":[{"tool":"<名>","input":{...}},...],"done":false}',
+      '1) 调用工具：{"tool":"<工具名>","input":{...},"done":false}；除 exec 外的多个工具可一轮并行：{"tools":[{"tool":"<名>","input":{...}},...],"done":false}——并行时工具与入参都写在 tools 数组内，外层不得再有 tool 字段',
       '2) 任务完成：{"done":true,"reply":"<最终答复>"}',
       '',
       '上下文：',
@@ -326,11 +326,19 @@ export class Reactor {
   private parse(raw: string): ParseResult {
     try {
       const j = JSON.parse(raw) as Action;
-      const tools = Array.isArray(j.tools)
+      // 模型常见畸形：把并行负载误装进单工具信封（{"tool":"tools","input":{...并行数组...}}）——
+      // "tools" 是并行协议的数组字段名而非工具名，若不归一，单工具路径会拿 "tools" 查注册表报 TOOL_NOT_FOUND，
+      // 模型跟着报错文本退化成逐个串行。这里把 input 为数组（或数组直挂 tools 外层）的形态统一归一为 tools 并行动作
+      let tools = Array.isArray(j.tools)
         ? (j.tools as unknown[])
             .filter((t): t is ParallelToolCall => !!t && typeof t === 'object' && typeof (t as ParallelToolCall).tool === 'string')
             .map((t) => (t.input && typeof t.input === 'object' ? { tool: t.tool, input: t.input as Record<string, unknown> } : { tool: t.tool }))
         : undefined;
+      if (!tools && j.tool === 'tools' && Array.isArray(j.input)) {
+        tools = (j.input as unknown[])
+          .filter((t): t is ParallelToolCall => !!t && typeof t === 'object' && typeof (t as ParallelToolCall).tool === 'string')
+          .map((t) => (t.input && typeof t.input === 'object' ? { tool: t.tool, input: t.input as Record<string, unknown> } : { tool: t.tool }));
+      }
       return {
         ok: true,
         action: {

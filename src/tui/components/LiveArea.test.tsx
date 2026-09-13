@@ -63,3 +63,14 @@ test('LiveArea：表格行进入预览区即实时渲染（框线成形，非源
   assert.ok(!frame.includes('| 模块 |'), '不应以源码竖线形态滚动');
   unmount();
 });
+
+test('LiveArea：预览统一 Markdown 渲染——粗体/列表生成期间即成形（无源码星号与短横）', () => {
+  const md = '结论如下：\n**可改进项:**\n- Checkstyle 纳入 CI 门禁\n- 逻辑删除依赖人工遵守';
+  const { lastFrame, unmount } = render(
+    <LiveArea live={{ kind: 'reply', text: md, committedLen: 0, startedAt: 0 }} columns={80} />,
+  );
+  const frame = lastFrame() ?? '';
+  assert.ok(frame.includes('可改进项') && frame.includes('Checkstyle'), '粗体与列表内容应显示');
+  assert.ok(!frame.includes('**'), '粗体标记不得以源码星号形态出现');
+  unmount();
+});

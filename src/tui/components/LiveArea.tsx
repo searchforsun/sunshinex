@@ -8,46 +8,24 @@ import { MarkdownText } from './MarkdownText';
 const THINK_TAIL_LINES = 6;
 /** 答复流式预览固定行数：动态区帧高必须有界；已入档前缀由 committedLen 排除，预览只呈现生成中的未入档尾段 */
 const REPLY_PREVIEW_LINES = 8;
-/** 结构块（表格/围栏/列表等）触发阈值：pending 中出现连续结构行即切实时渲染——生成期间即所见即所得，而非源码滚动 */
-const STRUCT_PREVIEW_MIN_LINES = 3;
-
-/** 尾部结构块判定（宽松启发式）：末 REPLY_PREVIEW_LINES 行中含 ≥3 行 GFM 表格行或围栏标记，即认为生成中的是结构块 */
-function isStructuredTail(pending: string): boolean {
-  const tail = pending.split('\n').slice(-REPLY_PREVIEW_LINES);
-  let marks = 0;
-  for (const l of tail) {
-    const t = l.trim();
-    if (t.startsWith('|') || t.startsWith('```')) marks += 1;
-  }
-  return marks >= STRUCT_PREVIEW_MIN_LINES;
-}
 
 /**
  * 动态实时区：流式正文按安全点切块增量入档（session.flushReply，段落边界优先、围栏不切、超长段兜底），
- * 此处仅预览未入档尾段（末 N 行），Markdown 排版在各块入档时定稿；
+ * 此处预览未入档尾段（末 N 行），统一按 Markdown 实时渲染——与入档后呈现同构，生成期间即所见即所得；
  * 思考流滚动显示末 6 行（按显示宽度折行取尾、不足补空行）——过程活性反馈，收束后折叠为摘要行，全文经 Tab 切换历史展开查看。
  */
 export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element {
   if (live.kind === 'reply') {
     const pending = live.text.slice(live.committedLen ?? 0);
+    if (pending.trim() === '') return <Box />;
     const lines = pending.split('\n');
     const overflow = Math.max(0, lines.length - REPLY_PREVIEW_LINES);
     const tail = lines.slice(-REPLY_PREVIEW_LINES);
-    // 结构块实时渲染：表格/围栏等在预览期即按 Markdown 成形（一次成型），纯文本尾段仍走轻量源码滚动
-    if (isStructuredTail(pending)) {
-      return (
-        <Box flexDirection="column">
-          {overflow > 0 ? <Text dimColor>… 上文已入档（滚动缓冲可回看）</Text> : null}
-          <MarkdownText text={tail.join('\n')} columns={columns} />
-        </Box>
-      );
-    }
+    // 预览统一走 Markdown 渲染管线（与入档后同构）：粗体/列表/表格等生成期间即成形，不再按内容类型双轨分叉
     return (
       <Box flexDirection="column">
         {overflow > 0 ? <Text dimColor>… 上文已入档（滚动缓冲可回看）</Text> : null}
-        {tail.map((l, i) => (
-          <Text key={i}>{l}</Text>
-        ))}
+        <MarkdownText text={tail.join('\n')} columns={columns} />
       </Box>
     );
   }

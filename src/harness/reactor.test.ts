@@ -398,6 +398,18 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
   assert.equal(resultCount, 2, 'tool-result 事件应逐工具发射');
 });
 
+test('并行协议畸形归一：tools 被误装进单工具信封（{"tool":"tools"}）按并行动作执行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-tenv-'));
+  const adapter = new ScriptedAdapter([
+    '{"tool":"tools","input":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}',
+    '{"done":true,"reply":"已归一并行"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '畸形信封' }, { maxSteps: 2 });
+  assert.ok(r.steps.some((s) => s.action === 'glob+grep'), '畸形信封应归一为并行动作而非 TOOL_NOT_FOUND');
+  assert.ok(!r.steps.some((s) => s.observation.includes('TOOL_NOT_FOUND')), '不应出现工具未注册报错');
+});
+
 test('并行混入 exec 被整体拒绝，观察回填供模型自纠', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-pardeny-'));
   const adapter = new ScriptedAdapter([
