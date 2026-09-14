@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SkillManifest } from '../types';
 import { Result, ok, fail } from '../result';
+import { resolveDataDir } from '../config/data-dir';
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
@@ -25,9 +26,9 @@ export function parseSkillFrontmatter(md: string): Omit<SkillManifest, 'id'> {
   };
 }
 
-/** 学习技能目录（LearnedSkillStore 写入面与双根合并共用的唯一定位，.data 已 gitignore 不入库） */
+/** 学习技能目录（LearnedSkillStore 写入面与双根合并共用的唯一定位）：落全局数据目录 ~/.sunshinex/projects/<工作区>/data/skills（HOME 不可写回退项目 .data） */
 export function learnedSkillsDir(root: string): string {
-  return path.join(root, '.data', 'skills');
+  return path.join(resolveDataDir(root), 'skills');
 }
 
 /** 扫描单根目录下 {id}/skill.md */

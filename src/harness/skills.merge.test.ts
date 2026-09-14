@@ -18,6 +18,8 @@ function writeUserSkill(root: string, id: string, name: string): void {
 
 test('双根合并：学习技能可 list/get/resolve，与用户技能并存', () => {
   const root = makeRoot();
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(root, '.data');
   try {
     writeUserSkill(root, 'greet', 'Greet');
     new LearnedSkillStore(root).settle('数据库巡检手册', '每日巡检步骤……');
@@ -30,12 +32,15 @@ test('双根合并：学习技能可 list/get/resolve，与用户技能并存', 
     assert.ok(r.ok);
     if (r.ok) assert.ok(r.value.body.includes('每日巡检步骤'), 'resolve 学习技能走同一三态语义');
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
 test('id 撞名：用户技能恒优先，学习产物被遮蔽不抛', () => {
   const root = makeRoot();
+  const prevData2 = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(root, '.data');
   try {
     writeUserSkill(root, 'dup', 'UserDup');
     const r = new LearnedSkillStore(root).settle('dup', '机器版');
@@ -48,18 +53,22 @@ test('id 撞名：用户技能恒优先，学习产物被遮蔽不抛', () => {
     assert.ok(resolved.ok);
     if (resolved.ok) assert.ok(resolved.value.body.includes('用户版正文'), '用户版胜出');
   } finally {
+    if (prevData2 === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData2;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
 test('无 .data/skills 目录：零影响，learnedCount 为 0', () => {
   const root = makeRoot();
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(root, '.data');
   try {
     writeUserSkill(root, 'greet', 'Greet');
     const facade = createSkillsFacade(root);
     assert.equal(facade.list().length, 1);
     assert.equal(facade.learnedCount(), 0);
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -72,6 +81,7 @@ test('selfcheck 输出含学习技能行（learned: N，空目录显示 0 不崩
       cwd: tmp,
       encoding: 'utf8',
       timeout: 30_000,
+      env: { ...process.env, SUNSHINEX_DATA_DIR: path.join(tmp, '.data') },
     });
     assert.equal(p.status, 0, `selfcheck 退出码 ${p.status}：${p.stderr}`);
     // selfcheck 数字行在 TTY/FORCE_COLOR 下带 ANSI 着色（管道缺省无色），断言前剥离保证用例 TTY 无关

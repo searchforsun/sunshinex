@@ -107,6 +107,8 @@ test('/plan：缺目标给用法提示；非 idle 拒绝并发规划', async () 
 
 test('会话层：/plan 规划段经主链产出编号步骤并进确认卡', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
     const rt = createRuntime({
       root: tmp,
@@ -128,6 +130,7 @@ test('会话层：/plan 规划段经主链产出编号步骤并进确认卡', as
     assert.match(texts, /改 A 文件/);
     assert.equal(rt.harness.ledger.summary().runs, 1, '规划 run 同样落账本（换通道不丢成本观测）');
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

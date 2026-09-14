@@ -24,7 +24,7 @@ export interface TuiRuntime {
   runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[] }): Promise<RunOutcome>;
 }
 
-/** TUI 运行时接缝：同进程装配 Harness（数据底座 .data 天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
+/** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
 export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
   const harness = new Harness({
     root: opts.root,

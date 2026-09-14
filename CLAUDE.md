@@ -18,7 +18,7 @@
 pnpm build      # 编译 TS 到 dist/（tsc -p tsconfig.json）
 pnpm start      # 运行入口（node dist/index.js）
 pnpm selfcheck  # 编译并运行骨架自检
-pnpm test      # 编译 + 全量单测（node --test）
+pnpm test      # 编译 + 全量单测（scripts/run-tests.js 启动，测试数据目录钉仓内 .data-test 防污染用户全局区）
 pnpm cli       # CLI 执行面（内置自动构建，自动装载 .env）
 pnpm install   # 安装依赖
 ```
@@ -42,7 +42,7 @@ src/
     reactor.ts        # 最小闭环引擎（observe→think→act）
     ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
     skills.ts         # 技能加载与调度（skills/{id}/skill.md；resolveSkill 参数化 + skillRef 首帧注入）
-    skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀 .data/skills/{id}/skill.md，FIFO 上限）
+    skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
     mcp/              # MCP 客户端（官方 SDK 接缝：stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
@@ -101,6 +101,7 @@ SUNSHINE.md          # 项目业务配置
 - 提交前必须通过 `pnpm build`（tsc 严格模式零报错）
 - 涉及加载/解析逻辑时，补充示例物料并确保 `--selfcheck` 输出正确
 - `.pnpm-store/`、`.npm-cache/`、`.data/`、`.longtask/`、`node_modules/`、`dist/` 不入库
+- 运行时数据（账本/记忆/学习技能/KB）统一落盘 `~/.sunshinex/projects/<工作区>/data`（`SUNSHINEX_DATA_DIR` 可覆盖；HOME 不可写回退项目内 `.data`），工作区保持干净
 
 ## 8. 边界与约束
 

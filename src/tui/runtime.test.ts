@@ -10,6 +10,8 @@ import { SessionEvent } from '../types';
 
 test('createRuntime：事件贯通 + runTask 完成 + runs 账本落盘（会话同源）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
     const events: SessionEvent[] = [];
     const rt = createRuntime({
@@ -23,6 +25,7 @@ test('createRuntime：事件贯通 + runTask 完成 + runs 账本落盘（会话
     assert.ok(events.some((e) => e.type === 'token'), 'token 事件应贯通');
     assert.equal(rt.harness.ledger.summary().runs, 1, '账本经 TUI run 同样落盘（会话同源）');
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

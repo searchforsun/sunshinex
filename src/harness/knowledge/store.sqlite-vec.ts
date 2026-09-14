@@ -3,6 +3,7 @@ import * as path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { KbHit } from '../../types';
 import { registerVectorBackend, VectorStore } from './store';
+import { resolveDataDir } from '../../config/data-dir';
 
 /** f32 向量 → vec0 hex blob 字面量：参数化绑定在 vec0 xUpdate 主键校验下不可用（G1 spike 结论），字面量是唯一插入通道 */
 function f32hex(v: number[]): string {
@@ -106,4 +107,4 @@ export class SqliteVecStore implements VectorStore {
   }
 }
 
-registerVectorBackend('sqlite-vec', () => new SqliteVecStore(process.env.SUNSHINEX_KB_DATA_DIR ?? '.data/kb'));
+registerVectorBackend('sqlite-vec', () => new SqliteVecStore(process.env.SUNSHINEX_KB_DATA_DIR ?? path.join(resolveDataDir(process.cwd()), 'kb')));

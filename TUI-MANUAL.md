@@ -105,4 +105,6 @@ SUNSHINEX_MODEL=glm-5.3-flash
 ## 九、数据与目录
 
 - 会话所有文件操作被约束在启动目录（root）内，越界路径拒绝。
-- `.data/`：账本与记忆落盘；`SUNSHINE.md`：项目业务配置，启动时装载进模型上下文。
+- 运行时数据（账本/记忆/学习技能/知识库）落盘用户级目录 `~/.sunshinex/projects/<工作区>/data`：按启动目录隔离、不污染项目（对标 Claude Code 项目数据形态）；`SUNSHINEX_DATA_DIR` 可整体覆盖。
+- 家目录不可写（沙箱/只读 HOME）时回退启动目录内 `.data/`；旧版项目内 `.data` 不自动迁移，可手动拷贝或以 `SUNSHINEX_DATA_DIR` 指向旧目录沿用。
+- `SUNSHINE.md`：项目业务配置，启动时装载进模型上下文。

@@ -15,6 +15,7 @@ import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { LearnedSkillStore } from './skills/learned';
+import { resolveDataDir } from '../config/data-dir';
 import { RunLedger } from './ledger';
 
 export interface HarnessOptions {
@@ -25,7 +26,7 @@ export interface HarnessOptions {
   mode?: PermissionMode;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给 Reactor；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;
-  /** 学习惯例沉淀开关（缺省 true）：成功任务写入 .data/skills 学习技能；测试/纯执行场景可关 */
+  /** 学习惯例沉淀开关（缺省 true）：成功任务沉淀学习技能至全局数据目录；测试/纯执行场景可关 */
   learnSkills?: boolean;
 }
 
@@ -47,7 +48,7 @@ export class Harness {
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
-    const store = new FileStore(path.join(base, '.data'));
+    const store = new FileStore(resolveDataDir(base));
     const ledger = new RunLedger(store);
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();

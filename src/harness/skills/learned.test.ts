@@ -8,6 +8,8 @@ import { parseSkillFrontmatter, resolveSkill } from '../skills';
 
 function makeRoot(): { root: string; store: LearnedSkillStore } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-learned-'));
+  // 数据目录钉到 root/.data：断言路径稳定（tmp 内），全局用户区零触达；node --test 每文件独立进程，无跨文件泄漏
+  process.env.SUNSHINEX_DATA_DIR = path.join(root, '.data');
   return { root, store: new LearnedSkillStore(root) };
 }
 

@@ -28,8 +28,10 @@ function makeReactor(tmp: string, adapter: ModelAdapter, settle?: (r: { goal: st
   return new Reactor({ registry, safety, context, model: adapter, ...(settle ? { settle } : {}) });
 }
 
-test('done 路径：settle 触发一次，产物 frontmatter 可解析', () => {
+test('done 路径：settle 触发一次，产物 frontmatter 可解析', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-settle1-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
     const calls: { goal: string; reply: string }[] = [];
     const learned = new LearnedSkillStore(tmp);
@@ -41,19 +43,20 @@ test('done 路径：settle 触发一次，产物 frontmatter 可解析', () => {
         learned.settle(r.goal, r.reply);
       },
     );
-    const r = reactor.run({ goal: '部署手册' }, { maxSteps: 3 });
-    return r.then((res) => {
-      assert.equal(res.done, true);
-      assert.equal(calls.length, 1);
-      assert.deepEqual(calls[0], { goal: '部署手册', reply: '部署手册已完成' });
-      const dir = path.join(tmp, '.data', 'skills');
-      const ids = fs.readdirSync(dir);
-      assert.equal(ids.length, 1);
-      const meta = parseSkillFrontmatter(fs.readFileSync(path.join(dir, ids[0], 'skill.md'), 'utf8'));
-      assert.equal(meta.name, '沉淀:部署手册');
-      assert.equal(meta.kind, 'prompt');
-    });
+    // await 必须落在 try 内：return r.then(...) 形态下 finally 在 promise 解决前执行（删目录+还原环境），
+    // settle 异步落盘晚于清理，旧环境靠回退链 mkdir「复活」已删目录侥幸通过——竞态已消除
+    const res = await reactor.run({ goal: '部署手册' }, { maxSteps: 3 });
+    assert.equal(res.done, true);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], { goal: '部署手册', reply: '部署手册已完成' });
+    const dir = path.join(tmp, '.data', 'skills');
+    const ids = fs.readdirSync(dir);
+    assert.equal(ids.length, 1);
+    const meta = parseSkillFrontmatter(fs.readFileSync(path.join(dir, ids[0], 'skill.md'), 'utf8'));
+    assert.equal(meta.name, '沉淀:部署手册');
+    assert.equal(meta.kind, 'prompt');
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -112,7 +115,9 @@ test('settle 抛错：吞错记 episodic，不影响 RunResult', async () => {
 test('Harness 装配：缺省开启沉淀，learnSkills:false 可关', async () => {
   const tmp1 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-settle4-'));
   const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-settle5-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
   try {
+    process.env.SUNSHINEX_DATA_DIR = path.join(tmp1, '.data');
     const h1 = new Harness({ root: tmp1, model: new ScriptedAdapter(['{"done":true,"reply":"验收手册"}']) });
     const r1 = await h1.reactor.run({ goal: '验收手册' }, { maxSteps: 3 });
     assert.equal(r1.done, true);
@@ -124,6 +129,7 @@ test('Harness 装配：缺省开启沉淀，learnSkills:false 可关', async () 
     await h2.reactor.run({ goal: '验收手册' }, { maxSteps: 3 });
     assert.ok(!fs.existsSync(path.join(tmp2, '.data', 'skills')), 'learnSkills:false 不落盘');
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp1, { recursive: true, force: true });
     fs.rmSync(tmp2, { recursive: true, force: true });
   }

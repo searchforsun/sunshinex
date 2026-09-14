@@ -11,11 +11,12 @@ const VERBS = ['Pondering', 'Brewing', 'Weaving', 'Distilling'];
 export function Spinner({ startedAt, tokens }: { startedAt: number; tokens: number }): JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
-    const timer = setInterval(() => setFrame((f) => f + 1), 160);
+    // 240ms：低于人眼闪烁敏感区（流式时与 token 合帧错频叠加，整帧擦写 ≤ 17 次/s）；与 5 帧序列取模保持词轮换节奏一致
+    const timer = setInterval(() => setFrame((f) => f + 1), 240);
     return () => clearInterval(timer);
   }, []);
   const glyph = FRAMES[frame % FRAMES.length];
-  const verb = VERBS[Math.floor(frame / 25) % VERBS.length];
+  const verb = VERBS[Math.floor(frame / 17) % VERBS.length];
   const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
   return (
     <Text color="green" dimColor>

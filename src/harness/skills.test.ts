@@ -21,6 +21,8 @@ test('parseSkillFrontmatter：无 frontmatter 回默认值', () => {
 
 test('loadSkills：扫描 skills/{id}/skill.md，无 skill.md 的目录被滤除，缺失目录返回空', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
   try {
     assert.deepEqual(loadSkills(dir), []);
     fs.mkdirSync(path.join(dir, 'skills', 'alpha'), { recursive: true });
@@ -32,6 +34,7 @@ test('loadSkills：扫描 skills/{id}/skill.md，无 skill.md 的目录被滤除
     assert.equal(list[0].name, 'Alpha');
     assert.equal(list[0].version, '0.1.0');
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

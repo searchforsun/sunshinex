@@ -31,7 +31,7 @@ src/
     reactor.ts        # 最小闭环引擎（observe→think→act）
     ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
     skills.ts         # 技能加载与调度（resolveSkill 参数化 + skillRef 首帧注入）
-    skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀 .data/skills/{id}/skill.md，FIFO 上限）
+    skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
     mcp/              # MCP 客户端（stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）

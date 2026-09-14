@@ -579,7 +579,7 @@ export class SessionController {
   }
 
   /** 高频增量（token/reasoning 逐 delta）合帧节流窗口：约 80ms 通知一次，终态与结构事件仍即时放行 */
-  private static readonly NOTIFY_THROTTLE_MS = 80;
+  private static readonly NOTIFY_THROTTLE_MS = 120; // 流式合帧窗口：≥100ms 显著降低整帧擦写频率（ink 无逐行 diff，动态区任一行变化即全帧重写），~8 帧/s 观感仍连续
   private notifyTimer?: NodeJS.Timeout;
 
   private notify(): void {

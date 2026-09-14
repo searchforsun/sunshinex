@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Result, ok, fail } from '../../result';
+import { resolveDataDir } from '../../config/data-dir';
 
 const MAX_BODY_CHARS = 2000;
 const MAX_LEARNED_SKILLS = 50;
@@ -21,7 +22,7 @@ function clip(text: string): string {
 }
 
 /**
- * 学习技能写入面：成功任务沉淀为 .data/skills/{id}/skill.md（.data 已 gitignore，学习产物不入库；
+ * 学习技能写入面：成功任务沉淀为 <全局数据目录>/skills/{id}/skill.md（~/.sunshinex/projects/<工作区>/data，不入工作区不入库；
  * 用户技能 skills/ 恒优先于学习产物，本类只管写入不参与运行时合并）。
  * 撞名追加 -2/-3… 不覆盖既有产物；目录上限 50（对齐 CAP.skill）超限按 mtime 删最旧。
  */
@@ -33,7 +34,7 @@ export class LearnedSkillStore {
     const rep = reply.trim();
     if (!g || !rep) return fail('SKILL_SETTLE_EMPTY', '沉淀失败：goal 与 reply 均不得为空');
 
-    const dir = path.join(this.root, '.data', 'skills');
+    const dir = path.join(resolveDataDir(this.root), 'skills');
     fs.mkdirSync(dir, { recursive: true });
     this.evictOldest(dir);
 

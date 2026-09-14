@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
+    "test": "tsc -p tsconfig.json && node scripts/run-tests.js",
     "selfcheck": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js selfcheck",
     "cli": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js",
     "prepublishOnly": "pnpm test && node --env-file-if-exists=.env dist/cli/index.js selfcheck"

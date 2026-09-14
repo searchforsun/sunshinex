@@ -87,11 +87,14 @@ test('Reactor 集成：run 收尾自动落账（tokens/route/duration 随 run �
 
 test('Harness 装配：缺省注入账本，run 后 summary 可见', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ledger4-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
     const h = new Harness({ root: tmp, model: scripted(['{"done":true,"reply":"ok"}']) });
     await h.reactor.run({ goal: '装配验收' }, { maxSteps: 2 });
     assert.equal(h.ledger.summary().runs, 1);
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -104,6 +107,7 @@ test('selfcheck 输出 usage 汇总行（空账本显示 0 runs 不崩溃）', (
       cwd: tmp,
       encoding: 'utf8',
       timeout: 30_000,
+      env: { ...process.env, SUNSHINEX_DATA_DIR: path.join(tmp, '.data') },
     });
     assert.equal(p.status, 0, `selfcheck 退出码 ${p.status}：${p.stderr}`);
     assert.match(p.stdout, /usage\s*:\s*\d+ runs\s*\/\s*\d+ tokens/, '应含 usage 汇总行');
