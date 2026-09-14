@@ -6,7 +6,7 @@ import { App } from './components/App';
 import { runTuiLoop } from './tui-loop';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
-import { buildModel } from '../runtime';
+import { buildModel, parseTier } from '../runtime';
 import type { CliArgs } from '../cli';
 
 /** 读根 package.json 版本（失败回退 undefined，由 buildBannerInfo 兜底） */
@@ -27,7 +27,9 @@ export async function runTui(args: CliArgs): Promise<void> {
   const modeFlag = typeof args.flags.mode === 'string' ? args.flags.mode : undefined;
   const mode = modeFlag === 'dontAsk' || modeFlag === 'plan' ? modeFlag : 'manual';
   const model = buildModel(args.flags);
-  const ctrl = new SessionController({ root, mode, model });
+  // 模型档位（用户级会话参数，对标 Claude Code 的模型选择）：--tier 优先，SUNSHINEX_TIER 兜底；/model 可会话内切换
+  const tier = parseTier(args.flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
+  const ctrl = new SessionController({ root, mode, model, ...(tier ? { tier } : {}) });
   const banner = buildBannerInfo({ version: readPackageVersion(), root, model: model.label ?? model.provider });
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');

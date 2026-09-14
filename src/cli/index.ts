@@ -55,21 +55,21 @@ function usageText(): string {
   return t(
     `SunshineX CLI
   sunshinex                               enter the interactive session terminal directly (= sunshinex tui, manual default)
-  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large]
                                          first arg that is not a subcommand is treated as the project dir (= sunshinex tui <dir>); --language UI & prompt language (default en)
   sunshinex selfcheck                     skeleton self-check (perception/tools/security/context/Loop/Graph)
   sunshinex run <dir> [--template=...]    run a Loop refinement template on the dir (goal via prompt or --goal)
   sunshinex pipeline <dir> [--yes]        five-node full pipeline with interactive gate approvals (--yes auto-approves)
-  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large]
                               interactive session terminal (streaming/approvals/todos, manual default)`,
     `SunshineX CLI
   sunshinex                               直接进入交互式会话终端（= sunshinex tui，manual 缺省）
-  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large]
                                          首参非子命令时视为项目目录直进终端（= sunshinex tui <dir>）；--language 界面与提示词语言（缺省 en）
   sunshinex selfcheck                     骨架自检（感知/工具/安全/上下文/Loop/Graph 就绪）
   sunshinex run <dir> [--template=...]    在目录上运行 Loop 模板修正环（goal 走交互或 --goal）
   sunshinex pipeline <dir> [--yes]        五节点全链路流水线，gate 审批交互（--yes 跳过交互直接批准）
-  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh]
+  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large]
                               交互式会话终端（流式/审批/待办，manual 缺省）`,
   );
 }

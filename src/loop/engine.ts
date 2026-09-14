@@ -5,6 +5,7 @@ import {
   LoopContext,
   LoopNodeBase,
   LoopTermination,
+  ModelTier,
   NodeOutput,
   SessionEvent,
   SkillRef,
@@ -44,6 +45,8 @@ export interface LoopDeps {
   onEvent?: (e: SessionEvent) => void;
   /** per-run 成本账本透传：Loop/Graph 内构造的 Reactor 同样落 runs/<id>（成本观测不分通道） */
   ledger?: RunLedger;
+  /** 用户级模型档位（run 级常量，对标 Claude Code：模型档位是用户参数）：装配点注入，agent/角色节点原样下传 Reactor */
+  tier?: ModelTier;
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */

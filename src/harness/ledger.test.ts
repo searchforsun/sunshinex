@@ -78,7 +78,7 @@ test('Reactor 集成：run 收尾自动落账（tokens/route/duration 随 run �
     assert.equal(entry.goal, '记账验收');
     assert.equal(entry.done, true);
     assert.equal(entry.steps, 0, '首轮即完成、无工具步，steps 为 0');
-    assert.equal(entry.route?.tier, 'small', '复杂度路由决策应随账落盘');
+    assert.equal(entry.route?.tier, 'medium', '路由决策应随账落盘（无 hint 缺省 medium，路由已摘自动换档）');
     assert.ok(entry.durationMs >= 0);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

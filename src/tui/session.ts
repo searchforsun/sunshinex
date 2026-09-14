@@ -1,5 +1,6 @@
-import { ApprovalDecision, ApprovalRequest, HistoryStep, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, SessionEvent } from '../types';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
+import { parseTier } from '../runtime';
 import { estimateTokens } from '../harness/context/window';
 import { ReplyStreamExtractor } from './stream-extractor';
 import { stableReplySegment } from './reply-flusher';
@@ -61,6 +62,8 @@ export interface TuiState {
   status: SessionStatus;
   metrics: StatusMetrics;
   live?: LiveBlock;
+  /** 用户级模型档位（/model 会话内切换；undefined = 缺省主模型，run 级常量不随步重估） */
+  model?: ModelTier;
 }
 
 export interface SessionOpts extends TuiRuntimeOpts {
@@ -70,11 +73,18 @@ export interface SessionOpts extends TuiRuntimeOpts {
   runtime?: TuiRuntime;
 }
 
+/** ctx 水位消费策略：真实 usage 口径（exact）直接采信——压缩回落 / plan 新步骤最小化回落都是真实语义；
+ *  估算口径只作向上预告，不得覆盖更准的真实水位（消除同轮内估算↔真实的往复抖动） */
+export function applyCtxWatermark(current: number, incoming: number, exact: boolean): number {
+  if (!(incoming > 0)) return current;
+  return exact ? incoming : Math.max(current, incoming);
+}
+
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
 function slashHelp(): string {
   return t(
-    'Commands: /init analyze & write SUNSHINE.md · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /help 本清单',
+    'Commands: /init analyze & write SUNSHINE.md · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
+    '命令：/init 分析生成/完善 SUNSHINE.md · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
   );
 }
 
@@ -112,6 +122,7 @@ export class SessionController {
       root: opts.root,
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.mode ? { mode: opts.mode } : {}),
+      ...(opts.tier ? { tier: opts.tier } : {}),
       onEvent: (e) => this.onEvent(e),
     });
     const suspendAsker = async (req: ApprovalRequest): Promise<ApprovalDecision> => {
@@ -131,6 +142,7 @@ export class SessionController {
     this.autoAsker = opts.asker;
     if (opts.mode === 'manual') this.runtime.harness.security.setAsker(suspendAsker);
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
+    if (opts.tier) this.state = { ...this.state, model: opts.tier };
   }
 
   getState(): TuiState {
@@ -150,6 +162,10 @@ export class SessionController {
     // 用户输入回显上屏（含斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
     this.pushMsg('user', text);
     if (text.startsWith('/')) {
+      if (text.split(/\s+/)[0] === '/model') {
+        this.handleModel(text);
+        return;
+      }
       await this.handleSlash(text);
       return;
     }
@@ -214,6 +230,7 @@ export class SessionController {
           `Produce a numbered step plan for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`,
           `为下面的目标产出编号步骤计划，每行形如「1. 步骤」；只输出步骤行，不要解释、不要代码块。\n目标：${goal}`,
         ),
+        this.state.model ? { tier: this.state.model } : undefined,
       );
       if (!r.done) {
         throw new Error(describeIncomplete(r.stopReason) || t('Planning incomplete', '规划未完成'));
@@ -269,7 +286,10 @@ export class SessionController {
       this.notify();
       seed.push({ step: seed.length + 1, action: 'plan', observation: t(`Current instruction: ${items[i]}`, `当前指令：${items[i]}`) });
       try {
-        const opts = seed.length > 0 ? { seedHistory: [...seed] } : undefined;
+        const opts = {
+          ...(seed.length > 0 ? { seedHistory: [...seed] } : {}),
+          ...(this.state.model ? { tier: this.state.model } : {}),
+        };
         const r: RunOutcome = await this.runtime.runTask(planGoal, opts);
         if (!r.done) {
           const note = describeIncomplete(r.stopReason);
@@ -312,7 +332,7 @@ export class SessionController {
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.notify();
     try {
-      const r = await this.runtime.runTask(goal);
+      const r = await this.runtime.runTask(goal, this.state.model ? { tier: this.state.model } : undefined);
       const note = describeIncomplete(r.stopReason);
       if (!r.done && note.length > 0) this.pushMsg('system', note);
       this.closeTask();
@@ -330,6 +350,26 @@ export class SessionController {
       await this.runTaskFlow(next.goal);
       next.resolve();
     }
+  }
+
+  /** /model：无参查询当前档位；带参设置（small|medium|large）。档位是 run 级常量，对后续任务生效 */
+  private handleModel(text: string): void {
+    const rest = text.trim().split(/\s+/).slice(1).join(' ');
+    if (!rest) {
+      this.pushMsg('system', t(
+        this.state.model ? `Current model tier: ${this.state.model}` : 'Current model tier: default (SUNSHINEX_MODEL)',
+        this.state.model ? `当前模型档位：${this.state.model}` : '当前模型档位：默认（SUNSHINEX_MODEL）',
+      ));
+      return;
+    }
+    const tier = parseTier(rest);
+    if (!tier) {
+      this.pushMsg('system', t('Usage: /model small|medium|large', '用法：/model small|medium|large'));
+      return;
+    }
+    this.state = { ...this.state, model: tier };
+    this.notify();
+    this.pushMsg('system', t(`Model tier set to ${tier}; applies to subsequent tasks`, `模型档位已设为 ${tier}；对后续任务生效`));
   }
 
   private async handleSlash(text: string): Promise<void> {
@@ -381,6 +421,7 @@ export class SessionController {
           runs: this.state.metrics.runs,
           hitRate: this.state.metrics.hitRate,
         },
+        ...(this.state.model ? { model: this.state.model } : {}),
         live: undefined,
       };
       this.pushMsg('system', t('Soft reset: messages and todos cleared, session approvals cleared (memory & ledger kept)', '软重置：消息与待办已清空，会话级审批登记已清除（记忆与账本保留）'));
@@ -423,9 +464,11 @@ export class SessionController {
         this.appendLive('thinking', e.text ?? '');
         return;
       case 'ctx': {
-        // reactor 每轮装配后的占用水位（estimate 口径）：真实回传 usage.prompt_tokens 可用时优先（更准）
-        const used = typeof e.payload?.promptTokens === 'number' && e.payload.promptTokens > 0 ? e.payload.promptTokens : (typeof e.payload?.used === 'number' ? e.payload.used : this.state.metrics.ctxUsed);
+        // reactor 旁路水位：exact=true 为端点真实 usage.prompt_tokens（直接采信，允许回落）；
+        // exact=false 为装配面估算（只向上预告）。死代码分支「promptTokens 优先」自此真正接通
         const m = this.state.metrics;
+        const incoming = typeof e.payload?.used === 'number' ? e.payload.used : 0;
+        const used = applyCtxWatermark(m.ctxUsed, incoming, e.payload?.exact === true);
         if (used === m.ctxUsed) return;
         this.state = { ...this.state, metrics: { ...m, ctxUsed: used } };
         this.notify();

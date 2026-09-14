@@ -145,31 +145,27 @@ function mkCap() {
   };
 }
 
-test('reply.tier 作为下一轮一次性偏好路由到对应 adapter', async () => {
+test('ReactorOpts.tier 用户级档位整场恒定路由对应 adapter（无提示词档位行）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-pref-'));
   const small = mkCap(), large = mkCap();
   const router = new ModelRouter();
   router.bindDefault(small.adapter);
   router.bind('large', large.adapter);
-  small.set('{"tool":"exec","input":{"command":"echo a"},"done":false,"tier":"large"}');
+  small.set('{"tool":"exec","input":{"command":"echo a"},"done":false}');
   large.set('{"tool":"exec","input":{"command":"echo b"},"done":false}');
   const reactor = makeReactor(tmp, small.adapter, router);
 
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3 });
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, tier: 'large' });
   assert.equal(r.done, true);
-  assert.equal(large.calls.length, 1, '第二轮消费一次性偏好路由 large');
-  assert.equal(small.calls.length, 2, '首轮 small + 第三轮偏好已消费回落（medium→默认回退）');
-  assert.ok(small.calls[0].includes('Current compute tier: small'), 'prompt 含本轮服务档位');
-  assert.ok(large.calls[0].includes('Current compute tier: large'));
-  if (r.steps[0] && r.steps[1]) {
-    assert.equal(r.steps[0].tier, 'small');
-    assert.equal(r.steps[1].tier, 'large');
-  } else {
-    assert.fail('应有至少两步记录');
-  }
+  assert.equal(small.calls.length, 0, '档位整场恒定：不得回落默认档');
+  assert.equal(large.calls.length, 2, '每轮都路由到用户指定的 large');
+  assert.ok(large.calls.every((p: string) => !p.includes('Current compute tier')), '提示词无档位行（模型无自调通道）');
+  assert.equal(r.route?.tier, 'large');
+  assert.match(r.route?.reason ?? '', /user:tier/);
+  assert.equal(r.route?.bound, true);
 });
 
-test('复杂度信号：ratio≥0.6 无偏好升档 large', async () => {
+test('routeHint 显式复杂度信号路由 large（系统不按占比自动换档）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-sig-'));
   const small = mkCap(), large = mkCap();
   const router = new ModelRouter();
@@ -177,12 +173,12 @@ test('复杂度信号：ratio≥0.6 无偏好升档 large', async () => {
   router.bind('large', large.adapter);
   const reactor = makeReactor(tmp, small.adapter, router);
 
-  await reactor.run({ goal: 'x'.repeat(2000) }, { maxSteps: 1, budget: { total: 300, reserve: 40 } });
-  assert.equal(large.calls.length, 1, 'est.used≈530（goal 主导且不可压缩）/total=300 → ratio≥0.6 → large');
+  await reactor.run({ goal: 'x'.repeat(2000) }, { maxSteps: 1, routeHint: { complexity: 'high' } });
+  assert.equal(large.calls.length, 1, '外部 hint 的 complexity:high 路由 large');
   assert.equal(small.calls.length, 0);
 });
 
-test('仅默认绑定的 router 行为与 1B 等价', async () => {
+test('仅默认绑定：缺省 medium（run 级常量），无每步重估', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-fb-'));
   const cap = mkCap();
   cap.set('{"tool":"exec","input":{"command":"echo hi"},"done":false}');
@@ -193,22 +189,23 @@ test('仅默认绑定的 router 行为与 1B 等价', async () => {
   const r = await reactor.run({ goal: 'echo hi' });
   assert.equal(r.done, true);
   assert.equal(cap.calls.length, 2);
-  assert.ok(r.steps.every((s) => s.tier !== undefined), '每步记录实际服务档位');
+  assert.equal(r.route?.tier, 'medium', '无 hint 缺省 medium，整场恒定');
+  assert.equal(r.route?.bound, false, '缺省档承载（非显式绑定）');
 });
 
-test('非法 tier 值被忽略且不中断循环', async () => {
+test('模型回复携带 tier 字段被忽略（自调通道已摘除）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1c-bad-'));
   const small = mkCap(), large = mkCap();
   const router = new ModelRouter();
   router.bindDefault(small.adapter);
   router.bind('large', large.adapter);
-  small.set('{"tool":"exec","input":{"command":"echo x"},"done":false,"tier":"huge"}');
+  small.set('{"tool":"exec","input":{"command":"echo x"},"done":false,"tier":"large"}');
   const reactor = makeReactor(tmp, small.adapter, router);
 
   const r = await reactor.run({ goal: 'g' }, { maxSteps: 2 });
   assert.equal(r.done, true);
-  assert.equal(large.calls.length, 0, '非法档位不得被路由');
-  assert.equal(small.calls.length, 2, '回落信号档/默认回退');
+  assert.equal(large.calls.length, 0, 'reply.tier 不得改变路由：档位只由用户级参数决定');
+  assert.equal(small.calls.length, 2, '全程恒定缺省档');
 });
 
 test('run 收尾清退 working：done 形态 episodic 保留、working 清零', async () => {
@@ -399,6 +396,31 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
   const resultCount = events.filter((t) => t === 'tool-result').length;
   assert.equal(callCount, 2, 'tool-call 事件应逐工具发射');
   assert.equal(resultCount, 2, 'tool-result 事件应逐工具发射');
+});
+
+test('并行协议畸形归一：数组包裹信封对象（[{tools:[...],done:false}]）照常并行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-arrenv2-'));
+  const adapter = new ScriptedAdapter([
+    '[{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}]',
+    '{"done":true,"reply":"已归一包信封"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '包信封' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  assert.ok(r.steps.some((st) => st.action === 'glob+grep'), '数组包信封应解包后照常并行');
+});
+
+test('并行协议畸形归一：顶层数组信封（[{...tools...}]）取首元素按并行动作执行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-arrenv-'));
+  const adapter = new ScriptedAdapter([
+    '[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}]',
+    '{"done":true,"reply":"已归一数组信封"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '数组信封' }, { maxSteps: 3 });
+  assert.equal(r.done, true, '数组信封应归一执行而非静默吞掉动作');
+  const merged = r.steps.find((st) => st.action === 'glob+grep');
+  assert.ok(merged, '顶层数组应归一为并行动作');
 });
 
 test('并行协议畸形归一：tools 被误装进单工具信封（{"tool":"tools"}）按并行动作执行', async () => {

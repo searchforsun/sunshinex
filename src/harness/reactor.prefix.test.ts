@@ -44,30 +44,28 @@ function scripted(replies: string[]): ModelAdapter {
   return { provider: 'scripted', complete: async () => replies[Math.min(call++, replies.length - 1)] };
 }
 
-test('前缀稳定化：档位提示移至尾部，跨档位步共享稳定前缀', async () => {
+test('前缀稳定化：相邻步严格前缀连续（无档位行，唯一差异是尾部 history 追加）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-prefix1-'));
   try {
     const { reactor, prompts } = makeReactor(tmp, scripted([
       '{"tool":"read","input":{"path":"a.txt"},"done":false}',
-      '{"tier":"large","done":true,"reply":"ok"}',
+      '{"done":true,"reply":"ok"}',
       DONE_REPLY,
     ]));
     const r = await reactor.run({ goal: '前缀验收' }, { maxSteps: 5 });
     assert.equal(r.done, true);
     assert.ok(prompts.length >= 2, `应至少两轮 prompt，实际 ${prompts.length}`);
 
-    // 档位提示应在上下文段之后（尾部），不再占据 KV 前缀首位
+    // 档位行整体摘除：模型档位是用户级参数（--tier //model），不进提示词
     for (const p of prompts) {
-      assert.ok(p.indexOf('Current compute tier') > p.indexOf('Context:'), '档位提示应在上下文段之后');
+      assert.ok(!p.includes('Current compute tier'), '提示词不得再含档位行');
     }
-    // 第 1 轮 small、第 2 轮 large：两轮档位不同仍共享覆盖身份段与工具清单段的稳定前缀
-    const p1 = prompts[0];
-    const p2 = prompts[1];
-    let common = 0;
-    while (common < Math.min(p1.length, p2.length) && p1[common] === p2[common]) common++;
-    const stableHead = p1.slice(0, common);
-    assert.ok(stableHead.startsWith('You are SunshineX'), '稳定前缀应以身份段开头');
-    assert.ok(stableHead.includes('Available tools:'), '稳定前缀应覆盖工具清单段');
+    // 相邻步严格前缀连续：后一轮 prompt 以前一轮为逐字节前缀，唯一差异是尾部 history 追加
+    for (let i = 1; i < prompts.length; i++) {
+      assert.ok(prompts[i].startsWith(prompts[i - 1]), `第 ${i + 1} 轮 prompt 应以第 ${i} 轮为逐字节前缀（前缀缓存第一要义）`);
+    }
+    assert.ok(prompts[0].startsWith('You are SunshineX'), '稳定前缀以身份段开头');
+    assert.ok(prompts[0].includes('Available tools:'), '稳定前缀覆盖工具清单段');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

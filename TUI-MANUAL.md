@@ -22,6 +22,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.1.
 sunshinex                        # 任意目录直接进入终端
 sunshinex --mode=manual          # 指定权限模式（缺省 manual）
 sunshinex --language=zh          # 界面与提示词语言（缺省 en 英文版；zh 全中文）
+sunshinex --tier=large           # 模型档位（small|medium|large；会话内 /model 切换，SUNSHINEX_TIER 可设缺省）
 sunshinex ../my-project          # 指定项目目录（= sunshinex tui <dir>，对标 claude <dir>）
 ```
 
@@ -44,6 +45,8 @@ SUNSHINEX_MODEL=glm-5.3-flash
 
 **上下文窗口（可选）**：`SUNSHINEX_CONTEXT_WINDOW`（单位 tokens）设为所用模型的最大上下文（如 1M 窗口模型设 `1000000`），状态栏「ctx 250k/1M（25%）」按此计算占用百分比；不设置时按 200k 内建缺省（该值同时是自动压缩的触发基准）。
 
+**模型档位（可选）**：会话内 `/model small|medium|large` 切换（缺省走主模型）；`--tier` 启动参数或 `SUNSHINEX_TIER` 设会话缺省档。配置 `SUNSHINEX_MODEL_SMALL` / `SUNSHINEX_MODEL_MEDIUM` / `SUNSHINEX_MODEL_LARGE`（OpenAI 协议模型名，端点与密钥复用主配置）后，各档位路由到对应模型，未配置的档位回退主模型。档位是用户级会话参数、整场恒定：系统不做自动换档，换档（=换模型）由你显式触发。分子优先采用端点真实回传的 prompt_tokens（本地估算兜底）；plan 模式下每个步骤是独立的最小上下文（跨步骤只保留前序结论），故长 plan 任务的 ctx 为当前步骤占用，远小于状态栏首位的整场 tokens 累计。
+
 ## 四、基本用法
 
 - 输入文字回车即提交；运行中继续输入自动排队；行尾单个 `\` 回车为多行续行。
@@ -59,6 +62,7 @@ SUNSHINEX_MODEL=glm-5.3-flash
 | `/status` | 会话与账本摘要 |
 | `/plan <目标>` | 先规划后执行（见第六节） |
 | `/compact` | 立即压缩上下文 |
+| `/model [small\|medium\|large]` | 查询/设置模型档位（对后续任务生效） |
 | `/new` | 新会话（清消息与待办、清除审批登记） |
 
 ## 五、权限模式与审批

@@ -2,7 +2,7 @@ import { Harness } from '../harness';
 import { LoopDeps } from '../loop/engine';
 import { longTaskTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, HistoryStep, RunOutcome, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, RunOutcome, SessionEvent } from '../types';
 
 export interface TuiRuntimeOpts {
   root: string;
@@ -11,6 +11,8 @@ export interface TuiRuntimeOpts {
   onEvent?: (e: SessionEvent) => void;
   /** 权限模式（缺省 dontAsk）；manual 时配合 onApproval 走终端化审批 */
   mode?: 'dontAsk' | 'manual' | 'plan';
+  /** 用户级模型档位（run 级常量，对标 Claude Code 的模型选择）：/model 会话内切换经 runTask 逐次覆盖 */
+  tier?: ModelTier;
   /** manual 模式审批回调（guard asker 装配点）；会话结束由调用方 clearSessionAllows */
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 }
@@ -21,7 +23,7 @@ export type { RunOutcome };
 export interface TuiRuntime {
   harness: Harness;
   /** seedHistory：跨 run 链式 history（前缀缓存连续性）——/plan 逐步执行把上一步骤的 steps 续入下一 run */
-  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[] }): Promise<RunOutcome>;
+  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier }): Promise<RunOutcome>;
 }
 
 /** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
@@ -48,7 +50,9 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
   return {
     harness,
     runTask: async (goal, o) => {
-      const tpl = longTaskTemplate(loopDeps, o?.maxSteps !== undefined ? { agentMaxSteps: o.maxSteps } : {});
+      // 档位（run 级常量）：/model 的会话级切换以逐次覆盖下传（缺省沿用装配点 tier）
+      const runDeps: LoopDeps = o?.tier ? { ...loopDeps, tier: o.tier } : loopDeps;
+      const tpl = longTaskTemplate(runDeps, o?.maxSteps !== undefined ? { agentMaxSteps: o.maxSteps } : {});
       const r = await tpl.engine.run(
         goal,
         o?.seedHistory && o.seedHistory.length > 0 ? { state: { seedHistory: o.seedHistory } } : undefined,

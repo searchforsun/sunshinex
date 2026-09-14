@@ -141,3 +141,27 @@ test('事件流：tool-result 载荷含 full（完整 observation），text 仍 
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('ctx 事件：think 前发估算（exact:false），真实 usage.prompt_tokens 回传后以 exact:true 覆盖', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ctx-'));
+  try {
+    const events: SessionEvent[] = [];
+    const adapter = {
+      provider: 'ctx-probe',
+      complete: async (prompt: string, hooks?: UsageHooks) => {
+        hooks?.onPrompt?.(4200);
+        return '{"done":true,"reply":"ok"}';
+      },
+    };
+    await makeReactor(tmp, adapter as unknown as ModelAdapter, (e) => events.push(e)).run({ goal: 'g' }, { maxSteps: 2 });
+    const ctx = events.filter((e) => e.type === 'ctx');
+    assert.ok(ctx.length >= 2, `应至少有估算+真实两次 ctx 事件，实际 ${ctx.length}`);
+    assert.equal(ctx[0].payload?.exact, false, 'think 前为装配面估算口径');
+    const exact = ctx.find((e) => e.payload?.exact === true);
+    assert.ok(exact, '应有真实 usage 口径的 ctx 覆盖事件');
+    assert.equal(exact?.payload?.used, 4200, '真实口径 used=本请求 prompt_tokens 全量');
+    assert.ok(ctx.indexOf(exact!) > ctx.indexOf(ctx[0]), '真实覆盖事件在估算预告之后');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

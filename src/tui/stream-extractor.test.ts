@@ -38,6 +38,12 @@ test('提取器：首个非空白非 { 视为裸文本，原文透传（含前�
   assert.equal(ex.currentMode, 'plain');
 });
 
+test('提取器：顶层数组信封（畸形并行包装）静默不上屏', () => {
+  const { out, ex } = collect(['[{"tool":"grep","input":{"pattern":"a"},"done":false}]']);
+  assert.equal(out, '', '数组信封的协议原文不得透传上屏');
+  assert.equal(ex.currentMode, 'ignore');
+});
+
 test('提取器：reset 复位后提取下一回合', () => {
   let out = '';
   const ex = new ReplyStreamExtractor((t) => { out += t; });

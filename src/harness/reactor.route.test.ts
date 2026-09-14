@@ -31,15 +31,15 @@ function scripted(replies: string[]): ModelAdapter {
   return { provider: 'scripted', complete: async () => replies[Math.min(call++, replies.length - 1)] };
 }
 
-test('路由观测：复杂度信号入参，RouteDecision 随 run 结果返回', async () => {
+test('路由观测：无 hint 缺省 medium（run 级常量），RouteDecision 随 run 结果返回', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-route1-'));
   try {
     const reactor = makeReactor(tmp, scripted([DONE_REPLY]));
     const r = await reactor.run({ goal: '小任务' }, { maxSteps: 2 });
     assert.equal(r.done, true);
     assert.ok(r.route, 'RunResult 应携带路由决策');
-    assert.equal(r.route?.tier, 'small', '小任务低复杂度应路由 small');
-    assert.ok(r.route?.reason.includes('complexity:low'), `reason 应留痕复杂度来源，实际：${r.route?.reason}`);
+    assert.equal(r.route?.tier, 'medium', '无外部 hint 缺省 medium（系统不按占比自动换档）');
+    assert.match(r.route?.reason ?? '', /default:medium/, 'reason 留痕缺省来源');
     assert.equal(r.route?.adapterProvider, 'scripted');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -59,17 +59,17 @@ test('路由观测：外部 role hint 优先于每步复杂度信号', async () 
   }
 });
 
-test('路由观测：模型一次性偏好覆盖下一轮路由，RunResult 记录实际生效的最后一次决策', async () => {
+test('路由观测：模型回复携带 tier 字段被忽略（自调通道已摘除），缺省档整场恒定', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-route3-'));
   try {
     const reactor = makeReactor(tmp, scripted([
       '{"tool":"read","input":{"path":"a.txt"},"tier":"large","done":false}',
       '{"done":true,"reply":"ok"}',
     ]));
-    const r = await reactor.run({ goal: '偏好覆盖' }, { maxSteps: 3 });
+    const r = await reactor.run({ goal: '偏好被忽略' }, { maxSteps: 3 });
     assert.equal(r.done, true);
-    assert.equal(r.route?.tier, 'large', '最终决策应为模型偏好的 large');
-    assert.equal(r.route?.reason, 'model:preference');
+    assert.equal(r.route?.tier, 'medium', 'reply.tier 不得改变路由：档位只由用户级参数决定');
+    assert.match(r.route?.reason ?? '', /default:medium/, '留痕缺省来源');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

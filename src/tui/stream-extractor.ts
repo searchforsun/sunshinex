@@ -1,4 +1,4 @@
-/** 协议增量提取模式：seek 找键 → after-key 等冒号引号 → in-reply 透出 → settled 吞尾；ignore 工具回合；plain 协议违规原文透传 */
+/** 协议增量提取模式：seek 找键 → after-key 等冒号引号 → in-reply 透出 → settled 吞尾；ignore 工具回合与顶层数组信封；plain 协议违规原文透传 */
 import { t } from '../i18n';
 
 export type ExtractorMode = 'seek' | 'after-key' | 'in-reply' | 'settled' | 'ignore' | 'plain';
@@ -109,6 +109,12 @@ export class ReplyStreamExtractor {
       }
       this.sawLead = true;
       if (ch !== '{') {
+        // 顶层数组：并行信封的畸形包装（[{...tools...}]），协议原文不得上屏——
+        // 与 parse 层数组归一同语义，此处整回合静默，终稿/工具流照常
+        if (ch === '[') {
+          this.mode = 'ignore';
+          return;
+        }
         // 协议违规：非 JSON 输出有限透传（补发已跳过的前导空白，受 PLAIN_LIMIT 约束）
         this.mode = 'plain';
         this.emitPlain(this.lead + ch);

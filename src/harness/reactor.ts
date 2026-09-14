@@ -10,7 +10,7 @@ import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 
 export interface Task { goal: string; }
-export interface StepRecord { step: number; action?: string; observation: string; tier?: ModelTier; }
+export interface StepRecord { step: number; action?: string; observation: string; }
 export interface RunResult {
   steps: StepRecord[];
   done: boolean;
@@ -34,6 +34,8 @@ export interface ReactorLimits {
 
 export interface ReactorOpts extends ReactorLimits {
   routeHint?: RouteHint;
+  /** 用户级档位（run 级常量）：显式指定优先于 hint 推导与缺省；整场恒定，不随步重估、无模型自调通道 */
+  tier?: ModelTier;
   /** 前置 history（前缀缓存连续性）：跨 run 链式执行时把上一 run 的 steps 续入本 run history 头部，
    * 使相邻 run 的 prompt 呈「前缀稳定 + 尾部追加」形态——/plan 逐步执行等同一目标多段执行场景用 */
   seedHistory?: StepRecord[];
@@ -57,7 +59,7 @@ export interface ReactorDeps {
 
 /** 并行动作项：一轮同时执行的多个工具调用（除 exec 外均可并行） */
 interface ParallelToolCall { tool: string; input?: Record<string, unknown>; }
-interface Action { tool?: string; input?: Record<string, unknown>; tools?: ParallelToolCall[]; done: boolean; reply?: string; tier?: unknown; phase?: string; }
+interface Action { tool?: string; input?: Record<string, unknown>; tools?: ParallelToolCall[]; done: boolean; reply?: string; phase?: string; }
 /** 并行调用上限：防单轮塞满列表拖长步时延（8 项足够覆盖常用组合） */
 const PARALLEL_TOOLS_LIMIT = 8;
 
@@ -72,7 +74,7 @@ export class Reactor {
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
     const maxSteps = opts?.maxSteps ?? 200;
     // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
-    // （状态栏「上下文占用」分母与压缩/档位占比共用此基准），非法值静默回退内建缺省
+    // （状态栏「上下文占用」分母与压缩占比共用此基准），非法值静默回退内建缺省
     const envWindow = Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? '');
     const budget = opts?.budget ?? {
       total: Number.isFinite(envWindow) && envWindow > 0 ? envWindow : 200_000,
@@ -81,8 +83,21 @@ export class Reactor {
     const tokenCap = opts?.tokenCap;
     const deadlineAt = opts?.deadlineAt;
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
-    let lastRoute: RouteDecision | undefined; // 路由观测：实际生效的最后一次决策（随 run 结果返回）
-    let prefTier: ModelTier | undefined; // 模型一次性偏好：仅影响下一轮
+    // 档位（run 级常量，对标 Claude Code：模型档位是用户级参数）：显式 tier > 外部 hint 推导 > 缺省 medium；
+    // 整场恒定——不随上下文占比逐步重估，模型无自调档通道（提示词无档位行）；换档即换模型，
+    // 属用户显式触发的跨模型重算事件（CLAUDE.md §11 不变量④）
+    const derived = router.route(opts?.routeHint);
+    const tier: ModelTier = opts?.tier ?? derived.tier;
+    const route: RouteDecision = opts?.tier
+      ? {
+          tier,
+          reason: 'user:tier',
+          bound: router.boundTiers().includes(tier),
+          adapterProvider: router.resolve(tier).provider,
+        }
+      : derived;
+    const adapter = router.resolve(tier);
+    this.emit('route', undefined, { tier: route.tier, reason: route.reason });
     let compactedUpTo = 0; // 压缩水位线：此前 steps 已由摘要代表，不再进入 history
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
     // seed 并入 steps（前缀缓存连续性）：跨 run 链式执行承接上一 run 的步骤记录，新步骤号续起，
@@ -136,25 +151,13 @@ export class Reactor {
         } while (rounds < 2 && est.used > budget.total);
       }
 
-      // 上下文占用水位旁路上屏（估算口径，经 session 以真实 usage.promptTokens 优先消费）：
-      // 状态栏「上下文 used/窗口」的分子来源；事件为旁路通知，消费端缺省零开销
-      this.emit('ctx', undefined, { used: est.used });
-      // 档位决策（循环内）：模型一次性偏好优先，否则经 route() 正式入参决策——外部 hint 的 role 优先，
-      // 复杂度信号缺省时以实时预算占比推导（同原 tierStar 语义），决策留痕随 run 结果返回
-      const ratio = est.used / budget.total;
-      const decision = router.route({
-        ...(opts?.routeHint ?? {}),
-        complexity: opts?.routeHint?.complexity ?? (ratio >= 0.6 ? 'high' : step <= 2 && ratio < 0.2 ? 'low' : 'mid'),
-      });
-      const effectiveTier = prefTier ?? decision.tier;
-      lastRoute = prefTier
-        ? { tier: prefTier, reason: 'model:preference', bound: router.boundTiers().includes(prefTier), adapterProvider: router.resolve(prefTier).provider }
-        : decision;
-      this.emit('route', undefined, { tier: lastRoute.tier, reason: lastRoute.reason });
-      prefTier = undefined; // 一次性消费
+      // 上下文占用水位旁路上屏：think 前为装配面估算（exact:false，只允许向上预告）；
+      // 模型回传真实 usage.prompt_tokens 后以 exact:true 覆盖（对标 Claude Code 真实上下文口径）；
+      // 事件为旁路遥测不进提示词，前缀缓存零影响
+      this.emit('ctx', undefined, { used: est.used, exact: false });
 
       // think: 经 ModelAdapter 决策（带动作协议 prompt）
-      const prompt = this.buildPrompt(items, effectiveTier);
+      const prompt = this.buildPrompt(items);
       let raw: string;
       try {
         // usage 为 per-request 全量值：聚合用「基线 + 本请求覆盖」而非盲目累加——
@@ -162,12 +165,16 @@ export class Reactor {
         usageBase = tokensUsed;
         cacheBase = cacheHitTokens;
         promptBase = promptTokens;
-        raw = await this.callModel(router.resolve(effectiveTier), prompt, {
+        raw = await this.callModel(adapter, prompt, {
           onCache: (c) => {
             if (c > 0) cacheHitTokens = cacheBase + c; // 0 值忽略：占位/缺字段不得冲掉已累计的真实值
           },
           onPrompt: (p) => {
-            if (p > 0) promptTokens = promptBase + p;
+            if (p > 0) {
+              promptTokens = promptBase + p;
+              // 本请求真实 prompt_tokens 即模型实际看到的上下文占用：以 exact 权威覆盖估算预告
+              this.emit('ctx', undefined, { used: p, exact: true });
+            }
           },
           onUsage: (t) => {
             if (t > 0) tokensUsed = usageBase + t;
@@ -185,14 +192,13 @@ export class Reactor {
       const parsed = this.parse(raw);
       if (!parsed.ok) {
         // 模型未按 JSON 输出：把原文回填为观察，给模型一次自我纠正机会
-        steps.push({ step, observation: pick(`Model output is not valid JSON (truncated): ${raw.slice(0, 400)}`, `模型输出非 JSON（截断）：${raw.slice(0, 400)}`), tier: effectiveTier });
+        steps.push({ step, observation: pick(`Model output is not valid JSON (truncated): ${raw.slice(0, 400)}`, `模型输出非 JSON（截断）：${raw.slice(0, 400)}`) });
         continue;
       }
 
       const action = parsed.action;
       // 终稿步骤不透传 phase：阶段说明只属于工具动作步骤，答复流式入档中途不再插入阶段行
       this.emit('step', action.tool ?? (action.done ? 'done' : '（无动作）'), { step, phase: action.done ? undefined : action.phase });
-      prefTier = action.tier === 'small' || action.tier === 'medium' || action.tier === 'large' ? action.tier : undefined;
       if (action.done) {
         done = true;
         reply = action.reply ?? '完成';
@@ -201,12 +207,12 @@ export class Reactor {
       }
 
       if (action.tools && action.tools.length > 0) {
-        await this.runParallelTools(step, action, steps, effectiveTier);
+        await this.runParallelTools(step, action, steps);
         continue;
       }
 
       if (!action.tool) {
-        steps.push({ step, observation: pick('Action is missing the tool field', '动作缺少 tool 字段'), tier: effectiveTier });
+        steps.push({ step, observation: pick('Action is missing the tool field', '动作缺少 tool 字段') });
         continue;
       }
 
@@ -215,7 +221,7 @@ export class Reactor {
       const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
       const observation = this.describe(r);
       this.emit('tool-result', observation.slice(0, 200), { ok: r.ok, full: observation });
-      steps.push({ step, action: action.tool, observation, tier: effectiveTier });
+      steps.push({ step, action: action.tool, observation });
       if (r.ok && (action.tool === 'read' || action.tool === 'grep')) {
         const p = (action.input ?? {}).path;
         if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
@@ -242,7 +248,7 @@ export class Reactor {
           steps: steps.length,
           tokensUsed,
           durationMs: Date.now() - startedAt,
-          ...(lastRoute ? { route: { tier: lastRoute.tier, reason: lastRoute.reason } } : {}),
+          ...(route ? { route: { tier: route.tier, reason: route.reason } } : {}),
         });
       } catch {
         // 账本失败不倒灌任务成败
@@ -250,7 +256,7 @@ export class Reactor {
     }
     // 收尾事件：done 必发（正常/异常路径共用出口）；error 已在失败点提前发出
     this.emit('done', reply, { steps: steps.length, tokensUsed, stopReason });
-    return { steps, done, reply, tokensUsed, route: lastRoute, stopReason };
+    return { steps, done, reply, tokensUsed, route, stopReason };
   }
 
   /** 事件发射器：仅旁路通知；onEvent 缺省为零开销空转 */
@@ -271,9 +277,9 @@ export class Reactor {
     return out;
   }
 
-  private buildPrompt(items: ContextItem[], tier: ModelTier): string {
-    // 段序固定「身份 → 工具清单 → 输出协议 → 上下文 → 档位提示」：稳定段前置提升 provider 端 KV 前缀缓存命中，
-    // 档位随步变化置于尾部，避免每步击穿前缀；工具清单按名排序，产出与注册顺序无关
+  private buildPrompt(items: ContextItem[]): string {
+    // 段序固定「身份 → 工具清单 → 输出协议 → 上下文」：全段逐字节稳定，同任务相邻步仅 history 尾部追加（前缀缓存第一要义）；
+    // 工具清单按名排序，产出与注册顺序无关。模型档位是用户级会话参数（--tier / /model），不进提示词、不随步重估
     const tools = [...this.deps.registry.list()]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .map((t) => `- ${t.name}: ${t.description}`)
@@ -316,11 +322,6 @@ export class Reactor {
         `当前工作目录（项目根）：${this.deps.root ?? this.deps.context.root}`,
       ),
       contextText,
-      '',
-      pick(
-        `Current compute tier: ${tier}; to adjust next-round compute, add "tier": "small|medium|large" to the reply JSON`,
-        `当前服务档位：${tier}；如需调整下一轮算力，在回复 JSON 中加 "tier": "small|medium|large"`,
-      ),
     ].join('\n');
   }
 
@@ -333,7 +334,7 @@ export class Reactor {
   /** 一轮并行多个工具（除 exec 外均可并行，对标 Claude Code 的并行调用）：经 Promise.all 并发执行，
    * 结果合并为单条观察回填（tool-call/result 事件仍逐工具发射，TUI 逐行上屏）；
    * exec 为命令类须单发独占执行（命令间有顺序与工作目录依赖），混入即整体拒绝，观察回填供模型自纠 */
-  private async runParallelTools(step: number, action: Action, steps: StepRecord[], tier: ModelTier): Promise<void> {
+  private async runParallelTools(step: number, action: Action, steps: StepRecord[]): Promise<void> {
     const calls = action.tools ?? [];
     const denied =
       calls.length > PARALLEL_TOOLS_LIMIT
@@ -346,7 +347,7 @@ export class Reactor {
           : '';
     if (denied) {
       const obs = pick(`Parallel batch rejected: ${denied}; remove exec and retry, or fall back to a single tool call`, `并行调用被拒绝：${denied}；请移除 exec 后重试，或改用单工具调用`);
-      steps.push({ step, action: 'parallel', observation: obs, tier });
+      steps.push({ step, action: 'parallel', observation: obs });
       return;
     }
     const results = await Promise.all(calls.map((c) => this.deps.registry.execute(c.tool, c.input ?? {}, this.deps.safety)));
@@ -364,12 +365,23 @@ export class Reactor {
       }
     });
     const observation = `[并行 ${calls.length} 项]\n${parts.join('\n')}`;
-    steps.push({ step, action: calls.map((c) => c.tool).join('+'), observation, tier });
+    steps.push({ step, action: calls.map((c) => c.tool).join('+'), observation });
   }
 
   private parse(raw: string): ParseResult {
     try {
-      const j = JSON.parse(raw) as Action;
+      let parsed = JSON.parse(raw) as unknown;
+      // 模型偶发以顶层数组输出信封，两种畸形都要归一，否则动作被静默吞掉（该轮无工具执行也无回复）：
+      // ① [{...tools...}]——信封对象被数组包装，取首元素按对象解析；
+      // ② [{tool..},{tool..}]——裸的调用清单，整体视为并行动作
+      if (Array.isArray(parsed)) {
+        const allCalls =
+          parsed.length > 0 &&
+          parsed.every((c) => !!c && typeof c === 'object' && typeof (c as { tool?: unknown }).tool === 'string');
+        parsed = allCalls ? { tools: parsed } : parsed[0];
+      }
+      if (parsed === null || typeof parsed !== 'object') return { ok: false, raw };
+      const j = parsed as Action;
       // 模型常见畸形：把并行负载误装进单工具信封（{"tool":"tools","input":{...并行数组...}}）——
       // "tools" 是并行协议的数组字段名而非工具名，若不归一，单工具路径会拿 "tools" 查注册表报 TOOL_NOT_FOUND，
       // 模型跟着报错文本退化成逐个串行。这里把 input 为数组（或数组直挂 tools 外层）的形态统一归一为 tools 并行动作
@@ -391,7 +403,6 @@ export class Reactor {
           ...(tools && tools.length > 0 ? { tools } : {}),
           done: j.done === true,
           reply: j.reply,
-          tier: j.tier,
           phase: typeof j.phase === 'string' ? j.phase : undefined,
         },
       };

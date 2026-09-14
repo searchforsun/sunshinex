@@ -65,6 +65,7 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
           budget,
           tokenCap: remaining,
           deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
+          ...(deps.tier ? { tier: deps.tier } : {}),
         },
       );
       return {

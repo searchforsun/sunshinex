@@ -5,6 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
+import { Harness } from '../harness';
+import { RunOutcome, TuiRuntime } from './runtime';
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -217,6 +219,59 @@ test('会话控制器：done 步携带 phase → 不落阶段行（答复正文�
     assert.equal(steps.length, 0, '终稿步骤不透传 phase：阶段行不得插入答复正文');
     const replies = s.messages.filter((m) => m.role === 'assistant');
     assert.ok(replies.some((m) => m.text.includes('完成。')), '答复正文完整');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话控制器：/model 查询与切换（档位 run 级常量，对后续任务生效）', async () => {
+  const tmp = tmpdir('sunshinex-sess-model-');
+  try {
+    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const seen: Array<string | undefined> = [];
+    const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
+    const fake: TuiRuntime = {
+      harness,
+      runTask: async (_goal, o) => {
+        seen.push(o?.tier);
+        return base;
+      },
+    };
+    const ctrl = new SessionController({ root: tmp, runtime: fake });
+    await ctrl.submit('/model');
+    await ctrl.submit('/model huge');
+    await ctrl.submit('/model large');
+    await ctrl.submit('做件事');
+    await ctrl.waitIdle();
+    await ctrl.submit('/model');
+    const texts = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
+    assert.match(texts, /default \(SUNSHINEX_MODEL\)/, '无档位时查询显示缺省来源');
+    assert.match(texts, /Usage: \/model small\|medium\|large/, '非法档位回用法提示');
+    assert.match(texts, /Model tier set to large/, '切换有回执');
+    assert.match(texts, /Current model tier: large/, '再次查询显示当前档位');
+    assert.deepEqual(seen, ['large'], '切换后的任务应携带用户档位，切换前不得携带');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话控制器：装配级 tier 作为初始档位并下传任务', async () => {
+  const tmp = tmpdir('sunshinex-sess-tier0-');
+  try {
+    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const seen: Array<string | undefined> = [];
+    const fake: TuiRuntime = {
+      harness,
+      runTask: async (_goal, o) => {
+        seen.push(o?.tier);
+        return { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
+      },
+    };
+    const ctrl = new SessionController({ root: tmp, runtime: fake, tier: 'medium' });
+    assert.equal(ctrl.getState().model, 'medium', '装配档位进入会话状态');
+    await ctrl.submit('做事');
+    await ctrl.waitIdle();
+    assert.deepEqual(seen, ['medium'], '任务应携带装配档位');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

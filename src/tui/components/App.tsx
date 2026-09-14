@@ -21,7 +21,7 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
 }
 
 /** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序） */
-export const SLASH_COMMANDS = ['/help', '/init', '/new', '/compact', '/status', '/plan'];
+export const SLASH_COMMANDS = ['/help', '/init', '/new', '/compact', '/status', '/model', '/plan'];
 
 /** 斜杠补全候选：按 buffer（已 trim）前缀匹配命令清单；非 / 前缀或无匹配返回空 */
 export function slashCandidates(buffer: string): string[] {
