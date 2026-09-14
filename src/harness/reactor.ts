@@ -129,7 +129,7 @@ export class Reactor {
         break;
       }
       // observe: 装配 → 估算 → 滞回门 → 收敛环（spec §2.2：压缩当轮即以收敛后上下文组装）
-      let items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
+      let items = this.deps.context.assemble(this.toHistory(steps, compactedUpTo));
       let est = this.deps.context.window.estimate(items);
       const overThreshold = () =>
         this.deps.context.window.shouldCompact({ total: budget.total, used: est.used, reserve: budget.reserve });
@@ -145,7 +145,7 @@ export class Reactor {
           await this.deps.context.applyCompaction(chunks, { rereadTokenBudget: Math.floor(budget.reserve / 2) });
           compactedUpTo = steps.length;
           lastCompactStep = step;
-          items = this.deps.context.assemble(task.goal, this.toHistory(steps, compactedUpTo));
+          items = this.deps.context.assemble(this.toHistory(steps, compactedUpTo));
           est = this.deps.context.window.estimate(items);
           rounds++;
         } while (rounds < 2 && est.used > budget.total);
@@ -229,14 +229,12 @@ export class Reactor {
       // 观察只入 history（单一来源）：memory 注入段位于 goal/history 之前，逐步写记忆会击穿其后全部 KV 前缀缓存
     }
 
-    // 任务收尾：清退 working 层（done 与 maxSteps 耗尽共用此出口）
-    this.deps.context.memory.endTask();
-    // 成功沉淀钩子：maxSteps 耗尽 / 模型失败路径不触发；抛错吞掉记 episodic，不倒灌任务成败
+    // 成功沉淀钩子：maxSteps 耗尽 / 模型失败路径不触发；抛错吞掉记链行（链即记忆，事件走链），不倒灌任务成败
     if (done && reply && this.deps.settle) {
       try {
         this.deps.settle({ goal: task.goal, reply });
       } catch (e) {
-        this.deps.context.memory.record('settle', pick(`Skill settle failed (task outcome unaffected): ${e instanceof Error ? e.message : String(e)}`, `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`));
+        this.deps.context.appendChain([{ action: 'note', observation: `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}` }]);
       }
     }
     // per-run 成本账本：tokens/路由决策/时长随收尾落 runs/<id>；落账失败不倒灌任务结果（存储同源，此处吞错）

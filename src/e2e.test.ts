@@ -14,7 +14,7 @@ test('端到端：感知 → Reactor → 工具执行 → 记忆记录', async (
     '{"done":true}',
   ]);
   const h = new Harness({ root, model });
-  h.context.memory.record('compaction', '种子事件：e2e 记忆保留验证');
+  h.context.appendChain([{ action: 'note', observation: '种子事件：e2e 记忆保留验证' }]);
 
   const perceived = h.perception.scan();
   assert.ok(perceived.files.includes('a.txt'));
@@ -22,7 +22,7 @@ test('端到端：感知 → Reactor → 工具执行 → 记忆记录', async (
   const r = await h.reactor.run({ goal: '读取 a.txt' });
   assert.equal(r.done, true);
   assert.ok(r.steps.length >= 1);
-  assert.ok(h.context.memory.index().length >= 1);
+  assert.ok(h.context.chainView().length >= 1);
 });
 
 test('缺省 root 时以 process.cwd() 为基准（当前目录模式）', async () => {

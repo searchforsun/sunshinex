@@ -18,11 +18,11 @@ import { ScriptedAdapter } from '../model/adapter';
 import { FileStore } from '../storage/adapter';
 import { resolveSkill } from '../harness/skills';
 
-/** 首帧观测：记录每次 assemble 产物，断言技能块仅出现在首帧 */
+/** 首帧观测：记录每次 assemble 产物，断言技能块仅出现在首帧（置尾注入，首帧即消费） */
 class RecordingContext extends ContextManager {
   frames: ContextItem[][] = [];
-  assemble(goal: string, history: ContextItem[] = [], relPath?: string): ContextItem[] {
-    const items = super.assemble(goal, history, relPath);
+  assemble(history: ContextItem[] = [], relPath?: string): ContextItem[] {
+    const items = super.assemble(history, relPath);
     this.frames.push(items);
     return items;
   }

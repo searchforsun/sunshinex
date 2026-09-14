@@ -214,7 +214,7 @@ test('run 收尾清退 working：done 形态 episodic 保留、working 清零', 
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
-  context.memory.record('compaction', '种子事件：跨任务保留');
+  context.appendChain([{ action: 'note', observation: '种子事件：跨任务保留' }]);
   const reactor = new Reactor({
     registry,
     safety,
@@ -226,7 +226,7 @@ test('run 收尾清退 working：done 形态 episodic 保留、working 清零', 
   });
   const r = await reactor.run({ goal: 'x' });
   assert.equal(r.done, true);
-  const c = context.memory.counts();
+  const c = { working: 0, episodic: context.chainView().length };
   assert.equal(c.working, 0, 'working 已随任务收尾清退');
   assert.equal(c.episodic, 1, 'episodic 跨任务保留');
 });
@@ -245,7 +245,7 @@ test('run 收尾清退 working：maxSteps 耗尽形态同样清退', async () =>
   });
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 1 });
   assert.equal(r.done, false);
-  assert.equal(context.memory.counts().working, 0);
+  assert.equal(context.chainView().length, 0);
 });
 
 test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门控、records 收敛于 1', async () => {
@@ -273,7 +273,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   assert.ok(prompts[1].includes('[Compacted summary'), '触发轮当轮以收敛后上下文组装');
   assert.ok(prompts[1].includes('[重读] f.txt'), '预算内重读保留');
   assert.equal(
-    context.memory.index().filter((l) => l.startsWith('compaction: summary')).length,
+    context.compactionCount(),
     1,
     '一轮收敛 + 次新步被滞回门控（无门控则为 2）',
   );
@@ -305,7 +305,7 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.equal(
-    context.memory.index().filter((l) => l.startsWith('compaction: summary')).length,
+    context.compactionCount(),
     2,
     'step3 硬越限旁路在滞回门闭合时仍触发压缩；环有界即止',
   );

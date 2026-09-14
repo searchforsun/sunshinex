@@ -429,11 +429,11 @@ export class SessionController {
     }
     if (cmd === '/compact') {
       // 复用 Reactor 同款窗口压缩链：组装当前上下文 → 压缩 → 重注入（与自动压缩同一机制，手动即时触发）
-      const items = this.runtime.harness.context.assemble('', []);
+      const items = this.runtime.harness.context.assemble();
       const before = this.runtime.harness.context.window.estimate(items).used;
       const chunks = await this.runtime.harness.context.window.compact(items, { summaryTokenBudget: 2000 });
       await this.runtime.harness.context.applyCompaction(chunks, { rereadTokenBudget: 2000 });
-      const after = this.runtime.harness.context.window.estimate(this.runtime.harness.context.assemble('', [])).used;
+      const after = this.runtime.harness.context.window.estimate(this.runtime.harness.context.assemble()).used;
       this.state = { ...this.state, metrics: { ...this.state.metrics, ctxUsed: after } };
       this.pushMsg('system', t(`Compressed: ${chunks.length} summary chunks re-injected (ctx ${before} → ${after} tokens)`, `已压缩：${chunks.length} 个摘要块重注入（水位 ${before} → ${after} tokens）`));
       return;

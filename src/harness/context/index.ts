@@ -1,35 +1,37 @@
 import * as fs from 'fs';
-import { pick } from '../../i18n';
 import * as path from 'path';
 import { StorageAdapter } from '../../storage/adapter';
-import { ContextItem } from '../../types';
+import { ContextItem, HistoryStep } from '../../types';
 import { ContextLoader } from './loader';
 import { RulesRegistry } from './rules';
-import { MemoryLifecycle } from './memory-lifecycle';
 import { ContextWindow, ContextChunk, estimateTokens } from './window';
 import { SessionStore } from './session';
 import { maskText } from '../security/chain';
 
 const RECENT_LIMIT = 5;
 const REREAD_MAX_LINES = 500;
-const MEMORY_INJECT_BUDGET = { skill: 600, episodic: 700, working: 700 }; // spec §2.5 常数表：分层配额注入（合计 2000 字符）
 
 /** 上下文与记忆管理门面 */
 export class ContextManager {
   readonly loader: ContextLoader;
   readonly rules: RulesRegistry;
-  readonly memory: MemoryLifecycle;
   readonly window: ContextWindow;
   readonly session: SessionStore;
 
   private compacted: ContextItem[] = [];
   private recent: string[] = [];
   private pendingSkill: string | null = null;
+  /** 会话链（CLAUDE.md §11 只增不改）：主链对话事实的 append-only 账本 */
+  private chain: HistoryStep[] = [];
+  /** 压缩水位：chain 前 chainFrom 条已被压缩块代表（trimChainFront 推进，不回退） */
+  private chainFrom = 0;
+  private chainSeq = 0;
+  /** 压缩事件计数：first 记 1、new 递增；replay（同一压缩事件幂等重放）不计数 */
+  private compactions = 0;
 
   constructor(private readonly rootPath: string, store: StorageAdapter) {
     this.loader = new ContextLoader(rootPath);
     this.rules = new RulesRegistry(rootPath);
-    this.memory = new MemoryLifecycle(store);
     this.window = new ContextWindow();
     this.session = new SessionStore(store);
   }
@@ -55,7 +57,9 @@ export class ContextManager {
 
   /** 压缩重注入：checksum 门禁 → 摘要 + 重读最近文件 → 注入块（生效于后续轮次 assemble） */
   async applyCompaction(chunks: ContextChunk[], opts?: { rereadTokenBudget?: number }): Promise<void> {
-    if (this.window.verifyChecksum(chunks) === 'replay') return; // 同一压缩事件幂等重放
+    const verdict = this.window.verifyChecksum(chunks);
+    if (verdict === 'replay') return; // 同一压缩事件幂等重放
+    this.compactions++; // first=首个压缩事件（计 1）、new=新一轮压缩；replay 不计数
     const items: ContextItem[] = [...this.window.reinject(chunks)];
     for (const rel of this.recent) {
       try {
@@ -77,28 +81,62 @@ export class ContextManager {
       items.push(...rereads);
     }
     this.compacted = items;
-    this.memory.record('compaction', pick(`summary checksum=${this.window.checksum() ?? 'unknown'}, reread ${items.length - 1} files`, `摘要 checksum=${this.window.checksum() ?? 'unknown'}，重读 ${items.length - 1} 个文件`));
   }
 
-  /** 技能首帧注入槽：set 后的下一次 assemble 首位携带（kind=system），消费即清——技能正文不随后续帧重复 */
+  /** 技能首帧注入槽：set 后的下一次 assemble 尾追携带（kind=system），消费即清——技能正文不随后续帧重复 */
   setSkillBlock(content: string): void {
     this.pendingSkill = content;
   }
 
-  /** 统一装配上下文：技能首帧块（如有）→ loader 分层指令 → rules 路径规则 → memory 记忆 → goal → 压缩注入块 → history */
-  assemble(goal: string, history: ContextItem[] = [], relPath?: string): ContextItem[] {
+  /** 会话链只读视图：自压缩水位起的存续条目（reactor 缺省 seed 的单一来源） */
+  chainView(): HistoryStep[] {
+    return this.chain.slice(this.chainFrom);
+  }
+
+  /** 会话链尾追（唯一写入口）：行号由链内序号定死，追加后不重排（裁剪后允许跳号） */
+  appendChain(entries: Array<{ action?: string; observation: string }>): void {
+    for (const e of entries) {
+      this.chain.push({ step: ++this.chainSeq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation });
+    }
+  }
+
+  /** 压缩协调：压缩块已代表的链前缀条目数，推进水位防「链+压缩块」双份 */
+  trimChainFront(n: number): void {
+    if (n <= 0) return;
+    this.chainFrom = Math.min(this.chainFrom + n, this.chain.length);
+  }
+
+  /** 会话级重置（/new）：清链、压缩水位、压缩块与待注入技能块；账本与最近文件登记保留 */
+  resetSession(): void {
+    this.chain = [];
+    this.chainFrom = 0;
+    this.chainSeq = 0;
+    this.compacted = [];
+    this.pendingSkill = null;
+  }
+
+  /** 压缩块观测（只读）：当前压缩块代表的条目数（reactor 压缩事件计数口径） */
+  compactedUpToCount(): number {
+    return this.compacted.length;
+  }
+
+  /** 压缩事件计数（只读观测）：首个压缩事件记 1、新一轮压缩递增；同一压缩事件幂等重放（replay）不计数 */
+  compactionCount(): number {
+    return this.compactions;
+  }
+
+  /** 统一装配（fork 模型段序）：loader → rules → 压缩块 → history（会话链经 reactor 缺省 seed 流入）→ 技能块（尾追）
+   *  goal 槽与记忆段已取消（CLAUDE.md §11：真实任务文本走链尾「当前指令行」，链即记忆） */
+  assemble(history: ContextItem[] = [], relPath?: string): ContextItem[] {
     const items: ContextItem[] = [];
+    items.push(...this.loader.load());
+    if (relPath) items.push(...this.rules.forPath(relPath));
+    items.push(...this.compacted);
+    items.push(...history);
     if (this.pendingSkill !== null) {
       items.push({ kind: 'system', content: this.pendingSkill });
       this.pendingSkill = null;
     }
-    items.push(...this.loader.load());
-    if (relPath) items.push(...this.rules.forPath(relPath));
-    const mem = this.memory.tail(MEMORY_INJECT_BUDGET);
-    if (mem.length > 0) items.push({ kind: 'memory', content: mem.join('\n') });
-    items.push({ kind: 'instruction', content: goal });
-    items.push(...this.compacted);
-    items.push(...history);
     return items;
   }
 }
