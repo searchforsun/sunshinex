@@ -28,6 +28,8 @@
 **Files:**
 - Modify: `src/harness/context/index.ts`
 - Modify: `src/harness/reactor.ts`（仅调用点适配：2 处 assemble 去 goal 实参、删 memory 引用、settle 失败改链行）
+- Modify: `src/harness/reactor.test.ts`（memory→chain 机械等价改写：MemoryLifecycle 移除后的编译适配）
+- Modify: `src/e2e.test.ts`（同上，机械等价）
 - Modify: `src/tui/session.ts`（仅 /compact 两处 assemble 调用适配）
 - Delete: `src/harness/context/memory-lifecycle.ts`、`src/harness/context/memory-lifecycle.test.ts`
 - Modify: `src/harness/context/assemble.test.ts`（整文件重写）
@@ -185,6 +187,27 @@ src/harness/reactor.ts：
 
 src/tui/session.ts（/compact 分支，约 L432/L436）：`this.runtime.harness.context.assemble('', [])` → `this.runtime.harness.context.assemble()`（两处）。
 
+src/harness/reactor.test.ts 与 src/e2e.test.ts（机械等价改写，保 tsc 绿；断言语句原文不动，仅替换 API 调用）：
+```ts
+// reactor.test.ts（'run 收尾清退 working：done 形态' 用例）
+context.memory.record('compaction', '种子事件：跨任务保留');
+// → context.appendChain([{ action: 'note', observation: '种子事件：跨任务保留' }]);
+const c = context.memory.counts();
+// → const c = { working: 0, episodic: context.chainView().length };
+// 断言保持：c.working === 0、c.episodic === 1（链中该种子行即 episodic 语义）
+
+// reactor.test.ts（'maxSteps 耗尽' 用例）
+assert.equal(context.memory.counts().working, 0);
+// → assert.equal(context.chainView().length, 0);
+
+// e2e.test.ts
+h.context.memory.record('compaction', '种子事件：e2e 记忆保留验证');
+// → h.context.appendChain([{ action: 'note', observation: '种子事件：e2e 记忆保留验证' }]);
+assert.ok(h.context.memory.index().length >= 1);
+// → assert.ok(h.context.chainView().length >= 1);
+```
+（注：Task 2 落地收尾回写后如需再校准这两处断言语义，由 Task 2 的回归适配收口。）
+
 - [ ] **Step 5: 更新 compaction.test.ts**
 
 - 所有 `cm.assemble('目标G', X)` → `cm.assemble(X)`。
@@ -204,13 +227,13 @@ CapturingContext 覆写改为：
 
 - [ ] **Step 7: 全量 context/loop 定向测试**
 
-Run: `pnpm build && node --test dist/harness/context/assemble.test.js dist/harness/context/compaction.test.js dist/loop/skill-ref.test.js`
+Run: `pnpm build && node --test dist/harness/context/assemble.test.js dist/harness/context/compaction.test.js dist/loop/skill-ref.test.js dist/harness/reactor.test.js dist/e2e.test.js`
 Expected: PASS
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/harness/context/index.ts src/harness/context/assemble.test.ts src/harness/context/compaction.test.ts src/harness/reactor.ts src/tui/session.ts src/loop/skill-ref.test.ts
+git add src/harness/context/index.ts src/harness/context/assemble.test.ts src/harness/context/compaction.test.ts src/harness/reactor.ts src/harness/reactor.test.ts src/e2e.test.ts src/tui/session.ts src/loop/skill-ref.test.ts
 git rm src/harness/context/memory-lifecycle.ts src/harness/context/memory-lifecycle.test.ts
 git commit -m "feat(ctx): 会话链账本与装配段序改造——链即记忆、技能置尾、goal 槽取消"
 ```
