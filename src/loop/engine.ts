@@ -49,6 +49,8 @@ export interface LoopDeps {
   tier?: ModelTier;
   /** 作用域：session=主链追加（缺省）；fork=私有执行（零主链回写，graph loop 节点用） */
   scope?: 'session' | 'fork';
+  /** 子代理执行单元（harness 装配注入，内联 import 规避模块环）：贯通到循环内构造的 Reactor（spawn 预算源挂载） */
+  runner?: import('../harness/subagent').SubagentRunner;
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */

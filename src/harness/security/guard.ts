@@ -54,6 +54,8 @@ export class SecurityGuard {
     // manual 模式：只读白名单放行，其余 ask（阶段一 CLI 未实现交互，ask 视为放行只读、拒绝写）
     if (tool === 'Bash' && this.isReadonlyCommand(specifier)) return { allowed: true };
     if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return { allowed: true };
+    // spawn 无直接 IO 副作用（派生即编排；子代理内部每个工具调用独立过安全链），manual 下免审批放行
+    if (tool === 'spawn') return { allowed: true };
     return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual 模式需交互确认（阶段一未实现）' };
   }
 

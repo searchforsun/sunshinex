@@ -5,6 +5,7 @@ import { StopReason } from '../types';
 import { Result } from '../result';
 import { ModelAdapter, ModelRouter, ModelTier, ResponseFormat, RouteHint, UsageHooks } from '../model/adapter';
 import { resolveStructuredFormat } from './action-schema';
+import type { SubagentRunner } from './subagent';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
@@ -60,6 +61,8 @@ export interface ReactorDeps {
   ledger?: RunLedger;
   /** 事件流旁路（TUI/GUI 公共地基）：发射即旁路，不注入零副作用；主链/账本语义不受影响 */
   onEvent?: (e: SessionEvent) => void;
+  /** 子代理执行单元（harness/装配根注入）：run 起止挂/摘 spawn 预算源；缺省无 spawn 能力 */
+  runner?: SubagentRunner;
 }
 
 /** 并行动作项：一轮同时执行的多个工具调用（除 exec 外均可并行） */
@@ -126,6 +129,18 @@ export class Reactor {
     let cacheBase = 0;
     let promptBase = 0;
     const startedAt = Date.now();
+
+    // spawn 预算源挂载（仅装配注入 runner 的 reactor）：子代理预算 = 本 run 剩余（动态闭包——
+    // tokenCap 内剩余在 spawn 调用时实时取值）；run 为单一出口（循环 break 后直达收尾 return），
+    // 收尾处统一摘除；即使异常路径遗留挂载，无活动 run 期间 spawn 不可达、下一次 attach 即覆盖，陈旧闭包无害
+    if (this.deps.runner) {
+      this.deps.runner.attachParent(() => ({
+        maxSteps,
+        ...(tokenCap !== undefined ? { tokenCap: Math.max(0, tokenCap - tokensUsed) } : {}),
+        ...(deadlineAt !== undefined ? { deadlineAt } : {}),
+        tier,
+      }));
+    }
 
     let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error 在各自分支覆盖
     for (;;) {
@@ -287,6 +302,8 @@ export class Reactor {
     }
     // 收尾事件：done 必发（正常/异常路径共用出口）；error 已在失败点提前发出
     this.emit('done', reply, { steps: steps.length, tokensUsed, stopReason });
+    // spawn 预算源摘除：只在 run 存续期有效，防 run 外孤儿派生（Runner INVALID_STATE 兜底）
+    this.deps.runner?.detachParent();
     return { steps, done, reply, tokensUsed, route, stopReason, ...(compactedUpToStep > 0 ? { compactedUpTo: compactedUpToStep } : {}) };
   }
 

@@ -51,6 +51,7 @@ export function buildDeps(root: string, flags: Record<string, string | boolean>)
     model: buildModel(flags),
     skills: h.skills,
     root,
+    runner: h.runner,
     // 显式按档绑定才注入 router（reactor 按用户级档位取对应适配器）；--tier 注入 run 级档位常量
     ...(router ? { router } : {}),
     ...(tier ? { tier } : {}),

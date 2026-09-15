@@ -2,6 +2,7 @@ import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
+import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
@@ -43,6 +44,8 @@ export class Harness {
   readonly model: ModelAdapter;
   readonly reactor: Reactor;
   readonly skills: SkillsFacade;
+  /** 子代理执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
+  readonly runner: SubagentRunner;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
 
@@ -59,6 +62,23 @@ export class Harness {
     for (const t of builtinTools(this.safety, base)) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
+    // 子代理执行单元：注册表/安全链/上下文/模型同源装配；agents 目录装配期一次性加载 fail-fast（运行期零增删）
+    const agents = new AgentRegistry();
+    agents.registerBuiltins();
+    agents.loadAgents(base);
+    this.runner = new SubagentRunner(
+      {
+        registry: this.tools,
+        safety: this.safety,
+        context: this.context,
+        model: this.model,
+        root: base,
+        ledger,
+        ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      },
+      agents,
+    );
+    this.tools.register(makeSpawnTool(this.runner));
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,
@@ -66,6 +86,7 @@ export class Harness {
       model: this.model,
       root: base,
       ledger,
+      runner: this.runner,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.learnSkills ?? true
         ? { settle: (r: { goal: string; reply: string }) => new LearnedSkillStore(base).settle(r.goal, r.reply) }

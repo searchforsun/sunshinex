@@ -7,7 +7,7 @@ import { AgentRole, ModelTier, SessionEvent, SubagentSpawnInput } from '../types
 import { pick } from '../i18n';
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
-import { ToolRegistry } from './tools';
+import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 import { RunLedger } from './ledger';
@@ -124,10 +124,10 @@ export const SPAWN_TOOL_NAME = 'spawn';
 /** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队） */
 export const SUBAGENT_CONCURRENCY_LIMIT = 4;
 
-/** 子代理预算（对齐 ReactorLimits 语义；以 tokenCap 硬停为护栏，窗口预算属 loop 编排层不在此设） */
+/** 子代理预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 透传父级无显式上限，以 maxSteps/deadline 为护栏） */
 export interface SubagentBudget {
   maxSteps: number;
-  tokenCap: number;
+  tokenCap?: number;
   deadlineAt?: number;
   tier?: ModelTier;
 }
@@ -143,6 +143,7 @@ export interface SubagentRunnerDeps {
   safety: SafetyChain;
   context: ContextManager;
   model: ModelAdapter;
+  root?: string;
   router?: ModelRouter;
   ledger?: RunLedger;
   onEvent?: (e: SessionEvent) => void;
@@ -170,6 +171,21 @@ export class SubagentRunner {
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
     if (input?.tools && input.tools.length > 0) return this.deps.registry.derive({ only: input.tools });
     return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] });
+  }
+
+  /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、background 两段式未开通 NOT_SUPPORTED、tools 未知名 INVALID_ARG */
+  validateSpawnInput(input: SubagentSpawnInput): void {
+    if (!input.agent_id && !input.prompt) {
+      throw new CodedToolError('INVALID_ARG', pick('agent_id and prompt are both missing', 'agent_id 与 prompt 皆缺'));
+    }
+    if (input.background === true) {
+      throw new CodedToolError('NOT_SUPPORTED', pick('Background two-phase spawn is not available yet; await the result synchronously', '后台两段式未开通，请同步等待结果'));
+    }
+    for (const t of input.tools ?? []) {
+      if (!this.deps.registry.has(t)) {
+        throw new CodedToolError('INVALID_ARG', pick(`Unknown tool: ${t}`, `未知工具：${t}`));
+      }
+    }
   }
 
   /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */
@@ -202,6 +218,7 @@ export class SubagentRunner {
         registry: this.deriveChildRegistry(input),
         context: this.deps.context,
         model: this.deps.model,
+        ...(this.deps.root ? { root: this.deps.root } : {}),
         ...(this.deps.router ? { router: this.deps.router } : {}),
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
         ...(this.deps.onEvent
@@ -239,4 +256,27 @@ export class SubagentRunner {
       this.inFlight--;
     }
   }
+}
+
+/* ---------- spawn 内置工具（主链动态派生入口） ---------- */
+
+/** spawn 工具工厂：同步阻塞形态，子代理最终报告作为该轮工具观察回传；
+ * 同轮 tools 数组批量并行由 reactor 并行闸门放行（subagent 类非 bash）；本身无直接 IO 副作用
+ * （guard manual 分支免审批），子代理内部每个工具调用独立过安全链 */
+export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
+  return {
+    name: SPAWN_TOOL_NAME,
+    description: pick(
+      'Spawn a subagent to execute one independent subtask; its final report returns as this tool result. Issue multiple spawn calls in one tools array to run independent subtasks in parallel. prompt must be self-contained (goal, key facts, paths, constraints, acceptance) - the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
+      '派生一个子代理执行独立子工作，最终报告作为本轮工具结果返回；≥2 个相互独立的子工作应在同一轮 tools 数组内并行派发。prompt 必须自包含（目标、关键事实、路径、约束、验收），子代理看不到当前对话；agent_id 引用注册子代理或预设角色；tools 可选收窄子代理工具面。',
+    ),
+    category: 'subagent',
+    executor: async (input) => {
+      const spec = input as SubagentSpawnInput;
+      runner.validateSpawnInput(spec);
+      const r = await runner.runSubagent(spec);
+      if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
+      return { exitCode: 0, stdout: r.value.reply, stderr: '', timedOut: false };
+    },
+  };
 }

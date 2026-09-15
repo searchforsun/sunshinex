@@ -2,7 +2,7 @@ import { AgentRole, GraphDeps, GraphNodeOutput, SessionEvent } from '../types';
 import { GraphNode } from './engine';
 import { toReactorBudget } from '../loop/nodes';
 import { Reactor } from '../harness/reactor';
-import { ROLE_PRESETS, rolePreset } from '../harness/subagent';
+import { ROLE_PRESETS, SPAWN_TOOL_NAME, rolePreset } from '../harness/subagent';
 import { pick } from '../i18n';
 
 export { ROLE_PRESETS };
@@ -40,7 +40,8 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
       const budget = toReactorBudget(remaining);
       const reactor = new Reactor({
         safety: deps.safety,
-        registry: deps.registry,
+        // fork 私有面收口（「spawn 只在主链工具面」全局不变量）：角色子面派生剔除 spawn（主链收敛在 Task 5 由 Runner 内部统一）
+        registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] }),
         context: deps.context,
         model: deps.model,
         ...(deps.router ? { router: deps.router } : {}),

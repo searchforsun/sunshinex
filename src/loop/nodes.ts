@@ -2,6 +2,7 @@ import { CriterionResult, HistoryStep, LoopContext, NodeOutput } from '../types'
 import { pick } from '../i18n';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
+import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { LoopDeps, LoopEngineNode } from './engine';
 
 /** 剩余预算 → Reactor 预算（纯函数）：total 保底 1，reserve 为 total 的 1/5 */
@@ -114,7 +115,12 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
       }
       const remaining = Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed);
       const budget = toReactorBudget(remaining);
-      const reactor = new Reactor(deps);
+      // 「spawn 只在主链工具面」全局不变量收口：fork 私有面派生剔除 spawn 且不携 runner（无嵌套挂载）
+      const childDeps: LoopDeps =
+        scope === 'fork'
+          ? { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] }) }
+          : deps;
+      const reactor = new Reactor(childDeps);
       const r = await reactor.run(
         { goal },
         {

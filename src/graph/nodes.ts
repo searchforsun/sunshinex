@@ -1,5 +1,6 @@
 import { CriterionResult, GraphContext, GraphNodeOutput, LoopContext, LoopTermination } from '../types';
 import { GraphNode } from './engine';
+import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { codeRefactorTemplate, codeReviewTemplate, testLoopTemplate } from '../loop/templates';
 import { toReactorBudget } from '../loop/nodes';
 import { Reactor } from '../harness/reactor';
@@ -43,10 +44,14 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
           observation: pick(`Current instruction: ${taskText}`, `当前指令：${taskText}`),
         },
       ];
-      const tpl = factory({ ...deps, scope: 'fork' as const }, {
-        ruleCheckers: config.ruleCheckers,
-        termination: { maxTokens: remaining, ...(config.termination ?? {}) },
-      });
+      const tpl = factory(
+        // fork 私有面收口（「spawn 只在主链工具面」全局不变量）：内嵌 Loop 子面剔除 spawn
+        { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] }), scope: 'fork' as const },
+        {
+          ruleCheckers: config.ruleCheckers,
+          termination: { maxTokens: remaining, ...(config.termination ?? {}) },
+        },
+      );
       const r = await tpl.engine.run(taskText, { state: { seedHistory } });
       // 子代理返回制：私有步骤不回主链，终态仅回写一行结论/补丁（下游 fork 经主链快照天然可见）
       if (r.status === 'done' && r.reply) {
