@@ -56,6 +56,30 @@ export interface LiveBlock {
   committedLen?: number;
 }
 
+/** 子代理运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
+export interface ChildLiveState {
+  label: string;
+  startedAt: number;
+  steps: number;
+  tokens: number;
+  /** 全量行（归档用）：工具行/流式文本统一行化 */
+  transcript: string[];
+  /** 面板尾流：transcript 末 ≤3 行（含未成行） */
+  tail: string[];
+}
+
+/** 面板尾流视图：transcript 末 ≤3 行（含未成行 buf）——存储单一来源的派生（规格 §4.2） */
+function childTail(transcript: string[], buf: string): string[] {
+  return [...transcript, ...(buf ? [buf] : [])].slice(-3);
+}
+
+/** spawn 调用关联基名（规格 §4.4）：label ?? agent_id ?? 'subagent'（与 Runner 解析同源；消歧后缀不含入内） */
+function spawnBaseLabel(input: unknown): string {
+  const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
+  return str(obj.label) ?? str(obj.agent_id) ?? 'subagent';
+}
+
 export interface TuiState {
   messages: ChatItem[];
   approval?: ApprovalRequest;
@@ -63,6 +87,8 @@ export interface TuiState {
   status: SessionStatus;
   metrics: StatusMetrics;
   live?: LiveBlock;
+  /** 运行中子代理面板态（规格 §4）：首事件创建、spawn 结果归档移除、回合边界清空 */
+  children: ChildLiveState[];
   /** 用户级模型档位（/model 会话内切换；undefined = 缺省主模型，run 级常量不随步重估） */
   model?: ModelTier;
 }
@@ -106,11 +132,16 @@ export class SessionController {
     todos: [],
     status: 'idle',
     metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, runs: 0, hitRate: 0, ctxUsed: 0 },
+    children: [],
   };
   private listeners = new Set<(s: TuiState) => void>();
   private queue: { goal: string; resolve: () => void }[] = [];
   /** 消息全局单调序号（Static 区 key 唯一性来源）；/new 清空消息但不回绕 */
   private msgSeq = 0;
+  /** 子代理半行缓冲（label → 未成行）：token/reasoning 增量拼接、遇换行成行入 transcript */
+  private childBufs = new Map<string, string>();
+  /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、spawn tool-result 弹出归档（规格 §4.4 配对语义） */
+  private spawnCalls: { seq: number; base: string }[] = [];
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 挂起的计划确认卡（/plan 流程）；confirmPlan 裁决后清除 */
   private pendingPlan?: { items: string[] };
@@ -317,7 +348,10 @@ export class SessionController {
       ...this.state,
       status: 'idle',
       metrics: { ...this.state.metrics, turnStartedAt: 0 },
+      children: [], // 生命周期清空（规格 §4.4）：正常归档后本已为空，此处兜底孤儿面板
     };
+    this.childBufs.clear();
+    this.spawnCalls = [];
     this.notify();
   }
 
@@ -447,9 +481,12 @@ export class SessionController {
           runs: this.state.metrics.runs,
           hitRate: this.state.metrics.hitRate,
         },
+        children: [],
         ...(this.state.model ? { model: this.state.model } : {}),
         live: undefined,
       };
+      this.childBufs.clear();
+      this.spawnCalls = [];
       this.runtime.harness.context.resetSession();
       this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
       return;
@@ -482,6 +519,12 @@ export class SessionController {
   }
 
   private onEvent(e: SessionEvent): void {
+    // 子代理事件分流（规格 §4.1）：带 payload.subagent 标签的事件路由至面板态，不触达主链任何分支
+    const sub = e.payload?.subagent;
+    if (typeof sub === 'string' && sub.length > 0) {
+      this.onChildEvent(e, sub);
+      return;
+    }
     switch (e.type) {
       case 'token':
         this.extractor.feed(e.text ?? '');
@@ -513,13 +556,17 @@ export class SessionController {
         this.notify();
         return;
       }
-      case 'tool-call':
+      case 'tool-call': {
         this.closeLive();
         this.extractor.reset();
         this.committedLen = 0;
         this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call' });
+        // spawn 调用关联栈（规格 §4.4）：压行 seq + 基名，成对语义下 spawn tool-result 必然紧跟其后弹出归档
+        if (e.text === 'spawn') this.spawnCalls.push({ seq: this.msgSeq, base: spawnBaseLabel(e.payload?.input) });
         return;
+      }
       case 'tool-result':
+        if (e.payload?.tool === 'spawn') this.archiveChild();
         this.pushMsg('tool', e.text ?? '', {
           kind: 'result',
           ok: e.payload?.ok === true,
@@ -569,6 +616,89 @@ export class SessionController {
     this.state = {
       ...this.state,
       messages: [...this.state.messages, { role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) }],
+    };
+    this.notify();
+  }
+
+  /** 测试注入口：直喂 SessionEvent 走完整分流路径（等价 runtime onEvent 回调），生产路径零改动 */
+  onEventForTest(e: SessionEvent): void {
+    this.onEvent(e);
+  }
+
+  /** 子代理事件处理（规格 §4.3）：首事件创建面板态；增量行化、结构事件即时行化；不触达主链任何分支 */
+  private onChildEvent(e: SessionEvent, label: string): void {
+    let list = this.state.children;
+    let idx = list.findIndex((c) => c.label === label);
+    if (idx < 0) {
+      list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], tail: [] }];
+      idx = list.length - 1;
+    }
+    const child = list[idx];
+    let buf = this.childBufs.get(label) ?? '';
+    // 结构事件先冲刷半行（保持转录时序：正文半行 → 结构行）
+    let transcript = child.transcript;
+    let steps = child.steps;
+    let tokens = child.tokens;
+    switch (e.type) {
+      case 'token':
+      case 'reasoning': {
+        buf += e.text ?? '';
+        const parts = buf.split('\n');
+        buf = parts.pop() ?? '';
+        transcript = [...child.transcript, ...parts.filter((l) => l.length > 0)];
+        break;
+      }
+      case 'tool-call': {
+        if (buf) {
+          transcript = [...transcript, buf];
+          buf = '';
+        }
+        transcript = [...transcript, toolCallLine(e.text ?? '', e.payload?.input)];
+        break;
+      }
+      case 'tool-result': {
+        if (buf) {
+          transcript = [...transcript, buf];
+          buf = '';
+        }
+        transcript = [...transcript, e.text ?? ''];
+        break;
+      }
+      case 'step':
+        steps = child.steps + 1;
+        break;
+      case 'usage':
+        // per-run turnTotal 为该子代理 run 的累计值（单一 run），直接采信
+        tokens = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : child.tokens;
+        break;
+      default:
+        return; // done/error/ctx/route/approval-* 不入面板态（归档锚点在主链 tool-result）
+    }
+    if (buf) this.childBufs.set(label, buf);
+    else this.childBufs.delete(label);
+    const next: ChildLiveState = { ...child, transcript, steps, tokens, tail: childTail(transcript, buf) };
+    list = list.map((c, i) => (i === idx ? next : c));
+    this.state = { ...this.state, children: list };
+    this.notifyThrottled();
+  }
+
+  /** spawn 结果归档（规格 §4.4）：弹出关联栈（行 seq + 基名）→ 精确/# 前缀/FIFO 匹配未归档子代理 → 半行冲刷 → 转录折入该调用行 detail */
+  private archiveChild(): void {
+    const pending = this.spawnCalls.shift();
+    if (pending === undefined) return;
+    const list = this.state.children;
+    let idx = list.findIndex((c) => c.label === pending.base);
+    if (idx < 0) idx = list.findIndex((c) => c.label.startsWith(`${pending.base}#`));
+    if (idx < 0 && list.length > 0) idx = 0;
+    if (idx < 0) return; // 未命中（如 INVALID_ARG 即败，零子事件）：静默跳过（规格 §8 孤儿容忍）
+    const child = list[idx];
+    const buf = this.childBufs.get(child.label) ?? '';
+    this.childBufs.delete(child.label);
+    const detail = [...child.transcript, ...(buf ? [buf] : [])].join('\n');
+    this.state = {
+      ...this.state,
+      children: list.filter((_, i) => i !== idx),
+      messages: this.state.messages.map((m) => (m.seq === pending.seq ? { ...m, detail } : m)),
     };
     this.notify();
   }

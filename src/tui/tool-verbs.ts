@@ -8,6 +8,7 @@ const VERBS: Record<string, string> = {
   webfetch: 'FETCH',
   websearch: 'WEBSEARCH',
   kb_search: 'SEARCH',
+  spawn: 'SPAWN',
 };
 
 /** 工具调用行文本：`VERB target`（无 target 时仅 VERB）；exec 取命令首段，其余取代表字段并截断 60 字符 */
@@ -31,6 +32,11 @@ const TARGET_FIELD: Record<string, string> = {
 
 function extractTarget(tool: string, input: unknown): string {
   const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  if (tool === 'spawn') {
+    // spawn target = 关联基名（规格 §6 调用行口径）：label ?? agent_id ?? 'subagent'
+    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
+    return clip(str(obj.label) ?? str(obj.agent_id) ?? 'subagent');
+  }
   const field = TARGET_FIELD[tool];
   let raw: string | undefined;
   if (field) {

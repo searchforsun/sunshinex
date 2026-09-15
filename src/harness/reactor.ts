@@ -251,7 +251,7 @@ export class Reactor {
       this.emit('tool-call', action.tool, { input: action.input });
       const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
       const observation = this.describe(r);
-      this.emit('tool-result', observation.slice(0, 200), { ok: r.ok, full: observation });
+      this.emit('tool-result', observation.slice(0, 200), { ok: r.ok, full: observation, tool: action.tool });
       steps.push({ step, action: action.tool, observation });
       if (r.ok && (action.tool === 'read' || action.tool === 'grep')) {
         const p = (action.input ?? {}).path;
@@ -411,7 +411,7 @@ export class Reactor {
     results.forEach((r, i) => {
       this.emit('tool-call', calls[i].tool, { input: calls[i].input });
       const obs = this.describe(r);
-      this.emit('tool-result', obs.slice(0, 200), { ok: r.ok, full: obs });
+      this.emit('tool-result', obs.slice(0, 200), { ok: r.ok, full: obs, tool: calls[i].tool });
       parts.push(`[${calls[i].tool}] ${obs}`);
       const p = (calls[i].input ?? {}).path;
       if (r.ok && (calls[i].tool === 'read' || calls[i].tool === 'grep') && typeof p === 'string' && p.length > 0) {

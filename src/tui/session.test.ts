@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
+import type { ModelAdapter } from '../model/adapter';
 import { Harness } from '../harness';
 import { RunOutcome, TuiRuntime } from './runtime';
 
@@ -301,6 +302,88 @@ test('/new 清空会话链与压缩块', async () => {
     await ctrl.submit('/new');
     await ctrl.waitIdle();
     assert.equal(ctrl.context.chainView().length, 0, '/new 后会话链应清空');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+/* ---------- 子代理显示数据面（payload.subagent 分流 + spawn 归档） ---------- */
+
+test('子代理事件分流：payload.subagent 存在 → 进 children，主链 messages/live 零污染', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child1-'));
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    ctrl.onEventForTest({ type: 'token', text: '子代理', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'tool-call', text: 'read', payload: { input: { path: 'a.ts' }, subagent: 'w' } } as never);
+    const s = ctrl.getState();
+    assert.equal(s.children.length, 1);
+    assert.equal(s.children[0].label, 'w');
+    assert.ok(s.children[0].tail.length >= 1 && s.children[0].tail.length <= 3, 'tail ≤3 行（含未成行）');
+    assert.equal(s.messages.length, 0, '主链零污染');
+    assert.equal(s.live, undefined, '主链 live 零污染');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好一次）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child2-'));
+  try {
+    // gate 挂起子代理模型轮（scripted 适配器无真实异步，不挂起则整链先于断言跑完）：
+    // calls 1 = 主链 spawn 信封，calls 2 = 子代理轮（挂起，留出真实时序窗口喂事件），calls 3 = 主链 done
+    let gateResolve!: () => void;
+    const gate = new Promise<void>((res) => {
+      gateResolve = res;
+    });
+    let calls = 0;
+    const model: ModelAdapter = {
+      provider: 'probe',
+      complete: async () => {
+        calls++;
+        if (calls === 1) return JSON.stringify({ tool: 'spawn', input: { prompt: '子任务', label: 'w' }, done: false });
+        if (calls === 2) {
+          await gate;
+          return JSON.stringify({ done: true, reply: '子任务报告' });
+        }
+        return JSON.stringify({ done: true, reply: '主链完成' });
+      },
+    } as ModelAdapter;
+    const ctrl = new SessionController({ root: tmp, model });
+    const p = ctrl.submit('主任务');
+    await waitFor(() => ctrl.getState().messages.some((m) => m.role === 'tool' && m.kind === 'call'));
+    // 子代理挂起窗口：喂合成 token（真实子代理事件经 Harness 装配 onEvent 同通道自动到达）
+    ctrl.onEventForTest({ type: 'token', text: '分析中…\n', payload: { subagent: 'w' } } as never);
+    assert.equal(ctrl.getState().children.length, 1, '运行中面板应在场（规格 G2）');
+    gateResolve();
+    await p;
+    await ctrl.waitIdle();
+    const s = ctrl.getState();
+    assert.equal(s.children.length, 0, '归档后 children 清空');
+    const call = s.messages.find((m) => m.role === 'tool' && m.kind === 'call' && m.text.startsWith('SPAWN'));
+    assert.ok(call, 'spawn 调用行应上屏（SPAWN w）');
+    assert.ok(call!.detail && call!.detail.includes('分析中'), '调用行 detail 应含子代理转录');
+    assert.ok(s.messages.some((m) => m.kind === 'result' && (m.text ?? '').includes('子任务报告')), '结果行上屏');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9④）', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child3-'));
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    ctrl.onEventForTest({ type: 'token', text: 'A 线\n', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'token', text: 'B 线\n', payload: { subagent: 'w#2' } } as never);
+    // 模拟 Task 1 消歧后的两条同名 spawn 结果流：先压调用（基名均为 w），逐条结果归档
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p1', label: 'w' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: '子完成', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p2', label: 'w' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: '子完成', payload: { tool: 'spawn', ok: true } } as never);
+    const s = ctrl.getState();
+    assert.equal(s.children.length, 0, '两条同名子代理应恰好各归档一次');
+    const details = s.messages.filter((m) => m.kind === 'call').map((m) => m.detail ?? '');
+    assert.equal(details.filter((d) => d.includes('A 线')).length, 1, 'A 线转录恰好归档一次');
+    assert.equal(details.filter((d) => d.includes('B 线')).length, 1, '#2 子代理按前缀匹配归档一次');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

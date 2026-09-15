@@ -2,6 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { toolCallLine } from './tool-verbs';
 
+test('toolCallLine：spawn 映射 SPAWN + label 摘要（规格 §6 调用行口径）', () => {
+  assert.equal(toolCallLine('spawn', { prompt: 'x', label: 'w' }), 'SPAWN w');
+  assert.equal(toolCallLine('spawn', { prompt: 'x' }), 'SPAWN subagent');
+});
+
 test('toolCallLine：已登记工具映射英文动词 + target 摘要', () => {
   assert.equal(toolCallLine('exec', { command: 'ls -la' }), 'EXEC ls');
   assert.equal(toolCallLine('read', { path: 'SUNSHINE.md' }), 'READ SUNSHINE.md');
