@@ -242,3 +242,52 @@ test('runTask scope=fork：作用域线程至 LoopDeps、主链零回写', async
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('createRuntime.runLoop：缺省 test-loop 修正环跑通，结果原样透传', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-goal1-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data'); // 账本隔离：runs===1 精确断言不与跑批互染（本文件首例同款）
+  try {
+    const rt = createRuntime({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"修复完成"}', '{"passed":true,"evidence":"已达成"}']),
+    });
+    const r = await rt.runLoop('修复构建（验收标准：t1=构建通过）');
+    assert.equal(r.status, 'done');
+    assert.equal(r.iterations, 2, 'iterations=节点执行步：agent(1)+check 通过(2)（engine.ts ctx.iteration 口径）');
+    assert.ok((r.criteria ?? []).every((c) => c.passed));
+    assert.equal(rt.harness.ledger.summary().runs, 1, 'loop run 与长任务同账本（会话同源）');
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('createRuntime.runLoop：未知模板报错；判据未过回修一轮后 done，tier 路由事件贯通', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-goal2-'));
+  try {
+    const rt = createRuntime({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"x"}']),
+    });
+    await assert.rejects(() => rt.runLoop('x（验收标准：t1=y）', { template: 'nope' }), /未知模板：nope/);
+
+    const events: SessionEvent[] = [];
+    const rt2 = createRuntime({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"第一版"}',
+        '{"passed":false,"evidence":"不达标"}',
+        '{"done":true,"reply":"第二版"}',
+        '{"passed":true,"evidence":"达标"}',
+      ]),
+      onEvent: (e) => events.push(e),
+    });
+    const r = await rt2.runLoop('修复输出（验收标准：t1=输出正确）', { template: 'test-loop', tier: 'medium' });
+    assert.equal(r.status, 'done');
+    assert.equal(r.iterations, 5, '节点执行步：agent(1)→check 未过(2)→router(3)→修正 agent(4)→check 通过(5)（engine.ts ctx.iteration 口径）');
+    assert.ok(events.some((e) => e.type === 'route'), 'tier 为 run 级常量，路由事件留痕贯通');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

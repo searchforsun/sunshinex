@@ -22,6 +22,7 @@ function fakeRuntime(harness: Harness, outcome: RunOutcome): TuiRuntime {
   return {
     harness,
     runTask: async (goal: string) => (goal.includes('numbered step plan') ? planOutcome : outcome),
+    runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
   };
 }
 

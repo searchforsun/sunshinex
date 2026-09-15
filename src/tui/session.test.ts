@@ -237,6 +237,7 @@ test('会话控制器：/model 查询与切换（档位 run 级常量，对后�
         seen.push(o?.tier);
         return base;
       },
+    runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
     await ctrl.submit('/model');
@@ -267,6 +268,7 @@ test('会话控制器：装配级 tier 作为初始档位并下传任务', async
         seen.push(o?.tier);
         return { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
       },
+    runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake, tier: 'medium' });
     assert.equal(ctrl.getState().model, 'medium', '装配档位进入会话状态');

@@ -1,6 +1,6 @@
 import { Harness } from '../harness';
-import { LoopDeps } from '../loop/engine';
-import { longTaskTemplate } from '../loop/templates';
+import { LoopDeps, LoopRunResult } from '../loop/engine';
+import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
 import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, RunOutcome, SessionEvent } from '../types';
 
@@ -24,6 +24,8 @@ export interface TuiRuntime {
   harness: Harness;
   /** scope 线程：session=主链（缺省）；fork=私有执行（零主链回写）——/init 与规划轮 fork 隔离用 */
   runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; scope?: 'session' | 'fork' }): Promise<RunOutcome>;
+  /** /goal 完整修正环入口（规格 D2/D3）：resolveTemplate → engine.run，LoopRunResult 原样透传（零新类型）；不开放 scope/seedHistory——修正环恒主链 */
+  runLoop(goal: string, opts?: { template?: string; tier?: ModelTier }): Promise<LoopRunResult>;
 }
 
 /** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
@@ -48,15 +50,18 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
   };
 
+  // run 级覆盖统一构造：/model 档位逐次覆盖、scope 线程（runTask/runLoop 共用，防两处漂移）
+  const buildRunDeps = (o?: { tier?: ModelTier; scope?: 'session' | 'fork' }): LoopDeps => ({
+    ...loopDeps,
+    ...(o?.tier ? { tier: o.tier } : {}),
+    ...(o?.scope ? { scope: o.scope } : {}),
+  });
+
   return {
     harness,
     runTask: async (goal, o) => {
       // 档位（run 级常量）：/model 的会话级切换以逐次覆盖下传（缺省沿用装配点 tier）；scope 线程至 LoopDeps
-      const runDeps: LoopDeps = {
-        ...loopDeps,
-        ...(o?.tier ? { tier: o.tier } : {}),
-        ...(o?.scope ? { scope: o.scope } : {}),
-      };
+      const runDeps = buildRunDeps(o);
       const tpl = longTaskTemplate(runDeps, o?.maxSteps !== undefined ? { agentMaxSteps: o.maxSteps } : {});
       const r = await tpl.engine.run(
         goal,
@@ -69,6 +74,11 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
         ...(r.stopReason !== undefined ? { stopReason: r.stopReason } : {}),
         ...(r.history !== undefined && r.history.length > 0 ? { history: r.history } : {}),
       };
+    },
+    runLoop: async (goal, o) => {
+      const runDeps = buildRunDeps(o);
+      const tpl = resolveTemplate(runDeps, o?.template ?? DEFAULT_GOAL_TEMPLATE);
+      return tpl.engine.run(goal);
     },
   };
 }
