@@ -273,3 +273,55 @@ test('Runner 事件透传：子代理事件经 onEvent 流出并带 subagent 标
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('同名并发消歧：后到者 label #N 后缀，事件与结论行一致；不冲突时保持裸 label', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sub-disamb-'));
+  try {
+    let gateResolve!: () => void;
+    const gate = new Promise<void>((res) => {
+      gateResolve = res;
+    });
+    let calls = 0;
+    // 挂起适配器对齐 subagent.spawn.test.ts 并发用例惯用法（ModelAdapter.complete 签名）
+    const model: ModelAdapter = {
+      provider: 'probe',
+      complete: async () => {
+        calls++;
+        if (calls <= 4) {
+          await gate;
+          return JSON.stringify({ done: true, reply: '子完成' });
+        }
+        return JSON.stringify({ done: true, reply: '主链完成' });
+      },
+    } as ModelAdapter;
+    const h = makeHarness(tmp);
+    const events: SessionEvent[] = [];
+    const runner = h.makeRunner(model, (e) => events.push(e));
+    // 注意：此处不经 spawn 工具（子面已剔除 spawn），直接调 runSubagent 双发同名并行
+    const p1 = runner.runSubagent({ prompt: 'p1', label: 'w' });
+    const p2 = runner.runSubagent({ prompt: 'p2', label: 'w' });
+    await new Promise((res) => setTimeout(res, 30)); // 等两个子 Reactor 先后创建（后到者消歧）
+    gateResolve();
+    const [r1, r2] = await Promise.all([p1, p2]);
+    assert.ok(r1.ok && r2.ok);
+    const tags = events.filter((e) => e.type === 'done').map((e) => e.payload?.subagent);
+    assert.deepEqual(
+      [...tags].sort(),
+      ['w', 'w#2'],
+      `两个在飞同名子代理事件标识应互异，实际 ${JSON.stringify(tags)}`,
+    );
+    const chain = h.context.chainView();
+    const nodeLines = chain.filter((s) => s.action === 'node').map((s) => s.observation);
+    assert.equal(nodeLines.length, 2);
+    assert.ok(nodeLines.every((l) => l.startsWith('[w')), `结论行前缀应带消歧 label，实际 ${JSON.stringify(nodeLines)}`);
+    // 顺序结束后第三次 spawn：计数归零，回裸 label（按 r3 之后的事件切片判定）
+    const before = events.length;
+    const r3 = await runner.runSubagent({ prompt: 'p3', label: 'w' });
+    assert.ok(r3.ok);
+    const tagsAfter = events.slice(before).filter((e) => e.type === 'done').map((e) => e.payload?.subagent);
+    assert.deepEqual(tagsAfter, ['w'], '并发清零后新 spawn 应回裸 label');
+    runner.detachParent();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

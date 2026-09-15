@@ -154,6 +154,8 @@ export interface SubagentRunnerDeps {
 export class SubagentRunner {
   private getBudget: (() => SubagentBudget) | null = null;
   private inFlight = 0;
+  /** base label → 在飞计数（同名并发消歧：后到者 #N 后缀，run 结束递减归零删键） */
+  private inFlightLabels = new Map<string, number>();
 
   constructor(private deps: SubagentRunnerDeps, private agents: AgentRegistry) {}
 
@@ -210,6 +212,11 @@ export class SubagentRunner {
         pick(`Subagent concurrency limit reached (${SUBAGENT_CONCURRENCY_LIMIT})`, `子代理并发已达上限（${SUBAGENT_CONCURRENCY_LIMIT}）`),
       );
     }
+    // 同名并发消歧（规格 §7）：后到者按在飞计数加 #N 后缀，事件标识与结论/补丁行前缀随 finalLabel；
+    // 并发集内唯一，全部结束后计数归零、后续 spawn 回裸 label
+    const n = this.inFlightLabels.get(label) ?? 0;
+    const finalLabel = n > 0 ? `${label}#${n + 1}` : label;
+    this.inFlightLabels.set(label, n + 1);
     this.inFlight++;
     try {
       const base = this.deps.context.chainView();
@@ -227,7 +234,7 @@ export class SubagentRunner {
         ...(this.deps.router ? { router: this.deps.router } : {}),
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
         ...(this.deps.onEvent
-          ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: label } }) }
+          ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: finalLabel } }) }
           : {}),
       });
       try {
@@ -244,21 +251,24 @@ export class SubagentRunner {
         );
         if (result.done && result.reply) {
           // 子代理返回制：私有步骤零主链污染，终态恰好一行结论行
-          this.deps.context.appendChain([{ action: 'node', observation: `[${label}] ${firstLine(result.reply)}` }]);
+          this.deps.context.appendChain([{ action: 'node', observation: `[${finalLabel}] ${firstLine(result.reply)}` }]);
           return ok({ reply: result.reply, tokens: result.tokensUsed ?? 0 });
         }
         const reason = result.stopReason ?? 'failed';
         this.deps.context.appendChain([
-          { action: 'note', observation: `[${label}] ${pick('did not finish', '未完成收束')}（${reason}）` },
+          { action: 'note', observation: `[${finalLabel}] ${pick('did not finish', '未完成收束')}（${reason}）` },
         ]);
-        return fail('INCOMPLETE', `[${label}] ${pick('did not finish', '未完成收束')}（${reason}）`);
+        return fail('INCOMPLETE', `[${finalLabel}] ${pick('did not finish', '未完成收束')}（${reason}）`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : pick('unknown error', '未知错误');
-        this.deps.context.appendChain([{ action: 'note', observation: `[${label}] ${pick('failed', '失败')}：${msg}` }]);
+        this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] ${pick('failed', '失败')}：${msg}` }]);
         return fail('INCOMPLETE', msg);
       }
     } finally {
       this.inFlight--;
+      const left = (this.inFlightLabels.get(label) ?? 1) - 1;
+      if (left <= 0) this.inFlightLabels.delete(label);
+      else this.inFlightLabels.set(label, left);
     }
   }
 }
