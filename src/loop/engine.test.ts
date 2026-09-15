@@ -255,12 +255,12 @@ test('T4-3 deficit 回注：check 全挂写入 deficits，Agent 重试轮 prompt
   const deficits = ctx.state.deficits as CriterionResult[];
   assert.ok(Array.isArray(deficits) && deficits.length === 2);
 
-  // 第二轮：AgentNode 重试 → 注入 Reactor 的 goal 含 deficit 段
+  // 第二轮：AgentNode 重试 → 修正要求以链行进入（session 作用域缺省链基自然续接，goal 不再承载任务文本）
   const agent = agentNode(deps, { maxSteps: 2 });
   const out2 = await agent.run(ctx, null);
   assert.equal(out2.status, 'done');
   const prompt = recording.prompts[0] ?? '';
-  assert.ok(prompt.includes('上次未过验收项'), '重试轮 prompt 应含 deficit 段标题');
+  assert.ok(/上次未过验收项|Fix requirements from last review:/.test(prompt), '重试轮 prompt 应含修正要求链行');
   assert.ok(prompt.includes('c1') && prompt.includes('测试全绿'));
   assert.ok(prompt.includes('c2') && prompt.includes('构建零错'));
 });

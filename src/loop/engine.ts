@@ -47,6 +47,8 @@ export interface LoopDeps {
   ledger?: RunLedger;
   /** 用户级模型档位（run 级常量，对标 Claude Code：模型档位是用户参数）：装配点注入，agent/角色节点原样下传 Reactor */
   tier?: ModelTier;
+  /** 作用域：session=主链追加（缺省）；fork=私有执行（零主链回写，graph loop 节点用） */
+  scope?: 'session' | 'fork';
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */

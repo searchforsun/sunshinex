@@ -1,4 +1,5 @@
 import { CriterionResult, HistoryStep, LoopContext, NodeOutput } from '../types';
+import { pick } from '../i18n';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
 import { LoopDeps, LoopEngineNode } from './engine';
@@ -7,14 +8,6 @@ import { LoopDeps, LoopEngineNode } from './engine';
 export function toReactorBudget(remaining: number): { total: number; reserve: number } {
   const total = Math.max(remaining, 1);
   return { total, reserve: Math.floor(total / 5) };
-}
-
-/** 未过验收项回注（纯函数）：ctx.state.deficits 非空时在 goal 后追加清单段，空则原样返回 */
-export function withDeficits(goal: string, ctx: LoopContext): string {
-  const deficits = ctx.state.deficits;
-  if (!Array.isArray(deficits) || deficits.length === 0) return goal;
-  const lines = (deficits as CriterionResult[]).map((d) => `- ${d.id}: ${d.desc}`).join('\n');
-  return `${goal}\n\n上次未过验收项：\n${lines}`;
 }
 
 /** /goal 内嵌验收段解析：`验收标准：c1=描述1; c2=描述2`（容忍中英文分号与空白）；无段返回 null */
@@ -97,17 +90,28 @@ async function judgeOne(
   return modelJudge(adapter, criterion, goal, typeof ctx.state.agentReply === 'string' ? ctx.state.agentReply : '');
 }
 
-/** agent 节点：Reactor 执行（goal 经 deficit 回注），预算按剩余 token 换算 */
+/** agent 节点：Reactor 执行（修正要求走链行/私有前缀，goal 已降级为观测标签），预算按剩余 token 换算 */
 export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEngineNode {
   return {
     id: 'agent',
     kind: 'agent',
     run: async (ctx: LoopContext, input: NodeOutput | null): Promise<NodeOutput> => {
       // 注：NodeOutput 无 goal 字段（计划笔误），engine.run 已把 goal 写入 ctx.state，agentNode 从 state 取
-      const goal = withDeficits(typeof ctx.state.goal === 'string' ? ctx.state.goal : '', ctx);
-      // 跨 run 链式 history（前缀缓存连续性）：调用方经 state.seedHistory 注入上一 run 的步骤记录
+      const goal = typeof ctx.state.goal === 'string' ? ctx.state.goal : '';
+      const scope = deps.scope ?? 'session';
       const rawSeed = ctx.state.seedHistory;
       const seedHistory = Array.isArray(rawSeed) ? (rawSeed as HistoryStep[]) : undefined;
+      // 修正要求走链（主链）/并入私有前缀（fork）：废弃 withDeficits 的 goal 改写（goal 已降级为观测标签）
+      const deficits = Array.isArray(ctx.state.deficits) ? (ctx.state.deficits as Array<{ id: string; desc: string }>) : [];
+      if (deficits.length > 0) {
+        const line = `${pick('Fix requirements from last review:', '修正要求（上次未过验收项）：')}\n${deficits.map((d) => `- ${d.id}: ${d.desc}`).join('\n')}`;
+        if (scope === 'session') {
+          deps.context.appendChain([{ action: 'deficit', observation: line }]);
+        } else if (seedHistory) {
+          const next = (seedHistory.length > 0 ? seedHistory[seedHistory.length - 1].step : 0) + 1;
+          seedHistory.push({ step: next, action: 'deficit', observation: line });
+        }
+      }
       const remaining = Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed);
       const budget = toReactorBudget(remaining);
       const reactor = new Reactor(deps);
@@ -119,9 +123,12 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
           tokenCap: remaining,
           deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
           ...(deps.tier ? { tier: deps.tier } : {}),
+          scope,
           ...(seedHistory && seedHistory.length > 0 ? { seedHistory } : {}),
         },
       );
+      // fork 作用域跨轮接续：步骤经 state.seedHistory 累积（主链作用域由链自然续接，不线程）
+      if (scope === 'fork') ctx.state.seedHistory = r.steps;
       return {
         status: r.done ? 'done' : 'fail',
         reply: r.reply,
