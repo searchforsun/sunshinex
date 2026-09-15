@@ -145,8 +145,8 @@ export type ModelTier = 'small' | 'medium' | 'large';
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
-/** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具） */
-export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external';
+/** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子代理派生） */
+export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent';
 
 /** 模型路由决策留痕（tier + reason + 实际承载适配器，随 run 结果可观测） */
 export interface RouteDecision {

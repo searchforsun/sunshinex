@@ -38,6 +38,21 @@ export class ToolRegistry {
     return this.tools.delete(name);
   }
 
+  /** 派生子集面（浅克隆，executor 引用共享——工具无状态、安全链执行期注入）：
+   * only 按名取交集（未知名静默忽略，未知名校验属 spawn 输入面职责）、exclude 剔除；
+   * 无参即全量克隆，供 fork 装配点在克隆面上做排除收口，原 registry 零突变 */
+  derive(opts?: { exclude?: string[]; only?: string[] }): ToolRegistry {
+    const child = new ToolRegistry();
+    const only = opts?.only;
+    const exclude = new Set(opts?.exclude ?? []);
+    for (const tool of this.tools.values()) {
+      if (only && !only.includes(tool.name)) continue;
+      if (exclude.has(tool.name)) continue;
+      child.register(tool);
+    }
+    return child;
+  }
+
   list(): RegisteredTool[] {
     return [...this.tools.values()];
   }
