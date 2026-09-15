@@ -226,3 +226,19 @@ test('createRuntime：seedHistory 链式下传至内层 Reactor + RunOutcome.his
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('runTask scope=fork：作用域线程至 LoopDeps、主链零回写', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-fork-'));
+  try {
+    const rt = createRuntime({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
+    });
+    const before = rt.harness.context.chainView().length;
+    const r = await rt.runTask('子任务', { scope: 'fork' });
+    assert.equal(r.done, true);
+    assert.equal(rt.harness.context.chainView().length, before, 'fork 作用域零主链回写');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

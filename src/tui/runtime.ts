@@ -22,8 +22,8 @@ export type { RunOutcome };
 
 export interface TuiRuntime {
   harness: Harness;
-  /** seedHistory：跨 run 链式 history（前缀缓存连续性）——/plan 逐步执行把上一步骤的 steps 续入下一 run */
-  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier }): Promise<RunOutcome>;
+  /** scope 线程：session=主链（缺省）；fork=私有执行（零主链回写）——/init 与规划轮 fork 隔离用 */
+  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; scope?: 'session' | 'fork' }): Promise<RunOutcome>;
 }
 
 /** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
@@ -50,8 +50,12 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
   return {
     harness,
     runTask: async (goal, o) => {
-      // 档位（run 级常量）：/model 的会话级切换以逐次覆盖下传（缺省沿用装配点 tier）
-      const runDeps: LoopDeps = o?.tier ? { ...loopDeps, tier: o.tier } : loopDeps;
+      // 档位（run 级常量）：/model 的会话级切换以逐次覆盖下传（缺省沿用装配点 tier）；scope 线程至 LoopDeps
+      const runDeps: LoopDeps = {
+        ...loopDeps,
+        ...(o?.tier ? { tier: o.tier } : {}),
+        ...(o?.scope ? { scope: o.scope } : {}),
+      };
       const tpl = longTaskTemplate(runDeps, o?.maxSteps !== undefined ? { agentMaxSteps: o.maxSteps } : {});
       const r = await tpl.engine.run(
         goal,

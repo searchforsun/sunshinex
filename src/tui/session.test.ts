@@ -276,3 +276,32 @@ test('会话控制器：装配级 tier 作为初始档位并下传任务', async
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('普通任务走链：指令行 + 结论行入链', async () => {
+  const tmp = tmpdir('sunshinex-sess-chain-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([JSON.stringify({ done: true, reply: 'A 完成' })]) });
+    await ctrl.submit('任务A');
+    await ctrl.waitIdle();
+    const chain = ctrl.context.chainView();
+    assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('任务A')), '当前指令行入链');
+    assert.ok(chain.some((s) => s.action === 'reply' && s.observation === 'A 完成'), '结论行入链');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/new 清空会话链与压缩块', async () => {
+  const tmp = tmpdir('sunshinex-sess-new-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([JSON.stringify({ done: true, reply: 'x' })]) });
+    await ctrl.submit('任务A');
+    await ctrl.waitIdle();
+    assert.ok(ctrl.context.chainView().length > 0, '前置：链上应有内容');
+    await ctrl.submit('/new');
+    await ctrl.waitIdle();
+    assert.equal(ctrl.context.chainView().length, 0, '/new 后会话链应清空');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

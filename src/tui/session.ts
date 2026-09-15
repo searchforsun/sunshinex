@@ -7,6 +7,7 @@ import { stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { t } from '../i18n';
+import { ContextManager } from '../harness/context';
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -149,6 +150,11 @@ export class SessionController {
     return this.state;
   }
 
+  /** 会话链账本（测试与高级用法读取；常规写入经 runTaskFlow / runInternalTask） */
+  get context(): ContextManager {
+    return this.runtime.harness.context;
+  }
+
   /** 订阅状态变更（渲染层入口）；返回退订函数 */
   onState(cb: (s: TuiState) => void): () => void {
     this.listeners.add(cb);
@@ -225,13 +231,13 @@ export class SessionController {
       // 规划段与执行段同链（H1）：经主链的 Loop 长任务模板。
       // 原实现是裸调 graph 角色节点——手工构造的 termination 无人读取（装饰性），
       // 且 loop → graph 会形成反向依赖；角色框定改为提示词级（依赖方向保持 graph → loop → harness）。
-      const r = await this.runtime.runTask(
-        t(
-          `Produce a numbered step plan for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`,
-          `为下面的目标产出编号步骤计划，每行形如「1. 步骤」；只输出步骤行，不要解释、不要代码块。\n目标：${goal}`,
-        ),
-        this.state.model ? { tier: this.state.model } : undefined,
+      // 规划段 fork 隔离：verbose 规划提示词与规划结论不进会话链（§11 边界登记——链只承载任务与执行轨迹），
+      // 执行段（runPlanItems）才逐条指令行入链；角色框定保持提示词级（依赖方向 graph → loop → harness）
+      const verbosePlanningPrompt = t(
+        `Produce a numbered step plan for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`,
+        `为下面的目标产出编号步骤计划，每行形如「1. 步骤」；只输出步骤行，不要解释、不要代码块。\n目标：${goal}`,
       );
+      const r = await this.runInternalTask(verbosePlanningPrompt, t('Produce a numbered step plan', '产出编号步骤计划'));
       if (!r.done) {
         throw new Error(describeIncomplete(r.stopReason) || t('Planning incomplete', '规划未完成'));
       }
@@ -268,14 +274,12 @@ export class SessionController {
   private async runPlanItems(items: string[]): Promise<void> {
     this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
     this.notify();
-    // 上下文最小化：goal 只承载恒定执行协议——完整计划清单与阶段编号不进模型上下文（模型见到全量清单会自行
-    // 重排/跳步，「Step 3/4」类自编进度即源于此），每轮只见「前序结论 + 当前指令」；goal 恒定且 seed 只做
-    // history 尾部追加，前缀缓存连续性不受影响。指令行不带编号，前序只保留结论（reply）不带全量观察
-    const planGoal = t(
-      'Execute the plan step by step: each round complete only the single task given by the "Current instruction" at the end of the history, then end the round with done; do not execute, anticipate, or reorder other tasks.',
-      '按计划逐步完成任务：每轮只完成 history 末尾「当前指令」指定的单一任务，完成即以 done 收束本轮；不要执行、预判或重排后续任务。',
-    );
-    const seed: HistoryStep[] = [];
+    const ctx = this.runtime.harness.context;
+    // 计划纪律走链（只增不改）：每轮只完成最后一条当前指令，不执行/预判/重排后续任务
+    ctx.appendChain([{ action: 'note', observation: t(
+      'Plan discipline: each round completes only the last "Current instruction"; do not execute, anticipate, or reorder other tasks.',
+      '计划纪律：每轮只完成最后一条「当前指令」指定任务；不要执行、预判或重排后续任务。',
+    ) }]);
     for (let i = 0; i < items.length; i++) {
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
       this.state = {
@@ -284,13 +288,9 @@ export class SessionController {
       };
       this.usageBase = { tokens: this.state.metrics.turnTokens, cache: this.state.metrics.turnCacheTokens, prompt: this.state.metrics.turnPromptTokens };
       this.notify();
-      seed.push({ step: seed.length + 1, action: 'plan', observation: t(`Current instruction: ${items[i]}`, `当前指令：${items[i]}`) });
+      ctx.appendChain([{ action: 'task', observation: t(`Current instruction: ${items[i]}`, `当前指令：${items[i]}`) }]);
       try {
-        const opts = {
-          ...(seed.length > 0 ? { seedHistory: [...seed] } : {}),
-          ...(this.state.model ? { tier: this.state.model } : {}),
-        };
-        const r: RunOutcome = await this.runtime.runTask(planGoal, opts);
+        const r: RunOutcome = await this.runtime.runTask(items[i], this.state.model ? { tier: this.state.model } : undefined);
         if (!r.done) {
           const note = describeIncomplete(r.stopReason);
           if (note.length > 0) this.pushMsg('system', note);
@@ -300,8 +300,7 @@ export class SessionController {
         const todos = [...this.state.todos];
         todos[i] = { ...todos[i], done: true };
         this.state = { ...this.state, todos };
-        // 前序上下文只保留结论（reply）：全量观察不再进后续 prompt（防上下文随步骤膨胀、防历史轨迹干扰当前决策）
-        if (r.reply) seed.push({ step: seed.length + 1, action: 'reply', observation: r.reply });
+        // 步骤全量轨迹与结论行已由 reactor 会话作用域自动入链（fork 模型：不再只留结论行）
         // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
         this.pushMsg('system', t('Step failed: ' + items[i] + ' (' + (e instanceof Error ? e.message : String(e)) + '); remaining steps paused', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停'));
@@ -322,7 +321,18 @@ export class SessionController {
     this.notify();
   }
 
-  private async runTaskFlow(goal: string): Promise<void> {
+  /** 内部 verbose 任务（/init）：fork 隔离执行——提示词不进会话链（§11 边界登记），终态零主链回写 */
+  private async runInternalTask(prompt: string, label: string): Promise<RunOutcome> {
+    const ctx = this.runtime.harness.context;
+    const base = ctx.chainView();
+    return this.runtime.runTask(label, {
+      scope: 'fork',
+      seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt }],
+      ...(this.state.model ? { tier: this.state.model } : {}),
+    });
+  }
+
+  private async runTaskFlow(goal: string, opts?: { forkInstruction?: string }): Promise<void> {
     this.state = {
       ...this.state,
       status: 'running',
@@ -332,6 +342,22 @@ export class SessionController {
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.notify();
     try {
+      const ctx = this.runtime.harness.context;
+      if (opts?.forkInstruction) {
+        // 内部 verbose 任务（/init 等）：fork 隔离——提示词经 fork 尾追承载、不进会话链（防污染对话流）
+        const base = ctx.chainView();
+        const r = await this.runtime.runTask(goal, {
+          scope: 'fork',
+          seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: opts.forkInstruction }],
+          ...(this.state.model ? { tier: this.state.model } : {}),
+        });
+        const noteF = describeIncomplete(r.stopReason);
+        if (!r.done && noteF.length > 0) this.pushMsg('system', noteF);
+        this.closeTask();
+        return;
+      }
+      // 主链任务（§11 只增不改）：当前指令行尾追进链，reactor 会话作用域收束自动回写全量步骤与结论/补丁行
+      ctx.appendChain([{ action: 'task', observation: t(`Current instruction: ${goal}`, `当前指令：${goal}`) }]);
       const r = await this.runtime.runTask(goal, this.state.model ? { tier: this.state.model } : undefined);
       const note = describeIncomplete(r.stopReason);
       if (!r.done && note.length > 0) this.pushMsg('system', note);
@@ -387,9 +413,9 @@ export class SessionController {
       }
       const p = path.join(this.root, 'SUNSHINE.md');
       const existed = fs.existsSync(p);
-      // 提示词属内部实现不上屏，仅一行启动提示；分析过程经工具实时流可见
+      // 提示词属内部实现不上屏，仅一行启动提示；分析过程经工具实时流可见；fork 隔离——verbose 提示词不进会话链
       this.pushMsg('system', existed ? t('/init: analyzing project, updating SUNSHINE.md…', '/init：分析项目，完善 SUNSHINE.md…') : t('/init: analyzing project, generating SUNSHINE.md…', '/init：分析项目，生成 SUNSHINE.md…'));
-      await this.runTaskFlow(sunshineInitGoal(this.root, existed));
+      await this.runTaskFlow(t('/init: analyze project and write SUNSHINE.md', '/init：分析项目并写入 SUNSHINE.md'), { forkInstruction: sunshineInitGoal(this.root, existed) });
       // 回执只按落盘事实（模型经安全链 write；任务中断时不虚报成功）
       const written = fs.existsSync(p);
       if (written) {
@@ -424,7 +450,8 @@ export class SessionController {
         ...(this.state.model ? { model: this.state.model } : {}),
         live: undefined,
       };
-      this.pushMsg('system', t('Soft reset: messages and todos cleared, session approvals cleared (memory & ledger kept)', '软重置：消息与待办已清空，会话级审批登记已清除（记忆与账本保留）'));
+      this.runtime.harness.context.resetSession();
+      this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
       return;
     }
     if (cmd === '/compact') {

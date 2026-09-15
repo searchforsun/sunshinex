@@ -236,12 +236,11 @@ test('/plan：模型上下文最小化——不见计划清单与阶段编号，
     const step2 = prompts[2];
     assert.ok(!step1.includes('2. 步骤B'), 'Step1 上下文不得出现后续步骤（模型只做当前指令）');
     assert.ok(!step1.includes('Step 1/2') && !step1.includes('1/2'), '指令行不得携带阶段编号');
-    assert.match(step1, /1: plan -> Current instruction: 步骤A/, '当前指令走 history 尾部追加');
-    assert.match(step2, /2: reply -> 步骤A 完成/, '前序只保留结论（reply）');
-    assert.match(step2, /3: plan -> Current instruction: 步骤B/, '下一指令继续尾部追加');
-    // goal 恒定（执行协议不含清单）：两轮 goal 段逐字节一致，前缀缓存连续
-    const goalOf = (p: string) => p.slice(p.indexOf('Execute the plan step by step'), p.indexOf('\n', p.indexOf('Execute the plan step by step')));
-    assert.equal(goalOf(step1), goalOf(step2), 'goal 恒定执行协议，相邻步骤前缀连续');
+    assert.match(step1, /2: task -> Current instruction: 步骤A/, '当前指令以链行进入 history（缺省链基）');
+    assert.match(step2, /3: reply -> 步骤A 完成/, '前序结论行经收尾回写入链');
+    assert.match(step2, /4: task -> Current instruction: 步骤B/, '下一指令继续尾部追加');
+    // fork 模型前缀连续：稳定段+链前缀冻结，相邻步骤差异只在尾部新链行（§11 相邻步严格前缀）
+    assert.ok(step2.startsWith(step1), '相邻步骤 prompt 严格逐字节前缀连续');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -270,11 +269,51 @@ test('/plan：zh 语言——goal/当前指令走中文（zh 抽样；en 缺省�
     await ctrl.submit('/plan 做一件事');
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
-    assert.match(prompts[1], /1: plan -> 当前指令：步骤A/, 'zh 下当前指令行走中文');
-    const goalOf = (p: string) => p.slice(p.indexOf('按计划逐步完成任务'), p.indexOf('\n', p.indexOf('按计划逐步完成任务')));
-    assert.equal(goalOf(prompts[1]), goalOf(prompts[2]), 'zh 下 goal 恒定，前缀连续');
+    assert.match(prompts[1], /task -> 当前指令：步骤A/, 'zh 下当前指令链行走中文');
+    // fork 模型：goal 槽取消（runTask 首参=当前步骤文本，不再有恒定协议段 goal），前缀连续升级为相邻步严格逐字节前缀
+    assert.ok(prompts[2].startsWith(prompts[1]), 'zh 下相邻步骤 prompt 严格逐字节前缀连续');
   } finally {
     setLanguage(prev);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('plan 步骤全量轨迹入链（废除只留结论行）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-chain-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}',
+        '{"tool":"exec","input":{"command":"echo a"},"done":false}',
+        '{"done":true,"reply":"步骤A 完成"}',
+        '{"done":true,"reply":"步骤B 完成"}',
+      ]),
+    });
+    await ctrl.submit('/plan 做一件事');
+    await ctrl.confirmPlan(true);
+    await ctrl.waitIdle();
+    const chain = ctrl.context.chainView();
+    assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('步骤A')), '步骤指令行入链');
+    assert.ok(chain.some((s) => s.action === 'exec'), '步骤 1 的工具观察行仍在链上（不再裁剪）');
+    assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('步骤B')), '步骤 2 指令行尾追');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('规划轮不进链：verbose 提示词与规划结论零主链回写', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-fork-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}']),
+    });
+    await ctrl.submit('/plan 做一件事');
+    const text = ctrl.context.chainView().map((s) => s.observation).join('\n');
+    assert.ok(!text.includes('Produce a numbered step plan'), '规划轮 verbose 提示词不得入链');
+    assert.ok(!ctrl.context.chainView().some((s) => s.action === 'reply'), '规划轮结论行不回主链（fork 隔离）');
+  } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
