@@ -53,7 +53,7 @@ const graphCtx = (termination: GraphTermination, state: Record<string, unknown> 
   results: {},
 } as GraphContext);
 
-test('role agent fork：私有执行零主链回写、终态回写结论行', async () => {
+test('role agent fork：私有执行零主链回写、终态回写结论行（Runner 统一口径）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-graph-fork-'));
   try {
     const deps = makeGraphDeps(tmp, new ScriptedAdapter([JSON.stringify({ done: true, reply: '规划完成' })]));
@@ -63,7 +63,10 @@ test('role agent fork：私有执行零主链回写、终态回写结论行', as
     assert.equal(out.status, 'pass');
     const chain = deps.context.chainView();
     const nodeLine = chain.find((s) => s.action === 'node');
-    assert.ok(nodeLine && nodeLine.observation.includes('规划完成'), '终态必须回写一行结论');
+    assert.ok(
+      nodeLine && nodeLine.observation.startsWith('[Planner] ') && nodeLine.observation.includes('规划完成'),
+      `终态必须回写一行结论（Runner 统一 [label] 前缀口径），实际：${nodeLine?.observation}`,
+    );
     assert.ok(!chain.some((s) => s.action === 'read' || s.action === 'exec'), 'fork 私有步骤不得回写主链');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

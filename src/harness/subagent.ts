@@ -192,12 +192,17 @@ export class SubagentRunner {
   async runSubagent(
     input: SubagentSpawnInput,
     opts?: { taskLine?: string; label?: string; budget?: SubagentBudget },
-  ): Promise<Result<{ reply: string }>> {
+  ): Promise<Result<{ reply: string; tokens: number }>> {
     const budget = opts?.budget ?? this.getBudget?.();
     if (!budget) {
       return fail('INVALID_STATE', pick('Subagent budget source not attached', '子代理预算源未挂载'));
     }
-    const spec = resolveSpawnSpec(this.agents, input, { taskLine: opts?.taskLine });
+    let spec: { roleLine?: string; taskLine: string; label: string };
+    try {
+      spec = resolveSpawnSpec(this.agents, input, { taskLine: opts?.taskLine });
+    } catch (e) {
+      return fail('INVALID_ARG', e instanceof Error ? e.message : String(e));
+    }
     const label = opts?.label ?? spec.label;
     if (this.inFlight >= SUBAGENT_CONCURRENCY_LIMIT) {
       return fail(
@@ -240,7 +245,7 @@ export class SubagentRunner {
         if (result.done && result.reply) {
           // 子代理返回制：私有步骤零主链污染，终态恰好一行结论行
           this.deps.context.appendChain([{ action: 'node', observation: `[${label}] ${firstLine(result.reply)}` }]);
-          return ok({ reply: result.reply });
+          return ok({ reply: result.reply, tokens: result.tokensUsed ?? 0 });
         }
         const reason = result.stopReason ?? 'failed';
         this.deps.context.appendChain([

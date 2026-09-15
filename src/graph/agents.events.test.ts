@@ -81,3 +81,36 @@ test('ROLE_PRESETS 框定不变（透传不改变角色语义）', () => {
   assert.ok(ROLE_PRESETS.planner.label.en.length > 0 && ROLE_PRESETS.planner.label.zh.length > 0);
   assert.ok(ROLE_PRESETS.developer.framing.en.length > 0 && ROLE_PRESETS.developer.framing.zh.length > 0);
 });
+
+test('role agent 收敛 Runner：子代理事件带 subagent 标识透传（单一拼装权威）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-graphev3-'));
+  try {
+    const store = new FileStore(path.join(tmp, '.data'));
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const registry = new ToolRegistry();
+    for (const t of builtinTools(safety, tmp)) registry.register(t);
+    const context = new ContextManager(tmp, store);
+    const events: SessionEvent[] = [];
+    const node = makeRoleAgent('tester', {
+      safety,
+      registry,
+      context,
+      model: new ScriptedAdapter(['{"done":true,"reply":"测试完成"}']),
+      onEvent: (e) => events.push(e),
+    }, { maxSteps: 2 });
+    const out = await node.run({
+      iteration: 0,
+      state: { goal: '测一件事' },
+      tokensUsed: 0,
+      startedAt: Date.now(),
+      termination: { maxNodes: 10, maxTokens: 100000, timeoutMs: 60000 },
+      results: {},
+    } as never, {} as never, {});
+    assert.equal(out.status, 'pass');
+    const doneEvt = events.find((e) => e.type === 'done');
+    assert.ok(doneEvt, 'done 事件应透传');
+    assert.equal(doneEvt.payload?.subagent, 'Tester', 'Runner 事件透传应带子代理标识（label）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

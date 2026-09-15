@@ -1,16 +1,9 @@
-import { AgentRole, GraphDeps, GraphNodeOutput, SessionEvent } from '../types';
+import { AgentRole, GraphDeps, GraphNodeOutput } from '../types';
 import { GraphNode } from './engine';
-import { toReactorBudget } from '../loop/nodes';
-import { Reactor } from '../harness/reactor';
-import { ROLE_PRESETS, SPAWN_TOOL_NAME, rolePreset } from '../harness/subagent';
+import { AgentRegistry, ROLE_PRESETS, SubagentRunner, rolePreset } from '../harness/subagent';
 import { pick } from '../i18n';
 
 export { ROLE_PRESETS };
-
-/** 角色 Agent 事件发射器：deps 注入即透传，缺省空转（Graph onEvent 贯通点） */
-function makeAgentEmitter(deps: GraphDeps): ((e: SessionEvent) => void) | undefined {
-  return deps.onEvent;
-}
 
 export interface RoleAgentOpts {
   maxSteps?: number;
@@ -18,60 +11,56 @@ export interface RoleAgentOpts {
   deps?: string[];
 }
 
-/** 多角色子 Agent：角色框定 + 单次 Reactor run（预算按 Graph 剩余换算；done→pass，未完成→failed 交错误局部化接管） */
+/** Runner 回退装配（deps.runner 未注入的装配面/测试用）：生产三处装配（Harness/CLI/TUI）一律注入；
+ * 回退仅收敛内建预设面（角色 agent_id 恒命中内建，无需目录加载） */
+function ensureRunner(deps: GraphDeps): SubagentRunner {
+  if (deps.runner) return deps.runner;
+  const agents = new AgentRegistry();
+  agents.registerBuiltins();
+  return new SubagentRunner(
+    {
+      registry: deps.registry,
+      safety: deps.safety,
+      context: deps.context,
+      model: deps.model,
+      ...(deps.root ? { root: deps.root } : {}),
+      ...(deps.router ? { router: deps.router } : {}),
+      ...(deps.ledger ? { ledger: deps.ledger } : {}),
+      ...(deps.onEvent ? { onEvent: deps.onEvent } : {}),
+    },
+    agents,
+  );
+}
+
+/** 多角色子 Agent：薄入口收敛（Runner 单一权威——fork 组装/终态回写/护栏全在 Runner 单点，防两处拼装漂移）；
+ * agent_id 直取预设角色、任务行 = 当前指令行（与 spawn 通道同模板）、预算按 Graph 剩余换算；
+ * done→pass，未完成→failed 交错误局部化接管（补丁行由 Runner 回写） */
 export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentOpts = {}): GraphNode {
   const preset = rolePreset(role);
+  const runner = ensureRunner(deps);
   return {
     id: role,
     kind: 'agent',
     deps: opts.deps ?? [],
-    run: async (ctx, _d, _inputs): Promise<GraphNodeOutput> => {
+    run: async (ctx): Promise<GraphNodeOutput> => {
       const goalLabel = String(ctx.state.goal ?? '');
-      const context = deps.context;
-      // fork 组合：主链快照 + 角色行 + 节点任务行（上游结论已在链上，前置依赖天然可见，不再拼入任务文本）
-      const base = context.chainView();
-      const nextStep = base.length > 0 ? base[base.length - 1].step + 1 : 1;
-      const seedHistory = [
-        ...base,
-        { step: nextStep, action: 'role', observation: pick(`Your role: ${preset.label} (${role}); duties: ${preset.framing}`, `你的角色：${preset.label}（${role}），职责：${preset.framing}`) },
-        { step: nextStep + 1, action: 'task', observation: pick(`Current instruction: ${goalLabel}`, `当前指令：${goalLabel}`) },
-      ];
       const remaining = Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed);
-      const budget = toReactorBudget(remaining);
-      const reactor = new Reactor({
-        safety: deps.safety,
-        // fork 私有面收口（「spawn 只在主链工具面」全局不变量）：角色子面派生剔除 spawn（主链收敛在 Task 5 由 Runner 内部统一）
-        registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] }),
-        context: deps.context,
-        model: deps.model,
-        ...(deps.router ? { router: deps.router } : {}),
-        ...(deps.onEvent ? { onEvent: deps.onEvent } : {}),
-        ...(deps.ledger ? { ledger: deps.ledger } : {}),
-      });
-      const result = await reactor.run(
-        { goal: goalLabel },
+      const r = await runner.runSubagent(
+        { agent_id: role, label: preset.label },
         {
-          maxSteps: opts.maxSteps,
-          budget,
-          tokenCap: remaining,
-          deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
-          ...(deps.tier ? { tier: deps.tier } : {}),
-          scope: 'fork',
-          seedHistory,
+          taskLine: pick(`Current instruction: ${goalLabel}`, `当前指令：${goalLabel}`),
+          budget: {
+            maxSteps: opts.maxSteps ?? 200,
+            tokenCap: remaining,
+            deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
+            ...(deps.tier ? { tier: deps.tier } : {}),
+          },
         },
       );
-      // 子代理返回制：私有步骤不回主链，终态仅回写一行结论/补丁（下游 fork 经主链快照天然可见）
-      if (result.done && result.reply) {
-        context.appendChain([{ action: 'node', observation: `${preset.label}：${result.reply}` }]);
-      } else {
-        context.appendChain([{ action: 'note', observation: `${preset.label}: ${pick('node did not finish', '节点未完成收束')} (${result.stopReason ?? 'failed'})` }]);
+      if (r.ok) {
+        return { nodeId: role, status: 'pass', reply: r.value.reply, tokens: r.value.tokens };
       }
-      return {
-        nodeId: role,
-        status: result.done ? 'pass' : 'failed',
-        reply: result.reply,
-        tokens: result.tokensUsed ?? 0,
-      };
+      return { nodeId: role, status: 'failed', tokens: 0 };
     },
   };
 }
