@@ -3,6 +3,7 @@ import { GraphNode } from './engine';
 import { codeRefactorTemplate, codeReviewTemplate, testLoopTemplate } from '../loop/templates';
 import { toReactorBudget } from '../loop/nodes';
 import { Reactor } from '../harness/reactor';
+import { pick } from '../i18n';
 
 /** 规则校验器：对内嵌 Loop 的验收项做进程内判定（io.ctx 为 Loop 子流程上下文） */
 export type RuleChecker = (io: { ctx: LoopContext; goal: string }) => Promise<boolean> | boolean;
@@ -31,11 +32,28 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
         'code-refactor': codeRefactorTemplate,
         'code-review': codeReviewTemplate,
       }[config.template];
-      const tpl = factory(deps, {
+      // fork 化：内嵌 Loop 以 fork 作用域私有执行（零主链回写），种子 = 主链快照 + 节点任务行
+      const taskText = config.goal ?? String(ctx.state.goal ?? '');
+      const base = deps.context.chainView();
+      const seedHistory = [
+        ...base,
+        {
+          step: (base.length > 0 ? base[base.length - 1].step : 0) + 1,
+          action: 'task',
+          observation: pick(`Current instruction: ${taskText}`, `当前指令：${taskText}`),
+        },
+      ];
+      const tpl = factory({ ...deps, scope: 'fork' as const }, {
         ruleCheckers: config.ruleCheckers,
         termination: { maxTokens: remaining, ...(config.termination ?? {}) },
       });
-      const r = await tpl.engine.run(config.goal ?? String(ctx.state.goal ?? ''));
+      const r = await tpl.engine.run(taskText, { state: { seedHistory } });
+      // 子代理返回制：私有步骤不回主链，终态仅回写一行结论/补丁（下游 fork 经主链快照天然可见）
+      if (r.status === 'done' && r.reply) {
+        deps.context.appendChain([{ action: 'node', observation: `${id}: ${r.reply}` }]);
+      } else {
+        deps.context.appendChain([{ action: 'note', observation: `${id}: ${pick('loop node did not finish', '子流程未完成收束')} (${r.status})` }]);
+      }
       const status: GraphNodeOutput['status'] =
         r.status === 'done' ? 'pass' : r.status === 'paused' ? 'paused' : 'failed';
       const criteria = r.criteria as CriterionResult[] | undefined;
