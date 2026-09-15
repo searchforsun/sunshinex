@@ -9,6 +9,7 @@ import { describeIncomplete } from './stop-reason';
 import { t } from '../i18n';
 import { ContextManager } from '../harness/context';
 import { sunshineInitGoal } from '../harness/sunshine-init';
+import { DEFAULT_GOAL_TEMPLATE, TEMPLATE_NAMES } from '../loop/templates';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -110,8 +111,8 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
 function slashHelp(): string {
   return t(
-    'Commands: /init analyze & write SUNSHINE.md · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
+    'Commands: /init analyze & write SUNSHINE.md · /goal run full verify-fix loop: /goal <goal> [--template=code-refactor|test-loop|code-review] · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
+    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> [--template=code-refactor|test-loop|code-review] · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
   );
 }
 
@@ -404,6 +405,52 @@ export class SessionController {
     }
   }
 
+  /** /goal 完整修正环（规格 2026-09-15-tui-goal D2/D3）：模板名已经 handleSlash 预校验（入链前拒绝）；
+   *  任务行入链带 /goal·模板 标注 → runLoop → 终态回执（status/iterations/criteria/tokens）→ closeTask。
+   *  异常路径同 runTaskFlow 切 error 粘滞（保留现场）；已入链任务行不回滚（append-only，失败以链上轨迹为准） */
+  private async runGoalFlow(goal: string, template: string): Promise<void> {
+    this.state = {
+      ...this.state,
+      status: 'running',
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
+      live: undefined,
+    };
+    this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
+    this.notify();
+    try {
+      this.runtime.harness.context.appendChain([
+        { action: 'task', observation: t(`Current instruction: ${goal} (/goal · ${template})`, `当前指令：${goal}（/goal · ${template}）`) },
+      ]);
+      this.pushMsg('system', t(`✻ /goal: ${template} · ${goal}`, `✻ /goal：${template} · ${goal}`));
+      const r = await this.runtime.runLoop(goal, { template, ...(this.state.model ? { tier: this.state.model } : {}) });
+      const lines = (r.criteria ?? []).map((c) => `  ${c.passed ? '✓' : '✗'} ${c.id} ${c.desc}`);
+      if (r.status === 'done') {
+        this.pushMsg('system', [
+          t(
+            `✻ /goal done: ${template} · ${r.iterations} iteration(s) · ${r.tokensUsed} tokens`,
+            `✻ /goal 完成：${template} · ${r.iterations} 轮 · ${r.tokensUsed} tokens`,
+          ),
+          ...lines,
+        ].join('\n'));
+      } else {
+        this.pushMsg('system', [
+          t(
+            `✻ /goal incomplete: ${r.status}${r.error ? ` — ${r.error}` : ''}`,
+            `✻ /goal 未完成：${r.status}${r.error ? ` — ${r.error}` : ''}`,
+          ),
+          ...lines,
+          describeIncomplete(r.stopReason),
+        ].filter((l) => l.length > 0).join('\n'));
+      }
+      this.closeTask();
+    } catch (e) {
+      this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`));
+      this.state = { ...this.state, status: 'error' };
+      this.notify();
+      return;
+    }
+  }
+
   private async drainQueue(): Promise<void> {
     while (this.queue.length > 0) {
       const next = this.queue.shift()!;
@@ -513,6 +560,32 @@ export class SessionController {
         return;
       }
       await this.startPlanFlow(goal);
+      return;
+    }
+    if (cmd === '/goal') {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /goal unavailable now', '当前有任务进行中，暂不能执行 /goal'));
+        return;
+      }
+      const rest = text.slice(cmd.length).trim();
+      const tm = rest.match(/--template=(\S+)/);
+      const template = tm?.[1] ?? DEFAULT_GOAL_TEMPLATE;
+      const goal = rest.replace(/--template=\S+\s*/g, '').trim();
+      if (!goal) {
+        this.pushMsg('system', t(
+          'Usage: /goal <goal> [--template=code-refactor|test-loop|code-review] — runs agent→check→repair loop; embed criteria inline, e.g. /goal fix build (criteria: t1=build passes)',
+          '用法：/goal <目标> [--template=code-refactor|test-loop|code-review]——运行 agent→验收→修正环；目标内嵌验收标准，如 /goal 修复构建（验收标准：t1=构建通过）',
+        ));
+        return;
+      }
+      if (!TEMPLATE_NAMES.includes(template)) {
+        this.pushMsg('system', t(
+          `Unknown template: ${template} (available: ${TEMPLATE_NAMES.join('/')})`,
+          `未知模板：${template}（可选 ${TEMPLATE_NAMES.join('/')}）`,
+        ));
+        return;
+      }
+      await this.runGoalFlow(goal, template);
       return;
     }
     this.pushMsg('system', t(`Unknown command: ${cmd} (/help for list)`, `未知命令：${cmd}（/help 查看清单）`));

@@ -11,6 +11,7 @@ import { initialRetained } from '../ui-state';
 
 test('slashCandidates：/ 前缀匹配命令清单，非 / 前缀返回空', () => {
   assert.deepEqual(slashCandidates('/'), SLASH_COMMANDS);
+  assert.ok(SLASH_COMMANDS.includes('/goal'), '/goal 已登记补全清单');
   assert.deepEqual(slashCandidates('/ne'), ['/new']);
   assert.deepEqual(slashCandidates('xyz'), []);
   assert.deepEqual(slashCandidates('/xyz'), []);
