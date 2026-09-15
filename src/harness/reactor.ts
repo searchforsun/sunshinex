@@ -9,6 +9,7 @@ import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 
+/** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
 export interface StepRecord { step: number; action?: string; observation: string; }
 export interface RunResult {
@@ -20,6 +21,8 @@ export interface RunResult {
   route?: RouteDecision;
   /** 终止原因（新增）：done=正常完成；model-error=模型失败；其余为护栏越限 */
   stopReason?: StopReason;
+  /** 压缩水位（步骤号）：>0 表示此号之前的步骤已折叠进压缩块 */
+  compactedUpTo?: number;
 }
 
 /** 显式限额：maxSteps/tokenCap/deadlineAt 为硬边界，budget 仅用于上下文窗口压缩判定（两量纲） */
@@ -36,8 +39,9 @@ export interface ReactorOpts extends ReactorLimits {
   routeHint?: RouteHint;
   /** 用户级档位（run 级常量）：显式指定优先于 hint 推导与缺省；整场恒定，不随步重估、无模型自调通道 */
   tier?: ModelTier;
-  /** 前置 history（前缀缓存连续性）：跨 run 链式执行时把上一 run 的 steps 续入本 run history 头部，
-   * 使相邻 run 的 prompt 呈「前缀稳定 + 尾部追加」形态——/plan 逐步执行等同一目标多段执行场景用 */
+  /** 作用域：session=主链（收束自动回写）；fork=私有执行（零回写，graph 节点/内部任务用） */
+  scope?: 'session' | 'fork';
+  /** fork 私有前缀（graph 组合角色行/节点任务行用）；缺省 seed = 会话链视图（结构性 fork） */
   seedHistory?: StepRecord[];
 }
 
@@ -98,12 +102,17 @@ export class Reactor {
       : derived;
     const adapter = router.resolve(tier);
     this.emit('route', undefined, { tier: route.tier, reason: route.reason });
-    let compactedUpTo = 0; // 压缩水位线：此前 steps 已由摘要代表，不再进入 history
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
-    // seed 并入 steps（前缀缓存连续性）：跨 run 链式执行承接上一 run 的步骤记录，新步骤号续起，
-    // prompt 呈「稳定段→goal→history 尾部追加」形态；guardrail 迭代计数只约束本 run 新增步
-    const seed = opts?.seedHistory ?? [];
+    // fork 模型缺省基座：会话链视图即本 run 前缀（结构性 fork，不传 seed 即续接主链）；
+    // 新步骤号自链尾续起，prompt 呈「稳定段 → 链前缀 history → 新步尾部追加」形态；guardrail 迭代计数只约束本 run 新增步
+    const scope = opts?.scope ?? 'session';
+    const seed = opts?.seedHistory ?? this.deps.context.chainView();
+    const seedLen = seed.length;
+    const seedLastStep = seed.length > 0 ? seed[seed.length - 1].step : 0;
     const steps: StepRecord[] = [...seed];
+    // 压缩水位线（步骤号口径，0=无折叠）：>0 时此号及之前的 steps 已由摘要代表、不再进入 history；
+    // 初值必须为 0——种子链行未经压缩、必须照常进 history（链即记忆），seedLastStep 只用于收尾回写防双写
+    let compactedUpToStep = 0;
     let done = false;
     let reply: string | undefined;
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
@@ -115,13 +124,14 @@ export class Reactor {
     const startedAt = Date.now();
 
     let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error 在各自分支覆盖
-    for (let step = seed.length + 1; ; step++) {
+    for (;;) {
+      const step = steps.length > 0 ? steps[steps.length - 1].step + 1 : 1;
       const hit = guardrailStop({
         now: Date.now(),
         ...(deadlineAt !== undefined ? { deadlineAt } : {}),
         tokensUsed,
         ...(tokenCap !== undefined ? { tokenCap } : {}),
-        iteration: step - 1 - seed.length, // 已完成步数（不含 seed 承接步）：maxSteps 只约束本 run 新增步
+        iteration: steps.length - seedLen, // 本 run 新增完成步数：maxSteps 只约束本 run 新增步
         maxIterations: maxSteps,
       });
       if (hit) {
@@ -129,7 +139,7 @@ export class Reactor {
         break;
       }
       // observe: 装配 → 估算 → 滞回门 → 收敛环（spec §2.2：压缩当轮即以收敛后上下文组装）
-      let items = this.deps.context.assemble(this.toHistory(steps, compactedUpTo));
+      let items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
       let est = this.deps.context.window.estimate(items);
       const overThreshold = () =>
         this.deps.context.window.shouldCompact({ total: budget.total, used: est.used, reserve: budget.reserve });
@@ -143,9 +153,11 @@ export class Reactor {
             summaryTokenBudget: Math.floor(budget.reserve / 2),
           });
           await this.deps.context.applyCompaction(chunks, { rereadTokenBudget: Math.floor(budget.reserve / 2) });
-          compactedUpTo = steps.length;
+          compactedUpToStep = steps.length > 0 ? steps[steps.length - 1].step : seedLastStep;
+          // fork 模型压缩协调：折叠的链前缀同步裁出会话链，压缩块与链永不双份
+          this.deps.context.trimChainFront(seed.filter((s) => s.step <= compactedUpToStep).length);
           lastCompactStep = step;
-          items = this.deps.context.assemble(this.toHistory(steps, compactedUpTo));
+          items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
           est = this.deps.context.window.estimate(items);
           rounds++;
         } while (rounds < 2 && est.used > budget.total);
@@ -229,12 +241,29 @@ export class Reactor {
       // 观察只入 history（单一来源）：memory 注入段位于 goal/history 之前，逐步写记忆会击穿其后全部 KV 前缀缓存
     }
 
+    // 主链作用域收束回写：存续新步骤 + 结论行/补丁行尾追进链（fork 模型 §5；fork 作用域私有不回写）
+    if (scope === 'session') {
+      const foldedSeed = seed.filter((s) => s.step <= compactedUpToStep).length;
+      if (foldedSeed > 0) this.deps.context.trimChainFront(foldedSeed);
+      const cut = Math.max(compactedUpToStep, seedLastStep);
+      this.deps.context.appendChain(
+        steps
+          .filter((s) => s.step > cut)
+          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation })),
+      );
+      if (done && reply) {
+        this.deps.context.appendChain([{ action: 'reply', observation: reply }]);
+      } else {
+        this.deps.context.appendChain([{ action: 'note', observation: pick(`Task ended without completion (${stopReason ?? 'unknown'})`, `任务未完成收束（${stopReason ?? 'unknown'}）`) }]);
+      }
+    }
+
     // 成功沉淀钩子：maxSteps 耗尽 / 模型失败路径不触发；抛错吞掉记链行（链即记忆，事件走链），不倒灌任务成败
     if (done && reply && this.deps.settle) {
       try {
         this.deps.settle({ goal: task.goal, reply });
       } catch (e) {
-        this.deps.context.appendChain([{ action: 'note', observation: `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}` }]);
+        this.deps.context.appendChain([{ action: 'note', observation: pick(`Settle failed (not propagated to task outcome): ${e instanceof Error ? e.message : String(e)}`, `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`) }]);
       }
     }
     // per-run 成本账本：tokens/路由决策/时长随收尾落 runs/<id>；落账失败不倒灌任务结果（存储同源，此处吞错）
@@ -254,7 +283,7 @@ export class Reactor {
     }
     // 收尾事件：done 必发（正常/异常路径共用出口）；error 已在失败点提前发出
     this.emit('done', reply, { steps: steps.length, tokensUsed, stopReason });
-    return { steps, done, reply, tokensUsed, route, stopReason };
+    return { steps, done, reply, tokensUsed, route, stopReason, ...(compactedUpToStep > 0 ? { compactedUpTo: compactedUpToStep } : {}) };
   }
 
   /** 事件发射器：仅旁路通知；onEvent 缺省为零开销空转 */
@@ -305,6 +334,11 @@ export class Reactor {
       pick(
         'Tool choice: whenever a dedicated tool covers the action (read/grep/glob and other read-only queries), use it; exec is only the fallback for actions no dedicated tool covers; do not chain exec cat/head/ls for a single lookup.',
         '工具选择：能用专用工具（read/grep/glob 等只读查询）就用专用工具，exec 只兜底没有专用工具覆盖的动作；单次查证不要用 exec 拼 cat/head/ls 组合拳。',
+      ),
+      '',
+      pick(
+        'Work on the task given by the last task-instruction line in the context; complete it fully, then end with done and give the final answer in reply.',
+        '处理上下文中最后一条任务指令行给出的任务；完整完成后以 done 收束并在 reply 给出最终答复。',
       ),
       '',
       pick('Reply with exactly one JSON object and nothing else. Two forms:', '每次只回复一个 JSON 对象，不要输出任何其它文字。格式二选一：'),

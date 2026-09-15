@@ -208,7 +208,7 @@ test('模型回复携带 tier 字段被忽略（自调通道已摘除）', async
   assert.equal(small.calls.length, 2, '全程恒定缺省档');
 });
 
-test('run 收尾清退 working：done 形态 episodic 保留、working 清零', async () => {
+test('会话作用域收束回写：done 形态——种子链行保留、步骤与结论行尾追入链', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-done-'));
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
@@ -226,12 +226,13 @@ test('run 收尾清退 working：done 形态 episodic 保留、working 清零', 
   });
   const r = await reactor.run({ goal: 'x' });
   assert.equal(r.done, true);
-  const c = { working: 0, episodic: context.chainView().length };
-  assert.equal(c.working, 0, 'working 已随任务收尾清退');
-  assert.equal(c.episodic, 1, 'episodic 跨任务保留');
+  const chain = context.chainView();
+  assert.ok(chain.some((s) => s.observation === '种子事件：跨任务保留'), '种子链行跨任务保留');
+  assert.ok(chain.some((s) => s.action === 'exec'), '存续步骤回写入链');
+  assert.equal(chain[chain.length - 1].action, 'reply', '结论行尾追入链');
 });
 
-test('run 收尾清退 working：maxSteps 耗尽形态同样清退', async () => {
+test('会话作用域收束回写：maxSteps 耗尽形态——步骤行与未完成补丁行入链', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-max-'));
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
@@ -245,7 +246,11 @@ test('run 收尾清退 working：maxSteps 耗尽形态同样清退', async () =>
   });
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 1 });
   assert.equal(r.done, false);
-  assert.equal(context.chainView().length, 0);
+  const chain = context.chainView();
+  assert.equal(chain.length, 2, '步骤行 + 未完成补丁行');
+  assert.equal(chain[0].action, 'exec', '耗尽前已完成的步骤回写入链');
+  assert.equal(chain[chain.length - 1].action, 'note', '补丁行记录未完成收束原因');
+  assert.match(chain[chain.length - 1].observation, /max-steps/);
 });
 
 test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门控、records 收敛于 1', async () => {

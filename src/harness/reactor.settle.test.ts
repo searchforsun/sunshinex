@@ -19,13 +19,13 @@ import { parseSkillFrontmatter } from './skills';
 import { Harness } from './index';
 import { ModelAdapter } from '../model/adapter';
 
-function makeReactor(tmp: string, adapter: ModelAdapter, settle?: (r: { goal: string; reply: string }) => void): Reactor {
+function makeReactor(tmp: string, adapter: ModelAdapter, settle?: (r: { goal: string; reply: string }) => void): { reactor: Reactor; context: ContextManager } {
   const store = new FileStore(path.join(tmp, '.data'));
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
-  return new Reactor({ registry, safety, context, model: adapter, ...(settle ? { settle } : {}) });
+  return { reactor: new Reactor({ registry, safety, context, model: adapter, ...(settle ? { settle } : {}) }), context };
 }
 
 test('done 路径：settle 触发一次，产物 frontmatter 可解析', async () => {
@@ -35,7 +35,7 @@ test('done 路径：settle 触发一次，产物 frontmatter 可解析', async (
   try {
     const calls: { goal: string; reply: string }[] = [];
     const learned = new LearnedSkillStore(tmp);
-    const reactor = makeReactor(
+    const { reactor } = makeReactor(
       tmp,
       new ScriptedAdapter(['{"done":true,"reply":"部署手册已完成"}']),
       (r) => {
@@ -65,7 +65,7 @@ test('失败路径：maxSteps 耗尽与模型失败均零触发 settle', async (
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-settle2-'));
   try {
     let calls = 0;
-    const exhausted = makeReactor(
+    const { reactor: exhausted } = makeReactor(
       tmp,
       new ScriptedAdapter(['{"tool":"exec","input":{"command":"echo x"},"done":false}']),
       () => {
@@ -75,7 +75,7 @@ test('失败路径：maxSteps 耗尽与模型失败均零触发 settle', async (
     const r1 = await exhausted.run({ goal: 'g' }, { maxSteps: 1 });
     assert.equal(r1.done, false);
     // 模型调用失败路径：适配器直接抛错
-    const boomReactor = makeReactor(
+    const { reactor: boomReactor } = makeReactor(
       tmp,
       {
         provider: 'boom',
@@ -98,15 +98,13 @@ test('失败路径：maxSteps 耗尽与模型失败均零触发 settle', async (
 test('settle 抛错：吞错记 episodic，不影响 RunResult', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-settle3-'));
   try {
-    const store = new FileStore(path.join(tmp, '.data'));
-    const reactor = makeReactor(tmp, new ScriptedAdapter(['{"done":true,"reply":"ok"}']), () => {
+    const { reactor, context } = makeReactor(tmp, new ScriptedAdapter(['{"done":true,"reply":"ok"}']), () => {
       throw new Error('沉淀炸了');
     });
     const r = await reactor.run({ goal: 'g' }, { maxSteps: 3 });
     assert.equal(r.done, true);
     assert.equal(r.reply, 'ok');
-    const episodic = store.read<string[]>('memory.episodic', []);
-    assert.ok(episodic.some((l) => l.includes('settle') && l.includes('沉淀炸了')));
+    assert.ok(context.chainView().some((s) => s.action === 'note' && /沉淀失败|Settle failed/.test(s.observation)), '沉淀失败记链行、不倒灌任务结果');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

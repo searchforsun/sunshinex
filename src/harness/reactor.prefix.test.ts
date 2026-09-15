@@ -21,7 +21,7 @@ function makeReactor(
   tmp: string,
   adapter: ModelAdapter,
   reverseTools = false,
-): { reactor: Reactor; prompts: string[] } {
+): { reactor: Reactor; prompts: string[]; context: ContextManager } {
   const store = new FileStore(path.join(tmp, '.data'));
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
@@ -36,7 +36,7 @@ function makeReactor(
       return adapter.complete(p);
     },
   };
-  return { reactor: new Reactor({ registry, safety, context, model: capture }), prompts };
+  return { reactor: new Reactor({ registry, safety, context, model: capture }), prompts, context };
 }
 
 function scripted(replies: string[]): ModelAdapter {
@@ -94,6 +94,63 @@ test('环境事实：提示词注入工作目录绝对路径与工具选择政�
     assert.ok(p.includes(`Current working directory (project root): ${tmp}`), '提示词应含工作目录绝对路径（环境事实）');
     assert.ok(p.includes('Tool choice:'), '提示词应含工具选择政策（专用工具优先、exec 兜底）');
     assert.ok(p.indexOf('Current working directory') > p.indexOf('Context:'), '工作目录属上下文段环境事实');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('跨任务主链连续：任务 B 首帧以任务 A 首帧为逐字节前缀（§11 只增不改）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-fork-chain-'));
+  try {
+    const { reactor, context, prompts } = makeReactor(tmp, scripted([
+      JSON.stringify({ done: true, reply: 'A done' }),
+      JSON.stringify({ done: true, reply: 'B done' }),
+    ]));
+    context.appendChain([{ action: 'task', observation: 'Current instruction: task A' }]);
+    await reactor.run({ goal: 'task A' });
+    context.appendChain([{ action: 'task', observation: 'Current instruction: task B' }]);
+    await reactor.run({ goal: 'task B' });
+    assert.equal(prompts.length, 2);
+    assert.ok(prompts[1].startsWith(prompts[0]), '跨任务首帧必须严格前缀连续');
+    assert.ok(prompts[1].includes('Current instruction: task B'));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话作用域收束回写：全量步骤 + 结论行自动入链', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-fork-write-'));
+  try {
+    const { reactor, context } = makeReactor(tmp, scripted([JSON.stringify({ done: true, reply: '搞定' })]));
+    context.appendChain([{ action: 'task', observation: 'Current instruction: do it' }]);
+    await reactor.run({ goal: 'do it' });
+    const chain = context.chainView();
+    assert.equal(chain[chain.length - 1].action, 'reply');
+    assert.equal(chain[chain.length - 1].observation, '搞定');
+    assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('do it')));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('fork 作用域：私有执行零回写主链', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-fork-iso-'));
+  try {
+    const { reactor, context } = makeReactor(tmp, scripted([JSON.stringify({ done: true, reply: 'ok' })]));
+    const before = context.chainView().length;
+    await reactor.run({ goal: 'sub' }, { scope: 'fork' });
+    assert.equal(context.chainView().length, before);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('稳定段携带执行协议行（goal 槽取消后的任务锚点）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-fork-proto-'));
+  try {
+    const { reactor, prompts } = makeReactor(tmp, scripted([JSON.stringify({ done: true, reply: 'ok' })]));
+    await reactor.run({ goal: 'anything' });
+    assert.ok(prompts[0].includes('last task-instruction line'), '执行协议行必须进稳定段');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
