@@ -105,3 +105,46 @@ test('read 越界路径经 execute 被拦截（COMMAND_DENIED）', async () => {
     assert.match(r.error.message, /越出项目 root/);
   }
 });
+
+test('read 支持 range 行段选择（L100-125 形态，1-based 闭区间，带行号回显）', async () => {
+  const root = tmpdir();
+  const lines = Array.from({ length: 200 }, (_, i) => `line${i + 1}`);
+  fs.writeFileSync(path.join(root, 'big.txt'), lines.join('\n'));
+  const { registry, safety } = registryWith(root);
+
+  const r = await registry.execute('read', { path: 'big.txt', range: 'L100-125' }, safety);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  const out = r.value.stdout.split('\n');
+  assert.equal(out.length, 26, '恰好 26 行（闭区间）');
+  assert.equal(out[0], '100: line100', '首行带行号回显');
+  assert.equal(out[25], '125: line125', '末行为区间止行');
+
+  // L<n>≡L<n>-：从 n 行读到文件尾；L-<n>：读前 n 行
+  const tail = await registry.execute('read', { path: 'big.txt', range: 'L198' }, safety);
+  assert.ok(tail.ok && tail.value.stdout === '198: line198\n199: line199\n200: line200', 'L<n> 读到文件尾');
+  const tailOpen = await registry.execute('read', { path: 'big.txt', range: 'L198-' }, safety);
+  assert.ok(tailOpen.ok && tailOpen.value.stdout === '198: line198\n199: line199\n200: line200', 'L<n>- 与 L<n> 同义');
+  const head = await registry.execute('read', { path: 'big.txt', range: 'L-2' }, safety);
+  assert.ok(head.ok && head.value.stdout === '1: line1\n2: line2', 'L-<n> 读前 n 行');
+});
+
+test('read range 非法参数报 INVALID_ARG（非 L 形态 / 止行小于起行）', async () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, 'a.txt'), 'a\nb\nc');
+  const { registry, safety } = registryWith(root);
+
+  const bad = await registry.execute('read', { path: 'a.txt', range: '100-125' }, safety);
+  assert.ok(!bad.ok && bad.error?.code === 'INVALID_ARG');
+  const swapped = await registry.execute('read', { path: 'a.txt', range: 'L3-L1' }, safety);
+  assert.ok(!swapped.ok && swapped.error?.code === 'INVALID_ARG');
+});
+
+test('read range 越界钳制（start 越界到 1、end 越界到文件尾），越界仍返回已有内容', async () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, 'a.txt'), 'a\nb\nc');
+  const { registry, safety } = registryWith(root);
+
+  const r = await registry.execute('read', { path: 'a.txt', range: 'L0-99' }, safety);
+  assert.ok(r.ok && r.value.stdout === '1: a\n2: b\n3: c', '越界钳制到文件实际范围');
+});

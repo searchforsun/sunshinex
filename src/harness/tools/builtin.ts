@@ -26,9 +26,26 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'read',
-      description: pick('Read file content', '读取文件内容'),
+      description: pick(
+        'Read file content; optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers',
+        '读取文件内容；可选 range 选择行段（1-based 闭区间）："L100-125" 读 100-125 行；"L100" 或 "L100-" 从 100 行读到文件尾；"L-20" 读前 20 行；输出带行号前缀',
+      ),
       category: 'read',
-      executor: async (input: ToolInput) => execOut(backend.readFile(String(input.path))),
+      executor: async (input: ToolInput) => {
+        const content = backend.readFile(String(input.path));
+        const range = input.range === undefined ? '' : String(input.range).trim();
+        if (range === '') return execOut(content);
+        // 形态语义：L<a>-<b> 闭区间；L<a> 与 L<a>- 同义（a 行到尾）；L-<b>（前 b 行）；越界钳制到文件实际范围
+        const m = /^L(?<a>\d+)?(?:-(?<b>\d+)?)?$/.exec(range);
+        const a = m?.groups?.a === undefined ? NaN : parseInt(m.groups.a, 10);
+        const b = m?.groups?.b === undefined ? NaN : parseInt(m.groups.b, 10);
+        if (!m || (Number.isNaN(a) && Number.isNaN(b))) throw new CodedToolError('INVALID_ARG', pick(`Invalid range "${range}"; expected L<start>-<end> like L100-125`, `range 参数不合法："${range}"；应为 L<起>-<止> 形如 L100-125`));
+        const lines = content.split('\n');
+        const start = Math.max(1, Number.isNaN(a) ? 1 : a);
+        const end = Math.min(lines.length, Number.isNaN(b) ? lines.length : b);
+        if (!Number.isNaN(b) && b < start) throw new CodedToolError('INVALID_ARG', pick(`Range end before start: ${range}`, `range 区间结束行小于起始行：${range}`));
+        return execOut(lines.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join('\n'));
+      },
     },
     {
       name: 'write',
