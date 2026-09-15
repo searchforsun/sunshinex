@@ -1,0 +1,110 @@
+/** 子代理执行单元（单一权威）：定义解析（目录注册制 agents/{id}/agent.md + 预设四角色 + 内联临时）→
+ * fork 组装（seedHistory = 主链快照 + 角色行/任务行，行号与 action 词汇对齐 graph 先例）→ 执行 → 终态一行回写。
+ * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案 pick() 运行期求值禁模块级冻结 */
+import * as fs from 'fs';
+import * as path from 'path';
+import { AgentRole, SubagentSpawnInput } from '../types';
+import { pick } from '../i18n';
+
+/** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 存双语静态对，取值经 rolePreset 运行期求值 */
+export const ROLE_PRESETS: Record<AgentRole, { label: { en: string; zh: string }; framing: { en: string; zh: string } }> = {
+  planner: { label: { en: 'Planner', zh: '规划师' }, framing: { en: 'requirement breakdown, solution and path design', zh: '需求拆解、方案与路径设计' } },
+  developer: { label: { en: 'Developer', zh: '开发者' }, framing: { en: 'code implementation, refactoring and fixes', zh: '代码实现、重构与修复' } },
+  tester: { label: { en: 'Tester', zh: '测试工程师' }, framing: { en: 'test case generation, execution and failure analysis', zh: '测试用例生成、执行与失败分析' } },
+  reviewer: { label: { en: 'Reviewer', zh: '审查员' }, framing: { en: 'convention, logic and security review with a review report', zh: '规范、逻辑与安全审查，产出审查报告' } },
+};
+
+/** 角色预设运行期取值（语言随 --language 装配后设定，禁止模块级 pick 冻结） */
+export function rolePreset(role: AgentRole): { label: string; framing: string } {
+  const p = ROLE_PRESETS[role];
+  return { label: pick(p.label.en, p.label.zh), framing: pick(p.framing.en, p.framing.zh) };
+}
+
+/** 注册制子代理定义（目录注册制解析产物 / 预设角色统一形态） */
+export interface AgentDef {
+  id: string;
+  name: string;
+  description: string;
+  /** 角色框定正文（agent.md frontmatter 之后的正文；预设角色经 rolePreset 运行期求值） */
+  framing: string;
+}
+
+const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
+
+/** 解析 agent.md 的简易 frontmatter（--- 块内 key: value，与 skills 解析器同风格） */
+export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string } {
+  const out: Record<string, string> = { name: '', description: '', version: '0.1.0' };
+  const m = FRONTMATTER.exec(md);
+  if (!m) throw new Error(pick('agent.md missing frontmatter', 'agent.md 缺少 frontmatter 头'));
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/.exec(line.trim());
+    if (kv) out[kv[1]] = kv[2].trim();
+  }
+  if (!out.name) throw new Error(pick('agent.md frontmatter missing name', 'agent.md frontmatter 缺少 name'));
+  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim() };
+}
+
+/** 注册表：四角色内建注册 + agents/{id}/agent.md 装配期一次性加载（fail-fast，运行期零增删）。
+ * 内建预设存双语对、resolve 时经 pick 求值（语言为启动参数，注册可能先于语言设置）；目录注册制为用户自撰正文、语言无关直存 */
+export class AgentRegistry {
+  private defs = new Map<string, AgentDef>();
+  private builtins = new Map<string, { name: { en: string; zh: string }; framing: { en: string; zh: string } }>();
+
+  registerBuiltins(): void {
+    for (const role of Object.keys(ROLE_PRESETS) as AgentRole[]) {
+      const p = ROLE_PRESETS[role];
+      this.builtins.set(role, { name: p.label, framing: p.framing });
+    }
+  }
+
+  /** 扫描 agents/{id}/agent.md；目录不存在 = 空注册（不算错）；畸形文件整次加载 fail-fast（同 skills/MCP 装配纪律） */
+  loadAgents(root: string): void {
+    const dir = path.join(root, 'agents');
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const file = path.join(dir, entry.name, 'agent.md');
+      if (!fs.existsSync(file)) continue;
+      const md = fs.readFileSync(file, 'utf8');
+      const meta = parseAgentFrontmatter(md);
+      this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body });
+    }
+  }
+
+  resolve(id: string): AgentDef {
+    const b = this.builtins.get(id);
+    if (b) {
+      return { id, name: pick(b.name.en, b.name.zh), description: pick(b.framing.en, b.framing.zh), framing: pick(b.framing.en, b.framing.zh) };
+    }
+    const def = this.defs.get(id);
+    if (!def) throw new Error(pick(`Subagent not found: ${id}`, `未找到智能体：${id}`));
+    return def;
+  }
+
+  has(id: string): boolean {
+    return this.builtins.has(id) || this.defs.has(id);
+  }
+}
+
+/** 三形态归一：目录注册制 / 预设角色（agent_id 直取） / 内联临时（仅 prompt）。
+ * 显式 taskLine（graph 传入）> prompt > 仅 agent_id 时的缺省续接行；角色行模板与 step/action 口径逐字对齐 graph 先例 */
+export function resolveSpawnSpec(
+  registry: AgentRegistry,
+  input: SubagentSpawnInput,
+  opts?: { taskLine?: string },
+): { roleLine?: string; taskLine: string; label: string } {
+  if (!input.agent_id && !input.prompt && !opts?.taskLine) {
+    throw new Error(pick('agent_id and prompt are both missing', 'agent_id 与 prompt 皆缺'));
+  }
+  const roleLine = input.agent_id
+    ? (() => {
+        const def = registry.resolve(input.agent_id!);
+        return pick(`Your role: ${def.name} (${def.id}); duties: ${def.framing}`, `你的角色：${def.name}（${def.id}），职责：${def.framing}`);
+      })()
+    : undefined;
+  const taskLine =
+    opts?.taskLine ??
+    input.prompt ??
+    pick('Continue the current task per your role framing.', '按角色框定继续当前链上任务。');
+  return { roleLine, taskLine, label: input.label ?? input.agent_id ?? 'subagent' };
+}

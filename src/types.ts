@@ -148,6 +148,18 @@ export type MemoryLevel = 'working' | 'episodic' | 'skill';
 /** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子代理派生） */
 export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent';
 
+/** 子代理 spawn 入参（三形态：agent_id=注册/预设引用；prompt=内联临时；可同传=框定+任务） */
+export interface SubagentSpawnInput {
+  agent_id?: string;
+  prompt?: string;
+  /** 时间线卡片短标题（缺省 agent_id ?? 'subagent'） */
+  label?: string;
+  /** 子代理工具名子集（缺省 = 父全量 − spawn）；未知名由 spawn 输入面校验 fail-fast */
+  tools?: string[];
+  /** 预留语义位：v1 传 true 报 NOT_SUPPORTED（后台两段式后批开通） */
+  background?: boolean;
+}
+
 /** 模型路由决策留痕（tier + reason + 实际承载适配器，随 run 结果可观测） */
 export interface RouteDecision {
   tier: ModelTier;

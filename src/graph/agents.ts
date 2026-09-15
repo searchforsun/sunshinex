@@ -2,21 +2,10 @@ import { AgentRole, GraphDeps, GraphNodeOutput, SessionEvent } from '../types';
 import { GraphNode } from './engine';
 import { toReactorBudget } from '../loop/nodes';
 import { Reactor } from '../harness/reactor';
+import { ROLE_PRESETS, rolePreset } from '../harness/subagent';
 import { pick } from '../i18n';
 
-/** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 存双语静态对，取值经 rolePreset 运行期求值 */
-export const ROLE_PRESETS: Record<AgentRole, { label: { en: string; zh: string }; framing: { en: string; zh: string } }> = {
-  planner: { label: { en: 'Planner', zh: '规划师' }, framing: { en: 'requirement breakdown, solution and path design', zh: '需求拆解、方案与路径设计' } },
-  developer: { label: { en: 'Developer', zh: '开发者' }, framing: { en: 'code implementation, refactoring and fixes', zh: '代码实现、重构与修复' } },
-  tester: { label: { en: 'Tester', zh: '测试工程师' }, framing: { en: 'test case generation, execution and failure analysis', zh: '测试用例生成、执行与失败分析' } },
-  reviewer: { label: { en: 'Reviewer', zh: '审查员' }, framing: { en: 'convention, logic and security review with a review report', zh: '规范、逻辑与安全审查，产出审查报告' } },
-};
-
-/** 角色预设运行期取值（语言随 --language 装配后设定，禁止模块级 pick 冻结） */
-function rolePreset(role: AgentRole): { label: string; framing: string } {
-  const p = ROLE_PRESETS[role];
-  return { label: pick(p.label.en, p.label.zh), framing: pick(p.framing.en, p.framing.zh) };
-}
+export { ROLE_PRESETS };
 
 /** 角色 Agent 事件发射器：deps 注入即透传，缺省空转（Graph onEvent 贯通点） */
 function makeAgentEmitter(deps: GraphDeps): ((e: SessionEvent) => void) | undefined {
