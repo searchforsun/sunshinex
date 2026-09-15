@@ -128,6 +128,39 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
   assert.ok(prompts[2].includes('2: exec -> step2'), '水位线后的 history 保留');
 });
 
+test('压缩协调：折叠的链前缀裁出会话链，压缩块与链永不双份', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor8-'));
+  try {
+    const prompts: string[] = [];
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+    const registry = new ToolRegistry();
+    for (const t of builtinTools(safety, tmp)) registry.register(t);
+    const context = new ContextManager(tmp, new FileStore(tmp));
+    // 种子链行：两条大观察（est 必超小预算阈值），压缩折叠后必须同步裁出链
+    context.appendChain([
+      { action: 'read', observation: 'Y'.repeat(2000) },
+      { action: 'read', observation: 'Z'.repeat(2000) },
+    ]);
+    const reactor = new Reactor({
+      registry,
+      safety,
+      context,
+      model: { provider: 'capture', complete: async (p: string) => { prompts.push(p); return '{"done":true,"reply":"ok"}'; } },
+    });
+    const r = await reactor.run({ goal: 'x' }, { budget: { total: 3000, reserve: 2800 } });
+    assert.equal(r.done, true);
+    assert.equal(r.compactedUpTo, 2, '压缩水位 = 折叠步骤号（种子行 1..2 全折叠）');
+    assert.ok(prompts[0].includes('[Compacted summary'), '压缩当轮即以收敛后上下文组装');
+    assert.equal(prompts[0].split('[Compacted summary').length - 1, 1, '压缩标记仅注入一次（收敛环不重复折叠）');
+    const chain = context.chainView();
+    assert.ok(!chain.some((s) => s.observation.includes('YYYY') || s.observation.includes('ZZZZ')), '折叠的链前缀已裁出会话链（压缩块与链不双份）');
+    assert.equal(chain.length, 1, '链上仅存本 run 结论行');
+    assert.equal(chain[0].action, 'reply', '结论行尾追');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 /** 可编回复的 capture adapter：记录 prompt、按需切换回复 */
 function mkCap() {
   const calls: string[] = [];

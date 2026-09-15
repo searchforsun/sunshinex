@@ -101,7 +101,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
       const scope = deps.scope ?? 'session';
       const rawSeed = ctx.state.seedHistory;
       const seedHistory = Array.isArray(rawSeed) ? (rawSeed as HistoryStep[]) : undefined;
-      // 修正要求走链（主链）/并入私有前缀（fork）：废弃 withDeficits 的 goal 改写（goal 已降级为观测标签）
+      // 修正要求走链（主链）/并入私有前缀（fork）：goal 不再承载任务文本改写（goal 已降级为观测标签）
       const deficits = Array.isArray(ctx.state.deficits) ? (ctx.state.deficits as Array<{ id: string; desc: string }>) : [];
       if (deficits.length > 0) {
         const line = `${pick('Fix requirements from last review:', '修正要求（上次未过验收项）：')}\n${deficits.map((d) => `- ${d.id}: ${d.desc}`).join('\n')}`;
