@@ -3,7 +3,19 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { AgentRegistry, resolveSpawnSpec } from './subagent';
+import { AgentRegistry, resolveSpawnSpec, SubagentRunner } from './subagent';
+import { ProcessSandbox } from './security/sandbox';
+import { SecurityGuard } from './security/guard';
+import { PolicyEngine } from './security/policy';
+import { SafetyChain } from './security/chain';
+import { DryRun } from './security/dryrun';
+import { ToolRegistry } from './tools';
+import { builtinTools } from './tools/builtin';
+import { ContextManager } from './context';
+import { FileStore } from '../storage/adapter';
+import { ScriptedAdapter } from '../model/adapter';
+import type { ModelAdapter } from '../model/adapter';
+import type { SessionEvent } from '../types';
 
 test('AgentRegistry：内建四角色可解析、未命中 fail-fast', () => {
   const reg = new AgentRegistry();
@@ -65,4 +77,199 @@ test('resolveSpawnSpec：同传两行 / 仅 prompt 内联 / 仅 agent_id 缺省�
   assert.equal(explicit.taskLine, '跑全量回归', 'graph 显式任务行优先于缺省续接行');
 
   assert.throws(() => resolveSpawnSpec(reg, {}), /agent_id 与 prompt 皆缺|both missing/i);
+});
+
+/* ---------- 执行半边（Task 3）测试脚手架 ---------- */
+
+interface Harness {
+  tmp: string;
+  safety: SafetyChain;
+  registry: ToolRegistry;
+  context: ContextManager;
+  makeRunner(model: ModelAdapter, onEvent?: (e: SessionEvent) => void, opts?: { noBudget?: boolean }): SubagentRunner;
+}
+
+function makeHarness(tmp: string): Harness {
+  const store = new FileStore(path.join(tmp, '.data'));
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+  const reg = new AgentRegistry();
+  reg.registerBuiltins();
+  return {
+    tmp,
+    safety,
+    registry,
+    context,
+    // spawn 通道缺省挂标准预算源（对应 reactor run 接线）；失败用例可覆写、INVALID_STATE 用例可关闭
+    makeRunner: (model, onEvent, opts) => {
+      const runner = new SubagentRunner({ registry, safety, context, model, ...(onEvent ? { onEvent } : {}) }, reg);
+      if (!opts?.noBudget) runner.attachParent(() => ({ maxSteps: 200, tokenCap: 100_000 }));
+      return runner;
+    },
+  };
+}
+
+/** capture 桩：透传 scripted 应答并记录每次 prompt（回归矩阵取帧用，对齐 graph agents.test 惯用法） */
+function captureModel(scripted: ScriptedAdapter): { model: ModelAdapter; prompts: string[] } {
+  const prompts: string[] = [];
+  const model: ModelAdapter = {
+    provider: 'capture',
+    complete: async (p: string) => {
+      prompts.push(p);
+      return scripted.complete(p);
+    },
+  } as ModelAdapter;
+  return { model, prompts };
+}
+
+test('Runner fork 组装：子首帧 = 主链严格前缀 + 尾追（role/task 行只在尾部）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-prefix-'));
+  try {
+    const scripted = new ScriptedAdapter([
+      JSON.stringify({ done: true, reply: '子任务完成' }),
+    ]);
+    const { model, prompts } = captureModel(scripted);
+    const h = makeHarness(tmp);
+    // 主链预置两条链行（模拟已发生的主任务轨迹）
+    h.context.appendChain([{ action: 'node', observation: 'planner：上游结论行' }, { action: 'task', observation: '主任务：落地某功能' }]);
+    const mainTail = h.context.chainView();
+    const runner = h.makeRunner(model);
+    const r = await runner.runSubagent({ prompt: '独立子任务' }, { label: 'worker' });
+    assert.ok(r.ok, `runSubagent 应成功：${JSON.stringify(r)}`);
+    const forkFrame = prompts[prompts.length - 1];
+    assert.ok(forkFrame.length > 0);
+    // 主链基线文本必须逐字节出现在子首帧中（严格前缀语义：差异只允许在尾部尾追段）
+    for (const step of mainTail) assert.ok(forkFrame.includes(step.observation), `主链行应进子首帧：${step.observation}`);
+    assert.ok(
+      forkFrame.lastIndexOf('独立子任务') > forkFrame.lastIndexOf('主任务：落地某功能'),
+      '任务行尾追位于基线之后（尾部差异）',
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('Runner 私有性：子运行期间 chainView 零增长；成功终态恰好 +1 行（action node、[label] 前缀、首行截断）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-private-'));
+  try {
+    // 子 Reactor 先执行一次工具调用再 done：工具观察必须只进 fork，不进主链
+    const { model } = captureModel(new ScriptedAdapter([
+      JSON.stringify({ tool: 'exec', input: { command: 'echo fork-step' }, done: false }),
+      JSON.stringify({ done: true, reply: '结论首行\n第二行不应入链' }),
+    ]));
+    const h = makeHarness(tmp);
+    const baseline = h.context.chainView().length;
+    const runner = h.makeRunner(model);
+    const r = await runner.runSubagent({ prompt: '干点活' }, { label: 'worker' });
+    assert.ok(r.ok);
+    assert.equal(r.value.reply, '结论首行\n第二行不应入链');
+    const after = h.context.chainView();
+    assert.equal(after.length, baseline + 1, '终态恰好回写一行（结论行）');
+    const last = after[after.length - 1];
+    assert.equal(last.action, 'node');
+    assert.ok(last.observation.startsWith('[worker] '), `结论行带 [label] 前缀，实际：${last.observation}`);
+    assert.ok(last.observation.includes('结论首行') && !last.observation.includes('第二行'), '结论行只取 reply 首行（截断摘要）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('Runner 失败补丁行：子 Reactor 未完成 → 恰好 +1 行（action note）且 Result.fail', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-fail-'));
+  try {
+    // 预算钉 maxSteps=1 且模型永远不给 done：步数耗尽 → 子未完成收束
+    const { model } = captureModel(new ScriptedAdapter([
+      JSON.stringify({ tool: 'exec', input: { command: 'echo step' }, done: false }),
+    ]));
+    const h = makeHarness(tmp);
+    const baseline = h.context.chainView().length;
+    const runner = h.makeRunner(model);
+    const r = await runner.runSubagent({ prompt: '干点活' }, { label: 'worker', budget: { maxSteps: 1, tokenCap: 100_000 } });
+    assert.ok(!r.ok, '未完成收束应返回 fail');
+    assert.ok(['INCOMPLETE', 'MAX_STEPS'].includes(r.error.code), `失败码应为护栏语义，实际 ${r.error.code}`);
+    const after = h.context.chainView();
+    assert.equal(after.length, baseline + 1, '终态恰好回写一行（补丁行）');
+    const last = after[after.length - 1];
+    assert.equal(last.action, 'note');
+    assert.ok(last.observation.startsWith('[worker] '), `补丁行带 [label] 前缀，实际：${last.observation}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('Runner 工具面收窄：缺省子面 = 父全量 − spawn；tools 收窄取交集', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-narrow-'));
+  try {
+    const h = makeHarness(tmp);
+    const runner = h.makeRunner(new ScriptedAdapter([JSON.stringify({ done: true, reply: 'ok' })]));
+    const narrowed = runner.deriveChildRegistry({ prompt: 'w', tools: ['read'] });
+    const names = narrowed.list().map((t) => t.name);
+    assert.ok(names.includes('read'), 'tools 收窄后子面保留 read');
+    assert.ok(!names.includes('webfetch') && !names.includes('exec'), 'tools 收窄排除未列名工具');
+    assert.ok(!names.includes('spawn'), '子面恒无 spawn');
+    const deft = runner.deriveChildRegistry();
+    assert.ok(deft.has('read') && deft.has('exec') && !deft.has('spawn'), '缺省派生 = 父全量 − spawn（深度 1 层缺省收窄）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('Runner 并发护栏：同层第 5 个并发返回 CONCURRENCY_LIMIT，不排队', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-conc-'));
+  try {
+    // 挂起式桩：首个 done 由测试手动释放，制造 4 个在飞
+    let release!: () => void;
+    const gate = new Promise<void>((res) => (release = res));
+    const hanging: ModelAdapter = {
+      provider: 'hang',
+      complete: async () => {
+        await gate;
+        return JSON.stringify({ done: true, reply: 'ok' });
+      },
+    };
+    const h = makeHarness(tmp);
+    const runner = h.makeRunner(hanging);
+    const flights = Promise.all(
+      Array.from({ length: 4 }, () => runner.runSubagent({ prompt: `并行任务`, label: 'w' })),
+    );
+    const fifth = await runner.runSubagent({ prompt: '第5个', label: 'x' });
+    assert.ok(!fifth.ok && fifth.error.code === 'CONCURRENCY_LIMIT', `第 5 个并发应被拒，实际 ${JSON.stringify(fifth)}`);
+    release();
+    const results = await flights;
+    assert.ok(results.every((r) => r.ok), '前 4 个并发在飞后应正常完成');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('Runner 预算源缺失：未 attachParent 时显式 INVALID_STATE（禁静默递归）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-nobudget-'));
+  try {
+    const h = makeHarness(tmp);
+    // 显式关闭脚手架缺省预算源：spawn 通道无预算 → 必须失败而非静默
+    const runner = h.makeRunner(new ScriptedAdapter([JSON.stringify({ done: true, reply: 'ok' })]), undefined, { noBudget: true });
+    const r = await runner.runSubagent({ prompt: '孤儿派生' }, { label: 'w' });
+    assert.ok(!r.ok && r.error.code === 'INVALID_STATE', `无预算源应 INVALID_STATE，实际 ${JSON.stringify(r)}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('Runner 事件透传：子代理事件经 onEvent 流出并带 subagent 标识', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-event-'));
+  try {
+    const { model } = captureModel(new ScriptedAdapter([JSON.stringify({ done: true, reply: '事件任务完成' })]));
+    const h = makeHarness(tmp);
+    const events: SessionEvent[] = [];
+    const runner = h.makeRunner(model, (e) => events.push(e));
+    const r = await runner.runSubagent({ prompt: '发点事件' }, { label: 'evt' });
+    assert.ok(r.ok);
+    assert.ok(events.some((e) => e.type === 'done'), 'done 事件应透传');
+    const doneEvt = events.find((e) => e.type === 'done')!;
+    assert.equal(doneEvt.payload?.subagent, 'evt', '透传事件带子代理标识');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

@@ -3,8 +3,15 @@
  * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案 pick() 运行期求值禁模块级冻结 */
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentRole, SubagentSpawnInput } from '../types';
+import { AgentRole, ModelTier, SessionEvent, SubagentSpawnInput } from '../types';
 import { pick } from '../i18n';
+import { Result, ok, fail } from '../result';
+import { Reactor, StepRecord } from './reactor';
+import { ToolRegistry } from './tools';
+import { SafetyChain } from './security/chain';
+import { ContextManager } from './context';
+import { RunLedger } from './ledger';
+import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
 /** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 存双语静态对，取值经 rolePreset 运行期求值 */
 export const ROLE_PRESETS: Record<AgentRole, { label: { en: string; zh: string }; framing: { en: string; zh: string } }> = {
@@ -107,4 +114,129 @@ export function resolveSpawnSpec(
     input.prompt ??
     pick('Continue the current task per your role framing.', '按角色框定继续当前链上任务。');
   return { roleLine, taskLine, label: input.label ?? input.agent_id ?? 'subagent' };
+}
+
+/* ---------- 执行半边 ---------- */
+
+/** spawn 工具名（父级清单唯一持有者；任何 fork 子面一律派生剔除——「spawn 只在主链工具面」全局不变量） */
+export const SPAWN_TOOL_NAME = 'spawn';
+
+/** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队） */
+export const SUBAGENT_CONCURRENCY_LIMIT = 4;
+
+/** 子代理预算（对齐 ReactorLimits 语义；以 tokenCap 硬停为护栏，窗口预算属 loop 编排层不在此设） */
+export interface SubagentBudget {
+  maxSteps: number;
+  tokenCap: number;
+  deadlineAt?: number;
+  tier?: ModelTier;
+}
+
+/** 结论行首行摘要（截断 300，链行是模型上下文载荷，防长报告击穿链预算） */
+function firstLine(text: string, max = 300): string {
+  const line = text.split(/\r?\n/)[0] ?? '';
+  return line.length > max ? `${line.slice(0, max)}…` : line;
+}
+
+export interface SubagentRunnerDeps {
+  registry: ToolRegistry;
+  safety: SafetyChain;
+  context: ContextManager;
+  model: ModelAdapter;
+  router?: ModelRouter;
+  ledger?: RunLedger;
+  onEvent?: (e: SessionEvent) => void;
+}
+
+/** 子代理生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
+ * fork 组装严格随 graph 先例（显式 step 递进、'role'/'task' 行、终态 appendChain 一行 'node'/'note'） */
+export class SubagentRunner {
+  private getBudget: (() => SubagentBudget) | null = null;
+  private inFlight = 0;
+
+  constructor(private deps: SubagentRunnerDeps, private agents: AgentRegistry) {}
+
+  /** spawn 通道预算源：reactor run 起止挂/摘（graph 通道经 opts.budget 显式传入，不走此源） */
+  attachParent(getBudget: () => SubagentBudget): void {
+    this.getBudget = getBudget;
+  }
+
+  detachParent(): void {
+    this.getBudget = null;
+  }
+
+  /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点）：缺省 = 父全量 − spawn；
+   * 显式 tools = 按名取交集（未知名静默忽略，未知名校验属 spawn 输入面职责） */
+  deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
+    if (input?.tools && input.tools.length > 0) return this.deps.registry.derive({ only: input.tools });
+    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] });
+  }
+
+  /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */
+  async runSubagent(
+    input: SubagentSpawnInput,
+    opts?: { taskLine?: string; label?: string; budget?: SubagentBudget },
+  ): Promise<Result<{ reply: string }>> {
+    const budget = opts?.budget ?? this.getBudget?.();
+    if (!budget) {
+      return fail('INVALID_STATE', pick('Subagent budget source not attached', '子代理预算源未挂载'));
+    }
+    const spec = resolveSpawnSpec(this.agents, input, { taskLine: opts?.taskLine });
+    const label = opts?.label ?? spec.label;
+    if (this.inFlight >= SUBAGENT_CONCURRENCY_LIMIT) {
+      return fail(
+        'CONCURRENCY_LIMIT',
+        pick(`Subagent concurrency limit reached (${SUBAGENT_CONCURRENCY_LIMIT})`, `子代理并发已达上限（${SUBAGENT_CONCURRENCY_LIMIT}）`),
+      );
+    }
+    this.inFlight++;
+    try {
+      const base = this.deps.context.chainView();
+      let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
+      const seedHistory: StepRecord[] = [...base];
+      if (spec.roleLine !== undefined) seedHistory.push({ step: step++, action: 'role', observation: spec.roleLine });
+      seedHistory.push({ step: step++, action: 'task', observation: spec.taskLine });
+
+      const child = new Reactor({
+        safety: this.deps.safety,
+        registry: this.deriveChildRegistry(input),
+        context: this.deps.context,
+        model: this.deps.model,
+        ...(this.deps.router ? { router: this.deps.router } : {}),
+        ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
+        ...(this.deps.onEvent
+          ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: label } }) }
+          : {}),
+      });
+      try {
+        const result = await child.run(
+          { goal: spec.taskLine },
+          {
+            maxSteps: budget.maxSteps,
+            tokenCap: budget.tokenCap,
+            ...(budget.deadlineAt !== undefined ? { deadlineAt: budget.deadlineAt } : {}),
+            ...(budget.tier !== undefined ? { tier: budget.tier } : {}),
+            scope: 'fork',
+            seedHistory,
+          },
+        );
+        if (result.done && result.reply) {
+          // 子代理返回制：私有步骤零主链污染，终态恰好一行结论行
+          this.deps.context.appendChain([{ action: 'node', observation: `[${label}] ${firstLine(result.reply)}` }]);
+          return ok({ reply: result.reply });
+        }
+        const reason = result.stopReason ?? 'failed';
+        this.deps.context.appendChain([
+          { action: 'note', observation: `[${label}] ${pick('did not finish', '未完成收束')}（${reason}）` },
+        ]);
+        return fail('INCOMPLETE', `[${label}] ${pick('did not finish', '未完成收束')}（${reason}）`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : pick('unknown error', '未知错误');
+        this.deps.context.appendChain([{ action: 'note', observation: `[${label}] ${pick('failed', '失败')}：${msg}` }]);
+        return fail('INCOMPLETE', msg);
+      }
+    } finally {
+      this.inFlight--;
+    }
+  }
 }
