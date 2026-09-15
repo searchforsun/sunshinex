@@ -1,26 +1,10 @@
 import * as path from 'path';
-import { LoopDeps } from '../../loop/engine';
-import { LoopContext } from '../../types';
-import { LoopTemplate, codeRefactorTemplate, codeReviewTemplate, testLoopTemplate } from '../../loop/templates';
+import { resolveTemplate } from '../../loop/templates';
 import { buildDeps } from '../../runtime';
 import type { CliArgs } from '../index';
 
-/** 规则校验器 opts：与 loop 模板 TemplateOpts.ruleCheckers 同构 */
-export interface TemplateRuleOpts {
-  ruleCheckers?: Record<string, (io: { ctx: LoopContext; goal: string }) => Promise<boolean> | boolean>;
-}
-
-const FACTORIES: Record<string, (deps: LoopDeps, opts?: TemplateRuleOpts) => ReturnType<typeof codeRefactorTemplate>> = {
-  'code-refactor': (d, o) => codeRefactorTemplate(d, o),
-  'test-loop': (d, o) => testLoopTemplate(d, o),
-  'code-review': (d, o) => codeReviewTemplate(d, o),
-};
-
-export function resolveTemplate(deps: LoopDeps, name: string, opts?: TemplateRuleOpts): LoopTemplate {
-  const f = FACTORIES[name];
-  if (!f) throw new Error(`未知模板：${name}（可选 ${Object.keys(FACTORIES).join('/')}）`);
-  return f(deps, opts);
-}
+/** 模板工厂上移 loop 层（规格 D4）；再导出保既有导入点（run-loop.test.ts）不变 */
+export { resolveTemplate };
 
 export async function runLoop(args: CliArgs): Promise<void> {
   const dir = args.positional[0];

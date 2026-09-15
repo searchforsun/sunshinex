@@ -117,6 +117,25 @@ export function codeReviewTemplate(deps: LoopDeps, opts?: TemplateOpts): LoopTem
   return assemble('code-review', nodes, deps, opts);
 }
 
+/** 模板注册表单点（规格 D4）：CLI run 与 TUI /goal 共用同一清单，防两处工厂漂移 */
+const FACTORIES: Record<string, (deps: LoopDeps, opts?: TemplateOpts) => LoopTemplate> = {
+  'code-refactor': (d, o) => codeRefactorTemplate(d, o),
+  'test-loop': (d, o) => testLoopTemplate(d, o),
+  'code-review': (d, o) => codeReviewTemplate(d, o),
+};
+
+/** 已注册模板名清单（session /goal 预校验用；顺序即报错展示顺序） */
+export const TEMPLATE_NAMES = Object.keys(FACTORIES);
+
+/** /goal 缺省模板（对齐 CLI run 缺省 test-loop） */
+export const DEFAULT_GOAL_TEMPLATE = 'test-loop';
+
+export function resolveTemplate(deps: LoopDeps, name: string, opts?: TemplateOpts): LoopTemplate {
+  const f = FACTORIES[name];
+  if (!f) throw new Error(`未知模板：${name}（可选 ${TEMPLATE_NAMES.join('/')}）`);
+  return f(deps, opts);
+}
+
 /** 长任务时间兜底：4h（对齐 Graph `DEFAULT_TERMINATION.timeoutMs`（src/graph/templates.ts:7），D3 单次提交计时口径） */
 export const LONG_TASK_TIMEOUT_MS = 14_400_000;
 

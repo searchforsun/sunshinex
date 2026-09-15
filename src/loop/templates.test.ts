@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { LoopDeps } from './engine';
-import { codeRefactorTemplate, testLoopTemplate, codeReviewTemplate } from './templates';
+import { codeRefactorTemplate, testLoopTemplate, codeReviewTemplate, resolveTemplate, TEMPLATE_NAMES, DEFAULT_GOAL_TEMPLATE } from './templates';
 import { SafetyChain } from '../harness/security/chain';
 import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';
@@ -125,4 +125,19 @@ test('T5-4 test-loop 模板：agent 结论落 ctx.state.agentReply（模型判�
   assert.equal(r.status, 'done');
   assert.equal(typeof replySeen, 'string', 'check 执行时 agentReply 应已落 state');
   assert.ok(replySeen !== undefined && replySeen.length > 0, 'agentReply 应含 agent 结论供判据证据');
+});
+
+test('resolveTemplate：注册表三模板可实例化，未知名报错列出可选值，缺省模板锁定 test-loop', () => {
+  const deps = {} as LoopDeps; // 工厂仅闭包捕获 deps，实例化期零调用
+  for (const name of TEMPLATE_NAMES) {
+    const tpl = resolveTemplate(deps, name);
+    assert.equal(tpl.name, name);
+    assert.ok(tpl.nodes.length > 0);
+  }
+  assert.throws(
+    () => resolveTemplate(deps, 'no-such'),
+    /未知模板：no-such（可选 code-refactor\/test-loop\/code-review）/,
+  );
+  assert.deepEqual(TEMPLATE_NAMES, ['code-refactor', 'test-loop', 'code-review']);
+  assert.equal(DEFAULT_GOAL_TEMPLATE, 'test-loop');
 });
