@@ -11,6 +11,7 @@ import { InputBox } from './InputBox';
 import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
 import { Spinner } from './Spinner';
+import { ChildPanel } from './ChildPanel';
 
 /** 审批键盘映射：y 放行一次 / a 本会话放行 / n 拒绝（纯函数，独立单测） */
 export function approvalKeyToDecision(input: string): ApprovalDecision | undefined {
@@ -287,6 +288,7 @@ export function App({
       {state.status === 'running' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />
       ) : null}
+      {state.children.length > 0 ? <ChildPanel childrenState={state.children} columns={columns} /> : null}
       {state.approval ? (
         <Box borderStyle="round" flexDirection="column" paddingX={1}>
           <Text bold>

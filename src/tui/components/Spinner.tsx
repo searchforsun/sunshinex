@@ -7,8 +7,8 @@ import { formatTokens } from '../format';
 const FRAMES = ['✻', '✽', '✶', '✱', '✢'];
 const VERBS = ['Pondering', 'Brewing', 'Weaving', 'Distilling'];
 
-/** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识） */
-export function Spinner({ startedAt, tokens }: { startedAt: number; tokens: number }): JSX.Element {
+/** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识）；label 可选（子代理面板头部携带 [label] 标识，缺省零变化） */
+export function Spinner({ startedAt, tokens, label }: { startedAt: number; tokens: number; label?: string }): JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
     // 240ms：低于人眼闪烁敏感区（流式时与 token 合帧错频叠加，整帧擦写 ≤ 17 次/s）；与 5 帧序列取模保持词轮换节奏一致
@@ -20,7 +20,7 @@ export function Spinner({ startedAt, tokens }: { startedAt: number; tokens: numb
   const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
   return (
     <Text color="green" dimColor>
-      {glyph} <Text dimColor>{verb}… ({secs}s · ↑{formatTokens(tokens)} tokens)</Text>
+      {glyph} {label ? `[${label}] ` : ''}<Text dimColor>{verb}… ({secs}s · ↑{formatTokens(tokens)} tokens)</Text>
     </Text>
   );
 }
