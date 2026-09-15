@@ -35,6 +35,7 @@ src/
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
     mcp/              # MCP 客户端（stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
+    subagent.ts       # 子代理执行单元（agents/{id}/agent.md 注册制 + 预设角色 + 内联临时；spawn 工具面 + fork 执行/回写/预算/并发护栏）
     knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed / KnowledgeBase）
     security/         # guard/policy/modes/sandbox/dryrun/chain
     context/          # loader/rules/window/session/compaction/memory-lifecycle
@@ -60,7 +61,7 @@ src/
 - **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，ink + React 等开源组件构建，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台，开源组件优先）；CLI 专项命令（`chat/edit/test/review/doc/run`）随阶段四扩展。
 - **云本地分工**：任意 OpenAI 协议兼容供应商（`.env` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
-- **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚。
+- **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发（spawn）。
 
 ## 快速开始
 

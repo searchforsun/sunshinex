@@ -46,6 +46,7 @@ src/
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
     mcp/              # MCP 客户端（官方 SDK 接缝：stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
+    subagent.ts       # 子代理执行单元（agents/{id}/agent.md 注册制 + 预设角色 + 内联临时；spawn 工具面 + fork 执行/回写/预算/并发护栏）
     knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed Provider / KnowledgeBase 编排）
     security/         # guard/policy/modes/sandbox/dryrun/chain
     context/          # loader/rules/window/session/compaction/memory-lifecycle
@@ -63,6 +64,7 @@ src/
   storage/            # 本地 JSON 存储底座（adapter.ts）
   plugins/loader.ts   # 插件加载（plugins/{id}/plugin.json）
 skills/               # 用户技能目录
+agents/               # 用户子代理目录（{id}/agent.md：frontmatter name/description + 正文框定；装配期一次性加载 fail-fast）
 plugins/              # 用户插件目录
 SUNSHINE.md          # 项目业务配置
 ```
@@ -71,7 +73,7 @@ SUNSHINE.md          # 项目业务配置
 
 - 分层依赖方向：graph → loop → harness → model / storage / plugins
 - Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上
-- 插件与技能通过「目录约定」加载，第三方工具经 MCP 接入
+- 插件/技能/子代理通过「目录约定」加载，第三方工具经 MCP 接入
 - 错误通道分域：工具与安全域返回 `Result`（可预期失败显式化）；引擎（Reactor/Loop/Graph）在节点边界 `catch` 后转为节点状态与 `reply` 字段（不可预期失败集中化），两条通道不得跨域混用
 - 运行时装配收敛于 `src/runtime.ts`（buildDeps），交互面（CLI/TUI/GUI）只做参数解析与呈现，新增交互面复用同一装配根
 
