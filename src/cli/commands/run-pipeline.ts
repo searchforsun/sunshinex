@@ -48,6 +48,8 @@ export async function runPipeline(args: CliArgs): Promise<void> {
   const tpl = runPipelineAssembly(deps, { goal });
 
   console.log(`[pipeline] root=${root} nodes=${tpl.nodes.map((n) => n.id).join('→')}`);
+  // fork 模型（CLAUDE.md §11）：goal 槽取消，任务指令以链行承载（单发 pipeline 空链起，行为对外不变）
+  deps.context.appendChain([{ action: 'task', observation: goal }]);
   const r1 = await tpl.engine.run(goal);
   console.log(`run   : ${r1.status} tokens=${r1.tokensUsed} pendingGates=[${r1.pendingGates}]`);
   printFailures(r1);
