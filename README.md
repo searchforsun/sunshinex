@@ -71,7 +71,7 @@ pnpm install                   # 安装依赖（.npmrc 已固定 store 到仓内
 pnpm cli tui                   # 构建并启动交互式终端（对标 Claude Code：流式答复/工具审批/待办，manual 缺省）
 ```
 
-需配置 `.env`（SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL，任意 OpenAI 协议兼容供应商）。`pnpm cli` 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。TUI 其他模式：`pnpm cli tui <dir> --mode=manual|dontAsk|plan`；模型档位 `--tier=small|medium|large`（会话内 `/model` 切换，按档模型见 `SUNSHINEX_MODEL_SMALL/MEDIUM/LARGE`）。
+需配置 `.env`（SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL，任意 OpenAI 协议兼容供应商）。`pnpm cli` 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。TUI 其他模式：`pnpm cli tui <dir> --mode=manual|dontAsk|plan`；模型档位 `--tier=small|medium|large`（会话内 `/model` 切换，按档模型见 `SUNSHINEX_MODEL_SMALL/MEDIUM/LARGE`）。动作信封缺省走模型原生结构化输出（请求级 `response_format` JSON Schema，端点侧约束输出形态），`SUNSHINEX_STRUCTURED_OUTPUT=json_schema|json|off` 可调——`json` 为仅约束合法 JSON 的端点兼容降级档，`off` 关闭后回退纯提示词文本协议；端点不支持该字段报错时属请求失败走 model-error，设 `off` 即恢复原形态。
 
 ### 全局安装（npm 安装后直接用 `sunshinex` 命令）
 

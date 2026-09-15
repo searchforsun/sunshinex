@@ -3,7 +3,8 @@ import { pick } from '../i18n';
 import { guardrailStop } from './guardrail';
 import { StopReason } from '../types';
 import { Result } from '../result';
-import { ModelAdapter, ModelRouter, ModelTier, RouteHint, UsageHooks } from '../model/adapter';
+import { ModelAdapter, ModelRouter, ModelTier, ResponseFormat, RouteHint, UsageHooks } from '../model/adapter';
+import { resolveStructuredFormat } from './action-schema';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
@@ -77,6 +78,9 @@ export class Reactor {
 
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
     const maxSteps = opts?.maxSteps ?? 200;
+    // 结构化输出（run 级常量）：请求级 response_format 随每次模型调用下发，端点侧约束动作信封形态；
+    // 环境变量运行期不变，run 内解析一次（对齐 CONTEXT_WINDOW 先例）
+    const responseFormat = resolveStructuredFormat(process.env.SUNSHINEX_STRUCTURED_OUTPUT);
     // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
     // （状态栏「上下文占用」分母与压缩占比共用此基准），非法值静默回退内建缺省
     const envWindow = Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? '');
@@ -193,7 +197,7 @@ export class Reactor {
             this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens, promptTotal: promptTokens });
           },
           onReasoning: (t) => this.emit('reasoning', t),
-        });
+        }, responseFormat);
       } catch (e) {
         reply = e instanceof Error ? e.message : '模型调用失败';
         this.emit('error', reply);
@@ -291,15 +295,16 @@ export class Reactor {
     this.deps.onEvent?.({ type, text, payload, ts: Date.now() });
   }
 
-  /** 模型调用：优先 completeStream（token 增量逐段发射）；适配器未实现时降级 complete（token 整段一次发） */
-  private async callModel(adapter: ModelAdapter, prompt: string, hooks: UsageHooks): Promise<string> {
+  /** 模型调用：优先 completeStream（token 增量逐段发射）；适配器未实现时降级 complete（token 整段一次发）。
+   * format（可选 response_format）两路同源透传，结构化输出对流式/非流式形态无感 */
+  private async callModel(adapter: ModelAdapter, prompt: string, hooks: UsageHooks, format?: ResponseFormat): Promise<string> {
     const streamable = adapter as ModelAdapter & {
-      completeStream?: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks) => Promise<string>;
+      completeStream?: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat) => Promise<string>;
     };
     if (typeof streamable.completeStream === 'function') {
-      return streamable.completeStream(prompt, (t) => this.emit('token', t), hooks);
+      return streamable.completeStream(prompt, (t) => this.emit('token', t), hooks, format);
     }
-    const out = await adapter.complete(prompt, hooks);
+    const out = await adapter.complete(prompt, hooks, format);
     this.emit('token', out);
     return out;
   }

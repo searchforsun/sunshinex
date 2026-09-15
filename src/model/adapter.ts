@@ -13,11 +13,18 @@ export interface UsageHooks {
   onReasoning?: (delta: string) => void;
 }
 
+/** 请求级 response_format（模型原生结构化输出，OpenAI 兼容字段原样透传）：
+ * json_schema=按 schema 约束输出形状；json_object=仅约束合法 JSON（端点兼容降级档） */
+export interface ResponseFormat {
+  type: 'json_schema' | 'json_object';
+  json_schema?: { name: string; strict?: boolean; schema: Record<string, unknown> };
+}
+
 export interface ModelAdapter {
   readonly provider: string;
   /** 展示标签（banner/日志）：缺省回退 provider；openai 侧为「模型名」 */
   readonly label?: string;
-  complete(prompt: string, hooks?: UsageHooks): Promise<string>;
+  complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat): Promise<string>;
 }
 
 /** 从 OpenAI 兼容响应 JSON 解析 usage.total_tokens；缺失/非数字回 0（无占位计数） */
@@ -81,7 +88,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
   }
 
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+  async complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat): Promise<string> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY 未配置');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
@@ -89,7 +96,12 @@ export class OpenAIAdapter implements ModelAdapter {
       const resp = await fetch(`${this.baseURL}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: prompt }] }),
+        // response_format 仅在调用方显式下发时携带（SUNSHINEX_STRUCTURED_OUTPUT 开关），其余请求体不变
+        body: JSON.stringify({
+          model: this.model,
+          messages: [{ role: 'user', content: prompt }],
+          ...(format ? { response_format: format } : {}),
+        }),
         signal: ctrl.signal,
       });
       if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
@@ -107,7 +119,7 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 
   /** 流式补全：stream:true SSE 输出，\n\n 分帧缓冲（容忍跨 chunk 半帧），data:[DONE] 终止；usage 取自携带用量的事件帧 */
-  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
+  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat): Promise<string> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY 未配置');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
@@ -121,6 +133,8 @@ export class OpenAIAdapter implements ModelAdapter {
           stream: true,
           // 流式末帧携带 usage（OpenAI 兼容约定）；缺省不回传会导致流式 tokens 计时恒 0
           stream_options: { include_usage: true },
+          // response_format 与非流式路同源：仅显式下发时携带
+          ...(format ? { response_format: format } : {}),
         }),
         signal: ctrl.signal,
       });
