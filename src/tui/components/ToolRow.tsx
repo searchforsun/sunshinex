@@ -15,14 +15,24 @@ export function ToolRow({ item, columns, collapsed }: { item: ChatItem; columns:
     const sp = item.text.indexOf(' ');
     const verb = sp > 0 ? item.text.slice(0, sp) : item.text;
     const target = sp > 0 ? item.text.slice(sp + 1) : '';
+    // 调用行 detail 仅 SPAWN 归档携带（子代理转录，规格 §6）：展开态全文逐行重放（与思考/结果行同缩进口径），
+    // 折叠态保持单行头部；其它调用行无 detail，形态零变化
+    const detailLines = item.detail && !collapsed ? item.detail.split('\n') : [];
     return (
-      <Text>
-        <Text dimColor>● </Text>
-        <Text color="cyan">
-          [{verb}]
+      <Box flexDirection="column">
+        <Text>
+          <Text dimColor>● </Text>
+          <Text color="cyan">
+            [{verb}]
+          </Text>
+          {target ? <Text color="gray"> {target}</Text> : null}
         </Text>
-        {target ? <Text color="gray"> {target}</Text> : null}
-      </Text>
+        {detailLines.map((l, i) => (
+          <Text key={i} dimColor>
+            {'    ' + l}
+          </Text>
+        ))}
+      </Box>
     );
   }
   const body = item.detail ?? item.text;

@@ -119,3 +119,17 @@ test('单段简单任务：全程全显，Ctrl+O 全文', () => {
   assert.ok(d.every((s) => s.visible), '单段全显');
   assert.ok(d[1].full && d[2].full, 'Ctrl+O 全文');
 });
+
+test('spawn 调用行（子代理转录归档 detail）：随所在段 latestFull 放行全文（规格 §6 展开验收）', () => {
+  const messages = [
+    item('user', '跑审查子代理'),
+    item('tool', 'SPAWN reviewer', { kind: 'call', detail: '子代理转录首行\n子代理转录尾行' }),
+    item('tool', '子任务报告', { kind: 'result', ok: true }),
+    item('assistant', '主任务完成'),
+  ];
+  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: false });
+  assert.ok(d[1].visible, '默认态 SPAWN 调用行可见（摘要形态）');
+  assert.ok(!d[1].full, '默认态内容保持摘要');
+  const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(deep[1].visible && deep[1].full, 'Ctrl+O 放行 SPAWN 调用行全文（决策层无障碍，渲染层 ToolRow 须消费）');
+});
