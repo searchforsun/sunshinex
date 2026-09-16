@@ -58,6 +58,8 @@ src/
 
 ## 最终产品形态（v1.0 个人开发者版）
 
+> 目标形态定稿（北极星场景、双交互面、扩展生态、可靠性双口径、非目标）以 [docs/GOAL.md](docs/GOAL.md) 为单一权威，本节为概览。
+
 - **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，ink + React 等开源组件构建，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台，开源组件优先）；CLI 专项命令（`chat/edit/test/review/doc/run`）随阶段四扩展。TUI 内 `/goal <目标>` 可直接触发 Loop 标准验收修正环（对标 CLI `run`），目标支持自然语言条件。
 - **云本地分工**：任意 OpenAI 协议兼容供应商（`.env` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
@@ -112,6 +114,7 @@ scripts/release.sh --version 0.1.0 --clobber  # 同版本重发：覆盖该 Rele
 
 | 文档 | 内容 |
 |------|------|
+| `docs/GOAL.md` | 目标形态定稿（定位 / 北极星 / 可靠性口径 / 非目标，单一权威） |
 | `docs/Arch-Plan.md` | 架构设计方案与分阶段规划（原 README 全文） |
 | `docs/PLATFORM.md` | 平台兼容性与部署条件（三平台矩阵、exec shell 解析、部署清单） |
 | `docs/ROADMAP.md` | 开发路线图（6 阶段、28 周） |

@@ -1,7 +1,7 @@
 # SunshineX 开发路线图（Roadmap）
 
 > 本文档从全局视角规划 SunshineX 从骨架到 v1.0 的完整落地路径，共 6 个阶段、28 周。
-> 依据：《SunshineX 通用 AI Agent 项目工程化设计方案》（docs/Arch-Plan.md）与《统一运行时主链设计》（docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md）。
+> 依据：目标形态定稿（docs/GOAL.md，单一权威）＋《SunshineX 通用 AI Agent 项目工程化设计方案》（docs/Arch-Plan.md）与《统一运行时主链设计》（docs/superpowers/specs/2026-09-04-harness-unified-spine-design.md）。
 > 每个阶段以「可交付 + 可自检」为验收原则，阶段未通过自检不得进入下一阶段。
 
 ## 1. 总览
@@ -19,8 +19,8 @@
 | 二 | 第 7-12 周 | Loop Engine 与模板 | Loop 引擎 + 三大场景模板 + CLI 可执行 |
 | 三 | 第 13-18 周 | Graph 编排层 | DAG 引擎 + 多角色协作 + 全链路流水线模板 |
 | 四 | 第 19-22 周 | MCP 生态与全场景 | MCP 兼容 + 技能系统 + 向量知识库 |
-| 五 | 第 23-26 周 | 终端双端（TUI + GUI） | 交互式 TUI（对标 Claude Code）+ 桌面端（对标 Codex）+ 三面数据同步 |
-| 六 | 第 27-28 周 | 测试优化与发布 | v1.0 正式版 + 完整文档 + 安装包 |
+| 五 | 第 23-26 周 | 终端双端（TUI + GUI） | 交互式 TUI（对标 Claude Code，含会话持久化 / resume）+ 桌面端 GUI v1（对话 / 预览 / diff）+ 三面数据同步 |
+| 六 | 第 27-28 周 | 测试优化与发布 | v1.0 正式版 + 长任务基准集 + 完整文档 + 安装包 |
 
 ## 3. 阶段推进与依赖
 
@@ -109,16 +109,17 @@ flowchart TB
 - [x] 待办清单展示：任务拆解与状态实时同步（Task 6：待办面板实时勾选；数据源为计划条目状态——逐项执行定案的等价映射）
 - [x] 权限与审批终端化：deny/ask/allow 实时询问，gate 审批在会话内完成（Task 2/4/5：guard asker 注入 + y/a/n 键盘裁决 + 审批模态；deny 规则与硬底线不因 asker 豁免）
 - [x] 终端渲染选型：原生 ANSI 渲染 vs 成熟 TUI 库（如 Ink/blessed 一类候选），按依赖引入原则评审定案（Task 5：Ink 定案——ink@^3.2.0 CJS 兼容线，R1 冒烟过；ink@4+ ESM-only 冲突已修订）
+- [ ] 会话持久化 + resume（目标形态一等能力，全会话口径：会话链 / 消息 / UI 状态全还原，对标 `claude --resume`；`/goal` 跨天续走为首个消费场景）
 
-**5B 桌面端 GUI（对标 Codex 工作台）**：
+**5B 桌面端 GUI（对标 Codex 工作台，spec 先行）**：
 
-- [ ] 对话交互、代码预览、diff 对比
-- [ ] 工作流可视化编排与实时监控（任务委派式看板）
+- [ ] 对话交互、代码预览、diff 对比（GUI v1 范围）
+- [ ] 工作流可视化编排与实时监控（任务委派式看板，后置 GUI v2）
 - [ ] 项目记忆管理、技能管理、插件管理
 - [ ] 双端数据同步：配置、任务、记忆、日志（CLI/TUI/GUI 三面同源）
 - [ ] 系统托盘、全局快捷键、消息通知
 
-**交付物**：交互式 TUI（默认入口）+ 完整功能桌面端，CLI/TUI/GUI 三面数据互通。
+**交付物**：交互式 TUI（默认入口，含会话持久化 / resume）+ 桌面端 GUI v1（对话交互 / 代码预览 / diff），CLI/TUI/GUI 三面数据互通。
 **验收**：TUI 会话内完成一次含计划确认、审批与修正环的真实任务（流式可视、待办同步）；CLI 与 GUI 双端共享同一数据底座，核心功能可视化可用。
 
 ### 阶段六：测试优化与发布（第 27-28 周）
@@ -126,6 +127,7 @@ flowchart TB
 **目标**：全量测试、性能优化、打包发布。
 
 - [ ] 全功能单元测试、集成测试、安全测试
+- [ ] 长任务基准集（目标形态可靠性口径）：固定任务库量化完成率与人工干预次数，可自动判定走脚本化、需人工判定走观察台账，不入提交门禁（防端点抖动污染 CI）
 - [ ] 性能优化：缓存命中率、响应速度、内存占用
 - [ ] 跨平台打包：Win/Mac/Linux 安装包、CLI 全局包
 - [ ] 完善文档：开发文档、使用文档、插件开发手册
@@ -135,7 +137,7 @@ flowchart TB
 
 ## 5. 当前进度
 
-阶段一至三已全部完成，阶段四进行中：
+阶段一至四已全部完成，阶段五 5A（TUI）已交付、5B（GUI）未启动：
 
 - [x] 阶段一 Harness 底座（perception / reactor / tools / security / context / memory / skills；统一运行时主链 1A-1E、Context Budget、安全加固全链交付，详见 specs/ 各设计文档）
 - [x] 阶段二 Loop Engine（engine + Agent/Check/Gate/Router 四类节点、重构 / 测试闭环 / 代码审查三模板、/goal 自我验证、CLI run）
@@ -143,9 +145,9 @@ flowchart TB
 - [x] 模型 SDK 接入 OpenAI 协议兼容供应商（`.env` 配置，零新增依赖）
 - [x] 阶段四 MCP 生态与全场景能力（P1：stdio 注册链 + 安全闸门 + sqlite-vec 知识库；P1b：HTTP/SSE 传输 + 记忆→技能沉淀闭环；P4R：路由观测 + 成本账本 + 前缀稳定化）
 
-当前基线：npm run build（tsc strict）零报错、325 个测试全绿、npm run selfcheck 通过（含 learned / usage / tui 汇总行）；CLI 执行面 selfcheck / run / pipeline / tui 四命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
+当前基线（2026-09-17 实测）：tsc strict 零报错、全量 626/626、selfcheck OK（skills 21）；CLI 执行面 selfcheck / run / pipeline / tui 四命令级联部署冒烟验证。实施记录见各 plan 执行回写与 reports/ 真实场景验证报告。
 
-下一步：阶段五 5B 桌面端 GUI——对标 Codex 工作台（复用 SessionEvents 事件面与 asker 契约，CLI/TUI/GUI 三面同源）；随行开放项：token 逐字增量上屏、自动技能筛选与 AI 语义聚类（随记忆深化）。
+下一步（目标形态排期，见 docs/GOAL.md）：GUI 设计规格（纸面，对标 Codex 工作台，复用 SessionEvents 事件面与 asker 契约，CLI/TUI/GUI 三面同源）∥ 会话持久化 + resume（实施，TUI 会话持久化基建为前置）并行启动 → 长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子代理生态 → 插件生命周期与依赖管理）；随行开放项：token 逐字增量上屏、自动技能筛选与 AI 语义聚类（随记忆深化）。
 
 ## 6. 验证策略
 
@@ -171,8 +173,8 @@ flowchart TB
 | `src/storage/` | 已实装（LocalStore 本地 JSON 存储底座） | 阶段一 ✓ |
 | `src/plugins/` | 已建 loader.ts | 阶段四 |
 | `src/cli/` | 已建（selfcheck / run / pipeline，实装） | 阶段二 ✓ |
-| `src/tui/` | 未建（对标 Claude Code 交互式终端） | 阶段五 |
-| `src/gui/` | 未建（对标 Codex 工作台） | 阶段五 |
+| `src/tui/` | 已建（对标 Claude Code 交互式终端，5A 已交付） | 阶段五 5A ✓ |
+| `src/gui/` | 未建（对标 Codex 工作台，spec 先行） | 阶段五 5B |
 | `src/server/` | 未建 | 按需 |
 
 > 说明：骨架目录与 README 目标目录存在命名差异（如 `src/harness` vs `src/agent/harness`），随各阶段开发逐步迁移对齐。
