@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { buildDeps, buildModel } from '../../runtime';
-import { resolveTemplate } from './run-loop';
+import { resolveTemplate, runLoop } from './run-loop';
 import { ScriptedAdapter } from '../../model/adapter';
 
 test('buildDeps：装配四件套且内置工具已注册', () => {
@@ -50,4 +50,15 @@ test('buildModel：缺省 openai 且带展示标签，--model=stub 走占位适�
   const oa = buildModel({});
   assert.equal(oa.provider, 'openai');
   assert.ok(oa.label && oa.label.startsWith('openai · '), 'banner 应显示真实模型标签');
+});
+test('run-loop：用法提示不再含 --template（模板为内部装配机制，用户面零暴露）', async () => {
+  await assert.rejects(
+    () => runLoop({ command: 'run', positional: [], flags: {} }),
+    (e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      assert.match(msg, /sunshinex run <dir>/);
+      assert.ok(!msg.includes('--template'), '用法提示不得暴露模板参数');
+      return true;
+    },
+  );
 });

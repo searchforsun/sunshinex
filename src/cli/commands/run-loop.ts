@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { resolveTemplate } from '../../loop/templates';
+import { DEFAULT_GOAL_TEMPLATE, resolveTemplate } from '../../loop/templates';
 import { buildDeps } from '../../runtime';
 import type { CliArgs } from '../index';
 
@@ -8,14 +8,14 @@ export { resolveTemplate };
 
 export async function runLoop(args: CliArgs): Promise<void> {
   const dir = args.positional[0];
-  if (!dir) throw new Error('用法：sunshinex run <dir> --template=test-loop --goal="一句可度量的目标终态（复杂目标可内嵌：验收标准：id=描述）"');
+  if (!dir) throw new Error('用法：sunshinex run <dir> --goal="一句可度量的目标终态（复杂目标可内嵌：验收标准：id=描述）"');
   const root = path.resolve(dir);
   const goal = String(args.flags.goal ?? '');
   if (!goal) throw new Error('缺少 --goal="目标（验收标准：id=描述）"');
-  const template = String(args.flags.template ?? 'test-loop');
+  // 模板为内部装配机制（规格 2026-09-16-goal-template D4）：CLI 用户面恒走标准环，--template 不再是用户参数
   const deps = buildDeps(root, args.flags);
-  const tpl = resolveTemplate(deps, template);
-  console.log(`[run] root=${root} template=${template}`);
+  const tpl = resolveTemplate(deps, DEFAULT_GOAL_TEMPLATE);
+  console.log(`[run] root=${root}`);
   // fork 模型（CLAUDE.md §11）：goal 槽取消，任务指令以链行承载（单发 run 空链起，行为对外不变）
   deps.context.appendChain([{ action: 'task', observation: goal }]);
   const r = await tpl.engine.run(goal);
