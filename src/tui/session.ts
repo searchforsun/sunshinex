@@ -438,6 +438,9 @@ export class SessionController {
             `✻ /goal incomplete: ${r.status}${r.error ? ` — ${r.error}` : ''}`,
             `✻ /goal 未完成：${r.status}${r.error ? ` — ${r.error}` : ''}`,
           ),
+          ...(r.status === 'paused'
+            ? [t('Run /goal again to continue (the session chain keeps the context)', '重跑 /goal 可续走（会话链保留上下文）')]
+            : []),
           ...lines,
           describeIncomplete(r.stopReason),
         ].filter((l) => l.length > 0).join('\n'));

@@ -179,3 +179,31 @@ test('/goal：自然语言目标（无内嵌验收标准段）跑通，不再空
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('/goal：判据服务不可用 → paused 回执提示重跑续走', async () => {
+  const tmp = tmpDir('sunshinex-goal9-');
+  try {
+    const respond = async (prompt: string): Promise<string> => {
+      if (prompt.includes('验收判据模型')) throw new Error('ETIMEDOUT: judge endpoint unreachable');
+      return '{"done":true,"reply":"完成"}';
+    };
+    const ctrl = new SessionController({
+      root: tmp,
+      model: {
+        provider: 'flaky-judge',
+        complete: respond,
+        async completeStream(prompt: string, onDelta: (t: string) => void) {
+          const text = await respond(prompt);
+          for (const ch of text) onDelta(ch);
+          return text;
+        },
+      } as unknown as ModelAdapter,
+    });
+    await ctrl.submit('/goal 做事（验收标准：t1=达成）');
+    await ctrl.waitIdle();
+    const receipt = ctrl.getState().messages.map((m) => m.text).join('\n');
+    assert.match(receipt, /Run \/goal again|重跑 \/goal/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

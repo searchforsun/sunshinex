@@ -69,14 +69,14 @@ SUNSHINEX_MODEL=glm-5.3-flash
 | --- | --- |
 | `/help` | 命令清单 |
 | `/init` | 分析项目，生成/完善 SUNSHINE.md |
-| `/goal <目标> [--template=code-refactor\|test-loop\|code-review]` | 运行完整验收修正环（agent→check→repair），缺省 `test-loop`；目标内嵌验收标准如 `（验收标准：t1=构建通过）` |
+| `/goal <目标> [--template=code-refactor\|test-loop\|code-review]` | 运行完整验收修正环（agent→check→repair），缺省 `test-loop`；目标即条件——一句可度量的终态（对话里可自证），复杂目标可内嵌 `（验收标准：t1=…）` 多判据 |
 | `/status` | 会话与账本摘要 |
 | `/plan <目标>` | 先规划后执行（见第六节） |
 | `/compact` | 立即压缩上下文（当前模型生成六要素交接摘要，模型失败自动回退） |
 | `/model [small\|medium\|large]` | 查询/设置模型档位（对后续任务生效） |
 | `/new` | 新会话（清消息与待办、清空会话链与压缩摘要、清除审批登记；记忆与账本保留） |
 
-`/goal` 直达 Loop 修正环模板（对标 CLI `sunshinex run`）：验收判据未过自动回修，直至通过或预算越限；修正全程走会话主链，终态回执含轮数/验收项/tokens。
+`/goal` 直达 Loop 修正环模板（对标 CLI `sunshinex run`）：目标即验收条件，判据模型逐轮评估三值裁决（满足 / 未满足 / 不可满足——判定不可满足即终止并给出理由）；判据服务不可用时自动重试 3 次后暂停，重跑 `/goal` 续走（会话链保留上下文）；修正全程走会话主链，终态回执含轮数/验收项/tokens。
 
 ## 五、权限模式与审批
 
