@@ -53,6 +53,8 @@ export interface CriterionResult {
   desc: string;
   passed: boolean;
   evidence?: string;
+  /** 模型判据三值裁决（规则谓词不产生；缺省按 passed 推导 met/not-yet） */
+  verdict?: 'met' | 'not-yet' | 'impossible';
 }
 
 /** Loop 节点结构化输出 */

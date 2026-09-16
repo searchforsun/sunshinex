@@ -47,7 +47,10 @@ async function modelJudge(
     `你是验收判据模型。目标：${goal}`,
     `执行答复（证据）：${agentReply}`,
     `验收标准 ${criterion.id}：${criterion.desc}`,
-    '仅回复一个 JSON 对象：{"passed":boolean,"evidence":string}',
+    pick(
+      'Reply with a single JSON object: {"passed":boolean,"impossible":boolean,"evidence":string}',
+      '仅回复一个 JSON 对象：{"passed":boolean,"impossible":boolean,"evidence":string}',
+    ),
   ].join('\n');
   let raw: string;
   try {
@@ -56,11 +59,13 @@ async function modelJudge(
     return { id: criterion.id, desc: criterion.desc, passed: false, evidence: e instanceof Error ? e.message : '模型判据调用失败' };
   }
   try {
-    const j = JSON.parse(raw) as { passed?: unknown; evidence?: unknown };
+    const j = JSON.parse(raw) as { passed?: unknown; impossible?: unknown; evidence?: unknown };
+    const impossible = j.impossible === true;
     return {
       id: criterion.id,
       desc: criterion.desc,
       passed: j.passed === true,
+      ...(impossible ? { verdict: 'impossible' as const } : {}),
       evidence: typeof j.evidence === 'string' ? j.evidence : undefined,
     };
   } catch {
