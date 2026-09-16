@@ -152,3 +152,34 @@ export class ContextManager {
     return items;
   }
 }
+
+/** 链行 → history 条目的唯一拼装格式（reactor toHistory 与 TUI /compact 补链共用，防两处漂移） */
+export function chainToHistoryItems(steps: HistoryStep[]): ContextItem[] {
+  return steps.map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
+}
+
+export interface RunCompactionResult {
+  chunks: ContextChunk[];
+  /** 摘要来源三态（透传 applyCompaction）：model / deterministic / replay */
+  via: 'model' | 'deterministic' | 'replay';
+}
+
+/** 压缩协调单点（规格 §4.2/D5）：确定性选块 → 摘要分叉（模型优先，失败回退）→ 门禁重注入 → 折叠链前缀。
+ *  reactor 自动压缩与 TUI /compact 两入口只传参不各自拼装（防拼装漂移，memory 双写教训）；
+ *  replay 幂等重放不折链（防重复推进水位）。 */
+export async function runCompaction(
+  cm: ContextManager,
+  items: ContextItem[],
+  opts: { summaryTokenBudget: number; rereadTokenBudget: number; chainFoldedCount?: number; summaryModel?: ModelAdapter },
+): Promise<RunCompactionResult> {
+  const chunks = await cm.window.compact(items, { summaryTokenBudget: opts.summaryTokenBudget });
+  const via = await cm.applyCompaction(chunks, {
+    rereadTokenBudget: opts.rereadTokenBudget,
+    summaryTokenBudget: opts.summaryTokenBudget,
+    ...(opts.summaryModel ? { summaryModel: opts.summaryModel } : {}),
+  });
+  if (via !== 'replay' && opts.chainFoldedCount !== undefined && opts.chainFoldedCount > 0) {
+    cm.trimChainFront(opts.chainFoldedCount);
+  }
+  return { chunks, via };
+}

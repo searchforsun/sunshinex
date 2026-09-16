@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ContextManager } from './index';
+import { chainToHistoryItems, ContextManager, runCompaction } from './index';
 import { ContextItem } from '../../types';
 import { FileStore } from '../../storage/adapter';
 
@@ -165,4 +165,41 @@ test('applyCompaction provider 门禁：非 openai 通道不走模型直接确�
   const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'stub', complete: async () => { calls++; return 'X'; } } });
   assert.equal(via, 'deterministic');
   assert.equal(calls, 0, 'stub 通道零模型调用');
+});
+
+test('chainToHistoryItems：链行 → history 条目唯一格式（与 reactor toHistory 同源）', () => {
+  const items = chainToHistoryItems([
+    { step: 3, action: 'read', observation: 'o1' },
+    { step: 4, observation: 'o2' },
+  ]);
+  assert.deepEqual(items.map((i) => i.content), ['3: read -> o1', '4:  -> o2']);
+  assert.ok(items.every((i) => i.kind === 'history'));
+});
+
+test('runCompaction：协调单点——压缩、模型摘要、折链', async () => {
+  const { cm } = setup();
+  cm.appendChain([{ action: 'read', observation: 'Y'.repeat(800) }]);
+  const items = cm.assemble(chainToHistoryItems(cm.chainView()));
+  const r = await runCompaction(cm, items, {
+    summaryTokenBudget: 2000,
+    rereadTokenBudget: 2000,
+    chainFoldedCount: 1,
+    summaryModel: { provider: 'openai', complete: async () => MODEL_BODY },
+  });
+  assert.equal(r.via, 'model');
+  assert.ok(r.chunks.length > 0);
+  assert.equal(cm.chainView().length, 0, 'chainFoldedCount>0 时折链（压缩块与链不双份）');
+  assert.ok(cm.assemble().some((i) => i.content.startsWith('[Compacted summary')));
+});
+
+test('runCompaction：replay 幂等——不再折链、不重复注入', async () => {
+  const { cm } = setup();
+  cm.appendChain([{ observation: 'Y'.repeat(50) }, { observation: 'Z'.repeat(50) }]);
+  const items = cm.assemble(cm.chainView().map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` })));
+  const r1 = await runCompaction(cm, items, { summaryTokenBudget: 2000, rereadTokenBudget: 2000 });
+  assert.notEqual(r1.via, 'replay');
+  const r2 = await runCompaction(cm, items, { summaryTokenBudget: 2000, rereadTokenBudget: 2000, chainFoldedCount: cm.chainView().length });
+  assert.equal(r2.via, 'replay');
+  assert.equal(cm.chainView().length, 2, 'replay 不折链（防重复推进水位）');
+  assert.equal(cm.assemble().filter((i) => i.content.startsWith('[Compacted summary')).length, 1, '不重复注入');
 });

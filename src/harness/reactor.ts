@@ -9,7 +9,7 @@ import type { SubagentRunner } from './subagent';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
-import { ContextManager } from './context';
+import { chainToHistoryItems, ContextManager } from './context';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -380,9 +380,7 @@ export class Reactor {
   }
 
   private toHistory(steps: StepRecord[], fromStep: number): ContextItem[] {
-    return steps
-      .filter((s) => s.step > fromStep)
-      .map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
+    return chainToHistoryItems(steps.filter((s) => s.step > fromStep));
   }
 
   /** 一轮并行多个工具（除 exec 外均可并行，对标 Claude Code 的并行调用）：经 Promise.all 并发执行，
