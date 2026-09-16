@@ -110,3 +110,59 @@ test('重读预算化：预算内全部保留（与未传参数行为一致）',
   const items = cm.assemble();
   assert.ok(items.map((i) => i.content).some((t) => t.startsWith('[重读] a.md')));
 });
+
+const MODEL_BODY = '## Goal\n压缩验证目标\n## Open\n无';
+
+test('applyCompaction 摘要分叉：模型成功 → 正文为模型文本，checksum 头不变，重读机制不变', async () => {
+  const { root, cm } = setup();
+  fs.writeFileSync(path.join(root, 'notes.md'), 'line1');
+  cm.trackFile('notes.md');
+  const chunks = await compactOf(cm, '很长的旧上下文——含完整任务轨迹与工具观察'.repeat(20));
+  let calls = 0;
+  const via = await cm.applyCompaction(chunks, {
+    rereadTokenBudget: 2000,
+    summaryTokenBudget: 2000,
+    summaryModel: { provider: 'openai', complete: async () => { calls++; return MODEL_BODY; } },
+  });
+  assert.equal(via, 'model');
+  const items = cm.assemble();
+  const sum = items.find((i) => i.content.startsWith('[Compacted summary'));
+  assert.ok(sum, '压缩块存在');
+  assert.match(sum!.content, /^\[Compacted summary checksum=[0-9a-f]{16}\]\n## Goal/);
+  assert.ok(sum!.content.includes(MODEL_BODY), '正文为模型文本');
+  assert.ok(!sum!.content.includes('- [history] '), '确定性 join 行被替换');
+  assert.ok(items.some((i) => i.content.startsWith('[重读] notes.md')), '重读条目机制不变');
+  assert.equal(calls, 1, '模型恰好调用一次');
+});
+
+test('applyCompaction 摘要分叉：模型抛错/空输出 → 回退确定性 join（逐字节今日行为）', async () => {
+  for (const complete of [async () => { throw new Error('boom'); }, async () => '   '] as const) {
+    const { cm } = setup();
+    const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
+    const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'openai', complete } });
+    assert.equal(via, 'deterministic');
+    const sum = cm.assemble().find((i) => i.content.startsWith('[Compacted summary'));
+    assert.ok(sum && sum.content.includes('- [history] 旧上下文要点'), '回退体为 - [type] 摘要 行');
+  }
+});
+
+test('applyCompaction replay 幂等：同一 chunks 二次应用不再发起模型调用', async () => {
+  const { cm } = setup();
+  let calls = 0;
+  const model = { provider: 'openai', complete: async () => { calls++; return MODEL_BODY; } };
+  const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
+  await cm.applyCompaction(chunks, { summaryModel: model });
+  const via2 = await cm.applyCompaction(chunks, { summaryModel: model });
+  assert.equal(via2, 'replay');
+  assert.equal(calls, 1, 'replay 不发起模型调用');
+  assert.equal(cm.assemble().filter((i) => i.content.startsWith('[Compacted summary')).length, 1, '不重复注入');
+});
+
+test('applyCompaction provider 门禁：非 openai 通道不走模型直接确定性', async () => {
+  const { cm } = setup();
+  let calls = 0;
+  const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
+  const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'stub', complete: async () => { calls++; return 'X'; } } });
+  assert.equal(via, 'deterministic');
+  assert.equal(calls, 0, 'stub 通道零模型调用');
+});

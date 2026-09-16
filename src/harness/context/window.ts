@@ -115,16 +115,16 @@ export class ContextWindow {
     return this.lastChecksum === null ? null : this.lastChecksum.slice(0, 16);
   }
 
-  /** 压缩摘要条目（纯计算）：kept chunks 摘要拼接 + checksum 标记 */
-  summarize(chunks: ContextChunk[]): ContextItem {
+  /** 压缩摘要条目（纯计算）：kept chunks 摘要拼接 + checksum 标记；summaryBody 提供时正文整体替换（模型摘要路径，头不变） */
+  summarize(chunks: ContextChunk[], summaryBody?: string): ContextItem {
     const hash = crypto.createHash('sha256').update(JSON.stringify(chunks)).digest('hex').slice(0, 16);
-    const text = chunks.map((c) => `- [${c.type}] ${c.summary}`).join('\n');
+    const text = summaryBody !== undefined ? summaryBody : chunks.map((c) => `- [${c.type}] ${c.summary}`).join('\n');
     return { kind: 'history', content: pick(`[Compacted summary checksum=${hash}]\n${text}`, `[压缩摘要 checksum=${hash}]\n${text}`) };
   }
 
   /** reinject 落地：由压缩 chunks 产出重注入条目（摘要；最近文件重读由 ContextManager 协调后追加） */
-  reinject(chunks: ContextChunk[]): ContextItem[] {
-    return [this.summarize(chunks)];
+  reinject(chunks: ContextChunk[], summaryBody?: string): ContextItem[] {
+    return [this.summarize(chunks, summaryBody)];
   }
 
   private chunkId(content: string): string {

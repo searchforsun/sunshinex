@@ -124,3 +124,12 @@ test('compact 摘要预算化：丢尽可丢块仍超限 → 确定性均匀截�
   const again = await w.compact(items, { summaryTokenBudget: 100 });
   assert.deepEqual(chunks.map((c) => c.summary), again.map((c) => c.summary), '同输入确定性一致');
 });
+
+test('summarize 支持外部摘要体：checksum 头不变，正文整体替换', () => {
+  const w = new ContextWindow();
+  const chunks = [{ id: 'x', summary: 's', type: 'history', priority: 1 }];
+  const a = w.summarize(chunks);
+  const b = w.summarize(chunks, '自定义正文');
+  assert.equal(a.content.split('\n')[0], b.content.split('\n')[0], 'checksum 头逐字节一致');
+  assert.ok(b.content.endsWith('自定义正文'));
+});

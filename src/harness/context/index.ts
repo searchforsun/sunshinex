@@ -7,6 +7,8 @@ import { RulesRegistry } from './rules';
 import { ContextWindow, ContextChunk, estimateTokens } from './window';
 import { SessionStore } from './session';
 import { maskText } from '../security/chain';
+import { isModelSummarizer, summarizeWithModel } from './summarizer';
+import type { ModelAdapter } from '../../model/adapter';
 
 const RECENT_LIMIT = 5;
 const REREAD_MAX_LINES = 500;
@@ -55,12 +57,21 @@ export class ContextManager {
     return [...this.recent];
   }
 
-  /** 压缩重注入：checksum 门禁 → 摘要 + 重读最近文件 → 注入块（生效于后续轮次 assemble） */
-  async applyCompaction(chunks: ContextChunk[], opts?: { rereadTokenBudget?: number }): Promise<void> {
+  /** 压缩重注入：checksum 门禁 → 摘要（模型六要素优先，未传/门禁关闭/失败回退确定性 join）→ 重读最近文件 → 注入块。
+   *  返回摘要来源三态：model=模型正文生效；deterministic=确定性回退；replay=同一压缩事件幂等重放（不注入、不计数、不发起模型调用）。 */
+  async applyCompaction(
+    chunks: ContextChunk[],
+    opts?: { rereadTokenBudget?: number; summaryModel?: ModelAdapter; summaryTokenBudget?: number },
+  ): Promise<'model' | 'deterministic' | 'replay'> {
     const verdict = this.window.verifyChecksum(chunks);
-    if (verdict === 'replay') return; // 同一压缩事件幂等重放
+    if (verdict === 'replay') return 'replay'; // 同一压缩事件幂等重放（规格 §8：不发起模型调用）
     this.compactions++; // first=首个压缩事件（计 1）、new=新一轮压缩；replay 不计数
-    const items: ContextItem[] = [...this.window.reinject(chunks)];
+    let summaryBody: string | undefined;
+    if (opts?.summaryModel && isModelSummarizer(opts.summaryModel)) {
+      const body = await summarizeWithModel(opts.summaryModel, chunks, opts.summaryTokenBudget ?? 2000);
+      if (body !== null) summaryBody = body;
+    }
+    const items: ContextItem[] = [...this.window.reinject(chunks, summaryBody)];
     for (const rel of this.recent) {
       try {
         const abs = path.resolve(this.root, rel);
@@ -81,6 +92,7 @@ export class ContextManager {
       items.push(...rereads);
     }
     this.compacted = items;
+    return summaryBody !== undefined ? 'model' : 'deterministic';
   }
 
   /** 技能首帧注入槽：set 后的下一次 assemble 尾追携带（kind=system），消费即清——技能正文不随后续帧重复 */
