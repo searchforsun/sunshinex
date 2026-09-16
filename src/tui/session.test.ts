@@ -390,3 +390,48 @@ test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('会话控制器：/compact 补链参与，链折叠且摘要来自会话模型', async () => {
+  const tmp = tmpdir('sunshinex-sess-compact-');
+  try {
+    const SUMMARY = '## Goal\n压缩演示\n## Constraints\n只读\n## Progress\n已折叠\n## Verified\n回执一致\n## Open\n无\n## Rationale\n会话模型路径';
+    const harness = new Harness({
+      root: tmp,
+      mode: 'dontAsk',
+      model: { provider: 'openai', complete: async (p) => (p.includes('handoff summary') ? SUMMARY : '{"done":true,"reply":"ok"}') },
+    });
+    harness.context.appendChain([
+      { action: 'read', observation: 'Y'.repeat(2000) },
+      { action: 'read', observation: 'Z'.repeat(2000) },
+    ]);
+    const fake: TuiRuntime = {
+      harness,
+      runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
+    };
+    const ctrl = new SessionController({ root: tmp, runtime: fake });
+    await ctrl.submit('/compact');
+    const texts = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
+    assert.match(texts, /Compressed: \d+ summary chunks re-injected/, '压缩回执上屏');
+    assert.equal(harness.context.chainView().length, 0, '链前缀已折叠（/compact 补链语义）');
+    const sum = harness.context.assemble().find((i) => i.content.startsWith('[Compacted summary'));
+    assert.ok(sum && sum.content.includes('## Rationale'), '压缩块正文为模型六节摘要');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话控制器：/compact 非真实模型通道走确定性压缩（门禁关闭）', async () => {
+  const tmp = tmpdir('sunshinex-sess-compact2-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const ctx = ctrl.runtime.harness.context;
+    ctx.appendChain([{ action: 'read', observation: 'Y'.repeat(2000) }]);
+    await ctrl.submit('/compact');
+    assert.equal(ctx.chainView().length, 0, '链前缀已折叠');
+    const sum = ctx.assemble().find((i) => i.content.startsWith('[Compacted summary'));
+    assert.ok(sum && sum.content.includes('- [history] 1: read -> '), '确定性 join 回退');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

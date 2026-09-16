@@ -7,7 +7,7 @@ import { stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { t } from '../i18n';
-import { ContextManager } from '../harness/context';
+import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import { DEFAULT_GOAL_TEMPLATE, TEMPLATE_NAMES } from '../loop/templates';
 import * as fs from 'fs';
@@ -539,14 +539,20 @@ export class SessionController {
       return;
     }
     if (cmd === '/compact') {
-      // 复用 Reactor 同款窗口压缩链：组装当前上下文 → 压缩 → 重注入（与自动压缩同一机制，手动即时触发）
-      const items = this.runtime.harness.context.assemble();
-      const before = this.runtime.harness.context.window.estimate(items).used;
-      const chunks = await this.runtime.harness.context.window.compact(items, { summaryTokenBudget: 2000 });
-      await this.runtime.harness.context.applyCompaction(chunks, { rereadTokenBudget: 2000 });
-      const after = this.runtime.harness.context.window.estimate(this.runtime.harness.context.assemble()).used;
+      // 压缩协调单点（与 Reactor 自动压缩同链路，规格 D5）：补链参与（chainView 转 history 条目）→ 压缩 → 摘要（会话模型，失败回退）→ 折链
+      const ctx = this.runtime.harness.context;
+      const chainItems = chainToHistoryItems(ctx.chainView());
+      const items = ctx.assemble(chainItems);
+      const before = ctx.window.estimate(items).used;
+      const r = await runCompaction(ctx, items, {
+        summaryTokenBudget: 2000,
+        rereadTokenBudget: 2000,
+        chainFoldedCount: chainItems.length,
+        summaryModel: this.runtime.harness.model,
+      });
+      const after = ctx.window.estimate(ctx.assemble()).used;
       this.state = { ...this.state, metrics: { ...this.state.metrics, ctxUsed: after } };
-      this.pushMsg('system', t(`Compressed: ${chunks.length} summary chunks re-injected (ctx ${before} → ${after} tokens)`, `已压缩：${chunks.length} 个摘要块重注入（水位 ${before} → ${after} tokens）`));
+      this.pushMsg('system', t(`Compressed: ${r.chunks.length} summary chunks re-injected (ctx ${before} → ${after} tokens)`, `已压缩：${r.chunks.length} 个摘要块重注入（水位 ${before} → ${after} tokens）`));
       return;
     }
     if (cmd === '/plan') {
