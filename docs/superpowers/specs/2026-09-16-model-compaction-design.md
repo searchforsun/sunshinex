@@ -62,16 +62,16 @@ summarizeWithModel(complete, chunks, budget): Promise<string | null>
 
 ### 4.2 ContextManager 消化分叉（单点）
 
-- 构造注入可选 `summarizer`；`applyCompaction` async 化，内部：
-  - summarizer 存在且 `summarizeWithModel` 返回非空 → 摘要体 = 模型文本
-  - 未注入 / 返回 null → 摘要体 = 现有确定性 join（逐字节今日行为）
+- 摘要器不驻留 ContextManager：`applyCompaction` 增调用点参数 `summaryModel`/`summaryTokenBudget`，内部：
+  - `isModelSummarizer(summaryModel)` 门禁开启（provider='openai'）且 `summarizeWithModel` 返回非空 → 摘要体 = 模型文本（返回三态 `'model' | 'deterministic' | 'replay'`）
+  - 未传、门禁关闭或返回 null → 摘要体 = 现有确定性 join（逐字节今日行为，返回 'deterministic'）
 - checksum 计算保持输入锚定（D3）：同输入块的 verdict 三态（first/replay/new）语义不变；replay 幂等跳过时不发起模型调用
 - 新增共享协调函数（context/index.ts 导出）：
 
 ```text
-runCompaction(ctx, items, { summaryTokenBudget, rereadTokenBudget, chainFoldedCount? })
-  → compact 选块 → applyCompaction（含摘要分叉）→ 成功且 chainFoldedCount>0 时 trimChainFront
-  → 返回 { applied, before/after 水位信息 }
+runCompaction(ctx, items, { summaryTokenBudget, rereadTokenBudget, chainFoldedCount?, summaryModel? })
+  → compact 选块 → applyCompaction（含摘要分叉）→ via≠replay 且 chainFoldedCount>0 时 trimChainFront
+  → 返回 { chunks, via: 'model' | 'deterministic' | 'replay' }（via=replay 时不折链；回落水位由调用方各自重装配计算）
 ```
 
 ### 4.3 两入口接线（只传参）
@@ -81,9 +81,9 @@ runCompaction(ctx, items, { summaryTokenBudget, rereadTokenBudget, chainFoldedCo
 | `src/harness/reactor.ts` | 自动压缩收敛环内改调 `runCompaction`（滞回/水位/收敛环预算不动）；压缩事件行等链尾追语义不变 |
 | `src/tui/session.ts` | `/compact` 改调 `runCompaction`：items = assemble(history=chainView 转换条目)；chainFoldedCount=本次喂入链行数；成功后回执含水位回落 |
 
-### 4.4 装配点注入（单点决策）
+### 4.4 模型通道决策点（实现对齐）
 
-`src/runtime.ts` 与 `buildModel` 并列新增 `buildSummarizer`：装配出 OpenAIAdapter 时返回 `(p) => adapter.complete(p)`，Scripted/Stub 或未配置真实模型返回 undefined（D4）。CLI 与 TUI 共用同一决策点。
+不新增 buildSummarizer 装配面：`isModelSummarizer()`（summarizer.ts 单点）以 provider 门禁实现同一决策语义（D4）——仅 'openai' 通道启用模型摘要，Stub/Scripted/测试桩自然走确定性路径；模型经既有 `deps.model`（reactor 侧为 run 内已路由 adapter，精确「当前会话模型」，D2）与 `harness.model`（/compact 侧）字段流动，装配零改动。
 
 ## 5. 六要素摘要模板
 
@@ -114,10 +114,10 @@ runCompaction(ctx, items, { summaryTokenBudget, rereadTokenBudget, chainFoldedCo
 |------|------|
 | `src/harness/context/summarizer.ts` | 新增：buildSummaryPrompt + summarizeWithModel + 预算截断安全网 |
 | `src/harness/context/window.ts` | 不动（选块与确定性摘要保留为回退） |
-| `src/harness/context/index.ts` | +可选 summarizer 注入；applyCompaction async 化；导出 runCompaction 协调单点 |
+| `src/harness/context/index.ts` | +applyCompaction 摘要分叉（调用点参数）；导出 runCompaction 协调单点与 chainToHistoryItems |
 | `src/harness/reactor.ts` | 压缩块改调 runCompaction（await） |
 | `src/tui/session.ts` | /compact 改调 runCompaction（链参与 + trim + 回执） |
-| `src/runtime.ts` | +buildSummarizer 注入决策 |
+| `src/runtime.ts` | 不动（模型经既有 deps.model / harness.model 字段流动，零装配改动） |
 | `src/i18n.ts` | 零改动（模板 pick() 就地成对） |
 | 测试 | summarizer 单测 / index 回退与幂等 / reactor 端到端 / session /compact 用例 / 前缀回归 |
 

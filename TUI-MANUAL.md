@@ -72,7 +72,7 @@ SUNSHINEX_MODEL=glm-5.3-flash
 | `/goal <目标> [--template=code-refactor\|test-loop\|code-review]` | 运行完整验收修正环（agent→check→repair），缺省 `test-loop`；目标内嵌验收标准如 `（验收标准：t1=构建通过）` |
 | `/status` | 会话与账本摘要 |
 | `/plan <目标>` | 先规划后执行（见第六节） |
-| `/compact` | 立即压缩上下文 |
+| `/compact` | 立即压缩上下文（当前模型生成六要素交接摘要，模型失败自动回退） |
 | `/model [small\|medium\|large]` | 查询/设置模型档位（对后续任务生效） |
 | `/new` | 新会话（清消息与待办、清空会话链与压缩摘要、清除审批登记；记忆与账本保留） |
 
