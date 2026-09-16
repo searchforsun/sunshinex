@@ -579,8 +579,8 @@ export class SessionController {
       const goal = rest.replace(/--template=\S+\s*/g, '').trim();
       if (!goal) {
         this.pushMsg('system', t(
-          'Usage: /goal <goal> [--template=code-refactor|test-loop|code-review] — runs agent→check→repair loop; embed criteria inline, e.g. /goal fix build (criteria: t1=build passes)',
-          '用法：/goal <目标> [--template=code-refactor|test-loop|code-review]——运行 agent→验收→修正环；目标内嵌验收标准，如 /goal 修复构建（验收标准：t1=构建通过）',
+          'Usage: /goal <goal> [--template=code-refactor|test-loop|code-review] — runs the verify-fix loop until your condition is met; state the goal as one measurable end state (e.g. /goal all tests in src/auth pass), or embed multiple criteria inline (验收标准：t1=…)',
+          '用法：/goal <目标> [--template=code-refactor|test-loop|code-review]——运行验收修正环，直至目标条件满足；目标用一句可度量的终态描述（如 /goal src/auth 测试全绿），复杂目标可内嵌多判据（验收标准：t1=…）',
         ));
         return;
       }

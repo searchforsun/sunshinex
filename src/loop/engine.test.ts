@@ -195,12 +195,16 @@ test('T4-1 /goal 解析：内嵌段拆出 criteria；无段不静默通过', asy
   );
   assert.equal(parseCriteria('没有验收段的普通目标'), null);
 
-  // CheckNode：无段 → fail 不静默；有段 + 规则全过 → done
-  const ctx = ctxOf({ goal: '无验收段' });
-  const check = checkNode({} as LoopDeps);
-  const noSeg = await check.run(ctx, null);
-  assert.equal(noSeg.status, 'fail');
-  assert.ok((noSeg.reply ?? '').includes('无验收标准'));
+  // CheckNode：无段 → goal 整体作为隐式条件（id=condition，走模型判据；规格 §4 替换空转 fail 路径）
+  const depsCond = makeDeps(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-cond-')),
+    new ScriptedAdapter(['{"passed":true,"evidence":"对话里已自证"}']),
+  );
+  const noSeg = await checkNode(depsCond).run(ctxOf({ goal: '把 src/auth 的所有测试跑到全绿' }), null);
+  assert.equal(noSeg.status, 'done');
+  assert.equal(noSeg.criteria!.length, 1);
+  assert.equal(noSeg.criteria![0].id, 'condition');
+  assert.ok((noSeg.criteria![0].desc ?? '').includes('src/auth'));
 
   const ctx2 = ctxOf({ goal: '任务。验收标准：c1=测试全绿; c2=构建零错' });
   const check2 = checkNode({} as LoopDeps, { ruleCheckers: { c1: yes, c2: yes } });

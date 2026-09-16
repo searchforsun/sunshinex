@@ -160,3 +160,22 @@ test('/goal：/new 清链后空链起跑正常', async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('/goal：自然语言目标（无内嵌验收标准段）跑通，不再空转失败', async () => {
+  const tmp = tmpDir('sunshinex-goal8-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"测试已全绿"}', '{"passed":true,"evidence":"对话里已自证"}']),
+    });
+    await ctrl.submit('/goal 把 src/auth 的所有测试跑到全绿');
+    await ctrl.waitIdle();
+    assert.equal(ctrl.getState().status, 'idle');
+    const receipt = ctrl.getState().messages.map((m) => m.text).join('\n');
+    assert.match(receipt, /\/goal done|\/goal 完成/);
+    const chain = ctrl.context.chainView();
+    assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('src/auth')));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

@@ -8,7 +8,7 @@ export { resolveTemplate };
 
 export async function runLoop(args: CliArgs): Promise<void> {
   const dir = args.positional[0];
-  if (!dir) throw new Error('用法：sunshinex run <dir> --template=test-loop --goal="目标（验收标准：id=描述）"');
+  if (!dir) throw new Error('用法：sunshinex run <dir> --template=test-loop --goal="一句可度量的目标终态（复杂目标可内嵌：验收标准：id=描述）"');
   const root = path.resolve(dir);
   const goal = String(args.flags.goal ?? '');
   if (!goal) throw new Error('缺少 --goal="目标（验收标准：id=描述）"');

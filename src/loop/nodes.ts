@@ -151,7 +151,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
   };
 }
 
-/** check 节点：准则三优先级（输入清单 > goal 内嵌段 > fail）；规则谓词优先、模型判据兜底；全过 done、未过写 deficits */
+/** check 节点：准则三优先级（输入清单 > goal 内嵌段 > goal 隐式条件）；规则谓词优先、模型判据兜底；全过 done、未过写 deficits */
 export function checkNode(
   deps: LoopDeps,
   opts?: { ruleCheckers?: Record<string, (io: { ctx: LoopContext; goal: string }) => Promise<boolean> | boolean> },
@@ -160,7 +160,7 @@ export function checkNode(
     id: 'check',
     kind: 'check',
     run: async (ctx: LoopContext, input: NodeOutput | null): Promise<NodeOutput> => {
-      // 准则来源三优先级：显式输入清单 > goal 内嵌段 > fail（解析失败不静默通过）
+      // 准则来源三优先级：显式输入清单 > goal 内嵌段 > goal 整体隐式条件（规格 §4 条件自由化）
       let criteria: CriterionResult[];
       if (isCriteriaInput(input?.criteria)) {
         criteria = input.criteria.map((c) => ({
@@ -171,10 +171,8 @@ export function checkNode(
       } else {
         const goal = typeof ctx.state.goal === 'string' ? ctx.state.goal : '';
         const parsed = parseCriteria(goal);
-        if (!parsed) {
-          return { status: 'fail', reply: '无验收标准（解析失败不静默通过）', tokens: 0 };
-        }
-        criteria = parsed;
+        // 条件自由化（规格 §4）：无内嵌段时 goal 整体作为单一隐式条件（走模型判据），替代「立即 fail 空转」
+        criteria = parsed ?? [{ id: 'condition', desc: goal, passed: false }];
       }
 
       const goal = typeof ctx.state.goal === 'string' ? ctx.state.goal : '';
