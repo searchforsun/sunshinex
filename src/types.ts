@@ -68,6 +68,8 @@ export interface NodeOutput {
   history?: HistoryStep[];
   /** 内层执行的终止原因（agent 节点透传 Reactor 的 stopReason） */
   stopReason?: StopReason;
+  /** 节点请求引擎立即终局（check 判据 impossible / 判据不可恢复错误 → failed；可恢复重试耗尽 → paused） */
+  terminal?: { status: 'failed' | 'paused'; error: string };
 }
 
 /** Loop 节点公共字段 */

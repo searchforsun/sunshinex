@@ -36,13 +36,26 @@ function isCriteriaInput(v: unknown): v is CriteriaInput {
   return Array.isArray(v) && v.every((c) => c !== null && typeof c === 'object' && 'id' in c && 'desc' in c);
 }
 
-/** 模型判据：构造判据 prompt（准则描述 + goal + agentReply 证据），期望 {"passed":bool,"evidence":str} */
+/** 判据错误分级：fatal（认证/配额/模型不存在 → 立即清除）与 recoverable（超时/断连/过载/限流 → 重试后暂停）；fatal 模式优先，均未中按 recoverable（保守暂停） */
+export function classifyJudgeError(message: string): 'fatal' | 'recoverable' {
+  if (/401|402|403|unauthorized|forbidden|quota|insufficient|billing|invalid api key|model not found/i.test(message)) return 'fatal';
+  return 'recoverable';
+}
+
+/** 判据评估内部结果：judged=判定成功（含 impossible）；blocked=调用失败（分级后终止评估） */
+type JudgeOutcome =
+  | { kind: 'judged'; result: CriterionResult }
+  | { kind: 'blocked'; severity: 'fatal' | 'recoverable'; message: string };
+
+const MAX_JUDGE_RETRIES = 3; // 可恢复错误重试上限（不含初次；对标 CC「retry 3 times then pause」）
+
+/** 模型判据：构造判据 prompt（准则描述 + goal + agentReply 证据），期望 {"passed":bool,"impossible":bool,"evidence":str}；调用失败按分级处置（fatal 不重试、recoverable 重试 ≤3 次后 blocked） */
 async function modelJudge(
   adapter: { complete(prompt: string): Promise<string> },
   criterion: { id: string; desc: string },
   goal: string,
   agentReply: string,
-): Promise<CriterionResult> {
+): Promise<JudgeOutcome> {
   const prompt = [
     `你是验收判据模型。目标：${goal}`,
     `执行答复（证据）：${agentReply}`,
@@ -52,25 +65,45 @@ async function modelJudge(
       '仅回复一个 JSON 对象：{"passed":boolean,"impossible":boolean,"evidence":string}',
     ),
   ].join('\n');
-  let raw: string;
+  let raw: string | undefined;
   try {
     raw = await adapter.complete(prompt);
   } catch (e) {
-    return { id: criterion.id, desc: criterion.desc, passed: false, evidence: e instanceof Error ? e.message : '模型判据调用失败' };
+    const message = e instanceof Error ? e.message : '模型判据调用失败';
+    if (classifyJudgeError(message) === 'fatal') {
+      return { kind: 'blocked', severity: 'fatal', message };
+    }
+    for (let retry = 0; retry < MAX_JUDGE_RETRIES; retry++) {
+      try {
+        raw = await adapter.complete(prompt);
+        break;
+      } catch (e2) {
+        const m2 = e2 instanceof Error ? e2.message : '模型判据调用失败';
+        if (classifyJudgeError(m2) === 'fatal') {
+          return { kind: 'blocked', severity: 'fatal', message: m2 };
+        }
+      }
+    }
+    if (raw === undefined) {
+      return { kind: 'blocked', severity: 'recoverable', message };
+    }
   }
   try {
     const j = JSON.parse(raw) as { passed?: unknown; impossible?: unknown; evidence?: unknown };
     const impossible = j.impossible === true;
     return {
-      id: criterion.id,
-      desc: criterion.desc,
-      passed: j.passed === true,
-      ...(impossible ? { verdict: 'impossible' as const } : {}),
-      evidence: typeof j.evidence === 'string' ? j.evidence : undefined,
+      kind: 'judged',
+      result: {
+        id: criterion.id,
+        desc: criterion.desc,
+        passed: j.passed === true,
+        ...(impossible ? { verdict: 'impossible' as const } : {}),
+        evidence: typeof j.evidence === 'string' ? j.evidence : undefined,
+      },
     };
   } catch {
-    // fail-bounded：判据输出不可解析 → 判不通过，不静默放行
-    return { id: criterion.id, desc: criterion.desc, passed: false, evidence: '模型判据输出非 JSON' };
+    // fail-bounded：判据输出不可解析 → 判不通过，不静默放行（不算调用失败）
+    return { kind: 'judged', result: { id: criterion.id, desc: criterion.desc, passed: false, evidence: '模型判据输出非 JSON' } };
   }
 }
 
@@ -81,11 +114,11 @@ async function judgeOne(
   criterion: { id: string; desc: string },
   ctx: LoopContext,
   goal: string,
-): Promise<CriterionResult> {
+): Promise<JudgeOutcome> {
   const rule = ruleCheckers[criterion.id];
   if (rule) {
     const passed = await rule({ ctx, goal });
-    return { id: criterion.id, desc: criterion.desc, passed };
+    return { kind: 'judged', result: { id: criterion.id, desc: criterion.desc, passed } };
   }
   let adapter: { complete(prompt: string): Promise<string> };
   try {
@@ -176,16 +209,53 @@ export function checkNode(
       }
 
       const goal = typeof ctx.state.goal === 'string' ? ctx.state.goal : '';
+      const outcomes: JudgeOutcome[] = [];
       for (let i = 0; i < criteria.length; i++) {
-        criteria[i] = await judgeOne(deps, opts?.ruleCheckers ?? {}, criteria[i], ctx, goal);
+        const outcome = await judgeOne(deps, opts?.ruleCheckers ?? {}, criteria[i], ctx, goal);
+        outcomes.push(outcome);
+        if (outcome.kind === 'judged' && outcome.result.verdict === 'impossible') break; // 短路：不可满足即整体终局（规格 §5）
       }
 
-      const failed = criteria.filter((c) => !c.passed);
-      if (failed.length === 0) return { status: 'done', criteria, tokens: 0 };
+      // 聚合优先级（规格 §5）：impossible 短路 > fatal > recoverable 耗尽 > 常规 done/deficits
+      const judged = outcomes
+        .filter((o): o is Extract<JudgeOutcome, { kind: 'judged' }> => o.kind === 'judged')
+        .map((o) => o.result);
+      const imp = judged.find((c) => c.verdict === 'impossible');
+      if (imp) {
+        return {
+          status: 'fail',
+          criteria: judged,
+          tokens: 0,
+          terminal: { status: 'failed', error: `目标判定不可满足：${imp.evidence ?? imp.desc}` },
+        };
+      }
+      const fatal = outcomes.find(
+        (o): o is Extract<JudgeOutcome, { kind: 'blocked' }> => o.kind === 'blocked' && o.severity === 'fatal',
+      );
+      if (fatal) {
+        return {
+          status: 'fail',
+          criteria: judged,
+          tokens: 0,
+          terminal: { status: 'failed', error: `判据评估不可用（认证/配额/模型）：${fatal.message}` },
+        };
+      }
+      const exhaust = outcomes.find((o): o is Extract<JudgeOutcome, { kind: 'blocked' }> => o.kind === 'blocked');
+      if (exhaust) {
+        return {
+          status: 'fail',
+          criteria: judged,
+          tokens: 0,
+          terminal: { status: 'paused', error: `判据评估暂不可用（已重试 ${MAX_JUDGE_RETRIES} 次）：${exhaust.message}` },
+        };
+      }
+
+      const failed = judged.filter((c) => !c.passed);
+      if (failed.length === 0) return { status: 'done', criteria: judged, tokens: 0 };
       ctx.state.deficits = failed;
       return {
         status: 'fail',
-        criteria,
+        criteria: judged,
         reply: `未过项: ${failed.map((c) => `${c.id}=${c.desc}`).join('; ')}`,
         tokens: 0,
       };

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { LoopEngine, LoopDeps } from './engine';
 import { LoopNodeBase, NodeOutput, LoopContext, CriterionResult, LoopTermination } from '../types';
 import { agentNode, checkNode, gateNode, routerNode, parseCriteria, toReactorBudget } from './nodes';
+import { resolveTemplate } from './templates';
 import { ModelAdapter, ModelRouter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import { ContextManager } from '../harness/context';
 import { FileStore } from '../storage/adapter';
@@ -16,6 +17,18 @@ import { builtinTools } from '../harness/tools/builtin';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+
+/** 计数失败适配器：前 failTimes 次调用抛指定错误，其后返回 fallback 响应 */
+class FlakyJudgeAdapter implements ModelAdapter {
+  readonly provider = 'flaky';
+  calls = 0;
+  constructor(private failTimes: number, private error: Error, private fallback: string) {}
+  async complete(): Promise<string> {
+    this.calls += 1;
+    if (this.calls <= this.failTimes) throw this.error;
+    return this.fallback;
+  }
+}
 
 /** 测试装配：真实安全链/注册表/上下文 + 注入的模型适配器（对齐 reactor.test.ts 样板） */
 function makeDeps(tmp: string, model: ModelAdapter, router?: ModelRouter): LoopDeps {
@@ -336,4 +349,42 @@ test('T4-6 判据协议三值化：verdict 映射与向后兼容', async () => {
   const outRule = await checkNode({} as LoopDeps, { ruleCheckers: { c1: () => true } }).run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
   assert.equal(outRule.status, 'done');
   assert.equal(outRule.criteria![0].verdict, undefined);
+});
+
+test('T4-7 impossible 终局：check 判定不可满足 → 引擎 failed（不烧安全网）', async () => {
+  const deps = makeDeps(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-terminal-')),
+    new ScriptedAdapter(['{"done":true,"reply":"已完成"}', '{"passed":false,"impossible":true,"evidence":"目标依赖已删除的模块"}']),
+  );
+  const r = await resolveTemplate(deps, 'test-loop').engine.run('任务。验收标准：c1=测试全绿');
+  assert.equal(r.status, 'failed');
+  assert.ok((r.error ?? '').includes('不可满足'), 'error 携带不可满足理由');
+  assert.ok(r.iterations < 100, 'impossible 短路，不烧迭代安全网');
+});
+
+test('T4-8 判据错误分级：fatal 立即终局、recoverable 重试 ≤3 后成功/暂停', async () => {
+  // ① fatal（401）：不重试 → NodeOutput.terminal failed
+  const fatal = new FlakyJudgeAdapter(99, new Error('401 Unauthorized'), '');
+  const outFatal = await checkNode(makeDeps(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-fatal-')), fatal))
+    .run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
+  assert.equal(outFatal.terminal?.status, 'failed');
+  assert.ok((outFatal.terminal?.error ?? '').includes('判据评估不可用'));
+  assert.equal(fatal.calls, 1, 'fatal 不重试');
+
+  // ② recoverable：前 2 次超时、第 3 次成功 → 判定生效
+  const rec = new FlakyJudgeAdapter(2, new Error('ETIMEDOUT'), '{"passed":true,"evidence":"第 3 次成功"}');
+  const outRec = await checkNode(makeDeps(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-rec-')), rec))
+    .run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
+  assert.equal(outRec.status, 'done');
+  assert.equal(outRec.criteria![0].passed, true);
+  assert.equal(outRec.criteria![0].verdict, undefined); // met 经 passed 推导不落盘（Task 1 已登记语义）
+  assert.equal(rec.calls, 3, '初次 + 2 次重试');
+
+  // ③ recoverable 耗尽：4 次全超时 → NodeOutput.terminal paused
+  const exhaust = new FlakyJudgeAdapter(99, new Error('ETIMEDOUT'), '');
+  const outEx = await checkNode(makeDeps(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-ex-')), exhaust))
+    .run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
+  assert.equal(outEx.terminal?.status, 'paused');
+  assert.ok((outEx.terminal?.error ?? '').includes('判据评估暂不可用'));
+  assert.equal(exhaust.calls, 4, '初次 + 3 次重试上限');
 });
