@@ -9,7 +9,6 @@ import { describeIncomplete } from './stop-reason';
 import { t } from '../i18n';
 import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
 import { sunshineInitGoal } from '../harness/sunshine-init';
-import { DEFAULT_GOAL_TEMPLATE, TEMPLATE_NAMES } from '../loop/templates';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -111,8 +110,8 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
 function slashHelp(): string {
   return t(
-    'Commands: /init analyze & write SUNSHINE.md · /goal run full verify-fix loop: /goal <goal> [--template=code-refactor|test-loop|code-review] · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> [--template=code-refactor|test-loop|code-review] · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
+    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
+    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
   );
 }
 
@@ -405,10 +404,10 @@ export class SessionController {
     }
   }
 
-  /** /goal 完整修正环（规格 2026-09-15-tui-goal D2/D3）：模板名已经 handleSlash 预校验（入链前拒绝）；
-   *  任务行入链带 /goal·模板 标注 → runLoop → 终态回执（status/iterations/criteria/tokens）→ closeTask。
+  /** /goal 完整修正环（规格 2026-09-15-tui-goal D2/D3 + 2026-09-16-goal-template D2/D5）：模板为内部装配机制，用户面零暴露；
+   *  任务行入链带 /goal 标注 → runLoop（缺省标准环）→ 终态回执（status/iterations/criteria/tokens）→ closeTask。
    *  异常路径同 runTaskFlow 切 error 粘滞（保留现场）；已入链任务行不回滚（append-only，失败以链上轨迹为准） */
-  private async runGoalFlow(goal: string, template: string): Promise<void> {
+  private async runGoalFlow(goal: string): Promise<void> {
     this.state = {
       ...this.state,
       status: 'running',
@@ -419,16 +418,16 @@ export class SessionController {
     this.notify();
     try {
       this.runtime.harness.context.appendChain([
-        { action: 'task', observation: t(`Current instruction: ${goal} (/goal · ${template})`, `当前指令：${goal}（/goal · ${template}）`) },
+        { action: 'task', observation: t(`Current instruction: ${goal} (/goal)`, `当前指令：${goal}（/goal）`) },
       ]);
-      this.pushMsg('system', t(`✻ /goal: ${template} · ${goal}`, `✻ /goal：${template} · ${goal}`));
-      const r = await this.runtime.runLoop(goal, { template, ...(this.state.model ? { tier: this.state.model } : {}) });
+      this.pushMsg('system', t(`✻ /goal: ${goal}`, `✻ /goal：${goal}`));
+      const r = await this.runtime.runLoop(goal, this.state.model ? { tier: this.state.model } : {});
       const lines = (r.criteria ?? []).map((c) => `  ${c.passed ? '✓' : '✗'} ${c.id} ${c.desc}`);
       if (r.status === 'done') {
         this.pushMsg('system', [
           t(
-            `✻ /goal done: ${template} · ${r.iterations} iteration(s) · ${r.tokensUsed} tokens`,
-            `✻ /goal 完成：${template} · ${r.iterations} 轮 · ${r.tokensUsed} tokens`,
+            `✻ /goal done: ${r.iterations} iteration(s) · ${r.tokensUsed} tokens`,
+            `✻ /goal 完成：${r.iterations} 轮 · ${r.tokensUsed} tokens`,
           ),
           ...lines,
         ].join('\n'));
@@ -576,25 +575,16 @@ export class SessionController {
         this.pushMsg('system', t('A task is running; /goal unavailable now', '当前有任务进行中，暂不能执行 /goal'));
         return;
       }
-      const rest = text.slice(cmd.length).trim();
-      const tm = rest.match(/--template=(\S+)/);
-      const template = tm?.[1] ?? DEFAULT_GOAL_TEMPLATE;
-      const goal = rest.replace(/--template=\S+\s*/g, '').trim();
+      // 模板为内部装配机制（规格 2026-09-16-goal-template D1/D5）：/goal 后一切即目标文本，恒走缺省标准环
+      const goal = text.slice(cmd.length).trim();
       if (!goal) {
         this.pushMsg('system', t(
-          'Usage: /goal <goal> [--template=code-refactor|test-loop|code-review] — runs the verify-fix loop until your condition is met; state the goal as one measurable end state (e.g. /goal all tests in src/auth pass), or embed multiple criteria inline (验收标准：t1=…)',
-          '用法：/goal <目标> [--template=code-refactor|test-loop|code-review]——运行验收修正环，直至目标条件满足；目标用一句可度量的终态描述（如 /goal src/auth 测试全绿），复杂目标可内嵌多判据（验收标准：t1=…）',
+          'Usage: /goal <goal> — runs the verify-fix loop until your condition is met; state the goal as one measurable end state (e.g. /goal all tests in src/auth pass), or embed multiple criteria inline (验收标准：t1=…)',
+          '用法：/goal <目标>——运行验收修正环，直至目标条件满足；目标用一句可度量的终态描述（如 /goal src/auth 测试全绿），复杂目标可内嵌多判据（验收标准：t1=…）',
         ));
         return;
       }
-      if (!TEMPLATE_NAMES.includes(template)) {
-        this.pushMsg('system', t(
-          `Unknown template: ${template} (available: ${TEMPLATE_NAMES.join('/')})`,
-          `未知模板：${template}（可选 ${TEMPLATE_NAMES.join('/')}）`,
-        ));
-        return;
-      }
-      await this.runGoalFlow(goal, template);
+      await this.runGoalFlow(goal);
       return;
     }
     this.pushMsg('system', t(`Unknown command: ${cmd} (/help for list)`, `未知命令：${cmd}（/help 查看清单）`));

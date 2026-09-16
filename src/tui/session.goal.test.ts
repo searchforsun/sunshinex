@@ -10,7 +10,7 @@ function tmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-test('/goal：修正环跑通——任务行入链带模板标注，终态回执四要素齐备', async () => {
+test('/goal：修正环跑通——任务行入链带 /goal 标注（无模板名），终态回执四要素齐备', async () => {
   const tmp = tmpDir('sunshinex-goal1-');
   try {
     const ctrl = new SessionController({
@@ -22,8 +22,12 @@ test('/goal：修正环跑通——任务行入链带模板标注，终态回执
     assert.equal(ctrl.getState().status, 'idle');
     const chain = ctrl.context.chainView();
     assert.ok(
-      chain.some((s) => s.action === 'task' && s.observation.includes('/goal · test-loop')),
-      '任务行入链且带 /goal·模板 标注（缺省 test-loop）',
+      chain.some((s) => s.action === 'task' && (s.observation.includes('(/goal)') || s.observation.includes('（/goal）'))),
+      '任务行入链且带 /goal 标注（en (/goal) / zh（/goal））',
+    );
+    assert.ok(
+      !chain.some((s) => s.action === 'task' && s.observation.includes('test-loop')),
+      '链行零模板名（模板为内部装配机制，用户面零暴露）',
     );
     const receipt = ctrl.getState().messages.map((m) => m.text).join('\n');
     assert.ok(ctrl.getState().messages.some((m) => /^✻ \/goal[:：]/.test(m.text)), '启动提示单行上屏');
@@ -73,42 +77,6 @@ test('/goal：无参出用法提示——引擎零调用、链零写入、状态
   }
 });
 
-test('/goal：未知模板报错列可选值，不入链', async () => {
-  const tmp = tmpDir('sunshinex-goal4-');
-  try {
-    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
-    await ctrl.submit('/goal 做事 --template=nope');
-    const last = ctrl.getState().messages.at(-1)?.text ?? '';
-    assert.match(last, /Unknown template: nope|未知模板：nope/);
-    assert.match(last, /code-refactor/);
-    assert.equal(ctrl.context.chainView().length, 0);
-    assert.equal(ctrl.getState().status, 'idle');
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('/goal：--template 显式覆盖 code-review（agent→gate→check 判据通过）', async () => {
-  const tmp = tmpDir('sunshinex-goal5-');
-  try {
-    const ctrl = new SessionController({
-      root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"审查结论：输出正确"}', '{"passed":true,"evidence":"已确认"}']),
-    });
-    await ctrl.submit('/goal --template=code-review 审查输出（验收标准：t1=有结论）');
-    await ctrl.waitIdle();
-    const chain = ctrl.context.chainView();
-    assert.ok(
-      chain.some((s) => s.action === 'task' && s.observation.includes('/goal · code-review')),
-      '模板标注取显式覆盖值',
-    );
-    const receipt = ctrl.getState().messages.map((m) => m.text).join('\n');
-    assert.match(receipt, /\/goal done|\/goal 完成/);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
 test('/goal：运行中拒绝，不打断当前任务', async () => {
   const tmp = tmpDir('sunshinex-goal6-');
   try {
@@ -151,7 +119,10 @@ test('/goal：/new 清链后空链起跑正常', async () => {
     await ctrl.submit('/goal 再来一件事（验收标准：t1=达成）');
     await ctrl.waitIdle();
     const chain = ctrl.context.chainView();
-    assert.ok(chain.length > 1 && chain[0].observation.includes('/goal · test-loop'), '空链起跑，任务行为链首');
+    assert.ok(
+      chain.length > 1 && (chain[0].observation.includes('(/goal)') || chain[0].observation.includes('（/goal）')),
+      '空链起跑，任务行为链首（/goal 标注、无模板名）',
+    );
     assert.match(
       ctrl.getState().messages.map((m) => m.text).join('\n'),
       /\/goal done|\/goal 完成/,
@@ -203,6 +174,28 @@ test('/goal：判据服务不可用 → paused 回执提示重跑续走', async 
     await ctrl.waitIdle();
     const receipt = ctrl.getState().messages.map((m) => m.text).join('\n');
     assert.match(receipt, /Run \/goal again|重跑 \/goal/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/goal：--template 字样不解析，整体作为目标文本（D1 钉子：剥离等于行为上承认该语法仍存在）', async () => {
+  const tmp = tmpDir('sunshinex-goal10-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"已完成"}', '{"passed":true,"evidence":"已达成"}']),
+    });
+    await ctrl.submit('/goal --template=code-review 审查输出（验收标准：t1=有结论）');
+    await ctrl.waitIdle();
+    assert.equal(ctrl.getState().status, 'idle');
+    const chain = ctrl.context.chainView();
+    assert.ok(
+      chain.some((s) => s.action === 'task' && s.observation.includes('--template=code-review')),
+      '输入整体作为目标文本入链，不做静默剥离',
+    );
+    const receipt = ctrl.getState().messages.map((m) => m.text).join('\n');
+    assert.match(receipt, /\/goal done|\/goal 完成/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
