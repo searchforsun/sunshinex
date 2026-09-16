@@ -632,3 +632,39 @@ test('Reactor：usage 为 per-request 全量值——同请求重复回传覆盖
   assert.equal(r.tokensUsed, 330, '重复回传覆盖语义：300 + 30，而非 300+300+30');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语义不变', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
+  fs.writeFileSync(path.join(tmp, 'big.txt'), 'X'.repeat(3000));
+  try {
+    const prompts: string[] = [];
+    const replies = [
+      '{"tool":"read","input":{"path":"big.txt"},"done":false}',
+      '{"done":true,"reply":"ok"}',
+    ];
+    let call = 0;
+    const SUMMARY = '## Goal\n读取 big.txt 验证压缩\n## Constraints\n只读\n## Progress\n已读\n## Verified\n内容确认为 X 重复\n## Open\n无\n## Rationale\n模型路径验证';
+    const adapter = {
+      provider: 'openai',
+      complete: async (p: string) => {
+        if (p.includes('handoff summary')) return SUMMARY;
+        prompts.push(p);
+        return replies[Math.min(call++, replies.length - 1)];
+      },
+    };
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+    const registry = new ToolRegistry();
+    for (const t of builtinTools(safety, tmp)) registry.register(t);
+    const context = new ContextManager(tmp, new FileStore(tmp));
+    const reactor = new Reactor({ registry, safety, context, model: adapter });
+
+    const r = await reactor.run({ goal: 'x' }, { maxSteps: 2, budget: { total: 4500, reserve: 4100 } });
+    assert.equal(r.done, true);
+    assert.ok(prompts[1].includes('[Compacted summary'), '压缩当轮生效（收敛环语义不变）');
+    assert.ok(prompts[1].includes('## Rationale'), '压缩块正文为模型六节摘要');
+    assert.ok(!prompts[1].includes('- [history] '), '确定性行列表被模型正文替换');
+    assert.ok(!prompts[1].includes('\n1: read -> '), '折叠链前缀已裁出（模型路径同样不双份）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

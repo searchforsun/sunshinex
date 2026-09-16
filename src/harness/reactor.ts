@@ -9,7 +9,7 @@ import type { SubagentRunner } from './subagent';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
-import { chainToHistoryItems, ContextManager } from './context';
+import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -168,13 +168,15 @@ export class Reactor {
         // 收敛环（环内不受滞回限制）：压缩 → 重注入 → 重装配重估；续环条件为硬越限（est > total）越阈即止，至多 2 轮
         let rounds = 0;
         do {
-          const chunks = await this.deps.context.window.compact(items, {
-            summaryTokenBudget: Math.floor(budget.reserve / 2),
-          });
-          await this.deps.context.applyCompaction(chunks, { rereadTokenBudget: Math.floor(budget.reserve / 2) });
+          // 水位先算：折叠步骤号只依赖 steps/seed，与压缩结果无关（折链交由 runCompaction 统一执行）
           compactedUpToStep = steps.length > 0 ? steps[steps.length - 1].step : seedLastStep;
-          // fork 模型压缩协调：折叠的链前缀同步裁出会话链，压缩块与链永不双份
-          this.deps.context.trimChainFront(seed.filter((s) => s.step <= compactedUpToStep).length);
+          // 压缩协调单点：确定性选块 → 摘要（当前 run 模型，失败回退确定性）→ 门禁重注入 → 折链（防「链+压缩块」双份）
+          await runCompaction(this.deps.context, items, {
+            summaryTokenBudget: Math.floor(budget.reserve / 2),
+            rereadTokenBudget: Math.floor(budget.reserve / 2),
+            chainFoldedCount: seed.filter((s) => s.step <= compactedUpToStep).length,
+            summaryModel: adapter,
+          });
           lastCompactStep = step;
           items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
           est = this.deps.context.window.estimate(items);
