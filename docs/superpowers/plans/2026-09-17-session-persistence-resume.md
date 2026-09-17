@@ -910,6 +910,11 @@ test('/new 轮转：旧档留存可找回、列表倒序、序号恢复旧会话
     await ctrl1.submit('/new');
     await ctrl1.submit('任务乙');
     await ctrl1.waitIdle();
+    // ScriptedAdapter 全程亚毫秒完成：两档 mtime 同毫秒并列会让「最新在前」排序不确定，显式钉 mtime（与 session-journal.test.ts 先例一致）
+    const activeId = readActivePointer(dataDir);
+    for (const m of listSessions(dataDir)) {
+      fs.utimesSync(m.file, new Date(), new Date(m.id === activeId ? 2_000_000_000 : 1_000_000_000));
+    }
     const metas = listSessions(dataDir);
     assert.equal(metas.length, 2, '/new 轮转后两个会话档并存');
     assert.equal(readActivePointer(dataDir), metas[0].id, '指针=最近有落盘的会话（乙）');
@@ -1211,9 +1216,6 @@ new_string（方法组 + 原行）：
       this.pushMsg('system', t('Cannot restore this session: unsupported journal version', '无法恢复该会话：日志版本不受支持'));
       return;
     }
-    if (parsed.truncated) {
-      this.pushMsg('system', t('Journal tail is truncated (previous crash?); restored up to the last complete event', '日志尾部截断（此前可能异常退出）；已恢复到最后一条完整事件'));
-    }
     // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
     this.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
     this.msgSeq = replay.nextSeq;
@@ -1230,7 +1232,12 @@ new_string（方法组 + 原行）：
     this.lastView = { ...replay.view };
     this.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
     this.ensureJournal().attach(meta.id);
-    this.pushMsg('system', t('Session restored: ' + meta.id, '已恢复会话：' + meta.id));
+    // 横幅在状态注入后上屏（注入前 push 会被 messages 覆盖吞掉）；撕裂场景合并提示，保持「消息 + 单条提示行」
+    if (parsed.truncated) {
+      this.pushMsg('system', t('Session restored: ' + meta.id + ' — journal tail was truncated (previous crash?); restored up to the last complete event', '已恢复会话：' + meta.id + '（日志尾部截断，此前可能异常退出；已恢复到最后一条完整事件）'));
+    } else {
+      this.pushMsg('system', t('Session restored: ' + meta.id, '已恢复会话：' + meta.id));
+    }
   }
 
   private closeTask(): void {
