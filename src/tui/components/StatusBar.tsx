@@ -34,8 +34,9 @@ export function StatusBar({
 }): JSX.Element {
   const done = (todos ?? []).filter((t) => t.done).length;
   const elapsed = metrics.turnStartedAt > 0 ? ((Date.now() - metrics.turnStartedAt) / 1000).toFixed(1) + 's' : '';
-  // 缓存命中率 = cached_tokens / prompt_tokens（分子分母同量纲；分母若混入输出 token 会系统性压低真实命中率），无 prompt 口径时回退会话级统计
-  const hitPct = metrics.turnPromptTokens > 0 ? Math.round((metrics.turnCacheTokens / metrics.turnPromptTokens) * 100) : Math.round(metrics.hitRate * 100);
+  // 缓存命中率 = 会话累计 Σcached/Σprompt（一位小数）：跨任务不清零，轮首 miss 只稀释不砸零；零样本 0%（不除零）
+  const total = metrics.sessionPromptTokens;
+  const cachePct = total > 0 ? ((metrics.sessionCacheTokens / total) * 100).toFixed(1) : '0';
   // 上下文占用 = 估算水位 / 配置窗口；分母缺失（未配置窗口）时百分比无意义，整段不显示
   const ctxPct = context && context.window > 0 ? Math.round((context.used / context.window) * 100) : 0;
   return (
@@ -43,8 +44,9 @@ export function StatusBar({
       {' '}↑{formatTokens(metrics.turnTokens)} tokens
       {context ? ' · ctx ' + formatTokens(context.used) + '/' + formatTokens(context.window) + ' (' + ctxPct + '%)' : ''}
       {elapsed ? ` · ${elapsed}` : ''}
-      {model ? ` · model ${model}` : ''}
-      {' · cache '}{hitPct}%
+      {metrics.sessionTurns > 0 ? ` · ${metrics.sessionTurns} turns · ${metrics.sessionSteps} steps` : ''}
+      {model ? ` · ${model}` : ''}
+      {' · cache '}{cachePct}%
       {todos && todos.length > 0 ? ` · todo ${done}/${todos.length}` : ''} · {statusLabel(status)}
     </Text>
   );

@@ -73,7 +73,7 @@ export interface LLMConfig {
 /** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API，带超时控制 */
 export class OpenAIAdapter implements ModelAdapter {
   readonly provider = 'openai';
-  /** banner/状态栏展示标签：openai · <模型名> */
+  /** banner/状态栏展示标签：纯模型名（provider 前缀已摘除，横幅与状态栏同源） */
   readonly label: string;
   private baseURL: string;
   private apiKey: string;
@@ -84,7 +84,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.baseURL = cfg.baseURL ?? process.env.SUNSHINEX_BASE_URL ?? 'https://api.openai.com/v1';
     this.apiKey = cfg.apiKey ?? process.env.SUNSHINEX_API_KEY ?? '';
     this.model = cfg.model ?? process.env.SUNSHINEX_MODEL ?? 'gpt-4o-mini';
-    this.label = `openai · ${this.model}`;
+    this.label = this.model;
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
   }
 

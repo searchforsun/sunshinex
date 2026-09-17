@@ -38,7 +38,7 @@ test('buildTierRouter：按档绑定 + 缺省兜底，显式档解析到绑定�
     const router = buildTierRouter({});
     assert.ok(router, '配置任一按档模型即启用 router');
     assert.deepEqual(router.boundTiers(), ['large']);
-    assert.equal(router.resolve('large').label, 'openai · gpt-large-x');
+    assert.equal(router.resolve('large').label, 'gpt-large-x');
     const defLabel = buildModel({}).label;
     assert.equal(router.resolve('small').label, defLabel, '未配置档回退默认承载（同配置标签）');
     assert.equal(router.resolve('medium').label, defLabel);

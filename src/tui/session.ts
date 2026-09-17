@@ -38,12 +38,19 @@ export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting
 export interface StatusMetrics {
   turnStartedAt: number;
   turnTokens: number;
-  /** 本轮 prompt 缓存命中 tokens（usage 事件 cacheHitTotal 聚合；状态栏缓存命中率的分子） */
+  /** 本轮 prompt 缓存命中 tokens（usage 事件 cacheHitTotal 聚合；中间量，不再直接驱动状态栏 cache 段） */
   turnCacheTokens: number;
-  /** 本轮 prompt tokens（usage 事件 promptTotal 聚合；缓存命中率分母，与 turnCacheTokens 同量纲） */
+  /** 本轮 prompt tokens（usage 事件 promptTotal 聚合；与 turnCacheTokens 同量纲） */
   turnPromptTokens: number;
+  /** 会话累计缓存命中 tokens（Σcached：同会话跨任务不清零、仅 /new 归零；状态栏 cache 段分子） */
+  sessionCacheTokens: number;
+  /** 会话累计 prompt tokens（Σprompt：cache 段分母，与 sessionCacheTokens 同量纲） */
+  sessionPromptTokens: number;
+  /** 会话累计任务轮次（任务起点 +1：跨任务累加、仅 /new 归零；状态栏 turns 段） */
+  sessionTurns: number;
+  /** 会话累计模型动作步数（step 事件计步、done 收尾帧不计；状态栏 steps 段） */
+  sessionSteps: number;
   runs: number;
-  hitRate: number;
   /** 当前上下文占用水位估算 tokens（最新模型轮装配面估算；分母为 SUNSHINEX_CONTEXT_WINDOW 配置窗口） */
   ctxUsed: number;
 }
@@ -131,7 +138,7 @@ export class SessionController {
     messages: [],
     todos: [],
     status: 'idle',
-    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, runs: 0, hitRate: 0, ctxUsed: 0 },
+    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0 },
     children: [],
   };
   private listeners = new Set<(s: TuiState) => void>();
@@ -252,7 +259,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.notify();
@@ -370,7 +377,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
@@ -411,7 +418,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
@@ -528,7 +535,10 @@ export class SessionController {
           turnPromptTokens: 0,
           ctxUsed: 0,
           runs: this.state.metrics.runs,
-          hitRate: this.state.metrics.hitRate,
+          sessionCacheTokens: 0,
+          sessionPromptTokens: 0,
+          sessionTurns: 0,
+          sessionSteps: 0,
         },
         children: [],
         ...(this.state.model ? { model: this.state.model } : {}),
@@ -618,13 +628,24 @@ export class SessionController {
       }
       case 'usage': {
         if (typeof e.payload?.turnTotal !== 'number') return; // 无数值载荷不更新
-        // per-run 值叠加任务级基线：/plan 逐步执行整场累计（步骤切换不重置窗口，命中率按全程口径）
+        // per-run 值叠加任务级基线：/plan 逐步执行本轮持续累计（步骤切换不重置）
         const t = this.usageBase.tokens + e.payload.turnTotal;
         const c = this.usageBase.cache + (typeof e.payload.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : 0);
         const p = this.usageBase.prompt + (typeof e.payload.promptTotal === 'number' ? e.payload.promptTotal : 0);
         const m = this.state.metrics;
         if (t === m.turnTokens && c === m.turnCacheTokens && p === m.turnPromptTokens) return; // 数值未变的重复 usage 不触发重渲染
-        this.state = { ...this.state, metrics: { ...m, turnTokens: t, turnCacheTokens: c, turnPromptTokens: p } };
+        // 会话累计按本轮增量并入（Σcached/Σprompt：跨任务不清零、/new 归零）——轮首 miss 只稀释会话均值，不再把状态栏砸成 0%
+        this.state = {
+          ...this.state,
+          metrics: {
+            ...m,
+            turnTokens: t,
+            turnCacheTokens: c,
+            turnPromptTokens: p,
+            sessionCacheTokens: m.sessionCacheTokens + Math.max(0, c - m.turnCacheTokens),
+            sessionPromptTokens: m.sessionPromptTokens + Math.max(0, p - m.turnPromptTokens),
+          },
+        };
         this.notify();
         return;
       }
@@ -646,6 +667,10 @@ export class SessionController {
         });
         return;
       case 'step': {
+        // 步数计账：模型动作步（done 收尾帧不计、子代理事件已分流不达此处），会话累计、/new 归零（状态栏 turns/steps 段数据源）
+        if (e.text !== 'done') {
+          this.state = { ...this.state, metrics: { ...this.state.metrics, sessionSteps: this.state.metrics.sessionSteps + 1 } };
+        }
         // phase 阶段行：模型主动播报的当前进度（1-2 行），先于对应动作/答复上屏；无 phase 的 step 与工具行信息重复，不上屏
         const phase = typeof e.payload?.phase === 'string' ? e.payload.phase.trim().slice(0, 200) : '';
         if (phase) this.pushMsg('step', phase);
@@ -836,16 +861,11 @@ export class SessionController {
     this.notify();
   }
 
-  /** done/error 后刷新账本 runs 与本轮缓存命中率（缓存命中 tokens / prompt tokens，分子分母同量纲；无 usage 回传时为 0） */
+  /** done/error 后刷新账本 runs（缓存命中率已升格会话累计口径，随 usage 事件增量更新） */
   private refreshMetrics(): void {
-    const m = this.state.metrics;
     this.state = {
       ...this.state,
-      metrics: {
-        ...m,
-        runs: this.runtime.harness.ledger.summary().runs,
-        hitRate: m.turnPromptTokens > 0 ? Math.min(1, m.turnCacheTokens / m.turnPromptTokens) : 0,
-      },
+      metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs },
     };
     this.notify();
   }

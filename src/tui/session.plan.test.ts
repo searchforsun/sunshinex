@@ -202,9 +202,10 @@ test('/plan：tokens 与命中率窗口整场累计——步骤间不重置（�
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
     const m = ctrl.getState().metrics;
-    assert.equal(m.turnPromptTokens, 3000, '三次模型调用（规划+两步）prompt 整场累计，步骤间不重置');
-    assert.equal(m.turnCacheTokens, 1500, '缓存命中同样整场累计');
-    assert.equal(m.hitRate, 0.5, '命中率按整场口径');
+    assert.equal(m.turnPromptTokens, 3000, '三次模型调用（规划+两步）prompt 本轮累计，步骤间不重置');
+    assert.equal(m.turnCacheTokens, 1500, '缓存命中同样本轮累计');
+    assert.equal(m.sessionPromptTokens, 3000, '会话累计分母与本轮同步（单任务会话）');
+    assert.equal(m.sessionCacheTokens, 1500, '会话累计分子与本轮同步（单任务会话）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

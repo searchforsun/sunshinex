@@ -49,7 +49,7 @@ test('buildModel：缺省 openai 且带展示标签，--model=stub 走占位适�
   assert.equal(buildModel({ model: 'scripted' }).provider, 'scripted');
   const oa = buildModel({});
   assert.equal(oa.provider, 'openai');
-  assert.ok(oa.label && oa.label.startsWith('openai · '), 'banner 应显示真实模型标签');
+  assert.ok(oa.label && oa.label.length > 0 && !oa.label.includes(' · '), 'banner 标签为纯模型名（无 provider 前缀）');
 });
 test('run-loop：用法提示不再含 --template（模板为内部装配机制，用户面零暴露）', async () => {
   await assert.rejects(
