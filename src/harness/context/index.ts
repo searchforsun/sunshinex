@@ -4,7 +4,7 @@ import * as crypto from 'crypto';
 import { StorageAdapter } from '../../storage/adapter';
 import { ContextItem, HistoryStep } from '../../types';
 import { resolveDataDir } from '../../config/data-dir';
-import { ContextLoader } from './loader';
+import { ContextLoader, extractCompactInstructions } from './loader';
 import { RulesRegistry } from './rules';
 import { ContextWindow, ContextChunk, estimateTokens } from './window';
 import { SessionStore } from './session';
@@ -46,6 +46,8 @@ export class ContextManager {
   private chainSeq = 0;
   /** 压缩事件计数：first 记 1、new 递增；replay（同一压缩事件幂等重放）不计数 */
   private compactions = 0;
+  /** SUNSHINE.md「Compact Instructions」区缓存（与装配快照同源；E 项）：压缩摘要生成时注入 prompt */
+  private compactInstructions: string | null = null;
   /** 会话变更订阅（单槽，后注册覆盖；restoreSession 直注入不经过此口） */
   private changeSink?: (c: ContextChange) => void;
 
@@ -54,6 +56,13 @@ export class ContextManager {
     this.rules = new RulesRegistry(rootPath);
     this.window = new ContextWindow();
     this.session = new SessionStore(store);
+    // Compact Instructions 区提取（E 项）：装配同源读一次；无文件/无区为 null
+    const sunshinePath = path.join(rootPath, 'SUNSHINE.md');
+    try {
+      this.compactInstructions = extractCompactInstructions(fs.readFileSync(sunshinePath, 'utf8'));
+    } catch {
+      this.compactInstructions = null;
+    }
   }
 
   /** 项目根绝对路径（环境事实注入与路径消歧的单一来源） */
@@ -86,7 +95,11 @@ export class ContextManager {
     this.compactions++; // first=首个压缩事件（计 1）、new=新一轮压缩；replay 不计数
     let summaryBody: string | undefined;
     if (opts?.summaryModel && isModelSummarizer(opts.summaryModel)) {
-      const body = await summarizeWithModel(opts.summaryModel, chunks, opts.summaryTokenBudget ?? 2000, opts.focus);
+      // E 项：SUNSHINE.md「Compact Instructions」区体并入摘要指令（focus 措辞标注「优先覆盖」、优先级更高）
+      const mergedFocus = [this.compactInstructions ?? undefined, opts.focus]
+        .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+        .join('\n');
+      const body = await summarizeWithModel(opts.summaryModel, chunks, opts.summaryTokenBudget ?? 2000, mergedFocus || undefined);
       if (body !== null) summaryBody = body;
     }
     const items: ContextItem[] = [...this.window.reinject(chunks, summaryBody, opts?.traceLine)];

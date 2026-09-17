@@ -28,3 +28,19 @@ export class ContextLoader {
     }
   }
 }
+
+/** SUNSHINE.md「Compact Instructions」区提取（规格 E 项，对标 CLAUDE.md 同名区）：
+ *  识别 `## Compact Instructions` / `## 压缩指令` 标题，区体在下个二级标题或文件尾终止；
+ *  无区或区体为空返回 null——压缩摘要 prompt 无区时与现形态逐字节一致。 */
+export function extractCompactInstructions(md: string): string | null {
+  const lines = md.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^##\s+(Compact Instructions|压缩指令)\s*$/.test(l.trim()));
+  if (start < 0) return null;
+  const body: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i].trim())) break;
+    body.push(lines[i]);
+  }
+  const text = body.join('\n').trim();
+  return text.length > 0 ? text : null;
+}
