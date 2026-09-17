@@ -48,6 +48,8 @@ export class ContextManager {
   private compactions = 0;
   /** SUNSHINE.md「Compact Instructions」区缓存（与装配快照同源；E 项）：压缩摘要生成时注入 prompt */
   private compactInstructions: string | null = null;
+  /** 装配快照（规格 G 项）：SUNSHINE.md 会话冻结——构造时读盘一次，assemble 只读快照 */
+  private contextSnapshot: ContextItem[] = [];
   /** 会话变更订阅（单槽，后注册覆盖；restoreSession 直注入不经过此口） */
   private changeSink?: (c: ContextChange) => void;
 
@@ -63,6 +65,8 @@ export class ContextManager {
     } catch {
       this.compactInstructions = null;
     }
+    // 会话快照（G 项）：构造即冻结，assemble 不再每轮读盘（中途改盘不位移前缀）
+    this.contextSnapshot = this.loader.load();
   }
 
   /** 项目根绝对路径（环境事实注入与路径消歧的单一来源） */
@@ -180,6 +184,7 @@ export class ContextManager {
     this.chainSeq = 0;
     this.compacted = [];
     this.pendingSkill = null;
+    this.reloadContext(); // /new = 新会话（G 项刷新点）：快照重读
   }
 
   /** 压缩块观测（只读）：当前压缩块代表的条目数（reactor 压缩事件计数口径） */
@@ -196,7 +201,9 @@ export class ContextManager {
    *  goal 槽与记忆段已取消（CLAUDE.md §11：真实任务文本走链尾「当前指令行」，链即记忆） */
   assemble(history: ContextItem[] = [], relPath?: string): ContextItem[] {
     const items: ContextItem[] = [];
-    items.push(...this.loader.load());
+    // SUNSHINE.md 会话冻结（规格 G 项，对标 CLAUDE.md mid-session freeze）：装配只读快照，
+    // 中途改盘不位移前缀；刷新点四：构造 / reloadContext（/init）/ resetSession（/new）/ 压缩成功
+    items.push(...this.contextSnapshot);
     if (relPath) items.push(...this.rules.forPath(relPath));
     items.push(...this.compacted);
     items.push(...history);
@@ -205,6 +212,17 @@ export class ContextManager {
       this.pendingSkill = null;
     }
     return items;
+  }
+
+  /** 会话上下文快照重载（SUNSHINE.md 冻结的唯一显式刷新口之一）：/init 写盘后、压缩成功、/new 时调用 */
+  reloadContext(): void {
+    this.contextSnapshot = this.loader.load();
+    // Compact Instructions 与快照同源（E 项）：刷新快照时一并重提取
+    try {
+      this.compactInstructions = extractCompactInstructions(fs.readFileSync(path.join(this.rootPath, 'SUNSHINE.md'), 'utf8'));
+    } catch {
+      this.compactInstructions = null;
+    }
   }
 }
 
@@ -251,6 +269,11 @@ export async function runCompaction(
     ...(traceLine !== undefined ? { traceLine } : {}),
     ...(opts.focus !== undefined ? { focus: opts.focus } : {}),
   });
+  if (via !== 'replay') {
+    // 压缩成功（非 replay）刷新项目上下文快照（G 项刷新点，对标 CC 压缩点重载；
+    // replay 幂等重放不刷新，重放零击穿语义保持）
+    cm.reloadContext();
+  }
   if (via !== 'replay' && opts.chainFoldedCount !== undefined && opts.chainFoldedCount > 0) {
     cm.trimChainFront(opts.chainFoldedCount);
   }

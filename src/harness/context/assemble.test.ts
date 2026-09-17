@@ -8,6 +8,8 @@ import { FileStore } from '../../storage/adapter';
 
 function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-asm-'));
+  // 快照冻结（Task8/G）：先写盘后构造——构造即冻结基线（真实会话=SUNSHINE.md 先于会话存在）
+  fs.writeFileSync(path.join(root, 'SUNSHINE.md'), '# 项目规范：禁用 any 类型\n');
   const cm = new ContextManager(root, new FileStore(root));
   return { root, cm };
 }

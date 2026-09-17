@@ -629,7 +629,9 @@ export class SessionController {
       // 回执只按落盘事实（模型经安全链 write；任务中断时不虚报成功）
       const written = fs.existsSync(p);
       if (written) {
-        this.pushMsg('system', existed ? t('SUNSHINE.md written (updated); auto-loaded into context each turn', '已写入 SUNSHINE.md（完善）：随每轮上下文自动装载') : t('SUNSHINE.md written (created); auto-loaded into context each turn', '已写入 SUNSHINE.md（新建）：随每轮上下文自动装载'));
+        // G 项刷新点：/init 是显式写盘者——重载快照使新内容立即可见（其余中途改盘仍冻结）
+        this.runtime.harness.context.reloadContext();
+        this.pushMsg('system', existed ? t('SUNSHINE.md written (updated); reloaded into session context', '已写入 SUNSHINE.md（完善）：已重载入会话上下文') : t('SUNSHINE.md written (created); loaded into session context', '已写入 SUNSHINE.md（新建）：已载入会话上下文'));
       } else {
         this.pushMsg('system', t('SUNSHINE.md not written: task incomplete, rerun /init', 'SUNSHINE.md 未生成：任务未完成，可重新执行 /init'));
       }
