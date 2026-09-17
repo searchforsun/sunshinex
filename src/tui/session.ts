@@ -1,4 +1,4 @@
-import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, SessionEvent } from '../types';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
 import { estimateTokens } from '../harness/context/window';
@@ -11,6 +11,8 @@ import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/c
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import * as fs from 'fs';
 import * as path from 'path';
+import { SessionJournal, listSessions, newSessionId, readActivePointer, sessionsDir, parseJournalFile, reduceJournal, type SessionMeta } from './session-journal';
+import { resolveDataDir } from '../config/data-dir';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -101,6 +103,8 @@ export interface TuiState {
 }
 
 export interface SessionOpts extends TuiRuntimeOpts {
+  /** 启动即续接最近会话（CLI --continue；规格 D1/D5）。无档位时提示并以新会话继续，不静默吞 */
+  continueLast?: boolean;
   /** manual 模式审批回调（终端化审批装配点；渲染层注入交互实现） */
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** 运行时注入位：缺省自建 createRuntime(opts)；测试可注入假实现以隔离长任务 */
@@ -117,8 +121,8 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
 function slashHelp(): string {
   return t(
-    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
+    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
+    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
   );
 }
 
@@ -145,6 +149,12 @@ export class SessionController {
   private queue: { goal: string; resolve: () => void }[] = [];
   /** 消息全局单调序号（Static 区 key 唯一性来源）；/new 清空消息但不回绕 */
   private msgSeq = 0;
+  /** 会话事件日志（规格 2026-09-17-session-persistence D4）：惰性建档（首个持久化事件）、三 flush 点批量落盘 */
+  private journal?: SessionJournal;
+  /** 最近已知视图两态（recordView 维护；flush 快照与 /new 轮转初始快照的基准） */
+  private lastView = { expandAll: false, latestFull: false };
+  /** 恢复携带的 UI 现场（--continue / /resume 重放产物；entry 经 takeRestoredUi 播种 retain，一次性取走） */
+  private restoredUi?: { history: string[]; expandAll: boolean; latestFull: boolean };
   /** 子代理半行缓冲（label → 未成行）：token/reasoning 增量拼接、遇换行成行入 transcript */
   private childBufs = new Map<string, string>();
   /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、spawn tool-result 弹出归档（规格 §4.4 配对语义） */
@@ -182,6 +192,13 @@ export class SessionController {
     if (opts.mode === 'manual') this.runtime.harness.security.setAsker(suspendAsker);
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
     if (opts.tier) this.state = { ...this.state, model: opts.tier };
+    // 会话日志订阅（规格 §5 单一事实源）：链/压缩变更 → 事件缓冲；任务必经 submit 建档，此后事件动态路由到当前 journal 实例。
+    // 未建档时事件丢弃（订阅常驻、可选链路由）；restoreSession 直注入不触发订阅（重放零击穿）。
+    this.runtime.harness.context.onContextChange((c) => {
+      if (c.kind === 'append') this.journal?.log({ t: 'chain', steps: c.steps });
+      else this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
+    });
+    if (opts.continueLast) this.resumeLatest();
   }
 
   getState(): TuiState {
@@ -203,6 +220,10 @@ export class SessionController {
   async submit(input: string): Promise<void> {
     const text = input.trim();
     if (!text) return;
+    // 会话日志（规格 D4/D6）：首个持久化事件建档；user 事件=输入历史还原源，先于回显入志
+    const j = this.ensureJournal();
+    j.start();
+    j.log({ t: 'user', text });
     // 用户输入回显上屏（含斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
     this.pushMsg('user', text);
     if (text.startsWith('/')) {
@@ -349,6 +370,82 @@ export class SessionController {
   }
 
   /** 任务收束：回 idle 并停表（turnStartedAt=0，idle 态不再显示耗时）。本轮 tokens/缓存命中保留为上一轮统计（下次提交进 running 时重置）；error 态保留现场便于回看出错时刻 */
+  // ===== 会话持久化（规格 docs/superpowers/specs/2026-09-17-session-persistence-resume-design.md）=====
+
+  /** 会话日志单点获取：首个持久化事件建档；未建档直接返回实例（start 前事件丢弃=空会话零文件） */
+  private ensureJournal(): SessionJournal {
+    if (!this.journal) this.journal = new SessionJournal(resolveDataDir(this.root));
+    return this.journal;
+  }
+
+  /** flush 收口（规格 D3 三 flush 点共用）：快照型事件（todos/model/view）末值补拍 + 批量落盘 + 活动指针（journal.flush 内维护）；未建档 no-op（空会话零文件） */
+  flushJournal(): void {
+    if (!this.journal) return;
+    const j = this.journal;
+    j.log({ t: 'todos', items: this.state.todos });
+    j.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}) });
+    j.log({ t: 'view', ...this.lastView });
+    j.flush();
+  }
+
+  /** 视图两态变更记录（App 切换 Tab/Ctrl+O 调用；缓冲随收口落盘） */
+  recordView(expandAll: boolean, latestFull: boolean): void {
+    this.lastView = { expandAll, latestFull };
+    this.journal?.log({ t: 'view', expandAll, latestFull });
+  }
+
+  /** 恢复 UI 现场取用（entry 播种 retain 用；一次性） */
+  takeRestoredUi(): { history: string[]; expandAll: boolean; latestFull: boolean } | undefined {
+    const ui = this.restoredUi;
+    this.restoredUi = undefined;
+    return ui;
+  }
+
+  /** --continue（规格 D1/D5）：读活动指针续接最近有落盘的会话；无档/档缺失提示后按新会话继续（不静默吞） */
+  resumeLatest(): void {
+    const dataDir = resolveDataDir(this.root);
+    const id = readActivePointer(dataDir);
+    const meta = id ? listSessions(dataDir).find((s) => s.id === id) : undefined;
+    if (!id || !meta) {
+      this.pushMsg('system', t('No saved session to continue; started a fresh one', '没有可续接的已保存会话，已开启新会话'));
+      return;
+    }
+    this.restoreFromSession(meta);
+  }
+
+  /** 恢复会话（规格 §6 恢复三面）：flush 当前 → 解析目标日志 → 版本守卫 → 三面直注入 → journal 续挂目标档 */
+  private restoreFromSession(meta: SessionMeta): void {
+    this.flushJournal(); // 切换前当前会话先收口（切换不丢现场）
+    const parsed = parseJournalFile(meta.file);
+    const replay = reduceJournal(parsed.events);
+    if (replay.version !== 1) {
+      this.pushMsg('system', t('Cannot restore this session: unsupported journal version', '无法恢复该会话：日志版本不受支持'));
+      return;
+    }
+    // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
+    this.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
+    this.msgSeq = replay.nextSeq;
+    this.state = {
+      ...this.state,
+      messages: replay.messages,
+      todos: replay.todos,
+      status: 'idle',
+      ...(replay.model !== undefined ? { model: replay.model } : {}),
+      approval: undefined,
+      live: undefined,
+      children: [],
+    };
+    this.lastView = { ...replay.view };
+    this.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
+    this.ensureJournal().attach(meta.id);
+    // 横幅在状态注入后上屏（注入前 push 会被 messages 覆盖吞掉）；撕裂场景合并提示，保持「消息 + 单条提示行」
+    if (parsed.truncated) {
+      this.pushMsg('system', t('Session restored: ' + meta.id + ' — journal tail was truncated (previous crash?); restored up to the last complete event', '已恢复会话：' + meta.id + '（日志尾部截断，此前可能异常退出；已恢复到最后一条完整事件）'));
+    } else {
+      this.pushMsg('system', t('Session restored: ' + meta.id, '已恢复会话：' + meta.id));
+    }
+  }
+
   private closeTask(): void {
     if (this.state.status !== 'running' && this.state.status !== 'awaiting-plan') return;
     this.state = {
@@ -359,6 +456,7 @@ export class SessionController {
     };
     this.childBufs.clear();
     this.spawnCalls = [];
+    this.flushJournal(); // 收口落盘（规格 D3 flush 点①）
     this.notify();
   }
 
@@ -521,6 +619,10 @@ export class SessionController {
       return;
     }
     if (cmd === '/new') {
+      // /new 轮转化（规格 D2）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回
+      this.flushJournal();
+      this.journal?.rotate(newSessionId());
+      this.journal?.flush();
       this.runtime.harness.security.clearSessionAllows();
       this.extractor.reset();
         this.committedLen = 0;
@@ -548,6 +650,33 @@ export class SessionController {
       this.spawnCalls = [];
       this.runtime.harness.context.resetSession();
       this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
+      return;
+    }
+    if (cmd === '/resume') {
+      // 恢复入口（规格 §6）：无参列表（mtime 降序 + 首条输入摘要）；<序号|id> 恢复目标会话
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'));
+        return;
+      }
+      const dataDir = resolveDataDir(this.root);
+      const sessions = listSessions(dataDir);
+      if (sessions.length === 0) {
+        this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'));
+        return;
+      }
+      const arg = text.trim().split(/\s+/).slice(1).join(' ');
+      if (!arg) {
+        const lines = sessions.map((s, i) => `${i + 1}. ${s.id}  ${s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）')}`);
+        this.pushMsg('system', [t('Saved sessions (newest first) — /resume <number|id>:', '已保存会话（最新在前）—— /resume <序号|id>：'), ...lines].join('\n'));
+        return;
+      }
+      const num = Number.parseInt(arg, 10);
+      const pick = Number.isInteger(num) && num >= 1 && num <= sessions.length ? sessions[num - 1] : sessions.find((s) => s.id === arg);
+      if (!pick) {
+        this.pushMsg('system', t('No such session: ' + arg, '没有这个会话：' + arg));
+        return;
+      }
+      this.restoreFromSession(pick);
       return;
     }
     if (cmd === '/compact') {
@@ -710,10 +839,10 @@ export class SessionController {
   }
 
   private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'detail'>>): void {
-    this.state = {
-      ...this.state,
-      messages: [...this.state.messages, { role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) }],
-    };
+    const item: ChatItem = { role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) };
+    this.state = { ...this.state, messages: [...this.state.messages, item] };
+    // 消息流入志（单一挂钩点：所有入档消息都经 pushMsg）；恢复注入不经此处（零重复入志）
+    this.journal?.log({ t: 'msg', item });
     this.notify();
   }
 
