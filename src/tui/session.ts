@@ -1,4 +1,5 @@
 import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, SessionEvent } from '../types';
+import { t } from '../i18n';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
 import { estimateTokens } from '../harness/context/window';
@@ -6,7 +7,6 @@ import { ReplyStreamExtractor } from './stream-extractor';
 import { stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
-import { t } from '../i18n';
 import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import * as fs from 'fs';
@@ -121,8 +121,8 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
 function slashHelp(): string {
   return t(
-    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文 · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
+    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context: /compact [focus] · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
+    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文：/compact [关注点] · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
   );
 }
 
@@ -162,6 +162,12 @@ export class SessionController {
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 挂起的计划确认卡（/plan 流程）；confirmPlan 裁决后清除 */
   private pendingPlan?: { items: string[] };
+  /** 最近一次压缩事件时的 ctx 水位（自动压缩留痕 before → after 用；/compact 路径不消费） */
+  private compactWatermark = 0;
+  /** compact 事件序号（1-based）：一次压缩 = applyCompaction + trimChainFront 恰两条，留痕按序配对消歧 */
+  private compactEventSeq = 0;
+  /** 任务轮首 miss 提示判定（规格 D 观测小件）：每任务轮首重置；提示一次后不再重复 */
+  private turnMissHinted = false;
   /** 裁决权注入（SessionOpts.asker）：挂起语义不变，回填后咨询并以其为最终裁决 */
   private autoAsker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 
@@ -196,7 +202,20 @@ export class SessionController {
     // 未建档时事件丢弃（订阅常驻、可选链路由）；restoreSession 直注入不触发订阅（重放零击穿）。
     this.runtime.harness.context.onContextChange((c) => {
       if (c.kind === 'append') this.journal?.log({ t: 'chain', steps: c.steps });
-      else this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
+      else {
+        this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
+        // 自动压缩消息流留痕（CC auto-compact 口径）：一次压缩 = applyCompaction + trimChainFront 两条 compact 事件，
+        // 以事件序号配对（重放按序覆盖同款语义）——成对第一/第二条都不上屏，第三条起（新一轮压缩首个事件）上屏；
+        // 消歧靠任务态：/compact 自带回执（handleSlash 分支），此处仅任务运行中（自动路径）补水位留痕
+        this.compactEventSeq++;
+        const isPairSecond = this.compactEventSeq % 2 === 0; // 一次压缩 = 恰两条事件；第二条=折链收口
+        if (isPairSecond && this.state.status === 'running') {
+          const before = this.compactWatermark;
+          const after = this.state.metrics.ctxUsed;
+          this.pushMsg('system', t(`Context compacted (ctx ${before} → ${after} tokens)`, `上下文已压缩（水位 ${before} → ${after} tokens）`));
+          this.compactWatermark = after;
+        }
+      }
     });
     if (opts.continueLast) this.resumeLatest();
   }
@@ -283,6 +302,7 @@ export class SessionController {
       metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
+    this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.notify();
     let planText = '';
     this.planReplyNoArchive = true;
@@ -479,6 +499,7 @@ export class SessionController {
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
+    this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.notify();
     try {
       const ctx = this.runtime.harness.context;
@@ -520,6 +541,7 @@ export class SessionController {
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
+    this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.notify();
     try {
       this.runtime.harness.context.appendChain([
@@ -685,11 +707,13 @@ export class SessionController {
       const chainItems = chainToHistoryItems(ctx.chainView());
       const items = ctx.assemble(chainItems);
       const before = ctx.window.estimate(items).used;
+      const focus = text.trim().split(/\s+/).slice(1).join(' ').trim();
       const r = await runCompaction(ctx, items, {
         summaryTokenBudget: 2000,
         rereadTokenBudget: 2000,
         chainFoldedCount: chainItems.length,
         summaryModel: this.runtime.harness.model,
+        ...(focus.length > 0 ? { focus } : {}),
       });
       const after = ctx.window.estimate(ctx.assemble()).used;
       this.state = { ...this.state, metrics: { ...this.state.metrics, ctxUsed: after } };
@@ -757,18 +781,27 @@ export class SessionController {
       }
       case 'usage': {
         if (typeof e.payload?.turnTotal !== 'number') return; // 无数值载荷不更新
+        // 轮首 miss 提示（观测小件）：本轮首个 usage 事件且 cache=0 且 prompt≥50k → 提示一次（只提示不归因展开）
+        if (!this.turnMissHinted) {
+          this.turnMissHinted = true;
+          const firstCache = typeof e.payload?.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : 0;
+          const firstPrompt = typeof e.payload?.promptTotal === 'number' ? e.payload.promptTotal : 0;
+          if (firstCache === 0 && firstPrompt >= 50_000) {
+            this.pushMsg('system', t('Round-first prompt cache miss (0 cached): the endpoint cache may have expired (TTL); correctness is not affected', '轮首缓存未命中（cached=0）：端点缓存可能已过期（TTL），不影响正确性'));
+          }
+        }
         // per-run 值叠加任务级基线：/plan 逐步执行本轮持续累计（步骤切换不重置）
-        const t = this.usageBase.tokens + e.payload.turnTotal;
+        const turnTokensTotal = this.usageBase.tokens + e.payload.turnTotal;
         const c = this.usageBase.cache + (typeof e.payload.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : 0);
         const p = this.usageBase.prompt + (typeof e.payload.promptTotal === 'number' ? e.payload.promptTotal : 0);
         const m = this.state.metrics;
-        if (t === m.turnTokens && c === m.turnCacheTokens && p === m.turnPromptTokens) return; // 数值未变的重复 usage 不触发重渲染
+        if (turnTokensTotal === m.turnTokens && c === m.turnCacheTokens && p === m.turnPromptTokens) return; // 数值未变的重复 usage 不触发重渲染
         // 会话累计按本轮增量并入（Σcached/Σprompt：跨任务不清零、/new 归零）——轮首 miss 只稀释会话均值，不再把状态栏砸成 0%
         this.state = {
           ...this.state,
           metrics: {
             ...m,
-            turnTokens: t,
+            turnTokens: turnTokensTotal,
             turnCacheTokens: c,
             turnPromptTokens: p,
             sessionCacheTokens: m.sessionCacheTokens + Math.max(0, c - m.turnCacheTokens),

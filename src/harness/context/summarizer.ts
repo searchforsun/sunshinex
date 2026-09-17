@@ -64,11 +64,14 @@ export function trimToTokenBudget(text: string, budgetTokens: number): string {
   return text.slice(0, lo);
 }
 
-/** 模型摘要：一次 complete()；空输出/抛错/截断后为空一律 null（调用方回退确定性 join）——压缩永不因摘要失败而失败 */
-export async function summarizeWithModel(model: ModelAdapter, chunks: ContextChunk[], budgetTokens: number): Promise<string | null> {
+/** 模型摘要：一次 complete()；空输出/抛错/截断后为空一律 null（调用方回退确定性 join）——压缩永不因摘要失败而失败。
+ *  focus 为用户补充关注点（/compact [focus]），措辞标注「优先覆盖」：与既有六要素冲突时以用户点名为准。 */
+export async function summarizeWithModel(model: ModelAdapter, chunks: ContextChunk[], budgetTokens: number, focus?: string): Promise<string | null> {
   if (chunks.length === 0) return null;
+  const prompt = buildSummaryPrompt(chunks, budgetTokens);
+  const full = focus && focus.trim().length > 0 ? `${prompt}\n\n${pick('User focus (overrides the outline above): ', '用户补充关注点（优先覆盖）：')}${focus.trim()}` : prompt;
   try {
-    const raw = await model.complete(buildSummaryPrompt(chunks, budgetTokens));
+    const raw = await model.complete(full);
     const text = (raw ?? '').trim();
     if (!text) return null;
     const out = trimToTokenBudget(text, budgetTokens);

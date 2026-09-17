@@ -79,14 +79,14 @@ export class ContextManager {
    *  返回摘要来源三态：model=模型正文生效；deterministic=确定性回退；replay=同一压缩事件幂等重放（不注入、不计数、不发起模型调用）。 */
   async applyCompaction(
     chunks: ContextChunk[],
-    opts?: { rereadTokenBudget?: number; summaryModel?: ModelAdapter; summaryTokenBudget?: number; traceLine?: string },
+    opts?: { rereadTokenBudget?: number; summaryModel?: ModelAdapter; summaryTokenBudget?: number; traceLine?: string; focus?: string },
   ): Promise<'model' | 'deterministic' | 'replay'> {
     const verdict = this.window.verifyChecksum(chunks);
     if (verdict === 'replay') return 'replay'; // 同一压缩事件幂等重放（规格 §8：不发起模型调用）
     this.compactions++; // first=首个压缩事件（计 1）、new=新一轮压缩；replay 不计数
     let summaryBody: string | undefined;
     if (opts?.summaryModel && isModelSummarizer(opts.summaryModel)) {
-      const body = await summarizeWithModel(opts.summaryModel, chunks, opts.summaryTokenBudget ?? 2000);
+      const body = await summarizeWithModel(opts.summaryModel, chunks, opts.summaryTokenBudget ?? 2000, opts.focus);
       if (body !== null) summaryBody = body;
     }
     const items: ContextItem[] = [...this.window.reinject(chunks, summaryBody, opts?.traceLine)];
@@ -212,7 +212,7 @@ export interface RunCompactionResult {
 export async function runCompaction(
   cm: ContextManager,
   items: ContextItem[],
-  opts: { summaryTokenBudget: number; rereadTokenBudget: number; chainFoldedCount?: number; summaryModel?: ModelAdapter },
+  opts: { summaryTokenBudget: number; rereadTokenBudget: number; chainFoldedCount?: number; summaryModel?: ModelAdapter; focus?: string },
 ): Promise<RunCompactionResult> {
   // 归档先行且仅在将真实折链时写（replay 幂等重放不产孤儿归档）；写失败降级无指针行，压缩永不因归档失败而失败
   let traceLine: string | undefined;
@@ -236,6 +236,7 @@ export async function runCompaction(
     summaryTokenBudget: opts.summaryTokenBudget,
     ...(opts.summaryModel ? { summaryModel: opts.summaryModel } : {}),
     ...(traceLine !== undefined ? { traceLine } : {}),
+    ...(opts.focus !== undefined ? { focus: opts.focus } : {}),
   });
   if (via !== 'replay' && opts.chainFoldedCount !== undefined && opts.chainFoldedCount > 0) {
     cm.trimChainFront(opts.chainFoldedCount);
