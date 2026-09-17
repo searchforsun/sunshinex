@@ -68,11 +68,11 @@ SUNSHINEX_MODEL=glm-5.3-flash
 | 命令 | 作用 |
 | --- | --- |
 | `/help` | 命令清单 |
-| `/init` | 分析项目，生成/完善 SUNSHINE.md |
+| `/init` | 分析项目，生成/完善 SUNSHINE.md（写盘后立即重载入会话上下文） |
 | `/goal <目标>` | 运行完整验收修正环（标准环：agent→check→repair）；目标即条件——一句可度量的终态（对话里可自证），复杂目标可内嵌 `（验收标准：t1=…）` 多判据 |
 | `/status` | 会话与账本摘要 |
 | `/plan <目标>` | 先规划后执行（见第六节） |
-| `/compact` | 立即压缩上下文（当前模型生成六要素交接摘要，模型失败自动回退） |
+| `/compact [关注点]` | 立即压缩上下文（当前模型生成六要素交接摘要，模型失败自动回退）；可附关注点（如 `/compact 保留迁移细节`），摘要优先覆盖所列内容；接近窗口上限时亦会自动压缩，消息流留痕「Context compacted」 |
 | `/model [small\|medium\|large]` | 查询/设置模型档位（对后续任务生效） |
 | `/new` | 新会话（清消息与待办、清空会话链与压缩摘要、清除审批登记；记忆与账本保留） |
 | `/resume [序号\|id]` | 列出（无参）或恢复已保存会话（跨天续接：消息、待办、模型档位、上下文链与压缩块全还原；配套 CLI `--continue` 直接续接最近会话） |
@@ -126,4 +126,5 @@ SUNSHINEX_MODEL=glm-5.3-flash
 - 运行时数据（账本/记忆/学习技能/知识库）落盘用户级目录 `~/.sunshinex/projects/<工作区>/data`：按启动目录隔离、不污染项目（对标 Claude Code 项目数据形态）；`SUNSHINEX_DATA_DIR` 可整体覆盖。
 - 家目录不可写（沙箱/只读 HOME）时回退启动目录内 `.data/`；旧版项目内 `.data` 不自动迁移，可手动拷贝或以 `SUNSHINEX_DATA_DIR` 指向旧目录沿用。
 - `sessions/`：会话事件日志（每会话一 `<sessionId>.jsonl` 追加只增）与 `sessions-active.json` 活动指针；任务收口/`/new`/退出三个时点落盘，`--continue` 与 `/resume` 据此跨天恢复
-- `SUNSHINE.md`：项目业务配置，启动时装载进模型上下文。
+- `SUNSHINE.md`：项目业务配置，会话启动时读入快照并冻结（会话中途直接改文件不影响当前会话；经 `/init` 重载、上下文压缩或 `/new` 后生效）。可含可选 `## Compact Instructions`（或 `## 压缩指令`）区：其中的要求会在压缩摘要时优先保留。
+- 超长工具输出自动截断落盘：read/exec/glob/webfetch 输出超过预算（30k 字符）时截断为预览，完整原文存于数据目录 `tool-outputs/`，提示行给出路径，可用 `read <路径>` 取回；上下文压缩时被折叠的链行同样归档于 `archives/`，压缩块内含 `Full trace` 路径。
