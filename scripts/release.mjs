@@ -9,7 +9,8 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-// Windows 下 npm/pnpm 实体是 .cmd，spawn 不经 shell 必须点名后缀；git/gh/curl/node 为原生可执行
+// Windows 下 npm/pnpm 实体是 .cmd 脚本：Node ≥ 18.20（CVE-2024-27980）禁止 spawn 直接执行
+// .cmd/.bat（一律 EINVAL），必须经 shell 调用；git/gh/curl/node 为原生可执行，免 shell 免引号语义
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const PNPM = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
@@ -57,7 +58,9 @@ function has(cmd) {
 }
 
 function run(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', ...(opts.stdio ? { stdio: opts.stdio } : {}) });
+  // win32 下 .cmd/.bat 只能经 shell 执行（Node ≥ 18.20 免 shell spawn 报 EINVAL）；POSIX 与 .exe 恒免 shell
+  const shell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd);
+  const r = spawnSync(cmd, args, { encoding: 'utf8', shell, ...(opts.stdio ? { stdio: opts.stdio } : {}) });
   if (opts.allowFail) return r;
   if (r.error) die(`${cmd} 执行失败：${r.error.message}`);
   if (r.status !== 0) die(`${cmd} ${args.join(' ')} 失败（exit=${r.status}）${r.stderr ? `：${String(r.stderr).trim()}` : ''}`);
