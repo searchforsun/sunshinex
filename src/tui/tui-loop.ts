@@ -8,6 +8,8 @@ export interface InkLikeInstance {
 }
 
 export interface TuiLoopDeps {
+  /** 首挂 retain 初值补丁（--continue 恢复的输入历史与视图两态；buffer/cursor 易失不还原——规格 D6 边界） */
+  initialRetain?: Partial<RetainedUiState>;
   /** resize 事件源（真实 TTY stdout 或测试 EventEmitter） */
   stdout: ResizeSource;
   /** 重挂前的整屏清理（清屏 + 归位光标）；清理后重挂使 Static 历史重放一次、动态区按新宽度重排 */
@@ -28,7 +30,7 @@ export interface TuiLoopDeps {
  * 输入/视图现场经 retain 跨重挂保留（App 挂载读初值、变化实时回写）。
  */
 export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
-  const retain = initialRetained();
+  const retain: RetainedUiState = { ...initialRetained(), ...deps.initialRetain };
   let repaintQueued = false;
   let current: InkLikeInstance | undefined;
   // resize 与 Tab 模式切换共用同一条「卸载 → 清屏 → 重挂」路径：Static 历史按当前模式整屏重放

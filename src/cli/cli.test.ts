@@ -62,3 +62,12 @@ test('resolveInvocation：--language 直通 flags，不影响目录直进语义'
   assert.deepEqual(a.positional, ['../my-project']);
   assert.equal(a.flags.language, 'zh');
 });
+
+test('parseArgs：裸 --continue 解析为 true 并随 tui 调用透传', () => {
+  const args = parseArgs(['--continue']);
+  assert.equal(args.flags['continue'], true);
+  assert.equal(args.command, 'tui');
+  const inv = resolveInvocation(args);
+  assert.equal(inv.command, 'tui');
+  assert.equal(inv.flags['continue'], true);
+});

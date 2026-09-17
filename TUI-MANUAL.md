@@ -75,6 +75,7 @@ SUNSHINEX_MODEL=glm-5.3-flash
 | `/compact` | 立即压缩上下文（当前模型生成六要素交接摘要，模型失败自动回退） |
 | `/model [small\|medium\|large]` | 查询/设置模型档位（对后续任务生效） |
 | `/new` | 新会话（清消息与待办、清空会话链与压缩摘要、清除审批登记；记忆与账本保留） |
+| `/resume [序号\|id]` | 列出（无参）或恢复已保存会话（跨天续接：消息、待办、模型档位、上下文链与压缩块全还原；配套 CLI `--continue` 直接续接最近会话） |
 
 `/goal` 直达 Loop 标准验收修正环（对标 CLI `sunshinex run`）：目标即验收条件，判据模型逐轮评估三值裁决（满足 / 未满足 / 不可满足——判定不可满足即终止并给出理由）；判据服务不可用时自动重试 3 次后暂停，重跑 `/goal` 续走（会话链保留上下文）；修正全程走会话主链，终态回执含轮数/验收项/tokens。
 
@@ -124,4 +125,5 @@ SUNSHINEX_MODEL=glm-5.3-flash
 - 会话所有文件操作被约束在启动目录（root）内，越界路径拒绝。
 - 运行时数据（账本/记忆/学习技能/知识库）落盘用户级目录 `~/.sunshinex/projects/<工作区>/data`：按启动目录隔离、不污染项目（对标 Claude Code 项目数据形态）；`SUNSHINEX_DATA_DIR` 可整体覆盖。
 - 家目录不可写（沙箱/只读 HOME）时回退启动目录内 `.data/`；旧版项目内 `.data` 不自动迁移，可手动拷贝或以 `SUNSHINEX_DATA_DIR` 指向旧目录沿用。
+- `sessions/`：会话事件日志（每会话一 `<sessionId>.jsonl` 追加只增）与 `sessions-active.json` 活动指针；任务收口/`/new`/退出三个时点落盘，`--continue` 与 `/resume` 据此跨天恢复
 - `SUNSHINE.md`：项目业务配置，启动时装载进模型上下文。

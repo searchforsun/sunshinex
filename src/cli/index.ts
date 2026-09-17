@@ -61,7 +61,8 @@ function usageText(): string {
   sunshinex run <dir> --goal="..."        run the standard verify-fix loop on the dir (goal via --goal)
   sunshinex pipeline <dir> [--yes]        five-node full pipeline with interactive gate approvals (--yes auto-approves)
   sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large]
-                              interactive session terminal (streaming/approvals/todos, manual default)`,
+                              interactive session terminal (streaming/approvals/todos, manual default)
+  sunshinex tui [dir] --continue           resume the most recent saved session (TUI; /resume lists earlier ones)`,
     `SunshineX CLI
   sunshinex                               直接进入交互式会话终端（= sunshinex tui，manual 缺省）
   sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large]
@@ -70,7 +71,8 @@ function usageText(): string {
   sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（goal 走交互或 --goal）
   sunshinex pipeline <dir> [--yes]        五节点全链路流水线，gate 审批交互（--yes 跳过交互直接批准）
   sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large]
-                              交互式会话终端（流式/审批/待办，manual 缺省）`,
+                              交互式会话终端（流式/审批/待办，manual 缺省）
+  sunshinex tui [dir] --continue          续接最近一次已保存会话（TUI 内 /resume 可列出/恢复更早会话）`,
   );
 }
 

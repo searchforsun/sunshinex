@@ -29,7 +29,11 @@ export async function runTui(args: CliArgs): Promise<void> {
   const model = buildModel(args.flags);
   // 模型档位（用户级会话参数，对标 Claude Code 的模型选择）：--tier 优先，SUNSHINEX_TIER 兜底；/model 可会话内切换
   const tier = parseTier(args.flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
-  const ctrl = new SessionController({ root, mode, model, ...(tier ? { tier } : {}) });
+  // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
+  const continueLast = args.flags['continue'] === true;
+  const ctrl = new SessionController({ root, mode, model, ...(tier ? { tier } : {}), ...(continueLast ? { continueLast: true } : {}) });
+  // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
+  const restored = ctrl.takeRestoredUi();
   const banner = buildBannerInfo({ version: readPackageVersion(), root, model: model.label ?? model.provider });
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
@@ -39,20 +43,26 @@ export async function runTui(args: CliArgs): Promise<void> {
   // Tab 切换的展开模式：经宿主 onRequestRepaint 注入 tui-loop 的重绘出口（与 resize 共用卸载→清屏→重挂路径）
   let requestRepaint: (() => void) | undefined;
   process.once('SIGINT', () => {
+    ctrl.flushJournal(); // SIGINT 硬退出收口（规格 D3 flush 点③）
     current?.unmount();
     process.exit(0);
   });
-  await runTuiLoop({
-    stdout: process.stdout,
-    clearScreen: () => process.stdout.write('\x1b[2J\x1b[3J\x1b[H'),
-    onRequestRepaint: (req) => {
-      requestRepaint = req;
-    },
-    renderOnce: (retain) => {
-      const inst = render(React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint }));
-      current = inst;
-      return inst;
-    },
-  });
+  try {
+    await runTuiLoop({
+      stdout: process.stdout,
+      clearScreen: () => process.stdout.write('\x1b[2J\x1b[3J\x1b[H'),
+      onRequestRepaint: (req) => {
+        requestRepaint = req;
+      },
+      renderOnce: (retain) => {
+        const inst = render(React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint }));
+        current = inst;
+        return inst;
+      },
+      initialRetain: restored ? { history: restored.history, expandAll: restored.expandAll, latestFull: restored.latestFull } : undefined,
+    });
+  } finally {
+    ctrl.flushJournal(); // 退出收口（规格 D3 flush 点③）
+  }
   process.exit(0);
 }

@@ -11,6 +11,7 @@ import { initialRetained } from '../ui-state';
 
 test('slashCandidates：/ 前缀匹配命令清单，非 / 前缀返回空', () => {
   assert.deepEqual(slashCandidates('/'), SLASH_COMMANDS);
+  assert.ok(SLASH_COMMANDS.includes('/resume'), '/resume 已登记补全清单');
   assert.ok(SLASH_COMMANDS.includes('/goal'), '/goal 已登记补全清单');
   assert.deepEqual(slashCandidates('/ne'), ['/new']);
   assert.deepEqual(slashCandidates('xyz'), []);
@@ -30,7 +31,8 @@ test('App：Tab 斜杠补全为完整命令 + 空格，再次 Tab 循环到下�
     assert.match(lastFrame() ?? '', /\/new /, 'Tab 应补全 /ne 为 /new ');
     write('\t'); // 已是完整命令，循环到下一命令
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /\/compact /, '再次 Tab 应循环到下一命令');
+    // /resume 登记在 /new 之后：循环邻位由 /compact 变为 /resume（SLASH_COMMANDS 序 /new → /resume → /compact）
+    assert.match(lastFrame() ?? '', /\/resume /, '再次 Tab 应循环到下一命令');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

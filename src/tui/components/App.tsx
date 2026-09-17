@@ -22,7 +22,7 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
 }
 
 /** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序） */
-export const SLASH_COMMANDS = ['/help', '/init', '/goal', '/new', '/compact', '/status', '/model', '/plan'];
+export const SLASH_COMMANDS = ['/help', '/init', '/goal', '/new', '/resume', '/compact', '/status', '/model', '/plan'];
 
 /** 斜杠补全候选：按 buffer（已 trim）前缀匹配命令清单；非 / 前缀或无匹配返回空 */
 export function slashCandidates(buffer: string): string[] {
@@ -177,14 +177,18 @@ export function App({
         }
       } else {
         // 第一层切换（行折叠）：翻转后经重挂整屏重放（Static 按新形态整体重建，视口永远只有一份），运行中随时可切
-        setExpandAll((v) => !v);
+        const nextExpand = !expandAll;
+        setExpandAll(nextExpand);
+        controller.recordView(nextExpand, latestFull);
       }
       return;
     }
 
     // Ctrl+O：第二层切换（内容深度）——最近正文锚点阶段的思考与工具结果展开/收起为全文
     if (key.ctrl && input === 'o') {
-      setLatestFull((v) => !v);
+      const nextFull = !latestFull;
+      setLatestFull(nextFull);
+      controller.recordView(expandAll, nextFull);
       return;
     }
 
