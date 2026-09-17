@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { StorageAdapter } from '../../storage/adapter';
 import { ContextItem, HistoryStep } from '../../types';
+import { resolveDataDir } from '../../config/data-dir';
 import { ContextLoader } from './loader';
 import { RulesRegistry } from './rules';
 import { ContextWindow, ContextChunk, estimateTokens } from './window';
@@ -77,7 +79,7 @@ export class ContextManager {
    *  返回摘要来源三态：model=模型正文生效；deterministic=确定性回退；replay=同一压缩事件幂等重放（不注入、不计数、不发起模型调用）。 */
   async applyCompaction(
     chunks: ContextChunk[],
-    opts?: { rereadTokenBudget?: number; summaryModel?: ModelAdapter; summaryTokenBudget?: number },
+    opts?: { rereadTokenBudget?: number; summaryModel?: ModelAdapter; summaryTokenBudget?: number; traceLine?: string },
   ): Promise<'model' | 'deterministic' | 'replay'> {
     const verdict = this.window.verifyChecksum(chunks);
     if (verdict === 'replay') return 'replay'; // 同一压缩事件幂等重放（规格 §8：不发起模型调用）
@@ -87,7 +89,7 @@ export class ContextManager {
       const body = await summarizeWithModel(opts.summaryModel, chunks, opts.summaryTokenBudget ?? 2000);
       if (body !== null) summaryBody = body;
     }
-    const items: ContextItem[] = [...this.window.reinject(chunks, summaryBody)];
+    const items: ContextItem[] = [...this.window.reinject(chunks, summaryBody, opts?.traceLine)];
     for (const rel of this.recent) {
       try {
         const abs = path.resolve(this.root, rel);
@@ -212,11 +214,28 @@ export async function runCompaction(
   items: ContextItem[],
   opts: { summaryTokenBudget: number; rereadTokenBudget: number; chainFoldedCount?: number; summaryModel?: ModelAdapter },
 ): Promise<RunCompactionResult> {
+  // 归档先行且仅在将真实折链时写（replay 幂等重放不产孤儿归档）；写失败降级无指针行，压缩永不因归档失败而失败
+  let traceLine: string | undefined;
+  const folded = opts.chainFoldedCount ?? 0;
+  if (folded > 0 && cm.chainView().length > 0) {
+    try {
+      const rows = cm.chainView().slice(0, Math.min(folded, cm.chainView().length));
+      const archDir = path.join(resolveDataDir(cm.root), 'archives');
+      fs.mkdirSync(archDir, { recursive: true });
+      const digest = crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex').slice(0, 8);
+      const file = path.join(archDir, `compaction-${rows.length}-${digest}.jsonl`);
+      fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      traceLine = `Full trace: ${file}`;
+    } catch {
+      traceLine = undefined; // 归档失败降级：无指针行，压缩照常
+    }
+  }
   const chunks = await cm.window.compact(items, { summaryTokenBudget: opts.summaryTokenBudget });
   const via = await cm.applyCompaction(chunks, {
     rereadTokenBudget: opts.rereadTokenBudget,
     summaryTokenBudget: opts.summaryTokenBudget,
     ...(opts.summaryModel ? { summaryModel: opts.summaryModel } : {}),
+    ...(traceLine !== undefined ? { traceLine } : {}),
   });
   if (via !== 'replay' && opts.chainFoldedCount !== undefined && opts.chainFoldedCount > 0) {
     cm.trimChainFront(opts.chainFoldedCount);

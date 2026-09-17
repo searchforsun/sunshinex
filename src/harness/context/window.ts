@@ -115,16 +115,17 @@ export class ContextWindow {
     return this.lastChecksum === null ? null : this.lastChecksum.slice(0, 16);
   }
 
-  /** 压缩摘要条目（纯计算）：kept chunks 摘要拼接 + checksum 标记；summaryBody 提供时正文整体替换（模型摘要路径，头不变） */
-  summarize(chunks: ContextChunk[], summaryBody?: string): ContextItem {
+  /** 压缩摘要条目（纯计算）：kept chunks 摘要拼接 + checksum 标记；summaryBody 提供时正文整体替换（模型摘要路径，头不变）；traceLine（归档指针行）提供时追加在正文尾 */
+  summarize(chunks: ContextChunk[], summaryBody?: string, traceLine?: string): ContextItem {
     const hash = crypto.createHash('sha256').update(JSON.stringify(chunks)).digest('hex').slice(0, 16);
     const text = summaryBody !== undefined ? summaryBody : chunks.map((c) => `- [${c.type}] ${c.summary}`).join('\n');
-    return { kind: 'history', content: pick(`[Compacted summary checksum=${hash}]\n${text}`, `[压缩摘要 checksum=${hash}]\n${text}`) };
+    const body = traceLine !== undefined ? `${text}\n${traceLine}` : text;
+    return { kind: 'history', content: pick(`[Compacted summary checksum=${hash}]\n${body}`, `[压缩摘要 checksum=${hash}]\n${body}`) };
   }
 
   /** reinject 落地：由压缩 chunks 产出重注入条目（摘要；最近文件重读由 ContextManager 协调后追加） */
-  reinject(chunks: ContextChunk[], summaryBody?: string): ContextItem[] {
-    return [this.summarize(chunks, summaryBody)];
+  reinject(chunks: ContextChunk[], summaryBody?: string, traceLine?: string): ContextItem[] {
+    return [this.summarize(chunks, summaryBody, traceLine)];
   }
 
   private chunkId(content: string): string {
