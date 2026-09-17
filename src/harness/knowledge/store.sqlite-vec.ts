@@ -102,6 +102,17 @@ export class SqliteVecStore implements VectorStore {
     }
   }
 
+  /** 释放 SQLite 连接（Windows：连接未关时覆写/删库目录 EPERM）；close 后操作会惰性重开连接 */
+  close(): void {
+    if (this.db) {
+      try {
+        this.db.close();
+      } finally {
+        this.db = null;
+      }
+    }
+  }
+
   flush(): void {
     if (this.db) this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   }

@@ -41,10 +41,12 @@ test('resolveDataDir：HOME 可写时落 ~/.sunshinex/projects/<slug>/data，按
   const rootB = tmpdir('sunshinex-dd-b-');
   const fakeHome = tmpdir('sunshinex-dd-home-');
   const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
   const prevOvr = process.env.SUNSHINEX_DATA_DIR;
   try {
     delete process.env.SUNSHINEX_DATA_DIR;
     process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
     const dirA = resolveDataDir(rootA);
     const dirB = resolveDataDir(rootB);
     const base = path.join(fakeHome, '.sunshinex', 'projects');
@@ -54,6 +56,7 @@ test('resolveDataDir：HOME 可写时落 ~/.sunshinex/projects/<slug>/data，按
     assert.equal(resolveDataDir(rootA), dirA, '同工作区稳定');
   } finally {
     if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
     fs.rmSync(rootA, { recursive: true, force: true });
     fs.rmSync(rootB, { recursive: true, force: true });
@@ -67,13 +70,16 @@ test('resolveDataDir：HOME 不可写回退项目内 .data（沙箱/只读家目
   const blocked = path.join(blk, 'file');
   fs.writeFileSync(blocked, 'x');
   const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
   const prevOvr = process.env.SUNSHINEX_DATA_DIR;
   try {
     delete process.env.SUNSHINEX_DATA_DIR;
     process.env.HOME = blocked;
+    process.env.USERPROFILE = blocked;
     assert.equal(resolveDataDir(root), path.join(root, '.data'), 'mkdir 失败即回退旧形态');
   } finally {
     if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(blk, { recursive: true, force: true });

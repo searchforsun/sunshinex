@@ -8,6 +8,8 @@ export interface VectorStore {
   size(): number;
   load(): void;
   flush(): void;
+  /** 资源型后端释放底层连接（Windows 文件锁：连接未关即覆写/删目录会 EPERM）；纯内存实现可缺省 */
+  close?(): void;
 }
 
 interface VecEntry {

@@ -108,7 +108,7 @@ test('会话控制器：/init 走模型任务生成 SUNSHINE.md（新建）', as
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
-        '{"tool":"write","input":{"path":"' + path.join(tmp, 'SUNSHINE.md') + '","content":"# 项目名称\\ndemo-app\\n"},"done":false}',
+        '{"tool":"write","input":{"path":' + JSON.stringify(path.join(tmp, 'SUNSHINE.md')) + ',"content":"# 项目名称\\ndemo-app\\n"},"done":false}',
         '{"done":true,"reply":"已新建 SUNSHINE.md，写入分区：项目名称"}',
       ]),
     });
@@ -140,7 +140,7 @@ test('会话控制器：/init 已有 SUNSHINE.md 走完善语义且不覆盖原�
       root: tmp,
       model: new ScriptedAdapter([
         '{"tool":"read","input":{"path":"SUNSHINE.md"},"done":false}',
-        '{"tool":"write","input":{"path":"' + path.join(tmp, 'SUNSHINE.md') + '","content":"# 项目名称\\n既有项目\\n\\n# 编码规范\\n- 既有规则保持不动\\n\\n# 架构原则\\n- 补充分层说明\\n"},"done":false}',
+        '{"tool":"write","input":{"path":' + JSON.stringify(path.join(tmp, 'SUNSHINE.md')) + ',"content":"# 项目名称\\n既有项目\\n\\n# 编码规范\\n- 既有规则保持不动\\n\\n# 架构原则\\n- 补充分层说明\\n"},"done":false}',
         '{"done":true,"reply":"已完善 SUNSHINE.md，新增分区：架构原则"}',
       ]),
     });

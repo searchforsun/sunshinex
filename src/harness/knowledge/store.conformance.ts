@@ -33,6 +33,7 @@ export function runVectorStoreConformance(create: () => VectorStore, opts: Confo
 
   // 持久化往返：flush 后经独立实例 load 可完整检索
   s.flush();
+  s.close?.();
   const s2 = create();
   assert.equal(s2.size(), 0, '新实例在 load 前应为空');
   s2.load();
@@ -40,10 +41,12 @@ export function runVectorStoreConformance(create: () => VectorStore, opts: Confo
   assert.equal(s2.search([0.9, 0.9], 1)[0].text, 'alpha-v2', '持久化后检索语义一致');
 
   // 损坏恢复：存储损坏后 load 不抛、回退空库（索引可由 indexDir 重建，不阻塞装配）
+  s2.close?.();
   if (opts.corruptStorage) {
     opts.corruptStorage();
     const s3 = create();
     assert.doesNotThrow(() => s3.load(), '损坏存储的 load 必须降级不抛');
     assert.equal(s3.size(), 0, '损坏存储应回退空库');
+    s3.close?.();
   }
 }

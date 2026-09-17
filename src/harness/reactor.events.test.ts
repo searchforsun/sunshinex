@@ -128,7 +128,7 @@ test('事件流：tool-result 载荷含 full（完整 observation），text 仍 
     fs.writeFileSync(filePath, longContent, 'utf8');
     const events: SessionEvent[] = [];
     const r = await makeReactor(tmp, new ScriptedAdapter([
-      `{"tool":"read","input":{"path":"${filePath}"},"done":false}`,
+      `{"tool":"read","input":{"path":${JSON.stringify(filePath)}},"done":false}`,
       '{"done":true,"reply":"ok"}',
     ]), (e) => events.push(e)).run({ goal: '读长文件' }, { maxSteps: 3 });
     assert.equal(r.done, true);

@@ -11,10 +11,12 @@ test('Harness：运行时数据落 ~/.sunshinex/projects/<工作区>/data，工�
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-dd-harness-'));
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-dd-harness-home-'));
   const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
   const prevOvr = process.env.SUNSHINEX_DATA_DIR;
   try {
     delete process.env.SUNSHINEX_DATA_DIR;
     process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
     const h = new Harness({ root, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const r = await h.reactor.run({ goal: '数据目录装配验收' }, { maxSteps: 2 });
     assert.equal(r.done, true);
@@ -26,6 +28,7 @@ test('Harness：运行时数据落 ~/.sunshinex/projects/<工作区>/data，工�
     assert.ok(!fs.existsSync(path.join(root, '.data')), '工作区零残留');
   } finally {
     if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(fakeHome, { recursive: true, force: true });

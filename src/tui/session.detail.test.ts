@@ -54,7 +54,7 @@ test('会话 detail：tool-result 归约 detail 为完整 observation', async ()
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
-        `{"tool":"read","input":{"path":"${filePath}"},"done":false}`,
+        `{"tool":"read","input":{"path":${JSON.stringify(filePath)}},"done":false}`,
         '{"done":true,"reply":"ok"}',
       ]),
     });

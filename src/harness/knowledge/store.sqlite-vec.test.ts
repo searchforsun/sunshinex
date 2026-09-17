@@ -27,6 +27,7 @@ test('SqliteVecStore：upsert/search 排序 + score 降序 + TopK 语义', () =>
     assert.equal(s.search([1, 0], 0).length, 0, 'topK=0 应返回空');
     assert.equal(s.search([1, 0], 99).length, 3, 'topK 超库容应返回全部');
     assert.equal(s.size(), 3);
+    s.close();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -48,6 +49,8 @@ test('SqliteVecStore：幂等覆盖 + 持久化往返（load 前空视图与 loc
     s2.load();
     assert.equal(s2.size(), 2, 'load 后应恢复全部条目');
     assert.equal(s2.search([0.9, 0.9], 1)[0].text, 'alpha-v2', '持久化后检索语义一致');
+    s.close();
+    s2.close();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -59,10 +62,12 @@ test('SqliteVecStore：维度不一致 fail-fast；损坏库 load 降级不抛',
     const s = new SqliteVecStore(dir);
     s.upsert('a', [1, 0, 0], { text: 'dim3' });
     assert.throws(() => s.upsert('b', [1, 0], { text: 'dim2' }), /维度不一致/);
+    s.close();
     fs.writeFileSync(path.join(dir, 'vectors.db'), Buffer.from('not-a-sqlite-file'));
     const s2 = new SqliteVecStore(dir);
     assert.doesNotThrow(() => s2.load(), '损坏存储的 load 必须降级不抛');
     assert.equal(s2.size(), 0, '损坏存储应回退空库');
+    s2.close();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -75,6 +80,7 @@ test('SUNSHINEX_KB_BACKEND 注册：sqlite-vec 工厂经注册表可创建（SUN
     const s = createVectorBackend('sqlite-vec', dummyStorage);
     assert.ok(s instanceof SqliteVecStore);
     assert.equal(s.size(), 0);
+    s.close?.();
   } finally {
     delete process.env.SUNSHINEX_KB_DATA_DIR;
     fs.rmSync(dir, { recursive: true, force: true });
