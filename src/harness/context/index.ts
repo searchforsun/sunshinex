@@ -14,6 +14,20 @@ const RECENT_LIMIT = 5;
 const REREAD_MAX_LINES = 500;
 
 /** 上下文与记忆管理门面 */
+/** 会话链/压缩变更事件（会话日志订阅面，规格 2026-09-17-session-persistence-resume-design.md §5 单一事实源）：
+ *  append=链尾追加（携带实际推入的行与绝对步号）；compact=压缩后状态快照——applyCompaction 与 trimChainFront 各发一条，
+ *  重放按序覆盖取后态（配对压缩产生两条 compact 事件，最终状态精确）。 */
+export type ContextChange =
+  | { kind: 'append'; steps: HistoryStep[] }
+  | { kind: 'compact'; chainFrom: number; compacted: ContextItem[] };
+
+/** 会话状态完整快照（exportSessionState / restoreSession 载荷） */
+export interface ContextSessionState {
+  chain: HistoryStep[];
+  chainFrom: number;
+  compacted: ContextItem[];
+}
+
 export class ContextManager {
   readonly loader: ContextLoader;
   readonly rules: RulesRegistry;
@@ -30,6 +44,8 @@ export class ContextManager {
   private chainSeq = 0;
   /** 压缩事件计数：first 记 1、new 递增；replay（同一压缩事件幂等重放）不计数 */
   private compactions = 0;
+  /** 会话变更订阅（单槽，后注册覆盖；restoreSession 直注入不经过此口） */
+  private changeSink?: (c: ContextChange) => void;
 
   constructor(private readonly rootPath: string, store: StorageAdapter) {
     this.loader = new ContextLoader(rootPath);
@@ -92,6 +108,7 @@ export class ContextManager {
       items.push(...rereads);
     }
     this.compacted = items;
+    this.changeSink?.({ kind: 'compact', chainFrom: this.chainFrom, compacted: this.compacted });
     return summaryBody !== undefined ? 'model' : 'deterministic';
   }
 
@@ -101,21 +118,44 @@ export class ContextManager {
   }
 
   /** 会话链只读视图：自压缩水位起的存续条目（reactor 缺省 seed 的单一来源） */
+  /** 会话变更订阅（会话日志单一事实源挂钩，规格 §5）：appendChain/applyCompaction/trimChainFront 三类变更发出；传 undefined 取消 */
+  onContextChange(cb?: (c: ContextChange) => void): void {
+    this.changeSink = cb;
+  }
+
+  /** 会话状态导出（完整快照；深拷贝防外部改写内部数组） */
+  exportSessionState(): ContextSessionState {
+    return { chain: this.chain.map((s) => ({ ...s })), chainFrom: this.chainFrom, compacted: this.compacted.map((i) => ({ ...i })) };
+  }
+
+  /** 会话状态恢复（/resume / --continue）：直接注入，不触发订阅（重放期间日志是读方，不二次记录）；chainSeq 按链内最大步号续排 */
+  restoreSession(s: ContextSessionState): void {
+    this.chain = s.chain.map((st) => ({ ...st }));
+    this.chainFrom = s.chainFrom;
+    this.compacted = s.compacted.map((i) => ({ ...i }));
+    this.chainSeq = this.chain.reduce((m, st) => Math.max(m, st.step), 0);
+  }
+
   chainView(): HistoryStep[] {
     return this.chain.slice(this.chainFrom);
   }
 
   /** 会话链尾追（唯一写入口）：行号由链内序号定死，追加后不重排（裁剪后允许跳号） */
   appendChain(entries: Array<{ action?: string; observation: string }>): void {
+    const pushed: HistoryStep[] = [];
     for (const e of entries) {
-      this.chain.push({ step: ++this.chainSeq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation });
+      const step = { step: ++this.chainSeq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation };
+      this.chain.push(step);
+      pushed.push(step);
     }
+    if (pushed.length > 0) this.changeSink?.({ kind: 'append', steps: pushed });
   }
 
   /** 压缩协调：压缩块已代表的链前缀条目数，推进水位防「链+压缩块」双份 */
   trimChainFront(n: number): void {
     if (n <= 0) return;
     this.chainFrom = Math.min(this.chainFrom + n, this.chain.length);
+    this.changeSink?.({ kind: 'compact', chainFrom: this.chainFrom, compacted: this.compacted });
   }
 
   /** 会话级重置（/new）：清链、压缩水位、压缩块与待注入技能块；账本与最近文件登记保留 */
