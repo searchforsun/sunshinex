@@ -43,7 +43,7 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 ## 用户形态与分发
 
 - **用户**：个人开发者本机工具——本机安装运行、数据全本地（`~/.sunshinex/`）、单人使用。
-- **分发**：GitHub Release 附件直装为主、npm registry 正式发布为辅（`scripts/release.sh` 一条命令发版）。
+- **分发**：GitHub Release 附件直装为主、npm registry 正式发布为辅（`scripts/release.mjs` 一条命令发版）。
 
 ## 非目标（防漂移）
 
