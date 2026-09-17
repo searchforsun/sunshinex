@@ -110,6 +110,7 @@ export class Reactor {
     const adapter = router.resolve(tier);
     this.emit('route', undefined, { tier: route.tier, reason: route.reason });
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
+    let reactiveUsed = false; // 反应式压缩兜底：每 run 至多一次（MAX_REACTIVE_RETRIES=1）
     // fork 模型缺省基座：会话链视图即本 run 前缀（结构性 fork，不传 seed 即续接主链）；
     // 新步骤号自链尾续起，prompt 呈「稳定段 → 链前缀 history → 新步尾部追加」形态；guardrail 迭代计数只约束本 run 新增步
     const scope = opts?.scope ?? 'session';
@@ -216,6 +217,25 @@ export class Reactor {
           onReasoning: (t) => this.emit('reasoning', t),
         }, responseFormat);
       } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        // 反应式压缩兜底（规格 F 项，对标 reactive_compact）：端点超长拒绝（本地估算偏差）→
+        // 压缩 + 重试本步一次（MAX_REACTIVE_RETRIES=1）；重试请求前缀与失败请求不同 = 合法重写点语义
+        if (isContextOverflowError(errMsg) && !reactiveUsed) {
+          reactiveUsed = true;
+          this.emit('error', pick('Context overflow at the endpoint — compacting and retrying once', '端点侧上下文超限——压缩后重试一次'));
+          await runCompaction(this.deps.context, items, {
+            summaryTokenBudget: Math.floor(budget.reserve / 2),
+            rereadTokenBudget: Math.floor(budget.reserve / 2),
+            chainFoldedCount: seed.filter((s) => s.step <= compactedUpToStep).length,
+            summaryModel: adapter,
+          });
+          lastCompactStep = step;
+          // 重试本步：步号由链尾派生（steps 未变则下轮同号），重建装配面后 continue
+          items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
+          // 退位重试：移除本 run 末步（若有）使下轮步号复用当前步号，且不产生空洞
+          if (steps.length > 0) steps.pop();
+          continue;
+        }
         reply = e instanceof Error ? e.message : '模型调用失败';
         this.emit('error', reply);
         stopReason = 'model-error';
@@ -476,4 +496,10 @@ export class Reactor {
     }
     return r.error.message.startsWith(r.error.code) ? r.error.message : `${r.error.code}: ${r.error.message}`;
   }
+}
+
+/** 端点侧上下文超长错误识别（规格 F 项）：本地估算偏差时端点拒绝（OpenAI 兼容端点常见措辞，
+ *  大小写不敏感）；仅匹配明确超限特征串，其余错误走既有 model-error 通道不误触发压缩 */
+export function isContextOverflowError(message: string): boolean {
+  return /prompt[_ ]too long|context length|maximum context|too many tokens|request too large/i.test(message);
 }
