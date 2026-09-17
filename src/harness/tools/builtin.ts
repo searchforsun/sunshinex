@@ -6,35 +6,38 @@ import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
 import { KnowledgeBase } from '../knowledge/index';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
+import { ToolOutputArchive } from './output-archive';
 
-/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider): RegisteredTool[] {
+/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变） */
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive): RegisteredTool[] {
+  // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
+  const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
   const backend = safety.backend;
 
   return [
     {
       name: 'exec',
-      description: pick('Execute a shell command inside the project sandbox', '在沙箱内执行 shell 命令'),
+      description: pick('Execute a shell command inside the project sandbox; oversized output is truncated and saved to disk (full output path shown in the result)', '在沙箱内执行 shell 命令；超长输出将截断并落盘，完整输出路径见结果提示行'),
       category: 'bash',
       executor: async (input: ToolInput) => {
         const cmd = String(input.command ?? '');
         const r = await safety.run(cmd, { cwd: root });
-        if (r.ok) return r.value;
+        if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
         throw new Error(`${r.error.code}: ${r.error.message}`);
       },
     },
     {
       name: 'read',
       description: pick(
-        'Read file content; optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers',
-        '读取文件内容；可选 range 选择行段（1-based 闭区间）："L100-125" 读 100-125 行；"L100" 或 "L100-" 从 100 行读到文件尾；"L-20" 读前 20 行；输出带行号前缀',
+        'Read file content; optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
+        '读取文件内容；可选 range 选择行段（1-based 闭区间）："L100-125" 读 100-125 行；"L100" 或 "L100-" 从 100 行读到文件尾；"L-20" 读前 20 行；输出带行号前缀；超长输出将截断并落盘，完整输出路径见结果提示行',
       ),
       category: 'read',
       executor: async (input: ToolInput) => {
         const content = backend.readFile(String(input.path));
         const range = input.range === undefined ? '' : String(input.range).trim();
-        if (range === '') return execOut(content);
+        if (range === '') return execOut(fitOut('read', content));
         // 形态语义：L<a>-<b> 闭区间；L<a> 与 L<a>- 同义（a 行到尾）；L-<b>（前 b 行）；越界钳制到文件实际范围
         const m = /^L(?<a>\d+)?(?:-(?<b>\d+)?)?$/.exec(range);
         const a = m?.groups?.a === undefined ? NaN : parseInt(m.groups.a, 10);
@@ -44,7 +47,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         const start = Math.max(1, Number.isNaN(a) ? 1 : a);
         const end = Math.min(lines.length, Number.isNaN(b) ? lines.length : b);
         if (!Number.isNaN(b) && b < start) throw new CodedToolError('INVALID_ARG', pick(`Range end before start: ${range}`, `range 区间结束行小于起始行：${range}`));
-        return execOut(lines.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join('\n'));
+        return execOut(fitOut('read', lines.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join('\n')));
       },
     },
     {
@@ -91,19 +94,19 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'glob',
-      description: pick('List files matching a glob pattern', '按 glob 模式列出文件'),
+      description: pick('List files matching a glob pattern; oversized listing is truncated and saved to disk (full output path shown in the result)', '按 glob 模式列出文件；超长列表将截断并落盘，完整输出路径见结果提示行'),
       category: 'read',
-      executor: async (input: ToolInput) => execOut(backend.listFiles(root, String(input.pattern ?? '*')).join('\n')),
+      executor: async (input: ToolInput) => execOut(fitOut('glob', backend.listFiles(root, String(input.pattern ?? '*')).join('\n'))),
     },
     {
       name: 'webfetch',
-      description: pick('Fetch a web page: input { url }, http/https only (protocol floor enforced by the security guard); body truncated at 100k chars', '抓取网页正文：入参 { url }，仅允许 http/https（协议底线在安全链 guard）；正文截断 10 万字符'),
+      description: pick('Fetch a web page: input { url }, http/https only (protocol floor enforced by the security guard); oversized body is truncated and saved to disk (full output path shown in the result)', '抓取网页正文：入参 { url }，仅允许 http/https（协议底线在安全链 guard）；超长正文将截断并落盘，完整输出路径见结果提示行'),
       category: 'network',
       executor: async (input: ToolInput) => {
         const res = await fetch(String(input.url ?? ''));
         if (!res.ok) throw new Error(`WEBFETCH_HTTP_${res.status}`);
         const text = await res.text();
-        return execOut(text.slice(0, 100_000));
+        return execOut(fitOut('webfetch', text));
       },
     },
     {

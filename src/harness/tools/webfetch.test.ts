@@ -11,6 +11,7 @@ import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
 import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
+import { createToolOutputArchive, PREVIEW_CHARS } from './output-archive';
 import { Harness } from '../index';
 
 /** 本地随机端口 mock server：不发真实外网 */
@@ -40,6 +41,10 @@ function registryFor(): { registry: ToolRegistry; safety: SafetyChain; root: str
   return { registry, safety, root };
 }
 
+function safetyFor(root: string): SafetyChain {
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+}
+
 test('webfetch：http 端点抓取成功', async () => {
   const srv = await startServer('hello sunshine');
   try {
@@ -52,13 +57,32 @@ test('webfetch：http 端点抓取成功', async () => {
   }
 });
 
-test('webfetch：正文超 10 万字符截断', async () => {
+test('webfetch：正文超出口预算截断落盘（统一预算取代旧 100k slice，需注册 archive）', async () => {
   const srv = await startServer('x'.repeat(150_000));
+  try {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-webfetch-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-webfetch-arch-'));
+    const archive = createToolOutputArchive(() => dir);
+    const registry = new ToolRegistry();
+    for (const t of builtinTools(safetyFor(root), root, undefined, undefined, archive)) registry.register(t);
+    const r = await registry.execute('webfetch', { url: srv.url }, safetyFor(root));
+    assert.ok(r.ok);
+    assert.ok(r.value.stdout.startsWith('x'.repeat(PREVIEW_CHARS)));
+    const m = r.value.stdout.match(/\[truncated · full output: (.+)\]/);
+    assert.ok(m, '含落盘路径提示');
+    assert.equal(fs.readFileSync(m![1], 'utf8').length, 150_000);
+  } finally {
+    srv.close();
+  }
+});
+
+test('webfetch：未注册 archive 保持无预算行为（旧桩语义不变）', async () => {
+  const srv = await startServer('y'.repeat(150_000));
   try {
     const { registry, safety } = registryFor();
     const r = await registry.execute('webfetch', { url: srv.url }, safety);
     assert.ok(r.ok);
-    assert.equal(r.value.stdout.length, 100_000);
+    assert.equal(r.value.stdout.length, 150_000);
   } finally {
     srv.close();
   }

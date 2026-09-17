@@ -2,6 +2,7 @@ import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
+import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -59,7 +60,7 @@ export class Harness {
     this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk');
     this.dryrun = new DryRun();
     this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
-    for (const t of builtinTools(this.safety, base)) this.tools.register(t);
+    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)))) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
     // 子代理执行单元：注册表/安全链/上下文/模型同源装配；agents 目录装配期一次性加载 fail-fast（运行期零增删）
