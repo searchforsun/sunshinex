@@ -1508,6 +1508,8 @@ new_string：
 
 （注意保留原断言的闭括号与文案参数——old/new 以现场整行为准。）
 
+实施勘误：/resume 插入 /new 之后会使既有「Tab 循环」用例的邻位断言失效（/new 的下一命令由 /compact 变为 /resume）——该用例同步更新断言为 /resume 并注释清单序，属次序耦合的规格性更新而非回归。
+
 - [ ] **Step 4.6: USAGE 双语补 --continue**
 
 `grep -n "tui" src/cli/index.ts` 定位 usageText() 内双语 tui 行（形如 `sunshinex tui [dir] [flags]` / `sunshinex tui [目录] [flags]`，以现场原文为 old）。
