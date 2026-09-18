@@ -9,11 +9,10 @@
  * 旁路纪律：接缝失败以带码失败或异常形式浮出（builtin 转 CodedToolError → 工具侧可读错误），**绝不吞成 `'pass'`**
  * ——那会让未校验的原文绕过闸门落进记忆目录（fail-closed：接缝异常即写入被拒）。
  */
-import * as fs from 'fs';
 import * as path from 'path';
 import { pick } from '../../i18n';
 import { Result, ok, fail } from '../../result';
-import { resolveDataDir } from '../../config/data-dir';
+import { dataDirReal } from '../../config/data-dir';
 import { MEMORY_INDEX_MAX_LINES, MemoryStore, MemoryType, slugifyMemory } from './store';
 import { scanMemoryText } from './extractor';
 import { isMemoryPath, MemoryScope } from './paths';
@@ -25,8 +24,12 @@ export interface MemoryWriteRequest {
   root: string;
   absPath: string;
   content: string;
-  /** 记忆写 scope：仅接 `safety.memoryScope`（`undefined | agents/<id>`）；**禁止传 `'main'`**（等价全拒，非设计意图） */
-  scope?: MemoryScope;
+  /**
+   * 记忆写 scope：只接 `safety.memoryScope`——`undefined`（主链，可写 memory/** 整子树）或 `agents/<id>`（子代理收窄）。
+   * **类型上排除 `'main'`**：`'main'` 在 `isMemoryPath` 下等价全拒 → 接缝判类返回 `null` → `'pass'` → 裸写绕过六道闸门
+   * （失效方向 fail-open），故把契约从注释升为编译期约束，不靠 `as` 掩盖。
+   */
+  scope?: Exclude<MemoryScope, 'main'>;
 }
 
 export interface MemoryWriteOutcome {
@@ -36,23 +39,6 @@ export interface MemoryWriteOutcome {
 }
 
 export type MemoryWriteSeam = (req: MemoryWriteRequest) => Result<MemoryWriteOutcome | 'pass'>;
-
-/**
- * 数据目录真实路径（与安全链判界口径同源，2026-09-18 M3 审查裁决）：存在段逐级 realpathSync 归一、新建段字面拼接、异常按字面兜底。
- * **不得**直接用字面 `resolveDataDir(req.root)` 比对——链注入的 `req.absPath` 是 realpath 归一后的真实路径（chain.resolveSafe 的 safePath），
- * 数据目录自身含符号链接段（macOS /var、HOME 经链接）时字面比对不命中，会把合法记忆写入误判成 `'pass'` 而绕开校验。
- * 安全链的 `SafetyChain` 已有同语义私有单点；本模块独立实现同一策略（不导出私有方法，避免安全层反向暴露）。
- */
-function dataDirReal(root: string): string {
-  const dir = resolveDataDir(root);
-  try {
-    let anchor = dir;
-    while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);
-    return fs.realpathSync(anchor) + dir.slice(anchor.length);
-  } catch {
-    return dir;
-  }
-}
 
 /** 窄 frontmatter 解析（记忆记录四键；无 frontmatter 返回 null） */
 function parseFrontmatter(md: string): { meta: Record<string, string>; body: string } | null {

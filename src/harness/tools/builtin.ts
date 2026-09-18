@@ -79,12 +79,14 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         const content = String(input.content ?? '');
         // 记忆写入接缝（规格 §4.4）：命中记忆路径走接缝（校验/规范化/索引/容量回执）；未注入接缝＝旧行为
         if (memory) {
+          // scope 只接 safety.memoryScope（undefined | agents/<id>）：显式 'main' 在判类下等价全拒，接缝会判 'pass' 而让闸门静默消失，
+          // 故在此显式收窄（不用 as 掩盖）；生产链侧该取值组合的写早已被写窄口拒绝，此处只把契约固定下来。
+          const scope = safety.memoryScope;
           const r = memory({
             root,
             absPath: p,
             content,
-            // scope 只接 safety.memoryScope（undefined | agents/<id>）：显式 'main' 等价全拒，非设计意图
-            ...(safety.memoryScope !== undefined ? { scope: safety.memoryScope } : {}),
+            ...(scope !== undefined && scope !== 'main' ? { scope } : {}),
           });
           if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
           if (r.value !== 'pass') return execOut(r.value.observation);

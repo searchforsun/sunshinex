@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { projectSlug, resolveDataDir, userSkillsDir } from './data-dir';
+import { dataDirReal, projectSlug, resolveDataDir, userSkillsDir } from './data-dir';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -83,6 +83,68 @@ test('resolveDataDir：HOME 不可写回退项目内 .data（沙箱/只读家目
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(blk, { recursive: true, force: true });
+  }
+});
+
+/**
+ * dataDirReal：数据目录真实路径单点（安全链写窄口与记忆写入接缝共用）。
+ * 两处各持一份拷贝时策略一旦漂移，接缝判类返回 null → 'pass' → 裸写绕过六道闸门（失效方向 fail-open），故设这三条钉子。
+ * 三条用例均真断言（可区分实现）：① 归一确实发生（与字面值不等）；② 新建段字面保留且零副作用；③ 无缓存即重定向即生效。
+ */
+test('dataDirReal：数据目录经符号链接段传入时返回 realpath 归一结果（存在段归一 + 新建段字面拼接）', () => {
+  const base = tmpdir('sunshinex-ddr-link-');
+  const realDir = path.join(base, 'real');
+  const sub = path.join(realDir, 'sub');
+  fs.mkdirSync(sub, { recursive: true });
+  const link = path.join(base, 'link');
+  fs.symlinkSync(realDir, link, 'dir');
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  try {
+    const literal = path.join(link, 'sub', 'data'); // 经符号链接段，末段 data 尚未存在
+    process.env.SUNSHINEX_DATA_DIR = literal;
+    const got = dataDirReal(base);
+    assert.equal(got, path.join(fs.realpathSync(sub), 'data'), '存在段 realpath 归一 + 新建段字面拼接');
+    assert.notEqual(got, path.resolve(literal), '归一确实发生：字面比对不命中');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('dataDirReal：数据目录不存在（新建段）时按字面拼接返回、不抛', () => {
+  const base = tmpdir('sunshinex-ddr-new-');
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  try {
+    const literal = path.join(base, 'not-yet', 'deep', 'data');
+    process.env.SUNSHINEX_DATA_DIR = literal;
+    const got = dataDirReal(base);
+    assert.equal(got, fs.realpathSync(base) + literal.slice(base.length), '最近存在祖先归一 + 其余字面拼接');
+    assert.ok(got.endsWith(path.join('not-yet', 'deep', 'data')), '新建段字面保留、不抛');
+    assert.equal(fs.existsSync(literal), false, '零副作用：不建目录');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('dataDirReal：运行期重定向 SUNSHINEX_DATA_DIR 后返回值跟随（惰性求值、无模块级缓存）', () => {
+  const base = tmpdir('sunshinex-ddr-lazy-');
+  const dirA = path.join(base, 'a-data');
+  const dirB = path.join(base, 'b-data');
+  fs.mkdirSync(dirA, { recursive: true });
+  fs.mkdirSync(dirB, { recursive: true });
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  try {
+    process.env.SUNSHINEX_DATA_DIR = dirA;
+    const first = dataDirReal(base);
+    assert.equal(first, fs.realpathSync(dirA), '首次求值取 env 现值');
+    process.env.SUNSHINEX_DATA_DIR = dirB;
+    const second = dataDirReal(base);
+    assert.equal(second, fs.realpathSync(dirB), '同进程内重定向即生效');
+    assert.notEqual(first, second, '无缓存：两次求值不同源');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(base, { recursive: true, force: true });
   }
 });
 

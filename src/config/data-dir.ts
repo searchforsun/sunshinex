@@ -37,6 +37,23 @@ export function resolveDataDir(root: string): string {
   }
 }
 
+/**
+ * 数据目录真实路径（存在段逐级 realpathSync 归一、新建段字面拼接、异常按字面兜底）：
+ * 记忆判界（安全链写窄口）与记忆写入接缝共用本单点——两处各持一份拷贝时，一旦策略漂移，
+ * 接缝判类会返回 null → 'pass' → 裸写绕过校验闸门（失效方向 fail-open），故必须共用。
+ * 惰性求值（不缓存）：测试可运行期重定向 SUNSHINEX_DATA_DIR / HOME。
+ */
+export function dataDirReal(root: string): string {
+  const dir = resolveDataDir(root);
+  try {
+    let anchor = dir;
+    while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);
+    return fs.realpathSync(anchor) + dir.slice(anchor.length);
+  } catch {
+    return dir;
+  }
+}
+
 /** 全局用户技能根（三级技能目录规格 §3）：缺省 ~/.sunshinex/skills，SUNSHINEX_USER_SKILLS_DIR 显式覆盖（测试与多实例）。
  *  人手工放置的技能资产定位，不走 resolveDataDir（学习根按工作区隔离，语义不同）；不 mkdir、不做模块级缓存——技能根缺失是常态，装载面靠 existsSync 容忍 */
 export function userSkillsDir(): string {

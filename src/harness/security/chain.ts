@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
 import { ToolBackend } from '../../types';
-import { resolveDataDir } from '../../config/data-dir';
+import { dataDirReal } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { pick } from '../../i18n';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
@@ -90,7 +90,7 @@ export class SafetyChain {
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
       // 记忆写窄口只约束 Write（只读放行走下方 dataDir 分支，与总开关无关）；命中记忆形态即定论：开关关闭 / 越 scope 在此拒，文案为记忆侧双语可读原因
-      if (tool === 'Write' && isMemoryPath(this.dataDirReal(), real) !== null) {
+      if (tool === 'Write' && isMemoryPath(dataDirReal(this.root), real) !== null) {
         const memory = this.memoryWriteAllowed(real);
         return memory.allowed
           ? { allowed: true, safePath: real }
@@ -124,7 +124,7 @@ export class SafetyChain {
         reason: pick('memory write denied: auto memory is off', '记忆写入被拒：总记忆开关已关闭'),
       };
     }
-    const dataDir = this.dataDirReal();
+    const dataDir = dataDirReal(this.root);
     if (isMemoryPath(dataDir, real) === null) {
       return {
         allowed: false,
@@ -147,23 +147,10 @@ export class SafetyChain {
   }
 
   /**
-   * 数据目录真实路径：存在段逐级 realpathSync 归一（与 rootReal 同源策略），新建段字面拼接；归一失败按字面路径兜底。
-   * underDataDir（只读判界）与 memoryWriteAllowed（写窄口）共用本单点，防两处口径漂移。
+   * 路径是否落在数据目录子树内（每次惰性求值对齐运行期求值先例，SUNSHINEX_DATA_DIR 测试可重定向）
    */
-  private dataDirReal(): string {
-    const dir = resolveDataDir(this.root);
-    try {
-      let anchor = dir;
-      while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);
-      return fs.realpathSync(anchor) + dir.slice(anchor.length);
-    } catch {
-      return dir;
-    }
-  }
-
-  /** 路径是否落在数据目录子树内（每次惰性求值对齐运行期求值先例，SUNSHINEX_DATA_DIR 测试可重定向） */
   private underDataDir(real: string): boolean {
-    const dir = this.dataDirReal();
+    const dir = dataDirReal(this.root);
     return real === dir || real.startsWith(dir + path.sep);
   }
 
