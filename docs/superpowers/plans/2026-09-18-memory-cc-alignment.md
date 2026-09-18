@@ -4,7 +4,7 @@
 
 **Goal:** 把自动记忆从「任务收口一次性提取」补齐到 Claude Code 形态——模型会中自写记忆（原子 `write`，含 Saved 回执）、记忆总开关、`modified` 写入时间戳、子代理自有记忆、索引将满两级提醒；同时落地两条项目规范（动态改动一律尾追、原子工具优先）。
 
-**Architecture:** 新增三个纯/薄模块——`memory/paths.ts`（路径分类器，安全链与写入接缝共用单点）、`memory/writer.ts`（记忆写入接缝：校验→落盘→规范化→重建索引→容量回执）、`config/memory-config.ts`（三层参数解析单点）。会话常量的运行期变更一律走链尾说明行（`ContextManager.appendInstructionLine` 单点），前端段字节零改写。
+**Architecture:** 新增三个纯/薄模块——`memory/paths.ts`（路径分类器，安全链与写入接缝共用单点）、`memory/writer.ts`（记忆写入接缝：校验→落盘→规范化→重建索引→容量回执）、`config/memory-config.ts`（env + 缺省两层解析单点）。会话常量的运行期变更一律走链尾说明行（`ContextManager.appendInstructionLine` 单点），前端段字节零改写。
 
 **Tech Stack:** TypeScript strict（CommonJS）、node:test + assert/strict、node:fs 同步 API、`resolveDataDir`（config/data-dir.ts）、`t()`/`pick()` 双语（src/i18n.ts）。
 
@@ -482,6 +482,13 @@ test('write 落在 <dataDir>/memory/** → 放行（总开关开）', () => { /*
 test('write 落在数据目录其它子树 → 仍拒', () => { /* <dataDir>/skills/a.md → !allowed */ });
 test('总开关 off → 记忆路径 write 被拒（只读放行不受影响）', () => { /* SUNSHINEX_AUTO_MEMORY=off */ });
 test('read 记忆路径在开关 off 时仍放行（只读与开关无关）', () => {});
+test('数据目录回退 root 内（<root>/.data）→ 记忆路径仍受总开关约束，非记忆路径不受影响', () => {
+  // HOME 指向不可写路径使 resolveDataDir 回退；SUNSHINEX_DATA_DIR 必须清除
+  // 断言：autoMemory 开 → <root>/.data/memory/a.md 写放行；关 → 同路径拒；两种开关下 <root>/other.md 均放行
+});
+test('isMemoryPath：相对 dataDir 亦按归一比对（两侧同归一口径）', () => {
+  // chdir 到父目录，dataDir='.' 时 path.join('.', 'memory', 'a.md') 仍应判 'main'
+});
 test('memoryScope 收窄：子代理链只放行自身 agents/<id>', () => {
   const child = chain.withMemoryScope('agents/reviewer');
   assert.equal(child.evaluate('Write', { path: path.join(dataDir, 'memory', 'agents', 'reviewer', 'a.md') }).allowed, true);
@@ -503,13 +510,14 @@ Expected: FAIL
  * 记忆路径分类器（规格 §4.1，纯判定零 IO）：安全链判界与写入接缝共用单点，杜绝两处口径漂移。
  * 放在 memory/ 而非 security/——避免安全层反向依赖业务模块。
  * 入参 absPath 须为 realpath 归一后的真实路径（chain.resolveSafe 已保证），故此处不再处理 `..`/符号链接。
+ * 两侧同归一（2026-09-18 审查裁决）：dataDir 亦过 `path.resolve`——相对 dataDir 此前会静默全拒（表现为记忆写面整体失效，方向安全但无提示）。
  */
 import * as path from 'path';
 
 export type MemoryScope = 'main' | `agents/${string}`;
 
 export function isMemoryPath(dataDir: string, absPath: string, scope?: MemoryScope): 'main' | `agents/${string}` | null {
-  const prefix = path.join(dataDir, 'memory') + path.sep;
+  const prefix = path.join(path.resolve(dataDir), 'memory') + path.sep;
   const abs = path.resolve(absPath);
   if (!abs.startsWith(prefix)) return null;
   const parts = abs.slice(prefix.length).split(path.sep);
@@ -555,10 +563,26 @@ import { resolveMemoryConfig } from '../../config/memory-config';
     return new SafetyChain(this.guard, this.backend, this.dryrun, this.root, scope);
   }
 
-  /** 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启；realpath 归一后判定，符号链接逃逸自然被拒 */
+  /** 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启；判定两侧同走 realpath 归一，符号链接逃逸仍被拒 */
   private memoryWriteAllowed(real: string): boolean {
     if (!resolveMemoryConfig().autoMemory) return false;
-    return isMemoryPath(resolveDataDir(this.root), real, this.memoryScope) !== null;
+    return isMemoryPath(this.dataDirReal(), real, this.memoryScope) !== null;
+  }
+
+  /**
+   * 数据目录真实路径：存在段逐级 realpathSync 归一（与 rootReal 同源策略），新建段字面拼接；归一失败按字面路径兜底。
+   * underDataDir（只读判界）与 memoryWriteAllowed（写窄口）共用本单点，防两处口径漂移。
+   * 用字面 resolveDataDir(root) 会与已归一的 real 口径错位——数据目录自身含符号链接段（macOS /var、HOME 经链接）时误拒合法写入。
+   */
+  private dataDirReal(): string {
+    const dir = resolveDataDir(this.root);
+    try {
+      let anchor = dir;
+      while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);
+      return fs.realpathSync(anchor) + dir.slice(anchor.length);
+    } catch {
+      return dir;
+    }
   }
 ```
 
@@ -576,9 +600,14 @@ import { resolveMemoryConfig } from '../../config/memory-config';
       let anchor = abs;
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
+      // 记忆写窄口**先于** root 内外分支判定（2026-09-18 审查裁决 Important 1）：数据目录回退 <root>/.data 布局（HOME 不可写）时
+      // 记忆目录落在 root 内，若让 root 内全放行分支先短路，总开关对写面就失效了（规格把开关定义为「不注入/不提取/不整理/写被拒」四贯通）。
+      // 命中记忆形态（含开关关闭）即在此定论，不再下探 root 全放行分支；非记忆路径的 root 内外语义保持原样。
+      if (isMemoryPath(this.dataDirReal(), real) !== null) {
+        return this.memoryWriteAllowed(real) ? { allowed: true, safePath: real } : { allowed: false, reason: `COMMAND_DENIED: 记忆写入被拒（总开关关闭或不在写 scope 内）：${real}` };
+      }
       if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
         if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
-        if (tool === 'Write' && this.memoryWriteAllowed(real)) return { allowed: true, safePath: real };
         return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
       }
       return { allowed: true, safePath: real };
@@ -1376,8 +1405,8 @@ test('/memory on 恢复；任务运行中拒绝', () => {});
       if (sub === 'on' || sub === 'off') {
         this.memoryOverride = sub === 'on';
         this.pushMsg('system', t(
-          `Persistent memory ${sub} for this session (persisted setting: edit SUNSHINE.md "## 记忆")`,
-          `本会话持久记忆已${sub === 'on' ? '开启' : '关闭'}（持久化请改 SUNSHINE.md「## 记忆」区）`,
+          `Persistent memory ${sub} for this session (persist with the SUNSHINEX_AUTO_MEMORY env var)`,
+          `本会话持久记忆已${sub === 'on' ? '开启' : '关闭'}（持久化请设环境变量 SUNSHINEX_AUTO_MEMORY）`,
         ));
         return;
       }
