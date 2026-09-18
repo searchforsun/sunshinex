@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { isMemoryPath } from './paths';
 
@@ -75,4 +77,25 @@ test('dataDir 传参形态（带尾分隔）不改变判定', () => {
     isMemoryPath(dataDir + path.sep, path.join(dataDir, 'memory', 'agents', 'reviewer', 'a.md')),
     'agents/reviewer',
   );
+});
+
+test('两侧同归一：相对 dataDir 也命中（不再静默全拒）', () => {
+  // 契约缺陷（2026-09-18 审查次要项）：原实现只归一 absPath、dataDir 走字面前缀，相对 dataDir 时判定恒 null。
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-paths-rel-'));
+  const prevCwd = process.cwd();
+  try {
+    process.chdir(parent);
+    assert.equal(isMemoryPath('.', path.join('.', 'memory', 'a.md')), 'main', 'dataDir 相对当前目录仍命中');
+    assert.equal(
+      isMemoryPath('.', path.join('.', 'memory', 'agents', 'reviewer', 'a.md')),
+      'agents/reviewer',
+      '相对形态下子代理归类不变',
+    );
+    assert.equal(isMemoryPath('.', path.join('.', 'memory', 'a.md'), 'agents/reviewer'), null, 'scope 收窄在相对形态下同样生效');
+    assert.equal(isMemoryPath('.', path.join('memory', 'a.md')), 'main', '另一侧相对形态（无 ./ 前缀）同样归一');
+    assert.equal(isMemoryPath('.', path.join('.', 'skills', 'a.md')), null, '相对形态下非记忆子树仍不命中');
+  } finally {
+    process.chdir(prevCwd);
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
 });

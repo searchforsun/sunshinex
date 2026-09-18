@@ -8,6 +8,7 @@ import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
 import { DryRun } from './dryrun';
+import { resolveDataDir } from '../../config/data-dir';
 
 /**
  * 记忆写窄口（规格 §4.2）：Write 只在 <dataDir>/memory/** 放行（总开关 resolveMemoryConfig().autoMemory 联动），
@@ -175,5 +176,59 @@ test('dataDir 自身经符号链接传入 → 记忆写窄口按真实路径判�
     else process.env.SUNSHINEX_AUTO_MEMORY = prevAutoMemory;
     fs.rmSync(real, { recursive: true, force: true });
     fs.rmSync(linkHome, { recursive: true, force: true });
+  }
+});
+
+test('数据目录回退 <root>/.data（HOME 不可写）→ 记忆写仍受总开关约束，root 内非记忆路径语义不变', () => {
+  // 夹具范式对齐 src/config/data-dir.test.ts「HOME 不可写回退项目内 .data」：HOME/USERPROFILE 指向不可写路径（文件）+ 删除 SUNSHINEX_DATA_DIR。
+  // 动机（2026-09-18 审查重要项）：该布局下记忆目录落在项目 root 内，若写窄口被 root 内「一律放行」分支先短路，总开关对写面即失效。
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-mw-fb-'));
+  const blk = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-mw-blk-'));
+  const blocked = path.join(blk, 'file');
+  fs.writeFileSync(blocked, 'x');
+  const prevDataDir = process.env.SUNSHINEX_DATA_DIR;
+  const prevAutoMemory = process.env.SUNSHINEX_AUTO_MEMORY;
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  try {
+    delete process.env.SUNSHINEX_DATA_DIR;
+    delete process.env.SUNSHINEX_AUTO_MEMORY;
+    process.env.HOME = blocked;
+    process.env.USERPROFILE = blocked;
+
+    const root = path.join(tmp, 'root');
+    fs.mkdirSync(root, { recursive: true });
+    assert.equal(resolveDataDir(root), path.join(root, '.data'), '前提：HOME 不可写 → 数据目录回退项目内 .data');
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const memoryFile = path.join(root, '.data', 'memory', 'a.md');
+    const plain = path.join(root, 'plain.txt');
+
+    const on = chain.evaluate('Write', { path: memoryFile });
+    assert.equal(on.allowed, true, `总开关开：回退布局下记忆写应放行：${on.allowed ? '' : on.reason}`);
+    assert.equal(chain.evaluate('Write', { path: plain }).allowed, true, 'root 内非记忆路径全放行（语义不变）');
+
+    process.env.SUNSHINEX_AUTO_MEMORY = 'off';
+    const off = chain.evaluate('Write', { path: memoryFile });
+    assert.equal(off.allowed, false, '总开关 off：写窄口必须先在 root 内全放行分支之前定论');
+    if (!off.allowed) {
+      assert.ok(off.reason.includes('COMMAND_DENIED'), `拒绝文案沿既有前缀：${off.reason}`);
+      assert.ok(
+        !off.reason.includes('路径越出项目 root'),
+        `拒绝原因须为记忆侧可辨识文案，不得复用 root 越界文案：${off.reason}`,
+      );
+    }
+    assert.equal(chain.evaluate('Write', { path: plain }).allowed, true, '总开关 off 只收记忆写窄口，root 内非记忆写不受影响');
+    assert.equal(chain.evaluate('Read', { path: memoryFile }).allowed, true, '只读放行与总开关无关（回退布局下同样成立）');
+  } finally {
+    if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevDataDir;
+    if (prevAutoMemory === undefined) delete process.env.SUNSHINEX_AUTO_MEMORY;
+    else process.env.SUNSHINEX_AUTO_MEMORY = prevAutoMemory;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(blk, { recursive: true, force: true });
   }
 });

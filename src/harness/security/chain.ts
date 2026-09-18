@@ -4,6 +4,7 @@ import { GuardDecision, SecurityGuard } from './guard';
 import { ToolBackend } from '../../types';
 import { resolveDataDir } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
+import { pick } from '../../i18n';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
 import { DryRun } from './dryrun';
 import { ExecResult } from '../../types';
@@ -77,7 +78,10 @@ export class SafetyChain {
    * 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal；异常按拒绝处理不放行（spec 2.1 兜底条款）。
    * 数据目录白名单（auto memory 规格 D6 + 对齐规格 §4.2）：Read/Grep 访问 dataDir 子树放行（记忆索引/主题文件按需召回；
    * Full trace 归档、tool-outputs 路径同受益）；Write 只在 <dataDir>/memory/** 放行（记忆写入窄口，总开关关闭即失效）——
-   * 写面接缝与只读放行同源判界，一律作用于 realpath 归一后的真实路径：dataDir 内由模型植入的符号链接指向子树之外时被拒（不再有「写面全拒故链接无威胁」的前提）。
+   * 判定一律作用于 realpath 归一后的真实路径：dataDir 内由模型植入的符号链接指向子树之外时被拒（不再有「写面全拒故链接无威胁」的前提）。
+   * 记忆写窄口**先于** root 内外分支定论（2026-09-18 审查裁决）：数据目录回退 <root>/.data 布局（HOME 不可写，见 config/data-dir 形态③）下记忆目录落在 root 内，
+   * 若让「root 内一律放行」分支先短路，总开关对写面即失效（规格把开关定义为「不注入 / 不提取 / 不整理 / **写被拒**」四贯通）。命中记忆形态即在此定论，不再下探 root 分支；
+   * 非记忆路径的 root 内外语义保持原样（root 内全放行、root 外拒、dataDir 只读放行），Read/Grep 的只读放行与总开关无关。
    */
   private resolveSafe(raw: unknown, tool: string): GuardDecision {
     try {
@@ -85,9 +89,15 @@ export class SafetyChain {
       let anchor = abs;
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
+      // 记忆写窄口只约束 Write（只读放行走下方 dataDir 分支，与总开关无关）；命中记忆形态即定论：开关关闭 / 越 scope 在此拒，文案为记忆侧双语可读原因
+      if (tool === 'Write' && isMemoryPath(this.dataDirReal(), real) !== null) {
+        const memory = this.memoryWriteAllowed(real);
+        return memory.allowed
+          ? { allowed: true, safePath: real }
+          : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}：${real}` };
+      }
       if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
         if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
-        if (tool === 'Write' && this.memoryWriteAllowed(real)) return { allowed: true, safePath: real };
         return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
       }
       return { allowed: true, safePath: real };
@@ -102,10 +112,38 @@ export class SafetyChain {
     return new SafetyChain(this.guard, this.backend, this.dryrun, this.root, scope);
   }
 
-  /** 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启；判定两侧同走 realpath 归一（数据目录自身含符号链接段时不再误拒合法写入），符号链接逃逸仍被拒 */
-  private memoryWriteAllowed(real: string): boolean {
-    if (!resolveMemoryConfig().autoMemory) return false;
-    return isMemoryPath(this.dataDirReal(), real, this.memoryScope) !== null;
+  /**
+   * 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启、scope 覆盖三者齐备；判定两侧同走 realpath 归一（数据目录自身含符号链接段时不误拒合法写入），符号链接逃逸仍被拒。
+   * 返回**带原因的判定**而非裸 boolean（2026-09-18 审查次要项）：三种拒绝成因（总开关关闭 / 不在记忆子树内 / 越出本代理 scope）分别给出记忆侧双语可读原因，
+   * 不再与「路径越出项目 root」共用文案——写窄口先于 root 内外分支定论时，调用方只能转述本方法的结论，笼统文案会让「开关在起作用」这一事实不可辨识。
+   */
+  private memoryWriteAllowed(real: string): { allowed: true } | { allowed: false; reason: string } {
+    if (!resolveMemoryConfig().autoMemory) {
+      return {
+        allowed: false,
+        reason: pick('memory write denied: auto memory is off', '记忆写入被拒：总记忆开关已关闭'),
+      };
+    }
+    const dataDir = this.dataDirReal();
+    if (isMemoryPath(dataDir, real) === null) {
+      return {
+        allowed: false,
+        reason: pick(
+          'memory write denied: not under <data dir>/memory/**',
+          '记忆写入被拒：不在数据目录记忆子树（<dataDir>/memory/**）内',
+        ),
+      };
+    }
+    if (this.memoryScope !== undefined && isMemoryPath(dataDir, real, this.memoryScope) === null) {
+      return {
+        allowed: false,
+        reason: pick(
+          `memory write denied: outside this agent's memory scope (${this.memoryScope})`,
+          `记忆写入被拒：不在当前代理可写记忆范围（${this.memoryScope}）内`,
+        ),
+      };
+    }
+    return { allowed: true };
   }
 
   /**
