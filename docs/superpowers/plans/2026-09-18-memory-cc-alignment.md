@@ -254,7 +254,9 @@ git commit -m "feat(memory): M1 store 扩展——put 更新语义（同 slug �
 
 ---
 
-### Task 2: 记忆配置三层解析（env > SUNSHINE.md > 缺省）+ learned 开关/上限驱动
+### Task 2: 记忆控制面解析（env + 缺省）+ learned 开关/上限驱动
+
+> **用户裁决（2026-09-18）**：SUNSHINE.md 与 CLAUDE.md 同定位——项目规范、给模型的指令，**不承载键值配置**。故控制面只有两层：环境变量 > 缺省（外加会话内 `/memory on|off`，见 Task 8）。**不要给 SUNSHINE.md 增配置分区、不要读 SUNSHINE.md**。
 
 **Files:**
 - Create: `src/config/memory-config.ts`
@@ -266,7 +268,7 @@ git commit -m "feat(memory): M1 store 扩展——put 更新语义（同 slug �
 - Produces（后续任务依赖）:
   - `export interface MemoryConfig { autoMemory: boolean; learnedSkills: boolean; learnedSkillLimit: number }`
   - `export const DEFAULT_LEARNED_SKILL_LIMIT = 50;`
-  - `export function resolveMemoryConfig(root: string, env?: NodeJS.ProcessEnv): MemoryConfig` —— 非法值装配期 fail-fast（抛错）
+  - `export function resolveMemoryConfig(env?: NodeJS.ProcessEnv): MemoryConfig` —— 只读 env + 缺省；非法值装配期 fail-fast（抛错）
   - `LearnedSkillStore.settle(goal: string, reply: string, opts?: { limit?: number }): Result<string>`（`opts.limit` 缺省 `DEFAULT_LEARNED_SKILL_LIMIT`）
 
 - [ ] **Step 1: 写红灯测试**
@@ -278,44 +280,55 @@ import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resolveMemoryConfig, DEFAULT_LEARNED_SKILL_LIMIT } from '../config/memory-config';
+import { resolveMemoryConfig, DEFAULT_LEARNED_SKILL_LIMIT } from './memory-config';
 
-function tmpRoot(md = ''): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'memcfg-'));
-  if (md) fs.writeFileSync(path.join(dir, 'SUNSHINE.md'), md);
-  return dir;
-}
+const ORIG_CWD = process.cwd();
 
 test('缺省：全开 + 上限 50', () => {
-  const c = resolveMemoryConfig(tmpRoot(), {});
+  const c = resolveMemoryConfig({});
   assert.equal(c.autoMemory, true);
   assert.equal(c.learnedSkills, true);
   assert.equal(c.learnedSkillLimit, DEFAULT_LEARNED_SKILL_LIMIT);
 });
 
-test('SUNSHINE.md ## 记忆 分区生效', () => {
-  const c = resolveMemoryConfig(tmpRoot(['## 记忆', 'auto_memory: off', 'learned_skills: off', 'learned_skill_limit: 12'].join('\n')), {});
+test('env 三键各自生效（关 / 关 / 配 12）', () => {
+  const c = resolveMemoryConfig({ SUNSHINEX_AUTO_MEMORY: 'off', SUNSHINEX_LEARNED_SKILLS: 'off', SUNSHINEX_LEARNED_SKILL_LIMIT: '12' });
   assert.equal(c.autoMemory, false);
   assert.equal(c.learnedSkills, false);
   assert.equal(c.learnedSkillLimit, 12);
 });
 
-test('env 覆盖 SUNSHINE.md（优先级高）', () => {
-  const root = tmpRoot(['## 记忆', 'auto_memory: on', 'learned_skill_limit: 12'].join('\n'));
-  const c = resolveMemoryConfig(root, { SUNSHINEX_AUTO_MEMORY: 'off', SUNSHINEX_LEARNED_SKILL_LIMIT: '7' });
-  assert.equal(c.autoMemory, false);
-  assert.equal(c.learnedSkillLimit, 7);
+test('on/off 大小写与首尾空白容错', () => {
+  assert.equal(resolveMemoryConfig({ SUNSHINEX_AUTO_MEMORY: ' OFF ' }).autoMemory, false);
+  assert.equal(resolveMemoryConfig({ SUNSHINEX_AUTO_MEMORY: 'On' }).autoMemory, true);
+  assert.equal(resolveMemoryConfig({ SUNSHINEX_LEARNED_SKILLS: 'False' }).learnedSkills, false);
 });
 
-test('非法值装配期 fail-fast', () => {
-  assert.throws(() => resolveMemoryConfig(tmpRoot(), { SUNSHINEX_AUTO_MEMORY: 'maybe' }), /auto_memory/);
-  assert.throws(() => resolveMemoryConfig(tmpRoot(), { SUNSHINEX_LEARNED_SKILL_LIMIT: '0' }), /learned_skill_limit/);
-  assert.throws(() => resolveMemoryConfig(tmpRoot(), { SUNSHINEX_LEARNED_SKILL_LIMIT: 'abc' }), /learned_skill_limit/);
+test('上限上下界：1 与 1000 通过，0 / 1001 / abc 抛错', () => {
+  assert.equal(resolveMemoryConfig({ SUNSHINEX_LEARNED_SKILL_LIMIT: '1' }).learnedSkillLimit, 1);
+  assert.equal(resolveMemoryConfig({ SUNSHINEX_LEARNED_SKILL_LIMIT: '1000' }).learnedSkillLimit, 1000);
+  assert.throws(() => resolveMemoryConfig({ SUNSHINEX_LEARNED_SKILL_LIMIT: '0' }), /learned_skill_limit/);
+  assert.throws(() => resolveMemoryConfig({ SUNSHINEX_LEARNED_SKILL_LIMIT: '1001' }), /learned_skill_limit/);
+  assert.throws(() => resolveMemoryConfig({ SUNSHINEX_LEARNED_SKILL_LIMIT: 'abc' }), /learned_skill_limit/);
 });
 
-test('分区外的同名键不生效（只认 ## 记忆 区）', () => {
-  const c = resolveMemoryConfig(tmpRoot(['## 编码规范', 'auto_memory: off'].join('\n')), {});
-  assert.equal(c.autoMemory, true);
+test('开关非法值装配期 fail-fast', () => {
+  assert.throws(() => resolveMemoryConfig({ SUNSHINEX_AUTO_MEMORY: 'maybe' }), /auto_memory/);
+  assert.throws(() => resolveMemoryConfig({ SUNSHINEX_LEARNED_SKILLS: 'yes' }), /learned_skills/);
+});
+
+test('钉子：SUNSHINE.md 不参与配置（同 CLAUDE.md 定位）', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'memcfg-'));
+  try {
+    fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), ['## 记忆', 'auto_memory: off', 'learned_skill_limit: 3'].join('\n'));
+    process.chdir(tmp); // 当前目录放一份"带配置的 SUNSHINE.md"，解析结果必须不受影响
+    const c = resolveMemoryConfig({});
+    assert.equal(c.autoMemory, true, 'SUNSHINE.md 分区不得进控制面');
+    assert.equal(c.learnedSkillLimit, DEFAULT_LEARNED_SKILL_LIMIT);
+  } finally {
+    process.chdir(ORIG_CWD);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 ```
 
@@ -343,12 +356,10 @@ Expected: FAIL（模块不存在 / `opts.limit` 未生效）
 
 ```ts
 /**
- * 记忆控制面（规格 §7）三层解析单点：环境变量 > SUNSHINE.md `## 记忆` 分区 > 缺省。
+ * 记忆控制面（规格 §7）解析单点：环境变量 > 缺省。
+ * **不读 SUNSHINE.md**（2026-09-18 用户裁决）：该文件与 CLAUDE.md 同定位——项目规范、给模型的指令，不承载键值配置。
  * 非法值装配期 fail-fast（沿用 agents/MCP 装配纪律）——不做静默兜底，配置错误必须显式暴露。
  */
-import * as fs from 'fs';
-import * as path from 'path';
-
 export interface MemoryConfig {
   /** 陈述性记忆总开关（不注入 / 不提取 / 不整理 / 写被拒，四处贯通） */
   autoMemory: boolean;
@@ -360,22 +371,6 @@ export interface MemoryConfig {
 
 export const DEFAULT_LEARNED_SKILL_LIMIT = 50;
 
-const SECTION = /^##\s+(Memory|记忆)\s*$/;
-const KV = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/;
-
-/** 抽取 `## 记忆` 区键值对（区体在下个二级标题或文件尾终止；无区为空集） */
-function sectionKeys(md: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const lines = md.split(/\r?\n/);
-  const start = lines.findIndex((l) => SECTION.test(l.trim()));
-  if (start < 0) return out;
-  for (let i = start + 1; i < lines.length; i += 1) {
-    if (/^##\s+/.test(lines[i].trim())) break;
-    const m = KV.exec(lines[i].trim());
-    if (m) out[m[1]] = m[2].trim();
-  }
-  return out;
-}
 
 function onOff(key: string, raw: string | undefined, fallback: boolean): boolean {
   if (raw === undefined) return fallback;
@@ -394,19 +389,12 @@ function limit(raw: string | undefined): number {
   return n;
 }
 
-/** 解析链：env（SUNSHINEX_AUTO_MEMORY / SUNSHINEX_LEARNED_SKILLS / SUNSHINEX_LEARNED_SKILL_LIMIT）> SUNSHINE.md 分区 > 缺省 */
-export function resolveMemoryConfig(root: string, env: NodeJS.ProcessEnv = process.env): MemoryConfig {
-  let md = '';
-  try {
-    md = fs.readFileSync(path.join(root, 'SUNSHINE.md'), 'utf8');
-  } catch {
-    md = '';
-  }
-  const keys = sectionKeys(md);
+/** 解析链：env（SUNSHINEX_AUTO_MEMORY / SUNSHINEX_LEARNED_SKILLS / SUNSHINEX_LEARNED_SKILL_LIMIT）> 缺省 */
+export function resolveMemoryConfig(env: NodeJS.ProcessEnv = process.env): MemoryConfig {
   return {
-    autoMemory: onOff('auto_memory', env.SUNSHINEX_AUTO_MEMORY ?? keys.auto_memory, true),
-    learnedSkills: onOff('learned_skills', env.SUNSHINEX_LEARNED_SKILLS ?? keys.learned_skills, true),
-    learnedSkillLimit: limit(env.SUNSHINEX_LEARNED_SKILL_LIMIT ?? keys.learned_skill_limit),
+    autoMemory: onOff('auto_memory', env.SUNSHINEX_AUTO_MEMORY, true),
+    learnedSkills: onOff('learned_skills', env.SUNSHINEX_LEARNED_SKILLS, true),
+    learnedSkillLimit: limit(env.SUNSHINEX_LEARNED_SKILL_LIMIT),
   };
 }
 ```
@@ -436,7 +424,7 @@ Expected: PASS
 
 ```bash
 git add src/config/memory-config.ts src/config/memory-config.test.ts src/harness/skills/learned.ts src/harness/skills/learned.test.ts
-git commit -m "feat(config): M2 记忆控制面三层解析（env > SUNSHINE.md ## 记忆 > 缺省，非法值装配期 fail-fast）+ learned 上限由配置驱动（摘除硬编码 50）"
+git commit -m "feat(config): M2 记忆控制面解析（env > 缺省，非法值装配期 fail-fast；SUNSHINE.md 定位同 CLAUDE.md 不进配置）+ learned 上限由配置驱动（摘除硬编码 50）"
 ```
 
 ---
@@ -569,7 +557,7 @@ import { resolveMemoryConfig } from '../../config/memory-config';
 
   /** 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启；realpath 归一后判定，符号链接逃逸自然被拒 */
   private memoryWriteAllowed(real: string): boolean {
-    if (!resolveMemoryConfig(this.root).autoMemory) return false;
+    if (!resolveMemoryConfig().autoMemory) return false;
     return isMemoryPath(resolveDataDir(this.root), real, this.memoryScope) !== null;
   }
 ```
@@ -929,7 +917,7 @@ Expected: FAIL（空集无条目）
    * 内容属会话常量（四刷新点重建、会话中途冻结），逐字节稳定——前缀零击穿。
    */
   private memoryIndexItems(): ContextItem[] {
-    if (!resolveMemoryConfig(this.rootPath).autoMemory) return [];
+    if (!resolveMemoryConfig().autoMemory) return [];
     const dir = path.join(resolveDataDir(this.rootPath), 'memory');
     let index = '';
     try {
@@ -1360,15 +1348,15 @@ test('/memory on 恢复；任务运行中拒绝', () => {});
 `harness/index.ts` 装配：
 
 ```ts
-      ...(resolveMemoryConfig(base).learnedSkills
+      ...(resolveMemoryConfig().learnedSkills
         ? {
             settle: (r: { goal: string; reply: string }) => {
-              const res = new LearnedSkillStore(base).settle(r.goal, r.reply, { limit: resolveMemoryConfig(base).learnedSkillLimit });
+              const res = new LearnedSkillStore(base).settle(r.goal, r.reply, { limit: resolveMemoryConfig().learnedSkillLimit });
               return res.ok ? pick(`[skills] learned: ${res.value}`, `[技能] 已沉淀：${res.value}`) : undefined;
             },
           }
         : {}),
-      ...(resolveMemoryConfig(base).autoMemory
+      ...(resolveMemoryConfig().autoMemory
         ? {
             settleMemory: async (r: { goal: string; reply: string }) => {
               const slugs = await settleMemory({ goal: r.goal, reply: r.reply, model: this.model, root: base });
@@ -1378,7 +1366,7 @@ test('/memory on 恢复；任务运行中拒绝', () => {});
         : {}),
 ```
 
-（`opts.learnSkills` 被配置取代；`HarnessOptions.learnSkills` 保留为测试显式覆盖：`opts.learnSkills ?? resolveMemoryConfig(base).learnedSkills`。）
+（`opts.learnSkills` 被配置取代；`HarnessOptions.learnSkills` 保留为测试显式覆盖：`opts.learnSkills ?? resolveMemoryConfig().learnedSkills`。）
 
 `types.ts`：`SessionEventType` 增 `| 'notice'`。
 

@@ -122,18 +122,18 @@ Saved memory: <slug> [<type>] — index 12/200 lines
 
 ## §7 控制面
 
-三层优先级（高→低）：环境变量 → SUNSHINE.md `## 记忆` 分区 → 会话内命令。
+两层优先级（高→低）：环境变量 → 会话内命令。**不设 SUNSHINE.md 配置层**（2026-09-18 用户裁决）：SUNSHINE.md 与 CLAUDE.md 同定位——项目规范、给模型的指令，不承载键值配置（否则同一文件既要被模型阅读、又要被程序解析，语义混杂，且会与「会话冻结 + 动态改动尾追」的规范化路径纠缠）。
 
-| 参数 | env | SUNSHINE.md `## 记忆` | 会话内 |
-|---|---|---|---|
-| 陈述性记忆总开关 | `SUNSHINEX_AUTO_MEMORY=off` | `auto_memory: on\|off` | `/memory on\|off` |
-| 程序性记忆开关 | `SUNSHINEX_LEARNED_SKILLS=off` | `learned_skills: on\|off` | — |
-| 技能沉淀上限 | `SUNSHINEX_LEARNED_SKILL_LIMIT=<n>` | `learned_skill_limit: <n>`（缺省 50） | — |
+| 参数 | env | 会话内 |
+|---|---|---|
+| 陈述性记忆总开关 | `SUNSHINEX_AUTO_MEMORY=off` | `/memory on\|off` |
+| 程序性记忆开关 | `SUNSHINEX_LEARNED_SKILLS=off` | — |
+| 技能沉淀上限 | `SUNSHINEX_LEARNED_SKILL_LIMIT=<n>`（缺省 50） | — |
 
-- 解析单点：新增 `src/config/memory-config.ts`（形态对齐 `config/data-dir.ts` 先例），非法值**装配期 fail-fast**（沿用 agents / MCP 装配纪律）。
+- 解析单点：新增 `src/config/memory-config.ts`（只读 env + 缺省；形态对齐 `config/data-dir.ts` 先例），非法值**装配期 fail-fast**（沿用 agents / MCP 装配纪律）。
 - 关闭语义贯通四处：①不注入记忆条目 ②不提取 ③不沉淀 / 不整理 ④写记忆被安全链拒。不做局部半开。
 - `opts.learnSkills`（现硬编码 `?? true`）与 `MAX_LEARNED_SKILLS = 50` 一并改由该配置驱动。
-- `/memory on|off` 仅本会话生效、**不落盘**，回执提示「持久化请改 SUNSHINE.md」；不改写 SUNSHINE.md（避免意外文件变更，且与冻结语义冲突）。开关状态不进提示词、不改变装配字节。
+- `/memory on|off` 仅本会话生效、**不落盘**，回执提示「持久化请设 `SUNSHINEX_AUTO_MEMORY`（项目 `.env` / 全局 `~/.sunshinex/.env`）」；不改写任何文件。开关状态不进提示词、不改变装配字节。
 
 ## §8 子代理自有记忆
 
