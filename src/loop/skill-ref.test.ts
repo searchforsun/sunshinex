@@ -30,9 +30,9 @@ class RecordingContext extends ContextManager {
 
 function makeFixture(): { deps: LoopDeps; context: RecordingContext } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-skillref-'));
-  fs.mkdirSync(path.join(root, 'skills', 'greet'), { recursive: true });
+  fs.mkdirSync(path.join(root, '.sunshinex', 'skills', 'greet'), { recursive: true });
   fs.writeFileSync(
-    path.join(root, 'skills', 'greet', 'skill.md'),
+    path.join(root, '.sunshinex', 'skills', 'greet', 'skill.md'),
     '---\nname: Greet\nversion: 0.1.0\nkind: prompt\nparams: name tone\n---\n\n# Hello {{name}}\n\nTone: {{tone}}。',
   );
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
@@ -44,7 +44,7 @@ function makeFixture(): { deps: LoopDeps; context: RecordingContext } {
     registry,
     context,
     model: new ScriptedAdapter(['{"done":true}']),
-    skills: { resolve: (id, params) => resolveSkill(path.join(root, 'skills'), id, params) },
+    skills: { resolve: (id, params) => resolveSkill(path.join(root, '.sunshinex', 'skills'), id, params) },
   };
   return { deps, context };
 }
