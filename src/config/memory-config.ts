@@ -1,10 +1,8 @@
 /**
- * 记忆控制面（规格 §7）三层解析单点：环境变量 > SUNSHINE.md `## 记忆` 分区 > 缺省。
+ * 记忆控制面（规格 §7）解析单点：环境变量 > 缺省。
+ * **不读 SUNSHINE.md**（2026-09-18 用户裁决）：该文件与 CLAUDE.md 同定位——项目规范、给模型的指令，不承载键值配置。
  * 非法值装配期 fail-fast（沿用 agents/MCP 装配纪律）——不做静默兜底，配置错误必须显式暴露。
  */
-import * as fs from 'fs';
-import * as path from 'path';
-
 export interface MemoryConfig {
   /** 陈述性记忆总开关（不注入 / 不提取 / 不整理 / 写被拒，四处贯通） */
   autoMemory: boolean;
@@ -15,23 +13,6 @@ export interface MemoryConfig {
 }
 
 export const DEFAULT_LEARNED_SKILL_LIMIT = 50;
-
-const SECTION = /^##\s+(Memory|记忆)\s*$/;
-const KV = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/;
-
-/** 抽取 `## 记忆` 区键值对（区体在下个二级标题或文件尾终止；无区为空集） */
-function sectionKeys(md: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const lines = md.split(/\r?\n/);
-  const start = lines.findIndex((l) => SECTION.test(l.trim()));
-  if (start < 0) return out;
-  for (let i = start + 1; i < lines.length; i += 1) {
-    if (/^##\s+/.test(lines[i].trim())) break;
-    const m = KV.exec(lines[i].trim());
-    if (m) out[m[1]] = m[2].trim();
-  }
-  return out;
-}
 
 function onOff(key: string, raw: string | undefined, fallback: boolean): boolean {
   if (raw === undefined) return fallback;
@@ -50,18 +31,11 @@ function limit(raw: string | undefined): number {
   return n;
 }
 
-/** 解析链：env（SUNSHINEX_AUTO_MEMORY / SUNSHINEX_LEARNED_SKILLS / SUNSHINEX_LEARNED_SKILL_LIMIT）> SUNSHINE.md 分区 > 缺省 */
-export function resolveMemoryConfig(root: string, env: NodeJS.ProcessEnv = process.env): MemoryConfig {
-  let md = '';
-  try {
-    md = fs.readFileSync(path.join(root, 'SUNSHINE.md'), 'utf8');
-  } catch {
-    md = '';
-  }
-  const keys = sectionKeys(md);
+/** 解析链：env（SUNSHINEX_AUTO_MEMORY / SUNSHINEX_LEARNED_SKILLS / SUNSHINEX_LEARNED_SKILL_LIMIT）> 缺省 */
+export function resolveMemoryConfig(env: NodeJS.ProcessEnv = process.env): MemoryConfig {
   return {
-    autoMemory: onOff('auto_memory', env.SUNSHINEX_AUTO_MEMORY ?? keys.auto_memory, true),
-    learnedSkills: onOff('learned_skills', env.SUNSHINEX_LEARNED_SKILLS ?? keys.learned_skills, true),
-    learnedSkillLimit: limit(env.SUNSHINEX_LEARNED_SKILL_LIMIT ?? keys.learned_skill_limit),
+    autoMemory: onOff('auto_memory', env.SUNSHINEX_AUTO_MEMORY, true),
+    learnedSkills: onOff('learned_skills', env.SUNSHINEX_LEARNED_SKILLS, true),
+    learnedSkillLimit: limit(env.SUNSHINEX_LEARNED_SKILL_LIMIT),
   };
 }
