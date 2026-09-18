@@ -107,3 +107,31 @@ test('前缀不变量：变更后相邻帧仅尾部新增（断言 contextSnapsh
     assert.equal(cm.assemble([])[0].content, head, '前置段首条字节不变');
   });
 });
+
+
+test('记忆索引中途变化 → 尾追一行变更说明（快照冻结、读取指针），基线前进只告知一次', () => {
+  withRoot((root) => {
+    const cm = cmAt(root);
+    const before = cm.assemble();
+    // 快照冻结后落一条记忆（模拟下会话/他端写入或收口提取落盘）
+    const memDir = path.join(resolveDataDir(root), 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    fs.writeFileSync(path.join(memDir, 'user-prefers-md.md'), '---\ntype: user\ncreated: 2026-09-18\ndescription: prefers tables\n---\nbody');
+    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '- user-prefers-md [user] (2026-09-18) prefers tables');
+    const notices = cm.appendInstructionLine('Current instruction: do Y');
+    assert.equal(notices.filter((n) => n.startsWith('[memory] index changed')).length, 1, '记忆索引变更恰好一行说明');
+    assert.match(notices.find((n) => n.startsWith('[memory] index changed'))!, /MEMORY\.md for the latest index/, '附读取指针');
+    const chain = cm.chainView();
+    assert.equal(chain[chain.length - 1].observation, 'Current instruction: do Y', '指令仍为链尾最后一行');
+    // 前置段字节冻结：快照首条与变更前逐字节一致，差异只允许落在尾部
+    const after = cm.assemble();
+    assert.equal(JSON.stringify(after[0]), JSON.stringify(before[0]), '前置段首条逐字节不变（前缀零击穿）');
+    assert.ok(after.length >= before.length, '装配产物只增不减');
+    // 基线前进：同一变更不重复告知
+    const again = cm.checkConstantsDrift();
+    assert.equal(again.filter((n) => n.startsWith('[memory]')).length, 0, '同一变更只告知一次');
+    // 刷新点（reloadContext）重读后快照与基线对齐，不再漂移
+    cm.reloadContext();
+    assert.equal(cm.checkConstantsDrift().length, 0, '刷新点对齐后零漂移');
+  });
+});
