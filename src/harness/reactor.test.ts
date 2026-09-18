@@ -15,6 +15,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { ModelRouter } from '../model/adapter';
+// 测试卫生：本文件压缩/预算断言按 est 精算标定，数据目录钉文件私有目录——共享数据目录被并发写入学习技能时，技能清单进装配产物会破坏精算基线
+process.env.SUNSHINEX_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-data-'));
+process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-uskills-'));
 
 function makeReactor(
   tmp: string,

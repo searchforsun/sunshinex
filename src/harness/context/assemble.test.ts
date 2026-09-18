@@ -5,6 +5,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { ContextManager } from './index';
 import { FileStore } from '../../storage/adapter';
+// 测试卫生：本文件装配断言按段序/清单精确标定，数据目录与全局技能根钉文件私有目录——共享数据目录被并发测试写入学习技能时，技能清单进装配产物会破坏基线
+process.env.SUNSHINEX_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-asm-data-'));
+process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-asm-uskills-'));
 
 function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-asm-'));
@@ -56,4 +59,35 @@ test('relPath 规则段仍按路径加载', () => {
   fs.writeFileSync(path.join(root, '.sunshine', 'rules', 'src.rules.md'), 'paths: src/\n- 规则X\n');
   const items = cm.assemble([{ kind: 'history', content: 'h' }], 'src/a.ts');
   assert.ok(items.some((i) => i.content.includes('规则X')));
+});
+
+test('技能清单冻结段注入：快照尾（history 前）、相邻帧前缀稳定', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-asm-'));
+  fs.writeFileSync(path.join(root, 'SUNSHINE.md'), '# 项目规范\n');
+  fs.mkdirSync(path.join(root, '.sunshinex', 'skills', 'greet'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'greet', 'skill.md'), '---\nname: Greet\ndescription: 问候用户\nversion: 1.0.0\n---\n正文');
+  const cm = new ContextManager(root, new FileStore(root));
+  const items = cm.assemble([{ kind: 'history', content: '1: task -> A' }]);
+  const idx = items.findIndex((i) => i.content.includes('- Greet: 问候用户'));
+  assert.ok(idx >= 0, '清单行存在于装配产物');
+  assert.equal(items[idx].kind, 'system');
+  const histIdx = items.findIndex((i) => i.kind === 'history');
+  assert.ok(idx < histIdx, '清单在 history 之前（冻结段，不随对话位移）');
+  const items2 = cm.assemble([{ kind: 'history', content: '1: task -> A' }, { kind: 'history', content: '2: reply -> 完成' }]);
+  const t1 = items.map((i) => i.content).join('\n');
+  const t2 = items2.map((i) => i.content).join('\n');
+  assert.ok(t2.startsWith(t1), '相邻帧公共前缀逐字节稳定（含清单段）');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('技能清单：空清单零开销注入、/new 刷新点重读', () => {
+  const { root, cm } = setup();
+  const lead = 'Available skills';
+  assert.ok(!cm.assemble([]).some((i) => i.content.includes(lead)), '无技能零注入');
+  fs.mkdirSync(path.join(root, '.sunshinex', 'skills', 'late'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'late', 'skill.md'), '---\nname: Late\ndescription: 迟到技能\nversion: 1.0.0\n---\n正文');
+  assert.ok(!cm.assemble([]).some((i) => i.content.includes(lead)), '快照冻结：构造后改盘不位移前缀');
+  cm.resetSession(); // /new = 刷新点：快照重读
+  assert.ok(cm.assemble([]).some((i) => i.content.includes('- Late: 迟到技能')), '/new 后新快照含新技能');
+  fs.rmSync(root, { recursive: true, force: true });
 });
