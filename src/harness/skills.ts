@@ -56,6 +56,20 @@ export function loadSkills(root: string): SkillManifest[] {
   return [...project, ...global, ...learned];
 }
 
+/** 技能清单格式化（对标 Claude Code 常驻技能清单）：每技能一行 `- name: description`，按 name 码点字典序排序（locale 无关，跨环境逐字节稳定——前置段冻结先例）；description 截 128 加省略号控预算；空清单返回 null（零条目零注入开销） */
+export function formatSkillsIndex(manifests: SkillManifest[]): string | null {
+  if (manifests.length === 0) return null;
+  const sorted = [...manifests].sort((a, b) =>
+    a.name === b.name ? (a.id < b.id ? -1 : 1) : a.name < b.name ? -1 : 1,
+  );
+  return sorted
+    .map((m) => {
+      const desc = m.description.length > 128 ? `${m.description.slice(0, 128)}…` : m.description;
+      return `- ${m.name}: ${desc}`;
+    })
+    .join('\n');
+}
+
 /** 技能门面：装配根暴露 list/get/resolve 三能力（Harness.skills；结构兼容 LoopDeps.skills） */
 export interface SkillsFacade {
   list(): SkillManifest[];

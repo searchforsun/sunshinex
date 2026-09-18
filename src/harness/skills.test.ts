@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseSkillFrontmatter, loadSkills } from './skills';
+import { formatSkillsIndex, parseSkillFrontmatter, loadSkills } from './skills';
 
 test('parseSkillFrontmatter：--- 块内 key: value 提取', () => {
   const m = parseSkillFrontmatter('---\nname: TUI 技能\ndescription: 终端交互\nversion: 1.2.0\n---\n正文');
@@ -76,4 +76,18 @@ test('loadSkills 三根合并就近遮蔽：项目 .sunshinex/skills > 全局根
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(globalDir, { recursive: true, force: true });
   }
+});
+
+/** 技能清单格式化（对标 Claude Code 常驻技能清单）：按 name 字典序排序（前置段字节冻结先例）、description 截断预算、空清单 null 零开销 */
+test('formatSkillsIndex：空清单 null、按 name 排序、行格式与截断预算', () => {
+  assert.equal(formatSkillsIndex([]), null, '空清单返回 null：零条目零开销注入');
+  const out = formatSkillsIndex([
+    { id: 'b', name: 'Beta', description: '后注册', version: '1.0.0' },
+    { id: 'a', name: 'Alpha', description: 'd'.repeat(200), version: '1.0.0' },
+  ]);
+  assert.ok(out !== null);
+  const lines = (out as string).split('\n');
+  assert.equal(lines.length, 2, '每技能恰一行');
+  assert.equal(lines[0], `- Alpha: ${'d'.repeat(128)}…`, '按 name 字典序 + 超长 description 截 128 加省略号');
+  assert.equal(lines[1], '- Beta: 后注册');
 });
