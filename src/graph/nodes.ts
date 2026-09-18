@@ -121,7 +121,7 @@ export function makeCiNode(id: string, config: CiNodeConfig): GraphNode {
         return { nodeId: id, status: 'pass', reply: t('CI passed: ' + tail, 'CI 通过：' + tail), tokens: 0 };
       }
       const detail = r.ok
-        ? `exit ${r.value.exitCode}：${(r.value.stderr || r.value.stdout || t('(no output)', '（无输出）')).slice(-200)}`
+        ? `exit ${r.value.exitCode}: ${(r.value.stderr || r.value.stdout || t('(no output)', '（无输出）')).slice(-200)}`
         : typeof r.error === 'string'
           ? r.error
           : JSON.stringify(r.error);
