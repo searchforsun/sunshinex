@@ -102,22 +102,30 @@ export class SafetyChain {
     return new SafetyChain(this.guard, this.backend, this.dryrun, this.root, scope);
   }
 
-  /** 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启；realpath 归一后判定，符号链接逃逸自然被拒 */
+  /** 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启；判定两侧同走 realpath 归一（数据目录自身含符号链接段时不再误拒合法写入），符号链接逃逸仍被拒 */
   private memoryWriteAllowed(real: string): boolean {
     if (!resolveMemoryConfig().autoMemory) return false;
-    return isMemoryPath(resolveDataDir(this.root), real, this.memoryScope) !== null;
+    return isMemoryPath(this.dataDirReal(), real, this.memoryScope) !== null;
+  }
+
+  /**
+   * 数据目录真实路径：存在段逐级 realpathSync 归一（与 rootReal 同源策略），新建段字面拼接；归一失败按字面路径兜底。
+   * underDataDir（只读判界）与 memoryWriteAllowed（写窄口）共用本单点，防两处口径漂移。
+   */
+  private dataDirReal(): string {
+    const dir = resolveDataDir(this.root);
+    try {
+      let anchor = dir;
+      while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);
+      return fs.realpathSync(anchor) + dir.slice(anchor.length);
+    } catch {
+      return dir;
+    }
   }
 
   /** 路径是否落在数据目录子树内（每次惰性求值对齐运行期求值先例，SUNSHINEX_DATA_DIR 测试可重定向） */
   private underDataDir(real: string): boolean {
-    let dir = resolveDataDir(this.root);
-    try {
-      let anchor = dir;
-      while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);
-      dir = fs.realpathSync(anchor) + dir.slice(anchor.length);
-    } catch {
-      // 归一失败按字面路径比对兜底
-    }
+    const dir = this.dataDirReal();
     return real === dir || real.startsWith(dir + path.sep);
   }
 

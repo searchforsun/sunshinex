@@ -142,3 +142,38 @@ test('memory 内符号链接指向外部 → 写被拒（realpath 判界，链�
     }
   });
 });
+
+test('dataDir 自身经符号链接传入 → 记忆写窄口按真实路径判定，不误拒合法写入（POSIX）', { skip: process.platform === 'win32' ? 'win32 无符号链接目录语义（需特权），跳过' : false }, () => {
+  const real = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-mw-real-'));
+  const linkHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-mw-link-'));
+  const prevDataDir = process.env.SUNSHINEX_DATA_DIR;
+  const prevAutoMemory = process.env.SUNSHINEX_AUTO_MEMORY;
+  try {
+    // 数据目录字面路径含符号链接段（对齐 macOS /tmp→/private/tmp、HOME 经链接的部署形态）
+    const link = path.join(linkHome, 'data-link');
+    fs.symlinkSync(real, link, 'dir');
+    process.env.SUNSHINEX_DATA_DIR = link;
+    delete process.env.SUNSHINEX_AUTO_MEMORY;
+
+    const root = path.join(real, 'root');
+    fs.mkdirSync(root, { recursive: true });
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+
+    const target = path.join(link, 'memory', 'a.md'); // 经链接路径写记忆子树
+    const d = chain.evaluate('Write', { path: target });
+    assert.equal(d.allowed, true, `数据目录经符号链接时不得误拒合法记忆写入：${d.allowed ? '' : d.reason}`);
+    if (d.allowed) assert.equal(d.safePath, path.join(fs.realpathSync(real), 'memory', 'a.md'), 'safePath 为 realpath 归一后的真实路径');
+
+    // 归一化不放松写面：同链接下的非记忆子树仍拒
+    const other = chain.evaluate('Write', { path: path.join(link, 'skills', 'x.md') });
+    assert.equal(other.allowed, false, '归一后仍只放行 memory 子树');
+    if (!other.allowed) assert.ok(other.reason.includes('COMMAND_DENIED'));
+  } finally {
+    if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevDataDir;
+    if (prevAutoMemory === undefined) delete process.env.SUNSHINEX_AUTO_MEMORY;
+    else process.env.SUNSHINEX_AUTO_MEMORY = prevAutoMemory;
+    fs.rmSync(real, { recursive: true, force: true });
+    fs.rmSync(linkHome, { recursive: true, force: true });
+  }
+});
