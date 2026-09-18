@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Result, ok, fail } from '../../result';
 import { resolveDataDir } from '../../config/data-dir';
+import { pick } from '../../i18n';
 
 /** 容量与阈值常量（规格 §2：代码内钉住不加 env） */
 export const MEMORY_INDEX_MAX_LINES = 200;
@@ -32,8 +33,27 @@ export interface MemoryRecord {
   type: MemoryType;
   /** 绝对日期 YYYY-MM-DD：整理判 stale 的唯一时效依据（时间只以绝对形式存在） */
   created: string;
+  /** 最近写入时间（ISO 8601，每次写入刷新）；缺该字段的旧记录解析回退 created */
+  modified: string;
   description: string;
   body: string;
+}
+
+/** 近满阈值（规格 §6）：上限的 80%，行数与字节数任一先到即提醒 */
+const NEAR_LIMIT_RATIO = 0.8;
+
+/** frontmatter 序列化（四键单一来源：add 与 put 共用，防两处格式漂移） */
+function serialize(rec: { type: MemoryType; created: string; modified: string; description: string; body: string }): string {
+  return [
+    '---',
+    `type: ${rec.type}`,
+    `created: ${rec.created}`,
+    `modified: ${rec.modified}`,
+    `description: ${rec.description}`,
+    '---',
+    rec.body,
+    '',
+  ].join('\n');
 }
 
 const INDEX_NAME = 'MEMORY.md';
@@ -54,7 +74,14 @@ function parseRecord(file: string, slug: string): MemoryRecord | null {
     if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
   const type = MEMORY_TYPES.includes(meta.type as MemoryType) ? (meta.type as MemoryType) : 'project';
-  return { slug, type, created: meta.created ?? '', description: meta.description ?? '', body: m[2].replace(/\n$/, '') };
+  return {
+    slug,
+    type,
+    created: meta.created ?? '',
+    modified: meta.modified ?? meta.created ?? '',
+    description: meta.description ?? '',
+    body: m[2].replace(/\n$/, ''),
+  };
 }
 
 /**
@@ -65,8 +92,10 @@ function parseRecord(file: string, slug: string): MemoryRecord | null {
 export class MemoryStore {
   private readonly dirPath: string;
 
-  constructor(root: string) {
-    this.dirPath = path.join(resolveDataDir(root), 'memory');
+  constructor(root: string, opts?: { subdir?: string }) {
+    const base = path.join(resolveDataDir(root), 'memory');
+    // 子目录形态（规格 §5）：子代理自有记忆 memory/agents/<id>，与主目录互不干扰
+    this.dirPath = opts?.subdir === undefined ? base : path.join(base, opts.subdir);
     fs.mkdirSync(this.dirPath, { recursive: true });
   }
 
@@ -127,11 +156,40 @@ export class MemoryStore {
     let slug = candidate;
     for (let n = 2; this.has(slug); n += 1) slug = `${candidate}-${n}`;
     const created = input.created ?? new Date().toISOString().slice(0, 10);
-    const md = ['---', `type: ${input.type}`, `created: ${created}`, `description: ${description}`, '---', body, ''].join('\n');
-    fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), md);
+    const modified = new Date().toISOString();
+    fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body }));
     this.rebuildIndex();
 
-    const record: MemoryRecord = { slug, type: input.type, created, description, body };
+    const record: MemoryRecord = { slug, type: input.type, created, modified, description, body };
+    const over = this.overLimit();
+    if (over !== null) return fail('MEMORY_INDEX_OVER_LIMIT', over);
+    return ok(record);
+  }
+
+  /**
+   * 按既有 slug 写入（会中自写路径，规格 §5）：同 slug 视为**更新**（去重自排除、保留 created、刷新 modified），
+   * 不存在则创建。存在的价值：模型改写一条记忆不产生 -2 副本。超限语义与 add 一致（写成功 + 报错勒令精简）。
+   */
+  put(input: { slug: string; type: MemoryType; description: string; body: string; created?: string; modified?: string }): Result<MemoryRecord> {
+    const slug = input.slug.trim();
+    const description = input.description.trim();
+    const body = input.body.trim();
+    if (!slug) return fail('MEMORY_EMPTY', 'slug 不得为空');
+    if (!description || !body) return fail('MEMORY_EMPTY', '记忆描述与正文均不得为空');
+    const existing = this.list().find((r) => r.slug === slug);
+    const duplicate = this.list().find(
+      (r) =>
+        r.slug !== slug &&
+        (normalizeText(r.description) === normalizeText(description) || normalizeText(r.body) === normalizeText(body)),
+    );
+    if (duplicate) return fail('MEMORY_DUPLICATE', `duplicate: ${duplicate.slug}`);
+
+    const created = input.created ?? existing?.created ?? new Date().toISOString().slice(0, 10);
+    const modified = input.modified ?? new Date().toISOString();
+    fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body }));
+    this.rebuildIndex();
+
+    const record: MemoryRecord = { slug, type: input.type, created, modified, description, body };
     const over = this.overLimit();
     if (over !== null) return fail('MEMORY_INDEX_OVER_LIMIT', over);
     return ok(record);
@@ -149,6 +207,20 @@ export class MemoryStore {
   rebuildIndex(): void {
     const lines = this.list().map((r) => `- ${r.slug} — ${r.description} [${r.type}]`);
     fs.writeFileSync(path.join(this.dirPath, INDEX_NAME), lines.length > 0 ? `${lines.join('\n')}\n` : '');
+  }
+
+  /** 近满提醒（规格 §6 两级容量：近满=提醒、超限=错误）：行数或字节数任一 ≥80% 返回提醒文本，否则 null */
+  capacityNotice(): string | null {
+    const text = this.indexText();
+    const lines = text.split('\n').filter((l: string) => l.length > 0).length;
+    const bytes = Buffer.byteLength(text, 'utf8');
+    const nearLines = Math.floor(MEMORY_INDEX_MAX_LINES * NEAR_LIMIT_RATIO);
+    const nearBytes = Math.floor(MEMORY_INDEX_MAX_BYTES * NEAR_LIMIT_RATIO);
+    if (lines < nearLines && bytes < nearBytes) return null;
+    return pick(
+      `Memory index near limit: ${lines}/${MEMORY_INDEX_MAX_LINES} lines, ${bytes}/${MEMORY_INDEX_MAX_BYTES} bytes — consolidate entries or move detail into record bodies`,
+      `记忆索引接近上限：${lines}/${MEMORY_INDEX_MAX_LINES} 行、${bytes}/${MEMORY_INDEX_MAX_BYTES} 字节——请合并条目或把细节挪进记录正文`,
+    );
   }
 
   /** 容量纪律：超 200 行或 25KB 返回勒令精简报错文本（含当前行数/字节数与上限），否则 null */

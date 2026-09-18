@@ -13,17 +13,22 @@ import {
 } from './store';
 
 /** 每用例独立 tmpdir + SUNSHINEX_DATA_DIR 重定向，finally 还原 env 并清理，绝不触碰真实家目录 */
-function withStore(fn: (store: MemoryStore) => void): void {
+function withStoreRoot(fn: (root: string, store: MemoryStore) => void): void {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mem-'));
   process.env.SUNSHINEX_DATA_DIR = tmp;
   try {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
-    fn(new MemoryStore(root));
+    fn(root, new MemoryStore(root));
   } finally {
     delete process.env.SUNSHINEX_DATA_DIR;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/** 只需主目录 store 的用例走这层；需显式 root 的用例（子目录构造）直接用 withStoreRoot */
+function withStore(fn: (store: MemoryStore) => void): void {
+  withStoreRoot((_root, store) => fn(store));
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -185,4 +190,92 @@ test('⑧ normalizeText / slugifyMemory 纯函数语义', () => {
   assert.equal(slugifyMemory('!!!'), 'memo');
   assert.equal(slugifyMemory('--a--b--'), 'a-b');
   assert.equal(slugifyMemory('x'.repeat(50)).length, 40);
+});
+
+// ── Task 1（记忆底座扩展）追加：put 更新语义 / modified / capacityNotice / 子目录构造 ──
+
+test('⑨ put 同 slug 为更新：不产生 -2 副本、刷新 modified、保留 created', () => {
+  withStore((store) => {
+    const first = store.put({ slug: 'prefers-chinese', type: 'user', description: 'prefers Chinese replies', body: 'always answer in Chinese' });
+    assert.equal(first.ok, true);
+    const before = store.list().find((r) => r.slug === 'prefers-chinese')!;
+    const updated = store.put({
+      slug: 'prefers-chinese',
+      type: 'user',
+      description: 'prefers Chinese replies',
+      body: 'always answer in Chinese, including tables',
+    });
+    assert.equal(updated.ok, true);
+    const after = store.list().find((r) => r.slug === 'prefers-chinese')!;
+    assert.equal(after.created, before.created, 'created 不被覆盖');
+    assert.notEqual(after.modified, '', 'modified 必填');
+    assert.equal(store.count(), 1, '更新不新增记录文件');
+    assert.equal(store.list().some((r) => r.slug === 'prefers-chinese-2'), false, '不产生 -2 副本');
+    assert.equal(after.body, 'always answer in Chinese, including tables', '正文被更新');
+    assert.deepEqual(mdFiles(store), ['prefers-chinese.md'], '只存在一个记录文件');
+  });
+});
+
+test('⑩ put 撞他人 description 归一相同 → MEMORY_DUPLICATE（自排除不误伤自身更新）', () => {
+  withStore((store) => {
+    const seeded = store.put({ slug: 'a', type: 'project', description: 'Repo uses pnpm', body: 'pnpm only' });
+    assert.equal(seeded.ok, true);
+    const r = store.put({ slug: 'b', type: 'project', description: 'repo uses   PNPM', body: 'other body' });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.error.code, 'MEMORY_DUPLICATE');
+    assert.equal(store.count(), 1, '被拒写入不落盘');
+  });
+});
+
+test('⑪ modified 为 ISO 8601 且写入后被解析回读', () => {
+  withStore((store) => {
+    const r = store.put({ slug: 'iso', type: 'project', description: 'd', body: 'b' });
+    assert.equal(r.ok, true);
+    const rec = store.list().find((x) => x.slug === 'iso')!;
+    assert.match(rec.modified, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, 'ISO 8601 时间戳');
+    assert.ok(
+      fs.readFileSync(path.join(store.dir(), 'iso.md'), 'utf8').includes(`modified: ${rec.modified}`),
+      '落盘 frontmatter 的 modified 与解析回读值一致',
+    );
+  });
+});
+
+test('⑫ 缺 modified 的旧记录回退 created（零迁移）', () => {
+  withStore((store) => {
+    fs.writeFileSync(
+      path.join(store.dir(), 'legacy.md'),
+      ['---', 'type: project', 'created: 2026-01-02', 'description: legacy record', '---', 'body', ''].join('\n'),
+    );
+    const rec = store.list().find((x) => x.slug === 'legacy')!;
+    assert.equal(rec.modified, '2026-01-02');
+    assert.equal(rec.created, '2026-01-02', 'created 原值不动');
+    assert.equal(rec.body, 'body', '旧文件正文解析不受影响');
+  });
+});
+
+test('⑬ capacityNotice：近满（≥80%）返回提醒、未近满返回 null', () => {
+  withStore((store) => {
+    assert.equal(store.capacityNotice(), null);
+    for (let i = 0; i < 160; i += 1) {
+      const w = store.put({ slug: `n${i}`, type: 'project', description: `fact ${i}`, body: `body ${i}` });
+      assert.equal(w.ok, true, `第 ${i} 条写入应成功（未超限）`);
+    }
+    const notice = store.capacityNotice();
+    assert.notEqual(notice, null);
+    assert.match(String(notice), /160|200/);
+    assert.equal(store.overLimit(), null, '近满尚未超限：仍可写');
+  });
+});
+
+test('⑭ 显式子目录构造：dir() 落在 memory/agents/<id> 且与主目录互不干扰', () => {
+  withStoreRoot((root, main) => {
+    const child = new MemoryStore(root, { subdir: path.join('agents', 'reviewer') });
+    const w = child.put({ slug: 'r1', type: 'project', description: 'child fact', body: 'child body' });
+    assert.equal(w.ok, true);
+    assert.equal(main.count(), 0, '主目录零干扰');
+    assert.equal(child.count(), 1);
+    assert.ok(child.dir().endsWith(path.join('memory', 'agents', 'reviewer')), '目录形态');
+    assert.equal(child.indexText(), '- r1 — child fact [project]\n', '子目录自有索引');
+    assert.equal(main.indexText(), '', '主索引不被子目录写入触碰');
+  });
 });
