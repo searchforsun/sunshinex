@@ -18,6 +18,7 @@ import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { LearnedSkillStore } from './skills/learned';
 import { settleMemory } from './memory/extractor';
+import { guardMemoryWrite } from './memory/writer';
 import { resolveDataDir } from '../config/data-dir';
 import { RunLedger } from './ledger';
 
@@ -63,7 +64,8 @@ export class Harness {
     this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
     // 技能门面先于工具装配创建（skill 工具经它按 id 解析正文；纯构造无副作用）
     this.skills = createSkillsFacade(base);
-    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills)) this.tools.register(t);
+    // 第 7 参注入记忆写入接缝（规格 §4.4 落点表）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
+    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite)) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
     // 子代理执行单元：注册表/安全链/上下文/模型同源装配；agents 目录装配期一次性加载 fail-fast（运行期零增删）

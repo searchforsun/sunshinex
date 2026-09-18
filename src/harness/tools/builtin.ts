@@ -8,9 +8,10 @@ import { KnowledgeBase } from '../knowledge/index';
 import { SkillsFacade } from '../skills';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
+import { MemoryWriteSeam } from '../memory/writer';
 
-/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade): RegisteredTool[] {
+/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化） */
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -74,7 +75,22 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       description: pick('Write file content', '写入文件内容'),
       category: 'write',
       executor: async (input: ToolInput) => {
-        backend.writeFile(String(input.path), String(input.content ?? ''));
+        const p = String(input.path);
+        const content = String(input.content ?? '');
+        // 记忆写入接缝（规格 §4.4）：命中记忆路径走接缝（校验/规范化/索引/容量回执）；未注入接缝＝旧行为
+        if (memory) {
+          const r = memory({
+            root,
+            absPath: p,
+            content,
+            // scope 只接 safety.memoryScope（undefined | agents/<id>）：显式 'main' 等价全拒，非设计意图
+            ...(safety.memoryScope !== undefined ? { scope: safety.memoryScope } : {}),
+            write: (abs, c) => backend.writeFile(abs, c),
+          });
+          if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
+          if (r.value !== 'pass') return execOut(r.value.observation);
+        }
+        backend.writeFile(p, content);
         return execOut('written');
       },
     },
