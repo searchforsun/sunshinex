@@ -299,6 +299,16 @@ export class SessionController {
       this.pushMsg('system', t('Plan discarded, back to input', '已放弃执行计划，回到输入态'));
       return;
     }
+    // 确认项过期/冲突检测（规范 N1 动态改动尾追，对标 CC）：计划起草到确认之间磁盘会话常量可能已变化——
+    // 执行前主动探测并把差异尾追进链（模型面）+ 回执（用户面），以最新为准；基线随探测前进，后续任务起点不重复告知
+    const notices = this.runtime.harness.context.checkConstantsDrift();
+    for (const n of notices) this.runtime.harness.context.appendChain([{ action: 'notice', observation: n }]);
+    if (notices.length > 0) {
+      this.pushMsg('system', t(
+        `Session constants changed since the plan was drafted; the latest version applies:\n${notices.join('\n')}`,
+        `计划起草后会话常量已变化，执行以最新为准：\n${notices.join('\n')}`,
+      ));
+    }
     await this.runPlanItems(pending.items);
   }
 

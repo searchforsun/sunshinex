@@ -69,6 +69,36 @@ test('/plan：拒绝确认 → 回 idle，不执行', async () => {
   }
 });
 
+test('/plan：确认裁决时点主动探测——起草后 SUNSHINE.md 变化 → 尾追过期/冲突说明（模型面+用户面）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-drift-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"1. 步骤A"}',
+        '{"done":true,"reply":"步骤A 完成"}',
+      ]),
+    });
+    await ctrl.submit('/plan 做一件事');
+    assert.equal(ctrl.getState().status, 'awaiting-plan');
+    // 起草后、确认前：磁盘 SUNSHINE.md 被外部修改（会话常量中途变化）
+    fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), '# 项目\n\n新增的规范条目。\n');
+    await ctrl.confirmPlan(true);
+    await ctrl.waitIdle();
+    const texts = ctrl.getState().messages.map((m) => m.text).join('\n');
+    assert.ok(
+      /changed since the plan was drafted|起草后会话常量已变化/.test(texts),
+      '确认时点探测回执（用户面，过期/冲突说明）',
+    );
+    const chain = (
+      ctrl as unknown as { runtime: { harness: { context: { chainView(): { action?: string }[] } } } }
+    ).runtime.harness.context.chainView();
+    assert.ok(chain.some((s) => s.action === 'notice'), '过期/冲突说明已尾追进链（模型面）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('/plan：缺目标给用法提示；非 idle 拒绝并发规划', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan3-'));
   try {
