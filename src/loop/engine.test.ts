@@ -147,7 +147,7 @@ test('LoopEngine 超时：timeoutMs=5 + 慢节点（30ms 延时）→ failed 且
   );
   const r = await engine.run('慢目标');
   assert.equal(r.status, 'failed');
-  assert.ok((r.error ?? '').includes('超时'));
+  assert.ok((r.error ?? '').includes('timed out'));
 });
 
 test('LoopEngine 预算超支：单轮 tokens 超 maxTokens → paused（非 failed），tokensUsed 如实', async () => {
@@ -249,7 +249,7 @@ test('T4-2 模型判据兜底：router 未绑定回退 deps.model，JSON 损坏 
   const outBad = await checkNode(deps).run(ctxBad, null);
   assert.equal(outBad.status, 'fail');
   assert.equal(outBad.criteria![0].passed, false);
-  assert.equal(outBad.criteria![0].evidence, '模型判据输出非 JSON');
+  assert.equal(outBad.criteria![0].evidence, 'judge returned no usable verdict');
 
   // 判据 prompt 携带证据：goal 与 agentReply 必须进入模型判据输入
   const ctx3 = ctxOf({ goal: '任务。验收标准：c1=测试全绿', agentReply: '测试已全绿，构建零错误' });
@@ -277,7 +277,7 @@ test('T4-3 deficit 回注：check 全挂写入 deficits，Agent 重试轮 prompt
   const out2 = await agent.run(ctx, null);
   assert.equal(out2.status, 'done');
   const prompt = recording.prompts[0] ?? '';
-  assert.ok(/上次未过验收项|Fix requirements from last review:/.test(prompt), '重试轮 prompt 应含修正要求链行');
+  assert.ok(/Fix requirements from last review:/.test(prompt), '重试轮 prompt 应含修正要求链行');
   assert.ok(prompt.includes('c1') && prompt.includes('测试全绿'));
   assert.ok(prompt.includes('c2') && prompt.includes('构建零错'));
 });
@@ -358,7 +358,7 @@ test('T4-7 impossible 终局：check 判定不可满足 → 引擎 failed（不�
   );
   const r = await resolveTemplate(deps, 'test-loop').engine.run('任务。验收标准：c1=测试全绿');
   assert.equal(r.status, 'failed');
-  assert.ok((r.error ?? '').includes('不可满足'), 'error 携带不可满足理由');
+  assert.ok((r.error ?? '').includes('unsatisfiable'), 'error 携带不可满足理由');
   assert.ok(r.iterations < 100, 'impossible 短路，不烧迭代安全网');
 });
 
@@ -368,7 +368,7 @@ test('T4-8 判据错误分级：fatal 立即终局、recoverable 重试 ≤3 后
   const outFatal = await checkNode(makeDeps(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-fatal-')), fatal))
     .run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
   assert.equal(outFatal.terminal?.status, 'failed');
-  assert.ok((outFatal.terminal?.error ?? '').includes('判据评估不可用'));
+  assert.ok((outFatal.terminal?.error ?? '').includes('Judge unavailable'));
   assert.equal(fatal.calls, 1, 'fatal 不重试');
 
   // ② recoverable：前 2 次超时、第 3 次成功 → 判定生效
@@ -385,6 +385,6 @@ test('T4-8 判据错误分级：fatal 立即终局、recoverable 重试 ≤3 后
   const outEx = await checkNode(makeDeps(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-ex-')), exhaust))
     .run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
   assert.equal(outEx.terminal?.status, 'paused');
-  assert.ok((outEx.terminal?.error ?? '').includes('判据评估暂不可用'));
+  assert.ok((outEx.terminal?.error ?? '').includes('Judge temporarily unavailable'));
   assert.equal(exhaust.calls, 4, '初次 + 3 次重试上限');
 });

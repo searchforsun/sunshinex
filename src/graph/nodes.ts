@@ -4,7 +4,7 @@ import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { codeRefactorTemplate, codeReviewTemplate, testLoopTemplate } from '../loop/templates';
 import { toReactorBudget } from '../loop/nodes';
 import { Reactor } from '../harness/reactor';
-import { pick } from '../i18n';
+import { t } from '../i18n';
 
 /** 规则校验器：对内嵌 Loop 的验收项做进程内判定（io.ctx 为 Loop 子流程上下文） */
 export type RuleChecker = (io: { ctx: LoopContext; goal: string }) => Promise<boolean> | boolean;
@@ -41,7 +41,7 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
         {
           step: (base.length > 0 ? base[base.length - 1].step : 0) + 1,
           action: 'task',
-          observation: pick(`Current instruction: ${taskText}`, `当前指令：${taskText}`),
+          observation: `Current instruction: ${taskText}`,
         },
       ];
       const tpl = factory(
@@ -57,7 +57,7 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
       if (r.status === 'done' && r.reply) {
         deps.context.appendChain([{ action: 'node', observation: `${id}: ${r.reply}` }]);
       } else {
-        deps.context.appendChain([{ action: 'note', observation: `${id}: ${pick('loop node did not finish', '子流程未完成收束')} (${r.status})` }]);
+        deps.context.appendChain([{ action: 'note', observation: `${id}: loop node did not finish (${r.status})` }]);
       }
       const status: GraphNodeOutput['status'] =
         r.status === 'done' ? 'pass' : r.status === 'paused' ? 'paused' : 'failed';
@@ -89,12 +89,12 @@ export function makeGateNode(id: string, config: GateNodeConfig = {}): GraphNode
     run: async (ctx) => {
       const approvals = ctx.state.approvals as Record<string, boolean> | undefined;
       if (approvals?.[id] === true) {
-        return { nodeId: id, status: 'pass', reply: `审批通过：${label}`, tokens: 0 };
+        return { nodeId: id, status: 'pass', reply: t('Approval granted: ' + label, '审批通过：' + label), tokens: 0 };
       }
       if (approvals?.[id] === false) {
-        return { nodeId: id, status: 'failed', reply: `审批拒绝：${label}`, tokens: 0 };
+        return { nodeId: id, status: 'failed', reply: t('Approval rejected: ' + label, '审批拒绝：' + label), tokens: 0 };
       }
-      return { nodeId: id, status: 'paused', reply: `等待人工审批：${label}`, tokens: 0 };
+      return { nodeId: id, status: 'paused', reply: t('Waiting for approval: ' + label, '等待人工审批：' + label), tokens: 0 };
     },
   };
 }
@@ -113,19 +113,19 @@ export function makeCiNode(id: string, config: CiNodeConfig): GraphNode {
     deps: config.deps ?? [],
     run: async (ctx, deps) => {
       if (ctx.state.__dryRun === true) {
-        return { nodeId: id, status: 'pass', reply: `[dry-run] 将执行: ${config.command}`, tokens: 0 };
+        return { nodeId: id, status: 'pass', reply: t('[dry-run] will run: ' + config.command, '[dry-run] 将执行: ' + config.command), tokens: 0 };
       }
       const r = await deps.registry.execute('exec', { command: config.command }, deps.safety);
       if (r.ok && r.value.exitCode === 0) {
-        const tail = (r.value.stdout || '（无输出）').slice(-200);
-        return { nodeId: id, status: 'pass', reply: `CI 通过：${tail}`, tokens: 0 };
+        const tail = (r.value.stdout || t('(no output)', '（无输出）')).slice(-200);
+        return { nodeId: id, status: 'pass', reply: t('CI passed: ' + tail, 'CI 通过：' + tail), tokens: 0 };
       }
       const detail = r.ok
-        ? `exit ${r.value.exitCode}：${(r.value.stderr || r.value.stdout || '（无输出）').slice(-200)}`
+        ? `exit ${r.value.exitCode}：${(r.value.stderr || r.value.stdout || t('(no output)', '（无输出）')).slice(-200)}`
         : typeof r.error === 'string'
           ? r.error
           : JSON.stringify(r.error);
-      return { nodeId: id, status: 'failed', reply: `CI 失败：${detail}`, tokens: 0 };
+      return { nodeId: id, status: 'failed', reply: t('CI failed: ' + detail, 'CI 失败：' + detail), tokens: 0 };
     },
   };
 }

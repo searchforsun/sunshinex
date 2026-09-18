@@ -19,6 +19,7 @@ import { ToolRegistry } from '../harness/tools';
 import { SafetyChain } from '../harness/security/chain';
 import { ContextManager } from '../harness/context';
 import { RunLedger } from '../harness/ledger';
+import { t } from '../i18n';
 
 /** 节点执行函数：async 或同步返回皆可；input 为上一节点输出（首轮 null） */
 export type LoopNodeFn = (ctx: LoopContext, input: NodeOutput | null) => Promise<NodeOutput> | NodeOutput;
@@ -88,7 +89,7 @@ export class LoopEngine {
     this.deps = deps;
     this.termination = termination;
     this.hooks = hooks ?? {};
-    if (this.nodes.length === 0) throw new Error('LoopEngine: 节点清单为空');
+    if (this.nodes.length === 0) throw new Error('LoopEngine: node list is empty');
   }
 
   /** 运行至终态；dryRun 经 ctx.state.__dryRun 透传给节点；skillRef 触发技能首帧注入（解析失败即 failed，不静默） */
@@ -98,7 +99,7 @@ export class LoopEngine {
   ): Promise<LoopRunResult> {
     if (opts?.skillRef) {
       if (!this.deps.skills) {
-        return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: 'SKILL_NOT_CONFIGURED: LoopDeps 未装配技能解析器（skills）' };
+        return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: 'SKILL_NOT_CONFIGURED: LoopDeps has no skill resolver (skills)' };
       }
       const resolved = this.deps.skills.resolve(opts.skillRef.id, opts.skillRef.params);
       if (!resolved.ok) {
@@ -131,12 +132,21 @@ export class LoopEngine {
       });
       if (hit) {
         const mapped: Record<LimitReason, { status: LoopRunResult['status']; error: string }> = {
-          deadline: { status: 'failed', error: `执行超时（超过 ${this.termination.timeoutMs}ms）` },
+          deadline: {
+            status: 'failed',
+            error: t('Execution timed out (' + this.termination.timeoutMs + 'ms)', '执行超时（超过 ' + this.termination.timeoutMs + 'ms）'),
+          },
           budget: {
             status: 'paused',
-            error: `token 预算超支（used ${ctx.tokensUsed} ≥ max ${this.termination.maxTokens}）`,
+            error: t(
+              'Token budget exceeded (used ' + ctx.tokensUsed + ' ≥ max ' + this.termination.maxTokens + ')',
+              'token 预算超支（used ' + ctx.tokensUsed + ' ≥ max ' + this.termination.maxTokens + '）',
+            ),
           },
-          'max-steps': { status: 'failed', error: `iteration 上限（${this.termination.maxIterations}）已耗尽` },
+          'max-steps': {
+            status: 'failed',
+            error: t('Iteration limit (' + this.termination.maxIterations + ') exhausted', 'iteration 上限（' + this.termination.maxIterations + '）已耗尽'),
+          },
         };
         const m = mapped[hit];
         return this.finish(ctx, m.status, { error: m.error, stopReason: hit });
@@ -159,8 +169,9 @@ export class LoopEngine {
 
       // check 节点 fail = 验收未过（续流至 router 修正环，fail-bounded 由迭代/超时兜底）；其余节点 fail = 硬失败
       if (out.status === 'fail' && node.kind !== 'check') {
+        const detail = out.reply ?? t('(no detail)', '（无说明）');
         return this.finish(ctx, 'failed', {
-          error: `节点 ${node.id} fail：${out.reply ?? '（无说明）'}`,
+          error: t('Node ' + node.id + ' failed: ' + detail, '节点 ' + node.id + ' fail：' + detail),
           ...(out.stopReason !== undefined ? { stopReason: out.stopReason } : {}),
         });
       }
@@ -171,7 +182,7 @@ export class LoopEngine {
         const next = this.index.get(out.route);
         if (next === undefined) {
           return this.finish(ctx, 'failed', {
-            error: `未知 route 目标节点 id：${out.route}`,
+            error: `Unknown route target node id: ${out.route}`,
           });
         }
         cursor = next;

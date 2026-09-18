@@ -270,7 +270,7 @@ test('createRuntime.runLoop：未知模板报错；判据未过回修一轮后 d
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"x"}']),
     });
-    await assert.rejects(() => rt.runLoop('x（验收标准：t1=y）', { template: 'nope' }), /未知模板：nope/);
+    await assert.rejects(() => rt.runLoop('x（验收标准：t1=y）', { template: 'nope' }), /Unknown template: nope/);
 
     const events: SessionEvent[] = [];
     const rt2 = createRuntime({

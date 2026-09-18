@@ -136,7 +136,7 @@ test('resolveTemplate：注册表三模板可实例化，未知名报错列出�
   }
   assert.throws(
     () => resolveTemplate(deps, 'no-such'),
-    /未知模板：no-such（可选 code-refactor\/test-loop\/code-review）/,
+    /Unknown template: no-such \(available: code-refactor\/test-loop\/code-review\)/,
   );
   assert.deepEqual(TEMPLATE_NAMES, ['code-refactor', 'test-loop', 'code-review']);
   assert.equal(DEFAULT_GOAL_TEMPLATE, 'test-loop');

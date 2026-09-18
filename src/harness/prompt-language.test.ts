@@ -32,6 +32,16 @@ const SCOPES: Record<string, string[]> = {
     'src/harness/memory/extractor.ts',
     'src/harness/memory/consolidate.ts',
   ],
+  B3: [
+    'src/loop/nodes.ts',
+    'src/loop/engine.ts',
+    'src/loop/templates.ts',
+    'src/graph/nodes.ts',
+    'src/graph/agents.ts',
+    'src/graph/workflow.ts',
+    'src/graph/engine.ts',
+    'src/graph/templates.ts',
+  ],
 };
 
 /**
@@ -86,3 +96,28 @@ for (const [batch, files] of Object.entries(SCOPES)) {
     assert.deepEqual(hits, [], `以下串进模型或进链却带中文，须按 R1/R3 改英文（用户回执改 t() 双语）：\n${hits.join('\n')}`);
   });
 }
+
+/**
+ * 回执双语钉子（B-1 核心防线，与 graph/receipts.i18n.test.ts 的运行时钉子互补）：
+ * 这些串是「写死的字面量、零写链、只上屏」的**死用户显示**，必须留在文件里且被 t() 包裹。
+ * 只跑 leaks() 抓不到「被整体英文化」——zh 分支删干净则零命中，反被误判为合格；故同时断言中文仍在。
+ */
+test('回执双语钉子：gate/CI/引擎汇总/dry-run 预览的中文回执必须为 t() 包裹的死用户显示', () => {
+  const receipts: Array<[string, string]> = [
+    ['src/graph/nodes.ts', '审批通过：'],
+    ['src/graph/nodes.ts', '审批拒绝：'],
+    ['src/graph/nodes.ts', '等待人工审批：'],
+    ['src/graph/nodes.ts', 'CI 通过：'],
+    ['src/graph/nodes.ts', 'CI 失败：'],
+    ['src/graph/engine.ts', '全部节点完成'],
+    ['src/graph/engine.ts', '等待人工审批：'],
+    ['src/graph/engine.ts', '存在失败节点：'],
+    ['src/graph/engine.ts', '[dry-run] 预览: '],
+  ];
+  for (const [file, zh] of receipts) {
+    const raw = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    assert.ok(raw.includes(zh), `${file} 应保留中文回执「${zh}」（zh 外观形态），不得整体英文化`);
+    const leaked = leaks(file).map((h) => h.text).join('\n');
+    assert.ok(!leaked.includes(zh), `${file} 的「${zh}」未包 t()：既会被判泄漏，zh 下也不可见`);
+  }
+});

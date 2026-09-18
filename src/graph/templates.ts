@@ -2,6 +2,7 @@ import { GraphDeps, GraphTermination } from '../types';
 import { GraphEngine, GraphNode } from './engine';
 import { makeGateNode, makeLoopNode, RuleChecker } from './nodes';
 import { makeRoleAgent } from './agents';
+import { t } from '../i18n';
 
 /** 全链路流水线缺省终止参数（opts.termination 可按项覆盖） */
 const DEFAULT_TERMINATION: GraphTermination = { maxNodes: 500, maxTokens: 2_000_000, timeoutMs: 14_400_000 };
@@ -36,7 +37,7 @@ export function softwarePipelineTemplate(deps: GraphDeps, opts: PipelineOpts = {
       deps: ['developer'],
     }),
     makeRoleAgent('reviewer', deps, { maxSteps: opts.maxSteps, deps: ['test-verify'] }),
-    makeGateNode('delivery-gate', { prompt: '交付确认', deps: ['reviewer'] }),
+    makeGateNode('delivery-gate', { prompt: t('Delivery confirmation', '交付确认'), deps: ['reviewer'] }),
   ];
   return { name: 'software-pipeline', nodes, termination, engine: new GraphEngine(nodes, deps, termination) };
 }

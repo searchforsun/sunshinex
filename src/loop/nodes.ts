@@ -1,5 +1,4 @@
 import { CriterionResult, HistoryStep, LoopContext, NodeOutput } from '../types';
-import { pick } from '../i18n';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
@@ -57,19 +56,16 @@ async function modelJudge(
   agentReply: string,
 ): Promise<JudgeOutcome> {
   const prompt = [
-    `你是验收判据模型。目标：${goal}`,
-    `执行答复（证据）：${agentReply}`,
-    `验收标准 ${criterion.id}：${criterion.desc}`,
-    pick(
-      'Reply with a single JSON object: {"passed":boolean,"impossible":boolean,"evidence":string}',
-      '仅回复一个 JSON 对象：{"passed":boolean,"impossible":boolean,"evidence":string}',
-    ),
+    `You are the acceptance judge. Goal: ${goal}`,
+    `Execution reply (evidence): ${agentReply}`,
+    `Acceptance criterion ${criterion.id}: ${criterion.desc}`,
+    'Reply with exactly one JSON object: {"passed":boolean,"impossible":boolean,"evidence":string}',
   ].join('\n');
   let raw: string | undefined;
   try {
     raw = await adapter.complete(prompt);
   } catch (e) {
-    const message = e instanceof Error ? e.message : '模型判据调用失败';
+    const message = e instanceof Error ? e.message : 'Model judge call failed';
     if (classifyJudgeError(message) === 'fatal') {
       return { kind: 'blocked', severity: 'fatal', message };
     }
@@ -78,7 +74,7 @@ async function modelJudge(
         raw = await adapter.complete(prompt);
         break;
       } catch (e2) {
-        const m2 = e2 instanceof Error ? e2.message : '模型判据调用失败';
+        const m2 = e2 instanceof Error ? e2.message : 'Model judge call failed';
         if (classifyJudgeError(m2) === 'fatal') {
           return { kind: 'blocked', severity: 'fatal', message: m2 };
         }
@@ -103,7 +99,7 @@ async function modelJudge(
     };
   } catch {
     // fail-bounded：判据输出不可解析 → 判不通过，不静默放行（不算调用失败）
-    return { kind: 'judged', result: { id: criterion.id, desc: criterion.desc, passed: false, evidence: '模型判据输出非 JSON' } };
+    return { kind: 'judged', result: { id: criterion.id, desc: criterion.desc, passed: false, evidence: 'judge returned no usable verdict' } };
   }
 }
 
@@ -143,7 +139,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
       // 修正要求走链（主链）/并入私有前缀（fork）：goal 不再承载任务文本改写（goal 已降级为观测标签）
       const deficits = Array.isArray(ctx.state.deficits) ? (ctx.state.deficits as Array<{ id: string; desc: string }>) : [];
       if (deficits.length > 0) {
-        const line = `${pick('Fix requirements from last review:', '修正要求（上次未过验收项）：')}\n${deficits.map((d) => `- ${d.id}: ${d.desc}`).join('\n')}`;
+        const line = `Fix requirements from last review:\n${deficits.map((d) => `- ${d.id}: ${d.desc}`).join('\n')}`;
         if (scope === 'session') {
           deps.context.appendChain([{ action: 'deficit', observation: line }]);
         } else if (seedHistory) {
@@ -226,7 +222,7 @@ export function checkNode(
           status: 'fail',
           criteria: judged,
           tokens: 0,
-          terminal: { status: 'failed', error: `目标判定不可满足：${imp.evidence ?? imp.desc}` },
+          terminal: { status: 'failed', error: `Goal judged unsatisfiable: ${imp.evidence ?? imp.desc}` },
         };
       }
       const fatal = outcomes.find(
@@ -237,7 +233,7 @@ export function checkNode(
           status: 'fail',
           criteria: judged,
           tokens: 0,
-          terminal: { status: 'failed', error: `判据评估不可用（认证/配额/模型）：${fatal.message}` },
+          terminal: { status: 'failed', error: `Judge unavailable (auth/quota/model): ${fatal.message}` },
         };
       }
       const exhaust = outcomes.find((o): o is Extract<JudgeOutcome, { kind: 'blocked' }> => o.kind === 'blocked');
@@ -246,7 +242,7 @@ export function checkNode(
           status: 'fail',
           criteria: judged,
           tokens: 0,
-          terminal: { status: 'paused', error: `判据评估暂不可用（已重试 ${MAX_JUDGE_RETRIES} 次）：${exhaust.message}` },
+          terminal: { status: 'paused', error: `Judge temporarily unavailable (retried ${MAX_JUDGE_RETRIES} times): ${exhaust.message}` },
         };
       }
 
@@ -256,7 +252,7 @@ export function checkNode(
       return {
         status: 'fail',
         criteria: judged,
-        reply: `未过项: ${failed.map((c) => `${c.id}=${c.desc}`).join('; ')}`,
+        reply: `failed: ${failed.map((c) => `${c.id}=${c.desc}`).join('; ')}`,
         tokens: 0,
       };
     },

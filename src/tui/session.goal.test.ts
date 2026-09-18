@@ -155,7 +155,7 @@ test('/goal：判据服务不可用 → paused 回执提示重跑续走', async 
   const tmp = tmpDir('sunshinex-goal9-');
   try {
     const respond = async (prompt: string): Promise<string> => {
-      if (prompt.includes('验收判据模型')) throw new Error('ETIMEDOUT: judge endpoint unreachable');
+      if (prompt.includes('acceptance judge')) throw new Error('ETIMEDOUT: judge endpoint unreachable');
       return '{"done":true,"reply":"完成"}';
     };
     const ctrl = new SessionController({

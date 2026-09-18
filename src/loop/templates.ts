@@ -104,7 +104,7 @@ export function codeReviewTemplate(deps: LoopDeps, opts?: TemplateOpts): LoopTem
         const reply = typeof ctx.state.agentReply === 'string' ? ctx.state.agentReply : '';
         return reply.length > 0
           ? { passed: true }
-          : { passed: false, reason: '审查未产出结论' };
+          : { passed: false, reason: 'review produced no conclusion' };
       },
     }),
     routerNode({
@@ -132,7 +132,7 @@ export const DEFAULT_GOAL_TEMPLATE = 'test-loop';
 
 export function resolveTemplate(deps: LoopDeps, name: string, opts?: TemplateOpts): LoopTemplate {
   const f = FACTORIES[name];
-  if (!f) throw new Error(`未知模板：${name}（可选 ${TEMPLATE_NAMES.join('/')}）`);
+  if (!f) throw new Error(`Unknown template: ${name} (available: ${TEMPLATE_NAMES.join('/')})`);
   return f(deps, opts);
 }
 

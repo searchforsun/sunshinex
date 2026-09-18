@@ -2,7 +2,6 @@ import { AgentRole, GraphDeps, WorkflowDef } from '../types';
 import { GraphEngine, GraphNode } from './engine';
 import { makeCiNode, makeGateNode, makeLoopNode } from './nodes';
 import { makeRoleAgent, ROLE_PRESETS } from './agents';
-import { pick } from '../i18n';
 
 const KINDS = ['loop', 'agent', 'gate', 'ci'] as const;
 
@@ -13,12 +12,12 @@ export type WorkflowValidateResult =
 /** 工作流结构校验：一次全量报告（kind 白名单 / deps 存在性 / 环预检 / 按 kind 必填 config） */
 export function validateWorkflow(def: unknown): WorkflowValidateResult {
   const errors: string[] = [];
-  if (typeof def !== 'object' || def === null) return { ok: false, errors: ['工作流定义必须为对象'] };
+  if (typeof def !== 'object' || def === null) return { ok: false, errors: ['Workflow definition must be an object'] };
   const d = def as Record<string, unknown>;
-  if (typeof d.name !== 'string' || d.name.length === 0) errors.push('name 必须为非空字符串');
+  if (typeof d.name !== 'string' || d.name.length === 0) errors.push('name must be a non-empty string');
 
   const nodes = Array.isArray(d.nodes) ? (d.nodes as Record<string, unknown>[]) : null;
-  if (!nodes || nodes.length === 0) errors.push('nodes 必须为非空数组');
+  if (!nodes || nodes.length === 0) errors.push('nodes must be a non-empty array');
 
   const t = d.termination as Record<string, unknown> | undefined;
   if (
@@ -28,7 +27,7 @@ export function validateWorkflow(def: unknown): WorkflowValidateResult {
     typeof t.maxTokens !== 'number' ||
     typeof t.timeoutMs !== 'number'
   ) {
-    errors.push('termination 必须含数字型 maxNodes/maxTokens/timeoutMs');
+    errors.push('termination must contain numeric maxNodes/maxTokens/timeoutMs');
   }
 
   if (nodes && nodes.length > 0) {
@@ -36,20 +35,20 @@ export function validateWorkflow(def: unknown): WorkflowValidateResult {
     const ids = nodes.map((n) => (typeof n.id === 'string' && n.id.length > 0 ? n.id : ''));
     nodes.forEach((n, idx) => {
       const id = ids[idx];
-      if (!id) errors.push(`nodes[${idx}] 缺少非空 id`);
+      if (!id) errors.push(`nodes[${idx}] is missing a non-empty id`);
       const kind = String(n.kind ?? '');
-      if (!(KINDS as readonly string[]).includes(kind)) errors.push(`节点 ${id || `#${idx}`} kind 非法：${kind || '（缺失）'}`);
+      if (!(KINDS as readonly string[]).includes(kind)) errors.push(`Node ${id || `#${idx}`} has invalid kind: ${kind || '(missing)'}`);
       if (!Array.isArray(n.deps)) {
-        errors.push(`节点 ${id || `#${idx}`} deps 必须为数组`);
+        errors.push(`Node ${id || `#${idx}`} deps must be an array`);
         return;
       }
       for (const dep of n.deps as unknown[]) {
-        if (typeof dep !== 'string' || !ids.includes(dep)) errors.push(`节点 ${id} 引用不存在的依赖：${String(dep)}`);
+        if (typeof dep !== 'string' || !ids.includes(dep)) errors.push(`Node ${id} references a missing dependency: ${String(dep)}`);
       }
       const config = (typeof n.config === 'object' && n.config !== null ? n.config : {}) as Record<string, unknown>;
-      if (kind === 'ci' && typeof config.command !== 'string') errors.push(pick(`Node ${id} (ci) requires a command`, `节点 ${id}（ci）缺少必填 command`));
+      if (kind === 'ci' && typeof config.command !== 'string') errors.push(`Node ${id} (ci) requires a command`);
       if (kind === 'agent' && !(typeof config.role === 'string' && config.role in ROLE_PRESETS)) {
-        errors.push(pick(`Node ${id} (agent) role must be one of ${Object.keys(ROLE_PRESETS).join('/')}`, `节点 ${id}（agent）role 必须为 ${Object.keys(ROLE_PRESETS).join('/')}`));
+        errors.push(`Node ${id} (agent) role must be one of ${Object.keys(ROLE_PRESETS).join('/')}`);
       }
     });
     // 环预检：Kahn 计数（仅统计工作流内已声明的依赖）
@@ -82,7 +81,7 @@ export function validateWorkflow(def: unknown): WorkflowValidateResult {
     }
     if (placed < ids.length) {
       const cycle = ids.filter((id) => (indeg.get(id) ?? 0) > 0);
-      errors.push(`工作流含环，未入层节点：${cycle.join(' -> ')}`);
+      errors.push(`Workflow has a cycle; nodes not layered: ${cycle.join(' -> ')}`);
     }
   }
 

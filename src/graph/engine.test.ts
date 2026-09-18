@@ -111,7 +111,7 @@ test('GraphEngine 超时：timeoutMs=5 + 慢节点 → failed', async () => {
   );
   const r = await eng.run('超时终止');
   assert.equal(r.status, 'failed');
-  assert.ok(String(r.reply ?? '').includes('超时'));
+  assert.ok(String(r.reply ?? '').includes('timed out'));
 });
 
 test('GraphEngine paused → resume：审批消费续跑，已 pass 节点不重跑', async () => {

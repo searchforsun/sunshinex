@@ -71,7 +71,7 @@ test('validateWorkflow：非法 kind / deps 引用不存在 / 含环 / 必填缺
     const joined = r.errors.join(' | ');
     assert.ok(joined.includes('wizard'), `kind 非法应列明：${joined}`);
     assert.ok(joined.includes('ghost'), `deps 引用不存在应列明：${joined}`);
-    assert.ok(joined.includes('含环'), `环应列明：${joined}`);
+    assert.ok(joined.includes('has a cycle'), `环应列明：${joined}`);
     assert.ok(joined.includes('command'), `ci 必填项缺失应列明：${joined}`);
   }
 });

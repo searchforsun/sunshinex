@@ -8,6 +8,7 @@ import type {
   StopReason,
 } from '../types';
 import { guardrailStop } from '../harness/guardrail';
+import { t } from '../i18n';
 
 export type { GraphDeps, GraphTermination };
 
@@ -55,7 +56,7 @@ export class GraphEngine {
     }
     for (const n of this.nodes.values()) {
       for (const d of n.deps) {
-        if (!indeg.has(d)) throw new Error(`依赖引用不存在的节点：${d}`);
+        if (!indeg.has(d)) throw new Error(`Dependency references a missing node: ${d}`);
         indeg.set(n.id, (indeg.get(n.id) ?? 0) + 1);
         dependents.get(d)!.push(n.id);
       }
@@ -77,7 +78,7 @@ export class GraphEngine {
     }
     if (placed < this.nodes.size) {
       const cycle = [...this.nodes.keys()].filter((id) => (indeg.get(id) ?? 0) > 0);
-      throw new Error(`工作流含环，未入层节点（环成员及其下游）：${cycle.join(' -> ')}`);
+      throw new Error(`Workflow has a cycle; nodes not layered (cycle members and downstream): ${cycle.join(' -> ')}`);
     }
     return out;
   }
@@ -104,7 +105,7 @@ export class GraphEngine {
     approvals?: Record<string, boolean>,
     opts: { budget?: Partial<GraphTermination> } = {},
   ): Promise<GraphRunResult> {
-    if (!this.ctx) throw new Error('尚未运行，无断点可续');
+    if (!this.ctx) throw new Error('No checkpoint available to resume');
     if (approvals) {
       this.ctx.state.approvals = {
         ...((this.ctx.state.approvals as Record<string, boolean>) ?? {}),
@@ -132,7 +133,7 @@ export class GraphEngine {
           continue;
         }
         if (ctx.state.__dryRun === true) {
-          const preview: GraphNodeOutput = { nodeId: id, status: 'pass', reply: `[dry-run] 预览: ${id}(${node.kind})`, tokens: 0 };
+          const preview: GraphNodeOutput = { nodeId: id, status: 'pass', reply: t('[dry-run] preview: ' + id + '(' + node.kind + ')', '[dry-run] 预览: ' + id + '(' + node.kind + ')'), tokens: 0 };
           ctx.results[id] = preview;
           this.completed.add(id);
           continue;
@@ -150,10 +151,10 @@ export class GraphEngine {
         maxIterations: this.term.maxNodes,
       });
       if (hit === 'deadline')
-        return this.finish('failed', `执行超时（超过 ${this.term.timeoutMs}ms）`, { stopReason: 'deadline' });
-      if (hit === 'budget') return this.finish('paused', 'Token 预算超支，已暂停', { stopReason: 'budget' });
+        return this.finish('failed', t('Execution timed out (over ' + this.term.timeoutMs + 'ms)', '执行超时（超过 ' + this.term.timeoutMs + 'ms）'), { stopReason: 'deadline' });
+      if (hit === 'budget') return this.finish('paused', t('Token budget exceeded, paused', 'Token 预算超支，已暂停'), { stopReason: 'budget' });
       if (hit === 'max-steps')
-        return this.finish('failed', `节点步数耗尽（maxNodes=${this.term.maxNodes}）`, { stopReason: 'max-steps' });
+        return this.finish('failed', t('Node steps exhausted (maxNodes=' + this.term.maxNodes + ')', '节点步数耗尽（maxNodes=' + this.term.maxNodes + '）'), { stopReason: 'max-steps' });
       await Promise.allSettled(
         runnable.map(async (node) => {
           const inputs: Record<string, GraphNodeOutput> = {};
@@ -193,11 +194,11 @@ export class GraphEngine {
     const all = Object.values(ctx.results);
     const pausedGates = all.filter((r) => r.status === 'paused').map((r) => r.nodeId);
     if (pausedGates.length > 0)
-      return this.finish('paused', `等待人工审批：${pausedGates.join(', ')}`, { pendingGates: pausedGates });
+      return this.finish('paused', t('Waiting for human approval: ' + pausedGates.join(', '), '等待人工审批：' + pausedGates.join(', ')), { pendingGates: pausedGates });
     const failedNodes = all.filter((r) => r.status === 'failed').map((r) => r.nodeId);
     if (failedNodes.length > 0)
-      return this.finish('failed', `存在失败节点：${failedNodes.join(', ')}`, { failedNodes });
-    return this.finish('done', '全部节点完成', { stopReason: 'done' });
+      return this.finish('failed', t('Failed nodes: ' + failedNodes.join(', '), '存在失败节点：' + failedNodes.join(', ')), { failedNodes });
+    return this.finish('done', t('All nodes completed', '全部节点完成'), { stopReason: 'done' });
   }
 
   private finish(

@@ -1,7 +1,6 @@
 import { AgentRole, GraphDeps, GraphNodeOutput } from '../types';
 import { GraphNode } from './engine';
 import { AgentRegistry, ROLE_PRESETS, SubagentRunner, rolePreset } from '../harness/subagent';
-import { pick } from '../i18n';
 
 export { ROLE_PRESETS };
 
@@ -48,7 +47,7 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
       const r = await runner.runSubagent(
         { agent_id: role, label: preset.label },
         {
-          taskLine: pick(`Current instruction: ${goalLabel}`, `当前指令：${goalLabel}`),
+          taskLine: `Current instruction: ${goalLabel}`,
           budget: {
             maxSteps: opts.maxSteps ?? 200,
             tokenCap: remaining,
