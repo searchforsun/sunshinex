@@ -72,7 +72,7 @@ test('OpenAIAdapter.completeStream：非流式 HTTP 错误照常抛出', async (
   const srv = await startSse([], 500);
   try {
     const a = new OpenAIAdapter({ provider: 'openai', baseURL: srv.url, apiKey: 'k' });
-    await assert.rejects(a.completeStream('p', () => {}), /OpenAI 请求失败：500/);
+    await assert.rejects(a.completeStream('p', () => {}), /OpenAI request failed: 500/);
   } finally {
     srv.close();
   }

@@ -25,12 +25,12 @@ test('settle：写入 .data/skills/{id}/skill.md，frontmatter 可读回且可 r
     const file = path.join(root, '.data', 'skills', id, 'skill.md');
     assert.ok(fs.existsSync(file));
     const meta = parseSkillFrontmatter(fs.readFileSync(file, 'utf8'));
-    assert.equal(meta.name, '沉淀:实现 sqlite-vec 后端');
+    assert.equal(meta.name, 'settle:实现 sqlite-vec 后端');
     assert.equal(meta.version, '0.1.0');
     assert.equal(meta.kind, 'prompt');
     const resolved = resolveSkill(path.join(root, '.data', 'skills'), id);
     assert.ok(resolved.ok);
-    if (resolved.ok) assert.ok(resolved.value.body.includes('成功答复'));
+    if (resolved.ok) assert.ok(resolved.value.body.includes('Successful reply'));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

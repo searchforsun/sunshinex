@@ -1,5 +1,6 @@
 /** 模型适配层：统一推理接口，多后端可插拔 */
 import { ModelTier, RouteDecision } from '../types';
+import { t } from '../i18n';
 
 export type { ModelTier };
 /** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
@@ -49,10 +50,11 @@ export function extractCacheTokens(data: unknown): number {
 /** 占位适配器：不实际调用云端。回协议内 JSON（done+reply），绝不回显 prompt——回显会把系统提示词经渲染层泄露到界面 */
 export class StubAdapter implements ModelAdapter {
   readonly provider = 'stub';
-  readonly label = 'stub（未接入真实模型）';
+  /** 展示标签属界面外观（banner/状态栏）→ t() 双语；错误与答复经 model-error 通道进链 → 英文单语 */
+  readonly label = t('stub (no real model wired)', 'stub（未接入真实模型）');
   async complete(_prompt: string, hooks?: UsageHooks): Promise<string> {
     hooks?.onUsage?.(0); // 占位适配器无真实用量
-    return '{"done":true,"reply":"[stub] 未接入真实模型：请在 .env 配置 SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL 后重试"}';
+    return '{"done":true,"reply":"[stub] no real model wired: set SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL in .env, then retry"}';
   }
 
   async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
@@ -89,7 +91,7 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 
   async complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat): Promise<string> {
-    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY 未配置');
+    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
@@ -104,14 +106,14 @@ export class OpenAIAdapter implements ModelAdapter {
         }),
         signal: ctrl.signal,
       });
-      if (!resp.ok) throw new Error(`OpenAI 请求失败：${resp.status}`);
+      if (!resp.ok) throw new Error(`OpenAI request failed: ${resp.status}`);
       const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
       hooks?.onCache?.(extractCacheTokens(data)); // 缓存命中先于 usage 回传，订阅方聚合时序一致
       hooks?.onPrompt?.(extractPromptTokens(data));
       hooks?.onUsage?.(extractUsage(data));
       return data.choices?.[0]?.message?.content ?? '';
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') throw new Error('模型调用超时');
+      if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
       throw e;
     } finally {
       clearTimeout(timer);
@@ -120,7 +122,7 @@ export class OpenAIAdapter implements ModelAdapter {
 
   /** 流式补全：stream:true SSE 输出，\n\n 分帧缓冲（容忍跨 chunk 半帧），data:[DONE] 终止；usage 取自携带用量的事件帧 */
   async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat): Promise<string> {
-    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY 未配置');
+    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
@@ -138,7 +140,7 @@ export class OpenAIAdapter implements ModelAdapter {
         }),
         signal: ctrl.signal,
       });
-      if (!resp.ok || !resp.body) throw new Error(`OpenAI 请求失败：${resp.status}`);
+      if (!resp.ok || !resp.body) throw new Error(`OpenAI request failed: ${resp.status}`);
       let full = '';
       let buffer = '';
       const decoder = new TextDecoder();
@@ -173,7 +175,7 @@ export class OpenAIAdapter implements ModelAdapter {
       }
       return full;
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') throw new Error('模型调用超时');
+      if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
       throw e;
     } finally {
       clearTimeout(timer);

@@ -25,7 +25,7 @@ test('OpenAIAdapter 无 key 时 complete 抛错', async () => {
   await assert.rejects(() => a.complete('hi'));
 });
 
-test('OpenAIAdapter 超时时抛「模型调用超时」', async () => {
+test('OpenAIAdapter 超时时抛「Model call timed out」', async () => {
   const srv = http.createServer((_req, res) => {
     // 挂起不响应，触发客户端超时
   });
@@ -33,7 +33,7 @@ test('OpenAIAdapter 超时时抛「模型调用超时」', async () => {
   const addr = srv.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', timeoutMs: 300 });
-  await assert.rejects(() => a.complete('hi'), /模型调用超时/);
+  await assert.rejects(() => a.complete('hi'), /Model call timed out/);
   srv.close();
 });
 

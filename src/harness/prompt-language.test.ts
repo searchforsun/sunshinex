@@ -42,6 +42,18 @@ const SCOPES: Record<string, string[]> = {
     'src/graph/engine.ts',
     'src/graph/templates.ts',
   ],
+  B4: [
+    'src/harness/reactor.ts',
+    'src/harness/subagent.ts',
+    'src/harness/sunshine-init.ts',
+    'src/harness/security/guard.ts',
+    'src/harness/security/chain.ts',
+    'src/harness/security/sandbox.ts',
+    'src/harness/mcp/client.ts',
+    'src/harness/skills.ts',
+    'src/harness/skills/learned.ts',
+    'src/model/adapter.ts',
+  ],
 };
 
 /**

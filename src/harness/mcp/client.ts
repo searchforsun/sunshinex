@@ -53,21 +53,21 @@ export class McpHost {
   /** 传输工厂：stdio/http/sse 三分支收敛一处；形态字段缺失或 url 非法均装配期 fail-fast（与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输） */
   private makeTransport(cfg: McpServerConfig): Transport {
     const fail = (msg: string): CodedToolError =>
-      new CodedToolError('MCP_CONNECT_FAILED', `MCP 服务器连接失败（${cfg.name}）：${msg}`);
+      new CodedToolError('MCP_CONNECT_FAILED', `MCP server connection failed (${cfg.name}): ${msg}`);
     switch (cfg.transport ?? 'stdio') {
       case 'http':
       case 'sse': {
-        if (!cfg.url) throw fail(`${cfg.transport} 传输缺少 url`);
+        if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
         try {
           const url = new URL(cfg.url);
           return cfg.transport === 'sse' ? new SSEClientTransport(url) : new StreamableHTTPClientTransport(url);
         } catch (e) {
-          throw fail(`无效 url：${e instanceof Error ? e.message : String(e)}`);
+          throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
       case 'stdio':
       default:
-        if (!cfg.command) throw fail('stdio 传输缺少 command');
+        if (!cfg.command) throw fail('stdio transport requires a command');
         return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [] });
     }
   }
@@ -76,7 +76,7 @@ export class McpHost {
   async registerTools(): Promise<number> {
     let count = 0;
     for (const cfg of this.servers) {
-      if (this.conns.has(cfg.name)) throw new CodedToolError('MCP_DUP_SERVER', `MCP 服务器名重复：${cfg.name}`);
+      if (this.conns.has(cfg.name)) throw new CodedToolError('MCP_DUP_SERVER', `Duplicate MCP server name: ${cfg.name}`);
       const transport = this.makeTransport(cfg);
       const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
       try {
@@ -85,12 +85,12 @@ export class McpHost {
         // 失败路径须显式关闭半开传输：SSE 的 EventSource 重连循环会残留 Socket 句柄，挂住测试进程不退出
         await client.close().catch(() => {});
         const msg = e instanceof Error ? e.message : String(e);
-        throw new CodedToolError('MCP_CONNECT_FAILED', `MCP 服务器连接失败（${cfg.name}）：${msg.slice(0, 120)}`);
+        throw new CodedToolError('MCP_CONNECT_FAILED', `MCP server connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
       }
       const actual = client.getServerVersion()?.name;
       if (actual !== cfg.name) {
         await client.close().catch(() => {});
-        throw new CodedToolError('MCP_SERVER_MISMATCH', `握手身份与配置不符（${cfg.name}）：实际 serverInfo.name=${actual ?? '(未知)'}`);
+        throw new CodedToolError('MCP_SERVER_MISMATCH', `Handshake identity mismatch (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'}`);
       }
       this.conns.set(cfg.name, { client, config: cfg });
       const listed = await client.listTools();
@@ -115,21 +115,21 @@ export class McpHost {
     const timeoutMs = this.opts.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
     return {
       name: fqName,
-      description: description ?? `MCP 工具 ${toolName}（服务器 ${server}）`,
+      description: description ?? `MCP tool ${toolName} (server ${server})`,
       category: 'external' as ToolCategory,
       executor: async (input: ToolInput): Promise<ExecResult> => {
         const args = input ?? {};
         if (Buffer.byteLength(JSON.stringify(args), 'utf8') > MAX_ARGS_BYTES) {
-          throw new CodedToolError('MCP_ARGS_TOO_LARGE', `MCP 调用参数超限（>${MAX_ARGS_BYTES} 字节）：${fqName}`);
+          throw new CodedToolError('MCP_ARGS_TOO_LARGE', `MCP args too large (>${MAX_ARGS_BYTES} bytes): ${fqName}`);
         }
         const res = await withTimeout(
           client.callTool({ name: toolName, arguments: args }),
           timeoutMs,
           'MCP_TIMEOUT',
-          `MCP 调用超时（${timeoutMs}ms）：${fqName}`,
+          `MCP call timed out (${timeoutMs}ms): ${fqName}`,
         );
         const text = textOf(res.content);
-        if (res.isError) throw new CodedToolError('MCP_TOOL_ERROR', text || `MCP 工具返回错误：${fqName}`);
+        if (res.isError) throw new CodedToolError('MCP_TOOL_ERROR', text || `MCP tool returned an error: ${fqName}`);
         return { exitCode: 0, stdout: text, stderr: '', timedOut: false };
       },
     };

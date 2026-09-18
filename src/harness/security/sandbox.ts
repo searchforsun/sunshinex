@@ -16,9 +16,9 @@ export class ProcessSandbox implements ToolBackend {
         if (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code === 'ETIMEDOUT' || (err as { killed?: boolean }).killed) {
-            resolve(fail('EXEC_TIMEOUT', `命令超时：${cmd}`));
+            resolve(fail('EXEC_TIMEOUT', `command timed out: ${cmd}`));
           } else {
-            resolve(fail('EXEC_FAILED', stderr || err.message || '命令执行失败'));
+            resolve(fail('EXEC_FAILED', stderr || err.message || 'command failed'));
           }
           return;
         }

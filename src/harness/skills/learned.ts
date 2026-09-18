@@ -18,7 +18,7 @@ export function slugify(goal: string): string {
 }
 
 function clip(text: string): string {
-  return text.length > MAX_BODY_CHARS ? `${text.slice(0, MAX_BODY_CHARS)}…（已截断）` : text;
+  return text.length > MAX_BODY_CHARS ? `${text.slice(0, MAX_BODY_CHARS)}…(truncated)` : text;
 }
 
 /**
@@ -32,7 +32,7 @@ export class LearnedSkillStore {
   settle(goal: string, reply: string, opts?: { limit?: number }): Result<string> {
     const g = goal.trim();
     const rep = reply.trim();
-    if (!g || !rep) return fail('SKILL_SETTLE_EMPTY', '沉淀失败：goal 与 reply 均不得为空');
+    if (!g || !rep) return fail('SKILL_SETTLE_EMPTY', 'SKILL_SETTLE_EMPTY: goal and reply must not be empty');
 
     const dir = path.join(resolveDataDir(this.root), 'skills');
     fs.mkdirSync(dir, { recursive: true });
@@ -41,19 +41,19 @@ export class LearnedSkillStore {
     const id = this.allocateId(dir, slugify(g));
     const md = [
       '---',
-      `name: 沉淀:${g.slice(0, 30)}`,
-      `description: 学习沉淀 —— ${g.slice(0, 30)}`,
+      `name: settle:${g.slice(0, 30)}`,
+      `description: learned settle — ${g.slice(0, 30)}`,
       'version: 0.1.0',
       'kind: prompt',
       'params:',
       'source: learned',
       '---',
       '',
-      '# 目标',
+      '# Goal',
       '',
       g,
       '',
-      '# 成功答复',
+      '# Successful reply',
       '',
       clip(rep),
       '',

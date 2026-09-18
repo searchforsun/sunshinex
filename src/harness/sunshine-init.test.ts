@@ -71,12 +71,12 @@ test('sunshineInitGoal：去标题锚定、提示词单语、不写产出语言�
     assert.ok(!/[\u4e00-\u9fff]/.test(g), 'en 提示词不得混入中文（D10）');
     assert.ok(!/in Chinese|in English|用中文|写成中文|中文项目/.test(g), '不写产出语言条款（D8）');
 
+    // 提示词恒英文单语：--language=zh 下 goal 逐字节不变（已废止 en/zh 双语成对，goal 不随外观语言分叉）
     setLanguage('zh');
     try {
       const gz = sunshineInitGoal(dir, false);
-      assert.match(gz, /依赖与脚本定义/, 'zh 侧同结构、同覆盖项');
-      assert.match(gz, /提交前门禁/);
-      assert.match(gz, /60–120 行/);
+      assert.equal(gz, g, 'zh 下 goal 与 en 侧逐字节相同（提示词不随 --language 分叉）');
+      assert.ok(!/[\u4e00-\u9fff]/.test(gz), 'zh 下同样零中文（提示词面）');
       assert.ok(!/^#{1,6}\s/m.test(gz), 'zh 侧同样无标题字面锚点');
       assert.ok(!/Compact Instructions|压缩指令|MCP 服务器/.test(gz), 'zh 侧不锚定机器消费区标题');
     } finally {

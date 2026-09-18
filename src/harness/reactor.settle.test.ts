@@ -53,7 +53,7 @@ test('done 路径：settle 触发一次，产物 frontmatter 可解析', async (
     const ids = fs.readdirSync(dir);
     assert.equal(ids.length, 1);
     const meta = parseSkillFrontmatter(fs.readFileSync(path.join(dir, ids[0], 'skill.md'), 'utf8'));
-    assert.equal(meta.name, '沉淀:部署手册');
+    assert.equal(meta.name, 'settle:部署手册');
     assert.equal(meta.kind, 'prompt');
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;

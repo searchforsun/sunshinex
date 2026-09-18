@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ToolRegistry } from '../tools';
 import { McpHost } from './client';
 
-/** 远程形态必须经真实传输发起连接失败，而非被 stdio 形态守卫兜底（消息不含「缺少 stdio command」即证明走了传输工厂） */
+/** 远程形态必须经真实传输发起连接失败，而非被 stdio 形态守卫兜底（消息不含 stdio 形态守卫串即证明走了传输工厂） */
 async function assertRemoteConnectFailed(transport: 'http' | 'sse', port: number): Promise<void> {
   const registry = new ToolRegistry();
   const host = new McpHost([{ name: 'far', url: `http://127.0.0.1:${port}/mcp`, transport }], registry);
@@ -11,7 +11,7 @@ async function assertRemoteConnectFailed(transport: 'http' | 'sse', port: number
     () => host.registerTools(),
     (e: unknown) => {
       assert.equal((e as { code?: string }).code, 'MCP_CONNECT_FAILED');
-      assert.ok(!/缺少 stdio command/.test((e as Error).message), '应经由远程传输连接失败，而非形态守卫兜底');
+      assert.ok(!/requires a command/.test((e as Error).message), '应经由远程传输连接失败，而非形态守卫兜底');
       return true;
     },
   );

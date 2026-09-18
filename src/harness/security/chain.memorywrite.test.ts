@@ -213,7 +213,7 @@ test('数据目录回退 <root>/.data（HOME 不可写）→ 记忆写仍受总�
     if (!off.allowed) {
       assert.ok(off.reason.includes('COMMAND_DENIED'), `拒绝文案沿既有前缀：${off.reason}`);
       assert.ok(
-        !off.reason.includes('路径越出项目 root'),
+        !off.reason.includes('path escapes project root'),
         `拒绝原因须为记忆侧可辨识文案，不得复用 root 越界文案：${off.reason}`,
       );
     }

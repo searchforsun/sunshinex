@@ -20,9 +20,9 @@ export class SecurityGuard {
     const specifier = this.extractSpecifier(tool, input);
     const decision = this.policy.decide(tool, specifier);
 
-    if (decision === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: deny 规则匹配' };
+    if (decision === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: deny rule matched' };
     if (tool === 'Bash' && this.isDestructiveCommand(specifier)) {
-      return { allowed: false, reason: `COMMAND_DENIED: 破坏性命令被安全底线拦截：${specifier.slice(0, 80)}` };
+      return { allowed: false, reason: `COMMAND_DENIED: destructive command blocked by safety floor: ${specifier.slice(0, 80)}` };
     }
     // 类别硬底线与破坏性命令同级：先于 allow 规则求值，策略规则不可豁免；dontAsk 模式同样不豁免（免审批 ≠ 免策略）
     if (tool === 'WebFetch') {
@@ -37,7 +37,7 @@ export class SecurityGuard {
     if (tool.startsWith('mcp__')) {
       const server = tool.split('__')[1] ?? '';
       if (!this.mcpServers.includes(server)) {
-        return { allowed: false, reason: `COMMAND_DENIED: MCP 服务器未登记，外部工具默认拒绝：${server || '(空)'}` };
+        return { allowed: false, reason: `COMMAND_DENIED: MCP server not registered, external tools denied by default: ${server || '(empty)'}` };
       }
     }
     if (decision === 'allow') return { allowed: true };
@@ -47,7 +47,7 @@ export class SecurityGuard {
     if (this.mode === 'dontAsk') return { allowed: true };
     if (this.mode === 'plan') {
       if (tool !== 'Read' && tool !== 'Grep' && tool !== 'Glob') {
-        return { allowed: false, reason: 'COMMAND_DENIED: plan 模式仅允许只读操作' };
+        return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
       }
       return { allowed: true };
     }
@@ -56,7 +56,7 @@ export class SecurityGuard {
     if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return { allowed: true };
     // spawn 无直接 IO 副作用（派生即编排；子代理内部每个工具调用独立过安全链），manual 下免审批放行
     if (tool === 'spawn') return { allowed: true };
-    return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual 模式需交互确认（阶段一未实现）' };
+    return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual mode requires interactive confirmation' };
   }
 
   private asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
@@ -93,15 +93,15 @@ export class SecurityGuard {
       id: `ap-${++this.seq}`,
       kind: tool === 'Bash' ? 'command' : tool.startsWith('mcp__') ? 'mcp' : tool === 'WebFetch' ? 'webfetch' : tool === 'WebSearch' ? 'websearch' : 'write',
       subject,
-      reason: 'manual 模式需交互确认',
+      reason: 'manual mode requires interactive confirmation',
     };
     let d: ApprovalDecision;
     try {
       d = await this.asker(req);
     } catch (e) {
-      return { allowed: false, reason: `COMMAND_DENIED: asker 异常（${e instanceof Error ? e.message : String(e)}）` };
+      return { allowed: false, reason: `COMMAND_DENIED: asker failed (${e instanceof Error ? e.message : String(e)})` };
     }
-    if (d === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: 用户拒绝' };
+    if (d === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: rejected by user' };
     if (d === 'always') this.sessionAllows.add(this.allowKey(tool, subject));
     return { allowed: true };
   }
@@ -157,10 +157,10 @@ export class SecurityGuard {
     try {
       parsed = new URL(raw);
     } catch {
-      return { allowed: false, reason: 'COMMAND_DENIED: WebFetch URL 非法' };
+      return { allowed: false, reason: 'COMMAND_DENIED: invalid WebFetch URL' };
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return { allowed: false, reason: `COMMAND_DENIED: WebFetch 仅允许 http/https：${parsed.protocol}` };
+      return { allowed: false, reason: `COMMAND_DENIED: WebFetch allows http/https only: ${parsed.protocol}` };
     }
     return null;
   }
@@ -171,10 +171,10 @@ export class SecurityGuard {
     try {
       parsed = new URL(resolveWebSearchEndpoint());
     } catch {
-      return { allowed: false, reason: 'COMMAND_DENIED: WebSearch 引擎端点非法' };
+      return { allowed: false, reason: 'COMMAND_DENIED: invalid WebSearch endpoint' };
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return { allowed: false, reason: `COMMAND_DENIED: WebSearch 仅允许 http/https 端点：${parsed.protocol}` };
+      return { allowed: false, reason: `COMMAND_DENIED: WebSearch allows http/https endpoints only: ${parsed.protocol}` };
     }
     return null;
   }

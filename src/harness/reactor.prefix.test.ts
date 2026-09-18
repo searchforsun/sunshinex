@@ -64,7 +64,7 @@ test('前缀稳定化：相邻步严格前缀连续（无档位行，唯一差�
     for (let i = 1; i < prompts.length; i++) {
       assert.ok(prompts[i].startsWith(prompts[i - 1]), `第 ${i + 1} 轮 prompt 应以第 ${i} 轮为逐字节前缀（前缀缓存第一要义）`);
     }
-    assert.ok(prompts[0].startsWith('You are SunshineX'), '稳定前缀以身份段开头');
+    assert.ok(prompts[0].startsWith('You are the SunshineX agent'), '稳定前缀以身份段开头（英文单语）');
     assert.ok(prompts[0].includes('Available tools:'), '稳定前缀覆盖工具清单段');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

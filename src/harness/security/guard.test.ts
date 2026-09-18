@@ -29,7 +29,7 @@ test('破坏性底线：三模式下递归删除被拦截', () => {
     const g = new SecurityGuard(new PolicyEngine(), mode);
     const r = g.preToolUse('Bash', { command: 'rm -rf build' });
     assert.equal(r.allowed, false, mode);
-    if (!r.allowed) assert.match(r.reason, /破坏性命令/);
+    if (!r.allowed) assert.match(r.reason, /destructive command blocked by safety floor/);
   }
 });
 

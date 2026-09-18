@@ -160,8 +160,8 @@ test('会话层：/plan 规划段经主链——探针证明不走 graph 角色�
     assert.equal(calls.length, 1, '规划期应恰有一次 Reactor.run（单次模型调用）');
     const c = calls[0];
     assert.ok(
-      !/你的角色：规划师/.test(c.goal),
-      '规划段不得再走 graph 角色节点框定（旧形态 goal 含「你的角色：规划师」；角色框定已降为提示词级）',
+      !/你的角色：规划师|Your role: Planner/.test(c.goal),
+      '规划段不得再走 graph 角色节点框定（旧形态 goal 含角色行；角色框定已降为提示词级，且角色行为英文单语）',
     );
     assert.match(c.goal, /numbered step plan/, '规划指令应经主链下发（主链提示词级角色框定）');
     assert.equal(c.opts?.maxSteps, undefined, '会话层不再硬填 maxSteps:6（旧形态为 6）');

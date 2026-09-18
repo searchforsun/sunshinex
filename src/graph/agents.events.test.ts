@@ -77,9 +77,9 @@ test('Graph 不注入 onEvent：角色节点零副作用照常完成', async () 
   }
 });
 
-test('ROLE_PRESETS 框定不变（透传不改变角色语义）', () => {
-  assert.ok(ROLE_PRESETS.planner.label.en.length > 0 && ROLE_PRESETS.planner.label.zh.length > 0);
-  assert.ok(ROLE_PRESETS.developer.framing.en.length > 0 && ROLE_PRESETS.developer.framing.zh.length > 0);
+test('ROLE_PRESETS 框定不变（透传不改变角色语义；英文单语）', () => {
+  assert.ok(ROLE_PRESETS.planner.label.length > 0 && !/[一-鿿]/.test(ROLE_PRESETS.planner.label));
+  assert.ok(ROLE_PRESETS.developer.framing.length > 0 && !/[一-鿿]/.test(ROLE_PRESETS.developer.framing));
 });
 
 test('role agent 收敛 Runner：子代理事件带 subagent 标识透传（单一拼装权威）', async () => {

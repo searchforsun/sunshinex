@@ -135,7 +135,7 @@ const PLACEHOLDER = /\{\{(\w+)\}\}/g;
  */
 export function resolveSkill(skillsDir: string, id: string, params?: Record<string, string>): Result<ResolvedSkill> {
   const file = skillFileIn(skillsDir, id);
-  if (file === undefined) return fail('SKILL_NOT_FOUND', `技能未注册：${id}`);
+  if (file === undefined) return fail('SKILL_NOT_FOUND', `SKILL_NOT_FOUND: skill not registered: ${id}`);
 
   const md = fs.readFileSync(file, 'utf8');
   const manifest: SkillManifest = { id, ...parseSkillFrontmatter(md) };
@@ -143,7 +143,7 @@ export function resolveSkill(skillsDir: string, id: string, params?: Record<stri
 
   const provided = params ?? {};
   const missing = (manifest.params ?? []).filter((p) => !(p in provided));
-  if (missing.length > 0) return fail('SKILL_PARAM_MISSING', `技能 ${id} 缺少形参：${missing.join(', ')}`);
+  if (missing.length > 0) return fail('SKILL_PARAM_MISSING', `SKILL_PARAM_MISSING: skill ${id} missing params: ${missing.join(', ')}`);
 
   const whitelist = manifest.params ?? [];
   const resolved = body.replace(PLACEHOLDER, (raw, name: string) => (whitelist.includes(name) ? provided[name] : raw));

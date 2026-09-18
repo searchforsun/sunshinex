@@ -4,7 +4,6 @@ import { GuardDecision, SecurityGuard } from './guard';
 import { ToolBackend } from '../../types';
 import { dataDirReal } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
-import { pick } from '../../i18n';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
 import { DryRun } from './dryrun';
 import { ExecResult } from '../../types';
@@ -89,21 +88,21 @@ export class SafetyChain {
       let anchor = abs;
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
-      // 记忆写窄口只约束 Write（只读放行走下方 dataDir 分支，与总开关无关）；命中记忆形态即定论：开关关闭 / 越 scope 在此拒，文案为记忆侧双语可读原因
+      // 记忆写窄口只约束 Write（只读放行走下方 dataDir 分支，与总开关无关）；命中记忆形态即定论：开关关闭 / 越 scope 在此拒，文案为记忆侧可辨识的英文拒绝原因
       if (tool === 'Write' && isMemoryPath(dataDirReal(this.root), real) !== null) {
         const memory = this.memoryWriteAllowed(real);
         return memory.allowed
           ? { allowed: true, safePath: real }
-          : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}：${real}` };
+          : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
       }
       if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
         if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
-        return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
+        return { allowed: false, reason: `COMMAND_DENIED: path escapes project root (real path): ${real}` };
       }
       return { allowed: true, safePath: real };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { allowed: false, reason: `COMMAND_DENIED: 路径判界失败：${msg.slice(0, 120)}` };
+      return { allowed: false, reason: `COMMAND_DENIED: path boundary check failed: ${msg.slice(0, 120)}` };
     }
   }
 
@@ -114,33 +113,28 @@ export class SafetyChain {
 
   /**
    * 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启、scope 覆盖三者齐备；判定两侧同走 realpath 归一（数据目录自身含符号链接段时不误拒合法写入），符号链接逃逸仍被拒。
-   * 返回**带原因的判定**而非裸 boolean（2026-09-18 审查次要项）：三种拒绝成因（总开关关闭 / 不在记忆子树内 / 越出本代理 scope）分别给出记忆侧双语可读原因，
+   * 返回**带原因的判定**而非裸 boolean（2026-09-18 审查次要项）：三种拒绝成因（总开关关闭 / 不在记忆子树内 / 越出本代理 scope）分别给出记忆侧可读原因，
    * 不再与「路径越出项目 root」共用文案——写窄口先于 root 内外分支定论时，调用方只能转述本方法的结论，笼统文案会让「开关在起作用」这一事实不可辨识。
+   * 拒绝理由经工具结果入链（进模型上下文）→ 英文单语，不随 --language 分叉。
    */
   private memoryWriteAllowed(real: string): { allowed: true } | { allowed: false; reason: string } {
     if (!resolveMemoryConfig().autoMemory) {
       return {
         allowed: false,
-        reason: pick('memory write denied: auto memory is off', '记忆写入被拒：总记忆开关已关闭'),
+        reason: 'memory write denied: auto memory is off',
       };
     }
     const dataDir = dataDirReal(this.root);
     if (isMemoryPath(dataDir, real) === null) {
       return {
         allowed: false,
-        reason: pick(
-          'memory write denied: not under <data dir>/memory/**',
-          '记忆写入被拒：不在数据目录记忆子树（<dataDir>/memory/**）内',
-        ),
+        reason: 'memory write denied: outside the memory subtree (<dataDir>/memory/**)',
       };
     }
     if (this.memoryScope !== undefined && isMemoryPath(dataDir, real, this.memoryScope) === null) {
       return {
         allowed: false,
-        reason: pick(
-          `memory write denied: outside this agent's memory scope (${this.memoryScope})`,
-          `记忆写入被拒：不在当前代理可写记忆范围（${this.memoryScope}）内`,
-        ),
+        reason: `memory write denied: outside the writable memory scope (${this.memoryScope})`,
       };
     }
     return { allowed: true };

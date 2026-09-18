@@ -1,10 +1,9 @@
 /** 子代理执行单元（单一权威）：定义解析（目录注册制 agents/{id}/agent.md + 预设四角色 + 内联临时）→
  * fork 组装（seedHistory = 主链快照 + 角色行/任务行，行号与 action 词汇对齐 graph 先例）→ 执行 → 终态一行回写。
- * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案 pick() 运行期求值禁模块级冻结 */
+ * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案恒英文单语（角色行/工具 description 直接进模型） */
 import * as fs from 'fs';
 import * as path from 'path';
 import { AgentRole, ModelTier, SessionEvent, SubagentSpawnInput } from '../types';
-import { pick } from '../i18n';
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
@@ -13,18 +12,17 @@ import { ContextManager } from './context';
 import { RunLedger } from './ledger';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
-/** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 存双语静态对，取值经 rolePreset 运行期求值 */
-export const ROLE_PRESETS: Record<AgentRole, { label: { en: string; zh: string }; framing: { en: string; zh: string } }> = {
-  planner: { label: { en: 'Planner', zh: '规划师' }, framing: { en: 'requirement breakdown, solution and path design', zh: '需求拆解、方案与路径设计' } },
-  developer: { label: { en: 'Developer', zh: '开发者' }, framing: { en: 'code implementation, refactoring and fixes', zh: '代码实现、重构与修复' } },
-  tester: { label: { en: 'Tester', zh: '测试工程师' }, framing: { en: 'test case generation, execution and failure analysis', zh: '测试用例生成、执行与失败分析' } },
-  reviewer: { label: { en: 'Reviewer', zh: '审查员' }, framing: { en: 'convention, logic and security review with a review report', zh: '规范、逻辑与安全审查，产出审查报告' } },
+/** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 恒英文单语（角色行直接进 fork 提示词） */
+export const ROLE_PRESETS: Record<AgentRole, { label: string; framing: string }> = {
+  planner: { label: 'Planner', framing: 'requirement breakdown, solution and plan' },
+  developer: { label: 'Developer', framing: 'code implementation, refactoring' },
+  tester: { label: 'Tester', framing: 'test case generation, execution and reporting' },
+  reviewer: { label: 'Reviewer', framing: 'convention, logic and security review' },
 };
 
-/** 角色预设运行期取值（语言随 --language 装配后设定，禁止模块级 pick 冻结） */
+/** 角色预设取值（英文单语）：保留函数形态作为统一入口，防调用点散读 ROLE_PRESETS */
 export function rolePreset(role: AgentRole): { label: string; framing: string } {
-  const p = ROLE_PRESETS[role];
-  return { label: pick(p.label.en, p.label.zh), framing: pick(p.framing.en, p.framing.zh) };
+  return ROLE_PRESETS[role];
 }
 
 /** 注册制子代理定义（目录注册制解析产物 / 预设角色统一形态） */
@@ -42,20 +40,20 @@ const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string } {
   const out: Record<string, string> = { name: '', description: '', version: '0.1.0' };
   const m = FRONTMATTER.exec(md);
-  if (!m) throw new Error(pick('agent.md missing frontmatter', 'agent.md 缺少 frontmatter 头'));
+  if (!m) throw new Error('agent.md missing frontmatter');
   for (const line of m[1].split(/\r?\n/)) {
     const kv = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/.exec(line.trim());
     if (kv) out[kv[1]] = kv[2].trim();
   }
-  if (!out.name) throw new Error(pick('agent.md frontmatter missing name', 'agent.md frontmatter 缺少 name'));
+  if (!out.name) throw new Error('agent.md frontmatter missing name');
   return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim() };
 }
 
 /** 注册表：四角色内建注册 + agents/{id}/agent.md 装配期一次性加载（fail-fast，运行期零增删）。
- * 内建预设存双语对、resolve 时经 pick 求值（语言为启动参数，注册可能先于语言设置）；目录注册制为用户自撰正文、语言无关直存 */
+ * 内建预设与目录注册制均为英文单语直存（角色行直接进 fork 提示词）；目录注册制正文为用户自撰物料、原样直存 */
 export class AgentRegistry {
   private defs = new Map<string, AgentDef>();
-  private builtins = new Map<string, { name: { en: string; zh: string }; framing: { en: string; zh: string } }>();
+  private builtins = new Map<string, { name: string; framing: string }>();
 
   registerBuiltins(): void {
     for (const role of Object.keys(ROLE_PRESETS) as AgentRole[]) {
@@ -81,10 +79,10 @@ export class AgentRegistry {
   resolve(id: string): AgentDef {
     const b = this.builtins.get(id);
     if (b) {
-      return { id, name: pick(b.name.en, b.name.zh), description: pick(b.framing.en, b.framing.zh), framing: pick(b.framing.en, b.framing.zh) };
+      return { id, name: b.name, description: b.framing, framing: b.framing };
     }
     const def = this.defs.get(id);
-    if (!def) throw new Error(pick(`Subagent not found: ${id}`, `未找到智能体：${id}`));
+    if (!def) throw new Error(`Subagent not found: ${id}`);
     return def;
   }
 
@@ -101,18 +99,18 @@ export function resolveSpawnSpec(
   opts?: { taskLine?: string },
 ): { roleLine?: string; taskLine: string; label: string } {
   if (!input.agent_id && !input.prompt && !opts?.taskLine) {
-    throw new Error(pick('agent_id and prompt are both missing', 'agent_id 与 prompt 皆缺'));
+    throw new Error('agent_id and prompt are both missing');
   }
   const roleLine = input.agent_id
     ? (() => {
         const def = registry.resolve(input.agent_id!);
-        return pick(`Your role: ${def.name} (${def.id}); duties: ${def.framing}`, `你的角色：${def.name}（${def.id}），职责：${def.framing}`);
+        return `Your role: ${def.name} (${def.id}); duties: ${def.framing}`;
       })()
     : undefined;
   const taskLine =
     opts?.taskLine ??
     input.prompt ??
-    pick('Continue the current task per your role framing.', '按角色框定继续当前链上任务。');
+    'Continue the current task per your role framing.';
   return { roleLine, taskLine, label: input.label ?? input.agent_id ?? 'subagent' };
 }
 
@@ -178,14 +176,14 @@ export class SubagentRunner {
   /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、background 两段式未开通 NOT_SUPPORTED、tools 未知名 INVALID_ARG */
   validateSpawnInput(input: SubagentSpawnInput): void {
     if (!input.agent_id && !input.prompt) {
-      throw new CodedToolError('INVALID_ARG', pick('agent_id and prompt are both missing', 'agent_id 与 prompt 皆缺'));
+      throw new CodedToolError('INVALID_ARG', 'agent_id and prompt are both missing');
     }
     if (input.background === true) {
-      throw new CodedToolError('NOT_SUPPORTED', pick('Background two-phase spawn is not available yet; await the result synchronously', '后台两段式未开通，请同步等待结果'));
+      throw new CodedToolError('NOT_SUPPORTED', 'Background two-phase spawn is not available yet; await the result synchronously');
     }
     for (const t of input.tools ?? []) {
       if (!this.deps.registry.has(t)) {
-        throw new CodedToolError('INVALID_ARG', pick(`Unknown tool: ${t}`, `未知工具：${t}`));
+        throw new CodedToolError('INVALID_ARG', `Unknown tool: ${t}`);
       }
     }
   }
@@ -197,7 +195,7 @@ export class SubagentRunner {
   ): Promise<Result<{ reply: string; tokens: number }>> {
     const budget = opts?.budget ?? this.getBudget?.();
     if (!budget) {
-      return fail('INVALID_STATE', pick('Subagent budget source not attached', '子代理预算源未挂载'));
+      return fail('INVALID_STATE', 'Subagent budget source not attached');
     }
     let spec: { roleLine?: string; taskLine: string; label: string };
     try {
@@ -209,7 +207,7 @@ export class SubagentRunner {
     if (this.inFlight >= SUBAGENT_CONCURRENCY_LIMIT) {
       return fail(
         'CONCURRENCY_LIMIT',
-        pick(`Subagent concurrency limit reached (${SUBAGENT_CONCURRENCY_LIMIT})`, `子代理并发已达上限（${SUBAGENT_CONCURRENCY_LIMIT}）`),
+        `Subagent concurrency limit reached (${SUBAGENT_CONCURRENCY_LIMIT})`,
       );
     }
     // 同名并发消歧（规格 §7）：后到者按在飞计数加 #N 后缀，事件标识与结论/补丁行前缀随 finalLabel；
@@ -256,12 +254,12 @@ export class SubagentRunner {
         }
         const reason = result.stopReason ?? 'failed';
         this.deps.context.appendChain([
-          { action: 'note', observation: `[${finalLabel}] ${pick('did not finish', '未完成收束')}（${reason}）` },
+          { action: 'note', observation: `[${finalLabel}] did not finish (${reason})` },
         ]);
-        return fail('INCOMPLETE', `[${finalLabel}] ${pick('did not finish', '未完成收束')}（${reason}）`);
+        return fail('INCOMPLETE', `[${finalLabel}] did not finish (${reason})`);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : pick('unknown error', '未知错误');
-        this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] ${pick('failed', '失败')}：${msg}` }]);
+        const msg = e instanceof Error ? e.message : 'unknown error';
+        this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] failed: ${msg}` }]);
         return fail('INCOMPLETE', msg);
       }
     } finally {
@@ -281,10 +279,8 @@ export class SubagentRunner {
 export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
   return {
     name: SPAWN_TOOL_NAME,
-    description: pick(
-      'Spawn a subagent to execute one independent subtask; its final report returns as this tool result. Issue multiple spawn calls in one tools array to run independent subtasks in parallel. prompt must be self-contained (goal, key facts, paths, constraints, acceptance) - the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
-      '派生一个子代理执行独立子工作，最终报告作为本轮工具结果返回；≥2 个相互独立的子工作应在同一轮 tools 数组内并行派发。prompt 必须自包含（目标、关键事实、路径、约束、验收），子代理看不到当前对话；agent_id 引用注册子代理或预设角色；tools 可选收窄子代理工具面。',
-    ),
+    description:
+      'Spawn a subagent to execute one independent subtask; its final report returns as this tool result. Issue multiple spawn calls in one tools array to run independent subtasks in parallel. prompt must be self-contained (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
     category: 'subagent',
     executor: async (input) => {
       const spec = input as SubagentSpawnInput;

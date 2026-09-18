@@ -102,7 +102,7 @@ test('read 越界路径经 execute 被拦截（COMMAND_DENIED）', async () => {
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.error.code, 'COMMAND_DENIED');
-    assert.match(r.error.message, /越出项目 root/);
+    assert.match(r.error.message, /path escapes project root/);
   }
 });
 

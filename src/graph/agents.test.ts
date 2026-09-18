@@ -19,13 +19,14 @@ import { DryRun } from '../harness/security/dryrun';
 import { ToolRegistry } from '../harness/tools';
 import { builtinTools } from '../harness/tools/builtin';
 
-test('ROLE_PRESETS：与 AgentRole 全集一致且框定非空', () => {
+test('ROLE_PRESETS：与 AgentRole 全集一致且框定非空（英文单语）', () => {
   const roles = ['planner', 'developer', 'tester', 'reviewer'];
   assert.deepEqual(Object.keys(ROLE_PRESETS).sort(), [...roles].sort());
   for (const r of roles) {
     const preset = ROLE_PRESETS[r as keyof typeof ROLE_PRESETS];
-    assert.ok(preset.label.en.length > 0 && preset.label.zh.length > 0, `${r} label 双语非空`);
-    assert.ok(preset.framing.en.length > 0 && preset.framing.zh.length > 0, `${r} framing 双语非空`);
+    // 角色行直接进 fork 提示词 → 英文单语（不得再出现双语成对）
+    assert.ok(preset.label.length > 0 && !/[一-鿿]/.test(preset.label), `${r} label 英文单语非空`);
+    assert.ok(preset.framing.length > 0 && !/[一-鿿]/.test(preset.framing), `${r} framing 英文单语非空`);
   }
 });
 

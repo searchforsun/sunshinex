@@ -436,7 +436,7 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
   assert.equal(r.done, true);
   const merged = r.steps.find((s) => s.action === 'glob+grep');
   assert.ok(merged, '并行步应合并为单条观察回填');
-  assert.match(merged.observation, /\[并行 2 项\]/);
+  assert.match(merged.observation, /\[parallel 2 tools\]/, '并行合并观察用英文段头（进链 → 英文单语）');
   assert.match(merged.observation, /\[glob\]/, '各项结果应带工具名前缀');
   const callCount = events.filter((t) => t === 'tool-call').length;
   const resultCount = events.filter((t) => t === 'tool-result').length;

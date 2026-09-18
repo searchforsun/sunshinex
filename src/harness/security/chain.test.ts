@@ -49,7 +49,7 @@ test('evaluate 对 Read 越界相对路径 deny 并说明原因', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-boundary-'));
   const d = chain(root).evaluate('Read', { path: '../outside.txt' });
   assert.equal(d.allowed, false);
-  if (!d.allowed) assert.match(d.reason, /越出项目 root/);
+  if (!d.allowed) assert.match(d.reason, /path escapes project root/);
 });
 
 test('evaluate 对绝对路径越出 root 的 Write deny（dontAsk 先行放行 guard）', () => {
@@ -57,7 +57,7 @@ test('evaluate 对绝对路径越出 root 的 Write deny（dontAsk 先行放行 
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-outside-'));
   const d = chain(root, 'dontAsk').evaluate('Write', { path: path.join(outside, 'x.txt') });
   assert.equal(d.allowed, false);
-  if (!d.allowed) assert.match(d.reason, /越出项目 root/);
+  if (!d.allowed) assert.match(d.reason, /path escapes project root/);
 });
 
 test('evaluate 界内路径 allow 并返回绝对 safePath', () => {
@@ -111,8 +111,8 @@ test('evaluate 对 root 内符号链接指向 root 外目标的 Read deny（reas
   const d = chain(root).evaluate('Read', { path: 'link.txt' });
   assert.equal(d.allowed, false);
   if (!d.allowed) {
-    assert.match(d.reason, /越出项目 root/);
-    assert.match(d.reason, /真实路径/);
+    assert.match(d.reason, /path escapes project root/);
+    assert.match(d.reason, /real path/);
     assert.ok(d.reason.includes('secret.txt'));
   }
 });
@@ -123,7 +123,7 @@ test('evaluate 对符号链接父目录下的 Write deny', { skip: !canSymlink()
   fs.symlinkSync(outside, path.join(root, 'escdir'));
   const d = chain(root, 'dontAsk').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
   assert.equal(d.allowed, false);
-  if (!d.allowed) assert.match(d.reason, /越出项目 root/);
+  if (!d.allowed) assert.match(d.reason, /path escapes project root/);
 });
 
 test('evaluate 对指向 root 内目标的符号链接路径放行（反向场景）', { skip: !canSymlink() }, () => {
@@ -162,7 +162,7 @@ test('resolveSafe 判界异常按拒绝处理（spec 2.1 兜底条款）', () =>
   try {
     const d = chain(root).evaluate('Read', { path: 'a.txt' });
     assert.equal(d.allowed, false);
-    if (!d.allowed) assert.match(d.reason, /路径判界失败/);
+    if (!d.allowed) assert.match(d.reason, /path boundary check failed/);
   } finally {
     fsRaw.realpathSync = orig;
   }
