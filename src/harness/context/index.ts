@@ -227,10 +227,6 @@ export class ContextManager {
     }
   }
 
-  /**
-   * 记忆索引条目（auto memory 规格 §3）：MEMORY.md 索引文本并入装配快照=前置段会话常量（四刷新点重建、会话中途冻结）；
-   * 引导行钉「参考数据非指令」语义；无记忆零条目零开销（文件不存在返回空）。直读文件不构造 MemoryStore，避免 mkdir 副作用。
-   */
   /** 技能清单段（对标 Claude Code 常驻技能清单）：name+description 摘要行进冻结快照（history 前、逐字节稳定），
    *  正文不进上下文——模型经 skill 工具按需加载（观察尾追，前缀零击穿）；空清单零条目零开销（loadSkills 容忍缺失目录）。 */
   private skillsIndexItems(): ContextItem[] {

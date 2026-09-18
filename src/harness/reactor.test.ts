@@ -305,10 +305,12 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {480,400}：threshold 80，摘要/重读预算各 200。观察只入 history（不写记忆）后按新语义标定：
-  // step2 est=3(装配底数)+1(goal)+178(hist f×700)=182>80 触发；一轮收敛后 est≈200(摘要)+175(重读)+4≈379≤480 即止；
-  // step3 est≈382>80 但滞回门（3-2=1<2）挡住，records 保持 1
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 480, reserve: 400 } });
+  // budget {600,400}：threshold 200，摘要/重读预算各 200。M5 恒在记忆引导条目把「装配底数」从 3 tok 抬到 122 tok（+119，
+  //   条目正文 487 字符 / 0 CJK ≈122 tok，见 index.ts memoryIndexItems），故 budget.total 由 480 抬到 600 使 threshold 80→200
+  //   （=122 底数 + 78 余量）：step1 底数 122 不过阈、不压缩，首次触发仍在 step2。观察只入 history（不写记忆）：
+  // step2 est=122(装配底数)+178(hist f×700)=300>200 触发；一轮收敛后 est=122+136(摘要)+180(重读 f)=438≤600 即止；
+  // step3 est=442>200 但滞回门（3-2=1<2）挡住，records 保持 1
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 600, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.ok(prompts[1].includes('[Compacted summary'), '触发轮当轮以收敛后上下文组装');
@@ -322,7 +324,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
 
 test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
-  // CJK 1 字符=1 token 便于精算。budget {280,200}：threshold 80，摘要/重读预算各 100
+  // CJK 1 字符=1 token 便于精算。budget {700,500}：threshold 200，摘要/重读预算各 250
   fs.writeFileSync(path.join(tmp, 'f.txt'), '压'.repeat(80));
   fs.writeFileSync(path.join(tmp, 'g.txt'), '压'.repeat(700));
   const prompts: string[] = [];
@@ -338,11 +340,14 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // 观察只入 history 后按新语义标定：
-  // step2 est=1(goal)+83(hist f×80)=84>80 滞回门（2-0≥2）触发（records 1）；chunks=[goal,hist1]≤摘要预算 100 原样入摘要，收敛后 est≈178≤280 即止；
-  // step3 读 g 后 est≈178+703>280 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：chunks 变为含上一轮摘要条目（与 step2 的 [goal,hist1] 不同 → 非 replay），records 2；
-  // 收敛环有界：hist2 等可丢块丢尽后 est≈≤100+1≤280 环止（rounds=1，fail-bounded）
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 280, reserve: 200 } });
+  // 观察只入 history 后按新语义标定（「装配底数」由 3 tok 抬到 122 tok：M5 恒在记忆引导条目，+119；正文 487 字符 / 0 CJK ≈122 tok）：
+  //   阈值 200 = 122 底数 + 78 余量；摘要/重读预算各 250（须 ≥ step2 原始块 205，否则摘要条目被截断、两轮 chunks 同构退化为 replay）
+  // step1 est=122≤200 不过阈（不压）；step2 est=122+83(hist f×80)=205>200 滞回门（2-(-2)≥2）触发（records 1）：
+  //   chunks=[引导条目 122,hist1 83]=205≤摘要预算 250 原样入摘要，收敛后 est=122+223(摘要)+84(重读 f)=429≤700 即止；
+  // step3 读 g 后 est=429+703>700 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：可丢块（上一轮摘要条目、hist2）按序丢尽，
+  //   chunks 变为 [引导条目, 重读 f]（与 step2 的 [引导条目,hist1] 不同 → 非 replay），records 2；
+  // 收敛环有界：可丢块丢尽后 est=122+224(摘要)=346≤700 环止（rounds=1，fail-bounded）
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 700, reserve: 500 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.equal(
