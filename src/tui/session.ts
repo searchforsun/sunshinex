@@ -13,6 +13,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, listSessions, newSessionId, readActivePointer, sessionsDir, parseJournalFile, reduceJournal, type SessionMeta } from './session-journal';
 import { resolveDataDir } from '../config/data-dir';
+import { MemoryStore } from '../harness/memory/store';
+import { scanMemoryText } from '../harness/memory/extractor';
+import { consolidateMemory } from '../harness/memory/consolidate';
+import { isModelSummarizer } from '../harness/context/summarizer';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -121,8 +125,8 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
 function slashHelp(): string {
   return t(
-    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context: /compact [focus] · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文：/compact [关注点] · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
+    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context: /compact [focus] · /memory persistent memory: /memory [add <text> | rm <slug> | gc] · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
+    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文：/compact [关注点] · /memory 持久记忆：/memory [add <内容> | rm <slug> | gc] · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
   );
 }
 
@@ -750,6 +754,74 @@ export class SessionController {
         return;
       }
       await this.runGoalFlow(goal);
+      return;
+    }
+    if (cmd === '/memory') {
+      // 手动通道（规格 §6）：无参列索引 / add（走与自动提取同一写时闸门）/ rm / gc（显式整理入口，阈值外 force）
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /memory unavailable now', '当前有任务进行中，暂不能执行 /memory'));
+        return;
+      }
+      const store = new MemoryStore(this.root);
+      const arg = text.slice(cmd.length).trim();
+      if (!arg) {
+        const records = store.list();
+        if (records.length === 0) {
+          this.pushMsg('system', t('No memories yet — /memory add <text> to add one', '暂无记忆——用 /memory add <内容> 添加一条'));
+          return;
+        }
+        const lines = records.map((r) => `- ${r.slug} [${r.type}] (${r.created}) ${r.description}`);
+        this.pushMsg('system', [t(`Persistent memories (${records.length}):`, `持久记忆（${records.length} 条）：`), ...lines].join('\n'));
+        return;
+      }
+      const parts = arg.split(/\s+/);
+      const sub = parts[0] ?? '';
+      const rest = parts.slice(1).join(' ').trim();
+      if (sub === 'add') {
+        if (!rest) {
+          this.pushMsg('system', t('Usage: /memory add <text>', '用法：/memory add <内容>'));
+          return;
+        }
+        const flagged = scanMemoryText(rest);
+        if (flagged) {
+          this.pushMsg('system', t(`Rejected: session-scoped or unsafe content (${flagged}); not persisted`, `已拒绝：会话性内容或含注入特征（${flagged}），不落盘`));
+          return;
+        }
+        const r = store.add({ type: 'project', description: rest, body: rest });
+        if (r.ok) {
+          this.pushMsg('system', t(`Added memory: ${r.value.slug} (applies from the next session or refresh point)`, `已添加记忆：${r.value.slug}（下个会话或刷新点生效）`));
+        } else if (r.error.code === 'MEMORY_DUPLICATE') {
+          this.pushMsg('system', t(`Duplicate memory rejected: ${rest}`, `重复记忆已拒绝：${rest}`));
+        } else {
+          this.pushMsg('system', r.error.message);
+        }
+        return;
+      }
+      if (sub === 'rm') {
+        if (!rest) {
+          this.pushMsg('system', t('Usage: /memory rm <slug>', '用法：/memory rm <slug>'));
+          return;
+        }
+        const r = store.remove(rest);
+        this.pushMsg('system', r.ok
+          ? t(`Removed memory: ${rest}`, `已删除记忆：${rest}`)
+          : t(`No such memory: ${rest}`, `不存在这个记忆：${rest}`));
+        return;
+      }
+      if (sub === 'gc') {
+        if (!isModelSummarizer(this.runtime.harness.model)) {
+          this.pushMsg('system', t('Consolidation requires a real model (current channel is stub/scripted)', '整理需要真实模型（当前通道为 stub/scripted）'));
+          return;
+        }
+        if (store.count() === 0) {
+          this.pushMsg('system', t('No memories yet — nothing to consolidate', '暂无记忆——没有可整理的内容'));
+          return;
+        }
+        await consolidateMemory({ model: this.runtime.harness.model, root: this.root, force: true });
+        this.pushMsg('system', t(`Consolidated persistent memory: ${store.count()} records`, `持久记忆已整理：${store.count()} 条`));
+        return;
+      }
+      this.pushMsg('system', t(`Unknown /memory subcommand: ${sub}`, `未知 /memory 子命令：${sub}`));
       return;
     }
     this.pushMsg('system', t(`Unknown command: ${cmd} (/help for list)`, `未知命令：${cmd}（/help 查看清单）`));

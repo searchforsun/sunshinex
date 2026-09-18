@@ -19,6 +19,13 @@ const INJECTION_MARKERS = /ignore (all )?previous|disregard .{0,24}instructions|
 /** 不可见 Unicode（零宽/双向控制字符） */
 const INVISIBLE_UNICODE = /[\u200b-\u200f\u202a-\u202e\u2060]/;
 
+/** 写时机械扫描（规格 §6 防线②）：手动 add 与自动提取共用同一闸门，纯规则零模型调用；命中返回原因码 */
+export function scanMemoryText(text: string): 'temporal' | 'injection' | null {
+  if (TEMPORAL_MARKERS.test(text)) return 'temporal';
+  if (INJECTION_MARKERS.test(text) || INVISIBLE_UNICODE.test(text)) return 'injection';
+  return null;
+}
+
 interface Candidate {
   type?: unknown;
   description?: unknown;

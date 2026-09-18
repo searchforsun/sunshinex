@@ -17,12 +17,13 @@ interface MergedCandidate {
   body?: unknown;
 }
 
-export async function consolidateMemory(opts: { model: ModelAdapter; root: string }): Promise<void> {
+export async function consolidateMemory(opts: { model: ModelAdapter; root: string; force?: boolean }): Promise<void> {
   try {
     if (!isModelSummarizer(opts.model)) return; // 门禁同提取：Stub/Scripted 静默跳过
     const store = new MemoryStore(opts.root);
     const before = store.list();
-    if (before.length < MEMORY_CONSOLIDATE_THRESHOLD) return; // 阈值未达零调用零副作用
+    if (before.length === 0) return;
+    if (!opts.force && before.length < MEMORY_CONSOLIDATE_THRESHOLD) return; // 阈值未达零调用零副作用（force=/memory gc 显式入口）
     const out = await opts.model.complete(buildConsolidationPrompt(before));
     const parsed = parseEnvelope(out);
     if (!parsed) return;
