@@ -57,6 +57,8 @@ export interface ReactorDeps {
   router?: ModelRouter;
   /** 成功沉淀钩子：仅 done 且有 reply 时触发一次；抛错被吞并记 episodic（沉淀失败不倒灌任务成败） */
   settle?: (r: { goal: string; reply: string }) => void;
+  /** 记忆提取挂点（auto memory §4）：done 收口并行触发；旁路纪律=失败不倒灌任务成败（reactor 侧再兜一层 catch） */
+  settleMemory?: (r: { goal: string; reply: string }) => Promise<void>;
   /** per-run 成本账本（可选）：run 收尾聚合落 runs/<id>；缺省不落账 */
   ledger?: RunLedger;
   /** 事件流旁路（TUI/GUI 公共地基）：发射即旁路，不注入零副作用；主链/账本语义不受影响 */
@@ -305,6 +307,14 @@ export class Reactor {
         this.deps.settle({ goal: task.goal, reply });
       } catch (e) {
         this.deps.context.appendChain([{ action: 'note', observation: pick(`Settle failed (not propagated to task outcome): ${e instanceof Error ? e.message : String(e)}`, `沉淀失败（不倒灌任务成败）：${e instanceof Error ? e.message : String(e)}`) }]);
+      }
+    }
+    // 记忆提取钩子（auto memory §4）：同点并行、独立一次性模型调用；任何失败静默（旁路纪律，收口永不因记忆而失败）
+    if (done && reply && this.deps.settleMemory) {
+      try {
+        await this.deps.settleMemory({ goal: task.goal, reply });
+      } catch {
+        // 静默降级：提取抛错/网络失败不影响任务收口
       }
     }
     // per-run 成本账本：tokens/路由决策/时长随收尾落 runs/<id>；落账失败不倒灌任务结果（存储同源，此处吞错）

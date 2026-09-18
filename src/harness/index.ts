@@ -17,6 +17,7 @@ import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { LearnedSkillStore } from './skills/learned';
+import { settleMemory } from './memory/extractor';
 import { resolveDataDir } from '../config/data-dir';
 import { RunLedger } from './ledger';
 
@@ -91,6 +92,9 @@ export class Harness {
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.learnSkills ?? true
         ? { settle: (r: { goal: string; reply: string }) => new LearnedSkillStore(base).settle(r.goal, r.reply) }
+        : {}),
+      ...(opts.learnSkills ?? true
+        ? { settleMemory: (r: { goal: string; reply: string }) => settleMemory({ goal: r.goal, reply: r.reply, model: this.model, root: base }) }
         : {}),
     });
     this.ledger = ledger;
