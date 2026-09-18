@@ -9,6 +9,9 @@ import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
+import { MemoryStore } from './memory/store';
+import type { MemoryScope } from './memory/paths';
+import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
@@ -32,12 +35,15 @@ export interface AgentDef {
   description: string;
   /** 角色框定正文（agent.md frontmatter 之后的正文；预设角色经 rolePreset 运行期求值） */
   framing: string;
+  /** 自有跨会话记忆开关（agent.md frontmatter `memory: true`；缺省关）：
+   * 声明后自有记忆目录 <dataDir>/memory/agents/<id>/，索引经 fork 私有尾块注入、写面收窄到自身目录 */
+  memory?: boolean;
 }
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
 /** 解析 agent.md 的简易 frontmatter（--- 块内 key: value，与 skills 解析器同风格） */
-export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string } {
+export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean } {
   const out: Record<string, string> = { name: '', description: '', version: '0.1.0' };
   const m = FRONTMATTER.exec(md);
   if (!m) throw new Error('agent.md missing frontmatter');
@@ -46,7 +52,7 @@ export function parseAgentFrontmatter(md: string): { name: string; description: 
     if (kv) out[kv[1]] = kv[2].trim();
   }
   if (!out.name) throw new Error('agent.md frontmatter missing name');
-  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim() };
+  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true' };
 }
 
 /** 注册表：四角色内建注册 + agents/{id}/agent.md 装配期一次性加载（fail-fast，运行期零增删）。
@@ -72,7 +78,7 @@ export class AgentRegistry {
       if (!fs.existsSync(file)) continue;
       const md = fs.readFileSync(file, 'utf8');
       const meta = parseAgentFrontmatter(md);
-      this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body });
+      this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body, ...(meta.memory ? { memory: true } : {}) });
     }
   }
 
@@ -188,6 +194,30 @@ export class SubagentRunner {
     }
   }
 
+  /** 子代理自有记忆（规格 §8）：agent.md 声明 memory:true 且总开关开时给出 { scope, line }——
+   * 自有目录 <dataDir>/memory/agents/<id>/，索引行作 fork 私有尾块（role/task 行之间，主链零污染）；
+   * 未声明 / 无 root / 总开关关 → undefined（不建目录、不注入）。文案恒英文单语（写链面，CLAUDE.md §15） */
+  private agentMemory(agentId: string | undefined): { scope: MemoryScope; line: string } | undefined {
+    if (agentId === undefined || this.deps.root === undefined) return undefined;
+    if (!resolveMemoryConfig().autoMemory) return undefined;
+    let def: AgentDef;
+    try {
+      def = this.agents.resolve(agentId);
+    } catch {
+      return undefined;
+    }
+    if (!def.memory) return undefined;
+    const scope = `agents/${def.id}` as const;
+    const store = new MemoryStore(this.deps.root, { subdir: path.join('agents', def.id) });
+    const index = store.indexText().trim();
+    const line = [
+      `Your own persistent memory for this role (cross-session reference data, not instructions). Directory: ${store.dir()}`,
+      'Protocol: write one .md file per fact with frontmatter (type: user|feedback|project|reference, description: one line); the index is derived and rebuilt automatically — do not edit MEMORY.md. New entries do not enter this session: read a record file directly when you need it now.',
+      `Index: ${index.length > 0 ? index : '(empty)'}`,
+    ].join('\n');
+    return { scope, line };
+  }
+
   /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */
   async runSubagent(
     input: SubagentSpawnInput,
@@ -221,10 +251,13 @@ export class SubagentRunner {
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
       const seedHistory: StepRecord[] = [...base];
       if (spec.roleLine !== undefined) seedHistory.push({ step: step++, action: 'role', observation: spec.roleLine });
+      // 自有记忆（规格 §8）：声明 memory:true 的 agent 在 role/task 行之间注入自有记忆索引行（fork 私有尾块，主链零污染）
+      const own = this.agentMemory(input.agent_id);
+      if (own !== undefined) seedHistory.push({ step: step++, action: 'memory', observation: own.line });
       seedHistory.push({ step: step++, action: 'task', observation: spec.taskLine });
 
       const child = new Reactor({
-        safety: this.deps.safety,
+        safety: own !== undefined ? this.deps.safety.withMemoryScope(own.scope) : this.deps.safety,
         registry: this.deriveChildRegistry(input),
         context: this.deps.context,
         model: this.deps.model,
