@@ -41,10 +41,10 @@ src/
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     reactor.ts        # 最小闭环引擎（observe→think→act）
     ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
-    skills.ts         # 技能加载与调度（三级根合并装载 + resolve 回退链 + skillRef 首帧注入）
+    skills.ts         # 技能加载与调度（三级根合并装载 + resolve 回退链 + 清单冻结段注入 + skill 工具按需加载）
     skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
+    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search/skill）
     mcp/              # MCP 客户端（官方 SDK 接缝：stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
     subagent.ts       # 子代理执行单元（agents/{id}/agent.md 注册制 + 预设角色 + 内联临时；spawn 工具面 + fork 执行/回写/预算/并发护栏）
     knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed Provider / KnowledgeBase 编排）
@@ -95,6 +95,7 @@ SUNSHINE.md          # 项目业务配置
 ## 6. 技能与插件规范
 
 - 技能：`{技能根}/{id}/skill.md`，含 frontmatter（name/description/version）与正文。三级根：项目级 `<项目>/.sunshinex/skills/`（手工放置）> 全局用户级 `~/.sunshinex/skills/`（跨项目共享，`SUNSHINEX_USER_SKILLS_DIR` 覆盖）> 学习级 `~/.sunshinex/projects/<工作区>/data/skills/`（LearnedSkillStore 自动沉淀，FIFO 上限）；id 撞名就近遮蔽，resolve 仅 SKILL_NOT_FOUND 逐级回退（SKILL_PARAM_MISSING 就近不回退）
+- 技能发现与加载（对标 Claude Code 渐进披露）：name+description 清单由 `formatSkillsIndex` 注入会话冻结段（会话级常量、随快照刷新点重读），模型据清单经 `skill` 工具按 id 加载正文——正文以工具观察尾追进链（装配面前缀零击穿）；`skillRef` 为 loop 内部模板面，仍走置尾一次性注入
 - 插件：`plugins/{id}/plugin.json`，声明 id/name/version/entry
 - 加载器只做发现与解析，不执行副作用；执行由 Harness 统一调度
 
@@ -137,10 +138,11 @@ SUNSHINE.md          # 项目业务配置
 ```text
 [稳定段]     身份/输出约定/工具清单/JSON 协议/工作目录/执行协议行  ← 全层共享，逐字节冻结
 [SUNSHINE.md]                                                   ← 会话级常量
+[技能清单]   name+description 索引（同刷新点冻结、按名排序）       ← 会话级常量，模型据此按需加载
 [压缩块]     会话链前缀折叠摘要                                   ← 唯一合法重写产物
 [会话链]     任务指令行+全量执行轨迹+结论/节点结论/补丁行           ← 主链 append-only，只在尾部变
 [fork 尾追]  角色行+节点任务行+私有步骤                            ← 仅 graph 节点/子 agent
-[技能块]     一次性注入置尾                                       ← 出现/消失击穿面≈0
+[技能块]     一次性注入置尾（loop skillRef 内部面）                ← 出现/消失击穿面≈0
 ```
 
 主任务、plan 步骤、loop 修正轮都是主链追加；graph 节点与子 agent 是主链 fork（私有步骤不回主链，只回写结论/补丁行）。任何相邻帧、跨任务帧、主链↔fork 首帧的差异只允许出现在尾部。

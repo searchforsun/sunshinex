@@ -30,7 +30,7 @@ src/
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     reactor.ts        # 最小闭环引擎（observe→think→act）
     ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
-    skills.ts         # 技能加载与调度（resolveSkill 参数化 + skillRef 首帧注入）
+    skills.ts         # 技能加载与调度（三级根装载 + 清单注入 + skill 工具按需加载）
     skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
@@ -111,7 +111,7 @@ scripts/release.mjs --version 0.1.0 --clobber  # 同版本重发：覆盖该 Rel
 
 `bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局配置 `~/.sunshinex/.env`（装一次、跨项目共享密钥），项目根 `.env` 按项目覆盖，优先级：已导出环境变量 > 项目级 > 全局级。`sunshinex selfcheck / run / pipeline` 等子命令用法不变。
 
-技能三级根（`{id}/skill.md`，同名按此顺序就近生效）：项目级 `<项目>/.sunshinex/skills/`（手工放置、随仓库共享）> 全局用户级 `~/.sunshinex/skills/`（跨项目共享，`SUNSHINEX_USER_SKILLS_DIR` 可覆盖）> 学习级（任务成功后系统自动沉淀至数据目录 `skills/`，FIFO 上限）。
+技能三级根（`{id}/skill.md`，同名按此顺序就近生效）：项目级 `<项目>/.sunshinex/skills/`（手工放置、随仓库共享）> 全局用户级 `~/.sunshinex/skills/`（跨项目共享，`SUNSHINEX_USER_SKILLS_DIR` 可覆盖）> 学习级（任务成功后系统自动沉淀至数据目录 `skills/`，FIFO 上限）。技能清单（名称+描述）随会话冻结点注入提示词，任务匹配时模型经内置 `skill` 工具按 id 自动加载全文，无需手动粘贴技能内容。
 
 ## 文档导航
 
