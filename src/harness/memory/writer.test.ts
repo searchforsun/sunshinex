@@ -131,7 +131,7 @@ test('拒绝分支②索引名 MEMORY.md（大小写不敏感）→ MEMORY_WRITE
       assert.equal(r.ok, false, `索引名应拒：${name}`);
       if (!r.ok) {
         assert.equal(r.error.code, 'MEMORY_WRITE_INDEX');
-        assert.match(r.error.message, /derived index|派生索引/);
+        assert.match(r.error.message, /derived index/);
       }
     }
     assertNoRecord(dataDir, '索引名分支不得落盘');
@@ -246,7 +246,7 @@ test('超限：落盘成功但返回勒令精简错误文本（CC 语义）', ()
     if (!r.ok) {
       assert.equal(r.error.code, 'MEMORY_INDEX_OVER_LIMIT');
       assert.ok(r.error.message.includes('200'), `错误文本含上限与当前行数：${r.error.message}`);
-      assert.match(r.error.message, /合并条目|consolidate/);
+      assert.match(r.error.message, /merge entries|consolidate/);
     }
     const raw = fs.readFileSync(recPath(dataDir), 'utf8');
     assert.match(raw, /^---\ntype: project\n/, 'CC 语义：记录已写盘（写成功 + 报错勒令精简）');
@@ -262,7 +262,7 @@ test('近满：回执追加 capacityNotice 提醒（写成功）', () => {
     assert.equal(r.ok, true, `近满不拒写：${r.ok ? '' : r.error.message}`);
     if (!r.ok || r.value === 'pass') return assert.fail('expected outcome');
     assert.match(r.value.observation, /^Saved memory: prefers-pnpm \[project\]/, '回执主体不变');
-    assert.match(r.value.observation, /near limit|接近上限/i);
+    assert.match(r.value.observation, /near limit/i);
     assert.match(r.value.observation, /161\/200/, '回执带当前行数/上限');
   });
 });

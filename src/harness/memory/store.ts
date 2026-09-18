@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Result, ok, fail } from '../../result';
 import { resolveDataDir } from '../../config/data-dir';
-import { pick } from '../../i18n';
 
 /** 容量与阈值常量（规格 §2：代码内钉住不加 env） */
 export const MEMORY_INDEX_MAX_LINES = 200;
@@ -75,13 +74,7 @@ export function isSafeSlug(slug: string): boolean {
 
 /** 非法 slug 的统一失败结果（put/remove 共用，文案单点防漂移） */
 function failSlugInvalid<T>(): Result<T> {
-  return fail(
-    'MEMORY_SLUG_INVALID',
-    pick(
-      'invalid memory slug: must be in normalized form and must not be the index name',
-      '记忆 slug 非法：必须是规范化形态且不得为索引名',
-    ),
-  );
+  return fail('MEMORY_SLUG_INVALID', 'invalid memory slug: must be in normalized form and must not be the index name');
 }
 
 /** 解析记录文件（frontmatter 四行 + 正文）；坏文件返回 null 不中断整表扫描 */
@@ -169,7 +162,7 @@ export class MemoryStore {
   add(input: { type: MemoryType; description: string; body: string; created?: string }): Result<MemoryRecord> {
     const description = input.description.trim();
     const body = input.body.trim();
-    if (!description || !body) return fail('MEMORY_EMPTY', '记忆描述与正文均不得为空');
+    if (!description || !body) return fail('MEMORY_EMPTY', 'Memory description and body must not be empty');
     const candidate = slugifyMemory(description);
     const duplicate = this.list().find(
       (r) =>
@@ -202,10 +195,10 @@ export class MemoryStore {
     const slug = input.slug.trim();
     const description = input.description.trim();
     const body = input.body.trim();
-    if (!slug) return fail('MEMORY_EMPTY', 'slug 不得为空');
+    if (!slug) return fail('MEMORY_EMPTY', 'slug must not be empty');
     // 校验先于任何去重/写盘/路径拼接：slug 直接拼进文件名，未净化入口可越出记忆目录或撞索引名
     if (!isSafeSlug(slug)) return failSlugInvalid<MemoryRecord>();
-    if (!description || !body) return fail('MEMORY_EMPTY', '记忆描述与正文均不得为空');
+    if (!description || !body) return fail('MEMORY_EMPTY', 'Memory description and body must not be empty');
     const existing = this.list().find((r) => r.slug === slug);
     const duplicate = this.list().find(
       (r) =>
@@ -249,10 +242,7 @@ export class MemoryStore {
     const nearLines = Math.floor(MEMORY_INDEX_MAX_LINES * NEAR_LIMIT_RATIO);
     const nearBytes = Math.floor(MEMORY_INDEX_MAX_BYTES * NEAR_LIMIT_RATIO);
     if (lines < nearLines && bytes < nearBytes) return null;
-    return pick(
-      `Memory index near limit: ${lines}/${MEMORY_INDEX_MAX_LINES} lines, ${bytes}/${MEMORY_INDEX_MAX_BYTES} bytes — consolidate entries or move detail into record bodies`,
-      `记忆索引接近上限：${lines}/${MEMORY_INDEX_MAX_LINES} 行、${bytes}/${MEMORY_INDEX_MAX_BYTES} 字节——请合并条目或把细节挪进记录正文`,
-    );
+    return `Memory index near limit: ${lines}/${MEMORY_INDEX_MAX_LINES} lines, ${bytes}/${MEMORY_INDEX_MAX_BYTES} bytes — merge entries or move detail into record bodies`;
   }
 
   /** 容量纪律：超 200 行或 25KB 返回勒令精简报错文本（含当前行数/字节数与上限），否则 null */
@@ -261,10 +251,10 @@ export class MemoryStore {
     const lines = text.split('\n').filter((l: string) => l.length > 0).length;
     const bytes = Buffer.byteLength(text, 'utf8');
     if (lines > MEMORY_INDEX_MAX_LINES) {
-      return `索引 ${lines} 行（上限 ${MEMORY_INDEX_MAX_LINES} 行），当前 ${bytes} 字节——请合并条目或把细节挪进记录正文后重建索引`;
+      return `Index has ${lines} lines (limit ${MEMORY_INDEX_MAX_LINES}) and ${bytes} bytes — merge entries or move detail into record bodies, then rebuild the index`;
     }
     if (bytes > MEMORY_INDEX_MAX_BYTES) {
-      return `索引 ${lines} 行、当前 ${bytes} 字节（上限 ${MEMORY_INDEX_MAX_BYTES} 字节）——请合并条目或把细节挪进记录正文后重建索引`;
+      return `Index has ${lines} lines, ${bytes} bytes (limit ${MEMORY_INDEX_MAX_BYTES} bytes) — merge entries or move detail into record bodies, then rebuild the index`;
     }
     return null;
   }

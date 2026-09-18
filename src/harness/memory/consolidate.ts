@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { pick } from '../../i18n';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
 import { MemoryStore, MemoryType, MEMORY_CONSOLIDATE_THRESHOLD, normalizeText } from './store';
@@ -77,28 +76,16 @@ function applyMerged(store: MemoryStore, records: { type: MemoryType; descriptio
 function buildConsolidationPrompt(records: { slug: string; type: string; created: string; description: string; body: string }[]): string {
   const today = new Date().toISOString().slice(0, 10);
   const listing = records.map((r) => `- [${r.type}] (created: ${r.created}) ${r.description} — ${r.body}`).join('\n');
-  return pick(
-    [
-      'You are consolidating a persistent memory store (memory-consolidation) for an engineering project.',
-      `Today is ${today}.`,
-      'Merge duplicates, drop stale or superseded entries (a newer observation replaces the old), keep one entry per fact, keep details inside the entry body.',
-      'Rewrite entries to be self-contained: resolve any remaining deictic references ("this", "that") into concrete entity names and use absolute dates only.',
-      `You must NOT output more entries than the ${records.length} given. Keep the original language of each entry.`,
-      'Output strict JSON only (no preamble, no code fences): {"memories":[{"type":"project","description":"one line","body":"the fact"}]}.',
-      'Current records:',
-      listing,
-    ].join('\n'),
-    [
-      '你正在整理一个工程项目的持久记忆库（memory-consolidation）。',
-      `今天是 ${today}。`,
-      '合并重复条目、删除过期或已被取代的条目（新观察覆盖旧结论）、一条记忆一个事实、细节保留在条目正文中。',
-      '改写条目使其自包含：把残留的指代（这个/那个/上述）消解为具体实体名，时间只以绝对日期存在。',
-      `输出条数不得超过给定的 ${records.length} 条。保持条目原语言。`,
-      '只输出严格 JSON（无前言、无代码围栏）：{"memories":[{"type":"project","description":"一句话","body":"事实内容"}]}。',
-      '当前记录：',
-      listing,
-    ].join('\n'),
-  );
+  return [
+    'You are consolidating a persistent memory store (memory-consolidation) for an engineering project.',
+    `Today is ${today}.`,
+    'Merge duplicates, drop stale or superseded entries (a newer observation replaces the old), keep one entry per fact, keep details inside the entry body.',
+    'Rewrite entries to be self-contained: resolve any remaining deictic references ("this", "that") into concrete entity names and use absolute dates only.',
+    `You must NOT output more entries than the ${records.length} given. Keep the original language of each entry.`,
+    'Output strict JSON only (no preamble, no code fences): {"memories":[{"type":"project","description":"one line","body":"the fact"}]}.',
+    'Current records:',
+    listing,
+  ].join('\n');
 }
 
 /** 宽容解析：剥代码围栏后 JSON.parse；畸形返回 null（静默保持原状） */

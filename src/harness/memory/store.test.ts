@@ -132,9 +132,9 @@ test('⑤ 循环 201 条：最后一条 MEMORY_INDEX_OVER_LIMIT 且记录文件�
     assert.equal(last.ok, false);
     if (!last.ok) {
       assert.equal(last.error.code, 'MEMORY_INDEX_OVER_LIMIT');
-      assert.ok(last.error.message.includes('201 行'), '报错文本含当前行数');
-      assert.ok(last.error.message.includes(`${MEMORY_INDEX_MAX_LINES} 行`), '报错文本含上限行数');
-      assert.ok(/\d+ 字节/.test(last.error.message), '报错文本含当前字节数');
+      assert.ok(last.error.message.includes('201 lines'), '报错文本含当前行数');
+      assert.ok(last.error.message.includes(`limit ${MEMORY_INDEX_MAX_LINES}`), '报错文本含上限行数');
+      assert.ok(/\d+ bytes/.test(last.error.message), '报错文本含当前字节数');
     }
     assert.ok(fs.existsSync(path.join(store.dir(), `memo-${MEMORY_INDEX_MAX_LINES + 1}.md`)), '超限记录已写盘（CC 语义）');
     assert.equal(store.indexText().split('\n').filter((l: string) => l.length > 0).length, MEMORY_INDEX_MAX_LINES + 1);
@@ -311,9 +311,9 @@ test('⑯ put 非法 slug：拒绝写入、零越界文件、记忆目录与索�
     assert.equal(r.ok, false, '非法 slug 必须被拒');
     if (!r.ok) {
       assert.equal(r.error.code, 'MEMORY_SLUG_INVALID');
-      // 文案随 locale（pick(en, zh)）切换：断言两语种任一命中，避免环境语言导致误判
-      assert.match(r.error.message, /normalized form|规范化形态/, '文案说明规范化形态约束');
-      assert.match(r.error.message, /index name|索引名/, '文案说明不得为索引名');
+      // 提示词恒英文单语（CLAUDE.md §15）：错误文案只有英文一份，断言即英文原文
+      assert.match(r.error.message, /normalized form/, '文案说明规范化形态约束');
+      assert.match(r.error.message, /index name/, '文案说明不得为索引名');
     }
 
     const dataDir = path.resolve(store.dir(), '..');

@@ -118,8 +118,8 @@ test('防注入条款与 learned 分流声明都在 prompt', async () => {
   await withMem(async (mem) => {
     const cap = openaiStub('{"memories":[]}');
     await settleMemory({ goal: 'g', reply: 'r', model: cap.model, root: mem.dir() });
-    assert.ok(/not instructions|资料而非指令/i.test(cap.prompts[0]), '防注入条款');
-    assert.ok(/skill|流程|procedural/i.test(cap.prompts[0]), '分流声明（流程类归技能机制）');
+    assert.ok(/not instructions/i.test(cap.prompts[0]), '防注入条款');
+    assert.ok(/skill|procedural/i.test(cap.prompts[0]), '分流声明（流程类归技能机制）');
   });
 });
 

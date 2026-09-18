@@ -10,7 +10,6 @@
  * ——那会让未校验的原文绕过闸门落进记忆目录（fail-closed：接缝异常即写入被拒）。
  */
 import * as path from 'path';
-import { pick } from '../../i18n';
 import { Result, ok, fail } from '../../result';
 import { dataDirReal } from '../../config/data-dir';
 import { MEMORY_INDEX_MAX_LINES, MemoryStore, MemoryType, slugifyMemory } from './store';
@@ -59,52 +58,49 @@ export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOut
 
   const name = path.basename(req.absPath);
   if (!name.endsWith('.md')) {
-    return fail('MEMORY_WRITE_EXT', pick('Memory records must be .md files', '记忆记录必须是 .md 文件'));
+    return fail('MEMORY_WRITE_EXT', 'Memory records must be .md files');
   }
   // 索引名排他（大小写不敏感）：不区分大小写的文件系统上 `memory.md` 与派生索引是同一文件，写进去即覆盖索引
   if (name === INDEX_NAME || name.toLowerCase() === INDEX_NAME.toLowerCase()) {
     return fail(
       'MEMORY_WRITE_INDEX',
-      pick(
-        'MEMORY.md is a derived index — write one record file per fact instead (delete or merge records to shrink it)',
-        'MEMORY.md 是派生索引——请每条事实写一个记录文件（要精简就删或合并记录）',
-      ),
+      'MEMORY.md is a derived index — write one record file per fact (merge or delete records to slim it down)',
     );
   }
   const slug = name.slice(0, -3);
   if (slug.length === 0 || slugifyMemory(slug) !== slug) {
     return fail(
       'MEMORY_WRITE_SLUG',
-      pick(`Record file name must be a canonical slug (got "${slug}"; e.g. "prefers-pnpm")`, `记录文件名必须是规范化 slug（当前 "${slug}"；形如 "prefers-pnpm"）`),
+      `Record file name must be a canonical slug (got "${slug}"; e.g. "prefers-pnpm")`,
     );
   }
   const flagged = scanMemoryText(req.content);
   if (flagged) {
     return fail(
       'MEMORY_WRITE_SCAN',
-      pick(`Rejected: session-scoped or unsafe content (${flagged}); nothing written`, `已拒绝：会话性内容或含注入特征（${flagged}），未写入`),
+      `Rejected: session-scoped or unsafe content (${flagged}); nothing written`,
     );
   }
   const parsed = parseFrontmatter(req.content);
   if (parsed === null) {
     return fail(
       'MEMORY_WRITE_FRONTMATTER',
-      pick('Record must start with YAML frontmatter: type, description', '记录必须以 YAML frontmatter 开头：type、description'),
+      'Record must start with YAML frontmatter: type, description',
     );
   }
   const type = parsed.meta.type as MemoryType | undefined;
   if (type === undefined || !MEMORY_TYPES.includes(type)) {
     return fail(
       'MEMORY_WRITE_TYPE',
-      pick(`frontmatter type must be one of ${MEMORY_TYPES.join('|')}`, `frontmatter type 必须是 ${MEMORY_TYPES.join('|')} 之一`),
+      `frontmatter type must be one of ${MEMORY_TYPES.join('|')}`,
     );
   }
   const description = (parsed.meta.description ?? '').trim();
   if (!description) {
-    return fail('MEMORY_WRITE_DESCRIPTION', pick('frontmatter description is required', 'frontmatter 缺少 description'));
+    return fail('MEMORY_WRITE_DESCRIPTION', 'frontmatter description is required');
   }
   const body = parsed.body.trim();
-  if (!body) return fail('MEMORY_WRITE_BODY', pick('Record body is empty', '记录正文为空'));
+  if (!body) return fail('MEMORY_WRITE_BODY', 'Record body is empty');
 
   const subdir = kind === 'main' ? undefined : kind;
   const store = new MemoryStore(req.root, subdir === undefined ? undefined : { subdir });
@@ -127,7 +123,7 @@ export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOut
   const lines = store.indexText().split('\n').filter((l) => l.length > 0).length;
   const near = store.capacityNotice();
   const observation = [
-    pick(`Saved memory: ${slug} [${type}] — ${lines}/${MEMORY_INDEX_MAX_LINES} index lines`, `已保存记忆：${slug} [${type}] — 索引 ${lines}/${MEMORY_INDEX_MAX_LINES} 行`),
+    `Saved memory: ${slug} [${type}] — ${lines}/${MEMORY_INDEX_MAX_LINES} index lines`,
     ...(near !== null ? [near] : []),
   ].join('\n');
   return ok({ slug, kind, observation });

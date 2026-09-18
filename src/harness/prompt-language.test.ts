@@ -26,6 +26,12 @@ const SCOPES: Record<string, string[]> = {
     'src/harness/knowledge/store.ts',
     'src/harness/knowledge/store.sqlite-vec.ts',
   ],
+  B2: [
+    'src/harness/memory/store.ts',
+    'src/harness/memory/writer.ts',
+    'src/harness/memory/extractor.ts',
+    'src/harness/memory/consolidate.ts',
+  ],
 };
 
 /**
