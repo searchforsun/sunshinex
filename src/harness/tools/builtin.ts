@@ -9,6 +9,19 @@ import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
 import { MemoryWriteSeam } from '../memory/writer';
 
+/** §9.3 快照过期回执文案（写链恒英文单语——CLAUDE.md §15；置于模块级避免每次 builtinTools 调用重建） */
+const SUNSHINE_STALE_NOTICE = 'SUNSHINE.md rewritten — session snapshot is stale until the next refresh point';
+
+/** §9.3 触发判据：目标是否为项目根的 SUNSHINE.md。两侧同基准：file 已是安全链 realpath 归一的绝对路径（safePath 注入），
+ *  root 侧取安全链构造期归一的 rootReal（root 含符号链接段时字面比较会漏报）；归一异常按 false 兜底（不误报） */
+function isSunshineMdTarget(safety: SafetyChain, file: string): boolean {
+  try {
+    return path.resolve(file) === path.resolve(safety.rootReal, 'SUNSHINE.md');
+  } catch {
+    return false;
+  }
+}
+
 /** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化） */
 export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
@@ -87,7 +100,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           if (r.value !== 'pass') return execOut(r.value.observation);
         }
         backend.writeFile(p, content);
-        return execOut('written');
+        // §9.3 快照过期回执：写项目根 SUNSHINE.md 时观察行补一句（快照仍冻结到下一刷新点，§9.2 漂移检测下轮起点统一尾追全文）
+        return execOut(isSunshineMdTarget(safety, p) ? `written\n${SUNSHINE_STALE_NOTICE}` : 'written');
       },
     },
     {

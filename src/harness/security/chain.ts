@@ -31,8 +31,9 @@ export function maskText(text: string): string {
 
 /** 统一安全链：guard 守门 → 路径边界 → 后端执行 + dryrun 预览（mask 出口见 maskResult） */
 export class SafetyChain {
-  /** 判界基准：root 归一后真实路径（root 可能位于符号链接路径上；不存在时原样回退） */
-  private readonly rootReal: string;
+  /** 判界基准：root 归一后真实路径（root 可能位于符号链接路径上；不存在时原样回退）。
+   *  公开只读：builtin write 的 SUNSHINE.md 回执判据共用同一归一根（§9.3，防双套归一漂移） */
+  readonly rootReal: string;
 
   constructor(
     private guard: SecurityGuard,
