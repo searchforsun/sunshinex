@@ -5,11 +5,12 @@ import { RegisteredTool, CodedToolError } from '../tools';
 import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
 import { KnowledgeBase } from '../knowledge/index';
+import { SkillsFacade } from '../skills';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
 
 /** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive): RegisteredTool[] {
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -48,6 +49,24 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         const end = Math.min(lines.length, Number.isNaN(b) ? lines.length : b);
         if (!Number.isNaN(b) && b < start) throw new CodedToolError('INVALID_ARG', pick(`Range end before start: ${range}`, `range 区间结束行小于起始行：${range}`));
         return execOut(fitOut('read', lines.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join('\n')));
+      },
+    },
+    {
+      name: 'skill',
+      description: pick(
+        'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; oversized output is truncated and saved to disk (full output path shown in the result)',
+        '当任务匹配「可用技能」清单中的某项时，按 id 加载技能全文；超长输出将截断并落盘，完整输出路径见结果提示行',
+      ),
+      category: 'read',
+      executor: async (input: ToolInput) => {
+        if (!skills) throw new CodedToolError('skill_not_configured', pick('Skill facade is not wired in this run', '本次运行未装配技能门面'));
+        const id = String(input.id ?? '').trim();
+        if (id === '') throw new CodedToolError('INVALID_ARG', pick('Missing skill id', '缺少技能 id'));
+        const raw = input.params;
+        if (raw !== undefined && (typeof raw !== 'object' || raw === null)) throw new CodedToolError('INVALID_ARG', pick('params must be a name→value object', 'params 须为 名→值 对象'));
+        const r = skills.resolve(id, raw as Record<string, string> | undefined);
+        if (!r.ok) throw new CodedToolError(r.error.code, `${r.error.code}: ${r.error.message}`);
+        return execOut(fitOut('skill', `[Skill] ${r.value.manifest.name || id}\n\n${r.value.body}`));
       },
     },
     {

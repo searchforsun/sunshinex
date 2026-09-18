@@ -12,6 +12,7 @@ const CANONICAL_TOOL_NAMES: Record<string, string> = {
   glob: 'Glob',
   webfetch: 'WebFetch',
   websearch: 'WebSearch',
+  skill: 'Read', // 技能正文加载=只读读取技能文件，归 Read 族（plan 可读、manual 免审批）
 };
 
 export interface RegisteredTool extends ToolSpec {
