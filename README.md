@@ -92,7 +92,7 @@ npm pack && npm install -g ./sunshinex-agent-0.1.0.tgz
 
 sunshinex                       # 任意目录直接进入交互式终端（= sunshinex tui，对标 claude 裸命令）
 sunshinex --mode=manual         # 裸命令可直带权限模式（manual | dontAsk | plan）
-sunshinex --language=zh         # 界面与提示词语言（缺省 en 英文版；zh 全中文）
+sunshinex --language=zh         # 界面语言（缺省 en；zh 全中文界面）。提示词恒英文单语，不受此参数影响
 sunshinex ../my-project         # 指定项目目录启动（= sunshinex tui <dir>，对标 claude <dir>）
 sunshinex ../my-project --continue   # 续接最近一次已保存会话；TUI 内 /resume 列出/恢复更早会话
 ```

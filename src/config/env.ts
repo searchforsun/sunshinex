@@ -57,13 +57,14 @@ export function loadGlobalEnv(): number {
 export function resolveKbEnv(
   env: Record<string, string | undefined>,
 ): { backend: string; embeddingBaseUrl?: string; embeddingApiKey?: string; embeddingModel?: string } {
-  const pick = (key: string, fallbackKey: string): string | undefined => {
+  /** 环境变量回退取值（本地函数；与 i18n 已废止的 pick 无关，改名避同名歧义） */
+  const pickEnv = (key: string, fallbackKey: string): string | undefined => {
     const v = env[key] ?? env[fallbackKey];
     return v !== undefined && v.length > 0 ? v : undefined;
   };
-  const embeddingBaseUrl = pick('SUNSHINEX_EMBEDDING_BASE_URL', 'SUNSHINEX_BASE_URL');
-  const embeddingApiKey = pick('SUNSHINEX_EMBEDDING_API_KEY', 'SUNSHINEX_API_KEY');
-  const embeddingModel = pick('SUNSHINEX_EMBEDDING_MODEL', 'SUNSHINEX_MODEL');
+  const embeddingBaseUrl = pickEnv('SUNSHINEX_EMBEDDING_BASE_URL', 'SUNSHINEX_BASE_URL');
+  const embeddingApiKey = pickEnv('SUNSHINEX_EMBEDDING_API_KEY', 'SUNSHINEX_API_KEY');
+  const embeddingModel = pickEnv('SUNSHINEX_EMBEDDING_MODEL', 'SUNSHINEX_MODEL');
   const backend = env['SUNSHINEX_KB_BACKEND'];
   return {
     backend: backend !== undefined && backend.length > 0 ? backend : 'local-json',

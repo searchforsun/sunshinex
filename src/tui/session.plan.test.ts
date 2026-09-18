@@ -247,7 +247,7 @@ test('/plan：模型上下文最小化——不见计划清单与阶段编号，
   }
 });
 
-test('/plan：zh 语言——goal/当前指令走中文（zh 抽样；en 缺省不受影响，用后复原）', async () => {
+test('/plan：zh 语言——链行仍英文单语（§15：写链面不进语言轴；用后复原）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-planminimal-zh-'));
   const prev = getLanguage();
   try {
@@ -270,7 +270,7 @@ test('/plan：zh 语言——goal/当前指令走中文（zh 抽样；en 缺省�
     await ctrl.submit('/plan 做一件事');
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
-    assert.match(prompts[1], /task -> 当前指令：步骤A/, 'zh 下当前指令链行走中文');
+    assert.match(prompts[1], /task -> Current instruction: 步骤A/, 'zh 下当前指令链行仍英文单语（写链面恒英文，步骤文本是数据）');
     // fork 模型：goal 槽取消（runTask 首参=当前步骤文本，不再有恒定协议段 goal），前缀连续升级为相邻步严格逐字节前缀
     assert.ok(prompts[2].startsWith(prompts[1]), 'zh 下相邻步骤 prompt 严格逐字节前缀连续');
   } finally {

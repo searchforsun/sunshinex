@@ -42,6 +42,7 @@ const SCOPES: Record<string, string[]> = {
     'src/graph/engine.ts',
     'src/graph/templates.ts',
   ],
+  B5: ['src/tui/session.ts'],
   B4: [
     'src/harness/reactor.ts',
     'src/harness/subagent.ts',
@@ -132,4 +133,53 @@ test('回执双语钉子：gate/CI/引擎汇总/dry-run 预览的中文回执必
     const leaked = leaks(file).map((h) => h.text).join('\n');
     assert.ok(!leaked.includes(zh), `${file} 的「${zh}」未包 t()：既会被判泄漏，zh 下也不可见`);
   }
+});
+
+/**
+ * 写链面钉子（B5）：`appendChain(...)` / `appendInstructionLine(...)` 写入会话链的字面量恒**英文单语**。
+ *
+ * 为什么不能只靠 `leaks()`：`leaks()` 判据是「有没有被 `t()` 包裹」，而链行**即使包了 `t()` 也照样进模型**
+ * （历史缺陷：`session.ts` 的当前指令链行误用 `t()`，zh 下把中文写进链）。写链面的判据因此是
+ * 「写链调用点的字面量有没有中文」，与是否包 `t()` 无关（CLAUDE.md §15：分界看有无写链）。
+ */
+export function chainLiteralLeaks(rel: string): { line: number; text: string }[] {
+  const raw = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  const sf = ts.createSourceFile(rel, raw, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const CHAIN_CALLS = new Set(['appendChain', 'appendInstructionLine']);
+  const found: { line: number; text: string }[] = [];
+
+  const literalText = (node: ts.Node): string[] => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
+    if (ts.isTemplateExpression(node)) return [node.head.text, ...node.templateSpans.map((x) => x.literal.text)];
+    return [];
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      const name = ts.isPropertyAccessExpression(callee) ? callee.name.text : ts.isIdentifier(callee) ? callee.text : '';
+      if (CHAIN_CALLS.has(name)) {
+        for (const arg of node.arguments) {
+          const stack: ts.Node[] = [arg];
+          while (stack.length > 0) {
+            const cur = stack.pop() as ts.Node;
+            for (const text of literalText(cur)) {
+              if (CJK.test(text)) {
+                found.push({ line: sf.getLineAndCharacterOfPosition(cur.getStart(sf)).line + 1, text: text.slice(0, 100) });
+              }
+            }
+            ts.forEachChild(cur, (c) => stack.push(c));
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+test('写链面零中文钉子：appendChain/appendInstructionLine 的字面量恒英文单语', () => {
+  const hits = chainLiteralLeaks('src/tui/session.ts').map((h) => `src/tui/session.ts:${h.line}  ${h.text}`);
+  assert.deepEqual(hits, [], `写链行含中文（链行即使包 t() 也进模型，必须英文单语）：\n${hits.join('\n')}`);
 });

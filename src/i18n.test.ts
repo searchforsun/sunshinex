@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { t, pick, getLanguage, setLanguage, parseLanguage } from './i18n';
+import { t, getLanguage, setLanguage, parseLanguage } from './i18n';
 import { describeIncomplete } from './tui/stop-reason';
 
 test('parseLanguage：仅 zh 生效，缺省与非法值一律 en', () => {
@@ -11,15 +11,13 @@ test('parseLanguage：仅 zh 生效，缺省与非法值一律 en', () => {
   assert.equal(parseLanguage('zh'), 'zh');
 });
 
-test('t/pick：按进程语言取值；setLanguage 影响后续调用（用后复原）', () => {
+test('t：按进程语言取值；setLanguage 影响后续调用（用后复原）', () => {
   setLanguage('en');
   assert.equal(getLanguage(), 'en');
   assert.equal(t('hello', '你好'), 'hello');
-  assert.equal(pick('hello', '你好'), 'hello');
   setLanguage('zh');
   assert.equal(getLanguage(), 'zh');
   assert.equal(t('hello', '你好'), '你好');
-  assert.equal(pick('A', '甲'), '甲');
   setLanguage('en');
   assert.equal(getLanguage(), 'en');
 });

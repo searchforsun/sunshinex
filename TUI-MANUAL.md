@@ -21,7 +21,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.1.
 # 或 npm registry 正式发布后：npm install -g sunshinex-agent；或本地 npm pack 后装 tgz
 sunshinex                        # 任意目录直接进入终端
 sunshinex --mode=manual          # 指定权限模式（缺省 manual）
-sunshinex --language=zh          # 界面与提示词语言（缺省 en 英文版；zh 全中文）
+sunshinex --language=zh          # 界面语言（缺省 en；zh 全中文界面）。提示词恒英文单语，不受此参数影响
 sunshinex --tier=large           # 模型档位（small|medium|large；会话内 /model 切换，SUNSHINEX_TIER 可设缺省）
 sunshinex ../my-project          # 指定项目目录（= sunshinex tui <dir>，对标 claude <dir>）
 ```

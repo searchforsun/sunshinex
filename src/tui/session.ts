@@ -316,11 +316,8 @@ export class SessionController {
       // 且 loop → graph 会形成反向依赖；角色框定改为提示词级（依赖方向保持 graph → loop → harness）。
       // 规划段 fork 隔离：verbose 规划提示词与规划结论不进会话链（§11 边界登记——链只承载任务与执行轨迹），
       // 执行段（runPlanItems）才逐条指令行入链；角色框定保持提示词级（依赖方向 graph → loop → harness）
-      const verbosePlanningPrompt = t(
-        `Produce a numbered step plan for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`,
-        `为下面的目标产出编号步骤计划，每行形如「1. 步骤」；只输出步骤行，不要解释、不要代码块。\n目标：${goal}`,
-      );
-      const r = await this.runInternalTask(verbosePlanningPrompt, t('Produce a numbered step plan', '产出编号步骤计划'));
+      const verbosePlanningPrompt = `Produce a numbered step plan for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`;
+      const r = await this.runInternalTask(verbosePlanningPrompt, 'Produce a numbered step plan');
       if (!r.done) {
         throw new Error(describeIncomplete(r.stopReason) || t('Planning incomplete', '规划未完成'));
       }
@@ -359,10 +356,7 @@ export class SessionController {
     this.notify();
     const ctx = this.runtime.harness.context;
     // 计划纪律走链（只增不改）：每轮只完成最后一条当前指令，不执行/预判/重排后续任务
-    ctx.appendChain([{ action: 'note', observation: t(
-      'Plan discipline: each round completes only the last "Current instruction"; do not execute, anticipate, or reorder other tasks.',
-      '计划纪律：每轮只完成最后一条「当前指令」指定任务；不要执行、预判或重排后续任务。',
-    ) }]);
+    ctx.appendChain([{ action: 'note', observation: 'Plan discipline: each round completes only the last "Current instruction"; do not execute, anticipate, or reorder other tasks.' }]);
     for (let i = 0; i < items.length; i++) {
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
       this.state = {
@@ -371,7 +365,7 @@ export class SessionController {
       };
       this.usageBase = { tokens: this.state.metrics.turnTokens, cache: this.state.metrics.turnCacheTokens, prompt: this.state.metrics.turnPromptTokens };
       this.notify();
-      ctx.appendInstructionLine(t(`Current instruction: ${items[i]}`, `当前指令：${items[i]}`));
+      ctx.appendInstructionLine(`Current instruction: ${items[i]}`);
       try {
         const r: RunOutcome = await this.runtime.runTask(items[i], this.state.model ? { tier: this.state.model } : undefined);
         if (!r.done) {
@@ -521,7 +515,7 @@ export class SessionController {
         return;
       }
       // 主链任务（§11 只增不改）：当前指令行尾追进链，reactor 会话作用域收束自动回写全量步骤与结论/补丁行
-      ctx.appendInstructionLine(t(`Current instruction: ${goal}`, `当前指令：${goal}`));
+      ctx.appendInstructionLine(`Current instruction: ${goal}`);
       const r = await this.runtime.runTask(goal, this.state.model ? { tier: this.state.model } : undefined);
       const note = describeIncomplete(r.stopReason);
       if (!r.done && note.length > 0) this.pushMsg('system', note);
@@ -548,9 +542,7 @@ export class SessionController {
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.notify();
     try {
-      this.runtime.harness.context.appendInstructionLine(
-        t(`Current instruction: ${goal} (/goal)`, `当前指令：${goal}（/goal）`),
-      );
+      this.runtime.harness.context.appendInstructionLine(`Current instruction: ${goal} (/goal)`);
       this.pushMsg('system', t(`✻ /goal: ${goal}`, `✻ /goal：${goal}`));
       const r = await this.runtime.runLoop(goal, this.state.model ? { tier: this.state.model } : {});
       const lines = (r.criteria ?? []).map((c) => `  ${c.passed ? '✓' : '✗'} ${c.id} ${c.desc}`);

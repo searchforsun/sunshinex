@@ -22,8 +22,8 @@ test('/goal：修正环跑通——任务行入链带 /goal 标注（无模板�
     assert.equal(ctrl.getState().status, 'idle');
     const chain = ctrl.context.chainView();
     assert.ok(
-      chain.some((s) => s.action === 'task' && (s.observation.includes('(/goal)') || s.observation.includes('（/goal）'))),
-      '任务行入链且带 /goal 标注（en (/goal) / zh（/goal））',
+      chain.some((s) => s.action === 'task' && s.observation.includes('(/goal)')),
+      '任务行入链且带 /goal 标注（写链面恒英文单语，标注单形态）',
     );
     assert.ok(
       !chain.some((s) => s.action === 'task' && s.observation.includes('test-loop')),
@@ -120,7 +120,7 @@ test('/goal：/new 清链后空链起跑正常', async () => {
     await ctrl.waitIdle();
     const chain = ctrl.context.chainView();
     assert.ok(
-      chain.length > 1 && (chain[0].observation.includes('(/goal)') || chain[0].observation.includes('（/goal）')),
+      chain.length > 1 && chain[0].observation.includes('(/goal)'),
       '空链起跑，任务行为链首（/goal 标注、无模板名）',
     );
     assert.match(
