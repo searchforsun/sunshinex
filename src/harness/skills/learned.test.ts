@@ -92,18 +92,40 @@ test('settle：goal 或 reply 为空 → SKILL_SETTLE_EMPTY，不落盘', () => 
   }
 });
 
-test('settle 上限由 opts.limit 驱动（淘汰最旧至 limit 内）', () => {
+test('settle：超上限按 mtime 淘汰最旧（opts.limit 驱动）', () => {
   const { root, store } = makeRoot();
   try {
-    for (let i = 0; i < 3; i += 1) assert.equal(store.settle(`goal ${i}`, `reply ${i}`, { limit: 3 }).ok, true);
     const dir = path.join(resolveDataDir(root), 'skills');
-    assert.equal(fs.readdirSync(dir).filter((n) => fs.statSync(path.join(dir, n)).isDirectory()).length, 3);
-    // 已达上限 3：第 4 次沉淀须淘汰最旧，目录内恒 ≤3
-    assert.equal(store.settle('goal 4', 'reply 4', { limit: 3 }).ok, true);
+    const limit = 3;
+    // 固定各条 mtime：goal-0 最旧、goal-1 次旧、goal-2 最新（utimesSync 手法同「目录超上限」用例）
+    for (let i = 0; i < limit; i += 1) {
+      assert.equal(store.settle(`goal ${i}`, `reply ${i}`, { limit }).ok, true);
+      const d = path.join(dir, `goal-${i}`);
+      fs.utimesSync(d, new Date(2020, 0, 1 + i), new Date(2020, 0, 1 + i));
+    }
+    // 已达上限：第 4 次沉淀须淘汰 mtime 最旧的 goal-0，目录恒 ≤ limit
+    assert.equal(store.settle('goal 4', 'reply 4', { limit }).ok, true);
     const ids = fs.readdirSync(dir).filter((n) => fs.statSync(path.join(dir, n)).isDirectory());
-    assert.equal(ids.length, 3);
-    assert.ok(ids.includes('goal-4'), '最新沉淀保留');
-    assert.equal(ids.filter((n) => n !== 'goal-4').length, 2, '容量内仅余两条历史产物');
+    assert.equal(ids.length, limit);
+    assert.ok(!ids.includes('goal-0'), 'mtime 最旧的 goal-0 被淘汰');
+    assert.ok(ids.includes('goal-1'), '次旧历史保留');
+    assert.ok(ids.includes('goal-2'), '最新历史保留');
+    assert.ok(ids.includes('goal-4'), '本次新写入保留');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('settle：limit<=0 夹紧下界为 1（不抛错，仅保留本次新写入）', () => {
+  const { root, store } = makeRoot();
+  try {
+    const dir = path.join(resolveDataDir(root), 'skills');
+    for (let i = 0; i < 3; i += 1) assert.equal(store.settle(`goal ${i}`, `reply ${i}`).ok, true);
+    const r = store.settle('goal 9', 'reply 9', { limit: 0 });
+    assert.equal(r.ok, true, '下界夹紧不触发抛错/失败（旁路纪律：沉淀不得因入参失败）');
+    const ids = fs.readdirSync(dir).filter((n) => fs.statSync(path.join(dir, n)).isDirectory());
+    assert.equal(ids.length, 1, '夹紧为 1 后与 limit=1 既有语义一致：只留本次新写入');
+    assert.ok(ids.includes('goal-9'));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -72,8 +72,13 @@ export class LearnedSkillStore {
     return candidate;
   }
 
-  /** 超上限按 mtime 升序删最旧，为本次沉淀腾出 1 个空位（limit 由控制面配置驱动） */
+  /**
+   * 超上限按 mtime 升序删最旧，为本次沉淀腾出 1 个空位（limit 由控制面配置驱动）。
+   * 入口夹紧下界：limit<=0 一律按 1 处理（语义 = 至少保留本次新写入的 1 条），
+   * 避免 `limit - 1` 为负导致 excess 越界清空历史；不新增抛错路径（沉淀不得因入参失败）。
+   */
   private evictOldest(dir: string, limit: number): void {
+    const effLimit = Math.max(1, limit);
     const entries = fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.isDirectory())
@@ -82,7 +87,7 @@ export class LearnedSkillStore {
         return { path: p, mtime: fs.statSync(p).mtimeMs };
       })
       .sort((a, b) => a.mtime - b.mtime);
-    const excess = entries.length - (limit - 1);
+    const excess = entries.length - (effLimit - 1);
     for (const e of entries.slice(0, Math.max(0, excess))) {
       fs.rmSync(e.path, { recursive: true, force: true });
     }
