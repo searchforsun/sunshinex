@@ -8,6 +8,7 @@ import {
   MEMORY_INDEX_MAX_BYTES,
   MEMORY_INDEX_MAX_LINES,
   MemoryStore,
+  isSafeSlug,
   normalizeText,
   slugifyMemory,
 } from './store';
@@ -277,5 +278,146 @@ test('⑭ 显式子目录构造：dir() 落在 memory/agents/<id> 且与主目�
     assert.ok(child.dir().endsWith(path.join('memory', 'agents', 'reviewer')), '目录形态');
     assert.equal(child.indexText(), '- r1 — child fact [project]\n', '子目录自有索引');
     assert.equal(main.indexText(), '', '主索引不被子目录写入触碰');
+  });
+});
+
+// ── Fix round 1（审查 Important）：slug 校验收口 isSafeSlug / put·remove 拒绝非法 slug / add 避让索引名 ──
+
+test('⑮ isSafeSlug 纯函数语义：规范化形态 + 大小写不敏感排除索引名', () => {
+  assert.equal(isSafeSlug('prefers-pnpm'), true);
+  assert.equal(isSafeSlug('memo-2'), true);
+  assert.equal(isSafeSlug('偏好-TypeScript-strict'), true);
+  assert.equal(isSafeSlug(''), false, '空串非法');
+  assert.equal(isSafeSlug('../x'), false, '目录穿越形态非法');
+  assert.equal(isSafeSlug('..'), false);
+  assert.equal(isSafeSlug('foo/bar'), false, '含路径分隔符非法');
+  assert.equal(isSafeSlug('foo bar'), false, '含空白（非规范化）非法');
+  assert.equal(isSafeSlug(' Foo'), false, '首尾空白非法');
+  assert.equal(isSafeSlug('x'.repeat(41)), false, '超长截断形态非规范化');
+  assert.equal(isSafeSlug('MEMORY'), false, '索引名（全大写）非法');
+  assert.equal(isSafeSlug('memory'), false, '索引名（全小写）非法');
+  assert.equal(isSafeSlug('Memory'), false, '大小写不敏感排除');
+  assert.equal(isSafeSlug('MEMORY.md'), false);
+});
+
+test('⑯ put 非法 slug：拒绝写入、零越界文件、记忆目录与索引零污染', () => {
+  withStoreRoot((_root, store) => {
+    const seeded = store.put({ slug: 'prefers-pnpm', type: 'project', description: 'repo uses pnpm', body: 'pnpm only' });
+    assert.equal(seeded.ok, true);
+    const indexBefore = store.indexText();
+    const filesBefore = mdFiles(store);
+
+    const r = store.put({ slug: '../x', type: 'project', description: 'escape attempt', body: 'must not land' });
+    assert.equal(r.ok, false, '非法 slug 必须被拒');
+    if (!r.ok) {
+      assert.equal(r.error.code, 'MEMORY_SLUG_INVALID');
+      // 文案随 locale（pick(en, zh)）切换：断言两语种任一命中，避免环境语言导致误判
+      assert.match(r.error.message, /normalized form|规范化形态/, '文案说明规范化形态约束');
+      assert.match(r.error.message, /index name|索引名/, '文案说明不得为索引名');
+    }
+
+    const dataDir = path.resolve(store.dir(), '..');
+    assert.equal(fs.existsSync(path.join(dataDir, 'x.md')), false, '`memory/../x.md` 未产生（越出记忆目录的写入被拦）');
+    assert.equal(fs.existsSync(path.join(path.dirname(dataDir), 'x.md')), false, '`<dataDir>/../x.md` 不存在');
+    assert.deepEqual(mdFiles(store), filesBefore, '记忆目录只有既有内容');
+    assert.equal(store.indexText(), indexBefore, '索引未被触碰');
+    assert.equal(store.count(), 1, '仍只有既有记录');
+  });
+});
+
+test('⑰ put slug 撞索引名（大小写不敏感）：MEMORY_SLUG_INVALID 且 MEMORY.md 未被覆盖', () => {
+  withStore((store) => {
+    const seeded = store.put({ slug: 'prefers-pnpm', type: 'project', description: 'repo uses pnpm', body: 'pnpm only' });
+    assert.equal(seeded.ok, true);
+    const indexBefore = store.indexText();
+    const linesBefore = indexBefore.split('\n').filter((l: string) => l.length > 0).length;
+
+    for (const slug of ['MEMORY', 'memory']) {
+      const r = store.put({ slug, type: 'project', description: `overwrite index via ${slug}`, body: `body ${slug}` });
+      assert.equal(r.ok, false, `${slug} 应被拒`);
+      if (!r.ok) assert.equal(r.error.code, 'MEMORY_SLUG_INVALID');
+    }
+
+    assert.equal(store.indexText(), indexBefore, 'MEMORY.md 内容未被该记录覆盖');
+    assert.equal(store.indexText().split('\n').filter((l: string) => l.length > 0).length, linesBefore, '索引行数不变');
+    assert.ok(store.list().some((rec) => rec.slug === 'prefers-pnpm'), '既有记录仍在索引与列表中（未被静默跳过）');
+    assert.equal(store.count(), 1, '被拒记录未落盘');
+    assert.equal(fs.existsSync(path.join(store.dir(), 'memory.md')), false, '小写索引名文件亦未产生');
+  });
+});
+
+test('⑱ add 归一得索引名（空目录起）：落盘 memo.md，索引无双写痕迹、记录可见', () => {
+  withStore((store) => {
+    const r = store.add({ type: 'project', description: 'MEMORY', body: 'index-collision avoidance' });
+    assert.equal(r.ok, true);
+    if (r.ok) assert.equal(r.value.slug, 'memo', '撞索引名时起始候选改 memo');
+    assert.deepEqual(mdFiles(store), ['memo.md'], '落盘文件名为 memo.md（未覆盖 MEMORY.md）');
+    assert.ok(store.list().some((rec) => rec.slug === 'memo'), 'memo 记录对 list() 可见');
+    assert.equal(store.count(), 1);
+    const lines = store.indexText().split('\n').filter((l: string) => l.length > 0);
+    assert.deepEqual(lines, ['- memo — MEMORY [project]'], '索引只有 memo 一条记录行');
+    assert.equal(
+      lines.some((l: string) => l.startsWith('- MEMORY ') || l.startsWith('- memory ')),
+      false,
+      '索引不含「把索引名当记录名」的双写痕迹',
+    );
+  });
+});
+
+test('⑲ add 归一得索引名且 memo 已占：改走既有 -2 避让，不覆盖索引也不丢记录', () => {
+  withStore((store) => {
+    const seed = store.put({ slug: 'memo', type: 'project', description: 'existing memo', body: 'existing memo body' });
+    assert.equal(seed.ok, true);
+
+    const r = store.add({ type: 'project', description: 'MEMORY', body: 'index-collision avoidance, second' });
+    assert.equal(r.ok, true);
+    if (r.ok) assert.equal(r.value.slug, 'memo-2', 'memo 被占则沿用既有避让循环得 memo-2');
+    assert.deepEqual(mdFiles(store), ['memo-2.md', 'memo.md'], '两条记录各自落盘，索引文件未被当记录覆盖');
+    assert.equal(store.count(), 2);
+    assert.ok(store.list().some((rec) => rec.slug === 'memo-2'), 'memo-2 对 list() 可见');
+    assert.ok(store.indexText().includes('- memo-2 — MEMORY [project]'), '索引含 memo-2 记录行');
+  });
+});
+
+test('⑳ remove 非法 slug 拒绝（防删除逃逸）；合法但不存在的 slug 仍 MEMORY_NOT_FOUND', () => {
+  withStoreRoot((_root, store) => {
+    const seeded = store.put({ slug: 'prefers-pnpm', type: 'project', description: 'repo uses pnpm', body: 'pnpm only' });
+    assert.equal(seeded.ok, true);
+    const outside = path.join(path.resolve(store.dir(), '..'), 'x.md');
+    fs.writeFileSync(outside, 'outside file must survive');
+
+    for (const slug of ['../x', 'MEMORY', 'memory', 'a/b']) {
+      const r = store.remove(slug);
+      assert.equal(r.ok, false, `${slug} 应被拒`);
+      if (!r.ok) assert.equal(r.error.code, 'MEMORY_SLUG_INVALID');
+    }
+    assert.equal(fs.readFileSync(outside, 'utf8'), 'outside file must survive', '越界目标文件未被删除');
+    assert.equal(store.count(), 1, '既有记录未被误删');
+    assert.ok(store.list().some((rec) => rec.slug === 'prefers-pnpm'));
+
+    const miss = store.remove('不存在的合法slug');
+    assert.equal(miss.ok, false);
+    if (!miss.ok) assert.equal(miss.error.code, 'MEMORY_NOT_FOUND', '合法 slug 不存在仍保持 MEMORY_NOT_FOUND 语义');
+    assert.equal(store.count(), 1);
+  });
+});
+
+test('㉑ 正向回归：合法规范化 slug 的 put/更新/remove 全链路照常', () => {
+  withStore((store) => {
+    const r = store.put({ slug: 'prefers-pnpm', type: 'project', description: 'repo uses pnpm', body: 'pnpm only' });
+    assert.equal(r.ok, true);
+    assert.deepEqual(mdFiles(store), ['prefers-pnpm.md']);
+    assert.equal(store.indexText(), '- prefers-pnpm — repo uses pnpm [project]\n');
+    assert.ok(store.list().some((rec) => rec.slug === 'prefers-pnpm'));
+
+    const up = store.put({ slug: 'prefers-pnpm', type: 'project', description: 'repo uses pnpm', body: 'pnpm only, plus corepack' });
+    assert.equal(up.ok, true);
+    assert.equal(store.count(), 1, '同 slug 更新不新增文件');
+    if (up.ok) assert.equal(up.value.body, 'pnpm only, plus corepack');
+
+    const del = store.remove('prefers-pnpm');
+    assert.equal(del.ok, true);
+    assert.equal(store.count(), 0);
+    assert.equal(store.indexText(), '');
   });
 });

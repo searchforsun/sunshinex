@@ -58,6 +58,32 @@ function serialize(rec: { type: MemoryType; created: string; modified: string; d
 
 const INDEX_NAME = 'MEMORY.md';
 
+/** 索引名的 slug 排他口径（大小写不敏感比较用：`MEMORY.md` 去扩展名即 `memory`） */
+const INDEX_SLUG = 'memory';
+
+/**
+ * slug 安全校验（写入/删除前拼 `<slug>.md` 的唯一收口，供后续任务复用）：非空 **且** 已是规范化形态
+ * （`slugifyMemory(slug) === slug`，天然排除 `/`、`..`、空白等越界形态）**且** 不等于索引名 `MEMORY`
+ * （大小写不敏感——Windows/macOS 文件系统不区分大小写，记录一旦落到 `MEMORY.md` 会覆盖派生索引，
+ * 且该记录随后被 `list()` 当索引跳过 → 静默不可见）。
+ */
+export function isSafeSlug(slug: string): boolean {
+  if (slug.length === 0) return false;
+  if (slugifyMemory(slug) !== slug) return false;
+  return slug.toLowerCase() !== INDEX_SLUG;
+}
+
+/** 非法 slug 的统一失败结果（put/remove 共用，文案单点防漂移） */
+function failSlugInvalid<T>(): Result<T> {
+  return fail(
+    'MEMORY_SLUG_INVALID',
+    pick(
+      'invalid memory slug: must be in normalized form and must not be the index name',
+      '记忆 slug 非法：必须是规范化形态且不得为索引名',
+    ),
+  );
+}
+
 /** 解析记录文件（frontmatter 四行 + 正文）；坏文件返回 null 不中断整表扫描 */
 function parseRecord(file: string, slug: string): MemoryRecord | null {
   let raw: string;
@@ -153,8 +179,10 @@ export class MemoryStore {
     );
     if (duplicate) return fail('MEMORY_DUPLICATE', `duplicate: ${candidate}`);
 
-    let slug = candidate;
-    for (let n = 2; this.has(slug); n += 1) slug = `${candidate}-${n}`;
+    // 索引名避让（Fix round 1）：空目录下 `has('MEMORY')` 为假、既有避让循环不生效，故起始候选先改 memo
+    const base = isSafeSlug(candidate) ? candidate : 'memo';
+    let slug = base;
+    for (let n = 2; this.has(slug); n += 1) slug = `${base}-${n}`;
     const created = input.created ?? new Date().toISOString().slice(0, 10);
     const modified = new Date().toISOString();
     fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body }));
@@ -175,6 +203,8 @@ export class MemoryStore {
     const description = input.description.trim();
     const body = input.body.trim();
     if (!slug) return fail('MEMORY_EMPTY', 'slug 不得为空');
+    // 校验先于任何去重/写盘/路径拼接：slug 直接拼进文件名，未净化入口可越出记忆目录或撞索引名
+    if (!isSafeSlug(slug)) return failSlugInvalid<MemoryRecord>();
     if (!description || !body) return fail('MEMORY_EMPTY', '记忆描述与正文均不得为空');
     const existing = this.list().find((r) => r.slug === slug);
     const duplicate = this.list().find(
@@ -196,6 +226,8 @@ export class MemoryStore {
   }
 
   remove(slug: string): Result<void> {
+    // 删除同为拼名入口（Fix round 1）：防逃逸删除；合法 slug 但不存在仍走 MEMORY_NOT_FOUND
+    if (!isSafeSlug(slug)) return failSlugInvalid<void>();
     const file = path.join(this.dirPath, `${slug}.md`);
     if (!fs.existsSync(file)) return fail('MEMORY_NOT_FOUND', `no such memory: ${slug}`);
     fs.rmSync(file);
