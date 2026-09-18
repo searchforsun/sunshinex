@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SkillManifest } from '../types';
 import { Result, ok, fail } from '../result';
-import { resolveDataDir } from '../config/data-dir';
+import { resolveDataDir, userSkillsDir } from '../config/data-dir';
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
@@ -46,12 +46,14 @@ function loadSkillsFrom(dir: string): SkillManifest[] {
     .filter((s): s is SkillManifest => s !== null);
 }
 
-/** 扫描 skills/{id}/skill.md，返回技能清单（用户根与学习根合并；id 撞名用户恒优先，学习产物被遮蔽不抛） */
+/** 扫描 .sunshinex/skills/{id}/skill.md，返回技能清单（三级根合并：项目根 > 全局根 > 学习根；id 撞名就近遮蔽，被遮蔽者静默让位不抛） */
 export function loadSkills(root: string): SkillManifest[] {
-  const user = loadSkillsFrom(path.join(root, 'skills'));
-  const userIds = new Set(user.map((s) => s.id));
-  const learned = loadSkillsFrom(learnedSkillsDir(root)).filter((s) => !userIds.has(s.id));
-  return [...user, ...learned];
+  const project = loadSkillsFrom(path.join(root, '.sunshinex', 'skills'));
+  const seen = new Set(project.map((s) => s.id));
+  const global = loadSkillsFrom(userSkillsDir()).filter((s) => !seen.has(s.id));
+  for (const s of global) seen.add(s.id);
+  const learned = loadSkillsFrom(learnedSkillsDir(root)).filter((s) => !seen.has(s.id));
+  return [...project, ...global, ...learned];
 }
 
 /** 技能门面：装配根暴露 list/get/resolve 三能力（Harness.skills；结构兼容 LoopDeps.skills） */
@@ -64,15 +66,17 @@ export interface SkillsFacade {
 }
 
 export function createSkillsFacade(root: string): SkillsFacade {
-  const userDir = path.join(root, 'skills');
+  const projectDir = path.join(root, '.sunshinex', 'skills');
   const learnedDir = learnedSkillsDir(root);
   return {
     list: () => loadSkills(root),
     get: (id) => loadSkills(root).find((s) => s.id === id),
     resolve: (id, params) => {
-      const r = resolveSkill(userDir, id, params);
-      // 用户根已注册（含缺参 SKILL_PARAM_MISSING）不回退；仅未注册（SKILL_NOT_FOUND）才找学习根：用户技能恒优先
-      return r.ok || r.error.code !== 'SKILL_NOT_FOUND' ? r : resolveSkill(learnedDir, id, params);
+      const project = resolveSkill(projectDir, id, params);
+      // 项目根已注册（含缺参 SKILL_PARAM_MISSING）不回退；仅未注册（SKILL_NOT_FOUND）才逐级回退全局根→学习根：就近优先
+      if (project.ok || project.error.code !== 'SKILL_NOT_FOUND') return project;
+      const global = resolveSkill(userSkillsDir(), id, params);
+      return global.ok || global.error.code !== 'SKILL_NOT_FOUND' ? global : resolveSkill(learnedDir, id, params);
     },
     learnedCount: () => loadSkillsFrom(learnedDir).length,
   };
