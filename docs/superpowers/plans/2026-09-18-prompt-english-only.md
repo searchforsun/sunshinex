@@ -318,7 +318,9 @@ Expected: FAIL —— 命中 loop 判据 prompt、deficit 链行、gate/CI 回�
 | `loop/nodes.ts:229/240/249` | `Goal judged unsatisfiable: ${imp.evidence ?? imp.desc}` / `Judge unavailable (auth/quota/model): ${fatal.message}` / `Judge temporarily unavailable (retried ${MAX_JUDGE_RETRIES} times): ${exhaust.message}` |
 | `loop/nodes.ts:259` | `` `failed: ${failed.map((c) => `${c.id}=${c.desc}`).join('; ')}` ``（loop 答复在 graph 语境会被写链） |
 | `loop/templates.ts:107` | `{ passed: false, reason: 'review produced no conclusion' }` |
-| `loop/engine.ts:91/101/134/137/139/163/174` | `LoopEngine: node list is empty` / `SKILL_NOT_CONFIGURED: LoopEngine ...` / `` `Execution timed out (${this.termination.timeoutMs}ms)` `` / `` `Token budget exceeded (used ${ctx.tokensUsed} ≥ max ${this.termination.maxTokens})` `` / `` `Iteration limit (${this.termination.maxIterations}) exhausted` `` / `` `Node ${node.id} failed: ${out.reply ?? '(no detail)'}` `` / `` `Unknown route target node id: ${out.route}` `` |
+| `loop/engine.ts:91/101/174` | **R1/R3 英文单语**（诊断/程序化）：`LoopEngine: node list is empty` / `SKILL_NOT_CONFIGURED: LoopDeps has no skill resolver (skills)` / `` `Unknown route target node id: ${out.route}` `` |
+| `loop/engine.ts:134/137/139/163` | **R2 `t()` 双语**（`loop/engine.ts` 零 `appendChain`，回执只上屏）：`t('Execution timed out (' + ms + 'ms)', '执行超时（超过 ' + ms + 'ms）')` / `t('Token budget exceeded (used X ≥ max Y)', …)` / `t('Iteration limit (N) exhausted', 'iteration 上限（N）已耗尽')` / `t('Node ' + id + ' failed: ' + detail, '节点 ' + id + ' fail：' + detail)` |
+| `loop/engine.ts:109` | 技能块**进模型**（R1）：`` `[Skill] ${m.name} (id=${m.id} v=${m.version})\n…` ``（全角括号改半角） |
 | `loop/templates.ts:135` | `` `Unknown template: ${name} (available: ${TEMPLATE_NAMES.join('/')})` `` |
 | `graph/nodes.ts:44/60` | 只留英文：`` `Current instruction: ${taskText}` ``（角色行写链）/ `` `${id}: loop node did not finish (${r.status})` ``（结论行写链） |
 | `graph/agents.ts:51` | 只留英文：`` `Current instruction: ${goalLabel}` ``（fork 任务行） |
@@ -331,7 +333,7 @@ Expected: FAIL —— 命中 loop 判据 prompt、deficit 链行、gate/CI 回�
 |---|---|
 | `graph/nodes.ts:92/95/97` | `t('Approval granted: ${label}'.replace(...), ...)` 形态不可用——改为 `t('Approval granted: ' + label, '审批通过：' + label)` / `t('Approval rejected: ' + label, '审批拒绝：' + label)` / `t('Waiting for approval: ' + label, '等待人工审批：' + label)` |
 | `graph/nodes.ts:116/120/121/124/128` | `t('[dry-run] will run: ' + config.command, '[dry-run] 将执行: ' + config.command)` / `` `(no output)` → `t('(no output)', '（无输出）')` `` / `t('CI passed: ' + tail, 'CI 通过：' + tail)` / `t('CI failed: ' + detail, 'CI 失败：' + detail)` |
-| `graph/engine.ts:153/154/156/196/199/200` | `t('Execution timed out (over ${this.term.timeoutMs}ms)', `执行超时（超过 ${this.term.timeoutMs}ms）`)` / `t('Token budget exceeded, paused', 'Token 预算超支，已暂停')` / `t('Node steps exhausted (maxNodes=...)', ...)` / `t('Waiting for human approval: ' + pausedGates.join(', '), '等待人工审批：' + ...)` / `t('Failed nodes: ' + failedNodes.join(', '), '存在失败节点：' + ...)` / `t('All nodes completed', '全部节点完成')` |
+| `graph/engine.ts:153/154/156/196/199/200` | **R2 `t()` 双语**（`graph/engine.ts` 零 `appendChain`，回执只上屏——B-1 更正后的判据），下文各串均以 `t()` 包裹 |
 
 **R2 回执（不写链）→ `t()` 双语：** `graph/templates.ts:39` 的 gate `prompt: '交付确认'` 只进审批卡（外观）、不写链 → 改 `t('Delivery confirmation', '交付确认')`。
 
@@ -457,7 +459,13 @@ git add src/harness/prompt-language.test.ts src/tui/session.ts src/i18n.ts src/i
 git commit -m "refactor(i18n): B5 链行英文化 + 删除 pick 双语别名 + README/TUI-MANUAL 语言口径同步"
 ```
 
-## 计划自审
+
+## 判据更正登记（B3 实施时发现）
+
+本计划 Task 3 的 R1 表把 `graph/engine.ts` 的 dry-run 预览与引擎汇总、`loop/engine.ts` 的限流三态与节点 fail 说明列为「英文单语」——该表写于 B-1 更正之前，与 CLAUDE.md §15「写死的上屏回执走 `t()`」冲突。**以 §15 为准**：这些面零写链、只上屏，一律走 `t()` 双语。B3 实施已按 §15 落地（34 处英文 + 20 处 `t()`），并新增 `src/graph/receipts.i18n.test.ts` 运行时双语钉子 + 审计用例内的源级钉子。
+
+另：`loop/engine.ts:109` 技能块与 `graph/nodes.ts` CI detail 分隔符的全角标点已改半角（提示词面非 ASCII 清零）。
+
 
 **规格覆盖**
 
