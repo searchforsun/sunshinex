@@ -216,6 +216,14 @@ export class ContextManager {
     return items;
   }
 
+  /** 压缩素材（规格 §4.2）：从装配面中剔除会话常量条目（快照：SUNSHINE.md / 规则 / 技能清单 / 记忆引导，均落在
+   *  system/instruction 两类）。这些段每轮由 assemble 原样重注入、不参与折叠，故不属于「被摘要替代」的素材——
+   *  纳入会既造成「摘要 + 常量段」双份，又在反应式压缩（端点超长兜底）路径多发起一次无谓的模型摘要调用。
+   *  与 window 丢弃序同口径：system/instruction 即其声明「不可丢」的白名单，二者永不被摘要替代。 */
+  foldableItems(assembled: ContextItem[]): ContextItem[] {
+    return assembled.filter((it) => it.kind !== 'system' && it.kind !== 'instruction');
+  }
+
   /** 会话上下文快照重载（SUNSHINE.md 冻结的唯一显式刷新口之一）：/init 写盘后、压缩成功、/new 时调用 */
   reloadContext(): void {
     this.contextSnapshot = [...this.loader.load(), ...this.skillsIndexItems(), ...this.memoryIndexItems()];
@@ -295,7 +303,7 @@ export async function runCompaction(
       traceLine = undefined; // 归档失败降级：无指针行，压缩照常
     }
   }
-  const chunks = await cm.window.compact(items, { summaryTokenBudget: opts.summaryTokenBudget });
+  const chunks = await cm.window.compact(cm.foldableItems(items), { summaryTokenBudget: opts.summaryTokenBudget });
   const via = await cm.applyCompaction(chunks, {
     rereadTokenBudget: opts.rereadTokenBudget,
     summaryTokenBudget: opts.summaryTokenBudget,
