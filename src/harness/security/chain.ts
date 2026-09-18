@@ -3,6 +3,8 @@ import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
 import { ToolBackend } from '../../types';
 import { resolveDataDir } from '../../config/data-dir';
+import { resolveMemoryConfig } from '../../config/memory-config';
+import { isMemoryPath, MemoryScope } from '../memory/paths';
 import { DryRun } from './dryrun';
 import { ExecResult } from '../../types';
 import { Result } from '../../result';
@@ -37,6 +39,8 @@ export class SafetyChain {
     readonly backend: ToolBackend,
     private dryrun: DryRun,
     private readonly root: string,
+    /** 记忆写 scope（规格 §4.2）：undefined=主链可写 memory/** 整子树；子代理 fork 传自身 agents/<id> 收窄 */
+    readonly memoryScope?: MemoryScope,
   ) {
     // root 可能经符号链接传入；不存在时原样回退；归一遇异常（如权限类）同样防御性原样回退（spec 2.1 兜底条款同源，evaluate 判界层再统一兜底）
     try {
@@ -71,9 +75,9 @@ export class SafetyChain {
 
   /**
    * 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal；异常按拒绝处理不放行（spec 2.1 兜底条款）。
-   * 数据目录只读放行（auto memory 规格 D6）：Read/Grep 访问 resolveDataDir 子树放行（记忆索引/主题文件按需召回；
-   * Full trace 归档、tool-outputs 路径同受益），Write 维持拒绝——字面 resolve 比对（dataDir 可能不存在，realpath 不可得），
-   * symlink 逃逸风险不成立（写面被拒，dataDir 内无法由模型植入链接）。
+   * 数据目录白名单（auto memory 规格 D6 + 对齐规格 §4.2）：Read/Grep 访问 dataDir 子树放行（记忆索引/主题文件按需召回；
+   * Full trace 归档、tool-outputs 路径同受益）；Write 只在 <dataDir>/memory/** 放行（记忆写入窄口，总开关关闭即失效）——
+   * 写面接缝与只读放行同源判界，一律作用于 realpath 归一后的真实路径：dataDir 内由模型植入的符号链接指向子树之外时被拒（不再有「写面全拒故链接无威胁」的前提）。
    */
   private resolveSafe(raw: unknown, tool: string): GuardDecision {
     try {
@@ -83,6 +87,7 @@ export class SafetyChain {
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
       if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
         if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
+        if (tool === 'Write' && this.memoryWriteAllowed(real)) return { allowed: true, safePath: real };
         return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
       }
       return { allowed: true, safePath: real };
@@ -90,6 +95,17 @@ export class SafetyChain {
       const msg = err instanceof Error ? err.message : String(err);
       return { allowed: false, reason: `COMMAND_DENIED: 路径判界失败：${msg.slice(0, 120)}` };
     }
+  }
+
+  /** 派生带记忆 scope 的克隆（子代理 fork 用）：其余依赖引用共享，仅 scope 收窄；原实例零突变 */
+  withMemoryScope(scope: MemoryScope): SafetyChain {
+    return new SafetyChain(this.guard, this.backend, this.dryrun, this.root, scope);
+  }
+
+  /** 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启；realpath 归一后判定，符号链接逃逸自然被拒 */
+  private memoryWriteAllowed(real: string): boolean {
+    if (!resolveMemoryConfig().autoMemory) return false;
+    return isMemoryPath(resolveDataDir(this.root), real, this.memoryScope) !== null;
   }
 
   /** 路径是否落在数据目录子树内（每次惰性求值对齐运行期求值先例，SUNSHINEX_DATA_DIR 测试可重定向） */
