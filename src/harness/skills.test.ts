@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { formatSkillsIndex, parseSkillFrontmatter, loadSkills } from './skills';
+import { createSkillsFacade, formatSkillsIndex, parseSkillFrontmatter, loadSkills } from './skills';
 
 test('parseSkillFrontmatter：--- 块内 key: value 提取', () => {
   const m = parseSkillFrontmatter('---\nname: TUI 技能\ndescription: 终端交互\nversion: 1.2.0\n---\n正文');
@@ -90,4 +90,88 @@ test('formatSkillsIndex：空清单 null、按 name 排序、行格式与截断�
   assert.equal(lines.length, 2, '每技能恰一行');
   assert.equal(lines[0], `- Alpha: ${'d'.repeat(128)}…`, '按 name 字典序 + 超长 description 截 128 加省略号');
   assert.equal(lines[1], '- Beta: 后注册');
+});
+
+
+/** 兼容链（规格 v2）：五根统一 {根}/skills/{id}/SKILL.md（Agent Skills 标准形态），异构形态零兼容 */
+function writeCompatSkill(root: string, dot: string, id: string, name: string): void {
+  fs.mkdirSync(path.join(root, dot, 'skills', id), { recursive: true });
+  fs.writeFileSync(path.join(root, dot, 'skills', id, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name} 说明\nversion: 1.0.0\n---\n${name} 正文`);
+}
+
+function withCompatEnv<T>(root: string, fn: () => T): T {
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(root, '.data');
+  process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(root, 'global-skills');
+  try {
+    return fn();
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test('兼容链：五根统一 SKILL.md 标准形态，互不相同 id 全量并入清单', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
+  withCompatEnv(root, () => {
+    writeCompatSkill(root, '.cursor', 'a-skill', 'CursorSkill');
+    writeCompatSkill(root, '.codex', 'b-skill', 'CodexSkill');
+    writeCompatSkill(root, '.claude', 'c-skill', 'ClaudeSkill');
+    writeCompatSkill(root, '.agents', 'd-skill', 'AgentsSkill');
+    writeCompatSkill(root, '.sunshinex', 'e-skill', 'SunshineSkill');
+    assert.deepEqual(loadSkills(root).map((s) => s.id).sort(), ['a-skill', 'b-skill', 'c-skill', 'd-skill', 'e-skill']);
+  });
+});
+
+test('兼容链就近遮蔽：同 id 取最高优先根（.sunshinex 遮蔽 .agents/.claude），list 恒一', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
+  withCompatEnv(root, () => {
+    writeCompatSkill(root, '.claude', 'dup', 'ClaudeDup');
+    writeCompatSkill(root, '.agents', 'dup', 'AgentsDup');
+    writeCompatSkill(root, '.sunshinex', 'dup', 'SunshineDup');
+    const hits = loadSkills(root).filter((s) => s.id === 'dup');
+    assert.equal(hits.length, 1, '同 id 就近遮蔽、list 恒一');
+    assert.equal(hits[0].name, 'SunshineDup');
+  });
+});
+
+test('标准文件名口径：SKILL.md 优先、skill.md 兜底（同名并存取 SKILL.md）', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
+  withCompatEnv(root, () => {
+    writeCompatSkill(root, '.sunshinex', 'upper', 'UpperName');
+    fs.mkdirSync(path.join(root, '.sunshinex', 'skills', 'lower'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'lower', 'skill.md'), '---\nname: LowerName\ndescription: 小写兜底\nversion: 1.0.0\n---\n正文');
+    assert.deepEqual(loadSkills(root).map((s) => s.id).sort(), ['lower', 'upper']);
+    fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'upper', 'skill.md'), '---\nname: LowerUpper\ndescription: 小写同名\nversion: 1.0.0\n---\n正文');
+    assert.equal(loadSkills(root).find((s) => s.id === 'upper')?.name, 'UpperName', '同 id 并存时 SKILL.md 优先');
+  });
+});
+
+test('异构形态零装载：rules/*.mdc、AGENTS.md、commands/*.md 就位不进清单', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
+  withCompatEnv(root, () => {
+    fs.mkdirSync(path.join(root, '.cursor', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.cursor', 'rules', 'x.mdc'), '---\ndescription: 规则\n---\n规则正文');
+    fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.agents', 'AGENTS.md'), '# 指令文件\n正文');
+    fs.mkdirSync(path.join(root, '.claude', 'commands'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'commands', 'y.md'), '---\nname: Cmd\n---\n正文');
+    assert.deepEqual(loadSkills(root), [], '异构形态一律不装载');
+  });
+});
+
+test('resolve 回退链跨兼容根：仅 .claude 注册的技能可命中（就近优先）', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
+  withCompatEnv(root, () => {
+    writeCompatSkill(root, '.claude', 'solo', 'ClaudeSolo');
+    const facade = createSkillsFacade(root);
+    const r = facade.resolve('solo');
+    assert.equal(r.ok, true);
+    if (r.ok) assert.ok(r.value.body.includes('ClaudeSolo 正文'));
+    const miss = facade.resolve('nope');
+    assert.equal(miss.ok, false);
+    if (!miss.ok) assert.equal(miss.error.code, 'SKILL_NOT_FOUND');
+  });
 });

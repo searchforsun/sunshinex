@@ -31,29 +31,52 @@ export function learnedSkillsDir(root: string): string {
   return path.join(resolveDataDir(root), 'skills');
 }
 
-/** 扫描单根目录下 {id}/skill.md */
+/** 项目级兼容根升序（规格 v2：五根统一标准形态 {根}/skills/{id}/SKILL.md；右侧遮蔽左侧，.sunshinex 原生恒最优先） */
+export const PROJECT_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents', '.sunshinex'] as const;
+
+/** 项目级各兼容根下的技能目录（升序） */
+export function projectSkillDirs(root: string): string[] {
+  return PROJECT_SKILL_ROOTS_ASC.map((dot) => path.join(root, dot, 'skills'));
+}
+
+/** 技能文件名查找单点（SKILL.md 标准名优先、skill.md 兜底）：装载与解析共用，防两处漂移。
+ *  兜底理由——Windows/macOS 文件系统本不区分大小写（两者同一文件），Linux 显式补齐才保三平台装载结果一致 */
+function skillFileIn(dir: string, id: string): string | undefined {
+  return ['SKILL.md', 'skill.md'].map((f) => path.join(dir, id, f)).find((f) => fs.existsSync(f));
+}
+
+/** 扫描单根目录下 {id}/SKILL.md（文件名口径见 skillFileIn） */
 function loadSkillsFrom(dir: string): SkillManifest[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => {
-      const skillFile = path.join(dir, d.name, 'skill.md');
-      if (!fs.existsSync(skillFile)) return null;
-      const meta = parseSkillFrontmatter(fs.readFileSync(skillFile, 'utf8'));
+      const named = skillFileIn(dir, d.name);
+      if (named === undefined) return null;
+      const meta = parseSkillFrontmatter(fs.readFileSync(named, 'utf8'));
       return { id: d.name, ...meta } as SkillManifest;
     })
     .filter((s): s is SkillManifest => s !== null);
 }
 
-/** 扫描 .sunshinex/skills/{id}/skill.md，返回技能清单（三级根合并：项目根 > 全局根 > 学习根；id 撞名就近遮蔽，被遮蔽者静默让位不抛） */
+/** 装载/解析优先级链（降序）：项目级五根（.sunshinex > .agents > .claude > .codex > .cursor）→ 全局根 → 学习根 */
+function priorityChain(root: string): string[] {
+  return [...projectSkillDirs(root)].reverse().concat([userSkillsDir(), learnedSkillsDir(root)]);
+}
+
+/** 技能清单（规格 v2）：按优先级链降序装载，id 撞名就近遮蔽（被遮蔽者静默让位不抛） */
 export function loadSkills(root: string): SkillManifest[] {
-  const project = loadSkillsFrom(path.join(root, '.sunshinex', 'skills'));
-  const seen = new Set(project.map((s) => s.id));
-  const global = loadSkillsFrom(userSkillsDir()).filter((s) => !seen.has(s.id));
-  for (const s of global) seen.add(s.id);
-  const learned = loadSkillsFrom(learnedSkillsDir(root)).filter((s) => !seen.has(s.id));
-  return [...project, ...global, ...learned];
+  const out: SkillManifest[] = [];
+  const seen = new Set<string>();
+  for (const dir of priorityChain(root)) {
+    for (const s of loadSkillsFrom(dir)) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      out.push(s);
+    }
+  }
+  return out;
 }
 
 /** 技能清单格式化（对标 Claude Code 常驻技能清单）：每技能一行 `- name: description`，按 name 码点字典序排序（locale 无关，跨环境逐字节稳定——前置段冻结先例）；description 截 128 加省略号控预算；空清单返回 null（零条目零注入开销） */
@@ -80,17 +103,19 @@ export interface SkillsFacade {
 }
 
 export function createSkillsFacade(root: string): SkillsFacade {
-  const projectDir = path.join(root, '.sunshinex', 'skills');
   const learnedDir = learnedSkillsDir(root);
+  const chain = priorityChain(root);
   return {
     list: () => loadSkills(root),
     get: (id) => loadSkills(root).find((s) => s.id === id),
     resolve: (id, params) => {
-      const project = resolveSkill(projectDir, id, params);
-      // 项目根已注册（含缺参 SKILL_PARAM_MISSING）不回退；仅未注册（SKILL_NOT_FOUND）才逐级回退全局根→学习根：就近优先
-      if (project.ok || project.error.code !== 'SKILL_NOT_FOUND') return project;
-      const global = resolveSkill(userSkillsDir(), id, params);
-      return global.ok || global.error.code !== 'SKILL_NOT_FOUND' ? global : resolveSkill(learnedDir, id, params);
+      // 沿优先级链逐级解析：命中或缺参即止（SKILL_PARAM_MISSING 就近不回退），仅未注册（SKILL_NOT_FOUND）才下探下一根
+      let result: Result<ResolvedSkill> | null = null;
+      for (const dir of chain) {
+        result = resolveSkill(dir, id, params);
+        if (result.ok || result.error.code !== 'SKILL_NOT_FOUND') break;
+      }
+      return result ?? resolveSkill(learnedDir, id, params);
     },
     learnedCount: () => loadSkillsFrom(learnedDir).length,
   };
@@ -109,8 +134,8 @@ const PLACEHOLDER = /\{\{(\w+)\}\}/g;
  * 命中 → 仅白名单内形参被替换（白名单外 {{x}} 原样保留，多余实参被过滤），返回参数化正文
  */
 export function resolveSkill(skillsDir: string, id: string, params?: Record<string, string>): Result<ResolvedSkill> {
-  const file = path.join(skillsDir, id, 'skill.md');
-  if (!fs.existsSync(file)) return fail('SKILL_NOT_FOUND', `技能未注册：${id}`);
+  const file = skillFileIn(skillsDir, id);
+  if (file === undefined) return fail('SKILL_NOT_FOUND', `技能未注册：${id}`);
 
   const md = fs.readFileSync(file, 'utf8');
   const manifest: SkillManifest = { id, ...parseSkillFrontmatter(md) };
