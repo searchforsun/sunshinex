@@ -228,7 +228,7 @@ settle 单点（`reactor.ts` 收口）在提取 / 沉淀后尾追 `[memory] save
 | `src/harness/tools/builtin.ts` | `write` 执行器委派接缝（第 7 可选参，未注入＝旧行为） |
 | `src/harness/context/index.ts` | 常驻记忆条目、`sunshinexBaseline` / `skillsBaseline`、`checkConstantsDrift()`、`appendInstructionLine()` |
 | `src/harness/context/loader.ts` | 暴露 SUNSHINE.md 原文（基线捕获与比对用） |
-| `src/config/memory-config.ts`（新） | 三层参数解析单点 + fail-fast |
+| `src/config/memory-config.ts`（新） | env + 缺省两层解析单点 + fail-fast（2026-09-18 用户裁决：SUNSHINE.md 不承载键值配置） |
 | `src/harness/index.ts`、`src/runtime.ts` | 装配注入（写入接缝、记忆配置） |
 | `src/harness/skills/learned.ts` | 开关与上限由配置驱动 |
 | `src/harness/subagent.ts` | `agent.md` `memory` 字段、记忆索引行注入、scope 传递 |
