@@ -14,6 +14,15 @@ export class ContextLoader {
     return items;
   }
 
+  /** SUNSHINE.md 原始文本（漂移检测基线与比对用；不存在或不可读返回 null——检测须永不因文件缺失而抛） */
+  readSunshinex(): string | null {
+    try {
+      return fs.readFileSync(path.join(this.root, 'SUNSHINE.md'), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
   private collect(file: string, items: ContextItem[], depth: number): void {
     if (depth > 4) return;
     const raw = fs.readFileSync(file, 'utf8');

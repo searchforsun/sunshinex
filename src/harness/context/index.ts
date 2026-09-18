@@ -54,6 +54,11 @@ export class ContextManager {
   private contextSnapshot: ContextItem[] = [];
   /** 会话变更订阅（单槽，后注册覆盖；restoreSession 直注入不经过此口） */
   private changeSink?: (c: ContextChange) => void;
+  /** 动态改动尾追基线（规范 N1 / 规格 §9.2）：刷新点捕获，会话中途与磁盘比对不一致即尾追变更说明；
+   *  sunshinexBaseline=null 表示「磁盘无 SUNSHINE.md」这一确定态，与「未捕获」不混 */
+  private sunshinexBaseline: string | null = null;
+  /** 技能清单基线（id 集排序 join；新增才告知，正文永不进上下文） */
+  private skillsBaseline = '';
 
   constructor(private readonly rootPath: string, store: StorageAdapter) {
     this.loader = new ContextLoader(rootPath);
@@ -69,6 +74,13 @@ export class ContextManager {
     }
     // 会话快照（G 项）：构造即冻结，assemble 不再每轮读盘（中途改盘不位移前缀）；记忆索引条目随快照装载（auto memory §3）
     this.contextSnapshot = [...this.loader.load(), ...this.skillsIndexItems(), ...this.memoryIndexItems()];
+    this.captureBaselines();
+  }
+
+  /** 刷新点基线捕获（构造与 reloadContext 共用单点）：会话常量漂移检测的比对基准，随刷新点与磁盘对齐 */
+  private captureBaselines(): void {
+    this.sunshinexBaseline = this.loader.readSunshinex();
+    this.skillsBaseline = skillIds(this.rootPath);
   }
 
   /** 项目根绝对路径（环境事实注入与路径消歧的单一来源） */
@@ -172,6 +184,48 @@ export class ContextManager {
     if (pushed.length > 0) this.changeSink?.({ kind: 'append', steps: pushed });
   }
 
+  /** 会话常量漂移检测（规范 N1 / 规格 §9.2；确定性、零模型调用）：读盘比对刷新点基线，返回应尾追的说明行文本。
+   *  基线随比对前进（同一变更只告知一次），刷新点由 captureBaselines 重置；说明文案恒英文单语——经 appendChain 写链即提示词面（CLAUDE.md §15，pick() 已废止）。 */
+  checkConstantsDrift(): string[] {
+    const out: string[] = [];
+    const current = this.loader.readSunshinex();
+    if (current !== this.sunshinexBaseline) {
+      const full = path.join(this.rootPath, 'SUNSHINE.md');
+      const text =
+        current === null
+          ? '(SUNSHINE.md is gone)'
+          : current.length > DRIFT_MAX_CHARS
+            ? `${current.slice(0, DRIFT_MAX_CHARS)}\n…(truncated) — read ${full} for the rest`
+            : current;
+      out.push(
+        [
+          'SUNSHINE.md changed (the session snapshot is stale; the text below is authoritative until the next refresh point):',
+          text,
+        ].join('\n'),
+      );
+      this.sunshinexBaseline = current;
+    }
+    const ids = skillIds(this.rootPath);
+    if (ids !== this.skillsBaseline) {
+      const before = new Set(this.skillsBaseline.split('\n').filter((s) => s.length > 0));
+      const added = ids.split('\n').filter((s) => s.length > 0 && !before.has(s));
+      if (added.length > 0) {
+        out.push(`[skills] added: ${added.join(', ')} — load with the skill tool`);
+      }
+      this.skillsBaseline = ids;
+    }
+    return out;
+  }
+
+  /** 指令行单点（规范 N1 / 规格 §9.1）：先尾追会话常量漂移说明行，再尾追任务指令行——指令恒为链尾最后一行。
+   *  返回本次说明文本（交互面据此落用户可见回执，M8 消费）。所有指令行落点统一走此处，杜绝多调用处漂移。 */
+  appendInstructionLine(observation: string): string[] {
+    const notices = this.checkConstantsDrift();
+    for (const n of notices) this.appendChain([{ action: 'notice', observation: n }]);
+    this.appendChain([{ action: 'task', observation }]);
+    return notices;
+  }
+
   /** 压缩协调：压缩块已代表的链前缀条目数，推进水位防「链+压缩块」双份 */
   trimChainFront(n: number): void {
     if (n <= 0) return;
@@ -233,6 +287,8 @@ export class ContextManager {
     } catch {
       this.compactInstructions = null;
     }
+    // 刷新点：快照已是磁盘最新态，基线随之对齐（否则下一轮会把「已进快照的改动」误判为漂移）
+    this.captureBaselines();
   }
 
   /** 技能清单段（对标 Claude Code 常驻技能清单）：name+description 摘要行进冻结快照（history 前、逐字节稳定），
@@ -267,6 +323,17 @@ export class ContextManager {
     return [{ kind: 'system', content: body }];
   }
 }
+
+/** 技能 id 集（排序后 join，跨环境逐字节稳定）：漂移比对用——只比 id 集，技能正文永不进上下文 */
+function skillIds(root: string): string {
+  return loadSkills(root)
+    .map((m) => m.id)
+    .sort()
+    .join('\n');
+}
+
+/** 漂移全文块字符上限：超过即截断并附 read <绝对路径> 指针（防单次尾追挤爆上下文） */
+const DRIFT_MAX_CHARS = 4096;
 
 /** 链行 → history 条目的唯一拼装格式（reactor toHistory 与 TUI /compact 补链共用，防两处漂移） */
 export function chainToHistoryItems(steps: HistoryStep[]): ContextItem[] {

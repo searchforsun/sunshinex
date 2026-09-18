@@ -371,7 +371,7 @@ export class SessionController {
       };
       this.usageBase = { tokens: this.state.metrics.turnTokens, cache: this.state.metrics.turnCacheTokens, prompt: this.state.metrics.turnPromptTokens };
       this.notify();
-      ctx.appendChain([{ action: 'task', observation: t(`Current instruction: ${items[i]}`, `当前指令：${items[i]}`) }]);
+      ctx.appendInstructionLine(t(`Current instruction: ${items[i]}`, `当前指令：${items[i]}`));
       try {
         const r: RunOutcome = await this.runtime.runTask(items[i], this.state.model ? { tier: this.state.model } : undefined);
         if (!r.done) {
@@ -521,7 +521,7 @@ export class SessionController {
         return;
       }
       // 主链任务（§11 只增不改）：当前指令行尾追进链，reactor 会话作用域收束自动回写全量步骤与结论/补丁行
-      ctx.appendChain([{ action: 'task', observation: t(`Current instruction: ${goal}`, `当前指令：${goal}`) }]);
+      ctx.appendInstructionLine(t(`Current instruction: ${goal}`, `当前指令：${goal}`));
       const r = await this.runtime.runTask(goal, this.state.model ? { tier: this.state.model } : undefined);
       const note = describeIncomplete(r.stopReason);
       if (!r.done && note.length > 0) this.pushMsg('system', note);
@@ -548,9 +548,9 @@ export class SessionController {
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.notify();
     try {
-      this.runtime.harness.context.appendChain([
-        { action: 'task', observation: t(`Current instruction: ${goal} (/goal)`, `当前指令：${goal}（/goal）`) },
-      ]);
+      this.runtime.harness.context.appendInstructionLine(
+        t(`Current instruction: ${goal} (/goal)`, `当前指令：${goal}（/goal）`),
+      );
       this.pushMsg('system', t(`✻ /goal: ${goal}`, `✻ /goal：${goal}`));
       const r = await this.runtime.runLoop(goal, this.state.model ? { tier: this.state.model } : {});
       const lines = (r.criteria ?? []).map((c) => `  ${c.passed ? '✓' : '✗'} ${c.id} ${c.desc}`);

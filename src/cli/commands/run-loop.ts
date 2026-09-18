@@ -17,7 +17,7 @@ export async function runLoop(args: CliArgs): Promise<void> {
   const tpl = resolveTemplate(deps, DEFAULT_GOAL_TEMPLATE);
   console.log(`[run] root=${root}`);
   // fork 模型（CLAUDE.md §11）：goal 槽取消，任务指令以链行承载（单发 run 空链起，行为对外不变）
-  deps.context.appendChain([{ action: 'task', observation: goal }]);
+  deps.context.appendInstructionLine(goal);
   const r = await tpl.engine.run(goal);
   console.log(JSON.stringify({ status: r.status, iterations: r.iterations, tokensUsed: r.tokensUsed, criteria: r.criteria, reply: r.reply, error: r.error }, null, 2));
   if (r.status !== 'done') process.exitCode = 1;
