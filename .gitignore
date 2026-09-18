@@ -17,7 +17,7 @@ dist/
 *.tgz
 
 # 本地手动真实模型冒烟探针（开发机自用、不入库；门禁自检走 pnpm selfcheck / node scripts/release.mjs）
-scripts/probe-*.js
+scripts/*probe*.js
 
 # corepack 缓存（COREPACK_HOME 指向仓内时的产物）
 .corepack-home/
