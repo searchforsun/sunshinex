@@ -23,7 +23,7 @@ export class DuckDuckGoProvider implements WebSearchProvider {
     const res = await fetch(url, {
       headers: { 'user-agent': 'Mozilla/5.0 (compatible; SunshineX-Agent)' },
     });
-    if (!res.ok) throw new CodedToolError('websearch_upstream', `搜索上游 HTTP ${res.status}`);
+    if (!res.ok) throw new CodedToolError('websearch_upstream', `Search upstream HTTP ${res.status}`);
     return parseDuckDuckGoHtml(await res.text(), count);
   }
 }
@@ -42,7 +42,7 @@ export class BingProvider implements WebSearchProvider {
     const res = await fetch(url, {
       headers: { 'Ocp-Apim-Subscription-Key': this.apiKey },
     });
-    if (!res.ok) throw new CodedToolError('websearch_upstream', `搜索上游 HTTP ${res.status}`);
+    if (!res.ok) throw new CodedToolError('websearch_upstream', `Search upstream HTTP ${res.status}`);
     const doc = (await res.json()) as { webPages?: { value?: { name?: unknown; url?: unknown; snippet?: unknown }[] } };
     return (doc.webPages?.value ?? [])
       .slice(0, count)

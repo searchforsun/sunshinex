@@ -41,12 +41,12 @@ export class SqliteVecStore implements VectorStore {
     const db = this.open();
     if (this.dim === 0) {
       const row = db.prepare("SELECT value FROM meta WHERE key = 'dim'").get() as { value: string } | undefined;
-      if (row && Number(row.value) !== dim) throw new Error(`维度不一致：库内 ${row.value}，请求 ${dim}`);
+      if (row && Number(row.value) !== dim) throw new Error(`Dimension mismatch: stored ${row.value}, requested ${dim}`);
       this.dim = dim;
       db.exec(SCHEMA(dim));
       db.prepare("INSERT INTO meta(key, value) VALUES ('dim', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(dim));
     }
-    if (this.dim !== dim) throw new Error(`维度不一致：库内 ${this.dim}，请求 ${dim}`);
+    if (this.dim !== dim) throw new Error(`Dimension mismatch: stored ${this.dim}, requested ${dim}`);
   }
 
   upsert(id: string, vec: number[], meta: Record<string, unknown>): void {
@@ -66,7 +66,7 @@ export class SqliteVecStore implements VectorStore {
     }
     if (row) db.prepare('DELETE FROM kb_vec WHERE rowid = ?').run(rowid);
     // vec0 xUpdate 对主键列拒绝参数绑定（G1 spike 未覆盖该通道，G2 实测）：rowid 为库内自映射整数，字面量拼接无注入面
-    if (!Number.isInteger(rowid)) throw new Error(`非法 rowid：${rowid}`);
+    if (!Number.isInteger(rowid)) throw new Error(`Invalid rowid: ${rowid}`);
     db.exec(`INSERT INTO kb_vec(rowid, embedding) VALUES (${rowid}, ${f32hex(vec)})`);
     if (isNew && !this.loaded) this.memCount += 1;
   }

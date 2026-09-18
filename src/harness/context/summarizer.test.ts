@@ -20,14 +20,14 @@ test('buildSummaryPrompt：六节标题 + 材料行 + 预算约束（en 缺省�
   assert.ok(p.includes(MARKER), '固定标记供测试桩区分压缩调用');
 });
 
-test('buildSummaryPrompt：zh 语言下模板中文、节名恒定英文', () => {
+test('buildSummaryPrompt：语言轴不再影响提示词（zh 下仍英文单语）', () => {
   const prev = getLanguage();
   setLanguage('zh');
   try {
     const p = buildSummaryPrompt([chunk('材料')], 500);
     assert.ok(p.includes(MARKER));
-    assert.ok(p.includes('交接摘要'));
-    assert.ok(p.includes('红线'));
+    const template = p.split('Selected context:')[0];
+    assert.ok(!/[\u4e00-\u9fff]/.test(template), 'zh 语言下模板段仍英文单语（§15：提示词恒英文；材料行是数据）');
     for (const h of SIX_HEADINGS) assert.ok(p.includes(h), '节名恒定英文（解析锚点）');
   } finally {
     setLanguage(prev);

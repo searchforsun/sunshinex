@@ -43,7 +43,7 @@ test('SUNSHINEX_KB_BACKEND：createVectorBackend("sqlite-vec") 装配 SqliteVecS
 test('SUNSHINEX_KB_BACKEND：未注册后端名 fail-fast 抛错（错误配置在装配期暴露）', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-backend-fastfail-'));
   try {
-    assert.throws(() => createVectorBackend('no-such-backend', new FileStore(root)), /未注册的向量后端/);
+    assert.throws(() => createVectorBackend('no-such-backend', new FileStore(root)), /Unregistered vector backend/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -14,7 +14,7 @@ test('注册表：注册后按名创建；未注册名装配期 fail-fast 抛错
   registerVectorBackend('mem-test', (s) => new LocalJsonVectorStore(s));
   const s = createVectorBackend('mem-test', new FileStore(tmp()));
   assert.ok(s);
-  assert.throws(() => createVectorBackend('no-such-backend', new FileStore(tmp())), /未注册的向量后端/);
+  assert.throws(() => createVectorBackend('no-such-backend', new FileStore(tmp())), /Unregistered vector backend/);
 });
 
 test('local-json：upsert→search topK 语义与余弦排序', () => {

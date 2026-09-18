@@ -1,7 +1,6 @@
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { pick } from '../../i18n';
 
 /** 出口预算常量（规格 §3，代码内钉住不加 env）：超限全文落盘、链上留预览+恢复路径 */
 export const TOOL_OUTPUT_CHAR_LIMIT = 30_000;
@@ -38,9 +37,9 @@ export function createToolOutputArchive(
       try {
         const file = path.join(resolveDir(), 'tool-outputs', `${seq}-${tool}-${digest}.txt`);
         writeFile(file, output);
-        return `${preview}\n[${pick('truncated · full output', '已截断 · 完整输出')}: ${file}]`;
+        return `${preview}\n[truncated · full output: ${file}]`;
       } catch {
-        return `${preview}\n[${pick('truncated', '已截断')}]`;
+        return `${preview}\n[truncated]`;
       }
     },
   };

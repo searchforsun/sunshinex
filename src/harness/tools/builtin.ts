@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import { pick } from '../../i18n';
 import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';
 import { SafetyChain } from '../security/chain';
@@ -20,7 +19,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
   return [
     {
       name: 'exec',
-      description: pick('Execute a shell command inside the project sandbox; oversized output is truncated and saved to disk (full output path shown in the result)', '在沙箱内执行 shell 命令；超长输出将截断并落盘，完整输出路径见结果提示行'),
+      description: 'Execute a shell command inside the project sandbox; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'bash',
       executor: async (input: ToolInput) => {
         const cmd = String(input.command ?? '');
@@ -31,10 +30,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'read',
-      description: pick(
+      description:
         'Read file content; optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
-        '读取文件内容；可选 range 选择行段（1-based 闭区间）："L100-125" 读 100-125 行；"L100" 或 "L100-" 从 100 行读到文件尾；"L-20" 读前 20 行；输出带行号前缀；超长输出将截断并落盘，完整输出路径见结果提示行',
-      ),
       category: 'read',
       executor: async (input: ToolInput) => {
         const content = backend.readFile(String(input.path));
@@ -44,27 +41,25 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         const m = /^L(?<a>\d+)?(?:-(?<b>\d+)?)?$/.exec(range);
         const a = m?.groups?.a === undefined ? NaN : parseInt(m.groups.a, 10);
         const b = m?.groups?.b === undefined ? NaN : parseInt(m.groups.b, 10);
-        if (!m || (Number.isNaN(a) && Number.isNaN(b))) throw new CodedToolError('INVALID_ARG', pick(`Invalid range "${range}"; expected L<start>-<end> like L100-125`, `range 参数不合法："${range}"；应为 L<起>-<止> 形如 L100-125`));
+        if (!m || (Number.isNaN(a) && Number.isNaN(b))) throw new CodedToolError('INVALID_ARG', `Invalid range "${range}"; expected L<start>-<end> like L100-125`);
         const lines = content.split('\n');
         const start = Math.max(1, Number.isNaN(a) ? 1 : a);
         const end = Math.min(lines.length, Number.isNaN(b) ? lines.length : b);
-        if (!Number.isNaN(b) && b < start) throw new CodedToolError('INVALID_ARG', pick(`Range end before start: ${range}`, `range 区间结束行小于起始行：${range}`));
+        if (!Number.isNaN(b) && b < start) throw new CodedToolError('INVALID_ARG', `Range end before start: ${range}`);
         return execOut(fitOut('read', lines.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join('\n')));
       },
     },
     {
       name: 'skill',
-      description: pick(
+      description:
         'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; oversized output is truncated and saved to disk (full output path shown in the result)',
-        '当任务匹配「可用技能」清单中的某项时，按 id 加载技能全文；超长输出将截断并落盘，完整输出路径见结果提示行',
-      ),
       category: 'read',
       executor: async (input: ToolInput) => {
-        if (!skills) throw new CodedToolError('skill_not_configured', pick('Skill facade is not wired in this run', '本次运行未装配技能门面'));
+        if (!skills) throw new CodedToolError('skill_not_configured', 'Skill facade is not wired in this run');
         const id = String(input.id ?? '').trim();
-        if (id === '') throw new CodedToolError('INVALID_ARG', pick('Missing skill id', '缺少技能 id'));
+        if (id === '') throw new CodedToolError('INVALID_ARG', 'Missing skill id');
         const raw = input.params;
-        if (raw !== undefined && (typeof raw !== 'object' || raw === null)) throw new CodedToolError('INVALID_ARG', pick('params must be a name→value object', 'params 须为 名→值 对象'));
+        if (raw !== undefined && (typeof raw !== 'object' || raw === null)) throw new CodedToolError('INVALID_ARG', 'params must be a name→value object');
         const r = skills.resolve(id, raw as Record<string, string> | undefined);
         if (!r.ok) throw new CodedToolError(r.error.code, `${r.error.code}: ${r.error.message}`);
         return execOut(fitOut('skill', `[Skill] ${r.value.manifest.name || id}\n\n${r.value.body}`));
@@ -72,7 +67,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'write',
-      description: pick('Write file content', '写入文件内容'),
+      description: 'Write file content',
       category: 'write',
       executor: async (input: ToolInput) => {
         const p = String(input.path);
@@ -97,7 +92,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'grep',
-      description: pick('Regex search: for a file path emit raw matching lines; for a directory search recursively and emit relativePath:line:line', '正则搜索：path 为文件时输出裸命中行；为目录时递归检索并输出 相对路径:行号:行'),
+      description: 'Regex search: for a file path emit raw matching lines; for a directory search recursively and emit relativePath:line:line',
       category: 'read',
       executor: async (input: ToolInput) => {
         const { pattern, glob: globFilter } = input as { pattern: string; glob?: string };
@@ -130,13 +125,13 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'glob',
-      description: pick('List files matching a glob pattern; oversized listing is truncated and saved to disk (full output path shown in the result)', '按 glob 模式列出文件；超长列表将截断并落盘，完整输出路径见结果提示行'),
+      description: 'List files matching a glob pattern; oversized listing is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => execOut(fitOut('glob', backend.listFiles(root, String(input.pattern ?? '*')).join('\n'))),
     },
     {
       name: 'webfetch',
-      description: pick('Fetch a web page: input { url }, http/https only (protocol floor enforced by the security guard); oversized body is truncated and saved to disk (full output path shown in the result)', '抓取网页正文：入参 { url }，仅允许 http/https（协议底线在安全链 guard）；超长正文将截断并落盘，完整输出路径见结果提示行'),
+      description: 'Fetch a web page: input { url }, http/https only (protocol floor enforced by the security guard); oversized body is truncated and saved to disk (full output path shown in the result)',
       category: 'network',
       executor: async (input: ToolInput) => {
         const res = await fetch(String(input.url ?? ''));
@@ -147,23 +142,23 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     {
       name: 'websearch',
-      description: pick('Web search: input { query, count? } (count default 5, max 10); stdout is title/URL/snippet lines; engine endpoint allows http/https only', '搜索网页：入参 { query, count? }（count 缺省 5，上限 10），stdout 为 标题/URL/摘要 行式列表；引擎端点仅允许 http/https'),
+      description: 'Web search: input { query, count? } (count default 5, max 10); stdout is title/URL/snippet lines; engine endpoint allows http/https only',
       category: 'network',
       executor: async (input: ToolInput) => {
         const provider = webSearch ?? resolveWebSearchProvider();
         const n = Number(input.count ?? 5);
         const count = Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), 10) : 5;
         const hits = await provider.search(String(input.query ?? ''), count);
-        if (hits.length === 0) return execOut('（无结果）');
+        if (hits.length === 0) return execOut('(no results)');
         return execOut(hits.map((h, i) => `${i + 1}. ${h.title}\n   ${h.url}\n   ${h.snippet}`).join('\n'));
       },
     },
     {
       name: 'kb_search',
-      description: pick('Local vector knowledge-base search: input { query, topK? }, stdout is KbHit[] JSON; degrades to kb_not_configured when not configured (never blocks other tools)', '本地向量知识库检索：入参 { query, topK? }，stdout 为 KbHit[] JSON；未配置时以 kb_not_configured 降级（不阻塞其他工具）'),
+      description: 'Local vector knowledge-base search: input { query, topK? }, stdout is KbHit[] JSON; degrades to kb_not_configured when not configured (never blocks other tools)',
       category: 'read',
       executor: async (input: ToolInput) => {
-        if (!kb) throw new CodedToolError('kb_not_configured', '知识库未配置：需 EMBEDDING_* 环境并完成 indexDir 索引');
+        if (!kb) throw new CodedToolError('kb_not_configured', 'Knowledge base not configured: EMBEDDING_* env required and indexDir must be indexed');
         const hits = await kb.search(String(input.query ?? ''), Number(input.topK ?? 5));
         return execOut(JSON.stringify(hits));
       },

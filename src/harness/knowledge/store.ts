@@ -81,6 +81,6 @@ export function registerVectorBackend(name: string, factory: (storage: StorageAd
 /** 装配入口：未注册名直接抛错（fail-fast，禁静默回退——错误配置必须在装配期暴露） */
 export function createVectorBackend(name: string, storage: StorageAdapter): VectorStore {
   const factory = backends.get(name);
-  if (!factory) throw new Error(`未注册的向量后端：${name}`);
+  if (!factory) throw new Error(`Unregistered vector backend: ${name}`);
   return factory(storage);
 }

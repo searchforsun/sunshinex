@@ -61,7 +61,7 @@ test('SqliteVecStore：维度不一致 fail-fast；损坏库 load 降级不抛',
   try {
     const s = new SqliteVecStore(dir);
     s.upsert('a', [1, 0, 0], { text: 'dim3' });
-    assert.throws(() => s.upsert('b', [1, 0], { text: 'dim2' }), /维度不一致/);
+    assert.throws(() => s.upsert('b', [1, 0], { text: 'dim2' }), /Dimension mismatch/);
     s.close();
     fs.writeFileSync(path.join(dir, 'vectors.db'), Buffer.from('not-a-sqlite-file'));
     const s2 = new SqliteVecStore(dir);

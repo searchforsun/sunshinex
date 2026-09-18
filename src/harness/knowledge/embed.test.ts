@@ -64,7 +64,7 @@ test('embed：按 index 归位（服务端乱序回放）', async () => {
 test('embed：HTTP 非 2xx 抛出并带状态码', async () => {
   const srv = await startEmbedServer(() => ({ status: 503, body: { error: 'unavailable' } }));
   try {
-    await assert.rejects(provider(srv.url).embed(['x']), /Embedding 请求失败：503/);
+    await assert.rejects(provider(srv.url).embed(['x']), /Embedding request failed: 503/);
   } finally {
     srv.close();
   }
@@ -73,7 +73,7 @@ test('embed：HTTP 非 2xx 抛出并带状态码', async () => {
 test('embed：非法响应（data 缺失/非数组）抛出明确错误', async () => {
   const srv = await startEmbedServer(() => ({ body: { object: 'list' } }));
   try {
-    await assert.rejects(provider(srv.url).embed(['x']), /Embedding 响应格式非法/);
+    await assert.rejects(provider(srv.url).embed(['x']), /Invalid embedding response/);
   } finally {
     srv.close();
   }

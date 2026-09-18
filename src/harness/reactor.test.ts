@@ -125,7 +125,7 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
   assert.ok(!prompts[0].includes('[Compacted summary'), '第 1 轮不应有摘要（无历史可压缩）');
   assert.ok(prompts[1].includes('[Compacted summary'), '收敛环：触发轮当轮即以收敛后上下文组装（F-b 修复）');
   assert.ok(prompts[2].includes('[Compacted summary'), '第 3 轮应注入压缩摘要');
-  assert.ok(prompts[2].includes('[重读] big.txt'), '第 3 轮应注入最近文件重读');
+  assert.ok(prompts[2].includes('[re-read] big.txt'), '第 3 轮应注入最近文件重读');
   // 收敛环使压缩当轮生效；水位线滤除压缩点前原始 history 行（语义不变）
   assert.ok(!prompts[2].includes('\n1: read -> '), '水位线应滤掉压缩点前的原始 history 行');
   assert.ok(prompts[2].includes('2: exec -> step2'), '水位线后的 history 保留');
@@ -312,7 +312,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.ok(prompts[1].includes('[Compacted summary'), '触发轮当轮以收敛后上下文组装');
-  assert.ok(prompts[1].includes('[重读] f.txt'), '预算内重读保留');
+  assert.ok(prompts[1].includes('[re-read] f.txt'), '预算内重读保留');
   assert.equal(
     context.compactionCount(),
     1,

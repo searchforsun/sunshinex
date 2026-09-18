@@ -21,22 +21,22 @@ export class OpenAICompatEmbeddings implements EmbeddingProvider {
         body: JSON.stringify({ model: this.cfg.model, input: texts }),
         signal: ctrl.signal,
       });
-      if (!resp.ok) throw new Error(`Embedding 请求失败：${resp.status}`);
+      if (!resp.ok) throw new Error(`Embedding request failed: ${resp.status}`);
       const data = (await resp.json()) as { data?: Array<{ index?: number; embedding?: number[] }> };
-      if (!Array.isArray(data.data)) throw new Error('Embedding 响应格式非法：data 缺失或非数组');
+      if (!Array.isArray(data.data)) throw new Error('Invalid embedding response: "data" missing or not an array');
       const out: number[][] = new Array(texts.length);
       for (const item of data.data) {
         if (typeof item.index !== 'number' || !Array.isArray(item.embedding)) {
-          throw new Error('Embedding 响应格式非法：条目缺 index/embedding');
+          throw new Error('Invalid embedding response: entry missing index/embedding');
         }
         out[item.index] = item.embedding;
       }
       if (out.length !== texts.length || out.some((v) => !v)) {
-        throw new Error('Embedding 响应格式非法：向量数量与输入不一致');
+        throw new Error('Invalid embedding response: vector count does not match input');
       }
       return out;
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') throw new Error('Embedding 请求超时');
+      if (e instanceof Error && e.name === 'AbortError') throw new Error('Embedding request timed out');
       throw e;
     } finally {
       clearTimeout(timer);

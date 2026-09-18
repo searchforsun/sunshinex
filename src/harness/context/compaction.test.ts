@@ -36,7 +36,7 @@ test('applyCompaction 注入摘要与重读条目，位于 history 之前', asyn
   const items = cm.assemble([{ kind: 'history', content: '新步骤' }]);
   const histIdx = items.findIndex((i) => i.content === '新步骤');
   const sumIdx = items.findIndex((i) => i.content.startsWith('[Compacted summary'));
-  const reIdx = items.findIndex((i) => i.content.startsWith('[重读] notes.md'));
+  const reIdx = items.findIndex((i) => i.content.startsWith('[re-read] notes.md'));
   assert.ok(sumIdx !== -1 && sumIdx < histIdx, '摘要应位于 history 之前');
   assert.ok(reIdx !== -1 && reIdx < histIdx, '重读应位于 history 之前');
   assert.ok(items[reIdx].content.includes('line1'));
@@ -57,7 +57,7 @@ test('重读失败（文件缺失）跳过该文件，注入不受影响', async
   const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
   await assert.doesNotReject(() => cm.applyCompaction(chunks));
   const items = cm.assemble();
-  assert.ok(!items.some((i) => i.content.startsWith('[重读] ghost.md')));
+  assert.ok(!items.some((i) => i.content.startsWith('[re-read] ghost.md')));
   assert.ok(items.some((i) => i.content.startsWith('[Compacted summary')));
 });
 
@@ -68,7 +68,7 @@ test('重读截断为每文件前 500 行', async () => {
   cm.trackFile('big.md');
   const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
   await cm.applyCompaction(chunks);
-  const reread = cm.assemble().find((i) => i.content.startsWith('[重读] big.md'));
+  const reread = cm.assemble().find((i) => i.content.startsWith('[re-read] big.md'));
   assert.ok(reread);
   assert.ok(reread.content.includes('line499'));
   assert.ok(!reread.content.includes('line500'));
@@ -80,7 +80,7 @@ test('重读条目内容过凭据脱敏（密钥不进上下文）', async () =>
   cm.trackFile('secret.env');
   const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
   await cm.applyCompaction(chunks);
-  const reread = cm.assemble().find((i) => i.content.startsWith('[重读] secret.env'));
+  const reread = cm.assemble().find((i) => i.content.startsWith('[re-read] secret.env'));
   assert.ok(reread, '重读条目应存在');
   assert.ok(!reread.content.includes('sk-abcdefghijklmnopqrst1234'), '密钥明文不得进入重读条目');
   assert.ok(reread.content.includes('***'), '命中片段应替换为 ***');
@@ -97,8 +97,8 @@ test('重读预算化：超限按 LRU 最旧先丢整文件', async () => {
   await cm.applyCompaction(chunks, { rereadTokenBudget: 200 });
   const items = cm.assemble();
   const texts = items.map((i) => i.content);
-  assert.ok(!texts.some((t) => t.startsWith('[重读] old.md')), '最旧文件整条被丢');
-  assert.ok(texts.some((t) => t.startsWith('[重读] new.md')), '预算内新文件保留');
+  assert.ok(!texts.some((t) => t.startsWith('[re-read] old.md')), '最旧文件整条被丢');
+  assert.ok(texts.some((t) => t.startsWith('[re-read] new.md')), '预算内新文件保留');
 });
 
 test('重读预算化：预算内全部保留（与未传参数行为一致）', async () => {
@@ -108,7 +108,7 @@ test('重读预算化：预算内全部保留（与未传参数行为一致）',
   const chunks = await cm.window.compact([{ kind: 'history', content: '旧上下文要点'.repeat(10) }]);
   await cm.applyCompaction(chunks, { rereadTokenBudget: 100000 });
   const items = cm.assemble();
-  assert.ok(items.map((i) => i.content).some((t) => t.startsWith('[重读] a.md')));
+  assert.ok(items.map((i) => i.content).some((t) => t.startsWith('[re-read] a.md')));
 });
 
 const MODEL_BODY = '## Goal\n压缩验证目标\n## Open\n无';
@@ -131,7 +131,7 @@ test('applyCompaction 摘要分叉：模型成功 → 正文为模型文本，ch
   assert.match(sum!.content, /^\[Compacted summary checksum=[0-9a-f]{16}\]\n## Goal/);
   assert.ok(sum!.content.includes(MODEL_BODY), '正文为模型文本');
   assert.ok(!sum!.content.includes('- [history] '), '确定性 join 行被替换');
-  assert.ok(items.some((i) => i.content.startsWith('[重读] notes.md')), '重读条目机制不变');
+  assert.ok(items.some((i) => i.content.startsWith('[re-read] notes.md')), '重读条目机制不变');
   assert.equal(calls, 1, '模型恰好调用一次');
 });
 
