@@ -41,7 +41,7 @@ src/
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     reactor.ts        # 最小闭环引擎（observe→think→act）
     ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
-    skills.ts         # 技能加载与调度（skills/{id}/skill.md；resolveSkill 参数化 + skillRef 首帧注入）
+    skills.ts         # 技能加载与调度（三级根合并装载 + resolve 回退链 + skillRef 首帧注入）
     skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
@@ -63,7 +63,7 @@ src/
   model/adapter.ts    # 模型适配 + 三档算力路由
   storage/            # 本地 JSON 存储底座（adapter.ts）
   plugins/loader.ts   # 插件加载（plugins/{id}/plugin.json）
-skills/               # 用户技能目录
+.sunshinex/skills/    # 项目级技能目录（{id}/skill.md 手工放置；全局与学习级见 §6）
 agents/               # 用户子代理目录（{id}/agent.md：frontmatter name/description + 正文框定；装配期一次性加载 fail-fast）
 plugins/              # 用户插件目录
 SUNSHINE.md          # 项目业务配置
@@ -94,7 +94,7 @@ SUNSHINE.md          # 项目业务配置
 
 ## 6. 技能与插件规范
 
-- 技能：`skills/{id}/skill.md`，含 frontmatter（name/description/version）与正文
+- 技能：`{技能根}/{id}/skill.md`，含 frontmatter（name/description/version）与正文。三级根：项目级 `<项目>/.sunshinex/skills/`（手工放置）> 全局用户级 `~/.sunshinex/skills/`（跨项目共享，`SUNSHINEX_USER_SKILLS_DIR` 覆盖）> 学习级 `~/.sunshinex/projects/<工作区>/data/skills/`（LearnedSkillStore 自动沉淀，FIFO 上限）；id 撞名就近遮蔽，resolve 仅 SKILL_NOT_FOUND 逐级回退（SKILL_PARAM_MISSING 就近不回退）
 - 插件：`plugins/{id}/plugin.json`，声明 id/name/version/entry
 - 加载器只做发现与解析，不执行副作用；执行由 Harness 统一调度
 

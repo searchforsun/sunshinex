@@ -125,6 +125,7 @@ SUNSHINEX_MODEL=glm-5.3-flash
 - 会话所有文件操作被约束在启动目录（root）内，越界路径拒绝。
 - 运行时数据（账本/记忆/学习技能/知识库）落盘用户级目录 `~/.sunshinex/projects/<工作区>/data`：按启动目录隔离、不污染项目（对标 Claude Code 项目数据形态）；`SUNSHINEX_DATA_DIR` 可整体覆盖。
 - 家目录不可写（沙箱/只读 HOME）时回退启动目录内 `.data/`；旧版项目内 `.data` 不自动迁移，可手动拷贝或以 `SUNSHINEX_DATA_DIR` 指向旧目录沿用。
+- 技能目录三级（`{id}/skill.md`）：项目级 `<启动目录>/.sunshinex/skills/`（手工放置）> 全局用户级 `~/.sunshinex/skills/`（跨项目共享，`SUNSHINEX_USER_SKILLS_DIR` 可覆盖）> 学习级（任务成功后自动沉淀至数据目录 `skills/`）；同名技能按此顺序就近生效。
 - `sessions/`：会话事件日志（每会话一 `<sessionId>.jsonl` 追加只增）与 `sessions-active.json` 活动指针；任务收口/`/new`/退出三个时点落盘，`--continue` 与 `/resume` 据此跨天恢复
 - `SUNSHINE.md`：项目业务配置，会话启动时读入快照并冻结（会话中途直接改文件不影响当前会话；经 `/init` 重载、上下文压缩或 `/new` 后生效）。可含可选 `## Compact Instructions`（或 `## 压缩指令`）区：其中的要求会在压缩摘要时优先保留。
 - 超长工具输出自动截断落盘：read/exec/glob/webfetch 输出超过预算（30k 字符）时截断为预览，完整原文存于数据目录 `tool-outputs/`，提示行给出路径，可用 `read <路径>` 取回；上下文压缩时被折叠的链行同样归档于 `archives/`，压缩块内含 `Full trace` 路径。
