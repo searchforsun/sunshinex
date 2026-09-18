@@ -62,14 +62,14 @@ CLAUDE.md §15「语言规范：外观双语、提示词恒英文」（提交 `f
 | **B1 工具与上下文** | `harness/tools.ts`、`tools/{builtin,output-archive,websearch}`、`context/{index,window,summarizer}`、`knowledge/*` | ≈47 |
 | **B2 记忆** | `memory/{store,writer,extractor,consolidate}` | ≈43 |
 | **B3 图与循环** | `loop/{nodes,engine,templates}`、`graph/{nodes,agents,workflow,engine,templates}` | ≈57（其中回执字面量改 `t()` 双语，仅写链行改英文） |
-| **B4 核心与安全适配** | `reactor`、`subagent`、`sunshine-init`、`model/adapter`、`security/{guard,chain,sandbox}`、`mcp/client`、`skills*` | ≈110 |
+| **B4 核心与安全适配** | `reactor`、`subagent`、`sunshine-init`、`model/adapter`、`security/{guard,chain,sandbox}`、`mcp/client`、`skills*`——逐点按「有无写链」判定：guard 拒绝理由经工具结果入链 → 英文；纯上屏诊断 → `t()` | ≈110 |
 | **B5 收尾** | `tui/session.ts` 四处链行（362/374/524/552）+ 文档同步 | 4 + 文档 |
 
 总计 ≈245 处（`pick` 98 + 裸中文 143 + 链行 4）+ 文档，批次量为量级估计。每批以 `pnpm build` + 定向测试 + 全量测试 + `selfcheck` 收口后提交。
 
 ## 6. 验证机制
 
-1. **提示词面零 CJK 审计用例**（新增 `src/harness/prompt-language.test.ts`）：对提示词面文件清单（`harness/`、`loop/`、`graph/`、`model/` 的非测试源文件）与 `tui/session.ts` 的 `appendChain(...)` 调用点，扫描字符串字面量断言零非 ASCII；白名单仅 B-5 / B-6 登记项。这比逐个断言文案更抗漂移。
+1. **零泄漏审计用例**（新增 `src/harness/prompt-language.test.ts`）：判据为「**非 `t()` 包裹的中文字面量零出现**」——对提示词与链的产出面文件（`harness/`、`loop/`、`graph/`、`model/` 非测试源文件）扫描字符串字面量，按括号深度识别 `t(...)` 包裹者放行（写死回执属外观），其余含 CJK 即失败；另单列断言 `tui/session.ts` 的 `appendChain(...)` 调用点内零 CJK。豁免仅 B-5（机器消费标题）与 B-6（功能性非 ASCII）。**按「是否被 `t()` 包裹」而非按目录区分，是与 B-1 配套的关键设计**——否则 graph/loop 的写死回执会被误报为泄漏。
 2. **界面双语回归**：保留 `stop-reason`、StatusBar、TUI chrome 的 zh 断言，证明外观层未被误伤。
 3. **前缀稳定回归**：既有「相邻步前缀稳定」用例必须保持绿（提示词文本改动不得破坏前缀连续性）。
 4. 逐批定向 + 全量 + `selfcheck`；提交前 `tsc` strict 零报错。
