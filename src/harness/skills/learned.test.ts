@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { LearnedSkillStore, slugify } from './learned';
 import { parseSkillFrontmatter, resolveSkill } from '../skills';
+import { resolveDataDir } from '../../config/data-dir';
 
 function makeRoot(): { root: string; store: LearnedSkillStore } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-learned-'));
@@ -86,6 +87,23 @@ test('settle：goal 或 reply 为空 → SKILL_SETTLE_EMPTY，不落盘', () => 
     if (r.ok) return;
     assert.equal(r.error.code, 'SKILL_SETTLE_EMPTY');
     assert.ok(!fs.existsSync(path.join(root, '.data')));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('settle 上限由 opts.limit 驱动（淘汰最旧至 limit 内）', () => {
+  const { root, store } = makeRoot();
+  try {
+    for (let i = 0; i < 3; i += 1) assert.equal(store.settle(`goal ${i}`, `reply ${i}`, { limit: 3 }).ok, true);
+    const dir = path.join(resolveDataDir(root), 'skills');
+    assert.equal(fs.readdirSync(dir).filter((n) => fs.statSync(path.join(dir, n)).isDirectory()).length, 3);
+    // 已达上限 3：第 4 次沉淀须淘汰最旧，目录内恒 ≤3
+    assert.equal(store.settle('goal 4', 'reply 4', { limit: 3 }).ok, true);
+    const ids = fs.readdirSync(dir).filter((n) => fs.statSync(path.join(dir, n)).isDirectory());
+    assert.equal(ids.length, 3);
+    assert.ok(ids.includes('goal-4'), '最新沉淀保留');
+    assert.equal(ids.filter((n) => n !== 'goal-4').length, 2, '容量内仅余两条历史产物');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
