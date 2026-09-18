@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
 import { ToolBackend } from '../../types';
+import { resolveDataDir } from '../../config/data-dir';
 import { DryRun } from './dryrun';
 import { ExecResult } from '../../types';
 import { Result } from '../../result';
@@ -51,7 +52,7 @@ export class SafetyChain {
 
     if (PATH_TOOLS.has(tool)) {
       const raw = typeof input === 'object' && input !== null ? (input as { path?: unknown }).path : undefined;
-      return this.resolveSafe(raw);
+      return this.resolveSafe(raw, tool);
     }
     return { allowed: true };
   }
@@ -63,19 +64,25 @@ export class SafetyChain {
 
     if (PATH_TOOLS.has(tool)) {
       const raw = typeof input === 'object' && input !== null ? (input as { path?: unknown }).path : undefined;
-      return this.resolveSafe(raw);
+      return this.resolveSafe(raw, tool);
     }
     return { allowed: true };
   }
 
-  /** 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal；异常按拒绝处理不放行（spec 2.1 兜底条款） */
-  private resolveSafe(raw: unknown): GuardDecision {
+  /**
+   * 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal；异常按拒绝处理不放行（spec 2.1 兜底条款）。
+   * 数据目录只读放行（auto memory 规格 D6）：Read/Grep 访问 resolveDataDir 子树放行（记忆索引/主题文件按需召回；
+   * Full trace 归档、tool-outputs 路径同受益），Write 维持拒绝——字面 resolve 比对（dataDir 可能不存在，realpath 不可得），
+   * symlink 逃逸风险不成立（写面被拒，dataDir 内无法由模型植入链接）。
+   */
+  private resolveSafe(raw: unknown, tool: string): GuardDecision {
     try {
       const abs = path.resolve(this.root, String(raw ?? ''));
       let anchor = abs;
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
       if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
+        if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
         return { allowed: false, reason: `COMMAND_DENIED: 路径越出项目 root（真实路径）：${real}` };
       }
       return { allowed: true, safePath: real };
@@ -83,6 +90,19 @@ export class SafetyChain {
       const msg = err instanceof Error ? err.message : String(err);
       return { allowed: false, reason: `COMMAND_DENIED: 路径判界失败：${msg.slice(0, 120)}` };
     }
+  }
+
+  /** 路径是否落在数据目录子树内（每次惰性求值对齐运行期求值先例，SUNSHINEX_DATA_DIR 测试可重定向） */
+  private underDataDir(real: string): boolean {
+    let dir = resolveDataDir(this.root);
+    try {
+      let anchor = dir;
+      while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);
+      dir = fs.realpathSync(anchor) + dir.slice(anchor.length);
+    } catch {
+      // 归一失败按字面路径比对兜底
+    }
+    return real === dir || real.startsWith(dir + path.sep);
   }
 
   run(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {
