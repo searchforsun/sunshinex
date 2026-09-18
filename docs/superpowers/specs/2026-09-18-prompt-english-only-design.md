@@ -27,15 +27,18 @@ CLAUDE.md §15「语言规范：外观双语、提示词恒英文」（提交 `f
 
 | 消费方 | 形态 | 落点 |
 |--------|------|------|
-| 模型上下文 | **英文裸串** | 系统提示词、工具 name/description、观察、错误、链行、压缩摘要提示词、记忆提取与整理提示词、子代理角色框定、生成类 goal（`/init`、判据、规划轮）、执行面 reply |
-| 仅用户可见 | `t(en, zh)` 双语 | TUI chrome（状态栏/审批卡/帮助/横幅/待办）、CLI 用法与交互询问、selfcheck 输出、`stop-reason` |
+| 模型上下文 | **英文裸串** | 系统提示词、工具 name/description、观察、错误、压缩摘要提示词、记忆提取与整理提示词、子代理角色框定、生成类 goal（`/init`、判据、规划轮）、**写链行**（`appendChain` 的 observation/note/deficit/reply 行） |
+| 仅用户可见 | `t(en, zh)` 双语 | TUI chrome（状态栏/审批卡/帮助/横幅/待办）、CLI 用法与交互询问、selfcheck 输出、`stop-reason`、**节点回执字面量**（gate 审批通过/拒绝/等待、CI 通过/失败、dry-run 预览、引擎汇总与 fail 说明——只上屏、不写链，见 B-1） |
 | 双消费 | **拆两份** | `tui/session.ts` 链行走英文裸串；同句上屏走 `t()` |
 
 判据是「能否被模型读到」，不是「是否上屏」。
 
 ### 3.1 边界裁决（据实登记，可单独否决）
 
-- **B-1 执行面一律英文**：`harness/` `loop/` `graph/` `model/` 内所有面向模型或链的文本均英文，含 graph 节点 `reply`（审批/CI/引擎汇总）。理由：它们是程序化执行结果（loop 节点分支已把 `reply` 写入链），按**消费面**而非展示面归属；CLI 自身的用法与交互询问仍双语。
+- **B-1 执行面按「是否写链」二分（2026-09-18 逐点核实后更正）**：核实 `appendChain` 全仓落点——`graph/nodes.ts:58/60`、`loop/nodes.ts:148`、`subagent.ts:254/258/264`、`reactor.ts:292/298/300/309`、`tui/session.ts:362/374/524/551`、`cli/commands/{run-loop,run-pipeline}.ts`；**`graph/engine.ts` 与 `loop/engine.ts` 均无 appendChain 调用**：
+  - **写链的行** → 英文单语（进模型上下文）：loop 节点结论行与「子流程未完成收束」、deficit 行、子代理结论/失败行、reactor 的 note/reply 行。
+  - **纯回执字面量** → 保留 `t()` 双语（只上屏，属**死的用户显示**）：gate 的「审批通过/拒绝/等待」、CI 通过/失败、`[dry-run] 预览`、引擎汇总（全部节点完成/等待人工审批/存在失败节点）、节点 fail 的 error 文案。
+  - **更正登记**：本规格初版把 graph/loop 全层判为英文，论据「loop 分支已把 `reply` 写链」只对 **loop 节点**成立（其 `reply` 是模型产出）；gate/ci 节点 `reply` 是引擎自写字面量且不写链，属外观面——初版判决有误，此处修正。
 - **B-2 事件按来源归属**：`emit('error'|'step'|'phase')` 的文本若同源作为观察写链（如 `steps.push({ observation })`），整段英文；同一来源不为上屏另造中文。
 - **B-3 子代理角色**：`ROLE_PRESETS` 的 `label`/`framing` 与 `agents/{id}/agent.md` 注册物料英文单语（角色行直接进 fork 提示词）。
 - **B-4 工具 description**：英文单语（经 `buildPrompt` 工具清单进入模型）。
@@ -58,7 +61,7 @@ CLAUDE.md §15「语言规范：外观双语、提示词恒英文」（提交 `f
 |------|------|------|
 | **B1 工具与上下文** | `harness/tools.ts`、`tools/{builtin,output-archive,websearch}`、`context/{index,window,summarizer}`、`knowledge/*` | ≈47 |
 | **B2 记忆** | `memory/{store,writer,extractor,consolidate}` | ≈43 |
-| **B3 图与循环** | `loop/{nodes,engine,templates}`、`graph/{nodes,agents,workflow,engine,templates}` | ≈57 |
+| **B3 图与循环** | `loop/{nodes,engine,templates}`、`graph/{nodes,agents,workflow,engine,templates}` | ≈57（其中回执字面量改 `t()` 双语，仅写链行改英文） |
 | **B4 核心与安全适配** | `reactor`、`subagent`、`sunshine-init`、`model/adapter`、`security/{guard,chain,sandbox}`、`mcp/client`、`skills*` | ≈110 |
 | **B5 收尾** | `tui/session.ts` 四处链行（362/374/524/552）+ 文档同步 | 4 + 文档 |
 
@@ -92,3 +95,4 @@ CLAUDE.md §15「语言规范：外观双语、提示词恒英文」（提交 `f
 5. 前缀稳定回归用例绿。
 6. README / TUI-MANUAL 语言口径同步完成。
 7. `tui/session.ts` 四处链行为英文，同句上屏文案仍随 `--language` 双语。
+8. **节点回执双语钉子**：`--language=zh` 下 graph gate/CI/引擎汇总回执呈中文（`t()` 双语），仅写链行进模型时为英文——防「把死的用户显示一并英文化」的回退。
