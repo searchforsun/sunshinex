@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { projectSlug, resolveDataDir } from './data-dir';
+import { projectSlug, resolveDataDir, userSkillsDir } from './data-dir';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -83,5 +83,30 @@ test('resolveDataDir：HOME 不可写回退项目内 .data（沙箱/只读家目
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(blk, { recursive: true, force: true });
+  }
+});
+
+/** 全局用户技能根（三级技能目录规格 §3）：缺省 ~/.sunshinex/skills，SUNSHINEX_USER_SKILLS_DIR 显式覆盖 */
+test('userSkillsDir：缺省 = userConfigDir()/skills，SUNSHINEX_USER_SKILLS_DIR 显式覆盖；不主动 mkdir', () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-usd-home-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const prevOverride = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  try {
+    delete process.env.SUNSHINEX_USER_SKILLS_DIR;
+    process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
+    const expect = path.join(fakeHome, '.sunshinex', 'skills');
+    assert.equal(userSkillsDir(), expect);
+    assert.ok(!fs.existsSync(expect), '缺省不主动建目录：技能根缺失是常态');
+
+    const override = path.join(fakeHome, 'custom-skills-root');
+    process.env.SUNSHINEX_USER_SKILLS_DIR = override;
+    assert.equal(userSkillsDir(), path.resolve(override), '显式覆盖生效且归一为绝对路径');
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
+    if (prevOverride === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevOverride;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
   }
 });

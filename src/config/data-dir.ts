@@ -36,3 +36,11 @@ export function resolveDataDir(root: string): string {
     return path.join(root, '.data');
   }
 }
+
+/** 全局用户技能根（三级技能目录规格 §3）：缺省 ~/.sunshinex/skills，SUNSHINEX_USER_SKILLS_DIR 显式覆盖（测试与多实例）。
+ *  人手工放置的技能资产定位，不走 resolveDataDir（学习根按工作区隔离，语义不同）；不 mkdir、不做模块级缓存——技能根缺失是常态，装载面靠 existsSync 容忍 */
+export function userSkillsDir(): string {
+  const override = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  if (override !== undefined && override.length > 0) return path.resolve(override);
+  return path.join(userConfigDir(), 'skills');
+}
