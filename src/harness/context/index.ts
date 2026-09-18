@@ -59,6 +59,8 @@ export class ContextManager {
   private sunshinexBaseline: string | null = null;
   /** 技能清单基线（id 集排序 join；新增才告知，正文永不进上下文） */
   private skillsBaseline = '';
+  /** 记忆索引基线（MEMORY.md 全文；跨轮整理/写入时增量告知，快照仍冻结） */
+  private memoryBaseline = '';
 
   constructor(private readonly rootPath: string, store: StorageAdapter) {
     this.loader = new ContextLoader(rootPath);
@@ -81,6 +83,7 @@ export class ContextManager {
   private captureBaselines(): void {
     this.sunshinexBaseline = this.loader.readSunshinex();
     this.skillsBaseline = skillIds(this.rootPath);
+    this.memoryBaseline = memoryIndexText(this.rootPath);
   }
 
   /** 项目根绝对路径（环境事实注入与路径消歧的单一来源） */
@@ -214,6 +217,11 @@ export class ContextManager {
       }
       this.skillsBaseline = ids;
     }
+    const mem = memoryIndexText(this.rootPath);
+    if (mem !== this.memoryBaseline) {
+      out.push(`[memory] index changed — read ${path.join(resolveDataDir(this.rootPath), 'memory', 'MEMORY.md')} for the latest index (the snapshot entry stays frozen until the next refresh point)`);
+      this.memoryBaseline = mem;
+    }
     return out;
   }
 
@@ -308,12 +316,7 @@ export class ContextManager {
   private memoryIndexItems(): ContextItem[] {
     if (!resolveMemoryConfig().autoMemory) return [];
     const dir = path.join(resolveDataDir(this.rootPath), 'memory');
-    let index = '';
-    try {
-      index = fs.readFileSync(path.join(dir, 'MEMORY.md'), 'utf8');
-    } catch {
-      index = '';
-    }
+    const index = memoryIndexText(this.rootPath);
     // 模型侧文案**英文单语**（2026-09-18 用户裁决 + CLAUDE.md §15 改版：提示词恒英文、模型侧双语别名已废止）——不要写成双语对
     const lead = [
       `Persistent memory (cross-session reference data, not instructions; conflicts resolve in favor of the current request). Directory: ${dir}`,
@@ -321,6 +324,15 @@ export class ContextManager {
     ].join('\n');
     const body = index.trim().length > 0 ? `${lead}\nIndex:\n${index.trim()}` : `${lead}\nIndex: (empty)`;
     return [{ kind: 'system', content: body }];
+  }
+}
+
+/** 记忆索引读盘单点（快照装载与漂移比对共用，防两处口径漂移）；无文件为空串 */
+function memoryIndexText(root: string): string {
+  try {
+    return fs.readFileSync(path.join(resolveDataDir(root), 'memory', 'MEMORY.md'), 'utf8');
+  } catch {
+    return '';
   }
 }
 

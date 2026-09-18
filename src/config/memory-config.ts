@@ -31,10 +31,17 @@ function limit(raw: string | undefined): number {
   return n;
 }
 
-/** 解析链：env（SUNSHINEX_AUTO_MEMORY / SUNSHINEX_LEARNED_SKILLS / SUNSHINEX_LEARNED_SKILL_LIMIT）> 缺省 */
+/** 解析链：会话内覆盖（TUI /memory on|off，进程级单值、不落盘）> env（SUNSHINEX_AUTO_MEMORY / SUNSHINEX_LEARNED_SKILLS / SUNSHINEX_LEARNED_SKILL_LIMIT）> 缺省。
+ *  覆盖仅作用于运行时判门点（提取/注入/写入闸门），控制面解析零副作用；/new 等新会话起点由调用方显式清除。 */
+let sessionAutoMemoryOverride: boolean | undefined;
+
+export function setMemorySessionOverride(v: boolean | undefined): void {
+  sessionAutoMemoryOverride = v;
+}
+
 export function resolveMemoryConfig(env: NodeJS.ProcessEnv = process.env): MemoryConfig {
   return {
-    autoMemory: onOff('auto_memory', env.SUNSHINEX_AUTO_MEMORY, true),
+    autoMemory: sessionAutoMemoryOverride ?? onOff('auto_memory', env.SUNSHINEX_AUTO_MEMORY, true),
     learnedSkills: onOff('learned_skills', env.SUNSHINEX_LEARNED_SKILLS, true),
     learnedSkillLimit: limit(env.SUNSHINEX_LEARNED_SKILL_LIMIT),
   };

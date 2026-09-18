@@ -55,10 +55,10 @@ export interface ReactorDeps {
   /** 项目根绝对路径（环境事实注入：提示词告知模型工作目录，杜绝相对路径瞎拼） */
   root?: string;
   router?: ModelRouter;
-  /** 成功沉淀钩子：仅 done 且有 reply 时触发一次；抛错被吞并记 episodic（沉淀失败不倒灌任务成败） */
-  settle?: (r: { goal: string; reply: string }) => void;
-  /** 记忆提取挂点（auto memory §4）：done 收口并行触发；旁路纪律=失败不倒灌任务成败（reactor 侧再兜一层 catch） */
-  settleMemory?: (r: { goal: string; reply: string }) => Promise<void>;
+  /** 成功沉淀钩子：仅 done 且有 reply 时触发一次；返回的说明行尾追为链尾 notice 行（规格 §10）；抛错被吞并记链行（沉淀失败不倒灌任务成败） */
+  settle?: (r: { goal: string; reply: string }) => string | void | Promise<string | void>;
+  /** 记忆提取挂点（auto memory §4）：done 收口并行触发；返回的说明行尾追为链尾 notice 行（规格 §10）；旁路纪律=失败不倒灌任务成败（reactor 侧再兜一层 catch） */
+  settleMemory?: (r: { goal: string; reply: string }) => string | void | Promise<string | void>;
   /** per-run 成本账本（可选）：run 收尾聚合落 runs/<id>；缺省不落账 */
   ledger?: RunLedger;
   /** 事件流旁路（TUI/GUI 公共地基）：发射即旁路，不注入零副作用；主链/账本语义不受影响 */
@@ -302,10 +302,17 @@ export class Reactor {
       }
     }
 
+    // 收口说明行（规格 §10）：settle/settleMemory 产出的说明尾追为链尾 notice 行（模型面）+ notice 事件（用户面）；
+    // 触发条件不变（done+reply）；任何失败不倒灌任务成败（旁路纪律）；本会话新增记忆/技能以此一条行告知（不加工具面）
+    const announce = (source: 'memory' | 'skills', text: string): void => {
+      this.deps.context.appendChain([{ action: 'notice', observation: text }]);
+      this.deps.onEvent?.({ type: 'notice', text, payload: { source, text }, ts: Date.now() });
+    };
     // 成功沉淀钩子：maxSteps 耗尽 / 模型失败路径不触发；抛错吞掉记链行（链即记忆，事件走链），不倒灌任务成败
     if (done && reply && this.deps.settle) {
       try {
-        this.deps.settle({ goal: task.goal, reply });
+        const line = await this.deps.settle({ goal: task.goal, reply });
+        if (typeof line === 'string' && line.length > 0) announce('skills', line);
       } catch (e) {
         this.deps.context.appendChain([{ action: 'note', observation: `Settle failed (not propagated to task outcome): ${e instanceof Error ? e.message : String(e)}` }]);
       }
@@ -313,7 +320,8 @@ export class Reactor {
     // 记忆提取钩子（auto memory §4）：同点并行、独立一次性模型调用；任何失败静默（旁路纪律，收口永不因记忆而失败）
     if (done && reply && this.deps.settleMemory) {
       try {
-        await this.deps.settleMemory({ goal: task.goal, reply });
+        const line = await this.deps.settleMemory({ goal: task.goal, reply });
+        if (typeof line === 'string' && line.length > 0) announce('memory', line);
       } catch {
         // 静默降级：提取抛错/网络失败不影响任务收口
       }

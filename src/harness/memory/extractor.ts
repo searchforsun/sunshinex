@@ -34,13 +34,15 @@ interface Candidate {
   scope?: unknown;
 }
 
-/** 任务收尾记忆提取入口：goal+reply 材料面 → 六要素提取 prompt → 五重准入闸门 → MemoryStore 落盘 */
-export async function settleMemory(opts: { goal: string; reply: string; model: ModelAdapter; root: string }): Promise<void> {
+/** 任务收尾记忆提取入口：goal+reply 材料面 → 六要素提取 prompt → 五重准入闸门 → MemoryStore 落盘。
+ *  返回本次成功入库的 slug 列表（规格 §10 会话内可见性：调用方据此发 notice 说明行）；失败路径返回已入库部分。 */
+export async function settleMemory(opts: { goal: string; reply: string; model: ModelAdapter; root: string }): Promise<string[]> {
+  const saved: string[] = [];
   try {
-    if (!isModelSummarizer(opts.model)) return;
+    if (!isModelSummarizer(opts.model)) return saved;
     const out = await opts.model.complete(buildExtractionPrompt(opts.goal, opts.reply));
     const candidates = parseEnvelope(out);
-    if (!candidates) return;
+    if (!candidates) return saved;
     const store = new MemoryStore(opts.root);
     const sunshine = sunshineLines(opts.root);
     for (const c of candidates) {
@@ -54,7 +56,8 @@ export async function settleMemory(opts: { goal: string; reply: string; model: M
       if (sunshine.includes(normalizeText(description))) continue; // 闸门 e：SUNSHINE.md 已写明项（CC 同款）
       const type = c.type === 'user' || c.type === 'feedback' || c.type === 'reference' ? c.type : 'project';
       try {
-        store.add({ type, description, body: content }); // 闸门 d：三级去重由 add 承载；超限报错不阻断后续条目
+        const r = store.add({ type, description, body: content }); // 闸门 d：三级去重由 add 承载；超限报错不阻断后续条目
+        if (r.ok) saved.push(r.value.slug);
       } catch {
         // 旁路纪律：单条落盘失败不影响其余条目与任务收口
       }
@@ -64,8 +67,9 @@ export async function settleMemory(opts: { goal: string; reply: string; model: M
       await consolidateMemory({ model: opts.model, root: opts.root });
     }
   } catch {
-    // 旁路纪律：提取任何失败静默降级
+    // 旁路纪律：提取任何失败静默降级（saved 保留已入库部分，调用方照常可见）
   }
+  return saved;
 }
 
 /**

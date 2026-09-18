@@ -14,6 +14,7 @@ import * as path from 'path';
 import { SessionJournal, listSessions, newSessionId, readActivePointer, sessionsDir, parseJournalFile, reduceJournal, type SessionMeta } from './session-journal';
 import { resolveDataDir } from '../config/data-dir';
 import { MemoryStore } from '../harness/memory/store';
+import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
 import { scanMemoryText } from '../harness/memory/extractor';
 import { consolidateMemory } from '../harness/memory/consolidate';
 import { isModelSummarizer } from '../harness/context/summarizer';
@@ -125,8 +126,8 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
 function slashHelp(): string {
   return t(
-    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context: /compact [focus] · /memory persistent memory: /memory [add <text> | rm <slug> | gc] · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文：/compact [关注点] · /memory 持久记忆：/memory [add <内容> | rm <slug> | gc] · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
+    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context: /compact [focus] · /memory persistent memory: /memory [add <text> | rm <slug> | gc | on | off] · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
+    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文：/compact [关注点] · /memory 持久记忆：/memory [add <内容> | rm <slug> | gc | on | off] · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
   );
 }
 
@@ -174,6 +175,8 @@ export class SessionController {
   private turnMissHinted = false;
   /** 裁决权注入（SessionOpts.asker）：挂起语义不变，回填后咨询并以其为最终裁决 */
   private autoAsker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
+  /** 会话内持久记忆开关（/memory on|off；undefined=随控制面）：写 setMemorySessionOverride 单点，仅本会话生效、不改盘，/new 清除 */
+  private memoryOverride?: boolean;
 
   constructor(opts: SessionOpts) {
     this.root = opts.root;
@@ -645,6 +648,8 @@ export class SessionController {
       this.journal?.flush();
       this.runtime.harness.security.clearSessionAllows();
       this.extractor.reset();
+      this.memoryOverride = undefined;
+      setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
         this.committedLen = 0;
       this.state = {
         messages: [],
@@ -756,14 +761,21 @@ export class SessionController {
       }
       const store = new MemoryStore(this.root);
       const arg = text.slice(cmd.length).trim();
+      if (arg === 'on' || arg === 'off') {
+        this.memoryOverride = arg === 'on';
+        setMemorySessionOverride(this.memoryOverride); // 会话内覆盖单点：提取/注入/写闸门逐次判门读取（§7 控制面）
+        this.pushMsg('system', t(`Persistent memory ${arg} for this session (persist with the SUNSHINEX_AUTO_MEMORY env var)`, `本会话持久记忆已${arg === 'on' ? '开启' : '关闭'}（持久化请设环境变量 SUNSHINEX_AUTO_MEMORY）`));
+        return;
+      }
       if (!arg) {
         const records = store.list();
+        const capacity = store.capacityNotice();
         if (records.length === 0) {
-          this.pushMsg('system', t('No memories yet — /memory add <text> to add one', '暂无记忆——用 /memory add <内容> 添加一条'));
+          this.pushMsg('system', [t('No memories yet — /memory add <text> to add one', '暂无记忆——用 /memory add <内容> 添加一条'), this.memoryStateLine(), ...(capacity ? [capacity] : [])].join('\n'));
           return;
         }
         const lines = records.map((r) => `- ${r.slug} [${r.type}] (${r.created}) ${r.description}`);
-        this.pushMsg('system', [t(`Persistent memories (${records.length}):`, `持久记忆（${records.length} 条）：`), ...lines].join('\n'));
+        this.pushMsg('system', [t(`Persistent memories (${records.length}):`, `持久记忆（${records.length} 条）：`), ...lines, this.memoryStateLine(), ...(capacity ? [capacity] : [])].join('\n'));
         return;
       }
       const parts = arg.split(/\s+/);
@@ -827,6 +839,10 @@ export class SessionController {
       return;
     }
     switch (e.type) {
+      case 'notice':
+        // 收口说明行用户面（规格 §10）：记忆/技能沉淀以一行增量告知（内容为英文链行原文，照原样不译）
+        this.pushMsg('system', String(e.payload?.text ?? e.text ?? ''));
+        return;
       case 'token':
         this.extractor.feed(e.text ?? '');
         if (this.state.live?.kind === 'reply') this.flushReply();
@@ -935,6 +951,19 @@ export class SessionController {
       default:
         return; // route / approval-* 不落消息区
     }
+  }
+
+  /** 记忆开关状态行（/memory 无参列表尾追；外观面 t() 双语） */
+  private memoryStateLine(): string {
+    const on = this.memoryOverride ?? resolveMemoryConfig().autoMemory;
+    if (this.memoryOverride !== undefined) {
+      return this.memoryOverride
+        ? t('Persistent memory: ON for this session (session override, not persisted)', '持久记忆：本会话开启（会话内覆盖，不落盘）')
+        : t('Persistent memory: OFF for this session (session override, not persisted)', '持久记忆：本会话关闭（会话内覆盖，不落盘）');
+    }
+    return on
+      ? t('Persistent memory: ON', '持久记忆：开启')
+      : t('Persistent memory: OFF', '持久记忆：关闭');
   }
 
   private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'detail'>>): void {

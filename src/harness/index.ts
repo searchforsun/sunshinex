@@ -20,6 +20,7 @@ import { LearnedSkillStore } from './skills/learned';
 import { settleMemory } from './memory/extractor';
 import { guardMemoryWrite } from './memory/writer';
 import { resolveDataDir } from '../config/data-dir';
+import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 
 export interface HarnessOptions {
@@ -30,8 +31,10 @@ export interface HarnessOptions {
   mode?: PermissionMode;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给 Reactor；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;
-  /** 学习惯例沉淀开关（缺省 true）：成功任务沉淀学习技能至全局数据目录；测试/纯执行场景可关 */
+  /** 学习惯例沉淀开关（缺省=随控制面 SUNSHINEX_LEARNED_SKILLS）：成功任务沉淀学习技能至全局数据目录；测试/纯执行场景可关 */
   learnSkills?: boolean;
+  /** 会话内持久记忆覆盖（/memory on|off 会话级开关；undefined=随控制面 SUNSHINEX_AUTO_MEMORY）：仅本会话生效、不改盘 */
+  memoryOverride?: boolean;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -94,11 +97,26 @@ export class Harness {
       ledger,
       runner: this.runner,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-      ...(opts.learnSkills ?? true
-        ? { settle: (r: { goal: string; reply: string }) => new LearnedSkillStore(base).settle(r.goal, r.reply) }
+      ...(opts.learnSkills ?? resolveMemoryConfig().learnedSkills
+        ? {
+            settle: (r: { goal: string; reply: string }) => {
+              const res = new LearnedSkillStore(base).settle(r.goal, r.reply, { limit: resolveMemoryConfig().learnedSkillLimit });
+              return res.ok ? `[skills] learned: ${res.value}` : undefined; // 链行恒英文单语（§15）
+            },
+          }
         : {}),
-      ...(opts.learnSkills ?? true
-        ? { settleMemory: (r: { goal: string; reply: string }) => settleMemory({ goal: r.goal, reply: r.reply, model: this.model, root: base }) }
+      ...(opts.learnSkills ?? resolveMemoryConfig().autoMemory
+        ? {
+            settleMemory: async (r: { goal: string; reply: string }) => {
+              // 会话内覆盖（/memory on|off）逐次判门：override 优先于控制面；不改盘、仅本会话生效
+              const mem = resolveMemoryConfig();
+              if ((opts.memoryOverride ?? mem.autoMemory) !== true) return undefined;
+              const slugs = await settleMemory({ goal: r.goal, reply: r.reply, model: this.model, root: base });
+              return slugs.length > 0
+                ? `[memory] saved: ${slugs.join(', ')} — recall via read ${path.join(resolveDataDir(base), 'memory', 'MEMORY.md')}` // 链行恒英文单语（§15）
+                : undefined;
+            },
+          }
         : {}),
     });
     this.ledger = ledger;

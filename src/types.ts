@@ -178,7 +178,7 @@ export interface RouteDecision {
 export type SessionEventType =
   | 'token' | 'reasoning' | 'usage' | 'tool-call' | 'tool-result' | 'step'
   | 'route' | 'approval-request' | 'approval-resolved'
-  | 'ctx' | 'done' | 'error';
+  | 'ctx' | 'done' | 'error' | 'notice';
 
 export interface SessionEvent {
   type: SessionEventType;
