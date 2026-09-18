@@ -484,4 +484,26 @@ git commit -m "refactor(i18n): B5 链行英文化 + 删除 pick 双语别名 + R
 
 ## 执行方式
 
-计划已落库。两种执行方式：**子代理驱动**（每批判新子代理、批间复核）或**会话内联 TDD**。五批相互独立（B1–B5 文件不重叠），但共用 `dist/` 与 git 索引 → 串行派发。
+**子代理驱动**（用户 2026-09-18 选定）：每批派新子代理、批间由主代理复核（不采信子代理自述，独立跑门禁与审计）。五批文件不重叠，但共用 `dist/` 与 git 索引 → 串行派发。
+
+## 执行序调整（2026-09-18，用户裁定「避开重叠文件」）
+
+他线（记忆线 M3）在工作区留有未提交改动，其中三个文件与本计划批次落点重叠，**暂缓不动**：`src/harness/tools/builtin.ts`（B1）、`src/harness/memory/writer.ts`（B2）、`src/harness/security/chain.ts`（B4）。另 `src/config/data-dir.ts`、`data-dir.test.ts` 与本计划无关，全程零触碰。
+
+**立即执行序（零重叠面）**
+
+| 序 | 原批次 | 范围 | 说明 |
+|----|--------|------|------|
+| **A1** | B1 非重叠 | `tools.ts`、`tools/{output-archive,websearch}.ts`、`context/{index,window,summarizer}.ts`、`knowledge/{embed,store,store.sqlite-vec}.ts` | 含审计用例骨架（`SCOPES` 只登记本批已改文件） |
+| **A2** | B3 全部 | `loop/{nodes,engine,templates}.ts`、`graph/{nodes,agents,workflow,engine,templates}.ts` | 写链行英文 + gate/CI/引擎汇总回执 `t()` + 双语钉子 |
+| **A3** | B2 非重叠 | `memory/{store,extractor,consolidate}.ts` | `writer.ts` 暂缓 |
+| **A4** | B4 非重叠 | `reactor.ts`、`subagent.ts`、`sunshine-init.ts`、`security/{guard,sandbox}.ts`、`mcp/client.ts`、`skills.ts`、`skills/learned.ts`、`model/adapter.ts` | `chain.ts` 暂缓 |
+| **A5** | B5 非重叠 | `tui/session.ts` 四处链行 + `README.md` / `TUI-MANUAL.md` 口径 | **不含删除 `pick`** |
+
+**暂缓面（他线 WIP 落地后收口）**
+
+- `builtin.ts`（B1 余）、`memory/writer.ts`（B2 余）、`security/chain.ts`（B4 余）英文化。
+- 删除 `pick` 导出 + `i18n.test.ts` 断言调整 + `config/env.ts` 局部 `pick` → `pickEnv`——必须等**全部**调用点转换完毕，否则编译破损。
+- **`SCOPES` 全量扩面**（并入上述三文件）+ 终验三门禁 + `grep -rn "pick(" src --include=*.ts | grep -v pickEnv` 零命中。
+
+**登记取舍**：`SCOPES` 采用「逐步扩面」——每批只登记该批已完成文件，未完成文件不进范围（若进则必红），漏网由最后的扩面步骤兜住。这是「避开他线 WIP」的配套代价，非遗漏。
