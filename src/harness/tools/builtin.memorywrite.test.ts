@@ -16,7 +16,7 @@ import { resolveDataDir } from '../../config/data-dir';
 /**
  * `write` 执行器 × 记忆写入接缝（规格 §4.4）：
  * ①零新增工具：builtinTools 清单与第 7 可选参引入前逐字节一致（两态同断言）
- * ②注入接缝 → 记忆路径走接缝（委派 + 透传 root/absPath/content/scope/write 后端回调；观察行含 Saved memory）
+ * ②注入接缝 → 记忆路径走接缝（委派 + 透传 root/absPath/content/scope；观察行含 Saved memory；落盘归接缝所有）
  * ③未注入接缝 → 旧行为逐字节不变（观察行 written、内容不规范化）
  * ④接缝拒绝 → 工具侧带码错误且零落盘
  * ⑤不含 memory 依赖的既有工具行为不变（write 非记忆路径 / read / grep）
@@ -27,6 +27,9 @@ import { resolveDataDir } from '../../config/data-dir';
 const BUILTIN_NAMES = ['exec', 'read', 'skill', 'write', 'grep', 'glob', 'webfetch', 'websearch', 'kb_search'];
 
 const RAW = ['---', 'type: project', 'description: repo uses pnpm', '---', 'use pnpm only', ''].join('\n');
+
+/** 桩接缝落盘内容（与规范化形态刻意不同：用来区分「委派给接缝」与「builtin 自行落盘」） */
+const STUB_BODY = 'stub seam wrote this\n';
 
 async function withRegistry(
   fn: (ctx: { registry: ToolRegistry; safety: SafetyChain; root: string; dataDir: string }) => Promise<void>,
@@ -63,11 +66,13 @@ test('零新增工具：第 7 可选参两态下 builtinTools 清单逐字节一
   }, guardMemoryWrite);
 });
 
-test('注入接缝：write 记忆路径走接缝（委派 + 透传接缝入参，观察行含 Saved memory）', async () => {
+test('注入接缝：write 记忆路径走接缝（委派 + 透传接缝入参，观察行含 Saved memory；落盘由接缝自负）', async () => {
   const seen: MemoryWriteRequest[] = [];
   const spy: MemoryWriteSeam = (r) => {
     seen.push(r);
-    r.write(r.absPath, r.content); // 复用接缝传入的后端回调落盘
+    // 测试桩自行落盘：接缝不再收落盘回调（落盘唯一点在真接缝的 MemoryStore.put）
+    fs.mkdirSync(path.dirname(r.absPath), { recursive: true });
+    fs.writeFileSync(r.absPath, STUB_BODY);
     return { ok: true, value: { slug: 'prefers-pnpm', kind: 'main', observation: 'Saved memory: prefers-pnpm (spy)' } };
   };
   await withRegistry(async ({ registry, safety, root, dataDir }) => {
@@ -80,8 +85,9 @@ test('注入接缝：write 记忆路径走接缝（委派 + 透传接缝入参�
     assert.equal(seen[0].absPath, absPath, '透传安全链归一后的 absPath');
     assert.equal(seen[0].content, RAW, '透传原文（校验在接缝内做）');
     assert.equal(seen[0].scope, undefined, '主链无 scope（undefined 而非 main）');
-    assert.equal(typeof seen[0].write, 'function', '透传后端落盘回调');
-    assert.equal(fs.readFileSync(absPath, 'utf8'), RAW, '接缝传入的回调落到后端 writeFile');
+    assert.equal('write' in seen[0], false, '接缝请求不携带落盘回调（单一实现，无兼容面）');
+    // 落盘结果断言（原「回调落到后端 writeFile」断言的口径变更）：盘面即桩落盘产物，真接缝的规范化盘面在下一用例钉住
+    assert.equal(fs.readFileSync(absPath, 'utf8'), STUB_BODY, '委派后盘面内容来自接缝自身落盘');
   }, spy);
 });
 

@@ -85,7 +85,6 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
             content,
             // scope 只接 safety.memoryScope（undefined | agents/<id>）：显式 'main' 等价全拒，非设计意图
             ...(safety.memoryScope !== undefined ? { scope: safety.memoryScope } : {}),
-            write: (abs, c) => backend.writeFile(abs, c),
           });
           if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
           if (r.value !== 'pass') return execOut(r.value.observation);

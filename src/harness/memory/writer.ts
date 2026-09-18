@@ -2,10 +2,9 @@
  * 记忆写入接缝（规格 §4.3，原子工具路径的唯一权威）：模型经既有 `write` 工具写 `<dataDir>/memory/**` 时的
  * 校验 → 落盘 → 规范化 → 重建索引 → 容量回执 单点。非记忆路径一律 `'pass'` 交回常规写入（零副作用）。
  *
- * 落盘口径（编排跨任务决策，2026-09-18）：记录文件一律经调用方传入的 `write` 回调（builtin 传 `backend.writeFile`，
- * 含父目录创建），本模块不直接 `fs.writeFileSync` 落记录——后端抽象（process/docker/ssh）不得被绕开。
- * 索引 `MEMORY.md` 是派生物，仍由 `MemoryStore.rebuildIndex()` 单点重建；规范化/去重/容量口径复用 MemoryStore 原语。
- * 校验**先于**写入（不落盘即无需回滚），杜绝垃圾文件进索引。
+ * 落盘口径（2026-09-18 用户裁决「单一实现、最简实现、不要兼容」）：记录落盘**只有一条**实现——`MemoryStore.put`
+ * （规范化四键 / 同 slug 更新语义 / 三级去重 / 容量两级 / 索引重建全在其中），接缝不复制这些语义、也不引入落盘回调参数。
+ * 校验先于写入（不落盘即无需回滚）；`put` 内部写盘走该项目既有的记录落盘路径（本项目 process 后端即 fs）。
  *
  * 旁路纪律：接缝失败以带码失败或异常形式浮出（builtin 转 CodedToolError → 工具侧可读错误），**绝不吞成 `'pass'`**
  * ——那会让未校验的原文绕过闸门落进记忆目录（fail-closed：接缝异常即写入被拒）。
@@ -15,7 +14,7 @@ import * as path from 'path';
 import { pick } from '../../i18n';
 import { Result, ok, fail } from '../../result';
 import { resolveDataDir } from '../../config/data-dir';
-import { MEMORY_INDEX_MAX_LINES, MemoryStore, MemoryType, normalizeText, slugifyMemory } from './store';
+import { MEMORY_INDEX_MAX_LINES, MemoryStore, MemoryType, slugifyMemory } from './store';
 import { scanMemoryText } from './extractor';
 import { isMemoryPath, MemoryScope } from './paths';
 
@@ -28,8 +27,6 @@ export interface MemoryWriteRequest {
   content: string;
   /** 记忆写 scope：仅接 `safety.memoryScope`（`undefined | agents/<id>`）；**禁止传 `'main'`**（等价全拒，非设计意图） */
   scope?: MemoryScope;
-  /** 落盘回调（builtin 传 backend.writeFile）：接缝负责顺序与校验，落盘走后端接缝 */
-  write: (absPath: string, content: string) => void;
 }
 
 export interface MemoryWriteOutcome {
@@ -67,20 +64,6 @@ function parseFrontmatter(md: string): { meta: Record<string, string>; body: str
     if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
   return { meta, body: m[2] };
-}
-
-/**
- * 记录序列化（四键顺序 type/created/modified/description + 正文，与 `MemoryStore` 的私有 `serialize` 同形）：
- * 落盘经后端回调（决策口径）后无法复用 store 内部写盘路径，故此处复制同一形态；
- * `MEMORY.md` 索引由 store 单点重建、记录解析亦由 store 单点完成，两模块格式一致性由 writer.test「store 解析回读」用例钉住。
- */
-function serializeRecord(rec: { type: MemoryType; created: string; modified: string; description: string; body: string }): string {
-  return ['---', `type: ${rec.type}`, `created: ${rec.created}`, `modified: ${rec.modified}`, `description: ${rec.description}`, '---', rec.body, ''].join('\n');
-}
-
-/** 索引有效行数（空行不计；回执与容量口径同 store） */
-function indexLines(store: MemoryStore): number {
-  return store.indexText().split('\n').filter((l) => l.length > 0).length;
 }
 
 export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOutcome | 'pass'> {
@@ -139,28 +122,26 @@ export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOut
 
   const subdir = kind === 'main' ? undefined : kind;
   const store = new MemoryStore(req.root, subdir === undefined ? undefined : { subdir });
-  const records = store.list();
-  const existing = records.find((r) => r.slug === slug);
-  // 跨记录三级去重（与 MemoryStore.put 同一闸门与文案）：同 slug 为更新（自排除），他名同 description/正文即拒
-  const duplicate = records.find(
-    (r) => r.slug !== slug && (normalizeText(r.description) === normalizeText(description) || normalizeText(r.body) === normalizeText(body)),
-  );
-  if (duplicate) return fail('MEMORY_DUPLICATE', `duplicate: ${duplicate.slug}`);
+  // 落盘唯一实现（2026-09-18 用户裁决「单一实现」）：记录面由 kind 定（主记忆目录或 agents/<id>/ 一层），`put` 只写本面
+  // `<slug>.md`，故其下嵌套请求天然归拢回本面记录目录——「索引＝本面记录派生物」不变式与「同 slug 更新不产 -2 副本」
+  // 在嵌套请求下同样成立；规范化四键 / 同 slug=更新（保留 created、刷新 modified）/ 三级去重 / 超限判定 / 索引重建全在 put 单点完成。
+  const existing = store.list().find((r) => r.slug === slug);
+  const put = store.put({
+    slug,
+    type,
+    description,
+    body,
+    ...(existing ? { created: existing.created } : {}),
+    modified: new Date().toISOString(),
+  });
+  // put 失败码原样浮出（跨记录去重 MEMORY_DUPLICATE；超限 MEMORY_INDEX_OVER_LIMIT＝记录已写盘 + 勒令精简，CC 语义）
+  if (!put.ok) return fail(put.error.code, put.error.message);
 
-  const created = existing !== undefined && existing.created.length > 0 ? existing.created : new Date().toISOString().slice(0, 10);
-  const modified = new Date().toISOString();
-  // 落点＝本记录面内的规范路径 <记录目录>/<slug>.md（记录面由 kind 定：主记忆目录或 agents/<id>/ 一层；
-  // 其下嵌套不构成独立记录面，故一律归拢回本面记录目录——保证「索引与记录一致」不变式（重建索引只扫本面直属文件）
-  // 与「同 slug 更新不产副本」语义在嵌套请求下同样成立）
-  req.write(path.join(store.dir(), `${slug}.md`), serializeRecord({ type, created, modified, description, body }));
-  store.rebuildIndex();
-
-  // 容量两级（规格 §6）：超限=记录已写盘但报错勒令精简（CC 语义）；近满=照写并在回执追加提醒
-  const over = store.overLimit();
-  if (over !== null) return fail('MEMORY_INDEX_OVER_LIMIT', over);
+  // 容量近满（规格 §6）：照写，回执追加提醒（超限已由 put 定论并浮出）
+  const lines = store.indexText().split('\n').filter((l) => l.length > 0).length;
   const near = store.capacityNotice();
   const observation = [
-    pick(`Saved memory: ${slug} [${type}] — ${indexLines(store)}/${MEMORY_INDEX_MAX_LINES} index lines`, `已保存记忆：${slug} [${type}] — 索引 ${indexLines(store)}/${MEMORY_INDEX_MAX_LINES} 行`),
+    pick(`Saved memory: ${slug} [${type}] — ${lines}/${MEMORY_INDEX_MAX_LINES} index lines`, `已保存记忆：${slug} [${type}] — 索引 ${lines}/${MEMORY_INDEX_MAX_LINES} 行`),
     ...(near !== null ? [near] : []),
   ].join('\n');
   return ok({ slug, kind, observation });
