@@ -3,7 +3,8 @@ import * as path from 'path';
 import { pick } from '../../i18n';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
-import { MemoryStore, normalizeText } from './store';
+import { MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD, normalizeText } from './store';
+import { consolidateMemory } from './consolidate';
 
 /**
  * 记忆提取管线（auto memory 规格 §4）：reactor settle 单点挂载、独立一次性模型调用不进主链。
@@ -49,6 +50,10 @@ export async function settleMemory(opts: { goal: string; reply: string; model: M
       } catch {
         // 旁路纪律：单条落盘失败不影响其余条目与任务收口
       }
+    }
+    // 整理触发（规格 §5）：同收口串行——先提取入库、后判定阈值整理；阈值未达零调用（consolidateMemory 内部门禁）
+    if (store.count() >= MEMORY_CONSOLIDATE_THRESHOLD) {
+      await consolidateMemory({ model: opts.model, root: opts.root });
     }
   } catch {
     // 旁路纪律：提取任何失败静默降级

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { settleMemory } from './extractor';
-import { MemoryStore } from './store';
+import { MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD } from './store';
 import type { ModelAdapter } from '../../model/adapter';
 
 /** 提取管线（规格 §4）：settle 单点独立一次性调用不进主链、provider 门禁、五重准入闸门、自包含化条款 */
@@ -120,5 +120,27 @@ test('防注入条款与 learned 分流声明都在 prompt', async () => {
     await settleMemory({ goal: 'g', reply: 'r', model: cap.model, root: mem.dir() });
     assert.ok(/not instructions|资料而非指令/i.test(cap.prompts[0]), '防注入条款');
     assert.ok(/skill|流程|procedural/i.test(cap.prompts[0]), '分流声明（流程类归技能机制）');
+  });
+});
+
+test('settle 尾部阈值触发整理（先提取入库、后判定阈值整理）', async () => {
+  await withMem(async (mem) => {
+    for (let i = 1; i <= MEMORY_CONSOLIDATE_THRESHOLD; i += 1) {
+      const r = mem.add({ type: 'project', description: `memo topic ${i}`, body: `body ${i}` });
+      assert.ok(r.ok, `seed ${i}`);
+    }
+    const model: ModelAdapter = {
+      provider: 'openai',
+      complete: async (p: string) => {
+        if (p.includes('memory-extraction')) return '{"memories":[]}';
+        if (p.includes('memory-consolidation')) {
+          return JSON.stringify({ memories: [{ type: 'project', description: 'merged into one', body: 'single merged record' }] });
+        }
+        throw new Error('unexpected call');
+      },
+    };
+    await settleMemory({ goal: 'g', reply: 'r', model, root: mem.dir() });
+    assert.equal(mem.count(), 1, '整理在 settle 尾部触发（只减不增）');
+    assert.ok(mem.indexText().includes('merged into one'), '合并集落盘');
   });
 });
