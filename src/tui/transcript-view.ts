@@ -35,7 +35,10 @@ export function buildTranscriptDecisions(
     if (role === 'assistant') {
       const prevIsAssistant = i > 0 && messages[i - 1].role === 'assistant';
       if (!prevIsAssistant) seg += 1;
-    } else if (role === 'user') {
+    } else if (role === 'user' || role === 'step') {
+      // ▶ 阶段行与 user 指令行、正文同为锚点、各自开段（阶段前的过程归上一段）：
+      // 漏掉 step 会让整场阶段挤进同一段——非末段的「留一组概要」全部失效（▶ 行之间空着），
+      // 且 Ctrl+O 的「最近两段」作用域覆盖全场、一次展开所有阶段（用户本机实测形态）。
       seg += 1;
     } else if (seg < 0) {
       seg = 0; // 防御：无骨架行开头的过程行/说明行随首段呈现

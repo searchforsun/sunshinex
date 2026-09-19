@@ -149,3 +149,40 @@ test('收口 notice 行（system 说明）不新开段：尾追说明不吃掉�
   const tab = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
   assert.ok(!tab[1].full, 'Tab（第一层）不改变内容深度，说明行同样不越权展开');
 });
+
+test('回归：▶ 阶段行开段——每阶段各留一组概要，Ctrl+O 只展开最近正文锚点组（用户本机实测形态）', () => {
+  // 最小复现：任务内多个 phase（▶）阶段、每阶段后有多组思考/工具，末尾一条正文。
+  // 实测症状：① 默认态 ▶ 行之间空着（除首段外概要不显示）② Ctrl+O 把整场过程全展开。
+  const messages = [
+    item('user', '1'),
+    item('thinking', 'Thought for 12s', { detail: '想一' }),
+    item('tool', 'GLOB *', { kind: 'call' }),
+    item('tool', '.gitattributes', { kind: 'result', ok: true }),
+    item('thinking', 'Thought for 9s', { detail: '想二' }),
+    item('tool', 'GLOB *.md', { kind: 'call' }),
+    item('tool', 'README.md', { kind: 'result', ok: true }),
+    item('step', 'Reading README and pom.xml'),
+    item('thinking', 'Thought for 11s', { detail: '想三' }),
+    item('tool', 'READ README.md', { kind: 'call' }),
+    item('tool', 'md', { kind: 'result', ok: true }),
+    item('thinking', 'Thought for 7s', { detail: '想四' }),
+    item('tool', 'READ pom.xml', { kind: 'call' }),
+    item('tool', 'xml', { kind: 'result', ok: true }),
+    item('step', 'Scanning the source tree'),
+    item('thinking', 'Thought for 21s', { detail: '想五' }),
+    item('tool', 'GLOB src/main/java/**/*.java', { kind: 'call' }),
+    item('tool', 'java', { kind: 'result', ok: true }),
+    item('assistant', 'Project Overview ...'),
+  ];
+  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: false });
+  assert.ok(d[7].visible && d[14].visible, '▶ 阶段行恒显示');
+  assert.ok(d[1].visible && d[2].visible && d[3].visible, '首段保留自己一组概要');
+  assert.ok(!d[4].visible && !d[5].visible && !d[6].visible, '首段其余组折叠');
+  assert.ok(d[8].visible && d[9].visible && d[10].visible, '阶段二保留自己一组概要（▶ 阶段不被跳过）');
+  assert.ok(d[15].visible && d[16].visible && d[17].visible, '阶段三保留自己一组概要');
+  assert.ok(d[18].visible, '末尾正文恒显示');
+
+  const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(deep[15].full && deep[16].full && deep[17].full, 'Ctrl+O 展开最近正文锚点组（阶段三）全文');
+  assert.ok(!deep[1].full && !deep[8].full, '更早阶段保持摘要，不随 Ctrl+O 一并展开');
+});
