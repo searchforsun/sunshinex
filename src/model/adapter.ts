@@ -54,7 +54,7 @@ export class StubAdapter implements ModelAdapter {
   readonly label = t('stub (no real model wired)', 'stub（未接入真实模型）');
   async complete(_prompt: string, hooks?: UsageHooks): Promise<string> {
     hooks?.onUsage?.(0); // 占位适配器无真实用量
-    return '{"done":true,"reply":"[stub] no real model wired: set SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL in .env, then retry"}';
+    return '{"done":true,"reply":"[stub] no real model wired: set SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL in ~/.sunshinex/settings.json, then retry"}';
   }
 
   async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {

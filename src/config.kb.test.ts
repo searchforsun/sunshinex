@@ -1,22 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDotenv, resolveKbEnv } from './config/env';
-
-test('parseDotenv：注入文本解析（引号剥离/注释与非法行忽略），供 env 回退链输入', () => {
-  const kv = parseDotenv([
-    '# comment',
-    'SUNSHINEX_API_KEY="sk-test"',
-    "SUNSHINEX_EMBEDDING_MODEL='text-embedding-3-small'",
-    'SUNSHINEX_KB_BACKEND=local-json',
-    '',
-    'bad line',
-  ].join('\n'));
-  assert.deepEqual(kv, {
-    SUNSHINEX_API_KEY: 'sk-test',
-    SUNSHINEX_EMBEDDING_MODEL: 'text-embedding-3-small',
-    SUNSHINEX_KB_BACKEND: 'local-json',
-  });
-});
+import { resolveKbEnv } from './config/env';
 
 test('resolveKbEnv：SUNSHINEX_KB_BACKEND 缺省 local-json；SUNSHINEX_EMBEDDING_* 未配置回退同名 SUNSHINEX_* 主模型键；均未配置则字段缺省', () => {
   assert.deepEqual(resolveKbEnv({}), { backend: 'local-json' });

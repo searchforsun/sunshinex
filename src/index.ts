@@ -1,4 +1,3 @@
-import { loadEnv } from './config/env';
 import { applySettings, loadGlobalSettings, loadProjectSettings } from './config/settings';
 import { t } from './i18n';
 
@@ -21,10 +20,9 @@ function loadSettingsChain(projectRoot: string): void {
   }
 }
 
-// 四级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 .env > 项目 settings > 全局 settings
+// 三级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 settings > 全局 settings
 // 项目级先装、全局后装兜底——装载器只填缺省键，后装者仅补缺不覆盖，顺序即优先级
 const projectRoot = process.cwd();
-loadEnv(projectRoot);
 loadSettingsChain(projectRoot);
 const args = process.argv.slice(2);
 if (args.includes('--selfcheck')) {

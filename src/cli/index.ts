@@ -3,7 +3,6 @@ import { runSelfcheck } from './commands/selfcheck';
 import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
 import { runTui } from '../tui/entry';
-import { loadEnv } from '../config/env';
 import { applySettings, loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
 
@@ -97,10 +96,9 @@ function usageText(): string {
 }
 
 async function main(): Promise<void> {
-  // 四级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 .env > 项目 settings > 全局 settings
+  // 三级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 settings > 全局 settings
   // 项目级先装、全局后装兜底——装载器只填缺省键，后装者仅补缺不覆盖，顺序即优先级
   const projectRoot = process.cwd();
-  loadEnv(projectRoot);
   loadSettingsChain(projectRoot);
   const args = resolveInvocation(parseArgs(process.argv.slice(2)));
   // 界面语言：--language=en|zh > settings language 槽 > 缺省 en（zh 为全中文界面 + 中文模型侧提示词；

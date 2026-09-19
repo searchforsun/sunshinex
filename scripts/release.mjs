@@ -146,7 +146,7 @@ if (!SKIP_VERIFY) {
   say('全量验证（tsc + node --test 全量 + selfcheck）');
   if (has(PNPM) || has('pnpm')) run(PNPM, ['run', 'test'], { stdio: 'inherit' });
   else run(NPM, ['run', 'test'], { stdio: 'inherit' });
-  run(process.execPath, ['--env-file-if-exists=.env', 'dist/cli/index.js', 'selfcheck'], { stdio: 'inherit' });
+  run(process.execPath, ['dist/cli/index.js', 'selfcheck'], { stdio: 'inherit' });
 }
 
 // ---------- 版本落库 ----------

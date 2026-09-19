@@ -9,11 +9,11 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node --env-file-if-exists=.env dist/index.js",
+    "start": "node dist/index.js",
     "test": "tsc -p tsconfig.json && node scripts/run-tests.js",
-    "selfcheck": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js selfcheck",
-    "cli": "tsc -p tsconfig.json && node --env-file-if-exists=.env dist/cli/index.js",
-    "prepublishOnly": "pnpm test && node --env-file-if-exists=.env dist/cli/index.js selfcheck"
+    "selfcheck": "tsc -p tsconfig.json && node dist/cli/index.js selfcheck",
+    "cli": "tsc -p tsconfig.json && node dist/cli/index.js",
+    "prepublishOnly": "pnpm test && node dist/cli/index.js selfcheck"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -36,7 +36,6 @@
   "files": [
     "dist",
     "README.md",
-    "TUI-MANUAL.md",
-    ".env.example"
+    "TUI-MANUAL.md"
   ]
 }

@@ -3,7 +3,7 @@ import { LoopDeps } from './loop/engine';
 import { ModelAdapter, ModelRouter, OpenAIAdapter, ScriptedAdapter, StubAdapter } from './model/adapter';
 import { ModelTier } from './types';
 
-/** 模型装配唯一决策点（CLI run/pipeline 与 TUI 共用，避免各入口各写一套）：--model 可选 openai|scripted|stub，缺省 openai；配置由进程入口 loadEnv 从 .env 装载（已导出环境变量优先） */
+/** 模型装配唯一决策点（CLI run/pipeline 与 TUI 共用，避免各入口各写一套）：--model 可选 openai|scripted|stub，缺省 openai；配置由进程入口装载 settings.json 两级链（已导出环境变量优先） */
 export function buildModel(flags: Record<string, string | boolean>): ModelAdapter {
   if (flags.model === 'scripted') return new ScriptedAdapter([]);
   if (flags.model === 'stub') return new StubAdapter();
