@@ -16,6 +16,8 @@ export interface ItemRenderDecision {
  * expandAll（Tab，第一层）解除全部行折叠、不改变内容深度；
  * latestFull（Ctrl+O，第二层）把最近两段（当前活动段及其前一阶段）的思考与工具结果展开为全文。
  * 正文连续流式切块并入同段不裂段；user/system 恒显示、不参与折叠。
+ * **system 说明行（压缩/队列/记忆·技能沉淀/漂移提示）不开段**：它们是行内注解而非会话轮次，
+ * 否则收口后尾追的 notice 行会把刚发生的思考挤出「最近两段」全文作用域（规格 §10 notice 尾追纪律）。
  */
 export function buildTranscriptDecisions(
   messages: ChatItem[],
@@ -23,7 +25,9 @@ export function buildTranscriptDecisions(
 ): ItemRenderDecision[] {
   const foldable = (m: ChatItem): boolean => m.role === 'thinking' || m.role === 'tool';
   const n = messages.length;
-  // 切段：骨架行（user/system/step）与正文开段，正文连续切块并入同段，过程行隶属当前段
+  // 切段：会话骨架行（user 指令行 / assistant 正文）开段，正文连续切块并入同段，过程行隶属当前段。
+  // system 说明行（压缩/队列/记忆·技能沉淀/漂移提示等）是行内注解而非会话轮次，**不新开段**：
+  // 否则收口后尾追的 notice 行会把刚发生的思考挤出「最近两段」全文作用域（Ctrl+O 展开态被莫名收拢，规格 §10 notice 尾追纪律）。
   const segOf: number[] = new Array(n).fill(0);
   let seg = -1;
   for (let i = 0; i < n; i++) {
@@ -31,10 +35,10 @@ export function buildTranscriptDecisions(
     if (role === 'assistant') {
       const prevIsAssistant = i > 0 && messages[i - 1].role === 'assistant';
       if (!prevIsAssistant) seg += 1;
-    } else if (role !== 'thinking' && role !== 'tool') {
+    } else if (role === 'user') {
       seg += 1;
     } else if (seg < 0) {
-      seg = 0; // 防御：无骨架行开头的过程行随首段呈现
+      seg = 0; // 防御：无骨架行开头的过程行/说明行随首段呈现
     }
     segOf[i] = seg;
   }

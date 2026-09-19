@@ -343,8 +343,10 @@ export class Reactor {
       totalChars: cfg.stepDigestTotalChars,
     });
     const settlePayload: SettlePayload = { goal: task.goal, reply: reply ?? '', outcome, digest };
-    // 技能沉淀钩子：全终态触发一次；抛错吞掉记链行（链即记忆，事件走链），不倒灌任务成败
-    if (this.deps.settle) {
+    // 沉淀钩子仅主链触发（规格 §3.1 + fork 不变量）：fork 私有执行零主链回写——内部规划/分析/图节点产物不进记忆与技能，
+    // 否则收口说明行会击穿 fork 隔离（runtime.test「fork 作用域零主链回写」为钉子）；
+    // 技能沉淀：全终态触发一次；抛错吞掉记链行（链即记忆，事件走链），不倒灌任务成败
+    if (scope === 'session' && this.deps.settle) {
       try {
         const line = await this.deps.settle(settlePayload);
         if (line) announce('skills', line);
@@ -353,7 +355,7 @@ export class Reactor {
       }
     }
     // 记忆提取钩子（auto memory §4）：同点并行、独立一次性模型调用；任何失败静默（旁路纪律，收口永不因记忆而失败）
-    if (this.deps.settleMemory) {
+    if (scope === 'session' && this.deps.settleMemory) {
       try {
         const line = await this.deps.settleMemory(settlePayload);
         if (line) announce('memory', line);

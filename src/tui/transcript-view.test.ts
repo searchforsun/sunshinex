@@ -133,3 +133,19 @@ test('spawn 调用行（子代理转录归档 detail）：随所在段 latestFul
   const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
   assert.ok(deep[1].visible && deep[1].full, 'Ctrl+O 放行 SPAWN 调用行全文（决策层无障碍，渲染层 ToolRow 须消费）');
 });
+
+test('收口 notice 行（system 说明）不新开段：尾追说明不吃掉刚发生思考的全文作用域（规格 §10 尾追纪律）', () => {
+  const messages = [
+    item('user', '任务'),
+    item('thinking', 'Thought for 1s', { detail: '先想再想' }),
+    item('assistant', '答复'),
+    item('system', '! [skills] learned: 任务'), // 收口后尾追的沉淀说明行
+  ];
+  const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(deep[3].visible, '说明行恒显（user/system 不参与折叠）');
+  assert.ok(!deep[3].full, '说明行不是可展开的过程行');
+  assert.ok(deep[2].visible, '正文恒显');
+  assert.ok(deep[1].full, 'Ctrl+O：尾追说明行后，刚发生的思考仍在「最近两段」作用域内、全文展开');
+  const tab = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
+  assert.ok(!tab[1].full, 'Tab（第一层）不改变内容深度，说明行同样不越权展开');
+});

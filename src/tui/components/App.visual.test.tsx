@@ -77,7 +77,9 @@ test('App：Static 语义——横幅与已入档历史只打印一次，动态�
     const bannerCount = all.split('SunshineX TUI v1.0.0').length - 1;
     assert.ok(bannerCount === 1, `横幅应恰好打印一次，实际 ${bannerCount} 次`);
     assert.ok(all.includes('任务甲') && all.includes('任务乙'), '两轮消息均以 Static 终稿入滚动缓冲');
-    assert.equal(all.split('任务甲').length - 1, 1, '每条消息只打印一次');
+    // 行级判据：收口沉淀说明行会把 goal 文本回显进链行（`! [skills] learned: 任务甲`），
+    // 整串计数会误伤；此处按「消息行」计数（Static 语义=消息只打印一次）
+    assert.equal(all.split('\n').filter((l) => l.trim() === '任务甲').length, 1, '每条消息只打印一次');
     const frame = lastFrame() ?? '';
     assert.ok(!frame.includes('任务甲') && !frame.includes('任务乙'), '动态帧零消息渲染（全部入 Static）');
     unmount();
