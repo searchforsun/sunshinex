@@ -20,5 +20,7 @@ export async function runLoop(args: CliArgs): Promise<void> {
   deps.context.appendInstructionLine(goal);
   const r = await tpl.engine.run(goal);
   console.log(JSON.stringify({ status: r.status, iterations: r.iterations, tokensUsed: r.tokensUsed, criteria: r.criteria, reply: r.reply, error: r.error }, null, 2));
+  // 收尾消化后台沉淀队列（规格 §3.5）：此时用户本就在等命令结束，不构成新增阻塞
+  if (deps.pipeline) await deps.pipeline.drain();
   if (r.status !== 'done') process.exitCode = 1;
 }

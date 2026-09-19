@@ -20,6 +20,16 @@ export interface PipelineItem {
 
 export type PipelineNotice = (source: 'memory' | 'skills', line: string) => void;
 
+export interface MemoryPipelineDeps {
+  model: ModelAdapter;
+  root: string;
+  notify: PipelineNotice;
+  /** 记忆开关判门（会话级 /memory on|off 覆盖优先于控制面）：逐项消费时求值，不在构造期冻结；缺省读控制面 */
+  memoryEnabled?: () => boolean;
+  /** 技能沉淀开关判门（--learn/装配期覆盖优先于控制面）：同上，逐项求值 */
+  learnedEnabled?: () => boolean;
+}
+
 /**
  * 后台沉淀管线（规格 §3.1）：收口零等待入队 → 单 worker FIFO 串行消费。
  * 兜底定位（D5）：模型运行中自主写入（memory_write）为主通道，本管线覆盖「模型没写/写入被拒」的任务；
@@ -30,7 +40,15 @@ export class MemoryPipeline {
   /** 单 worker 门闩：非空即有且仅有一个在飞的消费循环（drain 期间再入队只排队不并发） */
   private worker: Promise<void> | undefined;
 
-  constructor(private readonly deps: { model: ModelAdapter; root: string; notify: PipelineNotice }) {}
+  constructor(private readonly deps: MemoryPipelineDeps) {}
+
+  private memoryEnabled(): boolean {
+    return this.deps.memoryEnabled?.() ?? resolveMemoryConfig().autoMemory;
+  }
+
+  private learnedEnabled(): boolean {
+    return this.deps.learnedEnabled?.() ?? resolveMemoryConfig().learnedSkills;
+  }
 
   /** 待办计数：排队项 + 在飞 worker（1 项）——入队即生效，drain 返回即归零 */
   pending(): number {
@@ -87,14 +105,14 @@ export class MemoryPipeline {
     if (item.kind !== 'learned') return undefined;
     if (item.outcome !== 'done' || !item.reply) return undefined;
     const cfg = resolveMemoryConfig();
-    if (!cfg.learnedSkills) return undefined;
+    if (!this.learnedEnabled()) return undefined;
     const r = new LearnedSkillStore(this.deps.root).settle(item.goal, item.reply, { limit: cfg.learnedSkillLimit });
     return r.ok ? `[skills] learned: ${r.value}` : undefined;
   }
 
   private async consumeLearned(item: PipelineItem): Promise<void> {
     const cfg = resolveMemoryConfig();
-    if (!cfg.learnedSkills) return;
+    if (!this.learnedEnabled()) return;
     try {
       const ex = await extractLearnedSkill(this.deps.model, {
         goal: item.goal,
@@ -120,7 +138,7 @@ export class MemoryPipeline {
   }
 
   private async consumeMemory(item: PipelineItem): Promise<void> {
-    if (!resolveMemoryConfig().autoMemory) return;
+    if (!this.memoryEnabled()) return;
     try {
       const slugs = await settleMemory({ goal: item.goal, reply: item.reply, model: this.deps.model, root: this.deps.root });
       if (slugs.length > 0) this.deps.notify('memory', this.memoryLine(slugs));
@@ -129,10 +147,11 @@ export class MemoryPipeline {
     }
   }
 
-  /** 说明行文案与 harness 既有口径逐字对齐（src/harness/index.ts settleMemory 链行），并附近限提醒（规格 §3.4/§6） */
+  /** 说明行文案与 harness 既有口径逐字对齐（src/harness/index.ts settleMemory 链行）；
+   *  近限提醒（规格 §3.4）以 ` — ` 并入同一行——链行是单行契约，不得以换行拆出无步号裸行 */
   private memoryLine(slugs: string[]): string {
     const base = `[memory] saved: ${slugs.join(', ')} — recall via read ${path.join(resolveDataDir(this.deps.root), 'memory', 'MEMORY.md')}`;
     const near = new MemoryStore(this.deps.root).capacityNotice();
-    return near ? `${base}\n${near}` : base;
+    return near ? `${base} — ${near}` : base;
   }
 }

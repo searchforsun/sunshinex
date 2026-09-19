@@ -16,9 +16,10 @@ import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
-import { LearnedSkillStore } from './skills/learned';
-import { settleMemory } from './memory/extractor';
+import { MemoryPipeline } from './memory/pipeline';
+import { writeMemoryFact } from './memory/extractor';
 import { guardMemoryWrite } from './memory/writer';
+import type { SettlePayload } from './reactor';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
@@ -54,6 +55,13 @@ export class Harness {
   readonly runner: SubagentRunner;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
+  /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
+  readonly pipeline: MemoryPipeline;
+  /** 沉淀双钩子单点（规格 §3.1/§3.5）：单发 Reactor 与 loop 内构造的 Reactor 同源透传，防两处拼装漂移 */
+  readonly settleHooks: {
+    settle: (r: SettlePayload) => string | undefined;
+    settleMemory: (r: SettlePayload) => string | undefined;
+  };
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
@@ -68,9 +76,25 @@ export class Harness {
     // 技能门面先于工具装配创建（skill 工具经它按 id 解析正文；纯构造无副作用）
     this.skills = createSkillsFacade(base);
     // 第 7 参注入记忆写入接缝（规格 §4.4 落点表）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
-    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite)) this.tools.register(t);
+    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }))) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
+    // 后台沉淀管线（规格 §3.1/§3.5）：收口零等待入队 → 空闲/收尾消化；notify 双通道=链尾 notice 行（模型面）+ notice 事件（用户面），
+    // 与 reactor announce 逐字同形；两个开关逐项消费时求值（/memory on|off 与 --learn 语义贯通）
+    this.pipeline = new MemoryPipeline({
+      model: this.model,
+      root: base,
+      notify: (source, text) => {
+        this.context.appendChain([{ action: 'notice', observation: text }]);
+        opts.onEvent?.({ type: 'notice', text, payload: { source, text }, ts: Date.now() });
+      },
+      learnedEnabled: () => opts.learnSkills ?? resolveMemoryConfig().learnedSkills,
+      memoryEnabled: () => (opts.memoryOverride ?? resolveMemoryConfig().autoMemory) === true,
+    });
+    this.settleHooks = {
+      settle: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'learned', ...r }),
+      settleMemory: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'memory', ...r }),
+    };
     // 子代理执行单元：注册表/安全链/上下文/模型同源装配；agents 目录装配期一次性加载 fail-fast（运行期零增删）
     const agents = new AgentRegistry();
     agents.registerBuiltins();
@@ -97,27 +121,8 @@ export class Harness {
       ledger,
       runner: this.runner,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-      ...(opts.learnSkills ?? resolveMemoryConfig().learnedSkills
-        ? {
-            settle: (r: { goal: string; reply: string }) => {
-              const res = new LearnedSkillStore(base).settle(r.goal, r.reply, { limit: resolveMemoryConfig().learnedSkillLimit });
-              return res.ok ? `[skills] learned: ${res.value}` : undefined; // 链行恒英文单语（§15）
-            },
-          }
-        : {}),
-      ...(opts.learnSkills ?? resolveMemoryConfig().autoMemory
-        ? {
-            settleMemory: async (r: { goal: string; reply: string }) => {
-              // 会话内覆盖（/memory on|off）逐次判门：override 优先于控制面；不改盘、仅本会话生效
-              const mem = resolveMemoryConfig();
-              if ((opts.memoryOverride ?? mem.autoMemory) !== true) return undefined;
-              const slugs = await settleMemory({ goal: r.goal, reply: r.reply, model: this.model, root: base });
-              return slugs.length > 0
-                ? `[memory] saved: ${slugs.join(', ')} — recall via read ${path.join(resolveDataDir(base), 'memory', 'MEMORY.md')}` // 链行恒英文单语（§15）
-                : undefined;
-            },
-          }
-        : {}),
+      // 沉淀双钩子零等待入队（规格 §3.1/§3.5 D2）：收口同步路径不再 await 模型调用；开关判门在管线内逐项求值
+      ...this.settleHooks,
     });
     this.ledger = ledger;
   }

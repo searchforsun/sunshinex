@@ -48,6 +48,9 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     runner: harness.runner,
     ...(harness.ledger ? { ledger: harness.ledger } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+    // 沉淀双钩子与收尾管线（规格 §3.1/§3.5）：TUI 主链经 loop 构造 Reactor，钩子必须随 LoopDeps 透传才会触发
+    ...harness.settleHooks,
+    pipeline: harness.pipeline,
   };
 
   // run 级覆盖统一构造：/model 档位逐次覆盖、scope 线程（runTask/runLoop 共用，防两处漂移）

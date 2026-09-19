@@ -52,6 +52,10 @@ export function buildDeps(root: string, flags: Record<string, string | boolean>)
     skills: h.skills,
     root,
     runner: h.runner,
+    // 后台沉淀管线透传（规格 §3.5）：CLI 命令收尾 await drain，退出前清空队列
+    pipeline: h.pipeline,
+    // 沉淀双钩子透传（规格 §3.1）：loop 内构造的 Reactor 收口同样零等待入队（此前 loop 路径未接＝真缺口）
+    ...h.settleHooks,
     // 显式按档绑定才注入 router（reactor 按用户级档位取对应适配器）；--tier 注入 run 级档位常量
     ...(router ? { router } : {}),
     ...(tier ? { tier } : {}),

@@ -61,8 +61,12 @@ export async function runPipeline(args: CliArgs): Promise<void> {
     const r2 = await tpl.engine.resume(approvals);
     console.log(`resume: ${r2.status} tokens=${r2.tokensUsed} failedNodes=[${r2.failedNodes}]`);
     printFailures(r2);
+    // 收尾消化后台沉淀队列（规格 §3.5）：暂停续走分支同样在命令结束前清空
+    if (deps.pipeline) await deps.pipeline.drain();
     if (r2.status !== 'done') process.exitCode = 1;
     return;
   }
   if (r1.status !== 'done') process.exitCode = 1;
+  // 收尾消化后台沉淀队列（规格 §3.5）：此时用户本就在等命令结束，不构成新增阻塞
+  if (deps.pipeline) await deps.pipeline.drain();
 }

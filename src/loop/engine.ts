@@ -52,6 +52,11 @@ export interface LoopDeps {
   scope?: 'session' | 'fork';
   /** 子代理执行单元（harness 装配注入，内联 import 规避模块环）：贯通到循环内构造的 Reactor（spawn 预算源挂载） */
   runner?: import('../harness/subagent').SubagentRunner;
+  /** 后台沉淀管线（装配层注入；CLI 收尾 await drain 用）：纯类型依赖，内联 import 规避模块环 */
+  pipeline?: import('../harness/memory/pipeline').MemoryPipeline;
+  /** 沉淀双钩子透传（harness 装配注入）：loop 内构造的 Reactor 与单发 Reactor 同语义——收口零等待入队、全终态触发 */
+  settle?: (r: import('../harness/reactor').SettlePayload) => string | void | Promise<string | void>;
+  settleMemory?: (r: import('../harness/reactor').SettlePayload) => string | void | Promise<string | void>;
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */

@@ -165,6 +165,8 @@ export class SessionController {
   /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、spawn tool-result 弹出归档（规格 §4.4 配对语义） */
   private spawnCalls: { seq: number; base: string }[] = [];
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
+  /** 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费；unref 不阻塞进程退出 */
+  private kickTimer?: ReturnType<typeof setInterval>;
   /** 挂起的计划确认卡（/plan 流程）；confirmPlan 裁决后清除 */
   private pendingPlan?: { items: string[] };
   /** 最近一次压缩事件时的 ctx 水位（自动压缩留痕 before → after 用；/compact 路径不消费） */
@@ -205,6 +207,13 @@ export class SessionController {
     if (opts.mode === 'manual') this.runtime.harness.security.setAsker(suspendAsker);
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
     if (opts.tier) this.state = { ...this.state, model: opts.tier };
+    // 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费（无待办零调用零配额）；
+    // 主触发是 closeTask 的 kick，本定时器只是兜底；unref 保证不阻塞进程退出
+    this.kickTimer = setInterval(() => {
+      const p = this.runtime.harness.pipeline;
+      if (this.state.status === 'idle' && !this.pendingApproval && p.pending() > 0) void p.drain();
+    }, resolveMemoryConfig().memoryIdleKickMs);
+    this.kickTimer.unref?.();
     // 会话日志订阅（规格 §5 单一事实源）：链/压缩变更 → 事件缓冲；任务必经 submit 建档，此后事件动态路由到当前 journal 实例。
     // 未建档时事件丢弃（订阅常驻、可选链路由）；restoreSession 直注入不触发订阅（重放零击穿）。
     this.runtime.harness.context.onContextChange((c) => {
@@ -488,6 +497,7 @@ export class SessionController {
     this.childBufs.clear();
     this.spawnCalls = [];
     this.flushJournal(); // 收口落盘（规格 D3 flush 点①）
+    this.runtime.harness.pipeline.kick(); // 回 idle 即踢一次后台消化（规格 §3.5）：队列非空才消费、无待办零调用
     this.notify();
   }
 

@@ -32,7 +32,9 @@ test('done 任务收口触发提取：openai 记录桩候选落盘', async () =>
     const h = new Harness({ root, mode: 'dontAsk', model });
     const r = await h.reactor.run({ goal: 'deploy the app' }, { maxSteps: 3 });
     assert.ok(r.done);
-    assert.equal(memCount(root), 1, 'settle 单点并行提取落盘');
+    assert.equal(memCount(root), 0, '收口零等待：run 返回时后台尚未落盘（规格 §3.1 D2）');
+    await h.pipeline.drain();
+    assert.equal(memCount(root), 1, 'settle 单点并行提取落盘（drain 后）');
   });
 });
 
@@ -54,6 +56,7 @@ test('中止路径（max-steps 未完成）同样触发一次提取，reply 归�
     const r = await h.reactor.run({ goal: 'impossible goal' }, { maxSteps: 1 });
     assert.ok(!r.done, '前提：任务未完成');
     assert.equal(r.stopReason, 'max-steps');
+    await h.pipeline.drain(); // 收口零等待（规格 §3.1 D2）：提取在后台，断言前先清空队列
     assert.equal(extractionPrompts.length, 1, '中止路径触发一次提取（触发面=全终态）');
     assert.ok(extractionPrompts[0].includes('- User goal: impossible goal'), 'goal 照传');
     assert.ok(extractionPrompts[0].endsWith('- Final reply: '), '无最终答复归一为空串（不再因缺 reply 而漏触发）');
