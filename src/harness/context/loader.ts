@@ -1,16 +1,23 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ContextItem } from '../../types';
+import { userConfigDir } from '../../config/env';
 
-/** 分层指令加载：SUNSHINE.md + @path import 展开（递归 4 层） */
+/** 全局约定文件路径：SUNSHINEX_GLOBAL_SUNSHINE 覆盖（测试钉扎/多配置并存），缺省 ~/.sunshinex/SUNSHINE.md（对标 ~/.claude/CLAUDE.md，跨工作区个人标准） */
+export function globalSunshinePath(): string {
+  const override = (process.env.SUNSHINEX_GLOBAL_SUNSHINE ?? '').trim();
+  return override.length > 0 ? override : path.join(userConfigDir(), 'SUNSHINE.md');
+}
+
+/** 分层指令加载：全局 ~/.sunshinex/SUNSHINE.md → 项目 SUNSHINE.md（全局在前、项目更近模型注意力）；均支持 @path import 展开（递归 4 层） */
 export class ContextLoader {
-  constructor(private root: string) {}
+  constructor(private root: string, private globalFile: string = globalSunshinePath()) {}
 
   load(): ContextItem[] {
     const items: ContextItem[] = [];
+    if (fs.existsSync(this.globalFile)) this.collect(this.globalFile, items, 0);
     const p = path.join(this.root, 'SUNSHINE.md');
-    if (!fs.existsSync(p)) return items;
-    this.collect(p, items, 0);
+    if (fs.existsSync(p)) this.collect(p, items, 0);
     return items;
   }
 
@@ -21,6 +28,20 @@ export class ContextLoader {
     } catch {
       return null;
     }
+  }
+
+  /** 全局层原始文本（漂移检测基线与比对用，语义同 readSunshinex） */
+  readGlobalSunshine(): string | null {
+    try {
+      return fs.readFileSync(this.globalFile, 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  /** 全局层绝对路径（漂移说明 read 指针用） */
+  get globalPath(): string {
+    return this.globalFile;
   }
 
   private collect(file: string, items: ContextItem[], depth: number): void {

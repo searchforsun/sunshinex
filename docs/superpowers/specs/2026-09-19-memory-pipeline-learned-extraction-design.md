@@ -118,7 +118,7 @@
 | `src/harness/reactor.ts` | 修改：收口构造 digest；settle/settleMemory 载荷扩字段（签名兼容：新增可选字段） |
 | `src/harness/index.ts` | 修改：装配 MemoryPipeline，settle/settleMemory 改接 enqueue |
 | `src/tui/session.ts` | 修改：idle kick + 兜底定时 + notify 双通道接线 |
-| `src/cli/commands/run.ts`、`run-pipeline.ts` | 修改：收尾 await drain |
+| `src/cli/commands/run-loop.ts`、`run-pipeline.ts` | 修改：收尾 await drain（**勘误**：本仓无 `run.ts`，CLI run 落点为 `run-loop.ts`） |
 | `src/config/memory-config.ts` | 修改：新增 4 个配置项 |
 | `src/harness/prompt-language.test.ts` | 修改：SCOPES 扩新文件 |
 

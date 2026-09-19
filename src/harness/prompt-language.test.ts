@@ -31,6 +31,8 @@ const SCOPES: Record<string, string[]> = {
     'src/harness/memory/writer.ts',
     'src/harness/memory/extractor.ts',
     'src/harness/memory/consolidate.ts',
+    'src/harness/memory/guards.ts',
+    'src/harness/memory/pipeline.ts',
   ],
   B3: [
     'src/loop/nodes.ts',

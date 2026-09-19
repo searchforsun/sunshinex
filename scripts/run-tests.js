@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 全量测试启动器：把测试进程的运行时数据目录（SUNSHINEX_DATA_DIR）与全局技能根（SUNSHINEX_USER_SKILLS_DIR）钉到仓内 .data-test，
+ * 全量测试启动器：把测试进程的运行时数据目录（SUNSHINEX_DATA_DIR）、全局技能根（SUNSHINEX_USER_SKILLS_DIR）与全局约定文件（SUNSHINEX_GLOBAL_SUNSHINE）钉到仓内 .data-test，
  * 跑完自清——测试对用户全局区（~/.sunshinex/projects）与各测试工作区零写入。
  * 纯 node 跨平台（Windows 经 node.exe 直跑，无 shell 语法依赖）；递归收集 dist 下 *.test.js 后交 node --test。
  */
@@ -27,7 +27,7 @@ if (files.length === 0) {
 }
 const r = spawnSync(process.execPath, ['--test', ...files], {
   stdio: 'inherit',
-  env: { ...process.env, SUNSHINEX_DATA_DIR: dataDir, SUNSHINEX_USER_SKILLS_DIR: path.join(dataDir, 'user-skills') },
+  env: { ...process.env, SUNSHINEX_DATA_DIR: dataDir, SUNSHINEX_USER_SKILLS_DIR: path.join(dataDir, 'user-skills'), SUNSHINEX_GLOBAL_SUNSHINE: path.join(dataDir, 'global-SUNSHINE.md') },
 });
 fs.rmSync(dataDir, { recursive: true, force: true });
 process.exit(r.status ?? 1);

@@ -119,7 +119,7 @@ SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三
 ### 3.2 交互层
 - CLI（已交付）：零依赖自研（node:readline + 内置 argv 解析），无 commander/inquirer/chalk 等第三方依赖
 - TUI（阶段五 5A）：终端渲染选型待定案——原生 ANSI 渲染 vs 成熟 TUI 库（如 Ink/blessed），按依赖引入原则评审
-- GUI（阶段五 5B，规划选型）：Electron 28+、Vue3 + Vite + Naive UI、Monaco Editor、@antv/g6（流程可视化）、diff2html/monaco-diff（diff 预览）
+- GUI（阶段五 5B，规划选型）：Electron 28+、Vue3 + Vite + Naive UI、Monaco Editor（含 Diff Editor，核心 diff）、@antv/g6（流程可视化）、xterm.js + node-pty（内嵌终端）、splitpanes（布局）、chokidar（文件监听）、pinia（状态管理）、electron-vite + electron-builder + electron-updater（工程化）；diff2html 降级备选（非编辑器区域轻量 diff）
 
 ### 3.3 Graph编排层
 - 自研DAG引擎、JSON Schema工作流定义、异步事件调度器

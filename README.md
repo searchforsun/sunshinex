@@ -19,10 +19,11 @@ graph LR
 
 ```text
 src/
-  index.ts            # 运行入口（自动装载 .env）
+  index.ts            # 运行入口（装载 settings.json 配置链）
   types.ts            # 全局共享类型
   config.ts           # SUNSHINE.md 解析
-  config/env.ts       # 零依赖 .env 装载（已导出环境变量优先）
+  config/env.ts       # 用户配置目录与 KB 环境解析
+  config/settings.ts  # settings.json 装载（语义键 + env 块，两级只填缺省）
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
   harness/            # 运行时底座（核心闭环已落地）
@@ -32,13 +33,15 @@ src/
     ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
     skills.ts         # 技能加载与调度（三级根装载 + 清单注入 + skill 工具按需加载）
     skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
+    skills/learned-extract.ts # learned 语义提炼（lessons-not-logs 结构化提炼，失败回退确定性写盘）
+    memory/           # 记忆（记录/索引单点 + 文本闸门单点 + 提取/整理 + 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
     mcp/              # MCP 客户端（stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
     subagent.ts       # 子代理执行单元（agents/{id}/agent.md 注册制 + 预设角色 + 内联临时；spawn 工具面 + fork 执行/回写/预算/并发护栏）
     knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed / KnowledgeBase）
     security/         # guard/policy/modes/sandbox/dryrun/chain
-    context/          # loader/rules/window/session/compaction/memory-lifecycle
+    context/          # loader（全局 ~/.sunshinex/SUNSHINE.md + 项目 SUNSHINE.md 两层装载）/window/session/compaction/memory-lifecycle
   loop/               # Loop 引擎（engine + 四类节点 + 三大模板，已实装）
   graph/              # DAG 编排（engine/agents/nodes/workflow/templates，已实装）
   model/adapter.ts    # 模型适配 + 三档算力路由
@@ -61,20 +64,21 @@ src/
 > 目标形态定稿（北极星场景、双交互面、扩展生态、可靠性双口径、非目标）以 [docs/GOAL.md](docs/GOAL.md) 为单一权威，本节为概览。
 
 - **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，ink + React 等开源组件构建，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台，开源组件优先）；CLI 专项命令（`chat/edit/test/review/doc/run`）随阶段四扩展。TUI 内 `/goal <目标>` 可直接触发 Loop 标准验收修正环（对标 CLI `run`），目标支持自然语言条件。
-- **云本地分工**：任意 OpenAI 协议兼容供应商（`.env` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
+- **云本地分工**：任意 OpenAI 协议兼容供应商（`settings.json` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
 - **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发（spawn）。
 
 ## 快速开始
 
+写入 `~/.sunshinex/settings.json`（全部可配置项模板见 TUI-MANUAL 第三节）后启动：
+
 ```bash
-copy .env.example .env         # 填入真实 SUNSHINEX_API_KEY（Windows；macOS/Linux 用 cp）
 corepack enable                # 启用 Node 自带 corepack（pnpm 版本由 package.json 钉定）
 pnpm install                   # 安装依赖（.npmrc 已固定 store 到仓内 .pnpm-store）
 pnpm cli tui                   # 构建并启动交互式终端（对标 Claude Code：流式答复/工具审批/待办，manual 缺省）
 ```
 
-需配置 `.env`（SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL，任意 OpenAI 协议兼容供应商）。`pnpm cli` 与 `pnpm start` 启动时自动从当前目录装载 `.env`（已导出的环境变量优先，不被文件覆盖），无需手动 source。TUI 其他模式：`pnpm cli tui <dir> --mode=manual|dontAsk|plan`；模型档位 `--tier=small|medium|large`（会话内 `/model` 切换，按档模型见 `SUNSHINEX_MODEL_SMALL/MEDIUM/LARGE`）。动作信封缺省走模型原生结构化输出（请求级 `response_format` JSON Schema，端点侧约束输出形态），`SUNSHINEX_STRUCTURED_OUTPUT=json_schema|json|off` 可调——`json` 为仅约束合法 JSON 的端点兼容降级档，`off` 关闭后回退纯提示词文本协议；端点不支持该字段报错时属请求失败走 model-error，设 `off` 即恢复原形态。记忆控制面三键（非法值装配期 fail-fast）：`SUNSHINEX_AUTO_MEMORY=on|off` 陈述性记忆总开关（提取/装载/写入闸门/整理四处贯通，会话内 `/memory on|off` 可临时覆盖、不落盘）、`SUNSHINEX_LEARNED_SKILLS=on|off` 程序性记忆（学习技能沉淀）开关、`SUNSHINEX_LEARNED_SKILL_LIMIT=<1..1000>` 学习技能 FIFO 上限（缺省 50）。
+模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥；任意 OpenAI 协议兼容供应商）。`pnpm cli` 与 `pnpm start` 启动时自动装载项目级 `.sunshinex/settings.json` 与全局级 `~/.sunshinex/settings.json`（已导出的环境变量优先，不被文件覆盖）。TUI 其他模式：`pnpm cli tui <dir> --mode=manual|dontAsk|plan`；模型档位 `--tier=small|medium|large`（会话内 `/model` 切换，按档模型见 `modelSmall/Medium/Large`）。动作信封缺省走模型原生结构化输出（请求级 `response_format` JSON Schema，端点侧约束输出形态），`structuredOutput` 取 `json_schema|json|off`——`json` 为仅约束合法 JSON 的端点兼容降级档，`off` 关闭后回退纯提示词文本协议；端点不支持该字段报错时属请求失败走 model-error，设 `off` 即恢复原形态。记忆控制面三键（settings.json 语义键，非法值装配期 fail-fast）：`autoMemory`（`on|off`）陈述性记忆总开关（提取/装载/写入闸门/整理四处贯通，会话内 `/memory on|off` 可临时覆盖、不落盘）、`learnedSkills`（`on|off`）程序性记忆（学习技能沉淀）开关、`learnedSkillLimit`（1..1000）学习技能 FIFO 上限（缺省 50）。
 
 ### 全局安装（npm 安装后直接用 `sunshinex` 命令）
 
@@ -109,7 +113,20 @@ scripts/release.mjs --version 0.1.0 --clobber  # 同版本重发：覆盖该 Rel
 
 版本语义：**默认既不覆盖也不自动递增**——使用 `package.json` 当前版本号；每个版本对应一个新 tag + 新安装链接，旧版本链接永久可回溯、永不覆盖；同版本号重发属覆盖行为，须显式 `--clobber`。上传通道自动探测：优先 `gh` CLI（`gh auth login` 一次即可），或 `GITHUB_TOKEN=<pat> node scripts/release.mjs`（需 curl；JSON 解析已内建，无需 jq）。正式发布要求工作区干净且已推送。
 
-`bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局配置 `~/.sunshinex/.env`（装一次、跨项目共享密钥），项目根 `.env` 按项目覆盖，优先级：已导出环境变量 > 项目级 > 全局级。`sunshinex selfcheck / run / pipeline` 等子命令用法不变。
+`bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局 `~/.sunshinex/settings.json`（装一次、跨项目共享），项目级 `.sunshinex/settings.json`（同构、按项目覆盖，已入 .gitignore）；优先级：已导出环境变量 > 项目级 > 全局级 > 内置缺省（后装只填缺省）。完整变量模板见 TUI-MANUAL 第三节，最小示例：
+
+```json
+{
+  "version": 1,
+  "model": "glm-5.3-flash",
+  "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+  "env": {
+    "SUNSHINEX_API_KEY": "sk-…"
+  }
+}
+```
+
+迁移（破坏性变更）：`.env` 文件渠道已退役——旧 `~/.sunshinex/.env` 与项目根 `.env` 均不再被读取；设置类键转语义键（如 `SUNSHINEX_MODEL=x` → `"model": "x"`），密钥原样进 `env` 块（键名不变）。`sunshinex selfcheck / run / pipeline` 等子命令用法不变。
 
 技能目录（标准形态 `{根}/skills/{id}/SKILL.md`，同名就近生效）：项目级兼容链 `.cursor < .codex < .claude < .agents < .sunshinex`（只装载标准形态，其余形态不兼容）> 全局用户级 `~/.sunshinex/skills/`（跨项目共享，`SUNSHINEX_USER_SKILLS_DIR` 可覆盖）> 学习级（任务成功后系统自动沉淀至数据目录 `skills/`，FIFO 上限）。技能清单（名称+描述）随会话冻结点注入提示词，任务匹配时模型经内置 `skill` 工具按 id 自动加载全文，无需手动粘贴技能内容。
 
@@ -123,4 +140,4 @@ scripts/release.mjs --version 0.1.0 --clobber  # 同版本重发：覆盖该 Rel
 | `docs/ROADMAP.md` | 开发路线图（6 阶段、28 周） |
 | `docs/superpowers/specs/` | 设计 spec（阶段一底座 + 统一运行时主链） |
 | `CLAUDE.md` | AI 协作规范 |
-| `SUNSHINE.md` | 项目业务配置 |
+| `SUNSHINE.md` | 项目业务配置；另有跨工作区全局约定 `~/.sunshinex/SUNSHINE.md`（对标 `~/.claude/CLAUDE.md`，`SUNSHINEX_GLOBAL_SUNSHINE` 覆盖；全局在前、项目在后，两层均支持 `@path` 导入） |

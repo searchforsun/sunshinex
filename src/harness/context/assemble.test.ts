@@ -53,12 +53,12 @@ test('会话链 API：追加定号、水位裁剪、跳号保留、resetSession 
   assert.deepEqual(cm.chainView().map((s) => s.step), [1]);
 });
 
-test('relPath 规则段仍按路径加载', () => {
+test('path-scoped 规则机制已清退：.sunshine/rules 就位也不注入（防回归钉子）', () => {
   const { root, cm } = setup();
   fs.mkdirSync(path.join(root, '.sunshine', 'rules'), { recursive: true });
   fs.writeFileSync(path.join(root, '.sunshine', 'rules', 'src.rules.md'), 'paths: src/\n- 规则X\n');
-  const items = cm.assemble([{ kind: 'history', content: 'h' }], 'src/a.ts');
-  assert.ok(items.some((i) => i.content.includes('规则X')));
+  const items = cm.assemble([{ kind: 'history', content: 'h' }]);
+  assert.ok(!items.some((i) => i.content.includes('规则X')), '规则机制已清退，任何路径都不注入');
 });
 
 test('技能清单冻结段注入：快照尾（history 前）、相邻帧前缀稳定', () => {

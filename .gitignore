@@ -7,7 +7,11 @@ dist/
 *.log
 .DS_Store
 .superpowers/
+# 遗留 .env（配置渠道已退役；保留忽略以防旧文件误提交密钥）
 .env
+
+# 项目级 .sunshinex/settings.json（env 块可含密钥，安全缺省对齐 .env；精确文件路径，不影响 .sunshinex/skills/ 入库）
+.sunshinex/settings.json
 
 # 长任务真实模型冒烟的演示目标项目（验证产物与运行痕迹不入库）
 .longtask/

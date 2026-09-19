@@ -7,7 +7,6 @@ import { resolveDataDir } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { formatSkillsIndex, loadSkills } from '../skills';
 import { ContextLoader, extractCompactInstructions } from './loader';
-import { RulesRegistry } from './rules';
 import { ContextWindow, ContextChunk, estimateTokens } from './window';
 import { SessionStore } from './session';
 import { maskText } from '../security/chain';
@@ -34,7 +33,6 @@ export interface ContextSessionState {
 
 export class ContextManager {
   readonly loader: ContextLoader;
-  readonly rules: RulesRegistry;
   readonly window: ContextWindow;
   readonly session: SessionStore;
 
@@ -57,6 +55,8 @@ export class ContextManager {
   /** 动态改动尾追基线（规范 N1 / 规格 §9.2）：刷新点捕获，会话中途与磁盘比对不一致即尾追变更说明；
    *  sunshinexBaseline=null 表示「磁盘无 SUNSHINE.md」这一确定态，与「未捕获」不混 */
   private sunshinexBaseline: string | null = null;
+  /** 全局约定基线（~/.sunshinex/SUNSHINE.md 全文；语义同 sunshinexBaseline，独立基线独立告知） */
+  private globalSunshineBaseline: string | null = null;
   /** 技能清单基线（id 集排序 join；新增才告知，正文永不进上下文） */
   private skillsBaseline = '';
   /** 记忆索引基线（MEMORY.md 全文；跨轮整理/写入时增量告知，快照仍冻结） */
@@ -64,7 +64,6 @@ export class ContextManager {
 
   constructor(private readonly rootPath: string, store: StorageAdapter) {
     this.loader = new ContextLoader(rootPath);
-    this.rules = new RulesRegistry(rootPath);
     this.window = new ContextWindow();
     this.session = new SessionStore(store);
     // Compact Instructions 区提取（E 项）：装配同源读一次；无文件/无区为 null
@@ -81,6 +80,7 @@ export class ContextManager {
 
   /** 刷新点基线捕获（构造与 reloadContext 共用单点）：会话常量漂移检测的比对基准，随刷新点与磁盘对齐 */
   private captureBaselines(): void {
+    this.globalSunshineBaseline = this.loader.readGlobalSunshine();
     this.sunshinexBaseline = this.loader.readSunshinex();
     this.skillsBaseline = skillIds(this.rootPath);
     this.memoryBaseline = memoryIndexText(this.rootPath);
@@ -187,25 +187,32 @@ export class ContextManager {
     if (pushed.length > 0) this.changeSink?.({ kind: 'append', steps: pushed });
   }
 
+  /** 单层 SUNSHINE 漂移说明构建（全局/项目两层共用单点，防两处拼装漂移）：变更头+最新全文（超限截断附 read 指针）/ 消失态；文案恒英文单语（写链即提示词面） */
+  private sunshineDriftText(label: string, current: string | null, filePath: string): string {
+    const text =
+      current === null
+        ? `(${label} is gone)`
+        : current.length > DRIFT_MAX_CHARS
+          ? `${current.slice(0, DRIFT_MAX_CHARS)}\n…(truncated) — read ${filePath} for the rest`
+          : current;
+    return [
+      `${label} changed (the session snapshot is stale; the text below is authoritative until the next refresh point):`,
+      text,
+    ].join('\n');
+  }
+
   /** 会话常量漂移检测（规范 N1 / 规格 §9.2；确定性、零模型调用）：读盘比对刷新点基线，返回应尾追的说明行文本。
    *  基线随比对前进（同一变更只告知一次），刷新点由 captureBaselines 重置；说明文案恒英文单语——经 appendChain 写链即提示词面（CLAUDE.md §15，模型侧双语别名已废止）。 */
   checkConstantsDrift(): string[] {
     const out: string[] = [];
+    const globalText = this.loader.readGlobalSunshine();
+    if (globalText !== this.globalSunshineBaseline) {
+      out.push(this.sunshineDriftText('Global SUNSHINE.md', globalText, this.loader.globalPath));
+      this.globalSunshineBaseline = globalText;
+    }
     const current = this.loader.readSunshinex();
     if (current !== this.sunshinexBaseline) {
-      const full = path.join(this.rootPath, 'SUNSHINE.md');
-      const text =
-        current === null
-          ? '(SUNSHINE.md is gone)'
-          : current.length > DRIFT_MAX_CHARS
-            ? `${current.slice(0, DRIFT_MAX_CHARS)}\n…(truncated) — read ${full} for the rest`
-            : current;
-      out.push(
-        [
-          'SUNSHINE.md changed (the session snapshot is stale; the text below is authoritative until the next refresh point):',
-          text,
-        ].join('\n'),
-      );
+      out.push(this.sunshineDriftText('SUNSHINE.md', current, path.join(this.rootPath, 'SUNSHINE.md')));
       this.sunshinexBaseline = current;
     }
     const ids = skillIds(this.rootPath);
@@ -261,14 +268,13 @@ export class ContextManager {
     return this.compactions;
   }
 
-  /** 统一装配（fork 模型段序）：loader → rules → 压缩块 → history（会话链经 reactor 缺省 seed 流入）→ 技能块（尾追）
+  /** 统一装配（fork 模型段序）：loader → 压缩块 → history（会话链经 reactor 缺省 seed 流入）→ 技能块（尾追）
    *  goal 槽与记忆段已取消（CLAUDE.md §11：真实任务文本走链尾「当前指令行」，链即记忆） */
-  assemble(history: ContextItem[] = [], relPath?: string): ContextItem[] {
+  assemble(history: ContextItem[] = []): ContextItem[] {
     const items: ContextItem[] = [];
     // SUNSHINE.md 会话冻结（规格 G 项，对标 CLAUDE.md mid-session freeze）：装配只读快照，
     // 中途改盘不位移前缀；刷新点四：构造 / reloadContext（/init）/ resetSession（/new）/ 压缩成功
     items.push(...this.contextSnapshot);
-    if (relPath) items.push(...this.rules.forPath(relPath));
     items.push(...this.compacted);
     items.push(...history);
     if (this.pendingSkill !== null) {
@@ -278,7 +284,7 @@ export class ContextManager {
     return items;
   }
 
-  /** 压缩素材（规格 §4.2）：从装配面中剔除会话常量条目（快照：SUNSHINE.md / 规则 / 技能清单 / 记忆引导，均落在
+  /** 压缩素材（规格 §4.2）：从装配面中剔除会话常量条目（快照：SUNSHINE.md / 技能清单 / 记忆引导，均落在
    *  system/instruction 两类）。这些段每轮由 assemble 原样重注入、不参与折叠，故不属于「被摘要替代」的素材——
    *  纳入会既造成「摘要 + 常量段」双份，又在反应式压缩（端点超长兜底）路径多发起一次无谓的模型摘要调用。
    *  与 window 丢弃序同口径：system/instruction 即其声明「不可丢」的白名单，二者永不被摘要替代。 */

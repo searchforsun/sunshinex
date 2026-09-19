@@ -21,8 +21,8 @@ import { resolveSkill } from '../harness/skills';
 /** 首帧观测：记录每次 assemble 产物，断言技能块仅出现在首帧（置尾注入，首帧即消费） */
 class RecordingContext extends ContextManager {
   frames: ContextItem[][] = [];
-  assemble(history: ContextItem[] = [], relPath?: string): ContextItem[] {
-    const items = super.assemble(history, relPath);
+  assemble(history: ContextItem[] = []): ContextItem[] {
+    const items = super.assemble(history);
     this.frames.push(items);
     return items;
   }

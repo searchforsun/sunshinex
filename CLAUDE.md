@@ -19,7 +19,7 @@ pnpm build      # 编译 TS 到 dist/（tsc -p tsconfig.json）
 pnpm start      # 运行入口（node dist/index.js）
 pnpm selfcheck  # 编译并运行骨架自检
 pnpm test      # 编译 + 全量单测（scripts/run-tests.js 启动，测试数据目录钉仓内 .data-test 防污染用户全局区）
-pnpm cli       # CLI 执行面（内置自动构建，自动装载 .env）
+pnpm cli       # CLI 执行面（内置自动构建，自动装载 settings.json）
 pnpm install   # 安装依赖
 ```
 
@@ -29,13 +29,14 @@ pnpm install   # 安装依赖
 
 ```text
 src/
-  index.ts            # npm/pnpm start 入口（自动装载 .env）
+  index.ts            # npm/pnpm start 入口（装载 settings.json 配置链）
   cli/                # CLI 执行面（selfcheck / run / pipeline）
   types.ts            # 全局共享类型
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
   config.ts           # SUNSHINE.md 解析器
-  config/env.ts       # 零依赖 .env 装载（已导出环境变量优先）
+  config/env.ts       # 用户配置目录与 KB 环境解析
+  config/settings.ts  # settings.json 装载（语义键 + env 块，两级只填缺省）
   harness/
     index.ts          # Harness 门面
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
@@ -43,13 +44,15 @@ src/
     ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
     skills.ts         # 技能加载与调度（项目级兼容链五根+全局+学习级装载 + resolve 回退链 + 清单冻结段注入 + skill 工具按需加载）
     skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
+    skills/learned-extract.ts # learned 语义提炼（lessons-not-logs：四小节语义结构 + description ≤60 语义化；判无教训零落盘、技术失败回退确定性写盘）
+    memory/           # 记忆（store 记录/索引单点 + guards 文本闸门单点 + extractor 提取 + consolidate 整理 + pipeline 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search/skill）
+    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write）
     mcp/              # MCP 客户端（官方 SDK 接缝：stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
     subagent.ts       # 子代理执行单元（agents/{id}/agent.md 注册制 + 预设角色 + 内联临时；spawn 工具面 + fork 执行/回写/预算/并发护栏）
     knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed Provider / KnowledgeBase 编排）
     security/         # guard/policy/modes/sandbox/dryrun/chain
-    context/          # loader/rules/window/session/compaction/memory-lifecycle
+    context/          # loader（全局 ~/.sunshinex/SUNSHINE.md + 项目 SUNSHINE.md 两层装载）/window/session/compaction/memory-lifecycle
   loop/
     engine.ts         # Loop 闭环引擎（生成→校验→修正）
     nodes.ts          # 四类节点（Agent/Check/Gate/Router）+ /goal 判据
@@ -91,7 +94,7 @@ SUNSHINE.md          # 项目业务配置
 - **已登记依赖**：sqlite-vec ^0.1.9 —— sqlite-vec 向量扩展（vec0 虚拟表 KNN）。用途：阶段四 P1 `SUNSHINEX_KB_BACKEND=sqlite-vec` 向量后端；加载路径：node:sqlite（Node 22.14 内置）`loadExtension` + `allowExtension: true`（缺省关闭，安全缺省）；边界：单进程本地库、插入走 hex 字面量（vec0 xUpdate 参数化绑定限制，spike 已证）、依赖收敛于 store 接缝内；回退预案：local-json（`SUNSHINEX_KB_BACKEND` 缺省即回退，禁静默切换）
 - **已登记依赖**：markdown-it ^15.0.1 —— Markdown 解析器（CommonMark token 流）。用途：阶段五 5B TUI 正文 Markdown 解析（块级/行内 token 流 → `MdBlock`/`MdInline` IR）；边界：依赖收敛于 `src/tui/markdown.ts` 解析层（含预处理补偿顿号列表、七级标题归 6、未闭合围栏降级段落三处 spec 语义），渲染层 `MarkdownText.tsx` 只消费 IR 不感知库；回退预案：IR 稳定，替换解析实现（含自研轻量解析器）不动 IR 与渲染层
 - **已登记依赖**：highlight.js ^11.12.0 —— 语法高亮引擎。用途：阶段五 5B 围栏代码块语法高亮（token 树 scope → `HiKind` 四类着色）；边界：依赖收敛于 `src/tui/highlight.ts`（单行高亮纯函数，产出 `HiSpan[]`，未知语言/异常整行 plain），渲染层 `MarkdownText.tsx` 只消费 `HiSpan`；回退预案：`HiSpan` 接口稳定，替换实现（含轻量正则关键字高亮）不动渲染层
-- **规划选型（GUI，未引入）**：Electron ≥ 28（桌面壳）+ Vue 3 + Vite + Naive UI（界面组件库）+ Monaco Editor（代码预览/diff）+ @antv/g6（工作流可视化）+ diff2html（diff 渲染）——GUI 落地前为候选名单，实际引入时按上方引入标准逐项转正登记（Arch-Plan §2.1.1）
+- **规划选型（GUI，未引入）**：Electron ≥ 28（桌面壳）+ Vue 3 + Vite + Naive UI（界面组件库）+ Monaco Editor（代码预览/diff，核心 diff 走 Monaco Diff Editor）+ @antv/g6（工作流可视化）+ xterm.js + node-pty（内嵌终端）+ splitpanes（多面板布局）+ chokidar（文件监听）+ pinia（状态管理）+ electron-vite + electron-builder + electron-updater（构建/打包/自动更新）；diff2html 降级为备选（仅非编辑器区域轻量 diff 展示），dockerode + tree-kill 为可选增强（Compute Use 容器执行/进程管理）——GUI 落地前为候选名单，实际引入时按上方引入标准逐项转正登记（Arch-Plan §2.1.1）
 
 ## 6. 技能与插件规范
 
@@ -138,7 +141,7 @@ SUNSHINE.md          # 项目业务配置
 
 ```text
 [稳定段]     身份/输出约定/工具清单/JSON 协议/工作目录/执行协议行  ← 全层共享，逐字节冻结
-[SUNSHINE.md]                                                   ← 会话级常量
+[SUNSHINE.md]  全局 ~/.sunshinex/SUNSHINE.md → 项目 SUNSHINE.md  ← 会话级常量（两层冻结快照）
 [技能清单]   name+description 索引（同刷新点冻结、按名排序）       ← 会话级常量，模型据此按需加载
 [压缩块]     会话链前缀折叠摘要                                   ← 唯一合法重写产物
 [会话链]     任务指令行+全量执行轨迹+结论/节点结论/补丁行           ← 主链 append-only，只在尾部变
@@ -155,7 +158,7 @@ SUNSHINE.md          # 项目业务配置
 - **只增不改**：会话链 append-only，过期信息以补丁行追加修正、不就地改写；压缩是唯一合法重写点（预算驱动、带滞回节流）；任务边界不重置上下文——新任务/新步骤以「当前指令行」尾追进链。
 - **重算事件少且收敛**：压缩是唯一的整体重写；模型档位是用户级会话参数（`--tier` / TUI `/model` / `SUNSHINEX_TIER`），整场恒定、不进提示词、模型无自调通道、系统不自动换档。
 - **动态改动一律尾追——第一要义的完整形态（2026-09-18 定稿）**：第一要义不是「前缀冻结、一成不变」，而是**以尾追承载一切动态**：会话开始装载（SUNSHINE.md / 技能清单 / 记忆索引进冻结快照）→ 运行中任何变更只尾追说明行 → 轮次边界与跨天 resume 启动时主动探测差异、尾追进链。快照重写只发生在既有刷新点（构造 / `/init` / `/new` / 压缩成功），其余任何时刻不改写前缀、不提前重建快照；新内容一律以「后到者优先」由尾部承载。
-  - **SUNSHINE.md**：轮次起点读盘与快照比对，不一致即尾追变更说明（属性=最新磁盘内容，覆盖快照旧版直到下次刷新点）；运行中模型经 `write` 改写 SUNSHINE.md，同样尾追说明。
+  - **SUNSHINE.md（两层）**：全局 `~/.sunshinex/SUNSHINE.md`（`SUNSHINEX_GLOBAL_SUNSHINE` 覆盖，对标 `~/.claude/CLAUDE.md`，跨工作区个人标准）与项目级各自独立基线、同语义；轮次起点分别读盘与快照比对，不一致即尾追变更说明（属性=最新磁盘内容，覆盖快照旧版直到下次刷新点；全局层缺失为合法确定态、消失同样尾追告知）；运行中模型经 `write` 改写项目根 SUNSHINE.md，同样尾追说明（全局文件在模型可写边界外，仅用户手工维护）。
   - **技能清单**：会话内新增/变更技能尾追一行增量告知；正文经 `skill` 工具按 id 实时读盘、置尾注入。
   - **记忆索引**：会话内新写/整理的记忆尾追一行增量告知；索引快照不动，记录文件用 `read` 直接读（工具响应恒为 live）。
   - **过期与冲突（对标 CC 补丁行语义）**：运行中出现的新确认项、新状态与链中已有条目过期或冲突时，不删不改旧条目，只尾追一条「过期/冲突说明行」声明以最新为准；读者按「后到者优先」取尾行，历史行保留作审计轨迹。禁止用「改写旧行」表达状态变化。
@@ -193,9 +196,17 @@ SUNSHINE.md          # 项目业务配置
 | TUI 高亮 | highlight.js | 已引入 | 代码块语法高亮，收敛于 `src/tui/highlight.ts` |
 | TUI 宽度 | string-width | 已引入 | 中英混排/全角字符宽度测量 |
 | GUI 桌面壳 | Electron | 规划选型 | 桌面容器，未来收敛于 `src/gui/` |
-| GUI 组件库 | Vue 3 + Vite + Naive UI | 规划选型 | 界面组件（对话、看板、表单） |
-| GUI 编辑器 | Monaco Editor | 规划选型 | 代码预览与 diff 编辑 |
-| GUI 可视化 | @antv/g6 | 规划选型 | 工作流 DAG 可视化看板 |
+| GUI 组件库 | Vue 3 + Vite + Naive UI | 规划选型 | 界面组件（对话、看板、表单、文件树） |
+| GUI 状态管理 | pinia | 规划选型 | Vue 3 官方状态库，收敛于 `src/gui/` 渲染层 |
+| GUI 编辑器 | Monaco Editor（含 Diff Editor） | 规划选型 | 代码预览/diff 编辑，核心 diff 走 Diff Editor |
+| GUI diff | diff2html | 降级备选 | 仅非编辑器区域轻量 diff 展示，按需引入 |
+| GUI 可视化 | @antv/g6 | 规划选型 | 工作流 DAG 可视化看板（MVP 节点样式先行） |
+| GUI 终端 | xterm.js + node-pty | 规划选型 | 内嵌终端；node-pty 为原生模块，三端分别编译打包（§14 纪律） |
+| GUI 布局 | splitpanes | 规划选型 | 多面板拖拽分割 |
+| GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听 |
+| GUI 内嵌浏览器 | WebContentsView | 规划选型 | Electron ≥ 30 原生 API（BrowserView 已弃用，不采用） |
+| GUI 工程化 | electron-vite + electron-builder + electron-updater | 规划选型 | 构建/打包/自动更新，原生模块三端 CI 打包 |
+| GUI 可选增强 | dockerode + tree-kill | 可选增强 | Compute Use 容器执行/进程管理，按需引入 |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
 - **体验基线**：交互细节向对标产品看齐——快捷键符合终端惯例、输出有渲染降级（窄终端/无色彩环境不花屏）、状态与错误信息用户可读；体验取舍拿不准时以「明星产品怎么做」为参照。
@@ -205,7 +216,7 @@ SUNSHINE.md          # 项目业务配置
 
 以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持（`resolveShell()` 自动探测，无 Git 时 `ComSpec` 兜底）。
 
-- **版本下限**：Node.js ≥ 22.9（`pnpm cli` 依赖 `--env-file-if-exists`；以 `package.json` 的 `engines` 为准），实测基线 22 LTS 与 24.x。
+- **版本下限**：Node.js ≥ 22.9（以 `package.json` 的 `engines` 为准；脚本统一 `node --test` 与 `node:` 内置模块），实测基线 22 LTS 与 24.x。
 - **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔——`listFiles` 对 `path.relative` 结果先归一化再匹配（Windows 反斜杠进入正则前转为 `/`，POSIX 为 no-op）。
 - **已知差异（如实登记，不虚构兼容）**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ Windows 探测 `Git\bin\bash.exe`（Git Bash）→ 无 Git 时 `ComSpec`（`/c`，仅兜底不崩，sh 语义命令不保证可用）→ POSIX `/bin/sh`；包管理器统一 pnpm（`packageManager` 钉版）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
 - **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 README 平台支持矩阵与部署指引。
