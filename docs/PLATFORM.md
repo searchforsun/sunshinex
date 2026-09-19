@@ -20,5 +20,8 @@
 Windows 注意事项：
 
 - README 中 CLI 示例均为单行，PowerShell/cmd 直接粘贴可用；bash 风格续行符 `\` 在 PowerShell 中无效。
-- `exec` 命令执行面由 `resolveShell()` 按序解析：`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容 shell，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ 探测 Git Bash（`Git\bin\bash.exe`，随 Git for Windows 标准安装）→ 无 Git 时 `ComSpec` 兜底（`/c`，仅保证不崩，sh 语义命令不保证可用）。
-- 推荐安装 Git for Windows 后直接使用（自动探测生效）；WSL 内按 Linux 口径亦完整可用。便携版/自定义安装位置：设置环境变量 `SUNSHINEX_SHELL` 指向 `bash.exe`/`sh.exe` 即可。
+- `exec` 命令执行面由 `resolveShell()` 按序解析：`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容 shell，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ 探测 Git Bash → 无 Git 时 `ComSpec` 兜底（`/c`，仅保证不崩，sh 语义命令不保证可用）。
+- Git Bash 探测为多来源（`windowsBashCandidates`）：安装环境变量（`ProgramFiles` / `ProgramW6432` / `ProgramFiles(x86)` / `LOCALAPPDATA\Programs` 下的 `Git` 根）→ PATH 上 `git.exe` 所在目录及其祖先根反推 → PATH 上直接暴露的 `bash.exe`（msys2/cygwin 形态）；每个根取 `<root>\bin\bash.exe` 与 `<root>\usr\bin\bash.exe` 两种安装布局。仅探测到 bash.exe 才采用（不复用 sh 不可靠的其它壳）。
+- 推荐安装 Git for Windows 后直接使用（自动探测生效）；WSL 内按 Linux 口径亦完整可用。便携版/自定义安装位置若未被自动发现（如未挂 PATH 且不在标准安装根下）：设置环境变量 `SUNSHINEX_SHELL` 指向 `bash.exe`/`sh.exe` 即可。
+- **命令形态建议**：`exec` 在无 Git Bash 时回落 `cmd /c`，此时命令集与引号语义与 sh 不同（`ls`/`cat` 不可用、`node -e "…"` 的引号会被当字面量、退出码不反映实际）。要跨平台稳定，用脚本文件承载逻辑（`node script.js`）或安装 Git for Windows。
+- **测试口径**：仓库测试不得依赖宿主 shell 方言（不以 `ls`/`cat`/内联 `node -e` 作断言前提），shell 语义用例集中在 `src/harness/security/sandbox.test.ts`。

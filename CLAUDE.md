@@ -218,8 +218,9 @@ SUNSHINE.md          # 项目业务配置
 
 - **版本下限**：Node.js ≥ 22.9（以 `package.json` 的 `engines` 为准；脚本统一 `node --test` 与 `node:` 内置模块），实测基线 22 LTS 与 24.x。
 - **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔——`listFiles` 对 `path.relative` 结果先归一化再匹配（Windows 反斜杠进入正则前转为 `/`，POSIX 为 no-op）。
-- **已知差异（如实登记，不虚构兼容）**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ Windows 探测 `Git\bin\bash.exe`（Git Bash）→ 无 Git 时 `ComSpec`（`/c`，仅兜底不崩，sh 语义命令不保证可用）→ POSIX `/bin/sh`；包管理器统一 pnpm（`packageManager` 钉版）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
+- **已知差异（如实登记，不虚构兼容）**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 覆盖（契约：须 POSIX 兼容，配 `-c` 调用；指向 cmd.exe 等非 POSIX shell 属未定义行为）→ Windows 探测 Git Bash（候选序：安装环境变量 `ProgramFiles`/`ProgramW6432`/`ProgramFiles(x86)`/`LOCALAPPDATA\Programs` 下的 `Git` 根 → PATH 上 `git.exe` 所在目录及其祖先根反推 → PATH 上直接暴露的 `bash.exe`；每根取 `<root>\bin\bash.exe` 与 `<root>\usr\bin\bash.exe` 两种布局）→ 无 Git 时 `ComSpec`（`/c`，仅兜底不崩，sh 语义命令不保证可用）→ POSIX `/bin/sh`；发现逻辑为可注入纯函数（`windowsBashCandidates` / `findWindowsBash`），跨平台可回归。历史教训：只硬编码 `Program Files\Git` 两路径，非缺省安装（如 D 盘、便携版）静默回落 cmd.exe——引号语义与命令集随之改变（`node -e "…"` 被当字符串字面量求值、退出码恒 0，`ls`/`cat` 不可用），且无任何报错可循；包管理器统一 pnpm（`packageManager` 钉版）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，沙箱等 HOME 不可写环境开箱即用；仓库文本为 LF，Node/tsc 对 CRLF 不敏感，禁止提交整文件换行符重写。
 - **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 README 平台支持矩阵与部署指引。
+- **测试不得编入宿主 shell 方言**：被测命令形态须对 shell 中立——内联 `node -e "…"` 与 `ls`/`cat` 等 POSIX 命令集在 Windows 无 Git Bash 时语义不同（前者命令串被当字面量、断言恒真而失去判别力），故一律以脚本文件承载（`node script.js`）或改用跨 shell 命令；shell 语义用例集中在 `security/sandbox.test.ts`（平台分支唯一落点），其余测试只断言工具链行为。
 
 ## 15. 语言规范：外观双语、提示词恒英文
 

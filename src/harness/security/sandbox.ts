@@ -88,19 +88,56 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** 平台 shell 解析：sh 风格命令统一经 POSIX shell 执行；Windows 优先 Git Bash（bash 兼容 sh），缺省探测，SUNSHINEX_SHELL 显式覆盖（须为 POSIX 兼容 shell，传 -c） */
-function resolveShell(): { file: string; scriptFlag: string } {
+/**
+ * 平台 shell 解析：sh 风格命令统一经 POSIX shell 执行。
+ * 决议序：SUNSHINEX_SHELL 覆盖（须为 POSIX 兼容 shell）→ Windows 探测 Git Bash（bash 兼容 sh）→
+ * Windows 无 Git 时 ComSpec 兜底（`/c`，仅保证不崩，sh 语义命令不保证可用）→ POSIX `/bin/sh`。
+ * 平台分支只允许出现在本文件（CLAUDE.md §14）；导出供测试与自检观测实际决议结果。
+ */
+export function resolveShell(): { file: string; scriptFlag: string } {
   const override = process.env.SUNSHINEX_SHELL;
   if (override && override.trim().length > 0) return { file: override, scriptFlag: '-c' };
   if (process.platform === 'win32') {
-    const candidates = [
-      'C:\\Program Files\\Git\\bin\\bash.exe',
-      'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) return { file: c, scriptFlag: '-c' };
-    }
+    const bash = findWindowsBash();
+    if (bash !== undefined) return { file: bash, scriptFlag: '-c' };
     return { file: process.env.ComSpec ?? 'cmd.exe', scriptFlag: '/c' };
   }
   return { file: '/bin/sh', scriptFlag: '-c' };
+}
+
+/**
+ * Windows Git Bash 候选路径（纯逻辑，环境与存在性判定可注入，便于跨平台回归断言）。
+ * 候选根两来源：①安装环境变量（覆盖非 C 盘与自定义安装目录）；②PATH 上挂着 `git.exe` 的目录反推
+ * （Git for Windows 把 `<root>\cmd`、`<root>\mingw64\bin` 或 `<root>\bin` 置于 PATH）。
+ * bash.exe 位于 `<root>\bin\` 或 `<root>\usr\bin\`（两种安装布局皆列）。
+ */
+export function windowsBashCandidates(env: NodeJS.ProcessEnv, exists: (p: string) => boolean = fs.existsSync): string[] {
+  const installRoots = [
+    env.ProgramFiles,
+    env.ProgramW6432,
+    env['ProgramFiles(x86)'],
+    env.LOCALAPPDATA === undefined ? undefined : path.join(env.LOCALAPPDATA, 'Programs'),
+  ];
+  const roots: string[] = [];
+  for (const r of installRoots) if (r) roots.push(path.join(r, 'Git'));
+  // PATH 上直接暴露 bash.exe 的宿主（msys2 / cygwin 形态）：其所在目录即 shell 位置
+  const direct: string[] = [];
+  for (const dir of (env.PATH ?? '').split(path.delimiter)) {
+    if (dir.length === 0) continue;
+    if (exists(path.join(dir, 'bash.exe'))) direct.push(path.join(dir, 'bash.exe'));
+    if (!exists(path.join(dir, 'git.exe'))) continue;
+    // git.exe 所在目录本身（<root>\cmd）及其两级祖先（<root>\mingw64\bin、<root>）都可能就是 Git 安装根
+    roots.push(dir, path.dirname(dir), path.dirname(path.dirname(dir)));
+  }
+  const fromRoots = roots.flatMap((r) => [path.join(r, 'bin', 'bash.exe'), path.join(r, 'usr', 'bin', 'bash.exe')]);
+  return [...direct, ...fromRoots];
+}
+
+/**
+ * Windows Git Bash 发现：只认 bash.exe（POSIX 兼容）。硬编码单一安装路径会让非缺省安装静默回落
+ * cmd.exe——命令引号语义与 sh 命令集随之改变（`node -e "…"` 被当字符串字面量求值、`ls`/`cat` 不可用），
+ * 属本文件要消除的隐式平台差异；探测不到即诚实回落 ComSpec（§14 登记的兜底口径）。
+ */
+export function findWindowsBash(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = fs.existsSync): string | undefined {
+  return windowsBashCandidates(env, exists).find((c) => exists(c));
 }

@@ -29,10 +29,17 @@ export class SqliteVecStore implements VectorStore {
     if (this.db) return this.db;
     fs.mkdirSync(this.dataDir, { recursive: true });
     const db = new DatabaseSync(path.join(this.dataDir, 'vectors.db'), { allowExtension: true });
-    // vec0 缺失即抛（fail-fast）：后端不可用必须在装配/首写期暴露，禁静默降级
-    db.loadExtension(require('sqlite-vec').getLoadablePath());
-    db.exec('CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)');
-    db.exec('CREATE TABLE IF NOT EXISTS kb_meta(rowid INTEGER PRIMARY KEY, id TEXT UNIQUE, text TEXT)');
+    try {
+      // vec0 缺失即抛（fail-fast）：后端不可用必须在装配/首写期暴露，禁静默降级
+      db.loadExtension(require('sqlite-vec').getLoadablePath());
+      db.exec('CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)');
+      db.exec('CREATE TABLE IF NOT EXISTS kb_meta(rowid INTEGER PRIMARY KEY, id TEXT UNIQUE, text TEXT)');
+    } catch (e) {
+      // 初始化失败必须释放半开句柄：残留连接会让后续覆写/清理同一库文件被操作系统的文件锁拒绝
+      // （Windows EBUSY），POSIX 下同属资源泄漏
+      db.close();
+      throw e;
+    }
     this.db = db;
     return db;
   }
@@ -95,8 +102,9 @@ export class SqliteVecStore implements VectorStore {
       this.dim = row ? Number(row.value) : 0;
       this.loaded = true;
     } catch {
-      // 损坏存储降级空库：load 契约不抛（索引可由 indexDir 重建，不阻塞装配）
-      this.db = null;
+      // 损坏存储降级空库：load 契约不抛（索引可由 indexDir 重建，不阻塞装配）；
+      // 同时释放可能已开的连接，否则残留句柄会让后续覆写/清理该库文件被文件锁拒绝（Windows EBUSY）
+      this.close();
       this.dim = 0;
       this.loaded = true;
     }
