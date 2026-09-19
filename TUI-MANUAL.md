@@ -97,7 +97,7 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
   "dataDir": "",                                     // 运行时数据目录
   "userSkillsDir": "",                               // 全局技能目录
   "globalSunshine": "",                              // 全局约定文件
-  "shell": "",                                       // 命令执行 shell（POSIX 兼容）；Windows 留空自动探测 Git Bash
+  "shell": "",                                       // 命令执行 shell（POSIX 兼容）；Windows 留空自动探测 Git Bash，无则 PowerShell，末位 cmd 兜底
 
   // ── 密钥（只写这里）──────────────────────────────────
   "env": {

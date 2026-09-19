@@ -6,6 +6,7 @@ import { codeReviewTemplate } from '../../loop/templates';
 import { ModelAdapter, StubAdapter, UsageHooks } from '../../model/adapter';
 import { resolveKbEnv } from '../../config/env';
 import { parseMcpServers, parseSunshinex } from '../../config';
+import { resolveShell } from '../../harness/security/sandbox';
 import { SessionController } from '../../tui/session';
 import { ReplyStreamExtractor } from '../../tui/stream-extractor';
 import type { CliArgs } from '../index';
@@ -43,6 +44,9 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
     `${mcpServers.length} servers configured, ${mcpToolCount} tools registered（登记制闸门，空 = 全禁）`,
   ));
   console.log('harness :', [h.perception, h.tools, h.security, h.sandbox, h.dryrun, h.context, h.reactor].length, 'modules ready');
+  // exec 决议观测：Windows 上「Git Bash 探测未命中」此前无任何可循线索（静默改变引号与命令集），此行把实际命中的 shell 与来源显式上屏
+  const shell = resolveShell();
+  console.log('shell   :', `${shell.file} ${shell.args.join(' ')} (${shell.source})`);
   console.log('context :', t(`cache hit rate ${h.context.session.hitRate().toFixed(1)}`, `缓存命中率 ${h.context.session.hitRate().toFixed(1)}`));
   const kbEnv = resolveKbEnv(process.env as Record<string, string | undefined>);
   console.log('knowledge:', `kb_search ready (backend=${kbEnv.backend}, embedding=${kbEnv.embeddingBaseUrl && kbEnv.embeddingApiKey ? 'configured' : t('not configured → degrades at call time', '未配置→调用时降级')})`);

@@ -56,7 +56,7 @@
 
 - `SafetyChain` 单点：guard 守门 → realpathSync 路径边界（符号链接解析）→ 后端执行 + 6 类凭据出口掩码。
 - `PolicyEngine` 三态 deny→ask→allow 首匹配；manual/plan/dontAsk 三模式；破坏性命令清单（dd/fdisk/关机族、`curl|sh` 管道下载执行）任何模式不可豁免。
-- `ProcessSandbox` 平台 shell 解析单点（SUNSHINEX_SHELL → Git Bash → ComSpec → POSIX sh）；dry-run 预览；数据目录窄口（Write 仅 `memory/**` 放行）；spawn 免审批但子调用逐个过安全链；MCP 握手身份校验。
+- `ProcessSandbox` 平台 shell 解析单点（SUNSHINEX_SHELL → Git Bash → PowerShell → ComSpec → POSIX sh）；dry-run 预览；数据目录窄口（Write 仅 `memory/**` 放行）；spawn 免审批但子调用逐个过安全链；MCP 握手身份校验。
 
 **待优化 / 登记取舍**
 
