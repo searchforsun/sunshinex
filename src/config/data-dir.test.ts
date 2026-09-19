@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { dataDirReal, projectSlug, resolveDataDir, userSkillsDir } from './data-dir';
+import { dataDirReal, projectsRoot, projectSlug, resolveDataDir, userSkillsDir } from './data-dir';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -72,8 +72,10 @@ test('resolveDataDir：HOME 不可写回退项目内 .data（沙箱/只读家目
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   const prevOvr = process.env.SUNSHINEX_DATA_DIR;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   try {
     delete process.env.SUNSHINEX_DATA_DIR;
+    delete process.env.SUNSHINEX_PROJECTS_DIR;
     process.env.HOME = blocked;
     process.env.USERPROFILE = blocked;
     assert.equal(resolveDataDir(root), path.join(root, '.data'), 'mkdir 失败即回退旧形态');
@@ -81,8 +83,114 @@ test('resolveDataDir：HOME 不可写回退项目内 .data（沙箱/只读家目
     if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(blk, { recursive: true, force: true });
+  }
+});
+
+/**
+ * projects 根可指定（用户裁决 2026-09-19）：数据落哪块盘不该被家目录绑死——
+ * 大容量盘/外置盘/多盘分置下用户需要显式指定一个绝对路径，逐项目 slug 隔离语义不变。
+ * 与「HOME 不可写回退项目内 .data」的分界是本组用例的要害：**显式指定即权威、不回退**——
+ * 回退会把「指了 D 盘却写在 C 盘」这类配置错误伪装成成功，宁可在使用点以真实路径报出来。
+ */
+test('projectsRoot：缺省 = userConfigDir()/projects；SUNSHINEX_PROJECTS_DIR 覆盖可指向任意盘', () => {
+  const fakeHome = tmpdir('sunshinex-pr-home-');
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  try {
+    delete process.env.SUNSHINEX_PROJECTS_DIR;
+    process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
+    assert.equal(projectsRoot(), path.join(fakeHome, '.sunshinex', 'projects'), '缺省沿用 userConfigDir()/projects');
+
+    const elsewhere = path.join(tmpdir('sunshinex-pr-elsewhere-'), 'projects');
+    process.env.SUNSHINEX_PROJECTS_DIR = elsewhere;
+    assert.equal(projectsRoot(), path.resolve(elsewhere), '覆盖生效且归一为绝对路径');
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test('resolveDataDir：projects 根覆盖后数据落该盘并按工作区隔离，家目录零落盘', () => {
+  const rootA = tmpdir('sunshinex-pr-a-');
+  const rootB = tmpdir('sunshinex-pr-b-');
+  const fakeHome = tmpdir('sunshinex-pr-home2-');
+  const custom = path.join(tmpdir('sunshinex-pr-d-'), 'sunshinex-projects');
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const prevOvr = process.env.SUNSHINEX_DATA_DIR;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  try {
+    delete process.env.SUNSHINEX_DATA_DIR;
+    process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
+    process.env.SUNSHINEX_PROJECTS_DIR = custom;
+
+    const dirA = resolveDataDir(rootA);
+    const dirB = resolveDataDir(rootB);
+    assert.equal(dirA, path.join(path.resolve(custom), projectSlug(rootA), 'data'), '落指定盘的 <slug>/data');
+    assert.equal(dirB, path.join(path.resolve(custom), projectSlug(rootB), 'data'), '同根稳定');
+    assert.notEqual(dirA, dirB, '逐项目 slug 隔离在自定义根下同样成立');
+    assert.equal(resolveDataDir(rootA), dirA, '同工作区稳定');
+    assert.ok(!fs.existsSync(path.join(fakeHome, '.sunshinex', 'projects')), '家目录下不再出现 projects（数据确实换盘）');
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
+    if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    for (const d of [rootA, rootB, fakeHome]) fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('resolveDataDir：projects 根显式指定时不可建也不回退项目内 .data（配置错误不伪装成成功）', () => {
+  const root = tmpdir('sunshinex-pr-nofb-');
+  const blk = tmpdir('sunshinex-pr-blk-');
+  const blocked = path.join(blk, 'file');
+  fs.writeFileSync(blocked, 'x');
+  const prevOvr = process.env.SUNSHINEX_DATA_DIR;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  try {
+    delete process.env.SUNSHINEX_DATA_DIR;
+    // 把 projects 根指到一个「父级是文件」的非法位置：mkdir 必失败
+    process.env.SUNSHINEX_PROJECTS_DIR = path.join(blocked, 'projects');
+    const got = resolveDataDir(root);
+    assert.equal(got, path.join(path.resolve(path.join(blocked, 'projects')), projectSlug(root), 'data'), '显式指定即权威：即便不可建也如实返回该路径');
+    assert.notEqual(got, path.join(root, '.data'), '不回退项目内 .data——回退会掩盖配置错误');
+  } finally {
+    if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(blk, { recursive: true, force: true });
+  }
+});
+
+test('resolveDataDir：projects 根覆盖运行期切换即生效（无模块级缓存），且 SUNSHINEX_DATA_DIR 直指仍最高优先', () => {
+  const root = tmpdir('sunshinex-pr-lazy-');
+  const baseA = path.join(tmpdir('sunshinex-pr-la-'), 'projects');
+  const baseB = path.join(tmpdir('sunshinex-pr-lb-'), 'projects');
+  const prevOvr = process.env.SUNSHINEX_DATA_DIR;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  try {
+    delete process.env.SUNSHINEX_DATA_DIR;
+    process.env.SUNSHINEX_PROJECTS_DIR = baseA;
+    const first = resolveDataDir(root);
+    process.env.SUNSHINEX_PROJECTS_DIR = baseB;
+    const second = resolveDataDir(root);
+    assert.notEqual(first, second, '换根即换落点：无缓存');
+
+    const direct = path.join(tmpdir('sunshinex-pr-direct-'), 'data');
+    process.env.SUNSHINEX_DATA_DIR = direct;
+    assert.equal(resolveDataDir(root), path.resolve(direct), 'SUNSHINEX_DATA_DIR 整目录直指优先级更高');
+  } finally {
+    if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 

@@ -29,6 +29,7 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   kbBackend: 'SUNSHINEX_KB_BACKEND',
   kbDataDir: 'SUNSHINEX_KB_DATA_DIR',
   dataDir: 'SUNSHINEX_DATA_DIR',
+  projectsDir: 'SUNSHINEX_PROJECTS_DIR',
   userSkillsDir: 'SUNSHINEX_USER_SKILLS_DIR',
   embeddingBaseUrl: 'SUNSHINEX_EMBEDDING_BASE_URL',
   embeddingModel: 'SUNSHINEX_EMBEDDING_MODEL',

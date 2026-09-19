@@ -108,7 +108,7 @@ SUNSHINE.md          # 项目业务配置
 - 提交前必须通过 `pnpm build`（tsc 严格模式零报错）
 - 涉及加载/解析逻辑时，补充示例物料并确保 `--selfcheck` 输出正确
 - `.pnpm-store/`、`.npm-cache/`、`.data/`、`.longtask/`、`node_modules/`、`dist/` 不入库
-- 运行时数据（账本/记忆/学习技能/KB）统一落盘 `~/.sunshinex/projects/<工作区>/data`（`SUNSHINEX_DATA_DIR` 可覆盖；HOME 不可写回退项目内 `.data`），工作区保持干净
+- 运行时数据（账本/记忆/学习技能/KB）统一落盘 `~/.sunshinex/projects/<工作区>/data`（`SUNSHINEX_PROJECTS_DIR` 可把 projects 根指到任意盘、`SUNSHINEX_DATA_DIR` 可整目录直指；HOME 不可写回退项目内 `.data`），工作区保持干净
 
 ## 8. 边界与约束
 

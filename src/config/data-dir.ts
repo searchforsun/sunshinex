@@ -2,10 +2,12 @@
  * 运行时数据目录解析（单一权威）：账本/记忆/学习技能/KB 落盘的统一定位面。
  * 形态对标 Claude Code（~/.claude/projects/<项目>/，数据不进工作区）：
  * - ① SUNSHINEX_DATA_DIR 显式覆盖（整目录直指；测试与多实例场景用）
- * - ② ~/.sunshinex/projects/<工作区 slug>/data —— 缺省全局形态，按工作区（项目绝对路径）隔离
- * - ③ <root>/.data —— HOME 不可写（沙箱/只读家目录）时回退旧形态，零破坏兜底
- * 解析含一次 mkdirSync 幂等探测（把全局基目录建出来），不做模块级缓存——
- * 测试可用 HOME / SUNSHINEX_DATA_DIR 自由重定向，无跨用例状态。
+ * - ② <projects 根>/<工作区 slug>/data —— 缺省全局形态，按工作区（项目绝对路径）隔离；
+ *      projects 根自身可由 SUNSHINEX_PROJECTS_DIR 指定（大容量盘/外置盘/多盘分置），缺省 userConfigDir()/projects
+ * - ③ <root>/.data —— 缺省 projects 根不可建（沙箱/只读家目录）时回退旧形态，零破坏兜底
+ * 显式来源（①②）不探测可写性、不回退：用户显式指定的位置即权威，配错要在使用点以真实路径报出来，
+ * 不能静默落到别处；只有缺省形态（②的缺省值）才做一次 mkdirSync 探测以决定是否走 ③。
+ * 不做模块级缓存——测试与多实例可用 HOME / SUNSHINEX_DATA_DIR / SUNSHINEX_PROJECTS_DIR 自由重定向，无跨用例状态。
  */
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -24,14 +26,25 @@ export function projectSlug(root: string): string {
   return `${base.length > 0 ? base : 'project'}-${digest}`;
 }
 
-/** 解析当前工作区数据目录：覆盖 > 全局（HOME 可写）> 项目内回退；子目录由各写入面自行 mkdir */
+/** 项目数据根（各工作区的数据目录都落在它的下一级）：SUNSHINEX_PROJECTS_DIR 覆盖 > 缺省 userConfigDir()/projects。
+ *  覆盖不限于家目录——可指向任意盘（如 D:\sunshinex-projects），逐项目 slug 隔离与冲突防撞语义不变 */
+export function projectsRoot(): string {
+  const override = process.env.SUNSHINEX_PROJECTS_DIR;
+  if (override !== undefined && override.length > 0) return path.resolve(override);
+  return path.join(userConfigDir(), 'projects');
+}
+
+/** 解析当前工作区数据目录：直指覆盖 > projects 根覆盖 > 缺省全局（HOME 可建）> 项目内回退；子目录由各写入面自行 mkdir */
 export function resolveDataDir(root: string): string {
   const override = process.env.SUNSHINEX_DATA_DIR;
   if (override !== undefined && override.length > 0) return path.resolve(override);
-  const globalBase = userConfigDir();
+  const base = projectsRoot();
+  const projectsOverride = process.env.SUNSHINEX_PROJECTS_DIR;
+  // 显式指定 projects 根即权威：不探测、不回退（回退会掩盖「指了 D 盘却写在 C 盘」的配置错误）
+  if (projectsOverride !== undefined && projectsOverride.length > 0) return path.join(base, projectSlug(root), 'data');
   try {
-    fs.mkdirSync(globalBase, { recursive: true });
-    return path.join(globalBase, 'projects', projectSlug(root), 'data');
+    fs.mkdirSync(base, { recursive: true });
+    return path.join(base, projectSlug(root), 'data');
   } catch {
     return path.join(root, '.data');
   }
