@@ -58,9 +58,15 @@ function has(cmd) {
 }
 
 function run(cmd, args, opts = {}) {
-  // win32 下 .cmd/.bat 只能经 shell 执行（Node ≥ 18.20 免 shell spawn 报 EINVAL）；POSIX 与 .exe 恒免 shell
-  const shell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd);
-  const r = spawnSync(cmd, args, { encoding: 'utf8', shell, ...(opts.stdio ? { stdio: opts.stdio } : {}) });
+  // win32 下 .cmd/.bat 只能经 shell 执行（Node ≥ 18.20 免 shell spawn 报 EINVAL）。
+  // 启动式取 Node 官方文档给出的显式形态 spawn(cmd.exe, ['/c', cmd, ...args])，**不用** shell:true 与 args 并用：
+  // 后者自 Node 22.15 起弃用（DEP0190——args 会被重拼并再转义一遍，多一层引号语义不确定）；
+  // 本脚本传的皆为无空格无引号的简单 token（'pack' '--cache' '.npm-cache'），显式 argv 零转义、路径更窄。
+  // windowsHide 抑制控制台闪窗（与 ProcessSandbox.exec 同口径）；POSIX 与 .exe 恒免 shell。
+  const isWinScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd);
+  const file = isWinScript ? process.env.ComSpec ?? 'cmd.exe' : cmd;
+  const argv = isWinScript ? ['/c', cmd, ...args] : args;
+  const r = spawnSync(file, argv, { encoding: 'utf8', windowsHide: true, ...(opts.stdio ? { stdio: opts.stdio } : {}) });
   if (opts.allowFail) return r;
   if (r.error) die(`${cmd} 执行失败：${r.error.message}`);
   if (r.status !== 0) die(`${cmd} ${args.join(' ')} 失败（exit=${r.status}）${r.stderr ? `：${String(r.stderr).trim()}` : ''}`);
