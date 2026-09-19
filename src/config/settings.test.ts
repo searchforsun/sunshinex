@@ -331,3 +331,50 @@ test('空串等价未配置：语义键与 env 块空串均不落槽（模板占
   assert.equal(slots['SUNSHINEX_BING_API_KEY'], 'sk-bing', '非空 env 块键照常透传');
   assert.deepEqual(warnings, []);
 });
+
+test('parseSettingsFile：JSONC 注释容忍——// 与 /* */ 注释、UTF-8 BOM（TUI-MANUAL 模板可原样照抄）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-jsonc-'));
+  try {
+    const file = path.join(dir, 'settings.json');
+    // 与 TUI-MANUAL 模板同形态：段标题行注释 + 行尾注释 + 跨行块注释 + 字符串内 //（真实 URL）
+    fs.writeFileSync(file, [
+      '{',
+      '  "version": 1,',
+      '  // ── 模型 ──',
+      '  "model": "glm-5.3-flash",        // 主模型（任意 OpenAI 协议兼容模型）',
+      '  "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",  // 字符串里的 // 是普通字符，不是注释',
+      '  /* 块注释',
+      '     可跨行 */',
+      '  "tier": "medium",',
+      '  "env": {',
+      '    "SUNSHINEX_API_KEY": "sk-test"',
+      '  }',
+      '}',
+    ].join('\n'));
+    const doc = parseSettingsFile(file);
+    assert.ok(doc, '带注释的 JSONC 文档应可解析（模板即契约）');
+    assert.equal(doc.semantic['model'], 'glm-5.3-flash', '行尾注释不得吃掉键值');
+    assert.equal(
+      doc.semantic['baseUrl'],
+      'https://open.bigmodel.cn/api/coding/paas/v4',
+      '字符串内的 // 绝不能被当注释截断（正则剥离式实现的头号事故）',
+    );
+    assert.equal(doc.semantic['tier'], 'medium', '块注释后的键照常取到');
+    assert.equal(doc.env['SUNSHINEX_API_KEY'], 'sk-test', 'env 块在注释文档中照常解析');
+
+    const bomFile = path.join(dir, 'settings-bom.json');
+    fs.writeFileSync(bomFile, '\uFEFF' + JSON.stringify({ model: 'glm-5.3-flash' }));
+    const docBom = parseSettingsFile(bomFile);
+    assert.ok(docBom, '带 UTF-8 BOM 的文档（Windows 记事本存盘形态）应可解析');
+    assert.equal(docBom.semantic['model'], 'glm-5.3-flash');
+
+    const missingComma = path.join(dir, 'settings-missing-comma.json');
+    fs.writeFileSync(missingComma, '{ "model": "x" "tier": "medium" }');
+    assert.throws(() => parseSettingsFile(missingComma), (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      return msg.includes(missingComma) && msg.includes('畸形 JSON');
+    }, '容忍注释与尾随逗号，但真缺分隔符仍须 fail-fast 并带路径');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

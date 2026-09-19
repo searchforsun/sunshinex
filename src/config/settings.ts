@@ -55,8 +55,60 @@ export interface SettingsDoc {
 }
 
 /**
+ * 剥掉 JSONC 注释（行注释 `//`、跨行块注释）并容忍 UTF-8 BOM。
+ * 为什么容忍：TUI-MANUAL 的配置模板自带解释性注释（模板以 jsonc 呈现），解析口径必须与模板一致——
+ * 否则「照抄模板」等于「启动即失败」，用户拿到的是一个位置坐标齐全却毫无头绪的开始。
+ * 为什么逐字符状态机而不是正则：`//` 在字符串里是普通字符，baseUrl 的 `https://…` 首当其冲，
+ * 正则剥离会把 URL 拦腰截断（静默改值比报错更糟）；同时须处理转义引号防提前收串。
+ * 块注释按原样吞掉但保留其跨行数，使 JSON.parse 报错行号仍指向用户文件里的真实位置。
+ * 尾随逗号不在容忍之列：仍按严格 JSON 报错（既有钉子用例覆盖），口径见 TUI-MANUAL。
+ */
+function stripJsonComments(input: string): string {
+  const src = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input; // 记事本另存为 UTF-8 会带 BOM
+  let out = '';
+  let i = 0;
+  let inString = false;
+  while (i < src.length) {
+    const ch = src[i]!;
+    if (inString) {
+      out += ch;
+      if (ch === '\\' && i + 1 < src.length) {
+        out += src[i + 1]!; // 转义序列整体带过：防 \" 提前收串后把后续 // 误判为注释
+        i += 2;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '/' && src[i + 1] === '/') {
+      while (i < src.length && src[i] !== '\n') i += 1; // 行注释吃到行尾；换行本身留给解析器
+      continue;
+    }
+    if (ch === '/' && src[i + 1] === '*') {
+      const end = src.indexOf('*/', i + 2);
+      const stop = end === -1 ? src.length : end + 2; // 未闭合块注释吞到文末：截断后由 JSON.parse 如实报错
+      for (const c of src.slice(i, stop)) if (c === '\n') out += '\n';
+      i = stop;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * 解析单个 settings.json（D7 容错三态 + D8 版本守卫）：
  * - 文件缺失返回 null 静默跳过（没配就是没配，不是错误）
+ * - JSONC 注释（行注释 `//`、跨行块注释）与 UTF-8 BOM 容忍：TUI-MANUAL 的配置模板自带解释性注释，
+ *   解析口径必须与模板一致，否则照抄模板即启动失败；尾随逗号不在容忍之列，仍按严格 JSON 报错
  * - 畸形 JSON / 根非对象 / version 非 1 一律 fail-fast 抛错：静默降级会演变成「key 没生效」的排查泥潭，必须让用户看到
  * - 一切抛错 message 携带文件路径，入口层原样透出即可定位
  */
@@ -64,10 +116,10 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
   if (!fs.existsSync(filePath)) return null;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    parsed = JSON.parse(stripJsonComments(fs.readFileSync(filePath, 'utf8')));
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(`settings.json 解析失败（畸形 JSON）: ${filePath}: ${reason}`);
+    throw new Error(`settings.json 解析失败（畸形 JSON；注释与 BOM 已容忍）: ${filePath}: ${reason}`);
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`settings.json 根必须是 JSON 对象: ${filePath}`);
