@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactor, ReactorDeps } from './reactor';
+import type { SettlePayload } from './reactor';
 import { ScriptedAdapter } from '../model/adapter';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
@@ -132,25 +133,33 @@ test('settle 抛错 → 既有 note 行兜底、无 notice 行；settleMemory �
   }
 });
 
-test('未 done / 无 reply 的收口不触发 settle/settleMemory（触发条件不变）', async () => {
+test('全终态触发：中止收口（max-steps 耗竭）同样触发一次 settle/settleMemory，说明行照旧上屏', async () => {
   const tmp = tmpdir();
   try {
     const f = makeFixture(tmp, [
       '{"tool":"exec","input":{"command":"echo step1"},"done":false}',
       '{"tool":"exec","input":{"command":"echo step2"},"done":false}',
     ]);
-    let settleCalls = 0;
-    const r = await f.run(() => {
-      settleCalls++;
-      return '[skills] learned: should-not-happen';
-    }, async () => {
-      settleCalls += 10;
-      return '[memory] saved: should-not-happen';
+    const skillSeen: SettlePayload[] = [];
+    const memSeen: SettlePayload[] = [];
+    const r = await f.run((p) => {
+      skillSeen.push(p);
+      return '[skills] learned: stopped-path lesson';
+    }, async (p) => {
+      memSeen.push(p);
+      return '[memory] saved: stopped-path fact';
     });
     assert.equal(r.done, false, '步数耗尽未完成');
-    assert.equal(settleCalls, 0, '未 done 的收口不触发 settle/settleMemory');
-    assert.equal(f.context.chainView().filter((s) => s.action === 'notice').length, 0, '无 notice 行');
-    assert.equal(f.events.filter((e) => e.type === 'notice').length, 0, '无 notice 事件');
+    assert.equal(skillSeen.length, 1, '中止路径触发一次 settle（D4 全终态）');
+    assert.equal(skillSeen[0].outcome, 'stopped');
+    assert.equal(skillSeen[0].reply, '', '无最终答复归一为空串');
+    assert.ok(skillSeen[0].digest.length > 0, 'digest 承载已观察步骤');
+    assert.equal(memSeen.length, 1, 'settleMemory 同点触发一次');
+    assert.equal(memSeen[0].outcome, 'stopped');
+    assert.deepEqual(memSeen[0], skillSeen[0], '两钩子同点同载荷');
+    // 上屏通道不变：返回字符串仍走 announce（链尾 notice 行 + notice 事件）
+    assert.equal(f.context.chainView().filter((s) => s.action === 'notice').length, 2, '两钩子各一行 notice');
+    assert.equal(f.events.filter((e) => e.type === 'notice').length, 2, '两钩子各一发 notice 事件');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

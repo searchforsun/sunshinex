@@ -7,7 +7,7 @@ import { Harness } from './index';
 import type { ModelAdapter } from '../model/adapter';
 import { MemoryStore } from './memory/store';
 
-/** settle 接线端到端（规格 §4）：done&&reply 触发提取、失败路径不触发、Stub 门禁静默跳过、提取失败不倒灌任务成败 */
+/** settle 接线端到端（规格 §4）：全终态（done/failed/stopped）各触发提取一次、Stub 门禁静默跳过、提取失败不倒灌任务成败 */
 
 function withRoot(fn: (root: string) => Promise<void> | void): Promise<void> {
   return (async () => {
@@ -36,13 +36,28 @@ test('done 任务收口触发提取：openai 记录桩候选落盘', async () =>
   });
 });
 
-test('失败路径（max-steps 未完成）不触发提取', async () => {
+test('中止路径（max-steps 未完成）同样触发一次提取，reply 归一空串', async () => {
   await withRoot(async (root) => {
-    const model = dualStub('{"memories":[]}', { chainSteps: 1 });
+    // 全终态触发（D4）：中止路径也入队一次提取——本用例自计数替代共享 dualStub（原「零提取」断言已不能证伪触发面）
+    const extractionPrompts: string[] = [];
+    const model: ModelAdapter = {
+      provider: 'openai',
+      complete: async (prompt: string) => {
+        if (prompt.includes('memory-extraction')) {
+          extractionPrompts.push(prompt);
+          return '{"memories":[]}';
+        }
+        return '{"tools":[{"action":"read","input":{"path":"notes.txt"}}]}';
+      },
+    };
     const h = new Harness({ root, mode: 'dontAsk', model });
     const r = await h.reactor.run({ goal: 'impossible goal' }, { maxSteps: 1 });
     assert.ok(!r.done, '前提：任务未完成');
-    assert.equal(memCount(root), 0, '非 done 路径零提取');
+    assert.equal(r.stopReason, 'max-steps');
+    assert.equal(extractionPrompts.length, 1, '中止路径触发一次提取（触发面=全终态）');
+    assert.ok(extractionPrompts[0].includes('- User goal: impossible goal'), 'goal 照传');
+    assert.ok(extractionPrompts[0].endsWith('- Final reply: '), '无最终答复归一为空串（不再因缺 reply 而漏触发）');
+    assert.equal(memCount(root), 0, '零候选零落盘');
   });
 });
 

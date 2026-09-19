@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Reactor } from './reactor';
+import type { SettlePayload } from './reactor';
 import { ScriptedAdapter } from '../model/adapter';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
@@ -19,7 +20,7 @@ import { parseSkillFrontmatter } from './skills';
 import { Harness } from './index';
 import { ModelAdapter } from '../model/adapter';
 
-function makeReactor(tmp: string, adapter: ModelAdapter, settle?: (r: { goal: string; reply: string }) => void): { reactor: Reactor; context: ContextManager } {
+function makeReactor(tmp: string, adapter: ModelAdapter, settle?: (r: SettlePayload) => void): { reactor: Reactor; context: ContextManager } {
   const store = new FileStore(path.join(tmp, '.data'));
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
@@ -33,7 +34,7 @@ test('done 路径：settle 触发一次，产物 frontmatter 可解析', async (
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
-    const calls: { goal: string; reply: string }[] = [];
+    const calls: SettlePayload[] = [];
     const learned = new LearnedSkillStore(tmp);
     const { reactor } = makeReactor(
       tmp,
@@ -48,7 +49,8 @@ test('done 路径：settle 触发一次，产物 frontmatter 可解析', async (
     const res = await reactor.run({ goal: '部署手册' }, { maxSteps: 3 });
     assert.equal(res.done, true);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0], { goal: '部署手册', reply: '部署手册已完成' });
+    // 载荷四元组：done 单步收口无工具步可摘要 → digest 为空串（非触发面缺陷；有步骤的中止路径 digest 非空见下例）
+    assert.deepEqual(calls[0], { goal: '部署手册', reply: '部署手册已完成', outcome: 'done', digest: '' });
     const dir = path.join(tmp, '.data', 'skills');
     const ids = fs.readdirSync(dir);
     assert.equal(ids.length, 1);
@@ -61,20 +63,26 @@ test('done 路径：settle 触发一次，产物 frontmatter 可解析', async (
   }
 });
 
-test('失败路径：maxSteps 耗尽与模型失败均零触发 settle', async () => {
+test('全终态触发：maxSteps 耗竭 → stopped、模型失败 → failed，各触发一次并携带 digest', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-settle2-'));
   try {
-    let calls = 0;
+    const stopped: SettlePayload[] = [];
     const { reactor: exhausted } = makeReactor(
       tmp,
       new ScriptedAdapter(['{"tool":"exec","input":{"command":"echo x"},"done":false}']),
-      () => {
-        calls += 1;
+      (r) => {
+        stopped.push(r);
       },
     );
     const r1 = await exhausted.run({ goal: 'g' }, { maxSteps: 1 });
     assert.equal(r1.done, false);
+    assert.equal(r1.stopReason, 'max-steps');
+    assert.equal(stopped.length, 1, '中止路径同样入队一次（D4 全终态）');
+    assert.equal(stopped[0].outcome, 'stopped');
+    assert.equal(stopped[0].reply, '', '无最终答复归一为空串');
+    assert.ok(stopped[0].digest.includes('[exec]'), 'digest 承载已观察步骤（[tool] 观察首行）');
     // 模型调用失败路径：适配器直接抛错
+    const failed: SettlePayload[] = [];
     const { reactor: boomReactor } = makeReactor(
       tmp,
       {
@@ -83,13 +91,17 @@ test('失败路径：maxSteps 耗尽与模型失败均零触发 settle', async (
           throw new Error('boom');
         },
       },
-      () => {
-        calls += 1;
+      (r) => {
+        failed.push(r);
       },
     );
     const r2 = await boomReactor.run({ goal: 'g' }, { maxSteps: 2 });
     assert.equal(r2.done, false);
-    assert.equal(calls, 0, '失败路径不得触发 settle');
+    assert.equal(r2.stopReason, 'model-error');
+    assert.equal(failed.length, 1, '模型失败路径同样入队一次（D4 全终态）');
+    assert.equal(failed[0].outcome, 'failed');
+    assert.equal(failed[0].reply, 'boom');
+    assert.equal(failed[0].digest, '', '零步可摘要：首调即失败、无观察行（digest 空≠未触发）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
