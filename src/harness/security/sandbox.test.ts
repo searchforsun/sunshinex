@@ -7,6 +7,7 @@ import {
   ProcessSandbox,
   findWindowsBash,
   findWindowsPowerShell,
+  isWslBashLauncherDir,
   resolveShell,
   resolveShellFor,
   windowsBashCandidates,
@@ -111,6 +112,57 @@ test('Windows PowerShell 发现：pwsh 整体先于 powershell.exe，且覆盖 P
   const pwshExe = path.join(toolsDir, 'pwsh.exe');
   assert.equal(findWindowsPowerShell(env, (p) => p === pwshExe), pwshExe, '探测命中：可注入存在性判定');
   assert.equal(findWindowsPowerShell(env, () => false), undefined, '皆不存在时诚实返回 undefined，由 resolveShellFor 回落 ComSpec');
+});
+
+test('WSL 启动器判定：锚定系统目录与别名目录，用户自建同名路径不误伤', () => {
+  const sysRoot = path.join(path.sep, 'Windows');
+  const env = { SystemRoot: sysRoot, LOCALAPPDATA: path.join(path.sep, 'users', 'u', 'AppData', 'Local') };
+  for (const leaf of ['System32', 'SysWOW64', 'Sysnative']) {
+    assert.equal(isWslBashLauncherDir(path.join(sysRoot, leaf), env), true, `${leaf} 系 WSL 启动器落点`);
+  }
+  assert.equal(isWslBashLauncherDir(path.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps'), env), true, '应用执行别名目录同为启动器落点');
+  assert.equal(isWslBashLauncherDir(path.join(path.sep, 'opt', 'git', 'bin'), env), false, 'Git 的 bin 目录不受影响');
+  // 锚定校验：系统目录位置由 SystemRoot 给出，不靠目录名猜——否则用户自建的 <任意路径>\System32 会被误拒
+  assert.equal(isWslBashLauncherDir(path.join(path.sep, 'opt', 'System32'), env), false, '非 SystemRoot 下的同名目录不误判');
+  assert.equal(isWslBashLauncherDir(path.join(path.sep, 'Windows', 'System32'), {}), true, 'SystemRoot 不可得时按目录名兜底');
+});
+
+/**
+ * WSL 启动器与 Git Bash 同名（都叫 bash.exe），却完全不是一回事——误选一次错三处：
+ * PATH 不继承（宿主装的 node/npm 在发行版里 not found）、路径变 /mnt/<盘>/…（与调用方的 Windows 路径口径不符）、
+ * 首次调用等发行版 VM 冷启动（实测 24–32 秒）且其持有 Windows 目录句柄致测试清理 EBUSY。
+ * 本组用例把「不选它」钉死，并覆盖与真 Git Bash 并存时的优先序。
+ */
+test('Windows Git Bash 发现：WSL 启动器在 PATH 上也不得选中（装机常态下它恰排最前）', () => {
+  const sysRoot = path.join(path.sep, 'Windows');
+  const system32 = path.join(sysRoot, 'System32');
+  const gitRoot = path.join(path.sep, 'opt', 'custom-git');
+  const gitCmdDir = path.join(gitRoot, 'cmd');
+  const wslBash = path.join(system32, 'bash.exe');
+  const gitExe = path.join(gitCmdDir, 'git.exe');
+  const gitBash = path.join(gitRoot, 'bin', 'bash.exe');
+
+  // 装了 WSL 的宿主：System32 恒在 PATH 上且其 bash.exe 存在——按文件名字符匹配恰是最靠前的候选
+  const env = { SystemRoot: sysRoot, PATH: system32 };
+  const wslOnly = (p: string): boolean => p === wslBash;
+  assert.equal(windowsBashCandidates(env, wslOnly).includes(wslBash), false, 'WSL 启动器不进候选表');
+  assert.equal(findWindowsBash(env, wslOnly), undefined, '只有 WSL 时不认账（诚实回落下一级，不误当 Git Bash）');
+
+  // 与真 Git Bash 并存：选 Git Bash，仍不选 WSL 启动器
+  const both = { ...env, PATH: [system32, gitCmdDir].join(path.delimiter) };
+  const existsBoth = (p: string): boolean => p === wslBash || p === gitExe || p === gitBash;
+  assert.equal(findWindowsBash(both, existsBoth), gitBash, '真 Git Bash 优先于同名 WSL 启动器');
+
+  // 决议序集成口径：WSL 存在但 Git Bash 缺席 → 走 PowerShell 一级，绝不落到 WSL
+  const toolsDir = path.join(path.sep, 'tools');
+  const psExe = path.join(toolsDir, 'pwsh.exe');
+  const resolved = resolveShellFor(
+    'win32',
+    { SystemRoot: sysRoot, PATH: [system32, toolsDir].join(path.delimiter), ComSpec: path.join(system32, 'cmd.exe') },
+    (p) => p === wslBash || p === psExe,
+  );
+  assert.equal(resolved.file, psExe, 'WSL 启动器不参与决议');
+  assert.equal(resolved.source, 'powershell');
 });
 
 test('Windows Git Bash 发现：安装根与 PATH 反推（纯逻辑，跨平台可断言）', () => {

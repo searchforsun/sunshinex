@@ -136,6 +136,36 @@ export function resolveShellFor(platform: NodeJS.Platform, env: NodeJS.ProcessEn
  * （Git for Windows 把 `<root>\cmd`、`<root>\mingw64\bin` 或 `<root>\bin` 置于 PATH）。
  * bash.exe 位于 `<root>\bin\` 或 `<root>\usr\bin\`（两种安装布局皆列）。
  */
+/**
+ * WSL 启动器目录判定：`bash.exe` 这个名字**不是 MSYS 家族专有**——Windows 自带一个同名的 WSL 启动器，
+ * 它同样匹配「PATH 上直接暴露 bash.exe」的形态，却不是 Git Bash。误选的代价是三处同时错：
+ *   ① PATH 不继承：宿主 Windows 侧装的 node/npm 在发行版里一律 not found（`node --version` 直接失败）；
+ *   ② 路径变 `/mnt/<盘>/...`，工作目录与 Windows 视角不一致（调用方按 Windows 路径判断会落空）；
+ *   ③ 首次调用要等发行版 VM 冷启动（实测 24–32 秒），且发行版持有 Windows 目录句柄致测试清理 EBUSY。
+ * 采用**负向排除**而非「探测 MSYS 标记」：正向标记随发行版布局漂移（Git / msys2 / cygwin 各不相同），
+ * 误拒合法 Git Bash 的代价高于这一处窄排除；新落点即在 KNOWN 列表登记一行。
+ */
+const WSL_BASH_LAUNCHER_DIRS = ['system32', 'syswow64', 'sysnative'] as const;
+
+export function isWslBashLauncherDir(dir: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const norm = path.normalize(dir.replace(/[/\\]+$/, '')).toLowerCase();
+  if (norm.length === 0) return false;
+  // 主判据锚定 SystemRoot：系统目录的位置由环境事实给出，不靠名字猜——否则用户自建的 <任意路径>\system32 会被误拒
+  const systemRoot = env.SystemRoot ?? env.windir;
+  if (systemRoot !== undefined && systemRoot.length > 0) {
+    const root = path.normalize(systemRoot.replace(/[/\\]+$/, '')).toLowerCase();
+    for (const leaf of WSL_BASH_LAUNCHER_DIRS) if (norm === path.join(root, leaf).toLowerCase()) return true;
+  } else if ((WSL_BASH_LAUNCHER_DIRS as readonly string[]).includes(path.basename(norm))) {
+    // SystemRoot 不可得时的保守兜底：仅凭末段目录名判定（覆盖缺环境变量的残缺宿主）
+    return true;
+  }
+  // 应用执行别名目录（Store 版 WSL 的 bash.exe 落此）：整段落点匹配，避免误伤用户自建的同名子目录
+  const locals = [env.LOCALAPPDATA, env.USERPROFILE === undefined ? undefined : path.join(env.USERPROFILE, 'AppData', 'Local')].filter(
+    (p): p is string => p !== undefined && p.length > 0,
+  );
+  return locals.some((base) => norm === path.join(base.replace(/[/\\]+$/, ''), 'Microsoft', 'WindowsApps').toLowerCase());
+}
+
 export function windowsBashCandidates(env: NodeJS.ProcessEnv, exists: (p: string) => boolean = fs.existsSync): string[] {
   const installRoots = [
     env.ProgramFiles,
@@ -149,7 +179,8 @@ export function windowsBashCandidates(env: NodeJS.ProcessEnv, exists: (p: string
   const direct: string[] = [];
   for (const dir of (env.PATH ?? '').split(path.delimiter)) {
     if (dir.length === 0) continue;
-    if (exists(path.join(dir, 'bash.exe'))) direct.push(path.join(dir, 'bash.exe'));
+    // WSL 启动器与 WindowsApps 别名目录排除在外：同名但不同壳，误选即 PATH 不继承 + /mnt 路径 + VM 冷启动
+    if (!isWslBashLauncherDir(dir, env) && exists(path.join(dir, 'bash.exe'))) direct.push(path.join(dir, 'bash.exe'));
     if (!exists(path.join(dir, 'git.exe'))) continue;
     // git.exe 所在目录本身（<root>\cmd）及其两级祖先（<root>\mingw64\bin、<root>）都可能就是 Git 安装根
     roots.push(dir, path.dirname(dir), path.dirname(path.dirname(dir)));
