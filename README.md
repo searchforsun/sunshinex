@@ -107,11 +107,11 @@ sunshinex ../my-project --continue   # 续接最近一次已保存会话；TUI �
 scripts/release.mjs                        # 按 package.json 当前版本号发版（如 0.1.0 → tag v0.1.0）
 scripts/release.mjs --bump patch           # 先递增版本号并随发版提交推送：patch 0.1.0→0.1.1（另有 minor/major）
 scripts/release.mjs --version 0.2.0        # 指定版本号发版（写回 package.json，随发版提交推送）
-scripts/release.mjs --dry-run              # 只验证 + 打包预览，不触网、不落库
+scripts/release.mjs --dry-run              # 只验证 + 打包预览（不创建 Release、不上传附件）
 scripts/release.mjs --version 0.1.0 --clobber  # 同版本重发：覆盖该 Release 的附件（链接不变）
 ```
 
-版本语义：**默认既不覆盖也不自动递增**——使用 `package.json` 当前版本号；每个版本对应一个新 tag + 新安装链接，旧版本链接永久可回溯、永不覆盖；同版本号重发属覆盖行为，须显式 `--clobber`。上传通道自动探测：优先 `gh` CLI（`gh auth login` 一次即可），或 `GITHUB_TOKEN=<pat> node scripts/release.mjs`（需 curl；JSON 解析已内建，无需 jq）。正式发布要求工作区干净且已推送。
+版本语义：**默认既不覆盖也不自动递增**——使用 `package.json` 当前版本号；每个版本对应一个新 tag + 新安装链接，旧版本链接永久可回溯、永不覆盖；同版本号重发属覆盖行为，须显式 `--clobber`。上传通道自动探测（按序）：① `gh` CLI（`gh auth login` 一次即可）；② `GITHUB_TOKEN=<pat>` + curl（JSON 解析已内建，无需 jq）；③ **复用 git 凭据助手已存的凭据** + curl——本机能 `git push` 通常即可用，无需另装 gh 或另配 PAT（git 协议本身不能上传 Release 附件，第三条复用其凭据走 REST API）。通道决议在脚本开头完成：缺通道立即报错，不会等跑完全量验证与打包之后才失败。正式发布要求工作区干净且已推送。
 
 `bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局 `~/.sunshinex/settings.json`（装一次、跨项目共享），项目级 `.sunshinex/settings.json`（同构、按项目覆盖，已入 .gitignore）；优先级：已导出环境变量 > 项目级 > 全局级 > 内置缺省（后装只填缺省）。完整变量模板见 TUI-MANUAL 第三节，最小示例：
 

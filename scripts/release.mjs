@@ -29,9 +29,11 @@ const usage = () => {
   每次发版必须对应新版本号 → 新 tag + 新链接，旧版本 Release 永不覆盖
   同版本号重发需显式 --clobber（覆盖该版本附件，链接不变）
 
-上传通道（自动探测，二选一）:
-  1. gh CLI（推荐）          gh auth login 一次即可
-  2. GITHUB_TOKEN + curl     GITHUB_TOKEN=<pat> node scripts/release.mjs（JSON 解析已内建，无需 jq）`);
+上传通道（自动探测，三选一）:
+  1. gh CLI（推荐）          gh auth login 一次即可（多仓库通用）
+  2. GITHUB_TOKEN + curl     GITHUB_TOKEN=<pat> node scripts/release.mjs（JSON 解析已内建，无需 jq）
+  3. git 凭据助手 + curl     复用 clone/push 已存的凭据（能 git push 通常即可用，无需另装 gh 或配 PAT）
+  通道决议在开头完成：缺通道立即报出，不会等跑完全量验证与打包之后才失败。`);
 };
 
 const die = (msg) => {
@@ -138,6 +140,51 @@ if (!remoteUrl) die('未找到 origin 远程');
 const REPO = remoteUrl.replace(/^git@github\.com:/, '').replace(/^https:\/\/github\.com\//, '').replace(/\.git$/, '');
 if (!/^[^/]+\/[^/]+$/.test(REPO)) die(`origin 不是 github 仓库：${REPO}`);
 
+// ---------- 上传通道（开始处决议）----------
+// 决议必须早于全量验证：缺通道却要跑完 tsc + 全量测试 + 打包几分钟才报错，纯属白等。
+// git 协议本身**没有**上传 Release 附件的能力（附件只存在于 REST API），但 git 为 clone/push 存下的凭据可以复用来调 API——
+// 这正是「本机已经能用 git 推代码」时该有的默认体验：不必为发版再装 gh 或另配 PAT。
+const HOST = 'github.com'; // 两种受支持的 origin 形态（https://github.com/…、git@github.com:…）都指向它
+
+/**
+ * 从 git 凭据助手取令牌（git credential fill）。
+ * 非交互硬化三件 + 超时：取凭据不该把发版挂住等输入——credential.interactive=false（git ≥2.36 口径）、
+ * GIT_TERMINAL_PROMPT=0、GCM_INTERACTIVE=never（兼容老版凭据管理器）。
+ * 取不到即诚实返回 null（凭据助手为空 / origin 走 SSH 未存令牌 / helper 拒绝非交互取用），由上层给替代路径。
+ */
+function tokenFromGitCredential() {
+  const r = spawnSync('git', ['-c', 'credential.interactive=false', 'credential', 'fill'], {
+    input: `protocol=https\nhost=${HOST}\n\n`,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 15_000,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' },
+  });
+  if (r.status !== 0 || !r.stdout) return null;
+  const password = /^password=(.*)$/m.exec(r.stdout)?.[1]?.trim() ?? '';
+  return password.length > 0 ? password : null;
+}
+
+/** 通道决议：gh CLI 优先（一次登录多仓库通用）；否则 curl + 令牌（环境变量 > git 凭据助手） */
+function resolveChannel() {
+  if (has('gh')) return { kind: 'gh', label: 'gh CLI' };
+  if (!has('curl')) return null;
+  const envToken = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  if (envToken) return { kind: 'curl', token: envToken, label: 'GitHub API + curl', auth: 'GITHUB_TOKEN 环境变量' };
+  const gitToken = tokenFromGitCredential();
+  if (gitToken) return { kind: 'curl', token: gitToken, label: 'GitHub API + curl', auth: 'git 凭据助手（复用 clone/push 已存凭据）' };
+  return null;
+}
+
+const CHANNEL = resolveChannel();
+if (CHANNEL) {
+  say(`上传通道：${CHANNEL.label}${CHANNEL.auth ? `（凭据来源：${CHANNEL.auth}）` : ''}`);
+} else if (DRY_RUN) {
+  say('上传通道：未探测到（--dry-run 不阻断；正式发版见 --help 的三条通道）');
+} else {
+  die('缺少上传通道，三选一：① 装 gh CLI 并 gh auth login；② 设 GITHUB_TOKEN=<pat> 后重跑；③ 让 git 凭据助手存有本仓库凭据（git 协议不能上传 Release 附件，只能复用凭据走 API）');
+}
+
 // ---------- 工作区与上游一致性 ----------
 if (!DRY_RUN && !ALLOW_DIRTY) {
   const dirty = run('git', ['status', '--porcelain'], { allowFail: true }).stdout || '';
@@ -185,14 +232,15 @@ const NOTES = `SunshineX TUI ${TAG}. Install: npm install -g ${DOWNLOAD_URL}`;
 const HEAD = run('git', ['rev-parse', 'HEAD']).stdout.trim();
 
 if (DRY_RUN) {
-  say('--dry-run 结束：未触网。正式发布将执行 gh release create（或 curl 通道）并上传 ' + TGZ_NAME);
+  say(`--dry-run 结束：未创建 Release、未上传附件。正式发布将经 ${CHANNEL ? CHANNEL.label : '（当前无可用通道，需先补通道）'} 上传 ${TGZ_NAME}`);
   console.log(`  安装链接：npm install -g ${DOWNLOAD_URL}`);
   process.exit(0);
 }
 
-// ---------- 上传通道 ----------
-if (has('gh')) {
-  say(`gh CLI 通道：创建 Release ${TAG}`);
+// ---------- 上传 ----------
+// CHANNEL 非空由开头的早决保证（真实发版缺通道已在验证前 die；dry-run 已在 pack 后 exit）。
+if (CHANNEL.kind === 'gh') {
+  say(`创建 Release ${TAG}（gh CLI）`);
   if (run('gh', ['release', 'view', TAG, '-R', REPO], { allowFail: true }).status === 0) {
     if (!CLOBBER) die(`Release ${TAG} 已存在：发新版本用 --version/--bump，覆盖该版本附件加 --clobber`);
     run('gh', ['release', 'upload', TAG, TGZ, '-R', REPO, '--clobber'], { stdio: 'inherit' });
@@ -200,10 +248,10 @@ if (has('gh')) {
   } else {
     run('gh', ['release', 'create', TAG, TGZ, '-R', REPO, '--target', HEAD, '--title', TAG, '--notes', NOTES], { stdio: 'inherit' });
   }
-} else if (has('curl') && process.env.GITHUB_TOKEN) {
-  const AUTH = `Authorization: Bearer ${process.env.GITHUB_TOKEN}`;
+} else {
+  const AUTH = `Authorization: Bearer ${CHANNEL.token}`;
   const API = `https://api.github.com/repos/${REPO}/releases`;
-  say(`curl + GITHUB_TOKEN 通道：创建 Release ${TAG}`);
+  say(`创建 Release ${TAG}（GitHub API）`);
   // HEAD 探测存在性（免写 /dev/null；取末个 HTTP/ 状态行兼容代理 100-continue）
   const probe = spawnSync('curl', ['-s', '-I', '-H', AUTH, `${API}/tags/${TAG}`], { encoding: 'utf8' });
   const statuses = [...(probe.stdout || '').matchAll(/^HTTP\/[\d.]+\s+(\d{3})/gim)].map((m) => Number(m[1]));
@@ -229,8 +277,6 @@ if (has('gh')) {
     '--data-binary', `@${TGZ}`, `${uploadUrl}?name=${TGZ_NAME}`,
   ], { encoding: 'utf8' });
   if (up.status !== 0) die('附件上传失败');
-} else {
-  die('缺少上传通道：安装 gh CLI（gh auth login），或提供 GITHUB_TOKEN 且装有 curl');
 }
 
 say('发布完成');
