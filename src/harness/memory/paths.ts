@@ -6,6 +6,7 @@
  * scope 给出即收窄（子代理 fork 只可写自身 agents/<id>/）；未给出则按路径自身归属分类。
  */
 import * as path from 'path';
+import { isWithin } from '../../paths';
 
 export type MemoryScope = 'main' | `agents/${string}`;
 
@@ -14,9 +15,11 @@ export function isMemoryPath(
   absPath: string,
   scope?: MemoryScope,
 ): 'main' | `agents/${string}` | null {
-  const prefix = path.join(path.resolve(dataDir), 'memory') + path.sep;
+  const memoryRoot = path.join(path.resolve(dataDir), 'memory');
   const abs = path.resolve(absPath);
-  if (!abs.startsWith(prefix)) return null;
+  // 子树判定走 isWithin 单点（含边界语义与尾分隔符归一），不再各写一份前缀拼接
+  if (!isWithin(memoryRoot, abs)) return null;
+  const prefix = memoryRoot + path.sep;
   const parts = abs.slice(prefix.length).split(path.sep);
   const [head, id] = parts;
   if (head === undefined || head === '') return null;

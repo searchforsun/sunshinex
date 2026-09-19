@@ -5,6 +5,7 @@ import { ToolBackend } from '../../types';
 import { dataDirReal } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
+import { isWithin } from '../../paths';
 import { DryRun } from './dryrun';
 import { ExecResult } from '../../types';
 import { Result } from '../../result';
@@ -96,7 +97,7 @@ export class SafetyChain {
           ? { allowed: true, safePath: real }
           : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
       }
-      if (real !== this.rootReal && !real.startsWith(this.rootReal + path.sep)) {
+      if (real !== this.rootReal && !isWithin(this.rootReal, real)) {
         if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
         return { allowed: false, reason: `COMMAND_DENIED: path escapes project root (real path): ${real}` };
       }
@@ -145,8 +146,7 @@ export class SafetyChain {
    * 路径是否落在数据目录子树内（每次惰性求值对齐运行期求值先例，SUNSHINEX_DATA_DIR 测试可重定向）
    */
   private underDataDir(real: string): boolean {
-    const dir = dataDirReal(this.root);
-    return real === dir || real.startsWith(dir + path.sep);
+    return isWithin(dataDirReal(this.root), real);
   }
 
   run(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {

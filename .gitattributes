@@ -1,0 +1,37 @@
+# 换行符契约的机器强制（CLAUDE.md §14）。
+# 原文只有一句文档纪律（「仓库文本为 LF，禁止提交整文件换行符重写」），无任何机器约束：
+# Git for Windows 安装时 core.autocrlf=true 是默认项，Windows 开发者 clone 后一次提交即可引入整文件 CRLF 重写。
+# 此处把契约下沉到 Git 层——文本一律按 LF 存取，工作区检出也用 LF，与 autocrlf 设置及平台无关。
+* text=auto eol=lf
+
+# 二进制：不做换行符转换，也不做 diff（避免把二进制当文本误改写）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.wasm binary
+*.node binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+
+# 版本控制内部文件必须 LF，否则 git 自身解析异常
+/.gitattributes text eol=lf
+/.gitignore text eol=lf
+/.editorconfig text eol=lf
+
+# lockfile 是生成物但参与文本 diff：钉 LF 防跨平台重写噪音
+/pnpm-lock.yaml text eol=lf
+
+# 快照/黄金文件类产物保持字节级可比对，禁用换行符归一化
+*.snap -text

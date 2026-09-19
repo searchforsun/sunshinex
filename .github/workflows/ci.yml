@@ -1,0 +1,55 @@
+name: CI
+
+# 平台契约的机器强制（CLAUDE.md §14）：三平台可部署是**声明**，须由此流水线变成**事实**。
+#   ubuntu-latest  —— 守 POSIX 基线语义（/bin/sh + 大小写敏感路径）
+#   windows-latest —— 守 §14 登记的全部差异面（shell 决议链 / 路径分隔符 / 大小写不敏感文件系统 / 子进程回收）
+# 矩阵交叉 Node 下限侧（22 LTS）与当前侧（24），避免只在单一运行时上偶然全绿。
+#
+# 不在本流水线的检查（如实登记，避免误以为已覆盖）：
+#   · scripts/*probe*.js —— 真实模型冒烟，依赖外部 API，且按 .gitignore 不入库；开发机手动执行。
+#   · macOS —— 语义与 Linux 同源（POSIX），runner 成本约为 Linux 的十倍，按性价比省略；
+#     macOS 专属面（大小写不敏感但保留大小写的文件系统）已由 windows-latest 的同名风险面覆盖。
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # 单个组合失败不得掩盖其余组合的结果——平台差异的价值恰恰在“哪个平台挂了”
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本由 package.json 的 packageManager 字段钉定（pnpm@10.12.1），此处不重复声明版本号
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      # .npmrc 已将 store 钉在仓内 .pnpm-store（HOME 不可写环境开箱即用），CI 无需额外配置
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # 全量单测：构建 + node --test；测试数据目录由 scripts/run-tests.js 钉到仓内 .data-test 并自清，
+      # 对用户全局区（~/.sunshinex）与各测试工作区零写入，故 Windows runner 上亦无残留态污染下一轮。
+      - name: Test
+        run: pnpm test
+
+      # 部署自检：证明 dist 产物在目标平台可启动。Windows 上这会真实走 resolveShell() 决议链
+      # （SUNSHINEX_SHELL → Git Bash 探测 → ComSpec 兜底），runner 预装 Git for Windows，故覆盖 Git Bash 命中路径。
+      - name: Selfcheck
+        run: pnpm selfcheck

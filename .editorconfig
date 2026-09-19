@@ -1,0 +1,23 @@
+# 编辑器层契约（与 .gitattributes 同源，CLAUDE.md §14）：
+# .gitattributes 管“入库与检出的字节”，此处管“编辑器落盘的字节”——两者齐备才算契约闭环，
+# 否则编辑器仍可能按平台默认（Windows CRLF）落盘，再由 `git add` 归一化，产生无意义的整文件 diff。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Markdown 行尾双空格是语义性换行，不能裁剪
+[*.md]
+trim_trailing_whitespace = false
+
+# 配置与数据文件：无需缩进规范化（多为生成物或含手工对齐）
+[*.{yaml,yml,json}]
+indent_size = 2
+
+[*.{sql,db}]
+indent_size = 2
