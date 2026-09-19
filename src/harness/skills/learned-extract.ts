@@ -1,6 +1,5 @@
 import type { ModelAdapter } from '../../model/adapter';
 import { scanMemoryText } from '../memory/guards';
-import { slugify } from './learned';
 import type { RefinedSkill } from './learned';
 
 export const LEARNED_EXTRACTION_MARKER = 'learned-extraction';
@@ -46,7 +45,9 @@ export function parseLearnedEnvelope(out: string): { skill: RefinedSkill | null 
   const name = String((skill as { name?: unknown }).name ?? '').trim();
   const description = String((skill as { description?: unknown }).description ?? '').trim();
   const body = String((skill as { body?: unknown }).body ?? '').trim();
-  if (!slugify(name) || !description || !body) return null;
+  // name 须至少含一个字母/数字：slugify 对空串与纯标点会全折叠回退 'learned'（truthy），
+  // 直接用 slugify(name) 判空会放行畸形 name，故先按字符面判定
+  if (!name.replace(/[^\p{L}\p{N}]+/gu, '') || !description || !body) return null;
   const clipped = description.slice(0, 60);
   if (scanMemoryText(`${clipped}\n${body}`)) return null;
   return { skill: { name, description: clipped, body } };
