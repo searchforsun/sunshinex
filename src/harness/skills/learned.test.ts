@@ -130,3 +130,39 @@ test('settle：limit<=0 夹紧下界为 1（不抛错，仅保留本次新写入
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('learned：refined 落盘用语义 frontmatter 与 body，id 由 name 派生', () => {
+  const { root, store } = makeRoot();
+  try {
+    const r = store.settle('goal text', '', {
+      refined: {
+        name: 'verify-before-done',
+        description: 'Assert full-suite green before reporting done',
+        body: '## When to Use\nx\n## Procedure\ny\n## Pitfalls\nz — because w\n## Verification\nv',
+      },
+    });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    assert.equal(r.value, 'verify-before-done');
+    const md = fs.readFileSync(path.join(root, '.data', 'skills', r.value, 'skill.md'), 'utf8');
+    assert.ok(md.includes('name: verify-before-done'));
+    assert.ok(md.includes('description: Assert full-suite green before reporting done'));
+    assert.ok(md.includes('## Pitfalls'));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('learned：refined 允许空 reply；缺省路径（无 refined）逐字节不变', () => {
+  const { root, store } = makeRoot();
+  try {
+    const a = store.settle('some goal', 'some reply');
+    const b = store.settle('some goal', 'some reply');
+    assert.ok(a.ok && b.ok);
+    if (!a.ok || !b.ok) return;
+    assert.equal(a.value, 'some-goal');
+    assert.equal(b.value, 'some-goal-2'); // 撞名避让不变
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

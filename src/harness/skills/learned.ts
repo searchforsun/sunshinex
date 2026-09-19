@@ -6,6 +6,17 @@ import { DEFAULT_LEARNED_SKILL_LIMIT } from '../../config/memory-config';
 
 const MAX_BODY_CHARS = 2000;
 
+/**
+ * 语义提炼产物（learned-extraction 通道）：name 决定目录 id，description/body 直接落 frontmatter 与正文。
+ * 定义在本文件（生产者 settled 侧）：learned-extract 已运行时依赖本模块的 slugify，
+ * 反向引用只允许 `import type`（类型擦除），避免运行时环。缺省路径（无 refined）不感知本类型。
+ */
+export interface RefinedSkill {
+  name: string;
+  description: string;
+  body: string;
+}
+
 /** goal 确定性 slug 化：非安全字符折叠为 `-`，截长 40，全折叠回退 learned（撞名避让与清库判断共用同一 slug 面） */
 export function slugify(goal: string): string {
   const slug = goal
@@ -29,33 +40,34 @@ function clip(text: string): string {
 export class LearnedSkillStore {
   constructor(private root: string) {}
 
-  settle(goal: string, reply: string, opts?: { limit?: number }): Result<string> {
+  settle(goal: string, reply: string, opts?: { limit?: number; refined?: RefinedSkill }): Result<string> {
     const g = goal.trim();
     const rep = reply.trim();
-    if (!g || !rep) return fail('SKILL_SETTLE_EMPTY', 'SKILL_SETTLE_EMPTY: goal and reply must not be empty');
+    // refined 在场时不要求 reply：失败/中止的任务没有最终答复，但同样值得沉淀（replied 才校验 reply 非空）
+    if (!g || (!rep && !opts?.refined)) return fail('SKILL_SETTLE_EMPTY', 'SKILL_SETTLE_EMPTY: goal and reply must not be empty');
 
     const dir = path.join(resolveDataDir(this.root), 'skills');
     fs.mkdirSync(dir, { recursive: true });
     this.evictOldest(dir, opts?.limit ?? DEFAULT_LEARNED_SKILL_LIMIT);
 
-    const id = this.allocateId(dir, slugify(g));
+    const refined = opts?.refined;
+    const id = this.allocateId(dir, slugify(refined ? refined.name : g));
+    const name = refined ? refined.name.slice(0, 60) : `settle:${g.slice(0, 30)}`;
+    const description = refined ? refined.description.slice(0, 60) : `learned settle — ${g.slice(0, 30)}`;
+    const body = refined
+      ? clip(refined.body)
+      : ['# Goal', '', g, '', '# Successful reply', '', clip(rep)].join('\n');
     const md = [
       '---',
-      `name: settle:${g.slice(0, 30)}`,
-      `description: learned settle — ${g.slice(0, 30)}`,
+      `name: ${name}`,
+      `description: ${description}`,
       'version: 0.1.0',
       'kind: prompt',
       'params:',
       'source: learned',
       '---',
       '',
-      '# Goal',
-      '',
-      g,
-      '',
-      '# Successful reply',
-      '',
-      clip(rep),
+      body,
       '',
     ].join('\n');
     fs.mkdirSync(path.join(dir, id), { recursive: true });
