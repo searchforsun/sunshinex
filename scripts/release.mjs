@@ -213,11 +213,19 @@ async function ghApi(method, url, token, opts = {}) {
 /** 把一次 API 失败讲清楚：传输层没出去（cause）/ HTTP 状态 + GitHub 原文 + 按状态给的可操作处置 */
 function apiFail(what, res) {
   if (res.cause) {
-    const hint = /CERT|SSL|TLS/i.test(res.cause)
-      ? 'TLS 校验失败（企业根证书 / 中间人代理场景）：设 NODE_EXTRA_CA_CERTS=<企业根证书.pem> 后重跑，或改用 gh CLI 通道'
-      : /ENOTFOUND|EAI_AGAIN/i.test(res.cause)
-        ? '域名解析失败：检查网络与 DNS'
-        : '请求没能到达 GitHub：检查网络 / 代理 / 防火墙（本机 git 能通不等于 fetch 能通）';
+    // TLS 类：Node 自带 Mozilla 根库不认企业根证书——公司网络做 TLS 拦截时的典型形态
+    if (/CERT|SSL|TLS|LEAF_SIGNATURE|SELF_SIGNED|ISSUER|VERIFY/i.test(res.cause)) {
+      die(
+        `${what}失败：TLS 证书校验没过（${res.cause}）—— 企业网络做 TLS 拦截时，Node 的根证书库不认公司根证书。三选一：` +
+          '① 让 Node 读系统信任库：设 NODE_USE_SYSTEM_CA=1 后重跑（需 Node ≥ 22.19 或 ≥ 24.6）；' +
+          '② 导出公司根证书给 Node：NODE_EXTRA_CA_CERTS=<公司根证书.pem> 后重跑（任意版本可用）；' +
+          '③ 装 gh CLI 走 gh 通道（gh 读系统信任库）。' +
+          '应急但会关掉证书校验（有中间人风险）：NODE_TLS_REJECT_UNAUTHORIZED=0',
+      );
+    }
+    const hint = /ENOTFOUND|EAI_AGAIN/i.test(res.cause)
+      ? '域名解析失败：检查网络与 DNS'
+      : '请求没能到达 GitHub：检查网络 / 代理 / 防火墙（本机 git 能通不等于 fetch 能通；走代理需 NODE_USE_ENV_PROXY=1，需 Node ≥ 22.21 或 ≥ 24.0）';
     die(`${what}失败：请求未发出（${res.cause}）—— ${hint}`);
   }
   let msg = '';
