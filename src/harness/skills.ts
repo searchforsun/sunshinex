@@ -48,16 +48,27 @@ function skillFileIn(dir: string, id: string): string | undefined {
 /** 扫描单根目录下 {id}/SKILL.md（文件名口径见 skillFileIn） */
 function loadSkillsFrom(dir: string): SkillManifest[] {
   if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => {
-      const named = skillFileIn(dir, d.name);
-      if (named === undefined) return null;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return []; // 枚举瞬间目录不可读（并发移除等）：本根视为空，其余根照常装载
+  }
+  const out: SkillManifest[] = [];
+  for (const d of entries) {
+    if (!d.isDirectory()) continue;
+    const named = skillFileIn(dir, d.name);
+    if (named === undefined) continue;
+    try {
       const meta = parseSkillFrontmatter(fs.readFileSync(named, 'utf8'));
-      return { id: d.name, ...meta } as SkillManifest;
-    })
-    .filter((s): s is SkillManifest => s !== null);
+      out.push({ id: d.name, ...meta } as SkillManifest);
+    } catch {
+      // 单条目不可读（枚举与读取之间被移除 / 目录占位 / 权限）逐条跳过，不拖垮整次扫描：
+      // 技能清单是装配面的尽力而为视图，一条坏条目不得阻断会话装配
+      //（历史事故：共享数据目录下并发移除致 captureBaselines 抛 ENOENT，整场 /init 崩）
+    }
+  }
+  return out;
 }
 
 /** 装载/解析优先级链（降序）：项目级五根（.sunshinex > .agents > .claude > .codex > .cursor）→ 全局根 → 学习根 */
@@ -137,7 +148,14 @@ export function resolveSkill(skillsDir: string, id: string, params?: Record<stri
   const file = skillFileIn(skillsDir, id);
   if (file === undefined) return fail('SKILL_NOT_FOUND', `SKILL_NOT_FOUND: skill not registered: ${id}`);
 
-  const md = fs.readFileSync(file, 'utf8');
+  let md: string;
+  try {
+    md = fs.readFileSync(file, 'utf8');
+  } catch {
+    // 命中条目在探测与读取之间不可用（并发移除等）：按未注册处理，让回退链照常下探下一根，
+    // 而不是把读取异常抛给调用方（resolve 契约：仅 SKILL_NOT_FOUND 回退、其余即止）
+    return fail('SKILL_NOT_FOUND', `SKILL_NOT_FOUND: skill not registered: ${id}`);
+  }
   const manifest: SkillManifest = { id, ...parseSkillFrontmatter(md) };
   const body = md.replace(FRONTMATTER, '').trim();
 

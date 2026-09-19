@@ -196,3 +196,46 @@ test('resolve 回退链跨兼容根：仅 .claude 注册的技能可命中（就
     if (!miss.ok) assert.equal(miss.error.code, 'SKILL_NOT_FOUND');
   });
 });
+
+test('loadSkills：学习根单条目读取失败（并发移除/坏条目）不拖垮整次扫描', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-racy-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
+  process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'global-skills-root');
+  try {
+    const root = path.join(dir, 'proj');
+    const learned = path.join(dir, '.data', 'skills');
+    fs.mkdirSync(path.join(learned, 'healthy'), { recursive: true });
+    fs.writeFileSync(path.join(learned, 'healthy', 'skill.md'), '---\nname: Healthy\n---\n正文');
+    // 坏条目：SKILL.md 位上是目录（读必失败）——等价于「条目在枚举与读取之间不可读/被移除」
+    fs.mkdirSync(path.join(learned, 'doomed', 'SKILL.md'), { recursive: true });
+    const list = loadSkills(root);
+    assert.equal(list.length, 1, '坏条目应被跳过而非抛错');
+    assert.equal(list[0]?.id, 'healthy');
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveSkill：命中条目读取时不可用 → 报未注册（回退链可继续下探）而非抛错', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-racy-resolve-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
+  process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'global-skills-root');
+  try {
+    const root = path.join(dir, 'proj');
+    const learned = path.join(dir, '.data', 'skills');
+    fs.mkdirSync(path.join(learned, 'doomed', 'SKILL.md'), { recursive: true });
+    const r = createSkillsFacade(root).resolve('doomed');
+    assert.equal(r.ok, false, '不可读条目应报未命中而非抛出');
+    if (!r.ok) assert.equal(r.error.code, 'SKILL_NOT_FOUND');
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
