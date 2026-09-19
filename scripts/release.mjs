@@ -185,6 +185,85 @@ if (CHANNEL) {
   die('缺少上传通道，三选一：① 装 gh CLI 并 gh auth login；② 设 GITHUB_TOKEN=<pat> 后重跑；③ 让 git 凭据助手存有本仓库凭据（git 协议不能上传 Release 附件，只能复用凭据走 API）');
 }
 
+/**
+ * 调 GitHub API 并一次取回「状态码 + 正文」。失败的正文才是诊断依据——`curl -sf` 会把状态码与错误正文一起吞掉，
+ * 只剩一句「失败」（本脚本第一次实跑创建 Release 失败时就是这样一无所获）。
+ * 状态码取自 `-i` 带回的响应头（取末个 HTTP/ 行，兼容代理 100-continue），不落临时文件。
+ */
+function ghApi(method, url, token, opts = {}) {
+  const args = ['-sS', '-i', '-X', method, '-H', `Authorization: Bearer ${token}`, '-H', 'Accept: application/vnd.github+json'];
+  if (opts.json !== undefined) args.push('-H', 'Content-Type: application/json', '--data-binary', opts.json);
+  if (opts.file !== undefined) args.push('-H', 'Content-Type: application/octet-stream', '--data-binary', `@${opts.file}`);
+  args.push(url);
+  const r = spawnSync('curl', args, { encoding: 'utf8', windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
+  const lines = (r.stdout || '').split('\n');
+  let status = 0;
+  let bodyFrom = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].startsWith('HTTP/')) continue;
+    const code = lines[i].split(' ')[1] || '';
+    if (code.length === 3 && Number.isInteger(Number(code))) {
+      status = Number(code);
+      bodyFrom = i + 1;
+    }
+  }
+  // 末个状态行之后可能还有剩余响应头，跳到空行再取正文
+  while (bodyFrom < lines.length && lines[bodyFrom].trim() !== '') bodyFrom++;
+  return { status, body: lines.slice(bodyFrom + 1).join('\n'), error: r.error, stderr: r.stderr };
+}
+
+/** 把一次 API 失败讲清楚：HTTP 状态 + GitHub 原文 message + 按状态给出的可操作处置 */
+function apiFail(what, res) {
+  if (res.error) die(`${what}失败：curl 执行出错（${res.error.message}）`);
+  let msg = '';
+  try {
+    msg = JSON.parse(res.body)?.message || '';
+  } catch {
+    msg = String(res.body || '').trim().slice(0, 200);
+  }
+  const hint =
+    res.status === 401 ? '凭据无效或已过期：重新登录，或换一个 PAT' :
+    res.status === 403 ? '凭据权限不足（创建 Release 需要 contents:write），或组织仓库未在该令牌上完成 SSO 授权' :
+    res.status === 404 ? '这份凭据看不到该仓库：多半是别的账号或只读令牌' :
+    res.status === 422 ? '参数被拒：常见为 tag 已存在或 target 提交不可用' :
+    '见上方 GitHub 原文';
+  die(`${what}失败：HTTP ${res.status}${msg ? ` · ${msg}` : ''}（${hint}）`);
+}
+
+/**
+ * 凭据预检（真实发版、且走 API 通道时）：在跑全量验证之前先问清「这份凭据是谁、能不能写这个仓库」。
+ * 两问合一——GET /repos 取该仓库的 push 权限（创建 Release 需要 contents:write），GET /user 取身份
+ * （暴露「凭据助手存的是另一个账号」这类错配）。存在的理由：权限不足原本要到验证 + 打包几分钟之后、
+ * 以一句无信息的失败暴露；预检把同一判断提前到约一秒。--dry-run 恒不联网，故预检只在真实发版跑。
+ */
+function preflight(token) {
+  const repo = ghApi('GET', `https://api.github.com/repos/${REPO}`, token);
+  if (repo.status !== 200) apiFail('仓库访问预检', repo);
+  const who = ghApi('GET', 'https://api.github.com/user', token);
+  let login = '';
+  try {
+    login = JSON.parse(who.body)?.login || '';
+  } catch {
+    /* 正文非 JSON：身份降级为未知，不阻断发版 */
+  }
+  const identity = who.status === 200 && login ? login : `未知（HTTP ${who.status}）`;
+  let push = null;
+  try {
+    push = JSON.parse(repo.body)?.permissions?.push ?? null;
+  } catch {
+    /* 无 permissions 字段则不下结论 */
+  }
+  if (push === false) {
+    die(
+      `凭据预检：身份 ${identity} 对 ${REPO} 只有读权限（push=false），无法创建 Release。补写权限三选一：` +
+        '① 把带写权限的 PAT 交回 git 凭据助手（写法见 README 发版段）；② GITHUB_TOKEN=<PAT> 重跑本脚本；③ 装 gh CLI 并 gh auth login',
+    );
+  }
+  say(`凭据预检：身份 ${identity}；${REPO} push=${push === true ? 'yes' : 'unknown'}`);
+}
+
+if (!DRY_RUN && CHANNEL.kind === 'curl') preflight(CHANNEL.token);
+
 // ---------- 工作区与上游一致性 ----------
 if (!DRY_RUN && !ALLOW_DIRTY) {
   const dirty = run('git', ['status', '--porcelain'], { allowFail: true }).stdout || '';
@@ -259,24 +338,20 @@ if (CHANNEL.kind === 'gh') {
   let release;
   if (existing === 200) {
     if (!CLOBBER) die(`Release ${TAG} 已存在：发新版本用 --version/--bump，覆盖该版本附件加 --clobber`);
-    const got = spawnSync('curl', ['-sf', '-H', AUTH, `${API}/tags/${TAG}`], { encoding: 'utf8' });
-    if (got.status !== 0) die('查询已存在 Release 失败');
-    release = JSON.parse(got.stdout);
+    const got = ghApi('GET', `${API}/tags/${TAG}`, CHANNEL.token);
+    if (got.status !== 200) apiFail('查询已存在 Release', got);
+    release = JSON.parse(got.body);
   } else {
-    const created = spawnSync('curl', [
-      '-sf', '-X', 'POST', '-H', AUTH, '-H', 'Accept: application/vnd.github+json',
-      '-d', JSON.stringify({ tag_name: TAG, name: TAG, body: NOTES, target_commitish: HEAD }), API,
-    ], { encoding: 'utf8' });
-    if (created.status !== 0) die('创建 Release 失败（检查 GITHUB_TOKEN 是否具备 repo 权限）');
-    release = JSON.parse(created.stdout);
+    const created = ghApi('POST', API, CHANNEL.token, {
+      json: JSON.stringify({ tag_name: TAG, name: TAG, body: NOTES, target_commitish: HEAD }),
+    });
+    if (created.status !== 201) apiFail('创建 Release', created);
+    release = JSON.parse(created.body);
   }
   const uploadUrl = String(release.upload_url || '').split('{')[0];
   if (!uploadUrl || uploadUrl === 'null') die('未取得 upload_url');
-  const up = spawnSync('curl', [
-    '-sf', '-X', 'POST', '-H', AUTH, '-H', 'Content-Type: application/octet-stream',
-    '--data-binary', `@${TGZ}`, `${uploadUrl}?name=${TGZ_NAME}`,
-  ], { encoding: 'utf8' });
-  if (up.status !== 0) die('附件上传失败');
+  const up = ghApi('POST', `${uploadUrl}?name=${TGZ_NAME}`, CHANNEL.token, { file: TGZ });
+  if (up.status !== 201) apiFail('附件上传', up);
 }
 
 say('发布完成');

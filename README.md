@@ -111,7 +111,18 @@ scripts/release.mjs --dry-run              # 只验证 + 打包预览（不创�
 scripts/release.mjs --version 0.1.0 --clobber  # 同版本重发：覆盖该 Release 的附件（链接不变）
 ```
 
-版本语义：**默认既不覆盖也不自动递增**——使用 `package.json` 当前版本号；每个版本对应一个新 tag + 新安装链接，旧版本链接永久可回溯、永不覆盖；同版本号重发属覆盖行为，须显式 `--clobber`。上传通道自动探测（按序）：① `gh` CLI（`gh auth login` 一次即可）；② `GITHUB_TOKEN=<pat>` + curl（JSON 解析已内建，无需 jq）；③ **复用 git 凭据助手已存的凭据** + curl——本机能 `git push` 通常即可用，无需另装 gh 或另配 PAT（git 协议本身不能上传 Release 附件，第三条复用其凭据走 REST API）。通道决议在脚本开头完成：缺通道立即报错，不会等跑完全量验证与打包之后才失败。正式发布要求工作区干净且已推送。
+版本语义：**默认既不覆盖也不自动递增**——使用 `package.json` 当前版本号；每个版本对应一个新 tag + 新安装链接，旧版本链接永久可回溯、永不覆盖；同版本号重发属覆盖行为，须显式 `--clobber`。上传通道自动探测（按序）：① `gh` CLI（`gh auth login` 一次即可）；② `GITHUB_TOKEN=<pat>` + curl（JSON 解析已内建，无需 jq）；③ **复用 git 凭据助手已存的凭据** + curl（git 协议本身不能上传 Release 附件，第③条复用其凭据走 REST API）。通道决议在脚本开头完成：缺通道立即报错，不会等跑完全量验证与打包之后才失败。
+
+创建 Release 需要**该仓库的写权限**（classic PAT 勾 `repo`；fine-grained PAT 勾 Contents: Read and write）。注意本仓库是公开的：`git clone`/`git pull` 不需要任何凭据，**「git 能拉」并不能证明凭据有写权限**——凭据助手里的 github 条目可能是别的账号或只读令牌。脚本在开头预检并打印一行 `凭据预检：身份 <login>；<owner/repo> push=yes`；权限不足或凭据失效时当场报错，并给出 HTTP 状态与 GitHub 原文（401=凭据失效、403=权限不足、404=凭据看不到该仓库）。
+
+把带写权限的 PAT 交给 git 凭据助手（此后 push 与发版共用它）：
+
+```bash
+printf "protocol=https\nhost=github.com\nusername=<你的用户名>\npassword=<PAT>\n\n" | git credential approve
+printf "protocol=https\nhost=github.com\n\n" | git credential reject   # 换账号或换令牌前，先清掉旧凭据
+```
+
+也可只在单次发版时用 `GITHUB_TOKEN=<pat>` 覆盖，或装 `gh` CLI 走 `gh auth login`。正式发布要求工作区干净且已推送。
 
 `bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局 `~/.sunshinex/settings.json`（装一次、跨项目共享），项目级 `.sunshinex/settings.json`（同构、按项目覆盖，已入 .gitignore）；优先级：已导出环境变量 > 项目级 > 全局级 > 内置缺省（后装只填缺省）。完整变量模板见 TUI-MANUAL 第三节，最小示例：
 
