@@ -9,6 +9,7 @@ import { SkillsFacade } from '../skills';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
 import { MemoryWriteSeam } from '../memory/writer';
+import { MemoryScope } from '../memory/paths';
 
 /** §9.3 快照过期回执文案（写链恒英文单语——CLAUDE.md §15；置于模块级避免每次 builtinTools 调用重建） */
 const SUNSHINE_STALE_NOTICE = 'SUNSHINE.md rewritten — session snapshot is stale until the next refresh point';
@@ -24,14 +25,16 @@ function isSunshineMdTarget(safety: SafetyChain, file: string): boolean {
 }
 
 /** memory_write 工具的执行接缝（规格 §3.7）：装配层注入 `writeMemoryFact` 绑定 root 后的形态。
- *  工具只做入参整形/错误转译，闸门、三级去重、落盘与容量回执全在记忆侧单点（builtin 不复制任何记忆语义）。 */
-export type MemoryWriteTool = (input: { type: string; content: string; description?: string }) => Result<{
+ *  工具只做入参整形/错误转译，闸门、三级去重、落盘与容量回执全在记忆侧单点（builtin 不复制任何记忆语义）。
+ *  入参 `scope`（规格 §4.2 记忆隔离）由**执行期从安全链取**（`safety.memoryScope`，子代理链为 `agents/<id>`），
+ *  模型输入面不暴露该字段——模型自选的 scope 一律忽略，防越权改记忆落点。 */
+export type MemoryWriteTool = (input: { type: string; content: string; description?: string; scope?: MemoryScope }) => Result<{
   slug: string;
   existed: boolean;
   notice: string | null;
 }>;
 
-/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write） */
+/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write；执行期以本参数捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链） */
 export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
@@ -190,6 +193,9 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
 
   // 第 8 可选参（规格 §3.7 memory_write）：缺省不注入＝清单与第 7 参引入前逐字节一致（对齐既有「可选参两态不变」不变式）；
   // 注入才注册——接缝必在（无「未配置」分支），错误一律经 CodedToolError 走 Result 错误通道，永不炸任务
+  // 记忆 scope 透传要求（Task 6 接线）：executor 闭包持有的是**装配期**那条链的 memoryScope，而子代理 fork 的收窄链
+  // 只在执行期经 registry.execute(safety) 注入（executor 不接收运行期链）——故子代理隔离须以带 scope 的链装配子注册表
+  // （与 memory-write.test.ts 的 scoped 用例同形态），或另行为 executor 打开运行期链通道；derive() 共享 executor 不够。
   if (memoryWrite !== undefined) {
     const memoryWriter: MemoryWriteTool = memoryWrite; // 窄化取别名：闭包内不依赖外部窄化（参数可变，TS 不跨回调保留）
     tools.push({
@@ -203,7 +209,10 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         if (content === '') throw new CodedToolError('INVALID_ARG', 'content must not be empty');
         const rawDescription = input.description;
         const description = rawDescription === undefined ? undefined : String(rawDescription);
-        const r = memoryWriter({ type, content, ...(description !== undefined ? { description } : {}) });
+        // scope 只从安全链取（模型输入面的 scope 一律忽略）：子代理链 = agents/<id>，主链 = 主记忆目录
+        const scope = safety.memoryScope;
+        const payload = { type, content, ...(description !== undefined ? { description } : {}), ...(scope !== undefined ? { scope } : {}) };
+        const r = memoryWriter(payload);
         if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
         // 观察行单行契约（链渲染 `${step}: ${action} -> ${observation}`）：近满提醒以 ` | ` 拼接，不得换行
         const suffix = r.value.existed ? ' (already exists)' : '';

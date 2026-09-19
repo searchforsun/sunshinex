@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { writeMemoryFact } from './extractor';
 import { MemoryStore } from './store';
+import { MemoryScope } from './paths';
 import { guardMemoryWrite } from './writer';
 import { ToolRegistry } from '../tools';
 import { builtinTools } from '../tools/builtin';
@@ -14,6 +15,10 @@ import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
 import { DryRun } from '../security/dryrun';
 import { PermissionMode } from '../security/modes';
+import { Reactor } from '../reactor';
+import { ContextManager } from '../context';
+import { FileStore } from '../../storage/adapter';
+import { ModelAdapter } from '../../model/adapter';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
 
 /**
@@ -23,6 +28,8 @@ import { ApprovalDecision, ApprovalRequest } from '../../types';
  * ③闸门不绕过：时间词/注入/不可见字符/SUNSHINE 重叠一律带码失败且零落盘；autoMemory=off 同样零落盘零副作用
  * ④安全链同族：canonical `Write`——manual 走审批（无 asker 拒绝 / deny 拒绝 / allow 放行）、dontAsk 放行、plan 拒绝
  * ⑤观察行单行契约（reactor 渲染 `${step}: ${action} -> ${observation}`）：近满提醒以 ` | ` 拼接，不得换行
+ * ⑥审批 subject 可读且恒非空（`type:description` 兜底）：会话放行按内容分键，不跨内容、不跨工具族
+ * ⑦记忆 scope（子代理隔离）：接缝承载链侧 scope → 落盘走 `agents/<id>` 子目录，主记忆目录零污染
  * 范式（对齐 tools/builtin.memorywrite.test.ts / memory/writer.test.ts）：tmpdir 作 root + SUNSHINEX_DATA_DIR 重定向 + finally 还原清理。
  */
 
@@ -45,28 +52,51 @@ async function withRoot(fn: (ctx: { root: string; dataDir: string }) => Promise<
   }
 }
 
-/** 第 8 参装配（与生产接线同形态）：工具入口 ↔ 落盘单点 writeMemoryFact */
+/** 第 8 参装配（与生产接线同形态）：工具入口 ↔ 落盘单点 writeMemoryFact；memoryScope 给出即以带 scope 的链装配
+ *  （对齐子代理 fork 形态：接缝的 scope 只在装配期链上取，见 builtin 第 8 参注释） */
 function registryFor(opts: {
   root: string;
   mode: PermissionMode;
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
+  memoryScope?: MemoryScope;
 }): { registry: ToolRegistry; safety: SafetyChain } {
   const guard = new SecurityGuard(new PolicyEngine(), opts.mode);
   if (opts.asker !== undefined) guard.setAsker(opts.asker);
-  const safety = new SafetyChain(guard, new ProcessSandbox(), new DryRun(), opts.root);
+  const base = new SafetyChain(guard, new ProcessSandbox(), new DryRun(), opts.root);
+  const safety = opts.memoryScope !== undefined ? base.withMemoryScope(opts.memoryScope) : base;
   const registry = new ToolRegistry();
-  const memoryWrite = (input: { type: string; content: string; description?: string }) => writeMemoryFact({ root: opts.root, ...input });
+  const memoryWrite = (input: { type: string; content: string; description?: string; scope?: MemoryScope }) =>
+    writeMemoryFact({ root: opts.root, ...input });
   for (const t of builtinTools(safety, opts.root, undefined, undefined, undefined, undefined, guardMemoryWrite, memoryWrite)) registry.register(t);
   return { registry, safety };
 }
 
-/** 落盘记录文件清单（索引 MEMORY.md 除外；目录不存在为空集） */
-function recordFiles(dataDir: string): string[] {
+/** 指定目录内的记忆记录文件清单（索引 MEMORY.md 除外；目录不存在为空集） */
+function mdFilesIn(dir: string): string[] {
   try {
-    return fs.readdirSync(path.join(dataDir, 'memory')).filter((n) => n.endsWith('.md') && n !== 'MEMORY.md');
+    return fs.readdirSync(dir).filter((n) => n.endsWith('.md') && n !== 'MEMORY.md');
   } catch {
     return [];
   }
+}
+
+/** 落盘记录文件清单（主记忆目录；索引 MEMORY.md 除外） */
+function recordFiles(dataDir: string): string[] {
+  return mdFilesIn(path.join(dataDir, 'memory'));
+}
+
+/** prompt 工具清单段解析（buildPrompt 稳定段：'Available tools:' 起，到下一空行止，每行 `- <name>: <description>`） */
+function toolListNames(prompt: string): string[] {
+  const section = (prompt.split('Available tools:\n')[1] ?? '').split('\n\n')[0] ?? '';
+  return section
+    .split('\n')
+    .map((line) => /^- ([^:]+): /.exec(line)?.[1] ?? '')
+    .filter((name) => name !== '');
+}
+
+/** 与 buildPrompt 同口径的按名升序（独立于渲染产物推导，防断言自证） */
+function byNameAsc(names: string[]): string[] {
+  return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 test('memory_write：单条事实落盘并返回 slug（existed=false、记录文件 + 索引重建）', async () => {
@@ -166,7 +196,6 @@ test('memory_write：工具注册与清单（category=write、英文单语 descr
     const { registry } = registryFor({ root, mode: 'dontAsk' });
     const names = registry.list().map((t) => t.name);
     assert.deepEqual(names, [...BUILTIN_NAMES, 'memory_write'], '声明序：第 8 可选参注入项追加末位');
-    assert.deepEqual([...names].sort(), [...BUILTIN_NAMES, 'memory_write'].sort(), '按名排序进清单（reactor.buildPrompt 排序面与注册序无关）');
     assert.equal(registry.get('memory_write')?.category, 'write', '与 write 同族');
 
     const desc = registry.get('memory_write')?.description ?? '';
@@ -278,4 +307,113 @@ test('memory_write：记忆未启用（autoMemory=off）→ 工具报错且零�
     if (prev === undefined) delete process.env.SUNSHINEX_AUTO_MEMORY;
     else process.env.SUNSHINEX_AUTO_MEMORY = prev;
   }
+});
+
+test('memory_write：reactor 工具清单段按名升序渲染且含 memory_write（渲染面真断言）', async () => {
+  await withRoot(async ({ root }) => {
+    const { registry, safety } = registryFor({ root, mode: 'dontAsk' });
+    const prompts: string[] = [];
+    const capture: ModelAdapter = {
+      provider: 'capture',
+      complete: async (p) => {
+        prompts.push(p);
+        return JSON.stringify({ done: true, reply: 'ok' });
+      },
+    };
+    const store = new FileStore(path.join(root, '.data'));
+    const reactor = new Reactor({ registry, safety, context: new ContextManager(root, store), model: capture });
+    const r = await reactor.run({ goal: 'render the tool list' }, { maxSteps: 2 });
+    assert.equal(r.done, true);
+
+    const names = toolListNames(prompts[0]);
+    assert.equal(names.length, BUILTIN_NAMES.length + 1, `清单段逐行解析须完整（实际：${names.join(',')}）`);
+    assert.ok(names.includes('memory_write'), '注入的 memory_write 必须出现在模型可见的工具清单段');
+    // 排序发生在渲染面（buildPrompt），与注册序无关：注册序是声明序，渲染序须为按名升序
+    assert.deepEqual(names, byNameAsc([...BUILTIN_NAMES, 'memory_write']), '工具清单段按名升序，且逐名齐备');
+    assert.notDeepEqual(names, [...BUILTIN_NAMES, 'memory_write'], '渲染序不得等于声明序（否则排序面失效）');
+  });
+});
+
+test('memory_write：审批 subject 取 type:description（卡片可读、恒非空；always 不跨内容放行）', async () => {
+  await withRoot(async ({ root, dataDir }) => {
+    const seen: ApprovalRequest[] = [];
+    const { registry, safety } = registryFor({
+      root,
+      mode: 'manual',
+      asker: async (req) => {
+        seen.push(req);
+        return 'always';
+      },
+    });
+    const first = await registry.execute('memory_write', { ...FACT }, safety);
+    assert.equal(first.ok, true, `审批放行后应落盘：${first.ok ? '' : first.error.message}`);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].kind, 'write');
+    assert.equal(seen[0].subject, 'project: pnpm store is repo-local', '卡片必须看得出在写什么（旧形态为空串 → 只有一行空白）');
+    assert.notEqual(seen[0].subject, '', 'subject 恒非空');
+
+    // 同 subject（同内容）二次写：会话放行命中同一键 → 不再询问（幂等回执）
+    const again = await registry.execute('memory_write', { ...FACT }, safety);
+    assert.equal(again.ok, true);
+    if (again.ok) assert.equal(again.value.stdout, `Saved memory: ${FACT_SLUG} (already exists)`);
+    assert.equal(seen.length, 1, 'always 后同 subject 直通');
+
+    // 不同内容（不同 description）→ 不同 subject → 必须重新询问（旧空键语义会连带放行任意内容）
+    const other = { type: 'user', content: 'Prefers short answers without preamble', description: 'Prefers short answers' };
+    const fresh = await registry.execute('memory_write', other, safety);
+    assert.equal(fresh.ok, true, `不同内容应重新审批并放行：${fresh.ok ? '' : fresh.error.message}`);
+    assert.equal(seen.length, 2, 'always 不得跨内容放行');
+    assert.equal(seen[1].subject, 'user: Prefers short answers');
+    assert.deepEqual(mdFilesIn(path.join(dataDir, 'memory')).sort(), [`${FACT_SLUG}.md`, 'Prefers-short-answers.md'].sort());
+  });
+});
+
+test('memory_write：scope 收窄落盘子代理自有目录（接缝承载链侧 scope，主记忆目录零污染）', async () => {
+  await withRoot(async ({ root, dataDir }) => {
+    const ownDir = path.join(dataDir, 'memory', 'agents', 'reviewer');
+    const scoped = registryFor({ root, mode: 'dontAsk', memoryScope: 'agents/reviewer' });
+    const r = await scoped.registry.execute('memory_write', { ...FACT }, scoped.safety);
+    assert.equal(r.ok, true, `子代理链应写入自有目录：${r.ok ? '' : r.error.message}`);
+    assert.deepEqual(mdFilesIn(ownDir), [`${FACT_SLUG}.md`], '落盘在 agents/<id> 子目录（与 subagent.agentMemory 同目录形态）');
+    assert.deepEqual(recordFiles(dataDir), [], '主记忆目录零记录（记忆隔离成立）');
+
+    // 模型输入面自选 scope 一律忽略（防越权改落点）：仍写自身子目录，不新增其它目录
+    const injected = await scoped.registry.execute(
+      'memory_write',
+      { type: 'user', content: 'Prefers short answers without preamble', description: 'Prefers short answers', scope: 'agents/other' },
+      scoped.safety,
+    );
+    assert.equal(injected.ok, true);
+    assert.deepEqual(mdFilesIn(ownDir).sort(), [`${FACT_SLUG}.md`, 'Prefers-short-answers.md'].sort());
+    assert.equal(fs.existsSync(path.join(dataDir, 'memory', 'agents', 'other')), false, '模型自选 scope 不得改变落点');
+
+    // 主链（无 scope）= 主记忆目录；两侧各自独立（同 body 不互相去重）
+    const main = registryFor({ root, mode: 'dontAsk' });
+    const m = await main.registry.execute(
+      'memory_write',
+      { type: 'project', content: 'Main chain writes stay in the main memory dir', description: 'main chain fact' },
+      main.safety,
+    );
+    assert.equal(m.ok, true);
+    assert.deepEqual(recordFiles(dataDir), ['main-chain-fact.md'], '主链落主目录');
+    assert.deepEqual(mdFilesIn(ownDir).sort(), [`${FACT_SLUG}.md`, 'Prefers-short-answers.md'].sort(), '子代理目录不受主链写入影响');
+  });
+});
+
+test('memory_write：scope 非法形态 fail-closed（越界子目录零落盘零副作用）', async () => {
+  await withRoot(({ root, dataDir }) => {
+    // 子目录字符串直接拼进落盘路径：`..`/多段/空 id 一律拒，绝不交给 MemoryStore 的路径拼接
+    for (const scope of ['', 'agents/', 'agents/.', 'agents/..', 'agents/a/b', '../../escape', 'main/../x']) {
+      const r = writeMemoryFact({ root, ...FACT, scope: scope as MemoryScope });
+      assert.equal(r.ok, false, `应拒绝 scope=${JSON.stringify(scope)}`);
+      if (!r.ok) assert.equal(r.error.code, 'MEMORY_SCOPE_INVALID');
+    }
+    assert.deepEqual(recordFiles(dataDir), [], '非法 scope 零落盘');
+    assert.equal(fs.existsSync(path.join(dataDir, 'memory')), false, '非法 scope 零副作用（连记忆目录都不建）');
+
+    // 合法形态：main 与 agents/<id>（后者落子目录，主目录仍空）
+    const mainOk = writeMemoryFact({ root, ...FACT, scope: 'main' });
+    assert.ok(mainOk.ok);
+    assert.deepEqual(recordFiles(dataDir), [`${FACT_SLUG}.md`]);
+  });
 });

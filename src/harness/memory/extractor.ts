@@ -5,6 +5,7 @@ import { isModelSummarizer } from '../context/summarizer';
 import { MemoryRecord, MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD, MemoryType, normalizeText, slugifyMemory } from './store';
 import { consolidateMemory } from './consolidate';
 import { scanMemoryText } from './guards';
+import { MemoryScope } from './paths';
 import { Result, ok, fail } from '../../result';
 import { resolveMemoryConfig } from '../../config/memory-config';
 
@@ -168,12 +169,25 @@ function findExistingDuplicate(store: MemoryStore, input: { description: string;
  * 本单点收结构化事实（type/content/description），slug 由 description 折叠（`add`）。两者共用同一组闸门单点（`./guards`）
  * 与同一落盘基座（`MemoryStore`：去重/规范化/索引重建/容量两级），不各自拼装——闸门不会因入口不同而放宽。
  *
- * 语义：off 或类型非法/正文空 → 带码失败且零副作用（off 判门先于 store 构造，连记忆目录都不建）；
+ * 语义：off 或 scope/类型非法/正文空 → 带码失败且零副作用（off 判门先于 store 构造，连记忆目录都不建）；
  * 重复写幂等返回既有 slug（`existed: true`）；成功附容量近满提醒（超限仍由 `store.add` 报 MEMORY_INDEX_OVER_LIMIT 浮出）。
+ *
+ * `scope`（规格 §4.2 记忆隔离）：缺省/`'main'` = 主记忆目录；`agents/<id>` = 该子代理自有目录（落盘走
+ * `new MemoryStore(root, { subdir })`，与 `subagent.agentMemory` 同一目录形态）。**链侧收窄对 memory_write 不生效**
+ * （canonical 同族 Write、入参无 path → `PATH_TOOLS` 归一为 root，`isMemoryPath` 恒不命中），故 scope 只能由本接缝承载：
+ * 装配层把安全链的 `memoryScope` 透传进来（builtin 第 8 参执行期注入），子代理链的 `agents/<id>` 才真正落到自有目录。
  */
-export function writeMemoryFact(opts: { root: string; type: string; content: string; description?: string }): Result<MemoryAdmission> {
+export function writeMemoryFact(opts: {
+  root: string;
+  type: string;
+  content: string;
+  description?: string;
+  scope?: MemoryScope;
+}): Result<MemoryAdmission> {
   // 总开关最先判（规格 §7「不注入 / 不提取 / 不整理 / 写被拒」四贯通之一）：关闭即零副作用——不 mkdir、不扫描、不落盘
   if (!resolveMemoryConfig().autoMemory) return fail('MEMORY_DISABLED', 'memory write denied: auto memory is off');
+  const subdir = memorySubdir(opts.scope);
+  if (!subdir.ok) return subdir;
   if (!WRITABLE_MEMORY_TYPES.includes(opts.type as MemoryType)) {
     return fail('MEMORY_TYPE_INVALID', `unknown memory type: ${opts.type} (expect one of ${WRITABLE_MEMORY_TYPES.join('|')})`);
   }
@@ -181,9 +195,24 @@ export function writeMemoryFact(opts: { root: string; type: string; content: str
   if (!content) return fail('MEMORY_EMPTY', 'memory content must not be empty');
   // description 缺省取正文首行、截 80（单行口径与 MemoryRecord.description 一致；正文去掉首尾空白后首行必非空）
   const description = (opts.description?.trim() || content.split('\n')[0].trim()).slice(0, 80);
-  return admitMemory(new MemoryStore(opts.root), sunshineLines(opts.root), {
+  const store = subdir.value === undefined ? new MemoryStore(opts.root) : new MemoryStore(opts.root, { subdir: subdir.value });
+  return admitMemory(store, sunshineLines(opts.root), {
     type: opts.type as MemoryType,
     description,
     body: content,
   });
+}
+
+/**
+ * 记忆 scope → `MemoryStore` 子目录（规格 §4.2）：`undefined`/`'main'` 为主记忆目录，`agents/<id>` 为子代理自有子目录。
+ * 子目录字符串直接拼进落盘路径，故此处 fail-closed 校验形态：只接受单段合法 `agents/<id>`（拒 `/`、`\`、`.`、`..`），
+ * 越界 scope 宁可带码失败也不落盘（不把分支判断留给 MemoryStore 的路径拼接）。
+ */
+function memorySubdir(scope: MemoryScope | undefined): Result<string | undefined> {
+  if (scope === undefined || scope === 'main') return ok(undefined);
+  const id = /^agents\/([^/\\]+)$/.exec(scope)?.[1] ?? '';
+  if (id === '' || id === '.' || id === '..') {
+    return fail('MEMORY_SCOPE_INVALID', `invalid memory scope: ${scope} (expect main or agents/<id>)`);
+  }
+  return ok(scope);
 }

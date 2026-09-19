@@ -79,3 +79,66 @@ test('asker：write 类工具审批 kind=write 且 subject 取路径', async () 
   assert.equal(seen[0].kind, 'write');
   assert.equal(seen[0].subject, 'a.txt');
 });
+
+test('asker：无 path/url/query 的结构化写工具 subject 取 type:摘要（卡片可读且恒非空）', async () => {
+  const g = manualGuard();
+  const seen: ApprovalRequest[] = [];
+  g.setAsker(async (req) => {
+    seen.push(req);
+    return 'deny';
+  });
+  // memory_write 形态（canonical 同族 Write、入参无 path）：审批卡只有 `Approval ap-1 (write)` 与一行空白即看不出在写什么
+  const fact = { type: 'project', content: 'Repo uses pnpm with a repo-local store', description: 'pnpm store is repo-local' };
+  await g.preToolUseAsync('Write', fact);
+  assert.equal(seen[0].kind, 'write');
+  assert.equal(seen[0].subject, 'project: pnpm store is repo-local');
+  assert.notEqual(seen[0].subject, '', 'subject 恒非空（空 subject 会让卡片空白且会话放行键跨内容命中）');
+
+  // description 缺省 → 取正文首行（单行口径，与 writeMemoryFact 的 description 缺省同源）
+  await g.preToolUseAsync('Write', { type: 'user', content: 'Prefers concise answers\nsecond line' });
+  assert.equal(seen[1].subject, 'user: Prefers concise answers');
+
+  // path 优先于结构化字段：既有 write/webfetch 语义零变化
+  await g.preToolUseAsync('Write', { path: 'a.txt', type: 'project', content: 'x', description: 'y' });
+  assert.equal(seen[2].subject, 'a.txt');
+  await g.preToolUseAsync('WebFetch', { url: 'https://example.com', content: 'x' });
+  assert.equal(seen[3].subject, 'https://example.com');
+
+  // 结构化字段全缺仍为空（不臆造摘要），该形态的跨族风险由 allowKey 的 `<tool>:` 兜住（见下一条用例）
+  await g.preToolUseAsync('Write', {});
+  assert.equal(seen[4].subject, '');
+});
+
+test('asker：allowKey 对空 subject 并入工具规范名（键空间至少含工具身份）', () => {
+  const g = manualGuard();
+  const key = (tool: string, subject: string): string =>
+    (g as unknown as { allowKey(t: string, s: string): string }).allowKey(tool, subject);
+  assert.equal(key('Write', ''), 'Write:');
+  assert.equal(key('mcp__github__create_issue', ''), 'mcp__github__create_issue:');
+  assert.equal(key('Bash', ''), 'Bash:', '空命令行同样并入工具名（不得落空键）');
+  assert.equal(key('Write', 'a.txt'), 'a.txt', '非空 subject 语义零变化');
+  assert.equal(key('Bash', 'npm run build'), 'npm', 'Bash 仍归一命令族');
+});
+
+test('asker：空 subject 不跨族放行（一次 always 只登记该工具的键）', async () => {
+  const seen: ApprovalRequest[] = [];
+  const g = new SecurityGuard(new PolicyEngine(), 'manual', ['github']);
+  g.setAsker(async (req) => {
+    seen.push(req);
+    return 'always';
+  });
+  // MCP 工具无 path/url/query/type/description/content → subject 为空；旧语义下该键为 ''，与任意空键工具共享
+  const mcp = await g.preToolUseAsync('mcp__github__create_issue', { title: 'x' });
+  assert.equal(mcp.allowed, true);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].subject, '');
+  const mcpAgain = await g.preToolUseAsync('mcp__github__create_issue', { title: 'y' });
+  assert.equal(mcpAgain.allowed, true);
+  assert.equal(seen.length, 1, 'always 后同工具空键直通');
+
+  // 换工具（subject 同样为空）必须重新询问：空键不得成为跨工具族公共键
+  const write = await g.preToolUseAsync('Write', {});
+  assert.equal(write.allowed, true);
+  assert.equal(seen.length, 2, '不同工具的空 subject 不得命中同一登记键');
+  assert.equal(seen[1].subject, '');
+});

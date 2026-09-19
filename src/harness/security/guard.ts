@@ -63,11 +63,15 @@ export class SecurityGuard {
   /** 会话级 always 登记面（内存态；会话结束由调用方 clearSessionAllows，不落盘）。键经 allowKey 归一 */
   private sessionAllows = new Set<string>();
 
-  /** 放行登记键：Bash 归一为命令族（首 token basename，放行 npm run build 即放行本会话 npm 族），其余工具用 subject 原样（path/url） */
+  /** 放行登记键：Bash 归一为命令族（首 token basename，放行 npm run build 即放行本会话 npm 族），其余工具用 subject 原样（path/url）。
+   *  空 subject 一律并入工具规范名（`<tool>:`）：键空间必须至少含工具身份——否则 `''` 成为跨工具族的公共键，
+   *  一次 always（如无 path/url/query 入参的记忆写入或 MCP 工具）会连带放行本会话内所有「键同为空」的其它工具。 */
   private allowKey(tool: string, subject: string): string {
+    if (subject === '') return `${tool}:`;
     if (tool !== 'Bash') return subject;
     const first = subject.trim().split(/\s+/)[0] ?? '';
-    return first.split('/').pop() ?? first;
+    const base = first.split('/').pop() ?? first;
+    return base === '' ? `${tool}:` : base;
   }
   private seq = 0;
 
@@ -106,7 +110,9 @@ export class SecurityGuard {
     return { allowed: true };
   }
 
-  /** 审批 subject 提取：Bash 取命令行，write 类取 path，webfetch 取 url */
+  /** 审批 subject 提取：Bash 取命令行，write 类取 path，webfetch 取 url，websearch 取 query；
+   *  path/url/query 三者全缺时退到结构化入参摘要（`<type>: <description|正文首行>`）——memory_write 一类无路径入参的写工具
+   *  必须给出非空且看得出「在写什么」的 subject（空 subject 的卡片只有一行空白，空键的会话放行又会跨内容命中）。 */
   private approvalSubject(tool: string, input: unknown): string {
     if (tool === 'Bash') return this.extractSpecifier(tool, input);
     if (typeof input === 'object' && input !== null) {
@@ -116,6 +122,8 @@ export class SecurityGuard {
       if (typeof u === 'string') return u;
       const q = (input as { query?: unknown }).query;
       if (typeof q === 'string') return q;
+      const structured = structuredSubject(input);
+      if (structured !== '') return structured;
     }
     return this.extractSpecifier(tool, input);
   }
@@ -178,4 +186,22 @@ export class SecurityGuard {
     }
     return null;
   }
+}
+
+/**
+ * 结构化入参摘要（approvalSubject 的无 path/url/query 兜底单点）：`<type>: <摘要>`，摘要取 description、缺省取 content 首行；
+ * 截 80 字符且只取首行——审批卡片单行展示，subject 同时充当会话放行键，须看得出「在写什么」。
+ * 三字段全缺返回 `''`（调用方退回既有 extractSpecifier 语义，空 subject 的跨族风险由 allowKey 的 `<tool>:` 兜住）。
+ */
+function structuredSubject(input: object): string {
+  const obj = input as { type?: unknown; description?: unknown; content?: unknown };
+  const type = typeof obj.type === 'string' ? obj.type.trim() : '';
+  const raw =
+    typeof obj.description === 'string' && obj.description.trim() !== ''
+      ? obj.description
+      : typeof obj.content === 'string'
+        ? obj.content
+        : '';
+  const summary = (raw.trim().split('\n')[0] ?? '').trim();
+  return [type, summary].filter((s) => s !== '').join(': ').slice(0, 80);
 }
