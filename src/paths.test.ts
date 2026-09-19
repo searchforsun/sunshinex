@@ -55,5 +55,8 @@ test('大小写语义随平台文件系统走：POSIX 必须区分大小写（�
 
 test('相对/非归一形态：原语不做 resolve，口径由调用方负责（契约显式化）', () => {
   assert.equal(isWithin('/data/root', 'root/x.md'), false, '未 resolve 的相对路径不匹配绝对 root');
-  assert.equal(isWithin('/data/root', '/data/root/../etc/passwd'), true, '含 .. 的字面量照字符串判定（未归一即在内）——故调用方必须先 realpath/resolve');
+  // 字面量按字符串判定：写法上以 root+sep 开头即算在内，原语不解析 ..（故调用方必须先 realpath/resolve）
+  assert.equal(isWithin('/data/root', `/data/root${sep}..${sep}etc${sep}passwd`), true, '含 .. 的字面量照字符串判定，原语不代劳归一');
+  // 归一后的形态才是安全链实际输入：真的逃出 root 即判在外（两个断言成对，钉住「归一责任在调用方」）
+  assert.equal(isWithin('/data/root', path.resolve(`${sep}data${sep}root`, '..', 'etc', 'passwd')), false, '归一后的真实逃逸判在外');
 });
