@@ -13,7 +13,7 @@ import * as path from 'path';
 import { Result, ok, fail } from '../../result';
 import { dataDirReal } from '../../config/data-dir';
 import { MEMORY_INDEX_MAX_LINES, MemoryStore, MemoryType, slugifyMemory } from './store';
-import { scanMemoryText } from './extractor';
+import { scanMemoryText } from './guards';
 import { isMemoryPath, MemoryScope } from './paths';
 
 const INDEX_NAME = 'MEMORY.md';

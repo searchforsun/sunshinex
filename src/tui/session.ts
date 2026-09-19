@@ -15,7 +15,7 @@ import { SessionJournal, listSessions, newSessionId, readActivePointer, sessions
 import { resolveDataDir } from '../config/data-dir';
 import { MemoryStore } from '../harness/memory/store';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
-import { scanMemoryText } from '../harness/memory/extractor';
+import { scanMemoryText } from '../harness/memory/guards';
 import { consolidateMemory } from '../harness/memory/consolidate';
 import { isModelSummarizer } from '../harness/context/summarizer';
 

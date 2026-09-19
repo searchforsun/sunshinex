@@ -4,28 +4,14 @@ import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
 import { MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD, normalizeText } from './store';
 import { consolidateMemory } from './consolidate';
+import { scanMemoryText } from './guards';
 
 /**
  * 记忆提取管线（auto memory 规格 §4）：reactor settle 单点挂载、独立一次性模型调用不进主链。
  * 门禁复用 summarizer provider==='openai' 形态——Stub/Scripted/未配真实模型零调用零副作用；
  * 提取抛错/空产出/畸形 JSON 一律静默降级，任务收口永不因记忆失败而失败（旁路纪律）。
+ * 闸门正则与命中判定归 `./guards` 公共单点（规格 §3.3），本文件不再自带第二份实现。
  */
-
-/** 临时/会话限定词黑名单（规格 §6 防线②写时机械扫描，zh+en；与注入/不可见 Unicode 扫描同闸门合并执行，纯规则零模型二次调用） */
-// i18n-exempt: 匹配中文记忆内容的特征正则
-const TEMPORAL_MARKERS = /昨天|上周|上月|刚才|现在|本次会话|这个会话|上述|yesterday|last week|just now|this session/i;
-/** 提示注入特征（记忆并入冻结快照≈进系统提示词，须防持久化注入——Hermes 同款） */
-// i18n-exempt: 匹配中文记忆内容的特征正则
-const INJECTION_MARKERS = /ignore (all )?previous|disregard .{0,24}instructions|忽略(之前|以上|前面)(的)?(指令|内容)|无视(之前|以上)(的)?(指令|内容)/i;
-/** 不可见 Unicode（零宽/双向控制字符） */
-const INVISIBLE_UNICODE = /[\u200b-\u200f\u202a-\u202e\u2060]/;
-
-/** 写时机械扫描（规格 §6 防线②）：手动 add 与自动提取共用同一闸门，纯规则零模型调用；命中返回原因码 */
-export function scanMemoryText(text: string): 'temporal' | 'injection' | null {
-  if (TEMPORAL_MARKERS.test(text)) return 'temporal';
-  if (INJECTION_MARKERS.test(text) || INVISIBLE_UNICODE.test(text)) return 'injection';
-  return null;
-}
 
 interface Candidate {
   type?: unknown;
@@ -51,8 +37,7 @@ export async function settleMemory(opts: { goal: string; reply: string; model: M
       if (!description || !content) continue;
       if (c.scope !== 'persistent') continue; // 闸门 a：会话性内容不落盘
       const text = `${description}\n${content}`;
-      if (TEMPORAL_MARKERS.test(text)) continue; // 闸门 b：临时措辞
-      if (INJECTION_MARKERS.test(text) || INVISIBLE_UNICODE.test(text)) continue; // 闸门 c：注入/不可见 Unicode
+      if (scanMemoryText(text) !== null) continue; // 闸门 b/c：临时措辞与注入/不可见 Unicode（guards 单点，判定集合与迁移前等价）
       if (sunshine.includes(normalizeText(description))) continue; // 闸门 e：SUNSHINE.md 已写明项（CC 同款）
       const type = c.type === 'user' || c.type === 'feedback' || c.type === 'reference' ? c.type : 'project';
       try {
@@ -82,6 +67,7 @@ function buildExtractionPrompt(goal: string, reply: string): string {
   return [
     'You are performing a memory extraction (memory-extraction) after a completed engineering task.',
     'From the task material below, extract only durable facts worth remembering across sessions.',
+    'Be conservative — it is fine to extract nothing; only include facts clearly useful in a future conversation.',
     'Four allowed types: user (user preferences), feedback (corrective feedback), project (project facts), reference (external references).',
     'Self-containment rules: no relative time references — use absolute YYYY-MM-DD dates or omit timing; no unresolved references — name specific entities (file paths, identifiers, component names) instead of "this" or "that"; include units with quantities; each entry must be readable standalone.',
     'Skip implementation details derivable from the codebase and anything already written in SUNSHINE.md.',

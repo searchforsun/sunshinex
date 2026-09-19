@@ -62,6 +62,7 @@ test('openai 桩：候选落盘 + prompt 含当前日期与自包含化条款', 
     assert.equal(prompts.length, 1);
     assert.ok(prompts[0].includes(new Date().toISOString().slice(0, 10)), '当前日期注入（解相对指代前提）');
     assert.ok(/absolute (date|YYYY)|specific entity|no relative time|do not refer/i.test(prompts[0]), '自包含化条款在 prompt');
+    assert.match(prompts[0], /Be conservative — it is fine to extract nothing/);
     assert.equal(mem.count(), 1);
     assert.equal(mem.list()[0].slug, 'uses-pnpm-workspaces');
   });

@@ -53,3 +53,27 @@ test('钉子：SUNSHINE.md 不参与配置（同 CLAUDE.md 定位）', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('memory-config：管线四键缺省值与 env 覆盖', () => {
+  const d = resolveMemoryConfig({} as NodeJS.ProcessEnv);
+  assert.equal(d.memoryIdleKickMs, 300000);
+  assert.equal(d.stepDigestMaxSteps, 20);
+  assert.equal(d.stepDigestItemChars, 120);
+  assert.equal(d.stepDigestTotalChars, 1500);
+  const e = {
+    SUNSHINEX_MEMORY_IDLE_KICK_MS: '1000',
+    SUNSHINEX_MEMORY_STEP_DIGEST_MAX_STEPS: '5',
+    SUNSHINEX_MEMORY_STEP_DIGEST_ITEM_CHARS: '64',
+    SUNSHINEX_MEMORY_STEP_DIGEST_TOTAL_CHARS: '800',
+  } as NodeJS.ProcessEnv;
+  const c = resolveMemoryConfig(e);
+  assert.equal(c.memoryIdleKickMs, 1000);
+  assert.equal(c.stepDigestMaxSteps, 5);
+  assert.equal(c.stepDigestItemChars, 64);
+  assert.equal(c.stepDigestTotalChars, 800);
+});
+
+test('memory-config：管线四键非法值 fail-fast', () => {
+  assert.throws(() => resolveMemoryConfig({ SUNSHINEX_MEMORY_IDLE_KICK_MS: 'abc' } as NodeJS.ProcessEnv));
+  assert.throws(() => resolveMemoryConfig({ SUNSHINEX_MEMORY_STEP_DIGEST_MAX_STEPS: '0' } as NodeJS.ProcessEnv));
+});
