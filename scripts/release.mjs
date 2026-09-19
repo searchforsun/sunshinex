@@ -210,6 +210,16 @@ async function ghApi(method, url, token, opts = {}) {
   }
 }
 
+/**
+ * 当前 Node 是否支持 NODE_USE_SYSTEM_CA（官方门槛：v24.6.0 / v22.19.0）。
+ * 版本感知的理由：v22.18.0 这类「差一点」的版本设了该变量毫无作用，用户会以为方案本身无效。
+ */
+const SYSTEM_CA_SUPPORTED = (() => {
+  const [major, minor] = process.versions.node.split('.').map((n) => Number(n));
+  if (major >= 24) return minor >= 6;
+  return major === 22 && minor >= 19;
+})();
+
 /** 把一次 API 失败讲清楚：传输层没出去（cause）/ HTTP 状态 + GitHub 原文 + 按状态给的可操作处置 */
 function apiFail(what, res) {
   if (res.cause) {
@@ -217,7 +227,9 @@ function apiFail(what, res) {
     if (/CERT|SSL|TLS|LEAF_SIGNATURE|SELF_SIGNED|ISSUER|VERIFY/i.test(res.cause)) {
       die(
         `${what}失败：TLS 证书校验没过（${res.cause}）—— 企业网络做 TLS 拦截时，Node 的根证书库不认公司根证书。三选一：` +
-          '① 让 Node 读系统信任库：设 NODE_USE_SYSTEM_CA=1 后重跑（需 Node ≥ 22.19 或 ≥ 24.6）；' +
+          (SYSTEM_CA_SUPPORTED
+            ? '① 让 Node 读系统信任库：设 NODE_USE_SYSTEM_CA=1 后重跑；'
+            : `① 你的 Node v${process.versions.node} 不支持 NODE_USE_SYSTEM_CA（官方门槛 v22.19.0 / v24.6.0）：升级 Node 后可走这一步，或直接走 ②；`) +
           '② 导出公司根证书给 Node：NODE_EXTRA_CA_CERTS=<公司根证书.pem> 后重跑（任意版本可用）；' +
           '③ 装 gh CLI 走 gh 通道（gh 读系统信任库）。' +
           '应急但会关掉证书校验（有中间人风险）：NODE_TLS_REJECT_UNAUTHORIZED=0',
