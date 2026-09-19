@@ -328,30 +328,39 @@ if (CHANNEL.kind === 'gh') {
     run('gh', ['release', 'create', TAG, TGZ, '-R', REPO, '--target', HEAD, '--title', TAG, '--notes', NOTES], { stdio: 'inherit' });
   }
 } else {
-  const AUTH = `Authorization: Bearer ${CHANNEL.token}`;
   const API = `https://api.github.com/repos/${REPO}/releases`;
-  say(`创建 Release ${TAG}（GitHub API）`);
-  // HEAD 探测存在性（免写 /dev/null；取末个 HTTP/ 状态行兼容代理 100-continue）
-  const probe = spawnSync('curl', ['-s', '-I', '-H', AUTH, `${API}/tags/${TAG}`], { encoding: 'utf8' });
-  const statuses = [...(probe.stdout || '').matchAll(/^HTTP\/[\d.]+\s+(\d{3})/gim)].map((m) => Number(m[1]));
-  const existing = statuses.length ? statuses[statuses.length - 1] : 0;
+  say(`发布 ${TAG}（GitHub API）`);
+  // 存在性用 GET 直接问：一次调用同时拿到状态与已有 Release 正文，不去猜 HEAD 的行为
+  const probe = ghApi('GET', `${API}/tags/${TAG}`, CHANNEL.token);
   let release;
-  if (existing === 200) {
+  if (probe.status === 200) {
+    release = JSON.parse(probe.body);
     if (!CLOBBER) die(`Release ${TAG} 已存在：发新版本用 --version/--bump，覆盖该版本附件加 --clobber`);
-    const got = ghApi('GET', `${API}/tags/${TAG}`, CHANNEL.token);
-    if (got.status !== 200) apiFail('查询已存在 Release', got);
-    release = JSON.parse(got.body);
-  } else {
+    say(`Release ${TAG} 已存在（id=${release.id}），--clobber 覆盖同名附件`);
+  } else if (probe.status === 404) {
     const created = ghApi('POST', API, CHANNEL.token, {
       json: JSON.stringify({ tag_name: TAG, name: TAG, body: NOTES, target_commitish: HEAD }),
     });
     if (created.status !== 201) apiFail('创建 Release', created);
     release = JSON.parse(created.body);
+  } else {
+    apiFail('查询已有 Release', probe);
   }
   const uploadUrl = String(release.upload_url || '').split('{')[0];
   if (!uploadUrl || uploadUrl === 'null') die('未取得 upload_url');
+  // --clobber 的真语义：REST 上传同名附件一律 422 already_exists，必须先删旧附件再传。
+  // gh 的 --clobber 是它自己封装了这一步；curl 通道此前只认了参数没做这件事，故「已存在 + --clobber」必然 422。
+  if (CLOBBER) {
+    const dup = (Array.isArray(release.assets) ? release.assets : []).find((a) => a.name === TGZ_NAME);
+    if (dup) {
+      const del = ghApi('DELETE', `https://api.github.com/repos/${REPO}/releases/assets/${dup.id}`, CHANNEL.token);
+      if (del.status !== 204 && del.status !== 200) apiFail(`删除同名旧附件 ${dup.name}`, del);
+      say(`已删除同名旧附件 ${dup.name}（${Math.max(1, Math.round((dup.size || 0) / 1024))}KB）`);
+    }
+  }
   const up = ghApi('POST', `${uploadUrl}?name=${TGZ_NAME}`, CHANNEL.token, { file: TGZ });
   if (up.status !== 201) apiFail('附件上传', up);
+  say(`附件已上传：${TGZ_NAME}（${humanSize}）`);
 }
 
 say('发布完成');
