@@ -19,7 +19,7 @@
 
 平台契约的机器强制（声明即须可执行）：
 
-- **CI 矩阵** `.github/workflows/ci.yml`：`ubuntu-latest + windows-latest` × Node `22`/`24`，步骤为 `pnpm install --frozen-lockfile` → `pnpm test` → `pnpm selfcheck`；`fail-fast: false`，避免一个组合失败掩盖其余组合（平台差异的价值恰在「哪个平台挂了」）。Windows runner 预装 Git for Windows，故 `selfcheck` 会真实走通 `resolveShell()` 的 Git Bash 命中路径。
+- **CI 矩阵** `.github/workflows/ci.yml`：`ubuntu-latest + windows-latest` × Node `22`/`24`，步骤为 `pnpm install --frozen-lockfile` → `pnpm test` → `pnpm selfcheck`；`fail-fast: false`，避免一个组合失败掩盖其余组合（平台差异的价值恰在「哪个平台挂了」）。Windows runner 预装 Git for Windows，故 `selfcheck` 会真实走通 `resolveShell()` 的 Git Bash 命中路径；**PowerShell 一级与 ComSpec 末位在 CI 上不会被真实命中**（runner 恒有 Git Bash），其判别力全部由 `resolveShellFor` 注入式用例承载（POSIX 上亦断言 Windows 决议序）——两条分支的端到端行为如实登记为「无机器闸门，仅开发机手工验证」。
 - **流水线未覆盖项（如实登记，勿误以为已覆盖）**：`scripts/*probe*.js` 为真实模型冒烟，依赖外部 API 且按 `.gitignore` 不入库，仅开发机手动执行；macOS 语义与 Linux 同源（POSIX），runner 成本约为 Linux 十倍，按性价比省略——其专属风险面「不区分大小写但保留大小写的文件系统」已由 `windows-latest` 的同名面覆盖。
 - **文本契约**：`.gitattributes`（`* text=auto eol=lf`；二进制与 `*.snap` 显式排除转换）管入库/检出字节，`.editorconfig`（`end_of_line = lf`）管编辑器落盘字节。二者缺一不可——Git for Windows 缺省 `core.autocrlf=true`，只靠文档纪律时 Windows 侧一次提交即可引入整文件 CRLF 重写。
 - **路径判界单点** `src/paths.ts` 的 `isWithin(root, target)`：安全链 root 判界、dataDir 判界、记忆路径分类三处共用，禁止再手写 `startsWith(root + path.sep)`。该原语**刻意不做大小写归一**——POSIX 区分大小写，不敏感比较会把越界目标判为根内（fail-open 真缺口）；Windows/macOS 虽不区分，但比较双方同由 `realpath` 产出（libuv 经 `GetFinalPathNameByHandleW` 返回磁盘规范大小写），天然一致故无需归一。契约：两侧须**口径同源**（都归一或都不归一）。
