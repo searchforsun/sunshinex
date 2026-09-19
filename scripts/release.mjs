@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SunshineX 发版脚本（跨平台：Windows / macOS / Linux，node scripts/release.mjs）：
 // 全量验证 → npm pack → 创建 GitHub Release 并上传 tgz 附件。
-// 仅依赖 node 内置模块 + git / npm（pnpm 可选加速）/ gh 或 curl；不依赖 sh/sed/du/jq。
+// 仅依赖 node 内置模块 + git / npm（pnpm 可选加速）/ gh；不依赖 sh/sed/du/jq/curl。
 // 发布后任何机器一条链接直装（npm 原生支持 tarball URL）：
 //   npm install -g https://github.com/<owner>/<repo>/releases/download/<tag>/<name>-<version>.tgz
 import * as fs from 'node:fs';
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 // Windows 下 npm/pnpm 实体是 .cmd 脚本：Node ≥ 18.20（CVE-2024-27980）禁止 spawn 直接执行
-// .cmd/.bat（一律 EINVAL），必须经 shell 调用；git/gh/curl/node 为原生可执行，免 shell 免引号语义
+// .cmd/.bat（一律 EINVAL），必须经 shell 调用；git/gh/node 为原生可执行，免 shell 免引号语义
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const PNPM = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
@@ -31,8 +31,8 @@ const usage = () => {
 
 上传通道（自动探测，三选一）:
   1. gh CLI（推荐）          gh auth login 一次即可（多仓库通用）
-  2. GITHUB_TOKEN + curl     GITHUB_TOKEN=<pat> node scripts/release.mjs（JSON 解析已内建，无需 jq）
-  3. git 凭据助手 + curl     复用 clone/push 已存的凭据（能 git push 通常即可用，无需另装 gh 或配 PAT）
+  2. GITHUB_TOKEN + fetch    GITHUB_TOKEN=<pat> node scripts/release.mjs（内置 fetch，无 jq 无 curl）
+  3. git 凭据助手 + fetch    复用 clone/push 已存的凭据（能 git push 通常即可用，无需另装 gh 或配 PAT）
   通道决议在开头完成：缺通道立即报出，不会等跑完全量验证与打包之后才失败。`);
 };
 
@@ -165,14 +165,13 @@ function tokenFromGitCredential() {
   return password.length > 0 ? password : null;
 }
 
-/** 通道决议：gh CLI 优先（一次登录多仓库通用）；否则 curl + 令牌（环境变量 > git 凭据助手） */
+/** 通道决议：gh CLI 优先（一次登录多仓库通用）；否则内置 fetch + 令牌（环境变量 > git 凭据助手） */
 function resolveChannel() {
   if (has('gh')) return { kind: 'gh', label: 'gh CLI' };
-  if (!has('curl')) return null;
   const envToken = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
-  if (envToken) return { kind: 'curl', token: envToken, label: 'GitHub API + curl', auth: 'GITHUB_TOKEN 环境变量' };
+  if (envToken) return { kind: 'api', token: envToken, label: 'GitHub API', auth: 'GITHUB_TOKEN 环境变量' };
   const gitToken = tokenFromGitCredential();
-  if (gitToken) return { kind: 'curl', token: gitToken, label: 'GitHub API + curl', auth: 'git 凭据助手（复用 clone/push 已存凭据）' };
+  if (gitToken) return { kind: 'api', token: gitToken, label: 'GitHub API', auth: 'git 凭据助手（复用 clone/push 已存凭据）' };
   return null;
 }
 
@@ -186,35 +185,41 @@ if (CHANNEL) {
 }
 
 /**
- * 调 GitHub API 并一次取回「状态码 + 正文」。失败的正文才是诊断依据——`curl -sf` 会把状态码与错误正文一起吞掉，
- * 只剩一句「失败」（本脚本第一次实跑创建 Release 失败时就是这样一无所获）。
- * 状态码取自 `-i` 带回的响应头（取末个 HTTP/ 行，兼容代理 100-continue），不落临时文件。
+ * 调 GitHub API 并一次取回「状态码 + 正文」。
+ * 走 Node 内置 fetch（不再经 curl）：curl 的失败（证书 / 代理 / 版本差异）只写进子进程 stderr，
+ * 上层拿到的是「什么都没有」（状态码 0）——本次用户实跑即此形态；fetch 的失败带 cause.code
+ * （ENOTFOUND / ETIMEDOUT / CERT_* 等），能直接说出属于哪一类网络问题，依赖面同时收窄一层。
  */
-function ghApi(method, url, token, opts = {}) {
-  const args = ['-sS', '-i', '-X', method, '-H', `Authorization: Bearer ${token}`, '-H', 'Accept: application/vnd.github+json'];
-  if (opts.json !== undefined) args.push('-H', 'Content-Type: application/json', '--data-binary', opts.json);
-  if (opts.file !== undefined) args.push('-H', 'Content-Type: application/octet-stream', '--data-binary', `@${opts.file}`);
-  args.push(url);
-  const r = spawnSync('curl', args, { encoding: 'utf8', windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
-  const lines = (r.stdout || '').split('\n');
-  let status = 0;
-  let bodyFrom = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].startsWith('HTTP/')) continue;
-    const code = lines[i].split(' ')[1] || '';
-    if (code.length === 3 && Number.isInteger(Number(code))) {
-      status = Number(code);
-      bodyFrom = i + 1;
-    }
+async function ghApi(method, url, token, opts = {}) {
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+  const init = { method, headers };
+  if (opts.json !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    init.body = opts.json;
   }
-  // 末个状态行之后可能还有剩余响应头，跳到空行再取正文
-  while (bodyFrom < lines.length && lines[bodyFrom].trim() !== '') bodyFrom++;
-  return { status, body: lines.slice(bodyFrom + 1).join('\n'), error: r.error, stderr: r.stderr };
+  if (opts.file !== undefined) {
+    headers['Content-Type'] = 'application/octet-stream';
+    init.body = fs.readFileSync(opts.file);
+  }
+  try {
+    const res = await fetch(url, init);
+    return { status: res.status, body: await res.text() };
+  } catch (e) {
+    const cause = e?.cause?.code || e?.cause?.message || e?.message || String(e);
+    return { status: 0, body: '', cause: String(cause) };
+  }
 }
 
-/** 把一次 API 失败讲清楚：HTTP 状态 + GitHub 原文 message + 按状态给出的可操作处置 */
+/** 把一次 API 失败讲清楚：传输层没出去（cause）/ HTTP 状态 + GitHub 原文 + 按状态给的可操作处置 */
 function apiFail(what, res) {
-  if (res.error) die(`${what}失败：curl 执行出错（${res.error.message}）`);
+  if (res.cause) {
+    const hint = /CERT|SSL|TLS/i.test(res.cause)
+      ? 'TLS 校验失败（企业根证书 / 中间人代理场景）：设 NODE_EXTRA_CA_CERTS=<企业根证书.pem> 后重跑，或改用 gh CLI 通道'
+      : /ENOTFOUND|EAI_AGAIN/i.test(res.cause)
+        ? '域名解析失败：检查网络与 DNS'
+        : '请求没能到达 GitHub：检查网络 / 代理 / 防火墙（本机 git 能通不等于 fetch 能通）';
+    die(`${what}失败：请求未发出（${res.cause}）—— ${hint}`);
+  }
   let msg = '';
   try {
     msg = JSON.parse(res.body)?.message || '';
@@ -236,10 +241,10 @@ function apiFail(what, res) {
  * （暴露「凭据助手存的是另一个账号」这类错配）。存在的理由：权限不足原本要到验证 + 打包几分钟之后、
  * 以一句无信息的失败暴露；预检把同一判断提前到约一秒。--dry-run 恒不联网，故预检只在真实发版跑。
  */
-function preflight(token) {
-  const repo = ghApi('GET', `https://api.github.com/repos/${REPO}`, token);
+async function preflight(token) {
+  const repo = await ghApi('GET', `https://api.github.com/repos/${REPO}`, token);
   if (repo.status !== 200) apiFail('仓库访问预检', repo);
-  const who = ghApi('GET', 'https://api.github.com/user', token);
+  const who = await ghApi('GET', 'https://api.github.com/user', token);
   let login = '';
   try {
     login = JSON.parse(who.body)?.login || '';
@@ -262,7 +267,7 @@ function preflight(token) {
   say(`凭据预检：身份 ${identity}；${REPO} push=${push === true ? 'yes' : 'unknown'}`);
 }
 
-if (!DRY_RUN && CHANNEL.kind === 'curl') preflight(CHANNEL.token);
+if (!DRY_RUN && CHANNEL.kind === 'api') await preflight(CHANNEL.token);
 
 // ---------- 工作区与上游一致性 ----------
 if (!DRY_RUN && !ALLOW_DIRTY) {
@@ -331,14 +336,14 @@ if (CHANNEL.kind === 'gh') {
   const API = `https://api.github.com/repos/${REPO}/releases`;
   say(`发布 ${TAG}（GitHub API）`);
   // 存在性用 GET 直接问：一次调用同时拿到状态与已有 Release 正文，不去猜 HEAD 的行为
-  const probe = ghApi('GET', `${API}/tags/${TAG}`, CHANNEL.token);
+  const probe = await ghApi('GET', `${API}/tags/${TAG}`, CHANNEL.token);
   let release;
   if (probe.status === 200) {
     release = JSON.parse(probe.body);
     if (!CLOBBER) die(`Release ${TAG} 已存在：发新版本用 --version/--bump，覆盖该版本附件加 --clobber`);
     say(`Release ${TAG} 已存在（id=${release.id}），--clobber 覆盖同名附件`);
   } else if (probe.status === 404) {
-    const created = ghApi('POST', API, CHANNEL.token, {
+    const created = await ghApi('POST', API, CHANNEL.token, {
       json: JSON.stringify({ tag_name: TAG, name: TAG, body: NOTES, target_commitish: HEAD }),
     });
     if (created.status !== 201) apiFail('创建 Release', created);
@@ -349,16 +354,16 @@ if (CHANNEL.kind === 'gh') {
   const uploadUrl = String(release.upload_url || '').split('{')[0];
   if (!uploadUrl || uploadUrl === 'null') die('未取得 upload_url');
   // --clobber 的真语义：REST 上传同名附件一律 422 already_exists，必须先删旧附件再传。
-  // gh 的 --clobber 是它自己封装了这一步；curl 通道此前只认了参数没做这件事，故「已存在 + --clobber」必然 422。
+  // gh 的 --clobber 是它自己封装了这一步；API 通道此前只认了参数没做这件事，故「已存在 + --clobber」必然 422。
   if (CLOBBER) {
     const dup = (Array.isArray(release.assets) ? release.assets : []).find((a) => a.name === TGZ_NAME);
     if (dup) {
-      const del = ghApi('DELETE', `https://api.github.com/repos/${REPO}/releases/assets/${dup.id}`, CHANNEL.token);
+      const del = await ghApi('DELETE', `https://api.github.com/repos/${REPO}/releases/assets/${dup.id}`, CHANNEL.token);
       if (del.status !== 204 && del.status !== 200) apiFail(`删除同名旧附件 ${dup.name}`, del);
       say(`已删除同名旧附件 ${dup.name}（${Math.max(1, Math.round((dup.size || 0) / 1024))}KB）`);
     }
   }
-  const up = ghApi('POST', `${uploadUrl}?name=${TGZ_NAME}`, CHANNEL.token, { file: TGZ });
+  const up = await ghApi('POST', `${uploadUrl}?name=${TGZ_NAME}`, CHANNEL.token, { file: TGZ });
   if (up.status !== 201) apiFail('附件上传', up);
   say(`附件已上传：${TGZ_NAME}（${humanSize}）`);
 }
