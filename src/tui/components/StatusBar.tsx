@@ -38,7 +38,8 @@ export function StatusBar({
   const total = metrics.sessionPromptTokens;
   const cachePct = total > 0 ? ((metrics.sessionCacheTokens / total) * 100).toFixed(1) : '0';
   // 上下文占用 = 估算水位 / 配置窗口；分母缺失（未配置窗口）时百分比无意义，整段不显示
-  const ctxPct = context && context.window > 0 ? Math.round((context.used / context.window) * 100) : 0;
+  // 与 cache 段同一口径：零水位显 0、其余一位小数——1M 窗口下整数百分比几乎恒为 0%，看不出真实水位
+  const ctxPct = context && context.window > 0 && context.used > 0 ? ((context.used / context.window) * 100).toFixed(1) : '0';
   return (
     <Text dimColor>
       {' '}↑{formatTokens(metrics.turnTokens)} tokens

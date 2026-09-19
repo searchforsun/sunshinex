@@ -58,9 +58,20 @@ test('StatusBar：会话累计保留一位小数（99.7% 形态对齐用户裁�
   assert.match(f, /cache 95\.1%/, '29000/30500 ≈ 95.082% → 95.1%');
 });
 
-test('StatusBar：配置窗口时显示上下文占用段（used/window 百分比）', () => {
+test('StatusBar：配置窗口时显示上下文占用段（used/window 百分比，一位小数）', () => {
   const f = frameOf(metrics({ ctxUsed: 250_000 }), 'm', 'idle', { used: 250_000, window: 1_000_000 });
-  assert.match(f, /ctx 250k\/1000k \(25%\)/, '状态栏应显示 ctx 水位/窗口（百分比）');
+  assert.match(f, /ctx 250k\/1000k \(25\.0%\)/, '状态栏应显示 ctx 水位/窗口（百分比，一位小数）');
+});
+
+test('StatusBar：ctx 一位小数——1M 窗口下小水位不被整数四舍五入成 0%', () => {
+  // 实际形态：3.2k/1000k = 0.32%；整数口径显示 (0%) 看不出水位，且与 cache 段一位小数口径不一致
+  const f = frameOf(metrics({ ctxUsed: 3_200 }), 'm', 'idle', { used: 3_200, window: 1_000_000 });
+  assert.match(f, /ctx 3\.2k\/1000k \(0\.3%\)/, '3.2k/1000k 应显示 0.3%');
+});
+
+test('StatusBar：ctx 零水位显示 (0%) 而非 (0.0%)（与 cache 零样本口径一致）', () => {
+  const f = frameOf(metrics({}), 'm', 'idle', { used: 0, window: 1_000_000 });
+  assert.match(f, /ctx 0\/1000k \(0%\)/, '零水位应显示 0%');
 });
 
 test('StatusBar：未配置窗口不显示上下文占用段', () => {
