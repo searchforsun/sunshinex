@@ -5,6 +5,9 @@ import { userConfigDir } from './env';
 /**
  * 语义键 → SUNSHINEX_* 环境槽映射表（全仓唯一权威）。
  * - 只有 *API_KEY 不进本表（D6 + 用户裁决「env 块只承载敏感字段」）：密钥只走 env 透传块或环境变量，设置与凭据分离。
+ * - SUNSHINEX_DATA_DIR 亦不进本表（用户裁决 2026-09-19）：它是「整目录直指、不按工作区隔离」的口子，
+ *   留在用户配置面即诱导误用（多工作区共用一份 sessions/memory/runs/skills，记忆索引还会跨项目注入提示词），
+ *   故只作测试与多实例口保留在环境变量面，见 RETIRED_KEYS；用户级换盘一律走 projectsDir。
  * - 其余全部 SUNSHINEX_* 配置变量均语义化（含 shell 逃生口、全局约定覆盖与记忆管线参数）：settings.json 是配置的正名，环境变量不是配置的替代形态。
  */
 export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
@@ -28,13 +31,21 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   globalSunshine: 'SUNSHINEX_GLOBAL_SUNSHINE',
   kbBackend: 'SUNSHINEX_KB_BACKEND',
   kbDataDir: 'SUNSHINEX_KB_DATA_DIR',
-  dataDir: 'SUNSHINEX_DATA_DIR',
   projectsDir: 'SUNSHINEX_PROJECTS_DIR',
   userSkillsDir: 'SUNSHINEX_USER_SKILLS_DIR',
   embeddingBaseUrl: 'SUNSHINEX_EMBEDDING_BASE_URL',
   embeddingModel: 'SUNSHINEX_EMBEDDING_MODEL',
   websearchProvider: 'SUNSHINEX_WEBSEARCH_PROVIDER',
   websearchEndpoint: 'SUNSHINEX_WEBSEARCH_ENDPOINT',
+};
+
+/**
+ * 退役语义键 → 处置提示（只提示、不落槽）：曾在本表、因语义与用户预期相悖而摘除的键。
+ * 与「未知键」分开登记——未知键是拼错，退役键是配置面主动收回，两者的处置指引不同：
+ * 前者提示改拼，后者必须指出「换成哪个键、以及为什么不能再写这里」。
+ */
+export const RETIRED_KEYS: Readonly<Record<string, string>> = {
+  dataDir: 'dataDir 已退役（整目录直指、不按工作区隔离，多项目共用一份记忆与账本）；换盘请改用 projectsDir',
 };
 
 /** settings.json 解析产物：semantic=根级语义键原始值（形状裁决留给 flattenSettings）；env=透传块（键名即 SUNSHINEX_* 原名） */
@@ -104,7 +115,8 @@ export function flattenSettings(doc: SettingsDoc): FlattenResult {
   for (const [key, value] of Object.entries(doc.semantic)) {
     const slot = SEMANTIC_KEYS[key];
     if (slot === undefined) {
-      warnings.push(`settings: 未知语义键 "${key}"，已忽略`);
+      const retired = RETIRED_KEYS[key];
+      warnings.push(retired === undefined ? `settings: 未知语义键 "${key}"，已忽略` : `settings: ${retired}`);
       continue;
     }
     if (typeof value !== 'string' && typeof value !== 'number') {

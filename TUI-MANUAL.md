@@ -95,7 +95,6 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 
   // ── 目录覆盖（留空即用缺省，见第三节）────────────────
   "projectsDir": "",                                 // 项目数据根（各工作区分目录的父级）；留空 = ~/.sunshinex/projects，可指向任意盘
-  "dataDir": "",                                     // 运行时数据目录；整目录直指，优先级高于 projectsDir
   "userSkillsDir": "",                               // 全局技能目录
   "globalSunshine": "",                              // 全局约定文件
   "shell": "",                                       // 命令执行 shell（POSIX 兼容）；Windows 留空自动探测 Git Bash，无则 PowerShell，末位 cmd 兜底
@@ -133,7 +132,9 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
     └── archives/               # 压缩时折叠的链行归档
 ```
 
-`projects/` 这一层不限家目录所在盘：`projectsDir` 指到哪，各工作区的数据就落哪（如 `"projectsDir": "D:\\sunshinex-projects"`），逐工作区分目录的隔离与防撞名语义不变——家目录分区吃紧或想把运行数据放独立盘时用。需要整目录直指单个位置时用 `dataDir`（优先级更高，不再按工作区分目录）。两者都留空即缺省形态。
+`projects/` 这一层不限家目录所在盘：`projectsDir` 指到哪，各工作区的数据就落哪（如 `"projectsDir": "D:\\sunshinex-projects"`），逐工作区分目录的隔离与防撞名语义不变——家目录分区吃紧或想把运行数据放独立盘时用。留空即缺省形态（`~/.sunshinex/projects`）。
+
+> `SUNSHINEX_DATA_DIR` 是环境变量面的**整目录直指**口（不按工作区隔离、多项目共用一份数据），仅供测试与多实例自行分区使用，不属用户配置面；写在 settings.json 里会收到退役提示。换盘一律用 `projectsDir`。
 
 **项目级 `<项目>/`**
 
