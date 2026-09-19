@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ProcessSandbox, findWindowsBash, resolveShell, windowsBashCandidates } from './sandbox';
+import {
+  ProcessSandbox,
+  findWindowsBash,
+  findWindowsPowerShell,
+  resolveShell,
+  resolveShellFor,
+  windowsBashCandidates,
+  windowsPowerShellCandidates,
+} from './sandbox';
 import { DryRun } from './dryrun';
 import { ToolBackend } from '../../types';
 
@@ -22,7 +30,9 @@ test('resolveShell：SUNSHINEX_SHELL 覆盖优先，缺省给出可解析的 she
   const prev = process.env.SUNSHINEX_SHELL;
   try {
     process.env.SUNSHINEX_SHELL = '/custom/sh';
-    assert.deepEqual(resolveShell(), { file: '/custom/sh', scriptFlag: '-c' });
+    const forced = resolveShell();
+    assert.deepEqual({ file: forced.file, args: forced.args }, { file: '/custom/sh', args: ['-c'] });
+    assert.equal(forced.source, 'override');
     process.env.SUNSHINEX_SHELL = '   ';
     assert.notEqual(resolveShell().file, '   ', '空串覆盖视为未设置');
   } finally {
@@ -31,8 +41,76 @@ test('resolveShell：SUNSHINEX_SHELL 覆盖优先，缺省给出可解析的 she
   }
   const s = resolveShell();
   assert.ok(s.file.length > 0, '必须给出 shell 可执行文件');
-  // 缺省决议随平台走：POSIX shell（含 Windows 的 Git Bash）为 -c；Windows 无 Git Bash 时按 §14 回退 ComSpec 的 /c
-  assert.ok(s.scriptFlag === '-c' || s.scriptFlag === '/c', `脚本 flag 应为 -c 或 /c，实际 ${s.scriptFlag}`);
+  assert.ok(s.args.length > 0, '必须给出脚本标志');
+  // 缺省决议随平台走：POSIX shell 与 Git Bash 为 -c；Windows 的 PowerShell 为 -NoProfile -Command；ComSpec 兜底为 /c
+  assert.ok(s.args.includes('-c') || s.args.includes('-Command') || s.args.includes('/c'), `脚本标志应可识别，实际 ${s.args.join(' ')}`);
+});
+
+/**
+ * Windows 决议序（纯函数注入，POSIX 上亦可完整回归）：Git Bash → PowerShell（pwsh 先于 powershell.exe）→ ComSpec 末位。
+ * 对齐 Claude Code 口径：native Windows 无 Git for Windows 时用 PowerShell 作 shell 工具而非退回 cmd.exe。
+ */
+test('resolveShell 决议序：win32 逐级回落 git-bash → powershell → comspec，override 压过一切', () => {
+  const cmdExe = path.join(path.sep, 'Windows', 'System32', 'cmd.exe');
+  const base = { PATH: '', ComSpec: cmdExe };
+  const bashExe = path.join(path.sep, 'git', 'bin', 'bash.exe');
+  const pwshExe = path.join(path.sep, 'tools', 'pwsh.exe');
+  const inBoxPs = path.join(path.sep, 'Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+
+  // ① Git Bash 命中即用（POSIX 兼容，承载 sh 语义）
+  assert.deepEqual(resolveShellFor('win32', { ...base, PATH: path.join(path.sep, 'git', 'bin') }, (p) => p === bashExe), {
+    file: bashExe,
+    args: ['-c'],
+    source: 'git-bash',
+  });
+
+  // ② 无 Git Bash → PowerShell（-NoProfile 抑制 profile 输出污染 observation）
+  assert.deepEqual(resolveShellFor('win32', { ...base, PATH: path.join(path.sep, 'tools') }, (p) => p === pwshExe), {
+    file: pwshExe,
+    args: ['-NoProfile', '-Command'],
+    source: 'powershell',
+  });
+
+  // ③ 仅 in-box Windows PowerShell（未挂 PATH 亦须被 SystemRoot 固定位置发现）
+  const onlyInBox = resolveShellFor('win32', { ...base, SystemRoot: path.join(path.sep, 'Windows') }, (p) => p === inBoxPs);
+  assert.equal(onlyInBox.source, 'powershell');
+  assert.equal(onlyInBox.file, inBoxPs);
+
+  // ④ 三者皆无 → ComSpec 末位兜底（诚实登记：仅保证不崩）
+  assert.deepEqual(resolveShellFor('win32', base, () => false), { file: cmdExe, args: ['/c'], source: 'comspec' });
+  assert.deepEqual(resolveShellFor('win32', { PATH: '' }, () => false), { file: 'cmd.exe', args: ['/c'], source: 'comspec' });
+
+  // ⑤ 逃生口最高：override 命中时不再探测任何候选
+  assert.deepEqual(resolveShellFor('win32', { SUNSHINEX_SHELL: '/custom/sh', PATH: '' }, () => true), {
+    file: '/custom/sh',
+    args: ['-c'],
+    source: 'override',
+  });
+
+  // ⑥ POSIX 不走 Windows 分支
+  assert.deepEqual(resolveShellFor('linux', {}), { file: '/bin/sh', args: ['-c'], source: 'posix' });
+});
+
+test('Windows PowerShell 发现：pwsh 整体先于 powershell.exe，且覆盖 PATH 之外的固定安装位（纯逻辑）', () => {
+  // 路径不含卷号：POSIX 下 path.delimiter 为 ':'，含 'C:' 的路径会被切成两段致候选失真
+  const toolsDir = path.join(path.sep, 'tools');
+  const programFiles = path.join(path.sep, 'program-files');
+  const localAppData = path.join(path.sep, 'users', 'u', 'AppData', 'Local');
+  const sysRoot = path.join(path.sep, 'Windows');
+  const env = { PATH: toolsDir, ProgramFiles: programFiles, LOCALAPPDATA: localAppData, SystemRoot: sysRoot };
+
+  const candidates = windowsPowerShellCandidates(env);
+  const pwshCandidates = [path.join(toolsDir, 'pwsh.exe'), path.join(programFiles, 'PowerShell', '7', 'pwsh.exe'), path.join(localAppData, 'Microsoft', 'WindowsApps', 'pwsh.exe')];
+  const legacyCandidates = [path.join(toolsDir, 'powershell.exe'), path.join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')];
+  for (const c of [...pwshCandidates, ...legacyCandidates]) assert.ok(candidates.includes(c), `候选须含 ${c}`);
+
+  const lastPwsh = candidates.map((c) => path.basename(c)).lastIndexOf('pwsh.exe');
+  const firstLegacy = candidates.findIndex((c) => path.basename(c) === 'powershell.exe');
+  assert.ok(lastPwsh >= 0 && firstLegacy > lastPwsh, 'pwsh（PowerShell 7+）整体先于 powershell.exe（5.1）：能力面更强');
+
+  const pwshExe = path.join(toolsDir, 'pwsh.exe');
+  assert.equal(findWindowsPowerShell(env, (p) => p === pwshExe), pwshExe, '探测命中：可注入存在性判定');
+  assert.equal(findWindowsPowerShell(env, () => false), undefined, '皆不存在时诚实返回 undefined，由 resolveShellFor 回落 ComSpec');
 });
 
 test('Windows Git Bash 发现：安装根与 PATH 反推（纯逻辑，跨平台可断言）', () => {
