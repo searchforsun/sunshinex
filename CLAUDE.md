@@ -84,7 +84,7 @@ SUNSHINE.md          # 项目业务配置
 - 所有 IO（文件/网络/命令）集中在对应 adapter/store 内
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
-- **原子工具优先**：能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有工具参数完成的，一律不新增专属工具；万不得已才加，且须论证「原子工具无法完成」并经用户裁决。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，也是长期维护面
+- **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
 - **已登记依赖**：`@modelcontextprotocol/sdk` ^1.30.0 —— MCP 官方客户端（stdio / streamable http / sse 三传输）。用途：阶段四第三方工具接入（懒 spawn → 握手身份校验 → tools/list → tools/call）；边界：依赖收敛于 `src/harness/mcp/client.ts` 接缝内（替换客户端实现不动主链），transport 工厂按 SUNSHINE.md 配置分支三传输；回退预案：自研最小 stdio JSON-RPC 客户端同接口（spec §6-R6）
 - **已登记依赖**：ink ^3.2.0 + react ^18.3.1 —— 终端渲染框架（组件化 TUI）。用途：阶段五 5A `sunshinex tui` 交互式会话终端渲染层；边界：仅渲染层（组件/入口），运行时零接触，依赖收敛于 `src/tui/`；回退预案：Renderer 接缝退原生 ANSI 最小面（spec §6-R1，SessionController 纯逻辑不受影响）
