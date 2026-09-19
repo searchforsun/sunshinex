@@ -3,8 +3,28 @@ import { runSelfcheck } from './commands/selfcheck';
 import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
 import { runTui } from '../tui/entry';
-import { loadEnv, loadGlobalEnv } from '../config/env';
+import { loadEnv } from '../config/env';
+import { applySettings, loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
+
+/**
+ * 两级 settings 装载（项目级 → 全局级）：applySettings 只填缺省槽，先装者不被覆盖，装载顺序即优先级。
+ * 抛错（畸形 JSON / version 非 1）属 fail-fast：入口层透出含文件路径的错误信息并退出非零，
+ * 静默降级会演变成「配置没生效」的排查泥潭；warnings 经 stderr 逐行双语输出（外观通道，库内零打印）。
+ */
+function loadSettingsChain(projectRoot: string): void {
+  try {
+    for (const result of [applySettings(loadProjectSettings(projectRoot)), applySettings(loadGlobalSettings())]) {
+      for (const w of result.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
+    }
+  } catch (err) {
+    console.error(t(
+      err instanceof Error ? err.message : String(err),
+      err instanceof Error ? err.message : String(err),
+    ));
+    process.exit(1);
+  }
+}
 
 /** CLI 参数解析：仅内置约定，零依赖。--flag=v 或 --flag v → 字符串；--flag（末尾无值）→ true；其余为 positional */
 export interface CliArgs {
@@ -77,13 +97,15 @@ function usageText(): string {
 }
 
 async function main(): Promise<void> {
-  // 三级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 .env > ~/.sunshinex/.env
-  // 项目级先装、全局后装兜底——loadEnv 只填缺省键，后装者仅补缺不覆盖，顺序即优先级
-  loadEnv();
-  loadGlobalEnv();
+  // 四级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 .env > 项目 settings > 全局 settings
+  // 项目级先装、全局后装兜底——装载器只填缺省键，后装者仅补缺不覆盖，顺序即优先级
+  const projectRoot = process.cwd();
+  loadEnv(projectRoot);
+  loadSettingsChain(projectRoot);
   const args = resolveInvocation(parseArgs(process.argv.slice(2)));
-  // 界面语言：--language=en|zh（缺省 en；zh 为全中文界面 + 中文模型侧提示词；先于任何输出与装配设定，--help 亦随语言）
-  setLanguage(parseLanguage(args.flags.language));
+  // 界面语言：--language=en|zh > settings language 槽 > 缺省 en（zh 为全中文界面 + 中文模型侧提示词；
+  // 先于任何输出与装配设定，--help 亦随语言；parseLanguage 仅判 zh/en，回退链由调用点 ?? 承载）
+  setLanguage(parseLanguage(args.flags.language ?? process.env.SUNSHINEX_LANGUAGE));
   if (args.flags.help === true || args.flags.h === true) {
     console.log(usageText());
     return;

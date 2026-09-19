@@ -42,12 +42,6 @@ export function userConfigDir(): string {
   return path.join(os.homedir(), '.sunshinex');
 }
 
-/** 装载用户级全局配置 ~/.sunshinex/.env（跨项目共享的模型密钥等，供任意目录启动 sunshinex 使用）；
- *  仅兜底缺省键——先于项目 .env 调用，项目级值随后照常落地不被覆盖，已导出环境变量最高优先 */
-export function loadGlobalEnv(): number {
-  return loadEnv(userConfigDir());
-}
-
 /**
  * 解析知识库/embedding 环境配置：
  * - SUNSHINEX_KB_BACKEND 缺省 'local-json'（零依赖路径缺省，未注册后端由装配层 fail-fast）

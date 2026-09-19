@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { loadEnv } from './env';
 import {
   applySettings,
   flattenSettings,
@@ -213,5 +214,77 @@ test('loadGlobalSettings：全局路径 = userConfigDir()/settings.json（家目
     if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
     fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test('两级 settings 装载·四层优先级链：shell > 项目 .env > 项目 settings > 全局 settings（D2）', () => {
+  // HOME/USERPROFILE 双变量重定向临时家目录：测试不触碰真实用户家目录（win32 data-dir 三失败先例）
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-chain-home-'));
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-chain-proj-'));
+  const prev: Record<string, string | undefined> = {
+    HOME: process.env.HOME,
+    USERPROFILE: process.env.USERPROFILE,
+    SUNSHINEX_TIER: process.env.SUNSHINEX_TIER,
+    SUNSHINEX_MODEL: process.env.SUNSHINEX_MODEL,
+    SUNSHINEX_BASE_URL: process.env.SUNSHINEX_BASE_URL,
+    SUNSHINEX_KB_BACKEND: process.env.SUNSHINEX_KB_BACKEND,
+  };
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  // 先清空四层相关槽：排除 shell 真实环境/前序用例残留，断言只反映本用例布置
+  delete process.env.SUNSHINEX_TIER;
+  delete process.env.SUNSHINEX_MODEL;
+  delete process.env.SUNSHINEX_BASE_URL;
+  delete process.env.SUNSHINEX_KB_BACKEND;
+  try {
+    // ① shell 层（最高）：预导出变量压过一切文件层
+    process.env.SUNSHINEX_TIER = 'shell-top';
+    // ② 项目 .env 层：model 槽由 dotenv 承载
+    fs.writeFileSync(path.join(proj, '.env'), 'SUNSHINEX_MODEL=from-project-env\n');
+    // ③ 项目 settings 层：语义键 tier + env 块 baseUrl（与全局层同槽对垒）
+    fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({
+      tier: 'from-project-settings',
+      env: { SUNSHINEX_BASE_URL: 'from-project-settings' },
+    }));
+    // ④ 全局 settings 层：同槽语义键 tier 兜底 + env 块（baseUrl 同槽对垒、kbBackend 全局独有验兜底）
+    fs.mkdirSync(path.join(fakeHome, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(path.join(fakeHome, '.sunshinex', 'settings.json'), JSON.stringify({
+      tier: 'from-global-settings',
+      env: { SUNSHINEX_BASE_URL: 'from-global-env', SUNSHINEX_KB_BACKEND: 'from-global-only' },
+    }));
+    // 按入口真实顺序装载（cli/index.ts 与 index.ts 同款）：只填缺省，装载顺序即优先级
+    loadEnv(proj);
+    applySettings(loadProjectSettings(proj));
+    applySettings(loadGlobalSettings());
+    assert.equal(process.env.SUNSHINEX_TIER, 'shell-top', '① shell 预导出最高，settings 语义键不覆盖');
+    assert.equal(process.env.SUNSHINEX_MODEL, 'from-project-env', '② 项目 .env 胜 settings（先装不被覆盖）');
+    assert.equal(process.env.SUNSHINEX_BASE_URL, 'from-project-settings', '③ 项目 settings env 块胜全局 settings');
+    assert.equal(process.env.SUNSHINEX_KB_BACKEND, 'from-global-only', '④ 全局 settings env 块兜底项目未配置槽');
+  } finally {
+    for (const [key, val] of Object.entries(prev)) {
+      if (val === undefined) delete process.env[key]; else process.env[key] = val;
+    }
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+    fs.rmSync(proj, { recursive: true, force: true });
+  }
+});
+
+test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；shell 已导出时不被覆盖', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-lang-'));
+  const prevLang = process.env.SUNSHINEX_LANGUAGE;
+  try {
+    const file = path.join(dir, 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({ language: 'zh' }));
+    delete process.env.SUNSHINEX_LANGUAGE;
+    applySettings(file);
+    assert.equal(process.env.SUNSHINEX_LANGUAGE, 'zh', '语义键落入 language 新槽');
+
+    process.env.SUNSHINEX_LANGUAGE = 'en';
+    applySettings(file);
+    assert.equal(process.env.SUNSHINEX_LANGUAGE, 'en', 'shell 已导出时保持（只填缺省语义，回退链由调用点 ?? 承载）');
+  } finally {
+    if (prevLang === undefined) delete process.env.SUNSHINEX_LANGUAGE; else process.env.SUNSHINEX_LANGUAGE = prevLang;
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
