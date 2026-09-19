@@ -86,13 +86,13 @@ pnpm cli tui                   # 构建并启动交互式终端（对标 Claude 
 
 ```bash
 # ① GitHub Release 链接直装（推荐，无需 npm 账号）
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.1.0/sunshinex-agent-0.1.0.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.0/sunshinex-agent-0.2.0.tgz
 
 # ② npm registry（正式发布后可用）
 npm install -g sunshinex-agent
 
 # ③ 本地打包安装
-npm pack && npm install -g ./sunshinex-agent-0.1.0.tgz
+npm pack && npm install -g ./sunshinex-agent-0.2.0.tgz
 
 sunshinex                       # 任意目录直接进入交互式终端（= sunshinex tui，对标 claude 裸命令）
 sunshinex --mode=manual         # 裸命令可直带权限模式（manual | dontAsk | plan）
@@ -100,6 +100,8 @@ sunshinex --language=zh         # 界面语言（缺省 en；zh 全中文界面�
 sunshinex ../my-project         # 指定项目目录启动（= sunshinex tui <dir>，对标 claude <dir>）
 sunshinex ../my-project --continue   # 续接最近一次已保存会话；TUI 内 /resume 列出/恢复更早会话
 ```
+
+> **npm ≥ 12 用 ① 会报 `EALLOWREMOTE`**：npm 12 起 `allow-remote` 缺省 `none`（禁止从 URL 取包，防供应链投毒）。加开关即可：`npm install -g --allow-remote=all <链接>`；或走**不受该限制**的等价路径——先下载再按本地 tarball 装（`allow-file` 缺省仍是 `all`）：`curl -LO <链接> && npm install -g ./sunshinex-agent-0.2.0.tgz`。
 
 ### 发版（维护者）
 
