@@ -928,10 +928,11 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 // 其余依赖按 kb-search.test.ts / builtin 既有工具用例的装配写法补齐（sandbox/dry-run 等）
 
-test('memory_write：工具已注册、按名排序进清单、category=write', () => {
+test('memory_write：工具已注册；工具清单渲染面含 memory_write 且按名排序', () => {
   const names = registry.list().map((t) => t.name);
   assert.ok(names.includes('memory_write'));
-  assert.deepEqual([...names].sort(), names);
+  // 注册顺序非按名排序（exec/read/skill/write/…），排序发生在渲染面：
+  // 以既有 prompt 捕获方式取 buildPrompt 的工具清单段落，断言含 '- memory_write:' 行且该段按名升序（reactor.ts 内 sort 点）。
 });
 
 test('memory_write：manual 模式走审批（无 asker 时拒绝）、dontAsk 放行', async () => {
