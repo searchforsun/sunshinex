@@ -18,6 +18,8 @@ test('buildSummaryPrompt：六节标题 + 材料行 + 预算约束（en 缺省�
   assert.ok(p.includes('- [result] 工具结果 x y z'));
   assert.ok(p.includes('2000'), '预算约束应注入目标 token 数');
   assert.ok(p.includes(MARKER), '固定标记供测试桩区分压缩调用');
+  assert.match(p, /keep concrete facts/, '具体性条款在场：不可再生事实不得抽象化');
+  assert.match(p, /cite where the full record lives/, '省略细节时必须留归档指针（写链面兜底）');
 });
 
 test('buildSummaryPrompt：语言轴不再影响提示词（zh 下仍英文单语）', () => {
