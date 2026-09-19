@@ -3,6 +3,7 @@ import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';
 import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput } from '../../types';
+import { Result } from '../../result';
 import { KnowledgeBase } from '../knowledge/index';
 import { SkillsFacade } from '../skills';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
@@ -22,14 +23,22 @@ function isSunshineMdTarget(safety: SafetyChain, file: string): boolean {
   }
 }
 
-/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam): RegisteredTool[] {
+/** memory_write 工具的执行接缝（规格 §3.7）：装配层注入 `writeMemoryFact` 绑定 root 后的形态。
+ *  工具只做入参整形/错误转译，闸门、三级去重、落盘与容量回执全在记忆侧单点（builtin 不复制任何记忆语义）。 */
+export type MemoryWriteTool = (input: { type: string; content: string; description?: string }) => Result<{
+  slug: string;
+  existed: boolean;
+  notice: string | null;
+}>;
+
+/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write） */
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
   const backend = safety.backend;
 
-  return [
+  const tools: RegisteredTool[] = [
     {
       name: 'exec',
       description: 'Execute a shell command inside the project sandbox; oversized output is truncated and saved to disk (full output path shown in the result)',
@@ -178,4 +187,31 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
   ];
+
+  // 第 8 可选参（规格 §3.7 memory_write）：缺省不注入＝清单与第 7 参引入前逐字节一致（对齐既有「可选参两态不变」不变式）；
+  // 注入才注册——接缝必在（无「未配置」分支），错误一律经 CodedToolError 走 Result 错误通道，永不炸任务
+  if (memoryWrite !== undefined) {
+    const memoryWriter: MemoryWriteTool = memoryWrite; // 窄化取别名：闭包内不依赖外部窄化（参数可变，TS 不跨回调保留）
+    tools.push({
+      name: 'memory_write',
+      description:
+        'Persist ONE durable fact to long-term memory when it is worth remembering across sessions — a user preference, corrective feedback, or a non-obvious project fact. Be conservative: it is fine to save nothing. Duplicates return the existing entry. Fails when memory is disabled.',
+      category: 'write',
+      executor: async (input: ToolInput) => {
+        const type = String(input.type ?? '');
+        const content = String(input.content ?? '').trim();
+        if (content === '') throw new CodedToolError('INVALID_ARG', 'content must not be empty');
+        const rawDescription = input.description;
+        const description = rawDescription === undefined ? undefined : String(rawDescription);
+        const r = memoryWriter({ type, content, ...(description !== undefined ? { description } : {}) });
+        if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
+        // 观察行单行契约（链渲染 `${step}: ${action} -> ${observation}`）：近满提醒以 ` | ` 拼接，不得换行
+        const suffix = r.value.existed ? ' (already exists)' : '';
+        const notice = r.value.notice !== null ? ` | ${r.value.notice}` : '';
+        return execOut(`Saved memory: ${r.value.slug}${suffix}${notice}`);
+      },
+    });
+  }
+
+  return tools;
 }
