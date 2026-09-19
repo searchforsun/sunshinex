@@ -44,6 +44,7 @@ export async function runTui(args: CliArgs): Promise<void> {
   let requestRepaint: (() => void) | undefined;
   process.once('SIGINT', () => {
     ctrl.flushJournal(); // SIGINT 硬退出收口（规格 D3 flush 点③）
+    ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）
     current?.unmount();
     process.exit(0);
   });
@@ -63,6 +64,7 @@ export async function runTui(args: CliArgs): Promise<void> {
     });
   } finally {
     ctrl.flushJournal(); // 退出收口（规格 D3 flush 点③）
+    ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）：循环退出即释放
   }
   process.exit(0);
 }

@@ -132,6 +132,12 @@ function slashHelp(): string {
 }
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
+/** 空闲兜底节拍判据（规格 §3.5）：仅 idle（且无挂起审批）且后台队列非空才消费——无待办零调用零配额。
+ *  抽为导出纯函数以钉死「运行中不消费」的负向证伪力（评审 Important-2）。 */
+export function shouldPumpOnIdleBeat(status: string, hasPendingApproval: boolean, pending: number): boolean {
+  return status === 'idle' && !hasPendingApproval && pending > 0;
+}
+
 export class SessionController {
   readonly runtime: TuiRuntime;
   /** 项目根：/init 生成 SUNSHINE.md 的基准目录（与 runtime 装配同源） */
@@ -211,7 +217,7 @@ export class SessionController {
     // 主触发是 closeTask 的 kick，本定时器只是兜底；unref 保证不阻塞进程退出
     this.kickTimer = setInterval(() => {
       const p = this.runtime.harness.pipeline;
-      if (this.state.status === 'idle' && !this.pendingApproval && p.pending() > 0) void p.drain();
+      if (shouldPumpOnIdleBeat(this.state.status, this.pendingApproval !== undefined, p.pending())) void p.drain();
     }, resolveMemoryConfig().memoryIdleKickMs);
     this.kickTimer.unref?.();
     // 会话日志订阅（规格 §5 单一事实源）：链/压缩变更 → 事件缓冲；任务必经 submit 建档，此后事件动态路由到当前 journal 实例。
@@ -484,6 +490,12 @@ export class SessionController {
     } else {
       this.pushMsg('system', t('Session restored: ' + meta.id, '已恢复会话：' + meta.id));
     }
+  }
+
+  /** 退出清理（规格 §3.5）：清空闲兜底节拍定时器——防长驻进程重挂/多实例测试下定时器累积（评审 Important-1）；幂等 */
+  dispose(): void {
+    if (this.kickTimer !== undefined) clearInterval(this.kickTimer);
+    this.kickTimer = undefined;
   }
 
   private closeTask(): void {

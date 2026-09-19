@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SessionController } from './session';
+import { SessionController, shouldPumpOnIdleBeat } from './session';
+import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { MemoryStore } from '../harness/memory/store';
 
@@ -53,5 +54,21 @@ test('session：任务收束后后台消化落盘，notify 说明行进消息流
       5000,
     );
     await waitFor(() => new MemoryStore(root).count() === 1, 5000);
+  });
+});
+
+test('空闲兜底节拍判据：仅 idle 且无挂起审批且队列非空才消费（运行中零消费）', () => {
+  assert.equal(shouldPumpOnIdleBeat('idle', false, 1), true);
+  assert.equal(shouldPumpOnIdleBeat('running', false, 1), false, '运行中不消费（评审 Important-2 负向钉子）');
+  assert.equal(shouldPumpOnIdleBeat('awaiting-approval', false, 1), false, '等审批不消费');
+  assert.equal(shouldPumpOnIdleBeat('idle', true, 1), false, '有挂起审批不消费');
+  assert.equal(shouldPumpOnIdleBeat('idle', false, 0), false, '无待办零调用（配额纪律）');
+});
+
+test('dispose：清空闲节拍定时器且幂等（多实例/重挂不累积）', async () => {
+  await withRoot(async (root) => {
+    const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
+    ctrl.dispose();
+    ctrl.dispose();
   });
 });
