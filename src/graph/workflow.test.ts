@@ -81,7 +81,7 @@ test('instantiateWorkflow：def → engine 可运行（scripted 全链 done）',
     name: 'mini',
     nodes: [
       { id: 'dev', kind: 'agent', deps: [], config: { role: 'developer', maxSteps: 2 } },
-      { id: 'ok', kind: 'ci', deps: ['dev'], config: { command: 'node -e "process.exit(0)"' } },
+      { id: 'ok', kind: 'ci', deps: ['dev'], config: { command: 'node --version' } },
     ],
     termination: { maxNodes: 8, maxTokens: 50_000, timeoutMs: 60_000 },
   };
@@ -98,7 +98,7 @@ const gateDef: WorkflowDef = {
   nodes: [
     { id: 'plan', kind: 'agent', deps: [], config: { role: 'planner', maxSteps: 2 } },
     { id: 'g', kind: 'gate', deps: ['plan'], config: { prompt: '方案确认' } },
-    { id: 'build', kind: 'ci', deps: ['g'], config: { command: 'node -e "process.exit(0)"' } },
+    { id: 'build', kind: 'ci', deps: ['g'], config: { command: 'node --version' } },
   ],
   termination: { maxNodes: 8, maxTokens: 50_000, timeoutMs: 60_000 },
 };

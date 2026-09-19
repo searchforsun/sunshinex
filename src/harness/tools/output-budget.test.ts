@@ -62,7 +62,9 @@ test('A-2 exec：stdout 超预算截断落盘，退出码形态保持', async ()
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-budget-'));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-budget-arch-'));
   const registry = registryWith(root, dir);
-  const r = await registry.execute('exec', { command: `node -e "process.stdout.write('e'.repeat(${TOOL_OUTPUT_CHAR_LIMIT + 5_000}))"` }, safetyFor(root));
+  // 大输出以脚本文件承载：内联 `node -e "…"` 的命令串随宿主 shell 方言变化（cmd 下引号被当字面量、整串不执行）
+  fs.writeFileSync(path.join(root, 'big.js'), `process.stdout.write('e'.repeat(${TOOL_OUTPUT_CHAR_LIMIT + 5_000}))`);
+  const r = await registry.execute('exec', { command: 'node big.js' }, safetyFor(root));
   assert.ok(r.ok);
   if (r.ok) {
     assert.equal(r.value.exitCode, 0);

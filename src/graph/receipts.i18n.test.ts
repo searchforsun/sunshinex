@@ -77,6 +77,9 @@ const out = (status: GraphNodeOutput['status'], tokens = 0): GraphNodeOutput => 
 /** 回执采样：一次驱动全部「死的用户显示」产出点，返回可断言的回执集合 */
 async function sampleReceipts(root: string): Promise<Record<string, string>> {
   const deps = makeRealDeps(root);
+  // 失败命令以脚本文件承载：内联 `node -e "process.exit(3)"` 的引号/括号语义随宿主 shell 变化
+  // （cmd 下被当字符串字面量、退出码恒 0），本用例断言的是回执文案，不能与 shell 方言耦合
+  fs.writeFileSync(path.join(root, 'ci-fail.js'), 'process.exit(3)');
   const ctx = (state: Record<string, unknown> = {}): GraphContext => graphCtx(term(), { state });
   const gate = makeGateNode('g', { prompt: '交付确认' });
   const ci = (id: string, command: string) => makeCiNode(id, { command });
@@ -111,9 +114,9 @@ async function sampleReceipts(root: string): Promise<Record<string, string>> {
     gatePaused: String((await gate.run(ctx(), deps, {})).reply),
     gateApproved: String((await gate.run(ctx({ approvals: { g: true } }), deps, {})).reply),
     gateRejected: String((await gate.run(ctx({ approvals: { g: false } }), deps, {})).reply),
-    ciDryRun: String((await ci('ci-dry', 'node -e "process.exit(0)"').run(ctx({ __dryRun: true }), deps, {})).reply),
-    ciPassed: String((await ci('ci-ok', 'node -e "process.exit(0)"').run(ctx(), deps, {})).reply),
-    ciFailed: String((await ci('ci-bad', 'node -e "process.exit(3)"').run(ctx(), deps, {})).reply),
+    ciDryRun: String((await ci('ci-dry', 'node --version').run(ctx({ __dryRun: true }), deps, {})).reply),
+    ciPassed: String((await ci('ci-ok', 'node --version').run(ctx(), deps, {})).reply),
+    ciFailed: String((await ci('ci-bad', 'node ci-fail.js').run(ctx(), deps, {})).reply),
     engineDone: String(allDone.reply ?? ''),
     enginePaused: String(paused.reply ?? ''),
     engineFailed: String(failed.reply ?? ''),

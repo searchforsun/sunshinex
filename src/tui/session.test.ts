@@ -87,6 +87,9 @@ test('会话控制器：manual 审批挂起可观测，resolveApproval 放行后
 
 test('会话控制器：斜杠命令 /help /status 产出 system 消息且不触发 run', async () => {
   const tmp = tmpdir('sunshinex-sess4-');
+  // 账本隔离：runs 精确断言必须独占数据目录，否则与跑批内其他测试文件并发写同一 .data-test 互染（同 runtime.test.ts 先例）
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const runsBefore = ctrl.runtime.harness.ledger.summary().runs;
@@ -98,6 +101,7 @@ test('会话控制器：斜杠命令 /help /status 产出 system 消息且不触
     assert.equal(ctrl.runtime.harness.ledger.summary().runs, runsBefore, '斜杠命令不应落 run 账');
     assert.equal(s.status, 'idle');
   } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

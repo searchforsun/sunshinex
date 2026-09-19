@@ -145,25 +145,30 @@ test('makeGateNode：未审批 paused / approve pass / reject failed', async () 
 
 test('makeCiNode：注入命令 exit 0 → pass（evidence 含 stdout），非零 → failed', async () => {
   const tmp = mktmp('p3-t2-ci-');
+  // 命令形态跨 shell 方言自持：内联 `node -e "…"` 的引号/括号语义随宿主 shell 变化
+  // （cmd 下被当字符串字面量求值、退出码恒 0；sh 下括号是语法元字符），故一律以脚本文件承载
+  fs.writeFileSync(path.join(tmp, 'exit3.js'), 'process.stdout.write("boom"); process.exit(3)');
   const deps = makeRealDeps(tmp);
-  const ok = makeCiNode('ci-ok', { command: `node -e "process.exit(0)"` });
-  const bad = makeCiNode('ci-bad', { command: `node -e "process.exit(3)"` });
+  const ok = makeCiNode('ci-ok', { command: 'node --version' });
+  const bad = makeCiNode('ci-bad', { command: 'node exit3.js' });
   const o1 = await ok.run(graphCtx(term()), deps, {});
   assert.equal(o1.status, 'pass', `exit0 应 pass：${JSON.stringify(o1)}`);
   const o2 = await bad.run(graphCtx(term()), deps, {});
-  assert.equal(o2.status, 'failed');
+  assert.equal(o2.status, 'failed', `exit3 应 failed：${JSON.stringify(o2)}`);
 });
 
 test('makeCiNode dryRun：预览短路，命令不执行', async () => {
   const tmp = mktmp('p3-t2-cidry-');
+  // marker 由脚本文件创建：若命令真被执行则必然落盘，与宿主 shell 方言无关
+  // （内联 `node -e "…"` 在 cmd 下退化为字符串字面量，断言会恒真、用例失去判别力）
+  fs.writeFileSync(path.join(tmp, 'write-marker.js'), "require('fs').writeFileSync('marker.txt', 'ran')");
   const deps = makeRealDeps(tmp);
   const marker = path.join(tmp, 'marker.txt');
-  const node = makeCiNode('ci', {
-    command: `node -e "require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran')"`,
-  });
+  const node = makeCiNode('ci', { command: 'node write-marker.js' });
   const ctx = graphCtx(term(), { state: { __dryRun: true } });
   const o = await node.run(ctx, deps, {});
   assert.equal(o.status, 'pass');
   assert.ok(o.reply?.includes('[dry-run]'));
+  assert.ok(o.reply?.includes('node write-marker.js'), 'dry-run 预览须回显真实命令');
   assert.ok(!fs.existsSync(marker), 'dry-run 不得真实执行命令');
 });

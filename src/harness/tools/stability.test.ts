@@ -44,12 +44,13 @@ test('write 以 root 为基准写入（不落到进程 cwd）', async () => {
 
 test('exec 的 shell 工作目录为 root', async () => {
   const root = tmpdir();
-  fs.writeFileSync(path.join(root, 'marker.txt'), 'm');
+  // 命令形态方言无关（脚本文件承载）：断言的是工作目录落点，不该依赖宿主 shell 的引号/命令集语义
+  fs.writeFileSync(path.join(root, 'cwd.js'), 'process.stdout.write(process.cwd())');
   const { registry, safety } = registryWith(root);
 
-  const r = await registry.execute('exec', { command: 'ls marker.txt' }, safety);
+  const r = await registry.execute('exec', { command: 'node cwd.js' }, safety);
   assert.equal(r.ok, true);
-  if (r.ok) assert.match(r.value.stdout, /marker\.txt/);
+  if (r.ok) assert.equal(path.resolve(r.value.stdout.trim()), path.resolve(root), 'exec 须在 root 内执行');
 });
 
 test('glob 以 root 为基准并返回相对路径', async () => {
@@ -78,7 +79,9 @@ test('多步连续工具调用（读→写→读→exec）链路稳定', async (
   const r1 = await registry.execute('read', { path: 'n.txt' }, safety);
   assert.equal(r1.ok, true);
   if (r1.ok) assert.equal(r1.value.stdout, '42');
-  const e = await registry.execute('exec', { command: 'cat n.txt' }, safety);
+  // exec 侧以脚本文件读回（方言无关）：cat/ls 属 POSIX 命令集，Windows 无 Git Bash 时按 §14 不保证可用
+  fs.writeFileSync(path.join(root, 'read-back.js'), "process.stdout.write(require('fs').readFileSync('n.txt', 'utf8'))");
+  const e = await registry.execute('exec', { command: 'node read-back.js' }, safety);
   assert.equal(e.ok, true);
   if (e.ok) assert.match(e.value.stdout, /42/);
 });

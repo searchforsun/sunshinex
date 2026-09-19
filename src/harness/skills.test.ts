@@ -137,15 +137,36 @@ test('兼容链就近遮蔽：同 id 取最高优先根（.sunshinex 遮蔽 .age
   });
 });
 
-test('标准文件名口径：SKILL.md 优先、skill.md 兜底（同名并存取 SKILL.md）', () => {
+/**
+ * 文件系统大小写敏感性探测：Windows/macOS 缺省不区分（`SKILL.md` 与 `skill.md` 是同一文件），
+ * Linux 区分。测试用它区分平台前提，而不是把某一平台的 FS 语义编进断言。
+ */
+function fsIsCaseSensitive(dir: string): boolean {
+  fs.writeFileSync(path.join(dir, 'CaseProbe.tmp'), '');
+  const same = fs.existsSync(path.join(dir, 'caseprobe.tmp'));
+  fs.rmSync(path.join(dir, 'CaseProbe.tmp'), { force: true });
+  return !same;
+}
+
+test('标准文件名口径：SKILL.md 优先、skill.md 兜底', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
   withCompatEnv(root, () => {
     writeCompatSkill(root, '.sunshinex', 'upper', 'UpperName');
     fs.mkdirSync(path.join(root, '.sunshinex', 'skills', 'lower'), { recursive: true });
     fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'lower', 'skill.md'), '---\nname: LowerName\ndescription: 小写兜底\nversion: 1.0.0\n---\n正文');
+    // 兜底：仅小写文件名时照常装载（Linux 必须显式补齐才与 Windows/macOS 装载结果一致）
     assert.deepEqual(loadSkills(root).map((s) => s.id).sort(), ['lower', 'upper']);
-    fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'upper', 'skill.md'), '---\nname: LowerUpper\ndescription: 小写同名\nversion: 1.0.0\n---\n正文');
-    assert.equal(loadSkills(root).find((s) => s.id === 'upper')?.name, 'UpperName', '同 id 并存时 SKILL.md 优先');
+    assert.equal(loadSkills(root).find((s) => s.id === 'lower')?.name, 'LowerName', 'skill.md 兜底装载');
+
+    if (fsIsCaseSensitive(root)) {
+      // 并存优先仅大小写敏感文件系统可构造：不敏感平台上两个文件名指向同一文件，不存在并存态
+      fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'upper', 'skill.md'), '---\nname: LowerUpper\ndescription: 小写同名\nversion: 1.0.0\n---\n正文');
+      assert.equal(loadSkills(root).find((s) => s.id === 'upper')?.name, 'UpperName', '同 id 并存时 SKILL.md 优先');
+    } else {
+      // 不敏感平台：写 skill.md 即覆写同一文件（登记的 FS 事实），断言退化为「口径仍取 SKILL.md 位置」
+      fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'upper', 'skill.md'), '---\nname: LowerUpper\ndescription: 小写同名\nversion: 1.0.0\n---\n正文');
+      assert.equal(loadSkills(root).find((s) => s.id === 'upper')?.name, 'LowerUpper', '大小写不敏感平台两名为同一文件，读取最新内容');
+    }
   });
 });
 

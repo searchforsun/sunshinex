@@ -342,7 +342,9 @@ test('⑰ put slug 撞索引名（大小写不敏感）：MEMORY_SLUG_INVALID �
     assert.equal(store.indexText().split('\n').filter((l: string) => l.length > 0).length, linesBefore, '索引行数不变');
     assert.ok(store.list().some((rec) => rec.slug === 'prefers-pnpm'), '既有记录仍在索引与列表中（未被静默跳过）');
     assert.equal(store.count(), 1, '被拒记录未落盘');
-    assert.equal(fs.existsSync(path.join(store.dir(), 'memory.md')), false, '小写索引名文件亦未产生');
+    // 目录项精确比较（不用 existsSync）：大小写不敏感文件系统上 `memory.md` 与索引 `MEMORY.md` 是同一物，
+    // existsSync 恒真、无法区分「记录文件被拒」与「索引本身」
+    assert.ok(!fs.readdirSync(store.dir()).includes('memory.md'), '小写索引名记录文件亦未产生');
   });
 });
 
