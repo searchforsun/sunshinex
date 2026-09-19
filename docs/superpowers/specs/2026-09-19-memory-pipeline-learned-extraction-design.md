@@ -93,6 +93,17 @@
 - **注入面**：工具清单属稳定段（按名排序进 B 类），前缀缓存一次断点已由既批双通道预算覆盖，零新增击穿；工具 description 英文单语（§15），写清何时该用（用户偏好/纠正/踩坑路径等跨会话值得记的事实时）
 - **回执**：成功观察行含 slug（可追溯）；失败走 Result 错误通道（TOOL_INVALID_ARG 等），永不炸任务
 
+### 3.8 curator-lite（空闲维护 learned 库，D6）
+
+- **定位**：优化面（非兜底面）——learned 库长期累积会出现近似重复条目与描述漂移，空闲时做一次轻量整理，提升技能清单（name+description 索引）的语义匹配质量。**只维护学习级目录**（`<dataDir>/skills/`，机器写入产物）；项目级 `.sunshinex/skills/` 与全局级 `~/.sunshinex/skills/` 是手写资产，curator 零触碰。
+- **触发门槛**（配额纪律）：仅当 ① `learnedSkills` 开启 ② 学习级条目数 ≥ `MEMORY_CURATE_MIN_ENTRIES`（缺省 8）③ 相对上次整理有净增（标记文件 `<dataDir>/skills-curated.json` 记 `{"count":N}`，当前条目数 > N）时，触发一次 curation 模型调用；否则零调用。判无动作/技术失败同样推进标记（防重复空跑），落盘失败不推进（下次重试）。
+- **素材面**：条目清单按 mtime 升序，每条的 `slug + name + description + body` 前 `MEMORY_CURATE_ITEM_CHARS`（缺省 400）字符、整表上限 `MEMORY_CURATE_TOTAL_CHARS`（缺省 4000）。
+- **产出**（严格 JSON，固定标记 `learned-curation`）：`{"merge":[{"keep":"slug","drop":["slug",…],"name":"…","description":"…","body":"…"}],"rewrites":[{"slug":"…","description":"…"}]}` 或 `{"worth":false}`（判无需整理）。
+- **闸门**（复用 `memory/guards.ts` 单点）：注入/不可见 Unicode 命中 → 丢弃该动作；description 截 60、body 截 2000（沿用 learned 口径）；**只减不增**——整理后条目数不得超过输入条目数，超产计划整体拒绝。
+- **落盘与回滚**：整理前快照学习级目录为 `<dataDir>/skills-bak-<timestamp>/`；任一动作失败即回滚（删残留、还原快照）并返回失败；成功后删快照。
+- **审计链行**：整理有实际动作时 notify 一行 `[skills] curated: merged N, rewritten M`（英文单语、链尾追加）；无动作零行。
+- **成本登记**：每次触达 ≤1 次模型调用，节流靠净增门槛 + 标记文件，跨会话不重复空跑。
+
 ## 4. 落点表
 
 | 文件 | 动作 |
@@ -132,6 +143,8 @@
 14. 前缀回归：后台 notice 链行尾追、相邻帧前缀稳定用例保持绿
 15. **`memory_write` 工具**：写入落盘过五重闸门（含重复幂等返回已存在 slug）；注入样本被拒；运行中手动写入即触发索引漂移尾追（现有探测链复用）；off 语义：autoMemory off 时报「记忆未启用」不落盘
 16. 工具清单含 `memory_write` 且按名排序（selfcheck 观测面零新增装配面断言）
+17. **curator 门槛**（§3.8）：条目数低于阈值或与上次整理标记相比无净增 → 零模型调用；净增且达标 → 恰一次调用；判无动作/技术失败同样推进标记，二次不重跑
+18. **curator 闸门与回滚**：注入动作丢弃、description 截 60、只减不增（超产整体拒绝）、未知 slug 丢弃；中途失败学习级目录回滚且无 `skills-bak-*` 残留；项目级 `.sunshinex/skills/` 与全局级技能零触碰；有实际动作时审计链行 `[skills] curated: merged N, rewritten M` 恰好一条
 
 ## 7. 风险与登记取舍
 
