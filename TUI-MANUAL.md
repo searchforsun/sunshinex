@@ -77,6 +77,11 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
   "contextWindow": 200000,                           // 模型最大上下文 tokens（状态栏 ctx 分母；1M 模型填 1000000）
   "reasoningEffort": "high",                         // 缺省思考强度 none|minimal|low|medium|high|xhigh|max；留空 = 不下发（用端点默认）；端点不支持时按阶梯自动降级
 
+  // ── 长任务 ────────────────────────────────────────────
+  "maxSteps": 400,                                  // Reactor 单 run 步数上限
+  "maxLoopIterations": 200,                         // Loop 修正环节点执行步上限
+  "maxGraphNodes": 1000,                            // Graph 全链路节点步累计上限
+
   // ── 界面 ──────────────────────────────────────────────
   "language": "en",                                  // 界面语言 en|zh（--language 参数优先）
 

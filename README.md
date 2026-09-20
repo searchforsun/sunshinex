@@ -66,6 +66,12 @@ pnpm cli tui                   # 构建并启动交互式终端（缺省 manual 
 
 配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [TUI-MANUAL](TUI-MANUAL.md)；旧 `~/.sunshinex/.env` 已退役——设置键转语义键、密钥原样进 `env` 块。
 
+### 长任务终止参数
+
+- `maxSteps`（缺省 400）：Reactor 单 run 步数上限
+- `maxLoopIterations`（缺省 200）：Loop 修正环节点执行步上限
+- `maxGraphNodes`（缺省 1000）：Graph 全链路节点步累计上限
+
 思考强度（reasoning effort）：`settings.json` 语义键 `reasoningEffort`（none|minimal|low|medium|high|xhigh|max，缺省不下发即用端点默认），或启动参数 `--effort=<档>`、会话内 `/model effort <档>`；端点不支持该参数时按阶梯逐档降级、全不支持自动省略。
 
 常用入口：
