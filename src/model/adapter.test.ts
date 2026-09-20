@@ -104,7 +104,7 @@ test('OpenAIAdapter：外部 signal 中止 → 抛「Task interrupted」（区�
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', timeoutMs: 10_000 });
   const ctrl = new AbortController();
-  const pending = a.complete('hi', undefined, undefined, ctrl.signal);
+  const pending = a.complete('hi', undefined, ctrl.signal);
   setTimeout(() => ctrl.abort(), 80);
   await assert.rejects(() => pending, /Task interrupted/);
   srv.close();
