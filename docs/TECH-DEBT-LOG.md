@@ -18,27 +18,33 @@
 | 2026-09-08 | 8b11e60 | d457809 | 记录债 E/B + 代码债 G | 全仓技术债审计后按双账本当轮清轻债：CLAUDE.md §3 目录树同步实况（E）、§2 补 pnpm test/cli、§7 忽略清单补 .longtask/（B）；删零引用死文件 storage/store.ts、types.ts 死枚举收敛（LoopResult.retry 零产出移除、ToolCategory.network 降注释预留，engine.test 桩值同步）（G·轻）。验证：build 零错、165/165 全绿。遗留中级别债（登记待后续批次）：装配根 buildDeps 上移出 cli 层、错误模型契约统一（Result vs catch-reply）、感知跳过集与 .gitignore 单源化、解析类纯逻辑直接单测（config/agents/skills/loader）、真实模型 e2e 资产化 |
 | 2026-09-08 | c656a05 | f14facf（台账行随紧随提交入库） | 记录债 B + 代码债 J·中/补充 | 三批次偿还 D1-D4：装配根上移 src/runtime.ts（e299a66）；SCAN_SKIP_DIRS 单源化+绑定测试锚点+补 .superpowers 漂移（0fc4283）；错误通道分域契约与装配根条款入规 CLAUDE.md §4、过期占位句移除（f14facf）；解析器单测 config/skills/plugins/agents 四件套 +9 用例、loader 非法 JSON 降级（f14facf）。过程与治理：批次3 首入库带 4 红测（链式命令未设门禁），根因为测试侧断言语义与夹具路径错误（实现无罪），修正后 amend 并确立 fail 0 硬门禁；54 个 root 属主源文件删除重建归位 sandbox（内容零变更），修复沙箱 EACCES 写入受限。验证：build 零错、175/175 全绿。待办债项区 D1-D4 翻 closed，D5 维持 deferred |
 | 2026-09-09 | d457809 | 4f09461（台账行随紧随提交入库） | 记录债 | 增量判定 d457809..HEAD（阶段四知识库/MCP/技能沉淀/成本账本批次，81 文件）后当轮清账本一 5 项：`.env.example` 补 KB_BACKEND/KB_DATA_DIR/EMBEDDING_* 注释示例并标注 OPENAI_* 逐键回退语义（A）；CLAUDE.md §5 MCP SDK 边界句更新为 stdio/streamable http/sse 三传输（B/F）；§3 目录树补 ledger.ts 与 skills/learned.ts（E）；README 架构树同步实况（补 runtime.ts/mcp/knowledge/ledger/learned、删悬空 memory.ts、builtin 清单补 webfetch/kb_search）（B/E）；ROADMAP 进度行去厂商化「DeepSeek 兼容」→「OpenAI 协议兼容供应商」（F）。账本二增量复查无新增实债（G–K 全类无；chunk.ts 导出常量属配置面声明、mock-mcp 双脚本协议帧重复属测试物料独立运行设计，均留证不动刀）；遗留 D5 维持 deferred。残留 grep 复查：活文档「未启用」/悬空 memory.ts/厂商键名均归零。验证：build 零错、selfcheck OK（含 learned/usage 行）、299/299 全绿 |
-| 2026-09-19 | 4f09461 | 1b2b384（台账行随紧随提交入库） | 记录债 B/E/F + 代码债 G/I/J/L | 增量判定 4f09461..HEAD（308 文件 +43806/−1719）分账本结论：账本一零漂移（CLAUDE.md/README/TUI-MANUAL 结构与配置面已随各特性线同步，settings.json 示例与解析器实况一致）；账本二增量扫描 as any/注释掉的代码零命中，TODO×2 属测试物料字面量，console.log 均在 CLI 输出面合法。待办债项 D6–D15 全数收口：D6 model-error 的 done 帧不再以 assistant 终答重复入档+对照用例；D7 UsageAdapter 正量夹具使 tokenCap 分支可达（换回忽略 usage 的实现必红）；D8 GraphRunResult.stopReason 契约注释钉死（undefined=非护栏越限）；D9 评估定案维持规划段无独立上限（各步骤 Reactor 缺省 200 步承载、plan.test 钉子锁定该口径）；D10 PLAN_TASK_LABEL 导出常量+reportIncomplete 收敛三处「note+非空即推」重复；D11 describeIncomplete 显式全覆盖+never 编译期守卫+未知值兜底文案；D12 六处跨行重复 import 与 graph 测试冗余 as cast 清零；D13 UsageAdapter.calls 补消费断言+graph 角色 tokenCap 对称覆盖（runtime.test 旧「步数 200」耦合断言已随 tier 批次重写消失）；D14 复核定案维持原位（无跨层直接消费，移入 types.ts 反抬层级）；D15 本表两行历史误落行归位（本次执行）。验证：tsc strict 零报错、全量 955/955（fail 0、skipped 0）、selfcheck OK（skills 26/learned 24）。改动集未提交待用户指令；工作树另有并发 TUI 显示线 WIP（README/TUI-MANUAL/format/StatusBar 等 10 文件），属并发会话所有、本轮零触碰不属本清理 |
+| 2026-09-19 | 4f09461 | 1b2b384（台账行随紧随提交入库） | 记录债 B/E/F + 代码债 G/I/J/L | 增量判定 4f09461..HEAD（308 文件 +43806/−1719）分账本结论：账本一零漂移（CLAUDE.md/README/TUI-MANUAL 结构与配置面已随各特性线同步，settings.json 示例与解析器实况一致）；账本二增量扫描 as any/注释掉的代码零命中，TODO×2 属测试物料字面量，console.log 均在 CLI 输出面合法。待办债项 D6–D15 全数收口：D6 model-error 的 done 帧不再以 assistant 终答重复入档+对照用例；D7 UsageAdapter 正量夹具使 tokenCap 分支可达（换回忽略 usage 的实现必红）；D8 GraphRunResult.stopReason 契约注释钉死（undefined=非护栏越限）；D9 评估定案维持规划段无独立上限（各步骤 Reactor 缺省 200 步承载、plan.test 钉子锁定该口径）；D10 PLAN_TASK_LABEL 导出常量+reportIncomplete 收敛三处「note+非空即推」重复；D11 describeIncomplete 显式全覆盖+never 编译期守卫+未知值兜底文案；D12 六处跨行重复 import 与 graph 测试冗余 as cast 清零；D13 UsageAdapter.calls 补消费断言+graph 角色 tokenCap 对称覆盖（runtime.test 旧「步数 200」耦合断言已随 tier 批次重写消失）；D14 复核定案维持原位（无跨层直接消费，移入 types.ts 反抬层级）；D15 本表两行历史误落行归位（本次执行）。验证：tsc strict 零报错、全量 955/955（fail 0、skipped 0）、selfcheck OK（skills 26/learned 24）。改动集已随 1b2b384 入库（并发 TUI 显示线 10 文件随批注明）、台账行随 3db1bbb 回填；已推送 origin/dev1（本地与远程同步 0/0），工作区干净 |
 
 ## 待办债项
 
 > 未偿债项在此逐条登记（编号/账本/状态/描述/证据/偿还动作/登记来源）；偿还后在同轮提交中翻转状态并补「关联提交」。本区与上方清理记录互不掺杂。
 
+**当前无未偿债项**（2026-09-19 清理批次收口：D1–D4、D6–D15 已偿清归档；D5 转长期挂起登记，不属活动待办）。新增债项按下表格式登记。
+
 | 编号 | 账本 | 状态 | 描述 | 证据 | 偿还动作 | 登记来源 |
 |---|---|---|---|---|---|---|
-| D1 | 二·J | closed（e299a66） | 装配根 buildDeps 定义于 cli/commands/run-loop.ts，run-pipeline 跨命令 import；新增交互面（TUI/GUI）复用装配将被迫依赖 CLI 层 | run-loop.ts:10、run-pipeline.ts:5/47 | 上移 src/runtime.ts 作唯一 composition root，CLI 层仅参数解析 | 2026-09-08 清理行遗留 |
-| D2 | 二·J | closed（0fc4283） | 感知 SCAN_SKIP_DIRS 与 .gitignore 人肉双源，已漂移一次（d8dbcc4 补 .pnpm-store）；.superpowers 仍缺 | perception.ts:14 vs .gitignore | export 唯一源 + 绑定测试锚点防漂移 + 补 .superpowers | d8dbcc4 |
-| D3 | 一·B/二·J | closed（f14facf，契约入规；实现收敛按登记原文另批） | 错误模型双轨：Result（tools/chain/sandbox）与 throw→catch→reply（engine/reactor/nodes）并存，跨层语义靠约定维持 | graph/engine.ts:161 等 14 处 catch | 契约入规 CLAUDE.md §4；实现收敛另批 | 2026-09-08 清理行遗留 |
-| D4 | 二·补充 | closed（f14facf） | 解析类纯逻辑无直接单测：config.ts / graph/agents.ts / harness/skills.ts / plugins/loader.ts / cli parseArgs | 无配套 *.test.ts 清单 | 补解析器单测五件套 | 2026-09-08 清理行遗留 |
-| D5 | 二·补充 | deferred | 真实模型 e2e 未资产化，现靠手工 background + 产物判定，成果只在 git log | f2adf16、f5acd9a、clamp 验收 run3 | scripts/e2e-real 手动门脚本（需真实 key，单独批次，不进门禁） | 2026-09-08 清理行遗留 |
-| D6 | 一·C/二·I | closed（本轮批次） | model-error 双上屏：Reactor 既 `emit('error')` 又在收尾 `emit('done')` 里带同一错误文案，会话层把错误当终答再推一条 assistant，与「失败只走 error 通道」的声明矛盾 | src/harness/reactor.ts（error/done 两处 emit）、src/tui/session.ts 的 done 分支 | session 的 done 分支对 `stopReason === 'model-error'` 跳过终答推送，并补一条对照用例 | 2026-09-11 长任务护栏支线 · 整支评审 |
-| D7 | 二·L | closed（本轮批次） | 阈值/护栏类用例判别力不足：夹具恒回零用量致 tokenCap 分支不可达；「缺省步数 200」半支把 Reactor 常量固化进断言 | reactor.guardrail.test.ts:70-78、runtime.test.ts:129-150、session.plan.test.ts:149 | 补可达夹具（真实用量适配器）；「移除」类断言改为不耦合常量（notEqual / 命名常量）；补「换回旧实现必红」对照 | 2026-09-11 长任务护栏支线 |
-| D8 | 二·J | closed（本轮批次） | graph 的 paused/failed（gate 挂起、节点失败）不带 stopReason，下游须以「undefined = 非护栏越限」为契约维持，现无类型层表达 | src/graph/engine.ts 收尾路径 | 在 GraphRunResult 上写死该契约（注释或判别联合），或补非空 reason | 2026-09-11 长任务护栏支线 |
-| D9 | 二·J | closed（本轮批次·评估定案） | `/plan` 规划段并入主链后原 `maxSteps: 6` 上限消失，最坏情形仅由 4h / 1M 兜底 | src/tui/session.ts 规划调用点 | 评估是否收回规划段步数上限（护栏口径统一） | 2026-09-11 长任务护栏支线 |
-| D10 | 二·G | closed（本轮批次） | 规划指令文案在 session.ts / session.plan.test.ts / session.incomplete.test.ts 三处独立拷贝；session.ts 两处重复「算 note + 非空即推」 | 三处字面量 | 提为导出常量；抽 `reportIncomplete(r)` | 2026-09-11 长任务护栏支线 |
-| D11 | 二·L | closed（本轮批次） | `stop-reason.ts` 的 default 吞未来新增枚举值（新增 StopReason 成员时静默无文案） | src/tui/stop-reason.ts | 改显式 case + 兜底文案 | 2026-09-11 长任务护栏支线 |
-| D12 | 二·G | closed（本轮批次） | 轻残渣批：reactor.ts 双 `import '../types'`；两个测试文件各自双 `import '../model/adapter'`；runtime.ts 中 `harness.ledger` 恒真的死分支；graph 测试冗余 `as` cast | src/harness/reactor.ts:1,3、templates.long-task.test.ts:8-9、runtime.ts:47、agents.guardrail.test.ts:48 | 当轮清（随下次轻债批次） | 2026-09-11 长任务护栏支线 |
-| D13 | 二·L | closed（本轮批次） | 未断言字段与无判别贡献断言：`UsageAdapter.calls` 只累加不断言（loop/graph 两处）；runtime.test 用例 8 断言无独立红灯贡献；graph/agents.ts 的 tokenCap 无覆盖 | nodes.guardrail.test.ts、agents.guardrail.test.ts、runtime.test.ts:170-173 | 补断言或删无用字段，或注释说明其冗余属有意 | 2026-09-11 长任务护栏支线 |
-| D14 | 一·E | closed（本轮批次·复核定案） | `ReactorLimits` / `ReactorOpts` 落在 harness/reactor.ts 而非 src/types.ts（共享类型未统一登记） | src/harness/reactor.ts | 待下游直接消费时移入 types.ts 登记 | 2026-09-11 长任务护栏支线 |
-| D15 | 一·B | closed（本轮批次） | 本文件台账表的两行 2026-09-08 / 2026-09-09 记录误落于「待办债项」区之后，表结构错位 | 本区末两行 | 归位至台账表；本次未动（长行搬运风险高于收益），留待下次清理批次 | 2026-09-11 登记时发现 |
 
+### 归档（D1–D15）
+
+| 编号 | 终态 | 关联提交 | 摘要 |
+|---|---|---|---|
+| D1 | closed | e299a66 | 装配根 buildDeps 上移 src/runtime.ts 作唯一 composition root，CLI 层仅参数解析 |
+| D2 | closed | 0fc4283 | 感知 SCAN_SKIP_DIRS 单源化 + 绑定测试锚点 + 补 .superpowers |
+| D3 | closed | f14facf | 错误通道分域契约入规 CLAUDE.md §4（实现收敛按登记原文另批） |
+| D4 | closed | f14facf | 解析器单测五件套（config/agents/skills/plugins-loader/cli parseArgs）+9 用例 |
+| D5 | deferred（长期挂起） | —（需真实 key 单独批次，不进门禁） | 真实模型 e2e 未资产化；有真实 key 时以 scripts/e2e-real 手动门另启 |
+| D6 | closed | 1b2b384 | model-error 的 done 帧不再以 assistant 终答重复入档 + 对照用例 |
+| D7 | closed | 1b2b384 | UsageAdapter 正量夹具使 tokenCap 分支可达（换回忽略 usage 旧实现必红） |
+| D8 | closed | 1b2b384 | stopReason 契约钉进类型层（护栏类终止必带原因、undefined=非护栏越限） |
+| D9 | closed | 1b2b384 | 评估定案维持规划段无独立上限（各步骤 Reactor 缺省 200 步承载、plan.test 钉子锁定） |
+| D10 | closed | 1b2b384 | PLAN_TASK_LABEL 导出常量 + reportIncomplete 收敛三处「note+非空即推」重复 |
+| D11 | closed | 1b2b384 | describeIncomplete 显式全覆盖 + never 编译期守卫 + 未知值兜底不静默 |
+| D12 | closed | 1b2b384 | 六处跨行重复 import 合并 + graph 测试冗余 as cast 摘除 |
+| D13 | closed | 1b2b384 | UsageAdapter.calls 补消费断言 + graph 角色 tokenCap 对称覆盖 |
+| D14 | closed | 1b2b384 | 复核定案维持原位（无跨层直接消费，移入 types.ts 反抬层级） |
+| D15 | closed | 1b2b384 | 台账两行历史误落行归位 + 「本区之后」注记摘除 |
