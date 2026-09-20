@@ -137,21 +137,6 @@ export function App({
   // latestFull=第二层内容深度（最近正文锚点阶段的思考与工具结果全文 ↔ 摘要）；无状态门槛，运行中随时可切
   const [expandAll, setExpandAll] = React.useState(store.expandAll ?? false);
   const [latestFull, setLatestFull] = React.useState(store.latestFull ?? false);
-  // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）
-  const [browseMode, setBrowseMode] = React.useState(false);
-  const browseModeRef = React.useRef(false);
-  const [browseCursor, setBrowseCursor] = React.useState(0);
-  const browseCursorRef = React.useRef(0);
-  const [spawnExpanded, setSpawnExpanded] = React.useState<number[]>(store.spawnExpanded);
-  const setBrowse = (mode: boolean, cursor = 0): void => {
-    browseModeRef.current = mode;
-    browseCursorRef.current = cursor;
-    setBrowseMode(mode);
-    setBrowseCursor(cursor);
-  };
-  /** 已归档 SPAWN 调用行 seq 列表（键盘分发与高亮透传共用同一过滤口径） */
-  const spawnCallSeqs = (msgs: TuiState['messages']): number[] =>
-    msgs.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail).map((m) => m.seq);
   const [history, setHistory] = React.useState<string[]>(store.history);
   const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
@@ -161,7 +146,6 @@ export function App({
     store.cursor = cursor;
     store.expandAll = expandAll;
     store.latestFull = latestFull;
-    store.spawnExpanded = spawnExpanded;
     store.history = history;
     store.histIdx = histIdx;
   });
@@ -174,7 +158,7 @@ export function App({
       return;
     }
     onRequestRepaint?.();
-  }, [expandAll, latestFull, browseMode, spawnExpanded]);
+  }, [expandAll, latestFull]);
   // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）——上一段从全显转折叠。
   // 防闪烁两层：①被收拢段不含思考/工具行时重绘前后画面零变化，直接跳过（连续 ▶ 行、计划卡、
   // 上一任务正文段等无效触发全部过滤）；②400ms 防抖合并，锚点连续落定只画一次；
@@ -230,31 +214,6 @@ export function App({
   const columns = useStdout().stdout?.columns ?? 80;
 
   useInput((input: string, key: RawKey) => {
-
-    // 子代理浏览模式（Ctrl+B 进入）：短接管 ↑/↓/Enter/Esc；其余按键一律吞掉不落输入缓冲。
-    // 光标与模式取 ref 真值（处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；仅 idle/error 可进入。
-    if (browseModeRef.current) {
-      const spawnSeqs = spawnCallSeqs(state.messages);
-      if (spawnSeqs.length === 0) { setBrowse(false); return; }
-      const clamp = (n: number): number => Math.max(0, Math.min(spawnSeqs.length - 1, n));
-      if (key.escape) { setBrowse(false); return; }
-      if (key.upArrow) { setBrowse(true, clamp(browseCursorRef.current - 1)); return; }
-      if (key.downArrow) { setBrowse(true, clamp(browseCursorRef.current + 1)); return; }
-      if (key.return) {
-        const seq = spawnSeqs[clamp(browseCursorRef.current)];
-        setSpawnExpanded((list) => (list.includes(seq) ? list.filter((s) => s !== seq) : [...list, seq]));
-        return;
-      }
-      if (key.ctrl && input === 'c') { setBrowse(false); return; }
-      return;
-    }
-    // Ctrl+B 进入子代理浏览模式：仅 idle/error 态、且场上存在已归档 SPAWN 行；无 SPAWN 行/运行中静默 no-op
-    if (key.ctrl && input === 'b') {
-      if ((state.status === 'idle' || state.status === 'error') && spawnCallSeqs(state.messages).length > 0) {
-        setBrowse(true, spawnCallSeqs(state.messages).length - 1); // 光标缺省落最近一条
-      }
-      return;
-    }
 
     // AskQuestion 问询卡（AskQuestion 线 T2）：模态接管键盘——↑↓ 移动、Space 选定（单选即选即提交、多选为勾选翻转）、
     // Enter 提交（多选提交全部勾选，空勾选=放弃）、数字 1-9 快选（多选为勾选翻转）、Other… 项切自由输入；
@@ -418,17 +377,6 @@ export function App({
       return;
     }
 
-    // 运行中撤回排队（对标 CC「Up from the first row」）：有排队穿插且输入框为空时，Up 取回全部待投递行回输入框编辑或清空丢弃
-    // （awaiting-approval 态在 handler 前部已被审批卡分流 return，此处只可能是 running）
-    if (key.upArrow && state.status === 'running' && buffer.length === 0) {
-      const taken = controller.takeBackQueued();
-      if (taken.length > 0) {
-        const text = taken.join('\n');
-        setBuffer(text);
-        setCursor(text.length);
-      }
-      return;
-    }
 
     // ↑↓：单行缓冲回填输入历史（多行缓冲不劫持，留给后续行内导航）
     if ((key.upArrow || key.downArrow) && (state.status === 'idle' || state.status === 'error') && !buffer.includes('\n')) {
@@ -496,15 +444,9 @@ export function App({
         columns={columns}
         expandAll={expandAll}
         latestFull={latestFull}
-        spawnExpandedSeqs={spawnExpanded}
-        spawnHighlightSeq={browseMode ? (spawnCallSeqs(state.messages)[browseCursor] ?? undefined) : undefined}
       />
       {state.status === 'running' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />
-      ) : null}
-      {browseMode ? (
-        // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源
-        <Text backgroundColor="gray"> {t('subagent browse · ↑↓ move · Enter toggle · Esc exit', '子代理浏览 · ↑↓ 移动 · Enter 切换 · Esc 退出')} </Text>
       ) : null}
       {state.children.length > 0 ? <ChildPanel childrenState={state.children} columns={columns} /> : null}
       {state.approval ? (
@@ -555,7 +497,7 @@ export function App({
         status={state.status}
         todos={state.todos}
         model={info.model}
-        effort={state.effort}
+       
         context={{ used: state.metrics.ctxUsed, window: Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
       />
     </Box>

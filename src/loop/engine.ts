@@ -48,12 +48,6 @@ export interface LoopDeps {
   ledger?: RunLedger;
   /** 用户级模型档位（run 级常量，对标 Claude Code：模型档位是用户参数）：装配点注入，agent/角色节点原样下传 Reactor */
   tier?: ModelTier;
-  /** 缺省思考强度（run 级常量，对标 tier）：下传循环内构造的 Reactor；请求级参数、不进提示词 */
-  effort?: import('../types').ReasoningEffort;
-  /** 用户中断信号（Esc/Ctrl+C）：agent 节点下传 Reactor；判据模型调用同样尊重（见 nodes.ts modelJudge） */
-  signal?: AbortSignal;
-  /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向）：下传循环内构造的 Reactor，session 主链步边界 drain 消费；fork 私有面不消费（reactor 侧 scope 闸门） */
-  steer?: () => string[];
   /** 作用域：session=主链追加（缺省）；fork=私有执行（零主链回写，graph loop 节点用） */
   scope?: 'session' | 'fork';
   /** 子代理执行单元（harness 装配注入，内联 import 规避模块环）：贯通到循环内构造的 Reactor（spawn 预算源挂载） */
@@ -141,11 +135,6 @@ export class LoopEngine {
         iteration: ctx.iteration,
         maxIterations: this.termination.maxIterations,
       });
-      // 用户中断（Esc/Ctrl+C）：节点边界最先检查——agent 节点内部经 Reactor 即刻停，引擎在此不再进入下一节点；
-      // 中断走 paused（可续走，同预算语义），修正环保留已完成的上下文，重跑 /goal 继续
-      if (this.deps.signal?.aborted) {
-        return this.finish(ctx, 'paused', { stopReason: 'interrupted', error: t('Task interrupted (Esc/Ctrl+C)', '任务已中断（Esc/Ctrl+C）') });
-      }
       if (hit) {
         const mapped: Record<LimitReason, { status: LoopRunResult['status']; error: string }> = {
           deadline: {
@@ -172,11 +161,6 @@ export class LoopEngine {
       ctx.iteration += 1; // iterations = 已完成的节点执行步（所有终态统一按此报告）
       ctx.tokensUsed += out.tokens; // 引擎统一累加，节点不自管
       this.hooks.onNodeEnd?.(node, out, ctx);
-
-      // 节点返回后若已被中断（agent 内部 reactor 因 signal 提前收束）：立即 paused，不走 fail/判据分支
-      if (this.deps.signal?.aborted) {
-        return this.finish(ctx, 'paused', { stopReason: 'interrupted', error: t('Task interrupted (Esc/Ctrl+C)', '任务已中断（Esc/Ctrl+C）') });
-      }
 
       // ① 验收通过：节点自报 done，或 check 节点全过（pass）→ 成功终态（每步后最先判定，优先于失败与上限）
       if (out.status === 'done' || (node.kind === 'check' && out.status === 'pass')) {

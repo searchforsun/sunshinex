@@ -17,7 +17,6 @@ export function describeIncomplete(stopReason: StopReason | undefined): string {
       return t('Incomplete: max steps reached', '未完成终止：已达步数上限');
     case 'done':
     case 'model-error':
-    case 'interrupted': // 用户主动中断：回执由 session 层发（Esc/Ctrl+C 语义），此处不重复
     case undefined:
       return '';
     default: {

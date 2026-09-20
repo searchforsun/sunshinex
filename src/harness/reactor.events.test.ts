@@ -38,8 +38,7 @@ test('事件流：正常单步 run 发射 step→token*→route→done，无 onE
     assert.equal(events[events.length - 1].type, 'done', '收尾必发 done');
     // scripted 走 completeStream 逐字投递：token 为增量，消费端拼接后应含完整输出
     const tokenText = events.filter((e) => e.type === 'token').map((e) => e.text ?? '').join('');
-    // chat 主通道：chatStream 投递的 content 即收束答复正文（信封协议退役，token 承载正文而非信封文本）
-    assert.ok(tokenText.includes('ok'), 'token 事件流拼接应含完整输出');
+    assert.ok(tokenText.includes('"reply":"ok"'), 'token 事件流拼接应含完整输出');
     const route = events.find((e) => e.type === 'route');
     assert.ok(route?.payload && typeof route.payload.tier === 'string', 'route 事件携带档位');
   } finally {

@@ -53,8 +53,6 @@ export function render(element: React.ReactElement): TestRenderResult {
     stdin: stdin as unknown as NodeJS.ReadStream,
     patchConsole: false,
     debug: false,
-    // Ctrl+C 交还分发层（与 entry 生产路径同口径）：测试注入 \x03 走 App 分流，不被 ink 托管退出
-    exitOnCtrlC: false,
   });
   return {
     lastFrame: () => last,

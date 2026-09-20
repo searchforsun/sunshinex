@@ -7,7 +7,6 @@ import { runTuiLoop } from './tui-loop';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
 import { buildModel, parseTier } from '../runtime';
-import { parseEffort } from '../model/adapter';
 import type { CliArgs } from '../cli';
 
 /** 读根 package.json 版本（失败回退 undefined，由 buildBannerInfo 兜底） */
@@ -30,11 +29,9 @@ export async function runTui(args: CliArgs): Promise<void> {
   const model = buildModel(args.flags);
   // 模型档位（用户级会话参数，对标 Claude Code 的模型选择）：--tier 优先，SUNSHINEX_TIER 兜底；/model 可会话内切换
   const tier = parseTier(args.flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
-  // 缺省思考强度（请求级参数，--effort > SUNSHINEX_REASONING_EFFORT）：/model effort 可会话内切换
-  const effort = parseEffort(typeof args.flags.effort === 'string' ? args.flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
   const continueLast = args.flags['continue'] === true;
-  const ctrl = new SessionController({ root, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}) });
+  const ctrl = new SessionController({ root, mode, model, ...(tier ? { tier } : {}), ...(continueLast ? { continueLast: true } : {}) });
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
   const banner = buildBannerInfo({ version: readPackageVersion(), root, model: model.label ?? model.provider });
@@ -45,14 +42,12 @@ export async function runTui(args: CliArgs): Promise<void> {
   let current: { unmount(): void } | undefined;
   // Tab 切换的展开模式：经宿主 onRequestRepaint 注入 tui-loop 的重绘出口（与 resize 共用卸载→清屏→重挂路径）
   let requestRepaint: (() => void) | undefined;
-  // 优雅退出单点：SIGINT 与空闲态 Ctrl+C（App onExit）共用——flush 会话日志→清定时器→卸载渲染→退出
-  const quit = (): void => {
-    ctrl.flushJournal(); // 退出收口（规格 D3 flush 点③）
+  process.once('SIGINT', () => {
+    ctrl.flushJournal(); // SIGINT 硬退出收口（规格 D3 flush 点③）
     ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）
     current?.unmount();
     process.exit(0);
-  };
-  process.once('SIGINT', quit);
+  });
   try {
     await runTuiLoop({
       stdout: process.stdout,
@@ -61,8 +56,7 @@ export async function runTui(args: CliArgs): Promise<void> {
         requestRepaint = req;
       },
       renderOnce: (retain) => {
-        // exitOnCtrlC 关闭：Ctrl+C 不再被 ink 托管退出，改由 App 分流（运行中=中断任务，空闲=经 onExit 退出）
-        const inst = render(React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint, onExit: quit }), { exitOnCtrlC: false });
+        const inst = render(React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint }));
         current = inst;
         return inst;
       },

@@ -268,22 +268,6 @@ export class ContextManager {
     return this.compactions;
   }
 
-  /** 消息面只读视图（function calling 迁移 T4）：快照与压缩块分立读取，供 buildMessages 分角色落位 */
-  snapshotView(): ContextItem[] {
-    return this.contextSnapshot;
-  }
-
-  compactedView(): ContextItem[] {
-    return this.compacted;
-  }
-
-  /** 技能块消费（与 assemble 消费即清同语义）：chat 消息面经此取用置尾，不经 assemble 消费 */
-  takePendingSkill(): string | null {
-    const s = this.pendingSkill;
-    this.pendingSkill = null;
-    return s;
-  }
-
   /** 统一装配（fork 模型段序）：loader → 压缩块 → history（会话链经 reactor 缺省 seed 流入）→ 技能块（尾追）
    *  goal 槽与记忆段已取消（CLAUDE.md §11：真实任务文本走链尾「当前指令行」，链即记忆） */
   assemble(history: ContextItem[] = []): ContextItem[] {

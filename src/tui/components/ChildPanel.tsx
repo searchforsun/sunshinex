@@ -2,7 +2,6 @@ import * as React from 'react';
 import { Box, Text } from 'ink';
 import { ChildLiveState } from '../session';
 import { wrapByWidth } from '../text-band';
-import { formatTokens } from '../format';
 import { Spinner } from './Spinner';
 
 const TAIL_LINES = 3;
@@ -23,12 +22,7 @@ export function ChildPanel({ childrenState, columns }: { childrenState: ChildLiv
         const pad = Array.from({ length: TAIL_LINES - tail.length }, () => ' ');
         return (
           <Box key={c.label} flexDirection="column">
-            {c.done ? (
-              // 完成态终标行：并行批早完成者即时定格（Spinner 停转），归档锚点在主链 tool-result、与兄弟面板解耦
-              <Text color="green" dimColor>✓ [{c.label}] done (↑{formatTokens(c.tokens)} tokens)</Text>
-            ) : (
-              <Spinner startedAt={c.startedAt} tokens={c.tokens} label={c.label} />
-            )}
+            <Spinner startedAt={c.startedAt} tokens={c.tokens} label={c.label} />
             {[...pad, ...tail].map((l, i) => (
               <Text key={i} dimColor>{l}</Text>
             ))}

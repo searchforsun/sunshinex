@@ -38,27 +38,6 @@ export type ChatMessage =
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCallSpec[] }
   | { role: 'tool'; content: string; toolCallId: string };
 
-/** function calling 的 tools 字段下发形态（注册表 parameters 逐工具映射） */
-export interface ChatTool {
-  type: 'function';
-  function: { name: string; description: string; parameters?: JsonSchema };
-}
-
-/** chat 轮请求（消息视图 + 工具下发面；tool_choice 由适配器缺省 auto） */
-export interface ChatRequest {
-  messages: ChatMessage[];
-  tools?: ChatTool[];
-  signal?: AbortSignal;
-  effort?: ReasoningEffort;
-}
-
-/** chat 轮聚合结果：finish=stop 时 content 即 reply；finish=tool_calls 时 content 为旁白、toolCalls 为动作批 */
-export interface ChatResult {
-  finish: 'stop' | 'tool_calls';
-  content: string;
-  toolCalls: ToolCallSpec[];
-}
-
 /** 统一执行面上的工具描述 */
 export interface ToolSpec {
   name: string;
@@ -205,9 +184,6 @@ export interface WorkflowDef {
 /** 三档算力档位（模型路由） */
 export type ModelTier = 'small' | 'medium' | 'large';
 
-/** 思考强度七档（OpenAI 兼容 reasoning_effort，请求级参数、不进提示词）：类型登记于 types.ts（新增共享类型须登记先例） */
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
@@ -347,8 +323,7 @@ export interface ContextItem {
 export type ToolExecutor = (input: ToolInput) => Promise<ExecResult>;
 
 /** 终止原因：done=正常完成；model-error=模型调用失败；其余为护栏触发（D7 顺序：超时 → 预算 → 迭代/步数） */
-/** 任务终态原因（interrupted=用户主动中断：Esc/Ctrl+C 触发，模型与工具调用经 AbortSignal 尽快停下） */
-export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-error' | 'interrupted';
+export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-error';
 
 /** 护栏可返回的越限原因（不含「正常完成」与「模型失败」——那两类由调用方判定） */
 export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget'>;

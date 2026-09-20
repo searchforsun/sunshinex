@@ -17,7 +17,6 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   modelLarge: 'SUNSHINEX_MODEL_LARGE',
   baseUrl: 'SUNSHINEX_BASE_URL',
   tier: 'SUNSHINEX_TIER',
-  reasoningEffort: 'SUNSHINEX_REASONING_EFFORT',
   language: 'SUNSHINEX_LANGUAGE',
   contextWindow: 'SUNSHINEX_CONTEXT_WINDOW',
   structuredOutput: 'SUNSHINEX_STRUCTURED_OUTPUT',
