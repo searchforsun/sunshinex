@@ -1,5 +1,6 @@
 /** 工具动词映射（英文步骤标识）：已登记工具映射为英文动词，未登记工具大写原名，MCP 工具统一 MCP */
 const VERBS: Record<string, string> = {
+  ask_question: 'ASK',
   exec: 'EXEC',
   read: 'READ',
   write: 'WRITE',
@@ -20,6 +21,7 @@ export function toolCallLine(tool: string, input: unknown): string {
 
 /** 工具 → 代表字段分派（spec §4.5）：按工具语义取 target，避免固定候选顺序误取 */
 const TARGET_FIELD: Record<string, string> = {
+  ask_question: 'question',
   exec: 'command',
   read: 'path',
   write: 'path',

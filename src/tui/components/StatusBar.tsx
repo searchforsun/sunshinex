@@ -11,6 +11,7 @@ function statusLabel(status: SessionStatus): string {
     running: ['running', '运行中'],
     'awaiting-approval': ['awaiting approval', '等待审批'],
     'awaiting-plan': ['awaiting plan', '待确认计划'],
+    'awaiting-question': ['awaiting question', '待回答问询'],
     error: ['error', '出错'],
   };
   const [en, zh] = labels[status];

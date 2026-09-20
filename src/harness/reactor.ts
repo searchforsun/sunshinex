@@ -427,7 +427,7 @@ export class Reactor {
       'Work on the task given by the last task-instruction line in the context; complete it fully, then end with done and give the final answer in reply.',
       '',
       'Reply with exactly one JSON object and nothing else. Two forms:',
-      '1) Tool call: {"tool":"<name>","input":{...},"done":false}; multiple non-exec tools may run in parallel in one round: {"tools":[{"tool":"<name>","input":{...}},...],"done":false} — in the parallel form, tools and inputs go inside the tools array and the outer object must not carry a tool field',
+      '1) Tool call: {"tool":"<name>","input":{...},"done":false}; multiple non-exec/non-ask tools may run in parallel in one round: {"tools":[{"tool":"<name>","input":{...}},...],"done":false} — in the parallel form, tools and inputs go inside the tools array and the outer object must not carry a tool field',
       '2) Task done: {"done":true,"reply":"<final answer>"}',
       '',
       'Context:',
@@ -450,12 +450,12 @@ export class Reactor {
         ? `Parallel batch exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools`
         : calls.some((c) => {
             const cat = this.deps.registry.get(c.tool)?.category;
-            return cat === 'bash' || cat === undefined;
+            return cat === 'bash' || cat === 'ask' || cat === undefined;
           })
-          ? 'Parallel batch allows only non-exec tools (exec must run exclusively on its own)'
+          ? 'Parallel batch allows only non-exec/ask tools (exec and ask must run exclusively on their own)'
           : '';
     if (denied) {
-      const obs = `Parallel batch rejected: ${denied}; remove exec and retry, or fall back to a single-tool call`;
+      const obs = `Parallel batch rejected: ${denied}; remove exec/ask and retry, or fall back to a single-tool call`;
       steps.push({ step, action: 'parallel', observation: obs });
       return;
     }

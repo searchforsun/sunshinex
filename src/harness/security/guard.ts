@@ -40,6 +40,9 @@ export class SecurityGuard {
         return { allowed: false, reason: `COMMAND_DENIED: MCP server not registered, external tools denied by default: ${server || '(empty)'}` };
       }
     }
+    // ask_question 即问询通道本身（零 IO 副作用，AskQuestion 线 D4/D7）：三模式放行——
+    // plan 下的澄清式提问是对标 CC AskUserQuestion 的核心场景；deny 规则与破坏性硬底线仍先行
+    if (tool === 'ask_question') return { allowed: true };
     if (decision === 'allow') return { allowed: true };
 
     // decision === 'ask'

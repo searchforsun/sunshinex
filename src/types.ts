@@ -151,7 +151,27 @@ export type ModelTier = 'small' | 'medium' | 'large';
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
 /** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子代理派生） */
-export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent';
+export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent' | 'ask';
+
+/** AskQuestion 问询请求（ask_question 工具入参钳制后的装配面；customIndex=「Other…」末项下标，allowCustom 时存在） */
+export interface AskUserRequest {
+  question: string;
+  options: Array<{ label: string; description?: string }>;
+  /** 多选形态：Space 勾选、Enter 提交全部勾选 */
+  multiple?: boolean;
+  /** 「Other…」自由输入项下标（allowCustom 时由工具执行面合成于末项） */
+  customIndex?: number;
+}
+
+/** AskQuestion 裁决三态：勾选 / 自定义文本 / 放弃（放弃属正常观察非错误，模型据此调整策略） */
+export type AskUserAnswer =
+  | { type: 'selected'; labels: string[] }
+  | { type: 'custom'; text: string }
+  | { type: 'dismissed' };
+
+/** 问询接缝：工具执行面经此挂起等用户裁决（TUI=会话问询管线 / CLI=TTY 编号输入 / headless=dismissed 桩） */
+export type AskUserSeam = (req: AskUserRequest) => Promise<AskUserAnswer>;
+
 
 /** 子代理 spawn 入参（三形态：agent_id=注册/预设引用；prompt=内联临时；可同传=框定+任务） */
 export interface SubagentSpawnInput {

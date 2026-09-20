@@ -1,3 +1,4 @@
+import type { AskUserAnswer, AskUserRequest, AskUserSeam } from '../types';
 import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, SessionEvent } from '../types';
 import { t } from '../i18n';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
@@ -42,7 +43,7 @@ export interface TodoItem {
   done: boolean;
 }
 
-export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting-plan' | 'error';
+export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting-plan' | 'awaiting-question' | 'error';
 
 export interface StatusMetrics {
   turnStartedAt: number;
@@ -107,6 +108,8 @@ export interface TuiState {
   children: ChildLiveState[];
   /** 用户级模型档位（/model 会话内切换；undefined = 缺省主模型，run 级常量不随步重估） */
   model?: ModelTier;
+  /** AskQuestion 挂起卡（ask_question 工具或本地问询期间非空；渲染层选择器接管键盘） */
+  question?: AskUserRequest;
 }
 
 export interface SessionOpts extends TuiRuntimeOpts {
@@ -114,6 +117,8 @@ export interface SessionOpts extends TuiRuntimeOpts {
   continueLast?: boolean;
   /** manual 模式审批回调（终端化审批装配点；渲染层注入交互实现） */
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
+  /** 问询接缝覆盖（headless/脚本注入；缺省会话装配把 seam 接到本控制器问询管线） */
+  onAskUser?: AskUserSeam;
   /** 运行时注入位：缺省自建 createRuntime(opts)；测试可注入假实现以隔离长任务 */
   runtime?: TuiRuntime;
 }
@@ -144,8 +149,8 @@ function slashHelp(): string[] {
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 /** 空闲兜底节拍判据（规格 §3.5）：仅 idle（且无挂起审批）且后台队列非空才消费——无待办零调用零配额。
  *  抽为导出纯函数以钉死「运行中不消费」的负向证伪力（评审 Important-2）。 */
-export function shouldPumpOnIdleBeat(status: string, hasPendingApproval: boolean, pending: number): boolean {
-  return status === 'idle' && !hasPendingApproval && pending > 0;
+export function shouldPumpOnIdleBeat(status: string, hasPendingApproval: boolean, pending: number, hasPendingQuestion = false): boolean {
+  return status === 'idle' && !hasPendingApproval && !hasPendingQuestion && pending > 0;
 }
 
 /** /plan 规划轮内部任务标签：规划提示词与 runInternalTask label 共用（D10：防两处漂移） */
@@ -198,6 +203,11 @@ export class SessionController {
   private autoAsker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** 会话内持久记忆开关（/memory on|off；undefined=随控制面）：写 setMemorySessionOverride 单点，仅本会话生效、不改盘，/new 清除 */
   private memoryOverride?: boolean;
+  /** 当前任务中断源（Esc/Ctrl+C）：任务起点建、closeTask 清；interrupt() 置 aborted 贯通模型/loop/reactor */
+  private taskAbort?: AbortController;
+
+  /** AskQuestion 挂起态：问询管线挂起点与裁决回填口（AskQuestion 线 D5） */
+  private pendingQuestion?: { req: AskUserRequest; resolve: (a: AskUserAnswer) => void };
 
   constructor(opts: SessionOpts) {
     this.root = opts.root;
@@ -207,6 +217,7 @@ export class SessionController {
       ...(opts.mode ? { mode: opts.mode } : {}),
       ...(opts.tier ? { tier: opts.tier } : {}),
       onEvent: (e) => this.onEvent(e),
+      onAskUser: opts.onAskUser ?? ((req) => this.askUser(req)),
     });
     const suspendAsker = async (req: ApprovalRequest): Promise<ApprovalDecision> => {
       // 终端化审批：guard ask → 挂起（awaiting-approval + 审批卡）→ 裁决回填 → 继续；
@@ -230,7 +241,7 @@ export class SessionController {
     // 主触发是 closeTask 的 kick，本定时器只是兜底；unref 保证不阻塞进程退出
     this.kickTimer = setInterval(() => {
       const p = this.runtime.harness.pipeline;
-      if (shouldPumpOnIdleBeat(this.state.status, this.pendingApproval !== undefined, p.pending())) void p.drain();
+      if (shouldPumpOnIdleBeat(this.state.status, this.pendingApproval !== undefined, p.pending(), this.pendingQuestion !== undefined)) void p.drain();
     }, resolveMemoryConfig().memoryIdleKickMs);
     this.kickTimer.unref?.();
     // 会话日志订阅（规格 §5 单一事实源）：链/压缩变更 → 事件缓冲；任务必经 submit 建档，此后事件动态路由到当前 journal 实例。
@@ -290,9 +301,9 @@ export class SessionController {
     }
     this.extractor.reset();
         this.committedLen = 0;
-    if (this.state.status === 'running' || this.state.status === 'awaiting-approval') {
+    if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
       this.pushMsg('system', t(`Queued: ${text}`, `已排队：${text}`));
-      return new Promise<void>((resolve) => this.queue.push({ goal: text, resolve }));
+      return;
     }
     await this.runTaskFlow(text);
     await this.drainQueue();
@@ -306,6 +317,68 @@ export class SessionController {
     this.state = { ...this.state, approval: undefined };
     this.notify();
     pending.resolve(d);
+  }
+
+  /** 用户中断（Esc/Ctrl+C，对标 Claude Code）：中止在途模型调用与后续步、待审批按拒绝、待确认计划放弃、排队任务一并丢弃。
+   *  运行外状态 no-op（App 层据此分流退出/清输入）；返回是否实际发生中断 */
+  /** AskQuestion 挂起管线（AskQuestion 线 D5，形态对标 suspendAsker）：prevStatus 记录挂起前态（running=任务中途问询、
+   *  idle=/resume 选择器等本地问询），awaiting-question + 问题卡上屏 → 渲染层选择器接管键盘 → resolveAskAnswer 回填 → 恢复现场态 */
+  askUser(req: AskUserRequest): Promise<AskUserAnswer> {
+    const prevStatus = this.state.status;
+    this.state = { ...this.state, status: 'awaiting-question', question: req };
+    this.notify();
+    return new Promise<AskUserAnswer>((resolve) => {
+      this.pendingQuestion = {
+        req,
+        resolve: (a) => {
+          this.pendingQuestion = undefined;
+          this.state = { ...this.state, question: undefined, status: prevStatus };
+          this.notify();
+          resolve(a);
+        },
+      };
+    });
+  }
+
+  /** 渲染层/测试裁决回填口：无挂起时静默忽略（幂等） */
+  resolveAskAnswer(a: AskUserAnswer): void {
+    this.pendingQuestion?.resolve(a);
+  }
+
+  interrupt(): boolean {
+    const active = this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-plan' || this.state.status === 'awaiting-question';
+    if (!active) return false;
+    this.taskAbort?.abort();
+    this.taskAbort = undefined;
+    // 待审批卡：中断即拒绝（deny 不落会话放行），任务经安全链 deny 语义自然停下
+    const pending = this.pendingApproval;
+    if (pending) {
+      this.pendingApproval = undefined;
+      this.state = { ...this.state, approval: undefined };
+      pending.resolve('deny');
+    }
+    // 问询挂起：中断先以 dismissed 回填（管线自然恢复现场态），任务随 abort 信号停下；不遗留悬空 Promise
+    if (this.pendingQuestion) {
+      const pendingQ = this.pendingQuestion;
+      this.pendingQuestion = undefined;
+      this.state = { ...this.state, question: undefined };
+      pendingQ.resolve({ type: 'dismissed' });
+    }
+    // 待确认计划：中断即放弃（与 confirmPlan(false) 同语义）
+    if (this.pendingPlan) {
+      this.pendingPlan = undefined;
+      this.state = { ...this.state, status: 'idle' };
+      this.pushMsg('system', t('Plan discarded, back to input', '已放弃执行计划，回到输入态'));
+      this.notify();
+      return true;
+    }
+    this.notify();
+    return true;
+  }
+
+  /** 中断回执单点：interrupted 终态由各任务流调用；warn 级（用户主动操作，非故障） */
+  private pushInterruptedNotice(): void {
+    this.pushMsg('system', t('Task interrupted (Esc/Ctrl+C) — completed steps kept on the chain', '已中断当前任务（Esc/Ctrl+C）——已完成步骤保留在会话链'), { level: 'warn' });
   }
 
   /** 等待会话回到 idle（队列清空且无挂起审批） */

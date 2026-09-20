@@ -1,3 +1,4 @@
+import type { AskUserRequest, AskUserSeam } from '../../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';
@@ -35,7 +36,7 @@ export type MemoryWriteTool = (input: { type: string; content: string; descripti
 }>;
 
 /** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write；执行期以本参数捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool): RegisteredTool[] {
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -218,6 +219,49 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         const suffix = r.value.existed ? ' (already exists)' : '';
         const notice = r.value.notice !== null ? ` | ${r.value.notice}` : '';
         return execOut(`Saved memory: ${r.value.slug}${suffix}${notice}`);
+      },
+    });
+  }
+
+  // ask_question 工具（AskQuestion 线 T2）：第 9 可选参注入才注册（两态不变式沿第 7/8 参先例，旧直调零扰动）。
+  // 问询即用户交互通道本身（规格 D1：零 IO 副作用，manual/plan 免审批沿安全链 ask_question 分支）；
+  // 入参钳制与观察文案单点在此，挂起/渲染/CLI 回落全部在 seam 消费方（Harness 装配层）
+  if (ask !== undefined) {
+    const askSeam = ask;
+    tools.push({
+      name: 'ask_question',
+      description:
+        'Ask the user a question with selectable options and wait for their answer. Use when you need the user to choose between alternatives, confirm an approach, or provide free-form input. Supports single-select (default), multi-select (multiple) and a free-text "Other" answer (allowCustom). Returns the user\'s selection, their custom answer, or a dismissal notice if they skipped the question.',
+      category: 'ask',
+      executor: async (input: ToolInput) => {
+        const question = String(input.question ?? '').trim();
+        const rawOptions = Array.isArray(input.options) ? input.options : [];
+        if (question === '') throw new CodedToolError('INVALID_ARG', 'question must not be empty');
+        if (rawOptions.length < 2 || rawOptions.length > 8) throw new CodedToolError('INVALID_ARG', `options must contain 2 to 8 items (got ${rawOptions.length})`);
+        const options = rawOptions.map((o) => {
+          const obj = (o ?? {}) as { label?: unknown; description?: unknown };
+          const label = String(obj.label ?? '').trim();
+          if (label === '') throw new CodedToolError('INVALID_ARG', 'every option needs a non-empty label');
+          const description = typeof obj.description === 'string' && obj.description.trim() !== '' ? obj.description.trim() : undefined;
+          return description !== undefined ? { label, description } : { label };
+        });
+        const multiple = input.multiple === true;
+        const allowCustom = input.allowCustom === true;
+        const req: AskUserRequest = {
+          question,
+          options: allowCustom ? [...options, { label: 'Other…' }] : options,
+          ...(multiple ? { multiple: true } : {}),
+          ...(allowCustom ? { customIndex: options.length } : {}),
+        };
+        const answer = await askSeam(req);
+        if (answer.type === 'custom') {
+          const text = answer.text.trim();
+          if (text === '') return execOut('user dismissed the question (no selection)');
+          return execOut(`custom: ${text}`);
+        }
+        if (answer.type === 'dismissed') return execOut('user dismissed the question (no selection)');
+        if (answer.labels.length === 0) return execOut('user dismissed the question (no selection)');
+        return execOut(answer.labels.length > 1 || multiple ? `answers: ${answer.labels.join('; ')}` : `answer: ${answer.labels[0]}`);
       },
     });
   }

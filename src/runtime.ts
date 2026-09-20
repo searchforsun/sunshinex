@@ -1,3 +1,5 @@
+import type { AskUserRequest, AskUserSeam } from './types';
+import * as readline from 'node:readline/promises';
 import { Harness } from './harness';
 import { LoopDeps } from './loop/engine';
 import { ModelAdapter, ModelRouter, OpenAIAdapter, ScriptedAdapter, StubAdapter } from './model/adapter';
@@ -40,8 +42,35 @@ export function buildTierRouter(flags: Record<string, string | boolean>): ModelR
 }
 
 /** 统一装配根（composition root）：CLI/TUI/GUI 三面共用的唯一运行时装配点；root 为项目目录 */
+
+/** CLI/headless 问询接缝：TTY 上编号输入（多选空格分隔编号、Other 行追问自由文本），非 TTY 直接 dismissed（任务不因问询挂死）。
+ *  io 可注入（测试桩）；缺省读真实 stdin/stdout。 */
+export function createCliAskSeam(io?: { isTTY: boolean; question: (q: string) => Promise<string> }): AskUserSeam {
+  const env = io ?? {
+    isTTY: Boolean(process.stdin.isTTY),
+    question: (q: string) => {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      return rl.question(q).finally(() => rl.close());
+    },
+  };
+  return async (req: AskUserRequest) => {
+    if (!env.isTTY) return { type: 'dismissed' };
+    console.log(req.question);
+    req.options.forEach((o, i) => console.log(`  ${i + 1}) ${o.label}${o.description ? ` — ${o.description}` : ''}`));
+    const raw = (await env.question(req.multiple ? 'Select (space-separated numbers, empty=skip): ' : 'Select (number, empty=skip): ')).trim();
+    if (raw === '') return { type: 'dismissed' };
+    if (req.customIndex !== undefined && Number.parseInt(raw, 10) === req.customIndex + 1) {
+      const text = (await env.question('Your answer: ')).trim();
+      return text !== '' ? { type: 'custom', text } : { type: 'dismissed' };
+    }
+    const idxs = [...new Set(raw.split(/[\s,]+/).map((t) => Number.parseInt(t, 10)).filter((n) => Number.isInteger(n) && n >= 1 && n <= req.options.length))].sort((a, b) => a - b);
+    if (idxs.length === 0) return { type: 'dismissed' };
+    return { type: 'selected', labels: idxs.map((n) => req.options[n - 1].label) };
+  };
+}
+
 export function buildDeps(root: string, flags: Record<string, string | boolean>): LoopDeps {
-  const h = new Harness({ root, mode: 'dontAsk' });
+  const h = new Harness({ root, mode: 'dontAsk', ask: createCliAskSeam() });
   const router = buildTierRouter(flags);
   const tier = parseTier(flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   return {

@@ -1,3 +1,4 @@
+import type { AskUserSeam } from '../types';
 import { Harness } from '../harness';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
@@ -5,6 +6,8 @@ import { ModelAdapter } from '../model/adapter';
 import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, RunOutcome, SessionEvent } from '../types';
 
 export interface TuiRuntimeOpts {
+  /** 问询接缝（ask_question 消费方）：SessionController 缺省接自身问询管线；外部注入用于 headless/脚本 */
+  onAskUser?: AskUserSeam;
   root: string;
   model?: ModelAdapter;
   /** 事件流旁路注入：TUI 渲染层经 SessionController 消费；缺省零副作用 */
@@ -23,14 +26,15 @@ export type { RunOutcome };
 export interface TuiRuntime {
   harness: Harness;
   /** scope 线程：session=主链（缺省）；fork=私有执行（零主链回写）——/init 与规划轮 fork 隔离用 */
-  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; scope?: 'session' | 'fork' }): Promise<RunOutcome>;
+  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; scope?: 'session' | 'fork'; signal?: AbortSignal }): Promise<RunOutcome>;
   /** /goal 完整修正环入口（规格 D2/D3）：resolveTemplate → engine.run，LoopRunResult 原样透传（零新类型）；不开放 scope/seedHistory——修正环恒主链 */
-  runLoop(goal: string, opts?: { template?: string; tier?: ModelTier }): Promise<LoopRunResult>;
+  runLoop(goal: string, opts?: { template?: string; tier?: ModelTier; signal?: AbortSignal }): Promise<LoopRunResult>;
 }
 
 /** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
 export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
   const harness = new Harness({
+    ...(opts.onAskUser ? { ask: opts.onAskUser } : {}),
     root: opts.root,
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.mode ? { mode: opts.mode } : {}),

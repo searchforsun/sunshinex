@@ -1,3 +1,5 @@
+import { moveCursor, OptionSelector, togglePick } from './OptionSelector';
+import type { AskUserRequest } from '../../types';
 import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
@@ -36,6 +38,7 @@ export function inputPlaceholder(status: TuiState['status']): string {
   switch (status) {
     case 'awaiting-approval': return t('Awaiting approval: y approve once / a allow for session / n deny', '等待审批：y 放行一次 / a 本会话放行 / n 拒绝');
     case 'awaiting-plan': return t('Plan awaiting confirmation: y execute / n discard', '计划待确认：y 执行 / n 放弃');
+    case 'awaiting-question': return t('Answer the question above: up/down move · space select · enter submit · esc dismiss', '请回答上方问题：↑/↓ 移动 · 空格选定 · 回车提交 · Esc 放弃');
     case 'running': return t('Running… (input will queue)', '运行中…（输入将排队）');
     case 'error': return t('Previous task failed; enter a new task to continue', '上次任务出错；输入新任务继续');
     default: return t('Type a task, Enter to send · /help for commands', '输入任务，Enter 发送 · /help 查看命令');
@@ -53,16 +56,43 @@ export function App({
   banner,
   retain,
   onRequestRepaint,
+  onExit,
 }: {
   controller: SessionController;
   banner?: BannerInfo;
   retain?: RetainedUiState;
   /** 宿主注入的「请求整屏重绘」出口：Tab 切换展开模式后经此卸载→清屏→重挂，Static 按新模式重放 */
   onRequestRepaint?: () => void;
+  /** 空闲态 Ctrl+C 的退出请求出口（entry 注入优雅退出：flush→dispose→unmount→exit）；缺省无退出通道 */
+  onExit?: () => void;
 }): JSX.Element {
   const localRetain = React.useRef<RetainedUiState>(initialRetained());
   const store = retain ?? localRetain.current;
   const [state, setState] = React.useState<TuiState>(controller.getState());
+  // AskQuestion 选择器本地态：ref 为输入真值（useInput 处理器经 effect 重挂存在闭包滞后），state 只承载渲染
+  const [qCursor, setQCursorState] = React.useState(0);
+  const [qPicked, setQPickedState] = React.useState<number[]>([]);
+  const [qCustom, setQCustomState] = React.useState(false);
+  const [qText, setQTextState] = React.useState('');
+  const qCursorRef = React.useRef(0);
+  const qPickedRef = React.useRef<number[]>([]);
+  const qCustomRef = React.useRef(false);
+  const qTextRef = React.useRef('');
+  const setQCursor = (v: number): void => { qCursorRef.current = v; setQCursorState(v); };
+  const setQPicked = (v: number[]): void => { qPickedRef.current = v; setQPickedState(v); };
+  const setQCustom = (v: boolean): void => { qCustomRef.current = v; setQCustomState(v); };
+  const setQText = (v: string): void => { qTextRef.current = v; setQTextState(v); };
+  const qRef = React.useRef<AskUserRequest | undefined>(undefined);
+  React.useEffect(() => {
+    if (state.question && state.question !== qRef.current) {
+      qRef.current = state.question;
+      setQCursor(0);
+      setQPicked([]);
+      setQCustom(false);
+      setQText('');
+    }
+    if (!state.question && qRef.current) qRef.current = undefined;
+  }, [state.question]);
   const [buffer, setBuffer] = React.useState(store.buffer);
   const [cursor, setCursor] = React.useState(store.cursor);
   // 两层展开视图（Tab/Ctrl+O 正交，均经 tui-loop 卸载→清屏→重挂整屏重放，视口永远只有一份历史）：
@@ -147,7 +177,81 @@ export function App({
   const columns = useStdout().stdout?.columns ?? 80;
 
   useInput((input: string, key: RawKey) => {
-    if (key.ctrl && input === 'c') return; // 退出由入口层 SIGINT 统一处理
+
+    // AskQuestion 问询卡（AskQuestion 线 T2）：模态接管键盘——↑↓ 移动、Space 选定（单选即选即提交、多选为勾选翻转）、
+    // Enter 提交（多选提交全部勾选，空勾选=放弃）、数字 1-9 快选（多选为勾选翻转）、Other… 项切自由输入；
+    // Esc = 放弃作答（dismissed 属正常观察非错误）；Ctrl+C = 放弃作答并中断任务。
+    // 分支置于全局键之前（Esc 在此不回落清缓冲）；取值一律走 ref 真值，不依赖处理器闭包的新鲜度
+    if (state.status === 'awaiting-question' && state.question) {
+      const q = state.question;
+      if (qCustomRef.current) {
+        if (key.escape) { setQCustom(false); setQText(''); return; }
+        if (key.return) {
+          const text = qTextRef.current.trim();
+          if (text !== '') controller.resolveAskAnswer({ type: 'custom', text });
+          return;
+        }
+        if (key.backspace || key.delete) { setQText(qTextRef.current.slice(0, -1)); return; }
+        if (input && !key.ctrl && !key.meta) { setQText(qTextRef.current + input); return; }
+        return;
+      }
+      const submitCustom = (): void => { setQCustom(true); setQText(''); };
+      const submitLabels = (labels: string[]): void =>
+        controller.resolveAskAnswer(labels.length > 0 ? { type: 'selected', labels } : { type: 'dismissed' });
+      if (key.ctrl && input === 'c') {
+        controller.resolveAskAnswer({ type: 'dismissed' });
+        controller.interrupt();
+        return;
+      }
+      if (key.escape) { controller.resolveAskAnswer({ type: 'dismissed' }); return; }
+      if (key.upArrow) { setQCursor(moveCursor(qCursorRef.current, q.options.length, -1)); return; }
+      if (key.downArrow) { setQCursor(moveCursor(qCursorRef.current, q.options.length, 1)); return; }
+      if (key.return) {
+        if (qCursorRef.current === q.customIndex) { submitCustom(); return; }
+        const pickedNow = q.multiple ? [...qPickedRef.current] : [qCursorRef.current];
+        submitLabels(pickedNow.map((i) => q.options[i]?.label).filter((l): l is string => typeof l === 'string'));
+        return;
+      }
+      if (input === ' ') {
+        if (q.multiple) {
+          if (qCursorRef.current === q.customIndex) { submitCustom(); return; }
+          setQPicked(togglePick(qPickedRef.current, qCursorRef.current, true));
+        } else {
+          if (qCursorRef.current === q.customIndex) { submitCustom(); return; }
+          submitLabels([q.options[qCursorRef.current]?.label ?? '']);
+        }
+        return;
+      }
+      const n = Number.parseInt(input, 10);
+      if (Number.isInteger(n) && n >= 1 && n <= q.options.length) {
+        const idx = n - 1;
+        if (idx === q.customIndex) { submitCustom(); return; }
+        if (q.multiple) setQPicked(togglePick(qPickedRef.current, idx, true));
+        else submitLabels([q.options[idx].label]);
+        return;
+      }
+      return; // 模态：其余键不落输入缓冲
+    }
+    // Ctrl+C 分流（对标 Claude Code）：运行/等待态=中断当前任务；空闲且输入非空=清空输入；空闲且输入空=请求退出
+    if (key.ctrl && input === 'c') {
+      if (controller.interrupt()) return;
+      if (buffer.length > 0) {
+        setBuffer('');
+        setCursor(0);
+        return;
+      }
+      onExit?.();
+      return;
+    }
+    // Esc 同源分流：运行/等待态=中断；空闲且有输入=清空输入（空闲空输入不退出）
+    if (key.escape) {
+      if (controller.interrupt()) return;
+      if (buffer.length > 0) {
+        setBuffer('');
+        setCursor(0);
+      }
+      return;
+    }
     if (state.status === 'awaiting-approval') {
       const d = approvalKeyToDecision(input);
       if (d) controller.resolveApproval(d);
@@ -300,6 +404,22 @@ export function App({
           </Text>
           <Text>{state.approval.subject}</Text>
           <Text dimColor>{t('y approve once · a allow for session · n deny', 'y 放行一次 · a 本会话放行 · n 拒绝')}</Text>
+        </Box>
+      ) : null}
+      {state.question ? (
+        <Box flexDirection="column">
+          <OptionSelector
+            question={state.question.question}
+            options={state.question.options}
+            cursor={qCursor}
+            picked={qPicked}
+            multiple={state.question.multiple}
+            title={t('AskQuestion', '问询')}
+            hint={qCustom ? t('type your answer · enter submit · esc back to options', '输入回答 · 回车提交 · Esc 返回选项') : undefined}
+          />
+          {qCustom ? (
+            <Box paddingX={1}><Text>❯ {qText}▊</Text></Box>
+          ) : null}
         </Box>
       ) : null}
       <InputBox
