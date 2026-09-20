@@ -5,7 +5,7 @@
  *  读=逐行解析重放（尾行撕裂/中段损坏重放到上一条完整事件、未知版本由调用方拒载）。 */
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ContextItem, HistoryStep, ModelTier } from '../types';
+import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort } from '../types';
 import type { ChatItem, TodoItem } from './session';
 
 export interface JournalHeader {
@@ -23,7 +23,7 @@ export type JournalEvent =
   | { t: 'chain'; steps: HistoryStep[] }
   | { t: 'compact'; chainFrom: number; compacted: ContextItem[] }
   | { t: 'todos'; items: TodoItem[] }
-  | { t: 'model'; tier?: ModelTier }
+  | { t: 'model'; tier?: ModelTier; effort?: ReasoningEffort }
   | { t: 'view'; expandAll: boolean; latestFull: boolean };
 
 export interface SessionMeta {
@@ -48,6 +48,7 @@ export interface JournalReplay {
   history: string[];
   todos: TodoItem[];
   model?: ModelTier;
+  effort?: ReasoningEffort;
   view: { expandAll: boolean; latestFull: boolean };
 }
 
@@ -133,6 +134,7 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
         break;
       case 'model':
         r.model = e.tier;
+        r.effort = e.effort;
         break;
       case 'view':
         r.view = { expandAll: e.expandAll, latestFull: e.latestFull };

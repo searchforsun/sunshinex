@@ -34,6 +34,7 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 | `--mode=manual\|plan\|dontAsk` | 权限模式，缺省 `manual`（见第五节） |
 | `--language=en\|zh` | 界面语言，缺省 `en`；只影响界面，模型侧文本恒英文 |
 | `--tier=small\|medium\|large` | 模型档位，缺省 `medium`；会话内可用 `/model` 切换 |
+| `--effort=none\|minimal\|low\|medium\|high\|xhigh\|max` | 缺省思考强度（reasoning_effort）；端点不支持时按阶梯自动降级，会话内可用 `/model effort` 切换 |
 | `--continue` | 续接最近一次会话 |
 
 升级：重装新版 Release 链接即覆盖。
@@ -74,6 +75,7 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
   "modelMedium": "",
   "modelLarge": "",
   "contextWindow": 200000,                           // 模型最大上下文 tokens（状态栏 ctx 分母；1M 模型填 1000000）
+  "reasoningEffort": "high",                         // 缺省思考强度 none|minimal|low|medium|high|xhigh|max；留空 = 不下发（用端点默认）；端点不支持时按阶梯自动降级
   "structuredOutput": "json_schema",                 // json_schema | json（端点不支持时用） | off
 
   // ── 界面 ──────────────────────────────────────────────
@@ -181,11 +183,11 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 | `/goal <目标>` | 标准验收修正环：目标即验收条件，模型逐轮评估（满足 / 未满足 / 不可满足）；复杂目标可内嵌 `（验收标准：…）` 多判据；判据服务不可用时自动重试 3 次后暂停，重跑 `/goal` 续走 |
 | `/plan <目标>` | 先规划后执行（见第六节） |
 | `/status` | 会话与账本摘要 |
-| `/model [small\|medium\|large]` | 查询 / 切换模型档位（对后续任务生效） |
+| `/model [small\|medium\|large]` | 查询 / 切换模型档位（对后续任务生效）；`/model effort none\|…\|max` 切思考强度，`/model effort default` 回端点默认 |
 | `/compact [关注点]` | 立即压缩上下文，可指定优先保留的内容；接近窗口上限时也会自动压缩 |
 | `/memory` | 持久记忆：无参列索引；`add <内容>` 添加；`rm <slug>` 删除；`gc` 手动整理；`on` / `off` 开关（本会话内，`/new` 后恢复缺省） |
 | `/new` | 新会话（清消息、待办与上下文；记忆与账本保留） |
-| `/resume [序号\|id]` | 列出或恢复历史会话（消息、待办、档位与上下文全还原） |
+| `/resume [序号\|id]` | 无参弹出会话选择卡（`↑`/`↓` 选择、`Enter` 恢复、`Esc` 取消，列最新 8 条；更早会话用 `/resume <id>`）；显式参数直达恢复（消息、待办、档位与上下文全还原） |
 
 **子代理（spawn）**：模型可派发子代理并行处理独立子任务，过程不占用主链，只回写一行结论。运行中每个子代理在输入框上方显示 4 行实时面板；结束后整段记录折叠进 `● [SPAWN]` 调用行，`Tab` / `Ctrl+O` 可重放全文。自定义角色放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）。
 
@@ -197,12 +199,14 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 | `plan` | 只读模式，写操作直接拒绝 |
 | `dontAsk` | 自动批准（受信场景） |
 
-审批卡按键：`y` 放行一次 · `a` 本会话放行 · `n` 拒绝。
+审批卡与确认卡均为选择器形态（对标 Claude Code）：`↑` / `↓` 移动高亮，`Space` / `Enter` 选定，数字 `1`–`3` 直达；单键快捷 `y` 放行一次 · `a` 本会话放行 · `n` 拒绝 仍然可用，`Esc` = 拒绝。
+
+**AskQuestion 问询卡**：模型可经内置 `ask_question` 工具主动向你提问（单选 / 多选 / 「Other…」自由输入），键位同上（多选 `Space` 勾选、`Enter` 提交全部勾选）；`Esc` 放弃作答，模型收到「已跳过」并自行调整。无交互终端的 CLI 场景回落为编号输入，完全 headless 时自动按跳过处理。
 任何模式下硬性拦截：破坏性命令（`dd` / `fdisk` / `shutdown` 等）与「下载即执行」管道。
 
 ## 六、plan 模式
 
-`/plan <目标>` → 生成计划确认卡 → `y` 逐项执行（`▶ Step n/N`），`n` 放弃。
+`/plan <目标>` → 生成计划确认卡（选择器形态：`↑` / `↓` 移动，`Enter` / `Space` 选定）→ `y` 或选「执行计划」逐项执行（`▶ Step n/N`），`n` / `Esc` 放弃。
 执行中待办卡默认只显示当前进行项，`Tab` 展开完整清单；某项失败即暂停剩余步骤并说明原因。
 
 ## 七、快捷键
@@ -212,12 +216,12 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 | `Enter` | 提交（行尾 `\` 续行） |
 | `Tab` | `/` 开头时补全命令；否则切换历史折叠 / 展开（含待办卡） |
 | `Ctrl+O` | 展开最近一组的详情全文 |
-| `↑` / `↓` | 输入历史（最近 100 条） |
+| `↑` / `↓` | 输入历史（最近 100 条）；运行中且输入为空：`↑` 撤回排队（取回全部未投递穿插行回输入框编辑或清空丢弃） |
 | `←` / `→`、`Home` / `End` | 光标移动（`Ctrl+A` / `Ctrl+E` 跳首尾） |
 | `Backspace` / `Delete` | 删除字符 |
 | `Ctrl+C` | 退出 |
 
-> 等待审批 / 待确认计划时输入被拦截：直接按 `y` / `a` / `n` 裁决。
+> 运行中按 `Esc` / `Ctrl+C` 中断只是停下当前任务，会话保留；退出请先清空输入再按 `Ctrl+C`。等待审批 / 待确认计划时输入被拦截：`↑` / `↓` 移动选择、`Enter` / `Space` 裁决，或直接按 `y` / `a` / `n`（中断则按拒绝 / 放弃处理）。
 
 ## 八、故障排查
 

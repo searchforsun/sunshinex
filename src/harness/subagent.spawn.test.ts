@@ -21,9 +21,8 @@ test('spawn 端到端：同步报告 = 该轮工具观察，Runner 结论行入�
     const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true);
-    const spawnStep = r.steps.find((s) => s.action === 'spawn');
-    assert.ok(spawnStep, 'spawn 工具步应存在');
-    assert.ok(spawnStep.observation.includes('子任务报告'), `子报告应作为该轮观察回流，实际：${spawnStep.observation}`);
+    const spawnResultRow = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('子任务报告'));
+    assert.ok(spawnResultRow, 'spawn 报告应作为该轮观察回流（role:tool 配对面）');
     const chain = h.context.chainView();
     assert.ok(
       chain.some((s) => s.action === 'node' && s.observation.startsWith('[w] ') && s.observation.includes('子任务报告')),

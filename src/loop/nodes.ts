@@ -163,6 +163,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
           tokenCap: remaining,
           deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
           ...(deps.tier ? { tier: deps.tier } : {}),
+          ...(deps.effort ? { effort: deps.effort } : {}),
           scope,
           ...(seedHistory && seedHistory.length > 0 ? { seedHistory } : {}),
         },

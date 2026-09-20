@@ -377,6 +377,17 @@ export function App({
       return;
     }
 
+    // 运行中撤回排队（对标 CC「Up from the first row」）：有排队穿插且输入框为空时，Up 取回全部待投递行回输入框编辑或清空丢弃
+    // （awaiting-approval 态在 handler 前部已被审批卡分流 return，此处只可能是 running）
+    if (key.upArrow && state.status === 'running' && buffer.length === 0) {
+      const taken = controller.takeBackQueued();
+      if (taken.length > 0) {
+        const text = taken.join('\n');
+        setBuffer(text);
+        setCursor(text.length);
+      }
+      return;
+    }
 
     // ↑↓：单行缓冲回填输入历史（多行缓冲不劫持，留给后续行内导航）
     if ((key.upArrow || key.downArrow) && (state.status === 'idle' || state.status === 'error') && !buffer.includes('\n')) {
@@ -497,7 +508,7 @@ export function App({
         status={state.status}
         todos={state.todos}
         model={info.model}
-       
+        effort={state.effort}
         context={{ used: state.metrics.ctxUsed, window: Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
       />
     </Box>

@@ -1,5 +1,6 @@
 import type { AskUserAnswer, AskUserRequest, AskUserSeam } from '../types';
-import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
+import { parseEffort } from '../model/adapter';
 import { t } from '../i18n';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
@@ -83,6 +84,8 @@ export interface ChildLiveState {
   transcript: string[];
   /** 面板尾流：transcript 末 ≤3 行（含未成行） */
   tail: string[];
+  /** 完成态：done/error 事件置位——并行批中早完成者即时显终标而非一直转圈（归档锚点在主链 tool-result，晚于兄弟完成） */
+  done?: boolean;
 }
 
 /** 面板尾流视图：transcript 末 ≤3 行（含未成行 buf）——存储单一来源的派生（规格 §4.2） */
@@ -108,6 +111,8 @@ export interface TuiState {
   children: ChildLiveState[];
   /** 用户级模型档位（/model 会话内切换；undefined = 缺省主模型，run 级常量不随步重估） */
   model?: ModelTier;
+  /** 缺省思考强度（/model effort 会话内切换；undefined = 适配器 cfg/env 缺省，run 级常量） */
+  effort?: ReasoningEffort;
   /** AskQuestion 挂起卡（ask_question 工具或本地问询期间非空；渲染层选择器接管键盘） */
   question?: AskUserRequest;
 }
@@ -141,7 +146,7 @@ function slashHelp(): string[] {
     t('  /compact  compress context: /compact [focus]', '  /compact  压缩上下文：/compact [关注点]'),
     t('  /memory   persistent memory: /memory [add <text> | rm <slug> | gc | on | off]', '  /memory   持久记忆：/memory [add <内容> | rm <slug> | gc | on | off]'),
     t('  /status   session & ledger summary', '  /status   会话与账本摘要'),
-    t('  /model    model tier (small|medium|large)', '  /model    模型档位（small|medium|large）'),
+    t('  /model    model tier & reasoning effort (/model, /model small, /model effort high)', '  /model    模型档位与思考强度（/model、/model small、/model effort high）'),
     t('  /help     show this list', '  /help     本清单'),
   ];
 }
@@ -175,7 +180,6 @@ export class SessionController {
     children: [],
   };
   private listeners = new Set<(s: TuiState) => void>();
-  private queue: { goal: string; resolve: () => void }[] = [];
   /** 消息全局单调序号（Static 区 key 唯一性来源）；/new 清空消息但不回绕 */
   private msgSeq = 0;
   /** 会话事件日志（规格 2026-09-17-session-persistence D4）：惰性建档（首个持久化事件）、三 flush 点批量落盘 */
@@ -237,6 +241,7 @@ export class SessionController {
     if (opts.mode === 'manual') this.runtime.harness.security.setAsker(suspendAsker);
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
     if (opts.tier) this.state = { ...this.state, model: opts.tier };
+    if (opts.effort) this.state = { ...this.state, effort: opts.effort };
     // 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费（无待办零调用零配额）；
     // 主触发是 closeTask 的 kick，本定时器只是兜底；unref 保证不阻塞进程退出
     this.kickTimer = setInterval(() => {
@@ -302,8 +307,11 @@ export class SessionController {
     this.extractor.reset();
         this.committedLen = 0;
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
+      // 运行中穿插（对标 CC queued messages，用户→运行时方向、非模型工具面）：入 steering 通道，
+      // reactor 步边界 drain 同轮消费；未被消费的行由收口兜底 drainQueue 补跑
+      this.runtime.harness.steering.enqueue(text);
       this.pushMsg('system', t(`Queued: ${text}`, `已排队：${text}`));
-      return new Promise<void>((resolve) => this.queue.push({ goal: text, resolve }));
+      return;
     }
     await this.runTaskFlow(text);
     await this.drainQueue();
@@ -372,6 +380,11 @@ export class SessionController {
       this.notify();
       return true;
     }
+    // 待投递穿插行随中断一并丢弃（用户意图是停，不是继续跑）；已消费穿插行已随步入链，不受影响
+    if (this.runtime.harness.steering.pending() > 0) {
+      const dropped = this.runtime.harness.steering.takePending().length;
+      this.pushMsg('system', t(`Queued tasks dropped: ${dropped}`, `已丢弃排队任务：${dropped} 条`), { level: 'warn' });
+    }
     this.notify();
     return true;
   }
@@ -421,6 +434,7 @@ export class SessionController {
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
+    this.taskAbort = new AbortController();
     this.notify();
     let planText = '';
     this.planReplyNoArchive = true;
@@ -433,6 +447,14 @@ export class SessionController {
       const verbosePlanningPrompt = `${PLAN_TASK_LABEL} for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`;
       const r = await this.runInternalTask(verbosePlanningPrompt, PLAN_TASK_LABEL);
       if (!r.done) {
+        // 用户中断（Esc/Ctrl+C）打断规划段：与主链任务同语义——中断回执+回 idle，不落 error 粘滞；
+        // planReplyNoArchive 必须复位，否则中断后新任务的正文会被归档抑制位吞掉
+        if (r.stopReason === 'interrupted') {
+          this.planReplyNoArchive = false;
+          this.pushInterruptedNotice();
+          this.closeTask();
+          return;
+        }
         throw new Error(describeIncomplete(r.stopReason) || t('Planning incomplete', '规划未完成'));
       }
       planText = r.reply ?? '';
@@ -466,6 +488,7 @@ export class SessionController {
 
   /** 逐项执行计划：每项一个 run，完成即勾选待办（宁停不误：单项失败即暂停，剩余保持未完成） */
   private async runPlanItems(items: string[]): Promise<void> {
+    this.taskAbort = new AbortController(); // plan 执行段整段一个中断源（Esc/Ctrl+C 中止当前步及后续步）
     this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
     this.notify();
     const ctx = this.runtime.harness.context;
@@ -481,7 +504,13 @@ export class SessionController {
       this.notify();
       ctx.appendInstructionLine(`Current instruction: ${items[i]}`);
       try {
-        const r: RunOutcome = await this.runtime.runTask(items[i], this.state.model ? { tier: this.state.model } : undefined);
+        if (this.taskAbort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
+        const r: RunOutcome = await this.runtime.runTask(items[i], {
+          ...(this.state.model ? { tier: this.state.model } : {}),
+          ...(this.state.effort ? { effort: this.state.effort } : {}),
+          ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
+        });
+        if (r.stopReason === 'interrupted') { this.pushInterruptedNotice(); break; }
         if (!r.done) {
           this.reportIncomplete(r, 'warn');
           this.pushMsg('system', t(`Step incomplete: ${items[i]}; remaining steps paused`, `步骤未完成：${items[i]}；剩余步骤暂停`), { level: 'warn' });
@@ -514,7 +543,7 @@ export class SessionController {
     if (!this.journal) return;
     const j = this.journal;
     j.log({ t: 'todos', items: this.state.todos });
-    j.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}) });
+    j.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}), ...(this.state.effort ? { effort: this.state.effort } : {}) });
     j.log({ t: 'view', ...this.lastView });
     j.flush();
   }
@@ -562,6 +591,7 @@ export class SessionController {
       todos: replay.todos,
       status: 'idle',
       ...(replay.model !== undefined ? { model: replay.model } : {}),
+      ...(replay.effort !== undefined ? { effort: replay.effort } : {}),
       approval: undefined,
       live: undefined,
       children: [],
@@ -585,6 +615,7 @@ export class SessionController {
 
   private closeTask(): void {
     if (this.state.status !== 'running' && this.state.status !== 'awaiting-plan') return;
+    this.taskAbort = undefined;
     this.state = {
       ...this.state,
       status: 'idle',
@@ -606,6 +637,8 @@ export class SessionController {
       scope: 'fork',
       seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt }],
       ...(this.state.model ? { tier: this.state.model } : {}),
+      ...(this.state.effort ? { effort: this.state.effort } : {}),
+      ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
     });
   }
 
@@ -624,6 +657,7 @@ export class SessionController {
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
+    this.taskAbort = new AbortController();
     this.notify();
     try {
       const ctx = this.runtime.harness.context;
@@ -634,14 +668,22 @@ export class SessionController {
           scope: 'fork',
           seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: opts.forkInstruction }],
           ...(this.state.model ? { tier: this.state.model } : {}),
+          ...(this.state.effort ? { effort: this.state.effort } : {}),
+          ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
         });
+        if (r.stopReason === 'interrupted') this.pushInterruptedNotice();
         this.reportIncomplete(r, 'warn');
         this.closeTask();
         return;
       }
       // 主链任务（§11 只增不改）：当前指令行尾追进链，reactor 会话作用域收束自动回写全量步骤与结论/补丁行
       ctx.appendInstructionLine(`Current instruction: ${goal}`);
-      const r = await this.runtime.runTask(goal, this.state.model ? { tier: this.state.model } : undefined);
+      const r = await this.runtime.runTask(goal, {
+        ...(this.state.model ? { tier: this.state.model } : {}),
+        ...(this.state.effort ? { effort: this.state.effort } : {}),
+        ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
+      });
+      if (r.stopReason === 'interrupted') this.pushInterruptedNotice();
       this.reportIncomplete(r, 'warn');
       this.closeTask();
     } catch (e) {
@@ -664,11 +706,17 @@ export class SessionController {
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
+    this.taskAbort = new AbortController();
     this.notify();
     try {
       this.runtime.harness.context.appendInstructionLine(`Current instruction: ${goal} (/goal)`);
       this.pushMsg('system', t(`✻ /goal: ${goal}`, `✻ /goal：${goal}`));
-      const r = await this.runtime.runLoop(goal, this.state.model ? { tier: this.state.model } : {});
+      const r = await this.runtime.runLoop(goal, {
+        ...(this.state.model ? { tier: this.state.model } : {}),
+        ...(this.state.effort ? { effort: this.state.effort } : {}),
+        ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
+      });
+      // interrupted 的用户回执由下方 incomplete 分支承载（引擎 error 已含中断文案），不重复发
       const lines = (r.criteria ?? []).map((c) => `  ${c.passed ? '✓' : '✗'} ${c.id} ${c.desc}`);
       if (r.status === 'done') {
         this.pushMsg('system', [
@@ -700,27 +748,70 @@ export class SessionController {
     }
   }
 
+  /** 待投递穿插行数（TUI 队列展示/撤回判定用） */
+  steeringPending(): number {
+    return this.runtime.harness.steering.pending();
+  }
+
+  /** 撤回取回（对标 CC Up 键取回队列）：取走全部未投递穿插行（按入队序）；App 层回填输入框逐行编辑或清空丢弃 */
+  takeBackQueued(): string[] {
+    return this.runtime.harness.steering.takePending();
+  }
+
+  /** 运行中穿插收口兜底（对标 CC「turn 结束仍有排队→最旧者作下一轮」）：未被步边界消费的行按入队序补跑为新任务 */
   private async drainQueue(): Promise<void> {
-    while (this.queue.length > 0) {
-      const next = this.queue.shift()!;
-      await this.runTaskFlow(next.goal);
-      next.resolve();
+    for (const line of this.runtime.harness.steering.takePending()) {
+      await this.runTaskFlow(line);
     }
   }
 
-  /** /model：无参查询当前档位；带参设置（small|medium|large）。档位是 run 级常量，对后续任务生效 */
+  /** /model：档位与思考强度的查询/设置面。`/model` 无参双查；`/model small|medium|large` 设档位；`/model effort <七档|default>` 设思考强度。
+   *  两者都是 run 级常量，对后续任务生效 */
   private handleModel(text: string): void {
     const rest = text.trim().split(/\s+/).slice(1).join(' ');
     if (!rest) {
-      this.pushMsg('system', t(
-        this.state.model ? `Current model tier: ${this.state.model}` : 'Current model tier: default (SUNSHINEX_MODEL)',
-        this.state.model ? `当前模型档位：${this.state.model}` : '当前模型档位：默认（SUNSHINEX_MODEL）',
-      ));
+      // 双语回执逐行独立 t() 直包（审计只认调用表达式直包，先例=/help 每行独立 t() 再 join）
+      this.pushMsg('system', [
+        t(
+          this.state.model ? `Current model tier: ${this.state.model}` : 'Current model tier: default (SUNSHINEX_MODEL)',
+          this.state.model ? `当前模型档位：${this.state.model}` : '当前模型档位：默认（SUNSHINEX_MODEL）',
+        ),
+        t(
+          this.state.effort ? `Current reasoning effort: ${this.state.effort}` : 'Current reasoning effort: default (adapter config)',
+          this.state.effort ? `当前思考强度：${this.state.effort}` : '当前思考强度：默认（适配器配置）',
+        ),
+      ].join('\n'));
+      return;
+    }
+    // /model effort <none|minimal|low|medium|high|xhigh|max|default>：思考强度子命令（default=清除覆盖回适配器缺省）
+    if (rest === 'effort' || rest.startsWith('effort ')) {
+      const value = rest.slice('effort'.length).trim();
+      if (!value) {
+        this.pushMsg('system', t(
+          this.state.effort ? `Current reasoning effort: ${this.state.effort}` : 'Current reasoning effort: default (adapter config)',
+          this.state.effort ? `当前思考强度：${this.state.effort}` : '当前思考强度：默认（适配器配置）',
+        ));
+        return;
+      }
+      if (value === 'default') {
+        this.state = { ...this.state, effort: undefined };
+        this.notify();
+        this.pushMsg('system', t('Reasoning effort cleared; adapter default applies to subsequent tasks', '思考强度已清除；后续任务回适配器缺省'));
+        return;
+      }
+      const effort = parseEffort(value);
+      if (!effort) {
+        this.pushMsg('system', t('Usage: /model effort none|minimal|low|medium|high|xhigh|max|default', '用法：/model effort none|minimal|low|medium|high|xhigh|max|default'), { level: 'warn' });
+        return;
+      }
+      this.state = { ...this.state, effort };
+      this.notify();
+      this.pushMsg('system', t(`Reasoning effort set to ${effort}; applies to subsequent tasks`, `思考强度已设为 ${effort}；对后续任务生效`));
       return;
     }
     const tier = parseTier(rest);
     if (!tier) {
-      this.pushMsg('system', t('Usage: /model small|medium|large', '用法：/model small|medium|large'), { level: 'warn' });
+      this.pushMsg('system', t('Usage: /model small|medium|large | /model effort none|minimal|low|medium|high|xhigh|max|default', '用法：/model small|medium|large 或 /model effort none|minimal|low|medium|high|xhigh|max|default'), { level: 'warn' });
       return;
     }
     this.state = { ...this.state, model: tier };
@@ -1132,7 +1223,7 @@ export class SessionController {
     let list = this.state.children;
     let idx = list.findIndex((c) => c.label === label);
     if (idx < 0) {
-      list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], tail: [] }];
+      list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], tail: [], done: false }];
       idx = list.length - 1;
     }
     const child = list[idx];
@@ -1173,14 +1264,31 @@ export class SessionController {
         // per-run turnTotal 为该子代理 run 的累计值（单一 run），直接采信
         tokens = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : child.tokens;
         break;
+      case 'done':
+      case 'error': {
+        // 完成态即时落面板（并行批早完成者显终标、不再转圈）：done 终稿行补进转录；归档锚点仍在主链 tool-result
+        const isError = e.type === 'error';
+        if (buf) {
+          transcript = [...transcript, buf];
+          buf = '';
+        }
+        const finalLine = e.text && e.text.length > 0 ? e.text : isError ? 'failed' : 'done';
+        transcript = [...transcript, finalLine];
+        return this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true }, buf);
+      }
       default:
-        return; // done/error/ctx/route/approval-* 不入面板态（归档锚点在主链 tool-result）
+        return; // ctx/route/approval-* 不入面板态（done/error 已置终态；归档锚点在主链 tool-result）
     }
+    this.commitChild(list, idx, { ...child, transcript, steps, tokens }, buf);
+  }
+
+  /** 面板态收尾单点：半行留存 + 尾流派生 + 节流通知（常规事件与 done/error 终态共用） */
+  private commitChild(list: ChildLiveState[], idx: number, next: ChildLiveState, buf: string): void {
+    const label = next.label;
     if (buf) this.childBufs.set(label, buf);
     else this.childBufs.delete(label);
-    const next: ChildLiveState = { ...child, transcript, steps, tokens, tail: childTail(transcript, buf) };
-    list = list.map((c, i) => (i === idx ? next : c));
-    this.state = { ...this.state, children: list };
+    const withTail: ChildLiveState = { ...next, tail: childTail(next.transcript, buf) };
+    this.state = { ...this.state, children: list.map((c, i) => (i === idx ? withTail : c)) };
     this.notifyThrottled();
   }
 

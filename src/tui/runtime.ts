@@ -3,7 +3,7 @@ import { Harness } from '../harness';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, RunOutcome, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, ReasoningEffort, RunOutcome, SessionEvent } from '../types';
 
 export interface TuiRuntimeOpts {
   /** 问询接缝（ask_question 消费方）：SessionController 缺省接自身问询管线；外部注入用于 headless/脚本 */
@@ -16,6 +16,8 @@ export interface TuiRuntimeOpts {
   mode?: 'dontAsk' | 'manual' | 'plan';
   /** 用户级模型档位（run 级常量，对标 Claude Code 的模型选择）：/model 会话内切换经 runTask 逐次覆盖 */
   tier?: ModelTier;
+  /** 缺省思考强度（run 级常量，对标 tier）：/model effort 会话内切换经 runTask 逐次覆盖；缺省回适配器 cfg/env */
+  effort?: ReasoningEffort;
   /** manual 模式审批回调（guard asker 装配点）；会话结束由调用方 clearSessionAllows */
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
 }
@@ -26,9 +28,9 @@ export type { RunOutcome };
 export interface TuiRuntime {
   harness: Harness;
   /** scope 线程：session=主链（缺省）；fork=私有执行（零主链回写）——/init 与规划轮 fork 隔离用 */
-  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; scope?: 'session' | 'fork'; signal?: AbortSignal }): Promise<RunOutcome>;
+  runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; effort?: ReasoningEffort; scope?: 'session' | 'fork'; signal?: AbortSignal }): Promise<RunOutcome>;
   /** /goal 完整修正环入口（规格 D2/D3）：resolveTemplate → engine.run，LoopRunResult 原样透传（零新类型）；不开放 scope/seedHistory——修正环恒主链 */
-  runLoop(goal: string, opts?: { template?: string; tier?: ModelTier; signal?: AbortSignal }): Promise<LoopRunResult>;
+  runLoop(goal: string, opts?: { template?: string; tier?: ModelTier; effort?: ReasoningEffort; signal?: AbortSignal }): Promise<LoopRunResult>;
 }
 
 /** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
@@ -52,16 +54,20 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     runner: harness.runner,
     ...(harness.ledger ? { ledger: harness.ledger } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+    // 运行中穿插（对标 CC queued messages）：循环内构造的 Reactor 与单发 Reactor 同源消费通道
+    steer: () => harness.steering.drain(),
     // 沉淀双钩子与收尾管线（规格 §3.1/§3.5）：TUI 主链经 loop 构造 Reactor，钩子必须随 LoopDeps 透传才会触发
     ...harness.settleHooks,
     pipeline: harness.pipeline,
   };
 
-  // run 级覆盖统一构造：/model 档位逐次覆盖、scope 线程（runTask/runLoop 共用，防两处漂移）
-  const buildRunDeps = (o?: { tier?: ModelTier; scope?: 'session' | 'fork' }): LoopDeps => ({
+  // run 级覆盖统一构造：/model 档位与 /model effort 逐次覆盖、scope 线程、中断 signal（runTask/runLoop 共用，防两处漂移）
+  const buildRunDeps = (o?: { tier?: ModelTier; effort?: ReasoningEffort; scope?: 'session' | 'fork'; signal?: AbortSignal }): LoopDeps => ({
     ...loopDeps,
     ...(o?.tier ? { tier: o.tier } : {}),
+    ...(o?.effort ? { effort: o.effort } : {}),
     ...(o?.scope ? { scope: o.scope } : {}),
+    ...(o?.signal ? { signal: o.signal } : {}),
   });
 
   return {

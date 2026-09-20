@@ -94,3 +94,18 @@ test('extractCacheTokens：缺失/非法回 0', () => {
   assert.equal(extractCacheTokens({ usage: {} }), 0);
   assert.equal(extractCacheTokens(null), 0);
 });
+
+test('OpenAIAdapter：外部 signal 中止 → 抛「Task interrupted」（区别于超时）', async () => {
+  const srv = http.createServer((_req, res) => {
+    // 挂起不响应：等客户端经外部 signal 主动中止
+  });
+  await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  const addr = srv.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', timeoutMs: 10_000 });
+  const ctrl = new AbortController();
+  const pending = a.complete('hi', undefined, undefined, ctrl.signal);
+  setTimeout(() => ctrl.abort(), 80);
+  await assert.rejects(() => pending, /Task interrupted/);
+  srv.close();
+});

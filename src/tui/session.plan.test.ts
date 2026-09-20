@@ -327,7 +327,8 @@ test('plan 步骤全量轨迹入链（废除只留结论行）', async () => {
     await ctrl.waitIdle();
     const chain = ctrl.context.chainView();
     assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('步骤A')), '步骤指令行入链');
-    assert.ok(chain.some((s) => s.action === 'exec'), '步骤 1 的工具观察行仍在链上（不再裁剪）');
+    assert.ok(chain.some((s) => s.action === 'tool-call' && s.observation.includes('[tool] exec')), '步骤 1 的工具观察行仍在链上（不再裁剪）');
+    assert.ok(chain.some((s) => s.action === 'tool-result' && s.observation.includes('a')), '步骤 1 的结果行同链回写');
     assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('步骤B')), '步骤 2 指令行尾追');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

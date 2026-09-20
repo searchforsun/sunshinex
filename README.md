@@ -66,6 +66,8 @@ pnpm cli tui                   # 构建并启动交互式终端（缺省 manual 
 
 配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [TUI-MANUAL](TUI-MANUAL.md)；旧 `~/.sunshinex/.env` 已退役——设置键转语义键、密钥原样进 `env` 块。
 
+思考强度（reasoning effort）：`settings.json` 语义键 `reasoningEffort`（none|minimal|low|medium|high|xhigh|max，缺省不下发即用端点默认），或启动参数 `--effort=<档>`、会话内 `/model effort <档>`；端点不支持该参数时按阶梯逐档降级、全不支持自动省略。
+
 常用入口：
 
 ```bash
@@ -113,6 +115,7 @@ scripts/release.mjs --version 0.2.0 --clobber  # 同版本重发（覆盖附件�
 
 - **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
 - **子代理**：`agents/{id}/agent.md` 注册制；**插件**：`plugins/{id}/plugin.json`；**第三方工具**：经 MCP 协议接入。
+**问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。
 
 ## 文档导航
 
