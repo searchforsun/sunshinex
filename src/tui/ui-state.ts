@@ -6,10 +6,12 @@ export interface RetainedUiState {
   expandAll: boolean;
   /** 第二层（Ctrl+O）内容深度开关：最近正文锚点阶段的思考与工具结果全文展开 */
   latestFull: boolean;
+  /** 子代理行逐行展开集合（Ctrl+B 浏览模式 Enter 切换，存 SPAWN 调用行 seq）：跨重挂保留、瞬态 UI 态不进 journal */
+  spawnExpanded: number[];
   history: string[];
   histIdx: number;
 }
 
 export function initialRetained(): RetainedUiState {
-  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, history: [], histIdx: -1 };
+  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, spawnExpanded: [], history: [], histIdx: -1 };
 }

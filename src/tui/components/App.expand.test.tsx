@@ -91,7 +91,7 @@ test('App：Tab 切换历史展开模式——运行中可切、回调触发、�
   try {
     const gate = new GateAdapter();
     const ctrl = new SessionController({ root: tmp, model: gate });
-    const retain = { buffer: '', cursor: 0, expandAll: false, latestFull: false, history: [], histIdx: -1 };
+    const retain = { buffer: '', cursor: 0, expandAll: false, latestFull: false, spawnExpanded: [], history: [], histIdx: -1 };
     const repaints: number[] = [];
     const { write, unmount } = render(
       <App
@@ -144,7 +144,7 @@ test('App：retain 展开模式恢复——挂载即全展开渲染历史块', a
       <App
         controller={ctrl}
         banner={{ version: '1.0.0', model: 'm', root: tmp }}
-        retain={{ buffer: '', cursor: 0, expandAll: true, latestFull: true, history: [], histIdx: -1 }}
+        retain={{ buffer: '', cursor: 0, expandAll: true, latestFull: true, spawnExpanded: [], history: [], histIdx: -1 }}
       />,
     );
     await sleep(150);

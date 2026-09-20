@@ -15,7 +15,7 @@ import { LiveArea } from './LiveArea';
  */
 export type TranscriptEntry =
   | { kind: 'banner'; info: BannerInfo }
-  | { kind: 'message'; item: ChatItem; full: boolean; visible: boolean };
+  | { kind: 'message'; item: ChatItem; full: boolean; visible: boolean; spawnExpanded: boolean; spawnHighlighted: boolean };
 
 /**
  * 消息区逐消息分层：消息到达即入 Static 一次上屏，之后永不重绘；
@@ -33,6 +33,8 @@ export function MessageList({
   banner,
   expandAll,
   latestFull,
+  spawnExpandedSeqs,
+  spawnHighlightSeq,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
@@ -42,6 +44,10 @@ export function MessageList({
   expandAll: boolean;
   /** 第二层（Ctrl+O）内容深度开关：true 时最近正文锚点阶段的思考与工具结果展开全文 */
   latestFull: boolean;
+  /** SPAWN 行逐行展开 seq 集合（Ctrl+B 浏览模式），缺省=全折叠 */
+  spawnExpandedSeqs?: number[];
+  /** 浏览模式光标行 seq（反色高亮，缺省无高亮） */
+  spawnHighlightSeq?: number;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -52,7 +58,14 @@ export function MessageList({
   const decisions = buildTranscriptDecisions(messages, { expandAll, latestFull });
   const entries: TranscriptEntry[] = [
     { kind: 'banner', info: banner },
-    ...messages.map((item, i) => ({ kind: 'message' as const, item, full: decisions[i].full, visible: decisions[i].visible })),
+    ...messages.map((item, i) => ({
+      kind: 'message' as const,
+      item,
+      full: decisions[i].full,
+      visible: decisions[i].visible,
+      spawnExpanded: spawnExpandedSeqs?.includes(item.seq) ?? false,
+      spawnHighlighted: item.seq === spawnHighlightSeq,
+    })),
   ];
   return (
     <Box flexDirection="column">
@@ -64,7 +77,13 @@ export function MessageList({
             </Box>
           ) : entry.visible ? (
             <Box key={`m-${entry.item.seq}`} marginBottom={1}>
-              <MessageRow item={entry.item} columns={columns} collapsed={!entry.full} />
+              <MessageRow
+                item={entry.item}
+                columns={columns}
+                collapsed={!entry.full}
+                spawnExpanded={entry.spawnExpanded}
+                spawnHighlighted={entry.spawnHighlighted}
+              />
             </Box>
           ) : null
         }
@@ -79,10 +98,14 @@ const MessageRow = React.memo(function MessageRow({
   item,
   columns,
   collapsed,
+  spawnExpanded,
+  spawnHighlighted,
 }: {
   item: ChatItem;
   columns: number;
   collapsed: boolean;
+  spawnExpanded: boolean;
+  spawnHighlighted: boolean;
 }): JSX.Element {
   if (item.role === 'user') {
     return (
@@ -104,7 +127,7 @@ const MessageRow = React.memo(function MessageRow({
   }
   if (item.role === 'thinking') return <ThinkingRow item={item} collapsed={collapsed} />;
   if (item.role === 'step') return <Text>▶ {item.text}</Text>;
-  return <ToolRow item={item} columns={columns} collapsed={collapsed} />;
+  return <ToolRow item={item} columns={columns} collapsed={collapsed} spawnExpanded={spawnExpanded} spawnHighlighted={spawnHighlighted} />;
 });
 
 /** 思考行：默认折叠为单行摘要（收束耗时统计，对标 Claude Code 斜体单行）；完整思考经 Tab 展开打印查看 */
