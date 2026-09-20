@@ -1,7 +1,8 @@
 /** 模型适配层：统一推理接口，多后端可插拔 */
-import { ModelTier, RouteDecision, ChatMessage, ChatRequest, ChatResult, ChatTool, ToolCallSpec, JsonSchema } from '../types';
+import { ModelTier, ReasoningEffort, RouteDecision, ChatMessage, ChatRequest, ChatResult, ChatTool, ToolCallSpec, JsonSchema } from '../types';
 import { t } from '../i18n';
 
+export type { ModelTier, ReasoningEffort };
 /** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
 export interface UsageHooks {
   onUsage?: (tokens: number) => void;
@@ -20,24 +21,40 @@ export interface ResponseFormat {
   json_schema?: { name: string; strict?: boolean; schema: Record<string, unknown> };
 }
 
+/** 思考强度（OpenAI 兼容 reasoning_effort 请求参数）：请求级字段、不进提示词，前缀缓存零影响；类型本体登记 src/types.ts */
+export const EFFORT_ORDER: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const EFFORT_LOW_INDEX = EFFORT_ORDER.indexOf('low');
 
 /** 解析思考强度档位：大小写不敏感；非法/空值回 undefined（配置缺省态，不生效） */
+export function parseEffort(v: string | undefined | null): ReasoningEffort | undefined {
+  const t = (v ?? '').trim().toLowerCase() as ReasoningEffort;
+  return (EFFORT_ORDER as readonly string[]).includes(t) ? t : undefined;
 }
 
+/** effort 降级序列（端点不支持该参数时的逐档回退）：不高于 low 的请求向上逐档试到 max；高于 low 的向下逐档试到 low */
+export function buildFallbackSequence(requested: ReasoningEffort): ReasoningEffort[] {
+  const idx = EFFORT_ORDER.indexOf(requested);
+  if (idx <= EFFORT_LOW_INDEX) return EFFORT_ORDER.slice(idx);
+  return EFFORT_ORDER.slice(EFFORT_LOW_INDEX, idx + 1).reverse();
 }
 
+/** 端点不支持 reasoning_effort 参数的识别：仅 400/422 且错误消息指向该参数；网络/鉴权/限流/服务端错误不降级、照常抛出 */
+export function isUnsupportedEffortError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : '';
   const m = /OpenAI request failed: (\d{3})/.exec(msg);
   if (!m) return false;
   const status = Number(m[1]);
+  return (status === 400 || status === 422) && /reasoning[_ ]effort/i.test(msg);
 }
 
 export interface ModelAdapter {
   readonly provider: string;
   /** 展示标签（banner/日志）：缺省回退 provider；openai 侧为「模型名」 */
   readonly label?: string;
+  /** effort：请求级思考强度覆盖（缺省回适配器配置 cfg/env；都未配置零穿参） */
+  complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string>;
   /** function calling 轮面（迁移 D3 新主通道，可选能力面）：消息视图进、聚合轮结果出。未实现者（测试桩/未迁移面）回退 complete */
-  chat?(req: ChatRequest): Promise<ChatResult>;
+  chat?(req: ChatRequest, onDelta?: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
   /** chat 流式面（可选）：content 增量照旧回调，轮终聚合 ChatResult */
   chatStream?(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
 }
@@ -96,6 +113,8 @@ export interface LLMConfig {
   apiKey?: string;
   model?: string;
   timeoutMs?: number;
+  /** 缺省思考强度（SUNSHINEX_REASONING_EFFORT）：非法值忽略回缺省态（零穿参） */
+  reasoningEffort?: ReasoningEffort;
 }
 
 /** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API，带超时控制 */
@@ -107,6 +126,11 @@ export class OpenAIAdapter implements ModelAdapter {
   private apiKey: string;
   private model: string;
   private timeoutMs: number;
+  private effort: ReasoningEffort | undefined;
+  /** effort 探测缓存（进程内会话级）：请求档 → 端点实际生效档；换请求档自动失效按新序列重探 */
+  private effortResolved?: { requested: ReasoningEffort; resolved: ReasoningEffort };
+  /** 已判不支持 reasoning_effort 的档位（逐档记忆，跨请求档共享，防重复打无效请求） */
+  private effortUnsupported = new Set<ReasoningEffort>();
 
   constructor(private cfg: LLMConfig) {
     this.baseURL = cfg.baseURL ?? process.env.SUNSHINEX_BASE_URL ?? 'https://api.openai.com/v1';
@@ -114,48 +138,89 @@ export class OpenAIAdapter implements ModelAdapter {
     this.model = cfg.model ?? process.env.SUNSHINEX_MODEL ?? 'gpt-4o-mini';
     this.label = this.model;
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
+    this.effort = cfg.reasoningEffort ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   }
 
-  async complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat): Promise<string> {
-    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
+  /** 当前生效的缺省思考强度（undefined=未配置，请求零穿参） */
+  resolveEffort(): ReasoningEffort | undefined {
+    return this.effort;
+  }
+
+  /** 请求体发送单点（超时/中断合并/错误形态统一） */
+  private doFetch(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    // 外部中断 signal 与超时合并（AbortSignal.any，Node ≥20.3）：用户 Esc/Ctrl+C 即刻中止在途请求
+    const merged = signal ? AbortSignal.any([ctrl.signal, signal]) : ctrl.signal;
+    return fetch(`${this.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify(body),
+      signal: merged,
+    }).finally(() => clearTimeout(timer));
+  }
+
+  /** 非 ok 响应转错误：消息附端点响应体（截断 300 字符），供 effort 不支持识别与问题定位 */
+  private async requestError(resp: Response): Promise<Error> {
+    let detail = '';
     try {
-      const resp = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-        // response_format 仅在调用方显式下发时携带（SUNSHINEX_STRUCTURED_OUTPUT 开关），其余请求体不变
-        body: JSON.stringify({
-          model: this.model,
-          messages: [{ role: 'user', content: prompt }],
-          ...(format ? { response_format: format } : {}),
-        }),
-        signal: ctrl.signal,
-      });
-      if (!resp.ok) throw new Error(`OpenAI request failed: ${resp.status}`);
+      detail = (await resp.text()).slice(0, 300);
+    } catch {
+      // 响应体不可读时仅报状态码
+    }
+    return new Error(`OpenAI request failed: ${resp.status}${detail ? ` ${detail}` : ''}`);
+  }
+
+  /** effort 感知发送：显式档位按降级序列逐档试探（仅参数不支持类错误降级），探测结果缓存后直发生效档；
+   *  全序列不支持则省略参数用模型默认。无 effort 配置时请求体形态与旧版逐字节一致 */
+  private async sendWithEffort(base: Record<string, unknown>, effort: ReasoningEffort | undefined, signal?: AbortSignal): Promise<Response> {
+    if (!effort) return this.doFetch(base, signal);
+    const cached = this.effortResolved?.requested === effort ? this.effortResolved.resolved : undefined;
+    if (cached) return this.doFetch({ ...base, reasoning_effort: cached }, signal);
+    const seq = buildFallbackSequence(effort).filter((e) => !this.effortUnsupported.has(e));
+    for (const e of seq) {
+      const resp = await this.doFetch({ ...base, reasoning_effort: e }, signal);
+      if (resp.ok) {
+        this.effortResolved = { requested: effort, resolved: e };
+        return resp;
+      }
+      const err = await this.requestError(resp);
+      if (!isUnsupportedEffortError(err)) throw err;
+      this.effortUnsupported.add(e);
+    }
+    return this.doFetch(base, signal); // 全序列不支持：省略参数，用模型默认
+  }
+
+  async complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
+    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
+    try {
+      // response_format 仅在调用方显式下发时携带（SUNSHINEX_STRUCTURED_OUTPUT 开关）；
+      // reasoning_effort 经 sendWithEffort 感知下发（显式覆盖 > cfg/env 缺省；都未配置请求体与旧版逐字节一致）
+      const resp = await this.sendWithEffort(
+        { model: this.model, messages: [{ role: 'user', content: prompt }], ...(format ? { response_format: format } : {}) },
+        effort ?? this.effort,
+        signal,
+      );
+      if (!resp.ok) throw await this.requestError(resp);
       const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
       hooks?.onCache?.(extractCacheTokens(data)); // 缓存命中先于 usage 回传，订阅方聚合时序一致
       hooks?.onPrompt?.(extractPromptTokens(data));
       hooks?.onUsage?.(extractUsage(data));
       return data.choices?.[0]?.message?.content ?? '';
     } catch (e) {
+      if (signal?.aborted) throw new Error('Task interrupted');
       if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
       throw e;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
   /** 流式补全：stream:true SSE 输出，\n\n 分帧缓冲（容忍跨 chunk 半帧），data:[DONE] 终止；usage 取自携带用量的事件帧 */
-  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat): Promise<string> {
+  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
-      const resp = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify({
+      // effort 与 response_format 与非流式路同源（sendWithEffort 单点），流式/非流式降级行为无感
+      const resp = await this.sendWithEffort(
+        {
           model: this.model,
           messages: [{ role: 'user', content: prompt }],
           stream: true,
@@ -163,10 +228,11 @@ export class OpenAIAdapter implements ModelAdapter {
           stream_options: { include_usage: true },
           // response_format 与非流式路同源：仅显式下发时携带
           ...(format ? { response_format: format } : {}),
-        }),
-        signal: ctrl.signal,
-      });
-      if (!resp.ok || !resp.body) throw new Error(`OpenAI request failed: ${resp.status}`);
+        },
+        effort ?? this.effort,
+        signal,
+      );
+      if (!resp.ok || !resp.body) throw await this.requestError(resp);
       let full = '';
       let buffer = '';
       const decoder = new TextDecoder();
@@ -201,6 +267,7 @@ export class OpenAIAdapter implements ModelAdapter {
       }
       return full;
     } catch (e) {
+      if (signal?.aborted) throw new Error('Task interrupted');
       if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
       throw e;
     }
@@ -248,8 +315,8 @@ export class OpenAIAdapter implements ModelAdapter {
     return { finish, content: msg?.content ?? '', toolCalls: finish === 'tool_calls' ? calls : [] };
   }
 
-  /** function calling 轮面：messages + tools 下发（tool_choice 缺省 auto），请求体不带 response_format */
-  async chat(req: ChatRequest): Promise<ChatResult> {
+  /** function calling 轮面：messages + tools 下发（tool_choice 缺省 auto），请求体不带 response_format；usage 三钩子回传与 completeStream 同源 */
+  async chat(req: ChatRequest, _onDelta?: unknown, hooks?: UsageHooks): Promise<ChatResult> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
     try {
       const body: Record<string, unknown> = {
@@ -258,12 +325,14 @@ export class OpenAIAdapter implements ModelAdapter {
         tool_choice: 'auto',
         ...(req.tools && req.tools.length > 0 ? { tools: OpenAIAdapter.toWireTools(req.tools) } : {}),
       };
+      const resp = await this.sendWithEffort(body, req.effort ?? this.effort, req.signal);
       if (!resp.ok) throw await this.requestError(resp);
       const data = (await resp.json()) as unknown;
       const r = OpenAIAdapter.parseChatResult(data);
-      this.emitUsage(data);
+      this.emitUsage(data, hooks);
       return r;
     } catch (e) {
+      if (req.signal?.aborted) throw new Error('Task interrupted');
       if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
       throw e;
     }
@@ -281,6 +350,7 @@ export class OpenAIAdapter implements ModelAdapter {
         tool_choice: 'auto',
         ...(req.tools && req.tools.length > 0 ? { tools: OpenAIAdapter.toWireTools(req.tools) } : {}),
       };
+      const resp = await this.sendWithEffort(body, req.effort ?? this.effort, req.signal);
       if (!resp.ok || !resp.body) throw await this.requestError(resp);
       let full = '';
       let buffer = '';
@@ -342,6 +412,7 @@ export class OpenAIAdapter implements ModelAdapter {
       });
       return { finish, content: full, toolCalls: finish === 'tool_calls' ? toolCalls : [] };
     } catch (e) {
+      if (req.signal?.aborted) throw new Error('Task interrupted');
       if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
       throw e;
     }
@@ -435,8 +506,8 @@ export class ScriptedAdapter implements ModelAdapter {
     return text;
   }
 
-  /** 轮面：字符串步骤按信封文本协议转译（parseLegacyEnvelope 单点）；结构化步骤直接出牌 */
-  async chat(_req: ChatRequest, _onDelta?: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
+  /** 轮面：字符串步骤按信封文本协议转译（parseLegacyEnvelope 单点）；结构化步骤直接出牌；usage 记 0（脚本化回放无真实用量） */
+  async chat(_req: ChatRequest, _onDelta?: unknown, hooks?: UsageHooks): Promise<ChatResult> {
     hooks?.onUsage?.(0);
     const s = this.next();
     if (typeof s === 'string') return parseLegacyEnvelope(s);

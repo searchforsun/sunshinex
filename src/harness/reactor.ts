@@ -1,4 +1,4 @@
-import { ContextItem, ExecResult, RouteDecision, SessionEvent, StopReason } from '../types';
+import { ContextItem, ExecResult, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
 import { Result } from '../result';
@@ -42,6 +42,8 @@ export interface ReactorOpts extends ReactorLimits {
   routeHint?: RouteHint;
   /** 用户级档位（run 级常量）：显式指定优先于 hint 推导与缺省；整场恒定，不随步重估、无模型自调通道 */
   tier?: ModelTier;
+  /** 缺省思考强度（run 级常量，对标 tier）：run 级覆盖优先，缺省回适配器 cfg/env；请求级参数、不进提示词 */
+  effort?: import('../types').ReasoningEffort;
   /** 作用域：session=主链（收束自动回写）；fork=私有执行（零回写，graph 节点/内部任务用） */
   scope?: 'session' | 'fork';
   /** fork 私有前缀（graph 组合角色行/节点任务行用）；缺省 seed = 会话链视图（结构性 fork） */
@@ -60,12 +62,16 @@ export interface ReactorDeps {
   settle?: (r: SettlePayload) => string | void | Promise<string | void>;
   /** 记忆提取挂点（auto memory §4）：与 settle 同点、全终态触发一次（失败/中止任务同样入队）；返回的说明行尾追为链尾 notice 行（规格 §10）；旁路纪律=失败不倒灌任务成败（reactor 侧再兜一层 catch） */
   settleMemory?: (r: SettlePayload) => string | void | Promise<string | void>;
+  /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向、非模型工具面）：每个步边界 drain 一次，返回待投递的用户穿插行（按入队序、取走即消费）；缺省无通道 */
+  steer?: () => string[];
   /** per-run 成本账本（可选）：run 收尾聚合落 runs/<id>；缺省不落账 */
   ledger?: RunLedger;
   /** 事件流旁路（TUI/GUI 公共地基）：发射即旁路，不注入零副作用；主链/账本语义不受影响 */
   onEvent?: (e: SessionEvent) => void;
   /** 子代理执行单元（harness/装配根注入）：run 起止挂/摘 spawn 预算源；缺省无 spawn 能力 */
   runner?: SubagentRunner;
+  /** 用户中断信号（Esc/Ctrl+C）：步边界最先检查，在途模型调用经 adapter 即刻中止；中止态转 interrupted 终态 */
+  signal?: AbortSignal;
 }
 
 /** 收口沉淀载荷（规格 §3.2）：outcome = 终态归一值（done/failed/stopped）；无最终答复时 reply 归一为空串 */
@@ -183,15 +189,35 @@ export class Reactor {
       }));
     }
 
-    let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error 在各自分支覆盖
+    let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error / interrupted 在各自分支覆盖
     for (;;) {
+      // 用户中断（Esc/Ctrl+C）：步边界最先检查——在途工具调用完成后立即停，不进下一模型轮
+      if (this.deps.signal?.aborted) {
+        stopReason = 'interrupted';
+        break;
+      }
+      // 运行中穿插消费（对标 CC queued messages，用户→运行时方向）：每个步边界 drain 一次，
+      // 用户穿插行以 task 记录尾追加 steps——下一装配面 history 自然携带（尾追、零前缀击穿），
+      // session 作用域收束时随全量步骤回写主链（可审计、跨轮可见）。
+      // 消费门=本 run 已起步（≥1 新步）：起步前穿插留通道，避免吞进零新步 done 终稿；
+      // 仅 session 主链消费：fork 私有面不回写主链，穿插行落进去即静默丢失——交会话层收口兜底补跑
+      if (this.deps.steer && scope === 'session' && steps.length > seedLen) {
+        const lines = this.deps.steer().filter((l) => l.trim().length > 0);
+        if (lines.length > 0) {
+          const base = steps.length > 0 ? steps[steps.length - 1].step : seedLastStep;
+          const injected = lines.map((line, i) => ({ step: base + 1 + i, action: 'task' as const, observation: line }));
+          steps.push(...injected);
+          this.emit('step', 'task', { step: injected[injected.length - 1].step });
+        }
+      }
       const step = steps.length > 0 ? steps[steps.length - 1].step + 1 : 1;
       const hit = guardrailStop({
         now: Date.now(),
         ...(deadlineAt !== undefined ? { deadlineAt } : {}),
         tokensUsed,
         ...(tokenCap !== undefined ? { tokenCap } : {}),
-        iteration: steps.length - seedLen, // 本 run 新增完成步数：maxSteps 只约束本 run 新增步
+        // 本 run 新增完成轮数（模型轮=完成步）：chat 主通道一轮入多条链行（phase/调用/观察共用同一轮步号），按去重步号计；回退档一行一轮两口径等值
+        iteration: new Set(steps.slice(seedLen).map((s) => s.step)).size,
         maxIterations: maxSteps,
       });
       if (hit) {
@@ -258,6 +284,7 @@ export class Reactor {
               this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens, promptTotal: promptTokens });
             },
             onReasoning: (t) => this.emit('reasoning', t),
+          }, opts?.effort, this.deps.signal);
           if (outcome.done) {
             done = true;
             reply = outcome.reply;
@@ -289,8 +316,13 @@ export class Reactor {
             this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens, promptTotal: promptTokens });
           },
           onReasoning: (t) => this.emit('reasoning', t),
-        }, responseFormat);
+        }, responseFormat, this.deps.signal, opts?.effort);
       } catch (e) {
+        // 用户中断在途模型调用：静默转入中断终态，不 emit error（中断回执由会话层统一发）
+        if (this.deps.signal?.aborted) {
+          stopReason = 'interrupted';
+          break;
+        }
         const errMsg = e instanceof Error ? e.message : String(e);
         // 反应式压缩兜底（规格 F 项，对标 reactive_compact）：端点超长拒绝（本地估算偏差）→
         // 压缩 + 重试本步一次（MAX_REACTIVE_RETRIES=1）；重试请求前缀与失败请求不同 = 合法重写点语义
@@ -437,15 +469,15 @@ export class Reactor {
   }
 
   /** 模型调用：优先 completeStream（token 增量逐段发射）；适配器未实现时降级 complete（token 整段一次发）。
-   * format（可选 response_format）两路同源透传，结构化输出对流式/非流式形态无感 */
-  private async callModel(adapter: ModelAdapter, prompt: string, hooks: UsageHooks, format?: ResponseFormat): Promise<string> {
+   * format（可选 response_format）与 effort（可选思考强度）两路同源透传，对流式/非流式形态无感 */
+  private async callModel(adapter: ModelAdapter, prompt: string, hooks: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: import('../types').ReasoningEffort): Promise<string> {
     const streamable = adapter as ModelAdapter & {
-      completeStream?: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat) => Promise<string>;
+      completeStream?: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: import('../types').ReasoningEffort) => Promise<string>;
     };
     if (typeof streamable.completeStream === 'function') {
-      return streamable.completeStream(prompt, (t) => this.emit('token', t), hooks, format);
+      return streamable.completeStream(prompt, (t) => this.emit('token', t), hooks, format, signal, effort);
     }
-    const out = await adapter.complete(prompt, hooks, format);
+    const out = await adapter.complete(prompt, hooks, format, signal, effort);
     this.emit('token', out);
     return out;
   }
@@ -549,6 +581,7 @@ export class Reactor {
     step: number,
     skill: string | null,
     hooks: UsageHooks,
+    effort: ReasoningEffort | undefined,
     signal: AbortSignal | undefined,
   ): Promise<{ done: boolean; reply?: string }> {
     const messages = buildMessages({
