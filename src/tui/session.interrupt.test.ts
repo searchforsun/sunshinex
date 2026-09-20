@@ -22,7 +22,7 @@ function tmpdir(prefix: string): string {
 class HangingAdapter implements ModelAdapter {
   readonly provider = 'hanging';
   lastSignal?: AbortSignal;
-  async complete(_p: string, _h?: unknown, _f?: unknown, signal?: AbortSignal): Promise<string> {
+  async complete(_p: string, _h?: unknown, signal?: AbortSignal): Promise<string> {
     this.lastSignal = signal;
     return new Promise((_, reject) => {
       if (signal?.aborted) return reject(new Error('Task interrupted'));

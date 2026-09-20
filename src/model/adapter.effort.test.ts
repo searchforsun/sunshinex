@@ -52,7 +52,7 @@ test('isUnsupportedEffortError：只认 400/422 且消息指向 reasoning_effort
 test('effort 穿参：显式档位随请求体下发（reasoning_effort 字段）', async () => {
   const m = mockFetch([{ status: 200, body: { choices: [{ message: { content: 'ok' } }], usage: { total_tokens: 1 } } }]);
   try {
-    const out = await adapter().complete('p', undefined, undefined, undefined, 'high');
+    const out = await adapter().complete('p', undefined, undefined, 'high');
     assert.equal(out, 'ok');
     assert.equal(m.bodies[0].reasoning_effort, 'high');
   } finally {
@@ -69,13 +69,13 @@ test('effort 降级：high 不支持→逐档降 medium→low 成功；探测缓
   ]);
   try {
     const a = adapter();
-    const out = await a.complete('p', undefined, undefined, undefined, 'high');
+    const out = await a.complete('p', undefined, undefined, 'high');
     assert.equal(out, 'ok');
     assert.equal(m.bodies[0].reasoning_effort, 'high');
     assert.equal(m.bodies[1].reasoning_effort, 'medium', '逐档向下：第二试 medium');
     assert.equal(m.bodies[2].reasoning_effort, 'low');
     // 探测缓存：high/medium 已判不支持，同请求直发生效档 low
-    const out2 = await a.complete('p2', undefined, undefined, undefined, 'high');
+    const out2 = await a.complete('p2', undefined, undefined, 'high');
     assert.equal(out2, 'ok2');
     assert.equal(m.bodies.length, 4, '缓存生效：不再重试已判不支持的档位');
     assert.equal(m.bodies[3].reasoning_effort, 'low');
@@ -94,14 +94,14 @@ test('effort 全序列不支持：省略参数用模型默认，并缓存端点�
   ]);
   try {
     const a = adapter();
-    const out = await a.complete('p', undefined, undefined, undefined, 'high');
+    const out = await a.complete('p', undefined, undefined, 'high');
     assert.equal(out, 'default');
     assert.equal(m.bodies[0].reasoning_effort, 'high');
     assert.equal(m.bodies[1].reasoning_effort, 'medium');
     assert.equal(m.bodies[2].reasoning_effort, 'low');
     assert.ok(!('reasoning_effort' in m.bodies[3]), '全档不支持后省略参数直发');
     // 缓存后同请求一次直发无参
-    const out2 = await a.complete('p2', undefined, undefined, undefined, 'high');
+    const out2 = await a.complete('p2', undefined, undefined, 'high');
     assert.equal(out2, 'default2');
     assert.equal(m.bodies.length, 5, '缓存生效：不再重复探测');
     assert.ok(!('reasoning_effort' in m.bodies[4]));
@@ -118,11 +118,11 @@ test('effort 请求档变化：探测缓存按请求档记账，新请求档按�
   ]);
   try {
     const a = adapter();
-    await a.complete('p', undefined, undefined, undefined, 'high');
+    await a.complete('p', undefined, undefined, 'high');
     // 首请求：high(400)→medium(200) 即成功，生效档 medium
     assert.equal(m.bodies[1].reasoning_effort, 'medium');
     // 换请求档 max：high 的探测记录只作用于 high 序列——max 未探测过，按序列首档直发且不再重试已判不支持的档
-    const out = await a.complete('p2', undefined, undefined, undefined, 'max');
+    const out = await a.complete('p2', undefined, undefined, 'max');
     assert.equal(out, 'max-ok');
     assert.equal(m.bodies.length, 3, 'max 序列首档即成功，不重试 high/medium');
     assert.equal(m.bodies[2].reasoning_effort, 'max');
@@ -154,7 +154,7 @@ test('effort 网络/服务端错误不降级：非参数类错误照常抛出', 
   const m = mockFetch([{ status: 500, body: { error: { message: 'internal error' } } }]);
   try {
     await assert.rejects(
-      adapter().complete('p', undefined, undefined, undefined, 'high'),
+      adapter().complete('p', undefined, undefined, 'high'),
       /failed: 500/,
     );
     assert.equal(m.bodies.length, 1, '500 不进入降级序列');

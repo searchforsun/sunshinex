@@ -20,7 +20,6 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   reasoningEffort: 'SUNSHINEX_REASONING_EFFORT',
   language: 'SUNSHINEX_LANGUAGE',
   contextWindow: 'SUNSHINEX_CONTEXT_WINDOW',
-  structuredOutput: 'SUNSHINEX_STRUCTURED_OUTPUT',
   autoMemory: 'SUNSHINEX_AUTO_MEMORY',
   learnedSkills: 'SUNSHINEX_LEARNED_SKILLS',
   learnedSkillLimit: 'SUNSHINEX_LEARNED_SKILL_LIMIT',
@@ -50,6 +49,7 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
  */
 export const RETIRED_KEYS: Readonly<Record<string, string>> = {
   dataDir: 'dataDir 已退役（整目录直指、不按工作区隔离，多项目共用一份记忆与账本）；换盘请改用 projectsDir',
+  structuredOutput: 'structuredOutput 已退役（SUNSHINEX_STRUCTURED_OUTPUT 同废）：工具调用恒走原生 function calling（tools 字段下发），要求端点支持 function calling，无结构化输出开关',
 };
 
 /** settings.json 解析产物：semantic=根级语义键原始值（形状裁决留给 flattenSettings）；env=透传块（键名即 SUNSHINEX_* 原名） */

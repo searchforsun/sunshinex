@@ -55,7 +55,7 @@ test('Reactor：模型调用在途中止 → interrupted 终态，不走 error �
   const errorEvents: string[] = [];
   const adapter = {
     provider: 'hang-abort',
-    complete: (_p: string, _h?: unknown, _f?: unknown, signal?: AbortSignal): Promise<string> =>
+    complete: (_p: string, _h?: unknown, signal?: AbortSignal): Promise<string> =>
       new Promise((_, reject) => {
         if (signal?.aborted) return reject(new Error('Task interrupted'));
         signal?.addEventListener('abort', () => reject(new Error('Task interrupted')), { once: true });

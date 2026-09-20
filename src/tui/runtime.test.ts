@@ -133,7 +133,7 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
     fs.rmSync(tmp1, { recursive: true, force: true });
   }
 
-  // ② 不传 opts：接缝不得硬填缺省步数（旧实现填 12），应落到 Reactor 自身缺省 200（src/harness/reactor.ts）
+  // ② 不传 opts：接缝不得硬填缺省步数（旧实现填 12），应落到 Reactor 自身缺省 400（长任务终止参数线放宽 200→400，src/harness/reactor.ts）
   const events2: SessionEvent[] = [];
   const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt7b-'));
   try {
@@ -145,8 +145,8 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
     await rt.runTask('一直调工具');
     assert.equal(
       events2.filter((e) => e.type === 'tool-call').length,
-      200,
-      'maxSteps 缺省时应交给 Reactor 的 200（旧实现直连并硬填 12 → 此处为 12）',
+      400,
+      'maxSteps 缺省时应交给 Reactor 的 400（长任务终止参数线放宽 200→400；旧实现直连并硬填 12）',
     );
   } finally {
     fs.rmSync(tmp2, { recursive: true, force: true });

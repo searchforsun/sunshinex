@@ -14,13 +14,6 @@ export interface UsageHooks {
   onReasoning?: (delta: string) => void;
 }
 
-/** 请求级 response_format（模型原生结构化输出，OpenAI 兼容字段原样透传）：
- * json_schema=按 schema 约束输出形状；json_object=仅约束合法 JSON（端点兼容降级档） */
-export interface ResponseFormat {
-  type: 'json_schema' | 'json_object';
-  json_schema?: { name: string; strict?: boolean; schema: Record<string, unknown> };
-}
-
 /** 思考强度（OpenAI 兼容 reasoning_effort 请求参数）：请求级字段、不进提示词，前缀缓存零影响；类型本体登记 src/types.ts */
 export const EFFORT_ORDER: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const EFFORT_LOW_INDEX = EFFORT_ORDER.indexOf('low');
@@ -52,7 +45,7 @@ export interface ModelAdapter {
   /** 展示标签（banner/日志）：缺省回退 provider；openai 侧为「模型名」 */
   readonly label?: string;
   /** effort：请求级思考强度覆盖（缺省回适配器配置 cfg/env；都未配置零穿参） */
-  complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string>;
+  complete(prompt: string, hooks?: UsageHooks, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string>;
   /** function calling 轮面（迁移 D3 新主通道，可选能力面）：消息视图进、聚合轮结果出。未实现者（测试桩/未迁移面）回退 complete */
   chat?(req: ChatRequest, onDelta?: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
   /** chat 流式面（可选）：content 增量照旧回调，轮终聚合 ChatResult */
@@ -191,13 +184,12 @@ export class OpenAIAdapter implements ModelAdapter {
     return this.doFetch(base, signal); // 全序列不支持：省略参数，用模型默认
   }
 
-  async complete(prompt: string, hooks?: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
+  async complete(prompt: string, hooks?: UsageHooks, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
     try {
-      // response_format 仅在调用方显式下发时携带（SUNSHINEX_STRUCTURED_OUTPUT 开关）；
       // reasoning_effort 经 sendWithEffort 感知下发（显式覆盖 > cfg/env 缺省；都未配置请求体与旧版逐字节一致）
       const resp = await this.sendWithEffort(
-        { model: this.model, messages: [{ role: 'user', content: prompt }], ...(format ? { response_format: format } : {}) },
+        { model: this.model, messages: [{ role: 'user', content: prompt }] },
         effort ?? this.effort,
         signal,
       );
@@ -215,10 +207,10 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 
   /** 流式补全：stream:true SSE 输出，\n\n 分帧缓冲（容忍跨 chunk 半帧），data:[DONE] 终止；usage 取自携带用量的事件帧 */
-  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks, format?: ResponseFormat, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
+  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
     try {
-      // effort 与 response_format 与非流式路同源（sendWithEffort 单点），流式/非流式降级行为无感
+      // effort 与非流式路同源（sendWithEffort 单点），流式/非流式降级行为无感
       const resp = await this.sendWithEffort(
         {
           model: this.model,
@@ -226,8 +218,6 @@ export class OpenAIAdapter implements ModelAdapter {
           stream: true,
           // 流式末帧携带 usage（OpenAI 兼容约定）；缺省不回传会导致流式 tokens 计时恒 0
           stream_options: { include_usage: true },
-          // response_format 与非流式路同源：仅显式下发时携带
-          ...(format ? { response_format: format } : {}),
         },
         effort ?? this.effort,
         signal,
