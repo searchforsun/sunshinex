@@ -31,7 +31,7 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 's
 
 /** chat 面测试桩：按脚本逐轮出牌；complete 被调用即失败（证明主通道走 chat） */
 class ChatStub implements ModelAdapter {
-  readonly provider = 'chat-stub';
+  readonly provider = 'openai';
   private i = 0;
   readonly requests: ChatRequest[] = [];
   constructor(private steps: ChatResult[]) {}

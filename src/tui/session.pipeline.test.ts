@@ -35,15 +35,19 @@ test('session：任务收束后后台消化落盘，notify 说明行进消息流
   await withRoot(async (root) => {
     const model: ModelAdapter = {
       provider: 'openai',
-      complete: async (prompt: string) => {
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
+      },
+      chat: async (req: { messages: Array<{ role: string; content: string }> }) => {
+        const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (prompt.includes('memory-extraction')) {
-          return JSON.stringify({
-            memories: [
-              { type: 'project', description: 'session wiring', content: 'the background pipeline drains after task close', scope: 'persistent' },
-            ],
-          });
+          return {
+            finish: 'tool_calls' as const,
+            content: '',
+            toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items: [{ type: 'project', description: 'session wiring', content: 'the background pipeline drains after task close' }] }) }],
+          };
         }
-        return '{"done":true,"reply":"ok"}';
+        return { finish: 'stop' as const, content: 'ok', toolCalls: [] };
       },
     } as unknown as ModelAdapter;
     const ctrl = new SessionController({ root, model });

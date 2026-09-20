@@ -23,8 +23,14 @@ export async function consolidateMemory(opts: { model: ModelAdapter; root: strin
     const before = store.list();
     if (before.length === 0) return;
     if (!opts.force && before.length < MEMORY_CONSOLIDATE_THRESHOLD) return; // 阈值未达零调用零副作用（force=/memory gc 显式入口）
-    const out = await opts.model.complete(buildConsolidationPrompt(before));
-    const parsed = parseEnvelope(out);
+    const chat = opts.model.chat;
+    if (!chat) return; // 门禁同提取：无 chat 面静默跳过
+    const res = await chat.call(opts.model, {
+      messages: [{ role: 'user', content: buildConsolidationPrompt(before) }],
+      tools: CONSOLIDATE_TOOLS,
+    });
+    const call = res.toolCalls.find((t) => t.name === 'submit_memory_items');
+    const parsed = call ? parseMergedPayload(call.argsJson) : null;
     if (!parsed) return;
     const valid = parsed.filter(isValidCandidate);
     if (valid.length === 0 || valid.length > before.length) return; // 只减不增
@@ -82,22 +88,52 @@ function buildConsolidationPrompt(records: { slug: string; type: string; created
     'Merge duplicates, drop stale or superseded entries (a newer observation replaces the old), keep one entry per fact, keep details inside the entry body.',
     'Rewrite entries to be self-contained: resolve any remaining deictic references ("this", "that") into concrete entity names and use absolute dates only.',
     `You must NOT output more entries than the ${records.length} given. Keep the original language of each entry.`,
-    'Output strict JSON only (no preamble, no code fences): {"memories":[{"type":"project","description":"one line","body":"the fact"}]}.',
+    'Call submit_memory_items once with the consolidated entries ({"items":[{"type":"project","description":"one line","body":"the fact"}]}).',
     'Current records:',
     listing,
   ].join('\n');
 }
 
-/** 宽容解析：剥代码围栏后 JSON.parse；畸形返回 null（静默保持原状） */
-function parseEnvelope(out: string): MergedCandidate[] | null {
+/** 结构化载荷解析；畸形返回 null（静默保持原状） */
+function parseMergedPayload(argsJson: string): MergedCandidate[] | null {
   try {
-    const text = out.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-    const obj = JSON.parse(text) as { memories?: unknown };
-    return Array.isArray(obj.memories) ? (obj.memories as MergedCandidate[]) : null;
+    const obj = JSON.parse(argsJson) as { items?: unknown };
+    return Array.isArray(obj.items) ? (obj.items as MergedCandidate[]) : null;
   } catch {
     return null;
   }
 }
+
+/** 整理 tools 面（T5）：submit_memory_items 复用提取出牌面（items 条目形态一致） */
+const CONSOLIDATE_TOOLS = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'submit_memory_items',
+      description: 'Submit the consolidated memory entries (merged, deduplicated, self-contained)',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['items'],
+        properties: {
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['type', 'description', 'body'],
+              properties: {
+                type: { type: 'string', enum: ['user', 'feedback', 'project', 'reference'] },
+                description: { type: 'string' },
+                body: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+];
 
 const TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
 

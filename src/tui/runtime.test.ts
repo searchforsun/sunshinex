@@ -250,7 +250,10 @@ test('createRuntime.runLoop：缺省 test-loop 修正环跑通，结果原样透
   try {
     const rt = createRuntime({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"修复完成"}', '{"passed":true,"evidence":"已达成"}']),
+      model: new ScriptedAdapter([
+        { content: '', toolCalls: [] },
+        { content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '已达成' } }] },
+      ]),
     });
     const r = await rt.runLoop('修复构建（验收标准：t1=构建通过）');
     assert.equal(r.status, 'done');
@@ -268,7 +271,7 @@ test('createRuntime.runLoop：未知模板报错；判据未过回修一轮后 d
   try {
     const rt = createRuntime({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"x"}']),
+      model: new ScriptedAdapter([{ content: '', toolCalls: [] }]),
     });
     await assert.rejects(() => rt.runLoop('x（验收标准：t1=y）', { template: 'nope' }), /Unknown template: nope/);
 
@@ -276,10 +279,10 @@ test('createRuntime.runLoop：未知模板报错；判据未过回修一轮后 d
     const rt2 = createRuntime({
       root: tmp,
       model: new ScriptedAdapter([
-        '{"done":true,"reply":"第一版"}',
-        '{"passed":false,"evidence":"不达标"}',
-        '{"done":true,"reply":"第二版"}',
-        '{"passed":true,"evidence":"达标"}',
+        { content: '', toolCalls: [] },
+        { content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', args: { passed: false, verdict: 'not-yet', evidence: '不达标' } }] },
+        { content: '', toolCalls: [] },
+        { content: '', toolCalls: [{ id: 'call_1', name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '达标' } }] },
       ]),
       onEvent: (e) => events.push(e),
     });

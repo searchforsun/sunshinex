@@ -45,9 +45,20 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
       mode: 'dontAsk',
       model: {
         provider: 'openai',
-        complete: async (p) => {
+        complete: async () => {
+          throw new Error('complete must not be called on the chat path');
+        },
+        chat: async (req) => {
+          const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           seen.push(p);
-          return p.includes('handoff summary') ? SUMMARY : '{"done":true,"reply":"ok"}';
+          if (p.includes('handoff summary')) {
+            return {
+              finish: 'tool_calls',
+              content: '',
+              toolCalls: [{ id: 'call_s', name: 'submit_summary', argsJson: JSON.stringify({ goal: '演示', constraints: '只读', progress: '已折叠', verified: '回执一致', open: '无', rationale: '会话模型路径' }) }],
+            };
+          }
+          return { finish: 'stop', content: 'ok', toolCalls: [] };
         },
       },
     });
@@ -85,9 +96,20 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
       mode: 'dontAsk',
       model: {
         provider: 'openai',
-        complete: async (p) => {
+        complete: async () => {
+          throw new Error('complete must not be called on the chat path');
+        },
+        chat: async (req) => {
+          const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           seen.push(p);
-          return p.includes('handoff summary') ? SUMMARY : '{"done":true,"reply":"ok"}';
+          if (p.includes('handoff summary')) {
+            return {
+              finish: 'tool_calls',
+              content: '',
+              toolCalls: [{ id: 'call_s', name: 'submit_summary', argsJson: JSON.stringify({ goal: '演示', constraints: '只读', progress: '已折叠', verified: '回执一致', open: '无', rationale: '会话模型路径' }) }],
+            };
+          }
+          return { finish: 'stop', content: 'ok', toolCalls: [] };
         },
       },
     });

@@ -122,14 +122,27 @@ test('applyCompaction 摘要分叉：模型成功 → 正文为模型文本，ch
   const via = await cm.applyCompaction(chunks, {
     rereadTokenBudget: 2000,
     summaryTokenBudget: 2000,
-    summaryModel: { provider: 'openai', complete: async () => { calls++; return MODEL_BODY; } },
+    summaryModel: {
+      provider: 'openai',
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
+      },
+      chat: async () => {
+        calls++;
+        return {
+          finish: 'tool_calls' as const,
+          content: '',
+          toolCalls: [{ id: 'call_0', name: 'submit_summary', argsJson: JSON.stringify({ goal: '压缩验证目标', open: '无' }) }],
+        };
+      },
+    },
   });
   assert.equal(via, 'model');
   const items = cm.assemble();
   const sum = items.find((i) => i.content.startsWith('[Compacted summary'));
   assert.ok(sum, '压缩块存在');
   assert.match(sum!.content, /^\[Compacted summary checksum=[0-9a-f]{16}\]\n## Goal/);
-  assert.ok(sum!.content.includes(MODEL_BODY), '正文为模型文本');
+  assert.ok(sum!.content.includes('压缩验证目标') && sum!.content.includes('## Open') && sum!.content.includes('无'), '正文为模型六要素文本');
   assert.ok(!sum!.content.includes('- [history] '), '确定性 join 行被替换');
   assert.ok(items.some((i) => i.content.startsWith('[re-read] notes.md')), '重读条目机制不变');
   assert.equal(calls, 1, '模型恰好调用一次');
@@ -149,7 +162,20 @@ test('applyCompaction 摘要分叉：模型抛错/空输出 → 回退确定性 
 test('applyCompaction replay 幂等：同一 chunks 二次应用不再发起模型调用', async () => {
   const { cm } = setup();
   let calls = 0;
-  const model = { provider: 'openai', complete: async () => { calls++; return MODEL_BODY; } };
+  const model = {
+    provider: 'openai',
+    complete: async () => {
+      throw new Error('complete must not be called on the chat path');
+    },
+    chat: async () => {
+      calls++;
+      return {
+        finish: 'tool_calls' as const,
+        content: '',
+        toolCalls: [{ id: 'call_0', name: 'submit_summary', argsJson: JSON.stringify({ goal: '压缩验证目标', open: '无' }) }],
+      };
+    },
+  };
   const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
   await cm.applyCompaction(chunks, { summaryModel: model });
   const via2 = await cm.applyCompaction(chunks, { summaryModel: model });
@@ -184,7 +210,17 @@ test('runCompaction：协调单点——压缩、模型摘要、折链', async (
     summaryTokenBudget: 2000,
     rereadTokenBudget: 2000,
     chainFoldedCount: 1,
-    summaryModel: { provider: 'openai', complete: async () => MODEL_BODY },
+    summaryModel: {
+      provider: 'openai',
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
+      },
+      chat: async () => ({
+        finish: 'tool_calls' as const,
+        content: '',
+        toolCalls: [{ id: 'call_0', name: 'submit_summary', argsJson: JSON.stringify({ goal: '压缩验证目标', open: '无' }) }],
+      }),
+    },
   });
   assert.equal(r.via, 'model');
   assert.ok(r.chunks.length > 0);

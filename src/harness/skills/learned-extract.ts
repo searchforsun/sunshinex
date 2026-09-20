@@ -58,8 +58,58 @@ export async function extractLearnedSkill(
   input: LearnedExtractionInput,
 ): Promise<{ skill: RefinedSkill | null } | null> {
   try {
-    const out = await model.complete(buildLearnedExtractionPrompt(input));
-    return parseLearnedEnvelope(out);
+    const chat = model.chat;
+    if (!chat) return null;
+    const res = await chat.call(model, {
+      messages: [{ role: 'user', content: buildLearnedExtractionPrompt(input) }],
+      tools: LEARNED_TOOLS,
+    });
+    const call = res.toolCalls.find((t) => t.name === 'submit_refined_skill');
+    if (!call) return null;
+    return parseRefinedPayload(call.argsJson);
+  } catch {
+    return null;
+  }
+}
+
+/** 提炼 tools 面（T5）：submit_refined_skill 结构化出牌（usable 语义 = skill 非 null） */
+const LEARNED_TOOLS = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'submit_refined_skill',
+      description: 'Submit the distilled reusable skill, or null when the session taught nothing reusable',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['skill'],
+        properties: {
+          skill: {
+            type: ['object', 'null'],
+            additionalProperties: false,
+            required: ['name', 'description', 'body'],
+            properties: {
+              name: { type: 'string', description: 'kebab-case skill name' },
+              description: { type: 'string', description: 'what it does, at most 60 chars' },
+              body: { type: 'string', description: 'markdown with ## When to Use / ## Procedure / ## Pitfalls / ## Verification sections' },
+            },
+          },
+        },
+      },
+    },
+  },
+];
+
+/** 结构化提炼载荷解析（复用 parseLearnedEnvelope 的对象校验与闸门扫描） */
+function parseRefinedPayload(argsJson: string): { skill: RefinedSkill | null } | null {
+  try {
+    const obj = JSON.parse(argsJson) as { skill?: unknown };
+    if (obj.skill === null) return { skill: null };
+    const name = String((obj.skill as { name?: unknown })?.name ?? '').trim();
+    const description = String((obj.skill as { description?: unknown })?.description ?? '').trim();
+    const body = String((obj.skill as { body?: unknown })?.body ?? '').trim();
+    if (!name && !description && !body) return null;
+    return parseLearnedEnvelope(JSON.stringify({ skill: { name, description, body } }));
   } catch {
     return null;
   }

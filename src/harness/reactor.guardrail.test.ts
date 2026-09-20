@@ -49,7 +49,7 @@ test('Reactor：步数上限耗尽 → done=false 且 stopReason=max-steps', asy
     );
     assert.equal(r.done, false);
     assert.equal(r.stopReason, 'max-steps');
-    assert.equal(r.steps.length, 2, '步数上限 2 应恰好跑 2 步');
+    assert.equal(new Set(r.steps.map((s) => s.step)).size, 2, '步数上限 2 应恰好跑 2 模型轮（chat 面一轮多条链行）');
   });
 });
 

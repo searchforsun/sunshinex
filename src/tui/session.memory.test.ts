@@ -102,11 +102,19 @@ test('/memory gc：非真实模型通道给提示；真实模型通道阈值外�
 
     const merging: ModelAdapter = {
       provider: 'openai',
-      complete: async (prompt: string) => {
-        if (!prompt.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
-        return JSON.stringify({ memories: [{ type: 'project', description: 'merged memo', body: 'single merged record' }] });
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
       },
-    };
+      chat: async (req: { messages: Array<{ role: string; content: string }> }) => {
+        const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
+        if (!prompt.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
+        return {
+          finish: 'tool_calls' as const,
+          content: '',
+          toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items: [{ type: 'project', description: 'merged memo', body: 'single merged record' }] }) }],
+        };
+      },
+    } as unknown as ModelAdapter;
     const real = new SessionController({ root, model: merging });
     await real.submit('/memory gc');
     assert.equal(seed.count(), 1, '阈值外显式整理生效（gc 为 force 入口）');

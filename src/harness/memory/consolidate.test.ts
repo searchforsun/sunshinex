@@ -35,13 +35,14 @@ const seed = (mem: MemoryStore, n: number): void => {
 function consolidationStub(keep: number): ModelAdapter {
   return {
     provider: 'openai',
-    complete: async (prompt: string) => {
+    complete: async () => {
+      throw new Error('complete must not be called on the chat path');
+    },
+    chat: async (req) => {
+      const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
       if (!prompt.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
-      const slugs: string[] = [];
-      for (let i = 1; i <= keep; i += 1) slugs.push(`memo-topic-${i}`);
-      return JSON.stringify({
-        memories: slugs.map((s, idx) => ({ type: 'project', description: `memo topic ${idx + 1} (consolidated)`, body: `merged content for ${s}` })),
-      });
+      const items = Array.from({ length: keep }, (_, idx) => ({ type: 'project', description: `memo topic ${idx + 1} (consolidated)`, body: `merged content for memo-topic-${idx + 1}` }));
+      return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
     },
   };
 }
@@ -80,7 +81,7 @@ test('输出非 JSON → 保持原状不抛', async () => {
   await withMem(async (mem) => {
     seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
     const before = mem.count();
-    const model: ModelAdapter = { provider: 'openai', complete: async () => 'garbage not json' };
+    const model: ModelAdapter = { provider: 'openai', complete: async () => { throw new Error('complete must not be called on the chat path'); }, chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) };
     await consolidateMemory({ model, root: mem.dir() });
     assert.equal(mem.count(), before);
   });
@@ -95,9 +96,14 @@ test('落盘失败 → .bak 快照回滚，记录与整理前一致', async () =
     fs.mkdirSync(path.join(mem.dir(), 'MEMORY.md'));
     const model: ModelAdapter = {
       provider: 'openai',
-      complete: async (p: string) => {
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
+      },
+      chat: async (req) => {
+        const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (!p.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
-        return JSON.stringify({ memories: [{ type: 'project', description: 'merged into one', body: 'single merged record' }] });
+        const items = [{ type: 'project', description: 'merged into one', body: 'single merged record' }];
+        return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
       },
     };
     await consolidateMemory({ model, root: mem.dir() });

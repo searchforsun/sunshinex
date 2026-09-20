@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Harness } from './index';
 import type { ModelAdapter } from '../model/adapter';
+import type { ChatRequest } from '../types';
 import { MemoryStore } from './memory/store';
 
 /** 装配接线（规格 §3.1/§3.5 D2）：收口零等待入队 → 后台完成时 notify 双通道各留一条说明行 */
@@ -24,19 +25,25 @@ function withRoot(fn: (root: string) => Promise<void> | void): Promise<void> {
   })();
 }
 
-/** 慢提取桩：主链答复即时（done），提取调用延迟 30ms——用以证明收口同步路径不含模型调用 */
+/** 慢提取桩：主链 chat 出牌即时（done），提取调用 submit_memory_items 延迟 30ms——用以证明收口同步路径不含模型调用 */
 function slowExtractionModel(extractionCalls: { n: number }): ModelAdapter {
   return {
     provider: 'openai',
-    complete: async (prompt: string) => {
+    complete: async () => {
+      throw new Error('complete must not be called on the chat path');
+    },
+    chat: async (req: ChatRequest) => {
+      const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
       if (prompt.includes('memory-extraction')) {
         extractionCalls.n += 1;
         await new Promise((r) => setTimeout(r, 30));
-        return JSON.stringify({
-          memories: [{ type: 'project', description: 'deploys via pnpm', content: 'deploys run through pnpm scripts', scope: 'persistent' }],
-        });
+        return {
+          finish: 'tool_calls',
+          content: '',
+          toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items: [{ type: 'project', description: 'deploys via pnpm', content: 'deploys run through pnpm scripts' }] }) }],
+        };
       }
-      return '{"done":true,"reply":"ok"}';
+      return { finish: 'stop', content: 'ok', toolCalls: [] };
     },
   } as unknown as ModelAdapter;
 }

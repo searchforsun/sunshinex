@@ -8,6 +8,7 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { Harness } from '../harness';
 import { RunOutcome, TuiRuntime } from './runtime';
+import type { ChatRequest } from '../types';
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -238,11 +239,13 @@ test('会话控制器：/model 查询与切换（档位 run 级常量，对后�
   try {
     const harness = new Harness({ root: tmp, mode: 'dontAsk' });
     const seen: Array<string | undefined> = [];
+    const seenEfforts: Array<string | undefined> = [];
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
     const fake: TuiRuntime = {
       harness,
       runTask: async (_goal, o) => {
         seen.push(o?.tier);
+        seenEfforts.push(o?.effort);
         return base;
       },
     runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
@@ -253,13 +256,27 @@ test('会话控制器：/model 查询与切换（档位 run 级常量，对后�
     await ctrl.submit('/model large');
     await ctrl.submit('做件事');
     await ctrl.waitIdle();
+    await ctrl.submit('/model effort bogus');
+    await ctrl.submit('/model effort high');
+    await ctrl.submit('再做一件事');
+    await ctrl.waitIdle();
+    await ctrl.submit('/model effort');
+    await ctrl.submit('/model effort default');
+    await ctrl.submit('第三件事');
+    await ctrl.waitIdle();
     await ctrl.submit('/model');
     const texts = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
-    assert.match(texts, /default \(SUNSHINEX_MODEL\)/, '无档位时查询显示缺省来源');
+    assert.match(texts, /Current model tier: default \(SUNSHINEX_MODEL\)/, '无档位时查询显示档位缺省来源');
+    assert.match(texts, /Current reasoning effort: default \(adapter config\)/, '无思考强度配置时查询显示缺省来源');
     assert.match(texts, /Usage: \/model small\|medium\|large/, '非法档位回用法提示');
-    assert.match(texts, /Model tier set to large/, '切换有回执');
+    assert.match(texts, /Usage: \/model effort/, '非法思考强度回用法提示');
+    assert.match(texts, /Model tier set to large/, '档位切换有回执');
     assert.match(texts, /Current model tier: large/, '再次查询显示当前档位');
-    assert.deepEqual(seen, ['large'], '切换后的任务应携带用户档位，切换前不得携带');
+    assert.match(texts, /Reasoning effort set to high/, '思考强度切换有回执');
+    assert.match(texts, /Reasoning effort cleared/, '清除思考强度有回执');
+    assert.match(texts, /Current reasoning effort: high/, '覆盖期间查询显示当前思考强度');
+    assert.deepEqual(seen, ['large', 'large', 'large'], '档位 run 级常量：切换后的任务携带用户档位，切换前不得携带');
+    assert.deepEqual(seenEfforts, [undefined, 'high', undefined], '思考强度 run 级常量：覆盖期携带、清除后不携带');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -406,7 +423,23 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
     const harness = new Harness({
       root: tmp,
       mode: 'dontAsk',
-      model: { provider: 'openai', complete: async (p) => (p.includes('handoff summary') ? SUMMARY : '{"done":true,"reply":"ok"}') },
+      model: {
+        provider: 'openai',
+        complete: async () => {
+          throw new Error('complete must not be called on the chat path');
+        },
+        chat: async (req: ChatRequest) => {
+          const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
+          if (p.includes('handoff summary')) {
+            return {
+              finish: 'tool_calls' as const,
+              content: '',
+              toolCalls: [{ id: 'call_s', name: 'submit_summary', argsJson: JSON.stringify({ goal: '压缩演示', constraints: '只读', progress: '已折叠', verified: '回执一致', open: '无', rationale: '会话模型路径' }) }],
+            };
+          }
+          return { finish: 'stop' as const, content: 'ok', toolCalls: [] };
+        },
+      },
     });
     harness.context.appendChain([
       { action: 'read', observation: 'Y'.repeat(2000) },

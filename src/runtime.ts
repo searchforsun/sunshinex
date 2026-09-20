@@ -2,14 +2,20 @@ import type { AskUserRequest, AskUserSeam } from './types';
 import * as readline from 'node:readline/promises';
 import { Harness } from './harness';
 import { LoopDeps } from './loop/engine';
-import { ModelAdapter, ModelRouter, OpenAIAdapter, ScriptedAdapter, StubAdapter } from './model/adapter';
+import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ReasoningEffort, ScriptedAdapter, StubAdapter } from './model/adapter';
 import { ModelTier } from './types';
 
 /** 模型装配唯一决策点（CLI run/pipeline 与 TUI 共用，避免各入口各写一套）：--model 可选 openai|scripted|stub，缺省 openai；配置由进程入口装载 settings.json 两级链（已导出环境变量优先） */
 export function buildModel(flags: Record<string, string | boolean>): ModelAdapter {
   if (flags.model === 'scripted') return new ScriptedAdapter([]);
   if (flags.model === 'stub') return new StubAdapter();
-  return new OpenAIAdapter({ provider: 'openai' });
+  return new OpenAIAdapter({ provider: 'openai', ...resolveEffortConfig(flags) });
+}
+
+/** 缺省思考强度配置（--effort > SUNSHINEX_REASONING_EFFORT）：非法值忽略回缺省态（适配器内零穿参） */
+export function resolveEffortConfig(flags: Record<string, string | boolean>): { reasoningEffort: ReasoningEffort } | Record<string, never> {
+  const effort = parseEffort(typeof flags.effort === 'string' ? flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
+  return effort ? { reasoningEffort: effort } : {};
 }
 
 /** 校验档位值：--tier / /model 用户级参数只认 small|medium|large，其余一律 undefined（调用方按缺省处理） */
@@ -33,7 +39,8 @@ export function buildTierRouter(flags: Record<string, string | boolean>): ModelR
   for (const { tier, env } of tiers) {
     const model = process.env[env];
     if (model && model.length > 0) {
-      router.bind(tier, new OpenAIAdapter({ provider: 'openai', model }));
+      // 按档绑定同样继承缺省思考强度（--effort/env），否则配档路由的用户 effort 缺省丢失
+      router.bind(tier, new OpenAIAdapter({ provider: 'openai', model, ...resolveEffortConfig(flags) }));
       bound++;
     }
   }

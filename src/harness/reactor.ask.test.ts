@@ -39,9 +39,8 @@ test('ask_question 单发：经 seam 问询、裁决回填为观察（执行面�
     ], ask);
     const r = await reactor.run({ goal: 'ask single' }, { maxSteps: 3 });
     assert.equal(r.done, true);
-    const step = r.steps.find((s) => s.action === 'ask_question');
-    assert.ok(step, 'ask_question 应有步骤记录');
-    assert.equal(step?.observation, 'answer: Yes');
+    const resultRow = r.steps.find((s) => s.action === 'tool-result' && s.observation === 'answer: Yes');
+    assert.ok(resultRow, 'ask_question 应有观察记录（裁决回填 role:tool 面）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

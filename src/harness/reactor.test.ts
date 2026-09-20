@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactor } from './reactor';
-import { ModelRouter, ScriptedAdapter } from '../model/adapter';
+import { ModelRouter, ScriptedAdapter, parseLegacyEnvelope } from '../model/adapter';
+import type { ChatRequest } from '../types';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -48,7 +49,8 @@ test('Reactor 达到 maxSteps 强制终止', async () => {
 
   const r = await reactor.run({ goal: 'loop' }, { maxSteps: 2 });
   assert.equal(r.done, false);
-  assert.equal(r.steps.length, 2);
+  // chat 主通道一轮多条链行（调用+观察共用同一轮步号）：maxSteps 按模型轮计——2 轮 = 2 个去重步号
+  assert.equal(new Set(r.steps.map((s) => s.step)).size, 2);
 });
 
 test('模型输出非 JSON 时不误判完成，而是记录观察并重试', async () => {
@@ -59,7 +61,8 @@ test('模型输出非 JSON 时不误判完成，而是记录观察并重试', as
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 3 });
   assert.equal(r.done, false);
   assert.equal(r.steps.length, 3);
-  assert.ok(r.steps.every((s) => s.observation.includes('not valid JSON')));
+  // 空批纠偏观察：原文随旁白可见、不误判完成（信封协议退役后「非协议文本」同形态承载）
+  assert.ok(r.steps.every((s) => s.observation.includes('No tool calls were returned')));
 });
 
 test('模型调用异常时 done=false 并保留错误信息', async () => {
@@ -263,7 +266,10 @@ test('会话作用域收束回写：done 形态——种子链行保留、步骤
   assert.equal(r.done, true);
   const chain = context.chainView();
   assert.ok(chain.some((s) => s.observation === '种子事件：跨任务保留'), '种子链行跨任务保留');
-  assert.ok(chain.some((s) => s.action === 'exec'), '存续步骤回写入链');
+  assert.ok(
+    chain.some((s) => s.action === 'tool-call' && s.observation.includes('[tool] exec')),
+    '存续步骤回写入链（chat 主通道动作为调用/观察行词汇）',
+  );
   assert.equal(chain[chain.length - 1].action, 'reply', '结论行尾追入链');
 });
 
@@ -282,8 +288,8 @@ test('会话作用域收束回写：maxSteps 耗尽形态——步骤行与未�
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 1 });
   assert.equal(r.done, false);
   const chain = context.chainView();
-  assert.equal(chain.length, 2, '步骤行 + 未完成补丁行');
-  assert.equal(chain[0].action, 'exec', '耗尽前已完成的步骤回写入链');
+  assert.equal(chain.length, 3, '调用行 + 观察行 + 未完成补丁行');
+  assert.equal(chain[0].action, 'tool-call', '耗尽前已完成的步骤回写入链');
   assert.equal(chain[chain.length - 1].action, 'note', '补丁行记录未完成收束原因');
   assert.match(chain[chain.length - 1].observation, /max-steps/);
 });
@@ -433,10 +439,11 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
     rr.run({ goal: '并行读' }).then(resolve, reject);
   });
   assert.equal(r.done, true);
-  const merged = r.steps.find((s) => s.action === 'glob+grep');
-  assert.ok(merged, '并行步应合并为单条观察回填');
-  assert.match(merged.observation, /\[parallel 2 tools\]/, '并行合并观察用英文段头（进链 → 英文单语）');
-  assert.match(merged.observation, /\[glob\]/, '各项结果应带工具名前缀');
+  // chat 主通道：并行批按调用行+观察行入链（role:tool 配对面），不再合并单行
+  const callRows = r.steps.filter((s) => s.action === 'tool-call');
+  assert.equal(callRows.length, 2, '并行批应逐调用入链');
+  assert.ok(callRows.some((s) => s.observation.includes('[tool] glob')), '调用行带工具名');
+  assert.ok(callRows.some((s) => s.observation.includes('[tool] grep')), '调用行带工具名');
   const callCount = events.filter((t) => t === 'tool-call').length;
   const resultCount = events.filter((t) => t === 'tool-result').length;
   assert.equal(callCount, 2, 'tool-call 事件应逐工具发射');
@@ -452,7 +459,7 @@ test('并行协议畸形归一：数组包裹信封对象（[{tools:[...],done:f
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: '包信封' }, { maxSteps: 3 });
   assert.equal(r.done, true);
-  assert.ok(r.steps.some((st) => st.action === 'glob+grep'), '数组包信封应解包后照常并行');
+  assert.ok(r.steps.some((st) => st.action === 'tool-call' && st.observation.includes('[tool] glob')), '数组包信封应解包后照常并行');
 });
 
 test('并行协议畸形归一：顶层数组信封（[{...tools...}]）取首元素按并行动作执行', async () => {
@@ -464,8 +471,7 @@ test('并行协议畸形归一：顶层数组信封（[{...tools...}]）取首�
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: '数组信封' }, { maxSteps: 3 });
   assert.equal(r.done, true, '数组信封应归一执行而非静默吞掉动作');
-  const merged = r.steps.find((st) => st.action === 'glob+grep');
-  assert.ok(merged, '顶层数组应归一为并行动作');
+  assert.ok(r.steps.some((st) => st.action === 'tool-call' && st.observation.includes('[tool] grep')), '顶层数组应归一为并行动作');
 });
 
 test('并行协议畸形归一：tools 被误装进单工具信封（{"tool":"tools"}）按并行动作执行', async () => {
@@ -476,7 +482,7 @@ test('并行协议畸形归一：tools 被误装进单工具信封（{"tool":"to
   ]);
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: '畸形信封' }, { maxSteps: 2 });
-  assert.ok(r.steps.some((s) => s.action === 'glob+grep'), '畸形信封应归一为并行动作而非 TOOL_NOT_FOUND');
+  assert.ok(r.steps.some((s) => s.action === 'tool-call' && s.observation.includes('[tool] glob')), '畸形信封应归一为并行动作而非 TOOL_NOT_FOUND');
   assert.ok(!r.steps.some((s) => s.observation.includes('TOOL_NOT_FOUND')), '不应出现工具未注册报错');
 });
 
@@ -524,10 +530,8 @@ test('并行放宽为非 exec 均可：write 与 network 类同轮并行不被�
   const reactor = new Reactor({ registry, safety, context: new ContextManager(tmp, new FileStore(tmp)), model: adapter });
   const r = await reactor.run({ goal: '并行写探' }, { maxSteps: 3 });
   assert.equal(r.done, true);
-  const merged = r.steps.find((s) => s.action === 'write+net-probe');
-  assert.ok(merged, 'write+network 应并行执行且不被拒');
-  assert.match(merged.observation, /\[write\]/);
-  assert.match(merged.observation, /\[net-probe\]/);
+  assert.ok(r.steps.some((s) => s.action === 'tool-call' && s.observation.includes('[tool] write')), 'write+network 应并行执行且不被拒');
+  assert.ok(r.steps.some((s) => s.action === 'tool-result' && s.observation.includes('pong')), 'network 替身观察应回链');
   assert.equal(fs.readFileSync(outPath, 'utf8'), 'hello', 'write 应真实落盘');
 });
 
@@ -651,12 +655,26 @@ test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语�
     ];
     let call = 0;
     const SUMMARY = '## Goal\n读取 big.txt 验证压缩\n## Constraints\n只读\n## Progress\n已读\n## Verified\n内容确认为 X 重复\n## Open\n无\n## Rationale\n模型路径验证';
+    const SUMMARY_ARGS = JSON.stringify({
+      goal: '读取 big.txt 验证压缩',
+      constraints: '只读',
+      progress: '已读',
+      verified: '内容确认为 X 重复',
+      open: '无',
+      rationale: '模型路径验证',
+    });
     const adapter = {
       provider: 'openai',
-      complete: async (p: string) => {
-        if (p.includes('handoff summary')) return SUMMARY;
-        prompts.push(p);
-        return replies[Math.min(call++, replies.length - 1)];
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
+      },
+      chat: async (req: ChatRequest) => {
+        const prompt = req.messages.map((m) => m.content).join('\n');
+        if (prompt.includes('handoff summary')) {
+          return { finish: 'tool_calls' as const, content: '', toolCalls: [{ id: 'call_0', name: 'submit_summary', argsJson: SUMMARY_ARGS }] };
+        }
+        prompts.push(prompt);
+        return parseLegacyEnvelope(replies[Math.min(call++, replies.length - 1)]);
       },
     };
     const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
@@ -673,5 +691,22 @@ test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语�
     assert.ok(!prompts[1].includes('\n1: read -> '), '折叠链前缀已裁出（模型路径同样不双份）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('缺省步数接 SUNSHINEX_MAX_STEPS；显式入参优先于 env', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-env-'));
+  const adapter = new ScriptedAdapter(['{"tool":"exec","input":{"command":"echo x"},"done":false}']);
+  const reactor = makeReactor(tmp, adapter);
+  process.env.SUNSHINEX_MAX_STEPS = '1';
+  try {
+    const r1 = await reactor.run({ goal: 'loop' });
+    assert.equal(r1.done, false);
+    assert.equal(new Set(r1.steps.map((s) => s.step)).size, 1, '未传 maxSteps 时 env=1 生效');
+    const r2 = await reactor.run({ goal: 'loop' }, { maxSteps: 3 });
+    assert.equal(r2.done, false);
+    assert.equal(new Set(r2.steps.map((s) => s.step)).size, 3, '显式入参优先：env=1 不覆盖 maxSteps=3');
+  } finally {
+    delete process.env.SUNSHINEX_MAX_STEPS;
   }
 });

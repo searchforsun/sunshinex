@@ -28,7 +28,7 @@ const memCount = (root: string): number => new MemoryStore(root).count();
 
 test('done 任务收口触发提取：openai 记录桩候选落盘', async () => {
   await withRoot(async (root) => {
-    const model = dualStub(JSON.stringify({ memories: [{ type: 'project', description: 'deploy via pnpm', content: 'deploys run through pnpm scripts', scope: 'persistent' }] }));
+    const model = dualStub([{ type: 'project', description: 'deploy via pnpm', content: 'deploys run through pnpm scripts' }]);
     const h = new Harness({ root, mode: 'dontAsk', model });
     const r = await h.reactor.run({ goal: 'deploy the app' }, { maxSteps: 3 });
     assert.ok(r.done);
@@ -44,12 +44,16 @@ test('中止路径（max-steps 未完成）同样触发一次提取，reply 归�
     const extractionPrompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'openai',
-      complete: async (prompt: string) => {
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
+      },
+      chat: async (req) => {
+        const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (prompt.includes('memory-extraction')) {
           extractionPrompts.push(prompt);
-          return '{"memories":[]}';
+          return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: '{"items":[]}' }] };
         }
-        return '{"tools":[{"action":"read","input":{"path":"notes.txt"}}]}';
+        return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_1', name: 'read', argsJson: '{"path":"notes.txt"}' }] };
       },
     };
     const h = new Harness({ root, mode: 'dontAsk', model });
@@ -94,17 +98,25 @@ test('提取失败（模型抛错）不倒灌任务成败', async () => {
   });
 });
 
-/** 双态 openai 桩：主链步返回 done 信封、提取调用（memory-extraction 标记）返回候选信封；chainSteps>0 时先吐链步制造未完成路径 */
-function dualStub(envelope: string, opts?: { chainSteps?: number }): ModelAdapter {
+/** 双态 openai 桩：主链步 chat 出牌、提取调用（memory-extraction 标记）submit_memory_items 出牌；chainSteps>0 时先吐链步制造未完成路径 */
+function dualStub(items: Array<{ type: string; description: string; content: string }>, opts?: { chainSteps?: number }): ModelAdapter {
   let mainCalls = 0;
   const chainSteps = opts?.chainSteps ?? 0;
   return {
     provider: 'openai',
-    complete: async (prompt: string) => {
-      if (prompt.includes('memory-extraction')) return envelope;
+    complete: async () => {
+      throw new Error('complete must not be called on the chat path');
+    },
+    chat: async (req) => {
+      const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
+      if (prompt.includes('memory-extraction')) {
+        return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_m', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
+      }
       mainCalls += 1;
-      if (mainCalls <= chainSteps) return '{"tools":[{"action":"read","input":{"path":"notes.txt"}}]}';
-      return '{"done":true,"reply":"task finished"}';
+      if (mainCalls <= chainSteps) {
+        return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_r', name: 'read', argsJson: '{"path":"notes.txt"}' }] };
+      }
+      return { finish: 'stop', content: 'task finished', toolCalls: [] };
     },
   };
 }

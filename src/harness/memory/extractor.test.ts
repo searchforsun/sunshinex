@@ -18,9 +18,14 @@ function openaiStub(reply: string): Capturing {
   const prompts: string[] = [];
   const model: ModelAdapter = {
     provider: 'openai',
-    complete: async (prompt: string) => {
-      prompts.push(prompt);
-      return reply;
+    complete: async () => {
+      throw new Error('complete must not be called on the chat path');
+    },
+    chat: async (req) => {
+      prompts.push(req.messages.map((m) => (m.role === 'system' || m.role === 'user' ? m.content : '')).join('\n'));
+      const j = JSON.parse(reply) as { memories?: Array<{ type: string; description: string; content: string }> };
+      const items = (j.memories ?? []).map((m, i) => ({ id: `call_${i}`, name: 'submit_memory_items', argsJson: JSON.stringify({ items: [{ type: m.type, description: m.description, content: m.content }] }) }));
+      return { finish: 'tool_calls', content: '', toolCalls: items };
     },
   };
   return { model, prompts };
@@ -68,11 +73,12 @@ test('openai 桩：候选落盘 + prompt 含当前日期与自包含化条款', 
   });
 });
 
-test('闸门：scope=current_task 拒绝', async () => {
+test('闸门：scope=current_task 拒绝（结构化面 scope 键已退役，等价形态=会话限定词黑名单拒绝）', async () => {
   await withMem(async (mem) => {
-    const env = JSON.stringify({ memories: [{ type: 'project', description: 'temp note', content: 'temporary working note', scope: 'current_task' }] });
+    // 文本协议退役后条目无 scope 键（scope 不暴露给模型）；会话性内容由黑名单词闸门承载——同一防线语义
+    const env = JSON.stringify({ memories: [{ type: 'project', description: '刚才的临时结论', content: '这是本次任务中临时的工作备注' }] });
     await settleMemory({ goal: 'g', reply: 'r', model: openaiStub(env).model, root: mem.dir() });
-    assert.equal(mem.count(), 0);
+    assert.equal(mem.count(), 0, '会话限定措辞条目拒绝');
   });
 });
 
@@ -132,12 +138,20 @@ test('settle 尾部阈值触发整理（先提取入库、后判定阈值整理�
     }
     const model: ModelAdapter = {
       provider: 'openai',
-      complete: async (p: string) => {
-        if (p.includes('memory-extraction')) return '{"memories":[]}';
-        if (p.includes('memory-consolidation')) {
-          return JSON.stringify({ memories: [{ type: 'project', description: 'merged into one', body: 'single merged record' }] });
+      complete: async () => {
+        throw new Error('complete must not be called on the chat path');
+      },
+      chat: async (req) => {
+        const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
+        const items: Array<Record<string, string>> = [];
+        if (p.includes('memory-extraction')) {
+          // 提取轮：零新增条目（既有种子已达阈值）
+        } else if (p.includes('memory-consolidation')) {
+          items.push({ type: 'project', description: 'merged into one', body: 'single merged record' });
+        } else {
+          throw new Error('unexpected call');
         }
-        throw new Error('unexpected call');
+        return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
       },
     };
     await settleMemory({ goal: 'g', reply: 'r', model, root: mem.dir() });

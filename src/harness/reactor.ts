@@ -11,6 +11,7 @@ import { SafetyChain } from './security/chain';
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
+import { reactorMaxStepsEnv } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -124,7 +125,7 @@ export class Reactor {
   constructor(private deps: ReactorDeps) {}
 
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
-    const maxSteps = opts?.maxSteps ?? 200;
+    const maxSteps = opts?.maxSteps ?? reactorMaxStepsEnv() ?? 400;
     // 结构化输出（run 级常量）：请求级 response_format 随每次模型调用下发，端点侧约束动作信封形态；
     // 环境变量运行期不变，run 内解析一次（对齐 CONTEXT_WINDOW 先例）
     const responseFormat = resolveStructuredFormat(process.env.SUNSHINEX_STRUCTURED_OUTPUT);

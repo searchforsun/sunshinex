@@ -24,9 +24,21 @@ interface Ctx {
 function scriptedModel(script: (prompt: string) => string, calls: string[]): ModelAdapter {
   return {
     provider: 'openai',
-    complete: async (p: string) => {
-      calls.push(p);
-      return script(p);
+    complete: async () => {
+      throw new Error('complete must not be called on the chat path');
+    },
+    chat: async (req: { messages: Array<{ role: string; content: string }> }) => {
+      calls.push(req.messages.map((m) => m.content).join('\n'));
+      const prompt = calls[calls.length - 1];
+      const text = script(prompt);
+      // 文本以 '{' 开头视为出牌 JSON（submit_refined_skill / submit_memory_items 按标记分流），否则视为无牌正文
+      if (!text.trimStart().startsWith('{')) return { finish: 'stop', content: text, toolCalls: [] };
+      const isLearned = prompt.includes('learned-extraction');
+      return {
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{ id: 'call_0', name: isLearned ? 'submit_refined_skill' : 'submit_memory_items', argsJson: text }],
+      };
     },
   } as unknown as ModelAdapter;
 }
@@ -111,7 +123,7 @@ test('pipeline：有模型 → 入队零等待，drain 后落盘语义技能并 
 
 test('pipeline：记忆说明行与 harness 既有口径逐字一致（含 recall via read 路径）', async () => {
   const envelope = JSON.stringify({
-    memories: [{ type: 'project', description: 'uses pnpm workspaces', content: 'repo manages packages with pnpm workspaces', scope: 'persistent' }],
+    items: [{ type: 'project', description: 'uses pnpm workspaces', content: 'repo manages packages with pnpm workspaces' }],
   });
   const model = scriptedModel(() => envelope, []);
   await withPipeline(model, async ({ p, notified, dataDir }) => {
@@ -131,11 +143,14 @@ test('pipeline：单 worker 串行（并发模型调用计数恒 ≤ 1）', asyn
   const model = {
     provider: 'openai',
     complete: async () => {
+      throw new Error('complete must not be called on the chat path');
+    },
+    chat: async () => {
       inFlight += 1;
       peak = Math.max(peak, inFlight);
       await new Promise((r) => setTimeout(r, 5));
       inFlight -= 1;
-      return '{"skill":null}';
+      return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_refined_skill', argsJson: '{"skill":null}' }] };
     },
   } as unknown as ModelAdapter;
   await withPipeline(model, async ({ p }) => {

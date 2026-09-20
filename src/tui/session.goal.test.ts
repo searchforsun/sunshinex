@@ -15,7 +15,7 @@ test('/goal：修正环跑通——任务行入链带 /goal 标注（无模板�
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"修复完成"}', '{"passed":true,"evidence":"已达成"}']),
+      model: new ScriptedAdapter([{ content: '', toolCalls: [] }, { content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '已达成' } }] }]),
     });
     await ctrl.submit('/goal 修复构建（验收标准：t1=构建通过）');
     await ctrl.waitIdle();
@@ -45,10 +45,10 @@ test('/goal：判据未过回修一轮——修正要求走链行，修正轮结
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
-        '{"done":true,"reply":"第一版"}',
-        '{"passed":false,"evidence":"不达标"}',
-        '{"done":true,"reply":"第二版"}',
-        '{"passed":true,"evidence":"达标"}',
+        { content: '第一版', toolCalls: [] },
+        { content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', args: { passed: false, verdict: 'not-yet', evidence: '不达标' } }] },
+        { content: '第二版', toolCalls: [] },
+        { content: '', toolCalls: [{ id: 'call_1', name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '达标' } }] },
       ]),
     });
     await ctrl.submit('/goal 改进输出（验收标准：t1=输出正确）');
@@ -112,7 +112,7 @@ test('/goal：/new 清链后空链起跑正常', async () => {
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"完成"}', '{"passed":true,"evidence":"ok"}']),
+      model: new ScriptedAdapter([{ content: '', toolCalls: [] }, { content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: 'ok' } }] }]),
     });
     await ctrl.submit('/new');
     assert.equal(ctrl.context.chainView().length, 0);
@@ -137,7 +137,7 @@ test('/goal：自然语言目标（无内嵌验收标准段）跑通，不再空
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"测试已全绿"}', '{"passed":true,"evidence":"对话里已自证"}']),
+      model: new ScriptedAdapter([{ content: '', toolCalls: [] }, { content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '对话里已自证' } }] }]),
     });
     await ctrl.submit('/goal 把 src/auth 的所有测试跑到全绿');
     await ctrl.waitIdle();
@@ -163,10 +163,9 @@ test('/goal：判据服务不可用 → paused 回执提示重跑续走', async 
       model: {
         provider: 'flaky-judge',
         complete: respond,
-        async completeStream(prompt: string, onDelta: (t: string) => void) {
-          const text = await respond(prompt);
-          for (const ch of text) onDelta(ch);
-          return text;
+        async chat() {
+          await respond('acceptance judge');
+          throw new Error('unreachable');
         },
       } as unknown as ModelAdapter,
     });
@@ -184,7 +183,7 @@ test('/goal：--template 字样不解析，整体作为目标文本（D1 钉子�
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"已完成"}', '{"passed":true,"evidence":"已达成"}']),
+      model: new ScriptedAdapter([{ content: '', toolCalls: [] }, { content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '已达成' } }] }]),
     });
     await ctrl.submit('/goal --template=code-review 审查输出（验收标准：t1=有结论）');
     await ctrl.waitIdle();

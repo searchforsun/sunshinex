@@ -79,7 +79,7 @@ test('全终态触发：maxSteps 耗竭 → stopped、模型失败 → failed，
     assert.equal(stopped.length, 1, '中止路径同样入队一次（D4 全终态）');
     assert.equal(stopped[0].outcome, 'stopped');
     assert.equal(stopped[0].reply, '', '无最终答复归一为空串');
-    assert.ok(stopped[0].digest.includes('[exec]'), 'digest 承载已观察步骤（[tool] 观察首行）');
+    assert.ok(stopped[0].digest.includes('[tool] exec'), 'digest 承载已观察步骤（观察行首行）');
     // 模型调用失败路径：适配器直接抛错
     const failed: SettlePayload[] = [];
     const { reactor: boomReactor } = makeReactor(

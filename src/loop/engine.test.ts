@@ -17,6 +17,7 @@ import { builtinTools } from '../harness/tools/builtin';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import type { ChatRequest, ChatResult } from '../types';
 
 /** 计数失败适配器：前 failTimes 次调用抛指定错误，其后返回 fallback 响应 */
 class FlakyJudgeAdapter implements ModelAdapter {
@@ -27,6 +28,12 @@ class FlakyJudgeAdapter implements ModelAdapter {
     this.calls += 1;
     if (this.calls <= this.failTimes) throw this.error;
     return this.fallback;
+  }
+  /** 判据 chat 化（T5）：错误分级语义经 chat 面复刻（前 failTimes 次抛错，其后 submit_verdict 出牌） */
+  async chat(_req: ChatRequest): Promise<ChatResult> {
+    this.calls += 1;
+    if (this.calls <= this.failTimes) throw this.error;
+    return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_verdict', argsJson: this.fallback }] };
   }
 }
 
@@ -49,6 +56,14 @@ class RecordingAdapter implements ModelAdapter {
     this.prompts.push(prompt);
     hooks?.onUsage?.(this.tokensPerCall);
     return this.inner.complete(prompt, hooks);
+  }
+  /** 判据 chat 化（T5）：判据调用经 chat 面，prompt 记录面同源透传 */
+  async chat(req: ChatRequest, _onDelta?: unknown, hooks?: UsageHooks): Promise<ChatResult> {
+    this.prompts.push(req.messages.map((m) => m.content).join('\n'));
+    hooks?.onUsage?.(this.tokensPerCall);
+    const inner = this.inner as unknown as { chat?: (r: unknown, d?: unknown, h?: UsageHooks) => Promise<ChatResult> };
+    if (typeof inner.chat === 'function') return inner.chat(req, _onDelta, hooks);
+    throw new Error('inner adapter has no chat surface');
   }
 }
 
@@ -211,7 +226,7 @@ test('T4-1 /goal 解析：内嵌段拆出 criteria；无段不静默通过', asy
   // CheckNode：无段 → goal 整体作为隐式条件（id=condition，走模型判据；规格 §4 替换空转 fail 路径）
   const depsCond = makeDeps(
     fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-cond-')),
-    new ScriptedAdapter(['{"passed":true,"evidence":"对话里已自证"}']),
+    new ScriptedAdapter([{ toolCalls: [{ name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '对话里已自证' } }] }]),
   );
   const noSeg = await checkNode(depsCond).run(ctxOf({ goal: '把 src/auth 的所有测试跑到全绿' }), null);
   assert.equal(noSeg.status, 'done');
@@ -230,7 +245,11 @@ test('T4-1 /goal 解析：内嵌段拆出 criteria；无段不静默通过', asy
 test('T4-2 模型判据兜底：router 未绑定回退 deps.model，JSON 损坏 fail-bounded', async () => {
   // 回退通道：router 为空 → 走 deps.model.complete（记录型适配器捕获判据 prompt）
   const recording = new RecordingAdapter(
-    new ScriptedAdapter(['{"passed":false,"evidence":"未绿"}', '这不是JSON', '{"passed":true,"evidence":"已验证"}']),
+    new ScriptedAdapter([
+      { toolCalls: [{ name: 'submit_verdict', args: { passed: false, verdict: 'not-yet', evidence: '未绿' } }] },
+      '{broken args json',
+      { toolCalls: [{ name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: '已验证' } }] },
+    ]),
   );
   const deps = makeDeps(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-model-')), recording);
   const ctx = ctxOf({ goal: '任务。验收标准：c1=测试全绿' });
@@ -323,7 +342,7 @@ test('T4-6 判据协议三值化：verdict 映射与向后兼容', async () => {
   // impossible：模型回 impossible=true（passed:false）→ CriterionResult.verdict='impossible'
   const depsImp = makeDeps(
     fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-imp-')),
-    new ScriptedAdapter(['{"passed":false,"impossible":true,"evidence":"目标依赖的模块不存在，结构性不可满足"}']),
+    new ScriptedAdapter([{ toolCalls: [{ name: 'submit_verdict', args: { passed: false, verdict: 'impossible', evidence: '目标依赖的模块不存在，结构性不可满足' } }] }]),
   );
   const outImp = await checkNode(depsImp).run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
   assert.equal(outImp.status, 'fail'); // 本任务仅协议字段，聚合终局在 Task 3
@@ -333,9 +352,9 @@ test('T4-6 判据协议三值化：verdict 映射与向后兼容', async () => {
   const depsMap = makeDeps(
     fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-verdict-')),
     new ScriptedAdapter([
-      '{"passed":true,"impossible":false,"evidence":"ok"}',
-      '{"passed":true,"evidence":"ok"}',
-      '{"passed":false,"evidence":"未绿"}',
+      { toolCalls: [{ name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: 'ok' } }] },
+      { toolCalls: [{ name: 'submit_verdict', args: { passed: true, verdict: 'met', evidence: 'ok' } }] },
+      { toolCalls: [{ name: 'submit_verdict', args: { passed: false, verdict: 'not-yet', evidence: '未绿' } }] },
     ]),
   );
   const out1 = await checkNode(depsMap).run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
@@ -354,7 +373,10 @@ test('T4-6 判据协议三值化：verdict 映射与向后兼容', async () => {
 test('T4-7 impossible 终局：check 判定不可满足 → 引擎 failed（不烧安全网）', async () => {
   const deps = makeDeps(
     fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-terminal-')),
-    new ScriptedAdapter(['{"done":true,"reply":"已完成"}', '{"passed":false,"impossible":true,"evidence":"目标依赖已删除的模块"}']),
+    new ScriptedAdapter([
+      '{"done":true,"reply":"已完成"}',
+      { toolCalls: [{ name: 'submit_verdict', args: { passed: false, verdict: 'impossible', evidence: '目标依赖已删除的模块' } }] },
+    ]),
   );
   const r = await resolveTemplate(deps, 'test-loop').engine.run('任务。验收标准：c1=测试全绿');
   assert.equal(r.status, 'failed');
@@ -372,7 +394,7 @@ test('T4-8 判据错误分级：fatal 立即终局、recoverable 重试 ≤3 后
   assert.equal(fatal.calls, 1, 'fatal 不重试');
 
   // ② recoverable：前 2 次超时、第 3 次成功 → 判定生效
-  const rec = new FlakyJudgeAdapter(2, new Error('ETIMEDOUT'), '{"passed":true,"evidence":"第 3 次成功"}');
+  const rec = new FlakyJudgeAdapter(2, new Error('ETIMEDOUT'), JSON.stringify({ passed: true, verdict: 'met', evidence: '第 3 次成功' }));
   const outRec = await checkNode(makeDeps(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t4-rec-')), rec))
     .run(ctxOf({ goal: '任务。验收标准：c1=测试全绿' }), null);
   assert.equal(outRec.status, 'done');

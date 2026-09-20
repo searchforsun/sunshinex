@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import type { ChatRequest } from '../../types';
 import { ContextManager, runCompaction } from './index';
 import { FileStore } from '../../storage/adapter';
 
@@ -95,9 +96,16 @@ test('Task8 compactInstructions 缓存随快照刷新', async () => {
       chainFoldedCount: 1,
       summaryModel: {
         provider: 'openai',
-        complete: async (p: string) => {
-          seen.push(p);
-          return '## Goal\nx\n## Constraints\nx\n## Progress\nx\n## Verified\nx\n## Open\nx\n## Rationale\nx';
+        complete: async () => {
+          throw new Error('complete must not be called on the chat path');
+        },
+        chat: async (req: ChatRequest) => {
+          seen.push(req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n'));
+          return {
+            finish: 'tool_calls' as const,
+            content: '',
+            toolCalls: [{ id: 'call_0', name: 'submit_summary', argsJson: JSON.stringify({ goal: 'x', constraints: 'x', progress: 'x', verified: 'x', open: 'x', rationale: 'x' }) }],
+          };
         },
       } as never,
     });

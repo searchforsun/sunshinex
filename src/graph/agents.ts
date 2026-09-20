@@ -1,6 +1,7 @@
 import { AgentRole, GraphDeps, GraphNodeOutput } from '../types';
 import { GraphNode } from './engine';
 import { AgentRegistry, ROLE_PRESETS, SubagentRunner, rolePreset } from '../harness/subagent';
+import { reactorMaxStepsEnv } from '../config/termination-config';
 
 export { ROLE_PRESETS };
 
@@ -49,7 +50,7 @@ export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentO
         {
           taskLine: `Current instruction: ${goalLabel}`,
           budget: {
-            maxSteps: opts.maxSteps ?? 200,
+            maxSteps: opts.maxSteps ?? reactorMaxStepsEnv() ?? 400,
             tokenCap: remaining,
             deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
             ...(deps.tier ? { tier: deps.tier } : {}),
