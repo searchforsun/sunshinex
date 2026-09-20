@@ -13,7 +13,8 @@ test('ToolRow：SPAWN 调用行 detail（子代理转录）展开态全文重放
 
   const expanded = render(<ToolRow item={spawn} columns={80} collapsed={false} />);
   const fe = expanded.lastFrame() ?? '';
-  assert.match(fe, /● \[SPAWN\] reviewer/, '调用行头部恒显（动词方括号高亮既有形态）');
+  // 展开态头标转 ▾（子代理显示规格 §3.2：●=折叠、▾=展开，Tab 全展开同样命中展开形态）
+  assert.match(fe, /▾ \[SPAWN\] reviewer/, '调用行头部恒显（动词方括号高亮既有形态）');
   assert.ok(fe.includes('子代理转录首行') && fe.includes('子代理转录尾行'), '展开态 detail 全文逐行重放（规格 §6）');
   expanded.unmount();
 
