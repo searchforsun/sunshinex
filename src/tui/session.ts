@@ -37,6 +37,8 @@ export interface ChatItem {
   level?: 'info' | 'warn' | 'error';
   /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation（入档后折叠打印，供后续 transcript 视图） */
   detail?: string;
+  /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt；零子事件即败时缺省 */
+  subagentMeta?: { steps: number; durationMs: number };
 }
 
 export interface TodoItem {
@@ -1305,10 +1307,11 @@ export class SessionController {
     const buf = this.childBufs.get(child.label) ?? '';
     this.childBufs.delete(child.label);
     const detail = [...child.transcript, ...(buf ? [buf] : [])].join('\n');
+    const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt) };
     this.state = {
       ...this.state,
       children: list.filter((_, i) => i !== idx),
-      messages: this.state.messages.map((m) => (m.seq === pending.seq ? { ...m, detail } : m)),
+      messages: this.state.messages.map((m) => (m.seq === pending.seq ? { ...m, detail, subagentMeta } : m)),
     };
     this.notify();
   }
