@@ -516,6 +516,8 @@ export class SessionController {
     j.log({ t: 'todos', items: this.state.todos });
     j.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}) });
     j.log({ t: 'view', ...this.lastView });
+    // 影子快照清单回填（rewind/fork 规格 §6.1）：本任务 write 的 pre-image 随该轮 user 事件落盘
+    j.amendLastUser(this.runtime.harness.writeSnapshot.drain());
     j.flush();
   }
 
