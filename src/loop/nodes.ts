@@ -1,8 +1,35 @@
-import { CriterionResult, HistoryStep, LoopContext, NodeOutput } from '../types';
+import { CriterionResult, HistoryStep, LoopContext, NodeOutput, ChatRequest, ChatResult, ChatTool } from '../types';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { LoopDeps, LoopEngineNode } from './engine';
+
+/** 判据评估 tools 面（T5）：submit_verdict 单点——三值裁决经 parameters enum 强约束，不再依赖文本 JSON 约定 */
+const JUDGE_TOOLS: ChatTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'submit_verdict',
+      description: 'Submit the acceptance verdict for the criterion under evaluation',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['passed', 'verdict', 'evidence'],
+        properties: {
+          passed: { type: 'boolean', description: 'whether the criterion is satisfied' },
+          verdict: { type: 'string', enum: ['met', 'not-yet', 'impossible'], description: 'met=satisfied; not-yet=fixable, keep looping; impossible=unsatisfiable, terminate' },
+          evidence: { type: ['string', 'null'], description: 'evidence from the execution reply backing the verdict' },
+        },
+      },
+    },
+  },
+];
+
+/** 独立小调用 chat 桩形态（T5 共用）：判据/压缩/记忆/提炼四个一次性调用共用的窄接口 */
+export interface ChatCaller {
+  chat?(req: ChatRequest): Promise<ChatResult>;
+}
+
 
 /** 剩余预算 → Reactor 预算（纯函数）：total 保底 1，reserve 为 total 的 1/5 */
 export function toReactorBudget(remaining: number): { total: number; reserve: number } {
@@ -49,8 +76,8 @@ type JudgeOutcome =
 const MAX_JUDGE_RETRIES = 3; // 可恢复错误重试上限（不含初次；对标 CC「retry 3 times then pause」）
 
 /** 模型判据：构造判据 prompt（准则描述 + goal + agentReply 证据），期望 {"passed":bool,"impossible":bool,"evidence":str}；调用失败按分级处置（fatal 不重试、recoverable 重试 ≤3 次后 blocked） */
-async function modelJudge(
-  adapter: { complete(prompt: string): Promise<string> },
+export async function modelJudge(
+  adapter: ChatCaller,
   criterion: { id: string; desc: string },
   goal: string,
   agentReply: string,
@@ -59,11 +86,30 @@ async function modelJudge(
     `You are the acceptance judge. Goal: ${goal}`,
     `Execution reply (evidence): ${agentReply}`,
     `Acceptance criterion ${criterion.id}: ${criterion.desc}`,
-    'Reply with exactly one JSON object: {"passed":boolean,"impossible":boolean,"evidence":string}',
+    'Call submit_verdict exactly once with your verdict.',
   ].join('\n');
-  let raw: string | undefined;
+  const callOnce = async (): Promise<{ passed: boolean; verdict: 'met' | 'not-yet' | 'impossible'; evidence?: string } | null> => {
+    const chat = adapter.chat;
+    if (!chat) return null;
+    const res = await chat.call(adapter, { messages: [{ role: 'user', content: prompt }], tools: JUDGE_TOOLS });
+    const call = res.toolCalls.find((t) => t.name === 'submit_verdict');
+    if (!call) return null;
+    try {
+      const j = JSON.parse(call.argsJson) as { passed?: unknown; verdict?: unknown; evidence?: unknown };
+      const verdict = j.verdict === 'met' || j.verdict === 'not-yet' || j.verdict === 'impossible' ? j.verdict : null;
+      if (verdict === null) return null;
+      return {
+        passed: j.passed === true,
+        verdict,
+        ...(typeof j.evidence === 'string' ? { evidence: j.evidence } : {}),
+      };
+    } catch {
+      return null;
+    }
+  };
+  let judged: { passed: boolean; verdict: 'met' | 'not-yet' | 'impossible'; evidence?: string } | null | undefined;
   try {
-    raw = await adapter.complete(prompt);
+    judged = await callOnce();
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Model judge call failed';
     if (classifyJudgeError(message) === 'fatal') {
@@ -71,7 +117,7 @@ async function modelJudge(
     }
     for (let retry = 0; retry < MAX_JUDGE_RETRIES; retry++) {
       try {
-        raw = await adapter.complete(prompt);
+        judged = await callOnce();
         break;
       } catch (e2) {
         const m2 = e2 instanceof Error ? e2.message : 'Model judge call failed';
@@ -80,27 +126,24 @@ async function modelJudge(
         }
       }
     }
-    if (raw === undefined) {
+    if (judged === undefined) {
       return { kind: 'blocked', severity: 'recoverable', message };
     }
   }
-  try {
-    const j = JSON.parse(raw) as { passed?: unknown; impossible?: unknown; evidence?: unknown };
-    const impossible = j.impossible === true;
-    return {
-      kind: 'judged',
-      result: {
-        id: criterion.id,
-        desc: criterion.desc,
-        passed: j.passed === true,
-        ...(impossible ? { verdict: 'impossible' as const } : {}),
-        evidence: typeof j.evidence === 'string' ? j.evidence : undefined,
-      },
-    };
-  } catch {
+  if (judged === undefined || judged === null) {
     // fail-bounded：判据输出不可解析 → 判不通过，不静默放行（不算调用失败）
     return { kind: 'judged', result: { id: criterion.id, desc: criterion.desc, passed: false, evidence: 'judge returned no usable verdict' } };
   }
+  return {
+    kind: 'judged',
+    result: {
+      id: criterion.id,
+      desc: criterion.desc,
+      passed: judged.passed,
+      ...(judged.verdict === 'impossible' ? { verdict: 'impossible' as const } : {}),
+      evidence: judged.evidence,
+    },
+  };
 }
 
 /** 判定通道：ruleCheckers 谓词优先；否则 router.resolve('small')，抛错回退 deps.model */
@@ -116,7 +159,7 @@ async function judgeOne(
     const passed = await rule({ ctx, goal });
     return { kind: 'judged', result: { id: criterion.id, desc: criterion.desc, passed } };
   }
-  let adapter: { complete(prompt: string): Promise<string> };
+  let adapter: ChatCaller;
   try {
     adapter = (deps.router ?? new ModelRouter()).resolve('small');
   } catch {
@@ -163,6 +206,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
           tokenCap: remaining,
           deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
           ...(deps.tier ? { tier: deps.tier } : {}),
+          ...(deps.effort ? { effort: deps.effort } : {}),
           scope,
           ...(seedHistory && seedHistory.length > 0 ? { seedHistory } : {}),
         },
