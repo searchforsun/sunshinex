@@ -703,7 +703,7 @@ test('缺省步数接 SUNSHINEX_MAX_STEPS；显式入参优先于 env', async ()
     const r1 = await reactor.run({ goal: 'loop' });
     assert.equal(r1.done, false);
     assert.equal(new Set(r1.steps.map((s) => s.step)).size, 1, '未传 maxSteps 时 env=1 生效');
-    const r2 = await reactor.run({ goal: 'loop' }, { maxSteps: 3 });
+    const r2 = await makeReactor(tmp, adapter).run({ goal: 'loop' }, { maxSteps: 3 });
     assert.equal(r2.done, false);
     assert.equal(new Set(r2.steps.map((s) => s.step)).size, 3, '显式入参优先：env=1 不覆盖 maxSteps=3');
   } finally {
