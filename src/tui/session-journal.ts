@@ -47,6 +47,8 @@ export interface SessionMeta {
   file: string;
   updatedAt: number;
   firstUser?: string;
+  /** 分档血缘（branchFrom 产物；原生会话档无此字段） */
+  forkedFrom?: ForkedFrom;
 }
 
 export interface ParsedJournal {
@@ -164,7 +166,7 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
   return r;
 }
 
-/** 档案列表（/resume 无参展示）：mtime 降序；扫文件头 8 行取首条用户输入作摘要（零重放成本） */
+/** 档案列表（/resume 无参展示）：mtime 降序；扫文件头 8 行取首条用户输入摘要与分档血缘（零重放成本） */
 export function listSessions(dataDir: string): SessionMeta[] {
   const dir = sessionsDir(dataDir);
   if (!fs.existsSync(dir)) return [];
@@ -179,11 +181,16 @@ export function listSessions(dataDir: string): SessionMeta[] {
       continue;
     }
     let firstUser: string | undefined;
+    let forked: ForkedFrom | undefined;
     try {
       for (const line of fs.readFileSync(file, 'utf8').split('\n').slice(0, 8)) {
         if (!line.trim()) continue;
         try {
           const e = JSON.parse(line) as JournalEvent;
+          if (e.t === 'header' && e.forkedFrom) {
+            forked = e.forkedFrom;
+            continue;
+          }
           if (e.t === 'user') {
             firstUser = e.text;
             break;
@@ -195,7 +202,17 @@ export function listSessions(dataDir: string): SessionMeta[] {
     } catch {
       /* 读失败：无摘要 */
     }
-    metas.push({ id: name.slice(0, -'.jsonl'.length), file, updatedAt, ...(firstUser !== undefined ? { firstUser } : {}) });
+    // 血缘标注随摘要单点拼接（/resume 列表展示面）
+    const labeled = forked
+      ? `↳ ${forked.kind} from ${forked.sourceSessionId.slice(0, 8)}${firstUser ? ' · ' + firstUser : ''}`
+      : firstUser;
+    metas.push({
+      id: name.slice(0, -'.jsonl'.length),
+      file,
+      updatedAt,
+      ...(labeled !== undefined ? { firstUser: labeled } : {}),
+      ...(forked ? { forkedFrom: forked } : {}),
+    });
   }
   return metas.sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -205,11 +222,12 @@ export interface JournalAnchor {
   text: string;
 }
 
-/** 任务锚点枚举（规格 D4）：每条 user 事件一个锚点，line 为文件 1-based 行号 */
+/** 任务锚点枚举（规格 D4）：每条 user 事件一个锚点（斜杠命令行不入菜单，含 /rewind //fork 自身入档行），line 为文件 1-based 行号 */
 export function listAnchors(parsed: ParsedJournal): JournalAnchor[] {
   const anchors: JournalAnchor[] = [];
   parsed.events.forEach((e, i) => {
-    if (e.t === 'user') anchors.push({ line: i + 1, text: e.text });
+    if (e.t !== 'user' || e.text.startsWith('/')) return;
+    anchors.push({ line: i + 1, text: e.text });
   });
   return anchors;
 }

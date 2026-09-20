@@ -24,7 +24,7 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
 }
 
 /** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序） */
-export const SLASH_COMMANDS = ['/help', '/init', '/goal', '/new', '/resume', '/compact', '/memory', '/status', '/model', '/plan'];
+export const SLASH_COMMANDS = ['/help', '/init', '/goal', '/new', '/resume', '/rewind', '/fork', '/compact', '/memory', '/status', '/model', '/plan'];
 
 /** 斜杠补全候选：按 buffer（已 trim）前缀匹配命令清单；非 / 前缀或无匹配返回空 */
 export function slashCandidates(buffer: string): string[] {
@@ -140,6 +140,14 @@ export function App({
   const [history, setHistory] = React.useState<string[]>(store.history);
   const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
+  // 输入框回填（/rewind //fork，规格 §7）：锚点轮输入取回输入框可编辑重发；每帧检查、takeBackfill 幂等（无回填 no-op，无重渲染环）
+  React.useEffect(() => {
+    const b = controller.takeBackfill();
+    if (b !== undefined) {
+      setBuffer(b);
+      setCursor(b.length);
+    }
+  });
   // 现场回写：无依赖数组——每次渲染后同步最新值到 retain，重挂前的最后一帧即最新现场
   React.useEffect(() => {
     store.buffer = buffer;

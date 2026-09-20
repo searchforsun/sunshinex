@@ -12,7 +12,8 @@ import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/c
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SessionJournal, listSessions, newSessionId, readActivePointer, sessionsDir, parseJournalFile, reduceJournal, type SessionMeta } from './session-journal';
+import { SessionJournal, listSessions, newSessionId, readActivePointer, sessionsDir, parseJournalFile, reduceJournal, listAnchors, branchFrom, type SessionMeta } from './session-journal';
+import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { resolveDataDir } from '../config/data-dir';
 import { MemoryStore } from '../harness/memory/store';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
@@ -110,6 +111,8 @@ export interface TuiState {
   model?: ModelTier;
   /** AskQuestion 挂起卡（ask_question 工具或本地问询期间非空；渲染层选择器接管键盘） */
   question?: AskUserRequest;
+  /** 输入框回填文本（/rewind //fork 锚点轮输入；瞬态不进 journal，App 取走即消费） */
+  backfill?: string;
 }
 
 export interface SessionOpts extends TuiRuntimeOpts {
@@ -138,6 +141,8 @@ function slashHelp(): string[] {
     t('  /goal     run the verify-fix loop until the condition is met: /goal <goal>', '  /goal     运行完整验收修正环：/goal <目标>'),
     t('  /new      new session (soft reset)', '  /new      新会话（软重置）'),
     t('  /resume   resume a saved session: /resume [n|id]', '  /resume   列出/恢复已保存会话：/resume [n|id]'),
+    t('  /rewind   rewind current session to an earlier turn (conversation, optionally code)', '  /rewind   回退当前会话到更早的任务轮（对话必选、代码可选）'),
+    t('  /fork     fork a parallel session from any past turn', '  /fork     从任意历史轮分叉出平行会话'),
     t('  /compact  compress context: /compact [focus]', '  /compact  压缩上下文：/compact [关注点]'),
     t('  /memory   persistent memory: /memory [add <text> | rm <slug> | gc | on | off]', '  /memory   持久记忆：/memory [add <内容> | rm <slug> | gc | on | off]'),
     t('  /status   session & ledger summary', '  /status   会话与账本摘要'),
@@ -534,6 +539,16 @@ export class SessionController {
     return ui;
   }
 
+  /** 输入框回填（/rewind //fork，规格 §7）：一次性取走，App 层 effect 消费；无回填时 no-op */
+  takeBackfill(): string | undefined {
+    const b = this.state.backfill;
+    if (b !== undefined) {
+      this.state = { ...this.state, backfill: undefined };
+      this.notify();
+    }
+    return b;
+  }
+
   /** --continue（规格 D1/D5）：读活动指针续接最近有落盘的会话；无档/档缺失提示后按新会话继续（不静默吞） */
   resumeLatest(): void {
     const dataDir = resolveDataDir(this.root);
@@ -578,6 +593,94 @@ export class SessionController {
       this.pushMsg('system', t('Session restored: ' + meta.id, '已恢复会话：' + meta.id));
     }
   }
+
+  /** /rewind //fork 共用分支流程（rewind/fork 规格 §7）：锚点选择 → 分档 → 装载 → 代码回退（可选）→ 回执 + 输入回填 */
+  private async branchFlow(kind: 'rewind' | 'fork'): Promise<void> {
+    this.flushJournal(); // 当前会话先收口（含影子快照清单回填）
+    const dataDir = resolveDataDir(this.root);
+    const srcId = this.journal?.currentId;
+    const srcFile = srcId ? path.join(sessionsDir(dataDir), srcId + '.jsonl') : undefined;
+    if (!srcId || !srcFile || !fs.existsSync(srcFile)) {
+      this.pushMsg('system', t(kind === 'rewind' ? 'No journaled session to rewind' : 'No journaled session to fork', kind === 'rewind' ? '当前会话没有可回退的日志' : '当前会话没有可分叉的日志'), { level: 'warn' });
+      return;
+    }
+    const parsed = parseJournalFile(srcFile);
+    const anchors = listAnchors(parsed);
+    if (anchors.length === 0) {
+      this.pushMsg('system', t(kind === 'rewind' ? 'No turns to rewind yet' : 'No turns to fork yet', kind === 'rewind' ? '暂无可回退的任务轮' : '暂无可分叉的任务轮'), { level: 'warn' });
+      return;
+    }
+    const a = await this.askUser({
+      question: t(kind === 'rewind' ? 'Rewind to which turn?' : 'Fork from which turn?', kind === 'rewind' ? '回退到哪一轮？' : '从哪一轮分叉？'),
+      options: anchors.map((x, i) => ({
+        label: String(i + 1),
+        description: x.text.length > 48 ? x.text.slice(0, 48) + '…' : x.text,
+      })),
+    });
+    if (a.type === 'dismissed') {
+      this.pushMsg('system', t(kind === 'rewind' ? 'Rewind cancelled' : 'Fork cancelled', kind === 'rewind' ? '已取消回退' : '已取消分叉'));
+      return;
+    }
+    const idx = Number.parseInt(a.type === 'custom' ? a.text.trim() : (a.labels[0] ?? ''), 10) - 1;
+    const anchor = Number.isInteger(idx) && idx >= 0 && idx < anchors.length ? anchors[idx] : undefined;
+    if (!anchor) {
+      this.pushMsg('system', t('No such turn', '没有这一轮'), { level: 'warn' });
+      return;
+    }
+    let codeAction = false;
+    if (kind === 'rewind') {
+      const hasFiles = collectRestorePlan(srcFile, anchor.line).length > 0;
+      const opts = hasFiles ? ['code and conversation', 'conversation only', 'code only'] : ['conversation only'];
+      const b = await this.askUser({
+        question: t('What to restore?', '恢复哪些内容？'),
+        options: opts.map((label) => ({ label })),
+      });
+      if (b.type === 'dismissed') {
+        this.pushMsg('system', t('Rewind cancelled', '已取消回退'));
+        return;
+      }
+      const picked = b.type === 'custom' ? b.text.trim() : (b.labels[0] ?? '');
+      if (picked === 'code and conversation' || picked === 'code only') codeAction = true;
+    } else {
+      const c = await this.askUser({
+        question: t('Fork a parallel session from this turn?', '从这一轮分叉出平行会话？'),
+        options: [{ label: 'fork' }],
+      });
+      if (c.type === 'dismissed') {
+        this.pushMsg('system', t('Fork cancelled', '已取消分叉'));
+        return;
+      }
+    }
+    let newId: string;
+    try {
+      newId = branchFrom(dataDir, srcId, anchor.line - 1, kind); // 锚点行不进新档（规格 §5.2）
+    } catch (err) {
+      this.pushMsg('system', t('Branch failed: ' + String((err as Error).message), '分档失败：' + String((err as Error).message)), { level: 'warn' });
+      return;
+    }
+    // 先续挂新档：restoreFromSession 首行 flushJournal 会补拍快照事件——不续挂则写回源档（破坏不可变分档）且指针拨回源会话
+    this.journal?.attach(newId);
+    this.restoreFromSession({ id: newId, file: path.join(sessionsDir(dataDir), newId + '.jsonl'), updatedAt: Date.now() });
+    if (kind === 'rewind' && codeAction) {
+      const plan = collectRestorePlan(srcFile, anchor.line); // 以分支前源档收集（规格 §6.2）
+      const r = applyRestorePlan(this.root, plan, path.join(dataDir, 'sessions', '_blobs'));
+      const parts = [
+        r.restored.length > 0 ? `${r.restored.length} restored` : '',
+        r.removed.length > 0 ? `${r.removed.length} removed` : '',
+        r.skipped.length > 0 ? `${r.skipped.length} skipped` : '',
+      ].filter(Boolean).join(', ');
+      this.pushMsg('system', t('Code restored to turn start (' + parts + ')', '代码已回退到该轮起点（' + parts + '）'), r.skipped.length > 0 ? { level: 'warn' } : undefined);
+    }
+    const anchorIdx = anchors.indexOf(anchor) + 1;
+    if (kind === 'rewind') {
+      this.pushMsg('system', t(`Rewound to turn ${anchorIdx} — previous timeline kept, /resume to return`, `已回退到第 ${anchorIdx} 轮——原时间线保留，/resume 可回`));
+    } else {
+      this.pushMsg('system', t(`Forked new session from turn ${anchorIdx} — source session kept`, `已从第 ${anchorIdx} 轮分叉出新会话——源会话保留`));
+    }
+    this.state = { ...this.state, backfill: anchor.text }; // 锚点轮输入回填（重发经正常任务提交进链）
+    this.notify();
+  }
+
 
   /** 退出清理（规格 §3.5）：清空闲兜底节拍定时器——防长驻进程重挂/多实例测试下定时器累积（评审 Important-1）；幂等 */
   dispose(): void {
@@ -844,6 +947,15 @@ export class SessionController {
         return;
       }
       this.restoreFromSession(pick);
+      return;
+    }
+    if (cmd === '/rewind' || cmd === '/fork') {
+      // 会话回退/分叉（rewind/fork 规格 §7）：idle 守卫沿 /resume 先例，运行中拒绝
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; ' + cmd + ' unavailable now', '当前有任务进行中，暂不能执行 ' + cmd), { level: 'warn' });
+        return;
+      }
+      await this.branchFlow(cmd === '/rewind' ? 'rewind' : 'fork');
       return;
     }
     if (cmd === '/compact') {
