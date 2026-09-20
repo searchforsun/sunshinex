@@ -9,6 +9,10 @@ const REPLY_KEY = '"reply"';
 const TAIL = 8;
 /** plain 回退上限（字符）：协议违规输出仅透出前 N 个，超出即截断——防异常输出/提示词回显灌屏 */
 export const PLAIN_LIMIT = 2000;
+/** 协议信封键模式：plain 态自 `{` 起挂起的候选中若出现这些键，则该对象是协议信封、不是正文 */
+const ENVELOPE_KEY = /"(?:tool|tools|done|reply|phase)"\s*:/;
+/** plain 态挂起候选上限：未闭合又无协议键的花括号文本（残破片段）达此长度即按原文透出，不无限挂起 */
+const PLAIN_JSON_HOLD = 4000;
 
 /**
  * 增量协议提取器：模型输出的 JSON 协议骨架不上屏，只透出 reply 字段文本；协议违规（非 JSON）输出有限透传。
@@ -25,6 +29,10 @@ export class ReplyStreamExtractor {
   private out = '';
   private plainEmitted = 0;   // plain 回退已透出字符数（达 PLAIN_LIMIT 即截断收口）
   private truncated = false;  // 截断提示是否已补发（只补一次）
+  private hold = '';          // plain 态自 `{` 起的挂起候选：待判定是协议信封（吞）还是花括号正文（透出）
+  private holdDepth = 0;      // 挂起候选的花括号深度（字符串感知：字符串里的 `}` 不算闭合）
+  private holdInString = false;
+  private holdEscaped = false;
 
   constructor(private readonly onReplyDelta: (text: string) => void) {}
 
@@ -45,6 +53,10 @@ export class ReplyStreamExtractor {
     this.out = '';
     this.plainEmitted = 0;
     this.truncated = false;
+    this.hold = '';
+    this.holdDepth = 0;
+    this.holdInString = false;
+    this.holdEscaped = false;
   }
 
   /** 消费一段原始增量（可任意切分）；提取出的 reply 文本按段回调 */
@@ -94,10 +106,57 @@ export class ReplyStreamExtractor {
         this.stepInReply(ch);
         return;
       case 'plain':
-        this.emitPlain(ch);
+        this.stepPlain(ch);
         return;
       default: // ignore / settled：协议剩余骨架一律吞掉
         return;
+    }
+  }
+
+  /**
+   * plain 态（首个非空白字符既不是 `{` 也不是 `[`，判定为协议违规）透传原文——但**协议信封仍必须吞掉**。
+   * 历史缺陷：一路透传会把信封连 content 整段灌进正文（模型先写散文再补信封、或首字符是不可见字符使
+   * seek 误判裸文本时都会发生）。故自 `{` 起先挂起候选：出现协议键即整段丢弃并回到 seek 续接
+   * （是 reply 信封则照常提取正文），确认是普通花括号文本才按原文透出。
+   */
+  private stepPlain(ch: string): void {
+    if (this.hold.length === 0) {
+      if (ch === '{') {
+        this.hold = ch;
+        this.holdDepth = 1;
+        this.holdInString = false;
+        this.holdEscaped = false;
+        return;
+      }
+      this.emitPlain(ch);
+      return;
+    }
+    this.hold += ch;
+    if (this.holdInString) {
+      if (this.holdEscaped) this.holdEscaped = false;
+      else if (ch === '\\') this.holdEscaped = true;
+      else if (ch === '"') this.holdInString = false;
+    } else if (ch === '"') {
+      this.holdInString = true;
+    } else if (ch === '{') {
+      this.holdDepth += 1;
+    } else if (ch === '}') {
+      this.holdDepth -= 1;
+    }
+    // 键后必是冒号：只在此处判定，避免逐字符扫全量候选
+    if (ch === ':' && ENVELOPE_KEY.test(this.hold)) {
+      const held = this.hold;
+      this.hold = '';
+      this.mode = 'seek';
+      this.sawLead = true; // 前导已由散文承载：seek 不再判首字符，直接按协议态续接
+      this.tail = '';
+      for (const c of held) this.step(c);
+      return;
+    }
+    if (this.holdDepth <= 0 || this.hold.length >= PLAIN_JSON_HOLD) {
+      this.emitPlain(this.hold);
+      this.hold = '';
+      this.holdDepth = 0;
     }
   }
 

@@ -80,3 +80,31 @@ test('提取器：协议违规输出未超限则全文透传', () => {
   assert.equal(out, '短文本');
   assert.ok(!out.includes('truncated'));
 });
+
+test('提取器：裸文本后跟工具信封——散文照常透出、信封整体吞掉（协议骨架不得上屏）', () => {
+  const { out, ex } = collect([
+    '我先看一眼项目结构。\n',
+    '{"phase":"Exploration complete","tool":"write","input":{"path":"D:\\\\p\\\\SUNSHINE.md","content":"# doc"}}',
+  ]);
+  assert.equal(out, '我先看一眼项目结构。\n', '信封之前的散文透出，信封本身不得上屏');
+  assert.ok(!out.includes('"tool"'), '工具信封原文不得进入正文');
+  assert.ok(!out.includes('SUNSHINE.md'), '信封内的 content 不得进入正文');
+  assert.equal(ex.currentMode, 'ignore');
+});
+
+test('提取器：裸文本后跟完成信封——散文与原答复都透出，骨架仍不上屏', () => {
+  const { out, ex } = collect(['结论如下。\n{"done":true,"reply":"最终答复"}']);
+  assert.equal(out, '结论如下。\n最终答复');
+  assert.equal(ex.currentMode, 'settled');
+});
+
+test('提取器：裸文本里的普通花括号片段照常透出（不误吞正文）', () => {
+  const { out } = collect(['配置示例 {"a":1} 到此结束']);
+  assert.equal(out, '配置示例 {"a":1} 到此结束');
+});
+
+test('提取器：首字符为不可见零宽字符导致裸文本判定时，其后的信封仍不上屏', () => {
+  const { out, ex } = collect(['\uFEFF{"tool":"write","input":{"path":"a.txt"}}']);
+  assert.ok(!out.includes('"tool"'), '信封原文不得上屏');
+  assert.equal(ex.currentMode, 'ignore');
+});
