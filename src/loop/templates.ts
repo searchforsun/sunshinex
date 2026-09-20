@@ -1,9 +1,10 @@
 import { LoopContext, LoopTermination } from '../types';
 import { LoopDeps, LoopEngine, LoopEngineNode } from './engine';
+import { loopIterationsEnv } from '../config/termination-config';
 import { agentNode, checkNode, gateNode, routerNode } from './nodes';
 
-/** 三大模板缺省终止参数（opts.termination 可按项覆盖） */
-const DEFAULT_TERMINATION: LoopTermination = { maxIterations: 100, maxTokens: 1_000_000, timeoutMs: 7_200_000 };
+/** 三大模板缺省终止参数（opts.termination 可按项覆盖；env 语义键可放宽轮数，墙钟不进 settings） */
+const DEFAULT_TERMINATION: LoopTermination = { maxIterations: 200, maxTokens: 1_000_000, timeoutMs: 43_200_000 };
 
 /** 模板产物：纯数据预组装（节点序列 + 终止参数）+ 就绪引擎 */
 export interface LoopTemplate {
@@ -24,7 +25,12 @@ function assemble(
   deps: LoopDeps,
   opts?: TemplateOpts,
 ): LoopTemplate {
-  const termination: LoopTermination = { ...DEFAULT_TERMINATION, ...(opts?.termination ?? {}) };
+  const envIters = loopIterationsEnv();
+  const termination: LoopTermination = {
+    ...DEFAULT_TERMINATION,
+    ...(envIters !== undefined ? { maxIterations: envIters } : {}),
+    ...(opts?.termination ?? {}),
+  };
   return { name, nodes, termination, engine: new LoopEngine(nodes, deps, termination) };
 }
 
@@ -136,8 +142,8 @@ export function resolveTemplate(deps: LoopDeps, name: string, opts?: TemplateOpt
   return f(deps, opts);
 }
 
-/** 长任务时间兜底：4h（对齐 Graph `DEFAULT_TERMINATION.timeoutMs`（src/graph/templates.ts:7），D3 单次提交计时口径） */
-export const LONG_TASK_TIMEOUT_MS = 14_400_000;
+/** 长任务时间兜底：24h（对齐 Graph `DEFAULT_TERMINATION.timeoutMs`（src/graph/templates.ts），失控保底、不进 settings） */
+export const LONG_TASK_TIMEOUT_MS = 86_400_000;
 
 export interface LongTaskOpts extends TemplateOpts {
   /** 单次 agent 的步数上限；缺省交给 Reactor 的 200 */
@@ -147,8 +153,8 @@ export interface LongTaskOpts extends TemplateOpts {
 /**
  * 长任务：单 agent 节点，**无 check 节点**（D1：完成以模型自报 done 为准，不引入校验环节）。
  * 用 `agentNode` 而非 `execAgent` —— 后者把状态强制降为 pass（为 agent+check 模板设计），
- * 在单节点模板下会让引擎绕回自身直到 maxIterations 耗尽。同时本模板显式把时间兜底提到 4h，
- * 覆盖 Loop 层缺省的 2h（避免同一入口两套时长）。
+ * 在单节点模板下会让引擎绕回自身直到 maxIterations 耗尽。同时本模板显式把时间兜底提到 24h，
+ * 覆盖 Loop 层缺省的 12h（避免同一入口两套时长）。
  */
 export function longTaskTemplate(deps: LoopDeps, opts?: LongTaskOpts): LoopTemplate {
   const agentOpts = opts?.agentMaxSteps !== undefined ? { maxSteps: opts.agentMaxSteps } : {};

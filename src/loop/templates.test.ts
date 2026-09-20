@@ -141,3 +141,21 @@ test('resolveTemplate：注册表三模板可实例化，未知名报错列出�
   assert.deepEqual(TEMPLATE_NAMES, ['code-refactor', 'test-loop', 'code-review']);
   assert.equal(DEFAULT_GOAL_TEMPLATE, 'test-loop');
 });
+
+test('缺省放宽与 env 注入：DEFAULT < env < opts.termination 合并序', () => {
+  const deps = {} as LoopDeps; // 工厂仅闭包捕获 deps，实例化期零调用
+  const t0 = resolveTemplate(deps, 'test-loop');
+  assert.equal(t0.termination.maxIterations, 200);
+  assert.equal(t0.termination.timeoutMs, 43_200_000);
+  assert.equal(t0.termination.maxTokens, 1_000_000);
+  process.env.SUNSHINEX_MAX_LOOP_ITERATIONS = '50';
+  try {
+    const t1 = resolveTemplate(deps, 'test-loop');
+    assert.equal(t1.termination.maxIterations, 50);
+    assert.equal(t1.termination.timeoutMs, 43_200_000, 'env 只注轮数，墙钟仍为内置保底');
+  } finally {
+    delete process.env.SUNSHINEX_MAX_LOOP_ITERATIONS;
+  }
+  const t2 = resolveTemplate(deps, 'test-loop', { termination: { maxIterations: 7 } });
+  assert.equal(t2.termination.maxIterations, 7);
+});

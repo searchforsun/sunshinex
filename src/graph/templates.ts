@@ -1,11 +1,12 @@
 import { GraphDeps, GraphTermination } from '../types';
 import { GraphEngine, GraphNode } from './engine';
+import { graphNodesEnv } from '../config/termination-config';
 import { makeGateNode, makeLoopNode, RuleChecker } from './nodes';
 import { makeRoleAgent } from './agents';
 import { t } from '../i18n';
 
-/** 全链路流水线缺省终止参数（opts.termination 可按项覆盖） */
-const DEFAULT_TERMINATION: GraphTermination = { maxNodes: 500, maxTokens: 2_000_000, timeoutMs: 14_400_000 };
+/** 全链路流水线缺省终止参数（opts.termination 可按项覆盖；env 语义键可放宽节点步，墙钟不进 settings） */
+const DEFAULT_TERMINATION: GraphTermination = { maxNodes: 1000, maxTokens: 2_000_000, timeoutMs: 86_400_000 };
 
 /** 模板产物：纯数据预组装（节点序列 + 终止参数）+ 就绪引擎 */
 export interface GraphTemplate {
@@ -26,7 +27,12 @@ export interface PipelineOpts {
 
 /** 软件工程全链路流水线（五节点串行链；测试验证阶段内嵌 testLoop 子流程——「Loop 嵌入 Graph」验收点） */
 export function softwarePipelineTemplate(deps: GraphDeps, opts: PipelineOpts = {}): GraphTemplate {
-  const termination: GraphTermination = { ...DEFAULT_TERMINATION, ...(opts.termination ?? {}) };
+  const envNodes = graphNodesEnv();
+  const termination: GraphTermination = {
+    ...DEFAULT_TERMINATION,
+    ...(envNodes !== undefined ? { maxNodes: envNodes } : {}),
+    ...(opts.termination ?? {}),
+  };
   const nodes: GraphNode[] = [
     makeRoleAgent('planner', deps, { maxSteps: opts.maxSteps }),
     makeRoleAgent('developer', deps, { maxSteps: opts.maxSteps, deps: ['planner'] }),

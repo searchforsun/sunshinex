@@ -108,3 +108,20 @@ test('P3/T4-3 预算累计 + gate 交互：resume(approve) → done，failedNode
   const nodeTokens = Object.values(r2.results).reduce((s, o) => s + o.tokens, 0);
   assert.equal(r2.tokensUsed, nodeTokens, 'Graph 总账应等于各节点 tokens 之和');
 });
+
+test('缺省放宽与 env 注入：DEFAULT < env < opts.termination 合并序', () => {
+  const deps = makeDeps(mktmp('p3-term-'), new ScriptedAdapter(SCRIPT)).deps; // 工厂仅闭包捕获 deps，实例化期零调用
+  const t0 = softwarePipelineTemplate(deps);
+  assert.equal(t0.termination.maxNodes, 1000);
+  assert.equal(t0.termination.timeoutMs, 86_400_000);
+  assert.equal(t0.termination.maxTokens, 2_000_000);
+  process.env.SUNSHINEX_MAX_GRAPH_NODES = '60';
+  try {
+    const t1 = softwarePipelineTemplate(deps);
+    assert.equal(t1.termination.maxNodes, 60);
+  } finally {
+    delete process.env.SUNSHINEX_MAX_GRAPH_NODES;
+  }
+  const t2 = softwarePipelineTemplate(deps, { termination: { maxNodes: 9 } });
+  assert.equal(t2.termination.maxNodes, 9);
+});
