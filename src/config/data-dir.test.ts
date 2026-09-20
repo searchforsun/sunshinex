@@ -205,7 +205,8 @@ test('dataDirReal：数据目录经符号链接段传入时返回 realpath 归�
   const sub = path.join(realDir, 'sub');
   fs.mkdirSync(sub, { recursive: true });
   const link = path.join(base, 'link');
-  fs.symlinkSync(realDir, link, 'dir');
+  // 目录链接统一 junction：Windows 免管理员/开发者模式特权即可创建，realpath 判界语义不变；POSIX 忽略类型参数行为同旧
+  fs.symlinkSync(realDir, link, 'junction');
   const prev = process.env.SUNSHINEX_DATA_DIR;
   try {
     const literal = path.join(link, 'sub', 'data'); // 经符号链接段，末段 data 尚未存在
@@ -215,6 +216,8 @@ test('dataDirReal：数据目录经符号链接段传入时返回 realpath 归�
     assert.notEqual(got, path.resolve(literal), '归一确实发生：字面比对不命中');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prev;
+    // 先摘链接再清目录：防悬空链接进入 rmSync 遍历（Windows junction 同样以 unlink 摘除）
+    try { fs.unlinkSync(link); } catch { /* 已摘除，容错续清 */ }
     fs.rmSync(base, { recursive: true, force: true });
   }
 });

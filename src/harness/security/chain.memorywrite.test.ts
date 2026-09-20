@@ -132,13 +132,16 @@ test('memory 内符号链接指向外部 → 写被拒（realpath 判界，链�
   withChain((chain, _root, dataDir) => {
     fs.mkdirSync(path.join(dataDir, 'memory'), { recursive: true });
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-mw-out-'));
+    const link = path.join(dataDir, 'memory', 'esc');
     try {
-      const link = path.join(dataDir, 'memory', 'esc');
-      fs.symlinkSync(outside, link);
+      // 目录链接统一 junction：Windows 免管理员/开发者模式特权即可创建，realpath 判界语义不变；POSIX 忽略类型参数行为同旧
+      fs.symlinkSync(outside, link, 'junction');
       const d = chain.evaluate('Write', { path: path.join(link, 'evil.md') });
       assert.equal(d.allowed, false, '真实路径落在 memory 之外 → 拒');
       if (!d.allowed) assert.ok(d.reason.includes('COMMAND_DENIED'));
     } finally {
+      // 先摘链接再删链接目标：防悬空链接进入 rmSync 遍历（Windows junction 同样以 unlink 摘除）
+      try { fs.unlinkSync(link); } catch { /* 已摘除，容错续清 */ }
       fs.rmSync(outside, { recursive: true, force: true });
     }
   });
