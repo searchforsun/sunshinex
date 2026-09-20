@@ -1,4 +1,5 @@
 import type { AskUserRequest, AskUserSeam } from '../../types';
+import type { SnapshotEntry } from '../../tui/session-journal';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';
@@ -36,7 +37,7 @@ export type MemoryWriteTool = (input: { type: string; content: string; descripti
 }>;
 
 /** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write；执行期以本参数捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam): RegisteredTool[] {
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -147,6 +148,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
           if (r.value !== 'pass') return execOut(r.value.observation);
         }
+        // write 影子快照（rewind/fork 规格 §6.1）：落盘前捕获 pre-image；记忆接缝路径不经过此处（上文已 return）
+        writeSnapshot?.capture(p);
         backend.writeFile(p, content);
         // §9.3 快照过期回执：写项目根 SUNSHINE.md 时观察行补一句（快照仍冻结到下一刷新点，§9.2 漂移检测下轮起点统一尾追全文）
         return execOut(isSunshineMdTarget(safety, p) ? `written\n${SUNSHINE_STALE_NOTICE}` : 'written');

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
+import { makeWriteSnapshotSink } from './tools/write-snapshot';
 import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
 import { SecurityGuard } from './security/guard';
@@ -57,6 +58,8 @@ export class Harness {
   readonly model: ModelAdapter;
   readonly reactor: Reactor;
   readonly skills: SkillsFacade;
+  /** write 影子快照单点（rewind/fork 规格 §6.1）：write 工具落盘前捕获 pre-image，任务收口随 user 事件落盘 */
+  readonly writeSnapshot: ReturnType<typeof makeWriteSnapshotSink>;
   /** 子代理执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
   readonly runner: SubagentRunner;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
@@ -82,8 +85,10 @@ export class Harness {
     this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
     // 技能门面先于工具装配创建（skill 工具经它按 id 解析正文；纯构造无副作用）
     this.skills = createSkillsFacade(base);
+    // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
+    this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
     // 第 7 参注入记忆写入接缝（规格 §4.4 落点表）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
-    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }), opts.ask ?? headlessAskStub)) this.tools.register(t);
+    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }), opts.ask ?? headlessAskStub, this.writeSnapshot)) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
     // 后台沉淀管线（规格 §3.1/§3.5）：收口零等待入队 → 空闲/收尾消化；notify 双通道=链尾 notice 行（模型面）+ notice 事件（用户面），
