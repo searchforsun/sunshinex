@@ -44,6 +44,14 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
 
   const tools: RegisteredTool[] = [
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['command'],
+        properties: {
+          command: { type: 'string', description: 'Shell command to run (POSIX sh; runs from the project root)' },
+        },
+      },
       name: 'exec',
       description: 'Execute a shell command inside the project sandbox; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'bash',
@@ -55,6 +63,15 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['path', 'range'],
+        properties: {
+          path: { type: 'string', description: 'File path (relative to the project root or absolute)' },
+          range: { type: ['string', 'null'], description: 'Optional line range, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; null reads the whole file' },
+        },
+      },
       name: 'read',
       description:
         'Read file content; optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
@@ -76,6 +93,15 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'params'],
+        properties: {
+          id: { type: 'string', description: 'Skill id from the available skills list' },
+          params: { type: 'object', additionalProperties: true, description: 'Optional name→value substitution for skill template placeholders (free-form)' },
+        },
+      },
       name: 'skill',
       description:
         'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; oversized output is truncated and saved to disk (full output path shown in the result)',
@@ -92,6 +118,15 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['path', 'content'],
+        properties: {
+          path: { type: 'string', description: 'File path (relative to the project root or absolute)' },
+          content: { type: 'string', description: 'Full file content to write' },
+        },
+      },
       name: 'write',
       description: 'Write file content',
       category: 'write',
@@ -118,6 +153,16 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['pattern', 'glob', 'path'],
+        properties: {
+          pattern: { type: 'string', description: 'JavaScript regular expression to match' },
+          glob: { type: ['string', 'null'], description: 'Optional filename glob filter for directory search (e.g. **/*.ts); null for no filter' },
+          path: { type: ['string', 'null'], description: 'File or directory to search; null defaults to the project root' },
+        },
+      },
       name: 'grep',
       description: 'Regex search: for a file path emit raw matching lines; for a directory search recursively and emit relativePath:line:line',
       category: 'read',
@@ -151,12 +196,28 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['pattern'],
+        properties: {
+          pattern: { type: 'string', description: 'Glob pattern (e.g. src/**/*.ts)' },
+        },
+      },
       name: 'glob',
       description: 'List files matching a glob pattern; oversized listing is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => execOut(fitOut('glob', backend.listFiles(root, String(input.pattern ?? '*')).join('\n'))),
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['url'],
+        properties: {
+          url: { type: 'string', description: 'http/https URL to fetch' },
+        },
+      },
       name: 'webfetch',
       description: 'Fetch a web page: input { url }, http/https only (protocol floor enforced by the security guard); oversized body is truncated and saved to disk (full output path shown in the result)',
       category: 'network',
@@ -168,6 +229,15 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['query', 'count'],
+        properties: {
+          query: { type: 'string', description: 'Search query text' },
+          count: { type: ['integer', 'null'], description: 'Result count, clamped to 1-10; null defaults to 5' },
+        },
+      },
       name: 'websearch',
       description: 'Web search: input { query, count? } (count default 5, max 10); stdout is title/URL/snippet lines; engine endpoint allows http/https only',
       category: 'network',
@@ -181,6 +251,15 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
     {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['query', 'topK'],
+        properties: {
+          query: { type: 'string', description: 'Search query text' },
+          topK: { type: ['integer', 'null'], description: 'Max hits to return; null defaults to 5' },
+        },
+      },
       name: 'kb_search',
       description: 'Local vector knowledge-base search: input { query, topK? }, stdout is KbHit[] JSON; degrades to kb_not_configured when not configured (never blocks other tools)',
       category: 'read',
@@ -200,6 +279,16 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
   if (memoryWrite !== undefined) {
     const memoryWriter: MemoryWriteTool = memoryWrite; // 窄化取别名：闭包内不依赖外部窄化（参数可变，TS 不跨回调保留）
     tools.push({
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['type', 'content', 'description'],
+        properties: {
+          type: { type: 'string', enum: ['user', 'feedback', 'project', 'reference'], description: 'Memory type: user preference / corrective feedback / project fact / external reference' },
+          content: { type: 'string', description: 'ONE atomic durable fact (absolute dates; no session-relative wording)' },
+          description: { type: ['string', 'null'], description: 'Short description used for the memory index; null omits it' },
+        },
+      },
       name: 'memory_write',
       description:
         'Persist ONE durable fact to long-term memory when it is worth remembering across sessions — a user preference, corrective feedback, or a non-obvious project fact. Be conservative: it is fine to save nothing. Duplicates return the existing entry. Fails when memory is disabled.',
@@ -229,6 +318,30 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
   if (ask !== undefined) {
     const askSeam = ask;
     tools.push({
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['question', 'options', 'multiple', 'allowCustom'],
+        properties: {
+          question: { type: 'string', description: 'Question for the user' },
+          options: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 8,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['label', 'description'],
+              properties: {
+                label: { type: 'string', description: 'Option label shown to the user' },
+                description: { type: ['string', 'null'], description: 'Optional longer explanation; null omits it' },
+              },
+            },
+          },
+          multiple: { type: ['boolean', 'null'], description: 'true enables multi-select; null = single-select' },
+          allowCustom: { type: ['boolean', 'null'], description: 'true adds a free-text "Other" option; null disables it' },
+        },
+      },
       name: 'ask_question',
       description:
         'Ask the user a question with selectable options and wait for their answer. Use when you need the user to choose between alternatives, confirm an approach, or provide free-form input. Supports single-select (default), multi-select (multiple) and a free-text "Other" answer (allowCustom). Returns the user\'s selection, their custom answer, or a dismissal notice if they skipped the question.',

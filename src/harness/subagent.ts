@@ -311,6 +311,18 @@ export class SubagentRunner {
  * （guard manual 分支免审批），子代理内部每个工具调用独立过安全链 */
 export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
   return {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['prompt', 'agent_id', 'label', 'tools', 'background'],
+      properties: {
+        prompt: { type: 'string', description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent cannot see this conversation)' },
+        agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null spawns an inline subagent' },
+        label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
+        tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
+        background: { type: ['boolean', 'null'], description: 'Reserved for async two-phase spawning; true is rejected as NOT_SUPPORTED in v1' },
+      },
+    },
     name: SPAWN_TOOL_NAME,
     description:
       'Spawn a subagent to execute one independent subtask; its final report returns as this tool result. Issue multiple spawn calls in one tools array to run independent subtasks in parallel. prompt must be self-contained (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',

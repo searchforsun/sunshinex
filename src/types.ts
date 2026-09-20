@@ -3,10 +3,47 @@ import type { Result } from './result';
 /** 多角色子 Agent 角色枚举 */
 export type AgentRole = 'planner' | 'developer' | 'tester' | 'reviewer';
 
+/** 极简 JSON Schema 形态（工具 parameters 与后续消息面共用；不覆盖全量规范，只登记声明面用到的关键字段） */
+export interface JsonSchema {
+  type?: string | string[];
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+  enum?: unknown[];
+  additionalProperties?: boolean | JsonSchema;
+  minItems?: number;
+  maxItems?: number;
+}
+
+/** 模型侧单次工具调用（消息视图形态；wire 层 tool_calls 由 adapter 聚合为此形态） */
+export interface ToolCallSpec {
+  id: string;
+  name: string;
+  /** 模型产出的原始入参 JSON 串；非法 JSON 不在类型层解析，由消费面 role:tool 回喂纠偏 */
+  argsJson: string;
+}
+
+/** 一轮模型侧动作（adapter 聚合产物：旁白与工具调用同轮，function calling 探针④） */
+export interface StructuredAction {
+  /** 本轮旁白（phase 载体；空串 = 该轮无 ▶ 行） */
+  content: string;
+  toolCalls: ToolCallSpec[];
+}
+
+/** OpenAI 协议兼容消息（D1：链为唯一事实源，消息为 buildMessages 的派生视图形态） */
+export type ChatMessage =
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string | null; toolCalls?: ToolCallSpec[] }
+  | { role: 'tool'; content: string; toolCallId: string };
+
 /** 统一执行面上的工具描述 */
 export interface ToolSpec {
   name: string;
   description: string;
+  /** 参数 JSON Schema（function calling：API tools 字段下发形态；注册时逐工具声明，strict 兼容口径——additionalProperties:false、全字段 required、可选项 null 联合；确属自由入参的口子登记宽松点） */
+  parameters?: JsonSchema;
 }
 
 /** 技能清单（skills/{id}/skill.md 解析结果） */
