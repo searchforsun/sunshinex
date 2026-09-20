@@ -5,25 +5,41 @@
  *  读=逐行解析重放（尾行撕裂/中段损坏重放到上一条完整事件、未知版本由调用方拒载）。 */
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ContextItem, HistoryStep, ModelTier } from '../types';
+import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort } from '../types';
 import type { ChatItem, TodoItem } from './session';
+
+/** 分档血缘（规格 2026-09-20 rewind+fork §5.1）：upToLine=源档 1-based 行号，新档含源档第 1..upToLine 行 */
+export interface ForkedFrom {
+  sourceSessionId: string;
+  upToLine: number;
+  kind: 'rewind' | 'fork';
+}
+
+/** write 影子快照条目：path=相对项目根 POSIX；deleted=true 表示写入时文件不存在（hash 置空串） */
+export interface SnapshotEntry {
+  path: string;
+  hash: string;
+  deleted?: true;
+}
 
 export interface JournalHeader {
   t: 'header';
   v: number;
   id: string;
   createdAt: string;
+  /** 分档来源（branchFrom 产物；原生会话档无此字段） */
+  forkedFrom?: ForkedFrom;
 }
 
 /** 封闭事件词汇 schema v1 */
 export type JournalEvent =
   | JournalHeader
-  | { t: 'user'; text: string }
+  | { t: 'user'; text: string; files?: SnapshotEntry[] }
   | { t: 'msg'; item: ChatItem }
   | { t: 'chain'; steps: HistoryStep[] }
   | { t: 'compact'; chainFrom: number; compacted: ContextItem[] }
   | { t: 'todos'; items: TodoItem[] }
-  | { t: 'model'; tier?: ModelTier }
+  | { t: 'model'; tier?: ModelTier; effort?: ReasoningEffort }
   | { t: 'view'; expandAll: boolean; latestFull: boolean };
 
 export interface SessionMeta {
@@ -35,6 +51,8 @@ export interface SessionMeta {
 
 export interface ParsedJournal {
   events: JournalEvent[];
+  /** 与 events 一一对应的原始行（branchFrom 逐字节复制用） */
+  lines: string[];
   truncated: boolean;
 }
 
@@ -48,6 +66,7 @@ export interface JournalReplay {
   history: string[];
   todos: TodoItem[];
   model?: ModelTier;
+  effort?: ReasoningEffort;
   view: { expandAll: boolean; latestFull: boolean };
 }
 
@@ -83,17 +102,19 @@ export function writeActivePointer(dataDir: string, id: string): void {
 /** 逐行解析：坏行（尾行撕裂/中段损坏）停在上一条完整事件并标 truncated（fail-bounded） */
 export function parseJournalFile(file: string): ParsedJournal {
   const events: JournalEvent[] = [];
+  const lines: string[] = [];
   let truncated = false;
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (line.length === 0) continue;
     try {
       events.push(JSON.parse(line) as JournalEvent);
+      lines.push(line);
     } catch {
       truncated = true;
       break;
     }
   }
-  return { events, truncated };
+  return { events, lines, truncated };
 }
 
 /** 重放归约（封闭词汇 v1）：链累积、压缩后态覆盖（末值语义）、消息直汇、user 汇输入历史、todos/model/view 末值覆盖 */
@@ -133,6 +154,7 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
         break;
       case 'model':
         r.model = e.tier;
+        r.effort = e.effort;
         break;
       case 'view':
         r.view = { expandAll: e.expandAll, latestFull: e.latestFull };
@@ -178,9 +200,61 @@ export function listSessions(dataDir: string): SessionMeta[] {
   return metas.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+export interface JournalAnchor {
+  line: number;
+  text: string;
+}
+
+/** 任务锚点枚举（规格 D4）：每条 user 事件一个锚点，line 为文件 1-based 行号 */
+export function listAnchors(parsed: ParsedJournal): JournalAnchor[] {
+  const anchors: JournalAnchor[] = [];
+  parsed.events.forEach((e, i) => {
+    if (e.t === 'user') anchors.push({ line: i + 1, text: e.text });
+  });
+  return anchors;
+}
+
+/**
+ * 分档原语（规格 2026-09-20 rewind+fork §5.2）：复制源档第 1..upToLine 行到新档（第 2..upToLine 行逐字节相等），
+ * header 重写（新 id / 新 createdAt / forkedFrom 血缘），写新档并切活动指针；源档零改动。
+ * 任一前缀行非合法 JSON、upToLine 越界、源档缺失即 throw Error('INVALID_ARG: ...')，零副作用。
+ */
+export function branchFrom(
+  dataDir: string,
+  sourceId: string,
+  upToLine: number,
+  kind: 'rewind' | 'fork',
+  opts?: { now?: Date },
+): string {
+  const srcFile = path.join(sessionsDir(dataDir), sourceId + '.jsonl');
+  const all = fs.readFileSync(srcFile, 'utf8').split('\n');
+  while (all.length > 0 && all[all.length - 1] === '') all.pop();
+  if (!Number.isInteger(upToLine) || upToLine < 1 || upToLine > all.length) {
+    throw new Error(`INVALID_ARG: upToLine out of range: ${upToLine} (file has ${all.length} lines)`);
+  }
+  const kept = all.slice(0, upToLine);
+  for (let i = 0; i < kept.length; i++) {
+    try {
+      JSON.parse(kept[i]);
+    } catch {
+      throw new Error(`INVALID_ARG: source journal line ${i + 1} is not valid JSON`);
+    }
+  }
+  const header = JSON.parse(kept[0]) as JournalHeader;
+  if (header.t !== 'header') throw new Error('INVALID_ARG: source journal line 1 is not a header');
+  const newId = newSessionId(opts?.now);
+  const now = (opts?.now ?? new Date()).toISOString();
+  // spread 保持原字段序，id/createdAt 原位覆盖，forkedFrom 尾追
+  const newHeader: JournalHeader = { ...header, id: newId, createdAt: now, forkedFrom: { sourceSessionId: sourceId, upToLine, kind } };
+  fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
+  fs.writeFileSync(path.join(sessionsDir(dataDir), newId + '.jsonl'), [JSON.stringify(newHeader), ...kept.slice(1)].join('\n') + '\n', 'utf8');
+  writeActivePointer(dataDir, newId);
+  return newId;
+}
+
 /** 会话日志写面：事件入缓冲（运行中不写盘）、flush 点批量落盘并维护活动指针；未建档 log 丢弃（空会话零文件） */
 export class SessionJournal {
-  private buf: string[] = [];
+  private buf: JournalEvent[] = [];
   private id: string | undefined;
   private readonly dataDir: string;
   private readonly dir: string;
@@ -203,7 +277,7 @@ export class SessionJournal {
     if (this.id) return;
     this.id = newSessionId();
     const header: JournalHeader = { t: 'header', v: 1, id: this.id, createdAt: new Date().toISOString() };
-    this.buf.push(JSON.stringify(header));
+    this.buf.push(header);
   }
 
   /** 轮转（/new）：清缓冲换新 id，新 header 入缓冲（旧档已在盘） */
@@ -211,7 +285,7 @@ export class SessionJournal {
     this.buf = [];
     this.id = id;
     const header: JournalHeader = { t: 'header', v: 1, id, createdAt: new Date().toISOString() };
-    this.buf.push(JSON.stringify(header));
+    this.buf.push(header);
   }
 
   /** 续挂既有日志（/resume / --continue）：后续事件追加至同一文件，不重复 header */
@@ -222,16 +296,28 @@ export class SessionJournal {
 
   log(event: JournalEvent): void {
     if (!this.id) return; // 未建档：事件丢弃（空会话零文件）
-    this.buf.push(JSON.stringify(event));
+    this.buf.push(event);
   }
 
   /** flush 点：批量追加 + 活动指针更新；缓冲空为 no-op（不落盘不动指针） */
   flush(): boolean {
     if (!this.id || this.buf.length === 0) return false;
     fs.mkdirSync(this.dir, { recursive: true });
-    fs.appendFileSync(path.join(this.dir, this.id + '.jsonl'), this.buf.join('\n') + '\n', 'utf8');
+    fs.appendFileSync(path.join(this.dir, this.id + '.jsonl'), this.buf.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
     this.buf = [];
     writeActivePointer(this.dataDir, this.id);
     return true;
+  }
+
+  /** 任务收口回填（规格 §6.1）：本任务 write 的影子快照清单补进该轮 user 事件；缓冲内无 user 事件返回 false */
+  amendLastUser(files: SnapshotEntry[]): boolean {
+    for (let i = this.buf.length - 1; i >= 0; i--) {
+      if (this.buf[i].t === 'user') {
+        if (files.length === 0) return true; // 空清单不写字段（与 v1 旧档形态一致）
+        (this.buf[i] as Extract<JournalEvent, { t: 'user' }>).files = files;
+        return true;
+      }
+    }
+    return false;
   }
 }
