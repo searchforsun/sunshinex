@@ -45,6 +45,28 @@ export function inputPlaceholder(status: TuiState['status']): string {
   }
 }
 
+/** 审批选择器选项（与 approvalKeyToDecision 同序：Approve once / Allow for session / Deny；运行期求值防 t() 冻结） */
+export function approvalSelectorOptions(): { label: string; description?: string }[] {
+  return [
+    { label: t('Approve once', '放行一次'), description: t('approve this action', '仅本次放行') },
+    { label: t('Allow for session', '本会话放行'), description: t('same subject will not ask again', '同主体后续不再询问') },
+    { label: t('Deny', '拒绝'), description: t('esc also denies', 'Esc 同效') },
+  ];
+}
+
+/** 审批选择器下标 → 裁决值（渲染层提交映射单点，防两处漂移） */
+export function approvalDecisionByIndex(idx: number): 'allow' | 'always' | 'deny' {
+  return (['allow', 'always', 'deny'] as const)[idx] ?? 'deny';
+}
+
+/** plan 确认选择器选项（首项=执行；Esc 同第二项放弃） */
+export function planSelectorOptions(): { label: string; description?: string }[] {
+  return [
+    { label: t('Execute plan', '执行计划'), description: t('run the steps above', '逐项执行上述计划') },
+    { label: t('Keep planning (esc)', '放弃 (esc)'), description: t('discard and return to input', '放弃并回到输入态') },
+  ];
+}
+
 /** Home/End 终端转义序列体：ink3 不解析这些功能键，按 ESC 剥离前后的两种形态识别（xterm 与应用模式两族） */
 const HOME_SEQS = ['[H', 'OH', '[1~', '[7~'];
 const END_SEQS = ['[F', 'OF', '[4~', '[8~'];
@@ -82,6 +104,21 @@ export function App({
   const setQPicked = (v: number[]): void => { qPickedRef.current = v; setQPickedState(v); };
   const setQCustom = (v: boolean): void => { qCustomRef.current = v; setQCustomState(v); };
   const setQText = (v: string): void => { qTextRef.current = v; setQTextState(v); };
+  // 审批/plan 选择器光标（T3 迁移）：ref 真值 + state 渲染；状态转入时归位首项
+  const [aCursorState, setACursorState] = React.useState(0);
+  const aCursorRef = React.useRef(0);
+  const setACursor = (v: number): void => { aCursorRef.current = v; setACursorState(v); };
+  const [pCursorState, setPCursorState] = React.useState(0);
+  const pCursorRef = React.useRef(0);
+  const setPCursor = (v: number): void => { pCursorRef.current = v; setPCursorState(v); };
+  const statusRef = React.useRef(state.status);
+  React.useEffect(() => {
+    if (state.status !== statusRef.current) {
+      if (state.status === 'awaiting-approval') setACursor(0);
+      if (state.status === 'awaiting-plan') setPCursor(0);
+      statusRef.current = state.status;
+    }
+  }, [state.status]);
   const qRef = React.useRef<AskUserRequest | undefined>(undefined);
   React.useEffect(() => {
     if (state.question && state.question !== qRef.current) {
@@ -252,14 +289,28 @@ export function App({
       }
       return;
     }
+    // 审批卡（T3 选择器迁移）：y/a/n 单键快捷并存，↑↓ 移动 / Space·Enter 提交 / 数字 1-3 快选 / Esc=拒绝
     if (state.status === 'awaiting-approval') {
-      const d = approvalKeyToDecision(input);
-      if (d) controller.resolveApproval(d);
+      const quick = approvalKeyToDecision(input);
+      if (quick) { controller.resolveApproval(quick); return; }
+      if (key.escape) { controller.resolveApproval('deny'); return; }
+      if (key.upArrow) { setACursor(moveCursor(aCursorRef.current, 3, -1)); return; }
+      if (key.downArrow) { setACursor(moveCursor(aCursorRef.current, 3, 1)); return; }
+      if (key.return || input === ' ') { controller.resolveApproval(approvalDecisionByIndex(aCursorRef.current)); return; }
+      const an = Number.parseInt(input, 10);
+      if (Number.isInteger(an) && an >= 1 && an <= 3) { controller.resolveApproval(approvalDecisionByIndex(an - 1)); return; }
       return;
     }
+    // plan 确认卡（T3 选择器迁移）：y/n 单键并存，↑↓ 移动 / Space·Enter 提交 / 1-2 快选 / Esc=放弃
     if (state.status === 'awaiting-plan') {
-      if (input === 'y') void controller.confirmPlan(true);
-      if (input === 'n') void controller.confirmPlan(false);
+      if (input === 'y') { void controller.confirmPlan(true); return; }
+      if (input === 'n') { void controller.confirmPlan(false); return; }
+      if (key.escape) { void controller.confirmPlan(false); return; }
+      if (key.upArrow) { setPCursor(moveCursor(pCursorRef.current, 2, -1)); return; }
+      if (key.downArrow) { setPCursor(moveCursor(pCursorRef.current, 2, 1)); return; }
+      if (key.return || input === ' ') { void controller.confirmPlan(pCursorRef.current === 0); return; }
+      const pn = Number.parseInt(input, 10);
+      if (pn === 1 || pn === 2) { void controller.confirmPlan(pn === 1); return; }
       return;
     }
 
@@ -325,6 +376,7 @@ export function App({
       setCursor((c) => Math.min(buffer.length, c + 1));
       return;
     }
+
 
     // ↑↓：单行缓冲回填输入历史（多行缓冲不劫持，留给后续行内导航）
     if ((key.upArrow || key.downArrow) && (state.status === 'idle' || state.status === 'error') && !buffer.includes('\n')) {
@@ -398,13 +450,24 @@ export function App({
       ) : null}
       {state.children.length > 0 ? <ChildPanel childrenState={state.children} columns={columns} /> : null}
       {state.approval ? (
-        <Box borderStyle="round" flexDirection="column" paddingX={1}>
-          <Text bold>
-            {t('Approval', '审批')} {state.approval.id} ({state.approval.kind})
-          </Text>
-          <Text>{state.approval.subject}</Text>
-          <Text dimColor>{t('y approve once · a allow for session · n deny', 'y 放行一次 · a 本会话放行 · n 拒绝')}</Text>
-        </Box>
+        <OptionSelector
+          title={`${t('Approval', '审批')} ${state.approval.id} (${state.approval.kind})`}
+          question={state.approval.subject}
+          options={approvalSelectorOptions()}
+          cursor={aCursorState}
+          picked={[]}
+          hint={t('y approve once · a allow for session · n deny · esc deny', 'y 放行一次 · a 本会话放行 · n 拒绝 · Esc 拒绝')}
+        />
+      ) : null}
+      {state.status === 'awaiting-plan' ? (
+        <OptionSelector
+          title={t('Plan', '计划')}
+          question={t('Execute this plan?', '执行这份计划？')}
+          options={planSelectorOptions()}
+          cursor={pCursorState}
+          picked={[]}
+          hint={t('y execute · n discard · esc discard', 'y 执行 · n 放弃 · Esc 放弃')}
+        />
       ) : null}
       {state.question ? (
         <Box flexDirection="column">
@@ -434,6 +497,7 @@ export function App({
         status={state.status}
         todos={state.todos}
         model={info.model}
+        effort={state.effort}
         context={{ used: state.metrics.ctxUsed, window: Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
       />
     </Box>

@@ -812,8 +812,27 @@ export class SessionController {
       }
       const arg = text.trim().split(/\s+/).slice(1).join(' ');
       if (!arg) {
-        const lines = sessions.map((s, i) => `${i + 1}. ${s.id}  ${s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）')}`);
-        this.pushMsg('system', [t('Saved sessions (newest first) — /resume <number|id>:', '已保存会话（最新在前）—— /resume <序号|id>：'), ...lines].join('\n'));
+        // 选择器形态（AskQuestion 线 T3，对标 CC 会话列表）：无参 /resume 挂起问题卡列最新 8 条（label=id、description=首条输入摘要），
+        // ↑↓ 移动 / Enter 恢复 / Esc 取消；显式 `/resume <序号|id>` 路径保持不变（含 8 条以外的更早会话）
+        const shown = sessions.slice(0, 8);
+        if (sessions.length > 8) {
+          this.pushMsg('system', t(`8 of ${sessions.length} sessions shown — use /resume <id> for older ones`, `仅列最新 8 条（共 ${sessions.length}）——更早会话用 /resume <id> 恢复`));
+        }
+        const answer = await this.askUser({
+          question: t('Resume which session?', '恢复哪个会话？'),
+          options: shown.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
+        });
+        if (answer.type === 'dismissed') {
+          this.pushMsg('system', t('Resume cancelled', '已取消恢复'));
+          return;
+        }
+        const pickedId = answer.type === 'custom' ? answer.text.trim() : (answer.labels[0] ?? '');
+        const pick = sessions.find((s) => s.id === pickedId);
+        if (!pick) {
+          this.pushMsg('system', t('No such session: ' + pickedId, '没有这个会话：' + pickedId), { level: 'warn' });
+          return;
+        }
+        this.restoreFromSession(pick);
         return;
       }
       const num = Number.parseInt(arg, 10);
