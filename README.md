@@ -76,6 +76,7 @@ sunshinex ../my-project        # 指定项目目录启动（对标 claude <dir>�
 sunshinex --mode=manual|dontAsk|plan   # 权限模式
 sunshinex --language=zh        # 界面语言（缺省 en；提示词恒英文单语不受影响）
 sunshinex <目录> --continue    # 续接该项目最近会话；TUI 内 /resume 列出/恢复更早会话
+                               # 会话回退/分叉：TUI 内 /rewind 回退到任意历史轮（对话必选、代码可选），/fork 从任意轮分叉平行会话
 pnpm test && pnpm selfcheck    # 全量单测 / 骨架自检
 ```
 
