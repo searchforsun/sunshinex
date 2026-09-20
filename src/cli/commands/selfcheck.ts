@@ -8,6 +8,7 @@ import { resolveKbEnv } from '../../config/env';
 import { parseMcpServers, parseSunshinex } from '../../config';
 import { resolveShell } from '../../harness/security/sandbox';
 import { SessionController } from '../../tui/session';
+import { ReplyStreamExtractor } from '../../tui/stream-extractor';
 import type { CliArgs } from '../index';
 import { t } from '../../i18n';
 
@@ -64,10 +65,14 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   if (tuiReply !== '流式自检 OK') throw new Error(`tui 流式答复异常：${tuiReply}`);
   if (tuiThink < 1) throw new Error('tui 思考折叠未生效');
   if (tuiState.metrics.turnTokens !== 3) throw new Error(`tui 本轮 tokens 异常：${tuiState.metrics.turnTokens}`);
-  // 流式正文即最终正文（function calling：token 增量承载纯正文，无协议骨架过滤层）
+  // 增量提取器：跨 chunk 的协议 JSON 应只透出 reply 文本
+  let extracted = '';
+  const ex = new ReplyStreamExtractor((t) => { extracted += t; });
+  for (const chunk of ['{"done":true,"re', 'ply":"流式提取 OK"}']) ex.feed(chunk);
+  if (extracted !== '流式提取 OK') throw new Error(`流式提取异常：${extracted}`);
   console.log('tui     :', t(
-    `streaming pipeline OK (${tuiState.messages.length} messages; reply "${tuiReply}"; thinking folds ${tuiThink})`,
-    `流式管线 OK（${tuiState.messages.length} 条消息；答复「${tuiReply}」；思考折叠 ${tuiThink} 段）`,
+    `streaming pipeline OK (${tuiState.messages.length} messages; reply "${tuiReply}"; thinking folds ${tuiThink}; extracted "${extracted}")`,
+    `流式管线 OK（${tuiState.messages.length} 条消息；答复「${tuiReply}」；思考折叠 ${tuiThink} 段；提取「${extracted}」）`,
   ));
   const loopReady = codeReviewTemplate({ safety: h.safety, registry: h.tools, context: h.context, model: new StubAdapter() });
   console.log('loop    :', `${loopReady.name} template ready (${loopReady.nodes.length} nodes)`);

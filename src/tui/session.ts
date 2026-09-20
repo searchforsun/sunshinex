@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
 import { estimateTokens } from '../harness/context/window';
+import { ReplyStreamExtractor } from './stream-extractor';
 import { stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
@@ -164,7 +165,8 @@ export class SessionController {
   readonly runtime: TuiRuntime;
   /** 项目根：/init 生成 SUNSHINE.md 的基准目录（与 runtime 装配同源） */
   private readonly root: string;
-  /** 流式正文已入档水位（done 终稿前缀长度）：安全点切块入档用，新回合/收尾归零 */
+  private readonly extractor = new ReplyStreamExtractor((t) => this.appendLive('reply', t));
+  /** 流式正文已入档水位（done 终稿前缀长度）：安全点切块入档用，reset 回合随 extractor 一并归零 */
   private committedLen = 0;
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
   private planReplyNoArchive = false;
@@ -302,6 +304,7 @@ export class SessionController {
       await this.handleSlash(text);
       return;
     }
+    this.extractor.reset();
         this.committedLen = 0;
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
       this.pushMsg('system', t(`Queued: ${text}`, `已排队：${text}`));
@@ -870,6 +873,7 @@ export class SessionController {
       this.journal?.rotate(newSessionId());
       this.journal?.flush();
       this.runtime.harness.security.clearSessionAllows();
+      this.extractor.reset();
       this.memoryOverride = undefined;
       setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
         this.committedLen = 0;
@@ -1096,8 +1100,7 @@ export class SessionController {
         this.pushMsg('system', String(e.payload?.text ?? e.text ?? ''));
         return;
       case 'token':
-        // chat 主通道正文增量直连（信封协议退役：token 承载纯正文，无协议骨架过滤层）
-        this.appendLive('reply', e.text ?? '');
+        this.extractor.feed(e.text ?? '');
         if (this.state.live?.kind === 'reply') this.flushReply();
         return;
       case 'reasoning':
@@ -1148,6 +1151,7 @@ export class SessionController {
       }
       case 'tool-call': {
         this.closeLive();
+        this.extractor.reset();
         this.committedLen = 0;
         this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call' });
         // spawn 调用关联栈（规格 §4.4）：压行 seq + 基名，成对语义下 spawn tool-result 必然紧跟其后弹出归档
@@ -1175,6 +1179,7 @@ export class SessionController {
       case 'done': {
         const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
         this.closeLive();
+        this.extractor.reset();
         if (this.planReplyNoArchive) {
           // 规划轮终稿不重复入档：计划正文仅以确认卡形态上屏一次
           this.committedLen = 0;
@@ -1200,6 +1205,7 @@ export class SessionController {
       }
       case 'error':
         this.closeLive();
+        this.extractor.reset();
         this.committedLen = 0;
         this.pushMsg('system', t(`Error: ${e.text ?? '(no detail)'}`, `错误：${e.text ?? '（无说明）'}`), { level: 'error' });
         this.refreshMetrics();
