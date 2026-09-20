@@ -283,9 +283,9 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：26 键、槽名规范、密钥零进表（D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：30 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 26, '可配置变量全量语义化：新增/删除键必须同步本表与 TUI-MANUAL 模板');
+  assert.equal(entries.length, 30, '可配置变量全量语义化：新增/删除键必须同步本表与 TUI-MANUAL 模板');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
@@ -297,6 +297,10 @@ test('SEMANTIC_KEYS 全表钉子：26 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['memoryIdleKickMs'], 'SUNSHINEX_MEMORY_IDLE_KICK_MS');
   assert.equal(SEMANTIC_KEYS['stepDigestTotalChars'], 'SUNSHINEX_MEMORY_STEP_DIGEST_TOTAL_CHARS');
   assert.equal(SEMANTIC_KEYS['projectsDir'], 'SUNSHINEX_PROJECTS_DIR', '项目数据根可指定（数据不必落家目录所在盘）');
+  assert.equal(SEMANTIC_KEYS['maxSteps'], 'SUNSHINEX_MAX_STEPS', '长任务终止：Reactor 步数上限');
+  assert.equal(SEMANTIC_KEYS['maxLoopIterations'], 'SUNSHINEX_MAX_LOOP_ITERATIONS', '长任务终止：Loop 修正环轮数上限');
+  assert.equal(SEMANTIC_KEYS['maxGraphNodes'], 'SUNSHINEX_MAX_GRAPH_NODES', '长任务终止：Graph 节点步上限');
+  assert.equal(SEMANTIC_KEYS['reasoningEffort'], 'SUNSHINEX_REASONING_EFFORT', '思考强度语义键（--effort/--model effort 会话参数链）');
   assert.equal(SEMANTIC_KEYS['dataDir'], undefined, 'dataDir 已退役：不隔离的整目录直指口不进用户配置面（只留环境变量给测试与多实例）');
   assert.equal(RETIRED_KEYS['dataDir'] !== undefined, true, '退役键必须留定向提示，不能静默变「未知键」');
 });
