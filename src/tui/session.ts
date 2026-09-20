@@ -303,7 +303,7 @@ export class SessionController {
         this.committedLen = 0;
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
       this.pushMsg('system', t(`Queued: ${text}`, `已排队：${text}`));
-      return;
+      return new Promise<void>((resolve) => this.queue.push({ goal: text, resolve }));
     }
     await this.runTaskFlow(text);
     await this.drainQueue();
