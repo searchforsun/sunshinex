@@ -1,7 +1,6 @@
-import { ContextItem, ExecResult, RouteDecision, SessionEvent } from '../types';
+import { ContextItem, ExecResult, RouteDecision, SessionEvent, StopReason } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
-import { StopReason } from '../types';
 import { Result } from '../result';
 import { ModelAdapter, ModelRouter, ModelTier, ResponseFormat, RouteHint, UsageHooks } from '../model/adapter';
 import { resolveStructuredFormat } from './action-schema';

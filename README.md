@@ -2,9 +2,9 @@
 
 通用 AI Agent 工程化骨架：云端大模型负责推理，本地负责编排、执行、安全与记忆。采用 Harness / Loop / Graph 三层嵌套范式，对标 Claude Code / OpenAI Codex / Hermes。
 
-## 当前架构
+## 架构
 
-核心是**统一运行时主链**——五个环节按数据流串联成闭环，单一数据流、无旁路，而非多套实现逻辑拼接：
+核心是**统一运行时主链**——五个环节按数据流串联成闭环，单一数据流、无旁路：
 
 ```mermaid
 graph LR
@@ -19,70 +19,67 @@ graph LR
 
 ```text
 src/
-  index.ts            # 运行入口（装载 settings.json 配置链）
-  types.ts            # 全局共享类型
-  config.ts           # SUNSHINE.md 解析
-  config/env.ts       # 用户配置目录与 KB 环境解析
-  config/settings.ts  # settings.json 装载（语义键 + env 块，两级只填缺省）
-  result.ts           # Result 统一结果类型
-  runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
-  harness/            # 运行时底座（核心闭环已落地）
-    index.ts          # Harness 门面
-    perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
-    reactor.ts        # 最小闭环引擎（observe→think→act）
-    ledger.ts         # per-run 成本账本（runs/<id> 条目 + 汇总，selfcheck usage 行数据源）
-    skills.ts         # 技能加载与调度（三级根装载 + 清单注入 + skill 工具按需加载）
-    skills/learned.ts # 记忆→技能沉淀（成功 run 沉淀学习技能至全局数据目录，FIFO 上限）
-    skills/learned-extract.ts # learned 语义提炼（lessons-not-logs 结构化提炼，失败回退确定性写盘）
-    memory/           # 记忆（记录/索引单点 + 文本闸门单点 + 提取/整理 + 后台沉淀管线）
-    tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search）
-    mcp/              # MCP 客户端（stdio/http/sse 传输工厂 + 握手身份校验 + external 登记制）
-    subagent.ts       # 子代理执行单元（agents/{id}/agent.md 注册制 + 预设角色 + 内联临时；spawn 工具面 + fork 执行/回写/预算/并发护栏）
-    knowledge/        # 本地向量知识库（chunk 分块 / store 后端注册表 / embed / KnowledgeBase）
-    security/         # guard/policy/modes/sandbox/dryrun/chain
-    context/          # loader（全局 ~/.sunshinex/SUNSHINE.md + 项目 SUNSHINE.md 两层装载）/window/session/compaction/memory-lifecycle
-  loop/               # Loop 引擎（engine + 四类节点 + 三大模板，已实装）
-  graph/              # DAG 编排（engine/agents/nodes/workflow/templates，已实装）
-  model/adapter.ts    # 模型适配 + 三档算力路由
-  storage/            # 本地 JSON 存储底座
-  plugins/loader.ts   # 插件加载
-  cli/                # CLI 执行面（selfcheck / run / pipeline / tui 交互终端入口）
+  cli/       # CLI 执行面（selfcheck / run / pipeline / tui 交互终端）
+  harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子代理、知识库
+  loop/      # Loop 引擎（生成→校验→修正）
+  graph/     # DAG 多角色协作编排
+  model/     # 模型适配 + 三档算力路由
+  config/ storage/ plugins/   # 配置装载、存储底座、插件加载
 ```
 
-分层依赖：`graph → loop → harness → model / storage / plugins`。Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。
+分层依赖：`graph → loop → harness → model / storage / plugins`；Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。文件级结构详见 [CLAUDE.md](CLAUDE.md)。
 
 ## 设计亮点
 
 - **统一主链，而非能力拼接**：Claude Code 的指令分层/路径规则、Codex 的算力路由/多执行后端、Hermes 的持久记忆/自我验证，均被拆解为「能力本质」后映射到主链对应环节（Context / Loop / Tool / Safety / Memory），通过统一接口协同。
 - **单一数据流、无旁路**：上下文只能从 Context 进、动作只能从 Tool 出、执行必经 Safety、记忆只走 Memory，每条验收可证伪（反例即不合格）。
-- **工程纪律**：TypeScript strict、CommonJS、`node --test`、TDD 先行；依赖引入从克制不从封闭——优先 node: 内置，允许引入优秀且必要的第三方依赖（详见 CLAUDE.md 依赖引入原则）；最外层 TUI/GUI 一律开源组件优先，好用易用对标明星产品（详见 CLAUDE.md §12 交互面构建规范）。
+- **工程纪律**：TypeScript strict、CommonJS、`node --test`、TDD 先行；依赖优先 node: 内置、引入优秀第三方不设禁区；TUI/GUI 一律开源组件优先，好用易用对标明星产品（详见 [CLAUDE.md](CLAUDE.md)）。
 - **生产级底座**：项目感知、权限三态（deny→ask→allow）、dry-run、上下文窗口压缩（分块确定性 + checksum）、模型 SDK 可插拔。
 
-## 最终产品形态（v1.0 个人开发者版）
+## 产品形态（v1.0 个人开发者版）
 
-> 目标形态定稿（北极星场景、双交互面、扩展生态、可靠性双口径、非目标）以 [docs/GOAL.md](docs/GOAL.md) 为单一权威，本节为概览。
+> 目标形态以 [docs/GOAL.md](docs/GOAL.md) 为单一权威，本节为概览。
 
-- **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，ink + React 等开源组件构建，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台，开源组件优先）；CLI 专项命令（`chat/edit/test/review/doc/run`）随阶段四扩展。TUI 内 `/goal <目标>` 可直接触发 Loop 标准验收修正环（对标 CLI `run`），目标支持自然语言条件。
+- **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，ink + React 构建，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台，开源组件优先）。TUI 内 `/goal <目标>` 触发标准验收修正环，目标支持自然语言条件。
 - **云本地分工**：任意 OpenAI 协议兼容供应商（`settings.json` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
-- **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发（spawn）。
+- **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发。
 
 ## 快速开始
 
-写入 `~/.sunshinex/settings.json`（全部可配置项模板见 TUI-MANUAL 第三节）后启动：
-
 ```bash
 corepack enable                # 启用 Node 自带 corepack（pnpm 版本由 package.json 钉定）
-pnpm install                   # 安装依赖（.npmrc 已固定 store 到仓内 .pnpm-store）
-pnpm cli tui                   # 构建并启动交互式终端（对标 Claude Code：流式答复/工具审批/待办，manual 缺省）
+pnpm install                   # .npmrc 已把 store 固定到仓内，HOME 只读环境开箱可用
+pnpm cli tui                   # 构建并启动交互式终端（缺省 manual 权限模式）
 ```
 
-模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥；任意 OpenAI 协议兼容供应商）。`pnpm cli` 与 `pnpm start` 启动时自动装载项目级 `.sunshinex/settings.json` 与全局级 `~/.sunshinex/settings.json`（已导出的环境变量优先，不被文件覆盖）。TUI 其他模式：`pnpm cli tui <dir> --mode=manual|dontAsk|plan`；模型档位 `--tier=small|medium|large`（会话内 `/model` 切换，按档模型见 `modelSmall/Medium/Large`）。动作信封缺省走模型原生结构化输出（请求级 `response_format` JSON Schema，端点侧约束输出形态），`structuredOutput` 取 `json_schema|json|off`——`json` 为仅约束合法 JSON 的端点兼容降级档，`off` 关闭后回退纯提示词文本协议；端点不支持该字段报错时属请求失败走 model-error，设 `off` 即恢复原形态。记忆控制面三键（settings.json 语义键，非法值装配期 fail-fast）：`autoMemory`（`on|off`）陈述性记忆总开关（提取/装载/写入闸门/整理四处贯通，会话内 `/memory on|off` 可临时覆盖、不落盘）、`learnedSkills`（`on|off`）程序性记忆（学习技能沉淀）开关、`learnedSkillLimit`（1..1000）学习技能 FIFO 上限（缺省 50）。
+模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥，任意 OpenAI 协议兼容供应商）：
 
-### 全局安装（npm 安装后直接用 `sunshinex` 命令）
+```json
+{
+  "version": 1,
+  "model": "glm-5.3-flash",
+  "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+  "env": { "SUNSHINEX_API_KEY": "sk-…" }
+}
+```
 
-安装来源三选一：
+配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [TUI-MANUAL](TUI-MANUAL.md)；旧 `~/.sunshinex/.env` 已退役——设置键转语义键、密钥原样进 `env` 块。
+
+常用入口：
+
+```bash
+sunshinex                      # 任意目录进终端（= sunshinex tui，需全局安装，见下节）
+sunshinex ../my-project        # 指定项目目录启动（对标 claude <dir>）
+sunshinex --mode=manual|dontAsk|plan   # 权限模式
+sunshinex --language=zh        # 界面语言（缺省 en；提示词恒英文单语不受影响）
+sunshinex <目录> --continue    # 续接该项目最近会话；TUI 内 /resume 列出/恢复更早会话
+pnpm test && pnpm selfcheck    # 全量单测 / 骨架自检
+```
+
+## 全局安装
+
+三选一：
 
 ```bash
 # ① GitHub Release 链接直装（推荐，无需 npm 账号）
@@ -93,64 +90,39 @@ npm install -g sunshinex-agent
 
 # ③ 本地打包安装
 npm pack && npm install -g ./sunshinex-agent-0.2.0.tgz
-
-sunshinex                       # 任意目录直接进入交互式终端（= sunshinex tui，对标 claude 裸命令）
-sunshinex --mode=manual         # 裸命令可直带权限模式（manual | dontAsk | plan）
-sunshinex --language=zh         # 界面语言（缺省 en；zh 全中文界面）。提示词恒英文单语，不受此参数影响
-sunshinex ../my-project         # 指定项目目录启动（= sunshinex tui <dir>，对标 claude <dir>）
-sunshinex ../my-project --continue   # 续接最近一次已保存会话；TUI 内 /resume 列出/恢复更早会话
 ```
 
-> **npm ≥ 12 用 ① 会报 `EALLOWREMOTE`**：npm 12 起 `allow-remote` 缺省 `none`（禁止从 URL 取包，防供应链投毒）。加开关即可：`npm install -g --allow-remote=all <链接>`；或走**不受该限制**的等价路径——先下载再按本地 tarball 装（`allow-file` 缺省仍是 `all`）：`curl -LO <链接> && npm install -g ./sunshinex-agent-0.2.0.tgz`。
+> npm ≥ 12 走 ① 报 `EALLOWREMOTE`（`allow-remote` 缺省禁止从 URL 取包）：加 `--allow-remote=all`，或先 `curl -LO` 下载 tarball 再按 ③ 本地安装（不受该限制）。
 
-### 发版（维护者）
+## 发版（维护者）
 
 ```bash
-scripts/release.mjs                        # 按 package.json 当前版本号发版（如 0.1.0 → tag v0.1.0）
-scripts/release.mjs --bump patch           # 先递增版本号并随发版提交推送：patch 0.1.0→0.1.1（另有 minor/major）
-scripts/release.mjs --version 0.2.0        # 指定版本号发版（写回 package.json，随发版提交推送）
-scripts/release.mjs --dry-run              # 只验证 + 打包预览（不创建 Release、不上传附件）
-scripts/release.mjs --version 0.1.0 --clobber  # 同版本重发：覆盖该 Release 的附件（链接不变）
+scripts/release.mjs                            # 按 package.json 当前版本发版
+scripts/release.mjs --bump patch|minor|major   # 递增版本号，随发版提交推送
+scripts/release.mjs --version 0.2.0            # 指定版本发版（写回 package.json）
+scripts/release.mjs --dry-run                  # 只验证 + 打包预览，不触网不落库
+scripts/release.mjs --version 0.2.0 --clobber  # 同版本重发（覆盖附件，须显式授权）
 ```
 
-版本语义：**默认既不覆盖也不自动递增**——使用 `package.json` 当前版本号；每个版本对应一个新 tag + 新安装链接，旧版本链接永久可回溯、永不覆盖；同版本号重发属覆盖行为，须显式 `--clobber`。上传通道自动探测（按序）：① `gh` CLI（`gh auth login` 一次即可）；② `GITHUB_TOKEN=<pat>`（走 Node 内置 fetch，无 jq 无 curl）；③ **复用 git 凭据助手已存的凭据**（git 协议本身不能上传 Release 附件，第③条复用其凭据走 REST API）。通道决议在脚本开头完成：缺通道立即报错，不会等跑完全量验证与打包之后才失败。
+- 版本语义：默认不覆盖、不递增，每个版本一个新 tag + 新安装链接，旧链接永久可回溯。
+- 前置：工作区干净且已推送；上传 Release 需仓库写权限凭据（classic PAT 勾 `repo`，fine-grained 勾 Contents: Read and write）。
+- 上传通道按序探测：`gh` CLI → `GITHUB_TOKEN` → git 凭据助手已存凭据（REST API 上传附件）；缺通道或权限不足在开头预检即报错。
+- PAT 交给凭据助手（push 与发版共用）：`printf "protocol=https\nhost=github.com\nusername=<用户名>\npassword=<PAT>\n\n" | git credential approve`；换令牌前先 `git credential reject` 清旧。
 
-创建 Release 需要**该仓库的写权限**（classic PAT 勾 `repo`；fine-grained PAT 勾 Contents: Read and write）。注意本仓库是公开的：`git clone`/`git pull` 不需要任何凭据，**「git 能拉」并不能证明凭据有写权限**——凭据助手里的 github 条目可能是别的账号或只读令牌。脚本在开头预检并打印一行 `凭据预检：身份 <login>；<owner/repo> push=yes`；权限不足或凭据失效时当场报错，并给出 HTTP 状态与 GitHub 原文（401=凭据失效、403=权限不足、404=凭据看不到该仓库）。
+## 扩展机制
 
-把带写权限的 PAT 交给 git 凭据助手（此后 push 与发版共用它）：
-
-```bash
-printf "protocol=https\nhost=github.com\nusername=<你的用户名>\npassword=<PAT>\n\n" | git credential approve
-printf "protocol=https\nhost=github.com\n\n" | git credential reject   # 换账号或换令牌前，先清掉旧凭据
-```
-
-也可只在单次发版时用 `GITHUB_TOKEN=<pat>` 覆盖，或装 `gh` CLI 走 `gh auth login`。正式发布要求工作区干净且已推送。
-
-`bin` 入口 `sunshinex` 即编译产物 `dist/cli/index.js`（无子命令时默认进 TUI）。配置对标 Claude Code 用户级惯例：全局 `~/.sunshinex/settings.json`（装一次、跨项目共享），项目级 `.sunshinex/settings.json`（同构、按项目覆盖，已入 .gitignore）；优先级：已导出环境变量 > 项目级 > 全局级 > 内置缺省（后装只填缺省）。完整变量模板见 TUI-MANUAL 第三节，最小示例：
-
-```json
-{
-  "version": 1,
-  "model": "glm-5.3-flash",
-  "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-  "env": {
-    "SUNSHINEX_API_KEY": "sk-…"
-  }
-}
-```
-
-迁移（破坏性变更）：`.env` 文件渠道已退役——旧 `~/.sunshinex/.env` 与项目根 `.env` 均不再被读取；设置类键转语义键（如 `SUNSHINEX_MODEL=x` → `"model": "x"`），密钥原样进 `env` 块（键名不变）。`sunshinex selfcheck / run / pipeline` 等子命令用法不变。
-
-技能目录（标准形态 `{根}/skills/{id}/SKILL.md`，同名就近生效）：项目级兼容链 `.cursor < .codex < .claude < .agents < .sunshinex`（只装载标准形态，其余形态不兼容）> 全局用户级 `~/.sunshinex/skills/`（跨项目共享，`SUNSHINEX_USER_SKILLS_DIR` 可覆盖）> 学习级（任务成功后系统自动沉淀至数据目录 `skills/`，FIFO 上限）。技能清单（名称+描述）随会话冻结点注入提示词，任务匹配时模型经内置 `skill` 工具按 id 自动加载全文，无需手动粘贴技能内容。
+- **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
+- **子代理**：`agents/{id}/agent.md` 注册制；**插件**：`plugins/{id}/plugin.json`；**第三方工具**：经 MCP 协议接入。
 
 ## 文档导航
 
 | 文档 | 内容 |
 |------|------|
 | `docs/GOAL.md` | 目标形态定稿（定位 / 北极星 / 可靠性口径 / 非目标，单一权威） |
-| `docs/Arch-Plan.md` | 架构设计方案与分阶段规划（原 README 全文） |
-| `docs/PLATFORM.md` | 平台兼容性与部署条件（三平台矩阵、exec shell 解析、部署清单） |
-| `docs/ROADMAP.md` | 开发路线图（6 阶段、28 周） |
-| `docs/superpowers/specs/` | 设计 spec（阶段一底座 + 统一运行时主链） |
-| `CLAUDE.md` | AI 协作规范 |
-| `SUNSHINE.md` | 项目业务配置；另有跨工作区全局约定 `~/.sunshinex/SUNSHINE.md`（对标 `~/.claude/CLAUDE.md`，`SUNSHINEX_GLOBAL_SUNSHINE` 覆盖；全局在前、项目在后，两层均支持 `@path` 导入） |
+| `docs/Arch-Plan.md` | 架构设计方案与分阶段规划 |
+| `docs/PLATFORM.md` | 平台兼容性与部署条件（三平台矩阵、部署清单） |
+| `docs/ROADMAP.md` | 开发路线图 |
+| `docs/superpowers/specs/` | 设计 spec 归档 |
+| `TUI-MANUAL.md` | TUI 使用手册（快捷键、权限模式、配置全表） |
+| `CLAUDE.md` | AI 协作规范（完整目录结构 / 编码规范 / 架构约定） |
+| `SUNSHINE.md` | 项目业务配置；另有全局约定 `~/.sunshinex/SUNSHINE.md`（对标 `~/.claude/CLAUDE.md`，`SUNSHINEX_GLOBAL_SUNSHINE` 覆盖） |

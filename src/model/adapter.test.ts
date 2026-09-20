@@ -1,8 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'http';
-import { ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage, extractPromptTokens, extractCacheTokens } from './adapter';
-import { ModelRouter } from './adapter';
+import { ModelRouter, ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage, extractPromptTokens, extractCacheTokens } from './adapter';
 import { ModelTier } from '../types';
 
 test('ScriptedAdapter 依次回放脚本', async () => {

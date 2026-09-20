@@ -1,13 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
-import { ToolBackend } from '../../types';
+import { ExecResult, ToolBackend } from '../../types';
 import { dataDirReal } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
 import { isWithin } from '../../paths';
 import { DryRun } from './dryrun';
-import { ExecResult } from '../../types';
 import { Result } from '../../result';
 
 /** 需要路径边界校验的工具（安全链规范名） */

@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { makeRoleAgent } from './agents';
 import { GraphDeps } from './engine';
-import { GraphContext, GraphTermination } from '../types';
+import { GraphContext } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import { ContextManager } from '../harness/context';
 import { FileStore } from '../storage/adapter';
@@ -34,6 +34,27 @@ function makeDeps(tmp: string, model: ModelAdapter): GraphDeps {
   return { safety, registry, context: new ContextManager(tmp, new FileStore(tmp)), model };
 }
 
+test('makeRoleAgent：剩余 token 换算成 Reactor tokenCap（超额不调模型）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ag2-'));
+  try {
+    const rec = new CountingAdapter(new ScriptedAdapter(['{"done":true,"reply":"不该被调用"}']));
+    const deps = makeDeps(tmp, rec);
+    const node = makeRoleAgent('planner', deps);
+    const ctx: GraphContext = {
+      state: { goal: 'x' },
+      tokensUsed: 0,
+      startedAt: Date.now(),
+      results: {},
+      termination: { maxNodes: 10, maxTokens: 0, timeoutMs: 60_000 },
+    };
+    const out = await node.run(ctx, deps, {});
+    assert.equal(out.status, 'failed');
+    assert.equal(rec.calls, 0, 'tokenCap 应在模型调用前收敛');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('makeRoleAgent：把剩余时间换算成 Reactor deadline（超时不调模型）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ag-'));
   try {
@@ -45,7 +66,7 @@ test('makeRoleAgent：把剩余时间换算成 Reactor deadline（超时不调�
       tokensUsed: 0,
       startedAt: Date.now(),
       results: {},
-      termination: { maxNodes: 10, maxTokens: 200_000, timeoutMs: 0 } as GraphTermination,
+      termination: { maxNodes: 10, maxTokens: 200_000, timeoutMs: 0 },
     };
     const out = await node.run(ctx, deps, {});
     assert.equal(out.status, 'failed');

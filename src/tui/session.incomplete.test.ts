@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SessionController } from './session';
+import { PLAN_TASK_LABEL, SessionController } from './session';
 import { TuiRuntime, RunOutcome } from './runtime';
 import { Harness } from '../harness';
+import type { ModelAdapter } from '../model/adapter';
 
 /**
  * 假运行时：只兑现会话层真正消费的契约。
@@ -21,7 +22,7 @@ function fakeRuntime(harness: Harness, outcome: RunOutcome): TuiRuntime {
   };
   return {
     harness,
-    runTask: async (goal: string) => (goal.includes('numbered step plan') ? planOutcome : outcome),
+    runTask: async (goal: string) => (goal.includes(PLAN_TASK_LABEL) ? planOutcome : outcome),
     runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
   };
 }
@@ -86,6 +87,27 @@ test('会话层：规划项未完成不得报成功（runPlanItems）', async ()
     assert.equal(st.todos[0]?.done, false, '未完成项不得勾选待办');
     assert.equal(st.todos[1]?.done, false, '剩余步骤保持未完成');
     assert.equal(st.status, 'idle');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话层：model-error 只走 error 通道，done 帧不再重复入档终答（D6）', async () => {
+  const tmp = tmpdir('sunshinex-inc4-');
+  try {
+    const boom: ModelAdapter = {
+      provider: 'boom',
+      async complete(): Promise<string> {
+        throw new Error('模型挂了');
+      },
+    };
+    const ctrl = new SessionController({ root: tmp, model: boom });
+    await ctrl.submit('触发模型失败');
+    await ctrl.waitIdle();
+    const s = ctrl.getState();
+    const hits = s.messages.map((m) => m.text).filter((t) => t.includes('模型挂了'));
+    assert.equal(hits.length, 1, '错误文案只允许经 error 通道上屏一次');
+    assert.equal(s.messages.some((m) => m.role === 'assistant'), false, 'done 帧不得把错误文案当终答入档');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

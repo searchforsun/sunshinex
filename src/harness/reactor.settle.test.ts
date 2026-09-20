@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Reactor } from './reactor';
 import type { SettlePayload } from './reactor';
-import { ScriptedAdapter } from '../model/adapter';
+import { ModelAdapter, ScriptedAdapter } from '../model/adapter';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -18,7 +18,6 @@ import { FileStore } from '../storage/adapter';
 import { LearnedSkillStore } from './skills/learned';
 import { parseSkillFrontmatter } from './skills';
 import { Harness } from './index';
-import { ModelAdapter } from '../model/adapter';
 
 function makeReactor(tmp: string, adapter: ModelAdapter, settle?: (r: SettlePayload) => void): { reactor: Reactor; context: ContextManager } {
   const store = new FileStore(path.join(tmp, '.data'));

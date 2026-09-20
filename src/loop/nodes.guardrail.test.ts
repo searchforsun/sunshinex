@@ -97,6 +97,7 @@ test('agentNode → LoopEngine：护栏原因贯通到 LoopRunResult.stopReason'
     assert.equal(r.status, 'failed');
     assert.equal(r.stopReason, 'budget');
     assert.equal(r.iterations, 1);
+    assert.equal(model.calls, 1, '护栏收敛前恰好一次模型调用（calls 计数有真实消费）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

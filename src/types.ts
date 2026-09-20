@@ -114,7 +114,8 @@ export interface GraphRunResult {
   pendingGates: string[];
   reply?: string;
   results: Record<string, GraphNodeOutput>;
-  /** 终止原因（新增）：done=全部完成；其余为护栏越限或 gate 挂起 */
+  /** 终止原因契约（D8）：护栏类终止（deadline/budget/max-steps）必带对应原因；
+   *  gate 挂起与节点失败不携带——undefined = 非护栏越限，下游不得将其解释为护栏触发 */
   stopReason?: StopReason;
 }
 

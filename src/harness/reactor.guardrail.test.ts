@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Reactor, ReactorDeps } from './reactor';
-import { ScriptedAdapter } from '../model/adapter';
+import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { SafetyChain } from './security/chain';
@@ -25,6 +25,16 @@ function makeDeps(tmp: string, model: ReactorDeps['model']): ReactorDeps {
 
 const CALL = '{"tool":"glob","input":{"pattern":"*"},"done":false}';
 const DONE = '{"done":true,"reply":"好了"}';
+
+/** 用量适配器：脚本回放 + 固定 token 用量回传（tokenCap 是累计量纲，判定依赖真实 usage 流动而非夹具恒零） */
+class UsageAdapter implements ModelAdapter {
+  readonly provider = 'usage-scripted';
+  constructor(private inner: ModelAdapter, private perCall: number) {}
+  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+    hooks?.onUsage?.(this.perCall);
+    return this.inner.complete(prompt);
+  }
+}
 
 function withTmp(fn: (tmp: string) => Promise<void>): Promise<void> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-guard-'));
@@ -64,6 +74,19 @@ test('Reactor：tokenCap=0 → 立即按预算收敛（累计量纲，与窗口 
     assert.equal(r.done, false);
     assert.equal(r.stopReason, 'budget');
     assert.equal(r.steps.length, 0);
+  });
+});
+
+test('Reactor：正量用量累计触达 tokenCap（D7 对照：换回忽略 usage 的实现必红）', async () => {
+  await withTmp(async (tmp) => {
+    const model = new UsageAdapter(new ScriptedAdapter([CALL, DONE]), 1);
+    const r = await new Reactor(makeDeps(tmp, model)).run(
+      { goal: '每步 1 token' },
+      { tokenCap: 1 },
+    );
+    assert.equal(r.done, false);
+    assert.equal(r.stopReason, 'budget');
+    assert.equal(r.steps.length, 1, '第 1 步用满 1 token 后，第 2 步前按预算收敛');
   });
 });
 

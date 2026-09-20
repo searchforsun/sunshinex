@@ -22,14 +22,9 @@ test('StatusBar：显示模型名', () => {
   assert.match(f, /glm-5\.3-flash/, '状态栏应显示模型名');
 });
 
-test('StatusBar：turnStartedAt>0 显示本轮耗时', () => {
-  const f = frameOf(metrics({ turnStartedAt: Date.now() - 8300 }), 'm');
-  assert.match(f, /\d+(\.\d+)?s/, '状态栏应显示耗时');
-});
-
-test('StatusBar：turnStartedAt=0 不显示耗时', () => {
-  const f = frameOf(metrics({ turnStartedAt: 0 }), 'm');
-  assert.ok(!f.match(/\ds\b/), '未运行不应显示耗时');
+test('StatusBar：不显示耗时（耗时只在活动行展示，状态栏不冗余重复）', () => {
+  assert.ok(!frameOf(metrics({ turnStartedAt: Date.now() - 8300 }), 'm').match(/\d+(\.\d+)?s\b/), '运行中状态栏不显示耗时');
+  assert.ok(!frameOf(metrics({ turnStartedAt: 0 }), 'm').match(/\d+(\.\d+)?s\b/), '空闲状态栏不显示耗时');
 });
 
 test('StatusBar：无 model 不显示模型段', () => {

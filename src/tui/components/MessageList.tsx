@@ -96,7 +96,12 @@ const MessageRow = React.memo(function MessageRow({
     );
   }
   if (item.role === 'assistant') return <MarkdownText text={item.text} columns={columns} />;
-  if (item.role === 'system') return <Text color="yellow">! {item.text}</Text>;
+  // system 行按级别渲染（对标 Claude Code：信息类为辅助暗色，仅警告/失败用醒目色）
+  if (item.role === 'system') {
+    if (item.level === 'error') return <Text color="red">✗ {item.text}</Text>;
+    if (item.level === 'warn') return <Text color="yellow">! {item.text}</Text>;
+    return <Text dimColor>{item.text}</Text>;
+  }
   if (item.role === 'thinking') return <ThinkingRow item={item} collapsed={collapsed} />;
   if (item.role === 'step') return <Text>▶ {item.text}</Text>;
   return <ToolRow item={item} columns={columns} collapsed={collapsed} />;

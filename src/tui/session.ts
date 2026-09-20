@@ -31,6 +31,8 @@ export interface ChatItem {
   kind?: 'call' | 'result';
   /** tool 结果行成功标记 */
   ok?: boolean;
+  /** system 消息级别：info 状态回执（缺省）/ warn 警示 / error 失败——渲染层据此选色 */
+  level?: 'info' | 'warn' | 'error';
   /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation（入档后折叠打印，供后续 transcript 视图） */
   detail?: string;
 }
@@ -124,11 +126,19 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 }
 
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
-function slashHelp(): string {
-  return t(
-    'Commands: /init analyze & write SUNSHINE.md · /goal run the verify-fix loop until the condition is met: /goal <goal> · /new new session (soft reset) · /resume resume a saved session: /resume [n|id] · /compact compress context: /compact [focus] · /memory persistent memory: /memory [add <text> | rm <slug> | gc | on | off] · /status session & ledger summary · /model model tier (small|medium|large) · /help show this list',
-    '命令：/init 分析生成/完善 SUNSHINE.md · /goal 运行完整验收修正环：/goal <目标> · /new 新会话（软重置） · /resume 列出/恢复已保存会话：/resume [n|id] · /compact 压缩上下文：/compact [关注点] · /memory 持久记忆：/memory [add <内容> | rm <slug> | gc | on | off] · /status 会话与账本摘要 · /model 模型档位（small|medium|large） · /help 本清单',
-  );
+function slashHelp(): string[] {
+  return [
+    t('Commands:', '命令：'),
+    t('  /init     analyze & write SUNSHINE.md', '  /init     分析生成/完善 SUNSHINE.md'),
+    t('  /goal     run the verify-fix loop until the condition is met: /goal <goal>', '  /goal     运行完整验收修正环：/goal <目标>'),
+    t('  /new      new session (soft reset)', '  /new      新会话（软重置）'),
+    t('  /resume   resume a saved session: /resume [n|id]', '  /resume   列出/恢复已保存会话：/resume [n|id]'),
+    t('  /compact  compress context: /compact [focus]', '  /compact  压缩上下文：/compact [关注点]'),
+    t('  /memory   persistent memory: /memory [add <text> | rm <slug> | gc | on | off]', '  /memory   持久记忆：/memory [add <内容> | rm <slug> | gc | on | off]'),
+    t('  /status   session & ledger summary', '  /status   会话与账本摘要'),
+    t('  /model    model tier (small|medium|large)', '  /model    模型档位（small|medium|large）'),
+    t('  /help     show this list', '  /help     本清单'),
+  ];
 }
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
@@ -137,6 +147,9 @@ function slashHelp(): string {
 export function shouldPumpOnIdleBeat(status: string, hasPendingApproval: boolean, pending: number): boolean {
   return status === 'idle' && !hasPendingApproval && pending > 0;
 }
+
+/** /plan 规划轮内部任务标签：规划提示词与 runInternalTask label 共用（D10：防两处漂移） */
+export const PLAN_TASK_LABEL = 'Produce a numbered step plan';
 
 export class SessionController {
   readonly runtime: TuiRuntime;
@@ -322,7 +335,7 @@ export class SessionController {
       this.pushMsg('system', t(
         `Session constants changed since the plan was drafted; the latest version applies:\n${notices.join('\n')}`,
         `计划起草后会话常量已变化，执行以最新为准：\n${notices.join('\n')}`,
-      ));
+      ), { level: 'warn' });
     }
     await this.runPlanItems(pending.items);
   }
@@ -344,14 +357,14 @@ export class SessionController {
       // 且 loop → graph 会形成反向依赖；角色框定改为提示词级（依赖方向保持 graph → loop → harness）。
       // 规划段 fork 隔离：verbose 规划提示词与规划结论不进会话链（§11 边界登记——链只承载任务与执行轨迹），
       // 执行段（runPlanItems）才逐条指令行入链；角色框定保持提示词级（依赖方向 graph → loop → harness）
-      const verbosePlanningPrompt = `Produce a numbered step plan for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`;
-      const r = await this.runInternalTask(verbosePlanningPrompt, 'Produce a numbered step plan');
+      const verbosePlanningPrompt = `${PLAN_TASK_LABEL} for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`;
+      const r = await this.runInternalTask(verbosePlanningPrompt, PLAN_TASK_LABEL);
       if (!r.done) {
         throw new Error(describeIncomplete(r.stopReason) || t('Planning incomplete', '规划未完成'));
       }
       planText = r.reply ?? '';
     } catch (e) {
-      this.pushMsg('system', t('Planning failed: ', '规划失败：') + (e instanceof Error ? e.message : String(e)));
+      this.pushMsg('system', t('Planning failed: ', '规划失败：') + (e instanceof Error ? e.message : String(e)), { level: 'error' });
       this.closeTask();
       return;
     } finally {
@@ -363,7 +376,7 @@ export class SessionController {
       .map((l) => l.replace(/^\d+[.、]\s*/, '').trim())
       .filter((l) => l.length > 0);
     if (items.length === 0) {
-      this.pushMsg('system', t('No numbered steps produced (each line must be "1. xxx"), cancelled', '规划未产出编号步骤（每行需形如「1. xxx」），已取消'));
+      this.pushMsg('system', t('No numbered steps produced (each line must be "1. xxx"), cancelled', '规划未产出编号步骤（每行需形如「1. xxx」），已取消'), { level: 'warn' });
       this.closeTask();
       return;
     }
@@ -397,9 +410,8 @@ export class SessionController {
       try {
         const r: RunOutcome = await this.runtime.runTask(items[i], this.state.model ? { tier: this.state.model } : undefined);
         if (!r.done) {
-          const note = describeIncomplete(r.stopReason);
-          if (note.length > 0) this.pushMsg('system', note);
-          this.pushMsg('system', t(`Step incomplete: ${items[i]}; remaining steps paused`, `步骤未完成：${items[i]}；剩余步骤暂停`));
+          this.reportIncomplete(r, 'warn');
+          this.pushMsg('system', t(`Step incomplete: ${items[i]}; remaining steps paused`, `步骤未完成：${items[i]}；剩余步骤暂停`), { level: 'warn' });
           break;
         }
         const todos = [...this.state.todos];
@@ -408,7 +420,7 @@ export class SessionController {
         // 步骤全量轨迹与结论行已由 reactor 会话作用域自动入链（fork 模型：不再只留结论行）
         // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
-        this.pushMsg('system', t('Step failed: ' + items[i] + ' (' + (e instanceof Error ? e.message : String(e)) + '); remaining steps paused', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停'));
+        this.pushMsg('system', t('Step failed: ' + items[i] + ' (' + (e instanceof Error ? e.message : String(e)) + '); remaining steps paused', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停'), { level: 'error' });
         break;
       }
     }
@@ -453,7 +465,7 @@ export class SessionController {
     const id = readActivePointer(dataDir);
     const meta = id ? listSessions(dataDir).find((s) => s.id === id) : undefined;
     if (!id || !meta) {
-      this.pushMsg('system', t('No saved session to continue; started a fresh one', '没有可续接的已保存会话，已开启新会话'));
+      this.pushMsg('system', t('No saved session to continue; started a fresh one', '没有可续接的已保存会话，已开启新会话'), { level: 'warn' });
       return;
     }
     this.restoreFromSession(meta);
@@ -465,7 +477,7 @@ export class SessionController {
     const parsed = parseJournalFile(meta.file);
     const replay = reduceJournal(parsed.events);
     if (replay.version !== 1) {
-      this.pushMsg('system', t('Cannot restore this session: unsupported journal version', '无法恢复该会话：日志版本不受支持'));
+      this.pushMsg('system', t('Cannot restore this session: unsupported journal version', '无法恢复该会话：日志版本不受支持'), { level: 'error' });
       return;
     }
     // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
@@ -486,7 +498,7 @@ export class SessionController {
     this.ensureJournal().attach(meta.id);
     // 横幅在状态注入后上屏（注入前 push 会被 messages 覆盖吞掉）；撕裂场景合并提示，保持「消息 + 单条提示行」
     if (parsed.truncated) {
-      this.pushMsg('system', t('Session restored: ' + meta.id + ' — journal tail was truncated (previous crash?); restored up to the last complete event', '已恢复会话：' + meta.id + '（日志尾部截断，此前可能异常退出；已恢复到最后一条完整事件）'));
+      this.pushMsg('system', t('Session restored: ' + meta.id + ' — journal tail was truncated (previous crash?); restored up to the last complete event', '已恢复会话：' + meta.id + '（日志尾部截断，此前可能异常退出；已恢复到最后一条完整事件）'), { level: 'warn' });
     } else {
       this.pushMsg('system', t('Session restored: ' + meta.id, '已恢复会话：' + meta.id));
     }
@@ -524,6 +536,12 @@ export class SessionController {
     });
   }
 
+  /** 未完成终止提示上屏（D10 收敛）：describeIncomplete 非空即以 system 消息推送；done/model-error 为空串天然跳过 */
+  private reportIncomplete(r: RunOutcome, level?: 'warn'): void {
+    const note = describeIncomplete(r.stopReason);
+    if (note.length > 0) this.pushMsg('system', note, level ? { level } : undefined);
+  }
+
   private async runTaskFlow(goal: string, opts?: { forkInstruction?: string }): Promise<void> {
     this.state = {
       ...this.state,
@@ -544,19 +562,17 @@ export class SessionController {
           seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: opts.forkInstruction }],
           ...(this.state.model ? { tier: this.state.model } : {}),
         });
-        const noteF = describeIncomplete(r.stopReason);
-        if (!r.done && noteF.length > 0) this.pushMsg('system', noteF);
+        this.reportIncomplete(r, 'warn');
         this.closeTask();
         return;
       }
       // 主链任务（§11 只增不改）：当前指令行尾追进链，reactor 会话作用域收束自动回写全量步骤与结论/补丁行
       ctx.appendInstructionLine(`Current instruction: ${goal}`);
       const r = await this.runtime.runTask(goal, this.state.model ? { tier: this.state.model } : undefined);
-      const note = describeIncomplete(r.stopReason);
-      if (!r.done && note.length > 0) this.pushMsg('system', note);
+      this.reportIncomplete(r, 'warn');
       this.closeTask();
     } catch (e) {
-      this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`));
+      this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`), { level: 'error' });
       this.state = { ...this.state, status: 'error' };
       this.notify();
       return; // error 态保留计时现场（sticky），下次提交进 running 时重置
@@ -604,7 +620,7 @@ export class SessionController {
       }
       this.closeTask();
     } catch (e) {
-      this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`));
+      this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`), { level: 'error' });
       this.state = { ...this.state, status: 'error' };
       this.notify();
       return;
@@ -631,7 +647,7 @@ export class SessionController {
     }
     const tier = parseTier(rest);
     if (!tier) {
-      this.pushMsg('system', t('Usage: /model small|medium|large', '用法：/model small|medium|large'));
+      this.pushMsg('system', t('Usage: /model small|medium|large', '用法：/model small|medium|large'), { level: 'warn' });
       return;
     }
     this.state = { ...this.state, model: tier };
@@ -642,14 +658,14 @@ export class SessionController {
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
     if (cmd === '/help') {
-      this.pushMsg('system', slashHelp());
+      this.pushMsg('system', slashHelp().join('\n'));
       return;
     }
     if (cmd === '/init') {
       // Claude Code /init 同款模型驱动：发起真实分析任务，模型自行 read/ls/grep 感知代码库并 write 生成/完善 SUNSHINE.md；
       // 写盘经安全链（manual 模式经 asker 审批），装载走 ContextLoader 每轮 assemble 从磁盘读取，写盘即对后续轮次生效
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', t('A task is running; /init unavailable now', '当前有任务进行中，暂不能执行 /init'));
+        this.pushMsg('system', t('A task is running; /init unavailable now', '当前有任务进行中，暂不能执行 /init'), { level: 'warn' });
         return;
       }
       const p = path.join(this.root, 'SUNSHINE.md');
@@ -664,7 +680,7 @@ export class SessionController {
         this.runtime.harness.context.reloadContext();
         this.pushMsg('system', existed ? t('SUNSHINE.md written (updated); reloaded into session context', '已写入 SUNSHINE.md（完善）：已重载入会话上下文') : t('SUNSHINE.md written (created); loaded into session context', '已写入 SUNSHINE.md（新建）：已载入会话上下文'));
       } else {
-        this.pushMsg('system', t('SUNSHINE.md not written: task incomplete, rerun /init', 'SUNSHINE.md 未生成：任务未完成，可重新执行 /init'));
+        this.pushMsg('system', t('SUNSHINE.md not written: task incomplete, rerun /init', 'SUNSHINE.md 未生成：任务未完成，可重新执行 /init'), { level: 'warn' });
       }
       return;
     }
@@ -712,13 +728,13 @@ export class SessionController {
     if (cmd === '/resume') {
       // 恢复入口（规格 §6）：无参列表（mtime 降序 + 首条输入摘要）；<序号|id> 恢复目标会话
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'));
+        this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'), { level: 'warn' });
         return;
       }
       const dataDir = resolveDataDir(this.root);
       const sessions = listSessions(dataDir);
       if (sessions.length === 0) {
-        this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'));
+        this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'), { level: 'warn' });
         return;
       }
       const arg = text.trim().split(/\s+/).slice(1).join(' ');
@@ -730,7 +746,7 @@ export class SessionController {
       const num = Number.parseInt(arg, 10);
       const pick = Number.isInteger(num) && num >= 1 && num <= sessions.length ? sessions[num - 1] : sessions.find((s) => s.id === arg);
       if (!pick) {
-        this.pushMsg('system', t('No such session: ' + arg, '没有这个会话：' + arg));
+        this.pushMsg('system', t('No such session: ' + arg, '没有这个会话：' + arg), { level: 'warn' });
         return;
       }
       this.restoreFromSession(pick);
@@ -757,12 +773,12 @@ export class SessionController {
     }
     if (cmd === '/plan') {
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', t('A task is running; planning unavailable now', '当前有任务进行中，暂不能开始规划'));
+        this.pushMsg('system', t('A task is running; planning unavailable now', '当前有任务进行中，暂不能开始规划'), { level: 'warn' });
         return;
       }
       const goal = text.slice(cmd.length).trim();
       if (!goal) {
-        this.pushMsg('system', t('Usage: /plan <goal> — plan numbered steps first, confirm, then execute step by step', '用法：/plan <目标>——先规划产出编号步骤，确认后逐项执行'));
+        this.pushMsg('system', t('Usage: /plan <goal> — plan numbered steps first, confirm, then execute step by step', '用法：/plan <目标>——先规划产出编号步骤，确认后逐项执行'), { level: 'warn' });
         return;
       }
       await this.startPlanFlow(goal);
@@ -770,7 +786,7 @@ export class SessionController {
     }
     if (cmd === '/goal') {
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', t('A task is running; /goal unavailable now', '当前有任务进行中，暂不能执行 /goal'));
+        this.pushMsg('system', t('A task is running; /goal unavailable now', '当前有任务进行中，暂不能执行 /goal'), { level: 'warn' });
         return;
       }
       // 模板为内部装配机制（规格 2026-09-16-goal-template D1/D5）：/goal 后一切即目标文本，恒走缺省标准环
@@ -779,7 +795,7 @@ export class SessionController {
         this.pushMsg('system', t(
           'Usage: /goal <goal> — runs the verify-fix loop until your condition is met; state the goal as one measurable end state (e.g. /goal all tests in src/auth pass), or embed multiple criteria inline (验收标准：t1=…)',
           '用法：/goal <目标>——运行验收修正环，直至目标条件满足；目标用一句可度量的终态描述（如 /goal src/auth 测试全绿），复杂目标可内嵌多判据（验收标准：t1=…）',
-        ));
+        ), { level: 'warn' });
         return;
       }
       await this.runGoalFlow(goal);
@@ -788,7 +804,7 @@ export class SessionController {
     if (cmd === '/memory') {
       // 手动通道（规格 §6）：无参列索引 / add（走与自动提取同一写时闸门）/ rm / gc（显式整理入口，阈值外 force）
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', t('A task is running; /memory unavailable now', '当前有任务进行中，暂不能执行 /memory'));
+        this.pushMsg('system', t('A task is running; /memory unavailable now', '当前有任务进行中，暂不能执行 /memory'), { level: 'warn' });
         return;
       }
       const store = new MemoryStore(this.root);
@@ -815,52 +831,54 @@ export class SessionController {
       const rest = parts.slice(1).join(' ').trim();
       if (sub === 'add') {
         if (!rest) {
-          this.pushMsg('system', t('Usage: /memory add <text>', '用法：/memory add <内容>'));
+          this.pushMsg('system', t('Usage: /memory add <text>', '用法：/memory add <内容>'), { level: 'warn' });
           return;
         }
         const flagged = scanMemoryText(rest);
         if (flagged) {
-          this.pushMsg('system', t(`Rejected: session-scoped or unsafe content (${flagged}); not persisted`, `已拒绝：会话性内容或含注入特征（${flagged}），不落盘`));
+          this.pushMsg('system', t(`Rejected: session-scoped or unsafe content (${flagged}); not persisted`, `已拒绝：会话性内容或含注入特征（${flagged}），不落盘`), { level: 'warn' });
           return;
         }
         const r = store.add({ type: 'project', description: rest, body: rest });
         if (r.ok) {
           this.pushMsg('system', t(`Added memory: ${r.value.slug} (applies from the next session or refresh point)`, `已添加记忆：${r.value.slug}（下个会话或刷新点生效）`));
         } else if (r.error.code === 'MEMORY_DUPLICATE') {
-          this.pushMsg('system', t(`Duplicate memory rejected: ${rest}`, `重复记忆已拒绝：${rest}`));
+          this.pushMsg('system', t(`Duplicate memory rejected: ${rest}`, `重复记忆已拒绝：${rest}`), { level: 'warn' });
         } else {
-          this.pushMsg('system', r.error.message);
+          this.pushMsg('system', r.error.message, { level: 'error' });
         }
         return;
       }
       if (sub === 'rm') {
         if (!rest) {
-          this.pushMsg('system', t('Usage: /memory rm <slug>', '用法：/memory rm <slug>'));
+          this.pushMsg('system', t('Usage: /memory rm <slug>', '用法：/memory rm <slug>'), { level: 'warn' });
           return;
         }
         const r = store.remove(rest);
-        this.pushMsg('system', r.ok
-          ? t(`Removed memory: ${rest}`, `已删除记忆：${rest}`)
-          : t(`No such memory: ${rest}`, `不存在这个记忆：${rest}`));
+        if (r.ok) {
+          this.pushMsg('system', t(`Removed memory: ${rest}`, `已删除记忆：${rest}`));
+        } else {
+          this.pushMsg('system', t(`No such memory: ${rest}`, `不存在这个记忆：${rest}`), { level: 'warn' });
+        }
         return;
       }
       if (sub === 'gc') {
         if (!isModelSummarizer(this.runtime.harness.model)) {
-          this.pushMsg('system', t('Consolidation requires a real model (current channel is stub/scripted)', '整理需要真实模型（当前通道为 stub/scripted）'));
+          this.pushMsg('system', t('Consolidation requires a real model (current channel is stub/scripted)', '整理需要真实模型（当前通道为 stub/scripted）'), { level: 'warn' });
           return;
         }
         if (store.count() === 0) {
-          this.pushMsg('system', t('No memories yet — nothing to consolidate', '暂无记忆——没有可整理的内容'));
+          this.pushMsg('system', t('No memories yet — nothing to consolidate', '暂无记忆——没有可整理的内容'), { level: 'warn' });
           return;
         }
         await consolidateMemory({ model: this.runtime.harness.model, root: this.root, force: true });
         this.pushMsg('system', t(`Consolidated persistent memory: ${store.count()} records`, `持久记忆已整理：${store.count()} 条`));
         return;
       }
-      this.pushMsg('system', t(`Unknown /memory subcommand: ${sub}`, `未知 /memory 子命令：${sub}`));
+      this.pushMsg('system', t(`Unknown /memory subcommand: ${sub}`, `未知 /memory 子命令：${sub}`), { level: 'warn' });
       return;
     }
-    this.pushMsg('system', t(`Unknown command: ${cmd} (/help for list)`, `未知命令：${cmd}（/help 查看清单）`));
+    this.pushMsg('system', t(`Unknown command: ${cmd} (/help for list)`, `未知命令：${cmd}（/help 查看清单）`), { level: 'warn' });
   }
 
   private onEvent(e: SessionEvent): void {
@@ -901,7 +919,7 @@ export class SessionController {
           const firstCache = typeof e.payload?.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : 0;
           const firstPrompt = typeof e.payload?.promptTotal === 'number' ? e.payload.promptTotal : 0;
           if (firstCache === 0 && firstPrompt >= 50_000) {
-            this.pushMsg('system', t('Round-first prompt cache miss (0 cached): the endpoint cache may have expired (TTL); correctness is not affected', '轮首缓存未命中（cached=0）：端点缓存可能已过期（TTL），不影响正确性'));
+            this.pushMsg('system', t('Round-first prompt cache miss (0 cached): the endpoint cache may have expired (TTL); correctness is not affected', '轮首缓存未命中（cached=0）：端点缓存可能已过期（TTL），不影响正确性'), { level: 'warn' });
           }
         }
         // per-run 值叠加任务级基线：/plan 逐步执行本轮持续累计（步骤切换不重置）
@@ -962,6 +980,12 @@ export class SessionController {
           this.refreshMetrics();
           return;
         }
+        if (e.payload?.stopReason === 'model-error') {
+          // D6：模型失败已由 error 通道上屏，done 收尾帧携带的同一错误文案不再以 assistant 终答身份重复入档
+          this.committedLen = 0;
+          this.refreshMetrics();
+          return;
+        }
         const finalText = e.text && e.text.length > 0 ? e.text : draft;
         // 流式切块已入档的部分按前缀去重；终稿兜底补齐尾段（含非流式整段场景），水位归零
         let tail = finalText;
@@ -977,7 +1001,7 @@ export class SessionController {
         this.closeLive();
         this.extractor.reset();
         this.committedLen = 0;
-        this.pushMsg('system', t(`Error: ${e.text ?? '(no detail)'}`, `错误：${e.text ?? '（无说明）'}`));
+        this.pushMsg('system', t(`Error: ${e.text ?? '(no detail)'}`, `错误：${e.text ?? '（无说明）'}`), { level: 'error' });
         this.refreshMetrics();
         return;
       default:
@@ -998,7 +1022,7 @@ export class SessionController {
       : t('Persistent memory: OFF', '持久记忆：关闭');
   }
 
-  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'detail'>>): void {
+  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'detail' | 'level'>>): void {
     const item: ChatItem = { role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) };
     this.state = { ...this.state, messages: [...this.state.messages, item] };
     // 消息流入志（单一挂钩点：所有入档消息都经 pushMsg）；恢复注入不经此处（零重复入志）

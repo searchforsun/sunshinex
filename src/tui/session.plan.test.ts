@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SessionController } from './session';
+import { PLAN_TASK_LABEL, SessionController } from './session';
 import { getLanguage, setLanguage } from '../i18n';
 import { createRuntime } from './runtime';
 import { ScriptedAdapter } from '../model/adapter';
@@ -193,7 +193,7 @@ test('会话层：/plan 规划段经主链——探针证明不走 graph 角色�
       !/你的角色：规划师|Your role: Planner/.test(c.goal),
       '规划段不得再走 graph 角色节点框定（旧形态 goal 含角色行；角色框定已降为提示词级，且角色行为英文单语）',
     );
-    assert.match(c.goal, /numbered step plan/, '规划指令应经主链下发（主链提示词级角色框定）');
+    assert.ok(c.goal.includes(PLAN_TASK_LABEL), '规划指令应经主链下发（主链提示词级角色框定）');
     assert.equal(c.opts?.maxSteps, undefined, '会话层不再硬填 maxSteps:6（旧形态为 6）');
     const ttl = c.opts?.deadlineAt !== undefined ? c.opts.deadlineAt - c.at : NaN;
     assert.ok(
@@ -343,7 +343,7 @@ test('规划轮不进链：verbose 提示词与规划结论零主链回写', asy
     });
     await ctrl.submit('/plan 做一件事');
     const text = ctrl.context.chainView().map((s) => s.observation).join('\n');
-    assert.ok(!text.includes('Produce a numbered step plan'), '规划轮 verbose 提示词不得入链');
+    assert.ok(!text.includes(PLAN_TASK_LABEL), '规划轮 verbose 提示词不得入链');
     assert.ok(!ctrl.context.chainView().some((s) => s.action === 'reply'), '规划轮结论行不回主链（fork 隔离）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

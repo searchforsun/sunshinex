@@ -97,6 +97,10 @@ test('会话控制器：斜杠命令 /help /status 产出 system 消息且不触
     await ctrl.submit('/status');
     const s = ctrl.getState();
     assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('/new')), '/help 应列命令清单');
+    const help = s.messages.find((m) => m.role === 'system' && m.text.includes('/goal'));
+    assert.ok(help, '/help 应产出帮助消息');
+    assert.ok(help.text.split('\n').filter((l) => l.trimStart().startsWith('/')).length >= 9, '帮助应每命令一行');
+    assert.ok(!help.level, '帮助属信息级 system 消息（无 warn/error 标注）');
     assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('Ledger:')), '/status 应含账本摘要');
     assert.equal(ctrl.runtime.harness.ledger.summary().runs, runsBefore, '斜杠命令不应落 run 账');
     assert.equal(s.status, 'idle');
