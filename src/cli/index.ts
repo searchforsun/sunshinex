@@ -51,49 +51,69 @@ export function parseArgs(argv: string[]): CliArgs {
       positional.push(a);
     }
   }
-  // 裸命令兜底：`sunshinex`（无子命令）直接进入交互式终端（= sunshinex tui，对标 claude 裸命令），
-  // `sunshinex --mode=manual` 同样落 tui；显式 help 子命令与 --help flag 不受影响（见 main 拦截）
-  return { command: positional.shift() ?? 'tui', positional, flags };
+  // 裸命令兜底：`sunshinex`（无任何参数）落到空命令，由 resolveInvocation 归一为 tui（当前工作区启动）
+  return { command: positional.shift() ?? '', positional, flags };
 }
 
-/** 已知子命令清单：首个 positional 命中其一按子命令分发，否则视为项目目录直进 TUI */
-const COMMANDS = ['selfcheck', 'run', 'pipeline', 'tui', 'help'];
+/** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'help'];
+
+/** 路径形态判据（规格 §6.2）：绝对路径（POSIX `/` 前缀、Windows 盘符）、`.`/`..` 显式相对形态、或含路径分隔符 */
+export function isPathForm(arg: string): boolean {
+  if (!arg) return false;
+  if (/^(?:[A-Za-z]:)?[\\/]/.test(arg)) return true;
+  if (arg === '.' || arg === '..' || arg.startsWith('./') || arg.startsWith('../') || arg.startsWith('.\\') || arg.startsWith('..\\')) return true;
+  return /[/\\]/.test(arg);
+}
 
 /**
- * 调用形态归一：非已知子命令的首个 positional 视为项目目录，归一为 tui 调用（对标 claude <dir>）。
- * `sunshinex ../my-project --mode=plan` 与 `sunshinex tui ../my-project --mode=plan` 归一后完全同构；
- * 已知子命令（含拼错的「疑似子命令」之外的一切目录路径）原样透传。
+ * 目录来源统一单点（顶层与 run/pipeline 同判据，规格 §6.2）：--workdir flag 优先于位置路径（同传登记 ignored）；
+ * 路径形态判据外的一切裸词报 unrecognized（调用方报「无法识别命令」并不启动）。
+ */
+export function resolveDirArg(args: CliArgs): { dir?: string; ignored?: string; unrecognized?: string } {
+  const positional = args.positional[0];
+  const flagDir = typeof args.flags.workdir === 'string' && args.flags.workdir ? args.flags.workdir : undefined;
+  if (positional && flagDir) return { dir: flagDir, ignored: positional };
+  if (flagDir) return { dir: flagDir };
+  if (!positional) return {};
+  if (isPathForm(positional)) return { dir: positional };
+  return { unrecognized: positional };
+}
+
+/**
+ * 调用形态归一（规格 §6.2）：裸命令（无位置参数）= 当前工作区 TUI；已知子命令原样透传；
+ * 路径形态首个 positional = 指定目录 TUI；其余裸词报 unrecognized（main 据此 stderr 透出并退出非零）。
  */
 export function resolveInvocation(args: CliArgs): CliArgs {
+  if (args.command === '') return { ...args, command: 'tui' };
   if (COMMANDS.includes(args.command)) return args;
-  return { command: 'tui', positional: [args.command, ...args.positional], flags: args.flags };
+  if (isPathForm(args.command)) return { command: 'tui', positional: [args.command, ...args.positional], flags: args.flags };
+  return { ...args, command: 'unrecognized' };
 }
 
 /** CLI 帮助（运行期求值：语言随 --language 设定，禁止模块级 t() 冻结）——导出供 USAGE 断言用例消费 */
 export function usageText(): string {
   return t(
     `SunshineX CLI
-  sunshinex                               enter the interactive session terminal directly (= sunshinex tui, manual default)
-  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large] [--effort=none|minimal|low|medium|high|xhigh|max]
-                                         first arg that is not a subcommand is treated as the project dir (= sunshinex tui <dir>); --language UI & prompt language (default en); --effort default reasoning effort (endpoint-verified, fallback per ladder)
+  sunshinex                               enter the interactive session terminal in the current workspace (default)
+  sunshinex [dir]                         start in the given directory (path-form arg: /abs, ./x, ../x, a/b; or --workdir=<dir>)
+  sunshinex help                          show this usage (--help / -h)
   sunshinex selfcheck                     skeleton self-check (perception/tools/security/context/Loop/Graph)
-  sunshinex run <dir> --goal="..."        run the standard verify-fix loop on the dir (goal via --goal)
-  sunshinex run|tui <dir> --worktree[=<name>]  start inside an isolated git worktree (bare flag auto-names wt-xxxx; --continue is mutually exclusive)
-  sunshinex pipeline <dir> [--yes]        five-node full pipeline with interactive gate approvals (--yes auto-approves)
-  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large] [--effort=...]
-                              interactive session terminal (streaming/approvals/todos, manual default)
-  sunshinex tui [dir] --continue           resume the most recent saved session (TUI; /resume lists earlier ones)`,
+  sunshinex run <dir> --goal="..."        run the standard verify-fix loop (exit code 1 unless done)
+  sunshinex pipeline <dir> --goal="..." [--yes]  five-node pipeline with gate approvals (--yes auto-approves)
+  flags: --mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
+         --continue (TUI, resume last session)  --worktree[=<name>]  --workdir=<dir>
+  unrecognized bare words exit with an error; run sunshinex help for usage`,
     `SunshineX CLI
-  sunshinex                               直接进入交互式会话终端（= sunshinex tui，manual 缺省）
-  sunshinex [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large] [--effort=none|minimal|low|medium|high|xhigh|max]
-                                         首参非子命令时视为项目目录直进终端（= sunshinex tui <dir>）；--language 界面与提示词语言（缺省 en）；--effort 缺省思考强度（端点实测校准，按阶梯自动降级）
+  sunshinex                               当前工作区启动交互式会话终端（缺省形态）
+  sunshinex [dir]                         指定目录启动（路径形态参数：/abs、./x、../x、a/b；或 --workdir=<目录>）
+  sunshinex help                          显示用法（--help / -h 同义）
   sunshinex selfcheck                     骨架自检（感知/工具/安全/上下文/Loop/Graph 就绪）
-  sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（goal 走交互或 --goal）
-  sunshinex run|tui <dir> --worktree[=<name>]  在隔离 git worktree 内启动（裸旗标自动命名 wt-xxxx；与 --continue 互斥）
-  sunshinex pipeline <dir> [--yes]        五节点全链路流水线，gate 审批交互（--yes 跳过交互直接批准）
-  sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large] [--effort=...]
-                              交互式会话终端（流式/审批/待办，manual 缺省）
-  sunshinex tui [dir] --continue          续接最近一次已保存会话（TUI 内 /resume 可列出/恢复更早会话）`,
+  sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（非 done 退出码 1）
+  sunshinex pipeline <dir> --goal="..." [--yes]  五节点流水线 gate 审批（--yes 跳过交互直接批准）
+  flags：--mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
+        --continue（TUI 续接最近会话）  --worktree[=<name>]  --workdir=<目录>
+  无法识别的裸词报错不启动；使用 sunshinex help 查看使用方法`,
   );
 }
 
@@ -110,6 +130,10 @@ async function main(): Promise<void> {
     console.log(usageText());
     return;
   }
+  if (args.command === 'unrecognized') {
+    console.error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
+    process.exit(1);
+  }
   switch (args.command) {
     case 'selfcheck':
       return runSelfcheck(args);
@@ -117,8 +141,15 @@ async function main(): Promise<void> {
       return runLoop(args);
     case 'pipeline':
       return runPipeline(args);
-    case 'tui':
-      return runTui(args);
+    case 'tui': {
+      const d = resolveDirArg(args);
+      if (d.unrecognized) {
+        console.error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
+        process.exit(1);
+      }
+      if (d.ignored) console.warn(t(`--workdir takes precedence; ignoring positional dir ${d.ignored}`, `--workdir 优先，位置参数目录 ${d.ignored} 已忽略`));
+      return runTui({ ...args, positional: d.dir ? [d.dir] : [] });
+    }
     default:
       console.log(usageText());
   }

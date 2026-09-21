@@ -3,6 +3,8 @@ import * as readline from 'node:readline/promises';
 import { GraphTemplate, softwarePipelineTemplate } from '../../graph/templates';
 import { LoopDeps } from '../../loop/engine';
 import { buildDeps } from '../../runtime';
+import { resolveDirArg } from '../index';
+import { t } from '../../i18n';
 import type { GraphRunResult } from '../../types';
 import type { CliArgs } from '../index';
 
@@ -39,7 +41,15 @@ export function runPipelineAssembly(
 }
 
 export async function runPipeline(args: CliArgs): Promise<void> {
-  const dir = args.positional[0];
+  // 目录来源统一单点（规格 §6.2）：与顶层及 run 同判据——--workdir 优先，裸词报「无法识别命令」不启动
+  const d = resolveDirArg(args);
+  if (d.unrecognized) {
+    console.error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
+    process.exitCode = 1;
+    return;
+  }
+  if (d.ignored) console.warn(t(`--workdir takes precedence; ignoring positional dir ${d.ignored}`, `--workdir 优先，位置参数目录 ${d.ignored} 已忽略`));
+  const dir = d.dir;
   if (!dir) throw new Error('用法：sunshinex pipeline <dir> --goal="目标（验收标准：id=描述）" [--yes]');
   const root = path.resolve(dir);
   const goal = String(args.flags.goal ?? '');
