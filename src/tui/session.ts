@@ -124,6 +124,8 @@ export interface TuiState {
 export interface SessionOpts extends TuiRuntimeOpts {
   /** 启动即续接最近会话（CLI --continue；规格 D1/D5）。无档位时提示并以新会话继续，不静默吞 */
   continueLast?: boolean;
+  /** 启动即弹会话选择卡（--resume） */
+  resumePicker?: boolean;
   /** manual 模式审批回调（终端化审批装配点；渲染层注入交互实现） */
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** 问询接缝覆盖（headless/脚本注入；缺省会话装配把 seam 接到本控制器问询管线） */
@@ -291,6 +293,7 @@ export class SessionController {
         }
       }
     });
+    if (opts.resumePicker) void this.resumeFlow();
     if (opts.continueLast) this.resumeLatest();
   }
 
@@ -592,6 +595,45 @@ export class SessionController {
       this.notify();
     }
     return b;
+  }
+
+  /** 会话恢复选择卡（/resume 与 --resume 启动共用单点）：mtime 降序候选（排除当前在飞会话）→ askUser 挂起 → restoreFromSession */
+  private async resumeFlow(): Promise<void> {
+    const dataDir = resolveDataDir(this.root);
+    // /resume 候选排除当前在飞会话（事件级落盘：命令输入自身即时建档，不排除会把本次命令的自建档选为最新恢复目标）
+    const currentId = this.journal?.currentId;
+    const sessions = listSessions(dataDir).filter((s) => s.id !== currentId);
+    if (sessions.length === 0) {
+      this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'), { level: 'warn' });
+      return;
+    }
+    const moreLabel = t('More…', '更多…');
+    const backLabel = t('Back…', '上一页…');
+    let page = 0;
+    for (;;) {
+      const shown = paginateOptions(
+        sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
+        page,
+      );
+      const answer = await this.askUser({
+        question: t('Resume which session?', '恢复哪个会话？'),
+        options: shown.options,
+      });
+      if (answer.type === 'dismissed') {
+        this.pushMsg('system', t('Resume cancelled', '已取消恢复'));
+        return;
+      }
+      const pickedId = answer.type === 'custom' ? answer.text.trim() : (answer.labels[0] ?? '');
+      if (pickedId === moreLabel) { page += 1; continue; }
+      if (pickedId === backLabel) { page -= 1; continue; }
+      const pick = sessions.find((s) => s.id === pickedId);
+      if (!pick) {
+        this.pushMsg('system', t('No such session: ' + pickedId, '没有这个会话：' + pickedId), { level: 'warn' });
+        return;
+      }
+      this.restoreFromSession(pick);
+      return;
+    }
   }
 
   /** --continue（规格 D1/D3）：续接最近会话（listSessions mtime 降序首项，对标 CC -c）；无档提示后按新会话继续（不静默吞） */
@@ -1017,41 +1059,8 @@ export class SessionController {
         this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'), { level: 'warn' });
         return;
       }
-      const dataDir = resolveDataDir(this.root);
-      // /resume 候选排除当前在飞会话（事件级落盘：命令输入自身即时建档，不排除会把本次命令的自建档选为最新恢复目标）
-      const currentId = this.journal?.currentId;
-      const sessions = listSessions(dataDir).filter((s) => s.id !== currentId);
-      if (sessions.length === 0) {
-        this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'), { level: 'warn' });
-        return;
-      }
-      const moreLabel = t('More…', '更多…');
-      const backLabel = t('Back…', '上一页…');
-      let page = 0;
-      for (;;) {
-        const shown = paginateOptions(
-          sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
-          page,
-        );
-        const answer = await this.askUser({
-          question: t('Resume which session?', '恢复哪个会话？'),
-          options: shown.options,
-        });
-        if (answer.type === 'dismissed') {
-          this.pushMsg('system', t('Resume cancelled', '已取消恢复'));
-          return;
-        }
-        const pickedId = answer.type === 'custom' ? answer.text.trim() : (answer.labels[0] ?? '');
-        if (pickedId === moreLabel) { page += 1; continue; }
-        if (pickedId === backLabel) { page -= 1; continue; }
-        const pick = sessions.find((s) => s.id === pickedId);
-        if (!pick) {
-          this.pushMsg('system', t('No such session: ' + pickedId, '没有这个会话：' + pickedId), { level: 'warn' });
-          return;
-        }
-        this.restoreFromSession(pick);
-        return;
-      }
+      await this.resumeFlow();
+      return;
     }
     if (cmd === '/rewind' || cmd === '/fork') {
       // 会话回退/分叉（rewind/fork 规格 §7）：idle 守卫沿 /resume 先例，运行中拒绝
