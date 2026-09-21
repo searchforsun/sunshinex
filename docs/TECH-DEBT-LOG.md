@@ -48,3 +48,18 @@
 | D13 | closed | 1b2b384 | UsageAdapter.calls 补消费断言 + graph 角色 tokenCap 对称覆盖 |
 | D14 | closed | 1b2b384 | 复核定案维持原位（无跨层直接消费，移入 types.ts 反抬层级） |
 | D15 | closed | 1b2b384 | 台账两行历史误落行归位 + 「本区之后」注记摘除 |
+
+## 已知取舍与教训登记（迁自规范文档）
+
+> 规范与文档正文只保留正向规则；历史教训、接受性取舍与选型注记迁入本节集中登记，供追溯与后续立项，不占用模型上下文注意力。
+
+| 编号 | 类别 | 内容 | 迁出来源 |
+|---|---|---|---|
+| T1 | 历史教训 | 文本信封协议：靠提示词约束模型输出分布属开集、补丁修不完，退役改原生 function calling（核心契约零兼容） | CLAUDE.md §5/§11 |
+| T2 | 历史教训 | memory 每步双写曾把相邻步前缀命中率压至 41.1% → 记忆段整体退出提示词（链即记忆） | CLAUDE.md §11 |
+| T3 | 历史教训 | 手写 `startsWith(root + path.sep)` 判界：只归一一侧即前缀恒失配、静默全拒（裁决记录见 `memory/paths.ts` 头注）→ 一律走 `isWithin` | CLAUDE.md §14 |
+| T4 | 取舍（接受） | Windows 超时不级联子进程树：`killSignal` 只及直接子进程（POSIX `SIGTERM` / Windows `TerminateProcess`），超时后可能残留孤儿进程；主链唯一子进程调用即 `exec` 且多为短命，接受现状；彻底收口（`taskkill /T /F`、Job Object、POSIX 进程组）属跨平台进程管理独立议题，单独立项论证，不做顺手补丁 | CLAUDE.md §14 |
+| T5 | 历史教训 | `STATUS_LABEL` / `SLASH_HELP` 模块级常量冻结曾在加载期冻死语言 → `t()` 调用时求值 | CLAUDE.md §15 |
+| T6 | 历史教训 | Git for Windows 缺省 `core.autocrlf=true`，缺 `.gitattributes` + `.editorconfig` 时一次提交即可引入整文件 CRLF 重写 → 双管机器强制 | CLAUDE.md §14 |
+| T7 | 历史教训 | 测试编入宿主 shell 方言的失效面：Windows 无 Git Bash 时 `ls`/`cat` 不可用、内联 `node -e` 引号被字面量化、断言恒真失去判别力 → 测试命令一律脚本文件或跨 shell 命令承载 | CLAUDE.md §14 |
+| T8 | 选型注记 | BrowserView 自 Electron 30 起弃用 → GUI 内嵌浏览器采用 WebContentsView | CLAUDE.md §13 |
