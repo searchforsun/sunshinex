@@ -49,7 +49,7 @@
 | D13 | closed | 1b2b384 | UsageAdapter.calls 补消费断言 + graph 角色 tokenCap 对称覆盖 |
 | D14 | closed | 1b2b384 | 复核定案维持原位（无跨层直接消费，移入 types.ts 反抬层级） |
 | D15 | closed | 1b2b384 | 台账两行历史误落行归位 + 「本区之后」注记摘除 |
-| D16 | closed | 6991a89 + d0e37d8（待本轮提交号回填） | reactor 文本协议回退通道整体退役：buildPrompt/parse/callModel/runParallelTools 与 run() 双通道分支删除（729→513 行）、ModelAdapter 收敛为 chat 必选/chatStream 可选、内联文本桩迁 chat 出牌（46 测试文件）、ScriptedAdapter 字符串步转译保留为测试 DSL；连带修复两处产品缺陷（消息链压缩水位过滤、tool-call 行执行前发射） |
+| D16 | closed | 6991a89 + a12b076 | reactor 文本协议回退通道整体退役：buildPrompt/parse/callModel/runParallelTools 与 run() 双通道分支删除（729→513 行）、ModelAdapter 收敛为 chat 必选/chatStream 可选、内联文本桩迁 chat 出牌（46 测试文件）、ScriptedAdapter 字符串步转译保留为测试 DSL；连带修复两处产品缺陷（消息链压缩水位过滤、tool-call 行执行前发射） |
 
 ## 已知取舍与教训登记（迁自规范文档）
 
