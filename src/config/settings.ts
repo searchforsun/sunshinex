@@ -5,9 +5,9 @@ import { userConfigDir } from './env';
 /**
  * 语义键 → SUNSHINEX_* 环境槽映射表（全仓唯一权威）。
  * - 只有 *API_KEY 不进本表（D6 + 用户裁决「env 块只承载敏感字段」）：密钥只走 env 透传块或环境变量，设置与凭据分离。
- * - SUNSHINEX_DATA_DIR 亦不进本表（用户裁决 2026-09-19）：它是「整目录直指、不按工作区隔离」的口子，
+ * - SUNSHINEX_DATA_DIR 亦不进本表：它是「整目录直指」的**开发与测试专用**重定向口（测试钉数据目录、CI 隔离运行时数据），
  *   留在用户配置面即诱导误用（多工作区共用一份 sessions/memory/runs/skills，记忆索引还会跨项目注入提示词），
- *   故只作测试与多实例口保留在环境变量面，见 RETIRED_KEYS；用户级换盘一律走 projectsDir。
+ *   故只保留在环境变量面，见 RETIRED_KEYS；用户级换盘一律走 projectsDir。
  * - 其余全部 SUNSHINEX_* 配置变量均语义化（含 shell 逃生口、全局约定覆盖与记忆管线参数）：settings.json 是配置的正名，环境变量不是配置的替代形态。
  */
 export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
@@ -48,7 +48,7 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
  * 前者提示改拼，后者必须指出「换成哪个键、以及为什么不能再写这里」。
  */
 export const RETIRED_KEYS: Readonly<Record<string, string>> = {
-  dataDir: 'dataDir 已退役（整目录直指、不按工作区隔离，多项目共用一份记忆与账本）；换盘请改用 projectsDir',
+  dataDir: 'dataDir 须走 projectsDir（按工作区分目录隔离）；SUNSHINEX_DATA_DIR 是开发与测试专用重定向口，用户配置面以 projectsDir 为准',
   structuredOutput: 'structuredOutput 已退役（SUNSHINEX_STRUCTURED_OUTPUT 同废）：工具调用恒走原生 function calling（tools 字段下发），要求端点支持 function calling，无结构化输出开关',
 };
 
