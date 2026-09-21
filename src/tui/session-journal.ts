@@ -1,7 +1,8 @@
 /** 会话事件日志（规格 docs/superpowers/specs/2026-09-17-session-persistence-resume-design.md D1/D3/D4/D5）：
  *  每会话一文件 data/sessions/<sessionId>.jsonl 追加只增 + data/sessions-active.json 活动指针。
  *  事件词汇封闭枚举 schema v1：新增持久化状态必须先登记新事件类型 + 对应重放动作 + 重放一致性断言，三者同批。
- *  写=缓冲批量追加（三 flush 点：closeTask / /new 轮转 / TUI 退出），运行中不写盘；
+ *  写=事件级即时落盘（逐事件 append，运行中即写，崩溃丢失窗口=在飞一步；生命周期点写 header 与指针，
+ *  规格 docs/superpowers/specs/2026-09-22-event-level-journal-persistence-design.md）；
  *  读=逐行解析重放（尾行撕裂/中段损坏重放到上一条完整事件、未知版本由调用方拒载）。 */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -35,6 +36,7 @@ export interface JournalHeader {
 export type JournalEvent =
   | JournalHeader
   | { t: 'user'; text: string; files?: SnapshotEntry[] }
+  | { t: 'snapshots'; files: SnapshotEntry[] }
   | { t: 'msg'; item: ChatItem }
   | { t: 'chain'; steps: HistoryStep[] }
   | { t: 'compact'; chainFrom: number; compacted: ContextItem[] }
@@ -270,9 +272,8 @@ export function branchFrom(
   return newId;
 }
 
-/** 会话日志写面：事件入缓冲（运行中不写盘）、flush 点批量落盘并维护活动指针；未建档 log 丢弃（空会话零文件） */
+/** 会话日志写面（事件级即时落盘，规格 2026-09-22 D1/D3/D4）：逐事件 appendFileSync、生命周期点写 header 与指针；未建档 log 丢弃（空会话零文件） */
 export class SessionJournal {
-  private buf: JournalEvent[] = [];
   private id: string | undefined;
   private readonly dataDir: string;
   private readonly dir: string;
@@ -286,56 +287,40 @@ export class SessionJournal {
     return this.id;
   }
 
-  get pending(): number {
-    return this.buf.length;
-  }
-
-  /** 建档（首个持久化事件触发）：生成 id，header 入缓冲随首个 flush 落盘 */
+  /** 建档（首个持久化事件触发）：生成 id，header 立即写盘 + 指针 */
   start(): void {
     if (this.id) return;
-    this.id = newSessionId();
-    const header: JournalHeader = { t: 'header', v: 1, id: this.id, createdAt: new Date().toISOString() };
-    this.buf.push(header);
+    this.startId(newSessionId());
   }
 
-  /** 轮转（/new）：清缓冲换新 id，新 header 入缓冲（旧档已在盘） */
+  /** 轮转（/new）：换新 id，新 header 立即写盘 + 指针（旧档已在盘零改动） */
   rotate(id: string): void {
-    this.buf = [];
-    this.id = id;
-    const header: JournalHeader = { t: 'header', v: 1, id, createdAt: new Date().toISOString() };
-    this.buf.push(header);
+    this.startId(id);
   }
 
-  /** 续挂既有日志（/resume / --continue）：后续事件追加至同一文件，不重复 header */
+  /** 续挂既有日志（/resume / --continue / 分档）：档已在盘，仅切 id 与指针，不重复 header */
   attach(id: string): void {
-    this.buf = [];
     this.id = id;
+    writeActivePointer(this.dataDir, id);
   }
 
+  /** 事件级落盘（规格 D1）：逐事件 append，运行中即写，崩溃丢失窗口=在飞一步；未建档丢弃 */
   log(event: JournalEvent): void {
-    if (!this.id) return; // 未建档：事件丢弃（空会话零文件）
-    this.buf.push(event);
+    if (!this.id) return;
+    fs.appendFileSync(path.join(this.dir, this.id + '.jsonl'), JSON.stringify(event) + '\n', 'utf8');
   }
 
-  /** flush 点：批量追加 + 活动指针更新；缓冲空为 no-op（不落盘不动指针） */
-  flush(): boolean {
-    if (!this.id || this.buf.length === 0) return false;
+  /** 任务收口快照清单补拍（规格 D2）：本任务 write 的影子快照清单以 snapshots 事件尾追；空清单零事件 */
+  seal(files: SnapshotEntry[]): void {
+    if (!this.id || files.length === 0) return;
+    this.log({ t: 'snapshots', files });
+  }
+
+  private startId(id: string): void {
+    this.id = id;
     fs.mkdirSync(this.dir, { recursive: true });
-    fs.appendFileSync(path.join(this.dir, this.id + '.jsonl'), this.buf.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
-    this.buf = [];
-    writeActivePointer(this.dataDir, this.id);
-    return true;
-  }
-
-  /** 任务收口回填（规格 §6.1）：本任务 write 的影子快照清单补进该轮 user 事件；缓冲内无 user 事件返回 false */
-  amendLastUser(files: SnapshotEntry[]): boolean {
-    for (let i = this.buf.length - 1; i >= 0; i--) {
-      if (this.buf[i].t === 'user') {
-        if (files.length === 0) return true; // 空清单不写字段（与 v1 旧档形态一致）
-        (this.buf[i] as Extract<JournalEvent, { t: 'user' }>).files = files;
-        return true;
-      }
-    }
-    return false;
+    const header: JournalHeader = { t: 'header', v: 1, id, createdAt: new Date().toISOString() };
+    fs.writeFileSync(path.join(this.dir, id + '.jsonl'), JSON.stringify(header) + '\n', 'utf8');
+    writeActivePointer(this.dataDir, id);
   }
 }

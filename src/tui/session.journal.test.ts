@@ -88,17 +88,16 @@ test('/new 轮转：旧档留存可找回、列表倒序、序号恢复旧会话
   }
 });
 
-test('空会话与斜杠会话零落盘：无收口点不建文件；零输入退出不落盘', async () => {
+test('斜杠会话即时建档（事件级）：/help 落 header+user，恢复面 firstUser 回显', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = pinDataDir(tmp);
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
     await ctrl.submit('/help');
-    assert.deepEqual(listSessions(dataDir), [], '斜杠会话缓冲未收口不落盘');
-    ctrl.flushJournal(); // 模拟退出 flush：快照型事件仅在已建档时补拍
-    // /help 有输入 → 退出 flush 允许落一个小档（首个持久化事件建档语义）；若实现为空会话零档则 len 仍为 0
-    assert.ok(listSessions(dataDir).length <= 1);
+    const metas = listSessions(dataDir);
+    assert.equal(metas.length, 1, '指令先行落盘：斜杠输入也即时建档');
+    assert.equal(metas[0].firstUser, '/help');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prev;
@@ -120,7 +119,6 @@ test('continueLast：手工日志全词汇还原（消息/链/待办/档位/视�
     j.log({ t: 'todos', items: [{ text: '待办甲', done: false }] });
     j.log({ t: 'model', tier: 'small' });
     j.log({ t: 'view', expandAll: true, latestFull: false });
-    j.flush();
     const id = j.currentId!;
 
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]), continueLast: true });
@@ -168,6 +166,24 @@ test('日志尾行撕裂：恢复到最后一条完整事件并上屏提示', as
     assert.ok(texts.includes('完整输入'), '完整事件已恢复');
     assert.ok(texts.includes('truncated') || texts.includes('截断'), '撕裂提示上屏');
     assert.equal(ctrl.getState().messages.length, 2, '消息 + 提示行，撕裂事件不复活');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/resume 候选排除当前在飞会话（事件级建档后命令输入不再污染候选）', async () => {
+  const tmp = tmpRoot();
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  const dataDir = pinDataDir(tmp);
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"r1"}']) });
+    await ctrl.submit('任务一');
+    await ctrl.waitIdle();
+    await ctrl.submit('/resume 1'); // 候选若含当前在飞自建档则切到空档丢消息流
+    const texts = ctrl.getState().messages.map((m) => m.text).join('\n');
+    assert.ok(texts.includes('任务一'), '排除自建档后应恢复到真实会话（消息流保留）');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prev;

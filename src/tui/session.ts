@@ -187,10 +187,8 @@ export class SessionController {
   private listeners = new Set<(s: TuiState) => void>();
   /** 消息全局单调序号（Static 区 key 唯一性来源）；/new 清空消息但不回绕 */
   private msgSeq = 0;
-  /** 会话事件日志（规格 2026-09-17-session-persistence D4）：惰性建档（首个持久化事件）、三 flush 点批量落盘 */
+  /** 会话事件日志（规格 2026-09-17-session-persistence D4 + 2026-09-22 事件级即时落盘）：持久化事件随产生落盘（惰性建档，空会话零文件） */
   private journal?: SessionJournal;
-  /** 最近已知视图两态（recordView 维护；flush 快照与 /new 轮转初始快照的基准） */
-  private lastView = { expandAll: false, latestFull: false };
   /** 恢复携带的 UI 现场（--continue / /resume 重放产物；entry 经 takeRestoredUi 播种 retain，一次性取走） */
   private restoredUi?: { history: string[]; expandAll: boolean; latestFull: boolean };
   /** 子代理半行缓冲（label → 未成行）：token/reasoning 增量拼接、遇换行成行入 transcript */
@@ -295,7 +293,7 @@ export class SessionController {
   async submit(input: string): Promise<void> {
     const text = input.trim();
     if (!text) return;
-    // 会话日志（规格 D4/D6）：首个持久化事件建档；user 事件=输入历史还原源，先于回显入志
+    // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于回显入志
     const j = this.ensureJournal();
     j.start();
     j.log({ t: 'user', text });
@@ -494,6 +492,7 @@ export class SessionController {
   private async runPlanItems(items: string[]): Promise<void> {
     this.taskAbort = new AbortController(); // plan 执行段整段一个中断源（Esc/Ctrl+C 中止当前步及后续步）
     this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
+    this.logTodos();
     this.notify();
     const ctx = this.runtime.harness.context;
     // 计划纪律走链（只增不改）：每轮只完成最后一条当前指令，不执行/预判/重排后续任务
@@ -523,6 +522,7 @@ export class SessionController {
         const todos = [...this.state.todos];
         todos[i] = { ...todos[i], done: true };
         this.state = { ...this.state, todos };
+        this.logTodos();
         // 步骤全量轨迹与结论行已由 reactor 会话作用域自动入链（fork 模型：不再只留结论行）
         // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
@@ -542,21 +542,22 @@ export class SessionController {
     return this.journal;
   }
 
-  /** flush 收口（规格 D3 三 flush 点共用）：快照型事件（todos/model/view）末值补拍 + 批量落盘 + 活动指针（journal.flush 内维护）；未建档 no-op（空会话零文件） */
-  flushJournal(): void {
-    if (!this.journal) return;
-    const j = this.journal;
-    j.log({ t: 'todos', items: this.state.todos });
-    j.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}), ...(this.state.effort ? { effort: this.state.effort } : {}) });
-    j.log({ t: 'view', ...this.lastView });
-    // 影子快照清单回填（rewind/fork 规格 §6.1）：本任务 write 的 pre-image 随该轮 user 事件落盘
-    j.amendLastUser(this.runtime.harness.writeSnapshot.drain());
-    j.flush();
+  /** 快照型事件接线（规格 2026-09-22 D5）：变更点即时 log 的单点构造器，防四处拼装漂移 */
+  private logModel(): void {
+    this.journal?.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}), ...(this.state.effort ? { effort: this.state.effort } : {}) });
+  }
+
+  private logTodos(): void {
+    this.journal?.log({ t: 'todos', items: this.state.todos });
+  }
+
+  /** 任务收口（规格 2026-09-22 D2/D8）：仅补拍本轮 write 影子快照清单（snapshots 事件）；其余事件已随产生落盘 */
+  private sealJournal(): void {
+    this.journal?.seal(this.runtime.harness.writeSnapshot.drain());
   }
 
   /** 视图两态变更记录（App 切换 Tab/Ctrl+O 调用；缓冲随收口落盘） */
   recordView(expandAll: boolean, latestFull: boolean): void {
-    this.lastView = { expandAll, latestFull };
     this.journal?.log({ t: 'view', expandAll, latestFull });
   }
 
@@ -591,7 +592,6 @@ export class SessionController {
 
   /** 恢复会话（规格 §6 恢复三面）：flush 当前 → 解析目标日志 → 版本守卫 → 三面直注入 → journal 续挂目标档 */
   private restoreFromSession(meta: SessionMeta): void {
-    this.flushJournal(); // 切换前当前会话先收口（切换不丢现场）
     const parsed = parseJournalFile(meta.file);
     const replay = reduceJournal(parsed.events);
     if (replay.version !== 1) {
@@ -612,7 +612,6 @@ export class SessionController {
       live: undefined,
       children: [],
     };
-    this.lastView = { ...replay.view };
     this.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
     this.ensureJournal().attach(meta.id);
     // 横幅在状态注入后上屏（注入前 push 会被 messages 覆盖吞掉）；撕裂场景合并提示，保持「消息 + 单条提示行」
@@ -625,7 +624,6 @@ export class SessionController {
 
   /** /rewind //fork 共用分支流程（rewind/fork 规格 §7）：锚点选择 → 分档 → 装载 → 代码回退（可选）→ 回执 + 输入回填 */
   private async branchFlow(kind: 'rewind' | 'fork'): Promise<void> {
-    this.flushJournal(); // 当前会话先收口（含影子快照清单回填）
     const dataDir = resolveDataDir(this.root);
     const srcId = this.journal?.currentId;
     const srcFile = srcId ? path.join(sessionsDir(dataDir), srcId + '.jsonl') : undefined;
@@ -687,7 +685,7 @@ export class SessionController {
       this.pushMsg('system', t('Branch failed: ' + String((err as Error).message), '分档失败：' + String((err as Error).message)), { level: 'warn' });
       return;
     }
-    // 先续挂新档：restoreFromSession 首行 flushJournal 会补拍快照事件——不续挂则写回源档（破坏不可变分档）且指针拨回源会话
+    // 续挂新档并切指针（不可变分档：源档零改动；事件级落盘下 restore 无收口写回面）
     this.journal?.attach(newId);
     this.restoreFromSession({ id: newId, file: path.join(sessionsDir(dataDir), newId + '.jsonl'), updatedAt: Date.now() });
     if (kind === 'rewind' && codeAction) {
@@ -727,7 +725,7 @@ export class SessionController {
     };
     this.childBufs.clear();
     this.spawnCalls = [];
-    this.flushJournal(); // 收口落盘（规格 D3 flush 点①）
+    this.sealJournal(); // 快照清单补拍（事件级：其余事件已随产生落盘，规格 2026-09-22 D2/D8）
     this.runtime.harness.pipeline.kick(); // 回 idle 即踢一次后台消化（规格 §3.5）：队列非空才消费、无待办零调用
     this.notify();
   }
@@ -899,6 +897,7 @@ export class SessionController {
       if (value === 'default') {
         this.state = { ...this.state, effort: undefined };
         this.notify();
+        this.logModel();
         this.pushMsg('system', t('Reasoning effort cleared; adapter default applies to subsequent tasks', '思考强度已清除；后续任务回适配器缺省'));
         return;
       }
@@ -909,6 +908,7 @@ export class SessionController {
       }
       this.state = { ...this.state, effort };
       this.notify();
+      this.logModel();
       this.pushMsg('system', t(`Reasoning effort set to ${effort}; applies to subsequent tasks`, `思考强度已设为 ${effort}；对后续任务生效`));
       return;
     }
@@ -919,6 +919,7 @@ export class SessionController {
     }
     this.state = { ...this.state, model: tier };
     this.notify();
+    this.logModel();
     this.pushMsg('system', t(`Model tier set to ${tier}; applies to subsequent tasks`, `模型档位已设为 ${tier}；对后续任务生效`));
   }
 
@@ -958,9 +959,7 @@ export class SessionController {
     }
     if (cmd === '/new') {
       // /new 轮转化（规格 D2）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回
-      this.flushJournal();
       this.journal?.rotate(newSessionId());
-      this.journal?.flush();
       this.runtime.harness.security.clearSessionAllows();
       this.memoryOverride = undefined;
       setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
@@ -998,7 +997,9 @@ export class SessionController {
         return;
       }
       const dataDir = resolveDataDir(this.root);
-      const sessions = listSessions(dataDir);
+      // /resume 候选排除当前在飞会话（事件级落盘：命令输入自身即时建档，不排除会把本次命令的自建档选为最新恢复目标）
+      const currentId = this.journal?.currentId;
+      const sessions = listSessions(dataDir).filter((s) => s.id !== currentId);
       if (sessions.length === 0) {
         this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'), { level: 'warn' });
         return;

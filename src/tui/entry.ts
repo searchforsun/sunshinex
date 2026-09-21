@@ -45,9 +45,8 @@ export async function runTui(args: CliArgs): Promise<void> {
   let current: { unmount(): void } | undefined;
   // Tab 切换的展开模式：经宿主 onRequestRepaint 注入 tui-loop 的重绘出口（与 resize 共用卸载→清屏→重挂路径）
   let requestRepaint: (() => void) | undefined;
-  // 优雅退出单点：SIGINT 与空闲态 Ctrl+C（App onExit）共用——flush 会话日志→清定时器→卸载渲染→退出
+  // 优雅退出单点：SIGINT 与空闲态 Ctrl+C（App onExit）共用——清定时器→卸载渲染→退出
   const quit = (): void => {
-    ctrl.flushJournal(); // 退出收口（规格 D3 flush 点③）
     ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）
     current?.unmount();
     process.exit(0);
@@ -69,7 +68,6 @@ export async function runTui(args: CliArgs): Promise<void> {
       initialRetain: restored ? { history: restored.history, expandAll: restored.expandAll, latestFull: restored.latestFull } : undefined,
     });
   } finally {
-    ctrl.flushJournal(); // 退出收口（规格 D3 flush 点③）
     ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）：循环退出即释放
   }
   process.exit(0);

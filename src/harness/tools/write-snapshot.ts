@@ -6,7 +6,7 @@ import type { SnapshotEntry } from '../../tui/session-journal';
 /**
  * write 影子快照收集器（规格 2026-09-20 rewind+fork §6.1）：
  * 每次 write 落盘前捕获目标文件当前状态（pre-image），内容寻址存 <blobsDir>/<sha256>（跨会话去重）；
- * 任务收口时 drain() 交 SessionJournal.amendLastUser 随 user 事件落盘。仅进程内存清单，零工具面变化。
+ * 任务收口时 drain() 以 snapshots 事件尾追落盘（规格 docs/superpowers/specs/2026-09-22-event-level-journal-persistence-design.md D2）。仅进程内存清单，零工具面变化。
  */
 export class WriteSnapshotCollector {
   private pending: SnapshotEntry[] = [];
