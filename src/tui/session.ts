@@ -12,7 +12,7 @@ import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/c
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SessionJournal, listSessions, newSessionId, readActivePointer, sessionsDir, parseJournalFile, reduceJournal, listAnchors, branchFrom, type SessionMeta } from './session-journal';
+import { SessionJournal, listSessions, newSessionId, sessionsDir, parseJournalFile, reduceJournal, listAnchors, branchFrom, type SessionMeta } from './session-journal';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { resolveDataDir } from '../config/data-dir';
 import { MemoryStore } from '../harness/memory/store';
@@ -594,12 +594,11 @@ export class SessionController {
     return b;
   }
 
-  /** --continue（规格 D1/D5）：读活动指针续接最近有落盘的会话；无档/档缺失提示后按新会话继续（不静默吞） */
+  /** --continue（规格 D1/D3）：续接最近会话（listSessions mtime 降序首项，对标 CC -c）；无档提示后按新会话继续（不静默吞） */
   resumeLatest(): void {
     const dataDir = resolveDataDir(this.root);
-    const id = readActivePointer(dataDir);
-    const meta = id ? listSessions(dataDir).find((s) => s.id === id) : undefined;
-    if (!id || !meta) {
+    const meta = listSessions(dataDir)[0];
+    if (!meta) {
       this.pushMsg('system', t('No saved session to continue; started a fresh one', '没有可续接的已保存会话，已开启新会话'), { level: 'warn' });
       return;
     }

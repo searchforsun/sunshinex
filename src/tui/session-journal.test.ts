@@ -8,10 +8,8 @@ import {
   listSessions,
   newSessionId,
   parseJournalFile,
-  readActivePointer,
   reduceJournal,
   sessionsDir,
-  writeActivePointer,
   type JournalEvent,
 } from './session-journal';
 
@@ -33,14 +31,14 @@ test('空会话零落盘：未建档 log 丢弃、目录不创建', () => {
   assert.equal(fs.existsSync(sessionsDir(dataDir)), false, '空会话零文件');
 });
 
-test('建档即落盘：header 立即写盘+指针；事件逐条 append（规格 2026-09-22 D1/D3）', () => {
+test('建档即落盘：header 立即写盘；事件逐条 append（规格 2026-09-22 D1/D3）', () => {
   const dataDir = tmp();
   const j = new SessionJournal(dataDir);
   j.start();
   const id = j.currentId!;
   const file = path.join(sessionsDir(dataDir), id + '.jsonl');
   assert.equal(fs.readFileSync(file, 'utf8').trim().split('\n').length, 1, 'header 先于任何事件在盘');
-  assert.equal(readActivePointer(dataDir), id, '建档即切指针');
+  assert.equal(listSessions(dataDir)[0]!.id, id, '建档即唯一会话档');
   j.log({ t: 'user', text: '你好' });
   j.log({ t: 'model', tier: 'large' });
   const lines = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as JournalEvent);
@@ -51,7 +49,7 @@ test('建档即落盘：header 立即写盘+指针；事件逐条 append（规�
   assert.equal(events[0].t, 'header');
 });
 
-test('rotate：旧档不动、新档 header 立即写盘、指针指向新 id', () => {
+test('rotate：旧档不动、新档 header 立即写盘', () => {
   const dataDir = tmp();
   const j = new SessionJournal(dataDir);
   j.start();
@@ -67,19 +65,22 @@ test('rotate：旧档不动、新档 header 立即写盘、指针指向新 id', 
   const newLines = fs.readFileSync(path.join(sessionsDir(dataDir), newId + '.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as JournalEvent);
   assert.equal(newLines.length, 2, '新档 header+事件');
   assert.equal(newLines[0].t, 'header');
-  assert.equal(readActivePointer(dataDir), newId, '指针=轮转会话');
+  fs.utimesSync(path.join(sessionsDir(dataDir), oldId + '.jsonl'), new Date(1_000_000_000), new Date(1_000_000_000)); // 钉旧档为过去：消除同毫秒并列的排序不确定（先例见 session.journal.test.ts）
+  assert.equal(listSessions(dataDir)[0]!.id, newId, '轮转会话为最新档');
 });
 
-test('attach 续挂：换 id 更新指针、后续事件追加至既有文件', () => {
+test('attach 续挂：换 id 后续事件追加至既有文件', () => {
   const dataDir = tmp();
   const id = newSessionId();
   const a = new SessionJournal(dataDir);
   a.start();
+  const firstId = a.currentId!;
   a.rotate(id);
   a.log({ t: 'user', text: '第一段' });
   const b = new SessionJournal(dataDir);
   b.attach(id);
-  assert.equal(readActivePointer(dataDir), id, 'attach 即切指针');
+  fs.utimesSync(path.join(sessionsDir(dataDir), firstId + '.jsonl'), new Date(1_000_000_000), new Date(1_000_000_000)); // 钉首档为过去：消除同毫秒并列的排序不确定（先例见 session.journal.test.ts）
+  assert.equal(listSessions(dataDir)[0]!.id, id, 'attach 目标档为最新档');
   b.log({ t: 'user', text: '第二段' });
   const lines = fs.readFileSync(path.join(sessionsDir(dataDir), id + '.jsonl'), 'utf8').trim().split('\n');
   assert.equal(lines.filter((l) => (JSON.parse(l) as JournalEvent).t === 'header').length, 1, 'header 不重复');
@@ -99,15 +100,25 @@ test('seal：清单非空尾追 snapshots 事件、空清单零事件（规格 D
   assert.deepEqual(lines[1], { t: 'snapshots', files: [{ path: 'src/a.ts', hash: 'h1' }] });
 });
 
-test('指针收敛：逐事件追加不重写指针（规格 D4）', () => {
+test('逐事件追加零越界写：仅本档追加，旧档与其余文件零触碰（规格 D4）', () => {
   const dataDir = tmp();
   const j = new SessionJournal(dataDir);
   j.start();
-  const pointerFile = path.join(dataDir, 'sessions-active.json');
-  fs.utimesSync(pointerFile, new Date(1_000_000_000), new Date(1_000_000_000)); // 预置旧 mtime，消除同毫秒写入假绿（评审 Minor M-1）
-  const before = fs.statSync(pointerFile).mtimeMs;
+  j.log({ t: 'user', text: '旧档输入' });
+  const oldId = j.currentId!;
+  j.rotate(newSessionId());
+  const id = j.currentId!;
+  // 钉旧档 mtime 为过去（评审 Minor M-1：消除同毫秒写入假绿），追加期间任何越界写都会抬高它
+  for (const m of listSessions(dataDir)) {
+    if (m.id !== id) fs.utimesSync(m.file, new Date(1_000_000_000), new Date(1_000_000_000));
+  }
+  const beforeTop = fs.readdirSync(dataDir).sort();
   for (let i = 0; i < 20; i++) j.log({ t: 'msg', item: { role: 'assistant', text: 'r' + i, ts: i, seq: i } });
-  assert.equal(fs.statSync(pointerFile).mtimeMs, before, '同 id 内追加零指针写');
+  for (const m of listSessions(dataDir)) {
+    if (m.id !== oldId) continue;
+    assert.equal(fs.statSync(m.file).mtimeMs, 1_000_000_000, '追加不触碰旧档');
+  }
+  assert.deepEqual(fs.readdirSync(dataDir).sort(), beforeTop, '目录树顶层零新增文件');
 });
 
 test('parseJournalFile：事件往返逐条相等；尾行撕裂与中段坏行截断并标 truncated', () => {
@@ -202,9 +213,19 @@ test('listSessions：mtime 降序 + 首条用户输入摘要；缺目录返回�
   assert.equal(metas[0].firstUser, '较新会话的首条输入');
 });
 
-test('活动指针：写入后读回；无指针/损坏返回 undefined', () => {
+test('建档/轮转/续挂：目录树零指针文件，最近会话由 listSessions 解析', () => {
   const dataDir = tmp();
-  assert.equal(readActivePointer(dataDir), undefined);
-  writeActivePointer(dataDir, 'abc-1');
-  assert.equal(readActivePointer(dataDir), 'abc-1');
+  const j = new SessionJournal(dataDir);
+  j.start();
+  j.log({ t: 'user', text: '你好' });
+  assert.equal(fs.existsSync(path.join(dataDir, 'sessions-active.json')), false, '建档后目录树无指针文件');
+  j.rotate(newSessionId());
+  assert.equal(fs.existsSync(path.join(dataDir, 'sessions-active.json')), false, '轮转后仍无指针文件');
+  const b = new SessionJournal(dataDir);
+  b.attach(j.currentId!);
+  assert.deepEqual(
+    fs.readdirSync(dataDir).filter((n) => n !== 'sessions'),
+    [],
+    'dataDir 顶层仅 sessions 目录',
+  );
 });

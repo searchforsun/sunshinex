@@ -7,7 +7,7 @@ import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { AskUserRequest } from '../types';
 import { resolveDataDir } from '../config/data-dir';
-import { listAnchors, listSessions, parseJournalFile, readActivePointer, sessionsDir } from './session-journal';
+import { listAnchors, listSessions, parseJournalFile, sessionsDir } from './session-journal';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -71,7 +71,7 @@ test('/rewind：回退到任务二 → 对话面=仅任务一，任务二文本�
   try {
     const ctrl = await twoTurnSession(tmp);
     const dataDir = resolveDataDir(tmp);
-    const srcId = readActivePointer(dataDir)!;
+    const srcId = listSessions(dataDir)[0]!.id;
 
     const p = ctrl.submit('/rewind');
     const anchorsQ = await waitQuestion(ctrl, 'Rewind to which turn?');
@@ -88,7 +88,6 @@ test('/rewind：回退到任务二 → 对话面=仅任务一，任务二文本�
     assert.ok(texts.includes('任务一'), '对话面应保留任务一');
     assert.ok(!texts.includes('任务二'), '任务二应被回退');
     assert.equal(ctrl.takeBackfill(), '任务二');
-    assert.notEqual(readActivePointer(dataDir), srcId, '活动指针应切到分档新档');
     const metas = listSessions(dataDir);
     assert.equal(metas.length, 2);
     const branched = metas.find((m) => m.id !== srcId)!;
@@ -139,7 +138,7 @@ test('/fork：复制平行会话，源档字节不动、两者血缘正确', asy
   try {
     const ctrl = await twoTurnSession(tmp);
     const dataDir = resolveDataDir(tmp);
-    const srcId = readActivePointer(dataDir)!;
+    const srcId = listSessions(dataDir)[0]!.id;
     const srcFile = path.join(sessionsDir(dataDir), srcId + '.jsonl');
     const srcBytes = fs.readFileSync(srcFile, 'utf8');
 
@@ -168,7 +167,7 @@ test('/resume 列表血缘：fork 出的新档列表行带 ↳ 标注', async ()
   try {
     const ctrl = await twoTurnSession(tmp);
     const dataDir = resolveDataDir(tmp);
-    const srcId = readActivePointer(dataDir)!;
+    const srcId = listSessions(dataDir)[0]!.id;
     const p = ctrl.submit('/fork');
     const anchorsQ = await waitQuestion(ctrl, 'Fork from which turn?');
     ctrl.resolveAskAnswer({ type: 'selected', labels: [anchorsQ.options[0].label] });
@@ -207,7 +206,7 @@ test('/rewind 含 write 多轮：snapshots 事件跨轮合并回退（事件级�
 
     // 断言 1：任务收口后读档，两轮各尾追一条 snapshots 事件且 files 非空（事件级载体，规格 2026-09-22 D2）
     const dataDir = resolveDataDir(tmp);
-    const srcId = readActivePointer(dataDir)!;
+    const srcId = listSessions(dataDir)[0]!.id;
     const srcEvents = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')).events;
     const snapEvents = srcEvents.filter((e) => e.t === 'snapshots');
     assert.equal(snapEvents.length, 2, '两轮收口各一条 snapshots 事件');

@@ -6,7 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { resolveDataDir } from '../config/data-dir';
-import { parseJournalFile, readActivePointer, sessionsDir, type JournalEvent } from './session-journal';
+import { listSessions, parseJournalFile, sessionsDir, type JournalEvent } from './session-journal';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -34,8 +34,8 @@ test('任务收口：write 的影子快照以 snapshots 事件尾追，blob 为 
     await ctrl.submit('改 a.txt');
     await ctrl.waitIdle();
     const dataDir = resolveDataDir(tmp);
-    const id = readActivePointer(dataDir);
-    assert.ok(id, '活动指针应指向已落盘会话');
+    const id = listSessions(dataDir)[0]!.id;
+    assert.ok(id, '已落盘会话档应为最新档');
     const parsed = parseJournalFile(path.join(sessionsDir(dataDir), id + '.jsonl'));
     const snapEv = parsed.events.find((e): e is Extract<JournalEvent, { t: 'snapshots' }> => e.t === 'snapshots');
     assert.ok(snapEv, 'journal 应含 snapshots 事件');
@@ -57,7 +57,7 @@ test('任务收口：无 write 的任务 user 事件无 files 字段（v1 形态
     await ctrl.submit('纯对话');
     await ctrl.waitIdle();
     const dataDir = resolveDataDir(tmp);
-    const id = readActivePointer(dataDir)!;
+    const id = listSessions(dataDir)[0]!.id;
     const parsed = parseJournalFile(path.join(sessionsDir(dataDir), id + '.jsonl'));
     const userEv = parsed.events.find((e): e is Extract<JournalEvent, { t: 'user' }> => e.t === 'user');
     assert.ok(userEv, 'journal 应含 user 事件');

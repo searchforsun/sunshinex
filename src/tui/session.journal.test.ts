@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
-import { SessionJournal, listSessions, newSessionId, parseJournalFile, readActivePointer, reduceJournal, sessionsDir } from './session-journal';
+import { SessionJournal, listSessions, newSessionId, parseJournalFile, reduceJournal, sessionsDir } from './session-journal';
 
 const tmpRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-persist-'));
 
@@ -82,13 +82,12 @@ test('/new 轮转：旧档留存可找回、列表倒序、序号恢复旧会话
     await ctrl1.submit('任务乙');
     await ctrl1.waitIdle();
     // ScriptedAdapter 全程亚毫秒完成：两档 mtime 同毫秒并列会让「最新在前」排序不确定，显式钉 mtime（与 session-journal.test.ts 先例一致）
-    const activeId = readActivePointer(dataDir);
+    const newer = listSessions(dataDir).find((m) => m.firstUser === '任务乙')!;
     for (const m of listSessions(dataDir)) {
-      fs.utimesSync(m.file, new Date(), new Date(m.id === activeId ? 2_000_000_000 : 1_000_000_000));
+      fs.utimesSync(m.file, new Date(), new Date(m.id === newer.id ? 2_000_000_000 : 1_000_000_000));
     }
     const metas = listSessions(dataDir);
     assert.equal(metas.length, 2, '/new 轮转后两个会话档并存');
-    assert.equal(readActivePointer(dataDir), metas[0].id, '指针=最近有落盘的会话（乙）');
     assert.equal(metas[0].firstUser, '任务乙', '列表最新在前');
 
     const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
@@ -151,7 +150,6 @@ test('continueLast：手工日志全词汇还原（消息/链/待办/档位/视�
     assert.deepEqual(ui, { history: ['历史输入一'], expandAll: true, latestFull: false }, 'UI 现场一次性取用');
     assert.equal(ctrl.takeRestoredUi(), undefined, '二次取用为 undefined');
     assert.deepEqual(ctrl.context.chainView(), [{ step: 1, action: 'task', observation: '指令行' }]);
-    assert.equal(readActivePointer(dataDir), id, '指针保持指向被恢复会话');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prev;
@@ -177,8 +175,6 @@ test('日志尾行撕裂：恢复到最后一条完整事件并上屏提示', as
     const r = reduceJournal(events);
     void r;
     SessionJournal; // 类型面引用
-    const { writeActivePointer } = await import('./session-journal');
-    writeActivePointer(dataDir, id);
 
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]), continueLast: true });
     const texts = ctrl.getState().messages.map((m) => m.text).join('\n');

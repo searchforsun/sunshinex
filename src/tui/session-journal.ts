@@ -1,7 +1,7 @@
 /** 会话事件日志（规格 docs/superpowers/specs/2026-09-17-session-persistence-resume-design.md D1/D3/D4/D5）：
- *  每会话一文件 data/sessions/<sessionId>.jsonl 追加只增 + data/sessions-active.json 活动指针。
+ *  每会话一文件 data/sessions/<sessionId>.jsonl 追加只增。
  *  事件词汇封闭枚举 schema v1：新增持久化状态必须先登记新事件类型 + 对应重放动作 + 重放一致性断言，三者同批。
- *  写=事件级即时落盘（逐事件 append，运行中即写，崩溃丢失窗口=在飞一步；生命周期点写 header 与指针，
+ *  写=事件级即时落盘（逐事件 append，运行中即写，崩溃丢失窗口=在飞一步；生命周期点写 header，
  *  规格 docs/superpowers/specs/2026-09-22-event-level-journal-persistence-design.md）；
  *  读=逐行解析重放（尾行撕裂/中段损坏重放到上一条完整事件、未知版本由调用方拒载）。 */
 import * as fs from 'fs';
@@ -74,8 +74,6 @@ export interface JournalReplay {
   view: { expandAll: boolean; latestFull: boolean };
 }
 
-const ACTIVE_POINTER = 'sessions-active.json';
-
 /** 会话 id：UTC 紧凑时间戳 + 4 位随机尾（文件名安全、可排序） */
 export function newSessionId(now = new Date()): string {
   const p = (n: number): string => String(n).padStart(2, '0');
@@ -86,21 +84,6 @@ export function newSessionId(now = new Date()): string {
 /** 会话日志目录：<dataDir>/sessions */
 export function sessionsDir(dataDir: string): string {
   return path.join(dataDir, 'sessions');
-}
-
-/** 活动指针读取：最近一次有落盘的会话 id；无指针/损坏返回 undefined（不静默造档） */
-export function readActivePointer(dataDir: string): string | undefined {
-  try {
-    const raw = JSON.parse(fs.readFileSync(path.join(dataDir, ACTIVE_POINTER), 'utf8')) as { id?: unknown };
-    return typeof raw.id === 'string' && raw.id ? raw.id : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function writeActivePointer(dataDir: string, id: string): void {
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(path.join(dataDir, ACTIVE_POINTER), JSON.stringify({ id }), 'utf8');
 }
 
 /** 逐行解析：坏行（尾行撕裂/中段损坏）停在上一条完整事件并标 truncated（fail-bounded） */
@@ -236,7 +219,7 @@ export function listAnchors(parsed: ParsedJournal): JournalAnchor[] {
 
 /**
  * 分档原语（规格 2026-09-20 rewind+fork §5.2）：复制源档第 1..upToLine 行到新档（第 2..upToLine 行逐字节相等），
- * header 重写（新 id / 新 createdAt / forkedFrom 血缘），写新档并切活动指针；源档零改动。
+ * header 重写（新 id / 新 createdAt / forkedFrom 血缘），写新档；源档零改动。
  * 任一前缀行非合法 JSON、upToLine 越界、源档缺失即 throw Error('INVALID_ARG: ...')，零副作用。
  */
 export function branchFrom(
@@ -268,11 +251,10 @@ export function branchFrom(
   const newHeader: JournalHeader = { ...header, id: newId, createdAt: now, forkedFrom: { sourceSessionId: sourceId, upToLine, kind } };
   fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
   fs.writeFileSync(path.join(sessionsDir(dataDir), newId + '.jsonl'), [JSON.stringify(newHeader), ...kept.slice(1)].join('\n') + '\n', 'utf8');
-  writeActivePointer(dataDir, newId);
   return newId;
 }
 
-/** 会话日志写面（事件级即时落盘，规格 2026-09-22 D1/D3/D4）：逐事件 appendFileSync、生命周期点写 header 与指针；未建档 log 丢弃（空会话零文件） */
+/** 会话日志写面（事件级即时落盘，规格 2026-09-22 D1/D3）：逐事件 appendFileSync、生命周期点写 header；未建档 log 丢弃（空会话零文件） */
 export class SessionJournal {
   private id: string | undefined;
   private readonly dataDir: string;
@@ -287,21 +269,20 @@ export class SessionJournal {
     return this.id;
   }
 
-  /** 建档（首个持久化事件触发）：生成 id，header 立即写盘 + 指针 */
+  /** 建档（首个持久化事件触发）：生成 id，header 立即写盘 */
   start(): void {
     if (this.id) return;
     this.startId(newSessionId());
   }
 
-  /** 轮转（/new）：换新 id，新 header 立即写盘 + 指针（旧档已在盘零改动） */
+  /** 轮转（/new）：换新 id，新 header 立即写盘（旧档已在盘零改动） */
   rotate(id: string): void {
     this.startId(id);
   }
 
-  /** 续挂既有日志（/resume / --continue / 分档）：档已在盘，仅切 id 与指针，不重复 header */
+  /** 续挂既有日志（/resume / --continue / 分档）：档已在盘，仅切 id，不重复 header */
   attach(id: string): void {
     this.id = id;
-    writeActivePointer(this.dataDir, id);
   }
 
   /** 事件级落盘（规格 D1）：逐事件 append，运行中即写，崩溃丢失窗口=在飞一步；未建档丢弃 */
@@ -321,6 +302,5 @@ export class SessionJournal {
     fs.mkdirSync(this.dir, { recursive: true });
     const header: JournalHeader = { t: 'header', v: 1, id, createdAt: new Date().toISOString() };
     fs.writeFileSync(path.join(this.dir, id + '.jsonl'), JSON.stringify(header) + '\n', 'utf8');
-    writeActivePointer(this.dataDir, id);
   }
 }
