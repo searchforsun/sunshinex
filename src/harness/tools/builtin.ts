@@ -12,6 +12,8 @@ import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
 import { MemoryWriteSeam } from '../memory/writer';
 import { MemoryScope } from '../memory/paths';
+import { createWorktree, removeWorktree, readRegistry, worktreesRoot, isDirty, randomWorktreeName } from '../worktree';
+import { resolveDataDir } from '../../config/data-dir';
 
 /** §9.3 快照过期回执文案（写链恒英文单语——CLAUDE.md §15；置于模块级避免每次 builtinTools 调用重建） */
 const SUNSHINE_STALE_NOTICE = 'SUNSHINE.md rewritten — session snapshot is stale until the next refresh point';
@@ -37,7 +39,7 @@ export type MemoryWriteTool = (input: { type: string; content: string; descripti
 }>;
 
 /** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write；执行期以本参数捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }): RegisteredTool[] {
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }, activeRoot?: () => string | null): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -58,7 +60,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       category: 'bash',
       executor: async (input: ToolInput) => {
         const cmd = String(input.command ?? '');
-        const r = await safety.run(cmd, { cwd: root });
+        // exec cwd 判定单点（规格 §11）：chain.execCwd()——活动根在场取活动根，isolation 子链换根克隆取专属树，缺省装配根
+        const r = await safety.run(cmd, { cwd: safety.execCwd() });
         if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
         throw new Error(`${r.error.code}: ${r.error.message}`);
       },
@@ -382,5 +385,52 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     });
   }
 
+  // worktree 模型工具（规格 §8/D7）：create/exit/list 三动作；create=建树+Harness 活动根切换单点，
+  // exit=回主工作区（未激活显式拒绝），list=登记表摘要（name/branch/dirty，数据面只读）。
+  // 注册在 builtin 尾部沿 memoryWrite/ask seam 先例；类别 worktree=单发独占（reactor 并行闸门判定键）
+  tools.push({
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['action', 'name'],
+      properties: {
+        action: { type: 'string', enum: ['create', 'exit', 'list'], description: 'create: fork a worktree from HEAD and switch the active root; exit: return to the main workspace; list: show registered worktrees' },
+        name: { type: ['string', 'null'], description: 'Worktree name for create (lowercase letters, digits, hyphens; max 64); omitted or null auto-generates wt-xxxx; ignored for exit/list' },
+      },
+    },
+    name: 'worktree',
+    description:
+      'Manage the session worktree: create forks an isolated git worktree from the current HEAD and switches the session working root to it (original workspace files stay untouched); exit returns to the main workspace; list shows registered worktrees with branch and dirty status. Runs exclusively on its own (never batched with other tools).',
+    category: 'worktree',
+    executor: async (input) => {
+      const action = String(input.action ?? '');
+      if (action === 'create') {
+        const raw = input.name;
+        const name = typeof raw === 'string' && raw.length > 0 ? raw : randomWorktreeName();
+        const treeRoot = activeRoot?.() ?? root;
+        const r = createWorktree(treeRoot, resolveDataDir(treeRoot), name);
+        if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
+        safety.enterWorktree(r.value.path);
+        const line = `worktree created: ${r.value.path} (branch ${r.value.branch}${r.value.copiedSettings ? ', .sunshinex/settings.json copied' : ''}); the session working root is now this worktree`;
+        return { ...execOut(line), stdout: fitOut('worktree', line) };
+      }
+      if (action === 'exit') {
+        if (safety.activeRoot === null) throw new CodedToolError('WORKTREE_NOT_ACTIVE', 'not in a worktree session; exit is not applicable');
+        const left = safety.activeRoot;
+        safety.exitWorktree();
+        const line = `exited worktree session (was ${left}); the session working root is back to the main workspace`;
+        return { ...execOut(line), stdout: fitOut('worktree', line) };
+      }
+      if (action === 'list') {
+        const treeRoot = activeRoot?.() ?? root;
+        const registry = readRegistry(resolveDataDir(treeRoot));
+        if (registry.length === 0) return execOut('no registered worktrees');
+        const rows = registry.map((e) => `- ${e.name} | branch ${e.branch} | ${isDirty(e.path) ? 'dirty' : 'clean'}${e.keptReason ? ` | kept (${e.keptReason})` : ''} | ${e.path}`);
+        const text = ['registered worktrees:', ...rows].join('\n');
+        return { ...execOut(text), stdout: fitOut('worktree', text) };
+      }
+      throw new CodedToolError('INVALID_ARG', `unknown worktree action: ${action} (expect create|exit|list)`);
+    },
+  });
   return tools;
 }

@@ -212,7 +212,7 @@ export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | '
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
 /** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子代理派生） */
-export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent' | 'ask';
+export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent' | 'ask' | 'worktree';
 
 /** AskQuestion 问询请求（ask_question 工具入参钳制后的装配面；customIndex=「Other…」末项下标，allowCustom 时存在） */
 export interface AskUserRequest {
@@ -242,6 +242,8 @@ export interface SubagentSpawnInput {
   label?: string;
   /** 子代理工具名子集（缺省 = 父全量 − spawn）；未知名由 spawn 输入面校验 fail-fast */
   tools?: string[];
+  /** 隔离通道（规格 §9/D9）：'worktree' = fork 前建专属树并在树内执行，收口随树生命周期；优先于 agent.md frontmatter */
+  isolation?: 'worktree';
   /** 预留语义位：v1 传 true 报 NOT_SUPPORTED（后台两段式后批开通） */
   background?: boolean;
 }

@@ -26,6 +26,7 @@ import type { SettlePayload } from './reactor';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
+import { createWorktree, removeWorktree, readRegistry, worktreesRoot } from './worktree';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
 export const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
@@ -75,7 +76,7 @@ export class Harness {
     settleMemory: (r: SettlePayload) => string | undefined;
   };
 
-  constructor(opts: HarnessOptions) {
+  constructor(private opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
     const store = new FileStore(resolveDataDir(base));
     const ledger = new RunLedger(store);
@@ -90,7 +91,7 @@ export class Harness {
     // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
     this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
     // 第 7 参注入记忆写入接缝（规格 §4.4 落点表）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
-    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }), opts.ask ?? headlessAskStub, this.writeSnapshot)) this.tools.register(t);
+    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }), opts.ask ?? headlessAskStub, this.writeSnapshot, () => this.safety.activeRoot)) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
     // 后台沉淀管线（规格 §3.1/§3.5）：收口零等待入队 → 空闲/收尾消化；notify 双通道=链尾 notice 行（模型面）+ notice 事件（用户面），
@@ -121,6 +122,7 @@ export class Harness {
         context: this.context,
         model: this.model,
         root: base,
+        rootProvider: () => this.safety.activeRoot,
         ledger,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       },
@@ -142,5 +144,37 @@ export class Harness {
       ...this.settleHooks,
     });
     this.ledger = ledger;
+  }
+
+  /** 本实例进入过的 worktree（cleanupWorktrees 清理范围单点） */
+  private readonly visitedWorktrees = new Set<string>();
+
+  /** 活动根只读视图（worktree 会话；null=主工作区缺省态） */
+  get activeRoot(): string | null {
+    return this.safety.activeRoot;
+  }
+
+  /** 进入 worktree 会话：安全链单点切换活动根，safety/context/runner 引用不重建即生效 */
+  enterWorktree(tree: string): void {
+    this.safety.enterWorktree(tree);
+    this.visitedWorktrees.add(tree);
+  }
+
+  /** 退出 worktree 会话回主工作区；当前不在 worktree 时报错（规格 D6） */
+  exitWorktree(): void {
+    if (this.safety.activeRoot === null) throw new Error('WORKTREE_NOT_ACTIVE: not in a worktree session');
+    this.safety.exitWorktree();
+  }
+
+  /** 收口清理：仅本实例进入过的树（porcelain 空→删；脏→留 + keptReason；失败逐树容忍不中断） */
+  cleanupWorktrees(): void {
+    const base = this.opts.root ?? process.cwd();
+    const dataDir = resolveDataDir(base);
+    for (const tree of this.visitedWorktrees) {
+      const entry = readRegistry(dataDir).find((e) => e.path === tree);
+      if (!entry) continue; // 登记缺失（已清/外来删）容忍：cleanup 是尽力而为的收口
+      void removeWorktree(base, dataDir, entry.name);
+    }
+    this.visitedWorktrees.clear();
   }
 }

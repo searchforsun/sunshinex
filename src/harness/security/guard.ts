@@ -43,6 +43,15 @@ export class SecurityGuard {
     // ask_question 即问询通道本身（零 IO 副作用，AskQuestion 线 D4/D7）：三模式放行——
     // plan 下的澄清式提问是对标 CC AskUserQuestion 的核心场景；deny 规则与破坏性硬底线仍先行
     if (tool === 'ask_question') return { allowed: true };
+    // worktree 工具（规格 D7）：deny 规则仍先行；单发独占由 reactor 并行闸门承载；
+    // 免审批对标 spawn 先例（建树/切换活动根产物全在数据目录，非破坏性副作用）；plan 只读闸门：
+    // create/exit 拦截（写语义：建树+切换活动根），list 只读放行（与 Read/Grep/Glob 同列白名单语义）
+    if (tool === 'worktree') {
+      const action = typeof input === 'object' && input !== null ? String((input as { action?: unknown }).action ?? '') : '';
+      if (action === 'list') return { allowed: true };
+      if (this.mode === 'plan') return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
+      return { allowed: true };
+    }
     if (decision === 'allow') return { allowed: true };
 
     // decision === 'ask'

@@ -7,6 +7,7 @@ import { runTuiLoop } from './tui-loop';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
 import { buildModel, parseTier } from '../runtime';
+import { resolveWorktreeLaunchRoot } from '../cli/worktree-launch';
 import { parseEffort } from '../model/adapter';
 import type { CliArgs } from '../cli';
 
@@ -25,6 +26,8 @@ function readPackageVersion(): string | undefined {
 export async function runTui(args: CliArgs): Promise<void> {
   // 相对路径立即收敛为绝对路径：root 全链路（工具沙箱 cwd、guard 边界、上下文工作目录事实）都以绝对路径为准
   const root = path.resolve(args.positional[0] ?? process.cwd());
+  // 入口一（规格 §7/D5）：--worktree 装配前解析（fail-fast 于建树失败/互斥冲突），root 替换后走既有装配链
+  const launchRoot = resolveWorktreeLaunchRoot(args, root);
   const modeFlag = typeof args.flags.mode === 'string' ? args.flags.mode : undefined;
   const mode = modeFlag === 'dontAsk' || modeFlag === 'plan' ? modeFlag : 'manual';
   const model = buildModel(args.flags);
@@ -34,10 +37,10 @@ export async function runTui(args: CliArgs): Promise<void> {
   const effort = parseEffort(typeof args.flags.effort === 'string' ? args.flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
   const continueLast = args.flags['continue'] === true;
-  const ctrl = new SessionController({ root, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}) });
+  const ctrl = new SessionController({ root: launchRoot, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}) });
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
-  const banner = buildBannerInfo({ version: readPackageVersion(), root, model: model.label ?? model.provider });
+  const banner = buildBannerInfo({ version: readPackageVersion(), root: launchRoot, model: model.label ?? model.provider });
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
   // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，

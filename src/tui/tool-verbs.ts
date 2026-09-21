@@ -10,6 +10,7 @@ const VERBS: Record<string, string> = {
   websearch: 'WEBSEARCH',
   kb_search: 'SEARCH',
   spawn: 'SPAWN',
+  worktree: 'WORKTREE',
 };
 
 /** 工具调用行文本：`VERB target`（无 target 时仅 VERB）；exec 取命令首段，其余取代表字段并截断 60 字符 */
@@ -30,6 +31,7 @@ const TARGET_FIELD: Record<string, string> = {
   webfetch: 'url',
   websearch: 'query',
   kb_search: 'query',
+  worktree: 'name',
 };
 
 function extractTarget(tool: string, input: unknown): string {

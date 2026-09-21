@@ -25,7 +25,7 @@ SunshineX 已有子代理并行 fork（上下文隔离、并发上限 4、结论
 | 子代理 | agent.md frontmatter `isolation: worktree`，或口头要求；结束后无改动自动删、有改动保留待清扫 | 无 | 采纳：frontmatter + spawn 入参双通道 |
 | 隔离强制 | 进 worktree 后封锁一切触及主 checkout 的编辑/命令（cwd 校验、`git -C`/重定向拦截、不可验证命令形态拒绝） | 容器级隔离 | 采纳方向，强度收敛到既有安全链（§11）：root 判界天然封顶，不新造命令形态审查器 |
 | 清理 | 干净自动删、有改动弹窗保留；后台清扫 + `git worktree lock` 防并发误删 | `worktree-keep-count` 保留数策略 | 采纳 A 语义（问卷裁决）；清扫登记 v2 |
-| 依赖/配置 | `.worktreeinclude` 把 gitignored 文件（.env 等）拷入新 worktree | — | v1 固定拷贝 `.env` 与 `.sunshinex/settings.json`（存在才拷），通配清单登记 v2 |
+| 依赖/配置 | `.worktreeinclude` 把 gitignored 文件（.env 等）拷入新 worktree | — | v1 固定拷贝 `.sunshinex/settings.json`（存在才拷）；`.env` 渠道已全量退役（7e4d277 配置全量语义化）不拷贝，通配清单登记 v2 |
 
 平台侧先例：本助手运行环境本身即以 worktree 形态派发会话 checkout（`git-dir` 与 `git-common-dir` 分离），`using-git-worktrees` 技能已内置「先检测已隔离 → 原生工具 → git 回退」协议——产品内建原生工具后，该技能的 Step 1a 路径自动命中，检测协议（Step 0）由本线收编为代码。
 
@@ -82,7 +82,7 @@ git 命令（`rev-parse` / `worktree add` / `worktree remove` / `status --porcel
 ### 6.3 依赖与配置落位
 
 - 新 worktree **不自动安装依赖**（观察行提示 `node_modules` 未就绪，安装由模型/用户按需执行）；对标 CC 同样不自动装。
-- 创建时固定拷贝 `.env` 与 `.sunshinex/settings.json`（存在才拷、覆盖语义、拷贝结果在观察行如实回执）——这两者是运行时装配读的本地配置，缺了会导致 worktree 内行为静默漂移。
+- 创建时固定拷贝 `.sunshinex/settings.json`（存在才拷、覆盖语义、拷贝结果在观察行如实回执）——它是运行时装配读的本地配置（gitignored），缺了会导致 worktree 内行为静默漂移。`.env` 不在拷贝面：本项目配置渠道已全量语义化（7e4d277 退役 `.env` 装载），新 worktree 不读取任何 `.env`。
 
 ## 7. 入口一：`--worktree` 启动旗标
 

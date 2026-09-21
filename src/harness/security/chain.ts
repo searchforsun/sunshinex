@@ -85,7 +85,9 @@ export class SafetyChain {
    */
   private resolveSafe(raw: unknown, tool: string): GuardDecision {
     try {
-      const abs = path.resolve(this.root, String(raw ?? ''));
+      // 判界基准：活动根在场（worktree 会话）时相对路径锚活动根，缺省回退主根——相对路径与 exec cwd 同源切换
+      const baseRoot = this.activeRootPath ?? this.root;
+      const abs = path.resolve(baseRoot, String(raw ?? ''));
       let anchor = abs;
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
@@ -95,6 +97,15 @@ export class SafetyChain {
         return memory.allowed
           ? { allowed: true, safePath: real }
           : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
+      }
+      // 活动 root 判定（规格 §11）：worktree 会话中活动根命中即按项目路径语义放行（读/写两面）；
+      // 主根与活动根互为界外——主根写类拒（回执提及 worktree 会话），读类恒开放（对比审查语义）；
+      // 真正外部路径（两根皆外）维持既有拒绝语义与文案，活动根在场零漂移
+      if (this.activeRootReal !== null) {
+        if (real === this.activeRootReal || isWithin(this.activeRootReal, real)) return { allowed: true, safePath: real };
+        if (tool === 'Write' && (real === this.rootReal || isWithin(this.rootReal, real))) {
+          return { allowed: false, reason: `COMMAND_DENIED: path escapes active worktree root (write outside worktree session): ${real}` };
+        }
       }
       if (real !== this.rootReal && !isWithin(this.rootReal, real)) {
         if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
@@ -110,6 +121,18 @@ export class SafetyChain {
   /** 派生带记忆 scope 的克隆（子代理 fork 用）：其余依赖引用共享，仅 scope 收窄；原实例零突变 */
   withMemoryScope(scope: MemoryScope): SafetyChain {
     return new SafetyChain(this.guard, this.backend, this.dryrun, this.root, scope);
+  }
+
+  /** 派生换根克隆（isolation 子代理用）：root/rootReal 置换为专属树，guard/backend/dryrun/scope 引用共享；
+   * 活动根态不继承（克隆从缺省态起步，子链 exec cwd 与路径判界天然锚树） */
+  withRoot(root: string): SafetyChain {
+    return new SafetyChain(this.guard, this.backend, this.dryrun, root, this.memoryScope);
+  }
+
+  /** exec cwd 判定单点（规格 §11：exec 的 cwd 锚活动根）：活动根在场取活动根，缺省取装配根——
+   * 链自身持态，主链/子链各自正确（子面 exec 经共享 executor 时不误锚主根） */
+  execCwd(): string {
+    return this.activeRootPath ?? this.root;
   }
 
   /**
@@ -152,9 +175,34 @@ export class SafetyChain {
     return this.backend.exec(cmd, opts);
   }
 
+  /** 活动根（worktree 会话）：切换时防御性 realpath 沿构造先例；null=缺省（既有语义逐字节保持） */
+  private activeRootPath: string | null = null;
+  private activeRootReal: string | null = null;
+
   /** 工具结果跨链的唯一脱敏出口：stdout 与 stderr 统一过凭据模式集 */
   maskResult(_tool: string, result: ExecResult): ExecResult {
     return { ...result, stdout: maskText(result.stdout), stderr: maskText(result.stderr) };
+  }
+
+  /** 活动根原始路径只读视图（builtinTools exec cwd 接缝与 Harness 转发消费；T4 接线） */
+  get activeRoot(): string | null {
+    return this.activeRootPath;
+  }
+
+  /** 进入 worktree 会话：切换活动根（引用不重建即生效）；路径归一沿构造先例（存在段 realpath，异常原样回退） */
+  enterWorktree(tree: string): void {
+    try {
+      this.activeRootReal = fs.existsSync(tree) ? fs.realpathSync(tree) : tree;
+    } catch {
+      this.activeRootReal = tree;
+    }
+    this.activeRootPath = tree;
+  }
+
+  /** 退出 worktree 会话：活动根复位为 null，判定序回落既有 root 语义 */
+  exitWorktree(): void {
+    this.activeRootReal = null;
+    this.activeRootPath = null;
   }
 
   preview(cmd: string): string {

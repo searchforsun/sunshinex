@@ -72,7 +72,7 @@ function walkStrict(node: JsonSchema, pathKey: string, loose: ReadonlySet<string
 test('内建工具全量声明 parameters 且对象节点显式闭合（裸装配与全接缝装配两态一致）', () => {
   withRegistries(({ bare, full }) => {
     const bareNames = bare.list().map((t) => t.name).sort();
-    assert.deepEqual(bareNames, ['exec', 'glob', 'grep', 'kb_search', 'read', 'skill', 'webfetch', 'websearch', 'write']);
+    assert.deepEqual(bareNames, ['exec', 'glob', 'grep', 'kb_search', 'read', 'skill', 'webfetch', 'websearch', 'worktree', 'write']);
     const fullNames = full.list().map((t) => t.name).sort();
     assert.deepEqual(fullNames, [...bareNames, 'ask_question', 'memory_write', SPAWN_TOOL_NAME].sort());
     for (const registry of [bare, full]) {
@@ -92,6 +92,7 @@ test('逐工具 required/properties 与执行器真实入参一一对应', () =>
       glob: ['pattern'],
       webfetch: ['url'],
       websearch: ['query', 'count'],
+      worktree: ['action', 'name'],
       kb_search: ['query', 'topK'],
       memory_write: ['type', 'content', 'description'],
       ask_question: ['question', 'options', 'multiple', 'allowCustom'],

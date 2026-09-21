@@ -526,7 +526,7 @@ export class Reactor {
         ? `Parallel batch exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools`
         : calls.some((c) => {
             const cat = this.deps.registry.get(c.tool)?.category;
-            return cat === 'bash' || cat === 'ask' || cat === undefined;
+            return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === undefined;
           })
           ? 'Parallel batch allows only non-exec/ask tools (exec and ask must run exclusively on their own)'
           : '';
@@ -619,7 +619,7 @@ export class Reactor {
       (calls.length > 1 &&
         calls.some((c) => {
           const cat = this.deps.registry.get(c.name)?.category;
-          return cat === 'bash' || cat === 'ask' || cat === undefined;
+          return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === undefined;
         }));
     const rejection = overLimit
       ? `Parallel batch rejected: exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools; use fewer calls per round`

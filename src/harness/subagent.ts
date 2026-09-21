@@ -7,6 +7,8 @@ import { AgentRole, ModelTier, SessionEvent, SubagentSpawnInput } from '../types
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
+import { createWorktree, removeWorktree, subagentTreeName } from './worktree';
+import { dataDirReal } from '../config/data-dir';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 import { MemoryStore } from './memory/store';
@@ -38,12 +40,14 @@ export interface AgentDef {
   /** 自有跨会话记忆开关（agent.md frontmatter `memory: true`；缺省关）：
    * 声明后自有记忆目录 <dataDir>/memory/agents/<id>/，索引经 fork 私有尾块注入、写面收窄到自身目录 */
   memory?: boolean;
+  /** 隔离声明（agent.md frontmatter `isolation: worktree`；缺省无）：fork 前建专属树并在树内执行 */
+  isolation?: 'worktree';
 }
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
 /** 解析 agent.md 的简易 frontmatter（--- 块内 key: value，与 skills 解析器同风格） */
-export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean } {
+export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean; isolation?: 'worktree' } {
   const out: Record<string, string> = { name: '', description: '', version: '0.1.0' };
   const m = FRONTMATTER.exec(md);
   if (!m) throw new Error('agent.md missing frontmatter');
@@ -52,7 +56,7 @@ export function parseAgentFrontmatter(md: string): { name: string; description: 
     if (kv) out[kv[1]] = kv[2].trim();
   }
   if (!out.name) throw new Error('agent.md frontmatter missing name');
-  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true' };
+  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true', ...(out.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}) };
 }
 
 /** 注册表：四角色内建注册 + agents/{id}/agent.md 装配期一次性加载（fail-fast，运行期零增删）。
@@ -78,7 +82,7 @@ export class AgentRegistry {
       if (!fs.existsSync(file)) continue;
       const md = fs.readFileSync(file, 'utf8');
       const meta = parseAgentFrontmatter(md);
-      this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body, ...(meta.memory ? { memory: true } : {}) });
+      this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body, ...(meta.memory ? { memory: true } : {}), ...(meta.isolation ? { isolation: meta.isolation } : {}) });
     }
   }
 
@@ -148,6 +152,8 @@ export interface SubagentRunnerDeps {
   context: ContextManager;
   model: ModelAdapter;
   root?: string;
+  /** 活动根提供者（worktree 会话）：派生 fork 子 Reactor root 取活动值，缺省回退静态 root（T2 接缝） */
+  rootProvider?: () => string | null;
   router?: ModelRouter;
   ledger?: RunLedger;
   onEvent?: (e: SessionEvent) => void;
@@ -161,7 +167,12 @@ export class SubagentRunner {
   /** base label → 在飞计数（同名并发消歧：后到者 #N 后缀，run 结束递减归零删键） */
   private inFlightLabels = new Map<string, number>();
 
-  constructor(private deps: SubagentRunnerDeps, private agents: AgentRegistry) {}
+  /** 活动根提供者引用（deps.rootProvider 缺省 null）：fork 子 Reactor root 经 forkRoot() 单点取活动值 */
+  private readonly rootProvider: (() => string | null) | null;
+
+  constructor(private deps: SubagentRunnerDeps, private agents: AgentRegistry) {
+    this.rootProvider = deps.rootProvider ?? null;
+  }
 
   /** spawn 通道预算源：reactor run 起止挂/摘（graph 通道经 opts.budget 显式传入，不走此源） */
   attachParent(getBudget: () => SubagentBudget): void {
@@ -170,6 +181,20 @@ export class SubagentRunner {
 
   detachParent(): void {
     this.getBudget = null;
+  }
+
+  /** fork 子 Reactor 工作目录事实单点：活动根优先（worktree 会话经 rootProvider），缺省回退静态 deps.root */
+  private forkRoot(): string | null {
+    return this.rootProvider?.() ?? this.deps.root ?? null;
+  }
+
+  /** isolation 专属树收口单点（规格 §9）：porcelain 空→自动删（含分支，返回 undefined）；有改动→保留 + keptReason=dirty，
+   * 返回附路径提示（结论/补丁行前注）；失败逐项容忍（登记缺失/已清），收口尽力而为 */
+  private settleIsoWorktree(iso?: { name: string; tree: string }): string | undefined {
+    if (iso === undefined || this.deps.root === undefined) return undefined;
+    const removed = removeWorktree(this.deps.root, dataDirReal(this.deps.root), iso.name);
+    if (removed.ok && removed.value === 'removed') return undefined;
+    return `worktree kept for inspection: ${iso.tree}`;
   }
 
   /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点）：缺省 = 父全量 − spawn；
@@ -247,6 +272,25 @@ export class SubagentRunner {
     this.inFlightLabels.set(label, n + 1);
     this.inFlight++;
     try {
+      // 入口三（规格 §9/D9）：双通道 isolation——入参优先于 frontmatter；内联临时子代理同样可用（仅入参通道）。
+      // 建树失败 fail-bounded：失败补丁行回链（含错误码），该子代理不执行，父任务不炸
+      const wantsIso =
+        input.isolation === 'worktree' ||
+        (input.agent_id !== undefined && this.agents.resolve(input.agent_id)?.isolation === 'worktree');
+      let iso: { name: string; tree: string } | undefined;
+      if (wantsIso) {
+        if (this.deps.root === undefined) {
+          this.deps.context.appendChain([{ action: 'note', observation: `[${label}] isolation: worktree unavailable (no project root)` }]);
+          return fail('INVALID_STATE', `[${label}] isolation: worktree requires a project root`);
+        }
+        const name = subagentTreeName(label);
+        const created = createWorktree(this.deps.root, dataDirReal(this.deps.root), name);
+        if (!created.ok) {
+          this.deps.context.appendChain([{ action: 'note', observation: `[${label}] isolation failed: ${created.error.code}: ${created.error.message}` }]);
+          return fail('INCOMPLETE', `[${label}] isolation failed (${created.error.code})`);
+        }
+        iso = { name: created.value.name, tree: created.value.path };
+      }
       const base = this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
       const seedHistory: StepRecord[] = [...base];
@@ -256,12 +300,14 @@ export class SubagentRunner {
       if (own !== undefined) seedHistory.push({ step: step++, action: 'memory', observation: own.line });
       seedHistory.push({ step: step++, action: 'task', observation: spec.taskLine });
 
+      // 隔离子链安全链：专属树换根克隆（与记忆 scope 正交组合）；fork root 锚树（工作目录事实=专属树）
+      const childSafety = iso !== undefined ? this.deps.safety.withRoot(iso.tree) : this.deps.safety;
       const child = new Reactor({
-        safety: own !== undefined ? this.deps.safety.withMemoryScope(own.scope) : this.deps.safety,
+        safety: own !== undefined ? childSafety.withMemoryScope(own.scope) : childSafety,
         registry: this.deriveChildRegistry(input),
         context: this.deps.context,
         model: this.deps.model,
-        ...(this.deps.root ? { root: this.deps.root } : {}),
+        ...(iso !== undefined ? { root: iso.tree } : this.forkRoot() ? { root: this.forkRoot()! } : {}),
         ...(this.deps.router ? { router: this.deps.router } : {}),
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
         ...(this.deps.onEvent
@@ -281,18 +327,24 @@ export class SubagentRunner {
           },
         );
         if (result.done && result.reply) {
-          // 子代理返回制：私有步骤零主链污染，终态恰好一行结论行
+          // 子代理返回制：私有步骤零主链污染，终态恰好一行结论行；isolation 树收口先行（保留时附路径行）
+          const keptNote = this.settleIsoWorktree(iso);
+          if (keptNote) this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] ${keptNote}` }]);
           this.deps.context.appendChain([{ action: 'node', observation: `[${finalLabel}] ${firstLine(result.reply)}` }]);
           return ok({ reply: result.reply, tokens: result.tokensUsed ?? 0 });
         }
         const reason = result.stopReason ?? 'failed';
-        this.deps.context.appendChain([
-          { action: 'note', observation: `[${finalLabel}] did not finish (${reason})` },
-        ]);
+        {
+          const keptNote = this.settleIsoWorktree(iso);
+          this.deps.context.appendChain([
+            { action: 'note', observation: `[${finalLabel}] did not finish (${reason})${keptNote ? ` ${keptNote}` : ''}` },
+          ]);
+        }
         return fail('INCOMPLETE', `[${finalLabel}] did not finish (${reason})`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'unknown error';
-        this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] failed: ${msg}` }]);
+        const keptNote = this.settleIsoWorktree(iso);
+        this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] failed: ${msg}${keptNote ? ` ${keptNote}` : ''}` }]);
         return fail('INCOMPLETE', msg);
       }
     } finally {

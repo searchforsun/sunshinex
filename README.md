@@ -81,8 +81,8 @@ sunshinex                      # 任意目录进终端（= sunshinex tui，需�
 sunshinex ../my-project        # 指定项目目录启动（对标 claude <dir>）
 sunshinex --mode=manual|dontAsk|plan   # 权限模式
 sunshinex --language=zh        # 界面语言（缺省 en；提示词恒英文单语不受影响）
-sunshinex <目录> --continue    # 续接该项目最近会话；TUI 内 /resume 列出/恢复更早会话
-                               # 会话回退/分叉：TUI 内 /rewind 回退到任意历史轮（对话必选、代码可选），/fork 从任意轮分叉平行会话
+sunshinex <目录> --worktree[=<name>]  # 在隔离 git worktree 内启动（裸旗标自动命名；干净树随会话自动清理，脏树保留待处置）
+                               # 会话内亦可经 worktree 工具 create/exit/list 管理隔离树；子代理经 agent.md `isolation: worktree` 声明获得独立树
 pnpm test && pnpm selfcheck    # 全量单测 / 骨架自检
 ```
 

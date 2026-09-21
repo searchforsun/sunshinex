@@ -195,6 +195,8 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 
 **子代理（spawn）**：模型可派发子代理并行处理独立子任务，过程不占用主链，只回写一行结论。运行中每个子代理在输入框上方显示 4 行实时面板；结束后整段记录折叠进 `● [SPAWN]` 调用行（单行摘要含步数/耗时尾注），`Ctrl+B` 浏览模式下 `Enter` 逐行展开为 `▾` 头行 + 缩进转录全文（再按收拢），`Tab` / `Ctrl+O` 可重放全文。展开状态跨窗口缩放保留，跨会话恢复（/resume）回落折叠。自定义角色放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）。
 
+**Worktree 隔离**：会话内说「在隔离 worktree 里做……」模型即调 worktree 工具 create 切换到独立树（主工作区零改动），exit 返回主工作区，list 查看登记；plan 模式下仅 list 可用。启动时也可带 `--worktree[=<name>]` 旗标直接进入隔离树；子代理经 agent.md `isolation: worktree` 或 spawn 入参声明获得独立树。干净树自动清理，脏树保留待处置。
+
 ### 会话回退与分叉（/rewind · /fork）
 
 - `/rewind`：回退当前会话到任意历史任务轮，恢复粒度=任务轮起点；被回掉的后续轮次**保留在原会话**，`/resume` 随时找回；锚点轮的输入自动回填输入框、可编辑重发。

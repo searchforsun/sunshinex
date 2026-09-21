@@ -69,8 +69,8 @@ export function resolveInvocation(args: CliArgs): CliArgs {
   return { command: 'tui', positional: [args.command, ...args.positional], flags: args.flags };
 }
 
-/** CLI 帮助（运行期求值：语言随 --language 设定，禁止模块级 t() 冻结） */
-function usageText(): string {
+/** CLI 帮助（运行期求值：语言随 --language 设定，禁止模块级 t() 冻结）——导出供 USAGE 断言用例消费 */
+export function usageText(): string {
   return t(
     `SunshineX CLI
   sunshinex                               enter the interactive session terminal directly (= sunshinex tui, manual default)
@@ -78,6 +78,7 @@ function usageText(): string {
                                          first arg that is not a subcommand is treated as the project dir (= sunshinex tui <dir>); --language UI & prompt language (default en); --effort default reasoning effort (endpoint-verified, fallback per ladder)
   sunshinex selfcheck                     skeleton self-check (perception/tools/security/context/Loop/Graph)
   sunshinex run <dir> --goal="..."        run the standard verify-fix loop on the dir (goal via --goal)
+  sunshinex run|tui <dir> --worktree[=<name>]  start inside an isolated git worktree (bare flag auto-names wt-xxxx; --continue is mutually exclusive)
   sunshinex pipeline <dir> [--yes]        five-node full pipeline with interactive gate approvals (--yes auto-approves)
   sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large] [--effort=...]
                               interactive session terminal (streaming/approvals/todos, manual default)
@@ -88,6 +89,7 @@ function usageText(): string {
                                          首参非子命令时视为项目目录直进终端（= sunshinex tui <dir>）；--language 界面与提示词语言（缺省 en）；--effort 缺省思考强度（端点实测校准，按阶梯自动降级）
   sunshinex selfcheck                     骨架自检（感知/工具/安全/上下文/Loop/Graph 就绪）
   sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（goal 走交互或 --goal）
+  sunshinex run|tui <dir> --worktree[=<name>]  在隔离 git worktree 内启动（裸旗标自动命名 wt-xxxx；与 --continue 互斥）
   sunshinex pipeline <dir> [--yes]        五节点全链路流水线，gate 审批交互（--yes 跳过交互直接批准）
   sunshinex tui [dir] [--mode=manual|dontAsk|plan] [--language=en|zh] [--tier=small|medium|large] [--effort=...]
                               交互式会话终端（流式/审批/待办，manual 缺省）
