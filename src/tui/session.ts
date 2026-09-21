@@ -140,6 +140,19 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 }
 
 /** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
+/** 选择卡分页（规格 D6）：>8 项时卡尾追加 More…（下一页）/Back…（上一页）导航项，page 从 0 起；单页内零导航项 */
+export function paginateOptions(
+  items: Array<{ label: string; description?: string }>,
+  page = 0,
+  pageSize = 8,
+): { options: Array<{ label: string; description?: string }>; page: number; totalPages: number } {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const options = [...items.slice(page * pageSize, (page + 1) * pageSize)];
+  if (page + 1 < totalPages) options.push({ label: t('More…', '更多…'), description: t('next page', '下一页') });
+  if (page > 0) options.push({ label: t('Back…', '上一页…'), description: t('previous page', '上一页') });
+  return { options, page, totalPages };
+}
+
 function slashHelp(): string[] {
   return [
     t('Commands:', '命令：'),
@@ -1091,84 +1104,138 @@ export class SessionController {
       await this.runGoalFlow(goal);
       return;
     }
-    if (cmd === '/memory') {
-      // 手动通道（规格 §6）：无参列索引 / add（走与自动提取同一写时闸门）/ rm / gc（显式整理入口，阈值外 force）
+    if (cmd === '/memory') return this.memoryList();
+    if (cmd === '/memory-add') return this.memoryAdd(text.slice(cmd.length).trim());
+    if (cmd === '/memory-rm') return this.memoryRm();
+    if (cmd === '/memory-gc') return this.memoryGc();
+    if (cmd === '/memory-on' || cmd === '/memory-off') {
+      const on = cmd === '/memory-on';
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', t('A task is running; /memory unavailable now', '当前有任务进行中，暂不能执行 /memory'), { level: 'warn' });
+        this.pushMsg('system', t(`A task is running; ${cmd} unavailable now`, `当前有任务进行中，暂不能执行 ${cmd}`), { level: 'warn' });
         return;
       }
-      const store = new MemoryStore(this.root);
-      const arg = text.slice(cmd.length).trim();
-      if (arg === 'on' || arg === 'off') {
-        this.memoryOverride = arg === 'on';
-        setMemorySessionOverride(this.memoryOverride); // 会话内覆盖单点：提取/注入/写闸门逐次判门读取（§7 控制面）
-        this.pushMsg('system', t(`Persistent memory ${arg} for this session (persist with the SUNSHINEX_AUTO_MEMORY env var)`, `本会话持久记忆已${arg === 'on' ? '开启' : '关闭'}（持久化请设环境变量 SUNSHINEX_AUTO_MEMORY）`));
-        return;
-      }
-      if (!arg) {
-        const records = store.list();
-        const capacity = store.capacityNotice();
-        if (records.length === 0) {
-          this.pushMsg('system', [t('No memories yet — /memory add <text> to add one', '暂无记忆——用 /memory add <内容> 添加一条'), this.memoryStateLine(), ...(capacity ? [capacity] : [])].join('\n'));
-          return;
-        }
-        const lines = records.map((r) => `- ${r.slug} [${r.type}] (${r.created}) ${r.description}`);
-        this.pushMsg('system', [t(`Persistent memories (${records.length}):`, `持久记忆（${records.length} 条）：`), ...lines, this.memoryStateLine(), ...(capacity ? [capacity] : [])].join('\n'));
-        return;
-      }
-      const parts = arg.split(/\s+/);
-      const sub = parts[0] ?? '';
-      const rest = parts.slice(1).join(' ').trim();
-      if (sub === 'add') {
-        if (!rest) {
-          this.pushMsg('system', t('Usage: /memory add <text>', '用法：/memory add <内容>'), { level: 'warn' });
-          return;
-        }
-        const flagged = scanMemoryText(rest);
-        if (flagged) {
-          this.pushMsg('system', t(`Rejected: session-scoped or unsafe content (${flagged}); not persisted`, `已拒绝：会话性内容或含注入特征（${flagged}），不落盘`), { level: 'warn' });
-          return;
-        }
-        const r = store.add({ type: 'project', description: rest, body: rest });
-        if (r.ok) {
-          this.pushMsg('system', t(`Added memory: ${r.value.slug} (applies from the next session or refresh point)`, `已添加记忆：${r.value.slug}（下个会话或刷新点生效）`));
-        } else if (r.error.code === 'MEMORY_DUPLICATE') {
-          this.pushMsg('system', t(`Duplicate memory rejected: ${rest}`, `重复记忆已拒绝：${rest}`), { level: 'warn' });
-        } else {
-          this.pushMsg('system', r.error.message, { level: 'error' });
-        }
-        return;
-      }
-      if (sub === 'rm') {
-        if (!rest) {
-          this.pushMsg('system', t('Usage: /memory rm <slug>', '用法：/memory rm <slug>'), { level: 'warn' });
-          return;
-        }
-        const r = store.remove(rest);
-        if (r.ok) {
-          this.pushMsg('system', t(`Removed memory: ${rest}`, `已删除记忆：${rest}`));
-        } else {
-          this.pushMsg('system', t(`No such memory: ${rest}`, `不存在这个记忆：${rest}`), { level: 'warn' });
-        }
-        return;
-      }
-      if (sub === 'gc') {
-        if (!isModelSummarizer(this.runtime.harness.model)) {
-          this.pushMsg('system', t('Consolidation requires a real model (current channel is stub/scripted)', '整理需要真实模型（当前通道为 stub/scripted）'), { level: 'warn' });
-          return;
-        }
-        if (store.count() === 0) {
-          this.pushMsg('system', t('No memories yet — nothing to consolidate', '暂无记忆——没有可整理的内容'), { level: 'warn' });
-          return;
-        }
-        await consolidateMemory({ model: this.runtime.harness.model, root: this.root, force: true });
-        this.pushMsg('system', t(`Consolidated persistent memory: ${store.count()} records`, `持久记忆已整理：${store.count()} 条`));
-        return;
-      }
-      this.pushMsg('system', t(`Unknown /memory subcommand: ${sub}`, `未知 /memory 子命令：${sub}`), { level: 'warn' });
+      this.memoryOverride = on;
+      setMemorySessionOverride(on); // 会话内覆盖单点：提取/注入/写闸门逐次判门读取（§7 控制面）
+      this.pushMsg('system', t(`Persistent memory ${on ? 'on' : 'off'} for this session (persist with the SUNSHINEX_AUTO_MEMORY env var)`, `本会话持久记忆已${on ? '开启' : '关闭'}（持久化请设环境变量 SUNSHINEX_AUTO_MEMORY）`));
       return;
     }
     this.pushMsg('system', t(`Unknown command: ${cmd} (/help for list)`, `未知命令：${cmd}（/help 查看清单）`), { level: 'warn' });
+  }
+
+  /** /memory：无参列索引（查看态） */
+  private memoryList(): void {
+    if (this.state.status !== 'idle') {
+      this.pushMsg('system', t('A task is running; /memory unavailable now', '当前有任务进行中，暂不能执行 /memory'), { level: 'warn' });
+      return;
+    }
+    const store = new MemoryStore(this.root);
+    const records = store.list();
+    const capacity = store.capacityNotice();
+    if (records.length === 0) {
+      this.pushMsg('system', [t('No memories yet — /memory-add <text> to add one', '暂无记忆——用 /memory-add <内容> 添加一条'), this.memoryStateLine(), ...(capacity ? [capacity] : [])].join('\n'));
+      return;
+    }
+    const lines = records.map((r) => `- ${r.slug} [${r.type}] (${r.created}) ${r.description}`);
+    this.pushMsg('system', [t(`Persistent memories (${records.length}):`, `持久记忆（${records.length} 条）：`), ...lines, this.memoryStateLine(), ...(capacity ? [capacity] : [])].join('\n'));
+  }
+
+  /** /memory-add：自由文本内容写入（与自动提取同一写时闸门）；空内容按规格 D2 落统一无法识别文案 */
+  private memoryAdd(rest: string): void {
+    if (this.state.status !== 'idle') {
+      this.pushMsg('system', t('A task is running; /memory-add unavailable now', '当前有任务进行中，暂不能执行 /memory-add'), { level: 'warn' });
+      return;
+    }
+    if (!rest) {
+      this.pushMsg('system', t('Unrecognized command. Use /help to see available commands', '无法识别命令，使用 /help 查看使用方法'), { level: 'warn' });
+      return;
+    }
+    const store = new MemoryStore(this.root);
+    const flagged = scanMemoryText(rest);
+    if (flagged) {
+      this.pushMsg('system', t(`Rejected: session-scoped or unsafe content (${flagged}); not persisted`, `已拒绝：会话性内容或含注入特征（${flagged}），不落盘`), { level: 'warn' });
+      return;
+    }
+    const r = store.add({ type: 'project', description: rest, body: rest });
+    if (r.ok) {
+      this.pushMsg('system', t(`Added memory: ${r.value.slug} (applies from the next session or refresh point)`, `已添加记忆：${r.value.slug}（下个会话或刷新点生效）`));
+    } else if (r.error.code === 'MEMORY_DUPLICATE') {
+      this.pushMsg('system', t(`Duplicate memory rejected: ${rest}`, `重复记忆已拒绝：${rest}`), { level: 'warn' });
+    } else {
+      this.pushMsg('system', r.error.message, { level: 'error' });
+    }
+  }
+
+  /** /memory-rm：多选卡批删（规格 D5/D6）：Space 勾选、Enter 批删、Esc 取消零删除；>8 条分页、跨页勾选累积 */
+  private async memoryRm(): Promise<void> {
+    if (this.state.status !== 'idle') {
+      this.pushMsg('system', t('A task is running; /memory-rm unavailable now', '当前有任务进行中，暂不能执行 /memory-rm'), { level: 'warn' });
+      return;
+    }
+    const store = new MemoryStore(this.root);
+    const records = store.list();
+    if (records.length === 0) {
+      this.pushMsg('system', t('No memories yet — /memory-add <text> to add one', '暂无记忆——用 /memory-add <内容> 添加一条'), { level: 'warn' });
+      return;
+    }
+    const items = records.map((r) => ({ label: r.slug, description: `${r.type} · ${r.description} (${r.created})` }));
+    const moreLabel = t('More…', '更多…');
+    const backLabel = t('Back…', '上一页…');
+    const picked: string[] = [];
+    let page = 0;
+    for (;;) {
+      const shown = paginateOptions(items, page);
+      const answer = await this.askUser({
+        question: t('Select memories to delete (Space to toggle, Enter to delete)', '选择要删除的记忆（Space 勾选，Enter 批量删除）'),
+        options: shown.options,
+        multiple: true,
+      });
+      if (answer.type !== 'selected') {
+        this.pushMsg('system', t('No memories removed', '未删除任何记忆'));
+        return;
+      }
+      // 导航项（More…/Back…）与后续勾选同卡互斥语义外的共存形态：含导航即翻页，其余勾选跨页累积
+      const picks = answer.labels.filter((l) => l !== moreLabel && l !== backLabel);
+      picked.push(...picks);
+      if (answer.labels.includes(moreLabel)) { page += 1; continue; }
+      if (answer.labels.includes(backLabel)) { page -= 1; continue; }
+      break;
+    }
+    const unique = [...new Set(picked)];
+    if (unique.length === 0) {
+      this.pushMsg('system', t('No memories removed', '未删除任何记忆'));
+      return;
+    }
+    let ok = 0;
+    let fail = 0;
+    for (const slug of unique) {
+      const r = store.remove(slug);
+      if (r.ok) ok += 1;
+      else fail += 1;
+    }
+    const capacity = store.capacityNotice();
+    this.pushMsg('system', [
+      t(ok === 1 ? `Removed 1 memory${fail ? ` (${fail} failed)` : ''}` : `Removed ${ok} memories${fail ? ` (${fail} failed)` : ''}`, `已删除 ${ok} 条${fail ? `（失败 ${fail} 条）` : ''}`),
+      ...(capacity ? [capacity] : []),
+    ].join('\n'));
+  }
+
+  /** /memory-gc：显式整理入口（阈值外 force），与自动整理同一 consolidate 函数 */
+  private async memoryGc(): Promise<void> {
+    if (this.state.status !== 'idle') {
+      this.pushMsg('system', t('A task is running; /memory-gc unavailable now', '当前有任务进行中，暂不能执行 /memory-gc'), { level: 'warn' });
+      return;
+    }
+    const store = new MemoryStore(this.root);
+    if (!isModelSummarizer(this.runtime.harness.model)) {
+      this.pushMsg('system', t('Consolidation requires a real model (current channel is stub/scripted)', '整理需要真实模型（当前通道为 stub/scripted）'), { level: 'warn' });
+      return;
+    }
+    if (store.count() === 0) {
+      this.pushMsg('system', t('No memories yet — nothing to consolidate', '暂无记忆——没有可整理的内容'), { level: 'warn' });
+      return;
+    }
+    await consolidateMemory({ model: this.runtime.harness.model, root: this.root, force: true });
+    this.pushMsg('system', t(`Consolidated persistent memory: ${store.count()} records`, `持久记忆已整理：${store.count()} 条`));
   }
 
   private onEvent(e: SessionEvent): void {
