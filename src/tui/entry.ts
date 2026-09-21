@@ -33,7 +33,7 @@ export async function runTui(args: CliArgs): Promise<void> {
   const model = buildModel(args.flags);
   // 模型档位（用户级会话参数，对标 Claude Code 的模型选择）：--tier 优先，SUNSHINEX_TIER 兜底；/model 可会话内切换
   const tier = parseTier(args.flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
-  // 缺省思考强度（请求级参数，--effort > SUNSHINEX_REASONING_EFFORT）：/model effort 可会话内切换
+  // 缺省思考强度（请求级参数，--effort > SUNSHINEX_REASONING_EFFORT）：/model-effort 可会话内切换
   const effort = parseEffort(typeof args.flags.effort === 'string' ? args.flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
   const continueLast = args.flags['continue'] === true;

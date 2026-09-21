@@ -19,7 +19,7 @@ graph LR
 
 ```text
 src/
-  cli/       # CLI 执行面（selfcheck / run / pipeline / tui 交互终端）
+  cli/       # CLI 执行面（selfcheck / run / pipeline；裸命令进交互终端）
   harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子代理、知识库
   loop/      # Loop 引擎（生成→校验→修正）
   graph/     # DAG 多角色协作编排
@@ -50,7 +50,7 @@ src/
 ```bash
 corepack enable                # 启用 Node 自带 corepack（pnpm 版本由 package.json 钉定）
 pnpm install                   # .npmrc 已把 store 固定到仓内，HOME 只读环境开箱可用
-pnpm cli tui                   # 构建并启动交互式终端（缺省 manual 权限模式）
+pnpm cli                       # 构建并启动交互式终端（缺省 manual 权限模式）
 ```
 
 模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥，任意 OpenAI 协议兼容供应商）：
@@ -64,7 +64,7 @@ pnpm cli tui                   # 构建并启动交互式终端（缺省 manual 
 }
 ```
 
-配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [TUI-MANUAL](TUI-MANUAL.md)；旧 `~/.sunshinex/.env` 已退役——设置键转语义键、密钥原样进 `env` 块。
+配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [MANUAL](MANUAL.md)；旧 `~/.sunshinex/.env` 已退役——设置键转语义键、密钥原样进 `env` 块。
 
 ### 长任务终止参数
 
@@ -72,13 +72,13 @@ pnpm cli tui                   # 构建并启动交互式终端（缺省 manual 
 - `maxLoopIterations`（缺省 200）：Loop 修正环节点执行步上限
 - `maxGraphNodes`（缺省 1000）：Graph 全链路节点步累计上限
 
-思考强度（reasoning effort）：`settings.json` 语义键 `reasoningEffort`（none|minimal|low|medium|high|xhigh|max，缺省不下发即用端点默认），或启动参数 `--effort=<档>`、会话内 `/model effort <档>`；端点不支持该参数时按阶梯逐档降级、全不支持自动省略。
+思考强度（reasoning effort）：`settings.json` 语义键 `reasoningEffort`（none|minimal|low|medium|high|xhigh|max，缺省不下发即用端点默认），或启动参数 `--effort=<档>`、会话内 `/model-effort` 选择卡切换；端点不支持该参数时按阶梯逐档降级、全不支持自动省略。
 
 常用入口：
 
 ```bash
-sunshinex                      # 任意目录进终端（= sunshinex tui，需全局安装，见下节）
-sunshinex ../my-project        # 指定项目目录启动（对标 claude <dir>）
+sunshinex                      # 当前工作区进终端（需全局安装，见下节）
+sunshinex ../my-project        # 指定项目目录启动（路径形态位置参数；或 --workdir=../my-project）
 sunshinex --mode=manual|dontAsk|plan   # 权限模式
 sunshinex --language=zh        # 界面语言（缺省 en；提示词恒英文单语不受影响）
 sunshinex <目录> --worktree[=<name>]  # 在隔离 git worktree 内启动（裸旗标自动命名；干净树随会话自动清理，脏树保留待处置）
@@ -135,6 +135,6 @@ scripts/release.mjs --version 0.2.0 --clobber  # 同版本重发（覆盖附件�
 | `docs/PLATFORM.md` | 平台兼容性与部署条件（三平台矩阵、部署清单） |
 | `docs/ROADMAP.md` | 开发路线图 |
 | `docs/superpowers/specs/` | 设计 spec 归档 |
-| `TUI-MANUAL.md` | TUI 使用手册（快捷键、权限模式、配置全表） |
+| `MANUAL.md` | 使用手册（CLI + TUI：命令、快捷键、权限模式、配置全表） |
 | `CLAUDE.md` | AI 协作规范（完整目录结构 / 编码规范 / 架构约定） |
 | `SUNSHINE.md` | 项目业务配置；另有全局约定 `~/.sunshinex/SUNSHINE.md`（对标 `~/.claude/CLAUDE.md`，`SUNSHINEX_GLOBAL_SUNSHINE` 覆盖） |

@@ -16,7 +16,7 @@ export interface TuiRuntimeOpts {
   mode?: 'dontAsk' | 'manual' | 'plan';
   /** 用户级模型档位（run 级常量，对标 Claude Code 的模型选择）：/model 会话内切换经 runTask 逐次覆盖 */
   tier?: ModelTier;
-  /** 缺省思考强度（run 级常量，对标 tier）：/model effort 会话内切换经 runTask 逐次覆盖；缺省回适配器 cfg/env */
+  /** 缺省思考强度（run 级常量，对标 tier）：/model-effort 会话内切换经 runTask 逐次覆盖；缺省回适配器 cfg/env */
   effort?: ReasoningEffort;
   /** manual 模式审批回调（guard asker 装配点）；会话结束由调用方 clearSessionAllows */
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
@@ -61,7 +61,7 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     pipeline: harness.pipeline,
   };
 
-  // run 级覆盖统一构造：/model 档位与 /model effort 逐次覆盖、scope 线程、中断 signal（runTask/runLoop 共用，防两处漂移）
+  // run 级覆盖统一构造：/model 档位与 /model-effort 逐次覆盖、scope 线程、中断 signal（runTask/runLoop 共用，防两处漂移）
   const buildRunDeps = (o?: { tier?: ModelTier; effort?: ReasoningEffort; scope?: 'session' | 'fork'; signal?: AbortSignal }): LoopDeps => ({
     ...loopDeps,
     ...(o?.tier ? { tier: o.tier } : {}),

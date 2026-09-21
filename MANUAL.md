@@ -1,6 +1,8 @@
-# SunshineX TUI 使用手册
+# SunshineX 使用手册（CLI + TUI）
 
 终端里的 AI Agent：用自然语言下任务，模型流式作答、工具实时执行，写操作需你审批，复杂目标先规划后执行。
+
+本手册覆盖 CLI 启动与 TUI 交互全量用法；架构、开发与部署见 [README.md](README.md)。
 
 要求：Node.js ≥ 22.9。
 
@@ -10,8 +12,8 @@
 
 ```bash
 pnpm install           # 首次安装
-pnpm cli tui           # 启动（内置构建，无需单独 build）
-pnpm cli tui <目录>    # 在指定项目目录打开会话
+pnpm cli               # 启动（内置构建，无需单独 build）
+pnpm cli <目录>        # 在指定项目目录打开会话（路径形态参数：/abs、./x、../x）
 pnpm cli selfcheck     # 骨架自检
 pnpm test              # 全量单测
 ```
@@ -23,19 +25,33 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 # npm ≥ 12 报 EALLOWREMOTE（allow-remote 缺省 none）时二选一：
 #   加开关：npm install -g --allow-remote=all <上面的链接>
 #   或先下载再本地装（allow-file 缺省 all，不受此限）：curl -LO <链接> && npm install -g ./sunshinex-agent-0.2.0.tgz
-sunshinex              # 任意目录直接进入终端
-sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 ```
 
-**启动参数**
+**命令总表**
+
+| 命令 | 作用 |
+| --- | --- |
+| `sunshinex` | 当前工作区启动 TUI（缺省形态） |
+| `sunshinex /path/to` | 指定目录启动 TUI（位置参数=路径形态：`/abs`、`./x`、`../x`、`a/b`） |
+| `sunshinex --workdir=/path/to` | 同上，flag 形态 |
+| `sunshinex help` | 显示用法（`--help` / `-h` 同义） |
+| `sunshinex selfcheck` | 骨架自检 |
+| `sunshinex run <dir> --goal="..."` | 标准验收修正环（非 done 退出码 1） |
+| `sunshinex pipeline <dir> --goal="..." [--yes]` | 五节点流水线 gate 审批（`--yes` 跳过交互直接批准） |
+
+**启动参数**（全部命令通用）
 
 | 参数 | 说明 |
 | --- | --- |
-| `--mode=manual\|plan\|dontAsk` | 权限模式，缺省 `manual`（见第五节） |
+| `--mode=manual\|plan\|dontAsk` | 权限模式，缺省 `manual`（见第六节） |
 | `--language=en\|zh` | 界面语言，缺省 `en`；只影响界面，模型侧文本恒英文 |
 | `--tier=small\|medium\|large` | 模型档位，缺省 `medium`；会话内可用 `/model` 切换 |
-| `--effort=none\|minimal\|low\|medium\|high\|xhigh\|max` | 缺省思考强度（reasoning_effort）；端点不支持时按阶梯自动降级，会话内可用 `/model effort` 切换 |
-| `--continue` | 续接最近一次会话 |
+| `--effort=none\|minimal\|low\|medium\|high\|xhigh\|max` | 缺省思考强度（reasoning_effort）；端点不支持时按阶梯自动降级，会话内可用 `/model-effort` 切换 |
+| `--continue` | 续接最近一次会话（TUI 专属，与 `--worktree` 互斥） |
+| `--worktree[=<name>]` | 在隔离 git worktree 内启动（裸旗标自动命名；干净树随会话自动清理，脏树保留待处置，见 5.5） |
+| `--workdir=<dir>` | 目录来源 flag 形态；与位置路径同传时本 flag 优先 |
+
+无法识别的裸词报错不启动（`无法识别命令，使用 sunshinex help 查看使用方法`）。
 
 升级：重装新版 Release 链接即覆盖。
 
@@ -135,6 +151,7 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
     ├── sessions-active.json    # 最近会话指针
     ├── memory/                 # 持久记忆：MEMORY.md 索引 + <slug>.md 记录
     ├── skills/                 # 自动沉淀的学习技能
+    ├── worktrees/              # worktree 隔离工作树（见 5.5）与登记表 registry.json
     ├── runs/                   # 任务账本（/status 与状态栏统计）
     ├── kb/                     # 知识库数据
     ├── tool-outputs/           # 超长工具输出的完整原文（正文只留预览 + 路径）
@@ -178,32 +195,80 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 - 提交：回车；行尾单个 `\` 回车为多行续行；运行中继续输入自动排队。
 - 历史回看：`Tab` 折叠/展开过程行（按正文与阶段分段折叠），`Ctrl+O` 展开最近一组的详情全文。
 
-**会话命令**（输入 `/` 后按 `Tab` 补全）
+**会话命令**（输入 `/` 后按 `Tab` 补全；命令只认裸形式，带参枚举形态与不在清单的命令统一回执「无法识别命令，使用 /help 查看使用方法」）
 
 | 命令 | 作用 |
 | --- | --- |
 | `/help` | 命令清单 |
 | `/init` | 分析项目，生成或补全 `SUNSHINE.md`（已存在时只补缺失项，不改动既有内容） |
-| `/goal <目标>` | 标准验收修正环：目标即验收条件，模型逐轮评估（满足 / 未满足 / 不可满足）；复杂目标可内嵌 `（验收标准：…）` 多判据；判据服务不可用时自动重试 3 次后暂停，重跑 `/goal` 续走 |
-| `/plan <目标>` | 先规划后执行（见第六节） |
+| `/goal <目标>` | 标准验收修正环，见 5.2 |
+| `/plan <目标>` | 先规划后执行，见 5.1 |
 | `/status` | 会话与账本摘要 |
-| `/model [small\|medium\|large]` | 查询 / 切换模型档位（对后续任务生效）；`/model effort none\|…\|max` 切思考强度，`/model effort default` 回端点默认 |
+| `/model` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效） |
+| `/model-effort` | 切换思考强度：选择卡七档 + default，回执实际生效档 |
 | `/compact [关注点]` | 立即压缩上下文，可指定优先保留的内容；接近窗口上限时也会自动压缩 |
-| `/memory` | 持久记忆：无参列索引；`add <内容>` 添加；`rm <slug>` 删除；`gc` 手动整理；`on` / `off` 开关（本会话内，`/new` 后恢复缺省） |
+| `/memory` | 列出持久记忆 |
+| `/memory-add <内容>` | 添加记忆（与自动提取同一写时闸门） |
+| `/memory-rm` | 删除记忆：多选卡 Space 勾选、Enter 批删、Esc 取消；>8 条分页（`More…`/`Back…`） |
+| `/memory-gc` | 立即整理记忆 |
+| `/memory-on` / `/memory-off` | 本会话开启/关闭持久记忆（`/new` 后恢复缺省） |
+| `/rewind` | 回退当前会话到任意历史任务轮，见 5.4 |
+| `/fork` | 从任意历史轮复制出平行会话，见 5.4 |
 | `/new` | 新会话（清消息、待办与上下文；记忆与账本保留） |
-| `/resume [序号\|id]` | 无参弹出会话选择卡（`↑`/`↓` 选择、`Enter` 恢复、`Esc` 取消，列最新 8 条；更早会话用 `/resume <id>`）；显式参数直达恢复（消息、待办、档位与上下文全还原） |
+| `/resume` | 恢复已保存会话：选择卡（`↑`/`↓` 选择、`Enter` 恢复、`Esc` 取消），>8 条分页；消息、待办、档位与上下文全还原 |
 
-**子代理（spawn）**：模型可派发子代理并行处理独立子任务，过程不占用主链，只回写一行结论。运行中每个子代理在输入框上方显示 4 行实时面板；结束后整段记录折叠进 `● [SPAWN]` 调用行（单行摘要含步数/耗时尾注），`Ctrl+B` 浏览模式下 `Enter` 逐行展开为 `▾` 头行 + 缩进转录全文（再按收拢），`Tab` / `Ctrl+O` 可重放全文。展开状态跨窗口缩放保留，跨会话恢复（/resume）回落折叠。自定义角色放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）。
+**任务形态与专项能力**各自成节：plan（5.1）、goal 验收修正环（5.2）、子代理（5.3）、会话回退与分叉（5.4）、Worktree 隔离（5.5）；权限模式与审批（六）、中断与运行控制（七）、快捷键（八）。
 
-**Worktree 隔离**：会话内说「在隔离 worktree 里做……」模型即调 worktree 工具 create 切换到独立树（主工作区零改动），exit 返回主工作区，list 查看登记；plan 模式下仅 list 可用。启动时也可带 `--worktree[=<name>]` 旗标直接进入隔离树；子代理经 agent.md `isolation: worktree` 或 spawn 入参声明获得独立树。干净树自动清理，脏树保留待处置。
+## 五、任务形态与专项能力
 
-### 会话回退与分叉（/rewind · /fork）
+### 5.1 plan 模式
 
-- `/rewind`：回退当前会话到任意历史任务轮，恢复粒度=任务轮起点；被回掉的后续轮次**保留在原会话**，`/resume` 随时找回；锚点轮的输入自动回填输入框、可编辑重发。
-- 恢复内容三选：`code and conversation`（对话+代码）/ `conversation only`（仅对话）/ `code only`（仅代码）。代码回退只跟踪 write 工具改写的文件（pre-image 影子快照，存于数据目录 `sessions/_blobs/`）；exec 命令副作用与外部编辑不跟踪——**不是 git 替代**。
-- `/fork`：从任意历史轮复制出平行会话并切换过去，源会话原样保留；`/resume` 列表中分叉会话带 `↳ fork from …` 血缘标注。
+`/plan <目标>` → 生成计划确认卡（选择器形态：`↑` / `↓` 移动，`Enter` / `Space` 选定）→ `y` 或选「执行计划」逐项执行（`▶ Step n/N`），`n` / `Esc` 放弃。
+执行中待办卡默认只显示当前进行项，`Tab` 展开完整清单；某项失败即暂停剩余步骤并说明原因。
 
-## 五、权限模式与审批
+### 5.2 goal 验收修正环
+
+`/goal <目标>`：目标即验收条件，模型逐轮自评（满足 / 未满足 / 不可满足），未满足轮的差距作为下轮指引。
+复杂目标可内嵌 `（验收标准：…）` 多判据。判据服务不可用时自动重试 3 次后暂停；重跑 `/goal <同一目标>` 续走。
+
+### 5.3 子代理（spawn）
+
+模型可派发子代理并行处理独立子任务，过程不占用主链，只回写一行结论。
+
+- 运行中：每个子代理在输入框上方显示 4 行实时面板。
+- 结束后：整段记录折叠进 `● [SPAWN]` 调用行（单行摘要含步数/耗时尾注）；`Ctrl+B` 浏览模式下 `Enter` 展开为 `▾` 头行 + 缩进转录全文（再按收拢）；`Tab` / `Ctrl+O` 可重放全文。
+- 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
+- 自定义角色：放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。
+
+### 5.4 会话回退与分叉（/rewind · /fork）
+
+**`/rewind` 回退**：回退当前会话到任意历史任务轮，恢复粒度=任务轮起点；锚点轮的输入自动回填输入框、可编辑重发；被回掉的后续轮次**保留在原会话**，`/resume` 随时找回。
+恢复内容三选：
+
+| 选项 | 范围 |
+| --- | --- |
+| `code and conversation` | 对话 + 代码 |
+| `conversation only` | 仅对话 |
+| `code only` | 仅代码 |
+
+代码回退只跟踪 write 工具改写的文件（pre-image 影子快照，存于数据目录 `sessions/_blobs/`）；exec 命令副作用与外部编辑不跟踪——**不是 git 替代**。
+
+**`/fork` 分叉**：从任意历史轮复制出平行会话并切换过去，源会话原样保留；`/resume` 列表中分叉会话带 `↳ fork from …` 血缘标注。
+
+### 5.5 Worktree 隔离
+
+把改动限制在独立 git 工作树内，主工作区零改动。三个入口：
+
+| 入口 | 用法 |
+| --- | --- |
+| 启动旗标 | `--worktree[=<name>]`：启动即进入隔离树（裸旗标自动命名） |
+| 会话内对话 | 说「在隔离 worktree 里做……」模型即调 worktree 工具 `create` 切换；`exit` 返回主工作区；`list` 查看登记（plan 模式下仅 `list` 可用） |
+| 子代理声明 | agent.md frontmatter `isolation: worktree` 或 spawn 入参声明，子代理获得独立树 |
+
+生命周期：树落数据目录 `worktrees/<name>/`、分支 `worktree-<name>` 从当前 HEAD 分叉。干净树随会话自动清理（含分支），脏树保留并标记待处置；CLI 非交互路径一律保留。
+
+
+## 六、权限模式与审批
 
 | 模式 | 语义 |
 | --- | --- |
@@ -215,13 +280,18 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 
 **AskQuestion 问询卡**：模型可经内置 `ask_question` 工具主动向你提问（单选 / 多选 / 「Other…」自由输入），键位同上（多选 `Space` 勾选、`Enter` 提交全部勾选）；`Esc` 放弃作答，模型收到「已跳过」并自行调整。无交互终端的 CLI 场景回落为编号输入，完全 headless 时自动按跳过处理。
 任何模式下硬性拦截：破坏性命令（`dd` / `fdisk` / `shutdown` 等）与「下载即执行」管道。
+## 七、中断与运行控制
 
-## 六、plan 模式
+| 动作 | 效果 |
+| --- | --- |
+| 运行中 `Esc` / `Ctrl+C` | 中断当前任务回输入态（已完成步骤保留在会话链上，续输新任务即可继续） |
+| 待审批 / 待确认计划时 `Esc` | 按拒绝 / 放弃处理 |
+| 运行中输入自然语言 | 自动排队，任务收口后按序执行（穿插提示词） |
+| 运行中且输入为空按 `↑` | 撤回全部未投递的排队行回输入框，可编辑重排或清空丢弃；已插入上下文的行不可撤回 |
+| 退出 | 空闲时清空输入再按 `Ctrl+C` |
+| 不识别的命令 | 回执「无法识别命令，使用 /help 查看使用方法」（warn 级；命令只认 /help 所列形态） |
 
-`/plan <目标>` → 生成计划确认卡（选择器形态：`↑` / `↓` 移动，`Enter` / `Space` 选定）→ `y` 或选「执行计划」逐项执行（`▶ Step n/N`），`n` / `Esc` 放弃。
-执行中待办卡默认只显示当前进行项，`Tab` 展开完整清单；某项失败即暂停剩余步骤并说明原因。
-
-## 七、快捷键
+## 八、快捷键
 
 | 按键 | 作用 |
 | --- | --- |
@@ -229,14 +299,12 @@ sunshinex <目录>       # 指定项目目录（= sunshinex tui <目录>）
 | `Tab` | `/` 开头时补全命令；否则切换历史折叠 / 展开（含待办卡） |
 | `Ctrl+O` | 展开最近一组的详情全文 |
 | `Ctrl+B` | 子代理浏览模式：`↑/↓` 在 SPAWN 调用行间移动高亮，`Enter` 展开/折叠该行（思考与工具转录），`Esc` 退出；运行中不可进入 |
-| `↑` / `↓` | 输入历史（最近 100 条）；运行中且输入为空：`↑` 撤回排队（取回全部未投递穿插行回输入框编辑或清空丢弃） |
+| `↑` / `↓` | 输入历史（最近 100 条）；运行中且输入为空：`↑` 撤回排队（见第七节） |
 | `←` / `→`、`Home` / `End` | 光标移动（`Ctrl+A` / `Ctrl+E` 跳首尾） |
 | `Backspace` / `Delete` | 删除字符 |
-| `Ctrl+C` | 退出 |
+| `Ctrl+C` | 退出（运行中为中断当前任务，见第七节） |
 
-> 运行中按 `Esc` / `Ctrl+C` 中断只是停下当前任务，会话保留；退出请先清空输入再按 `Ctrl+C`。等待审批 / 待确认计划时输入被拦截：`↑` / `↓` 移动选择、`Enter` / `Space` 裁决，或直接按 `y` / `a` / `n`（中断则按拒绝 / 放弃处理）。
-
-## 八、故障排查
+## 九、故障排查
 
 | 现象 | 处理 |
 | --- | --- |

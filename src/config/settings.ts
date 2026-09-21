@@ -60,12 +60,12 @@ export interface SettingsDoc {
 
 /**
  * 剥掉 JSONC 注释（行注释 `//`、跨行块注释）并容忍 UTF-8 BOM。
- * 为什么容忍：TUI-MANUAL 的配置模板自带解释性注释（模板以 jsonc 呈现），解析口径必须与模板一致——
+ * 为什么容忍：MANUAL.md 的配置模板自带解释性注释（模板以 jsonc 呈现），解析口径必须与模板一致——
  * 否则「照抄模板」等于「启动即失败」，用户拿到的是一个位置坐标齐全却毫无头绪的开始。
  * 为什么逐字符状态机而不是正则：`//` 在字符串里是普通字符，baseUrl 的 `https://…` 首当其冲，
  * 正则剥离会把 URL 拦腰截断（静默改值比报错更糟）；同时须处理转义引号防提前收串。
  * 块注释按原样吞掉但保留其跨行数，使 JSON.parse 报错行号仍指向用户文件里的真实位置。
- * 尾随逗号不在容忍之列：仍按严格 JSON 报错（既有钉子用例覆盖），口径见 TUI-MANUAL。
+ * 尾随逗号不在容忍之列：仍按严格 JSON 报错（既有钉子用例覆盖），口径见 MANUAL.md。
  */
 function stripJsonComments(input: string): string {
   const src = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input; // 记事本另存为 UTF-8 会带 BOM
@@ -111,7 +111,7 @@ function stripJsonComments(input: string): string {
 /**
  * 解析单个 settings.json（D7 容错三态 + D8 版本守卫）：
  * - 文件缺失返回 null 静默跳过（没配就是没配，不是错误）
- * - JSONC 注释（行注释 `//`、跨行块注释）与 UTF-8 BOM 容忍：TUI-MANUAL 的配置模板自带解释性注释，
+ * - JSONC 注释（行注释 `//`、跨行块注释）与 UTF-8 BOM 容忍：MANUAL.md 的配置模板自带解释性注释，
  *   解析口径必须与模板一致，否则照抄模板即启动失败；尾随逗号不在容忍之列，仍按严格 JSON 报错
  * - 畸形 JSON / 根非对象 / version 非 1 一律 fail-fast 抛错：静默降级会演变成「key 没生效」的排查泥潭，必须让用户看到
  * - 一切抛错 message 携带文件路径，入口层原样透出即可定位

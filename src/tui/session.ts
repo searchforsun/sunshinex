@@ -113,7 +113,7 @@ export interface TuiState {
   children: ChildLiveState[];
   /** 用户级模型档位（/model 会话内切换；undefined = 缺省主模型，run 级常量不随步重估） */
   model?: ModelTier;
-  /** 缺省思考强度（/model effort 会话内切换；undefined = 适配器 cfg/env 缺省，run 级常量） */
+  /** 缺省思考强度（/model-effort 会话内切换；undefined = 适配器 cfg/env 缺省，run 级常量） */
   effort?: ReasoningEffort;
   /** AskQuestion 挂起卡（ask_question 工具或本地问询期间非空；渲染层选择器接管键盘） */
   question?: AskUserRequest;
@@ -882,8 +882,7 @@ export class SessionController {
     }
   }
 
-  /** /model：档位与思考强度的查询/设置面。`/model` 无参双查；`/model small|medium|large` 设档位；`/model effort <七档|default>` 设思考强度。
-   *  两者都是 run 级常量，对后续任务生效 */
+  /** 斜杠命令分发面：命令只认裸形式（规格 D2），选择卡经 askUser 挂起回填 */
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
     // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；

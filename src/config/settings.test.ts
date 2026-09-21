@@ -283,7 +283,7 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
 
 test('SEMANTIC_KEYS 全表钉子：29 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 29, '可配置变量全量语义化：新增/删除键必须同步本表与 TUI-MANUAL 模板');
+  assert.equal(entries.length, 29, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
@@ -336,11 +336,11 @@ test('空串等价未配置：语义键与 env 块空串均不落槽（模板占
   assert.deepEqual(warnings, []);
 });
 
-test('parseSettingsFile：JSONC 注释容忍——// 与 /* */ 注释、UTF-8 BOM（TUI-MANUAL 模板可原样照抄）', () => {
+test('parseSettingsFile：JSONC 注释容忍——// 与 /* */ 注释、UTF-8 BOM（MANUAL.md 模板可原样照抄）', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-jsonc-'));
   try {
     const file = path.join(dir, 'settings.json');
-    // 与 TUI-MANUAL 模板同形态：段标题行注释 + 行尾注释 + 跨行块注释 + 字符串内 //（真实 URL）
+    // 与 MANUAL.md 模板同形态：段标题行注释 + 行尾注释 + 跨行块注释 + 字符串内 //（真实 URL）
     fs.writeFileSync(file, [
       '{',
       '  "version": 1,',
