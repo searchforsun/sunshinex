@@ -1,29 +1,9 @@
-import { CriterionResult, HistoryStep, LoopContext, NodeOutput, ChatRequest, ChatResult, ChatTool } from '../types';
+import { CriterionResult, HistoryStep, LoopContext, NodeOutput, ChatRequest, ChatResult } from '../types';
+import { buildJudgePrompt, JUDGE_TOOLS } from '../harness/prompts/judge';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { LoopDeps, LoopEngineNode } from './engine';
-
-/** 判据评估 tools 面（T5）：submit_verdict 单点——三值裁决经 parameters enum 强约束，不再依赖文本 JSON 约定 */
-const JUDGE_TOOLS: ChatTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'submit_verdict',
-      description: 'Submit the acceptance verdict for the criterion under evaluation',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['passed', 'verdict', 'evidence'],
-        properties: {
-          passed: { type: 'boolean', description: 'whether the criterion is satisfied' },
-          verdict: { type: 'string', enum: ['met', 'not-yet', 'impossible'], description: 'met=satisfied; not-yet=fixable, keep looping; impossible=unsatisfiable, terminate' },
-          evidence: { type: ['string', 'null'], description: 'evidence from the execution reply backing the verdict' },
-        },
-      },
-    },
-  },
-];
 
 /** 独立小调用 chat 桩形态（T5 共用）：判据/压缩/记忆/提炼四个一次性调用共用的窄接口 */
 export interface ChatCaller {
@@ -82,12 +62,7 @@ export async function modelJudge(
   goal: string,
   agentReply: string,
 ): Promise<JudgeOutcome> {
-  const prompt = [
-    `You are the acceptance judge. Goal: ${goal}`,
-    `Execution reply (evidence): ${agentReply}`,
-    `Acceptance criterion ${criterion.id}: ${criterion.desc}`,
-    'Call submit_verdict exactly once with your verdict.',
-  ].join('\n');
+  const prompt = buildJudgePrompt(criterion, goal, agentReply);
   const callOnce = async (): Promise<{ passed: boolean; verdict: 'met' | 'not-yet' | 'impossible'; evidence?: string } | null> => {
     const chat = adapter.chat;
     if (!chat) return null;

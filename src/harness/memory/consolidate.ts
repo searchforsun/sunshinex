@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
+import { buildConsolidationPrompt, CONSOLIDATE_TOOLS } from '../prompts/memory';
 import { MemoryStore, MemoryType, MEMORY_CONSOLIDATE_THRESHOLD, normalizeText } from './store';
 
 /**
@@ -26,7 +27,7 @@ export async function consolidateMemory(opts: { model: ModelAdapter; root: strin
     const chat = opts.model.chat;
     if (!chat) return; // 门禁同提取：无 chat 面静默跳过
     const res = await chat.call(opts.model, {
-      messages: [{ role: 'user', content: buildConsolidationPrompt(before) }],
+      messages: [{ role: 'user', content: buildConsolidationPrompt(before, new Date().toISOString().slice(0, 10)) }],
       tools: CONSOLIDATE_TOOLS,
     });
     const call = res.toolCalls.find((t) => t.name === 'submit_memory_items');
@@ -75,25 +76,6 @@ function applyMerged(store: MemoryStore, records: { type: MemoryType; descriptio
   fs.rmSync(bak, { recursive: true, force: true }); // 成功：不留备份残渣
 }
 
-/**
- * 整理 prompt（'memory-consolidation' 为固定标记，测试桩据此区分整理调用——对齐 handoff/memory-extraction 先例）：
- * 全量记录清单 + 当前日期 + 清洗指令（防线③：消解残留指代、统一术语）+ 产出格式；输出条数不得超过输入（只减不增）。
- */
-function buildConsolidationPrompt(records: { slug: string; type: string; created: string; description: string; body: string }[]): string {
-  const today = new Date().toISOString().slice(0, 10);
-  const listing = records.map((r) => `- [${r.type}] (created: ${r.created}) ${r.description} — ${r.body}`).join('\n');
-  return [
-    'You are consolidating a persistent memory store (memory-consolidation) for an engineering project.',
-    `Today is ${today}.`,
-    'Merge duplicates, drop stale or superseded entries (a newer observation replaces the old), keep one entry per fact, keep details inside the entry body.',
-    'Rewrite entries to be self-contained: resolve any remaining deictic references ("this", "that") into concrete entity names and use absolute dates only.',
-    `You must NOT output more entries than the ${records.length} given. Keep the original language of each entry.`,
-    'Call submit_memory_items once with the consolidated entries ({"items":[{"type":"project","description":"one line","body":"the fact"}]}).',
-    'Current records:',
-    listing,
-  ].join('\n');
-}
-
 /** 结构化载荷解析；畸形返回 null（静默保持原状） */
 function parseMergedPayload(argsJson: string): MergedCandidate[] | null {
   try {
@@ -103,37 +85,6 @@ function parseMergedPayload(argsJson: string): MergedCandidate[] | null {
     return null;
   }
 }
-
-/** 整理 tools 面（T5）：submit_memory_items 复用提取出牌面（items 条目形态一致） */
-const CONSOLIDATE_TOOLS = [
-  {
-    type: 'function' as const,
-    function: {
-      name: 'submit_memory_items',
-      description: 'Submit the consolidated memory entries (merged, deduplicated, self-contained)',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['items'],
-        properties: {
-          items: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['type', 'description', 'body'],
-              properties: {
-                type: { type: 'string', enum: ['user', 'feedback', 'project', 'reference'] },
-                description: { type: 'string' },
-                body: { type: 'string' },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-];
 
 const TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
 
