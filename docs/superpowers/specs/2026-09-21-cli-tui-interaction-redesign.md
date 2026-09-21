@@ -81,14 +81,17 @@ TUI 内部命令仍保留「命令+子命令」与显式参数手填形态（`/m
 ### 6.1 命令总表
 
 ```bash
-sunshinex                       # 当前工作区启动 TUI（缺省形态）
-sunshinex /path/to              # 指定目录启动 TUI（位置参数=路径形态）
-sunshinex --workdir=/path/to    # 同上，flag 形态
-sunshinex help                  # 用法（--help / -h 同义）
-sunshinex selfcheck             # 骨架自检
-sunshinex run "<目标>"           # 非交互单任务
-sunshinex pipeline <工作流>      # 工作流执行
+sunshinex                                    # 当前工作区启动 TUI（缺省形态）
+sunshinex /path/to                           # 指定目录启动 TUI（位置参数=路径形态）
+sunshinex --workdir=/path/to                 # 同上，flag 形态
+sunshinex help                               # 用法（--help / -h 同义）
+sunshinex selfcheck                          # 骨架自检
+sunshinex run <dir> --goal="..."             # 验收修正环（goal 走 --goal flag，非位置参数）
+sunshinex run <dir> --goal="..." --worktree[=<name>]   # 在隔离 worktree 内跑修正环
+sunshinex pipeline <dir> --goal="..." [--yes]          # 五节点流水线，gate 审批交互（--yes 跳过交互直接批准）
 ```
+
+全局 flags（全部命令通用）：`--mode=manual|plan|dontAsk`、`--language=en|zh`、`--tier=small|medium|large`、`--effort=none|…|max`、`--continue`（续接最近会话；TUI 专属，与 --worktree 互斥）、`--worktree[=<name>]`、`--workdir=<路径>`（新增）。
 
 ### 6.2 判界规则
 
@@ -101,7 +104,7 @@ sunshinex pipeline <工作流>      # 工作流执行
 - `tui` 子命令废除：resolveInvocation 的 tui 分支与「未知词视为目录」归一逻辑整体删除（删除即无痕）
 - flags 与位置参数解耦：`--mode=plan --workdir=/x` 等直通形式不受影响；`--workdir` 与位置路径同传时位置参数优先（提示其一被忽略，不报错）
 - `sunshinex help` 显示统一用法（含启动形态、子命令清单、常用 flag）
-- 保留既有 flag：`--mode` `--language` `--tier` `--effort` `--continue` `--worktree[=<name>]`；`--workdir` 为新增
+- **run/pipeline 目录判据与顶层统一（用户裁决）**：子命令后的首个位置参数同样按上表三形态判界——路径形态合法、裸词报「无法识别命令」；目录亦可改走 `--workdir=` flag（同传时 --workdir 优先，与顶层同规则）；`run <dir>` 缺目录沿用现行用法报错
 - 既有 3 条 resolveInvocation 用例（目录直进/目录+flag 混排/子命令透传）反转为「裸词报错不启动 / help 显示用法 / 路径形态与 flag 直通」
 
 ## 7. 文档职责拆分（D10）
