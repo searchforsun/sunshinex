@@ -50,6 +50,8 @@ export interface ModelAdapter {
   chat?(req: ChatRequest, onDelta?: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
   /** chat 流式面（可选）：content 增量照旧回调，轮终聚合 ChatResult */
   chatStream?(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
+  /** effort 探测缓存读取（§5.2 生效档回执）：请求档经降级探测后的实际生效档；未探测/未实现回 undefined（调用方回退请求档） */
+  resolvedEffort?(requested: ReasoningEffort): ReasoningEffort | undefined;
 }
 
 /** 从 OpenAI 兼容响应 JSON 解析 usage.total_tokens；缺失/非数字回 0（无占位计数） */
@@ -162,6 +164,11 @@ export class OpenAIAdapter implements ModelAdapter {
       // 响应体不可读时仅报状态码
     }
     return new Error(`OpenAI request failed: ${resp.status}${detail ? ` ${detail}` : ''}`);
+  }
+
+  /** effort 探测缓存读取（§5.2 生效档回执）：请求档经降级探测后的实际生效档；未探测回 undefined（调用方回退请求档） */
+  resolvedEffort(requested: ReasoningEffort): ReasoningEffort | undefined {
+    return this.effortResolved?.requested === requested ? this.effortResolved.resolved : undefined;
   }
 
   /** effort 感知发送：显式档位按降级序列逐档试探（仅参数不支持类错误降级），探测结果缓存后直发生效档；

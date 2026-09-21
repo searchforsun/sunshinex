@@ -9,6 +9,14 @@ import { SessionJournal, listSessions, newSessionId, parseJournalFile, readActiv
 
 const tmpRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-persist-'));
 
+async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!pred()) {
+    if (Date.now() > deadline) throw new Error('waitFor 超时');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
 /** 持久化测试钉数据目录：控制器构造期即经 resolveDataDir 解析写点，必须在构造前设置；finally 恢复防互染 */
 function pinDataDir(root: string): string {
   const dataDir = path.join(root, '.data-pin');
@@ -25,7 +33,10 @@ test('重放一致性：live 会话（任务×2 + /model）重放到新控制器
     const ctrl1 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"任务一完成"}', '{"done":true,"reply":"任务二完成"}']) });
     await ctrl1.submit('第一个任务');
     await ctrl1.waitIdle();
-    await ctrl1.submit('/model large');
+    const pm = ctrl1.submit('/model');
+    await waitFor(() => ctrl1.getState().status === 'awaiting-question');
+    ctrl1.resolveAskAnswer({ type: 'selected', labels: ['large'] });
+    await pm;
     await ctrl1.submit('第二个任务');
     await ctrl1.waitIdle();
     const before = ctrl1.getState().messages.map((m) => ({ role: m.role, text: m.text, seq: m.seq }));

@@ -162,3 +162,19 @@ test('effort 网络/服务端错误不降级：非参数类错误照常抛出', 
     m.restore();
   }
 });
+
+test('resolvedEffort：未探测回 undefined，降级探测命中返回实际生效档', async () => {
+  const m = mockFetch([
+    { status: 400, body: { error: { message: 'Unrecognized request argument: reasoning_effort' } } },
+    { status: 200, body: { choices: [{ message: { content: 'ok' } }], usage: { total_tokens: 1 } } },
+  ]);
+  try {
+    const a = adapter();
+    assert.equal(a.resolvedEffort?.('high'), undefined, '未发起请求零探测');
+    await a.complete('p', undefined, undefined, 'high');
+    assert.equal(a.resolvedEffort?.('high'), 'medium', 'high→400 后 medium 成功：实际生效档=medium');
+    assert.equal(a.resolvedEffort?.('medium'), undefined, '未探测档不误报');
+  } finally {
+    m.restore();
+  }
+});

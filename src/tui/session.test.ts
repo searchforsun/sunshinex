@@ -234,49 +234,79 @@ test('会话控制器：done 步携带 phase → 不落阶段行（答复正文�
   }
 });
 
-test('会话控制器：/model 查询与切换（档位 run 级常量，对后续任务生效）', async () => {
+test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；档位对后续任务生效', async () => {
   const tmp = tmpdir('sunshinex-sess-model-');
   try {
     const harness = new Harness({ root: tmp, mode: 'dontAsk' });
     const seen: Array<string | undefined> = [];
-    const seenEfforts: Array<string | undefined> = [];
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
     const fake: TuiRuntime = {
       harness,
       runTask: async (_goal, o) => {
         seen.push(o?.tier);
+        return base;
+      },
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
+    };
+    const ctrl = new SessionController({ root: tmp, runtime: fake });
+    const p = ctrl.submit('/model');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    assert.deepEqual(ctrl.getState().question?.options.map((o) => o.label), ['small', 'medium', 'large'], '选择卡三档');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['large'] });
+    await p;
+    assert.equal(ctrl.getState().model, 'large', '即选即切落档');
+    const p2 = ctrl.submit('/model');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    ctrl.resolveAskAnswer({ type: 'dismissed' });
+    await p2;
+    assert.equal(ctrl.getState().model, 'large', 'Esc 取消不改档');
+    await ctrl.submit('做件事');
+    await ctrl.waitIdle();
+    assert.deepEqual(seen, ['large'], '档位 run 级常量：切换后的任务携带用户档位');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话控制器：/model-effort 八项单选即选即切，default 清除覆盖', async () => {
+  const tmp = tmpdir('sunshinex-sess-effort-');
+  try {
+    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const seenEfforts: Array<string | undefined> = [];
+    const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
+    const fake: TuiRuntime = {
+      harness,
+      runTask: async (_goal, o) => {
         seenEfforts.push(o?.effort);
         return base;
       },
-    runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
-    await ctrl.submit('/model');
-    await ctrl.submit('/model huge');
-    await ctrl.submit('/model large');
-    await ctrl.submit('做件事');
-    await ctrl.waitIdle();
-    await ctrl.submit('/model effort bogus');
-    await ctrl.submit('/model effort high');
+    const p = ctrl.submit('/model-effort');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    assert.deepEqual(
+      ctrl.getState().question?.options.map((o) => o.label),
+      ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'default'],
+      '思考强度卡八项（七档 + default）',
+    );
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['high'] });
+    await p;
+    assert.equal(ctrl.getState().effort, 'high');
+    let texts = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
+    assert.match(texts, /Reasoning effort set to high/, '切换有回执（未探测时生效档=请求档）');
     await ctrl.submit('再做一件事');
     await ctrl.waitIdle();
-    await ctrl.submit('/model effort');
-    await ctrl.submit('/model effort default');
+    const p2 = ctrl.submit('/model-effort');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['default'] });
+    await p2;
+    assert.equal(ctrl.getState().effort, undefined, 'default 清除覆盖');
+    texts = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
+    assert.match(texts, /Reasoning effort cleared/, '清除有回执');
     await ctrl.submit('第三件事');
     await ctrl.waitIdle();
-    await ctrl.submit('/model');
-    const texts = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
-    assert.match(texts, /Current model tier: default \(SUNSHINEX_MODEL\)/, '无档位时查询显示档位缺省来源');
-    assert.match(texts, /Current reasoning effort: default \(adapter config\)/, '无思考强度配置时查询显示缺省来源');
-    assert.match(texts, /Usage: \/model small\|medium\|large/, '非法档位回用法提示');
-    assert.match(texts, /Usage: \/model effort/, '非法思考强度回用法提示');
-    assert.match(texts, /Model tier set to large/, '档位切换有回执');
-    assert.match(texts, /Current model tier: large/, '再次查询显示当前档位');
-    assert.match(texts, /Reasoning effort set to high/, '思考强度切换有回执');
-    assert.match(texts, /Reasoning effort cleared/, '清除思考强度有回执');
-    assert.match(texts, /Current reasoning effort: high/, '覆盖期间查询显示当前思考强度');
-    assert.deepEqual(seen, ['large', 'large', 'large'], '档位 run 级常量：切换后的任务携带用户档位，切换前不得携带');
-    assert.deepEqual(seenEfforts, [undefined, 'high', undefined], '思考强度 run 级常量：覆盖期携带、清除后不携带');
+    assert.deepEqual(seenEfforts, ['high', undefined], '思考强度 run 级常量：覆盖期携带、清除后不携带');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -1,6 +1,6 @@
 import type { AskUserAnswer, AskUserRequest, AskUserSeam } from '../types';
 import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
-import { parseEffort } from '../model/adapter';
+import { EFFORT_ORDER, parseEffort } from '../model/adapter';
 import { t } from '../i18n';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
@@ -300,10 +300,6 @@ export class SessionController {
     // 用户输入回显上屏（含斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
     this.pushMsg('user', text);
     if (text.startsWith('/')) {
-      if (text.split(/\s+/)[0] === '/model') {
-        this.handleModel(text);
-        return;
-      }
       await this.handleSlash(text);
       return;
     }
@@ -868,61 +864,6 @@ export class SessionController {
 
   /** /model：档位与思考强度的查询/设置面。`/model` 无参双查；`/model small|medium|large` 设档位；`/model effort <七档|default>` 设思考强度。
    *  两者都是 run 级常量，对后续任务生效 */
-  private handleModel(text: string): void {
-    const rest = text.trim().split(/\s+/).slice(1).join(' ');
-    if (!rest) {
-      // 双语回执逐行独立 t() 直包（审计只认调用表达式直包，先例=/help 每行独立 t() 再 join）
-      this.pushMsg('system', [
-        t(
-          this.state.model ? `Current model tier: ${this.state.model}` : 'Current model tier: default (SUNSHINEX_MODEL)',
-          this.state.model ? `当前模型档位：${this.state.model}` : '当前模型档位：默认（SUNSHINEX_MODEL）',
-        ),
-        t(
-          this.state.effort ? `Current reasoning effort: ${this.state.effort}` : 'Current reasoning effort: default (adapter config)',
-          this.state.effort ? `当前思考强度：${this.state.effort}` : '当前思考强度：默认（适配器配置）',
-        ),
-      ].join('\n'));
-      return;
-    }
-    // /model effort <none|minimal|low|medium|high|xhigh|max|default>：思考强度子命令（default=清除覆盖回适配器缺省）
-    if (rest === 'effort' || rest.startsWith('effort ')) {
-      const value = rest.slice('effort'.length).trim();
-      if (!value) {
-        this.pushMsg('system', t(
-          this.state.effort ? `Current reasoning effort: ${this.state.effort}` : 'Current reasoning effort: default (adapter config)',
-          this.state.effort ? `当前思考强度：${this.state.effort}` : '当前思考强度：默认（适配器配置）',
-        ));
-        return;
-      }
-      if (value === 'default') {
-        this.state = { ...this.state, effort: undefined };
-        this.notify();
-        this.logModel();
-        this.pushMsg('system', t('Reasoning effort cleared; adapter default applies to subsequent tasks', '思考强度已清除；后续任务回适配器缺省'));
-        return;
-      }
-      const effort = parseEffort(value);
-      if (!effort) {
-        this.pushMsg('system', t('Usage: /model effort none|minimal|low|medium|high|xhigh|max|default', '用法：/model effort none|minimal|low|medium|high|xhigh|max|default'), { level: 'warn' });
-        return;
-      }
-      this.state = { ...this.state, effort };
-      this.notify();
-      this.logModel();
-      this.pushMsg('system', t(`Reasoning effort set to ${effort}; applies to subsequent tasks`, `思考强度已设为 ${effort}；对后续任务生效`));
-      return;
-    }
-    const tier = parseTier(rest);
-    if (!tier) {
-      this.pushMsg('system', t('Usage: /model small|medium|large | /model effort none|minimal|low|medium|high|xhigh|max|default', '用法：/model small|medium|large 或 /model effort none|minimal|low|medium|high|xhigh|max|default'), { level: 'warn' });
-      return;
-    }
-    this.state = { ...this.state, model: tier };
-    this.notify();
-    this.logModel();
-    this.pushMsg('system', t(`Model tier set to ${tier}; applies to subsequent tasks`, `模型档位已设为 ${tier}；对后续任务生效`));
-  }
-
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
     if (cmd === '/help') {
@@ -988,6 +929,60 @@ export class SessionController {
       this.spawnCalls = [];
       this.runtime.harness.context.resetSession();
       this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
+      return;
+    }
+    if (cmd === '/model') {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /model unavailable now', '当前有任务进行中，暂不能执行 /model'), { level: 'warn' });
+        return;
+      }
+      const current = this.state.model;
+      const answer = await this.askUser({
+        question: t(current ? `Switch model tier (current: ${current})` : 'Switch model tier (current: default)', current ? `切换模型档位（当前 ${current}）` : '切换模型档位（当前默认）'),
+        options: (['small', 'medium', 'large'] as const).map((tier) => ({ label: tier, description: tier === current ? t('current', '当前档') : undefined })),
+      });
+      if (answer.type !== 'selected') {
+        this.pushMsg('system', t('Model tier unchanged', '模型档位未变更'));
+        return;
+      }
+      const tier = parseTier(answer.labels[0] ?? '');
+      if (!tier) return;
+      this.state = { ...this.state, model: tier };
+      this.notify();
+      this.logModel();
+      this.pushMsg('system', t(`Model tier set to ${tier}; applies to subsequent tasks`, `模型档位已设为 ${tier}；对后续任务生效`));
+      return;
+    }
+    if (cmd === '/model-effort') {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /model-effort unavailable now', '当前有任务进行中，暂不能执行 /model-effort'), { level: 'warn' });
+        return;
+      }
+      const current = this.state.effort;
+      const answer = await this.askUser({
+        question: t(current ? `Switch reasoning effort (current: ${current})` : 'Switch reasoning effort (current: adapter default)', current ? `切换思考强度（当前 ${current}）` : '切换思考强度（当前适配器缺省）'),
+        options: [...EFFORT_ORDER, 'default' as const].map((v) => ({ label: v, description: v === current ? t('current override', '当前覆盖') : undefined })),
+      });
+      if (answer.type !== 'selected') {
+        this.pushMsg('system', t('Reasoning effort unchanged', '思考强度未变更'));
+        return;
+      }
+      const value = answer.labels[0] ?? '';
+      if (value === 'default') {
+        this.state = { ...this.state, effort: undefined };
+        this.notify();
+        this.logModel();
+        this.pushMsg('system', t('Reasoning effort cleared; adapter default applies to subsequent tasks', '思考强度已清除；后续任务回适配器缺省'));
+        return;
+      }
+      const effort = parseEffort(value);
+      if (!effort) return;
+      this.state = { ...this.state, effort };
+      this.notify();
+      this.logModel();
+      // 回执回显实际生效档（规格 §5.2）：端点不支持时探测降级，取 adapter 探测缓存；接口未实现/未探测时与请求档一致
+      const resolved = this.runtime.harness.model.resolvedEffort?.(effort) ?? effort;
+      this.pushMsg('system', t(`Reasoning effort set to ${resolved}; applies to subsequent tasks`, `思考强度已设为 ${resolved}；对后续任务生效`));
       return;
     }
     if (cmd === '/resume') {
