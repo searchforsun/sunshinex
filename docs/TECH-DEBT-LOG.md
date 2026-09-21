@@ -24,10 +24,12 @@
 
 > 未偿债项在此逐条登记（编号/账本/状态/描述/证据/偿还动作/登记来源）；偿还后在同轮提交中翻转状态并补「关联提交」。本区与上方清理记录互不掺杂。
 
-**当前无未偿债项**（2026-09-19 清理批次收口：D1–D4、D6–D15 已偿清归档；D5 转长期挂起登记，不属活动待办）。新增债项按下表格式登记。
+**活动待办 D16**（2026-09-22 登记：reactor 文本协议回退通道退役，证据与偿还动作见下表；D1–D4、D6–D15 已偿清归档，D5 转长期挂起不属活动待办）。新增债项按下表格式登记。
 
 | 编号 | 账本 | 状态 | 描述 | 证据 | 偿还动作 | 登记来源 |
 |---|---|---|---|---|---|---|
+
+| D16 | 代码债 G（双通道重复） | open | reactor 文本协议回退通道退役：chat 主通道（chatRound/chatStableSegment，迁移 T4/T5 后）为唯一生产路径，四内建适配器（OpenAI/Stub/Scripted/SelfcheckStream）均实现 chat 面，文本面（buildPrompt/parse/callModel/runParallelTools + run() 分支约 150 行）生产路径不可达；其 parse 属「预测模型输出分布」类信封归一补丁，与核心契约零兼容规则冲突 | src/harness/reactor.ts L483/L522/L674；全仓 `implements ModelAdapter` 均带 chat；2026-09-22 审计发现 T5 迁移遗留孤儿语句（同轮已清）即双通道手工同步翻车实证 | 按 2026-09-20「删干净不留退路」同款裁决退役：删文本面与 run() 双通道分支、runParallelTools 语义并入 chatRound（护栏/trackFile 单点）、ModelAdapter.complete 面评估收编、测试文本桩迁 chat 出牌，TDD 循环 + 三门禁 | 2026-09-22 用户质询「reactor.ts 是否有一流的历史垃圾代码」审计发现 |
 
 ### 归档（D1–D15）
 

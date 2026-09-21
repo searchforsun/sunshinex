@@ -154,7 +154,7 @@ export class Reactor {
     const useChat = chatCapable(adapter);
     this.emit('route', undefined, { tier: route.tier, reason: route.reason });
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
-    let reactiveUsed = false; // 反应式压缩兜底：每 run 至多一次（MAX_REACTIVE_RETRIES=1）
+    let reactiveUsed = false; // 反应式压缩兜底：每 run 至多重试一次，防「压缩→仍越限」死循环
     // fork 模型缺省基座：会话链视图即本 run 前缀（结构性 fork，不传 seed 即续接主链）；
     // 新步骤号自链尾续起，prompt 呈「稳定段 → 链前缀 history → 新步尾部追加」形态；guardrail 迭代计数只约束本 run 新增步
     const scope = opts?.scope ?? 'session';
@@ -323,7 +323,7 @@ export class Reactor {
         }
         const errMsg = e instanceof Error ? e.message : String(e);
         // 反应式压缩兜底（规格 F 项，对标 reactive_compact）：端点超长拒绝（本地估算偏差）→
-        // 压缩 + 重试本步一次（MAX_REACTIVE_RETRIES=1）；重试请求前缀与失败请求不同 = 合法重写点语义
+        // 压缩 + 重试本步一次（reactiveUsed 单发射门）；重试请求前缀与失败请求不同 = 合法重写点语义
         if (isContextOverflowError(errMsg) && !reactiveUsed) {
           reactiveUsed = true;
           this.emit('error', 'Context overflow at the endpoint — compacting and retrying once');
@@ -624,7 +624,6 @@ export class Reactor {
     const rejection = overLimit
       ? `Parallel batch rejected: exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools; use fewer calls per round`
       : 'Parallel batch rejected: exec and ask must run exclusively on their own; remove them and retry, or fall back to a single-tool call';
-      'Parallel batch rejected: exec and ask must run exclusively on their own; remove them and retry, or fall back to a single-tool call';
 
     // 轮内链行共用同一轮步号（step 形参）：护栏按去重步号计模型轮、压缩水位/收尾回写行级过滤对同号行天然一致
     this.emit('step', calls[0].name, { step, phase: result.content || undefined });
