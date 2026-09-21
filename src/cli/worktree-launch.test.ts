@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'child_process';
@@ -167,10 +168,10 @@ test('T6-N1 旗标会话首帧事实行=树路径且整场恒定（规格 §12 �
     let i = 0;
     const model: ModelAdapter = {
       provider: 'capture',
-      async complete(prompt: string) {
-        prompts.push(prompt);
-        return replies[Math.min(i++, replies.length - 1)];
-      },
+      chat: textReplyToChatFace(async (prompt: string) => {
+      prompts.push(prompt);
+      return replies[Math.min(i++, replies.length - 1)];
+            }),
     };
     const h = new Harness({ root, mode: 'dontAsk', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 4 }).then((r) => {

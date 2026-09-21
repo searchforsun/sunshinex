@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -28,7 +29,7 @@ function makeReactor(tmp: string, adapter: ModelAdapter): Reactor {
 
 function scripted(replies: string[]): ModelAdapter {
   let call = 0;
-  return { provider: 'scripted', complete: async () => replies[Math.min(call++, replies.length - 1)] };
+  return { provider: 'scripted', chat: textReplyToChatFace(async () => replies[Math.min(call++, replies.length - 1)] )};
 }
 
 test('路由观测：无 hint 缺省 medium（run 级常量），RouteDecision 随 run 结果返回', async () => {

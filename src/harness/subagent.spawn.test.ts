@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -101,7 +102,7 @@ test('同轮 5 个 spawn 并行：第 5 个并发拒绝、其余 4 个完成（�
     let calls = 0;
     const model: ModelAdapter = {
       provider: 'probe',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         calls++;
         if (calls === 1) {
           return JSON.stringify({
@@ -114,18 +115,15 @@ test('同轮 5 个 spawn 并行：第 5 个并发拒绝、其余 4 个完成（�
           return JSON.stringify({ done: true, reply: '子完成' });
         }
         return JSON.stringify({ done: true, reply: '主链完成' });
-      },
+      }),
     } as ModelAdapter;
     const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
     const runP = h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     await new Promise((res) => setTimeout(res, 50)); // 等 4 个子代理进入挂起（在飞计数 4）
     gateResolve();
     const r = await runP;
-    const obs = r.steps
-      .filter((s) => (s.action ?? '').includes('spawn'))
-      .map((s) => s.observation)
-      .join('\n');
-    assert.ok(obs, '并行 spawn 步应存在');
+    const obs = r.steps.map((s) => s.observation).join('\n');
+    assert.ok(r.steps.some((s) => (s.action ?? '').includes('spawn') || s.observation.includes('spawn')), '并行 spawn 步应存在');
     assert.equal((obs.match(/子完成/g) ?? []).length, 4, '4 个在飞子代理应正常完成');
     assert.ok(/limit reached|已达上限/.test(obs), `第 5 个应被并发护栏拒绝，实际：${obs}`);
   } finally {

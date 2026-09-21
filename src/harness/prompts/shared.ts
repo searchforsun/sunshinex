@@ -10,7 +10,7 @@ export function render(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (raw, key: string) => (key in vars ? vars[key] : raw));
 }
 
-// —— 主链稳定段共享行（reactor 文本协议通道与 chat 通道同源消费） ——
+// —— 主链稳定段共享行（reactor 稳定段单点消费） ——
 
 export const IDENTITY_LINE = 'You are the SunshineX agent: complete tasks by calling tools.';
 

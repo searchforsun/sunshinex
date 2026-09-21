@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -14,6 +15,7 @@ import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { ModelAdapter } from '../model/adapter';
+import type { ChatRequest } from '../types';
 
 const DONE_REPLY = '{"done":true,"reply":"ok"}';
 
@@ -21,7 +23,7 @@ function makeReactor(
   tmp: string,
   adapter: ModelAdapter,
   reverseTools = false,
-): { reactor: Reactor; prompts: string[]; context: ContextManager } {
+): { reactor: Reactor; prompts: string[]; requests: ChatRequest[]; context: ContextManager } {
   const store = new FileStore(path.join(tmp, '.data'));
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
@@ -29,25 +31,27 @@ function makeReactor(
   for (const t of reverseTools ? [...tools].reverse() : tools) registry.register(t);
   const context = new ContextManager(tmp, store);
   const prompts: string[] = [];
+  const requests: ChatRequest[] = [];
   const capture: ModelAdapter = {
     provider: 'capture',
-    complete: async (p: string) => {
-      prompts.push(p);
-      return adapter.complete(p);
+    chat: async (req, hooks) => {
+      requests.push(req);
+      prompts.push(req.messages.map((m) => m.content).join('\n'));
+      return adapter.chat(req, hooks);
     },
   };
-  return { reactor: new Reactor({ registry, safety, context, model: capture }), prompts, context };
+  return { reactor: new Reactor({ registry, safety, context, model: capture }), prompts, requests, context };
 }
 
 function scripted(replies: string[]): ModelAdapter {
   let call = 0;
-  return { provider: 'scripted', complete: async () => replies[Math.min(call++, replies.length - 1)] };
+  return { provider: 'scripted', chat: textReplyToChatFace(async () => replies[Math.min(call++, replies.length - 1)] )};
 }
 
 test('前缀稳定化：相邻步严格前缀连续（无档位行，唯一差异是尾部 history 追加）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-prefix1-'));
   try {
-    const { reactor, prompts } = makeReactor(tmp, scripted([
+    const { reactor, prompts, requests } = makeReactor(tmp, scripted([
       '{"tool":"read","input":{"path":"a.txt"},"done":false}',
       '{"done":true,"reply":"ok"}',
       DONE_REPLY,
@@ -65,7 +69,10 @@ test('前缀稳定化：相邻步严格前缀连续（无档位行，唯一差�
       assert.ok(prompts[i].startsWith(prompts[i - 1]), `第 ${i + 1} 轮 prompt 应以第 ${i} 轮为逐字节前缀（前缀缓存第一要义）`);
     }
     assert.ok(prompts[0].startsWith('You are the SunshineX agent'), '稳定前缀以身份段开头（英文单语）');
-    assert.ok(prompts[0].includes('Available tools:'), '稳定前缀覆盖工具清单段');
+    // 工具清单经 tools 请求级字段下发（不进提示词文本）：按名升序、逐名齐备
+    const toolNames = (requests[0].tools ?? []).map((t) => t.function.name);
+    assert.ok(toolNames.length > 0, 'tools 字段应下发注册表工具');
+    assert.deepEqual(toolNames, [...toolNames].sort(), 'tools 面按名升序（与注册顺序无关）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

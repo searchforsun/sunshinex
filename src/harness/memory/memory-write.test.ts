@@ -19,6 +19,7 @@ import { Reactor } from '../reactor';
 import { ContextManager } from '../context';
 import { FileStore } from '../../storage/adapter';
 import { ModelAdapter } from '../../model/adapter';
+import type { ChatRequest } from '../../types';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
 
 /**
@@ -85,19 +86,6 @@ function recordFiles(dataDir: string): string[] {
   return mdFilesIn(path.join(dataDir, 'memory'));
 }
 
-/** prompt 工具清单段解析（buildPrompt 稳定段：'Available tools:' 起，到下一空行止，每行 `- <name>: <description>`） */
-function toolListNames(prompt: string): string[] {
-  const section = (prompt.split('Available tools:\n')[1] ?? '').split('\n\n')[0] ?? '';
-  return section
-    .split('\n')
-    .map((line) => /^- ([^:]+): /.exec(line)?.[1] ?? '')
-    .filter((name) => name !== '');
-}
-
-/** 与 buildPrompt 同口径的按名升序（独立于渲染产物推导，防断言自证） */
-function byNameAsc(names: string[]): string[] {
-  return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-}
 
 test('memory_write：单条事实落盘并返回 slug（existed=false、记录文件 + 索引重建）', async () => {
   await withRoot(({ root, dataDir }) => {
@@ -312,12 +300,12 @@ test('memory_write：记忆未启用（autoMemory=off）→ 工具报错且零�
 test('memory_write：reactor 工具清单段按名升序渲染且含 memory_write（渲染面真断言）', async () => {
   await withRoot(async ({ root }) => {
     const { registry, safety } = registryFor({ root, mode: 'dontAsk' });
-    const prompts: string[] = [];
+    const requests: ChatRequest[] = [];
     const capture: ModelAdapter = {
       provider: 'capture',
-      complete: async (p) => {
-        prompts.push(p);
-        return JSON.stringify({ done: true, reply: 'ok' });
+      chat: async (req) => {
+        requests.push(req);
+        return { finish: 'stop', content: 'ok', toolCalls: [] };
       },
     };
     const store = new FileStore(path.join(root, '.data'));
@@ -325,12 +313,12 @@ test('memory_write：reactor 工具清单段按名升序渲染且含 memory_writ
     const r = await reactor.run({ goal: 'render the tool list' }, { maxSteps: 2 });
     assert.equal(r.done, true);
 
-    const names = toolListNames(prompts[0]);
-    assert.equal(names.length, BUILTIN_NAMES.length + 1, `清单段逐行解析须完整（实际：${names.join(',')}）`);
-    assert.ok(names.includes('memory_write'), '注入的 memory_write 必须出现在模型可见的工具清单段');
-    // 排序发生在渲染面（buildPrompt），与注册序无关：注册序是声明序，渲染序须为按名升序
-    assert.deepEqual(names, byNameAsc([...BUILTIN_NAMES, 'memory_write']), '工具清单段按名升序，且逐名齐备');
-    assert.notDeepEqual(names, [...BUILTIN_NAMES, 'memory_write'], '渲染序不得等于声明序（否则排序面失效）');
+    // 工具清单经 tools 请求级字段下发（tools/request 面真断言）：注入的 memory_write 必须在模型可见清单内
+    const names = (requests[0]?.tools ?? []).map((t) => t.function.name);
+    assert.equal(names.length, BUILTIN_NAMES.length + 1, `tools 面逐名解析须完整（实际：${names.join(',')}）`);
+    assert.ok(names.includes('memory_write'), '注入的 memory_write 必须出现在模型可见的工具清单面');
+    // 排序在装配面（chatRound），与注册序无关：注册序是声明序，下发序须为按名升序
+    assert.deepEqual(names, [...BUILTIN_NAMES, 'memory_write'].sort(), 'tools 面按名升序，且逐名齐备');
   });
 });
 

@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -20,7 +21,7 @@ function usageOnce(cache: number, prompt: number): ModelAdapter {
   let asked = false;
   return {
     provider: 'usage-once-script',
-    complete: async (
+    chat: textReplyToChatFace(async (
       _p: string,
       hooks?: { onUsage?: (t: number) => void; onCache?: (t: number) => void; onPrompt?: (t: number) => void },
     ) => {
@@ -31,7 +32,7 @@ function usageOnce(cache: number, prompt: number): ModelAdapter {
         hooks?.onUsage?.(120);
       }
       return '{"done":true,"reply":"ok"}';
-    },
+    }),
   };
 }
 
@@ -45,9 +46,6 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
       mode: 'dontAsk',
       model: {
         provider: 'openai',
-        complete: async () => {
-          throw new Error('complete must not be called on the chat path');
-        },
         chat: async (req) => {
           const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           seen.push(p);
@@ -96,9 +94,6 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
       mode: 'dontAsk',
       model: {
         provider: 'openai',
-        complete: async () => {
-          throw new Error('complete must not be called on the chat path');
-        },
         chat: async (req) => {
           const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           seen.push(p);
@@ -140,7 +135,7 @@ test('Task5 自动压缩完成 → 消息流留痕一条 Context compacted 系�
     const big = ('x'.repeat(180) + '\n').repeat(18000); // ≈ 3.24M chars ≈ 810k tokens，越过 800k 触发线
     const adapter = {
       provider: 'openai',
-      complete: async (p: string) => (p.includes('handoff summary') ? '占位' : JSON.stringify({ tool: 'read', input: { path: 'a.txt' } })),
+      chat: textReplyToChatFace(async (p: string) => (p.includes('handoff summary') ? '占位' : JSON.stringify({ tool: 'read', input: { path: 'a.txt' } }))),
       completeStream: async (p: string, onDelta: (t: string) => void) => {
         const out = p.includes('handoff summary') ? '占位' : JSON.stringify({ done: true, reply: 'ok' });
         for (const ch of out) onDelta(ch);
@@ -194,7 +189,7 @@ test('Task5 新任务轮首重置判定：上轮提示过，本轮轮首 miss �
     let mode: 'low' | 'high' = 'high';
     const model: ModelAdapter = {
       provider: 'usage-toggle-script',
-      complete: async (
+      chat: textReplyToChatFace(async (
         _p: string,
         hooks?: { onUsage?: (t: number) => void; onCache?: (t: number) => void; onPrompt?: (t: number) => void },
       ) => {
@@ -208,7 +203,7 @@ test('Task5 新任务轮首重置判定：上轮提示过，本轮轮首 miss �
           hooks?.onUsage?.(60);
         }
         return '{"done":true,"reply":"ok"}';
-      },
+      }),
     };
     const ctrl = new SessionController({ root: tmp, model });
     await ctrl.submit('t1');

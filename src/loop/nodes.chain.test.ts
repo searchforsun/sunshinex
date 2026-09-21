@@ -1,3 +1,4 @@
+import type { ChatRequest, ChatResult } from '../types';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -33,9 +34,9 @@ class RecordingAdapter implements ModelAdapter {
   constructor(private inner: ModelAdapter) {
     this.provider = inner.provider;
   }
-  async complete(prompt: string): Promise<string> {
-    this.prompts.push(prompt);
-    return this.inner.complete(prompt);
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    this.prompts.push(req.messages.map((m) => m.content).join('\n'));
+    return this.inner.chat(req);
   }
 }
 

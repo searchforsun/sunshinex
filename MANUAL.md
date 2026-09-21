@@ -47,8 +47,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 | `--language=en\|zh` | 界面语言，缺省 `en`；只影响界面，模型侧文本恒英文 |
 | `--tier=small\|medium\|large` | 模型档位，缺省 `medium`；会话内可用 `/model` 切换 |
 | `--effort=none\|minimal\|low\|medium\|high\|xhigh\|max` | 缺省思考强度（reasoning_effort）；端点不支持时按阶梯自动降级，会话内可用 `/model-effort` 切换 |
-| `--continue` | 直接续接最近一次会话（按会话档时间自动判定，TUI 专属，与 `--worktree` 互斥） |
-| `--resume` | 启动时弹会话选择卡恢复既有会话（TUI 专属，与 `--continue`/`--worktree` 互斥） |
+| `--continue` | 续接最近一次会话（TUI 专属，与 `--worktree` 互斥） |
 | `--worktree[=<name>]` | 在隔离 git worktree 内启动（裸旗标自动命名；干净树随会话自动清理，脏树保留待处置，见 5.5） |
 | `--workdir=<dir>` | 目录来源 flag 形态；与位置路径同传时本 flag 优先 |
 
@@ -148,7 +147,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 ├── SUNSHINE.md                 # 个人全局约定，跨所有项目生效（对标 ~/.claude/CLAUDE.md）
 ├── skills/<id>/SKILL.md        # 全局技能，跨项目共享
 └── projects/<工作区>/data/     # 各项目的运行时数据（按启动目录自动隔离）
-    ├── sessions/               # 会话日志（/resume、--resume、--continue 据此恢复）
+    ├── sessions/               # 会话日志（/resume、--continue 据此恢复）
+    ├── sessions-active.json    # 最近会话指针
     ├── memory/                 # 持久记忆：MEMORY.md 索引 + <slug>.md 记录
     ├── skills/                 # 自动沉淀的学习技能
     ├── worktrees/              # worktree 隔离工作树（见 5.5）与登记表 registry.json
@@ -160,7 +160,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 
 `projects/` 这一层不限家目录所在盘：`projectsDir` 指到哪，各工作区的数据就落哪（如 `"projectsDir": "D:\\sunshinex-projects"`），逐工作区分目录的隔离与防撞名语义不变——家目录分区吃紧或想把运行数据放独立盘时用。留空即缺省形态（`~/.sunshinex/projects`）。
 
-> `SUNSHINEX_DATA_DIR` 是**开发与测试专用**的环境变量重定向口，用户配置面以 `projectsDir` 为准（换盘、分区都走它）。
+> `SUNSHINEX_DATA_DIR` 是环境变量面的**整目录直指**口（不按工作区隔离、多项目共用一份数据），仅供测试与多实例自行分区使用，不属用户配置面；写在 settings.json 里会收到退役提示。换盘一律用 `projectsDir`。
 
 **项目级 `<项目>/`**
 
@@ -281,8 +281,6 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 **AskQuestion 问询卡**：模型可经内置 `ask_question` 工具主动向你提问（单选 / 多选 / 「Other…」自由输入），键位同上（多选 `Space` 勾选、`Enter` 提交全部勾选）；`Esc` 放弃作答，模型收到「已跳过」并自行调整。无交互终端的 CLI 场景回落为编号输入，完全 headless 时自动按跳过处理。
 任何模式下硬性拦截：破坏性命令（`dd` / `fdisk` / `shutdown` 等）与「下载即执行」管道。
 ## 七、中断与运行控制
-
-- 运行状态实时显示：任务运行中，输入框上方状态行分三态——思考中（帧动画 + 耗时）、工具执行前/审批挂起（`● [工具名]` 逐调用一行，审批挂起标注 awaiting approval）、正文输出中（静默，流式正文即状态）；调用完成即转为消息流中的结果行。
 
 | 动作 | 效果 |
 | --- | --- |

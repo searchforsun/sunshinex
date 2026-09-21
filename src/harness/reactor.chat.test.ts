@@ -26,18 +26,14 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 's
  * ②role:tool 配对回喂：每调用一条观察消息（tool_call_id 一一对应）；phase 旁白 = 批 assistant content
  * ③argsJson 非法 JSON → 该调用回喂纠偏（fail-bounded 不炸）；exec 混批 → 整批拒绝回喂（执行面校验保留）
  * ④链行动作词汇：phase/tool-call/tool-result 行入链（buildMessages 消费面见 messages.test.ts）
- * ⑤回退档：无 chat 能力的 adapter 走既有 complete/parse 文本协议（47 处既有用例的兼容面）
  */
 
-/** chat 面测试桩：按脚本逐轮出牌；complete 被调用即失败（证明主通道走 chat） */
+/** chat 面测试桩：按脚本逐轮出牌 */
 class ChatStub implements ModelAdapter {
   readonly provider = 'openai';
   private i = 0;
   readonly requests: ChatRequest[] = [];
   constructor(private steps: ChatResult[]) {}
-  async complete(): Promise<string> {
-    throw new Error('complete must not be called on the chat path');
-  }
   async chat(req: ChatRequest): Promise<ChatResult> {
     this.requests.push(req);
     const s = this.steps[Math.min(this.i, this.steps.length - 1)];
@@ -173,17 +169,3 @@ test('finish=tool_calls 但调用批为空：纠偏观察回喂不炸（fail-bou
   assert.equal(r.reply, 'fine');
 });
 
-test('回退档：无 chat 能力的 adapter 走 complete/parse 文本协议（既有兼容面不回归）', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat6-'));
-  // 匿名桩：只实现 complete（信封文本协议）
-  const legacy: ModelAdapter = {
-    provider: 'legacy',
-    async complete(): Promise<string> {
-      return '{"tool":"exec","input":{"command":"echo legacy"},"done":false}';
-    },
-  };
-  const reactor = makeReactor(tmp, legacy);
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3 });
-  assert.equal(r.done, false, 'single-step envelope without a done round must not finish');
-  assert.ok(r.steps.some((s) => s.observation.includes('legacy')), 'exec output must land as observation');
-});

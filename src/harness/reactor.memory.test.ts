@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -44,9 +45,7 @@ test('中止路径（max-steps 未完成）同样触发一次提取，reply 归�
     const extractionPrompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'openai',
-      complete: async () => {
-        throw new Error('complete must not be called on the chat path');
-      },
+      
       chat: async (req) => {
         const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (prompt.includes('memory-extraction')) {
@@ -71,7 +70,7 @@ test('中止路径（max-steps 未完成）同样触发一次提取，reply 归�
 test('Stub 门禁：任务正常完成、零提取零副作用', async () => {
   await withRoot(async (root) => {
     let calls = 0;
-    const model: ModelAdapter = { provider: 'stub', complete: async () => { calls += 1; return '{"done":true,"reply":"ok"}'; } };
+    const model: ModelAdapter = { provider: 'stub', chat: textReplyToChatFace(async () => { calls += 1; return '{"done":true,"reply":"ok"}'; }) };
     const h = new Harness({ root, mode: 'dontAsk', model });
     await h.reactor.run({ goal: 'simple task' }, { maxSteps: 3 });
     assert.equal(calls, 1, '仅主链一次调用');
@@ -84,11 +83,11 @@ test('提取失败（模型抛错）不倒灌任务成败', async () => {
     let mainCalled = false;
     const model: ModelAdapter = {
       provider: 'openai',
-      complete: async (prompt: string) => {
+      chat: textReplyToChatFace(async (prompt: string) => {
         if (prompt.includes('memory-extraction')) throw new Error('extraction endpoint down');
         mainCalled = true;
         return '{"done":true,"reply":"all good"}';
-      },
+      }),
     };
     const h = new Harness({ root, mode: 'dontAsk', model });
     const r = await h.reactor.run({ goal: 'task with failing memory extraction' }, { maxSteps: 3 });
@@ -104,9 +103,6 @@ function dualStub(items: Array<{ type: string; description: string; content: str
   const chainSteps = opts?.chainSteps ?? 0;
   return {
     provider: 'openai',
-    complete: async () => {
-      throw new Error('complete must not be called on the chat path');
-    },
     chat: async (req) => {
       const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
       if (prompt.includes('memory-extraction')) {

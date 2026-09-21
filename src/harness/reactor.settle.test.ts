@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -86,9 +87,9 @@ test('全终态触发：maxSteps 耗竭 → stopped、模型失败 → failed，
       tmp,
       {
         provider: 'boom',
-        complete: async () => {
+        chat: textReplyToChatFace(async () => {
           throw new Error('boom');
-        },
+        }),
       },
       (r) => {
         failed.push(r);

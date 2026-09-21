@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'child_process';
@@ -181,10 +182,10 @@ test('T2-5 fork 工作目录事实=活动根（rootProvider）；cleanupWorktree
     let childPrompt = '';
     const model = {
       provider: 'capture',
-      async complete(prompt: string) {
-        childPrompt = prompt;
-        return JSON.stringify({ done: true, reply: 'child done' });
-      },
+      chat: textReplyToChatFace(async (prompt: string) => {
+      childPrompt = prompt;
+      return JSON.stringify({ done: true, reply: 'child done' });
+            }),
     };
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
 

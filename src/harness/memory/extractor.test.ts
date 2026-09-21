@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -18,9 +19,7 @@ function openaiStub(reply: string): Capturing {
   const prompts: string[] = [];
   const model: ModelAdapter = {
     provider: 'openai',
-    complete: async () => {
-      throw new Error('complete must not be called on the chat path');
-    },
+    
     chat: async (req) => {
       prompts.push(req.messages.map((m) => (m.role === 'system' || m.role === 'user' ? m.content : '')).join('\n'));
       const j = JSON.parse(reply) as { memories?: Array<{ type: string; description: string; content: string }> };
@@ -53,7 +52,7 @@ const OK_ENVELOPE = JSON.stringify({
 test('provider 门禁：Stub/Scripted 静默跳过零调用零副作用', async () => {
   await withMem(async (mem) => {
     let called = 0;
-    const stub: ModelAdapter = { provider: 'stub', complete: async () => { called += 1; return OK_ENVELOPE; } };
+    const stub: ModelAdapter = { provider: 'stub', chat: textReplyToChatFace(async () => { called += 1; return OK_ENVELOPE; }) };
     await settleMemory({ goal: 'g', reply: 'r', model: stub, root: mem.dir() });
     assert.equal(called, 0, '非 openai 通道零模型调用');
     assert.equal(mem.count(), 0, '零副作用');
@@ -113,7 +112,7 @@ test('闸门：三级去重命中拒绝', async () => {
 
 test('提取抛错/空产出/非 JSON → 静默零副作用不抛', async () => {
   await withMem(async (mem) => {
-    const boom: ModelAdapter = { provider: 'openai', complete: async () => { throw new Error('net down'); } };
+    const boom: ModelAdapter = { provider: 'openai', chat: textReplyToChatFace(async () => { throw new Error('net down'); }) };
     await settleMemory({ goal: 'g', reply: 'r', model: boom, root: mem.dir() });
     await settleMemory({ goal: 'g', reply: 'r', model: openaiStub('{"memories":[]}').model, root: mem.dir() });
     await settleMemory({ goal: 'g', reply: 'r', model: openaiStub('not json at all').model, root: mem.dir() });
@@ -138,9 +137,6 @@ test('settle 尾部阈值触发整理（先提取入库、后判定阈值整理�
     }
     const model: ModelAdapter = {
       provider: 'openai',
-      complete: async () => {
-        throw new Error('complete must not be called on the chat path');
-      },
       chat: async (req) => {
         const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         const items: Array<Record<string, string>> = [];

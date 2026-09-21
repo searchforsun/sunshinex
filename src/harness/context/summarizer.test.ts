@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getLanguage, setLanguage } from '../../i18n';
@@ -49,9 +50,7 @@ test('summarizeWithModel：成功返回模型正文（chat 面 submit_summary �
   let seen = '';
   const model: ModelAdapter = {
     provider: 'openai',
-    complete: async () => {
-      throw new Error('complete must not be called on the chat path');
-    },
+    
     chat: async (req) => {
       seen = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
       const items = { goal: '完成压缩', constraints: '', progress: '', verified: '', open: '待验收', rationale: '' };
@@ -65,8 +64,8 @@ test('summarizeWithModel：成功返回模型正文（chat 面 submit_summary �
 });
 
 test('summarizeWithModel：空输出与抛错一律 null（回退信号）', async () => {
-  const nullStub = { provider: 'openai', complete: async () => '', chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) } as unknown as ModelAdapter;
-  const boomStub = { provider: 'openai', complete: async () => '', chat: async () => { throw new Error('boom'); } } as unknown as ModelAdapter;
+  const nullStub = { provider: 'openai',  chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) } as unknown as ModelAdapter;
+  const boomStub = { provider: 'openai',  chat: async () => { throw new Error('boom'); } } as unknown as ModelAdapter;
   assert.equal(await summarizeWithModel(nullStub, [chunk('a b c d')], 100), null);
   assert.equal(await summarizeWithModel(boomStub, [chunk('a b c d')], 100), null);
 });
@@ -74,7 +73,7 @@ test('summarizeWithModel：空输出与抛错一律 null（回退信号）', asy
 test('summarizeWithModel：超预算正文确定性截断至预算内', async () => {
   const model = {
     provider: 'openai',
-    complete: async () => '',
+    
     chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_summary', argsJson: JSON.stringify({ goal: 'y'.repeat(400), constraints: '', progress: '', verified: '', open: '', rationale: '' }) }] }),
   } as unknown as ModelAdapter;
   const out = await summarizeWithModel(model, [chunk('a b c d')], 50);
@@ -84,14 +83,14 @@ test('summarizeWithModel：超预算正文确定性截断至预算内', async ()
 
 test('summarizeWithModel：空选中块零模型调用直接 null', async () => {
   let calls = 0;
-  const model = { provider: 'openai', complete: async () => { calls++; return 'x'; } };
+  const model = { provider: 'openai', chat: textReplyToChatFace(async () => { calls++; return 'x'; }) };
   assert.equal(await summarizeWithModel(model, [], 100), null);
   assert.equal(calls, 0);
 });
 
 test('isModelSummarizer：具备 chat 面（真实模型）才走模型摘要（T5 门禁迁移）', () => {
   assert.equal(isModelSummarizer(undefined), false);
-  assert.equal(isModelSummarizer({ provider: 'stub', complete: async () => '' }), false);
-  assert.equal(isModelSummarizer({ provider: 'scripted', complete: async () => '' }), false);
-  assert.equal(isModelSummarizer({ provider: 'openai', complete: async () => '', chat: async () => ({ finish: 'stop', content: '', toolCalls: [] }) }), true);
+  assert.equal(isModelSummarizer({ provider: 'stub', chat: textReplyToChatFace(async () => '' )}), false);
+  assert.equal(isModelSummarizer({ provider: 'scripted', chat: textReplyToChatFace(async () => '' )}), false);
+  assert.equal(isModelSummarizer({ provider: 'openai', chat: async () => ({ finish: 'stop', content: '', toolCalls: [] }) }), true);
 });

@@ -1,3 +1,5 @@
+import { textReplyToChatFace } from '../model/chat-stub';
+import type { ModelAdapter } from '../model/adapter';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactor } from './reactor';
@@ -21,7 +23,7 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 's
 
 function makeReactor(
   tmp: string,
-  adapter: { provider: string; complete: (p: string) => Promise<string> },
+  adapter: ModelAdapter,
   router?: ModelRouter,
 ): Reactor {
   const store = new FileStore(tmp);
@@ -67,7 +69,7 @@ test('模型输出非 JSON 时不误判完成，而是记录观察并重试', as
 
 test('模型调用异常时 done=false 并保留错误信息', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor4-'));
-  const adapter = { provider: 'boom', complete: async () => { throw new Error('网络错误'); } };
+  const adapter = { provider: 'boom', chat: textReplyToChatFace(async () => { throw new Error('网络错误'); }) };
   const reactor = makeReactor(tmp, adapter);
 
   const r = await reactor.run({ goal: 'x' });
@@ -80,7 +82,7 @@ test('Reactor prompt 经 Context.assemble 串起 SUNSHINE.md 指令', async () =
   fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), '# 规范\n禁用 any 类型\n');
 
   let captured = '';
-  const adapter = { provider: 'capture', complete: async (p: string) => { captured = p; return '{"done":true}'; } };
+  const adapter = { provider: 'capture', chat: textReplyToChatFace(async (p: string) => { captured = p; return '{"done":true}'; }) };
   const reactor = makeReactor(tmp, adapter);
 
   const r = await reactor.run({ goal: 'x' });
@@ -114,7 +116,15 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
     '{"done":true,"reply":"ok"}',
   ];
   let call = 0;
-  const adapter = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[Math.min(call++, replies.length - 1)]; } };
+  const requests: ChatRequest[] = [];
+  const adapter = {
+    provider: 'capture',
+    chat: async (req: ChatRequest) => {
+      requests.push(req);
+      prompts.push(req.messages.map((m) => m.content).join('\n'));
+      return parseLegacyEnvelope(replies[Math.min(call++, replies.length - 1)]);
+    },
+  };
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
@@ -129,8 +139,11 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
   assert.ok(prompts[2].includes('[Compacted summary'), '第 3 轮应注入压缩摘要');
   assert.ok(prompts[2].includes('[re-read] big.txt'), '第 3 轮应注入最近文件重读');
   // 收敛环使压缩当轮生效；水位线滤除压缩点前原始 history 行（语义不变）
-  assert.ok(!prompts[2].includes('\n1: read -> '), '水位线应滤掉压缩点前的原始 history 行');
-  assert.ok(prompts[2].includes('2: exec -> step2'), '水位线后的 history 保留');
+  // 水位线语义（消息结构面断言）：压缩点前的原始观察不再以 role:tool 消息回流（已折叠进压缩块）；
+  // 摘要截断引用与 [re-read] 文件回流属合法承载，按内容判别会误伤，故锚定消息角色
+  const toolMsgs = requests[2].messages.filter((m) => m.role === 'tool');
+  assert.ok(!toolMsgs.some((m) => m.content.includes('X'.repeat(100))), '水位线应滤掉压缩点前的原始观察 tool 消息（折叠交压缩块承载）');
+  assert.ok(prompts[2].includes('step2'), '水位线后的 history 保留');
 });
 
 test('压缩协调：折叠的链前缀裁出会话链，压缩块与链永不双份', async () => {
@@ -150,7 +163,7 @@ test('压缩协调：折叠的链前缀裁出会话链，压缩块与链永不�
       registry,
       safety,
       context,
-      model: { provider: 'capture', complete: async (p: string) => { prompts.push(p); return '{"done":true,"reply":"ok"}'; } },
+      model: { provider: 'capture', chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return '{"done":true,"reply":"ok"}'; }) },
     });
     const r = await reactor.run({ goal: 'x' }, { budget: { total: 3000, reserve: 2800 } });
     assert.equal(r.done, true);
@@ -175,10 +188,10 @@ function mkCap() {
     set(...rs: string[]) { queue.push(...rs); },
     adapter: {
       provider: 'cap',
-      complete: async (p: string) => {
+      chat: textReplyToChatFace(async (p: string) => {
         calls.push(p);
         return queue.length > 0 ? queue.shift()! : '{"done":true,"reply":"ok"}';
-      },
+      }),
     },
   };
 }
@@ -304,7 +317,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
     '{"done":true}',
   ];
   let call = 0;
-  const model = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[call++]; } };
+  const model = { provider: 'capture', chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return replies[call++]; }) };
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
@@ -339,7 +352,7 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
     '{"done":true}',
   ];
   let call = 0;
-  const model = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[call++]; } };
+  const model = { provider: 'capture', chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return replies[call++]; }) };
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
@@ -382,10 +395,10 @@ test('FakeAdapter 上报非零 usage → tokensUsed 聚合累加（5+7=12）', a
   let call = 0;
   const adapter = {
     provider: 'usage-fake',
-    complete: async (p: string, hooks?: { onUsage?: (tokens: number) => void }) => {
+    chat: textReplyToChatFace(async (p: string, hooks?: { onUsage?: (tokens: number) => void }) => {
       hooks?.onUsage?.(usages[call++] ?? 0);
       return call <= 2 ? '{"tool":"exec","input":{"command":"echo x"},"done":false}' : '{"done":true}';
-    },
+    }),
   };
   const reactor = makeReactor(tmp, adapter);
 
@@ -398,12 +411,17 @@ test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-phase-'));
   const prompts: string[] = [];
   const stepPhases: unknown[] = [];
-  const replies = [
-    '{"tool":"exec","input":{"command":"echo hi"},"done":false,"phase":"正在执行回声验证"}',
-    '{"done":true,"reply":"ok","phase":"汇总收尾"}',
-  ];
   let call = 0;
-  const adapter = { provider: 'capture', complete: async (p: string) => { prompts.push(p); return replies[Math.min(call++, replies.length - 1)]; } };
+  const adapter = {
+    provider: 'capture',
+    chat: async (req: ChatRequest) => {
+      prompts.push(req.messages.map((m) => m.content).join('\n'));
+      if (call++ === 0) {
+        return { finish: 'tool_calls' as const, content: '正在执行回声验证', toolCalls: [{ id: 'call_0', name: 'exec', argsJson: JSON.stringify({ command: 'echo hi' }) }] };
+      }
+      return { finish: 'stop' as const, content: 'ok', toolCalls: [] };
+    },
+  };
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
@@ -415,9 +433,9 @@ test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', 
 
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 2 });
   assert.equal(r.done, true);
-  assert.ok(stepPhases.includes('正在执行回声验证'), 'tool 步 phase 应随 step 事件透传');
+  assert.ok(stepPhases.includes('正在执行回声验证'), 'tool 步 phase 应随 assistant content 透传');
   assert.equal(stepPhases[stepPhases.length - 1], undefined, 'done 步不透传 phase（阶段行不得插入答复正文）');
-  assert.ok(prompts[0].includes('"phase"'), 'prompt 稳定段应注入 phase 约定行');
+  assert.ok(prompts[0].includes('phase'), '稳定段应注入 phase 约定行（消息面承载）');
 });
 
 test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行、单条合并观察回填', async () => {
@@ -549,10 +567,10 @@ test('Reactor：多步运行相邻步 prompt 前缀稳定（记忆不逐步写�
   let i = 0;
   const adapter = {
     provider: 'capture',
-    complete: async (p: string) => {
+    chat: textReplyToChatFace(async (p: string) => {
       prompts.push(p);
       return replies[Math.min(i++, replies.length - 1)];
-    },
+    }),
   };
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: '读取两份材料并汇总要点' });
@@ -585,10 +603,10 @@ test('Reactor：跨 run seedHistory——相邻 run 前缀连续、RunResult 返
   let i = 0;
   const adapter = {
     provider: 'capture',
-    complete: async (p: string) => {
+    chat: textReplyToChatFace(async (p: string) => {
       prompts.push(p);
       return script[Math.min(i++, script.length - 1)];
-    },
+    }),
   };
   const reactor = makeReactor(tmp, adapter);
   const r1 = await reactor.run({ goal: '分段调研并逐段汇总' });
@@ -605,9 +623,11 @@ test('Reactor：跨 run seedHistory——相邻 run 前缀连续、RunResult 返
   while (common < n && a[common] === b[common]) common++;
   assert.ok(common >= a.length - 120, `跨 run 可命中前缀 ${common}/${a.length}B 过低：seed 未续入 history 或 goal 段漂移`);
   // 合并 history：承接步 + 新步、步骤号连续
-  assert.equal(r2.steps.length, seed.length + 1, 'run2 steps 应含承接步 + 新步');
+  const seedRounds = new Set(seed.map((s) => s.step)).size;
+  const rounds2 = new Set(r2.steps.map((s) => s.step)).size;
+  assert.equal(rounds2, seedRounds + 1, 'run2 应含承接轮 + 新增轮（链行按轮步号去重计）');
   assert.equal(r2.steps[0].step, 1);
-  assert.equal(r2.steps[r2.steps.length - 1].step, r2.steps.length, '步骤号连续');
+  assert.equal(rounds2, Math.max(...r2.steps.map((s) => s.step)), '轮步号连续');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -616,7 +636,7 @@ test('Reactor：usage 为 per-request 全量值——同请求重复回传覆盖
   let call = 0;
   const adapter = {
     provider: 'usage-dup',
-    complete: async (
+    chat: textReplyToChatFace(async (
       _p: string,
       hooks?: { onUsage?: (t: number) => void; onCache?: (t: number) => void; onPrompt?: (t: number) => void },
     ) => {
@@ -636,7 +656,7 @@ test('Reactor：usage 为 per-request 全量值——同请求重复回传覆盖
       hooks?.onPrompt?.(20);
       hooks?.onUsage?.(30);
       return '{"done":true,"reply":"ok"}';
-    },
+    }),
   };
   const reactor = makeReactor(tmp, adapter);
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 3 });
@@ -665,9 +685,6 @@ test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语�
     });
     const adapter = {
       provider: 'openai',
-      complete: async () => {
-        throw new Error('complete must not be called on the chat path');
-      },
       chat: async (req: ChatRequest) => {
         const prompt = req.messages.map((m) => m.content).join('\n');
         if (prompt.includes('handoff summary')) {

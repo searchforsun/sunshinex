@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -30,11 +31,11 @@ function gatedAdapter(responses: string[]): { adapter: ModelAdapter; gate: { pro
   const gate = deferred();
   const adapter: ModelAdapter = {
     provider: 'gated-steer',
-    complete: async () => {
+    chat: textReplyToChatFace(async () => {
       const i = calls++;
       if (i === 0) await gate.promise;
       return responses[Math.min(i, responses.length - 1)];
-    },
+    }),
   };
   return { adapter, gate };
 }

@@ -82,14 +82,11 @@ test('/goal：运行中拒绝，不打断当前任务', async () => {
   try {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => { release = r; });
-    const hangText = '{"done":true,"reply":"ok"}';
     const hang = {
       provider: 'hang',
-      async complete() { await gate; return hangText; },
-      async completeStream(_p: string, onDelta: (t: string) => void) {
-        const text = await gate.then(() => hangText);
-        for (const ch of text) onDelta(ch);
-        return text;
+      async chat() {
+        await gate;
+        return { finish: 'stop', content: 'ok', toolCalls: [] };
       },
     } as unknown as ModelAdapter;
     const ctrl = new SessionController({ root: tmp, model: hang });

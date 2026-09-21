@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'child_process';
@@ -29,7 +30,7 @@ function makeReactor(tmp: string, adapter: ModelAdapter): Reactor {
 
 function scripted(replies: string[]): ModelAdapter {
   let call = 0;
-  return { provider: 'scripted', complete: async () => replies[Math.min(call++, replies.length - 1)] };
+  return { provider: 'scripted', chat: textReplyToChatFace(async () => replies[Math.min(call++, replies.length - 1)] )};
 }
 
 test('record：聚合条目落 runs/<id>，id/createdAt 自动补齐', () => {

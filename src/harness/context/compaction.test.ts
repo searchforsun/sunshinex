@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -124,9 +125,7 @@ test('applyCompaction 摘要分叉：模型成功 → 正文为模型文本，ch
     summaryTokenBudget: 2000,
     summaryModel: {
       provider: 'openai',
-      complete: async () => {
-        throw new Error('complete must not be called on the chat path');
-      },
+      
       chat: async () => {
         calls++;
         return {
@@ -149,10 +148,10 @@ test('applyCompaction 摘要分叉：模型成功 → 正文为模型文本，ch
 });
 
 test('applyCompaction 摘要分叉：模型抛错/空输出 → 回退确定性 join（逐字节今日行为）', async () => {
-  for (const complete of [async () => { throw new Error('boom'); }, async () => '   '] as const) {
+  for (const reply of [() => { throw new Error('boom'); }, () => '   '] as const) {
     const { cm } = setup();
     const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
-    const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'openai', complete } });
+    const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'openai', chat: textReplyToChatFace(reply) } });
     assert.equal(via, 'deterministic');
     const sum = cm.assemble().find((i) => i.content.startsWith('[Compacted summary'));
     assert.ok(sum && sum.content.includes('- [history] 旧上下文要点'), '回退体为 - [type] 摘要 行');
@@ -164,9 +163,7 @@ test('applyCompaction replay 幂等：同一 chunks 二次应用不再发起模�
   let calls = 0;
   const model = {
     provider: 'openai',
-    complete: async () => {
-      throw new Error('complete must not be called on the chat path');
-    },
+    
     chat: async () => {
       calls++;
       return {
@@ -188,7 +185,7 @@ test('applyCompaction provider 门禁：非 openai 通道不走模型直接确�
   const { cm } = setup();
   let calls = 0;
   const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
-  const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'stub', complete: async () => { calls++; return 'X'; } } });
+  const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'stub', chat: textReplyToChatFace(async () => { calls++; return 'X'; }) } });
   assert.equal(via, 'deterministic');
   assert.equal(calls, 0, 'stub 通道零模型调用');
 });
@@ -212,9 +209,6 @@ test('runCompaction：协调单点——压缩、模型摘要、折链', async (
     chainFoldedCount: 1,
     summaryModel: {
       provider: 'openai',
-      complete: async () => {
-        throw new Error('complete must not be called on the chat path');
-      },
       chat: async () => ({
         finish: 'tool_calls' as const,
         content: '',

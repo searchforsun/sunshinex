@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -116,9 +117,9 @@ function capturePrompts(scripted: ScriptedAdapter): { model: ModelAdapter; promp
   const prompts: string[] = [];
   const model: ModelAdapter = {
     provider: 'capture',
-    complete: async (p: string) => {
-      prompts.push(p);
-      return scripted.complete(p);
+    chat: async (req, hooks) => {
+      prompts.push(req.messages.map((m) => m.content).join('\n'));
+      return scripted.chat(req, hooks);
     },
   } as ModelAdapter;
   return { model, prompts };

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { Harness } from '../../harness';
 import { softwarePipelineTemplate } from '../../graph/templates';
 import { codeReviewTemplate } from '../../loop/templates';
+import { ChatRequest, ChatResult } from '../../types';
 import { ModelAdapter, StubAdapter, UsageHooks } from '../../model/adapter';
 import { resolveKbEnv } from '../../config/env';
 import { parseMcpServers, parseSunshinex } from '../../config';
@@ -14,15 +15,15 @@ import { t } from '../../i18n';
 /** 自检用流式适配器：合成 reasoning → token 逐字流 → usage 上报（离线、零网络，驱动流式管线冒烟） */
 class SelfcheckStreamAdapter implements ModelAdapter {
   readonly provider = 'selfcheck-stream';
-  async complete(): Promise<string> {
-    return '{"done":true,"reply":"流式自检 OK"}';
+  async chat(): Promise<ChatResult> {
+    return { finish: 'stop', content: '流式自检 OK', toolCalls: [] };
   }
-  async completeStream(_prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
+  async chatStream(_req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
     hooks?.onReasoning?.('自检思考');
-    const text = '{"done":true,"reply":"流式自检 OK"}';
+    const text = '流式自检 OK';
     for (const ch of text) onDelta(ch);
     hooks?.onUsage?.(3);
-    return text;
+    return { finish: 'stop', content: text, toolCalls: [] };
   }
 }
 

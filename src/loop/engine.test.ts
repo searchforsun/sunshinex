@@ -52,18 +52,11 @@ class RecordingAdapter implements ModelAdapter {
   constructor(private inner: ModelAdapter, private tokensPerCall = 0) {
     this.provider = inner.provider;
   }
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
-    this.prompts.push(prompt);
-    hooks?.onUsage?.(this.tokensPerCall);
-    return this.inner.complete(prompt, hooks);
-  }
-  /** 判据 chat 化（T5）：判据调用经 chat 面，prompt 记录面同源透传 */
-  async chat(req: ChatRequest, _onDelta?: unknown, hooks?: UsageHooks): Promise<ChatResult> {
+  /** prompt 记录面同源透传（消息视图串接文本） */
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     this.prompts.push(req.messages.map((m) => m.content).join('\n'));
     hooks?.onUsage?.(this.tokensPerCall);
-    const inner = this.inner as unknown as { chat?: (r: unknown, d?: unknown, h?: UsageHooks) => Promise<ChatResult> };
-    if (typeof inner.chat === 'function') return inner.chat(req, _onDelta, hooks);
-    throw new Error('inner adapter has no chat surface');
+    return this.inner.chat(req, hooks);
   }
 }
 

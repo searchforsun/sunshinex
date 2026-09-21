@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -33,11 +34,11 @@ test('Task7 溢出一次 → 压缩后重试成功，run done', async () => {
     let calls = 0;
     const adapter: ModelAdapter = {
       provider: 'openai',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         calls++;
         if (calls === 1) throw new Error('maximum context length exceeded: prompt 900000 tokens');
         return JSON.stringify({ done: true, reply: 'ok' });
-      },
+      }),
     };
     const reactor = new Reactor({ registry, safety, context: cm, model: adapter });
     const r = await reactor.run({ goal: 'probe' });
@@ -55,10 +56,10 @@ test('Task7 连续两次溢出 → model-error（重试至多一次）', async (
     let calls = 0;
     const adapter: ModelAdapter = {
       provider: 'openai',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         calls++;
         throw new Error('prompt too long: 900000 tokens > 800000 maximum');
-      },
+      }),
     };
     const reactor = new Reactor({ registry, safety, context: cm, model: adapter });
     const r = await reactor.run({ goal: 'probe' });
@@ -74,9 +75,9 @@ test('Task7 非溢出错误（401）→ 不触发压缩直接 model-error', asyn
   try {
     const adapter: ModelAdapter = {
       provider: 'openai',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         throw new Error('401 Unauthorized: invalid api key');
-      },
+      }),
     };
     const reactor = new Reactor({ registry, safety, context: cm, model: adapter });
     const r = await reactor.run({ goal: 'probe' });

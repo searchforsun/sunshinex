@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Reactor } from './reactor';
 import { ModelAdapter, ScriptedAdapter } from '../model/adapter';
+import type { ChatRequest, ChatResult } from '../types';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -55,11 +56,13 @@ test('Reactor：模型调用在途中止 → interrupted 终态，不走 error �
   const errorEvents: string[] = [];
   const adapter = {
     provider: 'hang-abort',
-    complete: (_p: string, _h?: unknown, signal?: AbortSignal): Promise<string> =>
-      new Promise((_, reject) => {
+    chat: (req: ChatRequest): Promise<ChatResult> => {
+      const signal = req.signal;
+      return new Promise((_, reject) => {
         if (signal?.aborted) return reject(new Error('Task interrupted'));
         signal?.addEventListener('abort', () => reject(new Error('Task interrupted')), { once: true });
-      }),
+      });
+    },
   };
   const reactor = makeReactor(tmp, adapter, ctrl.signal, (e) => {
     if (e.type === 'error') errorEvents.push(e.text ?? '');

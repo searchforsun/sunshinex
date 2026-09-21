@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -423,7 +424,7 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
     let calls = 0;
     const model: ModelAdapter = {
       provider: 'probe',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         calls++;
         if (calls === 1) return JSON.stringify({ tool: 'spawn', input: { prompt: '子任务', label: 'w' }, done: false });
         if (calls === 2) {
@@ -431,7 +432,7 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
           return JSON.stringify({ done: true, reply: '子任务报告' });
         }
         return JSON.stringify({ done: true, reply: '主链完成' });
-      },
+      }),
     } as ModelAdapter;
     const ctrl = new SessionController({ root: tmp, model });
     const p = ctrl.submit('主任务');
@@ -483,9 +484,6 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
       mode: 'dontAsk',
       model: {
         provider: 'openai',
-        complete: async () => {
-          throw new Error('complete must not be called on the chat path');
-        },
         chat: async (req: ChatRequest) => {
           const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           if (p.includes('handoff summary')) {
@@ -540,7 +538,7 @@ function usageModel(frames: Array<{ cache: number; prompt: number; reply: string
   let i = 0;
   return {
     provider: 'usage-session-script',
-    complete: async (
+    chat: textReplyToChatFace(async (
       _p: string,
       hooks?: { onUsage?: (t: number) => void; onCache?: (t: number) => void; onPrompt?: (t: number) => void },
     ) => {
@@ -549,7 +547,7 @@ function usageModel(frames: Array<{ cache: number; prompt: number; reply: string
       hooks?.onCache?.(f.cache);
       hooks?.onUsage?.(50);
       return f.reply;
-    },
+    }),
   };
 }
 

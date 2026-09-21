@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -116,9 +117,9 @@ function captureModel(scripted: ScriptedAdapter): { model: ModelAdapter; prompts
   const prompts: string[] = [];
   const model: ModelAdapter = {
     provider: 'capture',
-    complete: async (p: string) => {
-      prompts.push(p);
-      return scripted.complete(p);
+    chat: async (req, hooks) => {
+      prompts.push(req.messages.map((m) => m.content).join('\n'));
+      return scripted.chat(req, hooks);
     },
   } as ModelAdapter;
   return { model, prompts };
@@ -224,10 +225,10 @@ test('Runner 并发护栏：同层第 5 个并发返回 CONCURRENCY_LIMIT，不�
     const gate = new Promise<void>((res) => (release = res));
     const hanging: ModelAdapter = {
       provider: 'hang',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         await gate;
         return JSON.stringify({ done: true, reply: 'ok' });
-      },
+      }),
     };
     const h = makeHarness(tmp);
     const runner = h.makeRunner(hanging);
@@ -285,14 +286,14 @@ test('同名并发消歧：后到者 label #N 后缀，事件与结论行一致�
     // 挂起适配器对齐 subagent.spawn.test.ts 并发用例惯用法（ModelAdapter.complete 签名）
     const model: ModelAdapter = {
       provider: 'probe',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         calls++;
         if (calls <= 4) {
           await gate;
           return JSON.stringify({ done: true, reply: '子完成' });
         }
         return JSON.stringify({ done: true, reply: '主链完成' });
-      },
+      }),
     } as ModelAdapter;
     const h = makeHarness(tmp);
     const events: SessionEvent[] = [];

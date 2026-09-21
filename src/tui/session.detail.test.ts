@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
+import type { ChatRequest, ChatResult } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 
 function tmpdir(prefix: string): string {
@@ -17,13 +18,13 @@ class HookAdapter implements ModelAdapter {
     private readonly text: string,
     private readonly opts: { reasoning?: string[] } = {},
   ) {}
-  async complete(): Promise<string> {
-    return this.text;
+  async chat(_req: ChatRequest, _hooks?: UsageHooks): Promise<ChatResult> {
+    return { finish: 'stop', content: this.text, toolCalls: [] };
   }
-  async completeStream(_prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
+  async chatStream(_req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
     for (const r of this.opts.reasoning ?? []) hooks?.onReasoning?.(r);
     for (const ch of this.text) onDelta(ch);
-    return this.text;
+    return { finish: 'stop', content: this.text, toolCalls: [] };
   }
 }
 

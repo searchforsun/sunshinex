@@ -2,26 +2,29 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as http from 'http';
 import { ModelRouter, ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage, extractPromptTokens, extractCacheTokens } from './adapter';
-import { ModelTier } from '../types';
+import { ChatRequest, ModelTier } from '../types';
 
 test('ScriptedAdapter 依次回放脚本', async () => {
   const a = new ScriptedAdapter(['{"tool":"read","done":false}', '{"done":true}']);
-  assert.equal(await a.complete('p'), '{"tool":"read","done":false}');
-  assert.equal(await a.complete('p'), '{"done":true}');
+  const req = (): ChatRequest => ({ messages: [{ role: 'user', content: 'p' }] });
+  const r1 = await a.chat(req());
+  assert.equal(r1.finish, 'tool_calls');
+  assert.equal(r1.toolCalls[0]?.name, 'read');
+  const r2 = await a.chat(req());
+  assert.equal(r2.finish, 'stop');
 });
 
-test('StubAdapter：回协议 JSON（done+reply），不回显提示词', async () => {
+test('StubAdapter：stop 收束回未接线提示，不回显提示词', async () => {
   const a = new StubAdapter();
-  const out = await a.complete('PROMPT-SECRET');
-  const parsed = JSON.parse(out) as { done: boolean; reply: string };
-  assert.equal(parsed.done, true);
-  assert.ok(parsed.reply.length > 0, '应给出可读提示');
-  assert.ok(!out.includes('PROMPT-SECRET'), '回显 prompt 会把系统提示词泄露到界面');
+  const r = await a.chat({ messages: [{ role: 'user', content: 'PROMPT-SECRET' }] });
+  assert.equal(r.finish, 'stop');
+  assert.ok(r.content.length > 0, '应给出可读提示');
+  assert.ok(!r.content.includes('PROMPT-SECRET'), '回显 prompt 会把系统提示词泄露到界面');
 });
 
-test('OpenAIAdapter 无 key 时 complete 抛错', async () => {
+test('OpenAIAdapter 无 key 时 chat 抛错', async () => {
   const a = new OpenAIAdapter({ provider: 'openai', baseURL: 'http://127.0.0.1:1/v1' });
-  await assert.rejects(() => a.complete('hi'));
+  await assert.rejects(() => a.chat({ messages: [{ role: 'user', content: 'hi' }] }));
 });
 
 test('OpenAIAdapter 超时时抛「Model call timed out」', async () => {
@@ -32,7 +35,7 @@ test('OpenAIAdapter 超时时抛「Model call timed out」', async () => {
   const addr = srv.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', timeoutMs: 300 });
-  await assert.rejects(() => a.complete('hi'), /Model call timed out/);
+  await assert.rejects(() => a.chat({ messages: [{ role: 'user', content: 'hi' }] }), /Model call timed out/);
   srv.close();
 });
 
@@ -104,7 +107,7 @@ test('OpenAIAdapter：外部 signal 中止 → 抛「Task interrupted」（区�
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', timeoutMs: 10_000 });
   const ctrl = new AbortController();
-  const pending = a.complete('hi', undefined, ctrl.signal);
+  const pending = a.chat({ messages: [{ role: 'user', content: 'hi' }], signal: ctrl.signal });
   setTimeout(() => ctrl.abort(), 80);
   await assert.rejects(() => pending, /Task interrupted/);
   srv.close();

@@ -51,7 +51,7 @@ export async function settleMemory(opts: { goal: string; reply: string; model: M
       const description = typeof c.description === 'string' ? c.description.trim() : '';
       const content = typeof c.content === 'string' ? c.content.trim() : '';
       if (!description || !content) continue;
-      // 闸门 a（会话性内容不落盘）随文本协议退役：结构化条目 schema 不含 scope（scope 不暴露给模型，T1 裁决），
+      // 闸门 a（会话性内容不落盘）：结构化条目 schema 不含 scope（scope 不暴露给模型，T1 裁决），
       // 条目按 persistent 构造，闸门无第二形态可拦
       const type = c.type === 'user' || c.type === 'feedback' || c.type === 'reference' ? c.type : 'project';
       try {

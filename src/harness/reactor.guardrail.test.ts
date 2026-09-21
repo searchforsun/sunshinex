@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Reactor, ReactorDeps } from './reactor';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
+import type { ChatRequest, ChatResult } from '../types';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { SafetyChain } from './security/chain';
@@ -30,9 +31,9 @@ const DONE = '{"done":true,"reply":"好了"}';
 class UsageAdapter implements ModelAdapter {
   readonly provider = 'usage-scripted';
   constructor(private inner: ModelAdapter, private perCall: number) {}
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     hooks?.onUsage?.(this.perCall);
-    return this.inner.complete(prompt);
+    return this.inner.chat(req);
   }
 }
 
@@ -86,7 +87,7 @@ test('Reactor：正量用量累计触达 tokenCap（D7 对照：换回忽略 usa
     );
     assert.equal(r.done, false);
     assert.equal(r.stopReason, 'budget');
-    assert.equal(r.steps.length, 1, '第 1 步用满 1 token 后，第 2 步前按预算收敛');
+    assert.equal(new Set(r.steps.map((s) => s.step)).size, 1, '第 1 轮用满 1 token 后，第 2 轮前按预算收敛（链行按轮步号去重计）');
   });
 });
 
@@ -104,7 +105,7 @@ test('Reactor：模型抛错 → stopReason=model-error 且不抛给调用方', 
   await withTmp(async (tmp) => {
     const boom = {
       provider: 'boom',
-      async complete(): Promise<string> {
+      async chat(): Promise<ChatResult> {
         throw new Error('模型挂了');
       },
     };

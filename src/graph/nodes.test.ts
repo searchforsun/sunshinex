@@ -16,6 +16,7 @@ import { ToolRegistry } from '../harness/tools';
 import { builtinTools } from '../harness/tools/builtin';
 import { ContextManager } from '../harness/context';
 import { FileStore } from '../storage/adapter';
+import type { ChatRequest, ChatResult } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 
 // ===== 测试基建 =====
@@ -29,10 +30,10 @@ class RecordingAdapter implements ModelAdapter {
   ) {
     this.provider = inner.provider;
   }
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
-    this.prompts.push(prompt);
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
+    this.prompts.push(req.messages.map((m) => m.content).join('\n'));
     hooks?.onUsage?.(this.tokensPerCall);
-    return this.inner.complete(prompt, hooks);
+    return this.inner.chat(req, hooks);
   }
 }
 

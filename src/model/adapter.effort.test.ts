@@ -23,6 +23,13 @@ function adapter(): OpenAIAdapter {
   return new OpenAIAdapter({ provider: 'openai', apiKey: 'k', model: 'm', baseURL: 'http://x/v1', timeoutMs: 5000 });
 }
 
+/** effort 穿参便捷调用：经 chat 面（effort 为请求级字段），返回答复正文 */
+function callEffort(a: OpenAIAdapter, prompt: string, effort?: string) {
+  return a
+    .chat({ messages: [{ role: 'user', content: prompt }], ...(effort ? { effort: effort as never } : {}) })
+    .then((r) => r.content);
+}
+
 test('effort 降级序列（对标用户口径）：高于 low 向下逐档取到 low；低于等于 low 向上逐档取到 max', () => {
   assert.deepEqual(buildFallbackSequence('high'), ['high', 'medium', 'low']);
   assert.deepEqual(buildFallbackSequence('xhigh'), ['xhigh', 'high', 'medium', 'low']);
@@ -52,7 +59,7 @@ test('isUnsupportedEffortError：只认 400/422 且消息指向 reasoning_effort
 test('effort 穿参：显式档位随请求体下发（reasoning_effort 字段）', async () => {
   const m = mockFetch([{ status: 200, body: { choices: [{ message: { content: 'ok' } }], usage: { total_tokens: 1 } } }]);
   try {
-    const out = await adapter().complete('p', undefined, undefined, 'high');
+    const out = await callEffort(adapter(), 'p', 'high');
     assert.equal(out, 'ok');
     assert.equal(m.bodies[0].reasoning_effort, 'high');
   } finally {
@@ -69,13 +76,13 @@ test('effort 降级：high 不支持→逐档降 medium→low 成功；探测缓
   ]);
   try {
     const a = adapter();
-    const out = await a.complete('p', undefined, undefined, 'high');
+    const out = await callEffort(a, 'p', 'high');
     assert.equal(out, 'ok');
     assert.equal(m.bodies[0].reasoning_effort, 'high');
     assert.equal(m.bodies[1].reasoning_effort, 'medium', '逐档向下：第二试 medium');
     assert.equal(m.bodies[2].reasoning_effort, 'low');
     // 探测缓存：high/medium 已判不支持，同请求直发生效档 low
-    const out2 = await a.complete('p2', undefined, undefined, 'high');
+    const out2 = await callEffort(a, 'p2', 'high');
     assert.equal(out2, 'ok2');
     assert.equal(m.bodies.length, 4, '缓存生效：不再重试已判不支持的档位');
     assert.equal(m.bodies[3].reasoning_effort, 'low');
@@ -94,14 +101,14 @@ test('effort 全序列不支持：省略参数用模型默认，并缓存端点�
   ]);
   try {
     const a = adapter();
-    const out = await a.complete('p', undefined, undefined, 'high');
+    const out = await callEffort(a, 'p', 'high');
     assert.equal(out, 'default');
     assert.equal(m.bodies[0].reasoning_effort, 'high');
     assert.equal(m.bodies[1].reasoning_effort, 'medium');
     assert.equal(m.bodies[2].reasoning_effort, 'low');
     assert.ok(!('reasoning_effort' in m.bodies[3]), '全档不支持后省略参数直发');
     // 缓存后同请求一次直发无参
-    const out2 = await a.complete('p2', undefined, undefined, 'high');
+    const out2 = await callEffort(a, 'p2', 'high');
     assert.equal(out2, 'default2');
     assert.equal(m.bodies.length, 5, '缓存生效：不再重复探测');
     assert.ok(!('reasoning_effort' in m.bodies[4]));
@@ -118,11 +125,11 @@ test('effort 请求档变化：探测缓存按请求档记账，新请求档按�
   ]);
   try {
     const a = adapter();
-    await a.complete('p', undefined, undefined, 'high');
+    await callEffort(a, 'p', 'high');
     // 首请求：high(400)→medium(200) 即成功，生效档 medium
     assert.equal(m.bodies[1].reasoning_effort, 'medium');
     // 换请求档 max：high 的探测记录只作用于 high 序列——max 未探测过，按序列首档直发且不再重试已判不支持的档
-    const out = await a.complete('p2', undefined, undefined, 'max');
+    const out = await callEffort(a, 'p2', 'max');
     assert.equal(out, 'max-ok');
     assert.equal(m.bodies.length, 3, 'max 序列首档即成功，不重试 high/medium');
     assert.equal(m.bodies[2].reasoning_effort, 'max');
@@ -140,7 +147,7 @@ test('effort 缺省链路：cfg 优先于 env，非法值忽略不生效；未�
     assert.equal(new OpenAIAdapter({ provider: 'openai', apiKey: 'k', baseURL: 'http://x/v1', reasoningEffort: 'low' }).resolveEffort(), 'low', 'cfg 覆盖 env');
     process.env.SUNSHINEX_REASONING_EFFORT = 'bogus';
     assert.equal(adapter().resolveEffort(), undefined, '非法值忽略');
-    const out = await adapter().complete('p');
+    const out = await callEffort(adapter(), 'p');
     assert.equal(out, 'ok');
     assert.ok(!('reasoning_effort' in m.bodies[0]), '未配置零穿参（请求体形态不变）');
   } finally {
@@ -154,7 +161,7 @@ test('effort 网络/服务端错误不降级：非参数类错误照常抛出', 
   const m = mockFetch([{ status: 500, body: { error: { message: 'internal error' } } }]);
   try {
     await assert.rejects(
-      adapter().complete('p', undefined, undefined, 'high'),
+      callEffort(adapter(), 'p', 'high'),
       /failed: 500/,
     );
     assert.equal(m.bodies.length, 1, '500 不进入降级序列');
@@ -171,7 +178,7 @@ test('resolvedEffort：未探测回 undefined，降级探测命中返回实际�
   try {
     const a = adapter();
     assert.equal(a.resolvedEffort?.('high'), undefined, '未发起请求零探测');
-    await a.complete('p', undefined, undefined, 'high');
+    await callEffort(a, 'p', 'high');
     assert.equal(a.resolvedEffort?.('high'), 'medium', 'high→400 后 medium 成功：实际生效档=medium');
     assert.equal(a.resolvedEffort?.('medium'), undefined, '未探测档不误报');
   } finally {

@@ -1,3 +1,5 @@
+import { textReplyToChatFace } from '../model/chat-stub';
+import type { ModelAdapter } from '../model/adapter';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactor } from './reactor';
@@ -20,7 +22,7 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 's
 
 function makeReactor(
   tmp: string,
-  adapter: { provider: string; complete: (p: string) => Promise<string> },
+  adapter: ModelAdapter,
   steer?: () => string[],
 ): { reactor: Reactor; context: ContextManager } {
   const store = new FileStore(tmp);
@@ -48,7 +50,7 @@ test('运行中穿插：步边界消费 steer 钩子，用户行尾追进下一�
   const prompts: string[] = [];
   const adapter = {
     provider: 'scripted-steer',
-    complete: async (p: string) => { prompts.push(p); return responses.shift()!; },
+    chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return responses.shift()!; }),
   };
   // 用户在任务运行中插入：首个步边界（零新步）不消费，工具步完成后的下一个步边界才投递
   let drains = 0;
@@ -83,7 +85,7 @@ test('运行中穿插：起步后步边界消费，多行按入队序尾追、�
   const prompts: string[] = [];
   const adapter = {
     provider: 'scripted-steer2',
-    complete: async (p: string) => { prompts.push(p); return responses.shift()!; },
+    chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return responses.shift()!; }),
   };
   let drains = 0;
   const { reactor } = makeReactor(tmp, adapter, () => (++drains === 1 ? ['User steer: first', 'User steer: second'] : []));
@@ -102,7 +104,7 @@ test('起步前不消费：零新步边界不投递，穿插行留在通道由�
   const prompts: string[] = [];
   const adapter = {
     provider: 'scripted-steer3',
-    complete: async (p: string) => { prompts.push(p); return '{"done":true,"reply":"ok"}'; },
+    chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return '{"done":true,"reply":"ok"}'; }),
   };
   let drains = 0;
   const { reactor } = makeReactor(tmp, adapter, () => { drains++; return ['User steer: early']; });

@@ -100,26 +100,10 @@ export function buildStepDigest(
   return out.length > cfg.totalChars ? out.slice(out.length - cfg.totalChars) : out;
 }
 
-/** 并行动作项：一轮同时执行的多个工具调用（除 exec 外均可并行） */
-interface ParallelToolCall { tool: string; input?: Record<string, unknown>; }
-interface Action { tool?: string; input?: Record<string, unknown>; tools?: ParallelToolCall[]; done: boolean; reply?: string; phase?: string; }
 /** 并行调用上限：防单轮塞满列表拖长步时延（8 项足够覆盖常用组合） */
 const PARALLEL_TOOLS_LIMIT = 8;
 
-type ParseResult =
-  | { ok: true; action: Action }
-  | { ok: false; raw: string };
-
-/** 最小 Reactor：observe → think → act → observe 线性循环 */
-/** chat 能力守卫（T4）：adapter 实现可选 chat 面即走消息视图主通道；未实现者走 complete/parse 文本协议回退档 */
-function chatCapable(
-  a: ModelAdapter,
-): a is ModelAdapter & {
-  chat: (req: ChatRequest, onDelta?: (t: string) => void, hooks?: UsageHooks) => Promise<ChatResult>;
-  chatStream?: (req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks) => Promise<ChatResult>;
-} {
-  return typeof a.chat === 'function';
-}
+/** 最小 Reactor：observe → think → act → observe 线性循环（chat 消息视图单通道） */
 
 export class Reactor {
   constructor(private deps: ReactorDeps) {}
@@ -150,8 +134,6 @@ export class Reactor {
         }
       : derived;
     const adapter = router.resolve(tier);
-    // chat 主通道判定（function calling 迁移 T4）：adapter 实现可选 chat 面即走消息视图，否则走文本协议回退档
-    const useChat = chatCapable(adapter);
     this.emit('route', undefined, { tier: route.tier, reason: route.reason });
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
     let reactiveUsed = false; // 反应式压缩兜底：每 run 至多重试一次，防「压缩→仍越限」死循环
@@ -214,7 +196,7 @@ export class Reactor {
         ...(deadlineAt !== undefined ? { deadlineAt } : {}),
         tokensUsed,
         ...(tokenCap !== undefined ? { tokenCap } : {}),
-        // 本 run 新增完成轮数（模型轮=完成步）：chat 主通道一轮入多条链行（phase/调用/观察共用同一轮步号），按去重步号计；回退档一行一轮两口径等值
+        // 本 run 新增完成轮数（模型轮=完成步）：chat 主通道一轮入多条链行（phase/调用/观察共用同一轮步号），按去重步号计
         iteration: new Set(steps.slice(seedLen).map((s) => s.step)).size,
         maxIterations: maxSteps,
       });
@@ -254,53 +236,18 @@ export class Reactor {
       // 事件为旁路遥测不进提示词，前缀缓存零影响
       this.emit('ctx', undefined, { used: est.used, exact: false });
 
-      // chat 主通道（function calling 迁移 T4）：adapter 具备 chat 能力即走消息视图（tools 字段下发、tool_calls
-      // 结构化动作），文本协议（buildPrompt/parse/信封）不参与；错误经本 try 统一兜底（中断/超长反应式压缩/model-error）。
-      // 旁路技能块先取（assemble 消费即清，chat 消息面单独置尾——est 估算暂时低估一个技能块，可容许）
-      const chatSkill = useChat ? this.deps.context.takePendingSkill() : null;
-      // think: 经 ModelAdapter 决策（chat 主通道走消息视图；回退档走动作协议 prompt）
-      const prompt = useChat ? '' : this.buildPrompt(items);
-      let raw: string;
+      // think：chat 消息视图单通道（tools 字段下发、tool_calls 结构化动作）；错误经本 try 统一兜底（中断/超长反应式压缩/model-error）。
+      // 旁路技能块先取（assemble 消费即清，消息面单独置尾——est 估算暂时低估一个技能块，可容许）
+      const chatSkill = this.deps.context.takePendingSkill();
       try {
-        if (useChat) {
-          usageBase = tokensUsed;
-          cacheBase = cacheHitTokens;
-          promptBase = promptTokens;
-          const outcome = await this.chatRound(adapter, steps, step, chatSkill, {
-            onCache: (c) => {
-              if (c > 0) cacheHitTokens = cacheBase + c;
-            },
-            onPrompt: (p) => {
-              if (p > 0) {
-                promptTokens = promptBase + p;
-                // 本请求真实 prompt_tokens 即模型实际看到的上下文占用：以 exact 权威覆盖估算预告
-                this.emit('ctx', undefined, { used: p, exact: true });
-              }
-            },
-            onUsage: (t) => {
-              if (t > 0) tokensUsed = usageBase + t;
-              this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens, promptTotal: promptTokens });
-            },
-            onReasoning: (t) => this.emit('reasoning', t),
-          }, opts?.effort, this.deps.signal);
-          if (outcome.done) {
-            done = true;
-            reply = outcome.reply;
-            stopReason = 'done';
-            // step done 事件与回退档同发射契约（session 收束面/TUI 终态依赖此事件，前缀面不受影响）
-            this.emit('step', 'done', { step });
-            break;
-          }
-          continue;
-        }
         // usage 为 per-request 全量值：聚合用「基线 + 本请求覆盖」而非盲目累加——
         // 端点在多个流式帧重复携带 usage 时覆盖语义天然幂等，漏算与重复累计两类口径病一次消除
         usageBase = tokensUsed;
         cacheBase = cacheHitTokens;
         promptBase = promptTokens;
-        raw = await this.callModel(adapter, prompt, {
+        const outcome = await this.chatRound(adapter, steps, step, compactedUpToStep, chatSkill, {
           onCache: (c) => {
-            if (c > 0) cacheHitTokens = cacheBase + c; // 0 值忽略：占位/缺字段不得冲掉已累计的真实值
+            if (c > 0) cacheHitTokens = cacheBase + c;
           },
           onPrompt: (p) => {
             if (p > 0) {
@@ -314,7 +261,15 @@ export class Reactor {
             this.emit('usage', undefined, { tokens: t, turnTotal: tokensUsed, cacheHitTotal: cacheHitTokens, promptTotal: promptTokens });
           },
           onReasoning: (t) => this.emit('reasoning', t),
-        }, this.deps.signal, opts?.effort);
+        }, opts?.effort, this.deps.signal);
+        if (outcome.done) {
+          done = true;
+          reply = outcome.reply;
+          stopReason = 'done';
+          // step done 事件发射契约（session 收束面/TUI 终态依赖此事件，前缀面不受影响）
+          this.emit('step', 'done', { step });
+          break;
+        }
       } catch (e) {
         // 用户中断在途模型调用：静默转入中断终态，不 emit error（中断回执由会话层统一发）
         if (this.deps.signal?.aborted) {
@@ -345,46 +300,6 @@ export class Reactor {
         stopReason = 'model-error';
         break;
       }
-
-      const parsed = this.parse(raw);
-      if (!parsed.ok) {
-        // 模型未按 JSON 输出：把原文回填为观察，给模型一次自我纠正机会
-        steps.push({ step, observation: `Model output is not valid JSON (truncated): ${raw.slice(0, 400)}` });
-        continue;
-      }
-
-      const action = parsed.action;
-      // 终稿步骤不透传 phase：阶段说明只属于工具动作步骤，答复流式入档中途不再插入阶段行
-      // step 动词是上屏行（零写链、只上屏）→ 外观面，走 t() 双语；工具名与 'done' 为协议字面量不译
-      this.emit('step', action.tool ?? (action.done ? 'done' : t('(no action)', '（无动作）')), { step, phase: action.done ? undefined : action.phase });
-      if (action.done) {
-        done = true;
-        reply = action.reply ?? 'Done';
-        stopReason = 'done';
-        break;
-      }
-
-      if (action.tools && action.tools.length > 0) {
-        await this.runParallelTools(step, action, steps);
-        continue;
-      }
-
-      if (!action.tool) {
-        steps.push({ step, observation: 'Action is missing the tool field' });
-        continue;
-      }
-
-      // act: 经安全链执行
-      this.emit('tool-call', action.tool, { input: action.input });
-      const r = await this.deps.registry.execute(action.tool, action.input ?? {}, this.deps.safety);
-      const observation = this.describe(r);
-      this.emit('tool-result', observation.slice(0, 200), { ok: r.ok, full: observation, tool: action.tool });
-      steps.push({ step, action: action.tool, observation });
-      if (r.ok && (action.tool === 'read' || action.tool === 'grep')) {
-        const p = (action.input ?? {}).path;
-        if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
-      }
-      // 观察只入 history（单一来源）：memory 注入段位于 goal/history 之前，逐步写记忆会击穿其后全部 KV 前缀缓存
     }
 
     // 主链作用域收束回写：存续新步骤 + 结论行/补丁行尾追进链（fork 模型 §5；fork 作用域私有不回写）
@@ -466,116 +381,31 @@ export class Reactor {
     this.deps.onEvent?.({ type, text, payload, ts: Date.now() });
   }
 
-  /** 模型调用：优先 completeStream（token 增量逐段发射）；适配器未实现时降级 complete（token 整段一次发）。
-   * effort（可选思考强度）同源透传，对流式/非流式形态无感 */
-  private async callModel(adapter: ModelAdapter, prompt: string, hooks: UsageHooks, signal?: AbortSignal, effort?: import('../types').ReasoningEffort): Promise<string> {
-    const streamable = adapter as ModelAdapter & {
-      completeStream?: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks, signal?: AbortSignal, effort?: import('../types').ReasoningEffort) => Promise<string>;
-    };
-    if (typeof streamable.completeStream === 'function') {
-      return streamable.completeStream(prompt, (t) => this.emit('token', t), hooks, signal, effort);
-    }
-    const out = await adapter.complete(prompt, hooks, signal, effort);
-    this.emit('token', out);
-    return out;
-  }
-
-  private buildPrompt(items: ContextItem[]): string {
-    // 段序固定「身份 → 工具清单 → 输出协议 → 上下文」：全段逐字节稳定，同任务相邻步仅 history 尾部追加（前缀缓存第一要义）；
-    // 工具清单按名排序，产出与注册顺序无关。模型档位是用户级会话参数（--tier / /model），不进提示词、不随步重估
-    const tools = [...this.deps.registry.list()]
-      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-      .map((t) => `- ${t.name}: ${t.description}`)
-      .join('\n');
-    const contextText = items.map((i) => i.content).join('\n');
-    // 稳定段英文单语（提示词恒英文，不随 --language 分叉——全段逐字节冻结的先决条件）
-    return [
-      IDENTITY_LINE,
-      MARKDOWN_LINE,
-      // phase 约定（进度行防刷屏）：仅「阶段切换」时携带，同阶段连续动作不重复报，非关键动作不报
-      'Each reply JSON may optionally carry "phase":"<one sentence naming the current stage>": include it only when entering a new stage, saying what the upcoming tool calls are for; do not repeat it for consecutive actions within the same stage, and skip it for trivial single-step actions.',
-      'Available tools:',
-      tools,
-      '',
-      TOOL_POLICY_LINE,
-      '',
-      REFERENCE_DATA_LINE,
-      'Work on the task given by the last task-instruction line in the context; complete it fully, then end with done and give the final answer in reply.',
-      '',
-      'Reply with exactly one JSON object and nothing else. Two forms:',
-      '1) Tool call: {"tool":"<name>","input":{...},"done":false}; multiple non-exec/non-ask tools may run in parallel in one round: {"tools":[{"tool":"<name>","input":{...}},...],"done":false} — in the parallel form, tools and inputs go inside the tools array and the outer object must not carry a tool field',
-      '2) Task done: {"done":true,"reply":"<final answer>"}',
-      '',
-      'Context:',
-      workDirLine(this.deps.root ?? this.deps.context.root),
-      contextText,
-    ].join('\n');
-  }
-
   private toHistory(steps: StepRecord[], fromStep: number): ContextItem[] {
     return chainToHistoryItems(steps.filter((s) => s.step > fromStep));
   }
 
-  /** 一轮并行多个工具（除 exec 外均可并行，对标 Claude Code 的并行调用）：经 Promise.all 并发执行，
-   * 结果合并为单条观察回填（tool-call/result 事件仍逐工具发射，TUI 逐行上屏）；
-   * exec 为命令类须单发独占执行（命令间有顺序与工作目录依赖），混入即整体拒绝，观察回填供模型自纠 */
-  private async runParallelTools(step: number, action: Action, steps: StepRecord[]): Promise<void> {
-    const calls = action.tools ?? [];
-    const denied =
-      calls.length > PARALLEL_TOOLS_LIMIT
-        ? `Parallel batch exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools`
-        : calls.some((c) => {
-            const cat = this.deps.registry.get(c.tool)?.category;
-            return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === undefined;
-          })
-          ? 'Parallel batch allows only non-exec/ask tools (exec and ask must run exclusively on their own)'
-          : '';
-    if (denied) {
-      const obs = `Parallel batch rejected: ${denied}; remove exec/ask and retry, or fall back to a single-tool call`;
-      steps.push({ step, action: 'parallel', observation: obs });
-      return;
-    }
-    const results = await Promise.all(calls.map((c) => this.deps.registry.execute(c.tool, c.input ?? {}, this.deps.safety)));
-    const parts: string[] = [];
-    // 上屏按调用序成对流出（call+result 相邻）：执行本身仍是 Promise.all 并发，
-    // 但视图上每个工具行紧跟自己的结果行，不出现「调用行连排、结果行连排」的割裂
-    results.forEach((r, i) => {
-      this.emit('tool-call', calls[i].tool, { input: calls[i].input });
-      const obs = this.describe(r);
-      this.emit('tool-result', obs.slice(0, 200), { ok: r.ok, full: obs, tool: calls[i].tool });
-      parts.push(`[${calls[i].tool}] ${obs}`);
-      const p = (calls[i].input ?? {}).path;
-      if (r.ok && (calls[i].tool === 'read' || calls[i].tool === 'grep') && typeof p === 'string' && p.length > 0) {
-        this.deps.context.trackFile(p);
-      }
-    });
-    const observation = `[parallel ${calls.length} tools]\n${parts.join('\n')}`;
-    steps.push({ step, action: calls.map((c) => c.tool).join('+'), observation });
-  }
-
-  /** chat 主通道稳定段（T4）：身份/输出约定/工具政策/工作目录——逐字节冻结；JSON 信封协议行与工具清单文本不再进提示词
-   *  （清单经 tools 字段下发、动作经 tool_calls 结构化承载——前缀稳定语义平移到消息面） */
+  /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；工具清单经 tools 字段下发、动作经 tool_calls 结构化承载 */
   private chatStableSegment(): string {
     return [
       IDENTITY_LINE,
       MARKDOWN_LINE,
+      'When calling tools you may include a short "phase" sentence as the message content naming the current stage (what the upcoming tool calls are for); include it only when entering a new stage, and skip it for consecutive actions within the same stage and for trivial single-step actions.',
       TOOL_POLICY_LINE,
       'exec and ask tools run exclusively on their own; multiple other tools may be called in parallel within a single round.',
       REFERENCE_DATA_LINE,
+      'Work on the task given by the last task-instruction line in the context; complete it fully, then give the final answer as your final response.',
       workDirLine(this.deps.root ?? this.deps.context.root),
     ].join('\n');
   }
 
-  /** chat 主通道一轮（T4）：buildMessages 消息视图 + tools 字段 → 结构化动作消费。
-   *  一轮多条链行（phase/调用/观察）共用同一轮步号（迭代计数按去重步号），role:tool 按序配对回喂；
-   *  finish=stop 即收束；文本协议（信封/parse）在本路径零参与 */
+  /** 模型一轮：buildMessages 消息视图 + tools 字段 → 结构化动作消费。
+   *  一轮多条链行（phase/调用/观察）共用同一轮步号（迭代计数按去重步号），role:tool 按序配对回喂；finish=stop 即收束 */
   private async chatRound(
-    adapter: ModelAdapter & {
-      chat: (req: ChatRequest, onDelta?: (t: string) => void, hooks?: UsageHooks) => Promise<ChatResult>;
-      chatStream?: (req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks) => Promise<ChatResult>;
-    },
+    adapter: ModelAdapter,
     steps: StepRecord[],
     step: number,
+    fromStep: number,
     skill: string | null,
     hooks: UsageHooks,
     effort: ReasoningEffort | undefined,
@@ -587,7 +417,8 @@ export class Reactor {
       stableSegment: this.chatStableSegment(),
       snapshot: this.deps.context.snapshotView(),
       compacted: this.deps.context.compactedView(),
-      chain: steps,
+      // 压缩水位过滤：压缩点前的链行已折叠进压缩块，不得双份回流（runCompaction 契约）
+      chain: steps.filter((s) => s.step > fromStep),
       pendingSkill: skill,
     });
     const tools = [...this.deps.registry.list()]
@@ -598,7 +429,7 @@ export class Reactor {
     if (adapter.chatStream) {
       result = await adapter.chatStream(req, (t) => this.emit('token', t), hooks);
     } else {
-      result = await adapter.chat(req, undefined, hooks);
+      result = await adapter.chat(req, hooks);
     }
     this.emit('model-end', undefined, { step, ms: Date.now() - startedAt });
     if (result.finish === 'stop') return { done: true, reply: result.content || 'Done' };
@@ -643,9 +474,13 @@ export class Reactor {
       }
     });
 
+    // 调用行先行上屏（执行前发射：长工具执行中调用行即可见，TUI 实时性契约）
+    for (let i = 0; i < calls.length; i++) {
+      this.emit('tool-call', calls[i].name, { input: argsOf[i] ?? {}, callId: callIds[i], status: 'pending' });
+    }
+
     if (rejected) {
       for (let i = 0; i < calls.length; i++) {
-        this.emit('tool-call', calls[i].name, { input: argsOf[i] ?? {}, callId: callIds[i], status: 'pending' });
         this.emit('tool-result', rejection.slice(0, 200), { ok: false, full: rejection, tool: calls[i].name, callId: callIds[i], status: 'failed' });
         steps.push({ step, action: TOOL_RESULT_ACTION, observation: rejection });
       }
@@ -663,7 +498,6 @@ export class Reactor {
         args === null || r === null
           ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
           : this.describe(r);
-      this.emit('tool-call', c.name, { input: args ?? {}, callId: callIds[i], status: 'pending' });
       this.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed' });
       steps.push({ step, action: TOOL_RESULT_ACTION, observation: obs });
       if (r !== null && r.ok && (c.name === 'read' || c.name === 'grep')) {
@@ -672,49 +506,6 @@ export class Reactor {
       }
     }
     return { done: false };
-  }
-
-  private parse(raw: string): ParseResult {
-    try {
-      let parsed = JSON.parse(raw) as unknown;
-      // 模型偶发以顶层数组输出信封，两种畸形都要归一，否则动作被静默吞掉（该轮无工具执行也无回复）：
-      // ① [{...tools...}]——信封对象被数组包装，取首元素按对象解析；
-      // ② [{tool..},{tool..}]——裸的调用清单，整体视为并行动作
-      if (Array.isArray(parsed)) {
-        const allCalls =
-          parsed.length > 0 &&
-          parsed.every((c) => !!c && typeof c === 'object' && typeof (c as { tool?: unknown }).tool === 'string');
-        parsed = allCalls ? { tools: parsed } : parsed[0];
-      }
-      if (parsed === null || typeof parsed !== 'object') return { ok: false, raw };
-      const j = parsed as Action;
-      // 模型常见畸形：把并行负载误装进单工具信封（{"tool":"tools","input":{...并行数组...}}）——
-      // "tools" 是并行协议的数组字段名而非工具名，若不归一，单工具路径会拿 "tools" 查注册表报 TOOL_NOT_FOUND，
-      // 模型跟着报错文本退化成逐个串行。这里把 input 为数组（或数组直挂 tools 外层）的形态统一归一为 tools 并行动作
-      let tools = Array.isArray(j.tools)
-        ? (j.tools as unknown[])
-            .filter((t): t is ParallelToolCall => !!t && typeof t === 'object' && typeof (t as ParallelToolCall).tool === 'string')
-            .map((t) => (t.input && typeof t.input === 'object' ? { tool: t.tool, input: t.input as Record<string, unknown> } : { tool: t.tool }))
-        : undefined;
-      if (!tools && j.tool === 'tools' && Array.isArray(j.input)) {
-        tools = (j.input as unknown[])
-          .filter((t): t is ParallelToolCall => !!t && typeof t === 'object' && typeof (t as ParallelToolCall).tool === 'string')
-          .map((t) => (t.input && typeof t.input === 'object' ? { tool: t.tool, input: t.input as Record<string, unknown> } : { tool: t.tool }));
-      }
-      return {
-        ok: true,
-        action: {
-          tool: j.tool,
-          input: j.input,
-          ...(tools && tools.length > 0 ? { tools } : {}),
-          done: j.done === true,
-          reply: j.reply,
-          phase: typeof j.phase === 'string' ? j.phase : undefined,
-        },
-      };
-    } catch {
-      return { ok: false, raw };
-    }
   }
 
   private describe(r: Result<ExecResult>): string {

@@ -6,6 +6,7 @@ import * as path from 'path';
 import { makeRoleAgent } from './agents';
 import { GraphDeps } from './engine';
 import { GraphContext } from '../types';
+import type { ChatRequest, ChatResult } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import { ContextManager } from '../harness/context';
 import { FileStore } from '../storage/adapter';
@@ -21,9 +22,9 @@ class CountingAdapter implements ModelAdapter {
   readonly provider = 'counting';
   calls = 0;
   constructor(private inner: ModelAdapter) {}
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+  async chat(req: ChatRequest): Promise<ChatResult> {
     this.calls += 1;
-    return this.inner.complete(prompt, hooks);
+    return this.inner.chat(req);
   }
 }
 

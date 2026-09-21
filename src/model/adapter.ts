@@ -3,7 +3,7 @@ import { ModelTier, ReasoningEffort, RouteDecision, ChatMessage, ChatRequest, Ch
 import { t } from '../i18n';
 
 export type { ModelTier, ReasoningEffort };
-/** 用量回调钩子：complete 完成后回传本次真实 token 用量（无用量回传 0） */
+/** 用量回调钩子：模型调用完成后回传本次真实 token 用量（无用量回传 0） */
 export interface UsageHooks {
   onUsage?: (tokens: number) => void;
   /** prompt tokens（缓存命中率分母，与 cached_tokens 同量纲；端点不回传则永不触发） */
@@ -44,13 +44,11 @@ export interface ModelAdapter {
   readonly provider: string;
   /** 展示标签（banner/日志）：缺省回退 provider；openai 侧为「模型名」 */
   readonly label?: string;
-  /** effort：请求级思考强度覆盖（缺省回适配器配置 cfg/env；都未配置零穿参） */
-  complete(prompt: string, hooks?: UsageHooks, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string>;
-  /** function calling 轮面（迁移 D3 新主通道，可选能力面）：消息视图进、聚合轮结果出。未实现者（测试桩/未迁移面）回退 complete */
-  chat?(req: ChatRequest, onDelta?: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
-  /** chat 流式面（可选）：content 增量照旧回调，轮终聚合 ChatResult */
+  /** function calling 轮面：消息视图进、聚合轮结果出（tool_choice auto）；effort 走 req.effort 请求级字段 */
+  chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult>;
+  /** 流式轮面（可选）：content 增量照旧回调，轮终聚合 ChatResult；未实现者消费方回落非流式 chat */
   chatStream?(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
-  /** effort 探测缓存读取（§5.2 生效档回执）：请求档经降级探测后的实际生效档；未探测/未实现回 undefined（调用方回退请求档） */
+  /** effort 探测缓存读取（§5.2 生效档回执）：请求档经降级探测后的实际生效档；未探测回 undefined（调用方回退请求档） */
   resolvedEffort?(requested: ReasoningEffort): ReasoningEffort | undefined;
 }
 
@@ -73,32 +71,24 @@ export function extractCacheTokens(data: unknown): number {
   return typeof cached === 'number' && Number.isFinite(cached) ? cached : 0;
 }
 
-/** 占位适配器：不实际调用云端。回协议内 JSON（done+reply），绝不回显 prompt——回显会把系统提示词经渲染层泄露到界面 */
+/** 占位适配器：不实际调用云端。轮面以 stop 收束回未接线提示，绝不回显 prompt——回显会把系统提示词经渲染层泄露到界面 */
 export class StubAdapter implements ModelAdapter {
   readonly provider = 'stub';
   /** 展示标签属界面外观（banner/状态栏）→ t() 双语；错误与答复经 model-error 通道进链 → 英文单语 */
   readonly label = t('stub (no real model wired)', 'stub（未接入真实模型）');
-  async complete(_prompt: string, hooks?: UsageHooks): Promise<string> {
+  async chat(_req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     hooks?.onUsage?.(0); // 占位适配器无真实用量
-    return '{"done":true,"reply":"[stub] no real model wired: set SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL in ~/.sunshinex/settings.json, then retry"}';
-  }
-
-  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
-    const out = await this.complete(prompt, hooks);
-    onDelta(out);
-    return out;
-  }
-
-  /** 占位轮面：协议 JSON 经信封转译单点承载（done+reply → stop 收束；不炸消费面；真实模型未接线） */
-  async chat(req: ChatRequest): Promise<ChatResult> {
-    const text = await this.complete(req.messages.map((m) => m.content).join('\n'), undefined);
-    return parseLegacyEnvelope(text);
+    return {
+      finish: 'stop',
+      content: '[stub] no real model wired: set SUNSHINEX_API_KEY / SUNSHINEX_BASE_URL / SUNSHINEX_MODEL in ~/.sunshinex/settings.json, then retry',
+      toolCalls: [],
+    };
   }
 
   async chatStream(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
-    const text = await this.complete(req.messages.map((m) => m.content).join('\n'), hooks);
-    onDelta(text);
-    return { finish: 'stop', content: text, toolCalls: [] };
+    const r = await this.chat(req, hooks);
+    onDelta(r.content);
+    return r;
   }
 }
 
@@ -191,85 +181,6 @@ export class OpenAIAdapter implements ModelAdapter {
     return this.doFetch(base, signal); // 全序列不支持：省略参数，用模型默认
   }
 
-  async complete(prompt: string, hooks?: UsageHooks, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
-    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
-    try {
-      // reasoning_effort 经 sendWithEffort 感知下发（显式覆盖 > cfg/env 缺省；都未配置请求体与旧版逐字节一致）
-      const resp = await this.sendWithEffort(
-        { model: this.model, messages: [{ role: 'user', content: prompt }] },
-        effort ?? this.effort,
-        signal,
-      );
-      if (!resp.ok) throw await this.requestError(resp);
-      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-      hooks?.onCache?.(extractCacheTokens(data)); // 缓存命中先于 usage 回传，订阅方聚合时序一致
-      hooks?.onPrompt?.(extractPromptTokens(data));
-      hooks?.onUsage?.(extractUsage(data));
-      return data.choices?.[0]?.message?.content ?? '';
-    } catch (e) {
-      if (signal?.aborted) throw new Error('Task interrupted');
-      if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
-      throw e;
-    }
-  }
-
-  /** 流式补全：stream:true SSE 输出，\n\n 分帧缓冲（容忍跨 chunk 半帧），data:[DONE] 终止；usage 取自携带用量的事件帧 */
-  async completeStream(prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks, signal?: AbortSignal, effort?: ReasoningEffort): Promise<string> {
-    if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
-    try {
-      // effort 与非流式路同源（sendWithEffort 单点），流式/非流式降级行为无感
-      const resp = await this.sendWithEffort(
-        {
-          model: this.model,
-          messages: [{ role: 'user', content: prompt }],
-          stream: true,
-          // 流式末帧携带 usage（OpenAI 兼容约定）；缺省不回传会导致流式 tokens 计时恒 0
-          stream_options: { include_usage: true },
-        },
-        effort ?? this.effort,
-        signal,
-      );
-      if (!resp.ok || !resp.body) throw await this.requestError(resp);
-      let full = '';
-      let buffer = '';
-      const decoder = new TextDecoder();
-      for await (const chunk of resp.body) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const frames = buffer.split('\n\n');
-        buffer = frames.pop() ?? '';
-        for (const frame of frames) {
-          for (const line of frame.split('\n')) {
-            const data = line.replace(/^data:\s*/, '');
-            if (!data || data === '[DONE]') continue;
-            try {
-              const ev = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string; reasoning?: string } }> };
-              const d = ev.choices?.[0]?.delta;
-              const reason = d?.reasoning_content ?? d?.reasoning;
-              if (reason) hooks?.onReasoning?.(reason);
-              if (d?.content) {
-                full += d.content;
-                onDelta(d.content);
-              }
-              const cached = extractCacheTokens(ev);
-              if (cached > 0) hooks?.onCache?.(cached);
-              const ptokens = extractPromptTokens(ev);
-              if (ptokens > 0) hooks?.onPrompt?.(ptokens);
-              const usage = extractUsage(ev);
-              if (usage > 0) hooks?.onUsage?.(usage);
-            } catch {
-              // 非 JSON 的 data 行（服务端注释/心跳）忽略，不中断流
-            }
-          }
-        }
-      }
-      return full;
-    } catch (e) {
-      if (signal?.aborted) throw new Error('Task interrupted');
-      if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
-      throw e;
-    }
-  }
-
   /** 消息视图 → wire 形态（assistant.toolCalls → tool_calls；tool → role:tool + tool_call_id） */
   private static toWireMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
     return messages.map((m) => {
@@ -292,7 +203,7 @@ export class OpenAIAdapter implements ModelAdapter {
     return tools.map((t) => ({ type: 'function', function: { name: t.function.name, description: t.function.description, parameters: t.function.parameters } }));
   }
 
-  /** 用量三钩子回传（chat 面与非流式 complete 同序：cache → prompt → usage） */
+  /** 用量三钩子回传（cache → prompt → usage） */
   private emitUsage(data: unknown, hooks?: UsageHooks): void {
     hooks?.onCache?.(extractCacheTokens(data));
     hooks?.onPrompt?.(extractPromptTokens(data));
@@ -312,8 +223,8 @@ export class OpenAIAdapter implements ModelAdapter {
     return { finish, content: msg?.content ?? '', toolCalls: finish === 'tool_calls' ? calls : [] };
   }
 
-  /** function calling 轮面：messages + tools 下发（tool_choice 缺省 auto），请求体不带 response_format；usage 三钩子回传与 completeStream 同源 */
-  async chat(req: ChatRequest, _onDelta?: unknown, hooks?: UsageHooks): Promise<ChatResult> {
+  /** function calling 轮面：messages + tools 下发（tool_choice 缺省 auto），请求体不带 response_format；usage 三钩子回传与流式路同源 */
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
     try {
       const body: Record<string, unknown> = {
@@ -335,7 +246,7 @@ export class OpenAIAdapter implements ModelAdapter {
     }
   }
 
-  /** 流式轮面：content 增量照旧回调；tool_calls 增量按 index 分片聚合（乱序到达按 index 拼装、arguments 逐片拼接） */
+  /** 流式轮面：content 增量照旧回调、reasoning 增量经 hooks 回传；tool_calls 增量按 index 分片聚合（乱序到达按 index 拼装、arguments 逐片拼接） */
   async chatStream(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
     try {
@@ -423,10 +334,9 @@ export interface ScriptStep {
   toolCalls?: Array<{ name: string; args: Record<string, unknown>; id?: string }>;
 }
 
-const LEGACY_FALLBACK = '{"done":true}';
+const EXHAUSTED_FALLBACK = '{"done":true}';
 
-/** 旧信封文本 → 轮结果转译（与 reactor.parse 归一层同源语义）：数组包信封/裸调用清单/tools 误装单工具信封两畸形、
- *  单工具/并行/done 三形态全兼容；坏 JSON → 空批纠偏（原文随 content 供回喂可见） */
+/** 脚本字符串步（信封 JSON 文本 DSL）→ 轮结果转译：单工具/并行/done 三形态；坏 JSON → 空批纠偏（原文随 content 供回喂可见） */
 export function parseLegacyEnvelope(s: string): ChatResult {
   try {
     let parsed = JSON.parse(s) as unknown;
@@ -468,7 +378,7 @@ export function parseLegacyEnvelope(s: string): ChatResult {
   return { finish: 'tool_calls', content: s, toolCalls: [] };
 }
 
-/** 脚本化适配器：预置决策序列逐步回放（测试/离线兜底）。步骤两态：字符串（旧形态，信封 JSON 文本/纯文本原样回放）与结构化 ScriptStep */
+/** 脚本化适配器：预置决策序列逐步回放（测试/离线兜底）。步骤两态：字符串（信封 JSON 文本 DSL，经 parseLegacyEnvelope 转译）与结构化 ScriptStep */
 export class ScriptedAdapter implements ModelAdapter {
   readonly provider = 'scripted';
   private i = 0;
@@ -477,34 +387,11 @@ export class ScriptedAdapter implements ModelAdapter {
   private next(): string | ScriptStep {
     const s = this.steps[this.i];
     this.i = Math.min(this.i + 1, this.steps.length - 1);
-    return s ?? LEGACY_FALLBACK;
+    return s ?? EXHAUSTED_FALLBACK;
   }
 
-  /** 结构化步骤 → 等价信封文本（过渡期 complete/completeStream 旧通道消费；多调用并行形态归一见 reactor.parse） */
-  private static envelope(step: ScriptStep): string {
-    const calls = step.toolCalls ?? [];
-    if (calls.length === 1) return JSON.stringify({ tool: calls[0].name, input: calls[0].args });
-    if (calls.length > 1) return JSON.stringify({ tools: calls.map((t) => ({ tool: t.name, input: t.args })) });
-    return JSON.stringify({ done: true, reply: step.content ?? '' });
-  }
-
-  async complete(_prompt: string, hooks?: UsageHooks): Promise<string> {
-    hooks?.onUsage?.(0); // 脚本化回放无真实用量
-    const s = this.next();
-    return typeof s === 'string' ? s : ScriptedAdapter.envelope(s);
-  }
-
-  /** 无流式通道：当前步文本逐字回调投递（压测消费端增量处理路径），返回全文 */
-  async completeStream(_prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
-    hooks?.onUsage?.(0); // 脚本化回放无真实用量
-    const s = this.next();
-    const text = typeof s === 'string' ? s : ScriptedAdapter.envelope(s);
-    for (const ch of text) onDelta(ch);
-    return text;
-  }
-
-  /** 轮面：字符串步骤按信封文本协议转译（parseLegacyEnvelope 单点）；结构化步骤直接出牌；usage 记 0（脚本化回放无真实用量） */
-  async chat(_req: ChatRequest, _onDelta?: unknown, hooks?: UsageHooks): Promise<ChatResult> {
+  /** 轮面：字符串步骤经信封 DSL 转译（parseLegacyEnvelope 单点）；结构化步骤直接出牌；usage 记 0（脚本化回放无真实用量） */
+  async chat(_req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     hooks?.onUsage?.(0);
     const s = this.next();
     if (typeof s === 'string') return parseLegacyEnvelope(s);
@@ -518,8 +405,8 @@ export class ScriptedAdapter implements ModelAdapter {
     return { finish: 'stop', content: s.content ?? '', toolCalls: [] };
   }
 
-  async chatStream(_req: ChatRequest, onDelta: (t: string) => void): Promise<ChatResult> {
-    const r = await this.chat(_req);
+  async chatStream(_req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
+    const r = await this.chat(_req, hooks);
     for (const ch of r.content) onDelta(ch);
     return r;
   }

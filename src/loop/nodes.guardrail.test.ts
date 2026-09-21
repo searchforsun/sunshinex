@@ -1,3 +1,4 @@
+import type { ChatRequest, ChatResult } from '../types';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -22,9 +23,9 @@ class CountingAdapter implements ModelAdapter {
   readonly provider = 'counting';
   calls = 0;
   constructor(private inner: ModelAdapter) {}
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+  async chat(req: ChatRequest): Promise<ChatResult> {
     this.calls += 1;
-    return this.inner.complete(prompt, hooks);
+    return this.inner.chat(req);
   }
 }
 
@@ -33,10 +34,10 @@ class UsageAdapter implements ModelAdapter {
   readonly provider = 'usage-scripted';
   calls = 0;
   constructor(private inner: ModelAdapter, private perCall: number) {}
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     this.calls += 1;
     hooks?.onUsage?.(this.perCall);
-    return this.inner.complete(prompt);
+    return this.inner.chat(req);
   }
 }
 

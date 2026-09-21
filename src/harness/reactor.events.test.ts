@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -72,9 +73,9 @@ test('事件流：模型失败路径发 error 再 done（error 仅失败出现�
     const events: SessionEvent[] = [];
     const boom: ModelAdapter = {
       provider: 'boom',
-      complete: async () => {
+      chat: textReplyToChatFace(async () => {
         throw new Error('模型炸了');
-      },
+      }),
     };
     const r = await makeReactor(tmp, boom, (e) => events.push(e)).run({ goal: 'g' }, { maxSteps: 2 });
     assert.equal(r.done, false);
@@ -90,19 +91,18 @@ test('事件流：usage/reasoning 事件随流式调用发射（载荷 turnTotal
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ev4-'));
   try {
     const events: SessionEvent[] = [];
-    const probe: ModelAdapter & {
-      completeStream: (p: string, onDelta: (t: string) => void, hooks?: UsageHooks) => Promise<string>;
-    } = {
+    const probe: ModelAdapter = {
       provider: 'probe',
-      complete: async () => '{"done":true,"reply":"ok"}',
-      completeStream: async (_p, onDelta, hooks) => {
+      async chat() {
+        throw new Error('streaming path should be used');
+      },
+      async chatStream(_req, onDelta, hooks) {
         hooks?.onReasoning?.('想一想');
-        const text = '{"done":true,"reply":"ok"}';
-        for (const ch of text) onDelta(ch);
         hooks?.onCache?.(3);
         hooks?.onPrompt?.(9);
         hooks?.onUsage?.(7);
-        return text;
+        for (const ch of 'ok') onDelta(ch);
+        return { finish: 'stop', content: 'ok', toolCalls: [] };
       },
     };
     const r = await makeReactor(tmp, probe, (e) => events.push(e)).run({ goal: 'g' }, { maxSteps: 2 });
@@ -149,10 +149,10 @@ test('ctx 事件：think 前发估算（exact:false），真实 usage.prompt_tok
     const events: SessionEvent[] = [];
     const adapter = {
       provider: 'ctx-probe',
-      complete: async (prompt: string, hooks?: UsageHooks) => {
+      chat: textReplyToChatFace(async (prompt: string, hooks?: UsageHooks) => {
         hooks?.onPrompt?.(4200);
         return '{"done":true,"reply":"ok"}';
-      },
+      }),
     };
     await makeReactor(tmp, adapter as unknown as ModelAdapter, (e) => events.push(e)).run({ goal: 'g' }, { maxSteps: 2 });
     const ctx = events.filter((e) => e.type === 'ctx');

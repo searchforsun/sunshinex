@@ -1,3 +1,4 @@
+import type { ChatRequest, ChatResult } from '../types';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -49,10 +50,10 @@ class UsageAdapter implements ModelAdapter {
   readonly provider = 'usage';
   calls = 0;
   constructor(private inner: ModelAdapter, private tokensPerCall: number) {}
-  async complete(prompt: string, hooks?: UsageHooks): Promise<string> {
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     this.calls += 1;
     hooks?.onUsage?.(this.tokensPerCall);
-    return this.inner.complete(prompt, hooks);
+    return this.inner.chat(req, hooks);
   }
 }
 

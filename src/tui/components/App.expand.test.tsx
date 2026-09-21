@@ -6,6 +6,7 @@ import * as path from 'path';
 import { render } from '../test-ink';
 import { App } from './App';
 import { SessionController } from '../session';
+import type { ChatRequest, ChatResult } from '../../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../../model/adapter';
 
 /** 钩子适配器：reasoning 增量可注入（驱动思考实时区） */
@@ -15,13 +16,13 @@ class HookAdapter implements ModelAdapter {
     private readonly text: string,
     private readonly opts: { reasoning?: string[] } = {},
   ) {}
-  async complete(): Promise<string> {
-    return this.text;
+  async chat(_req: ChatRequest, _hooks?: UsageHooks): Promise<ChatResult> {
+    return { finish: 'stop', content: this.text, toolCalls: [] };
   }
-  async completeStream(_prompt: string, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<string> {
+  async chatStream(_req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
     for (const r of this.opts.reasoning ?? []) hooks?.onReasoning?.(r);
     for (const ch of this.text) onDelta(ch);
-    return this.text;
+    return { finish: 'stop', content: this.text, toolCalls: [] };
   }
 }
 
@@ -42,12 +43,12 @@ class GateAdapter implements ModelAdapter {
   private turn = 0;
   private resolveTurn!: () => void;
   private readonly firstTurn = new Promise<void>((resolve) => (this.resolveTurn = resolve));
-  async complete(): Promise<string> {
+  async chat(): Promise<ChatResult> {
     if (this.turn++ === 0) await this.firstTurn;
-    return 'ok';
+    return { finish: 'stop', content: 'ok', toolCalls: [] };
   }
-  async completeStream(_prompt: string, onDelta: (t: string) => void): Promise<string> {
-    return this.complete();
+  async chatStream(_req: ChatRequest): Promise<ChatResult> {
+    return this.chat();
   }
   release(): void {
     this.resolveTurn();

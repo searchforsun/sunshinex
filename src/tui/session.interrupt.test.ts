@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ModelAdapter } from '../model/adapter';
+import type { ChatRequest, ChatResult } from '../types';
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -22,8 +23,9 @@ function tmpdir(prefix: string): string {
 class HangingAdapter implements ModelAdapter {
   readonly provider = 'hanging';
   lastSignal?: AbortSignal;
-  async complete(_p: string, _h?: unknown, signal?: AbortSignal): Promise<string> {
-    this.lastSignal = signal;
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    this.lastSignal = req.signal;
+    const signal = req.signal;
     return new Promise((_, reject) => {
       if (signal?.aborted) return reject(new Error('Task interrupted'));
       signal?.addEventListener('abort', () => reject(new Error('Task interrupted')), { once: true });

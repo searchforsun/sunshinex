@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -217,7 +218,7 @@ test('/plan：tokens 与命中率窗口整场累计——步骤间不重置（�
     let call = 0;
     const model = {
       provider: 'usage-script',
-      complete: async (
+      chat: textReplyToChatFace(async (
         _p: string,
         hooks?: { onUsage?: (t: number) => void; onCache?: (t: number) => void; onPrompt?: (t: number) => void },
       ) => {
@@ -225,7 +226,7 @@ test('/plan：tokens 与命中率窗口整场累计——步骤间不重置（�
         hooks?.onCache?.(500);
         hooks?.onUsage?.(30);
         return replies[Math.min(call++, replies.length - 1)];
-      },
+      }),
     };
     const ctrl = new SessionController({ root: tmp, model });
     await ctrl.submit('/plan 做一件事');
@@ -253,10 +254,10 @@ test('/plan：模型上下文最小化——不见计划清单与阶段编号，
     let call = 0;
     const model = {
       provider: 'minimal-script',
-      complete: async (p: string) => {
+      chat: textReplyToChatFace(async (p: string) => {
         prompts.push(p);
         return replies[Math.min(call++, replies.length - 1)];
-      },
+      }),
     };
     const ctrl = new SessionController({ root: tmp, model });
     await ctrl.submit('/plan 做一件事');
@@ -268,9 +269,9 @@ test('/plan：模型上下文最小化——不见计划清单与阶段编号，
     assert.ok(!step1.includes('2. 步骤B'), 'Step1 上下文不得出现后续步骤（模型只做当前指令）');
     assert.ok(!step1.includes('Step 1/2') && !step1.includes('1/2'), '指令行不得携带阶段编号');
     // 步号改为 \d+ 容忍（规格 §3.1：收口说明行在后台完成时尾追，链行编号可能因 notice 行插入而后移；断言语义不变）
-    assert.match(step1, /\d+: task -> Current instruction: 步骤A/, '当前指令以链行进入 history（缺省链基）');
-    assert.match(step2, /\d+: reply -> 步骤A 完成/, '前序结论行经收尾回写入链');
-    assert.match(step2, /\d+: task -> Current instruction: 步骤B/, '下一指令继续尾部追加');
+    assert.match(step1, /Current instruction: 步骤A/, '当前指令以链行进入 history（缺省链基）');
+    assert.match(step2, /步骤A 完成/, '前序结论行经收尾回写入链');
+    assert.match(step2, /Current instruction: 步骤B/, '下一指令继续尾部追加');
     // fork 模型前缀连续：稳定段+链前缀冻结，相邻步骤差异只在尾部新链行（§11 相邻步严格前缀）
     assert.ok(step2.startsWith(step1), '相邻步骤 prompt 严格逐字节前缀连续');
   } finally {
@@ -292,16 +293,16 @@ test('/plan：zh 语言——链行仍英文单语（§15：写链面不进语�
     let call = 0;
     const model = {
       provider: 'minimal-script-zh',
-      complete: async (p: string) => {
+      chat: textReplyToChatFace(async (p: string) => {
         prompts.push(p);
         return replies[Math.min(call++, replies.length - 1)];
-      },
+      }),
     };
     const ctrl = new SessionController({ root: tmp, model });
     await ctrl.submit('/plan 做一件事');
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
-    assert.match(prompts[1], /task -> Current instruction: 步骤A/, 'zh 下当前指令链行仍英文单语（写链面恒英文，步骤文本是数据）');
+    assert.match(prompts[1], /Current instruction: 步骤A/, 'zh 下当前指令链行仍英文单语（写链面恒英文，步骤文本是数据）');
     // fork 模型：goal 槽取消（runTask 首参=当前步骤文本，不再有恒定协议段 goal），前缀连续升级为相邻步严格逐字节前缀
     assert.ok(prompts[2].startsWith(prompts[1]), 'zh 下相邻步骤 prompt 严格逐字节前缀连续');
   } finally {

@@ -6,6 +6,7 @@ import * as path from 'path';
 import { PLAN_TASK_LABEL, SessionController } from './session';
 import { TuiRuntime, RunOutcome } from './runtime';
 import { Harness } from '../harness';
+import type { ChatResult } from '../types';
 import type { ModelAdapter } from '../model/adapter';
 
 /**
@@ -97,7 +98,7 @@ test('会话层：model-error 只走 error 通道，done 帧不再重复入档�
   try {
     const boom: ModelAdapter = {
       provider: 'boom',
-      async complete(): Promise<string> {
+      async chat(): Promise<ChatResult> {
         throw new Error('模型挂了');
       },
     };

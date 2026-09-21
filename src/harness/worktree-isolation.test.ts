@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'child_process';
@@ -70,11 +71,11 @@ test('T5-1 frontmatter isolation: worktree → fork 前建专属树，子 Reacto
     const prompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'capture',
-      async complete(prompt: string) {
-        prompts.push(prompt);
-        if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { agent_id: 'isow', label: 'iso' } });
-        return JSON.stringify({ done: true, reply: 'isolation child done' });
-      },
+      chat: textReplyToChatFace(async (prompt: string) => {
+      prompts.push(prompt);
+      if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { agent_id: 'isow', label: 'iso' } });
+      return JSON.stringify({ done: true, reply: 'isolation child done' });
+            }),
     };
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
@@ -99,11 +100,11 @@ test('T5-2 入参通道：普通 agent + spawn 入参 isolation=worktree 同样�
     const prompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'capture',
-      async complete(prompt: string) {
-        prompts.push(prompt);
-        if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { agent_id: 'plain', label: 'ovr', isolation: 'worktree' } });
-        return JSON.stringify({ done: true, reply: 'ovr child done' });
-      },
+      chat: textReplyToChatFace(async (prompt: string) => {
+      prompts.push(prompt);
+      if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { agent_id: 'plain', label: 'ovr', isolation: 'worktree' } });
+      return JSON.stringify({ done: true, reply: 'ovr child done' });
+            }),
     };
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
@@ -121,12 +122,12 @@ test('T5-3 收口：子代理有改动 → 树保留 + keptReason + 结论行附
     const prompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'capture',
-      async complete(prompt: string) {
-        prompts.push(prompt);
-        if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { prompt: 'Child B task: leave a trace', label: 'dirtyw', isolation: 'worktree' } });
-        if (prompts.length === 2) return JSON.stringify({ tool: 'write', input: { path: 'work.txt', content: 'trace\n' } });
-        return JSON.stringify({ done: true, reply: 'dirty child done' });
-      },
+      chat: textReplyToChatFace(async (prompt: string) => {
+      prompts.push(prompt);
+      if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { prompt: 'Child B task: leave a trace', label: 'dirtyw', isolation: 'worktree' } });
+      if (prompts.length === 2) return JSON.stringify({ tool: 'write', input: { path: 'work.txt', content: 'trace\n' } });
+      return JSON.stringify({ done: true, reply: 'dirty child done' });
+            }),
     };
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 8 }).then((r) => {
@@ -155,11 +156,11 @@ test('T5-4 fail-bounded：非 git 根建树失败 → 失败补丁行回链、�
       const promptsA: string[] = [];
       const modelA: ModelAdapter = {
         provider: 'capture',
-        async complete(prompt: string) {
-          promptsA.push(prompt);
-          if (promptsA.length === 1) return JSON.stringify({ tool: 'spawn', input: { agent_id: 'plain', label: 'fb', isolation: 'worktree' } });
-          return JSON.stringify({ done: true, reply: 'parent survived' });
-        },
+        chat: textReplyToChatFace(async (prompt: string) => {
+        promptsA.push(prompt);
+        if (promptsA.length === 1) return JSON.stringify({ tool: 'spawn', input: { agent_id: 'plain', label: 'fb', isolation: 'worktree' } });
+        return JSON.stringify({ done: true, reply: 'parent survived' });
+                }),
       };
       fs.mkdirSync(path.join(plain, 'agents', 'plain'), { recursive: true });
       fs.writeFileSync(path.join(plain, 'agents', 'plain', 'agent.md'), '---\nname: Plain\ndescription: no isolation\n---\nwork.');
@@ -179,20 +180,20 @@ test('T5-4 fail-bounded：非 git 根建树失败 → 失败补丁行回链、�
     const prompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'capture',
-      async complete(prompt: string) {
-        prompts.push(prompt);
-        if (prompts.length === 1) {
-          return JSON.stringify({
-            tools: [
-              { tool: 'spawn', input: { prompt: 'Child A task', label: 'pa', isolation: 'worktree' } },
-              { tool: 'spawn', input: { prompt: 'Child B task', label: 'pb', isolation: 'worktree' } },
-            ],
-          });
-        }
-        if (prompt.includes('Child A task')) return JSON.stringify({ done: true, reply: 'pa done' });
-        if (prompt.includes('Child B task')) return JSON.stringify({ done: true, reply: 'pb done' });
-        return JSON.stringify({ done: true, reply: 'parent done' });
-      },
+      chat: textReplyToChatFace(async (prompt: string) => {
+      prompts.push(prompt);
+      if (prompts.length === 1) {
+        return JSON.stringify({
+          tools: [
+            { tool: 'spawn', input: { prompt: 'Child A task', label: 'pa', isolation: 'worktree' } },
+            { tool: 'spawn', input: { prompt: 'Child B task', label: 'pb', isolation: 'worktree' } },
+          ],
+        });
+      }
+      if (prompt.includes('Child A task')) return JSON.stringify({ done: true, reply: 'pa done' });
+      if (prompt.includes('Child B task')) return JSON.stringify({ done: true, reply: 'pb done' });
+      return JSON.stringify({ done: true, reply: 'parent done' });
+            }),
     };
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
     const r = await h.reactor.run({ goal: 'g' }, { maxSteps: 8 });
@@ -211,11 +212,11 @@ test('T5-5 回归钉：未声明 isolation 的 spawn 行为零变化（无树、
     const prompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'capture',
-      async complete(prompt: string) {
-        prompts.push(prompt);
-        if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { prompt: 'plain child task', label: 'p0' } });
-        return JSON.stringify({ done: true, reply: 'plain child done' });
-      },
+      chat: textReplyToChatFace(async (prompt: string) => {
+      prompts.push(prompt);
+      if (prompts.length === 1) return JSON.stringify({ tool: 'spawn', input: { prompt: 'plain child task', label: 'p0' } });
+      return JSON.stringify({ done: true, reply: 'plain child done' });
+            }),
     };
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {

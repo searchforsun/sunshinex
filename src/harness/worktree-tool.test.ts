@@ -1,3 +1,4 @@
+import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'child_process';
@@ -182,10 +183,10 @@ test('T6-N2 create→exit 全程相邻帧前缀逐字节稳定（规格 §12 钉
   let i = 0;
   const model: ModelAdapter = {
     provider: 'capture',
-    async complete(prompt: string) {
-      prompts.push(prompt);
-      return replies[Math.min(i++, replies.length - 1)];
-    },
+    chat: textReplyToChatFace(async (prompt: string) => {
+    prompts.push(prompt);
+    return replies[Math.min(i++, replies.length - 1)];
+        }),
   };
   return withHarness('dontAsk', model, (h) =>
     h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
