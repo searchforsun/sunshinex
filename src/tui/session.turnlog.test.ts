@@ -22,7 +22,7 @@ function pinDataDir(dataDir: string): () => void {
   };
 }
 
-test('任务收口：write 的影子快照随该轮 user 事件落盘，blob 为 pre-image', async () => {
+test('任务收口：write 的影子快照以 snapshots 事件尾追，blob 为 pre-image', async () => {
   const tmp = tmpdir('rewind-t3-');
   const restore = pinDataDir(path.join(tmp, 'data'));
   try {
@@ -37,12 +37,12 @@ test('任务收口：write 的影子快照随该轮 user 事件落盘，blob 为
     const id = readActivePointer(dataDir);
     assert.ok(id, '活动指针应指向已落盘会话');
     const parsed = parseJournalFile(path.join(sessionsDir(dataDir), id + '.jsonl'));
-    const userEv = parsed.events.find((e): e is Extract<JournalEvent, { t: 'user' }> => e.t === 'user');
-    assert.ok(userEv, 'journal 应含 user 事件');
-    assert.equal(userEv.files?.length, 1, 'user 事件应带影子快照清单');
-    assert.equal(userEv.files[0].path, 'a.txt');
-    assert.equal(userEv.files[0].deleted, undefined);
-    assert.equal(fs.readFileSync(path.join(dataDir, 'sessions', '_blobs', userEv.files[0].hash)).toString(), 'old');
+    const snapEv = parsed.events.find((e): e is Extract<JournalEvent, { t: 'snapshots' }> => e.t === 'snapshots');
+    assert.ok(snapEv, 'journal 应含 snapshots 事件');
+    assert.equal(snapEv.files.length, 1);
+    assert.equal(snapEv.files[0].path, 'a.txt');
+    assert.equal(snapEv.files[0].deleted, undefined);
+    assert.equal(fs.readFileSync(path.join(dataDir, 'sessions', '_blobs', snapEv.files[0].hash)).toString(), 'old');
   } finally {
     restore();
     fs.rmSync(tmp, { recursive: true, force: true });
