@@ -581,6 +581,8 @@ export class Reactor {
     effort: ReasoningEffort | undefined,
     signal: AbortSignal | undefined,
   ): Promise<{ done: boolean; reply?: string }> {
+    const startedAt = Date.now();
+    this.emit('model-start', undefined, { step });
     const messages = buildMessages({
       stableSegment: this.chatStableSegment(),
       snapshot: this.deps.context.snapshotView(),
@@ -598,6 +600,7 @@ export class Reactor {
     } else {
       result = await adapter.chat(req, undefined, hooks);
     }
+    this.emit('model-end', undefined, { step, ms: Date.now() - startedAt });
     if (result.finish === 'stop') return { done: true, reply: result.content || 'Done' };
 
     const calls = result.toolCalls;
@@ -626,6 +629,7 @@ export class Reactor {
       : 'Parallel batch rejected: exec and ask must run exclusively on their own; remove them and retry, or fall back to a single-tool call';
 
     // 轮内链行共用同一轮步号（step 形参）：护栏按去重步号计模型轮、压缩水位/收尾回写行级过滤对同号行天然一致
+    const callIds = calls.map((_, i) => `step:${step}-idx:${i}`);
     this.emit('step', calls[0].name, { step, phase: result.content || undefined });
     if (result.content) steps.push({ step, action: PHASE_ACTION, observation: result.content });
     // 调用行先行入链（批内连续，buildMessages 聚合为 assistant+tool_calls）；被拒/坏参调用同样入链保证 role:tool 配对完整
@@ -641,8 +645,8 @@ export class Reactor {
 
     if (rejected) {
       for (let i = 0; i < calls.length; i++) {
-        this.emit('tool-call', calls[i].name, { input: argsOf[i] ?? {} });
-        this.emit('tool-result', rejection.slice(0, 200), { ok: false, full: rejection, tool: calls[i].name });
+        this.emit('tool-call', calls[i].name, { input: argsOf[i] ?? {}, callId: callIds[i], status: 'pending' });
+        this.emit('tool-result', rejection.slice(0, 200), { ok: false, full: rejection, tool: calls[i].name, callId: callIds[i], status: 'failed' });
         steps.push({ step, action: TOOL_RESULT_ACTION, observation: rejection });
       }
       return { done: false };
@@ -659,8 +663,8 @@ export class Reactor {
         args === null || r === null
           ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
           : this.describe(r);
-      this.emit('tool-call', c.name, { input: args ?? {} });
-      this.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name });
+      this.emit('tool-call', c.name, { input: args ?? {}, callId: callIds[i], status: 'pending' });
+      this.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed' });
       steps.push({ step, action: TOOL_RESULT_ACTION, observation: obs });
       if (r !== null && r.ok && (c.name === 'read' || c.name === 'grep')) {
         const p = (args as { path?: unknown } | null)?.path;
