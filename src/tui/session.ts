@@ -20,6 +20,7 @@ import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-
 import { scanMemoryText } from '../harness/memory/guards';
 import { consolidateMemory } from '../harness/memory/consolidate';
 import { isModelSummarizer } from '../harness/context/summarizer';
+import { LiveTaskState, applyTaskState, initialTaskState } from './task-state';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -111,6 +112,8 @@ export interface TuiState {
   live?: LiveBlock;
   /** 运行中子代理面板态（规格 §4）：首事件创建、spawn 结果归档移除、回合边界清空 */
   children: ChildLiveState[];
+  /** 活任务三态（规格 §4）：事件流经 applyTaskState 纯函数推导，瞬态不进 journal */
+  task: LiveTaskState;
   /** 用户级模型档位（/model 会话内切换；undefined = 缺省主模型，run 级常量不随步重估） */
   model?: ModelTier;
   /** 缺省思考强度（/model-effort 会话内切换；undefined = 适配器 cfg/env 缺省，run 级常量） */
@@ -205,6 +208,7 @@ export class SessionController {
     status: 'idle',
     metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0 },
     children: [],
+    task: initialTaskState(),
   };
   private listeners = new Set<(s: TuiState) => void>();
   /** 消息全局单调序号（Static 区 key 唯一性来源）；/new 清空消息但不回绕 */
@@ -251,14 +255,14 @@ export class SessionController {
     const suspendAsker = async (req: ApprovalRequest): Promise<ApprovalDecision> => {
       // 终端化审批：guard ask → 挂起（awaiting-approval + 审批卡）→ 裁决回填 → 继续；
       // 有外部 asker（headless/脚本）时委托之，状态转换保持一致便于观测与渲染
-      this.state = { ...this.state, status: 'awaiting-approval', approval: req };
+      this.state = { ...this.state, status: 'awaiting-approval', approval: req, task: this.state.task.phase === 'tool-pending' ? { ...this.state.task, phase: 'tool-awaiting' } : this.state.task };
       this.notify();
       // 挂起等回填（App 模态/测试直调）；opts.asker 为裁决权注入，回填后咨询并以其为最终裁决
       let d = await new Promise<ApprovalDecision>((resolve) => {
         this.pendingApproval = { req, resolve };
       });
       if (this.autoAsker) d = await this.autoAsker(req);
-      this.state = { ...this.state, approval: undefined, status: 'running' };
+      this.state = { ...this.state, approval: undefined, status: 'running', task: this.state.task.phase === 'tool-awaiting' ? { ...this.state.task, phase: 'tool-pending' } : this.state.task };
       this.notify();
       return d;
     };
@@ -989,6 +993,7 @@ export class SessionController {
           sessionSteps: 0,
         },
         children: [],
+        task: initialTaskState(),
         ...(this.state.model ? { model: this.state.model } : {}),
         live: undefined,
       };
@@ -1261,6 +1266,7 @@ export class SessionController {
       this.onChildEvent(e, sub);
       return;
     }
+    this.state = { ...this.state, task: applyTaskState(this.state.task, e) };
     switch (e.type) {
       case 'notice':
         // 收口说明行用户面（规格 §10）：记忆/技能沉淀以一行增量告知（内容为英文链行原文，照原样不译）
@@ -1404,6 +1410,11 @@ export class SessionController {
   /** 测试注入口：直喂 SessionEvent 走完整分流路径（等价 runtime onEvent 回调），生产路径零改动 */
   onEventForTest(e: SessionEvent): void {
     this.onEvent(e);
+  }
+
+  /** 活任务三态只读视图（渲染层与测试消费；交互面只读不重推导） */
+  taskState(): LiveTaskState {
+    return this.state.task;
   }
 
   /** 子代理事件处理（规格 §4.3）：首事件创建面板态；增量行化、结构事件即时行化；不触达主链任何分支 */
