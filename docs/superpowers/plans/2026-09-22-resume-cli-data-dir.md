@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 摘除 `sessions-active.json` 显式指针（最近会话统一按会话档 mtime 解析）、新增 `sunshinex resume` 启动命令（会话选择卡）、`SUNSHINEX_DATA_DIR` 收口为开发测试专用口（用户面零感知）。
+**Goal:** 摘除 `sessions-active.json` 显式指针（最近会话统一按会话档 mtime 解析）、新增 `--resume` 启动旗标（弹会话选择卡，对标 CC `--resume`）、`SUNSHINEX_DATA_DIR` 收口为开发测试专用口（用户面零感知）。
 
-**Architecture:** journal 层删除指针读写与全部写入点（建档/轮转/续挂/分档）；`--continue` 改 `listSessions()`（mtime 降序）首项；`sunshinex resume` 复用 `/resume` 的 askUser 选择卡通道（抽 `resumeFlow` 共用单点防两处拼装漂移）；注释与手册按「删除即无痕 + 正向表述」同步。
+**Architecture:** journal 层删除指针读写与全部写入点（建档/轮转/续挂/分档）；`--continue` 改 `listSessions()`（mtime 降序）首项；`--resume` 复用 `/resume` 的 askUser 选择卡通道（抽 `resumeFlow` 共用单点防两处拼装漂移）；注释与手册按「删除即无痕 + 正向表述」同步。
 
 **Tech Stack:** TypeScript strict + node:test（零框架）、pnpm；规格 `docs/superpowers/specs/2026-09-22-resume-cli-data-dir-design.md`。
 
@@ -24,15 +24,16 @@
 |------|------|------|
 | `src/tui/session-journal.ts` | Modify | 删 `ACTIVE_POINTER`/`readActivePointer`/`writeActivePointer` 与 4 个写入点；头注释同步 |
 | `src/tui/session.ts` | Modify | `resumeLatest()` 改 mtime 口径；新增 `resumeFlow()`（/resume 与启动选择卡共用）；opts 增 `resumePicker` |
-| `src/tui/entry.ts` | Modify | `resume` 命令透传 `resumePicker: true`（Task 3） |
-| `src/cli/index.ts` | Modify | `resume` 入 COMMANDS、usageText、case 分支、纯函数 `resumeLaunchArgs` |
+| `src/tui/entry.ts` | Modify | `--resume` 旗标解析、双互斥校验、`resumePicker` 透传 |
+| `src/cli/worktree-launch.ts` | Modify | `--resume` 与 `--worktree` 互斥校验（沿 `--continue` 先例同点位） |
+| `src/cli/index.ts` | Modify | USAGE 双语 flags 行补 `--resume` |
 | `src/config/data-dir.ts` | Modify | 注释正向化（开发测试专用重定向） |
 | `src/config/settings.ts` | Modify | RETIRED_KEYS 与头注释口径同步 |
-| `MANUAL.md` | Modify | 目录树摘指针行、数据目录段摘环境变量句、CLI 表补 resume 行 |
+| `MANUAL.md` | Modify | 目录树摘指针行、数据目录段摘环境变量句、启动参数表与 flags 表补 `--resume` 行 |
 | `CLAUDE.md` | Modify | §7 L115 DATA_DIR 定位句改「开发与测试专用重定向口」 |
 | `src/tui/session-journal.test.ts` 等 5 个测试 | Modify | 指针断言改写/删除，新增零指针钉子 |
 | `src/tui/session.resume.test.ts` | Create | 启动选择卡用例（选中/Esc/空目录） |
-| `src/cli/resume.test.ts` | Create | resume 纯函数判据用例 |
+| `src/cli/entry-resume.test.ts` | Create | `--resume` 旗标互斥与透传判据用例 |
 
 ---
 
@@ -135,7 +136,7 @@ git commit -m "refactor(session): 最近会话解析统一走会话档 mtime，j
 
 ---
 
-### Task 2: `sunshinex resume` 启动选择卡（resumeFlow 共用单点）
+### Task 2: `--resume` 启动选择卡（resumeFlow 共用单点）
 
 **Files:**
 - Modify: `src/tui/session.ts`（/resume 分支 L1018-1057 改调 `resumeFlow()`；opts 接口 L126 附近增 `resumePicker?: boolean`；构造区 L294 增启动选择卡分流；新增私有方法 `resumeFlow`）
@@ -251,7 +252,7 @@ Expected: FAIL——`opts.resumePicker` 类型不存在（TS2353）/ 选择卡�
 
 `src/tui/session.ts`：
 
-1. opts 接口（L126 `continueLast?: boolean;` 邻位）增 `/** 启动即弹会话选择卡（sunshinex resume） */ resumePicker?: boolean;`
+1. opts 接口（L126 `continueLast?: boolean;` 邻位）增 `/** 启动即弹会话选择卡（--resume） */ resumePicker?: boolean;`
 2. 构造区尾部（L294 `if (opts.continueLast) this.resumeLatest();` 之前）增：
 
 ```ts
@@ -272,7 +273,7 @@ Expected: FAIL——`opts.resumePicker` 类型不存在（TS2353）/ 选择卡�
 4. 在 /resume 分支可达的类内位置（`resumeLatest()` 邻位）新增 `resumeFlow()`——候选过滤、文案、分页交互逐字自现 /resume 分支（L1024-1057）迁移，仅候选行补去重说明：
 
 ```ts
-  /** 会话恢复选择卡（/resume 与 sunshinex resume 共用单点）：mtime 降序候选（排除当前在飞会话）→ askUser 挂起 → restoreFromSession */
+  /** 会话恢复选择卡（/resume 与 --resume 启动共用单点）：mtime 降序候选（排除当前在飞会话）→ askUser 挂起 → restoreFromSession */
   private async resumeFlow(): Promise<void> {
     const dataDir = resolveDataDir(this.root);
     // /resume 候选排除当前在飞会话（事件级落盘：命令输入自身即时建档，不排除会把本次命令的自建档选为最新恢复目标）
@@ -324,117 +325,104 @@ Expected: 全 PASS——selector 套件行为零变化（resumeFlow 迁移保文
 ```bash
 git add src/tui/session.ts src/tui/session.resume.test.ts
 git diff --cached --stat
-git commit -m "feat(tui): resumeFlow 会话恢复选择卡单点，sunshinex resume 启动挂接（resumePicker）"
+git commit -m "feat(tui): resumeFlow 会话恢复选择卡单点，--resume 启动挂接（resumePicker）"
 ```
 
 ---
 
-### Task 3: CLI `resume` 子命令（判据/usage/入口 + entry 透传）
+### Task 3: `--resume` 启动旗标（entry 解析 + 双互斥 + USAGE）
 
 **Files:**
-- Modify: `src/cli/index.ts`（COMMANDS L44、usageText、`resumeLaunchArgs` 纯函数导出、main 的 switch）
-- Modify: `src/tui/entry.ts:39-40`（`sunshinex resume` 透传 `resumePicker: true`）
-- Modify: `src/cli/resume.test.ts`（Create）
+- Modify: `src/tui/entry.ts:39-40`（`--resume` 解析、与 `--continue` 同传 fail-fast、`resumePicker` 透传）
+- Modify: `src/cli/worktree-launch.ts`（`--resume` 与 `--worktree` 互斥，沿 `--continue` 校验同点位 L14-16）
+- Modify: `src/cli/index.ts`（usageText 双语 flags 行补 `--resume`）
+- Modify: `src/cli/entry-resume.test.ts`（Create）
 
 **Interfaces:**
-- Consumes: `isPathForm`、`resolveDirArg`（cli/index.ts 既有导出）、Task 2 的 `resumePicker` opts 通道、`runTui(args: CliArgs)`
-- Produces: `export function resumeLaunchArgs(args: CliArgs): CliArgs`（互斥校验 + 目录归一；非法形态抛 Error）；`sunshinex resume [dir]` 端到端可用
+- Consumes: Task 2 的 `resumePicker` opts 通道；`resolveWorktreeLaunchRoot(args, root)`（worktree-launch.ts，已有 `--continue` 互斥先例）；`runTui(args: CliArgs)`
+- Produces: `sunshinex [dir] --resume` 端到端可用；`--resume`+`--continue` 与 `--resume`+`--worktree` 同传均 fail-fast
 
-- [ ] **Step 1: 红灯——判据用例**
+- [ ] **Step 1: 红灯——旗标判据用例**
 
-新建 `src/cli/resume.test.ts`（沿 cli/cli.test.ts 形态）：
+新建 `src/cli/entry-resume.test.ts`（纯函数面，不启 TUI）：
 
 ```ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, resolveInvocation, resumeLaunchArgs, usageText } from './index';
+import { parseArgs, usageText } from './index';
+import { resolveWorktreeLaunchRoot } from './worktree-launch';
 
-test('resume 为已知子命令：resolveInvocation 原样透传', () => {
-  const inv = resolveInvocation(parseArgs(['resume']));
-  assert.equal(inv.command, 'resume');
-  const inv2 = resolveInvocation(parseArgs(['resume', '/tmp/proj']));
-  assert.equal(inv2.command, 'resume');
-  assert.deepEqual(inv2.positional, ['/tmp/proj']);
+test('--resume 与 --continue 同传：fail-fast', () => {
+  const args = parseArgs(['--resume', '--continue']);
+  assert.throws(
+    () => resolveResumeFlag(args),
+    (e: unknown) => e instanceof Error && /--continue/.test((e as Error).message) && /--resume/.test((e as Error).message),
+  );
 });
 
-test('resumeLaunchArgs：目录解析与顶层同判据（--workdir 优先、裸词拒绝）', () => {
-  const byFlag = resumeLaunchArgs(parseArgs(['resume', '--workdir=/tmp/a']));
-  assert.deepEqual(byFlag.positional, ['/tmp/a']);
-  const byPos = resumeLaunchArgs(parseArgs(['resume', '.']));
-  assert.deepEqual(byPos.positional, ['.']);
-  assert.throws(() => resumeLaunchArgs(parseArgs(['resume', 'foo'])), (e: unknown) => e instanceof Error && /无法识别|Unrecognized/i.test((e as Error).message));
+test('--resume 与 --worktree 同传：fail-fast（沿 --continue 先例同点位）', () => {
+  const args = parseArgs(['--resume', '--worktree']);
+  assert.throws(
+    () => resolveWorktreeLaunchRoot(args, '/tmp/repo'),
+    (e: unknown) => e instanceof Error && /--resume/.test((e as Error).message) && /--worktree/.test((e as Error).message),
+  );
 });
 
-test('resume 与 --continue 同传：参数冲突 fail-fast', () => {
-  assert.throws(() => resumeLaunchArgs(parseArgs(['resume', '--continue'])), (e: unknown) => e instanceof Error && /--continue/.test((e as Error).message));
-});
-
-test('usageText 含 resume 行（双语各一行）', () => {
-  assert.match(usageText(), /sunshinex resume/);
+test('usageText 双语 flags 行含 --resume', () => {
+  assert.match(usageText(), /--resume \(TUI, open the session picker to resume\)/);
 });
 ```
+
+注：`resolveResumeFlag` 从 `src/tui/entry.ts` 导出（纯函数，不触发 TUI 副作用；import 面只引该函数）。
 
 - [ ] **Step 2: 跑红灯确认**
 
-Run: `npx tsc && node --test dist/cli/resume.test.js`
-Expected: FAIL——`resumeLaunchArgs` 未导出、COMMANDS 无 resume、usage 无 resume 行。
+Run: `npx tsc && node --test dist/cli/entry-resume.test.js`
+Expected: FAIL——`resolveResumeFlag` 未导出、worktree-launch 无 `--resume` 校验、usage 无该行。
 
-- [ ] **Step 3: 实现——cli/index.ts 四处**
+- [ ] **Step 3: 实现——三处**
 
-1. L44 `const COMMANDS = ['selfcheck', 'run', 'pipeline', 'help'];` → `['selfcheck', 'run', 'pipeline', 'help', 'resume'];`
-2. usageText（en 与 zh 两个文本块）各插一行（放 pipeline 行之后）：
-
-```
-  sunshinex resume [dir]                  start the interactive terminal with a session picker to resume
-```
-
-```
-  sunshinex resume [目录]                  启动交互终端并弹出会话选择卡恢复既有会话
-```
-
-3. `resumeLaunchArgs` 纯函数（resolveDirArg 之后导出）：
+1. `src/tui/entry.ts`：L39 `const continueLast = ...` 之前新增导出纯函数并接线：
 
 ```ts
-/** resume 启动参数归一：目录判据与顶层一致（--workdir 优先），与 --continue 互斥（同传 fail-fast） */
-export function resumeLaunchArgs(args: CliArgs): CliArgs {
-  if (args.flags['continue'] === true) {
-    throw new Error(t('resume and --continue are mutually exclusive; drop --continue (resume already opens the session picker)', 'resume 与 --continue 互斥：去掉 --continue（resume 本身即弹会话选择卡）'));
+/** --resume 启动旗标判据：与 --continue 同传 fail-fast（前者弹选择卡、后者直取最近，择一语义） */
+export function resolveResumeFlag(args: CliArgs): boolean {
+  if (args.flags.resume !== undefined && args.flags['continue'] === true) {
+    throw new Error(t('--resume and --continue are mutually exclusive: --resume opens the session picker, --continue resumes the latest directly', '--resume 与 --continue 互斥：--resume 弹会话选择卡，--continue 直接续接最近会话'));
   }
-  const d = resolveDirArg(args);
-  if (d.unrecognized) throw new Error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
-  if (d.ignored) console.warn(t(`--workdir takes precedence; ignoring positional dir ${d.ignored}`, `--workdir 优先，位置参数目录 ${d.ignored} 已忽略`));
-  return { ...args, positional: d.dir ? [d.dir] : [] };
+  return args.flags.resume === true;
 }
 ```
 
-4. main 的 switch 增分支（`case 'tui':` 之前）：
+L40 控制器构造改为：
 
 ```ts
-    case 'resume':
-      return runTui({ ...resumeLaunchArgs(args), command: 'tui' });
-```
-
-5. `src/tui/entry.ts`：L39 `const continueLast = args.flags['continue'] === true;` 之后增一行，并把 L40 控制器构造的 opts 展开段尾追加 resumePicker：
-
-```ts
-  const resumePicker = args.command === 'resume';
-```
-
-```ts
+  const resumePicker = resolveResumeFlag(args);
   const ctrl = new SessionController({ root: launchRoot, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}), ...(resumePicker ? { resumePicker: true } : {}) });
 ```
 
+2. `src/cli/worktree-launch.ts`：既有 `--continue` 互斥块（L14-16）扩为双旗标：
+
+```ts
+  if (args.flags['continue'] === true || args.flags.resume !== undefined) {
+    const other = args.flags['continue'] === true ? '--continue' : '--resume';
+    throw new Error(`${other} and --worktree are mutually exclusive: resume keeps the session root, --worktree starts a fresh isolated tree`);
+  }
+```
+
+3. `src/cli/index.ts` usageText：en flags 行 `--continue (TUI, resume last session)` 改 `--continue (TUI, resume latest session)  --resume (TUI, open the session picker to resume)`；zh 行 `--continue（TUI 续接最近会话）` 改 `--continue（TUI 直接续接最近会话）  --resume（TUI 弹会话选择卡恢复）`。
+
 - [ ] **Step 4: 定向套件绿（含既有 CLI 套件回归）**
 
-Run: `npx tsc && node --test dist/cli/resume.test.js dist/cli/cli.test.js dist/cli/worktree-launch.test.js`
-Expected: 全 PASS（worktree-launch 的 `--continue` 互斥用例不受影响——其走 resolveWorktreeLaunchRoot 自身校验）。
+Run: `npx tsc && node --test dist/cli/entry-resume.test.js dist/cli/cli.test.js dist/cli/worktree-launch.test.js`
+Expected: 全 PASS（worktree-launch 既有 `--continue` 互斥用例保持绿）。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add src/cli/index.ts src/tui/entry.ts src/cli/resume.test.ts
-git diff --cached --stat   # 若 index.ts 混叠他线 hunk：暂存态核对，重叠时沿「临时索引+commit-tree」先例按 hunk 隔离
-git commit -m "feat(cli): sunshinex resume 子命令——目录判据与顶层一致、与 --continue 互斥"
+git add src/tui/entry.ts src/cli/worktree-launch.ts src/cli/index.ts src/cli/entry-resume.test.ts
+git diff --cached --stat   # 若 index.ts/worktree-launch.ts 混叠他线 hunk：暂存态核对，重叠时沿「临时索引+commit-tree」先例按 hunk 隔离
+git commit -m "feat(cli): --resume 启动旗标——会话选择卡恢复、与 --continue/--worktree 双互斥"
 ```
 
 ---
@@ -480,8 +468,7 @@ git commit -m "feat(cli): sunshinex resume 子命令——目录判据与顶层�
 1. L151 `    ├── sessions-active.json    # 最近会话指针` 整行删除。
 2. L150 `sessions/` 行改 `    ├── sessions/               # 会话日志（/resume、resume、--continue 据此恢复）`。
 3. L163 整段替换为：`> `SUNSHINEX_DATA_DIR` 是**开发与测试专用**的环境变量重定向口，用户配置面以 `projectsDir` 为准（换盘、分区都走它）。`
-4. CLI 表（L40 `sunshinex pipeline ...` 行之后）补一行：`| `sunshinex resume [dir]` | 启动交互终端并弹会话选择卡恢复既有会话（无档回执后进新会话） |`
-5. L50 flags 表 `--continue` 行改：`| `--continue` | 续接最近一次会话（按会话档时间自动判定，TUI 专属，与 `--worktree` 互斥） |`
+4. CLI 表（L40 `sunshinex pipeline ...` 行之后）保持不动；启动参数表（L50 附近）`--continue` 行改：`| `--continue` | 直接续接最近一次会话（按会话档时间自动判定，TUI 专属，与 `--worktree` 互斥） |`，其下补一行：`| `--resume` | 启动时弹会话选择卡恢复既有会话（TUI 专属，与 `--continue`/`--worktree` 互斥） |`
 
 - [ ] **Step 2: 全量门禁**
 
