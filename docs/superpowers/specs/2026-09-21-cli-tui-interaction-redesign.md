@@ -102,7 +102,7 @@ sunshinex pipeline <dir> --goal="..." [--yes]          # 五节点流水线，ga
 | 裸词（无路径分隔符、非已知子命令） | 无法识别命令，使用 sunshinex help 查看使用方法（stderr 双语 t()，非零退出码，不启动） |
 
 - `tui` 子命令废除：resolveInvocation 的 tui 分支与「未知词视为目录」归一逻辑整体删除（删除即无痕）
-- flags 与位置参数解耦：`--mode=plan --workdir=/x` 等直通形式不受影响；`--workdir` 与位置路径同传时位置参数优先（提示其一被忽略，不报错）
+- flags 与位置参数解耦：`--mode=plan --workdir=/x` 等直通形式不受影响（同传优先级见 run/pipeline 判据条）
 - `sunshinex help` 显示统一用法（含启动形态、子命令清单、常用 flag）
 - **run/pipeline 目录判据与顶层统一（用户裁决）**：子命令后的首个位置参数同样按上表三形态判界——路径形态合法、裸词报「无法识别命令」；目录亦可改走 `--workdir=` flag（同传时 --workdir 优先，与顶层同规则）；`run <dir>` 缺目录沿用现行用法报错
 - 既有 3 条 resolveInvocation 用例（目录直进/目录+flag 混排/子命令透传）反转为「裸词报错不启动 / help 显示用法 / 路径形态与 flag 直通」
