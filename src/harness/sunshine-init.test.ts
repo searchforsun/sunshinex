@@ -71,7 +71,7 @@ test('sunshineInitGoal：去标题锚定、提示词单语、不写产出语言�
     assert.ok(!/[\u4e00-\u9fff]/.test(g), 'en 提示词不得混入中文（D10）');
     assert.ok(!/in Chinese|in English|用中文|写成中文|中文项目/.test(g), '不写产出语言条款（D8）');
 
-    // 提示词恒英文单语：--language=zh 下 goal 逐字节不变（已废止 en/zh 双语成对，goal 不随外观语言分叉）
+    // 提示词恒英文单语：--language=zh 下 goal 逐字节不变（goal 不随外观语言分叉）
     setLanguage('zh');
     try {
       const gz = sunshineInitGoal(dir, false);

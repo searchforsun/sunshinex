@@ -3,7 +3,7 @@ import type { ModelAdapter } from '../model/adapter';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactor } from './reactor';
-import { ModelRouter, ScriptedAdapter, parseLegacyEnvelope } from '../model/adapter';
+import { ModelRouter, ScriptedAdapter, parseScriptStep } from '../model/adapter';
 import type { ChatRequest } from '../types';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
@@ -63,7 +63,7 @@ test('模型输出非 JSON 时不误判完成，而是记录观察并重试', as
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 3 });
   assert.equal(r.done, false);
   assert.equal(r.steps.length, 3);
-  // 空批纠偏观察：原文随旁白可见、不误判完成（信封协议退役后「非协议文本」同形态承载）
+  // 空批纠偏观察：原文随旁白可见、不误判完成（非协议文本同形态承载）
   assert.ok(r.steps.every((s) => s.observation.includes('No tool calls were returned')));
 });
 
@@ -122,7 +122,7 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
     chat: async (req: ChatRequest) => {
       requests.push(req);
       prompts.push(req.messages.map((m) => m.content).join('\n'));
-      return parseLegacyEnvelope(replies[Math.min(call++, replies.length - 1)]);
+      return parseScriptStep(replies[Math.min(call++, replies.length - 1)]);
     },
   };
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
@@ -468,39 +468,39 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
   assert.equal(resultCount, 2, 'tool-result 事件应逐工具发射');
 });
 
-test('并行协议畸形归一：数组包裹信封对象（[{tools:[...],done:false}]）照常并行', async () => {
+test('并行协议畸形归一：数组包裹 DSL 对象（[{tools:[...],done:false}]）照常并行', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-arrenv2-'));
   const adapter = new ScriptedAdapter([
     '[{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}]',
-    '{"done":true,"reply":"已归一包信封"}',
+    '{"done":true,"reply":"已归一包裹载荷"}',
   ]);
   const reactor = makeReactor(tmp, adapter);
-  const r = await reactor.run({ goal: '包信封' }, { maxSteps: 3 });
+  const r = await reactor.run({ goal: '包裹载荷' }, { maxSteps: 3 });
   assert.equal(r.done, true);
-  assert.ok(r.steps.some((st) => st.action === 'tool-call' && st.observation.includes('[tool] glob')), '数组包信封应解包后照常并行');
+  assert.ok(r.steps.some((st) => st.action === 'tool-call' && st.observation.includes('[tool] glob')), '数组包裹应解包后照常并行');
 });
 
-test('并行协议畸形归一：顶层数组信封（[{...tools...}]）取首元素按并行动作执行', async () => {
+test('并行协议畸形归一：顶层数组载荷（[{...tools...}]）取首元素按并行动作执行', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-arrenv-'));
   const adapter = new ScriptedAdapter([
     '[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}]',
-    '{"done":true,"reply":"已归一数组信封"}',
+    '{"done":true,"reply":"已归一数组载荷"}',
   ]);
   const reactor = makeReactor(tmp, adapter);
-  const r = await reactor.run({ goal: '数组信封' }, { maxSteps: 3 });
-  assert.equal(r.done, true, '数组信封应归一执行而非静默吞掉动作');
+  const r = await reactor.run({ goal: '数组载荷' }, { maxSteps: 3 });
+  assert.equal(r.done, true, '数组载荷应归一执行而非静默吞掉动作');
   assert.ok(r.steps.some((st) => st.action === 'tool-call' && st.observation.includes('[tool] grep')), '顶层数组应归一为并行动作');
 });
 
-test('并行协议畸形归一：tools 被误装进单工具信封（{"tool":"tools"}）按并行动作执行', async () => {
+test('并行协议畸形归一：tools 被误装进单工具形态（{"tool":"tools"}）按并行动作执行', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-tenv-'));
   const adapter = new ScriptedAdapter([
     '{"tool":"tools","input":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}',
     '{"done":true,"reply":"已归一并行"}',
   ]);
   const reactor = makeReactor(tmp, adapter);
-  const r = await reactor.run({ goal: '畸形信封' }, { maxSteps: 2 });
-  assert.ok(r.steps.some((s) => s.action === 'tool-call' && s.observation.includes('[tool] glob')), '畸形信封应归一为并行动作而非 TOOL_NOT_FOUND');
+  const r = await reactor.run({ goal: '畸形载荷' }, { maxSteps: 2 });
+  assert.ok(r.steps.some((s) => s.action === 'tool-call' && s.observation.includes('[tool] glob')), '畸形载荷应归一为并行动作而非 TOOL_NOT_FOUND');
   assert.ok(!r.steps.some((s) => s.observation.includes('TOOL_NOT_FOUND')), '不应出现工具未注册报错');
 });
 
@@ -691,7 +691,7 @@ test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语�
           return { finish: 'tool_calls' as const, content: '', toolCalls: [{ id: 'call_0', name: 'submit_summary', argsJson: SUMMARY_ARGS }] };
         }
         prompts.push(prompt);
-        return parseLegacyEnvelope(replies[Math.min(call++, replies.length - 1)]);
+        return parseScriptStep(replies[Math.min(call++, replies.length - 1)]);
       },
     };
     const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);

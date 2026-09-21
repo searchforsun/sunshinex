@@ -34,7 +34,7 @@ import { ApprovalDecision, ApprovalRequest } from '../../types';
  * 范式（对齐 tools/builtin.memorywrite.test.ts / memory/writer.test.ts）：tmpdir 作 root + SUNSHINEX_DATA_DIR 重定向 + finally 还原清理。
  */
 
-/** 内置工具声明序（memory_write 为第 8 可选参注入项，注入后追加末位；reactor.buildPrompt 渲染面按名排序，与注册序无关） */
+/** 内置工具声明序（memory_write 为第 8 可选参注入项，注入后追加末位；渲染面按名排序，与注册序无关） */
 const BUILTIN_NAMES = ['exec', 'read', 'skill', 'write', 'grep', 'glob', 'webfetch', 'websearch', 'kb_search', 'worktree'];
 
 const FACT = { type: 'project', content: 'Repo uses pnpm with a repo-local store', description: 'pnpm store is repo-local' };

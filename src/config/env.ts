@@ -15,7 +15,7 @@ export function userConfigDir(): string {
 export function resolveKbEnv(
   env: Record<string, string | undefined>,
 ): { backend: string; embeddingBaseUrl?: string; embeddingApiKey?: string; embeddingModel?: string } {
-  /** 环境变量回退取值（本地函数；与 i18n 已废止的 pick 无关，改名避同名歧义） */
+  /** 环境变量回退取值（本地函数） */
   const pickEnv = (key: string, fallbackKey: string): string | undefined => {
     const v = env[key] ?? env[fallbackKey];
     return v !== undefined && v.length > 0 ? v : undefined;

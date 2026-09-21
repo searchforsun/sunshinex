@@ -5,11 +5,11 @@ import type { ChatMessage, ChatTool, JsonSchema } from '../types';
 /**
  * T2（原生 function calling 迁移）adapter 消息面红灯：
  * ①chat 请求体：messages 数组 + tools（注册表 parameters → OpenAI function 形态）+ tool_choice 缺省 auto；
- *   response_format 与 SUNSHINEX_STRUCTURED_OUTPUT 穿参不再出现（退役落 T4，adapter 侧请求体先行剔除）
+ *   response_format 与 SUNSHINEX_STRUCTURED_OUTPUT 不穿参（adapter 侧请求体剔除）
  * ②chatStream：tool_calls 增量聚合（index 分片乱序 → name/arguments 拼装）、content 增量照旧、
  *   finish=tool_calls 产出 StructuredAction、finish=stop 收束 content 即 reply
  * ③argsJson 为模型出牌原文：非法 JSON 原样保留，由消费面回喂纠偏
- * ④ScriptedAdapter：脚本出牌从 JSON 信封文本扩为 tool_calls 序列（多调用/旁白/stop 收束），旧字符串脚本形态不回归
+ * ④ScriptedAdapter：脚本出牌支持 JSON 文本与 tool_calls 序列两态（多调用/旁白/stop 收束），字符串脚本形态不回归
  */
 
 /** mock 非流式 fetch：记录请求体、按脚本应答 */
@@ -185,7 +185,7 @@ test('ScriptedAdapter：tool_calls 序列出牌（一轮多调用+旁白+stop �
   assert.equal(r2.content, 'all done');
   assert.deepEqual(r2.toolCalls, []);
 
-  // 旧字符串脚本（JSON 信封文本）：chat 面按信封协议转译为结构化出牌（T4——47 处既有脚本用例的兼容关键）
+  // 字符串脚本（JSON DSL 文本）：chat 面转译为结构化出牌（47 处既有脚本用例的兼容关键）
   const legacy = new ScriptedAdapter(['{"tool":"read","input":{"path":"a"}}']);
   const r3 = await legacy.chat({ messages: [{ role: 'user', content: 'x' }] });
   assert.equal(r3.finish, 'tool_calls');

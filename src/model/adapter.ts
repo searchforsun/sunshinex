@@ -336,11 +336,11 @@ export interface ScriptStep {
 
 const EXHAUSTED_FALLBACK = '{"done":true}';
 
-/** 脚本字符串步（信封 JSON 文本 DSL）→ 轮结果转译：单工具/并行/done 三形态；坏 JSON → 空批纠偏（原文随 content 供回喂可见） */
-export function parseLegacyEnvelope(s: string): ChatResult {
+/** 脚本字符串步（JSON 文本 DSL）→ 轮结果转译：单工具/并行/done 三形态；坏 JSON → 空批纠偏（原文随 content 供回喂可见） */
+export function parseScriptStep(s: string): ChatResult {
   try {
     let parsed = JSON.parse(s) as unknown;
-    // 数组畸形归一（与 reactor.parse 同源）：信封对象被数组包装取首元素；裸调用清单整体视为并行动作
+    // 数组畸形归一：数组包装取首元素；裸调用清单整体视为并行动作
     if (Array.isArray(parsed)) {
       const allCalls =
         parsed.length > 0 &&
@@ -355,7 +355,7 @@ export function parseLegacyEnvelope(s: string): ChatResult {
       reply?: string;
     };
     if (parsed === null || typeof parsed !== 'object') throw new Error('not an envelope');
-    // tools 误装单工具信封（{"tool":"tools","input":[...]}）归一为并行动作
+    // tools 误装单工具形态（{"tool":"tools","input":[...]}）归一为并行动作
     let calls: Array<{ tool?: string; input?: Record<string, unknown> }> | undefined = Array.isArray(j.tools) ? j.tools : undefined;
     if (!calls && j.tool === 'tools' && Array.isArray(j.input)) calls = j.input as Array<{ tool?: string; input?: Record<string, unknown> }>;
     if (calls) {
@@ -378,7 +378,7 @@ export function parseLegacyEnvelope(s: string): ChatResult {
   return { finish: 'tool_calls', content: s, toolCalls: [] };
 }
 
-/** 脚本化适配器：预置决策序列逐步回放（测试/离线兜底）。步骤两态：字符串（信封 JSON 文本 DSL，经 parseLegacyEnvelope 转译）与结构化 ScriptStep */
+/** 脚本化适配器：预置决策序列逐步回放（测试/离线兜底）。步骤两态：字符串（JSON 文本 DSL，经 parseScriptStep 转译）与结构化 ScriptStep */
 export class ScriptedAdapter implements ModelAdapter {
   readonly provider = 'scripted';
   private i = 0;
@@ -390,11 +390,11 @@ export class ScriptedAdapter implements ModelAdapter {
     return s ?? EXHAUSTED_FALLBACK;
   }
 
-  /** 轮面：字符串步骤经信封 DSL 转译（parseLegacyEnvelope 单点）；结构化步骤直接出牌；usage 记 0（脚本化回放无真实用量） */
+  /** 轮面：字符串步骤经 DSL 转译（parseScriptStep 单点）；结构化步骤直接出牌；usage 记 0（脚本化回放无真实用量） */
   async chat(_req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     hooks?.onUsage?.(0);
     const s = this.next();
-    if (typeof s === 'string') return parseLegacyEnvelope(s);
+    if (typeof s === 'string') return parseScriptStep(s);
     if (s.toolCalls && s.toolCalls.length > 0) {
       return {
         finish: 'tool_calls',

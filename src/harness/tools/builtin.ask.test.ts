@@ -111,7 +111,7 @@ test('ask_question：allowCustom 合成 Other… 末项并携带 customIndex；m
     assert.equal(captured?.options.length, 3, 'Other… 追加为末项');
     assert.equal(captured?.customIndex, 2);
     assert.equal(captured?.options[2].label, 'Other…');
-    assert.equal(captured?.multiple, undefined, 'multiple 缺省不下发（信封字段最小化）');
+    assert.equal(captured?.multiple, undefined, 'multiple 缺省不下发（请求字段最小化）');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

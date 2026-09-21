@@ -300,7 +300,7 @@ test('SEMANTIC_KEYS 全表钉子：29 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['maxGraphNodes'], 'SUNSHINEX_MAX_GRAPH_NODES', '长任务终止：Graph 节点步上限');
   assert.equal(SEMANTIC_KEYS['reasoningEffort'], 'SUNSHINEX_REASONING_EFFORT', '思考强度语义键（--effort/--model effort 会话参数链）');
   assert.equal(SEMANTIC_KEYS['dataDir'], undefined, 'dataDir 已退役：不隔离的整目录直指口不进用户配置面（只留环境变量给测试与多实例）');
-  assert.equal(SEMANTIC_KEYS['structuredOutput'], undefined, 'structuredOutput 已退役：function calling 恒开、无结构化输出开关（信封协议退役迁移线）');
+  assert.equal(SEMANTIC_KEYS['structuredOutput'], undefined, 'structuredOutput 不存在：function calling 恒开、无结构化输出开关');
   assert.equal(RETIRED_KEYS['dataDir'] !== undefined, true, '退役键必须留定向提示，不能静默变「未知键」');
   assert.ok(/function calling/.test(RETIRED_KEYS['structuredOutput']), 'structuredOutput 退役提示须指明替代口径');
 });

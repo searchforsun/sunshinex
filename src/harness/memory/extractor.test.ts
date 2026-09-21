@@ -72,9 +72,9 @@ test('openai 桩：候选落盘 + prompt 含当前日期与自包含化条款', 
   });
 });
 
-test('闸门：scope=current_task 拒绝（结构化面 scope 键已退役，等价形态=会话限定词黑名单拒绝）', async () => {
+test('闸门：scope=current_task 拒绝（等价形态=会话限定词黑名单拒绝）', async () => {
   await withMem(async (mem) => {
-    // 文本协议退役后条目无 scope 键（scope 不暴露给模型）；会话性内容由黑名单词闸门承载——同一防线语义
+    // 条目无 scope 键（scope 不暴露给模型）；会话性内容由黑名单词闸门承载——同一防线语义
     const env = JSON.stringify({ memories: [{ type: 'project', description: '刚才的临时结论', content: '这是本次任务中临时的工作备注' }] });
     await settleMemory({ goal: 'g', reply: 'r', model: openaiStub(env).model, root: mem.dir() });
     assert.equal(mem.count(), 0, '会话限定措辞条目拒绝');

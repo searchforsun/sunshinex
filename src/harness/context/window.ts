@@ -27,7 +27,7 @@ export interface ContextChunk {
   priority: number;
 }
 
-/** 权重表：estimate 已退役权重语义，现供 compact 丢弃序使用（T2 起消费） */
+/** 权重表：compact 丢弃序优先级（T2 起消费） */
 export const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
   system: 1.0,
   instruction: 1.2,
@@ -41,7 +41,7 @@ export const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
 export class ContextWindow {
   private lastChecksum: string | null = null;
 
-  /** 估算：used = Σ estimateTokens(content)（真实 token 近似，无 kind 权重；权重语义退役为 compact 丢弃优先级） */
+  /** 估算：used = Σ estimateTokens(content)（真实 token 近似，无 kind 权重） */
   estimate(items: ContextItem[]): { used: number; items: ContextItemEstimate[] } {
     const out: ContextItemEstimate[] = [];
     let used = 0;

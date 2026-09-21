@@ -416,7 +416,7 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child2-'));
   try {
     // gate 挂起子代理模型轮（scripted 适配器无真实异步，不挂起则整链先于断言跑完）：
-    // calls 1 = 主链 spawn 信封，calls 2 = 子代理轮（挂起，留出真实时序窗口喂事件），calls 3 = 主链 done
+    // calls 1 = 主链 spawn 载荷，calls 2 = 子代理轮（挂起，留出真实时序窗口喂事件），calls 3 = 主链 done
     let gateResolve!: () => void;
     const gate = new Promise<void>((res) => {
       gateResolve = res;

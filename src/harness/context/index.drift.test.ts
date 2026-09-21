@@ -9,7 +9,7 @@ import { resolveDataDir } from '../../config/data-dir';
 
 /** 动态改动尾追（规范 N1 / 规格 §9.2 + §9.1）：SUNSHINE.md 会话中途漂移在指令行落点尾追最新全文块；
  *  同一变更只追一次（基线前进，刷新点重置）；超 4KB 截断 + read 指针；技能清单增量只给一行 id（正文不进上下文）；
- *  前缀零击穿（前置段首条字节不变）。全部写链文案英文单语（CLAUDE.md §15，模型侧双语别名已废止）。 */
+ *  前缀零击穿（前置段首条字节不变）。全部写链文案恒英文单语（CLAUDE.md §15）。 */
 
 function withRoot(fn: (root: string) => void): void {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-cm-drift-'));

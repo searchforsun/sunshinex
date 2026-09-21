@@ -2,7 +2,7 @@ import type { ModelAdapter } from '../../model/adapter';
 import { ContextChunk, estimateTokens } from './window';
 
 /** 装配决策点（T5 迁移）：具备 chat 面（真实模型）才走模型摘要——stub/scripted/测试桩一律走确定性路径。
- *  判据收窄为「实现 chat 调用」（tools 字段 submit_summary 出牌），provider 字符串门禁退役。 */
+ *  判据：tools 字段 submit_summary 出牌即视为具备 chat 面。 */
 export function isModelSummarizer(model: ModelAdapter | undefined): model is ModelAdapter & { chat: NonNullable<ModelAdapter['chat']> } {
   return !!model && model.provider === 'openai' && typeof model.chat === 'function';
 }

@@ -1273,7 +1273,7 @@ export class SessionController {
         this.pushMsg('system', String(e.payload?.text ?? e.text ?? ''));
         return;
       case 'token':
-        // chat 主通道正文增量直连（信封协议退役：token 承载纯正文，无协议骨架过滤层）
+        // chat 主通道正文增量直连（token 承载纯正文，无协议骨架过滤层）
         this.appendLive('reply', e.text ?? '');
         if (this.state.live?.kind === 'reply') this.flushReply();
         return;
