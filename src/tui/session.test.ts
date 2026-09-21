@@ -234,6 +234,19 @@ test('会话控制器：done 步携带 phase → 不落阶段行（答复正文�
   }
 });
 
+test('会话控制器：命令词不在清单统一无法识别文案（warn 级，规格 D2）', async () => {
+  const tmp = tmpdir('sunshinex-sess-bogus-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
+    await ctrl.submit('/bogus');
+    const hit = ctrl.getState().messages.find((m) => m.role === 'system' && m.text.includes('Unrecognized command'));
+    assert.ok(hit, '统一无法识别文案');
+    assert.equal(hit.level, 'warn', 'warn 级回执');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；档位对后续任务生效', async () => {
   const tmp = tmpdir('sunshinex-sess-model-');
   try {

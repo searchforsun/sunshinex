@@ -879,6 +879,13 @@ export class SessionController {
    *  两者都是 run 级常量，对后续任务生效 */
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
+    // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；
+    // 自由文本参数命令（目标/关注点/记忆内容）不在枚举范围，带参放行
+    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add']);
+    if (!FREE_TEXT_ARGS.has(cmd) && text !== cmd) {
+      this.pushMsg('system', t('Unrecognized command. Use /help to see available commands', '无法识别命令，使用 /help 查看使用方法'), { level: 'warn' });
+      return;
+    }
     if (cmd === '/help') {
       this.pushMsg('system', slashHelp().join('\n'));
       return;
@@ -999,7 +1006,8 @@ export class SessionController {
       return;
     }
     if (cmd === '/resume') {
-      // 恢复入口（规格 §6）：无参列表（mtime 降序 + 首条输入摘要）；<序号|id> 恢复目标会话
+      // 恢复入口（规格 §6/D6）：无参选择卡（mtime 降序 + 首条输入摘要），>8 条分页（More…/Back…）；
+      // 带参形态已由裸形式守卫统一无法识别——此处只认无参翻页选择
       if (this.state.status !== 'idle') {
         this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'), { level: 'warn' });
         return;
@@ -1012,23 +1020,25 @@ export class SessionController {
         this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'), { level: 'warn' });
         return;
       }
-      const arg = text.trim().split(/\s+/).slice(1).join(' ');
-      if (!arg) {
-        // 选择器形态（AskQuestion 线 T3，对标 CC 会话列表）：无参 /resume 挂起问题卡列最新 8 条（label=id、description=首条输入摘要），
-        // ↑↓ 移动 / Enter 恢复 / Esc 取消；显式 `/resume <序号|id>` 路径保持不变（含 8 条以外的更早会话）
-        const shown = sessions.slice(0, 8);
-        if (sessions.length > 8) {
-          this.pushMsg('system', t(`8 of ${sessions.length} sessions shown — use /resume <id> for older ones`, `仅列最新 8 条（共 ${sessions.length}）——更早会话用 /resume <id> 恢复`));
-        }
+      const moreLabel = t('More…', '更多…');
+      const backLabel = t('Back…', '上一页…');
+      let page = 0;
+      for (;;) {
+        const shown = paginateOptions(
+          sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
+          page,
+        );
         const answer = await this.askUser({
           question: t('Resume which session?', '恢复哪个会话？'),
-          options: shown.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
+          options: shown.options,
         });
         if (answer.type === 'dismissed') {
           this.pushMsg('system', t('Resume cancelled', '已取消恢复'));
           return;
         }
         const pickedId = answer.type === 'custom' ? answer.text.trim() : (answer.labels[0] ?? '');
+        if (pickedId === moreLabel) { page += 1; continue; }
+        if (pickedId === backLabel) { page -= 1; continue; }
         const pick = sessions.find((s) => s.id === pickedId);
         if (!pick) {
           this.pushMsg('system', t('No such session: ' + pickedId, '没有这个会话：' + pickedId), { level: 'warn' });
@@ -1037,14 +1047,6 @@ export class SessionController {
         this.restoreFromSession(pick);
         return;
       }
-      const num = Number.parseInt(arg, 10);
-      const pick = Number.isInteger(num) && num >= 1 && num <= sessions.length ? sessions[num - 1] : sessions.find((s) => s.id === arg);
-      if (!pick) {
-        this.pushMsg('system', t('No such session: ' + arg, '没有这个会话：' + arg), { level: 'warn' });
-        return;
-      }
-      this.restoreFromSession(pick);
-      return;
     }
     if (cmd === '/rewind' || cmd === '/fork') {
       // 会话回退/分叉（rewind/fork 规格 §7）：idle 守卫沿 /resume 先例，运行中拒绝
@@ -1119,7 +1121,7 @@ export class SessionController {
       this.pushMsg('system', t(`Persistent memory ${on ? 'on' : 'off'} for this session (persist with the SUNSHINEX_AUTO_MEMORY env var)`, `本会话持久记忆已${on ? '开启' : '关闭'}（持久化请设环境变量 SUNSHINEX_AUTO_MEMORY）`));
       return;
     }
-    this.pushMsg('system', t(`Unknown command: ${cmd} (/help for list)`, `未知命令：${cmd}（/help 查看清单）`), { level: 'warn' });
+    this.pushMsg('system', t('Unrecognized command. Use /help to see available commands', '无法识别命令，使用 /help 查看使用方法'), { level: 'warn' });
   }
 
   /** /memory：无参列索引（查看态） */

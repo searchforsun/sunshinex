@@ -80,7 +80,7 @@ test('/resume 无参：Esc 放弃 → Resume cancelled 回执且停留当前会�
   }
 });
 
-test('/resume：会话超过 8 条时钳制最新 8 条并尾追提示行', async () => {
+test('/resume：>8 条分页——首页 8 条 + More…，翻页后 1 条 + Back…，Esc 取消', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = pinDataDir(tmp);
@@ -94,10 +94,34 @@ test('/resume：会话超过 8 条时钳制最新 8 条并尾追提示行', asyn
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"忽略"}']) });
     const p = ctrl.submit('/resume');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    assert.equal(ctrl.getState().question?.options.length, 8, '只列最新 8 条');
-    assert.ok(/older ones/.test(messageTexts(ctrl)), '尾追提示行告知其余会话用 /resume <id>');
-    ctrl.resolveAskAnswer({ type: 'dismissed' });
+    const page0 = ctrl.getState().question?.options.map((o) => o.label) ?? [];
+    assert.equal(page0.length, 9, '首页 8 条 + More…（规格 D6：取代「仅列 8 条」手填通道）');
+    assert.equal(page0[8], 'More…');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['More…'] });
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    const page1 = ctrl.getState().question?.options.map((o) => o.label) ?? [];
+    assert.equal(page1.length, 2, '第 2 页 1 条 + Back…');
+    assert.equal(page1[1], 'Back…');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: [page1[0]!] });
     await p;
+    await ctrl.waitIdle();
+    assert.equal(ctrl.getState().status, 'idle', '翻页选中可恢复目标会话');
+  } finally {
+    process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/resume：带参形态统一无法识别（裸形式守卫，规格 D2）', async () => {
+  const tmp = tmpRoot();
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  pinDataDir(tmp);
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"忽略"}']) });
+    await ctrl.submit('/resume 1');
+    await ctrl.submit('/resume some-id');
+    const texts = messageTexts(ctrl);
+    assert.ok(texts.includes('Unrecognized command. Use /help to see available commands'), '带参枚举形态统一文案');
   } finally {
     process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });

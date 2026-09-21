@@ -44,7 +44,11 @@ test('重放一致性：live 会话（任务×2 + /model）重放到新控制器
     const maxSeq = before.length > 0 ? before[before.length - 1].seq : 0;
 
     const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"恢复后完成"}']) });
-    await ctrl2.submit('/resume 1');
+    const pr = ctrl2.submit('/resume');
+    await waitFor(() => ctrl2.getState().status === 'awaiting-question');
+    const cands = ctrl2.getState().question?.options.map((o) => o.label) ?? [];
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: [cands[0]!] });
+    await pr;
     await ctrl2.waitIdle();
     const after = ctrl2.getState().messages;
     assert.equal(after.length, before.length + 1, '恢复流 = 存档消息 + 恢复提示行');
@@ -88,7 +92,11 @@ test('/new 轮转：旧档留存可找回、列表倒序、序号恢复旧会话
     assert.equal(metas[0].firstUser, '任务乙', '列表最新在前');
 
     const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
-    await ctrl2.submit('/resume 2');
+    const pr = ctrl2.submit('/resume');
+    await waitFor(() => ctrl2.getState().status === 'awaiting-question');
+    const cands = ctrl2.getState().question?.options.map((o) => o.label) ?? [];
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: [cands[1]!] });
+    await pr;
     const texts = ctrl2.getState().messages.map((m) => m.text);
     assert.ok(texts.some((t) => t.includes('任务甲')), '恢复的是旧会话（任务甲）');
     assert.ok(!ctrl2.getState().messages.some((m) => m.text === '任务乙'), '新会话内容不混入');
@@ -189,11 +197,21 @@ test('/resume 候选排除当前在飞会话（事件级建档后命令输入不
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = pinDataDir(tmp);
   try {
-    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"r1"}']) });
-    await ctrl.submit('任务一');
-    await ctrl.waitIdle();
-    await ctrl.submit('/resume 1'); // 候选若含当前在飞自建档则切到空档丢消息流
-    const texts = ctrl.getState().messages.map((m) => m.text).join('\n');
+    const ctrl1 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"r1"}']) });
+    await ctrl1.submit('任务一');
+    await ctrl1.waitIdle();
+    // 同根新控制器：其当前会话（含任务二 + 命令回显）为在飞自建档，/resume 候选应排除它、只列真实会话
+    const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"r2"}']) });
+    await ctrl2.submit('任务二');
+    await ctrl2.waitIdle();
+    const pr = ctrl2.submit('/resume');
+    await waitFor(() => ctrl2.getState().status === 'awaiting-question');
+    const cands = ctrl2.getState().question?.options.map((o) => o.label) ?? [];
+    assert.equal(cands.length, 1, '候选排除当前在飞自建档后仅剩真实会话');
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: [cands[0]!] });
+    await pr;
+    await ctrl2.waitIdle();
+    const texts = ctrl2.getState().messages.map((m) => m.text).join('\n');
     assert.ok(texts.includes('任务一'), '排除自建档后应恢复到真实会话（消息流保留）');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
