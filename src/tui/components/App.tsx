@@ -507,8 +507,8 @@ export function App({
         spawnExpandedSeqs={spawnExpanded}
         spawnHighlightSeq={browseMode ? (spawnCallSeqs(state.messages)[browseCursor] ?? undefined) : undefined}
       />
-      {state.status === 'running' ? (
-        <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} />
+      {state.status === 'running' && state.task.phase !== 'responding' ? (
+        <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} phase={state.task.phase} calls={state.task.activeCalls} />
       ) : null}
       {browseMode ? (
         // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源
