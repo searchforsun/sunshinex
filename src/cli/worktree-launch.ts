@@ -11,8 +11,9 @@ import { resolveDataDir } from '../config/data-dir';
 export function resolveWorktreeLaunchRoot(args: CliArgs, root: string): string {
   if (args.flags.worktree === undefined) return root;
   // 互斥（规格 §7）：恢复会话的活动 root 属会话自身事实，跨旗标拼接产生歧义——fail-fast 双旗标提示
-  if (args.flags['continue'] === true) {
-    throw new Error('--continue and --worktree are mutually exclusive: resume keeps the session root, --worktree starts a fresh isolated tree');
+  if (args.flags['continue'] === true || args.flags.resume !== undefined) {
+    const other = args.flags['continue'] === true ? '--continue' : '--resume';
+    throw new Error(`${other} and --worktree are mutually exclusive: resume keeps the session root, --worktree starts a fresh isolated tree`);
   }
   const raw = args.flags.worktree;
   const name = raw === true ? randomWorktreeName() : String(raw);

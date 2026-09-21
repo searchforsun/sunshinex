@@ -10,6 +10,7 @@ import { buildModel, parseTier } from '../runtime';
 import { resolveWorktreeLaunchRoot } from '../cli/worktree-launch';
 import { parseEffort } from '../model/adapter';
 import type { CliArgs } from '../cli';
+import { t } from '../i18n';
 
 /** 读根 package.json 版本（失败回退 undefined，由 buildBannerInfo 兜底） */
 function readPackageVersion(): string | undefined {
@@ -20,6 +21,14 @@ function readPackageVersion(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** --resume 启动旗标判据：与 --continue 同传 fail-fast（前者弹选择卡、后者直取最近，择一语义） */
+export function resolveResumeFlag(args: CliArgs): boolean {
+  if (args.flags.resume !== undefined && args.flags['continue'] === true) {
+    throw new Error(t('--resume and --continue are mutually exclusive: --resume opens the session picker, --continue resumes the latest directly', '--resume 与 --continue 互斥：--resume 弹会话选择卡，--continue 直接续接最近会话'));
+  }
+  return args.flags.resume === true;
 }
 
 /** TUI 入口：同进程装配会话控制器与 Ink 渲染；manual 审批经键盘 y/a/n 在会话内裁决 */
@@ -37,7 +46,8 @@ export async function runTui(args: CliArgs): Promise<void> {
   const effort = parseEffort(typeof args.flags.effort === 'string' ? args.flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
   const continueLast = args.flags['continue'] === true;
-  const ctrl = new SessionController({ root: launchRoot, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}) });
+  const resumePicker = resolveResumeFlag(args);
+  const ctrl = new SessionController({ root: launchRoot, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}), ...(resumePicker ? { resumePicker: true } : {}) });
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
   const banner = buildBannerInfo({ version: readPackageVersion(), root: launchRoot, model: model.label ?? model.provider });

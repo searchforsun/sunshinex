@@ -102,7 +102,7 @@ export function usageText(): string {
   sunshinex run <dir> --goal="..."        run the standard verify-fix loop (exit code 1 unless done)
   sunshinex pipeline <dir> --goal="..." [--yes]  five-node pipeline with gate approvals (--yes auto-approves)
   flags: --mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
-         --continue (TUI, resume last session)  --worktree[=<name>]  --workdir=<dir>
+         --continue (TUI, resume latest session)  --resume (TUI, open the session picker to resume)  --worktree[=<name>]  --workdir=<dir>
   unrecognized bare words exit with an error; run sunshinex help for usage`,
     `SunshineX CLI
   sunshinex                               当前工作区启动交互式会话终端（缺省形态）
@@ -112,7 +112,7 @@ export function usageText(): string {
   sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（非 done 退出码 1）
   sunshinex pipeline <dir> --goal="..." [--yes]  五节点流水线 gate 审批（--yes 跳过交互直接批准）
   flags：--mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
-        --continue（TUI 续接最近会话）  --worktree[=<name>]  --workdir=<目录>
+        --continue（TUI 直接续接最近会话）  --resume（TUI 弹会话选择卡恢复）  --worktree[=<name>]  --workdir=<目录>
   无法识别的裸词报错不启动；使用 sunshinex help 查看使用方法`,
   );
 }
