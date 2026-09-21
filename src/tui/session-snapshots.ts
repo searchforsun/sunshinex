@@ -3,12 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseJournalFile, type SnapshotEntry } from './session-journal';
 
-/** 收集行号 ≥ anchorLine 的 user 事件 files（≥ 含锚点轮自身写入），每文件取行号最早一条，行号序输出 */
+/** 收集行号 ≥ anchorLine 的 user 事件 files 与 snapshots 事件 files（两载体，≥ 含锚点轮自身写入），每路径取行号最早一条，行号序输出 */
 export function collectRestorePlan(file: string, anchorLine: number): SnapshotEntry[] {
   const parsed = parseJournalFile(file);
   const byPath = new Map<string, SnapshotEntry>();
   parsed.events.forEach((e, i) => {
-    if (i + 1 < anchorLine || e.t !== 'user' || !e.files) return;
+    if (i + 1 < anchorLine) return;
+    if ((e.t !== 'user' && e.t !== 'snapshots') || !e.files) return;
     for (const f of e.files) {
       if (!byPath.has(f.path)) byPath.set(f.path, { ...f });
     }

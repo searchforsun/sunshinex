@@ -186,3 +186,53 @@ test('/resume 列表血缘：fork 出的新档列表行带 ↳ 标注', async ()
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('/rewind 含 write 多轮：snapshots 事件跨轮合并回退（事件级落盘形态）', async () => {
+  // 现场惯例照抄「/rewind 含 write 轮」用例（env 钉私有数据目录、ScriptedAdapter 两轮 write、root 内预置 a.txt='v0'）
+  const tmp = tmpdir('rewind-t5f-');
+  const restore = pinDataDir(path.join(tmp, 'data'));
+  try {
+    fs.writeFileSync(path.join(tmp, 'a.txt'), 'v0');
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([
+      '{"phase":"act","tool":"write","input":{"path":"a.txt","content":"v1"}}',
+      '{"done":true,"reply":"t1 done"}',
+      '{"phase":"act","tool":"write","input":{"path":"a.txt","content":"v2"}}',
+      '{"done":true,"reply":"t2 done"}',
+    ]) });
+    await ctrl.submit('任务一：写 v1');
+    await ctrl.waitIdle();
+    await ctrl.submit('任务二：写 v2');
+    await ctrl.waitIdle();
+    assert.equal(fs.readFileSync(path.join(tmp, 'a.txt')).toString(), 'v2');
+
+    // 断言 1：任务收口后读档，两轮各尾追一条 snapshots 事件且 files 非空（事件级载体，规格 2026-09-22 D2）
+    const dataDir = resolveDataDir(tmp);
+    const srcId = readActivePointer(dataDir)!;
+    const srcEvents = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')).events;
+    const snapEvents = srcEvents.filter((e) => e.t === 'snapshots');
+    assert.equal(snapEvents.length, 2, '两轮收口各一条 snapshots 事件');
+    assert.ok(snapEvents.every((e) => e.t === 'snapshots' && e.files.length > 0), 'snapshots 事件清单非空');
+
+    const p = ctrl.submit('/rewind');
+    const anchorsQ = await waitQuestion(ctrl, 'Rewind to which turn?');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: [anchorsQ.options[0].label] }); // 锚点=任务一起点：回退窗口覆盖两轮 snapshots 事件（评审 Important I-2）
+    const actionQ = await waitQuestion(ctrl, 'What to restore?');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['code and conversation'] });
+    await p;
+
+    // 断言 2：collectRestorePlan 合并两轮 snapshots 清单、每路径取最早 pre-image → a.txt 回到任务一开场时点 v0
+    assert.equal(fs.readFileSync(path.join(tmp, 'a.txt')).toString(), 'v0', '回退窗口应覆盖两轮 snapshots，a.txt 回到最早 pre-image');
+    assert.equal(ctrl.takeBackfill(), '任务一：写 v1');
+    // 断言 3：回执含 restored=1
+    assert.ok(ctrl.getState().messages.some((m) => m.text.includes('1 restored')), '回执含 restored=1');
+    // 断言 4：/resume 列表血缘标注不受影响（分档新档带 ↳ rewind 血缘）
+    const metas = listSessions(dataDir);
+    const branched = metas.find((m) => m.id !== srcId)!;
+    assert.equal(branched.forkedFrom?.sourceSessionId, srcId);
+    assert.equal(branched.forkedFrom?.kind, 'rewind');
+    assert.ok(branched.firstUser?.startsWith('↳'), '血缘标注应拼入列表摘要');
+  } finally {
+    restore();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

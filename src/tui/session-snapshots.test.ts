@@ -52,6 +52,50 @@ test('collectRestorePlan: 锚点行自身清单参与（含当轮写入回退）
   }
 });
 
+test('collectRestorePlan: snapshots 事件并入收集（user.files 与 snapshots 两载体合并，行序每路径取最早）', () => {
+  const dataDir = tmpdir('snap-collect3-');
+  try {
+    fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
+    const file = path.join(sessionsDir(dataDir), 'j3.jsonl');
+    // 行 2 user.files a→v1 / 行 4 snapshots a→v1b / 行 6 user b→v0 / 行 8 snapshots a→v2
+    fs.writeFileSync(file, [
+      '{"t":"header","v":1,"id":"j3","createdAt":"x"}',
+      '{"t":"user","text":"t1","files":[{"path":"a.txt","hash":"h-v1"}]}',
+      '{"t":"snapshots","files":[{"path":"a.txt","hash":"h-v1b"}]}',
+      '{"t":"msg","item":{"role":"assistant","text":"r1","ts":0,"seq":1}}',
+      '{"t":"user","text":"t2","files":[{"path":"b.txt","hash":"h-v0"}]}',
+      '{"t":"msg","item":{"role":"assistant","text":"r2","ts":0,"seq":2}}',
+      '{"t":"snapshots","files":[{"path":"a.txt","hash":"h-v2"}]}',
+      '{"t":"msg","item":{"role":"assistant","text":"r3","ts":0,"seq":3}}',
+    ].join('\n') + '\n', 'utf8');
+    const plan = collectRestorePlan(file, 2);
+    assert.deepEqual(plan, [
+      { path: 'a.txt', hash: 'h-v1' },
+      { path: 'b.txt', hash: 'h-v0' },
+    ]);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('collectRestorePlan: 纯 snapshots 档（无任何 user.files）照常收集', () => {
+  const dataDir = tmpdir('snap-collect4-');
+  try {
+    fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
+    const file = path.join(sessionsDir(dataDir), 'j4.jsonl');
+    fs.writeFileSync(file, [
+      '{"t":"header","v":1,"id":"j4","createdAt":"x"}',
+      '{"t":"user","text":"t1"}',
+      '{"t":"snapshots","files":[{"path":"c.txt","hash":"h-c","deleted":true}]}',
+      '{"t":"msg","item":{"role":"assistant","text":"r1","ts":0,"seq":1}}',
+    ].join('\n') + '\n', 'utf8');
+    const plan = collectRestorePlan(file, 2);
+    assert.deepEqual(plan, [{ path: 'c.txt', hash: 'h-c', deleted: true }]);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
 test('applyRestorePlan: 写回/删除/缺 blob skipped 三态', () => {
   const root = tmpdir('snap-apply-');
   try {
