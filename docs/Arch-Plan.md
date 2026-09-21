@@ -1,348 +1,107 @@
-# SunshineX 通用AI Agent 项目工程化设计方案
-（基于Harness/Loop/Graph三层范式 | 融合Codex/Claude Code/Hermes核心能力 | Node.js全栈自研 | 对标Workbuddy）
+# SunshineX 架构设计与技术选型
 
-> 本文档由原 `README.md` 迁移而来，记录 SunshineX 的架构设计方案与分阶段规划。
-> 项目当前架构、设计亮点与最终产品形态请见仓库根目录 `README.md`。
+> 本文档记录 SunshineX 的目标架构、技术栈与核心能力现状，随实现同步维护。产品愿景与验收口径以 `docs/GOAL.md` 为单一权威；工程协作规范见根目录 `CLAUDE.md`；阶段路线与进度见 `docs/ROADMAP.md`。
 
-## 一、项目整体定位与核心目标
-### 1.1 项目定位
-SunshineX 是一款对齐2026年AI Agent三层工程范式、融合业界三大标杆Agent核心能力的通用型全场景开发智能体，采用Node.js全栈自研，基于「**Graph流程编排 + Loop自主迭代 + Harness运行底座**」三层嵌套架构。
+## 一、项目定位
 
-项目深度吸收OpenAI Codex的工程化编码能力、Claude Code的代码库深度感知与生产级工作流、Hermes的模型无关与持久化进化能力，云端大模型负责推理，本地负责编排、执行、安全与记忆。主打**个人开发者生产力工具**定位，全面对标Workbuddy与Claude Code基础版，提供可私有化部署、数据可控、能力可扩展的生产级AI开发助手。
+SunshineX 是个人开发者本机运行的通用 AI Agent：云端大模型负责推理，本地负责编排、执行、安全与记忆。北极星场景锁定复杂编码长任务（跨文件重构、测试闭环、多步工程）。
 
-### 1.2 核心设计理念（融合三大Agent能力）
-| 参考产品/范式 | 吸收核心优势 | SunshineX自研落地与增强 |
-|--------------|-------------|------------------------|
-| Harness Engineering | 生产级运行时、统一工具接入、状态持久化、安全管控 | 自研完整Harness运行时，新增项目深度感知、dry-run预览（已交付）与MCP协议兼容、多执行后端（阶段四规划） |
-| Loop Engineering | 生成-校验-修正闭环、成本管控、终止控制 | 自研Loop Engine，新增测试闭环、代码重构、代码审查三大专用模板；内置/goal自我验证机制 |
-| Graph Engineering | DAG流程拓扑、多节点协作、错误局部化、子流程嵌套 | 自研Graph编排引擎，新增多角色子Agent编排、软件工程全链路流水线、CI/CD集成节点 |
-| OpenAI Codex | 分层模型算力、全链路软件工程、多环境执行 | 落地三档算力路由、跨文件重构、测试闭环、多执行后端；轻量化实现系统级控制 |
-| Claude Code | 全代码库感知、项目约定配置、持久记忆、dry-run、MCP | 落地项目扫描器、SUNSHINE.md配置、跨会话项目记忆、预览模式、MCP工具兼容 |
-| Hermes Agent | 模型无关、持久化进化、技能系统、自我验证 | 强化模型无关架构、三级持久记忆、标准化技能体系、目标自检机制 |
+- 对标基线：Claude Code（交互形态与工程闭环）、OpenAI Codex（分层算力与工作台）、Hermes（模型无关与持久进化）
+- 用户形态：本机安装运行、数据全本地、单人使用
+- 交互面：TUI 为第一入口（对标 Claude Code），CLI 承载执行面，GUI（对标 Codex 工作台）规划中、spec 先行
+- 分发：GitHub Release 附件直装为主，npm registry 正式发布为辅
 
-### 1.3 核心目标
-1. **范式对齐**：完整落地Harness/Loop/Graph三层工程范式，达到生产级可用性
-2. **能力对标**：编码能力对齐Codex基础版，代码库感知对齐Claude Code，扩展灵活性对齐Hermes，整体能力对标Workbuddy
-3. **生产级特性**：dry-run预览、项目持久记忆、测试闭环、错误局部化、安全沙箱，满足日常开发生产使用
-4. **高效迭代**：Loop闭环实现单任务自动优化，减少人工Prompt调试成本30%以上
-5. **数据可控**：所有项目数据、记忆、配置、代码均本地存储，云端仅负责推理
-6. **生态开放**：兼容MCP协议、标准化技能系统，支持第三方能力扩展
+## 二、系统架构
 
-## 二、整体系统架构设计（增强三层范式）
-SunshineX采用**分层嵌套架构**，自上而下分为6层，严格对齐三层工程范式，所有吸收能力按职责归属对应融入各层，不破坏原有架构边界。
+### 2.1 分层与装配
 
-### 2.1 架构分层总览
-上层交互层 → **Graph编排层（Graph Engineering）** → **Loop迭代层（Loop Engineering）** → **Harness运行时层（Harness Engineering）** → 模型适配层 → 基础设施层
+分层依赖方向：`graph → loop → harness → model / storage / plugins`。Graph 节点可嵌入 Loop 子流程，二者均运行在 Harness 底座之上。运行时装配收敛于 `src/runtime.ts`（buildDeps），CLI/TUI/GUI 交互面只做参数解析与呈现、共用同一装配根。
 
-> 核心嵌套关系：Graph节点可嵌入完整Loop子流程；所有Loop和Graph均运行在Harness底座之上，由Harness统一提供项目感知、工具、状态、安全、记忆能力。
+### 2.2 上下文模型：单一基座 + fork
 
-#### 2.1.1 上层交互层（CLI + TUI + GUI 三面统一）
-- **CLI 基础执行面（已交付）**：`selfcheck / run / pipeline`——骨架自检、Loop 修正环、五节点全链路流水线；支持管道调用、静默审批（--yes）、模型选型（--model）；`chat/edit/test/review/doc` 专项命令随阶段四扩展（对齐 Claude Code）
-- **TUI 交互式终端（对标 Claude Code，v1.0 默认入口，阶段五 5A）**：
-  - 会话 REPL：连续对话式任务下达，会话内多任务上下文延续
-  - 流式输出：模型 token 流与工具调用事件（exec/read/write）逐条实时渲染
-  - plan-mode：先出执行计划、用户确认后再动代码（复用 Graph 规划节点）
-  - 待办清单展示：任务拆解与状态实时同步（数据源为 Graph 节点状态）
-  - 权限与审批终端化：deny/ask/allow 实时询问、gate 审批在会话内完成
-  - 终端渲染选型：原生 ANSI vs 成熟 TUI 库（如 Ink/blessed 一类候选），按依赖引入原则评审定案
-- **GUI 桌面端（对标 Codex 工作台，阶段五 5B）**：Electron，对话交互、代码预览与 diff、工作流可视化看板（任务委派式）、项目记忆/技能/插件管理
-- **三面同源**：CLI/TUI/GUI 共享同一 Harness/Loop/Graph 运行时与数据底座（配置、任务、记忆、日志），交互面只是同一运行时的不同壳
+前缀缓存是产品第一要义（相邻请求 token 前缀命中率最大化）。一帧上下文自上而下：
 
-#### 2.1.2 Graph编排层（多角色协作+全链路流程）
-对应Graph Engineering范式，吸收Claude Code多Agent编排、Codex全链路软件工程能力：
-- **DAG工作流引擎**：支持串行、并行、分支、汇合、子流程嵌套
-- **多角色子Agent编排**：内置规划师、开发者、测试工程师、审查员四种专项角色，可自动分工协作
-- **软件工程全链路模板**：内置「需求分析→架构设计→编码实现→测试验证→代码审查→交付」完整流水线模板
-- **CI/CD集成节点（骨架已建）**：工作流内 ci 节点可编排执行；GitHub Actions、GitLab CI 平台级触发为规划（v1.0 经 gh CLI 注入）
-- **人工审批节点**：关键步骤、重大变更自动暂停，等待用户确认
-- **错误局部化**：节点失败仅回退当前节点，不影响全局流程
-
-#### 2.1.3 Loop迭代层（单任务自主迭代+专用场景模板）
-对应Loop Engineering范式，吸收Codex测试闭环、Hermes自我验证能力：
-- **Loop核心引擎**：生成→校验→修正→终止完整闭环，支持Agent/Check/Gate/Router四类节点
-- **/goal自我验证机制**：任务自动拆解为带明确验收标准的子项，执行后逐项自检，未通过自动修正
-- **三大专用Loop模板**：
-  - 代码重构Loop：跨文件批量重构、依赖同步修改、语法校验
-  - 测试闭环Loop：生成测试用例→执行测试→定位Bug→修复代码→再验证
-  - 代码审查Loop：规则检查→逻辑扫描→生成问题清单→自动修复→输出diff
-- **四重终止控制**：验收通过、最大迭代次数、超时、总Token上限
-- **成本管控**：单轮Token预算、累计消耗统计、超支自动暂停
-
-#### 2.1.4 Harness运行时层（生产级底座+全能力支撑）
-对应Harness Engineering范式，吸收Claude Code项目感知、Hermes持久记忆、Codex多环境执行、MCP协议：
-- **项目深度感知引擎**：
-  - 自动扫描项目目录结构、解析依赖树、识别技术栈
-  - 读取`SUNSHINE.md`项目配置，注入编码规范、架构原则、行为边界
-  - 解析Git提交历史，理解项目演进与决策背景
-  - 跨会话持久项目记忆：记住项目约定、历史修改、用户偏好
-- **统一动作执行面**：
-  - 内置工具集：文件操作、Shell、Git、网络、数据库、数据处理
-  - MCP协议兼容（规划，阶段四）：支持接入第三方MCP工具与服务
-  - 多执行后端：本地进程已交付（POSIX sh 基线，Windows 经 Git Bash 自动探测）；Docker沙箱、远程SSH为规划（按需匹配隔离等级）
-- **三级持久化记忆体系**：
-  - 技能级：成功任务沉淀为可复用技能模板
-  - 项目级：项目规范、依赖、历史决策、修改记录
-  - 用户级：偏好、习惯、常用配置
-- **安全管控中心**：
-  - dry-run预览模式：所有文件修改、系统操作默认生成预览，用户确认后应用
-  - 分级沙箱：已交付路径越界校验（safePath）、权限三态（deny→ask→allow）与 dry-run 预览；isolated-vm/Docker 容器隔离为规划增强
-  - 细粒度权限：工具级、文件级、网络级权限管控
-  - 审计日志：全操作可追溯
-- **容错治理模块**：自动重试、退避策略、降级兜底、故障定位
-- **三级KV上下文缓存**：全局级、会话级、任务级，语义分块+双重命中+增量更新
-
-#### 2.1.5 模型适配层（三档算力路由）
-吸收Codex分层模型体系理念：
-- **多模型适配器**：兼容OpenAI、Claude、豆包、通义千问等主流模型
-- **三档算力路由**：
-  - 旗舰档：复杂架构设计、深度调试、长周期任务
-  - 平衡档：日常开发、代码生成、文档处理
-  - 轻量档：简单修改、批量处理、高频交互
-- **智能路由策略**：基于任务复杂度、成本偏好、速度要求自动选择最优模型
-- **Token管理**：限流、计费、上下文窗口自动适配
-
-#### 2.1.6 基础设施层
-本地文件存储与 JSON KV 底座（已交付）；向量知识库、SQLite、图数据存储为规划（阶段四起）
-
-### 2.2 核心架构优势
-1. **业界能力深度融合**：集Codex工程化编码、Claude Code项目感知、Hermes持久进化三大优势于一体
-2. **三层范式严格对齐**：职责清晰、嵌套灵活，支持纯Loop、纯Graph、Graph+Loop多种模式
-3. **生产级特性完备**：dry-run、沙箱、审计、回滚、终止控制、成本管控全覆盖
-4. **项目级深度理解**：超越单文件代码补全，实现全代码库语义感知与持久记忆
-5. **全链路软件工程能力**：从需求到交付的完整流水线，测试闭环保障质量
-6. **开放生态兼容**：MCP协议+标准化技能系统，能力可无限扩展
-
-## 三、技术栈选型（增强版）
-### 3.1 核心底层
-- Node.js ≥ 22.9（engines 登记，实测基线 22 LTS / 24.x）、TypeScript strict、pnpm（packageManager 钉版）、node:test（测试零框架依赖；ESLint/Husky 暂未引入）
-
-### 3.2 交互层
-- CLI（已交付）：零依赖自研（node:readline + 内置 argv 解析），无 commander/inquirer/chalk 等第三方依赖
-- TUI（阶段五 5A）：终端渲染选型待定案——原生 ANSI 渲染 vs 成熟 TUI 库（如 Ink/blessed），按依赖引入原则评审
-- GUI（阶段五 5B，规划选型）：Electron 28+、Vue3 + Vite + Naive UI、Monaco Editor（含 Diff Editor，核心 diff）、@antv/g6（流程可视化）、xterm.js + node-pty（内嵌终端）、splitpanes（布局）、chokidar（文件监听）、pinia（状态管理）、electron-vite + electron-builder + electron-updater（工程化）；diff2html 降级备选（非编辑器区域轻量 diff）
-
-### 3.3 Graph编排层
-- 自研DAG引擎、JSON Schema工作流定义、异步事件调度器
-- 角色Agent模板库、内置流水线模板
-
-### 3.4 Loop迭代层
-- 自研Loop Engine、规则校验器、测试执行器、diff生成器
-- 验收标准解析器、Token预算控制器
-
-### 3.5 Harness运行时层（核心能力当前以 node: 内置自研实装；以下第三方库为候选选型池，引入按依赖引入原则评审）
-- **项目感知（已交付零依赖）**：自研目录/依赖/SUNSHINE.md/Git 扫描；tree-sitter、depcheck、simple-git 为规划增强
-- **MCP兼容（阶段四）**：@modelcontextprotocol/sdk
-- **执行后端**：本地进程（已交付）；isolated-vm、dockerode、ssh2 为规划
-- **状态记忆（已交付零依赖）**：文件系统 JSON 底座 + 统一记忆生命周期；better-sqlite3、keyv 为规划
-- **上下文缓存（已交付零依赖）**：自研三级缓存 + checksum 门禁；lru-cache、xxhash、chromadb（向量匹配）为规划
-- **安全管控（已交付）**：safePath 路径门禁、权限三态、dry-run、凭据脱敏；审计回滚为规划
-
-### 3.6 存储与模型
-- 关系库（规划）：better-sqlite3（当前为文件系统 JSON 底座）
-- 向量库（规划，阶段四）：chromadb
-- 模型SDK：自研 OpenAI 兼容适配器（内置 fetch 直连、三档算力路由，DeepSeek 实测通过）；多模型适配器为规划
-
-## 四、核心功能模块设计
-### 4.1 Graph编排层核心能力
-1. **多角色子Agent协作**
-   - 规划师：需求拆解、方案设计、路径规划
-   - 开发者：代码生成、重构、Bug修复
-   - 测试工程师：测试用例生成、执行、结果分析
-   - 审查员：代码规范、逻辑检查、安全扫描、输出审查报告
-2. **全链路软件工程流水线**
-   - 内置标准开发流程模板，支持自定义编排
-   - 支持阶段并行、节点嵌套Loop、人工审批
-3. **CI/CD集成**
-   - 支持触发GitHub Actions/GitLab CI流水线
-   - 自动接收CI结果，失败则触发修复Loop
-4. **工作流模板市场**
-   - 内置常用场景模板，支持自定义保存与分享
-   - 兼容标准工作流定义格式
-
-### 4.2 Loop迭代层核心能力
-1. **标准闭环执行**：生成-校验-修正-终止，支持四类节点
-2. **/goal自我验证**：自动拆解验收标准，逐项自检，失败自动重试
-3. **三大专用Loop**
-   - **代码重构Loop**：批量重命名、模式替换、架构拆分、技术栈迁移，自动同步所有依赖
-   - **测试闭环Loop**：生成单元测试、集成测试，执行并定位失败，自动修复代码，循环至通过
-   - **代码审查Loop**：多维度扫描代码问题，自动修复可修复问题，输出审查报告与diff
-4. **成本与终止控制**：四重终止保护，Token预算可视化
-5. **Loop模板库**：内置10+常用场景模板，支持自定义扩展
-
-### 4.3 Harness运行时层核心能力
-#### 4.3.1 项目深度感知
-- 自动项目扫描：识别语言、框架、依赖、配置文件
-- `SUNSHINE.md`项目约定：统一配置技术栈、编码规范、目录规则、禁止操作
-- 持久项目记忆：跨会话记住项目上下文、历史修改、决策原因
-- Git历史感知：读取提交记录、分支信息，理解项目演进
-
-#### 4.3.2 统一执行与工具
-- 内置基础工具集（已交付）：read/write/grep/glob/exec 五件套；开发全场景工具集（Git、网络、数据库、文本处理等）随阶段四扩展
-- MCP协议兼容（阶段四）：一键接入第三方MCP工具与服务
-- 三档执行环境：本地进程已交付（POSIX sh 基线 + Windows Git Bash 自动探测）；Docker沙箱（中隔离）、远程SSH（高隔离）为规划
-- 工具自动匹配：基于语义+规则自动匹配任务与工具
-
-#### 4.3.3 三级持久记忆
-- **技能记忆**：成功任务自动沉淀为技能模板，同类任务一键复用
-- **项目记忆**：每个项目独立存储上下文、规范、历史、偏好
-- **用户记忆**：全局用户偏好、输出风格、常用配置
-- 记忆管理：支持查看、编辑、清理、导入导出
-
-#### 4.3.4 安全与管控
-- **dry-run预览**：所有写操作默认生成预览diff，用户确认后应用；支持`--apply`直接执行
-- **分级沙箱**：代码执行、插件运行均在隔离环境，限制资源与网络
-- **权限管控**：声明式权限，运行时拦截校验，高危操作二次确认
-- **审计回滚**：全操作日志记录，文件修改自动快照，支持一键回滚
-
-#### 4.3.5 上下文缓存
-- 三级KV缓存：全局级、会话级、任务级
-- 语义分块+双重命中+增量更新
-- 智能淘汰策略：LRU+访问频率+价值权重
-
-### 4.4 通用业务能力
-- 代码开发：生成、补全、重构、修复、解释、审查、测试
-- 文档处理：总结、生成、润色、翻译、格式转换
-- 信息检索：知识库问答、网络检索、信息整合
-- 任务自动化：批量处理、定时任务、工作流自动化
-
-### 4.5 CLI专项命令
-已交付基础执行面：`sunshinex selfcheck / run / pipeline`（骨架自检、Loop 修正环、五节点流水线）。以下对齐 Claude Code 的专项命令为规划，随阶段四扩展：
-- `sunshinex chat`：通用对话
-- `sunshinex edit`：代码编辑与重构
-- `sunshinex test`：生成并运行测试
-- `sunshinex review`：代码审查
-- `sunshinex doc`：文档生成
-- `sunshinex run`：执行工作流
-- 全局参数：`--dry-run`预览模式、`--apply`直接执行、`--verbose`详细过程、`--model`指定模型
-
-## 五、分阶段开发落地计划（总周期28周）
-### 第一阶段：Harness底座核心开发（第1-6周）
-**核心目标**：搭建生产级Harness底座，实现项目感知、工具、安全、记忆四大基础能力
-- 项目初始化与工程化规范
-- 三级KV缓存与上下文管理
-- 统一工具框架与内置基础工具集
-- 项目深度感知引擎：目录扫描、依赖解析、SUNSHINE.md配置、Git读取
-- 三级持久化记忆体系
-- 分级沙箱与权限管控
-- dry-run预览机制
-- 模型适配层与三档算力路由
-- 交付物：可运行的Harness底座、项目感知能力、安全沙箱、基础工具集
-
-### 第二阶段：Loop Engine开发与专用模板（第7-12周）
-**核心目标**：落地完整Loop Engine，实现三大专用Loop与自我验证机制
-- Loop核心执行引擎：节点调度、流转控制、状态管理
-- 四类核心节点：Agent、Check、Gate、Router
-- /goal自我验证机制
-- 三大专用Loop模板：代码重构、测试闭环、代码审查
-- 终止控制与成本管控模块
-- CLI专项命令接入
-- 交付物：完整可用的Loop Engine、三大专用场景模板、CLI可执行
-
-### 第三阶段：Graph编排层开发（第13-18周）
-**核心目标**：实现DAG工作流编排、多角色Agent协作、全链路流水线
-- DAG工作流核心引擎：节点调度、依赖解析、并发控制
-- 串行、并行、分支、汇合四种流程模式
-- 多角色子Agent：规划师、开发者、测试工程师、审查员
-- 软件工程全链路流水线模板
-- CI/CD集成节点
-- 人工审批节点与错误局部化
-- 工作流模板体系
-- 交付物：Graph编排引擎、多角色协作、全链路流水线模板
-
-### 第四阶段：MCP生态与全场景能力（第19-22周）
-**核心目标**：兼容MCP协议，完善全场景业务能力，优化体验
-- MCP协议兼容，支持第三方工具接入
-- 补充内置工具集，覆盖开发全场景
-- 优化模型路由与缓存策略
-- 本地向量知识库增强
-- 技能模板体系完善
-- 交付物：MCP兼容、全场景基础能力、技能系统
-
-### 第五阶段：终端双端——TUI + GUI（第23-26周）
-**核心目标**：交付两种交互面——5A 交互式 TUI 对标 Claude Code（v1.0 默认入口，优先交付）、5B 桌面端 GUI 对标 Codex 工作台；双端共享同一运行时与数据底座
-- TUI：会话 REPL、流式输出（token 流 + 工具调用事件）、plan-mode、待办清单展示、权限审批终端化、终端渲染选型定案
-- GUI：对话交互、代码预览、diff对比、工作流可视化看板、记忆/技能/插件管理、双端数据同步、托盘与通知
-- 交付物：交互式 TUI（默认入口）+ 完整功能桌面端，CLI/TUI/GUI 三面数据互通
-
-### 第六阶段：测试优化与发布（第27-28周）
-**核心目标**：全量测试、性能优化、打包发布
-- 全功能单元测试、集成测试、安全测试
-- 性能优化：缓存命中率、响应速度、内存占用
-- 跨平台打包：Windows/Mac/Linux安装包、CLI全局包
-- 完善文档：开发文档、使用文档、插件开发手册
-- 交付物：v1.0正式版本、完整文档、安装包
-
-## 六、项目目录架构（增强版）
-
-> 以下为目标目录架构（规划示意）。当前实装为 src/ 扁平分层：`src/harness`（perception/reactor/tools/security/context）、`src/loop`、`src/graph`、`src/model`、`src/storage`、`src/plugins`、`src/cli`，详见 README「当前架构」。
-```
-sunshinex/
-├── bin/                      # CLI入口
-├── src/
-│   ├── cli/                  # CLI命令行
-│   │   └── commands/         # edit/test/review等专项命令
-│   ├── gui/                  # Electron桌面端
-│   ├── server/               # 本地核心服务
-│   ├── agent/                # 三层核心范式
-│   │   ├── graph/            # Graph编排层
-│   │   │   ├── engine/       # DAG引擎
-│   │   │   ├── agents/       # 多角色子Agent
-│   │   │   ├── nodes/        # 节点类型
-│   │   │   ├── ci/           # CI/CD集成
-│   │   │   └── templates/    # 工作流模板
-│   │   ├── loop/             # Loop迭代层
-│   │   │   ├── engine/       # Loop核心引擎
-│   │   │   ├── nodes/        # Agent/Check/Gate/Router
-│   │   │   ├── validator/    # 校验与自我验证
-│   │   │   ├── budget/       # 成本与终止控制
-│   │   │   └── templates/    # 专用Loop模板
-│   │   └── harness/          # Harness运行时层
-│   │       ├── project/      # 项目深度感知
-│   │       ├── context/      # 上下文+三级缓存
-│   │       ├── memory/       # 三级持久记忆
-│   │       ├── action/       # 统一执行面+工具
-│   │       │   ├── tools/    # 内置工具集
-│   │       │   ├── mcp/      # MCP协议兼容
-│   │       │   └── runtime/  # 多执行后端
-│   │       ├── security/     # 安全管控+dry-run
-│   │       ├── state/        # 状态持久化
-│   │       └── fault/        # 容错治理
-│   ├── core/                 # 通用业务能力
-│   ├── model/                # 模型适配层
-│   │   ├── adapter/
-│   │   ├── router/           # 三档算力路由
-│   │   └── token/
-│   ├── storage/              # 基础设施层
-│   ├── config/
-│   └── utils/
-├── plugins/
-├── skills/                   # 技能模板目录
-├── knowledge/
-├── cache/
-├── tests/
-├── docs/
-├── scripts/
-└── dist/
+```text
+[稳定段]      身份/输出约定/工具清单/JSON 协议/工作目录/执行协议行  ← 逐字节冻结
+[SUNSHINE.md] 全局 ~/.sunshinex/SUNSHINE.md → 项目 SUNSHINE.md      ← 会话级冻结快照
+[技能清单]    name+description 索引（按名排序冻结）                  ← 模型经 skill 工具按需加载正文
+[压缩块]      会话链前缀折叠摘要（模型驱动六要素 + 确定性回退）      ← 唯一合法重写产物
+[会话链]      任务指令行 + 全量执行轨迹                              ← append-only，只在尾部变
+[fork 尾追]   角色行 + 节点任务行 + 私有步骤                          ← 仅 graph 节点 / 子代理
+[技能块]      一次性注入置尾（loop 内部面）
 ```
 
-## 七、v1.0 vs v2.0 能力边界
-| 能力维度 | v1.0（个人开发者版） | v2.0（团队增强版） |
-|---------|---------------------|-------------------|
-| 核心范式 | Harness/Loop/Graph三层完整落地 | 增强多租户、权限体系、集群部署 |
-| 编码能力 | 跨文件重构、测试闭环、代码审查 | 系统级架构重构、全栈端到端开发 |
-| 项目感知 | 单项目深度感知、持久记忆 | 多项目并行、团队共享上下文 |
-| 协作能力 | 单用户多角色Agent协作 | 多人+多Agent混合协作、冲突处理 |
-| 入口 | CLI + TUI（默认入口）+ Electron桌面端 | VSCode/JetBrains插件、Web端 |
-| 生态 | MCP协议、内置工具集 | 插件市场、企业级集成 |
-| 部署 | 本地单机部署 | 团队级服务器部署、高可用 |
-| 系统交互 | 文件、Shell、Git、数据库 | 系统级UI操控、内置浏览器、远程桌面 |
+会话开始装载 → 运行中动态改动一律尾追 → 轮次起点主动探测漂移并尾追差异；快照重写只发生在刷新点（构造 / /init / /new / 压缩成功）。完整不变量见 `CLAUDE.md §11`，设计原文见 `docs/superpowers/specs/2026-09-14-context-fork-design.md`。
 
-## 八、核心风险与应对
-| 风险类型 | 具体风险 | 应对措施 |
-|---------|---------|---------|
-| 技术风险 | Loop无限循环、Token超支 | 四重终止保护；默认开启Token预算；异常自动暂停并提示 |
-| 技术风险 | 跨文件重构依赖漏改 | AST静态扫描+多轮校验+测试闭环验证；生成依赖变更清单 |
-| 安全风险 | 沙箱绕过、恶意操作 | 分级沙箱；dry-run默认开启；高危操作二次确认；审计日志 |
-| 进度风险 | 三层架构+多能力开发周期长 | 按层迭代，6周交付Harness+Loop最小可用版本，Graph层后续迭代 |
-| 兼容风险 | MCP工具兼容性问题 | 实现标准MCP客户端；提供适配指南；内置常用工具白名单 |
-| 体验风险 | 项目扫描速度慢 | 增量扫描+缓存；仅监听变更文件；支持配置排除目录 |
+### 2.3 Harness 运行时层（src/harness/）
+
+- **项目感知**（perception.ts）：目录/依赖/SUNSHINE.md/Git 扫描
+- **Reactor 最小闭环**（reactor.ts）：observe→think→act，缺省 400 步宽预算（`SUNSHINEX_MAX_STEPS` 可调）
+- **统一工具面**（tools.ts / tools/）：read、write、grep、glob、exec、webfetch、websearch、kb_search、skill、memory_write、ask_question，统一注册表 + 安全链；工具参数一律 JSON Schema 声明化
+- **安全管控**（security/）：权限三态（deny/ask/allow）、SafetyChain、ProcessSandbox 子进程单点（exec shell 由 `resolveShell()` 跨平台解析）、凭据脱敏、dry-run 接缝
+- **记忆双轨**（memory/ + skills/）：程序性记忆 LearnedSkillStore（任务收口沉淀可复用技能，FIFO 上限）+ 陈述性记忆 auto memory（MEMORY.md 索引 + 记录文件，提取挂 settle 单点、后台管线空闲消化、/memory 命令族管理）
+- **技能体系**（skills.ts）：三级根装载（项目级 `.sunshinex` > 全局级 `~/.sunshinex` > 学习级 `data/skills`），标准形态 `{id}/SKILL.md`，清单冻结注入 + skill 工具按需加载正文
+- **子代理**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算换算/并发护栏；spawn 工具 + `agents/{id}/agent.md` 目录注册制；同层并发上限 4
+- **会话持久化**（tui/session-journal.ts）：journal 逐事件落盘，崩溃丢失窗口收敛至在飞一个工具步；/resume、CLI `--continue` 恢复、/rewind 代码回退（write 影子快照）、/fork 不可变分档
+- **MCP 客户端**（mcp/）：官方 SDK 接缝，stdio/http/sse 三传输，装配期 fail-fast 注册
+- **知识库**（knowledge/）：本地向量知识库，local-json 与 sqlite-vec 可插拔双后端
+
+### 2.4 Loop 迭代层（src/loop/）
+
+闭环引擎 + Agent/Check/Gate/Router 四类节点；`/goal` 验收修正环：目标整体为自由文本判据（模型判据，verdict 三值 met / not-yet / impossible）、可恢复错误分级重试 ≤3 次、impossible 即终局、预算耗尽 paused 可重跑续走；模板注册表为内部扩展点。终止参数收编 settings.json（maxSteps / maxLoopIterations / maxGraphNodes），兜底宽预算（400 步 / 200 轮 / 1000 节点步），墙钟时长仅作失控保底。
+
+### 2.5 Graph 编排层（src/graph/）
+
+DAG 拓扑引擎（环检测携带环路径）+ loop/agent/gate/ci 四类节点 + 五节点软件工程流水线模板；角色代理经 makeRoleAgent 薄入口复用 SubagentRunner；节点私有 fork、终态一行结论/补丁行回写主链；gate 人工审批、错误局部化、预算跨层贯通。
+
+### 2.6 模型适配层（src/model/）
+
+OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路），核心契约走模型原生 function calling；三档算力路由（small/medium/large）为用户级会话参数（`--tier`、/model），请求级字段不进提示词；reasoning_effort 七档思考强度（`--effort`、/model effort）按端点能力阶梯降级探测；per-run 成本账本（ledger.ts）承载 usage 与缓存命中口径。
+
+### 2.7 交互面
+
+- **CLI**（src/cli/）：selfcheck / run / pipeline 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计已定稿待实施（`specs/2026-09-21-cli-tui-interaction-redesign.md`）
+- **TUI**（src/tui/，已交付）：会话 REPL、Static 化历史 + 动态帧流式渲染、Markdown 全框线表格（对标 Claude Code）、plan/goal/子代理面板、审批卡与统一选择器、斜杠命令族、状态栏（cache/ctx/turns/steps/tier/effort）、运行中中断与 steering 穿插提示词、worktree 隔离入口
+- **GUI**（规划）：Electron 桌面壳 + Vue3 组件体系，组件选型唯一登记于 `CLAUDE.md §13`
+
+## 三、技术栈
+
+- 底座：Node.js ≥ 22.9、TypeScript（strict）、pnpm（packageManager 钉版）、node:test（测试零框架依赖）
+- 已引入依赖（用途/收敛边界/回退预案）唯一登记于 `CLAUDE.md §5` 依赖台账：ink + react、markdown-it、highlight.js、string-width、cli-table3、sqlite-vec、@modelcontextprotocol/sdk
+- GUI 规划选型唯一登记于 `CLAUDE.md §13` 组件选型登记表（Electron ≥ 30、Vue 3 + Naive UI、Monaco Editor、@antv/g6、xterm.js + node-pty、pinia、splitpanes、chokidar、electron-vite 工程化等）
+- 存储：本地 JSON 底座（src/storage/）；运行时数据（账本/记忆/学习技能/KB/会话日志/worktree）统一落 `~/.sunshinex/projects/<工作区>/data`
+- 配置：settings.json 两级装载（全局 `~/.sunshinex/settings.json` + 项目级 `.sunshinex/settings.json`），语义键 + env 透传块，JSONC 容忍；全局约定层 `~/.sunshinex/SUNSHINE.md` 对标 `~/.claude/CLAUDE.md`
+- 平台：Windows / macOS / Linux 三平台可部署，LF 由 `.gitattributes` + `.editorconfig` 机器强制，CI 矩阵 ubuntu+windows × Node 22/24；机制细节见 `docs/PLATFORM.md`
+
+## 四、依赖引入与候选池
+
+引入原则与评审标准见 `CLAUDE.md §5`（解决真实问题、维护活跃、类型完善、许可证兼容、依赖面可控）。候选选型池（引入前逐项评审）：项目感知增强 tree-sitter / depcheck；执行后端 dockerode（已登记 GUI 可选增强）/ ssh2；存储 better-sqlite3 / keyv；向量匹配 chromadb。
+
+## 五、关键设计规格索引
+
+历史规格与实施计划全量存档于 `docs/superpowers/specs/` 与 `docs/superpowers/plans/`，代表性设计：
+
+| 主题 | 规格 |
+|------|------|
+| 统一运行时主链 | 2026-09-04-harness-unified-spine-design.md |
+| 上下文单一基座 + fork | 2026-09-14-context-fork-design.md |
+| 子代理 | 2026-09-14-subagent-design.md |
+| /goal 对齐 Claude Code | 2026-09-16-goal-claude-code-alignment-design.md |
+| 模型驱动压缩 | 2026-09-16-model-compaction-design.md |
+| auto memory / 记忆管线 | 2026-09-18-auto-memory-design.md、2026-09-19-memory-pipeline-learned-extraction-design.md |
+| 全局配置 settings.json | 2026-09-19-global-settings-json-design.md |
+| 提示词语言规范 | 2026-09-18-prompt-english-only-design.md |
+| Worktree 隔离 | 2026-09-20-worktree-isolation-design.md |
+| 交互重设计（CLI 判界 / 斜杠选择题化 / 文档拆分） | 2026-09-21-cli-tui-interaction-redesign.md |
+
+会话持久化 + resume、rewind/fork 回溯、事件级落盘、思考强度 effort、终止参数 settings 化、模型侧原生 function calling 迁移等线的设计原文同见 `specs/` 对应日期文档。
+
+## 六、核心风险与对策
+
+| 风险 | 对策 |
+|------|------|
+| Loop 失控（无限循环 / token 超支） | 步数/轮次/节点宽预算 + token 预算 + 墙钟失控保底；超支 paused 不伪造完成 |
+| 端点能力差异（function calling / effort / 缓存） | 核心契约零兼容（不支持即换端点）；effort 阶梯降级；前缀缓存以探针口径观测、缺口归端点侧 |
+| 跨文件重构依赖漏改 | 模型判据 + 测试闭环 + /goal 修正环定向回修 |
+| 误操作与越界写 | safePath / isWithin 路径判界单点 + 权限三态审批 + write 影子快照支撑 /rewind 回退 |
+| 平台差异（shell / 路径 / 文件锁） | ProcessSandbox 与 resolveShell 单点收敛 + CI 双平台矩阵 + 平台差异登记（`docs/PLATFORM.md`） |
