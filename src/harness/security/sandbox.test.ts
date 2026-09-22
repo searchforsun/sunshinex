@@ -232,3 +232,18 @@ test('listFiles glob 语义：** 跨目录段、跳过 node_modules', () => {
   const rel = b.listFiles(dir, '**/*.txt').sort();
   assert.deepEqual(rel, ['sub/deep.txt', 'top.txt']);
 });
+
+test('execBackground：提交即返回 pid，进程在跑，输出直写回调', async () => {
+  const sb = new ProcessSandbox();
+  const chunks: string[] = [];
+  let exited: (() => void) | undefined;
+  const done = new Promise<void>((r) => { exited = r; });
+  const r = await sb.execBackground('echo bg-hello && sleep 1', {
+    onData: (d) => chunks.push(d),
+    onExit: () => exited?.(),
+  });
+  assert.ok(r.ok, '提交应成功');
+  assert.ok(r.ok && r.value.pid > 0);
+  await done;
+  assert.ok(chunks.join('').includes('bg-hello'), 'stdout 应经 onData 回调');
+});

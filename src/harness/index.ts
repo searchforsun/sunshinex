@@ -18,6 +18,7 @@ import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
+import { TaskRegistry } from './tasks';
 import { MemoryPipeline } from './memory/pipeline';
 import { SteeringChannel } from './steering';
 import { writeMemoryFact } from './memory/extractor';
@@ -66,6 +67,8 @@ export class Harness {
   readonly writeSnapshot: ReturnType<typeof makeWriteSnapshotSink>;
   /** 子代理执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
   readonly runner: SubagentRunner;
+  /** 统一后台任务账本（后台任务线规格 D1）：exec/spawn 后台任务的 ID 空间/生命周期/状态单点 */
+  readonly tasks: TaskRegistry;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
@@ -92,8 +95,10 @@ export class Harness {
     this.skills = createSkillsFacade(base);
     // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
     this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
+    // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/，账本进程内承载
+    this.tasks = new TaskRegistry(resolveDataDir(base));
     // 第 7 参注入记忆写入接缝（规格 §4.4 落点表）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
-    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }), opts.ask ?? headlessAskStub, this.writeSnapshot, () => this.safety.activeRoot, opts.todos ?? { set: () => {} })) this.tools.register(t);
+    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }), opts.ask ?? headlessAskStub, this.writeSnapshot, () => this.safety.activeRoot, opts.todos ?? { set: () => {} }, this.tasks)) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
     // 后台沉淀管线（规格 §3.1/§3.5）：收口零等待入队 → 空闲/收尾消化；notify 双通道=链尾 notice 行（模型面）+ notice 事件（用户面），

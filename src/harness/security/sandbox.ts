@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExecResult, ToolBackend } from '../../types';
@@ -29,6 +29,36 @@ export class ProcessSandbox implements ToolBackend {
 
   readFile(absPath: string): string {
     return fs.readFileSync(absPath, 'utf8');
+  }
+
+  /** 后台执行（后台任务线）：detached spawn 自成进程组，task_stop 按组收割；stdout/stderr 增量回调供 TaskRegistry 流式落盘。
+   *  提交即返回 pid，不等待进程退出；进程退出经 onExit 回调落终态（exitCode 语义同 exec：0=成功，非 0/信号=失败）。
+   *  平台形态（spawn/detached/进程组收割）只允许落本文件（CLAUDE.md §14） */
+  async execBackground(cmd: string, opts?: { cwd?: string; onData?: (chunk: string) => void; onExit?: (exitCode: number) => void }): Promise<Result<{ pid: number }>> {
+    const shell = resolveShell();
+    const child = spawn(shell.file, [...shell.args, cmd], {
+      cwd: opts?.cwd,
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    child.stdout?.on('data', (d: Buffer) => opts?.onData?.(d.toString('utf8')));
+    child.stderr?.on('data', (d: Buffer) => opts?.onData?.(d.toString('utf8')));
+    child.on('error', (err: Error) => {
+      opts?.onData?.(err.message);
+      opts?.onExit?.(1);
+    });
+    child.on('close', (code: number | null) => opts?.onExit?.(code ?? 1));
+    return ok({ pid: child.pid ?? 0 });
+  }
+
+  /** 按进程组/进程树终止后台任务（task_stop 单点后端）：POSIX 杀 -pid 组，Windows 杀 /T 树 */
+  killBackground(pid: number): void {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+    } else {
+      try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出，终态行由 close 回调落 */ } }
+    }
   }
 
   /** 写入含父目录自动创建（维持现行 write 语义） */

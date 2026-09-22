@@ -17,6 +17,7 @@ import { FileStore } from '../storage/adapter';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { SessionEvent } from '../types';
+import { TaskRegistry } from './tasks';
 
 test('AgentRegistry：内建四角色可解析、未命中 fail-fast', () => {
   const reg = new AgentRegistry();
@@ -338,5 +339,34 @@ test('同名并发消歧：后到者 label #N 后缀，事件与结论行一致�
     runner.detachParent();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('exec background:true 提交即返回，观察行含任务 ID 与输出路径，输出落任务日志', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgexec-'));
+  try {
+    const store = new FileStore(path.join(root, 'data'));
+    const ctx = new ContextManager(root, store);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const registry = new ToolRegistry();
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, tasks)) registry.register(t);
+    const input = { command: 'echo step-1 && echo step-2', background: true };
+    const p = registry.execute('exec', input, safety);
+    // 等登记：execute 为异步提交（安全链审批→executor.submit），轮询账本出现记录后再断言字段
+    for (let i = 0; i < 40 && tasks.list().length === 0; i++) await new Promise((r2) => setTimeout(r2, 50));
+    const task = tasks.list().at(-1)!;
+    assert.equal(task.kind, 'exec');
+    assert.ok(task.outputFilePath.includes(path.join('data', 'tasks')), '日志落 <dataDir>/tasks/');
+    for (let i = 0; i < 40 && tasks.get(task.id)?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
+    const obs = await p.then((r) => (r.ok ? r.value.stdout : `EXEC_FAILED: ${r.error.message}`));
+    assert.match(obs, /^task b1 started/);
+    assert.ok(obs.includes(task.outputFilePath), '观察行含输出路径');
+    const body = fs.readFileSync(task.outputFilePath, 'utf8');
+    assert.ok(body.includes('step-1') && body.includes('step-2'), '输出流式落日志');
+    assert.ok(body.endsWith('[exit 0]\n'), '终态行落文件尾');
+    assert.equal(tasks.get(task.id)?.status, 'done');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

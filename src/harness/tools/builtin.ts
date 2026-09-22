@@ -10,6 +10,7 @@ import { KnowledgeBase } from '../knowledge/index';
 import { SkillsFacade } from '../skills';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
+import { TaskRegistry } from '../tasks';
 import { MemoryWriteSeam } from '../memory/writer';
 import { MemoryScope } from '../memory/paths';
 import { createWorktree, removeWorktree, readRegistry, worktreesRoot, isDirty, randomWorktreeName } from '../worktree';
@@ -39,7 +40,7 @@ export type MemoryWriteTool = (input: { type: string; content: string; descripti
 }>;
 
 /** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write；执行期以本参数捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }, activeRoot?: () => string | null, todos?: { set(items: { text: string; status: TodoStatus }[]): void }): RegisteredTool[] {
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }, activeRoot?: () => string | null, todos?: { set(items: { text: string; status: TodoStatus }[]): void }, tasks?: TaskRegistry): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -50,9 +51,10 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       parameters: {
         type: 'object',
         additionalProperties: false,
-        required: ['command'],
+        required: ['command', 'background'],
         properties: {
           command: { type: 'string', description: 'Shell command to run (POSIX sh; runs from the project root)' },
+          background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path; poll by reading that file' },
         },
       },
       name: 'exec',
@@ -60,6 +62,18 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       category: 'bash',
       executor: async (input: ToolInput) => {
         const cmd = String(input.command ?? '');
+        if (input.background === true) {
+          if (tasks === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background execution requires a task registry (not wired in this assembly)');
+          if (backend.execBackground === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background exec requires a backend with execBackground');
+          const task = tasks.submit({ kind: 'exec', label: cmd.trim().split(/\s+/)[0] ?? cmd, ownerRun: tasks.currentOwner() });
+          const started = await backend.execBackground(cmd, {
+            cwd: safety.execCwd(),
+            onData: (chunk) => tasks.append(task.id, chunk),
+            onExit: (code) => tasks.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code }),
+          });
+          if (started.ok) task.stop = () => backend.killBackground?.(started.value.pid);
+          return execOut(`task ${task.id} started (output: ${task.outputFilePath})`);
+        }
         // exec cwd 判定单点（规格 §11）：chain.execCwd()——活动根在场取活动根，isolation 子链换根克隆取专属树，缺省装配根
         const r = await safety.run(cmd, { cwd: safety.execCwd() });
         if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
