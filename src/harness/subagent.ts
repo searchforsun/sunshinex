@@ -129,6 +129,9 @@ export function resolveSpawnSpec(
 /** spawn 工具名（父级清单唯一持有者；任何 fork 子面一律派生剔除——「spawn 只在主链工具面」全局不变量） */
 export const SPAWN_TOOL_NAME = 'spawn';
 
+/** todo_write 工具名（规格 D9：fork 子面恒剔除——子代理私有步骤零主链状态污染，进度经既有结论行回写） */
+export const TODO_TOOL_NAME = 'todo_write';
+
 /** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队） */
 export const SUBAGENT_CONCURRENCY_LIMIT = 4;
 
@@ -197,11 +200,15 @@ export class SubagentRunner {
     return `worktree kept for inspection: ${iso.tree}`;
   }
 
-  /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点）：缺省 = 父全量 − spawn；
-   * 显式 tools = 按名取交集（未知名静默忽略，未知名校验属 spawn 输入面职责） */
+  /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点；收窄两件 spawn+todo_write）：缺省 = 父全量 − spawn − todo_write；
+   * 显式 tools = 按名取交集再剔除 todo_write（未知名静默忽略，未知名校验属 spawn 输入面职责；规格 D9 子面恒无 todo_write） */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
-    if (input?.tools && input.tools.length > 0) return this.deps.registry.derive({ only: input.tools });
-    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] });
+    if (input?.tools && input.tools.length > 0) {
+      const child = this.deps.registry.derive({ only: input.tools });
+      child.unregister(TODO_TOOL_NAME);
+      return child;
+    }
+    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME] });
   }
 
   /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、background 两段式未开通 NOT_SUPPORTED、tools 未知名 INVALID_ARG */

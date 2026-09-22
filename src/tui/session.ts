@@ -249,6 +249,7 @@ export class SessionController {
       ...(opts.tier ? { tier: opts.tier } : {}),
       onEvent: (e) => this.onEvent(e),
       onAskUser: opts.onAskUser ?? ((req) => this.askUser(req)),
+      onTodos: (items) => this.setTodos(items),
     });
     const suspendAsker = async (req: ApprovalRequest): Promise<ApprovalDecision> => {
       // 终端化审批：guard ask → 挂起（awaiting-approval + 审批卡）→ 裁决回填 → 继续；

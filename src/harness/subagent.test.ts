@@ -125,6 +125,20 @@ function captureModel(scripted: ScriptedAdapter): { model: ModelAdapter; prompts
   return { model, prompts };
 }
 
+test('Runner 工具面收窄：todo_write 恒不在子面（规格 D9）', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-todo-'));
+  try {
+    const h = makeHarness(tmp);
+    const runner = h.makeRunner(new ScriptedAdapter([JSON.stringify({ done: true, reply: 'ok' })]));
+    const deft = runner.deriveChildRegistry();
+    assert.ok(!deft.has('todo_write'), '缺省派生子面恒无 todo_write');
+    const explicit = runner.deriveChildRegistry({ prompt: 'w', tools: ['todo_write', 'read'] });
+    assert.ok(explicit.has('read'), '显式清单保留 read');
+    assert.ok(!explicit.has('todo_write'), '显式列名同样剔除');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
 test('Runner fork 组装：子首帧 = 主链严格前缀 + 尾追（role/task 行只在尾部）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-prefix-'));
   try {

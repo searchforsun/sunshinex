@@ -3,7 +3,7 @@ import { Harness } from '../harness';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, ReasoningEffort, RunOutcome, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, ReasoningEffort, RunOutcome, SessionEvent, TodoItem } from '../types';
 
 export interface TuiRuntimeOpts {
   /** 问询接缝（ask_question 消费方）：SessionController 缺省接自身问询管线；外部注入用于 headless/脚本 */
@@ -20,6 +20,8 @@ export interface TuiRuntimeOpts {
   effort?: ReasoningEffort;
   /** manual 模式审批回调（guard asker 装配点）；会话结束由调用方 clearSessionAllows */
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
+  /** todo_write 接缝（todo_write 规格 D6）：模型更新清单的会话回调（setTodos）；缺省不注入＝Harness no-op */
+  onTodos?: (items: TodoItem[]) => void;
 }
 
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
@@ -41,6 +43,7 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.mode ? { mode: opts.mode } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+    ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
   });
   if (opts.mode === 'manual' && opts.onApproval) harness.security.setAsker(opts.onApproval);
 
