@@ -6,6 +6,7 @@ import { builtinTools } from './tools/builtin';
 import { makeWriteSnapshotSink } from './tools/write-snapshot';
 import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
+import { makeTaskStopTool } from './tools/task-stop';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
@@ -137,6 +138,8 @@ export class Harness {
       agents,
     );
     this.tools.register(makeSpawnTool(this.runner));
+    // task_stop：后台任务停止工具（规格 D8），账本在场恒装配
+    this.tools.register(makeTaskStopTool(this.tasks));
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,

@@ -221,7 +221,7 @@ export interface TodoItem {
 }
 
 /** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子代理派生） */
-export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent' | 'ask' | 'worktree' | 'todo';
+export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent' | 'ask' | 'worktree' | 'todo' | 'task';
 
 /** AskQuestion 问询请求（ask_question 工具入参钳制后的装配面；customIndex=「Other…」末项下标，allowCustom 时存在） */
 export interface AskUserRequest {

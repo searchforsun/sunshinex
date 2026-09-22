@@ -71,6 +71,8 @@ export class SecurityGuard {
     if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return { allowed: true };
     // spawn 无直接 IO 副作用（派生即编排；子代理内部每个工具调用独立过安全链），manual 下免审批放行
     if (tool === 'spawn') return { allowed: true };
+    // task_stop：后台账本状态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），manual 下免审批对齐 spawn 先例
+    if (tool === 'task_stop') return { allowed: true };
     return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual mode requires interactive confirmation' };
   }
 
