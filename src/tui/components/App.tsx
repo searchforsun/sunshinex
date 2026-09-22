@@ -6,6 +6,7 @@ import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
 import { ApprovalDecision } from '../../types';
 import { SessionController, TuiState, paginateOptions } from '../session';
+import { SLASH_COMMANDS } from '../slash-commands';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
@@ -23,8 +24,8 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
   return undefined;
 }
 
-/** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序） */
-export const SLASH_COMMANDS = ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/plan', '/goal', '/model', '/model-effort', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
+/** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序）——唯一源在 ../slash-commands，此处重导出保持既有 import 路径 */
+export { SLASH_COMMANDS };
 
 /** 斜杠补全候选：按 buffer（已 trim）前缀匹配命令清单；非 / 前缀或无匹配返回空 */
 export function slashCandidates(buffer: string): string[] {
