@@ -27,11 +27,21 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
 /** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序）——唯一源在 ../slash-commands，此处重导出保持既有 import 路径 */
 export { SLASH_COMMANDS };
 
-/** 斜杠补全候选：按 buffer（已 trim）前缀匹配命令清单；非 / 前缀或无匹配返回空 */
-export function slashCandidates(buffer: string): string[] {
+/** 斜杠补全候选：按 buffer（已 trim）前缀匹配合并池（内置在前 + extra 技能命令池，规格 D7）；非 / 前缀或无匹配返回空 */
+export function slashCandidates(buffer: string, extra: readonly string[] = []): string[] {
   const t = buffer.trim();
   if (!t.startsWith('/')) return [];
-  return SLASH_COMMANDS.filter((c) => c.startsWith(t));
+  return [...SLASH_COMMANDS, ...extra].filter((c) => c.startsWith(t));
+}
+
+/** Tab 斜杠补全推演（纯函数，规格 D7）：池内 exact → 池内下一位 + 空格（末位回环首位）；否则前缀候选首项 + 空格；无候选 undefined。缺省池=内置清单（与既有行为逐字节等价） */
+export function nextSlashCompletion(buffer: string, pool: readonly string[] = SLASH_COMMANDS): string | undefined {
+  const token = buffer.trim();
+  if (!token.startsWith('/')) return undefined;
+  const exactIdx = pool.indexOf(token);
+  if (exactIdx >= 0) return pool[(exactIdx + 1) % pool.length] + ' ';
+  const candidates = pool.filter((c) => c.startsWith(token));
+  return candidates.length > 0 ? candidates[0] + ' ' : undefined;
 }
 
 /** 输入框占位文案（按会话状态分流；纯函数便于断言） */
@@ -187,6 +197,8 @@ export function App({
   const spawnCallSeqs = (msgs: TuiState['messages']): number[] =>
     msgs.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail).map((m) => m.seq);
   const [history, setHistory] = React.useState<string[]>(store.history);
+  // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；回合边界 effect 刷新（Task 3 接线），空池=纯内置、行为逐字节等价
+  const [skillExtra] = React.useState<string[]>([]);
   const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
   // 输入框回填（/rewind //fork，规格 §7）：锚点轮输入取回输入框可编辑重发；每帧检查、takeBackfill 幂等（无回填 no-op，无重渲染环）
@@ -436,14 +448,7 @@ export function App({
     // 形态整屏重放，视口永远只有一份历史）——无模态态，↑↓ 永远归输入历史，运行中随时可切
     if (key.tab) {
       if (buffer.startsWith('/')) {
-        const token = buffer.trim();
-        const exactIdx = SLASH_COMMANDS.indexOf(token);
-        const next =
-          exactIdx >= 0
-            ? SLASH_COMMANDS[(exactIdx + 1) % SLASH_COMMANDS.length] + ' '
-            : slashCandidates(token).length > 0
-              ? slashCandidates(token)[0] + ' '
-              : undefined;
+        const next = nextSlashCompletion(buffer, [...SLASH_COMMANDS, ...skillExtra]);
         if (next !== undefined) {
           setBuffer(next);
           setCursor(next.length);
@@ -646,4 +651,3 @@ export function App({
     </Box>
   );
 }
-

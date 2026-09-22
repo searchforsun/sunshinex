@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { render } from '../test-ink';
-import { App, slashCandidates, SLASH_COMMANDS } from './App';
+import { App, slashCandidates, nextSlashCompletion, SLASH_COMMANDS } from './App';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
 import { initialRetained } from '../ui-state';
@@ -18,6 +18,25 @@ test('slashCandidates：/ 前缀匹配命令清单，非 / 前缀返回空', () 
   assert.deepEqual(slashCandidates('/ne'), ['/new']);
   assert.deepEqual(slashCandidates('xyz'), []);
   assert.deepEqual(slashCandidates('/xyz'), []);
+});
+
+test('slashCandidates：extra 合并内置在前（技能命令池，规格 D7）', () => {
+  assert.deepEqual(slashCandidates('/he', ['/hello-world']), ['/help', '/hello-world'], '内置在前、extra 按序追加');
+  const withExtra = slashCandidates('/', ['/hello-world']);
+  assert.equal(withExtra.length, SLASH_COMMANDS.length + 1, '合并池全量');
+  assert.deepEqual(withExtra.slice(0, SLASH_COMMANDS.length), SLASH_COMMANDS, '缺省段逐字节等价（A9 钉）');
+  assert.deepEqual(slashCandidates('/hel', ['/hello-world']), ['/help', '/hello-world'], 'hel 同时命中 /help 与 /hello-world');
+  assert.deepEqual(slashCandidates('/xyz', ['/hello-world']), []);
+});
+
+test('nextSlashCompletion：合并池 Tab 循环推演（纯函数，规格 D7）', () => {
+  const pool = [...SLASH_COMMANDS, '/hello-world'];
+  assert.equal(nextSlashCompletion('/hello-world', pool), '/help ', '池末位 exact 回环首位（A11）');
+  assert.equal(nextSlashCompletion('/new', pool), '/resume ', '内置 exact → 池内下一位（既有邻位钉）');
+  assert.equal(nextSlashCompletion('/ne', pool), '/new ', '前缀候选首项 + 空格');
+  assert.equal(nextSlashCompletion('/xyz', pool), undefined, '无候选');
+  assert.equal(nextSlashCompletion('xyz', pool), undefined, '非 / 前缀');
+  assert.equal(nextSlashCompletion('/new', SLASH_COMMANDS), '/resume ', '缺省池与既有 SLASH_COMMANDS 行为等价');
 });
 
 test('App：Tab 斜杠补全为完整命令 + 空格，再次 Tab 循环到下一命令', async () => {
