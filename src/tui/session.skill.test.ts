@@ -8,6 +8,15 @@ import { ScriptedAdapter } from '../model/adapter';
 import { resolveDataDir } from '../config/data-dir';
 import { listSessions, parseJournalFile, reduceJournal } from './session-journal';
 
+// 关断 learned 沉淀（控制面键 SUNSHINEX_LEARNED_SKILLS，env > 缺省 on）：本套件第 5 例的
+// 成功任务会经 settle 管线把 goal 沉淀为 learned 技能、写进本文件私有数据目录
+// （SUNSHINEX_DATA_DIR 钉定的 .data-test/tui-session.skill/skills），目录跨运行残留会污染
+// 技能清单断言（deepEqual 全量序 / 9 项计数），单文件第二次运行必红。消费点
+// （MemoryPipeline.runDeterministic / consumeLearned）对该键逐项实时判门，off 即零落盘；
+// 且 learnedSkills 不受 /memory 会话覆盖影响，模块加载期设置一次即可全文件生效。
+// 必须在任意 SessionController 构造前（即本行之后）执行——判门是运行时求值，装配期不冻结。
+process.env.SUNSHINEX_LEARNED_SKILLS = 'off';
+
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
