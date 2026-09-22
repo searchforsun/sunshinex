@@ -1,11 +1,11 @@
-import { moveCursor, OptionSelector, togglePick } from './OptionSelector';
+import { moveCursor, OptionSelector, togglePick, filterOptions } from './OptionSelector';
 import type { AskUserRequest } from '../../types';
 import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
 import { ApprovalDecision } from '../../types';
-import { SessionController, TuiState } from '../session';
+import { SessionController, TuiState, paginateOptions } from '../session';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
@@ -67,6 +67,30 @@ export function planSelectorOptions(): { label: string; description?: string }[]
   ];
 }
 
+/** filterable 卡视图派生单点（规格 D8）：空词=全量分页视图（More…/Back… 导航行无映射席位）；有词=全量过滤直出、无导航行。
+ *  map[i]=视图第 i 行对应的 q.options 原下标；moreIdx/backIdx=-1 表示该导航行不在场 */
+export function deriveFilterableView(
+  full: Array<{ label: string; description?: string }>,
+  query: string,
+  page: number,
+): { view: Array<{ label: string; description?: string }>; map: number[]; moreIdx: number; backIdx: number } {
+  if (query.length > 0) {
+    const { view, map } = filterOptions(full, query);
+    return { view, map, moreIdx: -1, backIdx: -1 };
+  }
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(full.length / pageSize));
+  const realCount = Math.max(0, Math.min(pageSize, full.length - page * pageSize));
+  const map: number[] = [];
+  for (let i = 0; i < realCount; i++) map.push(page * pageSize + i);
+  let moreIdx = -1;
+  let backIdx = -1;
+  let navAt = map.length;
+  if (page + 1 < totalPages) { moreIdx = navAt; navAt += 1; }
+  if (page > 0) { backIdx = navAt; }
+  return { view: paginateOptions(full, page).options, map, moreIdx, backIdx };
+}
+
 /** Home/End 终端转义序列体：ink3 不解析这些功能键，按 ESC 剥离前后的两种形态识别（xterm 与应用模式两族） */
 const HOME_SEQS = ['[H', 'OH', '[1~', '[7~'];
 const END_SEQS = ['[F', 'OF', '[4~', '[8~'];
@@ -104,6 +128,13 @@ export function App({
   const setQPicked = (v: number[]): void => { qPickedRef.current = v; setQPickedState(v); };
   const setQCustom = (v: boolean): void => { qCustomRef.current = v; setQCustomState(v); };
   const setQText = (v: string): void => { qTextRef.current = v; setQTextState(v); };
+  // filterable 卡筛选态（规格 D6/D7）：词与页码 ref 真值 + state 渲染，随新问询卡归位清零
+  const [qFilter, setQFilterState] = React.useState('');
+  const [qPage, setQPageState] = React.useState(0);
+  const qFilterRef = React.useRef('');
+  const qPageRef = React.useRef(0);
+  const setQFilter = (v: string): void => { qFilterRef.current = v; setQFilterState(v); };
+  const setQPage = (v: number): void => { qPageRef.current = v; setQPageState(v); };
   // 审批/plan 选择器光标（T3 迁移）：ref 真值 + state 渲染；状态转入时归位首项
   const [aCursorState, setACursorState] = React.useState(0);
   const aCursorRef = React.useRef(0);
@@ -127,6 +158,8 @@ export function App({
       setQPicked([]);
       setQCustom(false);
       setQText('');
+      setQFilter('');
+      setQPage(0);
     }
     if (!state.question && qRef.current) qRef.current = undefined;
   }, [state.question]);
@@ -236,6 +269,7 @@ export function App({
   }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
+  const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter, qPage) : undefined;
 
   useInput((input: string, key: RawKey) => {
 
@@ -270,6 +304,40 @@ export function App({
     // 分支置于全局键之前（Esc 在此不回落清缓冲）；取值一律走 ref 真值，不依赖处理器闭包的新鲜度
     if (state.status === 'awaiting-question' && state.question) {
       const q = state.question;
+      // filterable 卡（规格 D6–D8）：可打印字符（含数字）进筛选词、Backspace 删字、Esc 两段式、
+      // 词变 cursor 归 0；↑/↓/Space/Enter 作用于视图，导航行翻页、实项经 map 落原下标
+      if (q.filterable) {
+        const { view, map, moreIdx, backIdx } = deriveFilterableView(q.options, qFilterRef.current, qPageRef.current);
+        if (key.ctrl && input === 'c') { controller.resolveAskAnswer({ type: 'dismissed' }); controller.interrupt(); return; }
+        if (key.escape) {
+          if (qFilterRef.current.length > 0) { setQFilter(''); setQCursor(0); return; }
+          controller.resolveAskAnswer({ type: 'dismissed' });
+          return;
+        }
+        if (key.backspace || key.delete) { setQFilter(qFilterRef.current.slice(0, -1)); setQCursor(0); return; }
+        if (key.upArrow) { setQCursor(moveCursor(qCursorRef.current, view.length, -1)); return; }
+        if (key.downArrow) { setQCursor(moveCursor(qCursorRef.current, view.length, 1)); return; }
+        if (key.return || input === ' ') {
+          if (qCursorRef.current === moreIdx) { setQPage(qPageRef.current + 1); setQCursor(0); return; }
+          if (qCursorRef.current === backIdx) { setQPage(qPageRef.current - 1); setQCursor(0); return; }
+          const orig = map[qCursorRef.current] ?? -1;
+          if (orig < 0) return;
+          if (key.return) {
+            if (q.multiple) {
+              const labels = qPickedRef.current.map((i) => q.options[i]?.label).filter((l): l is string => typeof l === 'string');
+              controller.resolveAskAnswer(labels.length > 0 ? { type: 'selected', labels } : { type: 'dismissed' });
+            } else {
+              controller.resolveAskAnswer({ type: 'selected', labels: [q.options[orig]!.label] });
+            }
+            return;
+          }
+          if (q.multiple) setQPicked(togglePick(qPickedRef.current, orig, true));
+          else controller.resolveAskAnswer({ type: 'selected', labels: [q.options[orig]!.label] });
+          return;
+        }
+        if (input && !key.ctrl && !key.meta) { setQFilter(qFilterRef.current + input); setQCursor(0); return; }
+        return; // 模态：其余键不落输入缓冲
+      }
       if (qCustomRef.current) {
         if (key.escape) { setQCustom(false); setQText(''); return; }
         if (key.return) {
@@ -539,12 +607,20 @@ export function App({
         <Box flexDirection="column">
           <OptionSelector
             question={state.question.question}
-            options={state.question.options}
+            options={fq ? fq.view : state.question.options}
             cursor={qCursor}
             picked={qPicked}
             multiple={state.question.multiple}
+            filter={fq ? qFilter : undefined}
+            indexMap={fq ? fq.map : undefined}
             title={t('AskQuestion', '问询')}
-            hint={qCustom ? t('type your answer · enter submit · esc back to options', '输入回答 · 回车提交 · Esc 返回选项') : undefined}
+            hint={
+              fq
+                ? t('type to filter · enter submit · esc clear/cancel', '输入筛选 · 回车提交 · Esc 清词/取消')
+                : qCustom
+                  ? t('type your answer · enter submit · esc back to options', '输入回答 · 回车提交 · Esc 返回选项')
+                  : undefined
+            }
           />
           {qCustom ? (
             <Box paddingX={1}><Text>❯ {qText}▊</Text></Box>

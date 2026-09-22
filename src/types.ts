@@ -231,6 +231,8 @@ export interface AskUserRequest {
   multiple?: boolean;
   /** 「Other…」自由输入项下标（allowCustom 时由工具执行面合成于末项） */
   customIndex?: number;
+  /** 筛选卡标记（规格 D6，仅 TUI 渲染面消费）：调用方按 items.length > 8 设置；CLI stdin 编号回落与 headless 桩忽略降级 */
+  filterable?: boolean;
 }
 
 /** AskQuestion 裁决三态：勾选 / 自定义文本 / 放弃（放弃属正常观察非错误，模型据此调整策略） */
