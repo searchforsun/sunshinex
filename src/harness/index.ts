@@ -130,6 +130,7 @@ export class Harness {
         model: this.model,
         root: base,
         rootProvider: () => this.safety.activeRoot,
+        tasks: this.tasks,
         ledger,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       },

@@ -1,16 +1,45 @@
 import { execFile, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ExecResult, ToolBackend } from '../../types';
+import { ExecOpts, ExecResult, ToolBackend } from '../../types';
 import { Result, ok, fail } from '../../result';
 
 /** process 执行后端：命令与文件 IO 的统一执行面；Docker/SSH 后端同接口预留，1D 不实现 */
 export class ProcessSandbox implements ToolBackend {
   readonly name = 'process';
 
-  async exec(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {
+  async exec(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
     const timeoutMs = opts?.timeoutMs ?? 1_800_000;
     const shell = resolveShell();
+    if (opts?.timeoutToBackground) {
+      // 超时转后台形态（后台任务线规格 D5，对标 CC 超时自动转后台）：自管计时器——到点不杀进程，把存活子进程连同
+      // 已缓冲输出交回调用方登记为后台任务；正常结束/真失败语义与 execFile 形态一致。
+      return new Promise((resolve) => {
+        const child = spawn(shell.file, [...shell.args, cmd], { cwd: opts?.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+        let stdout = '';
+        let stderr = '';
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          resolve(ok({ exitCode: 0, stdout, stderr, timedOut: true, child }));
+        }, timeoutMs);
+        child.stdout?.on('data', (c: Buffer) => { if (stdout.length < 32 * 1024 * 1024) stdout += c.toString('utf8'); });
+        child.stderr?.on('data', (c: Buffer) => { if (stderr.length < 1024 * 1024) stderr += c.toString('utf8'); });
+        child.on('error', (e: Error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(fail('EXEC_FAILED', e.message));
+        });
+        child.on('close', (code) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(code === 0 ? ok({ exitCode: 0, stdout, stderr, timedOut: false }) : fail('EXEC_FAILED', stderr || `command failed with exit code ${code}`));
+        });
+      });
+    }
     return new Promise((resolve) => {
       execFile(shell.file, [...shell.args, cmd], { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
         if (err) {

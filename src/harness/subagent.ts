@@ -15,6 +15,7 @@ import { MemoryStore } from './memory/store';
 import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
+import { TaskRegistry } from './tasks';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
 /** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 恒英文单语（角色行直接进 fork 提示词） */
@@ -160,6 +161,8 @@ export interface SubagentRunnerDeps {
   router?: ModelRouter;
   ledger?: RunLedger;
   onEvent?: (e: SessionEvent) => void;
+  /** 后台任务账本（T2 两段式接缝）：spawn background:true 时立即登记任务并异步执行，结论行落任务日志（规格 D6） */
+  tasks?: TaskRegistry;
 }
 
 /** 子代理生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
@@ -211,13 +214,10 @@ export class SubagentRunner {
     return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME] });
   }
 
-  /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、background 两段式未开通 NOT_SUPPORTED、tools 未知名 INVALID_ARG */
+  /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、tools 未知名 INVALID_ARG（T2 起两段式开通，background 分支放行） */
   validateSpawnInput(input: SubagentSpawnInput): void {
     if (!input.agent_id && !input.prompt) {
       throw new CodedToolError('INVALID_ARG', 'agent_id and prompt are both missing');
-    }
-    if (input.background === true) {
-      throw new CodedToolError('NOT_SUPPORTED', 'Background two-phase spawn is not available yet; await the result synchronously');
     }
     for (const t of input.tools ?? []) {
       if (!this.deps.registry.has(t)) {
@@ -250,10 +250,47 @@ export class SubagentRunner {
     return { scope, line };
   }
 
+  /** spawn 两段式入口（规格 D6，对标 CC Task run_in_background）：立即登记 subagent 任务并同步返回回执，
+   * 子代理转场外异步执行——结论行只落任务日志（模型以 read 查看终态行），主链零追加；stop 触发协作式取消 */
+  spawnBackground(input: SubagentSpawnInput): { taskId: string; outputFilePath: string } {
+    const ledger = this.deps.tasks;
+    if (ledger === undefined) {
+      throw new CodedToolError('NOT_SUPPORTED', 'background spawn requires a task registry (not wired in this assembly)');
+    }
+    const label = input.agent_id ?? 'subagent';
+    const task = ledger.submit({ kind: 'subagent', label, ownerRun: ledger.currentOwner() });
+    const budget = this.getBudget?.();
+    const abort = new AbortController();
+    task.stop = () => abort.abort();
+    // fire-and-forget：错误全程 fail-bounded 落日志，绝不冒泡主链
+    void (async () => {
+      try {
+        ledger.append(task.id, `[spawn background] ${input.agent_id ?? 'inline'}: ${input.prompt ?? ''}\n`);
+        const r = await this.runSubagent(input, {
+          ...(budget !== undefined ? { budget } : {}),
+          signal: abort.signal,
+          taskId: task.id,
+        });
+        if (r.ok) {
+          ledger.append(task.id, `[conclusion] ${firstLine(r.value.reply)}\n`);
+          ledger.finish(task.id, 'done');
+        } else {
+          ledger.append(task.id, `[failed] ${r.error.code}: ${r.error.message}\n`);
+          ledger.finish(task.id, 'failed');
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        ledger.append(task.id, `[failed] ${msg}\n`);
+        ledger.finish(task.id, 'failed');
+      }
+    })();
+    return { taskId: task.id, outputFilePath: task.outputFilePath };
+  }
+
   /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */
   async runSubagent(
     input: SubagentSpawnInput,
-    opts?: { taskLine?: string; label?: string; budget?: SubagentBudget },
+    opts?: { taskLine?: string; label?: string; budget?: SubagentBudget; signal?: AbortSignal; taskId?: string },
   ): Promise<Result<{ reply: string; tokens: number }>> {
     const budget = opts?.budget ?? this.getBudget?.();
     if (!budget) {
@@ -379,7 +416,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null spawns an inline subagent' },
         label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
         tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
-        background: { type: ['boolean', 'null'], description: 'Reserved for async two-phase spawning; true is rejected as NOT_SUPPORTED in v1' },
+        background: { type: ['boolean', 'null'], description: 'true = two-phase spawn: returns a task id immediately, the subagent runs in the background and its conclusion lands in the task log (inspect via read)' },
       },
     },
     name: SPAWN_TOOL_NAME,
@@ -389,6 +426,10 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     executor: async (input) => {
       const spec = input as SubagentSpawnInput;
       runner.validateSpawnInput(spec);
+      if (spec.background === true) {
+        const started = runner.spawnBackground(spec);
+        return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})`, stderr: '', timedOut: false };
+      }
       const r = await runner.runSubagent(spec);
       if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
       return { exitCode: 0, stdout: r.value.reply, stderr: '', timedOut: false };

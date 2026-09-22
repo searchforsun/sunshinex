@@ -247,3 +247,23 @@ test('execBackground：提交即返回 pid，进程在跑，输出直写回调',
   await done;
   assert.ok(chunks.join('').includes('bg-hello'), 'stdout 应经 onData 回调');
 });
+
+test('exec timeoutToBackground：到点不杀进程、返回存活子进程与已缓冲输出', async () => {
+  const sb = new ProcessSandbox();
+  const r = await sb.exec('echo warm && sleep 5', { timeoutMs: 150, timeoutToBackground: true });
+  assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.code}`);
+  assert.equal(r.value.timedOut, true);
+  assert.ok(r.value.stdout.includes('warm'), '超时前已缓冲输出随 child 交回');
+  const child = r.value.child!;
+  assert.ok(child.pid, '存活子进程句柄');
+  assert.equal(child.killed, false);
+  child.kill();
+});
+
+test('exec timeoutToBackground：正常快速命令语义不变', async () => {
+  const sb = new ProcessSandbox();
+  const r = await sb.exec('echo fast-ok', { timeoutToBackground: true });
+  assert.ok(r.ok);
+  assert.equal(r.value.timedOut, false);
+  assert.equal(r.value.stdout.trim(), 'fast-ok');
+});

@@ -331,13 +331,22 @@ export interface ExecResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  /** 超时转后台（后台任务线规格 D5）：timedOut=true 时携带仍存活的子进程，调用方登记后台任务并接管输出流 */
+  child?: import('child_process').ChildProcess;
+}
+
+/** exec 透传选项（后台任务线 T2）：timeoutToBackground=true 时超时不杀进程，把存活子进程经 ExecResult.child 交回调用方 */
+export interface ExecOpts {
+  cwd?: string;
+  timeoutMs?: number;
+  timeoutToBackground?: boolean;
 }
 
 /** Tool 执行后端：命令与文件 IO 的统一执行面（process 现行，Docker/SSH 预留接口位） */
 export interface ToolBackend {
   /** 后端标识，如 process / docker / ssh */
   readonly name: string;
-  exec(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>>;
+  exec(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>>;
   /** 后台执行（后台任务线）：提交即返回 pid；stdout/stderr 经 onData 增量回调，进程退出经 onExit 回调（exitCode 语义同 exec）。
    *  平台形态（spawn/detached/进程组收割）只允许落 ProcessSandbox 本文件（CLAUDE.md §14） */
   execBackground?(cmd: string, opts?: { cwd?: string; onData?: (chunk: string) => void; onExit?: (exitCode: number) => void }): Promise<Result<{ pid: number }>>;

@@ -75,7 +75,22 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           return execOut(`task ${task.id} started (output: ${task.outputFilePath})`);
         }
         // exec cwd 判定单点（规格 §11）：chain.execCwd()——活动根在场取活动根，isolation 子链换根克隆取专属树，缺省装配根
-        const r = await safety.run(cmd, { cwd: safety.execCwd() });
+        // 前台超时转后台（规格 D5，对标 CC）：账本在场且非 sleep 开头时带 timeoutToBackground，到点不杀进程、登记转后台
+        const wantsBg = tasks !== undefined && !/^\s*sleep(?=\s|$)/.test(cmd.trim());
+        const r = await safety.run(cmd, { cwd: safety.execCwd(), ...(wantsBg ? { timeoutToBackground: true } : {}) });
+        if (r.ok && r.value.timedOut && r.value.child) {
+          const child = r.value.child;
+          const ledger = tasks!;
+          const task = ledger.submit({ kind: 'exec', label: cmd.trim().split(/\s+/)[0] ?? cmd, ownerRun: ledger.currentOwner() });
+          if (r.value.stdout !== '') ledger.append(task.id, r.value.stdout);
+          if (r.value.stderr !== '') ledger.append(task.id, r.value.stderr);
+          child.stdout?.on('data', (c: Buffer) => ledger.append(task.id, c.toString('utf8')));
+          child.stderr?.on('data', (c: Buffer) => ledger.append(task.id, c.toString('utf8')));
+          child.on('close', (code) => ledger.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code ?? -1 }));
+          task.stop = () => { if (process.platform !== 'win32') process.kill(-child.pid!, 'SIGTERM'); else child.kill(); };
+          ledger.append(task.id, '[moved to background after timeout]\n');
+          return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath})`);
+        }
         if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
         throw new Error(`${r.error.code}: ${r.error.message}`);
       },

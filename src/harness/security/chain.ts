@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
-import { ExecResult, ToolBackend } from '../../types';
+import { ExecOpts, ExecResult, ToolBackend } from '../../types';
 import { dataDirReal } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
@@ -171,7 +171,7 @@ export class SafetyChain {
     return isWithin(dataDirReal(this.root), real);
   }
 
-  run(cmd: string, opts?: { cwd?: string; timeoutMs?: number }): Promise<Result<ExecResult>> {
+  run(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
     return this.backend.exec(cmd, opts);
   }
 

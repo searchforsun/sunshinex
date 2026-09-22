@@ -18,6 +18,7 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { SessionEvent } from '../types';
 import { TaskRegistry } from './tasks';
+import type { ExecOpts } from '../types';
 
 test('AgentRegistry：内建四角色可解析、未命中 fail-fast', () => {
   const reg = new AgentRegistry();
@@ -366,6 +367,54 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     assert.ok(body.includes('step-1') && body.includes('step-2'), '输出流式落日志');
     assert.ok(body.endsWith('[exit 0]\n'), '终态行落文件尾');
     assert.equal(tasks.get(task.id)?.status, 'done');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** 小超时后端：把前台 exec 的 timeoutMs 钉到 120ms 构造超时转后台边界（CLAUDE.md §12 允许测试显式小值） */
+class QuickTimeoutSandbox extends ProcessSandbox {
+  exec(cmd: string, opts?: ExecOpts) {
+    return super.exec(cmd, { ...opts, timeoutMs: opts?.timeoutMs ?? 120 });
+  }
+}
+
+test('前台 exec 触超时转后台：观察行含 moved to background、任务接管存活子进程', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgtimeout-'));
+  try {
+    const store = new FileStore(path.join(root, 'data'));
+    const ctx = new ContextManager(root, store);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new QuickTimeoutSandbox(), new DryRun(), root);
+    const registry = new ToolRegistry();
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, tasks)) registry.register(t);
+    const r = await registry.execute('exec', { command: 'echo warm && sleep 5' }, safety);
+    assert.ok(r.ok);
+    assert.match(r.value.stdout, /^command moved to background after timeout: task b1/);
+    const task = tasks.get('b1')!;
+    assert.equal(task.status, 'running', '超时瞬间任务转后台登记');
+    assert.ok(fs.readFileSync(task.outputFilePath, 'utf8').includes('warm'), '超时前已缓冲输出随任务落日志');
+    task.stop?.(); // 收尾：终结存活子进程
+    for (let i = 0; i < 40 && tasks.get('b1')?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
+    assert.notEqual(tasks.get('b1')?.status, 'running');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sleep 开头命令超时不转后台：EXEC_TIMEOUT 照旧失败（规格 D5 豁免）', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sleepexc-'));
+  try {
+    const store = new FileStore(path.join(root, 'data'));
+    const ctx = new ContextManager(root, store);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new QuickTimeoutSandbox(), new DryRun(), root);
+    const registry = new ToolRegistry();
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, tasks)) registry.register(t);
+    const r = await registry.execute('exec', { command: 'sleep 5' }, safety);
+    assert.ok(!r.ok);
+    assert.match(r.error.message, /EXEC_TIMEOUT/);
+    assert.equal(tasks.list().length, 0, '豁免路径零任务登记');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
