@@ -1103,8 +1103,8 @@ export class SessionController {
       return;
     }
     if (cmd === '/resume') {
-      // 恢复入口（规格 §6/D6）：无参选择卡（mtime 降序 + 首条输入摘要），>8 条分页（More…/Back…）；
-      // 带参形态已由裸形式守卫统一无法识别——此处只认无参翻页选择
+      // 恢复入口（规格 §6/D6）：无参选择卡（mtime 降序 + 首条输入摘要），>8 条 filterable 全量卡（筛选在渲染层）、≤8 条分页；
+      // 带参形态已由裸形式守卫统一无法识别——此处只认无参
       if (this.state.status !== 'idle') {
         this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'), { level: 'warn' });
         return;
@@ -1275,7 +1275,7 @@ export class SessionController {
     this.pushMsg('system', t(`Skill loaded: ${m.name} (id=${m.id}) — included in context for subsequent tasks`, `技能已加载：${m.name}（id=${m.id}）——随后续任务进上下文`));
   }
 
-  /** /memory-rm：多选卡批删（规格 D5/D6）：Space 勾选、Enter 批删、Esc 取消零删除；>8 条分页、跨页勾选累积 */
+  /** /memory-rm：多选卡批删（规格 D5/D6）：Space 勾选、Enter 批删、Esc 取消零删除；>8 条 filterable 全量卡（渲染层筛选）、≤8 条分页、勾选跨页累积 */
   private async memoryRm(): Promise<void> {
     if (this.state.status !== 'idle') {
       this.pushMsg('system', t('A task is running; /memory-rm unavailable now', '当前有任务进行中，暂不能执行 /memory-rm'), { level: 'warn' });
