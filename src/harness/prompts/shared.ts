@@ -14,9 +14,8 @@ export function render(template: string, vars: Record<string, string>): string {
 
 export const IDENTITY_LINE = 'You are the SunshineX agent: complete tasks by calling tools.';
 
-/** 输出约定（跨交互面通用）：唯一格式耦合点是 Markdown 本身；呈现效果由 TUI/GUI 各自负责，提示词不感知渲染层 */
-export const MARKDOWN_LINE =
-  'Use Markdown for the final reply; prefer tables for comparisons and multi-field enumerations.';
+/** 输出约定（跨交互面通用）：唯一格式耦合点是 Markdown 本身；呈现效果由 TUI/GUI 各自负责，提示词不感知渲染层、不预设版式偏好 */
+export const MARKDOWN_LINE = 'Use Markdown for the final reply.';
 
 export const TOOL_POLICY_LINE =
   'Tool choice: whenever a dedicated tool covers the action (read/grep/glob and other read-only queries), use it; exec is only the fallback for actions no dedicated tool covers; do not chain exec cat/head/ls for a single lookup.';
