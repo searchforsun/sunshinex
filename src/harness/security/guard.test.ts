@@ -67,3 +67,12 @@ test('破坏性底线优先于显式 allow 规则', () => {
   const g = new SecurityGuard(p, 'dontAsk');
   assert.equal(g.preToolUse('Bash', { command: 'rm -rf x' }).allowed, false);
 });
+
+test('todo_write 三模式放行（零 IO 副作用，规格 D4）；deny 规则仍先行', () => {
+  const p = new PolicyEngine();
+  p.add('deny', 'todo_write');
+  for (const mode of ['manual', 'plan', 'dontAsk'] as const) {
+    assert.equal(new SecurityGuard(p, mode).preToolUse('todo_write', { todos: [] }).allowed, false, `${mode} 下 deny 规则先行`);
+    assert.equal(new SecurityGuard(new PolicyEngine(), mode).preToolUse('todo_write', { todos: [] }).allowed, true, `${mode} 下缺省放行`);
+  }
+});

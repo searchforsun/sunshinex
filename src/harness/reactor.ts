@@ -453,11 +453,11 @@ export class Reactor {
       (calls.length > 1 &&
         calls.some((c) => {
           const cat = this.deps.registry.get(c.name)?.category;
-          return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === undefined;
+          return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'todo' || cat === undefined;
         }));
     const rejection = overLimit
       ? `Parallel batch rejected: exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools; use fewer calls per round`
-      : 'Parallel batch rejected: exec and ask must run exclusively on their own; remove them and retry, or fall back to a single-tool call';
+      : 'Parallel batch rejected: exec, ask, worktree and todo must run exclusively on their own; remove them and retry, or fall back to a single-tool call';
 
     // 轮内链行共用同一轮步号（step 形参）：护栏按去重步号计模型轮、压缩水位/收尾回写行级过滤对同号行天然一致
     const callIds = calls.map((_, i) => `step:${step}-idx:${i}`);

@@ -72,7 +72,7 @@ function walkStrict(node: JsonSchema, pathKey: string, loose: ReadonlySet<string
 test('内建工具全量声明 parameters 且对象节点显式闭合（裸装配与全接缝装配两态一致）', () => {
   withRegistries(({ bare, full }) => {
     const bareNames = bare.list().map((t) => t.name).sort();
-    assert.deepEqual(bareNames, ['exec', 'glob', 'grep', 'kb_search', 'read', 'skill', 'webfetch', 'websearch', 'worktree', 'write']);
+    assert.deepEqual(bareNames, ['exec', 'glob', 'grep', 'kb_search', 'read', 'skill', 'todo_write', 'webfetch', 'websearch', 'worktree', 'write']);
     const fullNames = full.list().map((t) => t.name).sort();
     assert.deepEqual(fullNames, [...bareNames, 'ask_question', 'memory_write', SPAWN_TOOL_NAME].sort());
     for (const registry of [bare, full]) {
@@ -158,4 +158,41 @@ test('spawn 工厂声明 parameters（至少其一约束留执行面）', () => 
     'spawn parameters must mirror SubagentSpawnInput',
   );
   assert.deepEqual((p.properties?.tools as JsonSchema).items?.type, 'string');
+});
+
+test('todo_write 执行面：条数钳制 >50 拒绝、非法 status 拒绝、facade 未注入报 todo_not_configured', async () => {
+  const tmp = tmpDir('sunshinex-todowrite-exec-');
+  try {
+    const safety = makeSafety(tmp);
+    const reg = new ToolRegistry();
+    // 不注入第 12 参：恒注册但未接线（bare 形态）
+    for (const t of builtinTools(safety, tmp)) reg.register(t);
+    const tool = reg.get('todo_write');
+    assert.ok(tool, 'todo_write 恒注册（对标 skill 先例）');
+    // 现场校正：CodedToolError 经 ToolRegistry.execute 转 Result 错误通道（skill_not_configured 同款先例），
+    // 直调 executor 时 code 不在 message 内——断言走 registry 通道的 error.code
+    const miss = await reg.execute('todo_write', { todos: [] }, safety);
+    assert.equal(miss.ok, false);
+    if (!miss.ok) assert.equal(miss.error.code, 'todo_not_configured');
+    const wired: Array<{ text: string; status: string }> = [];
+    const reg2 = new ToolRegistry();
+    for (const t of builtinTools(safety, tmp, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, { set: (items) => wired.push(...items) })) reg2.register(t);
+    const wiredTool = reg2.get('todo_write')!;
+    // 现场校正（同上）：INVALID_ARG 断言走 registry 错误通道
+    const over = await reg2.execute('todo_write', { todos: Array.from({ length: 51 }, (_, i) => ({ text: `t${i}`, status: 'pending' })) }, safety);
+    assert.equal(over.ok, false);
+    if (!over.ok) assert.match(over.error.code, /INVALID_ARG/);
+    if (!over.ok) assert.match(over.error.message, /50/);
+    const bad = await reg2.execute('todo_write', { todos: [{ text: 'a', status: 'doing' }] }, safety);
+    assert.equal(bad.ok, false);
+    if (!bad.ok) {
+      assert.equal(bad.error.code, 'INVALID_ARG');
+      assert.match(bad.error.message, /status/);
+    }
+    const okRun = await reg2.execute('todo_write', { todos: [{ text: 'a', status: 'completed' }, { text: 'b', status: 'in_progress' }] }, safety);
+    assert.equal(okRun.ok, true);
+    assert.equal(wired.length, 2, 'facade 收到全量替换清单');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

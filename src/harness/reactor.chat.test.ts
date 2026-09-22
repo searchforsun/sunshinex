@@ -169,3 +169,28 @@ test('finish=tool_calls 但调用批为空：纠偏观察回喂不炸（fail-bou
   assert.equal(r.reply, 'fine');
 });
 
+
+test('todo_write 混入并行批：整批拒绝、每调用各得拒绝回喂、todo_write 未执行（规格 D4 单发独占）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-todo1-'));
+  fs.writeFileSync(path.join(tmp, 'd.txt'), 'x');
+  const adapter = new ChatStub([
+    {
+      finish: 'tool_calls',
+      content: '',
+      toolCalls: [
+        { id: 'c1', name: 'todo_write', argsJson: '{"todos":[{"text":"a","status":"pending"}]}' },
+        { id: 'c2', name: 'read', argsJson: '{"path":"d.txt"}' },
+      ],
+    },
+    stop('ok'),
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 5 });
+  assert.equal(r.done, true);
+  const second = adapter.requests[1].messages;
+  const toolMsgs = second.filter((m) => m.role === 'tool');
+  assert.equal(toolMsgs.length, 2);
+  for (const m of toolMsgs) {
+    assert.ok(m.role === 'tool' && /rejected/i.test(m.content), 'each call must receive the rejection feedback');
+  }
+});

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';
 import { SafetyChain } from '../security/chain';
-import { ExecResult, ToolInput } from '../../types';
+import { ExecResult, ToolInput, TodoStatus } from '../../types';
 import { Result } from '../../result';
 import { KnowledgeBase } from '../knowledge/index';
 import { SkillsFacade } from '../skills';
@@ -39,7 +39,7 @@ export type MemoryWriteTool = (input: { type: string; content: string; descripti
 }>;
 
 /** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write；执行期以本参数捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }, activeRoot?: () => string | null): RegisteredTool[] {
+export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }, activeRoot?: () => string | null, todos?: { set(items: { text: string; status: TodoStatus }[]): void }): RegisteredTool[] {
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -276,7 +276,52 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
     },
   ];
-
+  // todo_write 模型工具（todo_write 规格 D3/D4/D10）：会话待办清单全量替换写点；恒注册沿 skill 先例
+  // （未装配 facade 执行报 todo_not_configured，Task 3 Harness 接线注入）；零 IO 副作用的进程内状态写：
+  // 免审批由 guard 三模式放行承载，单发独占由 reactor 并行闸门判定键 category:'todo' 承载
+  tools.push({
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['todos'],
+      properties: {
+        todos: {
+          type: 'array',
+          description: 'Full replacement todo list (empty array clears the list; max 50 items)',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['text', 'status'],
+            properties: {
+              text: { type: 'string', description: 'Task description' },
+              status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+            },
+          },
+        },
+      },
+    },
+    name: 'todo_write',
+    description:
+      'Write the session todo list (full replacement). Use it for complex multi-step tasks: create the list up front, keep exactly one item in_progress at a time, mark items completed as soon as they are done, and rewrite the whole list whenever it changes. Skip it for simple single-step tasks.',
+    category: 'todo',
+    executor: async (input: ToolInput) => {
+      if (!todos) throw new CodedToolError('todo_not_configured', 'todo list is not wired in this runtime');
+      const arr = input.todos;
+      if (!Array.isArray(arr)) throw new CodedToolError('INVALID_ARG', 'todos must be an array');
+      if (arr.length > 50) throw new CodedToolError('INVALID_ARG', `todos exceeds the limit of 50 items (got ${arr.length})`);
+      const items = arr.map((raw) => {
+        const o = (raw ?? {}) as { text?: unknown; status?: TodoStatus };
+        if (typeof o.text !== 'string' || o.text.trim() === '') throw new CodedToolError('INVALID_ARG', 'each todo needs a non-empty text');
+        if (o.status !== 'pending' && o.status !== 'in_progress' && o.status !== 'completed')
+          throw new CodedToolError('INVALID_ARG', `status must be pending | in_progress | completed (got ${String(o.status)})`);
+        return { text: o.text, status: o.status };
+      });
+      todos.set(items);
+      const done = items.filter((it) => it.status === 'completed').length;
+      const wip = items.filter((it) => it.status === 'in_progress').length;
+      return execOut(`todo list updated: ${items.length} items (${done} completed, ${wip} in progress)`);
+    },
+  });
   // 第 8 可选参（规格 §3.7 memory_write）：缺省不注入＝清单与第 7 参引入前逐字节一致（对齐既有「可选参两态不变」不变式）；
   // 注入才注册——接缝必在（无「未配置」分支），错误一律经 CodedToolError 走 Result 错误通道，永不炸任务
   // 记忆 scope 透传要求（Task 6 接线）：executor 闭包持有的是**装配期**那条链的 memoryScope，而子代理 fork 的收窄链
@@ -432,5 +477,6 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       throw new CodedToolError('INVALID_ARG', `unknown worktree action: ${action} (expect create|exit|list)`);
     },
   });
+
   return tools;
 }
