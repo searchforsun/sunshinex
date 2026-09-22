@@ -302,7 +302,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     name: 'todo_write',
     description:
-      'Write the session todo list (full replacement). Use it for complex multi-step tasks: create the list up front, keep exactly one item in_progress at a time, mark items completed as soon as they are done, and rewrite the whole list whenever it changes. Skip it for simple single-step tasks.',
+      'Write the session todo list (full replacement). Use it for complex multi-step tasks: create the list up front, keep exactly one item in_progress at a time, mark items completed as soon as they are done, and rewrite the whole list whenever it changes. Task boundaries do not reset the list — append new tasks instead of starting from scratch. Skip it for simple single-step tasks.',
     category: 'todo',
     executor: async (input: ToolInput) => {
       if (!todos) throw new CodedToolError('todo_not_configured', 'todo list is not wired in this runtime');
