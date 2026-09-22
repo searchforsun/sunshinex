@@ -80,7 +80,7 @@ test('/resume 无参：Esc 放弃 → Resume cancelled 回执且停留当前会�
   }
 });
 
-test('/resume：>8 条分页——首页 8 条 + More…，翻页后 1 条 + Back…，Esc 取消', async () => {
+test('/resume：>8 条 filterable 全量卡——一次问询直达恢复（规格 D8）', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = pinDataDir(tmp);
@@ -94,18 +94,15 @@ test('/resume：>8 条分页——首页 8 条 + More…，翻页后 1 条 + Bac
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"忽略"}']) });
     const p = ctrl.submit('/resume');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    const page0 = ctrl.getState().question?.options.map((o) => o.label) ?? [];
-    assert.equal(page0.length, 9, '首页 8 条 + More…（规格 D6：取代「仅列 8 条」手填通道）');
-    assert.equal(page0[8], 'More…');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: ['More…'] });
-    await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    const page1 = ctrl.getState().question?.options.map((o) => o.label) ?? [];
-    assert.equal(page1.length, 2, '第 2 页 1 条 + Back…');
-    assert.equal(page1[1], 'Back…');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: [page1[0]!] });
+    const q = ctrl.getState().question;
+    assert.equal(q?.filterable, true, '>8 启用筛选');
+    assert.equal(q?.options.length, 9, '全量直出、无 More… 导航行');
+    assert.ok(!q?.options.some((o) => o.label === 'More…'), '会话层不注入导航行');
+    const labels = q?.options.map((o) => o.label) ?? [];
+    ctrl.resolveAskAnswer({ type: 'selected', labels: [labels[0]!] });
     await p;
     await ctrl.waitIdle();
-    assert.equal(ctrl.getState().status, 'idle', '翻页选中可恢复目标会话');
+    assert.equal(ctrl.getState().status, 'idle', '选中即恢复目标会话');
   } finally {
     process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });

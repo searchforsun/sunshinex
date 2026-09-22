@@ -617,6 +617,26 @@ export class SessionController {
       this.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'), { level: 'warn' });
       return;
     }
+    // >8 项切 filterable 卡（规格 D6/D8）：全量直出、渲染层筛选，一次问询直达；≤8 项维持既有循环形态不变
+    if (sessions.length > 8) {
+      const items = sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') }));
+      const answer = await this.askUser({
+        question: t('Resume which session? (type to filter)', '恢复哪个会话？（输入即筛选）'),
+        options: items,
+        filterable: true,
+      });
+      if (answer.type !== 'selected') {
+        this.pushMsg('system', t('Resume cancelled', '已取消恢复'));
+        return;
+      }
+      const pick = sessions.find((s) => s.id === answer.labels[0]);
+      if (!pick) {
+        this.pushMsg('system', t('No such session: ' + (answer.labels[0] ?? ''), '没有这个会话：' + (answer.labels[0] ?? '')), { level: 'warn' });
+        return;
+      }
+      this.restoreFromSession(pick);
+      return;
+    }
     const moreLabel = t('More…', '更多…');
     const backLabel = t('Back…', '上一页…');
     let page = 0;
@@ -1268,6 +1288,21 @@ export class SessionController {
       return;
     }
     const items = records.map((r) => ({ label: r.slug, description: `${r.type} · ${r.description} (${r.created})` }));
+    // >8 条切 filterable 卡（规格 D6/D8）：一次问询勾选批删；≤8 条维持既有分页循环不变
+    if (items.length > 8) {
+      const answer = await this.askUser({
+        question: t('Select memories to delete (Space to toggle, Enter to delete; type to filter)', '选择要删除的记忆（Space 勾选，Enter 批量删除；输入即筛选）'),
+        options: items,
+        multiple: true,
+        filterable: true,
+      });
+      if (answer.type !== 'selected' || answer.labels.length === 0) {
+        this.pushMsg('system', t('No memories removed', '未删除任何记忆'));
+        return;
+      }
+      this.applyMemoryRemoval(store, answer.labels);
+      return;
+    }
     const moreLabel = t('More…', '更多…');
     const backLabel = t('Back…', '上一页…');
     const picked: string[] = [];
@@ -1290,6 +1325,11 @@ export class SessionController {
       if (answer.labels.includes(backLabel)) { page -= 1; continue; }
       break;
     }
+    this.applyMemoryRemoval(store, picked);
+  }
+
+  /** 批删执行面（/memory-rm 分页与 filterable 两形态共用单点）：去重→逐条删除→回执 */
+  private applyMemoryRemoval(store: MemoryStore, picked: string[]): void {
     const unique = [...new Set(picked)];
     if (unique.length === 0) {
       this.pushMsg('system', t('No memories removed', '未删除任何记忆'));

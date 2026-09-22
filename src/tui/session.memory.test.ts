@@ -116,26 +116,21 @@ test('/memory-rm 多选卡：勾选批删、Esc 零删、空索引守卫', async
   });
 });
 
-test('/memory-rm 分页：>8 条 More… 翻页、跨页勾选累积批删', async () => {
+test('/memory-rm >8 条 filterable 全量卡：一次问询勾选批删（规格 D8）', async () => {
   await withRoot(async (root) => {
     const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
     for (let i = 1; i <= 9; i++) await ctrl.submit(`/memory-add memo number ${i}`);
     const store = new MemoryStore(root);
     assert.equal(store.count(), 9, '前提：九条记忆');
-
     const p = ctrl.submit('/memory-rm');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    const page0 = ctrl.getState().question?.options.map((o) => o.label) ?? [];
-    assert.equal(page0.length, 9, '8 条 + More…');
-    assert.equal(page0[8], 'More…');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: [page0[0]!, 'More…'] });
-    await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    const page1 = ctrl.getState().question?.options.map((o) => o.label) ?? [];
-    assert.equal(page1.length, 2, '第 2 页 1 条 + Back…');
-    assert.equal(page1[1], 'Back…');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: [page1[0]!] });
+    const q = ctrl.getState().question;
+    assert.equal(q?.filterable, true, '>8 启用筛选');
+    assert.equal(q?.options.length, 9, '全量直出、无 More… 导航行');
+    const labels = q?.options.map((o) => o.label) ?? [];
+    ctrl.resolveAskAnswer({ type: 'selected', labels: [labels[0]!, labels[1]!] });
     await p;
-    assert.equal(store.count(), 7, '跨页勾选累积批删 2 条');
+    assert.equal(store.count(), 7, '勾选 2 条已批删');
     assert.ok(sysTexts(ctrl).some((x) => /Removed 2 memories|已删除 2 条/.test(x)), '批删回执');
   });
 });
