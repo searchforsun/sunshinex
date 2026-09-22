@@ -198,7 +198,11 @@ export function App({
     msgs.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail).map((m) => m.seq);
   const [history, setHistory] = React.useState<string[]>(store.history);
   // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；回合边界 effect 刷新（Task 3 接线），空池=纯内置、行为逐字节等价
-  const [skillExtra] = React.useState<string[]>([]);
+  const [skillExtra, setSkillExtra] = React.useState<string[]>([]);
+  // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；回合边界（sessionTurns 变化）刷新，不逐键读盘
+  React.useEffect(() => {
+    setSkillExtra(controller.skillCommandIds());
+  }, [controller, state.metrics.sessionTurns]);
   const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
   // 输入框回填（/rewind //fork，规格 §7）：锚点轮输入取回输入框可编辑重发；每帧检查、takeBackfill 幂等（无回填 no-op，无重渲染环）

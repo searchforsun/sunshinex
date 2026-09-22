@@ -16,6 +16,7 @@ import * as path from 'path';
 import { SessionJournal, listSessions, newSessionId, sessionsDir, parseJournalFile, reduceJournal, listAnchors, branchFrom, type SessionMeta } from './session-journal';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { resolveDataDir } from '../config/data-dir';
+import { SLASH_COMMANDS } from './slash-commands';
 import { MemoryStore } from '../harness/memory/store';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
 import { scanMemoryText } from '../harness/memory/guards';
@@ -156,8 +157,8 @@ export function paginateOptions(
   return { options, page, totalPages };
 }
 
-function slashHelp(): string[] {
-  return [
+function slashHelp(skills?: Array<{ id: string; name: string; description: string }>): string[] {
+  const lines = [
     t('Commands:', '命令：'),
     t('  /init          analyze & write SUNSHINE.md', '  /init          分析生成/完善 SUNSHINE.md'),
     t('  /goal          run the verify-fix loop: /goal <goal>', '  /goal          运行完整验收修正环：/goal <目标>'),
@@ -180,6 +181,15 @@ function slashHelp(): string[] {
     t('  /status        session & ledger summary', '  /status        会话与账本摘要'),
     t('  /help          show this list', '  /help          本清单'),
   ];
+  // 技能命令段（规格 D8）：id 字典序列示，空池省略；展示 name + 描述截 128（formatSkillsIndex 口径）
+  if (skills && skills.length > 0) {
+    lines.push(t('Skills:', '技能命令：'));
+    for (const s of skills) {
+      const desc = s.description.length > 128 ? `${s.description.slice(0, 128)}…` : s.description;
+      lines.push(t(`  /${s.id}  ${s.name} — ${desc}`, `  /${s.id}  ${s.name} — ${desc}`));
+    }
+  }
+  return lines;
 }
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
@@ -959,12 +969,14 @@ export class SessionController {
     // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；
     // 自由文本参数命令（目标/关注点/记忆内容）不在枚举范围，带参放行
     const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add']);
-    if (!FREE_TEXT_ARGS.has(cmd) && text !== cmd) {
+    // 技能命令（规格 2026-09-22-skill-as-command D4）：意图尾参为自由文本，与 FREE_TEXT_ARGS 同豁免；命中与否由尾部技能分发面裁决
+    const isSkillCommand = this.skillCommandIds().includes(cmd.slice(1));
+    if (!FREE_TEXT_ARGS.has(cmd) && !isSkillCommand && text !== cmd) {
       this.pushMsg('system', t('Unrecognized command. Use /help to see available commands', '无法识别命令，使用 /help 查看使用方法'), { level: 'warn' });
       return;
     }
     if (cmd === '/help') {
-      this.pushMsg('system', slashHelp().join('\n'));
+      this.pushMsg('system', slashHelp(this.skillHelpEntries()).join('\n'));
       return;
     }
     if (cmd === '/init') {
@@ -1185,7 +1197,57 @@ export class SessionController {
       this.pushMsg('system', t(`Persistent memory ${on ? 'on' : 'off'} for this session (persist with the SUNSHINEX_AUTO_MEMORY env var)`, `本会话持久记忆已${on ? '开启' : '关闭'}（持久化请设环境变量 SUNSHINEX_AUTO_MEMORY）`));
       return;
     }
+    // 技能命令分发（规格 2026-09-22-skill-as-command D2–D5）：内置命令全部落空后查注册表（内置优先 D1——撞名技能不注册，此处天然不可达）
+    if (this.skillCommandIds().includes(cmd.slice(1))) {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t(`A task is running; ${cmd} unavailable now`, `当前有任务进行中，暂不能执行 ${cmd}`), { level: 'warn' });
+        return;
+      }
+      const loaded = this.loadSkill(cmd.slice(1));
+      const intent = text.slice(cmd.length).trim();
+      // D4：确定性加载成功后意图原样派发标准环（与 /goal 同款解析）；裸形式无意图止于加载（D3）；failed 不派发
+      if (loaded !== 'failed' && intent) await this.runTaskFlow(intent);
+      return;
+    }
     this.pushMsg('system', t('Unrecognized command. Use /help to see available commands', '无法识别命令，使用 /help 查看使用方法'), { level: 'warn' });
+  }
+
+  /** 技能命令注册表（规格 2026-09-22-skill-as-command D6 单点）：list() 现读磁盘（学习沉淀即时可见）；
+   *  按 D2 字符集过滤、D1 内置词排除（内置优先——撞名技能不注册，仅可经 /skill 卡加载），id 字典序 */
+  skillCommandIds(): string[] {
+    const builtin = new Set(SLASH_COMMANDS.map((c) => c.slice(1)));
+    return this.runtime.harness.skills
+      .list()
+      .filter((m) => /^[a-z0-9][a-z0-9_-]*$/.test(m.id) && !builtin.has(m.id))
+      .map((m) => m.id)
+      .sort();
+  }
+
+  /** /help 技能段数据源（规格 D8）：与命令注册表同池，附展示 name 与描述（缺失清单字段时降级 id） */
+  private skillHelpEntries(): Array<{ id: string; name: string; description: string }> {
+    return this.skillCommandIds().map((id) => {
+      const m = this.runtime.harness.skills.get(id);
+      return { id, name: m?.name ?? id, description: m?.description ?? '' };
+    });
+  }
+
+  /** 技能加载单点（规格 D3，自 skillFlow 尾段提取）：链上去重 → resolve → 链尾追持久注入 → 回执；
+   *  /skill 选择卡与 /<技能id> 命令同源消费；failed 不派发后续任务（D4） */
+  private loadSkill(id: string): 'loaded' | 'already' | 'failed' {
+    if (this.runtime.harness.context.chainView().some((s) => s.action === 'skill' && s.observation.includes(`(id=${id} v=`))) {
+      this.pushMsg('system', t(`Skill ${id} already loaded in this session`, `技能 ${id} 本会话已加载`));
+      return 'already';
+    }
+    const r = this.runtime.harness.skills.resolve(id);
+    if (!r.ok) {
+      this.pushMsg('system', t(`Skill load failed: ${r.error.message}`, `技能加载失败：${r.error.message}`), { level: 'warn' });
+      return 'failed';
+    }
+    const m = r.value.manifest;
+    // 链尾追持久注入（先例 D2）：头行对齐 loop skillRef 既有格式，正文随后续每帧经链携带
+    this.runtime.harness.context.appendChain([{ action: 'skill', observation: `[Skill] ${m.name} (id=${m.id} v=${m.version})\n\n${r.value.body}` }]);
+    this.pushMsg('system', t(`Skill loaded: ${m.name} (id=${m.id}) — included in context for subsequent tasks`, `技能已加载：${m.name}（id=${m.id}）——随后续任务进上下文`));
+    return 'loaded';
   }
 
   /** /memory：无参列索引（查看态） */
@@ -1269,10 +1331,7 @@ export class SessionController {
       this.pushMsg('system', t(`Skill load failed: ${r.error.message}`, `技能加载失败：${r.error.message}`), { level: 'warn' });
       return;
     }
-    const m = r.value.manifest;
-    // 链尾追持久注入（规格 D2）：头行对齐 loop skillRef 既有格式，正文随后续每帧经链携带
-    this.runtime.harness.context.appendChain([{ action: 'skill', observation: `[Skill] ${m.name} (id=${m.id} v=${m.version})\n\n${r.value.body}` }]);
-    this.pushMsg('system', t(`Skill loaded: ${m.name} (id=${m.id}) — included in context for subsequent tasks`, `技能已加载：${m.name}（id=${m.id}）——随后续任务进上下文`));
+    this.loadSkill(id);
   }
 
   /** /memory-rm：多选卡批删（规格 D5/D6）：Space 勾选、Enter 批删、Esc 取消零删除；>8 条 filterable 全量卡（渲染层筛选）、≤8 条分页、勾选跨页累积 */
