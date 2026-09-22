@@ -204,6 +204,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 | `/goal <目标>` | 标准验收修正环，见 5.2 |
 | `/plan <目标>` | 先规划后执行，见 5.1 |
 | `/status` | 会话与账本摘要 |
+| `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径；后台 exec 与后台子代理产生，模型以 `read` 查看输出、以 `task_stop` 工具停止） |
 | `/model` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效） |
 | `/model-effort` | 切换思考强度：选择卡七档 + default，回执实际生效档 |
 | `/compact [关注点]` | 立即压缩上下文，可指定优先保留的内容；接近窗口上限时也会自动压缩 |
