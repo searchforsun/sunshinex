@@ -108,7 +108,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
       name: 'skill',
       description:
-        'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; oversized output is truncated and saved to disk (full output path shown in the result)',
+        'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; use only ids that appear in the available skills list — never guess or invent a name; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => {
         if (!skills) throw new CodedToolError('skill_not_configured', 'Skill facade is not wired in this run');
@@ -297,7 +297,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
       name: 'memory_write',
       description:
-        'Persist ONE durable fact to long-term memory when it is worth remembering across sessions — a user preference, corrective feedback, or a non-obvious project fact. Be conservative: it is fine to save nothing. Duplicates return the existing entry. Fails when memory is disabled.',
+        'Persist ONE durable fact to long-term memory when it is worth remembering across sessions — a user preference, corrective feedback, or a non-obvious project fact. Be conservative: it is fine to save nothing. Do NOT save anything derivable from the repo or code (file contents, git history, code structure) or transient task state (current todo, in-progress step, plan progress). Duplicates return the existing entry. Fails when memory is disabled.',
       category: 'write',
       executor: async (input: ToolInput) => {
         const type = String(input.type ?? '');
