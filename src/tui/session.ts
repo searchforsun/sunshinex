@@ -176,6 +176,7 @@ function slashHelp(): string[] {
     t('  /memory-on     enable memory for this session', '  /memory-on     本会话开启持久记忆'),
     t('  /memory-off    disable memory for this session', '  /memory-off    本会话关闭持久记忆'),
     t('  /tasks         list background tasks (id/kind/status/label, output path)', '  /tasks         列出后台任务（id/类型/状态/标签，输出路径）'),
+    t('  /skill         load a skill into context (selector, type to filter)', '  /skill         加载技能进上下文（选择卡，输入筛选）'),
     t('  /status        session & ledger summary', '  /status        会话与账本摘要'),
     t('  /help          show this list', '  /help          本清单'),
   ];
@@ -988,6 +989,11 @@ export class SessionController {
       ));
       return;
     }
+    if (cmd === '/skill') {
+      // 技能选择卡（规格 D1/D5）：裸形式、单选选定即链尾追加载；带参形态由裸形式守卫统一无法识别
+      await this.skillFlow();
+      return;
+    }
     if (cmd === '/new') {
       // /new 轮转化（规格 D2）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回
       this.journal?.rotate(newSessionId());
@@ -1203,6 +1209,50 @@ export class SessionController {
     } else {
       this.pushMsg('system', r.error.message, { level: 'error' });
     }
+  }
+
+  /** /skill 技能选择卡（规格 D1–D5）：单选选定即加载；正文经链尾追持久注入（与模型 skill 工具观察同语义），
+   *  链上同 id 去重；>8 项 filterable（筛选在渲染层，会话层全量直出） */
+  private async skillFlow(): Promise<void> {
+    if (this.state.status !== 'idle') {
+      this.pushMsg('system', t('A task is running; /skill unavailable now', '当前有任务进行中，暂不能执行 /skill'), { level: 'warn' });
+      return;
+    }
+    const manifests = [...this.runtime.harness.skills.list()].sort((a, b) =>
+      a.name === b.name ? (a.id < b.id ? -1 : 1) : a.name < b.name ? -1 : 1,
+    );
+    if (manifests.length === 0) {
+      this.pushMsg('system', t('No skills available — add .sunshinex/skills/<id>/SKILL.md', '暂无可用技能——放置 SKILL.md 到 .sunshinex/skills/<id>/ 目录'), { level: 'warn' });
+      return;
+    }
+    const labelToId = new Map<string, string>();
+    const options = manifests.map((m) => {
+      const label = labelToId.has(m.name) ? `${m.name} (${m.id})` : m.name;
+      labelToId.set(label, m.id);
+      return { label, description: m.description.length > 128 ? `${m.description.slice(0, 128)}…` : m.description };
+    });
+    const answer = await this.askUser({
+      question: t('Load which skill? (type to filter)', '加载哪个技能？（输入即筛选）'),
+      options,
+      ...(options.length > 8 ? { filterable: true } : {}),
+    });
+    if (answer.type !== 'selected') return; // dismissed 静默（规格 D4，沿既有卡取消语义）
+    const id = labelToId.get(answer.labels[0] ?? '');
+    if (id === undefined) return;
+    const loaded = this.runtime.harness.context.chainView().some((s) => s.action === 'skill' && s.observation.includes(`(id=${id} v=`));
+    if (loaded) {
+      this.pushMsg('system', t(`Skill ${id} already loaded in this session`, `技能 ${id} 本会话已加载`));
+      return;
+    }
+    const r = this.runtime.harness.skills.resolve(id);
+    if (!r.ok) {
+      this.pushMsg('system', t(`Skill load failed: ${r.error.message}`, `技能加载失败：${r.error.message}`), { level: 'warn' });
+      return;
+    }
+    const m = r.value.manifest;
+    // 链尾追持久注入（规格 D2）：头行对齐 loop skillRef 既有格式，正文随后续每帧经链携带
+    this.runtime.harness.context.appendChain([{ action: 'skill', observation: `[Skill] ${m.name} (id=${m.id} v=${m.version})\n\n${r.value.body}` }]);
+    this.pushMsg('system', t(`Skill loaded: ${m.name} (id=${m.id}) — included in context for subsequent tasks`, `技能已加载：${m.name}（id=${m.id}）——随后续任务进上下文`));
   }
 
   /** /memory-rm：多选卡批删（规格 D5/D6）：Space 勾选、Enter 批删、Esc 取消零删除；>8 条分页、跨页勾选累积 */

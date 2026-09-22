@@ -13,6 +13,8 @@ test('slashCandidates：/ 前缀匹配命令清单，非 / 前缀返回空', () 
   assert.deepEqual(slashCandidates('/'), SLASH_COMMANDS);
   assert.ok(SLASH_COMMANDS.includes('/resume'), '/resume 已登记补全清单');
   assert.ok(SLASH_COMMANDS.includes('/goal'), '/goal 已登记补全清单');
+  assert.ok(SLASH_COMMANDS.includes('/skill'), '/skill 已登记补全清单');
+  assert.deepEqual(slashCandidates('/sk'), ['/skill']);
   assert.deepEqual(slashCandidates('/ne'), ['/new']);
   assert.deepEqual(slashCandidates('xyz'), []);
   assert.deepEqual(slashCandidates('/xyz'), []);

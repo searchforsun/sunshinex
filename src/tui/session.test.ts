@@ -236,13 +236,13 @@ test('会话控制器：done 步携带 phase → 不落阶段行（答复正文�
   }
 });
 
-test('会话控制器：/help 列出全部 18 条扁平命令，旧子命令语法零残留', async () => {
-  const tmp = tmpdir('sunshinex-sess-help18-');
+test('会话控制器：/help 列出全部 20 条扁平命令，旧子命令语法零残留', async () => {
+  const tmp = tmpdir('sunshinex-sess-help20-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
     await ctrl.submit('/help');
     const text = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
-    for (const c of ['/help', '/init', '/status', '/new', '/resume', '/rewind', '/fork', '/compact', '/plan', '/goal', '/model', '/model-effort', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off']) {
+    for (const c of ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/plan', '/goal', '/model', '/model-effort', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off']) {
       assert.ok(text.includes(c), `missing ${c}`);
     }
     assert.ok(!/\/model effort|\/memory add|\/memory rm|\/memory gc|\/memory on\b|\/memory off\b/.test(text), '旧子命令语法零残留');
