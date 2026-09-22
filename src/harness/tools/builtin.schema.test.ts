@@ -84,7 +84,7 @@ test('内建工具全量声明 parameters 且对象节点显式闭合（裸装�
 test('逐工具 required/properties 与执行器真实入参一一对应', () => {
   withRegistries(({ full }) => {
     const expected: Record<string, string[]> = {
-      exec: ['command'],
+      exec: ['command', 'background'],
       read: ['path', 'range'],
       skill: ['id', 'params'],
       write: ['path', 'content'],

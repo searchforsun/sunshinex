@@ -8,6 +8,7 @@ import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { Harness } from '../harness';
+import { TaskRegistry } from '../harness/tasks';
 import { RunOutcome, TuiRuntime } from './runtime';
 import type { ChatRequest } from '../types';
 
@@ -628,6 +629,42 @@ test('会话控制器：turns/steps 会话累计——跨任务累加、done 帧
     m = ctrl.getState().metrics;
     assert.equal(m.sessionTurns, 0, '/new 归零轮次');
     assert.equal(m.sessionSteps, 0, '/new 归零步数');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/tasks：列后台任务表回执（id/kind/status/label/输出路径）', async () => {
+  const tmp = tmpdir('sunshinex-sess-tasks-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const tasks = (ctrl as unknown as { runtime: { harness: { tasks: TaskRegistry } } }).runtime.harness.tasks;
+    const t1 = tasks.submit({ kind: 'exec', label: 'sleep-loop' });
+    const t2 = tasks.submit({ kind: 'subagent', label: 'planner' });
+    tasks.finish(t2.id, 'done');
+    await ctrl.submit('/tasks');
+    await ctrl.waitIdle();
+    const s = ctrl.getState();
+    const sys = s.messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
+    assert.match(sys, new RegExp(`${t1.id}`), '回执含任务 id');
+    assert.match(sys, /sleep-loop/, '回执含 label');
+    assert.match(sys, /running/, '回执含状态');
+    assert.match(sys, new RegExp(`${t2.id}[^\\n]*done`), '终态任务随表回执');
+    assert.match(sys, /task_stop|\/tasks/, '回执提示停止/查看手段');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/tasks 空账本：回执「无后台任务」而非空表', async () => {
+  const tmp = tmpdir('sunshinex-sess-tasks-empty-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    await ctrl.submit('/tasks');
+    await ctrl.waitIdle();
+    const s = ctrl.getState();
+    const sys = s.messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
+    assert.match(sys, /no background tasks|无后台任务/i, '空账本显式回执');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

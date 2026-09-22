@@ -359,16 +359,23 @@ export class SubagentRunner {
           : {}),
       });
       try {
-        const result = await child.run(
-          { goal: spec.taskLine },
-          {
-            maxSteps: budget.maxSteps,
-            tokenCap: budget.tokenCap,
-            ...(budget.deadlineAt !== undefined ? { deadlineAt: budget.deadlineAt } : {}),
-            ...(budget.tier !== undefined ? { tier: budget.tier } : {}),
-            scope: 'fork',
-            seedHistory,
-          },
+        // fork 收割作用域（规格 D9）：子代理执行期内发起/转后台的任务缺省归属本 fork owner，收口统一收割防泄漏
+        const ledger = this.deps.tasks;
+        const forkOwner = `fork:${finalLabel}`;
+        const runInScope = <T>(fn: () => Promise<T>): Promise<T> =>
+          ledger !== undefined ? ledger.runInOwnerScope(forkOwner, fn) : fn();
+        const result = await runInScope(() =>
+          child.run(
+            { goal: spec.taskLine },
+            {
+              maxSteps: budget.maxSteps,
+              tokenCap: budget.tokenCap,
+              ...(budget.deadlineAt !== undefined ? { deadlineAt: budget.deadlineAt } : {}),
+              ...(budget.tier !== undefined ? { tier: budget.tier } : {}),
+              scope: 'fork',
+              seedHistory,
+            },
+          ),
         );
         if (result.done && result.reply) {
           // 子代理返回制：私有步骤零主链污染，终态恰好一行结论行；isolation 树收口先行（保留时附路径行）
@@ -396,6 +403,8 @@ export class SubagentRunner {
       const left = (this.inFlightLabels.get(label) ?? 1) - 1;
       if (left <= 0) this.inFlightLabels.delete(label);
       else this.inFlightLabels.set(label, left);
+      // fork 收割（规格 D9）：子代理收口终结其名下全部 running 后台任务，零泄漏
+      this.deps.tasks?.reap(`fork:${finalLabel}`);
     }
   }
 }

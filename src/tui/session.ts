@@ -175,6 +175,7 @@ function slashHelp(): string[] {
     t('  /memory-gc     consolidate memories now', '  /memory-gc     立即整理记忆'),
     t('  /memory-on     enable memory for this session', '  /memory-on     本会话开启持久记忆'),
     t('  /memory-off    disable memory for this session', '  /memory-off    本会话关闭持久记忆'),
+    t('  /tasks         list background tasks (id/kind/status/label, output path)', '  /tasks         列出后台任务（id/类型/状态/标签，输出路径）'),
     t('  /status        session & ledger summary', '  /status        会话与账本摘要'),
     t('  /help          show this list', '  /help          本清单'),
   ];
@@ -971,6 +972,20 @@ export class SessionController {
     if (cmd === '/status') {
       const s = this.runtime.harness.ledger.summary();
       this.pushMsg('system', t(`Ledger: ${s.runs} runs / ${s.tokens} tokens; messages: ${this.state.messages.length}; todos: ${this.state.todos.length}`, `账本：${s.runs} runs / ${s.tokens} tokens；消息 ${this.state.messages.length} 条；待办 ${this.state.todos.length} 项`));
+      return;
+    }
+    if (cmd === '/tasks') {
+      // 后台任务表（规格 D7，对标 CC /tasks）：id/kind/status/label + 输出路径；模型可 read 查看输出、task_stop 停止
+      const list = this.runtime.harness.tasks.list();
+      if (list.length === 0) {
+        this.pushMsg('system', t('No background tasks.', '暂无后台任务。'));
+        return;
+      }
+      const rows = list.map((x) => `${x.id}\t${x.kind}\t${x.status}\t${x.label}\t(output: ${x.outputFilePath})`);
+      this.pushMsg('system', t(
+        `Background tasks:\n${rows.join('\n')}\nInspect output with read; stop with the task_stop tool.`,
+        `后台任务：\n${rows.join('\n')}\n输出可用 read 查看；可用 task_stop 工具停止。`,
+      ));
       return;
     }
     if (cmd === '/new') {

@@ -69,7 +69,7 @@ test('plan 模式：spawn 被只读闸门拦截（子代理可产生写副作用
   }
 });
 
-test('spawn 输入校验：双缺 INVALID_ARG / background NOT_SUPPORTED / tools 未知名 INVALID_ARG', async () => {
+test('spawn 输入校验：双缺 INVALID_ARG / background 两段式开通（D6）/ tools 未知名 INVALID_ARG', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-args-'));
   try {
     const h = new Harness({ root: tmp, mode: 'dontAsk', model: new ScriptedAdapter([]), learnSkills: false });
@@ -79,10 +79,9 @@ test('spawn 输入校验：双缺 INVALID_ARG / background NOT_SUPPORTED / tools
       spawn!.executor({}),
       (e: unknown) => e instanceof CodedToolError && e.code === 'INVALID_ARG',
     );
-    await assert.rejects(
-      spawn!.executor({ prompt: 'x', background: true }),
-      (e: unknown) => e instanceof CodedToolError && e.code === 'NOT_SUPPORTED',
-    );
+    // T2 起 background:true 走两段式（规格 D6）：不再 NOT_SUPPORTED，改为立即返回任务回执
+    const bg = (await spawn!.executor({ prompt: 'x', background: true })) as { stdout: string };
+    assert.match(bg.stdout, /^task b\d+ started/, '两段式立即返回任务回执');
     await assert.rejects(
       spawn!.executor({ prompt: 'x', tools: ['ghost'] }),
       (e: unknown) => e instanceof CodedToolError && e.code === 'INVALID_ARG',

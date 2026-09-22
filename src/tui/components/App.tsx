@@ -24,7 +24,7 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
 }
 
 /** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序） */
-export const SLASH_COMMANDS = ['/help', '/init', '/status', '/new', '/resume', '/rewind', '/fork', '/compact', '/plan', '/goal', '/model', '/model-effort', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
+export const SLASH_COMMANDS = ['/help', '/init', '/status', '/tasks', '/new', '/resume', '/rewind', '/fork', '/compact', '/plan', '/goal', '/model', '/model-effort', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
 
 /** 斜杠补全候选：按 buffer（已 trim）前缀匹配命令清单；非 / 前缀或无匹配返回空 */
 export function slashCandidates(buffer: string): string[] {
