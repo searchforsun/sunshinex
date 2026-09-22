@@ -54,11 +54,11 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         required: ['command', 'background'],
         properties: {
           command: { type: 'string', description: 'Shell command to run (POSIX sh; runs from the project root)' },
-          background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path; poll by reading that file' },
+          background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path; poll by reading that file — the file ends with an [exit N] line once the command finishes' },
         },
       },
       name: 'exec',
-      description: 'Execute a shell command inside the project sandbox; oversized output is truncated and saved to disk (full output path shown in the result)',
+      description: 'Execute a shell command inside the project sandbox; long-running commands are automatically moved to the background when they time out; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'bash',
       executor: async (input: ToolInput) => {
         const cmd = String(input.command ?? '');
