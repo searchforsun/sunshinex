@@ -182,7 +182,7 @@ test('reduceJournal：全词汇归约 + 未知事件类型跳过（additive 兼�
     { t: 'model', tier: 'small' },
     { t: 'model', tier: 'large' },
     { t: 'view', expandAll: false, latestFull: true },
-  ] as JournalEvent[]);
+  ] as unknown as JournalEvent[]); // 旧布尔载荷与三态 TodoItem 类型不可直转（tsc2352）：双重断言保留旧形态输入以驱动归一
   assert.equal(r.version, 1);
   assert.deepEqual(r.history, ['问一句']);
   assert.deepEqual(r.chain, [{ step: 1, observation: 's1' }, { step: 2, action: 'edit', observation: 's2' }]);
@@ -190,7 +190,7 @@ test('reduceJournal：全词汇归约 + 未知事件类型跳过（additive 兼�
   assert.deepEqual(r.compacted, [{ kind: 'system', content: '摘要块' }]);
   assert.equal(r.messages.length, 2);
   assert.equal(r.nextSeq, 5);
-  assert.deepEqual(r.todos, [{ text: '新待办', done: false }]);
+  assert.deepEqual(r.todos, [{ text: '新待办', status: 'pending' }]);
   assert.equal(r.model, 'large');
   assert.deepEqual(r.view, { expandAll: false, latestFull: true });
   assert.equal(JSON.stringify(r).includes('snapshots'), false, '回放零快照泄漏');
@@ -228,4 +228,15 @@ test('建档/轮转/续挂：目录树零指针文件，最近会话由 listSess
     [],
     'dataDir 顶层仅 sessions 目录',
   );
+});
+
+test('todos 旧载荷布尔形态重放归一为三态（todo_write 规格 D8）', () => {
+  const r = reduceJournal([
+    { t: 'todos', items: [{ text: '旧项', done: true }, { text: '中项', done: false }, { text: '新项', status: 'in_progress' }] },
+  ] as unknown as JournalEvent[]); // 旧布尔载荷与三态类型不可直转（tsc2352）：双重断言保留旧形态输入
+  assert.deepEqual(r.todos, [
+    { text: '旧项', status: 'completed' },
+    { text: '中项', status: 'pending' },
+    { text: '新项', status: 'in_progress' },
+  ]);
 });

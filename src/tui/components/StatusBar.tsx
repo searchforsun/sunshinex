@@ -37,7 +37,7 @@ export function StatusBar({
   /** 上下文占用水位：used=当前上下文估算 tokens，window=配置窗口（SUNSHINEX_CONTEXT_WINDOW）；未配置不显示该段 */
   context?: { used: number; window: number };
 }): JSX.Element {
-  const done = (todos ?? []).filter((t) => t.done).length;
+  const done = (todos ?? []).filter((t) => t.status === 'completed').length;
   // 缓存命中率 = 会话累计 Σcached/Σprompt（一位小数）：跨任务不清零，轮首 miss 只稀释不砸零；零样本 0%（不除零）
   const total = metrics.sessionPromptTokens;
   const cachePct = total > 0 ? ((metrics.sessionCacheTokens / total) * 100).toFixed(1) : '0';

@@ -134,14 +134,14 @@ test('continueLast：手工日志全词汇还原（消息/链/待办/档位/视�
     j.log({ t: 'msg', item: { role: 'user', text: '历史输入一', ts: 1, seq: 1 } });
     j.log({ t: 'msg', item: { role: 'assistant', text: '历史答复', ts: 2, seq: 2 } });
     j.log({ t: 'chain', steps: [{ step: 1, action: 'task', observation: '指令行' }] });
-    j.log({ t: 'todos', items: [{ text: '待办甲', done: false }] });
+    j.log({ t: 'todos', items: [{ text: '待办甲', status: 'pending' }] });
     j.log({ t: 'model', tier: 'small' });
     j.log({ t: 'view', expandAll: true, latestFull: false });
     const id = j.currentId!;
 
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]), continueLast: true });
     assert.equal(ctrl.getState().status, 'idle');
-    assert.deepEqual(ctrl.getState().todos, [{ text: '待办甲', done: false }]);
+    assert.deepEqual(ctrl.getState().todos, [{ text: '待办甲', status: 'pending' }]);
     assert.equal(ctrl.getState().model, 'small');
     const texts = ctrl.getState().messages.map((m) => m.text);
     assert.ok(texts.includes('历史输入一') && texts.includes('历史答复'), '消息直注入');

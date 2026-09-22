@@ -1,4 +1,5 @@
 import type { AskUserAnswer, AskUserRequest, AskUserSeam } from '../types';
+import type { TodoItem, TodoStatus } from '../types';
 import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
 import { EFFORT_ORDER, parseEffort } from '../model/adapter';
 import { t } from '../i18n';
@@ -42,10 +43,7 @@ export interface ChatItem {
   subagentMeta?: { steps: number; durationMs: number };
 }
 
-export interface TodoItem {
-  text: string;
-  done: boolean;
-}
+export type { TodoItem, TodoStatus } from '../types';
 
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting-plan' | 'awaiting-question' | 'error';
 
@@ -514,8 +512,8 @@ export class SessionController {
   /** 逐项执行计划：每项一个 run，完成即勾选待办（宁停不误：单项失败即暂停，剩余保持未完成） */
   private async runPlanItems(items: string[]): Promise<void> {
     this.taskAbort = new AbortController(); // plan 执行段整段一个中断源（Esc/Ctrl+C 中止当前步及后续步）
-    this.state = { ...this.state, todos: items.map((t) => ({ text: t, done: false })), status: 'running' };
-    this.logTodos();
+    this.state = { ...this.state, status: 'running' };
+    this.setTodos(items.map((t) => ({ text: t, status: 'pending' as const })));
     this.notify();
     const ctx = this.runtime.harness.context;
     // 计划纪律走链（只增不改）：每轮只完成最后一条当前指令，不执行/预判/重排后续任务
@@ -528,6 +526,7 @@ export class SessionController {
       };
       this.usageBase = { tokens: this.state.metrics.turnTokens, cache: this.state.metrics.turnCacheTokens, prompt: this.state.metrics.turnPromptTokens };
       this.notify();
+      this.setTodos(this.state.todos.map((td) => (td.text === items[i] && td.status === 'pending' ? { ...td, status: 'in_progress' } : td)));
       ctx.appendInstructionLine(`Current instruction: ${items[i]}`);
       try {
         if (this.taskAbort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
@@ -542,10 +541,7 @@ export class SessionController {
           this.pushMsg('system', t(`Step incomplete: ${items[i]}; remaining steps paused`, `步骤未完成：${items[i]}；剩余步骤暂停`), { level: 'warn' });
           break;
         }
-        const todos = [...this.state.todos];
-        todos[i] = { ...todos[i], done: true };
-        this.state = { ...this.state, todos };
-        this.logTodos();
+        this.setTodos(this.state.todos.map((td) => (td.text === items[i] ? { ...td, status: 'completed' } : td)));
         // 步骤全量轨迹与结论行已由 reactor 会话作用域自动入链（fork 模型：不再只留结论行）
         // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
@@ -568,6 +564,13 @@ export class SessionController {
   /** 快照型事件接线（规格 2026-09-22 D5）：变更点即时 log 的单点构造器，防四处拼装漂移 */
   private logModel(): void {
     this.journal?.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}), ...(this.state.effort ? { effort: this.state.effort } : {}) });
+  }
+
+  /** todo 清单唯一写点（规格 D6）：state 更新 + journal 即时落盘 + notify；模型工具/plan 引擎两条运行期路径共用。journal 重放为恢复路径，直接赋值不走此点（防重放自我回写） */
+  private setTodos(items: TodoItem[]): void {
+    this.state = { ...this.state, todos: items };
+    this.logTodos();
+    this.notify();
   }
 
   private logTodos(): void {

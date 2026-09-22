@@ -104,6 +104,16 @@ export function parseJournalFile(file: string): ParsedJournal {
   return { events, lines, truncated };
 }
 
+/** todos 载荷三态归一（规格 D8）：旧档 {text, done} 布尔形态 → status（done:true→completed / false→pending），新载荷原样通过 */
+export function normalizeTodoItems(raw: unknown[]): TodoItem[] {
+  return raw.map((it) => {
+    const o = (it ?? {}) as { text?: unknown; status?: unknown; done?: unknown };
+    const text = typeof o.text === 'string' ? o.text : '';
+    if (o.status === 'pending' || o.status === 'in_progress' || o.status === 'completed') return { text, status: o.status };
+    return { text, status: o.done === true ? 'completed' : 'pending' };
+  });
+}
+
 /** 重放归约（封闭词汇 v1）：链累积、压缩后态覆盖（末值语义）、消息直汇、user 汇输入历史、todos/model/view 末值覆盖 */
 export function reduceJournal(events: JournalEvent[]): JournalReplay {
   const r: JournalReplay = {
@@ -137,7 +147,7 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
         r.history.push(e.text);
         break;
       case 'todos':
-        r.todos = e.items;
+        r.todos = normalizeTodoItems(e.items as unknown[]);
         break;
       case 'model':
         r.model = e.tier;

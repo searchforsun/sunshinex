@@ -211,6 +211,15 @@ export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | '
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
+/** todo_write 条目状态（规格 D5）：三态——「同刻恰一个 in_progress」为使用纪律，由工具 description 承载 */
+export type TodoStatus = 'pending' | 'in_progress' | 'completed';
+
+/** 会话 todo 清单条目（原 TUI 局部类型升格共享：harness 工具面与 TUI 状态面同源，规格 D2 单点状态面） */
+export interface TodoItem {
+  text: string;
+  status: TodoStatus;
+}
+
 /** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子代理派生） */
 export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent' | 'ask' | 'worktree';
 

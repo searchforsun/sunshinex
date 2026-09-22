@@ -85,8 +85,8 @@ test('会话层：规划项未完成不得报成功（runPlanItems）', async ()
     assert.match(texts, /Incomplete: token budget exhausted/);
     assert.match(texts, /Step incomplete: 第一步/);
     assert.ok(!/已完成：/.test(texts), '未完成的规划项不得被报成功');
-    assert.equal(st.todos[0]?.done, false, '未完成项不得勾选待办');
-    assert.equal(st.todos[1]?.done, false, '剩余步骤保持未完成');
+    assert.notEqual(st.todos[0]?.status, 'completed', '未完成项不得勾选待办（三态下停留 in_progress/pending）');
+    assert.equal(st.todos[1]?.status, 'pending', '剩余步骤保持未完成');
     assert.equal(st.status, 'idle');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

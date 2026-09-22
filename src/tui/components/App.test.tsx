@@ -148,7 +148,7 @@ test('App：键盘 y 在计划卡上确认执行（待办全勾）', async () =>
     write('y');
     await ctrl.waitIdle(15000);
     const st = ctrl.getState();
-    assert.ok(st.todos.length === 2 && st.todos.every((t) => t.done), '键盘 y 确认后计划应逐项执行并全勾');
+    assert.ok(st.todos.length === 2 && st.todos.every((t) => t.status === 'completed'), '键盘 y 确认后计划应逐项执行并全勾');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

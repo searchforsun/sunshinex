@@ -5,6 +5,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { PLAN_TASK_LABEL, SessionController } from './session';
+import { parseJournalFile, sessionsDir } from './session-journal';
+import { resolveDataDir } from '../config/data-dir';
 import { getLanguage, setLanguage } from '../i18n';
 import { createRuntime } from './runtime';
 import { ScriptedAdapter } from '../model/adapter';
@@ -46,7 +48,7 @@ test('/plan：规划（经主链长任务模板）→ 确认 → 逐项执行 �
     );
     const todos = ctrl.getState().todos;
     assert.equal(todos.length, 2, '计划解析出两条待办');
-    assert.ok(todos.every((t) => t.done), '逐项执行后全部完成');
+    assert.ok(todos.every((t) => t.status === 'completed'), '逐项执行后全部完成');
     assert.equal(ctrl.getState().status, 'idle');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -348,6 +350,50 @@ test('规划轮不进链：verbose 提示词与规划结论零主链回写', asy
     assert.ok(!text.includes(PLAN_TASK_LABEL), '规划轮 verbose 提示词不得入链');
     assert.ok(!ctrl.context.chainView().some((s) => s.action === 'reply'), '规划轮结论行不回主链（fork 隔离）');
   } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/plan 步骤推进：todos 事件序列记录 in_progress→completed 全轨迹（规格 D7）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-todo-'));
+  // 现场校正：test-env 按测试文件钉共享数据目录（readdir 会捞到同文件早前用例的档案），故本用例按仓内既有模式
+  // （同文件「/plan 规划段经主链」用例）把数据目录钉到 tmp 内并在 finally 恢复，使 journal 检索零歧义。
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}',
+        '{"done":true,"reply":"步骤A 完成"}',
+        '{"done":true,"reply":"步骤B 完成"}',
+      ]),
+    });
+    await ctrl.submit('/plan 做一件事');
+    await ctrl.confirmPlan(true);
+    await ctrl.waitIdle();
+    const todos = ctrl.getState().todos;
+    assert.deepEqual(todos, [
+      { text: '步骤A', status: 'completed' },
+      { text: '步骤B', status: 'completed' },
+    ]);
+    // journal todos 事件流：种子(全 pending) → A in_progress → A completed → B in_progress → B completed
+    const dir = sessionsDir(resolveDataDir(tmp));
+    const file = fs.readdirSync(dir).find((f) => f.endsWith('.jsonl'));
+    assert.ok(file, '会话 journal 已建档');
+    const parsed = parseJournalFile(path.join(dir, file!));
+    const seq = parsed.events.filter((e) => e.t === 'todos').map((e) => e.items);
+    assert.ok(seq.length >= 5, '种子+逐步推进均落 todos 事件');
+    assert.deepEqual(seq[0], [{ text: '步骤A', status: 'pending' }, { text: '步骤B', status: 'pending' }], '种子全 pending');
+    assert.deepEqual(
+      seq.find((items) => items.some((it) => it.text === '步骤A' && it.status === 'in_progress')),
+      [{ text: '步骤A', status: 'in_progress' }, { text: '步骤B', status: 'pending' }],
+      '步骤A 开始即 in_progress',
+    );
+    assert.deepEqual(seq[seq.length - 1], todos, '末条与最终状态一致');
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
