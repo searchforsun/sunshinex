@@ -35,6 +35,22 @@ test('grep 目录级递归：命中带 相对路径:行号', async () => {
   }
 });
 
+test('grep/glob 零命中不再静默空：附 no-match 提示行', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-nomatch-'));
+  fs.writeFileSync(path.join(root, 'a.ts'), 'hello\n');
+  const { registry, safety } = setup(root);
+
+  const g = await registry.execute('grep', { path: '.', pattern: 'zzz-no-hit' }, safety);
+  assert.ok(g.ok, '零命中不报错');
+  if (g.ok) assert.ok(g.value.stdout.includes('no matches'), `grep 零命中应附提示: ${JSON.stringify(g.value.stdout)}`);
+
+  const gf = await registry.execute('grep', { path: '.', pattern: 'hello', glob: '*.md' }, safety);
+  if (gf.ok) assert.ok(gf.value.stdout.includes('no matches'), `grep glob 过滤零命中应附提示: ${JSON.stringify(gf.value.stdout)}`);
+
+  const gl = await registry.execute('glob', { pattern: '**/*.xyz' }, safety);
+  if (gl.ok) assert.ok(gl.value.stdout.includes('no files match'), `glob 零命中应附提示: ${JSON.stringify(gl.value.stdout)}`);
+});
+
 test('grep 目录级 glob 过滤：仅命中匹配文件', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-grepglob-'));
   fs.mkdirSync(path.join(root, 'src'), { recursive: true });

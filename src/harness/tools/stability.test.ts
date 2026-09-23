@@ -151,3 +151,13 @@ test('read range 越界钳制（start 越界到 1、end 越界到文件尾），
   const r = await registry.execute('read', { path: 'a.txt', range: 'L0-99' }, safety);
   assert.ok(r.ok && r.value.stdout === '1: a\n2: b\n3: c', '越界钳制到文件实际范围');
 });
+
+test('read range 完全越界（start 超文件行数）返回空内容但附 EOF 提示，不再静默空', async () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, 'a.txt'), 'a\nb\nc');
+  const { registry, safety } = registryWith(root);
+
+  const r = await registry.execute('read', { path: 'a.txt', range: 'L99999-100000' }, safety);
+  assert.ok(r.ok, '完全越界不报错，钳制为空');
+  assert.ok(r.value.stdout.includes('EOF'), `应附 EOF 提示而非静默空: ${JSON.stringify(r.value.stdout)}`);
+});

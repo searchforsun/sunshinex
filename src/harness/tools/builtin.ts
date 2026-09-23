@@ -123,7 +123,10 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         const start = Math.max(1, Number.isNaN(a) ? 1 : a);
         const end = Math.min(lines.length, Number.isNaN(b) ? lines.length : b);
         if (!Number.isNaN(b) && b < start) throw new CodedToolError('INVALID_ARG', `Range end before start: ${range}`);
-        return execOut(fitOut('read', lines.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join('\n')));
+        const slice = lines.slice(start - 1, end);
+        // 完全越界（start 超文件行数）钳制为空：附 EOF 提示行，避免「ok 但静默空」被误判为通道故障
+        if (slice.length === 0) return execOut(fitOut('read', `[EOF] file has ${lines.length} lines; requested range "${range}" is past end of file`));
+        return execOut(fitOut('read', slice.map((l, i) => `${start + i}: ${l}`).join('\n')));
       },
     },
     {
@@ -208,6 +211,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         if (!fs.statSync(target).isDirectory()) {
           const content = backend.readFile(target);
           const lines = content.split('\n').filter((l) => new RegExp(pattern).test(l));
+          // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
+          if (lines.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}`);
           return execOut(lines.join('\n'));
         }
         // 目录模式复用后端遍历：与 glob 工具同一跳过集（node_modules/.git/dist），glob 过滤与遍历匹配口径一致
@@ -228,6 +233,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
             out.push(`${rel}:${i + 1}:${lines[i]}`);
           }
         }
+        // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
+        if (out.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}`);
         return execOut(out.join('\n'));
       },
     },
@@ -243,7 +250,12 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       name: 'glob',
       description: 'List files matching a glob pattern; oversized listing is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
-      executor: async (input: ToolInput) => execOut(fitOut('glob', backend.listFiles(root, String(input.pattern ?? '*')).join('\n'))),
+      executor: async (input: ToolInput) => {
+        const files = backend.listFiles(root, String(input.pattern ?? '*'));
+        // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
+        if (files.length === 0) return execOut(`no files match pattern "${String(input.pattern ?? '*')}" under project root`);
+        return execOut(fitOut('glob', files.join('\n')));
+      },
     },
     {
       parameters: {
