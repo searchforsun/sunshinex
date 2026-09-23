@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/clean-dist.js && tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test": "tsc -p tsconfig.json && node scripts/run-tests.js",
+    "test": "node scripts/clean-dist.js && tsc -p tsconfig.json && node scripts/run-tests.js",
     "selfcheck": "node scripts/clean-dist.js && tsc -p tsconfig.json && node dist/cli/index.js selfcheck",
     "cli": "tsc -p tsconfig.json && node dist/cli/index.js",
     "prepublishOnly": "pnpm test && node dist/cli/index.js selfcheck"
