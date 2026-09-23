@@ -7,7 +7,16 @@ import type { SubagentRunner } from './subagent';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
-import { IDENTITY_LINE, MARKDOWN_LINE, TOOL_POLICY_LINE, REFERENCE_DATA_LINE, workDirLine } from './prompts/shared';
+import {
+  IDENTITY_LINE,
+  MARKDOWN_LINE,
+  TOOL_POLICY_LINE,
+  PHASE_SENTENCE_LINE,
+  PARALLEL_POLICY_LINE,
+  REFERENCE_DATA_LINE,
+  TASK_FOCUS_LINE,
+  workDirLine,
+} from './prompts/shared';
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
@@ -390,11 +399,11 @@ export class Reactor {
     return [
       IDENTITY_LINE,
       MARKDOWN_LINE,
-      'When calling tools you may include a short "phase" sentence as the message content naming the current stage (what the upcoming tool calls are for); include it only when entering a new stage, and skip it for consecutive actions within the same stage and for trivial single-step actions.',
+      PHASE_SENTENCE_LINE,
       TOOL_POLICY_LINE,
-      'exec and ask tools run exclusively on their own; multiple other tools may be called in parallel within a single round.',
+      PARALLEL_POLICY_LINE,
       REFERENCE_DATA_LINE,
-      'Work on the task given by the last task-instruction line in the context; complete it fully, then give the final answer as your final response.',
+      TASK_FOCUS_LINE,
       workDirLine(this.deps.root ?? this.deps.context.root),
     ].join('\n');
   }
