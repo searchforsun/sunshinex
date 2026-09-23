@@ -60,14 +60,17 @@ export class ProcessSandbox implements ToolBackend {
     return fs.readFileSync(absPath, 'utf8');
   }
 
-  /** 后台执行（后台任务线）：detached spawn 自成进程组，task_stop 按组收割；stdout/stderr 增量回调供 TaskRegistry 流式落盘。
+  /** 后台执行（后台任务线）：spawn 后台任务，task_stop 收割；stdout/stderr 增量回调供 TaskRegistry 流式落盘。
    *  提交即返回 pid，不等待进程退出；进程退出经 onExit 回调落终态（exitCode 语义同 exec：0=成功，非 0/信号=失败）。
-   *  平台形态（spawn/detached/进程组收割）只允许落本文件（CLAUDE.md §14） */
+   *  平台形态（spawn/detached/进程组收割）只允许落本文件（CLAUDE.md §14）：win32 恒非 detached——
+   *  实机探针实证 Git Bash 直启 ~1s、msys 子进程树在 detached 形态下持续持有 cwd 句柄数秒以上，
+   *  致任务目录删除类清理（测试夹具、worktree 清扫）EPERM；非 detached 形态进程树与 Node 同组收敛、
+   *  退出即释放句柄，win32 收割语义由 killBackground 的 taskkill /T /F 按进程树承载，不依赖 detached。
+   */
   async execBackground(cmd: string, opts?: { cwd?: string; onData?: (chunk: string) => void; onExit?: (exitCode: number) => void }): Promise<Result<{ pid: number }>> {
     const shell = resolveShell();
     const child = spawn(shell.file, [...shell.args, cmd], {
       cwd: opts?.cwd,
-      detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
