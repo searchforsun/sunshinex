@@ -1,6 +1,6 @@
 {
   "name": "sunshinex-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SunshineX 通用 AI Agent 工程化骨架（Harness/Loop/Graph 三层范式）",
   "main": "dist/index.js",
   "engines": {
