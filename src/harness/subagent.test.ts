@@ -20,6 +20,21 @@ import type { SessionEvent } from '../types';
 import { TaskRegistry } from './tasks';
 import type { ExecOpts } from '../types';
 
+/** 删除曾作为 exec cwd 的临时树。win32 上 Git Bash/MSYS 退出后目录句柄释放有尾窗；
+ *  Node `fs.rmSync` 对此类 EPERM/EBUSY 不按 maxRetries 退避（本机探针：活锁或尾窗下即时上抛），故自写有界轮询。 */
+async function rmExecCwdTree(root: string): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      fs.rmSync(root, { recursive: true, force: true });
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if ((code !== 'EPERM' && code !== 'EBUSY') || i >= 20) throw e;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+}
+
 test('AgentRegistry：内建四角色可解析、未命中 fail-fast', () => {
   const reg = new AgentRegistry();
   reg.registerBuiltins();
@@ -368,19 +383,22 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     assert.ok(body.endsWith('[exit 0]\n'), '终态行落文件尾');
     assert.equal(tasks.get(task.id)?.status, 'done');
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    await rmExecCwdTree(root);
   }
 });
 
-/** 小超时后端：把前台 exec 的 timeoutMs 钉到 120ms 构造超时转后台边界（CLAUDE.md §12 允许测试显式小值） */
+/** 小超时后端：构造超时转后台边界（CLAUDE.md §12 允许测试显式小值）。
+ *  下限须盖过 shell 冷启动：win32 Git Bash 首字 ~1–1.4s（与 sandbox.test 同源），过短则超时瞬间无缓冲输出、断言失败且未 stop，活进程占 cwd 致 finally 删目录 EPERM。 */
 class QuickTimeoutSandbox extends ProcessSandbox {
   exec(cmd: string, opts?: ExecOpts) {
-    return super.exec(cmd, { ...opts, timeoutMs: opts?.timeoutMs ?? 120 });
+    const floor = process.platform === 'win32' ? 3000 : 120;
+    return super.exec(cmd, { ...opts, timeoutMs: opts?.timeoutMs ?? floor });
   }
 }
 
 test('前台 exec 触超时转后台：观察行含 moved to background、任务接管存活子进程', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgtimeout-'));
+  let stop: (() => void) | undefined;
   try {
     const store = new FileStore(path.join(root, 'data'));
     const ctx = new ContextManager(root, store);
@@ -392,16 +410,15 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
     assert.ok(r.ok);
     assert.match(r.value.stdout, /^command moved to background after timeout: task b1/);
     const task = tasks.get('b1')!;
+    stop = () => task.stop?.();
     assert.equal(task.status, 'running', '超时瞬间任务转后台登记');
     assert.ok(fs.readFileSync(task.outputFilePath, 'utf8').includes('warm'), '超时前已缓冲输出随任务落日志');
-    task.stop?.(); // 收尾：终结存活子进程
+    stop();
     for (let i = 0; i < 40 && tasks.get('b1')?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
     assert.notEqual(tasks.get('b1')?.status, 'running');
   } finally {
-    // Windows 收割竞态：taskkill 为 fire-and-forget（sandbox.ts），任务状态翻转只代表 bash 本体 close、
-    // 孙进程（sleep）的 cwd 句柄释放落在其后毫秒到秒级窗口；清理以有界重试等待平台释放，
-    // 健康路径（含 POSIX）零失败成本——maxRetries 仅在真遇到 EPERM 时才生效
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 });
+    stop?.();
+    await rmExecCwdTree(root);
   }
 });
 
@@ -419,6 +436,6 @@ test('sleep 开头命令超时不转后台：EXEC_TIMEOUT 照旧失败（规格 
     assert.match(r.error.message, /EXEC_TIMEOUT/);
     assert.equal(tasks.list().length, 0, '豁免路径零任务登记');
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    await rmExecCwdTree(root);
   }
 });

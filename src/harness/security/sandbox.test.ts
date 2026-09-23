@@ -259,7 +259,17 @@ test('exec timeoutToBackground：到点不杀进程、返回存活子进程与�
   const child = r.value.child!;
   assert.ok(child.pid, '存活子进程句柄');
   assert.equal(child.killed, false);
-  child.kill();
+  sb.killBackground(child.pid!);
+});
+
+test('killBackground：同步收割后任务 cwd 目录可立即删除', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-killbg-'));
+  const sb = new ProcessSandbox();
+  const r = await sb.execBackground('sleep 5', { cwd: root });
+  assert.ok(r.ok && r.value.pid > 0);
+  sb.killBackground(r.value.pid);
+  // 返回即进程树已收割，cwd 目录可删
+  fs.rmSync(root, { recursive: true, force: true });
 });
 
 test('exec timeoutToBackground：正常快速命令语义不变', async () => {

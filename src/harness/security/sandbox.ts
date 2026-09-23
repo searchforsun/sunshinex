@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'child_process';
+import { execFile, spawn, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
@@ -84,10 +84,13 @@ export class ProcessSandbox implements ToolBackend {
     return ok({ pid: child.pid ?? 0 });
   }
 
-  /** 按进程组/进程树终止后台任务（task_stop 单点后端）：POSIX 杀 -pid 组，Windows 杀 /T 树 */
+  /** 按进程组/进程树终止后台任务（task_stop 单点后端）：POSIX 杀 -pid 组，Windows 杀 /T 树。
+   *  返回时进程树已收割完毕——调用方（task_stop、测试夹具清理）得以在此之后安全释放 cwd 目录句柄。 */
   killBackground(pid: number): void {
+    if (pid <= 0) return;
     if (process.platform === 'win32') {
-      spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+      // spawnSync：等 taskkill 退出再返回；异步 spawn 返回时孙进程（如 sleep）仍可占 cwd，随后 rm 目录即 EPERM
+      spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
     } else {
       try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出，终态行由 close 回调落 */ } }
     }

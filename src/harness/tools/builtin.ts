@@ -87,9 +87,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           child.stdout?.on('data', (c: Buffer) => ledger.append(task.id, c.toString('utf8')));
           child.stderr?.on('data', (c: Buffer) => ledger.append(task.id, c.toString('utf8')));
           child.on('close', (code) => ledger.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code ?? -1 }));
-          // 收割收敛 killBackground 单点（§14 平台形态唯一落点）：win32 上 child.kill() 只终止 bash 本体，
-          // 正在执行的孙进程（如 sleep）成孤儿继续持 cwd 句柄数秒（实机 EPERM 实锤）；killBackground 的
-          // taskkill /T /F 按进程树收割，POSIX 分支 kill(-pid) 组语义与原手搓等价且带已退出兜底
+          // 收割收敛 killBackground 单点（§14）：按进程树/进程组同步收割（win32 taskkill /T /F，POSIX kill(-pid)）
           task.stop = () => backend.killBackground?.(child.pid ?? 0);
           ledger.append(task.id, '[moved to background after timeout]\n');
           return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath})`);
