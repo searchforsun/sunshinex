@@ -8,10 +8,10 @@
   },
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.js && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "test": "tsc -p tsconfig.json && node scripts/run-tests.js",
-    "selfcheck": "tsc -p tsconfig.json && node dist/cli/index.js selfcheck",
+    "selfcheck": "node scripts/clean-dist.js && tsc -p tsconfig.json && node dist/cli/index.js selfcheck",
     "cli": "tsc -p tsconfig.json && node dist/cli/index.js",
     "prepublishOnly": "pnpm test && node dist/cli/index.js selfcheck"
   },

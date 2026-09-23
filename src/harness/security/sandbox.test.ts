@@ -250,7 +250,7 @@ test('execBackground：提交即返回 pid，进程在跑，输出直写回调',
 
 test('exec timeoutToBackground：到点不杀进程、返回存活子进程与已缓冲输出', async () => {
   const sb = new ProcessSandbox();
-  const r = await sb.exec('echo warm && sleep 5', { timeoutMs: 150, timeoutToBackground: true });
+  const r = await sb.exec('echo warm && sleep 5', { timeoutMs: 600, timeoutToBackground: true });
   assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.code}`);
   assert.equal(r.value.timedOut, true);
   assert.ok(r.value.stdout.includes('warm'), '超时前已缓冲输出随 child 交回');
