@@ -457,16 +457,15 @@ export class Reactor {
 
     // 执行面校验（参数 schema 表达不了跨调用约束）：并行批禁 exec/ask（须单发独占）、超上限拒绝；单调用不限
     const overLimit = calls.length > PARALLEL_TOOLS_LIMIT;
-    const rejected =
-      overLimit ||
-      (calls.length > 1 &&
-        calls.some((c) => {
-          const cat = this.deps.registry.get(c.name)?.category;
-          return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'todo' || cat === 'task' || cat === undefined;
-        }));
+    const exclusive = (c: (typeof calls)[number]) => {
+      const cat = this.deps.registry.get(c.name)?.category;
+      return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'todo' || cat === 'task' || cat === undefined;
+    };
+    const rejected = overLimit || (calls.length > 1 && calls.some(exclusive));
+    const offenders = calls.filter(exclusive).map((c) => c.name);
     const rejection = overLimit
       ? `Parallel batch rejected: exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools; use fewer calls per round`
-      : 'Parallel batch rejected: exec, ask, worktree, todo and task_stop must run exclusively on their own; remove them and retry, or fall back to a single-tool call';
+      : `Parallel batch rejected: ${offenders.join(', ')} must run exclusively on their own (no other tool calls in the same round); remove them and retry, or fall back to a single-tool call`;
 
     // 轮内链行共用同一轮步号（step 形参）：护栏按去重步号计模型轮、压缩水位/收尾回写行级过滤对同号行天然一致
     const callIds = calls.map((_, i) => `step:${step}-idx:${i}`);

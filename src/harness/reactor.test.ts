@@ -517,6 +517,21 @@ test('并行混入 exec 被整体拒绝，观察回填供模型自纠', async ()
   assert.equal(r.done, true);
   const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
   assert.ok(deniedStep, '混入 exec 应被整体拒绝并回填观察');
+  assert.ok(deniedStep && deniedStep.observation.includes('exec'), `拒绝文案应点名冲突调用 exec: ${deniedStep?.observation}`);
+});
+
+test('拒绝文案点名具体冲突调用（而非笼统列类别）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-partodo-'));
+  const adapter = new ScriptedAdapter([
+    '{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"todo_write","input":{"todos":[{"content":"x","status":"pending"}]}}],"done":false}',
+    '{"done":true,"reply":"已纠正"}',
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: '混入 todo_write' }, { maxSteps: 3 });
+  const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
+  assert.ok(deniedStep, '混入 todo_write 应被整体拒绝');
+  assert.ok(deniedStep && deniedStep.observation.includes('todo_write'), `拒绝文案应点名 todo_write: ${deniedStep?.observation}`);
+  assert.ok(deniedStep && !deniedStep.observation.includes('exec,'), '未混入 exec 时不应笼统点名 exec');
 });
 
 test('并行混入 task_stop 被整体拒绝，观察回填供模型自纠', async () => {
