@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'child_process';
+import { execFile, spawn, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
@@ -84,10 +84,13 @@ export class ProcessSandbox implements ToolBackend {
     return ok({ pid: child.pid ?? 0 });
   }
 
-  /** 按进程组/进程树终止后台任务（task_stop 单点后端）：POSIX 杀 -pid 组，Windows 杀 /T 树 */
+  /** 按进程组/进程树终止后台任务（task_stop 单点后端）：POSIX 杀 -pid 组，Windows 杀 /T 树。
+   *  win32 同步等待 taskkill 退出（实机探针实证：fire-and-forget 下「bash close」先于孙进程句柄释放、
+   *  收尾删目录即 EPERM；且 Node rimraf 对活进程占 cwd 的 EPERM 走 fixWinEPERM 分支即时上抛、重试不生效，
+   *  同步收割是唯一可靠时序）；POSIX 语义不变 */
   killBackground(pid: number): void {
     if (process.platform === 'win32') {
-      spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+      spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
     } else {
       try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出，终态行由 close 回调落 */ } }
     }
