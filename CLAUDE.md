@@ -46,6 +46,8 @@ src/
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question/worktree/todo_write）
+    tools/task-stop.ts # task_stop 工具（按 id 停止后台任务；装配期与 spawn 一并注册进主链）
+    tasks.ts          # 统一后台任务账本（exec/spawn 后台与超时转后台的 ID/生命周期/状态单点）
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输）
     subagent.ts       # 子代理执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）
     worktree.ts       # git worktree 单点模块（create/remove/list/isDirty/subagentTreeName）
@@ -79,7 +81,10 @@ SUNSHINE.md          # 项目业务配置
 - 所有 IO（文件/网络/命令）集中在对应 adapter/store 内
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
-- **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制。**工具参数声明化**：每个工具必须以 JSON Schema 声明 `parameters`（function calling strict 兼容口径——`additionalProperties` 显式闭合、可选项以 null 联合进 `required`；自由入参属例外，须显式登记 `additionalProperties: true` 宽松点），新工具不带 schema 不得入清单
+- **主链工具面（装配期一次性登记，selfcheck `tools :` 行同源）**：
+  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `write` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
+  - 另册：`spawn`（`subagent.ts` 工厂，子代理派生）/ `task_stop`（`tools/task-stop.ts`，按 id 停止后台 exec/超时转后台/后台子代理）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
+- **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀、子代理派生、后台任务停止等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制。**工具参数声明化**：每个工具必须以 JSON Schema 声明 `parameters`（function calling strict 兼容口径——`additionalProperties` 显式闭合、可选项以 null 联合进 `required`；自由入参属例外，须显式登记 `additionalProperties: true` 宽松点），新工具不带 schema 不得入清单
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
 - **核心契约零兼容**：模型核心契约（原生 function calling 等 API 层强制的能力）不支持即换模型/换端点，禁止在提示词层做兼容适配——靠提示词约束模型输出分布的兼容是开集，补丁修不完。允许保留的容错仅限两类：①wire 层差异（输入形态闭集 + 每种形态有确定归一规则 + 未知形态可判定并安全回退，如流式 tool_calls 分片重组、finish_reason 归一）；②运行时自愈与可选增强降级（上下文超限反应式压缩、reasoning_effort 探测降级——缺了只损增强不损核心契约）。新增任何兼容/兜底须先过此判据：需要预测「模型下一步会输出什么」的补丁一律不做
 - **依赖台账**：已引入依赖的用途/收敛边界/回退预案按下表登记（候选调研与评审记录见 `docs/Arch-Plan.md` §三 技术栈选型），引入时仍按上方原则更新本表与 `package.json`：
