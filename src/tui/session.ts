@@ -157,7 +157,7 @@ export function paginateOptions(
   return { options, page, totalPages };
 }
 
-function slashHelp(skills?: Array<{ id: string; name: string; description: string }>): string[] {
+function slashHelp(): string[] {
   const lines = [
     t('Commands:', '命令：'),
     t('  /init          analyze & write SUNSHINE.md', '  /init          分析生成/完善 SUNSHINE.md'),
@@ -181,14 +181,8 @@ function slashHelp(skills?: Array<{ id: string; name: string; description: strin
     t('  /status        session & ledger summary', '  /status        会话与账本摘要'),
     t('  /help          show this list', '  /help          本清单'),
   ];
-  // 技能命令段（规格 D8）：id 字典序列示，空池省略；展示 name + 描述截 128（formatSkillsIndex 口径）
-  if (skills && skills.length > 0) {
-    lines.push(t('Skills:', '技能命令：'));
-    for (const s of skills) {
-      const desc = s.description.length > 128 ? `${s.description.slice(0, 128)}…` : s.description;
-      lines.push(t(`  /${s.id}  ${s.name} — ${desc}`, `  /${s.id}  ${s.name} — ${desc}`));
-    }
-  }
+  // 技能命令一行引导：完整列表经 /skill 选择卡筛选（type-to-filter），/<技能id> 直调形态同源分发
+  lines.push(t('  Skills: invoke /<skill-id> directly; browse with /skill', '  技能命令：直接 /<技能id> 调用；完整列表经 /skill 筛选'));
   return lines;
 }
 
@@ -976,7 +970,7 @@ export class SessionController {
       return;
     }
     if (cmd === '/help') {
-      this.pushMsg('system', slashHelp(this.skillHelpEntries()).join('\n'));
+      this.pushMsg('system', slashHelp().join('\n'));
       return;
     }
     if (cmd === '/init') {
@@ -1221,14 +1215,6 @@ export class SessionController {
       .filter((m) => /^[a-z0-9][a-z0-9_-]*$/.test(m.id) && !builtin.has(m.id))
       .map((m) => m.id)
       .sort();
-  }
-
-  /** /help 技能段数据源（规格 D8）：与命令注册表同池，附展示 name 与描述（缺失清单字段时降级 id） */
-  private skillHelpEntries(): Array<{ id: string; name: string; description: string }> {
-    return this.skillCommandIds().map((id) => {
-      const m = this.runtime.harness.skills.get(id);
-      return { id, name: m?.name ?? id, description: m?.description ?? '' };
-    });
   }
 
   /** 技能加载单点（规格 D3，自 skillFlow 尾段提取）：链上去重 → resolve → 链尾追持久注入 → 回执；

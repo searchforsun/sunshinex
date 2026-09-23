@@ -184,19 +184,18 @@ test('A7 运行中拒绝：挂起任务期间 /<id> 零副作用', async () => {
   });
 });
 
-test('A8 /help 技能段：有技能列示、无技能省略、内置清单零漂移', async () => {
+test('A8 /help 技能段：一行引导、内置清单零漂移', async () => {
   await withIsolatedData(async (root) => {
     const bare = new SessionController({ root, model: new ScriptedAdapter([]) });
     await bare.submit('/help');
     const bareText = sysTexts(bare).join('\n');
-    assert.ok(!bareText.includes('Skills:'), '空池无技能段');
     assert.ok(bareText.includes('/init'), '内置清单在位');
+    assert.match(bareText, /\/<skill-id>|\/<技能id>/, '技能直调引导行在位（空池同样展示）');
     writeSkill(root, 'hello-world', 'Hello World', 'Say hello nicely');
     const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
     await ctrl.submit('/help');
     const text = sysTexts(ctrl).join('\n');
-    assert.ok(text.includes('Skills:'), '技能段标题');
-    assert.match(text, /\/hello-world  Hello World — Say hello nicely/, 'id + name + 描述行');
+    assert.ok(!text.includes('/hello-world  Hello World'), '技能不再逐条罗列');
     assert.ok(text.includes('/new'), '内置清单仍在');
   });
 });

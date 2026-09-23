@@ -197,9 +197,8 @@ export function App({
   const spawnCallSeqs = (msgs: TuiState['messages']): number[] =>
     msgs.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail).map((m) => m.seq);
   const [history, setHistory] = React.useState<string[]>(store.history);
-  // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；回合边界 effect 刷新（Task 3 接线），空池=纯内置、行为逐字节等价
-  const [skillExtra, setSkillExtra] = React.useState<string[]>([]);
-  // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；回合边界（sessionTurns 变化）刷新，不逐键读盘
+  // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；挂载即读 + 回合边界（sessionTurns 变化）刷新，不逐键读盘
+  const [skillExtra, setSkillExtra] = React.useState<string[]>(() => controller.skillCommandIds());
   React.useEffect(() => {
     setSkillExtra(controller.skillCommandIds());
   }, [controller, state.metrics.sessionTurns]);
@@ -637,6 +636,21 @@ export function App({
           ) : null}
         </Box>
       ) : null}
+      {/* 斜杠候选提示行（对标 CC）：输入 / 前缀时展示前缀匹配候选（内置+技能），纯渲染层不写链；截断以省略行提示 */}
+      {(() => {
+        const cands = slashCandidates(buffer, skillExtra);
+        if (!cands.length || (state.status !== 'idle' && state.status !== 'error')) return null;
+        const MAX = 8;
+        const shown = cands.slice(0, MAX);
+        return (
+          <Box paddingX={1}>
+            <Text dimColor>
+              {shown.join('  ')}
+              {cands.length > MAX ? t(`  … +${cands.length - MAX} more (Tab)`, `  … 还有 ${cands.length - MAX} 条（Tab 补全）`) : ''}
+            </Text>
+          </Box>
+        );
+      })()}
       <InputBox
         buffer={buffer}
         cursor={cursor}
