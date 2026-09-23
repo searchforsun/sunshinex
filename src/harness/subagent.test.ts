@@ -52,7 +52,7 @@ test('AgentRegistry：目录注册制加载与畸形 fail-fast（同 skills/MCP 
     bad.registerBuiltins();
     assert.throws(() => bad.loadAgents(root), /frontmatter/i);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -368,7 +368,7 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     assert.ok(body.endsWith('[exit 0]\n'), '终态行落文件尾');
     assert.equal(tasks.get(task.id)?.status, 'done');
   } finally {
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -398,7 +398,7 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
     for (let i = 0; i < 40 && tasks.get('b1')?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
     assert.notEqual(tasks.get('b1')?.status, 'running');
   } finally {
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -416,6 +416,6 @@ test('sleep 开头命令超时不转后台：EXEC_TIMEOUT 照旧失败（规格 
     assert.match(r.error.message, /EXEC_TIMEOUT/);
     assert.equal(tasks.list().length, 0, '豁免路径零任务登记');
   } finally {
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
