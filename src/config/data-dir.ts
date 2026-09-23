@@ -1,14 +1,14 @@
 /**
  * 运行时数据目录解析（单一权威）：账本/记忆/学习技能/KB 落盘的统一定位面。
  * 形态对标 Claude Code（~/.claude/projects/<项目>/，数据不进工作区）：
- * - ① SUNSHINEX_DATA_DIR 显式覆盖（整目录直指、**不按工作区隔离**；仅供测试与多实例自管分区，
- *      已从 settings.json 语义键表退役——留在用户配置面会诱导跨项目共用一份记忆与账本）
+ * - ① SUNSHINEX_DATA_DIR 显式覆盖（整目录直指；**开发与测试专用**重定向口——测试钉数据目录、
+ *      CI 隔离运行时数据；已从 settings.json 语义键表退役——留在用户配置面会诱导跨项目共用一份记忆与账本）
  * - ② <projects 根>/<工作区 slug>/data —— 缺省全局形态，按工作区（项目绝对路径）隔离；
  *      projects 根自身可由 SUNSHINEX_PROJECTS_DIR 指定（大容量盘/外置盘/多盘分置），缺省 userConfigDir()/projects
  * - ③ <root>/.data —— 缺省 projects 根不可建（沙箱/只读家目录）时回退旧形态，零破坏兜底
  * 显式来源（①②）不探测可写性、不回退：用户显式指定的位置即权威，配错要在使用点以真实路径报出来，
  * 不能静默落到别处；只有缺省形态（②的缺省值）才做一次 mkdirSync 探测以决定是否走 ③。
- * 不做模块级缓存——测试与多实例可用 HOME / SUNSHINEX_DATA_DIR / SUNSHINEX_PROJECTS_DIR 自由重定向，无跨用例状态。
+ * 不做模块级缓存——开发与测试可用 HOME / SUNSHINEX_DATA_DIR / SUNSHINEX_PROJECTS_DIR 自由重定向，无跨用例状态。
  */
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -68,7 +68,7 @@ export function dataDirReal(root: string): string {
   }
 }
 
-/** 全局用户技能根（三级技能目录规格 §3）：缺省 ~/.sunshinex/skills，SUNSHINEX_USER_SKILLS_DIR 显式覆盖（测试与多实例）。
+/** 全局用户技能根（三级技能目录规格 §3）：缺省 ~/.sunshinex/skills，SUNSHINEX_USER_SKILLS_DIR 显式覆盖（开发与测试）。
  *  人手工放置的技能资产定位，不走 resolveDataDir（学习根按工作区隔离，语义不同）；不 mkdir、不做模块级缓存——技能根缺失是常态，装载面靠 existsSync 容忍 */
 export function userSkillsDir(): string {
   const override = process.env.SUNSHINEX_USER_SKILLS_DIR;

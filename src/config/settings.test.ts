@@ -299,7 +299,7 @@ test('SEMANTIC_KEYS 全表钉子：29 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['maxLoopIterations'], 'SUNSHINEX_MAX_LOOP_ITERATIONS', '长任务终止：Loop 修正环轮数上限');
   assert.equal(SEMANTIC_KEYS['maxGraphNodes'], 'SUNSHINEX_MAX_GRAPH_NODES', '长任务终止：Graph 节点步上限');
   assert.equal(SEMANTIC_KEYS['reasoningEffort'], 'SUNSHINEX_REASONING_EFFORT', '思考强度语义键（--effort/--model effort 会话参数链）');
-  assert.equal(SEMANTIC_KEYS['dataDir'], undefined, 'dataDir 已退役：不隔离的整目录直指口不进用户配置面（只留环境变量给测试与多实例）');
+  assert.equal(SEMANTIC_KEYS['dataDir'], undefined, 'dataDir 不存在：不隔离的整目录直指口不进用户配置面（只留环境变量给开发与测试）');
   assert.equal(SEMANTIC_KEYS['structuredOutput'], undefined, 'structuredOutput 不存在：function calling 恒开、无结构化输出开关');
   assert.equal(RETIRED_KEYS['dataDir'] !== undefined, true, '退役键必须留定向提示，不能静默变「未知键」');
   assert.ok(/function calling/.test(RETIRED_KEYS['structuredOutput']), 'structuredOutput 退役提示须指明替代口径');
@@ -315,7 +315,7 @@ test('flattenSettings：dataDir 走退役定向提示、不落槽，且与未知
   assert.equal(retired.slots['SUNSHINEX_DATA_DIR'], undefined, '退役键绝不落槽（否则隔离语义又被绕开）');
   assert.equal(retired.warnings.length, 1);
   assert.ok(retired.warnings[0]!.includes('projectsDir'), '提示须给出替代键');
-  assert.ok(retired.warnings[0]!.includes('不按工作区隔离'), '提示须说清为何不能再写这里');
+  assert.ok(retired.warnings[0]!.includes('按工作区分目录隔离'), '提示须说清为何不能再写这里');
   assert.ok(!retired.warnings[0]!.includes('未知语义键'), '退役键不得被当未知键');
 
   const unknown = flattenSettings({ semantic: { dataDirX: 'x' }, env: {} });

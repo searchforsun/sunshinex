@@ -75,6 +75,7 @@ SUNSHINE.md          # 项目业务配置
 
 - TypeScript 开启 strict，禁止无理由使用 any
 - 一个文件只承担一个职责，模块边界清晰
+- 测试与被测模块同目录就近放置：`*.test.ts` 与被测 `*.ts` 同目录，测试统一走 `pnpm test`（`scripts/run-tests.js` 启动、测试数据目录钉仓内 `.data-test`）
 - 所有 IO（文件/网络/命令）集中在对应 adapter/store 内
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
