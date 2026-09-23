@@ -398,18 +398,10 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
     for (let i = 0; i < 40 && tasks.get('b1')?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
     assert.notEqual(tasks.get('b1')?.status, 'running');
   } finally {
-    // Windows 收割时序兜底：killBackground 已同步等 taskkill 退出，此处再以自写轮询吸收句柄释放尾窗——
-    // Node rimraf 对「进程占 cwd」类 EPERM 走 fixWinEPERM 分支即时上抛、maxRetries 参数不生效（实机探针实证），不可依赖
-    for (let i = 0; ; i++) {
-      try {
-        fs.rmSync(root, { recursive: true, force: true });
-        break;
-      } catch (e) {
-        const code = (e as NodeJS.ErrnoException).code;
-        if ((code !== 'EPERM' && code !== 'EBUSY') || i >= 20) throw e;
-        await new Promise((r) => setTimeout(r, 150));
-      }
-    }
+    // Windows 收割竞态：taskkill 为 fire-and-forget（sandbox.ts），任务状态翻转只代表 bash 本体 close、
+    // 孙进程（sleep）的 cwd 句柄释放落在其后毫秒到秒级窗口；清理以有界重试等待平台释放，
+    // 健康路径（含 POSIX）零失败成本——maxRetries 仅在真遇到 EPERM 时才生效
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 });
   }
 });
 
