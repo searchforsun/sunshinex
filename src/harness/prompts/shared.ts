@@ -29,7 +29,7 @@ export const PHASE_SENTENCE_LINE =
 
 /** 并行/独占政策：独占类单发独占一轮；其余可自由混批并行，单轮上限 8 个调用（与 reactor PARALLEL_TOOLS_LIMIT 对齐） */
 export const PARALLEL_POLICY_LINE =
-  'Exclusive tools: exec, ask, worktree, todo, and any unregistered tool must each run alone in their own round, with no other tool calls in the same round; all other tools (read, skill, grep, glob, kb_search, webfetch, websearch, write, memory_write) may be freely mixed in parallel, up to 8 calls per round.';
+  'Exclusive tools: exec, ask, worktree, todo, task_stop, and any unregistered tool must each run alone in their own round, with no other tool calls in the same round; all other tools (read, skill, grep, glob, kb_search, webfetch, websearch, write, memory_write) may be freely mixed in parallel, up to 8 calls per round.';
 
 /** 任务聚焦行：只服从最后一条任务指令行，完成后以最终答复收束 */
 export const TASK_FOCUS_LINE =

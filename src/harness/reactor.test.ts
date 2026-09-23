@@ -12,6 +12,8 @@ import { SafetyChain } from './security/chain';
 import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
+import { makeTaskStopTool } from './tools/task-stop';
+import { TaskRegistry } from './tasks';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import * as fs from 'fs';
@@ -515,6 +517,26 @@ test('并行混入 exec 被整体拒绝，观察回填供模型自纠', async ()
   assert.equal(r.done, true);
   const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
   assert.ok(deniedStep, '混入 exec 应被整体拒绝并回填观察');
+});
+
+test('并行混入 task_stop 被整体拒绝，观察回填供模型自纠', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-partask-'));
+  const adapter = new ScriptedAdapter([
+    '{"tools":[{"tool":"read","input":{"path":"package.json"}},{"tool":"task_stop","input":{"taskId":"b1"}}],"done":false}',
+    '{"done":true,"reply":"已纠正"}',
+  ]);
+  // 显式注册 task_stop（category: 'task'）：默认装配不含它，避免被 undefined 兜底拦截而测不到真实缝
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  registry.register(makeTaskStopTool(new TaskRegistry(tmp)));
+  const context = new ContextManager(tmp, store);
+  const reactor = new Reactor({ registry, safety, context, model: adapter });
+  const r = await reactor.run({ goal: '混入 task_stop' }, { maxSteps: 3 });
+  assert.equal(r.done, true);
+  const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
+  assert.ok(deniedStep, 'task_stop 与只读工具混批应被整体拒绝并回填观察');
 });
 
 test('并行调用超过上限被拒绝', async () => {
