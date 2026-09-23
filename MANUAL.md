@@ -179,7 +179,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 
 - 技能标准形态统一为 `{根}/skills/{id}/SKILL.md`，正文前 frontmatter 写 `name` 与 `description`。
 - 技能生效顺序：项目级 > 全局级 > 学习级（沉淀产物恒垫底）。
-- 文件操作被限制在启动目录内，越界路径直接拒绝；家目录不可写时，运行时数据自动回退到项目内 `.data/`。
+- 文件操作被限制在启动目录内，越界路径直接拒绝。
 
 ## 四、基本用法
 

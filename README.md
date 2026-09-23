@@ -49,7 +49,7 @@ src/
 
 ```bash
 corepack enable                # 启用 Node 自带 corepack（pnpm 版本由 package.json 钉定）
-pnpm install                   # .npmrc 已把 store 固定到仓内，HOME 只读环境开箱可用
+pnpm install                   # .npmrc 已把 store 固定到仓内，依赖安装不依赖外部缓存目录
 pnpm cli                       # 构建并启动交互式终端（缺省 manual 权限模式）
 ```
 
