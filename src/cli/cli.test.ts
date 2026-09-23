@@ -28,9 +28,9 @@ test('parseArgs：positional 与布尔 flag', () => {
 });
 
 test('parseArgs：--flag=value 与裸 positional 混排', () => {
-  const a = parseArgs(['run', 'tests/fixtures/demo', '--goal', 'g', '--mode', 'dontAsk']);
+  const a = parseArgs(['run', './demo-project', '--goal', 'g', '--mode', 'dontAsk']);
   assert.equal(a.command, 'run');
-  assert.deepEqual(a.positional, ['tests/fixtures/demo']);
+  assert.deepEqual(a.positional, ['./demo-project']);
   assert.equal(a.flags.goal, 'g');
   assert.equal(a.flags.mode, 'dontAsk');
 });
