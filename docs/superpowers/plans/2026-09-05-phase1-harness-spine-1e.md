@@ -1,5 +1,7 @@
 # 统一主链 · 1E 记忆沉淀 实施计划
 
+> **注（2026-09-23）**：本文档为已归档历史计划，其中关于旧沙箱写权限限制（src/ 属 root:root、须用 sandbox__edit/write、分轮串行、node tmp+mv 等）的约束已随沙箱环境升级失效，仅供历史参考，不作为当前执行依据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 >
 > 设计依据：docs/superpowers/specs/2026-09-05-phase1-harness-spine-1e-design.md（评审稿，commit fd2ef2c）

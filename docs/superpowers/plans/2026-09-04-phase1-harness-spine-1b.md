@@ -1,5 +1,7 @@
 # 统一主链 · 1B 补深度 实施计划
 
+> **注（2026-09-23）**：本文档为已归档历史计划，其中关于旧沙箱写权限限制（src/ 属 root:root、须用 sandbox__edit/write、分轮串行、node tmp+mv 等）的约束已随沙箱环境升级失效，仅供历史参考，不作为当前执行依据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 落地 1B「补深度」三项交付，把主链从「骨架闭合」推进到「深度可证」：

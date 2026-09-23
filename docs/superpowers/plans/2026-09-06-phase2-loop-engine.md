@@ -1,5 +1,7 @@
 # 阶段二实施计划：Loop Engine 与专用模板
 
+> **注（2026-09-23）**：本文档为已归档历史计划，其中关于旧沙箱写权限限制（src/ 属 root:root、须用 sandbox__edit/write、分轮串行、node tmp+mv 等）的约束已随沙箱环境升级失效，仅供历史参考，不作为当前执行依据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task by task.
 > 上游 spec：`docs/superpowers/specs/2026-09-06-phase2-loop-engine-design.md`（`90944e1`，已批准）
 > 基线：HEAD `90944e1`，全量 **113/113/0**（`npm test` 实测）。终态预期 **129/129/0**（新增 16 例；执行期用例数微调在执行记录登记）。

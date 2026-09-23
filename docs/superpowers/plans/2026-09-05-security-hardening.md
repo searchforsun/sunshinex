@@ -1,5 +1,7 @@
 # 安全收尾补丁实施计划（符号链接归一 + 破坏性命令底线）
 
+> **注（2026-09-23）**：本文档为已归档历史计划，其中关于旧沙箱写权限限制（src/ 属 root:root、须用 sandbox__edit/write、分轮串行、node tmp+mv 等）的约束已随沙箱环境升级失效，仅供历史参考，不作为当前执行依据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 闭合验证报告 P0-1（符号链接逃逸）与 P1-2（破坏性命令无防护）两项安全缺口，既有 90 用例零回归。

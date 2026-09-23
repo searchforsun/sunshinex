@@ -1,5 +1,7 @@
 # P1-1 压缩预算闭环实施计划（估算解耦 + 收敛环 + 记忆水位治理）
 
+> **注（2026-09-23）**：本文档为已归档历史计划，其中关于旧沙箱写权限限制（src/ 属 root:root、须用 sandbox__edit/write、分轮串行、node tmp+mv 等）的约束已随沙箱环境升级失效，仅供历史参考，不作为当前执行依据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 落地 spec `docs/superpowers/specs/2026-09-05-phase2-context-budget-design.md`（含修正 99996c3/eade004/3788899）：压缩预算闭环——估算与 kind 权重解耦、摘要/重读预算化、记忆分层配额治理、收敛环与滞回。
