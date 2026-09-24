@@ -92,7 +92,6 @@ test('I-1：可写根之外路径不进 grant（fake loader 断言 grantArgs 入
     fs.mkdirSync(root);
     fs.mkdirSync(outside);
     const wrap = await landlockWrap([root]);
-    if (process.platform !== 'linux') return assert.equal(wrap, null);
     assert.notEqual(wrap, null);
     // grant 参数取 fake 重建的 readWrite 数组（fake 只透传入参形状）；可写根之外路径不得出现
     const granted = wrap!.args.filter((arg) => arg.startsWith(base));
