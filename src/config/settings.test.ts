@@ -281,9 +281,9 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：29 键、槽名规范、密钥零进表（D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：32 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 29, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板');
+  assert.equal(entries.length, 32, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);

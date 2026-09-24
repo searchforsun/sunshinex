@@ -40,6 +40,9 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   embeddingModel: 'SUNSHINEX_EMBEDDING_MODEL',
   websearchProvider: 'SUNSHINEX_WEBSEARCH_PROVIDER',
   websearchEndpoint: 'SUNSHINEX_WEBSEARCH_ENDPOINT',
+  readFence: 'SUNSHINEX_READ_FENCE',
+  sandbox: 'SUNSHINEX_SANDBOX',
+  isolation: 'SUNSHINEX_ISOLATION',
 };
 
 /**
@@ -56,6 +59,8 @@ export const RETIRED_KEYS: Readonly<Record<string, string>> = {
 export interface SettingsDoc {
   semantic: Record<string, unknown>;
   env: Record<string, string>;
+  /** permissions 结构化语义键原值（spec 5.2）：形状裁决在 config/permissions.ts，不经 flatten/env 槽 */
+  permissions?: unknown;
 }
 
 /**
@@ -134,8 +139,13 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
     throw new Error(`settings.json version 仅支持 1，收到 ${JSON.stringify(version)}，为未来 schema 演进拒载: ${filePath}`);
   }
   const semantic: Record<string, unknown> = {};
+  let permissions: unknown = undefined;
   for (const [key, value] of Object.entries(root)) {
     if (key === 'version' || key === 'env') continue;
+    if (key === 'permissions') {
+      permissions = root[key] as unknown;
+      continue;
+    }
     semantic[key] = value;
   }
   const env: Record<string, string> = {};
@@ -149,7 +159,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
       // 非字符串值静默忽略：env 块定位是环境变量透传，数字/布尔无对应语义
     }
   }
-  return { semantic, env };
+  return { semantic, env, permissions };
 }
 
 export interface FlattenResult {
