@@ -2,6 +2,7 @@
 import { runSelfcheck } from './commands/selfcheck';
 import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
+import { runSkillsInstall } from './commands/skills-install';
 import { runTui } from '../tui/entry';
 import { applySettings, loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -56,7 +57,7 @@ export function parseArgs(argv: string[]): CliArgs {
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
-const COMMANDS = ['selfcheck', 'run', 'pipeline', 'help'];
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'skills', 'help'];
 
 /** 路径形态判据（规格 §6.2）：绝对路径（POSIX `/` 前缀、Windows 盘符）、`.`/`..` 显式相对形态、或含路径分隔符 */
 export function isPathForm(arg: string): boolean {
@@ -101,6 +102,8 @@ export function usageText(): string {
   sunshinex selfcheck                     skeleton self-check (perception/tools/security/context/Loop/Graph)
   sunshinex run <dir> --goal="..."        run the standard verify-fix loop (exit code 1 unless done)
   sunshinex pipeline <dir> --goal="..." [--yes]  five-node pipeline with gate approvals (--yes auto-approves)
+  sunshinex skills install <git-url | owner/repo | local-dir> [--force]
+                                          install skills into the global skills root (~/.sunshinex/skills)
   flags: --mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
          --continue (TUI, resume latest session)  --resume (TUI, open the session picker to resume)  --worktree[=<name>]  --workdir=<dir>
   unrecognized bare words exit with an error; run sunshinex help for usage`,
@@ -111,6 +114,8 @@ export function usageText(): string {
   sunshinex selfcheck                     骨架自检（感知/工具/安全/上下文/Loop/Graph 就绪）
   sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（非 done 退出码 1）
   sunshinex pipeline <dir> --goal="..." [--yes]  五节点流水线 gate 审批（--yes 跳过交互直接批准）
+  sunshinex skills install <git-url | owner/repo | 本地目录> [--force]
+                                          把技能安装到全局技能根（~/.sunshinex/skills）
   flags：--mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
         --continue（TUI 直接续接最近会话）  --resume（TUI 弹会话选择卡恢复）  --worktree[=<name>]  --workdir=<目录>
   无法识别的裸词报错不启动；使用 sunshinex help 查看使用方法`,
@@ -141,6 +146,8 @@ async function main(): Promise<void> {
       return runLoop(args);
     case 'pipeline':
       return runPipeline(args);
+    case 'skills':
+      return runSkillsInstall(args);
     case 'tui': {
       const d = resolveDirArg(args);
       if (d.unrecognized) {

@@ -3,7 +3,7 @@ import { Harness } from '../harness';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, ReasoningEffort, RunOutcome, SessionEvent, TodoItem } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, OutputStyle, ReasoningEffort, RunOutcome, SessionEvent, TodoItem } from '../types';
 
 export interface TuiRuntimeOpts {
   /** 问询接缝（ask_question 消费方）：SessionController 缺省接自身问询管线；外部注入用于 headless/脚本 */
@@ -22,6 +22,8 @@ export interface TuiRuntimeOpts {
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** todo_write 接缝（todo_write 规格 D6）：模型更新清单的会话回调（setTodos）；缺省不注入＝Harness no-op */
   onTodos?: (items: TodoItem[]) => void;
+  /** 输出样式分叉（交互面级，进稳定段）：缺省恒 terminal（TUI 面专属约束）；留参数仅为显式覆盖语义 */
+  outputStyle?: OutputStyle;
 }
 
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
@@ -61,6 +63,12 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     steer: () => harness.steering.drain(),
     // 沉淀双钩子与收尾管线（规格 §3.1/§3.5）：TUI 主链经 loop 构造 Reactor，钩子必须随 LoopDeps 透传才会触发
     ...harness.settleHooks,
+    // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），dispose 收口防 stdio 子进程悬挂
+    mcpReady: harness.mcpReady,
+    mcpClose: harness.mcpClose,
+    mcpWarnings: harness.mcpWarnings,
+    // 输出样式分叉：TUI 文字面缺省恒 terminal——围栏带语言标签、图示走 ASCII（CLI 不注入、保持缺省通用约定）
+    outputStyle: opts.outputStyle ?? 'terminal',
     pipeline: harness.pipeline,
   };
 

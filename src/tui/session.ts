@@ -803,6 +803,8 @@ export class SessionController {
   dispose(): void {
     if (this.kickTimer !== undefined) clearInterval(this.kickTimer);
     this.kickTimer = undefined;
+    // MCP 连接收口：关闭 stdio 子进程防悬挂（fire-and-forget，退出路径零阻塞）
+    void this.runtime.harness.mcpClose();
   }
 
   private closeTask(): void {
@@ -851,6 +853,10 @@ export class SessionController {
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
     this.notify();
+    // MCP 降级警告上屏（warn 级系统消息）：服务器失败只损失该服务器工具，任务不阻断
+    for (const w of this.runtime.harness.mcpWarnings()) {
+      this.pushMsg('system', t(`MCP warning: ${w}`, `MCP 警告：${w}`), { level: 'warn' });
+    }
     try {
       const ctx = this.runtime.harness.context;
       if (opts?.forkInstruction) {
