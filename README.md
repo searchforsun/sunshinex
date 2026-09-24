@@ -35,6 +35,7 @@ src/
 - **单一数据流、无旁路**：上下文只能从 Context 进、动作只能从 Tool 出、执行必经 Safety、记忆只走 Memory，每条验收可证伪（反例即不合格）。
 - **工程纪律**：TypeScript strict、CommonJS、`node --test`、TDD 先行；依赖优先 node: 内置、引入优秀第三方不设禁区；TUI/GUI 一律开源组件优先，好用易用对标明星产品（详见 [CLAUDE.md](CLAUDE.md)）。
 - **生产级底座**：项目感知、权限三态（deny→ask→allow）、dry-run、上下文窗口压缩（分块确定性 + checksum）、模型 SDK 可插拔。
+- 能力优先的文件权限边界：全盘可读、写面信任域 + 审批流、用户自定义 permissions 规则、Linux 下 Landlock 内核围栏（详见 MANUAL「permissions 权限规则与信任目录」）
 
 ## 产品形态（v1.0 个人开发者版）
 

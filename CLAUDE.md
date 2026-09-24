@@ -96,6 +96,7 @@ SUNSHINE.md          # 项目业务配置
 | sqlite-vec | KB 向量后端（`SUNSHINEX_KB_BACKEND=sqlite-vec`），收敛于 store 接缝 | local-json（缺省即回退，禁静默切换） |
 | markdown-it | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
+| @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
 
@@ -224,6 +225,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；**路径子树包含判定一律走 `isWithin`（`src/paths.ts`，叶子模块避免模块环）**，路径判界统一单点；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件（脚本层 `.cmd` 分派见 `docs/PLATFORM.md`）；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔——`listFiles` 对 `path.relative` 结果先归一化再匹配（Windows 反斜杠转 `/`，POSIX 为 no-op）。
 - **契约的机器强制（声明即须可执行）**：三平台可部署与 LF 文本两条契约配置机器闸门，声明与事实对齐——① CI 矩阵 `.github/workflows/ci.yml`（ubuntu + windows × Node 22/24，`fail-fast: false`；流水线内注明未覆盖项：探针不入库仅开发机手动执行、macOS 同源按性价比省略）；② `.gitattributes` + `.editorconfig` 双管入库/检出与编辑器落盘字节（Git for Windows 缺省 `core.autocrlf=true`，缺此二件 Windows 侧一次提交即可引入整文件 CRLF 重写）；③ 脚本层子进程启动形态统一 `spawn(ComSpec, ['/c', cmd, ...args])`，不用 `shell: true` 与 `args` 并用（Node ≥ 22.15 弃用，DEP0190）。细节见 `docs/PLATFORM.md`。
 - **平台差异登记**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 显式覆盖（POSIX 兼容、配 `-c` 调用）→ Windows 探测 Git Bash → PowerShell（pwsh 各候选整体先于 powershell.exe，`-NoProfile -Command`，对齐 Claude Code native Windows 口径）→ 末位 `ComSpec` → POSIX `/bin/sh`；决议产物带来源标签（`override`/`git-bash`/`powershell`/`comspec`/`posix`），`selfcheck` 的 `shell :` 行显式上屏。候选序、WSL 启动器排除等机制细节见 `docs/PLATFORM.md`。仓库文本为 LF（由机器强制承载）。
+- **Landlock exec 写围栏（2026-09-24）**：Linux-only（launcher 功能探测内核 landlock ABI），macOS/Windows 为 host 口径（manual 档审批流兜底）；隔离口径三态 `landlock | container | host`，经 `SUNSHINEX_ISOLATION` 显式声明或缺省 auto 探测，selfcheck `isolation :` 行上屏；`SUNSHINEX_SANDBOX=off` 一键关；容器部署时边界层由 Skills Docker 承担
 - **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 README 平台支持矩阵与部署指引。
 - **测试命令形态对 shell 中立**：断言前提一律以脚本文件（`node script.js`）或跨 shell 命令承载；shell 语义用例集中在 `security/sandbox.test.ts`（平台分支唯一落点），其余测试只断言工具链行为。
 

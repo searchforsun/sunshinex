@@ -6,6 +6,7 @@ import { ModelAdapter, StubAdapter, UsageHooks } from '../../model/adapter';
 import { resolveKbEnv } from '../../config/env';
 import { loadMcpServers } from '../../config';
 import { resolveShell } from '../../harness/security/sandbox';
+import { resolveIsolation, sandboxEnabled } from '../../harness/security/landlock';
 import { SessionController } from '../../tui/session';
 import type { CliArgs } from '../index';
 import { t } from '../../i18n';
@@ -53,6 +54,13 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   // exec 决议观测：Windows 上「Git Bash 探测未命中」此前无任何可循线索（静默改变引号与命令集），此行把实际命中的 shell 与来源显式上屏
   const shell = resolveShell();
   console.log('shell   :', `${shell.file} ${shell.args.join(' ')} (${shell.source})`);
+  // permissions 装配告警上屏：装载期形状非法「宁可少配不错配」只留告警，自检面把被忽略的配置亮出来（不静默）
+  for (const w of h.permissionWarnings()) {
+    console.log(`permissions warn: ${w}`);
+  }
+  // 隔离口径上屏（spec 5.5）：auto 语义 = 缺省探测（显式声明优先，此处只消费探测结果），真实内核探针不入库
+  const isolation = await resolveIsolation();
+  console.log(`isolation : ${isolation}${sandboxEnabled() ? '' : ' (sandbox off)'}`);
   console.log('context :', t(`cache hit rate ${h.context.session.hitRate().toFixed(1)}`, `缓存命中率 ${h.context.session.hitRate().toFixed(1)}`));
   const kbEnv = resolveKbEnv(process.env as Record<string, string | undefined>);
   console.log('knowledge:', `kb_search ready (backend=${kbEnv.backend}, embedding=${kbEnv.embeddingBaseUrl && kbEnv.embeddingApiKey ? 'configured' : t('not configured → degrades at call time', '未配置→调用时降级')})`);

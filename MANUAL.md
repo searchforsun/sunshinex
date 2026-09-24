@@ -154,6 +154,32 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - stdio 形态：`command` + 可选 `args` / `env`（transport 可省略）；远程形态：`url` + 可选 `transport`（缺省 `http`，支持 `sse`）。
 - 非法条目跳过不抛（缺 command/url、transport 值未知、形态矛盾），装配面宁可少配不错配。
 
+### permissions 权限规则与信任目录
+
+settings.json 支持结构化 `permissions` 键（全局 `~/.sunshinex/settings.json` 与项目 `.sunshinex/settings.json` 两级合并生效，数组取并集）：
+
+```json
+{
+  "permissions": {
+    "deny": ["Write(*.pem)", "Bash(rm -rf*)", "Read(**/.env)"],
+    "allow": ["Write(src/**)"],
+    "additionalDirs": ["../lib-shared"]
+  }
+}
+```
+
+- 语法 `Tool(specifier)`：文件工具的 specifier 为路径 glob（`**` 跨段、`*` 不跨段、无 `/` 写法对文件名匹配，相对项目根书写）；`Bash(...)` 为命令匹配（尾 `*` 前缀）；`mcp__<server>__<tool>` 直名（尾 `*` 通配）
+- `deny` 命中即拒、`allow` 命中免批；`additionalDirs` 为信任目录（读写同项目根，会话内生效）
+- 运行期扩展：TUI 内 `/add-dir <目录>` 即时追加信任目录；CLI/TUI 启动参数 `--add-dir=<目录>`（可重复）
+
+配套语义键：
+
+| 键 | 环境槽 | 缺省 | 语义 |
+|----|--------|------|------|
+| readFence | SUNSHINEX_READ_FENCE | off | 开启后信任域外读取需审批（manual 档）/ 拒绝（其余档） |
+| sandbox | SUNSHINEX_SANDBOX | on | Linux 下 exec 经 Landlock 内核围栏；off 一键关 |
+| isolation | SUNSHINEX_ISOLATION | auto | 隔离口径声明：landlock / container / host，selfcheck 上屏 |
+
 ## 三、目录与文件
 
 **全局级 `~/.sunshinex/`**
