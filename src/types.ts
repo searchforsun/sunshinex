@@ -349,6 +349,8 @@ export interface ExecOpts {
   cwd?: string;
   timeoutMs?: number;
   timeoutToBackground?: boolean;
+  /** Landlock launcher 前缀（spec 5.4）：由安全链组装、ProcessSandbox 消费；缺省无围栏 */
+  wrap?: { file: string; args: string[] };
 }
 
 /** Tool 执行后端：命令与文件 IO 的统一执行面（process 现行，Docker/SSH 预留接口位） */
@@ -358,7 +360,7 @@ export interface ToolBackend {
   exec(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>>;
   /** 后台执行（后台任务线）：提交即返回 pid；stdout/stderr 经 onData 增量回调，进程退出经 onExit 回调（exitCode 语义同 exec）。
    *  平台形态（spawn/detached/进程组收割）只允许落 ProcessSandbox 本文件（CLAUDE.md §14） */
-  execBackground?(cmd: string, opts?: { cwd?: string; onData?: (chunk: string) => void; onExit?: (exitCode: number) => void }): Promise<Result<{ pid: number }>>;
+  execBackground?(cmd: string, opts?: { cwd?: string; wrap?: { file: string; args: string[] }; onData?: (chunk: string) => void; onExit?: (exitCode: number) => void }): Promise<Result<{ pid: number }>>;
   /** 按进程组/进程树终止后台任务（task_stop 单点后端） */
   killBackground?(pid: number): void;
   readFile(absPath: string): string;
@@ -383,6 +385,8 @@ export interface ContextItem {
 export interface RuntimeSafetyGate {
   execCwd(): string;
   execCommandAllowed(cmd: string): { allowed: true } | { allowed: false; reason: string };
+  /** 后台 exec 分支的 landlock 包装（spec 5.4；前台在 chain.run 内联；缺省无围栏） */
+  execWrap?(cmd: string): Promise<{ file: string; args: string[] } | null>;
 }
 
 /** 工具执行器签名（经安全链执行；第二参为执行期安全缝，registry 注入） */

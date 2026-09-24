@@ -70,9 +70,11 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         if (input.background === true) {
           if (tasks === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background execution requires a task registry (not wired in this assembly)');
           if (backend.execBackground === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background exec requires a backend with execBackground');
+          const wrap = gateView.execWrap !== undefined ? await gateView.execWrap(cmd) : null;
           const task = tasks.submit({ kind: 'exec', label: cmd.trim().split(/\s+/)[0] ?? cmd, ownerRun: tasks.currentOwner() });
           const started = await backend.execBackground(cmd, {
             cwd: gateView.execCwd(),
+            ...(wrap !== null ? { wrap } : {}),
             onData: (chunk) => tasks.append(task.id, chunk),
             onExit: (code) => tasks.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code }),
           });

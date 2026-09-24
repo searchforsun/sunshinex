@@ -13,6 +13,7 @@ import { isMemoryPath, MemoryScope } from '../memory/paths';
 import { isWithin } from '../../paths';
 import { DryRun } from './dryrun';
 import { Result, fail } from '../../result';
+import { landlockWrap } from './landlock';
 
 /** 需要路径边界校验的工具（安全链规范名） */
 const PATH_TOOLS = new Set(['Read', 'Write', 'Grep']);
@@ -260,6 +261,17 @@ export class SafetyChain {
     return this.activeRootPath ?? this.root;
   }
 
+  /** RuntimeSafetyGate 视图：后台分支 landlock 包装（前台在 run 内联；registry 注入的 gate 即链实例，fork 克隆自动携带） */
+  async execWrap(_cmd: string): Promise<ExecOpts['wrap'] | null> {
+    return landlockWrap(this.landlockWritableRoots());
+  }
+
+  /** landlock 可写根（spec 5.4）：活动根/隔离根 ∪ 信任目录 ∪ 会话放行目录 ∪ ~/.sunshinex ∪ 数据目录 ∪ 系统临时目录 */
+  private landlockWritableRoots(): string[] {
+    const base = this.activeRootPath ?? (this.isolatedRootPath ?? this.root);
+    return [base, ...this.additionalDirs, ...this.guard.sessionDirList(), userConfigDir(), dataDirReal(this.root), os.tmpdir()];
+  }
+
   /**
    * 记忆写入窄口（规格 §4.2）：仅 <dataDir>/memory/** 放行，且总开关开启、scope 覆盖三者齐备；判定两侧同走 realpath 归一（数据目录自身含符号链接段时不误拒合法写入），符号链接逃逸仍被拒。
    * 返回**带原因的判定**而非裸 boolean（2026-09-18 审查次要项）：三种拒绝成因（总开关关闭 / 不在记忆子树内 / 越出本代理 scope）分别给出记忆侧可读原因，
@@ -311,10 +323,11 @@ export class SafetyChain {
     return false;
   }
 
-  run(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
+  async run(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
     const gate = this.execCommandAllowed(cmd);
     if (!gate.allowed) return Promise.resolve(fail('EXEC_OUT_OF_TREE', gate.reason));
-    return this.backend.exec(cmd, opts);
+    const wrap = await this.execWrap(cmd);
+    return this.backend.exec(cmd, { ...opts, ...(wrap !== null ? { wrap } : {}) });
   }
 
   /** 活动根（worktree 会话）：切换时防御性 realpath 沿构造先例；null=缺省（既有语义逐字节保持） */

@@ -11,11 +11,15 @@ export class ProcessSandbox implements ToolBackend {
   async exec(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
     const timeoutMs = opts?.timeoutMs ?? 1_800_000;
     const shell = resolveShell();
+    const file = opts?.wrap !== undefined ? opts.wrap.file : shell.file;
+    const args = opts?.wrap !== undefined
+      ? [...opts.wrap.args, '--', shell.file, ...shell.args, cmd]
+      : [...shell.args, cmd];
     if (opts?.timeoutToBackground) {
       // 超时转后台形态（后台任务线规格 D5，对标 CC 超时自动转后台）：自管计时器——到点不杀进程，把存活子进程连同
       // 已缓冲输出交回调用方登记为后台任务；正常结束/真失败语义与 execFile 形态一致。
       return new Promise((resolve) => {
-        const child = spawn(shell.file, [...shell.args, cmd], { cwd: opts?.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+        const child = spawn(file, args, { cwd: opts?.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
         let stdout = '';
         let stderr = '';
         let settled = false;
@@ -41,7 +45,7 @@ export class ProcessSandbox implements ToolBackend {
       });
     }
     return new Promise((resolve) => {
-      execFile(shell.file, [...shell.args, cmd], { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      execFile(file, args, { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
         if (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code === 'ETIMEDOUT' || (err as { killed?: boolean }).killed) {
@@ -67,9 +71,13 @@ export class ProcessSandbox implements ToolBackend {
    *  致任务目录删除类清理（测试夹具、worktree 清扫）EPERM；非 detached 形态进程树与 Node 同组收敛、
    *  退出即释放句柄，win32 收割语义由 killBackground 的 taskkill /T /F 按进程树承载，不依赖 detached。
    */
-  async execBackground(cmd: string, opts?: { cwd?: string; onData?: (chunk: string) => void; onExit?: (exitCode: number) => void }): Promise<Result<{ pid: number }>> {
+  async execBackground(cmd: string, opts?: { cwd?: string; wrap?: { file: string; args: string[] }; onData?: (chunk: string) => void; onExit?: (exitCode: number) => void }): Promise<Result<{ pid: number }>> {
     const shell = resolveShell();
-    const child = spawn(shell.file, [...shell.args, cmd], {
+    const file = opts?.wrap !== undefined ? opts.wrap.file : shell.file;
+    const args = opts?.wrap !== undefined
+      ? [...opts.wrap.args, '--', shell.file, ...shell.args, cmd]
+      : [...shell.args, cmd];
+    const child = spawn(file, args, {
       cwd: opts?.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
