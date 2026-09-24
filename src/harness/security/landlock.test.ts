@@ -27,7 +27,7 @@ test('可用 seam：launcher 前缀组装，可写根去重保序，只读段为
     const wrap = await landlockWrap([a, b, a]);
     assert.notEqual(wrap, null);
     assert.equal(wrap!.file, '/fake/landlock-launcher');
-    assert.deepEqual(wrap!.args, ['--rw', a, b, '--ro', '/']);
+    assert.deepEqual(wrap!.args, ['--rw', a, b, '/dev/null', '--ro', '/']);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
@@ -119,7 +119,7 @@ test('I-2：探测失败不缓存——fake loader 先失败后成功，第二�
     resetLandlockProbe();
     const wrap = await landlockWrap([root]);
     assert.notEqual(wrap, null, '第二阶段探测恢复 → 重新包装');
-    assert.deepEqual(wrap!.args, ['--rw', root, '--ro', '/']);
+    assert.deepEqual(wrap!.args, ['--rw', root, '/dev/null', '--ro', '/']);
   } finally {
     configureLandlockLoader(null);
     resetLandlockProbe();

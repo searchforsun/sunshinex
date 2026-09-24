@@ -87,7 +87,9 @@ export async function landlockWrap(writableRoots: string[]): Promise<LandlockWra
   if (mod === null) return null;
   const roots = [...new Set(writableRoots.map((r) => r.trim()).filter((r) => r.length > 1 && fs.existsSync(r)))];
   if (roots.length === 0) return null;
-  return { file: mod.launcherPath(), args: mod.grantArgs({ readOnly: ['/'], readWrite: roots }) };
+  // /dev/null 是标准运行面（git 等命令的 stdout/stderr 丢弃通道），older ABI partial enforcement 下
+  // 允许列表不含它即被拦（实测 fatal: could not open '/dev/null'）；设备文件不承载任何工作区数据通道
+  return { file: mod.launcherPath(), args: mod.grantArgs({ readOnly: ['/'], readWrite: [...roots, '/dev/null'] }) };
 }
 
 /** 隔离口径解析（spec 5.5）：SUNSHINEX_ISOLATION 显式声明优先，auto = landlock 探测 → 容器标记 → host */
