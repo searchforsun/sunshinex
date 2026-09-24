@@ -90,7 +90,7 @@ test('read 落点跟随安全链 root（safePath 消费自 evaluate）', async (
   const dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-roota-'));
   const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-rootb-'));
   fs.writeFileSync(path.join(dirA, 'in-a.txt'), 'A-content');
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), new DryRun(), dirA);
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'manual'), new ProcessSandbox(), new DryRun(), dirA);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, dirB)) registry.register(t);
   const r = await registry.execute('read', { path: 'in-a.txt' }, safety);
@@ -98,15 +98,11 @@ test('read 落点跟随安全链 root（safePath 消费自 evaluate）', async (
   if (r.ok) assert.equal(r.value.stdout, 'A-content');
 });
 
-test('read 越界路径经 execute 被拦截（COMMAND_DENIED）', async () => {
+test('read 越界路径缺省放行（spec 5.1 读分支 D1：域外全放，fence 才收窄）', async () => {
   const root = tmpdir();
   const { registry, safety } = registryWith(root);
   const r = await registry.execute('read', { path: '../outside.txt' }, safety);
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.equal(r.error.code, 'COMMAND_DENIED');
-    assert.match(r.error.message, /path escapes project root/);
-  }
+  assert.equal(r.ok, true);
 });
 
 test('read 支持 range 行段选择（L100-125 形态，1-based 闭区间，带行号回显）', async () => {

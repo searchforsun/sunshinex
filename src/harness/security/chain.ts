@@ -1,8 +1,11 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
+import { matchAnyRule } from '../../config/permissions';
+import type { PermissionsConfig } from '../../config/permissions';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
-import { dataDirReal } from '../../config/data-dir';
+import { dataDirReal, resolveDataDir } from '../../config/data-dir';
 import { userConfigDir } from '../../config/env';
 import { loadGlobalSettings, loadProjectSettings } from '../../config/settings';
 import { resolveMemoryConfig } from '../../config/memory-config';
@@ -13,6 +16,11 @@ import { Result, fail } from '../../result';
 
 /** 需要路径边界校验的工具（安全链规范名） */
 const PATH_TOOLS = new Set(['Read', 'Write', 'Grep']);
+
+/** .git 内部路径判据（spec D6）：路径任一段为 .git 即命中（仓库 .git 目录与 worktree 指针文件同护） */
+function isGitInternalPath(real: string): boolean {
+  return real.split(path.sep).includes('.git');
+}
 
 /** 内置凭据模式集：命中替换为 ***（零依赖；spec 2.3 逐字清单） */
 const MASK_PATTERNS: RegExp[] = [
@@ -64,69 +72,165 @@ export class SafetyChain {
     return { allowed: true };
   }
 
-  /** 异步决策：与 evaluate 同一语义，但 guard 段走 preToolUseAsync（manual ask 标记接入终端化审批） */
+  /** 异步决策：guard 段走 preToolUseAsync；路径工具判界后，manual 审批请求经 guard.resolveAsk 路由（spec 5.1 写/读分支：
+   *  'always' 目录登记，会话内同目录后续读写免批；asker 缺失/失败维持原拒绝，宁停不误）。非路径工具语义不变。 */
   async evaluateAsync(tool: string, input: unknown): Promise<GuardDecision> {
     const decision = await this.guard.preToolUseAsync(tool, input);
     if (!decision.allowed) return decision;
+    if (!PATH_TOOLS.has(tool)) return { allowed: true };
+    const resolved = this.resolveSafe(this.rawPath(input), tool);
+    if (resolved.allowed || resolved.ask !== true) return resolved;
+    // 链侧 ask 路由（spec 5.1 写/读分支）：'always' 目录登记，会话内同目录后续读写免批
+    const askDecision = await this.guard.resolveAsk({
+      id: this.guard.nextApprovalId(),
+      kind: tool === 'Write' ? 'write' : 'read',
+      subject: this.rawPath(input),
+      reason: resolved.reason,
+    });
+    if (askDecision === null) return resolved;
+    if (askDecision === 'deny') return { allowed: false, reason: 'COMMAND_DENIED: rejected by user' };
+    if (askDecision === 'always' && resolved.askDir !== undefined) this.guard.allowSessionDir(resolved.askDir);
+    return { allowed: true, safePath: resolved.safePath };
+  }
 
-    if (PATH_TOOLS.has(tool)) {
-      const raw = typeof input === 'object' && input !== null ? (input as { path?: unknown }).path : undefined;
-      return this.resolveSafe(raw, tool);
+  /** D1 读围栏开关（SUNSHINEX_READ_FENCE，onOff，缺省关） */
+  private readFenceEnabled(): boolean {
+    const v = process.env.SUNSHINEX_READ_FENCE;
+    if (v === 'on' || v === 'true') return true;
+    if (v === 'off' || v === 'false') return false;
+    return false;
+  }
+
+  /** fence 触发后的读判据（spec 5.1 读分支：manual=ask、其余档=拒） */
+  private readFenceDecision(real: string): GuardDecision {
+    if (this.guard.mode === 'manual') {
+      return {
+        allowed: false,
+        ask: true,
+        askDir: path.dirname(real),
+        safePath: real,
+        reason: `COMMAND_DENIED: read outside trusted roots requires approval (read fence enabled): ${real}`,
+      };
     }
-    return { allowed: true };
+    return { allowed: false, reason: `COMMAND_DENIED: read fence blocks reads outside trusted roots: ${real}` };
+  }
+
+  /** 文件工具规则匹配 specifiers：绝对 posix（去首 /）/ root 相对 posix / basename */
+  private pathRuleSpecifiers(real: string): string[] {
+    const posix = real.split(path.sep).join('/');
+    const noLead = posix.startsWith('/') ? posix.slice(1) : posix;
+    const rel = path.relative(this.rootReal, real).split(path.sep).join('/');
+    const base = posix.slice(posix.lastIndexOf('/') + 1);
+    return [...new Set([noLead, rel, base])];
+  }
+
+  /** 路径工具输入的 path 字段归一读取 */
+  private rawPath(input: unknown): string {
+    if (typeof input === 'object' && input !== null && typeof (input as { path?: unknown }).path === 'string') {
+      return (input as { path: string }).path;
+    }
+    return String(input ?? '');
   }
 
   /**
-   * 路径归一判界：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；基准 rootReal；异常按拒绝处理不放行（spec 2.1 兜底条款）。
-   * 数据目录白名单（auto memory 规格 D6 + 对齐规格 §4.2）：Read/Grep 访问 dataDir 子树放行（记忆索引/主题文件按需召回；
-   * Full trace 归档、tool-outputs 路径同受益）；Write 只在 <dataDir>/memory/** 放行（记忆写入窄口，总开关关闭即失效）——
-   * 判定一律作用于 realpath 归一后的真实路径：dataDir 内由模型植入的符号链接指向子树之外时被拒（不再有「写面全拒故链接无威胁」的前提）。
-   * 记忆写窄口**先于** root 内外分支定论（2026-09-18 审查裁决）：数据目录回退 <root>/.data 布局（HOME 不可写，见 config/data-dir 形态③）下记忆目录落在 root 内，
-   * 若让「root 内一律放行」分支先短路，总开关对写面即失效（规格把开关定义为「不注入 / 不提取 / 不整理 / **写被拒**」四贯通）。命中记忆形态即在此定论，不再下探 root 分支；
-   * 非记忆路径的 root 内外语义保持原样（root 内全放行、root 外拒、dataDir 只读放行），Read/Grep 的只读放行与总开关无关。
+   * 路径归一判界（spec §5.1 判定序）：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；
+   * 异常按拒绝处理不放行（spec 2.1 兜底条款）。求值序：settings.json → .git → 记忆写窄口（字面∪real 双查）→
+   * worktree 主根拒写 → 用户 deny → 会话目录放行 → 用户 allow → 读分支 → 写分支（信任域放行 → 隔离链根外恒拒 → 数据目录只读 → 档位）。
+   * 产品硬底线先于用户规则（规则只可收窄不可放宽）；
+   * 读分支（D1）信任域内直放、域外缺省全放（fence 开启才收窄：manual=ask、其余档=拒）；
+   * 写分支（D2/D3）信任域放行、域外按档位（manual=ask 且 askDir 记目录），隔离链根外恒拒；
+   * 数据目录只读在写分支信任域之后求值：root/活动工作树落在 dataDir 子树内的布局（SUNSHINEX_DATA_DIR 重定向、
+   * worktreesRoot 归 dataDir）不得被只读条款误伤——信任域命中即放行，仅两域之外的 dataDir 子树保持只读定性。
    */
   private resolveSafe(raw: unknown, tool: string): GuardDecision {
     try {
-      // 判界基准：活动根在场（worktree 会话）时相对路径锚活动根，缺省回退主根——相对路径与 exec cwd 同源切换
-      const baseRoot = this.activeRootPath ?? this.root;
+      // 判界基准：活动根在场（worktree 会话）时相对路径锚活动根，缺省回退主根——相对路径与 exec cwd 同源切换；
+      // 两根均取 realpath 归一后的真实路径为锚（root 经符号链接传入时判界仍正确；归一异常沿构造先例回退词形态）
+      const baseRoot = this.activeRootReal ?? this.rootReal;
       const abs = path.resolve(baseRoot, String(raw ?? ''));
       let anchor = abs;
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
-      // settings.json 两级硬保护（用户裁决：配置正名不可被模型改写）：命中即拒，先于一切放行分支；
-      // 拒绝文案英文单语（入链），两级路径各归一一次（文件缺失时按字面拼接，合法确定态）
+
+      // ── 产品硬底线（spec 5.1：先于用户规则；规则只可收窄不可放宽）──
+      // ① settings.json 两级写保护（用户裁决：配置正名不可被模型改写；拒绝文案英文单语（入链），两级路径各归一一次）
       if (tool === 'Write' && this.isProtectedSettingsPath(real)) {
         return { allowed: false, reason: `COMMAND_DENIED: settings.json is protected (edit it manually): ${real}` };
       }
-      // 记忆写窄口只约束 Write（只读放行走下方 dataDir 分支，与总开关无关）；命中记忆形态即定论：开关关闭 / 越 scope 在此拒，文案为记忆侧可辨识的英文拒绝原因
-      if (tool === 'Write' && isMemoryPath(dataDirReal(this.root), real) !== null) {
+      // ② .git/** 写保护（D6）
+      if (tool === 'Write' && isGitInternalPath(real)) {
+        return { allowed: false, reason: `COMMAND_DENIED: .git is protected (git state changes go through exec git): ${real}` };
+      }
+      // ③ 记忆写窄口（既有；先于信任域放行，不绕记忆总开关与 scope）。
+      // 字面∪real 双查（对齐 realpath 判界不可逃逸语义）：仅查 real 时，dataDir 内 memory 下由模型植入的
+      // 符号链接指向子树之外，realpath 后即不呈记忆形态，窄口失察、写面落到下方写分支档位放行（安全回归）；
+      // 字面形态先查保证「链接形式上是记忆路径」一律进窄口定论，real 形态维持既有判定（链接目标真实落位）
+      const dataDirLiteral = resolveDataDir(this.root);
+      if (
+        tool === 'Write' &&
+        (isMemoryPath(dataDirReal(this.root), real) !== null || isMemoryPath(dataDirReal(this.root), abs) !== null ||
+          isMemoryPath(dataDirLiteral, real) !== null || isMemoryPath(dataDirLiteral, abs) !== null)
+      ) {
         const memory = this.memoryWriteAllowed(real);
         return memory.allowed
           ? { allowed: true, safePath: real }
           : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
       }
-      // ~/.sunshinex 子树放行（用户级资产：全局技能根等，模型可自助安装技能；判据同 realpath 归一）。
-      // 置于记忆窄口之后：缺省数据目录（<userConfigDir>/projects/<slug>/data）也落在该子树内，先放行会让记忆写绕过总开关与 scope；
-      // settings.json 硬保护已在其前定论，此处不会放行配置正名
+      // ⑤ worktree 主根拒写（既有硬底线；主根读类恒开放）
+      if (this.activeRootReal !== null && tool === 'Write' && (real === this.rootReal || isWithin(this.rootReal, real))) {
+        return { allowed: false, reason: `COMMAND_DENIED: path escapes active worktree root (write outside worktree session): ${real}` };
+      }
+
+      // ── 用户规则面（D5：deny → 会话目录放行 → allow）──
+      const ruleSpecifiers = this.pathRuleSpecifiers(real);
+      if (this.permissions !== undefined && matchAnyRule(this.permissions.deny, tool, ruleSpecifiers)) {
+        return { allowed: false, reason: `COMMAND_DENIED: denied by user permissions rule: ${real}` };
+      }
+      if (this.guard.sessionDirAllowed(real)) return { allowed: true, safePath: real };
+      if (this.permissions !== undefined && matchAnyRule(this.permissions.allow, tool, ruleSpecifiers)) {
+        return { allowed: true, safePath: real };
+      }
+
+      // ── 信任域 ──
       const cfgReal = fs.existsSync(userConfigDir()) ? fs.realpathSync(userConfigDir()) : userConfigDir();
-      if (real === cfgReal || isWithin(cfgReal, real)) return { allowed: true, safePath: real };
-      // 活动 root 判定（规格 §11）：worktree 会话中活动根命中即按项目路径语义放行（读/写两面）；
-      // 主根与活动根互为界外——主根写类拒（回执提及 worktree 会话），读类恒开放（对比审查语义）；
-      // 真正外部路径（两根皆外）维持既有拒绝语义与文案，活动根在场零漂移
-      if (this.activeRootReal !== null) {
-        if (real === this.activeRootReal || isWithin(this.activeRootReal, real)) return { allowed: true, safePath: real };
-        if (tool === 'Write' && (real === this.rootReal || isWithin(this.rootReal, real))) {
-          return { allowed: false, reason: `COMMAND_DENIED: path escapes active worktree root (write outside worktree session): ${real}` };
-        }
+      const inUserConfig = real === cfgReal || isWithin(cfgReal, real);
+      const inActiveRoot = this.activeRootReal !== null && (real === this.activeRootReal || isWithin(this.activeRootReal, real));
+      const inMainRoot = real === this.rootReal || isWithin(this.rootReal, real);
+      const inAdditional = this.additionalDirs.some((d) => real === d || isWithin(d, real));
+
+      // 读分支（D1）：信任域内直放；域外全盘放行，fence 开启时收窄（manual=ask、其余档=拒）
+      if (tool !== 'Write') {
+        if (inUserConfig || inActiveRoot || inAdditional || inMainRoot) return { allowed: true, safePath: real };
+        if (this.underDataDir(real)) return { allowed: true, safePath: real };
+        if (this.readFenceEnabled()) return this.readFenceDecision(real);
+        return { allowed: true, safePath: real };
       }
-      if (real !== this.rootReal && !isWithin(this.rootReal, real)) {
-        if (tool !== 'Write' && this.underDataDir(real)) return { allowed: true, safePath: real };
-        return { allowed: false, reason: `COMMAND_DENIED: path escapes project root (real path): ${real}` };
+
+      // 写分支（D2/D3）：信任域放行；隔离链根外恒拒（程序化隔离，spec D2 边界）；
+      // 数据目录只读在信任域之后求值（上移会误伤 root/活动树落 dataDir 内的布局，见方法注释）；
+      // 两域之外的 dataDir 子树写仍恒拒（不借档位放行），只保留 <dataDir>/memory/** 记忆窄口一个写通道
+      if (inUserConfig || inActiveRoot || inAdditional || inMainRoot) return { allowed: true, safePath: real };
+      if (this.isolatedRootReal !== null) {
+        return { allowed: false, reason: `COMMAND_DENIED: path escapes the isolated worktree root: ${real}` };
       }
-      return { allowed: true, safePath: real };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { allowed: false, reason: `COMMAND_DENIED: path boundary check failed: ${msg.slice(0, 120)}` };
+      if (this.underDataDir(real)) {
+        return {
+          allowed: false,
+          reason: `COMMAND_DENIED: data directory is read-only (only <dataDir>/memory/** is writable): ${real}`,
+        };
+      }
+      const mode = this.guard.mode;
+      if (mode === 'plan') return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
+      if (mode === 'dontAsk') return { allowed: true, safePath: real };
+      return {
+        allowed: false,
+        ask: true,
+        askDir: path.dirname(real),
+        safePath: real,
+        reason: `COMMAND_DENIED: write outside trusted roots requires approval: ${real}`,
+      };
+    } catch (error) {
+      return { allowed: false, reason: `COMMAND_DENIED: path boundary check failed: ${error instanceof Error ? error.message.slice(0, 120) : String(error).slice(0, 120)}` };
     }
   }
 
@@ -139,6 +243,8 @@ export class SafetyChain {
    * isolatedRoot 标记——exec 判界三查仅隔离子链生效；guard/backend/dryrun/scope 引用共享，活动根态不继承（克隆从缺省态起步，子链 exec cwd 与路径判界天然锚树） */
   withRoot(root: string): SafetyChain {
     const child = new SafetyChain(this.guard, this.backend, this.dryrun, root, this.memoryScope);
+    child.permissions = this.permissions;
+    child.additionalDirs = this.additionalDirs;
     child.isolatedRootPath = root;
     try {
       child.isolatedRootReal = fs.existsSync(root) ? fs.realpathSync(root) : root;
@@ -219,6 +325,10 @@ export class SafetyChain {
   private isolatedRootPath: string | null = null;
   private isolatedRootReal: string | null = null;
 
+  /** D5 用户规则（settings permissions 注入面）与 D3 信任目录集（原地变更保引用，fork 克隆共享同一实例） */
+  private permissions: PermissionsConfig | undefined = undefined;
+  private additionalDirs: string[] = [];
+
   /** 隔离子链 exec 命令判界（规格 2026-09-23-subagent-worktree-isolation §5/D6，对标 CC v2.1.203）：
    * cwd 恒由程序锚树（execCwd），越树通道只剩命令文本——② git 指针参数越树拒；③ GIT_* 环境赋值/cd 越树拒；
    * 含运行期替换（$()`）/反引号）的 git 命令不可验证即拒（fail-closed）。非隔离子链零介入。
@@ -296,6 +406,32 @@ export class SafetyChain {
   exitWorktree(): void {
     this.activeRootReal = null;
     this.activeRootPath = null;
+  }
+
+  /** D5 用户规则注入（路径工具消费；Bash/mcp/web 通道在 guard PolicyEngine） */
+  setPermissions(config: PermissionsConfig): void {
+    this.permissions = config;
+  }
+
+  /** D3 信任目录集：realpath 归一（缺失锚定向上）；原地变更保引用——fork 克隆共享同一实例 */
+  setAdditionalDirs(dirs: string[]): void {
+    const normalized = dirs.map((d) => {
+      try {
+        const abs = path.resolve(d);
+        let anchor = abs;
+        while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
+        return fs.realpathSync(anchor) + abs.slice(anchor.length);
+      } catch {
+        return path.resolve(d);
+      }
+    });
+    this.additionalDirs.length = 0;
+    this.additionalDirs.push(...normalized);
+  }
+
+  /** D3 追加单个信任目录（/add-dir 运行期通道；与 settings/CLI 三面同源） */
+  addAdditionalDir(dir: string): void {
+    this.setAdditionalDirs([...this.additionalDirs, dir]);
   }
 
   preview(cmd: string): string {

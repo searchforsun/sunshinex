@@ -157,7 +157,7 @@ export class SecurityGuard {
     if (this.sessionAllows.has(this.allowKey(tool, subject))) return { allowed: true };
     if (!this.asker) return sync;
     const req: ApprovalRequest = {
-      id: `ap-${++this.seq}`,
+      id: this.nextApprovalId(),
       kind: tool === 'Bash' ? 'command' : tool.startsWith('mcp__') ? 'mcp' : tool === 'WebFetch' ? 'webfetch' : tool === 'WebSearch' ? 'websearch' : 'write',
       subject,
       reason: 'manual mode requires interactive confirmation',

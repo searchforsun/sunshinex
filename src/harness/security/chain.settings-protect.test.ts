@@ -68,8 +68,8 @@ test('~/.sunshinex 子树放行：全局技能根 Write/Read 放行，子树外�
 
     const outside = path.join(path.dirname(userCfg), 'elsewhere.txt');
     const dOut = chain.evaluate('Write', { path: outside });
-    assert.equal(dOut.allowed, false, '配置根之外的外部路径写应仍拒');
-    assert.ok(!dOut.allowed && dOut.reason.includes('path escapes project root'), `外部路径拒绝语义不变：${!dOut.allowed ? dOut.reason : ''}`);
+    // spec 5.1 写分支（计划行为变更③）：信任域外写按档位定论——dontAsk 放行，不再一律拒
+    assert.equal(dOut.allowed, true, '配置根之外的域外写：dontAsk 档按写分支放行');
   });
 });
 

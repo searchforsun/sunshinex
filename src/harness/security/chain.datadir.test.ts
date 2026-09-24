@@ -67,13 +67,13 @@ test('D6 Write 数据目录非记忆子树仍拒绝（记忆子树另有窄口�
   });
 });
 
-test('D6 非 dataDir 的外部路径维持拒绝（行为不变）', () => {
+test('D6 非 dataDir 的外部路径缺省放行（spec 5.1 读分支 D1：域外全放，fence 才收窄）', () => {
   withChain((chain, root, dataDir) => {
     const outsider = path.join(os.tmpdir(), `sunshinex-outsider-${Date.now()}-${process.pid}.md`);
     fs.writeFileSync(outsider, 'outside both boundaries');
     try {
       const d = chain.evaluate('Read', { path: outsider });
-      assert.equal(d.allowed, false, '不在 root 也不在 dataDir → 拒绝');
+      assert.equal(d.allowed, true, '读分支域外缺省全放');
       assert.ok(!outsider.startsWith(dataDir) && !outsider.startsWith(root), '前提：路径确在两界之外');
     } finally {
       fs.rmSync(outsider, { force: true });

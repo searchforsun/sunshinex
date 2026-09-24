@@ -102,11 +102,10 @@ test('T2-1 enterWorktree：活动根写放行且 safePath 锚活动根；主根�
 test('T2-2 读面恒开放：活动根在场主根与活动根均可读；缺省态与既有语义逐字节一致', () => {
   withChain((chain, root, tmp) => {
     const tree = fakeTree(tmp);
-    // 缺省基线：root 外且 dataDir 外的路径读拒，拒绝文案既定
+    // 缺省基线：读分支 D1（spec 5.1）——fence 关闭时读域外全放，拒绝文案不再存在（D1 行为变更②）
     const external = path.join(path.dirname(tmp), 'unrelated-outside.txt');
     const baseRead = chain.evaluate('Read', { path: external });
-    assert.equal(baseRead.allowed, false, '缺省基线：外部路径读拒');
-    const baseReason = !baseRead.allowed ? baseRead.reason : '';
+    assert.equal(baseRead.allowed, true, '缺省基线：fence 关闭时外部路径读放行');
     assert.equal(chain.evaluate('Read', { path: path.join(root, 'app', 'main.txt') }).allowed, true, '缺省基线：主根读放行');
 
     chain.enterWorktree(tree);
@@ -114,8 +113,7 @@ test('T2-2 读面恒开放：活动根在场主根与活动根均可读；缺省
     const mainRead = chain.evaluate('Read', { path: path.join(root, 'app', 'main.txt') });
     assert.equal(mainRead.allowed, true, '读面恒开放：活动根在场主根仍可读（规格 §11 对比审查语义）');
     const extRead = chain.evaluate('Read', { path: external });
-    assert.equal(extRead.allowed, false, '活动根在场：真正外部路径仍拒');
-    assert.equal(!extRead.allowed ? extRead.reason : '', baseReason, '拒绝文案与缺省态逐字节一致（零漂移）');
+    assert.equal(extRead.allowed, true, '活动根在场：读分支 D1 仍全放（fence 关闭）');
     chain.exitWorktree();
 
     assert.equal(chain.evaluate('Read', { path: path.join(root, 'app', 'main.txt') }).allowed, true, 'exit 后读语义复原');

@@ -79,9 +79,9 @@ test('总开关 off → 记忆路径 write 被拒', () => {
       const d = chain.evaluate('Write', { path: path.join(dataDir, 'memory', 'a.md') });
       assert.equal(d.allowed, false, 'auto_memory=off 时写面先被总开关拦下');
       if (!d.allowed) assert.ok(d.reason.includes('COMMAND_DENIED'), `拒绝文案格式不变：${d.reason}`);
-      // 总开关只收写窄口，不改判界其它分支
+      // 总开关只收写窄口，不改判界其它分支（spec 5.1 写分支：dontAsk 档信任域外放行，D2 行为变更①）
       const outside = chain.evaluate('Write', { path: '/tmp/sunshinex-mw-outside.md' });
-      assert.equal(outside.allowed, false, '外部路径维持拒绝');
+      assert.equal(outside.allowed, true, '外部路径按写分支档位放行（dontAsk）');
     },
     'off',
   );

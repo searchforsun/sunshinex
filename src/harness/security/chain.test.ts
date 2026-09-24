@@ -8,6 +8,7 @@ import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
 import { DryRun } from './dryrun';
+import { isWithin } from '../../paths';
 
 /** 平台能力探测：Windows 建 symlink 需管理员或开发者模式，无权限时测试跳过（断言目标与平台无关） */
 export function canSymlink(): boolean {
@@ -45,19 +46,18 @@ test('SafetyChain.preview 透传 dryrun', () => {
   assert.equal(chain(process.cwd()).preview('echo hi'), 'echo hi');
 });
 
-test('evaluate 对 Read 越界相对路径 deny 并说明原因', () => {
+test('evaluate 对 Read 越界相对路径放行（spec 5.1 读分支 D1：域外缺省全放）', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-boundary-'));
   const d = chain(root).evaluate('Read', { path: '../outside.txt' });
-  assert.equal(d.allowed, false);
-  if (!d.allowed) assert.match(d.reason, /path escapes project root/);
+  assert.equal(d.allowed, true);
 });
 
-test('evaluate 对绝对路径越出 root 的 Write deny（dontAsk 先行放行 guard）', () => {
+test('evaluate 对绝对路径越出 root 的 Write 按 dontAsk 放行（spec 5.1 写分支 D2：root 外写审批化，dontAsk=放行）', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-boundary-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-outside-'));
   const d = chain(root, 'dontAsk').evaluate('Write', { path: path.join(outside, 'x.txt') });
-  assert.equal(d.allowed, false);
-  if (!d.allowed) assert.match(d.reason, /path escapes project root/);
+  assert.equal(d.allowed, true);
+  if (d.allowed) assert.equal(d.safePath, path.join(outside, 'x.txt'));
 });
 
 test('evaluate 界内路径 allow 并返回绝对 safePath', () => {
@@ -103,27 +103,25 @@ test('preview 输出过 mask', () => {
   assert.match(out, /\*\*\*/);
 });
 
-test('evaluate 对 root 内符号链接指向 root 外目标的 Read deny（reason 含真实路径）', { skip: !canSymlink() }, () => {
+test('evaluate 对 root 内符号链接指向 root 外目标的 Read 放行（D1 读分支：域外缺省全放）', { skip: !canSymlink() }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
   fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOPSECRET');
   fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(root, 'link.txt'));
   const d = chain(root).evaluate('Read', { path: 'link.txt' });
-  assert.equal(d.allowed, false);
-  if (!d.allowed) {
-    assert.match(d.reason, /path escapes project root/);
-    assert.match(d.reason, /real path/);
-    assert.ok(d.reason.includes('secret.txt'));
-  }
+  assert.equal(d.allowed, true);
+  if (d.allowed) assert.match(d.safePath ?? '', /secret\.txt/);
 });
 
-test('evaluate 对符号链接父目录下的 Write deny', { skip: !canSymlink() }, () => {
+test('evaluate 对符号链接父目录下的 Write 放行（manual=ask 且 askDir 记链接目标目录）', { skip: !canSymlink() }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
   fs.symlinkSync(outside, path.join(root, 'escdir'));
   const d = chain(root, 'dontAsk').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
-  assert.equal(d.allowed, false);
-  if (!d.allowed) assert.match(d.reason, /path escapes project root/);
+  assert.equal(d.allowed, true);
+  const manual = chain(root, 'manual').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
+  assert.ok(!manual.allowed && manual.ask === true);
+  if (!manual.allowed) assert.equal(manual.askDir, outside);
 });
 
 test('evaluate 对指向 root 内目标的符号链接路径放行（反向场景）', { skip: !canSymlink() }, () => {
@@ -142,15 +140,21 @@ test('evaluate 对多级新建路径的 Write 放行（逐级上溯回归）', (
   if (d.allowed) assert.equal(d.safePath, path.join(root, 'a/b/c.txt'));
 });
 
-test('evaluate 以 rootReal 为基准：root 经符号链接传入时判界仍正确', { skip: !canSymlink() }, () => {
+test('evaluate 以 rootReal 为基准：root 经符号链接传入时判界仍正确（safePath 归一；域外读按 D1 缺省全放）', { skip: !canSymlink() }, () => {
   const outer = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-root-'));
   const ws = path.join(outer, 'ws');
   fs.mkdirSync(ws);
   fs.writeFileSync(path.join(ws, 'a.txt'), 'x');
   fs.symlinkSync(ws, path.join(outer, 'link'));
   const c = chain(path.join(outer, 'link'));
-  assert.equal(c.evaluate('Read', { path: 'a.txt' }).allowed, true);
-  assert.equal(c.evaluate('Read', { path: '../sibling.txt' }).allowed, false);
+  const inside = c.evaluate('Read', { path: 'a.txt' });
+  assert.equal(inside.allowed, true);
+  // 判界基准锚 rootReal（符号链接目标真身）：safePath 为归一真实路径，而非链接面相对拼接
+  if (inside.allowed) assert.equal(inside.safePath, path.join(ws, 'a.txt'));
+  // D1 读分支：域外缺省全放（既有 deny 断言随行为变更二退役）；越界事实以归一 safePath 表达
+  const escaped = c.evaluate('Read', { path: '../sibling.txt' });
+  assert.equal(escaped.allowed, true);
+  if (escaped.allowed) assert.ok(!isWithin(ws, String(escaped.safePath)), 'safePath 已逃出 rootReal 子树（域外读缺省全放）');
 });
 
 test('resolveSafe 判界异常按拒绝处理（spec 2.1 兜底条款）', () => {

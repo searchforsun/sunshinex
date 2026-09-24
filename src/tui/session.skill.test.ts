@@ -114,6 +114,11 @@ test('/skill：重复加载去重——回执已加载、链上仅一条', async
 
 test('/skill：含必填模板参数的技能——resolve 失败 warn 回执零注入', async () => {
   await withRoot(async (root) => {
+    // 会话锚定（批跑竞态）：数据目录按测试文件私有共享，chainEntries 取 mtime 最新会话——
+    // 全量批跑高负载下前序用例 journal 晚到落盘会顶掉本用例会话的「最新」位，读到含 skill 条目的旧会话误判。
+    // 先快照既有会话文件，断言只统计本用例新建的会话，杜绝跨用例 mtime 竞态
+    const dataDir = resolveDataDir(root);
+    const before = new Set(listSessions(dataDir).map((m) => m.file));
     writeSkill(root, 'paramed', 'Paramed', 'Needs a param', 'params: target');
     const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
     const p = ctrl.submit('/skill');
@@ -121,7 +126,12 @@ test('/skill：含必填模板参数的技能——resolve 失败 warn 回执零
     ctrl.resolveAskAnswer({ type: 'selected', labels: ['Paramed'] });
     await p;
     assert.ok(sysTexts(ctrl).some((x) => x.includes('SKILL_PARAM_MISSING')), 'resolve 失败回执带错误码');
-    assert.equal(chainEntries(root).filter((s) => s.action === 'skill').length, 0, '零注入');
+    const fresh = listSessions(dataDir).filter((m) => !before.has(m.file));
+    assert.equal(
+      fresh.flatMap((m) => reduceJournal(parseJournalFile(m.file).events).chain).filter((s) => s.action === 'skill').length,
+      0,
+      '零注入',
+    );
   });
 });
 
