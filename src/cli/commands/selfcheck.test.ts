@@ -82,8 +82,8 @@ test('selfcheck：isolation 行上屏——auto 探测可用 → landlock，紧�
     const isoAt = out.indexOf('isolation :');
     assert.ok(shellAt >= 0, 'shell 行在位（isolation 与既有行同构的锚点）');
     assert.ok(isoAt > shellAt, 'isolation 行在 shell 行之后上屏（简报位次）');
-    // usable() 在非 Linux 直接短路 false（loader 不被消费），fake 只能钉 Linux 面——与 landlock.test.ts 同款平台分叉
-    const expected = process.platform === 'linux' ? 'isolation : landlock (sandbox off)' : 'isolation : host (sandbox off)';
+    // auto 探测在 fake loader（writePreload 注入）下全平台可用——平台门已归位真实装载器缝（landlock.ts），接线不分叉
+    const expected = 'isolation : landlock (sandbox off)';
     assert.ok(out.includes(expected), `期望「${expected}」未上屏，实际片段：${JSON.stringify(out.slice(Math.max(0, isoAt - 40), isoAt + 80))}`);
   } finally {
     cleanup(f);

@@ -25,7 +25,6 @@ test('可用 seam：launcher 前缀组装，可写根去重保序，只读段为
     fs.mkdirSync(a);
     fs.mkdirSync(b);
     const wrap = await landlockWrap([a, b, a]);
-    if (process.platform !== 'linux') return assert.equal(wrap, null);
     assert.notEqual(wrap, null);
     assert.equal(wrap!.file, '/fake/landlock-launcher');
     assert.deepEqual(wrap!.args, ['--rw', a, b, '--ro', '/']);
@@ -74,7 +73,6 @@ test('I-1：只读段仅为运行面 "/"——grant argv 不含 "/" 之外的只
     const root = path.join(base, 'r');
     fs.mkdirSync(root);
     const wrap = await landlockWrap([root]);
-    if (process.platform !== 'linux') return assert.equal(wrap, null);
     assert.notEqual(wrap, null);
     // fake 只透传 grantArgs 入参形状：只读段必须恰为运行面 '/'（launcher 语义下写边界由 readWrite 白名单保证）
     assert.deepEqual(wrap!.args.slice(wrap!.args.indexOf('--ro')), ['--ro', '/'], `只读段：${JSON.stringify(wrap!.args)}`);
@@ -121,7 +119,6 @@ test('I-2：探测失败不缓存——fake loader 先失败后成功，第二�
     probeVerdict = 'ok';
     resetLandlockProbe();
     const wrap = await landlockWrap([root]);
-    if (process.platform !== 'linux') return assert.equal(wrap, null);
     assert.notEqual(wrap, null, '第二阶段探测恢复 → 重新包装');
     assert.deepEqual(wrap!.args, ['--rw', root, '--ro', '/']);
   } finally {

@@ -78,9 +78,9 @@ test('主链与普通子链不受判界约束：跨树命令照常执行', async
   const tree = mktmp('iso-tree-');
   spawnSync('git', ['-C', tree, 'init', '-q'], { encoding: 'utf8' });
   const mainChain = chain(main);
-  const cross = await mainChain.run(`cd ${tree} && echo ok`);
+  const cross = await mainChain.run(`cd ${shPath(tree)} && echo ok`);
   assert.ok(cross.ok, '主链无隔离标记，判界零介入');
   const plain = chain(main);
-  const r = await plain.run(`git --git-dir=${tree}/.git rev-parse --absolute-git-dir`);
+  const r = await plain.run(`git --git-dir=${shPath(tree)}/.git rev-parse --absolute-git-dir`);
   assert.ok(r.ok, '非隔离子链同样零介入');
 });
