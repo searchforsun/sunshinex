@@ -30,6 +30,9 @@
     "sqlite-vec": "^0.1.9",
     "string-width": "4.2.3"
   },
+  "optionalDependencies": {
+    "@deepseek-ai/node-addon-landlock-run": "^0.1.1"
+  },
   "bin": {
     "sunshinex": "dist/cli/index.js"
   },
