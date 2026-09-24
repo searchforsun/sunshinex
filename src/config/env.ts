@@ -1,9 +1,19 @@
 import * as os from 'os';
 import * as path from 'path';
 
+/**
+ * 用户家目录单点：HOME 显式设置时优先（测试夹具与部署重定向口），缺省回退 os.homedir()。
+ * 为何不能直接用 os.homedir()：Windows 上 Node 优先读 USERPROFILE，对 HOME 视而不见——
+ * 所有「HOME 重定向」测试夹具与可移植部署在 Windows 整体失效（判界与配置目录统一单点，§14）。
+ */
+export function homeDir(): string {
+  const home = process.env.HOME;
+  return home !== undefined && home !== '' ? home : os.homedir();
+}
+
 /** 用户级全局配置目录（对标 Claude Code 的 ~/.claude / Codex 的 ~/.codex 惯例）：跨项目共享一份配置 */
 export function userConfigDir(): string {
-  return path.join(os.homedir(), '.sunshinex');
+  return path.join(homeDir(), '.sunshinex');
 }
 
 /**

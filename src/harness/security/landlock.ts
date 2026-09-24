@@ -50,7 +50,6 @@ export function resetLandlockProbe(): void {
 async function usable(): Promise<boolean> {
   if (probeCache !== null) return probeCache;
   const verdict = await (async () => {
-    if (process.platform !== 'linux') return false;
     const mod = await loader();
     if (mod === null) return false;
     try {

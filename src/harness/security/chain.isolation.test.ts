@@ -17,6 +17,11 @@ function chain(root: string, mode: 'manual' | 'dontAsk' = 'dontAsk'): SafetyChai
   return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), new DryRun(), root);
 }
 
+/** 嵌入命令串的路径形态：sh（git-bash 含）中反斜杠是转义符会被吞掉，统一正斜杠（Windows 原生 git 接受） */
+function shPath(p: string): string {
+  return p.replace(/\\/g, '/');
+}
+
 function mktmp(p: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), p));
 }
@@ -35,13 +40,13 @@ test('隔离子链判界：cd 越树 / git 指针越树 / 环境赋值越树 →
   const tree = mktmp('iso-tree-');
   const child = chain(main).withRoot(tree);
   for (const cmd of [
-    `cd ${main} && git status`,
-    `git --git-dir=${main}/.git log`,
-    `git --git-dir ${main}/.git log`,
-    `git -C ${main} status`,
-    `git -c core.worktree=${main} status`,
-    `GIT_DIR=${main}/.git git log`,
-    `GIT_WORK_TREE=${main} git status`,
+    `cd ${shPath(main)} && git status`,
+    `git --git-dir=${shPath(main)}/.git log`,
+    `git --git-dir ${shPath(main)}/.git log`,
+    `git -C ${shPath(main)} status`,
+    `git -c core.worktree=${shPath(main)} status`,
+    `GIT_DIR=${shPath(main)}/.git git log`,
+    `GIT_WORK_TREE=${shPath(main)} git status`,
     'echo $(git log)',
   ]) {
     const r = await child.run(cmd);
@@ -60,11 +65,11 @@ test('隔离子链：树内命令与普通命令放行', async () => {
   };
   git('init', '-q');
   const child = chain(main).withRoot(tree);
-  const inTree = await child.run(`git -C ${tree} status`);
+  const inTree = await child.run(`git -C ${shPath(tree)} status`);
   assert.ok(inTree.ok, '树内 git 指针放行');
   const plain = await child.run('echo hi');
   assert.ok(plain.ok && plain.value.stdout.includes('hi'), '普通命令放行');
-  const cdTree = await child.run(`cd ${tree} && git status`);
+  const cdTree = await child.run(`cd ${shPath(tree)} && git status`);
   assert.ok(cdTree.ok, 'cd 进树内放行');
 });
 
