@@ -25,3 +25,5 @@ scripts/*probe*.js
 
 # corepack 缓存（COREPACK_HOME 指向仓内时的产物）
 .corepack-home/
+
+.worktrees/
