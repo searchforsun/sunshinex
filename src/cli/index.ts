@@ -6,6 +6,7 @@ import { runSkillsInstall } from './commands/skills-install';
 import { runTui } from '../tui/entry';
 import { applySettings, loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
+import { EFFORT_ORDER } from '../model/adapter';
 
 /**
  * 两级 settings 装载（项目级 → 全局级）：applySettings 只填缺省槽，先装者不被覆盖，装载顺序即优先级。
@@ -122,11 +123,21 @@ export function usageText(): string {
   sunshinex help                          show this usage (--help / -h)
   sunshinex selfcheck                     skeleton self-check (perception/tools/security/context/Loop/Graph)
   sunshinex run <dir> --goal="..."        run the standard verify-fix loop (exit code 1 unless done)
-  sunshinex pipeline <dir> --goal="..." [--yes]  five-node pipeline with gate approvals (--yes auto-approves)
+  sunshinex pipeline <dir> --goal="..." [--yes]
+                                          five-node pipeline with gate approvals (--yes auto-approves)
   sunshinex skills install <git-url | owner/repo | local-dir> [--force]
                                           install skills into the global skills root (~/.sunshinex/skills)
-  flags: --mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
-         --continue (TUI, resume latest session)  --resume (TUI, open the session picker to resume)  --worktree[=<name>]  --workdir=<dir> --add-dir=<dir>(repeatable) extend trusted dirs
+  flags:
+  --mode=manual|plan|dontAsk              permission mode (default manual)
+  --language=en|zh                        UI language (default en)
+  --tier=small|medium|large               model tier (user-level, session-constant)
+  --effort=none|minimal|low|medium|high|xhigh|max
+                                          reasoning effort (request-level)
+  --continue                              TUI, resume latest session
+  --resume                                TUI, open the session picker to resume
+  --worktree[=<name>]                     TUI, launch in an isolated git worktree
+  --workdir=<dir>                         workspace directory
+  --add-dir=<dir>                         extend trusted dirs (repeatable)
   unrecognized bare words exit with an error; run sunshinex help for usage`,
     `SunshineX CLI
   sunshinex                               当前工作区启动交互式会话终端（缺省形态）
@@ -134,13 +145,44 @@ export function usageText(): string {
   sunshinex help                          显示用法（--help / -h 同义）
   sunshinex selfcheck                     骨架自检（感知/工具/安全/上下文/Loop/Graph 就绪）
   sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（非 done 退出码 1）
-  sunshinex pipeline <dir> --goal="..." [--yes]  五节点流水线 gate 审批（--yes 跳过交互直接批准）
+  sunshinex pipeline <dir> --goal="..." [--yes]
+                                          五节点流水线 gate 审批（--yes 跳过交互直接批准）
   sunshinex skills install <git-url | owner/repo | 本地目录> [--force]
                                           把技能安装到全局技能根（~/.sunshinex/skills）
-  flags：--mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
-        --continue（TUI 直接续接最近会话）  --resume（TUI 弹会话选择卡恢复）  --worktree[=<name>]  --workdir=<目录> --add-dir=<目录>（可重复）扩展信任目录
+  flags：
+  --mode=manual|plan|dontAsk              权限模式（缺省 manual）
+  --language=en|zh                        界面语言（缺省 en）
+  --tier=small|medium|large               模型档位（用户级，会话内恒定）
+  --effort=none|minimal|low|medium|high|xhigh|max
+                                          思考强度（请求级参数）
+  --continue                              TUI 直接续接最近会话
+  --resume                                TUI 弹会话选择卡恢复
+  --worktree[=<name>]                     TUI 在隔离 git worktree 中启动
+  --workdir=<dir>                         工作区目录
+  --add-dir=<dir>                         扩展信任目录（可重复）
   无法识别的裸词报错不启动；使用 sunshinex help 查看使用方法`,
   );
+}
+
+/** 用户显式传入的 flag 值合法性单点校验（环境变量兜底形态不在此列，保持既有回退语义）：非法值 fail-fast 报错退出，
+ *  杜绝静默回落缺省（如 --mode=dontask 回落 manual 后审批行为与预期不符且无任何提示）；报错随附 help 指引 */
+export function assertValidFlagValues(args: CliArgs): void {
+  const invalid: string[] = [];
+  const single = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
+  const mode = single(args.flags.mode);
+  if (mode !== undefined && mode !== 'manual' && mode !== 'plan' && mode !== 'dontAsk') invalid.push(`--mode=${mode}`);
+  const language = single(args.flags.language);
+  if (language !== undefined && language !== 'en' && language !== 'zh') invalid.push(`--language=${language}`);
+  const tier = single(args.flags.tier);
+  if (tier !== undefined && tier !== 'small' && tier !== 'medium' && tier !== 'large') invalid.push(`--tier=${tier}`);
+  const effort = single(args.flags.effort);
+  if (effort !== undefined && !(EFFORT_ORDER as readonly string[]).includes(effort.trim().toLowerCase())) invalid.push(`--effort=${effort}`);
+  if (invalid.length > 0) {
+    throw new Error(t(
+      `Invalid flag value: ${invalid.join(', ')}. Run sunshinex help for usage.`,
+      `非法的 flag 取值：${invalid.join(', ')}。使用 sunshinex help 查看使用方法`,
+    ));
+  }
 }
 
 async function main(): Promise<void> {
@@ -149,6 +191,8 @@ async function main(): Promise<void> {
   const projectRoot = process.cwd();
   loadSettingsChain(projectRoot);
   const args = resolveInvocation(parseArgs(process.argv.slice(2)));
+  // flag 值校验先于语言设定与一切装配：非法值报错退出（错误文案固定 en——setLanguage 尚未执行的时序事实）
+  assertValidFlagValues(args);
   // 界面语言：--language=en|zh > settings language 槽 > 缺省 en（zh 为全中文界面 + 中文模型侧提示词；
   // 先于任何输出与装配设定，--help 亦随语言；parseLanguage 仅判 zh/en，回退链由调用点 ?? 承载）
   // 可重复 flag 归一余量：数组形态按非法值处理（同 parseLanguage 缺省 en）

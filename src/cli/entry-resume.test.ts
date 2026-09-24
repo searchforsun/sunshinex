@@ -21,5 +21,5 @@ test('--resume 与 --worktree 同传：fail-fast（沿 --continue 先例同点�
 });
 
 test('usageText 双语 flags 行含 --resume', () => {
-  assert.match(usageText(), /--resume \(TUI, open the session picker to resume\)/);
+  assert.match(usageText(), /--resume\s+TUI, open the session picker to resume/);
 });
