@@ -24,7 +24,7 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 's
  * T4（原生 function calling 迁移）reactor 动作消费红灯：
  * ①chat 主通道：adapter 具备 chat 能力时走消息视图（tools 字段下发、tool_calls 消费），不再发起 complete 文本协议
  * ②role:tool 配对回喂：每调用一条观察消息（tool_call_id 一一对应）；phase 旁白 = 批 assistant content
- * ③argsJson 非法 JSON → 该调用回喂纠偏（fail-bounded 不炸）；exec 混批 → 整批拒绝回喂（执行面校验保留）
+ * ③argsJson 非法 JSON → 该调用回喂纠偏（fail-bounded 不炸）；exec 混批 → 整轮按序串行执行（执行面闸门）
  * ④链行动作词汇：phase/tool-call/tool-result 行入链（buildMessages 消费面见 messages.test.ts）
  */
 
@@ -131,7 +131,7 @@ test('argsJson 非法 JSON：该调用回喂纠偏（fail-bounded），合法调
   assert.ok(good.content.includes('content'));
 });
 
-test('exec 混入并行批：整批拒绝、每调用各得一条 role:tool 拒绝回喂、exec 未执行', async () => {
+test('exec 混入并行批：整轮按出牌顺序串行执行、每调用各得 role:tool 结果回喂', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat4-'));
   fs.writeFileSync(path.join(tmp, 'c.txt'), 'x');
   const adapter = new ChatStub([
@@ -152,9 +152,10 @@ test('exec 混入并行批：整批拒绝、每调用各得一条 role:tool 拒�
   const toolMsgs = second.filter((m) => m.role === 'tool');
   assert.equal(toolMsgs.length, 2);
   for (const m of toolMsgs) {
-    assert.ok(m.role === 'tool' && /rejected/i.test(m.content), 'each call must receive the rejection feedback');
+    assert.ok(m.role === 'tool' && !/rejected/i.test(m.content), 'each call must run and receive a real result, not a rejection');
   }
-  assert.equal(second.filter((m) => m.role === 'tool' && /hi/.test(m.content) && !/rejected/.test(m.content)).length, 0, 'exec must not run');
+  const execMsg = toolMsgs.find((m) => m.role === 'tool' && /hi/.test(m.content));
+  assert.ok(execMsg, 'exec must run with real output fed back');
 });
 
 test('finish=tool_calls 但调用批为空：纠偏观察回喂不炸（fail-bounded）', async () => {
@@ -170,7 +171,7 @@ test('finish=tool_calls 但调用批为空：纠偏观察回喂不炸（fail-bou
 });
 
 
-test('todo_write 混入并行批：整批拒绝、每调用各得拒绝回喂、todo_write 未执行（规格 D4 单发独占）', async () => {
+test('todo_write 混入并行批：整轮按出牌顺序串行执行、每调用各得真实结果回喂（混合批不拒绝）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-todo1-'));
   fs.writeFileSync(path.join(tmp, 'd.txt'), 'x');
   const adapter = new ChatStub([
@@ -191,6 +192,6 @@ test('todo_write 混入并行批：整批拒绝、每调用各得拒绝回喂、
   const toolMsgs = second.filter((m) => m.role === 'tool');
   assert.equal(toolMsgs.length, 2);
   for (const m of toolMsgs) {
-    assert.ok(m.role === 'tool' && /rejected/i.test(m.content), 'each call must receive the rejection feedback');
+    assert.ok(m.role === 'tool' && !/rejected/i.test(m.content), 'each call must run and receive a real result');
   }
 });

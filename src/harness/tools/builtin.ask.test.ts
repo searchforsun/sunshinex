@@ -41,7 +41,7 @@ test('ask_question：两态注册——第 9 参缺省不注册（清单零变�
     const { registry } = registryWithAsk(root, async () => ({ type: 'dismissed' }));
     const tool = registry.get('ask_question');
     assert.ok(tool, '注入 seam 即注册');
-    assert.equal(tool?.category, 'ask', '类别 ask：并行批与 exec 同待遇（单发独占）');
+    assert.equal(tool?.category, 'ask', '类别 ask：混批时整轮按序串行（reactor 执行面闸门判定键）');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

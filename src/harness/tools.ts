@@ -80,7 +80,9 @@ export class ToolRegistry {
     const execInput: ToolInput = decision.safePath !== undefined ? { ...input, path: decision.safePath } : input;
 
     try {
-      const result = await tool.executor(execInput);
+      // 执行期安全缝（规格 D6）：注入运行期链视图，fork 子链 withRoot 换根克隆在此生效
+      const runtimeSafety = { execCwd: () => safety.execCwd(), execCommandAllowed: (cmd: string) => safety.execCommandAllowed(cmd) };
+      const result = await tool.executor(execInput, runtimeSafety);
       return ok(safety.maskResult(canonical, result));
     } catch (e) {
       if (e instanceof CodedToolError) return fail(e.code, e.message);

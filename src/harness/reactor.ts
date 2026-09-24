@@ -1,4 +1,4 @@
-import { ContextItem, ExecResult, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
+import { ContextItem, ExecResult, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
 import { Result } from '../result';
@@ -9,12 +9,13 @@ import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
 import {
   IDENTITY_LINE,
-  MARKDOWN_LINE,
+  outputStyleLine,
   TOOL_POLICY_LINE,
   PHASE_SENTENCE_LINE,
   PARALLEL_POLICY_LINE,
   REFERENCE_DATA_LINE,
   TASK_FOCUS_LINE,
+  SKILLS_INSTALL_LINE,
   workDirLine,
 } from './prompts/shared';
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
@@ -82,6 +83,8 @@ export interface ReactorDeps {
   runner?: SubagentRunner;
   /** 用户中断信号（Esc/Ctrl+C）：步边界最先检查，在途模型调用经 adapter 即刻中止；中止态转 interrupted 终态 */
   signal?: AbortSignal;
+  /** 输出样式分叉（交互面级 run 常量，进稳定段）：装配面注入（TUI=terminal）；缺省回 MARKDOWN_LINE 通用约定、前缀基线字节不变 */
+  outputStyle?: OutputStyle;
 }
 
 /** 收口沉淀载荷（规格 §3.2）：outcome = 终态归一值（done/failed/stopped）；无最终答复时 reply 归一为空串 */
@@ -394,16 +397,18 @@ export class Reactor {
     return chainToHistoryItems(steps.filter((s) => s.step > fromStep));
   }
 
-  /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；工具清单经 tools 字段下发、动作经 tool_calls 结构化承载 */
+  /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；工具清单经 tools 字段下发、动作经 tool_calls 结构化承载。
+   *  输出约定槽位按交互面分叉：outputStyle 缺省 = MARKDOWN_LINE 原文（既有前缀基线零漂移）；命中面 = 面专用行整行替代（零双份） */
   private chatStableSegment(): string {
     return [
       IDENTITY_LINE,
-      MARKDOWN_LINE,
+      outputStyleLine(this.deps.outputStyle),
       PHASE_SENTENCE_LINE,
       TOOL_POLICY_LINE,
       PARALLEL_POLICY_LINE,
       REFERENCE_DATA_LINE,
       TASK_FOCUS_LINE,
+      SKILLS_INSTALL_LINE,
       workDirLine(this.deps.root ?? this.deps.context.root),
     ].join('\n');
   }
@@ -455,17 +460,17 @@ export class Reactor {
       return { done: false };
     }
 
-    // 执行面校验（参数 schema 表达不了跨调用约束）：并行批禁 exec/ask（须单发独占）、超上限拒绝；单调用不限
+    // 执行面校验（参数 schema 表达不了跨调用约束）：批内含状态类调用（前后有序依赖）→ 整轮按出牌顺序串行执行，
+    // 保证先到的调用完成后后者才开跑、副作用顺序与模型意图一致；仅超上限仍拒绝。单调用不限
     const overLimit = calls.length > PARALLEL_TOOLS_LIMIT;
     const exclusive = (c: (typeof calls)[number]) => {
       const cat = this.deps.registry.get(c.name)?.category;
       return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'todo' || cat === 'task' || cat === undefined;
     };
-    const rejected = overLimit || (calls.length > 1 && calls.some(exclusive));
-    const offenders = calls.filter(exclusive).map((c) => c.name);
+    const sequential = calls.length > 1 && calls.some(exclusive);
     const rejection = overLimit
       ? `Parallel batch rejected: exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools; use fewer calls per round`
-      : `Parallel batch rejected: ${offenders.join(', ')} must run exclusively on their own (no other tool calls in the same round); remove them and retry, or fall back to a single-tool call`;
+      : '';
 
     // 轮内链行共用同一轮步号（step 形参）：护栏按去重步号计模型轮、压缩水位/收尾回写行级过滤对同号行天然一致
     const callIds = calls.map((_, i) => `step:${step}-idx:${i}`);
@@ -487,7 +492,7 @@ export class Reactor {
       this.emit('tool-call', calls[i].name, { input: argsOf[i] ?? {}, callId: callIds[i], status: 'pending' });
     }
 
-    if (rejected) {
+    if (overLimit) {
       for (let i = 0; i < calls.length; i++) {
         this.emit('tool-result', rejection.slice(0, 200), { ok: false, full: rejection, tool: calls[i].name, callId: callIds[i], status: 'failed' });
         steps.push({ step, action: TOOL_RESULT_ACTION, observation: rejection });
@@ -495,9 +500,18 @@ export class Reactor {
       return { done: false };
     }
 
-    const results = await Promise.all(
-      calls.map((c, i) => (argsOf[i] === null ? null : this.deps.registry.execute(c.name, argsOf[i] as Record<string, unknown>, this.deps.safety))),
-    );
+    const runOne = (c: (typeof calls)[number], args: Record<string, unknown> | null) =>
+      args === null ? null : this.deps.registry.execute(c.name, args, this.deps.safety);
+
+    // 纯并行批（无状态类调用）整批并发；含状态类调用的批按出牌顺序串行——前一个完成后后者才开跑
+    const results: (Result<ExecResult> | null)[] = sequential
+      ? []
+      : await Promise.all(calls.map((c, i) => runOne(c, argsOf[i])));
+    if (sequential) {
+      for (let i = 0; i < calls.length; i++) {
+        results[i] = await runOne(calls[i], argsOf[i]);
+      }
+    }
     for (let i = 0; i < calls.length; i++) {
       const c = calls[i];
       const args = argsOf[i];

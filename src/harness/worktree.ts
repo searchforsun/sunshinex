@@ -1,5 +1,5 @@
 /**
- * Worktree 隔离工作区单点模块（计划 docs/superpowers/plans/2026-09-20-worktree-isolation.md T1）：
+ * Worktree 隔离工作区单点模块（入口：启动旗标 --worktree 与会话内 worktree 工具）：
  * 本线全部 git 调用收敛于此——`spawnSync('git', args, { cwd, timeout })` 参数数组、无 shell 拼接、
  * 失败返回 `Result.fail`（错误码 `WORKTREE_*`），沿 perception Git 感知先例（perception.ts readGitBranch）。
  *
@@ -67,7 +67,8 @@ function randomTail4(): string {
   return tail;
 }
 
-/** 子代理专属树名（规格 §9）：`subagent-<净化label>-<4位随机>`；slug 走 slugifyLabel 单点（空折叠回 's' 兜底） */
+/** 子代理专属树名（规格 2026-09-23-subagent-worktree-isolation §3）：`subagent-<净化label>-<4位随机>`；
+ * slug 走 slugifyLabel 单点（空折叠回 's' 兜底），并行批多个隔离子代理互不撞名 */
 export function subagentTreeName(label: string): string {
   const slug = slugifyLabel(label) || 's';
   return `subagent-${slug}-${randomTail4()}`;
@@ -88,7 +89,7 @@ function branchOf(name: string): string {
   return `worktree-${name}`;
 }
 
-function isRepo(root: string): boolean {
+export function isRepo(root: string): boolean {
   return execGit(root, ['rev-parse', '--git-common-dir']).ok;
 }
 

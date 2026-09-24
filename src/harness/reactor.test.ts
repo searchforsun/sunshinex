@@ -506,41 +506,43 @@ test('并行协议畸形归一：tools 被误装进单工具形态（{"tool":"to
   assert.ok(!r.steps.some((s) => s.observation.includes('TOOL_NOT_FOUND')), '不应出现工具未注册报错');
 });
 
-test('并行混入 exec 被整体拒绝，观察回填供模型自纠', async () => {
+test('混合批整轮按序串行执行：read 与 exec 同批不拒绝，且 exec 在 read 完成后才跑', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-pardeny-'));
   const adapter = new ScriptedAdapter([
     '{"tools":[{"tool":"read","input":{"path":"package.json"}},{"tool":"exec","input":{"command":"echo hi"}}],"done":false}',
-    '{"done":true,"reply":"已纠正"}',
+    '{"done":true,"reply":"已按序执行"}',
   ]);
   const reactor = makeReactor(tmp, adapter);
-  const r = await reactor.run({ goal: '混入写' }, { maxSteps: 3 });
+  const r = await reactor.run({ goal: '混合批' }, { maxSteps: 3 });
   assert.equal(r.done, true);
-  const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
-  assert.ok(deniedStep, '混入 exec 应被整体拒绝并回填观察');
-  assert.ok(deniedStep && deniedStep.observation.includes('exec'), `拒绝文案应点名冲突调用 exec: ${deniedStep?.observation}`);
+  assert.ok(!r.steps.some((s) => s.observation.includes('Parallel batch rejected')), '混合批不再整批拒绝');
+  const results = r.steps.filter((s) => s.action === 'tool-result').map((s) => s.observation);
+  assert.ok(results.some((o) => o.includes('hi')), 'exec 真实执行');
+  assert.ok(results.some((o) => o.includes('"name"') || o.length > 0), 'read 真实执行');
 });
 
-test('拒绝文案点名具体冲突调用（而非笼统列类别）', async () => {
+test('混合批按序串行：todo_write 与 glob 同批真实执行且保序', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-partodo-'));
   const adapter = new ScriptedAdapter([
     '{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"todo_write","input":{"todos":[{"content":"x","status":"pending"}]}}],"done":false}',
-    '{"done":true,"reply":"已纠正"}',
+    '{"done":true,"reply":"ok"}',
   ]);
   const reactor = makeReactor(tmp, adapter);
-  const r = await reactor.run({ goal: '混入 todo_write' }, { maxSteps: 3 });
-  const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
-  assert.ok(deniedStep, '混入 todo_write 应被整体拒绝');
-  assert.ok(deniedStep && deniedStep.observation.includes('todo_write'), `拒绝文案应点名 todo_write: ${deniedStep?.observation}`);
-  assert.ok(deniedStep && !deniedStep.observation.includes('exec,'), '未混入 exec 时不应笼统点名 exec');
+  const r = await reactor.run({ goal: '混合批 todo' }, { maxSteps: 3 });
+  assert.ok(!r.steps.some((s) => s.observation.includes('Parallel batch rejected')), '混合批不拒绝');
+  const calls = r.steps.filter((s) => s.action === 'tool-call').map((s) => s.observation);
+  assert.ok(calls[0].includes('glob') && calls[1].includes('todo_write'), '调用行保持模型出牌顺序');
+  const results = r.steps.filter((s) => s.action === 'tool-result').map((s) => s.observation);
+  assert.ok(results.length >= 2 && !results.some((o) => o.includes('rejected')), '两个调用都真实执行而非拒绝占位');
 });
 
-test('并行混入 task_stop 被整体拒绝，观察回填供模型自纠', async () => {
+test('混合批按序串行：task_stop（显式注册）与 read 同批真实执行', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-partask-'));
   const adapter = new ScriptedAdapter([
     '{"tools":[{"tool":"read","input":{"path":"package.json"}},{"tool":"task_stop","input":{"taskId":"b1"}}],"done":false}',
-    '{"done":true,"reply":"已纠正"}',
+    '{"done":true,"reply":"ok"}',
   ]);
-  // 显式注册 task_stop（category: 'task'）：默认装配不含它，避免被 undefined 兜底拦截而测不到真实缝
+  // 显式注册 task_stop（category: 'task'）：默认装配不含它，覆盖真实类别缝
   const store = new FileStore(tmp);
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
   const registry = new ToolRegistry();
@@ -548,10 +550,10 @@ test('并行混入 task_stop 被整体拒绝，观察回填供模型自纠', asy
   registry.register(makeTaskStopTool(new TaskRegistry(tmp)));
   const context = new ContextManager(tmp, store);
   const reactor = new Reactor({ registry, safety, context, model: adapter });
-  const r = await reactor.run({ goal: '混入 task_stop' }, { maxSteps: 3 });
+  const r = await reactor.run({ goal: '混合批 task_stop' }, { maxSteps: 3 });
   assert.equal(r.done, true);
-  const deniedStep = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
-  assert.ok(deniedStep, 'task_stop 与只读工具混批应被整体拒绝并回填观察');
+  assert.ok(!r.steps.some((s) => s.observation.includes('Parallel batch rejected')), 'task_stop 混批按序执行不拒绝');
+  assert.ok(r.steps.some((s) => s.action === 'tool-result' && s.observation.includes('b1')), 'task_stop 真实执行');
 });
 
 test('并行调用超过上限被拒绝', async () => {

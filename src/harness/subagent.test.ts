@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { AgentRegistry, resolveSpawnSpec, SubagentRunner } from './subagent';
+import { AgentRegistry, parseAgentFrontmatter, resolveSpawnSpec, SubagentRunner } from './subagent';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -149,12 +149,33 @@ test('Runner 工具面收窄：todo_write 恒不在子面（规格 D9）', () =>
     const runner = h.makeRunner(new ScriptedAdapter([JSON.stringify({ done: true, reply: 'ok' })]));
     const deft = runner.deriveChildRegistry();
     assert.ok(!deft.has('todo_write'), '缺省派生子面恒无 todo_write');
-    const explicit = runner.deriveChildRegistry({ prompt: 'w', tools: ['todo_write', 'read'] });
+    assert.ok(!deft.has('ask_question'), '子面无 ask_question：HITL 归主链，fork 内不向用户发问');
+    assert.ok(!deft.has('worktree'), '子面无 worktree：活动根是父子共享状态，子代理不得切换');
+    assert.ok(!deft.has('spawn'), '缺省派生子面恒无 spawn');
+    const explicit = runner.deriveChildRegistry({ prompt: 'w', tools: ['todo_write', 'read', 'ask_question', 'worktree'] });
     assert.ok(explicit.has('read'), '显式清单保留 read');
     assert.ok(!explicit.has('todo_write'), '显式列名同样剔除');
+    assert.ok(!explicit.has('ask_question') && !explicit.has('worktree'), '显式列名同样剔除 ask_question/worktree');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+test('spawn 声明面：isolation 非法值 INVALID_ARG；worktree 合法', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-iso-decl-'));
+  try {
+    const h = makeHarness(tmp);
+    const runner = h.makeRunner(new ScriptedAdapter(['{"done":true,"reply":"ok"}']));
+    assert.throws(() => runner.validateSpawnInput({ prompt: 'w', isolation: 'docker' as 'worktree' }), /Unknown isolation/, '非法 isolation fail-fast');
+    assert.doesNotThrow(() => runner.validateSpawnInput({ prompt: 'w', isolation: 'worktree' }), '合法值放行');
+    assert.doesNotThrow(() => runner.validateSpawnInput({ prompt: 'w' }), '缺省无隔离放行');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+test('frontmatter 解析：isolation: worktree 键透传，缺省无', () => {
+  const meta = parseAgentFrontmatter('---\nname: iso-bot\ndescription: d\nisolation: worktree\n---\nbody');
+  assert.equal(meta.isolation, 'worktree', '声明键透传');
+  assert.equal(parseAgentFrontmatter('---\nname: plain\n---\nb').isolation, undefined, '缺省无隔离');
 });
 test('Runner fork 组装：子首帧 = 主链严格前缀 + 尾追（role/task 行只在尾部）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-prefix-'));

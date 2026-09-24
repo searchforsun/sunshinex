@@ -12,6 +12,7 @@ import {
   readRegistry,
   removeWorktree,
   slugifyLabel,
+  subagentTreeName,
   worktreesRoot,
 } from './worktree';
 
@@ -165,4 +166,10 @@ test('isValidWorktreeName：语法边界（^/^[a-z0-9][a-z0-9-]{0,63}$/）', () 
   assert.equal(isValidWorktreeName('A'), false);
   assert.equal(isValidWorktreeName('a_b'), false);
   assert.equal(isValidWorktreeName(''), false);
+});
+
+test('subagentTreeName：subagent-<slug>-<4位随机>，随机尾落合法名域', () => {
+  const name = subagentTreeName('代码审查');
+  assert.match(name, /^subagent-[a-z0-9-]{1,32}-[a-z0-9]{4}$/);
+  assert.notEqual(name, subagentTreeName('代码审查'), '两次调用随机尾不同');
 });

@@ -46,19 +46,19 @@ test('ask_question 单发：经 seam 问询、裁决回填为观察（执行面�
   }
 });
 
-test('ask_question 并行独占：与只读工具混入并行批 → 整批拒绝（观察回填供模型自纠）', async () => {
+test('ask_question 混批按序串行：与只读工具同批真实执行（ask seam 依序调用）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-askreactor2-'));
   try {
-    const ask: AskUserSeam = async () => { throw new Error('seam must not be called'); };
+    const asked: string[] = [];
+    const ask: AskUserSeam = async (q: { question: string }) => { asked.push(q.question); return { type: 'selected', labels: ['Yes'] }; };
     const reactor = makeReactorWithAsk(tmp, [
       '{"tools":[{"tool":"ask_question","input":{"question":"Proceed?","options":[{"label":"Yes"},{"label":"No"}]}},{"tool":"glob","input":{"pattern":"*.ts"}}],"done":false}',
       '{"done":true,"reply":"ok"}',
     ], ask);
     const r = await reactor.run({ goal: 'ask parallel' }, { maxSteps: 3 });
     assert.equal(r.done, true);
-    const denied = r.steps.find((s) => s.observation.includes('Parallel batch rejected'));
-    assert.ok(denied, '并行批应被整批拒绝');
-    assert.match(denied?.observation ?? '', /ask/, '拒绝原因应点名 ask 类别（exec 与 ask 同待遇）');
+    assert.deepEqual(asked, ['Proceed?'], 'ask_question 在混合批中按序真实执行（先于 glob）');
+    assert.ok(!r.steps.some((s) => s.observation.includes('Parallel batch rejected')), '混合批按序执行不拒绝');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -208,6 +208,9 @@ export type ModelTier = 'small' | 'medium' | 'large';
 /** 思考强度七档（OpenAI 兼容 reasoning_effort，请求级参数、不进提示词）：类型登记于 types.ts（新增共享类型须登记先例） */
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
+/** 输出样式分叉（交互面级 run 常量，进稳定段）：terminal=TUI 文字面（围栏带语言标签、图示走 ASCII）；缺省=仅 Markdown 通用约定 */
+export type OutputStyle = 'terminal';
+
 /** 记忆层级 */
 export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
@@ -253,7 +256,8 @@ export interface SubagentSpawnInput {
   label?: string;
   /** 子代理工具名子集（缺省 = 父全量 − spawn）；未知名由 spawn 输入面校验 fail-fast */
   tools?: string[];
-  /** 隔离通道（规格 §9/D9）：'worktree' = fork 前建专属树并在树内执行，收口随树生命周期；优先于 agent.md frontmatter */
+  /** 隔离声明（规格 2026-09-23-subagent-worktree-isolation D2）：'worktree' = fork 前程序建专属树并在树内执行，收口随树生命周期；
+   * 入参优先于 agent.md frontmatter；工作区非 git 仓时静默降级为主工作区执行（D3） */
   isolation?: 'worktree';
   /** 预留语义位：v1 传 true 报 NOT_SUPPORTED（后台两段式后批开通） */
   background?: boolean;
@@ -307,7 +311,7 @@ export interface SkillRef {
   params?: Record<string, string>;
 }
 
-/** MCP 服务器装配配置（SUNSHINE.md「MCP 服务器」分区解析产物）。transport 缺省 = stdio（既有配置零改动）；url 仅远程传输（http/sse）使用，command/args 仅 stdio 使用 */
+/** MCP 服务器装配配置（项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json 的 `mcpServers` 键解析产物，项目级 id 撞名遮蔽全局）。transport 缺省 = stdio；url 仅远程传输（http/sse）使用，command/args 仅 stdio 使用 */
 export interface McpServerConfig {
   name: string;
   command?: string;
@@ -370,8 +374,16 @@ export interface ContextItem {
   meta?: Record<string, unknown>;
 }
 
-/** 工具执行器签名（经安全链执行） */
-export type ToolExecutor = (input: ToolInput) => Promise<ExecResult>;
+/** 工具执行期安全缝（registry 注入，规格 2026-09-23-subagent-worktree-isolation D6）：结构最小面——
+ * exec 借它锚定**运行期链**的 execCwd 与命令判界（fork 子链 withRoot 换根克隆注入即生效）；
+ * 可选参数缺省即旧行为，闭包捕获装配链的既有工具零改动 */
+export interface RuntimeSafetyGate {
+  execCwd(): string;
+  execCommandAllowed(cmd: string): { allowed: true } | { allowed: false; reason: string };
+}
+
+/** 工具执行器签名（经安全链执行；第二参为执行期安全缝，registry 注入） */
+export type ToolExecutor = (input: ToolInput, runtimeSafety?: RuntimeSafetyGate) => Promise<ExecResult>;
 
 /** 终止原因：done=正常完成；model-error=模型调用失败；其余为护栏触发（D7 顺序：超时 → 预算 → 迭代/步数） */
 /** 任务终态原因（interrupted=用户主动中断：Esc/Ctrl+C 触发，模型与工具调用经 AbortSignal 尽快停下） */

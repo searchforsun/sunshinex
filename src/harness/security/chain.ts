@@ -3,11 +3,13 @@ import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
 import { dataDirReal } from '../../config/data-dir';
+import { userConfigDir } from '../../config/env';
+import { loadGlobalSettings, loadProjectSettings } from '../../config/settings';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
 import { isWithin } from '../../paths';
 import { DryRun } from './dryrun';
-import { Result } from '../../result';
+import { Result, fail } from '../../result';
 
 /** 需要路径边界校验的工具（安全链规范名） */
 const PATH_TOOLS = new Set(['Read', 'Write', 'Grep']);
@@ -91,6 +93,11 @@ export class SafetyChain {
       let anchor = abs;
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
+      // settings.json 两级硬保护（用户裁决：配置正名不可被模型改写）：命中即拒，先于一切放行分支；
+      // 拒绝文案英文单语（入链），两级路径各归一一次（文件缺失时按字面拼接，合法确定态）
+      if (tool === 'Write' && this.isProtectedSettingsPath(real)) {
+        return { allowed: false, reason: `COMMAND_DENIED: settings.json is protected (edit it manually): ${real}` };
+      }
       // 记忆写窄口只约束 Write（只读放行走下方 dataDir 分支，与总开关无关）；命中记忆形态即定论：开关关闭 / 越 scope 在此拒，文案为记忆侧可辨识的英文拒绝原因
       if (tool === 'Write' && isMemoryPath(dataDirReal(this.root), real) !== null) {
         const memory = this.memoryWriteAllowed(real);
@@ -98,6 +105,11 @@ export class SafetyChain {
           ? { allowed: true, safePath: real }
           : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
       }
+      // ~/.sunshinex 子树放行（用户级资产：全局技能根等，模型可自助安装技能；判据同 realpath 归一）。
+      // 置于记忆窄口之后：缺省数据目录（<userConfigDir>/projects/<slug>/data）也落在该子树内，先放行会让记忆写绕过总开关与 scope；
+      // settings.json 硬保护已在其前定论，此处不会放行配置正名
+      const cfgReal = fs.existsSync(userConfigDir()) ? fs.realpathSync(userConfigDir()) : userConfigDir();
+      if (real === cfgReal || isWithin(cfgReal, real)) return { allowed: true, safePath: real };
       // 活动 root 判定（规格 §11）：worktree 会话中活动根命中即按项目路径语义放行（读/写两面）；
       // 主根与活动根互为界外——主根写类拒（回执提及 worktree 会话），读类恒开放（对比审查语义）；
       // 真正外部路径（两根皆外）维持既有拒绝语义与文案，活动根在场零漂移
@@ -123,10 +135,17 @@ export class SafetyChain {
     return new SafetyChain(this.guard, this.backend, this.dryrun, this.root, scope);
   }
 
-  /** 派生换根克隆（isolation 子代理用）：root/rootReal 置换为专属树，guard/backend/dryrun/scope 引用共享；
-   * 活动根态不继承（克隆从缺省态起步，子链 exec cwd 与路径判界天然锚树） */
+  /** 派生换根克隆（隔离子代理专用，规格 2026-09-23-subagent-worktree-isolation D6）：root 置换为专属树并携带
+   * isolatedRoot 标记——exec 判界三查仅隔离子链生效；guard/backend/dryrun/scope 引用共享，活动根态不继承（克隆从缺省态起步，子链 exec cwd 与路径判界天然锚树） */
   withRoot(root: string): SafetyChain {
-    return new SafetyChain(this.guard, this.backend, this.dryrun, root, this.memoryScope);
+    const child = new SafetyChain(this.guard, this.backend, this.dryrun, root, this.memoryScope);
+    child.isolatedRootPath = root;
+    try {
+      child.isolatedRootReal = fs.existsSync(root) ? fs.realpathSync(root) : root;
+    } catch {
+      child.isolatedRootReal = root;
+    }
+    return child;
   }
 
   /** exec cwd 判定单点（规格 §11：exec 的 cwd 锚活动根）：活动根在场取活动根，缺省取装配根——
@@ -171,13 +190,87 @@ export class SafetyChain {
     return isWithin(dataDirReal(this.root), real);
   }
 
+  /** settings.json 两级硬保护判据（项目级 <root>/.sunshinex/settings.json + 全局 <userConfigDir>/settings.json）：
+   *  两侧同走 realpath 归一（配置文件自身在符号链接路径上时不误判），文件缺失按字面路径比对（合法确定态） */
+  private isProtectedSettingsPath(real: string): boolean {
+    for (const p of [loadProjectSettings(this.root), loadGlobalSettings()]) {
+      let candidate = p;
+      try {
+        candidate = fs.existsSync(p) ? fs.realpathSync(p) : p;
+      } catch {
+        /* 归一异常按字面比对 */
+      }
+      if (real === candidate) return true;
+    }
+    return false;
+  }
+
   run(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
+    const gate = this.execCommandAllowed(cmd);
+    if (!gate.allowed) return Promise.resolve(fail('EXEC_OUT_OF_TREE', gate.reason));
     return this.backend.exec(cmd, opts);
   }
 
   /** 活动根（worktree 会话）：切换时防御性 realpath 沿构造先例；null=缺省（既有语义逐字节保持） */
   private activeRootPath: string | null = null;
   private activeRootReal: string | null = null;
+
+  /** 隔离子链专属树（withRoot 设置；null=非隔离子链，判界零介入） */
+  private isolatedRootPath: string | null = null;
+  private isolatedRootReal: string | null = null;
+
+  /** 隔离子链 exec 命令判界（规格 2026-09-23-subagent-worktree-isolation §5/D6，对标 CC v2.1.203）：
+   * cwd 恒由程序锚树（execCwd），越树通道只剩命令文本——② git 指针参数越树拒；③ GIT_* 环境赋值/cd 越树拒；
+   * 含运行期替换（$()`）/反引号）的 git 命令不可验证即拒（fail-closed）。非隔离子链零介入。
+   * 拒绝 reason 经工具结果入链（进模型上下文）→ 英文单语 */
+  execCommandAllowed(cmd: string): { allowed: true } | { allowed: false; reason: string } {
+    if (this.isolatedRootReal === null) return { allowed: true };
+    const base = this.isolatedRootPath ?? this.isolatedRootReal;
+    const within = (p: string): boolean => {
+      try {
+        return isWithin(this.isolatedRootReal!, path.resolve(base, p));
+      } catch {
+        return false;
+      }
+    };
+    const tokens = cmd.split(/\s+/).filter((t) => t.length > 0);
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      const kv = /^(--git-dir|--work-tree)=(.*)$/.exec(t);
+      if (kv) {
+        if (!within(kv[2])) return { allowed: false, reason: `command rejected: git pointer escapes the isolated worktree: ${kv[2]}` };
+        continue;
+      }
+      if (t === '--git-dir' || t === '--work-tree' || t === '-C' || t === '-c') {
+        const v = tokens[i + 1];
+        if (v !== undefined && !within(v) && t !== '-c') {
+          return { allowed: false, reason: `command rejected: git pointer escapes the isolated worktree: ${v}` };
+        }
+        if (t === '-c' && v !== undefined && v.includes('=')) {
+          const cfg = v.split('=');
+          const key = cfg[0];
+          const val = cfg.slice(1).join('=');
+          if (key === 'core.worktree' && !within(val)) {
+            return { allowed: false, reason: `command rejected: core.worktree escapes the isolated worktree: ${val}` };
+          }
+        }
+        continue;
+      }
+      const env = /^(GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR)=(.*)$/.exec(t);
+      if (env) {
+        if (!within(env[2])) return { allowed: false, reason: `command rejected: GIT_* env escapes the isolated worktree: ${env[2]}` };
+        continue;
+      }
+      if (t === 'cd') {
+        const v = tokens[i + 1];
+        if (v !== undefined && !within(v)) return { allowed: false, reason: `command rejected: cd escapes the isolated worktree: ${v}` };
+      }
+    }
+    if (/\$\(|`/.test(cmd) && /(^|\s|["'()])git(\s|$|["'])/.test(cmd)) {
+      return { allowed: false, reason: 'command rejected: runtime-computed git command cannot be verified to stay inside the isolated worktree' };
+    }
+    return { allowed: true };
+  }
 
   /** 工具结果跨链的唯一脱敏出口：stdout 与 stderr 统一过凭据模式集 */
   maskResult(_tool: string, result: ExecResult): ExecResult {

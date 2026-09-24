@@ -12,7 +12,7 @@ import type { ModelAdapter } from '../model/adapter';
 
 /**
  * 入口二：worktree 模型工具（计划 T4，规格 §8/D2/D7）：
- * 单发独占（与 exec/ask 同列并行闸门拒绝）、manual 免审批（spawn 先例；deny 规则仍先行）、
+ * 含状态类调用混批时整轮按出牌顺序串行（reactor 执行面闸门）、manual 免审批（spawn 先例；deny 规则仍先行）、
  * plan 只读闸门对 create/exit 拦截、list 放行；工具内调用 Harness 三方法（create/exit/list→registry 摘要）；
  * 活动根在场：write 相对路径锚活动根（安全链判界基准切换）、exec cwd 锚活动根（builtin 装配 root 单点）。
  * 工具清单 +1 = 一次全量前缀断点（规格 D2 已裁决即论据）。
@@ -106,7 +106,7 @@ test('T4-4 list：观察行输出登记表摘要（name/branch/dirty）', () =>
     },
   ));
 
-test('T4-5 并行闸门：worktree 与 read 同批被拒（单发独占，文案独占口径）', () =>
+test('T4-5 并行闸门：worktree 与 read 同批按序串行执行（混合批不拒绝）', () =>
   withHarness(
     'dontAsk',
     new ScriptedAdapter([
@@ -120,11 +120,10 @@ test('T4-5 并行闸门：worktree 与 read 同批被拒（单发独占，文案
     ]),
     (h) => {
       const t = h.tools.get('worktree');
-      assert.ok(t && String(t.category) === 'worktree', '前置：工具已注册且类别登记（红灯红在此，防未知名 undefined 路径假绿）');
+      assert.ok(t && String(t.category) === 'worktree', '前置：工具已注册且类别登记（真实类别缝）');
       return h.reactor.run({ goal: 'g' }, { maxSteps: 4 }).then((r) => {
-        const row = r.steps.find((s) => s.observation.includes('exclusively'));
-        assert.ok(row, '应产生单发独占拒绝（chat 轮面闸门拒绝行落 tool-result）');
-        assert.ok(row && row.observation.includes('exclusively'), `拒绝文案应独占口径：${row && row.observation.slice(0, 120)}`);
+        assert.ok(!r.steps.some((s) => s.observation.includes('rejected')), '混合批按序串行执行不拒绝');
+        assert.ok(r.steps.some((s) => s.action === 'tool-result' && s.observation.includes('worktree')), 'worktree list 真实执行');
       });
     },
   ));

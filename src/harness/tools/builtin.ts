@@ -60,24 +60,29 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       name: 'exec',
       description: 'Execute a shell command inside the project sandbox; long-running commands are automatically moved to the background when they time out; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'bash',
-      executor: async (input: ToolInput) => {
+      executor: async (input: ToolInput, runtimeSafety) => {
         const cmd = String(input.command ?? '');
+        // 执行期安全缝（规格 D6）：cwd 锚定与命令判界取运行期链视图（fork 子链 withRoot 换根克隆注入即生效；
+        // 缺省回落装配链），前台/后台共用同一闸门——后台分支直调 backend，闸门须在分流前
+        const gateView = runtimeSafety ?? safety;
+        const gate = gateView.execCommandAllowed(cmd);
+        if (!gate.allowed) return { exitCode: 127, stdout: '', stderr: gate.reason, timedOut: false };
         if (input.background === true) {
           if (tasks === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background execution requires a task registry (not wired in this assembly)');
           if (backend.execBackground === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background exec requires a backend with execBackground');
           const task = tasks.submit({ kind: 'exec', label: cmd.trim().split(/\s+/)[0] ?? cmd, ownerRun: tasks.currentOwner() });
           const started = await backend.execBackground(cmd, {
-            cwd: safety.execCwd(),
+            cwd: gateView.execCwd(),
             onData: (chunk) => tasks.append(task.id, chunk),
             onExit: (code) => tasks.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code }),
           });
           if (started.ok) task.stop = () => backend.killBackground?.(started.value.pid);
           return execOut(`task ${task.id} started (output: ${task.outputFilePath})`);
         }
-        // exec cwd 判定单点（规格 §11）：chain.execCwd()——活动根在场取活动根，isolation 子链换根克隆取专属树，缺省装配根
+        // exec cwd 判定单点（规格 §11）：执行期安全缝锚 cwd——fork 子链换根克隆即锚专属树，缺省装配根
         // 前台超时转后台（规格 D5，对标 CC）：账本在场且非 sleep 开头时带 timeoutToBackground，到点不杀进程、登记转后台
         const wantsBg = tasks !== undefined && !/^\s*sleep(?=\s|$)/.test(cmd.trim());
-        const r = await safety.run(cmd, { cwd: safety.execCwd(), ...(wantsBg ? { timeoutToBackground: true } : {}) });
+        const r = await safety.run(cmd, { cwd: gateView.execCwd(), ...(wantsBg ? { timeoutToBackground: true } : {}) });
         if (r.ok && r.value.timedOut && r.value.child) {
           const child = r.value.child;
           const ledger = tasks!;
@@ -344,7 +349,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     name: 'todo_write',
     description:
-      'Write the session todo list (full replacement). Use it for complex multi-step tasks: create the list up front, keep exactly one item in_progress at a time, mark items completed as soon as they are done, and rewrite the whole list whenever it changes. Task boundaries do not reset the list — append new tasks instead of starting from scratch. Skip it for simple single-step tasks.',
+      'Write the session todo list (full replacement). Use it for tasks with 3 or more distinct steps: create the list up front, keep exactly one item in_progress at a time, mark items completed as soon as they are done, and rewrite the whole list whenever it changes. Task boundaries do not reset the list — append new tasks instead of starting from scratch. Skip it for simpler tasks (1-2 steps).',
     category: 'todo',
     executor: async (input: ToolInput) => {
       if (!todos) throw new CodedToolError('todo_not_configured', 'todo list is not wired in this runtime');

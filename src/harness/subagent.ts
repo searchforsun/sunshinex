@@ -3,11 +3,11 @@
  * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案恒英文单语（角色行/工具 description 直接进模型） */
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentRole, ModelTier, SessionEvent, SubagentSpawnInput } from '../types';
+import { AgentRole, ModelTier, OutputStyle, SessionEvent, SubagentSpawnInput } from '../types';
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
-import { createWorktree, removeWorktree, subagentTreeName } from './worktree';
+import { createWorktree, isRepo, removeWorktree, subagentTreeName } from './worktree';
 import { dataDirReal } from '../config/data-dir';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
@@ -41,7 +41,7 @@ export interface AgentDef {
   /** 自有跨会话记忆开关（agent.md frontmatter `memory: true`；缺省关）：
    * 声明后自有记忆目录 <dataDir>/memory/agents/<id>/，索引经 fork 私有尾块注入、写面收窄到自身目录 */
   memory?: boolean;
-  /** 隔离声明（agent.md frontmatter `isolation: worktree`；缺省无）：fork 前建专属树并在树内执行 */
+  /** 隔离声明（规格 2026-09-23-subagent-worktree-isolation D2）：frontmatter `isolation: worktree`；缺省无 */
   isolation?: 'worktree';
 }
 
@@ -163,6 +163,8 @@ export interface SubagentRunnerDeps {
   onEvent?: (e: SessionEvent) => void;
   /** 后台任务账本（T2 两段式接缝）：spawn background:true 时立即登记任务并异步执行，结论行落任务日志（规格 D6） */
   tasks?: TaskRegistry;
+  /** 输出样式分叉（交互面级，进稳定段）：随装配透传 fork 子 Reactor，子代理与主链同面 */
+  outputStyle?: OutputStyle;
 }
 
 /** 子代理生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
@@ -194,30 +196,38 @@ export class SubagentRunner {
     return this.rootProvider?.() ?? this.deps.root ?? null;
   }
 
-  /** isolation 专属树收口单点（规格 §9）：porcelain 空→自动删（含分支，返回 undefined）；有改动→保留 + keptReason=dirty，
-   * 返回附路径提示（结论/补丁行前注）；失败逐项容忍（登记缺失/已清），收口尽力而为 */
-  private settleIsoWorktree(iso?: { name: string; tree: string }): string | undefined {
+  /** 隔离树收口单点（规格 D4）：干净树自动删（含分支，零链行）；有改动/登记缺失 → 保留 + 路径提示（结论/补丁行前注）；
+   * 收口失败逐项容忍，尽力而为 */
+  private settleSubagentTree(iso?: { name: string; tree: string }): string | undefined {
     if (iso === undefined || this.deps.root === undefined) return undefined;
     const removed = removeWorktree(this.deps.root, dataDirReal(this.deps.root), iso.name);
     if (removed.ok && removed.value === 'removed') return undefined;
     return `worktree kept for inspection: ${iso.tree}`;
   }
 
-  /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点；收窄两件 spawn+todo_write）：缺省 = 父全量 − spawn − todo_write；
-   * 显式 tools = 按名取交集再剔除 todo_write（未知名静默忽略，未知名校验属 spawn 输入面职责；规格 D9 子面恒无 todo_write） */
+  /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点；收窄 spawn+todo_write+ask_question+worktree）：
+   * 缺省 = 父全量 − 这四件；显式 tools = 按名取交集再恒剔除。剔除依据：todo_write 归属主任务单一事实源（D9）；
+   * spawn 防子代再生子代（派生树受控）；ask_question 是面向用户的 HITL 通道，fork 执行不中途发问（结论回写即应答）；
+   * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子代理不得改动主会话工作环境 */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
     if (input?.tools && input.tools.length > 0) {
       const child = this.deps.registry.derive({ only: input.tools });
       child.unregister(TODO_TOOL_NAME);
+      child.unregister(SPAWN_TOOL_NAME);
+      child.unregister('ask_question');
+      child.unregister('worktree');
       return child;
     }
-    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME] });
+    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree'] });
   }
 
   /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、tools 未知名 INVALID_ARG（T2 起两段式开通，background 分支放行） */
   validateSpawnInput(input: SubagentSpawnInput): void {
     if (!input.agent_id && !input.prompt) {
       throw new CodedToolError('INVALID_ARG', 'agent_id and prompt are both missing');
+    }
+    if (input.isolation !== undefined && input.isolation !== 'worktree') {
+      throw new CodedToolError('INVALID_ARG', `Unknown isolation: ${String(input.isolation)} (only 'worktree')`);
     }
     for (const t of input.tools ?? []) {
       if (!this.deps.registry.has(t)) {
@@ -316,24 +326,25 @@ export class SubagentRunner {
     this.inFlightLabels.set(label, n + 1);
     this.inFlight++;
     try {
-      // 入口三（规格 §9/D9）：双通道 isolation——入参优先于 frontmatter；内联临时子代理同样可用（仅入参通道）。
-      // 建树失败 fail-bounded：失败补丁行回链（含错误码），该子代理不执行，父任务不炸
-      const wantsIso =
-        input.isolation === 'worktree' ||
-        (input.agent_id !== undefined && this.agents.resolve(input.agent_id)?.isolation === 'worktree');
+      // D2 双通道声明（入参优先于 frontmatter）；D3 静默兜底——root 缺失或非 git 仓 → iso 静默置空，
+      // 零链行、主工作区执行（隔离是增强非承诺）；是仓但建树失败 → fail-bounded 补丁行回链，父任务不炸
+      const declaredByAgent = (() => {
+        if (input.agent_id === undefined) return false;
+        try {
+          return this.agents.resolve(input.agent_id)?.isolation === 'worktree';
+        } catch {
+          return false;
+        }
+      })();
+      const wantsIso = input.isolation === 'worktree' || declaredByAgent;
       let iso: { name: string; tree: string } | undefined;
-      if (wantsIso) {
-        if (this.deps.root === undefined) {
-          this.deps.context.appendChain([{ action: 'note', observation: `[${label}] isolation: worktree unavailable (no project root)` }]);
-          return fail('INVALID_STATE', `[${label}] isolation: worktree requires a project root`);
+      if (wantsIso && this.deps.root !== undefined && isRepo(this.deps.root)) {
+        const created = createWorktree(this.deps.root, dataDirReal(this.deps.root), subagentTreeName(finalLabel));
+        if (created.ok) iso = { name: created.value.name, tree: created.value.path };
+        else if (created.error.code !== 'WORKTREE_NOT_A_REPO') {
+          this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] isolation failed: ${created.error.code}: ${created.error.message}` }]);
+          return fail('INCOMPLETE', `[${finalLabel}] isolation failed (${created.error.code})`);
         }
-        const name = subagentTreeName(label);
-        const created = createWorktree(this.deps.root, dataDirReal(this.deps.root), name);
-        if (!created.ok) {
-          this.deps.context.appendChain([{ action: 'note', observation: `[${label}] isolation failed: ${created.error.code}: ${created.error.message}` }]);
-          return fail('INCOMPLETE', `[${label}] isolation failed (${created.error.code})`);
-        }
-        iso = { name: created.value.name, tree: created.value.path };
       }
       const base = this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
@@ -344,16 +355,19 @@ export class SubagentRunner {
       if (own !== undefined) seedHistory.push({ step: step++, action: 'memory', observation: own.line });
       seedHistory.push({ step: step++, action: 'task', observation: spec.taskLine });
 
-      // 隔离子链安全链：专属树换根克隆（与记忆 scope 正交组合）；fork root 锚树（工作目录事实=专属树）
-      const childSafety = iso !== undefined ? this.deps.safety.withRoot(iso.tree) : this.deps.safety;
+      // 子链安全链：记忆 scope 收窄克隆；隔离声明在场再换根克隆（withRoot 保 scope，exec cwd 与判界锚专属树）；
+      // fork root 锚树（工作目录事实=专属树），缺省锚主链工作目录事实
+      const scopeChain = own !== undefined ? this.deps.safety.withMemoryScope(own.scope) : this.deps.safety;
+      const childSafety = iso !== undefined ? scopeChain.withRoot(iso.tree) : scopeChain;
       const child = new Reactor({
-        safety: own !== undefined ? childSafety.withMemoryScope(own.scope) : childSafety,
+        safety: childSafety,
         registry: this.deriveChildRegistry(input),
         context: this.deps.context,
         model: this.deps.model,
         ...(iso !== undefined ? { root: iso.tree } : this.forkRoot() ? { root: this.forkRoot()! } : {}),
         ...(this.deps.router ? { router: this.deps.router } : {}),
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
+        ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
         ...(this.deps.onEvent
           ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: finalLabel } }) }
           : {}),
@@ -378,24 +392,22 @@ export class SubagentRunner {
           ),
         );
         if (result.done && result.reply) {
-          // 子代理返回制：私有步骤零主链污染，终态恰好一行结论行；isolation 树收口先行（保留时附路径行）
-          const keptNote = this.settleIsoWorktree(iso);
-          if (keptNote) this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] ${keptNote}` }]);
+          // 子代理返回制：私有步骤零主链污染；隔离树收口先行——脏树保留时补丁行附路径，再落结论行
+          const keptNote = this.settleSubagentTree(iso);
+          if (keptNote !== undefined) this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] ${keptNote}` }]);
           this.deps.context.appendChain([{ action: 'node', observation: `[${finalLabel}] ${firstLine(result.reply)}` }]);
           return ok({ reply: result.reply, tokens: result.tokensUsed ?? 0 });
         }
         const reason = result.stopReason ?? 'failed';
         {
-          const keptNote = this.settleIsoWorktree(iso);
-          this.deps.context.appendChain([
-            { action: 'note', observation: `[${finalLabel}] did not finish (${reason})${keptNote ? ` ${keptNote}` : ''}` },
-          ]);
+          const keptNote = this.settleSubagentTree(iso);
+          this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] did not finish (${reason})${keptNote !== undefined ? ` — ${keptNote}` : ''}` }]);
         }
         return fail('INCOMPLETE', `[${finalLabel}] did not finish (${reason})`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'unknown error';
-        const keptNote = this.settleIsoWorktree(iso);
-        this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] failed: ${msg}${keptNote ? ` ${keptNote}` : ''}` }]);
+        const keptNote = this.settleSubagentTree(iso);
+        this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] failed: ${msg}${keptNote !== undefined ? ` — ${keptNote}` : ''}` }]);
         return fail('INCOMPLETE', msg);
       }
     } finally {
@@ -419,18 +431,19 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['prompt', 'agent_id', 'label', 'tools', 'background'],
+      required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation'],
       properties: {
         prompt: { type: 'string', description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent cannot see this conversation)' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null spawns an inline subagent' },
         label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
         tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
         background: { type: ['boolean', 'null'], description: 'true = two-phase spawn: returns a task id immediately, the subagent runs in the background and its conclusion lands in the task log (inspect via read)' },
+        isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
       },
     },
     name: SPAWN_TOOL_NAME,
     description:
-      'Spawn a subagent to execute one independent subtask; its final report returns as this tool result. Issue multiple spawn calls in one tools array to run independent subtasks in parallel. prompt must be self-contained (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
+      'Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap 4, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
     category: 'subagent',
     executor: async (input) => {
       const spec = input as SubagentSpawnInput;

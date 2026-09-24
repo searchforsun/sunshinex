@@ -5,8 +5,36 @@ import * as os from 'os';
 import * as path from 'path';
 import { createRuntime } from './runtime';
 import { ScriptedAdapter } from '../model/adapter';
+import { textReplyAdapter } from '../model/chat-stub';
 import { Reactor, ReactorOpts } from '../harness/reactor';
 import { SessionEvent } from '../types';
+
+// ── 输出样式分叉（outputStyle）：TUI 面缺省恒 terminal，稳定段携带围栏/ASCII 图示约束 ──
+
+test('createRuntime：TUI 面缺省恒 terminal——稳定段携带输出样式约束行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-style-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
+  try {
+    const prompts: string[] = [];
+    const capture = textReplyAdapter('openai', (prompt) => {
+      prompts.push(prompt);
+      return '{"done":true,"reply":"ok"}';
+    });
+    const rt = createRuntime({ root: tmp, model: capture });
+    await rt.runTask('样式验收', { maxSteps: 2 });
+    assert.ok(
+      prompts.some((p) => p.includes('explicit language tag')) &&
+        prompts.some((p) => p.includes('ASCII')) &&
+        prompts.some((p) => p.includes('default form')) &&
+        prompts.some((p) => p.includes('this terminal surface')),
+      'TUI 面稳定段必须携带输出样式约束行（围栏语言标签 + ASCII 图示；缺省注入 terminal，分叉未接线则缺失）',
+    );
+  } finally {
+    process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
 
 test('createRuntime：事件贯通 + runTask 完成 + runs 账本落盘（会话同源）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-'));
