@@ -125,6 +125,18 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
   "globalSunshine": "",                              // 全局约定文件
   "shell": "",                                       // 命令执行 shell（POSIX 兼容）；Windows 留空自动探测 Git Bash，无则 PowerShell，末位 cmd 兜底
 
+  // ── 权限规则与信任目录（deny/allow 语法见「六、权限模式与审批」）──
+  "permissions": {
+    "deny": ["Write(*.pem)", "Bash(rm -rf*)", "Read(**/.env)"],  // 命中即拒；两级合并取并集，项目级不可解除全局级
+    "allow": ["Write(src/**)"],                                  // 命中免审批
+    "additionalDirs": ["../lib-shared"]                          // 信任目录：读写同项目根；运行期经 /add-dir、--add-dir 追加
+  },
+
+  // ── 安全语义键 ────────────────────────────────────────
+  "readFence": "off",                                // 开启后信任域外读取也需审批（manual 档）/ 拒绝（其余档）
+  "sandbox": "on",                                   // Linux 下 exec 经 Landlock 内核围栏；off 一键关
+  "isolation": "",                                   // 隔离口径声明 landlock|container|host；留空自动探测（selfcheck 上屏）
+
   // ── 密钥（只写这里）──────────────────────────────────
   "env": {
     "SUNSHINEX_API_KEY": "sk-…",                     // 模型密钥（必填）
@@ -153,34 +165,6 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 - stdio 形态：`command` + 可选 `args` / `env`（transport 可省略）；远程形态：`url` + 可选 `transport`（缺省 `http`，支持 `sse`）。
 - 非法条目跳过不抛（缺 command/url、transport 值未知、形态矛盾），装配面宁可少配不错配。
-
-### permissions 权限规则与信任目录
-
-settings.json 支持结构化 `permissions` 键（全局 `~/.sunshinex/settings.json` 与项目 `.sunshinex/settings.json` 两级合并生效，数组取并集）：
-
-```json
-{
-  "permissions": {
-    "deny": ["Write(*.pem)", "Bash(rm -rf*)", "Read(**/.env)"],
-    "allow": ["Write(src/**)"],
-    "additionalDirs": ["../lib-shared"]
-  }
-}
-```
-
-- 语法 `Tool(specifier)`：文件工具的 specifier 为路径 glob（`**` 跨段、`*` 不跨段、无 `/` 写法对文件名匹配，相对项目根书写）；`Bash(...)` 为命令匹配（尾 `*` 前缀）；`mcp__<server>__<tool>` 直名（尾 `*` 通配）
-- `deny` 命中即拒、`allow` 命中免批；`additionalDirs` 为信任目录（读写同项目根，会话内生效）
-- 运行期扩展：TUI 内 `/add-dir <目录>` 即时追加信任目录；CLI/TUI 启动参数 `--add-dir=<目录>`（可重复）
-
-配套语义键：
-
-| 键 | 环境槽 | 缺省 | 语义 |
-|----|--------|------|------|
-| readFence | SUNSHINEX_READ_FENCE | off | 开启后信任域外读取需审批（manual 档）/ 拒绝（其余档） |
-| sandbox | SUNSHINEX_SANDBOX | on | Linux 下 exec 经 Landlock 内核围栏；off 一键关 |
-| isolation | SUNSHINEX_ISOLATION | auto | 隔离口径声明：landlock / container / host，selfcheck 上屏 |
-
-- known-issue（older Landlock ABI）：较旧内核的 Landlock 为部分治理（partial enforcement），如遇 git 或写设备类命令在沙箱内失败，先设置 `SUNSHINEX_SANDBOX=off` 重试即可恢复，并向上游回报该环境信息
 
 ## 三、目录与文件
 
@@ -224,8 +208,8 @@ settings.json 支持结构化 `permissions` 键（全局 `~/.sunshinex/settings.
 ```
 
 - 技能标准形态统一为 `{根}/skills/{id}/SKILL.md`，正文前 frontmatter 写 `name` 与 `description`。
-- 技能生效顺序：项目级 > 全局级 > 学习级（沉淀产物恒垫底）。
-- 文件操作被限制在启动目录内，越界路径直接拒绝。
+- 技能生效顺序：项目级 > 全局级 > 学习级（沉淀产物垫底）。
+- 文件读取缺省全盘开放；写入信任项目根与已登记信任目录，越界写走审批或拒绝（详见第六节）。
 
 ## 四、基本用法
 
@@ -329,6 +313,9 @@ settings.json 支持结构化 `permissions` 键（全局 `~/.sunshinex/settings.
 
 **AskQuestion 问询卡**：模型可经内置 `ask_question` 工具主动向你提问（单选 / 多选 / 「Other…」自由输入），键位同上（多选 `Space` 勾选、`Enter` 提交全部勾选）；`Esc` 放弃作答，模型收到「已跳过」并自行调整。无交互终端的 CLI 场景回落为编号输入，完全 headless 时自动按跳过处理。
 任何模式下硬性拦截：破坏性命令（`dd` / `fdisk` / `shutdown` 等）与「下载即执行」管道。
+
+**规则与信任目录**：`settings.json` 的 `permissions` 键在审批之上叠加规则面——`deny` 命中即拒（两级合并取并集，项目级不可解除全局级），`allow` 命中免批。语法 `Tool(specifier)`：文件工具的 specifier 为路径 glob（`**` 跨段、`*` 不跨段、无 `/` 写法对文件名匹配，相对项目根书写）；`Bash(...)` 为命令匹配（尾 `*` 前缀）；`mcp__<server>__<tool>` 直名（尾 `*` 通配）。写入面缺省信任项目根；`additionalDirs` 声明的信任目录读写同项目根，运行期经 TUI `/add-dir <目录>` 即时追加、CLI/TUI 启动参数 `--add-dir=<目录>`（可重复）。写审批选「本会话放行」（`a`）按目录粒度登记，同目录后续写免批。
+读取面缺省全盘开放；`readFence` 开启后信任域外读取同样走审批（manual 档）或拒绝（plan/dontAsk 档）。`sandbox` / `isolation` 控制命令执行的内核围栏与隔离口径（selfcheck 上屏）；known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类命令在沙箱内失败，先设置 `SUNSHINEX_SANDBOX=off` 重试即可恢复，并向上游回报该环境信息。
 ## 七、中断与运行控制
 
 - 运行状态实时显示：任务运行中，输入框上方状态行分三态——思考中（帧动画 + 耗时）、工具执行前/审批挂起（`● [工具名]` 逐调用一行，审批挂起标注 awaiting approval）、正文输出中（静默，流式正文即状态）；调用完成即转为消息流中的结果行。
