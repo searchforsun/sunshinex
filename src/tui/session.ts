@@ -36,6 +36,10 @@ export interface ChatItem {
   kind?: 'call' | 'result';
   /** tool 结果行成功标记 */
   ok?: boolean;
+  /** tool 调用行等待态：已发射调用、结果未回（并发批中各调用行独立呈现 pending→✓/✗） */
+  pending?: boolean;
+  /** tool 行调用标识：结果行据此插到其调用行之后（并发批内乱序返回时配对不漂移） */
+  callId?: string;
   /** system 消息级别：info 状态回执（缺省）/ warn 警示 / error 失败——渲染层据此选色 */
   level?: 'info' | 'warn' | 'error';
   /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation（入档后折叠打印，供后续 transcript 视图） */
@@ -1500,19 +1504,34 @@ export class SessionController {
       case 'tool-call': {
         this.closeLive();
         this.committedLen = 0;
-        this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call' });
+        const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
+        this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call', pending: true, callId });
         // spawn 调用关联栈（规格 §4.4）：压行 seq + 基名，成对语义下 spawn tool-result 必然紧跟其后弹出归档
         if (e.text === 'spawn') this.spawnCalls.push({ seq: this.msgSeq, base: spawnBaseLabel(e.payload?.input) });
         return;
       }
-      case 'tool-result':
+      case 'tool-result': {
         if (e.payload?.tool === 'spawn') this.archiveChild();
-        this.pushMsg('tool', e.text ?? '', {
-          kind: 'result',
-          ok: e.payload?.ok === true,
+        // 结果行按 callId 插到其调用行之后：并发批乱序返回时各结果仍紧跟各自调用（不再堆尾）
+        const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
+        const messages = this.state.messages;
+        let at = messages.length;
+        if (callId !== undefined) {
+          const idx = messages.findIndex((m) => m.kind === 'call' && m.callId === callId && m.pending === true);
+          if (idx >= 0) at = idx + 1;
+        }
+        const item: ChatItem = {
+          role: 'tool', text: e.text ?? '', ts: Date.now(), seq: ++this.msgSeq,
+          kind: 'result', ok: e.payload?.ok === true,
           detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
-        });
+        };
+        const resolved = messages.map((m) => (m.kind === 'call' && m.callId === callId && m.pending === true ? { ...m, pending: false } : m));
+        resolved.splice(at, 0, item);
+        this.state = { ...this.state, messages: resolved };
+        this.journal?.log({ t: 'msg', item });
+        this.notify();
         return;
+      }
       case 'step': {
         // 步数计账：模型动作步（done 收尾帧不计、子代理事件已分流不达此处），会话累计、/new 归零（状态栏 turns/steps 段数据源）
         if (e.text !== 'done') {
@@ -1573,7 +1592,7 @@ export class SessionController {
       : t('Persistent memory: OFF', '持久记忆：关闭');
   }
 
-  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'detail' | 'level'>>): void {
+  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'pending' | 'callId' | 'detail' | 'level'>>): void {
     const item: ChatItem = { role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) };
     this.state = { ...this.state, messages: [...this.state.messages, item] };
     // 消息流入志（单一挂钩点：所有入档消息都经 pushMsg）；恢复注入不经此处（零重复入志）
