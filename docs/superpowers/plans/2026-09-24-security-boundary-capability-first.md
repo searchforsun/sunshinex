@@ -560,7 +560,7 @@ git commit -m "feat(security): permissions 结构化键装载与规则匹配单�
   - `async execWrap(cmd: string): Promise<ExecOpts['wrap'] | null>`（Task 5 消费；本任务先落 landlockWritableRoots + 占位 import，见 Step 3 注）
   - resolveSafe 求值序（spec §5.1）：settings.json → .git → 记忆窄口 → worktree 主根拒写 → 用户 deny → 会话目录放行 → 用户 allow → 读分支 → 写分支
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/harness/security/chain.boundary.test.ts
@@ -711,12 +711,12 @@ test('withRoot 克隆共享 permissions/additionalDirs；隔离链根外写恒�
 });
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `pnpm build 2>&1 | grep -E "error TS" ; node --test dist/harness/security/chain.boundary.test.js 2>&1 | tail -5`
 Expected: 编译失败（`setPermissions`/`setAdditionalDirs`/`withRoot` 外的 `execWrap` 未定义；`matchAnyRule` 未导入）——失败即预期。
 
-- [ ] **Step 3: 实现 chain.ts**
+- [x] **Step 3: 实现 chain.ts**
 
 ① import 区追加（与既有并列）：
 
@@ -927,12 +927,13 @@ function isGitInternalPath(real: string): boolean {
 
 （`additionalDirs` 为原地变更的共享实例——见 setAdditionalDirs 注释；`additionalDirs` 字段声明相应从 `private readonly additionalDirs: string[] = []` 确认为 const 数组引用。）
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `pnpm build 2>&1 | grep -E "error TS" ; node --test dist/harness/security/chain.boundary.test.js dist/harness/security/chain.settings-protect.test.js 2>&1 | tail -3`
 Expected: boundary 全 PASS；settings-protect 既有语义（settings 保护、记忆开关）零回归。
+实际（2026-09-24）：boundary/settings-protect 全 PASS；全量首轮 8 失败——定性为 2 个实现缺陷 + 2 处计划声明行为变更改判 + 4 个被前两者连带波及的用例，均已修复/改判；另修复 session.skill 测试辅助的批跑 mtime 竞态。终态全量 1248/1248 全绿、tsc 零错。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/harness/security/chain.ts src/harness/security/chain.boundary.test.ts
