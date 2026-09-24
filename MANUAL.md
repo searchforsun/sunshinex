@@ -314,8 +314,42 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 **AskQuestion 问询卡**：模型可经内置 `ask_question` 工具主动向你提问（单选 / 多选 / 「Other…」自由输入），键位同上（多选 `Space` 勾选、`Enter` 提交全部勾选）；`Esc` 放弃作答，模型收到「已跳过」并自行调整。无交互终端的 CLI 场景回落为编号输入，完全 headless 时自动按跳过处理。
 任何模式下硬性拦截：破坏性命令（`dd` / `fdisk` / `shutdown` 等）与「下载即执行」管道。
 
-**规则与信任目录**：`settings.json` 的 `permissions` 键在审批之上叠加规则面——`deny` 命中即拒（两级合并取并集，项目级不可解除全局级），`allow` 命中免批。语法 `Tool(specifier)`：文件工具的 specifier 为路径 glob（`**` 跨段、`*` 不跨段、无 `/` 写法对文件名匹配，相对项目根书写）；`Bash(...)` 为命令匹配（尾 `*` 前缀）；`mcp__<server>__<tool>` 直名（尾 `*` 通配）。写入面缺省信任项目根；`additionalDirs` 声明的信任目录读写同项目根，运行期经 TUI `/add-dir <目录>` 即时追加、CLI/TUI 启动参数 `--add-dir=<目录>`（可重复）。写审批选「本会话放行」（`a`）按目录粒度登记，同目录后续写免批。
-读取面缺省全盘开放；`readFence` 开启后信任域外读取同样走审批（manual 档）或拒绝（plan/dontAsk 档）。`sandbox` / `isolation` 控制命令执行的内核围栏与隔离口径（selfcheck 上屏）；known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类命令在沙箱内失败，先设置 `SUNSHINEX_SANDBOX=off` 重试即可恢复，并向上游回报该环境信息。
+### 6.1 读写范围
+
+| 面 | 行为 |
+| --- | --- |
+| 读取 | 缺省全盘开放；`readFence` 开启后信任域外读取同样走审批（manual 档）/ 拒绝（其余档） |
+| 写入 | 信任项目根与信任目录；越界写按权限模式：manual 审批 / plan 拒 / dontAsk 放行 |
+| 会话放行 | 写审批选 `a`（本会话放行）按**目录**登记，同目录后续写免批 |
+
+信任目录运行期追加：TUI 内 `/add-dir <目录>`，或启动参数 `--add-dir=<目录>`（可重复）；也可配置进 `settings.json` 的 `permissions.additionalDirs`。
+
+### 6.2 规则面（permissions）
+
+`settings.json` 的 `permissions` 键（见第二节字段表）在审批之上叠加规则：
+
+| 键 | 行为 |
+| --- | --- |
+| `deny` | 命中即拒；两级合并取并集，项目级不可解除全局级 |
+| `allow` | 命中免审批 |
+
+规则语法 `Tool(specifier)`：
+
+| 工具面 | specifier 形态 |
+| --- | --- |
+| 文件工具（Write/Read/Edit） | 路径 glob：`**` 跨段、`*` 不跨段、无 `/` 对文件名匹配（相对项目根） |
+| `Bash(...)` | 命令匹配，尾 `*` 为前缀通配 |
+| `mcp__<server>__<tool>` | 直名，尾 `*` 通配 |
+
+### 6.3 命令执行沙箱
+
+| 键 | 语义 |
+| --- | --- |
+| `sandbox` | Linux 下命令执行经 Landlock 内核围栏；`off` 一键关 |
+| `isolation` | 隔离口径 `landlock` / `container` / `host`，留空自动探测（selfcheck 上屏） |
+
+known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类命令在沙箱内失败，先设置 `SUNSHINEX_SANDBOX=off` 重试即可恢复，并向上游回报该环境信息。
+
 ## 七、中断与运行控制
 
 - 运行状态实时显示：任务运行中，输入框上方状态行分三态——思考中（帧动画 + 耗时）、工具执行前/审批挂起（`● [工具名]` 逐调用一行，审批挂起标注 awaiting approval）、正文输出中（静默，流式正文即状态）；调用完成即转为消息流中的结果行。
