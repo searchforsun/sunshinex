@@ -1,4 +1,4 @@
-import type { AskUserSeam, TodoItem } from '../types';
+import type { AskUserSeam, OutputStyle, TodoItem } from '../types';
 import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { ToolRegistry } from './tools';
@@ -29,6 +29,8 @@ import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import { createWorktree, removeWorktree, readRegistry, worktreesRoot } from './worktree';
+import { loadMcpServers } from '../config';
+import { McpHost } from './mcp/client';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
 export const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
@@ -49,6 +51,8 @@ export interface HarnessOptions {
   memoryOverride?: boolean;
   /** todo_write 接缝（todo_write 规格 D6）：TUI 注入会话实接（setTodos）；缺省 no-op——CLI/headless 下模型可正常维护清单（观察行进链），仅无 UI 卡 */
   todos?: { set(items: TodoItem[]): void };
+  /** 输出样式分叉（交互面级，进稳定段）：交互面装配点注入（TUI=terminal）；缺省回 MARKDOWN_LINE 通用约定 */
+  outputStyle?: OutputStyle;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -81,6 +85,12 @@ export class Harness {
     settle: (r: SettlePayload) => string | undefined;
     settleMemory: (r: SettlePayload) => string | undefined;
   };
+  /** MCP 装配就绪门槛（两级 mcp.json → McpHost 注册链）：loop 引擎 run 入口统一 await，单发/loop/graph 嵌套全覆盖；配置为空时零开销直通 */
+  readonly mcpReady: () => Promise<void>;
+  /** MCP 连接收口（stdio 子进程防悬挂事件循环）：CLI 命令收尾与 TUI dispose 调用；未连接时幂等 no-op */
+  readonly mcpClose: () => Promise<void>;
+  /** MCP 装配警告单（降级语义）：服务器连接/握手/重名失败只损失该服务器工具，警告收集后继续装配其余服务器 */
+  readonly mcpWarnings: () => string[];
 
   constructor(private opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
@@ -89,7 +99,9 @@ export class Harness {
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();
     this.sandbox = new ProcessSandbox();
-    this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk');
+    // MCP 登记制闸门构造期同步注入（两级 mcp.json，项目遮蔽全局；本地 JSON 读零 IO 延迟）：guard 在工具注册前即持名单
+    const mcpServers = loadMcpServers(base);
+    this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk', mcpServers.map((s) => s.name));
     this.dryrun = new DryRun();
     this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
     // 技能门面先于工具装配创建（skill 工具经它按 id 解析正文；纯构造无副作用）
@@ -115,6 +127,28 @@ export class Harness {
       memoryEnabled: () => (opts.memoryOverride ?? resolveMemoryConfig().autoMemory) === true,
     });
     this.steering = new SteeringChannel();
+    // MCP 装配链（两级 mcp.json → McpHost）：注册链 fail-fast（连接/握手/拉取任一失败即 run 入口转确定性失败），guard 名单已构造期注入；懒连接——首次 run 前才发起，空配置零开销
+    let mcpHost: McpHost | undefined;
+    let mcpWarnings: string[] = [];
+    this.mcpReady = async () => {
+      if (mcpServers.length === 0) return;
+      if (!mcpHost) {
+        mcpHost = new McpHost(mcpServers, this.tools);
+        try {
+          const report = await mcpHost.registerTools();
+          mcpWarnings = report.warnings;
+        } catch (e) {
+          mcpHost = undefined; // 注册链失败复位，下次 run 重试连接（失败经 run 入口转确定性 failed，不静默直通）
+          throw e;
+        }
+      }
+    };
+    this.mcpClose = async () => {
+      const h = mcpHost;
+      mcpHost = undefined;
+      if (h) await h.close();
+    };
+    this.mcpWarnings = () => mcpWarnings;
     this.settleHooks = {
       settle: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'learned', ...r }),
       settleMemory: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'memory', ...r }),
@@ -134,6 +168,7 @@ export class Harness {
         tasks: this.tasks,
         ledger,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+        ...(opts.outputStyle ? { outputStyle: opts.outputStyle } : {}),
       },
       agents,
     );
@@ -149,6 +184,7 @@ export class Harness {
       ledger,
       runner: this.runner,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      ...(opts.outputStyle ? { outputStyle: opts.outputStyle } : {}),
       // 运行中穿插（对标 CC queued messages）：步边界 drain 单点；未消费行由会话层收口兜底补跑
       steer: () => this.steering.drain(),
       // 沉淀双钩子零等待入队（规格 §3.1/§3.5 D2）：收口同步路径不再 await 模型调用；开关判门在管线内逐项求值

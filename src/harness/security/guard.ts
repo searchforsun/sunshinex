@@ -12,7 +12,7 @@ export class SecurityGuard {
   constructor(
     private policy: PolicyEngine = new PolicyEngine(),
     private mode: PermissionMode = 'manual',
-    /** 已登记 MCP 服务器名（源自 SUNSHINE.md「MCP 服务器」分区）；空 = mcp__ 工具全禁 */
+    /** 已登记 MCP 服务器名（源自项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json，项目遮蔽全局）；空 = mcp__ 工具全禁 */
     private mcpServers: string[] = [],
   ) {}
 

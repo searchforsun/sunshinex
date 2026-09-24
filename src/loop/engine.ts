@@ -50,6 +50,8 @@ export interface LoopDeps {
   tier?: ModelTier;
   /** 缺省思考强度（run 级常量，对标 tier）：下传循环内构造的 Reactor；请求级参数、不进提示词 */
   effort?: import('../types').ReasoningEffort;
+  /** 输出样式分叉（交互面级 run 常量，进稳定段）：装配面注入（TUI=terminal）；缺省回 MARKDOWN_LINE 通用约定 */
+  outputStyle?: import('../types').OutputStyle;
   /** 用户中断信号（Esc/Ctrl+C）：agent 节点下传 Reactor；判据模型调用同样尊重（见 nodes.ts modelJudge） */
   signal?: AbortSignal;
   /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向）：下传循环内构造的 Reactor，session 主链步边界 drain 消费；fork 私有面不消费（reactor 侧 scope 闸门） */
@@ -60,6 +62,12 @@ export interface LoopDeps {
   runner?: import('../harness/subagent').SubagentRunner;
   /** 后台沉淀管线（装配层注入；CLI 收尾 await drain 用）：纯类型依赖，内联 import 规避模块环 */
   pipeline?: import('../harness/memory/pipeline').MemoryPipeline;
+  /** MCP 装配就绪门槛（Harness 注入）：run 入口统一 await——mcp__ 工具注册完成后才进首节点；拒绝转确定性 failed（装配期 fail-fast 收敛为节点状态） */
+  mcpReady?: () => Promise<void>;
+  /** MCP 连接收口（Harness 注入）：CLI 命令收尾关闭 stdio 子进程，防悬挂事件循环 */
+  mcpClose?: () => Promise<void>;
+  /** MCP 装配警告单（Harness 注入，降级语义）：服务器失败只损失该服务器工具，警告由呈现面上屏 */
+  mcpWarnings?: () => string[];
   /** 沉淀双钩子透传（harness 装配注入）：loop 内构造的 Reactor 与单发 Reactor 同语义——收口零等待入队、全终态触发 */
   settle?: (r: import('../harness/reactor').SettlePayload) => string | void | Promise<string | void>;
   settleMemory?: (r: import('../harness/reactor').SettlePayload) => string | void | Promise<string | void>;
@@ -108,6 +116,19 @@ export class LoopEngine {
     goal: string,
     opts?: { state?: Record<string, unknown>; dryRun?: boolean; skillRef?: SkillRef },
   ): Promise<LoopRunResult> {
+    // MCP 装配就绪门槛（fail-fast 收敛为确定性失败）：mcp__ 工具注册完成后才进首节点
+    if (this.deps.mcpReady) {
+      try {
+        await this.deps.mcpReady();
+      } catch (e) {
+        return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: `MCP_ASSEMBLY_FAILED: ${e instanceof Error ? e.message : String(e)}` };
+      }
+      // 降级警告尾追进链（notice 行）：服务器失败只损失该服务器工具，模型与读者按「后到者优先」感知可用面
+      const warnings = this.deps.mcpWarnings?.() ?? [];
+      for (const w of warnings) {
+        this.deps.context.appendChain([{ action: 'notice', observation: `MCP warning: ${w}` }]);
+      }
+    }
     if (opts?.skillRef) {
       if (!this.deps.skills) {
         return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: 'SKILL_NOT_CONFIGURED: LoopDeps has no skill resolver (skills)' };

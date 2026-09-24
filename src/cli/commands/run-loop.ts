@@ -36,5 +36,9 @@ export async function runLoop(args: CliArgs): Promise<void> {
   console.log(JSON.stringify({ status: r.status, iterations: r.iterations, tokensUsed: r.tokensUsed, criteria: r.criteria, reply: r.reply, error: r.error }, null, 2));
   // 收尾消化后台沉淀队列（规格 §3.5）：此时用户本就在等命令结束，不构成新增阻塞
   if (deps.pipeline) await deps.pipeline.drain();
+  // MCP 降级警告上屏：服务器失败只损失该服务器工具，警告不吞
+  for (const w of (deps.mcpWarnings?.() ?? [])) console.warn('mcp warn:', w);
+  // MCP 连接收口：关闭 stdio 子进程，防悬挂事件循环
+  if (deps.mcpClose) await deps.mcpClose();
   if (r.status !== 'done') process.exitCode = 1;
 }

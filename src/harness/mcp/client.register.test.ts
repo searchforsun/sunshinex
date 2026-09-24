@@ -27,8 +27,9 @@ function makeFixture(serverNames: string[]): { registry: ToolRegistry; safety: S
 test('McpHost 注册链：handshake → tools/list → 规范名注册（mcp__fs__echo，category external）', async () => {
   const { registry, host } = makeFixture(['fs']);
   try {
-    const n = await host.registerTools();
-    assert.equal(n, 1);
+    const rep = await host.registerTools();
+    assert.equal(rep.registered, 1);
+    assert.equal(rep.warnings.length, 0);
     const spec = registry.get('mcp__fs__echo');
     assert.ok(spec, '规范名 mcp__fs__echo 应已注册');
     assert.equal(spec.category, 'external');

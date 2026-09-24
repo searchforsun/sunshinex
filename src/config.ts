@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { userConfigDir } from './config/env';
 import { McpServerConfig, ProjectContext } from './types';
 
 export interface SunshinexDoc {
@@ -46,46 +47,58 @@ export function loadSunshinex(root: string): ProjectContext | null {
   return { name, rules, architecture };
 }
 
-/** 取 SUNSHINE.md 指定标题分区的正文行；分区缺失返回空数组 */
-function sectionLines(doc: SunshinexDoc, title: string): string[] {
-  return doc.sections[title] ?? [];
-}
+const VALID_TRANSPORTS = ['stdio', 'http', 'sse'] as const;
 
-/** 解析「MCP 服务器」分区为 McpServerConfig[]：行式 `name | endpoint [| 传输标记与 args]`。endpoint 以 http(s):// 开头为远程行（缺省 transport:http，可用 transport:sse 覆盖）；否则为 stdio 命令行（缺省不落 transport 字段，显式 transport:stdio 才注入），args 按空格切分。非法 transport 值或传输与形态矛盾的行整行跳过不抛（装配面宁可少配不可错配） */
-export function parseMcpServers(doc: SunshinexDoc): McpServerConfig[] {
+/** 解析单个 mcp.json 文件为 `mcpServers` 条目数组。文件缺失或 JSON 非法返回 []；非法条目（字段形态或传输与形态矛盾）跳过不抛（装配面宁可少配不可错配） */
+function parseMcpJsonFile(p: string): McpServerConfig[] {
+  if (!fs.existsSync(p)) return [];
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return [];
+  }
+  const entry = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { mcpServers?: unknown }).mcpServers : undefined;
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+  const strArr = (v: unknown): string[] | undefined =>
+    Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : undefined;
+  const strRecord = (v: unknown): Record<string, string> | undefined =>
+    v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
+      ? (v as Record<string, string>)
+      : undefined;
   const servers: McpServerConfig[] = [];
-  for (const line of sectionLines(doc, 'MCP 服务器')) {
-    const parts = line.split('|').map((p) => p.trim());
-    const name = parts[0] ?? '';
-    const endpoint = parts[1] ?? '';
-    if (!name || !endpoint) continue;
-
-    let transport: McpServerConfig['transport'];
-    let malformed = false;
-    const rest: string[] = [];
-    for (const seg of parts.slice(2)) {
-      const mark = /^transport:(.+)$/.exec(seg);
-      if (!mark) {
-        rest.push(seg);
-      } else if (mark[1] === 'stdio' || mark[1] === 'http' || mark[1] === 'sse') {
-        transport = mark[1];
-      } else {
-        malformed = true;
-      }
-    }
-
-    if (/^https?:\/\//.test(endpoint)) {
-      if (malformed || transport === 'stdio') continue;
-      servers.push({ name, url: endpoint, transport: transport ?? 'http' });
-    } else {
-      if (malformed || transport === 'http' || transport === 'sse') continue;
-      const args = rest.join(' ').split(/\s+/).filter((a) => a.length > 0);
-      const server: McpServerConfig = { name, command: endpoint };
-      if (args.length > 0) server.args = args;
-      if (transport === 'stdio') server.transport = 'stdio';
-      servers.push(server);
+  for (const [name, cfg] of Object.entries(entry as Record<string, unknown>)) {
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) continue;
+    const c = cfg as { command?: unknown; args?: unknown; env?: unknown; transport?: unknown; url?: unknown };
+    if (c.transport !== undefined && !(VALID_TRANSPORTS as readonly string[]).includes(c.transport as string)) continue;
+    const transport = VALID_TRANSPORTS.includes(c.transport as (typeof VALID_TRANSPORTS)[number])
+      ? (c.transport as McpServerConfig['transport'])
+      : undefined;
+    const url = typeof c.url === 'string' ? c.url : undefined;
+    const command = typeof c.command === 'string' ? c.command : undefined;
+    const env = strRecord(c.env);
+    const args = strArr(c.args);
+    if (transport === 'http' || transport === 'sse') {
+      if (!url) continue;
+      servers.push({ name, url, transport, ...(env ? { env } : {}) });
+    } else if (transport === 'stdio') {
+      if (!command) continue;
+      servers.push({ name, command, ...(args ? { args } : {}), ...(env ? { env } : {}), transport });
+    } else if (url && /^https?:\/\//.test(url)) {
+      servers.push({ name, url, transport: 'http', ...(env ? { env } : {}) });
+    } else if (command) {
+      servers.push({ name, command, ...(args ? { args } : {}), ...(env ? { env } : {}) });
     }
   }
   return servers;
+}
+
+/** 两级装载 MCP 服务器配置：项目级 .sunshinex/mcp.json 遮蔽全局 ~/.sunshinex/mcp.json（id 撞名就近遮蔽，与技能装载链同构）。结构：`{ "mcpServers": { "<name>": { command, args?, env?, transport?, url? } } }`（与主流 MCP 客户端 mcpServers 键位兼容） */
+export function loadMcpServers(projectRoot: string, globalDir: string = userConfigDir()): McpServerConfig[] {
+  const global = parseMcpJsonFile(path.join(globalDir, 'mcp.json'));
+  const project = parseMcpJsonFile(path.join(projectRoot, '.sunshinex', 'mcp.json'));
+  if (project.length === 0) return global;
+  const shadowed = new Set(project.map((s) => s.name));
+  return [...project, ...global.filter((s) => !shadowed.has(s.name))];
 }
 

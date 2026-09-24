@@ -51,7 +51,9 @@ test('全链路 mask：echo 回显含凭据文本经安全链出口脱敏', asyn
 test('白名单闸门：未登记服务器的工具被 guard 拒绝（COMMAND_DENIED）', async () => {
   const { registry, safety, host } = makeFixture({ configName: 'other', guardServers: ['fs'], mockArgs: ['--name', 'other'] });
   try {
-    assert.equal(await host.registerTools(), 1, '注册链成功（闸门在 guard 不在注册期）');
+    const rep = await host.registerTools();
+    assert.equal(rep.registered, 1, '注册链成功（闸门在 guard 不在注册期）');
+    assert.equal(rep.warnings.length, 0);
     const r = await registry.execute('mcp__other__echo', { text: 'hi' }, safety);
     assert.ok(!r.ok);
     if (!r.ok) assert.equal(r.error.code, 'COMMAND_DENIED');

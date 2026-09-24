@@ -41,6 +41,13 @@ function withTimeout<T>(p: Promise<T>, ms: number, code: string, message: string
  * 注册链 = 懒 spawn → 握手身份校验（配置名 ≠ serverInfo.name 即拒，防冒名绕过 guard 登记制）
  * → tools/list → 以 mcp__<server>__<tool> 规范名注册（category external，闸门在 guard）。
  */
+/** 逐服务器装配结果：注册数与警告单（降级语义——服务器失败只损失该服务器工具，警告上屏后继续装配） */
+export interface McpAssemblyReport {
+  registered: number;
+  /** 逐服务器失败警告（连接/握手/拉取/重名），按配置顺序收集 */
+  warnings: string[];
+}
+
 export class McpHost {
   private conns = new Map<string, McpConn>();
 
@@ -72,34 +79,45 @@ export class McpHost {
     }
   }
 
-  /** 逐服务器连接并注册工具，返回注册数；任一环节失败即抛（装配期 fail-fast，禁静默缺漏） */
-  async registerTools(): Promise<number> {
-    let count = 0;
+  /** 逐服务器连接并注册工具：单台失败只损失该服务器工具（降级语义），失败收进警告单返回、不中断其余服务器装配 */
+  async registerTools(): Promise<McpAssemblyReport> {
+    const report: McpAssemblyReport = { registered: 0, warnings: [] };
     for (const cfg of this.servers) {
-      if (this.conns.has(cfg.name)) throw new CodedToolError('MCP_DUP_SERVER', `Duplicate MCP server name: ${cfg.name}`);
-      const transport = this.makeTransport(cfg);
-      const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
+      if (this.conns.has(cfg.name)) {
+        report.warnings.push(`duplicate MCP server name (${cfg.name}) skipped`);
+        continue;
+      }
       try {
-        await client.connect(transport);
+        const transport = this.makeTransport(cfg);
+        const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
+        try {
+          await client.connect(transport);
+        } catch (e) {
+          // 失败路径须显式关闭半开传输：SSE 的 EventSource 重连循环会残留 Socket 句柄，挂住测试进程不退出
+          await client.close().catch(() => {});
+          const msg = e instanceof Error ? e.message : String(e);
+          report.warnings.push(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
+          continue;
+        }
+        const actual = client.getServerVersion()?.name;
+        if (actual !== cfg.name) {
+          await client.close().catch(() => {});
+          report.warnings.push(`handshake identity mismatch (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'}`);
+          continue;
+        }
+        this.conns.set(cfg.name, { client, config: cfg });
+        const listed = await client.listTools();
+        for (const t of listed.tools) {
+          this.registry.register(this.makeTool(cfg.name, client, t.name, t.description));
+          report.registered += 1;
+        }
       } catch (e) {
-        // 失败路径须显式关闭半开传输：SSE 的 EventSource 重连循环会残留 Socket 句柄，挂住测试进程不退出
-        await client.close().catch(() => {});
+        // 形态守卫/清单拉取等残余失败同样只损失本服务器（降级语义），收警告继续
         const msg = e instanceof Error ? e.message : String(e);
-        throw new CodedToolError('MCP_CONNECT_FAILED', `MCP server connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
-      }
-      const actual = client.getServerVersion()?.name;
-      if (actual !== cfg.name) {
-        await client.close().catch(() => {});
-        throw new CodedToolError('MCP_SERVER_MISMATCH', `Handshake identity mismatch (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'}`);
-      }
-      this.conns.set(cfg.name, { client, config: cfg });
-      const listed = await client.listTools();
-      for (const t of listed.tools) {
-        this.registry.register(this.makeTool(cfg.name, client, t.name, t.description));
-        count += 1;
+        report.warnings.push(`assembly failed (${cfg.name}): ${msg.slice(0, 120)}`);
       }
     }
-    return count;
+    return report;
   }
 
   async close(): Promise<void> {

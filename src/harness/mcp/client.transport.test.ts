@@ -3,26 +3,60 @@ import assert from 'node:assert/strict';
 import { ToolRegistry } from '../tools';
 import { McpHost } from './client';
 
-/** 远程形态必须经真实传输发起连接失败，而非被 stdio 形态守卫兜底（消息不含 stdio 形态守卫串即证明走了传输工厂） */
-async function assertRemoteConnectFailed(transport: 'http' | 'sse', port: number): Promise<void> {
+test('McpHost：不可达 streamable http URL 连接失败收进警告单，不阻断', async () => {
   const registry = new ToolRegistry();
-  const host = new McpHost([{ name: 'far', url: `http://127.0.0.1:${port}/mcp`, transport }], registry);
-  await assert.rejects(
-    () => host.registerTools(),
-    (e: unknown) => {
-      assert.equal((e as { code?: string }).code, 'MCP_CONNECT_FAILED');
-      assert.ok(!/requires a command/.test((e as Error).message), '应经由远程传输连接失败，而非形态守卫兜底');
-      return true;
-    },
-  );
-}
-
-test('McpHost：不可达 streamable http URL 连接失败收束为 MCP_CONNECT_FAILED', async () => {
-  await assertRemoteConnectFailed('http', 1);
+  const host = new McpHost([{ name: 'far', url: 'http://127.0.0.1:1/mcp', transport: 'http' }], registry);
+  const r = await host.registerTools();
+  assert.equal(r.registered, 0);
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /connection failed \(far\)/);
+  assert.ok(!/requires a command/.test(r.warnings[0]), '应经由远程传输连接失败，而非形态守卫兜底');
 });
 
-test('McpHost：不可达 sse URL 连接失败收束为 MCP_CONNECT_FAILED', async () => {
-  await assertRemoteConnectFailed('sse', 1);
+test('McpHost：不可达 sse URL 连接失败收进警告单，不阻断', async () => {
+  const registry = new ToolRegistry();
+  const host = new McpHost([{ name: 'far', url: 'http://127.0.0.1:1/mcp', transport: 'sse' }], registry);
+  const r = await host.registerTools();
+  assert.equal(r.registered, 0);
+  assert.match(r.warnings[0], /connection failed \(far\)/);
+});
+
+test('McpHost：逐服务器隔离——坏服务器收警告，好服务器工具照常注册', async () => {
+  const registry = new ToolRegistry();
+  const host = new McpHost(
+    [
+      { name: 'bad', url: 'http://127.0.0.1:1/mcp', transport: 'http' },
+      { name: 'fs', command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] },
+    ],
+    registry,
+  );
+  try {
+    const r = await host.registerTools();
+    assert.equal(r.registered, 1, '坏服务器只损失自身，好服务器工具照常注册');
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /connection failed \(bad\)/);
+    assert.ok(registry.get('mcp__fs__echo'), 'mock echo 工具应已注册');
+  } finally {
+    await host.close();
+  }
+});
+
+test('McpHost：重名服务器收警告跳过，不阻断', async () => {
+  const registry = new ToolRegistry();
+  const host = new McpHost(
+    [
+      { name: 'dup', command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'dup'] },
+      { name: 'dup', command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'dup'] },
+    ],
+    registry,
+  );
+  try {
+    const r = await host.registerTools();
+    assert.equal(r.warnings.filter((w) => /duplicate MCP server name \(dup\) skipped/.test(w)).length, 1, '重名第二台收警告跳过');
+    assert.equal(r.registered, 1, '重名跳过不损失首台注册');
+  } finally {
+    await host.close();
+  }
 });
 
 test('McpHost：transport 缺省 = stdio（既有 stdio 回归由全量套件保障）', () => {

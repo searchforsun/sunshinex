@@ -1,12 +1,10 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import { Harness } from '../../harness';
 import { softwarePipelineTemplate } from '../../graph/templates';
 import { codeReviewTemplate } from '../../loop/templates';
 import { ChatRequest, ChatResult } from '../../types';
 import { ModelAdapter, StubAdapter, UsageHooks } from '../../model/adapter';
 import { resolveKbEnv } from '../../config/env';
-import { parseMcpServers, parseSunshinex } from '../../config';
+import { loadMcpServers } from '../../config';
 import { resolveShell } from '../../harness/security/sandbox';
 import { SessionController } from '../../tui/session';
 import type { CliArgs } from '../index';
@@ -36,8 +34,16 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   console.log('rules   :', perceived.project?.rules.length ?? 0);
   console.log('files   :', perceived.files.length, 'deps:', perceived.dependencies.length);
   console.log('tools   :', h.tools.list().map((t) => t.name).join(', '));
-  const sunshinePath = path.join(process.cwd(), 'SUNSHINE.md');
-  const mcpServers = fs.existsSync(sunshinePath) ? parseMcpServers(parseSunshinex(fs.readFileSync(sunshinePath, 'utf8'))) : [];
+  const mcpServers = loadMcpServers(process.cwd());
+  try {
+    await h.mcpReady();
+  } catch (e) {
+    console.error('mcp     :', `assembly failed: ${e instanceof Error ? e.message : String(e)}`);
+    process.exitCode = 1;
+  }
+  for (const w of h.mcpWarnings()) {
+    console.warn('mcp warn:', w);
+  }
   const mcpToolCount = h.tools.list().filter((t) => t.name.startsWith('mcp__')).length;
   console.log('mcp     :', t(
     `${mcpServers.length} servers configured, ${mcpToolCount} tools registered (registry gate; empty = all denied)`,

@@ -138,6 +138,22 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 
+### MCP 服务器（mcp.json）
+
+MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）：
+
+```json
+{
+  "mcpServers": {
+    "github": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "env": { "GITHUB_TOKEN": "ghp_…" } },
+    "remote": { "url": "https://mcp.example.com/v1", "transport": "http" }
+  }
+}
+```
+
+- stdio 形态：`command` + 可选 `args` / `env`（transport 可省略）；远程形态：`url` + 可选 `transport`（缺省 `http`，支持 `sse`）。
+- 非法条目跳过不抛（缺 command/url、transport 值未知、形态矛盾），装配面宁可少配不错配。
+
 ## 三、目录与文件
 
 **全局级 `~/.sunshinex/`**
@@ -145,6 +161,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 ```
 ~/.sunshinex/
 ├── settings.json               # 全局配置（第二节）
+├── mcp.json                    # 全局 MCP 服务器登记（被项目级 .sunshinex/mcp.json 同名遮蔽）
 ├── SUNSHINE.md                 # 个人全局约定，跨所有项目生效（对标 ~/.claude/CLAUDE.md）
 ├── skills/<id>/SKILL.md        # 全局技能，跨项目共享
 └── projects/<工作区>/data/     # 各项目的运行时数据（按启动目录自动隔离）
@@ -169,6 +186,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 ├── SUNSHINE.md                 # 项目约定（/init 生成或手写）
 ├── .sunshinex/
 │   ├── settings.json           # 项目级配置（覆盖全局；已在 .gitignore）
+│   ├── mcp.json                # 项目级 MCP 服务器登记（同名遮蔽全局；可提交入库共享）
 │   └── skills/<id>/SKILL.md    # 项目技能
 └── 兼容技能根（可选；同名技能按下述优先级就近生效）
     ├── .agents/skills/<id>/SKILL.md   # 优先级：.sunshinex > .agents > .claude > .codex > .cursor
@@ -266,7 +284,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 | --- | --- |
 | 启动旗标 | `--worktree[=<name>]`：启动即进入隔离树（裸旗标自动命名） |
 | 会话内对话 | 说「在隔离 worktree 里做……」模型即调 worktree 工具 `create` 切换；`exit` 返回主工作区；`list` 查看登记（plan 模式下仅 `list` 可用） |
-| 子代理声明 | agent.md frontmatter `isolation: worktree` 或 spawn 入参声明，子代理获得独立树 |
+| 子代理声明 | agent.md frontmatter `isolation: worktree` 或 spawn 入参声明，子代理获得独立树；工作区非 git 仓时静默降级为主工作区执行 |
 
 生命周期：树落数据目录 `worktrees/<name>/`、分支 `worktree-<name>` 从当前 HEAD 分叉。干净树随会话自动清理（含分支），脏树保留并标记待处置；CLI 非交互路径一律保留。
 
@@ -319,3 +337,4 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |
 | 窗口缩放后花屏 / 残影 | 微调窗口大小再触发一次整屏重绘 |
 | 想回看很久之前的内容 | 终端滚动缓冲保留全部输出；`Tab` / `Ctrl+O` 展开查看 |
+��部输出；`Tab` / `Ctrl+O` 展开查看 |

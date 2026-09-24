@@ -17,10 +17,13 @@ function makeFixture(configName: string, mockName: string): { registry: ToolRegi
   return { registry, host };
 }
 
-test('MCP 握手身份校验：配置名与 serverInfo.name 不符即拒绝注册（防冒名绕过登记制）', async () => {
+test('MCP 握手身份校验：配置名与 serverInfo.name 不符收警告拒绝注册（防冒名绕过登记制）', async () => {
   const { registry, host } = makeFixture('fs', 'other');
   try {
-    await assert.rejects(host.registerTools(), /Handshake identity mismatch/);
+    const r = await host.registerTools();
+    assert.equal(r.registered, 0, '身份不符不得留下任何工具');
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /handshake identity mismatch \(fs\)/);
     assert.equal(registry.has('mcp__fs__echo'), false, '拒绝注册时不得留下任何工具');
   } finally {
     await host.close();
@@ -30,7 +33,9 @@ test('MCP 握手身份校验：配置名与 serverInfo.name 不符即拒绝注�
 test('MCP 身份对齐：配置名与 serverInfo.name 一致时注册成功', async () => {
   const { registry, host } = makeFixture('fs', 'fs');
   try {
-    assert.equal(await host.registerTools(), 1);
+    const r = await host.registerTools();
+    assert.equal(r.registered, 1);
+    assert.equal(r.warnings.length, 0);
     assert.ok(registry.has('mcp__fs__echo'));
   } finally {
     await host.close();

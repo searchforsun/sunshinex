@@ -73,10 +73,18 @@ export async function runPipeline(args: CliArgs): Promise<void> {
     printFailures(r2);
     // 收尾消化后台沉淀队列（规格 §3.5）：暂停续走分支同样在命令结束前清空
     if (deps.pipeline) await deps.pipeline.drain();
+    // MCP 降级警告上屏：服务器失败只损失该服务器工具，警告不吞
+    for (const w of (deps.mcpWarnings?.() ?? [])) console.warn('mcp warn:', w);
+    // MCP 连接收口：关闭 stdio 子进程，防悬挂事件循环
+    if (deps.mcpClose) await deps.mcpClose();
     if (r2.status !== 'done') process.exitCode = 1;
     return;
   }
   if (r1.status !== 'done') process.exitCode = 1;
   // 收尾消化后台沉淀队列（规格 §3.5）：此时用户本就在等命令结束，不构成新增阻塞
   if (deps.pipeline) await deps.pipeline.drain();
+  // MCP 降级警告上屏：服务器失败只损失该服务器工具，警告不吞
+  for (const w of (deps.mcpWarnings?.() ?? [])) console.warn('mcp warn:', w);
+  // MCP 连接收口：关闭 stdio 子进程，防悬挂事件循环
+  if (deps.mcpClose) await deps.mcpClose();
 }

@@ -53,7 +53,9 @@ async function runE2E(mode: 'http' | 'sse'): Promise<void> {
   const { proc, port } = await spawnMock(mode);
   const host = new McpHost([{ name: 'fs-http', url: `http://127.0.0.1:${port}/mcp`, transport: mode }], registry);
   try {
-    assert.equal(await host.registerTools(), 1);
+    const rep = await host.registerTools();
+    assert.equal(rep.registered, 1);
+    assert.equal(rep.warnings.length, 0);
     const spec = registry.get('mcp__fs-http__echo');
     assert.ok(spec, '规范名 mcp__fs-http__echo 应已注册');
     assert.equal(spec.category, 'external');

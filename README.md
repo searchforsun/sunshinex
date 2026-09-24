@@ -123,7 +123,7 @@ scripts/release.mjs --version 0.2.0 --clobber  # 同版本重发（覆盖附件�
 ## 扩展机制
 
 - **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
-- **子代理**：`agents/{id}/agent.md` 注册制；**插件**：`plugins/{id}/plugin.json`；**第三方工具**：经 MCP 协议接入。
+- **子代理**：`agents/{id}/agent.md` 注册制；**插件**：`plugins/{id}/plugin.json`；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
 **问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。
 
 ## 文档导航
@@ -138,3 +138,4 @@ scripts/release.mjs --version 0.2.0 --clobber  # 同版本重发（覆盖附件�
 | `MANUAL.md` | 使用手册（CLI + TUI：命令、快捷键、权限模式、配置全表） |
 | `CLAUDE.md` | AI 协作规范（完整目录结构 / 编码规范 / 架构约定） |
 | `SUNSHINE.md` | 项目业务配置；另有全局约定 `~/.sunshinex/SUNSHINE.md`（对标 `~/.claude/CLAUDE.md`，`SUNSHINEX_GLOBAL_SUNSHINE` 覆盖） |
+| `.sunshinex/mcp.json` | 项目级 MCP 服务器登记（撞名遮蔽全局级 `~/.sunshinex/mcp.json`） |
