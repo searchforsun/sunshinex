@@ -68,16 +68,16 @@ test('asker：deny 规则与破坏性命令不因交互放行（硬底线先行�
   if (!d2.allowed) assert.match(d2.reason, /destructive command blocked by safety floor/);
 });
 
-test('asker：write 类工具审批 kind=write 且 subject 取路径', async () => {
+test('asker：manual 档 path 写直放安全链，guard 不再逐次 ask（行为变更①：asker 零调用）', async () => {
   const g = manualGuard();
   const seen: ApprovalRequest[] = [];
   g.setAsker(async (req) => {
     seen.push(req);
     return 'deny';
   });
-  await g.preToolUseAsync('Write', { path: 'a.txt' });
-  assert.equal(seen[0].kind, 'write');
-  assert.equal(seen[0].subject, 'a.txt');
+  const d = await g.preToolUseAsync('Write', { path: 'a.txt' });
+  assert.equal(d.allowed, true, 'manual 档 Write 在 guard 层直接放行，审批下放安全链');
+  assert.equal(seen.length, 0, 'asker 零调用');
 });
 
 test('asker：无 path/url/query 的结构化写工具 subject 取 type:摘要（卡片可读且恒非空）', async () => {
@@ -98,15 +98,17 @@ test('asker：无 path/url/query 的结构化写工具 subject 取 type:摘要�
   await g.preToolUseAsync('Write', { type: 'user', content: 'Prefers concise answers\nsecond line' });
   assert.equal(seen[1].subject, 'user: Prefers concise answers');
 
-  // path 优先于结构化字段：既有 write/webfetch 语义零变化
+  // path 形态的 Write 直放安全链（行为变更①）：不产生审批请求——结构化摘要只覆盖无 path 形态
   await g.preToolUseAsync('Write', { path: 'a.txt', type: 'project', content: 'x', description: 'y' });
-  assert.equal(seen[2].subject, 'a.txt');
+  assert.equal(seen.length, 2, 'path 写直放安全链，零审批请求');
+
+  // path 优先于结构化字段的旧口径保留在 webfetch 上（url 字段语义零变化）
   await g.preToolUseAsync('WebFetch', { url: 'https://example.com', content: 'x' });
-  assert.equal(seen[3].subject, 'https://example.com');
+  assert.equal(seen[2].subject, 'https://example.com');
 
   // 结构化字段全缺仍为空（不臆造摘要），该形态的跨族风险由 allowKey 的 `<tool>:` 兜住（见下一条用例）
   await g.preToolUseAsync('Write', {});
-  assert.equal(seen[4].subject, '');
+  assert.equal(seen[3].subject, '');
 });
 
 test('asker：allowKey 对空 subject 并入工具规范名（键空间至少含工具身份）', () => {

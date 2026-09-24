@@ -288,10 +288,13 @@ export interface SessionEvent {
   ts: number;
 }
 
+/** 审批卡种类（spec 5.2）：'read' 为读围栏（D1）新增通道 */
+export type ApprovalKind = 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write' | 'read';
+
 /** 终端化审批请求（guard asker 注入点契约，Task 2 接入） */
 export interface ApprovalRequest {
   id: string;
-  kind: 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write';
+  kind: ApprovalKind;
   subject: string;
   reason?: string;
 }

@@ -25,7 +25,9 @@ test('approvalKeyToDecision：y/a/n 三键映射，其余键不裁决', () => {
 
 test('App：manual 审批流终态渲染（消息流/工具卡/助手答复/状态栏）', async () => {
   // 环境边界：ink@3 + React 18 的增量刷帧在本测试环境不可依赖（探针证实节流器不落增量帧），
-  // 测试策略为先经控制器驱动至终态再渲染，断言首帧全量映射；实时增量刷新由真实终端承载
+  // 测试策略为先经控制器驱动至终态再渲染，断言首帧全量映射；实时增量刷新由真实终端承载。
+  // 行为变更①：manual 档 path 写已下放安全链——root 内写自动落盘、无审批卡（approval 恒 undefined），
+  // 审批卡机制覆盖改由 Bash 非只读命令用例承载（App.selector）
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-app1-'));
   try {
     const ctrl = new SessionController({
@@ -37,12 +39,11 @@ test('App：manual 审批流终态渲染（消息流/工具卡/助手答复/状�
       ]),
     });
     const p = ctrl.submit('写个文件');
-    await waitFor(() => ctrl.getState().status === 'awaiting-approval');
-    assert.equal(ctrl.getState().approval?.subject, 'a.txt');
-    await ctrl.resolveApproval('allow');
     await p;
     await ctrl.waitIdle();
-    assert.equal(fs.readFileSync(path.join(tmp, 'a.txt'), 'utf8'), 'hi', '批准后 write 应真实落盘');
+    assert.equal(ctrl.getState().approval, undefined, 'manual 档 path 写不再挂审批卡（下放安全链）');
+    assert.ok(!['awaiting-approval'].includes(ctrl.getState().status), '全程零审批挂起');
+    assert.equal(fs.readFileSync(path.join(tmp, 'a.txt'), 'utf8'), 'hi', 'manual 档 root 内写自动落盘');
 
     const { lastFrame, allOutput, unmount } = render(<App controller={ctrl} />);
     const all = allOutput();
@@ -103,12 +104,41 @@ test('App：键盘驱动回车提交（斜杠命令与自然语言任务均触�
 test('App：键盘 y 在审批卡上裁决放行（write 真实落盘）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-app4-'));
   try {
+    // 行为变更①：manual 档 path 写不再弹审批卡——键盘 y 裁决机制改用仍会 guard 层 ask 的
+    // 非只读 Bash 命令（mkdir）触发，按键裁决交互零变化
     const ctrl = new SessionController({
       root: tmp,
       mode: 'manual',
       model: new ScriptedAdapter([
-        '{"tool":"write","input":{"path":"kb.txt","content":"kb"},"done":false}',
+        '{"tool":"exec","input":{"command":"mkdir kb-dir"},"done":false}',
         '{"done":true,"reply":"kb-ok"}',
+      ]),
+    });
+    const { write, unmount } = render(<App controller={ctrl} />);
+    await new Promise((r) => setTimeout(r, 200));
+    write('跑个命令');
+    await new Promise((r) => setTimeout(r, 150));
+    write('\r');
+    await waitFor(() => ctrl.getState().approval !== undefined, 5000);
+    await new Promise((r) => setTimeout(r, 150)); // 等重渲染：审批态分支的 handler 闭包就位
+    write('y'); // 审批态拦截输入，按键即裁决、无需回车
+    await ctrl.waitIdle();
+    assert.ok(fs.existsSync(path.join(tmp, 'kb-dir')), '键盘 y 放行后命令应真实执行');
+    unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：manual 档 root 内写自动落盘（键盘提交、无审批卡，行为变更①）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-app4b-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      mode: 'manual',
+      model: new ScriptedAdapter([
+        '{"tool":"write","input":{"path":"auto.txt","content":"auto"},"done":false}',
+        '{"done":true,"reply":"auto-ok"}',
       ]),
     });
     const { write, unmount } = render(<App controller={ctrl} />);
@@ -116,11 +146,10 @@ test('App：键盘 y 在审批卡上裁决放行（write 真实落盘）', async
     write('写个文件');
     await new Promise((r) => setTimeout(r, 150));
     write('\r');
-    await waitFor(() => ctrl.getState().approval !== undefined, 5000);
-    await new Promise((r) => setTimeout(r, 150)); // 等重渲染：审批态分支的 handler 闭包就位
-    write('y'); // 审批态拦截输入，按键即裁决、无需回车
     await ctrl.waitIdle();
-    assert.equal(fs.readFileSync(path.join(tmp, 'kb.txt'), 'utf8'), 'kb', '键盘 y 放行后 write 应真实落盘');
+    assert.equal(ctrl.getState().approval, undefined, '全程无审批卡挂起');
+    assert.equal(fs.readFileSync(path.join(tmp, 'auto.txt'), 'utf8'), 'auto', 'manual 档 root 内写自动落盘');
+    assert.ok(ctrl.getState().messages.some((m) => m.role === 'assistant' && m.text.includes('auto-ok')), '写流程闭环完成');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

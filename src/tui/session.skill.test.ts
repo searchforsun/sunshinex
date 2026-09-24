@@ -132,14 +132,15 @@ test('/skill：空清单回执不弹卡；运行中拒绝；带参形态无法�
     assert.ok(sysTexts(ctrl).some((x) => /No skills available|暂无可用技能/.test(x)), '空清单回执');
     assert.equal(ctrl.getState().question, undefined, '不弹卡');
 
-    // 运行中拒绝（守卫沿 /resume 先例；manual 模式写审批挂起即非 idle）
+    // 运行中拒绝（守卫沿 /resume 先例；manual 模式下 guard 层 ask 已收敛于非只读命令——
+    // 行为变更①后 path 写直放安全链不再挂审批，故以非只读 Bash 命令制造「运行中」态）
     writeSkill(root, 'greet', 'Greet', 'Say hello');
     const guarded = new SessionController({
       root,
       mode: 'manual',
-      model: new ScriptedAdapter(['{"tool":"write","input":{"path":"a.txt","content":"1"},"done":false}', '{"done":true,"reply":"ok"}']),
+      model: new ScriptedAdapter(['{"tool":"exec","input":{"command":"mkdir run-guard"},"done":false}', '{"done":true,"reply":"ok"}']),
     });
-    const task = guarded.submit('写任务');
+    const task = guarded.submit('跑个命令');
     await waitFor(() => guarded.getState().status === 'awaiting-approval');
     await guarded.submit('/skill');
     assert.ok(sysTexts(guarded).some((x) => /A task is running|暂不能执行/.test(x)), '运行中拒绝回执');

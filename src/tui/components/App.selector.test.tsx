@@ -32,17 +32,19 @@ test('App：审批卡选择器——↓+Enter=本会话放行（always），同�
   const tmp = tmpDir('sunshinex-appsel1-');
   let term: ReturnType<typeof render> | undefined;
   try {
+    // 行为变更①：manual 档 path 写已下放安全链直放、不再弹审批卡——选择器机制改用仍会 guard 层 ask 的
+    // 非只读 Bash 命令（mkdir）触发；写落盘经第二个 Bash 任务承载
     const ctrl = new SessionController({
       root: tmp,
       mode: 'manual',
       model: new ScriptedAdapter([
-        '{"tool":"write","input":{"path":"a.txt","content":"1"},"done":false}',
+        '{"tool":"exec","input":{"command":"mkdir sub"},"done":false}',
         '{"done":true,"reply":"first ok"}',
-        '{"tool":"write","input":{"path":"a.txt","content":"2"},"done":false}',
+        '{"tool":"exec","input":{"command":"mkdir sub2"},"done":false}',
         '{"done":true,"reply":"second ok"}',
       ]),
     });
-    const p1 = ctrl.submit('第一个写任务');
+    const p1 = ctrl.submit('第一个命令任务');
     await waitFor(() => ctrl.getState().status === 'awaiting-approval');
     term = render(<App controller={ctrl} />);
     await waitFor(() => (term?.lastFrame() ?? '').includes('Approve once'), 3000);
@@ -50,10 +52,10 @@ test('App：审批卡选择器——↓+Enter=本会话放行（always），同�
     await flushKey(term);
     term.write('\r');
     await p1;
-    assert.equal(fs.readFileSync(path.join(tmp, 'a.txt'), 'utf8'), '1', '选择器路径应放行并落盘');
-    await ctrl.submit('第二个写任务');
+    assert.ok(fs.existsSync(path.join(tmp, 'sub')), '选择器路径应放行并执行');
+    await ctrl.submit('第二个命令任务');
     await ctrl.waitIdle();
-    assert.equal(fs.readFileSync(path.join(tmp, 'a.txt'), 'utf8'), '2', 'always 后同主体写不再询问');
+    assert.ok(fs.existsSync(path.join(tmp, 'sub2')), 'always 后同族命令不再询问');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -64,20 +66,21 @@ test('App：审批卡 y/a/n 单键快捷并存——y 即放行一次（回归�
   const tmp = tmpDir('sunshinex-appsel2-');
   let term: ReturnType<typeof render> | undefined;
   try {
+    // 行为变更①：write 已不弹审批卡——单键快捷机制改用非只读 Bash 命令（mkdir）触发
     const ctrl = new SessionController({
       root: tmp,
       mode: 'manual',
       model: new ScriptedAdapter([
-        '{"tool":"write","input":{"path":"q.txt","content":"hi"},"done":false}',
+        '{"tool":"exec","input":{"command":"mkdir q-dir"},"done":false}',
         '{"done":true,"reply":"ok"}',
       ]),
     });
-    const p = ctrl.submit('写个文件');
+    const p = ctrl.submit('跑个命令');
     await waitFor(() => ctrl.getState().status === 'awaiting-approval');
     term = render(<App controller={ctrl} />);
     term.write('y');
     await p;
-    assert.equal(fs.readFileSync(path.join(tmp, 'q.txt'), 'utf8'), 'hi', 'y 快捷键路径保持不变');
+    assert.ok(fs.existsSync(path.join(tmp, 'q-dir')), 'y 快捷键路径保持不变');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });

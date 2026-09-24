@@ -2,16 +2,17 @@ import { PolicyEngine } from './policy';
 import { READONLY_WHITELIST, PermissionMode, DESTRUCTIVE_COMMANDS, DESTRUCTIVE_PIPE } from './modes';
 import { resolveWebSearchEndpoint } from './websearch-endpoint';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
+import { isWithin } from '../../paths';
 
 export type GuardDecision =
   | { allowed: true; safePath?: string }
-  | { allowed: false; reason: string; /** manual 模式 ask 标记：非硬底线拒绝，可被 asker 交互豁免 */ ask?: boolean };
+  | { allowed: false; reason: string; /** manual 模式 ask 标记：非硬底线拒绝，可被 asker 交互豁免 */ ask?: boolean; askDir?: string; safePath?: string };
 
 /** PreToolUse 决策点（enforcement 层） */
 export class SecurityGuard {
   constructor(
     private policy: PolicyEngine = new PolicyEngine(),
-    private mode: PermissionMode = 'manual',
+    private modeName: PermissionMode = 'manual',
     /** 已登记 MCP 服务器名（源自项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json，项目遮蔽全局）；空 = mcp__ 工具全禁 */
     private mcpServers: string[] = [],
   ) {}
@@ -52,23 +53,27 @@ export class SecurityGuard {
     if (tool === 'worktree') {
       const action = typeof input === 'object' && input !== null ? String((input as { action?: unknown }).action ?? '') : '';
       if (action === 'list') return { allowed: true };
-      if (this.mode === 'plan') return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
+      if (this.modeName === 'plan') return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
+      return { allowed: true };
+    }
+    // plan 只读闸门：先于 allow 短路求值——allow 免批规则不放宽 plan 只读（task 1 ⑤a）
+    if (this.modeName === 'plan') {
+      if (tool !== 'Read' && tool !== 'Grep' && tool !== 'Glob') {
+        return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
+      }
       return { allowed: true };
     }
     if (decision === 'allow') return { allowed: true };
 
     // decision === 'ask'
     // dontAsk：不询问用户，自动批准未 deny 的操作（deny 规则仍拦截），即「最大权限」
-    if (this.mode === 'dontAsk') return { allowed: true };
-    if (this.mode === 'plan') {
-      if (tool !== 'Read' && tool !== 'Grep' && tool !== 'Glob') {
-        return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
-      }
-      return { allowed: true };
-    }
+    if (this.modeName === 'dontAsk') return { allowed: true };
     // manual 模式：只读白名单放行，其余 ask（阶段一 CLI 未实现交互，ask 视为放行只读、拒绝写）
     if (tool === 'Bash' && this.isReadonlyCommand(specifier)) return { allowed: true };
     if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return { allowed: true };
+    // 行为变更①（spec 5.1 写分支）：path 形态的 Write 直放——manual 审批下放安全链（链持归一路径与目录粒度会话放行）。
+    // 仅限带 path 的路径写工具；无 path 的结构化入参（memory_write 同族形态）保留 guard 层 ask（同族非别名，逐字任务口径）
+    if (tool === 'Write' && this.hasPathInput(input)) return { allowed: true };
     // spawn 无直接 IO 副作用（派生即编排；子代理内部每个工具调用独立过安全链），manual 下免审批放行
     if (tool === 'spawn') return { allowed: true };
     // task_stop：后台账本状态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），manual 下免审批对齐 spawn 先例
@@ -93,12 +98,53 @@ export class SecurityGuard {
   private seq = 0;
 
   /** 终端化审批注入（TUI/GUI 装配点）；传 undefined 即卸载回阶段一语义 */
+  private readonly sessionDirAllows = new Set<string>();
+
+  /** 当前权限模式（链侧消费：读/写分支按档位定论，spec 5.1） */
+  get mode(): PermissionMode {
+    return this.modeName;
+  }
+
+  /** 'always' 目录登记（spec 5.1 会话放行集；链侧 realpath 归一后传入） */
+  allowSessionDir(dir: string): void {
+    this.sessionDirAllows.add(dir);
+  }
+
+  /** 会话目录放行判据：real 落在任一已登记目录内（含自身） */
+  sessionDirAllowed(real: string): boolean {
+    for (const dir of this.sessionDirAllows) {
+      if (real === dir || isWithin(dir, real)) return true;
+    }
+    return false;
+  }
+
+  /** landlock 可写根消费（spec 5.4：工具面与 exec 面对齐同一目录集） */
+  sessionDirList(): string[] {
+    return [...this.sessionDirAllows];
+  }
+
+  /** 审批请求 id 单点（链侧发起的 ask 复用同一序号空间） */
+  nextApprovalId(): string {
+    return `ap-${++this.seq}`;
+  }
+
+  /** 链侧发起的 ask 决策通道（spec 5.1 写/读分支）：asker 缺失返回 null（宁停不误，调用方维持原拒绝） */
+  async resolveAsk(req: ApprovalRequest): Promise<ApprovalDecision | null> {
+    if (!this.asker) return null;
+    try {
+      return await this.asker(req);
+    } catch {
+      return null;
+    }
+  }
+
   setAsker(asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>): void {
     this.asker = asker;
   }
 
   clearSessionAllows(): void {
     this.sessionAllows.clear();
+    this.sessionDirAllows.clear();
   }
 
   /** 异步决策：与 preToolUse 同口径；仅 manual ask 标记拒绝接入 asker（deny/硬底线不被交互豁免，宁停不误） */
@@ -152,6 +198,12 @@ export class SecurityGuard {
     }
     if (typeof input === 'string') return input;
     return '';
+  }
+
+  /** Write 直放分支的入参形态判定：入参含 string path 字段即视为路径写工具（builtin write/webfetch 形态）；
+   *  memory_write 一类无 path 的结构化入参不命中，保留 guard 层审批（会话放行键为 type:description，不跨内容） */
+  private hasPathInput(input: unknown): boolean {
+    return typeof input === 'object' && input !== null && typeof (input as { path?: unknown }).path === 'string';
   }
 
   private isReadonlyCommand(specifier: string): boolean {
