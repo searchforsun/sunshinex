@@ -180,6 +180,8 @@ settings.json 支持结构化 `permissions` 键（全局 `~/.sunshinex/settings.
 | sandbox | SUNSHINEX_SANDBOX | on | Linux 下 exec 经 Landlock 内核围栏；off 一键关 |
 | isolation | SUNSHINEX_ISOLATION | auto | 隔离口径声明：landlock / container / host，selfcheck 上屏 |
 
+- known-issue（older Landlock ABI）：较旧内核的 Landlock 为部分治理（partial enforcement），如遇 git 或写设备类命令在沙箱内失败，先设置 `SUNSHINEX_SANDBOX=off` 重试即可恢复，并向上游回报该环境信息
+
 ## 三、目录与文件
 
 **全局级 `~/.sunshinex/`**

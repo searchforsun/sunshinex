@@ -38,25 +38,29 @@ export function configureLandlockLoader(custom: Loader | null): void {
 
 let probeCache: Promise<boolean> | null = null;
 
-/** 探测结果缓存复位（测试隔离用；运行期进程级缓存即可用性单调） */
+/**
+ * 探测结果缓存复位（测试隔离用）。缓存契约：usable 成功结果进程级固化（探测成本一次付清）；
+ * 失败结果不缓存——探测瞬断（如首轮 exec 早于目录登记完成时的偶发异常）后，下一次 exec 重新探测可恢复包装。
+ */
 export function resetLandlockProbe(): void {
   probeCache = null;
 }
 
+/** 成功探测进程级固化（Promise 常驻短路）；失败只返回不落缓存，下次调用重探（见 resetLandlockProbe 契约注释） */
 async function usable(): Promise<boolean> {
-  if (probeCache === null) {
-    probeCache = (async () => {
-      if (process.platform !== 'linux') return false;
-      const mod = await loader();
-      if (mod === null) return false;
-      try {
-        return mod.probe(mod.launcherPath()) !== 'unusable';
-      } catch {
-        return false;
-      }
-    })();
-  }
-  return probeCache;
+  if (probeCache !== null) return probeCache;
+  const verdict = await (async () => {
+    if (process.platform !== 'linux') return false;
+    const mod = await loader();
+    if (mod === null) return false;
+    try {
+      return mod.probe(mod.launcherPath()) !== 'unusable';
+    } catch {
+      return false;
+    }
+  })();
+  if (verdict) probeCache = Promise.resolve(true);
+  return verdict;
 }
 
 /** SUNSHINEX_SANDBOX（onOff，缺省 on） */
@@ -66,7 +70,17 @@ export function sandboxEnabled(): boolean {
   return true;
 }
 
-/** 组装 launcher argv 前缀（launcher …grantArgs -- 后由调用方接 shell 与命令）；不可用/关闭/无有效可写根 → null */
+/**
+ * 组装 launcher argv 前缀（launcher …grantArgs -- 后由调用方接 shell 与命令）；不可用/关闭/无有效可写根 → null。
+ * 契约：探测为进程级，成功即固化；失败可重探（见 usable）。运行期扩目录（/add-dir、'always' 登记）经
+ * landlockWritableRoots 现场求值，每次 exec 包装都取当前根集快照——「探测先于首登」并非扩目录生效前提。
+ * grant 形态（launcher 语义核实结论，@deepseek-ai/node-addon-landlock-run lib/index.d.ts「Everything
+ * not granted is denied — Landlock rulesets are allow-lists」+ src/main.c + 本机真实 addon 实测）：
+ * `--ro` 段仅授读+执行，是被包装命令的运行面（bash 及其动态库在可写根之外，无只读段时连 exec 都失败，
+ * 实测 exit 125 fail-closed）；写边界始终由 readWrite 白名单内核级保证——实测白名单外写被拒、/dev/null
+ * 反被拦。终审 I-1「grant 段不阻写、readOnly:['/'] 使写边界名存实亡」的前提不成立，故只读段保留：
+ * 全盘只读段 '/' 是必要运行面而非写通道，可写集由 roots 精确圈定，与 spec 5.4 一致。
+ */
 export async function landlockWrap(writableRoots: string[]): Promise<LandlockWrap | null> {
   if (!sandboxEnabled()) return null;
   if (!(await usable())) return null;
