@@ -26,27 +26,40 @@ function loadSettingsChain(projectRoot: string): void {
   }
 }
 
-/** CLI 参数解析：仅内置约定，零依赖。--flag=v 或 --flag v → 字符串；--flag（末尾无值）→ true；其余为 positional */
+/** CLI 参数解析：仅内置约定，零依赖。--flag=v 或 --flag v → 字符串；--flag（末尾无值）→ true；其余为 positional。
+ *  可重复 flag（REPEATABLE_FLAGS，spec 5.3 --add-dir）：多次出现收集为 string[]，其余同前 */
 export interface CliArgs {
   command: string;
   positional: string[];
-  flags: Record<string, string | boolean>;
+  flags: Record<string, string | boolean | string[]>;
 }
 
+/** 可重复 flag 清单：出现多次不覆盖、依次收集为数组（当前仅 --add-dir） */
+const REPEATABLE_FLAGS = new Set(['add-dir']);
+
 export function parseArgs(argv: string[]): CliArgs {
-  const flags: Record<string, string | boolean> = {};
+  const flags: Record<string, string | boolean | string[]> = {};
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const eq = a.indexOf('=');
-      if (eq > 0) {
-        flags[a.slice(2, eq)] = a.slice(eq + 1);
+      const key = eq === -1 ? a.slice(2) : a.slice(2, eq);
+      let value: string | boolean;
+      if (eq !== -1) {
+        value = a.slice(eq + 1);
       } else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
-        flags[a.slice(2)] = argv[i + 1];
+        value = argv[i + 1];
         i++;
       } else {
-        flags[a.slice(2)] = true;
+        value = true;
+      }
+      if (REPEATABLE_FLAGS.has(key) && typeof value === 'string') {
+        // 归一追加（flagList 单点）：boolean（裸 flag 误用形态）回退空集后收集，避免对 boolean 直接迭代
+        const list = flagList(flags, key);
+        flags[key] = [...list, value];
+      } else {
+        flags[key] = value;
       }
     } else {
       positional.push(a);
@@ -54,6 +67,14 @@ export function parseArgs(argv: string[]): CliArgs {
   }
   // 裸命令兜底：`sunshinex`（无任何参数）落到空命令，由 resolveInvocation 归一为 tui（当前工作区启动）
   return { command: positional.shift() ?? '', positional, flags };
+}
+
+/** 可重复 flag 取值归一（spec 5.3 --add-dir）：单值/数组/缺省统一 string[] */
+export function flagList(flags: CliArgs['flags'], name: string): string[] {
+  const v = flags[name];
+  if (typeof v === 'string') return v === '' ? [] : [v];
+  if (Array.isArray(v)) return v;
+  return [];
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
@@ -105,7 +126,7 @@ export function usageText(): string {
   sunshinex skills install <git-url | owner/repo | local-dir> [--force]
                                           install skills into the global skills root (~/.sunshinex/skills)
   flags: --mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
-         --continue (TUI, resume latest session)  --resume (TUI, open the session picker to resume)  --worktree[=<name>]  --workdir=<dir>
+         --continue (TUI, resume latest session)  --resume (TUI, open the session picker to resume)  --worktree[=<name>]  --workdir=<dir> --add-dir=<dir>(repeatable) extend trusted dirs
   unrecognized bare words exit with an error; run sunshinex help for usage`,
     `SunshineX CLI
   sunshinex                               当前工作区启动交互式会话终端（缺省形态）
@@ -117,7 +138,7 @@ export function usageText(): string {
   sunshinex skills install <git-url | owner/repo | 本地目录> [--force]
                                           把技能安装到全局技能根（~/.sunshinex/skills）
   flags：--mode=manual|plan|dontAsk  --language=en|zh  --tier=small|medium|large  --effort=none|minimal|low|medium|high|xhigh|max
-        --continue（TUI 直接续接最近会话）  --resume（TUI 弹会话选择卡恢复）  --worktree[=<name>]  --workdir=<目录>
+        --continue（TUI 直接续接最近会话）  --resume（TUI 弹会话选择卡恢复）  --worktree[=<name>]  --workdir=<目录> --add-dir=<目录>（可重复）扩展信任目录
   无法识别的裸词报错不启动；使用 sunshinex help 查看使用方法`,
   );
 }
@@ -130,7 +151,9 @@ async function main(): Promise<void> {
   const args = resolveInvocation(parseArgs(process.argv.slice(2)));
   // 界面语言：--language=en|zh > settings language 槽 > 缺省 en（zh 为全中文界面 + 中文模型侧提示词；
   // 先于任何输出与装配设定，--help 亦随语言；parseLanguage 仅判 zh/en，回退链由调用点 ?? 承载）
-  setLanguage(parseLanguage(args.flags.language ?? process.env.SUNSHINEX_LANGUAGE));
+  // 可重复 flag 归一余量：数组形态按非法值处理（同 parseLanguage 缺省 en）
+  const langFlag = args.flags.language;
+  setLanguage(parseLanguage((Array.isArray(langFlag) ? undefined : langFlag) ?? process.env.SUNSHINEX_LANGUAGE));
   if (args.flags.help === true || args.flags.h === true) {
     console.log(usageText());
     return;

@@ -170,6 +170,7 @@ function slashHelp(): string[] {
     t('  /compact       compress context: /compact [focus]', '  /compact       压缩上下文：/compact [关注点]'),
     t('  /model         switch model tier (selector)', '  /model         切换模型档位（选择卡）'),
     t('  /model-effort  switch reasoning effort (selector)', '  /model-effort  切换思考强度（选择卡）'),
+    t('  /add-dir <dir>  extend trusted directories (read+write, this session)', '  /add-dir <dir>  扩展信任目录（读写，本会话内生效）'),
     t('  /memory        list persistent memories', '  /memory        列出持久记忆'),
     t('  /memory-add    add a memory: /memory-add <text>', '  /memory-add    添加记忆：/memory-add <内容>'),
     t('  /memory-rm     delete memories (multi-select)', '  /memory-rm     删除记忆（多选卡）'),
@@ -253,6 +254,7 @@ export class SessionController {
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.mode ? { mode: opts.mode } : {}),
       ...(opts.tier ? { tier: opts.tier } : {}),
+      ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
       onEvent: (e) => this.onEvent(e),
       onAskUser: opts.onAskUser ?? ((req) => this.askUser(req)),
       onTodos: (items) => this.setTodos(items),
@@ -967,8 +969,8 @@ export class SessionController {
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
     // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；
-    // 自由文本参数命令（目标/关注点/记忆内容）不在枚举范围，带参放行
-    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add']);
+    // 自由文本参数命令（目标/关注点/记忆内容/目录路径）不在枚举范围，带参放行
+    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir']);
     // 技能命令（规格 2026-09-22-skill-as-command D4）：意图尾参为自由文本，与 FREE_TEXT_ARGS 同豁免；命中与否由尾部技能分发面裁决
     const isSkillCommand = this.skillCommandIds().includes(cmd.slice(1));
     if (!FREE_TEXT_ARGS.has(cmd) && !isSkillCommand && text !== cmd) {
@@ -1005,6 +1007,18 @@ export class SessionController {
     if (cmd === '/status') {
       const s = this.runtime.harness.ledger.summary();
       this.pushMsg('system', t(`Ledger: ${s.runs} runs / ${s.tokens} tokens; messages: ${this.state.messages.length}; todos: ${this.state.todos.length}`, `账本：${s.runs} runs / ${s.tokens} tokens；消息 ${this.state.messages.length} 条；待办 ${this.state.todos.length} 项`));
+      return;
+    }
+    if (cmd === '/add-dir') {
+      const arg = text.slice(cmd.length).trim();
+      if (arg === '') {
+        this.pushMsg('system', t('/add-dir requires a directory path', '/add-dir 需要目录路径'), { level: 'error' });
+        return;
+      }
+      const r = this.runtime.harness.addAdditionalDir(arg);
+      this.pushMsg('system', r.ok
+        ? t(`trusted directory added: ${r.message}`, `信任目录已添加：${r.message}`)
+        : t(`failed to add directory: ${r.message}`, `信任目录添加失败：${r.message}`), r.ok ? undefined : { level: 'error' });
       return;
     }
     if (cmd === '/tasks') {

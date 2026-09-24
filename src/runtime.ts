@@ -6,14 +6,14 @@ import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ReasoningEffort,
 import { ModelTier } from './types';
 
 /** 模型装配唯一决策点（CLI run/pipeline 与 TUI 共用，避免各入口各写一套）：--model 可选 openai|scripted|stub，缺省 openai；配置由进程入口装载 settings.json 两级链（已导出环境变量优先） */
-export function buildModel(flags: Record<string, string | boolean>): ModelAdapter {
+export function buildModel(flags: Record<string, string | boolean | string[]>): ModelAdapter {
   if (flags.model === 'scripted') return new ScriptedAdapter([]);
   if (flags.model === 'stub') return new StubAdapter();
   return new OpenAIAdapter({ provider: 'openai', ...resolveEffortConfig(flags) });
 }
 
 /** 缺省思考强度配置（--effort > SUNSHINEX_REASONING_EFFORT）：非法值忽略回缺省态（适配器内零穿参） */
-export function resolveEffortConfig(flags: Record<string, string | boolean>): { reasoningEffort: ReasoningEffort } | Record<string, never> {
+export function resolveEffortConfig(flags: Record<string, string | boolean | string[]>): { reasoningEffort: ReasoningEffort } | Record<string, never> {
   const effort = parseEffort(typeof flags.effort === 'string' ? flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   return effort ? { reasoningEffort: effort } : {};
 }
@@ -28,7 +28,7 @@ export function parseTier(value: unknown): ModelTier | undefined {
  * OpenAI 协议适配器（端点与密钥复用主配置），未配置档位回退主模型；全未配置返回 undefined（调用方退单模型装配）。
  * 档位是用户级会话参数：换档即换模型，属用户显式触发的跨模型重算事件（CLAUDE.md §11），系统侧不做任何自动换档。
  */
-export function buildTierRouter(flags: Record<string, string | boolean>): ModelRouter | undefined {
+export function buildTierRouter(flags: Record<string, string | boolean | string[]>): ModelRouter | undefined {
   const tiers: Array<{ tier: ModelTier; env: string }> = [
     { tier: 'small', env: 'SUNSHINEX_MODEL_SMALL' },
     { tier: 'medium', env: 'SUNSHINEX_MODEL_MEDIUM' },
@@ -76,8 +76,8 @@ export function createCliAskSeam(io?: { isTTY: boolean; question: (q: string) =>
   };
 }
 
-export function buildDeps(root: string, flags: Record<string, string | boolean>): LoopDeps {
-  const h = new Harness({ root, mode: 'dontAsk', ask: createCliAskSeam() });
+export function buildDeps(root: string, flags: Record<string, string | boolean | string[]>, addDirs?: string[]): LoopDeps {
+  const h = new Harness({ root, mode: 'dontAsk', ask: createCliAskSeam(), addDirs });
   const router = buildTierRouter(flags);
   const tier = parseTier(flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   return {

@@ -10,6 +10,7 @@ import { buildModel, parseTier } from '../runtime';
 import { resolveWorktreeLaunchRoot } from '../cli/worktree-launch';
 import { parseEffort } from '../model/adapter';
 import type { CliArgs } from '../cli';
+import { flagList } from '../cli';
 import { t } from '../i18n';
 
 /** 读根 package.json 版本（失败回退 undefined，由 buildBannerInfo 兜底） */
@@ -47,7 +48,9 @@ export async function runTui(args: CliArgs): Promise<void> {
   // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
   const continueLast = args.flags['continue'] === true;
   const resumePicker = resolveResumeFlag(args);
-  const ctrl = new SessionController({ root: launchRoot, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}), ...(resumePicker ? { resumePicker: true } : {}) });
+  // --add-dir（spec 5.3，可重复 flag）：flagList 归一收集，随既有 opts 传入 createRuntime（TUI 面同一 HarnessOptions）
+  const addDirs = flagList(args.flags, 'add-dir');
+  const ctrl = new SessionController({ root: launchRoot, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}), ...(resumePicker ? { resumePicker: true } : {}), ...(addDirs.length > 0 ? { addDirs } : {}) });
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
   const banner = buildBannerInfo({ version: readPackageVersion(), root: launchRoot, model: model.label ?? model.provider });

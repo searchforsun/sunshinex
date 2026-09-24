@@ -14,6 +14,8 @@ export interface TuiRuntimeOpts {
   onEvent?: (e: SessionEvent) => void;
   /** 权限模式（缺省 dontAsk）；manual 时配合 onApproval 走终端化审批 */
   mode?: 'dontAsk' | 'manual' | 'plan';
+  /** D3：CLI --add-dir 透传（与 settings permissions.additionalDirs 合并，三面同源） */
+  addDirs?: string[];
   /** 用户级模型档位（run 级常量，对标 Claude Code 的模型选择）：/model 会话内切换经 runTask 逐次覆盖 */
   tier?: ModelTier;
   /** 缺省思考强度（run 级常量，对标 tier）：/model-effort 会话内切换经 runTask 逐次覆盖；缺省回适配器 cfg/env */
@@ -46,6 +48,7 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     ...(opts.mode ? { mode: opts.mode } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
+    ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
   });
   if (opts.mode === 'manual' && opts.onApproval) harness.security.setAsker(opts.onApproval);
 

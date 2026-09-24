@@ -3,7 +3,7 @@ import * as readline from 'node:readline/promises';
 import { GraphTemplate, softwarePipelineTemplate } from '../../graph/templates';
 import { LoopDeps } from '../../loop/engine';
 import { buildDeps } from '../../runtime';
-import { resolveDirArg } from '../index';
+import { resolveDirArg, flagList } from '../index';
 import { t } from '../../i18n';
 import type { GraphRunResult } from '../../types';
 import type { CliArgs } from '../index';
@@ -54,7 +54,8 @@ export async function runPipeline(args: CliArgs): Promise<void> {
   const root = path.resolve(dir);
   const goal = String(args.flags.goal ?? '');
   if (!goal) throw new Error('缺少 --goal="目标（验收标准：id=描述）"——check 依赖结构化验收清单');
-  const deps = buildDeps(root, args.flags);
+  // --add-dir（spec 5.3，可重复 flag）：由 flagList 归一收集后随装配透传（三面同源单点 buildDeps）
+  const deps = buildDeps(root, args.flags, flagList(args.flags, 'add-dir'));
   const tpl = runPipelineAssembly(deps, { goal });
 
   console.log(`[pipeline] root=${root} nodes=${tpl.nodes.map((n) => n.id).join('→')}`);

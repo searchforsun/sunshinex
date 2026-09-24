@@ -2,7 +2,7 @@ import * as path from 'path';
 import { DEFAULT_GOAL_TEMPLATE, resolveTemplate } from '../../loop/templates';
 import { buildDeps } from '../../runtime';
 import { resolveWorktreeLaunchRoot } from '../worktree-launch';
-import { resolveDirArg } from '../index';
+import { resolveDirArg, flagList } from '../index';
 import { t } from '../../i18n';
 import type { CliArgs } from '../index';
 
@@ -27,7 +27,8 @@ export async function runLoop(args: CliArgs): Promise<void> {
   if (!goal) throw new Error('缺少 --goal="目标（验收标准：id=描述）"');
   // 模板为内部装配机制（规格 2026-09-16-goal-template D4）：CLI 用户面恒走标准环，--template 不再是用户参数
   // root 替换（规格 D5）：--worktree 装配前建树后，既有装配链以树路径整体继承（banner/事实行/沙箱 cwd 全链路同源）
-  const deps = buildDeps(launchRoot, args.flags);
+  // --add-dir（spec 5.3，可重复 flag）：由 flagList 归一收集后随装配透传（三面同源单点 buildDeps）
+  const deps = buildDeps(launchRoot, args.flags, flagList(args.flags, 'add-dir'));
   const tpl = resolveTemplate(deps, DEFAULT_GOAL_TEMPLATE);
   console.log(`[run] root=${launchRoot}`);
   // fork 模型（CLAUDE.md §11）：goal 槽取消，任务指令以链行承载（单发 run 空链起，行为对外不变）

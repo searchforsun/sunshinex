@@ -80,8 +80,10 @@ export class ToolRegistry {
     const execInput: ToolInput = decision.safePath !== undefined ? { ...input, path: decision.safePath } : input;
 
     try {
-      // 执行期安全缝（规格 D6）：注入运行期链视图，fork 子链 withRoot 换根克隆在此生效
-      const runtimeSafety = { execCwd: () => safety.execCwd(), execCommandAllowed: (cmd: string) => safety.execCommandAllowed(cmd) };
+      // 执行期安全缝（规格 D6）：注入运行期链视图，fork 子链 withRoot 换根克隆在此生效；
+      // execWrap 转发（spec 5.4）：后台 exec 分支经视图取链侧 landlock 包装（gateView.execWrap 缺省即旧行为）。
+      // `?? null` 收口可选契约的 undefined 余量（RuntimeSafetyGate 契约 Promise<wrap|null>；Task 5 台账 parked 承接）
+      const runtimeSafety = { execCwd: () => safety.execCwd(), execCommandAllowed: (cmd: string) => safety.execCommandAllowed(cmd), execWrap: async (cmd: string) => (await safety.execWrap(cmd)) ?? null };
       const result = await tool.executor(execInput, runtimeSafety);
       return ok(safety.maskResult(canonical, result));
     } catch (e) {

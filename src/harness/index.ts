@@ -30,6 +30,8 @@ import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import { createWorktree, removeWorktree, readRegistry, worktreesRoot } from './worktree';
 import { loadMcpServers } from '../config';
+import { loadPermissions } from '../config/permissions';
+import * as fs from 'fs';
 import { McpHost } from './mcp/client';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
@@ -53,6 +55,8 @@ export interface HarnessOptions {
   todos?: { set(items: TodoItem[]): void };
   /** 输出样式分叉（交互面级，进稳定段）：交互面装配点注入（TUI=terminal）；缺省回 MARKDOWN_LINE 通用约定 */
   outputStyle?: OutputStyle;
+  /** D3：CLI/TUI 显式扩目录（与 settings permissions.additionalDirs 合并，三面同源） */
+  addDirs?: string[];
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -101,9 +105,17 @@ export class Harness {
     this.sandbox = new ProcessSandbox();
     // MCP 登记制闸门构造期同步注入（两级 mcp.json，项目遮蔽全局；本地 JSON 读零 IO 延迟）：guard 在工具注册前即持名单
     const mcpServers = loadMcpServers(base);
-    this.security = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk', mcpServers.map((s) => s.name));
+    // 用户权限规则面（spec 5.2）：两级装载合并不遮蔽；非路径通道（Bash/mcp/web）注入 PolicyEngine，路径通道由链消费
+    const perms = loadPermissions(base);
+    const policy = new PolicyEngine();
+    for (const rule of perms.config.deny) policy.add('deny', rule);
+    for (const rule of perms.config.allow) policy.add('allow', rule);
+    this.security = new SecurityGuard(policy, opts.mode ?? 'dontAsk', mcpServers.map((s) => s.name));
     this.dryrun = new DryRun();
     this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
+    this.safety.setPermissions(perms.config);
+    this.safety.setAdditionalDirs([...perms.config.additionalDirs, ...(opts.addDirs ?? [])]);
+    this.permissionWarningList = perms.warnings;
     // 技能门面先于工具装配创建（skill 工具经它按 id 解析正文；纯构造无副作用）
     this.skills = createSkillsFacade(base);
     // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
@@ -195,6 +207,25 @@ export class Harness {
 
   /** 本实例进入过的 worktree（cleanupWorktrees 清理范围单点） */
   private readonly visitedWorktrees = new Set<string>();
+
+  private permissionWarningList: string[] = [];
+
+  /** permissions 装载告警（spec 5.2 单级形状非法跳过）；selfcheck 上屏 */
+  permissionWarnings(): string[] {
+    return [...this.permissionWarningList];
+  }
+
+  /** /add-dir 运行期通道（spec 5.3）：realpath 归一后并入信任目录集 */
+  addAdditionalDir(dir: string): { ok: boolean; message: string } {
+    try {
+      const abs = path.resolve(dir);
+      if (!fs.existsSync(abs)) return { ok: false, message: abs };
+      this.safety.addAdditionalDir(abs);
+      return { ok: true, message: abs };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
 
   /** 活动根只读视图（worktree 会话；null=主工作区缺省态） */
   get activeRoot(): string | null {
