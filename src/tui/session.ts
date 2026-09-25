@@ -228,8 +228,9 @@ export class SessionController {
   private restoredUi?: { history: string[]; expandAll: boolean; latestFull: boolean };
   /** 子代理半行缓冲（label → 未成行）：token/reasoning 增量拼接、遇换行成行入 transcript */
   private childBufs = new Map<string, string>();
-  /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、spawn tool-result 弹出归档（规格 §4.4 配对语义） */
-  private spawnCalls: { seq: number; base: string }[] = [];
+  /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、tool-result 弹出归档（规格 §4.4 配对语义）；
+   *  后台两段式结果先行 → wait 标记延迟归档（子代理 done 触发），wait 条目不阻塞后续前台配对 */
+  private spawnCalls: { seq: number; base: string; wait?: boolean }[] = [];
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费；unref 不阻塞进程退出 */
   private kickTimer?: ReturnType<typeof setInterval>;
@@ -820,10 +821,11 @@ export class SessionController {
       ...this.state,
       status: 'idle',
       metrics: { ...this.state.metrics, turnStartedAt: 0 },
-      children: [], // 生命周期清空（规格 §4.4）：正常归档后本已为空，此处兜底孤儿面板
+      // 生命周期清理（规格 §4.4）：已归档者本已离场；运行中子代理（后台两段式）跨回合保留，done 归档收口
+      children: this.state.children.filter((c) => !c.done),
     };
     this.childBufs.clear();
-    this.spawnCalls = [];
+    this.spawnCalls = this.spawnCalls.filter((p) => p.wait); // 待归档锚点（结果先行）保留，已配对前台条目清空
     this.sealJournal(); // 快照清单补拍（事件级：其余事件已随产生落盘，规格 2026-09-22 D2/D8）
     this.runtime.harness.pipeline.kick(); // 回 idle 即踢一次后台消化（规格 §3.5）：队列非空才消费、无待办零调用
     this.notify();
@@ -1658,7 +1660,7 @@ export class SessionController {
         break;
       case 'done':
       case 'error': {
-        // 完成态即时落面板（并行批早完成者显终标、不再转圈）：done 终稿行补进转录；归档锚点仍在主链 tool-result
+        // 完成态即时落面板（并行批早完成者显终标、不再转圈）：done 终稿行补进转录；归档锚点在主链 tool-result
         const isError = e.type === 'error';
         if (buf) {
           transcript = [...transcript, buf];
@@ -1666,7 +1668,10 @@ export class SessionController {
         }
         const finalLine = e.text && e.text.length > 0 ? e.text : isError ? 'failed' : 'done';
         transcript = [...transcript, finalLine];
-        return this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true }, buf);
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true }, buf);
+        // 后台两段式延迟归档（结果先行语义）：done/error 即归档锚点，转录折回原 spawn 调用行
+        this.archiveDeferred(label);
+        return;
       }
       default:
         return; // ctx/route/approval-* 不入面板态（done/error 已置终态；归档锚点在主链 tool-result）
@@ -1684,7 +1689,8 @@ export class SessionController {
     this.notifyThrottled();
   }
 
-  /** spawn 结果归档（规格 §4.4）：弹出关联栈（行 seq + 基名）→ 精确/# 前缀/FIFO 匹配未归档子代理 → 半行冲刷 → 转录折入该调用行 detail */
+  /** spawn 结果归档（规格 §4.4）：弹出关联栈（行 seq + 基名）→ 精确/# 前缀/FIFO 匹配未归档子代理 → 半行冲刷 → 转录折入该调用行 detail；
+   *  结果先行（后台两段式）时栈顶条目转 wait 延迟归档，由子代理 done 的 archiveDeferred 收口 */
   private archiveChild(): void {
     const pending = this.spawnCalls.shift();
     if (pending === undefined) return;
@@ -1692,15 +1698,34 @@ export class SessionController {
     let idx = list.findIndex((c) => c.label === pending.base);
     if (idx < 0) idx = list.findIndex((c) => c.label.startsWith(`${pending.base}#`));
     if (idx < 0 && list.length > 0) idx = 0;
-    if (idx < 0) return; // 未命中（如 INVALID_ARG 即败，零子事件）：静默跳过（规格 §8 孤儿容忍）
-    const child = list[idx];
+    if (idx < 0 || list[idx]!.done) {
+      // 命中已完成子代理 → 立即归档；未命中（INVALID_ARG 即败）静默跳过（规格 §8 孤儿容忍）；
+      // 结果先行（子事件未到/未完成）→ 转 wait 延迟归档
+      if (idx >= 0) this.archiveInto(pending, list[idx]!);
+      else this.spawnCalls.unshift({ ...pending, wait: true });
+      return;
+    }
+    this.archiveInto(pending, list[idx]!);
+  }
+
+  /** 延迟归档收口（后台两段式）：按基名在面板中找已完成子代理，折回其 wait 条目对应的调用行 */
+  private archiveDeferred(label: string): void {
+    const idx = this.spawnCalls.findIndex((p) => p.wait && (p.base === label || label.startsWith(`${p.base}#`)));
+    if (idx < 0) return;
+    const [pending] = this.spawnCalls.splice(idx, 1);
+    const child = this.state.children.find((c) => c.label === label);
+    if (pending !== undefined && child !== undefined) this.archiveInto(pending, child);
+  }
+
+  /** 归档落点单点：转录折入调用行 detail + subagentMeta，面板移除该子代理 */
+  private archiveInto(pending: { seq: number; base: string }, child: ChildLiveState): void {
     const buf = this.childBufs.get(child.label) ?? '';
     this.childBufs.delete(child.label);
     const detail = [...child.transcript, ...(buf ? [buf] : [])].join('\n');
     const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt) };
     this.state = {
       ...this.state,
-      children: list.filter((_, i) => i !== idx),
+      children: this.state.children.filter((c) => c.label !== child.label),
       messages: this.state.messages.map((m) => (m.seq === pending.seq ? { ...m, detail, subagentMeta } : m)),
     };
     this.notify();
