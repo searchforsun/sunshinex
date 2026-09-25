@@ -14,6 +14,11 @@ export interface RawKey extends Key {
 
 const useInput = (inputHandler: (input: string, key: RawKey) => void, options: { isActive?: boolean } = {}): void => {
   const { stdin, setRawMode, internal_exitOnCtrlC } = useStdin();
+  // 处理器进 ref（订阅与处理器身份解耦）：去 Static 全量渲染后 App 每帧重建处理器闭包，
+  // 以处理器为 effect 依赖会使 stdin 监听反复摘挂，按键落入重挂空窗即丢失（AskQuestion ↓ 键丢失实证）；
+  // 监听只挂一次、每次分发取 ref 最新处理器，按键零丢失
+  const handlerRef = React.useRef(inputHandler);
+  handlerRef.current = inputHandler;
   React.useEffect(() => {
     if (options.isActive === false) return;
     setRawMode(true);
@@ -21,7 +26,7 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
       setRawMode(false);
     };
   }, [options.isActive, setRawMode]);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (options.isActive === false) return;
     const handleData = (data: string): void => {
       const bytes = String(data);
@@ -52,14 +57,14 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         bytes <= '\u001A' && !key.return ? String.fromCharCode(bytes.charCodeAt(0) + 'a'.charCodeAt(0) - 1) : bytes;
       // Ctrl+C 退出语义与原版一致：exitOnCtrlC 开启时按键由 ink 托管，不进分发层
       if (!(input === 'c' && key.ctrl) || !internal_exitOnCtrlC) {
-        inputHandler(input, key);
+        handlerRef.current(input, key);
       }
     };
     stdin?.on('data', handleData);
     return () => {
       stdin?.off('data', handleData);
     };
-  }, [options.isActive, stdin, internal_exitOnCtrlC, inputHandler]);
+  }, [options.isActive, stdin, internal_exitOnCtrlC]);
 };
 
 export default useInput;
