@@ -437,7 +437,8 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
     } as ModelAdapter;
     const ctrl = new SessionController({ root: tmp, model });
     const p = ctrl.submit('主任务');
-    await waitFor(() => ctrl.getState().messages.some((m) => m.role === 'tool' && m.kind === 'call'));
+    // CC 模式延迟入档：运行中调用行挂 pendingCalls 不入历史区，运行态唯一显示面是底部活动行
+    await waitFor(() => ctrl.getState().task.activeCalls.length > 0);
     // 子代理挂起窗口：喂合成 token（真实子代理事件经 Harness 装配 onEvent 同通道自动到达）
     ctrl.onEventForTest({ type: 'token', text: '分析中…\n', payload: { subagent: 'w' } } as never);
     assert.equal(ctrl.getState().children.length, 1, '运行中面板应在场（规格 G2）');

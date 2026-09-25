@@ -235,6 +235,9 @@ export class SessionController {
   /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、tool-result 弹出归档（规格 §4.4 配对语义）；
    *  后台两段式结果先行 → wait 标记延迟归档（子代理 done 触发），wait 条目不阻塞后续前台配对 */
   private spawnCalls: { seq: number; base: string; wait?: boolean }[] = [];
+  /** 运行中挂起的调用行（CC 模式延迟入档）：tool-call 挂起不进历史区（底部活动行唯一承载运行态），
+   *  tool-result 回程时调用行+结果行成对定格入档；收尾未回程者补档不蒸发 */
+  private pendingCalls: { callId?: string; text: string; input?: unknown; verb: string }[] = [];
   private pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费；unref 不阻塞进程退出 */
   private kickTimer?: ReturnType<typeof setInterval>;
@@ -818,8 +821,23 @@ export class SessionController {
     void this.runtime.harness.mcpClose();
   }
 
+  /** 未回程调用补入档单点（CC 模式延迟入档的兜底）：任务收尾/中断时挂起调用降级定格——
+   *  调用行单独入档退出 pending（无结果行），产出不蒸发；正常回程路径不经此点 */
+  private flushPendingCalls(): void {
+    if (this.pendingCalls.length === 0) return;
+    const flushed: ChatItem[] = this.pendingCalls.map((p) => ({
+      role: 'tool', text: p.text, ts: Date.now(), seq: ++this.msgSeq,
+      kind: 'call', pending: false, callId: p.callId,
+    }));
+    this.pendingCalls = [];
+    this.state = { ...this.state, messages: [...this.state.messages, ...flushed] };
+    for (const item of flushed) this.journal?.log({ t: 'msg', item });
+    this.notify();
+  }
+
   private closeTask(): void {
     if (this.state.status !== 'running' && this.state.status !== 'awaiting-plan') return;
+    this.flushPendingCalls();
     this.taskAbort = undefined;
     this.state = {
       ...this.state,
@@ -1080,6 +1098,7 @@ export class SessionController {
       };
       this.childBufs.clear();
       this.spawnCalls = [];
+      this.pendingCalls = [];
       this.runtime.harness.context.resetSession();
       this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
       return;
@@ -1511,30 +1530,39 @@ export class SessionController {
         this.closeLive();
         this.committedLen = 0;
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
-        this.pushMsg('tool', toolCallLine(e.text ?? '', e.payload?.input), { kind: 'call', pending: true, callId });
-        // spawn 调用关联栈（规格 §4.4）：压行 seq + 基名，成对语义下 spawn tool-result 必然紧跟其后弹出归档
-        if (e.text === 'spawn') this.spawnCalls.push({ seq: this.msgSeq, base: spawnBaseLabel(e.payload?.input) });
+        // 调用行延迟入档（CC 模式）：运行中调用行由动态区活动行唯一承载，历史区零 pending 行；
+        // 回程时调用行+结果行成对定格（动态区紧贴转录末尾，定格视觉即原地完成）
+        const entry = {
+          callId,
+          text: toolCallLine(e.text ?? '', e.payload?.input),
+          input: e.payload?.input,
+          verb: e.text ?? '',
+        };
+        this.pendingCalls = [...this.pendingCalls.filter((p) => p.callId === undefined || p.callId !== callId), entry];
         return;
       }
       case 'tool-result': {
-        if (e.payload?.tool === 'spawn') this.archiveChild();
-        // 结果行按 callId 插到其调用行之后：并发批乱序返回时各结果仍紧跟各自调用（不再堆尾）
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
-        const messages = this.state.messages;
-        let at = messages.length;
-        if (callId !== undefined) {
-          const idx = messages.findIndex((m) => m.kind === 'call' && m.callId === callId && m.pending === true);
-          if (idx >= 0) at = idx + 1;
-        }
+        // 取回挂起调用行（callId 命中优先，undefined FIFO 兜底——与旧乱序插回同口径）
+        const idx = this.pendingCalls.findIndex((p) => (callId !== undefined ? p.callId === callId : p.callId === undefined));
+        const pending = this.pendingCalls.splice(idx >= 0 ? idx : 0, 1)[0];
+        const callItem: ChatItem = {
+          role: 'tool', text: pending?.text ?? '', ts: Date.now(), seq: ++this.msgSeq,
+          kind: 'call', pending: false, callId,
+        };
         const item: ChatItem = {
           role: 'tool', text: e.text ?? '', ts: Date.now(), seq: ++this.msgSeq,
           kind: 'result', ok: e.payload?.ok === true,
           detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
         };
-        const resolved = messages.map((m) => (m.kind === 'call' && m.callId === callId && m.pending === true ? { ...m, pending: false } : m));
-        resolved.splice(at, 0, item);
-        this.state = { ...this.state, messages: resolved };
+        this.state = { ...this.state, messages: [...this.state.messages, callItem, item] };
+        this.journal?.log({ t: 'msg', item: callItem });
         this.journal?.log({ t: 'msg', item });
+        if (e.payload?.tool === 'spawn') {
+          // spawn 调用关联栈：调用行此刻才入档，压栈其真实 seq，成对语义下紧随其后弹出归档
+          this.spawnCalls.push({ seq: callItem.seq, base: spawnBaseLabel(pending?.input) });
+          this.archiveChild();
+        }
         this.notify();
         return;
       }
@@ -1551,6 +1579,7 @@ export class SessionController {
       case 'done': {
         const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
         this.closeLive();
+        this.flushPendingCalls();
         if (this.planReplyNoArchive) {
           // 规划轮终稿不重复入档：计划正文仅以确认卡形态上屏一次
           this.committedLen = 0;
@@ -1577,6 +1606,7 @@ export class SessionController {
       case 'error':
         this.closeLive();
         this.committedLen = 0;
+        this.flushPendingCalls();
         this.pushMsg('system', t(`Error: ${e.text ?? '(no detail)'}`, `错误：${e.text ?? '（无说明）'}`), { level: 'error' });
         this.refreshMetrics();
         return;
