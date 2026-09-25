@@ -119,7 +119,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       category: 'read',
       executor: async (input: ToolInput) => {
         const content = backend.readFile(String(input.path));
-        const range = input.range === undefined ? '' : String(input.range).trim();
+        const range = input.range === undefined || input.range === null ? '' : String(input.range).trim();
         if (range === '') return execOut(fitOut('read', content));
         // 形态语义：L<a>-<b> 闭区间；L<a> 与 L<a>- 同义（a 行到尾）；L-<b>（前 b 行）；越界钳制到文件实际范围
         const m = /^L(?<a>\d+)?(?:-(?<b>\d+)?)?$/.exec(range);
