@@ -12,10 +12,12 @@ const VERBS = ['Pondering', 'Brewing', 'Weaving', 'Distilling'];
 
 /** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识）；label 可选（子代理面板头部携带 [label] 标识，缺省零变化）。
  *  phase/calls 可选（缺省 'thinking'/[]，规格 §5）：既有调用方零破坏；tool-pending/tool-awaiting 按活跃调用数逐行渲染。 */
-export function Spinner({ startedAt, tokens, label, phase = 'thinking', calls = [], columns = 80 }: {
+export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80 }: {
   startedAt: number;
   tokens: number;
   label?: string;
+  /** 子代理面板头部步骤计数（可选，缺省不显示——主链活动行无此语义） */
+  steps?: number;
   /** 活任务阶段（缺省 thinking = 既有调用方零破坏） */
   phase?: LiveTaskPhase;
   /** tool-pending/tool-awaiting 的活跃调用清单；thinking/responding 忽略 */
@@ -49,7 +51,11 @@ export function Spinner({ startedAt, tokens, label, phase = 'thinking', calls = 
   }
   return (
     <Text color="green" dimColor>
-      {glyph} {label ? `[${label}] ` : ''}<Text dimColor>{verb}… ({formatDuration(secs)} · ↑{formatTokens(tokens)} tokens)</Text>
+      {glyph} {label ? `[${label}] ` : ''}
+      <Text dimColor>
+        {verb}… ({formatDuration(secs)}
+        {typeof steps === 'number' && steps > 0 ? ` · step ${steps}` : ''} · ↑{formatTokens(tokens)} tokens)
+      </Text>
     </Text>
   );
 }

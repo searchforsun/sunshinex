@@ -94,6 +94,8 @@ export interface ChildLiveState {
   tail: string[];
   /** 完成态：done/error 事件置位——并行批中早完成者即时显终标而非一直转圈（归档锚点在主链 tool-result，晚于兄弟完成） */
   done?: boolean;
+  /** 工具活动行（规格 §4.2 面板增强）：当前未决调用的 {调用名, 起始时刻}——呈现层消费，归档零依赖 */
+  calls?: { callId: string; verb: string; startedAt: number }[];
 }
 
 /** 面板尾流视图：transcript 末 ≤3 行（含未成行 buf）——存储单一来源的派生（规格 §4.2） */
@@ -1643,7 +1645,12 @@ export class SessionController {
           buf = '';
         }
         transcript = [...transcript, toolCallLine(e.text ?? '', e.payload?.input)];
-        break;
+        const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
+        const calls = callId
+          ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, verb: e.text ?? '', startedAt: Date.now() }]
+          : child.calls;
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls }, buf);
+        return;
       }
       case 'tool-result': {
         if (buf) {
@@ -1651,7 +1658,10 @@ export class SessionController {
           buf = '';
         }
         transcript = [...transcript, e.text ?? ''];
-        break;
+        const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
+        const calls = callId ? (child.calls ?? []).filter((c) => c.callId !== callId) : child.calls;
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls }, buf);
+        return;
       }
       case 'step':
         steps = child.steps + 1;
