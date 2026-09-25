@@ -62,12 +62,19 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
 
   let callSeq = 0;
   let pendingPhase: string | null = null;
-  let batch: { calls: ToolCallSpec[]; consumed: number } | null = null;
+  let batch: { calls: ToolCallSpec[]; consumed: number; emitted: number } | null = null;
+
+  // wire 序不变量：assistant(tool_calls) 必须先于其配对的 role:tool 消息上链——
+  // 批的 assistant 消息在首个结果回填前发出（挂 pendingPhase），不得延迟到批闭合
+  const emitAssistant = (calls: ToolCallSpec[]): void => {
+    msgs.push({ role: 'assistant', content: pendingPhase ?? '', toolCalls: calls });
+    pendingPhase = null;
+  };
 
   const flushBatch = (): void => {
     if (batch === null) return;
-    msgs.push({ role: 'assistant', content: pendingPhase ?? '', toolCalls: batch.calls });
-    pendingPhase = null;
+    const rest = batch.calls.slice(batch.emitted);
+    if (rest.length > 0) emitAssistant(rest);
     batch = null;
   };
 
@@ -83,12 +90,16 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
         continue;
       }
       callSeq += 1;
-      batch = batch ?? { calls: [], consumed: 0 };
+      batch = batch ?? { calls: [], consumed: 0, emitted: 0 };
       batch.calls.push({ id: `call_${callSeq}`, name: parsed.name, argsJson: parsed.argsJson });
       continue;
     }
     if (action === TOOL_RESULT_ACTION) {
       if (batch !== null && batch.consumed < batch.calls.length) {
+        if (batch.consumed >= batch.emitted) {
+          emitAssistant(batch.calls.slice(batch.emitted));
+          batch.emitted = batch.calls.length;
+        }
         const id = batch.calls[batch.consumed].id;
         batch.consumed += 1;
         msgs.push({ role: 'tool', content: row.observation, toolCallId: id });
