@@ -41,9 +41,9 @@ export const PHASE_SENTENCE_LINE =
 export const PARALLEL_POLICY_LINE =
   'Batch independent calls proactively: group calls with no ordering dependencies into the same round (up to 8) and they run concurrently, so prefer one round with several independent calls over several rounds with one call each; once a call depends on the result of another (or mutates shared state), put it after the calls it depends on — the batch then runs strictly in the order you list them, each starting only after the previous one finishes.';
 
-/** 异常收敛行：参数性失败立刻换参重发；原样重试上限两次，超限换路或收束——防同参死循环空烧 */
+/** 异常收敛行：参数性失败立刻换参重发；原样重试上限两次，超限换路/跳步/收束三路并列、判断权在模型——防同参死循环空烧 */
 export const ERROR_CONVERGENCE_LINE =
-  'When a tool call fails with a parameter or argument error, correct the arguments immediately and call again with the fixed parameters; retrying the exact same call as-is is allowed at most twice, beyond that switch to a different approach, and if the step cannot be skipped, conclude with a clear answer explaining the blocker.';
+  'When a tool call fails with a parameter or argument error, correct the arguments immediately and call again with the fixed parameters; retrying the exact same call as-is is allowed at most twice, beyond that switch to a different approach, skip the step, or conclude with an answer — you decide which fits the task.';
 
 /** 任务聚焦行：只服从最后一条任务指令行，完成后以最终答复收束 */
 export const TASK_FOCUS_LINE =

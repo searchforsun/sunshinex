@@ -28,21 +28,24 @@ function makeReactor(tmp: string, steps: string[]): Reactor {
   return new Reactor({ registry, safety, context, model: new ScriptedAdapter(steps) });
 }
 
-test('稳定段含异常收敛行（重试上限两次 + 超限换路或收束）', () => {
+test('稳定段含异常收敛行（参数性失败立刻换参、原样重试上限两次、超限换路/跳步/收束判断权在模型）', () => {
   assert.match(ERROR_CONVERGENCE_LINE, /at most twice/);
   assert.match(ERROR_CONVERGENCE_LINE, /fixed parameters/);
+  assert.match(ERROR_CONVERGENCE_LINE, /skip the step/);
+  assert.match(ERROR_CONVERGENCE_LINE, /conclude with an answer — you decide/, '收束仅作模型可选动作之一，无程序性停止指令');
 });
 
 const glob = (pattern: string): string => JSON.stringify({ tool: 'glob', input: { pattern }, done: false });
 
-test('批次兜底：同一批次集合最多执行 2 次（首次+重试一次），第 3 次整批拒绝并引导换参', async () => {
+test('批次兜底：同一批次集合最多执行 2 次（首次+重试一次），第 3 次整批拒绝（仅现象）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-converge-'));
   try {
     const SAME = [glob('x*'), glob('x*'), glob('x*'), '{"done":true,"reply":"收束"}'];
     const r = await makeReactor(tmp, SAME).run({ goal: 'g' }, { maxSteps: 10 });
     const rejected = r.steps.filter((s) => s.observation.includes('Repeated identical batch rejected'));
     assert.ok(rejected.length >= 1, '同批次第 3 次应整批拒绝');
-    assert.match(rejected[0]!.observation, /change the arguments/);
+    assert.match(rejected[0]!.observation, /already ran 2 times and was skipped this round/);
+    assert.doesNotMatch(rejected[0]!.observation, /conclude|change the arguments/i, '拒绝行不指挥模型');
     assert.equal(r.reply, '收束');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -83,22 +86,28 @@ test('批次计数过期：拉开 4 步后同一批次重新计数，不再拒�
   }
 });
 
-test('整批同参全拒连续两轮：程序强制收束，不再消耗后续轮次', async () => {
+test('整批全拒不终结任务：只跳过执行并回写现象观察行，模型换参/换路后可继续', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-converge-block-'));
   try {
     const sameCall = JSON.stringify({ tool: 'exec', input: { command: 'echo hi' } });
-    // 前 2 次正常执行，第 3 轮起整批全拒且模型无视拒绝原样重发 → 连续 2 轮全拒后程序收束
-    const SAME = [
+    // 前 2 次正常执行，第 3 轮起整批全拒（仅跳过不终结）；随后模型换参，任务继续推进
+    const SCRIPT = [
       sameCall, sameCall,
-      sameCall, sameCall, sameCall,
-      sameCall,
-      JSON.stringify({ done: true, reply: '不应到达' }),
+      sameCall, sameCall,
+      JSON.stringify({ tool: 'exec', input: { command: 'echo recovered' }, done: false }),
+      JSON.stringify({ done: true, reply: '换参后完成' }),
     ];
-    const r = await makeReactor(tmp, SAME).run({ goal: 'g' }, { maxSteps: 50 });
-    assert.equal(r.reply, 'Execution blocked: every call in the last two rounds was rejected as a repeated identical call. Concluding programmatically to avoid burning further steps.');
-    assert.equal(r.stopReason, 'done');
+    const r = await makeReactor(tmp, SCRIPT).run({ goal: 'g' }, { maxSteps: 50 });
+    const rejected = r.steps.filter((s) => s.observation.includes('Repeated identical batch rejected'));
+    assert.equal(rejected.length, 2, '第 3、4 轮整批全拒各回写一条现象观察行');
+    for (const s of rejected) {
+      assert.match(s.observation, /already ran 2 times and was skipped this round \(not executed\)/, '拒绝行只陈述现象（已达上限、本轮跳过未执行）');
+      assert.doesNotMatch(s.observation, /conclude|stop|terminate/i, '拒绝行不指挥模型收束/停止');
+    }
     const okCount = r.steps.filter((s) => s.observation.trim() === 'hi').length;
-    assert.equal(okCount, 2, '仅前 2 次真实执行');
+    assert.equal(okCount, 2, '仅前 2 次真实执行，被拒轮次不执行');
+    assert.ok(r.steps.some((s) => s.observation.trim() === 'recovered'), '模型换参后任务继续，不被程序终结');
+    assert.equal(r.reply, '换参后完成');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

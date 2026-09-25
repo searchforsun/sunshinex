@@ -127,7 +127,7 @@ export class Reactor {
 
   /** 批次重复计数（批次集合签名 → 已执行次数 + 末次步号）：实例级、run() 起点重置——程序侧异常收敛兜底 */
   private batchCounts = new Map<string, { count: number; lastStep: number }>();
-  /** 连续整批同参全拒轮数（chatRound 间状态）：≥2 即强制收束，防模型对拒绝观察无响应的空转循环 */
+  /** 连续整批全拒轮数（chatRound 间状态）：观测信号（≥2 上屏提示），程序不据此终结任务 */
   private allRejectedRounds = 0;
 
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
@@ -554,7 +554,7 @@ export class Reactor {
       const obs = overDuplicated[i]
         ? 'Repeated identical batch rejected: this exact set of calls already ran ' +
           MAX_IDENTICAL_CALLS +
-          ' times; change the arguments or use a different approach, and if the step cannot be skipped, conclude with a clear answer instead of repeating it'
+          ' times and was skipped this round (not executed)'
         : args === null || r === null
           ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
           : this.describe(r);
@@ -565,16 +565,12 @@ export class Reactor {
         if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
       }
     }
-    // 终态收敛（程序性）：整批全部命中同参护栏且已连续两轮如此——模型对拒绝观察无响应，
-    // 再给轮次只会空转烧步数；done 通道强制收束，stopReason=blocked 由外层归入异常终态
+    // 整批全拒只计数上屏（error 事件为旁路遥测），不再程序性终结任务——被拒步骤可跳过，
+    // 续跑/换路/收束的判断权在模型；连续全拒轮数仅作观测信号
     if (overDuplicated.length > 0 && overDuplicated.every(Boolean)) {
       this.allRejectedRounds += 1;
       if (this.allRejectedRounds >= 2) {
-        const reply =
-          'Execution blocked: every call in the last two rounds was rejected as a repeated identical call. ' +
-          'Concluding programmatically to avoid burning further steps.';
-        this.emit('error', reply.slice(0, 200), { step });
-        return { done: true, reply };
+        this.emit('error', `Round skipped: all ${overDuplicated.length} calls were rejected as repeated identical batches (round ${this.allRejectedRounds} in a row)`.slice(0, 200), { step });
       }
     } else {
       this.allRejectedRounds = 0;
