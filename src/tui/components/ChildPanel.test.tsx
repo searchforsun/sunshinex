@@ -2,19 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from '../test-ink';
 import { ChildPanel } from './ChildPanel';
-import { ChildLiveState } from '../session';
+import { ChildLine, ChildLiveState } from '../session';
 
 const child = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
   label: 'w',
   startedAt: Date.now(),
   steps: 2,
   tokens: 1200,
-  transcript: ['READ a.ts', '4 matches', '分析结论'],
-  tail: ['READ a.ts', '4 matches', '分析结论'],
+  transcript: [{ kind: 'call', text: 'READ a.ts' }, { kind: 'result', text: '4 matches', ok: true }, { kind: 'text', text: '分析结论' }],
   ...over,
 });
 
-test('ChildPanel：空 children 零占位；单面板恒 4 行；tail 轮转帧高不变', () => {
+test('ChildPanel：空 children 零占位；CC 式每代理一行（规格 §3.1）', () => {
   const empty = render(<ChildPanel childrenState={[]} columns={80} />);
   assert.equal((empty.lastFrame() ?? '').trim(), '', '空面板态不占任何行（规格 §5 零占位）');
   empty.unmount();
@@ -22,21 +21,12 @@ test('ChildPanel：空 children 零占位；单面板恒 4 行；tail 轮转帧�
   const one = render(<ChildPanel childrenState={[child()]} columns={80} />);
   const f1 = one.lastFrame() ?? '';
   assert.match(f1, /\[w\]/, '头部应含 [label] 标识（Spinner label 前缀）');
-  assert.match(f1, /READ a\.ts/, '尾流应含最近行');
   const lines1 = f1.replace(/\n$/, '').split('\n').length;
+  assert.equal(lines1, 1, '单代理恰一行（CC 式收敛，尾流展示取消）');
   one.unmount();
-
-  const rotated = render(
-    <ChildPanel childrenState={[child({ tail: ['行二', '行三', '行四最新'] })]} columns={80} />,
-  );
-  const f2 = rotated.lastFrame() ?? '';
-  const lines2 = f2.replace(/\n$/, '').split('\n').length;
-  assert.equal(lines1, lines2, 'tail 轮转前后帧高恒定（恒 4 行面板，规格 D5）');
-  assert.ok(f2.includes('行四最新'), '应显示最新尾行');
-  rotated.unmount();
 });
 
-test('ChildPanel：并发 4 面板同屏、总高 = 4×单面板恒定（护栏）', () => {
+test('ChildPanel：并发 4 面板同屏、总高 = 4 行（每代理一行护栏）', () => {
   const one = render(<ChildPanel childrenState={[child()]} columns={80} />);
   const base = (one.lastFrame() ?? '').replace(/\n$/, '').split('\n').length;
   one.unmount();
@@ -46,17 +36,22 @@ test('ChildPanel：并发 4 面板同屏、总高 = 4×单面板恒定（护栏�
   );
   const f = four.lastFrame() ?? '';
   for (const i of [1, 2, 3, 4]) assert.ok(f.includes(`[w${i}]`), `面板 ${i} 应同屏`);
-  assert.equal(f.replace(/\n$/, '').split('\n').length, base * 4, '4 面板总高 = 4×单面板恒定（规格 D5 护栏）');
+  assert.equal(f.replace(/\n$/, '').split('\n').length, base * 4, 'N 面板总高 = N 行（每代理一行护栏，规格 §3.1）');
   four.unmount();
 });
 
-test('ChildPanel：尾流超宽折行取尾（最新片段可见、帧高恒 4 行）', () => {
-  const wide = render(
-    <ChildPanel childrenState={[child({ tail: [`${'x'.repeat(200)}流式尾部END`] })]} columns={40} />,
+test('ChildPanel：完成态终标行即时定格（done 优先于活动行/Spinner）', () => {
+  const mixed = render(
+    <ChildPanel childrenState={[child({ label: 'done1', done: true }), child({ label: 'run1' })]} columns={80} />,
   );
-  const f = wide.lastFrame() ?? '';
-  const lines = f.replace(/\n$/, '').split('\n');
-  assert.equal(lines.length, 4, '折行取尾后帧高仍恒 4 行（空位以空格补足，ink 空串行会塌行）');
-  assert.ok(f.includes('END'), '超宽流式行应显示最新尾部内容（规格 G2）');
-  wide.unmount();
+  const f = mixed.lastFrame() ?? '';
+  assert.match(f, /✓ \[done1\] done/, '完成态显终标行');
+  assert.match(f, /\[run1\]/, '运行中显单行状态');
+  mixed.unmount();
+});
+
+// 结构行类型在面板层不可见（呈现只消费 calls/done/tokens），此处锁定夹具类型契约
+test('ChildPanel 夹具：transcript 为 ChildLine 结构行', () => {
+  const lines: ChildLine[] = child().transcript;
+  assert.equal(lines[0]!.kind, 'call');
 });

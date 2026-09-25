@@ -405,7 +405,7 @@ test('子代理事件分流：payload.subagent 存在 → 进 children，主链 
     const s = ctrl.getState();
     assert.equal(s.children.length, 1);
     assert.equal(s.children[0].label, 'w');
-    assert.ok(s.children[0].tail.length >= 1 && s.children[0].tail.length <= 3, 'tail ≤3 行（含未成行）');
+    assert.equal(s.children[0]!.transcript.length >= 1, true, '转录结构行持续累积（规格 §4.1）');
     assert.equal(s.messages.length, 0, '主链零污染');
     assert.equal(s.live, undefined, '主链 live 零污染');
   } finally {

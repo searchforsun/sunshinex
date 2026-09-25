@@ -83,8 +83,7 @@ function child(over: Partial<ChildLiveState> = {}): ChildLiveState {
     startedAt: Date.now(),
     steps: 2,
     tokens: 1200,
-    transcript: ['READ a.ts', '4 matches', '分析结论'],
-    tail: ['READ a.ts', '4 matches', '分析结论'],
+    transcript: [{ kind: 'call', text: 'READ a.ts' }, { kind: 'result', text: '4 matches', ok: true }, { kind: 'text', text: '分析结论' }],
     ...over,
   } as ChildLiveState;
 }

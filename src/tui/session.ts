@@ -82,25 +82,27 @@ export interface LiveBlock {
   fenceOpener?: string;
 }
 
+/** 子代理转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源 */
+export interface ChildLine {
+  kind: 'call' | 'result' | 'text';
+  text: string;
+  ok?: boolean;
+}
+
 /** 子代理运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
 export interface ChildLiveState {
   label: string;
   startedAt: number;
   steps: number;
   tokens: number;
-  /** 全量行（归档用）：工具行/流式文本统一行化 */
-  transcript: string[];
-  /** 面板尾流：transcript 末 ≤3 行（含未成行） */
-  tail: string[];
+  /** 全量结构行（归档与全屏查看同源）：工具行/结果行/流式文本 */
+  transcript: ChildLine[];
   /** 完成态：done/error 事件置位——并行批中早完成者即时显终标而非一直转圈（归档锚点在主链 tool-result，晚于兄弟完成） */
   done?: boolean;
   /** 工具活动行（规格 §4.2 面板增强）：当前未决调用的 {调用名, 起始时刻}——呈现层消费，归档零依赖 */
   calls?: { callId: string; verb: string; startedAt: number }[];
-}
-
-/** 面板尾流视图：transcript 末 ≤3 行（含未成行 buf）——存储单一来源的派生（规格 §4.2） */
-function childTail(transcript: string[], buf: string): string[] {
-  return [...transcript, ...(buf ? [buf] : [])].slice(-3);
+  /** 主 agent 委派提示词（spawn input.prompt，全屏视图头部呈现；规格 §4.2） */
+  prompt?: string;
 }
 
 /** spawn 调用关联基名（规格 §4.4）：label ?? agent_id ?? 'subagent'（与 Runner 解析同源；消歧后缀不含入内） */
@@ -232,6 +234,8 @@ export class SessionController {
   private restoredUi?: { history: string[]; expandAll: boolean; latestFull: boolean };
   /** 子代理半行缓冲（label → 未成行）：token/reasoning 增量拼接、遇换行成行入 transcript */
   private childBufs = new Map<string, string>();
+  /** 子代理委派提示词暂存（spawn tool-call 捕获 → 面板态创建时挂载 → 归档清理；规格 §4.2） */
+  private childPrompts = new Map<string, string>();
   /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、tool-result 弹出归档（规格 §4.4 配对语义）；
    *  后台两段式结果先行 → wait 标记延迟归档（子代理 done 触发），wait 条目不阻塞后续前台配对 */
   private spawnCalls: { seq: number; base: string; wait?: boolean }[] = [];
@@ -1651,7 +1655,7 @@ export class SessionController {
     let list = this.state.children;
     let idx = list.findIndex((c) => c.label === label);
     if (idx < 0) {
-      list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], tail: [], done: false }];
+      list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], done: false, prompt: this.childPrompts.get(label) }];
       idx = list.length - 1;
     }
     const child = list[idx];
@@ -1666,15 +1670,15 @@ export class SessionController {
         buf += e.text ?? '';
         const parts = buf.split('\n');
         buf = parts.pop() ?? '';
-        transcript = [...child.transcript, ...parts.filter((l) => l.length > 0)];
+        transcript = [...child.transcript, ...parts.filter((l) => l.length > 0).map((l) => ({ kind: 'text' as const, text: l }))];
         break;
       }
       case 'tool-call': {
         if (buf) {
-          transcript = [...transcript, buf];
+          transcript = [...transcript, { kind: 'text', text: buf }];
           buf = '';
         }
-        transcript = [...transcript, toolCallLine(e.text ?? '', e.payload?.input)];
+        transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input) }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
         const calls = callId
           ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, verb: e.text ?? '', startedAt: Date.now() }]
@@ -1684,10 +1688,10 @@ export class SessionController {
       }
       case 'tool-result': {
         if (buf) {
-          transcript = [...transcript, buf];
+          transcript = [...transcript, { kind: 'text', text: buf }];
           buf = '';
         }
-        transcript = [...transcript, e.text ?? ''];
+        transcript = [...transcript, { kind: 'result', text: e.text ?? '', ok: e.payload?.ok === true }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
         const calls = callId ? (child.calls ?? []).filter((c) => c.callId !== callId) : child.calls;
         this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls }, buf);
@@ -1705,11 +1709,11 @@ export class SessionController {
         // 完成态即时落面板（并行批早完成者显终标、不再转圈）：done 终稿行补进转录；归档锚点在主链 tool-result
         const isError = e.type === 'error';
         if (buf) {
-          transcript = [...transcript, buf];
+          transcript = [...transcript, { kind: 'text', text: buf }];
           buf = '';
         }
         const finalLine = e.text && e.text.length > 0 ? e.text : isError ? 'failed' : 'done';
-        transcript = [...transcript, finalLine];
+        transcript = [...transcript, { kind: 'text', text: finalLine }];
         this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true }, buf);
         // 后台两段式延迟归档（结果先行语义）：done/error 即归档锚点，转录折回原 spawn 调用行
         this.archiveDeferred(label);
@@ -1726,8 +1730,7 @@ export class SessionController {
     const label = next.label;
     if (buf) this.childBufs.set(label, buf);
     else this.childBufs.delete(label);
-    const withTail: ChildLiveState = { ...next, tail: childTail(next.transcript, buf) };
-    this.state = { ...this.state, children: list.map((c, i) => (i === idx ? withTail : c)) };
+    this.state = { ...this.state, children: list.map((c, i) => (i === idx ? next : c)) };
     this.notifyThrottled();
   }
 
@@ -1763,7 +1766,11 @@ export class SessionController {
   private archiveInto(pending: { seq: number; base: string }, child: ChildLiveState): void {
     const buf = this.childBufs.get(child.label) ?? '';
     this.childBufs.delete(child.label);
-    const detail = [...child.transcript, ...(buf ? [buf] : [])].join('\n');
+    this.childPrompts.delete(child.label);
+    // detail 结构行序列化（规格 §4.1）：result 行 ⎿ 前缀 + ok 标记，回看与全屏视图同源同形态
+    const detail = [...child.transcript, ...(buf ? [{ kind: 'text', text: buf } as ChildLine] : [])]
+      .map((l) => (l.kind === 'result' ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}` : l.text))
+      .join('\n');
     const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt) };
     this.state = {
       ...this.state,
