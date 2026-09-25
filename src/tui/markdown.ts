@@ -102,12 +102,7 @@ export function parseInline(text: string): MdInline[] {
   return inline && inline.children ? inlineChildrenToMdInline(inline.children) : [];
 }
 
-/** 转义围栏符（``` / ~~~），使 markdown-it 将其视为普通段落文本（未闭合围栏降级用） */
-function escapeFence(line: string): string {
-  return line.replace(/(```|~~~)/, (m) => m.split('').map((c) => '\\' + c).join(''));
-}
-
-/** 预处理：补偿 markdown-it 不覆盖的 spec 语义（顿号列表、七级标题归 6、未闭合围栏降级段落） */
+// 未闭合围栏：流式生成中开栏行即围栏开始（下游按围栏体即时高亮渲染），原样透传
 function preprocess(text: string): string {
   const lines = text.split('\n');
   const out: string[] = [];
@@ -131,8 +126,8 @@ function preprocess(text: string): string {
         for (let k = i; k <= j; k++) out.push(lines[k]);
         i = j + 1;
       } else {
-        out.push(escapeFence(line));
-        for (let k = i + 1; k < lines.length; k++) out.push(lines[k]);
+        // 未闭合围栏：原样透传，由 parseFence 按围栏开始处理（流式生成中即时高亮渲染）
+        for (let k = i; k < lines.length; k++) out.push(lines[k]);
         i = lines.length;
       }
       continue;

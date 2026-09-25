@@ -34,11 +34,10 @@ test('parseMarkdown：围栏代码块含语言标签，内容原样', () => {
   assert.deepEqual(blocks[0], { type: 'fence', lang: 'js', code: 'const a = 1;' });
 });
 
-test('parseMarkdown：未闭合围栏降级为段落（流式容错）', () => {
+test('parseMarkdown：未闭合围栏按围栏开始处理（流式生成中即时高亮渲染）', () => {
   const blocks = parseMarkdown('```js\nconst a = 1;');
   assert.equal(blocks.length, 1);
-  assert.equal(blocks[0].type, 'paragraph');
-  assert.equal(inlineText((blocks[0] as Extract<MdBlock, { type: 'paragraph' }>).inlines), '```js\nconst a = 1;');
+  assert.deepEqual(blocks[0], { type: 'fence', lang: 'js', code: 'const a = 1;' });
 });
 
 test('parseMarkdown：引用合并多行', () => {
