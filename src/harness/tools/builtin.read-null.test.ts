@@ -29,3 +29,14 @@ test('read range=null 整文件读（strict schema 空联合 required 下模型�
     cleanup();
   }
 });
+
+test('read range="null"（模型把可空联合当字符串传，与 spawn agent_id 同病）应按整文件处理', async () => {
+  const { registry, safety, cleanup } = setup();
+  try {
+    const r = await registry.execute('read', { path: 'a.txt', range: 'null' }, safety);
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.ok(r.value.stdout.includes('l1') && r.value.stdout.includes('l3'));
+  } finally {
+    cleanup();
+  }
+});
