@@ -15,6 +15,7 @@ import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
 import { Spinner } from './Spinner';
 import { ChildPanel } from './ChildPanel';
+import { ChildInspector } from './ChildInspector';
 
 /** 审批键盘映射：y 放行一次 / a 本会话放行 / n 拒绝（纯函数，独立单测） */
 export function approvalKeyToDecision(input: string): ApprovalDecision | undefined {
@@ -193,6 +194,15 @@ export function App({
     setBrowseMode(mode);
     setBrowseCursor(cursor);
   };
+  // 全屏查看模式（规格 §3.3）：live=运行中子代理（实时流式）、archived=已归档 spawn 调用行（detail 回看）；
+  // ref 真值同 browse 先例（useInput 处理器闭包滞后），在场时整页让位（MessageList 保持挂载 live 让位零 Static 重放）
+  const [inspect, setInspect] = React.useState<{ kind: 'live'; label: string } | { kind: 'archived'; seq: number } | undefined>(undefined);
+  const inspectRef = React.useRef(inspect);
+  inspectRef.current = inspect;
+  // 键分发 ref 真值（对标 qCursor/browseCursorRef 先例）：子面板更新走 notifyThrottled 节流，
+  // 处理器闭包的 state 可能滞后节流一拍，浏览器序列构造必须读 ref 不读闭包
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
   /** 已归档 SPAWN 调用行 seq 列表（键盘分发与高亮透传共用同一过滤口径） */
   const spawnCallSeqs = (msgs: TuiState['messages']): number[] =>
     msgs.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail).map((m) => m.seq);
@@ -285,31 +295,58 @@ export function App({
   }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
+  const rows = useStdout().stdout?.rows ?? 24; // 全屏查看视口高度（规格 §3.3 有界=终端行数）
+  // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
+  React.useEffect(() => {
+    if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspect(undefined);
+  });
   const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter, qPage) : undefined;
 
   useInput((input: string, key: RawKey) => {
 
+    // 全屏查看模式（规格 §3.3）：最前置接管——Esc 退出恢复主界面，其余键吞掉不落输入缓冲（纯只读视图）
+    if (inspectRef.current) {
+      if (key.escape) { setInspect(undefined); return; }
+      return;
+    }
+
     // 子代理浏览模式（Ctrl+B 进入）：短接管 ↑/↓/Enter/Esc；其余按键一律吞掉不落输入缓冲。
     // 光标与模式取 ref 真值（处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；仅 idle/error 可进入。
     if (browseModeRef.current) {
-      const spawnSeqs = spawnCallSeqs(state.messages);
-      if (spawnSeqs.length === 0) { setBrowse(false); return; }
-      const clamp = (n: number): number => Math.max(0, Math.min(spawnSeqs.length - 1, n));
+      // 统一子代理浏览器（规格 §3.2/§3.4）：选择序列 = 运行中子代理（启动序在前）++ 已归档 spawn 行（入档序）；
+      // state 读 ref 真值——子面板更新走 notifyThrottled 节流，处理器闭包可能滞后一拍
+      const st = stateRef.current;
+      const liveChildren = st.children.filter((c) => !c.done);
+      const spawnSeqs = spawnCallSeqs(st.messages);
+      const total = liveChildren.length + spawnSeqs.length;
+      if (total === 0) { setBrowse(false); return; }
+      const clamp = (n: number): number => Math.max(0, Math.min(total - 1, n));
       if (key.escape) { setBrowse(false); return; }
       if (key.upArrow) { setBrowse(true, clamp(browseCursorRef.current - 1)); return; }
       if (key.downArrow) { setBrowse(true, clamp(browseCursorRef.current + 1)); return; }
       if (key.return) {
-        const seq = spawnSeqs[clamp(browseCursorRef.current)];
-        setSpawnExpanded((list) => (list.includes(seq) ? list.filter((s) => s !== seq) : [...list, seq]));
+        const cur = clamp(browseCursorRef.current);
+        if (cur < liveChildren.length) {
+          // 运行中 → 进入全屏实时视图（规格 §3.3）
+          setInspect({ kind: 'live', label: liveChildren[cur]!.label });
+        } else {
+          // 已归档 → 进入全屏回看（detail 派生，替代原行内展开）
+          const seq = spawnSeqs[cur - liveChildren.length];
+          if (seq !== undefined) setInspect({ kind: 'archived', seq });
+        }
+        setBrowse(false);
         return;
       }
       if (key.ctrl && input === 'c') { setBrowse(false); return; }
       return;
     }
-    // Ctrl+B 进入子代理浏览模式：仅 idle/error 态、且场上存在已归档 SPAWN 行；无 SPAWN 行/运行中静默 no-op
+    // Ctrl+B 进入统一子代理浏览器：运行中子代理在场（任意状态）或 idle/error 下存在已归档 SPAWN 行；state 读 ref 真值
     if (key.ctrl && input === 'b') {
-      if ((state.status === 'idle' || state.status === 'error') && spawnCallSeqs(state.messages).length > 0) {
-        setBrowse(true, spawnCallSeqs(state.messages).length - 1); // 光标缺省落最近一条
+      const st = stateRef.current;
+      const liveCount = st.children.filter((c) => !c.done).length;
+      const hasArchived = spawnCallSeqs(st.messages).length > 0;
+      if ((st.status === 'idle' || st.status === 'error' || liveCount > 0) && (liveCount > 0 || hasArchived)) {
+        setBrowse(true, liveCount + spawnCallSeqs(st.messages).length - 1); // 光标缺省落最近一条
       }
       return;
     }
@@ -574,22 +611,46 @@ export function App({
 
   return (
     <Box flexDirection="column">
+      {/* 全屏查看（规格 §3.3/§6）：MessageList 保持挂载（Static 零重放）但实时区让位——live 置 undefined */}
       <MessageList
         banner={info}
         messages={state.messages}
-        live={state.live}
+        live={inspect ? undefined : state.live}
         columns={columns}
         expandAll={expandAll}
         latestFull={latestFull}
         spawnExpandedSeqs={spawnExpanded}
-        spawnHighlightSeq={browseMode ? (spawnCallSeqs(state.messages)[browseCursor] ?? undefined) : undefined}
+        spawnHighlightSeq={browseMode ? (spawnCallSeqs(state.messages)[browseCursor - state.children.filter((c) => !c.done).length] ?? undefined) : undefined}
       />
+      {inspect ? (
+        <ChildInspector
+          child={inspect.kind === 'live' ? state.children.find((c) => c.label === inspect.label) : undefined}
+          archived={
+            inspect.kind === 'archived'
+              ? (() => {
+                  const m = state.messages.find((x) => x.seq === inspect.seq);
+                  return m?.detail !== undefined
+                    ? {
+                        label: m.text.replace(/^\S+\s*/, '') || 'subagent',
+                        lines: m.detail.split('\n'),
+                        steps: m.subagentMeta?.steps,
+                        durationMs: m.subagentMeta?.durationMs,
+                      }
+                    : undefined;
+                })()
+              : undefined
+          }
+          columns={columns}
+          rows={rows}
+        />
+      ) : (
+        <>
       {state.status === 'running' && state.task.phase !== 'responding' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
       ) : null}
       {browseMode ? (
         // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源
-        <Text backgroundColor="gray"> {t('subagent browse · ↑↓ move · Enter toggle · Esc exit', '子代理浏览 · ↑↓ 移动 · Enter 切换 · Esc 退出')} </Text>
+        <Text backgroundColor="gray"> {t('subagent browse · ↑↓ move · Enter inspect · Esc exit', '子代理浏览 · ↑↓ 移动 · Enter 查看 · Esc 退出')} </Text>
       ) : null}
       {state.children.length > 0 ? <ChildPanel childrenState={state.children} columns={columns} /> : null}
       {state.approval ? (
@@ -666,6 +727,8 @@ export function App({
         effort={state.effort}
         context={{ used: state.metrics.ctxUsed, window: Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
       />
+        </>
+      )}
     </Box>
   );
 }

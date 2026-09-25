@@ -33,63 +33,47 @@ async function settledCtrl(tmp: string): Promise<SessionController> {
   return ctrl;
 }
 
-test('App：Ctrl+B 浏览模式（进入/Enter 展开/Esc 退出）', async () => {
+test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 §3.2）', async () => {
   const tmp = tmpdir('sunshinex-app-browse-');
   try {
     const ctrl = await settledCtrl(tmp);
     const calls = ctrl.getState().messages.filter((m) => m.kind === 'call');
     assert.ok(calls.length >= 2 && calls.every((m) => m.detail), '前置：两条 SPAWN 调用行已归档');
 
-    const spawnSeqs = calls.map((m) => m.seq);
-    const retain = { ...initialRetained() };
-    const repaints: number[] = [];
     const { write, lastFrame, unmount } = render(
-      <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} onRequestRepaint={() => repaints.push(repaints.length + 1)} />,
+      <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />,
     );
     await new Promise((r) => setTimeout(r, 200)); // 等挂载：ink 未接管 stdin 时首段输入会丢失
     assert.doesNotMatch(lastFrame() ?? '', /subagent browse/, '缺省非浏览模式无提示行');
 
     write('\u0002'); // Ctrl+B 进入
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /subagent browse · ↑↓ move · Enter toggle · Esc exit/, '提示行出现');
-    assert.equal(repaints.length, 1, '进入浏览模式触发整屏重绘请求');
-    write('\r'); // Enter 翻转展开（光标缺省落最近一条）
+    assert.match(lastFrame() ?? '', /subagent browse · ↑↓ move · Enter inspect · Esc exit/, '提示行出现');
+    write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
-    assert.deepEqual(retain.spawnExpanded, [spawnSeqs[spawnSeqs.length - 1]], '最近一条入展开集合');
-    assert.equal(repaints.length, 2, '展开集合变更触发重绘（Static 重放通道）');
+    assert.match(lastFrame() ?? '', /subagent view/, '全屏查看视图接管整页');
+    assert.match(lastFrame() ?? '', /wr 结论/, '最近归档行转录呈现');
+    write('\u001b'); // Esc 退出全屏回主界面
+    await new Promise((r) => setTimeout(r, 150));
+    assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
 
-    write('\u001b[A'); // ↑ 移动光标到上一条 SPAWN 行
+    write('\u0002'); // 再进浏览
     await new Promise((r) => setTimeout(r, 150));
-    write('\r'); // 翻转上一条
+    write('\u001b[A'); // ↑ 移动光标到上一条归档行
     await new Promise((r) => setTimeout(r, 150));
-    assert.deepEqual(retain.spawnExpanded, [spawnSeqs[spawnSeqs.length - 1], spawnSeqs[0]], '上一条也入展开集合');
-
-    // 边界钳制：光标已在末行，↓ 不移动（钳制），Enter 仍作用于末行 → 末行由展开转折叠
-    write('\u001b[B');
+    write('\r'); // Enter 回看上一条
     await new Promise((r) => setTimeout(r, 150));
-    write('\r');
-    await new Promise((r) => setTimeout(r, 150));
-    assert.deepEqual(retain.spawnExpanded, [spawnSeqs[0]], '末行 ↓ 钳制不移动，Enter 收拢末行');
-
+    assert.match(lastFrame() ?? '', /rv 结论/, '上一条归档行转录呈现');
     write('\u001b'); // Esc 退出
     await new Promise((r) => setTimeout(r, 150));
-    assert.doesNotMatch(lastFrame() ?? '', /subagent browse/, '退出后提示行消失');
+    assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
     unmount();
-
-    // Static 不可变：展开态经卸载→重挂整屏重放（与 Tab 同路径），重放帧应含 ▾ 头行与转录
-    const replay = render(
-      <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} />,
-    );
-    await new Promise((r) => setTimeout(r, 200));
-    assert.match(replay.allOutput(), /▾ \[SPAWN\]/, '重挂重放保留逐行展开态');
-    assert.match(replay.allOutput(), /rv 结论/, '命中行转录重放');
-    replay.unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('App：运行中 Ctrl+B 不进入浏览模式', async () => {
+test('App：运行中无子代理且无归档时 Ctrl+B 不进入浏览模式', async () => {
   const tmp = tmpdir('sunshinex-app-browse2-');
   try {
     const ctrl = new SessionController({
