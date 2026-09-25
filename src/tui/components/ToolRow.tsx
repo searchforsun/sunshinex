@@ -26,8 +26,8 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
     const verb = sp > 0 ? item.text.slice(0, sp) : item.text;
     const target = sp > 0 ? item.text.slice(sp + 1) : '';
     const isSpawn = verb === 'SPAWN' && item.detail !== undefined;
-    // 三态承载于前点：pending=● 黄（运行中）；结果回程后回到 dim 缺省态，✓/✗ 随结果行呈现
-    const pending = item.pending === true;
+    // 调用行恒中性态（dim ●）：运行/完成状态由动态区 Spinner 的绿色活动行承载（统一设计——Static 历史行
+    // 打印一次不再重绘，若在此着运行态色，状态切换须等重挂才上屏且整屏重放引发闪屏；动态区帧级刷新零延迟）
     // 两态命中任一即重放转录：Tab 全场展开（!collapsed，既有）或浏览模式逐行展开（spawnExpanded）
     const expanded = item.detail !== undefined && (!collapsed || spawnExpanded);
     const meta = item.subagentMeta;
@@ -39,7 +39,7 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
     return (
       <Box flexDirection="column">
         <Text backgroundColor={spawnHighlighted ? 'gray' : undefined}>
-          <Text dimColor={expanded && isSpawn} color={pending ? 'yellow' : undefined}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
+          <Text dimColor={expanded && isSpawn}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
           <Text color="cyan">
             [{verb}]
           </Text>
