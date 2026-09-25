@@ -102,6 +102,19 @@ export class AgentRegistry {
   }
 }
 
+/** 可选点入参归一单点：模型按 schema「null」描述把字面量当字符串传（agent_id:"null" 等），
+ * 归一回真实 null/undefined 语义；根因修复点——防 "null" 走注册表查询报 not found 死循环（2026-09-25 用户实测） */
+export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInput {
+  const lit = (v: unknown): boolean => v === 'null' || v === 'undefined';
+  return {
+    ...input,
+    agent_id: input.agent_id !== undefined && lit(input.agent_id) ? undefined : input.agent_id,
+    label: input.label !== undefined && lit(input.label) ? undefined : input.label,
+    tools: Array.isArray(input.tools) ? input.tools.filter((t) => !lit(t)) : input.tools,
+    isolation: input.isolation !== undefined && lit(input.isolation) ? undefined : input.isolation,
+  };
+}
+
 /** 三形态归一：目录注册制 / 预设角色（agent_id 直取） / 内联临时（仅 prompt）。
  * 显式 taskLine（graph 传入）> prompt > 仅 agent_id 时的缺省续接行；角色行模板与 step/action 口径逐字对齐 graph 先例 */
 export function resolveSpawnSpec(
@@ -262,7 +275,8 @@ export class SubagentRunner {
 
   /** spawn 两段式入口（规格 D6，对标 CC Task run_in_background）：立即登记 subagent 任务并同步返回回执，
    * 子代理转场外异步执行——结论行只落任务日志（模型以 read 查看终态行），主链零追加；stop 触发协作式取消 */
-  spawnBackground(input: SubagentSpawnInput): { taskId: string; outputFilePath: string } {
+  spawnBackground(rawInput: SubagentSpawnInput): { taskId: string; outputFilePath: string } {
+    const input = normalizeSpawnInput(rawInput);
     const ledger = this.deps.tasks;
     if (ledger === undefined) {
       throw new CodedToolError('NOT_SUPPORTED', 'background spawn requires a task registry (not wired in this assembly)');
@@ -308,7 +322,7 @@ export class SubagentRunner {
     }
     let spec: { roleLine?: string; taskLine: string; label: string };
     try {
-      spec = resolveSpawnSpec(this.agents, input, { taskLine: opts?.taskLine });
+      spec = resolveSpawnSpec(this.agents, normalizeSpawnInput(input), { taskLine: opts?.taskLine });
     } catch (e) {
       return fail('INVALID_ARG', e instanceof Error ? e.message : String(e));
     }
