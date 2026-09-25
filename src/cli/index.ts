@@ -7,6 +7,18 @@ import { runTui } from '../tui/entry';
 import { applySettings, loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
 import { EFFORT_ORDER } from '../model/adapter';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+/** CLI 版本号：以 package.json 为单一来源（dist 相对定位清单文件，与 npm 安装副本天然同源） */
+function cliVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 /**
  * 两级 settings 装载（项目级 → 全局级）：applySettings 只填缺省槽，先装者不被覆盖，装载顺序即优先级。
@@ -62,6 +74,9 @@ export function parseArgs(argv: string[]): CliArgs {
       } else {
         flags[key] = value;
       }
+    } else if (/^-[a-zA-Z]$/.test(a)) {
+      // 单字符短旗（-h / -v）：等价长旗布尔形态；多字符/取值短旗不在此列，落 positional 走既有报错
+      flags[a.slice(1)] = true;
     } else {
       positional.push(a);
     }
@@ -130,6 +145,7 @@ export function usageText(): string {
   flags:
   --mode=manual|plan|dontAsk              permission mode (default manual)
   --language=en|zh                        UI language (default en)
+  --version                               print CLI version and exit
   --tier=small|medium|large               model tier (user-level, session-constant)
   --effort=none|minimal|low|medium|high|xhigh|max
                                           reasoning effort (request-level)
@@ -186,11 +202,16 @@ export function assertValidFlagValues(args: CliArgs): void {
 }
 
 async function main(): Promise<void> {
+  const args = resolveInvocation(parseArgs(process.argv.slice(2)));
+  // 版本号先于 settings 链装载与语言设定：--version 是纯产物事实查询，输出固定 en 单语
+  if (args.flags.version === true || args.flags.v === true) {
+    console.log(cliVersion());
+    return;
+  }
   // 三级配置链（对标 Claude Code 用户级 + 项目级惯例）：已导出环境变量 > 项目 settings > 全局 settings
   // 项目级先装、全局后装兜底——装载器只填缺省键，后装者仅补缺不覆盖，顺序即优先级
   const projectRoot = process.cwd();
   loadSettingsChain(projectRoot);
-  const args = resolveInvocation(parseArgs(process.argv.slice(2)));
   // flag 值校验先于语言设定与一切装配：非法值报错退出（错误文案固定 en——setLanguage 尚未执行的时序事实）
   assertValidFlagValues(args);
   // 界面语言：--language=en|zh > settings language 槽 > 缺省 en（zh 为全中文界面 + 中文模型侧提示词；
@@ -198,6 +219,7 @@ async function main(): Promise<void> {
   // 可重复 flag 归一余量：数组形态按非法值处理（同 parseLanguage 缺省 en）
   const langFlag = args.flags.language;
   setLanguage(parseLanguage((Array.isArray(langFlag) ? undefined : langFlag) ?? process.env.SUNSHINEX_LANGUAGE));
+  // v 已在前置版本短路消费（提前 return，此处仅 help/h）
   if (args.flags.help === true || args.flags.h === true) {
     console.log(usageText());
     return;
