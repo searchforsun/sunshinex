@@ -223,7 +223,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       category: 'read',
       executor: async (input: ToolInput) => {
         const { pattern, glob: globFilter } = input as { pattern: string; glob?: string };
-        const target = String(input.path ?? '.');
+        // 与 read/write 同一锚点语义：缺省项目根、相对路径按项目根解析（绝对路径原样）——缺省落 '.' 会按进程 cwd 解析，从父目录启动会话时与 glob 锚点分裂
+        const target = resolveProjectPath(root, String(input.path ?? '.'));
         if (!fs.statSync(target).isDirectory()) {
           const content = backend.readFile(target);
           const lines = content.split('\n').filter((l) => new RegExp(pattern).test(l));
@@ -260,11 +261,11 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         additionalProperties: false,
         required: ['pattern'],
         properties: {
-          pattern: { type: 'string', description: 'Glob pattern (e.g. src/**/*.ts)' },
+          pattern: { type: 'string', description: 'Glob pattern matched against project-root-relative paths (e.g. src/**/*.ts)' },
         },
       },
       name: 'glob',
-      description: 'List files matching a glob pattern; oversized listing is truncated and saved to disk (full output path shown in the result)',
+      description: 'List files under the project root matching a glob pattern; returned paths are relative to the project root (feed them back with the project root prepended for absolute access); oversized listing is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => {
         const files = backend.listFiles(root, String(input.pattern ?? '*'));
@@ -360,7 +361,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     },
     name: 'todo_write',
     description:
-      'Write the session todo list (full replacement). Use it for tasks with 3 or more distinct steps: create the list up front, keep exactly one item in_progress at a time, mark items completed as soon as they are done, and rewrite the whole list whenever it changes. Task boundaries do not reset the list — append new tasks instead of starting from scratch. Skip it for simpler tasks (1-2 steps).',
+      'Write the session todo list (full replacement). Use it for tasks with 3 or more distinct steps: create the list up front, skip it for simpler tasks (1-2 steps). Keep the list live: call this tool at every status transition — set an item in_progress the moment you start working on it, mark it completed the moment it is done (never batch updates to the end), and keep exactly one item in_progress at a time. The panel shows this list to the user in real time, so a stale list reads as stalled work. Task boundaries do not reset the list — append new tasks instead of starting from scratch.',
     category: 'todo',
     executor: async (input: ToolInput) => {
       if (!todos) throw new CodedToolError('todo_not_configured', 'todo list is not wired in this runtime');
