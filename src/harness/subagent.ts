@@ -234,8 +234,11 @@ export class SubagentRunner {
     return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree'] });
   }
 
-  /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、tools 未知名 INVALID_ARG（T2 起两段式开通，background 分支放行） */
-  validateSpawnInput(input: SubagentSpawnInput): void {
+  /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、tools 未知名 INVALID_ARG（T2 起两段式开通，background 分支放行）。
+   *  校验前先过 normalizeSpawnInput——模型照 schema 可空联合字面传 "null"/"undefined" 字符串（与 agent_id 同病），
+   *  不归一直接 INVALID_ARG "Unknown isolation: null" 会被观察行原样回流，模型同参重试成死循环 */
+  validateSpawnInput(rawInput: SubagentSpawnInput): void {
+    const input = normalizeSpawnInput(rawInput);
     if (!input.agent_id && !input.prompt) {
       throw new CodedToolError('INVALID_ARG', 'agent_id and prompt are both missing');
     }
@@ -296,7 +299,9 @@ export class SubagentRunner {
           taskId: task.id,
         });
         if (r.ok) {
-          ledger.append(task.id, `[conclusion] ${firstLine(r.value.reply)}\n`);
+          // 结论全文落任务日志（多行报告完整可读回）：首行前置 [conclusion] 标记供 finish 判据/快速定位，
+          // 后续行原样尾追——日志是后台产出唯一落盘面，截首行即丢产出
+          ledger.append(task.id, `[conclusion] ${r.value.reply}\n`);
           ledger.finish(task.id, 'done');
         } else {
           ledger.append(task.id, `[failed] ${r.error.code}: ${r.error.message}\n`);
