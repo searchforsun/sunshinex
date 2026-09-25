@@ -28,6 +28,21 @@ export function wrapByWidth(text: string, width: number): string[] {
   return lines;
 }
 
+/** 按显示宽度截断至 maxWidth 内，超宽以省略号收尾（图素簇安全，不拆 CJK/emoji 序列）；maxWidth<=0 原样返回 */
+export function elideByWidth(text: string, maxWidth: number): string {
+  if (maxWidth <= 0 || displayWidth(text) <= maxWidth) return text;
+  const budget = maxWidth - displayWidth('…');
+  let cur = '';
+  let w = 0;
+  for (const { segment } of graphemes.segment(text)) {
+    const uw = displayWidth(segment);
+    if (w + uw > budget) break;
+    cur += segment;
+    w += uw;
+  }
+  return cur + '…';
+}
+
 /** 用户消息色带行：按 columns-2 折行，每行左右各留 1 空格并补齐至 columns（ink3 仅 Text 支持 backgroundColor，整行文本铺色） */
 export function bandLines(text: string, columns: number): string[] {
   const inner = Math.max(1, columns - 2);

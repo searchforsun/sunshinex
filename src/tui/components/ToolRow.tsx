@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { ChatItem } from '../session';
-import { bandLines } from '../text-band';
+import { bandLines, displayWidth, elideByWidth } from '../text-band';
 import { formatDuration } from '../format';
 
 /**
@@ -36,6 +36,9 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
       ? `（${meta.steps} steps · ${formatDuration(Math.round(meta.durationMs / 1000))}）`
       : '';
     const detailLines = expanded ? (item.detail ?? '').split('\n') : [];
+    // target 按列宽自然省略：前缀「● [VERB] 」约 10 列 + meta 尾注预留，剩余宽度全给 target（宽列完整、窄列 … 收尾）
+    const targetBudget = Math.max(16, columns - 10 - displayWidth(metaTail));
+    const shownTarget = target ? elideByWidth(target, targetBudget) : '';
     return (
       <Box flexDirection="column">
         <Text backgroundColor={spawnHighlighted ? 'gray' : undefined}>
@@ -43,7 +46,7 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
           <Text color="cyan">
             [{verb}]
           </Text>
-          {target ? <Text color="gray"> {target}{metaTail}</Text> : null}
+          {target ? <Text color="gray"> {shownTarget}{metaTail}</Text> : null}
         </Text>
         {detailLines.map((l, i) => (
           <Text key={i} dimColor>

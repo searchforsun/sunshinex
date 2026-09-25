@@ -28,10 +28,9 @@ test('toolCallLine：无输入回退为空 target（仅动词）', () => {
   assert.equal(toolCallLine('read', undefined), 'READ');
 });
 
-test('toolCallLine：超长 target 截断到 60 字符', () => {
+test('toolCallLine：超长 target 原样透传不截断（呈现层按列宽自然省略）', () => {
   const line = toolCallLine('read', { path: 'x'.repeat(120) });
-  assert.equal(line.length, 'READ '.length + 61);
-  assert.ok(line.endsWith('…'));
+  assert.equal(line, 'READ ' + 'x'.repeat(120), '源头零截断，target 语义完整交给呈现层');
 });
 
 test('toolCallLine：grep 带 path 仍取 pattern 代表字段', () => {
@@ -40,4 +39,9 @@ test('toolCallLine：grep 带 path 仍取 pattern 代表字段', () => {
 
 test('toolCallLine：exec 取 command 首段而非 path', () => {
   assert.equal(toolCallLine('exec', { command: 'npm test', path: '/x' }), 'EXEC npm');
+});
+
+test('toolCallLine：读面行为不变——代表字段提取与空白归一零改动', () => {
+  assert.equal(toolCallLine('read', { path: 'a/very/long/path/that/goes/on/and/on/forever/in/deep/dirs/file.ts' }),
+    'READ a/very/long/path/that/goes/on/and/on/forever/in/deep/dirs/file.ts', '长路径完整保留');
 });

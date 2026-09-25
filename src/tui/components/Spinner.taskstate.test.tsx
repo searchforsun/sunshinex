@@ -44,3 +44,21 @@ test('Spinner 三态：tool-awaiting 标注等待审批', () => {
   assert.match(f, /awaiting approval/, '审批挂起态显式标注');
   awaiting.unmount();
 });
+
+test('活跃调用行超宽 verb：按列宽自然省略，宽列完整呈现', () => {
+  const pending = render(
+    <Spinner startedAt={Date.now()} tokens={0} phase="tool-pending" columns={40}
+      calls={[{ callId: 'c1', verb: `read ${'p'.repeat(120)}`, startedAt: Date.now() }]} />,
+  );
+  const fn = pending.lastFrame() ?? '';
+  assert.ok(fn.includes('…'), '窄列：省略号收尾');
+  pending.unmount();
+  const wide = render(
+    <Spinner startedAt={Date.now()} tokens={0} phase="tool-pending" columns={200}
+      calls={[{ callId: 'c1', verb: `read ${'p'.repeat(120)}`, startedAt: Date.now() }]} />,
+    200,
+  );
+  const fw = wide.lastFrame() ?? '';
+  assert.ok(fw.includes('p'.repeat(120)), '宽列：完整呈现');
+  wide.unmount();
+});

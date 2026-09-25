@@ -18,7 +18,7 @@ export interface TestRenderResult {
  * 'data' 事件直通 ink 的 useInput 键盘分发），与 ITL4 渲染语义一致。
  * 口径：lastFrame = 末次非空写入（非 debug 模式：动态帧末次重绘）；allOutput = 累计 stdout（含 Static 一次性打印与逐帧动态输出）。
  */
-export function render(element: React.ReactElement): TestRenderResult {
+export function render(element: React.ReactElement, columns = 100): TestRenderResult {
   let last = '';
   let all = '';
   const stdout = new Writable({
@@ -29,7 +29,7 @@ export function render(element: React.ReactElement): TestRenderResult {
       cb();
     },
   }) as Writable & { columns: number };
-  stdout.columns = 100;
+  stdout.columns = columns;
 
   const stdin = new EventEmitter() as EventEmitter & {
     isTTY: boolean;

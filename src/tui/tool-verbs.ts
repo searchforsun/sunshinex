@@ -14,7 +14,7 @@ const VERBS: Record<string, string> = {
   todo_write: 'TODO',
 };
 
-/** 工具调用行文本：`VERB target`（无 target 时仅 VERB）；exec 取命令首段，其余取代表字段并截断 60 字符 */
+/** 工具调用行文本：`VERB target`（无 target 时仅 VERB）；exec 取命令首段，其余取代表字段——零截断，超宽由呈现层按列宽自然省略 */
 export function toolCallLine(tool: string, input: unknown): string {
   const verb = tool.startsWith('mcp__') ? 'MCP' : (VERBS[tool] ?? tool.toUpperCase());
   const target = extractTarget(tool, input);
@@ -40,11 +40,11 @@ function extractTarget(tool: string, input: unknown): string {
   if (tool === 'spawn') {
     // spawn target = 关联基名（规格 §6 调用行口径）：label ?? agent_id ?? 'subagent'
     const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
-    return clip(str(obj.label) ?? str(obj.agent_id) ?? 'subagent');
+    return str(obj.label) ?? str(obj.agent_id) ?? 'subagent';
   }
   if (tool === 'todo_write') {
     const arr = Array.isArray(obj.todos) ? (obj.todos as unknown[]) : [];
-    return clip(`${arr.length} items`);
+    return `${arr.length} items`;
   }
   const field = TARGET_FIELD[tool];
   let raw: string | undefined;
@@ -57,16 +57,12 @@ function extractTarget(tool: string, input: unknown): string {
   }
   if (!raw) {
     if (Object.keys(obj).length === 0) return '';
-    return clip(JSON.stringify(input));
+    return JSON.stringify(input);
   }
   const one = tool === 'exec' ? raw.trim().split(/\s+/)[0] : raw.replace(/\s+/g, ' ').trim();
-  return clip(one);
+  return one;
 }
 
 function strVal(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
-}
-
-function clip(s: string): string {
-  return s.length > 60 ? `${s.slice(0, 60)}…` : s;
 }

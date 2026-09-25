@@ -37,3 +37,14 @@ test('非 SPAWN 调用行形态零变化：无尾注、头标恒 ●', () => {
   assert.match(f, /● \[WRITE\] a\.ts/);
   assert.doesNotMatch(f, /steps/);
 });
+
+test('调用行超宽 target：按 columns 自然省略（…收尾），窄列截断、宽列完整', () => {
+  const longPath = `READ ${'d'.repeat(120)}`;
+  const item: ChatItem = { role: 'tool', text: longPath, ts: 0, seq: 2, kind: 'call' };
+  const narrow = render(<ToolRow item={item} columns={40} collapsed={true} />).lastFrame() ?? '';
+  assert.ok(narrow.includes('…'), '窄列：target 超宽须省略号收尾');
+  assert.ok(!narrow.includes('d'.repeat(120)), '窄列：不出现完整超长串');
+  const wide = render(<ToolRow item={item} columns={200} collapsed={true} />, 200).lastFrame() ?? '';
+  assert.ok(wide.includes('d'.repeat(120)), '宽列：完整呈现不截断');
+  assert.ok(!wide.includes('…'), '宽列：无省略号');
+});

@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { formatDuration, formatTokens } from '../format';
 import { ActiveCall, LiveTaskPhase } from '../task-state';
 import { t } from '../../i18n';
+import { elideByWidth } from '../text-band';
 
 // 帧字形全部选用无 emoji 呈现属性的星形：✳（U+2733）带 emoji 变体，终端会改用彩色字形渲染、
 // 完全无视前景色，观感成「图标」而非着色文本（与 ⏺→● 同款问题，故弃用）；✱ 等字形颜色严格跟随前景色
@@ -11,7 +12,7 @@ const VERBS = ['Pondering', 'Brewing', 'Weaving', 'Distilling'];
 
 /** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识）；label 可选（子代理面板头部携带 [label] 标识，缺省零变化）。
  *  phase/calls 可选（缺省 'thinking'/[]，规格 §5）：既有调用方零破坏；tool-pending/tool-awaiting 按活跃调用数逐行渲染。 */
-export function Spinner({ startedAt, tokens, label, phase = 'thinking', calls = [] }: {
+export function Spinner({ startedAt, tokens, label, phase = 'thinking', calls = [], columns = 80 }: {
   startedAt: number;
   tokens: number;
   label?: string;
@@ -19,6 +20,8 @@ export function Spinner({ startedAt, tokens, label, phase = 'thinking', calls = 
   phase?: LiveTaskPhase;
   /** tool-pending/tool-awaiting 的活跃调用清单；thinking/responding 忽略 */
   calls?: ActiveCall[];
+  /** 终端列宽：活跃调用行动词按列宽自然省略（缺省 80，既有调用方零破坏） */
+  columns?: number;
 }): JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -34,7 +37,7 @@ export function Spinner({ startedAt, tokens, label, phase = 'thinking', calls = 
       <Box flexDirection="column">
         {calls.map((c) => (
           <Text key={c.callId} color="green" dimColor>
-            {glyph} [{c.verb}]{' '}
+            {glyph} [{elideByWidth(c.verb, Math.max(16, columns - 20))}]{' '}
             <Text dimColor>
               {phase === 'tool-awaiting' ? t('awaiting approval', '等待审批') + ' · ' : ''}
               {formatDuration(Math.max(0, Math.round((Date.now() - c.startedAt) / 1000)))}
