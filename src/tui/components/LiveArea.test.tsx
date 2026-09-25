@@ -41,15 +41,14 @@ test('LiveArea：答复预览只呈现未入档尾段（committedLen 水位排�
   unmount();
 });
 
-test('LiveArea：答复未入档超长时显示溢出提示且帧高有界', () => {
+test('LiveArea：答复未入档超长时全量渲染（无裁切窗口、无溢出提示行）', () => {
   const text = Array.from({ length: 12 }, (_, i) => `行${i + 1}`).join('\n');
   const { lastFrame, unmount } = render(
     <LiveArea live={{ kind: 'reply', text, committedLen: 0, startedAt: 0 }} columns={80} />,
   );
   const frame = lastFrame() ?? '';
-  assert.match(frame, /\+4 lines \(generating\)/, '溢出提示应如实报生成中（不得谎称已入档）');
-  assert.ok(frame.includes('行12'), '应显示末行');
-  assert.ok(!frame.includes('行1\n'), '头部行不应显示');
+  assert.ok(!frame.includes('generating') && !frame.includes('生成中'), '溢出提示行保持删除');
+  assert.ok(frame.includes('行1\n') && frame.includes('行12'), '首尾行均应显示——生成期全量可见');
   unmount();
 });
 
@@ -75,20 +74,16 @@ test('LiveArea：预览统一 Markdown 渲染——粗体/列表生成期间即�
   unmount();
 });
 
-test('LiveArea：长表格生成中表头+尾部窗口实时渲染（框线成形、帧高封顶、不谎报已入档）', () => {
+test('LiveArea：长表格生成中全量实时渲染（框线成形、整表逐行可见）', () => {
   const mk = (n: number) => ['| 模块名 | 端口 | 所属域 |', '| --- | --- | --- |'].concat(Array.from({ length: n }, (_, i) => `| 服务${i} | 930${i} | 域${i} |`)).join('\n');
   const r1 = render(<LiveArea live={{ kind: 'reply', text: mk(12), committedLen: 0, startedAt: 0 }} columns={80} />);
   const f1 = r1.lastFrame() ?? '';
   assert.match(f1, /[─╭╰]/, '表格应以框线形态实时渲染');
-  assert.match(f1, /模块名/, '表头应始终保留（列结构可见）');
-  assert.match(f1, /服务11/, '尾部最新行应可见（逐行成形）');
-  assert.doesNotMatch(f1, /服务0 \|/, '中间行应被窗口省略');
-  assert.match(f1, /table generating · 14 lines/, '行数计数应如实');
-  assert.doesNotMatch(f1, /上文已入档/, '不得谎称已入档');
+  assert.match(f1, /模块名/, '表头应可见');
+  assert.ok(f1.includes('服务0') && f1.includes('服务11'), '首尾行均应可见——生成期整表可见，不裁中间行');
+  assert.ok(!f1.includes('generating') && !f1.includes('生成中'), '生成期计数/溢出提示行保持删除');
   r1.unmount();
   const r2 = render(<LiveArea live={{ kind: 'reply', text: mk(22), committedLen: 0, startedAt: 0 }} columns={80} />);
-  const nonEmpty = (f: string) => f.split('\n').filter((l) => l.trim().length > 0).length;
-  assert.equal(nonEmpty(r2.lastFrame() ?? ''), nonEmpty(f1), '帧高应封顶恒定（不随表格行数增长）');
-  assert.match(r2.lastFrame() ?? '', /服务21/, '尾部窗口应随生成滑动');
+  assert.match(r2.lastFrame() ?? '', /服务21/, '尾部最新行应可见（逐行成形）');
   r2.unmount();
 });
