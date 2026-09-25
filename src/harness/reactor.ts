@@ -13,6 +13,7 @@ import {
   TOOL_POLICY_LINE,
   PHASE_SENTENCE_LINE,
   PARALLEL_POLICY_LINE,
+  ERROR_CONVERGENCE_LINE,
   REFERENCE_DATA_LINE,
   TASK_FOCUS_LINE,
   SKILLS_INSTALL_LINE,
@@ -115,12 +116,21 @@ export function buildStepDigest(
 /** 并行调用上限：防单轮塞满列表拖长步时延（8 项足够覆盖常用组合） */
 const PARALLEL_TOOLS_LIMIT = 8;
 
+/** 同参重复调用上限：同名同参全链路最多执行 3 次，超限程序性拒绝——防模型同参死循环空烧（与稳定段异常收敛行配套） */
+const MAX_IDENTICAL_CALLS = 3;
+/** 同参计数过期间隔：距上次同参调用已拉开 N 步即视为过期清零——早期试错不永久封死后续合法调用 */
+const IDENTICAL_CALL_EXPIRY_STEPS = 8;
+
 /** 最小 Reactor：observe → think → act → observe 线性循环（chat 消息视图单通道） */
 
 export class Reactor {
   constructor(private deps: ReactorDeps) {}
 
+  /** 同参重复计数（签名 → 已执行次数 + 末次步号）：实例级、run() 起点重置——程序侧异常收敛兜底 */
+  private callCounts = new Map<string, { count: number; lastStep: number }>();
+
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
+    this.callCounts.clear(); // 同参计数按 run 隔离：跨任务不累计
     const maxSteps = opts?.maxSteps ?? reactorMaxStepsEnv() ?? 400;
     // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
     // （状态栏「上下文占用」分母与压缩占比共用此基准），非法值静默回退内建缺省
@@ -406,6 +416,7 @@ export class Reactor {
       PHASE_SENTENCE_LINE,
       TOOL_POLICY_LINE,
       PARALLEL_POLICY_LINE,
+      ERROR_CONVERGENCE_LINE,
       REFERENCE_DATA_LINE,
       TASK_FOCUS_LINE,
       SKILLS_INSTALL_LINE,
@@ -487,6 +498,29 @@ export class Reactor {
       }
     });
 
+    // 同参重复护栏：签名 = 工具名 + 参数 JSON（键序无关），实例级计数（run 起点重置）；
+    // 超限（同名同参已执行满 3 次）的程序性拒绝，观察行引导换参或收束
+    const signatureOf = (name: string, args: Record<string, unknown> | null): string => {
+      const canon = (v: unknown): unknown => {
+        if (Array.isArray(v)) return v.map(canon);
+        if (v !== null && typeof v === 'object') {
+          return Object.keys(v as object).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])]);
+        }
+        return v;
+      };
+      return `${name}:${JSON.stringify(args === null ? null : canon(args))}`;
+    };
+    const overDuplicated: boolean[] = calls.map((c, i) => {
+      const sig = signatureOf(c.name, argsOf[i]);
+      const prev = this.callCounts.get(sig);
+      // 过期策略：距末次同参调用已拉开 N 步 → 视为新意图重新计数（早期试错不永久封死）
+      const n = prev !== undefined && step - prev.lastStep <= IDENTICAL_CALL_EXPIRY_STEPS ? prev.count : 0;
+      if (n >= MAX_IDENTICAL_CALLS) return true;
+      this.callCounts.set(sig, { count: n + 1, lastStep: step });
+      return false;
+    });
+    // 同参超限的调用跳过实际执行；同批未超限者照常（部分拒绝而非整批连坐），拒绝观察行统一在下方结果循环产出
+
     // 调用行先行上屏（执行前发射：长工具执行中调用行即可见，TUI 实时性契约）
     for (let i = 0; i < calls.length; i++) {
       this.emit('tool-call', calls[i].name, { input: argsOf[i] ?? {}, callId: callIds[i], status: 'pending' });
@@ -503,21 +537,24 @@ export class Reactor {
     const runOne = (c: (typeof calls)[number], args: Record<string, unknown> | null) =>
       args === null ? null : this.deps.registry.execute(c.name, args, this.deps.safety);
 
-    // 纯并行批（无状态类调用）整批并发；含状态类调用的批按出牌顺序串行——前一个完成后后者才开跑
+    // 纯并行批（无状态类调用）整批并发；含状态类调用的批按出牌顺序串行——前一个完成后后者才开跑；同参超限调用跳过执行
     const results: (Result<ExecResult> | null)[] = sequential
       ? []
-      : await Promise.all(calls.map((c, i) => runOne(c, argsOf[i])));
+      : await Promise.all(calls.map((c, i) => (overDuplicated[i] ? null : runOne(c, argsOf[i]))));
     if (sequential) {
       for (let i = 0; i < calls.length; i++) {
-        results[i] = await runOne(calls[i], argsOf[i]);
+        if (!overDuplicated[i]) results[i] = await runOne(calls[i], argsOf[i]);
       }
     }
     for (let i = 0; i < calls.length; i++) {
       const c = calls[i];
       const args = argsOf[i];
       const r = results[i];
-      const obs =
-        args === null || r === null
+      const obs = overDuplicated[i]
+        ? 'Repeated identical tool call rejected: this exact call already ran ' +
+          MAX_IDENTICAL_CALLS +
+          ' times; change the arguments or use a different approach, and if the step cannot be skipped, conclude with a clear answer instead of repeating it'
+        : args === null || r === null
           ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
           : this.describe(r);
       this.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed' });
