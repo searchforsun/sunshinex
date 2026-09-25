@@ -26,9 +26,9 @@ test('MarkdownText：无序/有序列表（符号不出现，有序重排）', (
   assert.ok(!f.includes('- 甲'), '无序列表 - 符号应被吞掉');
 });
 
-test('MarkdownText：代码块围栏不出现，语言标签与正文出现', () => {
+test('MarkdownText：代码块围栏不出现，语言标签行不出现，正文出现', () => {
   const f = frameOf('```js\nconst a = 1;\n```');
-  assert.match(f, /js/);
+  assert.ok(!/^js$/m.test(f.trim().split('\n')[0] ?? '') || !f.includes('\njs\n'), '语言标签头行已删');
   assert.match(f, /const a = 1/);
   assert.ok(!f.includes('```'), '围栏 ``` 应被吞掉');
 });

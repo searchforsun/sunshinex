@@ -45,9 +45,9 @@ const HI_COLOR: Record<HiKind, string> = {
 function Fence({ lang, code, columns }: { lang: string; code: string; columns: number }): JSX.Element {
   const lines = code.split('\n');
   const isDiff = lang === 'diff' || lang === 'patch';
+  // 语言标签行去掉（用户裁决：围栏顶上的语言头是噪声——高亮已足够表意）
   return (
     <Box flexDirection="column">
-      {lang ? <Text dimColor>{lang}</Text> : null}
       {lines.map((line, i) => {
         if (isDiff) {
           return (
@@ -103,12 +103,13 @@ function TableLine({ line, bold }: { line: string; bold?: boolean }): JSX.Elemen
     return <Text dimColor bold={bold}>{line}</Text>;
   }
   const segs = line.split('│');
+  // 加粗只落在单元格文本段：边框 │ 恒暗色不加粗——bold 传染到边框会出现「加粗竖条」（列分隔处一条亮线）
   return (
-    <Text bold={bold}>
+    <Text>
       {segs.map((seg, i) => (
         <React.Fragment key={i}>
           {i > 0 ? <Text dimColor>│</Text> : null}
-          {seg}
+          <Text bold={bold}>{seg}</Text>
         </React.Fragment>
       ))}
     </Text>
