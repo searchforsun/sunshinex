@@ -15,10 +15,11 @@ function isTableDivider(line: string): boolean {
 /**
  * 流式正文安全点切块（纯函数）：从 pending = text.slice(committedLen) 中取可入档子串，无安全点返回 null。
  * 规则（对标 Claude Code 打字机式滚动出稿）：
- * 1. 围栏代码块（行首 ```）开→闭之间零切点（含围栏内空行），闭合后恢复段落切分——整块入档保住高亮与结构；
+ * 1. 短围栏零切点（含围栏内空行），闭合后随段落边界整块放行——保住结构；超过 maxLines 的长围栏按行数兜底切块
+ *    （生成期滚动出稿，与普通超长段同量级），切块自带开栏行、入档块独立成立，openFenceOpener 承接续块与预览；
  * 2. GFM 表格（表头+分隔行成对开启，空行/非表格行闭合）期间零切点——闭合即整表放行（切点回退至表格末行换行处，不等后续段落边界），防表体切碎降级或整表滞留预览区；
  * 3. 段落边界（空行）优先：切点取最靠后的边界（seg 含边界空行的换行）；
- * 4. 闭态区域连续超过 maxLines 个完整行仍无边界 → 按最近换行兜底切块（此后重新计数）；
+ * 4. 任意区域连续超过 maxLines 个完整行仍无边界 → 按最近换行兜底切块（此后重新计数）；
  * 5. 返回值恒为 text 的严格中缀且原样保留换行——分块拼接 === 终稿，session 侧前缀去重不重复不丢失。
  */
 export function stableReplySegment(
@@ -45,7 +46,9 @@ export function stableReplySegment(
   }
   const lines = pending.split('\n');
   let cut = -1; // 已确认的最大安全切点（seg = pending.slice(0, cut)，含结尾换行）
-  let closedLineStreak = 0; // 围栏闭态区域连续完整行数（超长兜底计数）
+  let closedLineStreak = 0; // 闭态区域连续完整行数（超长兜底计数）
+  let fenceLineStreak = 0; // 围栏内连续完整行数（长围栏兜底计数，与闭态同量级 maxLines）
+  let fenceCutDone = false; // 本次扫描内长围栏兜底已切一刀：固定 maxLines 节奏，其余随后续 delta/闭合放行
   let offset = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -54,6 +57,12 @@ export function stableReplySegment(
       fenceOpen = !fenceOpen;
       tableOpen = false;
       closedLineStreak = 0;
+      if (!fenceOpen) {
+        fenceLineStreak = 0; // 围栏闭合：兜底计数复位，后续行恢复段落切分
+      } else {
+        fenceLineStreak = 0; // 新围栏开栏：兜底计数与「已切一刀」标记复位
+        fenceCutDone = false;
+      }
       if (!isLast) offset += line.length + 1;
       continue;
     }
@@ -75,8 +84,19 @@ export function stableReplySegment(
       tableOpen = true; // 表头 + 分隔行成对出现：表格开启（自表头行起保护，防表头与分隔行被分离）
     }
     const candidate = offset + line.length + 1; // 行末换行之后（含换行）
-    if (fenceOpen || tableOpen) {
-      offset = candidate; // 围栏/表格内容（含其内空行）：零切点，整块等待闭合后随边界放行
+    if (fenceOpen) {
+      // 围栏内：短围栏零切点整块等待闭合；超过 maxLines 按行数兜底切一刀——
+      // 生成期滚动出稿、闭合时残余一并放行（入档块自带开栏行独立成立，预览由 openFenceOpener 承接）
+      fenceLineStreak += 1;
+      if (fenceLineStreak >= maxLines && !fenceCutDone) {
+        cut = candidate;
+        fenceCutDone = true;
+      }
+      offset = candidate;
+      continue;
+    }
+    if (tableOpen) {
+      offset = candidate; // 表格内容（含其内空行）：零切点，整块等待闭合后随边界放行
       continue;
     }
     if (tableClosedHere || line === '') {
@@ -93,4 +113,15 @@ export function stableReplySegment(
   }
   if (cut <= 0) return null;
   return pending.slice(0, cut);
+}
+
+/** 最近一次进入围栏的开栏行（未闭合时非空）：入档切块越过开栏行后，预览续块补上该行即可延续代码块呈现 */
+export function openFenceOpener(text: string): string {
+  let opener = '';
+  for (const line of text.split('\n')) {
+    if (/^\s*```/.test(line)) {
+      opener = opener === '' ? line : '';
+    }
+  }
+  return opener;
 }

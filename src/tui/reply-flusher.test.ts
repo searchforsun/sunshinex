@@ -34,6 +34,22 @@ test('reply-flusher：围栏开启未闭合时零切点', () => {
   assert.equal(stableReplySegment(text, after), null, '围栏内（未闭合）不可切');
 });
 
+test('reply-flusher：长围栏未闭合也按行数兜底切块（生成期滚动出稿）', () => {
+  const text = '```js\n' + Array.from({ length: 60 }, (_, i) => `行${i}`).join('\n') + '\n';
+  const seg = stableReplySegment(text, 0);
+  assert.ok(seg !== null, '长围栏（超过 24 行）应产生切点，不等闭合');
+  assert.equal(seg.split('\n').length - 1, REPLY_SEGMENT_MAX_LINES + 1, '首块 = 开栏行 + 上限行数内容');
+  assert.ok(seg.startsWith('```js\n'), '切块自带开栏行：入档块独立成立');
+  const seg2 = stableReplySegment(text, seg.length);
+  assert.ok(seg2 !== null, '续块继续按行数兜底');
+  assert.equal(seg2.split('\n').length - 1, REPLY_SEGMENT_MAX_LINES, '续块同样恰为上限行数');
+});
+
+test('reply-flusher：短围栏未闭合仍零切点（整块入档保结构）', () => {
+  const text = '```json\n{"a": 1}\n';
+  assert.equal(stableReplySegment(text, 0), null, '未超过行数上限的围栏：闭合前不切');
+});
+
 test('reply-flusher：无空行超长段按最近换行兜底切块', () => {
   const longPara = Array.from({ length: 30 }, (_, i) => `行${i}`).join('\n');
   const seg = stableReplySegment(longPara, 0);

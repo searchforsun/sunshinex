@@ -16,7 +16,8 @@ const THINK_TAIL_LINES = 6;
  */
 export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element {
   if (live.kind === 'reply') {
-    const pending = live.text.slice(live.committedLen ?? 0);
+    // 长围栏兜底切块后预览续块以开栏行承接：未闭合围栏按围栏开始渲染，代码块高亮呈现跨切块延续
+    const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
     if (pending.trim() === '') return <Box />;
     const lines = pending.split('\n');
     // 全量渲染未入档尾段（无裁切窗口）：表格行实时成形、正文逐行长高，所见即生成所得

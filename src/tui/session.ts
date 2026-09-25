@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
 import { estimateTokens } from '../harness/context/window';
-import { stableReplySegment } from './reply-flusher';
+import { openFenceOpener, stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
@@ -78,6 +78,8 @@ export interface LiveBlock {
   startedAt: number;
   /** 流式正文已入档水位：预览只渲染 slice(committedLen) 的未入档尾段，避免与滚动缓冲重复 */
   committedLen?: number;
+  /** 已入档前缀越过了未闭合围栏的开栏行：预览续块补上该行，代码块高亮呈现跨切块延续 */
+  fenceOpener?: string;
 }
 
 /** 子代理运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
@@ -1775,7 +1777,11 @@ export class SessionController {
     }
     this.committedLen = committed;
     if (this.state.live?.kind === 'reply') {
-      this.state = { ...this.state, live: { ...this.state.live, committedLen: committed } };
+      // 长围栏兜底切块后，预览续块以开栏行承接（未闭合围栏按围栏开始渲染，呈现跨切块延续）
+      this.state = {
+        ...this.state,
+        live: { ...this.state.live, committedLen: committed, fenceOpener: openFenceOpener(draft.slice(0, committed)) },
+      };
     }
   }
 
