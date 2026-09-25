@@ -13,6 +13,13 @@ import { ToolOutputArchive } from './output-archive';
 import { TaskRegistry } from '../tasks';
 import { MemoryWriteSeam } from '../memory/writer';
 import { MemoryScope } from '../memory/paths';
+
+/** 工具入参路径归一单点：绝对路径原样（信封即语义），相对路径按项目根解析——兑现 schema 声明的
+ *  "relative to the project root"。缺此归一相对路径按 Node 进程 cwd 解析，从父目录启动会话时
+ *  read/write 与 glob/exec（程序侧锚 root/execCwd）锚点分裂，出现「glob 看得到、read 读不到」 */
+function resolveProjectPath(root: string, p: string): string {
+  return path.isAbsolute(p) ? p : path.join(root, p);
+}
 import { createWorktree, removeWorktree, readRegistry, worktreesRoot, isDirty, randomWorktreeName } from '../worktree';
 import { resolveDataDir } from '../../config/data-dir';
 
@@ -118,7 +125,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         'Read file content; optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => {
-        const content = backend.readFile(String(input.path));
+        const content = backend.readFile(resolveProjectPath(root, String(input.path)));
         // 空语义归一单点：undefined / JSON null / "null"·"undefined" 字符串字面量（模型把可空联合当字符串传的形态）均按整文件处理
         const range = input.range === undefined || input.range === null || input.range === 'null' || input.range === 'undefined' ? '' : String(input.range).trim();
         if (range === '') return execOut(fitOut('read', content));
@@ -193,8 +200,9 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           if (r.value !== 'pass') return execOut(r.value.observation);
         }
         // write 影子快照（rewind/fork 规格 §6.1）：落盘前捕获 pre-image；记忆接缝路径不经过此处（上文已 return）
-        writeSnapshot?.capture(p);
-        backend.writeFile(p, content);
+        const target = resolveProjectPath(root, p);
+        writeSnapshot?.capture(target);
+        backend.writeFile(target, content);
         // §9.3 快照过期回执：写项目根 SUNSHINE.md 时观察行补一句（快照仍冻结到下一刷新点，§9.2 漂移检测下轮起点统一尾追全文）
         return execOut(isSunshineMdTarget(safety, p) ? `written\n${SUNSHINE_STALE_NOTICE}` : 'written');
       },
