@@ -1101,6 +1101,7 @@ export class SessionController {
         live: undefined,
       };
       this.childBufs.clear();
+      this.childPrompts.clear();
       this.spawnCalls = [];
       this.pendingCalls = [];
       this.runtime.harness.context.resetSession();
@@ -1543,6 +1544,12 @@ export class SessionController {
           verb: e.text ?? '',
         };
         this.pendingCalls = [...this.pendingCalls.filter((p) => p.callId === undefined || p.callId !== callId), entry];
+        // 委派提示词捕获（规格 §4.2）：spawn 的 input.prompt 按基名暂存，子面板态创建时挂载、归档清理
+        if (e.text === 'spawn') {
+          const pin = e.payload?.input as Record<string, unknown> | undefined;
+          const prompt = typeof pin?.prompt === 'string' && pin.prompt.length > 0 ? pin.prompt : undefined;
+          if (prompt !== undefined) this.childPrompts.set(spawnBaseLabel(pin), prompt);
+        }
         return;
       }
       case 'tool-result': {
