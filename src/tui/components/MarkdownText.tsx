@@ -61,7 +61,7 @@ function Fence({ lang, code, columns }: { lang: string; code: string; columns: n
         return (
           <Text key={i} dimColor={!known}>
             {spans.map((s, j) => (
-              <Text key={j} color={HI_COLOR[s.kind] || undefined} dimColor={s.kind === 'comment'}>{s.text}</Text>
+              <Text key={j} color={HI_COLOR[s.kind] || undefined}>{s.text}</Text>
             ))}
           </Text>
         );
