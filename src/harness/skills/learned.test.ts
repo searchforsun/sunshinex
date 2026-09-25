@@ -21,7 +21,7 @@ test('settle：写入 .data/skills/{id}/skill.md，frontmatter 可读回且可 r
     assert.ok(r.ok);
     if (!r.ok) return;
     const id = r.value;
-    assert.equal(id, '实现-sqlite-vec-后端');
+    assert.equal(id, 'sqlite-vec', '中文 goal 经 ASCII slug 只留字母数字段，id 为规范 ASCII slug');
     const file = path.join(root, '.data', 'skills', id, 'skill.md');
     assert.ok(fs.existsSync(file));
     const meta = parseSkillFrontmatter(fs.readFileSync(file, 'utf8'));
@@ -43,18 +43,19 @@ test('settle：同名 goal 二次沉淀得 -2 后缀，不覆盖既有产物', (
     const r2 = store.settle('部署手册', '第二版');
     assert.ok(r1.ok && r2.ok);
     if (!r1.ok || !r2.ok) return;
-    assert.equal(r1.value, '部署手册');
-    assert.equal(r2.value, '部署手册-2');
-    assert.ok(fs.existsSync(path.join(root, '.data', 'skills', '部署手册', 'skill.md')));
+    assert.equal(r1.value, 'learned', '纯中文 goal 全折叠回退 learned');
+    assert.equal(r2.value, 'learned-2', '撞名避让得 -2 后缀');
+    assert.ok(fs.existsSync(path.join(root, '.data', 'skills', 'learned', 'skill.md')));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('slugify：中文与特殊字符确定性折叠，全特殊字符回退 learned', () => {
+test('slugify：ASCII slug 口径（中文/特殊字符确定性折叠），全折叠回退 learned', () => {
   assert.equal(slugify('实现 A&B 功能!!'), slugify('实现 A&B 功能!!'));
-  assert.equal(slugify('实现 A&B 功能!!'), '实现-A-B-功能');
+  assert.equal(slugify('实现 A&B 功能!!'), 'a-b', '中文全折叠、仅留 ASCII 字母数字段');
   assert.equal(slugify('!!!???'), 'learned');
+  assert.equal(slugify('My Agent!'), 'my-agent');
 });
 
 test('settle：目录超 50 删最旧（mtime 序，对齐 CAP.skill）', () => {
@@ -73,7 +74,7 @@ test('settle：目录超 50 删最旧（mtime 序，对齐 CAP.skill）', () => 
     assert.equal(ids.length, 50);
     assert.ok(!ids.includes('old-00'), 'mtime 最旧的 old-00 被清理');
     assert.ok(ids.includes('old-01'));
-    assert.ok(ids.includes('新技能'));
+    assert.ok(ids.includes('learned'), '沉淀 id 为 ASCII slug（纯中文 goal 回退 learned）');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

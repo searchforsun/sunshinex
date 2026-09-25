@@ -68,7 +68,7 @@ test('技能清单冻结段注入：快照尾（history 前）、相邻帧前缀
   fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'greet', 'skill.md'), '---\nname: Greet\ndescription: 问候用户\nversion: 1.0.0\n---\n正文');
   const cm = new ContextManager(root, new FileStore(root));
   const items = cm.assemble([{ kind: 'history', content: '1: task -> A' }]);
-  const idx = items.findIndex((i) => i.content.includes('- Greet: 问候用户'));
+  const idx = items.findIndex((i) => i.content.includes('- Greet (id: greet): 问候用户'));
   assert.ok(idx >= 0, '清单行存在于装配产物');
   assert.equal(items[idx].kind, 'system');
   const histIdx = items.findIndex((i) => i.kind === 'history');
@@ -88,6 +88,6 @@ test('技能清单：空清单零开销注入、/new 刷新点重读', () => {
   fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'late', 'skill.md'), '---\nname: Late\ndescription: 迟到技能\nversion: 1.0.0\n---\n正文');
   assert.ok(!cm.assemble([]).some((i) => i.content.includes(lead)), '快照冻结：构造后改盘不位移前缀');
   cm.resetSession(); // /new = 刷新点：快照重读
-  assert.ok(cm.assemble([]).some((i) => i.content.includes('- Late: 迟到技能')), '/new 后新快照含新技能');
+  assert.ok(cm.assemble([]).some((i) => i.content.includes('- Late (id: late): 迟到技能')), '/new 后新快照含新技能');
   fs.rmSync(root, { recursive: true, force: true });
 });

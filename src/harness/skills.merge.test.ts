@@ -41,9 +41,9 @@ test('项目根+学习根并存：学习技能可 list/get/resolve，与项目�
     const facade = createSkillsFacade(root);
     const ids = facade.list().map((s) => s.id);
     assert.ok(ids.includes('greet'), '项目技能仍在');
-    assert.ok(ids.includes('数据库巡检手册'), '学习技能进入清单');
-    assert.ok(facade.get('数据库巡检手册'), 'get 可见学习技能');
-    const r = facade.resolve('数据库巡检手册');
+    assert.ok(ids.includes('learned'), '学习技能进入清单（纯中文 goal 全折叠回退 learned，id 为规范 ASCII slug）');
+    assert.ok(facade.get('learned'), 'get 可见学习技能');
+    const r = facade.resolve('learned');
     assert.ok(r.ok);
     if (r.ok) assert.ok(r.value.body.includes('每日巡检步骤'), 'resolve 学习技能走同一三态语义');
   } finally {

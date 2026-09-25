@@ -17,11 +17,16 @@ export interface RefinedSkill {
   body: string;
 }
 
-/** goal 确定性 slug 化：非安全字符折叠为 `-`，截长 40，全折叠回退 learned（撞名避让与清库判断共用同一 slug 面） */
+/**
+ * goal/name 确定性 slug 化：折叠为 ASCII 小写 slug（`[^a-z0-9]+` → `-`，对标 worktree slugifyLabel 同款口径——
+ * 汉字等非 ASCII 一律折叠，防中文目录 id 在跨平台路径与清单出牌面的隐患），截长 40，全折叠回退 learned
+ * （撞名避让与清库判断共用同一 slug 面）
+ */
 export function slugify(goal: string): string {
   const slug = goal
     .trim()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
     .replace(/-+$/g, '');

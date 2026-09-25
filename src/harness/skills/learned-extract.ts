@@ -24,9 +24,9 @@ export function parseLearnedEnvelope(out: string): { skill: RefinedSkill | null 
   const name = String((skill as { name?: unknown }).name ?? '').trim();
   const description = String((skill as { description?: unknown }).description ?? '').trim();
   const body = String((skill as { body?: unknown }).body ?? '').trim();
-  // name 须至少含一个字母/数字：slugify 对空串与纯标点会全折叠回退 'learned'（truthy），
-  // 直接用 slugify(name) 判空会放行畸形 name，故先按字符面判定
-  if (!name.replace(/[^\p{L}\p{N}]+/gu, '') || !description || !body) return null;
+  // name 须至少含一个 ASCII 字母/数字：slugify 按 ASCII 口径折叠，纯中文/纯标点 name 会全折叠回退
+  // 'learned'（truthy），直接用 slugify(name) 判空会放行畸形 name，故先按字符面判定
+  if (!name.replace(/[^a-zA-Z0-9]+/g, '') || !description || !body) return null;
   const clipped = description.slice(0, 60);
   if (scanMemoryText(`${clipped}\n${body}`)) return null;
   return { skill: { name, description: clipped, body } };

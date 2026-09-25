@@ -45,6 +45,15 @@ function skillFileIn(dir: string, id: string): string | undefined {
   return ['SKILL.md', 'skill.md'].map((f) => path.join(dir, id, f)).find((f) => fs.existsSync(f));
 }
 
+/** 技能 id 格式规范（程序校验单点）：`^[a-z0-9]+(-[a-z0-9]+)*$`——ASCII 小写字母数字、连字符分段、
+ *  不以连字符开头/结尾、无连续连字符。装载面（非规范目录跳过）与 resolve 面（非规范 id 即拒）共用，
+ *  防中文/大写/畸形 id 目录进入清单与出牌面 */
+const SKILL_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+export function isValidSkillId(id: string): boolean {
+  return SKILL_ID_PATTERN.test(id);
+}
+
 /** 扫描单根目录下 {id}/SKILL.md（文件名口径见 skillFileIn） */
 function loadSkillsFrom(dir: string): SkillManifest[] {
   if (!fs.existsSync(dir)) return [];
@@ -57,6 +66,7 @@ function loadSkillsFrom(dir: string): SkillManifest[] {
   const out: SkillManifest[] = [];
   for (const d of entries) {
     if (!d.isDirectory()) continue;
+    if (!isValidSkillId(d.name)) continue; // id 格式程序校验：非规范目录（中文/大写/畸形连字符）跳过不装载
     const named = skillFileIn(dir, d.name);
     if (named === undefined) continue;
     try {
@@ -99,7 +109,7 @@ export function formatSkillsIndex(manifests: SkillManifest[]): string | null {
   return sorted
     .map((m) => {
       const desc = m.description.length > 128 ? `${m.description.slice(0, 128)}…` : m.description;
-      return `- ${m.name}: ${desc}`;
+      return `- ${m.name} (id: ${m.id}): ${desc}`;
     })
     .join('\n');
 }
@@ -145,6 +155,7 @@ const PLACEHOLDER = /\{\{(\w+)\}\}/g;
  * 命中 → 仅白名单内形参被替换（白名单外 {{x}} 原样保留，多余实参被过滤），返回参数化正文
  */
 export function resolveSkill(skillsDir: string, id: string, params?: Record<string, string>): Result<ResolvedSkill> {
+  if (!isValidSkillId(id)) return fail('SKILL_NOT_FOUND', `SKILL_NOT_FOUND: skill not registered: ${id}`);
   const file = skillFileIn(skillsDir, id);
   if (file === undefined) return fail('SKILL_NOT_FOUND', `SKILL_NOT_FOUND: skill not registered: ${id}`);
 

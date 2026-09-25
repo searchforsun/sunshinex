@@ -88,8 +88,8 @@ test('formatSkillsIndex：空清单 null、按 name 排序、行格式与截断�
   assert.ok(out !== null);
   const lines = (out as string).split('\n');
   assert.equal(lines.length, 2, '每技能恰一行');
-  assert.equal(lines[0], `- Alpha: ${'d'.repeat(128)}…`, '按 name 字典序 + 超长 description 截 128 加省略号');
-  assert.equal(lines[1], '- Beta: 后注册');
+  assert.equal(lines[0], `- Alpha (id: a): ${'d'.repeat(128)}…`, '按 name 字典序 + 行内携带 id（模型按 id 出牌加载，缺 id 则 learned slug id 与 name 脱节致 SKILL_NOT_FOUND）+ 超长 description 截 128 加省略号');
+  assert.equal(lines[1], '- Beta (id: b): 后注册');
 });
 
 
