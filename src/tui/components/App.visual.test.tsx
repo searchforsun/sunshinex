@@ -56,7 +56,7 @@ test('App：消息区新渲染口径（去标签/工具两行/助手裸文本）
   }
 });
 
-test('App：全量渲染语义——历史消息原地入帧，动态帧承载完整转录', async () => {
+test('App：Static 语义——横幅与已入档历史只打印一次，动态帧不含封存历史', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-vis3-'));
   try {
     const ctrl = new SessionController({
@@ -72,13 +72,16 @@ test('App：全量渲染语义——历史消息原地入帧，动态帧承载�
     await ctrl.waitIdle();
     await ctrl.submit('任务乙');
     await ctrl.waitIdle();
-    await new Promise((r) => setTimeout(r, 100)); // ink 异步刷帧：waitIdle 后等一拍再断言（探针实锤的时序口径）
     const all = allOutput();
+    // 横幅只随挂载打印一次（旧行为：每帧全量重绘时横幅在 stdout 上出现多次）
+    const bannerCount = all.split('SunshineX TUI v1.0.0').length - 1;
+    assert.ok(bannerCount === 1, `横幅应恰好打印一次，实际 ${bannerCount} 次`);
+    assert.ok(all.includes('任务甲') && all.includes('任务乙'), '两轮消息均以 Static 终稿入滚动缓冲');
+    // 行级判据：收口沉淀说明行会把 goal 文本回显进链行（`! [skills] learned: 任务甲`），
+    // 整串计数会误伤；此处按「消息行」计数（Static 语义=消息只打印一次）
+    assert.equal(all.split('\n').filter((l) => l.trim() === '任务甲').length, 1, '每条消息只打印一次');
     const frame = lastFrame() ?? '';
-    // 全量渲染（2026-09-26 去 Static 裁决）：每帧承载完整历史——终态行始终可见，收拢段的历史行不再从画面消失
-    assert.ok(all.includes('任务甲') && all.includes('任务乙'), '两轮消息均入滚动缓冲');
-    assert.ok(frame.includes('任务甲') && frame.includes('任务乙'), '动态帧承载完整转录（历史行每帧原地可见）');
-    assert.ok(frame.includes('第一轮答复') && frame.includes('第二轮答复'), '历史答复随帧原地渲染');
+    assert.ok(!frame.includes('任务甲') && !frame.includes('任务乙'), '动态帧零消息渲染（全部入 Static）');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

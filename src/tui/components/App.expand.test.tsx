@@ -79,10 +79,8 @@ test('App：实时/历史默认折叠——工具结果单行摘要，全文仅 
     assert.ok(!all.includes('L'.repeat(200)), '折叠摘要不应出现完整 observation');
     assert.ok(!all.includes('L'.repeat(250)), '全文（250 连 L）不应在实时/入档任何帧出现');
     const frame = lastFrame() ?? '';
-    // 全量渲染架构（2026-09-26 去 Static）：动态帧即完整历史，消息原地渲染；折叠/全文语义不变量保持
-    assert.ok(frame.includes('[READ]'), '全量渲染下消息原地入帧（运行态可见、不再甩到底部）');
-    assert.ok(!frame.includes('L'.repeat(200)), '折叠摘要不因全量渲染泄漏完整 observation');
-    assert.match(frame, /idle/, '动态帧含输入框与状态栏（状态词英文口径）');
+    assert.ok(!frame.includes('[READ]'), '消息全部入 Static，动态帧零消息渲染');
+    assert.match(frame, /idle/, '动态帧只剩输入框与状态栏（状态词英文口径）');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

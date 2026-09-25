@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Static, Text } from 'ink';
 import { ChatItem, LiveBlock } from '../session';
 import { buildTranscriptDecisions } from '../transcript-view';
 import { bandLines } from '../text-band';
@@ -49,9 +49,12 @@ export function MessageList({
   /** 浏览模式光标行 seq（反色高亮，缺省无高亮） */
   spawnHighlightSeq?: number;
 }): JSX.Element {
-  // 全量渲染架构（原地运行态，2026-09-26 用户裁决）：废弃 Static 打印一次不重绘——历史行每帧随整帧重绘，
-  // pending 调用行才能在原地从运行态变身完成态；逐条目以 seq 为 key + MessageRow memo，终态条目 props 引用
-  // 稳定即跳过重渲染，diff 后未变化的行不产生输出。折叠决策变化直接反映在下一帧，无需重挂重放。
+  const epochRef = React.useRef(0);
+  const prevLenRef = React.useRef(0);
+  if (messages.length < prevLenRef.current) epochRef.current += 1;
+  prevLenRef.current = messages.length;
+  // 折叠决策逐条预计算：条目数组长度恒为 messages.length+1（append-only，维持 Static 索引推进不变式），
+  // 不可见条目以 null 渲染（已打印的行留待下次重挂重放时收拢）
   const decisions = buildTranscriptDecisions(messages, { expandAll, latestFull });
   const entries: TranscriptEntry[] = [
     { kind: 'banner', info: banner },
@@ -66,23 +69,25 @@ export function MessageList({
   ];
   return (
     <Box flexDirection="column">
-      {entries.map((entry) =>
-        entry.kind === 'banner' ? (
-          <Box key="banner">
-            <Banner info={entry.info} columns={columns} />
-          </Box>
-        ) : entry.visible ? (
-          <Box key={`m-${entry.item.seq}`} marginBottom={1}>
-            <MessageRow
-              item={entry.item}
-              columns={columns}
-              collapsed={!entry.full}
-              spawnExpanded={entry.spawnExpanded}
-              spawnHighlighted={entry.spawnHighlighted}
-            />
-          </Box>
-        ) : null,
-      )}
+      <Static key={epochRef.current} items={entries}>
+        {(entry) =>
+          entry.kind === 'banner' ? (
+            <Box key="banner">
+              <Banner info={entry.info} columns={columns} />
+            </Box>
+          ) : entry.visible ? (
+            <Box key={`m-${entry.item.seq}`} marginBottom={1}>
+              <MessageRow
+                item={entry.item}
+                columns={columns}
+                collapsed={!entry.full}
+                spawnExpanded={entry.spawnExpanded}
+                spawnHighlighted={entry.spawnHighlighted}
+              />
+            </Box>
+          ) : null
+        }
+      </Static>
       {live ? <LiveArea live={live} columns={columns} /> : null}
     </Box>
   );

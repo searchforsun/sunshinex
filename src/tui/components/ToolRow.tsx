@@ -3,10 +3,6 @@ import { Box, Text } from 'ink';
 import { ChatItem } from '../session';
 import { bandLines, displayWidth, elideByWidth } from '../text-band';
 import { formatDuration } from '../format';
-import { t } from '../../i18n';
-
-/** 帧字形与 Spinner 同源口径（运行态视觉语言统一）；无 emoji 呈现属性、颜色严格跟随前景色 */
-const FRAMES = ['✻', '✽', '✶', '✱', '✢'];
 
 /**
  * 工具行：调用行 ● [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
@@ -25,14 +21,6 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
   /** 浏览模式光标行反色标记 */
   spawnHighlighted?: boolean;
 }): JSX.Element {
-  // 原地运行态（2026-09-26 用户裁决「执行时原地显示运行中状态」）：去 Static 全量渲染后，
-  // pending 调用行可在历史区原地变身——240ms 帧动画 + 实时耗时，结果回程即定格为中性 ● 行
-  const [frame, setFrame] = React.useState(0);
-  React.useEffect(() => {
-    if (item.kind !== 'call' || item.pending !== true) return;
-    const timer = setInterval(() => setFrame((f) => f + 1), 240);
-    return () => clearInterval(timer);
-  }, [item.kind, item.pending]);
   if (item.kind === 'call') {
     const sp = item.text.indexOf(' ');
     const verb = sp > 0 ? item.text.slice(0, sp) : item.text;
@@ -43,10 +31,6 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
     // 两态命中任一即重放转录：Tab 全场展开（!collapsed，既有）或浏览模式逐行展开（spawnExpanded）
     const expanded = item.detail !== undefined && (!collapsed || spawnExpanded);
     const meta = item.subagentMeta;
-    const running = item.pending === true;
-    // 原地运行态：pending 调用行绿色动画 glyph + 实时耗时；结果回程 pending 翻 false 定格为中性 ● 行
-    const glyph = running ? FRAMES[frame % FRAMES.length] : '●';
-    const elapsed = running ? ` ${formatDuration(Math.max(0, Math.round((Date.now() - item.ts) / 1000)))}` : '';
     // 折叠摘要尾注：任务名之外的步数/耗时；meta 缺省（零子事件即败）整体省略
     const metaTail = isSpawn && meta
       ? `（${meta.steps} steps · ${formatDuration(Math.round(meta.durationMs / 1000))}）`
@@ -58,14 +42,11 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
     return (
       <Box flexDirection="column">
         <Text backgroundColor={spawnHighlighted ? 'gray' : undefined}>
-          <Text color={running ? 'green' : 'gray'} dimColor={!running && expanded && isSpawn}>
-            {expanded && isSpawn ? '▾ ' : glyph + ' '}
-          </Text>
+          <Text dimColor={expanded && isSpawn}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
           <Text color="cyan">
             [{verb}]
           </Text>
           {target ? <Text color="gray"> {shownTarget}{metaTail}</Text> : null}
-          {running ? <Text color="green" dimColor>{elapsed}</Text> : null}
         </Text>
         {detailLines.map((l, i) => (
           <Text key={i} dimColor>

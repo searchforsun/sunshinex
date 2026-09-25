@@ -154,10 +154,7 @@ export function App({
   const pCursorRef = React.useRef(0);
   const setPCursor = (v: number): void => { pCursorRef.current = v; setPCursorState(v); };
   const statusRef = React.useRef(state.status);
-  // 每卡初始化归零用 useLayoutEffect：键盘监听同在 layout 相位挂载（use-input），被动 effect 会被
-  // 首个按键抢跑——DOWN 置 1 后被迟到的初始化归零冲回 0（AskQuestion ↓ 丢失实证）。layout 相位内按
-  // 声明序先跑本 effect 再挂 stdin 监听，「先归零、后接键」顺序确定
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     if (state.status !== statusRef.current) {
       if (state.status === 'awaiting-approval') setACursor(0);
       if (state.status === 'awaiting-plan') setPCursor(0);
@@ -165,7 +162,7 @@ export function App({
     }
   }, [state.status]);
   const qRef = React.useRef<AskUserRequest | undefined>(undefined);
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     if (state.question && state.question !== qRef.current) {
       qRef.current = state.question;
       setQCursor(0);
@@ -587,9 +584,7 @@ export function App({
         spawnExpandedSeqs={spawnExpanded}
         spawnHighlightSeq={browseMode ? (spawnCallSeqs(state.messages)[browseCursor] ?? undefined) : undefined}
       />
-      {/* 原地运行态去重（2026-09-26 裁决）：tool-pending/tool-awaiting 由历史区调用行原地承载动画与耗时，
-          底部不再重复渲染活动行；thinking/responding/resize 提示仍走本行（正文流式与等待首动作无历史行可挂） */}
-      {state.status === 'running' && (state.task.phase === 'thinking' || state.task.phase === 'responding') ? (
+      {state.status === 'running' && state.task.phase !== 'responding' ? (
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
       ) : null}
       {browseMode ? (
