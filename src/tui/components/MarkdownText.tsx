@@ -57,9 +57,8 @@ function Fence({ lang, code, columns }: { lang: string; code: string; columns: n
           );
         }
         const spans = highlightLine(lang, line);
-        const known = spans.length > 1 || spans[0].kind !== 'plain';
         return (
-          <Text key={i} dimColor={!known}>
+          <Text key={i}>
             {spans.map((s, j) => (
               <Text key={j} color={HI_COLOR[s.kind] || undefined}>{s.text}</Text>
             ))}
