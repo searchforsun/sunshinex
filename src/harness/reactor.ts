@@ -127,12 +127,9 @@ export class Reactor {
 
   /** 批次重复计数（批次集合签名 → 已执行次数 + 末次步号）：实例级、run() 起点重置——程序侧异常收敛兜底 */
   private batchCounts = new Map<string, { count: number; lastStep: number }>();
-  /** 连续整批全拒轮数（chatRound 间状态）：观测信号（≥2 上屏提示），程序不据此终结任务 */
-  private allRejectedRounds = 0;
 
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
     this.batchCounts.clear(); // 批次计数按 run 隔离：跨任务不累计
-    this.allRejectedRounds = 0;
     const maxSteps = opts?.maxSteps ?? reactorMaxStepsEnv() ?? 400;
     // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
     // （状态栏「上下文占用」分母与压缩占比共用此基准），非法值静默回退内建缺省
@@ -565,16 +562,9 @@ export class Reactor {
         if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
       }
     }
-    // 整批全拒只计数上屏（error 事件为旁路遥测），不再程序性终结任务——被拒步骤可跳过，
-    // 续跑/换路/收束的判断权在模型；连续全拒轮数仅作观测信号
-    if (overDuplicated.length > 0 && overDuplicated.every(Boolean)) {
-      this.allRejectedRounds += 1;
-      if (this.allRejectedRounds >= 2) {
-        this.emit('error', `Round skipped: all ${overDuplicated.length} calls were rejected as repeated identical batches (round ${this.allRejectedRounds} in a row)`.slice(0, 200), { step });
-      }
-    } else {
-      this.allRejectedRounds = 0;
-    }
+    // 整批全拒只回写现象观察行（工具结果行已完整呈现拒绝事实），不发旁路事件——
+    // 系统层再报一次即同事实双报（TUI 渲染成 ✗ 错误红行）；被拒步骤可跳过，
+    // 续跑/换路/收束的判断权在模型
     return { done: false };
   }
 
