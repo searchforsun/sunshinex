@@ -138,8 +138,11 @@ test('createRuntime：未完成时返回结构化 stopReason（不再只有 done
 
 // ── 加固轮（判别性）：以下 3 条必须能区分「主链经 Loop 长任务模板」与「直连 harness.reactor」 ──
 
-/** 恒为工具调用的脚本：脚本耗尽后 ScriptedAdapter 重复末条（src/model/adapter.ts），故事件数即实际步数 */
-const TOOL_ONLY_SCRIPT = '{"tool":"glob","input":{"pattern":"*"},"done":false}';
+/** 恒为工具调用的脚本：脚本耗尽后 ScriptedAdapter 重复末条（src/model/adapter.ts），故事件数即实际步数。
+ *  步数探针须用互异入参（400 个不同 pattern）：同参调用受程序性收敛护栏约束（同名同参最多执行 3 次、
+ *  连续两轮整批全拒即强制收束），恒同参填充器会被提前收束而数不到 400 步 */
+const TOOL_CALLS_400 = Array.from({ length: 400 }, (_, i) => JSON.stringify({ tool: 'glob', input: { pattern: `p${i}` }, done: false }));
+TOOL_CALLS_400.push('{"done":true,"reply":"ok"}');
 
 test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事件；缺省不得在接缝处硬填', async () => {
   // ① 显式 { maxSteps: 1 }：值必须抵达内层 Reactor（若下传丢失 → 落 200 步，事件数变 200）
@@ -148,7 +151,7 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
   try {
     const rt = createRuntime({
       root: tmp1,
-      model: new ScriptedAdapter([TOOL_ONLY_SCRIPT]),
+      model: new ScriptedAdapter(TOOL_CALLS_400),
       onEvent: (e) => events.push(e),
     });
     await rt.runTask('一直调工具', { maxSteps: 1 });
@@ -167,7 +170,7 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
   try {
     const rt = createRuntime({
       root: tmp2,
-      model: new ScriptedAdapter([TOOL_ONLY_SCRIPT]),
+      model: new ScriptedAdapter(TOOL_CALLS_400),
       onEvent: (e) => events2.push(e),
     });
     await rt.runTask('一直调工具');

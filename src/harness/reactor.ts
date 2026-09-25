@@ -116,21 +116,23 @@ export function buildStepDigest(
 /** 并行调用上限：防单轮塞满列表拖长步时延（8 项足够覆盖常用组合） */
 const PARALLEL_TOOLS_LIMIT = 8;
 
-/** 同参重复调用上限：同名同参全链路最多执行 3 次，超限程序性拒绝——防模型同参死循环空烧（与稳定段异常收敛行配套） */
-const MAX_IDENTICAL_CALLS = 3;
-/** 同参计数过期间隔：距上次同参调用已拉开 N 步即视为过期清零——早期试错不永久封死后续合法调用 */
-const IDENTICAL_CALL_EXPIRY_STEPS = 8;
+/** 批次重复上限：同一批次集合签名最多执行 2 次（首次 + 原样重试一次），超限整批程序性拒绝——防模型同批死循环空烧（与稳定段异常收敛行配套） */
+const MAX_IDENTICAL_CALLS = 2;
+/** 批次计数过期间隔：距末次同批次已拉开 N 步即视为过期清零——早期试错不永久封死后续合法调用 */
+const IDENTICAL_CALL_EXPIRY_STEPS = 4;
 
 /** 最小 Reactor：observe → think → act → observe 线性循环（chat 消息视图单通道） */
-
 export class Reactor {
   constructor(private deps: ReactorDeps) {}
 
-  /** 同参重复计数（签名 → 已执行次数 + 末次步号）：实例级、run() 起点重置——程序侧异常收敛兜底 */
-  private callCounts = new Map<string, { count: number; lastStep: number }>();
+  /** 批次重复计数（批次集合签名 → 已执行次数 + 末次步号）：实例级、run() 起点重置——程序侧异常收敛兜底 */
+  private batchCounts = new Map<string, { count: number; lastStep: number }>();
+  /** 连续整批同参全拒轮数（chatRound 间状态）：≥2 即强制收束，防模型对拒绝观察无响应的空转循环 */
+  private allRejectedRounds = 0;
 
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
-    this.callCounts.clear(); // 同参计数按 run 隔离：跨任务不累计
+    this.batchCounts.clear(); // 批次计数按 run 隔离：跨任务不累计
+    this.allRejectedRounds = 0;
     const maxSteps = opts?.maxSteps ?? reactorMaxStepsEnv() ?? 400;
     // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
     // （状态栏「上下文占用」分母与压缩占比共用此基准），非法值静默回退内建缺省
@@ -498,8 +500,9 @@ export class Reactor {
       }
     });
 
-    // 同参重复护栏：签名 = 工具名 + 参数 JSON（键序无关），实例级计数（run 起点重置）；
-    // 超限（同名同参已执行满 3 次）的程序性拒绝，观察行引导换参或收束
+    // 批次重复护栏：签名 = 整批调用的集合标识（成员「工具名+参数」规范化后排序拼接，与出牌顺序无关）；
+    // 同一集合标识的批次全链路最多执行 3 次，超限整批程序性拒绝——病理形态是「整批原样重发」，
+    // 集合口径下单调用正常复用不受影响（集合不同即计数独立），实例级计数、run() 起点重置
     const signatureOf = (name: string, args: Record<string, unknown> | null): string => {
       const canon = (v: unknown): unknown => {
         if (Array.isArray(v)) return v.map(canon);
@@ -510,16 +513,14 @@ export class Reactor {
       };
       return `${name}:${JSON.stringify(args === null ? null : canon(args))}`;
     };
-    const overDuplicated: boolean[] = calls.map((c, i) => {
-      const sig = signatureOf(c.name, argsOf[i]);
-      const prev = this.callCounts.get(sig);
-      // 过期策略：距末次同参调用已拉开 N 步 → 视为新意图重新计数（早期试错不永久封死）
-      const n = prev !== undefined && step - prev.lastStep <= IDENTICAL_CALL_EXPIRY_STEPS ? prev.count : 0;
-      if (n >= MAX_IDENTICAL_CALLS) return true;
-      this.callCounts.set(sig, { count: n + 1, lastStep: step });
-      return false;
-    });
-    // 同参超限的调用跳过实际执行；同批未超限者照常（部分拒绝而非整批连坐），拒绝观察行统一在下方结果循环产出
+    const batchSig = calls.map((c, i) => signatureOf(c.name, argsOf[i])).sort().join('|');
+    const prev = this.batchCounts.get(batchSig);
+    // 过期策略：距末次同批次调用已拉开 N 步 → 视为新意图重新计数（跨任务段的正常重复不永久封死）
+    const n = prev !== undefined && step - prev.lastStep <= IDENTICAL_CALL_EXPIRY_STEPS ? prev.count : 0;
+    const batchRejected = n >= MAX_IDENTICAL_CALLS;
+    this.batchCounts.set(batchSig, { count: n + 1, lastStep: step });
+    const overDuplicated: boolean[] = calls.map(() => batchRejected);
+    // 整批超限跳过实际执行，拒绝观察行统一在下方结果循环产出
 
     // 调用行先行上屏（执行前发射：长工具执行中调用行即可见，TUI 实时性契约）
     for (let i = 0; i < calls.length; i++) {
@@ -551,7 +552,7 @@ export class Reactor {
       const args = argsOf[i];
       const r = results[i];
       const obs = overDuplicated[i]
-        ? 'Repeated identical tool call rejected: this exact call already ran ' +
+        ? 'Repeated identical batch rejected: this exact set of calls already ran ' +
           MAX_IDENTICAL_CALLS +
           ' times; change the arguments or use a different approach, and if the step cannot be skipped, conclude with a clear answer instead of repeating it'
         : args === null || r === null
@@ -563,6 +564,20 @@ export class Reactor {
         const p = (args as { path?: unknown } | null)?.path;
         if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
       }
+    }
+    // 终态收敛（程序性）：整批全部命中同参护栏且已连续两轮如此——模型对拒绝观察无响应，
+    // 再给轮次只会空转烧步数；done 通道强制收束，stopReason=blocked 由外层归入异常终态
+    if (overDuplicated.length > 0 && overDuplicated.every(Boolean)) {
+      this.allRejectedRounds += 1;
+      if (this.allRejectedRounds >= 2) {
+        const reply =
+          'Execution blocked: every call in the last two rounds was rejected as a repeated identical call. ' +
+          'Concluding programmatically to avoid burning further steps.';
+        this.emit('error', reply.slice(0, 200), { step });
+        return { done: true, reply };
+      }
+    } else {
+      this.allRejectedRounds = 0;
     }
     return { done: false };
   }
