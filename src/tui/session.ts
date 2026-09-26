@@ -119,6 +119,14 @@ function spawnBaseLabel(input: unknown): string {
   return str(obj.label) ?? str(obj.agent_id) ?? 'subagent';
 }
 
+/** 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径尾追入档；无子代理消耗省略子代理段 */
+export function formatTaskStatsLine(durationS: number, steps: number, totalTokens: number, childTokens: number): string {
+  const base = `⏱ ${formatDuration(Math.max(0, durationS))} · ${Math.max(0, steps)} steps · ↑${formatTokens(Math.max(0, totalTokens))} tokens`;
+  return childTokens > 0
+    ? t(`${base} (subagents ${formatTokens(childTokens)})`, `${base}（含子代理 ${formatTokens(childTokens)}）`)
+    : t(base, base);
+}
+
 export interface TuiState {
   messages: ChatItem[];
   approval?: ApprovalRequest;
@@ -266,6 +274,17 @@ export class SessionController {
   private memoryOverride?: boolean;
   /** 当前任务中断源（Esc/Ctrl+C）：任务起点建、closeTask 清；interrupt() 置 aborted 贯通模型/loop/reactor */
   private taskAbort?: AbortController;
+
+  /** 任务统计基线（规格 §3.2）：任务流起点建（与 turnTokens 归零同点）、closeTask done 路径算差值产出统计行 */
+  private taskStats?: { startedAt: number; startSteps: number; startTokens: number; startChildTokens: number };
+  /** 中断抑制位：pushInterruptedNotice 单点置位——中断路径不产出收尾统计行 */
+  private taskStatsSuppressed = false;
+
+  /** 任务统计基线建立单点：任务流起点调用（同点 turnTokens 已归零，startTokens 即 0 起算主链增量） */
+  private beginTaskStats(): void {
+    this.taskStats = { startedAt: Date.now(), startSteps: this.state.metrics.sessionSteps, startTokens: this.state.metrics.turnTokens, startChildTokens: this.state.metrics.sessionChildTokens };
+    this.taskStatsSuppressed = false;
+  }
 
   /** AskQuestion 挂起态：问询管线挂起点与裁决回填口（AskQuestion 线 D5） */
   private pendingQuestion?: { req: AskUserRequest; resolve: (a: AskUserAnswer) => void };
@@ -446,6 +465,7 @@ export class SessionController {
 
   /** 中断回执单点：interrupted 终态由各任务流调用；warn 级（用户主动操作，非故障） */
   private pushInterruptedNotice(): void {
+    this.taskStatsSuppressed = true; // 中断路径不产出收尾统计行（规格 §3.2 边界）
     this.pushMsg('system', t('Task interrupted (Esc/Ctrl+C) — completed steps kept on the chain', '已中断当前任务（Esc/Ctrl+C）——已完成步骤保留在会话链'), { level: 'warn' });
   }
 
@@ -488,6 +508,7 @@ export class SessionController {
       metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
+    this.beginTaskStats();
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
     this.notify();
@@ -527,6 +548,7 @@ export class SessionController {
       .filter((l) => l.length > 0);
     if (items.length === 0) {
       this.pushMsg('system', t('No numbered steps produced (each line must be "1. xxx"), cancelled', '规划未产出编号步骤（每行需形如「1. xxx」），已取消'), { level: 'warn' });
+      this.taskStats = undefined; // 失败路径不产出收尾统计行（规格 §3.2 边界）
       this.closeTask();
       return;
     }
@@ -850,6 +872,15 @@ export class SessionController {
     if (this.state.status !== 'running' && this.state.status !== 'awaiting-plan') return;
     this.flushPendingCalls();
     this.taskAbort = undefined;
+    // 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径产出（基线差值，含子代理合并口径）；中断经抑制位跳过；error 态不走 closeTask
+    if (this.taskStats && !this.taskStatsSuppressed) {
+      const ts = this.taskStats;
+      const m = this.state.metrics;
+      const mainTokens = Math.max(0, m.turnTokens - ts.startTokens);
+      const childTokens = Math.max(0, m.sessionChildTokens - ts.startChildTokens);
+      this.pushMsg('system', formatTaskStatsLine(Math.round((Date.now() - ts.startedAt) / 1000), m.sessionSteps - ts.startSteps, mainTokens + childTokens, childTokens));
+    }
+    this.taskStats = undefined;
     this.state = {
       ...this.state,
       status: 'idle',
@@ -891,6 +922,7 @@ export class SessionController {
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
+    this.beginTaskStats();
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
     this.notify();
@@ -944,6 +976,7 @@ export class SessionController {
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
+    this.beginTaskStats();
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
     this.notify();
@@ -1085,6 +1118,7 @@ export class SessionController {
       this.runtime.harness.security.clearSessionAllows();
       this.memoryOverride = undefined;
       setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
+      this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
         this.committedLen = 0;
       this.state = {
         messages: [],
