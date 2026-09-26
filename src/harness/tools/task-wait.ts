@@ -1,6 +1,7 @@
 // 后台任务线 T4：task_wait 内置工具——阻塞等待后台任务到终态并内联回执（对标 CC TaskOutput）。
 // 语义：taskIds=null 等当前全部 running 任务（调用时快照）；指定列表只等这些任务，已终态幂等即回；
-// 回执逐任务 id/kind/status/exitCode，exec 附任务日志末 200 行、subagent 附 [conclusion] 结论全文；
+// timeoutSeconds=0 非阻塞状态快照（peek，即时回执不等待）；回执逐任务 id/kind/status/exitCode，
+// exec 附任务日志末 200 行、subagent 附 [conclusion] 结论全文；
 // 超时回执当前状态与续等指引，续等/先做别的/task_stop 由模型自判；未知 id INVALID_ARG 附现存清单（照 task_stop 形态）。
 import * as fs from 'fs';
 import { CodedToolError, RegisteredTool } from '../tools';
@@ -47,7 +48,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
         timeoutSeconds: {
           type: ['number', 'null'],
           description:
-            'Max seconds to block before returning the current status; null defaults to 1800. After a timeout you can call task_wait again or task_stop.',
+            'Max seconds to block before returning the current status; null defaults to 1800; 0 is a non-blocking status peek (return the current snapshot immediately without waiting). After a timeout you can call task_wait again or task_stop.',
         },
       },
     },
@@ -76,14 +77,16 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
         }
       }
       const timeoutSeconds = rawTimeout === null ? DEFAULT_TIMEOUT_SECONDS : rawTimeout;
-      if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
-        throw new CodedToolError('INVALID_ARG', `timeoutSeconds must be a positive number, got: ${String(rawTimeout)}`);
+      if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
+        throw new CodedToolError('INVALID_ARG', `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`);
       }
       const result = await tasks.waitUntilSettled(ids, timeoutSeconds * 1000);
       const lines = result.tasks.map(receiptBody);
       const head = result.settled
         ? `all target tasks finished (${ids.length})`
-        : `timeout after ${timeoutSeconds}s; tasks still running are marked below`;
+        : timeoutSeconds === 0
+          ? 'status peek (timeoutSeconds=0, non-blocking); tasks still running are marked below'
+          : `timeout after ${timeoutSeconds}s; tasks still running are marked below`;
       return { exitCode: 0, stdout: [head, ...lines].join('\n'), stderr: '', timedOut: false };
     },
   };

@@ -123,18 +123,38 @@ test('task_wait 空数组：INVALID_ARG', async () => {
   }
 });
 
-test('task_wait timeoutSeconds<=0：INVALID_ARG（须为正数）', async () => {
+test('task_wait timeoutSeconds<0：INVALID_ARG（须为非负数）', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-tool-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     const t = tasks.submit({ kind: 'exec', label: 'edge' });
-    for (const timeoutSeconds of [0, -1]) {
-      const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds }, stubSafety);
-      assert.equal(r.ok, false);
-      if (!r.ok) {
-        assert.equal(r.error.code, 'INVALID_ARG');
-        assert.match(r.error.message, /timeoutSeconds must be a positive number/);
-      }
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds: -1 }, stubSafety);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.error.code, 'INVALID_ARG');
+      assert.match(r.error.message, /timeoutSeconds must be a non-negative number/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_wait timeoutSeconds=0：非阻塞 peek，即时回执当前状态快照', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-tool-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const running = tasks.submit({ kind: 'exec', label: 'peek-running' });
+    const done = tasks.submit({ kind: 'exec', label: 'peek-done' });
+    tasks.finish(done.id, 'done', { exitCode: 0 });
+    const started = Date.now();
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [running.id, done.id], timeoutSeconds: 0 }, stubSafety);
+    // 非阻塞：整批立即返回（远小于任何等待窗口），不因 running 任务阻塞
+    assert.ok(Date.now() - started < 1000, 'peek must return immediately without blocking');
+    assert.equal(r.ok, true);
+    if (r.ok) {
+      assert.match(r.value.stdout, /status peek \(timeoutSeconds=0, non-blocking\)/);
+      assert.match(r.value.stdout, new RegExp(`${running.id} \\(exec\\) running`));
+      assert.match(r.value.stdout, new RegExp(`${done.id} \\(exec\\) done, exit 0`));
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
