@@ -106,4 +106,27 @@ export class TaskRegistry {
     }
     return out;
   }
+
+  /** 等待单点（task_wait 底座）：全部目标到终态即 resolve；超时 resolve settled=false 不抛错——
+   *  轮询 100ms 与既有 appendFileSync 落盘口径同源，零事件依赖零新依赖；不存在的 id 直接过滤 */
+  waitUntilSettled(taskIds: string[], timeoutMs: number): Promise<{ settled: boolean; tasks: BackgroundTask[] }> {
+    const deadline = Date.now() + timeoutMs;
+    const snapshot = () =>
+      taskIds.map((id) => this.tasks.get(id)).filter((t): t is BackgroundTask => t !== undefined);
+    return new Promise((resolve) => {
+      const poll = (): void => {
+        const ts = snapshot();
+        if (ts.length > 0 && ts.every((t) => t.status !== 'running')) {
+          resolve({ settled: true, tasks: ts });
+          return;
+        }
+        if (Date.now() >= deadline) {
+          resolve({ settled: false, tasks: ts });
+          return;
+        }
+        setTimeout(poll, 100);
+      };
+      poll();
+    });
+  }
 }
