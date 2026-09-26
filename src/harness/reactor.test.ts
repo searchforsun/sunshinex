@@ -521,7 +521,7 @@ test('混合批整轮按序串行执行：read 与 exec 同批不拒绝，且 ex
   assert.ok(results.some((o) => o.includes('"name"') || o.length > 0), 'read 真实执行');
 });
 
-test('混合批按序串行：todo_write 与 glob 同批真实执行且保序', async () => {
+test('混合批含 todo_write：不再强制串行（todo 已出独占集），链行保持出牌顺序、两调用真实执行', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-partodo-'));
   const adapter = new ScriptedAdapter([
     '{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"todo_write","input":{"todos":[{"content":"x","status":"pending"}]}}],"done":false}',
@@ -765,4 +765,37 @@ test('缺省步数接 SUNSHINEX_MAX_STEPS；显式入参优先于 env', async ()
   } finally {
     delete process.env.SUNSHINEX_MAX_STEPS;
   }
+});
+
+// 回归（2026-09-26 真机四症状）：todo 从独占集移除——慢速并行安全调用与 todo_write 同批应并发，
+// todo_write 结果立即回程（串行旧口径下被批内慢调用拖住，活动行假运行整段慢调用时长）。
+// 用自定义并行安全慢探针构造并发场景（exec 属 bash 独占类，构造不了并发）
+test('纯并行批含 todo_write：整批并发执行，todo_write 不再触发整批串行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-partodo2-'));
+  const adapter = new ScriptedAdapter([
+    '{"tools":[{"tool":"slow_probe","input":{"ms":1200}},{"tool":"todo_write","input":{"todos":[{"content":"x","status":"in_progress"}]}}],"done":false}',
+    '{"done":true,"reply":"ok"}',
+  ]);
+  const events: { type: string; at: number }[] = [];
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  // 慢速并行安全探针：非独占类（read 域），sleep 后返回——独占分类器误伤即整批串行、本探针结果被拖到 1.2s 后
+  registry.register({
+    name: 'slow_probe',
+    description: 'test-only slow parallel-safe probe',
+    category: 'read',
+    executor: async (input) => {
+      await new Promise((res) => setTimeout(res, Math.min(2000, Number((input as { ms?: unknown }).ms ?? 500))));
+      return { exitCode: 0, stdout: 'slow-ok', stderr: '', timedOut: false };
+    },
+  });
+  const context = new ContextManager(tmp, store);
+  const reactor = new Reactor({ registry, safety, context, model: adapter, onEvent: (e) => events.push({ type: e.type, at: Date.now() }) });
+  const t0 = Date.now();
+  await reactor.run({ goal: '混合批并发' }, { maxSteps: 3 });
+  const todoResult = events.find((e) => e.type === 'tool-result');
+  assert.ok(todoResult, '应发射 tool-result 事件');
+  assert.ok(todoResult!.at - t0 < 800, `todo_write 结果应在并发路径下立即回程（<800ms），实际 ${todoResult!.at - t0}ms——串行旧口径下被慢调用拖过 1.2s`);
 });

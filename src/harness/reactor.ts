@@ -472,10 +472,11 @@ export class Reactor {
 
     // 执行面校验（参数 schema 表达不了跨调用约束）：批内含状态类调用（前后有序依赖）→ 整轮按出牌顺序串行执行，
     // 保证先到的调用完成后后者才开跑、副作用顺序与模型意图一致；仅超上限仍拒绝。单调用不限
+    // （todo_write 不在独占集：毫秒级全量替换写、与调研/委派类调用无序依赖，独占会连带整批委派串行）
     const overLimit = calls.length > PARALLEL_TOOLS_LIMIT;
     const exclusive = (c: (typeof calls)[number]) => {
       const cat = this.deps.registry.get(c.name)?.category;
-      return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'todo' || cat === 'task' || cat === undefined;
+      return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'task' || cat === undefined;
     };
     const sequential = calls.length > 1 && calls.some(exclusive);
     const rejection = overLimit
@@ -535,19 +536,12 @@ export class Reactor {
     const runOne = (c: (typeof calls)[number], args: Record<string, unknown> | null) =>
       args === null ? null : this.deps.registry.execute(c.name, args, this.deps.safety);
 
-    // 纯并行批（无状态类调用）整批并发；含状态类调用的批按出牌顺序串行——前一个完成后后者才开跑；同参超限调用跳过执行
-    const results: (Result<ExecResult> | null)[] = sequential
-      ? []
-      : await Promise.all(calls.map((c, i) => (overDuplicated[i] ? null : runOne(c, argsOf[i]))));
-    if (sequential) {
-      for (let i = 0; i < calls.length; i++) {
-        if (!overDuplicated[i]) results[i] = await runOne(calls[i], argsOf[i]);
-      }
-    }
-    for (let i = 0; i < calls.length; i++) {
-      const c = calls[i];
-      const args = argsOf[i];
-      const r = results[i];
+    // 纯并行批（无状态类调用）整批并发；含状态类调用的批按出牌顺序串行——前一个完成后后者才开跑；同参超限调用跳过执行。
+    // 结果事件回程即发（活动行实时清行——批内最长调用不再拖住其余调用的结果呈现）；
+    // 链行仍按出牌顺序入链（role:tool 与调用行按位配对），事件流为瞬态呈现、链行为事实源
+    const results: (Result<ExecResult> | null)[] = new Array(calls.length).fill(null);
+    const obsOf: string[] = new Array(calls.length);
+    const emitResult = (i: number, c: (typeof calls)[number], args: Record<string, unknown> | null, r: Result<ExecResult> | null): void => {
       const obs = overDuplicated[i]
         ? 'Repeated identical batch rejected: this exact set of calls already ran ' +
           MAX_IDENTICAL_CALLS +
@@ -556,7 +550,28 @@ export class Reactor {
           ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
           : this.describe(r);
       this.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed' });
-      steps.push({ step, action: TOOL_RESULT_ACTION, observation: obs });
+      obsOf[i] = obs;
+    };
+    if (sequential) {
+      for (let i = 0; i < calls.length; i++) {
+        if (overDuplicated[i]) { emitResult(i, calls[i], argsOf[i], null); continue; }
+        const r = await runOne(calls[i], argsOf[i]);
+        results[i] = r;
+        emitResult(i, calls[i], argsOf[i], r);
+      }
+    } else {
+      await Promise.all(calls.map(async (c, i) => {
+        if (overDuplicated[i]) { emitResult(i, c, argsOf[i], null); return; }
+        const r = await runOne(c, argsOf[i]);
+        results[i] = r;
+        emitResult(i, c, argsOf[i], r);
+      }));
+    }
+    for (let i = 0; i < calls.length; i++) {
+      const c = calls[i];
+      const args = argsOf[i];
+      const r = results[i];
+      steps.push({ step, action: TOOL_RESULT_ACTION, observation: obsOf[i] });
       if (r !== null && r.ok && (c.name === 'read' || c.name === 'grep')) {
         const p = (args as { path?: unknown } | null)?.path;
         if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
