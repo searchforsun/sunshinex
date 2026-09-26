@@ -62,7 +62,7 @@ test('零新增工具：第 7 可选参两态下 builtinTools 清单逐字节一
   });
   await withRegistry(async ({ registry }) => {
     assert.deepEqual(registry.list().map((t) => t.name), BUILTIN_NAMES, '注入接缝后清单不变');
-    assert.equal(registry.list().find((t) => t.name === 'write')?.description, 'Write file content', '工具描述零变化');
+    assert.equal(registry.list().find((t) => t.name === 'write')?.description, "Write a file's full content — the file is replaced entirely, so pass the complete final content (not a diff or partial edit); read the file first when preserving unchanged regions matters; relative paths are anchored at the project root; writes outside the trusted roots go through permission checks (approval or rejection)", '工具描述与 builtin.ts 当前文案一致（描述增强为有意变更）');
   }, guardMemoryWrite);
 });
 
