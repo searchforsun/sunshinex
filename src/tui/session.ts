@@ -99,6 +99,8 @@ export interface ChildLiveState {
   transcript: ChildLine[];
   /** 完成态：done/error 事件置位——并行批中早完成者即时显终标而非一直转圈（归档锚点在主链 tool-result，晚于兄弟完成） */
   done?: boolean;
+  /** 完成时刻（done/error 事件置位）：done 行耗时冻结在完成时刻，不随渲染帧跳动 */
+  doneAt?: number;
   /** 工具活动行（规格 §4.2 面板增强）：当前未决调用的 {调用名, 起始时刻}——呈现层消费，归档零依赖 */
   calls?: { callId: string; verb: string; startedAt: number }[];
   /** 主 agent 委派提示词（spawn input.prompt，全屏视图头部呈现；规格 §4.2） */
@@ -1721,7 +1723,7 @@ export class SessionController {
         }
         const finalLine = e.text && e.text.length > 0 ? e.text : isError ? 'failed' : 'done';
         transcript = [...transcript, { kind: 'text', text: finalLine }];
-        this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true }, buf);
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true, doneAt: Date.now() }, buf);
         // 后台两段式延迟归档（结果先行语义）：done/error 即归档锚点，转录折回原 spawn 调用行
         this.archiveDeferred(label);
         return;

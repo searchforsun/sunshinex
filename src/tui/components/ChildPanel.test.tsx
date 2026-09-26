@@ -55,3 +55,13 @@ test('ChildPanel 夹具：transcript 为 ChildLine 结构行', () => {
   const lines: ChildLine[] = child().transcript;
   assert.equal(lines[0]!.kind, 'call');
 });
+
+test('ChildPanel：done 行含步数/冻结耗时/tokens（doneAt 冻结，不随帧跳动）', () => {
+  const start = Date.now() - 5000;
+  const one = render(
+    <ChildPanel childrenState={[child({ done: true, doneAt: start + 4000, startedAt: start, steps: 14, tokens: 1300 })]} columns={80} />,
+  );
+  const f = one.lastFrame() ?? '';
+  assert.match(f, /✓ \[w\] done \(14 steps · 4s · ↑1\.3k tokens\)/, 'done 行 = steps · 冻结耗时 · tokens');
+  one.unmount();
+});

@@ -18,7 +18,7 @@ export function ChildPanel({ childrenState, columns, selectedLabel }: { children
         <Box key={c.label}>
           {c.done ? (
             // 完成态终标行：并行批早完成者即时定格（Spinner 停转），归档锚点在主链 tool-result、与兄弟面板解耦
-            <Text backgroundColor={selectedLabel === c.label ? 'gray' : undefined} color="green" dimColor>✓ [{c.label}] done (↑{formatTokens(c.tokens)} tokens)</Text>
+            <Text backgroundColor={selectedLabel === c.label ? 'gray' : undefined} color="green" dimColor>✓ [{c.label}] done ({c.steps} steps · {formatDuration(Math.max(0, Math.round(((c.doneAt ?? Date.now()) - c.startedAt) / 1000)))} · ↑{formatTokens(c.tokens)} tokens)</Text>
           ) : (c.calls ?? []).length > 0 ? (
             // 工具活动行（规格 §4.2 面板增强，与主链 taskState 口径对齐）：显示当前调用名+单调用耗时，
             // 轮换动词是「思考中」的语义、模型正在干活时退回动词即信息量倒挂
