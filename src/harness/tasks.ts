@@ -116,7 +116,8 @@ export class TaskRegistry {
     return new Promise((resolve) => {
       const poll = (): void => {
         const ts = snapshot();
-        if (ts.length > 0 && ts.every((t) => t.status !== 'running')) {
+        // 空目标（含未知 id 过滤后为空）零等待即回：无等待对象即无事可等，幂等空回执
+        if (ts.length === 0 || ts.every((t) => t.status !== 'running')) {
           resolve({ settled: true, tasks: ts });
           return;
         }

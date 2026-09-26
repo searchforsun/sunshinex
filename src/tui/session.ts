@@ -1054,7 +1054,7 @@ export class SessionController {
       return;
     }
     if (cmd === '/tasks') {
-      // 后台任务表（规格 D7，对标 CC /tasks）：id/kind/status/label + 输出路径；模型可 read 查看输出、task_stop 停止
+      // 后台任务表（规格 D7，对标 CC /tasks）：id/kind/status/label + 输出路径；模型可 read 查看输出、task_wait 等待到终态、task_stop 停止
       const list = this.runtime.harness.tasks.list();
       if (list.length === 0) {
         this.pushMsg('system', t('No background tasks.', '暂无后台任务。'));
@@ -1062,8 +1062,8 @@ export class SessionController {
       }
       const rows = list.map((x) => `${x.id}\t${x.kind}\t${x.status}\t${x.label}\t(output: ${x.outputFilePath})`);
       this.pushMsg('system', t(
-        `Background tasks:\n${rows.join('\n')}\nInspect output with read; stop with the task_stop tool.`,
-        `后台任务：\n${rows.join('\n')}\n输出可用 read 查看；可用 task_stop 工具停止。`,
+        `Background tasks:\n${rows.join('\n')}\nInspect output with read; wait for completion with the task_wait tool; stop with the task_stop tool.`,
+        `后台任务：\n${rows.join('\n')}\n输出可用 read 查看；可用 task_wait 工具等待到终态；可用 task_stop 工具停止。`,
       ));
       return;
     }

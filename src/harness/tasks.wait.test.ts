@@ -66,3 +66,23 @@ test('waitUntilSettled 批量混合：部分已完成 + 部分稍后终态，等
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('waitUntilSettled 空目标列表零等待即回（幂等空回执底座）', async () => {
+  const { reg, root } = makeRegistry();
+  try {
+    const r = await reg.waitUntilSettled([], 300);
+    assert.deepEqual(r, { settled: true, tasks: [] });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('waitUntilSettled 未知 id 过滤后为空同样零等待即回', async () => {
+  const { reg, root } = makeRegistry();
+  try {
+    const r = await reg.waitUntilSettled(['b999'], 300);
+    assert.deepEqual(r, { settled: true, tasks: [] });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

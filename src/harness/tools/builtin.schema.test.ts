@@ -5,6 +5,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { builtinTools } from './builtin';
 import { makeSpawnTool, SubagentRunner, SPAWN_TOOL_NAME } from '../subagent';
+import { TaskRegistry } from '../tasks';
+import { makeTaskStopTool } from './task-stop';
+import { makeTaskWaitTool } from './task-wait';
 import { ToolRegistry } from '../tools';
 import type { RegisteredTool } from '../tools';
 import type { JsonSchema } from '../../types';
@@ -158,6 +161,22 @@ test('spawn 工厂声明 parameters（至少其一约束留执行面）', () => 
     'spawn parameters must mirror SubagentSpawnInput',
   );
   assert.deepEqual((p.properties?.tools as JsonSchema).items?.type, 'string');
+});
+
+test('另册工厂 task_stop/task_wait 声明 parameters 且全闭合（strict 兼容同口径）', () => {
+  const strict = new Set(['skill.params']);
+  const issues: string[] = [];
+  const tools = [makeTaskStopTool(new TaskRegistry(tmpDir('sunshinex-schema-'))), makeTaskWaitTool(new TaskRegistry(tmpDir('sunshinex-schema-')))];
+  for (const tool of tools) {
+    walkStrict(paramsOf(tool), tool.name, strict, issues);
+    assert.equal(tool.category, 'task', `${tool.name} must stay in the task category`);
+  }
+  assert.deepEqual(issues, [], '另册任务工具 strict-compatibility violations found');
+  const stop = tools[0];
+  assert.deepEqual(Object.keys(stop.parameters!.properties ?? {}).sort(), ['taskId'], 'task_stop must declare only taskId');
+  const wait = tools[1];
+  assert.deepEqual(Object.keys(wait.parameters!.properties ?? {}).sort(), ['taskIds', 'timeoutSeconds'], 'task_wait must declare taskIds+timeoutSeconds');
+  assert.deepEqual((wait.parameters!.properties!.taskIds as JsonSchema).items?.type, 'string', 'taskIds items must be strings');
 });
 
 test('todo_write 执行面：条数钳制 >50 拒绝、非法 status 拒绝、facade 未注入报 todo_not_configured', async () => {
