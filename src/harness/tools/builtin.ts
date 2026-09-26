@@ -122,7 +122,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       },
       name: 'read',
       description:
-        'Read file content; optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
+        'Read file content (preferred over exec cat/head/tail for any file lookup); optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => {
         const content = backend.readFile(resolveProjectPath(root, String(input.path)));
@@ -180,7 +180,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         },
       },
       name: 'write',
-      description: 'Write file content',
+      description:
+        "Write a file's full content — the file is replaced entirely, so pass the complete final content (not a diff or partial edit); read the file first when preserving unchanged regions matters; relative paths are anchored at the project root; writes outside the trusted roots go through permission checks (approval or rejection)",
       category: 'write',
       executor: async (input: ToolInput) => {
         const p = String(input.path);
@@ -219,7 +220,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         },
       },
       name: 'grep',
-      description: 'Regex search: for a file path emit raw matching lines; for a directory search recursively and emit relativePath:line:line',
+      description: 'Regex search (preferred over exec grep for any search); for a file path emit raw matching lines; for a directory search recursively and emit relativePath:line:line',
       category: 'read',
       executor: async (input: ToolInput) => {
         const { pattern, glob: globFilter } = input as { pattern: string; glob?: string };
@@ -265,7 +266,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         },
       },
       name: 'glob',
-      description: 'List files under the project root matching a glob pattern; returned paths are relative to the project root (feed them back with the project root prepended for absolute access); oversized listing is truncated and saved to disk (full output path shown in the result)',
+      description: 'List files under the project root matching a glob pattern (preferred over exec ls/find for directory listing); returned paths are relative to the project root (feed them back with the project root prepended for absolute access); oversized listing is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => {
         const files = backend.listFiles(root, String(input.pattern ?? '*'));
@@ -284,7 +285,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         },
       },
       name: 'webfetch',
-      description: 'Fetch a web page: input { url }, http/https only (protocol floor enforced by the security guard); oversized body is truncated and saved to disk (full output path shown in the result)',
+      description:
+        'Fetch a URL and return the raw response body (HTML pages come back as raw HTML markup, not extracted text; use grep/read on the saved file to extract content when needed); input { url }, http/https only (protocol floor enforced by the security guard); non-2xx responses fail with WEBFETCH_HTTP_<status>; oversized body is truncated and saved to disk (full output path shown in the result)',
       category: 'network',
       executor: async (input: ToolInput) => {
         const res = await fetch(String(input.url ?? ''));
