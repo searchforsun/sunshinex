@@ -91,7 +91,7 @@ test('spawn 输入校验：双缺 INVALID_ARG / background 两段式开通（D6�
   }
 });
 
-test('同轮 5 个 spawn 并行：第 5 个并发拒绝、其余 4 个完成（护栏不排队）', async () => {
+test('同轮 8 个 spawn 并行：批上限与并发上限同量级对齐，8 个全部完成（护栏零误伤）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-conc-'));
   try {
     let gateResolve!: () => void;
@@ -105,11 +105,11 @@ test('同轮 5 个 spawn 并行：第 5 个并发拒绝、其余 4 个完成（�
         calls++;
         if (calls === 1) {
           return JSON.stringify({
-            tools: [1, 2, 3, 4, 5].map((i) => ({ tool: 'spawn', input: { prompt: `p${i}`, label: 'w' } })),
+            tools: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => ({ tool: 'spawn', input: { prompt: `p${i}`, label: 'w' } })),
             done: false,
           });
         }
-        if (calls <= 5) {
+        if (calls <= 9) {
           await gate;
           return JSON.stringify({ done: true, reply: '子完成' });
         }
@@ -118,13 +118,15 @@ test('同轮 5 个 spawn 并行：第 5 个并发拒绝、其余 4 个完成（�
     } as ModelAdapter;
     const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
     const runP = h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
-    await new Promise((res) => setTimeout(res, 50)); // 等 4 个子代理进入挂起（在飞计数 4）
+    // 确定性等待：等主链 1 帧 + 8 个子代理全部进入挂起（calls>=9）再放闸，替代固定 50ms 在高并发下的竞态窗口
+    for (let i = 0; i < 200 && calls < 9; i++) await new Promise((res) => setTimeout(res, 10));
     gateResolve();
     const r = await runP;
     const obs = r.steps.map((s) => s.observation).join('\n');
     assert.ok(r.steps.some((s) => (s.action ?? '').includes('spawn') || s.observation.includes('spawn')), '并行 spawn 步应存在');
-    assert.equal((obs.match(/子完成/g) ?? []).length, 4, '4 个在飞子代理应正常完成');
-    assert.ok(/limit reached|已达上限/.test(obs), `第 5 个应被并发护栏拒绝，实际：${obs}`);
+    assert.equal((obs.match(/子完成/g) ?? []).length, 8, '8 个并发子代理应全部正常完成（上限提升后批内不触顶）');
+    assert.ok(!/limit reached|已达上限/.test(obs), '批上限 8 = 并发上限 8，同量级下护栏不误伤');
+    // 第 9 个并发的拒绝路径由 runner 缝专项用例锁定（subagent.test.ts 并发护栏），reactor 单批无法超过批上限 8
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
