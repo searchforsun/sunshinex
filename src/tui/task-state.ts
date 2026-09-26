@@ -1,4 +1,5 @@
 import { SessionEvent } from '../types';
+import { toolCallLine } from './tool-verbs';
 
 /** 活任务阶段（瞬态不落 journal，规格 §4）：idle=无任务、thinking=等待首 token/动作、responding=正文流式中、tool-pending=有未决调用、tool-awaiting=审批挂起 */
 export type LiveTaskPhase = 'idle' | 'thinking' | 'responding' | 'tool-pending' | 'tool-awaiting';
@@ -6,6 +7,8 @@ export type LiveTaskPhase = 'idle' | 'thinking' | 'responding' | 'tool-pending' 
 export interface ActiveCall {
   callId: string;
   verb: string;
+  /** 调用行全形（toolCallLine 同源口径，如 "SPAWN 调研:AI 层"）：活动行呈任务名而非裸动词 */
+  target: string;
   startedAt: number;
 }
 
@@ -29,7 +32,12 @@ export function applyTaskState(s: LiveTaskState, e: SessionEvent): LiveTaskState
       const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
       if (callId.length === 0) return s;
       if (s.activeCalls.some((c) => c.callId === callId)) return { ...s, phase: 'tool-pending' };
-      const call: ActiveCall = { callId, verb: e.text ?? '', startedAt: Date.now() };
+      const call: ActiveCall = {
+        callId,
+        verb: e.text ?? '',
+        target: toolCallLine(e.text ?? '', e.payload?.input),
+        startedAt: Date.now(),
+      };
       return { phase: 'tool-pending', activeCalls: [...s.activeCalls, call] };
     }
     case 'tool-result': {

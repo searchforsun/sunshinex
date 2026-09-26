@@ -55,3 +55,17 @@ test('tool 三态兜底：任务收尾时未回程调用补入档（不蒸发，
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// 回归（2026-09-26 真机症状）：tool-call 事件缺 notify——底部活动行不出现，委派期像卡住
+test('tool-call 事件即时通知订阅方（底部活动行实时性）', async () => {
+  const tmp = tmpdir('sunshinex-tooltri3-');
+  try {
+    const ctrl = new SessionController({ root: tmp });
+    let notified = 0;
+    ctrl.onState(() => notified++);
+    ctrl.onEventForTest({ type: 'tool-call', text: 'read', payload: { input: { path: 'a.ts' }, callId: 'step:1-idx:0' } } as never);
+    assert.equal(notified, 1, 'tool-call 事件应触发 onState 通知（挂起入档与活动行都依赖它）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

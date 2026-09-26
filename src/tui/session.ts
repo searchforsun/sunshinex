@@ -107,7 +107,7 @@ export interface ChildLiveState {
   /** 完成时刻（done/error 事件置位）：done 行耗时冻结在完成时刻，不随渲染帧跳动 */
   doneAt?: number;
   /** 工具活动行（规格 §4.2 面板增强）：当前未决调用的 {调用名, 起始时刻}——呈现层消费，归档零依赖 */
-  calls?: { callId: string; verb: string; startedAt: number }[];
+  calls?: { callId: string; target: string; startedAt: number }[];
   /** 主 agent 委派提示词（spawn input.prompt，全屏视图头部呈现；规格 §4.2） */
   prompt?: string;
 }
@@ -1593,6 +1593,9 @@ export class SessionController {
           const prompt = typeof pin?.prompt === 'string' && pin.prompt.length > 0 ? pin.prompt : undefined;
           if (prompt !== undefined) this.childPrompts.set(spawnBaseLabel(pin), prompt);
         }
+        // 即时通知（b705855 延迟入档重构时随 pushMsg 一起丢失）：挂起清单变更与底部活动行出现都依赖本通知，
+        // 缺失即委派期动态区零变化、观感像卡住
+        this.notify();
         return;
       }
       case 'tool-result': {
@@ -1731,7 +1734,7 @@ export class SessionController {
         transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input) }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
         const calls = callId
-          ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, verb: e.text ?? '', startedAt: Date.now() }]
+          ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, target: toolCallLine(e.text ?? '', e.payload?.input), startedAt: Date.now() }]
           : child.calls;
         this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls }, buf);
         return;

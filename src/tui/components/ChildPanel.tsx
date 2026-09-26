@@ -27,7 +27,7 @@ export function ChildPanel({ childrenState, columns, selectedLabel }: { children
               <Text dimColor>
                 {(c.calls ?? []).map((call, i) => (
                   <Text key={call.callId}>
-                    {i > 0 ? ' · ' : ''}[{elideByWidth(call.verb, Math.max(8, Math.floor((width - 10) / (c.calls ?? []).length)))}]{' '}
+                    {i > 0 ? ' · ' : ''}[{elideByWidth(call.target, Math.max(8, Math.floor((width - 10) / (c.calls ?? []).length)))}]{' '}
                     {formatDuration(Math.max(0, Math.round((Date.now() - call.startedAt) / 1000)))}
                   </Text>
                 ))}

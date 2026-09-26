@@ -39,7 +39,7 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
       <Box flexDirection="column">
         {calls.map((c) => (
           <Text key={c.callId} color="green" dimColor>
-            {glyph} [{elideByWidth(c.verb, Math.max(16, columns - 20))}]{' '}
+            {glyph} [{elideByWidth(c.target, Math.max(16, columns - 20))}]{' '}
             <Text dimColor>
               {phase === 'tool-awaiting' ? t('awaiting approval', '等待审批') + ' · ' : ''}
               {formatDuration(Math.max(0, Math.round((Date.now() - c.startedAt) / 1000)))}

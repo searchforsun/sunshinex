@@ -24,12 +24,12 @@ test('ChildPanel：工具活动行对齐主链——当前调用名替代轮换�
   const started = Date.now() - 5000;
   const one = render(
     <ChildPanel
-      childrenState={[child({ calls: [{ callId: 's1:0', verb: 'grep', startedAt: started }] })]}
+      childrenState={[child({ calls: [{ callId: 's1:0', target: 'grep x', startedAt: started }] })]}
       columns={80}
     />,
   );
   const f = one.lastFrame() ?? '';
-  assert.match(f, /\[grep\]/, '工具挂起时头行应显示当前调用名而非轮换动词');
+  assert.match(f, /\[grep x\]/, '工具挂起时头行应显示调用行全形（target 携带任务语义）');
   assert.ok(!/Brewing|Pondering|Weaving|Distilling/.test(f), '活动行不得退回动词轮换（与主链口径对齐）');
   one.unmount();
 

@@ -50,3 +50,15 @@ test('task-state：tool-call 重复 callId 不重复追加；error 清态；无�
   s = applyTaskState(s, ev('error', 'boom'));
   assert.deepEqual(s, initialTaskState(), 'error 清态');
 });
+
+// 回归（2026-09-26 真机四症状）：ActiveCall 携带 target——spawn 活动行须呈任务名（[SPAWN 调研:AI 层]），裸动词无信息量
+test('task-state：tool-call 的 ActiveCall 携带 target（spawn 活动行呈任务名）', () => {
+  let s = initialTaskState();
+  s = applyTaskState(s, ev('tool-call', 'spawn', { callId: 'step:1-idx:1', input: { prompt: '调研', label: '调研:AI 层' } }));
+  assert.equal(s.activeCalls.length, 1);
+  assert.match(s.activeCalls[0]!.target, /调研:AI 层/, 'target 应携带任务名（spawn 取 label）');
+  assert.equal(s.activeCalls[0]!.verb, 'spawn', 'verb 保持原语义');
+  // 结果回程即清行：并发批各结果只清自己的行，不整批后补（todo_write 行假运行 7 分钟的病根）
+  s = applyTaskState(s, ev('tool-result', 'ok', { callId: 'step:1-idx:1', ok: true }));
+  assert.equal(s.activeCalls.length, 0, '结果回程清行');
+});
