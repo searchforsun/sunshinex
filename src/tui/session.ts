@@ -1822,12 +1822,8 @@ export class SessionController {
     if (seg === null) return;
     const committed = this.committedLen + seg.length;
     if (seg.trim().length > 0) {
-      // 原样入档（含边界换行）：分块拼接 === 终稿，不留重复也不丢段落空行；纯空白段只推进水位
-      this.state = {
-        ...this.state,
-        messages: [...this.state.messages, { role: 'assistant', text: seg, ts: Date.now(), seq: ++this.msgSeq }],
-      };
-      this.notify();
+      // 入档走 pushMsg 单点（消息 + journal 挂钩同源）：切块段不落日志则 /resume 与 /rewind 重放时正文只剩 done 补的尾段
+      this.pushMsg('assistant', seg);
     }
     this.committedLen = committed;
     if (this.state.live?.kind === 'reply') {
