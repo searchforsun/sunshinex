@@ -8,8 +8,8 @@ import { ChatItem } from '../session';
 const banner = { version: '0.0.0', model: 'test', root: '/tmp/proj' } as unknown as BannerInfo;
 
 const msgs: ChatItem[] = [
-  { role: 'tool', text: 'SPAWN reviewer', ts: 0, seq: 7, kind: 'call', detail: 'READ a.ts\n结论行A', subagentMeta: { steps: 2, durationMs: 1000 } },
-  { role: 'tool', text: 'SPAWN writer', ts: 0, seq: 8, kind: 'call', detail: 'WRITE b.ts\n结论行B', subagentMeta: { steps: 1, durationMs: 500 } },
+  { role: 'tool', text: 'SPAWN reviewer', ts: 0, seq: 7, kind: 'call', detail: 'READ a.ts\n结论行A', subagentMeta: { steps: 2, durationMs: 1000, tokens: 500 } },
+  { role: 'tool', text: 'SPAWN writer', ts: 0, seq: 8, kind: 'call', detail: 'WRITE b.ts\n结论行B', subagentMeta: { steps: 1, durationMs: 500, tokens: 300 } },
 ];
 
 test('spawnExpandedSeqs 命中行展开为 ▾，未命中行保持 ● 折叠', () => {

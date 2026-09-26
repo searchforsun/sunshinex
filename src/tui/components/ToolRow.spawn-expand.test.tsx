@@ -7,7 +7,7 @@ import { ChatItem } from '../session';
 const spawnCall: ChatItem = {
   role: 'tool', text: 'SPAWN reviewer', ts: 0, seq: 1, kind: 'call',
   detail: 'READ a.ts\n4 matches\n结论行',
-  subagentMeta: { steps: 3, durationMs: 42_000 },
+  subagentMeta: { steps: 3, durationMs: 42_000, tokens: 800 },
 };
 
 test('SPAWN 折叠态：● 头行带 meta 尾注，不重放转录', () => {

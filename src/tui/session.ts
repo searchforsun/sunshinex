@@ -3,6 +3,7 @@ import type { TodoItem, TodoStatus } from '../types';
 import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
 import { EFFORT_ORDER, parseEffort } from '../model/adapter';
 import { t } from '../i18n';
+import { formatDuration, formatTokens } from './format';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
 import { estimateTokens } from '../harness/context/window';
@@ -44,8 +45,8 @@ export interface ChatItem {
   level?: 'info' | 'warn' | 'error';
   /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation（入档后折叠打印，供后续 transcript 视图） */
   detail?: string;
-  /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt；零子事件即败时缺省 */
-  subagentMeta?: { steps: number; durationMs: number };
+  /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt、tokens=子代理 token 消耗；零子事件即败时缺省 */
+  subagentMeta?: { steps: number; durationMs: number; tokens: number };
 }
 
 export type { TodoItem, TodoStatus } from '../types';
@@ -1777,10 +1778,12 @@ export class SessionController {
     this.childBufs.delete(child.label);
     this.childPrompts.delete(child.label);
     // detail 结构行序列化（规格 §4.1）：result 行 ⎿ 前缀 + ok 标记，回看与全屏视图同源同形态
+    const durS = Math.max(0, Math.round((Date.now() - child.startedAt) / 1000));
     const detail = [...child.transcript, ...(buf ? [{ kind: 'text', text: buf } as ChildLine] : [])]
       .map((l) => (l.kind === 'result' ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}` : l.text))
+      .concat(`⏱ ${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`)
       .join('\n');
-    const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt) };
+    const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens };
     this.state = {
       ...this.state,
       children: this.state.children.filter((c) => c.label !== child.label),
