@@ -78,6 +78,8 @@ export class SecurityGuard {
     if (tool === 'spawn') return { allowed: true };
     // task_stop：后台账本状态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），manual 下免审批对齐 spawn 先例
     if (tool === 'task_stop') return { allowed: true };
+    // task_wait：等待面回执读账本已登记的任务日志，零直接 IO 副作用，manual 下免审批对齐 task_stop 先例
+    if (tool === 'task_wait') return { allowed: true };
     return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual mode requires interactive confirmation' };
   }
 
