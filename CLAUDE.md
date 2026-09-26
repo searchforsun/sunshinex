@@ -47,6 +47,7 @@ src/
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question/worktree/todo_write）
     tools/task-stop.ts # task_stop 工具（按 id 停止后台任务；装配期与 spawn 一并注册进主链）
+    tools/task-wait.ts # task_wait 工具（阻塞等待后台任务到终态；装配期与 task_stop 一并注册进主链）
     tasks.ts          # 统一后台任务账本（exec/spawn 后台与超时转后台的 ID/生命周期/状态单点）
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输）
     subagent.ts       # 子代理执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）

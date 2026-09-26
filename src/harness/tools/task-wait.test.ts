@@ -123,6 +123,24 @@ test('task_wait 空数组：INVALID_ARG', async () => {
   }
 });
 
+test('task_wait timeoutSeconds<=0：INVALID_ARG（须为正数）', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-tool-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const t = tasks.submit({ kind: 'exec', label: 'edge' });
+    for (const timeoutSeconds of [0, -1]) {
+      const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds }, stubSafety);
+      assert.equal(r.ok, false);
+      if (!r.ok) {
+        assert.equal(r.error.code, 'INVALID_ARG');
+        assert.match(r.error.message, /timeoutSeconds must be a positive number/);
+      }
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('task_wait 子代理任务：回执 [conclusion] 结论全文', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-tool-'));
   try {
