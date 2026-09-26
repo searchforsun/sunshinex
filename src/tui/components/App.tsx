@@ -205,6 +205,9 @@ export function App({
     inspectRef.current = v;
     store.inspect = v;
     setInspect(v);
+    // 整屏接管切换（进入/退出各一次）：经生产 repaint 路径卸载→同 retain 重挂——重挂后历史区按
+    // suppressHistory 置空/恢复，全屏视图独占整页不与主 agent 历史拼接（2026-09-27 用户裁决）
+    onRequestRepaint?.();
   };
   // 键分发 ref 真值（对标 qCursor/browseCursorRef 先例）：子面板更新走 notifyThrottled 节流，
   // 处理器闭包的 state 可能滞后节流一拍，浏览器序列构造必须读 ref 不读闭包
@@ -620,7 +623,8 @@ export function App({
 
   return (
     <Box flexDirection="column">
-      {/* 全屏查看（规格 §3.3/§6）：MessageList 保持挂载（Static 零重放）但实时区让位——live 置 undefined */}
+      {/* 全屏查看（规格 §3.3）：整屏接管——live 让位 + 历史区抑制（suppressHistory），全屏视图独占整页；
+          MessageList 保持挂载，进入/退出经生产 repaint 重挂完成切换 */}
       <MessageList
         banner={info}
         messages={state.messages}
@@ -630,6 +634,7 @@ export function App({
         latestFull={latestFull}
         spawnExpandedSeqs={spawnExpanded}
         spawnHighlightSeq={browseMode ? (spawnCallSeqs(state.messages)[browseCursor - state.children.filter((c) => !c.done).length] ?? undefined) : undefined}
+        suppressHistory={!!inspect}
       />
       {inspect ? (
         <ChildInspector

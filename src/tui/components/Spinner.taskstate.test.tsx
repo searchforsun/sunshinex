@@ -62,3 +62,28 @@ test('活跃调用行超宽 verb：按列宽自然省略，宽列完整呈现', 
   assert.ok(fw.includes('p'.repeat(120)), '宽列：完整呈现');
   wide.unmount();
 });
+
+test('运行态单一化：spawn 类调用不出主链活动行（子代理运行态由 ChildPanel 边框单点承载）', () => {
+  // 2026-09-27 真机症状：派发期同一子代理双份运行态（主链 [SPAWN …] 行 + 面板行）、计时不同步
+  const one = render(
+    <Spinner startedAt={Date.now()} tokens={0} phase="tool-pending" columns={80}
+      calls={[
+        { callId: 's1', verb: 'spawn', target: 'spawn AI层调研', startedAt: Date.now() - 1000 },
+        { callId: 's2', verb: 'spawn', target: 'spawn 数据层调研', startedAt: Date.now() - 1000 },
+      ]} />,
+  );
+  const f = one.lastFrame() ?? '';
+  assert.ok(!f.includes('SPAWN') && !f.includes('AI层调研'), '纯 spawn 批：主链活动行零渲染');
+  one.unmount();
+  const mixed = render(
+    <Spinner startedAt={Date.now()} tokens={0} phase="tool-pending" columns={80}
+      calls={[
+        { callId: 's1', verb: 'spawn', target: 'spawn AI层调研', startedAt: Date.now() - 1000 },
+        { callId: 'g1', verb: 'grep', target: 'grep pattern', startedAt: Date.now() - 500 },
+      ]} />,
+  );
+  const fm = mixed.lastFrame() ?? '';
+  assert.ok(!fm.includes('AI层调研'), '混合批：spawn 行被过滤');
+  assert.match(fm, /\[grep pattern\]/, '混合批：本链调用照常呈现');
+  mixed.unmount();
+});

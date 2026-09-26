@@ -6,14 +6,20 @@ import { formatTokens, formatDuration } from '../format';
 import { Spinner } from './Spinner';
 
 /** 子代理并行面板（动态区，输入框下侧，CC 式）：每个子 agent 一行（规格 §3.1）——运行态信息由单行承载，
- *  完整转录经全屏查看视图（ChildInspector）查看；单行恒定高度继承原「恒 4 行」防闪烁动机（规格 D5）；
- *  结束后由 session 归档进 spawn 调用行 detail（本组件即消失）。空态渲染零占位帧 */
+ *  完整转录经全屏查看视图（ChildInspector）查看；外层特殊边框（圆角绿色系，2026-09-27 用户裁决对标 CC）：
+ *  与主链活动行视觉分域，派发批一眼可辨；结束后由 session 归档进 spawn 调用行 detail（本组件即消失）。空态渲染零占位帧 */
 export function ChildPanel({ childrenState, columns, selectedLabel }: { childrenState: ChildLiveState[]; columns: number; selectedLabel?: string }): JSX.Element {
   if (childrenState.length === 0) return <Box />;
   const width = Math.max(8, columns - 4);
   const glyph = '✻';
+  const running = childrenState.filter((c) => !c.done).length;
   return (
-    <Box flexDirection="column">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={running > 0 ? 'green' : 'gray'}
+      paddingX={1}
+    >
       {childrenState.map((c) => (
         <Box key={c.label}>
           {c.done ? (

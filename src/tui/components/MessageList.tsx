@@ -35,6 +35,7 @@ export function MessageList({
   latestFull,
   spawnExpandedSeqs,
   spawnHighlightSeq,
+  suppressHistory = false,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
@@ -48,6 +49,9 @@ export function MessageList({
   spawnExpandedSeqs?: number[];
   /** 浏览模式光标行 seq（反色高亮，缺省无高亮） */
   spawnHighlightSeq?: number;
+  /** 全屏查看（ChildInspector）整屏接管：Static 历史条目置空——整页让位给全屏视图，
+   *  退出时经重挂整屏重放恢复（2026-09-27 用户裁决：全屏独占，不与主 agent 历史拼接） */
+  suppressHistory?: boolean;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -56,17 +60,20 @@ export function MessageList({
   // 折叠决策逐条预计算：条目数组长度恒为 messages.length+1（append-only，维持 Static 索引推进不变式），
   // 不可见条目以 null 渲染（已打印的行留待下次重挂重放时收拢）
   const decisions = buildTranscriptDecisions(messages, { expandAll, latestFull });
-  const entries: TranscriptEntry[] = [
-    { kind: 'banner', info: banner },
-    ...messages.map((item, i) => ({
-      kind: 'message' as const,
-      item,
-      full: decisions[i].full,
-      visible: decisions[i].visible,
-      spawnExpanded: spawnExpandedSeqs?.includes(item.seq) ?? false,
-      spawnHighlighted: item.seq === spawnHighlightSeq,
-    })),
-  ];
+  // 整屏接管（suppressHistory）：Static 条目置空（横幅一并让位）——全屏视图独占整页，退出经重挂整屏重放恢复
+  const entries: TranscriptEntry[] = suppressHistory
+    ? []
+    : [
+        { kind: 'banner', info: banner },
+        ...messages.map((item, i) => ({
+          kind: 'message' as const,
+          item,
+          full: decisions[i].full,
+          visible: decisions[i].visible,
+          spawnExpanded: spawnExpandedSeqs?.includes(item.seq) ?? false,
+          spawnHighlighted: item.seq === spawnHighlightSeq,
+        })),
+      ];
   return (
     <Box flexDirection="column">
       <Static key={epochRef.current} items={entries}>

@@ -14,6 +14,9 @@ const VERBS: Record<string, string> = {
   todo_write: 'TODO',
 };
 
+/** 动词集合（呈现层判据复用）：archived detail 行按首词是否工具动词分流 call/text（ChildInspector 同构渲染） */
+export const TOOL_VERBS: ReadonlySet<string> = new Set(Object.values(VERBS));
+
 /** 工具调用行文本：`VERB target`（无 target 时仅 VERB）；exec 取命令首段，其余取代表字段——零截断，超宽由呈现层按列宽自然省略 */
 export function toolCallLine(tool: string, input: unknown): string {
   const verb = tool.startsWith('mcp__') ? 'MCP' : (VERBS[tool] ?? tool.toUpperCase());

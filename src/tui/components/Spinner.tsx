@@ -35,9 +35,13 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
   const verb = VERBS[Math.floor(frame / 17) % VERBS.length];
   const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
   if (phase === 'tool-pending' || phase === 'tool-awaiting') {
+    // 运行态单一化（2026-09-27 用户裁决）：subagent 类调用不在此重复出活动行——派发期子代理运行态
+    // 由 ChildPanel 边框面板单点承载（信息量更大：当前调用 · step · tokens），主链活动行只呈现本链调用
+    const own = calls.filter((c) => c.verb !== 'spawn');
+    if (own.length === 0) return <Box />;
     return (
       <Box flexDirection="column">
-        {calls.map((c) => (
+        {own.map((c) => (
           <Text key={c.callId} color="green" dimColor>
             {glyph} [{elideByWidth(c.target, Math.max(16, columns - 20))}]{' '}
             <Text dimColor>

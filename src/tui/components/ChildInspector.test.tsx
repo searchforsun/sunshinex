@@ -20,13 +20,14 @@ test('Inspector 运行中：头部状态行（label/step/tokens/耗时/Esc 提�
   assert.match(f, /\[w\]/, '头部携带 label');
   assert.match(f, /step 14/, '头部携带步数');
   assert.match(f, /Esc/, '头部携带退出提示');
-  assert.match(f, /READ src\/a\.ts/, 'call 行原样呈现');
+  assert.match(f, /● \[READ\] src\/a\.ts/, 'call 行与主 agent ToolRow 同构（● [VERB] target）');
   assert.match(f, /⎿ ✓ 84 lines/, 'result 行 ⎿ + ok 标记');
-  assert.match(f, /分析中…/, 'text 行原样混排');
+  assert.match(f, /分析中…/, 'text 行经 Markdown 渲染原样呈现');
+  assert.match(f, /╭/, '外层特殊边框（整屏框定）');
   one.unmount();
 });
 
-test('Inspector 完成态：detail 行解析回看（⎿ 前缀→result 形态，其余原样）', () => {
+test('Inspector 完成态：detail 行解析回看（动词行还原 call 形态、⎿ 前缀→result 形态）', () => {
   const one = render(
     <ChildInspector
       archived={{ label: 'w', lines: ['READ src/a.ts', '⎿ ✓ 84 lines', '⎿ ✗ boom'], steps: 5, durationMs: 61_000 }}
@@ -35,7 +36,7 @@ test('Inspector 完成态：detail 行解析回看（⎿ 前缀→result 形态�
     />,
   );
   const f = one.lastFrame() ?? '';
-  assert.match(f, /READ src\/a\.ts/, 'call/text 行呈现');
+  assert.match(f, /● \[READ\] src\/a\.ts/, '动词行还原 call 形态（与主 agent ToolRow 同构）');
   assert.match(f, /⎿ ✓ 84 lines/, 'result 行呈现');
   assert.match(f, /⎿ ✗ boom/, '失败结果行呈现');
   one.unmount();
