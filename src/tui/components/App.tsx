@@ -198,9 +198,14 @@ export function App({
   };
   // 全屏查看模式（规格 §3.3）：live=运行中子代理（实时流式）、archived=已归档 spawn 调用行（detail 回看）；
   // ref 真值同 browse 先例（useInput 处理器闭包滞后），在场时整页让位（MessageList 保持挂载 live 让位零 Static 重放）
-  const [inspect, setInspect] = React.useState<{ kind: 'live'; label: string } | { kind: 'archived'; seq: number } | undefined>(undefined);
+  const [inspect, setInspect] = React.useState<{ kind: 'live'; label: string } | { kind: 'archived'; seq: number } | undefined>(store.inspect);
   const inspectRef = React.useRef(inspect);
   inspectRef.current = inspect;
+  const setInspectRetained = (v: typeof inspect): void => {
+    inspectRef.current = v;
+    store.inspect = v;
+    setInspect(v);
+  };
   // 键分发 ref 真值（对标 qCursor/browseCursorRef 先例）：子面板更新走 notifyThrottled 节流，
   // 处理器闭包的 state 可能滞后节流一拍，浏览器序列构造必须读 ref 不读闭包
   const stateRef = React.useRef(state);
@@ -302,7 +307,7 @@ export function App({
   const rows = useStdout().stdout?.rows ?? 24; // 全屏查看视口高度（规格 §3.3 有界=终端行数）
   // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
   React.useEffect(() => {
-    if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspect(undefined);
+    if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
   });
   const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter, qPage) : undefined;
 
@@ -310,7 +315,7 @@ export function App({
 
     // 全屏查看模式（规格 §3.3）：最前置接管——Esc 退出恢复主界面，其余键吞掉不落输入缓冲（纯只读视图）
     if (inspectRef.current) {
-      if (key.escape) { setInspect(undefined); return; }
+      if (key.escape) { setInspectRetained(undefined); return; }
       return;
     }
 
@@ -332,11 +337,11 @@ export function App({
         const cur = clamp(browseCursorRef.current);
         if (cur < liveChildren.length) {
           // 运行中 → 进入全屏实时视图（规格 §3.3）
-          setInspect({ kind: 'live', label: liveChildren[cur]!.label });
+          setInspectRetained({ kind: 'live', label: liveChildren[cur]!.label });
         } else {
           // 已归档 → 进入全屏回看（detail 派生，替代原行内展开）
           const seq = spawnSeqs[cur - liveChildren.length];
-          if (seq !== undefined) setInspect({ kind: 'archived', seq });
+          if (seq !== undefined) setInspectRetained({ kind: 'archived', seq });
         }
         setBrowse(false);
         return;

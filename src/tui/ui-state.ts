@@ -11,10 +11,13 @@ export interface RetainedUiState {
   /** 子代理浏览模式（Ctrl+B）：行高亮走 Static 历史重放（repaint 依赖含 browseMode），重挂后须原样恢复 */
   browseMode: boolean;
   browseCursor: number;
+  /** 全屏查看态（规格 §3.3）：Enter 选中与退浏览的整屏重绘同帧发生，不入 retain 即重挂丢失
+   *  （真机「Enter 闪一下屏回主界面」病根），跨重挂保留 */
+  inspect?: { kind: 'live'; label: string } | { kind: 'archived'; seq: number };
   history: string[];
   histIdx: number;
 }
 
 export function initialRetained(): RetainedUiState {
-  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, spawnExpanded: [], browseMode: false, browseCursor: 0, history: [], histIdx: -1 };
+  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, spawnExpanded: [], browseMode: false, browseCursor: 0, inspect: undefined, history: [], histIdx: -1 };
 }

@@ -123,3 +123,47 @@ test('App：运行中无子代理且无归档时 Ctrl+B 不进入浏览模式', 
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// 回归（2026-09-26 真机症状）：Enter 选中运行中子代理进全屏后闪一下屏回主界面——
+// inspect 是本地 state 不在 retain 现场，Enter 同时 setBrowse(false) 触发整屏重挂，重挂即丢 inspect。
+// 生产同构：onRequestRepaint（=tui-loop 卸载）→ 同 retain renderOnce 重挂，全屏态须跨重挂保留
+test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重挂）后保留', async () => {
+  const tmp = tmpdir('sunshinex-app-inspect-retain-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"tool":"spawn","input":{"prompt":"a","label":"rv"},"done":false}',
+        '{"done":true,"reply":"ok"}',
+      ]),
+    });
+    // 运行中子代理先在面板上屏（确定性等待，替代裸 sleep）
+    ctrl.onEventForTest({ type: 'token', text: 'rv 线\n', payload: { subagent: 'rv' } } as never);
+    const retain = initialRetained();
+    let current: TestRenderResult | undefined;
+    const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
+    const one = render(<App {...props} />);
+    current = one;
+    await new Promise((r) => setTimeout(r, 200));
+    one.write('\u0002'); // Ctrl+B 进入浏览（运行中行在场即允许）；browseMode 变更触发 repaint effect → 本实例被卸载
+    await new Promise((r) => setTimeout(r, 150));
+    // 卸载后以同 retain 重挂（tui-loop 循环体），浏览态经 retain 保留
+    const two = render(<App {...props} banner={props.banner} />);
+    current = two;
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(two.lastFrame() ?? '', /subagent browse/, '前置：重挂后浏览态保留');
+    two.write('\r'); // Enter 选中运行中子代理 → setInspect + 退浏览；browseMode 变更再次触发 repaint 卸载
+    await new Promise((r) => setTimeout(r, 150));
+    // 卸载帧有竞态不作断言（与 browse retain 用例同构），以同 retain 重挂帧验证 inspect 现场
+    const three = render(<App {...props} banner={props.banner} />);
+    current = three;
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(three.lastFrame() ?? '', /subagent view/, '重挂后全屏态保留（retain 现场）');
+    three.write('\u001b'); // Esc 退出仍正常
+    await new Promise((r) => setTimeout(r, 150));
+    assert.doesNotMatch(three.lastFrame() ?? '', /subagent view/, '重挂后 Esc 仍可退出');
+    three.unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
