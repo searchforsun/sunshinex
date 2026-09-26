@@ -7,7 +7,7 @@ import { StatusMetrics, SessionStatus } from '../session';
 import { setLanguage } from '../../i18n';
 
 function metrics(over: Partial<StatusMetrics>): StatusMetrics {
-  return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 5, ctxUsed: 0, ...over };
+  return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 5, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0, ...over };
 }
 
 function frameOf(m: StatusMetrics, model?: string, status: SessionStatus = 'idle', context?: { used: number; window: number }): string {
@@ -41,6 +41,20 @@ test('StatusBar：cache 段为会话累计口径——取 session 累计、保�
   // 本轮 0/29000（轮首 miss），会话累计 500k/510k：显示应锚定会话口径 98.0%，不受本轮清零影响
   const f = frameOf(metrics({ turnPromptTokens: 29_000, turnCacheTokens: 0, sessionPromptTokens: 510_000, sessionCacheTokens: 500_000 }), 'm');
   assert.match(f, /cache 98\.0%/, 'cache 段应显示会话累计命中率（Σcached/Σprompt，一位小数）');
+});
+
+test('StatusBar：↑tokens 合并子代理消耗（主链+子代理总数）', () => {
+  const f = frameOf(metrics({ turnTokens: 1200, turnChildTokens: 2_600_000 }), 'm');
+  assert.match(f, /↑2601k tokens/, '↑tokens = 主链 + 子代理合并值');
+});
+
+test('StatusBar：ctx 水位与 cache 口径不受子代理 tokens 影响（维持仅主链）', () => {
+  const f = frameOf(
+    metrics({ turnChildTokens: 5_000_000, turnPromptTokens: 1000, sessionPromptTokens: 1000, sessionCacheTokens: 640 }),
+    'm', 'idle', { used: 1000, window: 100_000 },
+  );
+  assert.match(f, /ctx 1\.0k\/100k \(\d+(\.\d+)?%\)/, 'ctx 维持主链口径');
+  assert.match(f, /cache 64\.0%/, 'cache 维持主链口径（cached/prompt）');
 });
 
 test('StatusBar：会话无请求时分母为零，cache 显示 0% 不除零', () => {

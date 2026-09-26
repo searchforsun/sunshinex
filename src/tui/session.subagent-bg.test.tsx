@@ -64,3 +64,20 @@ test('归档统计摘要：subagentMeta.tokens 在位、detail 尾行含 ⏱ 步
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('子代理 token 累计器：usage 增量并入 turn/session 两级（per-run 累计值取差值，不重复计）', () => {
+  const tmp = tmpdir('sunshinex-sess-childtok-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'x', label: 'r' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'task t-1 started', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'token', text: '', payload: { subagent: 'r' } } as never);
+    ctrl.onEventForTest({ type: 'usage', text: '', payload: { subagent: 'r', turnTotal: 500 } } as never);
+    ctrl.onEventForTest({ type: 'usage', text: '', payload: { subagent: 'r', turnTotal: 1200 } } as never);
+    const m = ctrl.getState().metrics;
+    assert.equal(m.turnChildTokens, 1200, 'turn 级 = 增量聚合（1200-500 差值）');
+    assert.equal(m.sessionChildTokens, 1200, 'session 级同步累计');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

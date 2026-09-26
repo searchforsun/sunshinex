@@ -46,7 +46,7 @@ export function StatusBar({
   const ctxPct = context && context.window > 0 && context.used > 0 ? ((context.used / context.window) * 100).toFixed(1) : '0';
   return (
     <Text dimColor>
-      {' '}↑{formatTokens(metrics.turnTokens)} tokens
+      {' '}↑{formatTokens(metrics.turnTokens + metrics.turnChildTokens)} tokens
       {context ? ' · ctx ' + formatTokens(context.used) + '/' + formatTokens(context.window) + ' (' + ctxPct + '%)' : ''}
       {metrics.sessionTurns > 0 ? ` · ${metrics.sessionTurns} turns · ${metrics.sessionSteps} steps` : ''}
       {model ? ` · ${model}` : ''}

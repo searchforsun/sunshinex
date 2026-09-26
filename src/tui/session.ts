@@ -68,6 +68,10 @@ export interface StatusMetrics {
   sessionTurns: number;
   /** 会话累计模型动作步数（step 事件计步、done 收尾帧不计；状态栏 steps 段） */
   sessionSteps: number;
+  /** 本轮子代理 tokens（payload.subagent usage 增量聚合；随任务流起点与 turnTokens 同步归零；状态栏 ↑tokens 合并项） */
+  turnChildTokens: number;
+  /** 会话累计子代理 tokens（跨任务不清零、仅 /new 归零；任务收尾统计行的子代理差值基线） */
+  sessionChildTokens: number;
   runs: number;
   /** 当前上下文占用水位估算 tokens（最新模型轮装配面估算；分母为 SUNSHINEX_CONTEXT_WINDOW 配置窗口） */
   ctxUsed: number;
@@ -224,7 +228,7 @@ export class SessionController {
     messages: [],
     todos: [],
     status: 'idle',
-    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0 },
+    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0 },
     children: [],
     task: initialTaskState(),
   };
@@ -481,7 +485,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
@@ -883,7 +887,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
@@ -936,7 +940,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
+      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
       live: undefined,
     };
     this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
@@ -1097,6 +1101,8 @@ export class SessionController {
           sessionPromptTokens: 0,
           sessionTurns: 0,
           sessionSteps: 0,
+          turnChildTokens: 0,
+          sessionChildTokens: 0,
         },
         children: [],
         task: initialTaskState(),
@@ -1713,6 +1719,15 @@ export class SessionController {
       case 'usage':
         // per-run turnTotal 为该子代理 run 的累计值（单一 run），直接采信
         tokens = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : child.tokens;
+        // 子代理 token 两级累计（规格 2026-09-26-stats-enhancement §3.3）：per-run 累计值取对子代理前值的增量并入，
+        // 归档不清零、仅 /new 归零；状态栏 ↑tokens 合并项与任务收尾统计行差值基线的同一数据源
+        {
+          const cm = this.state.metrics;
+          const delta = Math.max(0, tokens - child.tokens);
+          if (delta > 0) {
+            this.state = { ...this.state, metrics: { ...cm, turnChildTokens: cm.turnChildTokens + delta, sessionChildTokens: cm.sessionChildTokens + delta } };
+          }
+        }
         break;
       case 'done':
       case 'error': {
