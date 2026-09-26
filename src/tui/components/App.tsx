@@ -654,8 +654,10 @@ export function App({
         />
       ) : (
         <>
-      {state.status === 'running' && state.task.phase !== 'responding' ? (
-        <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
+      {state.status === 'running' ? (
+        // 恒显活动行（对标 CC）：整个任务运行期常驻计时·tokens 跳动行，reasoning 长静默期与正文流式期均有「活着」信号，
+        // 消除「疑似卡死」观感；responding 期与流式正文同屏共存
+        <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens + state.metrics.turnChildTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
       ) : null}
       {browseMode ? (
         // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源

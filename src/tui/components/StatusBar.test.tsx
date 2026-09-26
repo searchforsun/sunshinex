@@ -7,7 +7,7 @@ import { StatusMetrics, SessionStatus } from '../session';
 import { setLanguage } from '../../i18n';
 
 function metrics(over: Partial<StatusMetrics>): StatusMetrics {
-  return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 5, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0, ...over };
+  return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 5, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0, sessionTotalTokens: 0, ...over };
 }
 
 function frameOf(m: StatusMetrics, model?: string, status: SessionStatus = 'idle', context?: { used: number; window: number }): string {
@@ -43,9 +43,15 @@ test('StatusBar：cache 段为会话累计口径——取 session 累计、保�
   assert.match(f, /cache 98\.0%/, 'cache 段应显示会话累计命中率（Σcached/Σprompt，一位小数）');
 });
 
-test('StatusBar：↑tokens 合并子代理消耗（主链+子代理总数）', () => {
-  const f = frameOf(metrics({ turnTokens: 1200, turnChildTokens: 2_600_000 }), 'm');
-  assert.match(f, /↑2601k tokens/, '↑tokens = 主链 + 子代理合并值');
+test('StatusBar：↑tokens 为会话累计总量（主链+子代理、跨任务累计；非本轮口径）', () => {
+  // 本轮 1200+2600、会话累计 2601k：显示应锚定会话累计口径，与本轮清零无关
+  const f = frameOf(metrics({ turnTokens: 1200, turnChildTokens: 2_600, sessionTotalTokens: 2_601_000 }), 'm');
+  assert.match(f, /↑2601k tokens/, '↑tokens = 会话累计总量（Σ主链+Σ子代理）');
+});
+
+test('StatusBar：↑tokens 会话累计与本轮瞬时值解耦（轮内早期累计远大于本轮）', () => {
+  const f = frameOf(metrics({ turnTokens: 500, turnChildTokens: 0, sessionTotalTokens: 900_000 }), 'm');
+  assert.match(f, /↑900k tokens/, '↑tokens 不随轮归零，跨任务持续累计');
 });
 
 test('StatusBar：ctx 水位与 cache 口径不受子代理 tokens 影响（维持仅主链）', () => {

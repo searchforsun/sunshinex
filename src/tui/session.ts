@@ -72,6 +72,8 @@ export interface StatusMetrics {
   turnChildTokens: number;
   /** 会话累计子代理 tokens（跨任务不清零、仅 /new 归零；任务收尾统计行的子代理差值基线） */
   sessionChildTokens: number;
+  /** 会话累计总 tokens（主链+子代理；跨任务不清零、仅 /new 归零；状态栏 ↑tokens 数据源） */
+  sessionTotalTokens: number;
   runs: number;
   /** 当前上下文占用水位估算 tokens（最新模型轮装配面估算；分母为 SUNSHINEX_CONTEXT_WINDOW 配置窗口） */
   ctxUsed: number;
@@ -236,7 +238,7 @@ export class SessionController {
     messages: [],
     todos: [],
     status: 'idle',
-    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0 },
+    metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0, sessionTotalTokens: 0 },
     children: [],
     task: initialTaskState(),
   };
@@ -1137,6 +1139,7 @@ export class SessionController {
           sessionSteps: 0,
           turnChildTokens: 0,
           sessionChildTokens: 0,
+          sessionTotalTokens: 0,
         },
         children: [],
         task: initialTaskState(),
@@ -1569,6 +1572,7 @@ export class SessionController {
             turnPromptTokens: p,
             sessionCacheTokens: m.sessionCacheTokens + Math.max(0, c - m.turnCacheTokens),
             sessionPromptTokens: m.sessionPromptTokens + Math.max(0, p - m.turnPromptTokens),
+            sessionTotalTokens: m.sessionTotalTokens + Math.max(0, turnTokensTotal - m.turnTokens),
           },
         };
         this.notify();
@@ -1762,7 +1766,7 @@ export class SessionController {
           const cm = this.state.metrics;
           const delta = Math.max(0, tokens - child.tokens);
           if (delta > 0) {
-            this.state = { ...this.state, metrics: { ...cm, turnChildTokens: cm.turnChildTokens + delta, sessionChildTokens: cm.sessionChildTokens + delta } };
+            this.state = { ...this.state, metrics: { ...cm, turnChildTokens: cm.turnChildTokens + delta, sessionChildTokens: cm.sessionChildTokens + delta, sessionTotalTokens: cm.sessionTotalTokens + delta } };
           }
         }
         break;
