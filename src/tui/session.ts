@@ -121,7 +121,7 @@ function spawnBaseLabel(input: unknown): string {
 
 /** 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径尾追入档；无子代理消耗省略子代理段 */
 export function formatTaskStatsLine(durationS: number, steps: number, totalTokens: number, childTokens: number): string {
-  const base = `⏱ ${formatDuration(Math.max(0, durationS))} · ${Math.max(0, steps)} steps · ↑${formatTokens(Math.max(0, totalTokens))} tokens`;
+  const base = `${formatDuration(Math.max(0, durationS))} · ${Math.max(0, steps)} steps · ↑${formatTokens(Math.max(0, totalTokens))} tokens`;
   return childTokens > 0
     ? t(`${base} (subagents ${formatTokens(childTokens)})`, `${base}（含子代理 ${formatTokens(childTokens)}）`)
     : t(base, base);
@@ -1833,7 +1833,7 @@ export class SessionController {
     const durS = Math.max(0, Math.round((Date.now() - child.startedAt) / 1000));
     const detail = [...child.transcript, ...(buf ? [{ kind: 'text', text: buf } as ChildLine] : [])]
       .map((l) => (l.kind === 'result' ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}` : l.text))
-      .concat(`⏱ ${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`)
+      .concat(`${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`)
       .join('\n');
     const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens };
     this.state = {

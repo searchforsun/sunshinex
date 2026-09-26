@@ -44,7 +44,7 @@ test('后台 spawn：结果先行不即归档、面板跨回合保留、done 后
   }
 });
 
-test('归档统计摘要：subagentMeta.tokens 在位、detail 尾行含 ⏱ 步数耗时 tokens', () => {
+test('归档统计摘要：subagentMeta.tokens 在位、detail 尾行为步数耗时 tokens 摘要', () => {
   const tmp = tmpdir('sunshinex-sess-stats-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
@@ -59,7 +59,7 @@ test('归档统计摘要：subagentMeta.tokens 在位、detail 尾行含 ⏱ 步
     assert.ok(call?.subagentMeta, 'subagentMeta 在位');
     assert.equal(call!.subagentMeta!.tokens, 1200, 'tokens 归档');
     assert.equal(call!.subagentMeta!.steps, 2, '步数归档');
-    assert.match(call!.detail ?? '', /⏱ \S+ · 2 steps · ↑1\.2k tokens$/m, 'detail 尾行为统计摘要行');
+    assert.match(call!.detail ?? '', /\S+ · 2 steps · ↑1\.2k tokens$/m, 'detail 尾行为统计摘要行');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
