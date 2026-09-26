@@ -182,11 +182,13 @@ export function App({
   // latestFull=第二层内容深度（最近正文锚点阶段的思考与工具结果全文 ↔ 摘要）；无状态门槛，运行中随时可切
   const [expandAll, setExpandAll] = React.useState(store.expandAll ?? false);
   const [latestFull, setLatestFull] = React.useState(store.latestFull ?? false);
-  // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）
-  const [browseMode, setBrowseMode] = React.useState(false);
-  const browseModeRef = React.useRef(false);
-  const [browseCursor, setBrowseCursor] = React.useState(0);
-  const browseCursorRef = React.useRef(0);
+  // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；
+  // 两态经 retain 跨重挂保留——repaint effect 依赖含 browseMode（行高亮须 Static 整屏重放），不在 retain 则
+  // 一按 Ctrl+B 即卸载重挂、浏览态丢失（真机「按 Ctrl+B 挂死」观感）；旧 retain 快照缺字段回落关闭态
+  const [browseMode, setBrowseMode] = React.useState(store.browseMode ?? false);
+  const browseModeRef = React.useRef(store.browseMode ?? false);
+  const [browseCursor, setBrowseCursor] = React.useState(store.browseCursor ?? 0);
+  const browseCursorRef = React.useRef(store.browseCursor ?? 0);
   const [spawnExpanded, setSpawnExpanded] = React.useState<number[]>(store.spawnExpanded);
   const setBrowse = (mode: boolean, cursor = 0): void => {
     browseModeRef.current = mode;
@@ -229,6 +231,8 @@ export function App({
     store.expandAll = expandAll;
     store.latestFull = latestFull;
     store.spawnExpanded = spawnExpanded;
+    store.browseMode = browseMode;
+    store.browseCursor = browseCursor;
     store.history = history;
     store.histIdx = histIdx;
   });

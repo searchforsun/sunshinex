@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { render } from '../test-ink';
+import { render, type TestRenderResult } from '../test-ink';
 import { App } from './App';
 import { SessionController } from '../session';
 import { initialRetained } from '../ui-state';
@@ -68,6 +68,31 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     await new Promise((r) => setTimeout(r, 150));
     assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
     unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：浏览模式经整屏重绘（卸载→同 retain 重挂，生产 repaint 路径）后保留', async () => {
+  // 回归：browseMode/browseCursor 曾进了 repaint effect 依赖（高亮需 Static 重放）却不在 retain 现场——
+  // Ctrl+B 进入即触发卸载→重挂，重挂后浏览态整体丢失（提示行闪现即逝），真机上即「按 Ctrl+B 挂死」观感。
+  // 生产同构：App 调 onRequestRepaint()（=tui-loop 的卸载），循环体以同一 retain renderOnce 重挂
+  const tmp = tmpdir('sunshinex-app-browse3-');
+  try {
+    const ctrl = await settledCtrl(tmp);
+    const retain = initialRetained();
+    let current: TestRenderResult | undefined;
+    const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
+    const one = render(<App {...props} />);
+    current = one;
+    await new Promise((r) => setTimeout(r, 200));
+    one.write('\u0002'); // Ctrl+B 进入浏览：App 的 repaint effect 将触发 onRequestRepaint → 卸载
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(one.lastFrame() ?? '', /subagent browse/, '前置：浏览模式已进入');
+    const two = render(<App {...props} banner={props.banner} />);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(two.lastFrame() ?? '', /subagent browse/, '重挂后浏览模式保留（retain 现场）');
+    two.unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

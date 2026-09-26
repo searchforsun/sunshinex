@@ -8,10 +8,13 @@ export interface RetainedUiState {
   latestFull: boolean;
   /** 子代理行逐行展开集合（Ctrl+B 浏览模式 Enter 切换，存 SPAWN 调用行 seq）：跨重挂保留、瞬态 UI 态不进 journal */
   spawnExpanded: number[];
+  /** 子代理浏览模式（Ctrl+B）：行高亮走 Static 历史重放（repaint 依赖含 browseMode），重挂后须原样恢复 */
+  browseMode: boolean;
+  browseCursor: number;
   history: string[];
   histIdx: number;
 }
 
 export function initialRetained(): RetainedUiState {
-  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, spawnExpanded: [], history: [], histIdx: -1 };
+  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, spawnExpanded: [], browseMode: false, browseCursor: 0, history: [], histIdx: -1 };
 }
