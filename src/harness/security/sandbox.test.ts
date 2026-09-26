@@ -250,9 +250,14 @@ test('execBackground：提交即返回 pid，进程在跑，输出直写回调',
 
 test('exec timeoutToBackground：到点不杀进程、返回存活子进程与已缓冲输出', async () => {
   const sb = new ProcessSandbox();
-  // 断言前提是超时到点前「warm」已进入缓冲——阈值须盖过 shell 冷启动耗时：win32 实测 Git Bash 首字 ~1–1.4s（探针 scripts/probe-shell.js），POSIX /bin/sh 毫秒级
-  const timeoutMs = process.platform === 'win32' ? 3000 : 150;
-  const r = await sb.exec('echo warm && sleep 5', { timeoutMs, timeoutToBackground: true });
+  // 断言前提是超时到点前「warm」已进入缓冲——阈值须盖过 shell 冷启动 + node 冷启动（win32 实测 Git Bash 首字 ~1–1.4s、PowerShell 冷启动 ~0.5–1s；POSIX /bin/sh 毫秒级）
+  const timeoutMs = process.platform === 'win32' ? 3000 : 300;
+  // 命令前提对 shell 中立（§14 测试命令形态）：node 脚本文件承载「先输出后长驻」——
+  // sh 独有语法（&&、sleep）在 PowerShell 5.1 / ComSpec 回落面上语义不成立（真机 EXEC_FAILED@659ms 即 PS5.1 对 && 的解析错误）
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ttob-'));
+  const script = path.join(dir, 'warm-hold.js');
+  fs.writeFileSync(script, "console.log('warm'); setTimeout(() => {}, 5000);\n");
+  const r = await sb.exec(`node "${script.replace(/\\/g, '/')}"`, { timeoutMs, timeoutToBackground: true });
   assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.code}`);
   assert.equal(r.value.timedOut, true);
   assert.ok(r.value.stdout.includes('warm'), '超时前已缓冲输出随 child 交回');
@@ -260,12 +265,16 @@ test('exec timeoutToBackground：到点不杀进程、返回存活子进程与�
   assert.ok(child.pid, '存活子进程句柄');
   assert.equal(child.killed, false);
   sb.killBackground(child.pid!);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('killBackground：同步收割后任务 cwd 目录可立即删除', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-killbg-'));
   const sb = new ProcessSandbox();
-  const r = await sb.execBackground('sleep 5', { cwd: root });
+  // 命令前提对 shell 中立（§14）：node 脚本长驻（sh 的 sleep 在 PowerShell 回落面上立即退出、收割断言成空洞通过）
+  const script = path.join(root, 'hold.js');
+  fs.writeFileSync(script, "setTimeout(() => {}, 60000);\n");
+  const r = await sb.execBackground(`node "${script.replace(/\\/g, '/')}"`, { cwd: root });
   assert.ok(r.ok && r.value.pid > 0);
   sb.killBackground(r.value.pid);
   // 返回即进程树已收割，cwd 目录可删
