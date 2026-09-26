@@ -146,8 +146,8 @@ export const SPAWN_TOOL_NAME = 'spawn';
 /** todo_write 工具名（规格 D9：fork 子面恒剔除——子代理私有步骤零主链状态污染，进度经既有结论行回写） */
 export const TODO_TOOL_NAME = 'todo_write';
 
-/** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队） */
-export const SUBAGENT_CONCURRENCY_LIMIT = 4;
+/** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队）；与 reactor 并行批上限 8 同量级对齐 */
+export const SUBAGENT_CONCURRENCY_LIMIT = 8;
 
 /** 子代理预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 透传父级无显式上限，以 maxSteps/deadline 为护栏） */
 export interface SubagentBudget {
@@ -462,7 +462,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     },
     name: SPAWN_TOOL_NAME,
     description:
-      'Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap 4, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
+      'Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap 8, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
     category: 'subagent',
     executor: async (input) => {
       const spec = input as SubagentSpawnInput;

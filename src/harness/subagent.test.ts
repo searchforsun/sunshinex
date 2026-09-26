@@ -269,10 +269,10 @@ test('Runner 工具面收窄：缺省子面 = 父全量 − spawn；tools 收窄
   }
 });
 
-test('Runner 并发护栏：同层第 5 个并发返回 CONCURRENCY_LIMIT，不排队', async () => {
+test('Runner 并发护栏：同层第 9 个并发返回 CONCURRENCY_LIMIT，不排队', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-conc-'));
   try {
-    // 挂起式桩：首个 done 由测试手动释放，制造 4 个在飞
+    // 挂起式桩：首个 done 由测试手动释放，制造 8 个在飞
     let release!: () => void;
     const gate = new Promise<void>((res) => (release = res));
     const hanging: ModelAdapter = {
@@ -285,13 +285,13 @@ test('Runner 并发护栏：同层第 5 个并发返回 CONCURRENCY_LIMIT，不�
     const h = makeHarness(tmp);
     const runner = h.makeRunner(hanging);
     const flights = Promise.all(
-      Array.from({ length: 4 }, () => runner.runSubagent({ prompt: `并行任务`, label: 'w' })),
+      Array.from({ length: 8 }, (_, i) => runner.runSubagent({ prompt: `并行任务${i}`, label: `w${i}` })),
     );
-    const fifth = await runner.runSubagent({ prompt: '第5个', label: 'x' });
-    assert.ok(!fifth.ok && fifth.error.code === 'CONCURRENCY_LIMIT', `第 5 个并发应被拒，实际 ${JSON.stringify(fifth)}`);
+    const ninth = await runner.runSubagent({ prompt: '第9个', label: 'x' });
+    assert.ok(!ninth.ok && ninth.error.code === 'CONCURRENCY_LIMIT', `第 9 个并发应被拒，实际 ${JSON.stringify(ninth)}`);
     release();
     const results = await flights;
-    assert.ok(results.every((r) => r.ok), '前 4 个并发在飞后应正常完成');
+    assert.ok(results.every((r) => r.ok), '前 8 个并发在飞后应正常完成');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
