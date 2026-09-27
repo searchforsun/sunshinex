@@ -9,6 +9,18 @@ import { textReplyAdapter } from '../model/chat-stub';
 import { Reactor, ReactorOpts } from '../harness/reactor';
 import { SessionEvent } from '../types';
 
+// 文件级数据目录钉定：单文件直跑（不经 run-tests.js 启动器、env 未钉）时全文件用例统一落本文件临时沙箱，
+// 防 cwd 残渣与用户全局区污染——此前 :34 裸恢复把 JS undefined 强转成字符串 "undefined" 存进 env，
+// resolveDataDir 的覆盖分支 path.resolve('undefined') 即在 cwd 建出 undefined/runs+skills
+const filePrevData = process.env.SUNSHINEX_DATA_DIR;
+const fileDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-data-'));
+process.env.SUNSHINEX_DATA_DIR = fileDataDir;
+test.after(() => {
+  if (filePrevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+  else process.env.SUNSHINEX_DATA_DIR = filePrevData;
+  fs.rmSync(fileDataDir, { recursive: true, force: true });
+});
+
 // ── 输出样式分叉（outputStyle）：TUI 面缺省恒 terminal，稳定段携带围栏/ASCII 图示约束 ──
 
 test('createRuntime：TUI 面缺省恒 terminal——稳定段携带输出样式约束行', async () => {

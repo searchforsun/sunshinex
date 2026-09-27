@@ -52,7 +52,7 @@ test('/resume 无参：选择器挂起（问题卡列会话）→ 选中 → 恢
     await ctrl2.waitIdle();
     assert.ok(messageTexts(ctrl2).includes('任务一完成'), '选中后应重放目标会话消息面');
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -75,7 +75,7 @@ test('/resume 无参：Esc 放弃 → Resume cancelled 回执且停留当前会�
     assert.equal(ctrl2.getState().status, 'idle');
     assert.equal(ctrl2.getState().question, undefined);
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -104,7 +104,7 @@ test('/resume：>8 条 filterable 全量卡——一次问询直达恢复（规�
     await ctrl.waitIdle();
     assert.equal(ctrl.getState().status, 'idle', '选中即恢复目标会话');
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -120,7 +120,7 @@ test('/resume：带参形态统一无法识别（裸形式守卫，规格 D2）'
     const texts = messageTexts(ctrl);
     assert.ok(texts.includes('Unrecognized command. Use /help to see available commands'), '带参枚举形态统一文案');
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

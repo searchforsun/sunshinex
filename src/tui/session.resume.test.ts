@@ -50,7 +50,7 @@ test('resumePicker：构造后即弹会话选择卡 → 选中 → 恢复目标�
     await waitFor(() => ctrl2.getState().status === 'idle');
     assert.ok(messageTexts(ctrl2).includes('要恢复的答复'), '选定后重放目标会话消息面');
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -70,7 +70,7 @@ test('resumePicker：Esc 放弃 → 新会话继续（回执上屏）', async ()
     assert.ok(messageTexts(ctrl2).includes('Resume cancelled'), '放弃回执上屏（与 /resume 同文案通道）');
     assert.equal(ctrl2.getState().status, 'idle');
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -84,7 +84,7 @@ test('resumePicker：空目录 → 回执「暂无已保存会话」后按新会
     await waitFor(() => ctrl.getState().status === 'idle');
     assert.ok(messageTexts(ctrl).includes('暂无已保存会话') || messageTexts(ctrl).includes('No saved sessions yet'), '空目录回执');
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

@@ -59,7 +59,7 @@ test('resume：流式切块段落全部入档，恢复后正文完整', async ()
     assert.ok(restored.includes('第一段结论行'), '恢复后含首段（切块段须入档）');
     assert.ok(restored.includes('第四段收尾。'), '恢复后含尾段');
   } finally {
-    process.env.SUNSHINEX_DATA_DIR = prev;
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
