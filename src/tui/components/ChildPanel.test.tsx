@@ -23,7 +23,7 @@ test('ChildPanel：空 children 零占位；CC 式每代理一行（规格 §3.1
   assert.match(f1, /\[w\]/, '头部应含 [label] 标识（Spinner label 前缀）');
   assert.match(f1, /╭/, '外层特殊边框（2026-09-27 用户裁决对标 CC，运行态视觉分域）');
   const lines1 = f1.replace(/\n$/, '').split('\n').length;
-  assert.equal(lines1, 3, '单代理 = 1 内容行 + 2 边框行（每代理一行内容语义不变）');
+  assert.equal(lines1, 4, '单代理 = 1 概览行 + 1 内容行 + 2 边框行（每代理一行内容语义不变，概览行为运行/完成计数）');
   one.unmount();
 });
 
@@ -37,7 +37,7 @@ test('ChildPanel：并发 4 面板同屏、总高 = 4 内容行 + 2 边框行（
   );
   const f = four.lastFrame() ?? '';
   for (const i of [1, 2, 3, 4]) assert.ok(f.includes(`[w${i}]`), `面板 ${i} 应同屏`);
-  assert.equal(f.replace(/\n$/, '').split('\n').length, (base - 2) * 4 + 2, 'N 面板总高 = N 内容行 + 2 边框行（每代理一行护栏，规格 §3.1）');
+  assert.equal(f.replace(/\n$/, '').split('\n').length, (base - 3) * 4 + 3, 'N 面板总高 = N 内容行 + 1 概览行 + 2 边框行（每代理一行护栏，概览行为运行/完成计数；base 含概览+边框故减 3）');
   four.unmount();
 });
 

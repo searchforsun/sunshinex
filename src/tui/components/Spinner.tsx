@@ -4,6 +4,7 @@ import { formatDuration, formatTokens } from '../format';
 import { ActiveCall, LiveTaskPhase } from '../task-state';
 import { t } from '../../i18n';
 import { elideByWidth } from '../text-band';
+import { theme } from '../theme';
 
 // 帧字形全部选用无 emoji 呈现属性的星形：✳（U+2733）带 emoji 变体，终端会改用彩色字形渲染、
 // 完全无视前景色，观感成「图标」而非着色文本（与 ⏺→● 同款问题，故弃用）；✱ 等字形颜色严格跟随前景色
@@ -42,7 +43,7 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
     return (
       <Box flexDirection="column">
         {own.map((c) => (
-          <Text key={c.callId} color="green" dimColor>
+          <Text key={c.callId} color={theme.accent} dimColor>
             {glyph} [{elideByWidth(c.target, Math.max(16, columns - 20))}]{' '}
             <Text dimColor>
               {phase === 'tool-awaiting' ? t('awaiting approval', '等待审批') + ' · ' : ''}
@@ -54,7 +55,7 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
     );
   }
   return (
-    <Text color="green" dimColor>
+    <Text color={theme.accent} dimColor>
       {glyph} {label ? `[${label}] ` : ''}
       <Text dimColor>
         {verb}… ({formatDuration(secs)}

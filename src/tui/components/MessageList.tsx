@@ -8,6 +8,7 @@ import { Banner } from './Banner';
 import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
+import { theme } from '../theme';
 
 /**
  * Static 区条目：横幅（首条）+ 逐条消息（含当前轮）——打印一次后不再重绘（Claude Code 同款机制），
@@ -128,12 +129,22 @@ const MessageRow = React.memo(function MessageRow({
   if (item.role === 'assistant') return <MarkdownText text={item.text} columns={columns} />;
   // system 行按级别渲染（对标 Claude Code：信息类为辅助暗色，仅警告/失败用醒目色）
   if (item.role === 'system') {
-    if (item.level === 'error') return <Text color="red">✗ {item.text}</Text>;
-    if (item.level === 'warn') return <Text color="yellow">! {item.text}</Text>;
+    if (item.level === 'error') return <Text color={theme.error}>✗ {item.text}</Text>;
+    if (item.level === 'warn') return <Text color={theme.warn}>! {item.text}</Text>;
     return <Text dimColor>{item.text}</Text>;
   }
   if (item.role === 'thinking') return <ThinkingRow item={item} collapsed={collapsed} />;
-  if (item.role === 'step') return <Text>▶ {item.text}</Text>;
+  // step 阶段行：正文经 MarkdownText 渲染（与主 agent 正文同渲染器，加粗/代码不再裸露星号），▶ 前缀标识阶段
+  if (item.role === 'step') {
+    return (
+      <Box>
+        <Text>▶ </Text>
+        <Box flexDirection="column">
+          <MarkdownText text={item.text} columns={Math.max(16, columns - 3)} />
+        </Box>
+      </Box>
+    );
+  }
   return <ToolRow item={item} columns={columns} collapsed={collapsed} spawnExpanded={spawnExpanded} spawnHighlighted={spawnHighlighted} />;
 });
 

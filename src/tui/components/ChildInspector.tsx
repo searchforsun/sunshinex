@@ -5,6 +5,7 @@ import { formatTokens, formatDuration } from '../format';
 import { MarkdownText } from './MarkdownText';
 import { TOOL_VERBS } from '../tool-verbs';
 import { t } from '../../i18n';
+import { theme } from '../theme';
 
 /** 全屏查看视图（规格 §3.3）：运行中实时流式 / 完成态 detail 回看双模式；
  *  整体渲染在动态区（有界=视口高度，取尾适配）+ 特殊边框整屏框定（2026-09-27 用户裁决对标 CC）；
@@ -84,8 +85,8 @@ export function ChildInspector(props: {
     }
   }
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
-      <Text color="green" dimColor>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
+      <Text color={theme.accent} dimColor>
         {head}
         {child?.prompt ? `\n⏺ ${t('delegated prompt', '委派提示词')}：${child.prompt}` : ''}
       </Text>
@@ -114,7 +115,7 @@ function CallRow({ line, columns }: { line: ChildLine; columns: number }): JSX.E
   return (
     <Text>
       <Text dimColor>● </Text>
-      <Text color="cyan">[{verb}]</Text>
+      <Text color={theme.accent}>[{verb}]</Text>
       {target ? <Text color="gray"> {target}</Text> : null}
     </Text>
   );
