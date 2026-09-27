@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Box, Text } from 'ink';
 import { TodoItem } from '../session';
 import { wrapByWidth } from '../text-band';
+import { theme } from '../theme';
 
 /**
  * 待办列表（输入框下侧常驻），两种形态，行数均恒定（不构成动态区高度波动源）：
@@ -35,7 +36,7 @@ export function TodoList({
       <Text dimColor>{t(`todo ${done}/${todos.length}`, `待办 ${done}/${todos.length}`)}</Text>
       {todos.map((item, i) =>
         item.status === 'completed' ? (
-          <Text key={i} color="green">  ✓ {item.text}</Text>
+          <Text key={i} color={theme.success}>  ✓ {item.text}</Text>
         ) : item.status === 'in_progress' ? (
           <Text key={i}>  ▸ {item.text}</Text>
         ) : (

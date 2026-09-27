@@ -2,6 +2,7 @@ import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { BannerInfo } from '../banner-info';
+import { theme } from '../theme';
 
 /**
  * 启动横幅：单字形图标 + 单行标题 + 缩进提示行（对标 Claude Code 欢迎头）。
@@ -10,12 +11,12 @@ import { BannerInfo } from '../banner-info';
  */
 export function Banner({ info, columns }: { info: BannerInfo; columns: number }): JSX.Element {
   if (columns < 40) {
-    return <Text color="yellow">✻ SunshineX TUI v{info.version} · /help</Text>;
+    return <Text color={theme.accent}>✻ SunshineX TUI v{info.version} · /help</Text>;
   }
   return (
     <Box flexDirection="column">
       <Text>
-        <Text color="yellow">✻ </Text>
+        <Text color={theme.accent}>✻ </Text>
         <Text bold>SunshineX TUI v{info.version}</Text>
         <Text dimColor> · model {info.model}</Text>
       </Text>

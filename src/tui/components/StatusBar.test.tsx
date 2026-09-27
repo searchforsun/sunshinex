@@ -11,7 +11,7 @@ function metrics(over: Partial<StatusMetrics>): StatusMetrics {
 }
 
 function frameOf(m: StatusMetrics, model?: string, status: SessionStatus = 'idle', context?: { used: number; window: number }): string {
-  const { lastFrame, unmount } = render(<StatusBar metrics={m} status={status} todos={[]} model={model} context={context} />);
+  const { lastFrame, unmount } = render(<StatusBar metrics={m} status={status} model={model} context={context} />);
   const f = lastFrame() ?? '';
   unmount();
   return f;

@@ -1,7 +1,7 @@
 import { t } from '../../i18n';
 import * as React from 'react';
 import { Text } from 'ink';
-import { SessionStatus, StatusMetrics, TodoItem } from '../session';
+import { SessionStatus, StatusMetrics } from '../session';
 import { ReasoningEffort } from '../../types';
 import { formatTokens } from '../format';
 
@@ -19,25 +19,22 @@ function statusLabel(status: SessionStatus): string {
   return t(en, zh);
 }
 
-/** 底部状态栏：本轮 tokens · 上下文占用 · 模型名 · 缓存命中率 · 待办进度 · 状态词（耗时只在活动行显示，不冗余重复） */
+/** 底部状态栏：tokens · 上下文占用 · 模型名 · 缓存命中率 · 状态词（待办进度由 TodoList 面板单点承载，此处不冗余重复） */
 export function StatusBar({
   metrics,
   status,
-  todos,
   model,
   effort,
   context,
 }: {
   metrics: StatusMetrics;
   status: SessionStatus;
-  todos?: TodoItem[];
   model?: string;
   /** 思考强度（/model-effort 会话切换；undefined = 适配器 cfg/env 缺省，该段不显示） */
   effort?: ReasoningEffort;
   /** 上下文占用水位：used=当前上下文估算 tokens，window=配置窗口（SUNSHINEX_CONTEXT_WINDOW）；未配置不显示该段 */
   context?: { used: number; window: number };
 }): JSX.Element {
-  const done = (todos ?? []).filter((t) => t.status === 'completed').length;
   // 缓存命中率 = 会话累计 Σcached/Σprompt（一位小数）：跨任务不清零，轮首 miss 只稀释不砸零；零样本 0%（不除零）
   const total = metrics.sessionPromptTokens;
   const cachePct = total > 0 ? ((metrics.sessionCacheTokens / total) * 100).toFixed(1) : '0';
@@ -52,7 +49,7 @@ export function StatusBar({
       {model ? ` · ${model}` : ''}
       {effort ? ` · effort ${effort}` : ''}
       {' · cache '}{cachePct}%
-      {todos && todos.length > 0 ? ` · todo ${done}/${todos.length}` : ''} · {statusLabel(status)}
+      {' · '}{statusLabel(status)}
     </Text>
   );
 }

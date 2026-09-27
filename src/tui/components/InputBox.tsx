@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
+import { theme } from '../theme';
 
 /**
  * 常驻边框输入框：❯ 提示符 + 缓冲/占位。
@@ -22,7 +23,7 @@ export function InputBox({
     return (
       <Box borderStyle="round" borderColor={active ? 'cyan' : 'gray'} flexDirection="column" paddingX={1}>
         <Text>
-          <Text color="cyan">❯ </Text>
+          <Text color={theme.accent}>❯ </Text>
           <Text dimColor>{placeholder}</Text>
           {active ? <Text>▊</Text> : null}
         </Text>
@@ -48,7 +49,7 @@ export function InputBox({
         const onCursor = active && i === lineIdx;
         return (
           <Text key={i}>
-            {i === 0 ? <Text color="cyan">❯ </Text> : <Text>{'  '}</Text>}
+            {i === 0 ? <Text color={theme.accent}>❯ </Text> : <Text>{'  '}</Text>}
             {onCursor ? (
               <>
                 <Text>{l.slice(0, col)}</Text>
