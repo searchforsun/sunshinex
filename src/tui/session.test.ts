@@ -670,3 +670,66 @@ test('/tasks 空账本：回执「无后台任务」而非空表', async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('phase 句完整入档：不 200 字符截断（2026-09-27 真机残句「3. **Web 掐断」根因）', async () => {
+  const tmp = tmpdir('sunshinex-sess-phase-');
+  try {
+    // 构造 >200 字符的 phase 叙述句（含 Markdown 内联语法）
+    const longPhase = `维度分区（互斥且联合覆盖全仓库）：1. **AI 能力层**（\`ai/**\` + \`prompt\` 资源 + 模型配置）2. **生成管线与工作流**（\`core/**\` + \`langgraph4j/**\` + SSE 工作流入口）3. **Web 接入层**（controller 路由、DTO 校验、鉴权过滤器）4. **数据访问层**（MyBatis mapper、实体、迁移脚本）5. **配置与可观测**（application.yml、日志、指标埋点）`;
+    assert.ok(longPhase.length > 200, '夹具前置自检：phase 句超 200 字符');
+    const ctrl = new SessionController({
+      root: tmp,
+      model: {
+        provider: 'phase-stub',
+        chat: textReplyToChatFace(() => '{"tool":"read","args":{"path":"a.ts"}}'),
+      },
+    });
+    (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+      type: 'step',
+      text: 'read',
+      payload: { step: 1, phase: longPhase },
+    });
+    const steps = ctrl.getState().messages.filter((m) => m.role === 'step');
+    assert.equal(steps.length, 1, 'phase 句以 step 行入档');
+    assert.ok(steps[0]!.text.includes('指标埋点'), '尾部内容完整（不截断）');
+    assert.ok(steps[0]!.text.length >= longPhase.length, `完整长度保留（${steps[0]!.text.length} >= ${longPhase.length}）`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('phase 句逐字去重：与最近 assistant 正文逐字相同即跳过入档，不同叙述保留', async () => {
+  const tmp = tmpdir('sunshinex-sess-dedupe-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: {
+        provider: 'dedupe-stub',
+        chat: textReplyToChatFace(() => '{"tool":"read","args":{"path":"a.ts"}}'),
+      },
+    });
+    const fire = (phase: string): void =>
+      (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+        type: 'step',
+        text: 'read',
+        payload: { step: 1, phase },
+      });
+    (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+      type: 'token',
+      text: '开始调研缓存层',
+    });
+    (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+      type: 'done',
+      text: '开始调研缓存层',
+    });
+    fire('开始调研缓存层'); // 与刚入档的 assistant 终稿逐字相同 → 去重
+    fire('继续核对配置层'); // 新叙述 → 保留
+    const assistantText = ctrl.getState().messages.filter((m) => m.role === 'assistant').map((m) => m.text).join('|');
+    const steps = ctrl.getState().messages.filter((m) => m.role === 'step').map((m) => m.text);
+    assert.equal(steps.filter((t) => t === '开始调研缓存层').length, 0, '逐字重复的 phase 句不入档');
+    assert.ok(steps.some((t) => t === '继续核对配置层'), '不同叙述照常入档');
+    assert.ok(assistantText.includes('开始调研缓存层'), '原 assistant 正文不受影响');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

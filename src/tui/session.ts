@@ -1632,9 +1632,14 @@ export class SessionController {
         if (e.text !== 'done') {
           this.state = { ...this.state, metrics: { ...this.state.metrics, sessionSteps: this.state.metrics.sessionSteps + 1 } };
         }
-        // phase 阶段行：模型主动播报的当前进度（1-2 行），先于对应动作/答复上屏；无 phase 的 step 与工具行信息重复，不上屏
-        const phase = typeof e.payload?.phase === 'string' ? e.payload.phase.trim().slice(0, 200) : '';
-        if (phase) this.pushMsg('step', phase);
+        // phase 阶段行：模型主动播报的当前进度（1-2 行），先于对应动作/答复上屏；无 phase 的 step 与工具行信息重复，不上屏。
+        // phase 句完整入档（呈现层不腰斩——真机 200 字符残句「3. **Web 掐断」根因）；与最近 assistant 正文逐字相同的重复播报跳过
+        const phase = typeof e.payload?.phase === 'string' ? e.payload.phase.trim() : '';
+        if (phase.length > 0) {
+          const msgs = this.state.messages;
+          const last = msgs[msgs.length - 1];
+          if (!(last?.role === 'assistant' && last.text === phase)) this.pushMsg('step', phase);
+        }
         return;
       }
       case 'done': {
