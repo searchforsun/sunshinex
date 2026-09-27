@@ -62,3 +62,38 @@ test('tui-loop：resize 卸载→清屏→重挂；首事件立即、连发防�
   await loop;
   assert.equal(mounts.length, 3, '正常退出不再重挂');
 });
+
+test('tui-loop：重绘路径以同步更新（DEC 2026）包裹清屏与重挂，终端原子换帧不闪中间空屏', async () => {
+  const ee = new EventEmitter();
+  const writes: string[] = [];
+  const mounts: FakeInstance[] = [];
+  const loop = runTuiLoop({
+    stdout: ee as never,
+    writeRaw: (s) => writes.push(s),
+    clearScreen: () => writes.push('<clear>'),
+    renderOnce: (retain) => {
+      writes.push('<render>');
+      const inst = new FakeInstance();
+      mounts.push(inst);
+      return inst;
+    },
+    debounceMs: 20,
+  });
+
+  assert.equal(mounts.length, 1, '启动即挂载一次');
+  assert.deepEqual(writes, ['<render>'], '首挂载有渲染但无同步更新包裹（入口清屏不是模式切换）');
+
+  writes.length = 0;
+  ee.emit('resize');
+  await tick();
+  await tick();
+
+  assert.deepEqual(
+    writes,
+    ['\x1b[?2026h', '<clear>', '<render>', '\x1b[?2026l'],
+    '清屏前开同步更新、重挂帧落定后收——终端持旧帧到重放完成原子切换',
+  );
+
+  mounts[mounts.length - 1].unmount();
+  await loop;
+});

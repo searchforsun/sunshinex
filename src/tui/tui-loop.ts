@@ -14,6 +14,8 @@ export interface TuiLoopDeps {
   stdout: ResizeSource;
   /** 重挂前的整屏清理（清屏 + 归位光标）；清理后重挂使 Static 历史重放一次、动态区按新宽度重排 */
   clearScreen(): void;
+  /** 原始终端写出（同步更新序列载体）；缺省直写 stdout */
+  writeRaw?(s: string): void;
   /** 渲染一次交互面；retain 为跨重挂现场（挂载读初值、变化实时回写） */
   renderOnce(retain: RetainedUiState): InkLikeInstance;
   /** 宿主注册「请求整屏重绘」出口：Tab 展开模式切换等非 resize 场景复用同一卸载→清屏→重挂路径 */
@@ -31,6 +33,9 @@ export interface TuiLoopDeps {
  */
 export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
   const retain: RetainedUiState = { ...initialRetained(), ...deps.initialRetain };
+  // 重绘换帧以 DEC 2026 同步更新包裹为原子操作：终端持有旧帧直到重放完成一次性切换，
+  // 消除「清屏空屏 → Static 重放」中间帧的闪屏观感；不识别该序列的终端静默忽略、行为同旧路径
+  const writeRaw = deps.writeRaw ?? ((s: string): void => { process.stdout.write(s); });
   let repaintQueued = false;
   let current: InkLikeInstance | undefined;
   // resize 与 Tab 模式切换共用同一条「卸载 → 清屏 → 重挂」路径：Static 历史按当前模式整屏重放
@@ -50,8 +55,14 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
       const isRepaint = !first;
       first = false;
       repaintQueued = false;
-      if (isRepaint) deps.clearScreen();
-      current = deps.renderOnce(retain);
+      if (isRepaint) {
+        writeRaw('\u001b[?2026h');
+        deps.clearScreen();
+        current = deps.renderOnce(retain);
+        writeRaw('\u001b[?2026l');
+      } else {
+        current = deps.renderOnce(retain);
+      }
       await current.waitUntilExit();
     } while (repaintQueued);
   } finally {
