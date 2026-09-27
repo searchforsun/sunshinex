@@ -668,7 +668,18 @@ export function App({
         // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源
         <Text backgroundColor="gray"> {t('subagent browse · ↑↓ move · Enter inspect · Esc exit', '子代理浏览 · ↑↓ 移动 · Enter 查看 · Esc 退出')} </Text>
       ) : null}
-      {state.children.length > 0 ? <ChildPanel childrenState={state.children} columns={columns} /> : null}
+      {state.children.length > 0 ? (
+        <ChildPanel
+          childrenState={state.children}
+          columns={columns}
+          // 浏览模式选中高亮：选择序列 = 运行中子代理（启动序）++ 已归档行，面板行反色承载选中态（↑↓ 移动即见）
+          selectedLabel={
+            browseMode && browseCursor < state.children.filter((c) => !c.done).length
+              ? state.children.filter((c) => !c.done)[browseCursor]?.label
+              : undefined
+          }
+        />
+      ) : null}
       {state.approval ? (
         <OptionSelector
           title={`${t('Approval', '审批')} ${state.approval.id} (${state.approval.kind})`}
