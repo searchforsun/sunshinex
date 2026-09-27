@@ -52,7 +52,10 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /subagent view/, '全屏查看视图接管整页');
-    assert.match(lastFrame() ?? '', /wr 结论/, '最近归档行转录呈现');
+    // 归档 detail 精简形态（2026-09-28 用户裁决：输入+结论+统计）；结论取子代理真实终稿（注入事件先于真实 done 到达被覆盖），
+    // 回看锚定每行唯一的委派 prompt
+    assert.match(lastFrame() ?? '', /delegated prompt：b/, '最近归档行精简 detail 呈现（委派提示词段）');
+    assert.match(lastFrame() ?? '', /steps · /, '精简 detail 统计行在位');
     write('\u001b'); // Esc 退出全屏回主界面
     await new Promise((r) => setTimeout(r, 150));
     assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
@@ -63,7 +66,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     await new Promise((r) => setTimeout(r, 150));
     write('\r'); // Enter 回看上一条
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /rv 结论/, '上一条归档行转录呈现');
+    assert.match(lastFrame() ?? '', /delegated prompt：a/, '上一条归档行精简 detail 呈现');
     write('\u001b'); // Esc 退出
     await new Promise((r) => setTimeout(r, 150));
     assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');

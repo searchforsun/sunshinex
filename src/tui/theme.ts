@@ -1,5 +1,3 @@
-import { t } from '../i18n';
-
 /**
  * TUI 主题色单点（2026-09-27 统一设计语言裁决）：全部组件的颜色一律从此处取语义 token，
  * 组件内禁止硬编码色名——语义（主色/成功/警告/错误）与具体色值解耦，换主题只改本文件。
@@ -19,8 +17,3 @@ export const theme = {
 } as const;
 
 export type ThemeColor = (typeof theme)[keyof typeof theme];
-
-/** 子代理面板运行/归档概览行的计数控件文案（双语收口在 i18n，形态「2 running · 1 done」） */
-export function childCountsLine(running: number, done: number): string {
-  return t(`${running} running · ${done} done`, `运行中 ${running} · 已完成 ${done}`);
-}

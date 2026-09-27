@@ -334,8 +334,13 @@ export function App({
       if (total === 0) { setBrowse(false); return; }
       const clamp = (n: number): number => Math.max(0, Math.min(total - 1, n));
       if (key.escape) { setBrowse(false); return; }
-      if (key.upArrow) { setBrowse(true, clamp(browseCursorRef.current - 1)); return; }
-      if (key.downArrow) { setBrowse(true, clamp(browseCursorRef.current + 1)); return; }
+      if (key.upArrow || key.downArrow) {
+        setBrowse(true, clamp(browseCursorRef.current + (key.upArrow ? -1 : 1)));
+        // 选中高亮落在历史区 Static 行（打印一次不重绘）：光标移动经生产 repaint 刷新（DEC 2026 同步
+        // 更新协议包裹，视觉「切一下」），↑↓ 选中 spawn 行才可见移动（2026-09-28 用户裁决）
+        onRequestRepaint?.();
+        return;
+      }
       if (key.return) {
         const cur = clamp(browseCursorRef.current);
         if (cur < liveChildren.length) {

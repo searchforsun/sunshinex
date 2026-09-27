@@ -13,7 +13,7 @@ const VERBS = ['Pondering', 'Brewing', 'Weaving', 'Distilling'];
 
 /** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识）；label 可选（子代理面板头部携带 [label] 标识，缺省零变化）。
  *  phase/calls 可选（缺省 'thinking'/[]，规格 §5）：既有调用方零破坏；tool-pending/tool-awaiting 按活跃调用数逐行渲染。 */
-export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80 }: {
+export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80, selected = false }: {
   startedAt: number;
   tokens: number;
   label?: string;
@@ -25,6 +25,8 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
   calls?: ActiveCall[];
   /** 终端列宽：活跃调用行动词按列宽自然省略（缺省 80，既有调用方零破坏） */
   columns?: number;
+  /** 浏览选中态（子代理面板）：反色底上去 dim 保前景对比（灰底叠暗灰不可读，2026-09-28 用户裁决） */
+  selected?: boolean;
 }): JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -55,9 +57,9 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
     );
   }
   return (
-    <Text color={theme.accent} dimColor>
+    <Text color={theme.accent} dimColor={selected !== true}>
       {glyph} {label ? `[${label}] ` : ''}
-      <Text dimColor>
+      <Text dimColor={selected !== true}>
         {verb}… ({formatDuration(secs)}
         {typeof steps === 'number' && steps > 0 ? ` · step ${steps}` : ''} · ↑{formatTokens(tokens)} tokens)
       </Text>

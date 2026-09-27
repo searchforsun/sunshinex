@@ -30,7 +30,7 @@ test('子代理 done 事件 → 面板置完成态（不随 done 丢弃）', () 
   }
 });
 
-test('ChildPanel：完成态面板显示 ✓ 完成行，不再渲染 Spinner，帧高恒 4 行', () => {
+test('ChildPanel：完成行不进动态区（2026-09-28 用户裁决——只显运行中，回看走 Ctrl+B 浏览器）', () => {
   const running = render(
     <ChildPanel childrenState={[child()]} columns={80} />,
   );
@@ -38,18 +38,11 @@ test('ChildPanel：完成态面板显示 ✓ 完成行，不再渲染 Spinner，
   assert.ok(!rf.includes('✓'), '运行中不显完成标');
   running.unmount();
 
-  const runningFrame = rf.replace(/\n$/, '').split('\n').length;
   const finished = render(
     <ChildPanel childrenState={[child({ done: true })]} columns={80} />,
   );
   const ff = finished.lastFrame() ?? '';
-  assert.match(ff, /✓/, '完成态应显 ✓');
-  assert.ok(!/✻|✽|✶|✱|✢/.test(ff), '完成态不再渲染 Spinner 动画帧');
-  assert.equal(
-    ff.replace(/\n$/, '').split('\n').length,
-    runningFrame,
-    '完成态与运行态帧高一致（恒 4 行不变量）',
-  );
+  assert.equal(ff.trim(), '', '完成行不再渲染，全部完成即面板整体消失（零占位）');
   finished.unmount();
 });
 
@@ -66,12 +59,12 @@ test('并行 spawn 归档精准配对：先完成者的转录归先 spawn 调用
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p1', label: 'a' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'a 完成', payload: { tool: 'spawn', ok: true } } as never);
     const s = ctrl.getState();
-    assert.equal(s.children.length, 0, '全部归档');
+    assert.equal(s.children.length, 0, '全部归档（归档即离场）');
     const calls = s.messages.filter((m) => m.kind === 'call');
     const callB = calls[0];
     const callA = calls[1];
-    assert.ok(callB!.detail?.includes('B 线'), 'b 调用行归 b 转录（当前 FIFO 兜底按列表序误摘 → 红灯）');
-    assert.ok(callA!.detail?.includes('A 线'), 'a 调用行归 a 转录');
+    assert.ok(callB!.detail?.includes('p2'), 'b 调用行归 b（detail 含 b 的委派提示词；精简 detail 后配对经 prompt 锚定）');
+    assert.ok(callA!.detail?.includes('p1'), 'a 调用行归 a');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

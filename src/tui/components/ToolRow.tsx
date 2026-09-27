@@ -4,6 +4,7 @@ import { ChatItem } from '../session';
 import { bandLines, displayWidth, elideByWidth } from '../text-band';
 import { formatDuration } from '../format';
 import { theme } from '../theme';
+import { TranscriptLines } from './ChildTranscript';
 
 /**
  * 工具行：调用行 ● [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
@@ -43,17 +44,23 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
     return (
       <Box flexDirection="column">
         <Text backgroundColor={spawnHighlighted ? 'gray' : undefined}>
-          <Text dimColor={expanded && isSpawn}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
+          <Text dimColor={expanded && isSpawn && !spawnHighlighted}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
           <Text color={theme.accent}>
             [{verb}]
           </Text>
-          {target ? <Text color="gray"> {shownTarget}{metaTail}</Text> : null}
+          {target ? <Text color={spawnHighlighted ? undefined : 'gray'}> {shownTarget}{metaTail}</Text> : null}
         </Text>
-        {detailLines.map((l, i) => (
-          <Text key={i} dimColor>
-            {'    ' + l}
-          </Text>
-        ))}
+        {expanded && isSpawn ? (
+          // SPAWN 展开与全屏视图同构（2026-09-28 用户裁决）：共享转录渲染器——正文段 Markdown、
+          // 动词/结果/委派/统计行结构化呈现，替代原逐行裸 Text（星号裸露+碎片行放大呈现的病根）
+          <TranscriptLines lines={detailLines} columns={columns - 4} />
+        ) : (
+          detailLines.map((l, i) => (
+            <Text key={i} dimColor>
+              {'    ' + l}
+            </Text>
+          ))
+        )}
       </Box>
     );
   }

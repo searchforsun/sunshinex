@@ -449,7 +449,8 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
     assert.equal(s.children.length, 0, '归档后 children 清空');
     const call = s.messages.find((m) => m.role === 'tool' && m.kind === 'call' && m.text.startsWith('SPAWN'));
     assert.ok(call, 'spawn 调用行应上屏（SPAWN w）');
-    assert.ok(call!.detail && call!.detail.includes('分析中'), '调用行 detail 应含子代理转录');
+    assert.ok(call!.detail && call!.detail.includes('子任务'), '调用行 detail 含委派提示词（精简 detail：输入+结论+统计）');
+    assert.ok(/steps · /.test(call!.detail ?? ''), 'detail 含统计行');
     assert.ok(s.messages.some((m) => m.kind === 'result' && (m.text ?? '').includes('子任务报告')), '结果行上屏');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -470,8 +471,8 @@ test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9
     const s = ctrl.getState();
     assert.equal(s.children.length, 0, '两条同名子代理应恰好各归档一次');
     const details = s.messages.filter((m) => m.kind === 'call').map((m) => m.detail ?? '');
-    assert.equal(details.filter((d) => d.includes('A 线')).length, 1, 'A 线转录恰好归档一次');
-    assert.equal(details.filter((d) => d.includes('B 线')).length, 1, '#2 子代理按前缀匹配归档一次');
+    assert.equal(details.filter((d) => d.includes('p1')).length, 1, 'A 线（p1）恰归档一次（精简 detail：配对经委派 prompt 锚定）');
+    assert.equal(details.filter((d) => d.includes('p2')).length, 1, '#2 子代理按前缀匹配归档一次');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

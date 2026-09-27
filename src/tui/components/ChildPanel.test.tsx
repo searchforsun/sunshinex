@@ -23,7 +23,7 @@ test('ChildPanel：空 children 零占位；CC 式每代理一行（规格 §3.1
   assert.match(f1, /\[w\]/, '头部应含 [label] 标识（Spinner label 前缀）');
   assert.match(f1, /╭/, '外层特殊边框（2026-09-27 用户裁决对标 CC，运行态视觉分域）');
   const lines1 = f1.replace(/\n$/, '').split('\n').length;
-  assert.equal(lines1, 4, '单代理 = 1 概览行 + 1 内容行 + 2 边框行（每代理一行内容语义不变，概览行为运行/完成计数）');
+  assert.equal(lines1, 3, '单代理 = 1 内容行 + 2 边框行（每代理一行内容语义不变；动态区只显运行中、无概览计数行）');
   one.unmount();
 });
 
@@ -37,32 +37,26 @@ test('ChildPanel：并发 4 面板同屏、总高 = 4 内容行 + 2 边框行（
   );
   const f = four.lastFrame() ?? '';
   for (const i of [1, 2, 3, 4]) assert.ok(f.includes(`[w${i}]`), `面板 ${i} 应同屏`);
-  assert.equal(f.replace(/\n$/, '').split('\n').length, (base - 3) * 4 + 3, 'N 面板总高 = N 内容行 + 1 概览行 + 2 边框行（每代理一行护栏，概览行为运行/完成计数；base 含概览+边框故减 3）');
+  assert.equal(f.replace(/\n$/, '').split('\n').length, (base - 2) * 4 + 2, 'N 面板总高 = N 内容行 + 2 边框行（每代理一行护栏；base 含边框故减 2）');
   four.unmount();
 });
 
-test('ChildPanel：完成态终标行即时定格（done 优先于活动行/Spinner）', () => {
+test('ChildPanel：完成行不进动态区（2026-09-28 用户裁决——动态区只显运行中）', () => {
   const mixed = render(
     <ChildPanel childrenState={[child({ label: 'done1', done: true }), child({ label: 'run1' })]} columns={80} />,
   );
   const f = mixed.lastFrame() ?? '';
-  assert.match(f, /✓ \[done1\] done/, '完成态显终标行');
+  assert.ok(!f.includes('done1'), '完成行不再渲染（归档即离场，Ctrl+B 浏览器承载回看）');
   assert.match(f, /\[run1\]/, '运行中显单行状态');
   mixed.unmount();
+
+  const allDone = render(<ChildPanel childrenState={[child({ done: true })]} columns={80} />);
+  assert.equal((allDone.lastFrame() ?? '').trim(), '', '全部完成即面板整体消失（零占位）');
+  allDone.unmount();
 });
 
 // 结构行类型在面板层不可见（呈现只消费 calls/done/tokens），此处锁定夹具类型契约
 test('ChildPanel 夹具：transcript 为 ChildLine 结构行', () => {
   const lines: ChildLine[] = child().transcript;
   assert.equal(lines[0]!.kind, 'call');
-});
-
-test('ChildPanel：done 行含步数/冻结耗时/tokens（doneAt 冻结，不随帧跳动）', () => {
-  const start = Date.now() - 5000;
-  const one = render(
-    <ChildPanel childrenState={[child({ done: true, doneAt: start + 4000, startedAt: start, steps: 14, tokens: 1300 })]} columns={80} />,
-  );
-  const f = one.lastFrame() ?? '';
-  assert.match(f, /✓ \[w\] done \(14 steps · 4s · ↑1\.3k tokens\)/, 'done 行 = steps · 冻结耗时 · tokens');
-  one.unmount();
 });

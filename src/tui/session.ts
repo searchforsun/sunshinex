@@ -108,6 +108,8 @@ export interface ChildLiveState {
   done?: boolean;
   /** 完成时刻（done/error 事件置位）：done 行耗时冻结在完成时刻，不随渲染帧跳动 */
   doneAt?: number;
+  /** 终稿结论（done/error 事件置位）：与流式正文逐字重复时不进 transcript（去重），归档 detail 的「输出」段数据源 */
+  conclusion?: string;
   /** 工具活动行（规格 §4.2 面板增强）：当前未决调用的 {调用名, 起始时刻}——呈现层消费，归档零依赖 */
   calls?: { callId: string; target: string; startedAt: number }[];
   /** 主 agent 委派提示词（spawn input.prompt，全屏视图头部呈现；规格 §4.2） */
@@ -887,6 +889,7 @@ export class SessionController {
       ...this.state,
       status: 'idle',
       metrics: { ...this.state.metrics, turnStartedAt: 0 },
+      // 生命周期清理（规格 §4.4）：运行中子代理（后台两段式）跨回合保留，done 归档收口；
       // 生命周期清理（规格 §4.4）：已归档者本已离场；运行中子代理（后台两段式）跨回合保留，done 归档收口
       children: this.state.children.filter((c) => !c.done),
     };
@@ -1736,10 +1739,8 @@ export class SessionController {
         break;
       }
       case 'tool-call': {
-        if (buf) {
-          transcript = [...transcript, { kind: 'text', text: buf }];
-          buf = '';
-        }
+        // 半行不冲刷（2026-09-28 真机碎片病根）：结构边界把「im」「import com.」这类未成行文本撕成独立碎片行；
+        // 半行留存 childBufs 续接后续 token，长成完整行（遇换行）才入档
         transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input) }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
         const calls = callId
@@ -1749,10 +1750,7 @@ export class SessionController {
         return;
       }
       case 'tool-result': {
-        if (buf) {
-          transcript = [...transcript, { kind: 'text', text: buf }];
-          buf = '';
-        }
+        // 同 tool-call：半行留存续接，不在结果边界撕碎片
         transcript = [...transcript, { kind: 'result', text: e.text ?? '', ok: e.payload?.ok === true }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
         const calls = callId ? (child.calls ?? []).filter((c) => c.callId !== callId) : child.calls;
@@ -1777,15 +1775,17 @@ export class SessionController {
         break;
       case 'done':
       case 'error': {
-        // 完成态即时落面板（并行批早完成者显终标、不再转圈）：done 终稿行补进转录；归档锚点在主链 tool-result
+        // 完成态即时落面板（并行批早完成者显终标、不再转圈）：归档锚点在主链 tool-result。
+        // 终稿去重（2026-09-28 真机大段重复病根）：后台两段式/无流式场景终稿照常入档；与流式正文逐字重复则跳过
         const isError = e.type === 'error';
-        if (buf) {
-          transcript = [...transcript, { kind: 'text', text: buf }];
-          buf = '';
-        }
         const finalLine = e.text && e.text.length > 0 ? e.text : isError ? 'failed' : 'done';
-        transcript = [...transcript, { kind: 'text', text: finalLine }];
-        this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true, doneAt: Date.now() }, buf);
+        // 流式正文比对含未成行半行 buf（否则终稿带尾巴时误判为新内容二次入档）
+        const streamText = [...transcript.filter((l) => l.kind === 'text').map((l) => l.text), buf].join('\n');
+        const isRealFinal = finalLine !== 'done' && finalLine !== 'failed';
+        if (isRealFinal && !streamText.includes(finalLine)) {
+          transcript = [...transcript, { kind: 'text', text: finalLine }];
+        }
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true, doneAt: Date.now(), conclusion: isRealFinal ? finalLine : undefined }, '');
         // 后台两段式延迟归档（结果先行语义）：done/error 即归档锚点，转录折回原 spawn 调用行
         this.archiveDeferred(label);
         return;
@@ -1833,17 +1833,20 @@ export class SessionController {
     if (pending !== undefined && child !== undefined) this.archiveInto(pending, child);
   }
 
-  /** 归档落点单点：转录折入调用行 detail + subagentMeta，面板移除该子代理 */
+  /** 归档落点单点：结论精简 detail（委派提示词 + 结论 + 统计行，2026-09-28 用户裁决：已完成 spawn 只展输入/输出/统计）
+   *  + subagentMeta；归档即从面板离场（历史区 SPAWN 行 detail 为唯一回看面，Ctrl+B 直接浏览全部已完成） */
   private archiveInto(pending: { seq: number; base: string }, child: ChildLiveState): void {
-    const buf = this.childBufs.get(child.label) ?? '';
     this.childBufs.delete(child.label);
+    // 委派词按「消歧 label → 基名」取（同名并发 #N 前缀匹配归档时登记键为基名）；取后一并清登记
+    const prompt = this.childPrompts.get(child.label) ?? this.childPrompts.get(pending.base);
     this.childPrompts.delete(child.label);
-    // detail 结构行序列化（规格 §4.1）：result 行 ⎿ 前缀 + ok 标记，回看与全屏视图同源同形态
+    this.childPrompts.delete(pending.base);
     const durS = Math.max(0, Math.round((Date.now() - child.startedAt) / 1000));
-    const detail = [...child.transcript, ...(buf ? [{ kind: 'text', text: buf } as ChildLine] : [])]
-      .map((l) => (l.kind === 'result' ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}` : l.text))
-      .concat(`${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`)
-      .join('\n');
+    const detail = [
+      ...(prompt ? [`⏺ ${t('delegated prompt', '委派提示词')}：${prompt}`] : []),
+      ...(child.conclusion ? [child.conclusion] : []),
+      `${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`,
+    ].join('\n');
     const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens };
     this.state = {
       ...this.state,
