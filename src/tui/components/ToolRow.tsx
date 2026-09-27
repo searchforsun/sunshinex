@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { ChatItem } from '../session';
 import { bandLines, displayWidth, elideByWidth } from '../text-band';
 import { formatDuration } from '../format';
+import { theme } from '../theme';
 
 /**
  * 工具行：调用行 ● [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
@@ -43,7 +44,7 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
       <Box flexDirection="column">
         <Text backgroundColor={spawnHighlighted ? 'gray' : undefined}>
           <Text dimColor={expanded && isSpawn}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
-          <Text color="cyan">
+          <Text color={theme.accent}>
             [{verb}]
           </Text>
           {target ? <Text color="gray"> {shownTarget}{metaTail}</Text> : null}
@@ -64,7 +65,7 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
     const first = bandLines(lines[0], budget)[0];
     const clipped = first !== lines[0];
     return (
-      <Text dimColor color={item.ok ? 'green' : 'red'}>
+      <Text dimColor color={item.ok ? theme.success : theme.error}>
         {'  ⎿ '}
         {item.ok ? '✓' : '✗'}
         {` ${first}${clipped ? '…' : ''}`}
@@ -73,7 +74,7 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
   }
   return (
     <Box flexDirection="column">
-      <Text dimColor color={item.ok ? 'green' : 'red'}>
+      <Text dimColor color={item.ok ? theme.success : theme.error}>
         {'  ⎿ '}
         {item.ok ? '✓' : '✗'}
       </Text>

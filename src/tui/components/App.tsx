@@ -738,7 +738,6 @@ export function App({
       <StatusBar
         metrics={state.metrics}
         status={state.status}
-        todos={state.todos}
         model={info.model}
         effort={state.effort}
         context={{ used: state.metrics.ctxUsed, window: Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
