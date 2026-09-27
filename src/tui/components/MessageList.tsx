@@ -16,7 +16,7 @@ import { theme } from '../theme';
  */
 export type TranscriptEntry =
   | { kind: 'banner'; info: BannerInfo }
-  | { kind: 'message'; item: ChatItem; full: boolean; visible: boolean; spawnExpanded: boolean; spawnHighlighted: boolean };
+  | { kind: 'message'; item: ChatItem; full: boolean; visible: boolean; spawnExpanded: boolean };
 
 /**
  * 消息区逐消息分层：消息到达即入 Static 一次上屏，之后永不重绘；
@@ -35,7 +35,6 @@ export function MessageList({
   expandAll,
   latestFull,
   spawnExpandedSeqs,
-  spawnHighlightSeq,
   suppressHistory = false,
 }: {
   messages: ChatItem[];
@@ -48,8 +47,6 @@ export function MessageList({
   latestFull: boolean;
   /** SPAWN 行逐行展开 seq 集合（Ctrl+B 浏览模式），缺省=全折叠 */
   spawnExpandedSeqs?: number[];
-  /** 浏览模式光标行 seq（反色高亮，缺省无高亮） */
-  spawnHighlightSeq?: number;
   /** 全屏查看（ChildInspector）整屏接管：Static 历史条目置空——整页让位给全屏视图，
    *  退出时经重挂整屏重放恢复（2026-09-27 用户裁决：全屏独占，不与主 agent 历史拼接） */
   suppressHistory?: boolean;
@@ -72,7 +69,6 @@ export function MessageList({
           full: decisions[i].full,
           visible: decisions[i].visible,
           spawnExpanded: spawnExpandedSeqs?.includes(item.seq) ?? false,
-          spawnHighlighted: item.seq === spawnHighlightSeq,
         })),
       ];
   return (
@@ -90,7 +86,6 @@ export function MessageList({
                 columns={columns}
                 collapsed={!entry.full}
                 spawnExpanded={entry.spawnExpanded}
-                spawnHighlighted={entry.spawnHighlighted}
               />
             </Box>
           ) : null
@@ -107,13 +102,11 @@ const MessageRow = React.memo(function MessageRow({
   columns,
   collapsed,
   spawnExpanded,
-  spawnHighlighted,
 }: {
   item: ChatItem;
   columns: number;
   collapsed: boolean;
   spawnExpanded: boolean;
-  spawnHighlighted: boolean;
 }): JSX.Element {
   if (item.role === 'user') {
     return (
@@ -145,7 +138,7 @@ const MessageRow = React.memo(function MessageRow({
       </Box>
     );
   }
-  return <ToolRow item={item} columns={columns} collapsed={collapsed} spawnExpanded={spawnExpanded} spawnHighlighted={spawnHighlighted} />;
+  return <ToolRow item={item} columns={columns} collapsed={collapsed} spawnExpanded={spawnExpanded} />;
 });
 
 /** 思考行：默认折叠为单行摘要（收束耗时统计，对标 Claude Code 斜体单行）；完整思考经 Tab 展开打印查看 */

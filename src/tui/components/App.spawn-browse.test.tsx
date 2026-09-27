@@ -49,6 +49,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     write('\u0002'); // Ctrl+B 进入
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /subagent browse · ↑↓ move · Enter inspect · Esc exit/, '提示行出现');
+    assert.match(lastFrame() ?? '', /❯ SPAWN /, '选中摘要行在动态区（最近一条归档行）');
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /subagent view/, '全屏查看视图接管整页');
@@ -61,11 +62,12 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
 
     write('\u0002'); // 再进浏览
-    await new Promise((r) => setTimeout(r, 150));
-    write('\u001b[A'); // ↑ 移动光标到上一条归档行
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 300));
+    write('\u001b[A'); // ↑ 移动光标到上一条归档行（零 repaint：摘要行动态区每帧自绘，可见移动）
+    await new Promise((r) => setTimeout(r, 300));
+    assert.match(lastFrame() ?? '', /❯ SPAWN rv\b/, '↑ 后摘要行切到上一条归档行（SPAWN rv）');
     write('\r'); // Enter 回看上一条
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 300));
     assert.match(lastFrame() ?? '', /delegated prompt：a/, '上一条归档行精简 detail 呈现');
     write('\u001b'); // Esc 退出
     await new Promise((r) => setTimeout(r, 150));

@@ -57,3 +57,17 @@ test('Inspector 头部呈委派 prompt', () => {
   assert.match(one.lastFrame() ?? '', /调研单体链路/, '头部呈委派提示词');
   one.unmount();
 });
+
+test('Inspector 视口有界：长行折行预算下帧高不超 rows（源行数预算失准即溢出残影/重复观感回归）', () => {
+  // 真机病根：预算按源行数计，MarkdownText 按 columns 折行——长 CJK 行 1 源行折数显示行，帧超高溢出动态区
+  const longLine = '长'.repeat(200);
+  const many = Array.from({ length: 20 }, (_, i) => ({ kind: 'text' as const, text: `${longLine}-${i}` }));
+  const one = render(
+    <ChildInspector child={live({ transcript: many, prompt: `${'委'.repeat(600)}（截断）` })} columns={80} rows={12} />,
+  );
+  const f = one.lastFrame() ?? '';
+  const n = f.replace(/\n$/, '').split('\n').length;
+  assert.ok(n <= 12, `帧高 ${n} 行应不超视口 rows=12（折行预算 + prompt 上限裁剪双护栏）`);
+  assert.match(f, /…/, '超限委派 prompt 取尾带 … 标记');
+  one.unmount();
+});

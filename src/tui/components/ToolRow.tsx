@@ -16,12 +16,10 @@ import { TranscriptLines } from './ChildTranscript';
  * 逐行展开（spawnExpanded，Ctrl+B 浏览模式 Enter 切换）= ▾ 头行 + 转录 4 空格缩进重放；
  * Tab 全场展开（!collapsed）与逐行展开任一命中即重放转录，两机制正交。
  */
-export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawnHighlighted = false }: {
+export function ToolRow({ item, columns, collapsed, spawnExpanded = false }: {
   item: ChatItem; columns: number; collapsed: boolean;
   /** SPAWN 行逐行展开：仅 SPAWN call 行消费，其它调用行零影响 */
   spawnExpanded?: boolean;
-  /** 浏览模式光标行反色标记 */
-  spawnHighlighted?: boolean;
 }): JSX.Element {
   if (item.kind === 'call') {
     const sp = item.text.indexOf(' ');
@@ -43,12 +41,12 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false, spawn
     const shownTarget = target ? elideByWidth(target, targetBudget) : '';
     return (
       <Box flexDirection="column">
-        <Text backgroundColor={spawnHighlighted ? 'gray' : undefined}>
-          <Text dimColor={expanded && isSpawn && !spawnHighlighted}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
+        <Text>
+          <Text dimColor={expanded && isSpawn}>{expanded && isSpawn ? '▾ ' : '● '}</Text>
           <Text color={theme.accent}>
             [{verb}]
           </Text>
-          {target ? <Text color={spawnHighlighted ? undefined : 'gray'}> {shownTarget}{metaTail}</Text> : null}
+          {target ? <Text color="gray"> {shownTarget}{metaTail}</Text> : null}
         </Text>
         {expanded && isSpawn ? (
           // SPAWN 展开与全屏视图同构（2026-09-28 用户裁决）：共享转录渲染器——正文段 Markdown、

@@ -10,6 +10,7 @@ import { SLASH_COMMANDS } from '../slash-commands';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
+import { theme } from '../theme';
 import { InputBox } from './InputBox';
 import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
@@ -335,10 +336,9 @@ export function App({
       const clamp = (n: number): number => Math.max(0, Math.min(total - 1, n));
       if (key.escape) { setBrowse(false); return; }
       if (key.upArrow || key.downArrow) {
+        // 光标移动零 repaint（2026-09-28 真机回归撤回）：每键全量重挂在长历史下吞按键（监听空窗丢键），
+        // 且历史区 Static 行高亮本就无法逐键跟随——选中反馈由动态区选中摘要行承载（每帧自绘、可见移动）
         setBrowse(true, clamp(browseCursorRef.current + (key.upArrow ? -1 : 1)));
-        // 选中高亮落在历史区 Static 行（打印一次不重绘）：光标移动经生产 repaint 刷新（DEC 2026 同步
-        // 更新协议包裹，视觉「切一下」），↑↓ 选中 spawn 行才可见移动（2026-09-28 用户裁决）
-        onRequestRepaint?.();
         return;
       }
       if (key.return) {
@@ -638,7 +638,6 @@ export function App({
         expandAll={expandAll}
         latestFull={latestFull}
         spawnExpandedSeqs={spawnExpanded}
-        spawnHighlightSeq={browseMode ? (spawnCallSeqs(state.messages)[browseCursor - state.children.filter((c) => !c.done).length] ?? undefined) : undefined}
         suppressHistory={!!inspect}
       />
       {inspect ? (
@@ -673,6 +672,28 @@ export function App({
         // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源
         <Text backgroundColor="gray"> {t('subagent browse · ↑↓ move · Enter inspect · Esc exit', '子代理浏览 · ↑↓ 移动 · Enter 查看 · Esc 退出')} </Text>
       ) : null}
+      {browseMode
+        ? (() => {
+            // 选中摘要行（2026-09-28 用户裁决）：历史区 Static 打印一次不重绘、逐键 repaint 又吞按键——
+            // 光标选中反馈收敛为动态区单行（每帧自绘、↑↓ 可见移动），历史区零高亮零重绘
+            const live = state.children.filter((c) => !c.done);
+            const seqs = spawnCallSeqs(state.messages);
+            const liveItem = live[browseCursor];
+            if (liveItem !== undefined) {
+              return (
+                <Text key="browse-cursor" color={theme.accent}>
+                  ❯ [{liveItem.label}]
+                </Text>
+              );
+            }
+            const m = state.messages.find((x) => x.seq === seqs[browseCursor - live.length]);
+            return m !== undefined ? (
+              <Text key="browse-cursor" color={theme.accent}>
+                ❯ {m.text}
+              </Text>
+            ) : null;
+          })()
+        : null}
       {state.children.length > 0 ? (
         <ChildPanel
           childrenState={state.children}

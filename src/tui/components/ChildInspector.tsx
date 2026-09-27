@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Box, Text } from 'ink';
 import { ChildLine, ChildLiveState } from '../session';
 import { formatTokens, formatDuration } from '../format';
+import { wrapByWidth } from '../text-band';
 import { MarkdownText } from './MarkdownText';
 import { TOOL_VERBS } from '../tool-verbs';
 import { t } from '../../i18n';
@@ -45,9 +46,17 @@ export function ChildInspector(props: {
     `${tokens !== undefined ? ` · ↑${formatTokens(tokens)} tokens` : ''}` +
     `${secs !== undefined ? ` · ${formatDuration(secs)}` : ''}` +
     ` · ${t('Esc exit', 'Esc 退出')}`;
-  // 视口预算：边框 2 行 + 头部 1 行 + 委派 prompt 段（按换行行数计）从内容行数中扣除，取尾适配
-  const promptLines = (child?.prompt ? child.prompt.split('\n').length : 0) + (child?.prompt ? 1 : 0);
-  const bodyRows = Math.max(1, rows - 3 - promptLines);
+  // 视口预算（2026-09-28 真机溢出修复）：按「实际渲染行数」估算——MarkdownText 按 textBudget 折行，
+  // 长行（CJK 正文/长路径）1 源行 → 数显示行，按源行数计预算即帧超高溢出动态区（残影/碎片/重复观感的根因）。
+  // 折行数经 wrapByWidth 精确预折（与 MarkdownText 同宽度口径），取尾适配后帧高永不超视口；
+  // 委派 prompt 段另设上限（超长委派词整段挤占正文视口，取尾 + … 标记，2026-09-28 真机截图实锤）
+  const MAX_PROMPT_ROWS = 6;
+  const promptWrapped = child?.prompt ? wrapByWidth(child.prompt, Math.max(8, columns - 4)) : [];
+  const promptClipped = promptWrapped.length > MAX_PROMPT_ROWS;
+  const promptSegs = promptClipped ? [...promptWrapped.slice(-MAX_PROMPT_ROWS), '…'] : promptWrapped;
+  const promptRows = promptSegs.length > 0 ? promptSegs.length + 1 : 0; // ⏺ 委派行 1 行 + prompt 折行行数
+  // 边框 2 行 + 头部 1 行 + 1 行安全余量（MarkdownText 块间距等未建模项的缓冲）
+  const bodyRows = Math.max(1, rows - 4 - promptRows);
   const textBudget = Math.max(8, columns - 4);
 
   // text 段合并（同构渲染的关键）：连续 text 行视作一段 Markdown 交 MarkdownText，调用/结果行打断分段；
@@ -65,18 +74,25 @@ export function ChildInspector(props: {
   }
   const visible: Seg[] = [];
   let used = 0;
+  // 段实际渲染行数：md 段按折行口径（wrapByWidth 与 MarkdownText 同宽度）、结构行恒 1
+  const segRows = (s: Seg): number =>
+    s.kind === 'md' ? s.text.split('\n').reduce((n, l) => n + wrapByWidth(l, textBudget).length, 0) : 1;
   for (let i = segs.length - 1; i >= 0; i--) {
     const s = segs[i];
     const remain = bodyRows - used;
     if (s.kind === 'md') {
-      const lines = s.text.split('\n');
-      if (lines.length > remain) {
-        // 段尾截取：Markdown 段超预算时只保留最新 remain 行（长转录取尾适配，视口永不溢出）
-        visible.unshift({ kind: 'md', text: lines.slice(-remain).join('\n') });
+      const n = segRows(s);
+      if (n > remain) {
+        // 段尾截取（折行口径）：md 段超预算时按折行后行数保留最新部分（视口永不溢出）
+        const wrapped = s.text
+          .split('\n')
+          .flatMap((l) => wrapByWidth(l, textBudget))
+          .slice(-remain);
+        visible.unshift({ kind: 'md', text: wrapped.join('\n') });
         break;
       }
       visible.unshift(s);
-      used += lines.length + Math.max(0, lines.length - 1);
+      used += n + 1; // +1：MarkdownText 块间空的保守预留，多段转录下预算不低估
       if (used >= bodyRows) break;
     } else {
       visible.unshift(s);
@@ -88,7 +104,9 @@ export function ChildInspector(props: {
     <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
       <Text color={theme.accent} dimColor>
         {head}
-        {child?.prompt ? `\n⏺ ${t('delegated prompt', '委派提示词')}：${child.prompt}` : ''}
+        {promptSegs.length > 0
+          ? `\n⏺ ${t('delegated prompt', '委派提示词')}：${promptClipped ? '\n' : ''}${promptSegs.join('\n')}`
+          : ''}
       </Text>
       {visible.map((s, i) =>
         s.kind === 'md' ? (
