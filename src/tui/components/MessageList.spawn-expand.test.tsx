@@ -22,6 +22,28 @@ test('历史区不再渲染归档 SPAWN 行与配对结果行（2026-09-28 统�
   assert.doesNotMatch(f, /结论行/, '子代理转录不再折入时间线（回看走 Ctrl+B → 全屏）');
 });
 
+test('spawn 配对结果行整对剔除（2026-09-28 真机残留修复）：result.callId → call 行 seq 配对命中', () => {
+  // 生产链路：spawn 调用行与配对结果行均携带同一 callId——结果行缺 callId 即配不上、整对泄漏进时间线
+  const paired: ChatItem[] = [
+    { role: 'tool', text: 'SPAWN reviewer', ts: 0, seq: 7, kind: 'call', callId: 'c1', detail: '结论行A', subagentMeta: { steps: 2, durationMs: 1000, tokens: 500 } },
+    { role: 'tool', text: 'rv 完成', ts: 0, seq: 9, kind: 'result', callId: 'c1' },
+  ];
+  const f = render(
+    <MessageList messages={paired} columns={80} banner={banner} expandAll={false} latestFull={false} />,
+  ).allOutput();
+  assert.doesNotMatch(f, /SPAWN reviewer/, '配对调用行不进时间线');
+  assert.doesNotMatch(f, /rv 完成/, '配对结果行不进时间线——callId 缺失即整对泄漏（真机残留病根）');
+  // 非配对结果行（普通工具）不受误伤
+  const normal: ChatItem[] = [
+    ...paired,
+    { role: 'tool', text: '普通工具结果', ts: 0, seq: 11, kind: 'result', callId: 'other' },
+  ];
+  const f2 = render(
+    <MessageList messages={normal} columns={80} banner={banner} expandAll={false} latestFull={false} />,
+  ).allOutput();
+  assert.match(f2, /普通工具结果/, '普通工具结果行保留');
+});
+
 test('step 行 Markdown 渲染：▶ 前缀保留、内联加粗不再裸露星号（2026-09-27 真机症状）', () => {
   const stepMsgs: ChatItem[] = [
     { role: 'step', text: '维度分区：1. **AI 能力层**（ai/**）2. **生成管线与工作流**', ts: 0, seq: 20 },

@@ -26,6 +26,7 @@ test('spawn 归档写入 subagentMeta（steps + durationMs）', () => {
     assert.ok(call!.subagentMeta, '归档应写入 subagentMeta');
     assert.ok(call!.subagentMeta!.steps >= 1, 'steps 取自 ChildLiveState.steps');
     assert.ok(call!.subagentMeta!.durationMs >= 0, 'durationMs = 归档时刻 - startedAt');
+    assert.equal(call!.subagentMeta!.prompt, '审查', '委派词入 meta（全屏回看头部数据源，不再参与正文取尾）');
     assert.equal(ctrl.getState().children.length, 0, '归档后面板移除');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

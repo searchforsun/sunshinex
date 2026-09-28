@@ -269,7 +269,7 @@ export function App({
       return;
     }
     onRequestRepaint?.();
-  }, [expandAll, latestFull, browseMode]);
+  }, [expandAll, latestFull]);
   // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）——上一段从全显转折叠。
   // 防闪烁两层：①被收拢段不含思考/工具行时重绘前后画面零变化，直接跳过（连续 ▶ 行、计划卡、
   // 上一任务正文段等无效触发全部过滤）；②400ms 防抖合并，锚点连续落定只画一次；
@@ -664,6 +664,7 @@ export function App({
                         lines: m.detail.split('\n'),
                         steps: m.subagentMeta?.steps,
                         durationMs: m.subagentMeta?.durationMs,
+                        prompt: m.subagentMeta?.prompt,
                       }
                     : undefined;
                 })()

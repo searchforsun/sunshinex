@@ -48,7 +48,7 @@ export interface ChatItem {
   detail?: string;
   /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt、tokens=子代理 token 消耗、
    *  delegatedAt=委派时刻（spawnCalls 入栈时刻，动态区子代理列表按委派时间排序的单点数据源）；零子事件即败时缺省 */
-  subagentMeta?: { steps: number; durationMs: number; tokens: number; delegatedAt?: number };
+  subagentMeta?: { steps: number; durationMs: number; tokens: number; delegatedAt?: number; prompt?: string };
 }
 
 export type { TodoItem, TodoStatus } from '../types';
@@ -1618,6 +1618,9 @@ export class SessionController {
         const item: ChatItem = {
           role: 'tool', text: e.text ?? '', ts: Date.now(), seq: ++this.msgSeq,
           kind: 'result', ok: e.payload?.ok === true,
+          // callId 随行入档（2026-09-28 真机残留修复）：历史区 SPAWN 行整对剔除以 result.callId → call 行 seq
+          // 配对，结果行缺 callId 即永不命中、spawn 结果行整对泄漏进主时间线
+          callId,
           detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
         };
         this.state = { ...this.state, messages: [...this.state.messages, callItem, item] };
@@ -1854,7 +1857,7 @@ export class SessionController {
       ...(child.conclusion && !transcriptText.includes(child.conclusion) ? [child.conclusion] : []),
       `${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`,
     ].join('\n');
-    const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens, delegatedAt: pending.delegatedAt };
+    const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens, delegatedAt: pending.delegatedAt, prompt };
     this.state = {
       ...this.state,
       children: this.state.children.filter((c) => c.label !== child.label),

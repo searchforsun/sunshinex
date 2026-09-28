@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Box, Text } from 'ink';
 import { ChildLine, ChildLiveState } from '../session';
 import { formatTokens, formatDuration } from '../format';
-import { wrapByWidth } from '../text-band';
+import { wrapByWidth, elideByWidth } from '../text-band';
 import { markdownRowCount } from '../markdown';
 import { MarkdownText } from './MarkdownText';
 import { TOOL_VERBS } from '../tool-verbs';
@@ -16,7 +16,7 @@ import { theme } from '../theme';
  *  头部状态行携带委派 prompt（规格 §4.2），Esc 退出提示常驻 */
 export function ChildInspector(props: {
   child?: ChildLiveState;
-  archived?: { label: string; lines: string[]; steps?: number; durationMs?: number };
+  archived?: { label: string; lines: string[]; steps?: number; durationMs?: number; prompt?: string };
   columns: number;
   rows: number;
   /** Tab 两态（2026-09-28 用户裁决，对标主 agent expandAll 交互位）：缺省完整时间线（call/result/text 全显），
@@ -33,19 +33,27 @@ export function ChildInspector(props: {
       ? Math.round(archived.durationMs / 1000)
       : undefined;
   // Tab 两态（2026-09-28 用户裁决）：完整时间线（缺省，call/result/text 全显，与运行中/主 agent 同构）；
-  // 收起态只留正文（text 段走 Markdown），工具调用/结果行隐藏——结构行过滤先于分段
+  // 收起态只留正文（text 段走 Markdown），工具调用/结果行隐藏——结构行过滤先于分段。
+  // 委派词行（⏺ 前缀）不进正文：归档态委派词由 subagentMeta.prompt 承载进头部（2026-09-28 真机截断修复
+  // ——混在正文里参与取尾，长转录下头部委派词整段被截掉）；旧档 meta 缺 prompt 时回退取该行
+  let legacyPrompt: string | undefined;
   const bodyFull: ChildLine[] = child
     ? child.transcript
-    : (archived?.lines ?? []).map((l) => {
+    : (archived?.lines ?? []).flatMap((l): ChildLine[] => {
+        if (l.startsWith('⏺ ')) {
+          if (archived?.prompt === undefined) legacyPrompt = l.replace(/^⏺ [^：]*：/, '');
+          return [];
+        }
         if (l.startsWith('⎿ ')) {
-          return { kind: 'result' as const, text: l.slice(2).replace(/^[✓✗] /, ''), ok: !l.startsWith('⎿ ✗') };
+          return [{ kind: 'result' as const, text: l.slice(2).replace(/^[✓✗] /, ''), ok: !l.startsWith('⎿ ✗') }];
         }
         // archived detail 的非 ⎿ 行按「首词是否工具动词」分流：动词行还原 call 形态，正文行走 Markdown
         const first = l.split(/\s+/)[0] ?? '';
         return TOOL_VERBS.has(first)
-          ? { kind: 'call' as const, text: l }
-          : { kind: 'text' as const, text: l };
+          ? [{ kind: 'call' as const, text: l }]
+          : [{ kind: 'text' as const, text: l }];
       });
+  const delegated = child?.prompt ?? archived?.prompt ?? legacyPrompt;
   const body = expanded ? bodyFull : bodyFull.filter((l) => l.kind === 'text');
   const head =
     `✻ [${label}] ${t('subagent view', '子代理视图')}` +
@@ -57,9 +65,10 @@ export function ChildInspector(props: {
   // 视口预算（2026-09-28 真机溢出修复）：按「实际渲染行数」估算——MarkdownText 按 textBudget 折行，
   // 长行（CJK 正文/长路径）1 源行 → 数显示行，按源行数计预算即帧超高溢出动态区（残影/碎片/重复观感的根因）。
   // 折行数经 wrapByWidth 精确预折（与 MarkdownText 同宽度口径），取尾适配后帧高永不超视口；
-  // 委派 prompt 段另设上限（超长委派词整段挤占正文视口，取尾 + … 标记，2026-09-28 真机截图实锤）
+  // 委派 prompt 段另设上限（超长委派词整段挤占正文视口，取尾 + … 标记，2026-09-28 真机截图实锤）；
+  // 归档态与运行态同源消费 delegated（child.prompt ?? subagentMeta.prompt ?? 旧档 ⏺ 行回退）
   const MAX_PROMPT_ROWS = 6;
-  const promptWrapped = child?.prompt ? wrapByWidth(child.prompt, Math.max(8, columns - 4)) : [];
+  const promptWrapped = delegated ? wrapByWidth(delegated, Math.max(8, columns - 4)) : [];
   const promptClipped = promptWrapped.length > MAX_PROMPT_ROWS;
   const promptSegs = promptClipped ? [...promptWrapped.slice(-MAX_PROMPT_ROWS), '…'] : promptWrapped;
   const promptRows = promptSegs.length > 0 ? promptSegs.length + 1 : 0; // ⏺ 委派行 1 行 + prompt 折行行数
@@ -126,7 +135,8 @@ export function ChildInspector(props: {
           <Text key={i} dimColor>
             {'  ⎿ '}
             {s.line.ok === false ? '✗' : '✓'}
-            {` ${s.line.text}`}
+            {/* 结果行单行省略（2026-09-28 真机症状：长结果逐行直出把视口撑爆）——对齐主 agent 折叠摘要口径 */}
+            {` ${elideByWidth(s.line.text.split('\n')[0] ?? '', Math.max(8, textBudget - 8))}`}
           </Text>
         ),
       )}
@@ -139,11 +149,13 @@ function CallRow({ line, columns }: { line: ChildLine; columns: number }): JSX.E
   const sp = line.text.indexOf(' ');
   const verb = sp > 0 ? line.text.slice(0, sp) : line.text;
   const target = sp > 0 ? line.text.slice(sp + 1) : '';
+  // 单行省略（2026-09-28 真机症状：归档全屏视图长命令逐行直出把视口撑爆）：call 行对齐主 agent
+  // ToolRow 口径——● [VERB] + target 按列宽自动省略，行高恒 1
   return (
     <Text>
       <Text dimColor>● </Text>
       <Text color={theme.accent}>[{verb}]</Text>
-      {target ? <Text color="gray"> {target}</Text> : null}
+      {target ? <Text color="gray"> {elideByWidth(target, Math.max(8, columns - 10))}</Text> : null}
     </Text>
   );
 }
