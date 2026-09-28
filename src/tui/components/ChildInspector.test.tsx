@@ -53,8 +53,9 @@ test('Inspector 取尾适配视口：超出 rows 的更早行不渲染（动态�
 });
 
 test('Inspector 头部呈委派 prompt', () => {
-  const one = render(<ChildInspector child={live({ prompt: '调研单体链路' })} columns={80} rows={12} />);
+  const one = render(<ChildInspector child={live({ prompt: '调研单体链路' })} columns={80} rows={20} />);
   assert.match(one.lastFrame() ?? '', /调研单体链路/, '头部呈委派提示词');
+  assert.doesNotMatch(one.lastFrame() ?? '', /⏺/, '委派提示词行无图标前缀（2026-09-28 用户裁决）');
   one.unmount();
 });
 
@@ -72,15 +73,29 @@ test('Inspector 视口有界：长行折行预算下帧高不超 rows（源行�
   one.unmount();
 });
 
-test('Inspector Tab 两态：缺省完整时间线（call/result 全显），收起态只留正文（2026-09-28 用户裁决）', () => {
-  const full = render(<ChildInspector child={live()} columns={80} rows={20} />).lastFrame() ?? '';
-  assert.match(full, /● \[READ\] src\/a\.ts/, '缺省（展开）态完整时间线：call 行在');
-  assert.match(full, /⎿ ✓ 84 lines/, '缺省（展开）态完整时间线：result 行在');
-  const collapsed = render(<ChildInspector child={live()} columns={80} rows={20} expanded={false} />).lastFrame() ?? '';
-  assert.doesNotMatch(collapsed, /● \[READ\]/, '收起态工具调用行隐藏');
-  assert.doesNotMatch(collapsed, /⎿/, '收起态结果行隐藏');
-  assert.match(collapsed, /分析中…/, '收起态正文保留');
-  assert.match(collapsed, /Tab/, '头部携带 Tab 切换提示');
+test('Inspector Tab 两态：缺省折叠对标主 agent（非末段只留正文+首个工具对），Tab 展开全量（2026-09-28 用户裁决反转）', () => {
+  const multi: ChildLiveState = {
+    ...live(),
+    transcript: [
+      { kind: 'text', text: '第一段思考' },
+      { kind: 'call', text: 'READ src/a.ts' },
+      { kind: 'result', text: '84 lines', ok: true },
+      { kind: 'text', text: '第二段思考' },
+      { kind: 'call', text: 'GREP pattern' },
+      { kind: 'result', text: '3 files', ok: true },
+      { kind: 'call', text: 'READ src/b.ts' },
+      { kind: 'result', text: '9 lines', ok: true },
+      { kind: 'text', text: '结论段正文' },
+    ],
+  };
+  // 缺省（折叠）：末段全显；非末段只留正文 + 首个工具对，第二段的后续工具对收敛
+  const def = render(<ChildInspector child={multi} columns={80} rows={40} />).lastFrame() ?? '';
+  assert.match(def, /第一段思考/, '非末段正文保留');
+  assert.match(def, /● \[READ\] src\/a\.ts/, '非末段首个工具对保留（锚点）');
+  assert.match(def, /第二段思考/, '末段（结论段）全显');
+  assert.doesNotMatch(def, /src\/b\.ts/, '非末段第二工具对折叠隐藏——缺省即主 agent 折叠形态');
+  const full = render(<ChildInspector child={multi} columns={80} rows={40} expanded />).lastFrame() ?? '';
+  assert.match(full, /src\/b\.ts/, 'Tab 展开全量：后续工具对可见');
 });
 
 test('Inspector 视口有界：真实 markdown 形态（标题/表格/围栏/长 CJK）下帧高不超 rows（估算与渲染不同源即溢出残影/两遍观感回归）', () => {

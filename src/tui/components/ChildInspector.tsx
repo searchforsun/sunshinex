@@ -19,11 +19,11 @@ export function ChildInspector(props: {
   archived?: { label: string; lines: string[]; steps?: number; durationMs?: number; prompt?: string };
   columns: number;
   rows: number;
-  /** Tab 两态（2026-09-28 用户裁决，对标主 agent expandAll 交互位）：缺省完整时间线（call/result/text 全显），
-   *  Tab 收起为正文形态（只留 text 段，工具调用/结果行隐藏）——状态由 App 承载，动态区自绘零重挂 */
+  /** Tab 两态（2026-09-28 用户裁决反转，对标主 agent 折叠缺省）：缺省折叠（非末段只留正文+首对工具锚点），
+   *  Tab 展开完整时间线（call/result/text 全显）——状态由 App 承载，动态区自绘零重挂 */
   expanded?: boolean;
 }): JSX.Element {
-  const { child, archived, columns, rows, expanded = true } = props;
+  const { child, archived, columns, rows, expanded = false } = props;
   const label = child?.label ?? archived?.label ?? '';
   const steps = child?.steps ?? archived?.steps;
   const tokens = child?.tokens;
@@ -54,13 +54,27 @@ export function ChildInspector(props: {
           : [{ kind: 'text' as const, text: l }];
       });
   const delegated = child?.prompt ?? archived?.prompt ?? legacyPrompt;
-  const body = expanded ? bodyFull : bodyFull.filter((l) => l.kind === 'text');
+  // 缺省折叠（2026-09-28 用户裁决：与主 agent 时间线同形态）：思考/结论正文全显；工具行只保留首个
+  // call 及其连续结果链（锚点对），其余工具对收敛——Tab 展开全量时间线
+  const folded: ChildLine[] = [];
+  let pairTaken = false;
+  let attachable = false; // 连续结果链判据：result 行仅跟随「已保留 call 且中间无折叠 call/正文打断」——同一调用的多行结果（含失败行）不折丢
+  bodyFull.forEach((l) => {
+    if (l.kind === 'text') { attachable = false; folded.push(l); return; }
+    if (l.kind === 'call') {
+      if (!pairTaken) { pairTaken = true; attachable = true; folded.push(l); }
+      else attachable = false;
+      return;
+    }
+    if (attachable) folded.push(l);
+  });
+  const body = expanded ? bodyFull : folded;
   const head =
     `✻ [${label}] ${t('subagent view', '子代理视图')}` +
     `${typeof steps === 'number' ? ` · step ${steps}` : ''}` +
     `${tokens !== undefined ? ` · ↑${formatTokens(tokens)} tokens` : ''}` +
     `${secs !== undefined ? ` · ${formatDuration(secs)}` : ''}` +
-    ` · Tab ${expanded ? t('collapse timeline', '收起时间线') : t('expand timeline', '展开时间线')}` +
+    ` · Tab ${expanded ? t('expand timeline', '展开时间线') : t('collapse timeline', '收起时间线')}` +
     ` · ${t('Esc exit', 'Esc 退出')}`;
   // 视口预算（2026-09-28 真机溢出修复）：按「实际渲染行数」估算——MarkdownText 按 textBudget 折行，
   // 长行（CJK 正文/长路径）1 源行 → 数显示行，按源行数计预算即帧超高溢出动态区（残影/碎片/重复观感的根因）。
@@ -123,7 +137,7 @@ export function ChildInspector(props: {
       <Text color={theme.accent} dimColor>
         {head}
         {promptSegs.length > 0
-          ? `\n⏺ ${t('delegated prompt', '委派提示词')}：${promptClipped ? '\n' : ''}${promptSegs.join('\n')}`
+          ? `\n${t('delegated prompt', '委派提示词')}：${promptClipped ? '\n' : ''}${promptSegs.join('\n')}`
           : ''}
       </Text>
       {visible.map((s, i) =>

@@ -203,7 +203,7 @@ export function App({
   const [inspect, setInspect] = React.useState<{ kind: 'live'; label: string } | { kind: 'archived'; seq: number } | undefined>(store.inspect);
   // 全屏查看 Tab 两态（2026-09-28 用户裁决：完整时间线缺省，Tab 收起为正文形态）——经 retain 跨重挂保留，
   // 与 browseMode 同款「动态区自绘零重挂」承载，inspect 进入时复位为完整时间线
-  const [inspectExpanded, setInspectExpanded] = React.useState<boolean>(store.inspectExpanded ?? true);
+  const [inspectExpanded, setInspectExpanded] = React.useState<boolean>(store.inspectExpanded ?? false);
   const inspectExpandedRef = React.useRef(inspectExpanded);
   inspectExpandedRef.current = inspectExpanded;
   const inspectRef = React.useRef(inspect);
@@ -212,7 +212,7 @@ export function App({
     inspectRef.current = v;
     store.inspect = v;
     setInspect(v);
-    setInspectExpanded(true); // 每次进入复位完整时间线（缺省态，对标主 agent 展开位）
+    setInspectExpanded(false); // 每次进入复位折叠态（缺省态，对标主 agent 折叠位）
     // 整屏接管切换（进入/退出各一次）：经生产 repaint 路径卸载→同 retain 重挂——重挂后历史区按
     // suppressHistory 置空/恢复，全屏视图独占整页不与主 agent 历史拼接（2026-09-27 用户裁决）
     onRequestRepaint?.();
@@ -314,6 +314,9 @@ export function App({
     }
     segInitRef.current = true;
     segCountRef.current = segCount;
+    // 全屏/浏览态跳过段锚点重绘（2026-09-28 用户裁决）：动态区自绘面在场时整屏拆挂即持续闪屏、
+    // 且重挂空窗吞 Esc/↑↓ 按键；账本照记，退出后从真实基线起算零虚触发
+    if (inspectRef.current || browseModeRef.current) return;
     if (!changed || !collapseWorthy) return;
     if (segDebounceRef.current) clearTimeout(segDebounceRef.current);
     segDebounceRef.current = setTimeout(() => {

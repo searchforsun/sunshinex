@@ -19,5 +19,5 @@ export interface RetainedUiState {
 }
 
 export function initialRetained(): RetainedUiState {
-  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, browseMode: false, browseCursor: 0, inspect: undefined, inspectExpanded: true, history: [], histIdx: -1 };
+  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, browseMode: false, browseCursor: 0, inspect: undefined, inspectExpanded: false, history: [], histIdx: -1 };
 }

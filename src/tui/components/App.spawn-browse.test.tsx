@@ -33,6 +33,53 @@ async function settledCtrl(tmp: string): Promise<SessionController> {
   return ctrl;
 }
 
+test('App：全屏态段锚点自动重绘跳过（2026-09-28 用户裁决：持续闪屏与吞 Esc 同根因，拆挂只许 Tab/Ctrl+O/进出全屏触发）', async () => {
+  const tmp = tmpdir('sunshinex-app-repaint-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"tools":[{"tool":"spawn","input":{"prompt":"a","label":"rv"}}],"done":false}',
+        '{"done":true,"reply":"ok"}',
+        '{"tool":"read","input":{"path":"SUNSHINE.md"},"done":false}',
+        '{"done":true,"reply":"追问完成"}',
+      ]),
+    });
+    ctrl.onEventForTest({ type: 'token', text: 'rv 线\n', payload: { subagent: 'rv' } } as never);
+    ctrl.onEventForTest({ type: 'done', text: 'rv 结论', payload: { subagent: 'rv' } } as never);
+    const p = ctrl.submit('跑一个子代理');
+    await p;
+    await ctrl.waitIdle();
+    const repaints: number[] = [];
+    const { write, lastFrame, unmount } = render(
+      <App
+        controller={ctrl}
+        banner={{ version: '1.0.0', model: 'm', root: tmp }}
+        retain={initialRetained()}
+        onRequestRepaint={() => repaints.push(repaints.length + 1)}
+      />,
+    );
+    await new Promise((r) => setTimeout(r, 200));
+    write('\u0002'); // Ctrl+B
+    await new Promise((r) => setTimeout(r, 150));
+    write('\r'); // Enter → 全屏回看（进入恰 1 次重绘）
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(lastFrame() ?? '', /subagent view/, '前置：全屏视图在场');
+    assert.equal(repaints.length, 1, '前置：进入全屏恰一次重绘');
+    // 全屏期间主链再跑一轮带工具行的回合：段锚点落定不得触发整屏重绘（拆挂即闪屏 + 吞 Esc 空窗）
+    void ctrl.submit('追问');
+    await ctrl.waitIdle();
+    await new Promise((r) => setTimeout(r, 900)); // 越过 400ms 段锚点防抖
+    assert.equal(repaints.length, 1, '全屏态段锚点落定零整屏重绘');
+    write('\u001b'); // Esc 退出全屏
+    await new Promise((r) => setTimeout(r, 200));
+    assert.doesNotMatch(lastFrame() ?? '', /subagent view/, 'Esc 正常退出全屏');
+    unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 §3.2）', async () => {
   const tmp = tmpdir('sunshinex-app-browse-');
   try {
