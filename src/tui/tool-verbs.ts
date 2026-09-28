@@ -62,7 +62,7 @@ function extractTarget(tool: string, input: unknown): string {
     if (Object.keys(obj).length === 0) return '';
     return JSON.stringify(input);
   }
-  const one = tool === 'exec' ? raw.trim().split(/\s+/)[0] : raw.replace(/\s+/g, ' ').trim();
+  const one = raw.replace(/\s+/g, ' ').trim();
   return one;
 }
 

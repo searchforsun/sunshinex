@@ -8,7 +8,7 @@ test('toolCallLine：spawn 映射 SPAWN + label 摘要（规格 §6 调用行口
 });
 
 test('toolCallLine：已登记工具映射英文动词 + target 摘要', () => {
-  assert.equal(toolCallLine('exec', { command: 'ls -la' }), 'EXEC ls');
+  assert.equal(toolCallLine('exec', { command: 'ls -la' }), 'EXEC ls -la');
   assert.equal(toolCallLine('read', { path: 'SUNSHINE.md' }), 'READ SUNSHINE.md');
   assert.equal(toolCallLine('write', { path: 'README.md', content: 'x' }), 'WRITE README.md');
   assert.equal(toolCallLine('grep', { pattern: 'TODO' }), 'GREP TODO');
@@ -37,8 +37,13 @@ test('toolCallLine：grep 带 path 仍取 pattern 代表字段', () => {
   assert.equal(toolCallLine('grep', { path: '.', pattern: 'needle' }), 'GREP needle');
 });
 
-test('toolCallLine：exec 取 command 首段而非 path', () => {
-  assert.equal(toolCallLine('exec', { command: 'npm test', path: '/x' }), 'EXEC npm');
+test('toolCallLine：exec 取 command 全量（空白归一），与 path 共存时 command 优先', () => {
+  assert.equal(toolCallLine('exec', { command: 'npm test', path: '/x' }), 'EXEC npm test');
+  assert.equal(
+    toolCallLine('exec', { command: 'grep  -n   "needle"  -r   src/' }),
+    'EXEC grep -n "needle" -r src/',
+    '多空白归一为单空格，命令详情完整保留（呈现层按列宽自然省略）',
+  );
 });
 
 test('toolCallLine：读面行为不变——代表字段提取与空白归一零改动', () => {
