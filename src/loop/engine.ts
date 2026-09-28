@@ -14,7 +14,7 @@ import {
 import { guardrailStop } from '../harness/guardrail';
 import { ModelAdapter, ModelRouter } from '../model/adapter';
 import { Result } from '../result';
-import { ResolvedSkill } from '../harness/skills';
+import { ResolvedSkill, skillHeader } from '../harness/skills';
 import { ToolRegistry } from '../harness/tools';
 import { SafetyChain } from '../harness/security/chain';
 import { ContextManager } from '../harness/context';
@@ -138,7 +138,7 @@ export class LoopEngine {
         return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: `${resolved.error.code}: ${resolved.error.message}` };
       }
       const m = resolved.value.manifest;
-      this.deps.context.setSkillBlock(`[Skill] ${m.name} (id=${m.id} v=${m.version})\n${resolved.value.body}`);
+      this.deps.context.setSkillBlock(`${skillHeader(m)}\n${resolved.value.body}`);
     }
     const ctx: LoopContext = {
       iteration: 0,

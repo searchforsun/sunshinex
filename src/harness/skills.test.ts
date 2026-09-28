@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createSkillsFacade, formatSkillsIndex, parseSkillFrontmatter, loadSkills } from './skills';
+import { SkillManifest } from '../types';
+import { createSkillsFacade, formatSkillsIndex, parseSkillFrontmatter, loadSkills, skillHeader } from './skills';
 
 test('parseSkillFrontmatter：--- 块内 key: value 提取', () => {
   const m = parseSkillFrontmatter('---\nname: TUI 技能\ndescription: 终端交互\nversion: 1.2.0\n---\n正文');
@@ -122,7 +123,24 @@ test('兼容链：五根统一 SKILL.md 标准形态，互不相同 id 全量并
     writeCompatSkill(root, '.agents', 'd-skill', 'AgentsSkill');
     writeCompatSkill(root, '.sunshinex', 'e-skill', 'SunshineSkill');
     assert.deepEqual(loadSkills(root).map((s) => s.id).sort(), ['a-skill', 'b-skill', 'c-skill', 'd-skill', 'e-skill']);
+    // 来源目录标注（2026-09-28 用户裁决）：清单与 resolve 均携带技能所在目录的绝对路径，
+    // 模型经 read/exec 解析技能正文引用的伴随文件不再找不到
+    const cursor = loadSkills(root).find((s) => s.id === 'a-skill');
+    assert.equal(cursor?.sourceRoot, path.join(root, '.cursor', 'skills', 'a-skill'));
+    const facade = createSkillsFacade(root);
+    const r = facade.resolve('c-skill');
+    assert.ok(r.ok);
+    if (r.ok) assert.equal(r.value.manifest.sourceRoot, path.join(root, '.claude', 'skills', 'c-skill'));
   });
+});
+
+test('skillHeader：首行与既有格式逐字节一致（会话去重判据依赖 id= 前缀），sourceRoot 在位补 Directory 行', () => {
+  const base = { id: 's', name: 'S', version: '1.0.0' };
+  assert.equal(skillHeader(base as SkillManifest), '[Skill] S (id=s v=1.0.0)', '无来源目录回退既有形态');
+  assert.equal(
+    skillHeader({ ...base, sourceRoot: '/p/.claude/skills/s' } as SkillManifest),
+    '[Skill] S (id=s v=1.0.0)\nDirectory: /p/.claude/skills/s',
+  );
 });
 
 test('兼容链就近遮蔽：同 id 取最高优先根（.sunshinex 遮蔽 .agents/.claude），list 恒一', () => {

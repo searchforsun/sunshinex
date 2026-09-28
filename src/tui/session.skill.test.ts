@@ -74,7 +74,7 @@ test('/skill：选择卡列技能、选定即链尾追注入 + 回执', async ()
     await p;
     const entry = chainEntries(root).find((s) => s.action === 'skill');
     assert.ok(entry, '链上出现 action=skill 条目');
-    assert.match(entry!.observation, /^\[Skill\] Greet \(id=greet v=1\.0\.0\)\n\nBody of Greet\./, '头行对齐 loop skillRef 格式 + 正文随后');
+    assert.match(entry!.observation, /^\[Skill\] Greet \(id=greet v=1\.0\.0\)\nDirectory: .+\n\nBody of Greet\./, '头行对齐 loop skillRef 格式 + 来源目录行 + 正文随后');
     assert.ok(sysTexts(ctrl).some((x) => /Skill loaded: Greet/.test(x)), '加载回执上屏');
     assert.equal(ctrl.getState().status, 'idle');
   });

@@ -71,7 +71,7 @@ function loadSkillsFrom(dir: string): SkillManifest[] {
     if (named === undefined) continue;
     try {
       const meta = parseSkillFrontmatter(fs.readFileSync(named, 'utf8'));
-      out.push({ id: d.name, ...meta } as SkillManifest);
+      out.push({ id: d.name, sourceRoot: path.join(dir, d.name), ...meta } as SkillManifest);
     } catch {
       // 单条目不可读（枚举与读取之间被移除 / 目录占位 / 权限）逐条跳过，不拖垮整次扫描：
       // 技能清单是装配面的尽力而为视图，一条坏条目不得阻断会话装配
@@ -112,6 +112,14 @@ export function formatSkillsIndex(manifests: SkillManifest[]): string | null {
       return `- ${m.name} (id: ${m.id}): ${desc}`;
     })
     .join('\n');
+}
+
+/** 技能回执头行单点（skill 工具回执 / /skill 链注入 / loop skillRef 块三方同源，防格式漂移）：
+ *  首行与既有格式逐字节一致（会话去重判据依赖 `(id=x v=` 前缀）；sourceRoot 在位时第二行携带来源目录——
+ *  兼容根（.claude/.codex 等）装载的技能正文引用伴随文件，模型按此目录而非项目根解析 */
+export function skillHeader(m: SkillManifest): string {
+  const head = `[Skill] ${m.name} (id=${m.id} v=${m.version})`;
+  return m.sourceRoot !== undefined ? `${head}\nDirectory: ${m.sourceRoot}` : head;
 }
 
 /** 技能门面：装配根暴露 list/get/resolve 三能力（Harness.skills；结构兼容 LoopDeps.skills） */
@@ -167,7 +175,7 @@ export function resolveSkill(skillsDir: string, id: string, params?: Record<stri
     // 而不是把读取异常抛给调用方（resolve 契约：仅 SKILL_NOT_FOUND 回退、其余即止）
     return fail('SKILL_NOT_FOUND', `SKILL_NOT_FOUND: skill not registered: ${id}`);
   }
-  const manifest: SkillManifest = { id, ...parseSkillFrontmatter(md) };
+  const manifest: SkillManifest = { id, sourceRoot: path.join(skillsDir, id), ...parseSkillFrontmatter(md) };
   const body = md.replace(FRONTMATTER, '').trim();
 
   const provided = params ?? {};

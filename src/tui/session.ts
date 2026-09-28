@@ -12,6 +12,7 @@ import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
 import { sunshineInitGoal } from '../harness/sunshine-init';
+import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, listSessions, newSessionId, sessionsDir, parseJournalFile, reduceJournal, listAnchors, branchFrom, type SessionMeta } from './session-journal';
@@ -1334,7 +1335,7 @@ export class SessionController {
     }
     const m = r.value.manifest;
     // 链尾追持久注入（先例 D2）：头行对齐 loop skillRef 既有格式，正文随后续每帧经链携带
-    this.runtime.harness.context.appendChain([{ action: 'skill', observation: `[Skill] ${m.name} (id=${m.id} v=${m.version})\n\n${r.value.body}` }]);
+    this.runtime.harness.context.appendChain([{ action: 'skill', observation: `${skillHeader(m)}\n\n${r.value.body}` }]);
     this.pushMsg('system', t(`Skill loaded: ${m.name} (id=${m.id}) — included in context for subsequent tasks`, `技能已加载：${m.name}（id=${m.id}）——随后续任务进上下文`));
     return 'loaded';
   }

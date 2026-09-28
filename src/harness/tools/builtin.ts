@@ -7,7 +7,7 @@ import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput, TodoStatus } from '../../types';
 import { Result } from '../../result';
 import { KnowledgeBase } from '../knowledge/index';
-import { SkillsFacade } from '../skills';
+import { SkillsFacade, skillHeader } from '../skills';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
 import { TaskRegistry } from '../tasks';
@@ -166,7 +166,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         if (raw !== undefined && (typeof raw !== 'object' || raw === null)) throw new CodedToolError('INVALID_ARG', 'params must be a name→value object');
         const r = skills.resolve(id, raw as Record<string, string> | undefined);
         if (!r.ok) throw new CodedToolError(r.error.code, `${r.error.code}: ${r.error.message}`);
-        return execOut(fitOut('skill', `[Skill] ${r.value.manifest.name || id}\n\n${r.value.body}`));
+        return execOut(fitOut('skill', `${skillHeader(r.value.manifest)}\n\n${r.value.body}`));
       },
     },
     {
