@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { ChildLiveState } from '../session';
-import { elideByWidth } from '../text-band';
+import { displayWidth, elideByWidth } from '../text-band';
 import { formatTokens, formatDuration } from '../format';
 import { Spinner } from './Spinner';
 import { theme } from '../theme';
@@ -23,19 +23,24 @@ export function ChildPanel({ childrenState, columns, selectedLabel }: { children
       borderColor={theme.accent}
       paddingX={1}
     >
-      {rows.map((c) => (
-        // 浏览模式选中行反色高亮：ink3 Box 样式面无 backgroundColor（Text 专属），各分支在 Text 上承载；
-        // ↑↓ 移动即见选中项；选中态子段去 dim 保对比（灰底叠暗灰不可读，2026-09-28 用户裁决）
+      {rows.map((c) => {
+        // 单行保证（2026-09-28 用户裁决：工具不要超过一行自动省略）：target 预算从内容宽起算——
+        // [label] 前缀（displayWidth 口径，CJK 计 2）、每调用耗时段、tokens 尾巴全部计入成本，
+        // 剩余宽度才均分给各调用 target；旧按调用数均分漏算头尾成本，exec 全量命令后即换行击穿每代理一行
+        const calls = c.calls ?? [];
+        const headCost = glyph.length + 1 + displayWidth(c.label) + 2;
+        const perCall = Math.max(8, Math.floor((width - headCost - calls.length * 9 - 12) / Math.max(1, calls.length)));
+        return (
         <Box key={c.label}>
-          {(c.calls ?? []).length > 0 ? (
+          {calls.length > 0 ? (
             // 工具活动行（规格 §4.2 面板增强，与主链 taskState 口径对齐）：显示当前调用名+单调用耗时，
             // 轮换动词是「思考中」的语义、模型正在干活时退回动词即信息量倒挂；选中态反色经 Text backgroundColor 承载
             <Text backgroundColor={selectedLabel === c.label ? 'gray' : undefined} color={theme.accent} dimColor={selectedLabel !== c.label}>
               {glyph} [{c.label}]{' '}
               <Text dimColor={selectedLabel !== c.label}>
-                {(c.calls ?? []).map((call, i) => (
+                {calls.map((call, i) => (
                   <Text key={call.callId}>
-                    {i > 0 ? ' · ' : ''}[{elideByWidth(call.target, Math.max(8, Math.floor((width - 10) / (c.calls ?? []).length)))}]{' '}
+                    {i > 0 ? ' · ' : ''}[{elideByWidth(call.target, perCall)}]{' '}
                     {formatDuration(Math.max(0, Math.round((Date.now() - call.startedAt) / 1000)))}
                   </Text>
                 ))}
@@ -49,7 +54,8 @@ export function ChildPanel({ childrenState, columns, selectedLabel }: { children
             </Text>
           )}
         </Box>
-      ))}
+        );
+      })}
     </Box>
   );
 }

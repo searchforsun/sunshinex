@@ -27,6 +27,23 @@ test('ChildPanel：空 children 零占位；CC 式每代理一行（规格 §3.1
   one.unmount();
 });
 
+test('ChildPanel：工具活动行单行保证——多调用长命令下每代理行不换行（2026-09-28 用户裁决：工具不要超过一行自动省略）', () => {
+  // exec 全量命令修复后调用 target 变长（cf8d73e），旧按调用数均分预算漏算 [label] 前缀/耗时/tokens 尾巴
+  // → 宽度超预算换行，面板「每代理一行」护栏被击穿
+  const calls = Array.from({ length: 3 }, (_, i) => ({
+    callId: `c${i}`,
+    target: `EXEC cd src/main/java/com/liepin/aries/web && grep -rn "sortKey" --include="*.java" . | grep -i task-item-${i}`,
+    startedAt: Date.now() - 3000,
+  }));
+  const one = render(
+    <ChildPanel childrenState={[child({ label: 'web模块架构分析', calls })]} columns={120} />, 120,
+  );  const f = one.lastFrame() ?? '';
+  const lines = f.replace(/\n$/, '').split('\n');
+  assert.equal(lines.length, 3, '单代理 = 1 内容行 + 2 边框行：工具调用再多、命令再长都不得换行');
+  assert.ok(f.includes('↑1.2k tokens'), '耗时/tokens 尾巴仍应可见');
+  one.unmount();
+});
+
 test('ChildPanel：并发 4 面板同屏、总高 = 4 内容行 + 2 边框行（每代理一行护栏）', () => {
   const one = render(<ChildPanel childrenState={[child()]} columns={80} />);
   const base = (one.lastFrame() ?? '').replace(/\n$/, '').split('\n').length;
