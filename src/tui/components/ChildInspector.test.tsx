@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from '../test-ink';
 import { ChildInspector } from './ChildInspector';
-import { ChildLiveState } from '../session';
+import { ChildLine, ChildLiveState } from '../session';
 
 const live = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
   label: 'w', startedAt: Date.now() - 12_000, steps: 14, tokens: 13_000,
@@ -81,4 +81,33 @@ test('Inspector Tab 两态：缺省完整时间线（call/result 全显），收
   assert.doesNotMatch(collapsed, /⎿/, '收起态结果行隐藏');
   assert.match(collapsed, /分析中…/, '收起态正文保留');
   assert.match(collapsed, /Tab/, '头部携带 Tab 切换提示');
+});
+
+test('Inspector 视口有界：真实 markdown 形态（标题/表格/围栏/长 CJK）下帧高不超 rows（估算与渲染不同源即溢出残影/两遍观感回归）', () => {
+  // 真机病根（2026-09-28 全屏视图两遍）：segRows 只按裸折行计数，MarkdownText 真实渲染还有
+  // 块间空行（marginTop 1）、表格 alignTable 框线行、ink 折行边界差三类行数——预算低估即帧超高溢出动态区
+  const transcript: ChildLine[] = [];
+  transcript.push({ kind: 'text', text: `${'这是一段非常长的中文正文行用于测试折行累计估算偏差的情况'.repeat(3)}` });
+  transcript.push({ kind: 'call', text: 'READ package.json' });
+  transcript.push({ kind: 'result', text: '42 lines', ok: true });
+  transcript.push({ kind: 'text', text: '## 调研结论\n\n- src/tui 渲染层\n- src/harness 运行时' });
+  transcript.push({ kind: 'call', text: 'grep src -l' });
+  transcript.push({ kind: 'result', text: '8 files', ok: true });
+  // 表格块收尾：alignTable 框线行数远多于源行折行口径，估算低估即帧超高溢出（探针实锤 7 例红的形态）
+  transcript.push({ kind: 'text', text: '| 模块 | 职责 |\n|------|------|\n| session | 会话状态与 journal 持久化 |\n| reactor | 闭环引擎与并行闸门 |' });
+  for (const columns of [60, 80, 100]) {
+    for (const rows of [10, 12, 14]) {
+      const one = render(
+        <ChildInspector
+          child={live({ transcript, prompt: '调研前端目录结构', steps: 8, tokens: 9000 })}
+          columns={columns}
+          rows={rows}
+        />,
+      );
+      const f = one.lastFrame() ?? '';
+      const n = f.replace(/\n$/, '').split('\n').length;
+      one.unmount();
+      assert.ok(n <= rows, `columns=${columns} rows=${rows}: 帧高 ${n} 行不超视口（估算同源护栏）`);
+    }
+  }
 });

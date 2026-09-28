@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { ChildLine, ChildLiveState } from '../session';
 import { formatTokens, formatDuration } from '../format';
 import { wrapByWidth } from '../text-band';
+import { markdownRowCount } from '../markdown';
 import { MarkdownText } from './MarkdownText';
 import { TOOL_VERBS } from '../tool-verbs';
 import { t } from '../../i18n';
@@ -81,21 +82,22 @@ export function ChildInspector(props: {
   }
   const visible: Seg[] = [];
   let used = 0;
-  // 段实际渲染行数：md 段按折行口径（wrapByWidth 与 MarkdownText 同宽度）、结构行恒 1
+  // 段实际渲染行数：md 段经 markdownRowCount 同源口径（块间隙/表格框线/折行安全余量与渲染器一致）、结构行恒 1
   const segRows = (s: Seg): number =>
-    s.kind === 'md' ? s.text.split('\n').reduce((n, l) => n + wrapByWidth(l, textBudget).length, 0) : 1;
+    s.kind === 'md' ? markdownRowCount(s.text, textBudget) : 1;
   for (let i = segs.length - 1; i >= 0; i--) {
     const s = segs[i];
     const remain = bodyRows - used;
     if (s.kind === 'md') {
       const n = segRows(s);
       if (n > remain) {
-        // 段尾截取（折行口径）：md 段超预算时按折行后行数保留最新部分（视口永不溢出）
-        const wrapped = s.text
-          .split('\n')
-          .flatMap((l) => wrapByWidth(l, textBudget))
-          .slice(-remain);
-        visible.unshift({ kind: 'md', text: wrapped.join('\n') });
+        // 段尾截取（同源口径）：md 段超预算时按渲染行数保留最新部分——先按折行预算切块、
+        // 再以「切后行数不超 remain」为准逐刀收缩（markdownRowCount 计含块间隙/框线，切后必须复量）
+        const lines = s.text.split('\n');
+        const wrapped = lines.flatMap((l) => wrapByWidth(l, textBudget));
+        let cut = wrapped.slice(-Math.max(1, remain));
+        while (cut.length > 1 && markdownRowCount(cut.join('\n'), textBudget) > remain) cut = cut.slice(1);
+        visible.unshift({ kind: 'md', text: cut.join('\n') });
         break;
       }
       visible.unshift(s);

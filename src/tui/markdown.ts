@@ -379,3 +379,50 @@ export function alignTable(headers: string[], rows: string[][], columns: number)
     cell.split('\n').flatMap((seg) => wrapByWidth(seg, widths[c])).join('\n');
   return build(h.map(wrapCell), r.map((row) => row.map(wrapCell)));
 }
+
+/** Markdown 正文渲染行数估算（与 MarkdownText 渲染规则同源单点）：块间空行档位（i>0 的 marginTop 1）、
+ *  表格按 alignTable 实际框线行数（降级与渲染层回退逐行原文同口径）、围栏按代码行数、散文按列宽折行——
+ *  折行预算收 2 列安全余量吸收 ink 断行边界差。视口预算消费此口径，估算低估即帧超高溢出动态区
+ *  （残影/内容两遍观感，2026-09-28 全屏视图真机病根）。columns 为渲染列宽 */
+export function markdownRowCount(text: string, columns: number): number {
+  const blocks = parseMarkdown(text);
+  const safe = Math.max(4, columns - 2);
+  const wrapCount = (s: string): number =>
+    s.split('\n').reduce((n, l) => n + wrapByWidth(l, safe).length, 0);
+  let total = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i]!;
+    if (i > 0) total += 1; // 块间空行档位
+    switch (b.type) {
+      case 'heading':
+      case 'paragraph':
+        total += wrapCount(inlineText(b.inlines));
+        break;
+      case 'fence':
+        total += Math.max(1, b.code.split('\n').length);
+        break;
+      case 'list':
+        for (const item of b.items) total += wrapCount(inlineText(item));
+        break;
+      case 'quote':
+        total += wrapCount(inlineText(b.inlines));
+        break;
+      case 'table': {
+        const headers = b.headers.map(inlineText);
+        const rows = b.rows.map((row) => row.map(inlineText));
+        const aligned = alignTable(headers, rows, columns);
+        total +=
+          aligned.length > 0
+            ? aligned.length
+            : [headers, ...rows]
+                .map((cells) => wrapCount(cells.join(' | ')))
+                .reduce((sum, n) => sum + n, 0);
+        break;
+      }
+      case 'hr':
+        total += 1;
+        break;
+    }
+  }
+  return Math.max(1, total);
+}
