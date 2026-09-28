@@ -71,3 +71,14 @@ test('Inspector 视口有界：长行折行预算下帧高不超 rows（源行�
   assert.match(f, /…/, '超限委派 prompt 取尾带 … 标记');
   one.unmount();
 });
+
+test('Inspector Tab 两态：缺省完整时间线（call/result 全显），收起态只留正文（2026-09-28 用户裁决）', () => {
+  const full = render(<ChildInspector child={live()} columns={80} rows={20} />).lastFrame() ?? '';
+  assert.match(full, /● \[READ\] src\/a\.ts/, '缺省（展开）态完整时间线：call 行在');
+  assert.match(full, /⎿ ✓ 84 lines/, '缺省（展开）态完整时间线：result 行在');
+  const collapsed = render(<ChildInspector child={live()} columns={80} rows={20} expanded={false} />).lastFrame() ?? '';
+  assert.doesNotMatch(collapsed, /● \[READ\]/, '收起态工具调用行隐藏');
+  assert.doesNotMatch(collapsed, /⎿/, '收起态结果行隐藏');
+  assert.match(collapsed, /分析中…/, '收起态正文保留');
+  assert.match(collapsed, /Tab/, '头部携带 Tab 切换提示');
+});

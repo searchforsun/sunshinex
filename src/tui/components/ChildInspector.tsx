@@ -18,8 +18,11 @@ export function ChildInspector(props: {
   archived?: { label: string; lines: string[]; steps?: number; durationMs?: number };
   columns: number;
   rows: number;
+  /** Tab 两态（2026-09-28 用户裁决，对标主 agent expandAll 交互位）：缺省完整时间线（call/result/text 全显），
+   *  Tab 收起为正文形态（只留 text 段，工具调用/结果行隐藏）——状态由 App 承载，动态区自绘零重挂 */
+  expanded?: boolean;
 }): JSX.Element {
-  const { child, archived, columns, rows } = props;
+  const { child, archived, columns, rows, expanded = true } = props;
   const label = child?.label ?? archived?.label ?? '';
   const steps = child?.steps ?? archived?.steps;
   const tokens = child?.tokens;
@@ -28,7 +31,9 @@ export function ChildInspector(props: {
     : archived?.durationMs !== undefined
       ? Math.round(archived.durationMs / 1000)
       : undefined;
-  const body: ChildLine[] = child
+  // Tab 两态（2026-09-28 用户裁决）：完整时间线（缺省，call/result/text 全显，与运行中/主 agent 同构）；
+  // 收起态只留正文（text 段走 Markdown），工具调用/结果行隐藏——结构行过滤先于分段
+  const bodyFull: ChildLine[] = child
     ? child.transcript
     : (archived?.lines ?? []).map((l) => {
         if (l.startsWith('⎿ ')) {
@@ -40,11 +45,13 @@ export function ChildInspector(props: {
           ? { kind: 'call' as const, text: l }
           : { kind: 'text' as const, text: l };
       });
+  const body = expanded ? bodyFull : bodyFull.filter((l) => l.kind === 'text');
   const head =
     `✻ [${label}] ${t('subagent view', '子代理视图')}` +
     `${typeof steps === 'number' ? ` · step ${steps}` : ''}` +
     `${tokens !== undefined ? ` · ↑${formatTokens(tokens)} tokens` : ''}` +
     `${secs !== undefined ? ` · ${formatDuration(secs)}` : ''}` +
+    ` · Tab ${expanded ? t('collapse timeline', '收起时间线') : t('expand timeline', '展开时间线')}` +
     ` · ${t('Esc exit', 'Esc 退出')}`;
   // 视口预算（2026-09-28 真机溢出修复）：按「实际渲染行数」估算——MarkdownText 按 textBudget 折行，
   // 长行（CJK 正文/长路径）1 源行 → 数显示行，按源行数计预算即帧超高溢出动态区（残影/碎片/重复观感的根因）。

@@ -56,20 +56,23 @@ test('done 终稿不与流式正文重复入档', () => {
   }
 });
 
-test('归档即离场：归档后面板移除，detail 精简为委派+结论+统计（不折入全文转录）', () => {
+test('归档即离场：归档后面板移除，detail 折入完整时间线（委派+转录+结论+统计，2026-09-28 用户裁决：归档与运行中/主 agent 同构）', () => {
   const tmp = tmpdir('sunshinex-sess-keep-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: '调研前端目录', label: 'k' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
     ctrl.onEventForTest({ type: 'token', text: 'READ package.json\n读取配置完成\n', payload: { subagent: 'k' } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: '42 lines', payload: { subagent: 'k', ok: true } } as never);
     ctrl.onEventForTest({ type: 'done', text: '前端结论：结构清晰', payload: { subagent: 'k' } } as never);
-    assert.equal(ctrl.getState().children.filter((c) => c.label === 'k').length, 0, '归档即从面板离场（2026-09-28 用户裁决：动态区只显运行中，回看走历史区）');
+    assert.equal(ctrl.getState().children.filter((c) => c.label === 'k').length, 0, '归档即从面板离场（动态区只显运行中，回看走历史区）');
     const call = ctrl.getState().messages.find((m) => m.kind === 'call' && m.text.startsWith('SPAWN'));
     assert.ok(call?.detail?.includes('调研前端目录'), 'detail 含委派提示词（输入）');
+    assert.ok(call!.detail!.includes('READ package.json'), 'detail 折入完整时间线（工具调用行）');
+    assert.ok(call!.detail!.includes('⎿ ✓ 42 lines'), 'detail 折入结果行（⎿ ✓/✗ 形态，ChildInspector 分流还原）');
     assert.ok(call!.detail!.includes('前端结论：结构清晰'), 'detail 含结论（输出）');
     assert.ok(/steps/.test(call!.detail ?? ''), 'detail 含统计行');
-    assert.ok(!call!.detail!.includes('READ package.json'), 'detail 不折入全文转录（中间过程行不进历史区展开）');
+    assert.equal(call!.detail!.split('前端结论：结构清晰').length - 1, 1, '结论恰出现一次（终稿与流式正文重复时不双份）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
