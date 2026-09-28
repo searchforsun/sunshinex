@@ -41,14 +41,16 @@ test('LiveArea：答复预览只呈现未入档尾段（committedLen 水位排�
   unmount();
 });
 
-test('LiveArea：答复未入档超长时全量渲染（无裁切窗口、无溢出提示行）', () => {
-  const text = Array.from({ length: 12 }, (_, i) => `行${i + 1}`).join('\n');
+test('LiveArea：答复超长时尾部窗口渲染——帧高有界、最新行可见（2026-09-28 一致性流式裁决：全量预览帧高无界增长 + 切块塌缩即真机闪屏病根，修订 09-25 全量可见口径）', () => {
+  const text = Array.from({ length: 40 }, (_, i) => `行${i + 1}`).join('\n');
   const { lastFrame, unmount } = render(
     <LiveArea live={{ kind: 'reply', text, committedLen: 0, startedAt: 0 }} columns={80} />,
   );
   const frame = lastFrame() ?? '';
-  assert.ok(!frame.includes('generating') && !frame.includes('生成中'), '溢出提示行保持删除');
-  assert.ok(frame.includes('行1\n') && frame.includes('行12'), '首尾行均应显示——生成期全量可见');
+  const n = frame.replace(/\n$/, '').split('\n').length;
+  assert.ok(!/\b行1\b/.test(frame), '头部行滚出窗口（生成期上方内容入档后经历史区查看）');
+  assert.ok(frame.includes('行40'), '最新行可见——尾部窗口跟随生成推进');
+  assert.ok(n <= 30, `帧高有界（实际 ${n} 行应 ≤ 30），动态区不整屏重排`);
   unmount();
 });
 
@@ -74,16 +76,22 @@ test('LiveArea：预览统一 Markdown 渲染——粗体/列表生成期间即�
   unmount();
 });
 
-test('LiveArea：长表格生成中全量实时渲染（框线成形、整表逐行可见）', () => {
+test('LiveArea：长表格生成中尾部窗口渲染（框线实时成形，超预算整表滚出、尾部行恒可见）', () => {
   const mk = (n: number) => ['| 模块名 | 端口 | 所属域 |', '| --- | --- | --- |'].concat(Array.from({ length: n }, (_, i) => `| 服务${i} | 930${i} | 域${i} |`)).join('\n');
+  // 未超预算：整表实时可见（所见即所得口径保留）
   const r1 = render(<LiveArea live={{ kind: 'reply', text: mk(12), committedLen: 0, startedAt: 0 }} columns={80} />);
   const f1 = r1.lastFrame() ?? '';
   assert.match(f1, /[─╭╰]/, '表格应以框线形态实时渲染');
   assert.match(f1, /模块名/, '表头应可见');
-  assert.ok(f1.includes('服务0') && f1.includes('服务11'), '首尾行均应可见——生成期整表可见，不裁中间行');
+  assert.ok(f1.includes('服务0') && f1.includes('服务11'), '预算内整表可见');
   assert.ok(!f1.includes('generating') && !f1.includes('生成中'), '生成期计数/溢出提示行保持删除');
   r1.unmount();
-  const r2 = render(<LiveArea live={{ kind: 'reply', text: mk(22), committedLen: 0, startedAt: 0 }} columns={80} />);
-  assert.match(r2.lastFrame() ?? '', /服务21/, '尾部最新行应可见（逐行成形）');
+  // 超预算：帧高有界、尾部最新行恒可见（长表格不再把动态区撑到整屏重排）
+  const r2 = render(<LiveArea live={{ kind: 'reply', text: mk(40), committedLen: 0, startedAt: 0 }} columns={80} />);
+  const f2 = r2.lastFrame() ?? '';
+  const n = f2.replace(/\n$/, '').split('\n').length;
+  assert.ok(f2.includes('服务39'), '尾部最新行恒可见（逐行成形）');
+  assert.ok(!/\b服务0\b/.test(f2), '表头/首行滚出窗口');
+  assert.ok(n <= 34, `帧高有界（实际 ${n} 行应 ≤ 34），表格生成期不整屏重排`);
   r2.unmount();
 });
