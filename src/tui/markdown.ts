@@ -132,6 +132,13 @@ function preprocess(text: string): string {
       }
       continue;
     }
+    // 全角空格/零宽字符等不可见空白行归一为空行：CommonMark 空白行判定只认 ASCII 空白，
+    // 中文模型按全角空格排版时空行被当正文逐行渲染成大段空白（2026-09-28 真机「结论与表格间大段空白」病根）
+    if (/^[\s\u3000\u200B\u200C\u200D\uFEFF]+$/.test(line)) {
+      out.push('');
+      i++;
+      continue;
+    }
     // 统一无序列表 marker（`* `/`+ ` → `- `），避免 markdown-it 按 marker 拆分多个 list
     const ul = /^(\s*)[*+]\s+/.exec(line);
     if (ul) {

@@ -68,6 +68,20 @@ test('parseMarkdown：段落合并连续普通行，空行分隔块', () => {
   assert.equal(inlineText((blocks[0] as Extract<MdBlock, { type: 'paragraph' }>).inlines), '第一段甲\n第一段乙');
 });
 
+test('parseMarkdown：全角空格行按空行语义处理（2026-09-28 真机「结论与表格间大段空白」病根——CommonMark 空白行只认 ASCII 空白，全角空格排版行被当正文逐行渲染成大段空白）', () => {
+  // 仅含全角空格（U+3000）的行归一为空行：分隔块语义，不产生正文段
+  const blocks = parseMarkdown('结论\n\n' + '　\n'.repeat(3) + '\u200b\n　 \n第二段');
+  assert.equal(blocks.length, 2, '全角空格行作空行分隔，前后各一段');
+  assert.equal(blocks[0].type, 'paragraph');
+  assert.equal(inlineText((blocks[0] as Extract<MdBlock, { type: 'paragraph' }>).inlines), '结论');
+  assert.equal(blocks[1].type, 'paragraph');
+  assert.equal(inlineText((blocks[1] as Extract<MdBlock, { type: 'paragraph' }>).inlines), '第二段');
+  // 围栏内全角空格行原样保留（代码内容不作空白归一）
+  const fence = parseMarkdown('```\n　\n```\n后文');
+  assert.equal(fence.length, 2);
+  assert.equal((fence[0] as Extract<MdBlock, { type: 'fence' }>).code, '　');
+});
+
 test('parseInline：bold/italic/code/strike 及嵌套', () => {
   const nodes = parseInline('**加粗** *斜体* `code` ~~删除~~');
   assert.deepEqual(nodes, [
