@@ -45,12 +45,12 @@ export interface ChatItem {
   level?: 'info' | 'warn' | 'error';
   /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation（入档后折叠打印，供后续 transcript 视图） */
   detail?: string;
-  /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt、tokens=子代理 token 消耗；零子事件即败时缺省 */
-  subagentMeta?: { steps: number; durationMs: number; tokens: number };
+  /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt、tokens=子代理 token 消耗、
+   *  delegatedAt=委派时刻（spawnCalls 入栈时刻，动态区子代理列表按委派时间排序的单点数据源）；零子事件即败时缺省 */
+  subagentMeta?: { steps: number; durationMs: number; tokens: number; delegatedAt?: number };
 }
 
 export type { TodoItem, TodoStatus } from '../types';
-
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'awaiting-plan' | 'awaiting-question' | 'error';
 
 export interface StatusMetrics {
@@ -257,7 +257,7 @@ export class SessionController {
   private childPrompts = new Map<string, string>();
   /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、tool-result 弹出归档（规格 §4.4 配对语义）；
    *  后台两段式结果先行 → wait 标记延迟归档（子代理 done 触发），wait 条目不阻塞后续前台配对 */
-  private spawnCalls: { seq: number; base: string; wait?: boolean }[] = [];
+  private spawnCalls: { seq: number; base: string; wait?: boolean; delegatedAt: number }[] = [];
   /** 运行中挂起的调用行（CC 模式延迟入档）：tool-call 挂起不进历史区（底部活动行唯一承载运行态），
    *  tool-result 回程时调用行+结果行成对定格入档；收尾未回程者补档不蒸发 */
   private pendingCalls: { callId?: string; text: string; input?: unknown; verb: string }[] = [];
@@ -1623,8 +1623,8 @@ export class SessionController {
         this.journal?.log({ t: 'msg', item: callItem });
         this.journal?.log({ t: 'msg', item });
         if (e.payload?.tool === 'spawn') {
-          // spawn 调用关联栈：调用行此刻才入档，压栈其真实 seq，成对语义下紧随其后弹出归档
-          this.spawnCalls.push({ seq: callItem.seq, base: spawnBaseLabel(pending?.input) });
+          // spawn 调用关联栈：调用行此刻才入档，压栈其真实 seq 与委派时刻（浏览列表委派时间序数据源），成对语义下紧随其后弹出归档
+          this.spawnCalls.push({ seq: callItem.seq, base: spawnBaseLabel(pending?.input), delegatedAt: callItem.ts });
           this.archiveChild();
         }
         this.notify();
@@ -1835,19 +1835,25 @@ export class SessionController {
 
   /** 归档落点单点：结论精简 detail（委派提示词 + 结论 + 统计行，2026-09-28 用户裁决：已完成 spawn 只展输入/输出/统计）
    *  + subagentMeta；归档即从面板离场（历史区 SPAWN 行 detail 为唯一回看面，Ctrl+B 直接浏览全部已完成） */
-  private archiveInto(pending: { seq: number; base: string }, child: ChildLiveState): void {
+  private archiveInto(pending: { seq: number; base: string; delegatedAt: number }, child: ChildLiveState): void {
     this.childBufs.delete(child.label);
     // 委派词按「消歧 label → 基名」取（同名并发 #N 前缀匹配归档时登记键为基名）；取后一并清登记
     const prompt = this.childPrompts.get(child.label) ?? this.childPrompts.get(pending.base);
     this.childPrompts.delete(child.label);
     this.childPrompts.delete(pending.base);
     const durS = Math.max(0, Math.round((Date.now() - child.startedAt) / 1000));
+    // 结论不双份：done 时终稿未与流式正文重复会追加进 transcript 末尾，conclusion 段仅在转录未含时补
+    //（与 done 事件去重同口径——流式正文 includes 终稿即跳过）
+    const transcriptText = child.transcript.filter((l) => l.kind === 'text').map((l) => l.text).join('\n');
     const detail = [
       ...(prompt ? [`⏺ ${t('delegated prompt', '委派提示词')}：${prompt}`] : []),
-      ...(child.conclusion ? [child.conclusion] : []),
+      // 完整时间线随 detail 折入（2026-09-28 用户裁决：归档子代理与运行中/主 agent 同构，Tab 展开时间线）——
+      // 结构行序列化与 ChildInspector archived 分流互为镜像：result 行 ⎿ ✓/✗、call 行原样（首词动词分流还原）、text 行原样
+      ...child.transcript.map((l) => (l.kind === 'result' ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}` : l.text)),
+      ...(child.conclusion && !transcriptText.includes(child.conclusion) ? [child.conclusion] : []),
       `${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`,
     ].join('\n');
-    const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens };
+    const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens, delegatedAt: pending.delegatedAt };
     this.state = {
       ...this.state,
       children: this.state.children.filter((c) => c.label !== child.label),

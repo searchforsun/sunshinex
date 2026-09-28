@@ -49,7 +49,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     write('\u0002'); // Ctrl+B 进入
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /subagent browse · ↑↓ move · Enter inspect · Esc exit/, '提示行出现');
-    assert.match(lastFrame() ?? '', /❯ SPAWN /, '选中摘要行在动态区（最近一条归档行）');
+    assert.match(lastFrame() ?? '', /❯ \[wr\]/, '浏览列表在动态区呈现已完成项（光标缺省落最近一条）');
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /subagent view/, '全屏查看视图接管整页');
@@ -65,7 +65,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     await new Promise((r) => setTimeout(r, 300));
     write('\u001b[A'); // ↑ 移动光标到上一条归档行（零 repaint：摘要行动态区每帧自绘，可见移动）
     await new Promise((r) => setTimeout(r, 300));
-    assert.match(lastFrame() ?? '', /❯ SPAWN rv\b/, '↑ 后摘要行切到上一条归档行（SPAWN rv）');
+    assert.match(lastFrame() ?? '', /❯ \[rv\]/, '↑ 后光标切到上一条已完成项（委派时间序）');
     write('\r'); // Enter 回看上一条
     await new Promise((r) => setTimeout(r, 300));
     assert.match(lastFrame() ?? '', /delegated prompt：a/, '上一条归档行精简 detail 呈现');
@@ -142,22 +142,25 @@ test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重�
         '{"done":true,"reply":"ok"}',
       ]),
     });
-    // 运行中子代理先在面板上屏（确定性等待，替代裸 sleep）
+    // 已完成 spawn 造档（结果先行 → 子事件 → done 归档，detail 在位）：浏览序列只承载已完成项（2026-09-28 统一口径）
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'a', label: 'rv' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
     ctrl.onEventForTest({ type: 'token', text: 'rv 线\n', payload: { subagent: 'rv' } } as never);
+    ctrl.onEventForTest({ type: 'done', text: 'rv 结论', payload: { subagent: 'rv' } } as never);
     const retain = initialRetained();
     let current: TestRenderResult | undefined;
     const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
     const one = render(<App {...props} />);
     current = one;
     await new Promise((r) => setTimeout(r, 200));
-    one.write('\u0002'); // Ctrl+B 进入浏览（运行中行在场即允许）；browseMode 变更触发 repaint effect → 本实例被卸载
+    one.write('\u0002'); // Ctrl+B 进入浏览（已完成列表在位）；browseMode 变更触发 repaint effect → 本实例被卸载
     await new Promise((r) => setTimeout(r, 150));
     // 卸载后以同 retain 重挂（tui-loop 循环体），浏览态经 retain 保留
     const two = render(<App {...props} banner={props.banner} />);
     current = two;
     await new Promise((r) => setTimeout(r, 200));
     assert.match(two.lastFrame() ?? '', /subagent browse/, '前置：重挂后浏览态保留');
-    two.write('\r'); // Enter 选中运行中子代理 → setInspect + 退浏览；browseMode 变更再次触发 repaint 卸载
+    two.write('\r'); // Enter 选中已完成 spawn → 全屏回看 + 退浏览；browseMode 变更再次触发 repaint 卸载
     await new Promise((r) => setTimeout(r, 150));
     // 卸载帧有竞态不作断言（与 browse retain 用例同构），以同 retain 重挂帧验证 inspect 现场
     const three = render(<App {...props} banner={props.banner} />);
@@ -168,6 +171,32 @@ test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重�
     await new Promise((r) => setTimeout(r, 150));
     assert.doesNotMatch(three.lastFrame() ?? '', /subagent view/, '重挂后 Esc 仍可退出');
     three.unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：浏览态子代理单点承载——运行中行只在统一列表，ChildPanel 隐藏（2026-09-28 双显修复）', async () => {
+  const tmp = tmpdir('sunshinex-sess-dual-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
+    });
+    // 单个运行中子代理（token 在途无 done）：面板态在场，无归档行——合并序列只含运行中项
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'a', label: 'rv' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'token', text: 'rv 在途\n', payload: { subagent: 'rv' } } as never);
+    const retain = initialRetained();
+    const one = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} />);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(one.lastFrame() ?? '', /✻ \[rv\]/, '常态 ChildPanel 承载运行中行');
+    one.write('\u0002'); // Ctrl+B 进入浏览
+    await new Promise((r) => setTimeout(r, 150));
+    const browse = one.lastFrame() ?? '';
+    assert.match(browse, /\[rv\] running/, '浏览列表统一呈现运行中行（en 缺省语言）');
+    assert.doesNotMatch(browse, /✻ \[/, '浏览态 ChildPanel 隐藏——同一子代理不再两处承载（双显修复）');
+    one.unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

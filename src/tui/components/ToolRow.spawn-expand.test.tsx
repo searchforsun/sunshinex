@@ -16,8 +16,8 @@ test('SPAWN 折叠态：● 头行带 meta 尾注，不重放转录', () => {
   assert.doesNotMatch(f, /结论行/);
 });
 
-test('SPAWN 展开态（spawnExpanded）：▾ 头行 + 转录缩进重放', () => {
-  const f = render(<ToolRow item={spawnCall} columns={80} collapsed={true} spawnExpanded={true} />).lastFrame() ?? '';
+test('SPAWN 展开态（Tab 全展开）：▾ 头行 + 转录重放（逐行展开链已随统一列表收敛撤除）', () => {
+  const f = render(<ToolRow item={spawnCall} columns={80} collapsed={false} />).lastFrame() ?? '';
   assert.match(f, /▾ \[SPAWN\] reviewer/);
   assert.match(f, /结论行/);
 });
@@ -33,7 +33,7 @@ test('meta 缺省：折叠态无尾注；Tab 全场展开（collapsed=false）�
 
 test('非 SPAWN 调用行形态零变化：无尾注、头标恒 ●', () => {
   const write: ChatItem = { role: 'tool', text: 'WRITE a.ts', ts: 0, seq: 2, kind: 'call' };
-  const f = render(<ToolRow item={write} columns={80} collapsed={true} spawnExpanded={true} />).lastFrame() ?? '';
+  const f = render(<ToolRow item={write} columns={80} collapsed={false} />).lastFrame() ?? '';
   assert.match(f, /● \[WRITE\] a\.ts/);
   assert.doesNotMatch(f, /steps/);
 });

@@ -16,10 +16,8 @@ import { TranscriptLines } from './ChildTranscript';
  * 逐行展开（spawnExpanded，Ctrl+B 浏览模式 Enter 切换）= ▾ 头行 + 转录 4 空格缩进重放；
  * Tab 全场展开（!collapsed）与逐行展开任一命中即重放转录，两机制正交。
  */
-export function ToolRow({ item, columns, collapsed, spawnExpanded = false }: {
+export function ToolRow({ item, columns, collapsed }: {
   item: ChatItem; columns: number; collapsed: boolean;
-  /** SPAWN 行逐行展开：仅 SPAWN call 行消费，其它调用行零影响 */
-  spawnExpanded?: boolean;
 }): JSX.Element {
   if (item.kind === 'call') {
     const sp = item.text.indexOf(' ');
@@ -29,7 +27,8 @@ export function ToolRow({ item, columns, collapsed, spawnExpanded = false }: {
     // 调用行恒中性态（dim ●）：运行/完成状态由动态区 Spinner 的绿色活动行承载（统一设计——Static 历史行
     // 打印一次不再重绘，若在此着运行态色，状态切换须等重挂才上屏且整屏重放引发闪屏；动态区帧级刷新零延迟）
     // 两态命中任一即重放转录：Tab 全场展开（!collapsed，既有）或浏览模式逐行展开（spawnExpanded）
-    const expanded = item.detail !== undefined && (!collapsed || spawnExpanded);
+    // 展开态：Tab 全场展开（!collapsed）重放转录（浏览逐行展开链已随统一列表收敛撤除）
+    const expanded = item.detail !== undefined && !collapsed;
     const meta = item.subagentMeta;
     // 折叠摘要尾注：任务名之外的步数/耗时；meta 缺省（零子事件即败）整体省略
     const metaTail = isSpawn && meta

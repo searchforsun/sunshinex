@@ -12,15 +12,14 @@ const msgs: ChatItem[] = [
   { role: 'tool', text: 'SPAWN writer', ts: 0, seq: 8, kind: 'call', detail: 'WRITE b.ts\n结论行B', subagentMeta: { steps: 1, durationMs: 500, tokens: 300 } },
 ];
 
-test('spawnExpandedSeqs 命中行展开为 ▾，未命中行保持 ● 折叠', () => {
+test('历史区不再渲染归档 SPAWN 行与配对结果行（2026-09-28 统一口径：子代理由动态区承载）', () => {
   // Static 区内容打印一次后不进动态帧：历史断言一律走 allOutput()（test-ink 口径）
   const f = render(
-    <MessageList messages={msgs} columns={80} banner={banner} expandAll={false} latestFull={false} spawnExpandedSeqs={[8]} />,
+    <MessageList messages={msgs} columns={80} banner={banner} expandAll={false} latestFull={false} />,
   ).allOutput();
-  assert.match(f, /● \[SPAWN\] reviewer/);
-  assert.match(f, /▾ \[SPAWN\] writer/);
-  assert.match(f, /结论行B/, '命中行转录重放');
-  assert.doesNotMatch(f, /结论行A/, '未命中行转录不重放');
+  assert.doesNotMatch(f, /SPAWN reviewer/, '归档 SPAWN 调用行不进时间线');
+  assert.doesNotMatch(f, /SPAWN writer/, '归档 SPAWN 调用行不进时间线');
+  assert.doesNotMatch(f, /结论行/, '子代理转录不再折入时间线（回看走 Ctrl+B → 全屏）');
 });
 
 test('step 行 Markdown 渲染：▶ 前缀保留、内联加粗不再裸露星号（2026-09-27 真机症状）', () => {

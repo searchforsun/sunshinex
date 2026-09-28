@@ -9,6 +9,7 @@ import { SessionController, TuiState, paginateOptions } from '../session';
 import { SLASH_COMMANDS } from '../slash-commands';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
+import { formatDuration } from '../format';
 import { MessageList } from './MessageList';
 import { theme } from '../theme';
 import { InputBox } from './InputBox';
@@ -16,6 +17,7 @@ import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
 import { Spinner } from './Spinner';
 import { ChildPanel } from './ChildPanel';
+import { BrowseList } from './BrowseList';
 import { ChildInspector } from './ChildInspector';
 
 /** 审批键盘映射：y 放行一次 / a 本会话放行 / n 拒绝（纯函数，独立单测） */
@@ -190,7 +192,6 @@ export function App({
   const browseModeRef = React.useRef(store.browseMode ?? false);
   const [browseCursor, setBrowseCursor] = React.useState(store.browseCursor ?? 0);
   const browseCursorRef = React.useRef(store.browseCursor ?? 0);
-  const [spawnExpanded, setSpawnExpanded] = React.useState<number[]>(store.spawnExpanded);
   const setBrowse = (mode: boolean, cursor = 0): void => {
     browseModeRef.current = mode;
     browseCursorRef.current = cursor;
@@ -200,12 +201,18 @@ export function App({
   // 全屏查看模式（规格 §3.3）：live=运行中子代理（实时流式）、archived=已归档 spawn 调用行（detail 回看）；
   // ref 真值同 browse 先例（useInput 处理器闭包滞后），在场时整页让位（MessageList 保持挂载 live 让位零 Static 重放）
   const [inspect, setInspect] = React.useState<{ kind: 'live'; label: string } | { kind: 'archived'; seq: number } | undefined>(store.inspect);
+  // 全屏查看 Tab 两态（2026-09-28 用户裁决：完整时间线缺省，Tab 收起为正文形态）——经 retain 跨重挂保留，
+  // 与 browseMode 同款「动态区自绘零重挂」承载，inspect 进入时复位为完整时间线
+  const [inspectExpanded, setInspectExpanded] = React.useState<boolean>(store.inspectExpanded ?? true);
+  const inspectExpandedRef = React.useRef(inspectExpanded);
+  inspectExpandedRef.current = inspectExpanded;
   const inspectRef = React.useRef(inspect);
   inspectRef.current = inspect;
   const setInspectRetained = (v: typeof inspect): void => {
     inspectRef.current = v;
     store.inspect = v;
     setInspect(v);
+    setInspectExpanded(true); // 每次进入复位完整时间线（缺省态，对标主 agent 展开位）
     // 整屏接管切换（进入/退出各一次）：经生产 repaint 路径卸载→同 retain 重挂——重挂后历史区按
     // suppressHistory 置空/恢复，全屏视图独占整页不与主 agent 历史拼接（2026-09-27 用户裁决）
     onRequestRepaint?.();
@@ -217,6 +224,15 @@ export function App({
   /** 已归档 SPAWN 调用行 seq 列表（键盘分发与高亮透传共用同一过滤口径） */
   const spawnCallSeqs = (msgs: TuiState['messages']): number[] =>
     msgs.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail).map((m) => m.seq);
+  /** Ctrl+B 浏览序列单点（2026-09-28 统一口径）：运行中子代理在前（启动序）+ 已完成 spawn 按 subagentMeta.delegatedAt
+   *  委派时间升序在后（旧档字段缺省回落 seq 序）——↑↓ 键盘分发与动态区列表渲染共用同一函数，两侧永不漂移 */
+  const browseRows = (st: TuiState): { id: string; label: string; running?: boolean; seq?: number; meta?: TuiState['messages'][number]['subagentMeta'] }[] => [
+    ...st.children.filter((c) => !c.done).map((c) => ({ id: `live:${c.label}`, label: c.label, running: true as const })),
+    ...st.messages
+      .filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta)
+      .map((m) => ({ id: `archived:${m.seq}`, label: m.text.replace(/^SPAWN /, ''), seq: m.seq, meta: m.subagentMeta }))
+      .sort((a, b) => (a.meta?.delegatedAt ?? a.seq!) - (b.meta?.delegatedAt ?? b.seq!)),
+  ];
   const [history, setHistory] = React.useState<string[]>(store.history);
   // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；挂载即读 + 回合边界（sessionTurns 变化）刷新，不逐键读盘
   const [skillExtra, setSkillExtra] = React.useState<string[]>(() => controller.skillCommandIds());
@@ -239,7 +255,6 @@ export function App({
     store.cursor = cursor;
     store.expandAll = expandAll;
     store.latestFull = latestFull;
-    store.spawnExpanded = spawnExpanded;
     store.browseMode = browseMode;
     store.browseCursor = browseCursor;
     store.history = history;
@@ -254,7 +269,7 @@ export function App({
       return;
     }
     onRequestRepaint?.();
-  }, [expandAll, latestFull, browseMode, spawnExpanded]);
+  }, [expandAll, latestFull, browseMode]);
   // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）——上一段从全显转折叠。
   // 防闪烁两层：①被收拢段不含思考/工具行时重绘前后画面零变化，直接跳过（连续 ▶ 行、计划卡、
   // 上一任务正文段等无效触发全部过滤）；②400ms 防抖合并，锚点连续落定只画一次；
@@ -317,39 +332,37 @@ export function App({
 
   useInput((input: string, key: RawKey) => {
 
-    // 全屏查看模式（规格 §3.3）：最前置接管——Esc 退出恢复主界面，其余键吞掉不落输入缓冲（纯只读视图）
+    // 全屏查看模式（规格 §3.3）：最前置接管——Esc 退出恢复主界面，Tab 切「完整时间线 ↔ 正文形态」两态
+    //（动态区自绘零重挂），其余键吞掉不落输入缓冲（纯只读视图）
     if (inspectRef.current) {
       if (key.escape) { setInspectRetained(undefined); return; }
+      if (key.tab) { setInspectExpanded(!inspectExpandedRef.current); return; }
       return;
     }
 
     // 子代理浏览模式（Ctrl+B 进入）：短接管 ↑/↓/Enter/Esc；其余按键一律吞掉不落输入缓冲。
     // 光标与模式取 ref 真值（处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；仅 idle/error 可进入。
     if (browseModeRef.current) {
-      // 统一子代理浏览器（规格 §3.2/§3.4）：选择序列 = 运行中子代理（启动序在前）++ 已归档 spawn 行（入档序）；
-      // state 读 ref 真值——子面板更新走 notifyThrottled 节流，处理器闭包可能滞后一拍
+      // 统一子代理浏览器（2026-09-28 用户裁决：历史与运行中全部由动态区承载）：合并序列单点口径——
+      // 运行中子代理在前 + 已完成 spawn 委派时间升序在后；常态 ChildPanel 只显运行中，浏览列表两类行统一呈现
       const st = stateRef.current;
-      const liveChildren = st.children.filter((c) => !c.done);
-      const spawnSeqs = spawnCallSeqs(st.messages);
-      const total = liveChildren.length + spawnSeqs.length;
-      if (total === 0) { setBrowse(false); return; }
-      const clamp = (n: number): number => Math.max(0, Math.min(total - 1, n));
+      const rows = browseRows(st);
+      if (rows.length === 0) { setBrowse(false); return; }
+      const clamp = (n: number): number => Math.max(0, Math.min(rows.length - 1, n));
       if (key.escape) { setBrowse(false); return; }
       if (key.upArrow || key.downArrow) {
-        // 光标移动零 repaint（2026-09-28 真机回归撤回）：每键全量重挂在长历史下吞按键（监听空窗丢键），
-        // 且历史区 Static 行高亮本就无法逐键跟随——选中反馈由动态区选中摘要行承载（每帧自绘、可见移动）
+        // 光标移动零 repaint（选中列表动态区每帧自绘）；窗口按每页 8 行自动平移（BrowseList 同口径）
         setBrowse(true, clamp(browseCursorRef.current + (key.upArrow ? -1 : 1)));
         return;
       }
       if (key.return) {
-        const cur = clamp(browseCursorRef.current);
-        if (cur < liveChildren.length) {
+        const row = rows[clamp(browseCursorRef.current)];
+        if (row?.running) {
           // 运行中 → 进入全屏实时视图（规格 §3.3）
-          setInspectRetained({ kind: 'live', label: liveChildren[cur]!.label });
-        } else {
-          // 已归档 → 进入全屏回看（detail 派生，替代原行内展开）
-          const seq = spawnSeqs[cur - liveChildren.length];
-          if (seq !== undefined) setInspectRetained({ kind: 'archived', seq });
+          setInspectRetained({ kind: 'live', label: row.label });
+        } else if (row?.seq !== undefined) {
+          // 已完成 → 进入全屏回看（detail 派生）
+          setInspectRetained({ kind: 'archived', seq: row.seq });
         }
         setBrowse(false);
         return;
@@ -357,13 +370,12 @@ export function App({
       if (key.ctrl && input === 'c') { setBrowse(false); return; }
       return;
     }
-    // Ctrl+B 进入统一子代理浏览器：运行中子代理在场（任意状态）或 idle/error 下存在已归档 SPAWN 行；state 读 ref 真值
+    // Ctrl+B 进入统一子代理浏览器：运行中子代理或已完成 spawn 任一在场即可；state 读 ref 真值
     if (key.ctrl && input === 'b') {
       const st = stateRef.current;
-      const liveCount = st.children.filter((c) => !c.done).length;
-      const hasArchived = spawnCallSeqs(st.messages).length > 0;
-      if ((st.status === 'idle' || st.status === 'error' || liveCount > 0) && (liveCount > 0 || hasArchived)) {
-        setBrowse(true, liveCount + spawnCallSeqs(st.messages).length - 1); // 光标缺省落最近一条
+      const rows = browseRows(st);
+      if (rows.length > 0) {
+        setBrowse(true, rows.length - 1); // 光标缺省落最近一条
       }
       return;
     }
@@ -637,7 +649,6 @@ export function App({
         columns={columns}
         expandAll={expandAll}
         latestFull={latestFull}
-        spawnExpandedSeqs={spawnExpanded}
         suppressHistory={!!inspect}
       />
       {inspect ? (
@@ -672,38 +683,17 @@ export function App({
         // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源
         <Text backgroundColor="gray"> {t('subagent browse · ↑↓ move · Enter inspect · Esc exit', '子代理浏览 · ↑↓ 移动 · Enter 查看 · Esc 退出')} </Text>
       ) : null}
-      {browseMode
-        ? (() => {
-            // 选中摘要行（2026-09-28 用户裁决）：历史区 Static 打印一次不重绘、逐键 repaint 又吞按键——
-            // 光标选中反馈收敛为动态区单行（每帧自绘、↑↓ 可见移动），历史区零高亮零重绘
-            const live = state.children.filter((c) => !c.done);
-            const seqs = spawnCallSeqs(state.messages);
-            const liveItem = live[browseCursor];
-            if (liveItem !== undefined) {
-              return (
-                <Text key="browse-cursor" color={theme.accent}>
-                  ❯ [{liveItem.label}]
-                </Text>
-              );
-            }
-            const m = state.messages.find((x) => x.seq === seqs[browseCursor - live.length]);
-            return m !== undefined ? (
-              <Text key="browse-cursor" color={theme.accent}>
-                ❯ {m.text}
-              </Text>
-            ) : null;
-          })()
-        : null}
-      {state.children.length > 0 ? (
+      {browseMode ? (
+        // 子代理统一列表（2026-09-28 用户裁决）：历史与运行中全部由动态区承载——合并序列单点口径
+        // （运行中在前 + 已完成委派时间升序）、每页 8 行窗口、光标行反色，动态区每帧自绘 ↑↓ 可见移动零重挂
+        <BrowseList key="browse-list" rows={browseRows(state)} cursor={browseCursor} />
+      ) : null}
+      {(state.children.length > 0 && !browseMode) ? (
+        // 常态子代理面板（2026-09-28 统一口径）：只承载运行中；浏览态时运行中行由统一列表承载——
+        // 同一子代理面板行与列表行双显属重复呈现（2026-09-28 真机双显 bug），浏览态面板整块让位
         <ChildPanel
           childrenState={state.children}
           columns={columns}
-          // 浏览模式选中高亮：选择序列 = 运行中子代理（启动序）++ 已归档行，面板行反色承载选中态（↑↓ 移动即见）
-          selectedLabel={
-            browseMode && browseCursor < state.children.filter((c) => !c.done).length
-              ? state.children.filter((c) => !c.done)[browseCursor]?.label
-              : undefined
-          }
         />
       ) : null}
       {state.approval ? (

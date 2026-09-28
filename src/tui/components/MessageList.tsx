@@ -16,7 +16,7 @@ import { theme } from '../theme';
  */
 export type TranscriptEntry =
   | { kind: 'banner'; info: BannerInfo }
-  | { kind: 'message'; item: ChatItem; full: boolean; visible: boolean; spawnExpanded: boolean };
+  | { kind: 'message'; item: ChatItem; full: boolean; visible: boolean };
 
 /**
  * 消息区逐消息分层：消息到达即入 Static 一次上屏，之后永不重绘；
@@ -34,7 +34,6 @@ export function MessageList({
   banner,
   expandAll,
   latestFull,
-  spawnExpandedSeqs,
   suppressHistory = false,
 }: {
   messages: ChatItem[];
@@ -45,8 +44,6 @@ export function MessageList({
   expandAll: boolean;
   /** 第二层（Ctrl+O）内容深度开关：true 时最近正文锚点阶段的思考与工具结果展开全文 */
   latestFull: boolean;
-  /** SPAWN 行逐行展开 seq 集合（Ctrl+B 浏览模式），缺省=全折叠 */
-  spawnExpandedSeqs?: number[];
   /** 全屏查看（ChildInspector）整屏接管：Static 历史条目置空——整页让位给全屏视图，
    *  退出时经重挂整屏重放恢复（2026-09-27 用户裁决：全屏独占，不与主 agent 历史拼接） */
   suppressHistory?: boolean;
@@ -55,20 +52,33 @@ export function MessageList({
   const prevLenRef = React.useRef(0);
   if (messages.length < prevLenRef.current) epochRef.current += 1;
   prevLenRef.current = messages.length;
-  // 折叠决策逐条预计算：条目数组长度恒为 messages.length+1（append-only，维持 Static 索引推进不变式），
+  // 时间线撤 SPAWN 行（2026-09-28 用户裁决：子代理统一由动态区承载，历史区不再出现 spawn 调用/结果行）：
+  // 归档 SPAWN call 行（subagentMeta 在位）与其配对 result 行渲染层整对剔除；journal/回看数据不动，
+  // ChildInspector 回看、Ctrl+B 浏览器数据源照旧。配对口径：result.callId → spawn call 行 seq（延迟入档成对语义下单点）；
+  // 旧档 callId 缺省时退化为保留（只按 subagentMeta 剔除调用行，不误伤普通工具结果）
+  const spawnCallSeqs = new Set(
+    messages.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta).map((m) => m.seq),
+  );
+  const callSeqMap = new Map(messages.filter((m) => m.kind === 'call').map((m) => [m.callId, m.seq]));
+  const spawnResultSeqs = new Set(
+    messages
+      .filter((m) => m.kind === 'result' && m.callId !== undefined && spawnCallSeqs.has(callSeqMap.get(m.callId) ?? -1))
+      .map((m) => m.seq),
+  );
+  const visibleMessages = messages.filter((m) => !spawnCallSeqs.has(m.seq) && !spawnResultSeqs.has(m.seq));
+  // 折叠决策逐条预计算：条目数组长度恒为 visibleMessages.length+1（append-only，维持 Static 索引推进不变式），
   // 不可见条目以 null 渲染（已打印的行留待下次重挂重放时收拢）
-  const decisions = buildTranscriptDecisions(messages, { expandAll, latestFull });
+  const decisions = buildTranscriptDecisions(visibleMessages, { expandAll, latestFull });
   // 整屏接管（suppressHistory）：Static 条目置空（横幅一并让位）——全屏视图独占整页，退出经重挂整屏重放恢复
   const entries: TranscriptEntry[] = suppressHistory
     ? []
     : [
         { kind: 'banner', info: banner },
-        ...messages.map((item, i) => ({
+        ...visibleMessages.map((item, i) => ({
           kind: 'message' as const,
           item,
           full: decisions[i].full,
           visible: decisions[i].visible,
-          spawnExpanded: spawnExpandedSeqs?.includes(item.seq) ?? false,
         })),
       ];
   return (
@@ -85,7 +95,6 @@ export function MessageList({
                 item={entry.item}
                 columns={columns}
                 collapsed={!entry.full}
-                spawnExpanded={entry.spawnExpanded}
               />
             </Box>
           ) : null
@@ -101,12 +110,10 @@ const MessageRow = React.memo(function MessageRow({
   item,
   columns,
   collapsed,
-  spawnExpanded,
 }: {
   item: ChatItem;
   columns: number;
   collapsed: boolean;
-  spawnExpanded: boolean;
 }): JSX.Element {
   if (item.role === 'user') {
     return (
@@ -138,7 +145,7 @@ const MessageRow = React.memo(function MessageRow({
       </Box>
     );
   }
-  return <ToolRow item={item} columns={columns} collapsed={collapsed} spawnExpanded={spawnExpanded} />;
+  return <ToolRow item={item} columns={columns} collapsed={collapsed} />;
 });
 
 /** 思考行：默认折叠为单行摘要（收束耗时统计，对标 Claude Code 斜体单行）；完整思考经 Tab 展开打印查看 */
