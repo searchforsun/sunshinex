@@ -108,8 +108,11 @@ export function MessageList({
         ledger.slots.push({ item, visible: true, full: d.full, lines: 0 });
         continue;
       }
-      // cont 段中续块：块间 marginBottom 折叠（逐行入档的同一 Markdown 段），账本行数同步实账
-      ledger.slots.push({ item, visible: true, full: d.full, lines: counted + (item.cont ? 0 : 1) /* marginBottom */ });
+      // cont 段中续块：块间 marginBottom 折叠（逐行入档的同一 Markdown 段），账本行数同步实账。
+      // 折叠语义按「边界」算：当前块的下边距仅在下一块是续块（同段相邻）时折叠——末尾续块与
+      // 其后的统计行/工具行之间是不同内容，间隔保留（真机「正文与时间步骤没间隔」病根）
+      const next = visibleMessages[i + 1];
+      ledger.slots.push({ item, visible: true, full: d.full, lines: counted + (next?.cont ? 0 : 1) /* marginBottom */ });
     }
     recomputeTailPlan(ledger, visibleMessages, decisions);
   }
@@ -133,6 +136,10 @@ export function MessageList({
           full: decisions[i].full,
           visible: decisions[i].visible,
         }));
+  // cont 边界折叠集（2026-09-30 间隔回归修复）：下一可见消息是续块（同段相邻）的当前块 seq——
+  // 折叠语义按「边界」算：仅当下一块是同段续块才折叠当前块的下边距；末尾续块与其后的统计行/
+  // 工具行之间是不同内容，间隔保留（真机「正文与时间步骤没间隔」病根）
+  const gapFoldAfter = new Set(visibleMessages.filter((m, i) => visibleMessages[i + 1]?.cont).map((m) => m.seq));
   return (
     <Box flexDirection="column">
       <Static key={epochRef.current} items={entries}>
@@ -142,7 +149,7 @@ export function MessageList({
               <Banner info={entry.info} columns={columns} />
             </Box>
           ) : entry.visible ? (
-            <Box key={`m-${entry.item.seq}`} marginBottom={entry.item.cont ? 0 : 1}>
+            <Box key={`m-${entry.item.seq}`} marginBottom={gapFoldAfter.has(entry.item.seq) ? 0 : 1}>
               <MessageRow
                 item={entry.item}
                 columns={columns}
