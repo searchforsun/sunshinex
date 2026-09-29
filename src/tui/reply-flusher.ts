@@ -14,12 +14,13 @@ function isTableDivider(line: string): boolean {
 }
 
 /** 结构敏感行（2026-09-30 流式结构守候）：行邻接参与 markdown 结构且单行入档即变义的行——
- *  缩进块（4+ 空格：缩进代码/ASCII 对齐图，孤立行缩进解释翻转即散架）、表格行（表头孤立入档
- *  即与分隔行分家、整表降级裸文本）。有序/无序列表行不在此列：单行列表经 List start 承接真实
- *  编号（markdown-it start 属性 → MarkdownText 渲染），逐行入档编号不重排 */
+ *  缩进块（4+ 空格：缩进代码/ASCII 对齐图，孤立行缩进解释翻转即散架）、表格行（含全角管道｜，
+ *  渲染侧 preprocess 归一；表头孤立入档即与分隔行分家、整表降级裸文本）。有序/无序列表行不在
+ *  此列：单行列表经 List start 承接真实编号（markdown-it start 属性 → MarkdownText 渲染），
+ *  逐行入档编号不重排 */
 function isStructureSensitive(line: string): boolean {
   if (/^ {4}/.test(line)) return true;
-  return /^\s*\|/.test(line);
+  return /^\s*[｜|]/.test(line);
 }
 
 /**
@@ -112,12 +113,14 @@ export function stableReplySegment(
       continue;
     }
     // 结构行守候（2026-09-30「渲染乱了」终版方案——逐行流式保留 + 结构完整）：散文行逐行照切
-    // （打字机节奏），结构敏感行（列表/引用/缩进块/表格行）在下一行未到达（尾空 remainder）时
-    // 守候不切——单独入档即有序列表编号重排（1./1./1.）、缩进图散架、表格降级。守候至下一行定型：
-    // 同构行继续守候 → 整块在空行边界/兜底线放行；异构行 → 守候行随常规切点放行。
+    // （打字机节奏），结构敏感行（列表/引用/缩进块/表格行）作为最后一条完结行时守候不切——单独
+    // 入档即有序列表编号重排（1./1./1.）、缩进图散架、表格降级。守候判据 = 结构行在倒数第二位
+    // （i+1 === length-1）：下一行是 remainder——空串（完全未到达）或部分字符（80ms 合帧下分隔行
+    // 常已到达几个字符）都是「未定型」，均须守候（只认空串即真机表头被切、与分隔行分家——
+    // 「第一行和第二行之间多了空格」实锤）；下一行已完结（i+1 < length-1）即定型，照常评估放行。
     // 守候行计入兜底节奏：超长无空行列表（30 项）不至于无限守候，每 maxLines 行兜底切一刀
     // （跨块编号经 List start 承接）
-    if (!fenceOpen && !tableOpen && isStructureSensitive(line) && i + 1 === lines.length - 1 && lines[i + 1] === '') {
+    if (!fenceOpen && !tableOpen && isStructureSensitive(line) && i + 1 === lines.length - 1) {
       closedLineStreak += 1;
       if (closedLineStreak >= maxLines) {
         cut = candidate;

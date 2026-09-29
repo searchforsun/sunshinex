@@ -28,6 +28,25 @@ test('parseMarkdown：有序列表合并（中文顿号编号同样识别）', (
   assert.deepEqual(list.items.map(inlineText), ['甲', '乙', '丙']);
 });
 
+test('parseMarkdown：全角表格符号归一——全角破折号/管道分隔行照常成表（2026-09-30「表格没了」二期实锤）', () => {
+  for (const divider of ['|---|---|', '|───|───|', '|———|———|', '|－－－|－－－|']) {
+    const blocks = parseMarkdown(`| 包 | 职责 |\n${divider}\n| ai/ | 服务 |`);
+    const table = blocks.find((b) => b.type === 'table') as Extract<MdBlock, { type: 'table' }> | undefined;
+    assert.ok(table, `分隔行 ${divider} 应成表`);
+    assert.equal(table!.headers.map(inlineText).join('|'), '包|职责');
+  }
+  // 全角管道 ｜ 同样归一
+  const fw = parseMarkdown('｜ 包 ｜ 职责 ｜\n｜---｜---｜\n｜ ai/ ｜ 服务 ｜');
+  assert.ok(fw.some((b) => b.type === 'table'), '全角管道行归一后成表');
+  // 分隔行内全角冒号对齐标记归一
+  const colon = parseMarkdown('| 包 | 职责 |\n|：---|---：|\n| ai/ | 服务 |');
+  assert.ok(colon.some((b) => b.type === 'table'), '全角冒号对齐标记归一后成表');
+  // 围栏内的全角破折号零误伤（代码内容原样）
+  const fence = parseMarkdown('```txt\n|───|───|\n```');
+  const fenceBlock = fence.find((b) => b.type === 'fence') as Extract<MdBlock, { type: 'fence' }>;
+  assert.equal(fenceBlock.code, '|───|───|', '围栏内内容原样保留');
+});
+
 test('parseMarkdown：有序列表 start 承接——非 1 首号入 IR（流式分裂续块编号承接）', () => {
   const blocks = parseMarkdown('11. 接续项\n12. 再续');
   const list = blocks[0] as Extract<MdBlock, { type: 'list' }>;

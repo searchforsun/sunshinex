@@ -97,6 +97,26 @@ test('reply-flusher：结构行守候（缩进块/表格行）——列表行经
   assert.equal(stableReplySegment('散文行\n', 0), '散文行\n', '散文行逐行照切');
 });
 
+test('reply-flusher：结构守候按完结位（含部分到达下一行）——表格/缩进块跨任意合帧流率不拆块（2026-09-30 真机「第一行和第二行之间多了空格」实锤：守候只认空 remainder，分隔行部分到达即表头被切、与分隔行分家降级裸文本）', () => {
+  const text = ['三、结构', '', '| 包 | 职责 |', '|---|---|', '| ai/ | 服务 |', '', '四、后续'].join('\n');
+  for (const step of [1, 3, 8, 20]) {
+    let committed = 0;
+    const chunks = [];
+    let i = 1;
+    while (i <= text.length) {
+      const seg = stableReplySegment(text.slice(0, i), committed);
+      if (seg !== null) { chunks.push(seg); committed += seg.length; }
+      i += step;
+    }
+    if (committed < text.length) chunks.push(text.slice(committed));
+    assert.equal(chunks.join(''), text, `step=${step} 拼接无损`);
+    const headerChunk = chunks.find((c) => c.includes('| 包 |'));
+    assert.ok(headerChunk!.includes('|---|---|') && headerChunk!.includes('| ai/ |'), `step=${step} 表头/分隔/首数据行同块（守候按完结位）`);
+  }
+  // 分隔行部分到达的守候形态直测：表头完结、下一行只有一个「|」字符
+  assert.equal(stableReplySegment('| 包 | 职责 |\n|', 0), null, '下一行部分到达仍守候（合帧实况）');
+});
+
 test('reply-flusher：纯空白切段返回原串（session 侧只推进不入档）', () => {
   assert.equal(stableReplySegment('\n\n正文', 0), '\n\n');
 });
