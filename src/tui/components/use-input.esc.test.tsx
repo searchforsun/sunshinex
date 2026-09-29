@@ -75,3 +75,33 @@ test('连续两笔完整序列互不粘连（各自独立直发，拼接缓冲�
   assert.ok(got[0]!.downArrow && got[1]!.upArrow);
   one.unmount();
 });
+
+test('裸 ESC 扣住期间到达非序列字节：先派发 Esc 再派发后续键（2026-09-30 真机「全屏 Esc 需先按 Enter」病根）', async () => {
+  const got: RawKey[] = [];
+  const one = render(<Probe label="p5" onKey={(_i, key) => got.push(key)} />);
+  await sleep(30);
+  one.write('\u001B'); // Esc 扣进拼接窗口
+  await sleep(5);
+  one.write('\r'); // 窗口内 Enter 到达：旧实现拼成 '\u001B\r' 整体直发、escape=false 即 Esc 被吞
+  await sleep(60);
+  assert.equal(got.length, 2, `拆发两键（实际 ${got.length}）`);
+  assert.ok(got[0]!.escape, '先派发真 Esc 键');
+  assert.equal(got[0]!.raw, '\u001B');
+  assert.ok(got[1]!.return, 'Enter 照常派发');
+  assert.equal(got[1]!.raw, '\r');
+  one.unmount();
+});
+
+test('裸 ESC 扣住期间到达 [ 开头字节仍拼合（拆包序列语义不让位于拆发）', async () => {
+  const got: RawKey[] = [];
+  const one = render(<Probe label="p6" onKey={(_i, key) => got.push(key)} />);
+  await sleep(30);
+  one.write('\u001B');
+  await sleep(5);
+  one.write('[B'); // ↓ 序列剩余：必须拼合而非拆发 Esc
+  await sleep(60);
+  assert.equal(got.length, 1, '拼合单发');
+  assert.ok(got[0]!.downArrow, '解析为 ↓');
+  assert.ok(!got[0]!.escape, '不误判 Esc');
+  one.unmount();
+});

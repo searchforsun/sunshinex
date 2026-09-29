@@ -95,7 +95,20 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
       dispatch(bytes);
     };
     const handleData = (data: string): void => {
-      pending += String(data);
+      const incoming = String(data);
+      // 裸 ESC 已扣住、新块到达（2026-09-30 真机「全屏 Esc 需先按 Enter」病根）：新块以 [ / O 开头 =
+      // 拆包序列剩余（↑/⌦ 等），继续拼合（保上方拆包重组语义）；其余字节（\r、字符、控制符）=
+      // 「用户按了 Esc 又按了别的键」——先派发扣住的裸 Esc 再解析新块。否则 pending='\u001B'+X 被
+      // isCompleteSequence 判完整即整体直发，escape 判定失败、Esc 键被吞（拼合窗口反成吞键窗口）
+      if (pending === '\u001B' && incoming.length > 0 && !incoming.startsWith('[') && !incoming.startsWith('O')) {
+        pending = '';
+        if (joinTimer) {
+          clearTimeout(joinTimer);
+          joinTimer = undefined;
+        }
+        dispatch('\u001B');
+      }
+      pending += incoming;
       if (isCompleteSequence(pending)) {
         flush();
         return;
