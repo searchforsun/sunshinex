@@ -189,3 +189,32 @@ test('Inspector 折叠结果行单行省略、Tab 展开全文（对标主 agent
   assert.match(exp.allOutput(), /# fail 2/, 'Tab 展开：结果全文逐行呈现');
   exp.unmount();
 });
+
+test('Inspector 结果行省略口径：第一行吃满终端宽度，超一整行才 …（2026-09-30 用户裁决反转 96 封顶：宽终端下长路径被拦腰截断即「不是第一行就省略」病根）', () => {
+  const longPath = `CWD=${'/d/MyWorkStation/sunshinex/D-MyWorkStation-Java-program-yu-ai-code-mother-6027a4d1/data'.repeat(2)}`;
+  // 宽终端（columns=200）：96 列封顶会在 ~90 列截断——满宽口径下首行完整到边缘
+  const wide = render(
+    <ChildInspector
+      child={{ label: 'w', startedAt: Date.now(), steps: 1, tokens: 10, transcript: [{ kind: 'result', text: longPath, ok: true }] }}
+      columns={200}
+      rows={12}
+    />, 200,
+  );
+  const wf = wide.allOutput().replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
+  const line = wf.split('\n').find((l) => l.includes('CWD=')) ?? '';
+  assert.ok(!line.includes('…'), `宽终端下未超一整行不省略（实际行宽 ${line.length}）`);
+  assert.ok(line.length >= 150, `首行吃到终端边缘（实际 ${line.length} 列）`);
+  wide.unmount();
+  // 窄终端（columns=60）：真超一整行才在边缘 … 收尾
+  const narrow = render(
+    <ChildInspector
+      child={{ label: 'w', startedAt: Date.now(), steps: 1, tokens: 10, transcript: [{ kind: 'result', text: longPath, ok: true }] }}
+      columns={60}
+      rows={12}
+    />, 60,
+  );
+  const nf = narrow.allOutput().replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
+  const nline = nf.split('\n').find((l) => l.includes('CWD=')) ?? '';
+  assert.ok(nline.includes('…') && nline.length <= 60, `窄终端超宽在边缘省略（行宽 ${nline.length} ≤ 60）`);
+  narrow.unmount();
+});

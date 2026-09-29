@@ -246,14 +246,14 @@ function ResultRow({ text, ok, columns, expanded }: { text: string; ok: boolean;
     );
   }
   const first = text.split('\n')[0] ?? '';
-  // 预算封顶 96 列**含前缀**（2026-09-30 真机「没有省略号、太挤」）：宽终端下 columns-8 用满整行、长结果
-  // 完整直出即文字墙；折叠态结果行是摘要位不是阅读位，超封顶一律 … 收尾（Tab 展开看全文）。
-  // 前缀「  ⎿ ✓ 」6 列计入封顶——文本预算只给 90，否则 elide 后整行仍超 ink 折行宽、顶格续行照旧
+  // 省略口径（2026-09-30 用户裁决反转 96 封顶）：第一行吃满整行宽度直到终端边缘，内容超出一整行
+  // 才在行尾 … 收尾——不提前封顶（96 列封顶在宽终端下把长路径拦腰截断，真机「不是第一行就省略」病根）。
+  // 前缀「  ⎿ ✓ 」6 列实账扣除，文本预算 = columns − 6；Tab 展开仍看全文
   return (
     <Text dimColor color={ok ? theme.success : theme.error}>
       {'  ⎿ '}
       {ok ? '✓' : '✗'}
-      {` ${elideByWidth(first, Math.min(Math.max(8, columns - 8), 96) - 6)}`}
+      {` ${elideByWidth(first, Math.max(8, columns - 6))}`}
     </Text>
   );
 }
