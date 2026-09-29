@@ -12,6 +12,26 @@ export interface RawKey extends Key {
   raw: string;
 }
 
+/** 裸 ESC 拼接窗口（2026-09-30 幽灵中断修复）：conpty/高负载（后台任务收割、整帧流式重绘）下
+ *  一次按键的转义序列可拆成多个 data 事件——首字节 \u001B 单独到达时旧解析当真 Esc 键，
+ *  运行中即「无缘无故中断」（TASK_WAIT 收割瞬间真机形态）。窗口内等待后续字节拼成完整序列
+ *  再解析；窗口过期仍孤零 = 真 Esc 按键（40ms 延迟无感）。SUNSHINEX_ESC_JOIN_MS 覆盖（测试钉短用） */
+const ESC_JOIN_WINDOW_MS = 40;
+
+/** 序列完整性判据：非 ESC 开头恒完整（普通字节串直发，零延迟）；裸 ESC 未完（可能是被拆序列的
+ *  首字节）；CSI（ESC [ …）以 final byte（0x40–0x7E）且长度 ≥3 为完整（覆盖 [1;5A 等参数形态）；
+ *  SS3（ESC O …）长度 ≥3 为完整；其余 ESC 前缀形态（Alt 组合等）按既有口径直发 */
+function isCompleteSequence(b: string): boolean {
+  if (!b.startsWith('\u001B')) return true;
+  if (b === '\u001B') return false;
+  if (b.startsWith('\u001B[')) {
+    const code = b.charCodeAt(b.length - 1);
+    return b.length >= 3 && code >= 0x40 && code <= 0x7e;
+  }
+  if (b.startsWith('\u001BO')) return b.length >= 3;
+  return true;
+}
+
 const useInput = (inputHandler: (input: string, key: RawKey) => void, options: { isActive?: boolean } = {}): void => {
   const { stdin, setRawMode, internal_exitOnCtrlC } = useStdin();
   // 处理器进 ref（监听生命周期与处理器身份解耦）：App 高频重渲染（子面板 120ms 节流 + Spinner 帧）下
@@ -29,8 +49,8 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
   // 监听挂载用 layout 相位（commit 同步，早于任何被动冲刷）：挂载后立即到达的按键不丢
   React.useLayoutEffect(() => {
     if (options.isActive === false) return;
-    const handleData = (data: string): void => {
-      const bytes = String(data);
+    // 单点解析分发：raw 保留原始字节；键位判定与 ink3 原版逐行一致
+    const dispatch = (bytes: string): void => {
       const key: RawKey = {
         upArrow: bytes === '\u001B[A',
         downArrow: bytes === '\u001B[B',
@@ -61,8 +81,32 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         handlerRef.current(input, key);
       }
     };
+    // 拆包重组缓冲：未完序列累积待续；窗口计时过期按现状直发（裸 ESC=真 Esc 键、残缺序列按既有丢弃口径）
+    let pending = '';
+    let joinTimer: ReturnType<typeof setTimeout> | undefined;
+    const flush = (): void => {
+      if (joinTimer) {
+        clearTimeout(joinTimer);
+        joinTimer = undefined;
+      }
+      if (pending.length === 0) return;
+      const bytes = pending;
+      pending = '';
+      dispatch(bytes);
+    };
+    const handleData = (data: string): void => {
+      pending += String(data);
+      if (isCompleteSequence(pending)) {
+        flush();
+        return;
+      }
+      if (joinTimer) clearTimeout(joinTimer);
+      joinTimer = setTimeout(flush, Number(process.env.SUNSHINEX_ESC_JOIN_MS || '') || ESC_JOIN_WINDOW_MS);
+      if (typeof joinTimer === 'object' && joinTimer && 'unref' in joinTimer) joinTimer.unref();
+    };
     stdin?.on('data', handleData);
     return () => {
+      if (joinTimer) clearTimeout(joinTimer);
       stdin?.off('data', handleData);
     };
   }, [options.isActive, stdin, internal_exitOnCtrlC]);

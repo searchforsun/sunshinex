@@ -8,6 +8,9 @@ import { App } from './App';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
 
+// 钉短裸 ESC 拼接窗口（use-input 拆包重组默认 40ms）：本套 Esc 退出断言只等 50ms，贴边易假红
+process.env.SUNSHINEX_ESC_JOIN_MS = '1';
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // App inspect 全屏接管（规格 §3.3）：键位全序列经 test-ink write 直驱——Ctrl+B 进入浏览 → Enter 进入全屏 → Esc 退出。

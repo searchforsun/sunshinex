@@ -8,6 +8,10 @@ import { App, deriveFilterableView } from './App';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
 
+// 钉短裸 ESC 拼接窗口（use-input 拆包重组默认 40ms）：本套 Esc 两段式断言只等 30ms，
+// 缺省窗口下首段 Esc 尚未派发即断言即假红（node:test 每文件独立进程，不串扰邻文件）
+process.env.SUNSHINEX_ESC_JOIN_MS = '1';
+
 function tmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
