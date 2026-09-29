@@ -45,21 +45,21 @@ export function tailReplyPreview(pending: string, columns: number, maxRows: numb
   return lines.slice(cut).join('\n');
 }
 
-export function LiveArea({ live, columns, rows, maxRows: maxRowsOverride }: { live: LiveBlock; columns: number; rows?: number; maxRows?: number }): JSX.Element {
+export function LiveArea({ live, columns, rows, maxRows: maxRowsOverride, envelope = 0, onUsed }: { live: LiveBlock; columns: number; rows?: number; maxRows?: number; envelope?: number; onUsed?: (rows: number) => void }): JSX.Element {
   // maxRows 显式覆盖优先（2026-09-30 App 动态区 chrome 实账直传：子代理面板/多行输入/展开待办等
   // 全部计入后再定预览上限，防帧高触顶）；缺省回落 rows 联动公式（rows 缺省再回落固定上限）
   const maxRows = maxRowsOverride ?? (rows === undefined ? REPLY_PREVIEW_MAX_ROWS : Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(8, rows - 6)));
   if (live.kind === 'reply') {
     // 长围栏兜底切块后预览续块以开栏行承接：未闭合围栏按围栏开始渲染，代码块高亮呈现跨切块延续
     const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
-    // 预览窗高度恒定（2026-09-30 真机「正文输出跳到中间 + 闪」终版根因）：tailReplyPreview 的窗口随
-    // 未入档尾段涨落——流式满窗 ~26 行、flushReply 每次切块瞬间塌缩成 ~2 行，动态帧高骤缩 24 行即
-    // ink 擦除基线失配（内容跳位/残影/闪一下）。与思考流 6 行补空同构：不足 maxRows 顶部补空行、
-    // 内容钉在窗底（末行恒贴输入框上缘），帧高全流恒定，切块只换血不变形；空尾段（切块边界瞬时）
-    // 同样恒高，不再 0 行塌陷。±1 行余量吸收 rowCount 估算边界差（小差 ink 帧差分可消化，骤缩不可）
+    // pad 包络基准（2026-09-30「半屏空白」终版）：恒高补满 maxRows-used 时小块正文（技能回执后 1–2 行
+    // 叙述）也撑 ~26 行空白；完全不补又回切块瞬间满窗→2 行骤缩闪屏。LiveArea 无状态补不出两头兼顾——
+    // App 维护包络（近期峰值用量，升随内容、降每帧 −3 缓落、live 清空归零）传入作 pad 上限：
+    // 满窗切块瞬间包络仍高、pad 兜住帧高不骤缩；小块正文期包络已缓降到内容水平，空白不再成片
     const preview = pending.trim() === '' ? '' : tailReplyPreview(pending, columns, maxRows);
     const used = preview.length === 0 ? 0 : markdownRowCount(preview, columns);
-    const pad = Math.max(0, maxRows - 1 - used);
+    onUsed?.(used);
+    const pad = Math.max(0, Math.min(8, Math.max(envelope, used) - used));
     return (
       <Box flexDirection="column">
         {Array.from({ length: pad }, (_, i) => (

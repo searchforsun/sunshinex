@@ -39,6 +39,8 @@ export function MessageList({
   suppressHistory = false,
   rows,
   previewMaxRows,
+  envelope,
+  onPreviewUsed,
   ledger,
   rewriteFrom,
 }: {
@@ -57,6 +59,10 @@ export function MessageList({
   rows?: number;
   /** 预览窗口上限显式覆盖（2026-09-30 App 动态区 chrome 实账直传）：在场时优先于 rows 联动公式 */
   previewMaxRows?: number;
+  /** 预览窗包络（2026-09-30「半屏空白」终版，App 有状态收敛后直传）：pad 上限基准，见 LiveArea */
+  envelope?: number;
+  /** 预览窗实际用量上报（App 包络收敛的数据源）：LiveArea 每帧回报实际渲染行数 */
+  onPreviewUsed?: (rows: number) => void;
   /** 打印账本（2026-09-30 方案 A）：逐渲染记录已打印条目的形态与行数并重算尾部重写计划，
    *  供 tui-loop 定夺「就地擦写只重放变化尾部」；缺省不记账（零行为变化，测试兼容） */
   ledger?: TailLedger;
@@ -145,7 +151,7 @@ export function MessageList({
           ) : null
         }
       </Static>
-      {live ? <LiveArea live={live} columns={columns} rows={rows} maxRows={previewMaxRows} /> : null}
+      {live ? <LiveArea live={live} columns={columns} rows={rows} maxRows={previewMaxRows} envelope={envelope} onUsed={onPreviewUsed} /> : null}
     </Box>
   );
 }
