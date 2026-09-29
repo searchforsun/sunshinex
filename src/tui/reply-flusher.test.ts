@@ -64,6 +64,25 @@ test('reply-flusher：逐行切点（完整流式裁决）——预建串一次�
   assert.equal(two, '行0\n行1\n', '两完结行切至最靠后（合帧积压时尽量多交账）');
 });
 
+test('reply-flusher：表格候选行守候——表头完成的瞬间分隔行未到不切（逐行切点的流式补丁，真机「表格没了」）', () => {
+  const header = '| 层面 | 选型 |';
+  // 表头行刚完结（尾换行、余量只剩空 remainder）：下一行未知，守候不切——先切即表头与分隔行分家
+  assert.equal(stableReplySegment(header + '\n', 0), null, '表头行守候（分隔行未到）');
+  // 分隔行到达：表格开启，仍零切点（等闭合）
+  assert.equal(stableReplySegment(header + '\n| --- | --- |\n', 0), null, '表头+分隔行开启后整块保护');
+  // 数据行流式到达（带换行）：表格期间零切点
+  assert.equal(stableReplySegment(header + '\n| --- | --- |\n| 后端 | Spring Boot |\n', 0), null, '数据行到达仍保护');
+  // 闭合（空行 + 后续正文）：整表随切点放行
+  const closed = header + '\n| --- | --- |\n| 后端 | Spring Boot |\n\n后续。';
+  assert.equal(stableReplySegment(closed, 0), header + '\n| --- | --- |\n| 后端 | Spring Boot |\n\n', '闭合即整表+空行放行');
+  // 杂散管道行（下一行是真实非分隔行）：不定型为表格 → 照常切；滑动语义下一次交清所有完结行
+  // （实况流式：表头守候到下一行到达即先行入档，正文行随后续 token 自成一块）
+  const stray = header + '\n普通正文。\n';
+  assert.equal(stableReplySegment(stray, 0), header + '\n普通正文。\n', '下一行非分隔行 → 照常逐行切（滑动交清）');
+  // 管道行后跟空行再跟正文：守候行与空行并块放行（非表格形态）
+  assert.equal(stableReplySegment(header + '\n\n正文。', 0), header + '\n\n', '管道行+空行并块');
+});
+
 test('reply-flusher：纯空白切段返回原串（session 侧只推进不入档）', () => {
   assert.equal(stableReplySegment('\n\n正文', 0), '\n\n');
 });
