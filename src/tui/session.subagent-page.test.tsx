@@ -24,11 +24,41 @@ test('流式碎片不撕裂：工具边界不冲半行，长成完整行后一�
     const child = ctrl.getState().children.find((c) => c.label === 'f');
     assert.ok(child, '面板态在');
     assert.equal(child!.transcript.filter((l) => l.kind === 'text').length, 0, '工具边界不产生半行碎片 text 行');
-    // 半行继续增长，到换行才行化：恰一条完整行
+    // 半行继续增长，到换行才行化：恰一条完整行（行尾 \n 的空段是 pop 出的续接 buf，非空行不入档；
+    // 空行仅出现在「内容之间的空行」——2026-09-29 空行保留口径：段落边界随转录入档，
+    // 全屏视图增量入 Static 的稳态切割点，对标主 agent flushReply 空行优先）
     ctrl.onEventForTest({ type: 'tool-result', text: 'ok', payload: { ok: true, subagent: 'f' } } as never);
     ctrl.onEventForTest({ type: 'token', text: 'x.y.Z;\n', payload: { subagent: 'f' } } as never);
     const texts = ctrl.getState().children.find((c) => c.label === 'f')!.transcript.filter((l) => l.kind === 'text');
     assert.deepEqual(texts.map((l) => l.text), ['import com.x.y.Z;'], '半行长成完整行后恰一条入档');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('思考流独立分流：reasoning 独立缓冲实时预览，非 reasoning 事件收束为 ✻ 摘要行（detail 全文）', () => {
+  const tmp = tmpdir('sunshinex-sess-think-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p', label: 't' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
+    // reasoning 增量 → bufThink 实时预览（不与正文混流）
+    ctrl.onEventForTest({ type: 'reasoning', text: '先想第一步\n再想', payload: { subagent: 't' } } as never);
+    const streaming = ctrl.getState().children.find((c) => c.label === 't')!;
+    assert.equal(streaming!.bufThink, '先想第一步\n再想', 'reasoning 增量独立累积（流式预览消费）');
+    assert.equal(streaming!.transcript.length, 0, '思考未收束不产生转录行');
+    // token 到达 → 思考收束 ✻ 摘要行 + 正文照常行化
+    ctrl.onEventForTest({ type: 'token', text: '正文开始\n', payload: { subagent: 't' } } as never);
+    const closed = ctrl.getState().children.find((c) => c.label === 't')!;
+    assert.equal(closed!.transcript[0]?.kind, 'thinking', '思考收束为 thinking 摘要行');
+    assert.match(closed!.transcript[0]!.text, /^Thought for \d+s$/, '摘要行对标主 agent closeLive 口径');
+    assert.equal(closed!.transcript[0]!.detail, '先想第一步\n再想', 'detail 承载思考全文');
+    assert.equal(closed!.transcript[1]?.kind, 'text', '思考收束后正文照常入档');
+    // done → 归档 detail 序化 ✻ 摘要 + 4 空格缩进 detail 续行（ChildInspector archived 分流互为镜像）
+    ctrl.onEventForTest({ type: 'done', text: '正文开始', payload: { subagent: 't' } } as never);
+    const call = ctrl.getState().messages.find((m) => m.kind === 'call' && m.text.startsWith('SPAWN'));
+    assert.ok(call!.detail?.includes('✻ Thought for'), '归档 detail 含思考摘要行');
+    assert.ok(call!.detail?.includes('    先想第一步'), '思考全文以 4 空格缩进续行折入 detail');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

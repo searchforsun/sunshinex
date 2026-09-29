@@ -212,7 +212,8 @@ export function App({
     inspectRef.current = v;
     store.inspect = v;
     setInspect(v);
-    setInspectExpanded(false); // 每次进入复位折叠态（缺省态，对标主 agent 折叠位）
+    setInspectExpanded(false); // 每次进入复位折叠态（缺省态，对标主 agent 折叠位；store 同步防重挂回旧值）
+    store.inspectExpanded = false;
     // 整屏接管切换（进入/退出各一次）：经生产 repaint 路径卸载→同 retain 重挂——重挂后历史区按
     // suppressHistory 置空/恢复，全屏视图独占整页不与主 agent 历史拼接（2026-09-27 用户裁决）
     onRequestRepaint?.();
@@ -335,11 +336,19 @@ export function App({
 
   useInput((input: string, key: RawKey) => {
 
-    // 全屏查看模式（规格 §3.3）：最前置接管——Esc 退出恢复主界面，Tab 切「完整时间线 ↔ 正文形态」两态
-    //（动态区自绘零重挂），其余键吞掉不落输入缓冲（纯只读视图）
+    // 全屏查看模式（规格 §3.3）：最前置接管——Esc 退出恢复主界面，Tab 切「折叠 ↔ 完整时间线」两态
+    //（2026-09-29 Static 时间线化后经生产 repaint 整屏重放，对标主 agent Tab；store 持久化跨重挂保留），
+    // 其余键吞掉不落输入缓冲（纯只读视图，不支持再次会话）
     if (inspectRef.current) {
       if (key.escape) { setInspectRetained(undefined); return; }
-      if (key.tab) { setInspectExpanded(!inspectExpandedRef.current); return; }
+      if (key.tab) {
+        const next = !inspectExpandedRef.current;
+        inspectExpandedRef.current = next;
+        store.inspectExpanded = next;
+        setInspectExpanded(next);
+        onRequestRepaint?.();
+        return;
+      }
       return;
     }
 
@@ -669,6 +678,7 @@ export function App({
                         steps: m.subagentMeta?.steps,
                         durationMs: m.subagentMeta?.durationMs,
                         prompt: m.subagentMeta?.prompt,
+                        tokens: m.subagentMeta?.tokens,
                       }
                     : undefined;
                 })()

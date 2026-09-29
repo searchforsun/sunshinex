@@ -90,11 +90,13 @@ export interface LiveBlock {
   fenceOpener?: string;
 }
 
-/** 子代理转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源 */
+/** 子代理转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源。
+ *  thinking 行对标主 agent ThinkingRow：text=收束摘要（Thought for Ns）、detail=思考全文（Tab 展开呈现）。 */
 export interface ChildLine {
-  kind: 'call' | 'result' | 'text';
+  kind: 'call' | 'result' | 'text' | 'thinking';
   text: string;
   ok?: boolean;
+  detail?: string;
 }
 
 /** 子代理运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
@@ -103,7 +105,7 @@ export interface ChildLiveState {
   startedAt: number;
   steps: number;
   tokens: number;
-  /** 全量结构行（归档与全屏查看同源）：工具行/结果行/流式文本 */
+  /** 全量结构行（归档与全屏查看同源）：工具行/结果行/流式文本/思考摘要行 */
   transcript: ChildLine[];
   /** 完成态：done/error 事件置位——并行批中早完成者即时显终标而非一直转圈（归档锚点在主链 tool-result，晚于兄弟完成） */
   done?: boolean;
@@ -115,6 +117,12 @@ export interface ChildLiveState {
   calls?: { callId: string; target: string; startedAt: number }[];
   /** 主 agent 委派提示词（spawn input.prompt，全屏视图头部呈现；规格 §4.2） */
   prompt?: string;
+  /** 正文流式半行（token 增量未成行）：全屏视图动态区实时预览消费（对标主 agent LiveArea 尾段窗） */
+  bufText?: string;
+  /** 思考流式尾段（reasoning 增量累积未收束）：全屏视图 6 行滚动窗实时预览；非 reasoning 事件到达即收束为 ✻ 摘要行 */
+  bufThink?: string;
+  /** 当前思考段起点（收束摘要耗时口径，对标主 agent closeLive） */
+  thinkStartedAt?: number;
 }
 
 /** spawn 调用关联基名（规格 §4.4）：label ?? agent_id ?? 'subagent'（与 Runner 解析同源；消歧后缀不含入内） */
@@ -1719,7 +1727,10 @@ export class SessionController {
     return this.state.task;
   }
 
-  /** 子代理事件处理（规格 §4.3）：首事件创建面板态；增量行化、结构事件即时行化；不触达主链任何分支 */
+  /** 子代理事件处理（规格 §4.3）：首事件创建面板态；增量行化、结构事件即时行化；不触达主链任何分支。
+   *  流式双缓冲（2026-09-29 对标主 agent session 态）：reasoning 独立累积（bufThink，视图 6 行滚动窗实时预览）、
+   *  非 reasoning 事件到达即收束为 ✻ 摘要行（对标 closeLive「Thought for Ns」+ detail 全文）；
+   *  正文 token 半行续接语义不变（工具边界不冲刷防碎片），空行保留（段落边界——视图增量入 Static 的稳态切割点）。 */
   private onChildEvent(e: SessionEvent, label: string): void {
     let list = this.state.children;
     let idx = list.findIndex((c) => c.label === label);
@@ -1727,41 +1738,65 @@ export class SessionController {
       list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], done: false, prompt: this.childPrompts.get(label) }];
       idx = list.length - 1;
     }
-    const child = list[idx];
+    const child = list[idx]!;
     let buf = this.childBufs.get(label) ?? '';
     // 结构事件先冲刷半行（保持转录时序：正文半行 → 结构行）
     let transcript = child.transcript;
     let steps = child.steps;
     let tokens = child.tokens;
+    let bufThink = child.bufThink;
+    let thinkStartedAt = child.thinkStartedAt;
+    /** 思考段收束（对标主 agent closeLive）：折为 ✻ 摘要行 + detail 全文（视图 Tab 展开） */
+    const closeThink = (): void => {
+      if (bufThink === undefined || bufThink.length === 0) {
+        bufThink = undefined;
+        thinkStartedAt = undefined;
+        return;
+      }
+      const secs = Math.max(1, Math.round((Date.now() - (thinkStartedAt ?? Date.now())) / 1000));
+      transcript = [...transcript, { kind: 'thinking', text: `Thought for ${secs}s`, detail: bufThink }];
+      bufThink = undefined;
+      thinkStartedAt = undefined;
+    };
     switch (e.type) {
-      case 'token':
       case 'reasoning': {
+        const delta = e.text ?? '';
+        if (delta.length > 0 && bufThink === undefined) thinkStartedAt = Date.now();
+        bufThink = (bufThink ?? '') + delta;
+        break;
+      }
+      case 'token': {
+        closeThink();
         buf += e.text ?? '';
         const parts = buf.split('\n');
         buf = parts.pop() ?? '';
-        transcript = [...child.transcript, ...parts.filter((l) => l.length > 0).map((l) => ({ kind: 'text' as const, text: l }))];
+        // 空行保留（段落边界）：正文增量入 Static 按空行稳态切割（对标主 agent flushReply 空行优先），Markdown 段落语义不再丢失
+        transcript = [...transcript, ...parts.map((l) => ({ kind: 'text' as const, text: l }))];
         break;
       }
       case 'tool-call': {
         // 半行不冲刷（2026-09-28 真机碎片病根）：结构边界把「im」「import com.」这类未成行文本撕成独立碎片行；
         // 半行留存 childBufs 续接后续 token，长成完整行（遇换行）才入档
+        closeThink();
         transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input) }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
         const calls = callId
           ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, target: toolCallLine(e.text ?? '', e.payload?.input), startedAt: Date.now() }]
           : child.calls;
-        this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls }, buf);
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls, bufText: buf || undefined, bufThink, thinkStartedAt }, buf);
         return;
       }
       case 'tool-result': {
         // 同 tool-call：半行留存续接，不在结果边界撕碎片
+        closeThink();
         transcript = [...transcript, { kind: 'result', text: e.text ?? '', ok: e.payload?.ok === true }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
         const calls = callId ? (child.calls ?? []).filter((c) => c.callId !== callId) : child.calls;
-        this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls }, buf);
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls, bufText: buf || undefined, bufThink, thinkStartedAt }, buf);
         return;
       }
       case 'step':
+        closeThink();
         steps = child.steps + 1;
         break;
       case 'usage':
@@ -1783,13 +1818,18 @@ export class SessionController {
         // 终稿去重（2026-09-28 真机大段重复病根）：后台两段式/无流式场景终稿照常入档；与流式正文逐字重复则跳过
         const isError = e.type === 'error';
         const finalLine = e.text && e.text.length > 0 ? e.text : isError ? 'failed' : 'done';
-        // 流式正文比对含未成行半行 buf（否则终稿带尾巴时误判为新内容二次入档）
-        const streamText = [...transcript.filter((l) => l.kind === 'text').map((l) => l.text), buf].join('\n');
+        closeThink();
+        // 尾部半行收口：done 即整段收束，未成行半行作为完整行入档（正文终稿不依赖 conclusion 兜底重复补齐）
+        if (buf.length > 0) {
+          transcript = [...transcript, { kind: 'text', text: buf }];
+          buf = '';
+        }
+        const streamText = transcript.filter((l) => l.kind === 'text').map((l) => l.text).join('\n');
         const isRealFinal = finalLine !== 'done' && finalLine !== 'failed';
         if (isRealFinal && !streamText.includes(finalLine)) {
           transcript = [...transcript, { kind: 'text', text: finalLine }];
         }
-        this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true, doneAt: Date.now(), conclusion: isRealFinal ? finalLine : undefined }, '');
+        this.commitChild(list, idx, { ...child, transcript, steps, tokens, done: true, doneAt: Date.now(), conclusion: isRealFinal ? finalLine : undefined, bufText: undefined, bufThink: undefined, thinkStartedAt: undefined }, '');
         // 后台两段式延迟归档（结果先行语义）：done/error 即归档锚点，转录折回原 spawn 调用行
         this.archiveDeferred(label);
         return;
@@ -1797,7 +1837,7 @@ export class SessionController {
       default:
         return; // ctx/route/approval-* 不入面板态（done/error 已置终态；归档锚点在主链 tool-result）
     }
-    this.commitChild(list, idx, { ...child, transcript, steps, tokens }, buf);
+    this.commitChild(list, idx, { ...child, transcript, steps, tokens, bufText: buf || undefined, bufThink, thinkStartedAt }, buf);
   }
 
   /** 面板态收尾单点：半行留存 + 尾流派生 + 节流通知（常规事件与 done/error 终态共用） */
@@ -1852,8 +1892,15 @@ export class SessionController {
     const detail = [
       ...(prompt ? [`⏺ ${t('delegated prompt', '委派提示词')}：${prompt}`] : []),
       // 完整时间线随 detail 折入（2026-09-28 用户裁决：归档子代理与运行中/主 agent 同构，Tab 展开时间线）——
-      // 结构行序列化与 ChildInspector archived 分流互为镜像：result 行 ⎿ ✓/✗、call 行原样（首词动词分流还原）、text 行原样
-      ...child.transcript.map((l) => (l.kind === 'result' ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}` : l.text)),
+      // 结构行序列化与 ChildInspector archived 分流互为镜像：result 行 ⎿ ✓/✗、call 行原样（首词动词分流还原）、
+      // text 行原样、thinking 行 ✻ 摘要 + 4 空格缩进 detail 续行（与 MessageList ThinkingRow 呈现缩进同口径）
+      ...child.transcript.map((l) =>
+        l.kind === 'result'
+          ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}`
+          : l.kind === 'thinking'
+            ? `✻ ${l.text}${l.detail !== undefined && l.detail.length > 0 ? '\n' + l.detail.split('\n').map((x) => `    ${x}`).join('\n') : ''}`
+            : l.text,
+      ),
       ...(child.conclusion && !transcriptText.includes(child.conclusion) ? [child.conclusion] : []),
       `${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`,
     ].join('\n');

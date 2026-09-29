@@ -15,6 +15,7 @@ export type TranscriptSeg =
   | { kind: 'md'; text: string }
   | { kind: 'call'; text: string }
   | { kind: 'result'; text: string; ok: boolean }
+  | { kind: 'think'; text: string; detail?: string }
   | { kind: 'meta'; text: string };
 
 /** 段行数估算（视口预算用）：md 段按源行数、结构行恒 1 */
@@ -22,13 +23,21 @@ export function estimateSegLines(s: TranscriptSeg): number {
   return s.kind === 'md' ? s.text.split('\n').length : 1;
 }
 
-/** detail/转录字符串行 → 结构段：⎿ 前缀为 result、首词工具动作为 call、⏺ 委派行与统计尾行为 meta，其余正文合并 */
+/** detail/转录字符串行 → 结构段：⎿ 前缀为 result、✻ 前缀为思考摘要（后随 4 空格缩进续行折为其 detail）、
+ *  首词工具动作为 call、⏺ 委派行与统计尾行为 meta，其余正文合并 */
 export function segmentizeLines(lines: string[]): TranscriptSeg[] {
   const segs: TranscriptSeg[] = [];
   for (const l of lines) {
     let seg: TranscriptSeg;
     if (l.startsWith('⎿ ')) {
       seg = { kind: 'result', text: l.slice(2).replace(/^[✓✗] /, ''), ok: !l.startsWith('⎿ ✗') };
+    } else if (l.startsWith('✻ ')) {
+      seg = { kind: 'think', text: l.slice(2) };
+    } else if (/^ {4}/.test(l) && segs[segs.length - 1]?.kind === 'think') {
+      // 思考段 detail 续行（序列化口径：4 空格缩进，与 MessageList ThinkingRow 呈现缩进互为镜像）
+      const last = segs[segs.length - 1] as { kind: 'think'; text: string; detail?: string };
+      last.detail = last.detail !== undefined ? `${last.detail}\n${l.slice(4)}` : l.slice(4);
+      continue;
     } else if (l.startsWith('⏺ ') || /· \d+ steps · ↑/.test(l)) {
       seg = { kind: 'meta', text: l };
     } else {
@@ -63,6 +72,14 @@ export function TranscriptSegView({ seg, columns }: { seg: TranscriptSeg; column
         {'  ⎿ '}
         {seg.ok ? '✓' : '✗'}
         {` ${seg.text}`}
+      </Text>
+    );
+  }
+  if (seg.kind === 'think') {
+    // 思考摘要行（对标 MessageList ThinkingRow 折叠形态）：✻ 前缀斜体暗色
+    return (
+      <Text dimColor italic>
+        {`✻ ${seg.text}`}
       </Text>
     );
   }

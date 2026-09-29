@@ -22,7 +22,7 @@ const REPLY_PREVIEW_MAX_ROWS = 28;
  *  rows 绑定（2026-09-28 跳到中间修复）：窗口上限随终端行数收缩——固定 28 行窗口 + 输入框/状态栏/
  *  活动行在矮终端超视口，ink 光标上移越顶即「从中段起渲染」；预留 6 行 chrome，rows 缺省（测试/管道）
  *  回落固定上限零行为变化 */
-function tailReplyPreview(pending: string, columns: number, maxRows: number): string {
+export function tailReplyPreview(pending: string, columns: number, maxRows: number): string {
   const lines = pending.split('\n');
   const safe = Math.max(8, columns - 2);
   const budget = Math.max(4, maxRows - 2);

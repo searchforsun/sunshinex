@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from '../test-ink';
 import { ChildInspector } from './ChildInspector';
-import { ChildLine, ChildLiveState } from '../session';
+import { ChildLiveState } from '../session';
 
 const live = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
   label: 'w', startedAt: Date.now() - 12_000, steps: 14, tokens: 13_000,
@@ -14,139 +14,137 @@ const live = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
   ...over,
 });
 
-test('Inspector 运行中：头部状态行（label/step/tokens/耗时/Esc 提示）与正文结构行混排', () => {
+test('Inspector 运行中：无外框整页平铺，状态行（label/step/tokens/Esc 提示）与结构行混排（2026-09-29 用户裁决去边框）', () => {
   const one = render(<ChildInspector child={live()} columns={80} rows={12} />);
   const f = one.lastFrame() ?? '';
-  assert.match(f, /\[w\]/, '头部携带 label');
-  assert.match(f, /step 14/, '头部携带步数');
-  assert.match(f, /Esc/, '头部携带退出提示');
-  assert.match(f, /● \[READ\] src\/a\.ts/, 'call 行与主 agent ToolRow 同构（● [VERB] target）');
-  assert.match(f, /⎿ ✓ 84 lines/, 'result 行 ⎿ + ok 标记');
-  assert.match(f, /分析中…/, 'text 行经 Markdown 渲染原样呈现');
-  assert.match(f, /╭/, '外层特殊边框（整屏框定）');
+  const all = one.allOutput();
+  assert.doesNotMatch(all, /╭/, '无外层边框（视作独立主 agent session 平铺）');
+  assert.match(f, /\[w\]/, '状态行携带 label');
+  assert.match(f, /step 14/, '状态行携带步数');
+  assert.match(f, /Esc/, '状态行携带退出提示');
+  assert.match(all, /● \[READ\] src\/a\.ts/, 'call 行与主 agent ToolRow 同构（● [VERB] target）');
+  assert.match(all, /⎿ ✓ 84 lines/, 'result 行 ⎿ + ok 标记');
+  assert.match(all, /分析中…/, 'text 行经 Markdown 渲染原样呈现');
   one.unmount();
 });
 
-test('Inspector 完成态：detail 行解析回看（动词行还原 call 形态、⎿ 前缀→result 形态）', () => {
+test('Inspector 委派 prompt 作用户输入带呈现（2026-09-29 用户裁决：视作独立主 agent session，只是有输入）', () => {
+  const one = render(<ChildInspector child={live({ prompt: '调研单体链路' })} columns={80} rows={20} />);
+  const all = one.allOutput();
+  assert.match(all, /调研单体链路/, '委派词作为用户输入上屏（灰底输入带）');
+  one.unmount();
+});
+
+test('Inspector 思考流式：运行中 6 行滚动窗实时预览，收束后 ✻ 摘要行入时间线（对标主 agent ThinkingRow）', () => {
+  // 运行中 bufThink 流式尾段 → 动态区 6 行滚动窗（✻ 前缀斜体）
+  const streaming = render(<ChildInspector child={live({ bufThink: '思考第一行\n思考第二行\n思考第三行' })} columns={80} rows={16} />);
+  const sf = streaming.lastFrame() ?? '';
+  assert.match(sf, /✻ 思考第三行/, '思考流尾行实时呈现（流式预览窗）');
+  streaming.unmount();
+  // 收束后 thinking 摘要行进 Static 时间线；缺省折叠 detail 不可见，Tab 展开全文
+  const closed = live({
+    transcript: [
+      { kind: 'thinking', text: 'Thought for 3s', detail: '思考全文第一行\n思考全文第二行' },
+      { kind: 'text', text: '结论正文' },
+    ],
+  });
+  const def = render(<ChildInspector child={closed} columns={80} rows={16} />);
+  assert.match(def.allOutput(), /✻ Thought for 3s/, '✻ 摘要行入时间线（与主 agent 同构）');
+  assert.ok(!(def.lastFrame() ?? '').includes('思考全文第一行'), '缺省折叠：思考全文不直出');
+  def.unmount();
+  const exp = render(<ChildInspector child={closed} columns={80} rows={16} expanded />);
+  assert.match(exp.allOutput(), /思考全文第一行/, 'Tab 展开：思考全文可见');
+  assert.match(exp.allOutput(), /思考全文第二行/, 'Tab 展开：思考全文逐行可见');
+  exp.unmount();
+});
+
+test('Inspector 不压缩：完成态完整时间线入滚动缓冲（Static 打印一次，不再取尾截断）', () => {
+  const many = Array.from({ length: 50 }, (_, i) => ({ kind: 'text' as const, text: `line-${i}` }));
+  const one = render(<ChildInspector child={live({ transcript: many, done: true, doneAt: Date.now() })} columns={80} rows={10} />);
+  const all = one.allOutput();
+  assert.ok(all.includes('line-0'), '最早行完整呈现（不取尾压缩）');
+  assert.ok(all.includes('line-25'), '中段行完整呈现');
+  assert.ok(all.includes('line-49'), '最新行完整呈现');
+  // 动态帧有界（预览窗 + 状态行），不超视口
+  const n = (one.lastFrame() ?? '').replace(/\n$/, '').split('\n').length;
+  assert.ok(n <= 10, `动态帧高 ${n} 行不超视口 rows=10`);
+  one.unmount();
+});
+
+test('Inspector 流式增量入档：空行段落边界后的闭合段进 Static，未闭合尾段留动态预览（对标主 agent flushReply/LiveArea）', () => {
   const one = render(
     <ChildInspector
-      archived={{ label: 'w', lines: ['READ src/a.ts', '⎿ ✓ 84 lines', '⎿ ✗ boom'], steps: 5, durationMs: 61_000 }}
+      child={live({
+        transcript: [
+          { kind: 'text', text: '第一段结论' },
+          { kind: 'text', text: '' },
+          { kind: 'text', text: '第二段进行中' },
+        ],
+        bufText: '尚未成行的半行',
+      })}
+      columns={80}
+      rows={16}
+    />,
+  );
+  const f = one.lastFrame() ?? '';
+  // Static/动态分界判据：闭合段打印一次进滚动缓冲（不在动态帧内），未闭合尾段逐帧重绘（在动态帧内）
+  assert.match(one.allOutput(), /第一段结论/, '空行闭合段进 Static（打印一次入滚动缓冲）');
+  assert.ok(!f.includes('第一段结论'), '闭合段不占动态帧（Static 打印一次后不再重绘）');
+  assert.match(f, /第二段进行中/, '未闭合尾段动态区实时预览');
+  assert.match(f, /尚未成行的半行/, '流式半行随尾段预览');
+  one.unmount();
+});
+
+test('Inspector 完成态回看：detail 行解析回看（动词行还原 call 形态、⎿ 前缀→result 形态、✻→思考摘要）', () => {
+  const one = render(
+    <ChildInspector
+      archived={{
+        label: 'w',
+        lines: ['READ src/a.ts', '⎿ ✓ 84 lines', '⎿ ✗ boom', '✻ Thought for 3s', '    思考全文行'],
+        steps: 5,
+        durationMs: 61_000,
+      }}
       columns={80}
       rows={12}
     />,
   );
-  const f = one.lastFrame() ?? '';
-  assert.match(f, /● \[READ\] src\/a\.ts/, '动词行还原 call 形态（与主 agent ToolRow 同构）');
-  assert.match(f, /⎿ ✓ 84 lines/, 'result 行呈现');
-  assert.match(f, /⎿ ✗ boom/, '失败结果行呈现');
+  const all = one.allOutput();
+  assert.match(all, /● \[READ\] src\/a\.ts/, '动词行还原 call 形态（与主 agent ToolRow 同构）');
+  assert.match(all, /⎿ ✓ 84 lines/, 'result 行呈现');
+  assert.match(all, /⎿ ✗ boom/, '失败结果行呈现');
+  assert.match(all, /✻ Thought for 3s/, '思考摘要行还原（✻ 前缀）');
+  assert.ok(!all.includes('思考全文行'), '归档缺省折叠：思考 detail 不直出');
   one.unmount();
-});
-
-test('Inspector 取尾适配视口：超出 rows 的更早行不渲染（动态区有界约束）', () => {
-  const many = Array.from({ length: 50 }, (_, i) => ({ kind: 'text' as const, text: `line-${i}` }));
-  const one = render(<ChildInspector child={live({ transcript: many })} columns={80} rows={10} />);
-  const f = one.lastFrame() ?? '';
-  assert.ok(!f.includes('line-0'), '视口外的更早行不渲染');
-  assert.ok(!f.includes('line-10'), '视口外的更早行不渲染');
-  assert.match(f, /line-49/, '最新行在视口内');
-  one.unmount();
-});
-
-test('Inspector 头部不呈委派 prompt（2026-09-28 用户裁决：去掉「委派提示词」段）', () => {
-  const one = render(<ChildInspector child={live({ prompt: '调研单体链路' })} columns={80} rows={20} />);
-  const f = one.lastFrame() ?? '';
-  assert.doesNotMatch(f, /委派提示词/, '头部无委派提示词标签行');
-  assert.doesNotMatch(f, /调研单体链路/, '委派词内容不再上屏（数据链保留在 subagentMeta.prompt）');
-  one.unmount();
-});
-
-test('Inspector 视口有界：长行折行预算下帧高不超 rows（源行数预算失准即溢出残影/重复观感回归）', () => {
-  // 真机病根：预算按源行数计，MarkdownText 按 columns 折行——长 CJK 行 1 源行折数显示行，帧超高溢出动态区
-  const longLine = '长'.repeat(200);
-  const many = Array.from({ length: 20 }, (_, i) => ({ kind: 'text' as const, text: `${longLine}-${i}` }));
-  const one = render(
-    <ChildInspector child={live({ transcript: many })} columns={80} rows={12} />,
+  const exp = render(
+    <ChildInspector
+      archived={{
+        label: 'w',
+        lines: ['✻ Thought for 3s', '    思考全文行'],
+        steps: 5,
+        durationMs: 61_000,
+      }}
+      columns={80}
+      rows={12}
+      expanded
+    />,
   );
-  const f = one.lastFrame() ?? '';
-  const n = f.replace(/\n$/, '').split('\n').length;
-  assert.ok(n <= 12, `帧高 ${n} 行应不超视口 rows=12（折行预算 + 视口余量护栏）`);
-  one.unmount();
+  assert.match(exp.allOutput(), /思考全文行/, 'Tab 展开：归档思考 detail 可见');
+  exp.unmount();
 });
 
-test('Inspector Tab 两态：缺省折叠对标主 agent（非末段只留正文+首个工具对），Tab 展开全量（2026-09-28 用户裁决反转）', () => {
-  const multi: ChildLiveState = {
-    ...live(),
+test('Inspector 折叠结果行单行省略、Tab 展开全文（对标主 agent ToolRow 两态）', () => {
+  const multi = live({
     transcript: [
-      { kind: 'text', text: '第一段思考' },
-      { kind: 'call', text: 'READ src/a.ts' },
-      { kind: 'result', text: '84 lines', ok: true },
-      { kind: 'text', text: '第二段思考' },
-      { kind: 'call', text: 'GREP pattern' },
-      { kind: 'result', text: '3 files', ok: true },
-      { kind: 'call', text: 'READ src/b.ts' },
-      { kind: 'result', text: '9 lines', ok: true },
-      { kind: 'text', text: '结论段正文' },
+      { kind: 'call', text: 'BASH npm test' },
+      { kind: 'result', text: 'ok 1 - passes\nok 2 - passes\n# fail 2', ok: false },
     ],
-  };
-  // 缺省（折叠）：末段全显；非末段只留正文 + 首个工具对，第二段的后续工具对收敛
-  const def = render(<ChildInspector child={multi} columns={80} rows={40} />).lastFrame() ?? '';
-  assert.match(def, /第一段思考/, '非末段正文保留');
-  assert.match(def, /● \[READ\] src\/a\.ts/, '非末段首个工具对保留（锚点）');
-  assert.match(def, /第二段思考/, '末段（结论段）全显');
-  assert.doesNotMatch(def, /src\/b\.ts/, '非末段第二工具对折叠隐藏——缺省即主 agent 折叠形态');
-  const full = render(<ChildInspector child={multi} columns={80} rows={40} expanded />).lastFrame() ?? '';
-  assert.match(full, /src\/b\.ts/, 'Tab 展开全量：后续工具对可见');
-});
-
-test('Inspector 折叠态思考段收敛 ▶ 摘要行（时间线对齐主 agent，2026-09-28 用户裁决）：多行思考墙不再全文直出、末段结论全显', () => {
-  const multi: ChildLiveState = {
-    ...live(),
-    transcript: [
-      { kind: 'text', text: '思考第一行\n思考第二行\n思考第三行' },
-      { kind: 'call', text: 'READ src/a.ts' },
-      { kind: 'result', text: '84 lines', ok: true },
-      { kind: 'text', text: '中间叙述' },
-      { kind: 'call', text: 'GREP pattern' },
-      { kind: 'result', text: '3 files', ok: true },
-      { kind: 'text', text: '结论正文行一\n结论正文行二' },
-    ],
-  };
-  // 缺省（折叠）：思考段收敛为 ▶ 首行摘要（多行段带 … 标记），后续行全文直出即思考墙；末段结论链全显
-  const def = render(<ChildInspector child={multi} columns={80} rows={40} />).lastFrame() ?? '';
-  assert.match(def, /▶ 思考第一行 …/, '非末段思考段收敛为 ▶ 首行摘要');
-  assert.doesNotMatch(def, /思考第二行/, '思考段后续行折叠隐藏');
-  assert.match(def, /▶ 中间叙述/, '中间叙述段同样收敛（单行段无 … 标记）');
-  assert.match(def, /结论正文行一/, '末段结论链全显');
-  assert.match(def, /结论正文行二/, '末段结论链逐行全显');
-  const full = render(<ChildInspector child={multi} columns={80} rows={40} expanded />).lastFrame() ?? '';
-  assert.match(full, /思考第二行/, 'Tab 展开全量：思考正文可见');
-});
-
-test('Inspector 视口有界：真实 markdown 形态（标题/表格/围栏/长 CJK）下帧高不超 rows（估算与渲染不同源即溢出残影/两遍观感回归）', () => {
-  // 真机病根（2026-09-28 全屏视图两遍）：segRows 只按裸折行计数，MarkdownText 真实渲染还有
-  // 块间空行（marginTop 1）、表格 alignTable 框线行、ink 折行边界差三类行数——预算低估即帧超高溢出动态区
-  const transcript: ChildLine[] = [];
-  transcript.push({ kind: 'text', text: `${'这是一段非常长的中文正文行用于测试折行累计估算偏差的情况'.repeat(3)}` });
-  transcript.push({ kind: 'call', text: 'READ package.json' });
-  transcript.push({ kind: 'result', text: '42 lines', ok: true });
-  transcript.push({ kind: 'text', text: '## 调研结论\n\n- src/tui 渲染层\n- src/harness 运行时' });
-  transcript.push({ kind: 'call', text: 'grep src -l' });
-  transcript.push({ kind: 'result', text: '8 files', ok: true });
-  // 表格块收尾：alignTable 框线行数远多于源行折行口径，估算低估即帧超高溢出（探针实锤 7 例红的形态）
-  transcript.push({ kind: 'text', text: '| 模块 | 职责 |\n|------|------|\n| session | 会话状态与 journal 持久化 |\n| reactor | 闭环引擎与并行闸门 |' });
-  for (const columns of [60, 80, 100]) {
-    for (const rows of [10, 12, 14]) {
-      const one = render(
-        <ChildInspector
-          child={live({ transcript, prompt: '调研前端目录结构', steps: 8, tokens: 9000 })}
-          columns={columns}
-          rows={rows}
-        />,
-      );
-      const f = one.lastFrame() ?? '';
-      const n = f.replace(/\n$/, '').split('\n').length;
-      one.unmount();
-      assert.ok(n <= rows, `columns=${columns} rows=${rows}: 帧高 ${n} 行不超视口（估算同源护栏）`);
-    }
-  }
+  });
+  const def = render(<ChildInspector child={multi} columns={80} rows={12} />);
+  const defAll = def.allOutput();
+  assert.match(defAll, /⎿ ✗ ok 1 - passes/, '折叠态：结果首行单行呈现');
+  assert.ok(!defAll.includes('# fail 2'), '折叠态：多行结果后续行省略');
+  def.unmount();
+  const exp = render(<ChildInspector child={multi} columns={80} rows={12} expanded />);
+  assert.match(exp.allOutput(), /# fail 2/, 'Tab 展开：结果全文逐行呈现');
+  exp.unmount();
 });

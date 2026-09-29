@@ -87,7 +87,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     const calls = ctrl.getState().messages.filter((m) => m.kind === 'call');
     assert.ok(calls.length >= 2 && calls.every((m) => m.detail), '前置：两条 SPAWN 调用行已归档');
 
-    const { write, lastFrame, unmount } = render(
+    const { write, lastFrame, allOutput, unmount } = render(
       <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />,
     );
     await new Promise((r) => setTimeout(r, 200)); // 等挂载：ink 未接管 stdin 时首段输入会丢失
@@ -101,9 +101,9 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /subagent view/, '全屏查看视图接管整页');
     // 归档 detail 精简形态（2026-09-28 用户裁决：输入+结论+统计）；结论取子代理真实终稿（注入事件先于真实 done 到达被覆盖），
-    // 头部委派词已按用户裁决去掉（2026-09-28），回看锚定头部标签行区分归档行
-    assert.match(lastFrame() ?? '', /✻ \[wr\] /, '最近归档行全屏视图（头部标签锚定）');
-    assert.match(lastFrame() ?? '', /steps · /, '精简 detail 统计行在位');
+    // 2026-09-29 Static 时间线化：统计行随 detail 进滚动缓冲（allOutput 口径），动态帧只余状态行
+    assert.match(lastFrame() ?? '', /✻ \[wr\] /, '最近归档行全屏视图（状态行标签锚定）');
+    assert.match(allOutput(), /steps · /, '精简 detail 统计行在位（Static 滚动缓冲）');
     write('\u001b'); // Esc 退出全屏回主界面
     await new Promise((r) => setTimeout(r, 150));
     assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
