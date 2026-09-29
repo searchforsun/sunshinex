@@ -7,21 +7,29 @@ export interface InkLikeInstance {
   unmount(): void;
 }
 
+/** 重绘模式：full=卸载→清屏→整屏重放（resize/Tab/全屏接管）；tail=光标上移+就地擦写只重放
+ *  变化尾部（2026-09-30 方案 A——段折叠闪屏消除，前缀滚动缓冲原样保留、零空白帧） */
+export type RepaintMode = 'full' | 'tail';
+
 export interface TuiLoopDeps {
   /** 首挂 retain 初值补丁（--continue 恢复的输入历史与视图两态；buffer/cursor 易失不还原——规格 D6 边界） */
   initialRetain?: Partial<RetainedUiState>;
   /** resize 事件源（真实 TTY stdout 或测试 EventEmitter） */
   stdout: ResizeSource;
-  /** 重挂前的整屏清理（清屏 + 归位光标）；清理后重挂使 Static 历史重放一次、动态区按新宽度重排 */
+  /** 重绘前的整屏清理（清屏 + 归位光标）；清理后重挂使 Static 历史重放一次、动态区按新宽度重排 */
   clearScreen(): void;
   /** 原始终端写出（同步更新序列载体）；缺省直写 stdout */
   writeRaw?(s: string): void;
   /** 渲染一次交互面；retain 为跨重挂现场（挂载读初值、变化实时回写） */
   renderOnce(retain: RetainedUiState): InkLikeInstance;
   /** 宿主注册「请求整屏重绘」出口：Tab 展开模式切换等非 resize 场景复用同一卸载→清屏→重挂路径 */
-  onRequestRepaint?: (request: () => void) => void;
+  onRequestRepaint?: (request: (mode?: RepaintMode) => void) => void;
   /** 防抖窗口覆盖（测试压短用；缺省 200ms，见 resize.ts） */
   debounceMs?: number;
+  /** 动态帧高度嗅探（tail 模式可达性判定的分母之一）；缺省恒 undefined=tail 一律回落全量 */
+  frameLines?: () => number | undefined;
+  /** 终端行数（tail 可达性判定：擦写起点须在视口内）；缺省 24 */
+  rows?: () => number;
 }
 
 /**
@@ -36,26 +44,39 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
   // 重绘换帧以 DEC 2026 同步更新包裹为原子操作：终端持有旧帧直到重放完成一次性切换，
   // 消除「清屏空屏 → Static 重放」中间帧的闪屏观感；不识别该序列的终端静默忽略、行为同旧路径
   const writeRaw = deps.writeRaw ?? ((s: string): void => { process.stdout.write(s); });
-  let repaintQueued = false;
+  let repaintQueued: RepaintMode | undefined;
   let current: InkLikeInstance | undefined;
   // resize 与 Tab 模式切换共用同一条「卸载 → 清屏 → 重挂」路径：Static 历史按当前模式整屏重放
-  const requestRepaint = (): void => {
-    repaintQueued = true;
+  // 重绘模式升级钉：已排队的 full 不被后续 tail 降级（full 语义覆盖面更广）
+  const requestRepaint = (mode: RepaintMode = 'full'): void => {
+    repaintQueued = repaintQueued === 'full' ? 'full' : mode;
     current?.unmount();
   };
   const gate = createResizeGate({
     source: deps.stdout,
     debounceMs: deps.debounceMs,
-    onRepaint: requestRepaint,
+    onRepaint: () => requestRepaint('full'),
   });
   deps.onRequestRepaint?.(requestRepaint);
   try {
     let first = true;
     do {
-      const isRepaint = !first;
+      const mode: RepaintMode | undefined = !first ? (repaintQueued ?? 'full') : undefined;
       first = false;
-      repaintQueued = false;
-      if (isRepaint) {
+      repaintQueued = undefined;
+      // 尾部原位重写（方案 A）：账本 plan 给出首个变化条目与其上方已打印行数，帧高嗅探给出
+      // 动态区高度——两者之和即擦写起点距光标的行距；可达（在视口内）即上移就地擦写、
+      // 重挂只重放变化尾部（屏上前缀原样保留）。任一前置缺失/不可达回落全量路径（安全降级）
+      const plan = retain.tailLedger !== undefined && !retain.tailLedger.forceFull ? retain.tailLedger.plan : null;
+      const frameH = deps.frameLines?.();
+      const termRows = deps.rows?.() ?? 24;
+      if (mode === 'tail' && plan !== null && frameH !== undefined && plan.suffixLines + frameH <= termRows - 1) {
+        writeRaw(`\u001b[?2026h\u001b[${plan.suffixLines + frameH}A\u001b[J\u001b[?2026l`);
+        retain.rewriteFrom = plan.from;
+        current = deps.renderOnce(retain);
+        retain.rewriteFrom = undefined;
+      } else if (mode !== undefined) {
+        retain.rewriteFrom = undefined;
         writeRaw('\u001b[?2026h');
         deps.clearScreen();
         current = deps.renderOnce(retain);
@@ -64,7 +85,7 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
         current = deps.renderOnce(retain);
       }
       await current.waitUntilExit();
-    } while (repaintQueued);
+    } while (repaintQueued !== undefined);
   } finally {
     gate.dispose();
     current?.unmount();

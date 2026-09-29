@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { render } from 'ink';
 import { App } from './components/App';
-import { runTuiLoop, installSyncUpdateWrap } from './tui-loop';
+import { runTuiLoop, installSyncUpdateWrap, RepaintMode } from './tui-loop';
+import { installFrameSniffer } from './frame-sniffer';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
 import { buildModel, parseTier } from '../runtime';
@@ -58,12 +59,15 @@ export async function runTui(args: CliArgs): Promise<void> {
   // 全帧逐写原子化（2026-09-28 用户裁决扩展）：流式/全屏期 ink 逐帧擦写经 DEC 2026 同步更新包裹，
   // 擦写中间态不再肉眼可见（持续闪屏病根）；repaint 路径自包 2026h 自动免重复包裹
   installSyncUpdateWrap(process.stdout as unknown as Parameters<typeof installSyncUpdateWrap>[0]);
+  // 动态帧高度嗅探（2026-09-30 方案 A）：从写流模式识别当前帧高，供 tui-loop tail 模式可达性
+  // 判定（段折叠就地擦写，消清屏闪屏）；装在 2026 包裹外层、见包裹后的最终字节
+  const sniffer = installFrameSniffer(process.stdout as unknown as Parameters<typeof installFrameSniffer>[0]);
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
   // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，
   // 终端缩放 reflow 后行数失配、旧帧擦不净即残影叠字）；输入与展开模式现场跨重挂保留
   let current: { unmount(): void } | undefined;
   // Tab 切换的展开模式：经宿主 onRequestRepaint 注入 tui-loop 的重绘出口（与 resize 共用卸载→清屏→重挂路径）
-  let requestRepaint: (() => void) | undefined;
+  let requestRepaint: ((mode?: RepaintMode) => void) | undefined;
   // 优雅退出单点：SIGINT 与空闲态 Ctrl+C（App onExit）共用——清定时器→卸载渲染→退出
   const quit = (): void => {
     ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）
@@ -75,10 +79,13 @@ export async function runTui(args: CliArgs): Promise<void> {
     await runTuiLoop({
       stdout: process.stdout,
       clearScreen: () => process.stdout.write('\x1b[2J\x1b[3J\x1b[H'),
+      frameLines: () => sniffer.frameLines(),
+      rows: () => process.stdout.rows ?? 24,
       onRequestRepaint: (req) => {
         requestRepaint = req;
       },
       renderOnce: (retain) => {
+        sniffer.reset(); // 新挂载帧高重新学习，防上一挂载串台（首帧不置信=tail 暂回落全量，安全）
         // exitOnCtrlC 关闭：Ctrl+C 不再被 ink 托管退出，改由 App 分流（运行中=中断任务，空闲=经 onExit 退出）
         const inst = render(React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint, onExit: quit }), { exitOnCtrlC: false });
         current = inst;

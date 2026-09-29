@@ -9,6 +9,8 @@ import { SessionController, TuiState, paginateOptions } from '../session';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
 import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
 import { initialRetained, RetainedUiState } from '../ui-state';
+import { createTailLedger, TailLedger } from '../tail-rewrite';
+import type { RepaintMode } from '../tui-loop';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { formatDuration } from '../format';
 import { MessageList } from './MessageList';
@@ -145,13 +147,34 @@ export function App({
   controller: SessionController;
   banner?: BannerInfo;
   retain?: RetainedUiState;
-  /** 宿主注入的「请求整屏重绘」出口：Tab 切换展开模式后经此卸载→清屏→重挂，Static 按新模式重放 */
-  onRequestRepaint?: () => void;
+  /** 宿主注入的「请求整屏重绘」出口（tui-loop 注入，带重绘模式）：'tail'（缺省 full）为尾部
+   *  原位重写——段锚点折叠经此只重放变化尾部（2026-09-30 方案 A，闪屏消除） */
+  onRequestRepaint?: (mode?: RepaintMode) => void;
   /** 空闲态 Ctrl+C 的退出请求出口（entry 注入优雅退出：flush→dispose→unmount→exit）；缺省无退出通道 */
   onExit?: () => void;
 }): JSX.Element {
   const localRetain = React.useRef<RetainedUiState>(initialRetained());
   const store = retain ?? localRetain.current;
+  // 打印账本（方案 A）：跨重挂经 store 存续（tui-loop 读 plan 定夺 tail 可达性）；挂载一次性消费
+  // rewriteFrom 并截留账本——有值=尾部重写挂载（前缀槽位保留），无值=整屏重放（账本重建、forceFull 复位）
+  const tailLedgerRef = React.useRef<TailLedger | undefined>(undefined);
+  if (tailLedgerRef.current === undefined) {
+    tailLedgerRef.current = store.tailLedger ?? createTailLedger();
+    store.tailLedger = tailLedgerRef.current;
+  }
+  const [rewriteFrom] = React.useState<number | undefined>(() => {
+    const v = store.rewriteFrom;
+    store.rewriteFrom = undefined;
+    const ledger = tailLedgerRef.current!;
+    if (v === undefined) {
+      ledger.slots = [];
+      ledger.forceFull = false;
+      ledger.plan = null;
+    } else {
+      ledger.slots.length = v;
+    }
+    return v;
+  });
   const [state, setState] = React.useState<TuiState>(controller.getState());
   // AskQuestion 选择器本地态：ref 为输入真值（useInput 处理器经 effect 重挂存在闭包滞后），state 只承载渲染
   const [qCursor, setQCursorState] = React.useState(0);
@@ -301,58 +324,50 @@ export function App({
     }
     onRequestRepaint?.();
   }, [expandAll, latestFull]);
-  // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）——上一段从全显转折叠。
-  // 防闪烁两层：①被收拢段不含思考/工具行时重绘前后画面零变化，直接跳过（连续 ▶ 行、计划卡、
-  // 上一任务正文段等无效触发全部过滤）；②400ms 防抖合并，锚点连续落定只画一次；
-  // Static 只增不删，折叠必须经重挂重放；首评只记录不触发（挂载本身即一次重放）
+  // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）。折叠判定改打印账本精确
+  // 比对（2026-09-30 方案 A，取代旧 segHasProcess 启发式）：「屏上已打印形态 vs 当前决策」有失配
+  // 即有可收拢内容——经 tail 模式只重放变化尾部（tui-loop 按可达性就地擦写或回落全量）；
+  // 无失配即零重绘（连续 ▶ 行等无效触发全部精确过滤）；400ms 防抖合并锚点连发
   const segInitRef = React.useRef(false);
   const segCountRef = React.useRef(0);
   const segDebounceRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   React.useEffect(() => {
     let seg = -1;
-    const segHasProcess: boolean[] = [];
     const msgs = state.messages;
     for (let i = 0; i < msgs.length; i++) {
       const role = msgs[i].role;
       if (role === 'assistant') {
         const prevIsAssistant = i > 0 && msgs[i - 1].role === 'assistant';
-        if (!prevIsAssistant) {
-          seg += 1;
-          segHasProcess[seg] = false;
-        }
+        if (!prevIsAssistant) seg += 1;
       } else if (role !== 'thinking' && role !== 'tool') {
         seg += 1;
-        segHasProcess[seg] = false;
       } else if (seg < 0) {
         seg = 0;
-        segHasProcess[seg] = false;
-      } else {
-        segHasProcess[seg] = true;
       }
     }
     const segCount = seg + 1;
     const changed = segInitRef.current && segCount !== segCountRef.current;
-    // 被收拢的段：上次计数与本次计数之间的旧尾段——只有含过程行时收拢才有画面变化
-    let collapseWorthy = false;
-    if (changed) {
-      const from = Math.max(0, segCountRef.current - 1);
-      for (let k = from; k < segCount - 1; k++) {
-        if (segHasProcess[k]) {
-          collapseWorthy = true;
-          break;
-        }
-      }
-    }
     segInitRef.current = true;
     segCountRef.current = segCount;
     // 全屏/浏览态跳过段锚点重绘（2026-09-28 用户裁决）：动态区自绘面在场时整屏拆挂即持续闪屏、
     // 且重挂空窗吞 Esc/↑↓ 按键；账本照记，退出后从真实基线起算零虚触发
     if (inspectRef.current || browseModeRef.current) return;
-    if (!changed || !collapseWorthy) return;
+    if (!changed) return;
+    const ledger = tailLedgerRef.current!;
+    if (ledger.forceFull) {
+      // 不可数形态（SPAWN 展开转录等）：回落全量路径
+      if (segDebounceRef.current) clearTimeout(segDebounceRef.current);
+      segDebounceRef.current = setTimeout(() => {
+        segDebounceRef.current = undefined;
+        onRequestRepaint?.();
+      }, 400);
+      return;
+    }
+    if (ledger.plan === null) return; // 精确无失配：零重绘
     if (segDebounceRef.current) clearTimeout(segDebounceRef.current);
     segDebounceRef.current = setTimeout(() => {
       segDebounceRef.current = undefined;
-      onRequestRepaint?.();
+      onRequestRepaint?.('tail');
     }, 400);
   }, [state.messages]);
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
@@ -737,6 +752,8 @@ export function App({
         expandAll={expandAll}
         latestFull={latestFull}
         suppressHistory={!!inspect}
+        ledger={tailLedgerRef.current}
+        rewriteFrom={rewriteFrom}
       />
       {inspect ? (
         <ChildInspector

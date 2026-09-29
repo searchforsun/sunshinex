@@ -1,4 +1,6 @@
 /** 跨重挂保留的输入/视图现场（resize 整屏重绘时由 App 实时回写、下次挂载恢复——打字过半不丢、输入历史可续、两层展开视图不回落） */
+import type { TailLedger } from './tail-rewrite';
+
 export interface RetainedUiState {
   buffer: string;
   cursor: number;
@@ -16,6 +18,12 @@ export interface RetainedUiState {
   inspectExpanded: boolean;
   history: string[];
   histIdx: number;
+  /** 打印账本（2026-09-30 方案 A）：跨重挂存续——tui-loop 读其 plan 定夺尾部原位重写，
+   *  MessageList 逐渲染记账；全量重放路径由挂载端重建 */
+  tailLedger?: TailLedger;
+  /** tui-loop 预置的尾部重写起点（重挂前写入、App 挂载一次性消费）：本挂载中该下标以前的
+   *  Static 条目不再重放（屏上原样保留）；undefined=整屏重放 */
+  rewriteFrom?: number;
 }
 
 export function initialRetained(): RetainedUiState {

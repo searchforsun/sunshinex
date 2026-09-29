@@ -8,6 +8,7 @@ import { Banner } from './Banner';
 import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
+import { TailLedger, printedEntryLines, recomputeTailPlan } from '../tail-rewrite';
 import { theme } from '../theme';
 
 /**
@@ -37,6 +38,8 @@ export function MessageList({
   suppressHistory = false,
   rows,
   previewMaxRows,
+  ledger,
+  rewriteFrom,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
@@ -53,6 +56,12 @@ export function MessageList({
   rows?: number;
   /** 预览窗口上限显式覆盖（2026-09-30 App 动态区 chrome 实账直传）：在场时优先于 rows 联动公式 */
   previewMaxRows?: number;
+  /** 打印账本（2026-09-30 方案 A）：逐渲染记录已打印条目的形态与行数并重算尾部重写计划，
+   *  供 tui-loop 定夺「就地擦写只重放变化尾部」；缺省不记账（零行为变化，测试兼容） */
+  ledger?: TailLedger;
+  /** 尾部重写起点（tui-loop 经 retain 预置、App 挂载一次性消费透传）：本挂载中该下标以前的
+   *  条目渲染 null 不重放（屏上原样保留）；undefined=整屏重放 */
+  rewriteFrom?: number;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -75,18 +84,47 @@ export function MessageList({
   // 折叠决策逐条预计算：条目数组长度恒为 visibleMessages.length+1（append-only，维持 Static 索引推进不变式），
   // 不可见条目以 null 渲染（已打印的行留待下次重挂重放时收拢）
   const decisions = buildTranscriptDecisions(visibleMessages, { expandAll, latestFull });
-  // 整屏接管（suppressHistory）：Static 条目置空（横幅一并让位）——全屏视图独占整页，退出经重挂整屏重放恢复
+  // 打印账本记账（2026-09-30 方案 A）：新增条目按「本渲染将打印的形态」入账（visible=false 渲染 null 记 0 行；
+  // 行数不可数 → forceFull 闩，本次挂载内 tail 一律降级全量）；随后重算「屏上 vs 当前决策」的
+  // 尾部重写计划。rewriteFrom 挂载的前缀条目结构性缺席（账本前缀槽位已在挂载端截留），记账自然只覆盖尾部
+  if (ledger !== undefined) {
+    for (let i = ledger.slots.length; i < visibleMessages.length; i++) {
+      const item = visibleMessages[i]!;
+      const d = decisions[i]!;
+      if (!d.visible) {
+        ledger.slots.push({ item, visible: false, full: d.full, lines: 0 });
+        continue;
+      }
+      const counted = printedEntryLines(item, d.full, columns);
+      if (counted === undefined) {
+        ledger.forceFull = true;
+        ledger.slots.push({ item, visible: true, full: d.full, lines: 0 });
+        continue;
+      }
+      ledger.slots.push({ item, visible: true, full: d.full, lines: counted + 1 /* marginBottom */ });
+    }
+    recomputeTailPlan(ledger, visibleMessages, decisions);
+  }
+  // 整屏接管（suppressHistory）：Static 条目置空（横幅一并让位）——全屏视图独占整页，退出经重挂整屏重放恢复；
+  // 尾部重写挂载（rewriteFrom 在场）：横幅与前缀条目一律不重放——屏上原样保留，重挂只重放变化尾部
   const entries: TranscriptEntry[] = suppressHistory
     ? []
-    : [
-        { kind: 'banner', info: banner },
-        ...visibleMessages.map((item, i) => ({
+    : rewriteFrom === undefined
+      ? [
+          { kind: 'banner', info: banner },
+          ...visibleMessages.map((item, i) => ({
+            kind: 'message' as const,
+            item,
+            full: decisions[i].full,
+            visible: decisions[i].visible,
+          })),
+        ]
+      : visibleMessages.map((item, i) => ({
           kind: 'message' as const,
           item,
           full: decisions[i].full,
           visible: decisions[i].visible,
-        })),
-      ];
+        }));
   return (
     <Box flexDirection="column">
       <Static key={epochRef.current} items={entries}>
