@@ -97,19 +97,20 @@ export class ProcessSandbox implements ToolBackend {
   killBackground(pid: number): void {
     if (pid <= 0) return;
     if (process.platform === 'win32') {
-      // spawnSync：等 taskkill 退出再返回；异步 spawn 返回时孙进程（如 sleep）仍可占 cwd，随后 rm 目录即 EPERM
-      const r = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' });
-      // 全树收割确认（2026-09-30 第三轮 EPERM 实锤）：taskkill /F 只投递终止，树内各进程真正退出与
-      // 句柄释放是异步的——根 pid（shell）消失 ≠ node 孙进程句柄释放（全量负载 + Defender 下可滞留数秒）。
-      // 解析 taskkill 输出的树成员 PID（成功行含「PID <n>」字样，中英文输出皆保留），逐个轮询消失才返回，
-      // 兑现「返回时进程树已收割完毕」契约；10s 安全网超时放弃（rm 重试兜底），普通杀根 pid 集合单元素
-      const tree = new Set<number>([pid]);
-      for (const m of `${r.stdout ?? ''}`.matchAll(/PID (\d+)/g)) tree.add(Number(m[1]));
-      for (let i = 0; i < 100 && tree.size > 0; i++) {
-        for (const p of tree) {
-          try { process.kill(p, 0); } catch { tree.delete(p); }
+      // 收割闭环（2026-09-30 第四/五轮 EPERM 实锤修订）：taskkill 投递在高负载下可失败（OpenProcess/终止投递
+      // 短暂被拒）、树进程退出与 cwd 句柄释放异步——闭环 = taskkill 投递 → 轮询根 pid 消失 → 残留重投（≤3 轮）。
+      // 轮询/重投只盯根 pid：taskkill 输出里的其他 PID（conhost/msys 宿主）不持 cwd、退出时序不受控，
+      // 纳入集合会在重投轮反复 taskkill 无辜进程（PID 复用即误杀面），且宿主被 /F 后滞后数秒才退——
+      // 第五轮「全树轮询」实测把 ttob 用例拖进 15s+ 并诱发宿主控制台连带终止（测试进程无栈 exit=1 实锤）。
+      // root 消失后孙进程自然落定，cwd 释放滞尾由调用方 rm 重试兜底
+      for (let round = 0; round < 3; round++) {
+        spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' });
+        let alive = false;
+        for (let i = 0; i < 50; i++) {
+          try { process.kill(pid, 0); alive = true; } catch { alive = false; break; }
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
         }
-        if (tree.size > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+        if (!alive) return;
       }
     } else {
       try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出，终态行由 close 回调落 */ } }
