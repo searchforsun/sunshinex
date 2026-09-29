@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Box, Text } from 'ink';
 import { LiveBlock } from '../session';
 import { wrapByWidth } from '../text-band';
+import { markdownRowCount } from '../markdown';
 import { MarkdownText } from './MarkdownText';
 
 /** 思考流滚动固定行数：块高恒定，增量到达时不再上下跳动（对标 Claude Code 思考滚动区） */
@@ -21,23 +22,35 @@ const REPLY_PREVIEW_MAX_ROWS = 28;
  *  方向性偏保守）；截断若落在表格内部，缺表头的行经 MarkdownText 按普通段落 1:1 呈现，帧高仍有界。
  *  rows 绑定（2026-09-28 跳到中间修复）：窗口上限随终端行数收缩——固定 28 行窗口 + 输入框/状态栏/
  *  活动行在矮终端超视口，ink 光标上移越顶即「从中段起渲染」；预留 6 行 chrome，rows 缺省（测试/管道）
- *  回落固定上限零行为变化 */
+ *  回落固定上限零行为变化
+ *  2026-09-30 渲染行数口径接线（markdownRowCount，正文输出跳到中间总根修复）：旧估算按原始行计数，
+ *  而 MarkdownText 渲染时块间插 marginTop 空行、表格按 alignTable 实际框线行数——多块正文（段落/列表/
+ *  表格交替，恰是模型正文常形态）渲染行数系统性高于估算，动态帧被撑过 stdout.rows 即触发 ink3
+ *  outputHeight>=rows 的 clearTerminal 整屏重写路径（视口跳中段 + 滚动缓冲被清）。窗口行数一律以
+ *  渲染同源口径收敛：先按原始行粗收敛出候选窗口（快路径），再按 markdownRowCount 逐行推进 cut 至
+ *  渲染行数落进预算；末行恒保留兜底（单块超预算时宁超不空） */
 export function tailReplyPreview(pending: string, columns: number, maxRows: number): string {
   const lines = pending.split('\n');
   const safe = Math.max(8, columns - 2);
   const budget = Math.max(4, maxRows - 2);
   let total = 0;
-  let cut = 0;
+  let cut = lines.length;
   for (let i = lines.length - 1; i >= 0; i--) {
     total += Math.max(1, wrapByWidth(lines[i]!, safe).length);
-    if (total > budget) return lines.slice(i + 1).join('\n');
+    if (total > budget) break;
     cut = i;
+  }
+  // 渲染行数收敛：块间空行/表格框线等膨胀逐行吐出，直至 markdownRowCount（渲染同源）落进预算
+  while (cut < lines.length - 1 && markdownRowCount(lines.slice(cut).join('\n'), columns) > budget) {
+    cut += 1;
   }
   return lines.slice(cut).join('\n');
 }
 
-export function LiveArea({ live, columns, rows }: { live: LiveBlock; columns: number; rows?: number }): JSX.Element {
-  const maxRows = rows === undefined ? REPLY_PREVIEW_MAX_ROWS : Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(8, rows - 6));
+export function LiveArea({ live, columns, rows, maxRows: maxRowsOverride }: { live: LiveBlock; columns: number; rows?: number; maxRows?: number }): JSX.Element {
+  // maxRows 显式覆盖优先（2026-09-30 App 动态区 chrome 实账直传：子代理面板/多行输入/展开待办等
+  // 全部计入后再定预览上限，防帧高触顶）；缺省回落 rows 联动公式（rows 缺省再回落固定上限）
+  const maxRows = maxRowsOverride ?? (rows === undefined ? REPLY_PREVIEW_MAX_ROWS : Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(8, rows - 6)));
   if (live.kind === 'reply') {
     // 长围栏兜底切块后预览续块以开栏行承接：未闭合围栏按围栏开始渲染，代码块高亮呈现跨切块延续
     const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);

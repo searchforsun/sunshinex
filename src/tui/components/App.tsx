@@ -328,6 +328,16 @@ export function App({
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
   const rows = useStdout().stdout?.rows ?? 24; // 全屏查看视口高度（规格 §3.3 有界=终端行数）
+  // 动态区 chrome 实账（2026-09-30 正文输出跳到中间总根修复）：预览窗口上限不再按 rows−6 拍脑袋预留——
+  // 活动行/子代理面板（含边框 2 行）/输入框（多行缓冲随行数涨）/待办（运行中折叠单行、其余态展开全量）/
+  // 状态栏逐项实数计入，余量 2 行吸收估算边界差。帧高一旦触顶 stdout.rows 即触发 ink3 clearTerminal
+  // 整屏重写路径（视口跳中段 + 滚动缓冲被清），子代理并行/多行排队输入等旧公式漏记的场景在此全覆盖
+  const runningChildrenCount = state.children.filter((c) => !c.done).length;
+  const childPanelRows = runningChildrenCount > 0 ? runningChildrenCount + 2 : 0;
+  const inputRows = 2 + Math.max(1, buffer.split('\n').length);
+  const todoRows = state.todos.length > 0 ? (state.status === 'running' && !expandAll ? 1 : state.todos.length + 1) : 0;
+  const spinnerRows = state.status === 'running' ? 1 : 0;
+  const previewCap = Math.max(4, Math.min(28, rows - spinnerRows - childPanelRows - inputRows - todoRows - 1 - 2));
   // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
@@ -660,6 +670,7 @@ export function App({
         live={inspect ? undefined : state.live}
         columns={columns}
         rows={rows}
+        previewMaxRows={previewCap}
         expandAll={expandAll}
         latestFull={latestFull}
         suppressHistory={!!inspect}

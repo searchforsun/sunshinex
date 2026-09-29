@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from '../test-ink';
-import { LiveArea } from './LiveArea';
+import { LiveArea, tailReplyPreview } from './LiveArea';
+import { markdownRowCount } from '../markdown';
 
 test('LiveArea：思考流滚动显示末 6 行，块高恒定不跳动', () => {
   // 短文本：不足 6 行补空行，块高恒为 6
@@ -90,12 +91,13 @@ test('LiveArea：预览统一 Markdown 渲染——粗体/列表生成期间即�
 
 test('LiveArea：长表格生成中尾部窗口渲染（框线实时成形，超预算整表滚出、尾部行恒可见）', () => {
   const mk = (n: number) => ['| 模块名 | 端口 | 所属域 |', '| --- | --- | --- |'].concat(Array.from({ length: n }, (_, i) => `| 服务${i} | 930${i} | 域${i} |`)).join('\n');
-  // 未超预算：整表实时可见（所见即所得口径保留）
-  const r1 = render(<LiveArea live={{ kind: 'reply', text: mk(12), committedLen: 0, startedAt: 0 }} columns={80} />);
+  // 未超渲染预算：整表实时可见（2026-09-30 渲染行数口径：表格渲染行数 = 2r+3，11 行表 = 25 行落进
+  // budget 26；旧 mk(12) 实为 27 渲染行超预算，靠溢出整表直出——正是「正文输出跳到中间」病根形态）
+  const r1 = render(<LiveArea live={{ kind: 'reply', text: mk(11), committedLen: 0, startedAt: 0 }} columns={80} />);
   const f1 = r1.lastFrame() ?? '';
   assert.match(f1, /[─╭╰]/, '表格应以框线形态实时渲染');
   assert.match(f1, /模块名/, '表头应可见');
-  assert.ok(f1.includes('服务0') && f1.includes('服务11'), '预算内整表可见');
+  assert.ok(f1.includes('服务0') && f1.includes('服务10'), '预算内整表可见');
   assert.ok(!f1.includes('generating') && !f1.includes('生成中'), '生成期计数/溢出提示行保持删除');
   r1.unmount();
   // 超预算：帧高有界、尾部最新行恒可见（长表格不再把动态区撑到整屏重排）
@@ -106,4 +108,28 @@ test('LiveArea：长表格生成中尾部窗口渲染（框线实时成形，超
   assert.ok(!/\b服务0\b/.test(f2), '表头/首行滚出窗口');
   assert.ok(n <= 34, `帧高有界（实际 ${n} 行应 ≤ 34），表格生成期不整屏重排`);
   r2.unmount();
+});
+
+test('tailReplyPreview：渲染行数口径收敛——块间空行与表格框线计入预算（2026-09-30 正文输出跳到中间总根修复：旧口径按原始行计数，多块正文渲染行数系统性高于估算，动态帧撑过视口即 ink3 整屏重写）', () => {
+  const mkTable = (n: number) => ['| 模块名 | 端口 |', '| --- | --- |'].concat(Array.from({ length: n }, (_, i) => `| 服务${i} | 930${i} |`)).join('\n');
+  // 多块正文：段落 + 无序清单（无空行源码形态，渲染层块间补空行）+ 表格 + 收尾段
+  const multiBlock = ['引言段落一行。', '- 清单一', '- 清单二', '- 清单三', mkTable(6), '收尾段落一行。'].join('\n');
+  // 核心不变式：任意预算下，窗口的渲染行数（markdownRowCount 同源口径）不超 budget（单行超预算兜底除外）
+  for (const maxRows of [8, 14, 28]) {
+    const budget = Math.max(4, maxRows - 2);
+    for (const text of [multiBlock, mkTable(40), multiBlock + '\n' + mkTable(12)]) {
+      const w = tailReplyPreview(text, 80, maxRows);
+      if (w.includes('\n')) {
+        assert.ok(
+          markdownRowCount(w, 80) <= budget,
+          `maxRows=${maxRows} 渲染行数 ${markdownRowCount(w, 80)} 应 ≤ 预算 ${budget}`,
+        );
+      }
+      assert.ok(text.endsWith(w), '窗口必须是尾部连续切片');
+    }
+  }
+  // 表格渲染膨胀（2r+3）超预算时头部行滚出、末行恒可见
+  const t = tailReplyPreview(mkTable(20), 80, 10);
+  assert.ok(t.includes('服务19'), '末行恒可见');
+  assert.ok(!t.includes('模块名'), '超预算表头滚出窗口');
 });

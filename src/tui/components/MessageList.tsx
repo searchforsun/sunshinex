@@ -36,6 +36,7 @@ export function MessageList({
   latestFull,
   suppressHistory = false,
   rows,
+  previewMaxRows,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
@@ -50,6 +51,8 @@ export function MessageList({
   suppressHistory?: boolean;
   /** 终端行数：流式预览窗口上限随视口收缩（min(28, rows−6)），矮终端不超视口防中段起渲染；缺省固定上限 */
   rows?: number;
+  /** 预览窗口上限显式覆盖（2026-09-30 App 动态区 chrome 实账直传）：在场时优先于 rows 联动公式 */
+  previewMaxRows?: number;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -103,7 +106,7 @@ export function MessageList({
           ) : null
         }
       </Static>
-      {live ? <LiveArea live={live} columns={columns} rows={rows} /> : null}
+      {live ? <LiveArea live={live} columns={columns} rows={rows} maxRows={previewMaxRows} /> : null}
     </Box>
   );
 }
