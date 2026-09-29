@@ -1730,7 +1730,7 @@ export class SessionController {
   /** 子代理事件处理（规格 §4.3）：首事件创建面板态；增量行化、结构事件即时行化；不触达主链任何分支。
    *  流式双缓冲（2026-09-29 对标主 agent session 态）：reasoning 独立累积（bufThink，视图 6 行滚动窗实时预览）、
    *  非 reasoning 事件到达即收束为 ✻ 摘要行（对标 closeLive「Thought for Ns」+ detail 全文）；
-   *  正文 token 半行续接语义不变（工具边界不冲刷防碎片），空行保留（段落边界——视图增量入 Static 的稳态切割点）。 */
+   *  正文 token 半行遇结构边界冲刷保序（2026-09-30，见 flushBuf），空行保留（段落边界——视图增量入 Static 的稳态切割点）。 */
   private onChildEvent(e: SessionEvent, label: string): void {
     let list = this.state.children;
     let idx = list.findIndex((c) => c.label === label);
@@ -1740,12 +1740,20 @@ export class SessionController {
     }
     const child = list[idx]!;
     let buf = this.childBufs.get(label) ?? '';
-    // 结构事件先冲刷半行（保持转录时序：正文半行 → 结构行）
     let transcript = child.transcript;
     let steps = child.steps;
     let tokens = child.tokens;
     let bufThink = child.bufThink;
     let thinkStartedAt = child.thinkStartedAt;
+    /** 结构边界冲刷（2026-09-30 时序保序，替代 2026-09-28「不冲刷防碎片」）：正文半行先行入档再落结构行——
+     *  否则未换行正文滞留缓冲、跨过全部工具行后与后续步正文粘连沉底（真机「工具/阶段说明集中最后」病根）；
+     *  冲出的孤立半行在视图 md 段合并下不再显碎片（相邻正文自动拼段，工具行隔断处即 CC 形态——
+     *  正文片段先于其后的工具块，时间线与主 agent 同构） */
+    const flushBuf = (): void => {
+      if (buf.length === 0) return;
+      transcript = [...transcript, { kind: 'text' as const, text: buf }];
+      buf = '';
+    };
     /** 思考段收束（对标主 agent closeLive）：折为 ✻ 摘要行 + detail 全文（视图 Tab 展开） */
     const closeThink = (): void => {
       if (bufThink === undefined || bufThink.length === 0) {
@@ -1760,6 +1768,8 @@ export class SessionController {
     };
     switch (e.type) {
       case 'reasoning': {
+        // 思考开段前冲刷正文半行：思考摘要行必须落在其后正文之后（时序保序）
+        flushBuf();
         const delta = e.text ?? '';
         if (delta.length > 0 && bufThink === undefined) thinkStartedAt = Date.now();
         bufThink = (bufThink ?? '') + delta;
@@ -1775,8 +1785,7 @@ export class SessionController {
         break;
       }
       case 'tool-call': {
-        // 半行不冲刷（2026-09-28 真机碎片病根）：结构边界把「im」「import com.」这类未成行文本撕成独立碎片行；
-        // 半行留存 childBufs 续接后续 token，长成完整行（遇换行）才入档
+        flushBuf();
         closeThink();
         transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input) }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
@@ -1787,7 +1796,8 @@ export class SessionController {
         return;
       }
       case 'tool-result': {
-        // 同 tool-call：半行留存续接，不在结果边界撕碎片
+        // 同 tool-call：半行冲刷保序，随后结果行入档
+        flushBuf();
         closeThink();
         transcript = [...transcript, { kind: 'result', text: e.text ?? '', ok: e.payload?.ok === true }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
@@ -1796,6 +1806,7 @@ export class SessionController {
         return;
       }
       case 'step':
+        flushBuf();
         closeThink();
         steps = child.steps + 1;
         break;
@@ -1820,10 +1831,7 @@ export class SessionController {
         const finalLine = e.text && e.text.length > 0 ? e.text : isError ? 'failed' : 'done';
         closeThink();
         // 尾部半行收口：done 即整段收束，未成行半行作为完整行入档（正文终稿不依赖 conclusion 兜底重复补齐）
-        if (buf.length > 0) {
-          transcript = [...transcript, { kind: 'text', text: buf }];
-          buf = '';
-        }
+        flushBuf();
         const streamText = transcript.filter((l) => l.kind === 'text').map((l) => l.text).join('\n');
         const isRealFinal = finalLine !== 'done' && finalLine !== 'failed';
         if (isRealFinal && !streamText.includes(finalLine)) {

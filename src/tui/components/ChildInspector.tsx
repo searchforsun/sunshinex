@@ -77,10 +77,11 @@ export function ChildInspector(props: {
     if (done) flushRun();
     else openTail = run;
   } else if (archived) {
-    // 旧档委派行回退（meta 行 ⏺ 前缀即委派词；subagentMeta.prompt 在位时不走此路径）
+    // ⏺ 委派行恒过滤（2026-09-30 真机重复项修复）：archiveInto 同一委派词写两份（subagentMeta.prompt 驱动输入带
+    // + detail ⏺ 行），meta 形态再渲染即开头双显；委派词由输入带单点承载。旧档 meta 缺 prompt 时回退取该行。
     const lines = archived.lines.filter((l) => {
-      if (prompt === undefined && l.startsWith('⏺ ')) {
-        prompt = l.replace(/^⏺ [^：]*：/, '');
+      if (l.startsWith('⏺ ')) {
+        if (prompt === undefined) prompt = l.replace(/^⏺ [^：]*：/, '');
         return false;
       }
       return true;

@@ -10,27 +10,29 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-/** 2026-09-28 真机三症状回归：碎片行撕裂、done 终稿与流式正文重复、归档留存与精简 detail */
+/** 2026-09-28 真机三症状回归（碎片口径 2026-09-30 保序修订）：工具边界时序、done 终稿与流式正文重复、归档留存与精简 detail */
 
-test('流式碎片不撕裂：工具边界不冲半行，长成完整行后一次入档', () => {
+test('结构边界冲刷半行保序：正文先于其后的工具行入档，不再跨工具行滞留沉底（2026-09-30 真机「工具/阶段说明集中最后」病根）', () => {
   const tmp = tmpdir('sunshinex-sess-frag-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p', label: 'f' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
-    // 无换行半行（真机碎片「im」「import com.yupi.」病根：工具边界把半行撕成独立 text 行）
+    // 未换行正文半行碰上工具调用：半行先行入档再落 call 行——时间线保序（对齐 CC：正文片段先于其后的工具块；
+    // 相邻片段在全屏视图 md 段自动拼段，不显碎片）
     ctrl.onEventForTest({ type: 'token', text: 'import com.', payload: { subagent: 'f' } } as never);
     ctrl.onEventForTest({ type: 'tool-call', text: 'READ', payload: { input: { path: 'a' }, subagent: 'f' } } as never);
     const child = ctrl.getState().children.find((c) => c.label === 'f');
     assert.ok(child, '面板态在');
-    assert.equal(child!.transcript.filter((l) => l.kind === 'text').length, 0, '工具边界不产生半行碎片 text 行');
-    // 半行继续增长，到换行才行化：恰一条完整行（行尾 \n 的空段是 pop 出的续接 buf，非空行不入档；
-    // 空行仅出现在「内容之间的空行」——2026-09-29 空行保留口径：段落边界随转录入档，
-    // 全屏视图增量入 Static 的稳态切割点，对标主 agent flushReply 空行优先）
+    assert.deepEqual(child!.transcript.map((l) => l.kind), ['text', 'call'], '半行先于工具行入档（时序保序）');
+    assert.equal(child!.transcript[0]!.text, 'import com.', '半行内容完整先行入档');
+    // 工具行后的续接正文独立成行（行尾 \n 的空段是 pop 出的续接 buf，非空行不入档；
+    // 空行仅出现在「内容之间的空行」——2026-09-29 空行保留口径：段落边界随转录入档）
     ctrl.onEventForTest({ type: 'tool-result', text: 'ok', payload: { ok: true, subagent: 'f' } } as never);
     ctrl.onEventForTest({ type: 'token', text: 'x.y.Z;\n', payload: { subagent: 'f' } } as never);
-    const texts = ctrl.getState().children.find((c) => c.label === 'f')!.transcript.filter((l) => l.kind === 'text');
-    assert.deepEqual(texts.map((l) => l.text), ['import com.x.y.Z;'], '半行长成完整行后恰一条入档');
+    const seq = ctrl.getState().children.find((c) => c.label === 'f')!.transcript.map((l) => `${l.kind}:${l.text}`);
+    assert.equal(seq[3], 'text:x.y.Z;', '续接正文随行化入档');
+    assert.ok(seq[0]!.startsWith('text:') && seq[1]!.startsWith('call:') && seq[2]!.startsWith('result:'), '全程保序（text → call → result → text）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

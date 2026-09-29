@@ -35,6 +35,21 @@ test('Inspector 委派 prompt 作用户输入带呈现（2026-09-29 用户裁决
   one.unmount();
 });
 
+test('Inspector 归档态委派词单点承载：detail ⏺ 行不再二次呈现（2026-09-30 真机重复项修复）', () => {
+  // archiveInto 同一委派词写两份（subagentMeta.prompt + detail ⏺ 行）——⏺ 行恒过滤，只留输入带
+  const one = render(
+    <ChildInspector
+      archived={{ label: 'w', lines: ['⏺ 委派提示词：调研单体链路', '结论正文'], prompt: '调研单体链路', steps: 2, durationMs: 5000 }}
+      columns={80}
+      rows={12}
+    />,
+  );
+  const all = one.allOutput();
+  assert.equal(all.split('调研单体链路').length - 1, 1, '委派词恰呈现一次（输入带单点承载）');
+  assert.ok(!all.includes('⏺'), '⏺ meta 行不再渲染');
+  one.unmount();
+});
+
 test('Inspector 思考流式：运行中 6 行滚动窗实时预览，收束后 ✻ 摘要行入时间线（对标主 agent ThinkingRow）', () => {
   // 运行中 bufThink 流式尾段 → 动态区 6 行滚动窗（✻ 前缀斜体）
   const streaming = render(<ChildInspector child={live({ bufThink: '思考第一行\n思考第二行\n思考第三行' })} columns={80} rows={16} />);
