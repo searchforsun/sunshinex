@@ -455,7 +455,10 @@ test('sleep 开头命令超时不转后台：EXEC_TIMEOUT 照旧失败（规格 
     // 驻留 30s 与阈值 6s 拉开余量（同上测）：快机/低负载下 sleep 5 会在阈值前跑完、命令正常成功翻转 !r.ok（双向竞态）
     const r = await registry.execute('exec', { command: 'sleep 30' }, safety);
     assert.ok(!r.ok);
-    assert.match(r.error.message, /EXEC_TIMEOUT/);
+    // 结构化验码（2026-09-30 exec CodedToolError 保码过界）：EXEC_TIMEOUT 以 error.code 承载，
+    // 不再靠 message 前缀走私（describe 面仍以「EXEC_TIMEOUT: command timed out…」形态呈现给模型）
+    assert.equal(r.error.code, 'EXEC_TIMEOUT');
+    assert.match(r.error.message, /command timed out/);
     assert.equal(tasks.list().length, 0, '豁免路径零任务登记');
   } finally {
     await rmExecCwdTree(root);

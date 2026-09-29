@@ -107,7 +107,9 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath})`);
         }
         if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
-        throw new Error(`${r.error.code}: ${r.error.message}`);
+        // CodedToolError 保码过界（§4 错误分域）：EXEC_TIMEOUT/EXEC_FAILED 以原码交 registry——
+        // 旧形态裸 throw 字符串化即被洗成 EXEC_FAILED（双前缀 message 靠下游 startsWith 消化的病根）
+        throw new CodedToolError(r.error.code, r.error.message);
       },
     },
     {

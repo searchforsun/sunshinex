@@ -1,4 +1,5 @@
 import { LimitReason } from '../types';
+import { t } from '../i18n';
 
 export interface GuardrailInput {
   /** 当前绝对时刻（ms epoch） */
@@ -26,4 +27,32 @@ export function guardrailStop(input: GuardrailInput): LimitReason | null {
   if (tokenCap !== undefined && tokensUsed >= tokenCap) return 'budget';
   if (maxIterations !== undefined && iteration >= maxIterations) return 'max-steps';
   return null;
+}
+
+export interface GuardrailHitMessage {
+  status: 'failed' | 'paused';
+  error: string;
+}
+
+/** 护栏命中 → 终态与文案单点（loop/graph 双引擎共用）：两引擎各自手写映射已实际分叉（超时消息
+ *  一处带 over 一处不带、budget 明细一处有一处无、步数措辞两套）——同类错误提示必须一致，
+ *  改 LimitReason 或预算语义只动这里 */
+export function describeGuardrailHit(
+  hit: LimitReason,
+  ctx: { timeoutMs: number; maxTokens: number; maxIterations: number; tokensUsed: number },
+): GuardrailHitMessage {
+  switch (hit) {
+    case 'deadline':
+      return { status: 'failed', error: t(`Execution timed out (${ctx.timeoutMs}ms)`, `执行超时（超过 ${ctx.timeoutMs}ms）`) };
+    case 'budget':
+      return {
+        status: 'paused',
+        error: t(
+          `Token budget exceeded (used ${ctx.tokensUsed} ≥ max ${ctx.maxTokens}), paused`,
+          `token 预算超支（used ${ctx.tokensUsed} ≥ max ${ctx.maxTokens}），已暂停`,
+        ),
+      };
+    case 'max-steps':
+      return { status: 'failed', error: t(`Iteration limit (${ctx.maxIterations}) exhausted`, `iteration 上限（${ctx.maxIterations}）已耗尽`) };
+  }
 }

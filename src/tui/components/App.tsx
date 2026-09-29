@@ -10,6 +10,7 @@ import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
 import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS, slashMenuWindow } from './SlashMenu';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { createTailLedger, TailLedger } from '../tail-rewrite';
+import { segmentCount } from '../transcript-view';
 import type { RepaintMode } from '../tui-loop';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
@@ -307,28 +308,15 @@ export function App({
     }
     onRequestRepaint?.();
   }, [expandAll, latestFull]);
-  // 段锚点自动重绘：段数变化即新锚点落定（正文/▶ 行/用户输入各自开段）。折叠判定改打印账本精确
-  // 比对（2026-09-30 方案 A，取代旧 segHasProcess 启发式）：「屏上已打印形态 vs 当前决策」有失配
-  // 即有可收拢内容——经 tail 模式只重放变化尾部（tui-loop 按可达性就地擦写或回落全量）；
-  // 无失配即零重绘（连续 ▶ 行等无效触发全部精确过滤）；400ms 防抖合并锚点连发
+  // 段锚点自动重绘：段数变化即新锚点落定。段数经 segmentCount 单点（与 buildTranscriptDecisions 同一
+  // 切段谓词——两份手写曾漂移：system 行计段与否）。折叠判定改打印账本精确比对（2026-09-30 方案 A，
+  // 取代旧 segHasProcess 启发式）：「屏上已打印形态 vs 当前决策」有失配即有可收拢内容——经 tail 模式
+  // 只重放变化尾部（tui-loop 按可达性就地擦写或回落全量）；无失配即零重绘；400ms 防抖合并锚点连发
   const segInitRef = React.useRef(false);
   const segCountRef = React.useRef(0);
   const segDebounceRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   React.useEffect(() => {
-    let seg = -1;
-    const msgs = state.messages;
-    for (let i = 0; i < msgs.length; i++) {
-      const role = msgs[i].role;
-      if (role === 'assistant') {
-        const prevIsAssistant = i > 0 && msgs[i - 1].role === 'assistant';
-        if (!prevIsAssistant) seg += 1;
-      } else if (role !== 'thinking' && role !== 'tool') {
-        seg += 1;
-      } else if (seg < 0) {
-        seg = 0;
-      }
-    }
-    const segCount = seg + 1;
+    const segCount = segmentCount(state.messages);
     const changed = segInitRef.current && segCount !== segCountRef.current;
     segInitRef.current = true;
     segCountRef.current = segCount;

@@ -21,29 +21,36 @@ export interface ItemRenderDecision {
  * **system 说明行（压缩/队列/记忆·技能沉淀/漂移提示）不开段**：它们是行内注解而非会话轮次，
  * 否则收口后尾追的 notice 行会把轮内过程挤出当前轮作用域（规格 §10 notice 尾追纪律）。
  */
+/** 切段谓词单点：会话骨架行（user 指令行 / ▶ 阶段行 / assistant 正文块首行）开段，system 说明行
+ *  （压缩/队列/记忆·技能沉淀等行内注解）与过程行（thinking/tool）不开段——规格 §10 notice 尾追纪律。
+ *  决策面（buildTranscriptDecisions）与重绘触发面（App 段计数）必须消费同一份：两份手写已实际漂移过
+ *  （system 行计段与否），折叠判定与重绘触发脱钩即漏重绘/常驻无效重绘 */
+function opensSegment(role: ChatItem['role'], prevRole: ChatItem['role'] | undefined): boolean {
+  if (role === 'assistant') return prevRole !== 'assistant'; // 正文连续切块并入同段不裂段
+  return role === 'user' || role === 'step';
+}
+
+/** 段计数：切段谓词的重绘触发面消费口径（App 段锚点 effect 单点使用，禁再手写第二份谓词） */
+export function segmentCount(messages: ChatItem[]): number {
+  let seg = -1;
+  for (let i = 0; i < messages.length; i++) {
+    if (opensSegment(messages[i]!.role, i > 0 ? messages[i - 1]!.role : undefined)) seg += 1;
+    else if (seg < 0) seg = 0; // 防御：无骨架行开头的过程行/说明行随首段呈现
+  }
+  return seg + 1;
+}
+
 export function buildTranscriptDecisions(
   messages: ChatItem[],
   view: { expandAll: boolean; latestFull: boolean },
 ): ItemRenderDecision[] {
   const foldable = (m: ChatItem): boolean => m.role === 'thinking' || m.role === 'tool';
   const n = messages.length;
-  // 切段：会话骨架行（user 指令行 / assistant 正文）开段，正文连续切块并入同段，过程行隶属当前段。
-  // system 说明行（压缩/队列/记忆·技能沉淀/漂移提示等）是行内注解而非会话轮次，**不新开段**：
-  // 否则收口后尾追的 notice 行会把轮内过程挤出当前轮作用域（Ctrl+O 展开态被莫名收拢，规格 §10 notice 尾追纪律）。
   const segOf: number[] = new Array(n).fill(0);
   let seg = -1;
   for (let i = 0; i < n; i++) {
-    const role = messages[i].role;
-    if (role === 'assistant') {
-      const prevIsAssistant = i > 0 && messages[i - 1].role === 'assistant';
-      if (!prevIsAssistant) seg += 1;
-    } else if (role === 'user' || role === 'step') {
-      // ▶ 阶段行与 user 指令行、正文同为锚点、各自开段（阶段前的过程归上一段）：
-      // 漏掉 step 会让整场阶段挤进同一段——非末段的「留一组概要」全部失效（▶ 行之间空着）。
-      seg += 1;
-    } else if (seg < 0) {
-      seg = 0; // 防御：无骨架行开头的过程行/说明行随首段呈现
-    }
+    if (opensSegment(messages[i]!.role, i > 0 ? messages[i - 1]!.role : undefined)) seg += 1;
+    else if (seg < 0) seg = 0; // 防御：无骨架行开头的过程行/说明行随首段呈现
     segOf[i] = seg;
   }
   const lastSeg = seg;

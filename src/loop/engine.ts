@@ -11,7 +11,7 @@ import {
   SkillRef,
   StopReason,
 } from '../types';
-import { guardrailStop } from '../harness/guardrail';
+import { guardrailStop, describeGuardrailHit } from '../harness/guardrail';
 import { ModelAdapter, ModelRouter } from '../model/adapter';
 import { Result } from '../result';
 import { ResolvedSkill, skillHeader } from '../harness/skills';
@@ -168,24 +168,13 @@ export class LoopEngine {
         return this.finish(ctx, 'paused', { stopReason: 'interrupted', error: t('Task interrupted (Esc/Ctrl+C)', '任务已中断（Esc/Ctrl+C）') });
       }
       if (hit) {
-        const mapped: Record<LimitReason, { status: LoopRunResult['status']; error: string }> = {
-          deadline: {
-            status: 'failed',
-            error: t('Execution timed out (' + this.termination.timeoutMs + 'ms)', '执行超时（超过 ' + this.termination.timeoutMs + 'ms）'),
-          },
-          budget: {
-            status: 'paused',
-            error: t(
-              'Token budget exceeded (used ' + ctx.tokensUsed + ' ≥ max ' + this.termination.maxTokens + ')',
-              'token 预算超支（used ' + ctx.tokensUsed + ' ≥ max ' + this.termination.maxTokens + '）',
-            ),
-          },
-          'max-steps': {
-            status: 'failed',
-            error: t('Iteration limit (' + this.termination.maxIterations + ') exhausted', 'iteration 上限（' + this.termination.maxIterations + '）已耗尽'),
-          },
-        };
-        const m = mapped[hit];
+        // 状态映射与文案单点（describeGuardrailHit）：与 graph 引擎共用，不再各自手写（文案已分叉过）
+        const m = describeGuardrailHit(hit, {
+          timeoutMs: this.termination.timeoutMs,
+          maxTokens: this.termination.maxTokens,
+          maxIterations: this.termination.maxIterations,
+          tokensUsed: ctx.tokensUsed,
+        });
         return this.finish(ctx, m.status, { error: m.error, stopReason: hit });
       }
 

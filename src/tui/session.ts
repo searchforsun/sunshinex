@@ -891,9 +891,7 @@ export class SessionController {
       kind: 'call', pending: false, callId: p.callId,
     }));
     this.pendingCalls = [];
-    this.state = { ...this.state, messages: [...this.state.messages, ...flushed] };
-    for (const item of flushed) this.journal?.log({ t: 'msg', item });
-    this.notify();
+    this.appendMessages(flushed);
   }
 
   private closeTask(): void {
@@ -1648,15 +1646,12 @@ export class SessionController {
           callId,
           detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
         };
-        this.state = { ...this.state, messages: [...this.state.messages, callItem, item] };
-        this.journal?.log({ t: 'msg', item: callItem });
-        this.journal?.log({ t: 'msg', item });
+        this.appendMessages([callItem, item]);
         if (e.payload?.tool === 'spawn') {
           // spawn 调用关联栈：调用行此刻才入档，压栈其真实 seq 与委派时刻（浏览列表委派时间序数据源），成对语义下紧随其后弹出归档
           this.spawnCalls.push({ seq: callItem.seq, base: spawnBaseLabel(pending?.input), delegatedAt: callItem.ts });
           this.archiveChild();
         }
-        this.notify();
         return;
       }
       case 'step': {
@@ -1721,10 +1716,23 @@ export class SessionController {
   }
 
   private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'pending' | 'callId' | 'detail' | 'level'>>): void {
-    const item: ChatItem = { role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) };
-    this.state = { ...this.state, messages: [...this.state.messages, item] };
-    // 消息流入志（单一挂钩点：所有入档消息都经 pushMsg）；恢复注入不经此处（零重复入志）
-    this.journal?.log({ t: 'msg', item });
+    this.appendMessages([{ role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) }]);
+  }
+
+  /** 消息区唯一追加写点（单一挂钩点）：改 state + 逐条落 journal + 通知三件套单点——pushMsg（单条）、
+   *  tool-result 成对入档、flushPendingCalls 批量兜底共用；任何绕过此点手拼 messages 的路径都会让
+   *  未来加在写点上的不变量静默失效（b705855 丢 notify 真机前科）。恢复注入不经此处（零重复入志，文档化特例） */
+  private appendMessages(items: ChatItem[]): void {
+    if (items.length === 0) return;
+    this.state = { ...this.state, messages: [...this.state.messages, ...items] };
+    for (const item of items) this.journal?.log({ t: 'msg', item });
+    this.notify();
+  }
+
+  /** 已入档消息的唯一覆盖写点：同 seq 原位替换 + 'msg-update' 回写（归档富化唯一消费方） */
+  private updateMessage(item: ChatItem): void {
+    this.state = { ...this.state, messages: this.state.messages.map((m) => (m.seq === item.seq ? item : m)) };
+    this.journal?.log({ t: 'msg-update', item });
     this.notify();
   }
 
@@ -1925,20 +1933,13 @@ export class SessionController {
       `${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`,
     ].join('\n');
     const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens, delegatedAt: pending.delegatedAt, prompt };
-    // 富化回写日志（2026-09-30）：调用行已在档（'msg' 事件先行），归档富化以 'msg-update' 终态覆盖回写——
-    // 不回写则 resume/rewind 回放退回裸调用行（无 detail/subagentMeta），Ctrl+B 历史归档全消失（真机「6 个只显示 1 个」病根）
-    let archived: ChatItem | undefined;
-    this.state = {
-      ...this.state,
-      children: this.state.children.filter((c) => c.label !== child.label),
-      messages: this.state.messages.map((m) => {
-        if (m.seq !== pending.seq) return m;
-        archived = { ...m, detail, subagentMeta };
-        return archived;
-      }),
-    };
-    if (archived !== undefined) this.journal?.log({ t: 'msg-update', item: archived });
-    this.notify();
+    // 富化回写（2026-09-30）：调用行已在档（'msg' 事件先行），归档富化以 'msg-update' 终态覆盖回写——
+    // 不回写则 resume/rewind 回放退回裸调用行（无 detail/subagentMeta），Ctrl+B 历史归档全消失（真机「6 个只显示 1 个」病根）；
+    // 覆盖写经 updateMessage 单点（journal 回写 + 通知与追加写点同一纪律）
+    this.state = { ...this.state, children: this.state.children.filter((c) => c.label !== child.label) };
+    const target = this.state.messages.find((m) => m.seq === pending.seq);
+    if (target !== undefined) this.updateMessage({ ...target, detail, subagentMeta });
+    else this.notify();
   }
 
   /** 追加实时区内容：同类续接；异类先收束旧块（thinking 折叠为摘要行，reply 交由 done 定稿避免重复） */
@@ -2035,7 +2036,7 @@ export class SessionController {
   }
 
   /** 高频增量（token/reasoning 逐 delta）合帧节流窗口：约 80ms 通知一次，终态与结构事件仍即时放行 */
-  private static readonly NOTIFY_THROTTLE_MS = 120; // 流式合帧窗口：≥100ms 显著降低整帧擦写频率（ink 无逐行 diff，动态区任一行变化即全帧重写），~8 帧/s 观感仍连续
+  private static readonly NOTIFY_THROTTLE_MS = 80; // 流式合帧窗口（2026-09-30 流畅度裁决）：ink 无逐行 diff，动态区任一行变化即全帧重写——帧率与擦写面积耦合：REPLY_SEGMENT_MAX_LINES 收到 10 后预览区 ~11 行，80ms（~12 帧/s）擦写肉眼不可感、流式爬行观感显著更顺；旧 120ms 是 20+ 行大预览区时代的防闪灼取舍，区域收敛后钝感即卡顿感
   private notifyTimer?: NodeJS.Timeout;
 
   private notify(): void {

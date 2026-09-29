@@ -7,7 +7,7 @@ import type {
   GraphTermination,
   StopReason,
 } from '../types';
-import { guardrailStop } from '../harness/guardrail';
+import { guardrailStop, describeGuardrailHit } from '../harness/guardrail';
 import { t } from '../i18n';
 
 export type { GraphDeps, GraphTermination };
@@ -150,11 +150,17 @@ export class GraphEngine {
         iteration: this.steps,
         maxIterations: this.term.maxNodes,
       });
-      if (hit === 'deadline')
-        return this.finish('failed', t('Execution timed out (over ' + this.term.timeoutMs + 'ms)', '执行超时（超过 ' + this.term.timeoutMs + 'ms）'), { stopReason: 'deadline' });
-      if (hit === 'budget') return this.finish('paused', t('Token budget exceeded, paused', 'Token 预算超支，已暂停'), { stopReason: 'budget' });
-      if (hit === 'max-steps')
-        return this.finish('failed', t('Node steps exhausted (maxNodes=' + this.term.maxNodes + ')', '节点步数耗尽（maxNodes=' + this.term.maxNodes + '）'), { stopReason: 'max-steps' });
+      // 状态映射与文案单点（describeGuardrailHit）：与 loop 引擎共用——文案已分叉（此处旧超时消息
+      // 多个 over、budget 无明细、步数措辞另一套），收单点后两引擎同类错误提示恒一致
+      if (hit) {
+        const m = describeGuardrailHit(hit, {
+          timeoutMs: this.term.timeoutMs,
+          maxTokens: this.term.maxTokens,
+          maxIterations: this.term.maxNodes,
+          tokensUsed: ctx.tokensUsed,
+        });
+        return this.finish(m.status, m.error, { stopReason: hit });
+      }
       await Promise.allSettled(
         runnable.map(async (node) => {
           const inputs: Record<string, GraphNodeOutput> = {};

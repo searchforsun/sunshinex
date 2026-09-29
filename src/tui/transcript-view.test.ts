@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ChatItem } from './session';
-import { buildTranscriptDecisions } from './transcript-view';
+import { buildTranscriptDecisions, segmentCount } from './transcript-view';
 
 let seq = 0;
 const item = (role: ChatItem['role'], text: string, extra: Partial<ChatItem> = {}): ChatItem =>
@@ -221,4 +221,27 @@ test('Ctrl+O 轮次边界：新 user 指令行开新轮——仅当前轮展开�
   assert.ok(deep[12].visible && deep[12].full && deep[13].visible && deep[13].full, '当前轮被折叠的次组随 Ctrl+O 放行+全文');
   assert.ok(!deep[1].full && !deep[2].full, '历史轮（任务一）过程保持摘要');
   assert.ok(!deep[4].visible && !deep[5].visible, '历史轮被折叠的次组不随 Ctrl+O 放行');
+});
+
+test('segmentCount：切段谓词单点——system 说明行不开段、正文连续块不裂段、决策面同谓词（2026-09-30 双手写漂移修复）', () => {
+  const mk = (role: ChatItem['role'], text: string, extra: Partial<ChatItem> = {}): ChatItem =>
+    ({ seq: seq++, role, text, ts: 0, ...extra }) as ChatItem;
+  // system 行（压缩/记忆·技能 notice）不开段：旧 App 手写谓词把它计段，与决策面漂移
+  const msgs = [
+    mk('user', '任务'),
+    mk('system', '[memory] saved: ...'),
+    mk('assistant', '正文块一'),
+    mk('assistant', '正文块二（连续切块并入同段）'),
+    mk('tool', 'READ a.ts', { kind: 'call' }),
+    mk('system', 'Skill loaded: ...'),
+    mk('assistant', '第二轮正文'),
+    mk('step', 'Step 1/2 — 项'),
+    mk('assistant', '第三轮正文'),
+  ];
+  assert.equal(segmentCount(msgs), 5, '开段者：user / 正文块一 / 第二轮正文 / step / 第三轮正文 = 5 段（system/tool 不开段、连续正文并入同段）');
+  // 与决策面同谓词的算术关系：末段号 + 1 === segmentCount
+  const decisions = buildTranscriptDecisions(msgs, { expandAll: false, latestFull: false });
+  assert.equal(decisions.length, msgs.length);
+  // 空数组单段（防御回落）
+  assert.equal(segmentCount([]), 0, '空消息面 0 段（seg=-1 + 1，与旧 App 手写口径一致零变化）');
 });

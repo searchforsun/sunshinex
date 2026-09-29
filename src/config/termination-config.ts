@@ -28,3 +28,8 @@ export function loopIterationsEnv(env: NodeJS.ProcessEnv = process.env): number 
 export function graphNodesEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveIntOrUndefined(env, 'SUNSHINEX_MAX_GRAPH_NODES');
 }
+
+/** 上下文窗口 tokens（缺省 200k，见 src/harness/reactor.ts：状态栏「上下文占用」分母与压缩占比共用基准） */
+export function contextWindowEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveIntOrUndefined(env, 'SUNSHINEX_CONTEXT_WINDOW');
+}

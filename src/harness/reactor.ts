@@ -22,7 +22,7 @@ import {
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
-import { reactorMaxStepsEnv } from '../config/termination-config';
+import { reactorMaxStepsEnv, contextWindowEnv } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -132,11 +132,12 @@ export class Reactor {
     this.batchCounts.clear(); // 批次计数按 run 隔离：跨任务不累计
     const maxSteps = opts?.maxSteps ?? reactorMaxStepsEnv() ?? 400;
     // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
-    // （状态栏「上下文占用」分母与压缩占比共用此基准），非法值静默回退内建缺省
-    const envWindow = Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? '');
+    // （状态栏「上下文占用」分母与压缩占比共用此基准）；非法值 fail-fast（contextWindowEnv，对齐
+    // MAX_STEPS/MAX_LOOP_ITERATIONS 同款口径——旧形态静默回退 200k 即「配置没生效的排查泥潭」）
+    const window = contextWindowEnv() ?? 200_000;
     const budget = opts?.budget ?? {
-      total: Number.isFinite(envWindow) && envWindow > 0 ? envWindow : 200_000,
-      reserve: Math.floor((Number.isFinite(envWindow) && envWindow > 0 ? envWindow : 200_000) / 5),
+      total: window,
+      reserve: Math.floor(window / 5),
     };
     const tokenCap = opts?.tokenCap;
     const deadlineAt = opts?.deadlineAt;
