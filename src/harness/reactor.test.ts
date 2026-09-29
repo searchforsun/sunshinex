@@ -440,6 +440,36 @@ test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', 
   assert.ok(prompts[0].includes('phase'), '稳定段应注入 phase 约定行（消息面承载）');
 });
 
+test('Reactor 单一权威源：流式轮 phase 事件不携带叙述（token 通道已承载），非流式轮照旧透传（2026-09-30 架构化去重）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-src-'));
+  const stepPhases: unknown[] = [];
+  let call = 0;
+  // 流式适配器：首轮带叙述出工具牌且流式吐同文 token（发射点双写的历史形态），次轮收束
+  const adapter = {
+    provider: 'streaming-capture',
+    chat: async () => ({ finish: 'tool_calls' as const, content: '', toolCalls: [] }),
+    chatStream: async (req: ChatRequest, onDelta: (t: string) => void) => {
+      if (call++ === 0) {
+        onDelta('正在执行回声验证');
+        return { finish: 'tool_calls' as const, content: '正在执行回声验证', toolCalls: [{ id: 'call_0', name: 'exec', argsJson: JSON.stringify({ command: 'echo hi' }) }] };
+      }
+      onDelta('完成');
+      return { finish: 'stop' as const, content: '完成', toolCalls: [] };
+    },
+  };
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, new FileStore(tmp));
+  const reactor = new Reactor({
+    registry, safety, context, model: adapter,
+    onEvent: (e) => { if (e.type === 'step') stepPhases.push(e.payload?.phase); },
+  });
+  const r = await reactor.run({ goal: 'x' }, { maxSteps: 2 });
+  assert.equal(r.done, true);
+  assert.ok(stepPhases.every((p) => p === undefined), '流式轮 phase 事件不携带叙述——发射点不双写，正文由 token 通道单点承载');
+});
+
 test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行、单条合并观察回填', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-par-'));
   const adapter = new ScriptedAdapter([

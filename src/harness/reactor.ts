@@ -450,8 +450,16 @@ export class Reactor {
       .map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, ...(t.parameters ? { parameters: t.parameters } : {}) } }));
     const req: ChatRequest = { messages, tools, ...(signal ? { signal } : {}), ...(effort !== undefined ? { effort } : {}) };
     let result: ChatResult;
+    // 本轮是否经流式通道发过正文 token（单一权威源判据，2026-09-30 架构化去重）：
+    // 同一句叙述在发射点同时走「token 事件（→assistant 正文）」与「phase 事件 + PHASE_ACTION 链行
+    // （→▶ 阶段行 + 回喂链）」两条通道，下游文本比对去重永远补不净（真机三重复制多轮复发即证明）。
+    // 流式轮 phase 事件不再携带叙述（链行照旧回喂），phase 上屏语义只留给无流式输出的纯工具轮旁白
+    let streamedAny = false;
     if (adapter.chatStream) {
-      result = await adapter.chatStream(req, (t) => this.emit('token', t), hooks);
+      result = await adapter.chatStream(req, (t) => {
+        if (t && t.length > 0) streamedAny = true;
+        this.emit('token', t);
+      }, hooks);
     } else {
       result = await adapter.chat(req, hooks);
     }
@@ -485,7 +493,10 @@ export class Reactor {
 
     // 轮内链行共用同一轮步号（step 形参）：护栏按去重步号计模型轮、压缩水位/收尾回写行级过滤对同号行天然一致
     const callIds = calls.map((_, i) => `step:${step}-idx:${i}`);
-    this.emit('step', calls[0].name, { step, phase: result.content || undefined });
+    // 单一权威源（2026-09-30 架构化去重）：流式轮叙述已由 token 通道完整承载（下游 flushReply 切块入档），
+    // phase 事件不再重复携带——发射点不双写，下游无需文本比对；非流式轮（含适配器无 chatStream）
+    // 保持既有 phase 上屏语义（静默工具轮旁白唯一可见通道）。链行回喂（PHASE_ACTION）两态照旧
+    this.emit('step', calls[0].name, { step, phase: streamedAny ? undefined : result.content || undefined });
     if (result.content) steps.push({ step, action: PHASE_ACTION, observation: result.content });
     // 调用行先行入链（批内连续，buildMessages 聚合为 assistant+tool_calls）；被拒/坏参调用同样入链保证 role:tool 配对完整
     for (const c of calls) steps.push({ step, action: TOOL_CALL_ACTION, observation: formatToolCallLine(c.name, c.argsJson) });
