@@ -390,12 +390,15 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, tasks)) registry.register(t);
     const input = { command: 'echo step-1 && echo step-2', background: true };
     const p = registry.execute('exec', input, safety);
-    // 等登记：execute 为异步提交（安全链审批→executor.submit），轮询账本出现记录后再断言字段
-    for (let i = 0; i < 40 && tasks.list().length === 0; i++) await new Promise((r2) => setTimeout(r2, 50));
+    // 等登记：execute 为异步提交（安全链审批→executor.submit），轮询账本出现记录后再断言字段。
+    // 上限 10s 为安全网（win32 Git Bash 冷启动首字 ~1–1.4s，release 门禁全量负载下更慢；
+    // 2s 上限打满即读文件早于终态行落盘的假红，2026-09-28 Windows release 门禁实锤），
+    // 期望路径毫秒级条件退出不受影响
+    for (let i = 0; i < 200 && tasks.list().length === 0; i++) await new Promise((r2) => setTimeout(r2, 50));
     const task = tasks.list().at(-1)!;
     assert.equal(task.kind, 'exec');
     assert.ok(task.outputFilePath.includes(path.join('data', 'tasks')), '日志落 <dataDir>/tasks/');
-    for (let i = 0; i < 40 && tasks.get(task.id)?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
+    for (let i = 0; i < 200 && tasks.get(task.id)?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
     const obs = await p.then((r) => (r.ok ? r.value.stdout : `EXEC_FAILED: ${r.error.message}`));
     assert.match(obs, /^task b1 started/);
     assert.ok(obs.includes(task.outputFilePath), '观察行含输出路径');
@@ -435,7 +438,8 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
     assert.equal(task.status, 'running', '超时瞬间任务转后台登记');
     assert.ok(fs.readFileSync(task.outputFilePath, 'utf8').includes('warm'), '超时前已缓冲输出随任务落日志');
     stop();
-    for (let i = 0; i < 40 && tasks.get('b1')?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
+    // 同口径 10s 安全网（win32 shell 冷启动），taskkill 收割毫秒级退出不受影响
+    for (let i = 0; i < 200 && tasks.get('b1')?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
     assert.notEqual(tasks.get('b1')?.status, 'running');
   } finally {
     stop?.();
