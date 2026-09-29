@@ -177,6 +177,8 @@ test('reduceJournal：全词汇归约 + 未知事件类型跳过（additive 兼�
     { t: 'chain', steps: [{ step: 2, action: 'edit', observation: 's2' }] },
     { t: 'compact', chainFrom: 1, compacted: [{ kind: 'system', content: '摘要块' }] },
     { t: 'msg', item: { role: 'assistant', text: '答一句', ts: 2, seq: 5 } },
+    // msg-update（2026-09-30 归档富化回写）：同 seq 原位终态覆盖，序不重复
+    { t: 'msg-update', item: { role: 'assistant', text: '答一句(终稿)', ts: 2, seq: 5 } },
     { t: 'todos', items: [{ text: '旧待办', done: true }] },
     { t: 'todos', items: [{ text: '新待办', done: false }] },
     { t: 'model', tier: 'small' },
@@ -189,11 +191,26 @@ test('reduceJournal：全词汇归约 + 未知事件类型跳过（additive 兼�
   assert.equal(r.chainFrom, 1);
   assert.deepEqual(r.compacted, [{ kind: 'system', content: '摘要块' }]);
   assert.equal(r.messages.length, 2);
+  assert.equal(r.messages[1]!.text, '答一句(终稿)', 'msg-update 同 seq 原位终态覆盖（序不重复）');
   assert.equal(r.nextSeq, 5);
   assert.deepEqual(r.todos, [{ text: '新待办', status: 'pending' }]);
   assert.equal(r.model, 'large');
   assert.deepEqual(r.view, { expandAll: false, latestFull: true });
   assert.equal(JSON.stringify(r).includes('snapshots'), false, '回放零快照泄漏');
+});
+
+test('msg-update：同 seq 原位替换、基行缺失防御性追加（崩溃窗口内 update 先行即丢基行，内容不蒸发）', () => {
+  const base = { role: 'tool' as const, text: 'SPAWN w', ts: 1, seq: 3 };
+  const rich = { ...base, detail: '转录', subagentMeta: { steps: 2, durationMs: 5000, tokens: 100 } };
+  const replaced = reduceJournal([
+    { t: 'msg', item: base },
+    { t: 'msg', item: { role: 'user', text: '后到', ts: 2, seq: 4 } },
+    { t: 'msg-update', item: rich },
+  ]);
+  assert.deepEqual(replaced.messages, [rich, { role: 'user', text: '后到', ts: 2, seq: 4 }], '原位替换、append-only 序不动');
+  const orphan = reduceJournal([{ t: 'msg-update', item: rich }]);
+  assert.equal(orphan.messages.length, 1, '基行缺失防御性追加');
+  assert.equal(orphan.messages[0]!.seq, 3);
 });
 
 test('listSessions：mtime 降序 + 首条用户输入摘要；缺目录返回空数组', () => {

@@ -1913,11 +1913,19 @@ export class SessionController {
       `${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`,
     ].join('\n');
     const subagentMeta = { steps: Math.max(1, child.steps), durationMs: Math.max(0, Date.now() - child.startedAt), tokens: child.tokens, delegatedAt: pending.delegatedAt, prompt };
+    // 富化回写日志（2026-09-30）：调用行已在档（'msg' 事件先行），归档富化以 'msg-update' 终态覆盖回写——
+    // 不回写则 resume/rewind 回放退回裸调用行（无 detail/subagentMeta），Ctrl+B 历史归档全消失（真机「6 个只显示 1 个」病根）
+    let archived: ChatItem | undefined;
     this.state = {
       ...this.state,
       children: this.state.children.filter((c) => c.label !== child.label),
-      messages: this.state.messages.map((m) => (m.seq === pending.seq ? { ...m, detail, subagentMeta } : m)),
+      messages: this.state.messages.map((m) => {
+        if (m.seq !== pending.seq) return m;
+        archived = { ...m, detail, subagentMeta };
+        return archived;
+      }),
     };
+    if (archived !== undefined) this.journal?.log({ t: 'msg-update', item: archived });
     this.notify();
   }
 

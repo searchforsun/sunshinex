@@ -38,6 +38,9 @@ export type JournalEvent =
   | { t: 'user'; text: string; files?: SnapshotEntry[] }
   | { t: 'snapshots'; files: SnapshotEntry[] }
   | { t: 'msg'; item: ChatItem }
+  /** 已入档消息的终态覆盖（2026-09-30 归档富化回写）：subagent 归档把 detail/subagentMeta 富化进既有 SPAWN 调用行——
+   *  归档时该行已以 'msg' 入档，不回写即 resume/rewind 回放退回裸调用行、Ctrl+B 历史归档全消失（真机「6 个只显示 1 个」） */
+  | { t: 'msg-update'; item: ChatItem }
   | { t: 'chain'; steps: HistoryStep[] }
   | { t: 'compact'; chainFrom: number; compacted: ContextItem[] }
   | { t: 'todos'; items: TodoItem[] }
@@ -143,6 +146,14 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
         r.messages.push(e.item);
         r.nextSeq = Math.max(r.nextSeq, e.item.seq);
         break;
+      case 'msg-update': {
+        // 消息终态覆盖：同 seq 原位替换（append-only 序不动）；基行缺失（崩溃窗口内 update 先行落盘）防御性追加，内容不蒸发
+        const idx = r.messages.findIndex((m) => m.seq === e.item.seq);
+        if (idx >= 0) r.messages[idx] = e.item;
+        else r.messages.push(e.item);
+        r.nextSeq = Math.max(r.nextSeq, e.item.seq);
+        break;
+      }
       case 'user':
         r.history.push(e.text);
         break;
