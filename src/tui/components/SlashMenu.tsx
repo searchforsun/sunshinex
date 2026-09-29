@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Box, Text } from 'ink';
 import { t } from '../../i18n';
 import { theme } from '../theme';

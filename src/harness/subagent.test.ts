@@ -382,8 +382,6 @@ test('同名并发消歧：后到者 label #N 后缀，事件与结论行一致�
 test('exec background:true 提交即返回，观察行含任务 ID 与输出路径，输出落任务日志', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgexec-'));
   try {
-    const store = new FileStore(path.join(root, 'data'));
-    const ctx = new ContextManager(root, store);
     const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
@@ -425,8 +423,6 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgtimeout-'));
   let stop: (() => void) | undefined;
   try {
-    const store = new FileStore(path.join(root, 'data'));
-    const ctx = new ContextManager(root, store);
     const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new QuickTimeoutSandbox(), new DryRun(), root);
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
@@ -452,8 +448,6 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
 test('sleep 开头命令超时不转后台：EXEC_TIMEOUT 照旧失败（规格 D5 豁免）', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sleepexc-'));
   try {
-    const store = new FileStore(path.join(root, 'data'));
-    const ctx = new ContextManager(root, store);
     const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new QuickTimeoutSandbox(), new DryRun(), root);
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));

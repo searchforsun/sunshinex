@@ -15,7 +15,6 @@ import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
-import type { ReasoningEffort } from '../types';
 // 测试卫生：数据目录钉文件私有目录（共享目录并发写入会破坏装配基线，reactor.test.ts 同款先例）
 process.env.SUNSHINEX_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat-data-'));
 process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat-uskills-'));

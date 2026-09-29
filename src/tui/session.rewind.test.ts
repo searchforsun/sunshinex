@@ -215,7 +215,7 @@ test('/rewind 含 write 多轮：snapshots 事件跨轮合并回退（事件级�
     const p = ctrl.submit('/rewind');
     const anchorsQ = await waitQuestion(ctrl, 'Rewind to which turn?');
     ctrl.resolveAskAnswer({ type: 'selected', labels: [anchorsQ.options[0].label] }); // 锚点=任务一起点：回退窗口覆盖两轮 snapshots 事件（评审 Important I-2）
-    const actionQ = await waitQuestion(ctrl, 'What to restore?');
+    await waitQuestion(ctrl, 'What to restore?');
     ctrl.resolveAskAnswer({ type: 'selected', labels: ['code and conversation'] });
     await p;
 

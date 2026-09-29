@@ -24,7 +24,7 @@ async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
   }
 }
 
-async function flushKey(term: ReturnType<typeof render>): Promise<void> {
+async function flushKey(_term: ReturnType<typeof render>): Promise<void> {
   await new Promise((r) => setTimeout(r, 30));
 }
 

@@ -28,7 +28,7 @@ test('OpenAIAdapter 无 key 时 chat 抛错', async () => {
 });
 
 test('OpenAIAdapter 超时时抛「Model call timed out」', async () => {
-  const srv = http.createServer((_req, res) => {
+  const srv = http.createServer((_req, _res) => {
     // 挂起不响应，触发客户端超时
   });
   await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
@@ -99,7 +99,7 @@ test('extractCacheTokens：缺失/非法回 0', () => {
 });
 
 test('OpenAIAdapter：外部 signal 中止 → 抛「Task interrupted」（区别于超时）', async () => {
-  const srv = http.createServer((_req, res) => {
+  const srv = http.createServer((_req, _res) => {
     // 挂起不响应：等客户端经外部 signal 主动中止
   });
   await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));

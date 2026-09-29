@@ -1,14 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import { ToolRegistry } from '../tools';
 import { McpHost } from './client';
 
 /** 握手身份校验 fixture：配置名与 mock serverInfo.name 分离注入 */
 function makeFixture(configName: string, mockName: string): { registry: ToolRegistry; host: McpHost } {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-call-'));
   const registry = new ToolRegistry();
   const host = new McpHost(
     [{ name: configName, command: 'node', args: ['scripts/mock-mcp-server.js', '--name', mockName] }],

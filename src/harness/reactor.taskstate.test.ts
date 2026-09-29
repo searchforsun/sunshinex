@@ -1,4 +1,3 @@
-import { textReplyToChatFace } from '../model/chat-stub';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -14,7 +13,7 @@ import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
-import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
+import { ModelAdapter, ScriptedAdapter} from '../model/adapter';
 import { SessionEvent } from '../types';
 
 function makeReactor(tmp: string, adapter: ModelAdapter, onEvent?: (e: SessionEvent) => void): Reactor {

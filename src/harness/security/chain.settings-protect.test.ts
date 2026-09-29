@@ -58,7 +58,7 @@ test('settings.json 两级硬保护：全局与项目级 Write 拒绝，拒绝�
 });
 
 test('~/.sunshinex 子树放行：全局技能根 Write/Read 放行，子树外外部路径仍拒', () => {
-  withChain((chain, root, userCfg) => {
+  withChain((chain, _root, userCfg) => {
     const skillFile = path.join(userCfg, 'skills', 'demo', 'SKILL.md');
     const dSkill = chain.evaluate('Write', { path: skillFile });
     assert.equal(dSkill.allowed, true, `全局技能根写应放行：${dSkill.allowed ? '' : dSkill.reason}`);

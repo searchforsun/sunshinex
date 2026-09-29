@@ -112,7 +112,6 @@ test('重读预算化：预算内全部保留（与未传参数行为一致）',
   assert.ok(items.map((i) => i.content).some((t) => t.startsWith('[re-read] a.md')));
 });
 
-const MODEL_BODY = '## Goal\n压缩验证目标\n## Open\n无';
 
 test('applyCompaction 摘要分叉：模型成功 → 正文为模型文本，checksum 头不变，重读机制不变', async () => {
   const { root, cm } = setup();

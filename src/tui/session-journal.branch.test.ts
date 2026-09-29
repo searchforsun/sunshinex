@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { test } from 'node:test';
 import {
-  branchFrom, listAnchors, parseJournalFile, SessionJournal, sessionsDir,
+  branchFrom, listAnchors, parseJournalFile, sessionsDir,
 } from './session-journal';
 
 function tmpRoot(): string {

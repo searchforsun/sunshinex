@@ -6,7 +6,6 @@
  * - 语法 Tool(specifier)：文件工具 = 路径 glob（`**` 跨段、`*`/`?` 不跨段、无 `/` 模式对 basename 匹配）；
  *   Bash = 命令匹配（尾 `*` 为前缀）；mcp__ 直名（尾 `*` 通配）
  */
-import * as path from 'path';
 import { parseRule } from '../harness/security/rules';
 import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './settings';
 

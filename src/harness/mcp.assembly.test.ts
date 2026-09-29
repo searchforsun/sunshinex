@@ -14,7 +14,6 @@ import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { StubAdapter } from '../model/adapter';
 import { Harness } from './index';
-import type { LoopContext, LoopNodeBase, NodeOutput } from '../types';
 
 /** 项目级 mcp.json 指向 mock stdio server（scripts/mock-mcp-server.js，与 client.register.test.ts 同源夹具） */
 function writeProjectMcpJson(root: string, servers: Record<string, unknown>): void {

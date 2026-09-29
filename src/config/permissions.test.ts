@@ -51,7 +51,7 @@ test('单级形状非法：该级警告跳过，另一级照常生效', () => {
 });
 
 test('deny 数组元素非字符串：该键警告忽略', () => {
-  withHome((home, root) => {
+  withHome((_home, root) => {
     writeSettings(path.join(root, '.sunshinex'), { permissions: { deny: ['ok', 42] } });
     const { config, warnings } = loadPermissions(root);
     assert.equal(warnings.length, 1);

@@ -16,7 +16,7 @@ async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
   }
 }
 
-async function flushKey(term: ReturnType<typeof render>): Promise<void> {
+async function flushKey(_term: ReturnType<typeof render>): Promise<void> {
   // 垫片 stdin 为同步 EventEmitter：写入后先让 ink 的输入监听回调与 React 状态更新落地，再继续分发
   await new Promise((r) => setTimeout(r, 30));
 }

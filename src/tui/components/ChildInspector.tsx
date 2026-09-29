@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Box, Static, Text } from 'ink';
 import { ChildLiveState, pairChildResults } from '../session';
 import { formatTokens, formatDuration } from '../format';

@@ -9,7 +9,7 @@ import { resolveWorktreeLaunchRoot } from './worktree-launch';
 import { usageText } from './index';
 import type { CliArgs } from './index';
 import { setLanguage, parseLanguage } from '../i18n';
-import { createWorktree, worktreesRoot, readRegistry, detectIsolation } from '../harness/worktree';
+import { worktreesRoot, readRegistry, detectIsolation } from '../harness/worktree';
 import { Harness } from '../harness';
 import type { ModelAdapter } from '../model/adapter';
 import { runLoop } from './commands/run-loop';

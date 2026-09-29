@@ -149,7 +149,7 @@ test('ctx 事件：think 前发估算（exact:false），真实 usage.prompt_tok
     const events: SessionEvent[] = [];
     const adapter = {
       provider: 'ctx-probe',
-      chat: textReplyToChatFace(async (prompt: string, hooks?: UsageHooks) => {
+      chat: textReplyToChatFace(async (_prompt: string, hooks?: UsageHooks) => {
         hooks?.onPrompt?.(4200);
         return '{"done":true,"reply":"ok"}';
       }),

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { softwarePipelineTemplate } from './templates';
-import { GraphNodeOutput, GraphDeps } from '../types';
+import { GraphDeps } from '../types';
 import { SafetyChain } from '../harness/security/chain';
 import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';

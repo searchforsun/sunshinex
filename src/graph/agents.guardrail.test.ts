@@ -7,7 +7,7 @@ import { makeRoleAgent } from './agents';
 import { GraphDeps } from './engine';
 import { GraphContext } from '../types';
 import type { ChatRequest, ChatResult } from '../types';
-import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
+import { ModelAdapter, ScriptedAdapter} from '../model/adapter';
 import { ContextManager } from '../harness/context';
 import { FileStore } from '../storage/adapter';
 import { SafetyChain } from '../harness/security/chain';

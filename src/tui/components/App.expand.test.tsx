@@ -33,8 +33,6 @@ function makeLongFile(tmp: string, name: string): string {
   return filePath;
 }
 
-/** L 总量口径（按段累计）：折叠摘要首行仅 ~68 连串（宽度截断），展开后全文 250——折行会切碎长串，必须按段累计 */
-const countL = (f: string): number => (f.match(/L{30,}/g) ?? []).reduce((a, b) => a + b.length, 0);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** 门闩适配器：首轮 complete 挂起保持 running 态（release 放行），用于验证展开模式切换无状态门槛 */

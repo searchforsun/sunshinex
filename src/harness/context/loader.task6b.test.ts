@@ -31,7 +31,6 @@ test('extractCompactInstructions：无区返回 null；空区体返回 null', ()
   assert.equal(extractCompactInstructions('## Compact Instructions\n\n## Next\nx\n'), null);
 });
 
-const SUMMARY = '## Goal\nx\n## Constraints\nx\n## Progress\nx\n## Verified\nx\n## Open\nx\n## Rationale\nx';
 
 function recorderModel(seen: string[]): ModelAdapter {
   return {

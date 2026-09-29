@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as React from 'react';
 import { render } from '../test-ink';
 import { MarkdownText } from './MarkdownText';
 

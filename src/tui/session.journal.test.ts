@@ -191,7 +191,7 @@ test('日志尾行撕裂：恢复到最后一条完整事件并上屏提示', as
 test('/resume 候选排除当前在飞会话（事件级建档后命令输入不再污染候选）', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
-  const dataDir = pinDataDir(tmp);
+  pinDataDir(tmp);
   try {
     const ctrl1 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"r1"}']) });
     await ctrl1.submit('任务一');

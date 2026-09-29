@@ -1,5 +1,4 @@
 import { t } from '../../i18n';
-import * as React from 'react';
 import { Text } from 'ink';
 import { SessionStatus, StatusMetrics } from '../session';
 import { ReasoningEffort } from '../../types';

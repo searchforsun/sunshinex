@@ -12,9 +12,7 @@ import { initialRetained, RetainedUiState } from '../ui-state';
 import { createTailLedger, TailLedger } from '../tail-rewrite';
 import type { RepaintMode } from '../tui-loop';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
-import { formatDuration } from '../format';
 import { MessageList } from './MessageList';
-import { theme } from '../theme';
 import { InputBox } from './InputBox';
 import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
@@ -256,9 +254,6 @@ export function App({
   // 处理器闭包的 state 可能滞后节流一拍，浏览器序列构造必须读 ref 不读闭包
   const stateRef = React.useRef(state);
   stateRef.current = state;
-  /** 已归档 SPAWN 调用行 seq 列表（键盘分发与高亮透传共用同一过滤口径） */
-  const spawnCallSeqs = (msgs: TuiState['messages']): number[] =>
-    msgs.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail).map((m) => m.seq);
   /** Ctrl+B 浏览序列单点（2026-09-28 统一口径）：运行中子代理在前（启动序）+ 已完成 spawn 按 subagentMeta.delegatedAt
    *  委派时间升序在后（旧档字段缺省回落 seq 序）——↑↓ 键盘分发与动态区列表渲染共用同一函数，两侧永不漂移 */
   const browseRows = (st: TuiState): { id: string; label: string; running?: boolean; seq?: number; meta?: TuiState['messages'][number]['subagentMeta'] }[] => [

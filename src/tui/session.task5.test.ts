@@ -5,7 +5,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
-import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { Harness } from '../harness';
 import { TuiRuntime } from './runtime';
@@ -40,7 +39,6 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
   const tmp = tmpdir('sunshinex-task5-focus-');
   try {
     const seen: string[] = [];
-    const SUMMARY = '## Goal\n演示\n## Constraints\n只读\n## Progress\n已折叠\n## Verified\n回执一致\n## Open\n无\n## Rationale\n会话模型路径';
     const harness = new Harness({
       root: tmp,
       mode: 'dontAsk',
@@ -88,7 +86,6 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
   const tmp = tmpdir('sunshinex-task5-nofocus-');
   try {
     const seen: string[] = [];
-    const SUMMARY = '## Goal\n演示\n## Constraints\n只读\n## Progress\n已折叠\n## Verified\n回执一致\n## Open\n无\n## Rationale\n会话模型路径';
     const harness = new Harness({
       root: tmp,
       mode: 'dontAsk',

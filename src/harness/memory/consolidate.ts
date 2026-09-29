@@ -86,8 +86,6 @@ function parseMergedPayload(argsJson: string): MergedCandidate[] | null {
   }
 }
 
-const TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
-
 function isValidCandidate(c: MergedCandidate): c is { type: MemoryType; description: string; body: string } {
   const description = typeof c.description === 'string' ? c.description.trim() : '';
   const body = typeof c.body === 'string' ? c.body.trim() : '';

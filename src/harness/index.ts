@@ -29,7 +29,7 @@ import type { SettlePayload } from './reactor';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
-import { createWorktree, removeWorktree, readRegistry, worktreesRoot } from './worktree';
+import { removeWorktree, readRegistry} from './worktree';
 import { loadMcpServers } from '../config';
 import { loadPermissions } from '../config/permissions';
 import * as fs from 'fs';

@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Box, Text } from 'ink';
 import { MarkdownText } from './MarkdownText';
 import { elideByWidth } from '../text-band';

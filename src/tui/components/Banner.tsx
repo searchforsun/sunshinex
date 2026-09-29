@@ -1,5 +1,4 @@
 import { t } from '../../i18n';
-import * as React from 'react';
 import { Box, Text } from 'ink';
 import { BannerInfo } from '../banner-info';
 import { theme } from '../theme';

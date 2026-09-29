@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Box, Text } from 'ink';
 import { ChildLiveState } from '../session';
 import { displayWidth, elideByWidth } from '../text-band';

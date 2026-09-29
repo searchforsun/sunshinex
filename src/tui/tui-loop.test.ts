@@ -71,7 +71,7 @@ test('tui-loop：重绘路径以同步更新（DEC 2026）包裹清屏与重挂�
     stdout: ee as never,
     writeRaw: (s) => writes.push(s),
     clearScreen: () => writes.push('<clear>'),
-    renderOnce: (retain) => {
+    renderOnce: () => {
       writes.push('<render>');
       const inst = new FakeInstance();
       mounts.push(inst);

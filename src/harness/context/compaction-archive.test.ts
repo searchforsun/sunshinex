@@ -6,7 +6,6 @@ import * as path from 'path';
 import { ContextManager, runCompaction } from './index';
 import { ContextItem } from '../../types';
 import { FileStore } from '../../storage/adapter';
-import { resolveDataDir } from '../../config/data-dir';
 
 function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-cpt-arch-'));
@@ -25,7 +24,7 @@ const ITEMS = (): ContextItem[] => [{ kind: 'history', content: '很长的旧上
 test('B 折链归档：被折链行落 archives/compaction-*.jsonl，压缩块含 Full trace 行', async () => {
   const dataDir = withDataDir();
   try {
-    const { root, cm } = setup();
+    const { cm } = setup();
     cm.appendChain([
       { action: 'a', observation: '第一步观察' },
       { action: 'b', observation: '第二步观察' },
@@ -89,9 +88,9 @@ test('B 无折链：不建 archives、压缩块无 Full trace 行', async () => 
 });
 
 test('B 归档指针随会话状态持久化：restore 后压缩块仍含 Full trace', async () => {
-  const dataDir = withDataDir();
+  withDataDir();
   try {
-    const { root, cm } = setup();
+    const { cm } = setup();
     cm.appendChain([
       { action: 'a', observation: '甲' },
       { action: 'b', observation: '乙' },

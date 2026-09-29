@@ -7,7 +7,6 @@ import { render, type TestRenderResult } from '../test-ink';
 import { App } from './App';
 import { SessionController } from '../session';
 import { initialRetained } from '../ui-state';
-import { ScriptedAdapter } from '../../model/adapter';
 
 // 钉短裸 ESC 拼接窗口（use-input 拆包重组默认 40ms）：本套 Esc 退出断言只等 50ms，贴边易假红
 process.env.SUNSHINEX_ESC_JOIN_MS = '1';

@@ -81,7 +81,6 @@ test('后台子代理结论全文落任务日志（多行报告不再只留首�
       const agents = new AgentRegistry();
       agents.registerBuiltins();
       const tasks = new TaskRegistry(path.join(dataDir, 'tasks'));
-      const parentModel = new ScriptedAdapter(['{"done":true,"reply":"unused"}']);
       const childModel = new ScriptedAdapter([JSON.stringify({ done: true, reply: report })]);
       const runner = new SubagentRunner({ registry, safety, context, model: childModel, tasks }, agents);
       runner.attachParent(() => ({ maxSteps: 10, tokenCap: 50_000 }));

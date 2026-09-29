@@ -7,14 +7,6 @@ import { SessionController } from './session';
 import type { ChatRequest, ChatResult } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 
-async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!pred()) {
-    if (Date.now() > deadline) throw new Error('waitFor 超时');
-    await new Promise((r) => setTimeout(r, 20));
-  }
-}
-
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
@@ -148,8 +140,7 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
       model: {
         provider: 'seal-stub',
         chat: async () => ({ finish: 'stop' as const, content: '', toolCalls: [] }),
-        chatStream: async (_req: ChatRequest, onDelta: (t: string) => void, call?: { n?: number }) => {
-          const n = ((call as { n?: number } | undefined)?.n ?? 0);
+        chatStream: async (_req: ChatRequest, _onDelta: (t: string) => void) => {
           return { finish: 'stop' as const, content: '', toolCalls: [] };
         },
       } as never,

@@ -196,7 +196,6 @@ test('todo_write 执行面：条数钳制 >50 拒绝、非法 status 拒绝、fa
     const wired: Array<{ text: string; status: string }> = [];
     const reg2 = new ToolRegistry();
     for (const t of builtinTools(safety, tmp, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, { set: (items) => wired.push(...items) })) reg2.register(t);
-    const wiredTool = reg2.get('todo_write')!;
     // 现场校正（同上）：INVALID_ARG 断言走 registry 错误通道
     const over = await reg2.execute('todo_write', { todos: Array.from({ length: 51 }, (_, i) => ({ text: `t${i}`, status: 'pending' })) }, safety);
     assert.equal(over.ok, false);

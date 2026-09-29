@@ -1,12 +1,11 @@
 import type { AskUserAnswer, AskUserRequest, AskUserSeam } from '../types';
-import type { TodoItem, TodoStatus } from '../types';
-import { ApprovalDecision, ApprovalRequest, ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
+import type { TodoItem } from '../types';
+import { ApprovalDecision, ApprovalRequest, ModelTier, ReasoningEffort, SessionEvent } from '../types';
 import { EFFORT_ORDER, parseEffort } from '../model/adapter';
 import { t } from '../i18n';
 import { formatDuration, formatTokens } from './format';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
-import { estimateTokens } from '../harness/context/window';
 import { openFenceOpener, stableReplySegment } from './reply-flusher';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';

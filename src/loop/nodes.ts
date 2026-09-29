@@ -148,7 +148,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
   return {
     id: 'agent',
     kind: 'agent',
-    run: async (ctx: LoopContext, input: NodeOutput | null): Promise<NodeOutput> => {
+    run: async (ctx: LoopContext): Promise<NodeOutput> => {
       // 注：NodeOutput 无 goal 字段（计划笔误），engine.run 已把 goal 写入 ctx.state，agentNode 从 state 取
       const goal = typeof ctx.state.goal === 'string' ? ctx.state.goal : '';
       const scope = deps.scope ?? 'session';

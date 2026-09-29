@@ -278,11 +278,9 @@ export function branchFrom(
 /** 会话日志写面（事件级即时落盘，规格 2026-09-22 D1/D3）：逐事件 appendFileSync、生命周期点写 header；未建档 log 丢弃（空会话零文件） */
 export class SessionJournal {
   private id: string | undefined;
-  private readonly dataDir: string;
   private readonly dir: string;
 
   constructor(dataDir: string) {
-    this.dataDir = dataDir;
     this.dir = sessionsDir(dataDir);
   }
 

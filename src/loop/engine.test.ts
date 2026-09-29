@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LoopEngine, LoopDeps } from './engine';
 import { LoopNodeBase, NodeOutput, LoopContext, CriterionResult, LoopTermination } from '../types';
-import { agentNode, checkNode, gateNode, routerNode, parseCriteria, toReactorBudget } from './nodes';
+import { agentNode, checkNode, gateNode, parseCriteria, toReactorBudget } from './nodes';
 import { resolveTemplate } from './templates';
 import { ModelAdapter, ModelRouter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import { ContextManager } from '../harness/context';

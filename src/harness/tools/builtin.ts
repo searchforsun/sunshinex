@@ -20,7 +20,7 @@ import { MemoryScope } from '../memory/paths';
 function resolveProjectPath(root: string, p: string): string {
   return path.isAbsolute(p) ? p : path.join(root, p);
 }
-import { createWorktree, removeWorktree, readRegistry, worktreesRoot, isDirty, randomWorktreeName } from '../worktree';
+import { createWorktree, readRegistry, isDirty, randomWorktreeName } from '../worktree';
 import { resolveDataDir } from '../../config/data-dir';
 
 /** §9.3 快照过期回执文案（写链恒英文单语——CLAUDE.md §15；置于模块级避免每次 builtinTools 调用重建） */

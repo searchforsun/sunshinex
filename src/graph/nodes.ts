@@ -1,9 +1,7 @@
-import { CriterionResult, GraphContext, GraphNodeOutput, LoopContext, LoopTermination } from '../types';
+import { CriterionResult, GraphNodeOutput, LoopContext, LoopTermination } from '../types';
 import { GraphNode } from './engine';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { codeRefactorTemplate, codeReviewTemplate, testLoopTemplate } from '../loop/templates';
-import { toReactorBudget } from '../loop/nodes';
-import { Reactor } from '../harness/reactor';
 import { t } from '../i18n';
 
 /** 规则校验器：对内嵌 Loop 的验收项做进程内判定（io.ctx 为 Loop 子流程上下文） */

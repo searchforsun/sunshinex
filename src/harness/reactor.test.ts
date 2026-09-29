@@ -397,7 +397,7 @@ test('FakeAdapter 上报非零 usage → tokensUsed 聚合累加（5+7=12）', a
   let call = 0;
   const adapter = {
     provider: 'usage-fake',
-    chat: textReplyToChatFace(async (p: string, hooks?: { onUsage?: (tokens: number) => void }) => {
+    chat: textReplyToChatFace(async (_p: string, hooks?: { onUsage?: (tokens: number) => void }) => {
       hooks?.onUsage?.(usages[call++] ?? 0);
       return call <= 2 ? '{"tool":"exec","input":{"command":"echo x"},"done":false}' : '{"done":true}';
     }),
@@ -453,7 +453,7 @@ test('Reactor 单一权威源：叙述只走 token 通道——流式轮 delta�
   const adapter = {
     provider: 'streaming-capture',
     chat: async () => ({ finish: 'tool_calls' as const, content: '', toolCalls: [] }),
-    chatStream: async (req: ChatRequest, onDelta: (t: string) => void) => {
+    chatStream: async (_req: ChatRequest, onDelta: (t: string) => void) => {
       if (call++ === 0) {
         onDelta('正在执行回声验证');
         return { finish: 'tool_calls' as const, content: '正在执行回声验证', toolCalls: [{ id: 'call_0', name: 'exec', argsJson: JSON.stringify({ command: 'echo hi' }) }] };
@@ -511,7 +511,6 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
     '{"tools":[{"tool":"glob","input":{"pattern":"*.ts"}},{"tool":"grep","input":{"pattern":"Reactor","path":"src/harness/reactor.ts"}}],"done":false}',
     '{"done":true,"reply":"已并行读取"}',
   ]);
-  const reactor = makeReactor(tmp, adapter);
   const events: string[] = [];
   const r = await new Promise<Awaited<ReturnType<Reactor['run']>>>((resolve, reject) => {
     const rr = new Reactor({
@@ -778,7 +777,6 @@ test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语�
       '{"done":true,"reply":"ok"}',
     ];
     let call = 0;
-    const SUMMARY = '## Goal\n读取 big.txt 验证压缩\n## Constraints\n只读\n## Progress\n已读\n## Verified\n内容确认为 X 重复\n## Open\n无\n## Rationale\n模型路径验证';
     const SUMMARY_ARGS = JSON.stringify({
       goal: '读取 big.txt 验证压缩',
       constraints: '只读',

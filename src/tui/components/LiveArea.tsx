@@ -1,5 +1,3 @@
-import { t } from '../../i18n';
-import * as React from 'react';
 import { Box, Text } from 'ink';
 import { LiveBlock } from '../session';
 import { wrapByWidth } from '../text-band';

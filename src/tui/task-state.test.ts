@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionEvent } from '../types';
-import { ActiveCall, LiveTaskState, applyTaskState, initialTaskState } from './task-state';
+import { applyTaskState, initialTaskState } from './task-state';
 
 function ev(type: SessionEvent['type'], text?: string, payload?: Record<string, unknown>): SessionEvent {
   return { type, ...(text !== undefined ? { text } : {}), ...(payload ? { payload } : {}), ts: 0 };

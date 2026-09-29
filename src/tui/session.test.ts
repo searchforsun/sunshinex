@@ -481,7 +481,6 @@ test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9
 test('会话控制器：/compact 补链参与，链折叠且摘要来自会话模型', async () => {
   const tmp = tmpdir('sunshinex-sess-compact-');
   try {
-    const SUMMARY = '## Goal\n压缩演示\n## Constraints\n只读\n## Progress\n已折叠\n## Verified\n回执一致\n## Open\n无\n## Rationale\n会话模型路径';
     const harness = new Harness({
       root: tmp,
       mode: 'dontAsk',

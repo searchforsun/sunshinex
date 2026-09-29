@@ -1,5 +1,5 @@
 /** 模型适配层：统一推理接口，多后端可插拔 */
-import { ModelTier, ReasoningEffort, RouteDecision, ChatMessage, ChatRequest, ChatResult, ChatTool, ToolCallSpec, JsonSchema } from '../types';
+import { ModelTier, ReasoningEffort, RouteDecision, ChatMessage, ChatRequest, ChatResult, ChatTool, ToolCallSpec} from '../types';
 import { t } from '../i18n';
 
 export type { ModelTier, ReasoningEffort };
@@ -117,7 +117,7 @@ export class OpenAIAdapter implements ModelAdapter {
   /** 已判不支持 reasoning_effort 的档位（逐档记忆，跨请求档共享，防重复打无效请求） */
   private effortUnsupported = new Set<ReasoningEffort>();
 
-  constructor(private cfg: LLMConfig) {
+  constructor(cfg: LLMConfig) {
     this.baseURL = cfg.baseURL ?? process.env.SUNSHINEX_BASE_URL ?? 'https://api.openai.com/v1';
     this.apiKey = cfg.apiKey ?? process.env.SUNSHINEX_API_KEY ?? '';
     this.model = cfg.model ?? process.env.SUNSHINEX_MODEL ?? 'gpt-4o-mini';
