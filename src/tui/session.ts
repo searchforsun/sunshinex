@@ -49,6 +49,9 @@ export interface ChatItem {
   /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt、tokens=子代理 token 消耗、
    *  delegatedAt=委派时刻（spawnCalls 入栈时刻，动态区子代理列表按委派时间排序的单点数据源）；零子事件即败时缺省 */
   subagentMeta?: { steps: number; durationMs: number; tokens: number; delegatedAt?: number; prompt?: string };
+  /** 段中续块（2026-09-30 完整流式裁决）：本 assistant 块由上一块逐行入档续接而来（上一块不以空行结尾=
+   *  同一 Markdown 段）——渲染层折叠块间 marginBottom，逐行块与整段块呈现恒等 */
+  cont?: true;
 }
 
 export type { TodoItem, TodoStatus } from '../types';
@@ -267,6 +270,9 @@ export class SessionController {
   private readonly root: string;
   /** 流式正文已入档水位（done 终稿前缀长度）：安全点切块入档用，新回合/收尾归零 */
   private committedLen = 0;
+  /** 段中续块链（2026-09-30 完整流式裁决）：上一入档块不以空行结尾=同一 Markdown 段未完，下一块携带
+   *  cont 标记（渲染层折叠块间间隙）；空行块/回合收尾复位 */
+  private replyContPending = false;
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
   private planReplyNoArchive = false;
   /** usage 整场基线：每个模型轮开始前同步为当前累计，事件按「基线 + 本轮 per-run 值」聚合（/plan 步骤间不重置窗口） */
@@ -1685,7 +1691,10 @@ export class SessionController {
         if (this.committedLen > 0 && finalText.startsWith(draft.slice(0, this.committedLen))) {
           tail = finalText.slice(this.committedLen);
         }
-        if (tail.length > 0) this.pushMsg('assistant', tail);
+        if (tail.length > 0) {
+          this.pushMsg('assistant', tail, this.replyContPending ? { cont: true } : undefined);
+          this.replyContPending = false;
+        }
         this.committedLen = 0;
         this.refreshMetrics();
         return;
@@ -1715,7 +1724,7 @@ export class SessionController {
       : t('Persistent memory: OFF', '持久记忆：关闭');
   }
 
-  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'pending' | 'callId' | 'detail' | 'level'>>): void {
+  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'pending' | 'callId' | 'detail' | 'level' | 'cont'>>): void {
     this.appendMessages([{ role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) }]);
   }
 
@@ -1977,8 +1986,15 @@ export class SessionController {
     if (seg === null) return;
     const committed = this.committedLen + seg.length;
     if (seg.trim().length > 0) {
-      // 入档走 pushMsg 单点（消息 + journal 挂钩同源）：切块段不落日志则 /resume 与 /rewind 重放时正文只剩 done 补的尾段
-      this.pushMsg('assistant', seg);
+      // 入档走 pushMsg 单点（消息 + journal 挂钩同源）：切块段不落日志则 /resume 与 /rewind 重放时正文只剩 done 补的尾段。
+      // cont 链（逐行打字机）：上一块段中收尾即本块续接，渲染层折叠间隙；块以空行结尾则复位
+      this.pushMsg('assistant', seg, this.replyContPending ? { cont: true } : undefined);
+      this.replyContPending = !seg.endsWith('\n\n');
+    } else {
+      // 空白块（逐行切分下空行自成一块）：并回上一流式块——丢弃即终稿缺空行（拼接无损破）。
+      // replyContPending 复位（段落边界）
+      this.replyContPending = false;
+      if (this.committedLen > 0) this.appendBlankToLastReply(seg);
     }
     this.committedLen = committed;
     if (this.state.live?.kind === 'reply') {
@@ -1988,6 +2004,19 @@ export class SessionController {
         live: { ...this.state.live, committedLen: committed, fenceOpener: openFenceOpener(draft.slice(0, committed)) },
       };
     }
+  }
+
+  /** 空白块并回上一流式块（逐行切分的配套，2026-09-30）：逐行切点下空行自成一块，不入档即终稿缺空行。
+   *  就地合并上一 assistant 块 + msg-update 回写（journal 词汇既有事件；Static 不重印、空白零视觉量；
+   *  tail 账本经 item 引用失配触发该条目尾部重放，重放形态与整段块一致）。仅并回本回合流式块：
+   *  committedLen>0 守卫（回合首块前/收尾后的空白不入档，跨回合零污染） */
+  private appendBlankToLastReply(seg: string): void {
+    const msgs = this.state.messages;
+    const last = msgs[msgs.length - 1];
+    if (last === undefined || last.role !== 'assistant') return;
+    const merged: ChatItem = { ...last, text: last.text + seg };
+    this.state = { ...this.state, messages: [...msgs.slice(0, -1), merged] };
+    this.journal?.log({ t: 'msg-update', item: merged });
   }
 
   /** 收束实时区：thinking 折叠为一行摘要；reply 不落消息（终稿由 done 接管） */
@@ -2022,8 +2051,13 @@ export class SessionController {
       this.notify();
       return;
     }
-    if (pending.trim().length > 0) this.pushMsg('assistant', pending);
-    else this.notify();
+    if (pending.trim().length > 0) {
+      this.pushMsg('assistant', pending, this.replyContPending ? { cont: true } : undefined);
+      this.replyContPending = false;
+    } else {
+      this.replyContPending = false;
+      this.notify();
+    }
   }
 
   /** done/error 后刷新账本 runs（缓存命中率已升格会话累计口径，随 usage 事件增量更新） */

@@ -108,7 +108,8 @@ export function MessageList({
         ledger.slots.push({ item, visible: true, full: d.full, lines: 0 });
         continue;
       }
-      ledger.slots.push({ item, visible: true, full: d.full, lines: counted + 1 /* marginBottom */ });
+      // cont 段中续块：块间 marginBottom 折叠（逐行入档的同一 Markdown 段），账本行数同步实账
+      ledger.slots.push({ item, visible: true, full: d.full, lines: counted + (item.cont ? 0 : 1) /* marginBottom */ });
     }
     recomputeTailPlan(ledger, visibleMessages, decisions);
   }
@@ -141,7 +142,7 @@ export function MessageList({
               <Banner info={entry.info} columns={columns} />
             </Box>
           ) : entry.visible ? (
-            <Box key={`m-${entry.item.seq}`} marginBottom={1}>
+            <Box key={`m-${entry.item.seq}`} marginBottom={entry.item.cont ? 0 : 1}>
               <MessageRow
                 item={entry.item}
                 columns={columns}

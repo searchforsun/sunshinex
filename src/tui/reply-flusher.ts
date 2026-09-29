@@ -1,8 +1,5 @@
-/** 单段入档行数上限：无段落边界的超长段（长列表/大段文字）按最近换行兜底切块，防预览积压、滚动缓冲迟迟不增长。
- *  10 行（2026-09-30 流畅度裁决）：兜底切块节奏决定未入档尾段（=流式预览窗内容）的上限——24 行时密集无空行
- *  正文（中文流常见形态）预览窗常年 20+ 行，WT 不支持 DEC 2026（原子包裹空操作），每帧 20+ 行擦写即肉眼
- *  可见闪灼；10 行让预览区收敛到 ~11 行、帧擦写面积减半，入档段仍按段落边界优先（有空行正文零影响，
- *  代价仅是无空行长段每 ~10 行多一个段间隙） */
+/** 单段入档行数上限：仅围栏内兜底切块消费（长围栏生成期滚动出稿的节奏）。
+ *  10 行（2026-09-30 流畅度裁决）：长围栏按此节奏放行，预览窗在代码块生成期不积超过 ~11 行 */
 export const REPLY_SEGMENT_MAX_LINES = 10;
 
 /** GFM 表格分隔行（| --- | --- | 形态）：仅含 |、-、: 与空白 */
@@ -18,13 +15,14 @@ function isTableDivider(line: string): boolean {
 
 /**
  * 流式正文安全点切块（纯函数）：从 pending = text.slice(committedLen) 中取可入档子串，无安全点返回 null。
- * 规则（对标 Claude Code 打字机式滚动出稿）：
- * 1. 短围栏零切点（含围栏内空行），闭合后随段落边界整块放行——保住结构；超过 maxLines 的长围栏按行数兜底切块
+ * 规则（2026-09-30 完整流式裁决——逐行打字机）：
+ * 1. 短围栏零切点（含围栏内空行），闭合后整块放行——保住结构；超过 maxLines 的长围栏按行数兜底切块
  *    （生成期滚动出稿，与普通超长段同量级），切块自带开栏行、入档块独立成立，openFenceOpener 承接续块与预览；
- * 2. GFM 表格（表头+分隔行成对开启，空行/非表格行闭合）期间零切点——闭合即整表放行（切点回退至表格末行换行处，不等后续段落边界），防表体切碎降级或整表滞留预览区；
- * 3. 段落边界（空行）优先：切点取最靠后的边界（seg 含边界空行的换行）；
- * 4. 任意区域连续超过 maxLines 个完整行仍无边界 → 按最近换行兜底切块（此后重新计数）；
- * 5. 返回值恒为 text 的严格中缀且原样保留换行——分块拼接 === 终稿，session 侧前缀去重不重复不丢失。
+ * 2. GFM 表格（表头+分隔行成对开启，空行/非表格行闭合）期间零切点——闭合即整表放行（切点回退至表格末行换行处，不等后续边界），防表体切碎降级或整表滞留预览区；
+ * 3. 闭态区域任一完结行即可切：切点取最靠后的完结行（seg 含结尾换行）——打字机效果 = 入档内容
+ *    逐行小步推进 Static 滚动，预览窗只剩生成中的未完行；段内换行经 softbreak→\n 渲染同形、
+ *    段间隙经 ChatItem.cont 折叠（session 标记段中续块），逐行块与整段块渲染恒等；
+ * 4. 返回值恒为 text 的严格中缀且原样保留换行——分块拼接 === 终稿，session 侧前缀去重不重复不丢失。
  */
 export function stableReplySegment(
   text: string,
@@ -50,8 +48,7 @@ export function stableReplySegment(
   }
   const lines = pending.split('\n');
   let cut = -1; // 已确认的最大安全切点（seg = pending.slice(0, cut)，含结尾换行）
-  let closedLineStreak = 0; // 闭态区域连续完整行数（超长兜底计数）
-  let fenceLineStreak = 0; // 围栏内连续完整行数（长围栏兜底计数，与闭态同量级 maxLines）
+  let fenceLineStreak = 0; // 围栏内连续完整行数（长围栏兜底计数）
   let fenceCutDone = false; // 本次扫描内长围栏兜底已切一刀：固定 maxLines 节奏，其余随后续 delta/闭合放行
   let offset = 0;
   for (let i = 0; i < lines.length; i++) {
@@ -60,9 +57,8 @@ export function stableReplySegment(
     if (/^\s*```/.test(line)) {
       fenceOpen = !fenceOpen;
       tableOpen = false;
-      closedLineStreak = 0;
       if (!fenceOpen) {
-        fenceLineStreak = 0; // 围栏闭合：兜底计数复位，后续行恢复段落切分
+        fenceLineStreak = 0; // 围栏闭合：兜底计数复位，后续行恢复逐行切分
       } else {
         fenceLineStreak = 0; // 新围栏开栏：兜底计数与「已切一刀」标记复位
         fenceCutDone = false;
@@ -77,7 +73,6 @@ export function stableReplySegment(
       // 它只说明「上一行带换行完结」，表格是否还有后续数据行未知，切出会致表头块与表体分离降级
       tableOpen = false;
       tableClosedHere = true;
-      closedLineStreak = 0;
     }
     if (isLast) {
       // 生成中的最后一行（无换行结尾）永不切；但表格恰在此处闭合时，切点回退至表格末行换行处，整表立即入档
@@ -103,17 +98,8 @@ export function stableReplySegment(
       offset = candidate; // 表格内容（含其内空行）：零切点，整块等待闭合后随边界放行
       continue;
     }
-    if (tableClosedHere || line === '') {
-      cut = candidate; // 表格刚闭合（整表随切点放行）或段落边界：取最靠后的安全切点
-      closedLineStreak = 0;
-    } else {
-      closedLineStreak += 1;
-      if (closedLineStreak >= maxLines) {
-        cut = candidate; // 超长段兜底：按最近换行切，重新计数
-        closedLineStreak = 0;
-      }
-    }
-    offset = candidate;
+        cut = candidate; // 逐行切点（完整流式裁决）：表格闭合/空行/任一完结行即可入档，见文件头规则 3
+        offset = candidate;
   }
   if (cut <= 0) return null;
   return pending.slice(0, cut);

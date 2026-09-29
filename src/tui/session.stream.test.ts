@@ -167,3 +167,24 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('会话归约：逐行入档打字机——段中续块带 cont 标记（渲染层折叠块间间隙），空行并回上一块、拼接无损', async () => {
+  const tmp = tmpdir('sunshinex-stream-cont-');
+  try {
+    // 三行流式：行1、行2（同段续接）、空行、第二段——逐行切块入档
+    const ctrl = new SessionController({ root: tmp, model: new HookAdapter('第一行\n第二行\n\n第二段') });
+    await ctrl.submit('任务');
+    await ctrl.waitIdle();
+    const items = ctrl.getState().messages.filter((m) => m.role === 'assistant');
+    assert.deepEqual(
+      items.map((m) => m.text),
+      ['第一行\n', '第二行\n\n', '第二段'],
+      '逐行入档：每完结行一块；空行自成块后并回上一块（拼接无损），末行由 done 尾段补齐',
+    );
+    assert.notEqual(items[0]!.cont, true, '首块非续接');
+    assert.equal(items[1]!.cont, true, '第二行与第一行同段（上一块无空行结尾）→ cont 续块');
+    assert.notEqual(items[2]!.cont, true, '空行后起新段 → cont 复位');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

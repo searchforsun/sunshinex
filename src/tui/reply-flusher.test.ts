@@ -50,17 +50,18 @@ test('reply-flusher：短围栏未闭合仍零切点（整块入档保结构）'
   assert.equal(stableReplySegment(text, 0), null, '未超过行数上限的围栏：闭合前不切');
 });
 
-test('reply-flusher：无空行超长段按最近换行兜底切块', () => {
+test('reply-flusher：逐行切点（完整流式裁决）——预建串一次交清所有完结行、实况节奏逐行放行', () => {
   const longPara = Array.from({ length: 30 }, (_, i) => `行${i}`).join('\n');
   const seg = stableReplySegment(longPara, 0);
-  assert.ok(seg !== null, '超长段应触发兜底切块');
-  // cut 取「最靠后安全切点」（滑动式）：30 行预建串在阈值 10 下触发两刀（10、20），终切 20。
-  // 实况流式下 flushReply 逐 token 调用，第 10 行完成瞬间尾巴恰为 10 行即切——实况块长恒 = 上限，
-  // 多倍切点只在 flush 被饿（预建串/合帧窗口积压）时出现，属「尽量多交账」的设计语义
-  assert.equal(seg.split('\n').length - 1, 2 * REPLY_SEGMENT_MAX_LINES, '预建串终切 = 最大安全倍数（2×上限）');
-  // 实况节奏锚定：尾巴恰为「上限行数各带行尾换行」时（流式第 10 行换行刚到达），切点 = 上限本身
-  const live = stableReplySegment(Array.from({ length: 10 }, (_, i) => `行${i}`).join('\n') + '\n', 0);
-  assert.equal(live!.split('\n').length - 1, REPLY_SEGMENT_MAX_LINES, '实况节奏：尾巴恰为上限行数即切上限');
+  assert.ok(seg !== null, '完结行即切点');
+  // cut 取最靠后完结行（滑动式）：30 行预建串（末行无换行）→ 前 29 行一次交清；
+  // 实况流式下 flushReply 逐 token 调用，每完成一行即切一行——块长 = 1 行
+  assert.equal(seg.split('\n').length - 1, 29, '预建串：所有完结行一次放行（末行未完不留）');
+  // 实况节奏锚定：逐行流式——每块恰 1 行
+  const one = stableReplySegment('行0\n', 0);
+  assert.equal(one, '行0\n', '单完结行即切');
+  const two = stableReplySegment('行0\n行1\n', 0);
+  assert.equal(two, '行0\n行1\n', '两完结行切至最靠后（合帧积压时尽量多交账）');
 });
 
 test('reply-flusher：纯空白切段返回原串（session 侧只推进不入档）', () => {
