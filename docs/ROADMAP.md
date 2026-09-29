@@ -109,8 +109,8 @@ flowchart TB
 - [x] 会话持久化 + resume（journal 逐事件落盘、崩溃丢失窗口收敛至在飞一个工具步；/resume、--continue、/rewind 代码回退、/fork 不可变分档）
 - [x] 运行控制：中断停止（Esc/Ctrl+C）、steering 穿插提示词（↑ 撤回重排）、ask_question 工具
 - [x] 思考强度 effort 七档（/model effort 会话内切换、端点能力阶梯降级探测）
-- [ ] 斜杠命令选择题化 + 命令面扁平化 + CLI 入口判界统一（设计规格 2026-09-21-cli-tui-interaction-redesign 已定稿，待实施）
-- [ ] Worktree 隔离特性线（设计规格 2026-09-20-worktree-isolation-design 已定稿，待实施）
+- [x] 斜杠命令选择题化 + 命令面扁平化 + CLI 入口判界统一（设计规格 2026-09-21-cli-tui-interaction-redesign；fe12d6a / 17f7712 落地）
+- [x] Worktree 隔离特性线（设计规格 2026-09-20-worktree-isolation-design；d332a90 / b4cede3 落地）
 
 **5B 桌面端 GUI（对标 Codex 工作台，spec 先行）**：
 
@@ -146,11 +146,11 @@ flowchart TB
 - [x] 阶段三 Graph 编排（DAG 引擎 + 四类节点 + 五节点流水线、CLI pipeline）
 - [x] 阶段四 MCP 生态（三传输 + sqlite-vec 知识库 + 技能体系）
 - [x] 模型 SDK 接入 OpenAI 协议兼容供应商（settings.json 配置，模型侧原生 function calling）
-- [x] 阶段五 5A 主体（会话 REPL、流式渲染、plan、审批与选择器、会话持久化 + resume + rewind/fork、中断与 steering、记忆/技能命令族、effort、上下文压缩模型驱动六要素）
+- [x] 阶段五 5A 主体（会话 REPL、流式渲染、plan、审批与选择器、会话持久化 + resume + rewind/fork、中断与 steering、记忆/技能命令族、effort、上下文压缩模型驱动六要素、后台任务账本与 task 工具族、worktree 隔离）
 
-当前基线（2026-09-21 实测）：tsc strict 零报错、全量 1106/1106 fail 0、selfcheck OK；CLI 执行面 selfcheck / run / pipeline 冒烟验证。实施记录见各 plan 执行回写与 reports/。
+当前基线（2026-09-30 实测）：tsc strict 零报错、全量 1403 pass / fail 0（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK。实施记录见各 plan 执行回写与 reports/。
 
-下一步（目标形态排期，见 docs/GOAL.md）：斜杠命令选择题化 + CLI 入口判界统一（规格已定稿待实施）∥ Worktree 隔离（规格已定稿待实施）∥ GUI 设计规格（纸面）并行推进 → 长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子代理生态沉淀分享 → 插件生命周期与依赖管理）。
+下一步（目标形态排期，见 docs/GOAL.md）：GUI 设计规格（纸面）并行推进 → 长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子代理生态沉淀分享 → 插件生命周期与依赖管理）。
 
 ## 6. 验证策略
 
@@ -165,4 +165,4 @@ flowchart TB
 
 ## 7. 目录结构
 
-实装为 src/ 扁平分层（与历史规划中的 src/agent/* 嵌套示意不同，扁平分层为既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/storage`、`src/plugins`、`src/config`、`src/runtime.ts`、`src/tui`、`src/cli`。逐文件说明见根目录 `CLAUDE.md §3`；`src/gui` 随阶段五 5B 建立。
+实装为 src/ 扁平分层（与历史规划中的 src/agent/* 嵌套示意不同，扁平分层为既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/tasks/prompts/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/storage`、`src/plugins`、`src/config`、`src/runtime.ts`、`src/tui`、`src/cli`。逐文件说明见根目录 `CLAUDE.md §3`；`src/gui` 随阶段五 5B 建立。

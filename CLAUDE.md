@@ -30,12 +30,15 @@ pnpm install   # 安装依赖
 ```text
 src/
   index.ts            # npm/pnpm start 入口（装载 settings.json 配置链）
-  cli/                # CLI 执行面（selfcheck / run / pipeline）
+  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / skills install；worktree-launch --worktree 装配前解析）
   types.ts            # 全局共享类型（新增共享类型一律在此登记）
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
+  paths.ts            # 路径工具单点（isWithin 子树判界，§14）
+  i18n.ts             # 外观双语 t(en, zh) 调用时求值（§15）
   config.ts           # SUNSHINE.md 解析器
-  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）
+  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / termination-config / memory-config / data-dir
+  tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/highlight 呈现、session-journal/snapshots 会话持久化
   harness/
     index.ts          # Harness 门面（含 SteeringChannel）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
@@ -52,12 +55,13 @@ src/
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输）
     subagent.ts       # 子代理执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）
     worktree.ts       # git worktree 单点模块（create/remove/list/isDirty/subagentTreeName）
+    prompts/          # 提示词模板单点（shared 稳定段共享行；judge/summarizer/memory/learned 一次性调用模板）
     knowledge/        # 本地向量知识库（chunk/store/embed/KnowledgeBase）
-    security/         # guard/policy/modes/sandbox/dryrun/chain
-    context/          # loader（全局+项目 SUNSHINE.md 两层）/window/session/compaction/memory-lifecycle
+    security/         # guard/policy/rules/modes/sandbox/dryrun/chain + landlock（Linux exec 写围栏）/websearch-endpoint
+    context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/window/session/summarizer（压缩摘要）
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、workflow.ts、templates.ts
-  model/adapter.ts    # 模型适配 + 三档算力路由
+  model/              # adapter.ts 模型适配 + 三档算力路由；chat-stub.ts 文本协议测试桩
   storage/            # 本地 JSON 存储底座
   plugins/loader.ts   # 插件加载（plugins/{id}/plugin.json）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）

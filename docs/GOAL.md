@@ -12,14 +12,14 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 
 **复杂编码长任务**：跨文件重构、测试闭环、多步工程任务，延续 Claude Code 对标线。
 
-- 既有底座承接：Loop 验收修正环（条件自由化、Impossible 三值裁决、判据错误分级重试）、Reactor 200 步宽预算、子代理并行 fork、上下文单一基座 + 模型驱动压缩。
+- 既有底座承接：Loop 验收修正环（条件自由化、Impossible 三值裁决、判据错误分级重试）、Reactor 400 步宽预算、子代理并行 fork、上下文单一基座 + 模型驱动压缩。
 - 「通用」指任务机制通用而非放弃纵深：内核契约保持领域无关（通用提示词、工具 / 技能 / MCP 均可扩展），能力建设优先服务编码域；开放域任务经生态自然获得、不专门建设。
 
 ## 交互面：TUI + GUI 双线
 
 | 交互面 | 对标 | 定位 |
 |--------|------|------|
-| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / tui） |
+| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / skills install / tui） |
 | TUI | Claude Code | 第一入口，v1.0 默认交互面，持续打磨 |
 | GUI | Codex 工作台 | 尽快立项（spec 先行）；GUI v1 = 对话交互 + 代码预览 / diff，工作流可视化看板后置 GUI v2 |
 

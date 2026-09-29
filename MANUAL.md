@@ -21,10 +21,10 @@ pnpm test              # 全量单测
 **正式安装（npm 全局）**
 
 ```bash
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.0/sunshinex-agent-0.2.0.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.1/sunshinex-agent-0.3.1.tgz
 # npm ≥ 12 报 EALLOWREMOTE（allow-remote 缺省 none）时二选一：
 #   加开关：npm install -g --allow-remote=all <上面的链接>
-#   或先下载再本地装（allow-file 缺省 all，不受此限）：curl -LO <链接> && npm install -g ./sunshinex-agent-0.2.0.tgz
+#   或先下载再本地装（allow-file 缺省 all，不受此限）：curl -LO <链接> && npm install -g ./sunshinex-agent-0.3.1.tgz
 ```
 
 **命令总表**
@@ -38,6 +38,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 | `sunshinex selfcheck` | 骨架自检 |
 | `sunshinex run <dir> --goal="..."` | 标准验收修正环（非 done 退出码 1） |
 | `sunshinex pipeline <dir> --goal="..." [--yes]` | 五节点流水线 gate 审批（`--yes` 跳过交互直接批准） |
+| `sunshinex skills install <git-url \| owner/repo \| 本地目录> [--force]` | 安装技能到全局技能根 `~/.sunshinex/skills`（同名已存在缺省跳过，`--force` 覆盖） |
 
 **启动参数**（全部命令通用）
 
@@ -67,13 +68,13 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
 
 生效优先级（高 → 低）：**已导出环境变量 > 项目 settings.json > 全局 settings.json > 内置缺省**。修改配置后新开会话生效。
 
-最小可用配置（可直接复制使用）：
+最小可用配置（可直接复制使用；任意 OpenAI 协议兼容端点均可，如 BigModel、DeepSeek、OpenRouter、vLLM 本地部署等）：
 
 ```json
 {
   "version": 1,
-  "model": "glm-5.3-flash",
-  "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+  "model": "<模型名>",
+  "baseUrl": "https://<端点>/v1",
   "env": { "SUNSHINEX_API_KEY": "sk-…" }
 }
 ```
@@ -85,8 +86,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.
   "version": 1,
 
   // ── 模型 ──────────────────────────────────────────────
-  "model": "glm-5.3-flash",                          // 主模型（任意 OpenAI 协议兼容模型）
-  "baseUrl": "https://open.bigmodel.cn/api/paas/v4", // 模型端点
+  "model": "<模型名>",                               // 主模型（任意 OpenAI 协议兼容模型）
+  "baseUrl": "https://<端点>/v1",                    // 模型端点
   "tier": "medium",                                  // 缺省档位 small|medium|large
   "modelSmall": "",                                  // 各档绑定的模型；留空 = 该档用主模型
   "modelMedium": "",
@@ -386,4 +387,3 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |
 | 窗口缩放后花屏 / 残影 | 微调窗口大小再触发一次整屏重绘 |
 | 想回看很久之前的内容 | 终端滚动缓冲保留全部输出；`Tab` / `Ctrl+O` 展开查看 |
-��部输出；`Tab` / `Ctrl+O` 展开查看 |

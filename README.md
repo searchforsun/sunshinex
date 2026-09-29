@@ -19,7 +19,8 @@ graph LR
 
 ```text
 src/
-  cli/       # CLI 执行面（selfcheck / run / pipeline；裸命令进交互终端）
+  cli/       # CLI 执行面（selfcheck / run / pipeline / skills install；裸命令进交互终端）
+  tui/       # 交互式终端（ink + React，对标 Claude Code，v1.0 默认入口）
   harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子代理、知识库
   loop/      # Loop 引擎（生成→校验→修正）
   graph/     # DAG 多角色协作编排
@@ -54,18 +55,18 @@ pnpm install                   # .npmrc 已把 store 固定到仓内，依赖安
 pnpm cli                       # 构建并启动交互式终端（缺省 manual 权限模式）
 ```
 
-模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥，任意 OpenAI 协议兼容供应商）：
+模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥；任意 OpenAI 协议兼容供应商均可，如 BigModel、DeepSeek、OpenRouter、vLLM 本地部署等）：
 
 ```json
 {
   "version": 1,
-  "model": "glm-5.3-flash",
-  "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+  "model": "<模型名>",
+  "baseUrl": "https://<端点>/v1",
   "env": { "SUNSHINEX_API_KEY": "sk-…" }
 }
 ```
 
-配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [MANUAL](MANUAL.md)；旧 `~/.sunshinex/.env` 已退役——设置键转语义键、密钥原样进 `env` 块。
+配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [MANUAL](MANUAL.md)。
 
 ### 长任务终止参数
 
@@ -93,13 +94,13 @@ pnpm test && pnpm selfcheck    # 全量单测 / 骨架自检
 
 ```bash
 # ① GitHub Release 链接直装（推荐，无需 npm 账号）
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.2.0/sunshinex-agent-0.2.0.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.1/sunshinex-agent-0.3.1.tgz
 
 # ② npm registry（正式发布后可用）
 npm install -g sunshinex-agent
 
 # ③ 本地打包安装
-npm pack && npm install -g ./sunshinex-agent-0.2.0.tgz
+npm pack && npm install -g ./sunshinex-agent-0.3.1.tgz
 ```
 
 > npm ≥ 12 走 ① 报 `EALLOWREMOTE`（`allow-remote` 缺省禁止从 URL 取包）：加 `--allow-remote=all`，或先 `curl -LO` 下载 tarball 再按 ③ 本地安装（不受该限制）。
@@ -111,9 +112,9 @@ npm pack && npm install -g ./sunshinex-agent-0.2.0.tgz
 ```bash
 scripts/release.mjs                            # 按 package.json 当前版本发版
 scripts/release.mjs --bump patch|minor|major   # 递增版本号，随发版提交推送
-scripts/release.mjs --version 0.2.0            # 指定版本发版（写回 package.json）
+scripts/release.mjs --version 0.3.1            # 指定版本发版（写回 package.json）
 scripts/release.mjs --dry-run                  # 只验证 + 打包预览，不触网不落库
-scripts/release.mjs --version 0.2.0 --clobber  # 同版本重发（覆盖附件，须显式授权）
+scripts/release.mjs --version 0.3.1 --clobber  # 同版本重发（覆盖附件，须显式授权）
 ```
 
 - 版本语义：默认不覆盖、不递增，每个版本一个新 tag + 新安装链接，旧链接永久可回溯。
