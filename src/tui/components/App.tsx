@@ -228,7 +228,7 @@ export function App({
   const [cursor, setCursor] = React.useState(store.cursor);
   // 两层展开视图（Tab/Ctrl+O 正交，均经 tui-loop 卸载→清屏→重挂整屏重放，视口永远只有一份历史）：
   // expandAll=第一层行折叠（历史阶段组只留「正文+首个工具对+首个思考行」↔ 全行）；
-  // latestFull=第二层内容深度（最近正文锚点阶段的思考与工具结果全文 ↔ 摘要）；无状态门槛，运行中随时可切
+  // latestFull=第二层内容深度（当前一个轮次的所有工具与思考行全文 ↔ 摘要）；无状态门槛，运行中随时可切
   const [expandAll, setExpandAll] = React.useState(store.expandAll ?? false);
   const [latestFull, setLatestFull] = React.useState(store.latestFull ?? false);
   // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；
@@ -241,6 +241,11 @@ export function App({
   const setBrowse = (mode: boolean, cursor = 0): void => {
     browseModeRef.current = mode;
     browseCursorRef.current = cursor;
+    // store 同步先于 setState（对标 setInspectRetained）：browse→inspect 切换经 onRequestRepaint 同步卸载，
+    // 本帧「现场回写」effect 永不再跑（setBrowse(false) 的提交被卸载吞掉），不同步写即重挂后 browseMode
+    // 残留 true——全屏态叠加浏览态吞键（真机「Tab/Esc 须先按 Enter 才生效」病根）
+    store.browseMode = mode;
+    store.browseCursor = cursor;
     setBrowseMode(mode);
     setBrowseCursor(cursor);
   };
@@ -613,7 +618,7 @@ export function App({
       return;
     }
 
-    // Ctrl+O：第二层切换（内容深度）——最近正文锚点阶段的思考与工具结果展开/收起为全文
+    // Ctrl+O：第二层切换（内容深度）——当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行展开/收起为全文
     if (key.ctrl && input === 'o') {
       const nextFull = !latestFull;
       setLatestFull(nextFull);

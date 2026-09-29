@@ -61,6 +61,41 @@ test('App inspect：Tab 切换折叠/完整时间线（经生产 repaint 整屏�
   }
 });
 
+test('App inspect：browse→Enter 进全屏后浏览态不残留（store 同步卸载前落盘），直接 Esc 一步退回主界面（2026-09-30 真机「须先按 Enter」病根）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-browse-'));
+  try {
+    const ctrl = new SessionController({ root: tmp });
+    const retain = { ...initialRetained() };
+    let current: TestRenderResult | undefined;
+    const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
+    ctrl.onEventForTest({ type: 'token', text: '正文\n', payload: { subagent: 'w' } } as never);
+    const one = render(<App {...props} />);
+    current = one;
+    for (let i = 0; i < 40 && !(one.lastFrame() ?? '').includes('[w]'); i++) await sleep(25);
+    one.write('\u0002'); // Ctrl+B 浏览（setBrowse(true) 同步写 store）
+    await sleep(80);
+    assert.equal(retain.browseMode, true, '前置：浏览态已同步进 store');
+    one.write('\r'); // Enter 选行 → setInspectRetained + setBrowse(false) 均同步写 store 后卸载
+    await sleep(80);
+    const two = render(<App {...props} />);
+    current = two;
+    await sleep(80);
+    assert.equal(retain.browseMode, false, '重挂后浏览态不残留（旧实现残留 true 即全屏叠加浏览态吞键）');
+    assert.ok(retain.inspect, '全屏态在');
+    two.write('\u001B'); // 直接 Esc（此前须先按 Enter 归位浏览态才生效）
+    await sleep(80);
+    const three = render(<App {...props} />);
+    current = three;
+    await sleep(80);
+    assert.equal(retain.inspect, undefined, '直接 Esc 退出全屏');
+    assert.equal(retain.browseMode, false, '回到主界面（浏览态亦为关）');
+    assert.doesNotMatch(three.lastFrame() ?? '', /subagent view|subagent browse/, '主界面无全屏/浏览残留');
+    three.unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面（ChildPanel 行回到帧内）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-'));
   try {
