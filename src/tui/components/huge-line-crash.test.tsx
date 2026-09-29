@@ -20,6 +20,15 @@ test('MarkdownText：超长 ASCII/CJK 行（段落与围栏）硬折不崩、帧
   one.unmount();
 });
 
+test('MarkdownText：超长行进标题与列表不崩（SafeInline 降级路径返回 Text——Box nested in Text 渲染崩溃回归，2026-09-30 真机实锤）', () => {
+  // 崩溃形态：Heading 的 <Text bold> 与 List 的 <Text> 前缀内嵌 SafeInline，降级路径曾返回 <Box> 即
+  // ink reconciler「<Box> can't be nested inside <Text>」抛错整 CLI 崩溃
+  const one = render(<MarkdownText text={`## 标题 ${HUGE_CJK}\n\n- 项一 ${HUGE}\n- 项二`} columns={80} />, 80);
+  const f = one.allOutput();
+  assert.ok(f.includes('项二'), '列表后续项正常渲染（进程存活）');
+  one.unmount();
+});
+
 test('ToolRow expanded detail 与折叠摘要：超长结果行硬折/省略不崩', () => {
   const callItem = { role: 'tool', kind: 'call', text: 'READ big.json', ts: 1, seq: 1, detail: `${HUGE}\nsecond line`, callId: 'c1' } as unknown as ChatItem;
   const expanded = render(<ToolRow item={callItem} columns={80} collapsed={false} />, 80);

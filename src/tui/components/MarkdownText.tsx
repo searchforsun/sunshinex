@@ -29,19 +29,14 @@ function Inline({ nodes }: { nodes: MdInline[] }): JSX.Element {
 }
 
 /** 段落级超宽降级：常规行走 Inline（保留粗体/斜体/行内代码样式）；任一源行超列宽即纯文本硬折——
- *  样式让位于不崩溃（无空格超长 token ink/yoga 不可软折，RangeError 实锤见 hardWrap 注） */
+ *  样式让位于不崩溃（无空格超长 token ink/yoga 不可软折，RangeError 实锤见 hardWrap 注）。
+ *  降级路径必须返回单个 <Text>（折行以 \n 承载，ink 原生支持 Text 内多行）：本组件被嵌在
+ *  <Text bold>/<Text> 之内（Heading/List 前缀），返回 <Box> 即「Box nested in Text」渲染崩溃 */
 function SafeInline({ nodes, columns }: { nodes: MdInline[]; columns: number }): JSX.Element {
   const plain = inlineText(nodes);
   const overflow = plain.split('\n').some((l) => displayWidth(l) > Math.max(4, columns - 2));
   if (!overflow) return <Inline nodes={nodes} />;
-  const lines = hardWrap(plain, columns);
-  return (
-    <Box flexDirection="column">
-      {lines.map((l, i) => (
-        <Text key={i}>{l}</Text>
-      ))}
-    </Box>
-  );
+  return <Text>{hardWrap(plain, columns).join('\n')}</Text>;
 }
 
 /** 标题分级：与正文同色不加彩，仅字形层级（1/4 加粗、5/6 加粗暗灰） */
