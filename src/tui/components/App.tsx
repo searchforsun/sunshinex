@@ -306,7 +306,10 @@ export function App({
       expandAllInitRef.current = true;
       return;
     }
-    onRequestRepaint?.();
+    // Tab/Ctrl+O 折叠切换走 tail 模式（2026-09-30「折叠闪频」）：清屏整屏重放在无 DEC 2026 的
+    // WT 上即清屏空白帧（轻微闪频实锤）；tail 原位重写带可达性判定——变化尾部在视口内（Ctrl+O
+    // 当前轮详情、近期历史折叠）就地擦写零闪屏，超出视口自动回落 full（安全降级）
+    onRequestRepaint?.('tail');
   }, [expandAll, latestFull]);
   // 段锚点自动重绘：段数变化即新锚点落定。段数经 segmentCount 单点（与 buildTranscriptDecisions 同一
   // 切段谓词——两份手写曾漂移：system 行计段与否）。折叠判定改打印账本精确比对（2026-09-30 方案 A，
