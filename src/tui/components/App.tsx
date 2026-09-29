@@ -6,7 +6,8 @@ import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
 import { ApprovalDecision } from '../../types';
 import { SessionController, TuiState, paginateOptions } from '../session';
-import { SLASH_COMMANDS } from '../slash-commands';
+import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
+import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { formatDuration } from '../format';
@@ -46,6 +47,28 @@ export function nextSlashCompletion(buffer: string, pool: readonly string[] = SL
   if (exactIdx >= 0) return pool[(exactIdx + 1) % pool.length] + ' ';
   const candidates = pool.filter((c) => c.startsWith(token));
   return candidates.length > 0 ? candidates[0] + ' ' : undefined;
+}
+
+/** 纵向命令面板技能源（session.skillMenuEntries 同构）：lastUsedAt 缺省=从未使用，排最尾部 */
+export interface SlashMenuSkillSource {
+  id: string;
+  name?: string;
+  description?: string;
+  lastUsedAt?: number;
+}
+
+/** 纵向命令面板条目装配（2026-09-30 对标 Claude Code，纯函数）：内置命令按 SLASH_COMMANDS 固定序在前、
+ *  技能命令按最近使用降序（平局回落数字典序）在后，整池按 buffer（已 trim）前缀动态过滤；
+ *  非 / 前缀或带参（含空格，trim 后前缀必失配）一律空表=菜单不出现 */
+export function buildSlashMenu(buffer: string, skills: readonly SlashMenuSkillSource[] = []): SlashMenuEntry[] {
+  const q = buffer.trim();
+  if (!q.startsWith('/')) return [];
+  const descs = slashCommandDescriptions();
+  const builtins: SlashMenuEntry[] = SLASH_COMMANDS.map((cmd) => ({ cmd, description: descs[cmd.slice(1)] ?? '', kind: 'builtin' as const }));
+  const skillEntries: SlashMenuEntry[] = [...skills]
+    .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((s) => ({ cmd: `/${s.id}`, description: s.description ?? '', kind: 'skill' as const }));
+  return [...builtins, ...skillEntries].filter((e) => e.cmd.startsWith(q));
 }
 
 /** 输入框占位文案（按会话状态分流；纯函数便于断言） */
@@ -235,11 +258,18 @@ export function App({
       .sort((a, b) => (a.meta?.delegatedAt ?? a.seq!) - (b.meta?.delegatedAt ?? b.seq!)),
   ];
   const [history, setHistory] = React.useState<string[]>(store.history);
-  // 技能命令池快照（规格 D6/D7）：会话层 skillCommandIds 同源；挂载即读 + 回合边界（sessionTurns 变化）刷新，不逐键读盘
-  const [skillExtra, setSkillExtra] = React.useState<string[]>(() => controller.skillCommandIds());
+  // 技能命令池快照（规格 D6/D7）：会话层 skillMenuEntries 同源（附描述与最近使用）；挂载即读 + 回合边界
+  // （sessionTurns 变化）刷新，不逐键读盘——最近使用排序在会话层 loadSkill 落盘后下回合生效
+  const [skillMenu, setSkillMenu] = React.useState<SlashMenuSkillSource[]>(() => controller.skillMenuEntries());
   React.useEffect(() => {
-    setSkillExtra(controller.skillCommandIds());
+    setSkillMenu(controller.skillMenuEntries());
   }, [controller, state.metrics.sessionTurns]);
+  // 纵向命令面板光标（2026-09-30 对标 CC）：ref 真值 + state 渲染（useInput 处理器闭包滞后先例）；
+  // buffer 变化（逐键过滤词变）即归位首项——过滤语义下旧光标位置无意义
+  const [slashCursorState, setSlashCursorState] = React.useState(0);
+  const slashCursorRef = React.useRef(0);
+  const setSlashCursor = (v: number): void => { slashCursorRef.current = v; setSlashCursorState(v); };
+  React.useEffect(() => { setSlashCursor(0); }, [buffer]);
   const [histIdx, setHistIdx] = React.useState(store.histIdx);
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
   // 输入框回填（/rewind //fork，规格 §7）：锚点轮输入取回输入框可编辑重发；每帧检查、takeBackfill 幂等（无回填 no-op，无重渲染环）
@@ -338,6 +368,12 @@ export function App({
   const todoRows = state.todos.length > 0 ? (state.status === 'running' && !expandAll ? 1 : state.todos.length + 1) : 0;
   const spinnerRows = state.status === 'running' ? 1 : 0;
   const previewCap = Math.max(4, Math.min(28, rows - spinnerRows - childPanelRows - inputRows - todoRows - 1 - 2));
+  // 纵向命令面板条目（2026-09-30 对标 CC）：'/' 前缀动态过滤（含技能池，最近使用在前）；
+  // 在场性=条目非空 + idle/error（与旧横向提示行同门槛）
+  const menuEntries = React.useMemo(() => buildSlashMenu(buffer, skillMenu), [buffer, skillMenu]);
+  const slashPool = React.useMemo(() => buildSlashMenu('/', skillMenu).map((e) => e.cmd), [skillMenu]);
+  // 菜单可见行数：上限 20，随视口与 chrome（输入框/待办/状态栏）实账收缩，防动态帧触顶整屏重写
+  const menuMaxRows = Math.max(3, Math.min(SLASH_MENU_MAX_ROWS, rows - inputRows - todoRows - 3));
   // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
@@ -539,10 +575,19 @@ export function App({
     // 形态整屏重放，视口永远只有一份历史）——无模态态，↑↓ 永远归输入历史，运行中随时可切
     if (key.tab) {
       if (buffer.startsWith('/')) {
-        const next = nextSlashCompletion(buffer, [...SLASH_COMMANDS, ...skillExtra]);
-        if (next !== undefined) {
-          setBuffer(next);
-          setCursor(next.length);
+        // 2026-09-30 纵向面板语义：已 exact（完整命令词）→ 池内循环下一位 + 空格（既有邻位钉不动）；
+        // 否则补全到面板当前选中项 + 空格（对标 CC：↑↓ 选中的那一条，而非恒首项）
+        const token = buffer.trim();
+        const exactIdx = slashPool.indexOf(token);
+        const target =
+          exactIdx >= 0
+            ? slashPool[(exactIdx + 1) % slashPool.length] + ' '
+            : menuEntries.length > 0
+              ? `${(menuEntries[Math.min(slashCursorRef.current, menuEntries.length - 1)] ?? menuEntries[0])!.cmd} `
+              : undefined;
+        if (target !== undefined) {
+          setBuffer(target);
+          setCursor(target.length);
         }
       } else {
         // 第一层切换（行折叠）：翻转后经重挂整屏重放（Static 按新形态整体重建，视口永远只有一份），运行中随时可切
@@ -591,6 +636,13 @@ export function App({
       return;
     }
 
+    // 纵向命令面板 ↑↓（2026-09-30 对标 CC）：菜单在场即接管方向键，输入历史回填让位（非 / 前缀不受影响）；
+    // 回环移动与问询卡同款 moveCursor 语义，光标取 ref 真值（闭包滞后先例）
+    if ((key.upArrow || key.downArrow) && menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error')) {
+      setSlashCursor(moveCursor(Math.min(slashCursorRef.current, menuEntries.length - 1), menuEntries.length, key.upArrow ? -1 : 1));
+      return;
+    }
+
     // 运行中撤回排队（对标 CC「Up from the first row」）：有排队穿插且输入框为空时，Up 取回全部待投递行回输入框编辑或清空丢弃
     // （awaiting-approval 态在 handler 前部已被审批卡分流 return，此处只可能是 running）
     if (key.upArrow && state.status === 'running' && buffer.length === 0) {
@@ -625,6 +677,17 @@ export function App({
       return;
     }
     if (key.return) {
+      // 纵向命令面板 Enter（2026-09-30 对标 CC）：菜单在场即提交选中命令（半 typing '/ne' + Enter 直接跑 '/new'，
+      // 不再落「无法识别命令」）；带参形态（含空格）过滤必空、菜单不在场，走既有整行提交
+      if (menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error')) {
+        const picked = (menuEntries[Math.min(slashCursorRef.current, menuEntries.length - 1)] ?? menuEntries[0])!.cmd;
+        setBuffer('');
+        setCursor(0);
+        setHistIdx(-1);
+        setHistory((h) => [...h.filter((x) => x !== picked), picked].slice(-100));
+        controller.submit(picked);
+        return;
+      }
       // 行尾单个反斜杠 = 续行（ink3 无法可靠检测 Shift+Enter，回退方案）
       if (buffer.endsWith('\\') && !buffer.endsWith('\\\\')) {
         setBuffer((b) => b.slice(0, -1) + '\n');
@@ -766,21 +829,18 @@ export function App({
           ) : null}
         </Box>
       ) : null}
-      {/* 斜杠候选提示行（对标 CC）：输入 / 前缀时展示前缀匹配候选（内置+技能），纯渲染层不写链；截断以省略行提示 */}
-      {(() => {
-        const cands = slashCandidates(buffer, skillExtra);
-        if (!cands.length || (state.status !== 'idle' && state.status !== 'error')) return null;
-        const MAX = 8;
-        const shown = cands.slice(0, MAX);
-        return (
-          <Box paddingX={1}>
-            <Text dimColor>
-              {shown.join('  ')}
-              {cands.length > MAX ? t(`  … +${cands.length - MAX} more (Tab)`, `  … 还有 ${cands.length - MAX} 条（Tab 补全）`) : ''}
-            </Text>
-          </Box>
-        );
-      })()}
+      {/* 纵向命令面板（2026-09-30 对标 Claude Code，替换旧横向单行提示）：一行一命令 + 右侧描述、
+          选中行反色（❯ + 灰底）、≤20 行窗口随光标翻页；条目=内置 + 技能（最近使用在前），随输入动态过滤；
+          键盘：↑↓ 移动、Tab 补全选中、Enter 提交选中；仅 idle/error 在场（与旧提示行同门槛） */}
+      {(state.status === 'idle' || state.status === 'error') && menuEntries.length > 0 ? (
+        <SlashMenu
+          key="slash-menu"
+          entries={menuEntries}
+          cursor={Math.min(slashCursorState, menuEntries.length - 1)}
+          columns={columns}
+          maxRows={menuMaxRows}
+        />
+      ) : null}
       <InputBox
         buffer={buffer}
         cursor={cursor}

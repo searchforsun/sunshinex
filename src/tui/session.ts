@@ -25,6 +25,7 @@ import { scanMemoryText } from '../harness/memory/guards';
 import { consolidateMemory } from '../harness/memory/consolidate';
 import { isModelSummarizer } from '../harness/context/summarizer';
 import { LiveTaskState, applyTaskState, initialTaskState } from './task-state';
+import { readSkillUsage, recordSkillUsage } from './skill-usage';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -1321,19 +1322,33 @@ export class SessionController {
   /** 技能命令注册表（规格 2026-09-22-skill-as-command D6 单点）：list() 现读磁盘（学习沉淀即时可见）；
    *  按 D2 字符集过滤、D1 内置词排除（内置优先——撞名技能不注册，仅可经 /skill 卡加载），id 字典序 */
   skillCommandIds(): string[] {
+    return this.skillManifestsForCommands().map((m) => m.id).sort();
+  }
+
+  /** 命令面技能清单共用过滤（D1/D2 单点）：字符集合法 + 撞名内置词排除；skillCommandIds 与
+   *  skillMenuEntries 同源消费，防两清单漂移 */
+  private skillManifestsForCommands() {
     const builtin = new Set(SLASH_COMMANDS.map((c) => c.slice(1)));
-    return this.runtime.harness.skills
-      .list()
-      .filter((m) => /^[a-z0-9][a-z0-9_-]*$/.test(m.id) && !builtin.has(m.id))
-      .map((m) => m.id)
-      .sort();
+    return this.runtime.harness.skills.list().filter((m) => /^[a-z0-9][a-z0-9_-]*$/.test(m.id) && !builtin.has(m.id));
+  }
+
+  /** 纵向命令面板技能源（2026-09-30 对标 CC）：清单口径与 skillCommandIds 同源，附 name/description
+   *  与最近使用时间——最近使用在前（用户裁决「skills 默认显示最近常用的」）、平局回落数字典序；
+   *  调用方（App）挂载 + 回合边界刷新，不逐键读盘 */
+  skillMenuEntries(): { id: string; name: string; description: string; lastUsedAt?: number }[] {
+    const usage = readSkillUsage(this.root);
+    return this.skillManifestsForCommands()
+      .map((m) => ({ id: m.id, name: m.name, description: m.description, lastUsedAt: usage[m.id] }))
+      .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
   /** 技能加载单点（规格 D3，自 skillFlow 尾段提取）：链上去重 → resolve → 链尾追持久注入 → 回执；
-   *  /skill 选择卡与 /<技能id> 命令同源消费；failed 不派发后续任务（D4） */
+   *  /skill 选择卡与 /<技能id> 命令同源消费；failed 不派发后续任务（D4）；
+   *  成功/去重两径记录最近使用（2026-09-30 纵向命令面板排序源），failed 不记 */
   private loadSkill(id: string): 'loaded' | 'already' | 'failed' {
     if (this.runtime.harness.context.chainView().some((s) => s.action === 'skill' && s.observation.includes(`(id=${id} v=`))) {
       this.pushMsg('system', t(`Skill ${id} already loaded in this session`, `技能 ${id} 本会话已加载`));
+      recordSkillUsage(this.root, id);
       return 'already';
     }
     const r = this.runtime.harness.skills.resolve(id);
@@ -1345,6 +1360,7 @@ export class SessionController {
     // 链尾追持久注入（先例 D2）：头行对齐 loop skillRef 既有格式，正文随后续每帧经链携带
     this.runtime.harness.context.appendChain([{ action: 'skill', observation: `${skillHeader(m)}\n\n${r.value.body}` }]);
     this.pushMsg('system', t(`Skill loaded: ${m.name} (id=${m.id}) — included in context for subsequent tasks`, `技能已加载：${m.name}（id=${m.id}）——随后续任务进上下文`));
+    recordSkillUsage(this.root, id);
     return 'loaded';
   }
 
