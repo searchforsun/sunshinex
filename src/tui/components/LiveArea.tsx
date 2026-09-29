@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { Box, Text } from 'ink';
 import { LiveBlock } from '../session';
 import { wrapByWidth } from '../text-band';
@@ -49,36 +50,45 @@ export function LiveArea({ live, columns, rows, maxRows: maxRowsOverride, envelo
   // maxRows 显式覆盖优先（2026-09-30 App 动态区 chrome 实账直传：子代理面板/多行输入/展开待办等
   // 全部计入后再定预览上限，防帧高触顶）；缺省回落 rows 联动公式（rows 缺省再回落固定上限）
   const maxRows = maxRowsOverride ?? (rows === undefined ? REPLY_PREVIEW_MAX_ROWS : Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(8, rows - 6)));
-  if (live.kind === 'reply') {
-    // 长围栏兜底切块后预览续块以开栏行承接：未闭合围栏按围栏开始渲染，代码块高亮呈现跨切块延续
-    const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
-    // pad 包络基准（2026-09-30「半屏空白」终版）：恒高补满 maxRows-used 时小块正文（技能回执后 1–2 行
-    // 叙述）也撑 ~26 行空白；完全不补又回切块瞬间满窗→2 行骤缩闪屏。LiveArea 无状态补不出两头兼顾——
-    // App 维护包络（近期峰值用量，升随内容、降每帧 −3 缓落、live 清空归零）传入作 pad 上限：
-    // 满窗切块瞬间包络仍高、pad 兜住帧高不骤缩；小块正文期包络已缓降到内容水平，空白不再成片
-    const preview = pending.trim() === '' ? '' : tailReplyPreview(pending, columns, maxRows);
-    const used = preview.length === 0 ? 0 : markdownRowCount(preview, columns);
-    onUsed?.(used);
-    const pad = Math.max(0, Math.min(8, Math.max(envelope, used) - used));
+  // 用量上报（App 包络收敛数据源）挂 useLayoutEffect：渲染期同步回调 onUsed 即跨组件 render-phase
+  // setState（React 警告「Cannot update a component while rendering a different component」实锤），
+  // 提交期同步执行既合法、又早于测试 unmount（test-ink 无 act 包装下断言仍可见）
+  const isReply = live.kind === 'reply';
+  const used = isReply
+    ? (() => {
+        const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
+        const preview = pending.trim() === '' ? '' : tailReplyPreview(pending, columns, maxRows);
+        return { preview, rows: preview.length === 0 ? 0 : markdownRowCount(preview, columns) };
+      })()
+    : { preview: '', rows: 0 };
+  React.useLayoutEffect(() => {
+    if (isReply) onUsed?.(used.rows);
+  });
+  if (!isReply) {
+    const wrapped = live.text.split('\n').flatMap((seg) => wrapByWidth(seg, Math.max(16, columns - 8)));
+    const tail = wrapped.slice(-THINK_TAIL_LINES);
+    while (tail.length < THINK_TAIL_LINES) tail.unshift('');
     return (
       <Box flexDirection="column">
-        {Array.from({ length: pad }, (_, i) => (
-          <Text key={i}> </Text>
+        {tail.map((l, i) => (
+          <Text key={i} dimColor italic>
+            {l.length > 0 ? `✻ ${l}` : ' '}
+          </Text>
         ))}
-        {preview.length > 0 ? <MarkdownText text={preview} columns={columns} /> : <Text> </Text>}
       </Box>
     );
   }
-  const wrapped = live.text.split('\n').flatMap((seg) => wrapByWidth(seg, Math.max(16, columns - 8)));
-  const tail = wrapped.slice(-THINK_TAIL_LINES);
-  while (tail.length < THINK_TAIL_LINES) tail.unshift('');
+  // pad 包络基准（2026-09-30「半屏空白」终版）：恒高补满 maxRows-used 时小块正文（技能回执后 1–2 行
+  // 叙述）也撑 ~26 行空白；完全不补又回切块瞬间满窗→2 行骤缩闪屏。LiveArea 无状态补不出两头兼顾——
+  // App 维护包络（近期峰值用量，升随内容、降有 200ms 节流缓落、live 清空归零）传入作 pad 上限：
+  // 满窗切块瞬间包络仍高、pad 兜住帧高不骤缩；小块正文期包络已缓降到内容水平，空白不再成片
+  const pad = Math.max(0, Math.min(8, Math.max(envelope, used.rows) - used.rows));
   return (
     <Box flexDirection="column">
-      {tail.map((l, i) => (
-        <Text key={i} dimColor italic>
-          {l.length > 0 ? `✻ ${l}` : ' '}
-        </Text>
+      {Array.from({ length: pad }, (_, i) => (
+        <Text key={i}> </Text>
       ))}
+      {used.preview.length > 0 ? <MarkdownText text={used.preview} columns={columns} /> : <Text> </Text>}
     </Box>
   );
 }
