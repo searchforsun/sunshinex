@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SessionController } from './session';
+import { SessionController, pairChildResults } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 
 function tmpdir(prefix: string): string {
@@ -11,6 +11,56 @@ function tmpdir(prefix: string): string {
 }
 
 /** 2026-09-28 真机三症状回归（碎片口径 2026-09-30 保序修订）：工具边界时序、done 终稿与流式正文重复、归档留存与精简 detail */
+
+test('pairChildResults：并行批结果按 callId 归位到对应调用行下（缺 callId 按 FIFO、孤立结果原位）', () => {
+  const call = (t: string, callId?: string) => ({ kind: 'call' as const, text: t, ...(callId ? { callId } : {}) });
+  const result = (t: string, callId?: string, ok = true) => ({ kind: 'result' as const, text: t, ok, ...(callId ? { callId } : {}) });
+  // 真实并行时序：3 个 call 先入档、结果按完成序 C→A→B 到达
+  const paired = pairChildResults([
+    call('GLOB p1', 'c1'), call('GLOB p2', 'c2'), call('READ f', 'c3'),
+    result('files of p2', 'c2'), result('files of p1', 'c1'), result('42 lines', 'c3', false),
+    { kind: 'text', text: '结论' },
+  ]);
+  assert.deepEqual(
+    paired.map((l) => `${l.kind}:${l.text}`),
+    ['call:GLOB p1', 'result:files of p1', 'call:GLOB p2', 'result:files of p2', 'call:READ f', 'result:42 lines', 'text:结论'],
+    '结果行归位到各自调用行下（call+result 成组）',
+  );
+  // 缺 callId：FIFO 归最早未配对 call
+  const fifo = pairChildResults([call('A'), call('B'), result('ra'), result('rb')]);
+  assert.deepEqual(fifo.map((l) => l.text), ['A', 'ra', 'B', 'rb'], '缺 callId 按 FIFO 归位');
+  // 孤立结果（旧档无宿主）：原位保留
+  const orphan = pairChildResults([{ kind: 'text', text: 't' }, result('orphan')]);
+  assert.deepEqual(orphan.map((l) => l.text), ['t', 'orphan'], '无宿主 call 原位保留');
+});
+
+test('并行工具事件：result 行携带 callId 入转录、归档 detail 结果行紧跟调用行（真机「并行结果堆叠」病根）', () => {
+  const tmp = tmpdir('sunshinex-sess-par-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p', label: 'w' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
+    // 并行批：3 call 先入档、2 结果按完成序到达（c2 → c1）
+    ctrl.onEventForTest({ type: 'tool-call', text: 'GLOB', payload: { input: { pattern: 'a' }, subagent: 'w', callId: 'c1' } } as never);
+    ctrl.onEventForTest({ type: 'tool-call', text: 'GLOB', payload: { input: { pattern: 'b' }, subagent: 'w', callId: 'c2' } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'hits b', payload: { ok: true, subagent: 'w', callId: 'c2' } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'hits a', payload: { ok: true, subagent: 'w', callId: 'c1' } } as never);
+    const child = ctrl.getState().children.find((c) => c.label === 'w')!;
+    assert.equal(child.transcript.find((l) => l.kind === 'result' && l.callId === 'c2')?.text, 'hits b', 'result 行携带 callId');
+    ctrl.onEventForTest({ type: 'done', text: '结论', payload: { subagent: 'w' } } as never);
+    // done 即延迟归档（后台两段式）：面板离场，转录折入 SPAWN 行 detail
+    // 归档 detail：结果行紧跟对应调用行（c1 行后是 hits a）
+    ctrl.onEventForTest({ type: 'tool-result', text: 'w 完成', payload: { tool: 'spawn', ok: true } } as never);
+    const call = ctrl.getState().messages.find((m) => m.kind === 'call' && m.text.startsWith('SPAWN'));
+    const lines = (call!.detail ?? '').split('\n');
+    const i1 = lines.findIndex((l) => l.startsWith('GLOB a'));
+    assert.equal(lines[i1 + 1], '⎿ ✓ hits a', 'c1 结果行紧跟 c1 调用行');
+    const i2 = lines.findIndex((l) => l.startsWith('GLOB b'));
+    assert.equal(lines[i2 + 1], '⎿ ✓ hits b', 'c2 结果行紧跟 c2 调用行');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
 
 test('结构边界冲刷半行保序：正文先于其后的工具行入档，不再跨工具行滞留沉底（2026-09-30 真机「工具/阶段说明集中最后」病根）', () => {
   const tmp = tmpdir('sunshinex-sess-frag-');

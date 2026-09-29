@@ -777,6 +777,7 @@ export function App({
           }
           columns={columns}
           rows={rows}
+          expanded={inspectExpanded}
         />
       ) : (
         <>

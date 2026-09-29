@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { render } from '../test-ink';
+import { render, type TestRenderResult } from '../test-ink';
 import { App } from './App';
 import { SessionController } from '../session';
+import { initialRetained } from '../ui-state';
 import { ScriptedAdapter } from '../../model/adapter';
 
 // 钉短裸 ESC 拼接窗口（use-input 拆包重组默认 40ms）：本套 Esc 退出断言只等 50ms，贴边易假红
@@ -15,6 +16,51 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // App inspect 全屏接管（规格 §3.3）：键位全序列经 test-ink write 直驱——Ctrl+B 进入浏览 → Enter 进入全屏 → Esc 退出。
 // 运行中子代理经子面板事件构造（SessionController.onEventForTest 与生产 onEvent 同通道）
+test('App inspect：Tab 切换折叠/完整时间线（经生产 repaint 整屏重放，2026-09-30 用户裁决回归）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-tab-'));
+  try {
+    const ctrl = new SessionController({ root: tmp });
+    // 生产同构：onRequestRepaint=卸载当前实例，tui-loop 循环体以同一 retain 重挂（App.spawn-browse 同款）
+    const retain = { ...initialRetained() };
+    let current: TestRenderResult | undefined;
+    const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
+    // 思考段（含 detail 全文）+ 工具对：折叠态 detail 不可见、Tab 展开 detail 可见
+    ctrl.onEventForTest({ type: 'reasoning', text: '思考全文行甲\n思考全文行乙', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'token', text: '正文开始\n', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'tool-call', text: 'READ', payload: { input: { path: 'a.ts' }, subagent: 'w', callId: 'c1' } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: '8 lines', payload: { ok: true, subagent: 'w', callId: 'c1' } } as never);
+    const one = render(<App {...props} />);
+    current = one;
+    for (let i = 0; i < 40 && !(one.lastFrame() ?? '').includes('[w]'); i++) await sleep(25);
+    one.write('\u0002'); // Ctrl+B
+    await sleep(50);
+    one.write('\r'); // Enter → 全屏（setInspectRetained 触发卸载）
+    await sleep(80);
+    const two = render(<App {...props} />);
+    current = two;
+    await sleep(80);
+    assert.match(two.lastFrame() ?? '', /子代理视图|subagent view/, '全屏视图接管');
+    assert.match(two.allOutput(), /Thought for/, '思考收束摘要行在档');
+    assert.ok(!two.allOutput().includes('思考全文行甲'), '折叠态思考全文不呈现');
+    two.write('\t'); // Tab → 展开时间线（卸载）
+    await sleep(120);
+    const three = render(<App {...props} />);
+    current = three;
+    await sleep(120);
+    assert.match(three.lastFrame() ?? '', /收起时间线|collapse timeline/, 'Tab 后状态行切到展开态（提示语为「可收起」）');
+    assert.match(three.allOutput(), /思考全文行甲/, 'Tab 展开后思考全文呈现（Static 整屏重放）');
+    three.write('\t'); // Tab → 折叠回缺省
+    await sleep(120);
+    const four = render(<App {...props} />);
+    current = four;
+    await sleep(120);
+    assert.match(four.lastFrame() ?? '', /展开时间线|expand timeline/, '再按 Tab 回到折叠态（提示语为「可展开」）');
+    four.unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面（ChildPanel 行回到帧内）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-'));
   try {

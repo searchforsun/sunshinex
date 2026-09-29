@@ -98,6 +98,42 @@ export interface ChildLine {
   text: string;
   ok?: boolean;
   detail?: string;
+  /** call 关联 id（2026-09-30 并行结果归位）：call 行带自身 callId、result 行带所配对的 callId——
+   *  并行批「先全量 call 后按完成序 result」时视图按 callId 把结果归位到对应调用行下（主 agent ToolRow 同构） */
+  callId?: string;
+}
+
+/** 并行结果归位（2026-09-30 对标主 agent ToolRow 配对形态）：result 行按 callId 归位到对应 call 行之后——
+ *  并行批「先全量 call、后按完成序 result」的真实时序下，视图/归档时间线不再「调用块后结果堆叠」；
+ *  缺 callId 的 result 按 FIFO 归到最早未配对的 call（延迟入档同口径）；无宿主 call 的孤立 result 原位保留。
+ *  text/thinking 行打断配对（已归位组先冲刷，时序不回改）。live 视图与归档序列化同源消费（单点防漂移）。 */
+export function pairChildResults(items: ChildLine[]): ChildLine[] {
+  const out: ChildLine[] = [];
+  const open: { call: ChildLine; results: ChildLine[] }[] = [];
+  const byId = new Map<string, { call: ChildLine; results: ChildLine[] }>();
+  const flush = (): void => {
+    for (const g of open) out.push(g.call, ...g.results);
+    open.length = 0;
+    byId.clear();
+  };
+  for (const l of items) {
+    if (l.kind === 'call') {
+      const g = { call: l, results: [] as ChildLine[] };
+      open.push(g);
+      if (l.callId) byId.set(l.callId, g);
+      continue;
+    }
+    if (l.kind === 'result') {
+      const g = (l.callId ? byId.get(l.callId) : undefined) ?? open.find((x) => x.results.length === 0);
+      if (g) g.results.push(l);
+      else out.push(l); // 无宿主 call（旧档/孤儿）：原位保留
+      continue;
+    }
+    flush();
+    out.push(l);
+  }
+  flush();
+  return out;
 }
 
 /** 子代理运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
@@ -1803,8 +1839,8 @@ export class SessionController {
       case 'tool-call': {
         flushBuf();
         closeThink();
-        transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input) }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
+        transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input), ...(callId ? { callId } : {}) }];
         const calls = callId
           ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, target: toolCallLine(e.text ?? '', e.payload?.input), startedAt: Date.now() }]
           : child.calls;
@@ -1812,11 +1848,11 @@ export class SessionController {
         return;
       }
       case 'tool-result': {
-        // 同 tool-call：半行冲刷保序，随后结果行入档
+        // 同 tool-call：半行冲刷保序，随后结果行入档；callId 随行（并行批视图按 callId 归位到对应调用行下）
         flushBuf();
         closeThink();
-        transcript = [...transcript, { kind: 'result', text: e.text ?? '', ok: e.payload?.ok === true }];
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
+        transcript = [...transcript, { kind: 'result', text: e.text ?? '', ok: e.payload?.ok === true, ...(callId ? { callId } : {}) }];
         const calls = callId ? (child.calls ?? []).filter((c) => c.callId !== callId) : child.calls;
         this.commitChild(list, idx, { ...child, transcript, steps, tokens, calls, bufText: buf || undefined, bufThink, thinkStartedAt }, buf);
         return;
@@ -1917,8 +1953,9 @@ export class SessionController {
       ...(prompt ? [`⏺ ${t('delegated prompt', '委派提示词')}：${prompt}`] : []),
       // 完整时间线随 detail 折入（2026-09-28 用户裁决：归档子代理与运行中/主 agent 同构，Tab 展开时间线）——
       // 结构行序列化与 ChildInspector archived 分流互为镜像：result 行 ⎿ ✓/✗、call 行原样（首词动词分流还原）、
-      // text 行原样、thinking 行 ✻ 摘要 + 4 空格缩进 detail 续行（与 MessageList ThinkingRow 呈现缩进同口径）
-      ...child.transcript.map((l) =>
+      // text 行原样、thinking 行 ✻ 摘要 + 4 空格缩进 detail 续行（与 MessageList ThinkingRow 呈现缩进同口径）；
+      // 序列化前并行结果归位（pairChildResults 单点）：结果行落对应调用行下，归档回看不再结果堆叠
+      ...pairChildResults(child.transcript).map((l) =>
         l.kind === 'result'
           ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}`
           : l.kind === 'thinking'

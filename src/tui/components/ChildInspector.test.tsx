@@ -50,6 +50,32 @@ test('Inspector 归档态委派词单点承载：detail ⏺ 行不再二次呈�
   one.unmount();
 });
 
+test('Inspector 并行结果归位：结果行渲染在对应调用行下（真机「并行结果堆叠」病根，2026-09-30）', () => {
+  // 真实并行时序：3 call 先入档、结果按完成序 c2→c1→c3 到达
+  const one = render(
+    <ChildInspector
+      child={live({
+        transcript: [
+          { kind: 'call', text: 'GLOB a', callId: 'c1' },
+          { kind: 'call', text: 'GLOB b', callId: 'c2' },
+          { kind: 'call', text: 'READ f', callId: 'c3' },
+          { kind: 'result', text: 'hits b', ok: true, callId: 'c2' },
+          { kind: 'result', text: 'hits a', ok: true, callId: 'c1' },
+          { kind: 'result', text: 'boom', ok: false, callId: 'c3' },
+        ],
+      })}
+      columns={80}
+      rows={20}
+    />,
+  );
+  const all = one.allOutput();
+  const idx = (s: string): number => all.indexOf(s);
+  assert.ok(idx('● [GLOB] a') < idx('⎿ ✓ hits a') && idx('⎿ ✓ hits a') < idx('● [GLOB] b'), 'c1 结果行紧跟 c1 调用行（c2 之前）');
+  assert.ok(idx('● [GLOB] b') < idx('⎿ ✓ hits b') && idx('⎿ ✓ hits b') < idx('● [READ] f'), 'c2 结果行紧跟 c2 调用行');
+  assert.ok(idx('● [READ] f') < idx('⎿ ✗ boom'), 'c3 失败结果行紧跟 c3 调用行（✗ 标记）');
+  one.unmount();
+});
+
 test('Inspector 思考流式：运行中 6 行滚动窗实时预览，收束后 ✻ 摘要行入时间线（对标主 agent ThinkingRow）', () => {
   // 运行中 bufThink 流式尾段 → 动态区 6 行滚动窗（✻ 前缀斜体）
   const streaming = render(<ChildInspector child={live({ bufThink: '思考第一行\n思考第二行\n思考第三行' })} columns={80} rows={16} />);

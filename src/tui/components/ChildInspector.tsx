@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Static, Text } from 'ink';
-import { ChildLiveState } from '../session';
+import { ChildLiveState, pairChildResults } from '../session';
 import { formatTokens, formatDuration } from '../format';
 import { bandLines, wrapByWidth, elideByWidth } from '../text-band';
 import { MarkdownText } from './MarkdownText';
@@ -48,7 +48,7 @@ export function ChildInspector(props: {
       ? Math.round(archived.durationMs / 1000)
       : undefined;
 
-  // —— 时间线归一：live 取 transcript 结构行；archived 经 ChildTranscript 同一分段器解析 detail 行 ——
+  // —— 时间线归一：live 取 transcript 结构行（先并行结果归位）；archived 经 ChildTranscript 同一分段器解析 detail 行 ——
   let prompt: string | undefined = child?.prompt ?? archived?.prompt;
   let items: TimelineItem[] = [];
   // 未闭合正文尾段（live 运行中）：留动态区实时预览（对标主 agent「已入档段进 Static、未入档尾段走 LiveArea」）
@@ -63,7 +63,7 @@ export function ChildInspector(props: {
       if (text.trim().length > 0) items.push({ kind: 'md', text });
       run = [];
     };
-    for (const l of child.transcript) {
+    for (const l of pairChildResults(child.transcript)) {
       if (l.kind === 'text') {
         run.push(l.text);
         if (l.text.trim() === '') flushRun();
@@ -95,10 +95,24 @@ export function ChildInspector(props: {
     }
   }
 
+  // call+results 组块化（2026-09-30 对标主 agent ToolRow）：pairChildResults 已把结果归位到调用行后，
+  // 此处把 call 及其后连续 result 合并为单个 Static 条目（同 Box 内渲染），结果不与调用行拆条
+  type ResultItem = Extract<TimelineItem, { kind: 'result' }>;
+  type StaticEntry = { kind: 'prompt'; text: string } | TimelineItem | { kind: 'group'; call: TimelineItem; results: ResultItem[] };
+  const entries: StaticEntry[] = [];
+  for (const item of items) {
+    if (item.kind === 'call') entries.push({ kind: 'group', call: item, results: [] });
+    else if (item.kind === 'result') {
+      const last = entries[entries.length - 1];
+      if (last?.kind === 'group') last.results.push(item);
+      else entries.push(item); // 孤立结果（旧档）：独立条目
+    } else entries.push(item);
+  }
+
   // Static 条目：委派 prompt（用户输入带）+ 闭合时间线；打印一次进滚动缓冲——超长转录随滚动回看，不再取尾压缩
-  const staticItems: ({ kind: 'prompt'; text: string } | TimelineItem)[] = [
+  const staticItems: StaticEntry[] = [
     ...(prompt !== undefined && prompt.trim().length > 0 ? [{ kind: 'prompt' as const, text: prompt }] : []),
-    ...items,
+    ...entries,
   ];
 
   // 动态区预览（live 运行中）：未闭合正文尾段 + 流式半行作 markdown 尾窗、思考流 6 行滚动窗（对标 LiveArea）
@@ -135,6 +149,14 @@ export function ChildInspector(props: {
                   <Text key={j} backgroundColor="gray">
                     {line}
                   </Text>
+                ))}
+              </Box>
+            ) : item.kind === 'group' ? (
+              /* call+results 组（主 agent ToolRow 同构）：调用行 + 归位结果行同条目渲染 */
+              <Box flexDirection="column">
+                <CallRow text={item.call.text} columns={columns} />
+                {item.results.map((r, j) => (
+                  <ResultRow key={j} text={r.text} ok={r.ok} columns={columns} expanded={expanded} />
                 ))}
               </Box>
             ) : item.kind === 'md' ? (
@@ -205,12 +227,13 @@ function ThinkRow({ text, detail, expanded }: { text: string; detail?: string; e
   );
 }
 
-/** 结果行（对标主 agent ToolRow 折叠口径）：缺省 ⎿ ✓/✗ + 首行单行省略；Tab 展开全文逐行 */
+/** 结果行（对标主 agent ToolRow 两态与着色）：⎿ ✓/✗ 按 ok 着绿/红（dimColor 同载，与 ToolRow 完全同源）；
+ *  缺省折叠首行单行省略，Tab 展开全文逐行 */
 function ResultRow({ text, ok, columns, expanded }: { text: string; ok: boolean; columns: number; expanded: boolean }): JSX.Element {
   if (expanded) {
     return (
       <Box flexDirection="column">
-        <Text dimColor>
+        <Text dimColor color={ok ? theme.success : theme.error}>
           {`  ⎿ ${ok ? '✓' : '✗'}`}
         </Text>
         {text.split('\n').map((l, i) => (
@@ -223,7 +246,7 @@ function ResultRow({ text, ok, columns, expanded }: { text: string; ok: boolean;
   }
   const first = text.split('\n')[0] ?? '';
   return (
-    <Text dimColor>
+    <Text dimColor color={ok ? theme.success : theme.error}>
       {'  ⎿ '}
       {ok ? '✓' : '✗'}
       {` ${elideByWidth(first, Math.max(8, columns - 8))}`}
