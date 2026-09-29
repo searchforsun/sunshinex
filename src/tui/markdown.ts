@@ -15,7 +15,7 @@ export type MdBlock =
   | { type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; inlines: MdInline[] }
   | { type: 'paragraph'; inlines: MdInline[] }
   | { type: 'fence'; lang: string; code: string }
-  | { type: 'list'; ordered: boolean; items: MdInline[][] }
+  | { type: 'list'; ordered: boolean; items: MdInline[][]; start?: number }
   | { type: 'quote'; inlines: MdInline[] }
   | { type: 'table'; headers: MdInline[][]; rows: MdInline[][][] }
   | { type: 'hr' };
@@ -166,17 +166,21 @@ function preprocess(text: string): string {
   return out.join('\n');
 }
 
-/** 列表块 → items（嵌套 list 平铺进 items，保持 IR 扁平形状） */
-function parseListBlock(tokens: MdToken[], i: number): { ordered: boolean; items: MdInline[][]; next: number } {
+/** 列表块 → items（嵌套 list 平铺进 items，保持 IR 扁平形状）；start=有序列表真实首号
+ *  （markdown-it start 属性，首号 ≠1 时在位）——逐行流式分裂的列表续块据此承接真实编号 */
+function parseListBlock(tokens: MdToken[], i: number): { ordered: boolean; items: MdInline[][]; start?: number; next: number } {
   const open = tokens[i];
   const ordered = open.type === 'ordered_list_open';
   const closeType = ordered ? 'ordered_list_close' : 'bullet_list_close';
   const level = open.level;
+  const startAttr = ordered ? open.attrGet('start') : null;
+  // markdown-it 版本差异：start 属性可能存 string 或 number（attrSet 侧决定），两态都收
+  const start = startAttr !== null && startAttr !== undefined && /^\d+$/.test(String(startAttr)) ? Number(startAttr) : undefined;
   const items: MdInline[][] = [];
   let j = i + 1;
   while (j < tokens.length) {
     const t = tokens[j];
-    if (t.type === closeType && t.level === level) return { ordered, items, next: j + 1 };
+    if (t.type === closeType && t.level === level) return { ordered, items, start, next: j + 1 };
     if (t.type === 'list_item_open') {
       const item = parseListItem(tokens, j + 1, t.level);
       items.push(item.inlines, ...item.nested);
@@ -185,7 +189,7 @@ function parseListBlock(tokens: MdToken[], i: number): { ordered: boolean; items
     }
     j++;
   }
-  return { ordered, items, next: j };
+  return { ordered, items, start, next: j };
 }
 
 /** 列表项 → 正文 inline（取首个 inline，跳过其内部嵌套 list） */
@@ -283,7 +287,7 @@ export function parseMarkdown(text: string): MdBlock[] {
     }
     if (t.type === 'bullet_list_open' || t.type === 'ordered_list_open') {
       const res = parseListBlock(tokens, i);
-      blocks.push({ type: 'list', ordered: res.ordered, items: res.items });
+      blocks.push({ type: 'list', ordered: res.ordered, items: res.items, ...(res.start !== undefined ? { start: res.start } : {}) });
       i = res.next;
       continue;
     }

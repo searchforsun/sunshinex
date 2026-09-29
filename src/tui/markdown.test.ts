@@ -28,6 +28,15 @@ test('parseMarkdown：有序列表合并（中文顿号编号同样识别）', (
   assert.deepEqual(list.items.map(inlineText), ['甲', '乙', '丙']);
 });
 
+test('parseMarkdown：有序列表 start 承接——非 1 首号入 IR（流式分裂续块编号承接）', () => {
+  const blocks = parseMarkdown('11. 接续项\n12. 再续');
+  const list = blocks[0] as Extract<MdBlock, { type: 'list' }>;
+  assert.equal(list.ordered, true);
+  assert.equal(list.start, 11, 'markdown-it start 属性入 IR');
+  const fromOne = parseMarkdown('1. 甲') as Extract<MdBlock, { type: 'list' }>[];
+  assert.equal((fromOne[0] as Extract<MdBlock, { type: 'list' }>).start, undefined, '首号 1 无 start（渲染层 ?? 1 兜底）');
+});
+
 test('parseMarkdown：围栏代码块含语言标签，内容原样', () => {
   const blocks = parseMarkdown('```js\nconst a = 1;\n```');
   assert.equal(blocks.length, 1);

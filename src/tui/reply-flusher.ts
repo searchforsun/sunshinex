@@ -13,16 +13,25 @@ function isTableDivider(line: string): boolean {
   return cells.length > 0 && cells.every((c) => /^\s*:?-+:?\s*$/.test(c));
 }
 
+/** 结构敏感行（2026-09-30 流式结构守候）：行邻接参与 markdown 结构且单行入档即变义的行——
+ *  缩进块（4+ 空格：缩进代码/ASCII 对齐图，孤立行缩进解释翻转即散架）、表格行（表头孤立入档
+ *  即与分隔行分家、整表降级裸文本）。有序/无序列表行不在此列：单行列表经 List start 承接真实
+ *  编号（markdown-it start 属性 → MarkdownText 渲染），逐行入档编号不重排 */
+function isStructureSensitive(line: string): boolean {
+  if (/^ {4}/.test(line)) return true;
+  return /^\s*\|/.test(line);
+}
+
 /**
  * 流式正文安全点切块（纯函数）：从 pending = text.slice(committedLen) 中取可入档子串，无安全点返回 null。
- * 规则（2026-09-30 完整流式裁决——逐行打字机）：
+ * 规则（2026-09-30 终版——逐行打字机 + 结构守候）：
  * 1. 短围栏零切点（含围栏内空行），闭合后整块放行——保住结构；超过 maxLines 的长围栏按行数兜底切块
  *    （生成期滚动出稿，与普通超长段同量级），切块自带开栏行、入档块独立成立，openFenceOpener 承接续块与预览；
  * 2. GFM 表格（表头+分隔行成对开启，空行/非表格行闭合）期间零切点——闭合即整表放行（切点回退至表格末行换行处，不等后续边界），防表体切碎降级或整表滞留预览区；
- *    流式窗口期：完结的表格行在下一行未到达前守候不切（可能是表头，先切即表头与分隔行分家、整表降级裸文本）；
- * 3. 闭态区域任一完结行即可切：切点取最靠后的完结行（seg 含结尾换行）——打字机效果 = 入档内容
- *    逐行小步推进 Static 滚动，预览窗只剩生成中的未完行；段内换行经 softbreak→\n 渲染同形、
- *    段间隙经 ChatItem.cont 折叠（session 标记段中续块），逐行块与整段块渲染恒等；
+ * 3. 散文行逐行切（打字机节奏，段间隙经 ChatItem.cont 折叠、softbreak→\n 渲染同形）；结构敏感行
+ *    （列表项/引用/4+ 空格缩进块/表格行）在下一行未到达时守候不切——单独入档即有序列表编号重排
+ *    （1./1./1. 真机实锤）、缩进对齐图散架、表格降级裸文本；守候至块边界（空行）或 maxLines 兜底
+ *    整块放行，跨块分裂的有序列表编号经 List start 承接（markdown-it start → MarkdownText 真实首号）；
  * 4. 返回值恒为 text 的严格中缀且原样保留换行——分块拼接 === 终稿，session 侧前缀去重不重复不丢失。
  */
 export function stableReplySegment(
@@ -49,6 +58,7 @@ export function stableReplySegment(
   }
   const lines = pending.split('\n');
   let cut = -1; // 已确认的最大安全切点（seg = pending.slice(0, cut)，含结尾换行）
+  let closedLineStreak = 0; // 闭态区域连续完整行数（无空行兜底计数）
   let fenceLineStreak = 0; // 围栏内连续完整行数（长围栏兜底计数）
   let fenceCutDone = false; // 本次扫描内长围栏兜底已切一刀：固定 maxLines 节奏，其余随后续 delta/闭合放行
   let offset = 0;
@@ -58,8 +68,9 @@ export function stableReplySegment(
     if (/^\s*```/.test(line)) {
       fenceOpen = !fenceOpen;
       tableOpen = false;
+      closedLineStreak = 0;
       if (!fenceOpen) {
-        fenceLineStreak = 0; // 围栏闭合：兜底计数复位，后续行恢复逐行切分
+        fenceLineStreak = 0; // 围栏闭合：兜底计数复位，后续行恢复块边界切分
       } else {
         fenceLineStreak = 0; // 新围栏开栏：兜底计数与「已切一刀」标记复位
         fenceCutDone = false;
@@ -74,6 +85,7 @@ export function stableReplySegment(
       // 它只说明「上一行带换行完结」，表格是否还有后续数据行未知，切出会致表头块与表体分离降级
       tableOpen = false;
       tableClosedHere = true;
+      closedLineStreak = 0;
     }
     if (isLast) {
       // 生成中的最后一行（无换行结尾）永不切；但表格恰在此处闭合时，切点回退至表格末行换行处，整表立即入档
@@ -84,13 +96,6 @@ export function stableReplySegment(
       tableOpen = true; // 表头 + 分隔行成对出现：表格开启（自表头行起保护，防表头与分隔行被分离）
     }
     const candidate = offset + line.length + 1; // 行末换行之后（含换行）
-    // 表格候选行守候（逐行切点的流式补丁，2026-09-30「表格没了」实锤）：完结的表格行若下一行
-    // 尚未到达（尾空 remainder），不得立即切——它可能是表头，先切即表头与分隔行分家、整表降级为
-    // 逐行裸文本。守候到下一行定型：分隔行 → 表格开启整块保护；普通行 → 照常逐行切（杂散管道行）
-    if (!tableOpen && tableLine && lines[i + 1] !== undefined && lines[i + 1] === '') {
-      offset = candidate;
-      continue;
-    }
     if (fenceOpen) {
       // 围栏内：短围栏零切点整块等待闭合；超过 maxLines 按行数兜底切一刀——
       // 生成期滚动出稿、闭合时残余一并放行（入档块自带开栏行独立成立，预览由 openFenceOpener 承接）
@@ -106,8 +111,30 @@ export function stableReplySegment(
       offset = candidate; // 表格内容（含其内空行）：零切点，整块等待闭合后随边界放行
       continue;
     }
-        cut = candidate; // 逐行切点（完整流式裁决）：表格闭合/空行/任一完结行即可入档，见文件头规则 3
-        offset = candidate;
+    // 结构行守候（2026-09-30「渲染乱了」终版方案——逐行流式保留 + 结构完整）：散文行逐行照切
+    // （打字机节奏），结构敏感行（列表/引用/缩进块/表格行）在下一行未到达（尾空 remainder）时
+    // 守候不切——单独入档即有序列表编号重排（1./1./1.）、缩进图散架、表格降级。守候至下一行定型：
+    // 同构行继续守候 → 整块在空行边界/兜底线放行；异构行 → 守候行随常规切点放行。
+    // 守候行计入兜底节奏：超长无空行列表（30 项）不至于无限守候，每 maxLines 行兜底切一刀
+    // （跨块编号经 List start 承接）
+    if (!fenceOpen && !tableOpen && isStructureSensitive(line) && i + 1 === lines.length - 1 && lines[i + 1] === '') {
+      closedLineStreak += 1;
+      if (closedLineStreak >= maxLines) {
+        cut = candidate;
+        closedLineStreak = 0;
+      }
+      offset = candidate;
+      continue;
+    }
+    if (tableClosedHere || line === '') {
+      cut = candidate; // 空行=块边界（结构块随此放行）
+      closedLineStreak = 0;
+    } else {
+      // 散文行逐行照切（打字机节奏，2026-09-30 终版）：段间隙经 ChatItem.cont 折叠、
+      // softbreak→\n 渲染同形；结构行已在上面守候分支处理，此处恒为安全散文行
+      cut = candidate;
+    }
+    offset = candidate;
   }
   if (cut <= 0) return null;
   return pending.slice(0, cut);

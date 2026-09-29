@@ -83,6 +83,20 @@ test('reply-flusher：表格候选行守候——表头完成的瞬间分隔行�
   assert.equal(stableReplySegment(header + '\n\n正文。', 0), header + '\n\n', '管道行+空行并块');
 });
 
+test('reply-flusher：结构行守候（缩进块/表格行）——列表行经 start 承接可安全逐行（2026-09-30 终版）', () => {
+  // 有序列表行不守候：单独成块经 List start 承接真实编号（「2. …」渲染 2. 非重排 1.），照常逐行
+  assert.equal(stableReplySegment('1. 版本漂移\n', 0), '1. 版本漂移\n', '列表行逐行照切（start 承接编号）');
+  // 缩进块行（4+ 空格，ASCII 对齐图）：下一行未知时守候——单独入档即缩进解释翻转、对齐散架
+  assert.equal(stableReplySegment('    ┌──┐\n', 0), null, '缩进块行守候');
+  // 缩进块到空行边界整块放行
+  const art = '    ┌──┐\n    │框│\n\n后文。';
+  assert.equal(stableReplySegment(art, 0), '    ┌──┐\n    │框│\n\n', '缩进块空行边界整块放行');
+  // 表格行守候（承接 096da5c：表头与分隔行不得分家）
+  assert.equal(stableReplySegment('| 层面 | 选型 |\n', 0), null, '表格行守候');
+  // 散文行逐行照切（打字机节奏）
+  assert.equal(stableReplySegment('散文行\n', 0), '散文行\n', '散文行逐行照切');
+});
+
 test('reply-flusher：纯空白切段返回原串（session 侧只推进不入档）', () => {
   assert.equal(stableReplySegment('\n\n正文', 0), '\n\n');
 });

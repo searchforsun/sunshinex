@@ -91,13 +91,15 @@ function Fence({ lang, code, columns }: { lang: string; code: string; columns: n
   );
 }
 
-/** 列表：无序 `• `、有序 `n. ` 连续重排 + 缩进（项内超宽行降级硬折，见 SafeInline） */
-function List({ ordered, items, columns }: { ordered: boolean; items: MdInline[][]; columns: number }): JSX.Element {
+/** 列表：无序 `• `、有序 `n. ` 连续重排 + 缩进（项内超宽行降级硬折，见 SafeInline）；
+ *  start=有序列表真实首号（markdown-it start 属性）——流式分裂的列表续块承接编号：
+ *  「11. …」起的续块渲染 11. 起而非重排 1.（真机「1./1./1.」实锤的修复） */
+function List({ ordered, items, columns, start }: { ordered: boolean; items: MdInline[][]; columns: number; start?: number }): JSX.Element {
   return (
     <Box flexDirection="column">
       {items.map((item, i) => (
         <Text key={i}>
-          {ordered ? `${i + 1}. ` : '  • '}
+          {ordered ? `${(start ?? 1) + i}. ` : '  • '}
           <SafeInline nodes={item} columns={Math.max(8, columns - 4)} />
         </Text>
       ))}
@@ -188,7 +190,7 @@ function renderBlock(b: MdBlock, columns: number): JSX.Element {
   switch (b.type) {
     case 'heading': return <Heading level={b.level} inlines={b.inlines} columns={columns} />;
     case 'fence': return <Fence lang={b.lang} code={b.code} columns={columns} />;
-    case 'list': return <List ordered={b.ordered} items={b.items} columns={columns} />;
+    case 'list': return <List ordered={b.ordered} items={b.items} columns={columns} start={b.start} />;
     case 'quote': return <Quote inlines={b.inlines} columns={columns} />;
     case 'table': return <Table headers={b.headers} rows={b.rows} columns={columns} />;
     case 'hr': return <Text dimColor>{'─'.repeat(Math.max(1, columns))}</Text>;
