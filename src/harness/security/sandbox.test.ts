@@ -251,13 +251,14 @@ test('execBackground：提交即返回 pid，进程在跑，输出直写回调',
 test('exec timeoutToBackground：到点不杀进程、返回存活子进程与已缓冲输出', async () => {
   const sb = new ProcessSandbox();
   // 断言前提是超时到点前「warm」已进入缓冲——阈值须盖过 shell 冷启动 + node 冷启动（win32 实测 Git Bash 首字 ~1–1.4s、PowerShell 冷启动 ~0.5–1s；POSIX /bin/sh 毫秒级）
-  // 真机 release 门禁全量负载下 shell+node 叠加冷启动可超 3s（2026-09-29 实锤：warm 未及缓冲断言红），按 §12 上限=安全网放宽至 6s
-  const timeoutMs = process.platform === 'win32' ? 6000 : 300;
+  // 真机 release 门禁全量负载下 shell+node 叠加冷启动 6s 仍不够（2026-09-29 二轮实锤：6s 用满 warm 仍空，同轮 shell 内建 echo 形态已过——增量在 node 段冷启动 + Defender 扫描），按 §12 上限=安全网放宽至 15s
+  const timeoutMs = process.platform === 'win32' ? 15000 : 300;
   // 命令前提对 shell 中立（§14 测试命令形态）：node 脚本文件承载「先输出后长驻」——
   // sh 独有语法（&&、sleep）在 PowerShell 5.1 / ComSpec 回落面上语义不成立（真机 EXEC_FAILED@659ms 即 PS5.1 对 && 的解析错误）
+  // 驻留时长须显著大于阈值：阈值 6s 时 5s 驻留的 close 事件已可能先于计时器到达翻转 timedOut（随阈值放宽成对加长）
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ttob-'));
   const script = path.join(dir, 'warm-hold.js');
-  fs.writeFileSync(script, "console.log('warm'); setTimeout(() => {}, 5000);\n");
+  fs.writeFileSync(script, "console.log('warm'); setTimeout(() => {}, 30000);\n");
   const r = await sb.exec(`node "${script.replace(/\\/g, '/')}"`, { timeoutMs, timeoutToBackground: true });
   assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.code}`);
   assert.equal(r.value.timedOut, true);
@@ -266,7 +267,12 @@ test('exec timeoutToBackground：到点不杀进程、返回存活子进程与�
   assert.ok(child.pid, '存活子进程句柄');
   assert.equal(child.killed, false);
   sb.killBackground(child.pid!);
-  fs.rmSync(dir, { recursive: true, force: true });
+  // Windows taskkill 同步退出后句柄释放有延迟（2026-09-29 真机 EPERM 实锤），短重试退避后删目录
+  for (let i = 0; i < 10; i++) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); break; }
+    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 9) throw err; }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+  }
 });
 
 test('killBackground：同步收割后任务 cwd 目录可立即删除', async () => {

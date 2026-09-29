@@ -431,7 +431,8 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
     for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, tasks)) registry.register(t);
-    const r = await registry.execute('exec', { command: 'echo warm && sleep 5' }, safety);
+    // 驻留 30s 与阈值 6s 拉开余量：快机/低负载下 shell 冷启动 <1s 时 sleep 5 会在阈值前跑完、close 先至不再转后台（双向竞态，stop() 兜底收割）
+    const r = await registry.execute('exec', { command: 'echo warm && sleep 30' }, safety);
     assert.ok(r.ok);
     assert.match(r.value.stdout, /^command moved to background after timeout: task b1/);
     const task = tasks.get('b1')!;
