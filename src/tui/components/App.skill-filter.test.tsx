@@ -32,29 +32,16 @@ async function flushKey(term: ReturnType<typeof render>): Promise<void> {
 
 const full10 = Array.from({ length: 10 }, (_, i) => ({ label: `m-${i}`, description: `d ${i}` }));
 
-test('deriveFilterableView：空词分页——8 实项 + More…，导航行无映射席位', () => {
-  const r = deriveFilterableView(full10, '', 0);
-  assert.equal(r.view.length, 9, '8 实项 + More…');
-  assert.equal(r.view[8]?.label, 'More…');
-  assert.deepEqual(r.map, [0, 1, 2, 3, 4, 5, 6, 7], '实项映射原下标');
-  assert.equal(r.moreIdx, 8, 'More… 视图下标');
-  assert.equal(r.backIdx, -1, '首页无 Back…');
-});
-
-test('deriveFilterableView：第 2 页带 Back…，More… 先于 Back…', () => {
-  const r = deriveFilterableView(full10, '', 1);
-  assert.equal(r.view.length, 3, '2 实项 + Back…');
-  assert.deepEqual(r.map, [8, 9]);
-  assert.equal(r.moreIdx, -1);
-  assert.equal(r.backIdx, 2);
+test('deriveFilterableView：空词全量直出（自动翻页由渲染层滑窗承载）；有词子串过滤', () => {
+  const r = deriveFilterableView(full10, '');
+  assert.equal(r.view.length, 10, '空词=全量列表（无 More…/Back… 导航行）');
+  assert.deepEqual(r.map, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], '恒等映射');
 });
 
 test('deriveFilterableView：有词全量过滤直出、无导航行', () => {
   const three = [{ label: 'alpha' }, { label: 'bolt' }, { label: 'gamma' }]; // bolt 不含 a：钉「未命中隐藏」（简报原标签 beta 含 a，任何子串语义必命中，勘误见报告）
-  const r = deriveFilterableView(three, 'a', 0);
+  const r = deriveFilterableView(three, 'a');
   assert.deepEqual(r.map, [0, 2], 'alpha/gamma 命中');
-  assert.equal(r.moreIdx, -1);
-  assert.equal(r.backIdx, -1, '有词无导航');
 });
 
 /* ---------- App 键盘分发（经 ctrl.askUser 直挂 filterable 卡） ---------- */
@@ -110,7 +97,7 @@ test('App filterable 卡：Backspace 删字；Esc 两段式——先清词再退
   }
 });
 
-test('App filterable 多选卡：Space 按原下标勾选、More… 翻页、Enter 提交勾选累积集', async () => {
+test('App filterable 多选卡：↑↓ 光标跟随滑窗自动翻页（无 More…/Back… 导航行）、Space 按原下标勾选、Enter 提交累积集', async () => {
   const tmp = tmpDir('sunshinex-appfilt3-');
   let term: ReturnType<typeof render> | undefined;
   try {
@@ -119,22 +106,22 @@ test('App filterable 多选卡：Space 按原下标勾选、More… 翻页、Ent
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
     term = render(<App controller={ctrl} />);
     await waitFor(() => (term?.lastFrame() ?? '').includes('rm?'), 3000);
+    const f0 = term.lastFrame() ?? '';
+    assert.ok(f0.includes('m-0') && f0.includes('m-7'), '首窗 8 行');
+    assert.ok(!f0.includes('m-9'), '窗口外行不渲染');
+    assert.ok(!f0.includes('More…') && !f0.includes('Back…') && !f0.includes('更多…') && !f0.includes('上一页'), '零导航行（2026-09-30 翻页口径统一）');
     term.write(' '); // cursor 0 → 勾 m-0
     await flushKey(term);
-    assert.ok((term?.lastFrame() ?? '').includes('◉'), '勾选标记上屏');
-    // ↓×8（D7：↑/↓ 逐行作用于视图，moveCursor 有回环钉）0→8 落 More…；简报「一次 ↓」系笔误，勘误见报告
-    for (let i = 0; i < 8; i++) { term.write('\u001B[B'); await flushKey(term); }
-    await flushKey(term);
-    term.write('\r'); // 翻页
-    await flushKey(term);
-    const f1 = term?.lastFrame() ?? '';
-    assert.ok(f1.includes('Back…') && f1.includes('m-8'), '翻到第 2 页');
-    term.write('\u001B[B'); // 翻页后 cursor 归 0（m-8）→ ↓ 到 m-9
-    await flushKey(term);
-    term.write(' '); // 勾 m-9
+    assert.ok((term.lastFrame() ?? '').includes('◉'), '勾选标记上屏');
+    // ↓×9 越过窗口边缘：窗口随光标平移（滑窗自动翻页），m-9 进入视口
+    for (let i = 0; i < 9; i++) { term.write('\u001B[B'); await flushKey(term); }
+    const f1 = term.lastFrame() ?? '';
+    assert.ok(f1.includes('m-9'), '光标越过窗口边缘后窗口平移、尾行进入视口');
+    assert.ok(!f1.includes('m-0') || f1.includes('2/'), '窗口滑离首行（页脚指示在场）');
+    term.write(' '); // 勾 m-9（按原下标累积）
     await flushKey(term);
     term.write('\r'); // 提交累积集
-    assert.deepEqual(await p, { type: 'selected', labels: ['m-0', 'm-9'] }, '跨页勾选累积提交（升序）');
+    assert.deepEqual(await p, { type: 'selected', labels: ['m-0', 'm-9'] }, '跨窗勾选累积提交（升序）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });

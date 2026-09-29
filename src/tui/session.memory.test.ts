@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SessionController, paginateOptions } from './session';
+import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { SLASH_COMMANDS } from './components/App';
@@ -36,20 +36,24 @@ async function withRoot(fn: (root: string) => Promise<void>): Promise<void> {
 const sysTexts = (ctrl: SessionController): string[] =>
   ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text);
 
-test('paginateOptions：8 项内零导航，>8 卡尾 More…，第 2 页带 Back…', () => {
-  const items = Array.from({ length: 9 }, (_, i) => ({ label: `s-${i + 1}` }));
-  const p0 = paginateOptions(items, 0);
-  assert.equal(p0.totalPages, 2);
-  assert.equal(p0.options.length, 9, '8 条 + More…');
-  assert.equal(p0.options[7].label, 's-8');
-  assert.equal(p0.options[8].label, 'More…');
-  const p1 = paginateOptions(items, 1);
-  assert.equal(p1.options.length, 2, '第 2 页 1 条 + Back…');
-  assert.equal(p1.options[0].label, 's-9');
-  assert.equal(p1.options[1].label, 'Back…');
-  const single = paginateOptions(items.slice(0, 3), 0);
-  assert.equal(single.totalPages, 1);
-  assert.equal(single.options.length, 3, '页内零导航项');
+test('选择卡翻页口径（2026-09-30 用户裁决）：会话层恒全量直出，More…/Back… 导航行全面退役', async () => {
+  // /memory-rm ≤8 条路径：单问询全量 options（原分页循环的翻页件已删，行为由渲染层滑窗承载）
+  await withRoot(async (root) => {
+    const store = new MemoryStore(root);
+    for (let i = 1; i <= 6; i++) store.add({ type: 'project', description: `mem-${i}`, body: `mem-${i}` });
+    const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
+    const p = ctrl.submit('/memory-rm');
+    await new Promise<void>((r) => {
+      const timer = setInterval(() => {
+        if (ctrl.getState().status === 'awaiting-question') { clearInterval(timer); r(); }
+      }, 10);
+    });
+    const q = ctrl.getState().question;
+    assert.equal(q?.options.length, 6, '全量直出');
+    assert.ok(!q?.options.some((o) => o.label === 'More…' || o.label === 'Back…'), '零导航行');
+    ctrl.resolveAskAnswer({ type: 'dismissed' });
+    await p;
+  });
 });
 
 test('/memory 空态给提示；命令清单与帮助含 /memory', async () => {

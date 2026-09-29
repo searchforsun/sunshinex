@@ -218,19 +218,9 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
   return exact ? incoming : Math.max(current, incoming);
 }
 
-/** 斜杠命令帮助（运行期求值：语言随 --language 装配后设定，禁止模块级 t() 冻结） */
-/** 选择卡分页（规格 D6）：>8 项时卡尾追加 More…（下一页）/Back…（上一页）导航项，page 从 0 起；单页内零导航项 */
-export function paginateOptions(
-  items: Array<{ label: string; description?: string }>,
-  page = 0,
-  pageSize = 8,
-): { options: Array<{ label: string; description?: string }>; page: number; totalPages: number } {
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
-  const options = [...items.slice(page * pageSize, (page + 1) * pageSize)];
-  if (page + 1 < totalPages) options.push({ label: t('More…', '更多…'), description: t('next page', '下一页') });
-  if (page > 0) options.push({ label: t('Back…', '上一页…'), description: t('previous page', '上一页') });
-  return { options, page, totalPages };
-}
+// 选择卡翻页口径（2026-09-30 用户裁决）：More…/Back… 导航行分页退役（原 paginateOptions 已删）——
+// 所有选择卡超窗翻页由渲染层 OptionSelector 光标跟随滑窗统一承载（命令面板式自动翻页），
+// 会话层恒传全量 options
 
 function slashHelp(): string[] {
   const lines = [
@@ -239,7 +229,7 @@ function slashHelp(): string[] {
     t('  /goal          run the verify-fix loop: /goal <goal>', '  /goal          运行完整验收修正环：/goal <目标>'),
     t('  /plan          plan first, execute on approval: /plan <goal>', '  /plan          先规划后执行：/plan <目标>'),
     t('  /new           new session (soft reset)', '  /new           新会话（软重置）'),
-    t('  /resume        resume a saved session (selector with paging)', '  /resume        恢复已保存会话（选择卡，支持翻页）'),
+    t('  /resume        resume a saved session (selector, auto-scroll window)', '  /resume        恢复已保存会话（选择卡，滑窗自动翻页）'),
     t('  /rewind        rewind current session to an earlier turn', '  /rewind        回退当前会话到更早的任务轮'),
     t('  /fork          fork a parallel session from any past turn', '  /fork          从任意历史轮分叉出平行会话'),
     t('  /compact       compress context: /compact [focus]', '  /compact       压缩上下文：/compact [关注点]'),
@@ -738,33 +728,22 @@ export class SessionController {
       this.restoreFromSession(pick);
       return;
     }
-    const moreLabel = t('More…', '更多…');
-    const backLabel = t('Back…', '上一页…');
-    let page = 0;
-    for (;;) {
-      const shown = paginateOptions(
-        sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
-        page,
-      );
-      const answer = await this.askUser({
-        question: t('Resume which session?', '恢复哪个会话？'),
-        options: shown.options,
-      });
-      if (answer.type === 'dismissed') {
-        this.pushMsg('system', t('Resume cancelled', '已取消恢复'));
-        return;
-      }
-      const pickedId = answer.type === 'custom' ? answer.text.trim() : (answer.labels[0] ?? '');
-      if (pickedId === moreLabel) { page += 1; continue; }
-      if (pickedId === backLabel) { page -= 1; continue; }
-      const pick = sessions.find((s) => s.id === pickedId);
-      if (!pick) {
-        this.pushMsg('system', t('No such session: ' + pickedId, '没有这个会话：' + pickedId), { level: 'warn' });
-        return;
-      }
-      this.restoreFromSession(pick);
+    // ≤8 档全量直出（2026-09-30 翻页口径统一：滑窗自动翻页由渲染层承载，More…/Back… 循环退役）
+    const answer = await this.askUser({
+      question: t('Resume which session?', '恢复哪个会话？'),
+      options: sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
+    });
+    if (answer.type === 'dismissed') {
+      this.pushMsg('system', t('Resume cancelled', '已取消恢复'));
       return;
     }
+    const pickedId = answer.type === 'custom' ? answer.text.trim() : (answer.labels[0] ?? '');
+    const pick = sessions.find((s) => s.id === pickedId);
+    if (!pick) {
+      this.pushMsg('system', t('No such session: ' + pickedId, '没有这个会话：' + pickedId), { level: 'warn' });
+      return;
+    }
+    this.restoreFromSession(pick);
   }
 
   /** --continue（规格 D1/D3）：续接最近会话（listSessions mtime 降序首项，对标 CC -c）；无档提示后按新会话继续（不静默吞） */
@@ -1258,7 +1237,7 @@ export class SessionController {
       return;
     }
     if (cmd === '/resume') {
-      // 恢复入口（规格 §6/D6）：无参选择卡（mtime 降序 + 首条输入摘要），>8 条 filterable 全量卡（筛选在渲染层）、≤8 条分页；
+      // 恢复入口（规格 §6/D6）：无参选择卡（mtime 降序 + 首条输入摘要）；>8 条 filterable 全量卡（筛选在渲染层）；翻页统一渲染层滑窗（2026-09-30 口径）
       // 带参形态已由裸形式守卫统一无法识别——此处只认无参
       if (this.state.status !== 'idle') {
         this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'), { level: 'warn' });
@@ -1484,7 +1463,7 @@ export class SessionController {
     this.loadSkill(id);
   }
 
-  /** /memory-rm：多选卡批删（规格 D5/D6）：Space 勾选、Enter 批删、Esc 取消零删除；>8 条 filterable 全量卡（渲染层筛选）、≤8 条分页、勾选跨页累积 */
+  /** /memory-rm：多选卡批删（规格 D5/D6）：Space 勾选、Enter 批删、Esc 取消零删除；>8 条 filterable 全量卡（渲染层筛选）；翻页统一渲染层滑窗（2026-09-30 口径） */
   private async memoryRm(): Promise<void> {
     if (this.state.status !== 'idle') {
       this.pushMsg('system', t('A task is running; /memory-rm unavailable now', '当前有任务进行中，暂不能执行 /memory-rm'), { level: 'warn' });
@@ -1497,7 +1476,7 @@ export class SessionController {
       return;
     }
     const items = records.map((r) => ({ label: r.slug, description: `${r.type} · ${r.description} (${r.created})` }));
-    // >8 条切 filterable 卡（规格 D6/D8）：一次问询勾选批删；≤8 条维持既有分页循环不变
+    // >8 条切 filterable 卡（规格 D6/D8）：一次问询勾选批删；≤8 条全量直出（翻页由渲染层滑窗承载）
     if (items.length > 8) {
       const answer = await this.askUser({
         question: t('Select memories to delete (Space to toggle, Enter to delete; type to filter)', '选择要删除的记忆（Space 勾选，Enter 批量删除；输入即筛选）'),
@@ -1512,32 +1491,20 @@ export class SessionController {
       this.applyMemoryRemoval(store, answer.labels);
       return;
     }
-    const moreLabel = t('More…', '更多…');
-    const backLabel = t('Back…', '上一页…');
-    const picked: string[] = [];
-    let page = 0;
-    for (;;) {
-      const shown = paginateOptions(items, page);
-      const answer = await this.askUser({
-        question: t('Select memories to delete (Space to toggle, Enter to delete)', '选择要删除的记忆（Space 勾选，Enter 批量删除）'),
-        options: shown.options,
-        multiple: true,
-      });
-      if (answer.type !== 'selected') {
-        this.pushMsg('system', t('No memories removed', '未删除任何记忆'));
-        return;
-      }
-      // 导航项（More…/Back…）与后续勾选同卡互斥语义外的共存形态：含导航即翻页，其余勾选跨页累积
-      const picks = answer.labels.filter((l) => l !== moreLabel && l !== backLabel);
-      picked.push(...picks);
-      if (answer.labels.includes(moreLabel)) { page += 1; continue; }
-      if (answer.labels.includes(backLabel)) { page -= 1; continue; }
-      break;
+    // ≤8 条全量直出（2026-09-30 翻页口径统一：滑窗自动翻页由渲染层承载，More…/Back… 跨页累积循环退役）
+    const answer = await this.askUser({
+      question: t('Select memories to delete (Space to toggle, Enter to delete)', '选择要删除的记忆（Space 勾选，Enter 批量删除）'),
+      options: items,
+      multiple: true,
+    });
+    if (answer.type !== 'selected') {
+      this.pushMsg('system', t('No memories removed', '未删除任何记忆'));
+      return;
     }
-    this.applyMemoryRemoval(store, picked);
+    this.applyMemoryRemoval(store, answer.labels);
   }
 
-  /** 批删执行面（/memory-rm 分页与 filterable 两形态共用单点）：去重→逐条删除→回执 */
+  /** 批删执行面（/memory-rm 两形态共用单点）：去重→逐条删除→回执 */
   private applyMemoryRemoval(store: MemoryStore, picked: string[]): void {
     const unique = [...new Set(picked)];
     if (unique.length === 0) {

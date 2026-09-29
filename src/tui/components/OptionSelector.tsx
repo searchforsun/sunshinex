@@ -1,6 +1,11 @@
 import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text } from 'ink';
+import { slashMenuWindow } from './SlashMenu';
+
+/** 选择器可视窗口行数（原分页尺寸沿用）：超出即光标跟随滑窗 + 页脚指示（2026-09-30 用户裁决：
+ *  所有翻页交互统一命令面板式自动翻页——光标移过窗口边缘窗口随行平移，不再有 More…/Back… 导航行） */
+export const SELECTOR_WINDOW = 8;
 
 /** 选择器选项（AskUserRequest.options 同形；独立定义避免渲染层反向依赖 harness 类型） */
 export interface SelectorOption {
@@ -11,7 +16,7 @@ export interface SelectorOption {
 export interface OptionSelectorProps {
   question: string;
   options: SelectorOption[];
-  /** 高亮行（0-based；↑↓ 键经 moveCursor 归位） */
+  /** 高亮行（0-based，作用于全量列表；↑↓ 键经 moveCursor 归位，窗口随之平移） */
   cursor: number;
   /** 已选下标集合（单选恒单元素、多选升序） */
   picked: number[];
@@ -54,31 +59,39 @@ export function filterOptions(options: SelectorOption[], query: string): { view:
 }
 
 /** 统一选择器（规格 D4）：题头 + 序号选项行 + 键位提示。纯受控渲染——光标/勾选态由调用方持有，
- *  键盘分发收敛在 App 层（权限卡/plan 卡/AskQuestion 卡/Resume 列表四消费面共用），本组件不挂 useInput */
+ *  键盘分发收敛在 App 层（权限卡/plan 卡/AskQuestion 卡/Resume 列表四消费面共用），本组件不挂 useInput。
+ *  超窗自动翻页（2026-09-30 用户裁决）：>SELECTOR_WINDOW 项时按光标滑窗渲染（slashMenuWindow 同口径），
+ *  页脚一行「第 x/y 页 · c/N」指示位置；序号按窗口内可见行局部编号（数字快选与所见严格一致） */
 export function OptionSelector({ question, options, cursor, picked, multiple, title, hint, filter, indexMap }: OptionSelectorProps): JSX.Element {
   const filtering = filter !== undefined;
   const derived = filtering ? filterOptions(options, filter) : undefined;
   const view = derived ? derived.view : options;
   const map = indexMap ?? derived?.map ?? options.map((_, i) => i);
+  const { start, count } = slashMenuWindow(view.length, cursor, SELECTOR_WINDOW);
+  const windowed = view.length > count;
   return (
     <Box borderStyle="round" flexDirection="column" paddingX={1}>
       {title ? <Text bold>{title}</Text> : null}
       <Text bold>{question}</Text>
       {filtering ? <Text dimColor>/ {filter}▊</Text> : null}
-      {view.map((o, i) => {
-        const orig = map[i] ?? i;
-        const cursorMark = i === cursor ? '❯ ' : '  ';
+      {view.slice(start, start + count).map((o, i) => {
+        const viewIdx = start + i;
+        const orig = map[viewIdx] ?? viewIdx;
+        const cursorMark = viewIdx === cursor ? '❯ ' : '  ';
         const pickMark = multiple ? (picked.includes(orig) ? '◉ ' : '○ ') : '';
         return (
           <Text key={`${orig}-${o.label}`}>
             {cursorMark}
             {pickMark}
-            {filtering ? '' : `${orig + 1}. `}
+            {filtering ? '' : `${i + 1}. `}
             {o.label}
             {o.description ? <Text dimColor> — {o.description}</Text> : null}
           </Text>
         );
       })}
+      {windowed ? (
+        <Text dimColor>{t(`page ${Math.floor(cursor / SELECTOR_WINDOW) + 1}/${Math.ceil(view.length / SELECTOR_WINDOW)} · ${cursor + 1}/${view.length}`, `第 ${Math.floor(cursor / SELECTOR_WINDOW) + 1}/${Math.ceil(view.length / SELECTOR_WINDOW)} 页 · ${cursor + 1}/${view.length}`)}</Text>
+      ) : null}
       <Text dimColor>{hint ?? t('↑/↓ move · space select · enter submit · esc cancel', '↑/↓ 移动 · 空格选定 · 回车提交 · Esc 取消')}</Text>
     </Box>
   );

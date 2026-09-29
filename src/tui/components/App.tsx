@@ -1,13 +1,13 @@
-import { moveCursor, OptionSelector, togglePick, filterOptions } from './OptionSelector';
+import { moveCursor, OptionSelector, togglePick, filterOptions, SELECTOR_WINDOW } from './OptionSelector';
 import type { AskUserRequest } from '../../types';
 import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey } from './use-input';
 import { ApprovalDecision } from '../../types';
-import { SessionController, TuiState, paginateOptions } from '../session';
+import { SessionController, TuiState } from '../session';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
-import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
+import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS, slashMenuWindow } from './SlashMenu';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { createTailLedger, TailLedger } from '../tail-rewrite';
 import type { RepaintMode } from '../tui-loop';
@@ -107,28 +107,14 @@ export function planSelectorOptions(): { label: string; description?: string }[]
   ];
 }
 
-/** filterable 卡视图派生单点（规格 D8）：空词=全量分页视图（More…/Back… 导航行无映射席位）；有词=全量过滤直出、无导航行。
- *  map[i]=视图第 i 行对应的 q.options 原下标；moreIdx/backIdx=-1 表示该导航行不在场 */
+/** filterable 卡视图派生单点（规格 D8；2026-09-30 用户裁决改口径）：恒全量直出——空词=全量列表，
+ *  有词=子串过滤视图；超窗翻页由 OptionSelector 渲染层光标跟随滑窗承载（命令面板式自动翻页），
+ *  不再有 More…/Back… 导航行与页码态。map[i]=视图第 i 行对应的 q.options 原下标 */
 export function deriveFilterableView(
   full: Array<{ label: string; description?: string }>,
   query: string,
-  page: number,
-): { view: Array<{ label: string; description?: string }>; map: number[]; moreIdx: number; backIdx: number } {
-  if (query.length > 0) {
-    const { view, map } = filterOptions(full, query);
-    return { view, map, moreIdx: -1, backIdx: -1 };
-  }
-  const pageSize = 8;
-  const totalPages = Math.max(1, Math.ceil(full.length / pageSize));
-  const realCount = Math.max(0, Math.min(pageSize, full.length - page * pageSize));
-  const map: number[] = [];
-  for (let i = 0; i < realCount; i++) map.push(page * pageSize + i);
-  let moreIdx = -1;
-  let backIdx = -1;
-  let navAt = map.length;
-  if (page + 1 < totalPages) { moreIdx = navAt; navAt += 1; }
-  if (page > 0) { backIdx = navAt; }
-  return { view: paginateOptions(full, page).options, map, moreIdx, backIdx };
+): { view: Array<{ label: string; description?: string }>; map: number[] } {
+  return filterOptions(full, query);
 }
 
 /** Home/End 终端转义序列体：ink3 不解析这些功能键，按 ESC 剥离前后的两种形态识别（xterm 与应用模式两族） */
@@ -189,13 +175,11 @@ export function App({
   const setQPicked = (v: number[]): void => { qPickedRef.current = v; setQPickedState(v); };
   const setQCustom = (v: boolean): void => { qCustomRef.current = v; setQCustomState(v); };
   const setQText = (v: string): void => { qTextRef.current = v; setQTextState(v); };
-  // filterable 卡筛选态（规格 D6/D7）：词与页码 ref 真值 + state 渲染，随新问询卡归位清零
+  // filterable 卡筛选态（规格 D6/D7）：筛选词 ref 真值 + state 渲染，随新问询卡归位清零
+  // （2026-09-30 用户裁决：翻页改命令面板式光标跟随滑窗，页码态退役——OptionSelector 渲染层承载）
   const [qFilter, setQFilterState] = React.useState('');
-  const [qPage, setQPageState] = React.useState(0);
   const qFilterRef = React.useRef('');
-  const qPageRef = React.useRef(0);
   const setQFilter = (v: string): void => { qFilterRef.current = v; setQFilterState(v); };
-  const setQPage = (v: number): void => { qPageRef.current = v; setQPageState(v); };
   // 审批/plan 选择器光标（T3 迁移）：ref 真值 + state 渲染；状态转入时归位首项
   const [aCursorState, setACursorState] = React.useState(0);
   const aCursorRef = React.useRef(0);
@@ -220,7 +204,6 @@ export function App({
       setQCustom(false);
       setQText('');
       setQFilter('');
-      setQPage(0);
     }
     if (!state.question && qRef.current) qRef.current = undefined;
   }, [state.question]);
@@ -398,7 +381,7 @@ export function App({
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
   });
-  const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter, qPage) : undefined;
+  const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter) : undefined;
 
   useInput((input: string, key: RawKey) => {
 
@@ -464,10 +447,11 @@ export function App({
     // 分支置于全局键之前（Esc 在此不回落清缓冲）；取值一律走 ref 真值，不依赖处理器闭包的新鲜度
     if (state.status === 'awaiting-question' && state.question) {
       const q = state.question;
-      // filterable 卡（规格 D6–D8）：可打印字符（含数字）进筛选词、Backspace 删字、Esc 两段式、
-      // 词变 cursor 归 0；↑/↓/Space/Enter 作用于视图，导航行翻页、实项经 map 落原下标
+      // filterable 卡（规格 D6–D8；2026-09-30 翻页口径改命令面板式）：可打印字符（含数字）进筛选词、
+      // Backspace 删字、Esc 两段式、词变 cursor 归 0；↑/↓/Space/Enter 作用于全量视图（超窗由渲染层
+      // 光标跟随滑窗自动翻页），实项经 map 落原下标
       if (q.filterable) {
-        const { view, map, moreIdx, backIdx } = deriveFilterableView(q.options, qFilterRef.current, qPageRef.current);
+        const { view, map } = deriveFilterableView(q.options, qFilterRef.current);
         if (key.ctrl && input === 'c') { controller.resolveAskAnswer({ type: 'dismissed' }); controller.interrupt(); return; }
         if (key.escape) {
           if (qFilterRef.current.length > 0) { setQFilter(''); setQCursor(0); return; }
@@ -478,8 +462,6 @@ export function App({
         if (key.upArrow) { setQCursor(moveCursor(qCursorRef.current, view.length, -1)); return; }
         if (key.downArrow) { setQCursor(moveCursor(qCursorRef.current, view.length, 1)); return; }
         if (key.return || input === ' ') {
-          if (qCursorRef.current === moreIdx) { setQPage(qPageRef.current + 1); setQCursor(0); return; }
-          if (qCursorRef.current === backIdx) { setQPage(qPageRef.current - 1); setQCursor(0); return; }
           const orig = map[qCursorRef.current] ?? -1;
           if (orig < 0) return;
           if (key.return) {
@@ -536,9 +518,11 @@ export function App({
         }
         return;
       }
+      // 数字快选（非筛选卡）：序号是窗口内可见行的局部编号（OptionSelector 渲染口径），快选映射同一窗口
       const n = Number.parseInt(input, 10);
-      if (Number.isInteger(n) && n >= 1 && n <= q.options.length) {
-        const idx = n - 1;
+      const win = slashMenuWindow(q.options.length, qCursorRef.current, SELECTOR_WINDOW);
+      if (Number.isInteger(n) && n >= 1 && n <= win.count) {
+        const idx = win.start + n - 1;
         if (idx === q.customIndex) { submitCustom(); return; }
         if (q.multiple) setQPicked(togglePick(qPickedRef.current, idx, true));
         else submitLabels([q.options[idx].label]);

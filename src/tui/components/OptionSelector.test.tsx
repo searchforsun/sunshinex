@@ -52,3 +52,31 @@ test('OptionSelector：单选形态不渲染勾选圈', () => {
   assert.ok(!f.includes('◉') && !f.includes('○'), '单选无勾选圈');
   unmount();
 });
+
+test('OptionSelector 超窗滑窗（2026-09-30 翻页口径统一）：窗口随光标平移 + 页脚指示 + 窗口局部序号，零 More…/Back…', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ label: `opt-${i}` }));
+  // 首窗：0-7 可见、页脚 1/2 页；序号窗口局部（1.-8.）
+  const r1 = render(<OptionSelector question="q" options={many} cursor={0} picked={[]} />);
+  const f1 = r1.lastFrame() ?? '';
+  assert.ok(f1.includes('opt-0') && f1.includes('opt-7'), '首窗 8 行');
+  assert.ok(!f1.includes('opt-8'), '窗口外行不渲染');
+  assert.ok(f1.includes('1/2'), '页脚页码指示');
+  assert.ok(f1.includes('1. opt-0') && f1.includes('8. opt-7'), '序号=窗口内局部编号');
+  assert.ok(!f1.includes('More…') && !f1.includes('Back…') && !f1.includes('更多…') && !f1.includes('上一页'), '零导航行');
+  r1.unmount();
+  // 光标越过窗口边缘：窗口平移到第二窗、序号重新从 1 起
+  const r2 = render(<OptionSelector question="q" options={many} cursor={9} picked={[]} />);
+  const f2 = r2.lastFrame() ?? '';
+  assert.ok(f2.includes('opt-8') && f2.includes('opt-11'), '第二窗 4 行（8-11）');
+  assert.ok(!f2.includes('opt-0') && !f2.includes('opt-7'), '首窗行滑出');
+  assert.ok(f2.includes('2. opt-9'), '序号随窗口重排（光标行=窗口第 2 行）');
+  assert.ok(f2.includes('2/2') && f2.includes('10/12'), '页脚页码与位置指示');
+  r2.unmount();
+  // ≤8 项：无滑窗无页脚（与既有形态零漂移——序号局部=全局）
+  const few = many.slice(0, 3);
+  const r3 = render(<OptionSelector question="q" options={few} cursor={0} picked={[]} />);
+  const f3 = r3.lastFrame() ?? '';
+  assert.ok(!f3.includes('/1'), '单窗无页脚指示');
+  assert.ok(f3.includes('1. opt-0') && f3.includes('3. opt-2'), '序号照常');
+  r3.unmount();
+});
