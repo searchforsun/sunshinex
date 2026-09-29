@@ -1663,23 +1663,10 @@ export class SessionController {
       }
       case 'step': {
         // 步数计账：模型动作步（done 收尾帧不计、子代理事件已分流不达此处），会话累计、/new 归零（状态栏 turns/steps 段数据源）
+        // phase 叙述通道已退役（2026-09-30 用户裁决，单一权威源）：叙述只走 token→正文一条通道
+        //（流式 delta / 非流式单帧补发，reactor 发射点保证），本事件只承载步号计账不上屏
         if (e.text !== 'done') {
           this.state = { ...this.state, metrics: { ...this.state.metrics, sessionSteps: this.state.metrics.sessionSteps + 1 } };
-        }
-        // phase 阶段行：模型主动播报的当前进度（1-2 行），先于对应动作/答复上屏；无 phase 的 step 与工具行信息重复，不上屏。
-        // phase 句完整入档（呈现层不腰斩——真机 200 字符残句「3. **Web 掐断」根因）。
-        // 重复抑制是防御层而非主语义（2026-09-30 架构化去重后发射点已不双写：reactor 流式轮 phase 事件
-        // 不再携带叙述，仅纯工具轮旁白携带）；此处拼接尾部 assistant 块兜底其余写入面（steer/子代理收口等）
-        const phase = typeof e.payload?.phase === 'string' ? e.payload.phase.trim() : '';
-        if (phase.length > 0) {
-          const msgs = this.state.messages;
-          let i = msgs.length;
-          let tailText = '';
-          while (i > 0 && msgs[i - 1]!.role === 'assistant') {
-            i -= 1;
-            tailText = msgs[i]!.text + tailText;
-          }
-          if (!tailText.includes(phase)) this.pushMsg('step', phase);
         }
         return;
       }

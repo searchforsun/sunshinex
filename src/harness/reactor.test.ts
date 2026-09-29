@@ -409,10 +409,11 @@ test('FakeAdapter 上报非零 usage → tokensUsed 聚合累加（5+7=12）', a
   assert.equal(r.tokensUsed, 12, '两轮 usage 5 与 7 应聚合为 12');
 });
 
-test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', async () => {
+test('Reactor：phase 约定行注入 prompt，链行回喂照旧（phase 上屏通道已退役，叙述走 token）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-phase-'));
   const prompts: string[] = [];
   const stepPhases: unknown[] = [];
+  const tokens: string[] = [];
   let call = 0;
   const adapter = {
     provider: 'capture',
@@ -430,19 +431,23 @@ test('Reactor：phase 阶段字段透传 step 事件，prompt 注入约定行', 
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({
     registry, safety, context, model: adapter,
-    onEvent: (e) => { if (e.type === 'step') stepPhases.push(e.payload?.phase); },
+    onEvent: (e) => {
+      if (e.type === 'step') stepPhases.push(e.payload?.phase);
+      if (e.type === 'token') tokens.push(e.text ?? '');
+    },
   });
 
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 2 });
   assert.equal(r.done, true);
-  assert.ok(stepPhases.includes('正在执行回声验证'), 'tool 步 phase 应随 assistant content 透传');
   assert.equal(stepPhases[stepPhases.length - 1], undefined, 'done 步不透传 phase（阶段行不得插入答复正文）');
+  assert.ok(tokens.includes('正在执行回声验证'), '工具轮叙述经单帧 token 补发（正文通道唯一承载）');
   assert.ok(prompts[0].includes('phase'), '稳定段应注入 phase 约定行（消息面承载）');
 });
 
-test('Reactor 单一权威源：流式轮 phase 事件不携带叙述（token 通道已承载），非流式轮照旧透传（2026-09-30 架构化去重）', async () => {
+test('Reactor 单一权威源：叙述只走 token 通道——流式轮 delta、非流式轮单帧补发，step 事件恒不携带 phase（2026-09-30 phase 通道退役）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-src-'));
   const stepPhases: unknown[] = [];
+  const tokens: string[] = [];
   let call = 0;
   // 流式适配器：首轮带叙述出工具牌且流式吐同文 token（发射点双写的历史形态），次轮收束
   const adapter = {
@@ -463,11 +468,41 @@ test('Reactor 单一权威源：流式轮 phase 事件不携带叙述（token �
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({
     registry, safety, context, model: adapter,
-    onEvent: (e) => { if (e.type === 'step') stepPhases.push(e.payload?.phase); },
+    onEvent: (e) => {
+      if (e.type === 'step') stepPhases.push(e.payload?.phase);
+      if (e.type === 'token') tokens.push(e.text ?? '');
+    },
   });
   const r = await reactor.run({ goal: 'x' }, { maxSteps: 2 });
   assert.equal(r.done, true);
-  assert.ok(stepPhases.every((p) => p === undefined), '流式轮 phase 事件不携带叙述——发射点不双写，正文由 token 通道单点承载');
+  assert.ok(stepPhases.every((p) => p === undefined), 'step 事件恒不携带 phase——叙述单点走 token 通道');
+  assert.ok(tokens.includes('正在执行回声验证'), '流式轮叙述经 token delta 承载');
+
+  // 非流式适配器（无 chatStream）：工具轮叙述单帧 token 补发，同一正文通道
+  const tokens2: string[] = [];
+  const stepPhases2: unknown[] = [];
+  let call2 = 0;
+  const plain = {
+    provider: 'plain-capture',
+    chat: async () => {
+      if (call2++ === 0) {
+        return { finish: 'tool_calls' as const, content: '非流式旁白叙述', toolCalls: [{ id: 'call_0', name: 'exec', argsJson: JSON.stringify({ command: 'echo hi' }) }] };
+      }
+      return { finish: 'stop' as const, content: '完成', toolCalls: [] };
+    },
+  };
+  const context2 = new ContextManager(tmp, new FileStore(tmp));
+  const reactor2 = new Reactor({
+    registry, safety, context: context2, model: plain,
+    onEvent: (e) => {
+      if (e.type === 'step') stepPhases2.push(e.payload?.phase);
+      if (e.type === 'token') tokens2.push(e.text ?? '');
+    },
+  });
+  const r2 = await reactor2.run({ goal: 'x' }, { maxSteps: 2 });
+  assert.equal(r2.done, true);
+  assert.ok(stepPhases2.every((p) => p === undefined), '非流式轮 step 事件同样不携带 phase');
+  assert.ok(tokens2.includes('非流式旁白叙述'), '非流式工具轮叙述单帧 token 补发（正文通道唯一承载）');
 });
 
 test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行、单条合并观察回填', async () => {
