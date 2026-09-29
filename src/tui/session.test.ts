@@ -734,3 +734,45 @@ test('phase 句逐字去重：与最近 assistant 正文逐字相同即跳过入
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('phase 句去重覆盖流式切块：正文分多段入档后播报全文，拼接尾部 assistant 块去重（2026-09-30 真机三重复制实锤：旧口径只比对紧邻最后一块即漏，同一句以正文+▶ 行双显）', async () => {
+  const tmp = tmpdir('sunshinex-sess-dedupe2-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: {
+        provider: 'dedupe2-stub',
+        chat: textReplyToChatFace(() => '{"tool":"read","args":{"path":"a.ts"}}'),
+      },
+    });
+    const fire = (phase: string): void =>
+      (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+        type: 'step',
+        text: 'read',
+        payload: { step: 1, phase },
+      });
+    // 正文流式切块为两段（空行段落边界切块的真实形态），tailText = A + B
+    (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+      type: 'token',
+      text: '技能文件本身在第 66 行处被截断。',
+    });
+    (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+      type: 'token',
+      text: '\n因此本次执行策略是：先逐项核对已存结论。',
+    });
+    (ctrl as unknown as { onEventForTest(e: { type: string; text?: string; payload?: Record<string, unknown> }): void }).onEventForTest({
+      type: 'done',
+      text: '技能文件本身在第 66 行处被截断。\n因此本次执行策略是：先逐项核对已存结论。',
+    });
+    // 播报 = 两段拼接全文：旧口径 last.text === phase 只对最后一块比对即漏 → ▶ 行重复入档
+    fire('技能文件本身在第 66 行处被截断。\n因此本次执行策略是：先逐项核对已存结论。');
+    const steps = ctrl.getState().messages.filter((m) => m.role === 'step').map((m) => m.text);
+    assert.equal(steps.length, 0, '播报全文与尾部 assistant 拼接逐字相同 → 不入档（不再双显）');
+    // 部分重叠（播报是尾部拼接的子串）同样跳过——正文已承载该叙述
+    fire('先逐项核对已存结论。');
+    const steps2 = ctrl.getState().messages.filter((m) => m.role === 'step').map((m) => m.text);
+    assert.equal(steps2.length, 0, '播报为尾部正文的子串 → 亦跳过');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

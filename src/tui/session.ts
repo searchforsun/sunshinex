@@ -1667,12 +1667,19 @@ export class SessionController {
           this.state = { ...this.state, metrics: { ...this.state.metrics, sessionSteps: this.state.metrics.sessionSteps + 1 } };
         }
         // phase 阶段行：模型主动播报的当前进度（1-2 行），先于对应动作/答复上屏；无 phase 的 step 与工具行信息重复，不上屏。
-        // phase 句完整入档（呈现层不腰斩——真机 200 字符残句「3. **Web 掐断」根因）；与最近 assistant 正文逐字相同的重复播报跳过
+        // phase 句完整入档（呈现层不腰斩——真机 200 字符残句「3. **Web 掐断」根因）；重复播报跳过的口径为
+        // 「尾部连续 assistant 块拼接全文」包含 phase（2026-09-30 真机三重复制实锤：正文流式切块多段后
+        // 播报到来，旧口径只比对紧邻最后一块即漏——同一句以正文 + ▶ 阶段行双显上屏）
         const phase = typeof e.payload?.phase === 'string' ? e.payload.phase.trim() : '';
         if (phase.length > 0) {
           const msgs = this.state.messages;
-          const last = msgs[msgs.length - 1];
-          if (!(last?.role === 'assistant' && last.text === phase)) this.pushMsg('step', phase);
+          let i = msgs.length;
+          let tailText = '';
+          while (i > 0 && msgs[i - 1]!.role === 'assistant') {
+            i -= 1;
+            tailText = msgs[i]!.text + tailText;
+          }
+          if (!tailText.includes(phase)) this.pushMsg('step', phase);
         }
         return;
       }
