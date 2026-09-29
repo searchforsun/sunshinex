@@ -6,7 +6,7 @@ export interface RetainedUiState {
   cursor: number;
   /** 第一层（Tab）行折叠开关：清屏重挂后保持同一视图模式，避免重放回落到折叠态 */
   expandAll: boolean;
-  /** 第二层（Ctrl+O）内容深度开关：最近正文锚点阶段的思考与工具结果全文展开 */
+  /** 第二层（Ctrl+O）内容深度开关：当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行全文展开 */
   latestFull: boolean;
   /** 子代理浏览模式（Ctrl+B）：选中列表动态区自绘，重挂后须原样恢复 */
   browseMode: boolean;

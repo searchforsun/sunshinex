@@ -25,8 +25,9 @@ export type TranscriptEntry =
  * ink3 在 outputHeight >= stdout.rows 时会 clearTerminal 整屏重写（超视口闪动/抖动/滚动位置丢失的根因），
  * 逐消息 Static 化让该路径实际不可达：流式中间态也以终稿形态滚入滚动缓冲，跟随滚动即可回看全部。
  * 过程行（思考/工具）按「▶ 阶段锚点」两层折叠：默认最近正文锚点所在阶段全行可见、历史阶段折叠为
- * 「正文 + 首个工具调用对 + 首个思考行」；Tab 解除行折叠（全部过程行可见），Ctrl+O 把最近锚点阶段的
- * 思考与工具结果展开为全文——均经 tui-loop 清屏重挂整屏重放，视口永远只有一份历史。
+ * 「正文 + 首个工具调用对 + 首个思考行」；Tab 解除行折叠（全部过程行可见），Ctrl+O 展开**当前一个轮次**
+ * （自最后一条 user 指令行起，2026-09-30 用户裁决）的所有工具与思考行全文——均经 tui-loop
+ * 清屏重挂整屏重放，视口永远只有一份历史。
  */
 export function MessageList({
   messages,
@@ -47,7 +48,7 @@ export function MessageList({
   banner: BannerInfo;
   /** 第一层（Tab）行折叠开关：false 时历史阶段组折叠为「正文+首个工具对+首个思考行」，true 全行 */
   expandAll: boolean;
-  /** 第二层（Ctrl+O）内容深度开关：true 时最近正文锚点阶段的思考与工具结果展开全文 */
+  /** 第二层（Ctrl+O）内容深度开关：true 时当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行展开全文 */
   latestFull: boolean;
   /** 全屏查看（ChildInspector）整屏接管：Static 历史条目置空——整页让位给全屏视图，
    *  退出时经重挂整屏重放恢复（2026-09-27 用户裁决：全屏独占，不与主 agent 历史拼接） */

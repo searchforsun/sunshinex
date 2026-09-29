@@ -30,8 +30,9 @@ test('分段折叠：过程隶属其前正文，正文与阶段行恒显，仅�
   assert.ok(d[10].visible, '最后段正文恒显示');
   assert.ok(d.every((s) => !s.full), '默认态内容保持摘要');
   const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
-  assert.ok(deep[7].full && deep[8].full && deep[9].full, 'Ctrl+O 展开最近正文段的过程全文');
-  assert.ok(!deep[1].full && !deep[2].full, '更早阶段保持摘要');
+  assert.ok(deep[7].full && deep[8].full && deep[9].full, 'Ctrl+O 展开轮内正文段的过程全文');
+  assert.ok(deep[1].full && deep[2].full, 'Ctrl+O 展开当前轮（单轮对话=全场）首段过程全文（2026-09-30 用户裁决：轮次作用域）');
+  assert.ok(deep[4].visible && deep[4].full && deep[5].visible && deep[5].full, '轮内被行折叠收拢的多余工具对随 Ctrl+O 放行显示并展开全文');
   const tab = buildTranscriptDecisions(messages, { expandAll: true, latestFull: false });
   assert.ok(tab[4].visible && tab[5].visible, 'Tab 解除全部行折叠');
   assert.ok(tab.every((s) => !s.full), 'Tab 不改变内容深度');
@@ -90,7 +91,7 @@ test('plan 形态：▶ 行与阶段正文各自成段，过程隶属其前锚�
   assert.ok(d[7].visible, '步骤2正文恒显示');
   const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
   assert.ok(deep[5].full && deep[6].full, 'Ctrl+O 展开最近阶段（Step2）过程全文');
-  assert.ok(!deep[1].full && !deep[2].full, 'Step1 过程保持摘要');
+  assert.ok(deep[1].full && deep[2].full, '无 user 骨架回落全场单轮口径：Step1 过程同样全文展开');
 });
 
 test('连续正文切块并入同段：流式多块不裂段', () => {
@@ -150,7 +151,7 @@ test('收口 notice 行（system 说明）不新开段：尾追说明不吃掉�
   assert.ok(!tab[1].full, 'Tab（第一层）不改变内容深度，说明行同样不越权展开');
 });
 
-test('回归：▶ 阶段行开段——每阶段各留一组概要，Ctrl+O 只展开最近正文锚点组（用户本机实测形态）', () => {
+test('回归：▶ 阶段行开段——每阶段各留一组概要，Ctrl+O 展开当前轮全部阶段（2026-09-30 用户裁决：轮次作用域）', () => {
   // 最小复现：任务内多个 phase（▶）阶段、每阶段后有多组思考/工具，末尾一条正文。
   // 实测症状：① 默认态 ▶ 行之间空着（除首段外概要不显示）② Ctrl+O 把整场过程全展开。
   const messages = [
@@ -183,6 +184,41 @@ test('回归：▶ 阶段行开段——每阶段各留一组概要，Ctrl+O 只
   assert.ok(d[18].visible, '末尾正文恒显示');
 
   const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
-  assert.ok(deep[15].full && deep[16].full && deep[17].full, 'Ctrl+O 展开最近正文锚点组（阶段三）全文');
-  assert.ok(!deep[1].full && !deep[8].full, '更早阶段保持摘要，不随 Ctrl+O 一并展开');
+  // 单轮对话=全场即当前轮：Ctrl+O 展开所有阶段的全部过程行（含默认态被折叠的多余组）
+  assert.ok(deep[15].full && deep[16].full && deep[17].full, 'Ctrl+O 展开阶段三过程全文');
+  assert.ok(deep[1].full && deep[8].full, 'Ctrl+O 同样展开轮内更早阶段（一/二）过程全文');
+  assert.ok(deep[4].visible && deep[4].full && deep[11].visible && deep[11].full, '轮内被折叠的多余过程组随 Ctrl+O 放行并展开');
+});
+
+test('Ctrl+O 轮次边界：新 user 指令行开新轮——仅当前轮展开全文，历史轮维持折叠摘要（2026-09-30 用户裁决）', () => {
+  const messages = [
+    item('user', '任务一'),
+    item('thinking', 'Thought for 5s', { detail: '想甲' }),
+    item('tool', 'GLOB *', { kind: 'call' }),
+    item('tool', 'a', { kind: 'result', ok: true }),
+    item('thinking', 'Thought for 4s', { detail: '想乙' }),
+    item('tool', 'GLOB *.md', { kind: 'call' }),
+    item('tool', 'b', { kind: 'result', ok: true }),
+    item('assistant', '答一'),
+    item('user', '任务二'),
+    item('thinking', 'Thought for 3s', { detail: '想丙' }),
+    item('tool', 'READ x', { kind: 'call' }),
+    item('tool', 'x', { kind: 'result', ok: true }),
+    item('thinking', 'Thought for 2s', { detail: '想丁' }),
+    item('tool', 'READ y', { kind: 'call' }),
+    item('tool', 'y', { kind: 'result', ok: true }),
+    item('assistant', '答二'),
+  ];
+  // 默认态：轮一收拢（首组保留、次组隐藏），轮二同理（答二开末段但其过程隶属任务二段=非末段）
+  const d = buildTranscriptDecisions(messages, { expandAll: false, latestFull: false });
+  assert.ok(d[1].visible && d[2].visible && d[3].visible, '轮一首组概要保留');
+  assert.ok(!d[4].visible && !d[5].visible && !d[6].visible, '轮一次组折叠');
+  assert.ok(d[9].visible && d[10].visible && d[11].visible, '轮二首组概要保留');
+  assert.ok(!d[12].visible && !d[13].visible && !d[14].visible, '轮二次组折叠');
+  // Ctrl+O：当前轮=任务二起——轮二全部过程行（含被折叠的次组）放行+全文；轮一维持摘要与折叠
+  const deep = buildTranscriptDecisions(messages, { expandAll: false, latestFull: true });
+  assert.ok(deep[9].full && deep[10].full && deep[11].full, '当前轮首组全文');
+  assert.ok(deep[12].visible && deep[12].full && deep[13].visible && deep[13].full, '当前轮被折叠的次组随 Ctrl+O 放行+全文');
+  assert.ok(!deep[1].full && !deep[2].full, '历史轮（任务一）过程保持摘要');
+  assert.ok(!deep[4].visible && !deep[5].visible, '历史轮被折叠的次组不随 Ctrl+O 放行');
 });
