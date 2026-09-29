@@ -35,6 +35,7 @@ export function MessageList({
   expandAll,
   latestFull,
   suppressHistory = false,
+  rows,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
@@ -47,6 +48,8 @@ export function MessageList({
   /** 全屏查看（ChildInspector）整屏接管：Static 历史条目置空——整页让位给全屏视图，
    *  退出时经重挂整屏重放恢复（2026-09-27 用户裁决：全屏独占，不与主 agent 历史拼接） */
   suppressHistory?: boolean;
+  /** 终端行数：流式预览窗口上限随视口收缩（min(28, rows−6)），矮终端不超视口防中段起渲染；缺省固定上限 */
+  rows?: number;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -100,7 +103,7 @@ export function MessageList({
           ) : null
         }
       </Static>
-      {live ? <LiveArea live={live} columns={columns} /> : null}
+      {live ? <LiveArea live={live} columns={columns} rows={rows} /> : null}
     </Box>
   );
 }

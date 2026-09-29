@@ -70,3 +70,18 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
     current?.unmount();
   }
 }
+
+/** 全帧逐写原子化（2026-09-28 流式/全屏闪屏扩展）：DEC 2026 同步更新原只覆盖整屏 repaint 路径，
+ *  ink 逐帧「擦除+重写」裸出——动态区任一行变化即全帧重写（session 合帧窗口注释自证无逐行 diff），
+ *  擦写序列中间态肉眼可见即持续闪屏。装配期对流式输出做逐写包裹：每帧写原子化，终端持旧帧到整帧
+ *  落定；已含 2026h 的写（repaint 路径自包）不重复包裹，不识别该序列的终端静默忽略零劣化 */
+export function installSyncUpdateWrap(stream: { write: (...args: unknown[]) => unknown }): void {
+  const orig = stream.write.bind(stream);
+  stream.write = (...args: unknown[]): unknown => {
+    const chunk = args[0];
+    if (typeof chunk === 'string' && !chunk.includes('\u001b[?2026h')) {
+      return orig(`\u001b[?2026h${chunk}\u001b[?2026l`, ...args.slice(1));
+    }
+    return orig(...args);
+  };
+}

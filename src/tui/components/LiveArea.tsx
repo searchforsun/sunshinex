@@ -18,11 +18,14 @@ const THINK_TAIL_LINES = 6;
 const REPLY_PREVIEW_MAX_ROWS = 28;
 
 /** 尾部窗口估算：按折行行数自尾累计，超限即从该行截断。折行预算收 2 列安全余量（ink 断行边界差
- *  方向性偏保守）；截断若落在表格内部，缺表头的行经 MarkdownText 按普通段落 1:1 呈现，帧高仍有界 */
-function tailReplyPreview(pending: string, columns: number): string {
+ *  方向性偏保守）；截断若落在表格内部，缺表头的行经 MarkdownText 按普通段落 1:1 呈现，帧高仍有界。
+ *  rows 绑定（2026-09-28 跳到中间修复）：窗口上限随终端行数收缩——固定 28 行窗口 + 输入框/状态栏/
+ *  活动行在矮终端超视口，ink 光标上移越顶即「从中段起渲染」；预留 6 行 chrome，rows 缺省（测试/管道）
+ *  回落固定上限零行为变化 */
+function tailReplyPreview(pending: string, columns: number, maxRows: number): string {
   const lines = pending.split('\n');
   const safe = Math.max(8, columns - 2);
-  const budget = REPLY_PREVIEW_MAX_ROWS - 2;
+  const budget = Math.max(4, maxRows - 2);
   let total = 0;
   let cut = 0;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -33,14 +36,15 @@ function tailReplyPreview(pending: string, columns: number): string {
   return lines.slice(cut).join('\n');
 }
 
-export function LiveArea({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element {
+export function LiveArea({ live, columns, rows }: { live: LiveBlock; columns: number; rows?: number }): JSX.Element {
+  const maxRows = rows === undefined ? REPLY_PREVIEW_MAX_ROWS : Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(8, rows - 6));
   if (live.kind === 'reply') {
     // 长围栏兜底切块后预览续块以开栏行承接：未闭合围栏按围栏开始渲染，代码块高亮呈现跨切块延续
     const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
     if (pending.trim() === '') return <Box />;
     return (
       <Box flexDirection="column">
-        <MarkdownText text={tailReplyPreview(pending, columns)} columns={columns} />
+        <MarkdownText text={tailReplyPreview(pending, columns, maxRows)} columns={columns} />
       </Box>
     );
   }

@@ -52,10 +52,11 @@ test('Inspector 取尾适配视口：超出 rows 的更早行不渲染（动态�
   one.unmount();
 });
 
-test('Inspector 头部呈委派 prompt', () => {
+test('Inspector 头部不呈委派 prompt（2026-09-28 用户裁决：去掉「委派提示词」段）', () => {
   const one = render(<ChildInspector child={live({ prompt: '调研单体链路' })} columns={80} rows={20} />);
-  assert.match(one.lastFrame() ?? '', /调研单体链路/, '头部呈委派提示词');
-  assert.doesNotMatch(one.lastFrame() ?? '', /⏺/, '委派提示词行无图标前缀（2026-09-28 用户裁决）');
+  const f = one.lastFrame() ?? '';
+  assert.doesNotMatch(f, /委派提示词/, '头部无委派提示词标签行');
+  assert.doesNotMatch(f, /调研单体链路/, '委派词内容不再上屏（数据链保留在 subagentMeta.prompt）');
   one.unmount();
 });
 
@@ -64,12 +65,11 @@ test('Inspector 视口有界：长行折行预算下帧高不超 rows（源行�
   const longLine = '长'.repeat(200);
   const many = Array.from({ length: 20 }, (_, i) => ({ kind: 'text' as const, text: `${longLine}-${i}` }));
   const one = render(
-    <ChildInspector child={live({ transcript: many, prompt: `${'委'.repeat(600)}（截断）` })} columns={80} rows={12} />,
+    <ChildInspector child={live({ transcript: many })} columns={80} rows={12} />,
   );
   const f = one.lastFrame() ?? '';
   const n = f.replace(/\n$/, '').split('\n').length;
-  assert.ok(n <= 12, `帧高 ${n} 行应不超视口 rows=12（折行预算 + prompt 上限裁剪双护栏）`);
-  assert.match(f, /…/, '超限委派 prompt 取尾带 … 标记');
+  assert.ok(n <= 12, `帧高 ${n} 行应不超视口 rows=12（折行预算 + 视口余量护栏）`);
   one.unmount();
 });
 
@@ -96,6 +96,30 @@ test('Inspector Tab 两态：缺省折叠对标主 agent（非末段只留正文
   assert.doesNotMatch(def, /src\/b\.ts/, '非末段第二工具对折叠隐藏——缺省即主 agent 折叠形态');
   const full = render(<ChildInspector child={multi} columns={80} rows={40} expanded />).lastFrame() ?? '';
   assert.match(full, /src\/b\.ts/, 'Tab 展开全量：后续工具对可见');
+});
+
+test('Inspector 折叠态思考段收敛 ▶ 摘要行（时间线对齐主 agent，2026-09-28 用户裁决）：多行思考墙不再全文直出、末段结论全显', () => {
+  const multi: ChildLiveState = {
+    ...live(),
+    transcript: [
+      { kind: 'text', text: '思考第一行\n思考第二行\n思考第三行' },
+      { kind: 'call', text: 'READ src/a.ts' },
+      { kind: 'result', text: '84 lines', ok: true },
+      { kind: 'text', text: '中间叙述' },
+      { kind: 'call', text: 'GREP pattern' },
+      { kind: 'result', text: '3 files', ok: true },
+      { kind: 'text', text: '结论正文行一\n结论正文行二' },
+    ],
+  };
+  // 缺省（折叠）：思考段收敛为 ▶ 首行摘要（多行段带 … 标记），后续行全文直出即思考墙；末段结论链全显
+  const def = render(<ChildInspector child={multi} columns={80} rows={40} />).lastFrame() ?? '';
+  assert.match(def, /▶ 思考第一行 …/, '非末段思考段收敛为 ▶ 首行摘要');
+  assert.doesNotMatch(def, /思考第二行/, '思考段后续行折叠隐藏');
+  assert.match(def, /▶ 中间叙述/, '中间叙述段同样收敛（单行段无 … 标记）');
+  assert.match(def, /结论正文行一/, '末段结论链全显');
+  assert.match(def, /结论正文行二/, '末段结论链逐行全显');
+  const full = render(<ChildInspector child={multi} columns={80} rows={40} expanded />).lastFrame() ?? '';
+  assert.match(full, /思考第二行/, 'Tab 展开全量：思考正文可见');
 });
 
 test('Inspector 视口有界：真实 markdown 形态（标题/表格/围栏/长 CJK）下帧高不超 rows（估算与渲染不同源即溢出残影/两遍观感回归）', () => {

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'events';
-import { runTuiLoop } from './tui-loop';
+import { runTuiLoop, installSyncUpdateWrap } from './tui-loop';
 import { RetainedUiState } from './ui-state';
 
 /** ink 实例替身：unmount 即视为退出（waitUntilExit 解析），与 ink 语义一致 */
@@ -96,4 +96,20 @@ test('tui-loop：重绘路径以同步更新（DEC 2026）包裹清屏与重挂�
 
   mounts[mounts.length - 1].unmount();
   await loop;
+});
+
+test('tui-loop：installSyncUpdateWrap 全帧逐写原子化（2026-09-28 流式闪屏扩展：ink 逐帧擦写裸出即持续闪屏病根）', () => {
+  const writes: string[] = [];
+  const stream = {
+    write: (...args: unknown[]): unknown => {
+      writes.push(args[0] as string);
+      return args[0] !== 'fail' ;
+    },
+  };
+  installSyncUpdateWrap(stream);
+  const r = stream.write('frame-content');
+  assert.equal(r, true, '写返回值透传');
+  assert.deepEqual(writes, ['\x1b[?2026hframe-content\x1b[?2026l'], '逐写包裹为原子块');
+  stream.write('\x1b[?2026halready\x1b[?2026l');
+  assert.equal(writes.length, 2, '已含 2026h 的写（repaint 路径自包）不重复包裹');
 });

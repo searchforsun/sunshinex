@@ -54,13 +54,32 @@ export function ChildInspector(props: {
           : [{ kind: 'text' as const, text: l }];
       });
   const delegated = child?.prompt ?? archived?.prompt ?? legacyPrompt;
-  // 缺省折叠（2026-09-28 用户裁决：与主 agent 时间线同形态）：思考/结论正文全显；工具行只保留首个
-  // call 及其连续结果链（锚点对），其余工具对收敛——Tab 展开全量时间线
+  // 缺省折叠（2026-09-28 用户裁决：与主 agent 时间线同形态）：工具行只保留首个 call 及其连续结果链
+  // （锚点对），其余工具对收敛；思考正文段收敛为 ▶ 首行摘要（多行段带 … 标记）——思考墙全文直出即
+  // 时间线未对齐主 agent 病根，末段结论链（最后一个工具行之后）全显——Tab 展开全量时间线
+  let lastProcIdx = -1;
+  bodyFull.forEach((l, i) => { if (l.kind !== 'text') lastProcIdx = i; });
   const folded: ChildLine[] = [];
   let pairTaken = false;
   let attachable = false; // 连续结果链判据：result 行仅跟随「已保留 call 且中间无折叠 call/正文打断」——同一调用的多行结果（含失败行）不折丢
-  bodyFull.forEach((l) => {
-    if (l.kind === 'text') { attachable = false; folded.push(l); return; }
+  let run: string[] = [];
+  const summaryBudget = Math.max(8, columns - 8);
+  const flushRun = (): void => {
+    if (run.length === 0) return;
+    const head = run[0]!;
+    const first = head.split('\n')[0] ?? '';
+    const suffix = run.length > 1 || head.includes('\n') ? ' …' : '';
+    folded.push({ kind: 'text', text: `▶ ${elideByWidth(first, summaryBudget)}${suffix}` });
+    run = [];
+  };
+  bodyFull.forEach((l, i) => {
+    if (l.kind === 'text') {
+      if (i > lastProcIdx) { flushRun(); attachable = false; folded.push(l); return; } // 末段结论链全显
+      attachable = false;
+      run.push(l.text);
+      return;
+    }
+    flushRun();
     if (l.kind === 'call') {
       if (!pairTaken) { pairTaken = true; attachable = true; folded.push(l); }
       else attachable = false;
@@ -68,6 +87,7 @@ export function ChildInspector(props: {
     }
     if (attachable) folded.push(l);
   });
+  flushRun();
   const body = expanded ? bodyFull : folded;
   const head =
     `✻ [${label}] ${t('subagent view', '子代理视图')}` +
@@ -136,9 +156,6 @@ export function ChildInspector(props: {
     <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
       <Text color={theme.accent} dimColor>
         {head}
-        {promptSegs.length > 0
-          ? `\n${t('delegated prompt', '委派提示词')}：${promptClipped ? '\n' : ''}${promptSegs.join('\n')}`
-          : ''}
       </Text>
       {visible.map((s, i) =>
         s.kind === 'md' ? (

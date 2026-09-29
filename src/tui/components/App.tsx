@@ -650,6 +650,7 @@ export function App({
         messages={state.messages}
         live={inspect ? undefined : state.live}
         columns={columns}
+        rows={rows}
         expandAll={expandAll}
         latestFull={latestFull}
         suppressHistory={!!inspect}

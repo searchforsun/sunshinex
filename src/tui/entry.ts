@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { render } from 'ink';
 import { App } from './components/App';
-import { runTuiLoop } from './tui-loop';
+import { runTuiLoop, installSyncUpdateWrap } from './tui-loop';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
 import { buildModel, parseTier } from '../runtime';
@@ -55,6 +55,9 @@ export async function runTui(args: CliArgs): Promise<void> {
   const restored = ctrl.takeRestoredUi();
   const banner = buildBannerInfo({ version: readPackageVersion(), root: launchRoot, model: model.label ?? model.provider });
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
+  // 全帧逐写原子化（2026-09-28 用户裁决扩展）：流式/全屏期 ink 逐帧擦写经 DEC 2026 同步更新包裹，
+  // 擦写中间态不再肉眼可见（持续闪屏病根）；repaint 路径自包 2026h 自动免重复包裹
+  installSyncUpdateWrap(process.stdout as unknown as Parameters<typeof installSyncUpdateWrap>[0]);
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
   // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，
   // 终端缩放 reflow 后行数失配、旧帧擦不净即残影叠字）；输入与展开模式现场跨重挂保留

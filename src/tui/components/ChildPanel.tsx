@@ -24,12 +24,17 @@ export function ChildPanel({ childrenState, columns, selectedLabel }: { children
       paddingX={1}
     >
       {rows.map((c) => {
-        // 单行保证（2026-09-28 用户裁决：工具不要超过一行自动省略）：target 预算从内容宽起算——
-        // [label] 前缀（displayWidth 口径，CJK 计 2）、每调用耗时段、tokens 尾巴全部计入成本，
-        // 剩余宽度才均分给各调用 target；旧按调用数均分漏算头尾成本，exec 全量命令后即换行击穿每代理一行
+        // 单行保证（2026-09-28 用户裁决：工具不要超过一行自动省略）：target 预算从内容宽实账起算——
+        // [label] 前缀（displayWidth 口径，CJK 计 2）、每调用耗时段与 tokens 尾巴按实际字符串宽度计入，
+        // 剩余宽度才均分给各调用 target；旧估算常数（每调用 9 / 尾巴 12）在长耗时段（10m 35s）与
+        // 大 token 数（↑184k tokens）下双双击穿，行尾 tokens 折到第二行（真机截图实锤）
         const calls = c.calls ?? [];
         const headCost = glyph.length + 1 + displayWidth(c.label) + 2;
-        const perCall = Math.max(8, Math.floor((width - headCost - calls.length * 9 - 12) / Math.max(1, calls.length)));
+        const tail = ` · ↑${formatTokens(c.tokens)} tokens`;
+        const durWidths = calls.map((call) => formatDuration(Math.max(0, Math.round((Date.now() - call.startedAt) / 1000))).length);
+        const perCall = Math.max(8, Math.floor(
+          (width - headCost - displayWidth(tail) - calls.length * 6 - durWidths.reduce((s, d) => s + d, 0)) / Math.max(1, calls.length),
+        ));
         return (
         <Box key={c.label}>
           {calls.length > 0 ? (

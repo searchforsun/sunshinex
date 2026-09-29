@@ -54,6 +54,18 @@ test('LiveArea：答复超长时尾部窗口渲染——帧高有界、最新行
   unmount();
 });
 
+test('LiveArea：预览窗口绑定终端行数——矮终端帧高不超视口（2026-09-28 跳到中间修复：28 行固定窗口 + 输入框/状态栏在矮终端超视口，ink 光标上移越顶即中段起渲染）', () => {
+  const text = Array.from({ length: 40 }, (_, i) => `行${i + 1}`).join('\n');
+  const { lastFrame, unmount } = render(
+    <LiveArea live={{ kind: 'reply', text, committedLen: 0, startedAt: 0 }} columns={80} rows={14} />,
+  );
+  const frame = lastFrame() ?? '';
+  const n = frame.replace(/\n$/, '').split('\n').length;
+  assert.ok(n <= 8, `帧高有界（实际 ${n} 行应 ≤ min(28, rows−6)=8），预留输入框/状态栏/活动行`);
+  assert.ok(frame.includes('行40'), '最新行仍可见');
+  unmount();
+});
+
 test('LiveArea：表格行进入预览区即实时渲染（框线成形，非源码滚动）', () => {
   const table = ['| 模块 | 结论 |', '| --- | --- |', '| 渲染层 | 实时成形 |', '| 切块层 | 整表放行 |'].join('\n');
   const { lastFrame, unmount } = render(

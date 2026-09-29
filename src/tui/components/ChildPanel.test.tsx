@@ -44,6 +44,21 @@ test('ChildPanel：工具活动行单行保证——多调用长命令下每代�
   one.unmount();
 });
 
+test('ChildPanel：长耗时段 + 大 tokens 尾巴实账预算——行尾不再折行（2026-09-28 真机截图：10m 35s 耗时段与 ↑184k tokens 尾巴击穿估算常数，行尾 tokens 折到第二行）', () => {
+  const calls = Array.from({ length: 3 }, (_, i) => ({
+    callId: `c${i}`,
+    target: `EXEC grep -rn "class TaskResultBizImpl" src/main/java --include="*.java" | head -50-${i}`,
+    startedAt: Date.now() - 635_000, // 10m 35s 耗时段
+  }));
+  const one = render(
+    <ChildPanel childrenState={[child({ label: '执行链与中间件能', calls, tokens: 184_000 })]} columns={120} />, 120,
+  );
+  const lines = (one.lastFrame() ?? '').replace(/\n$/, '').split('\n');
+  assert.equal(lines.length, 3, '耗时段/tokens 尾巴按实际宽度计入预算：单代理仍 1 内容行 + 2 边框行');
+  assert.ok(lines.join('\n').includes('↑184k tokens'), 'tokens 尾巴仍可见');
+  one.unmount();
+});
+
 test('ChildPanel：并发 4 面板同屏、总高 = 4 内容行 + 2 边框行（每代理一行护栏）', () => {
   const one = render(<ChildPanel childrenState={[child()]} columns={80} />);
   const base = (one.lastFrame() ?? '').replace(/\n$/, '').split('\n').length;
