@@ -15,6 +15,44 @@ import {
 } from './sandbox';
 import { DryRun } from './dryrun';
 import { ToolBackend } from '../../types';
+import { spawnSync } from 'child_process';
+
+/** 收割滞尾补杀（2026-09-30 六轮 EPERM 实锤终版）：killBackground 根 pid 收割确认后，taskkill /T 的树
+ *  枚举（父链快照）在 msys fork 链下可遗漏业务孙进程——根退出后孙进程孤儿化继续持 cwd，rm 持续 EPERM
+ *  至超预算。按目录特征前缀补杀业务进程（CommandLine like '<prefix>-*'），测试侧兜底、断言保持硬
+ *  （rm 仍须成功收尾）。平台形态：测试夹具清理专属，不进产品收割面（sandbox.ts §14）。 */
+function reapHoldProcesses(prefix: string): void {
+  if (process.platform !== 'win32') return;
+  spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-Command',
+      `Get-CimInstance Win32_Process -Filter "Name='node.exe' or Name='bash.exe'" | ` +
+        `Where-Object { $_.CommandLine -like '*${prefix}-*' } | ` +
+        `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+    ],
+    { windowsHide: true, stdio: 'ignore' },
+  );
+}
+
+/** cwd 删除重试（收割滞尾兜底单点）：EPERM 首轮触发一次特征补杀，随后 200ms 间隔重试至预算耗尽 */
+function rmTreeWithReap(dir: string, prefix: string): void {
+  let reaped = false;
+  for (let i = 0; i < 50; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'EPERM' || i === 49) throw err;
+      if (!reaped && i >= 5) {
+        reapHoldProcesses(prefix);
+        reaped = true;
+      }
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+  }
+}
 
 test('ProcessSandbox 执行 echo 返回输出', async () => {
   const s = new ProcessSandbox();
@@ -267,13 +305,9 @@ test('exec timeoutToBackground：到点不杀进程、返回存活子进程与�
   assert.ok(child.pid, '存活子进程句柄');
   assert.equal(child.killed, false);
   sb.killBackground(child.pid!);
-  // Windows taskkill 同步退出后句柄释放有延迟（2026-09-29/09-30 三轮真机 EPERM 实锤：全量负载 + Defender 下
-  // 句柄释放可超 7s——killBackground 全树轮询 10s + 此处 rm 重试 10s 双保险），短重试退避后删目录
-  for (let i = 0; i < 50; i++) {
-    try { fs.rmSync(dir, { recursive: true, force: true }); break; }
-    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 49) throw err; }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
-  }
+  // Windows taskkill 同步退出后句柄释放有延迟（2026-09-29/09-30 六轮真机 EPERM 实锤：全量负载 + Defender +
+  // taskkill /T 树枚举时序遗漏，句柄释放可超 7s）——rmTreeWithReap 重试 + 特征补杀兜底
+  rmTreeWithReap(dir, 'sunshinex-ttob');
 });
 
 test('killBackground：同步收割后任务 cwd 目录可立即删除', async () => {
@@ -285,13 +319,9 @@ test('killBackground：同步收割后任务 cwd 目录可立即删除', async (
   const r = await sb.execBackground(`node "${script.replace(/\\/g, '/')}"`, { cwd: root });
   assert.ok(r.ok && r.value.pid > 0);
   sb.killBackground(r.value.pid);
-  // 返回即进程树已收割，cwd 目录可删；Windows taskkill 同步退出后句柄释放有延迟（2026-09-29/09-30 三轮
-  // 真机 EPERM 实锤：全量负载 + Defender 下句柄释放可超 7s——killBackground 全树轮询 10s + rm 重试 10s 双保险）
-  for (let i = 0; i < 50; i++) {
-    try { fs.rmSync(root, { recursive: true, force: true }); break; }
-    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 49) throw err; }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
-  }
+  // 返回即进程树已收割，cwd 目录可删；Windows taskkill 同步退出后句柄释放有延迟（2026-09-29/09-30 六轮
+  // 真机 EPERM 实锤：全量负载 + Defender + /T 树枚举时序遗漏）——rmTreeWithReap 重试 + 特征补杀兜底
+  rmTreeWithReap(root, 'sunshinex-killbg');
 });
 
 test('exec timeoutToBackground：正常快速命令语义不变', async () => {
