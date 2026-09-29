@@ -1,7 +1,17 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { MdBlock, MdInline, parseMarkdown, inlineText, alignTable, stripVariationSelector } from '../markdown';
+import { wrapByWidth, displayWidth } from '../text-band';
 import { highlightLine, HiKind } from '../highlight';
+
+/** 超长行硬折预算（2026-09-30 崩溃根治）：ink/yoga 对无空格超长 token（minified 代码/长 URL/base64）不可
+ *  软折——yoga 宽度天文数字，ink Output 的 String.repeat 即 RangeError: Invalid string length（整个 CLI
+ *  崩溃退出，真机子代理全屏视图实锤）。所有可能含超长行的文本在进 JSX 前按列宽硬折——折行预算与
+ *  markdownRowCount 的 safe 口径（columns-2）同源，估算与渲染行数不漂移 */
+function hardWrap(text: string, columns: number): string[] {
+  const budget = Math.max(4, columns - 2);
+  return text.split('\n').flatMap((l) => wrapByWidth(l, budget));
+}
 
 /** 行内节点 → Ink JSX：加粗/斜体/删除线/行内代码（原色不铺底）/裸文本 */
 function Inline({ nodes }: { nodes: MdInline[] }): JSX.Element {
@@ -18,10 +28,26 @@ function Inline({ nodes }: { nodes: MdInline[] }): JSX.Element {
   );
 }
 
+/** 段落级超宽降级：常规行走 Inline（保留粗体/斜体/行内代码样式）；任一源行超列宽即纯文本硬折——
+ *  样式让位于不崩溃（无空格超长 token ink/yoga 不可软折，RangeError 实锤见 hardWrap 注） */
+function SafeInline({ nodes, columns }: { nodes: MdInline[]; columns: number }): JSX.Element {
+  const plain = inlineText(nodes);
+  const overflow = plain.split('\n').some((l) => displayWidth(l) > Math.max(4, columns - 2));
+  if (!overflow) return <Inline nodes={nodes} />;
+  const lines = hardWrap(plain, columns);
+  return (
+    <Box flexDirection="column">
+      {lines.map((l, i) => (
+        <Text key={i}>{l}</Text>
+      ))}
+    </Box>
+  );
+}
+
 /** 标题分级：与正文同色不加彩，仅字形层级（1/4 加粗、5/6 加粗暗灰） */
-function Heading({ level, inlines }: { level: number; inlines: MdInline[] }): JSX.Element {
-  if (level <= 4) return <Text bold><Inline nodes={inlines} /></Text>;
-  return <Text bold dimColor><Inline nodes={inlines} /></Text>;
+function Heading({ level, inlines, columns }: { level: number; inlines: MdInline[]; columns: number }): JSX.Element {
+  if (level <= 4) return <Text bold><SafeInline nodes={inlines} columns={columns} /></Text>;
+  return <Text bold dimColor><SafeInline nodes={inlines} columns={columns} /></Text>;
 }
 
 /** diff 行着色：行首 + 绿 / - 红 / @@ 青 / 其余（含空格上下文）暗灰 */
@@ -41,9 +67,10 @@ const HI_COLOR: Record<HiKind, string> = {
   plain: '',
 };
 
-/** 围栏代码块：原色不铺底 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色，其余已知语言按 token 高亮 */
+/** 围栏代码块：原色不铺底 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色，其余已知语言按 token 高亮；
+ *  每行先按列宽硬折（超长 minified 行不经折行即 yoga 宽度爆栈——CLI 崩溃源头，见 hardWrap） */
 function Fence({ lang, code, columns }: { lang: string; code: string; columns: number }): JSX.Element {
-  const lines = code.split('\n');
+  const lines = hardWrap(code, columns);
   const isDiff = lang === 'diff' || lang === 'patch';
   // 语言标签行去掉（用户裁决：围栏顶上的语言头是噪声——高亮已足够表意）
   return (
@@ -69,23 +96,23 @@ function Fence({ lang, code, columns }: { lang: string; code: string; columns: n
   );
 }
 
-/** 列表：无序 `• `、有序 `n. ` 连续重排 + 缩进 */
-function List({ ordered, items }: { ordered: boolean; items: MdInline[][] }): JSX.Element {
+/** 列表：无序 `• `、有序 `n. ` 连续重排 + 缩进（项内超宽行降级硬折，见 SafeInline） */
+function List({ ordered, items, columns }: { ordered: boolean; items: MdInline[][]; columns: number }): JSX.Element {
   return (
     <Box flexDirection="column">
       {items.map((item, i) => (
         <Text key={i}>
           {ordered ? `${i + 1}. ` : '  • '}
-          <Inline nodes={item} />
+          <SafeInline nodes={item} columns={Math.max(8, columns - 4)} />
         </Text>
       ))}
     </Box>
   );
 }
 
-/** 引用：每行前缀 │ + 缩进 */
-function Quote({ inlines }: { inlines: MdInline[] }): JSX.Element {
-  const lines = inlineText(inlines).split('\n');
+/** 引用：每行前缀 │ + 缩进（超宽行硬折，续行顶格——安全优先） */
+function Quote({ inlines, columns }: { inlines: MdInline[]; columns: number }): JSX.Element {
+  const lines = hardWrap(inlineText(inlines), columns);
   return (
     <Box flexDirection="column">
       {lines.map((l, i) => (
@@ -164,12 +191,12 @@ export function MarkdownText({ text, columns }: { text: string; columns: number 
 /** 单块渲染（key 由 MarkdownText 的包装层提供） */
 function renderBlock(b: MdBlock, columns: number): JSX.Element {
   switch (b.type) {
-    case 'heading': return <Heading level={b.level} inlines={b.inlines} />;
+    case 'heading': return <Heading level={b.level} inlines={b.inlines} columns={columns} />;
     case 'fence': return <Fence lang={b.lang} code={b.code} columns={columns} />;
-    case 'list': return <List ordered={b.ordered} items={b.items} />;
-    case 'quote': return <Quote inlines={b.inlines} />;
+    case 'list': return <List ordered={b.ordered} items={b.items} columns={columns} />;
+    case 'quote': return <Quote inlines={b.inlines} columns={columns} />;
     case 'table': return <Table headers={b.headers} rows={b.rows} columns={columns} />;
     case 'hr': return <Text dimColor>{'─'.repeat(Math.max(1, columns))}</Text>;
-    default: return <Text><Inline nodes={b.inlines} /></Text>;
+    default: return <SafeInline nodes={b.inlines} columns={columns} />;
   }
 }

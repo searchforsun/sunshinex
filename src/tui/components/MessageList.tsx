@@ -178,7 +178,7 @@ const MessageRow = React.memo(function MessageRow({
     if (item.level === 'warn') return <Text color={theme.warn}>! {item.text}</Text>;
     return <Text dimColor>{item.text}</Text>;
   }
-  if (item.role === 'thinking') return <ThinkingRow item={item} collapsed={collapsed} />;
+  if (item.role === 'thinking') return <ThinkingRow item={item} columns={columns} collapsed={collapsed} />;
   // step 阶段行：正文经 MarkdownText 渲染（与主 agent 正文同渲染器，加粗/代码不再裸露星号），▶ 前缀标识阶段
   if (item.role === 'step') {
     return (
@@ -193,15 +193,16 @@ const MessageRow = React.memo(function MessageRow({
   return <ToolRow item={item} columns={columns} collapsed={collapsed} />;
 });
 
-/** 思考行：默认折叠为单行摘要（收束耗时统计，对标 Claude Code 斜体单行）；完整思考经 Tab 展开打印查看 */
-function ThinkingRow({ item, collapsed }: { item: ChatItem; collapsed: boolean }): JSX.Element {
+/** 思考行：默认折叠为单行摘要（收束耗时统计，对标 Claude Code 斜体单行）；完整思考经 Tab 展开打印查看。
+ *  detail 行按列宽硬折——无空格超长行（minified/base64）裸出即 yoga 宽度爆栈 CLI 崩溃（2026-09-30 实锤） */
+function ThinkingRow({ item, columns, collapsed }: { item: ChatItem; columns: number; collapsed: boolean }): JSX.Element {
   if (!collapsed && item.detail) {
     return (
       <Box flexDirection="column">
         <Text dimColor italic>
           ✻ {item.text}
         </Text>
-        {item.detail.split('\n').map((l, i) => (
+        {item.detail.split('\n').flatMap((l) => bandLines(l, Math.max(8, columns - 4))).map((l, i) => (
           <Text key={i} dimColor italic>
             {'    ' + l}
           </Text>

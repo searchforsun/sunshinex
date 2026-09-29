@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Box, Text } from 'ink';
 import { MarkdownText } from './MarkdownText';
+import { elideByWidth } from '../text-band';
 import { TOOL_VERBS } from '../tool-verbs';
 import { theme } from '../theme';
 
@@ -62,7 +63,7 @@ export function TranscriptSegView({ seg, columns }: { seg: TranscriptSeg; column
       <Text>
         <Text dimColor>● </Text>
         <Text color={theme.accent}>[{verb}]</Text>
-        {target ? <Text color="gray"> {target}</Text> : null}
+        {target ? <Text color="gray"> {elideByWidth(target, Math.max(8, columns - 10))}</Text> : null}
       </Text>
     );
   }

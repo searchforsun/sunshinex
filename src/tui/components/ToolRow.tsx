@@ -52,7 +52,8 @@ export function ToolRow({ item, columns, collapsed }: {
           // 动词/结果/委派/统计行结构化呈现，替代原逐行裸 Text（星号裸露+碎片行放大呈现的病根）
           <TranscriptLines lines={detailLines} columns={columns - 4} />
         ) : (
-          detailLines.map((l, i) => (
+          // detail 行按列宽硬折——无空格超长行（minified/base64）裸出即 yoga 宽度爆栈 CLI 崩溃（2026-09-30 实锤）
+          detailLines.flatMap((l) => bandLines(l, Math.max(8, columns - 4))).map((l, i) => (
             <Text key={i} dimColor>
               {'    ' + l}
             </Text>
@@ -82,7 +83,7 @@ export function ToolRow({ item, columns, collapsed }: {
         {'  ⎿ '}
         {item.ok ? '✓' : '✗'}
       </Text>
-      {lines.map((l, i) => (
+      {lines.flatMap((l) => bandLines(l, Math.max(8, columns - 4))).map((l, i) => (
         <Text key={i} dimColor>
           {'    ' + l}
         </Text>

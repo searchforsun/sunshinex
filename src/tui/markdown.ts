@@ -406,7 +406,8 @@ export function markdownRowCount(text: string, columns: number): number {
         total += wrapCount(inlineText(b.inlines));
         break;
       case 'fence':
-        total += Math.max(1, b.code.split('\n').length);
+        // 与 Fence 渲染同源（2026-09-30 崩溃根治）：代码行也按列宽硬折，长 minified 行的估算不低估
+        total += Math.max(1, b.code.split('\n').reduce((n, l) => n + wrapByWidth(l, safe).length, 0));
         break;
       case 'list':
         for (const item of b.items) total += wrapCount(inlineText(item));

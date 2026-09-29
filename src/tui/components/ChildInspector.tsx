@@ -164,7 +164,7 @@ export function ChildInspector(props: {
             ) : item.kind === 'call' ? (
               <CallRow text={item.text} columns={columns} />
             ) : item.kind === 'think' ? (
-              <ThinkRow text={item.text} detail={item.detail} expanded={expanded} />
+              <ThinkRow text={item.text} detail={item.detail} expanded={expanded} columns={columns} />
             ) : item.kind === 'meta' ? (
               <Text dimColor>{item.text}</Text>
             ) : (
@@ -205,14 +205,15 @@ function CallRow({ text, columns }: { text: string; columns: number }): JSX.Elem
 }
 
 /** 思考行（对标 MessageList ThinkingRow）：缺省 ✻ 摘要单行；Tab 展开时后随 detail 全文（4 空格缩进斜体暗色） */
-function ThinkRow({ text, detail, expanded }: { text: string; detail?: string; expanded: boolean }): JSX.Element {
+function ThinkRow({ text, detail, expanded, columns }: { text: string; detail?: string; expanded: boolean; columns: number }): JSX.Element {
   if (expanded && detail !== undefined && detail.length > 0) {
     return (
       <Box flexDirection="column">
         <Text dimColor italic>
           {`✻ ${text}`}
         </Text>
-        {detail.split('\n').map((l, i) => (
+        {/* detail 行按列宽硬折（无空格超长思考行裸出即 yoga 宽度爆栈） */}
+        {detail.split('\n').flatMap((l) => bandLines(l, Math.max(8, columns - 4))).map((l, i) => (
           <Text key={i} dimColor italic>
             {'    ' + l}
           </Text>
@@ -236,7 +237,8 @@ function ResultRow({ text, ok, columns, expanded }: { text: string; ok: boolean;
         <Text dimColor color={ok ? theme.success : theme.error}>
           {`  ⎿ ${ok ? '✓' : '✗'}`}
         </Text>
-        {text.split('\n').map((l, i) => (
+        {/* 全文逐行呈现，但每行按列宽硬折——无空格超长行（minified/base64）裸出即 yoga 宽度爆栈 CLI 崩溃 */}
+        {text.split('\n').flatMap((l) => bandLines(l, Math.max(8, columns - 4))).map((l, i) => (
           <Text key={i} dimColor>
             {`    ${l}`}
           </Text>
