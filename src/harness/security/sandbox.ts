@@ -99,6 +99,13 @@ export class ProcessSandbox implements ToolBackend {
     if (process.platform === 'win32') {
       // spawnSync：等 taskkill 退出再返回；异步 spawn 返回时孙进程（如 sleep）仍可占 cwd，随后 rm 目录即 EPERM
       spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+      // taskkill /F 只投递终止，进程真正退出与句柄（含 cwd 目录句柄）释放是异步的——真机 Defender 负载下可滞留 2s+（2026-09-29 EPERM 实锤）。
+      // 轮询 pid 存活至消失才返回（上限 5s 安全网），兑现「返回时进程树已收割完毕」契约；
+      // 根 pid 即 shell，shell 等待子进程退出，shell 消失即整树落定
+      for (let i = 0; i < 50; i++) {
+        try { process.kill(pid, 0); } catch { return; }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      }
     } else {
       try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出，终态行由 close 回调落 */ } }
     }

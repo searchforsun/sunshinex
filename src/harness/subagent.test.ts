@@ -458,7 +458,8 @@ test('sleep 开头命令超时不转后台：EXEC_TIMEOUT 照旧失败（规格 
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
     for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, tasks)) registry.register(t);
-    const r = await registry.execute('exec', { command: 'sleep 5' }, safety);
+    // 驻留 30s 与阈值 6s 拉开余量（同上测）：快机/低负载下 sleep 5 会在阈值前跑完、命令正常成功翻转 !r.ok（双向竞态）
+    const r = await registry.execute('exec', { command: 'sleep 30' }, safety);
     assert.ok(!r.ok);
     assert.match(r.error.message, /EXEC_TIMEOUT/);
     assert.equal(tasks.list().length, 0, '豁免路径零任务登记');
