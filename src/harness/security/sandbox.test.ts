@@ -267,10 +267,11 @@ test('exec timeoutToBackground：到点不杀进程、返回存活子进程与�
   assert.ok(child.pid, '存活子进程句柄');
   assert.equal(child.killed, false);
   sb.killBackground(child.pid!);
-  // Windows taskkill 同步退出后句柄释放有延迟（2026-09-29 真机 EPERM 实锤），短重试退避后删目录
-  for (let i = 0; i < 10; i++) {
+  // Windows taskkill 同步退出后句柄释放有延迟（2026-09-29/09-30 三轮真机 EPERM 实锤：全量负载 + Defender 下
+  // 句柄释放可超 7s——killBackground 全树轮询 10s + 此处 rm 重试 10s 双保险），短重试退避后删目录
+  for (let i = 0; i < 50; i++) {
     try { fs.rmSync(dir, { recursive: true, force: true }); break; }
-    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 9) throw err; }
+    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 49) throw err; }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
   }
 });
@@ -284,10 +285,11 @@ test('killBackground：同步收割后任务 cwd 目录可立即删除', async (
   const r = await sb.execBackground(`node "${script.replace(/\\/g, '/')}"`, { cwd: root });
   assert.ok(r.ok && r.value.pid > 0);
   sb.killBackground(r.value.pid);
-  // 返回即进程树已收割，cwd 目录可删；Windows taskkill 同步退出后句柄释放有延迟（2026-09-29 真机 EPERM 实锤），短重试退避后删目录
-  for (let i = 0; i < 10; i++) {
+  // 返回即进程树已收割，cwd 目录可删；Windows taskkill 同步退出后句柄释放有延迟（2026-09-29/09-30 三轮
+  // 真机 EPERM 实锤：全量负载 + Defender 下句柄释放可超 7s——killBackground 全树轮询 10s + rm 重试 10s 双保险）
+  for (let i = 0; i < 50; i++) {
     try { fs.rmSync(root, { recursive: true, force: true }); break; }
-    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 9) throw err; }
+    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 49) throw err; }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
   }
 });
