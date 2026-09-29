@@ -23,8 +23,8 @@ test('Spinner 三态：thinking 保留思考动词帧；tool-pending 按调用�
     />,
   );
   const fp = pending.lastFrame() ?? '';
-  assert.match(fp, /\[read src\/a\.ts\]/, '活跃调用行含调用行全形（target 携带任务语义）');
-  assert.match(fp, /\[grep pattern\]/, '并行批逐调用一行');
+  assert.match(fp, /\[read\] src\/a\.ts/, '活跃调用行：括号只包动词、参数在外（2026-09-30 用户裁决，对齐 ToolRow ● [VERB] target）');
+  assert.match(fp, /\[grep\] pattern/, '并行批逐调用一行');
   const lines = fp.replace(/\n$/, '').split('\n').filter((l) => l.trim().length > 0).length;
   assert.equal(lines, 2, '两活跃调用恒 2 行（帧高 = 活跃调用数）');
   pending.unmount();
@@ -40,7 +40,7 @@ test('Spinner 三态：tool-awaiting 标注等待审批', () => {
     />,
   );
   const f = awaiting.lastFrame() ?? '';
-  assert.match(f, /\[write out\.txt\]/);
+  assert.match(f, /\[write\] out\.txt/);
   assert.match(f, /awaiting approval/, '审批挂起态显式标注');
   awaiting.unmount();
 });
@@ -84,6 +84,6 @@ test('运行态单一化：spawn 类调用不出主链活动行（子代理运�
   );
   const fm = mixed.lastFrame() ?? '';
   assert.ok(!fm.includes('AI层调研'), '混合批：spawn 行被过滤');
-  assert.match(fm, /\[grep pattern\]/, '混合批：本链调用照常呈现');
+  assert.match(fm, /\[grep\] pattern/, '混合批：本链调用照常呈现');
   mixed.unmount();
 });

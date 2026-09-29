@@ -44,15 +44,24 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
     if (own.length === 0) return <Box />;
     return (
       <Box flexDirection="column">
-        {own.map((c) => (
-          <Text key={c.callId} color={theme.accent} dimColor>
-            {glyph} [{elideByWidth(c.target, Math.max(16, columns - 20))}]{' '}
-            <Text dimColor>
-              {phase === 'tool-awaiting' ? t('awaiting approval', '等待审批') + ' · ' : ''}
-              {formatDuration(Math.max(0, Math.round((Date.now() - c.startedAt) / 1000)))}
+        {own.map((c) => {
+          // 括号只包动词、参数在外（2026-09-30 用户裁决，对齐时间线 ToolRow ● [VERB] target）：
+          // 旧形态整个 target 连参数塞进 [ ]（task_wait 未登记时 JSON 裸出即「参数在括号里」观感）
+          const sp = c.target.indexOf(' ');
+          const verb = sp > 0 ? c.target.slice(0, sp) : c.target;
+          const params = sp > 0 ? c.target.slice(sp + 1) : '';
+          return (
+            <Text key={c.callId} color={theme.accent} dimColor>
+              {glyph} [{verb}]
+              {params ? ' ' + elideByWidth(params, Math.max(16, columns - 24)) : ''}{' '}
+              <Text dimColor>
+                {params !== '' || phase === 'tool-awaiting' ? '· ' : ''}
+                {phase === 'tool-awaiting' ? t('awaiting approval', '等待审批') + (params !== '' ? ' · ' : '') : ''}
+                {formatDuration(Math.max(0, Math.round((Date.now() - c.startedAt) / 1000)))}
+              </Text>
             </Text>
-          </Text>
-        ))}
+          );
+        })}
       </Box>
     );
   }

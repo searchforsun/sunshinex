@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { toolCallLine } from './tool-verbs';
+import { t } from '../i18n';
 
 test('toolCallLine：spawn 映射 SPAWN + label 摘要（规格 §6 调用行口径）', () => {
   assert.equal(toolCallLine('spawn', { prompt: 'x', label: 'w' }), 'SPAWN w');
@@ -49,4 +50,15 @@ test('toolCallLine：exec 取 command 全量（空白归一），与 path 共存
 test('toolCallLine：读面行为不变——代表字段提取与空白归一零改动', () => {
   assert.equal(toolCallLine('read', { path: 'a/very/long/path/that/goes/on/and/on/forever/in/deep/dirs/file.ts' }),
     'READ a/very/long/path/that/goes/on/and/on/forever/in/deep/dirs/file.ts', '长路径完整保留');
+});
+
+test('toolCallLine：task_wait/task_stop 可读 target（2026-09-30 用户裁决：平台专属工具参数不再裸 JSON 兜底直出）', () => {
+  assert.equal(
+    toolCallLine('task_wait', { taskIds: ['b1', 'b2', 'b3', 'b4'], timeoutSeconds: 1500 }),
+    'TASK_WAIT b1,b2,b3,b4 · 1500s',
+    'taskIds 逗号连接 + timeout 尾追',
+  );
+  // i18n 双语面（测试进程语言随环境），t() 包裹的 null-taskIds 文案两面皆可
+  assert.equal(toolCallLine('task_wait', { taskIds: null, timeoutSeconds: 60 }), `TASK_WAIT ${t('all running', '全部 running')} · 60s`, 'taskIds=null 等当前全部任务');
+  assert.equal(toolCallLine('task_stop', { taskId: 'b7' }), 'TASK_STOP b7', 'task_stop 取 taskId');
 });

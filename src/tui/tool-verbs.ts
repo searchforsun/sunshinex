@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 /** 工具动词映射（英文步骤标识）：已登记工具映射为英文动词，未登记工具大写原名，MCP 工具统一 MCP */
 const VERBS: Record<string, string> = {
   ask_question: 'ASK',
@@ -12,6 +14,8 @@ const VERBS: Record<string, string> = {
   spawn: 'SPAWN',
   worktree: 'WORKTREE',
   todo_write: 'TODO',
+  task_wait: 'TASK_WAIT',
+  task_stop: 'TASK_STOP',
 };
 
 /** 动词集合（呈现层判据复用）：archived detail 行按首词是否工具动词分流 call/text（ChildInspector 同构渲染） */
@@ -48,6 +52,19 @@ function extractTarget(tool: string, input: unknown): string {
   if (tool === 'todo_write') {
     const arr = Array.isArray(obj.todos) ? (obj.todos as unknown[]) : [];
     return `${arr.length} items`;
+  }
+  if (tool === 'task_wait') {
+    // 平台专属工具（§87 另册）的可读 target（2026-09-30 用户裁决：参数不再以裸 JSON 兜底直出）：
+    // taskIds 逗号连接（null=全部 running 任务），timeoutSeconds 尾追
+    const ids = Array.isArray(obj.taskIds)
+      ? (obj.taskIds as unknown[]).filter((v): v is string => typeof v === 'string' && v.length > 0).join(',')
+      : '';
+    const timeout = typeof obj.timeoutSeconds === 'number' ? ` · ${obj.timeoutSeconds}s` : '';
+    const base = ids.length > 0 ? ids : t('all running', '全部 running');
+    return `${base}${timeout}`;
+  }
+  if (tool === 'task_stop') {
+    return strVal(obj.taskId) ?? '';
   }
   const field = TARGET_FIELD[tool];
   let raw: string | undefined;
