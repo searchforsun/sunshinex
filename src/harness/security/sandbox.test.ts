@@ -251,7 +251,8 @@ test('execBackground：提交即返回 pid，进程在跑，输出直写回调',
 test('exec timeoutToBackground：到点不杀进程、返回存活子进程与已缓冲输出', async () => {
   const sb = new ProcessSandbox();
   // 断言前提是超时到点前「warm」已进入缓冲——阈值须盖过 shell 冷启动 + node 冷启动（win32 实测 Git Bash 首字 ~1–1.4s、PowerShell 冷启动 ~0.5–1s；POSIX /bin/sh 毫秒级）
-  const timeoutMs = process.platform === 'win32' ? 3000 : 300;
+  // 真机 release 门禁全量负载下 shell+node 叠加冷启动可超 3s（2026-09-29 实锤：warm 未及缓冲断言红），按 §12 上限=安全网放宽至 6s
+  const timeoutMs = process.platform === 'win32' ? 6000 : 300;
   // 命令前提对 shell 中立（§14 测试命令形态）：node 脚本文件承载「先输出后长驻」——
   // sh 独有语法（&&、sleep）在 PowerShell 5.1 / ComSpec 回落面上语义不成立（真机 EXEC_FAILED@659ms 即 PS5.1 对 && 的解析错误）
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ttob-'));
@@ -277,8 +278,12 @@ test('killBackground：同步收割后任务 cwd 目录可立即删除', async (
   const r = await sb.execBackground(`node "${script.replace(/\\/g, '/')}"`, { cwd: root });
   assert.ok(r.ok && r.value.pid > 0);
   sb.killBackground(r.value.pid);
-  // 返回即进程树已收割，cwd 目录可删
-  fs.rmSync(root, { recursive: true, force: true });
+  // 返回即进程树已收割，cwd 目录可删；Windows taskkill 同步退出后句柄释放有延迟（2026-09-29 真机 EPERM 实锤），短重试退避后删目录
+  for (let i = 0; i < 10; i++) {
+    try { fs.rmSync(root, { recursive: true, force: true }); break; }
+    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 9) throw err; }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+  }
 });
 
 test('exec timeoutToBackground：正常快速命令语义不变', async () => {

@@ -33,12 +33,20 @@ test('execBackground 同形态消费 wrap', async () => {
   });
   assert.ok(bg.ok, '后台任务应提交成功');
   const out = await new Promise<string>((resolve) => {
-    const timer = setTimeout(() => resolve(acc), 1500);
-    void timer;
+    // 等待窗口按平台差异化（2026-09-29 真机 win32 全量负载下 shell+wrap node 叠加冷启动超 1.5s 即 JSON.parse 空串红）：win32 4s / POSIX 1.5s，收到输出即提前收敛
+    const deadline = process.platform === 'win32' ? 4000 : 1500;
+    const start = Date.now();
+    const timer = setInterval(() => { if (acc.includes('[') || Date.now() - start > deadline) { clearInterval(timer); resolve(acc); } }, 50);
   });
   const argv = JSON.parse(out.trim()) as string[];
   assert.equal(argv[0], script);
   assert.ok(argv.includes('echo hi-bg'));
   sandbox.killBackground(bg.value.pid);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // Windows taskkill /F 同步退出后句柄释放有延迟（2026-09-29 真机 EPERM 实锤），短重试退避后删目录
+  for (let i = 0; i < 10; i++) {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); break; }
+    catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 9) throw err; }
+    const wait = setTimeout(() => { void wait; }, 200);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200); void wait;
+  }
 });

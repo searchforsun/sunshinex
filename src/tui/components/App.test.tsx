@@ -126,7 +126,12 @@ test('App：键盘 y 在审批卡上裁决放行（write 真实落盘）', async
     assert.ok(fs.existsSync(path.join(tmp, 'kb-dir')), '键盘 y 放行后命令应真实执行');
     unmount();
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    // Windows 上 exec 子进程（mkdir 的 shell）句柄释放有延迟（2026-09-29 真机 EPERM 实锤），短重试退避后删目录
+    for (let i = 0; i < 10; i++) {
+      try { fs.rmSync(tmp, { recursive: true, force: true }); break; }
+      catch (err) { if ((err as { code?: string }).code !== 'EPERM' || i === 9) throw err; }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
   }
 });
 

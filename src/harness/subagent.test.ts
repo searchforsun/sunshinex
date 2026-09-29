@@ -415,7 +415,8 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
  *  下限须盖过 shell 冷启动：win32 Git Bash 首字 ~1–1.4s（与 sandbox.test 同源），过短则超时瞬间无缓冲输出、断言失败且未 stop，活进程占 cwd 致 finally 删目录 EPERM。 */
 class QuickTimeoutSandbox extends ProcessSandbox {
   exec(cmd: string, opts?: ExecOpts) {
-    const floor = process.platform === 'win32' ? 3000 : 120;
+    // 真机 release 门禁全量负载下 shell+node 叠加冷启动可超 3s（2026-09-29 实锤：warm 未及缓冲断言红），按 §12 放宽至 6s
+    const floor = process.platform === 'win32' ? 6000 : 120;
     return super.exec(cmd, { ...opts, timeoutMs: opts?.timeoutMs ?? floor });
   }
 }
