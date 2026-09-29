@@ -1610,8 +1610,7 @@ export class SessionController {
         return;
       }
       case 'tool-call': {
-        this.closeLive();
-        this.committedLen = 0;
+        this.sealReply();
         const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
         // 调用行延迟入档（CC 模式）：运行中调用行由动态区活动行唯一承载，历史区零 pending 行；
         // 回程时调用行+结果行成对定格（动态区紧贴转录末尾，定格视觉即原地完成）
@@ -2002,6 +2001,29 @@ export class SessionController {
       return;
     }
     this.notify();
+  }
+
+  /** 工具边界旁白封口（2026-09-30，phase 通道退役的配套收口）：把 live reply 未入档尾段落为 assistant
+   *  消息——旁白先于其后的工具行定格入档（CC 交错形态：叙述段 → 工具行），不再依赖段落空行边界、
+   *  也不再被 closeLive 丢弃（旧形态下旁白 token 副本在工具边界被扔、上屏的只有 phase 副本，▶ 行退役后
+   *  该丢弃即旁白整体蒸发）。终稿轮不经此点（done 自带尾段补齐），规划轮旁白照旧不入档。
+   *  未闭合围栏以开栏行承接（与 LiveArea 预览同口径），水位与围栏承接态一并归零 */
+  private sealReply(): void {
+    const live = this.state.live;
+    if (!live) return;
+    if (live.kind !== 'reply') {
+      this.closeLive();
+      return;
+    }
+    const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
+    this.state = { ...this.state, live: undefined };
+    this.committedLen = 0;
+    if (this.planReplyNoArchive) {
+      this.notify();
+      return;
+    }
+    if (pending.trim().length > 0) this.pushMsg('assistant', pending);
+    else this.notify();
   }
 
   /** done/error 后刷新账本 runs（缓存命中率已升格会话累计口径，随 usage 事件增量更新） */

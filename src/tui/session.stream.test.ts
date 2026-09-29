@@ -139,3 +139,40 @@ test('会话归约：/plan 逐项执行落 Step 步骤行', async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('会话归约：工具边界旁白封口——无空行结尾的叙述段先于工具行定格为 assistant 消息（2026-09-30 phase 通道退役配套：旁白唯一承载是正文，旧 closeLive 丢弃即蒸发；CC 交错形态）', async () => {
+  const tmp = tmpdir('sunshinex-sess-seal-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: {
+        provider: 'seal-stub',
+        chat: async () => ({ finish: 'stop' as const, content: '', toolCalls: [] }),
+        chatStream: async (_req: ChatRequest, onDelta: (t: string) => void, call?: { n?: number }) => {
+          const n = ((call as { n?: number } | undefined)?.n ?? 0);
+          return { finish: 'stop' as const, content: '', toolCalls: [] };
+        },
+      } as never,
+    });
+    const fire = (e: { type: string; text?: string; payload?: Record<string, unknown> }): void =>
+      (ctrl as unknown as { onEventForTest(e: never): void }).onEventForTest(e as never);
+    // 首轮：旁白 delta（无空行、无尾随换行）→ 出工具牌
+    fire({ type: 'token', text: '先核对配置层再读仓库结构。' });
+    fire({ type: 'tool-call', text: 'READ', payload: { callId: 'c1', input: { path: 'a.ts' } } });
+    fire({ type: 'tool-result', text: '42 lines', payload: { ok: true, callId: 'c1' } });
+    // 旁白已封口为 assistant 消息，且先于工具行
+    const msgs = ctrl.getState().messages;
+    const narrIdx = msgs.findIndex((m) => m.role === 'assistant' && m.text === '先核对配置层再读仓库结构。');
+    const callIdx = msgs.findIndex((m) => m.kind === 'call');
+    assert.ok(narrIdx >= 0, '无空行旁白在工具边界封口入档（不再被 closeLive 丢弃）');
+    assert.ok(callIdx > narrIdx, '旁白先于其后的工具行（CC 交错形态）');
+    // 次轮终稿：done 尾段补齐照旧，且封口过的旁白不重复（pushMsg 不可变替换数组，须重取状态）
+    fire({ type: 'token', text: '核对完成。' });
+    fire({ type: 'done', text: '核对完成。', payload: {} });
+    const assistant = ctrl.getState().messages.filter((m) => m.role === 'assistant').map((m) => m.text);
+    assert.ok(assistant.includes('核对完成。'), '终稿照常入档');
+    assert.equal(assistant.filter((t) => t === '先核对配置层再读仓库结构。').length, 1, '封口旁白恰一份');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
