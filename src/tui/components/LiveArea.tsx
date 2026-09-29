@@ -54,10 +54,20 @@ export function LiveArea({ live, columns, rows, maxRows: maxRowsOverride }: { li
   if (live.kind === 'reply') {
     // 长围栏兜底切块后预览续块以开栏行承接：未闭合围栏按围栏开始渲染，代码块高亮呈现跨切块延续
     const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
-    if (pending.trim() === '') return <Box />;
+    // 预览窗高度恒定（2026-09-30 真机「正文输出跳到中间 + 闪」终版根因）：tailReplyPreview 的窗口随
+    // 未入档尾段涨落——流式满窗 ~26 行、flushReply 每次切块瞬间塌缩成 ~2 行，动态帧高骤缩 24 行即
+    // ink 擦除基线失配（内容跳位/残影/闪一下）。与思考流 6 行补空同构：不足 maxRows 顶部补空行、
+    // 内容钉在窗底（末行恒贴输入框上缘），帧高全流恒定，切块只换血不变形；空尾段（切块边界瞬时）
+    // 同样恒高，不再 0 行塌陷。±1 行余量吸收 rowCount 估算边界差（小差 ink 帧差分可消化，骤缩不可）
+    const preview = pending.trim() === '' ? '' : tailReplyPreview(pending, columns, maxRows);
+    const used = preview.length === 0 ? 0 : markdownRowCount(preview, columns);
+    const pad = Math.max(0, maxRows - 1 - used);
     return (
       <Box flexDirection="column">
-        <MarkdownText text={tailReplyPreview(pending, columns, maxRows)} columns={columns} />
+        {Array.from({ length: pad }, (_, i) => (
+          <Text key={i}> </Text>
+        ))}
+        {preview.length > 0 ? <MarkdownText text={preview} columns={columns} /> : <Text> </Text>}
       </Box>
     );
   }

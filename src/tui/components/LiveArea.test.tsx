@@ -133,3 +133,27 @@ test('tailReplyPreview：渲染行数口径收敛——块间空行与表格框�
   assert.ok(t.includes('服务19'), '末行恒可见');
   assert.ok(!t.includes('模块名'), '超预算表头滚出窗口');
 });
+
+test('LiveArea：答复预览窗高度恒定——切块瞬间帧高不塌缩（2026-09-30 真机「正文输出跳到中间+闪」终版根因：窗口随未入档尾段涨落，切块满窗塌缩成 2 行即动态帧高骤缩 24 行，ink 擦除基线失配内容跳位；与思考流 6 行补空同构，不足顶部补空行内容钉窗底）', () => {
+  // 满窗：40 行流式中 pending 未切块，窗口顶格
+  const text = Array.from({ length: 40 }, (_, i) => `行${i + 1}`).join('\n');
+  const full = render(<LiveArea live={{ kind: 'reply', text, committedLen: 0, startedAt: 0 }} columns={80} />);
+  const h1 = (full.lastFrame() ?? '').replace(/\n$/, '').split('\n').length;
+  full.unmount();
+
+  // 切块后：committedLen 推进、尾段只剩 2 行——帧高必须与满窗一致（顶部补空行恒高）
+  const cut = render(
+    <LiveArea live={{ kind: 'reply', text: text + '\n行41\n行42', committedLen: text.length + 1, startedAt: 0 }} columns={80} />,
+  );
+  const h2 = (cut.lastFrame() ?? '').replace(/\n$/, '').split('\n').length;
+  cut.unmount();
+
+  // 短尾段（流式起步）同样恒高
+  const tiny = render(<LiveArea live={{ kind: 'reply', text: '起手两行\n还一行', committedLen: 0, startedAt: 0 }} columns={80} />);
+  const h3 = (tiny.lastFrame() ?? '').replace(/\n$/, '').split('\n').length;
+  tiny.unmount();
+
+  assert.ok(Math.abs(h1 - h2) <= 2, `满窗 ${h1} 行 vs 切块后 ${h2} 行——帧高恒定（±2 容差吸收 rowCount 估算边界差）`);
+  assert.ok(Math.abs(h1 - h3) <= 2, `满窗 ${h1} 行 vs 短尾段 ${h3} 行——帧高恒定`);
+  assert.match(cut.lastFrame() ?? '', /行42/, '切块后最新行仍钉在窗底可见');
+});
