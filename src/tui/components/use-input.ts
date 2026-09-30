@@ -93,8 +93,10 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         if (bytes.startsWith('\u001B')) key.meta = true;
         const input =
           bytes <= '\u001A' && !key.return ? String.fromCharCode(bytes.charCodeAt(0) + 'a'.charCodeAt(0) - 1) : bytes;
-        // Ctrl+C 退出语义与原版一致：exitOnCtrlC 开启时按键由 ink 托管，不进分发层
-        if (!(input === 'c' && key.ctrl)) handler(input, key);
+        // Ctrl+C 退出语义与 ink3 原版一致：仅 exitOnCtrlC 开启（ink 托管退出）时扣发；
+        // 本 CLI exitOnCtrlC:false——Ctrl+C 必须进分发层交 App 分流（运行中=中断任务，空闲=退出）。
+        // cb3ec70 重写时丢失该守卫致 Ctrl+C 被无条件吞掉（真机「Ctrl+C 失效」实锤）
+        if (!(input === 'c' && key.ctrl) || !internal_exitOnCtrlC) handler(input, key);
       };
       e.handleData = (data: string): void => {
         const incoming = String(data);
