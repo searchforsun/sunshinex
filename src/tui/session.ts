@@ -281,11 +281,12 @@ export class SessionController {
   /** 本轮流式已喂入通道的全量源（done 终稿前缀对齐基准）：跨 reply/thinking 交错块连续累积，
    *  closeLive 不清（通道生命周期独立于 live 块），mdSeal/mdClear 随通道一并归零 */
   private mdSource = '';
-  /** 未消费结构起点（源内偏移，mdTailStart 水位）：表格 hold/围栏开栏期指向结构首行，闭后 undefined——LiveBlock.tailStart 镜像 */
+  /** 未消费块起点（源内偏移，mdTailStart 水位）：块缓冲期指向当前块首行，块边界（空行）放行后 undefined——LiveBlock.tailStart 镜像 */
   private mdTailStart: number | undefined;
-  /** 列表/引用 run 缓冲（行距收敛）：run 内行缓冲不喂 streamer，边界整体放行为单一片段 */
+  /** 块缓冲（2026-09-30 架构裁定「行距唯一权威 = markdown 结构」）：全部完成行紧排入缓冲，
+   *  仅在块边界（空行）整体放行给 streamer——片段粒度 = markdown 块，行距成为源结构的纯函数，
+   *  不随流式时序/喂入批次浮动（逐行发射、松散化插行等时变源全部退役的终版形态） */
   private mdHoldBuf = "";
-  private mdHolding = false;
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
   private planReplyNoArchive = false;
   /** usage 整场基线：每个模型轮开始前同步为当前累计，事件按「基线 + 本轮 per-run 值」聚合（/plan 步骤间不重置窗口） */
@@ -1994,11 +1995,12 @@ export class SessionController {
     return process.stdout.columns ?? 80;
   }
 
-  /** 行级喂入 + 片段即时入档：遇 \n 成行→归一（围栏状态跟踪，判定先于归一）→streamer.push；
-   *  返回片段经 mdPushFragment 规范后入档（ansi 条目）。streamer 惰性建立：首个 reply 增量即建，
-   *  render 闭包绑定 width/highlighter（markdansi options 不透传，实测定形）。
-   *  mdTailStart 水位（预览去重，2026-09-30 真机「渲染+原文同屏」）：streamer 缓冲期（表格 hold/
-   *  围栏开栏）源里那段未消费文本经 tailStart 镜像给 MdBufferPreview，已入档内容不再以裸文本重演 */
+  /** 行级喂入 + 块边界放行（2026-09-30 架构终版）：全部完成行紧排入块缓冲，仅在 markdown 块边界
+   *  （空行）整体放行给 streamer——片段粒度 = markdown 块（段落/列表/表格/围栏），行距成为源结构
+   *  的纯函数：块内紧排（0 空行）、块间单空行（margin），不随流式时序/喂入批次浮动。
+   *  mdTailStart 水位指向当前未放行块首行（镜像 LiveBlock.tailStart 供 MdBufferPreview 实时渲染
+   *  未成型块——表格/围栏/段落随生成 WYSIWYG 长出）；空行放行后水位复位。
+   *  围栏行翻转 mdInFence 供归一（围栏内代码不归一），围栏内的空行不拆块（代码空行属于围栏块）。 */
   private mdConsume(delta: string): void {
     if (this.mdStream === undefined) {
       this.mdStream = createMarkdownStreamer({ render: createMdRender(this.mdWidth) });
@@ -2010,40 +2012,19 @@ export class SessionController {
       const lineStart = this.mdSource.length - this.mdLineBuf.length;
       const line = this.mdLineBuf.slice(0, nl + 1);
       this.mdLineBuf = this.mdLineBuf.slice(nl + 1);
-      const fence = isFenceLine(line);
-      const wasInFence = this.mdInFence;
       const normalized = normalizeCjkLine(line, this.mdInFence);
-      // 列表/引用 run 判定（围栏外）：连续同构行保持缓冲，空行/异类行/围栏行整体放行——
-      // 逐行发射即逐条目 margin，列表项间被叠出空行（真机「行距太大」病根；markdansi 整块列表渲染紧排）
-      const runLine = !wasInFence && !fence && /^ {0,3}(?:\d{1,9}[.)]\s|[-*+]\s|>\s)/.test(normalized);
-      if (!runLine) this.mdFlushHold();
-      if (fence) {
-        this.mdPushFragment(this.mdStream.push(normalized));
-        this.mdInFence = !this.mdInFence;
-        // 结构水位推进（Mirrors streamer 缓冲）：开栏行=结构起点；闭栏行/空行/非管道非空行=结构闭合；
-        // 围栏内容行与管道行保持水位。散文行（管道外逐行即发）本就不入水位
-        this.mdTailStart = this.mdInFence ? lineStart : undefined;
-      } else if (wasInFence) {
-        this.mdPushFragment(this.mdStream.push(normalized));
-        // 围栏内容行（wasInFence 且仍在围栏内）保持水位——置 undefined 即逐行预览塌成单行、
-        // 闭合时预览与 Static 高度错位（真机「代码块只显示一行」「跳到中间」实锤）
-        if (!this.mdInFence) this.mdTailStart = undefined;
-      } else if (this.mdInFence) {
-        this.mdPushFragment(this.mdStream.push(normalized)); // 围栏内容：水位保持
-      } else if (runLine) {
-        // 列表/引用 run 保持（行距收敛）：run 内缓冲不喂 streamer，水位指向 run 首行
-        // （预览实时渲染 renderMd 消费水位切片，run 成型过程可见）；run 终止时空行/异类行放行。
-        // 松散化（2026-09-30 用户裁决「同区加一点行距」）：项间插空行——markdansi 松散列表
-        // 项间带空行渲染（紧凑源实测无间隙），列表内部获得呼吸感
-        if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
-        this.mdHoldBuf = this.mdHoldBuf.length > 0 ? this.mdHoldBuf + '\n' + normalized : normalized;
-        this.mdHolding = true;
-      } else if (/^\s*[｜|]/.test(normalized)) {
-        if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
-        this.mdPushFragment(this.mdStream.push(normalized));
-      } else {
+      const fence = isFenceLine(line);
+      if (fence) this.mdInFence = !this.mdInFence;
+      if (!this.mdInFence && normalized.trim().length === 0) {
+        // 空行 = markdown 块边界：当前块整体放行（streamer 渲染发射），空行本身交回 streamer
+        // （冲刷其内部表格/围栏缓冲）；水位复位——下一块从后续行重新起算
+        this.mdFlushHold();
         this.mdPushFragment(this.mdStream.push(normalized));
         this.mdTailStart = undefined;
+      } else {
+        // 非空行（散文/列表/表格行/围栏行/围栏内空行）：紧排入当前块缓冲
+        if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
+        this.mdHoldBuf += normalized;
       }
       nl = this.mdLineBuf.indexOf('\n');
     }
@@ -2052,10 +2033,9 @@ export class SessionController {
     }
   }
 
-  /** 列表/引用 run 冲刷：整块喂 streamer（markdansi 整块列表渲染紧排、无项间空行），水位闭合 */
+  /** 块缓冲放行：整块喂 streamer（其围栏/表格缓冲语义照常工作），返回片段经 mdPushFragment 入档，水位复位 */
   private mdFlushHold(): void {
-    if (!this.mdHolding) return;
-    this.mdHolding = false;
+    if (this.mdHoldBuf.length === 0) return;
     const buf = this.mdHoldBuf;
     this.mdHoldBuf = '';
     this.mdTailStart = undefined;
@@ -2076,20 +2056,17 @@ export class SessionController {
    *  finish() 把未闭合表格/围栏冲刷为完整框线块，尾段同样入档，随后通道整体置空 */
   private mdSeal(): void {
     this.mdTailStart = undefined;
-    if (this.mdHolding) this.mdFlushHold();
-    if (this.mdStream === undefined) {
-      this.mdLineBuf = '';
-      this.mdInFence = false;
-      return;
-    }
+    // 行尾残段先并入块缓冲（同段续行不拆块），再整体放行 + finish 冲刷未闭合结构
     if (this.mdLineBuf.length > 0) {
       const line = this.mdLineBuf;
       this.mdLineBuf = '';
-      const fence = isFenceLine(line);
-      this.mdPushFragment(this.mdStream.push(normalizeCjkLine(line, this.mdInFence)));
-      if (fence) this.mdInFence = !this.mdInFence;
+      this.mdHoldBuf += normalizeCjkLine(line, this.mdInFence);
+      if (isFenceLine(line)) this.mdInFence = !this.mdInFence;
     }
-    this.mdPushFragment(this.mdStream.finish());
+    this.mdFlushHold();
+    if (this.mdStream !== undefined) {
+      this.mdPushFragment(this.mdStream.finish());
+    }
     this.mdClear();
   }
 
@@ -2098,7 +2075,6 @@ export class SessionController {
     this.mdStream = undefined;
     this.mdTailStart = undefined;
     this.mdHoldBuf = '';
-    this.mdHolding = false;
     this.mdLineBuf = '';
     this.mdInFence = false;
     this.mdSource = '';
