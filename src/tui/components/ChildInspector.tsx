@@ -250,20 +250,15 @@ function ResultRow({ text, ok, columns, expanded }: { text: string; ok: boolean;
       </Box>
     );
   }
-  // 全形对标主 agent（2026-09-30 diff 探针实锤的最后一处形态差）：主链对当前活动段的结果行是
-  // 「⎿ ✓ 标记行 + 下一行缩进内容（首行着色）」，内联单行摘要即「工具行没有对标主 agent」病根。
-  // 上游 result 文本 ≤200 字符（reactor 切片）行数有界；超宽行按列宽硬折（yoga 爆栈兜底同上）；
-  // Tab 展开语义保留给思考 detail
+  // 内联单行（2026-09-30 用户终审裁决：全形标记行+多行内容「凭空多了高度」，主 agent 常态即内联摘要）：
+  // 第一行吃满终端宽度直到边缘，内容超一整行才在行尾 … 收尾；CR 剥除（Windows exec 输出 CRLF，
+  // 残留 CR 渲染即光标回卷幻影高度/错位碎片）；前缀「  ⎿ ✓ 」6 列实账扣除
+  const first = (text.split('\n')[0] ?? '').replace(/\r/g, '');
   return (
-    <Box flexDirection="column">
-      <Text dimColor color={ok ? theme.success : theme.error}>
-        {`  ⎿ ${ok ? '✓' : '✗'}`}
-      </Text>
-      {text.split('\n').flatMap((l) => bandLines(l, Math.max(8, columns - 4))).map((l, i) => (
-        <Text key={i} dimColor color={i === 0 ? (ok ? theme.success : theme.error) : undefined}>
-          {`    ${l}`}
-        </Text>
-      ))}
-    </Box>
+    <Text dimColor color={ok ? theme.success : theme.error}>
+      {'  ⎿ '}
+      {ok ? '✓' : '✗'}
+      {` ${elideByWidth(first, Math.max(8, columns - 6))}`}
+    </Text>
   );
 }

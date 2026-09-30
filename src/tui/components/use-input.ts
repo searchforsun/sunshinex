@@ -1,4 +1,6 @@
 import * as fs from 'fs';
+import * as os from 'os';
+import { join } from 'path';
 import * as React from 'react';
 import { Key, useStdin } from 'ink';
 
@@ -34,14 +36,17 @@ function isCompleteSequence(b: string): boolean {
 }
 
 
-/** 键位诊断（SUNSHINEX_KEY_DEBUG=path）：真机字节实据采集——每个 data 块与最终派发的 raw 序列
+/** 键位实据日志（免配置常开，真机「前置 Enter」类症状唯一取证通道）：固定路径 %TEMP%/sunshinex-keys.log，
+ *  每个 data 块与最终派发的 raw 序列逐条落盘，超 256KB 自动截断重写
  *  逐条落盘。背景：真机「进全屏后 Esc/Tab 需先按 Enter」类症状在历轮模拟探针（test-ink 同步 stdin、
  *  生产接线 runTuiLoop 编排、真 40ms 窗口）下全部不可复现，只剩真实 conpty 字节流一个未观测变量 */
+const KEY_LOG_PATH = join(os.tmpdir(), 'sunshinex-keys.log');
 function keyDebug(msg: string): void {
-  const p = process.env.SUNSHINEX_KEY_DEBUG;
-  if (!p) return;
   try {
-    fs.appendFileSync(p, `${Date.now()} ${msg}
+    if (fs.existsSync(KEY_LOG_PATH) && fs.statSync(KEY_LOG_PATH).size > 262_144) {
+      fs.writeFileSync(KEY_LOG_PATH, '');
+    }
+    fs.appendFileSync(KEY_LOG_PATH, `${Date.now()} ${msg}
 `);
   } catch {
     /* 诊断落盘失败静默（不干扰键位主路径） */

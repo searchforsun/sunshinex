@@ -212,13 +212,13 @@ test('Inspector 折叠结果行单行省略、Tab 展开全文（对标主 agent
   exp.unmount();
 });
 
-test('Inspector 结果行全形对标主 agent：⎿ ✓ 标记行 + 下一行缩进内容（2026-09-30 diff 探针实锤内联摘要为最后形态差，主链活动段即此形态）', () => {
+test('Inspector 结果行内联单行：吃满终端宽度、超一整行才 …，CR 剥除（2026-09-30 用户终审：全形多行「凭空多了高度」回退内联）', () => {
   const one = render(
     <ChildInspector
       child={live({
         transcript: [
           { kind: 'call', text: 'READ src/a.ts' },
-          { kind: 'result', text: 'package com.yupi.yuaicodemother.ai;', ok: true },
+          { kind: 'result', text: 'package com.yupi;\r\nsecond line', ok: true },
         ],
       })}
       columns={80}
@@ -227,12 +227,13 @@ test('Inspector 结果行全形对标主 agent：⎿ ✓ 标记行 + 下一行�
   );
   const lines = one
     .allOutput()
-    .replace(/\[[0-9;]*m/g, '')
     .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-  const mi = lines.findIndex((l) => l.startsWith('⎿ ✓'));
-  assert.ok(mi >= 0, '⎿ ✓ 标记行独立成行');
-  assert.equal(lines[mi + 1], 'package com.yupi.yuaicodemother.ai;', '内容在标记行下一行（4 空格缩进，主链 ToolRow 全形同款）');
+    .map((l) => l.replace(/\u001b\[[0-9;]*m/g, '').trimEnd())
+    .filter((l) => l.trim().length > 0);
+  const ri = lines.findIndex((l) => l.includes('⎿ ✓'));
+  assert.ok(ri >= 0, '结果行内联呈现');
+  assert.match(lines[ri]!, /⎿ ✓ package com\.yupi;/, '首行内容内联（CR 剥除后无回卷残留）');
+  assert.ok(!lines[ri]!.includes('\r'), 'CR 已剥除');
+  assert.ok(!lines.slice(ri, ri + 3).some((l) => l.includes('second line')), '多行结果只呈现首行（内联单行不撑高）');
   one.unmount();
 });

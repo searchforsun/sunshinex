@@ -61,7 +61,8 @@ export function ToolRow({ item, columns, collapsed }: {
       </Box>
     );
   }
-  const body = item.detail ?? item.text;
+  // CR 剥除（与子代理视图同源）：Windows 子进程输出 CRLF，残留 CR 渲染即光标回卷幻影高度/错位碎片
+  const body = (item.detail ?? item.text).replace(/\r/g, '');
   const lines = body.split('\n');
   if (collapsed && item.detail) {
     // 行宽预算：前缀「  ⎿ ✓ 」6 列，摘要总长 ≤ 终端列宽（截断省略号保留首行内容语义）

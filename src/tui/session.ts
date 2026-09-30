@@ -1824,7 +1824,9 @@ export class SessionController {
       }
       case 'token': {
         closeThink();
-        buf += e.text ?? '';
+        // CR 剥除（2026-09-30 真机幻影高度/错位碎片实锤）：Windows 子进程输出 CRLF，
+        // split 后残留行尾 CR，渲染时光标回卷产生错位碎片与凭空高度
+        buf += (e.text ?? '').replace(/\r/g, '');
         const parts = buf.split('\n');
         buf = parts.pop() ?? '';
         // 空行保留（段落边界）：正文增量入 Static 按空行稳态切割（对标主 agent 行级喂入的段落边界语义），Markdown 段落语义不再丢失
