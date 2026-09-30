@@ -112,7 +112,9 @@ export async function runTui(args: CliArgs): Promise<void> {
         current = inst;
         return inst;
       },
-      initialRetain: restored ? { history: restored.history, expandAll: restored.expandAll, latestFull: restored.latestFull } : undefined,
+      // expandAll 不还原（2026-09-30）：折叠已改 Tab opt-in 瞬态，旧档记录的 false 是旧缺省下的记录噪声
+      // （按过 Ctrl+O 即连带记录 false）——还原则新代码也带自动折叠上线；latestFull（详情深度偏好）照旧还原
+      initialRetain: restored ? { history: restored.history, latestFull: restored.latestFull } : undefined,
     });
   } finally {
     ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）：循环退出即释放
