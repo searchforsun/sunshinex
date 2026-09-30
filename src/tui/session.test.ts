@@ -192,7 +192,7 @@ test('会话控制器：/new 软重置清空消息与待办并清会话级审批
   }
 });
 
-test('会话控制器：流式答复安全点切块增量入档，done 尾段补齐且拼接无损', async () => {
+test('会话控制器：流式答复 markdansi 行级切块增量入档（ansi 条目），done 收口且源内容不丢不重', async () => {
   const tmp = tmpdir('sunshinex-sess8-');
   try {
     const reply = '第一段。\n\n```json\n{"a": 1}\n```\n\n收尾段。';
@@ -204,13 +204,16 @@ test('会话控制器：流式答复安全点切块增量入档，done 尾段补
     // 运行中途即应出现首块入档（不等 done）
     await waitFor(() => ctrl.getState().messages.filter((m) => m.role === 'assistant').length >= 1, 3000);
     const midLive = ctrl.getState().live;
-    assert.ok(midLive === undefined || (midLive.committedLen ?? 0) > 0, '预览水位应排除已入档前缀');
+    assert.ok(midLive === undefined || midLive.kind === 'reply', '流式中 live 块为 reply 源累积（渲染态条目已即时入档）');
     await run;
     await ctrl.waitIdle();
     const s = ctrl.getState();
-    const chunks = s.messages.filter((m) => m.role === 'assistant').map((m) => m.text);
+    const chunks = s.messages.filter((m) => m.role === 'assistant');
     assert.ok(chunks.length >= 2, `长答复应分块入档（got ${chunks.length} 块）`);
-    assert.equal(chunks.join(''), reply, '分块 + 尾段拼接应无损等于终稿（无重复无丢失）');
+    assert.ok(chunks.every((m) => m.ansi === true), '流式条目全部为 ansi 渲染态');
+    // 渲染态文本与源不同：剥 ANSI 拼接须含全部 probe（不再要求逐字等于源）
+    const stripped = chunks.map((m) => m.text.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '')).join('');
+    for (const probe of ['第一段。', '{"a": 1}', '收尾段。']) assert.ok(stripped.includes(probe), `分块内容不丢：${probe}`);
     assert.equal(s.status, 'idle');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

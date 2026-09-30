@@ -6,6 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import type { ChatRequest, ChatResult } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
+import { stripAnsi } from './md-ansi';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -47,8 +48,12 @@ test('会话归约：token 增量进 live.reply（协议骨架不上屏），don
       '应存在中间增量（非整段一次性）',
     );
     const assistant = s.messages.filter((m) => m.role === 'assistant').map((m) => m.text);
-    assert.deepEqual(assistant, ['流式答复'], '终稿取 done 载荷且仅一条');
-    assert.ok(!s.messages.some((m) => m.text.includes('"reply"')), '协议骨架不得泄漏进消息区');
+    assert.deepEqual(
+      assistant.map((t) => stripAnsi(t).replace(/\n+$/, '')),
+      ['流式答复'],
+      '终稿取 done 载荷且仅一条（ansi 条目承载，尾随单换行为流式规范）',
+    );
+    assert.ok(!s.messages.some((m) => stripAnsi(m.text).includes('"reply"')), '协议骨架不得泄漏进消息区');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -151,16 +156,16 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
     fire({ type: 'token', text: '先核对配置层再读仓库结构。' });
     fire({ type: 'tool-call', text: 'READ', payload: { callId: 'c1', input: { path: 'a.ts' } } });
     fire({ type: 'tool-result', text: '42 lines', payload: { ok: true, callId: 'c1' } });
-    // 旁白已封口为 assistant 消息，且先于工具行
+    // 旁白已封口为 assistant ansi 消息，且先于工具行（条目 text 为渲染态：剥 ANSI 后比对文案）
     const msgs = ctrl.getState().messages;
-    const narrIdx = msgs.findIndex((m) => m.role === 'assistant' && m.text === '先核对配置层再读仓库结构。');
+    const narrIdx = msgs.findIndex((m) => m.role === 'assistant' && stripAnsi(m.text).replace(/\n+$/, '') === '先核对配置层再读仓库结构。');
     const callIdx = msgs.findIndex((m) => m.kind === 'call');
     assert.ok(narrIdx >= 0, '无空行旁白在工具边界封口入档（不再被 closeLive 丢弃）');
     assert.ok(callIdx > narrIdx, '旁白先于其后的工具行（CC 交错形态）');
-    // 次轮终稿：done 尾段补齐照旧，且封口过的旁白不重复（pushMsg 不可变替换数组，须重取状态）
+    // 次轮终稿：done 收口照旧，且封口过的旁白不重复（pushMsg 不可变替换数组，须重取状态）
     fire({ type: 'token', text: '核对完成。' });
     fire({ type: 'done', text: '核对完成。', payload: {} });
-    const assistant = ctrl.getState().messages.filter((m) => m.role === 'assistant').map((m) => m.text);
+    const assistant = ctrl.getState().messages.filter((m) => m.role === 'assistant').map((m) => stripAnsi(m.text).replace(/\n+$/, ''));
     assert.ok(assistant.includes('核对完成。'), '终稿照常入档');
     assert.equal(assistant.filter((t) => t === '先核对配置层再读仓库结构。').length, 1, '封口旁白恰一份');
   } finally {
@@ -168,22 +173,68 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
   }
 });
 
-test('会话归约：逐行入档打字机——段中续块带 cont 标记（渲染层折叠块间间隙），空行并回上一块、拼接无损', async () => {
+test('会话归约：逐行入档打字机（markdansi）——行级块为 ansi 条目、源内容经 stripAnsi 可寻、无丢无重', async () => {
   const tmp = tmpdir('sunshinex-stream-cont-');
   try {
-    // 三行流式：行1、行2（同段续接）、空行、第二段——逐行切块入档
+    // 三行流式：行1、行2、空行、第二段——逐行切块入档（空行片段由条目 margin 承载、不入档）
     const ctrl = new SessionController({ root: tmp, model: new HookAdapter('第一行\n第二行\n\n第二段') });
     await ctrl.submit('任务');
     await ctrl.waitIdle();
     const items = ctrl.getState().messages.filter((m) => m.role === 'assistant');
-    assert.deepEqual(
-      items.map((m) => m.text),
-      ['第一行\n', '第二行\n\n', '第二段'],
-      '逐行入档：每完结行一块；空行自成块后并回上一块（拼接无损），末行由 done 尾段补齐',
-    );
-    assert.notEqual(items[0]!.cont, true, '首块非续接');
-    assert.equal(items[1]!.cont, true, '第二行与第一行同段（上一块无空行结尾）→ cont 续块');
-    assert.notEqual(items[2]!.cont, true, '空行后起新段 → cont 复位');
+    assert.ok(items.length >= 2, `逐行/收口多块入档（got ${items.length} 块）`);
+    assert.ok(items.every((m) => m.ansi === true), '流式条目全部 ansi');
+    const joined = items.map((m) => stripAnsi(m.text)).join('');
+    for (const probe of ['第一行', '第二行', '第二段']) assert.ok(joined.includes(probe), `内容不丢：${probe}`);
+    assert.equal(joined.replace(/\n+$/, ''), '第一行\n第二行\n第二段', '剥 ANSI 拼接与源一致（无丢无重）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话归约：流式正文 markdansi 行级入档——散文行即发、表格缓冲至闭合整块（ansi 条目）', async () => {
+  const tmp = tmpdir('sunshinex-stream-md-');
+  try {
+    const text = '第一行\n第二行\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n收尾。';
+    const ctrl = new SessionController({ root: tmp, model: new HookAdapter(text) });
+    const ansiSeen: string[] = [];
+    ctrl.onState((s) => {
+      for (const m of s.messages) if (m.role === 'assistant' && m.ansi && !ansiSeen.includes(m.text)) ansiSeen.push(m.text);
+    });
+    await ctrl.submit('任务');
+    await ctrl.waitIdle();
+    const items = ctrl.getState().messages.filter((m) => m.role === 'assistant');
+    assert.ok(items.length >= 2, '行级/段级多块入档');
+    assert.ok(items.every((m) => m.ansi === true), '流式条目全部 ansi');
+    const table = items.find((m) => m.text.includes('│'));
+    assert.ok(table, '表格块含框线（闭合后整块）');
+    assert.ok(items.some((m) => m.text.includes('第一行')), '散文行入档');
+    // 源不丢不重：剥 ANSI 拼接含全部内容
+    const joined = items.map((m) => m.text.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '')).join('');
+    for (const probe of ['第一行', '第二行', '收尾']) assert.ok(joined.includes(probe), `内容不丢：${probe}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话归约：工具边界旁白封口走 finish 冲刷（未闭合围栏渲染为完整框线块）', async () => {
+  const tmp = tmpdir('sunshinex-stream-md2-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        // 结构化步骤承载工具批 + 旁白正文（字符串 DSL 的 tools 形态丢弃 reply，narration 无从流式）
+        { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }], content: '前言\n\n```ts\ncode\nmore' },
+        JSON.stringify({ done: true, reply: 'ok' }),
+      ]),
+    });
+    await ctrl.submit('任务');
+    await ctrl.waitIdle();
+    const msgs = ctrl.getState().messages;
+    const fence = msgs.find((m) => m.ansi && m.text.includes('┌'));
+    assert.ok(fence, '未闭合围栏经 finish 冲刷为框线块（旁白封口）');
+    const callIdx = msgs.findIndex((m) => m.kind === 'call');
+    const fenceIdx = msgs.findIndex((m) => m === fence);
+    assert.ok(fenceIdx < callIdx, '旁白先于工具行（CC 交错形态保持）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

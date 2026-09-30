@@ -6,7 +6,8 @@ import { t } from '../i18n';
 import { formatDuration, formatTokens } from './format';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
-import { openFenceOpener, stableReplySegment } from './reply-flusher';
+import { createMarkdownStreamer } from 'markdansi';
+import { createMdRender, isFenceLine, normalizeCjkLine, renderMd, stripAnsi } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
@@ -49,6 +50,9 @@ export interface ChatItem {
   /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt、tokens=子代理 token 消耗、
    *  delegatedAt=委派时刻（spawnCalls 入栈时刻，动态区子代理列表按委派时间排序的单点数据源）；零子事件即败时缺省 */
   subagentMeta?: { steps: number; durationMs: number; tokens: number; delegatedAt?: number; prompt?: string };
+  /** markdansi 渲染结果条目（2026-09-30 替换批次）：text 承载 ANSI（非 markdown 源），渲染层直嵌 <Text>；
+   *  journal 按原样序列化，resume 回放照显 */
+  ansi?: true;
   /** 段中续块（2026-09-30 完整流式裁决）：本 assistant 块由上一块逐行入档续接而来（上一块不以空行结尾=
    *  同一 Markdown 段）——渲染层折叠块间 marginBottom，逐行块与整段块呈现恒等 */
   cont?: true;
@@ -268,11 +272,15 @@ export class SessionController {
   readonly runtime: TuiRuntime;
   /** 项目根：/init 生成 SUNSHINE.md 的基准目录（与 runtime 装配同源） */
   private readonly root: string;
-  /** 流式正文已入档水位（done 终稿前缀长度）：安全点切块入档用，新回合/收尾归零 */
-  private committedLen = 0;
-  /** 段中续块链（2026-09-30 完整流式裁决）：上一入档块不以空行结尾=同一 Markdown 段未完，下一块携带
-   *  cont 标记（渲染层折叠块间间隙）；空行块/回合收尾复位 */
-  private replyContPending = false;
+  /** markdansi 流式通道（2026-09-30 替换批次）：live reply 期间持有；行级归一喂入、片段即时入档（ansi 条目）；
+   *  工具边界/done 经 finish() 冲刷收口（终稿 dedup 天然成立——streamer 不重不发），随后置空 */
+  private mdStream: { push(chunk: string): string; finish(): string; reset(): void } | undefined;
+  /** 行喂入缓冲（preprocess 需行级上下文：围栏内不归一） */
+  private mdLineBuf = '';
+  private mdInFence = false;
+  /** 本轮流式已喂入通道的全量源（done 终稿前缀对齐基准）：跨 reply/thinking 交错块连续累积，
+   *  closeLive 不清（通道生命周期独立于 live 块），mdSeal/mdClear 随通道一并归零 */
+  private mdSource = '';
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
   private planReplyNoArchive = false;
   /** usage 整场基线：每个模型轮开始前同步为当前累计，事件按「基线 + 本轮 per-run 值」聚合（/plan 步骤间不重置窗口） */
@@ -424,7 +432,7 @@ export class SessionController {
       await this.handleSlash(text);
       return;
     }
-        this.committedLen = 0;
+    this.mdClear();
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
       // 运行中穿插（对标 CC queued messages，用户→运行时方向、非模型工具面）：入 steering 通道，
       // reactor 步边界 drain 同轮消费；未被消费的行由收口兜底 drainQueue 补跑
@@ -642,7 +650,7 @@ export class SessionController {
         }
         this.setTodos(this.state.todos.map((td) => (td.text === items[i] ? { ...td, status: 'completed' } : td)));
         // 步骤全量轨迹与结论行已由 reactor 会话作用域自动入链（fork 模型：不再只留结论行）
-        // 步骤正文已随流式管线入档（flushReply 切块 + done 补尾），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
+        // 步骤正文已随流式管线入档（markdansi 行级 ansi 条目 + finish 收口），此处不再重复上屏（Step 切换时上一阶段正文重复的根因）
       } catch (e) {
         this.pushMsg('system', t('Step failed: ' + items[i] + ' (' + (e instanceof Error ? e.message : String(e)) + '); remaining steps paused', '步骤失败：' + items[i] + '（' + (e instanceof Error ? e.message : String(e)) + '）；剩余步骤暂停'), { level: 'error' });
         break;
@@ -1152,7 +1160,7 @@ export class SessionController {
       this.memoryOverride = undefined;
       setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
       this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
-        this.committedLen = 0;
+      this.mdClear();
       this.state = {
         messages: [],
         todos: [],
@@ -1561,9 +1569,8 @@ export class SessionController {
         this.pushMsg('system', String(e.payload?.text ?? e.text ?? ''));
         return;
       case 'token':
-        // chat 主通道正文增量直连（token 承载纯正文，无协议骨架过滤层）
+        // chat 主通道正文增量直连（token 承载纯正文，无协议骨架过滤层）：live 累积 + markdansi 行级喂入（片段即时入档）
         this.appendLive('reply', e.text ?? '');
-        if (this.state.live?.kind === 'reply') this.flushReply();
         return;
       case 'reasoning':
         this.appendLive('thinking', e.text ?? '');
@@ -1671,37 +1678,44 @@ export class SessionController {
       }
       case 'done': {
         const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
+        const source = this.mdSource; // 已推源在冲刷前取样（mdSeal 随通道归零）
         this.closeLive();
         this.flushPendingCalls();
         if (this.planReplyNoArchive) {
           // 规划轮终稿不重复入档：计划正文仅以确认卡形态上屏一次
-          this.committedLen = 0;
+          this.mdClear();
           this.refreshMetrics();
           return;
         }
         if (e.payload?.stopReason === 'model-error') {
           // D6：模型失败已由 error 通道上屏，done 收尾帧携带的同一错误文案不再以 assistant 终答身份重复入档
-          this.committedLen = 0;
+          this.mdClear();
           this.refreshMetrics();
           return;
         }
-        const finalText = e.text && e.text.length > 0 ? e.text : draft;
-        // 流式切块已入档的部分按前缀去重；终稿兜底补齐尾段（含非流式整段场景），水位归零
-        let tail = finalText;
-        if (this.committedLen > 0 && finalText.startsWith(draft.slice(0, this.committedLen))) {
-          tail = finalText.slice(this.committedLen);
+        const finalText = e.text && e.text.length > 0 ? e.text : source.length > 0 ? source : draft;
+        // 冲刷收口：行尾残段成行喂入 + finish() 尾段入档（未闭合表格/围栏补全为完整框线块），
+        // 随后通道置空；流式已入档部分终稿 dedup 天然成立（streamer 不重不发）
+        this.mdSeal();
+        if (finalText.length > 0) {
+          // 终稿与已推源的前缀对齐（已推源跨 reply/thinking 交错块连续，非末 live 块）：前缀命配 →
+          // 差量（非流式整帧/终稿多出尾段）单点渲染补齐；前缀失配（协议异常防御）→ 公共前缀差量
+          // 降级渲染，不重复已流式呈现的内容
+          let common = source.length;
+          if (!finalText.startsWith(source)) {
+            common = 0;
+            const n = Math.min(finalText.length, source.length);
+            while (common < n && finalText[common] === source[common]) common += 1;
+          }
+          const rest = finalText.slice(common);
+          if (rest.length > 0) this.mdPushFragment(renderMd(rest, this.mdWidth()));
         }
-        if (tail.length > 0) {
-          this.pushMsg('assistant', tail, this.replyContPending ? { cont: true } : undefined);
-          this.replyContPending = false;
-        }
-        this.committedLen = 0;
         this.refreshMetrics();
         return;
       }
       case 'error':
         this.closeLive();
-        this.committedLen = 0;
+        this.mdClear();
         this.flushPendingCalls();
         this.pushMsg('system', t(`Error: ${e.text ?? '(no detail)'}`, `错误：${e.text ?? '（无说明）'}`), { level: 'error' });
         this.refreshMetrics();
@@ -1724,7 +1738,7 @@ export class SessionController {
       : t('Persistent memory: OFF', '持久记忆：关闭');
   }
 
-  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'pending' | 'callId' | 'detail' | 'level' | 'cont'>>): void {
+  private pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'pending' | 'callId' | 'detail' | 'level' | 'ansi'>>): void {
     this.appendMessages([{ role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) }]);
   }
 
@@ -1808,7 +1822,7 @@ export class SessionController {
         buf += e.text ?? '';
         const parts = buf.split('\n');
         buf = parts.pop() ?? '';
-        // 空行保留（段落边界）：正文增量入 Static 按空行稳态切割（对标主 agent flushReply 空行优先），Markdown 段落语义不再丢失
+        // 空行保留（段落边界）：正文增量入 Static 按空行稳态切割（对标主 agent 行级喂入的段落边界语义），Markdown 段落语义不再丢失
         transcript = [...transcript, ...parts.map((l) => ({ kind: 'text' as const, text: l }))];
         break;
       }
@@ -1951,7 +1965,7 @@ export class SessionController {
     else this.notify();
   }
 
-  /** 追加实时区内容：同类续接；异类先收束旧块（thinking 折叠为摘要行，reply 交由 done 定稿避免重复） */
+  /** 追加实时区内容：同类续接；异类先收束旧块（thinking 折叠为摘要行，reply 片段已即时入档、终稿收口由 done/seal 接管） */
   private appendLive(kind: LiveBlock['kind'], delta: string): void {
     if (!delta) return;
     const live = this.state.live;
@@ -1959,64 +1973,75 @@ export class SessionController {
     const cur = this.state.live;
     if (cur && cur.kind === kind) {
       this.state = { ...this.state, live: { ...cur, text: cur.text + delta } };
-    } else {
-      this.state = { ...this.state, live: { kind, text: delta, startedAt: Date.now() } };
-      this.notify(); // 块首帧即时上屏：保证流式可观测与首字延迟，后续增量并入合帧窗口
+      if (kind === 'reply') this.mdConsume(delta);
+      this.notifyThrottled();
       return;
     }
-    this.notifyThrottled();
+    this.state = { ...this.state, live: { kind, text: delta, startedAt: Date.now() } };
+    if (kind === 'reply') this.mdConsume(delta);
+    this.notify(); // 块首帧即时上屏：保证流式可观测与首字延迟，后续增量并入合帧窗口
   }
 
-  /**
-   * 流式正文安全点增量入档：以「空行段落边界优先、围栏代码块不切、超长段兜底」切块推进水位，
-   * 每块一次 pushMsg（对标 Claude Code 打字机式滚动出稿——正文随生成滚入滚动缓冲，不再等 done 整段落屏）。
-   */
-  private flushReply(): void {
-    const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
-    if (!draft) return;
-    if (this.planReplyNoArchive) {
-      // 规划轮正文不入档（只以确认卡上屏一次）：水位照常推进，live 预览维持「未入档尾段」口径
-      this.committedLen = draft.length;
-      if (this.state.live?.kind === 'reply') {
-        this.state = { ...this.state, live: { ...this.state.live, committedLen: draft.length } };
-      }
-      return;
+  /** markdansi 流式通道宽度（streamer 构造与终稿兜底渲染共用基准） */
+  private mdWidth(): number {
+    return process.stdout.columns ?? 80;
+  }
+
+  /** 行级喂入 + 片段即时入档：遇 \n 成行→归一（围栏状态跟踪，判定先于归一）→streamer.push；
+   *  返回片段经 mdPushFragment 规范后入档（ansi 条目）。streamer 惰性建立：首个 reply 增量即建，
+   *  render 闭包绑定 width/highlighter（markdansi options 不透传，实测定形） */
+  private mdConsume(delta: string): void {
+    if (this.mdStream === undefined) {
+      this.mdStream = createMarkdownStreamer({ render: createMdRender(this.mdWidth()) });
     }
-    const seg = stableReplySegment(draft, this.committedLen);
-    if (seg === null) return;
-    const committed = this.committedLen + seg.length;
-    if (seg.trim().length > 0) {
-      // 入档走 pushMsg 单点（消息 + journal 挂钩同源）：切块段不落日志则 /resume 与 /rewind 重放时正文只剩 done 补的尾段。
-      // cont 链（逐行打字机）：上一块段中收尾即本块续接，渲染层折叠间隙；块以空行结尾则复位
-      this.pushMsg('assistant', seg, this.replyContPending ? { cont: true } : undefined);
-      this.replyContPending = !seg.endsWith('\n\n');
-    } else {
-      // 空白块（逐行切分下空行自成一块）：并回上一流式块——丢弃即终稿缺空行（拼接无损破）。
-      // replyContPending 复位（段落边界）
-      this.replyContPending = false;
-      if (this.committedLen > 0) this.appendBlankToLastReply(seg);
-    }
-    this.committedLen = committed;
-    if (this.state.live?.kind === 'reply') {
-      // 长围栏兜底切块后，预览续块以开栏行承接（未闭合围栏按围栏开始渲染，呈现跨切块延续）
-      this.state = {
-        ...this.state,
-        live: { ...this.state.live, committedLen: committed, fenceOpener: openFenceOpener(draft.slice(0, committed)) },
-      };
+    this.mdLineBuf += delta;
+    this.mdSource += delta;
+    let nl = this.mdLineBuf.indexOf('\n');
+    while (nl >= 0) {
+      const line = this.mdLineBuf.slice(0, nl + 1);
+      this.mdLineBuf = this.mdLineBuf.slice(nl + 1);
+      const fence = isFenceLine(line);
+      this.mdPushFragment(this.mdStream.push(normalizeCjkLine(line, this.mdInFence)));
+      if (fence) this.mdInFence = !this.mdInFence;
+      nl = this.mdLineBuf.indexOf('\n');
     }
   }
 
-  /** 空白块并回上一流式块（逐行切分的配套，2026-09-30）：逐行切点下空行自成一块，不入档即终稿缺空行。
-   *  就地合并上一 assistant 块 + msg-update 回写（journal 词汇既有事件；Static 不重印、空白零视觉量；
-   *  tail 账本经 item 引用失配触发该条目尾部重放，重放形态与整段块一致）。仅并回本回合流式块：
-   *  committedLen>0 守卫（回合首块前/收尾后的空白不入档，跨回合零污染） */
-  private appendBlankToLastReply(seg: string): void {
-    const msgs = this.state.messages;
-    const last = msgs[msgs.length - 1];
-    if (last === undefined || last.role !== 'assistant') return;
-    const merged: ChatItem = { ...last, text: last.text + seg };
-    this.state = { ...this.state, messages: [...msgs.slice(0, -1), merged] };
-    this.journal?.log({ t: 'msg-update', item: merged });
+  /** 片段入档单点：末尾多换行规范为单 \n；剥 ANSI 后纯空白则跳过（视觉间隔由条目 margin 承载）；
+   *  规划轮正文不入档（确认卡唯一上屏）；否则即时入档为 ansi 条目（滚动缓冲随生成滚入，对标 CC 打字机） */
+  private mdPushFragment(frag: string): void {
+    if (frag.length === 0) return;
+    const norm = frag.replace(/\n+$/, '\n');
+    if (stripAnsi(norm).trim().length === 0) return;
+    if (this.planReplyNoArchive) return;
+    this.pushMsg('assistant', norm, { ansi: true });
+  }
+
+  /** 冲刷收口（工具边界 sealReply / done 共用）：行尾残段先成行喂入（围栏判定照走），
+   *  finish() 把未闭合表格/围栏冲刷为完整框线块，尾段同样入档，随后通道整体置空 */
+  private mdSeal(): void {
+    if (this.mdStream === undefined) {
+      this.mdLineBuf = '';
+      this.mdInFence = false;
+      return;
+    }
+    if (this.mdLineBuf.length > 0) {
+      const line = this.mdLineBuf;
+      this.mdLineBuf = '';
+      const fence = isFenceLine(line);
+      this.mdPushFragment(this.mdStream.push(normalizeCjkLine(line, this.mdInFence)));
+      if (fence) this.mdInFence = !this.mdInFence;
+    }
+    this.mdPushFragment(this.mdStream.finish());
+    this.mdClear();
+  }
+
+  /** 通道整体清空（不冲刷不入档）：error 中断 / 规划轮终稿 / 新回合兜底 */
+  private mdClear(): void {
+    this.mdStream = undefined;
+    this.mdLineBuf = '';
+    this.mdInFence = false;
+    this.mdSource = '';
   }
 
   /** 收束实时区：thinking 折叠为一行摘要；reply 不落消息（终稿由 done 接管） */
@@ -2032,11 +2057,11 @@ export class SessionController {
     this.notify();
   }
 
-  /** 工具边界旁白封口（2026-09-30，phase 通道退役的配套收口）：把 live reply 未入档尾段落为 assistant
-   *  消息——旁白先于其后的工具行定格入档（CC 交错形态：叙述段 → 工具行），不再依赖段落空行边界、
-   *  也不再被 closeLive 丢弃（旧形态下旁白 token 副本在工具边界被扔、上屏的只有 phase 副本，▶ 行退役后
-   *  该丢弃即旁白整体蒸发）。终稿轮不经此点（done 自带尾段补齐），规划轮旁白照旧不入档。
-   *  未闭合围栏以开栏行承接（与 LiveArea 预览同口径），水位与围栏承接态一并归零 */
+  /** 工具边界旁白封口（2026-09-30，phase 通道退役的配套收口）：live reply 经 mdSeal 冲刷——行尾残段成行
+   *  喂入、finish() 把未闭合表格/围栏冲刷为完整框线块，尾段落为 assistant ansi 消息（规划轮照旧不入档）。
+   *  旁白先于其后的工具行定格入档（CC 交错形态：叙述段 → 工具行），不再依赖段落空行边界、也不再被
+   *  closeLive 丢弃（旧形态下旁白 token 副本在工具边界被扔、上屏的只有 phase 副本，▶ 行退役后该丢弃即
+   *  旁白整体蒸发）。终稿轮不经此点（done 自带冲刷收口），随后通道整体置空（下一旁白段全新 streamer） */
   private sealReply(): void {
     const live = this.state.live;
     if (!live) return;
@@ -2044,20 +2069,9 @@ export class SessionController {
       this.closeLive();
       return;
     }
-    const pending = (live.fenceOpener ?? '') + live.text.slice(live.committedLen ?? 0);
     this.state = { ...this.state, live: undefined };
-    this.committedLen = 0;
-    if (this.planReplyNoArchive) {
-      this.notify();
-      return;
-    }
-    if (pending.trim().length > 0) {
-      this.pushMsg('assistant', pending, this.replyContPending ? { cont: true } : undefined);
-      this.replyContPending = false;
-    } else {
-      this.replyContPending = false;
-      this.notify();
-    }
+    this.mdSeal();
+    this.notify();
   }
 
   /** done/error 后刷新账本 runs（缓存命中率已升格会话累计口径，随 usage 事件增量更新） */
