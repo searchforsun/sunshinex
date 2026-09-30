@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as React from 'react';
 import { Key, useStdin } from 'ink';
 
@@ -30,6 +31,21 @@ function isCompleteSequence(b: string): boolean {
   }
   if (b.startsWith('\u001BO')) return b.length >= 3;
   return true;
+}
+
+
+/** 键位诊断（SUNSHINEX_KEY_DEBUG=path）：真机字节实据采集——每个 data 块与最终派发的 raw 序列
+ *  逐条落盘。背景：真机「进全屏后 Esc/Tab 需先按 Enter」类症状在历轮模拟探针（test-ink 同步 stdin、
+ *  生产接线 runTuiLoop 编排、真 40ms 窗口）下全部不可复现，只剩真实 conpty 字节流一个未观测变量 */
+function keyDebug(msg: string): void {
+  const p = process.env.SUNSHINEX_KEY_DEBUG;
+  if (!p) return;
+  try {
+    fs.appendFileSync(p, `${Date.now()} ${msg}
+`);
+  } catch {
+    /* 诊断落盘失败静默（不干扰键位主路径） */
+  }
 }
 
 /** 每一 stdin 的进程级监听条目（2026-09-30 真机「进全屏后 Esc/Tab 须先按 Enter」终版根因修复）：
@@ -69,6 +85,7 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         if (e.pending.length === 0) return;
         const bytes = e.pending;
         e.pending = '';
+        keyDebug(`dispatch raw=${JSON.stringify(bytes)}`);
         if (e.handlers.size === 0) return;
         const handler = [...e.handlers][e.handlers.size - 1]!;
         // 单点解析分发：raw 保留原始字节；键位判定与 ink3 原版逐行一致
@@ -100,6 +117,7 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
       };
       e.handleData = (data: string): void => {
         const incoming = String(data);
+        keyDebug(`data ${JSON.stringify(incoming)}`);
         // 裸 ESC 已扣住、新块到达（2026-09-30 真机「全屏 Esc 需先按 Enter」病根）：新块以 [ / O 开头 =
         // 拆包序列剩余（↑/⌦ 等），继续拼合（保拆包重组语义）；其余字节（\r、字符、控制符）=
         // 「用户按了 Esc 又按了别的键」——先派发扣住的裸 Esc 再解析新块。否则 pending='\u001B'+X 被

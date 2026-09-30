@@ -23,7 +23,8 @@ test('Inspector 运行中：无外框整页平铺，状态行（label/step/token
   assert.match(f, /step 14/, '状态行携带步数');
   assert.match(f, /Esc/, '状态行携带退出提示');
   assert.match(all, /● \[READ\] src\/a\.ts/, 'call 行与主 agent ToolRow 同构（● [VERB] target）');
-  assert.match(all, /⎿ ✓ 84 lines/, 'result 行 ⎿ + ok 标记');
+  assert.match(all, /⎿ ✓/, 'result 行 ⎿ + ok 标记（标记行）');
+  assert.match(all, /84 lines/, 'result 内容行（全形对标主 agent）');
   assert.match(all, /分析中…/, 'text 段经 renderMd 渲染原样呈现（markdansi 出口）');
   one.unmount();
 });
@@ -89,9 +90,9 @@ test('Inspector 并行结果归位：结果行渲染在对应调用行下（真�
   );
   const all = one.allOutput();
   const idx = (s: string): number => all.indexOf(s);
-  assert.ok(idx('● [GLOB] a') < idx('⎿ ✓ hits a') && idx('⎿ ✓ hits a') < idx('● [GLOB] b'), 'c1 结果行紧跟 c1 调用行（c2 之前）');
-  assert.ok(idx('● [GLOB] b') < idx('⎿ ✓ hits b') && idx('⎿ ✓ hits b') < idx('● [READ] f'), 'c2 结果行紧跟 c2 调用行');
-  assert.ok(idx('● [READ] f') < idx('⎿ ✗ boom'), 'c3 失败结果行紧跟 c3 调用行（✗ 标记）');
+  assert.ok(idx('● [GLOB] a') < idx('hits a') && idx('hits a') < idx('● [GLOB] b'), 'c1 结果行紧跟 c1 调用行（c2 之前）');
+  assert.ok(idx('● [GLOB] b') < idx('hits b') && idx('hits b') < idx('● [READ] f'), 'c2 结果行紧跟 c2 调用行');
+  assert.ok(idx('● [READ] f') < idx('⎿ ✗') && all.includes('boom'), 'c3 失败结果行紧跟 c3 调用行（✗ 标记）');
   one.unmount();
 });
 
@@ -170,8 +171,10 @@ test('Inspector 完成态回看：detail 行解析回看（动词行还原 call 
   );
   const all = one.allOutput();
   assert.match(all, /● \[READ\] src\/a\.ts/, '动词行还原 call 形态（与主 agent ToolRow 同构）');
-  assert.match(all, /⎿ ✓ 84 lines/, 'result 行呈现');
-  assert.match(all, /⎿ ✗ boom/, '失败结果行呈现');
+  assert.match(all, /⎿ ✓/, 'result 标记行呈现');
+  assert.match(all, /84 lines/, 'result 内容行呈现');
+  assert.match(all, /⎿ ✗/, '失败结果标记行呈现');
+  assert.match(all, /boom/, '失败结果内容呈现');
   assert.match(all, /✻ Thought for 3s/, '思考摘要行还原（✻ 前缀）');
   assert.ok(!all.includes('思考全文行'), '归档缺省折叠：思考 detail 不直出');
   one.unmount();
@@ -201,39 +204,35 @@ test('Inspector 折叠结果行单行省略、Tab 展开全文（对标主 agent
   });
   const def = render(<ChildInspector child={multi} columns={80} rows={12} />);
   const defAll = def.allOutput();
-  assert.match(defAll, /⎿ ✗ ok 1 - passes/, '折叠态：结果首行单行呈现');
-  assert.ok(!defAll.includes('# fail 2'), '折叠态：多行结果后续行省略');
+  assert.match(defAll, /⎿ ✗/, '结果标记行（✗ 着色）');
+  assert.match(defAll, /ok 1 - passes/, '结果首行呈现（全形对标主 agent，2026-09-30 用户裁决）');
   def.unmount();
   const exp = render(<ChildInspector child={multi} columns={80} rows={12} expanded />);
   assert.match(exp.allOutput(), /# fail 2/, 'Tab 展开：结果全文逐行呈现');
   exp.unmount();
 });
 
-test('Inspector 结果行省略口径：第一行吃满终端宽度，超一整行才 …（2026-09-30 用户裁决反转 96 封顶：宽终端下长路径被拦腰截断即「不是第一行就省略」病根）', () => {
-  const longPath = `CWD=${'/d/MyWorkStation/sunshinex/D-MyWorkStation-Java-program-yu-ai-code-mother-6027a4d1/data'.repeat(2)}`;
-  // 宽终端（columns=200）：96 列封顶会在 ~90 列截断——满宽口径下首行完整到边缘
-  const wide = render(
+test('Inspector 结果行全形对标主 agent：⎿ ✓ 标记行 + 下一行缩进内容（2026-09-30 diff 探针实锤内联摘要为最后形态差，主链活动段即此形态）', () => {
+  const one = render(
     <ChildInspector
-      child={{ label: 'w', startedAt: Date.now(), steps: 1, tokens: 10, transcript: [{ kind: 'result', text: longPath, ok: true }] }}
-      columns={200}
+      child={live({
+        transcript: [
+          { kind: 'call', text: 'READ src/a.ts' },
+          { kind: 'result', text: 'package com.yupi.yuaicodemother.ai;', ok: true },
+        ],
+      })}
+      columns={80}
       rows={12}
-    />, 200,
+    />,
   );
-  const wf = wide.allOutput().replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
-  const line = wf.split('\n').find((l) => l.includes('CWD=')) ?? '';
-  assert.ok(!line.includes('…'), `宽终端下未超一整行不省略（实际行宽 ${line.length}）`);
-  assert.ok(line.length >= 150, `首行吃到终端边缘（实际 ${line.length} 列）`);
-  wide.unmount();
-  // 窄终端（columns=60）：真超一整行才在边缘 … 收尾
-  const narrow = render(
-    <ChildInspector
-      child={{ label: 'w', startedAt: Date.now(), steps: 1, tokens: 10, transcript: [{ kind: 'result', text: longPath, ok: true }] }}
-      columns={60}
-      rows={12}
-    />, 60,
-  );
-  const nf = narrow.allOutput().replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
-  const nline = nf.split('\n').find((l) => l.includes('CWD=')) ?? '';
-  assert.ok(nline.includes('…') && nline.length <= 60, `窄终端超宽在边缘省略（行宽 ${nline.length} ≤ 60）`);
-  narrow.unmount();
+  const lines = one
+    .allOutput()
+    .replace(/\[[0-9;]*m/g, '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const mi = lines.findIndex((l) => l.startsWith('⎿ ✓'));
+  assert.ok(mi >= 0, '⎿ ✓ 标记行独立成行');
+  assert.equal(lines[mi + 1], 'package com.yupi.yuaicodemother.ai;', '内容在标记行下一行（4 空格缩进，主链 ToolRow 全形同款）');
+  one.unmount();
 });
