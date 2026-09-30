@@ -622,7 +622,8 @@ test('混合批按序串行：task_stop（显式注册）与 read 同批真实�
 
 test('并行调用超过上限被拒绝', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-parcap-'));
-  const calls = Array.from({ length: 9 }, () => '{"tool":"glob","input":{"pattern":"*.ts"}}').join(',');
+  // 批次规模 = PARALLEL_TOOLS_LIMIT(16) + 1：随阈值调整同步（常量未导出，注释钉住口径）
+  const calls = Array.from({ length: 17 }, () => '{"tool":"glob","input":{"pattern":"*.ts"}}').join(',');
   const adapter = new ScriptedAdapter([
     `{"tools":[${calls}],"done":false}`,
     '{"done":true}',

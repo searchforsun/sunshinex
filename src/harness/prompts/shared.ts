@@ -38,9 +38,9 @@ export const PHASE_SENTENCE_LINE =
   'When calling tools you may include a short "phase" sentence as the message content naming the current stage (what the upcoming tool calls are for); include it only when entering a new stage, and skip it for consecutive actions within the same stage and for trivial single-step actions.';
 
 /** 并行/串行政策：主动鼓励合批——无排序依赖的调用并入同一轮并发（提升执行吞吐），有序依赖则整轮按出牌顺序串行；
- * 单轮上限 8（与 reactor PARALLEL_TOOLS_LIMIT 对齐；超限由 reactor 运行时拒绝行兜底，静态只留预防性契约不放长解释） */
+ * 单轮上限 16（与 reactor PARALLEL_TOOLS_LIMIT 对齐；超限由 reactor 运行时拒绝行兜底，静态只留预防性契约不放长解释） */
 export const PARALLEL_POLICY_LINE =
-  'Batch independent calls proactively: calls with no ordering dependencies run concurrently when grouped in one round (up to 8); put a call after any call it depends on or that mutates the same state — such batches run serially in list order.';
+  'Batch independent calls proactively: calls with no ordering dependencies run concurrently when grouped in one round (up to 16); put a call after any call it depends on or that mutates the same state — such batches run serially in list order.';
 
 /** 异常收敛行：参数性失败立刻换参重发；原样重试上限两次，超限换路/跳步/收束三路并列、判断权在模型——防同参死循环空烧。
  *  三路枚举必须留在本静态行：运行时重复批拒绝行按设计只陈述现象不指挥模型（reactor.converge.test.ts「拒绝行不指挥模型」），

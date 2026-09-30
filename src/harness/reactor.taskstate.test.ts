@@ -72,14 +72,15 @@ test('三态事件面：并行批 callId 逐项独立', async () => {
 test('三态事件面：超上限被拒的调用 status=failed、callId 仍在', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ts3-'));
   try {
-    const calls = Array.from({ length: 9 }, (_, i) => `{"tool":"glob","input":{"pattern":"t${i}.ts"}}`).join(',');
+    // 批次规模 = PARALLEL_TOOLS_LIMIT(16) + 1：随阈值调整同步（常量未导出，注释钉住口径）
+    const calls = Array.from({ length: 17 }, (_, i) => `{"tool":"glob","input":{"pattern":"t${i}.ts"}}`).join(',');
     const events: SessionEvent[] = [];
     await makeReactor(tmp, new ScriptedAdapter([
       `{"tools":[${calls}]}`,
       '{"done":true,"reply":"ok"}',
     ]), (e) => events.push(e)).run({ goal: '超上限批' }, { maxSteps: 3 });
     const pairs = events.filter((e) => e.type === 'tool-result');
-    assert.equal(pairs.length, 9);
+    assert.equal(pairs.length, 17);
     for (const p of pairs) {
       assert.equal(p.payload?.status, 'failed', '超限拒绝一律 failed');
       assert.ok(typeof p.payload?.callId === 'string' && String(p.payload?.callId).startsWith('step:1-idx:'));

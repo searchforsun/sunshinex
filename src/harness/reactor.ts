@@ -113,8 +113,9 @@ export function buildStepDigest(
   return out.length > cfg.totalChars ? out.slice(out.length - cfg.totalChars) : out;
 }
 
-/** 并行调用上限：防单轮塞满列表拖长步时延（8 项足够覆盖常用组合） */
-const PARALLEL_TOOLS_LIMIT = 8;
+/** 并行调用上限：防单轮塞满列表拖长步时延；纯 read/write 类批安全（观察行各自截断兜底），
+ *  且超限是整批拒绝白烧一个模型往返——阈值取宽（16）压低撞限频率，真超限仍由拒绝行兜底 */
+const PARALLEL_TOOLS_LIMIT = 16;
 
 /** 批次重复上限：同一批次集合签名最多执行 2 次（首次 + 原样重试一次），超限整批程序性拒绝——防模型同批死循环空烧（与稳定段异常收敛行配套） */
 const MAX_IDENTICAL_CALLS = 2;
