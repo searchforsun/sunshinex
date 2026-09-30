@@ -173,7 +173,7 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
   }
 });
 
-test('会话归约：列表 run 整块入档（行距收敛）——9 项问题清单单条 ansi、无项间空行', async () => {
+test('会话归约：列表 run 整块入档（正文行距律）——9 项问题清单单条 ansi、项间单空行', async () => {
   const tmp = tmpdir('sunshinex-stream-listrun-');
   try {
     const body = ['1. 线程池泄漏：描述甲', '2. 质检失败：描述乙', '3. 输出护栏：描述丙', '', '四、后续章节'].join('\n');
@@ -186,7 +186,9 @@ test('会话归约：列表 run 整块入档（行距收敛）——9 项问题�
     assert.ok(listItem!.text.includes('输出护栏'), '三项同块（run 整块发射，非逐行三块）');
     const para = items.find((m) => m.text.includes('后续章节'));
     assert.ok(para && para !== listItem, '空行后的章节独立成块');
-    assert.ok(items.every((m) => !m.text.includes('\n\n\n')), '无 3+ 连续换行（间距收敛）');
+    const plain = stripAnsi(listItem!.text);
+    assert.match(plain, /1\. 线程池泄漏：描述甲\n\n2\. 质检失败：描述乙\n\n3\. 输出护栏：描述丙\n$/, '有序项间恒单空行（正文行距律 BODY_LINE_SPACING=1）');
+    assert.ok(items.every((m) => !m.text.includes('\n\n\n')), '无 3+ 连续换行（行距档位不叠块界）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -204,7 +206,7 @@ test('会话归约：逐行入档打字机（markdansi）——行级块为 ansi
     assert.ok(items.every((m) => m.ansi === true), '流式条目全部 ansi');
     const joined = items.map((m) => stripAnsi(m.text)).join('');
     for (const probe of ['第一行', '第二行', '第二段']) assert.ok(joined.includes(probe), `内容不丢：${probe}`);
-    assert.equal(joined.replace(/\n+$/, ''), '第一行\n第二行\n第二段', '剥 ANSI 拼接与源一致（无丢无重）');
+    assert.equal(joined.replace(/\n+$/, ''), '第一行 第二行\n第二段', '剥 ANSI 拼接与源一致：同段软换行并段（空格相连）；块间空行由渲染层 margin 承载、不在文本（无丢无重）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

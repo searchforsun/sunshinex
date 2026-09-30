@@ -1,7 +1,7 @@
 // src/tui/md-ansi.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMd, wrapAnsiLines, ansiLineCount, normalizeCjkLine, isFenceLine, createMdRender } from './md-ansi';
+import { renderMd, wrapAnsiLines, ansiLineCount, normalizeCjkLine, isFenceLine, createMdRender, softWrapAnsi, BODY_LINE_SPACING } from './md-ansi';
 
 const strip = (s: string): string => s.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
@@ -87,4 +87,30 @@ test('createMdRender：闭包绑定 width/highlighter（streamer options 不透�
   const out = render40('| aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | b |\n|---|---|\n| 1 | 2 |');
   assert.ok(out.includes('│'), '表格渲染成功');
   assert.ok(out.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').split('\n').every((l) => l.length <= 40), 'width 绑定生效');
+});
+
+/* ---------- 正文行距律（2026-10-01 用户裁决「增加一定的行距」） ---------- */
+
+test('BODY_LINE_SPACING=1：prose 逻辑行间恒单空行——列表项、段落同档', () => {
+  const out = strip(renderMd('- 甲项\n- 乙项\n\n段落一行\n\n段落二行', 80));
+  assert.ok(out.includes('• 甲项\n\n• 乙项'), '列表项间单空行');
+  assert.ok(out.includes('段落一行\n\n段落二行'), '段落间单空行（行界=块界同档）');
+  assert.ok(!out.includes('\n\n\n'), '行距档位不叠加（无 3+ 连续换行）');
+});
+
+test('softWrapAnsi：ANSI 原子不切坏、拉丁词不断、续行悬挂缩进', () => {
+  const line = '\x1b[36m▸\x1b[0m 这是一个超长的中英文混排段落 english words 不应在词中间断开继续补充直到触发折行边界观察续行形态';
+  const lines = softWrapAnsi(line, 30, 2);
+  assert.ok(lines.length > 1, '已折行');
+  assert.ok(lines.slice(1).every((l) => l.startsWith('  ')), '续行悬挂缩进 2 格');
+  const flat = lines.join('');
+  assert.ok(flat.includes('\x1b[36m▸\x1b[0m'), 'SGR 原子保留');
+  assert.ok(lines.every((l) => !/\x1b$/.test(l)), '行尾不留半截转义码');
+  assert.ok(lines.every((l) => strip(l).length <= 30), '剥码后行宽恒 ≤ width');
+});
+
+test('renderMd：围栏豁免行距——代码盒内容无空行插入、盒线完好', () => {
+  const out = strip(renderMd('前言一句。\n\n```ts\nconst a = 1;\nconst b = 2;\n```\n\n尾段。', 80));
+  assert.ok(!out.includes('const a = 1;\n\nconst b = 2;'), '代码行间无行距插入');
+  assert.ok(out.includes('┌') && out.includes('└'), '代码盒框线完好');
 });

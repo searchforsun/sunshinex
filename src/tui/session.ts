@@ -6,8 +6,7 @@ import { t } from '../i18n';
 import { formatDuration, formatTokens } from './format';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
-import { createMarkdownStreamer } from 'markdansi';
-import { createMdRender, isFenceLine, normalizeCjkLine, renderMd, stripAnsi } from './md-ansi';
+import { isFenceLine, normalizeCjkLine, renderMd, stripAnsi } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
@@ -272,9 +271,6 @@ export class SessionController {
   readonly runtime: TuiRuntime;
   /** 项目根：/init 生成 SUNSHINE.md 的基准目录（与 runtime 装配同源） */
   private readonly root: string;
-  /** markdansi 流式通道（2026-09-30 替换批次）：live reply 期间持有；行级归一喂入、片段即时入档（ansi 条目）；
-   *  工具边界/done 经 finish() 冲刷收口（终稿 dedup 天然成立——streamer 不重不发），随后置空 */
-  private mdStream: { push(chunk: string): string; finish(): string; reset(): void } | undefined;
   /** 行喂入缓冲（preprocess 需行级上下文：围栏内不归一） */
   private mdLineBuf = '';
   private mdInFence = false;
@@ -2002,9 +1998,6 @@ export class SessionController {
    *  未成型块——表格/围栏/段落随生成 WYSIWYG 长出）；空行放行后水位复位。
    *  围栏行翻转 mdInFence 供归一（围栏内代码不归一），围栏内的空行不拆块（代码空行属于围栏块）。 */
   private mdConsume(delta: string): void {
-    if (this.mdStream === undefined) {
-      this.mdStream = createMarkdownStreamer({ render: createMdRender(this.mdWidth) });
-    }
     this.mdLineBuf += delta;
     this.mdSource += delta;
     let nl = this.mdLineBuf.indexOf('\n');
@@ -2019,7 +2012,6 @@ export class SessionController {
         // 空行 = markdown 块边界：当前块整体放行（streamer 渲染发射），空行本身交回 streamer
         // （冲刷其内部表格/围栏缓冲）；水位复位——下一块从后续行重新起算
         this.mdFlushHold();
-        this.mdPushFragment(this.mdStream.push(normalized));
         this.mdTailStart = undefined;
       } else {
         // 非空行（散文/列表/表格行/围栏行/围栏内空行）：紧排入当前块缓冲
@@ -2039,7 +2031,7 @@ export class SessionController {
     const buf = this.mdHoldBuf;
     this.mdHoldBuf = '';
     this.mdTailStart = undefined;
-    this.mdPushFragment(this.mdStream!.push(buf));
+    this.mdPushFragment(renderMd(buf, this.mdWidth()));
   }
 
   /** 片段入档单点：末尾换行恒归一为单 \n（2026-10-01 行距裁决：无尾 \n 的 markdansi 块——heading——
@@ -2066,15 +2058,11 @@ export class SessionController {
       if (isFenceLine(line)) this.mdInFence = !this.mdInFence;
     }
     this.mdFlushHold();
-    if (this.mdStream !== undefined) {
-      this.mdPushFragment(this.mdStream.finish());
-    }
     this.mdClear();
   }
 
   /** 通道整体清空（不冲刷不入档）：error 中断 / 规划轮终稿 / 新回合兜底 */
   private mdClear(): void {
-    this.mdStream = undefined;
     this.mdTailStart = undefined;
     this.mdHoldBuf = '';
     this.mdLineBuf = '';

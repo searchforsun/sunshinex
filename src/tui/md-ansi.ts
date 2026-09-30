@@ -3,6 +3,7 @@ import { render as mdRender } from 'markdansi';
 import stringWidth from 'string-width';
 import { highlightLine, HiKind } from './highlight';
 import { alignTable, inlineText, parseMarkdown } from './markdown';
+import { displayWidth } from './text-band';
 
 /** HiKind → SGR 前景码（与 MarkdownText HI_COLOR 同色系：magenta/green/gray/yellow） */
 const HI_SGR: Record<HiKind, string> = {
@@ -105,12 +106,93 @@ function normalizeMd(src: string): string {
 /** 主题覆盖（2026-09-30 用户裁决）：标题/表头不再用黄色（与系统警告 warn 撞色），与加粗正文同色系 */
 const RENDER_THEME = { heading: { bold: true }, tableHeader: { bold: true } };
 
-/** markdansi 段渲染（非表格区）：归一 + 主题覆盖 + 高亮 + 爆栈兜底。
- *  无序列表标记 - → •（2026-09-30 用户裁决「通用点」）：markdansi 原样回显源标记（-、*、+ 三种标记全归一为 -），
- *  渲染输出侧行首替换（ANSI 容忍——listMarker 可能着色码在前）；代码盒内容行有 │ 前缀不受影响 */
+/** 正文行距档位（2026-10-01 用户裁决「增加一定的行距，正文贴在一起了」）：prose 逻辑行（段落/标题/
+ *  列表项/引用行）之间插入的空行数——行界与块界同档，正文与代码/表格（豁免）分离。1 = 行间恒单空行，
+ *  与区域边界统一单空行同源；0 = 旧紧排（markdansi 原生块间距）。全局唯一档位，调此一处 */
+export const BODY_LINE_SPACING = 1;
+
+/** 续行悬挂缩进：列表项（• /- /n.，SGR 前缀容差）按 marker 实宽悬挂、引用行随前缀 2 格、其余顶格 */
+function hangingIndentOf(line: string): number {
+  const plain = stripAnsi(line);
+  const lead = /^\s*/.exec(plain)![0];
+  const item = /^(\s*)(?:• |- |\d{1,3}\. )/.exec(plain);
+  if (item) return displayWidth(item[0]);
+  if (/^\s*│/.test(plain)) return displayWidth(lead) + 2;
+  return 0;
+}
+
+/** ANSI 安全软折（2026-10-01 行距律配套）：markdansi wrap:false 出逻辑行后按真实列宽回折——
+ *  SGR 序列零宽原子搬运（与 hardSlice 同扫描器，不切半截码）；断点=空白后或宽字符（CJK/全角/emoji）
+ *  边界（拉丁词内不断、CJK 字间/中英之间可断）；无断点超宽词回退逐字硬切（爆栈护栏语义不变）。
+ *  indent 为续行悬挂缩进（列表项续行对齐项文） */
+export function softWrapAnsi(line: string, width: number, indent = 0): string[] {
+  if (width <= 0 || displayWidth(stripAnsi(line)) <= width) return [line];
+  const pad = ' '.repeat(Math.max(0, indent));
+  const lines: string[] = [];
+  let cur = pad;
+  let curW = Math.max(0, indent);
+  let breakAt = -1; // cur 内最近可断点（code unit 下标；其前入行、其后随续行）
+  let prevW = 0; // 前一可见图素簇宽（宽字符边界判定）
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '\x1b') {
+      let j = i + 1;
+      if (line[j] === '[') {
+        j += 1;
+        while (j < line.length && ((line[j]! >= '0' && line[j]! <= '9') || line[j] === ';')) j += 1;
+        if (j < line.length && /[a-zA-Z]/.test(line[j]!)) j += 1;
+      }
+      cur += line.slice(i, j);
+      i = j;
+      continue;
+    }
+    const cp = line.codePointAt(i)!;
+    const ch = String.fromCodePoint(cp);
+    const w = stringWidth(ch);
+    if (curW > Math.max(0, indent) && curW + w > width) {
+      if (breakAt >= 0) {
+        lines.push(cur.slice(0, breakAt).replace(/ +$/, ''));
+        const rest = cur.slice(breakAt);
+        cur = pad + rest;
+        curW = Math.max(0, indent) + displayWidth(stripAnsi(rest));
+      } else {
+        lines.push(cur);
+        cur = pad;
+        curW = Math.max(0, indent);
+      }
+      breakAt = -1;
+      prevW = 0;
+    }
+    cur += ch;
+    curW += w;
+    if (ch === ' ') breakAt = cur.length;
+    else if (w >= 2) breakAt = cur.length - ch.length; // 宽字符前可断（CJK 字间/中英之间）
+    prevW = w;
+    i += ch.length;
+  }
+  lines.push(cur);
+  return lines;
+}
+
+/** prose 段渲染（2026-10-01 正文行距律）：wrap:false 出逻辑行（markdansi 不自行折行，段落/列表项/
+ *  标题/引用各自单行）→ 逻辑行间插入 BODY_LINE_SPACING 档空行（行界=块界同档全局行距）→
+ *  softWrapAnsi 按真实列宽回折（续行归属同逻辑组，折行不进行距节奏；列表项续行悬挂对齐项文）→
+ *  `• ` 标记替换。恒以 '\n\n' 收尾（块间 margin 与区域边界同源），空段返回 ''（不出孤边距） */
+function renderProseSegment(src: string, width: number): string {
+  const rendered = mdRender(normalizeMd(src), { wrap: false, highlighter: mdHighlighter, theme: RENDER_THEME });
+  const logicals = rendered.split('\n').filter((l) => stripAnsi(l).trim().length > 0);
+  if (logicals.length === 0) return '';
+  const sep = '\n'.repeat(1 + BODY_LINE_SPACING);
+  const spaced = logicals.map((l) => softWrapAnsi(l, width, hangingIndentOf(l)).join('\n')).join(sep);
+  return `${spaced.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ')}\n\n`;
+}
+
+/** markdansi 段渲染（围栏区专用，wrap:true 真宽折行——codeBox 完好、长代码行盒内折）：归一 + 主题 +
+ *  高亮 + 爆栈兜底。无序列表标记 - → •（2026-09-30 用户裁决「通用点」）：渲染输出侧行首替换
+ *  （ANSI 容忍——listMarker 可能着色码在前）；代码盒内容行有 │ 前缀不受影响 */
 function renderMdRun(src: string, width: number): string {
   const out = wrapAnsiLines(mdRender(normalizeMd(src), { width, highlighter: mdHighlighter, theme: RENDER_THEME }), width);
-  return out.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ');
+  return out.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ');
 }
 
 /** 表格区网格渲染（2026-09-30 用户裁决「不只是表头有横线」）：markdansi 表格只有表头分隔线，
@@ -118,11 +200,11 @@ function renderMdRun(src: string, width: number): string {
 function renderGridTable(src: string, width: number): string {
   const blocks = parseMarkdown(normalizeMd(src));
   const t = blocks.find((b) => b.type === 'table');
-  if (!t) return renderMdRun(src, width);
+  if (!t) return renderProseSegment(src, width);
   const headers = t.headers.map(inlineText);
   const rows = t.rows.map((r) => r.map(inlineText));
   const aligned = alignTable(headers, rows, Math.max(20, width));
-  if (aligned.length === 0) return renderMdRun(src, width);
+  if (aligned.length === 0) return renderProseSegment(src, width);
   return aligned.join('\n') + '\n';
 }
 
@@ -144,23 +226,27 @@ export function createMdRender(width: number | (() => number)): (md: string) => 
 
 function renderSource(src: string, width: number): string {
   const lines = src.split('\n');
-  type Seg = { kind: 'table'; lines: string[] } | { kind: 'md'; lines: string[] };
+  type Seg = { kind: 'table'; lines: string[] } | { kind: 'prose'; lines: string[] } | { kind: 'fence'; lines: string[] };
   const segs: Seg[] = [];
   let inFence = false;
   for (const line of lines) {
-    if (isFenceLine(line)) inFence = !inFence;
-    const cls = inFence ? 'md' : /^\s*[|｜]/.test(line) ? 'table' : 'md';
+    // 围栏行（开/闭）与围栏体独立成段（2026-10-01 行距律：代码不是正文，不进行距重排——
+    // 照旧 wrap:true 真宽整块渲染，codeBox 完好、长代码行盒内折）；行距只作用 prose 段
+    const isFence = isFenceLine(line);
+    const cls: Seg['kind'] = isFence || inFence ? 'fence' : /^\s*[|｜]/.test(line) ? 'table' : 'prose';
+    if (isFence) inFence = !inFence;
     const last = segs[segs.length - 1];
     if (last && last.kind === cls) last.lines.push(line);
     else segs.push({ kind: cls, lines: [line] } as Seg);
   }
   const parts = segs.map((seg) => {
     const text = seg.lines.join('\n');
-    if (seg.kind !== 'table') return renderMdRun(text, width);
-    // 纯管道行 ≥2 且第二行为分隔行才是 GFM 表格；否则（孤行/畸形）按 prose 交 markdansi 原样呈现
+    if (seg.kind === 'fence') return renderMdRun(text, width);
+    if (seg.kind !== 'table') return renderProseSegment(text, width);
+    // 纯管道行 ≥2 且第二行为分隔行才是 GFM 表格；否则（孤行/畸形）按 prose 走行距律原样呈现
     const normalized = seg.lines.map((l) => normalizeCjkLine(l, false));
     if (normalized.length >= 2 && isDividerLine(normalized[1] ?? '')) return renderGridTable(normalized.join('\n'), width);
-    return renderMdRun(normalized.join('\n'), width);
+    return renderProseSegment(normalized.join('\n'), width);
   });
   return parts.join('').replace(/\n{3,}/g, '\n\n');
 }
