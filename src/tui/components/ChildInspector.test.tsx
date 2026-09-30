@@ -237,3 +237,30 @@ test('Inspector 结果行内联单行：吃满终端宽度、超一整行才 …
   assert.ok(!lines.slice(ri, ri + 3).some((l) => l.includes('second line')), '多行结果只呈现首行（内联单行不撑高）');
   one.unmount();
 });
+
+test('Inspector 调用行行宽护栏：长动词（TASK_WAIT）下 target 预算按前缀实账扣减，行宽不超终端列数（2026-09-30 真机 ink repeat(负数) RangeError 崩溃实锤）', () => {
+  const displayWidth = (t: string): number => t.length; // ASCII 夹具宽度即长度
+  const one = render(
+    <ChildInspector
+      child={live({
+        transcript: [
+          { kind: 'call', text: 'TASK_WAIT ' + 'x'.repeat(300) },
+          { kind: 'call', text: 'WEBSEARCH ' + 'y'.repeat(300) },
+        ],
+      })}
+      columns={80}
+      rows={12}
+    />,
+    80,
+  );
+  const lines = one
+    .allOutput()
+    .split('\n')
+    .filter((l) => l.includes('[TASK_WAIT]') || l.includes('[WEBSEARCH]'));
+  assert.ok(lines.length >= 2, '两行调用行都在');
+  for (const l of lines) {
+    const w = displayWidth(l.trimEnd());
+    assert.ok(w <= 80, `调用行宽 ${w} ≤ 终端列数 80（超宽即 ink repeat(负数) 崩溃）`);
+  }
+  one.unmount();
+});

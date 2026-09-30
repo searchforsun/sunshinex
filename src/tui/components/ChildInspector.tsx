@@ -1,7 +1,7 @@
 import { Box, Static, Text } from 'ink';
 import { ChildLiveState, pairChildResults } from '../session';
 import { formatTokens, formatDuration } from '../format';
-import { bandLines, wrapByWidth, elideByWidth } from '../text-band';
+import { bandLines, wrapByWidth, elideByWidth, displayWidth } from '../text-band';
 import { renderMd } from '../md-ansi';
 import { segmentizeLines } from './ChildTranscript';
 import { t } from '../../i18n';
@@ -199,11 +199,14 @@ function CallRow({ text, columns }: { text: string; columns: number }): JSX.Elem
   const sp = text.indexOf(' ');
   const verb = sp > 0 ? text.slice(0, sp) : text;
   const target = sp > 0 ? text.slice(sp + 1) : '';
+  // 前缀实账（● 2 列 + [verb] verb+2 列 + 空格 1 列）：固定 10 列扣减对长动词（TASK_WAIT/WEBSEARCH）
+  // 即行宽超终端列数，ink Output 填充 repeat(负数) 直接 RangeError 崩溃（真机「Invalid string length」实锤）
+  const prefixCols = 2 + displayWidth(`[${verb}]`) + 1;
   return (
     <Text>
       <Text dimColor>● </Text>
       <Text color={theme.accent}>[{verb}]</Text>
-      {target ? <Text color="gray"> {elideByWidth(target, Math.max(8, columns - 10))}</Text> : null}
+      {target ? <Text color="gray"> {elideByWidth(target, Math.max(8, columns - prefixCols))}</Text> : null}
     </Text>
   );
 }

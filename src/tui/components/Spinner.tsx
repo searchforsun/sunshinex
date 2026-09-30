@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { formatDuration, formatTokens } from '../format';
 import { ActiveCall, LiveTaskPhase } from '../task-state';
 import { t } from '../../i18n';
-import { elideByWidth } from '../text-band';
+import { displayWidth, elideByWidth } from '../text-band';
 import { theme } from '../theme';
 
 // 帧字形全部选用无 emoji 呈现属性的星形：✳（U+2733）带 emoji 变体，终端会改用彩色字形渲染、
@@ -53,7 +53,7 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
           return (
             <Text key={c.callId} color={theme.accent} dimColor>
               {glyph} [{verb}]
-              {params ? ' ' + elideByWidth(params, Math.max(16, columns - 24)) : ''}{' '}
+              {params ? ' ' + elideByWidth(params, Math.max(16, columns - 10 - displayWidth(`[${verb}]`))) : ''}{' '}
               <Text dimColor>
                 {params !== '' || phase === 'tool-awaiting' ? '· ' : ''}
                 {phase === 'tool-awaiting' ? t('awaiting approval', '等待审批') + (params !== '' ? ' · ' : '') : ''}

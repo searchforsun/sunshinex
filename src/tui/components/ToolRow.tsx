@@ -34,8 +34,9 @@ export function ToolRow({ item, columns, collapsed }: {
       ? `（${meta.steps} steps · ${formatDuration(Math.round(meta.durationMs / 1000))}）`
       : '';
     const detailLines = expanded ? (item.detail ?? '').split('\n') : [];
-    // target 按列宽自然省略：前缀「● [VERB] 」约 10 列 + meta 尾注预留，剩余宽度全给 target（宽列完整、窄列 … 收尾）
-    const targetBudget = Math.max(16, columns - 10 - displayWidth(metaTail));
+    // target 按列宽自然省略：前缀实账（● 2 + [verb] verb+2 + 空格 1）+ meta 尾注预留——固定 10 列对长动词
+    // （TASK_WAIT 等）即行宽超终端列数，ink repeat(负数) RangeError（真机崩溃实锤，与 ChildInspector.CallRow 同修）
+    const targetBudget = Math.max(16, columns - 5 - displayWidth(`[${verb}]`) - displayWidth(metaTail));
     const shownTarget = target ? elideByWidth(target, targetBudget) : '';
     return (
       <Box flexDirection="column">
