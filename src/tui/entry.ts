@@ -5,6 +5,7 @@ import { render } from 'ink';
 import { App } from './components/App';
 import { runTuiLoop, installSyncUpdateWrap, RepaintMode } from './tui-loop';
 import { RenderBoundary } from './components/RenderBoundary';
+import { installInkOutputGuard } from './ink-output-guard';
 import { installFrameSniffer } from './frame-sniffer';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
@@ -59,6 +60,7 @@ export async function runTui(args: CliArgs): Promise<void> {
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
   // 全帧逐写原子化（2026-09-28 用户裁决扩展）：流式/全屏期 ink 逐帧擦写经 DEC 2026 同步更新包裹，
   // 擦写中间态不再肉眼可见（持续闪屏病根）；repaint 路径自包 2026h 自动免重复包裹
+  installInkOutputGuard();
   installSyncUpdateWrap(process.stdout as unknown as Parameters<typeof installSyncUpdateWrap>[0]);
   // 动态帧高度嗅探（2026-09-30 方案 A）：从写流模式识别当前帧高，供 tui-loop tail 模式可达性
   // 判定（段折叠就地擦写，消清屏闪屏）；装在 2026 包裹外层、见包裹后的最终字节

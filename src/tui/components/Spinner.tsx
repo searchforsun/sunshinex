@@ -13,6 +13,17 @@ const VERBS = ['Pondering', 'Brewing', 'Weaving', 'Distilling'];
 
 /** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识）；label 可选（子代理面板头部携带 [label] 标识，缺省零变化）。
  *  phase/calls 可选（缺省 'thinking'/[]，规格 §5）：既有调用方零破坏；tool-pending/tool-awaiting 按活跃调用数逐行渲染。 */
+
+/** 帧动画 glyph（子代理全屏状态行等同款旋转动画消费）：240ms 步进与 Spinner 主动画同节奏 */
+export function useSpinFrame(): string {
+  const [frame, setFrame] = React.useState(0);
+  React.useEffect(() => {
+    const timer = setInterval(() => setFrame((f) => f + 1), 240);
+    return () => clearInterval(timer);
+  }, []);
+  return FRAMES[frame % FRAMES.length];
+}
+
 export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80, selected = false }: {
   startedAt: number;
   tokens: number;

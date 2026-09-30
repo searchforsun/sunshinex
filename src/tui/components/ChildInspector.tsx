@@ -3,6 +3,7 @@ import { ChildLiveState, pairChildResults } from '../session';
 import { formatTokens, formatDuration } from '../format';
 import { bandLines, wrapByWidth, elideByWidth, displayWidth } from '../text-band';
 import { renderMd } from '../md-ansi';
+import { useSpinFrame } from './Spinner';
 import { segmentizeLines } from './ChildTranscript';
 import { t } from '../../i18n';
 import { theme } from '../theme';
@@ -130,8 +131,9 @@ export function ChildInspector(props: {
   const thinkTail = thinkWrapped.slice(-THINK_TAIL_LINES);
   while (thinkTail.length > 0 && thinkTail.length < THINK_TAIL_LINES) thinkTail.unshift('');
 
+  const spin = useSpinFrame();
   const head =
-    `✻ [${label}] ${t('subagent view', '子代理视图')}` +
+    `${spin} [${label}] ${t('subagent view', '子代理视图')}` +
     `${typeof steps === 'number' ? ` · step ${steps}` : ''}` +
     `${tokens !== undefined ? ` · ↑${formatTokens(tokens)} tokens` : ''}` +
     `${secs !== undefined ? ` · ${formatDuration(secs)}` : ''}` +
