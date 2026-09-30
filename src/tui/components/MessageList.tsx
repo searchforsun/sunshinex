@@ -9,6 +9,7 @@ import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
 import { TailLedger, printedEntryLines, recomputeTailPlan } from '../tail-rewrite';
+import { tailPartial } from '../md-ansi';
 import { theme } from '../theme';
 
 /**
@@ -159,7 +160,32 @@ export function MessageList({
           ) : null
         }
       </Static>
-      {live ? <LiveArea live={live} columns={columns} rows={rows} maxRows={previewMaxRows} envelope={envelope} onUsed={onPreviewUsed} /> : null}
+      {live ? (
+        live.kind === 'reply' ? (
+          <MdBufferPreview live={live} columns={columns} />
+        ) : (
+          <LiveArea live={live} columns={columns} rows={rows} maxRows={previewMaxRows} envelope={envelope} onUsed={onPreviewUsed} />
+        )
+      ) : null}
+    </Box>
+  );
+}
+
+/** 动态区未入档尾段原文预览（2026-09-30 markdansi 替换批次）：reply 期间旧 LiveArea 的全量源预览
+ *  与滚动缓冲中的 ansi 条目视觉重叠（正文双份），其 reply 分支退役于 Task 5，本组件接管——
+ *  tailPartial 自尾向前取未完结构（已开表格表头 / 未闭合围栏 / 未完行），逐行暗色原文呈现，
+ *  收口后经历史区 ansi 条目（框线成形）承接；thinking 流照旧走 LiveArea 6 行滚动窗。
+ *  columns 预留（后续折行收敛接线）。空尾段（无未完结构）渲染 null。 */
+function MdBufferPreview({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element | null {
+  const tail = tailPartial(live.text);
+  if (tail.length === 0) return null;
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {tail.split('\n').map((line, i) => (
+        <Text key={i} dimColor>
+          {line || ' '}
+        </Text>
+      ))}
     </Box>
   );
 }
@@ -174,6 +200,10 @@ const MessageRow = React.memo(function MessageRow({
   columns: number;
   collapsed: boolean;
 }): JSX.Element {
+  // ansi 条目（Task 2 markdansi 流式通道）：text 已是渲染后 ANSI，直嵌 Text——再过 MarkdownText
+  // 即双重渲染（框线表格被当源 markdown 解析）且 ANSI 转义被按字面计宽；宽度已在产生端
+  // wrapAnsiLines 收敛，此处零加工上屏
+  if (item.ansi) return <Text>{item.text}</Text>;
   if (item.role === 'user') {
     return (
       <Box flexDirection="column">

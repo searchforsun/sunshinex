@@ -188,3 +188,8 @@ test('App 段锚点 effect：新锚点落定折叠过程行 → 请求 tail 重�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('printedEntryLines：ansi 条目按剥码行数计', () => {
+  const item = { role: 'assistant', text: '\x1b[31m甲\x1b[0m\n乙\n', ts: 1, seq: 1, ansi: true } as never;
+  assert.equal(printedEntryLines(item, false, 80), 2);
+});

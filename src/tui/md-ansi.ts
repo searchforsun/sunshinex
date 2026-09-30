@@ -113,7 +113,7 @@ export function tailPartial(src: string): string {
   if (fenceIdx >= 0) return lines.slice(fenceIdx).join('\n');
   // 已开表格（表头+分隔行成对后未闭合）：自表头行起
   for (let i = lines.length - 2; i >= 0; i--) {
-    if (/^\s*[|｜]/.test(lines[i] ?? '') && /^\s*[|｜][-–—━＿\s:：|]+[|｜]\s*$/.test(lines[i + 1] ?? '')) {
+    if (/^\s*[|｜]/.test(lines[i] ?? '') && /^\s*[|｜][-–—―─━－﹘＿\s:：|]+[|｜]\s*$/.test(lines[i + 1] ?? '')) {
       return lines.slice(i).join('\n');
     }
   }

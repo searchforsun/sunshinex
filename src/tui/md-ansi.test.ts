@@ -31,6 +31,7 @@ test('ansiLineCount：剥码行数', () => {
 
 test('tailPartial：表格已开返回表头起原文；闭合后返回未完行；无未完返回空', () => {
   assert.equal(tailPartial('前言。\n\n| a | b |\n|---|\n| 1'), '| a | b |\n|---|\n| 1');
+  assert.equal(tailPartial('| a |\n|───|\n| 1'), '| a |\n|───|\n| 1', '全角分隔行也识别为已开表格');
   assert.equal(tailPartial('第一行\n第二行'), '第二行');
   assert.equal(tailPartial('完整。\n'), '');
 });

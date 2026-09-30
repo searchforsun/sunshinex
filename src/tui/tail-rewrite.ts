@@ -1,6 +1,7 @@
 import { ChatItem } from './session';
 import { bandLines, elideByWidth, wrapByWidth } from './text-band';
 import { markdownRowCount } from './markdown';
+import { ansiLineCount } from './md-ansi';
 
 /**
  * 尾部原位重写账本（2026-09-30 方案 A——段折叠闪屏消除）：
@@ -39,6 +40,9 @@ export function createTailLedger(): TailLedger {
 /** 单条目打印行数（不含 marginBottom；不可数=undefined）。与 MessageRow/ToolRow/ThinkingRow
  *  渲染分支同构——改渲染形态必须同步本函数，tail-rewrite.test 以「真实渲染行数差分」钉住漂移 */
 export function printedEntryLines(item: ChatItem, full: boolean, columns: number): number | undefined {
+  // ansi 条目（markdansi 流式通道）：MessageRow 直嵌 <Text>{item.text}</Text> 零加工——
+  // 行数即剥码后行数，不得再走 markdownRowCount（ANSI 被当源 markdown 解析计宽）
+  if ((item as { ansi?: true }).ansi) return ansiLineCount(item.text);
   const wrap1 = (s: string): number => Math.max(1, wrapByWidth(s, columns).length);
   switch (item.role) {
     case 'user':
