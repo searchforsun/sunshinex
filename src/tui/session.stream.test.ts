@@ -173,6 +173,25 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
   }
 });
 
+test('会话归约：列表 run 整块入档（行距收敛）——9 项问题清单单条 ansi、无项间空行', async () => {
+  const tmp = tmpdir('sunshinex-stream-listrun-');
+  try {
+    const body = ['1. 线程池泄漏：描述甲', '2. 质检失败：描述乙', '3. 输出护栏：描述丙', '', '四、后续章节'].join('\n');
+    const ctrl = new SessionController({ root: tmp, model: new HookAdapter(body) });
+    await ctrl.submit('任务');
+    await ctrl.waitIdle();
+    const items = ctrl.getState().messages.filter((m) => m.role === 'assistant' && m.ansi);
+    const listItem = items.find((m) => m.text.includes('线程池泄漏'));
+    assert.ok(listItem, '列表块入档');
+    assert.ok(listItem!.text.includes('输出护栏'), '三项同块（run 整块发射，非逐行三块）');
+    const para = items.find((m) => m.text.includes('后续章节'));
+    assert.ok(para && para !== listItem, '空行后的章节独立成块');
+    assert.ok(items.every((m) => !m.text.includes('\n\n\n')), '无 3+ 连续换行（间距收敛）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('会话归约：逐行入档打字机（markdansi）——行级块为 ansi 条目、源内容经 stripAnsi 可寻、无丢无重', async () => {
   const tmp = tmpdir('sunshinex-stream-cont-');
   try {

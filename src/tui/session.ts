@@ -283,6 +283,9 @@ export class SessionController {
   private mdSource = '';
   /** 未消费结构起点（源内偏移，mdTailStart 水位）：表格 hold/围栏开栏期指向结构首行，闭后 undefined——LiveBlock.tailStart 镜像 */
   private mdTailStart: number | undefined;
+  /** 列表/引用 run 缓冲（行距收敛）：run 内行缓冲不喂 streamer，边界整体放行为单一片段 */
+  private mdHoldBuf = "";
+  private mdHolding = false;
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
   private planReplyNoArchive = false;
   /** usage 整场基线：每个模型轮开始前同步为当前累计，事件按「基线 + 本轮 per-run 值」聚合（/plan 步骤间不重置窗口） */
@@ -2007,17 +2010,33 @@ export class SessionController {
       this.mdLineBuf = this.mdLineBuf.slice(nl + 1);
       const fence = isFenceLine(line);
       const wasInFence = this.mdInFence;
-      this.mdPushFragment(this.mdStream.push(normalizeCjkLine(line, this.mdInFence)));
-      if (fence) this.mdInFence = !this.mdInFence;
-      // 结构水位推进（Mirrors streamer 缓冲）：开栏行=结构起点；闭栏行/空行/非管道非空行=结构闭合；
-      // 围栏内容行与管道行保持水位。散文行（管道外逐行即发）本就不入水位
+      const normalized = normalizeCjkLine(line, this.mdInFence);
+      // 列表/引用 run 判定（围栏外）：连续同构行保持缓冲，空行/异类行/围栏行整体放行——
+      // 逐行发射即逐条目 margin，列表项间被叠出空行（真机「行距太大」病根；markdansi 整块列表渲染紧排）
+      const runLine = !wasInFence && !fence && /^ {0,3}(?:\d{1,9}[.)]\s|[-*+]\s|>\s)/.test(normalized);
+      if (!runLine) this.mdFlushHold();
       if (fence) {
+        this.mdPushFragment(this.mdStream.push(normalized));
+        this.mdInFence = !this.mdInFence;
+        // 结构水位推进（Mirrors streamer 缓冲）：开栏行=结构起点；闭栏行/空行/非管道非空行=结构闭合；
+        // 围栏内容行与管道行保持水位。散文行（管道外逐行即发）本就不入水位
         this.mdTailStart = this.mdInFence ? lineStart : undefined;
+      } else if (wasInFence) {
+        this.mdPushFragment(this.mdStream.push(normalized));
+        this.mdTailStart = undefined;
       } else if (this.mdInFence) {
-        // 围栏内容：保持
-      } else if (/^\s*[｜|]/.test(line)) {
+        this.mdPushFragment(this.mdStream.push(normalized)); // 围栏内容：水位保持
+      } else if (runLine) {
+        // 列表/引用 run 保持（行距收敛）：run 内缓冲不喂 streamer，水位指向 run 首行
+        // （预览实时渲染 renderMd 消费水位切片，run 成型过程可见）；run 终止时空行/异类行放行
         if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
+        this.mdHoldBuf += normalized;
+        this.mdHolding = true;
+      } else if (/^\s*[｜|]/.test(normalized)) {
+        if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
+        this.mdPushFragment(this.mdStream.push(normalized));
       } else {
+        this.mdPushFragment(this.mdStream.push(normalized));
         this.mdTailStart = undefined;
       }
       nl = this.mdLineBuf.indexOf('\n');
@@ -2025,6 +2044,16 @@ export class SessionController {
     if (this.state.live?.kind === 'reply') {
       this.state = { ...this.state, live: { ...this.state.live, tailStart: this.mdTailStart } };
     }
+  }
+
+  /** 列表/引用 run 冲刷：整块喂 streamer（markdansi 整块列表渲染紧排、无项间空行），水位闭合 */
+  private mdFlushHold(): void {
+    if (!this.mdHolding) return;
+    this.mdHolding = false;
+    const buf = this.mdHoldBuf;
+    this.mdHoldBuf = '';
+    this.mdTailStart = undefined;
+    this.mdPushFragment(this.mdStream!.push(buf));
   }
 
   /** 片段入档单点：末尾多换行规范为单 \n；剥 ANSI 后纯空白则跳过（视觉间隔由条目 margin 承载）；
@@ -2041,6 +2070,7 @@ export class SessionController {
    *  finish() 把未闭合表格/围栏冲刷为完整框线块，尾段同样入档，随后通道整体置空 */
   private mdSeal(): void {
     this.mdTailStart = undefined;
+    if (this.mdHolding) this.mdFlushHold();
     if (this.mdStream === undefined) {
       this.mdLineBuf = '';
       this.mdInFence = false;
@@ -2061,6 +2091,8 @@ export class SessionController {
   private mdClear(): void {
     this.mdStream = undefined;
     this.mdTailStart = undefined;
+    this.mdHoldBuf = '';
+    this.mdHolding = false;
     this.mdLineBuf = '';
     this.mdInFence = false;
     this.mdSource = '';
