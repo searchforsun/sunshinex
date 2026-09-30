@@ -34,6 +34,7 @@
   - `wrapAnsiLines(fragment: string, width: number): string` — ANSI 安全按显示宽折行
   - `ansiLineCount(fragment: string): number` — 剥 ANSI 后行数（tail 账本消费）
   - `tailPartial(src: string): string` — 尾部未完结构（已开表格/未闭合围栏/未换行行）原文；无未完结构返回 `''`
+  - `createMdRender(width: number): (md: string) => string` — 闭包绑定 width/highlighter 的 render 工厂（streamer 构造消费）
   - `normalizeCjkLine(line: string, inFence: boolean): string` — 行级全角归一（围栏内原样返回）
   - `isFenceLine(line: string): boolean` — ```/~~~ 开栏行判定（session 行喂入围栏状态跟踪用）
 
@@ -87,9 +88,18 @@ test('normalizeCjkLine：全角管道/破折号/冒号归一；围栏内原样',
   assert.equal(normalizeCjkLine('｜ 不动 ｜', true), '｜ 不动 ｜');
 });
 
-test('isFenceLine', () => {
+test('isFenceLine：以 ```/~~~ 开头即围栏行（开/闭奇偶由调用侧跟踪）', () => {
   assert.ok(isFenceLine('```ts'));
-  assert.ok(!isFenceLine('``` 后内容')); // 以实测定形为准：若 markdansi 宽松则放宽断言
+  assert.ok(isFenceLine('``` 后内容'));
+  assert.ok(isFenceLine('~~~'));
+  assert.ok(!isFenceLine('普通行'));
+});
+
+test('createMdRender：闭包绑定 width/highlighter（streamer options 不透传，实测定形）', () => {
+  const render40 = createMdRender(40);
+  const out = render40('| aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | b |\n|---|---|\n| 1 | 2 |');
+  assert.ok(out.includes('│'), '表格渲染成功');
+  assert.ok(out.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').split('\n').every((l) => l.length <= 40), 'width 绑定生效');
 });
 ```
 
@@ -162,6 +172,11 @@ export function isFenceLine(line: string): boolean {
 /** 源 markdown → ANSI 单点出口（归一 + render + 爆栈兜底）；高亮经闭包绑定（streamer options 不透传，实测定形） */
 export function renderMd(src: string, width: number): string {
   return wrapAnsiLines(mdRender(src, { width, highlighter: mdHighlighter }), width);
+}
+
+/** streamer 消费的 render 工厂：闭包绑定 width/highlighter（createMarkdownStreamer 的 options 不透传） */
+export function createMdRender(width: number): (md: string) => string {
+  return (md) => wrapAnsiLines(mdRender(md, { width, highlighter: mdHighlighter }), width);
 }
 
 /** 尾部未完结构原文（动态区预览）：自尾向前找「结构起点」——已开表格的表头行 / 未闭合围栏开栏行 / 最近换行后的未完行 */
@@ -261,7 +276,10 @@ test('会话归约：工具边界旁白封口走 finish 冲刷（未闭合围栏
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"tools":[{"tool":"read","input":{"path":"a.ts"}}],"done":false,"reply":"前言\n\n```ts\\ncode"}', '{"done":true,"reply":"ok"}']),
+      model: new ScriptedAdapter([
+        JSON.stringify({ tools: [{ tool: 'read', input: { path: 'a.ts' } }], done: false, reply: '前言\n\n```ts\ncode' }),
+        JSON.stringify({ done: true, reply: 'ok' }),
+      ]),
     });
     await ctrl.submit('任务');
     await ctrl.waitIdle();
