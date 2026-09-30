@@ -116,6 +116,13 @@ export function deriveFilterableView(
   return filterOptions(full, query);
 }
 
+/** 动态区预览行数上限（2026-09-30「贴地不再上提」）：总帧高 = chrome 实账 + 预览行数须 ≤ rows-1——
+ *  ink3 outputHeight >= rows 即 clearTerminal 整屏重放（历史短于视口时输入框被提离贴地位）；
+ *  4 行下限保底、28 行绝对上限（纯函数独立单测） */
+export function computePreviewCap(rows: number, chromeRows: number): number {
+  return Math.max(4, Math.min(28, rows - chromeRows - 1));
+}
+
 /** Home/End 终端转义序列体：ink3 不解析这些功能键，按 ESC 剥离前后的两种形态识别（xterm 与应用模式两族） */
 const HOME_SEQS = ['[H', 'OH', '[1~', '[7~'];
 const END_SEQS = ['[F', 'OF', '[4~', '[8~'];
@@ -209,9 +216,10 @@ export function App({
   const [buffer, setBuffer] = React.useState(store.buffer);
   const [cursor, setCursor] = React.useState(store.cursor);
   // 两层展开视图（Tab/Ctrl+O 正交，均经 tui-loop 卸载→清屏→重挂整屏重放，视口永远只有一份历史）：
-  // expandAll=第一层行折叠（历史阶段组只留「正文+首个工具对+首个思考行」↔ 全行）；
-  // latestFull=第二层内容深度（当前一个轮次的所有工具与思考行全文 ↔ 摘要）；无状态门槛，运行中随时可切
-  const [expandAll, setExpandAll] = React.useState(store.expandAll ?? false);
+  // expandAll=第一层行折叠开关，缺省 true=全行展开（2026-09-30 用户裁决：主链运行中不自动折叠工具行、
+  // 折叠重写即闪屏源，是否折叠由用户 Tab 决定——Tab 翻转进入折叠形态）；
+  // latestFull=第二层内容深度（当前一个轮次的所有工具与思考行全文 ↔ 摘要，详情缺省摘要）；无状态门槛，运行中随时可切
+  const [expandAll, setExpandAll] = React.useState(store.expandAll ?? true);
   const [latestFull, setLatestFull] = React.useState(store.latestFull ?? false);
   // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；
   // 两态经 retain 跨重挂保留——repaint effect 依赖含 browseMode（行高亮须 Static 整屏重放），不在 retain 则
@@ -350,13 +358,22 @@ export function App({
   // 动态区 chrome 行数实账：输入框（多行缓冲随行数涨）/待办（运行中折叠单行、其余态展开全量）——
   // 纵向命令面板窗口上限（menuMaxRows）随视口收缩的计行输入
   const inputRows = 2 + Math.max(1, buffer.split('\n').length);
-  const todoRows = state.todos.length > 0 ? (state.status === 'running' && !expandAll ? 1 : state.todos.length + 1) : 0;
+  // 待办行与 Tab 折叠解耦（2026-09-30）：运行中恒折叠单行（动态帧高度纪律，Tab 语义收敛为转录行折叠），其余态展开全量
+  const todoRows = state.todos.length > 0 ? (state.status === 'running' ? 1 : state.todos.length + 1) : 0;
   // 纵向命令面板条目（2026-09-30 对标 CC）：'/' 前缀动态过滤（含技能池，最近使用在前）；
   // 在场性=条目非空 + idle/error（与旧横向提示行同门槛）
   const menuEntries = React.useMemo(() => buildSlashMenu(buffer, skillMenu), [buffer, skillMenu]);
   const slashPool = React.useMemo(() => buildSlashMenu('/', skillMenu).map((e) => e.cmd), [skillMenu]);
   // 菜单可见行数：上限 20，随视口与 chrome（输入框/待办/状态栏）实账收缩，防动态帧触顶整屏重写
   const menuMaxRows = Math.max(3, Math.min(SLASH_MENU_MAX_ROWS, rows - inputRows - todoRows - 3));
+  // 动态帧总高实账（2026-09-30 用户裁决「贴地不再上提」）：ink3 在 outputHeight >= rows 时 clearTerminal
+  // 整屏重放（node_modules/ink/build/ink.js onRender），历史短于视口时输入框被「提」离贴地位、长历史则整屏闪烁——
+  // 预览行数上限按 chrome 实账收缩（活动行/输入框/待办/子代理面板/状态栏 + 预览 marginBottom 与 … 行预算），
+  // 帧高恒 ≤ rows-1，clearTerminal 路径结构性不可达
+  const spinnerRows = state.status === 'running' ? 1 : 0;
+  const runningChildren = state.children.filter((c) => !c.done).length;
+  const childPanelRows = runningChildren > 0 && !browseMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1
+  const previewCap = computePreviewCap(rows, spinnerRows + inputRows + todoRows + childPanelRows + 1 /* StatusBar */ + 2 /* 预览 marginBottom + … 行 */);
   // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
@@ -722,6 +739,7 @@ export function App({
         suppressHistory={!!inspect}
         ledger={tailLedgerRef.current}
         rewriteFrom={rewriteFrom}
+        previewCap={previewCap}
       />
       {inspect ? (
         <ChildInspector
@@ -833,7 +851,7 @@ export function App({
         placeholder={inputPlaceholder(state.status)}
         active={state.status === 'idle' || state.status === 'error'}
       />
-      <TodoList todos={state.todos} expanded={expandAll || state.status !== 'running'} columns={columns} />
+      <TodoList todos={state.todos} expanded={state.status !== 'running'} columns={columns} />
       <StatusBar
         metrics={state.metrics}
         status={state.status}

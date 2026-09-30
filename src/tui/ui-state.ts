@@ -4,7 +4,8 @@ import type { TailLedger } from './tail-rewrite';
 export interface RetainedUiState {
   buffer: string;
   cursor: number;
-  /** 第一层（Tab）行折叠开关：清屏重挂后保持同一视图模式，避免重放回落到折叠态 */
+  /** 第一层（Tab）行折叠开关：缺省 true=全行展开（2026-09-30 用户裁决：主链运行中不自动折叠工具行、折叠与否由用户 Tab 决定），
+   *  Tab 翻转进入折叠形态；清屏重挂后保持同一视图模式 */
   expandAll: boolean;
   /** 第二层（Ctrl+O）内容深度开关：当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行全文展开 */
   latestFull: boolean;
@@ -27,5 +28,5 @@ export interface RetainedUiState {
 }
 
 export function initialRetained(): RetainedUiState {
-  return { buffer: '', cursor: 0, expandAll: false, latestFull: false, browseMode: false, browseCursor: 0, inspect: undefined, inspectExpanded: false, history: [], histIdx: -1 };
+  return { buffer: '', cursor: 0, expandAll: true, latestFull: false, browseMode: false, browseCursor: 0, inspect: undefined, inspectExpanded: false, history: [], histIdx: -1 };
 }

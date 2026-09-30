@@ -154,10 +154,11 @@ test('MessageList 记账：打印形态入账；新锚点落定后 plan 指向�
 
 /* ---------- App 段锚点接线（方案 A 端到端：折叠翻转 → 'tail' 重绘请求） ---------- */
 
-test('App 段锚点 effect：新锚点落定折叠过程行 → 请求 tail 重绘；过程行追加本身零重绘', async () => {
+test('App 段锚点 effect：缺省不折叠零重绘（2026-09-30 用户裁决）；Tab 折叠态（expandAll=false）下新锚点落定折叠过程行 → 请求 tail 重绘', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tailapp-'));
   let term: ReturnType<typeof render> | undefined;
   try {
+    // 场景一：缺省视图（expandAll=true，运行中不自动折叠）——锚点落定无折叠翻转，全程零重绘请求
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"答一"}', '{"done":true,"reply":"答二"}']) });
     const repaints: Array<string | undefined> = [];
     term = render(
@@ -168,21 +169,42 @@ test('App 段锚点 effect：新锚点落定折叠过程行 → 请求 tail 重�
       />,
     );
     await sleep(250);
-    // 任务一：正文锚点（答一）落定
     await ctrl.submit('问一');
     await ctrl.waitIdle();
-    // 两对工具行入档（隶属答一锚点段，追加本身不开新段、无折叠翻转）
     for (const [cid, text] of [['k1', 'ok1'], ['k2', 'ok2']] as const) {
       ctrl.onEventForTest({ type: 'tool-call', text: 'READ', payload: { input: { path: 'a' }, callId: cid } } as never);
       ctrl.onEventForTest({ type: 'tool-result', text, payload: { callId: cid, ok: true } } as never);
     }
-    await sleep(550); // 超 400ms 防抖窗：确认零重绘（无新锚点、无翻转）
-    assert.ok(repaints.length === 0, `过程行追加不应触发重绘（实际 ${JSON.stringify(repaints)}）`);
-    // 任务二：问二/答二双锚点落定 → 上一段第二组过程行折叠 → 账本失配 → tail 请求
     await ctrl.submit('问二');
     await ctrl.waitIdle();
     await sleep(650);
-    assert.ok(repaints.includes('tail'), `折叠翻转应请求 tail 重绘（实际 ${JSON.stringify(repaints)}）`);
+    assert.ok(repaints.length === 0, `缺省不折叠：锚点落定不应触发重绘（实际 ${JSON.stringify(repaints)}）`);
+    term.unmount();
+
+    // 场景二：折叠态（用户 Tab opt-in，retain 播种 expandAll=false）——新锚点落定 → 上一段过程行折叠翻转 → tail 请求
+    const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"答一"}', '{"done":true,"reply":"答二"}']) });
+    const repaints2: Array<string | undefined> = [];
+    term = render(
+      <App
+        controller={ctrl2}
+        banner={{ version: '1.0.0', model: 'm', root: tmp }}
+        onRequestRepaint={(m) => { repaints2.push(m); }}
+        retain={{ buffer: '', cursor: 0, expandAll: false, latestFull: false, browseMode: false, browseCursor: 0, inspectExpanded: false, history: [], histIdx: -1 }}
+      />,
+    );
+    await sleep(250);
+    await ctrl2.submit('问一');
+    await ctrl2.waitIdle();
+    for (const [cid, text] of [['k1', 'ok1'], ['k2', 'ok2']] as const) {
+      ctrl2.onEventForTest({ type: 'tool-call', text: 'READ', payload: { input: { path: 'a' }, callId: cid } } as never);
+      ctrl2.onEventForTest({ type: 'tool-result', text, payload: { callId: cid, ok: true } } as never);
+    }
+    await sleep(550); // 超 400ms 防抖窗：确认零重绘（无新锚点、无翻转）
+    assert.ok(repaints2.length === 0, `过程行追加不应触发重绘（实际 ${JSON.stringify(repaints2)}）`);
+    await ctrl2.submit('问二');
+    await ctrl2.waitIdle();
+    await sleep(650);
+    assert.ok(repaints2.includes('tail'), `折叠翻转应请求 tail 重绘（实际 ${JSON.stringify(repaints2)}）`);
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });

@@ -25,10 +25,10 @@ export type TranscriptEntry =
  * 动态帧只剩实时流预览（正文未完结构尾段原文预览/思考 6 行滚动窗）+ 输入框 + 状态栏，帧高有界且恒定——
  * ink3 在 outputHeight >= stdout.rows 时会 clearTerminal 整屏重写（超视口闪动/抖动/滚动位置丢失的根因），
  * 逐消息 Static 化让该路径实际不可达：流式中间态也以终稿形态滚入滚动缓冲，跟随滚动即可回看全部。
- * 过程行（思考/工具）按「▶ 阶段锚点」两层折叠：默认最近正文锚点所在阶段全行可见、历史阶段折叠为
- * 「正文 + 首个工具调用对 + 首个思考行」；Tab 解除行折叠（全部过程行可见），Ctrl+O 展开**当前一个轮次**
- * （自最后一条 user 指令行起，2026-09-30 用户裁决）的所有工具与思考行全文——均经 tui-loop
- * 清屏重挂整屏重放，视口永远只有一份历史。
+ * 过程行（思考/工具）行折叠为 Tab opt-in（2026-09-30 用户裁决：缺省 expandAll=true 全行展开、运行中不自动折叠——
+ * 折叠重写即闪屏源；Tab 进入折叠形态后历史阶段组折叠为「正文 + 首个工具调用对 + 首个思考行」），
+ * Ctrl+O 展开**当前一个轮次**（自最后一条 user 指令行起，2026-09-30 用户裁决）
+ * 的所有工具与思考行全文——均经 tui-loop 清屏重挂整屏重放，视口永远只有一份历史。
  */
 export function MessageList({
   messages,
@@ -41,11 +41,12 @@ export function MessageList({
   suppressHistory = false,
   ledger,
   rewriteFrom,
+  previewCap,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
   columns: number;
-  /** 视口行数（MdBufferPreview 尾窗限界用；缺省 24 与 App 的 useStdout 兜底同口径） */
+  /** 视口行数（MdBufferPreview 尾窗限界的回落数；缺省 24 与 App 的 useStdout 兜底同口径） */
   rows?: number;
   banner: BannerInfo;
   /** 第一层（Tab）行折叠开关：false 时历史阶段组折叠为「正文+首个工具对+首个思考行」，true 全行 */
@@ -61,6 +62,9 @@ export function MessageList({
   /** 尾部重写起点（tui-loop 经 retain 预置、App 挂载一次性消费透传）：本挂载中该下标以前的
    *  条目渲染 null 不重放（屏上原样保留）；undefined=整屏重放 */
   rewriteFrom?: number;
+  /** 预览尾窗行数上限（App 按 chrome 实账收缩后传入，2026-09-30「贴地不再上提」：总帧高 ≤ rows-1 使
+   *  ink3 clearTerminal 路径不可达）；缺省回落旧 F1 公式 min(28, max(8, rows-6))（测试兼容） */
+  previewCap?: number;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -153,7 +157,7 @@ export function MessageList({
       </Static>
       {live ? (
         live.kind === 'reply' ? (
-          <MdBufferPreview live={live} columns={columns} rows={rows} />
+          <MdBufferPreview live={live} columns={columns} rows={rows} previewCap={previewCap} />
         ) : (
           <LiveArea live={live} columns={columns} />
         )
@@ -168,10 +172,11 @@ export function MessageList({
  *  收口后经历史区 ansi 条目（框线成形）承接；thinking 流照旧走 LiveArea 6 行滚动窗。
  *  帧高限界（终审 F1）：未闭合围栏/表格 hold 期 markdansi 零 ansi 入档、水位切片自结构起点整段返回，
  *  无上限即帧高随内容无界增长 → outputHeight >= stdout.rows 触发 ink3 clearTerminal 整屏重写（闪屏病根）。
- *  等价旧链 previewCap 限界：cap = min(28, max(8, rows-6))（28 绝对上限 + 随视口收缩的 chrome 让位），
+ *  cap 由 App 按 chrome 实账收缩后传入（2026-09-30「贴地不再上提」，总帧高 ≤ rows-1 使 clearTerminal 不可达）；
+ *  缺省回落旧公式 cap = min(28, max(8, rows-6))（28 绝对上限 + 随视口收缩的 chrome 让位），
  *  行按 slice(-cap) 自尾保留（最新行可见），截断时首行前加「…」省略提示。columns 预留（后续折行收敛接线）。
  *  空尾段（无未完结构）渲染 null。 */
-function MdBufferPreview({ live, columns, rows }: { live: LiveBlock; columns: number; rows: number }): JSX.Element | null {
+function MdBufferPreview({ live, columns, rows, previewCap }: { live: LiveBlock; columns: number; rows: number; previewCap?: number }): JSX.Element | null {
   // 预览源 = mdTailStart 水位切片（streamer 缓冲期未消费结构；2026-09-30 真机「渲染+原文同屏」修复：
   // 旧 tailPartial 反向扫全量源，表格入档后撞「表头+分隔行」即把表头→源尾全当未完结构重演裸文本）
   const start = typeof live.tailStart === 'number' ? live.tailStart : live.text.lastIndexOf('\n') + 1;
@@ -183,7 +188,7 @@ function MdBufferPreview({ live, columns, rows }: { live: LiveBlock; columns: nu
   const rendered = renderMd(tail, columns);
   const all = rendered.replace(/\n+$/, '').split('\n');
   if (all.every((l) => l.trim().length === 0)) return null;
-  const cap = Math.min(28, Math.max(8, rows - 6));
+  const cap = previewCap ?? Math.min(28, Math.max(8, rows - 6));
   const lines = all.length > cap ? all.slice(-cap) : all;
   return (
     <Box flexDirection="column" marginBottom={1}>
