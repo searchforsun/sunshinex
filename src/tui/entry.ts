@@ -4,6 +4,7 @@ import * as path from 'path';
 import { render } from 'ink';
 import { App } from './components/App';
 import { runTuiLoop, installSyncUpdateWrap, RepaintMode } from './tui-loop';
+import { RenderBoundary } from './components/RenderBoundary';
 import { installFrameSniffer } from './frame-sniffer';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
@@ -63,6 +64,25 @@ export async function runTui(args: CliArgs): Promise<void> {
   // 判定（段折叠就地擦写，消清屏闪屏）；装在 2026 包裹外层、见包裹后的最终字节
   const sniffer = installFrameSniffer(process.stdout as unknown as Parameters<typeof installFrameSniffer>[0]);
   process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+  // 列宽护盾（2026-09-30 真机「点 Esc 即 RangeError: Invalid string length」根治）：ink 渲染画布宽取自
+  // yoga 根节点布局宽，源头是 stdout.columns——Windows 终端在重挂/清屏窗口期可瞬断为 undefined，
+  // undefined 进 yoga 即 NaN，ink Output 预填充 ' '.repeat(NaN) 直接抛错杀进程（重挂时刻恰在 Esc 退出
+  // 全屏路径上，与「点 Esc 就报错」严丝合缝）。护盾：columns 瞬断即回退最近已知值，resize 时刷新基线
+  const shieldStdout = process.stdout as unknown as { columns?: number; on?: (ev: string, cb: () => void) => void };
+  let lastKnownCols = typeof shieldStdout.columns === 'number' ? shieldStdout.columns : 120;
+  const refreshCols = (): void => {
+    const desc = Object.getOwnPropertyDescriptor(shieldStdout, 'columns');
+    if (desc && 'value' in desc) delete shieldStdout.columns; // 摘护盾读真实值
+    const real = shieldStdout.columns;
+    if (typeof real === 'number' && real > 0) lastKnownCols = real;
+    if (!desc || !('value' in desc)) return; // 原生 getter 在位（真实值已可读），无需护盾
+    Object.defineProperty(shieldStdout, 'columns', { value: lastKnownCols, configurable: true });
+  };
+  refreshCols();
+  if (typeof shieldStdout.columns !== 'number') {
+    Object.defineProperty(shieldStdout, 'columns', { value: lastKnownCols, configurable: true });
+  }
+  shieldStdout.on?.('resize', refreshCols);
   // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，
   // 终端缩放 reflow 后行数失配、旧帧擦不净即残影叠字）；输入与展开模式现场跨重挂保留
   let current: { unmount(): void } | undefined;
@@ -87,7 +107,8 @@ export async function runTui(args: CliArgs): Promise<void> {
       renderOnce: (retain) => {
         sniffer.reset(); // 新挂载帧高重新学习，防上一挂载串台（首帧不置信=tail 暂回落全量，安全）
         // exitOnCtrlC 关闭：Ctrl+C 不再被 ink 托管退出，改由 App 分流（运行中=中断任务，空闲=经 onExit 退出）
-        const inst = render(React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint, onExit: quit }), { exitOnCtrlC: false });
+                // RenderBoundary 兜底：渲染/提交期异常降级为错误行（崩溃诊断落 %TEMP%/sunshinex-render-crash.log），不再杀进程
+        const inst = render(React.createElement(RenderBoundary, null, React.createElement(App, { controller: ctrl, banner, retain, onRequestRepaint: requestRepaint, onExit: quit })), { exitOnCtrlC: false });
         current = inst;
         return inst;
       },
