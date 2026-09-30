@@ -460,7 +460,7 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
   }
 });
 
-test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9④）', () => {
+test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9④；归档锚定 done，result 后紧跟 done 同真实时序）', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child3-'));
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
@@ -469,8 +469,10 @@ test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9
     // 模拟 Task 1 消歧后的两条同名 spawn 结果流：先压调用（基名均为 w），逐条结果归档
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p1', label: 'w' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: '子完成', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'done', text: 'A 结论', payload: { subagent: 'w' } } as never);
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p2', label: 'w' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: '子完成', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'done', text: 'B 结论', payload: { subagent: 'w#2' } } as never);
     const s = ctrl.getState();
     assert.equal(s.children.length, 0, '两条同名子代理应恰好各归档一次');
     const details = s.messages.filter((m) => m.kind === 'call').map((m) => m.detail ?? '');

@@ -84,3 +84,60 @@ test('归档富化回写日志：resume 回放 SPAWN 行带 detail/subagentMeta�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('并行批 5 spawn 乱序完成：每行归自己的 meta/detail，不再 FIFO 错配丢行（真机「5 个只显示 1 个」病根）', () => {
+  const tmp = tmpdir('sunshinex-sess-par5-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const labels = ['b1', 'b2', 'b3', 'b4', 'b5'];
+    const prompts: Record<string, string> = { b1: '单体AI链路', b2: '工作流编排', b3: '微服务架构', b4: '前端', b5: '数据与运维' };
+    // 全部 spawn：tool-call（延迟入档挂起）→ tool-result（结果先行，child 未创建 → wait）
+    for (const l of labels) {
+      ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: prompts[l]!, label: l } } } as never);
+      ctrl.onEventForTest({ type: 'tool-result', text: `task ${l} started`, payload: { tool: 'spawn', ok: true } } as never);
+    }
+    // 全部 child 启动（结果已在栈里 wait）
+    for (const l of labels) ctrl.onEventForTest({ type: 'token', text: `${l} 工作中\n`, payload: { subagent: l } } as never);
+    assert.equal(ctrl.getState().children.length, 5, '前置：5 个 child 都在面板');
+    // 完成序全乱：b3, b1, b5, b2, b4
+    for (const l of ['b3', 'b1', 'b5', 'b2', 'b4']) {
+      ctrl.onEventForTest({ type: 'done', text: `${prompts[l]}结论`, payload: { subagent: l } } as never);
+      ctrl.onEventForTest({ type: 'tool-result', text: `${l} 完成`, payload: { tool: 'spawn', ok: true } } as never);
+    }
+    const st = ctrl.getState();
+    const spawns = st.messages.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN '));
+    assert.equal(spawns.length, 5, '5 条 SPAWN 行都在');
+    assert.equal(spawns.filter((m) => m.subagentMeta).length, 5, '5 行全部带 meta（不再 4 行裸奔消失）');
+    // 每行归自己的委派词：b1 行含「单体AI链路」而非别人的
+    for (const l of labels) {
+      const row = spawns.find((m) => m.subagentMeta?.prompt === prompts[l]);
+      assert.ok(row, `${l} 行归自己的委派词（${prompts[l]}）`);
+      assert.ok(row!.detail?.includes(`${prompts[l]}结论`), `${l} 行 detail 含自己的结论`);
+    }
+    assert.equal(st.children.length, 0, '全部完成后面板清空（而非 4 个蒸发）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('child 在跑时 spawn result 到达：不中途归档（半份转录不冻结），done 后整段归档（后台两段式语义）', () => {
+  const tmp = tmpdir('sunshinex-sess-midrun-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: '调研', label: 'w' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'task w started', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'token', text: '调研进行中\n', payload: { subagent: 'w' } } as never);
+    // child 在跑、result 已到：不归档（面板保留、SPAWN 行无 meta）
+    assert.equal(ctrl.getState().children.length, 1, 'child 在跑时留在面板');
+    assert.equal(ctrl.getState().messages.filter((m) => m.kind === 'call' && m.subagentMeta).length, 0, '未完成不中途归档');
+    // 后续事件继续累积、done 后整段归档
+    ctrl.onEventForTest({ type: 'token', text: '更多调研内容\n', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'done', text: '调研结论', payload: { subagent: 'w' } } as never);
+    const row = ctrl.getState().messages.find((m) => m.kind === 'call' && m.text.startsWith('SPAWN '));
+    assert.ok(row!.subagentMeta, 'done 后归档带 meta');
+    assert.ok(row!.detail?.includes('更多调研内容'), '终态完整转录入 detail（非半份冻结）');
+    assert.equal(ctrl.getState().children.length, 0, '面板离场');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

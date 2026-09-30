@@ -46,25 +46,29 @@ test('ChildPanel：完成行不进动态区（2026-09-28 用户裁决——只�
   finished.unmount();
 });
 
-test('并行 spawn 归档精准配对：先完成者的转录归先 spawn 调用行，不 FIFO 误摘', () => {
+test('并行 spawn 归档精准配对：完成序 b 先于 a，各归各行（基名驱动，2026-09-30 FIFO 兜底退役后按真实时序补 done）', () => {
   const tmp = tmpdir('sunshinex-sess-child-done2-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     // 两条异名并行子代理（同批并发：完成序 = 结果到达序，与调用序无关）
     ctrl.onEventForTest({ type: 'token', text: 'A 线\n', payload: { subagent: 'a' } } as never);
     ctrl.onEventForTest({ type: 'token', text: 'B 线\n', payload: { subagent: 'b' } } as never);
-    // 完成序 b 先于 a（并行批真实时序），各自 tool-call/result 成对按序发射
+    // 完成序 b 先于 a（并行批真实时序）：结果先行转 wait，done 收口归档（真实运行时 result 后紧跟 done）
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p2', label: 'b' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'b 完成', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'done', text: 'b 结论', payload: { subagent: 'b' } } as never);
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'p1', label: 'a' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'a 完成', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'done', text: 'a 结论', payload: { subagent: 'a' } } as never);
     const s = ctrl.getState();
     assert.equal(s.children.length, 0, '全部归档（归档即离场）');
-    const calls = s.messages.filter((m) => m.kind === 'call');
-    const callB = calls[0];
-    const callA = calls[1];
-    assert.ok(callB!.detail?.includes('p2'), 'b 调用行归 b（detail 含 b 的委派提示词；精简 detail 后配对经 prompt 锚定）');
-    assert.ok(callA!.detail?.includes('p1'), 'a 调用行归 a');
+    const calls = s.messages.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN '));
+    const callB = calls.find((m) => m.subagentMeta?.prompt === 'p2');
+    const callA = calls.find((m) => m.subagentMeta?.prompt === 'p1');
+    assert.ok(callB, 'b 调用行归 b（meta.prompt 锚定）');
+    assert.ok(callA, 'a 调用行归 a');
+    assert.ok(callB!.detail?.includes('p2'), 'b 行 detail 含 b 的委派提示词');
+    assert.ok(callA!.detail?.includes('p1'), 'a 行 detail 含 a 的委派提示词');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

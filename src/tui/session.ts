@@ -930,7 +930,7 @@ export class SessionController {
       children: this.state.children.filter((c) => !c.done),
     };
     this.childBufs.clear();
-    this.spawnCalls = this.spawnCalls.filter((p) => p.wait); // 待归档锚点（结果先行）保留，已配对前台条目清空
+    // 待归档锚点全保留（archiveChild 统一回队：栈中条目要么已配对消费、要么等 done 收口，无第三态）
     this.sealJournal(); // 快照清单补拍（事件级：其余事件已随产生落盘，规格 2026-09-22 D2/D8）
     this.runtime.harness.pipeline.kick(); // 回 idle 即踢一次后台消化（规格 §3.5）：队列非空才消费、无待办零调用
     this.notify();
@@ -1660,7 +1660,7 @@ export class SessionController {
           detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
         };
         this.appendMessages([callItem, item]);
-        if (e.payload?.tool === 'spawn') {
+        if (e.payload?.tool === 'spawn' && pending !== undefined) {
           // spawn 调用关联栈：调用行此刻才入档，压栈其真实 seq 与委派时刻（浏览列表委派时间序数据源），成对语义下紧随其后弹出归档
           this.spawnCalls.push({ seq: callItem.seq, base: spawnBaseLabel(pending?.input), delegatedAt: callItem.ts });
           this.archiveChild();
@@ -1899,28 +1899,28 @@ export class SessionController {
     this.notifyThrottled();
   }
 
-  /** spawn 结果归档（规格 §4.4）：弹出关联栈（行 seq + 基名）→ 精确/# 前缀/FIFO 匹配未归档子代理 → 半行冲刷 → 转录折入该调用行 detail；
-   *  结果先行（后台两段式）时栈顶条目转 wait 延迟归档，由子代理 done 的 archiveDeferred 收口 */
+  /** spawn 结果归档（规格 §4.4）：每条 spawn 结果经 pending.input 拿到**自己的**基名（权威关联——结果序≠
+   *  完成序的并行批下栈序≠基名序），child 已完成即归档，未完成/未创建一律转 wait 延迟归档（done 的
+   *  archiveDeferred 按基名收口）。旧形态两处病根（真机「5 个只显示 1 个」）：① FIFO 兜底 idx=0 把
+   *  面板里**别人的**子代理归进本行——链条一错全错，错配行永远等不到自己的 meta（Ctrl+B 只剩 1）；
+   *  ② child 在跑即中途归档——面板条目被抽走、半份转录冻结进 detail，终态永不回填 */
   private archiveChild(): void {
     const pending = this.spawnCalls.shift();
     if (pending === undefined) return;
     const list = this.state.children;
     let idx = list.findIndex((c) => c.label === pending.base);
     if (idx < 0) idx = list.findIndex((c) => c.label.startsWith(`${pending.base}#`));
-    if (idx < 0 && list.length > 0) idx = 0;
-    if (idx < 0 || list[idx]!.done) {
-      // 命中已完成子代理 → 立即归档；未命中（INVALID_ARG 即败）静默跳过（规格 §8 孤儿容忍）；
-      // 结果先行（子事件未到/未完成）→ 转 wait 延迟归档
-      if (idx >= 0) this.archiveInto(pending, list[idx]!);
-      else this.spawnCalls.unshift({ ...pending, wait: true });
+    if (idx >= 0 && list[idx]!.done) {
+      this.archiveInto(pending, list[idx]!);
       return;
     }
-    this.archiveInto(pending, list[idx]!);
+    this.spawnCalls.unshift({ ...pending, wait: true });
   }
 
-  /** 延迟归档收口（后台两段式）：按基名在面板中找已完成子代理，折回其 wait 条目对应的调用行 */
+  /** 延迟归档收口（后台两段式）：按基名在栈中找本基名条目（不看 wait 标记——并行批下栈中靠后条目
+   *  未及经 archiveChild 转位即带不上标记，按标记过滤就是真机「5 个只显示 1 个」的第二病根），折回其调用行 */
   private archiveDeferred(label: string): void {
-    const idx = this.spawnCalls.findIndex((p) => p.wait && (p.base === label || label.startsWith(`${p.base}#`)));
+    const idx = this.spawnCalls.findIndex((p) => p.base === label || label.startsWith(`${p.base}#`));
     if (idx < 0) return;
     const [pending] = this.spawnCalls.splice(idx, 1);
     const child = this.state.children.find((c) => c.label === label);
