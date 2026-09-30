@@ -28,9 +28,8 @@ test('Inspector 运行中：无外框整页平铺，状态行（label/step/token
   one.unmount();
 });
 
-test('Inspector：text 段 markdansi 渲染——表格框线、与主链同出口（renderMd）', () => {
-  // 运行中未闭合尾段走动态预览：markdansi 框线（┌/│ 方角形态）——旧 MarkdownText 自研 alignTable 为 ╭ 圆角形态，
-  // 两者都有 │ 竖线，以 ┌ 方角钉死「markdansi 出口」判据（│ 单独不断新旧）
+test('Inspector：text 段 markdansi 渲染——表格全网格（alignTable 圆角 + 行分隔线，与主链同出口 renderMd）', () => {
+  // 表格走 renderMd 网格路径（alignTable：╭ 圆角 + 每行 ├┼┤ 分隔）；2026-09-30 用户裁决「不只是表头有横线」
   const one = render(
     <ChildInspector
       child={{
@@ -41,8 +40,10 @@ test('Inspector：text 段 markdansi 渲染——表格框线、与主链同出�
       rows={20}
     />,
   );
-  assert.ok(one.allOutput().includes('│'), '表格框线（markdansi 出口）');
-  assert.ok(one.allOutput().includes('┌'), 'markdansi 方角框线（旧 alignTable 圆角 ╭ 形态退役判据）');
+  const all = one.allOutput();
+  assert.ok(all.includes('│'), '表格框线');
+  assert.ok(all.includes('╭'), 'alignTable 圆角顶边');
+  assert.ok(all.includes('├'), '数据行分隔线（全网格，非仅表头）');
   one.unmount();
 });
 

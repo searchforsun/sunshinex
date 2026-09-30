@@ -2,6 +2,7 @@
 import { render as mdRender } from 'markdansi';
 import stringWidth from 'string-width';
 import { highlightLine, HiKind } from './highlight';
+import { alignTable, inlineText, parseMarkdown } from './markdown';
 
 /** HiKind → SGR 前景码（与 MarkdownText HI_COLOR 同色系：magenta/green/gray/yellow） */
 const HI_SGR: Record<HiKind, string> = {
@@ -101,19 +102,64 @@ function normalizeMd(src: string): string {
     .join('\n');
 }
 
-/** 源 markdown → ANSI 单点出口（归一 + render + 爆栈兜底）；高亮经闭包绑定（streamer options 不透传，实测定形） */
+/** 主题覆盖（2026-09-30 用户裁决）：标题/表头不再用黄色（与系统警告 warn 撞色），与加粗正文同色系 */
+const RENDER_THEME = { heading: { bold: true }, tableHeader: { bold: true } };
+
+/** markdansi 段渲染（非表格区）：归一 + 主题覆盖 + 高亮 + 爆栈兜底 */
+function renderMdRun(src: string, width: number): string {
+  return wrapAnsiLines(mdRender(normalizeMd(src), { width, highlighter: mdHighlighter, theme: RENDER_THEME }), width);
+}
+
+/** 表格区网格渲染（2026-09-30 用户裁决「不只是表头有横线」）：markdansi 表格只有表头分隔线，
+ *  且截断/换行二选一——表格区回路由旧 alignTable（全网格 + 单元格换行，子代理视图验证过的形态） */
+function renderGridTable(src: string, width: number): string {
+  const blocks = parseMarkdown(normalizeMd(src));
+  const t = blocks.find((b) => b.type === 'table');
+  if (!t) return renderMdRun(src, width);
+  const headers = t.headers.map(inlineText);
+  const rows = t.rows.map((r) => r.map(inlineText));
+  const aligned = alignTable(headers, rows, Math.max(20, width));
+  if (aligned.length === 0) return renderMdRun(src, width);
+  return aligned.join('\n') + '\n';
+}
+
+function isDividerLine(line: string): boolean {
+  return /^\s*\|[\s:\-|]*\|\s*$/.test(line);
+}
+
+/** 源 markdown → ANSI 单点出口（区域路由：表格区网格渲染、其余 markdansi；围栏内不参与路由）。
+ *  标题/表头主题覆盖见 RENDER_THEME；爆栈兜底 wrapAnsiLines */
 export function renderMd(src: string, width: number): string {
-  return wrapAnsiLines(mdRender(normalizeMd(src), { width, highlighter: mdHighlighter, tableTruncate: false }), width);
+  return renderSource(src, width);
 }
 
 /** streamer 消费的 render 工厂：width 支持函数动态求值（streamer 只在首个 reply 块创建一次，
- *  静态捕获会冻结创建时宽度——真机「表格被截断且只占半屏」实锤：宽终端下表格按冻结的窄宽截断）；
- *  tableTruncate:false = 单元格换行不截断（长路径省略号丢信息，与旧 alignTable 换行口径一致） */
+ *  静态捕获会冻结创建时宽度——真机「表格被截断且只占半屏」实锤：宽终端下表格按冻结的窄宽截断） */
 export function createMdRender(width: number | (() => number)): (md: string) => string {
-  return (md) => {
-    const w = typeof width === 'function' ? width() : width;
-    return wrapAnsiLines(mdRender(normalizeMd(md), { width: w, highlighter: mdHighlighter, tableTruncate: false }), w);
-  };
+  return (md) => renderSource(md, typeof width === 'function' ? width() : width);
+}
+
+function renderSource(src: string, width: number): string {
+  const lines = src.split('\n');
+  type Seg = { kind: 'table'; lines: string[] } | { kind: 'md'; lines: string[] };
+  const segs: Seg[] = [];
+  let inFence = false;
+  for (const line of lines) {
+    if (isFenceLine(line)) inFence = !inFence;
+    const cls = inFence ? 'md' : /^\s*[|｜]/.test(line) ? 'table' : 'md';
+    const last = segs[segs.length - 1];
+    if (last && last.kind === cls) last.lines.push(line);
+    else segs.push({ kind: cls, lines: [line] } as Seg);
+  }
+  const parts = segs.map((seg) => {
+    const text = seg.lines.join('\n');
+    if (seg.kind !== 'table') return renderMdRun(text, width);
+    // 纯管道行 ≥2 且第二行为分隔行才是 GFM 表格；否则（孤行/畸形）按 prose 交 markdansi 原样呈现
+    const normalized = seg.lines.map((l) => normalizeCjkLine(l, false));
+    if (normalized.length >= 2 && isDividerLine(normalized[1] ?? '')) return renderGridTable(normalized.join('\n'), width);
+    return renderMdRun(normalized.join('\n'), width);
+  });
+  return parts.join('').replace(/\n{3,}/g, '\n\n');
 }
 
 /** 尾部未完结构原文（动态区预览）：自尾向前找「结构起点」——已开表格的表头行 / 未闭合围栏开栏行 / 最近换行后的未完行 */
