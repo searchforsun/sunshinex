@@ -61,7 +61,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         required: ['command', 'background'],
         properties: {
           command: { type: 'string', description: 'Shell command to run (POSIX sh; runs from the project root)' },
-          background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path; poll by reading that file — the file ends with an [exit N] line once the command finishes' },
+          background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path' },
         },
       },
       name: 'exec',
@@ -86,7 +86,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
             onExit: (code) => tasks.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code }),
           });
           if (started.ok) task.stop = () => backend.killBackground?.(started.value.pid);
-          return execOut(`task ${task.id} started (output: ${task.outputFilePath})`);
+          // 轮询法在回执点下发（触发才付费）：参数描述只留输入输出契约，后台工作法随两张启动回执走（本行与下方超时转后台行）
+          return execOut(`task ${task.id} started (output: ${task.outputFilePath}); poll that file (it ends with [exit N] when the command finishes) or block with task_wait`);
         }
         // exec cwd 判定单点（规格 §11）：执行期安全缝锚 cwd——fork 子链换根克隆即锚专属树，缺省装配根
         // 前台超时转后台（规格 D5，对标 CC）：账本在场且非 sleep 开头时带 timeoutToBackground，到点不杀进程、登记转后台
@@ -104,7 +105,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           // 收割收敛 killBackground 单点（§14）：按进程树/进程组同步收割（win32 taskkill /T /F，POSIX kill(-pid)）
           task.stop = () => backend.killBackground?.(child.pid ?? 0);
           ledger.append(task.id, '[moved to background after timeout]\n');
-          return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath})`);
+          return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath}) — the command keeps running (not killed); poll that file (it ends with [exit N] when done) or block with task_wait`);
         }
         if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
         // CodedToolError 保码过界（§4 错误分域）：EXEC_TIMEOUT/EXEC_FAILED 以原码交 registry——
@@ -232,7 +233,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           const content = backend.readFile(target);
           const lines = content.split('\n').filter((l) => new RegExp(pattern).test(l));
           // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
-          if (lines.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}`);
+          if (lines.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}; try a shorter substring of the expected text`);
           return execOut(lines.join('\n'));
         }
         // 目录模式复用后端遍历：与 glob 工具同一跳过集（node_modules/.git/dist），glob 过滤与遍历匹配口径一致
@@ -254,7 +255,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           }
         }
         // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
-        if (out.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}`);
+        if (out.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}; try a shorter substring${globFilter ? ' or drop the glob filter' : ''}`);
         return execOut(out.join('\n'));
       },
     },
@@ -273,7 +274,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       executor: async (input: ToolInput) => {
         const files = backend.listFiles(root, String(input.pattern ?? '*'));
         // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
-        if (files.length === 0) return execOut(`no files match pattern "${String(input.pattern ?? '*')}" under project root`);
+        if (files.length === 0) return execOut(`no files match pattern "${String(input.pattern ?? '*')}" under project root; try a wildcard such as **/*fragment*`);
         return execOut(fitOut('glob', files.join('\n')));
       },
     },
