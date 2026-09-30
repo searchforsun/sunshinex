@@ -2042,11 +2042,13 @@ export class SessionController {
     this.mdPushFragment(this.mdStream!.push(buf));
   }
 
-  /** 片段入档单点：末尾多换行规范为单 \n；剥 ANSI 后纯空白则跳过（视觉间隔由条目 margin 承载）；
-   *  规划轮正文不入档（确认卡唯一上屏）；否则即时入档为 ansi 条目（滚动缓冲随生成滚入，对标 CC 打字机） */
+  /** 片段入档单点：末尾换行恒归一为单 \n（2026-10-01 行距裁决：无尾 \n 的 markdansi 块——heading——
+   *  也补齐，尾部空行成为每个 ansi 条目的自体 margin，MessageList 层块间 marginBottom 折 0 的前提）；
+   *  剥 ANSI 后纯空白则跳过（视觉间隔由条目 margin 承载）；规划轮正文不入档（确认卡唯一上屏）；
+   *  否则即时入档为 ansi 条目（滚动缓冲随生成滚入，对标 CC 打字机） */
   private mdPushFragment(frag: string): void {
     if (frag.length === 0) return;
-    const norm = frag.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '\n');
+    const norm = frag.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').replace(/\n*$/, '\n');
     if (stripAnsi(norm).trim().length === 0) return;
     if (this.planReplyNoArchive) return;
     this.pushMsg('assistant', norm, { ansi: true });

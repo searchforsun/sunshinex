@@ -36,6 +36,27 @@ test('MessageList：ansi 条目防双重渲染——星号字面原样直嵌（m
   one.unmount();
 });
 
+test('MessageList：ansi 条目间区域间距统一单空行——尾部 \\n 即块间 margin，marginBottom 折 0（不再双空行）', () => {
+  const one = render(
+    <MessageList
+      banner={banner}
+      messages={[
+        mk({ seq: 1, text: '片段甲首行\n片段甲次行\n', ansi: true }),
+        mk({ seq: 2, text: '片段乙首行\n', ansi: true }),
+      ]}
+      columns={80}
+      expandAll={false}
+      latestFull={false}
+    />,
+  );
+  const lines = one.allOutput().replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').replace(/\n+$/, '').split('\n');
+  const i = lines.findIndex((l) => l.includes('片段甲次行'));
+  let gap = 0;
+  for (let j = i + 1; j < lines.length && lines[j]!.trim() === ''; j++) gap++;
+  assert.equal(gap, 1, `ansi→ansi 边界空行数应恒 1（实际 ${gap}——margin 叠加时代为 2）`);
+  one.unmount();
+});
+
 test('MessageList：live reply 期间 MdBufferPreview 按水位切片显示未消费结构（表格已开表头可见，已入档内容不重演）', () => {
   // 源里表格已入档（渲染态在 Static），水位指向后续未消费结构起点——预览只显示水位之后的内容
   const text = '前言。\n\n| a | b |\n|---|\n| 1 |\n\n四、后续\n\n| x | y |\n|---|\n| 2';

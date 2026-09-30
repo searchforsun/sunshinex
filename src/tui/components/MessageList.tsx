@@ -104,11 +104,12 @@ export function MessageList({
         ledger.slots.push({ item, visible: true, full: d.full, lines: 0 });
         continue;
       }
-      // cont 段中续块：块间 marginBottom 折叠（逐行入档的同一 Markdown 段），账本行数同步实账。
-      // 折叠语义按「边界」算：当前块的下边距仅在下一块是续块（同段相邻）时折叠——末尾续块与
-      // 其后的统计行/工具行之间是不同内容，间隔保留（真机「正文与时间步骤没间隔」病根）
+      // ansi 条目：片段文本恒以单 \n 收尾（mdPushFragment 归一），尾部空行是条目自体（占 1 行）、
+      // 块间 margin 由它承载（渲染层 marginBottom 折 0）——账面 +1 即该尾部空行。
+      // 其余条目：块间 marginBottom 折叠语义按「边界」算：仅下一块是续块（同段相邻）时折叠——
+      // 末尾续块与其后的统计行/工具行之间是不同内容，间隔保留（真机「正文与时间步骤没间隔」病根）
       const next = visibleMessages[i + 1];
-      ledger.slots.push({ item, visible: true, full: d.full, lines: counted + (next?.cont ? 0 : 1) /* marginBottom */ });
+      ledger.slots.push({ item, visible: true, full: d.full, lines: counted + (item.ansi ? 1 : next?.cont ? 0 : 1) });
     }
     recomputeTailPlan(ledger, visibleMessages, decisions);
   }
@@ -145,7 +146,11 @@ export function MessageList({
               <Banner info={entry.info} columns={columns} />
             </Box>
           ) : entry.visible ? (
-            <Box key={`m-${entry.item.seq}`} marginBottom={gapFoldAfter.has(entry.item.seq) ? 0 : 1}>
+            // ansi 条目折叠 marginBottom（2026-10-01「区域间距忽大忽小」根治）：markdansi 流式片段恒以
+            // 单 \n 收尾（mdPushFragment 归一），ink 实测尾部换行落 1 空行——它本身就是块间 margin
+            // （5822529「块间单空行」的原生载体），再叠 marginBottom=1 即双空行（真机列表↔标题间
+            // 2 空行、与块内单空行档位不一致的病根）。折叠后所有区域边界统一单空行
+            <Box key={`m-${entry.item.seq}`} marginBottom={entry.item.ansi || gapFoldAfter.has(entry.item.seq) ? 0 : 1}>
               <MessageRow
                 item={entry.item}
                 columns={columns}

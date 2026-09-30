@@ -45,6 +45,9 @@ test('printedEntryLines 差分门禁：账本计数 === 真实渲染行数（折
   const rich: ChatItem[] = [
     item({ role: 'user', text: '请分析这个项目的结构与风险，并给出可执行的迁移建议；长文本触发按列宽折行，验证分带行数与计数器一致——'.repeat(2) }),
     item({ role: 'assistant', text: '先给结论：\n\n- 甲项要修\n- 乙项要观察\n\n| 模块 | 结论 |\n| --- | --- |\n| 渲染层 | 一致 |\n| 账本层 | 同源 |\n\n收尾段，验证块间空行计入。' }),
+    // ansi 条目（markdansi 流式片段口径）：文本恒以单 \n 收尾——内容 2 行 + 尾部空行 1 行，
+    // marginBottom 折 0（尾部空行即块间 margin）；旧渲染（margin 叠加）此条目 4 行即门禁失败
+    item({ role: 'assistant', text: '\x1b[36m▸ 流式片段甲\x1b[0m\n\x1b[36m▸ 流式片段乙\x1b[0m\n', ansi: true }),
     item({ role: 'thinking', text: 'Thought for 3s', detail: '先看目录结构\n再读配置与入口\n最后汇总风险清单与迁移步骤' }),
     item({ role: 'tool', kind: 'call', text: 'READ src/tui/session.ts', callId: 'c1' }),
     item({ role: 'tool', kind: 'result', text: '首行摘要\n第二行\n第三行', ok: true, callId: 'c1' }),
