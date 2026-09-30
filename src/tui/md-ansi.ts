@@ -105,9 +105,12 @@ function normalizeMd(src: string): string {
 /** 主题覆盖（2026-09-30 用户裁决）：标题/表头不再用黄色（与系统警告 warn 撞色），与加粗正文同色系 */
 const RENDER_THEME = { heading: { bold: true }, tableHeader: { bold: true } };
 
-/** markdansi 段渲染（非表格区）：归一 + 主题覆盖 + 高亮 + 爆栈兜底 */
+/** markdansi 段渲染（非表格区）：归一 + 主题覆盖 + 高亮 + 爆栈兜底。
+ *  无序列表标记 - → •（2026-09-30 用户裁决「通用点」）：markdansi 原样回显源标记（-、*、+ 三种标记全归一为 -），
+ *  渲染输出侧行首替换（ANSI 容忍——listMarker 可能着色码在前）；代码盒内容行有 │ 前缀不受影响 */
 function renderMdRun(src: string, width: number): string {
-  return wrapAnsiLines(mdRender(normalizeMd(src), { width, highlighter: mdHighlighter, theme: RENDER_THEME }), width);
+  const out = wrapAnsiLines(mdRender(normalizeMd(src), { width, highlighter: mdHighlighter, theme: RENDER_THEME }), width);
+  return out.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ');
 }
 
 /** 表格区网格渲染（2026-09-30 用户裁决「不只是表头有横线」）：markdansi 表格只有表头分隔线，

@@ -2032,9 +2032,11 @@ export class SessionController {
         this.mdPushFragment(this.mdStream.push(normalized)); // 围栏内容：水位保持
       } else if (runLine) {
         // 列表/引用 run 保持（行距收敛）：run 内缓冲不喂 streamer，水位指向 run 首行
-        // （预览实时渲染 renderMd 消费水位切片，run 成型过程可见）；run 终止时空行/异类行放行
+        // （预览实时渲染 renderMd 消费水位切片，run 成型过程可见）；run 终止时空行/异类行放行。
+        // 松散化（2026-09-30 用户裁决「同区加一点行距」）：项间插空行——markdansi 松散列表
+        // 项间带空行渲染（紧凑源实测无间隙），列表内部获得呼吸感
         if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
-        this.mdHoldBuf += normalized;
+        this.mdHoldBuf = this.mdHoldBuf.length > 0 ? this.mdHoldBuf + '\n' + normalized : normalized;
         this.mdHolding = true;
       } else if (/^\s*[｜|]/.test(normalized)) {
         if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
