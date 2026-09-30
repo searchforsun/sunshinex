@@ -9,6 +9,7 @@ import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
 import { TailLedger, printedEntryLines, recomputeTailPlan } from '../tail-rewrite';
+import { renderMd } from '../md-ansi';
 import { theme } from '../theme';
 
 /**
@@ -173,19 +174,24 @@ export function MessageList({
 function MdBufferPreview({ live, columns, rows }: { live: LiveBlock; columns: number; rows: number }): JSX.Element | null {
   // 预览源 = mdTailStart 水位切片（streamer 缓冲期未消费结构；2026-09-30 真机「渲染+原文同屏」修复：
   // 旧 tailPartial 反向扫全量源，表格入档后撞「表头+分隔行」即把表头→源尾全当未完结构重演裸文本）
-  const tail =
-    typeof live.tailStart === 'number' ? live.text.slice(live.tailStart) : live.text.slice(live.text.lastIndexOf('\n') + 1);
-  if (tail.length === 0) return null;
+  const start = typeof live.tailStart === 'number' ? live.tailStart : live.text.lastIndexOf('\n') + 1;
+  const tail = live.text.slice(start);
+  if (tail.trim().length === 0) return null;
+  // 实时渲染（2026-09-30 用户裁决「不能实时渲染表格、代码块吗」）：缓冲期每帧对未消费区做 markdansi
+  // 渲染——表格边框随行数长出、围栏带高亮长出；闭合瞬间 streamer 发射同渲染器的 Static 块，无缝衔接。
+  // 与 Static 同出口（renderMd：归一+主题+爆栈兜底），帧高限界沿用 F1（自尾保留 cap 行 + … 提示）
+  const rendered = renderMd(tail, columns);
+  const all = rendered.replace(/\n+$/, '').split('\n');
+  if (all.every((l) => l.trim().length === 0)) return null;
   const cap = Math.min(28, Math.max(8, rows - 6));
-  const all = tail.split('\n');
   const lines = all.length > cap ? all.slice(-cap) : all;
   return (
     <Box flexDirection="column" marginBottom={1}>
       {all.length > cap ? (
         <Text dimColor>…</Text>
       ) : null}
-      {lines.map((line, i) => (
-        <Text key={i} dimColor>
+      {lines.map((line: string, i: number) => (
+        <Text key={i}>
           {line || ' '}
         </Text>
       ))}

@@ -2031,7 +2031,7 @@ export class SessionController {
    *  规划轮正文不入档（确认卡唯一上屏）；否则即时入档为 ansi 条目（滚动缓冲随生成滚入，对标 CC 打字机） */
   private mdPushFragment(frag: string): void {
     if (frag.length === 0) return;
-    const norm = frag.replace(/\n+$/, '\n');
+    const norm = frag.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '\n');
     if (stripAnsi(norm).trim().length === 0) return;
     if (this.planReplyNoArchive) return;
     this.pushMsg('assistant', norm, { ansi: true });
