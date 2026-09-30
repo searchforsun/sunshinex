@@ -103,28 +103,17 @@ function normalizeMd(src: string): string {
 
 /** 源 markdown → ANSI 单点出口（归一 + render + 爆栈兜底）；高亮经闭包绑定（streamer options 不透传，实测定形） */
 export function renderMd(src: string, width: number): string {
-  return wrapAnsiLines(mdRender(normalizeMd(src), { width, highlighter: mdHighlighter }), width);
+  return wrapAnsiLines(mdRender(normalizeMd(src), { width, highlighter: mdHighlighter, tableTruncate: false }), width);
 }
 
-/** streamer 消费的 render 工厂：闭包绑定 width/highlighter（createMarkdownStreamer 的 options 不透传） */
-export function createMdRender(width: number): (md: string) => string {
-  return (md) => wrapAnsiLines(mdRender(normalizeMd(md), { width, highlighter: mdHighlighter }), width);
+/** streamer 消费的 render 工厂：width 支持函数动态求值（streamer 只在首个 reply 块创建一次，
+ *  静态捕获会冻结创建时宽度——真机「表格被截断且只占半屏」实锤：宽终端下表格按冻结的窄宽截断）；
+ *  tableTruncate:false = 单元格换行不截断（长路径省略号丢信息，与旧 alignTable 换行口径一致） */
+export function createMdRender(width: number | (() => number)): (md: string) => string {
+  return (md) => {
+    const w = typeof width === 'function' ? width() : width;
+    return wrapAnsiLines(mdRender(normalizeMd(md), { width: w, highlighter: mdHighlighter, tableTruncate: false }), w);
+  };
 }
 
 /** 尾部未完结构原文（动态区预览）：自尾向前找「结构起点」——已开表格的表头行 / 未闭合围栏开栏行 / 最近换行后的未完行 */
-export function tailPartial(src: string): string {
-  const lines = src.split('\n');
-  const last = lines[lines.length - 1] ?? '';
-  // 未闭合围栏：最后一个开栏行起
-  let fenceIdx = -1;
-  for (let i = 0; i < lines.length; i++) if (isFenceLine(lines[i]!)) fenceIdx = fenceIdx >= 0 ? -1 : i;
-  if (fenceIdx >= 0) return lines.slice(fenceIdx).join('\n');
-  // 已开表格（表头+分隔行成对后未闭合）：自表头行起
-  for (let i = lines.length - 2; i >= 0; i--) {
-    if (/^\s*[|｜]/.test(lines[i] ?? '') && /^\s*[|｜][-–—―─━－﹘＿\s:：|]+[|｜]\s*$/.test(lines[i + 1] ?? '')) {
-      return lines.slice(i).join('\n');
-    }
-  }
-  // 未完行（最后换行之后）
-  return last;
-}

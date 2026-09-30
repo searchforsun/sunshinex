@@ -91,6 +91,10 @@ export interface LiveBlock {
   kind: 'reply' | 'thinking';
   text: string;
   startedAt: number;
+  /** 未消费结构起点（markdansi 批次，2026-09-30 真机「渲染+原文同屏」回归修复）：mdTailStart 水位镜像——
+   *  streamer 缓冲期（表格 hold/围栏开栏/未完行）MdBufferPreview 由此切原文，已入档内容不再以裸文本重演；
+   *  undefined = 无未消费结构（预览只显示当前未完行） */
+  tailStart?: number;
 }
 
 /** 子代理转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源。
@@ -277,6 +281,8 @@ export class SessionController {
   /** 本轮流式已喂入通道的全量源（done 终稿前缀对齐基准）：跨 reply/thinking 交错块连续累积，
    *  closeLive 不清（通道生命周期独立于 live 块），mdSeal/mdClear 随通道一并归零 */
   private mdSource = '';
+  /** 未消费结构起点（源内偏移，mdTailStart 水位）：表格 hold/围栏开栏期指向结构首行，闭后 undefined——LiveBlock.tailStart 镜像 */
+  private mdTailStart: number | undefined;
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
   private planReplyNoArchive = false;
   /** usage 整场基线：每个模型轮开始前同步为当前累计，事件按「基线 + 本轮 per-run 值」聚合（/plan 步骤间不重置窗口） */
@@ -1985,21 +1991,39 @@ export class SessionController {
 
   /** 行级喂入 + 片段即时入档：遇 \n 成行→归一（围栏状态跟踪，判定先于归一）→streamer.push；
    *  返回片段经 mdPushFragment 规范后入档（ansi 条目）。streamer 惰性建立：首个 reply 增量即建，
-   *  render 闭包绑定 width/highlighter（markdansi options 不透传，实测定形） */
+   *  render 闭包绑定 width/highlighter（markdansi options 不透传，实测定形）。
+   *  mdTailStart 水位（预览去重，2026-09-30 真机「渲染+原文同屏」）：streamer 缓冲期（表格 hold/
+   *  围栏开栏）源里那段未消费文本经 tailStart 镜像给 MdBufferPreview，已入档内容不再以裸文本重演 */
   private mdConsume(delta: string): void {
     if (this.mdStream === undefined) {
-      this.mdStream = createMarkdownStreamer({ render: createMdRender(this.mdWidth()) });
+      this.mdStream = createMarkdownStreamer({ render: createMdRender(this.mdWidth) });
     }
     this.mdLineBuf += delta;
     this.mdSource += delta;
     let nl = this.mdLineBuf.indexOf('\n');
     while (nl >= 0) {
+      const lineStart = this.mdSource.length - this.mdLineBuf.length;
       const line = this.mdLineBuf.slice(0, nl + 1);
       this.mdLineBuf = this.mdLineBuf.slice(nl + 1);
       const fence = isFenceLine(line);
+      const wasInFence = this.mdInFence;
       this.mdPushFragment(this.mdStream.push(normalizeCjkLine(line, this.mdInFence)));
       if (fence) this.mdInFence = !this.mdInFence;
+      // 结构水位推进（Mirrors streamer 缓冲）：开栏行=结构起点；闭栏行/空行/非管道非空行=结构闭合；
+      // 围栏内容行与管道行保持水位。散文行（管道外逐行即发）本就不入水位
+      if (fence) {
+        this.mdTailStart = this.mdInFence ? lineStart : undefined;
+      } else if (this.mdInFence) {
+        // 围栏内容：保持
+      } else if (/^\s*[｜|]/.test(line)) {
+        if (this.mdTailStart === undefined) this.mdTailStart = lineStart;
+      } else {
+        this.mdTailStart = undefined;
+      }
       nl = this.mdLineBuf.indexOf('\n');
+    }
+    if (this.state.live?.kind === 'reply') {
+      this.state = { ...this.state, live: { ...this.state.live, tailStart: this.mdTailStart } };
     }
   }
 
@@ -2016,6 +2040,7 @@ export class SessionController {
   /** 冲刷收口（工具边界 sealReply / done 共用）：行尾残段先成行喂入（围栏判定照走），
    *  finish() 把未闭合表格/围栏冲刷为完整框线块，尾段同样入档，随后通道整体置空 */
   private mdSeal(): void {
+    this.mdTailStart = undefined;
     if (this.mdStream === undefined) {
       this.mdLineBuf = '';
       this.mdInFence = false;
@@ -2035,6 +2060,7 @@ export class SessionController {
   /** 通道整体清空（不冲刷不入档）：error 中断 / 规划轮终稿 / 新回合兜底 */
   private mdClear(): void {
     this.mdStream = undefined;
+    this.mdTailStart = undefined;
     this.mdLineBuf = '';
     this.mdInFence = false;
     this.mdSource = '';

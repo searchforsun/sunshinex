@@ -9,7 +9,6 @@ import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
 import { TailLedger, printedEntryLines, recomputeTailPlan } from '../tail-rewrite';
-import { tailPartial } from '../md-ansi';
 import { theme } from '../theme';
 
 /**
@@ -164,15 +163,18 @@ export function MessageList({
 
 /** 动态区未入档尾段原文预览（2026-09-30 markdansi 替换批次）：reply 期间旧 LiveArea 的全量源预览
  *  与滚动缓冲中的 ansi 条目视觉重叠（正文双份），其 reply 分支退役于 Task 5，本组件接管——
- *  tailPartial 自尾向前取未完结构（已开表格表头 / 未闭合围栏 / 未完行），逐行暗色原文呈现，
+ *  tailStart 水位切片（session mdConsume 镜像：表格 hold/围栏开栏/未完行的未消费起点），逐行暗色原文呈现，
  *  收口后经历史区 ansi 条目（框线成形）承接；thinking 流照旧走 LiveArea 6 行滚动窗。
- *  帧高限界（终审 F1）：未闭合围栏/表格 hold 期 markdansi 零 ansi 入档、tailPartial 自开栏行整段返回，
+ *  帧高限界（终审 F1）：未闭合围栏/表格 hold 期 markdansi 零 ansi 入档、水位切片自结构起点整段返回，
  *  无上限即帧高随内容无界增长 → outputHeight >= stdout.rows 触发 ink3 clearTerminal 整屏重写（闪屏病根）。
  *  等价旧链 previewCap 限界：cap = min(28, max(8, rows-6))（28 绝对上限 + 随视口收缩的 chrome 让位），
  *  行按 slice(-cap) 自尾保留（最新行可见），截断时首行前加「…」省略提示。columns 预留（后续折行收敛接线）。
  *  空尾段（无未完结构）渲染 null。 */
 function MdBufferPreview({ live, columns, rows }: { live: LiveBlock; columns: number; rows: number }): JSX.Element | null {
-  const tail = tailPartial(live.text);
+  // 预览源 = mdTailStart 水位切片（streamer 缓冲期未消费结构；2026-09-30 真机「渲染+原文同屏」修复：
+  // 旧 tailPartial 反向扫全量源，表格入档后撞「表头+分隔行」即把表头→源尾全当未完结构重演裸文本）
+  const tail =
+    typeof live.tailStart === 'number' ? live.text.slice(live.tailStart) : live.text.slice(live.text.lastIndexOf('\n') + 1);
   if (tail.length === 0) return null;
   const cap = Math.min(28, Math.max(8, rows - 6));
   const all = tail.split('\n');

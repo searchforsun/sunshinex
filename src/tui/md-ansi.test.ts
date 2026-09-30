@@ -1,7 +1,7 @@
 // src/tui/md-ansi.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMd, wrapAnsiLines, ansiLineCount, tailPartial, normalizeCjkLine, isFenceLine, createMdRender } from './md-ansi';
+import { renderMd, wrapAnsiLines, ansiLineCount, normalizeCjkLine, isFenceLine, createMdRender } from './md-ansi';
 
 const strip = (s: string): string => s.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
@@ -27,17 +27,6 @@ test('wrapAnsiLines：20 万列无空格行折行不爆栈、ANSI 码不切坏',
 
 test('ansiLineCount：剥码行数', () => {
   assert.equal(ansiLineCount('\x1b[31m甲\x1b[0m\n乙\n'), 2);
-});
-
-test('tailPartial：表格已开返回表头起原文；闭合后返回未完行；无未完返回空', () => {
-  assert.equal(tailPartial('前言。\n\n| a | b |\n|---|\n| 1'), '| a | b |\n|---|\n| 1');
-  assert.equal(tailPartial('| a |\n|───|\n| 1'), '| a |\n|───|\n| 1', '全角分隔行也识别为已开表格');
-  assert.equal(tailPartial('第一行\n第二行'), '第二行');
-  assert.equal(tailPartial('完整。\n'), '');
-});
-
-test('tailPartial：未闭合围栏返回围栏原文（含开栏行）', () => {
-  assert.equal(tailPartial('```\ncode'), '```\ncode');
 });
 
 test('normalizeCjkLine：全角管道/破折号/冒号归一；围栏内原样', () => {
@@ -79,6 +68,18 @@ test('isFenceLine：以 ```/~~~ 开头即围栏行（开/闭奇偶由调用侧�
   assert.ok(isFenceLine('``` 后内容'));
   assert.ok(isFenceLine('~~~'));
   assert.ok(!isFenceLine('普通行'));
+});
+
+test('createMdRender：tableTruncate 关闭（单元格换行不截断）+ width 函数动态求值（2026-09-30 真机「表格被截断且只占半屏」）', () => {
+  const table = '| 分发点 | 位置 |\n|---|---|\n| AI 服务工厂 | core/AiCodeGeneratorServiceFactory.java:101, core/AiCodeGeneratorFacade.java:55 |';
+  const out = createMdRender(100)(table);
+  assert.ok(!out.includes('…'), '长单元格换行呈现、无省略号截断');
+  assert.ok(out.includes('AiCodeGeneratorFacade.java:55'), '截断丢掉的尾部内容在');
+  // width 函数形态：每次渲染动态求值（streamer 创建一次、宽度跟随终端）
+  let calls = 0;
+  const dyn = createMdRender(() => { calls += 1; return 60; });
+  dyn('| a | b |\n|---|---|\n| 1 | 2 |');
+  assert.ok(calls >= 1, 'width 函数被调用（动态求值）');
 });
 
 test('createMdRender：闭包绑定 width/highlighter（streamer options 不透传，实测定形）', () => {

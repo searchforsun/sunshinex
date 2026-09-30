@@ -36,20 +36,35 @@ test('MessageList：ansi 条目防双重渲染——星号字面原样直嵌（m
   one.unmount();
 });
 
-test('MessageList：live reply 期间 MdBufferPreview 显示 tailPartial 原文（表格已开表头可见）', () => {
-  const live: LiveBlock = { kind: 'reply', text: '前言。\n\n| a | b |\n|---|\n| 1', startedAt: 0 } as LiveBlock;
+test('MessageList：live reply 期间 MdBufferPreview 按水位切片显示未消费结构（表格已开表头可见，已入档内容不重演）', () => {
+  // 源里表格已入档（渲染态在 Static），水位指向后续未消费结构起点——预览只显示水位之后的内容
+  const text = '前言。\n\n| a | b |\n|---|\n| 1 |\n\n四、后续\n\n| x | y |\n|---|\n| 2';
+  const live: LiveBlock = { kind: 'reply', text, startedAt: 0, tailStart: text.indexOf('| x | y |') } as LiveBlock;
   const one = render(
     <MessageList banner={banner} messages={[]} live={live} columns={80} expandAll={false} latestFull={false} />,
   );
-  assert.match(one.lastFrame() ?? '', /\| a \| b \|/, '未闭合表格表头原文在动态区');
+  assert.match(one.lastFrame() ?? '', /\| x \| y \|/, '水位后的未消费结构在预览');
+  assert.ok(!((one.lastFrame() ?? '').includes('| a | b |')), '已入档的前一张表不以裸文本重演（同屏重复病根）');
+  one.unmount();
+});
+
+test('MessageList：tailStart 缺省（无未消费结构）预览只显示当前未完行', () => {
+  const live: LiveBlock = { kind: 'reply', text: '前言。\n\n已完结段落\n未完行', startedAt: 0 } as LiveBlock;
+  const one = render(
+    <MessageList banner={banner} messages={[]} live={live} columns={80} expandAll={false} latestFull={false} />,
+  );
+  assert.match(one.lastFrame() ?? '', /未完行/, '未完行在预览');
+  assert.ok(!((one.lastFrame() ?? '').includes('已完结段落')), '已入档段落不重演');
   one.unmount();
 });
 
 test('MessageList：MdBufferPreview 帧高有界——100 行未闭合围栏 live reply 帧高 ≤ cap+2（F1 回归：防 ink3 clearTerminal 整屏重写）', () => {
+  const body = '```ts\n' + Array.from({ length: 100 }, (_, i) => `const v${i} = ${i};`).join('\n');
   const live: LiveBlock = {
     kind: 'reply',
-    text: '```ts\n' + Array.from({ length: 100 }, (_, i) => `const v${i} = ${i};`).join('\n'),
+    text: body,
     startedAt: 0,
+    tailStart: 0, // 围栏开栏即结构起点（session mdConsume 镜像）
   } as LiveBlock;
   const rows = 24;
   const cap = Math.min(28, Math.max(8, rows - 6));
