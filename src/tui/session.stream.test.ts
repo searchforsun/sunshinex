@@ -239,3 +239,22 @@ test('会话归约：工具边界旁白封口走 finish 冲刷（未闭合围栏
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('会话归约：空白行保行域达 streamer——表格经空行 flushTable 独立入档，不与后续段落粘连（N1 回归）', async () => {
+  const tmp = tmpdir('sunshinex-stream-n1-');
+  try {
+    // 逐字流式（HookAdapter）下表格后的空行须以 '\n' 达 markdansi push：flushTable 冲刷整表、
+    // 后续段落独立成条。归一吞掉尾换行（push('') no-op）即表格滞留 buffer、finish 才整块冲出 → 粘连单条
+    const text = '| a | b |\n|---|---|\n| 1 | 2 |\n\n收尾段。';
+    const ctrl = new SessionController({ root: tmp, model: new HookAdapter(text) });
+    await ctrl.submit('任务');
+    await ctrl.waitIdle();
+    const items = ctrl.getState().messages.filter((m) => m.role === 'assistant' && m.ansi);
+    const table = items.find((m) => m.text.includes('│'));
+    assert.ok(table, '表格块入档（框线成形）');
+    assert.ok(!table.text.includes('收尾'), '表格独立入档——空行达 streamer 触发 flushTable，不与后续段落粘连成单条');
+    assert.ok(items.some((m) => m !== table && stripAnsi(m.text).includes('收尾')), '后续段落在独立条目');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

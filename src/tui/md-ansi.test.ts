@@ -61,6 +61,19 @@ test('normalizeCjkLine/renderMd：全角空格/零宽空白行归一为空行—
   assert.ok(a >= 0 && b > a && out.slice(a, b).includes('\n'), '两段间有换行分隔（空行归一生效）');
 });
 
+test('normalizeCjkLine：行域语义——空白行归一保尾换行（N1 回归：\\s 吞尾换行致空行 push no-op、表格 flushTable 失效）', () => {
+  // 流式路径（session.mdConsume）逐行带尾 \n 喂入：\s 含 \n，整行测正则会连尾换行吞成 ''
+  // → 空行不达 streamer（markdansi push('') no-op）→ 表格 flushTable 失效、段落粘连
+  assert.equal(normalizeCjkLine('\n', false), '\n', '纯换行行原样（不得吞成空串）');
+  assert.equal(normalizeCjkLine('\u3000\n', false), '\n', '全角空白行 → 空行 + 保尾换行');
+  assert.equal(normalizeCjkLine(' \t\u200B\uFEFF\n', false), '\n', '混零宽空白行 → 空行 + 保尾换行');
+  assert.equal(normalizeCjkLine('正文\n', false), '正文\n', '正文行不动（含尾换行）');
+  assert.equal(normalizeCjkLine('｜ a ｜\n', false), '| a |\n', '管道归一保尾换行');
+  assert.equal(normalizeCjkLine('\u3000\n', true), '\u3000\n', '围栏内代码内容原样（含尾换行）');
+  // 无尾换行的源级调用（normalizeMd split 产物）保持 F2 语义
+  assert.equal(normalizeCjkLine('\u3000\u3000', false), '');
+});
+
 test('isFenceLine：以 ```/~~~ 开头即围栏行（开/闭奇偶由调用侧跟踪）', () => {
   assert.ok(isFenceLine('```ts'));
   assert.ok(isFenceLine('``` 后内容'));

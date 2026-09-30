@@ -71,10 +71,14 @@ function hardSlice(line: string, width: number): string[] {
 /** 行级全角归一（中文模型全角表格符号，CommonMark 只认 ASCII；围栏内代码内容不归一）。
  *  第二条规则（终审 F2，承接旧 markdown.ts preprocess 2026-09-28 真机修复）：仅含全角空格/零宽字符等
  *  不可见空白的行归一为空行——CommonMark 空白行判定只认 ASCII 空白，中文模型按全角空格排版时
- *  这类行被当正文逐行渲染（renderMd 面段落合并 / 大段空白病根） */
+ *  这类行被当正文逐行渲染（renderMd 面段落合并 / 大段空白病根）。
+ *  行域语义（N1 补丁）：流式路径（session.mdConsume）逐行**带尾 \n** 喂入，而 \s 含 \n——整行测正则会
+ *  连尾换行一起吞成 ''，空行不达 streamer（markdansi push('') no-op）→ 表格 flushTable 失效、段落粘连。
+ *  故先剥尾 \n 只测行体，命中回补 '\n'（无尾换行的源级调用 normalizeMd 保持 ''），行域不塌 */
 export function normalizeCjkLine(line: string, inFence: boolean): string {
   if (inFence) return line;
-  if (/^[\s\u3000\u200B\u200C\u200D\uFEFF]+$/.test(line)) return '';
+  const body = line.endsWith('\n') ? line.slice(0, -1) : line;
+  if (/^[\s\u3000\u200B\u200C\u200D\uFEFF]+$/.test(body)) return body === line ? '' : '\n';
   if (!/^\s*[｜|]/.test(line)) return line;
   return line.replace(/｜/g, '|').replace(/[—–―─━－﹘]/g, '-').replace(/：/g, ':');
 }
