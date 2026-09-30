@@ -2025,7 +2025,9 @@ export class SessionController {
         this.mdTailStart = this.mdInFence ? lineStart : undefined;
       } else if (wasInFence) {
         this.mdPushFragment(this.mdStream.push(normalized));
-        this.mdTailStart = undefined;
+        // 围栏内容行（wasInFence 且仍在围栏内）保持水位——置 undefined 即逐行预览塌成单行、
+        // 闭合时预览与 Static 高度错位（真机「代码块只显示一行」「跳到中间」实锤）
+        if (!this.mdInFence) this.mdTailStart = undefined;
       } else if (this.mdInFence) {
         this.mdPushFragment(this.mdStream.push(normalized)); // 围栏内容：水位保持
       } else if (runLine) {
