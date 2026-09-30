@@ -35,7 +35,7 @@ test('resume：流式切块段落全部入档，恢复后正文完整', async ()
   const prev = process.env.SUNSHINEX_DATA_DIR;
   pinDataDir(tmp);
   try {
-    // 多段正文：段落边界触发 flushReply 切块，前段经切块路径入档、尾段经 done 路径入档
+    // 多段正文：流式增量经 markdansi 通道逐行入档（段落边界成段），终稿经 done 冲刷收口
     const reply = [
       '第一段结论行',
       '',

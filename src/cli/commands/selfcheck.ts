@@ -8,6 +8,7 @@ import { loadMcpServers } from '../../config';
 import { resolveShell } from '../../harness/security/sandbox';
 import { resolveIsolation, sandboxEnabled } from '../../harness/security/landlock';
 import { SessionController } from '../../tui/session';
+import { stripAnsi } from '../../tui/md-ansi';
 import type { CliArgs } from '../index';
 import { t } from '../../i18n';
 
@@ -74,7 +75,9 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   await tuiCtrl.submit('selfcheck tui 流式冒烟');
   await tuiCtrl.waitIdle();
   const tuiState = tuiCtrl.getState();
-  const tuiReply = tuiState.messages.filter((m) => m.role === 'assistant').map((m) => m.text).join('');
+  // 正文流式改 markdansi 通道后 assistant 条目为 ANSI 渲染文本（ansi: true，renderMd 末行带换行），
+  // 等值比对按剥码去尾换行的可见正文口径
+  const tuiReply = tuiState.messages.filter((m) => m.role === 'assistant').map((m) => stripAnsi(m.text)).join('').trim();
   const tuiThink = tuiState.messages.filter((m) => m.role === 'thinking').length;
   if (tuiReply !== '流式自检 OK') throw new Error(`tui 流式答复异常：${tuiReply}`);
   if (tuiThink < 1) throw new Error('tui 思考折叠未生效');

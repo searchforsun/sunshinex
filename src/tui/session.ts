@@ -91,10 +91,6 @@ export interface LiveBlock {
   kind: 'reply' | 'thinking';
   text: string;
   startedAt: number;
-  /** 流式正文已入档水位：预览只渲染 slice(committedLen) 的未入档尾段，避免与滚动缓冲重复 */
-  committedLen?: number;
-  /** 已入档前缀越过了未闭合围栏的开栏行：预览续块补上该行，代码块高亮呈现跨切块延续 */
-  fenceOpener?: string;
 }
 
 /** 子代理转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源。
@@ -2084,7 +2080,7 @@ export class SessionController {
   }
 
   /** 高频增量（token/reasoning 逐 delta）合帧节流窗口：约 80ms 通知一次，终态与结构事件仍即时放行 */
-  private static readonly NOTIFY_THROTTLE_MS = 80; // 流式合帧窗口（2026-09-30 流畅度裁决）：ink 无逐行 diff，动态区任一行变化即全帧重写——帧率与擦写面积耦合：REPLY_SEGMENT_MAX_LINES 收到 10 后预览区 ~11 行，80ms（~12 帧/s）擦写肉眼不可感、流式爬行观感显著更顺；旧 120ms 是 20+ 行大预览区时代的防闪灼取舍，区域收敛后钝感即卡顿感
+  private static readonly NOTIFY_THROTTLE_MS = 80; // 流式合帧窗口（2026-09-30 流畅度裁决）：ink 无逐行 diff，动态区任一行变化即全帧重写——帧率与擦写面积耦合：正文流式改 markdansi 通道逐行入档后动态区行数有界，80ms（~12 帧/s）擦写肉眼不可感、流式爬行观感显著更顺；旧 120ms 是 20+ 行大预览区时代的防闪灼取舍，区域收敛后钝感即卡顿感
   private notifyTimer?: NodeJS.Timeout;
 
   private notify(): void {

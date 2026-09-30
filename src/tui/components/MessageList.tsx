@@ -22,7 +22,7 @@ export type TranscriptEntry =
 
 /**
  * 消息区逐消息分层：消息到达即入 Static 一次上屏，之后永不重绘；
- * 动态帧只剩实时流预览（回复末 8 行/思考单行）+ 输入框 + 状态栏，帧高有界且恒定——
+ * 动态帧只剩实时流预览（正文未完结构尾段原文预览/思考 6 行滚动窗）+ 输入框 + 状态栏，帧高有界且恒定——
  * ink3 在 outputHeight >= stdout.rows 时会 clearTerminal 整屏重写（超视口闪动/抖动/滚动位置丢失的根因），
  * 逐消息 Static 化让该路径实际不可达：流式中间态也以终稿形态滚入滚动缓冲，跟随滚动即可回看全部。
  * 过程行（思考/工具）按「▶ 阶段锚点」两层折叠：默认最近正文锚点所在阶段全行可见、历史阶段折叠为
@@ -38,10 +38,6 @@ export function MessageList({
   expandAll,
   latestFull,
   suppressHistory = false,
-  rows,
-  previewMaxRows,
-  envelope,
-  onPreviewUsed,
   ledger,
   rewriteFrom,
 }: {
@@ -56,14 +52,6 @@ export function MessageList({
   /** 全屏查看（ChildInspector）整屏接管：Static 历史条目置空——整页让位给全屏视图，
    *  退出时经重挂整屏重放恢复（2026-09-27 用户裁决：全屏独占，不与主 agent 历史拼接） */
   suppressHistory?: boolean;
-  /** 终端行数：流式预览窗口上限随视口收缩（min(28, rows−6)），矮终端不超视口防中段起渲染；缺省固定上限 */
-  rows?: number;
-  /** 预览窗口上限显式覆盖（2026-09-30 App 动态区 chrome 实账直传）：在场时优先于 rows 联动公式 */
-  previewMaxRows?: number;
-  /** 预览窗包络（2026-09-30「半屏空白」终版，App 有状态收敛后直传）：pad 上限基准，见 LiveArea */
-  envelope?: number;
-  /** 预览窗实际用量上报（App 包络收敛的数据源）：LiveArea 每帧回报实际渲染行数 */
-  onPreviewUsed?: (rows: number) => void;
   /** 打印账本（2026-09-30 方案 A）：逐渲染记录已打印条目的形态与行数并重算尾部重写计划，
    *  供 tui-loop 定夺「就地擦写只重放变化尾部」；缺省不记账（零行为变化，测试兼容） */
   ledger?: TailLedger;
@@ -164,7 +152,7 @@ export function MessageList({
         live.kind === 'reply' ? (
           <MdBufferPreview live={live} columns={columns} />
         ) : (
-          <LiveArea live={live} columns={columns} rows={rows} maxRows={previewMaxRows} envelope={envelope} onUsed={onPreviewUsed} />
+          <LiveArea live={live} columns={columns} />
         )
       ) : null}
     </Box>

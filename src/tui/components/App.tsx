@@ -347,52 +347,10 @@ export function App({
   const info = React.useMemo(() => banner ?? buildBannerInfo(), [banner]);
   const columns = useStdout().stdout?.columns ?? 80;
   const rows = useStdout().stdout?.rows ?? 24; // 全屏查看视口高度（规格 §3.3 有界=终端行数）
-  // 动态区 chrome 实账（2026-09-30 正文输出跳到中间总根修复）：预览窗口上限不再按 rows−6 拍脑袋预留——
-  // 活动行/子代理面板（含边框 2 行）/输入框（多行缓冲随行数涨）/待办（运行中折叠单行、其余态展开全量）/
-  // 状态栏逐项实数计入，余量 2 行吸收估算边界差。帧高一旦触顶 stdout.rows 即触发 ink3 clearTerminal
-  // 整屏重写路径（视口跳中段 + 滚动缓冲被清），子代理并行/多行排队输入等旧公式漏记的场景在此全覆盖
-  const runningChildrenCount = state.children.filter((c) => !c.done).length;
-  const childPanelRows = runningChildrenCount > 0 ? runningChildrenCount + 2 : 0;
+  // 动态区 chrome 行数实账：输入框（多行缓冲随行数涨）/待办（运行中折叠单行、其余态展开全量）——
+  // 纵向命令面板窗口上限（menuMaxRows）随视口收缩的计行输入
   const inputRows = 2 + Math.max(1, buffer.split('\n').length);
   const todoRows = state.todos.length > 0 ? (state.status === 'running' && !expandAll ? 1 : state.todos.length + 1) : 0;
-  const spinnerRows = state.status === 'running' ? 1 : 0;
-  const previewCap = Math.max(4, Math.min(28, rows - spinnerRows - childPanelRows - inputRows - todoRows - 1 - 2));
-  // 预览窗包络（2026-09-30「半屏空白」终版）：恒高补满 maxRows-used 时 1–2 行小块正文也撑 ~26 行空白；
-  // 完全不补又回切块 27→2 骤缩闪屏。LiveArea 无状态补不出两头兼顾的 pad——包络（近期峰值用量）放在
-  // 有状态的 App：升随内容（onUsed 上报即时抬升，LiveArea 侧经 useLayoutEffect 提交期上报——渲染期
-  // 跨组件 setState 即 React 警告）、降有 200ms 节流缓落（渲染级衰减与上报互相抬升即永久振荡）、
-  // live 清空（回合收尾）归零；LiveArea 以 max(包络, 实际用量)−实际用量 为 pad 上限：满窗切块瞬间
-  // 包络仍高、pad 兜住高度；小块正文期包络已缓降到内容水平（无半屏空白）
-  const [previewEnvelope, setPreviewEnvelope] = React.useState(0);
-  const previewEnvelopeRef = React.useRef(0);
-  const envelopeStampRef = React.useRef(0);
-  const onPreviewUsed = React.useCallback((used: number) => {
-    if (used > previewEnvelopeRef.current) {
-      previewEnvelopeRef.current = used;
-      envelopeStampRef.current = Date.now();
-      setPreviewEnvelope(used);
-    }
-  }, []);
-  React.useEffect(() => {
-    // live 清空（回合收尾）即包络归零，下回合从零起算
-    if (!state.live) {
-      if (previewEnvelopeRef.current !== 0) {
-        previewEnvelopeRef.current = 0;
-        envelopeStampRef.current = 0;
-        setPreviewEnvelope(0);
-      }
-      return;
-    }
-    // 缓落节流：距上次包络变化 ≥200ms 才降 3 行——渲染级衰减与上报互相抬升即永久振荡
-    // （pad 每帧抖 3 行 + 空转渲染），节流后数帧缓落一次、肉眼平滑
-    if (Date.now() - envelopeStampRef.current < 200) return;
-    const next = Math.max(0, previewEnvelopeRef.current - 3);
-    if (next !== previewEnvelopeRef.current) {
-      previewEnvelopeRef.current = next;
-      envelopeStampRef.current = Date.now();
-      setPreviewEnvelope(next);
-    }
-  });
   // 纵向命令面板条目（2026-09-30 对标 CC）：'/' 前缀动态过滤（含技能池，最近使用在前）；
   // 在场性=条目非空 + idle/error（与旧横向提示行同门槛）
   const menuEntries = React.useMemo(() => buildSlashMenu(buffer, skillMenu), [buffer, skillMenu]);
@@ -758,10 +716,6 @@ export function App({
         messages={state.messages}
         live={inspect ? undefined : state.live}
         columns={columns}
-        rows={rows}
-        previewMaxRows={previewCap}
-        envelope={previewEnvelope}
-        onPreviewUsed={onPreviewUsed}
         expandAll={expandAll}
         latestFull={latestFull}
         suppressHistory={!!inspect}
