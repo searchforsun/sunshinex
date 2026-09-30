@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink';
-import { MarkdownText } from './MarkdownText';
+import { renderMd } from '../md-ansi';
 import { elideByWidth } from '../text-band';
 import { TOOL_VERBS } from '../tool-verbs';
 import { theme } from '../theme';
@@ -7,7 +7,7 @@ import { theme } from '../theme';
 /**
  * 子代理转录/detail 共享渲染器（2026-09-28 用户裁决「展开与全屏同构」）：
  * 历史区 SPAWN 行展开（ToolRow）与全屏查看视图（ChildInspector）同一分段器同一渲染形态——
- * 连续正文段合并走 MarkdownText（加粗/围栏/表格与主 agent 正文同渲染器，星号不再裸露），
+ * 连续正文段合并走 renderMd（markdansi 出口，与主 agent 正文同一渲染器，框线表格/围栏统一形态），
  * 动词行还原 call 形态（● [VERB] target）、⎿ 行还原 result、⏺ 委派行与统计行 dim 呈现。
  */
 
@@ -51,9 +51,9 @@ export function segmentizeLines(lines: string[]): TranscriptSeg[] {
   return segs;
 }
 
-/** 单段渲染：md → MarkdownText、call → ● [VERB] target（与主 agent ToolRow 调用行同构）、result/meta → dim 行 */
+/** 单段渲染：md → renderMd（markdansi 出口）、call → ● [VERB] target（与主 agent ToolRow 调用行同构）、result/meta → dim 行 */
 export function TranscriptSegView({ seg, columns }: { seg: TranscriptSeg; columns: number }): JSX.Element {
-  if (seg.kind === 'md') return <MarkdownText text={seg.text} columns={Math.max(16, columns)} />;
+  if (seg.kind === 'md') return <Text>{renderMd(seg.text, Math.max(16, columns))}</Text>;
   if (seg.kind === 'call') {
     const sp = seg.text.indexOf(' ');
     const verb = sp > 0 ? seg.text.slice(0, sp) : seg.text;

@@ -24,7 +24,25 @@ test('Inspector 运行中：无外框整页平铺，状态行（label/step/token
   assert.match(f, /Esc/, '状态行携带退出提示');
   assert.match(all, /● \[READ\] src\/a\.ts/, 'call 行与主 agent ToolRow 同构（● [VERB] target）');
   assert.match(all, /⎿ ✓ 84 lines/, 'result 行 ⎿ + ok 标记');
-  assert.match(all, /分析中…/, 'text 行经 Markdown 渲染原样呈现');
+  assert.match(all, /分析中…/, 'text 段经 renderMd 渲染原样呈现（markdansi 出口）');
+  one.unmount();
+});
+
+test('Inspector：text 段 markdansi 渲染——表格框线、与主链同出口（renderMd）', () => {
+  // 运行中未闭合尾段走动态预览：markdansi 框线（┌/│ 方角形态）——旧 MarkdownText 自研 alignTable 为 ╭ 圆角形态，
+  // 两者都有 │ 竖线，以 ┌ 方角钉死「markdansi 出口」判据（│ 单独不断新旧）
+  const one = render(
+    <ChildInspector
+      child={{
+        label: 'w', startedAt: Date.now(), steps: 1, tokens: 10,
+        transcript: [{ kind: 'text', text: '| a | b |\n|---|---|\n| 1 | 2 |' }],
+      }}
+      columns={80}
+      rows={20}
+    />,
+  );
+  assert.ok(one.allOutput().includes('│'), '表格框线（markdansi 出口）');
+  assert.ok(one.allOutput().includes('┌'), 'markdansi 方角框线（旧 alignTable 圆角 ╭ 形态退役判据）');
   one.unmount();
 });
 

@@ -2,8 +2,7 @@ import { Box, Static, Text } from 'ink';
 import { ChildLiveState, pairChildResults } from '../session';
 import { formatTokens, formatDuration } from '../format';
 import { bandLines, wrapByWidth, elideByWidth } from '../text-band';
-import { MarkdownText } from './MarkdownText';
-import { tailReplyPreview } from './LiveArea';
+import { renderMd } from '../md-ansi';
 import { segmentizeLines } from './ChildTranscript';
 import { t } from '../../i18n';
 import { theme } from '../theme';
@@ -14,7 +13,7 @@ const THINK_TAIL_LINES = 6;
 const REPLY_PREVIEW_MAX_ROWS = 28;
 
 /** 时间线条目（Static 打印一次进滚动缓冲，永不取尾截断——「不压缩」的机制保证）：
- *  与主 agent MessageRow 同构——md 段走 MarkdownText、call 行 ● [VERB] target、result 行 ⎿ ✓/✗、
+ *  与主 agent MessageRow 同构——md 段走 renderMd（markdansi 出口，与主链正文同一渲染器）、call 行 ● [VERB] target、result 行 ⎿ ✓/✗、
  *  think 行 ✻ 摘要（Tab 展开 detail 全文，对标 ThinkingRow） */
 type TimelineItem =
   | { kind: 'md'; text: string }
@@ -120,7 +119,11 @@ export function ChildInspector(props: {
   const textCap = thinking
     ? Math.max(4, Math.min(REPLY_PREVIEW_MAX_ROWS, rows - THINK_TAIL_LINES - 2))
     : Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(8, rows - 4));
-  const preview = tailText.trim().length > 0 ? tailReplyPreview(tailText, columns, textCap) : '';
+  // 尾段预览（2026-09-30 markdansi 统一批次）：尾段原文一次性 renderMd（宽度即 width 参数自带收敛，
+  // 旧 tailReplyPreview 源级折行预算退役）——超预览行预算时对 ANSI 输出按行 slice 自尾保留
+  // （markdansi 行级 SGR 自闭合，切行不切半截码；尾部空行剥除不吃预算）
+  const previewLines =
+    tailText.trim().length > 0 ? renderMd(tailText, columns).replace(/\n+$/, '').split('\n').slice(-textCap) : [];
   const thinkWrapped = thinking
     ? (child!.bufThink ?? '').split('\n').flatMap((seg) => wrapByWidth(seg, Math.max(16, columns - 8)))
     : [];
@@ -159,7 +162,7 @@ export function ChildInspector(props: {
                 ))}
               </Box>
             ) : item.kind === 'md' ? (
-              <MarkdownText text={item.text} columns={columns} />
+              <Text>{renderMd(item.text, columns)}</Text>
             ) : item.kind === 'call' ? (
               <CallRow text={item.text} columns={columns} />
             ) : item.kind === 'think' ? (
@@ -172,9 +175,11 @@ export function ChildInspector(props: {
           </Box>
         )}
       </Static>
-      {(preview.length > 0 || thinkTail.length > 0) && (
+      {(previewLines.length > 0 || thinkTail.length > 0) && (
         <Box flexDirection="column" marginBottom={1}>
-          {preview.length > 0 ? <MarkdownText text={preview} columns={columns} /> : null}
+          {previewLines.map((l, i) => (
+            <Text key={i}>{l.length > 0 ? l : ' '}</Text>
+          ))}
           {thinkTail.map((l, i) => (
             <Text key={i} dimColor italic>
               {l.length > 0 ? `✻ ${l}` : ' '}
