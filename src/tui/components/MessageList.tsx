@@ -34,6 +34,7 @@ export function MessageList({
   messages,
   live,
   columns,
+  rows = 24,
   banner,
   expandAll,
   latestFull,
@@ -44,6 +45,8 @@ export function MessageList({
   messages: ChatItem[];
   live?: LiveBlock;
   columns: number;
+  /** 视口行数（MdBufferPreview 尾窗限界用；缺省 24 与 App 的 useStdout 兜底同口径） */
+  rows?: number;
   banner: BannerInfo;
   /** 第一层（Tab）行折叠开关：false 时历史阶段组折叠为「正文+首个工具对+首个思考行」，true 全行 */
   expandAll: boolean;
@@ -150,7 +153,7 @@ export function MessageList({
       </Static>
       {live ? (
         live.kind === 'reply' ? (
-          <MdBufferPreview live={live} columns={columns} />
+          <MdBufferPreview live={live} columns={columns} rows={rows} />
         ) : (
           <LiveArea live={live} columns={columns} />
         )
@@ -163,13 +166,23 @@ export function MessageList({
  *  与滚动缓冲中的 ansi 条目视觉重叠（正文双份），其 reply 分支退役于 Task 5，本组件接管——
  *  tailPartial 自尾向前取未完结构（已开表格表头 / 未闭合围栏 / 未完行），逐行暗色原文呈现，
  *  收口后经历史区 ansi 条目（框线成形）承接；thinking 流照旧走 LiveArea 6 行滚动窗。
- *  columns 预留（后续折行收敛接线）。空尾段（无未完结构）渲染 null。 */
-function MdBufferPreview({ live, columns }: { live: LiveBlock; columns: number }): JSX.Element | null {
+ *  帧高限界（终审 F1）：未闭合围栏/表格 hold 期 markdansi 零 ansi 入档、tailPartial 自开栏行整段返回，
+ *  无上限即帧高随内容无界增长 → outputHeight >= stdout.rows 触发 ink3 clearTerminal 整屏重写（闪屏病根）。
+ *  等价旧链 previewCap 限界：cap = min(28, max(8, rows-6))（28 绝对上限 + 随视口收缩的 chrome 让位），
+ *  行按 slice(-cap) 自尾保留（最新行可见），截断时首行前加「…」省略提示。columns 预留（后续折行收敛接线）。
+ *  空尾段（无未完结构）渲染 null。 */
+function MdBufferPreview({ live, columns, rows }: { live: LiveBlock; columns: number; rows: number }): JSX.Element | null {
   const tail = tailPartial(live.text);
   if (tail.length === 0) return null;
+  const cap = Math.min(28, Math.max(8, rows - 6));
+  const all = tail.split('\n');
+  const lines = all.length > cap ? all.slice(-cap) : all;
   return (
     <Box flexDirection="column" marginBottom={1}>
-      {tail.split('\n').map((line, i) => (
+      {all.length > cap ? (
+        <Text dimColor>…</Text>
+      ) : null}
+      {lines.map((line, i) => (
         <Text key={i} dimColor>
           {line || ' '}
         </Text>

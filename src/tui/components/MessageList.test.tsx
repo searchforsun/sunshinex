@@ -44,3 +44,23 @@ test('MessageList：live reply 期间 MdBufferPreview 显示 tailPartial 原文�
   assert.match(one.lastFrame() ?? '', /\| a \| b \|/, '未闭合表格表头原文在动态区');
   one.unmount();
 });
+
+test('MessageList：MdBufferPreview 帧高有界——100 行未闭合围栏 live reply 帧高 ≤ cap+2（F1 回归：防 ink3 clearTerminal 整屏重写）', () => {
+  const live: LiveBlock = {
+    kind: 'reply',
+    text: '```ts\n' + Array.from({ length: 100 }, (_, i) => `const v${i} = ${i};`).join('\n'),
+    startedAt: 0,
+  } as LiveBlock;
+  const rows = 24;
+  const cap = Math.min(28, Math.max(8, rows - 6));
+  const one = render(
+    <MessageList banner={banner} messages={[]} live={live} columns={80} rows={rows} expandAll={false} latestFull={false} />,
+  );
+  const frame = one.lastFrame() ?? '';
+  const height = frame.replace(/\n+$/, '').split('\n').length;
+  assert.ok(height <= cap + 2, `帧高 ${height} ≤ cap+2 = ${cap + 2}（尾窗自尾保留 + 省略行 + margin）`);
+  assert.ok(frame.includes('const v99 = 99;'), '最新行（尾行）可见');
+  assert.ok(!frame.includes('const v0 = 0;'), '超限头行被截去');
+  assert.match(frame, /…/, '截断时首行前有省略提示');
+  one.unmount();
+});

@@ -46,6 +46,21 @@ test('normalizeCjkLine：全角管道/破折号/冒号归一；围栏内原样',
   assert.equal(normalizeCjkLine('｜ 不动 ｜', true), '｜ 不动 ｜');
 });
 
+test('normalizeCjkLine/renderMd：全角空格/零宽空白行归一为空行——renderMd 段落不合并（F2 回归）', () => {
+  // 旧 preprocess 规则承接（markdown.ts 2026-09-28 真机「结论与表格间大段空白」病根）：
+  // CommonMark 空白行判定只认 ASCII 空白，仅含 U+3000/U+200B..D/U+FEFF 的行被当正文 → 段落合并
+  assert.equal(normalizeCjkLine('\u3000\u3000', false), '', '纯全角空格行 → 空行');
+  assert.equal(normalizeCjkLine(' \t\u200B\u200C\u200D\uFEFF ', false), '', '混零宽字符空白行 → 空行');
+  assert.equal(normalizeCjkLine('\u3000\u200B', true), '\u3000\u200B', '围栏内代码内容原样（不归一）');
+  assert.equal(normalizeCjkLine('', false), '', '空行不动（+ 量词不匹配空串）');
+  const out = strip(renderMd('第一段\n\u3000\u3000\n第二段', 60));
+  assert.ok(out.includes('第一段') && out.includes('第二段'), '两段内容均在');
+  assert.ok(!out.split('\n').some((l) => l.includes('第一段') && l.includes('第二段')), '两段不合并到同一行');
+  const a = out.indexOf('第一段');
+  const b = out.indexOf('第二段');
+  assert.ok(a >= 0 && b > a && out.slice(a, b).includes('\n'), '两段间有换行分隔（空行归一生效）');
+});
+
 test('isFenceLine：以 ```/~~~ 开头即围栏行（开/闭奇偶由调用侧跟踪）', () => {
   assert.ok(isFenceLine('```ts'));
   assert.ok(isFenceLine('``` 后内容'));

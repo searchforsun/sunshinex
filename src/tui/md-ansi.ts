@@ -68,9 +68,13 @@ function hardSlice(line: string, width: number): string[] {
   return out;
 }
 
-/** 行级全角归一（中文模型全角表格符号，CommonMark 只认 ASCII；围栏内代码内容不归一） */
+/** 行级全角归一（中文模型全角表格符号，CommonMark 只认 ASCII；围栏内代码内容不归一）。
+ *  第二条规则（终审 F2，承接旧 markdown.ts preprocess 2026-09-28 真机修复）：仅含全角空格/零宽字符等
+ *  不可见空白的行归一为空行——CommonMark 空白行判定只认 ASCII 空白，中文模型按全角空格排版时
+ *  这类行被当正文逐行渲染（renderMd 面段落合并 / 大段空白病根） */
 export function normalizeCjkLine(line: string, inFence: boolean): string {
   if (inFence) return line;
+  if (/^[\s\u3000\u200B\u200C\u200D\uFEFF]+$/.test(line)) return '';
   if (!/^\s*[｜|]/.test(line)) return line;
   return line.replace(/｜/g, '|').replace(/[—–―─━－﹘]/g, '-').replace(/：/g, ':');
 }
