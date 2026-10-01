@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from '../test-ink';
-import { MessageList } from './MessageList';
+import { MessageList, replyPreviewWindow } from './MessageList';
 import { ChatItem, LiveBlock } from '../session';
 import { BannerInfo } from '../banner-info';
 
@@ -79,7 +79,7 @@ test('MessageList：tailStart 缺省（无未消费结构）预览只显示当�
   one.unmount();
 });
 
-test('MessageList：MdBufferPreview 帧高有界——100 行未闭合围栏 live reply 帧高 ≤ cap+2（F1 回归：防 ink3 clearTerminal 整屏重写）', () => {
+test('MessageList：MdBufferPreview 恒高窗口——100 行未闭合围栏取尾封顶、无标记行（2026-10-01「不自动反弹」改口径：恒高即帧高限界）', () => {
   const body = '```ts\n' + Array.from({ length: 100 }, (_, i) => `const v${i} = ${i};`).join('\n');
   const live: LiveBlock = {
     kind: 'reply',
@@ -88,15 +88,37 @@ test('MessageList：MdBufferPreview 帧高有界——100 行未闭合围栏 liv
     tailStart: 0, // 围栏开栏即结构起点（session mdConsume 镜像）
   } as LiveBlock;
   const rows = 24;
-  const cap = Math.min(28, Math.max(8, rows - 6));
   const one = render(
     <MessageList banner={banner} messages={[]} live={live} columns={80} rows={rows} expandAll={false} latestFull={false} />,
   );
   const frame = one.lastFrame() ?? '';
-  const height = frame.replace(/\n+$/, '').split('\n').length;
-  assert.ok(height <= cap + 2, `帧高 ${height} ≤ cap+2 = ${cap + 2}（尾窗自尾保留 + 省略行 + margin）`);
+  // 物理行口径：只剥 log-update 的单个尾随换行——帧尾空白行（margin/垫行）是画布实行，剥多即错账
+  const height = frame.replace(/\n$/, '').split('\n').length;
+  assert.equal(height, 9, `帧高恒 = 窗口 8 + margin 1（实际 ${height}）`);
   assert.ok(frame.includes('const v99 = 99;'), '最新行（尾行）可见');
-  assert.ok(!frame.includes('const v0 = 0;'), '超限头行被截去');
-  assert.match(frame, /…/, '截断时首行前有省略提示');
+  assert.ok(!frame.includes('const v0 = 0;'), '超窗头行被截去');
+  assert.ok(!frame.includes('…'), '无截断标记行（标记行随截断出现即 +1 行反弹，恒高口径移除）');
   one.unmount();
+});
+
+test('MessageList：MdBufferPreview 恒高窗口——流式三态（短尾段/超窗长尾/块间排空）恒 8 行，输入区零顶跳（防反弹钉）', () => {
+  // 三态恒等以纯装配函数钉（排空态帧写全空白，test-ink 的 last 只更新非空白写捕不到帧）；
+  // 帧高恒等已由上例渲染口径（9/9）与本函数三态恒 8 行共同锁死
+  const rows = 24;
+  const windowRows = Math.max(4, Math.min(8, rows - 10));
+  const windows = [
+    '段一', // 短尾段：窗口顶部空行补齐
+    Array.from({ length: 30 }, (_, i) => `第${i}行`).join('\n'), // 超窗：自尾保留
+    '', // 块闭合到下一 delta 之间：尾段排空，窗口恒在（空白垫）
+  ].map((tailText) => {
+    const live: LiveBlock = { kind: 'reply', text: `已入档。\n\n${tailText}`, startedAt: 0 } as LiveBlock;
+    return replyPreviewWindow(live, 80, windowRows);
+  });
+  for (const w of windows) {
+    assert.equal(w.length, windowRows, `窗口恒 ${windowRows} 行（实际 ${w.length}）`);
+  }
+  assert.ok(windows[0]!.every((l) => l === '' || l.includes('段一')), '短尾段顶部空行补齐');
+  assert.match(windows[1]![windowRows - 1] ?? '', /第29行/, '超窗自尾保留（最新行可见）');
+  assert.ok(windows[1]!.every((l) => !l.includes('第0行')), '超窗头行截去');
+  assert.ok(windows[2]!.every((l) => l === ''), '排空态窗口恒在（空白垫，帧高零变化）');
 });
