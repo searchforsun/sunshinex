@@ -132,8 +132,10 @@ export function ChildInspector(props: {
   while (thinkTail.length > 0 && thinkTail.length < THINK_TAIL_LINES) thinkTail.unshift('');
 
   const spin = useSpinFrame();
+  // 完成态停转（真机「归档后仍显运行态」）：帧动画是「活着」信号，done 即定格 ✓——运行中才转圈
+  const glyph = done ? '✓' : spin;
   const head =
-    `${spin} [${label}] ${t('subagent view', '子代理视图')}` +
+    `${glyph} [${label}] ${t('subagent view', '子代理视图')}` +
     `${typeof steps === 'number' ? ` · step ${steps}` : ''}` +
     `${tokens !== undefined ? ` · ↑${formatTokens(tokens)} tokens` : ''}` +
     `${secs !== undefined ? ` · ${formatDuration(secs)}` : ''}` +

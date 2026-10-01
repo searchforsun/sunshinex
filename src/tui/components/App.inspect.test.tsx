@@ -118,3 +118,57 @@ test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('App inspect：查看中子代理完成归档——live 离场自动换挡 SPAWN 归档行，任务名/步数/耗时不断档（真机「✻ [] 仍显运行态」病根）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-arch-'));
+  let current: TestRenderResult | undefined;
+  try {
+    const ctrl = new SessionController({ root: tmp });
+    const retain = { ...initialRetained() };
+    const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
+    // 委派（基名 w + 委派词登记）→ 子代理事件建面板态（生产同通道：结果先行、done 收口归档）
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { label: 'w', prompt: '委派任务甲' }, callId: 'c1' } } as never);
+    ctrl.onEventForTest({ type: 'token', text: '子代理正文\n', payload: { subagent: 'w' } } as never);
+    const one = render(<App {...props} />);
+    current = one;
+    for (let i = 0; i < 40 && !(one.lastFrame() ?? '').includes('[w]'); i++) await sleep(25);
+    one.write('\u0002'); // Ctrl+B 浏览
+    await sleep(50);
+    one.write('\r'); // Enter → 全屏查看 live w
+    await sleep(80);
+    const two = render(<App {...props} />);
+    current = two;
+    await sleep(80);
+    assert.match(two.lastFrame() ?? '', /子代理视图|subagent view/, '前置：全屏查看 live 子代理在场');
+    assert.match(two.lastFrame() ?? '', /\[w\]/, '前置：live 态任务名在档');
+    // 结果先行入档（child 未 done → wait）→ done 收口：archiveDeferred 归档——child 从 children 离场、
+    // 转录折进 SPAWN 调用行；查看视图必须自动换挡到 archived 形态而非退化「✻ []」
+    ctrl.onEventForTest({ type: 'tool-result', text: 'ok', payload: { tool: 'spawn', ok: true, callId: 'c1' } } as never);
+    ctrl.onEventForTest({ type: 'done', text: '结论行甲', payload: { subagent: 'w' } } as never);
+    await sleep(250); // 换挡 effect → setTimeout 0 → setInspectRetained 触发卸载
+    assert.equal(
+      (retain.inspect as { kind?: string } | undefined)?.kind,
+      'archived',
+      'inspect 已自动从 live 换挡到 archived 形态',
+    );
+    const three = render(<App {...props} />);
+    current = three;
+    await sleep(100);
+    const frame = three.lastFrame() ?? '';
+    assert.match(frame, /\[w\]/, '任务名不断档（基名回查 SPAWN 归档行）');
+    assert.match(frame, /step 1/, '步数在档（subagentMeta.steps）');
+    assert.match(frame, /完成|done/, '完成态在档');
+    assert.ok(!frame.includes('[]'), '状态行不再空 []（live/archived 双空的退化形态）');
+    assert.ok(!frame.includes('✻'), '完成态不显运行态转圈（✓ 定格字形）');
+    assert.match(three.allOutput(), /子代理正文/, '转录随归档 detail 折入，时间线完整回放');
+    three.unmount();
+    current = undefined;
+  } finally {
+    try {
+      current?.unmount();
+    } catch {
+      /* 已卸载 */
+    }
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

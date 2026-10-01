@@ -378,6 +378,29 @@ export function App({
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
   });
+  // live→archived 换挡（真机「查看中子代理完成：任务名/步数/耗时全消失、仍显运行态 ✻ []」）：被查看的
+  // live 子代理完成即经 archiveInto 从 children 离场、转录折进 SPAWN 调用行——inspect 滞留 live 形态则
+  // 下一帧 child/archived 双空。此处按基名回查 SPAWN 归档行并切换 inspect 至 archived 形态。配对口径与
+  // browseRows 同源：调用行文本 `SPAWN <基名>` 精确等值（#N 并发消歧后缀只在子代理事件侧，调用行恒基名，
+  // 剥除后匹配；同名并发批无法精确到 seq，取最后归档一条）。必须走 setInspectRetained 生产 repaint 整屏
+  // 重放：Static append-only，原地换数据源只会把归档时间线整段重复追加进滚动缓冲（Static 状态切换必须
+  // 整屏重放的既定裁决）；换挡出 setTimeout 0——unmount 不能在 React effect 冲刷期同步执行
+  React.useEffect(() => {
+    const cur = inspectRef.current;
+    if (cur?.kind !== 'live') return;
+    if (stateRef.current.children.some((c) => c.label === cur.label)) return;
+    const base = cur.label.replace(/#\d+$/, '');
+    const cands = stateRef.current.messages.filter(
+      (m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.detail !== undefined && m.text === `SPAWN ${base}`,
+    );
+    const target = cands[cands.length - 1];
+    if (target === undefined) return;
+    const timer = setTimeout(() => {
+      // 用户在窗口期 Esc 退出或切到别处即放弃换挡（inspect 引用不同一），不复活全屏
+      if (inspectRef.current === cur) setInspectRetained({ kind: 'archived', seq: target.seq });
+    }, 0);
+    return () => clearTimeout(timer);
+  });
   const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter) : undefined;
 
   useInput((input: string, key: RawKey) => {
