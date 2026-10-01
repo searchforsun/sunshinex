@@ -55,7 +55,7 @@ test('App：两次 Ctrl+C 确认暂停——第一次挂卡任务不停，第二
     assert.equal(ctrl.getState().pauseConfirm, true, '第一次 Ctrl+C 挂确认卡');
     assert.equal(ctrl.getState().status, 'running', '任务继续跑不被中断');
     await waitFor(() => (term?.lastFrame() ?? '').includes('ctrl+c again'), 3000);
-    assert.ok((term?.lastFrame() ?? '').includes('esc to keep running'), '一行提示上屏（简化版非模态卡）');
+    assert.ok((term?.lastFrame() ?? '').includes('keep running'), '暂停确认灰底提示条上屏（KeyHints emphasized 承载）');
     term.write('\x03');
     await flushKey(term);
     await pending;

@@ -101,7 +101,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
 
     write('\u0002'); // Ctrl+B 进入
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /subagent browse · ↑↓ move · Enter inspect · Esc exit/, '提示行出现');
+    assert.match(lastFrame() ?? '', /⌨ ↑↓ move · Enter inspect · Esc exit/, '浏览键提示条出现（KeyHints emphasized 承载）');
     assert.match(lastFrame() ?? '', /❯ \[wr\]/, '浏览列表在动态区呈现已完成项（光标缺省落最近一条）');
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
@@ -147,11 +147,11 @@ test('App：浏览模式经整屏重绘（卸载→同 retain 重挂，生产 re
     await new Promise((r) => setTimeout(r, 200));
     one.write('\u0002'); // Ctrl+B 进入浏览：App 的 repaint effect 将触发 onRequestRepaint → 卸载
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(one.lastFrame() ?? '', /subagent browse/, '前置：浏览模式已进入');
+    assert.match(one.lastFrame() ?? '', /Enter inspect/, '前置：浏览模式已进入');
     const two = render(<App {...props} banner={props.banner} />);
     current = two;
     await new Promise((r) => setTimeout(r, 200));
-    assert.match(two.lastFrame() ?? '', /subagent browse/, '重挂后浏览模式保留（retain 现场）');
+    assert.match(two.lastFrame() ?? '', /Enter inspect/, '重挂后浏览模式保留（retain 现场）');
   } finally {
     current?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -178,7 +178,7 @@ test('App：运行中无子代理且无归档时 Ctrl+B 不进入浏览模式', 
       await new Promise((r) => setTimeout(r, 200));
       write('\u0002');
       await new Promise((r) => setTimeout(r, 150));
-      assert.doesNotMatch(lastFrame() ?? '', /subagent browse/, '运行中不进入');
+      assert.doesNotMatch(lastFrame() ?? '', /Enter inspect/, '运行中不进入');
       await p;
       await ctrl.waitIdle();
     } finally {
@@ -219,7 +219,7 @@ test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重�
     const two = render(<App {...props} banner={props.banner} />);
     current = two;
     await new Promise((r) => setTimeout(r, 200));
-    assert.match(two.lastFrame() ?? '', /subagent browse/, '前置：重挂后浏览态保留');
+    assert.match(two.lastFrame() ?? '', /Enter inspect/, '前置：重挂后浏览态保留');
     two.write('\r'); // Enter 选中已完成 spawn → 全屏回看 + 退浏览；browseMode 变更再次触发 repaint 卸载
     await new Promise((r) => setTimeout(r, 150));
     // 卸载帧有竞态不作断言（与 browse retain 用例同构），以同 retain 重挂帧验证 inspect 现场

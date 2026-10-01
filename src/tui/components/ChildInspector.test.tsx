@@ -15,14 +15,14 @@ const live = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
   ...over,
 });
 
-test('Inspector 运行中：无外框整页平铺，状态行（label/step/tokens/Esc 提示）与结构行混排（2026-09-29 用户裁决去边框）', () => {
+test('Inspector 运行中：无外框整页平铺，状态行（label/step/tokens 元数据）与结构行混排（2026-09-29 去边框；2026-10-02 Tab/Esc 提示移恒驻键提示条）', () => {
   const one = render(<ChildInspector child={live()} columns={80} rows={12} />);
   const f = one.lastFrame() ?? '';
   const all = one.allOutput();
   assert.doesNotMatch(all, /╭/, '无外层边框（视作独立主 agent session 平铺）');
   assert.match(f, /\[w\]/, '状态行携带 label');
   assert.match(f, /step 14/, '状态行携带步数');
-  assert.match(f, /Esc/, '状态行携带退出提示');
+  assert.doesNotMatch(f, /Esc 退出|Esc exit/, '键提示不再内嵌 head（由 App 层键提示条承载）');
   assert.match(all, /● \[READ\] src\/a\.ts/, 'call 行与主 agent ToolRow 同构（● [VERB] target）');
   assert.match(all, /⎿ ✓/, 'result 行 ⎿ + ok 标记（标记行）');
   assert.match(all, /84 lines/, 'result 内容行（全形对标主 agent）');

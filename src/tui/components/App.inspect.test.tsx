@@ -46,14 +46,14 @@ test('App inspect：Tab 切换折叠/完整时间线（经生产 repaint 整屏�
     const three = render(<App {...props} />);
     current = three;
     await sleep(120);
-    assert.match(three.lastFrame() ?? '', /收起时间线|collapse timeline/, 'Tab 后状态行切到展开态（提示语为「可收起」）');
+    assert.match(three.lastFrame() ?? '', /时间线|timeline/, 'Tab 后键提示条在场（Tab 时间线承载，head 内嵌退役）');
     assert.match(three.allOutput(), /思考全文行甲/, 'Tab 展开后思考全文呈现（Static 整屏重放）');
     three.write('\t'); // Tab → 折叠回缺省
     await sleep(120);
     const four = render(<App {...props} />);
     current = four;
     await sleep(120);
-    assert.match(four.lastFrame() ?? '', /展开时间线|expand timeline/, '再按 Tab 回到折叠态（提示语为「可展开」）');
+    assert.doesNotMatch(four.lastFrame() ?? '', /思考全文行甲/, '再按 Tab 回到折叠态');
     four.unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

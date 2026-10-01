@@ -21,6 +21,7 @@ import { Spinner } from './Spinner';
 import { ChildPanel } from './ChildPanel';
 import { BrowseList } from './BrowseList';
 import { ChildInspector } from './ChildInspector';
+import { KeyHints, keyHintsFor } from './KeyHints';
 
 /** 审批键盘映射：y 放行一次 / a 本会话放行 / n 拒绝（纯函数，独立单测） */
 export function approvalKeyToDecision(input: string): ApprovalDecision | undefined {
@@ -380,9 +381,21 @@ export function App({
   const spinnerRows = state.status === 'running' ? 1 : 0;
   const runningChildren = state.children.filter((c) => !c.done).length;
   const childPanelRows = runningChildren > 0 && !browseMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1
-  // 暂停确认提示行（2026-10-02 两次 Ctrl+C）在场即 +1：不实账则提示出现即帧高触顶 clearTerminal（子代理视图冻结同病根）
-  const pauseHintRows = state.pauseConfirm ? 1 : 0;
-  const previewCap = computePreviewCap(rows, spinnerRows + inputRows + todoRows + childPanelRows + pauseHintRows + 1 /* StatusBar */ + 2 /* 预览 marginBottom + … 行 */);
+  // 恒驻键提示条（2026-10-02）：所有交互处的快捷键单点承载——矩阵见 keyHintsFor；恒 1 行计入
+  // previewCap chrome 实账（不实账即帧高触顶 clearTerminal，子代理视图冻结同病根）；模态卡在场
+  // hints=undefined 条退场（卡 hint 承载，零行）
+  const hints = keyHintsFor({
+    status: state.status,
+    approval: state.approval,
+    question: state.question,
+    pauseConfirm: state.pauseConfirm,
+    browse: browseMode,
+    inspect: inspect !== undefined,
+    menuVisible: menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error'),
+    hasChildren: runningChildren > 0,
+  });
+  const hintRows = hints ? 1 : 0;
+  const previewCap = computePreviewCap(rows, spinnerRows + inputRows + todoRows + childPanelRows + hintRows + 1 /* StatusBar */ + 2 /* 预览 marginBottom + … 行 */);
   // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
@@ -800,6 +813,7 @@ export function App({
         previewCap={previewCap}
       />
       {inspect ? (
+        <>
         <ChildInspector
           child={inspect.kind === 'live' ? state.children.find((c) => c.label === inspect.label) : undefined}
           archived={
@@ -823,16 +837,14 @@ export function App({
           rows={rows}
           expanded={inspectExpanded}
         />
+        {hints ? <KeyHints items={hints.items} emphasized={hints.emphasized} columns={columns} /> : null}
+        </>
       ) : (
         <>
       {state.status === 'running' ? (
         // 恒显活动行（对标 CC）：整个任务运行期常驻计时·tokens 跳动行，reasoning 长静默期与正文流式期均有「活着」信号，
         // 消除「疑似卡死」观感；responding 期与流式正文同屏共存
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens + state.metrics.turnChildTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
-      ) : null}
-      {browseMode ? (
-        // 浏览模式提示行：恒 1 行、仅 idle/error 态存在（此时动态区无流式内容），不构成动态区高度波动源
-        <Text backgroundColor="gray"> {t('subagent browse · ↑↓ move · Enter inspect · Esc exit', '子代理浏览 · ↑↓ 移动 · Enter 查看 · Esc 退出')} </Text>
       ) : null}
       {browseMode ? (
         // 子代理统一列表（2026-09-28 用户裁决）：历史与运行中全部由动态区承载——合并序列单点口径
@@ -910,6 +922,10 @@ export function App({
         active={state.status === 'idle' || state.status === 'error'}
       />
       <TodoList todos={state.todos} expanded={state.status !== 'running' || todoExpanded} columns={columns} />
+      {/* 恒驻键提示条（2026-10-02 用户裁决）：输入框下方常驻一行随状态切换——所有交互的快捷键
+          一眼可见零查找；banner 顶部快捷键行/浏览灰底行/暂停灰底行已退役归一到这一条（banner 行
+          滚出视口即死提示）；模态卡在场 hints=undefined 条退场（卡 hint 承载） */}
+      {hints ? <KeyHints items={hints.items} emphasized={hints.emphasized} columns={columns} /> : null}
       <StatusBar
         metrics={state.metrics}
         status={state.status}
@@ -919,11 +935,6 @@ export function App({
       />
         </>
       )}
-      {/* 暂停确认提示（2026-10-02 两次 Ctrl+C，简化版一行非模态）：主视图与子代理全屏视图都可见——
-          第一次 Ctrl+C 出现提示，再按 Ctrl+C 即暂停，Esc 继续跑 */}
-      {state.pauseConfirm ? (
-        <Text backgroundColor="gray"> {t('Pause? press ctrl+c again to pause · esc to keep running', '确认暂停？再按一次 Ctrl+C 暂停 · Esc 继续运行')} </Text>
-      ) : null}
     </Box>
   );
 }
