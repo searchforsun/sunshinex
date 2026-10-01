@@ -7,7 +7,7 @@ import { BannerInfo } from '../banner-info';
 import { Banner } from './Banner';
 import { ToolRow } from './ToolRow';
 import { MarkdownText } from './MarkdownText';
-import { LiveArea, THINK_TAIL_LINES } from './LiveArea';
+import { LiveArea } from './LiveArea';
 import { TailLedger, printedEntryLines, recomputeTailPlan } from '../tail-rewrite';
 import { renderMd } from '../md-ansi';
 import { theme } from '../theme';
@@ -42,7 +42,6 @@ export function MessageList({
   ledger,
   rewriteFrom,
   previewCap,
-  dockRegion,
 }: {
   messages: ChatItem[];
   live?: LiveBlock;
@@ -66,12 +65,6 @@ export function MessageList({
   /** 预览尾窗行数上限（App 按 chrome 实账收缩后传入，2026-09-30「贴地不再上提」：总帧高 ≤ rows-1 使
    *  ink3 clearTerminal 路径不可达）；缺省回落旧 F1 公式 min(28, max(8, rows-6))（测试兼容） */
   previewCap?: number;
-  /** 贴底垫层预算（2026-10-01「主 agent 正文流式贴底不再跳中间」）：dock+预览两段的行数预算
-   *  （App 按 rows-1-chrome 实账传入）；本组件按当前预览实高垫出差额空行，动态帧恒高 rows-1——
-   *  log-update 帧恒占满视口（末行留光标），状态栏恒贴屏底，历史短于视口不再悬中、任何帧高变迁
-   *  不再提跳；预览满 cap 时垫层恰为 0（与 previewCap 预算无缝衔接）。undefined=不垫（顶锚旧形态，
-   *  首轮无历史/模态卡/全屏查看态） */
-  dockRegion?: number;
 }): JSX.Element {
   const epochRef = React.useRef(0);
   const prevLenRef = React.useRef(0);
@@ -144,19 +137,6 @@ export function MessageList({
   // 折叠语义按「边界」算：仅当下一块是同段续块才折叠当前块的下边距；末尾续块与其后的统计行/
   // 工具行之间是不同内容，间隔保留（真机「正文与时间步骤没间隔」病根）
   const gapFoldAfter = new Set(visibleMessages.filter((m, i) => visibleMessages[i + 1]?.cont).map((m) => m.seq));
-  // 贴底垫层（2026-10-01）：预览实高先算实账（reply 尾窗行 + … 提示行 + marginBottom 1；thinking 恒 6 行
-  // 滚动窗；reply 尾段排空瞬间预览渲染 0 行——账随渲染走，不得按「live 在场」粗记 6），垫层 = 预算 − 实高
-  const cap = previewCap ?? Math.min(28, Math.max(8, rows - 6));
-  const preview = live !== undefined && live.kind === 'reply' ? mdPreviewBlock(live, columns, cap) : undefined;
-  const previewRows =
-    live === undefined
-      ? 0
-      : live.kind === 'reply'
-        ? preview !== undefined
-          ? preview.lines.length + (preview.truncated ? 1 : 0) + 1 /* 预览 Box marginBottom */
-          : 0
-        : THINK_TAIL_LINES;
-  const dockPad = dockRegion !== undefined ? Math.max(0, dockRegion - previewRows) : 0;
   return (
     <Box flexDirection="column">
       <Static key={epochRef.current} items={entries}>
@@ -180,17 +160,9 @@ export function MessageList({
           ) : null
         }
       </Static>
-      {dockPad > 0 ? <Box height={dockPad} /> : null}
       {live ? (
         live.kind === 'reply' ? (
-          preview !== undefined ? (
-            <Box flexDirection="column" marginBottom={1}>
-              {preview.truncated ? <Text dimColor>…</Text> : null}
-              {preview.lines.map((line: string, i: number) => (
-                <Text key={i}>{line || ' '}</Text>
-              ))}
-            </Box>
-          ) : null
+          <MdBufferPreview live={live} columns={columns} rows={rows} previewCap={previewCap} />
         ) : (
           <LiveArea live={live} columns={columns} />
         )
@@ -199,23 +171,42 @@ export function MessageList({
   );
 }
 
-/** 动态区未入档尾段预览行装配（纯函数；2026-10-01 从 MdBufferPreview 组件抽取——垫层计行与渲染
- *  必须同源，两份手写必漂移）。预览源 = mdTailStart 水位切片（streamer 缓冲期未消费结构；
- *  2026-09-30 真机「渲染+原文同屏」修复：旧 tailPartial 反向扫全量源，表格入档后撞「表头+分隔行」
- *  即把表头→源尾全当未完结构重演裸文本）。实时渲染：缓冲期每帧对未消费区做 markdansi 渲染——
- *  表格边框随行数长出、围栏带高亮长出；闭合瞬间 streamer 发射同渲染器的 Static 块，无缝衔接。
- *  与 Static 同出口（renderMd：归一+主题+爆栈兜底），帧高限界沿用 F1（自尾保留 cap 行 + … 提示）：
- *  未闭合围栏/表格 hold 期 markdansi 零 ansi 入档、水位切片自结构起点整段返回，无上限即帧高随内容
- *  无界增长 → outputHeight >= stdout.rows 触发 ink3 clearTerminal 整屏重写（闪屏病根）。
- *  空尾段（无未完结构）返回 undefined（不占帧高）。 */
-export function mdPreviewBlock(live: LiveBlock, columns: number, cap: number): { lines: string[]; truncated: boolean } | undefined {
+/** 动态区未入档尾段原文预览（2026-09-30 markdansi 替换批次）：reply 期间旧 LiveArea 的全量源预览
+ *  与滚动缓冲中的 ansi 条目视觉重叠（正文双份），其 reply 分支退役于 Task 5，本组件接管——
+ *  tailStart 水位切片（session mdConsume 镜像：表格 hold/围栏开栏/未完行的未消费起点），逐行暗色原文呈现，
+ *  收口后经历史区 ansi 条目（框线成形）承接；thinking 流照旧走 LiveArea 6 行滚动窗。
+ *  帧高限界（终审 F1）：未闭合围栏/表格 hold 期 markdansi 零 ansi 入档、水位切片自结构起点整段返回，
+ *  无上限即帧高随内容无界增长 → outputHeight >= stdout.rows 触发 ink3 clearTerminal 整屏重写（闪屏病根）。
+ *  cap 由 App 按 chrome 实账收缩后传入（2026-09-30「贴地不再上提」，总帧高 ≤ rows-1 使 clearTerminal 不可达）；
+ *  缺省回落旧公式 cap = min(28, max(8, rows-6))（28 绝对上限 + 随视口收缩的 chrome 让位），
+ *  行按 slice(-cap) 自尾保留（最新行可见），截断时首行前加「…」省略提示。columns 预留（后续折行收敛接线）。
+ *  空尾段（无未完结构）渲染 null。 */
+function MdBufferPreview({ live, columns, rows, previewCap }: { live: LiveBlock; columns: number; rows: number; previewCap?: number }): JSX.Element | null {
+  // 预览源 = mdTailStart 水位切片（streamer 缓冲期未消费结构；2026-09-30 真机「渲染+原文同屏」修复：
+  // 旧 tailPartial 反向扫全量源，表格入档后撞「表头+分隔行」即把表头→源尾全当未完结构重演裸文本）
   const start = typeof live.tailStart === 'number' ? live.tailStart : live.text.lastIndexOf('\n') + 1;
   const tail = live.text.slice(start);
-  if (tail.trim().length === 0) return undefined;
+  if (tail.trim().length === 0) return null;
+  // 实时渲染（2026-09-30 用户裁决「不能实时渲染表格、代码块吗」）：缓冲期每帧对未消费区做 markdansi
+  // 渲染——表格边框随行数长出、围栏带高亮长出；闭合瞬间 streamer 发射同渲染器的 Static 块，无缝衔接。
+  // 与 Static 同出口（renderMd：归一+主题+爆栈兜底），帧高限界沿用 F1（自尾保留 cap 行 + … 提示）
   const rendered = renderMd(tail, columns);
   const all = rendered.replace(/\n+$/, '').split('\n');
-  if (all.every((l) => l.trim().length === 0)) return undefined;
-  return { lines: all.length > cap ? all.slice(-cap) : all, truncated: all.length > cap };
+  if (all.every((l) => l.trim().length === 0)) return null;
+  const cap = previewCap ?? Math.min(28, Math.max(8, rows - 6));
+  const lines = all.length > cap ? all.slice(-cap) : all;
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {all.length > cap ? (
+        <Text dimColor>…</Text>
+      ) : null}
+      {lines.map((line: string, i: number) => (
+        <Text key={i}>
+          {line || ' '}
+        </Text>
+      ))}
+    </Box>
+  );
 }
 
 /** 行级 memo：仅当 item/详略状态变化时重渲染（item 引用稳定） */

@@ -19,7 +19,7 @@ import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
 import { Spinner } from './Spinner';
 import { ChildPanel } from './ChildPanel';
-import { BrowseList, BROWSE_PAGE_ROWS } from './BrowseList';
+import { BrowseList } from './BrowseList';
 import { ChildInspector } from './ChildInspector';
 
 /** 审批键盘映射：y 放行一次 / a 本会话放行 / n 拒绝（纯函数，独立单测） */
@@ -366,40 +366,14 @@ export function App({
   const slashPool = React.useMemo(() => buildSlashMenu('/', skillMenu).map((e) => e.cmd), [skillMenu]);
   // 菜单可见行数：上限 20，随视口与 chrome（输入框/待办/状态栏）实账收缩，防动态帧触顶整屏重写
   const menuMaxRows = Math.max(3, Math.min(SLASH_MENU_MAX_ROWS, rows - inputRows - todoRows - 3));
-  // 菜单实高（2026-10-01 贴底垫层计行）：窗口可见行 + 超窗溢出提示行（SlashMenu 渲染分支同构）
-  const menuVisible = (state.status === 'idle' || state.status === 'error') && menuEntries.length > 0
-    ? slashMenuWindow(menuEntries.length, Math.min(slashCursorState, menuEntries.length - 1), menuMaxRows)
-    : undefined;
-  const menuRows = menuVisible !== undefined ? menuVisible.count + (menuEntries.length > menuVisible.count ? 1 : 0) : 0;
-  // 浏览态实高（2026-10-01 贴底垫层计行）：提示行 1 + 列表（边框 2 + 窗口行 + 超页页码行）
-  const browseEntryCount = browseMode ? browseRows(state).length : 0;
-  const browseListRows = browseEntryCount > 0
-    ? 2 + Math.min(BROWSE_PAGE_ROWS, browseEntryCount) + (Math.ceil(browseEntryCount / BROWSE_PAGE_ROWS) > 1 ? 1 : 0)
-    : 0;
-  const browseHintRows = browseMode ? 1 : 0;
-  // 活动行实高（2026-10-01 贴底垫层计行修正）：tool-pending/tool-awaiting 按活跃调用逐行渲染（Spinner own
-  // 分支同构），旧恒 1 行在多调用并发期少账即帧高触顶 clearTerminal；思考/响应期恒 1 行
-  const spinnerRows = state.status === 'running'
-    ? (state.task.phase === 'tool-pending' || state.task.phase === 'tool-awaiting')
-      ? state.task.activeCalls.filter((c) => c.verb !== 'spawn').length
-      : 1
-    : 0;
+  // 动态帧总高实账（2026-09-30 用户裁决「贴地不再上提」）：ink3 在 outputHeight >= rows 时 clearTerminal
+  // 整屏重放（node_modules/ink/build/ink.js onRender），历史短于视口时输入框被「提」离贴地位、长历史则整屏闪烁——
+  // 预览行数上限按 chrome 实账收缩（活动行/输入框/待办/子代理面板/状态栏 + 预览 marginBottom 与 … 行预算），
+  // 帧高恒 ≤ rows-1，clearTerminal 路径结构性不可达
+  const spinnerRows = state.status === 'running' ? 1 : 0;
   const runningChildren = state.children.filter((c) => !c.done).length;
   const childPanelRows = runningChildren > 0 && !browseMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1
-  // chrome 总实账：帧内预览区之外的全部动态行（previewCap 与贴底垫层共用同一份，两处不得漂移）
-  const chromeRows = spinnerRows + inputRows + todoRows + childPanelRows + menuRows + browseHintRows + browseListRows + 1 /* StatusBar */;
-  const previewCap = computePreviewCap(rows, chromeRows + 2 /* 预览 marginBottom + … 行 */);
-  // 贴底门（2026-10-01「主 agent 正文流式贴底不再跳中间」）：动态帧恒高 rows-1、状态栏恒贴屏底——
-  // 旧形态帧顶锚在 Static 之后，历史短于视口时整块悬在屏中、任何帧高/内容变迁即「最后一行跳到中间」
-  // （子代理全屏视图帧高 ≥ rows 走 clearTerminal 恒重画反而恒贴底，真机对照即此病）。模态卡/全屏查看
-  // 态 chrome 不可精确计账不垫（卡态无流式、悬空无流式观感）；首轮无消息不垫（横幅顶锚首屏不滚走）
-  const dockActive =
-    inspect === undefined &&
-    state.approval === undefined &&
-    state.question === undefined &&
-    state.status !== 'awaiting-plan' &&
-    state.messages.length > 0 &&
-    (state.status === 'running' || state.status === 'idle' || state.status === 'error');
+  const previewCap = computePreviewCap(rows, spinnerRows + inputRows + todoRows + childPanelRows + 1 /* StatusBar */ + 2 /* 预览 marginBottom + … 行 */);
   // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
@@ -789,7 +763,6 @@ export function App({
         ledger={tailLedgerRef.current}
         rewriteFrom={rewriteFrom}
         previewCap={previewCap}
-        dockRegion={dockActive ? Math.max(0, rows - 1 - chromeRows) : undefined}
       />
       {inspect ? (
         <ChildInspector
