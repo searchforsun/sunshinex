@@ -264,3 +264,75 @@ test('Inspector 调用行行宽护栏：长动词（TASK_WAIT）下 target 预�
   }
   one.unmount();
 });
+
+test('Inspector 归档多行内容：委派词/结果续行折回本行不漏成正文（真机「多余输入内容/多余工具行」病根）', () => {
+  const one = render(
+    <ChildInspector
+      archived={{
+        label: 'w',
+        lines: [
+          '⏺ 委派提示词：项目背景首行',
+          '    项目背景续行甲',
+          '    项目背景续行乙',
+          'EXEC wc -l',
+          '⎿ ✓ ===TOOLS===',
+          '    40 BaseTool.java',
+          '    91 Factory.java',
+          'READ src/a.ts',
+          '⎿ ✓ 84 lines',
+        ],
+        steps: 3,
+        durationMs: 12_000,
+      }}
+      columns={80}
+      rows={40}
+    />,
+  );
+  const all = one.allOutput();
+  assert.match(all, /项目背景首行/, '委派词首行进输入带（灰底作用户带）');
+  assert.equal((all.match(/项目背景续行甲/g) ?? []).length, 1, '委派词续行恰呈现一次（吸收进输入带，不漏成独立正文段）');
+  assert.match(all, /===TOOLS===/, '结果首行内联呈现');
+  assert.ok(!all.includes('40 BaseTool.java'), '结果续行折叠态不直出（并回 result text，Tab 展开可见）');
+  one.unmount();
+  const exp = render(
+    <ChildInspector
+      archived={{
+        label: 'w',
+        lines: ['EXEC wc -l', '⎿ ✓ ===TOOLS===', '    40 BaseTool.java', '    91 Factory.java'],
+        steps: 3,
+        durationMs: 12_000,
+      }}
+      columns={80}
+      rows={40}
+      expanded
+    />,
+  );
+  assert.match(exp.allOutput(), /40 BaseTool\.java/, '展开态结果续行随 result 全文呈现');
+  assert.match(exp.allOutput(), /91 Factory\.java/, '展开态结果续行完整');
+  exp.unmount();
+});
+
+test('Inspector 归档 meta 带委派词全文：⏺ 行及其续行整块丢弃（同一委派词不重播——输入带单点承载）', () => {
+  const one = render(
+    <ChildInspector
+      archived={{
+        label: 'w',
+        prompt: '项目背景首行\n项目背景续行甲',
+        lines: [
+          '⏺ 委派提示词：项目背景首行',
+          '    项目背景续行甲',
+          'EXEC wc -l',
+          '⎿ ✓ done',
+        ],
+        steps: 2,
+        durationMs: 9_000,
+      }}
+      columns={80}
+      rows={40}
+    />,
+  );
+  const all = one.allOutput();
+  assert.equal((all.match(/项目背景首行/g) ?? []).length, 1, '委派词首行恰呈现一次（meta 输入带，detail ⏺ 行丢弃）');
+  assert.equal((all.match(/项目背景续行甲/g) ?? []).length, 1, '委派词续行恰呈现一次（随 ⏺ 行丢弃，不漏成正文）');
+  one.unmount();
+});

@@ -62,6 +62,32 @@ test('并行工具事件：result 行携带 callId 入转录、归档 detail 结
   }
 });
 
+test('归档 detail 多行序列化：委派词/工具输出续行 4 空格缩进折入（解析镜像不拆散——真机「多余输入内容/多余工具行」病根）', () => {
+  const tmp = tmpdir('sunshinex-sess-ml-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    // 多行委派词 + 多行工具输出：归档 detail 若不缩进续行，解析端按行分流即拆散成裸正文
+    ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: '委派首行\n委派续行甲\n委派续行乙', label: 'w' } } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
+    ctrl.onEventForTest({ type: 'tool-call', text: 'EXEC', payload: { input: { command: 'wc -l *.java' }, subagent: 'w', callId: 'c1' } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'out1\nout2\nout3', payload: { ok: true, subagent: 'w', callId: 'c1' } } as never);
+    ctrl.onEventForTest({ type: 'done', text: '结论', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'tool-result', text: 'w 完成', payload: { tool: 'spawn', ok: true } } as never);
+    const call = ctrl.getState().messages.find((m) => m.kind === 'call' && m.text.startsWith('SPAWN'))!;
+    const lines = (call.detail ?? '').split('\n');
+    const p = lines.findIndex((l) => l.startsWith('⏺ ') && l.includes('委派首行'));
+    assert.ok(p >= 0, '委派词首行带 ⏺ 前缀入 detail');
+    assert.equal(lines[p + 1], '    委派续行甲', '委派词续行 4 空格缩进折入（首行后第一续行）');
+    assert.equal(lines[p + 2], '    委派续行乙', '委派词续行 4 空格缩进折入（第二续行）');
+    const i = lines.findIndex((l) => l.startsWith('⎿ ✓ out1'));
+    assert.ok(i >= 0, '结果首行 ⎿ ✓ 形态入 detail');
+    assert.equal(lines[i + 1], '    out2', '工具输出续行随结果行缩进折入（第一续行）');
+    assert.equal(lines[i + 2], '    out3', '工具输出续行随结果行缩进折入（第二续行）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('结构边界冲刷半行保序：正文先于其后的工具行入档，不再跨工具行滞留沉底（2026-09-30 真机「工具/阶段说明集中最后」病根）', () => {
   const tmp = tmpdir('sunshinex-sess-frag-');
   try {

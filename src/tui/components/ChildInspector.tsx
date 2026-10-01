@@ -78,13 +78,27 @@ export function ChildInspector(props: {
   } else if (archived) {
     // ⏺ 委派行恒过滤（2026-09-30 真机重复项修复）：archiveInto 同一委派词写两份（subagentMeta.prompt 驱动输入带
     // + detail ⏺ 行），meta 形态再渲染即开头双显；委派词由输入带单点承载。旧档 meta 缺 prompt 时回退取该行。
-    const lines = archived.lines.filter((l) => {
+    // 委派词多行续行（序列化 4 空格缩进）随 ⏺ 行一并吸收进输入带——漏过去即被正文分流拆散成独立段
+    //（真机「归档后多余输入内容」病根）；meta 已带全文时续行随 ⏺ 行一并丢弃（同一委派词不重播）
+    const lines: string[] = [];
+    let promptOpen = false;
+    let promptFromDetail = false;
+    for (const l of archived.lines) {
       if (l.startsWith('⏺ ')) {
-        if (prompt === undefined) prompt = l.replace(/^⏺ [^：]*：/, '');
-        return false;
+        if (prompt === undefined) {
+          prompt = l.replace(/^⏺ [^：]*：/, '');
+          promptFromDetail = true;
+        }
+        promptOpen = true;
+        continue;
       }
-      return true;
-    });
+      if (promptOpen && /^ {4}/.test(l)) {
+        if (promptFromDetail && prompt !== undefined) prompt = `${prompt}\n${l.slice(4)}`;
+        continue;
+      }
+      promptOpen = false;
+      lines.push(l);
+    }
     for (const s of segmentizeLines(lines)) {
       if (s.kind === 'md') items.push({ kind: 'md', text: s.text });
       else if (s.kind === 'call') items.push({ kind: 'call', text: s.text });

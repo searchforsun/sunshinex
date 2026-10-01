@@ -174,6 +174,13 @@ function spawnBaseLabel(input: unknown): string {
   return str(obj.label) ?? str(obj.agent_id) ?? 'subagent';
 }
 
+/** 结构行多行内容续行序列化：续行一律 4 空格缩进（与思考 detail 同一口径）——解析镜像 segmentizeLines
+ *  把缩进续行折回上一结构行；不缩进即被按行分流拆散成裸正文（真机「归档后委派词/工具输出整段漏成
+ *  独立正文段——多余输入内容/多余工具行」病根）。旧档（无缩进）不回改，解析侧对旧形态维持原样 */
+function serializeMultiline(text: string): string {
+  return text.split('\n').join('\n    ');
+}
+
 /** 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径尾追入档；无子代理消耗省略子代理段 */
 export function formatTaskStatsLine(durationS: number, steps: number, totalTokens: number, childTokens: number): string {
   const base = `${formatDuration(Math.max(0, durationS))} · ${Math.max(0, steps)} steps · ↑${formatTokens(Math.max(0, totalTokens))} tokens`;
@@ -1944,14 +1951,15 @@ export class SessionController {
     //（与 done 事件去重同口径——流式正文 includes 终稿即跳过）
     const transcriptText = child.transcript.filter((l) => l.kind === 'text').map((l) => l.text).join('\n');
     const detail = [
-      ...(prompt ? [`⏺ ${t('delegated prompt', '委派提示词')}：${prompt}`] : []),
+      ...(prompt ? [`⏺ ${t('delegated prompt', '委派提示词')}：${serializeMultiline(prompt)}`] : []),
       // 完整时间线随 detail 折入（2026-09-28 用户裁决：归档子代理与运行中/主 agent 同构，Tab 展开时间线）——
-      // 结构行序列化与 ChildInspector archived 分流互为镜像：result 行 ⎿ ✓/✗、call 行原样（首词动词分流还原）、
-      // text 行原样、thinking 行 ✻ 摘要 + 4 空格缩进 detail 续行（与 MessageList ThinkingRow 呈现缩进同口径）；
-      // 序列化前并行结果归位（pairChildResults 单点）：结果行落对应调用行下，归档回看不再结果堆叠
+      // 结构行序列化与 ChildInspector archived 分流互为镜像：result 行 ⎿ ✓/✗（多行输出续行缩进折入）、
+      // call 行原样（首词动词分流还原）、text 行原样、thinking 行 ✻ 摘要 + 4 空格缩进 detail 续行
+      // （与 MessageList ThinkingRow 呈现缩进同口径）；序列化前并行结果归位（pairChildResults 单点）：
+      // 结果行落对应调用行下，归档回看不再结果堆叠
       ...pairChildResults(child.transcript).map((l) =>
         l.kind === 'result'
-          ? `⎿ ${l.ok === false ? '✗' : '✓'} ${l.text}`
+          ? `⎿ ${l.ok === false ? '✗' : '✓'} ${serializeMultiline(l.text)}`
           : l.kind === 'thinking'
             ? `✻ ${l.text}${l.detail !== undefined && l.detail.length > 0 ? '\n' + l.detail.split('\n').map((x) => `    ${x}`).join('\n') : ''}`
             : l.text,
