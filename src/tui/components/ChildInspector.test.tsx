@@ -133,6 +133,17 @@ test('Inspector 不压缩：完成态完整时间线入滚动缓冲（Static 打
   one.unmount();
 });
 
+test('Inspector 思考期帧高实账：正文尾窗+思考尾窗+状态行 ≤ rows-1（恰触 rows 即每帧 clearTerminal 整屏重写洪流，WT 视觉冻结病根）', () => {
+  // 长 bufText 撑满正文预览预算 + bufThink 在场：正是真机子代理「思考+正文双流式」的帧形态
+  const longTail = Array.from({ length: 60 }, (_, i) => `正文第 ${i} 行，补足宽度让 renderMd 折行收敛到列宽以内再折出多行来。`).join('\n');
+  const one = render(<ChildInspector child={live({ bufText: longTail, bufThink: '思考流第一行\n思考流第二行' })} columns={80} rows={16} />);
+  const f = one.lastFrame() ?? '';
+  assert.ok(f.includes('✻ 思考流'), '思考尾窗在场（双流式帧形态）');
+  const n = f.replace(/\n$/, '').split('\n').length;
+  assert.ok(n <= 15, `思考期动态帧高 ${n} 行必须 ≤ rows-1=15（恰触 16 行即 ink clearTerminal 每帧整屏重写）`);
+  one.unmount();
+});
+
 test('Inspector 流式增量入档：空行段落边界后的闭合段进 Static，未闭合尾段留动态预览（对标主 agent flushReply/LiveArea）', () => {
   const one = render(
     <ChildInspector

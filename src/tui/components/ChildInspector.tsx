@@ -132,8 +132,12 @@ export function ChildInspector(props: {
   const thinking = !done && child?.bufThink !== undefined && child.bufThink.length > 0;
   const tailText = !done && child ? [...openTail, ...(child.bufText ? [child.bufText] : [])].join('\n') : '';
   const textCap = thinking
-    ? Math.max(4, Math.min(REPLY_PREVIEW_MAX_ROWS, rows - THINK_TAIL_LINES - 2))
+    ? Math.max(4, Math.min(REPLY_PREVIEW_MAX_ROWS, rows - THINK_TAIL_LINES - 3))
     : Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(8, rows - 4));
+  // 帧高实账（ink3 纪律 outputHeight ≥ rows 即 clearTerminal 整屏重写）：思考期动态区 = 正文尾窗 textCap
+  // + 思考尾窗 THINK_TAIL_LINES + head 行 + marginBottom 1——预算必须给满 3 行（head+margin+1 余量），
+  // 给 2 行则帧高恰等于 rows、思考流式期每帧触发 clearTerminal 整屏重写洪流（WT 视觉冻结至某次大输出
+  // resync，真机「进子代理视图后 Esc/Tab 须先按 Enter」的病灶——键位日志已证派发正常，冻结在渲染层）
   // 尾段预览（2026-09-30 markdansi 统一批次）：尾段原文一次性 renderMd（宽度即 width 参数自带收敛，
   // 旧 tailReplyPreview 源级折行预算退役）——超预览行预算时对 ANSI 输出按行 slice 自尾保留
   // （markdansi 行级 SGR 自闭合，切行不切半截码；尾部空行剥除不吃预算）

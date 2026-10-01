@@ -379,7 +379,9 @@ export function App({
   const spinnerRows = state.status === 'running' ? 1 : 0;
   const runningChildren = state.children.filter((c) => !c.done).length;
   const childPanelRows = runningChildren > 0 && !browseMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1
-  const previewCap = computePreviewCap(rows, spinnerRows + inputRows + todoRows + childPanelRows + 1 /* StatusBar */ + 2 /* 预览 marginBottom + … 行 */);
+  // 暂停确认提示行（2026-10-02 两次 Ctrl+C）在场即 +1：不实账则提示出现即帧高触顶 clearTerminal（子代理视图冻结同病根）
+  const pauseHintRows = state.pauseConfirm ? 1 : 0;
+  const previewCap = computePreviewCap(rows, spinnerRows + inputRows + todoRows + childPanelRows + pauseHintRows + 1 /* StatusBar */ + 2 /* 预览 marginBottom + … 行 */);
   // 模态卡优先（规格 §6）：审批/计划/问询卡在场即自动退出全屏，让位模态交互
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
