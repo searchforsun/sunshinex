@@ -89,12 +89,16 @@ test('createMdRender：闭包绑定 width/highlighter（streamer options 不透�
   assert.ok(out.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').split('\n').every((l) => l.length <= 40), 'width 绑定生效');
 });
 
-/* ---------- 正文行距律（2026-10-01 用户裁决「增加一定的行距」） ---------- */
+/* ---------- 正文行距律·分区版（2026-10-01 用户裁决「不同区域不同行距，整体协调」） ---------- */
 
-test('BODY_LINE_SPACING=1：prose 逻辑行间恒单空行——列表项、段落同档', () => {
-  const out = strip(renderMd('- 甲项\n- 乙项\n\n段落一行\n\n段落二行', 80));
-  assert.ok(out.includes('• 甲项\n\n• 乙项'), '列表项间单空行');
-  assert.ok(out.includes('段落一行\n\n段落二行'), '段落间单空行（行界=块界同档）');
+test('BODY_LINE_SPACING 分区：无序项紧排成组、段落间与有序项间单空行、组间边界单空行', () => {
+  const src = '- 甲项\n- 乙项\n\n段落一行\n\n段落二行\n\n1. 步骤一\n2. 步骤二';
+  const out = strip(renderMd(src, 80));
+  assert.ok(out.includes('• 甲项\n• 乙项'), '无序项间紧排（同类枚举聚拢成组）');
+  assert.ok(out.includes('乙项\n\n段落一行'), '组→段落边界单空行');
+  assert.ok(out.includes('段落一行\n\n段落二行'), '段落间单空行');
+  assert.ok(out.includes('段落二行\n\n1. 步骤一'), '段落→有序组边界单空行');
+  assert.ok(out.includes('1. 步骤一\n\n2. 步骤二'), '有序项间单空行（论述步进呼吸）');
   assert.ok(!out.includes('\n\n\n'), '行距档位不叠加（无 3+ 连续换行）');
 });
 
