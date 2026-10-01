@@ -192,17 +192,24 @@ export class SubagentRunner {
   /** 活动根提供者引用（deps.rootProvider 缺省 null）：fork 子 Reactor root 经 forkRoot() 单点取活动值 */
   private readonly rootProvider: (() => string | null) | null;
 
+  /** 父任务中断信号（attachParent 同点挂载，run 起止生命周期）：前台 spawn 级联进子 Reactor、后台 spawn 级联进任务 abort */
+  private parentSignal?: AbortSignal;
+
   constructor(private deps: SubagentRunnerDeps, private agents: AgentRegistry) {
     this.rootProvider = deps.rootProvider ?? null;
   }
 
-  /** spawn 通道预算源：reactor run 起止挂/摘（graph 通道经 opts.budget 显式传入，不走此源） */
-  attachParent(getBudget: () => SubagentBudget): void {
+  /** spawn 通道预算源：reactor run 起止挂/摘（graph 通道经 opts.budget 显式传入，不走此源）。
+   *  同点挂父中断信号（Esc/Ctrl+C）：前台 spawn 默认级联到子 Reactor、后台 spawn 级联到任务 abort——
+   *  「主任务暂停，子代理一并停」（2026-10-02 用户裁决） */
+  attachParent(getBudget: () => SubagentBudget, signal?: AbortSignal): void {
     this.getBudget = getBudget;
+    this.parentSignal = signal;
   }
 
   detachParent(): void {
     this.getBudget = null;
+    this.parentSignal = undefined;
   }
 
   /** fork 子 Reactor 工作目录事实单点：活动根优先（worktree 会话经 rootProvider），缺省回退静态 deps.root */
@@ -290,6 +297,11 @@ export class SubagentRunner {
     const budget = this.getBudget?.();
     const abort = new AbortController();
     task.stop = () => abort.abort();
+    // 主任务暂停级联（2026-10-02 用户裁决）：父中断信号 abort 即连带停本后台子代理——主任务暂停/中断时
+    // 不留孤儿在跑；父 run 收束后信号终态（aborted 或无监听必要），一次性监听零泄漏
+    const parent = this.parentSignal;
+    if (parent?.aborted) abort.abort();
+    else parent?.addEventListener('abort', () => abort.abort(), { once: true });
     // fire-and-forget：错误全程 fail-bounded 落日志，绝不冒泡主链
     void (async () => {
       try {
@@ -379,11 +391,15 @@ export class SubagentRunner {
       // fork root 锚树（工作目录事实=专属树），缺省锚主链工作目录事实
       const scopeChain = own !== undefined ? this.deps.safety.withMemoryScope(own.scope) : this.deps.safety;
       const childSafety = iso !== undefined ? scopeChain.withRoot(iso.tree) : scopeChain;
+      const childSignal = opts?.signal ?? this.parentSignal;
       const child = new Reactor({
         safety: childSafety,
         registry: this.deriveChildRegistry(input),
         context: this.deps.context,
         model: this.deps.model,
+        // 主任务暂停级联（2026-10-02 用户裁决）：显式 opts.signal 优先（后台两段式已带任务 abort），
+        // 缺省取父中断信号——前台 spawn 的子 Reactor 步边界与在途模型调用随父 Esc/Ctrl+C 即刻中止
+        ...(childSignal ? { signal: childSignal } : {}),
         ...(iso !== undefined ? { root: iso.tree } : this.forkRoot() ? { root: this.forkRoot()! } : {}),
         ...(this.deps.router ? { router: this.deps.router } : {}),
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),

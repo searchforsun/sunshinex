@@ -208,6 +208,9 @@ export interface TuiState {
   question?: AskUserRequest;
   /** 输入框回填文本（/rewind //fork 锚点轮输入；瞬态不进 journal，App 取走即消费） */
   backfill?: string;
+  /** 暂停确认卡（第一次 Ctrl+C 挂起；瞬态不进 journal）：status 保持 running、abort 不触发——任务与子代理
+   *  继续跑，再按 Ctrl+C / 确认项才走 interrupt() 真正中断（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」） */
+  pauseConfirm?: boolean;
 }
 
 export interface SessionOpts extends TuiRuntimeOpts {
@@ -489,9 +492,27 @@ export class SessionController {
     this.pendingQuestion?.resolve(a);
   }
 
+  /** 第一次 Ctrl+C（运行中）：挂起暂停确认卡——status 保持 running、abort 不触发，任务与子代理继续跑。
+   *  已挂卡或非运行态返回 false（App 层据此回落既有分流） */
+  requestPause(): boolean {
+    if (this.state.status !== 'running' || this.state.pauseConfirm) return false;
+    this.state = { ...this.state, pauseConfirm: true };
+    this.notify();
+    return true;
+  }
+
+  /** 撤回暂停确认卡（Esc/n/继续项）：回运行现场，任务零影响 */
+  cancelPause(): void {
+    if (!this.state.pauseConfirm) return;
+    this.state = { ...this.state, pauseConfirm: undefined };
+    this.notify();
+  }
+
   interrupt(): boolean {
     const active = this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-plan' || this.state.status === 'awaiting-question';
     if (!active) return false;
+    // 暂停确认卡随真正中断一并清除（第二次 Ctrl+C 确认路径走这里）
+    this.state = { ...this.state, pauseConfirm: undefined };
     this.taskAbort?.abort();
     this.taskAbort = undefined;
     // 待审批卡：中断即拒绝（deny 不落会话放行），任务经安全链 deny 语义自然停下

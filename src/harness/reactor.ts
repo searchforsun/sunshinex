@@ -191,7 +191,7 @@ export class Reactor {
         ...(subagentTokenCap !== undefined ? { tokenCap: subagentTokenCap } : {}),
         ...(deadlineAt !== undefined ? { deadlineAt } : {}),
         tier,
-      }));
+      }), this.deps.signal);
     }
 
     let stopReason: StopReason = 'max-steps'; // 循环出口原因：护栏越限（缺省即步数），done / model-error / interrupted 在各自分支覆盖
