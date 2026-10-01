@@ -1,7 +1,7 @@
 import { AgentRole, GraphDeps, GraphNodeOutput } from '../types';
 import { GraphNode } from './engine';
 import { AgentRegistry, ROLE_PRESETS, SubagentRunner, rolePreset } from '../harness/subagent';
-import { reactorMaxStepsEnv } from '../config/termination-config';
+import { reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 
 export { ROLE_PRESETS };
 
@@ -33,25 +33,25 @@ function ensureRunner(deps: GraphDeps): SubagentRunner {
 }
 
 /** 多角色子 Agent：薄入口收敛（Runner 单一权威——fork 组装/终态回写/护栏全在 Runner 单点，防两处拼装漂移）；
- * agent_id 直取预设角色、任务行 = 当前指令行（与 spawn 通道同模板）、预算按 Graph 剩余换算；
- * done→pass，未完成→failed 交错误局部化接管（补丁行由 Runner 回写） */
+ * agent_id 直取预设角色、任务行 = 当前指令行（与 spawn 通道同模板）、token 硬顶只认 SUNSHINEX_SUBAGENT_TOKEN_CAP
+ * （与 spawn 通道同口径，缺省不设——预算是兜底不是限制）、done→pass，未完成→failed 交错误局部化接管（补丁行由 Runner 回写） */
 export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentOpts = {}): GraphNode {
   const preset = rolePreset(role);
   const runner = ensureRunner(deps);
+  const tokenCap = subagentTokenCapEnv();
   return {
     id: role,
     kind: 'agent',
     deps: opts.deps ?? [],
     run: async (ctx): Promise<GraphNodeOutput> => {
       const goalLabel = String(ctx.state.goal ?? '');
-      const remaining = Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed);
       const r = await runner.runSubagent(
         { agent_id: role, label: preset.label },
         {
           taskLine: `Current instruction: ${goalLabel}`,
           budget: {
             maxSteps: opts.maxSteps ?? reactorMaxStepsEnv() ?? 400,
-            tokenCap: remaining,
+            ...(tokenCap !== undefined ? { tokenCap } : {}),
             deadlineAt: ctx.startedAt + ctx.termination.timeoutMs,
             ...(deps.tier ? { tier: deps.tier } : {}),
           },

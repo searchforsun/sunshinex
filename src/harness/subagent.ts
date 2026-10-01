@@ -149,7 +149,8 @@ export const TODO_TOOL_NAME = 'todo_write';
 /** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队）；与 reactor 并行批上限 8 同量级对齐 */
 export const SUBAGENT_CONCURRENCY_LIMIT = 8;
 
-/** 子代理预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 透传父级无显式上限，以 maxSteps/deadline 为护栏） */
+/** 子代理预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 不设 token 硬顶，与父级剩余解耦，
+ *  只认 SUNSHINEX_SUBAGENT_TOKEN_CAP 显式注入，以 maxSteps/deadline 为护栏） */
 export interface SubagentBudget {
   maxSteps: number;
   tokenCap?: number;

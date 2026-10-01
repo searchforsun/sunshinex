@@ -147,15 +147,19 @@ test('缺省放宽与 env 注入：DEFAULT < env < opts.termination 合并序', 
   const t0 = resolveTemplate(deps, 'test-loop');
   assert.equal(t0.termination.maxIterations, 200);
   assert.equal(t0.termination.timeoutMs, 43_200_000);
-  assert.equal(t0.termination.maxTokens, 1_000_000);
+  assert.equal(t0.termination.maxTokens, undefined, 'token 硬顶缺省不设（预算是兜底不是限制）');
   process.env.SUNSHINEX_MAX_LOOP_ITERATIONS = '50';
+  process.env.SUNSHINEX_MAX_TOKENS = '2000000';
   try {
     const t1 = resolveTemplate(deps, 'test-loop');
     assert.equal(t1.termination.maxIterations, 50);
     assert.equal(t1.termination.timeoutMs, 43_200_000, 'env 只注轮数，墙钟仍为内置保底');
+    assert.equal(t1.termination.maxTokens, 2_000_000, 'env 注入 token 硬顶');
   } finally {
     delete process.env.SUNSHINEX_MAX_LOOP_ITERATIONS;
+    delete process.env.SUNSHINEX_MAX_TOKENS;
   }
-  const t2 = resolveTemplate(deps, 'test-loop', { termination: { maxIterations: 7 } });
+  const t2 = resolveTemplate(deps, 'test-loop', { termination: { maxIterations: 7, maxTokens: 5 } });
   assert.equal(t2.termination.maxIterations, 7);
+  assert.equal(t2.termination.maxTokens, 5, 'opts.termination 覆盖 env');
 });

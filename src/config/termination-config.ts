@@ -33,3 +33,13 @@ export function graphNodesEnv(env: NodeJS.ProcessEnv = process.env): number | un
 export function contextWindowEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveIntOrUndefined(env, 'SUNSHINEX_CONTEXT_WINDOW');
 }
+
+/** 主链单 run token 硬上限（缺省不设——护栏只靠步数/墙钟，预算是兜底不是限制；见 src/loop/nodes.ts agentNode） */
+export function mainTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveIntOrUndefined(env, 'SUNSHINEX_MAX_TOKENS');
+}
+
+/** 子代理 token 硬上限（缺省不设，与父级剩余解耦——spawn/graph 两通道同口径；见 src/harness/reactor.ts spawn 预算源） */
+export function subagentTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveIntOrUndefined(env, 'SUNSHINEX_SUBAGENT_TOKEN_CAP');
+}

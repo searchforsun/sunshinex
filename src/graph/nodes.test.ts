@@ -84,7 +84,7 @@ test('makeLoopNode：内嵌测试闭环修正环收敛，预算贯通（Graph re
     `{"done":true,"reply":"断言已修正为 3"}`,
   ]);
   const deps = makeRealDeps(tmp, model);
-  let observedLoopMaxTokens = -1;
+  let observedLoopMaxTokens: number | undefined;
   const node = makeLoopNode('test-verify', {
     template: 'test-loop',
     goal: '修复 math.test.js 使其断言正确（验收标准：c1=断言修正为 3）',

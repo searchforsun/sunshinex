@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Reactor, ReactorDeps } from './reactor';
+import { SubagentBudget, SubagentRunner } from './subagent';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import type { ChatRequest, ChatResult } from '../types';
 import { ContextManager } from './context';
@@ -113,5 +114,50 @@ test('Reactor：模型抛错 → stopReason=model-error 且不抛给调用方', 
     assert.equal(r.done, false);
     assert.equal(r.stopReason, 'model-error');
     assert.equal(r.reply, '模型挂了');
+  });
+});
+
+/** 假 runner：只接 attachParent 闭包（run 期间仅触 attach/detach 两点），捕获 spawn 预算源供断言 */
+function fakeRunner() {
+  let captured: (() => SubagentBudget) | undefined;
+  const runner = {
+    attachParent: (fn: () => SubagentBudget) => {
+      captured = fn;
+    },
+    detachParent: () => {},
+  } as unknown as SubagentRunner;
+  return {
+    runner,
+    budget: () => {
+      if (captured === undefined) throw new Error('attachParent 未被调用');
+      return captured();
+    },
+  };
+}
+
+test('Reactor spawn 预算源：子代理 token 硬顶与父级剩余解耦——env 未设不下发，env 设置下发独享值', async () => {
+  await withTmp(async (tmp) => {
+    delete process.env.SUNSHINEX_SUBAGENT_TOKEN_CAP;
+    const a = fakeRunner();
+    // 父级自身 tokenCap=5 在场：旧形态把剩余快照下发给子代理，新形态必须原样不下发
+    const ra = await new Reactor({ ...makeDeps(tmp, new ScriptedAdapter([DONE])), runner: a.runner }).run(
+      { goal: 'env 未设' },
+      { tokenCap: 5 },
+    );
+    assert.equal(ra.done, true);
+    assert.equal(a.budget().tokenCap, undefined, 'env 未设 → 子代理无 token 硬顶（父级剩余不贯通）');
+
+    process.env.SUNSHINEX_SUBAGENT_TOKEN_CAP = '777';
+    try {
+      const b = fakeRunner();
+      const rb = await new Reactor({ ...makeDeps(tmp, new ScriptedAdapter([DONE])), runner: b.runner }).run(
+        { goal: 'env 已设' },
+        { tokenCap: 5 },
+      );
+      assert.equal(rb.done, true);
+      assert.equal(b.budget().tokenCap, 777, 'env 设置 → 子代理拿独享硬顶（非父级剩余换算）');
+    } finally {
+      delete process.env.SUNSHINEX_SUBAGENT_TOKEN_CAP;
+    }
   });
 });

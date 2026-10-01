@@ -39,17 +39,18 @@ export interface GuardrailHitMessage {
  *  改 LimitReason 或预算语义只动这里 */
 export function describeGuardrailHit(
   hit: LimitReason,
-  ctx: { timeoutMs: number; maxTokens: number; maxIterations: number; tokensUsed: number },
+  ctx: { timeoutMs: number; maxTokens?: number; maxIterations: number; tokensUsed: number },
 ): GuardrailHitMessage {
   switch (hit) {
     case 'deadline':
       return { status: 'failed', error: t(`Execution timed out (${ctx.timeoutMs}ms)`, `执行超时（超过 ${ctx.timeoutMs}ms）`) };
     case 'budget':
+      // budget 只在 tokenCap 显式在场时可达（缺省不设硬顶），maxTokens 恒有值；?? 0 仅为类型收窄
       return {
         status: 'paused',
         error: t(
-          `Token budget exceeded (used ${ctx.tokensUsed} ≥ max ${ctx.maxTokens}), paused`,
-          `token 预算超支（used ${ctx.tokensUsed} ≥ max ${ctx.maxTokens}），已暂停`,
+          `Token budget exceeded (used ${ctx.tokensUsed} ≥ max ${ctx.maxTokens ?? 0}), paused`,
+          `token 预算超支（used ${ctx.tokensUsed} ≥ max ${ctx.maxTokens ?? 0}），已暂停`,
         ),
       };
     case 'max-steps':

@@ -22,7 +22,7 @@ import {
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
-import { reactorMaxStepsEnv, contextWindowEnv } from '../config/termination-config';
+import { reactorMaxStepsEnv, contextWindowEnv, subagentTokenCapEnv } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -180,13 +180,15 @@ export class Reactor {
     let promptBase = 0;
     const startedAt = Date.now();
 
-    // spawn 预算源挂载（仅装配注入 runner 的 reactor）：子代理预算 = 本 run 剩余（动态闭包——
-    // tokenCap 内剩余在 spawn 调用时实时取值）；run 为单一出口（循环 break 后直达收尾 return），
-    // 收尾处统一摘除；即使异常路径遗留挂载，无活动 run 期间 spawn 不可达、下一次 attach 即覆盖，陈旧闭包无害
+    // spawn 预算源挂载（仅装配注入 runner 的 reactor）：子代理 token 硬顶与父级剩余解耦——只认
+    // SUNSHINEX_SUBAGENT_TOKEN_CAP（run 级解析一次，缺省不设；预算是兜底不是限制，护栏交给
+    // maxSteps/deadline）；run 为单一出口（循环 break 后直达收尾 return），收尾处统一摘除；
+    // 即使异常路径遗留挂载，无活动 run 期间 spawn 不可达、下一次 attach 即覆盖，陈旧闭包无害
+    const subagentTokenCap = subagentTokenCapEnv();
     if (this.deps.runner) {
       this.deps.runner.attachParent(() => ({
         maxSteps,
-        ...(tokenCap !== undefined ? { tokenCap: Math.max(0, tokenCap - tokensUsed) } : {}),
+        ...(subagentTokenCap !== undefined ? { tokenCap: subagentTokenCap } : {}),
         ...(deadlineAt !== undefined ? { deadlineAt } : {}),
         tier,
       }));

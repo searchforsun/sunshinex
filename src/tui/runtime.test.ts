@@ -196,7 +196,7 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
   }
 });
 
-test('createRuntime：主链归属钉死——探针证明不触碰 harness.reactor，且内层收到 tokenCap/deadlineAt', async () => {
+test('createRuntime：主链归属钉死——探针证明不触碰 harness.reactor，deadlineAt 恒注入、tokenCap 只认 env', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt8-'));
   const orig = Reactor.prototype.run;
   const calls: Array<{ self: Reactor; opts: ReactorOpts | undefined }> = [];
@@ -214,10 +214,23 @@ test('createRuntime：主链归属钉死——探针证明不触碰 harness.reac
       '主链不得直连 harness.reactor（旧实现必然命中该实例）；应由 Loop 内嵌新建的 Reactor 执行',
     );
     assert.ok(
-      calls.some((c) => typeof c.opts?.tokenCap === 'number' && typeof c.opts?.deadlineAt === 'number'),
-      'Loop 编排层必须注入剩余限额：tokenCap 与 deadlineAt 均为数值（旧实现只传 maxSteps，两者为 undefined）',
+      calls.some((c) => typeof c.opts?.deadlineAt === 'number'),
+      'Loop 编排层必须注入时间兜底：deadlineAt 恒为数值',
+    );
+    assert.ok(
+      calls.every((c) => c.opts?.tokenCap === undefined),
+      '缺省不设 token 硬顶（预算是兜底不是限制，旧实现恒传剩余量）',
+    );
+    // env 显式注入 → 内层收到数值硬顶（剩余换算，首节点 ctx.tokensUsed=0 即 env 原值）
+    process.env.SUNSHINEX_MAX_TOKENS = '5000';
+    calls.length = 0;
+    await rt.runTask('再做一件事');
+    assert.ok(
+      calls.some((c) => c.opts?.tokenCap === 5000 && typeof c.opts?.deadlineAt === 'number'),
+      'SUNSHINEX_MAX_TOKENS 注入后主链拿到数值硬顶',
     );
   } finally {
+    delete process.env.SUNSHINEX_MAX_TOKENS;
     Reactor.prototype.run = orig;
     fs.rmSync(tmp, { recursive: true, force: true });
   }

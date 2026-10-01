@@ -101,10 +101,10 @@ export interface LoopContext {
   termination: LoopTermination;
 }
 
-/** Loop 终止参数（迭代上限 / token 预算 / 超时） */
+/** Loop 终止参数（迭代上限 / token 硬顶（缺省不设，SUNSHINEX_MAX_TOKENS 显式注入）/ 超时） */
 export interface LoopTermination {
   maxIterations: number;
-  maxTokens: number;
+  maxTokens?: number;
   timeoutMs: number;
 }
 

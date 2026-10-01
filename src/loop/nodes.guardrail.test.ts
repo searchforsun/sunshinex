@@ -82,6 +82,22 @@ test('agentNode：剩余 token 换算成 Reactor tokenCap，超额同样不调�
   }
 });
 
+test('agentNode：termination.maxTokens 缺省不设——用量流动也不按 budget 收敛（收于 max-steps）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-an4-'));
+  try {
+    // 每步回传 1 token 且永不 done：无硬顶时用量再大也只由步数收口（预算是兜底不是限制）
+    const model = new UsageAdapter(new ScriptedAdapter(['{"done":false}']), 1);
+    const out = await agentNode(makeDeps(tmp, model), { maxSteps: 1 }).run(
+      ctxOf({ goal: 'x' }, { maxTokens: undefined }),
+      null,
+    );
+    assert.equal(out.stopReason, 'max-steps', '无硬顶时不得冒名 budget 停机');
+    assert.equal(model.calls, 1);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // 端到端：agent 节点因护栏收敛 → 引擎结果带出同一原因（Task 3 透传 + Task 4 写入）
 test('agentNode → LoopEngine：护栏原因贯通到 LoopRunResult.stopReason', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-an3-'));

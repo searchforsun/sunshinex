@@ -1,10 +1,11 @@
 import { LoopContext, LoopTermination } from '../types';
 import { LoopDeps, LoopEngine, LoopEngineNode } from './engine';
-import { loopIterationsEnv } from '../config/termination-config';
+import { loopIterationsEnv, mainTokenCapEnv } from '../config/termination-config';
 import { agentNode, checkNode, gateNode, routerNode } from './nodes';
 
-/** 三大模板缺省终止参数（opts.termination 可按项覆盖；env 语义键可放宽轮数，墙钟不进 settings） */
-const DEFAULT_TERMINATION: LoopTermination = { maxIterations: 200, maxTokens: 1_000_000, timeoutMs: 43_200_000 };
+/** 三大模板缺省终止参数（opts.termination 可按项覆盖；env 语义键可放宽轮数，墙钟不进 settings）。
+ *  maxTokens 缺省不设：token 硬顶是兜底不是限制（SUNSHINEX_MAX_TOKENS 显式注入才生效） */
+const DEFAULT_TERMINATION: LoopTermination = { maxIterations: 200, timeoutMs: 43_200_000 };
 
 /** 模板产物：纯数据预组装（节点序列 + 终止参数）+ 就绪引擎 */
 export interface LoopTemplate {
@@ -26,9 +27,11 @@ function assemble(
   opts?: TemplateOpts,
 ): LoopTemplate {
   const envIters = loopIterationsEnv();
+  const envCap = mainTokenCapEnv();
   const termination: LoopTermination = {
     ...DEFAULT_TERMINATION,
     ...(envIters !== undefined ? { maxIterations: envIters } : {}),
+    ...(envCap !== undefined ? { maxTokens: envCap } : {}),
     ...(opts?.termination ?? {}),
   };
   return { name, nodes, termination, engine: new LoopEngine(nodes, deps, termination) };

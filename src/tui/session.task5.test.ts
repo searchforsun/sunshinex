@@ -127,9 +127,9 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
 test('Task5 自动压缩完成 → 消息流留痕一条 Context compacted 系统消息', async () => {
   const tmp = tmpdir('sunshinex-task5-trace-');
   try {
-    // 大观察驱动自动压缩：/goal·long-task 模板 maxTokens=1M → reactor 预算 total=剩余量，
-    // 压缩线 = total − total/5（首 run ≈ 1M−200k = 800k）；大链行需越过该线（CJK 1:1 计权）
-    const big = ('x'.repeat(180) + '\n').repeat(18000); // ≈ 3.24M chars ≈ 810k tokens，越过 800k 触发线
+    // 大观察驱动自动压缩：long-task 主链缺省无 token 硬顶 → reactor 压缩水位走内建窗口基准
+    // （contextWindowEnv ?? 200k，压缩线 = total − total/5 = 160k）；大链行需越过该线（CJK 1:1 计权）
+    const big = ('x'.repeat(180) + '\n').repeat(18000); // ≈ 3.24M chars ≈ 810k tokens，越过 160k 触发线
     const adapter = {
       provider: 'openai',
       chat: textReplyToChatFace(async (p: string) => (p.includes('handoff summary') ? '占位' : JSON.stringify({ tool: 'read', input: { path: 'a.txt' } }))),
