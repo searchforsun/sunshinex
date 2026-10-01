@@ -36,12 +36,12 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：云端大模型负�
 ### 2.3 Harness 运行时层（src/harness/）
 
 - **项目感知**（perception.ts）：目录/依赖/SUNSHINE.md/Git 扫描
-- **Reactor 最小闭环**（reactor.ts）：observe→think→act，缺省 400 步宽预算（`SUNSHINEX_MAX_STEPS` 可调）
+- **Reactor 最小闭环**（reactor.ts）：observe→think→act，缺省 400 步宽预算（`SUNSHINEX_MAX_STEPS` 可调）；token 硬顶缺省不设（`SUNSHINEX_MAX_TOKENS` 显式注入才生效——预算是兜底不是限制，子代理同口径走 `SUNSHINEX_SUBAGENT_TOKEN_CAP` 独享值、不继承主链剩余）
 - **统一工具面**（tools.ts / tools/）：read、write、grep、glob、exec、webfetch、websearch、kb_search、skill、memory_write、ask_question，统一注册表 + 安全链；工具参数一律 JSON Schema 声明化
 - **安全管控**（security/）：权限三态（deny/ask/allow）、SafetyChain、ProcessSandbox 子进程单点（exec shell 由 `resolveShell()` 跨平台解析）、凭据脱敏、dry-run 接缝
 - **记忆双轨**（memory/ + skills/）：程序性记忆 LearnedSkillStore（任务收口沉淀可复用技能，FIFO 上限）+ 陈述性记忆 auto memory（MEMORY.md 索引 + 记录文件，提取挂 settle 单点、后台管线空闲消化、/memory 命令族管理）
 - **技能体系**（skills.ts）：三级根装载（项目级 `.sunshinex` > 全局级 `~/.sunshinex` > 学习级 `data/skills`），标准形态 `{id}/SKILL.md`，清单冻结注入 + skill 工具按需加载正文
-- **子代理**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算换算/并发护栏；spawn 工具 + `agents/{id}/agent.md` 目录注册制；同层并发上限 4
+- **子代理**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算源挂载/并发护栏；spawn 工具 + `agents/{id}/agent.md` 目录注册制；同层并发上限 4
 - **会话持久化**（tui/session-journal.ts）：journal 逐事件落盘，崩溃丢失窗口收敛至在飞一个工具步；/resume、CLI `--continue` 恢复、/rewind 代码回退（write 影子快照）、/fork 不可变分档
 - **MCP 客户端**（mcp/）：官方 SDK 接缝，stdio/http/sse 三传输，装配期 fail-fast 注册
 - **知识库**（knowledge/）：本地向量知识库，local-json 与 sqlite-vec 可插拔双后端

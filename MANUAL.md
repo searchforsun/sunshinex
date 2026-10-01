@@ -99,6 +99,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
   "maxSteps": 400,                                  // Reactor 单 run 步数上限
   "maxLoopIterations": 200,                         // Loop 修正环节点执行步上限
   "maxGraphNodes": 1000,                            // Graph 全链路节点步累计上限
+  // "maxTokens": 2000000,                          // 主链单次提交 token 硬顶（累计用量量纲）；缺省不设——预算是兜底不是限制，护栏交给步数与墙钟
+  // "subagentTokenCap": 1000000,                   // 子代理 token 硬顶（独享值，不继承主链剩余）；缺省不设
 
   // ── 界面 ──────────────────────────────────────────────
   "language": "en",                                  // 界面语言 en|zh（--language 参数优先）
@@ -272,6 +274,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 运行中：每个子代理在输入框上方显示 4 行实时面板。
 - 结束后：整段记录折叠进 `● [SPAWN]` 调用行（单行摘要含步数/耗时尾注）；`Ctrl+B` 浏览模式下 `Enter` 展开为 `▾` 头行 + 缩进转录全文（再按收拢）；`Tab` / `Ctrl+O` 可重放全文。
 - 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
+- 预算护栏：子代理不设 token 硬顶（护栏交给步数与墙钟），需要限时配 `subagentTokenCap`（独享值，不继承主链剩余）；步数上限与主链同源（`maxSteps`）。
 - 自定义角色：放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。
 
 ### 5.4 会话回退与分叉（/rewind · /fork）
@@ -363,6 +366,8 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 运行中且输入为空按 `↑` | 撤回全部未投递的排队行回输入框，可编辑重排或清空丢弃；已插入上下文的行不可撤回 |
 | 退出 | 空闲时清空输入再按 `Ctrl+C` |
 | 不识别的命令 | 回执「无法识别命令，使用 /help 查看使用方法」（warn 级；命令只认 /help 所列形态） |
+
+任务由完成判定驱动，护栏只兜底：步数（`maxSteps`）触界终止、墙钟触界失败、token 硬顶（`maxTokens` / `subagentTokenCap`）缺省**不设**、显式配置后触界暂停（可续跑，回执含用量明细）。
 
 ## 八、快捷键
 
