@@ -185,8 +185,8 @@ export function softWrapAnsi(line: string, width: number, indent = 0): string[] 
  *  列表项/标题/引用各自单行）→ 行间档位按区域判定：连续列表项（不分有序无序）之间紧排（\n，
  *  同类枚举聚拢成组）、其余相邻逻辑行之间 BODY_LINE_SPACING 档空行（段落/标题/引用呼吸）→
  *  softWrapAnsi 按真实列宽回折（续行归属同逻辑组，折行不进行距节奏；列表项续行悬挂对齐项文）→
- *  `• ` 标记替换。
- *  恒以 '\n\n' 收尾（块间 margin 与区域边界同源），空段返回 ''（不出孤边距） */
+ *  `• ` 标记替换。产物不带尾换行——段间空行由 renderSource 拼接承担，主路径尾 \n 由 mdPushFragment
+ *  归一补齐（子代理视图裸用产物，尾随空行即双行距病根），空段返回 ''（不出孤边距） */
 function renderProseSegment(src: string, width: number): string {
   const rendered = mdRender(normalizeMd(src), { wrap: false, highlighter: mdHighlighter, theme: RENDER_THEME });
   const logicals = rendered.split('\n').filter((l) => stripAnsi(l).trim().length > 0);
@@ -201,7 +201,7 @@ function renderProseSegment(src: string, width: number): string {
     spaced += wrapped;
     prevItem = item;
   }
-  return `${spaced.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ')}\n\n`;
+  return spaced.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ');
 }
 
 /** markdansi 段渲染（围栏区专用，wrap:true 真宽折行——codeBox 完好、长代码行盒内折）：归一 + 主题 +
@@ -265,7 +265,13 @@ function renderSource(src: string, width: number): string {
     if (normalized.length >= 2 && isDividerLine(normalized[1] ?? '')) return renderGridTable(normalized.join('\n'), width);
     return renderProseSegment(normalized.join('\n'), width);
   });
-  return parts.join('').replace(/\n{3,}/g, '\n\n');
+  // 段间以单空行拼（段内行距律不受影响）；出参不带尾换行——主路径由 mdPushFragment 归一补齐，
+  // 子代理视图（ChildTranscript/ChildInspector）裸用产物，尾随空行即双行距病根（2026-10-01）
+  return parts
+    .filter((p) => p.length > 0)
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n+$/, '');
 }
 
 /** 尾部未完结构原文（动态区预览）：自尾向前找「结构起点」——已开表格的表头行 / 未闭合围栏开栏行 / 最近换行后的未完行 */
