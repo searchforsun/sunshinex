@@ -7,6 +7,10 @@ export interface RetainedUiState {
   /** 第一层（Tab）行折叠开关：缺省 true=全行展开（2026-09-30 用户裁决：主链运行中不自动折叠工具行、折叠与否由用户 Tab 决定），
    *  Tab 翻转进入折叠形态；清屏重挂后保持同一视图模式 */
   expandAll: boolean;
+  /** 待办展开开关（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：true=全量清单
+   *  （含运行中——Tab 触发的尾部重挂经此跨挂保留，不存即重挂打回折叠）；false/缺省=运行中折叠单行。
+   *  瞬态不入旧档还原（与 expandAll 同款）；可选字段兼容旧 retain 快照与测试夹具 */
+  todoExpanded?: boolean;
   /** 第二层（Ctrl+O）内容深度开关：当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行全文展开 */
   latestFull: boolean;
   /** 子代理浏览模式（Ctrl+B）：选中列表动态区自绘，重挂后须原样恢复 */

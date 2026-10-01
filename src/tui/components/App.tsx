@@ -221,6 +221,9 @@ export function App({
   // latestFull=第二层内容深度（当前一个轮次的所有工具与思考行全文 ↔ 摘要，详情缺省摘要）；无状态门槛，运行中随时可切
   const [expandAll, setExpandAll] = React.useState(store.expandAll ?? true);
   const [latestFull, setLatestFull] = React.useState(store.latestFull ?? false);
+  // 待办展开开关（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：运行中默认折叠单行，
+  // Tab 翻转全量清单；经 retain 跨重挂保留（Tab 触发尾部重挂，不存即重挂打回折叠）
+  const [todoExpanded, setTodoExpanded] = React.useState(store.todoExpanded ?? false);
   // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；
   // 两态经 retain 跨重挂保留——repaint effect 依赖含 browseMode（行高亮须 Static 整屏重放），不在 retain 则
   // 一按 Ctrl+B 即卸载重挂、浏览态丢失（真机「按 Ctrl+B 挂死」观感）；旧 retain 快照缺字段回落关闭态
@@ -301,6 +304,7 @@ export function App({
     store.cursor = cursor;
     store.expandAll = expandAll;
     store.latestFull = latestFull;
+    store.todoExpanded = todoExpanded;
     store.browseMode = browseMode;
     store.browseCursor = browseCursor;
     store.history = history;
@@ -359,7 +363,9 @@ export function App({
   // 纵向命令面板窗口上限（menuMaxRows）随视口收缩的计行输入
   const inputRows = 2 + Math.max(1, buffer.split('\n').length);
   // 待办行与 Tab 折叠解耦（2026-09-30）：运行中恒折叠单行（动态帧高度纪律，Tab 语义收敛为转录行折叠），其余态展开全量
-  const todoRows = state.todos.length > 0 ? (state.status === 'running' ? 1 : state.todos.length + 1) : 0;
+  // 待办行（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：缺省运行中折叠单行，todoExpanded
+  // 翻转全量（tabExpanded 计入 chrome 实账，previewCap 随之收缩、帧高有界不触顶）
+  const todoRows = state.todos.length > 0 ? (state.status === 'running' && !todoExpanded ? 1 : state.todos.length + 1) : 0;
   // 纵向命令面板条目（2026-09-30 对标 CC）：'/' 前缀动态过滤（含技能池，最近使用在前）；
   // 在场性=条目非空 + idle/error（与旧横向提示行同门槛）
   const menuEntries = React.useMemo(() => buildSlashMenu(buffer, skillMenu), [buffer, skillMenu]);
@@ -618,6 +624,9 @@ export function App({
         const nextExpand = !expandAll;
         setExpandAll(nextExpand);
         controller.recordView(nextExpand, latestFull);
+        // 待办展开同步翻转（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：运行中缺省折叠
+        // 单行，Tab 即见全量清单；动态区自绘零重挂开销，行数实账已入 todoRows（previewCap 随之收缩）
+        setTodoExpanded(!todoExpanded);
       }
       return;
     }
@@ -874,7 +883,7 @@ export function App({
         placeholder={inputPlaceholder(state.status)}
         active={state.status === 'idle' || state.status === 'error'}
       />
-      <TodoList todos={state.todos} expanded={state.status !== 'running'} columns={columns} />
+      <TodoList todos={state.todos} expanded={state.status !== 'running' || todoExpanded} columns={columns} />
       <StatusBar
         metrics={state.metrics}
         status={state.status}
