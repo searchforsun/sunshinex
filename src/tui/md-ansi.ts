@@ -106,16 +106,16 @@ function normalizeMd(src: string): string {
 /** 主题覆盖（2026-09-30 用户裁决）：标题/表头不再用黄色（与系统警告 warn 撞色），与加粗正文同色系 */
 const RENDER_THEME = { heading: { bold: true }, tableHeader: { bold: true } };
 
-/** 正文行距档位（2026-10-01 用户裁决「增加一定的行距」+ 同日复审「不同区域不同行距，整体协调」）：
- *  prose 逻辑行间插入的空行数——按区域分级施加（见 isTightGroup），不是全网均匀：无序列表项紧排
- *  成组（同类枚举聚拢），段落/标题/有序项/引用行间单空行（论述步进要呼吸）。代码/表格整段豁免。
- *  1 = 分区单空行档；0 = 全紧排。全局唯一档位，调此一处 */
+/** 正文行距档位（2026-10-01 用户裁决三连：「增加一定的行距」→「不同区域不同行距，整体协调」→
+ *  「有序列表还是有多余的行距」终裁）：prose 逻辑行间插入的空行数——按区域分级施加：**列表项
+ *  （无序与有序同档）紧排成组**（同类枚举聚拢），段落/标题/引用行间单空行（论述呼吸）。
+ *  代码/表格整段豁免。1 = 分区单空行档；0 = 全紧排。全局唯一档位，调此一处 */
 export const BODY_LINE_SPACING = 1;
 
-/** 无序列表项判定（wrap:false 逻辑行，marker 尚为源形态 `- `；SGR 前缀容差、嵌套缩进容差）。
- *  紧排分组的成员资格：连续两个无序项之间不插行距档 */
-function isBulletItem(line: string): boolean {
-  return /^\s*(?:[-+•]|\*)(?:\s|$)/.test(stripAnsi(line));
+/** 列表项判定（wrap:false 逻辑行，marker 尚为源形态 `- `/`1. `；SGR 前缀容差、嵌套缩进容差）。
+ *  紧排分组的成员资格：连续两个列表项（不分有序无序）之间不插行距档 */
+function isListItem(line: string): boolean {
+  return /^\s*(?:[-+•*]|\d{1,3}[.)])\s/.test(stripAnsi(line));
 }
 
 /** 续行悬挂缩进：列表项（• /- /n.，SGR 前缀容差）按 marker 实宽悬挂、引用行随前缀 2 格、其余顶格 */
@@ -182,9 +182,10 @@ export function softWrapAnsi(line: string, width: number, indent = 0): string[] 
 }
 
 /** prose 段渲染（2026-10-01 正文行距律·分区版）：wrap:false 出逻辑行（markdansi 不自行折行，段落/
- *  列表项/标题/引用各自单行）→ 行间档位按区域判定：连续无序项之间紧排（\n，同类枚举聚拢成组）、
- *  其余相邻逻辑行之间 BODY_LINE_SPACING 档空行（段落/标题/有序项/引用呼吸）→ softWrapAnsi 按真实
- *  列宽回折（续行归属同逻辑组，折行不进行距节奏；列表项续行悬挂对齐项文）→ `• ` 标记替换。
+ *  列表项/标题/引用各自单行）→ 行间档位按区域判定：连续列表项（不分有序无序）之间紧排（\n，
+ *  同类枚举聚拢成组）、其余相邻逻辑行之间 BODY_LINE_SPACING 档空行（段落/标题/引用呼吸）→
+ *  softWrapAnsi 按真实列宽回折（续行归属同逻辑组，折行不进行距节奏；列表项续行悬挂对齐项文）→
+ *  `• ` 标记替换。
  *  恒以 '\n\n' 收尾（块间 margin 与区域边界同源），空段返回 ''（不出孤边距） */
 function renderProseSegment(src: string, width: number): string {
   const rendered = mdRender(normalizeMd(src), { wrap: false, highlighter: mdHighlighter, theme: RENDER_THEME });
@@ -192,13 +193,13 @@ function renderProseSegment(src: string, width: number): string {
   if (logicals.length === 0) return '';
   const sepSpaced = '\n'.repeat(1 + BODY_LINE_SPACING);
   let spaced = '';
-  let prevBullet = false;
+  let prevItem = false;
   for (const l of logicals) {
     const wrapped = softWrapAnsi(l, width, hangingIndentOf(l)).join('\n');
-    const bullet = isBulletItem(l);
-    if (spaced.length > 0) spaced += bullet && prevBullet ? '\n' : sepSpaced;
+    const item = isListItem(l);
+    if (spaced.length > 0) spaced += item && prevItem ? '\n' : sepSpaced;
     spaced += wrapped;
-    prevBullet = bullet;
+    prevItem = item;
   }
   return `${spaced.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ')}\n\n`;
 }

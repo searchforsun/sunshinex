@@ -173,7 +173,7 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
   }
 });
 
-test('会话归约：列表 run 整块入档（正文行距律）——9 项问题清单单条 ansi、项间单空行', async () => {
+test('会话归约：列表 run 整块入档（正文行距律）——9 项问题清单单条 ansi、项间紧排', async () => {
   const tmp = tmpdir('sunshinex-stream-listrun-');
   try {
     const body = ['1. 线程池泄漏：描述甲', '2. 质检失败：描述乙', '3. 输出护栏：描述丙', '', '四、后续章节'].join('\n');
@@ -187,7 +187,7 @@ test('会话归约：列表 run 整块入档（正文行距律）——9 项问�
     const para = items.find((m) => m.text.includes('后续章节'));
     assert.ok(para && para !== listItem, '空行后的章节独立成块');
     const plain = stripAnsi(listItem!.text);
-    assert.match(plain, /1\. 线程池泄漏：描述甲\n\n2\. 质检失败：描述乙\n\n3\. 输出护栏：描述丙\n$/, '有序项间恒单空行（正文行距律 BODY_LINE_SPACING=1）');
+    assert.match(plain, /1\. 线程池泄漏：描述甲\n2\. 质检失败：描述乙\n3\. 输出护栏：描述丙\n$/, '有序项与无序项同档紧排（列表项一律聚拢成组）');
     assert.ok(items.every((m) => !m.text.includes('\n\n\n')), '无 3+ 连续换行（行距档位不叠块界）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
