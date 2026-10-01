@@ -2,8 +2,9 @@ import { Box, Text } from 'ink';
 import { LiveBlock } from '../session';
 import { wrapByWidth } from '../text-band';
 
-/** 思考流滚动固定行数：块高恒定，增量到达时不再上下跳动（对标 Claude Code 思考滚动区） */
-const THINK_TAIL_LINES = 6;
+/** 思考流滚动固定行数：块高恒定，增量到达时不再上下跳动（对标 Claude Code 思考滚动区）。
+ *  导出单一源：MessageList 贴底垫层计行与 ChildInspector 同款窗口共用此常量 */
+export const THINK_TAIL_LINES = 6;
 
 /**
  * 动态实时区（2026-09-30 markdansi 替换批次后仅承载思考流）：思考流滚动显示末 6 行
