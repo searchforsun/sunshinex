@@ -106,14 +106,6 @@ export function planSelectorOptions(): { label: string; description?: string }[]
   ];
 }
 
-/** 暂停确认选择器选项（首项=暂停即中断，主链连带子代理一并停；Esc 同第二项继续跑） */
-export function pauseSelectorOptions(): { label: string; description?: string }[] {
-  return [
-    { label: t('Pause task (ctrl+c)', '暂停任务 (ctrl+c)'), description: t('interrupt the run; subagents stop with it', '中断当前运行，子代理一并停止') },
-    { label: t('Keep running (esc)', '继续运行 (esc)'), description: t('dismiss and keep going', '撤卡继续，任务零影响') },
-  ];
-}
-
 /** filterable 卡视图派生单点（规格 D8；2026-09-30 用户裁决改口径）：恒全量直出——空词=全量列表，
  *  有词=子串过滤视图；超窗翻页由 OptionSelector 渲染层光标跟随滑窗承载（命令面板式自动翻页），
  *  不再有 More…/Back… 导航行与页码态。map[i]=视图第 i 行对应的 q.options 原下标 */
@@ -201,11 +193,6 @@ export function App({
   const [pCursorState, setPCursorState] = React.useState(0);
   const pCursorRef = React.useRef(0);
   const setPCursor = (v: number): void => { pCursorRef.current = v; setPCursorState(v); };
-  // 暂停确认卡光标（两次 Ctrl+C 确认，2026-10-02）：ref 真值 + state 渲染（闭包滞后先例）；挂卡时归位首项
-  const [pauseCursorState, setPauseCursorState] = React.useState(0);
-  const pauseCursorRef = React.useRef(0);
-  const setPauseCursor = (v: number): void => { pauseCursorRef.current = v; setPauseCursorState(v); };
-  React.useEffect(() => { if (state.pauseConfirm) setPauseCursor(0); }, [state.pauseConfirm]);
   const statusRef = React.useRef(state.status);
   React.useEffect(() => {
     if (state.status !== statusRef.current) {
@@ -582,23 +569,11 @@ export function App({
       }
       return; // 模态：其余键不落输入缓冲
     }
-    // 暂停确认卡（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」）：第一次 Ctrl+C 挂卡任务不停；再按
-    // Ctrl+C / y / 回车首项 = 确认中断（主链连带子代理），Esc / n / 次项 = 撤卡继续跑。模态接管其余键
-    if (stateRef.current.pauseConfirm) {
-      if (key.ctrl && input === 'c') { controller.interrupt(); return; }
-      if (key.escape || input === 'n') { controller.cancelPause(); return; }
-      if (input === 'y') { controller.interrupt(); return; }
-      if (key.upArrow) { setPauseCursor(moveCursor(pauseCursorRef.current, 2, -1)); return; }
-      if (key.downArrow) { setPauseCursor(moveCursor(pauseCursorRef.current, 2, 1)); return; }
-      if (key.return || input === ' ') { if (pauseCursorRef.current === 0) controller.interrupt(); else controller.cancelPause(); return; }
-      const pnQ = Number.parseInt(input, 10);
-      if (pnQ === 1) { controller.interrupt(); return; }
-      if (pnQ === 2) { controller.cancelPause(); return; }
-      return; // 模态：其余键不落输入缓冲
-    }
-    // Ctrl+C 分流（对标 Claude Code）：运行中=第一次挂暂停确认卡（任务不停，再按才中断）；其余等待态=中断；
-    // 空闲且输入非空=清空输入；空闲且输入空=请求退出
+    // Ctrl+C 分流（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」，简化版=一行提示非模态卡）：
+    // 运行中第一次挂提示（任务不停），已挂提示再按=真正中断（主链连带子代理）；
+    // 其余等待态=中断；空闲且输入非空=清空输入；空闲且输入空=请求退出
     if (key.ctrl && input === 'c') {
+      if (stateRef.current.pauseConfirm) { controller.interrupt(); return; }
       if (stateRef.current.status === 'running') { controller.requestPause(); return; }
       if (controller.interrupt()) return;
       if (buffer.length > 0) {
@@ -940,17 +915,10 @@ export function App({
       />
         </>
       )}
-      {/* 暂停确认卡（2026-10-02 两次 Ctrl+C）：置于 inspect 三元之外——主视图与子代理全屏视图都可见可确认，
-          全屏查看子代理时 Ctrl+C 同样能走到暂停（卡在动态区原位出现，零重挂） */}
+      {/* 暂停确认提示（2026-10-02 两次 Ctrl+C，简化版一行非模态）：主视图与子代理全屏视图都可见——
+          第一次 Ctrl+C 出现提示，再按 Ctrl+C 即暂停，Esc 继续跑 */}
       {state.pauseConfirm ? (
-        <OptionSelector
-          title={t('Pause', '暂停确认')}
-          question={t('Pause the running task? Subagents will stop with it.', '暂停当前运行中的任务？子代理将一并停止。')}
-          options={pauseSelectorOptions()}
-          cursor={pauseCursorState}
-          picked={[]}
-          hint={t('y pause · n continue · ctrl+c again pauses · esc continue', 'y 暂停 · n 继续 · 再按 Ctrl+C 暂停 · Esc 继续')}
-        />
+        <Text backgroundColor="gray"> {t('Pause? press ctrl+c again to pause · esc to keep running', '确认暂停？再按一次 Ctrl+C 暂停 · Esc 继续运行')} </Text>
       ) : null}
     </Box>
   );
