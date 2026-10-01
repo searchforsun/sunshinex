@@ -112,17 +112,23 @@ const RENDER_THEME = { heading: { bold: true }, tableHeader: { bold: true } };
  *  代码/表格整段豁免。1 = 分区单空行档；0 = 全紧排。全局唯一档位，调此一处 */
 export const BODY_LINE_SPACING = 1;
 
-/** 列表项判定（wrap:false 逻辑行，marker 尚为源形态 `- `/`1. `；SGR 前缀容差、嵌套缩进容差）。
- *  紧排分组的成员资格：连续两个列表项（不分有序无序）之间不插行距档 */
-function isListItem(line: string): boolean {
-  return /^\s*(?:[-+•*]|\d{1,3}[.)])\s/.test(stripAnsi(line));
+/** 列表项判定（wrap:false 逻辑行，marker 尚为源形态 `- `/`1. `/`[ ] `；SGR 前缀容差、嵌套缩进容差）。
+ *  返回 marker 类别（ul/ol/task）——紧排分组的成员资格 = 连续两个**同类**列表项；异类组相邻即
+ *  不同区域（源里本以空行分块），插行距档 */
+function listKindOf(line: string): 'ul' | 'ol' | 'task' | undefined {
+  const plain = stripAnsi(line);
+  if (/^\s*[-+•*]\s/.test(plain)) return 'ul';
+  if (/^\s*\d{1,3}[.)]\s/.test(plain)) return 'ol';
+  if (/^\s*\[[ xX]\]\s/.test(plain)) return 'task';
+  return undefined;
 }
 
-/** 续行悬挂缩进：列表项（• /- /n.，SGR 前缀容差）按 marker 实宽悬挂、引用行随前缀 2 格、其余顶格 */
+/** 续行悬挂缩进：列表项（• /- /n.，SGR 前缀容差）按 marker 实宽悬挂、任务项随 `[ ] ` 4 格、
+ *  引用行随前缀 2 格、其余顶格 */
 function hangingIndentOf(line: string): number {
   const plain = stripAnsi(line);
   const lead = /^\s*/.exec(plain)![0];
-  const item = /^(\s*)(?:• |- |\d{1,3}\. )/.exec(plain);
+  const item = /^(\s*)(?:• |- |\d{1,3}\. |\[[ xX]\] )/.exec(plain);
   if (item) return displayWidth(item[0]);
   if (/^\s*│/.test(plain)) return displayWidth(lead) + 2;
   return 0;
@@ -193,13 +199,13 @@ function renderProseSegment(src: string, width: number): string {
   if (logicals.length === 0) return '';
   const sepSpaced = '\n'.repeat(1 + BODY_LINE_SPACING);
   let spaced = '';
-  let prevItem = false;
+  let prevKind: 'ul' | 'ol' | 'task' | undefined;
   for (const l of logicals) {
     const wrapped = softWrapAnsi(l, width, hangingIndentOf(l)).join('\n');
-    const item = isListItem(l);
-    if (spaced.length > 0) spaced += item && prevItem ? '\n' : sepSpaced;
+    const kind = listKindOf(l);
+    if (spaced.length > 0) spaced += kind !== undefined && kind === prevKind ? '\n' : sepSpaced;
     spaced += wrapped;
-    prevItem = item;
+    prevKind = kind;
   }
   return spaced.replace(/^(\s*)(?:\[[0-9;]*[a-zA-Z])*- /gm, '$1• ');
 }

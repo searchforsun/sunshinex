@@ -92,14 +92,16 @@ test('createMdRender：闭包绑定 width/highlighter（streamer options 不透�
 /* ---------- 正文行距律·分区版（2026-10-01 用户裁决「不同区域不同行距，整体协调」+ 同日终裁
  *  「有序列表还是有多余的行距」：有序与无序同档，列表项一律紧排成组） ---------- */
 
-test('BODY_LINE_SPACING 分区：列表项（无序+有序）紧排成组、段落间单空行、组间边界单空行', () => {
-  const src = '- 甲项\n- 乙项\n\n段落一行\n\n段落二行\n\n1. 步骤一\n2. 步骤二';
+test('BODY_LINE_SPACING 分区：列表项（无序+有序+任务清单）紧排成组、段落间单空行、组间边界单空行', () => {
+  const src = '- 甲项\n- 乙项\n\n段落一行\n\n段落二行\n\n1. 步骤一\n2. 步骤二\n\n- [ ] 任务甲\n- [ ] 任务乙';
   const out = strip(renderMd(src, 80));
   assert.ok(out.includes('• 甲项\n• 乙项'), '无序项间紧排（同类枚举聚拢成组）');
   assert.ok(out.includes('1. 步骤一\n2. 步骤二'), '有序项间紧排（与无序同档）');
+  assert.ok(out.includes('[ ] 任务甲\n[ ] 任务乙'), '任务清单项间紧排（勾选框行不散排）');
   assert.ok(out.includes('乙项\n\n段落一行'), '组→段落边界单空行');
   assert.ok(out.includes('段落一行\n\n段落二行'), '段落间单空行');
   assert.ok(out.includes('段落二行\n\n1. 步骤一'), '段落→列表组边界单空行');
+  assert.ok(out.includes('步骤二\n\n[ ] 任务甲'), '有序组→任务组边界单空行');
   assert.ok(!out.includes('\n\n\n'), '行距档位不叠加（无 3+ 连续换行）');
 });
 
