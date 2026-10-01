@@ -6,6 +6,7 @@ import * as path from 'path';
 import { render } from '../test-ink';
 import { App } from './App';
 import { SessionController } from '../session';
+import { initialRetained } from '../ui-state';
 
 // 钉短裸 ESC 拼接窗口（use-input 拆包重组默认 40ms）
 process.env.SUNSHINEX_ESC_JOIN_MS = '1';
@@ -59,8 +60,9 @@ test('App：运行中 Tab 展开待办全量清单，再按收回（2026-10-01 �
       },
     };
     const ctrl = new SessionController({ root: tmp, model: hungAdapter as never });
+    const retain = initialRetained();
     term = render(
-      <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />,
+      <App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} />,
     );
     const { write, lastFrame } = term;
     await sleep(200);
@@ -72,11 +74,13 @@ test('App：运行中 Tab 展开待办全量清单，再按收回（2026-10-01 �
     assert.doesNotMatch(lastFrame() ?? '', /○ 落库/, '前置：全量清单不在帧');
     write('\t'); // Tab → 展开待办
     await sleep(200);
+    assert.equal(retain.todoExpanded, true, 'store 已持 true（真机 setExpandAll 同步卸载吞后置 setState 的病根——store 先写钉）');
     assert.match(lastFrame() ?? '', /○ 落库/, 'Tab 后全量清单展开（✓/▸/○ 三态行在帧）');
     await sleep(500); // 越过 Tab 触发的尾部重挂
     assert.match(lastFrame() ?? '', /○ 落库/, '尾部重挂后待办保持展开（retain 保留不回折）');
     write('\t'); // Tab → 收回
     await sleep(200);
+    assert.equal(retain.todoExpanded, false, '再按 store 回 false');
     assert.doesNotMatch(lastFrame() ?? '', /○ 落库/, '再按 Tab 收回折叠单行');
     release?.();
     await ctrl.waitIdle();

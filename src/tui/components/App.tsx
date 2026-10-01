@@ -622,11 +622,15 @@ export function App({
       } else {
         // 第一层切换（行折叠）：翻转后经重挂整屏重放（Static 按新形态整体重建，视口永远只有一份），运行中随时可切
         const nextExpand = !expandAll;
+        // 待办展开同步翻转（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：**store 先写**
+        // （setBrowse 同款先例）——setExpandAll 的同步重渲染即触发 onRequestRepaint('tail') 卸载，
+        // 其后排队的 setTodoExpanded 落在已卸载组件上被吞、回写 effect 永不再跑，store 残 false=
+        // 重挂后待办仍折叠（真机「Tab 不展开」病根）；先同步写 store 再 setState 即卸载前已持新值
+        const nextTodo = !todoExpanded;
+        store.todoExpanded = nextTodo;
+        setTodoExpanded(nextTodo);
         setExpandAll(nextExpand);
         controller.recordView(nextExpand, latestFull);
-        // 待办展开同步翻转（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：运行中缺省折叠
-        // 单行，Tab 即见全量清单；动态区自绘零重挂开销，行数实账已入 todoRows（previewCap 随之收缩）
-        setTodoExpanded(!todoExpanded);
       }
       return;
     }
