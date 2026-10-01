@@ -257,12 +257,20 @@ export function App({
     keyTrace(`setInspect ${JSON.stringify(v)}`);
     inspectRef.current = v;
     store.inspect = v;
+    // 生产路径（有 repaint 通道）：跳过 setState——本调用紧随 onRequestRepaint 同步卸载，setState
+    // 会在注定废弃的旧树上同步提交一次整帧渲染（归档视图=一次性最大帧，真机 280ms+）且 ink 把这帧
+    // **写进 stdout**，随后 clearScreen 重挂又整份重放——同一转录双重倾泻（conpty 冻结+闪屏，真机
+    // 「归档进入要先 Enter」病根：半秒级空窗内用户补按的 Enter 被 inspect 分支静默吞掉）。状态由重挂
+    // 从 store 读（store 先写不变式的终点形态）。无通道（部分测试直挂）：原地 setState 维持旧语义
+    if (onRequestRepaint) {
+      setInspectExpanded(false);
+      store.inspectExpanded = false;
+      onRequestRepaint();
+      return;
+    }
     setInspect(v);
     setInspectExpanded(false); // 每次进入复位折叠态（缺省态，对标主 agent 折叠位；store 同步防重挂回旧值）
     store.inspectExpanded = false;
-    // 整屏接管切换（进入/退出各一次）：经生产 repaint 路径卸载→同 retain 重挂——重挂后历史区按
-    // suppressHistory 置空/恢复，全屏视图独占整页不与主 agent 历史拼接（2026-09-27 用户裁决）
-    onRequestRepaint?.();
   };
   // 键分发 ref 真值（对标 qCursor/browseCursorRef 先例）：子面板更新走 notifyThrottled 节流，
   // 处理器闭包的 state 可能滞后节流一拍，浏览器序列构造必须读 ref 不读闭包

@@ -52,30 +52,49 @@ test('App：全屏态段锚点自动重绘跳过（2026-09-28 用户裁决：持
     await p;
     await ctrl.waitIdle();
     const repaints: number[] = [];
-    term = render(
-      <App
-        controller={ctrl}
-        banner={{ version: '1.0.0', model: 'm', root: tmp }}
-        retain={initialRetained()}
-        onRequestRepaint={() => repaints.push(repaints.length + 1)}
-      />,
-    );
-    const { write, lastFrame } = term;
+    const retain = initialRetained();
+    let current: TestRenderResult | undefined;
+    // 真卸载通道（生产语义）：请求重绘即卸载当前实例，测试手动以同 retain 重挂（帧面状态经重挂生效）
+    const repaint = (): void => {
+      repaints.push(repaints.length + 1);
+      current?.unmount();
+    };
+    const mount = (): TestRenderResult => {
+      const mounted = render(
+        <App
+          controller={ctrl}
+          banner={{ version: '1.0.0', model: 'm', root: tmp }}
+          retain={retain}
+          onRequestRepaint={repaint}
+        />,
+      );
+      current = mounted;
+      return mounted;
+    };
+    term = mount();
     await new Promise((r) => setTimeout(r, 200));
-    write('\u0002'); // Ctrl+B
+    term.write('\u0002'); // Ctrl+B
     await new Promise((r) => setTimeout(r, 150));
-    write('\r'); // Enter → 全屏回看（进入恰 1 次重绘）
+    term.write('\r'); // Enter → 全屏回看（store 先写 + 请求重绘 + 卸载；进入恰 1 次重绘）
     await new Promise((r) => setTimeout(r, 200));
-    assert.match(lastFrame() ?? '', /subagent view/, '前置：全屏视图在场');
+    const two = mount();
+    term = two;
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(two.lastFrame() ?? '', /subagent view/, '前置：全屏视图在场');
     assert.equal(repaints.length, 1, '前置：进入全屏恰一次重绘');
     // 全屏期间主链再跑一轮带工具行的回合：段锚点落定不得触发整屏重绘（拆挂即闪屏 + 吞 Esc 空窗）
     void ctrl.submit('追问');
     await ctrl.waitIdle();
     await new Promise((r) => setTimeout(r, 900)); // 越过 400ms 段锚点防抖
     assert.equal(repaints.length, 1, '全屏态段锚点落定零整屏重绘');
-    write('\u001b'); // Esc 退出全屏
+    two.write('\u001b'); // Esc 退出全屏（store 先写 + 请求重绘 + 卸载）
     await new Promise((r) => setTimeout(r, 200));
-    assert.doesNotMatch(lastFrame() ?? '', /subagent view/, 'Esc 正常退出全屏');
+    assert.equal(repaints.length, 2, 'Esc 退出恰请求一次整屏重绘');
+    current = undefined;
+    const back = mount();
+    term = back;
+    await new Promise((r) => setTimeout(r, 200));
+    assert.doesNotMatch(back.lastFrame() ?? '', /subagent view/, '重挂后全屏视图退出（retain.inspect 已清）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -227,9 +246,14 @@ test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重�
     current = three;
     await new Promise((r) => setTimeout(r, 200));
     assert.match(three.lastFrame() ?? '', /subagent view/, '重挂后全屏态保留（retain 现场）');
-    three.write('\u001b'); // Esc 退出仍正常
+    three.write('\u001b'); // Esc 退出（生产路径：store 先写 + 请求重绘，帧面状态经重挂生效）
     await new Promise((r) => setTimeout(r, 150));
-    assert.doesNotMatch(three.lastFrame() ?? '', /subagent view/, '重挂后 Esc 仍可退出');
+    const four = render(<App {...props} banner={props.banner} />);
+    current = four;
+    await new Promise((r) => setTimeout(r, 200));
+    assert.doesNotMatch(four.lastFrame() ?? '', /subagent view/, '重挂后 Esc 退出（retain.inspect 已清）');
+    four.unmount();
+    current = undefined;
   } finally {
     current?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });

@@ -37,16 +37,15 @@ function isCompleteSequence(b: string): boolean {
 
 
 /** 键位实据日志（免配置常开，真机「前置 Enter」类症状唯一取证通道）：固定路径 %TEMP%/sunshinex-keys.log，
- *  每个 data 块与最终派发的 raw 序列逐条落盘，超 256KB 自动截断重写
- *  逐条落盘。背景：真机「进全屏后 Esc/Tab 需先按 Enter」类症状在历轮模拟探针（test-ink 同步 stdin、
- *  生产接线 runTuiLoop 编排、真 40ms 窗口）下全部不可复现，只剩真实 conpty 字节流一个未观测变量 */
+ *  每个 data 块与最终派发的 raw 序列逐条落盘（**带 PID 前缀**——并行会话共写同一文件，2026-10-02 实证
+ * 行序时间倒挂污染取证，按 PID 过滤才是单会话流），超 256KB 自动截断重写 */
 const KEY_LOG_PATH = join(os.tmpdir(), 'sunshinex-keys.log');
 function keyDebug(msg: string): void {
   try {
     if (fs.existsSync(KEY_LOG_PATH) && fs.statSync(KEY_LOG_PATH).size > 262_144) {
       fs.writeFileSync(KEY_LOG_PATH, '');
     }
-    fs.appendFileSync(KEY_LOG_PATH, `${Date.now()} ${msg}
+    fs.appendFileSync(KEY_LOG_PATH, `${Date.now()} ${process.pid} ${msg}
 `);
   } catch {
     /* 诊断落盘失败静默（不干扰键位主路径） */
