@@ -53,6 +53,13 @@ function keyDebug(msg: string): void {
   }
 }
 
+/** 渲染层归因口（同一日志）：分发层只能证明字节到达，无法证明「谁消费、画面是否重画」——
+ *  App 分支消费点与 tui-loop 重绘点调用本函数落同一日志，一次真机复现即可区分
+ *  「键没到 App」/「App 消费了但重绘没跑」/「重绘跑了但终端冻结」三段（2026-10-02 前置 Enter 复发取证） */
+export function keyTrace(msg: string): void {
+  keyDebug(`trace ${msg}`);
+}
+
 /** 每一 stdin 的进程级监听条目（2026-09-30 真机「进全屏后 Esc/Tab 须先按 Enter」终版根因修复）：
  *  监听器原挂每次挂载的 useLayoutEffect——React 提交（长转录全量 Static 渲染可达秒级）完成才挂上，
  *  重挂空窗与长渲染期按键全丢（用户按 Enter 时渲染早已完成，即「Enter 解锁」假象）。
@@ -90,7 +97,7 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         if (e.pending.length === 0) return;
         const bytes = e.pending;
         e.pending = '';
-        keyDebug(`dispatch raw=${JSON.stringify(bytes)}`);
+        keyDebug(`dispatch raw=${JSON.stringify(bytes)} handlers=${e.handlers.size}`);
         if (e.handlers.size === 0) return;
         const handler = [...e.handlers][e.handlers.size - 1]!;
         // 单点解析分发：raw 保留原始字节；键位判定与 ink3 原版逐行一致

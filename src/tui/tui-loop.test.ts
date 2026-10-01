@@ -98,7 +98,7 @@ test('tui-loop：重绘路径以同步更新（DEC 2026）包裹清屏与重挂�
   await loop;
 });
 
-test('tui-loop：installSyncUpdateWrap 全帧逐写原子化（2026-09-28 流式闪屏扩展：ink 逐帧擦写裸出即持续闪屏病根）', () => {
+test('tui-loop：installSyncUpdateWrap 全帧逐写原子化（2026-10-02 起缺省关闭，SUNSHINEX_SYNC_WRAP=1 显式开启）', () => {
   const writes: string[] = [];
   const stream = {
     write: (...args: unknown[]): unknown => {
@@ -106,10 +106,20 @@ test('tui-loop：installSyncUpdateWrap 全帧逐写原子化（2026-09-28 流式
       return args[0] !== 'fail' ;
     },
   };
+  // 缺省直通：WT 不识别 DEC 2026、包裹是空操作且高频成对开合是渲染冻结头号嫌疑——直通零回归
   installSyncUpdateWrap(stream);
-  const r = stream.write('frame-content');
-  assert.equal(r, true, '写返回值透传');
-  assert.deepEqual(writes, ['\x1b[?2026hframe-content\x1b[?2026l'], '逐写包裹为原子块');
-  stream.write('\x1b[?2026halready\x1b[?2026l');
-  assert.equal(writes.length, 2, '已含 2026h 的写（repaint 路径自包）不重复包裹');
+  stream.write('frame-content');
+  assert.deepEqual(writes, ['frame-content'], '缺省直通不包裹');
+  // 显式开启：逐写包裹为原子块（支持 2026 的终端换回原子换帧）
+  process.env.SUNSHINEX_SYNC_WRAP = '1';
+  try {
+    installSyncUpdateWrap(stream);
+    const r = stream.write('frame-content');
+    assert.equal(r, true, '写返回值透传');
+    assert.deepEqual(writes.slice(1), ['\x1b[?2026hframe-content\x1b[?2026l'], '逐写包裹为原子块');
+    stream.write('\x1b[?2026halready\x1b[?2026l');
+    assert.equal(writes.length, 3, '已含 2026h 的写（repaint 路径自包）不重复包裹');
+  } finally {
+    delete process.env.SUNSHINEX_SYNC_WRAP;
+  }
 });

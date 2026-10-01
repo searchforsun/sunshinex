@@ -1,5 +1,6 @@
 import { createResizeGate, ResizeSource } from './resize';
 import { initialRetained, RetainedUiState } from './ui-state';
+import { keyTrace } from './components/use-input';
 
 /** ink 实例最小接口（便于测试注入替身） */
 export interface InkLikeInstance {
@@ -49,6 +50,7 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
   // resize 与 Tab 模式切换共用同一条「卸载 → 清屏 → 重挂」路径：Static 历史按当前模式整屏重放
   // 重绘模式升级钉：已排队的 full 不被后续 tail 降级（full 语义覆盖面更广）
   const requestRepaint = (mode: RepaintMode = 'full'): void => {
+    keyTrace(`repaint-queue ${mode}`);
     repaintQueued = repaintQueued === 'full' ? 'full' : mode;
     current?.unmount();
   };
@@ -84,6 +86,7 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
       } else {
         current = deps.renderOnce(retain);
       }
+      if (mode !== undefined) keyTrace(`repaint-done ${mode}`);
       await current.waitUntilExit();
     } while (repaintQueued !== undefined);
   } finally {
@@ -93,14 +96,13 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
 }
 
 /** 全帧逐写原子化（2026-09-28 流式/全屏闪屏扩展）：DEC 2026 同步更新原只覆盖整屏 repaint 路径，
- *  ink 逐帧「擦除+重写」裸出——动态区任一行变化即全帧重写（session 合帧窗口注释自证无逐行 diff），
- *  擦写序列中间态肉眼可见即持续闪屏。装配期对流式输出做逐写包裹：每帧写原子化，终端持旧帧到整帧
- *  落定；已含 2026h 的写（repaint 路径自包）不重复包裹，不识别该序列的终端静默忽略零劣化 */
+ *  ink 逐帧「擦除+重写」裸出——动态区任一行变化即全帧重写，擦写序列中间态肉眼可见即持续闪屏。
+ *  **2026-10-02 改缺省关闭**（SUNSHINEX_SYNC_WRAP=1 显式开启）：用户终端（WT）不识别 DEC 2026、
+ *  包裹本是空操作，但高频 2026h/2026l 成对开合是「前置 Enter」渲染冻结的头号嫌疑干扰源
+ *  （键位日志已证派发正常，病灶在 conpty/WT 渲染层）——缺省直通消除变量；支持 2026 的终端
+ *  可显式开启换回原子换帧 */
 export function installSyncUpdateWrap(stream: { write: (...args: unknown[]) => unknown }): void {
-  // A/B 验证开关（2026-09-30 真机「按键已派发但画面冻结」假设）：SUNSHINEX_NO_SYNC_WRAP=1 直通。
-  // 假设：WT 对高频 2026h/2026l 成对开合失步（终端视觉冻结至某次幸运刷新，键位日志已证状态机正常）。
-  // 直通则回到逐帧裸写（无冻结但可能闪灼）——用户实测二选一即可定位
-  if (process.env.SUNSHINEX_NO_SYNC_WRAP === '1') return;
+  if (process.env.SUNSHINEX_SYNC_WRAP !== '1') return;
   const orig = stream.write.bind(stream);
   stream.write = (...args: unknown[]): unknown => {
     const chunk = args[0];

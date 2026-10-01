@@ -3,7 +3,7 @@ import type { AskUserRequest } from '../../types';
 import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
-import useInput, { RawKey } from './use-input';
+import useInput, { RawKey, keyTrace } from './use-input';
 import { ApprovalDecision } from '../../types';
 import { SessionController, TuiState } from '../session';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
@@ -253,6 +253,7 @@ export function App({
   const inspectRef = React.useRef(inspect);
   inspectRef.current = inspect;
   const setInspectRetained = (v: typeof inspect): void => {
+    keyTrace(`setInspect ${JSON.stringify(v)}`);
     inspectRef.current = v;
     store.inspect = v;
     setInspect(v);
@@ -424,8 +425,9 @@ export function App({
         controller.requestPause();
         return;
       }
-      if (key.escape) { setInspectRetained(undefined); return; }
+      if (key.escape) { keyTrace('inspect esc-exit'); setInspectRetained(undefined); return; }
       if (key.tab) {
+        keyTrace(`inspect tab-toggle -> ${!inspectExpandedRef.current}`);
         const next = !inspectExpandedRef.current;
         inspectExpandedRef.current = next;
         store.inspectExpanded = next;
