@@ -121,3 +121,11 @@ test('renderMd：围栏豁免行距——代码盒内容无空行插入、盒线
   assert.ok(!out.includes('const a = 1;\n\nconst b = 2;'), '代码行间无行距插入');
   assert.ok(out.includes('┌') && out.includes('└'), '代码盒框线完好');
 });
+
+test('renderMd：分割线全宽盒线（markdansi HR_WIDTH=40 上限绕行，dim 呈现）', () => {
+  const out = renderMd('上文\n\n---\n\n下文', 120);
+  assert.ok(strip(out).split('\n').includes('─'.repeat(120)), '分割线为全宽盒线字符');
+  assert.ok(!out.includes('—'), '不使用 markdansi 的 40 列 em-dash 线');
+  assert.ok(out.includes('\x1b[2m'), 'dim 弱化呈现');
+  assert.ok(strip(out).split('\n').every((l) => l.length <= 120), '行宽 ≤ width');
+});

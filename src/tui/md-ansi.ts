@@ -247,16 +247,27 @@ export function createMdRender(width: number | (() => number)): (md: string) => 
   return (md) => renderSource(md, typeof width === 'function' ? width() : width);
 }
 
+/** 分割线判定（CommonMark hr：3+ 同字符独占一行；表格分隔行以竖线开头不受影响、围栏内不参与路由） */
+function isHrLine(line: string): boolean {
+  return /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line);
+}
+
 function renderSource(src: string, width: number): string {
   const lines = src.split('\n');
-  type Seg = { kind: 'table'; lines: string[] } | { kind: 'prose'; lines: string[] } | { kind: 'fence'; lines: string[] };
+  type Seg = { kind: 'table' | 'prose' | 'fence' | 'hr'; lines: string[] };
   const segs: Seg[] = [];
   let inFence = false;
   for (const line of lines) {
     // 围栏行（开/闭）与围栏体独立成段（2026-10-01 行距律：代码不是正文，不进行距重排——
     // 照旧 wrap:true 真宽整块渲染，codeBox 完好、长代码行盒内折）；行距只作用 prose 段
     const isFence = isFenceLine(line);
-    const cls: Seg['kind'] = isFence || inFence ? 'fence' : /^\s*[|｜]/.test(line) ? 'table' : 'prose';
+    const cls: Seg['kind'] = isFence || inFence
+      ? 'fence'
+      : isHrLine(line)
+        ? 'hr'
+        : /^\s*[|｜]/.test(line)
+          ? 'table'
+          : 'prose';
     if (isFence) inFence = !inFence;
     const last = segs[segs.length - 1];
     if (last && last.kind === cls) last.lines.push(line);
@@ -265,6 +276,10 @@ function renderSource(src: string, width: number): string {
   const parts = segs.map((seg) => {
     const text = seg.lines.join('\n');
     if (seg.kind === 'fence') return renderMdRun(text, width);
+    if (seg.kind === 'hr') {
+      // markdansi 分割线带 HR_WIDTH=40 硬上限且用 em-dash——自绘全宽盒线（与 MarkdownText hr 同形态：dim + ─×宽）
+      return `\x1b[2m${'─'.repeat(Math.max(1, width))}\x1b[0m`;
+    }
     if (seg.kind !== 'table') return renderProseSegment(text, width);
     // 纯管道行 ≥2 且第二行为分隔行才是 GFM 表格；否则（孤行/畸形）按 prose 走行距律原样呈现
     const normalized = seg.lines.map((l) => normalizeCjkLine(l, false));
