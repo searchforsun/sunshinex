@@ -178,34 +178,32 @@ export function MessageList({
  *  帧高零变化；围栏/表格 hold 期尾段无界增长被取尾封顶（F1 帧高限界保留）；无「…」截断标记行
  *  （标记行随截断出现即 +1 行反弹，LiveArea 同款无标记口径）。previewCap 退役：恒高窗口本身即
  *  帧高限界，随 chrome 浮动的 cap 反成反弹源（prop 保留签名兼容）。 */
-const REPLY_TAIL_LINES = 8;
-
-/** 正文尾窗装配（纯函数，导出供恒高钉测试——渲染与计行同源单点）：恒返回 windowRows 行
- *  （markdansi 实时渲染 → 自尾保留 → 顶部空行补齐），空尾段（块闭合到下一 delta 之间）恒 8 空白行 */
-export function replyPreviewWindow(live: LiveBlock, columns: number, windowRows: number): string[] {
+/** 正文尾窗装配（纯函数，导出供钉测试——渲染与钉测同源单点）：未消费尾段**全文**实时渲染
+ *  （markdansi 同出口），仅当超出视口物理上限（cap=rows−chrome，App 传入 previewCap）才自尾截尾——
+ *  2026-10-01 用户三轮裁决汇流：①输入区跟在全部内容之后（不贴底不悬停）；②不自动反弹（块闭合
+ *  经 Static 原位衔接零位移，cap 内尾段永不截头即无截头跳变，截尾只在尾段超视口时物理必需）；
+ *  ③流式不是局部片段（恒高小窗把未闭合围栏/表格 hold 切成局部=错）。空尾段（块闭合到下一 delta
+ *  之间）返回空数组=窗口不占位（输入区紧跟已入档内容，块闭合零位移由 Static 原位衔接保证） */
+export function replyPreviewWindow(live: LiveBlock, columns: number, cap: number): string[] {
   const start = typeof live.tailStart === 'number' ? live.tailStart : live.text.lastIndexOf('\n') + 1;
   const tail = live.text.slice(start);
-  let all: string[] = [];
-  if (tail.trim().length > 0) {
-    const rendered = renderMd(tail, columns);
-    all = rendered.replace(/\n+$/, '').split('\n');
-    if (all.every((l) => l.trim().length === 0)) all = [];
-  }
-  const lines = all.length > windowRows ? all.slice(-windowRows) : all.slice();
-  while (lines.length < windowRows) lines.unshift('');
-  return lines;
+  if (tail.trim().length === 0) return [];
+  const rendered = renderMd(tail, columns);
+  const all = rendered.replace(/\n+$/, '').split('\n');
+  if (all.every((l) => l.trim().length === 0)) return [];
+  return all.length > cap ? all.slice(-cap) : all;
 }
 
 /** 动态区未入档尾段原文预览（2026-09-30 markdansi 替换批次）：reply 期间旧 LiveArea 的全量源预览
  *  与滚动缓冲中的 ansi 条目视觉重叠（正文双份），其 reply 分支退役于 Task 5，本组件接管——
- *  tailStart 水位切片（session mdConsume 镜像：表格 hold/围栏开栏/未完行的未消费起点），逐行呈现，
+ *  tailStart 水位切片（session mdConsume 镜像：表格 hold/围栏开栏/未完行的未消费起点），全文呈现，
  *  收口后经历史区 ansi 条目（框线成形）承接；thinking 流照旧走 LiveArea 6 行滚动窗。
- *  恒高窗口（2026-10-01 用户终裁）：经 replyPreviewWindow 恒渲染 windowRows 行，流式全程帧高恒定、
- *  零反弹。 */
-function MdBufferPreview({ live, columns, rows }: { live: LiveBlock; columns: number; rows: number; previewCap?: number }): JSX.Element {
-  // 窗口行数只随视口行数伸缩（resize 才变，流式全程恒定）
-  const windowRows = Math.max(4, Math.min(REPLY_TAIL_LINES, rows - 10));
-  const lines = replyPreviewWindow(live, columns, windowRows);
+ *  全文尾窗（2026-10-01 用户终裁）：尾段全文渲染只按视口物理上限截尾（无恒高小窗、无「…」标记行
+ *  ——标记行随截断出现即 +1 行跳动），帧高随内容生长、输入区恒跟内容之后。 */
+function MdBufferPreview({ live, columns, rows, previewCap }: { live: LiveBlock; columns: number; rows: number; previewCap?: number }): JSX.Element | null {
+  const cap = previewCap ?? Math.min(28, Math.max(8, rows - 6));
+  const lines = replyPreviewWindow(live, columns, cap);
+  if (lines.length === 0) return null;
   return (
     <Box flexDirection="column" marginBottom={1}>
       {lines.map((line: string, i: number) => (
