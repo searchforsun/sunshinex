@@ -4,7 +4,7 @@ import { formatTokens, formatDuration } from '../format';
 import { bandLines, wrapByWidth, elideByWidth, displayWidth } from '../text-band';
 import { renderMd } from '../md-ansi';
 import { useSpinFrame } from './Spinner';
-import { segmentizeLines } from './ChildTranscript';
+import { ResultCollapsed, segmentizeLines } from './ChildTranscript';
 import { t } from '../../i18n';
 import { theme } from '../theme';
 
@@ -271,15 +271,7 @@ function ResultRow({ text, ok, columns, expanded }: { text: string; ok: boolean;
       </Box>
     );
   }
-  // 内联单行（2026-09-30 用户终审裁决：全形标记行+多行内容「凭空多了高度」，主 agent 常态即内联摘要）：
-  // 第一行吃满终端宽度直到边缘，内容超一整行才在行尾 … 收尾；CR 剥除（Windows exec 输出 CRLF，
-  // 残留 CR 渲染即光标回卷幻影高度/错位碎片）；前缀「  ⎿ ✓ 」6 列实账扣除
-  const first = (text.split('\n')[0] ?? '').replace(/\r/g, '');
-  return (
-    <Text dimColor color={ok ? theme.success : theme.error}>
-      {'  ⎿ '}
-      {ok ? '✓' : '✗'}
-      {` ${elideByWidth(first, Math.max(8, columns - 6))}`}
-    </Text>
-  );
+  // 折叠态与主链 ToolRow 共用单点（ResultCollapsed）：⎿ ✓/✗ + 首行带块 + … 溢出折行——三行工具组
+  // （调用行/结果行/省略号行）与主 agent 逐字节同形（真机「子代理少省略号一行」病根），CR 剥除在单点内
+  return <ResultCollapsed text={text} ok={ok} columns={columns} />;
 }

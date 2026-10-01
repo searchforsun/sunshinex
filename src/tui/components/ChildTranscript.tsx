@@ -60,6 +60,24 @@ export function segmentizeLines(lines: string[]): TranscriptSeg[] {
   return segs;
 }
 
+/** 结果行折叠态单点（主链 ToolRow 与子代理 ChildInspector.ResultRow 共用——两处手写已实际漂移过：
+ *  真机「主 agent 工具组三行（调用行/结果行/省略号行）、子代理少省略号行」病根）：⎿ ✓/✗ + 首行
+ *  bandLine 块 + 尾追 …。bandLine 块首尾补空格恒吃满预算宽，… 恒越过终端右缘由终端折到下一行
+ *  行首——即真机定形的三行工具组第三行；与主链形态逐字节同源 */
+export function ResultCollapsed({ text, ok, columns }: { text: string; ok: boolean; columns: number }): JSX.Element {
+  const first = text.replace(/\r/g, '').split('\n')[0] ?? '';
+  const budget = Math.max(16, columns - 6);
+  const head = bandLines(first, budget)[0] ?? first;
+  const clipped = head !== first;
+  return (
+    <Text dimColor color={ok ? theme.success : theme.error}>
+      {'  ⎿ '}
+      {ok ? '✓' : '✗'}
+      {` ${head}${clipped ? '…' : ''}`}
+    </Text>
+  );
+}
+
 /** 单段渲染：md → renderMd（markdansi 出口，产物无尾随空行——段间单空行由本层 margin 承载，
  *  与主 agent 区域边界同档）、call → ● [VERB] target（与主 agent ToolRow 调用行同构，与紧随其后的
  *  result 行贴排零 margin）、result/meta → dim 行（margin 1，与下一段保持区域间隔） */

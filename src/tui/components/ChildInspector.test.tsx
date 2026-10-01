@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { render } from '../test-ink';
+import { render, type TestRenderResult } from '../test-ink';
 import { ChildInspector } from './ChildInspector';
+import { ToolRow } from './ToolRow';
 import { ChildLiveState } from '../session';
 
 const live = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
@@ -212,30 +213,63 @@ test('Inspector 折叠结果行单行省略、Tab 展开全文（对标主 agent
   exp.unmount();
 });
 
-test('Inspector 结果行内联单行：吃满终端宽度、超一整行才 …，CR 剥除（2026-09-30 用户终审：全形多行「凭空多了高度」回退内联）', () => {
-  const one = render(
-    <ChildInspector
-      child={live({
-        transcript: [
-          { kind: 'call', text: 'READ src/a.ts' },
-          { kind: 'result', text: 'package com.yupi;\r\nsecond line', ok: true },
-        ],
-      })}
-      columns={80}
-      rows={12}
-    />,
-  );
-  const lines = one
-    .allOutput()
-    .split('\n')
-    .map((l) => l.replace(/\u001b\[[0-9;]*m/g, '').trimEnd())
-    .filter((l) => l.trim().length > 0);
-  const ri = lines.findIndex((l) => l.includes('⎿ ✓'));
-  assert.ok(ri >= 0, '结果行内联呈现');
-  assert.match(lines[ri]!, /⎿ ✓ package com\.yupi;/, '首行内容内联（CR 剥除后无回卷残留）');
-  assert.ok(!lines[ri]!.includes('\r'), 'CR 已剥除');
-  assert.ok(!lines.slice(ri, ri + 3).some((l) => l.includes('second line')), '多行结果只呈现首行（内联单行不撑高）');
-  one.unmount();
+test('Inspector 结果行折叠三行同形：⎿ ✓ 首行带块 + … 独立省略号行（与主链 ToolRow 共用 ResultCollapsed 单点——真机「子代理少省略号一行」病根）+ CR 剥除', () => {
+  // render 第二参=终端宽度实参：… 行来自终端宽（80）下的 yoga 折行，缺省宽更宽即不折行（unmount 全入 finally——
+  // 断言失败跳过卸载即自持 interval 吊死整个测试批次）
+  let one: TestRenderResult | undefined;
+  let lines: string[] = [];
+  let ri = -1;
+  try {
+    one = render(
+      <ChildInspector
+        child={live({
+          transcript: [
+            { kind: 'call', text: 'READ src/a.ts' },
+            { kind: 'result', text: 'package com.yupi;\r\nsecond line', ok: true },
+          ],
+        })}
+        columns={80}
+        rows={12}
+      />,
+      80,
+    );
+    lines = one
+      .allOutput()
+      .split('\n')
+      .map((l) => l.replace(/\u001b\[[0-9;]*m/g, '').trimEnd())
+      .filter((l) => l.trim().length > 0);
+    ri = lines.findIndex((l) => l.includes('⎿ ✓'));
+    assert.ok(ri >= 0, '结果行呈现');
+    assert.match(lines[ri]!, /⎿ ✓ {2}package com\.yupi;/, '首行内容在结果行（前缀空格+带块前导空格双空格同主链，CR 剥除后无回卷残留）');
+    assert.ok(!lines[ri]!.includes('\r'), 'CR 已剥除');
+    assert.equal(lines[ri + 1], '…', '省略号行独立呈现（带块恒吃满预算宽，… 溢出折到下一行行首——主链三行工具组第三行）');
+    assert.ok(!lines.slice(ri, ri + 3).some((l) => l.includes('second line')), '多行结果折叠态只呈现首行（全文 Tab 展开可见）');
+  } finally {
+    one?.unmount();
+  }
+  // 同形铁钉：同一结果内容经主链 ToolRow 与子代理视图渲染逐行一致（共用单点的漂移保险）
+  let two: TestRenderResult | undefined;
+  try {
+    two = render(
+      <ToolRow
+        item={{ role: 'tool', text: 'package com.yupi;\nsecond line', ts: 0, seq: 1, kind: 'result', ok: true, detail: 'package com.yupi;\r\nsecond line' } as never}
+        columns={80}
+        collapsed
+      />,
+      80,
+    );
+    const main = two!
+      .allOutput()
+      .split('\n')
+      .map((l) => l.replace(/\u001b\[[0-9;]*m/g, '').trimEnd())
+      .filter((l) => l.trim().length > 0);
+    const mi = main.findIndex((l) => l.includes('⎿ ✓'));
+    assert.ok(mi >= 0, '主链结果行呈现');
+    assert.equal(main[mi], lines[ri], '主/子结果行逐字节同形（共用 ResultCollapsed）');
+    assert.equal(main[mi + 1], lines[ri + 1], '省略号行逐字节同形');
+  } finally {
+    two?.unmount();
+  }
 });
 
 test('Inspector 调用行行宽护栏：长动词（TASK_WAIT）下 target 预算按前缀实账扣减，行宽不超终端列数（2026-09-30 真机 ink repeat(负数) RangeError 崩溃实锤）', () => {

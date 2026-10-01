@@ -3,7 +3,7 @@ import { ChatItem } from '../session';
 import { bandLines, displayWidth, elideByWidth } from '../text-band';
 import { formatDuration } from '../format';
 import { theme } from '../theme';
-import { TranscriptLines } from './ChildTranscript';
+import { ResultCollapsed, TranscriptLines } from './ChildTranscript';
 
 /**
  * 工具行：调用行 ● [VERB] target（工具名高亮）；结果行 ⎿ ✓/✗。
@@ -66,17 +66,8 @@ export function ToolRow({ item, columns, collapsed }: {
   const body = (item.detail ?? item.text).replace(/\r/g, '');
   const lines = body.split('\n');
   if (collapsed && item.detail) {
-    // 行宽预算：前缀「  ⎿ ✓ 」6 列，摘要总长 ≤ 终端列宽（截断省略号保留首行内容语义）
-    const budget = Math.max(16, columns - 6);
-    const first = bandLines(lines[0], budget)[0];
-    const clipped = first !== lines[0];
-    return (
-      <Text dimColor color={item.ok ? theme.success : theme.error}>
-        {'  ⎿ '}
-        {item.ok ? '✓' : '✗'}
-        {` ${first}${clipped ? '…' : ''}`}
-      </Text>
-    );
+    // 折叠摘要与子代理视图共用单点（ResultCollapsed）——形态漂移即真机「主/子 agent 工具行不同形」
+    return <ResultCollapsed text={body} ok={!!item.ok} columns={columns} />;
   }
   return (
     <Box flexDirection="column">
