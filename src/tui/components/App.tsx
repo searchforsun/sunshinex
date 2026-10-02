@@ -934,6 +934,10 @@ export function App({
           maxRows={menuMaxRows}
         />
       ) : null}
+      {/* 恒驻键提示条（2026-10-02 用户裁决）：固定输入框上侧一行随状态切换——与输入动作紧耦合
+          （对标 CC 提示位），有待办行时不再被挤远；banner 顶部快捷键行/浏览灰底行/暂停灰底行已退役
+          归一到这一条（banner 行滚出视口即死提示）；模态卡在场 hints=undefined 条退场（卡 hint 承载） */}
+      {hints ? <KeyHints items={hints.items} columns={columns} /> : null}
       <InputBox
         buffer={buffer}
         cursor={cursor}
@@ -941,10 +945,6 @@ export function App({
         active={state.status === 'idle' || state.status === 'error'}
       />
       <TodoList todos={state.todos} expanded={state.status !== 'running' || todoExpanded} columns={columns} />
-      {/* 恒驻键提示条（2026-10-02 用户裁决）：输入框下方常驻一行随状态切换——所有交互的快捷键
-          一眼可见零查找；banner 顶部快捷键行/浏览灰底行/暂停灰底行已退役归一到这一条（banner 行
-          滚出视口即死提示）；模态卡在场 hints=undefined 条退场（卡 hint 承载） */}
-      {hints ? <KeyHints items={hints.items} columns={columns} /> : null}
       <StatusBar
         metrics={state.metrics}
         status={state.status}

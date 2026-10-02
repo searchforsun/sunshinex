@@ -46,7 +46,7 @@ test('App 键提示条：空闲态常驻（补全/历史/子代理/help），ban
     assert.equal(f.split('/help').length - 1, 1, '/help 全帧恰一次（占位符承载，条不双显）');
     assert.ok(!f.includes('⌨'), '无 icon 前缀');
     assert.ok(!(term?.allOutput() ?? '').includes('plan-then-execute'), 'banner 旧快捷键行退役');
-    assert.ok(f.includes('❯') && f.indexOf('Ctrl+B') > f.indexOf('❯'), '条在输入框下方（一眼可见位）');
+    assert.ok(f.includes('❯') && f.indexOf('Ctrl+B') < f.indexOf('❯'), '条固定输入框上侧一行（与输入动作紧耦合，有待办不被挤远）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
