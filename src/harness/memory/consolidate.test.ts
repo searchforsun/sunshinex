@@ -116,3 +116,86 @@ test('整理成功后 .bak 快照清理（不留备份残渣）', async () => {
     assert.equal(leftovers.length, 0, '成功整理不留备份目录');
   });
 });
+
+/** 整理桩：前 keep 条逐字保留（同 description/body，模拟「未变条目」），其余并成一条——差分应用钉用 */
+function keepVerbatimStub(keep: number): ModelAdapter {
+  return {
+    provider: 'openai',
+    chat: async (req) => {
+      const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
+      if (!prompt.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
+      const items = [
+        ...Array.from({ length: keep }, (_, idx) => ({ type: 'project', description: `memo topic ${idx + 1}`, body: `repeated note body ${idx + 1}` })),
+        { type: 'project', description: 'merged rest', body: 'merged bodies of the rest' },
+      ];
+      return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
+    },
+  };
+}
+
+test('差分应用：未变条目原位更新保 slug 与 created（时效信号不因整理抹平）', async () => {
+  await withMem(async (mem) => {
+    seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
+    // 把 memo-topic-1 的 created 钉到旧日期（add 只写今天；手工改 frontmatter 模拟三天前的记录）
+    const file = path.join(mem.dir(), 'memo-topic-1.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^created: .*$/m, 'created: 2026-01-01'));
+    await consolidateMemory({ model: keepVerbatimStub(2), root: mem.dir() });
+    const rec = mem.list().find((r) => r.slug === 'memo-topic-1');
+    assert.ok(rec, 'slug 未变——上下文冻结快照里的引用继续有效');
+    assert.equal(rec.created, '2026-01-01', '承接条目保 created（整理判 stale 的唯一时效依据不抹平）');
+    assert.equal(rec.body, 'repeated note body 1', '原位更新正文不丢');
+    assert.equal(mem.count(), 3, '2 条保留 + 1 条合并（只减不增）');
+  });
+});
+
+test('模型幻觉 type 收编为合法四选一（frontmatter 恒合法枚举）', async () => {
+  await withMem(async (mem) => {
+    seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
+    const model: ModelAdapter = {
+      provider: 'openai',
+      chat: async (req) => {
+        const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
+        if (!p.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
+        const items = [{ type: 'session', description: 'merged into one', body: 'single merged record' }];
+        return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
+      },
+    };
+    await consolidateMemory({ model, root: mem.dir() });
+    assert.equal(mem.count(), 1);
+    assert.equal(mem.list()[0].type, 'project', '非法 type 收编为 project（与提取路径同口径）');
+  });
+});
+
+test('合并集内跨例目重复 → 跳过该条不整批回滚（防静默重试循环）', async () => {
+  await withMem(async (mem) => {
+    seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
+    const model: ModelAdapter = {
+      provider: 'openai',
+      chat: async (req) => {
+        const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
+        if (!p.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
+        // 两条 body 归一相同（模型偶发）：旧实现 add 报 MEMORY_DUPLICATE → throw → 整批回滚 → 阈值以上每次收口重演
+        const items = [
+          { type: 'project', description: 'merged a', body: 'same body text' },
+          { type: 'project', description: 'merged b', body: 'same body text' },
+        ];
+        return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
+      },
+    };
+    await consolidateMemory({ model, root: mem.dir() });
+    assert.equal(mem.count(), 1, '重复条目只丢该条，第一条生效');
+    assert.equal(mem.list()[0].slug, 'merged-a');
+  });
+});
+
+test('整理未应用（模型不出牌）→ notify 浮出一行说明（不再静默重试）', async () => {
+  await withMem(async (mem) => {
+    seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
+    const lines: string[] = [];
+    const model: ModelAdapter = { provider: 'openai', chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) };
+    await consolidateMemory({ model, root: mem.dir(), notify: (l) => lines.push(l) });
+    assert.equal(lines.length, 1, '恰好一行说明');
+    assert.match(lines[0], /^\[memory\] consolidation not applied \(model returned no consolidation payload\)/);
+    assert.equal(mem.count(), MEMORY_CONSOLIDATE_THRESHOLD, '原状保留');
+  });
+});

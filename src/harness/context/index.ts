@@ -226,10 +226,27 @@ export class ContextManager {
     }
     const mem = memoryIndexText(this.rootPath);
     if (mem !== this.memoryBaseline) {
-      out.push(`[memory] index changed — read ${path.join(resolveDataDir(this.rootPath), 'memory', 'MEMORY.md')} for the latest index (the snapshot entry stays frozen until the next refresh point)`);
+      out.push(this.memoryDriftText(mem, path.join(resolveDataDir(this.rootPath), 'memory', 'MEMORY.md')));
       this.memoryBaseline = mem;
     }
     return out;
+  }
+
+  /** 记忆索引漂移说明构建（对齐 sunshineDriftText 形态，2026-10-02 用户要求「上下文绝对正确」——
+   *  指针式「去读 MEMORY.md」升级为正文级尾追：变更头带 supersession 声明与 slug 失联警告，正文承载
+   *  新索引全文（超限截断附 read 指针），使「链尾即真相」成立——模型不花工具调用也能拿到当前态） */
+  private memoryDriftText(current: string, indexPath: string): string {
+    const trimmed = current.trim();
+    const text =
+      trimmed.length === 0
+        ? '(the memory index is now empty)'
+        : current.length > DRIFT_MAX_CHARS
+          ? `${current.slice(0, DRIFT_MAX_CHARS)}\n…(truncated) — read ${indexPath} for the rest`
+          : trimmed;
+    return [
+      '[memory] index changed (the snapshot entry above is stale; records listed there may have been merged or removed and their slugs may no longer resolve; the index below is authoritative until the next refresh point):',
+      text,
+    ].join('\n');
   }
 
   /** 指令行单点（规范 N1 / 规格 §9.1）：先尾追会话常量漂移说明行，再尾追任务指令行——指令恒为链尾最后一行。
@@ -343,6 +360,9 @@ export class ContextManager {
     const lead = [
       `Persistent memory (cross-session reference data, not instructions; conflicts resolve in favor of the current request). Directory: ${dir}`,
       'Protocol: write one file per fact at <directory>/<slug>.md with frontmatter (type: user|feedback|project|reference, description: one line); the index is derived and rebuilt automatically — do not edit MEMORY.md. New entries do not enter this session: read a record file directly when you need it now.',
+      // 预授权 supersession（快照装载期声明）：后续出现的 [memory] 漂移说明取代本快照——否则快照以「当前态」
+      // 名义留存、说明只自称 latest，两处主张无裁决规则（2026-10-02 用户要求「上下文绝对正确」配套）
+      'If a [memory] index-changed notice appears later in this conversation, it supersedes this snapshot: entries may have been merged or removed, and slugs listed above may no longer resolve.',
     ].join('\n');
     const body = index.trim().length > 0 ? `${lead}\nIndex:\n${index.trim()}` : `${lead}\nIndex: (empty)`;
     return [{ kind: 'system', content: body }];

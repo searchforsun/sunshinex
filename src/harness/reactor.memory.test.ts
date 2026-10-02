@@ -62,7 +62,8 @@ test('中止路径（max-steps 未完成）同样触发一次提取，reply 归�
     await h.pipeline.drain(); // 收口零等待（规格 §3.1 D2）：提取在后台，断言前先清空队列
     assert.equal(extractionPrompts.length, 1, '中止路径触发一次提取（触发面=全终态）');
     assert.ok(extractionPrompts[0].includes('- User goal: impossible goal'), 'goal 照传');
-    assert.ok(extractionPrompts[0].endsWith('- Final reply: '), '无最终答复归一为空串（不再因缺 reply 而漏触发）');
+    // 材料面终节为 Step digest（2026-10-02 起）；reply 空串钉改为行级断言——非空 reply 会呈现 '- Final reply: <文本>'
+    assert.ok(extractionPrompts[0].includes('- Final reply: \n'), '无最终答复归一为空串（不再因缺 reply 而漏触发）');
     assert.equal(memCount(root), 0, '零候选零落盘');
   });
 });

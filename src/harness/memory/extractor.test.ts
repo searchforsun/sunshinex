@@ -155,3 +155,47 @@ test('settle 尾部阈值触发整理（先提取入库、后判定阈值整理�
     assert.ok(mem.indexText().includes('merged into one'), '合并集落盘');
   });
 });
+
+test('提取材料并入 SUNSHINE.md 全文与步骤摘要（skip 指令的可执行数据）', async () => {
+  await withMem(async (mem, tmp) => {
+    const root = path.join(tmp, 'root');
+    fs.writeFileSync(path.join(root, 'SUNSHINE.md'), 'Rule: the monolith port is 8123.\n');
+    const cap = openaiStub('{"memories":[]}');
+    await settleMemory({ goal: 'g', reply: 'r', digest: '[exec] ran mvnw test', model: cap.model, root });
+    assert.ok(cap.prompts[0].includes('Rule: the monolith port is 8123.'), 'SUNSHINE.md 全文进材料（模型看得见已写明什么）');
+    assert.match(cap.prompts[0], /never extract/i, 'skip 指令与材料同在');
+    assert.ok(cap.prompts[0].includes('[exec] ran mvnw test'), '步骤摘要进材料（feedback 类事实主要在会话过程）');
+  });
+});
+
+test('无 SUNSHINE.md / 无 digest 时材料节为确定态占位（模板形态恒定）', async () => {
+  await withMem(async (mem) => {
+    const cap = openaiStub('{"memories":[]}');
+    await settleMemory({ goal: 'g', reply: 'r', model: cap.model, root: mem.dir() });
+    assert.ok(cap.prompts[0].includes('(no SUNSHINE.md found)'), 'SUNSHINE 缺省占位');
+    assert.ok(cap.prompts[0].includes('(none)'), 'digest 缺省占位');
+  });
+});
+
+test('闸门 e：description 归一短语被 SUNSHINE.md 包含 → 判已覆盖拒绝（包含口径，非整行相等）', async () => {
+  await withMem(async (mem, tmp) => {
+    const root = path.join(tmp, 'root');
+    // 散文长行形态（旧「整行相等」口径在此形态恒不命中=闸门形同虚设）
+    fs.writeFileSync(path.join(root, 'SUNSHINE.md'), '## Layout\n- The repo root builds the primary module on port 8123 with context path /api.\n');
+    const env = JSON.stringify({
+      memories: [{ type: 'project', description: 'primary module on port 8123', content: 'the monolith root module listens on port 8123' }],
+    });
+    await settleMemory({ goal: 'g', reply: 'r', model: openaiStub(env).model, root });
+    assert.equal(mem.count(), 0, 'description 是 SUNSHINE.md 归一子串 → 判已覆盖拒绝');
+  });
+});
+
+test('闸门 e：门槛以下的碎片短词不做包含判定（宁漏判不误杀）', async () => {
+  await withMem(async (mem, tmp) => {
+    const root = path.join(tmp, 'root');
+    fs.writeFileSync(path.join(root, 'SUNSHINE.md'), 'Project uses pnpm for everything.\n');
+    const env = JSON.stringify({ memories: [{ type: 'project', description: 'pnpm', content: 'build tooling is pnpm based' }] });
+    await settleMemory({ goal: 'g', reply: 'r', model: openaiStub(env).model, root });
+    assert.equal(mem.count(), 1, '4 字符碎片低于包含门槛 → 放行，残余交整理收敛');
+  });
+});

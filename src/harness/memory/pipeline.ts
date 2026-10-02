@@ -140,7 +140,15 @@ export class MemoryPipeline {
   private async consumeMemory(item: PipelineItem): Promise<void> {
     if (!this.memoryEnabled()) return;
     try {
-      const slugs = await settleMemory({ goal: item.goal, reply: item.reply, model: this.deps.model, root: this.deps.root });
+      // digest 随材料面进提取（feedback 类事实主要在会话过程，不在最终答复）；notify 承接整理未应用说明行
+      const slugs = await settleMemory({
+        goal: item.goal,
+        reply: item.reply,
+        digest: item.digest,
+        model: this.deps.model,
+        root: this.deps.root,
+        notify: (line) => this.deps.notify('memory', line),
+      });
       if (slugs.length > 0) this.deps.notify('memory', this.memoryLine(slugs));
     } catch {
       // 旁路纪律

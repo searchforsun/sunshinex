@@ -29,16 +29,37 @@ interface Candidate {
 }
 
 
-/** 任务收尾记忆提取入口：goal+reply 材料面 → chat 面 submit_memory_items 出牌 → 五重准入闸门 → MemoryStore 落盘。
- *  返回本次成功入库的 slug 列表（规格 §10 会话内可见性：调用方据此发 notice 说明行）；失败路径返回已入库部分。 */
-export async function settleMemory(opts: { goal: string; reply: string; model: ModelAdapter; root: string }): Promise<string[]> {
+/**
+ * 任务收尾记忆提取入口：goal+reply+digest 材料面（含 SUNSHINE.md 节）→ chat 面 submit_memory_items 出牌
+ * → 五重准入闸门 → MemoryStore 落盘。返回本次成功入库的 slug 列表（规格 §10 会话内可见性：
+ * 调用方据此发 notice 说明行）；失败路径返回已入库部分。notify 收整理未应用的说明行（防静默重试循环）。
+ */
+export async function settleMemory(opts: {
+  goal: string;
+  reply: string;
+  digest?: string;
+  model: ModelAdapter;
+  root: string;
+  notify?: (line: string) => void;
+}): Promise<string[]> {
   const saved: string[] = [];
   try {
     if (!isModelSummarizer(opts.model)) return saved;
     const chat = opts.model.chat;
     if (!chat) return saved;
     const res = await chat.call(opts.model, {
-      messages: [{ role: 'user', content: buildExtractionPrompt(opts.goal, opts.reply, new Date().toISOString().slice(0, 10)) }],
+      messages: [
+        {
+          role: 'user',
+          content: buildExtractionPrompt(
+            opts.goal,
+            opts.reply,
+            new Date().toISOString().slice(0, 10),
+            sunshineExcerpt(opts.root),
+            (opts.digest ?? '').trim() || '(none)',
+          ),
+        },
+      ],
       tools: MEMORY_TOOLS,
     });
     const call = res.toolCalls.find((t) => t.name === 'submit_memory_items');
@@ -46,7 +67,7 @@ export async function settleMemory(opts: { goal: string; reply: string; model: M
     const candidates = parseItemsPayload(call.argsJson);
     if (!candidates) return saved;
     const store = new MemoryStore(opts.root);
-    const sunshine = sunshineLines(opts.root);
+    const sunshine = sunshineText(opts.root);
     for (const c of candidates) {
       const description = typeof c.description === 'string' ? c.description.trim() : '';
       const content = typeof c.content === 'string' ? c.content.trim() : '';
@@ -65,7 +86,7 @@ export async function settleMemory(opts: { goal: string; reply: string; model: M
     }
     // 整理触发（规格 §5）：同收口串行——先提取入库、后判定阈值整理；阈值未达零调用（consolidateMemory 内部门禁）
     if (store.count() >= MEMORY_CONSOLIDATE_THRESHOLD) {
-      await consolidateMemory({ model: opts.model, root: opts.root });
+      await consolidateMemory({ model: opts.model, root: opts.root, notify: opts.notify });
     }
   } catch {
     // 旁路纪律：提取任何失败静默降级（saved 保留已入库部分，调用方照常可见）
@@ -83,18 +104,32 @@ function parseItemsPayload(argsJson: string): Candidate[] | null {
   }
 }
 
-/** SUNSHINE.md 归一行集（闸门 e 比对基准；无文件为空集） */
-function sunshineLines(root: string): string[] {
+/** SUNSHINE.md 材料节字符上限：与注入面漂移块 DRIFT_MAX_CHARS 同水位——材料面预算对齐 */
+const SUNSHINE_EXCERPT_MAX_CHARS = 4096;
+
+/** SUNSHINE.md 材料节（提取 prompt 用）：skip 指令的可执行数据；缺文件/空文件给确定态占位，模板形态恒定 */
+function sunshineExcerpt(root: string): string {
   try {
-    return fs
-      .readFileSync(path.join(root, 'SUNSHINE.md'), 'utf8')
-      .split('\n')
-      .map(normalizeText)
-      .filter((l) => l.length > 0);
+    const t = fs.readFileSync(path.join(root, 'SUNSHINE.md'), 'utf8').trim();
+    if (t.length === 0) return '(empty)';
+    return t.length > SUNSHINE_EXCERPT_MAX_CHARS ? `${t.slice(0, SUNSHINE_EXCERPT_MAX_CHARS)}\n…(truncated)` : t;
   } catch {
-    return [];
+    return '(no SUNSHINE.md found)';
   }
 }
+
+/** SUNSHINE.md 归一全文（闸门 e 包含比对基准；无文件为空串） */
+function sunshineText(root: string): string {
+  try {
+    return normalizeText(fs.readFileSync(path.join(root, 'SUNSHINE.md'), 'utf8'));
+  } catch {
+    return '';
+  }
+}
+
+/** 闸门 e 包含口径的最短 description 归一长度：短语包含需防碎片误伤——"pnpm"/"memory" 这类短词
+ *  是常见词不是「已写明的事实」，低于门槛不做包含判定（宁漏判不误杀，残余交整理收敛） */
+const MEMORY_SUNSHINE_OVERLAP_MIN_CHARS = 8;
 
 /** 合法记忆类型集（与 store.ts 的 MEMORY_TYPES 同集；store 未导出该常量，工具入口在此自校验——落盘与三级去重仍归 store.add 单点） */
 const WRITABLE_MEMORY_TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
@@ -113,14 +148,17 @@ export interface MemoryAdmission {
  */
 function admitMemory(
   store: MemoryStore,
-  sunshine: string[],
+  sunshine: string,
   input: { type: MemoryType; description: string; body: string },
 ): Result<MemoryAdmission> {
   // 闸门 b/c：临时措辞与注入/不可见 Unicode（guards 单点，判定集合与迁移前等价）
   const hit = scanMemoryText(`${input.description}\n${input.body}`);
   if (hit !== null) return fail('MEMORY_WRITE_SCAN', `Rejected: session-scoped or unsafe content (${hit}); nothing written`);
-  // 闸门 e：SUNSHINE.md 已写明项（CC 同款；归一后包含即拒，规则文件即项目规范的单一来源）
-  if (sunshine.includes(normalizeText(input.description))) {
+  // 闸门 e：SUNSHINE.md 已写明项（CC 同款精神）。2026-10-02 口径修正：旧「整行相等」在「散文长行 vs 单行摘要」
+  // 形态下恒不命中=闸门形同虚设（当日实据：3 条与 SUNSHINE.md 重复记录全部穿过），改为归一短语包含——
+  // description 是 SUNSHINE.md 的连续子串即判已覆盖（跨行命中由归一空白折叠承载）
+  const desc = normalizeText(input.description);
+  if (desc.length >= MEMORY_SUNSHINE_OVERLAP_MIN_CHARS && sunshine.includes(desc)) {
     return fail('MEMORY_SUNSHINE_OVERLAP', 'Already covered by SUNSHINE.md; nothing written');
   }
   // 闸门 d：三级归一去重由 add 承载（slug / description / body 任一归一相同即拒）
@@ -181,7 +219,7 @@ export function writeMemoryFact(opts: {
   // description 缺省取正文首行、截 80（单行口径与 MemoryRecord.description 一致；正文去掉首尾空白后首行必非空）
   const description = (opts.description?.trim() || content.split('\n')[0].trim()).slice(0, 80);
   const store = subdir.value === undefined ? new MemoryStore(opts.root) : new MemoryStore(opts.root, { subdir: subdir.value });
-  return admitMemory(store, sunshineLines(opts.root), {
+  return admitMemory(store, sunshineText(opts.root), {
     type: opts.type as MemoryType,
     description,
     body: content,
