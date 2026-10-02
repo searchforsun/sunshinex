@@ -120,3 +120,31 @@ test('App：子代理全屏视图内两次 Ctrl+C 同口径——此前该分支
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('App：全屏视图内 Esc 撤卡不退视图，无卡再 Esc 才退出（真机「Ctrl+C 后 Esc 退出子代理、卡悬空带回主视图一按即杀」病根）', async () => {
+  const tmp = tmpDir('sunshinex-apppause4-');
+  const { ctrl, pending } = runningCtrl(tmp);
+  let term: ReturnType<typeof render> | undefined;
+  try {
+    await waitFor(() => ctrl.getState().status === 'running');
+    const retain = { ...initialRetained(), inspect: { kind: 'live' as const, label: 'Research' } };
+    term = render(<App controller={ctrl} retain={retain} />);
+    await flushKey();
+    term.write('\x03');
+    await flushKey();
+    assert.equal(ctrl.getState().pauseConfirm, true, '全屏视图内挂卡');
+    term.write('\u001B');
+    // 裸 ESC 经 use-input 40ms 拼合窗口延迟派发：waitFor 而非固定 flush（早断言假红先例）
+    await waitFor(() => ctrl.getState().pauseConfirm === undefined, 3000);
+    assert.deepEqual(retain.inspect, { kind: 'live', label: 'Research' }, 'Esc 撤卡不退全屏（提示条「Esc 继续运行」承诺兑现，卡不再悬空带回主视图）');
+    assert.equal(ctrl.getState().status, 'running', '任务零影响继续跑');
+    term.write('\u001B');
+    await waitFor(() => retain.inspect === undefined, 3000);
+    assert.equal(retain.inspect, undefined, '无卡再按 Esc 才退出全屏');
+    assert.equal(ctrl.interrupt(), true, '收尾中断挂起任务');
+    await pending;
+  } finally {
+    term?.unmount();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

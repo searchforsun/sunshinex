@@ -442,11 +442,18 @@ export function App({
       // Ctrl+C 暂停确认（2026-10-02 用户裁决）：子代理全屏视图内两次 Ctrl+C 同主视图口径——
       // 第一次挂卡（任务不停），再按即确认中断（主链连带子代理）；此前该分支吞键致运行中无法暂停
       if (key.ctrl && input === 'c') {
-        if (stateRef.current.pauseConfirm) { controller.interrupt(); return; }
+        if (stateRef.current.pauseConfirm) { keyTrace('inspect pause-interrupt'); controller.interrupt(); return; }
+        keyTrace('inspect pause-hang');
         controller.requestPause();
         return;
       }
-      if (key.escape) { keyTrace('inspect esc-exit'); setInspectRetained(undefined); return; }
+      // Esc 撤卡优先（对齐主视图 Esc 分层与提示条「Esc 继续运行」承诺）：卡在场先撤卡、视图不动；
+      // 无卡才退出全屏。旧实现无条件退出——pauseConfirm 悬空带回主视图，其后任一 Ctrl+C 都被当
+      // 「第二次确认」直接中断（2026-10-02 真机日志实锤：挂卡 52 秒跨两次视图进出后主视图一按即杀任务）
+      if (key.escape) {
+        if (stateRef.current.pauseConfirm) { keyTrace('inspect pause-cancel'); controller.cancelPause(); return; }
+        keyTrace('inspect esc-exit'); setInspectRetained(undefined); return;
+      }
       if (key.tab) {
         keyTrace(`inspect tab-toggle -> ${!inspectExpandedRef.current}`);
         const next = !inspectExpandedRef.current;
@@ -600,8 +607,8 @@ export function App({
     // 运行中第一次挂提示（任务不停），已挂提示再按=真正中断（主链连带子代理）；
     // 其余等待态=中断；空闲且输入非空=清空输入；空闲且输入空=请求退出
     if (key.ctrl && input === 'c') {
-      if (stateRef.current.pauseConfirm) { controller.interrupt(); return; }
-      if (stateRef.current.status === 'running') { controller.requestPause(); return; }
+      if (stateRef.current.pauseConfirm) { keyTrace('main pause-interrupt'); controller.interrupt(); return; }
+      if (stateRef.current.status === 'running') { keyTrace('main pause-hang'); controller.requestPause(); return; }
       if (controller.interrupt()) return;
       if (buffer.length > 0) {
         setBuffer('');
@@ -614,7 +621,7 @@ export function App({
     }
     // Esc 同源分流：暂停确认卡在场=撤卡继续；运行/等待态=中断；空闲且有输入=清空输入（空闲空输入不退出）
     if (key.escape) {
-      if (stateRef.current.pauseConfirm) { controller.cancelPause(); return; }
+      if (stateRef.current.pauseConfirm) { keyTrace('main pause-cancel'); controller.cancelPause(); return; }
       if (controller.interrupt()) return;
       if (buffer.length > 0) {
         setBuffer('');

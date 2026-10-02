@@ -83,3 +83,53 @@ test('会话中断：排队任务随中断一并丢弃并回执', async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+/** 门控适配器：模型调用挂起直至外部 release()——释放后按 mode 正常返回或抛错（挂卡期状态出口的现场） */
+class GatedAdapter implements ModelAdapter {
+  readonly provider = 'gated';
+  private gate: Promise<void>;
+  release!: () => void;
+  constructor(private mode: 'finish' | 'throw') {
+    this.gate = new Promise((r) => { this.release = r; });
+  }
+  async chat(_req: ChatRequest): Promise<ChatResult> {
+    await this.gate;
+    if (this.mode === 'throw') throw new Error('boom');
+    return { finish: 'stop', content: 'done', toolCalls: [] };
+  }
+}
+
+test('暂停确认卡状态卫生：挂卡期任务自然收尾即清卡——残留卡会把空闲态 Ctrl+C 当「第二次确认」吞成死键', async () => {
+  const tmp = tmpdir('sunshinex-pauseclear1-');
+  try {
+    const model = new GatedAdapter('finish');
+    const ctrl = new SessionController({ root: tmp, model });
+    const pending = ctrl.submit('长任务');
+    await waitFor(() => ctrl.getState().status === 'running', 3000);
+    assert.equal(ctrl.requestPause(), true, '运行中挂卡成功');
+    model.release();
+    await pending;
+    assert.equal(ctrl.getState().status, 'idle', '任务自然完成回 idle');
+    assert.equal(ctrl.getState().pauseConfirm, undefined, '卡随 closeTask 状态出口清除，不残留到空闲态');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('暂停确认卡状态卫生：适配器抛错被引擎收口回 idle，卡同样被清（任何收尾路径不留残卡）', async () => {
+  const tmp = tmpdir('sunshinex-pauseclear2-');
+  try {
+    const model = new GatedAdapter('throw');
+    const ctrl = new SessionController({ root: tmp, model });
+    const pending = ctrl.submit('长任务');
+    await waitFor(() => ctrl.getState().status === 'running', 3000);
+    assert.equal(ctrl.requestPause(), true, '运行中挂卡成功');
+    model.release();
+    await pending;
+    // 适配器异常被引擎收口为正常完结（session 层 error 粘滞仅限逃逸异常）——closeTask 同样是状态出口
+    assert.equal(ctrl.getState().status, 'idle', '引擎收口异常回 idle');
+    assert.equal(ctrl.getState().pauseConfirm, undefined, '卡随 closeTask 状态出口清除，任何收尾路径不留残卡');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

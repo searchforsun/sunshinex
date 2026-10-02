@@ -571,7 +571,7 @@ export class SessionController {
     if (!pending) return;
     this.pendingPlan = undefined;
     if (!yes) {
-      this.state = { ...this.state, status: 'idle' };
+      this.state = { ...this.state, status: 'idle', pauseConfirm: undefined }; // 同 closeTask 状态出口清卡（规划轮挂的卡可走到这）
       this.pushMsg('system', t('Plan discarded, back to input', '已放弃执行计划，回到输入态'));
       return;
     }
@@ -959,6 +959,9 @@ export class SessionController {
       ...this.state,
       status: 'idle',
       metrics: { ...this.state.metrics, turnStartedAt: 0 },
+      // 暂停确认卡随状态出口清除（2026-10-02 状态卫生）：挂卡期任务自然收尾不清即残留——空闲态
+      // Ctrl+C 被 App「第二次确认」分支吞掉成死键（interrupt() 非 active 不清卡即 return）
+      pauseConfirm: undefined,
       // 生命周期清理（规格 §4.4）：运行中子代理（后台两段式）跨回合保留，done 归档收口；
       // 生命周期清理（规格 §4.4）：已归档者本已离场；运行中子代理（后台两段式）跨回合保留，done 归档收口
       children: this.state.children.filter((c) => !c.done),
@@ -1034,7 +1037,7 @@ export class SessionController {
       this.closeTask();
     } catch (e) {
       this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`), { level: 'error' });
-      this.state = { ...this.state, status: 'error' };
+      this.state = { ...this.state, status: 'error', pauseConfirm: undefined }; // 同 closeTask 状态出口清卡
       this.notify();
       return; // error 态保留计时现场（sticky），下次提交进 running 时重置
     }
@@ -1089,7 +1092,7 @@ export class SessionController {
       this.closeTask();
     } catch (e) {
       this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`), { level: 'error' });
-      this.state = { ...this.state, status: 'error' };
+      this.state = { ...this.state, status: 'error', pauseConfirm: undefined }; // 同 closeTask 状态出口清卡
       this.notify();
       return;
     }
