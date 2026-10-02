@@ -172,3 +172,86 @@ test('formatToolCallLine：单行安全（argsJson 无字面换行），解析�
   assert.equal(rest.slice(0, sp), 'write');
   assert.equal(JSON.parse(rest.slice(sp + 1)).content, 'line1\nline2');
 });
+
+/* ---------- 思考模式 reasoning_content 回传半径（DeepSeek/Qwen 系交错思考：工具续轮必须带回本轮思考） ---------- */
+
+test('思考回传·当轮：phase 行/批首调用行承载的 reasoning 随批次 assistant 消息透出', () => {
+  // 形态①：有旁白的轮——reasoning 挂 phase 行
+  const msgs = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: [
+      { step: 1, action: 'task', observation: 'do it' },
+      { step: 2, action: PHASE_ACTION, observation: 'Reading first', reasoning: 'CoT round 1' },
+      { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}') },
+      { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+    ],
+  });
+  const asst1 = msgs.find((m) => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.ok(asst1 !== undefined && asst1.role === 'assistant', '批 assistant 消息在场');
+  assert.equal(asst1?.reasoning, 'CoT round 1', 'phase 行思考随批 assistant 消息透出');
+
+  // 形态②：无旁白的轮——reasoning 挂批首调用行
+  const msgs2 = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: [
+      { step: 1, action: 'task', observation: 'do it' },
+      { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}'), reasoning: 'silent CoT' },
+      { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+    ],
+  });
+  const asst2 = msgs2.find((m) => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.ok(asst2 !== undefined && asst2.role === 'assistant', '批 assistant 消息在场');
+  assert.equal(asst2?.reasoning, 'silent CoT', '批首调用行思考同口径透出');
+});
+
+test('思考回传·旧任务轮剥离：末 task 行之前的轮思考不透出（防提示词膨胀；端点对历史思考仅忽略）', () => {
+  const msgs = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: [
+      { step: 1, action: 'task', observation: 'turn one' },
+      { step: 2, action: PHASE_ACTION, observation: 'old narration', reasoning: 'stale CoT' },
+      { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}') },
+      { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+      { step: 3, action: 'reply', observation: 'turn one done' },
+      { step: 4, action: 'task', observation: 'turn two' }, // 新任务轮：上一轮思考即历史
+      { step: 5, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"b"}'), reasoning: 'fresh CoT' },
+      { step: 5, action: TOOL_RESULT_ACTION, observation: 'content-b' },
+    ],
+  });
+  const assistants = msgs.filter((m): m is Extract<ChatMessage, { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(assistants.length, 2, '两轮批 assistant 消息');
+  assert.equal(assistants[0].reasoning, undefined, '旧任务轮思考剥离（字段缺席）');
+  assert.equal(assistants[0].content, 'old narration', '旧轮旁白照常');
+  assert.equal(assistants[1].reasoning, 'fresh CoT', '当前任务轮思考透出');
+});
+
+test('思考回传·无 task 行（fork 种子/子代理私有链）：全链视为当轮，思考透出', () => {
+  const msgs = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: [
+      { step: 1, action: 'role', observation: 'coder' },
+      { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}'), reasoning: 'fork CoT' },
+      { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+    ],
+  });
+  const asst = msgs.find((m): m is Extract<ChatMessage, { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(asst?.reasoning, 'fork CoT', '无指令行边界即全当轮');
+});
+
+test('思考回传·前缀稳定：当轮思考在场时链尾追行仍仅尾部增长（序列化严格前缀）', () => {
+  const base = [
+    { step: 1, action: 'task', observation: 'do it' },
+    { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}'), reasoning: 'CoT' },
+  ];
+  const m1 = serialize(buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain: [...base] }));
+  const m2 = serialize(buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain: [...base, { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' }] }));
+  assert.ok(m2.startsWith(m1 + '\n'), '追结果行只尾部增长（thinking 回传不破坏 §11 前缀稳定）');
+});

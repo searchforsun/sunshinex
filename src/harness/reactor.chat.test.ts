@@ -194,3 +194,55 @@ test('todo_write 混入并行批：整轮按出牌顺序串行执行、每调用
     assert.ok(m.role === 'tool' && !/rejected/i.test(m.content), 'each call must run and receive a real result');
   }
 });
+
+/* ---------- 思考模式 reasoning_content 贯穿（DeepSeek/Qwen 系交错思考：工具续轮必须回传本轮思考） ---------- */
+
+test('思考贯穿：轮思考随链行入档并回传续轮请求；新任务轮剥离旧思考；链回写持久化', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat-cot-'));
+  fs.writeFileSync(path.join(tmp, 'note.txt'), 'hello world');
+  const adapter = new ChatStub([
+    // 任务一轮①：带思考的工具轮（有旁白 → reasoning 挂 phase 行）
+    { finish: 'tool_calls', content: 'Reading', reasoning: 'CoT r1', toolCalls: [{ id: 'c1', name: 'read', argsJson: '{"path":"note.txt"}' }] },
+    // 任务一轮②：带思考的工具轮（无旁白 → reasoning 挂批首调用行）
+    { finish: 'tool_calls', content: '', reasoning: 'CoT r2', toolCalls: [{ id: 'c2', name: 'read', argsJson: '{"path":"note.txt"}' }] },
+    stop('task one done'),
+    // 任务二轮①：新任务轮的思考
+    { finish: 'tool_calls', content: '', reasoning: 'CoT t2', toolCalls: [{ id: 'c3', name: 'read', argsJson: '{"path":"note.txt"}' }] },
+    stop('task two done'),
+  ]);
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+  const reactor = new Reactor({ registry, safety, context, model: adapter });
+
+  context.appendInstructionLine('Current instruction: read note'); // 生产链指令行（session 装配面同款）：任务轮边界
+  const r1 = await reactor.run({ goal: 'read note' });
+  assert.equal(r1.done, true, '任务一完成');
+  // 续轮请求回传：一轮②的请求中，一轮①的 assistant(tool_calls) 消息携带 CoT r1
+  const round2 = adapter.requests[1]!.messages;
+  const asst1 = round2.find((m): m is Extract<ChatRequest['messages'][number], { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(asst1?.reasoning, 'CoT r1', '有旁白轮思考（phase 行承载）随续轮请求回传');
+  // 一轮③（stop 收束轮）的请求中，一轮②的 assistant 消息携带 CoT r2（无旁白 → 批首调用行承载）
+  const round3 = adapter.requests[2]!.messages;
+  const assts3 = round3.filter((m): m is Extract<ChatRequest['messages'][number], { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(assts3.length, 2, '两轮批 assistant 消息在场');
+  assert.equal(assts3[1]?.reasoning, 'CoT r2', '无旁白轮思考（批首调用行承载）同口径回传');
+
+  // 链回写持久化：reasoning 随行落会话链（resume 续开轮的事实源）
+  const persisted = context.chainView().filter((s) => s.reasoning !== undefined);
+  assert.deepEqual(persisted.map((s) => s.reasoning), ['CoT r1', 'CoT r2'], '轮思考随链行持久化');
+
+  // 任务二：新任务轮请求剥离旧轮思考（当前轮思考照常回传）
+  context.appendInstructionLine('Current instruction: read note again');
+  const r2 = await reactor.run({ goal: 'read note again' });
+  assert.equal(r2.done, true, '任务二完成');
+  const t2round2 = adapter.requests[4]!.messages;
+  const t2assts = t2round2.filter((m): m is Extract<ChatRequest['messages'][number], { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(t2assts.length, 3, '任务二请求含三个批 assistant 消息（任务一两轮 + 当轮）');
+  assert.equal(t2assts[0]?.reasoning, undefined, '旧任务轮①思考剥离（不回传）');
+  assert.equal(t2assts[1]?.reasoning, undefined, '旧任务轮②思考剥离（不回传）');
+  assert.equal(t2assts[2]?.reasoning, 'CoT t2', '当前任务轮思考照常回传');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

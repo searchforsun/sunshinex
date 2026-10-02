@@ -31,11 +31,13 @@ export interface StructuredAction {
   toolCalls: ToolCallSpec[];
 }
 
-/** OpenAI 协议兼容消息（D1：链为唯一事实源，消息为 buildMessages 的派生视图形态） */
+/** OpenAI 协议兼容消息（D1：链为唯一事实源，消息为 buildMessages 的派生视图形态）。
+ *  assistant.reasoning 是思考模式的协议扩展载荷（DeepSeek/Qwen 系 reasoning_content）：交错思考端点
+ *  要求工具调用续轮把本轮思考原样传回（OpenAI 本尊无此字段——缺席即零穿参，行为不变） */
 export type ChatMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string | null; toolCalls?: ToolCallSpec[] }
+  | { role: 'assistant'; content: string | null; toolCalls?: ToolCallSpec[]; reasoning?: string }
   | { role: 'tool'; content: string; toolCallId: string };
 
 /** function calling 的 tools 字段下发形态（注册表 parameters 逐工具映射） */
@@ -52,11 +54,13 @@ export interface ChatRequest {
   effort?: ReasoningEffort;
 }
 
-/** chat 轮聚合结果：finish=stop 时 content 即 reply；finish=tool_calls 时 content 为旁白、toolCalls 为动作批 */
+/** chat 轮聚合结果：finish=stop 时 content 即 reply；finish=tool_calls 时 content 为旁白、toolCalls 为动作批；
+ *  reasoning=本轮思考增量聚合（思考模式端点返回、续轮须随 assistant 消息回传；未返回端点恒 undefined） */
 export interface ChatResult {
   finish: 'stop' | 'tool_calls';
   content: string;
   toolCalls: ToolCallSpec[];
+  reasoning?: string;
 }
 
 /** 统一执行面上的工具描述 */
@@ -408,6 +412,9 @@ export interface HistoryStep {
   step: number;
   action?: string;
   observation: string;
+  /** 该轮模型思考原文（思考模式端点的 reasoning_content）：工具调用续轮回传的载荷载体，
+   *  挂在 phase 行（在场时）或批首 tool-call 行；buildMessages 仅当前任务轮透出（旧轮剥离防膨胀） */
+  reasoning?: string;
 }
 
 export interface RunOutcome {

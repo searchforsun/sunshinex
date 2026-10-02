@@ -188,11 +188,12 @@ export class ContextManager {
     return this.chain.slice(this.chainFrom);
   }
 
-  /** 会话链尾追（唯一写入口）：行号由链内序号定死，追加后不重排（裁剪后允许跳号） */
-  appendChain(entries: Array<{ action?: string; observation: string }>): void {
+  /** 会话链尾追（唯一写入口）：行号由链内序号定死，追加后不重排（裁剪后允许跳号）；
+   *  reasoning（该轮模型思考原文）随行透传——思考模式续轮回传载荷的持久化通道 */
+  appendChain(entries: Array<{ action?: string; observation: string; reasoning?: string }>): void {
     const pushed: HistoryStep[] = [];
     for (const e of entries) {
-      const step = { step: ++this.chainSeq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation };
+      const step: HistoryStep = { step: ++this.chainSeq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation, ...(e.reasoning !== undefined ? { reasoning: e.reasoning } : {}) };
       this.chain.push(step);
       pushed.push(step);
     }

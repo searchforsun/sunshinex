@@ -213,3 +213,62 @@ test('StubAdapter.chat：占位协议 JSON 以 stop 收束承载（不炸消费�
   assert.deepEqual(r.toolCalls, []);
   assert.ok(r.content.includes('no real model wired'));
 });
+
+/* ---------- 思考模式 reasoning_content 往返（DeepSeek/Qwen 系交错思考硬约束：工具续轮必须回传） ---------- */
+
+test('思考往返·非流式：响应 reasoning_content 捕获进 ChatResult；assistant.reasoning 回传 wire、缺席零穿参', async () => {
+  const a = adapter();
+  const { bodies, restore } = mockJson([
+    { status: 200, body: { choices: [{ message: { content: 'thinking…', reasoning_content: 'CoT round 1', tool_calls: [{ id: 'c1', function: { name: 'read', arguments: '{"path":"a"}' } }] }, finish_reason: 'tool_calls' }] } },
+    { status: 200, body: { choices: [{ message: { content: 'done' }, finish_reason: 'stop' }] } },
+  ]);
+  try {
+    const r1 = await a.chat({ messages: [{ role: 'user', content: 'go' }], tools: [{ type: 'function', function: { name: 'read', description: '', parameters: readParams } }] });
+    assert.equal(r1.reasoning, 'CoT round 1', '非流式响应 reasoning_content 捕获');
+    // 续轮：assistant 消息携带 reasoning → wire 体回传 reasoning_content（端点硬约束）
+    await a.chat({
+      messages: [
+        { role: 'user', content: 'go' },
+        { role: 'assistant', content: 'thinking…', toolCalls: [{ id: 'c1', name: 'read', argsJson: '{"path":"a"}' }], reasoning: r1.reasoning },
+        { role: 'tool', content: 'ok', toolCallId: 'c1' },
+      ],
+    });
+    const wireMsgs = bodies[1]!.messages as Array<Record<string, unknown>>;
+    assert.equal(wireMsgs[1]!.reasoning_content, 'CoT round 1', 'assistant.reasoning 回传为 reasoning_content');
+    // 无 reasoning 的 assistant 消息：字段缺席（OpenAI 本尊端点零变化）
+    await a.chat({ messages: [{ role: 'user', content: 'go' }, { role: 'assistant', content: 'plain', reasoning: '' }] });
+    const wireMsgs3 = bodies[2]!.messages as Array<Record<string, unknown>>;
+    assert.equal('reasoning_content' in wireMsgs3[1]!, false, '空 reasoning 不穿参（字段缺席而非空串）');
+  } finally {
+    restore();
+  }
+});
+
+test('思考往返·流式：reasoning_content 增量聚合进 ChatResult 并回传（reasoning 键名同口径）', async () => {
+  const a = adapter();
+  const { bodies, restore } = mockSse([
+    frame({ choices: [{ delta: { reasoning_content: 'CoT ' } }] }),
+    frame({ choices: [{ delta: { reasoning: 'round 1' } }] }), // 三方键名 reasoning 同认
+    frame({ choices: [{ delta: { content: 'acting' } }] }),
+    frame({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'read', arguments: '{"path":"a"}' } }] } }] }),
+    frame({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
+  ]);
+  try {
+    const onReasoning: string[] = [];
+    const r = await a.chatStream({ messages: [{ role: 'user', content: 'go' }] }, () => {}, { onReasoning: (t) => onReasoning.push(t) });
+    assert.equal(r.reasoning, 'CoT round 1', '流式思考增量聚合（两键名拼接）');
+    assert.deepEqual(onReasoning, ['CoT ', 'round 1'], 'UI 思考流照旧逐段回调');
+    // 续轮回传
+    await a.chatStream({
+      messages: [
+        { role: 'user', content: 'go' },
+        { role: 'assistant', content: 'acting', toolCalls: [{ id: 'c1', name: 'read', argsJson: '{"path":"a"}' }], reasoning: r.reasoning },
+        { role: 'tool', content: 'ok', toolCallId: 'c1' },
+      ],
+    }, () => {});
+    const wireMsgs = bodies[1]!.messages as Array<Record<string, unknown>>;
+    assert.equal(wireMsgs[1]!.reasoning_content, 'CoT round 1', '流式轮思考随续轮 wire 回传');
+  } finally {
+    restore();
+  }
+});

@@ -190,13 +190,16 @@ export class OpenAIAdapter implements ModelAdapter {
     return this.doFetch(base, signal); // 全序列不支持：省略参数，用模型默认
   }
 
-  /** 消息视图 → wire 形态（assistant.toolCalls → tool_calls；tool → role:tool + tool_call_id） */
+  /** 消息视图 → wire 形态（assistant.toolCalls → tool_calls；tool → role:tool + tool_call_id）。
+   *  assistant.reasoning 原样回传为 reasoning_content：交错思考端点（DeepSeek/Qwen 系思考模式）要求
+   *  工具调用续轮把本轮思考带回（缺字段即 400 "must be passed back"）；无该字段的端点零穿参、行为不变 */
   private static toWireMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
     return messages.map((m) => {
       if (m.role === 'assistant') {
         return {
           role: 'assistant',
           content: m.content,
+          ...(m.reasoning && m.reasoning.length > 0 ? { reasoning_content: m.reasoning } : {}),
           ...(m.toolCalls && m.toolCalls.length > 0
             ? { tool_calls: m.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.name, arguments: t.argsJson } })) }
             : {}),
@@ -219,9 +222,10 @@ export class OpenAIAdapter implements ModelAdapter {
     hooks?.onUsage?.(extractUsage(data));
   }
 
-  /** 非 streaming 响应 choices[0] → 轮聚合结果（finish=tool_calls 之外一律归 stop 保守收束） */
+  /** 非 streaming 响应 choices[0] → 轮聚合结果（finish=tool_calls 之外一律归 stop 保守收束）；
+   *  reasoning_content（思考模式端点扩展）捕获进结果供续轮回传 */
   private static parseChatResult(data: unknown): ChatResult {
-    const choice = (data as { choices?: Array<{ message?: { content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; finish_reason?: string }>} | null)?.choices?.[0];
+    const choice = (data as { choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; finish_reason?: string }>} | null)?.choices?.[0];
     const msg = choice?.message;
     const calls: ToolCallSpec[] = (msg?.tool_calls ?? []).map((t, i) => ({
       id: t.id ?? `call_${i}`,
@@ -229,7 +233,8 @@ export class OpenAIAdapter implements ModelAdapter {
       argsJson: t.function?.arguments ?? '',
     }));
     const finish = choice?.finish_reason === 'tool_calls' ? 'tool_calls' : 'stop';
-    return { finish, content: msg?.content ?? '', toolCalls: finish === 'tool_calls' ? calls : [] };
+    const reasoning = msg?.reasoning_content ?? msg?.reasoning;
+    return { finish, content: msg?.content ?? '', toolCalls: finish === 'tool_calls' ? calls : [], ...(reasoning ? { reasoning } : {}) };
   }
 
   /** function calling 轮面：messages + tools 下发（tool_choice 缺省 auto），请求体不带 response_format；usage 三钩子回传与流式路同源 */
@@ -270,6 +275,7 @@ export class OpenAIAdapter implements ModelAdapter {
       const resp = await this.sendWithEffort(body, req.effort ?? this.effort, req.signal);
       if (!resp.ok || !resp.body) throw await this.requestError(resp);
       let full = '';
+      let reasoningFull = ''; // 思考增量聚合（续轮回传载荷；非思考端点恒空串零穿参）
       let buffer = '';
       /** index → 聚合中的调用分片（id/name 首片带、arguments 逐片拼接） */
       const shards = new Map<number, { id?: string; name?: string; args: string }>();
@@ -298,7 +304,10 @@ export class OpenAIAdapter implements ModelAdapter {
               const choice = ev.choices?.[0];
               const d = choice?.delta;
               const reason = d?.reasoning_content ?? d?.reasoning;
-              if (reason) hooks?.onReasoning?.(reason);
+              if (reason) {
+                reasoningFull += reason;
+                hooks?.onReasoning?.(reason);
+              }
               if (d?.content) {
                 full += d.content;
                 onDelta(d.content);
@@ -327,7 +336,7 @@ export class OpenAIAdapter implements ModelAdapter {
         const s = shards.get(i)!;
         return { id: s.id ?? `call_${i}`, name: s.name ?? '', argsJson: s.args };
       });
-      return { finish, content: full, toolCalls: finish === 'tool_calls' ? toolCalls : [] };
+      return { finish, content: full, toolCalls: finish === 'tool_calls' ? toolCalls : [], ...(reasoningFull ? { reasoning: reasoningFull } : {}) };
     } catch (e) {
       if (req.signal?.aborted) throw new Error('Task interrupted');
       if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');

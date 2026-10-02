@@ -26,7 +26,8 @@ import { reactorMaxStepsEnv, resolveRunWindow, subagentTokenCapEnv } from '../co
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
-export interface StepRecord { step: number; action?: string; observation: string; }
+/** 链行（与会话链 HistoryStep 同构）：reasoning=该轮模型思考原文（思考模式续轮回传载荷，挂 phase 行/批首调用行） */
+export interface StepRecord { step: number; action?: string; observation: string; reasoning?: string; }
 export interface RunResult {
   steps: StepRecord[];
   done: boolean;
@@ -336,7 +337,7 @@ export class Reactor {
       this.deps.context.appendChain(
         steps
           .filter((s) => s.step > cut)
-          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation })),
+          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}) })),
       );
       if (done && reply) {
         this.deps.context.appendChain([{ action: 'reply', observation: reply }]);
@@ -497,9 +498,12 @@ export class Reactor {
     // phase 通道退役（2026-09-30 用户裁决，单一权威源彻底形态）：叙述只走 token→正文一条通道
     //（流式轮原生 delta、非流式轮单帧补发），step 事件只承载步号计账不再携带叙述；链行回喂（PHASE_ACTION）照旧
     this.emit('step', calls[0].name, { step });
-    if (result.content) steps.push({ step, action: PHASE_ACTION, observation: result.content });
+    // 思考原文随轮入链（链为唯一事实源）：phase 行在场挂 phase 行、否则挂批首调用行——
+    // buildMessages 由此把 reasoning_content 回传给交错思考端点（DeepSeek/Qwen 系工具续轮硬约束）；
+    // 终稿轮（finish=stop）不入链：回合已收束、后续是新任务轮，回传无消费方
+    if (result.content) steps.push({ step, action: PHASE_ACTION, observation: result.content, ...(result.reasoning ? { reasoning: result.reasoning } : {}) });
     // 调用行先行入链（批内连续，buildMessages 聚合为 assistant+tool_calls）；被拒/坏参调用同样入链保证 role:tool 配对完整
-    for (const c of calls) steps.push({ step, action: TOOL_CALL_ACTION, observation: formatToolCallLine(c.name, c.argsJson) });
+    for (let i = 0; i < calls.length; i++) steps.push({ step, action: TOOL_CALL_ACTION, observation: formatToolCallLine(calls[i].name, calls[i].argsJson), ...(i === 0 && !result.content && result.reasoning ? { reasoning: result.reasoning } : {}) });
 
     const argsOf = calls.map((c) => {
       try {
