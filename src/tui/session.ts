@@ -26,6 +26,7 @@ import { consolidateMemory } from '../harness/memory/consolidate';
 import { isModelSummarizer } from '../harness/context/summarizer';
 import { LiveTaskState, applyTaskState, initialTaskState } from './task-state';
 import { readSkillUsage, recordSkillUsage } from './skill-usage';
+import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -262,6 +263,7 @@ function slashHelp(): string[] {
     t('  /tasks         list background tasks (id/kind/status/label, output path)', '  /tasks         列出后台任务（id/类型/状态/标签，输出路径）'),
     t('  /skill         load a skill into context (selector, type to filter)', '  /skill         加载技能进上下文（选择卡，输入筛选）'),
     t('  /status        session & ledger summary', '  /status        会话与账本摘要'),
+    t('  /terminal-setup configure terminal keys (Shift+Enter newline, Windows Terminal)', '  /terminal-setup 配置终端键位（Shift+Enter 换行，Windows Terminal）'),
     t('  /help          show this list', '  /help          本清单'),
   ];
   // 技能命令一行引导：完整列表经 /skill 选择卡筛选（type-to-filter），/<技能id> 直调形态同源分发
@@ -1152,6 +1154,27 @@ export class SessionController {
     if (cmd === '/status') {
       const s = this.runtime.harness.ledger.summary();
       this.pushMsg('system', t(`Ledger: ${s.runs} runs / ${s.tokens} tokens; messages: ${this.state.messages.length}; todos: ${this.state.todos.length}`, `账本：${s.runs} runs / ${s.tokens} tokens；消息 ${this.state.messages.length} 条；待办 ${this.state.todos.length} 项`));
+      return;
+    }
+    if (cmd === '/terminal-setup') {
+      // Shift+Enter 换行键的终端侧一次性配置（CC /terminal-setup 同款自动化）：终端缺省 Shift+Enter
+      // 与 Enter 同发 \r 不可区分，运行时只认 \x1b\r——此处把 WT 键位写好（绑定 + Alt+Enter 解绑）
+      const existing = wtSettingsCandidates().filter((p) => fs.existsSync(p));
+      if (existing.length === 0) {
+        this.pushMsg('system', t(
+          'Windows Terminal settings.json not found. VSCode: keybindings.json add {"key":"shift+enter","command":"workbench.action.terminal.sendSequence","when":"terminalFocus","args":{"text":"\\u001b\\r"}}',
+          '未找到 Windows Terminal settings.json。VSCode：keybindings.json 加 {"key":"shift+enter","command":"workbench.action.terminal.sendSequence","when":"terminalFocus","args":{"text":"\\u001b\\r"}}',
+        ), { level: 'warn' });
+        return;
+      }
+      const lines: string[] = [t('Terminal setup (Shift+Enter newline):', '终端设置（Shift+Enter 换行）：')];
+      for (const p of existing) {
+        const r = configureWindowsTerminal(p);
+        if (!r.ok) lines.push(t(`✗ ${p}: ${r.message}`, `✗ ${p}：${r.message}`));
+        else if (r.changed) lines.push(t(`✓ ${p}\n  backup: ${r.backup}\n  restart Windows Terminal to take effect`, `✓ ${p}\n  备份：${r.backup}\n  重启 Windows Terminal 后生效`));
+        else lines.push(t(`✓ ${p}: already configured`, `✓ ${p}：已配置，无需改动`));
+      }
+      this.pushMsg('system', lines.join('\n'));
       return;
     }
     if (cmd === '/add-dir') {
