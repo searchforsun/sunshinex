@@ -1345,7 +1345,9 @@ export class SessionController {
         ...(sw.hasExplicitDefault() ? [{ label: 'default', description: current === undefined ? t('current (main model)', '当前（主模型）') : undefined }] : []),
         ...sw.choices().map((c) => ({
           label: c.id,
-          description: c.id === current ? t('current', '当前') : c.contextWindow !== undefined ? `${c.baseUrl} · ${formatTokens(c.contextWindow)}` : c.baseUrl,
+          description: c.id === current
+            ? t('current', '当前')
+            : [c.baseUrl, c.contextWindow !== undefined ? formatTokens(c.contextWindow) : undefined, c.reasoningEffort !== undefined ? `effort ${c.reasoningEffort}` : undefined].filter((x) => x !== undefined).join(' · '),
         })),
       ];
       const answer = await this.askUser({

@@ -246,3 +246,19 @@ test('思考贯穿：轮思考随链行入档并回传续轮请求；新任务�
   assert.equal(t2assts[2]?.reasoning, 'CoT t2', '当前任务轮思考照常回传');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('思考贯穿·零思考轮：模型整轮无思考时续轮请求 assistant 消息 reasoning 空串在场（DeepSeek 契约：缺字段即 400）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat-cot0-'));
+  fs.writeFileSync(path.join(tmp, 'note.txt'), 'hello world');
+  const adapter = new ChatStub([
+    // 整轮零思考（思考模式默认开但模型偶尔跳过 CoT——2026-10-03 真机 A3 形态）
+    { finish: 'tool_calls', content: '', toolCalls: [{ id: 'c1', name: 'read', argsJson: '{"path":"note.txt"}' }] },
+    stop('done without thinking'),
+  ]);
+  const reactor = makeReactor(tmp, adapter);
+  const r = await reactor.run({ goal: 'read the note' });
+  assert.equal(r.done, true);
+  const asst = adapter.requests[1]!.messages.find((m): m is Extract<ChatRequest['messages'][number], { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(asst?.reasoning, '', '零思考轮的 assistant 消息 reasoning 兜底空串（字段在场）');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

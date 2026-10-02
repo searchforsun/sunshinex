@@ -61,8 +61,10 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
   }
 
   // reasoning_content 回传半径 = 当前任务轮（末 task 指令行之后的行）：交错思考端点（DeepSeek/Qwen 系）
-  // 要求工具调用续轮把本轮思考带回；旧任务轮的思考是已完成回合的中间产物——回传只膨胀提示词且被端点忽略，
-  // 故链行虽恒存储（append-only 事实源）、消息视图只透出当轮。无 task 行（fork 种子等）视为全当轮
+  // 的工具续轮硬约束是**字段在场**（实测 2026-10-03：空串 200、缺字段 400 "must be passed back"——
+  // 思考模式默认开但模型偶尔整轮零思考，如实省略字段即炸）；故当轮批 assistant 消息恒带 reasoning
+  // （轮思考原文，零思考轮兜底空串）。旧任务轮的思考是已完成回合的中间产物——字段省略（实测端点
+  // 接受历史省略），链行恒存储（append-only 事实源）。无 task 行（fork 种子等）视为全当轮
   let lastTaskIdx = -1;
   for (let i = 0; i < input.chain.length; i++) {
     if (input.chain[i].action === 'task') lastTaskIdx = i;
@@ -72,12 +74,17 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
   let callSeq = 0;
   let pendingPhase: string | null = null;
   let pendingReasoning: string | undefined = undefined;
-  let batch: { calls: ToolCallSpec[]; consumed: number; emitted: number; reasoning?: string } | null = null;
+  let batch: { calls: ToolCallSpec[]; consumed: number; emitted: number; current: boolean; reasoning?: string } | null = null;
 
   // wire 序不变量：assistant(tool_calls) 必须先于其配对的 role:tool 消息上链——
   // 批的 assistant 消息在首个结果回填前发出（挂 pendingPhase），不得延迟到批闭合
-  const emitAssistant = (calls: ToolCallSpec[], reasoning?: string): void => {
-    msgs.push({ role: 'assistant', content: pendingPhase ?? '', toolCalls: calls, ...(reasoning && reasoning.length > 0 ? { reasoning } : {}) });
+  const emitAssistant = (calls: ToolCallSpec[], reasoning: string | undefined, forceField: boolean): void => {
+    msgs.push({
+      role: 'assistant',
+      content: pendingPhase ?? '',
+      toolCalls: calls,
+      ...((reasoning !== undefined && reasoning.length > 0) || forceField ? { reasoning: reasoning ?? '' } : {}),
+    });
     pendingPhase = null;
     pendingReasoning = undefined;
   };
@@ -85,7 +92,7 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
   const flushBatch = (): void => {
     if (batch === null) return;
     const rest = batch.calls.slice(batch.emitted);
-    if (rest.length > 0) emitAssistant(rest, batch.reasoning ?? pendingReasoning);
+    if (rest.length > 0) emitAssistant(rest, batch.reasoning ?? pendingReasoning, batch.current);
     batch = null;
   };
 
@@ -102,7 +109,7 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
         continue;
       }
       callSeq += 1;
-      batch = batch ?? { calls: [], consumed: 0, emitted: 0 };
+      if (batch === null) batch = { calls: [], consumed: 0, emitted: 0, current: inCurrentTurn(idx) };
       // 批首调用行承载的轮思考（reactor 无 phase 行时挂首调用行）：当轮才透出
       if (batch.calls.length === 0 && row.reasoning !== undefined && inCurrentTurn(idx)) batch.reasoning = row.reasoning;
       batch.calls.push({ id: `call_${callSeq}`, name: parsed.name, argsJson: parsed.argsJson });
@@ -111,7 +118,7 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
     if (action === TOOL_RESULT_ACTION) {
       if (batch !== null && batch.consumed < batch.calls.length) {
         if (batch.consumed >= batch.emitted) {
-          emitAssistant(batch.calls.slice(batch.emitted), batch.reasoning ?? pendingReasoning);
+          emitAssistant(batch.calls.slice(batch.emitted), batch.reasoning ?? pendingReasoning, batch.current);
           batch.emitted = batch.calls.length;
         }
         const id = batch.calls[batch.consumed].id;

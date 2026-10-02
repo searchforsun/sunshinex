@@ -2,7 +2,7 @@
  *  切换/复位/未知 id 幂等、chat/chatStream 转发与流式回落、resolvedEffort 透传、每模型窗口透传 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ModelSwitcher } from './catalog';
+import { ModelSwitcher, choiceAdapterConfig } from './catalog';
 import { ScriptedAdapter, StubAdapter, OpenAIAdapter } from './adapter';
 import type { ModelAdapter } from './adapter';
 import type { ModelChoice } from '../config/providers';
@@ -106,4 +106,24 @@ test('切换后调用走新内芯（持有者引用不变即生效——外壳�
   assert.equal((await holderRef.chat({ messages: [] })).content, 'via-deepseek/deepseek-chat');
   sw.switchTo(undefined);
   assert.equal((await holderRef.chat({ messages: [] })).content, 'via-default', '复位回缺省内芯');
+});
+
+test('choiceAdapterConfig：缺省思考强度两级（条目 reasoningEffort > 装配级全局缺省）+ 窗口/密钥槽同源', () => {
+  const base = { id: 'x/m', provider: 'x', model: 'm', baseUrl: 'https://x/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_X' } as const;
+  assert.deepEqual(
+    choiceAdapterConfig({ ...base, reasoningEffort: 'low' }, { reasoningEffort: 'high' }),
+    { provider: 'openai', baseURL: 'https://x/v1', apiKey: undefined, model: 'm', reasoningEffort: 'low' },
+    '条目级强度压装配级缺省',
+  );
+  assert.deepEqual(
+    choiceAdapterConfig({ ...base }, { reasoningEffort: 'high' }),
+    { provider: 'openai', baseURL: 'https://x/v1', apiKey: undefined, model: 'm', reasoningEffort: 'high' },
+    '无条目级强度回装配级缺省（--effort/env 全局）',
+  );
+  assert.deepEqual(
+    choiceAdapterConfig({ ...base }, {}),
+    { provider: 'openai', baseURL: 'https://x/v1', apiKey: undefined, model: 'm' },
+    '两级均未配置 = cfg 零穿参（适配器构造期回退 SUNSHINEX_REASONING_EFFORT）',
+  );
+  assert.equal(choiceAdapterConfig({ ...base, contextWindow: 128000 }, {}).contextWindow, 128000, '窗口透传');
 });

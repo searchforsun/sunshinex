@@ -33,7 +33,8 @@ export interface StructuredAction {
 
 /** OpenAI 协议兼容消息（D1：链为唯一事实源，消息为 buildMessages 的派生视图形态）。
  *  assistant.reasoning 是思考模式的协议扩展载荷（DeepSeek/Qwen 系 reasoning_content）：交错思考端点
- *  要求工具调用续轮把本轮思考原样传回（OpenAI 本尊无此字段——缺席即零穿参，行为不变） */
+ *  的硬约束是字段在场——''（空串）表示该轮零思考但字段须传、undefined 表示不传（旧任务轮/非思考端点，
+ *  OpenAI 本尊无此字段） */
 export type ChatMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string }

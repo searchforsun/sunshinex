@@ -235,10 +235,14 @@ test('思考往返·非流式：响应 reasoning_content 捕获进 ChatResult；
     });
     const wireMsgs = bodies[1]!.messages as Array<Record<string, unknown>>;
     assert.equal(wireMsgs[1]!.reasoning_content, 'CoT round 1', 'assistant.reasoning 回传为 reasoning_content');
-    // 无 reasoning 的 assistant 消息：字段缺席（OpenAI 本尊端点零变化）
+    // 空串在场/字段缺席两态（2026-10-03 DeepSeek 实测契约：空串 200、缺字段 400）：
+    // '' = 当轮零思考但字段须传（buildMessages 兜底形态）；undefined = 不传（旧任务轮/非思考端点）
     await a.chat({ messages: [{ role: 'user', content: 'go' }, { role: 'assistant', content: 'plain', reasoning: '' }] });
     const wireMsgs3 = bodies[2]!.messages as Array<Record<string, unknown>>;
-    assert.equal('reasoning_content' in wireMsgs3[1]!, false, '空 reasoning 不穿参（字段缺席而非空串）');
+    assert.equal(wireMsgs3[1]!.reasoning_content, '', 'reasoning 空串回传为空串在场（零思考轮字段必须存在）');
+    await a.chat({ messages: [{ role: 'user', content: 'go' }, { role: 'assistant', content: 'plain' }] });
+    const wireMsgs4 = bodies[3]!.messages as Array<Record<string, unknown>>;
+    assert.equal('reasoning_content' in wireMsgs4[1]!, false, 'reasoning 未定义不穿参（字段缺席）');
   } finally {
     restore();
   }

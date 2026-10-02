@@ -89,13 +89,14 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
   "model": "<模型名>",                               // 主模型（任意 OpenAI 协议兼容模型）
   "baseUrl": "https://<端点>/v1",                    // 模型端点
   "providers": [                                     // 多源多模型清单（/model 选择卡数据源；项目级整键覆盖全局级）
-    {                                                // 每项 = 一个源：name + baseUrl + models（contextWindow 为该源各模型缺省窗口，可省）
+    {                                                // 每项 = 一个源：name + baseUrl + models（contextWindow / reasoningEffort 为该源各模型缺省，可省）
       "name": "deepseek",
-      "baseUrl": "https://api.deepseek.com/v1",
-      "contextWindow": 64000,
+      "baseUrl": "https://api.deepseek.com",
+      "contextWindow": 64000,                        // 源级缺省窗口
+      "reasoningEffort": "high",                     // 源级缺省思考强度 none|minimal|low|medium|high|xhigh|max
       "models": [
-        "deepseek-chat",                             // 字符串形态：窗口回退源级 contextWindow
-        { "model": "deepseek-reasoner", "contextWindow": 128000 }  // 对象形态：每模型窗口（优先于源级）
+        "deepseek-chat",                             // 字符串形态：窗口/强度回退源级
+        { "model": "deepseek-flash", "contextWindow": 128000, "reasoningEffort": "low" }  // 对象形态：逐项覆盖源级
       ]
     },
     {
@@ -168,7 +169,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
 
 - 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`model` ≡ `SUNSHINEX_MODEL`），环境变量仍最高优先。
 - `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；主模型未显式配置（无 `model` 键）时缺省取清单首项，`default` 选项仅在主模型显式配置时露出。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`）。
-- 每模型窗口：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000 }`（源级 `contextWindow` 为该源缺省，条目级优先）；窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定。
+- 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 

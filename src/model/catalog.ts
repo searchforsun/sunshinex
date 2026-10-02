@@ -5,7 +5,7 @@
  * 换模型与换档位同口径（CLAUDE.md §11）：用户级会话参数、整场恒定（对后续任务生效）、
  * 不进提示词、系统侧零自动切换——用户显式触发的跨模型重算事件。
  */
-import { ModelAdapter, OpenAIAdapter, ReasoningEffort, UsageHooks } from './adapter';
+import { ModelAdapter, OpenAIAdapter, ReasoningEffort, UsageHooks, LLMConfig } from './adapter';
 import type { ChatRequest, ChatResult } from '../types';
 import type { ModelChoice } from '../config/providers';
 import { resolveProviderApiKey } from '../config/providers';
@@ -22,6 +22,22 @@ export interface ModelSwitcherOpts {
   reasoningEffort?: ReasoningEffort;
 }
 
+/**
+ * 源条目 → 适配器 cfg 纯函数（密钥按源名解析专用槽/主槽；effort 两级：条目 reasoningEffort > 装配级
+ * 全局缺省（--effort/env）；窗口进 cfg——run 级窗口解析（resolveRunWindow）随当前内芯走）。
+ *  抽为导出纯函数：优先级链可钉（protected 工厂测试子类钉不了构造入参），buildAdapter 单点消费
+ */
+export function choiceAdapterConfig(choice: ModelChoice, defs: { reasoningEffort?: ReasoningEffort }): LLMConfig {
+  return {
+    provider: 'openai',
+    baseURL: choice.baseUrl,
+    apiKey: resolveProviderApiKey(choice.provider),
+    model: choice.model,
+    ...(choice.contextWindow !== undefined ? { contextWindow: choice.contextWindow } : {}),
+    ...(choice.reasoningEffort !== undefined ? { reasoningEffort: choice.reasoningEffort } : defs.reasoningEffort !== undefined ? { reasoningEffort: defs.reasoningEffort } : {}),
+  };
+}
+
 export class ModelSwitcher implements ModelAdapter {
   private readonly defs: ModelSwitcherOpts;
   private readonly def: ModelAdapter;
@@ -34,18 +50,10 @@ export class ModelSwitcher implements ModelAdapter {
     for (const c of opts.choices) this.choiceAdapters.set(c.id, this.buildAdapter(c));
   }
 
-  /** 源条目 → OpenAI 协议适配器（密钥按源名解析专用槽/主槽；effort 与单模型装配同基继承；
-   *  每模型 contextWindow 进 cfg——run 级窗口解析（resolveRunWindow）随当前内芯走）。
+  /** 源条目 → OpenAI 协议适配器（cfg 经 choiceAdapterConfig 纯函数：密钥/窗口/两级 effort 单点）。
    *  protected 工厂：测试子类可注入假内芯钉「换内芯即生效」的转发语义，生产面零额外 API */
   protected buildAdapter(choice: ModelChoice): ModelAdapter {
-    return new OpenAIAdapter({
-      provider: 'openai',
-      baseURL: choice.baseUrl,
-      apiKey: resolveProviderApiKey(choice.provider),
-      model: choice.model,
-      ...(choice.contextWindow !== undefined ? { contextWindow: choice.contextWindow } : {}),
-      ...(this.defs.reasoningEffort ? { reasoningEffort: this.defs.reasoningEffort } : {}),
-    });
+    return new OpenAIAdapter(choiceAdapterConfig(choice, this.defs));
   }
 
   /** 当前生效内芯（选择在场取对应适配器；未选/失配回缺省主适配器） */

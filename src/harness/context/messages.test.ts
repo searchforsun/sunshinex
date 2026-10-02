@@ -255,3 +255,19 @@ test('思考回传·前缀稳定：当轮思考在场时链尾追行仍仅尾部
   const m2 = serialize(buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain: [...base, { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' }] }));
   assert.ok(m2.startsWith(m1 + '\n'), '追结果行只尾部增长（thinking 回传不破坏 §11 前缀稳定）');
 });
+
+test('思考回传·零思考轮兜底空串：当轮批无思考行时 assistant 消息 reasoning 为空串（字段在场契约）；旧轮无字段', () => {
+  const msgs = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: [
+      { step: 1, action: 'task', observation: 'do it' },
+      // 零思考轮：无 reasoning 的行（模型整轮未产出思考——DeepSeek 思考模式默认开下的合法形态）
+      { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}') },
+      { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+    ],
+  });
+  const asst = msgs.find((m): m is Extract<ChatMessage, { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(asst?.reasoning, '', '当轮零思考批：reasoning 空串在场（缺字段即端点 400）');
+});

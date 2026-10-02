@@ -148,3 +148,28 @@ test('settings 解析面：providers 收留为结构化键原值，flatten 不�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('每模型缺省思考强度：条目 reasoningEffort > 源级缺省 > 未配置；非法值告警忽略但模型保留', () => {
+  const r = parseProvidersSpec([
+    {
+      name: 'deepseek',
+      baseUrl: 'https://api.deepseek.com',
+      reasoningEffort: 'high', // 源级缺省
+      models: [
+        'deepseek-chat',                                          // 纯字符串：吃源级 high
+        { model: 'deepseek-flash', reasoningEffort: 'low' },       // 条目级覆盖源级
+        { model: 'deepseek-bad', reasoningEffort: 'turbo' },       // 非法条目级：告警忽略强度、回退源级、模型保留
+      ],
+    },
+    { name: 'bigmodel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', reasoningEffort: 42, models: ['glm-5.3'] }, // 源级非法类型
+  ], 'test.json');
+  assert.deepEqual(r.warnings, [
+    'settings.json providers.deepseek models 条目 reasoningEffort 须为 none|minimal|low|medium|high|xhigh|max（test.json），该强度已忽略',
+    'settings.json providers.bigmodel reasoningEffort 须为 none|minimal|low|medium|high|xhigh|max（test.json），已忽略',
+  ]);
+  const byId = new Map(r.choices.map((c) => [c.id, c]));
+  assert.equal(byId.get('deepseek/deepseek-chat')!.reasoningEffort, 'high', '纯字符串条目回退源级缺省');
+  assert.equal(byId.get('deepseek/deepseek-flash')!.reasoningEffort, 'low', '条目级强度覆盖源级');
+  assert.equal(byId.get('deepseek/deepseek-bad')!.reasoningEffort, 'high', '条目级非法回退源级（模型保留）');
+  assert.equal(byId.get('bigmodel/glm-5.3')!.reasoningEffort, undefined, '源级非法忽略 = 未配置（回全局链）');
+});

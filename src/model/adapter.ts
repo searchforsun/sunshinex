@@ -191,15 +191,16 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 
   /** 消息视图 → wire 形态（assistant.toolCalls → tool_calls；tool → role:tool + tool_call_id）。
-   *  assistant.reasoning 原样回传为 reasoning_content：交错思考端点（DeepSeek/Qwen 系思考模式）要求
-   *  工具调用续轮把本轮思考带回（缺字段即 400 "must be passed back"）；无该字段的端点零穿参、行为不变 */
+   *  assistant.reasoning 原样回传为 reasoning_content：交错思考端点（DeepSeek/Qwen 系思考模式）的
+   *  硬约束是**字段在场**——实测空串 200、缺字段 400 "must be passed back"（思考模式默认开但模型偶尔
+   *  整轮零思考，buildMessages 对当轮批消息兜底空串）；字段未定义（旧任务轮/非思考端点）零穿参 */
   private static toWireMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
     return messages.map((m) => {
       if (m.role === 'assistant') {
         return {
           role: 'assistant',
           content: m.content,
-          ...(m.reasoning && m.reasoning.length > 0 ? { reasoning_content: m.reasoning } : {}),
+          ...(m.reasoning !== undefined ? { reasoning_content: m.reasoning } : {}),
           ...(m.toolCalls && m.toolCalls.length > 0
             ? { tool_calls: m.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.name, arguments: t.argsJson } })) }
             : {}),
