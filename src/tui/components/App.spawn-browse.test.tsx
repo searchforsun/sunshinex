@@ -282,12 +282,12 @@ test('App：浏览态子代理单点承载——运行中行只在统一列表�
     term = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} />);
     const one = term;
     await new Promise((r) => setTimeout(r, 200));
-    assert.match(one.lastFrame() ?? '', /✻ \[rv\]/, '常态 ChildPanel 承载运行中行');
+    assert.match(one.lastFrame() ?? '', /[✻✽✶✱✢] \[rv\]/, '常态 ChildPanel 承载运行中行（字形锚定五帧全集：spinner 轮转断言时刻落帧不确定——2026-10-02 真机门禁 ✽ 帧假红）');
     one.write('\u0002'); // Ctrl+B 进入浏览
     await new Promise((r) => setTimeout(r, 150));
     const browse = one.lastFrame() ?? '';
     assert.match(browse, /\[rv\] running/, '浏览列表统一呈现运行中行（en 缺省语言）');
-    assert.doesNotMatch(browse, /✻ \[/, '浏览态 ChildPanel 隐藏——同一子代理不再两处承载（双显修复）');
+    assert.doesNotMatch(browse, /[✻✽✶✱✢] \[/, '浏览态 ChildPanel 隐藏——同一子代理不再两处承载（双显修复；五帧全集锚定）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
