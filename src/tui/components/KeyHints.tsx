@@ -30,6 +30,8 @@ export function keyHintsFor(s: {
   pauseConfirm?: boolean;
   browse?: boolean;
   inspect?: boolean;
+  /** live 全屏（正在跑的子代理）——Ctrl+C 作用域=停此子代理；archived 回看只读无此键（2026-10-02） */
+  inspectLive?: boolean;
   menuVisible?: boolean;
   hasChildren?: boolean;
 }): KeyHintsView | undefined {
@@ -37,8 +39,16 @@ export function keyHintsFor(s: {
   if (s.approval !== undefined && s.approval !== null) return undefined;
   if (s.question !== undefined && s.question !== null) return undefined;
   if (s.status === 'awaiting-approval' || s.status === 'awaiting-plan' || s.status === 'awaiting-question') return undefined;
-  // 暂停确认（两次 Ctrl+C 第一段）
+  // 暂停确认（两次 Ctrl+C 第一段）：live 全屏挂卡的确认动作=停此子代理（非主任务中断）——与 App 分发层作用域一致
   if (s.pauseConfirm) {
+    if (s.inspectLive) {
+      return {
+        items: [
+          { key: t('ctrl+c again', '再按 Ctrl+C'), action: t('stop this subagent', '停止此子代理') },
+          { key: 'Esc', action: t('keep running', '继续运行') },
+        ],
+      };
+    }
     return {
       items: [
         { key: t('ctrl+c again', '再按 Ctrl+C'), action: t('pause', '暂停') },
@@ -56,15 +66,22 @@ export function keyHintsFor(s: {
       ],
     };
   }
-  // 子代理全屏视图：head 只留元数据，键提示由本条承载
+  // 子代理全屏视图：head 只留元数据，键提示由本条承载；live 的 Ctrl+C=两次确认停此子代理，归档回看只读无此键
   if (s.inspect) {
-    return {
-      items: [
-        { key: 'Tab', action: t('timeline', '时间线') },
-        { key: 'Ctrl+C', action: t('pause', '暂停') },
-        { key: 'Esc', action: t('exit', '退出') },
-      ],
-    };
+    return s.inspectLive
+      ? {
+          items: [
+            { key: 'Tab', action: t('timeline', '时间线') },
+            { key: 'Ctrl+C', action: t('stop', '停止') },
+            { key: 'Esc', action: t('exit', '退出') },
+          ],
+        }
+      : {
+          items: [
+            { key: 'Tab', action: t('timeline', '时间线') },
+            { key: 'Esc', action: t('exit', '退出') },
+          ],
+        };
   }
   // 运行中：暂停（两次 Ctrl+C）· 待办展开 · 最近轮详情（子代理在场追加浏览）
   if (s.status === 'running') {

@@ -146,6 +146,9 @@ export function pairChildResults(items: ChildLine[]): ChildLine[] {
 /** 子代理运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
 export interface ChildLiveState {
   label: string;
+  /** 后台账本任务 id（b1…，payload.subagentTaskId 随事件携带）：UI 停单个子代理（stopChild）的定位锚；
+   *  前台 spawn 无（随主链信号，不可单点停） */
+  taskId?: string;
   startedAt: number;
   steps: number;
   tokens: number;
@@ -510,6 +513,44 @@ export class SessionController {
     if (!this.state.pauseConfirm) return;
     this.state = { ...this.state, pauseConfirm: undefined };
     this.notify();
+  }
+
+  /** 子代理全屏视图挂卡（UI 面）：无 running 门槛——后台子代理跨回合存续，主链 idle 时单停子代理仍可达；
+   *  与 requestPause（主视图、running 门槛）同一张卡两种入口，确认动作随按键所在视图分流（App 分发层） */
+  hangPauseCard(): void {
+    if (this.state.pauseConfirm) return;
+    this.state = { ...this.state, pauseConfirm: true };
+    this.notify();
+  }
+
+  /** 停单个子代理（UI 面，2026-10-02 用户裁决「子agent暂停不应连带中断主agent」）：按 label 定位在跑
+   *  child 的账本任务 → task_stop 工具同款单点（stop 句柄中止其模型调用 + finish('stopped')）；主链
+   *  零影响——TASK_WAIT 收到 stopped 终态行自判续跑。面板即时置终态并走延迟归档（abort 级联不保证
+   *  还有 done/error 事件，UI 真相兜底）；返回是否实际停止了在跑任务 */
+  stopChild(label: string): boolean {
+    const child = this.state.children.find((c) => c.label === label && !c.done);
+    const taskId = child?.taskId;
+    if (child === undefined || taskId === undefined) return false;
+    const tasks = this.runtime.harness.tasks;
+    const task = tasks.get(taskId);
+    if (task === undefined || task.status !== 'running') {
+      this.markChildStopped(label);
+      return false;
+    }
+    task.stop?.();
+    if (tasks.get(taskId)?.status === 'running') tasks.finish(taskId, 'stopped', { marker: '[stopped: user]' });
+    this.markChildStopped(label);
+    return true;
+  }
+
+  /** 停止后面板终态单点：done 置位 + 转录补停止标记行 + 延迟归档收口（与 done/error 事件路径同构） */
+  private markChildStopped(label: string): void {
+    const list = this.state.children;
+    const idx = list.findIndex((c) => c.label === label && !c.done);
+    if (idx < 0) return;
+    const c = list[idx]!;
+    this.commitChild(list, idx, { ...c, done: true, doneAt: Date.now(), transcript: [...c.transcript, { kind: 'text', text: '[stopped: user]' }], bufText: undefined, bufThink: undefined, thinkStartedAt: undefined }, '');
+    this.archiveDeferred(label);
   }
 
   interrupt(): boolean {
@@ -1854,7 +1895,8 @@ export class SessionController {
     let list = this.state.children;
     let idx = list.findIndex((c) => c.label === label);
     if (idx < 0) {
-      list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], done: false, prompt: this.childPrompts.get(label) }];
+      const taskId = typeof e.payload?.subagentTaskId === 'string' ? e.payload.subagentTaskId : undefined;
+      list = [...list, { label, startedAt: Date.now(), steps: 0, tokens: 0, transcript: [], done: false, prompt: this.childPrompts.get(label), ...(taskId !== undefined ? { taskId } : {}) }];
       idx = list.length - 1;
     }
     const child = list[idx]!;

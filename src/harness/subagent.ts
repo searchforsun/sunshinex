@@ -405,7 +405,7 @@ export class SubagentRunner {
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
         ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
         ...(this.deps.onEvent
-          ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: finalLabel } }) }
+          ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: finalLabel, ...(opts && opts.taskId !== undefined ? { subagentTaskId: opts.taskId } : {}) } }) }
           : {}),
       });
       try {

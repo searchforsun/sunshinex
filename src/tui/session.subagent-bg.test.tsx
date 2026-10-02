@@ -81,3 +81,23 @@ test('子代理 token 累计器：usage 增量并入 turn/session 两级（per-r
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('stopChild：UI 停单个子代理——账本 stopped + 面板终态 + 停止标记行；主链状态不动（2026-10-02「子agent暂停不连带主agent」裁决）', () => {
+  const tmp = tmpdir('sunshinex-sess-stopchild-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const task = ctrl.runtime.harness.tasks.submit({ kind: 'subagent', label: 'bg' });
+    ctrl.onEventForTest({ type: 'token', text: '调查中\n', payload: { subagent: 'bg', subagentTaskId: task.id } } as never);
+    const before = ctrl.getState().status;
+    assert.equal(ctrl.stopChild('bg'), true, '命中在跑任务实际停止');
+    assert.equal(ctrl.runtime.harness.tasks.get(task.id)?.status, 'stopped', '账本终态 stopped（task_stop 同款）');
+    const c = ctrl.getState().children.find((x) => x.label === 'bg')!;
+    assert.equal(c.done, true, '面板即时置终态（abort 级联无 done/error 事件的 UI 真相兜底）');
+    assert.ok(c.transcript.some((l) => l.kind === 'text' && l.text === '[stopped: user]'), '转录补停止标记行');
+    assert.equal(ctrl.getState().status, before, '主链状态不动（零中断）');
+    assert.equal(ctrl.stopChild('bg'), false, '已终态幂等 false');
+    assert.equal(ctrl.stopChild('不存在'), false, '未知 label false（无 taskId 的前台 spawn 同此路径）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

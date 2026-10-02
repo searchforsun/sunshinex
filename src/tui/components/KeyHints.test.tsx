@@ -15,13 +15,17 @@ test('keyHintsFor 矩阵：空闲两态与 inspect/browse/pauseConfirm（/help �
   assert.deepEqual(idle.items.map((i) => i.key), ['Shift+Enter', '↑', 'Ctrl+B'], '缺省条=换行/历史/子代理（Tab 补全只在菜单态——空闲无 / 前缀 Tab 实为折叠视图，不误导）');
   const menu = keyHintsFor({ status: 'idle', menuVisible: true })!;
   assert.deepEqual(menu.items.map((i) => i.key), ['↑↓', 'Tab'], '斜杠菜单在场换面板键（Enter 由占位符承载）');
-  const inspect = keyHintsFor({ status: 'running', inspect: true })!;
-  assert.deepEqual(inspect.items.map((i) => i.key), ['Tab', 'Ctrl+C', 'Esc'], '全屏视图键（head 内嵌退役）');
+  const inspectLive = keyHintsFor({ status: 'running', inspect: true, inspectLive: true })!;
+  assert.deepEqual(inspectLive.items.map((i) => i.key), ['Tab', 'Ctrl+C', 'Esc'], 'live 全屏键（Ctrl+C=两次确认停此子代理，2026-10-02 作用域裁决）');
+  const inspectArchived = keyHintsFor({ status: 'running', inspect: true })!;
+  assert.deepEqual(inspectArchived.items.map((i) => i.key), ['Tab', 'Esc'], '归档回看只读：无在跑目标，Ctrl+C 不进条');
   const browse = keyHintsFor({ status: 'idle', browse: true })!;
   assert.deepEqual(browse.items.map((i) => i.key), ['↑↓', 'Enter', 'Esc'], '浏览接管键');
   const pause = keyHintsFor({ status: 'running', pauseConfirm: true })!;
   assert.equal(pause.items[0]!.key.includes('Ctrl+C') || pause.items[0]!.key.includes('ctrl+c'), true, '首键=再按 Ctrl+C');
   assert.equal(pause.items[1]!.key, 'Esc');
+  const pauseChild = keyHintsFor({ status: 'running', pauseConfirm: true, inspect: true, inspectLive: true })!;
+  assert.ok(['stop this subagent', '停止此子代理'].includes(pauseChild.items[0]!.action), 'live 全屏挂卡的确认动作=停此子代理（非主任务暂停）');
 });
 
 test('keyHintsFor 矩阵：模态卡在场条退场（undefined）', () => {

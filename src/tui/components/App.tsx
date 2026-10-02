@@ -399,6 +399,7 @@ export function App({
     pauseConfirm: state.pauseConfirm,
     browse: browseMode,
     inspect: inspect !== undefined,
+    inspectLive: inspect?.kind === 'live',
     menuVisible: menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error'),
     hasChildren: runningChildren > 0,
   });
@@ -439,12 +440,19 @@ export function App({
     //（2026-09-29 Static 时间线化后经生产 repaint 整屏重放，对标主 agent Tab；store 持久化跨重挂保留），
     // 其余键吞掉不落输入缓冲（纯只读视图，不支持再次会话）
     if (inspectRef.current) {
-      // Ctrl+C 暂停确认（2026-10-02 用户裁决）：子代理全屏视图内两次 Ctrl+C 同主视图口径——
-      // 第一次挂卡（任务不停），再按即确认中断（主链连带子代理）；此前该分支吞键致运行中无法暂停
+      // Ctrl+C 作用域=本视图（2026-10-02 用户裁决「子agent暂停导致主agent也中断了」）：live 视图两次
+      // Ctrl+C=停【此子代理】（账本单点停，主链零影响、TASK_WAIT 收 stopped 终态自判续跑）——不再走
+      // 主任务 interrupt（旧口径「主链连带子代理」把收尾中的主链一并杀死：真机 4 子代理全完成后主链被杀）。
+      // 归档回看无在跑目标：有卡撤卡防死键、无卡不挂（只读视图口径）
       if (key.ctrl && input === 'c') {
-        if (stateRef.current.pauseConfirm) { keyTrace('inspect pause-interrupt'); controller.interrupt(); return; }
-        keyTrace('inspect pause-hang');
-        controller.requestPause();
+        const liveLabel = inspectRef.current.kind === 'live' ? inspectRef.current.label : undefined;
+        if (liveLabel !== undefined) {
+          if (stateRef.current.pauseConfirm) { keyTrace(`inspect child-stop ${liveLabel}`); controller.stopChild(liveLabel); controller.cancelPause(); return; }
+          keyTrace('inspect pause-hang (child)');
+          controller.hangPauseCard();
+          return;
+        }
+        if (stateRef.current.pauseConfirm) { keyTrace('inspect pause-cancel (archived)'); controller.cancelPause(); }
         return;
       }
       // Esc 撤卡优先（对齐主视图 Esc 分层与提示条「Esc 继续运行」承诺）：卡在场先撤卡、视图不动；

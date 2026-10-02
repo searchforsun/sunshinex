@@ -99,22 +99,30 @@ test('App：确认卡上 Esc 撤卡继续跑（任务零影响），此后 Ctrl+
   }
 });
 
-test('App：子代理全屏视图内两次 Ctrl+C 同口径——此前该分支吞键无法暂停（真机病根）', async () => {
+test('App：子代理全屏视图内两次 Ctrl+C=停【此】子代理（作用域本视图）——主任务不连带中断（真机「4 子代理全完成后主链被杀」病根）', async () => {
   const tmp = tmpDir('sunshinex-apppause3-');
   const { ctrl, pending } = runningCtrl(tmp);
   let term: ReturnType<typeof render> | undefined;
   try {
     await waitFor(() => ctrl.getState().status === 'running');
+    // 真实在跑子代理夹具：账本登记任务 + 事件驱动建立 children（subagentTaskId 锚随事件携带）
+    const task = ctrl.runtime.harness.tasks.submit({ kind: 'subagent', label: 'research' });
+    ctrl.onEventForTest({ type: 'token', text: '调查中\n', payload: { subagent: 'Research', subagentTaskId: task.id } } as never);
     const retain = { ...initialRetained(), inspect: { kind: 'live' as const, label: 'Research' } };
     term = render(<App controller={ctrl} retain={retain} />);
     await flushKey();
     term.write('\x03');
     await flushKey();
-    assert.equal(ctrl.getState().pauseConfirm, true, '全屏视图内第一次 Ctrl+C 挂卡（不再被吞）');
+    assert.equal(ctrl.getState().pauseConfirm, true, '全屏视图内第一次 Ctrl+C 挂卡（无 running 门槛——后台子代理跨回合存续仍可停）');
+    assert.equal(ctrl.getState().status, 'running', '挂卡不中断任何任务');
     term.write('\x03');
     await flushKey();
+    assert.equal(ctrl.runtime.harness.tasks.get(task.id)?.status, 'stopped', '第二次 Ctrl+C 停止该子代理（账本终态 stopped，task_stop 同款单点）');
+    assert.equal(ctrl.getState().children.find((c) => c.label === 'Research')?.done, true, '面板即时置终态');
+    assert.equal(ctrl.getState().pauseConfirm, undefined, '确认后清卡');
+    assert.equal(ctrl.getState().status, 'running', '主任务继续跑——不再「主链连带子代理」整个 interrupt（旧语义实锤病根）');
+    assert.equal(ctrl.interrupt(), true, '收尾中断挂起主任务');
     await pending;
-    assert.equal(ctrl.getState().status, 'idle', '全屏视图内第二次 Ctrl+C 真正中断（主链连带子代理）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
