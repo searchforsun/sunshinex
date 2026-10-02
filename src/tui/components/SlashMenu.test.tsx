@@ -97,12 +97,14 @@ test('App：输入 / 出纵向命令面板（一行一命令+描述），逐键�
     const f1 = term.lastFrame() ?? '';
     assert.ok(f1.includes('❯ /help'), '菜单首行选中 /help');
     assert.ok(f1.includes('/init'), '内置命令纵向逐行呈现');
-    assert.ok(f1.includes('/memory-add'), '长尾命令同样在场');
+    assert.ok(f1.includes('/memory'), '深位命令在窗口内（/model-tier 加入后 24 行终端滑窗 18 行，/memory 居窗内）');
+    assert.ok(/more|还有/.test(f1), '窗口溢出计数行在场（清单超出滑窗时提示剩余条数）');
+    assert.ok(!f1.includes('/memory-add'), '窗口外长尾不渲染（经过滤可达，下滑窗口径）');
     assert.ok(!/\/help {2}\/init/.test(f1), '不再横向单行拼接');
     term.write('mem');
     await settle();
     const f2 = term.lastFrame() ?? '';
-    assert.ok(f2.includes('/memory-add'), '/mem 命中 memory 族');
+    assert.ok(f2.includes('/memory-add'), '/mem 命中 memory 族（长尾经过滤在场）');
     assert.ok(!f2.includes('/help'), '未命中命令不渲染（动态过滤）');
     // 退格回 '/'：控制键必须逐键 write（假 stdin 整串分发会绕过键解析）
     for (let i = 0; i < 3; i++) { term.write('\u007F'); await settle(40); }

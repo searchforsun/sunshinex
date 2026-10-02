@@ -1,6 +1,7 @@
 /** 模型适配层：统一推理接口，多后端可插拔 */
 import { ModelTier, ReasoningEffort, RouteDecision, ChatMessage, ChatRequest, ChatResult, ChatTool, ToolCallSpec} from '../types';
 import { t } from '../i18n';
+import { contextWindowEnv } from '../config/termination-config';
 
 export type { ModelTier, ReasoningEffort };
 /** 用量回调钩子：模型调用完成后回传本次真实 token 用量（无用量回传 0） */
@@ -44,6 +45,9 @@ export interface ModelAdapter {
   readonly provider: string;
   /** 展示标签（banner/日志）：缺省回退 provider；openai 侧为「模型名」 */
   readonly label?: string;
+  /** 该模型最大上下文 tokens（可选）：run 级窗口解析优先取此（resolveRunWindow）——多源每模型配置窗口的
+   *  贯穿通道；未声明回退 SUNSHINEX_CONTEXT_WINDOW / 内置缺省 200k（单模型既有口径） */
+  readonly contextWindow?: number;
   /** function calling 轮面：消息视图进、聚合轮结果出（tool_choice auto）；effort 走 req.effort 请求级字段 */
   chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult>;
   /** 流式轮面（可选）：content 增量照旧回调，轮终聚合 ChatResult；未实现者消费方回落非流式 chat */
@@ -98,6 +102,8 @@ export interface LLMConfig {
   apiKey?: string;
   model?: string;
   timeoutMs?: number;
+  /** 该模型最大上下文 tokens（cfg > SUNSHINEX_CONTEXT_WINDOW > 未声明）：/model 多源每模型窗口的 cfg 通道 */
+  contextWindow?: number;
   /** 缺省思考强度（SUNSHINEX_REASONING_EFFORT）：非法值忽略回缺省态（零穿参） */
   reasoningEffort?: ReasoningEffort;
 }
@@ -107,6 +113,8 @@ export class OpenAIAdapter implements ModelAdapter {
   readonly provider = 'openai';
   /** banner/状态栏展示标签：纯模型名（provider 前缀已摘除，横幅与状态栏同源） */
   readonly label: string;
+  /** 该模型最大上下文 tokens（cfg > env；undefined = 未配置，窗口解析回退全局链） */
+  readonly contextWindow: number | undefined;
   private baseURL: string;
   private apiKey: string;
   private model: string;
@@ -122,6 +130,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.apiKey = cfg.apiKey ?? process.env.SUNSHINEX_API_KEY ?? '';
     this.model = cfg.model ?? process.env.SUNSHINEX_MODEL ?? 'gpt-4o-mini';
     this.label = this.model;
+    this.contextWindow = cfg.contextWindow ?? contextWindowEnv();
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
     this.effort = cfg.reasoningEffort ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   }

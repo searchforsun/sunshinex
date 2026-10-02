@@ -42,6 +42,14 @@ export function contextWindowTokens(env: NodeJS.ProcessEnv = process.env): numbe
   return contextWindowEnv(env) ?? CONTEXT_WINDOW_DEFAULT;
 }
 
+/** run 级窗口解析（当前模型窗口 > env > 缺省 200k）：适配器自带 contextWindow（/model 多源每模型配置，
+ *  ModelAdapter 可选成员）优先——预算与观测分母随当前生效模型走；结构化参数避免 config→model 反向依赖。
+ *  非法值（≤0/非有限数）视同未配置回退链（providers 解析面已告警拦截，此处只做防御） */
+export function resolveRunWindow(adapter?: { contextWindow?: number }): number {
+  const w = adapter?.contextWindow;
+  return typeof w === 'number' && Number.isFinite(w) && w > 0 ? w : contextWindowTokens();
+}
+
 /** 主链单 run token 硬上限（缺省不设——护栏只靠步数/墙钟，预算是兜底不是限制；见 src/loop/nodes.ts agentNode） */
 export function mainTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveIntOrUndefined(env, 'SUNSHINEX_MAX_TOKENS');

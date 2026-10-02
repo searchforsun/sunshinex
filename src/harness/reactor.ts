@@ -22,7 +22,7 @@ import {
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
-import { reactorMaxStepsEnv, contextWindowTokens, subagentTokenCapEnv } from '../config/termination-config';
+import { reactorMaxStepsEnv, resolveRunWindow, subagentTokenCapEnv } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -132,16 +132,6 @@ export class Reactor {
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
     this.batchCounts.clear(); // 批次计数按 run 隔离：跨任务不累计
     const maxSteps = opts?.maxSteps ?? reactorMaxStepsEnv() ?? 400;
-    // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
-    // （状态栏「上下文占用」分母与压缩占比共用此基准）；非法值 fail-fast（contextWindowEnv，对齐
-    // MAX_STEPS/MAX_LOOP_ITERATIONS 同款口径——旧形态静默回退 200k 即「配置没生效的排查泥潭」）
-    const window = contextWindowTokens();
-    const budget = opts?.budget ?? {
-      total: window,
-      reserve: Math.floor(window / 5),
-    };
-    const tokenCap = opts?.tokenCap;
-    const deadlineAt = opts?.deadlineAt;
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
     // 档位（run 级常量，对标 Claude Code：模型档位是用户级参数）：显式 tier > 外部 hint 推导 > 缺省 medium；
     // 整场恒定——不随上下文占比逐步重估，模型无自调档通道（提示词无档位行）；换档即换模型，
@@ -157,6 +147,17 @@ export class Reactor {
         }
       : derived;
     const adapter = router.resolve(tier);
+    // 缺省预算：窗口随当前生效模型走（适配器自带 contextWindow 优先——/model 多源每模型配置；
+    // 回退 SUNSHINEX_CONTEXT_WINDOW，再回退内建 200k 长上下文安全水位；状态栏「上下文占用」分母与
+    // 压缩占比共用此基准）；非法值 fail-fast（contextWindowEnv，对齐 MAX_STEPS/MAX_LOOP_ITERATIONS 同款口径
+    // ——旧形态静默回退 200k 即「配置没生效的排查泥潭」）
+    const window = resolveRunWindow(adapter);
+    const budget = opts?.budget ?? {
+      total: window,
+      reserve: Math.floor(window / 5),
+    };
+    const tokenCap = opts?.tokenCap;
+    const deadlineAt = opts?.deadlineAt;
     this.emit('route', undefined, { tier: route.tier, reason: route.reason });
     let lastCompactStep = -2; // 滞回：初始可压（step − (−2) ≥ 2 恒成立）
     let reactiveUsed = false; // 反应式压缩兜底：每 run 至多重试一次，防「压缩→仍越限」死循环

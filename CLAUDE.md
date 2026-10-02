@@ -37,7 +37,7 @@ src/
   paths.ts            # 路径工具单点（isWithin 子树判界，§14）
   i18n.ts             # 外观双语 t(en, zh) 调用时求值（§15）
   config.ts           # SUNSHINE.md 解析器
-  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / termination-config / memory-config / data-dir
+  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
   tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/highlight 呈现、session-journal/snapshots 会话持久化
   harness/
     index.ts          # Harness 门面（含 SteeringChannel）
@@ -173,7 +173,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - **前置段字节冻结**：压缩块之前的所有内容逐字节稳定——禁时间戳/随机值/时变字段（git 状态、计数器等）；工具清单按名排序；工作目录等环境事实为会话级常量；观察与事件一律尾部追加，禁止写回任何前置段——链即记忆。
 - **只增不改**：会话链 append-only，过期信息以补丁行追加修正、不就地改写；压缩是唯一合法重写点（预算驱动、带滞回节流）；任务边界不重置上下文——新任务/新步骤以「当前指令行」尾追进链。
 - **消息形态不变量**：模型上下文以消息视图为源（`buildMessages` 派生单点，链/快照/压缩块/技能块 → ChatMessage 序列）；tools 清单为请求级字段（`tools`），不进提示词文本、前缀零占用；system 双消息（稳定段 + 会话冻结段）逐字节冻结语义同前置段
-- **重算事件少且收敛**：压缩是唯一的整体重写；模型档位是用户级会话参数（`--tier` / TUI `/model` / `SUNSHINEX_TIER`），整场恒定、不进提示词、模型无自调通道、系统不自动换档；思考强度（`--effort` / TUI `/model effort` / `SUNSHINEX_REASONING_EFFORT`）同属用户级请求参数——请求级字段不进提示词、端点不支持时按七档阶梯降级、全不支持省略参数用模型默认，前缀缓存零影响。
+- **重算事件少且收敛**：压缩是唯一的整体重写；模型档位是用户级会话参数（`--tier` / TUI `/model-tier` / `SUNSHINEX_TIER`），整场恒定、不进提示词、模型无自调通道、系统不自动换档；模型选择（TUI `/model`，settings `providers` 多源清单，`源/模型` id 随 journal modelId 字段还原）与思考强度（`--effort` / TUI `/model-effort` / `SUNSHINEX_REASONING_EFFORT`）同属用户级会话参数——不进提示词、只对后续任务生效（经 `ModelSwitcher` 外壳换内芯，持有者引用不变）、端点不支持 effort 时按七档阶梯降级、全不支持省略参数用模型默认，前缀缓存零影响。
 - **动态改动一律尾追——第一要义的完整形态（2026-09-18 定稿）**：第一要义不是「前缀冻结、一成不变」，而是**以尾追承载一切动态**：会话开始装载（SUNSHINE.md 两层 / 技能清单 / 记忆索引进冻结快照）→ 运行中任何变更只尾追说明行（含模型经 `write` 改写 SUNSHINE.md 的路径）→ 轮次边界与跨天 resume 启动时主动探测，读盘比对 SUNSHINE.md、技能 id 集、记忆索引与刷新点基线，差异一律尾追说明行进链——恢复后下一帧与存档时前缀严格连续，差异只允许出现在尾部。快照重写只发生在既有刷新点（构造 / `/init` / `/new` / 压缩成功），其余任何时刻不改写前缀、不提前重建快照；新内容一律以「后到者优先」由尾部承载。
   - **注入面盘点**：SUNSHINE.md 两层独立基线、同语义（全局 `~/.sunshinex/SUNSHINE.md` 由 `SUNSHINEX_GLOBAL_SUNSHINE` 覆盖，对标 `~/.claude/CLAUDE.md`；全局层缺失为合法确定态、消失同样尾追告知；全局文件在模型可写边界外，仅用户手工维护）；技能清单新增/变更尾追一行增量告知，正文经 `skill` 工具实时读盘置尾注入；记忆索引变更（新写/整理/他处改盘）尾追正文级块——新索引全文 + supersession 声明 + slug 失联警告，对齐 SUNSHINE.md 漂移全文块形态（链尾即真相，2026-10-02 用户裁决「上下文绝对正确」），索引快照不动、记录文件用 `read` 直接读（恒 live）；外部编辑、他处变更与已读文件变动一律尾追提示行。
   - **过期与冲突（对标 CC 补丁行语义）**：运行中出现的新确认项、新状态与链中已有条目过期或冲突时，不删不改旧条目，只尾追一条「过期/冲突说明行」声明以最新为准；读者按「后到者优先」取尾行，历史行保留作审计轨迹。禁止用「改写旧行」表达状态变化。

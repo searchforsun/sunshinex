@@ -6,11 +6,12 @@ import { t } from '../i18n';
 import { formatDuration, formatTokens, formatContextBreakdown } from './format';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
+import type { ModelSwitcher } from '../model/catalog';
 import { isFenceLine, normalizeCjkLine, renderMd, stripAnsi } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { ContextManager, chainToHistoryItems, runCompaction, contextBreakdown } from '../harness/context';
-import { contextWindowTokens } from '../config/termination-config';
+import { resolveRunWindow } from '../config/termination-config';
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
@@ -205,8 +206,14 @@ export interface TuiState {
   children: ChildLiveState[];
   /** 活任务三态（规格 §4）：事件流经 applyTaskState 纯函数推导，瞬态不进 journal */
   task: LiveTaskState;
-  /** 用户级模型档位（/model 会话内切换；undefined = 缺省主模型，run 级常量不随步重估） */
-  model?: ModelTier;
+  /** 用户级模型档位（/model-tier 会话内切换；undefined = 缺省档，run 级常量不随步重估） */
+  tier?: ModelTier;
+  /** 当前模型选择 id（/model 会话内切换，`源/模型`；undefined = 缺省主模型） */
+  modelId?: string;
+  /** 状态栏模型段实况（选择在场为 `源/模型` id；undefined = 回 banner 主模型标签，与单模型形态一致） */
+  modelLabel?: string;
+  /** 当前模型窗口 tokens（选择在场且模型带 contextWindow 时；undefined = 回全局 env 分母，既有形态） */
+  modelWindow?: number;
   /** 缺省思考强度（/model-effort 会话内切换；undefined = 适配器 cfg/env 缺省，run 级常量） */
   effort?: ReasoningEffort;
   /** AskQuestion 挂起卡（ask_question 工具或本地问询期间非空；渲染层选择器接管键盘） */
@@ -223,6 +230,8 @@ export interface SessionOpts extends TuiRuntimeOpts {
   continueLast?: boolean;
   /** 启动即弹会话选择卡（--resume） */
   resumePicker?: boolean;
+  /** 多源多模型切换器（settings providers 键装配）：在场时作为 harness 主模型（/model 会话内切换的内芯） */
+  models?: ModelSwitcher;
   /** manual 模式审批回调（终端化审批装配点；渲染层注入交互实现） */
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** 问询接缝覆盖（headless/脚本注入；缺省会话装配把 seam 接到本控制器问询管线） */
@@ -254,7 +263,8 @@ function slashHelp(): string[] {
     t('  /fork          fork a parallel session from any past turn', '  /fork          从任意历史轮分叉出平行会话'),
     t('  /compact       compress context: /compact [focus]', '  /compact       压缩上下文：/compact [关注点]'),
     t('  /context       context usage breakdown (parts, size, share)', '  /context       上下文构成（各段大小与占比）'),
-    t('  /model         switch model tier (selector)', '  /model         切换模型档位（选择卡）'),
+    t('  /model         switch model (provider list from settings.json)', '  /model         切换模型（settings.json 多源清单选择卡）'),
+    t('  /model-tier    switch model tier (selector)', '  /model-tier    切换模型档位（选择卡）'),
     t('  /model-effort  switch reasoning effort (selector)', '  /model-effort  切换思考强度（选择卡）'),
     t('  /add-dir <dir>  extend trusted directories (read+write, this session)', '  /add-dir <dir>  扩展信任目录（读写，本会话内生效）'),
     t('  /memory        list persistent memories', '  /memory        列出持久记忆'),
@@ -344,6 +354,8 @@ export class SessionController {
   private autoAsker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** 会话内持久记忆开关（/memory on|off；undefined=随控制面）：写 setMemorySessionOverride 单点，仅本会话生效、不改盘，/new 清除 */
   private memoryOverride?: boolean;
+  /** 多源多模型切换器（/model 数据面）：不在场 = 未配置 providers，/model 给配置指引 */
+  private readonly modelSwitcher?: ModelSwitcher;
   /** 当前任务中断源（Esc/Ctrl+C）：任务起点建、closeTask 清；interrupt() 置 aborted 贯通模型/loop/reactor */
   private taskAbort?: AbortController;
 
@@ -363,9 +375,13 @@ export class SessionController {
 
   constructor(opts: SessionOpts) {
     this.root = opts.root;
+    this.modelSwitcher = opts.models;
+    // 主模型装配单点：切换器在场即以其为主模型（/model 换内芯即时贯通 reactor/子代理/压缩）；
+    // 否则回落单模型适配器（无 providers 配置的既有形态）
+    const mainModel = opts.models ?? opts.model;
     this.runtime = opts.runtime ?? createRuntime({
       root: opts.root,
-      ...(opts.model ? { model: opts.model } : {}),
+      ...(mainModel ? { model: mainModel } : {}),
       ...(opts.mode ? { mode: opts.mode } : {}),
       ...(opts.tier ? { tier: opts.tier } : {}),
       ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
@@ -390,8 +406,10 @@ export class SessionController {
     this.autoAsker = opts.asker;
     if (opts.mode === 'manual') this.runtime.harness.security.setAsker(suspendAsker);
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
-    if (opts.tier) this.state = { ...this.state, model: opts.tier };
+    if (opts.tier) this.state = { ...this.state, tier: opts.tier };
     if (opts.effort) this.state = { ...this.state, effort: opts.effort };
+    // 装配期已选模型（providers 配置且主模型未显式配置时缺省取首个）：状态栏段同步初值
+    if (opts.models && opts.models.currentId() !== undefined) this.state = { ...this.state, modelId: opts.models.currentId(), modelLabel: opts.models.label, ...(opts.models.contextWindow !== undefined ? { modelWindow: opts.models.contextWindow } : {}) };
     // 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费（无待办零调用零配额）；
     // 主触发是 closeTask 的 kick，本定时器只是兜底；unref 保证不阻塞进程退出
     this.kickTimer = setInterval(() => {
@@ -713,7 +731,7 @@ export class SessionController {
       try {
         if (this.taskAbort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
         const r: RunOutcome = await this.runtime.runTask(items[i], {
-          ...(this.state.model ? { tier: this.state.model } : {}),
+          ...(this.state.tier ? { tier: this.state.tier } : {}),
           ...(this.state.effort ? { effort: this.state.effort } : {}),
           ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
         });
@@ -745,7 +763,7 @@ export class SessionController {
 
   /** 快照型事件接线（规格 2026-09-22 D5）：变更点即时 log 的单点构造器，防四处拼装漂移 */
   private logModel(): void {
-    this.journal?.log({ t: 'model', ...(this.state.model ? { tier: this.state.model } : {}), ...(this.state.effort ? { effort: this.state.effort } : {}) });
+    this.journal?.log({ t: 'model', ...(this.state.tier ? { tier: this.state.tier } : {}), ...(this.state.effort ? { effort: this.state.effort } : {}), ...(this.state.modelId !== undefined ? { modelId: this.state.modelId } : {}) });
   }
 
   /** todo 清单唯一写点（规格 D6）：state 更新 + journal 即时落盘 + notify；模型工具/plan 引擎两条运行期路径共用。journal 重放为恢复路径，直接赋值不走此点（防重放自我回写） */
@@ -856,19 +874,33 @@ export class SessionController {
     // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
     this.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
     this.msgSeq = replay.nextSeq;
+    // 模型选择还原（/model）：档内 modelId 事件末值即目标态（undefined = 回缺省主模型，内芯一并复位）；
+    // 配置漂移（id 已不在清单）保持当前不硬切、告警行随状态注入后上屏（注入前 push 会被 replay.messages 吞掉）
+    let modelDriftWarn: string | undefined;
+    let restoredModelId: string | undefined;
+    if (this.modelSwitcher) {
+      const ok = this.modelSwitcher.switchTo(replay.modelId);
+      restoredModelId = this.modelSwitcher.currentId();
+      if (!ok) modelDriftWarn = t(`Saved model "${replay.modelId}" is no longer in settings.json providers; keeping the current model`, `存档模型「${replay.modelId}」已不在 settings.json providers 清单，保持当前模型`);
+    }
     this.state = {
       ...this.state,
       messages: replay.messages,
       todos: replay.todos,
       status: 'idle',
-      ...(replay.model !== undefined ? { model: replay.model } : {}),
+      ...(replay.tier !== undefined ? { tier: replay.tier } : {}),
       ...(replay.effort !== undefined ? { effort: replay.effort } : {}),
+      ...(restoredModelId !== undefined
+        ? { modelId: restoredModelId, modelLabel: this.modelSwitcher!.label, ...(this.modelSwitcher!.contextWindow !== undefined ? { modelWindow: this.modelSwitcher!.contextWindow } : { modelWindow: undefined }) }
+        : { modelId: undefined, modelLabel: undefined, modelWindow: undefined }),
       approval: undefined,
       live: undefined,
       children: [],
     };
     this.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
     this.ensureJournal().attach(meta.id);
+    // 模型配置漂移告警（状态注入后上屏，防被 replay.messages 吞掉）
+    if (modelDriftWarn !== undefined) this.pushMsg('system', modelDriftWarn, { level: 'warn' });
     // 横幅在状态注入后上屏（注入前 push 会被 messages 覆盖吞掉）；撕裂场景合并提示，保持「消息 + 单条提示行」
     if (parsed.truncated) {
       this.pushMsg('system', t('Session restored: ' + meta.id + ' — journal tail was truncated (previous crash?); restored up to the last complete event', '已恢复会话：' + meta.id + '（日志尾部截断，此前可能异常退出；已恢复到最后一条完整事件）'), { level: 'warn' });
@@ -1021,7 +1053,7 @@ export class SessionController {
     return this.runtime.runTask(label, {
       scope: 'fork',
       seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt }],
-      ...(this.state.model ? { tier: this.state.model } : {}),
+      ...(this.state.tier ? { tier: this.state.tier } : {}),
       ...(this.state.effort ? { effort: this.state.effort } : {}),
       ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
     });
@@ -1057,7 +1089,7 @@ export class SessionController {
         const r = await this.runtime.runTask(goal, {
           scope: 'fork',
           seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: opts.forkInstruction }],
-          ...(this.state.model ? { tier: this.state.model } : {}),
+          ...(this.state.tier ? { tier: this.state.tier } : {}),
           ...(this.state.effort ? { effort: this.state.effort } : {}),
           ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
         });
@@ -1069,7 +1101,7 @@ export class SessionController {
       // 主链任务（§11 只增不改）：当前指令行尾追进链，reactor 会话作用域收束自动回写全量步骤与结论/补丁行
       ctx.appendInstructionLine(`Current instruction: ${goal}`);
       const r = await this.runtime.runTask(goal, {
-        ...(this.state.model ? { tier: this.state.model } : {}),
+        ...(this.state.tier ? { tier: this.state.tier } : {}),
         ...(this.state.effort ? { effort: this.state.effort } : {}),
         ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
       });
@@ -1103,7 +1135,7 @@ export class SessionController {
       this.runtime.harness.context.appendInstructionLine(`Current instruction: ${goal} (/goal)`);
       this.pushMsg('system', t(`✻ /goal: ${goal}`, `✻ /goal：${goal}`));
       const r = await this.runtime.runLoop(goal, {
-        ...(this.state.model ? { tier: this.state.model } : {}),
+        ...(this.state.tier ? { tier: this.state.tier } : {}),
         ...(this.state.effort ? { effort: this.state.effort } : {}),
         ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
       });
@@ -1281,7 +1313,8 @@ export class SessionController {
         },
         children: [],
         task: initialTaskState(),
-        ...(this.state.model ? { model: this.state.model } : {}),
+        ...(this.state.tier ? { tier: this.state.tier } : {}),
+        ...(this.state.modelId !== undefined ? { modelId: this.state.modelId, modelLabel: this.state.modelLabel, modelWindow: this.state.modelWindow } : {}),
         live: undefined,
       };
       this.childBufs.clear();
@@ -1293,11 +1326,58 @@ export class SessionController {
       return;
     }
     if (cmd === '/model') {
+      // 多源多模型切换（settings providers 键）：选择卡即选即切，对后续任务生效（整场恒定，CLAUDE.md §11 重算事件口径）
       if (this.state.status !== 'idle') {
         this.pushMsg('system', t('A task is running; /model unavailable now', '当前有任务进行中，暂不能执行 /model'), { level: 'warn' });
         return;
       }
-      const current = this.state.model;
+      const sw = this.modelSwitcher;
+      if (!sw || sw.choices().length === 0) {
+        this.pushMsg('system', t(
+          'No switchable models: add a "providers" array to settings.json (each entry: name + baseUrl + models), then restart',
+          '无可切换模型：在 settings.json 增加 "providers" 数组（每项 name + baseUrl + models）后重启',
+        ), { level: 'warn' });
+        return;
+      }
+      const current = sw.currentId();
+      const options = [
+        // default 仅在主模型显式配置（model 键 / SUNSHINEX_MODEL）时露出：未配置时缺省内芯本就是首个 provider 模型
+        ...(sw.hasExplicitDefault() ? [{ label: 'default', description: current === undefined ? t('current (main model)', '当前（主模型）') : undefined }] : []),
+        ...sw.choices().map((c) => ({
+          label: c.id,
+          description: c.id === current ? t('current', '当前') : c.contextWindow !== undefined ? `${c.baseUrl} · ${formatTokens(c.contextWindow)}` : c.baseUrl,
+        })),
+      ];
+      const answer = await this.askUser({
+        question: t(current ? `Switch model (current: ${current})` : 'Switch model (current: main model)', current ? `切换模型（当前 ${current}）` : '切换模型（当前主模型）'),
+        options,
+      });
+      if (answer.type !== 'selected') {
+        this.pushMsg('system', t('Model unchanged', '模型未变更'));
+        return;
+      }
+      const picked = answer.labels[0] ?? '';
+      if (picked === 'default') {
+        sw.switchTo(undefined);
+        this.state = { ...this.state, modelId: undefined, modelLabel: undefined, modelWindow: undefined };
+        this.notify();
+        this.logModel();
+        this.pushMsg('system', t('Model cleared; the main model applies to subsequent tasks', '模型已清除；后续任务用主模型'));
+        return;
+      }
+      if (!sw.switchTo(picked)) return; // 选择卡来源即清单，正常不可达；防御配置漂移
+      this.state = { ...this.state, modelId: picked, modelLabel: sw.label, ...(sw.contextWindow !== undefined ? { modelWindow: sw.contextWindow } : { modelWindow: undefined }) };
+      this.notify();
+      this.logModel();
+      this.pushMsg('system', t(`Model set to ${picked}; applies to subsequent tasks`, `模型已设为 ${picked}；对后续任务生效`));
+      return;
+    }
+    if (cmd === '/model-tier') {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /model-tier unavailable now', '当前有任务进行中，暂不能执行 /model-tier'), { level: 'warn' });
+        return;
+      }
+      const current = this.state.tier;
       const answer = await this.askUser({
         question: t(current ? `Switch model tier (current: ${current})` : 'Switch model tier (current: default)', current ? `切换模型档位（当前 ${current}）` : '切换模型档位（当前默认）'),
         options: (['small', 'medium', 'large'] as const).map((tier) => ({ label: tier, description: tier === current ? t('current', '当前档') : undefined })),
@@ -1308,7 +1388,7 @@ export class SessionController {
       }
       const tier = parseTier(answer.labels[0] ?? '');
       if (!tier) return;
-      this.state = { ...this.state, model: tier };
+      this.state = { ...this.state, tier };
       this.notify();
       this.logModel();
       this.pushMsg('system', t(`Model tier set to ${tier}; applies to subsequent tasks`, `模型档位已设为 ${tier}；对后续任务生效`));
@@ -1397,7 +1477,7 @@ export class SessionController {
         compacted: ctx.compactedView(),
         chain: ctx.chainView(),
         skill: ctx.peekSkill(),
-        window: contextWindowTokens(),
+        window: resolveRunWindow(this.runtime.harness.model),
         chainFrom: ctx.chainFromView(),
       });
       this.pushMsg('system', formatContextBreakdown(b));

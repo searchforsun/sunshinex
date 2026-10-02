@@ -18,7 +18,7 @@ export function resolveEffortConfig(flags: Record<string, string | boolean | str
   return effort ? { reasoningEffort: effort } : {};
 }
 
-/** 校验档位值：--tier / /model 用户级参数只认 small|medium|large，其余一律 undefined（调用方按缺省处理） */
+/** 校验档位值：--tier / /model-tier 用户级参数只认 small|medium|large，其余一律 undefined（调用方按缺省处理） */
 export function parseTier(value: unknown): ModelTier | undefined {
   return value === 'small' || value === 'medium' || value === 'large' ? value : undefined;
 }

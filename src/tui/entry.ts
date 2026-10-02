@@ -10,6 +10,8 @@ import { installFrameSniffer } from './frame-sniffer';
 import { SessionController } from './session';
 import { buildBannerInfo } from './banner-info';
 import { buildModel, parseTier } from '../runtime';
+import { loadProviders } from '../config/providers';
+import { ModelSwitcher } from '../model/catalog';
 import { resolveWorktreeLaunchRoot } from '../cli/worktree-launch';
 import { parseEffort } from '../model/adapter';
 import type { CliArgs } from '../cli';
@@ -43,17 +45,30 @@ export async function runTui(args: CliArgs): Promise<void> {
   const launchRoot = resolveWorktreeLaunchRoot(args, root);
   const modeFlag = typeof args.flags.mode === 'string' ? args.flags.mode : undefined;
   const mode = modeFlag === 'dontAsk' || modeFlag === 'plan' ? modeFlag : 'manual';
-  const model = buildModel(args.flags);
-  // 模型档位（用户级会话参数，对标 Claude Code 的模型选择）：--tier 优先，SUNSHINEX_TIER 兜底；/model 可会话内切换
+  // 多源多模型装配（settings providers 键 → /model 选择卡数据面）：切换器在场即为主模型适配器，
+  // /model 换内芯即时贯通 reactor/子代理/压缩；warnings 经 stderr 双语透出（外观通道，库内零打印）
+  const providers = loadProviders(launchRoot);
+  for (const w of providers.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
+  // 模型档位（用户级会话参数，对标 Claude Code 的模型选择）：--tier 优先，SUNSHINEX_TIER 兜底；/model-tier 可会话内切换
   const tier = parseTier(args.flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   // 缺省思考强度（请求级参数，--effort > SUNSHINEX_REASONING_EFFORT）：/model-effort 可会话内切换
   const effort = parseEffort(typeof args.flags.effort === 'string' ? args.flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
+  // 主模型是否显式配置（settings model 键 → SUNSHINEX_MODEL 槽）：未配置且配了 providers 时缺省取首个源模型，
+  // default 选项亦不露出（此时「回主模型」只会落到端点内置缺省，是陷阱选项）
+  const explicitDefault = (process.env.SUNSHINEX_MODEL ?? '').trim().length > 0;
+  const model = new ModelSwitcher({
+    choices: providers.choices,
+    default: buildModel(args.flags),
+    ...(explicitDefault ? { explicitDefault: true } : {}),
+    ...(effort ? { reasoningEffort: effort } : {}),
+  });
+  if (!explicitDefault && providers.choices.length > 0) model.switchTo(providers.choices[0]!.id);
   // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
   const continueLast = args.flags['continue'] === true;
   const resumePicker = resolveResumeFlag(args);
   // --add-dir（spec 5.3，可重复 flag）：flagList 归一收集，随既有 opts 传入 createRuntime（TUI 面同一 HarnessOptions）
   const addDirs = flagList(args.flags, 'add-dir');
-  const ctrl = new SessionController({ root: launchRoot, mode, model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}), ...(resumePicker ? { resumePicker: true } : {}), ...(addDirs.length > 0 ? { addDirs } : {}) });
+  const ctrl = new SessionController({ root: launchRoot, mode, models: model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}), ...(resumePicker ? { resumePicker: true } : {}), ...(addDirs.length > 0 ? { addDirs } : {}) });
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
   const banner = buildBannerInfo({ version: readPackageVersion(), root: launchRoot, model: model.label ?? model.provider });

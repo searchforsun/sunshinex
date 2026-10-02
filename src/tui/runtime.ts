@@ -16,7 +16,7 @@ export interface TuiRuntimeOpts {
   mode?: 'dontAsk' | 'manual' | 'plan';
   /** D3：CLI --add-dir 透传（与 settings permissions.additionalDirs 合并，三面同源） */
   addDirs?: string[];
-  /** 用户级模型档位（run 级常量，对标 Claude Code 的模型选择）：/model 会话内切换经 runTask 逐次覆盖 */
+  /** 用户级模型档位（run 级常量，对标 Claude Code 的模型选择）：/model-tier 会话内切换经 runTask 逐次覆盖 */
   tier?: ModelTier;
   /** 缺省思考强度（run 级常量，对标 tier）：/model-effort 会话内切换经 runTask 逐次覆盖；缺省回适配器 cfg/env */
   effort?: ReasoningEffort;
@@ -75,7 +75,7 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     pipeline: harness.pipeline,
   };
 
-  // run 级覆盖统一构造：/model 档位与 /model-effort 逐次覆盖、scope 线程、中断 signal（runTask/runLoop 共用，防两处漂移）
+  // run 级覆盖统一构造：/model-tier 档位与 /model-effort 逐次覆盖、scope 线程、中断 signal（runTask/runLoop 共用，防两处漂移）
   const buildRunDeps = (o?: { tier?: ModelTier; effort?: ReasoningEffort; scope?: 'session' | 'fork'; signal?: AbortSignal }): LoopDeps => ({
     ...loopDeps,
     ...(o?.tier ? { tier: o.tier } : {}),
@@ -87,7 +87,7 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
   return {
     harness,
     runTask: async (goal, o) => {
-      // 档位（run 级常量）：/model 的会话级切换以逐次覆盖下传（缺省沿用装配点 tier）；scope 线程至 LoopDeps
+      // 档位（run 级常量）：/model-tier 的会话级切换以逐次覆盖下传（缺省沿用装配点 tier）；scope 线程至 LoopDeps
       const runDeps = buildRunDeps(o);
       const tpl = longTaskTemplate(runDeps, o?.maxSteps !== undefined ? { agentMaxSteps: o.maxSteps } : {});
       const r = await tpl.engine.run(

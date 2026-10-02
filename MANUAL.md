@@ -46,7 +46,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
 | --- | --- |
 | `--mode=manual\|plan\|dontAsk` | 权限模式，缺省 `manual`（见第六节） |
 | `--language=en\|zh` | 界面语言，缺省 `en`；只影响界面，模型侧文本恒英文 |
-| `--tier=small\|medium\|large` | 模型档位，缺省 `medium`；会话内可用 `/model` 切换 |
+| `--tier=small\|medium\|large` | 模型档位，缺省 `medium`；会话内可用 `/model-tier` 切换 |
 | `--effort=none\|minimal\|low\|medium\|high\|xhigh\|max` | 缺省思考强度（reasoning_effort）；端点不支持时按阶梯自动降级，会话内可用 `/model-effort` 切换 |
 | `--continue` | 直接续接最近一次会话（按会话档时间自动判定，TUI 专属，与 `--worktree` 互斥） |
 | `--resume` | 启动时弹会话选择卡恢复既有会话（TUI 专属，与 `--continue`/`--worktree` 互斥） |
@@ -88,11 +88,27 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
   // ── 模型 ──────────────────────────────────────────────
   "model": "<模型名>",                               // 主模型（任意 OpenAI 协议兼容模型）
   "baseUrl": "https://<端点>/v1",                    // 模型端点
+  "providers": [                                     // 多源多模型清单（/model 选择卡数据源；项目级整键覆盖全局级）
+    {                                                // 每项 = 一个源：name + baseUrl + models（contextWindow 为该源各模型缺省窗口，可省）
+      "name": "deepseek",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "contextWindow": 64000,
+      "models": [
+        "deepseek-chat",                             // 字符串形态：窗口回退源级 contextWindow
+        { "model": "deepseek-reasoner", "contextWindow": 128000 }  // 对象形态：每模型窗口（优先于源级）
+      ]
+    },
+    {
+      "name": "bigmodel",
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "models": ["glm-4.7"]
+    }
+  ],
   "tier": "medium",                                  // 缺省档位 small|medium|large
   "modelSmall": "",                                  // 各档绑定的模型；留空 = 该档用主模型
   "modelMedium": "",
   "modelLarge": "",
-  "contextWindow": 200000,                           // 模型最大上下文 tokens（状态栏 ctx 分母；1M 模型填 1000000）
+  "contextWindow": 200000,                           // 全局窗口 tokens（未按模型配置时的回退；1M 模型填 1000000）
   "reasoningEffort": "high",                         // 缺省思考强度 none|minimal|low|medium|high|xhigh|max；留空 = 不下发（用端点默认）；端点不支持时按阶梯自动降级
 
   // ── 长任务 ────────────────────────────────────────────
@@ -142,7 +158,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
 
   // ── 密钥（只写这里）──────────────────────────────────
   "env": {
-    "SUNSHINEX_API_KEY": "sk-…",                     // 模型密钥（必填）
+    "SUNSHINEX_API_KEY": "sk-…",                     // 模型密钥（必填；providers 各源缺专用密钥时也回退这里）
+    "SUNSHINEX_API_KEY_DEEPSEEK": "sk-…",            // 按源专用密钥：SUNSHINEX_API_KEY_<大写源名>（有则优先于主密钥）
     "SUNSHINEX_EMBEDDING_API_KEY": "",               // 嵌入密钥；留空 = 回退主密钥
     "SUNSHINEX_BING_API_KEY": ""                     // Bing 搜索密钥（websearchProvider=bing 时用）
   }
@@ -150,6 +167,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
 ```
 
 - 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`model` ≡ `SUNSHINEX_MODEL`），环境变量仍最高优先。
+- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；主模型未显式配置（无 `model` 键）时缺省取清单首项，`default` 选项仅在主模型显式配置时露出。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`）。
+- 每模型窗口：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000 }`（源级 `contextWindow` 为该源缺省，条目级优先）；窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定。
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 
@@ -240,7 +259,8 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径；后台 exec 与后台子代理产生，模型以 `task_wait` 等待到终态并取回执、以 `task_stop` 工具停止） |
 | `/skill` | 加载技能进上下文：选择卡列出可用技能（`↑`/`↓` 选择、输入即筛选、`Esc` 取消），选定即载入、本会话重复加载回执已加载 |
 | `/<技能id>` | 技能即命令：裸形式仅加载（语义同 `/skill` 选定）；带意图 `/<id> <意图>` 加载后一步派发任务；撞名内置命令的技能不注册（内置优先，仍经 `/skill` 卡加载）；命令 token=技能 id，限 `[a-z0-9][a-z0-9_-]*`；Tab 补全与 `/help` 技能段同步列出 |
-| `/model` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效） |
+| `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |
+| `/model-tier` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效） |
 | `/model-effort` | 切换思考强度：选择卡七档 + default，回执实际生效档 |
 | `/compact [关注点]` | 立即压缩上下文，可指定优先保留的内容；接近窗口上限时也会自动压缩 |
 | `/context` | 上下文构成报表：各段（系统提示词稳定段 / SUNSHINE.md 指令 / 技能清单 / 记忆索引 / 压缩摘要 / 会话链 / 待注入技能块）的估算 token 大小与占窗口比例，会话链再按动作细分（task / reply / tool-call / tool-result…）；只读观测，不改变上下文 |
@@ -388,7 +408,7 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 
 | 现象 | 处理 |
 | --- | --- |
-| 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `model`、`baseUrl` 与 `env.SUNSHINEX_API_KEY`（全局或项目级） |
+| 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `model`、`baseUrl` 与 `env.SUNSHINEX_API_KEY`（全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与对应密钥槽 |
 | 输入没反应 | 正在等待审批或计划确认：按 `y` / `a` / `n` |
 | 写操作总被拒 | 当前是 `plan` 只读模式：重启换 `--mode=manual` |
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |

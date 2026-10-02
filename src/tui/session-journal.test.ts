@@ -194,7 +194,7 @@ test('reduceJournal：全词汇归约 + 未知事件类型跳过（additive 兼�
   assert.equal(r.messages[1]!.text, '答一句(终稿)', 'msg-update 同 seq 原位终态覆盖（序不重复）');
   assert.equal(r.nextSeq, 5);
   assert.deepEqual(r.todos, [{ text: '新待办', status: 'pending' }]);
-  assert.equal(r.model, 'large');
+  assert.equal(r.tier, 'large');
   assert.deepEqual(r.view, { expandAll: false, latestFull: true });
   assert.equal(JSON.stringify(r).includes('snapshots'), false, '回放零快照泄漏');
 });

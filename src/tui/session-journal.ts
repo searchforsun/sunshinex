@@ -44,7 +44,8 @@ export type JournalEvent =
   | { t: 'chain'; steps: HistoryStep[] }
   | { t: 'compact'; chainFrom: number; compacted: ContextItem[] }
   | { t: 'todos'; items: TodoItem[] }
-  | { t: 'model'; tier?: ModelTier; effort?: ReasoningEffort }
+  /** 用户级会话参数快照（末值覆盖）：tier=档位、effort=思考强度、modelId=/model 选择（`源/模型`；undefined 字段=该项回缺省） */
+  | { t: 'model'; tier?: ModelTier; effort?: ReasoningEffort; modelId?: string }
   | { t: 'view'; expandAll: boolean; latestFull: boolean };
 
 export interface SessionMeta {
@@ -72,8 +73,10 @@ export interface JournalReplay {
   nextSeq: number;
   history: string[];
   todos: TodoItem[];
-  model?: ModelTier;
+  tier?: ModelTier;
   effort?: ReasoningEffort;
+  /** /model 选择 id（`源/模型`；undefined = 缺省主模型） */
+  modelId?: string;
   view: { expandAll: boolean; latestFull: boolean };
 }
 
@@ -161,8 +164,9 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
         r.todos = normalizeTodoItems(e.items as unknown[]);
         break;
       case 'model':
-        r.model = e.tier;
+        r.tier = e.tier;
         r.effort = e.effort;
+        r.modelId = e.modelId;
         break;
       case 'view':
         r.view = { expandAll: e.expandAll, latestFull: e.latestFull };

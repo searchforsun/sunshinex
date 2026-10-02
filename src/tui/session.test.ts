@@ -7,6 +7,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
+import { ModelSwitcher } from '../model/catalog';
 import { Harness } from '../harness';
 import { TaskRegistry } from '../harness/tasks';
 import { RunOutcome, TuiRuntime } from './runtime';
@@ -245,7 +246,7 @@ test('会话控制器：/help 列出全部内置命令（SLASH_COMMANDS 同源�
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
     await ctrl.submit('/help');
     const text = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
-    for (const c of ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-effort', '/add-dir', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off']) {
+    for (const c of ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off']) {
       assert.ok(text.includes(c), `missing ${c}`);
     }
     assert.ok(!/\/model effort|\/memory add|\/memory rm|\/memory gc|\/memory on\b|\/memory off\b/.test(text), '旧子命令语法零残留');
@@ -282,20 +283,88 @@ test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；
       runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
-    const p = ctrl.submit('/model');
+    const p = ctrl.submit('/model-tier');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
     assert.deepEqual(ctrl.getState().question?.options.map((o) => o.label), ['small', 'medium', 'large'], '选择卡三档');
     ctrl.resolveAskAnswer({ type: 'selected', labels: ['large'] });
     await p;
-    assert.equal(ctrl.getState().model, 'large', '即选即切落档');
+    assert.equal(ctrl.getState().tier, 'large', '即选即切落档');
+    const p2 = ctrl.submit('/model-tier');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    ctrl.resolveAskAnswer({ type: 'dismissed' });
+    await p2;
+    assert.equal(ctrl.getState().tier, 'large', 'Esc 取消不改档');
+    await ctrl.submit('做件事');
+    await ctrl.waitIdle();
+    assert.deepEqual(seen, ['large'], '档位 run 级常量：切换后的任务携带用户档位');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 + modelId 落档），Esc 取消零变化；default 清除回主模型', async () => {
+  const tmp = tmpdir('sunshinex-sess-modelsw-');
+  try {
+    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
+    const fake: TuiRuntime = {
+      harness,
+      runTask: async () => base,
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
+    };
+    const sw = new ModelSwitcher({
+      choices: [
+        { id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_DEEPSEEK', contextWindow: 128000 },
+        { id: 'bigmodel/glm-4.7', provider: 'bigmodel', model: 'glm-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', apiKeyEnv: 'SUNSHINEX_API_KEY_BIGMODEL' },
+      ],
+      default: new ScriptedAdapter([]),
+      explicitDefault: true,
+    });
+    const ctrl = new SessionController({ root: tmp, runtime: fake, models: sw });
+    const p = ctrl.submit('/model');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    assert.deepEqual(
+      ctrl.getState().question?.options.map((o) => o.label),
+      ['default', 'deepseek/deepseek-chat', 'bigmodel/glm-4.7'],
+      '选择卡 = default（主模型显式配置时露出）+ providers 展开项',
+    );
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['bigmodel/glm-4.7'] });
+    await p;
+    assert.equal(sw.currentId(), 'bigmodel/glm-4.7', '切换器换内芯');
+    assert.equal(ctrl.getState().modelId, 'bigmodel/glm-4.7', 'modelId 落档');
+    assert.equal(ctrl.getState().modelLabel, 'bigmodel/glm-4.7', '状态栏段同步');
+    assert.equal(ctrl.getState().modelWindow, undefined, '无窗口声明模型：modelWindow 不落（回全局 env 分母）');
     const p2 = ctrl.submit('/model');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
     ctrl.resolveAskAnswer({ type: 'dismissed' });
     await p2;
-    assert.equal(ctrl.getState().model, 'large', 'Esc 取消不改档');
-    await ctrl.submit('做件事');
-    await ctrl.waitIdle();
-    assert.deepEqual(seen, ['large'], '档位 run 级常量：切换后的任务携带用户档位');
+    assert.equal(sw.currentId(), 'bigmodel/glm-4.7', 'Esc 取消不改模型');
+    const pw = ctrl.submit('/model');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['deepseek/deepseek-chat'] });
+    await pw;
+    assert.equal(ctrl.getState().modelWindow, 128000, '带窗口模型：modelWindow 随选择落状态（状态栏分母随模型）');
+    const p3 = ctrl.submit('/model');
+    await waitFor(() => ctrl.getState().status === 'awaiting-question');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['default'] });
+    await p3;
+    assert.equal(sw.currentId(), undefined, 'default 清除回主模型');
+    assert.equal(ctrl.getState().modelId, undefined, 'modelId 清除');
+    assert.equal(ctrl.getState().modelWindow, undefined, 'modelWindow 一并清除');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话控制器：未配置 providers 时 /model 给配置指引（warn），不弹卡', async () => {
+  const tmp = tmpdir('sunshinex-sess-modelnone-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
+    await ctrl.submit('/model');
+    const hit = ctrl.getState().messages.find((m) => m.role === 'system' && m.text.includes('providers'));
+    assert.ok(hit, '配置指引回执');
+    assert.equal(hit.level, 'warn', 'warn 级');
+    assert.equal(ctrl.getState().question, undefined, '不弹卡');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -359,7 +428,7 @@ test('会话控制器：装配级 tier 作为初始档位并下传任务', async
     runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake, tier: 'medium' });
-    assert.equal(ctrl.getState().model, 'medium', '装配档位进入会话状态');
+    assert.equal(ctrl.getState().tier, 'medium', '装配档位进入会话状态');
     await ctrl.submit('做事');
     await ctrl.waitIdle();
     assert.deepEqual(seen, ['medium'], '任务应携带装配档位');

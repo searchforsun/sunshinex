@@ -963,9 +963,9 @@ export function App({
       <StatusBar
         metrics={state.metrics}
         status={state.status}
-        model={info.model}
+        model={state.modelLabel ?? info.model}
         effort={state.effort}
-        context={{ used: state.metrics.ctxUsed, window: Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
+        context={{ used: state.metrics.ctxUsed, window: state.modelWindow ?? Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
       />
         </>
       )}

@@ -6,6 +6,9 @@ import {
   graphNodesEnv,
   mainTokenCapEnv,
   subagentTokenCapEnv,
+  contextWindowTokens,
+  CONTEXT_WINDOW_DEFAULT,
+  resolveRunWindow,
 } from './termination-config';
 
 test('未设/空串回 undefined，消费点取内置缺省', () => {
@@ -42,4 +45,22 @@ test('零/负/小数/非法文本 fail-fast 抛错且 message 带槽名', () => 
     () => subagentTokenCapEnv({ SUNSHINEX_SUBAGENT_TOKEN_CAP: '-5' }),
     /SUNSHINEX_SUBAGENT_TOKEN_CAP/,
   );
+});
+
+test('resolveRunWindow：当前模型窗口 > SUNSHINEX_CONTEXT_WINDOW > 200k 缺省（run 级窗口解析单点）', () => {
+  const prev = process.env.SUNSHINEX_CONTEXT_WINDOW;
+  try {
+    delete process.env.SUNSHINEX_CONTEXT_WINDOW;
+    assert.equal(contextWindowTokens(), CONTEXT_WINDOW_DEFAULT, 'env 未配置回 200k');
+    assert.equal(resolveRunWindow(), CONTEXT_WINDOW_DEFAULT, '无适配器回 200k');
+    assert.equal(resolveRunWindow({ contextWindow: 128000 }), 128000, '适配器窗口优先');
+    assert.equal(resolveRunWindow({ contextWindow: -1 }), CONTEXT_WINDOW_DEFAULT, '非法窗口视同未配置（防御）');
+    assert.equal(resolveRunWindow({ contextWindow: Number.NaN }), CONTEXT_WINDOW_DEFAULT, 'NaN 视同未配置');
+    process.env.SUNSHINEX_CONTEXT_WINDOW = '1000000';
+    assert.equal(resolveRunWindow(), 1_000_000, 'env 生效');
+    assert.equal(resolveRunWindow({ contextWindow: 128000 }), 128000, '适配器窗口仍优先于 env');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_CONTEXT_WINDOW;
+    else process.env.SUNSHINEX_CONTEXT_WINDOW = prev;
+  }
 });

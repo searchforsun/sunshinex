@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
+import { ModelSwitcher } from '../model/catalog';
 import { SessionJournal, listSessions, newSessionId, parseJournalFile, reduceJournal, sessionsDir } from './session-journal';
 
 const tmpRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-persist-'));
@@ -25,7 +26,7 @@ function pinDataDir(root: string): string {
   return dataDir;
 }
 
-test('重放一致性：live 会话（任务×2 + /model）重放到新控制器，消息/链/档位逐字段一致，seq 续排不回绕', async () => {
+test('重放一致性：live 会话（任务×2 + /model-tier）重放到新控制器，消息/链/档位逐字段一致，seq 续排不回绕', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   pinDataDir(tmp);
@@ -33,7 +34,7 @@ test('重放一致性：live 会话（任务×2 + /model）重放到新控制器
     const ctrl1 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"任务一完成"}', '{"done":true,"reply":"任务二完成"}']) });
     await ctrl1.submit('第一个任务');
     await ctrl1.waitIdle();
-    const pm = ctrl1.submit('/model');
+    const pm = ctrl1.submit('/model-tier');
     await waitFor(() => ctrl1.getState().status === 'awaiting-question');
     ctrl1.resolveAskAnswer({ type: 'selected', labels: ['large'] });
     await pm;
@@ -55,7 +56,7 @@ test('重放一致性：live 会话（任务×2 + /model）重放到新控制器
     assert.deepEqual(after.slice(0, before.length).map((m) => ({ role: m.role, text: m.text, seq: m.seq })), before, '消息流逐字段一致（role/text/seq，ts 随档还原）');
     assert.equal(after[after.length - 1].role, 'system');
     assert.deepEqual(ctrl2.context.chainView(), beforeChain, '链视图逐字段一致');
-    assert.equal(ctrl2.getState().model, 'large', '档位还原');
+    assert.equal(ctrl2.getState().tier, 'large', '档位还原');
     assert.equal(ctrl2.getState().status, 'idle', '恢复后安全缺省 idle');
 
     // seq 续排：恢复后新任务的消息 seq 严格大于存档最大 seq
@@ -123,7 +124,7 @@ test('斜杠会话即时建档（事件级）：/help 落 header+user，恢复�
   }
 });
 
-test('continueLast：手工日志全词汇还原（消息/链/待办/档位/视图/输入历史），横幅上屏，UI 现场一次性取用', async () => {
+test('continueLast：手工日志全词汇还原（消息/链/待办/档位/模型选择/视图/输入历史），横幅上屏，UI 现场一次性取用', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = pinDataDir(tmp);
@@ -135,14 +136,22 @@ test('continueLast：手工日志全词汇还原（消息/链/待办/档位/视�
     j.log({ t: 'msg', item: { role: 'assistant', text: '历史答复', ts: 2, seq: 2 } });
     j.log({ t: 'chain', steps: [{ step: 1, action: 'task', observation: '指令行' }] });
     j.log({ t: 'todos', items: [{ text: '待办甲', status: 'pending' }] });
-    j.log({ t: 'model', tier: 'small' });
+    j.log({ t: 'model', tier: 'small', modelId: 'deepseek/deepseek-chat' });
     j.log({ t: 'view', expandAll: true, latestFull: false });
     const id = j.currentId!;
 
-    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]), continueLast: true });
+    const sw = new ModelSwitcher({
+      choices: [{ id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_DEEPSEEK', contextWindow: 128000 }],
+      default: new ScriptedAdapter([]),
+    });
+    const ctrl = new SessionController({ root: tmp, models: sw, continueLast: true });
     assert.equal(ctrl.getState().status, 'idle');
     assert.deepEqual(ctrl.getState().todos, [{ text: '待办甲', status: 'pending' }]);
-    assert.equal(ctrl.getState().model, 'small');
+    assert.equal(ctrl.getState().tier, 'small');
+    assert.equal(sw.currentId(), 'deepseek/deepseek-chat', '模型选择还原：切换器换回档内内芯');
+    assert.equal(ctrl.getState().modelId, 'deepseek/deepseek-chat', 'modelId 还原');
+    assert.equal(ctrl.getState().modelLabel, 'deepseek/deepseek-chat', '状态栏段还原');
+    assert.equal(ctrl.getState().modelWindow, 128000, '每模型窗口随选择还原（状态栏分母）');
     const texts = ctrl.getState().messages.map((m) => m.text);
     assert.ok(texts.includes('历史输入一') && texts.includes('历史答复'), '消息直注入');
     assert.ok(texts.some((t) => t.includes(String(id))), '续接横幅含会话 id');
@@ -150,6 +159,23 @@ test('continueLast：手工日志全词汇还原（消息/链/待办/档位/视�
     assert.deepEqual(ui, { history: ['历史输入一'], expandAll: true, latestFull: false }, 'UI 现场一次性取用');
     assert.equal(ctrl.takeRestoredUi(), undefined, '二次取用为 undefined');
     assert.deepEqual(ctrl.context.chainView(), [{ step: 1, action: 'task', observation: '指令行' }]);
+
+    // 配置漂移：档内 modelId 已不在 providers 清单 → 告警上屏、保持当前（缺省内芯）不硬切
+    const j2 = new SessionJournal(dataDir);
+    j2.start();
+    j2.log({ t: 'user', text: '漂移档输入' });
+    j2.log({ t: 'model', modelId: 'gone/model' });
+    const sw2 = new ModelSwitcher({
+      choices: [{ id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_DEEPSEEK' }],
+      default: new ScriptedAdapter([]),
+    });
+    const ctrl2 = new SessionController({ root: tmp, models: sw2, continueLast: true });
+    assert.equal(sw2.currentId(), undefined, '漂移 id 不硬切，保持缺省内芯');
+    assert.equal(ctrl2.getState().modelId, undefined);
+    assert.ok(
+      ctrl2.getState().messages.some((m) => m.role === 'system' && m.text.includes('gone/model') && m.text.includes('providers')),
+      '漂移告警行上屏（含 id 与配置面指引）',
+    );
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prev;
