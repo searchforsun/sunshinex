@@ -102,10 +102,12 @@ export class AgentRegistry {
   }
 }
 
-/** 可选点入参归一单点：模型按 schema「null」描述把字面量当字符串传（agent_id:"null" 等），
- * 归一回真实 null/undefined 语义；根因修复点——防 "null" 走注册表查询报 not found 死循环（2026-09-25 用户实测） */
+/** 可选点入参归一单点：两病同收——①模型按 schema「null」描述把字面量当字符串传（agent_id:"null" 等），
+ *  ②严格守约端点按 enum:['worktree',null] 必发真 JSON null（schema 约定 null=缺席标记非值）；
+ *  一并归一回键缺席语义——防 "null" 走注册表查询报 not found、防真 null 过校验报
+ *  "Unknown isolation: null" 被观察行原样回流成同参重试死循环（2026-09-25 / 2026-10-03 两次用户实测） */
 export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInput {
-  const lit = (v: unknown): boolean => v === 'null' || v === 'undefined';
+  const lit = (v: unknown): boolean => v === null || v === 'null' || v === 'undefined';
   return {
     ...input,
     agent_id: input.agent_id !== undefined && lit(input.agent_id) ? undefined : input.agent_id,

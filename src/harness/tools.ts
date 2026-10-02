@@ -29,6 +29,23 @@ export class CodedToolError extends Error {
   }
 }
 
+/** 入参 null 键剥离单点（执行边界归一）：仓内工具 schema 约定「可选项以 null 联合进 required」
+ *  （function calling strict 兼容口径）——严格守约的端点（DeepSeek V3.2 等）对缺省可选项**必发字面 null**
+ *  而非省键；null 是「缺席标记」不是值（真值 null 语义在工具面不存在），安全链评估与 executor 前统一剥键。
+ *  模型侧把 "null" 当字符串发的病走各工具自己的归一（如 spawn 的 normalizeSpawnInput），此处只收 JSON null */
+export function stripNullInputArgs(input: ToolInput): ToolInput {
+  let changed = false;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (v === null) {
+      changed = true;
+      continue;
+    }
+    out[k] = v;
+  }
+  return changed ? (out as ToolInput) : input;
+}
+
 /** 统一执行面：工具注册表（工具只声明，不直接执行） */
 export class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
@@ -68,10 +85,13 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  async execute(name: string, input: ToolInput, safety: SafetyChain): Promise<Result<ExecResult>> {
+  async execute(name: string, rawInput: ToolInput, safety: SafetyChain): Promise<Result<ExecResult>> {
     const tool = this.tools.get(name);
     if (!tool) return fail('TOOL_NOT_FOUND', `Tool not registered: ${name}`);
 
+    // null 键剥离（schema 可选项缺省标记）：安全链与 executor 前单点归一（2026-10-03 真机
+    // 「INVALID_ARG: Unknown isolation: null」——严格守约端点按 enum:['worktree',null] 必发字面 null）
+    const input = stripNullInputArgs(rawInput);
     const canonical = CANONICAL_TOOL_NAMES[name] ?? name;
     const decision = await safety.evaluateAsync(canonical, input);
     if (!decision.allowed) return fail('COMMAND_DENIED', decision.reason ?? 'Command denied by security policy');
