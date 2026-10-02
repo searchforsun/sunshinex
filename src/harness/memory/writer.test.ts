@@ -97,8 +97,8 @@ test('正常写入：落盘规范化四键 frontmatter（含 modified）+ 索引
       '落盘恰好一份记录（不产 -2 副本、不落散落文件）',
     );
     assert.equal(fs.readFileSync(recPath(dataDir), 'utf8'), raw, '记录文件内容即规范化后的记录文本');
-    // 索引重建：MEMORY.md 为派生物，行格式 - <slug> — <description> [<type>]
-    assert.equal(fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8'), '- prefers-pnpm — repo uses pnpm [project]\n');
+    // 索引重建：MEMORY.md 为派生物，行格式 - [description](<slug>.md)：正文（Markdown 链接，2026-10-02 用户裁决）
+    assert.equal(fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8'), '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm only\n');
     // 跨模块格式一致：store 能把刚写入的文件解析回四键
     const parsed = new MemoryStore(root).list().find((x) => x.slug === 'prefers-pnpm');
     assert.ok(parsed, 'store 应能解析接缝写入的记录');
@@ -251,7 +251,7 @@ test('超限：落盘成功但返回勒令精简错误文本（CC 语义）', ()
     const raw = fs.readFileSync(recPath(dataDir), 'utf8');
     assert.match(raw, /^---\ntype: project\n/, 'CC 语义：记录已写盘（写成功 + 报错勒令精简）');
     const index = fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8');
-    assert.equal(index.split('\n').filter((l) => l.length > 0).length, 201, '索引含新记录（201 行）');
+    assert.equal(index.split('\n').filter((l) => l.length > 0).length, 202, '索引含新记录（头部 1 + 记录 201）');
   });
 });
 
@@ -263,7 +263,7 @@ test('近满：回执追加 capacityNotice 提醒（写成功）', () => {
     if (!r.ok || r.value === 'pass') return assert.fail('expected outcome');
     assert.match(r.value.observation, /^Saved memory: prefers-pnpm \[project\]/, '回执主体不变');
     assert.match(r.value.observation, /near limit/i);
-    assert.match(r.value.observation, /161\/200/, '回执带当前行数/上限');
+    assert.match(r.value.observation, /162\/200/, '回执带当前行数/上限（头部 1 + 记录 161）');
   });
 });
 
@@ -300,7 +300,7 @@ test('同 slug 二次写入＝更新（不产 -2 副本）：created 保留、mo
     assert.match(String(/^modified: (.+)$/m.exec(after)?.[1]), /^\d{4}-\d{2}-\d{2}T/);
     const dir = path.join(dataDir, 'memory');
     assert.equal(fs.readdirSync(dir).filter((n) => n.endsWith('.md') && n !== 'MEMORY.md').length, 1, '不产 -2 副本');
-    assert.equal(fs.readFileSync(path.join(dir, 'MEMORY.md'), 'utf8'), '- prefers-pnpm — repo uses pnpm [project]\n', '索引单行且行内容来自更新后的记录');
+    assert.equal(fs.readFileSync(path.join(dir, 'MEMORY.md'), 'utf8'), '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm, never npm\n', '索引单行且行内容来自更新后的记录');
   });
 });
 
@@ -315,7 +315,7 @@ test('子代理 scope：kind=agents/<id> 落自身子目录并重建子索引；
     assert.ok(fs.existsSync(absPath), '记录落在子代理子目录');
     assert.equal(
       fs.readFileSync(path.join(dataDir, 'memory', 'agents', 'reviewer', 'MEMORY.md'), 'utf8'),
-      '- prefers-pnpm — repo uses pnpm [project]\n',
+      '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm only\n',
       '子索引由该子目录的记录重建',
     );
     assert.equal(fs.existsSync(path.join(dataDir, 'memory', 'MEMORY.md')), false, '主索引不被子代理写入触发');
@@ -342,7 +342,7 @@ test('嵌套请求：记录面归拢到本面记录目录（<slug>.md），索�
     assert.equal(fs.existsSync(nested), false, '嵌套目录不构成独立记录面（不落散落文件，否则索引与记录不一致）');
     assert.equal(
       fs.readFileSync(path.join(dataDir, 'memory', 'agents', 'reviewer', 'MEMORY.md'), 'utf8'),
-      '- b — nested fact [project]\n',
+      '# Memory Index\n\n- [nested fact](b.md)：nested body\n',
       '归拢后仍在子索引内可见（回执行数与索引一致）',
     );
   });

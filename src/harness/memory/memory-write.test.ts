@@ -98,7 +98,7 @@ test('memory_write：单条事实落盘并返回 slug（existed=false、记录�
     const file = path.join(dataDir, 'memory', `${FACT_SLUG}.md`);
     assert.ok(fs.existsSync(file), '记录文件为单一事实源');
     assert.match(fs.readFileSync(file, 'utf8'), /^---\ntype: project\ncreated: \d{4}-\d{2}-\d{2}\nmodified: /);
-    assert.equal(fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8'), `- ${FACT_SLUG} — pnpm store is repo-local [project]\n`);
+    assert.equal(fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8'), `# Memory Index\n\n- [pnpm store is repo-local](${FACT_SLUG}.md)：Repo uses pnpm with a repo-local store\n`);
   });
 });
 
@@ -269,7 +269,7 @@ test('memory_write：近满提醒以 " | " 拼接（观察行恒单行，不得�
     assert.equal(r.ok, true);
     if (!r.ok) return;
     assert.equal(r.value.stdout.includes('\n'), false, '链渲染为单行（${step}: ${action} -> ${observation}）');
-    assert.match(r.value.stdout, new RegExp(`^Saved memory: ${FACT_SLUG} \\| Memory index near limit: 161/200 lines, \\d+/25000 bytes`));
+    assert.match(r.value.stdout, new RegExp(`^Saved memory: ${FACT_SLUG} \\| Memory index near limit: 162/200 lines, \\d+/25000 bytes`));
   });
 });
 

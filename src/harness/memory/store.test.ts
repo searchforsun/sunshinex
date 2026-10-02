@@ -59,7 +59,7 @@ test('① add 落盘记录文件 + 索引行格式与记录一致', () => {
     assert.ok(raw.includes('description: 偏好 TypeScript strict'));
     assert.ok(raw.endsWith('用户偏好 strict 模式与显式类型\n'));
 
-    assert.equal(store.indexText(), `- ${rec.slug} — 偏好 TypeScript strict [user]\n`);
+    assert.equal(store.indexText(), `# Memory Index\n\n- [偏好 TypeScript strict](${rec.slug}.md)：用户偏好 strict 模式与显式类型\n`);
     assert.deepEqual(store.list(), [rec]);
   });
 });
@@ -72,7 +72,7 @@ test('② 撞名零覆盖：非记录文件占住路径 → 避让 -2（记录�
     assert.equal(r.value.slug, 'foo-bar-2');
     assert.equal(fs.readFileSync(path.join(store.dir(), 'foo-bar.md'), 'utf8'), 'hand placed notes, must survive');
     assert.equal(store.count(), 1, '裸文件不进记录视野');
-    assert.ok(store.indexText().includes('- foo-bar-2 — foo bar [project]'));
+    assert.ok(store.indexText().includes('- [foo bar](foo-bar-2.md)：first body'));
   });
 });
 
@@ -107,7 +107,7 @@ test('④ remove 删除记录与索引行；不存在 slug → MEMORY_NOT_FOUND'
     const a = store.add({ type: 'reference', description: 'react docs', body: 'react rendering model' });
     assert.ok(a.ok);
     const slug = a.value.slug;
-    assert.ok(store.indexText().includes(`- ${slug} — react docs [reference]`));
+    assert.ok(store.indexText().includes(`- [react docs](${slug}.md)：react rendering model`));
 
     const r = store.remove(slug);
     assert.ok(r.ok);
@@ -121,22 +121,22 @@ test('④ remove 删除记录与索引行；不存在 slug → MEMORY_NOT_FOUND'
   });
 });
 
-test('⑤ 循环 201 条：最后一条 MEMORY_INDEX_OVER_LIMIT 且记录文件已落盘', () => {
+test('⑤ 循环至超限：头部计 1 行（有效容量 199），第 200 条 MEMORY_INDEX_OVER_LIMIT 且记录文件已落盘', () => {
   withStore((store) => {
     let last: ReturnType<MemoryStore['add']> | undefined;
-    for (let i = 1; i <= MEMORY_INDEX_MAX_LINES + 1; i += 1) {
+    for (let i = 1; i <= MEMORY_INDEX_MAX_LINES; i += 1) {
       last = store.add({ type: 'project', description: `memo ${i}`, body: `body content ${i}` });
-      if (i <= MEMORY_INDEX_MAX_LINES) assert.ok(last.ok, `第 ${i} 条应成功`);
+      if (i <= MEMORY_INDEX_MAX_LINES - 1) assert.ok(last.ok, `第 ${i} 条应成功`);
     }
     assert.ok(last);
     assert.equal(last.ok, false);
     if (!last.ok) {
       assert.equal(last.error.code, 'MEMORY_INDEX_OVER_LIMIT');
-      assert.ok(last.error.message.includes('201 lines'), '报错文本含当前行数');
+      assert.ok(last.error.message.includes('201 lines'), '报错文本含当前行数（头部 1 + 记录 200）');
       assert.ok(last.error.message.includes(`limit ${MEMORY_INDEX_MAX_LINES}`), '报错文本含上限行数');
       assert.ok(/\d+ bytes/.test(last.error.message), '报错文本含当前字节数');
     }
-    assert.ok(fs.existsSync(path.join(store.dir(), `memo-${MEMORY_INDEX_MAX_LINES + 1}.md`)), '超限记录已写盘（CC 语义）');
+    assert.ok(fs.existsSync(path.join(store.dir(), `memo-${MEMORY_INDEX_MAX_LINES}.md`)), '超限记录已写盘（CC 语义）');
     assert.equal(store.indexText().split('\n').filter((l: string) => l.length > 0).length, MEMORY_INDEX_MAX_LINES + 1);
     assert.ok(store.overLimit() !== null);
   });
@@ -276,7 +276,7 @@ test('⑭ 显式子目录构造：dir() 落在 memory/agents/<id> 且与主目�
     assert.equal(main.count(), 0, '主目录零干扰');
     assert.equal(child.count(), 1);
     assert.ok(child.dir().endsWith(path.join('memory', 'agents', 'reviewer')), '目录形态');
-    assert.equal(child.indexText(), '- r1 — child fact [project]\n', '子目录自有索引');
+    assert.equal(child.indexText(), '# Memory Index\n\n- [child fact](r1.md)：child body\n', '子目录自有索引');
     assert.equal(main.indexText(), '', '主索引不被子目录写入触碰');
   });
 });
@@ -357,7 +357,7 @@ test('⑱ add 归一得索引名（空目录起）：落盘 memo.md，索引无�
     assert.ok(store.list().some((rec) => rec.slug === 'memo'), 'memo 记录对 list() 可见');
     assert.equal(store.count(), 1);
     const lines = store.indexText().split('\n').filter((l: string) => l.length > 0);
-    assert.deepEqual(lines, ['- memo — MEMORY [project]'], '索引只有 memo 一条记录行');
+    assert.deepEqual(lines, ['# Memory Index', '- [MEMORY](memo.md)：index-collision avoidance'], '索引只有头部 + memo 一条记录行');
     assert.equal(
       lines.some((l: string) => l.startsWith('- MEMORY ') || l.startsWith('- memory ')),
       false,
@@ -377,7 +377,7 @@ test('⑲ add 归一得索引名且 memo 已占：改走既有 -2 避让，不�
     assert.deepEqual(mdFiles(store), ['memo-2.md', 'memo.md'], '两条记录各自落盘，索引文件未被当记录覆盖');
     assert.equal(store.count(), 2);
     assert.ok(store.list().some((rec) => rec.slug === 'memo-2'), 'memo-2 对 list() 可见');
-    assert.ok(store.indexText().includes('- memo-2 — MEMORY [project]'), '索引含 memo-2 记录行');
+    assert.ok(store.indexText().includes('- [MEMORY](memo-2.md)：index-collision avoidance, second'), '索引含 memo-2 记录行');
   });
 });
 
@@ -409,7 +409,7 @@ test('㉑ 正向回归：合法规范化 slug 的 put/更新/remove 全链路照
     const r = store.put({ slug: 'prefers-pnpm', type: 'project', description: 'repo uses pnpm', body: 'pnpm only' });
     assert.equal(r.ok, true);
     assert.deepEqual(mdFiles(store), ['prefers-pnpm.md']);
-    assert.equal(store.indexText(), '- prefers-pnpm — repo uses pnpm [project]\n');
+    assert.equal(store.indexText(), '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：pnpm only\n');
     assert.ok(store.list().some((rec) => rec.slug === 'prefers-pnpm'));
 
     const up = store.put({ slug: 'prefers-pnpm', type: 'project', description: 'repo uses pnpm', body: 'pnpm only, plus corepack' });

@@ -99,7 +99,7 @@ test('注入真接缝：记忆路径经校验→规范化→索引重建，观�
     if (r.ok) assert.match(r.value.stdout, /^Saved memory: prefers-pnpm \[project\] — \d+\/200 index lines/);
     const raw = fs.readFileSync(absPath, 'utf8');
     assert.match(raw, /^---\ntype: project\ncreated: \d{4}-\d{2}-\d{2}\nmodified: \d{4}-\d{2}-\d{2}T/);
-    assert.equal(fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8'), '- prefers-pnpm — repo uses pnpm [project]\n');
+    assert.equal(fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8'), '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm only\n');
   }, guardMemoryWrite);
 });
 
@@ -152,7 +152,7 @@ test('scope 透传：子代理链写自身 agents/<id> 走接缝（kind=agents/<
     assert.match(fs.readFileSync(own, 'utf8'), /^---\ntype: project\ncreated: /);
     assert.equal(
       fs.readFileSync(path.join(dataDir, 'memory', 'agents', 'reviewer', 'MEMORY.md'), 'utf8'),
-      '- prefers-pnpm — repo uses pnpm [project]\n',
+      '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm only\n',
       '子代理子索引重建（scope 经 safety.memoryScope 透传到接缝）',
     );
 

@@ -228,10 +228,17 @@ export class MemoryStore {
     return ok(undefined);
   }
 
-  /** 索引全量重建（派生物语义：空集写空文件，保持文件存在形态统一） */
+  /** 索引全量重建（派生物语义：空集写空文件，保持文件存在形态统一）。
+   *  行形态为 Markdown 链接（2026-10-02 用户裁决「做成这样的 md 链接」）：`- [description](<slug>.md)：正文单行化说明`
+   *  ——编辑器浏览时链接可点击直达记录文件；正文空白折叠防多行 body 破坏一行一条纪律（容量两级按非空行计数口径不变，
+   *  头部 `# Memory Index` 计 1 行即有效容量 199，量级无感）；type 不进索引行（记录 frontmatter 为单一事实源）。 */
   rebuildIndex(): void {
-    const lines = this.list().map((r) => `- ${r.slug} — ${r.description} [${r.type}]`);
-    fs.writeFileSync(path.join(this.dirPath, INDEX_NAME), lines.length > 0 ? `${lines.join('\n')}\n` : '');
+    const lines = this.list().map((r) => {
+      const note = r.body.replace(/\s+/g, ' ').trim();
+      return note.length > 0 ? `- [${r.description}](${r.slug}.md)：${note}` : `- [${r.description}](${r.slug}.md)`;
+    });
+    const text = lines.length > 0 ? `# Memory Index\n\n${lines.join('\n')}\n` : '';
+    fs.writeFileSync(path.join(this.dirPath, INDEX_NAME), text);
   }
 
   /** 近满提醒（规格 §6 两级容量：近满=提醒、超限=错误）：行数或字节数任一 ≥80% 返回提醒文本，否则 null */

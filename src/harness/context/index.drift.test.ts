@@ -117,7 +117,7 @@ test('记忆索引中途变化 → 尾追正文级漂移块（supersession 声�
     const memDir = path.join(resolveDataDir(root), 'memory');
     fs.mkdirSync(memDir, { recursive: true });
     fs.writeFileSync(path.join(memDir, 'user-prefers-md.md'), '---\ntype: user\ncreated: 2026-09-18\ndescription: prefers tables\n---\nbody');
-    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '- user-prefers-md [user] (2026-09-18) prefers tables');
+    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '# Memory Index\n\n- [prefers tables](user-prefers-md.md)：tables preferred for structured output');
     const notices = cm.appendInstructionLine('Current instruction: do Y');
     assert.equal(notices.filter((n) => n.startsWith('[memory] index changed')).length, 1, '记忆索引变更恰好一条说明');
     const memNotice = notices.find((n) => n.startsWith('[memory] index changed'))!;
@@ -143,7 +143,7 @@ test('记忆索引清空 → 漂移块显式空态标注（不产空正文）', 
   withRoot((root) => {
     const memDir = path.join(resolveDataDir(root), 'memory');
     fs.mkdirSync(memDir, { recursive: true });
-    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '- old-slug [project] old fact');
+    fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '# Memory Index\n\n- [old fact](old-slug.md)：stale entry');
     const cm = cmAt(root); // 基线 = 有一条
     fs.writeFileSync(path.join(memDir, 'MEMORY.md'), ''); // 全部删除（rebuildIndex 空集写空文件形态）
     const notices = cm.appendInstructionLine('t');

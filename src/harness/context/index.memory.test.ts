@@ -34,7 +34,7 @@ test('构造时快照含记忆索引条目（引导行 + slug 行）', async () 
     const cm2 = new ContextManager(cm.root, new FileStore(cm.root));
     const items = memItems(cm2);
     assert.equal(items.length, 1);
-    assert.ok(items[0].includes('- prefers-concise-replies — prefers concise replies [user]'), '索引 slug 行在条目内');
+    assert.ok(items[0].includes('- [prefers concise replies](prefers-concise-replies.md)：keep replies short'), '索引链接行在条目内');
   });
 });
 
