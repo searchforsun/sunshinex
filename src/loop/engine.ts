@@ -1,7 +1,6 @@
 import {
   CriterionResult,
   HistoryStep,
-  LimitReason,
   LoopContext,
   LoopNodeBase,
   LoopTermination,

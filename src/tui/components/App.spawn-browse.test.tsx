@@ -122,6 +122,12 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /↑↓ move · Enter inspect · Esc exit/, '浏览键提示条出现（KeyHints 承载，统一系统提示色）');
     assert.match(lastFrame() ?? '', /❯ \[wr\]/, '浏览列表在动态区呈现已完成项（光标缺省落最近一条）');
+    write('\u001b[B'); // ↓ 越过末行回环到首行（2026-10-02 交互统一：全部列表 moveCursor 回环一套肌肉记忆）
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /❯ \[rv\]/, '↓ 越过末行回环到首行（与其余列表一致，到边即停是孤例）');
+    write('\u001b[A'); // ↑ 从首行回环回末行（回环对称）
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /❯ \[wr\]/, '↑ 从首行回环回末行（回环对称）');
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /subagent view/, '全屏查看视图接管整页');

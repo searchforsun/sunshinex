@@ -470,8 +470,10 @@ export function App({
       const clamp = (n: number): number => Math.max(0, Math.min(rows.length - 1, n));
       if (key.escape) { setBrowse(false); return; }
       if (key.upArrow || key.downArrow) {
-        // 光标移动零 repaint（选中列表动态区每帧自绘）；窗口按每页 8 行自动平移（BrowseList 同口径）
-        setBrowse(true, clamp(browseCursorRef.current + (key.upArrow ? -1 : 1)));
+        // 光标移动零 repaint（选中列表动态区每帧自绘）；窗口按每页 8 行自动平移（BrowseList 同口径）。
+        // 回环移动（2026-10-02 交互统一）：问询/审批/计划/斜杠菜单全部 moveCursor 回环，浏览列表同款——
+        // 全部列表一套肌肉记忆，到边即停是孤例
+        setBrowse(true, moveCursor(browseCursorRef.current, rows.length, key.upArrow ? -1 : 1));
         return;
       }
       if (key.return) {
@@ -604,6 +606,7 @@ export function App({
       if (buffer.length > 0) {
         setBuffer('');
         setCursor(0);
+        setHistIdx(-1); // 历史指针复位（2026-10-02 交互统一）：清空即回「下次 ↑ 取最新」，不残留召回位
         return;
       }
       onExit?.();
@@ -616,6 +619,7 @@ export function App({
       if (buffer.length > 0) {
         setBuffer('');
         setCursor(0);
+        setHistIdx(-1); // 历史指针复位（同 Ctrl+C 清空口径）
       }
       return;
     }

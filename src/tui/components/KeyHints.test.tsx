@@ -13,7 +13,7 @@ test('keyHintsFor 矩阵：运行中=暂停/待办/详情，子代理在场追�
 
 test('keyHintsFor 矩阵：空闲两态与 inspect/browse/pauseConfirm（/help 不进条——占位符已承载，冗余裁决）', () => {
   const idle = keyHintsFor({ status: 'idle' })!;
-  assert.deepEqual(idle.items.map((i) => i.key), ['Tab', '↑', 'Ctrl+B'], '/help 撤出（与输入框占位符不双显）');
+  assert.deepEqual(idle.items.map((i) => i.key), ['↑', 'Ctrl+B'], '缺省条=历史/子代理（Tab 补全只在菜单态——空闲无 / 前缀 Tab 实为折叠视图，不误导）');
   const menu = keyHintsFor({ status: 'idle', menuVisible: true })!;
   assert.deepEqual(menu.items.map((i) => i.key), ['↑↓', 'Tab'], '斜杠菜单在场换面板键（Enter 由占位符承载）');
   const inspect = keyHintsFor({ status: 'running', inspect: true })!;

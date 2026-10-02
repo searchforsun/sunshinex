@@ -91,7 +91,7 @@ export interface LiveBlock {
   text: string;
   startedAt: number;
   /** 未消费结构起点（markdansi 批次，2026-09-30 真机「渲染+原文同屏」回归修复）：mdTailStart 水位镜像——
-   *  streamer 缓冲期（表格 hold/围栏开栏/未完行）MdBufferPreview 由此切原文，已入档内容不再以裸文本重演；
+   *  块缓冲期（表格 hold/围栏开栏/未完行）MdBufferPreview 由此切原文，已入档内容不再以裸文本重演；
    *  undefined = 无未消费结构（预览只显示当前未完行） */
   tailStart?: number;
 }
@@ -290,7 +290,7 @@ export class SessionController {
   /** 未消费块起点（源内偏移，mdTailStart 水位）：块缓冲期指向当前块首行，块边界（空行）放行后 undefined——LiveBlock.tailStart 镜像 */
   private mdTailStart: number | undefined;
   /** 块缓冲（2026-09-30 架构裁定「行距唯一权威 = markdown 结构」）：全部完成行紧排入缓冲，
-   *  仅在块边界（空行）整体放行给 streamer——片段粒度 = markdown 块，行距成为源结构的纯函数，
+   *  仅在块边界（空行）整块渲染入档（renderMd）——片段粒度 = markdown 块，行距成为源结构的纯函数，
    *  不随流式时序/喂入批次浮动（逐行发射、松散化插行等时变源全部退役的终版形态） */
   private mdHoldBuf = "";
   /** /plan 规划轮：计划正文只以确认卡上屏一次，流式切块与 done 终稿均不再重复入档（重复显示根因） */
@@ -1724,8 +1724,8 @@ export class SessionController {
           return;
         }
         const finalText = e.text && e.text.length > 0 ? e.text : source.length > 0 ? source : draft;
-        // 冲刷收口：行尾残段成行喂入 + finish() 尾段入档（未闭合表格/围栏补全为完整框线块），
-        // 随后通道置空；流式已入档部分终稿 dedup 天然成立（streamer 不重不发）
+        // 冲刷收口：行尾残段成行喂入 + 缓冲块整体渲染入档（未闭合表格/围栏整块收口），
+        // 随后通道置空；流式已入档部分终稿 dedup 天然成立（已入档条目不重发，差量走前缀对齐）
         this.mdSeal();
         if (finalText.length > 0) {
           // 终稿与已推源的前缀对齐（已推源跨 reply/thinking 交错块连续，非末 live 块）：前缀命配 →
@@ -2015,13 +2015,13 @@ export class SessionController {
     this.notify(); // 块首帧即时上屏：保证流式可观测与首字延迟，后续增量并入合帧窗口
   }
 
-  /** markdansi 流式通道宽度（streamer 构造与终稿兜底渲染共用基准） */
+  /** markdansi 流式通道宽度（块渲染与终稿兜底渲染共用基准） */
   private mdWidth(): number {
     return process.stdout.columns ?? 80;
   }
 
   /** 行级喂入 + 块边界放行（2026-09-30 架构终版）：全部完成行紧排入块缓冲，仅在 markdown 块边界
-   *  （空行）整体放行给 streamer——片段粒度 = markdown 块（段落/列表/表格/围栏），行距成为源结构
+   *  （空行）整块渲染入档——片段粒度 = markdown 块（段落/列表/表格/围栏），行距成为源结构
    *  的纯函数：块内紧排（0 空行）、块间单空行（margin），不随流式时序/喂入批次浮动。
    *  mdTailStart 水位指向当前未放行块首行（镜像 LiveBlock.tailStart 供 MdBufferPreview 实时渲染
    *  未成型块——表格/围栏/段落随生成 WYSIWYG 长出）；空行放行后水位复位。
@@ -2038,8 +2038,8 @@ export class SessionController {
       const fence = isFenceLine(line);
       if (fence) this.mdInFence = !this.mdInFence;
       if (!this.mdInFence && normalized.trim().length === 0) {
-        // 空行 = markdown 块边界：当前块整体放行（streamer 渲染发射），空行本身交回 streamer
-        // （冲刷其内部表格/围栏缓冲）；水位复位——下一块从后续行重新起算
+        // 空行 = markdown 块边界：当前块整体渲染入档，空行本身不产出条目
+        // （块间视觉间隔由入档条目 margin 承载）；水位复位——下一块从后续行重新起算
         this.mdFlushHold();
         this.mdTailStart = undefined;
       } else {
@@ -2054,7 +2054,7 @@ export class SessionController {
     }
   }
 
-  /** 块缓冲放行：整块喂 streamer（其围栏/表格缓冲语义照常工作），返回片段经 mdPushFragment 入档，水位复位 */
+  /** 块缓冲放行：整块 renderMd 渲染，产物经 mdPushFragment 入档，水位复位 */
   private mdFlushHold(): void {
     if (this.mdHoldBuf.length === 0) return;
     const buf = this.mdHoldBuf;
@@ -2076,10 +2076,10 @@ export class SessionController {
   }
 
   /** 冲刷收口（工具边界 sealReply / done 共用）：行尾残段先成行喂入（围栏判定照走），
-   *  finish() 把未闭合表格/围栏冲刷为完整框线块，尾段同样入档，随后通道整体置空 */
+   *  未闭合表格/围栏经 renderMd 整块渲染自动收口（盒线补全），尾段同样入档，随后通道整体置空 */
   private mdSeal(): void {
     this.mdTailStart = undefined;
-    // 行尾残段先并入块缓冲（同段续行不拆块），再整体放行 + finish 冲刷未闭合结构
+    // 行尾残段先并入块缓冲（同段续行不拆块），再整体放行渲染（未闭合结构整块收口）
     if (this.mdLineBuf.length > 0) {
       const line = this.mdLineBuf;
       this.mdLineBuf = '';
@@ -2113,10 +2113,10 @@ export class SessionController {
   }
 
   /** 工具边界旁白封口（2026-09-30，phase 通道退役的配套收口）：live reply 经 mdSeal 冲刷——行尾残段成行
-   *  喂入、finish() 把未闭合表格/围栏冲刷为完整框线块，尾段落为 assistant ansi 消息（规划轮照旧不入档）。
+   *  喂入、未闭合表格/围栏整块渲染收口（盒线补全），尾段落为 assistant ansi 消息（规划轮照旧不入档）。
    *  旁白先于其后的工具行定格入档（CC 交错形态：叙述段 → 工具行），不再依赖段落空行边界、也不再被
    *  closeLive 丢弃（旧形态下旁白 token 副本在工具边界被扔、上屏的只有 phase 副本，▶ 行退役后该丢弃即
-   *  旁白整体蒸发）。终稿轮不经此点（done 自带冲刷收口），随后通道整体置空（下一旁白段全新 streamer） */
+   *  旁白整体蒸发）。终稿轮不经此点（done 自带冲刷收口），随后通道整体置空（下一旁白段全新通道） */
   private sealReply(): void {
     const live = this.state.live;
     if (!live) return;

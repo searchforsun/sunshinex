@@ -85,10 +85,10 @@ export function keyHintsFor(s: {
       ],
     };
   }
-  // 空闲/出错缺省（/help 由输入框占位符承载，不重复进条）
+  // 空闲/出错缺省（/help 由输入框占位符承载；Tab 补全只在斜杠菜单态提示——空闲无 / 前缀时 Tab 实际
+  // 是折叠历史视图，缺省条写「Tab 补全」即误导，2026-10-02 交互统一裁决撤出）
   return {
     items: [
-      { key: 'Tab', action: t('complete', '补全') },
       { key: '↑', action: t('history', '历史') },
       { key: 'Ctrl+B', action: t('subagents', '子代理') },
     ],

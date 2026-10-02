@@ -75,8 +75,8 @@ function hardSlice(line: string, width: number): string[] {
  *  不可见空白的行归一为空行——CommonMark 空白行判定只认 ASCII 空白，中文模型按全角空格排版时
  *  这类行被当正文逐行渲染（renderMd 面段落合并 / 大段空白病根）。
  *  行域语义（N1 补丁）：流式路径（session.mdConsume）逐行**带尾 \n** 喂入，而 \s 含 \n——整行测正则会
- *  连尾换行一起吞成 ''，空行不达 streamer（markdansi push('') no-op）→ 表格 flushTable 失效、段落粘连。
- *  故先剥尾 \n 只测行体，命中回补 '\n'（无尾换行的源级调用 normalizeMd 保持 ''），行域不塌 */
+ *  连尾换行一起吞成 ''，空行的行域形态丢失。故先剥尾 \n 只测行体，命中回补 '\n'
+ *  （无尾换行的源级调用 normalizeMd 保持 ''），行域不塌 */
 export function normalizeCjkLine(line: string, inFence: boolean): string {
   if (inFence) return line;
   const body = line.endsWith('\n') ? line.slice(0, -1) : line;
@@ -110,7 +110,7 @@ const RENDER_THEME = { heading: { bold: true }, tableHeader: { bold: true } };
  *  「有序列表还是有多余的行距」终裁）：prose 逻辑行间插入的空行数——按区域分级施加：**列表项
  *  （无序与有序同档）紧排成组**（同类枚举聚拢），段落/标题/引用行间单空行（论述呼吸）。
  *  代码/表格整段豁免。1 = 分区单空行档；0 = 全紧排。全局唯一档位，调此一处 */
-export const BODY_LINE_SPACING = 1;
+const BODY_LINE_SPACING = 1;
 
 /** 列表项判定（wrap:false 逻辑行，marker 尚为源形态 `- `/`1. `/`[ ] `；SGR 前缀容差、嵌套缩进容差）。
  *  返回 marker 类别（ul/ol/task）——紧排分组的成员资格 = 连续两个**同类**列表项；异类组相邻即
@@ -145,7 +145,6 @@ export function softWrapAnsi(line: string, width: number, indent = 0): string[] 
   let cur = pad;
   let curW = Math.max(0, indent);
   let breakAt = -1; // cur 内最近可断点（code unit 下标；其前入行、其后随续行）
-  let prevW = 0; // 前一可见图素簇宽（宽字符边界判定）
   let i = 0;
   while (i < line.length) {
     if (line[i] === '\x1b') {
@@ -174,13 +173,11 @@ export function softWrapAnsi(line: string, width: number, indent = 0): string[] 
         curW = Math.max(0, indent);
       }
       breakAt = -1;
-      prevW = 0;
     }
     cur += ch;
     curW += w;
     if (ch === ' ') breakAt = cur.length;
     else if (w >= 2) breakAt = cur.length - ch.length; // 宽字符前可断（CJK 字间/中英之间）
-    prevW = w;
     i += ch.length;
   }
   lines.push(cur);
@@ -241,12 +238,6 @@ export function renderMd(src: string, width: number): string {
   return renderSource(src, width);
 }
 
-/** streamer 消费的 render 工厂：width 支持函数动态求值（streamer 只在首个 reply 块创建一次，
- *  静态捕获会冻结创建时宽度——真机「表格被截断且只占半屏」实锤：宽终端下表格按冻结的窄宽截断） */
-export function createMdRender(width: number | (() => number)): (md: string) => string {
-  return (md) => renderSource(md, typeof width === 'function' ? width() : width);
-}
-
 /** 分割线判定（CommonMark hr：3+ 同字符独占一行；表格分隔行以竖线开头不受影响、围栏内不参与路由） */
 function isHrLine(line: string): boolean {
   return /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line);
@@ -294,5 +285,3 @@ function renderSource(src: string, width: number): string {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/\n+$/, '');
 }
-
-/** 尾部未完结构原文（动态区预览）：自尾向前找「结构起点」——已开表格的表头行 / 未闭合围栏开栏行 / 最近换行后的未完行 */

@@ -136,7 +136,7 @@ export function MessageList({
   // cont 边界折叠集（2026-09-30 间隔回归修复）：下一可见消息是续块（同段相邻）的当前块 seq——
   // 折叠语义按「边界」算：仅当下一块是同段续块才折叠当前块的下边距；末尾续块与其后的统计行/
   // 工具行之间是不同内容，间隔保留（真机「正文与时间步骤没间隔」病根）
-  const gapFoldAfter = new Set(visibleMessages.filter((m, i) => visibleMessages[i + 1]?.cont).map((m) => m.seq));
+  const gapFoldAfter = new Set(visibleMessages.filter((_, i) => visibleMessages[i + 1]?.cont).map((m) => m.seq));
   return (
     <Box flexDirection="column">
       <Static key={epochRef.current} items={entries}>

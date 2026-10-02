@@ -83,6 +83,16 @@ test('App：↑↓ 历史导航回填已提交输入', async () => {
     write('\u001B[B'); // ↓ 前进
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /❯ 任务乙/, '↓ 应前进到下一条');
+    // 清空复位（2026-10-02 交互统一）：召回后 Esc 清空输入，历史指针须回 -1——再 ↑ 取最新一条，
+    // 不残留召回位（旧实现 ↑ 会拿到更早一条=清空后历史错位）
+    write('[A'); // ↑ 回填「任务甲」（此时指针在乙）
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /❯ 任务甲/, '前置：再 ↑ 回到最早一条');
+    write(''); // Esc 清空输入
+    await new Promise((r) => setTimeout(r, 150));
+    write('[A'); // ↑ 应取最新（任务乙）而非残留位的更早条
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /❯ 任务乙/, '清空后 ↑ 取最新一条（histIdx 已复位）');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

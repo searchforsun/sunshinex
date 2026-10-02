@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as React from 'react';
 import { Text } from 'ink';
 import * as fs from 'fs';
 import * as os from 'os';

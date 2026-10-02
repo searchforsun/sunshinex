@@ -4,11 +4,8 @@
  *  RangeError 整进程退出（真机两轮实锤）。护盾在 Output 原型层自愈：宽度越界（非正/非有限/>4K）
  *  钳制重试，repeat 仍炸则降级 120 列兜底——视觉降级换进程存活。ink 内部路径变动时静默跳过。 */
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
-
 export function installInkOutputGuard(): void {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod: any = require('ink/build/output.js');
     const Output = mod?.default;
     if (!Output?.prototype || (Output.prototype as any).__widthGuard) return;

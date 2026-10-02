@@ -100,7 +100,7 @@ SUNSHINE.md          # 项目业务配置
 | ink + react | TUI 组件化渲染层（仅组件/入口，运行时零接触），收敛于 `src/tui/` | Renderer 接缝退原生 ANSI 最小面 |
 | sqlite-vec | KB 向量后端（`SUNSHINEX_KB_BACKEND=sqlite-vec`），收敛于 store 接缝 | local-json（缺省即回退，禁静默切换） |
 | markdown-it | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
-| markdansi | 正文/子代理转录 Markdown→ANSI 流式渲染（streamer 切块 + render 单点），收敛于 `src/tui/md-ansi.ts`（2026-09-30 替换批次：reply-flusher 自研链退役，spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 detail 回看解析 | renderMd/tailPartial 接缝稳定，替换实现不动 session/渲染分流 |
+| markdansi | 正文/子代理转录 Markdown→ANSI 流式渲染（session 块缓冲按块放行 + render 单点出口），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 detail 回看解析 | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |
 
@@ -204,7 +204,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 |------|--------|------|----------------|
 | TUI 渲染 | ink + React | 已引入 | 组件化终端渲染，收敛于 `src/tui/`（仅渲染层，运行时零接触） |
 | TUI Markdown | markdown-it | 已引入 | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` |
-| TUI Markdown 流式渲染 | markdansi | 已引入 | 正文/子代理转录流式切块与 ANSI 渲染（散文行即发、表格/围栏缓冲整块），收敛于 `src/tui/md-ansi.ts` 单点出口 |
+| TUI Markdown 流式渲染 | markdansi | 已引入 | 正文/子代理转录流式切块与 ANSI 渲染（完成行紧排缓冲、块边界整块渲染，表格/围栏整块收口），收敛于 `src/tui/md-ansi.ts` 单点出口 |
 | TUI 高亮 | highlight.js | 已引入 | 代码块语法高亮，收敛于 `src/tui/highlight.ts` |
 | TUI 宽度 | string-width | 已引入 | 中英混排/全角字符宽度测量 |
 | GUI 桌面壳 | Electron | 规划选型 | 桌面容器，未来收敛于 `src/gui/` |

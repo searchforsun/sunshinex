@@ -1,7 +1,7 @@
 // src/tui/md-ansi.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMd, wrapAnsiLines, ansiLineCount, normalizeCjkLine, isFenceLine, createMdRender, softWrapAnsi, BODY_LINE_SPACING } from './md-ansi';
+import { renderMd, wrapAnsiLines, ansiLineCount, normalizeCjkLine, isFenceLine, softWrapAnsi } from './md-ansi';
 
 const strip = (s: string): string => s.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
@@ -70,23 +70,14 @@ test('isFenceLine：以 ```/~~~ 开头即围栏行（开/闭奇偶由调用侧�
   assert.ok(!isFenceLine('普通行'));
 });
 
-test('createMdRender：tableTruncate 关闭（单元格换行不截断）+ width 函数动态求值（2026-09-30 真机「表格被截断且只占半屏」）', () => {
+test('renderMd：表格 tableTruncate 关闭（单元格换行不截断）+ 宽度受控（2026-09-30 真机「表格被截断且只占半屏」）', () => {
   const table = '| 分发点 | 位置 |\n|---|---|\n| AI 服务工厂 | core/AiCodeGeneratorServiceFactory.java:101, core/AiCodeGeneratorFacade.java:55 |';
-  const out = createMdRender(100)(table);
+  const out = renderMd(table, 100);
   assert.ok(!out.includes('…'), '长单元格换行呈现、无省略号截断');
   assert.ok(out.includes('AiCodeGeneratorFacade.java:55'), '截断丢掉的尾部内容在');
-  // width 函数形态：每次渲染动态求值（streamer 创建一次、宽度跟随终端）
-  let calls = 0;
-  const dyn = createMdRender(() => { calls += 1; return 60; });
-  dyn('| a | b |\n|---|---|\n| 1 | 2 |');
-  assert.ok(calls >= 1, 'width 函数被调用（动态求值）');
-});
-
-test('createMdRender：闭包绑定 width/highlighter（streamer options 不透传，实测定形）', () => {
-  const render40 = createMdRender(40);
-  const out = render40('| aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | b |\n|---|---|\n| 1 | 2 |');
-  assert.ok(out.includes('│'), '表格渲染成功');
-  assert.ok(out.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').split('\n').every((l) => l.length <= 40), 'width 绑定生效');
+  const narrow = renderMd('| aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | b |\n|---|---|\n| 1 | 2 |', 40);
+  assert.ok(narrow.includes('│'), '表格渲染成功');
+  assert.ok(narrow.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').split('\n').every((l) => l.length <= 40), '宽度受控（超宽单元格换行入格）');
 });
 
 /* ---------- 正文行距律·分区版（2026-10-01 用户裁决「不同区域不同行距，整体协调」+ 同日终裁

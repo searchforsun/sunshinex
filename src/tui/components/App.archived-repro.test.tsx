@@ -3,12 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as React from 'react';
 import { EventEmitter } from 'events';
 import { runTuiLoop, InkLikeInstance } from '../tui-loop';
 import { App } from './App';
 import { SessionController } from '../session';
-import { initialRetained } from '../ui-state';
 import { render } from '../test-ink';
 
 /**
