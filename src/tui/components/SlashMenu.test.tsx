@@ -152,7 +152,7 @@ test('App：技能命令入面板（描述上屏），最近使用排前', async
   const tmp = tmpDir('sunshinex-slashmenu3-');
   let term: ReturnType<typeof render> | undefined;
   try {
-    // id 共享 '/tool' 前缀：两技能同屏可比序（内置 21 条占满首屏窗口，无共同前缀则技能在窗口外）
+    // id 共享 '/tool' 前缀：两技能同屏可比序（内置 22 条占满首屏窗口，无共同前缀则技能在窗口外）
     for (const [id, desc] of [['tool-alpha', 'Alpha tool skill'], ['tool-zeta', 'Zeta tool skill']] as const) {
       const dir = path.join(tmp, '.sunshinex', 'skills', id);
       fs.mkdirSync(dir, { recursive: true });

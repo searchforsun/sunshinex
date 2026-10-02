@@ -243,6 +243,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/model` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效） |
 | `/model-effort` | 切换思考强度：选择卡七档 + default，回执实际生效档 |
 | `/compact [关注点]` | 立即压缩上下文，可指定优先保留的内容；接近窗口上限时也会自动压缩 |
+| `/context` | 上下文构成报表：各段（系统提示词稳定段 / SUNSHINE.md 指令 / 技能清单 / 记忆索引 / 压缩摘要 / 会话链 / 待注入技能块）的估算 token 大小与占窗口比例，会话链再按动作细分（task / reply / tool-call / tool-result…）；只读观测，不改变上下文 |
 | `/memory` | 列出持久记忆 |
 | `/memory-add <内容>` | 添加记忆（与自动提取同一写时闸门） |
 | `/memory-rm` | 删除记忆：多选卡 Space 勾选、Enter 批删、Esc 取消；>8 条支持输入筛选（`Esc` 先清词再取消） |

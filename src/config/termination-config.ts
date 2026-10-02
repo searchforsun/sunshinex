@@ -29,9 +29,17 @@ export function graphNodesEnv(env: NodeJS.ProcessEnv = process.env): number | un
   return positiveIntOrUndefined(env, 'SUNSHINEX_MAX_GRAPH_NODES');
 }
 
+/** 上下文窗口缺省 tokens（200k，对标长上下文安全水位）；预算基线与观测面（状态栏分母、/context）共用单点 */
+export const CONTEXT_WINDOW_DEFAULT = 200_000;
+
 /** 上下文窗口 tokens（缺省 200k，见 src/harness/reactor.ts：状态栏「上下文占用」分母与压缩占比共用基准） */
 export function contextWindowEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveIntOrUndefined(env, 'SUNSHINEX_CONTEXT_WINDOW');
+}
+
+/** 上下文窗口解析定值（env 覆盖 > 缺省 200k）：Reactor 预算与 /context 观测面同源取值，防两处 `?? 200_000` 漂移 */
+export function contextWindowTokens(env: NodeJS.ProcessEnv = process.env): number {
+  return contextWindowEnv(env) ?? CONTEXT_WINDOW_DEFAULT;
 }
 
 /** 主链单 run token 硬上限（缺省不设——护栏只靠步数/墙钟，预算是兜底不是限制；见 src/loop/nodes.ts agentNode） */

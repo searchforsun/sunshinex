@@ -22,7 +22,7 @@ import {
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
-import { reactorMaxStepsEnv, contextWindowEnv, subagentTokenCapEnv } from '../config/termination-config';
+import { reactorMaxStepsEnv, contextWindowTokens, subagentTokenCapEnv } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -135,7 +135,7 @@ export class Reactor {
     // 缺省预算：内建缺省 200k（对标长上下文安全水位）；SUNSHINEX_CONTEXT_WINDOW 可按模型最大上下文放大
     // （状态栏「上下文占用」分母与压缩占比共用此基准）；非法值 fail-fast（contextWindowEnv，对齐
     // MAX_STEPS/MAX_LOOP_ITERATIONS 同款口径——旧形态静默回退 200k 即「配置没生效的排查泥潭」）
-    const window = contextWindowEnv() ?? 200_000;
+    const window = contextWindowTokens();
     const budget = opts?.budget ?? {
       total: window,
       reserve: Math.floor(window / 5),
@@ -411,8 +411,9 @@ export class Reactor {
   }
 
   /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；工具清单经 tools 字段下发、动作经 tool_calls 结构化承载。
-   *  输出约定槽位按交互面分叉：outputStyle 缺省 = MARKDOWN_LINE 原文（既有前缀基线零漂移）；命中面 = 面专用行整行替代（零双份） */
-  private chatStableSegment(): string {
+   *  输出约定槽位按交互面分叉：outputStyle 缺省 = MARKDOWN_LINE 原文（既有前缀基线零漂移）；命中面 = 面专用行整行替代（零双份）。
+   *  公开只读（/context 构成观测消费，与 chatRound 装配同一单点——禁第二处拼装） */
+  stableSegment(): string {
     return [
       IDENTITY_LINE,
       outputStyleLine(this.deps.outputStyle),
@@ -442,7 +443,7 @@ export class Reactor {
     const startedAt = Date.now();
     this.emit('model-start', undefined, { step });
     const messages = buildMessages({
-      stableSegment: this.chatStableSegment(),
+      stableSegment: this.stableSegment(),
       snapshot: this.deps.context.snapshotView(),
       compacted: this.deps.context.compactedView(),
       // 压缩水位过滤：压缩点前的链行已折叠进压缩块，不得双份回流（runCompaction 契约）

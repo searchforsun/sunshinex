@@ -3,7 +3,7 @@ import { t } from '../i18n';
 /** 内置斜杠命令清单唯一源（规格 2026-09-22-skill-as-command D6）：
  *  App 重导出保持既有 import 路径（components/App），session 消费同一单点防双清单漂移；
  *  数组内容与顺序零漂移（原 components/App.tsx 声明照搬），顺序即 Tab 循环顺序。 */
-export const SLASH_COMMANDS = ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/plan', '/goal', '/model', '/model-effort', '/add-dir', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
+export const SLASH_COMMANDS = ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-effort', '/add-dir', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
 
 /** 内置命令描述（2026-09-30 纵向命令面板）：键为去斜杠命令词，值为运行期求值的本地化描述——
  *  t() 运行期求值防语言装配冻结（先例：approvalSelectorOptions）；文案与 slashHelp 同源口径收一行为限 */
@@ -19,6 +19,7 @@ export function slashCommandDescriptions(): Record<string, string> {
     rewind: t('rewind to an earlier turn', '回退到更早的任务轮'),
     fork: t('fork a parallel session', '分叉出平行会话'),
     compact: t('compress context', '压缩上下文'),
+    context: t('context usage breakdown', '上下文各段占比与大小'),
     plan: t('plan first, execute on approval', '先规划后执行'),
     goal: t('run the verify-fix loop', '运行完整验收修正环'),
     model: t('switch model tier', '切换模型档位'),

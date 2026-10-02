@@ -3,13 +3,14 @@ import type { TodoItem } from '../types';
 import { ApprovalDecision, ApprovalRequest, ModelTier, ReasoningEffort, SessionEvent } from '../types';
 import { EFFORT_ORDER, parseEffort } from '../model/adapter';
 import { t } from '../i18n';
-import { formatDuration, formatTokens } from './format';
+import { formatDuration, formatTokens, formatContextBreakdown } from './format';
 import { RunOutcome, TuiRuntime, TuiRuntimeOpts, createRuntime } from './runtime';
 import { parseTier } from '../runtime';
 import { isFenceLine, normalizeCjkLine, renderMd, stripAnsi } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
-import { ContextManager, chainToHistoryItems, runCompaction } from '../harness/context';
+import { ContextManager, chainToHistoryItems, runCompaction, contextBreakdown } from '../harness/context';
+import { contextWindowTokens } from '../config/termination-config';
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
@@ -248,6 +249,7 @@ function slashHelp(): string[] {
     t('  /rewind        rewind current session to an earlier turn', '  /rewind        回退当前会话到更早的任务轮'),
     t('  /fork          fork a parallel session from any past turn', '  /fork          从任意历史轮分叉出平行会话'),
     t('  /compact       compress context: /compact [focus]', '  /compact       压缩上下文：/compact [关注点]'),
+    t('  /context       context usage breakdown (parts, size, share)', '  /context       上下文构成（各段大小与占比）'),
     t('  /model         switch model tier (selector)', '  /model         切换模型档位（选择卡）'),
     t('  /model-effort  switch reasoning effort (selector)', '  /model-effort  切换思考强度（选择卡）'),
     t('  /add-dir <dir>  extend trusted directories (read+write, this session)', '  /add-dir <dir>  扩展信任目录（读写，本会话内生效）'),
@@ -1313,6 +1315,25 @@ export class SessionController {
       const after = ctx.window.estimate(ctx.assemble()).used;
       this.state = { ...this.state, metrics: { ...this.state.metrics, ctxUsed: after } };
       this.pushMsg('system', t(`Compressed: ${r.chunks.length} summary chunks re-injected (ctx ${before} → ${after} tokens)`, `已压缩：${r.chunks.length} 个摘要块重注入（水位 ${before} → ${after} tokens）`));
+      return;
+    }
+    if (cmd === '/context') {
+      // 上下文构成观测（只读零副作用）：分段与 buildMessages 消息面同构（稳定段+快照三段+压缩块+链+技能块），
+      // 窗口分母与 Reactor 压缩判定同源；技能块走 peek 不消费、不经 assemble、不写链——观测不改变被观测面
+      const ctx = this.runtime.harness.context;
+      const parts = ctx.snapshotPartsView();
+      const b = contextBreakdown({
+        stableSegment: this.runtime.harness.reactor.stableSegment(),
+        instructions: parts.instructions,
+        skills: parts.skills,
+        memory: parts.memory,
+        compacted: ctx.compactedView(),
+        chain: ctx.chainView(),
+        skill: ctx.peekSkill(),
+        window: contextWindowTokens(),
+        chainFrom: ctx.chainFromView(),
+      });
+      this.pushMsg('system', formatContextBreakdown(b));
       return;
     }
     if (cmd === '/plan') {

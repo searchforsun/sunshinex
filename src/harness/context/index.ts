@@ -13,6 +13,9 @@ import { maskText } from '../security/chain';
 import { isModelSummarizer, summarizeWithModel } from './summarizer';
 import type { ModelAdapter } from '../../model/adapter';
 
+export { contextBreakdown } from './breakdown';
+export type { BreakdownPart, BreakdownPartId, ChainActionStat, ContextBreakdown } from './breakdown';
+
 const RECENT_LIMIT = 5;
 const REREAD_MAX_LINES = 500;
 
@@ -50,6 +53,9 @@ export class ContextManager {
   private compactInstructions: string | null = null;
   /** 装配快照（规格 G 项）：SUNSHINE.md 会话冻结——构造时读盘一次，assemble 只读快照 */
   private contextSnapshot: ContextItem[] = [];
+  /** 快照分段（构成观测面）：instructions（SUNSHINE.md 两层行）/ skills（技能清单）/ memory（记忆索引）——
+   *  与 contextSnapshot 同刷新点重建（分段保存：三段混入快照后 kind 无法区分，/context 分段统计的事实源） */
+  private snapshotParts: { instructions: ContextItem[]; skills: ContextItem[]; memory: ContextItem[] } = { instructions: [], skills: [], memory: [] };
   /** 会话变更订阅（单槽，后注册覆盖；restoreSession 直注入不经过此口） */
   private changeSink?: (c: ContextChange) => void;
   /** 动态改动尾追基线（规范 N1 / 规格 §9.2）：刷新点捕获，会话中途与磁盘比对不一致即尾追变更说明；
@@ -74,8 +80,14 @@ export class ContextManager {
       this.compactInstructions = null;
     }
     // 会话快照（G 项）：构造即冻结，assemble 不再每轮读盘（中途改盘不位移前缀）；记忆索引条目随快照装载（auto memory §3）
-    this.contextSnapshot = [...this.loader.load(), ...this.skillsIndexItems(), ...this.memoryIndexItems()];
+    this.rebuildSnapshot();
     this.captureBaselines();
+  }
+
+  /** 快照重建单点（构造与 reloadContext 共用，防两处装配漂移）：分段装载 + 展平快照一次成对落字段 */
+  private rebuildSnapshot(): void {
+    this.snapshotParts = { instructions: this.loader.load(), skills: this.skillsIndexItems(), memory: this.memoryIndexItems() };
+    this.contextSnapshot = [...this.snapshotParts.instructions, ...this.snapshotParts.skills, ...this.snapshotParts.memory];
   }
 
   /** 刷新点基线捕获（构造与 reloadContext 共用单点）：会话常量漂移检测的比对基准，随刷新点与磁盘对齐 */
@@ -290,8 +302,23 @@ export class ContextManager {
     return this.contextSnapshot;
   }
 
+  /** 快照分段只读视图（/context 构成观测面）：与 snapshotView 同刷新点、内部引用直读（调用方禁改写） */
+  snapshotPartsView(): { instructions: ContextItem[]; skills: ContextItem[]; memory: ContextItem[] } {
+    return this.snapshotParts;
+  }
+
   compactedView(): ContextItem[] {
     return this.compacted;
+  }
+
+  /** 压缩水位只读视图：链前 N 行已折叠进压缩块（chainView 不含这部分） */
+  chainFromView(): number {
+    return this.chainFrom;
+  }
+
+  /** 待注入技能块只读窥视（与 takePendingSkill 同源不消费）：/context 观测用——观测不得改变装配面 */
+  peekSkill(): string | null {
+    return this.pendingSkill;
   }
 
   /** 技能块消费（与 assemble 消费即清同语义）：chat 消息面经此取用置尾，不经 assemble 消费 */
@@ -327,7 +354,7 @@ export class ContextManager {
 
   /** 会话上下文快照重载（SUNSHINE.md 冻结的唯一显式刷新口之一）：/init 写盘后、压缩成功、/new 时调用 */
   reloadContext(): void {
-    this.contextSnapshot = [...this.loader.load(), ...this.skillsIndexItems(), ...this.memoryIndexItems()];
+    this.rebuildSnapshot();
     // Compact Instructions 与快照同源（E 项）：刷新快照时一并重提取
     try {
       this.compactInstructions = extractCompactInstructions(fs.readFileSync(path.join(this.rootPath, 'SUNSHINE.md'), 'utf8'));
