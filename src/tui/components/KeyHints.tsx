@@ -118,7 +118,8 @@ export function KeyHints({ items, columns }: { items: KeyHintItem[]; columns: nu
   return (
     // 统一系统提示色（2026-10-02 用户裁决）：整行暗灰，键名与动作词同色同权重——无 icon、无粗体、无反色底
     <Text dimColor>
-      {fitted.map((it, i) => `${i > 0 ? ' · ' : ''}${it.key} ${it.action}`)}
+      {/* 首列空格与 StatusBar 同缩进（状态栏 head 自带前导空格、budget columns-1）——底缘两行左缘对齐 */}
+      {' ' + fitted.map((it) => `${it.key} ${it.action}`).join(' · ')}
     </Text>
   );
 }
