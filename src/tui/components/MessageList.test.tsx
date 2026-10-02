@@ -122,3 +122,15 @@ test('MessageList：MdBufferPreview 全文尾窗——cap 内尾段全文流式�
   const liveShort: LiveBlock = { kind: 'reply', text: '已入档。\n\n段中一行', startedAt: 0 } as LiveBlock;
   assert.deepEqual(replyPreviewWindow(liveShort, 80, 18).join('\n'), '段中一行', 'cap 内尾段全文不截');
 });
+
+test('replyPreviewWindow：水位坐标失配防御——tailStart 越界回落全文起点（2026-10-02「流式正文隐形」钉：交错/重放边界下 tailStart 是 mdSource 坐标而 live.text 重起算，越界切片恒空=预览黑窗、正文隐形流式直到块边界一次性倾泻）', () => {
+  const live: LiveBlock = { kind: 'reply', text: '交错后的新正文正在流式长出', startedAt: 0, tailStart: 999 } as LiveBlock;
+  assert.match(
+    replyPreviewWindow(live, 80, 18).join('\n'),
+    /新正文/,
+    '坐标失配时从 0 起显（live.text 整体即未消费尾段），不得恒空黑窗',
+  );
+  // 在界水位照旧精确切片（防回归：越界分支不得吞掉正常水位路径）
+  const ok: LiveBlock = { kind: 'reply', text: '已入档段\n\n未入档尾段行', startedAt: 0, tailStart: '已入档段\n\n'.length } as LiveBlock;
+  assert.equal(replyPreviewWindow(ok, 80, 18).join('\n'), '未入档尾段行', '在界水位精确切片照旧');
+});

@@ -1998,11 +1998,20 @@ export class SessionController {
     else this.notify();
   }
 
-  /** 追加实时区内容：同类续接；异类先收束旧块（thinking 折叠为摘要行，reply 片段已即时入档、终稿收口由 done/seal 接管） */
+  /** 追加实时区内容：同类续接；异类先收束旧块（thinking 折叠为摘要行；reply→thinking 交错经 sealReply
+   *  尾段成块入档+通道复位，其余 reply 收束走 closeLive、终稿收口由 done/seal 接管） */
   private appendLive(kind: LiveBlock['kind'], delta: string): void {
     if (!delta) return;
     const live = this.state.live;
-    if (live && live.kind !== kind) this.closeLive();
+    if (live && live.kind !== kind) {
+      // 正文→思考交错（2026-10-02「流式输入框跳到中间」）：reply 尾段必须经 sealReply 成块入档。
+      // 旧路径 closeLive 只丢 live 块——MdBufferPreview 整段塌掉零静态补偿，动态帧瞬矮 p+1 行，
+      // ink 帧顶锚定重写即把帧底输入框抬到屏幕中部；且 md 通道不清（mdSource/mdTailStart 跨块存续），
+      // 新正文 live.text 重起算与 mdSource 坐标错位，tailStart 越界即预览恒空（正文隐形流式直到块边界）。
+      // sealReply 与工具边界旁白封口同款零位移交换：预览 p 行 → 静态 p+1 行 + 思考窗 6 行（净增滚动、无跳变）
+      if (live.kind === 'reply' && kind === 'thinking') this.sealReply();
+      else this.closeLive();
+    }
     const cur = this.state.live;
     if (cur && cur.kind === kind) {
       this.state = { ...this.state, live: { ...cur, text: cur.text + delta } };
@@ -2060,6 +2069,14 @@ export class SessionController {
     const buf = this.mdHoldBuf;
     this.mdHoldBuf = '';
     this.mdTailStart = undefined;
+    // 水位镜像必须先于入档通知（2026-10-02「纯正文流式输入框反复跳中」真凶）：pushMsg→notify 同步
+    // 触发提交渲染，若此刻 state.live.tailStart 仍是旧值（指向刚提交的块首），MdBufferPreview 会在
+    // 提交帧里把已入档的整块再演一遍——「静态 + 预览」双份超高帧滚动，80ms 后水位落定（mdConsume
+    // 末尾镜像）帧再塌回去：输入框每段落一跳（跳到中部、随下一段预览重新往下长，循环往复）。
+    // 镜像先写，提交帧即恒为「静态 p+1 行 + 空预览」零位移交换，帧底不动
+    if (this.state.live?.kind === 'reply') {
+      this.state = { ...this.state, live: { ...this.state.live, tailStart: undefined } };
+    }
     this.mdPushFragment(renderMd(buf, this.mdWidth()));
   }
 

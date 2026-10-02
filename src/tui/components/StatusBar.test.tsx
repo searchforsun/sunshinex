@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { render } from '../test-ink';
-import { StatusBar } from './StatusBar';
+import { StatusBar, fitStatusLine } from './StatusBar';
 import { StatusMetrics, SessionStatus } from '../session';
 import { setLanguage } from '../../i18n';
+import { displayWidth } from '../text-band';
 
 function metrics(over: Partial<StatusMetrics>): StatusMetrics {
   return { turnStartedAt: 0, turnTokens: 1200, turnPromptTokens: 1200, turnCacheTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 5, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0, sessionTotalTokens: 0, ...over };
@@ -118,4 +119,36 @@ test('StatusBar：模型段去掉 model 前缀字样（纯模型名，不带 pro
 test('StatusBar：全新会话（0 轮 0 步）不显示 turns/steps 段', () => {
   const f = frameOf(metrics({ sessionTurns: 0, sessionSteps: 0 }), 'm');
   assert.ok(!f.includes('turns'), '零样本不显示轮/步段');
+});
+
+test('StatusBar：恒 1 行段降级（2026-10-02「流式闪动」收尾钉）——超宽段按优先级离场（effort→model→turns→cache→ctx），tokens 与状态词恒保留，丢尽仍超宽整行省略', () => {
+  const head = ' ↑1234k tokens';
+  const mids = [
+    { text: ' · ctx 456k/1M (45.6%)', prio: 1 },
+    { text: ' · cache 78.9%', prio: 2 },
+    { text: ' · 12 turns · 34 steps', prio: 3 },
+    { text: ' · glm-9.9-pro-preview', prio: 4 },
+    { text: ' · effort high', prio: 5 },
+  ];
+  const wide = fitStatusLine(head, mids, ' · 运行中', 125);
+  assert.ok(wide.includes('effort high') && wide.includes('ctx 456k'), '宽屏（125 列）全段保留');
+  const narrow = fitStatusLine(head, mids, ' · 运行中', 60);
+  assert.ok(!narrow.includes('effort high'), 'effort 最先离场');
+  assert.ok(!narrow.includes('glm-9.9'), 'model 次之');
+  assert.ok(narrow.includes('↑1234k tokens') && narrow.includes('运行中'), 'head/tail 恒保留');
+  assert.ok(displayWidth(narrow) <= 59, `降级后 ≤ 列宽-1（实际 ${displayWidth(narrow)}）`);
+  const tiny = fitStatusLine(head, mids, ' · 运行中', 20);
+  assert.ok(!tiny.includes('\n') && displayWidth(tiny) <= 19, '极窄整行省略仍恒 1 行');
+});
+
+test('StatusBar：渲染面窄终端恒 1 行——裸 Text 自然折行即击穿 App previewCap 的 chrome 实账（+1 行），动态帧触顶走 ink3 clearTerminal 整屏重放=闪屏源', () => {
+  const m = metrics({ sessionTotalTokens: 1_234_567, sessionPromptTokens: 510_000, sessionCacheTokens: 500_000, sessionTurns: 12, sessionSteps: 34 });
+  const one = render(
+    <StatusBar metrics={m} status="running" model="glm-9.9-pro-preview" effort="high" context={{ used: 456_000, window: 1_000_000 }} />,
+    40,
+  );
+  const f = one.lastFrame() ?? '';
+  assert.equal(f.replace(/\n$/, '').split('\n').length, 1, '窄终端（40 列）状态栏不折行（恒 1 行）');
+  assert.match(f, /↑/, 'tokens 段恒在场');
+  one.unmount();
 });

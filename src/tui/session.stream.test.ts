@@ -7,6 +7,7 @@ import { SessionController } from './session';
 import type { ChatRequest, ChatResult } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
 import { stripAnsi } from './md-ansi';
+import { replyPreviewWindow } from './components/MessageList';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -168,6 +169,89 @@ test('会话归约：工具边界旁白封口——无空行结尾的叙述段�
     const assistant = ctrl.getState().messages.filter((m) => m.role === 'assistant').map((m) => stripAnsi(m.text).replace(/\n+$/, ''));
     assert.ok(assistant.includes('核对完成。'), '终稿照常入档');
     assert.equal(assistant.filter((t) => t === '先核对配置层再读仓库结构。').length, 1, '封口旁白恰一份');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话归约：块边界提交帧零位移（2026-10-02「纯正文流式输入框反复跳中」真凶钉）——水位镜像先于入档通知，提交帧预览为空（不得重演已入档块）', async () => {
+  const tmp = tmpdir('sunshinex-sess-stalewm-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: {
+        provider: 'stalewm-stub',
+        chat: async () => ({ finish: 'stop' as const, content: '', toolCalls: [] }),
+        chatStream: async (_req: ChatRequest, _onDelta: (t: string) => void) => {
+          return { finish: 'stop' as const, content: '', toolCalls: [] };
+        },
+      } as never,
+    });
+    const fire = (e: { type: string; text?: string; payload?: Record<string, unknown> }): void =>
+      (ctrl as unknown as { onEventForTest(e: never): void }).onEventForTest(e as never);
+    let checked = false;
+    const unsub = ctrl.onState((s) => {
+      if (checked) return;
+      if (!s.messages.some((m) => m.ansi && stripAnsi(m.text).includes('第二行'))) return;
+      checked = true;
+      // 提交通知的同步时刻：旧实现 state.live.tailStart 仍是旧值（指向刚提交的块首）——MdBufferPreview
+      // 在同一提交帧里把整块再演一遍（「静态+预览」双份超高帧滚动），80ms 后水位落定（mdConsume 末尾
+      // 镜像）帧再塌回去：输入框每段落一跳（跳到中部、随下一段预览重新往下长）。镜像须先于 pushMsg→notify
+      assert.ok(s.live?.kind === 'reply', '提交时刻 live 仍在（reply 流式中）');
+      assert.equal(s.live.tailStart, undefined, '提交时刻水位已复位（mdFlushHold 镜像先于入档通知）');
+      assert.deepEqual(replyPreviewWindow(s.live, 80, 18), [], '提交帧预览为空（零位移交换：静态 p+1 行 + 空预览）');
+    });
+    fire({ type: 'token', text: '第一段行一。\n第二行。\n\n' });
+    unsub();
+    assert.ok(checked, '已观测到提交通知');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('会话归约：正文→思考交错零位移收口（2026-10-02「流式输入框跳到中间」病根钉）——尾段在交错点成块入档 + md 通道复位坐标同步（防预览恒空）', async () => {
+  const tmp = tmpdir('sunshinex-sess-interleave-');
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: {
+        provider: 'interleave-stub',
+        chat: async () => ({ finish: 'stop' as const, content: '', toolCalls: [] }),
+        chatStream: async (_req: ChatRequest, _onDelta: (t: string) => void) => {
+          return { finish: 'stop' as const, content: '', toolCalls: [] };
+        },
+      } as never,
+    });
+    const fire = (e: { type: string; text?: string; payload?: Record<string, unknown> }): void =>
+      (ctrl as unknown as { onEventForTest(e: never): void }).onEventForTest(e as never);
+    // 第一段：闭合块入档（建立深层水位）+ 未闭合尾段（MdBufferPreview 正在显示的形态）
+    fire({ type: 'token', text: '第一段行一\n第一段行二\n\n' });
+    fire({ type: 'token', text: '第二段行一\n第二段行二\n第二段行三\n' });
+    const before = ctrl.getState().live;
+    assert.ok(before?.kind === 'reply' && typeof before.tailStart === 'number' && before.tailStart > 0, '前置：深层水位（第二段未闭合，tailStart 指向段首）');
+    // 交错点：reasoning 增量到达（无 tool-call/seal——GLM 深度思考模型的段间思考形态）
+    fire({ type: 'reasoning', text: '段间思考' });
+    const st = ctrl.getState();
+    assert.equal(st.live?.kind, 'thinking', '交错后 live 切思考窗');
+    // 钉 1（零位移交换）：未闭合尾段必须已在交错点成块入档——旧路径 closeLive 只丢 live 块，
+    // MdBufferPreview 整段塌掉零静态补偿，动态帧瞬矮 p+1 行、帧底输入框被抬到屏幕中部
+    const sealed = st.messages.filter((m) => m.ansi).map((m) => stripAnsi(m.text));
+    assert.ok(sealed.some((t) => t.includes('第二段行三')), '未闭合尾段在交错点封口入档（预览 p 行 → 静态 p+1 行）');
+    // 钉 2（坐标复位）：思考后新正文与 md 水位同坐标系——旧路径 mdSource 跨块存续、live.text 重起算，
+    // tailStart 越界即 replyPreviewWindow 恒空（正文隐形流式、输入框悬在中部直到块边界砸回）
+    fire({ type: 'token', text: '第三段行一\n第三段行二\n' });
+    const live = ctrl.getState().live;
+    assert.ok(live?.kind === 'reply', '思考后正文恢复');
+    assert.ok(
+      live.tailStart === undefined || live.tailStart <= live.text.length,
+      `tailStart(${live.tailStart}) ≤ live.text 长(${live.text.length})——通道复位后坐标同步`,
+    );
+    // 收口：三段内容无丢失无重复
+    fire({ type: 'done', text: '', payload: {} });
+    const plain = ctrl.getState().messages.filter((m) => m.ansi).map((m) => stripAnsi(m.text)).join('\n');
+    for (const seg of ['第一段行二', '第二段行三', '第三段行二']) {
+      assert.equal(plain.split(seg).length - 1, 1, `${seg} 恰一份（无丢失无重复）`);
+    }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

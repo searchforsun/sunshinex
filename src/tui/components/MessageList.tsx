@@ -185,7 +185,15 @@ export function MessageList({
  *  ③流式不是局部片段（恒高小窗把未闭合围栏/表格 hold 切成局部=错）。空尾段（块闭合到下一 delta
  *  之间）返回空数组=窗口不占位（输入区紧跟已入档内容，块闭合零位移由 Static 原位衔接保证） */
 export function replyPreviewWindow(live: LiveBlock, columns: number, cap: number): string[] {
-  const start = typeof live.tailStart === 'number' ? live.tailStart : live.text.lastIndexOf('\n') + 1;
+  // 水位三态：数值在界内（mdConsume 镜像，常态）按水位切片；数值越界（tailStart 是 mdSource 坐标、
+  // live.text 已重起算——坐标失配防御）live.text 整体即未消费尾段、从 0 起，不得恒空黑窗；
+  // 无水位（块刚放行）回落最后未完行（既有语义）
+  const start =
+    typeof live.tailStart === 'number'
+      ? live.tailStart <= live.text.length
+        ? live.tailStart
+        : 0
+      : live.text.lastIndexOf('\n') + 1;
   const tail = live.text.slice(start);
   if (tail.trim().length === 0) return [];
   const rendered = renderMd(tail, columns);
