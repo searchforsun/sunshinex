@@ -845,7 +845,7 @@ export function App({
           rows={rows}
           expanded={inspectExpanded}
         />
-        {hints ? <KeyHints items={hints.items} emphasized={hints.emphasized} columns={columns} /> : null}
+        {hints ? <KeyHints items={hints.items} columns={columns} /> : null}
         </>
       ) : (
         <>
@@ -933,7 +933,7 @@ export function App({
       {/* 恒驻键提示条（2026-10-02 用户裁决）：输入框下方常驻一行随状态切换——所有交互的快捷键
           一眼可见零查找；banner 顶部快捷键行/浏览灰底行/暂停灰底行已退役归一到这一条（banner 行
           滚出视口即死提示）；模态卡在场 hints=undefined 条退场（卡 hint 承载） */}
-      {hints ? <KeyHints items={hints.items} emphasized={hints.emphasized} columns={columns} /> : null}
+      {hints ? <KeyHints items={hints.items} columns={columns} /> : null}
       <StatusBar
         metrics={state.metrics}
         status={state.status}

@@ -18,7 +18,7 @@ test('App：启动横幅 + 输入框 + 状态栏常驻渲染', async () => {
     const all = allOutput();
     assert.match(all, /SunshineX TUI v0\.1\.0/); // 横幅入 Static 一次性打印
     assert.match(all, /test-model/);
-    assert.match(all, /\/help commands/);
+    assert.match(all, /\/help for commands/, '/help 引导由输入框占位符承载（banner 行与键提示条均不双显）');
     const frame = lastFrame() ?? '';
     assert.match(frame, /❯/);          // 输入框提示符
     assert.match(frame, /↑0 tokens/);  // 状态栏本轮 tokens

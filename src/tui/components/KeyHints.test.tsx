@@ -7,23 +7,22 @@ import { KeyHints, keyHintsFor, fitHints } from './KeyHints';
 test('keyHintsFor 矩阵：运行中=暂停/待办/详情，子代理在场追加 Ctrl+B', () => {
   const base = keyHintsFor({ status: 'running' })!;
   assert.deepEqual(base.items.map((i) => i.key), ['Ctrl+C', 'Tab', 'Ctrl+O']);
-  assert.equal(base.emphasized, false, '运行中常态灰字');
   const withChildren = keyHintsFor({ status: 'running', hasChildren: true })!;
   assert.deepEqual(withChildren.items.map((i) => i.key), ['Ctrl+C', 'Tab', 'Ctrl+O', 'Ctrl+B'], '子代理在场追加浏览键');
 });
 
-test('keyHintsFor 矩阵：空闲两态（缺省含 /help，菜单在场换面板键）与 inspect/browse/pauseConfirm', () => {
+test('keyHintsFor 矩阵：空闲两态与 inspect/browse/pauseConfirm（/help 不进条——占位符已承载，冗余裁决）', () => {
   const idle = keyHintsFor({ status: 'idle' })!;
-  assert.deepEqual(idle.items.map((i) => i.key), ['Tab', '↑', 'Ctrl+B', '/help'], 'banner 退役后 /help 由条承载');
+  assert.deepEqual(idle.items.map((i) => i.key), ['Tab', '↑', 'Ctrl+B'], '/help 撤出（与输入框占位符不双显）');
   const menu = keyHintsFor({ status: 'idle', menuVisible: true })!;
-  assert.deepEqual(menu.items.map((i) => i.key), ['↑↓', 'Tab', 'Enter'], '斜杠菜单在场换面板键');
+  assert.deepEqual(menu.items.map((i) => i.key), ['↑↓', 'Tab'], '斜杠菜单在场换面板键（Enter 由占位符承载）');
   const inspect = keyHintsFor({ status: 'running', inspect: true })!;
   assert.deepEqual(inspect.items.map((i) => i.key), ['Tab', 'Ctrl+C', 'Esc'], '全屏视图键（head 内嵌退役）');
   const browse = keyHintsFor({ status: 'idle', browse: true })!;
-  assert.equal(browse.emphasized, true, '浏览接管灰底强调');
+  assert.deepEqual(browse.items.map((i) => i.key), ['↑↓', 'Enter', 'Esc'], '浏览接管键');
   const pause = keyHintsFor({ status: 'running', pauseConfirm: true })!;
-  assert.equal(pause.emphasized, true, '暂停确认灰底强调');
   assert.equal(pause.items[0]!.key.includes('Ctrl+C') || pause.items[0]!.key.includes('ctrl+c'), true, '首键=再按 Ctrl+C');
+  assert.equal(pause.items[1]!.key, 'Esc');
 });
 
 test('keyHintsFor 矩阵：模态卡在场条退场（undefined）', () => {
@@ -49,15 +48,11 @@ test('fitHints 截断：超宽按优先序裁尾、首位恒保留', () => {
   assert.equal(one[0]!.key, 'Ctrl+C');
 });
 
-test('KeyHints 渲染：常态灰字含键名动作，emphasized 整行灰底语义不炸', () => {
-  const view = keyHintsFor({ status: 'running' })!;
-  const one = render(<KeyHints items={view.items} columns={100} />);
+test('KeyHints 渲染：整行统一系统提示色——无 ⌨ 前缀、无粗体键名、无反色底（样式终版裁决）', () => {
+  const one = render(<KeyHints items={keyHintsFor({ status: 'running' })!.items} columns={100} />);
   const f = one.lastFrame() ?? '';
-  assert.ok(f.includes('⌨'), '前缀图标');
+  assert.ok(!f.includes('⌨'), '无 ⌨ 前缀 icon');
   assert.ok(f.includes('Ctrl+C'), '键名呈现');
+  assert.ok(!f.includes('\u001b[1m') && !f.includes('\u001b[7m'), '无粗体/反色转义（纯 dimColor 单段）');
   one.unmount();
-  const em = keyHintsFor({ status: 'idle', browse: true })!;
-  const two = render(<KeyHints items={em.items} emphasized columns={100} />);
-  assert.ok((two.lastFrame() ?? '').includes('Enter'), '强调态键名呈现');
-  two.unmount();
 });

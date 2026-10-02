@@ -120,7 +120,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
 
     write('\u0002'); // Ctrl+B 进入
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /⌨ ↑↓ move · Enter inspect · Esc exit/, '浏览键提示条出现（KeyHints emphasized 承载）');
+    assert.match(lastFrame() ?? '', /↑↓ move · Enter inspect · Esc exit/, '浏览键提示条出现（KeyHints 承载，统一系统提示色）');
     assert.match(lastFrame() ?? '', /❯ \[wr\]/, '浏览列表在动态区呈现已完成项（光标缺省落最近一条）');
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));

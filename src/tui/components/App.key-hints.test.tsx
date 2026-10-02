@@ -40,12 +40,13 @@ test('App 键提示条：空闲态常驻（补全/历史/子代理/help），ban
   try {
     const ctrl = new SessionController({ root: tmp });
     term = render(<App controller={ctrl} />);
-    await waitFor(() => (term?.lastFrame() ?? '').includes('⌨'), 3000);
+    await waitFor(() => (term?.lastFrame() ?? '').includes('Ctrl+B'), 3000);
     const f = term?.lastFrame() ?? '';
     assert.ok(f.includes('Ctrl+B'), '空闲态含子代理浏览键（此前无任何可见提示）');
-    assert.ok(f.includes('/help'), '/help 由条承载（banner 行退役后唯一入口）');
+    assert.equal(f.split('/help').length - 1, 1, '/help 全帧恰一次（占位符承载，条不双显）');
+    assert.ok(!f.includes('⌨'), '无 icon 前缀');
     assert.ok(!(term?.allOutput() ?? '').includes('plan-then-execute'), 'banner 旧快捷键行退役');
-    assert.ok(f.includes('❯') && f.indexOf('⌨') > f.indexOf('❯'), '条在输入框下方（一眼可见位）');
+    assert.ok(f.includes('❯') && f.indexOf('Ctrl+B') > f.indexOf('❯'), '条在输入框下方（一眼可见位）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -60,7 +61,7 @@ test('App 键提示条：运行中换暂停/待办/详情组，模态卡在场�
   try {
     await waitFor(() => ctrl.getState().status === 'running');
     term = render(<App controller={ctrl} />);
-    await waitFor(() => (term?.lastFrame() ?? '').includes('⌨'), 3000);
+    await waitFor(() => (term?.lastFrame() ?? '').includes('Ctrl+C'), 3000);
     const f = term?.lastFrame() ?? '';
     assert.ok(f.includes('Ctrl+C'), '运行中含暂停键（两次 Ctrl+C 第一段入口）');
     assert.ok(f.includes('Ctrl+O'), '运行中含详情键');
