@@ -13,6 +13,10 @@ import { Key, useStdin } from 'ink';
 export interface RawKey extends Key {
   /** 原始字节序列（清洗前） */
   raw: string;
+  /** Shift+Enter / Alt+Enter 换行键（\x1b\r、\x1b\n、kitty CSI-u \x1b[13;2u）——输入框内插入换行，
+   *  不触发提交；终端默认 Shift+Enter 与 Enter 同发 \r 不可区分，需终端键位绑定发送 \x1b\r
+   *  （Windows Terminal /terminal-setup 同款 sendInput 片段）或直接用 Alt+Enter（xterm ESC 前缀） */
+  newline: boolean;
 }
 
 /** 裸 ESC 拼接窗口（2026-09-30 幽灵中断修复）：conpty/高负载（后台任务收割、整帧流式重绘）下
@@ -116,6 +120,10 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
           delete: bytes === '\u007F' || bytes === '\u001B[3~',
           meta: false,
           raw: bytes,
+          newline:
+            bytes === '\u001B\r' ||
+            bytes === '\u001B\n' ||
+            /^\u001B\[13;\d*u$/.test(bytes), // kitty CSI-u：Shift(2)/Ctrl(5)+Enter
         };
         if (bytes <= '\u001A' && !key.return) key.ctrl = true;
         if (bytes.startsWith('\u001B')) key.meta = true;
@@ -130,10 +138,18 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         const incoming = String(data);
         keyDebug(`data ${JSON.stringify(incoming)}`);
         // 裸 ESC 已扣住、新块到达（2026-09-30 真机「全屏 Esc 需先按 Enter」病根）：新块以 [ / O 开头 =
-        // 拆包序列剩余（↑/⌦ 等），继续拼合（保拆包重组语义）；其余字节（\r、字符、控制符）=
-        // 「用户按了 Esc 又按了别的键」——先派发扣住的裸 Esc 再解析新块。否则 pending='\u001B'+X 被
-        // isCompleteSequence 判完整即整体直发，escape 判定失败、Esc 键被吞（拼合窗口反成吞键窗口）
-        if (e.pending === '\u001B' && incoming.length > 0 && !incoming.startsWith('[') && !incoming.startsWith('O')) {
+        // 拆包序列剩余（↑/⌦ 等），继续拼合（保拆包重组语义）；\r / \n 到达 = Alt+Enter（\x1b\r 换行键）
+        // 也走拼合（单事件整块到达即整体判完整，两段到达跨过 40ms 窗口才退化为 Esc+Enter）；其余字节
+        // （字符、控制符）=「用户按了 Esc 又按了别的键」——先派发扣住的裸 Esc 再解析新块。否则
+        // pending='\u001B'+X 被 isCompleteSequence 判完整即整体直发，escape 判定失败、Esc 键被吞
+        if (
+          e.pending === '\u001B' &&
+          incoming.length > 0 &&
+          !incoming.startsWith('[') &&
+          !incoming.startsWith('O') &&
+          incoming !== '\r' &&
+          incoming !== '\n'
+        ) {
           if (e.joinTimer) {
             clearTimeout(e.joinTimer);
             e.joinTimer = undefined;

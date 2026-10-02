@@ -81,13 +81,27 @@ test('裸 ESC 扣住期间到达非序列字节：先派发 Esc 再派发后续�
   await sleep(30);
   one.write('\u001B'); // Esc 扣进拼接窗口
   await sleep(5);
-  one.write('\r'); // 窗口内 Enter 到达：旧实现拼成 '\u001B\r' 整体直发、escape=false 即 Esc 被吞
+  one.write('x'); // 非 [ / O / \r\n 字节：真「Esc 又按了别的键」——先派发 Esc 再解析新块（Esc 不被吞）
   await sleep(60);
   assert.equal(got.length, 2, `拆发两键（实际 ${got.length}）`);
   assert.ok(got[0]!.escape, '先派发真 Esc 键');
   assert.equal(got[0]!.raw, '\u001B');
-  assert.ok(got[1]!.return, 'Enter 照常派发');
-  assert.equal(got[1]!.raw, '\r');
+  assert.equal(got[1]!.raw, 'x');
+  one.unmount();
+});
+
+test('裸 ESC 扣住期间到达 Enter：拼合为 Alt+Enter/Shift+Enter 换行键（2026-10-01 用户裁决「增加 shift+enter 作为换行」）', async () => {
+  const got: RawKey[] = [];
+  const one = render(<Probe label="p6" onKey={(_i, key) => got.push(key)} />);
+  await sleep(30);
+  one.write('\u001B'); // Esc 扣进拼接窗口
+  await sleep(5);
+  one.write('\r'); // \r 到达不再拆发 Esc+Enter，而是拼成换行键（终端键位绑定 sendInput \x1b\r 同口径）
+  await sleep(60);
+  assert.equal(got.length, 1, `单键派发（实际 ${got.length}）`);
+  assert.ok(got[0]!.newline, 'newline 键（\x1b\r）');
+  assert.equal(got[0]!.raw, '\u001B\r');
+  assert.ok(!got[0]!.return, 'return 不置位——不得触发提交');
   one.unmount();
 });
 

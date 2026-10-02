@@ -70,6 +70,7 @@ export function keyHintsFor(s: {
   if (s.status === 'running') {
     const items: KeyHintItem[] = [
       { key: 'Ctrl+C', action: t('pause', '暂停') },
+      { key: 'Shift+Enter', action: t('newline', '换行') },
       { key: 'Tab', action: t('todo', '待办') },
       { key: 'Ctrl+O', action: t('detail', '详情') },
     ];
@@ -89,6 +90,7 @@ export function keyHintsFor(s: {
   // 是折叠历史视图，缺省条写「Tab 补全」即误导，2026-10-02 交互统一裁决撤出）
   return {
     items: [
+      { key: 'Shift+Enter', action: t('newline', '换行') },
       { key: '↑', action: t('history', '历史') },
       { key: 'Ctrl+B', action: t('subagents', '子代理') },
     ],

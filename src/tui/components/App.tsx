@@ -760,6 +760,13 @@ export function App({
       }
       return;
     }
+    // Shift+Enter / Alt+Enter（\x1b\r、\x1b\n、kitty CSI-u）= 输入框内换行（多行缓冲按扁平偏移插入）；
+    // 主链提交仍走单 Enter（\r）。终端缺省 Shift+Enter 与 Enter 同发 \r，需键位绑定发送 \x1b\r
+    if (key.newline) {
+      setBuffer((b) => b.slice(0, cursor) + '\n' + b.slice(cursor));
+      setCursor((c) => c + 1);
+      return;
+    }
     if (key.return) {
       // 纵向命令面板 Enter（2026-09-30 对标 CC）：菜单在场即提交选中命令（半 typing '/ne' + Enter 直接跑 '/new'，
       // 不再落「无法识别命令」）；带参形态（含空格）过滤必空、菜单不在场，走既有整行提交

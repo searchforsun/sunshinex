@@ -85,12 +85,12 @@ test('App：↑↓ 历史导航回填已提交输入', async () => {
     assert.match(lastFrame() ?? '', /❯ 任务乙/, '↓ 应前进到下一条');
     // 清空复位（2026-10-02 交互统一）：召回后 Esc 清空输入，历史指针须回 -1——再 ↑ 取最新一条，
     // 不残留召回位（旧实现 ↑ 会拿到更早一条=清空后历史错位）
-    write('[A'); // ↑ 回填「任务甲」（此时指针在乙）
+    write('\u001B[A'); // ↑ 回填「任务甲」（此时指针在乙）
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /❯ 任务甲/, '前置：再 ↑ 回到最早一条');
-    write(''); // Esc 清空输入
+    write('\u001B'); // Esc 清空输入
     await new Promise((r) => setTimeout(r, 150));
-    write('[A'); // ↑ 应取最新（任务乙）而非残留位的更早条
+    write('\u001B[A'); // ↑ 应取最新（任务乙）而非残留位的更早条
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /❯ 任务乙/, '清空后 ↑ 取最新一条（histIdx 已复位）');
     unmount();
@@ -110,6 +110,27 @@ test('App：行尾反斜杠续行（Enter 不提交而是换行）', async () =>
     write('\r'); // 续行，不提交
     await new Promise((r) => setTimeout(r, 200));
     assert.equal(ctrl.getState().messages.filter((m) => m.role === 'user').length, 0, '续行 Enter 不应提交');
+    unmount();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('App：Shift+Enter（\\x1b\\r）输入框内换行不提交（多行缓冲）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inp5-'));
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"x"}']) });
+    const { write, lastFrame, unmount } = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
+    await new Promise((r) => setTimeout(r, 200));
+    write('第一行');
+    await new Promise((r) => setTimeout(r, 150));
+    write('\u001B\r'); // Alt+Enter / 终端绑定的 Shift+Enter（\x1b\r）
+    await new Promise((r) => setTimeout(r, 150));
+    write('第二行');
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(ctrl.getState().messages.filter((m) => m.role === 'user').length, 0, '换行键不应提交');
+    const frame = lastFrame() ?? '';
+    assert.ok(frame.includes('第一行') && frame.includes('第二行'), '两行同框（多行缓冲）');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
