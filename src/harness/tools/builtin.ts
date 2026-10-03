@@ -198,8 +198,9 @@ export function builtinTools(
       },
       name: 'skill',
       description:
-        'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; use only ids that appear in the available skills list — never guess or invent a name; oversized output is truncated and saved to disk (full output path shown in the result)',
+        'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; use only ids that appear in the available skills list — never guess or invent a name; the body is returned verbatim and never truncated, so load it only when the task matches',
       category: 'read',
+      fullObservation: true,
       executor: async (input: ToolInput) => {
         if (!skills) throw new CodedToolError('skill_not_configured', 'Skill facade is not wired in this run');
         const id = String(input.id ?? '').trim();
@@ -208,7 +209,9 @@ export function builtinTools(
         if (raw !== undefined && (typeof raw !== 'object' || raw === null)) throw new CodedToolError('INVALID_ARG', 'params must be a name→value object');
         const r = skills.resolve(id, raw as Record<string, string> | undefined);
         if (!r.ok) throw new CodedToolError(r.error.code, `${r.error.code}: ${r.error.message}`);
-        return execOut(fitOut('skill', `${skillHeader(r.value.manifest)}\n\n${r.value.body}`));
+        // 正文整读（fullObservation）：SKILL.md 是策划物料、按需装载即全读——不走 fitOut 归档（恢复指针式
+        // 二跳破坏「加载指令」语义）；超限上下文由反应式压缩兜底（§12）
+        return execOut(`${skillHeader(r.value.manifest)}\n\n${r.value.body}`);
       },
     },
     {

@@ -153,6 +153,7 @@ test('spawn 工厂声明 parameters（至少其一约束留执行面）', () => 
   const spawn = makeSpawnTool({} as unknown as SubagentRunner);
   assert.equal(spawn.name, SPAWN_TOOL_NAME);
   assert.equal(spawn.category, 'subagent');
+  assert.equal(spawn.fullObservation, true, '结论整读特性（观察行免 2000 截断——子代理结论即交付物）');
   const p = paramsOf(spawn);
   assert.deepEqual(
     Object.keys(p.properties ?? {}).sort(),
@@ -160,6 +161,17 @@ test('spawn 工厂声明 parameters（至少其一约束留执行面）', () => 
     'spawn parameters must mirror SubagentSpawnInput',
   );
   assert.deepEqual((p.properties?.tools as JsonSchema).items?.type, 'string');
+});
+
+test('整读特性登记：skill/spawn/task_wait 声明 fullObservation；输出型工具不挂（截断面语义不变）', () => {
+  withRegistries(({ full }) => {
+    assert.equal(full.get('skill')?.fullObservation, true, 'skill：策划正文按需装载即全读');
+    assert.equal(full.get(SPAWN_TOOL_NAME)?.fullObservation, true, 'spawn：子代理结论整读');
+    assert.equal(makeTaskWaitTool(new TaskRegistry(tmpDir('sunshinex-tw-'))).fullObservation, true, 'task_wait：回执（含结论全文）整读');
+    for (const name of ['exec', 'read', 'grep']) {
+      assert.equal(full.get(name)?.fullObservation, undefined, `${name} 输出面维持预算截断语义`);
+    }
+  });
 });
 
 test('另册工厂 task_stop/task_wait 声明 parameters 且全闭合（strict 兼容同口径）', () => {

@@ -141,3 +141,28 @@ test('并发上限：批规模超 PARALLEL_TOOLS_LIMIT(16) 整批拒绝零执行
   await f.runner.runBatch({ calls: boundary, argsOf: parseArgs(boundary), step: 2, ledger: f.ledger });
   assert.equal(exec, 16, '边界规模（=上限）照常执行');
 });
+
+test('fullObservation 免截：声明整读特性的工具观察行整读；未声明对照仍 2000 截断（判别力：免截实现抹平差异必红）', async () => {
+  const long = 'C'.repeat(6000);
+  const r = new ToolRegistry();
+  r.register({ ...probe('report_full', 'read', async () => long), fullObservation: true });
+  r.register(probe('plain_long', 'read', async () => long));
+  const f = makeFixture(r);
+  const calls = [call('report_full', {}), call('plain_long', {})];
+  await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: f.ledger });
+  assert.equal(f.rows[0], long, '声明工具：6000 字符结论逐字节整读进链行（skill/子代理结论语义面）');
+  assert.equal(f.rows[1], 'C'.repeat(2000) + '\n...(truncated)', '未声明工具：既有 2000 截断语义原样');
+});
+
+test('归档恢复指针随身携带：超 2000 且尾带 [truncated · full output] 时截断不丢指针（旧实现切指针必红）', async () => {
+  const out = 'D'.repeat(2600) + '\n[truncated · full output: C:/tmp/tool-outputs/1-read-abc.txt]';
+  const r = new ToolRegistry();
+  r.register(probe('arch_out', 'read', async () => out));
+  const f = makeFixture(r);
+  const calls = [call('arch_out', {})];
+  await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: f.ledger });
+  const row = f.rows[0];
+  assert.ok(row.startsWith('D'.repeat(2000)), '正文截到 2000');
+  assert.match(row, /\[truncated · full output: C:\/tmp\/tool-outputs\/1-read-abc\.txt\]$/, '恢复指针在行尾幸存——模型据此 read 回全文');
+  assert.ok(!row.includes('...(truncated)'), '有归档指针时不再叠加裸截断标记');
+});

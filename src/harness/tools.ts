@@ -33,6 +33,10 @@ export interface RegisteredTool extends ToolSpec {
   /** 呈现元数据（可选，D26/J1）：未声明时 displayMeta() 以工具名大写派生缺省动词（对齐 TUI 原地
    *  fallback 语义——纯名字工具零声明即正确呈现） */
   readonly display?: ToolDisplayMeta;
+  /** 结果整读特性（可选）：声明后批次执行面的观察行对该工具免 2000 字符截断——语义面为「模型必须整读」
+   *  的输出（skill 策划全文、子代理结论、task_wait 回执）；上下文超限由反应式压缩兜底（CLAUDE.md §12），
+   *  不是截断口的职责 */
+  readonly fullObservation?: boolean;
 }
 
 /** 工具域带码错误：executor 以业务错误码中止执行（registry 转译为同码 Result.fail，降级语义不再笼统 EXEC_FAILED） */

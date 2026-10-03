@@ -33,6 +33,23 @@ test('skill 工具：登记为 read 类（可参与并行批）', () => {
   const t = registry.get('skill');
   assert.ok(t, 'skill 工具已注册');
   assert.equal(t.category, 'read');
+  assert.equal(t.fullObservation, true, '策划正文整读特性（观察行免 2000 截断）');
+});
+
+test('skill 工具：正文整读——超 2000 与超 30k 归档上限均逐字节全量返回（旧实现两处截断必红）', async () => {
+  const { root, safety, registry } = fixture();
+  const mid = '中'.repeat(4000); // 12k chars：旧链 fitOut 放行但 describe 截 2000
+  const huge = 'H'.repeat(35_000); // 超 TOOL_OUTPUT_CHAR_LIMIT：旧链 fitOut 归档+预览
+  writeSkill(root, 'mid-skill', 'name: Mid\ndescription: 长\nversion: 1.0.0', mid);
+  writeSkill(root, 'huge-skill', 'name: Huge\ndescription: 巨\nversion: 1.0.0', huge);
+  const r1 = await registry.execute('skill', { id: 'mid-skill' }, safety);
+  const r2 = await registry.execute('skill', { id: 'huge-skill' }, safety);
+  assert.equal(r1.ok && r2.ok, true);
+  if (r1.ok) assert.equal(r1.value.stdout.includes(mid), true, '4k×3 字符正文全量在场（executor 面整读）');
+  if (r2.ok) {
+    assert.equal(r2.value.stdout.includes(huge), true, '35k 字符正文全量在场（不再走归档）');
+    assert.equal(r2.value.stdout.includes('[truncated'), false, '无归档/截断标记——按需装载即全读');
+  }
 });
 
 test('skill 工具：按 id 加载正文（模型自主触发面）', async () => {

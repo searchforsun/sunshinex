@@ -56,6 +56,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
     description:
       'Block until background tasks reach a terminal state (background exec, timed-out-to-background exec, or background subagent) and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. taskIds=null waits for all currently running tasks; on timeout the current status is returned so you can keep waiting or stop the task.',
     category: 'task',
+    fullObservation: true,
     executor: async (input) => {
       const raw = input as { taskIds?: string[] | null; timeoutSeconds?: number | null };
       const rawTimeout = raw.timeoutSeconds ?? null;

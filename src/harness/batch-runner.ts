@@ -111,7 +111,7 @@ export class BatchRunner {
           ' times and was skipped this round (not executed)'
         : args === null || r === null
           ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
-          : describe(r);
+          : describe(r, this.deps.registry.get(c.name)?.fullObservation === true);
       this.deps.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed' });
       obsOf[i] = obs;
     };
@@ -147,11 +147,16 @@ export class BatchRunner {
   }
 }
 
-/** 执行结果→观察行：stdout/stderr 兜底 ok、超 2000 截断；失败行 code 前缀去重（仅批次面消费，随抽件搬移） */
-function describe(r: Result<ExecResult>): string {
+/** 执行结果→观察行：stdout/stderr 兜底 ok、超 2000 截断且随身携带归档恢复指针（fitOut 的指针排在
+ *  预览之后，截断时必须保留——模型据此 read 回全文，指针被切=归档机制对模型不可见）；fullObservation
+ *  工具（skill 全文/子代理结论/回执）免截——语义面模型必须整读，超限走反应式压缩（§12）；
+ *  失败行 code 前缀去重（仅批次面消费，随抽件搬移） */
+function describe(r: Result<ExecResult>, fullObservation: boolean): string {
   if (r.ok) {
     const out = r.value.stdout || r.value.stderr || 'ok';
-    return out.length > 2000 ? `${out.slice(0, 2000)}\n...(truncated)` : out;
+    if (fullObservation || out.length <= 2000) return out;
+    const marker = /\n\[truncated[^\n]*\]$/.exec(out);
+    return out.slice(0, 2000) + (marker ? marker[0] : '\n...(truncated)');
   }
   return r.error.message.startsWith(r.error.code) ? r.error.message : `${r.error.code}: ${r.error.message}`;
 }

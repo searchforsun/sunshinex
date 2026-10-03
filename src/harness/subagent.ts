@@ -488,6 +488,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     description:
       `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.`,
     category: 'subagent',
+    fullObservation: true,
     executor: async (input) => {
       const spec = input as SubagentSpawnInput;
       runner.validateSpawnInput(spec);
