@@ -9,7 +9,7 @@
  *   「密钥只走 env 透传块或环境变量」，settings 与凭据分离的口径不变。
  */
 import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './settings';
-import { EFFORT_ORDER, parseEffort } from '../model/adapter';
+import { EFFORT_ORDER, parseEffort } from '../model/effort';
 import type { ReasoningEffort } from '../types';
 
 /** 单个可选模型（源 × 模型展开条目）：id = `<name>/<model>`，是 /model 选择卡与 journal modelId 的稳定标识 */

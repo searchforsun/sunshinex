@@ -1,19 +1,18 @@
-import { ChainAction, ContextItem, ExecResult, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
+import { ChainAction, ContextItem, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
-import { Result } from '../result';
 import { ModelAdapter, ModelRouter, ModelTier, RouteHint, UsageHooks } from '../model/adapter';
 import type { SubagentRunner } from './subagent';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
+import { BatchRunner } from './batch-runner';
 import {
   IDENTITY_LINE,
   outputStyleLine,
   TOOL_POLICY_LINE,
   PHASE_SENTENCE_LINE,
   PARALLEL_POLICY_LINE,
-  PARALLEL_TOOLS_LIMIT,
   ERROR_CONVERGENCE_LINE,
   REFERENCE_DATA_LINE,
   TASK_FOCUS_LINE,
@@ -118,20 +117,23 @@ export function buildStepDigest(
   return out.length > cfg.totalChars ? out.slice(out.length - cfg.totalChars) : out;
 }
 
-/** 批次重复上限：同一批次集合签名最多执行 2 次（首次 + 原样重试一次），超限整批程序性拒绝——防模型同批死循环空烧（与稳定段异常收敛行配套） */
-const MAX_IDENTICAL_CALLS = 2;
-/** 批次计数过期间隔：距末次同批次已拉开 N 步即视为过期清零——早期试错不永久封死后续合法调用 */
-const IDENTICAL_CALL_EXPIRY_STEPS = 4;
-
 /** 最小 Reactor：observe → think → act → observe 线性循环（chat 消息视图单通道） */
 export class Reactor {
-  constructor(private deps: ReactorDeps) {}
+  /** 批次执行器（H5 抽件）：签名去重/串并政策/扇出/逐结果回发的执行面单点；Reactor 只持引用，消息装配不进批次面 */
+  private readonly batches: BatchRunner;
 
-  /** 批次重复计数（批次集合签名 → 已执行次数 + 末次步号）：实例级、run() 起点重置——程序侧异常收敛兜底 */
-  private batchCounts = new Map<string, { count: number; lastStep: number }>();
+  constructor(private deps: ReactorDeps) {
+    // 构造体接线（勿挪字段初始化器：ES2022 类字段先于构造体赋值，取不到参数属性 deps）；
+    // 事件旁路口窄化为批次两类事件直连本类 emit——ts 盖点单点、抽出件不捕 Reactor
+    this.batches = new BatchRunner({
+      registry: deps.registry,
+      safety: deps.safety,
+      emit: (type, text, payload) => this.emit(type, text, payload),
+    });
+  }
 
   async run(task: Task, opts?: ReactorOpts): Promise<RunResult> {
-    this.batchCounts.clear(); // 批次计数按 run 隔离：跨任务不累计
+    this.batches.reset(); // 批次计数按 run 隔离：跨任务不累计
     const maxSteps = opts?.maxSteps ?? reactorMaxStepsEnv() ?? 400;
     const router = this.deps.router ?? new ModelRouter().bindDefault(this.deps.model);
     // 档位（run 级常量，对标 Claude Code：模型档位是用户级参数）：显式 tier > 外部 hint 推导 > 缺省 medium；
@@ -432,7 +434,8 @@ export class Reactor {
   }
 
   /** 模型一轮：buildMessages 消息视图 + tools 字段 → 结构化动作消费。
-   *  一轮多条链行（phase/调用/观察）共用同一轮步号（迭代计数按去重步号），role:tool 按序配对回喂；finish=stop 即收束 */
+   *  一轮多条链行（phase/调用/观察）共用同一轮步号（迭代计数按去重步号），role:tool 按序配对回喂；finish=stop 即收束。
+   *  H5 拆件后只留消息装配、tools 映射、流式分派、空批纠偏与出牌消费——批次执行面（签名去重/串并政策/扇出/结果回发）委派 BatchRunner */
   private async chatRound(
     adapter: ModelAdapter,
     steps: StepRecord[],
@@ -481,21 +484,7 @@ export class Reactor {
       return { done: false };
     }
 
-    // 执行面校验（参数 schema 表达不了跨调用约束）：批内含状态类调用（前后有序依赖）→ 整轮按出牌顺序串行执行，
-    // 保证先到的调用完成后后者才开跑、副作用顺序与模型意图一致；仅超上限仍拒绝。单调用不限
-    // （todo_write 不在独占集：毫秒级全量替换写、与调研/委派类调用无序依赖，独占会连带整批委派串行）
-    const overLimit = calls.length > PARALLEL_TOOLS_LIMIT;
-    const exclusive = (c: (typeof calls)[number]) => {
-      const cat = this.deps.registry.get(c.name)?.category;
-      return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'task' || cat === undefined;
-    };
-    const sequential = calls.length > 1 && calls.some(exclusive);
-    const rejection = overLimit
-      ? `Parallel batch rejected: exceeds the limit of ${PARALLEL_TOOLS_LIMIT} tools; use fewer calls per round`
-      : '';
-
-    // 轮内链行共用同一轮步号（step 形参）：护栏按去重步号计模型轮、压缩水位/收尾回写行级过滤对同号行天然一致
-    const callIds = calls.map((_, i) => `step:${step}-idx:${i}`);
+    // 出牌消费（消息/链面）：轮步号计账 + phase/调用行入链——reasoning 挂点属消息装配语义，留在本函数
     // phase 通道退役（2026-09-30 用户裁决，单一权威源彻底形态）：叙述只走 token→正文一条通道
     //（流式轮原生 delta、非流式轮单帧补发），step 事件只承载步号计账不再携带叙述；链行回喂（PHASE_ACTION）照旧
     this.emit('step', calls[0].name, { step });
@@ -514,97 +503,18 @@ export class Reactor {
       }
     });
 
-    // 批次重复护栏：签名 = 整批调用的集合标识（成员「工具名+参数」规范化后排序拼接，与出牌顺序无关）；
-    // 同一集合标识的批次全链路最多执行 3 次，超限整批程序性拒绝——病理形态是「整批原样重发」，
-    // 集合口径下单调用正常复用不受影响（集合不同即计数独立），实例级计数、run() 起点重置
-    const signatureOf = (name: string, args: Record<string, unknown> | null): string => {
-      const canon = (v: unknown): unknown => {
-        if (Array.isArray(v)) return v.map(canon);
-        if (v !== null && typeof v === 'object') {
-          return Object.keys(v as object).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])]);
-        }
-        return v;
-      };
-      return `${name}:${JSON.stringify(args === null ? null : canon(args))}`;
-    };
-    const batchSig = calls.map((c, i) => signatureOf(c.name, argsOf[i])).sort().join('|');
-    const prev = this.batchCounts.get(batchSig);
-    // 过期策略：距末次同批次调用已拉开 N 步 → 视为新意图重新计数（跨任务段的正常重复不永久封死）
-    const n = prev !== undefined && step - prev.lastStep <= IDENTICAL_CALL_EXPIRY_STEPS ? prev.count : 0;
-    const batchRejected = n >= MAX_IDENTICAL_CALLS;
-    this.batchCounts.set(batchSig, { count: n + 1, lastStep: step });
-    const overDuplicated: boolean[] = calls.map(() => batchRejected);
-    // 整批超限跳过实际执行，拒绝观察行统一在下方结果循环产出
-
-    // 调用行先行上屏（执行前发射：长工具执行中调用行即可见，TUI 实时性契约）
-    for (let i = 0; i < calls.length; i++) {
-      this.emit('tool-call', calls[i].name, { input: argsOf[i] ?? {}, callId: callIds[i], status: 'pending' });
-    }
-
-    if (overLimit) {
-      for (let i = 0; i < calls.length; i++) {
-        this.emit('tool-result', rejection.slice(0, 200), { ok: false, full: rejection, tool: calls[i].name, callId: callIds[i], status: 'failed' });
-        steps.push({ step, action: TOOL_RESULT_ACTION, observation: rejection });
-      }
-      return { done: false };
-    }
-
-    const runOne = (c: (typeof calls)[number], args: Record<string, unknown> | null) =>
-      args === null ? null : this.deps.registry.execute(c.name, args, this.deps.safety);
-
-    // 纯并行批（无状态类调用）整批并发；含状态类调用的批按出牌顺序串行——前一个完成后后者才开跑；同参超限调用跳过执行。
-    // 结果事件回程即发（活动行实时清行——批内最长调用不再拖住其余调用的结果呈现）；
-    // 链行仍按出牌顺序入链（role:tool 与调用行按位配对），事件流为瞬态呈现、链行为事实源
-    const results: (Result<ExecResult> | null)[] = new Array(calls.length).fill(null);
-    const obsOf: string[] = new Array(calls.length);
-    const emitResult = (i: number, c: (typeof calls)[number], args: Record<string, unknown> | null, r: Result<ExecResult> | null): void => {
-      const obs = overDuplicated[i]
-        ? 'Repeated identical batch rejected: this exact set of calls already ran ' +
-          MAX_IDENTICAL_CALLS +
-          ' times and was skipped this round (not executed)'
-        : args === null || r === null
-          ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
-          : this.describe(r);
-      this.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed' });
-      obsOf[i] = obs;
-    };
-    if (sequential) {
-      for (let i = 0; i < calls.length; i++) {
-        if (overDuplicated[i]) { emitResult(i, calls[i], argsOf[i], null); continue; }
-        const r = await runOne(calls[i], argsOf[i]);
-        results[i] = r;
-        emitResult(i, calls[i], argsOf[i], r);
-      }
-    } else {
-      await Promise.all(calls.map(async (c, i) => {
-        if (overDuplicated[i]) { emitResult(i, c, argsOf[i], null); return; }
-        const r = await runOne(c, argsOf[i]);
-        results[i] = r;
-        emitResult(i, c, argsOf[i], r);
-      }));
-    }
-    for (let i = 0; i < calls.length; i++) {
-      const c = calls[i];
-      const args = argsOf[i];
-      const r = results[i];
-      steps.push({ step, action: TOOL_RESULT_ACTION, observation: obsOf[i] });
-      if (r !== null && r.ok && (c.name === 'read' || c.name === 'grep')) {
-        const p = (args as { path?: unknown } | null)?.path;
-        if (typeof p === 'string' && p.length > 0) this.deps.context.trackFile(p);
-      }
-    }
-    // 整批全拒只回写现象观察行（工具结果行已完整呈现拒绝事实），不发旁路事件——
-    // 系统层再报一次即同事实双报（TUI 渲染成 ✗ 错误红行）；被拒步骤可跳过，
-    // 续跑/换路/收束的判断权在模型
+    // 批次执行面整体委派 BatchRunner（H5）：签名去重/串行超限政策/串并扇出/逐结果回发。
+    // 链行记账（观察行按出牌顺序入链）与文件追踪以回调整块注入——批次面不持链、不捕 Reactor
+    await this.batches.runBatch({
+      calls,
+      argsOf,
+      step,
+      ledger: {
+        resultRow: (observation) => steps.push({ step, action: TOOL_RESULT_ACTION, observation }),
+        trackFile: (p) => this.deps.context.trackFile(p),
+      },
+    });
     return { done: false };
-  }
-
-  private describe(r: Result<ExecResult>): string {
-    if (r.ok) {
-      const out = r.value.stdout || r.value.stderr || 'ok';
-      return out.length > 2000 ? `${out.slice(0, 2000)}\n...(truncated)` : out;
-    }
-    return r.error.message.startsWith(r.error.code) ? r.error.message : `${r.error.code}: ${r.error.message}`;
   }
 }
 

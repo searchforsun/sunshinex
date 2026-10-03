@@ -62,10 +62,10 @@ src/
     prompts/          # 提示词模板单点（shared 稳定段共享行；judge/summarizer/memory/learned 一次性调用模板）
     knowledge/        # 本地向量知识库（chunk/store/embed/KnowledgeBase）
     security/         # guard/policy/rules/modes/sandbox/chain + landlock（Linux exec 写围栏）/websearch-endpoint
-    context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/breakdown（/context 数据面）/window/session/summarizer（压缩摘要）
+    context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/breakdown（/context 数据面）/window/session/summarizer（压缩摘要）/drift-detector（会话常量漂移探测四基线）/chain-ledger（会话链 append-only 账本）/compaction（压缩协调 apply+runCompaction 归档）/index.ts 门面转发
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
-  model/              # adapter.ts 模型适配 + 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
+  model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
   storage/            # 本地 JSON 存储底座
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
 agents/               # 用户子代理目录（{id}/agent.md，装配期一次性加载 fail-fast）

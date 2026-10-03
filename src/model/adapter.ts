@@ -1,9 +1,22 @@
-/** 模型适配层：统一推理接口，多后端可插拔 */
-import { ModelTier, ReasoningEffort, RouteDecision, ChatMessage, ChatRequest, ChatResult, ChatTool, ToolCallSpec} from '../types';
+/** 模型适配层：统一推理接口，多后端可插拔。H4 拆件后本件收编：契约类型（ModelAdapter/UsageHooks）、
+ *  LLMConfig、StubAdapter、OpenAIAdapter（传输+编排+effort 探测状态机+SSE 流式重组）、ScriptedAdapter
+ *  脚本 DSL；effort 档位原语/usage 三提取器/wire 序列化/三档路由已下沉 effort.ts/usage.ts/wire.ts/router.ts，
+ *  此处按原路径再导出（对齐 tui/runtime.ts RunOutcome 注释先例），既有 './adapter' 导入点零改动 */
+import { ModelTier, ReasoningEffort, ChatRequest, ChatResult, ToolCallSpec} from '../types';
 import { t } from '../i18n';
 import { contextWindowEnv } from '../config/termination-config';
+import { parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
+import { extractUsage, extractPromptTokens, extractCacheTokens } from './usage';
+import { toWireMessages, toWireTools, parseChatResult } from './wire';
 
 export type { ModelTier, ReasoningEffort };
+// 四件原路径再导出（防既有导入点漂移）：值符号与类型符号各自走 export / export type
+export { EFFORT_ORDER, parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
+export { extractUsage, extractPromptTokens, extractCacheTokens } from './usage';
+export { toWireMessages, toWireTools, parseChatResult } from './wire';
+export { ModelRouter } from './router';
+export type { RouteHint } from './router';
+
 /** 用量回调钩子：模型调用完成后回传本次真实 token 用量（无用量回传 0） */
 export interface UsageHooks {
   onUsage?: (tokens: number) => void;
@@ -13,32 +26,6 @@ export interface UsageHooks {
   onCache?: (tokens: number) => void;
   /** 思考增量（SSE reasoning_content / reasoning 键）；端点不回传则永不触发 */
   onReasoning?: (delta: string) => void;
-}
-
-/** 思考强度（OpenAI 兼容 reasoning_effort 请求参数）：请求级字段、不进提示词，前缀缓存零影响；类型本体登记 src/types.ts */
-export const EFFORT_ORDER: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-const EFFORT_LOW_INDEX = EFFORT_ORDER.indexOf('low');
-
-/** 解析思考强度档位：大小写不敏感；非法/空值回 undefined（配置缺省态，不生效） */
-export function parseEffort(v: string | undefined | null): ReasoningEffort | undefined {
-  const t = (v ?? '').trim().toLowerCase() as ReasoningEffort;
-  return (EFFORT_ORDER as readonly string[]).includes(t) ? t : undefined;
-}
-
-/** effort 降级序列（端点不支持该参数时的逐档回退）：不高于 low 的请求向上逐档试到 max；高于 low 的向下逐档试到 low */
-export function buildFallbackSequence(requested: ReasoningEffort): ReasoningEffort[] {
-  const idx = EFFORT_ORDER.indexOf(requested);
-  if (idx <= EFFORT_LOW_INDEX) return EFFORT_ORDER.slice(idx);
-  return EFFORT_ORDER.slice(EFFORT_LOW_INDEX, idx + 1).reverse();
-}
-
-/** 端点不支持 reasoning_effort 参数的识别：仅 400/422 且错误消息指向该参数；网络/鉴权/限流/服务端错误不降级、照常抛出 */
-export function isUnsupportedEffortError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : '';
-  const m = /OpenAI request failed: (\d{3})/.exec(msg);
-  if (!m) return false;
-  const status = Number(m[1]);
-  return (status === 400 || status === 422) && /reasoning[_ ]effort/i.test(msg);
 }
 
 export interface ModelAdapter {
@@ -54,25 +41,6 @@ export interface ModelAdapter {
   chatStream?(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult>;
   /** effort 探测缓存读取（§5.2 生效档回执）：请求档经降级探测后的实际生效档；未探测回 undefined（调用方回退请求档） */
   resolvedEffort?(requested: ReasoningEffort): ReasoningEffort | undefined;
-}
-
-/** 从 OpenAI 兼容响应 JSON 解析 usage.total_tokens；缺失/非数字回 0（无占位计数） */
-export function extractUsage(data: unknown): number {
-  const tokens = (data as { usage?: { total_tokens?: unknown } } | null)?.usage?.total_tokens;
-  return typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : 0;
-}
-
-/** 从 OpenAI 兼容响应 JSON 解析 usage.prompt_tokens（缓存命中率分母，与 cached_tokens 同量纲）；缺失/非数字回 0 */
-export function extractPromptTokens(data: unknown): number {
-  const tokens = (data as { usage?: { prompt_tokens?: unknown } } | null)?.usage?.prompt_tokens;
-  return typeof tokens === 'number' && Number.isFinite(tokens) ? tokens : 0;
-}
-
-/** 从 OpenAI 标准响应解析 prompt 缓存命中 tokens：仅认 usage.prompt_tokens_details.cached_tokens（缺失或三方私有字段一律回 0，不做任何第三方 API 适配） */
-export function extractCacheTokens(data: unknown): number {
-  const usage = (data as { usage?: Record<string, unknown> } | null)?.usage;
-  const cached = (usage?.prompt_tokens_details as { cached_tokens?: unknown } | undefined)?.cached_tokens;
-  return typeof cached === 'number' && Number.isFinite(cached) ? cached : 0;
 }
 
 /** 占位适配器：不实际调用云端。轮面以 stop 收束回未接线提示，绝不回显 prompt——回显会把系统提示词经渲染层泄露到界面 */
@@ -190,52 +158,11 @@ export class OpenAIAdapter implements ModelAdapter {
     return this.doFetch(base, signal); // 全序列不支持：省略参数，用模型默认
   }
 
-  /** 消息视图 → wire 形态（assistant.toolCalls → tool_calls；tool → role:tool + tool_call_id）。
-   *  assistant.reasoning 原样回传为 reasoning_content：交错思考端点（DeepSeek/Qwen 系思考模式）的
-   *  硬约束是**字段在场**——实测空串 200、缺字段 400 "must be passed back"（思考模式默认开但模型偶尔
-   *  整轮零思考，buildMessages 对当轮批消息兜底空串）；字段未定义（旧任务轮/非思考端点）零穿参 */
-  private static toWireMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
-    return messages.map((m) => {
-      if (m.role === 'assistant') {
-        return {
-          role: 'assistant',
-          content: m.content,
-          ...(m.reasoning !== undefined ? { reasoning_content: m.reasoning } : {}),
-          ...(m.toolCalls && m.toolCalls.length > 0
-            ? { tool_calls: m.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.name, arguments: t.argsJson } })) }
-            : {}),
-        };
-      }
-      if (m.role === 'tool') return { role: 'tool', content: m.content, tool_call_id: m.toolCallId };
-      return { role: m.role, content: m.content };
-    });
-  }
-
-  /** 注册表工具 → API tools 字段 */
-  private static toWireTools(tools: ChatTool[]): Array<Record<string, unknown>> {
-    return tools.map((t) => ({ type: 'function', function: { name: t.function.name, description: t.function.description, parameters: t.function.parameters } }));
-  }
-
   /** 用量三钩子回传（cache → prompt → usage） */
   private emitUsage(data: unknown, hooks?: UsageHooks): void {
     hooks?.onCache?.(extractCacheTokens(data));
     hooks?.onPrompt?.(extractPromptTokens(data));
     hooks?.onUsage?.(extractUsage(data));
-  }
-
-  /** 非 streaming 响应 choices[0] → 轮聚合结果（finish=tool_calls 之外一律归 stop 保守收束）；
-   *  reasoning_content（思考模式端点扩展）捕获进结果供续轮回传 */
-  private static parseChatResult(data: unknown): ChatResult {
-    const choice = (data as { choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; finish_reason?: string }>} | null)?.choices?.[0];
-    const msg = choice?.message;
-    const calls: ToolCallSpec[] = (msg?.tool_calls ?? []).map((t, i) => ({
-      id: t.id ?? `call_${i}`,
-      name: t.function?.name ?? '',
-      argsJson: t.function?.arguments ?? '',
-    }));
-    const finish = choice?.finish_reason === 'tool_calls' ? 'tool_calls' : 'stop';
-    const reasoning = msg?.reasoning_content ?? msg?.reasoning;
-    return { finish, content: msg?.content ?? '', toolCalls: finish === 'tool_calls' ? calls : [], ...(reasoning ? { reasoning } : {}) };
   }
 
   /** function calling 轮面：messages + tools 下发（tool_choice 缺省 auto），请求体不带 response_format；usage 三钩子回传与流式路同源 */
@@ -244,14 +171,14 @@ export class OpenAIAdapter implements ModelAdapter {
     try {
       const body: Record<string, unknown> = {
         model: this.model,
-        messages: OpenAIAdapter.toWireMessages(req.messages),
+        messages: toWireMessages(req.messages),
         tool_choice: 'auto',
-        ...(req.tools && req.tools.length > 0 ? { tools: OpenAIAdapter.toWireTools(req.tools) } : {}),
+        ...(req.tools && req.tools.length > 0 ? { tools: toWireTools(req.tools) } : {}),
       };
       const resp = await this.sendWithEffort(body, req.effort ?? this.effort, req.signal);
       if (!resp.ok) throw await this.requestError(resp);
       const data = (await resp.json()) as unknown;
-      const r = OpenAIAdapter.parseChatResult(data);
+      const r = parseChatResult(data);
       this.emitUsage(data, hooks);
       return r;
     } catch (e) {
@@ -267,11 +194,11 @@ export class OpenAIAdapter implements ModelAdapter {
     try {
       const body: Record<string, unknown> = {
         model: this.model,
-        messages: OpenAIAdapter.toWireMessages(req.messages),
+        messages: toWireMessages(req.messages),
         stream: true,
         stream_options: { include_usage: true },
         tool_choice: 'auto',
-        ...(req.tools && req.tools.length > 0 ? { tools: OpenAIAdapter.toWireTools(req.tools) } : {}),
+        ...(req.tools && req.tools.length > 0 ? { tools: toWireTools(req.tools) } : {}),
       };
       const resp = await this.sendWithEffort(body, req.effort ?? this.effort, req.signal);
       if (!resp.ok || !resp.body) throw await this.requestError(resp);
@@ -428,70 +355,5 @@ export class ScriptedAdapter implements ModelAdapter {
     const r = await this.chat(_req, hooks);
     for (const ch of r.content) onDelta(ch);
     return r;
-  }
-}
-
-/** 路由提示：调用方对本次任务的算力信号（Graph 角色/复杂度） */
-export interface RouteHint {
-  complexity?: 'low' | 'mid' | 'high';
-  role?: string;
-}
-
-/** 业务规则：评审/编码类角色需要更强模型，规划类居中 */
-const ROLE_TIER: Record<string, ModelTier> = {
-  critic: 'large',
-  coder: 'large',
-  planner: 'medium',
-};
-
-const COMPLEXITY_TIER: Record<NonNullable<RouteHint['complexity']>, ModelTier> = {
-  low: 'small',
-  mid: 'medium',
-  high: 'large',
-};
-
-/** 三档算力路由：small/medium/large */
-
-export class ModelRouter {
-  private adapters = new Map<ModelTier, ModelAdapter>();
-  private fallback: ModelAdapter | null = null;
-
-  /** 默认档：所有未显式绑定的档位回退到此 adapter */
-  bindDefault(adapter: ModelAdapter): this {
-    this.fallback = adapter;
-    return this;
-  }
-
-  bind(tier: ModelTier, adapter: ModelAdapter): void {
-    this.adapters.set(tier, adapter);
-  }
-
-  /** 该档已绑定 → 直取；未绑定但有默认 → 回退默认；两者皆无 → 抛错（装配错误快速失败） */
-  resolve(tier: ModelTier): ModelAdapter {
-    const a = this.adapters.get(tier);
-    if (a) return a;
-    if (this.fallback) return this.fallback;
-    throw new Error(`no adapter bound for tier ${tier}`);
-  }
-
-  /** 显式绑定档快照（不含默认回退） */
-  boundTiers(): ModelTier[] {
-    return [...this.adapters.keys()];
-  }
-
-  /** 提示感知路由：role 优先于 complexity，均缺省回退 medium；reason 留痕决策依据 */
-  route(hint?: RouteHint): RouteDecision {
-    let tier: ModelTier = 'medium';
-    let source = 'default:medium';
-    if (hint?.role && ROLE_TIER[hint.role]) {
-      tier = ROLE_TIER[hint.role];
-      source = `role:${hint.role}`;
-    } else if (hint?.complexity) {
-      tier = COMPLEXITY_TIER[hint.complexity];
-      source = `complexity:${hint.complexity}`;
-    }
-    const bound = this.adapters.has(tier);
-    const reason = bound ? source : `${source} fallback:default`;
-    return { tier, reason, adapterProvider: this.resolve(tier).provider, bound };
   }
 }
