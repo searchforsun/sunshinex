@@ -360,3 +360,11 @@
 **D25 余项推进序**：chatRound BatchRunner（H5）→ adapter 拆件（H4）→ ContextManager 拆（H3）→ session.ts/App.tsx 拆分（D17/H2，与 D27 装配双轨收敛同批）。
 
 **验证口径（批C后）**：tsc strict 零报错；全量 1533 例 1531 过/0 败/2 既有 win32 跳过；selfcheck exit 0。
+
+## 批D/E/F执行状态（2026-10-03 结构批收官 + D26 轻件组）
+
+**已偿还翻 closed**：D25 全批（批D：H5 BatchRunner/H4 adapter 四件/H3 ContextManager 三件，e8d94c9；H6 批C）；**D17**（批E：session.ts 2389→1306 五步拆分七件、薄委托保公开 API，25+ 测试文件零改动；B5 扫描面同步八件）；**H2**（App.tsx 954→591 五 hook、模态判定序十一层显式契约，App 系 119/119 零改动）；**D27**（批E：runtime buildHarness 单点、生产面 new Harness 仅剩两处、kb 两路同源钉+装配单点形态钉）。**D26 轻件已随批F偿还**（704a1e6）：R1 双胞胎入口收敛+src/index.ts 纯库面、J2 capabilities.chat 能力位门禁（provider 字符串探针退役）、J6 双源收敛、J9 --model 校验+timeout 旋钮 env 接线、C5 decideWithGuard 单点（两入口 raw 口径差异刻意保留）、ModelTier 转出口/C6 注释/两 catch why。
+
+**D26 余项**（open）：J1 工具元数据下泄 TUI（涉事件面契约设计）、J10 IO 收敛三处、R10 中期渲染链统一（涉视觉回归，先锚点）+ 尾巴（catalog timeout 旋钮、run --worktree usage、119 导出冗余、getLanguage）。
+
+**验证口径（批F后）**：tsc 零错；全量 1554 例 1552 过/0 败/2 既有跳过；selfcheck exit 0；node dist/index.js 库面零副作用。
