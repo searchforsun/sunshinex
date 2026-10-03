@@ -4,6 +4,7 @@ import { render } from '../test-ink';
 import { MessageList, replyPreviewWindow } from './MessageList';
 import { ChatItem, LiveBlock } from '../session';
 import { BannerInfo } from '../banner-info';
+import { renderMd, stripAnsi } from '../md-ansi';
 
 const banner: BannerInfo = { version: '1.0', model: 'm', root: 'r' } as BannerInfo;
 const mk = (over: Partial<ChatItem>): ChatItem => ({ role: 'assistant', text: '', ts: 1, seq: 1, ...over });
@@ -133,4 +134,124 @@ test('replyPreviewWindow：水位坐标失配防御——tailStart 越界回落�
   // 在界水位照旧精确切片（防回归：越界分支不得吞掉正常水位路径）
   const ok: LiveBlock = { kind: 'reply', text: '已入档段\n\n未入档尾段行', startedAt: 0, tailStart: '已入档段\n\n'.length } as LiveBlock;
   assert.equal(replyPreviewWindow(ok, 80, 18).join('\n'), '未入档尾段行', '在界水位精确切片照旧');
+});
+
+/* ---------- D29 渲染双链并轨新形态（2026-10-04）：step 行与旧档回放 assistant（非 ansi——现行主链
+ * assistant 恒经 md-stream 以 ansi 入档，非 ansi 只剩 /resume 等回放路径）改走 renderMd 渲染层烘焙
+ * 直嵌。本组钉为退役回看链（MarkdownText.visual / huge-line-crash 的 MarkdownText 用例）视觉面的
+ * 接班锚：列表 `• ` 顶格点号、代码块盒线、表格网格、行距律与主链 renderMd 同构 ---------- */
+
+test('D29 并轨：step 行 ▶ 前缀 + renderMd 形态——列表 • 顶格点号、- 标记不裸露（旧链为两空格前导，已退役）', () => {
+  const one = render(
+    <MessageList
+      banner={banner}
+      messages={[mk({ seq: 3, role: 'step', text: '阶段推进：\n\n- 步骤甲已完成\n- 步骤乙进行中' })]}
+      columns={80}
+      expandAll={false}
+      latestFull={false}
+    />,
+  );
+  const out = one.allOutput();
+  assert.ok(out.split('\n').some((l) => l.includes('▶ 阶段推进：')), '▶ 前缀与首段同行（阶段前缀在屏）');
+  // 新形态：列表项 = ▶ 列缩进 2 格 + renderMd 顶格 `• `（旧链为列缩进 2 + 「两空格 + • 」共 4 格前导）
+  assert.ok(out.split('\n').some((l) => /^ {2}• 步骤甲已完成$/.test(l)), '首项为 2 格缩进 + 顶格点号（renderMd 形态）');
+  assert.ok(out.split('\n').some((l) => /^ {2}• 步骤乙进行中$/.test(l)), '次项同为 2 格缩进 + 顶格点号（旧链 4 格前导已退役）');
+  assert.ok(!out.split('\n').some((l) => /^ {4}• /.test(l)), '旧链「两空格 + • 」前导形态不再出现');
+  assert.ok(!out.includes('- 步骤甲'), '列表 - 标记不裸露');
+  one.unmount();
+});
+
+test('D29 并轨：旧档回放 assistant 呈现主链形态——表格网格、代码块盒线、分割线全宽、围栏不裸露', () => {
+  const src = '结论先行。\n\n| 模块 | 结论 |\n| --- | --- |\n| 渲染层 | 同构 |\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\n---';
+  const one = render(
+    <MessageList banner={banner} messages={[mk({ seq: 4, text: src })]} columns={80} expandAll={false} latestFull={false} />,
+  );
+  const out = one.allOutput();
+  assert.ok(out.includes('│'), '表格网格竖线成形（alignTable 网格——两链共有形态，并轨后同源）');
+  assert.ok(!out.includes('| ---'), '管道分隔行转网格线（不裸露）');
+  assert.ok(out.includes('┌') && out.includes('└'), '代码块盒线成形（主链 codeBox——旧链无盒线，并轨新形态；单行围栏 markdansi 不出盒，夹具用多行）');
+  assert.match(out, /const a = 1/);
+  assert.ok(!out.includes('```'), '围栏不裸露');
+  assert.ok(out.split('\n').some((l) => l.trim() === '─'.repeat(80)), '分割线全宽盒线（宽度源=组件 columns 80）');
+  one.unmount();
+});
+
+test('D29 并轨：旧档回放行距律——同类列表项紧排成组、段落间单空行（主链 BODY_LINE_SPACING 形态）', () => {
+  const src = '- 甲项\n- 乙项\n\n1. 步骤一\n2. 步骤二\n\n收束段。';
+  const one = render(
+    <MessageList banner={banner} messages={[mk({ seq: 5, text: src })]} columns={80} expandAll={false} latestFull={false} />,
+  );
+  const out = one.allOutput();
+  assert.ok(out.includes('• 甲项\n• 乙项'), '无序项间紧排（旧链同紧排，点号形态不同）');
+  assert.ok(out.includes('1. 步骤一\n2. 步骤二'), '有序项间紧排（主链有序/无序同档）');
+  assert.ok(out.includes('乙项\n\n1. 步骤一'), '无序组→有序组边界单空行');
+  assert.ok(out.includes('步骤二\n\n收束段'), '列表组→段落边界单空行');
+  one.unmount();
+});
+
+test('D29 并轨：烘焙输出与 renderMd 单点出口逐行同构（渲染层零加工直嵌，剥码口径）', () => {
+  const src = '段落一行。\n\n> 引用行\n\n**加粗** 与 `行内代码`';
+  const one = render(
+    <MessageList banner={banner} messages={[mk({ seq: 6, text: src })]} columns={80} expandAll={false} latestFull={false} />,
+  );
+  // test-ink 假 stdout 已剥 SGR 码；renderMd 产物剥码后逐行比对（trimEnd 容差：ink 空行可能垫空格）
+  const expected = stripAnsi(renderMd(src, 80)).split('\n');
+  const got = one.allOutput().replace(/\n$/, '').split('\n');
+  const first = expected.find((l) => l.trim().length > 0)!;
+  const i = got.findIndex((l) => l.trimEnd() === first.trimEnd());
+  assert.ok(i >= 0, `烘焙首行在屏（expected[0]=${JSON.stringify(first)}）`);
+  const slice = got.slice(i, i + expected.length);
+  assert.equal(slice.length, expected.length, '烘焙行数 = renderMd 产物行数（零加工直嵌）');
+  for (let j = 0; j < expected.length; j++) {
+    assert.equal(slice[j]!.trimEnd(), expected[j]!.trimEnd(), `第 ${j} 行与 renderMd 产物一致（${JSON.stringify(expected[j])}）`);
+  }
+  one.unmount();
+});
+
+test('D29 并轨：烘焙条目与相邻条目间区域间距恒单空行（marginBottom 1 承载，非 ansi 条目不折 0）', () => {
+  const one = render(
+    <MessageList
+      banner={banner}
+      messages={[
+        mk({ seq: 1, role: 'user', text: '问一句' }),
+        mk({ seq: 2, text: '回放正文收束。' }),
+        mk({ seq: 3, role: 'step', text: '阶段说明行' }),
+      ]}
+      columns={80}
+      expandAll={false}
+      latestFull={false}
+    />,
+  );
+  const lines = one.allOutput().replace(/\n+$/, '').split('\n');
+  for (const anchor of ['问一句', '回放正文收束。', '阶段说明行']) {
+    const i = lines.findIndex((l) => l.includes(anchor));
+    assert.ok(i >= 0, `${anchor} 在屏`);
+    let gap = 0;
+    for (let j = i + 1; j < lines.length && lines[j]!.trim() === ''; j++) gap++;
+    if (anchor !== '阶段说明行') assert.equal(gap, 1, `${anchor} 之后的条目边界空行数应恒 1（实际 ${gap}）`);
+  }
+  one.unmount();
+});
+
+test('D29 并轨：超长无空格行（旧档回放段落/围栏与 step）硬折不崩、剥码行宽有界（huge-line-crash 接班钉，2026-09-30 真机崩溃回归护栏随旧链退役迁入新通道）', () => {
+  const HUGE = 'a'.repeat(200_000) + ' end'; // ~200k 列无空格 token（与旧钉同量级）
+  const HUGE_CJK = '超'.repeat(100_000);
+  const one = render(
+    <MessageList
+      banner={banner}
+      messages={[
+        mk({ seq: 1, text: `前文\n\n${HUGE}\n\n\`\`\`js\n${HUGE_CJK}\n\`\`\`` }),
+        mk({ seq: 2, role: 'step', text: `## 阶段标题 ${HUGE_CJK}\n\n- 项一 ${HUGE}\n- 项二` }),
+      ]}
+      columns={80}
+      expandAll={false}
+      latestFull={false}
+    />,
+    80,
+  );
+  const f = one.allOutput();
+  assert.ok(f.includes('前文'), '常规内容在（渲染完成、进程存活）');
+  assert.ok(f.includes('项二'), '超长行之后的列表项正常渲染（护栏不为截断丢内容）');
+  assert.ok(f.split('\n').every((l) => l.length <= 80), '剥码行宽恒 ≤ 80（softWrapAnsi 软折 + 无断点硬切护栏）');
+  one.unmount();
 });

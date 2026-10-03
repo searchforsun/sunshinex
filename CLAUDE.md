@@ -102,8 +102,8 @@ SUNSHINE.md          # 项目业务配置
 | @modelcontextprotocol/sdk | MCP 官方客户端（stdio/http/sse 三传输），收敛于 `src/harness/mcp/client.ts` 接缝（替换实现不动主链） | 自研最小 stdio JSON-RPC 客户端同接口 |
 | ink + react | TUI 组件化渲染层（仅组件/入口，运行时零接触），收敛于 `src/tui/` | Renderer 接缝退原生 ANSI 最小面 |
 | sqlite-vec | KB 向量后端（`SUNSHINEX_KB_BACKEND=sqlite-vec`），收敛于 store 接缝 | local-json（缺省即回退，禁静默切换） |
-| markdown-it | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
-| markdansi | 正文/子代理转录 Markdown→ANSI 流式渲染（session 块缓冲按块放行 + render 单点出口），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 detail 回看解析 | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
+| markdown-it | Markdown 解析为 IR（唯一消费面=markdansi 表格网格回路的块级解析与对齐，2026-10-04 D29 并轨后回看链 IR 渲染退役），收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
+| markdansi | 正文/子代理转录/step 行/旧档回放 Markdown→ANSI 渲染（session 块缓冲按块放行 + render 单点出口 + D29 并轨后 MessageRow 渲染层烘焙），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 markdown.ts 表格网格回路（renderGridTable 的 IR 解析） | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
 | cli-table3 | Markdown 表格框线渲染，收敛于 `src/tui/markdown.ts` 表格层 | 表格降级为原文行 |
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |

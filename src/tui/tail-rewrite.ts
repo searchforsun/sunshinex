@@ -1,7 +1,6 @@
 import { ChatItem } from './session';
 import { bandLines, elideByWidth, wrapByWidth } from './text-band';
-import { markdownRowCount } from './markdown';
-import { ansiLineCount } from './md-ansi';
+import { ansiLineCount, renderMd } from './md-ansi';
 
 /**
  * 尾部原位重写账本（2026-09-30 方案 A——段折叠闪屏消除）：
@@ -47,8 +46,12 @@ export function printedEntryLines(item: ChatItem, full: boolean, columns: number
   switch (item.role) {
     case 'user':
       return bandLines(item.text, columns).length;
+    // D29 渲染双链并轨（2026-10-04）：assistant（旧档回放——现行主链 assistant 恒以 ansi 入档、
+    // 走上方 ansi 分支）与 step 行的渲染出口切换为 MessageRow 渲染层 renderMd 烘焙直嵌——
+    // 行数账本同切 ansi 口径：renderMd 真跑产物剥码行数（markdownRowCount 估算退役），
+    // 宽度公式与 MessageList 烘焙处镜像同源，差分门禁「计数=真实渲染行数」语义不变
     case 'assistant':
-      return markdownRowCount(item.text, columns);
+      return ansiLineCount(renderMd(item.text, columns));
     case 'system': {
       const prefix = item.level === 'error' ? '✗ ' : item.level === 'warn' ? '! ' : '';
       return wrap1(prefix + item.text);
@@ -60,8 +63,9 @@ export function printedEntryLines(item: ChatItem, full: boolean, columns: number
       }
       return head;
     }
+    // step 行宽度缩 3 列给 `▶ ` 前缀，与 MessageRow 烘焙宽度公式（Math.max(16, columns-3)）同源
     case 'step':
-      return Math.max(1, markdownRowCount(item.text, Math.max(16, columns - 3)));
+      return ansiLineCount(renderMd(item.text, Math.max(16, columns - 3)));
     default:
       return item.kind === 'call' ? printedCallLines(item, full, columns) : printedResultLines(item, full, columns);
   }

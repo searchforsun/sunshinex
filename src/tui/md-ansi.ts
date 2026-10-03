@@ -6,8 +6,8 @@ import { alignTable, inlineText, parseMarkdown } from './markdown';
 import { displayWidth } from './text-band';
 import { hiSgr, MD_HR_CHAR } from './md-theme';
 
-/** markdansi highlighter 适配：行级 HiSpan → ANSI 着色文本（色码取双链同源表 md-theme 的 sgr 形态，
- *  与 MarkdownText 的 ink 色名形态同源——改色只动 md-theme.ts 一处） */
+/** markdansi highlighter 适配：行级 HiSpan → ANSI 着色文本（色码取同源表 md-theme 的 sgr 形态；
+ *  原并行的 ink 色名形态已随 D29 回看链退役摘除——渲染单链后改色只动 md-theme.ts 一处） */
 function mdHighlighter(code: string, lang?: string): string {
   return code
     .split('\n')
@@ -265,8 +265,8 @@ function renderSource(src: string, width: number): string {
     const text = seg.lines.join('\n');
     if (seg.kind === 'fence') return renderMdRun(text, width);
     if (seg.kind === 'hr') {
-      // markdansi 分割线带 HR_WIDTH=40 硬上限且用 em-dash——自绘全宽盒线（与 MarkdownText hr 同形态：dim + MD_HR_CHAR×宽，
-      // 字符单源 md-theme.ts）
+      // markdansi 分割线带 HR_WIDTH=40 硬上限且用 em-dash——自绘全宽盒线（dim + MD_HR_CHAR×宽，
+      // 字符单源 md-theme.ts；原回看链 dimColor 形态已随 D29 并轨退役，主链形态为唯一形态）
       return `\x1b[2m${MD_HR_CHAR.repeat(Math.max(1, width))}\x1b[0m`;
     }
     if (seg.kind !== 'table') return renderProseSegment(text, width);

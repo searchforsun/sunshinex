@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMarkdown, parseInline, inlineText, alignTable, MdBlock, MdInline } from './markdown';
+import { parseMarkdown, inlineText, alignTable, MdBlock, MdInline } from './markdown';
 import { displayWidth } from './text-band';
 
 test('parseMarkdown：标题各级别', () => {
@@ -110,28 +110,10 @@ test('parseMarkdown：全角空格行按空行语义处理（2026-09-28 真机�
   assert.equal((fence[0] as Extract<MdBlock, { type: 'fence' }>).code, '　');
 });
 
-test('parseInline：bold/italic/code/strike 及嵌套', () => {
-  const nodes = parseInline('**加粗** *斜体* `code` ~~删除~~');
-  assert.deepEqual(nodes, [
-    { kind: 'bold', children: [{ kind: 'text', text: '加粗' }] },
-    { kind: 'text', text: ' ' },
-    { kind: 'italic', children: [{ kind: 'text', text: '斜体' }] },
-    { kind: 'text', text: ' ' },
-    { kind: 'code', text: 'code' },
-    { kind: 'text', text: ' ' },
-    { kind: 'strike', children: [{ kind: 'text', text: '删除' }] },
-  ]);
-});
-
-test('parseInline：未闭合标记按字面输出，不吞字', () => {
-  const nodes = parseInline('**未闭合 *斜');
-  assert.equal(inlineText(nodes), '**未闭合 *斜');
-});
-
-test('parseInline：code 内不嵌套解析其它标记', () => {
-  const nodes = parseInline('`**不是粗体**`');
-  assert.deepEqual(nodes, [{ kind: 'code', text: '**不是粗体**' }]);
-});
+// parseInline 三例（bold/italic/code/strike 嵌套、未闭合标记不吞字、code 内不嵌套）随 D29 回看链
+// 退役删除（2026-10-04）：parseInline 产品消费方清零（唯一消费方 MarkdownText 组件退役），行内
+// 形态渲染统一由 md-ansi renderMd 承载，其行内语法面（加粗/行内代码吞符号）已由
+// MessageList.test 的 D29 并轨新形态钉与 md-ansi.test 承接
 
 test('inlineText：递归拼纯文本', () => {
   const inlines: MdInline[] = [

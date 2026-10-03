@@ -1,38 +1,32 @@
 /**
- * Markdown 渲染双链共享知识单点（R10 短期收敛，2026-10-04）：主链 md-ansi.ts（markdansi → ANSI）
- * 与回看链 components/MarkdownText.tsx（markdown-it IR → ink）各自持有「同色系」的两份样式知识，
- * 此前靠注释人肉同步（普查 R10 证据①②：高亮色映射两份、hr 渲染两份逐字重复）。
- * 本文件是两链唯一同源处——改色/改字符只动这里，两链渲染输出同步变化；
- * md-theme.test.ts 以「同源表查询结果=旧硬编码值」特征化钉保迁移零漂移。
+ * Markdown 渲染主题知识单点（R10 短期收敛立表，D29 并轨后单链化，2026-10-04）：
+ * 此前主链 md-ansi.ts（markdansi → ANSI）与回看链 components/MarkdownText.tsx（markdown-it IR → ink）
+ * 各持「同色系」两份样式知识，靠 md-theme 双形态表（sgr + inkName）钉同源——D29 渲染双链并轨后
+ * 回看链退役（step 行与旧档回放改走 renderMd 烘焙直嵌），inkName 形态消费方清零、表收缩为
+ * sgr 单形态；改色仍只动本文件，主链渲染输出同步变化。
+ * md-theme.test.ts 以「表查询结果=旧硬编码值」特征化钉保收缩零漂移。
  */
 import { HiKind } from './highlight';
 
 /**
- * 高亮 token → 颜色双形态同源表：sgr 为 ANSI SGR 前景开码（md-ansi 主链消费），
- * inkName 为 ink 前景色名（MarkdownText 回看链消费）——同一 token 的两形态指向同一终端色
- * （35=magenta / 32=green / 90=gray(bright-black) / 33=yellow），plain 两形态俱空（不着色）
+ * 高亮 token → ANSI SGR 前景开码（md-ansi 主链消费；ink 色名形态已随回看链退役摘除——
+ * 35=magenta / 32=green / 90=gray(bright-black) / 33=yellow），plain 空串（不着色）
  */
-export const HI_TOKEN_COLOR: Record<HiKind, { readonly sgr: string; readonly inkName: string }> = {
-  keyword: { sgr: '\x1b[35m', inkName: 'magenta' },
-  string: { sgr: '\x1b[32m', inkName: 'green' },
-  comment: { sgr: '\x1b[90m', inkName: 'gray' },
-  number: { sgr: '\x1b[33m', inkName: 'yellow' },
-  plain: { sgr: '', inkName: '' },
+export const HI_TOKEN_SGR: Record<HiKind, string> = {
+  keyword: '\x1b[35m',
+  string: '\x1b[32m',
+  comment: '\x1b[90m',
+  number: '\x1b[33m',
+  plain: '',
 };
 
-/** 高亮 token → ANSI SGR 开码（md-ansi 主链消费：HI_TOKEN_COLOR 的 sgr 形态视图） */
+/** 高亮 token → ANSI SGR 开码（HI_TOKEN_SGR 的查询视图） */
 export function hiSgr(kind: HiKind): string {
-  return HI_TOKEN_COLOR[kind].sgr;
+  return HI_TOKEN_SGR[kind];
 }
 
-/** 高亮 token → ink 前景色名（MarkdownText 回看链消费：HI_TOKEN_COLOR 的 inkName 形态视图；
- *  plain 为空串，调用方按「不着色」处理（|| undefined） */
-export function hiInkName(kind: HiKind): string {
-  return HI_TOKEN_COLOR[kind].inkName;
-}
-
-/** 分割线字符（R10 证据②：hr 渲染两份逐字重复）：两链各自以 dim 形态铺满列宽——
- *  md-ansi `\x1b[2m` + 本字符 × 宽、MarkdownText dimColor + 本字符 × 宽，字符同源 */
+/** 分割线字符（R10 证据②：hr 渲染两份逐字重复）：主链以 `\x1b[2m` + 本字符 × 宽铺满列宽（dim 形态），
+ *  字符单源（回看链 dimColor 形态已随 D29 退役） */
 export const MD_HR_CHAR = '─';
 
 /** 正文尾窗预览行数上限 28（R10/R11 交叉面）：MessageList MdBufferPreview 缺省回落公式

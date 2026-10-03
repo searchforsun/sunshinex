@@ -6,7 +6,6 @@ import { bandLines } from '../text-band';
 import { BannerInfo } from '../banner-info';
 import { Banner } from './Banner';
 import { ToolRow } from './ToolRow';
-import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
 import { TailLedger, printedEntryLines, recomputeTailPlan } from '../tail-rewrite';
 import { renderMd } from '../md-ansi';
@@ -238,7 +237,22 @@ const MessageRow = React.memo(function MessageRow({
   // ansi 条目（Task 2 markdansi 流式通道）：text 已是渲染后 ANSI，直嵌 Text——再过 MarkdownText
   // 即双重渲染（框线表格被当源 markdown 解析）且 ANSI 转义被按字面计宽；宽度已在产生端
   // wrapAnsiLines 收敛，此处零加工上屏
+  // D29 渲染双链并轨（2026-10-04）：非 ansi 的 assistant（旧档回放条目——现行主链 assistant
+  // 恒经 md-stream 以 ansi 入档，非 ansi 只剩 /resume 等回放路径）与 step 阶段行不再走
+  // MarkdownText（markdown-it IR → ink 回看链，已随本批退役），改在渲染层烘焙 renderMd 产物
+  // 直嵌 ansi 通道——与主链正文同渲染器：行距律/表格网格/列表 `• ` 点号/代码盒线同构。
+  // 烘焙入 useMemo：text/宽度变化才重跑；宽度源=组件 columns（step 缩 3 列给 `▶ ` 前缀，与
+  // 旧 MarkdownText 口径一致），resize（columns 变）自动重烘。宽度公式与 tail-rewrite.printedEntryLines
+  // 镜像同源——两侧漂移即差分门禁红
+  const mdWidth = item.role === 'step' ? Math.max(16, columns - 3) : columns;
+  const baked = React.useMemo(
+    () =>
+      !item.ansi && (item.role === 'assistant' || item.role === 'step') ? renderMd(item.text, mdWidth) : undefined,
+    [item.ansi, item.role, item.text, mdWidth],
+  );
   if (item.ansi) return <Text>{item.text}</Text>;
+  // 旧档回放 assistant：烘焙产物直嵌（与 ansi 条目同通道）；step 行不走此提前出口——▶ 前缀分支在下方
+  if (baked !== undefined && item.role === 'assistant') return <Text>{baked}</Text>;
   if (item.role === 'user') {
     return (
       <Box flexDirection="column">
@@ -250,21 +264,21 @@ const MessageRow = React.memo(function MessageRow({
       </Box>
     );
   }
-  if (item.role === 'assistant') return <MarkdownText text={item.text} columns={columns} />;
-  // system 行按级别渲染（对标 Claude Code：信息类为辅助暗色，仅警告/失败用醒目色）
   if (item.role === 'system') {
+    // system 行按级别渲染（对标 Claude Code：信息类为辅助暗色，仅警告/失败用醒目色）
     if (item.level === 'error') return <Text color={theme.error}>✗ {item.text}</Text>;
     if (item.level === 'warn') return <Text color={theme.warn}>! {item.text}</Text>;
     return <Text dimColor>{item.text}</Text>;
   }
   if (item.role === 'thinking') return <ThinkingRow item={item} columns={columns} collapsed={collapsed} />;
-  // step 阶段行：正文经 MarkdownText 渲染（与主 agent 正文同渲染器，加粗/代码不再裸露星号），▶ 前缀标识阶段
+  // step 阶段行：▶ 前缀标识阶段；正文经 renderMd 烘焙（D29 并轨，与主链正文同渲染器，加粗/代码
+  // 不再裸露星号）——baked 恒在位（上方 useMemo 对 step 恒产出）
   if (item.role === 'step') {
     return (
       <Box>
         <Text>▶ </Text>
         <Box flexDirection="column">
-          <MarkdownText text={item.text} columns={Math.max(16, columns - 3)} />
+          <Text>{baked}</Text>
         </Box>
       </Box>
     );
