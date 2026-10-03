@@ -368,3 +368,11 @@
 **D26 余项**（open）：J1 工具元数据下泄 TUI（涉事件面契约设计）、J10 IO 收敛三处、R10 中期渲染链统一（涉视觉回归，先锚点）+ 尾巴（catalog timeout 旋钮、run --worktree usage、119 导出冗余、getLanguage）。
 
 **验证口径（批F后）**：tsc 零错；全量 1554 例 1552 过/0 败/2 既有跳过；selfcheck exit 0；node dist/index.js 库面零副作用。
+
+## 批G执行状态（2026-10-03 第四批·D26 余项全清）
+
+**已偿还**：J1（工具呈现元数据经 RegisteredTool.display→registry.displayMeta()→TUI 装配期注入，tool-verbs 双硬编码表删除、schema 面零污染亲证）；J10（storage/archive.ts ArchiveStore + CompactionCoordinator 注入 + MemoryStore backup/restore/clearBackup 原语收编 consolidate 裸 fs 手术）；R10 短期（tui/md-theme.ts 双链共享常量单点，4 特征化钉保逐字节零漂移）；尾巴两件（modelTimeoutMsEnv 迁 termination-config + catalog 旋钮接线、run --worktree usage 行）；遗留轻项清零（98 处零消费导出摘除、725→627 算术闭包自洽）。D26 翻 closed 入归档。
+
+**评估裁决（不动刀的动刀）**：R10 全量并轨经评估**不做**——三硬边界（tail-rewrite 行数账本纪律与差分门禁、renderMd 与 markdownRowCount 行数口径实锤不等、step 行/旧档回放视觉快照失锚）；四设计前提成文，另立 **D29** 立项（当前唯一未偿项）。
+
+**验证口径（批G后）**：tsc 零错；全量 1577 例 1575 过/0 败/2 既有跳过；selfcheck exit 0。当日全链终态：普查 63 条 → 批A/B/C/D/E/F/G 七批执行，D17–D28 十二项全清，唯余 D29。
