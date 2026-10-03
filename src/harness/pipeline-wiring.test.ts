@@ -29,6 +29,7 @@ function withRoot(fn: (root: string) => Promise<void> | void): Promise<void> {
 function slowExtractionModel(extractionCalls: { n: number }): ModelAdapter {
   return {
     provider: 'openai',
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
     complete: async () => {
       throw new Error('complete must not be called on the chat path');
     },

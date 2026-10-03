@@ -44,6 +44,7 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
       mode: 'dontAsk',
       model: {
         provider: 'openai',
+        capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
         chat: async (req) => {
           const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           seen.push(p);
@@ -91,6 +92,7 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
       mode: 'dontAsk',
       model: {
         provider: 'openai',
+        capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
         chat: async (req) => {
           const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           seen.push(p);
@@ -132,6 +134,7 @@ test('Task5 自动压缩完成 → 消息流留痕一条 Context compacted 系�
     const big = ('x'.repeat(180) + '\n').repeat(18000); // ≈ 3.24M chars ≈ 810k tokens，越过 160k 触发线
     const adapter = {
       provider: 'openai',
+      capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
       chat: textReplyToChatFace(async (p: string) => (p.includes('handoff summary') ? '占位' : JSON.stringify({ tool: 'read', input: { path: 'a.txt' } }))),
       completeStream: async (p: string, onDelta: (t: string) => void) => {
         const out = p.includes('handoff summary') ? '占位' : JSON.stringify({ done: true, reply: 'ok' });

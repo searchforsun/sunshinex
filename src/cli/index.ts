@@ -5,7 +5,7 @@ import { runPipeline } from './commands/run-pipeline';
 import { runSkillsInstall } from './commands/skills-install';
 import { runKbIndex } from './commands/kb-index';
 import { runTui } from '../tui/entry';
-import { applySettings, loadGlobalSettings, loadProjectSettings } from '../config/settings';
+import { loadSettingsChain } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
 import { EFFORT_ORDER } from '../model/adapter';
 import { readFileSync } from 'node:fs';
@@ -18,25 +18,6 @@ function cliVersion(): string {
     return pkg.version ?? 'unknown';
   } catch {
     return 'unknown';
-  }
-}
-
-/**
- * 两级 settings 装载（项目级 → 全局级）：applySettings 只填缺省槽，先装者不被覆盖，装载顺序即优先级。
- * 抛错（畸形 JSON / version 非 1）属 fail-fast：入口层透出含文件路径的错误信息并退出非零，
- * 静默降级会演变成「配置没生效」的排查泥潭；warnings 经 stderr 逐行双语输出（外观通道，库内零打印）。
- */
-function loadSettingsChain(projectRoot: string): void {
-  try {
-    for (const result of [applySettings(loadProjectSettings(projectRoot)), applySettings(loadGlobalSettings())]) {
-      for (const w of result.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
-    }
-  } catch (err) {
-    console.error(t(
-      err instanceof Error ? err.message : String(err),
-      err instanceof Error ? err.message : String(err),
-    ));
-    process.exit(1);
   }
 }
 
@@ -148,6 +129,7 @@ export function usageText(): string {
   --mode=manual|plan|dontAsk              permission mode (default manual)
   --language=en|zh                        UI language (default en)
   --version                               print CLI version and exit
+  --model=openai|scripted|stub            model backend (default openai)
   --tier=small|medium|large               model tier (user-level, session-constant)
   --effort=none|minimal|low|medium|high|xhigh|max
                                           reasoning effort (request-level)
@@ -171,6 +153,7 @@ export function usageText(): string {
   flags：
   --mode=manual|plan|dontAsk              权限模式（缺省 manual）
   --language=en|zh                        界面语言（缺省 en）
+  --model=openai|scripted|stub            模型后端（缺省 openai）
   --tier=small|medium|large               模型档位（用户级，会话内恒定）
   --effort=none|minimal|low|medium|high|xhigh|max
                                           思考强度（请求级参数）
@@ -192,6 +175,10 @@ export function assertValidFlagValues(args: CliArgs): void {
   if (mode !== undefined && mode !== 'manual' && mode !== 'plan' && mode !== 'dontAsk') invalid.push(`--mode=${mode}`);
   const language = single(args.flags.language);
   if (language !== undefined && language !== 'en' && language !== 'zh') invalid.push(`--language=${language}`);
+  // --model 白名单对齐 buildModel 消费面（runtime.ts：openai|scripted|stub，缺省 openai）——
+  // 非法值（如 --model=typo）此前静默按 openai 装配，违背本函数自立的 fail-fast 纪律（J9a）
+  const model = single(args.flags.model);
+  if (model !== undefined && model !== 'openai' && model !== 'scripted' && model !== 'stub') invalid.push(`--model=${model}`);
   const tier = single(args.flags.tier);
   if (tier !== undefined && tier !== 'small' && tier !== 'medium' && tier !== 'large') invalid.push(`--tier=${tier}`);
   const effort = single(args.flags.effort);

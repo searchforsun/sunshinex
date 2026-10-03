@@ -4,6 +4,8 @@ import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey, keyTrace } from './use-input';
 import { SessionController, TuiState } from '../session';
+// J6 双源收敛：状态栏上下文分母经模型层单点解析（modelWindow ?? env ?? 0），渲染层不直读 env
+import { resolveContextWindow } from '../chat-model';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
 import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
 import { initialRetained, RetainedUiState } from '../ui-state';
@@ -582,7 +584,7 @@ export function App({
         status={state.status}
         model={state.modelLabel ?? info.model}
         effort={state.effort}
-        context={{ used: state.metrics.ctxUsed, window: state.modelWindow ?? Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0) }}
+        context={{ used: state.metrics.ctxUsed, window: resolveContextWindow(state) }}
       />
         </>
       )}

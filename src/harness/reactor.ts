@@ -1,7 +1,7 @@
-import { ChainAction, ContextItem, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
+import { ChainAction, ContextItem, ModelTier, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
-import { ModelAdapter, ModelRouter, ModelTier, RouteHint, UsageHooks } from '../model/adapter';
+import { ModelAdapter, ModelRouter, RouteHint, UsageHooks } from '../model/adapter';
 import type { SubagentRunner } from './subagent';
 import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';

@@ -36,7 +36,8 @@ const seed = (mem: MemoryStore, n: number): void => {
 function consolidationStub(keep: number): ModelAdapter {
   return {
     provider: 'openai',
-    
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（门禁判据）
+
     chat: async (req) => {
       const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
       if (!prompt.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
@@ -49,7 +50,7 @@ function consolidationStub(keep: number): ModelAdapter {
 test('count < 阈值 → 直接返回零调用零副作用', async () => {
   await withMem(async (mem) => {
     let called = 0;
-    const model: ModelAdapter = { provider: 'openai', chat: textReplyToChatFace(async () => { called += 1; return '{"memories":[]}'; }) };
+    const model: ModelAdapter = { provider: 'openai', capabilities: { chat: true }, chat: textReplyToChatFace(async () => { called += 1; return '{"memories":[]}'; }) };
     seed(mem, MEMORY_CONSOLIDATE_THRESHOLD - 1);
     await consolidateMemory({ model, root: mem.dir() });
     assert.equal(called, 0, '阈值未达零调用');
@@ -80,7 +81,7 @@ test('输出非 JSON → 保持原状不抛', async () => {
   await withMem(async (mem) => {
     seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
     const before = mem.count();
-    const model: ModelAdapter = { provider: 'openai', chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) };
+    const model: ModelAdapter = { provider: 'openai', capabilities: { chat: true }, chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) };
     await consolidateMemory({ model, root: mem.dir() });
     assert.equal(mem.count(), before);
   });
@@ -95,6 +96,7 @@ test('落盘失败 → .bak 快照回滚，记录与整理前一致', async () =
     fs.mkdirSync(path.join(mem.dir(), 'MEMORY.md'));
     const model: ModelAdapter = {
       provider: 'openai',
+      capabilities: { chat: true },
       chat: async (req) => {
         const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (!p.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
@@ -121,6 +123,7 @@ test('整理成功后 .bak 快照清理（不留备份残渣）', async () => {
 function keepVerbatimStub(keep: number): ModelAdapter {
   return {
     provider: 'openai',
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（门禁判据）
     chat: async (req) => {
       const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
       if (!prompt.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
@@ -153,6 +156,7 @@ test('模型幻觉 type 收编为合法四选一（frontmatter 恒合法枚举�
     seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
     const model: ModelAdapter = {
       provider: 'openai',
+      capabilities: { chat: true },
       chat: async (req) => {
         const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (!p.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
@@ -171,6 +175,7 @@ test('合并集内跨例目重复 → 跳过该条不整批回滚（防静默重
     seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
     const model: ModelAdapter = {
       provider: 'openai',
+      capabilities: { chat: true },
       chat: async (req) => {
         const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (!p.includes('memory-consolidation')) throw new Error('unexpected non-consolidation call');
@@ -192,7 +197,7 @@ test('整理未应用（模型不出牌）→ notify 浮出一行说明（不再
   await withMem(async (mem) => {
     seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
     const lines: string[] = [];
-    const model: ModelAdapter = { provider: 'openai', chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) };
+    const model: ModelAdapter = { provider: 'openai', capabilities: { chat: true }, chat: async () => ({ finish: 'tool_calls', content: '', toolCalls: [] }) };
     await consolidateMemory({ model, root: mem.dir(), notify: (l) => lines.push(l) });
     assert.equal(lines.length, 1, '恰好一行说明');
     assert.match(lines[0], /^\[memory\] consolidation not applied \(model returned no consolidation payload\)/);

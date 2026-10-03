@@ -363,3 +363,24 @@ test('会话归约：空白行保行域达 streamer——表格经空行 flushTa
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('J6 宽度源注入：SessionOpts.mdColumns 驱动流式块渲染宽度（通道与渲染层同源可注入）', async () => {
+  const tmp = tmpdir('sunshinex-stream-w-');
+  try {
+    const line = 'w'.repeat(70);
+    // 窄源注入：40 列下 70 字符散文行必须折行——证明 mdWidth 经注入源而非 process.stdout 直读
+    const narrow = new SessionController({ root: tmp, model: new ScriptedAdapter([`{"done":true,"reply":"${line}"}`]), mdColumns: () => 40 });
+    await narrow.submit('任务');
+    await narrow.waitIdle();
+    const narrowBody = stripAnsi(narrow.getState().messages.filter((m) => m.role === 'assistant').map((m) => m.text).join(''));
+    assert.ok(narrowBody.includes('\n'), '40 列注入：70 字符行折行（宽度源生效）');
+    // 缺省不注入：回退 process.stdout.columns ?? 80（测试运行器非 TTY = 80），70 字符行不折——缺省行为不变
+    const wide = new SessionController({ root: tmp, model: new ScriptedAdapter([`{"done":true,"reply":"${line}"}`]) });
+    await wide.submit('任务');
+    await wide.waitIdle();
+    const wideBody = stripAnsi(wide.getState().messages.filter((m) => m.role === 'assistant').map((m) => m.text).join(''));
+    assert.ok(!wideBody.replace(/\n+$/, '').includes('\n'), '缺省宽度 80：70 字符行不折（既有口径保持）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

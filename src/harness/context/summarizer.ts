@@ -1,10 +1,11 @@
 import type { ModelAdapter } from '../../model/adapter';
 import { ContextChunk, estimateTokens } from './window';
 
-/** 装配决策点（T5 迁移）：具备 chat 面（真实模型）才走模型摘要——stub/scripted/测试桩一律走确定性路径。
- *  判据：tools 字段 submit_summary 出牌即视为具备 chat 面。 */
+/** 装配决策点（T5 迁移）：具备真实 chat 面才走模型摘要——stub/scripted/测试桩一律走确定性路径。
+ *  判据（J2 能力位）：适配器显式声明 capabilities.chat === true 且 chat 面是函数——新真实 provider
+ *  声明能力位即获得模型摘要/记忆提取/整理，不再以 provider === 'openai' 字符串近似（静默退化消除）。 */
 export function isModelSummarizer(model: ModelAdapter | undefined): model is ModelAdapter & { chat: NonNullable<ModelAdapter['chat']> } {
-  return !!model && model.provider === 'openai' && typeof model.chat === 'function';
+  return !!model && model.capabilities?.chat === true && typeof model.chat === 'function';
 }
 
 /** 确定性预算截断（与 window.compact 兜底同款二分口径）：超预算时按字符二分最大可保留前缀 */

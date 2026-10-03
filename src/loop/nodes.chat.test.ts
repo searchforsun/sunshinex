@@ -21,6 +21,8 @@ import type { ChatRequest, ChatResult } from '../types';
 /** 脚本化 chat 桩：按脚本逐轮出牌，记录请求（messages/tools）供断言 */
 class ChatScriptStub implements ModelAdapter {
   readonly provider = 'openai';
+  /** J2：真实模型桩声明能力位（isModelSummarizer 门禁判据——judge/摘要/记忆提取按此走模型路径） */
+  readonly capabilities: { chat?: boolean } = { chat: true };
   private i = 0;
   readonly requests: ChatRequest[] = [];
   constructor(private steps: ChatResult[]) {}

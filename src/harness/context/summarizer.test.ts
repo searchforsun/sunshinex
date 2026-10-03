@@ -89,9 +89,15 @@ test('summarizeWithModel：空选中块零模型调用直接 null', async () => 
   assert.equal(calls, 0);
 });
 
-test('isModelSummarizer：具备 chat 面（真实模型）才走模型摘要（T5 门禁迁移）', () => {
+test('isModelSummarizer：声明能力位（真实模型）才走模型摘要（J2 能力位门禁）', () => {
   assert.equal(isModelSummarizer(undefined), false);
   assert.equal(isModelSummarizer({ provider: 'stub', chat: textReplyToChatFace(async () => '' )}), false);
   assert.equal(isModelSummarizer({ provider: 'scripted', chat: textReplyToChatFace(async () => '' )}), false);
-  assert.equal(isModelSummarizer({ provider: 'openai', chat: async () => ({ finish: 'stop', content: '', toolCalls: [] }) }), true);
+  // 字符串探针退役：provider === 'openai' 但未声明能力位（测试桩形态）不再命中
+  assert.equal(isModelSummarizer({ provider: 'openai', chat: async () => ({ finish: 'stop', content: '', toolCalls: [] }) }), false);
+  // 能力位缺 chat 函数面：双门不满足，不命中
+  assert.equal(isModelSummarizer({ provider: 'openai', capabilities: { chat: true } } as unknown as ModelAdapter), false);
+  assert.equal(isModelSummarizer({ provider: 'openai', capabilities: {}, chat: async () => ({ finish: 'stop', content: '', toolCalls: [] }) }), false);
+  // J2 主证（钉）：任意供应商的假适配器只要声明能力位即走模型路径——新真实 provider 零代码接入，静默退化消除
+  assert.equal(isModelSummarizer({ provider: 'other-vendor', capabilities: { chat: true }, chat: async () => ({ finish: 'stop', content: '', toolCalls: [] }) }), true);
 });

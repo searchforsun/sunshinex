@@ -787,6 +787,7 @@ test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语�
     });
     const adapter = {
       provider: 'openai',
+      capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
       chat: async (req: ChatRequest) => {
         const prompt = req.messages.map((m) => m.content).join('\n');
         if (prompt.includes('handoff summary')) {

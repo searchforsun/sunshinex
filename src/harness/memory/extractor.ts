@@ -12,7 +12,7 @@ import { buildExtractionPrompt, MEMORY_TOOLS } from '../prompts/memory';
 
 /**
  * 记忆提取管线（auto memory 规格 §4）：reactor settle 单点挂载、独立一次性模型调用不进主链。
- * 门禁复用 summarizer provider==='openai' 形态——Stub/Scripted/未配真实模型零调用零副作用；
+ * 门禁复用 summarizer 能力位判定（capabilities.chat 显式声明，J2）——Stub/Scripted/未配真实模型零调用零副作用；
  * 提取抛错/空产出/畸形 JSON 一律静默降级，任务收口永不因记忆失败而失败（旁路纪律）。
  * 闸门正则与命中判定归 `./guards` 公共单点（规格 §3.3），本文件不再自带第二份实现。
  *

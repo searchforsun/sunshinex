@@ -5,8 +5,8 @@
  * 换模型与换档位同口径（CLAUDE.md §11）：用户级会话参数、整场恒定（对后续任务生效）、
  * 不进提示词、系统侧零自动切换——用户显式触发的跨模型重算事件。
  */
-import { ModelAdapter, OpenAIAdapter, ReasoningEffort, UsageHooks, LLMConfig } from './adapter';
-import type { ChatRequest, ChatResult } from '../types';
+import { ModelAdapter, OpenAIAdapter, UsageHooks, LLMConfig } from './adapter';
+import type { ChatRequest, ChatResult, ReasoningEffort } from '../types';
 import type { ModelChoice } from '../config/providers';
 import { resolveProviderApiKey } from '../config/providers';
 

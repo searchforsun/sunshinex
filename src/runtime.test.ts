@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildModel, buildTierRouter, parseTier } from './runtime';
+import * as http from 'http';
+import { buildModel, buildTierRouter, modelTimeoutMsEnv, parseTier } from './runtime';
 
 const TIER_ENV_KEYS = ['SUNSHINEX_MODEL_SMALL', 'SUNSHINEX_MODEL_MEDIUM', 'SUNSHINEX_MODEL_LARGE'] as const;
 
@@ -45,6 +46,42 @@ test('buildTierRouter：按档绑定 + 缺省兜底，显式档解析到绑定�
     assert.equal(router.resolve('small').label, defLabel, '未配置档回退默认承载（同配置标签）');
     assert.equal(router.resolve('medium').label, defLabel);
   });
+});
+
+// ── J9b：LLMConfig.timeoutMs 死旋钮接线 SUNSHINEX_MODEL_TIMEOUT_MS ──
+test('modelTimeoutMsEnv：正整数生效；未设/空串/非正整数静默忽略回缺省（600s 内建）', () => {
+  assert.equal(modelTimeoutMsEnv({}), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '  ' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: 'abc' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '-5' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '300.5' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '30000' }), 30000);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: ' 30000 ' }), 30000);
+});
+
+test('buildModel 接线：SUNSHINEX_MODEL_TIMEOUT_MS 生效（挂起端点按 env 超时报错，非内建 600s）', async () => {
+  const KEYS = ['SUNSHINEX_MODEL_TIMEOUT_MS', 'SUNSHINEX_API_KEY', 'SUNSHINEX_BASE_URL'] as const;
+  const prev = KEYS.map((k) => [k, process.env[k]] as const);
+  const srv = http.createServer((_req, _res) => {
+    // 挂起不响应，触发客户端超时（adapter.test.ts 超时钉同款形态）
+  });
+  await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  const addr = srv.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  try {
+    process.env.SUNSHINEX_MODEL_TIMEOUT_MS = '200';
+    process.env.SUNSHINEX_API_KEY = 'k';
+    process.env.SUNSHINEX_BASE_URL = `http://127.0.0.1:${port}/v1`;
+    const a = buildModel({});
+    await assert.rejects(() => a.chat({ messages: [{ role: 'user', content: 'hi' }] }), /Model call timed out/);
+  } finally {
+    for (const [k, v] of prev) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    srv.close();
+  }
 });
 
 // ── D27 收敛形态钉（guards.test.ts「唯一实现」同款源码形态断言先例）──

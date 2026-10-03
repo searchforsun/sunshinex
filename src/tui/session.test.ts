@@ -571,6 +571,7 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
       mode: 'dontAsk',
       model: {
         provider: 'openai',
+        capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
         chat: async (req: ChatRequest) => {
           const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
           if (p.includes('handoff summary')) {

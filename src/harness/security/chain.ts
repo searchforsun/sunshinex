@@ -60,24 +60,29 @@ export class SafetyChain {
     }
   }
 
-  evaluate(tool: string, input: unknown): GuardDecision {
-    const decision = this.guard.preToolUse(tool, input);
-    if (!decision.allowed) return decision;
-
-    if (PATH_TOOLS.has(tool)) {
-      const raw = typeof input === 'object' && input !== null ? (input as { path?: unknown }).path : undefined;
-      return this.resolveSafe(raw, tool);
-    }
-    return { allowed: true };
-  }
-
-  /** 异步决策：guard 段走 preToolUseAsync；路径工具判界后，manual 审批请求经 guard.resolveAsk 路由（spec 5.1 写/读分支：
-   *  'always' 目录登记，会话内同目录后续读写免批；asker 缺失/失败维持原拒绝，宁停不误）。非路径工具语义不变。 */
-  async evaluateAsync(tool: string, input: unknown): Promise<GuardDecision> {
-    const decision = await this.guard.preToolUseAsync(tool, input);
+  /** 判定骨架单点（C5 收敛）：guard 决策透传（非放行即定论）→ 非路径工具直放 → 路径工具判界（resolveSafe）。
+   *  evaluate（同步 guard 面，测试消费）与 evaluateAsync（生产执行入口 tools.ts）共用本段——「guard →
+   *  PATH_TOOLS → resolveSafe」三步只此一份实现，双骨架漂移消除；路径 raw 由各入口按既有口径提取后传入
+   *  （evaluate 字面 .path 提取 / evaluateAsync rawPath 归一——两入口历史口径差异原样保持，收敛零行为变化） */
+  private decideWithGuard(decision: GuardDecision, tool: string, raw: unknown): GuardDecision {
     if (!decision.allowed) return decision;
     if (!PATH_TOOLS.has(tool)) return { allowed: true };
-    const resolved = this.resolveSafe(this.rawPath(input), tool);
+    return this.resolveSafe(raw, tool);
+  }
+
+  /** 同步评估面（C5 后形态）：guard 同步判定 + 判定骨架单点。生产执行入口是 evaluateAsync（tools.ts），
+   *  本面留在生产 API 上的消费方是既有测试与同步探针——骨架与异步面同源，不再自带第二份实现 */
+  evaluate(tool: string, input: unknown): GuardDecision {
+    const raw = typeof input === 'object' && input !== null ? (input as { path?: unknown }).path : undefined;
+    return this.decideWithGuard(this.guard.preToolUse(tool, input), tool, raw);
+  }
+
+  /** 异步决策（生产执行入口）：guard 段走 preToolUseAsync，判定骨架复用同步面同一单点；manual 审批请求
+   *  经 guard.resolveAsk 路由（spec 5.1 写/读分支：'always' 目录登记，会话内同目录后续读写免批；
+   *  asker 缺失/失败维持原拒绝，宁停不误）。非路径工具语义不变。 */
+  async evaluateAsync(tool: string, input: unknown): Promise<GuardDecision> {
+    const decision = await this.guard.preToolUseAsync(tool, input);
+    const resolved = this.decideWithGuard(decision, tool, this.rawPath(input));
     if (resolved.allowed || resolved.ask !== true) return resolved;
     // 链侧 ask 路由（spec 5.1 写/读分支）：'always' 目录登记，会话内同目录后续读写免批
     const askDecision = await this.guard.resolveAsk({

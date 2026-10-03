@@ -156,6 +156,7 @@ export class SessionController {
   constructor(opts: SessionOpts) {
     this.root = opts.root;
     this.modelSwitcher = opts.models;
+    this.mdColumns = opts.mdColumns; // J6 双源收敛：流式 md 宽度源注入（缺省回退 process.stdout.columns，既有口径）
     // 主模型装配单点：切换器在场即以其为主模型（/model 换内芯即时贯通 reactor/子代理/压缩）；
     // 否则回落单模型适配器（无 providers 配置的既有形态）
     const mainModel = opts.models ?? opts.model;
@@ -1255,9 +1256,12 @@ export class SessionController {
     appendLiveText(this, kind, delta);
   }
 
+  /** 流式 md 渲染宽度注入源（J6 双源收敛）：装配层/测试经 SessionOpts.mdColumns 注入；缺省回退 process.stdout.columns */
+  private readonly mdColumns: (() => number) | undefined;
+
   /** markdansi 流式通道宽度（块渲染与终稿兜底渲染共用基准）；公开 = MdStreamHost 接缝（md-stream 消费） */
   mdWidth(): number {
-    return process.stdout.columns ?? 80;
+    return this.mdColumns?.() ?? process.stdout.columns ?? 80;
   }
 
   /** 收束实时区（委托 md-stream.closeLiveBlock：thinking 折叠为一行摘要；reply 不落消息——终稿由 done 接管） */

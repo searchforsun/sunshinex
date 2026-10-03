@@ -124,7 +124,7 @@ test('applyCompaction 摘要分叉：模型成功 → 正文为模型文本，ch
     summaryTokenBudget: 2000,
     summaryModel: {
       provider: 'openai',
-      
+      capabilities: { chat: true }, // J2：真实模型夹具声明能力位（摘要分叉门禁判据）
       chat: async () => {
         calls++;
         return {
@@ -150,7 +150,7 @@ test('applyCompaction 摘要分叉：模型抛错/空输出 → 回退确定性 
   for (const reply of [() => { throw new Error('boom'); }, () => '   '] as const) {
     const { cm } = setup();
     const chunks = await compactOf(cm, '旧上下文要点'.repeat(10));
-    const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'openai', chat: textReplyToChatFace(reply) } });
+    const via = await cm.applyCompaction(chunks, { summaryModel: { provider: 'openai', capabilities: { chat: true }, chat: textReplyToChatFace(reply) } });
     assert.equal(via, 'deterministic');
     const sum = cm.assemble().find((i) => i.content.startsWith('[Compacted summary'));
     assert.ok(sum && sum.content.includes('- [history] 旧上下文要点'), '回退体为 - [type] 摘要 行');
@@ -162,7 +162,7 @@ test('applyCompaction replay 幂等：同一 chunks 二次应用不再发起模�
   let calls = 0;
   const model = {
     provider: 'openai',
-    
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（摘要分叉门禁判据）
     chat: async () => {
       calls++;
       return {
@@ -208,6 +208,7 @@ test('runCompaction：协调单点——压缩、模型摘要、折链', async (
     chainFoldedCount: 1,
     summaryModel: {
       provider: 'openai',
+      capabilities: { chat: true }, // J2：真实模型夹具声明能力位（摘要分叉门禁判据）
       chat: async () => ({
         finish: 'tool_calls' as const,
         content: '',

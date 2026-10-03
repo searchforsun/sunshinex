@@ -217,6 +217,9 @@ export interface SessionOpts extends TuiRuntimeOpts {
   onAskUser?: AskUserSeam;
   /** 运行时注入位：缺省自建 createRuntime(opts)；测试可注入假实现以隔离长任务 */
   runtime?: TuiRuntime;
+  /** 流式 md 渲染宽度源（J6 双源收敛）：装配层/测试注入终端列宽——渲染层经 useStdout 取宽、通道经本源取宽，
+   *  两面同源；缺省不注入回退 process.stdout.columns（既有口径，Ink 宿主 stdout 即 process.stdout，生产行为不变） */
+  mdColumns?: () => number;
 }
 
 /** ctx 水位消费策略：真实 usage 口径（exact）直接采信——压缩回落 / plan 新步骤最小化回落都是真实语义；
@@ -224,6 +227,14 @@ export interface SessionOpts extends TuiRuntimeOpts {
 export function applyCtxWatermark(current: number, incoming: number, exact: boolean): number {
   if (!(incoming > 0)) return current;
   return exact ? incoming : Math.max(current, incoming);
+}
+
+/** 状态栏上下文分母解析单点（J6 双源收敛）：TuiState.modelWindow（/model 选择带窗口声明时）在场即取；
+ *  缺省回退全局 env SUNSHINEX_CONTEXT_WINDOW（未配置/非法 = 0，状态栏该段不显示——缺省 0 语义与旧
+ *  App 渲染层直读点逐字节一致）。渲染层（App.tsx）只消费本单点，不再直读 env——窗口分母从 state +
+ *  本模型层单点取值，与 /context 数据面同一条回退链。入参收窄为 modelWindow 视图（纯函数可独立钉测）。 */
+export function resolveContextWindow(state: Pick<TuiState, 'modelWindow'>): number {
+  return state.modelWindow ?? Number(process.env.SUNSHINEX_CONTEXT_WINDOW ?? 0);
 }
 
 // 选择卡翻页口径（2026-09-30 用户裁决）：More…/Back… 导航行分页退役（原 paginateOptions 已删）——

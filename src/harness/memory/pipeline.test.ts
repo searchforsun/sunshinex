@@ -24,6 +24,7 @@ interface Ctx {
 function scriptedModel(script: (prompt: string) => string, calls: string[]): ModelAdapter {
   return {
     provider: 'openai',
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（enqueue 门禁判据）
     complete: async () => {
       throw new Error('complete must not be called on the chat path');
     },
@@ -142,6 +143,7 @@ test('pipeline：单 worker 串行（并发模型调用计数恒 ≤ 1）', asyn
   let peak = 0;
   const model = {
     provider: 'openai',
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（enqueue 门禁判据）
     complete: async () => {
       throw new Error('complete must not be called on the chat path');
     },

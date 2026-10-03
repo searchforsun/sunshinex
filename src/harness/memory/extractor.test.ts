@@ -19,7 +19,8 @@ function openaiStub(reply: string): Capturing {
   const prompts: string[] = [];
   const model: ModelAdapter = {
     provider: 'openai',
-    
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（门禁判据，provider 字符串不再作探针）
+
     chat: async (req) => {
       prompts.push(req.messages.map((m) => (m.role === 'system' || m.role === 'user' ? m.content : '')).join('\n'));
       const j = JSON.parse(reply) as { memories?: Array<{ type: string; description: string; content: string }> };
@@ -54,8 +55,29 @@ test('provider 门禁：Stub/Scripted 静默跳过零调用零副作用', async 
     let called = 0;
     const stub: ModelAdapter = { provider: 'stub', chat: textReplyToChatFace(async () => { called += 1; return OK_ENVELOPE; }) };
     await settleMemory({ goal: 'g', reply: 'r', model: stub, root: mem.dir() });
-    assert.equal(called, 0, '非 openai 通道零模型调用');
+    assert.equal(called, 0, '未声明能力位（Stub/Scripted/测试桩）零模型调用');
     assert.equal(mem.count(), 0, '零副作用');
+  });
+});
+
+test('能力位门禁（J2 钉）：任意供应商的假适配器声明能力位即走模型提取路径', async () => {
+  await withMem(async (mem) => {
+    let called = 0;
+    // 非 openai 供应商 + 能力位声明：新真实 provider 零代码接入即获得记忆提取（静默退化消除的主证）；
+    // 应答用单工具 DSL 形态（textReplyToChatFace 经 parseScriptStep 转译出 submit_memory_items 出牌）
+    const call = JSON.stringify({
+      tool: 'submit_memory_items',
+      input: { items: [{ type: 'project', description: 'uses pnpm workspaces', content: 'repo manages packages with pnpm workspaces' }] },
+    });
+    const vendor: ModelAdapter = {
+      provider: 'other-vendor',
+      capabilities: { chat: true },
+      chat: textReplyToChatFace(async () => { called += 1; return call; }),
+    };
+    await settleMemory({ goal: 'g', reply: 'r', model: vendor, root: mem.dir() });
+    assert.equal(called, 1, '声明能力位 → 提取调用真实发生');
+    assert.equal(mem.count(), 1, '条目照常落盘');
+    assert.equal(mem.list()[0].slug, 'uses-pnpm-workspaces');
   });
 });
 
@@ -112,7 +134,7 @@ test('闸门：三级去重命中拒绝', async () => {
 
 test('提取抛错/空产出/非 JSON → 静默零副作用不抛', async () => {
   await withMem(async (mem) => {
-    const boom: ModelAdapter = { provider: 'openai', chat: textReplyToChatFace(async () => { throw new Error('net down'); }) };
+    const boom: ModelAdapter = { provider: 'openai', capabilities: { chat: true }, chat: textReplyToChatFace(async () => { throw new Error('net down'); }) };
     await settleMemory({ goal: 'g', reply: 'r', model: boom, root: mem.dir() });
     await settleMemory({ goal: 'g', reply: 'r', model: openaiStub('{"memories":[]}').model, root: mem.dir() });
     await settleMemory({ goal: 'g', reply: 'r', model: openaiStub('not json at all').model, root: mem.dir() });
@@ -137,6 +159,7 @@ test('settle 尾部阈值触发整理（先提取入库、后判定阈值整理�
     }
     const model: ModelAdapter = {
       provider: 'openai',
+      capabilities: { chat: true },
       chat: async (req) => {
         const p = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         const items: Array<Record<string, string>> = [];

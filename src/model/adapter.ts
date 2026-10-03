@@ -2,14 +2,13 @@
  *  LLMConfig、StubAdapter、OpenAIAdapter（传输+编排+effort 探测状态机+SSE 流式重组）、ScriptedAdapter
  *  脚本 DSL；effort 档位原语/usage 三提取器/wire 序列化/三档路由已下沉 effort.ts/usage.ts/wire.ts/router.ts，
  *  此处按原路径再导出（对齐 tui/runtime.ts RunOutcome 注释先例），既有 './adapter' 导入点零改动 */
-import { ModelTier, ReasoningEffort, ChatRequest, ChatResult, ToolCallSpec} from '../types';
+import { ReasoningEffort, ChatRequest, ChatResult, ToolCallSpec} from '../types';
 import { t } from '../i18n';
 import { contextWindowEnv } from '../config/termination-config';
 import { parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
 import { extractUsage, extractPromptTokens, extractCacheTokens } from './usage';
 import { toWireMessages, toWireTools, parseChatResult } from './wire';
 
-export type { ModelTier, ReasoningEffort };
 // 四件原路径再导出（防既有导入点漂移）：值符号与类型符号各自走 export / export type
 export { EFFORT_ORDER, parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
 export { extractUsage, extractPromptTokens, extractCacheTokens } from './usage';
@@ -35,6 +34,11 @@ export interface ModelAdapter {
   /** 该模型最大上下文 tokens（可选）：run 级窗口解析优先取此（resolveRunWindow）——多源每模型配置窗口的
    *  贯穿通道；未声明回退 SUNSHINEX_CONTEXT_WINDOW / 内置缺省 200k（单模型既有口径） */
   readonly contextWindow?: number;
+  /** 能力位声明（J2）：本适配器具备哪些**真实模型**面的显式自述——「真实模型」判定不再以 provider 字符串
+   *  近似。OpenAIAdapter 置 { chat: true }；Stub/Scripted 测试桩不置（桩也有 chat 方法，但不算真实模型）。
+   *  消费单点：harness/context/summarizer.isModelSummarizer（模型摘要/记忆提取/整理三管线共门禁）——
+   *  新增真实 provider 只要声明能力位即自动获得这些能力，静默退化消除 */
+  readonly capabilities?: { chat?: boolean };
   /** function calling 轮面：消息视图进、聚合轮结果出（tool_choice auto）；effort 走 req.effort 请求级字段 */
   chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult>;
   /** 流式轮面（可选）：content 增量照旧回调，轮终聚合 ChatResult；未实现者消费方回落非流式 chat */
@@ -83,6 +87,8 @@ export class OpenAIAdapter implements ModelAdapter {
   readonly label: string;
   /** 该模型最大上下文 tokens（cfg > env；undefined = 未配置，窗口解析回退全局链） */
   readonly contextWindow: number | undefined;
+  /** 能力位（J2）：真实 chat 面在场的显式声明——isModelSummarizer 门禁据此判定，provider 字符串退役为纯标识 */
+  readonly capabilities: { chat?: boolean } = { chat: true };
   private baseURL: string;
   private apiKey: string;
   private model: string;

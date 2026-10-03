@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { userConfigDir } from './env';
+import { t } from '../i18n';
 
 /**
  * 语义键 → SUNSHINEX_* 环境槽映射表（全仓唯一权威）。
@@ -242,4 +243,24 @@ export function loadProjectSettings(root: string): string {
 /** 全局 settings 路径：<userConfigDir>/settings.json（对标 ~/.claude/settings.json 惯例） */
 export function loadGlobalSettings(): string {
   return path.join(userConfigDir(), 'settings.json');
+}
+
+/**
+ * 两级 settings 装载（项目级 → 全局级）收口单点（R1 收敛：src/index.ts 与 src/cli/index.ts 双胞胎合一）：
+ * applySettings 只填缺省槽，先装者不被覆盖，装载顺序即优先级。抛错（畸形 JSON / version 非 1）属 fail-fast：
+ * 本函数透出含文件路径的错误信息并退出非零——静默降级会演变成「配置没生效」的排查泥潭；
+ * warnings 经 stderr 逐行双语输出（外观通道；applySettings 等库层数据函数零打印零退出，出口职责独归本函数）。
+ */
+export function loadSettingsChain(projectRoot: string): void {
+  try {
+    for (const result of [applySettings(loadProjectSettings(projectRoot)), applySettings(loadGlobalSettings())]) {
+      for (const w of result.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
+    }
+  } catch (err) {
+    console.error(t(
+      err instanceof Error ? err.message : String(err),
+      err instanceof Error ? err.message : String(err),
+    ));
+    process.exit(1);
+  }
 }

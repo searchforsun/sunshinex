@@ -4,14 +4,26 @@ import { Harness, HarnessOptions } from './harness';
 import { assembleKnowledgeBase, KnowledgeBase } from './harness/knowledge';
 import { resolveKbEnv } from './config/env';
 import { LoopDeps } from './loop/engine';
-import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ReasoningEffort, ScriptedAdapter, StubAdapter } from './model/adapter';
-import { ModelTier } from './types';
+import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ScriptedAdapter, StubAdapter } from './model/adapter';
+import { ModelTier, ReasoningEffort } from './types';
 
-/** 模型装配唯一决策点（CLI run/pipeline 与 TUI 共用，避免各入口各写一套）：--model 可选 openai|scripted|stub，缺省 openai；配置由进程入口装载 settings.json 两级链（已导出环境变量优先） */
+/** 模型装配唯一决策点（CLI run/pipeline 与 TUI 共用，避免各入口各写一套）：--model 可选 openai|scripted|stub，缺省 openai；
+ *  调用超时接 SUNSHINEX_MODEL_TIMEOUT_MS（J9b 接线，正值生效、缺省 600s 内建于适配器）；配置由进程入口装载 settings.json 两级链（已导出环境变量优先） */
 export function buildModel(flags: Record<string, string | boolean | string[]>): ModelAdapter {
   if (flags.model === 'scripted') return new ScriptedAdapter([]);
   if (flags.model === 'stub') return new StubAdapter();
-  return new OpenAIAdapter({ provider: 'openai', ...resolveEffortConfig(flags) });
+  const timeoutMs = modelTimeoutMsEnv();
+  return new OpenAIAdapter({ provider: 'openai', ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...resolveEffortConfig(flags) });
+}
+
+/** 模型调用超时 env 解析（J9b，对齐 CLAUDE §12「模型调用超时 600s」的可调口径）：SUNSHINEX_MODEL_TIMEOUT_MS
+ *  正整数生效；未设/空串/非正整数静默忽略回适配器内建 600s——调参旋钮取宽松口径（同文件 parseEffort/resolveEffortConfig
+ *  对非法 env 同为静默回缺省；装配根不打断启动），严 fail-fast 口径属 termination-config 域（如需平移另立项） */
+export function modelTimeoutMsEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const raw = env.SUNSHINEX_MODEL_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 /** 缺省思考强度配置（--effort > SUNSHINEX_REASONING_EFFORT）：非法值忽略回缺省态（适配器内零穿参） */
@@ -38,11 +50,13 @@ export function buildTierRouter(flags: Record<string, string | boolean | string[
   ];
   let bound = 0;
   const router = new ModelRouter();
+  // 超时旋钮装配期解析一次（按档绑定与主模型同源继承，防换档丢旋钮）
+  const timeoutMs = modelTimeoutMsEnv();
   for (const { tier, env } of tiers) {
     const model = process.env[env];
     if (model && model.length > 0) {
-      // 按档绑定同样继承缺省思考强度（--effort/env），否则配档路由的用户 effort 缺省丢失
-      router.bind(tier, new OpenAIAdapter({ provider: 'openai', model, ...resolveEffortConfig(flags) }));
+      // 按档绑定同样继承缺省思考强度（--effort/env）与超时旋钮，否则配档路由的用户 effort/timeout 缺省丢失
+      router.bind(tier, new OpenAIAdapter({ provider: 'openai', model, ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...resolveEffortConfig(flags) }));
       bound++;
     }
   }

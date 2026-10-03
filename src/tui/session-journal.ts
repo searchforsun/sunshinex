@@ -188,6 +188,7 @@ export function listSessions(dataDir: string): SessionMeta[] {
     try {
       updatedAt = fs.statSync(file).mtimeMs;
     } catch {
+      // 扫目录竞态：readdir 与 stat 之间档案被并发删除/轮转清理即 ENOENT——跳过该档案继续列目录，不让单文件消失击穿整个 /resume 列表
       continue;
     }
     let firstUser: string | undefined;
@@ -206,6 +207,8 @@ export function listSessions(dataDir: string): SessionMeta[] {
             break;
           }
         } catch {
+          // 坏行截断停止摘要扫描：头 8 行内出现撕裂/损坏行（事件级落盘的在飞崩溃窗口）即后续行不可信——
+          // 停止取 firstUser/forkedFrom，列表项退化为无摘要形态（不误读错位内容当摘要）
           break;
         }
       }

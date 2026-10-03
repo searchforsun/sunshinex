@@ -45,7 +45,7 @@ test('中止路径（max-steps 未完成）同样触发一次提取，reply 归�
     const extractionPrompts: string[] = [];
     const model: ModelAdapter = {
       provider: 'openai',
-      
+      capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
       chat: async (req) => {
         const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
         if (prompt.includes('memory-extraction')) {
@@ -84,6 +84,7 @@ test('提取失败（模型抛错）不倒灌任务成败', async () => {
     let mainCalled = false;
     const model: ModelAdapter = {
       provider: 'openai',
+      capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
       chat: textReplyToChatFace(async (prompt: string) => {
         if (prompt.includes('memory-extraction')) throw new Error('extraction endpoint down');
         mainCalled = true;
@@ -104,6 +105,7 @@ function dualStub(items: Array<{ type: string; description: string; content: str
   const chainSteps = opts?.chainSteps ?? 0;
   return {
     provider: 'openai',
+    capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
     chat: async (req) => {
       const prompt = req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n');
       if (prompt.includes('memory-extraction')) {

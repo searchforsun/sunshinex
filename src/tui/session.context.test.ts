@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
+import { resolveContextWindow } from './chat-model';
 import { ScriptedAdapter } from '../model/adapter';
 import { chainToHistoryItems, contextBreakdown } from '../harness/context';
 import { estimateTokens } from '../harness/context/window';
@@ -68,6 +69,20 @@ test('会话控制器：/context 只读钉——不消费待注入技能块、�
     assert.equal(second, first, '相邻两次观测逐字节一致（纯函数，无时变字段）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resolveContextWindow（J6 双源收敛单点）：modelWindow 优先 > env 回退 > 未配置 0', () => {
+  const prev = process.env.SUNSHINEX_CONTEXT_WINDOW;
+  try {
+    delete process.env.SUNSHINEX_CONTEXT_WINDOW;
+    assert.equal(resolveContextWindow({}), 0, '未配置 = 0（状态栏 ctx 段不显示，缺省 0 语义不变）');
+    process.env.SUNSHINEX_CONTEXT_WINDOW = '5000';
+    assert.equal(resolveContextWindow({}), 5000, 'modelWindow 缺省回退 env 全局窗口');
+    assert.equal(resolveContextWindow({ modelWindow: 128000 }), 128000, '/model 每模型窗口优先于 env');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_CONTEXT_WINDOW;
+    else process.env.SUNSHINEX_CONTEXT_WINDOW = prev;
   }
 });
 
