@@ -376,3 +376,9 @@
 **评估裁决（不动刀的动刀）**：R10 全量并轨经评估**不做**——三硬边界（tail-rewrite 行数账本纪律与差分门禁、renderMd 与 markdownRowCount 行数口径实锤不等、step 行/旧档回放视觉快照失锚）；四设计前提成文，另立 **D29** 立项（当前唯一未偿项）。
 
 **验证口径（批G后）**：tsc 零错；全量 1577 例 1575 过/0 败/2 既有跳过；selfcheck exit 0。当日全链终态：普查 63 条 → 批A/B/C/D/E/F/G 七批执行，D17–D28 十二项全清，唯余 D29。
+
+## 批H执行状态（2026-10-04·D29 清偿，台账清零）
+
+**D29 渲染双链全量并轨**（afa6bf7）：step 行与旧档回放切主链 renderMd（渲染层 useMemo 烘焙直嵌 ansi 通道，旧档回放自动同口径）；tail-rewrite 行数账本同切 ansiLineCount 真跑口径，**差分门禁零改动咬合绿**；markdownRowCount/parseInline/MarkdownText/hiInkName 消费方清零退役（ChildInspector 盘点确认本就走 renderMd）；快照先行 4 锚 + 新形态 6 钉接班（含 200k 爆栈护栏加行宽有界断言）；切通过程实证抓出并修复烘焙提前 return 吞 step ▶ 前缀缺陷。**技术债待办区自此清零**（唯 D5 真实模型 e2e 长期挂起在册、不属活动待办）。
+
+**验证口径（批H后）**：tsc 零错；全量 1568 例 1566 过/0 败/2 既有跳过；selfcheck exit 0。本报告全部登记项已处置完毕，后续新债按 TECH-DEBT.md 规则新增登记，本快照封存。
