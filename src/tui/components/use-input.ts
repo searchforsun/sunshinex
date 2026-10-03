@@ -67,20 +67,59 @@ export function keyTrace(msg: string): void {
  *  监听器原挂每次挂载的 useLayoutEffect——React 提交（长转录全量 Static 渲染可达秒级）完成才挂上，
  *  重挂空窗与长渲染期按键全丢（用户按 Enter 时渲染早已完成，即「Enter 解锁」假象）。
  *  改注册制：监听器与拆包重组缓冲按 stdin 单例常驻（跨重挂存活，pending 字节不丢、raw mode 不闪断），
- *  各挂载实例注册/注销自己的分发器，data 事件派发给最后注册者（最新挂载赢，同旧语义）；
- *  注销后延迟一 tick 检测真空——同 tick 内重挂（repaint 卸载→重挂路径）即零间隙零丢键，
- *  真正退出（无再注册）才摘监听 + 退 raw mode。 */
+ *  各挂载实例注册/注销自己的分发器，data 事件派发给最后注册者（最新挂载赢，同旧语义）。
+ *  2026-10-03 真空宽限（真机「归档视图进入/live→archived 换挡后须先按 Enter」复发终修）：最后一个处理器
+ *  随卸载注销时不再同步「摘监听+关 raw mode」——重挂路径（browse→归档进入、换挡）卸载与重挂虽在同一
+ *  宏任务（ink unmount 同步 resolveExitPromise），中间却隔着归档大转录的首帧同步渲染（真机秒级），
+ *  窗口内 setRawMode(false) 已生效：终端落入 cooked 线路规程，物理按键进「行缓冲」直到按 Enter 才
+ *  整行递交=「先按 Enter 才有 Esc/Tab/Ctrl+C」的签名特征。宽限期内监听与 raw mode 原样保留（重挂即
+ *  整个跳过、零模式翻转）；宽限到期仍真空才真正拆链。进程退出卫生由 'exit' 单点同步拆链兜底
+ *  （quit() 的 process.exit 不给 timer 机会——旧实现为此曾同步拆链，该职责移交 exit 钩子后通杀所有退出路径） */
 interface StdinEntry {
   handleData: (data: string) => void;
   handlers: Set<(input: string, key: RawKey) => void>;
   pending: string;
   joinTimer?: ReturnType<typeof setTimeout>;
-  setRawMode: (on: boolean) => void;
+  vacuumTimer?: ReturnType<typeof setTimeout>;
+  /** 终端流恢复单点（终拆链/进程退出时）：直驱流的 setRawMode(false)+pause */
+  restore: () => void;
 }
 const stdinEntries = new Map<unknown, StdinEntry>();
 
+/** 真空宽限窗口：卸载→重挂虽同宏任务不可被 timer 抢占，窗口取值只约束「真无重挂」路径的拆链延迟
+ *  （测试直卸等）；SUNSHINEX_VACUUM_GRACE_MS 覆盖（测试压短用） */
+const VACUUM_GRACE_MS = 1000;
+
+/** 条目真拆链单点：宽限到期/进程退出共用——摘监听 + 清缓冲 + 退 raw mode + 删条目 */
+function teardownEntry(e: StdinEntry, stdin: unknown): void {
+  if (e.vacuumTimer) {
+    clearTimeout(e.vacuumTimer);
+    e.vacuumTimer = undefined;
+  }
+  if (e.joinTimer) {
+    clearTimeout(e.joinTimer);
+    e.joinTimer = undefined;
+  }
+  e.pending = '';
+  e.handlers.clear();
+  (stdin as { off?: (ev: string, fn: unknown) => void }).off?.('data', e.handleData);
+  stdinEntries.delete(stdin);
+  e.restore();
+}
+
+/** 进程退出卫生（'exit' 同步回调约束内完成）：真空宽限定时器在 process.exit 前永不执行，raw mode
+ *  复位必须由此兜底——quit()/SIGINT/自然退出全路径通杀，终端无 cooked 残留 */
+let exitHookInstalled = false;
+function installExitHook(): void {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.once('exit', () => {
+    for (const [stdin, e] of [...stdinEntries]) teardownEntry(e, stdin);
+  });
+}
+
 const useInput = (inputHandler: (input: string, key: RawKey) => void, options: { isActive?: boolean } = {}): void => {
-  const { stdin, setRawMode, internal_exitOnCtrlC } = useStdin();
+  const { stdin, internal_exitOnCtrlC } = useStdin();
   // 处理器进 ref（监听生命周期与处理器身份解耦）：App 高频重渲染（子面板 120ms 节流 + Spinner 帧）下
   // 以处理器为 effect 依赖会使 stdin 监听反复摘挂，按键落入空窗即丢失——真机「运行中快捷键与输入
   // 全部失效」的根因；监听进程级只挂一次、每次分发取注册表最新处理器，重渲染零摘挂、按键零丢失
@@ -90,8 +129,30 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
     if (options.isActive === false || !stdin) return;
     let entry: StdinEntry | undefined = stdinEntries.get(stdin);
     if (!entry) {
-      const created: StdinEntry = { handlers: new Set(), pending: '', setRawMode, handleData: () => {} };
-      const e = created;
+      installExitHook();
+      // 直驱终端流（不经 ink context setRawMode，2026-10-03 终修）：ink 内部 App 组件卸载时无条件
+      // handleSetRawMode(false)（其内部计数 --count===0 即关 raw+摘其监听+pause）——重挂路径卸载→重挂
+      // 之间的渲染窗口（归档大转录首帧秒级）终端即落 cooked 行缓冲=真机「归档视图先按 Enter」病根。
+      // 改直驱后 ink 计数恒 0，其卸载 disable 成 --0=-1≠0 的 no-op：raw mode/流动/本监听跨重挂全程稳定，
+      // 恢复 cooked 只发生在终拆链（restore）与进程退出（exit 钩子）两处
+      const rawStdin = stdin as unknown as {
+        setEncoding?: (enc: string) => void;
+        resume?: () => void;
+        setRawMode?: (on: boolean) => void;
+        pause?: () => void;
+      };
+      rawStdin.setEncoding?.('utf8');
+      rawStdin.resume?.();
+      rawStdin.setRawMode?.(true);
+      const created: StdinEntry = {
+        handlers: new Set(),
+        pending: '',
+        restore: () => {
+          rawStdin.setRawMode?.(false);
+          rawStdin.pause?.();
+        },
+        handleData: () => {},
+      };      const e = created;
       const flush = (): void => {
         if (e.joinTimer) {
           clearTimeout(e.joinTimer);
@@ -166,27 +227,37 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         if (typeof e.joinTimer === 'object' && e.joinTimer && 'unref' in e.joinTimer) e.joinTimer.unref();
       };
       stdinEntries.set(stdin, e);
+      // 监听条目生命周期仅一次：首建挂/终拆链摘（宽限重挂零翻转）；raw mode 已在直驱段开启
+      stdin.on('data', e.handleData);
       entry = e;
     }
     const e: StdinEntry = entry;
-    // 首个注册者开 raw mode（常驻到最终注销——重挂空窗不再闪断，裸字节不落行缓冲）
-    if (e.handlers.size === 0) setRawMode(true);
+    // 真空宽限内重挂：撤宽限定时器即可——监听与 raw mode 自条目创建起常驻未拆（重挂零模式翻转，
+    // 归档大转录渲染窗口内终端不落 cooked，裸字节不进行缓冲）
+    if (e.handlers.size === 0 && e.vacuumTimer) {
+      clearTimeout(e.vacuumTimer);
+      e.vacuumTimer = undefined;
+    }
     const wrapped = (input: string, key: RawKey): void => {
       handlerRef.current(input, key);
     };
     e.handlers.add(wrapped);
-    stdin.on('data', e.handleData);
     return () => {
       e.handlers.delete(wrapped);
       if (e.handlers.size === 0) {
-        // 同步摘除（不用延迟 timer）：quit() 路径 process.exit 同步退出，unref'd detach timer 永不执行
-        // 即 raw mode 残留（终端坏掉）；重挂路径的 off/on 在同一同步任务内完成（JS 单线程零事件让渡），
-        // 空窗内不可能插入 data 事件，零丢键
-        if (e.joinTimer) clearTimeout(e.joinTimer);
+        // 真空宽限：不同步拆链（归档大转录首帧渲染的窗口内 raw mode 关闭=终端行缓冲吞键，真机
+        // 「归档视图先按 Enter」签名特征）；宽限到期仍真空才真拆链，进程退出另有 'exit' 兜底
+        if (e.joinTimer) {
+          clearTimeout(e.joinTimer);
+          e.joinTimer = undefined;
+        }
         e.pending = '';
-        stdin.off('data', e.handleData);
-        stdinEntries.delete(stdin);
-        setRawMode(false);
+        const graceMs = Number(process.env.SUNSHINEX_VACUUM_GRACE_MS || '') || VACUUM_GRACE_MS;
+        e.vacuumTimer = setTimeout(() => {
+          e.vacuumTimer = undefined;
+          teardownEntry(e, stdin);
+        }, graceMs);
+        if (typeof e.vacuumTimer === 'object' && e.vacuumTimer && 'unref' in e.vacuumTimer) e.vacuumTimer.unref();
       }
     };
   }, [options.isActive, stdin, internal_exitOnCtrlC]);
