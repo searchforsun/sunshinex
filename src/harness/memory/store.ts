@@ -62,6 +62,10 @@ export const INDEX_NAME = 'MEMORY.md';
 /** 索引名的 slug 排他口径（大小写不敏感比较用：`MEMORY.md` 去扩展名即 `memory`） */
 const INDEX_SLUG = 'memory';
 
+/** 整理回滚快照目录名前缀（backup 原语单点，D26/J10）：.bak-<epoch-ms> 子目录——.bak 命名与清退/清空范围等
+ *  目录级 fs 知识全部收敛进 store，调用方（consolidate）只持句柄不做目录手术 */
+const BAK_PREFIX = '.bak-';
+
 /**
  * slug 安全校验（写入/删除前拼 `<slug>.md` 的唯一收口，供后续任务复用）：非空 **且** 已是规范化形态
  * （`slugifyMemory(slug) === slug`，天然排除 `/`、`..`、空白等越界形态）**且** 不等于索引名 `MEMORY`
@@ -250,6 +254,45 @@ export class MemoryStore {
     fs.rmSync(file);
     this.rebuildIndex();
     return ok(undefined);
+  }
+
+  /**
+   * 整理回滚备份原语（D26/J10，收编自 consolidate 的 .bak 裸 fs 手术，控制流逐字节等价）：
+   * 先清退旧快照（只保留本次一份）→ 建本次 .bak-<时间戳> 目录 → 拷入当前目录全部普通文件
+   * （子目录与 .bak-* 一概不拷——备份对象是记录文件集）。返回备份目录绝对路径句柄，
+   * 供 restore（失败回滚）或 clearBackup（成功清理）消费。
+   */
+  backup(): string {
+    for (const f of fs.readdirSync(this.dirPath)) {
+      if (f.startsWith(BAK_PREFIX)) fs.rmSync(path.join(this.dirPath, f), { recursive: true, force: true });
+    }
+    const bak = path.join(this.dirPath, `${BAK_PREFIX}${Date.now()}`);
+    fs.mkdirSync(bak, { recursive: true });
+    for (const f of fs.readdirSync(this.dirPath)) {
+      if (f.startsWith(BAK_PREFIX)) continue;
+      const p = path.join(this.dirPath, f);
+      if (fs.statSync(p).isFile()) fs.copyFileSync(p, path.join(bak, f));
+    }
+    return bak;
+  }
+
+  /**
+   * 从备份精确还原（失败回滚路径）：清空当前目录非 .bak 项（含失败半成品与异形条目如被占位的
+   * MEMORY.md 目录，recursive 强删）→ 从备份整体拷回 → 删除备份目录（回滚即消费备份）。
+   * 句柄须为 backup() 返回值；还原过程中 fs 意外异常照原样冒泡（与原内联控制流一致）。
+   */
+  restore(bak: string): void {
+    for (const f of fs.readdirSync(this.dirPath)) {
+      if (f.startsWith(BAK_PREFIX)) continue;
+      fs.rmSync(path.join(this.dirPath, f), { recursive: true, force: true });
+    }
+    for (const f of fs.readdirSync(bak)) fs.copyFileSync(path.join(bak, f), path.join(this.dirPath, f));
+    fs.rmSync(bak, { recursive: true, force: true });
+  }
+
+  /** 成功路径清理（写入全部落定后由调用方调用）：删备份目录，不留残渣；不动当前目录内容 */
+  clearBackup(bak: string): void {
+    fs.rmSync(bak, { recursive: true, force: true });
   }
 
   /** 索引全量重建（派生物语义：空集写空文件，保持文件存在形态统一）。

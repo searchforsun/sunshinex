@@ -10,7 +10,7 @@ import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort } from '../ty
 import type { ChatItem, TodoItem } from './session';
 
 /** 分档血缘（规格 2026-09-20 rewind+fork §5.1）：upToLine=源档 1-based 行号，新档含源档第 1..upToLine 行 */
-export interface ForkedFrom {
+interface ForkedFrom {
   sourceSessionId: string;
   upToLine: number;
   kind: 'rewind' | 'fork';
@@ -23,7 +23,7 @@ export interface SnapshotEntry {
   deleted?: true;
 }
 
-export interface JournalHeader {
+interface JournalHeader {
   t: 'header';
   v: number;
   id: string;
@@ -57,14 +57,14 @@ export interface SessionMeta {
   forkedFrom?: ForkedFrom;
 }
 
-export interface ParsedJournal {
+interface ParsedJournal {
   events: JournalEvent[];
   /** 与 events 一一对应的原始行（branchFrom 逐字节复制用） */
   lines: string[];
   truncated: boolean;
 }
 
-export interface JournalReplay {
+interface JournalReplay {
   version: number | undefined;
   chain: HistoryStep[];
   chainFrom: number;
@@ -111,7 +111,7 @@ export function parseJournalFile(file: string): ParsedJournal {
 }
 
 /** todos 载荷三态归一（规格 D8）：旧档 {text, done} 布尔形态 → status（done:true→completed / false→pending），新载荷原样通过 */
-export function normalizeTodoItems(raw: unknown[]): TodoItem[] {
+function normalizeTodoItems(raw: unknown[]): TodoItem[] {
   return raw.map((it) => {
     const o = (it ?? {}) as { text?: unknown; status?: unknown; done?: unknown };
     const text = typeof o.text === 'string' ? o.text : '';
@@ -230,7 +230,7 @@ export function listSessions(dataDir: string): SessionMeta[] {
   return metas.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export interface JournalAnchor {
+interface JournalAnchor {
   line: number;
   text: string;
 }

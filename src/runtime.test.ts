@@ -49,15 +49,11 @@ test('buildTierRouter：按档绑定 + 缺省兜底，显式档解析到绑定�
 });
 
 // ── J9b：LLMConfig.timeoutMs 死旋钮接线 SUNSHINEX_MODEL_TIMEOUT_MS ──
-test('modelTimeoutMsEnv：正整数生效；未设/空串/非正整数静默忽略回缺省（600s 内建）', () => {
-  assert.equal(modelTimeoutMsEnv({}), undefined);
-  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '' }), undefined);
-  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '  ' }), undefined);
-  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: 'abc' }), undefined);
-  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '-5' }), undefined);
-  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '300.5' }), undefined);
+// 表值钉已随函数迁 config/termination-config.test.ts（2026-10-04 归口迁移）；此处保 re-export
+// 委托钉——runtime 对外 API 面不破，误删转发即红
+test('modelTimeoutMsEnv re-export 委托：runtime 对外面取到归口实现（termination-config 单点）', () => {
   assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '30000' }), 30000);
-  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: ' 30000 ' }), 30000);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: 'abc' }), undefined);
 });
 
 test('buildModel 接线：SUNSHINEX_MODEL_TIMEOUT_MS 生效（挂起端点按 env 超时报错，非内建 600s）', async () => {

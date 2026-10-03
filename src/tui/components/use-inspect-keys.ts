@@ -7,7 +7,7 @@ import type { RawKey } from './use-input';
 
 /** 全屏查看目标（规格 §3.3，与 RetainedUiState.inspect 同构）：live=运行中子代理（实时流式）、
  *  archived=已归档 spawn 调用行（detail 回看） */
-export type InspectTarget = { kind: 'live'; label: string } | { kind: 'archived'; seq: number };
+type InspectTarget = { kind: 'live'; label: string } | { kind: 'archived'; seq: number };
 
 /** inspect 模态键分发 hook（D17-H2 拆自 App useInput 第 1 层，行为零变化）：
  *  收编全屏查看态的整段按键分支及其专属状态（inspect / inspectExpanded / setInspectRetained）。

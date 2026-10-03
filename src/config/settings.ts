@@ -59,7 +59,7 @@ export const RETIRED_KEYS: Readonly<Record<string, string>> = {
 };
 
 /** settings.json 解析产物：semantic=根级语义键原始值（形状裁决留给 flattenSettings）；env=透传块（键名即 SUNSHINEX_* 原名） */
-export interface SettingsDoc {
+interface SettingsDoc {
   semantic: Record<string, unknown>;
   env: Record<string, string>;
   /** permissions 结构化语义键原值（spec 5.2）：形状裁决在 config/permissions.ts，不经 flatten/env 槽 */
@@ -172,7 +172,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
   return { semantic, env, permissions, providers };
 }
 
-export interface FlattenResult {
+interface FlattenResult {
   /** 展平后的 SUNSHINEX_* 槽值表（未落 process.env，仅数据） */
   slots: Record<string, string>;
   warnings: string[];
@@ -210,7 +210,7 @@ export function flattenSettings(doc: SettingsDoc): FlattenResult {
   return { slots, warnings };
 }
 
-export interface ApplyResult {
+interface ApplyResult {
   /** 实际写入 process.env 的槽位数（只填缺省语义下的真实写入计数） */
   loaded: number;
   warnings: string[];

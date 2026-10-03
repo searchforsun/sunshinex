@@ -135,7 +135,7 @@ const MEMORY_SUNSHINE_OVERLAP_MIN_CHARS = 8;
 /** 合法记忆类型集（R7 单点）：import 别名沿用 WRITABLE 语义——工具入口自校验口径（落盘与三级去重仍归 store.add 单点） */
 
 /** 准入链产出：slug + 本次是否新建（幂等命中为既有项）+ 容量近满提醒（仅新建路径给出） */
-export interface MemoryAdmission {
+interface MemoryAdmission {
   slug: string;
   existed: boolean;
   notice: string | null;

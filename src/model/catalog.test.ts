@@ -127,3 +127,11 @@ test('choiceAdapterConfig：缺省思考强度两级（条目 reasoningEffort > 
   );
   assert.equal(choiceAdapterConfig({ ...base, contextWindow: 128000 }, {}).contextWindow, 128000, '窗口透传');
 });
+
+// ── D26 尾巴（2026-10-04）：/model 切换路径接超时旋钮（buildAdapter 装配期经 modelTimeoutMsEnv
+//    解析后由此穿透；env 解析表值钉在 config/termination-config.test.ts）──
+test('choiceAdapterConfig 旋钮穿透钉：defs.timeoutMs 落 LLMConfig.timeoutMs（/model 各源内芯吃到 SUNSHINEX_MODEL_TIMEOUT_MS）', () => {
+  const base = { id: 'x/m', provider: 'x', model: 'm', baseUrl: 'https://x/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_X' } as const;
+  assert.equal(choiceAdapterConfig({ ...base }, { timeoutMs: 1500 }).timeoutMs, 1500, '装配级旋钮穿透进 cfg');
+  assert.equal(choiceAdapterConfig({ ...base }, {}).timeoutMs, undefined, '未设旋钮不落字段（适配器回内建 600s）');
+});

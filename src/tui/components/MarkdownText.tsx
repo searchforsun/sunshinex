@@ -2,7 +2,8 @@ import * as React from 'react';
 import { Box, Text } from 'ink';
 import { MdBlock, MdInline, parseMarkdown, inlineText, alignTable, stripVariationSelector } from '../markdown';
 import { wrapByWidth, displayWidth } from '../text-band';
-import { highlightLine, HiKind } from '../highlight';
+import { highlightLine } from '../highlight';
+import { hiInkName, MD_HR_CHAR } from '../md-theme';
 
 /** 超长行硬折预算（2026-09-30 崩溃根治）：ink/yoga 对无空格超长 token（minified 代码/长 URL/base64）不可
  *  软折——yoga 宽度天文数字，ink Output 的 String.repeat 即 RangeError: Invalid string length（整个 CLI
@@ -53,14 +54,8 @@ export function diffLineColor(line: string): 'green' | 'red' | 'cyan' | 'gray' {
   return 'gray';
 }
 
-/** HiKind → ink 前景色映射（高亮 token 着色） */
-const HI_COLOR: Record<HiKind, string> = {
-  keyword: 'magenta',
-  string: 'green',
-  comment: 'gray',
-  number: 'yellow',
-  plain: '',
-};
+/** 高亮 token → ink 前景色映射（高亮 token 着色）：色名取双链同源表 md-theme 的 inkName 形态，
+ *  与 md-ansi 主链的 SGR 码形态同源——改色只动 md-theme.ts 一处 */
 
 /** 围栏代码块：原色不铺底 + 首行语言标签；diff/patch 按行首 +/-/@@ 着色，其余已知语言按 token 高亮；
  *  每行先按列宽硬折（超长 minified 行不经折行即 yoga 宽度爆栈——CLI 崩溃源头，见 hardWrap） */
@@ -82,7 +77,7 @@ function Fence({ lang, code, columns }: { lang: string; code: string; columns: n
         return (
           <Text key={i}>
             {spans.map((s, j) => (
-              <Text key={j} color={HI_COLOR[s.kind] || undefined}>{s.text}</Text>
+              <Text key={j} color={hiInkName(s.kind) || undefined}>{s.text}</Text>
             ))}
           </Text>
         );
@@ -193,7 +188,7 @@ function renderBlock(b: MdBlock, columns: number): JSX.Element {
     case 'list': return <List ordered={b.ordered} items={b.items} columns={columns} start={b.start} />;
     case 'quote': return <Quote inlines={b.inlines} columns={columns} />;
     case 'table': return <Table headers={b.headers} rows={b.rows} columns={columns} />;
-    case 'hr': return <Text dimColor>{'─'.repeat(Math.max(1, columns))}</Text>;
+    case 'hr': return <Text dimColor>{MD_HR_CHAR.repeat(Math.max(1, columns))}</Text>;
     default: return <SafeInline nodes={b.inlines} columns={columns} />;
   }
 }

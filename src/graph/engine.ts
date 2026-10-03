@@ -24,7 +24,7 @@ export interface GraphNode {
   ) => Promise<GraphNodeOutput> | GraphNodeOutput;
 }
 
-export interface GraphHooks {
+interface GraphHooks {
   onNodeEnd?: (node: GraphNode, output: GraphNodeOutput) => void;
 }
 

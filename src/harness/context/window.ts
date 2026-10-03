@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import { ContextItem } from '../../types';
 
 /** checksum 校验三态结论：first=首次注册基线；replay=幂等重放；new=检测到新一轮压缩 */
-export type ChecksumVerdict = 'first' | 'replay' | 'new';
+type ChecksumVerdict = 'first' | 'replay' | 'new';
 
 /** 真实 token 近似：CJK（中文/全角区）×1 + 其余 ÷4（spec §2.1，零依赖近似口径） */
 export function estimateTokens(content: string): number {
@@ -10,13 +10,13 @@ export function estimateTokens(content: string): number {
   return cjk + Math.ceil((content.length - cjk) / 4);
 }
 
-export interface ContextBudget {
+interface ContextBudget {
   total: number;
   used: number;
   reserve: number;
 }
 
-export interface ContextItemEstimate {
+interface ContextItemEstimate {
   id: string;
 }
 
@@ -28,7 +28,7 @@ export interface ContextChunk {
 }
 
 /** 权重表：compact 丢弃序优先级（T2 起消费）；kind 联合只含有生产者的四类（S8①） */
-export const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
+const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
   system: 1.0,
   instruction: 1.2,
   memory: 0.8,

@@ -37,7 +37,7 @@ function parseToolCallLine(observation: string): { name: string; argsJson: strin
   return { name: rest.slice(0, sp), argsJson: rest.slice(sp + 1) };
 }
 
-export interface BuildMessagesInput {
+interface BuildMessagesInput {
   /** 稳定段全文（身份/输出约定/工具选择政策/工作目录；system#1，逐字节冻结） */
   stableSegment: string;
   /** 会话冻结快照条目（SUNSHINE/技能清单/记忆索引；合并为 system#2 单条，刷新点语义在调用方） */

@@ -59,3 +59,15 @@ export function mainTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | 
 export function subagentTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveIntOrUndefined(env, 'SUNSHINEX_SUBAGENT_TOKEN_CAP');
 }
+
+/** 模型调用超时 env 解析（J9b 迁入，2026-10-04 归口 termination-config——超时旋钮单点，先例 contextWindowEnv；
+ *  对齐 CLAUDE §12「模型调用超时 600s」的可调口径）：SUNSHINEX_MODEL_TIMEOUT_MS 正整数生效，
+ * 未设/空串/非正整数静默忽略回适配器内建 600s。**刻意不并入本文件 positiveIntOrUndefined 的
+ * fail-fast 口径**（批F 裁决：装配根不打断启动，与 runtime.ts resolveEffortConfig 对非法 env 同宽；
+ * 消费点为 runtime.buildModel/buildTierRouter 与 model/catalog（/model 切换路径），装配期解析一次） */
+export function modelTimeoutMsEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const raw = env.SUNSHINEX_MODEL_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}

@@ -9,8 +9,9 @@ import { ModelAdapter, OpenAIAdapter, UsageHooks, LLMConfig } from './adapter';
 import type { ChatRequest, ChatResult, ReasoningEffort } from '../types';
 import type { ModelChoice } from '../config/providers';
 import { resolveProviderApiKey } from '../config/providers';
+import { modelTimeoutMsEnv } from '../config/termination-config';
 
-export interface ModelSwitcherOpts {
+interface ModelSwitcherOpts {
   /** 可选清单（settings providers 键展开）；空 = /model 无可切换项 */
   choices: readonly ModelChoice[];
   /** 缺省主适配器（单模型装配产物；/model 选 default 或未切换时用它） */
@@ -24,15 +25,21 @@ export interface ModelSwitcherOpts {
 
 /**
  * 源条目 → 适配器 cfg 纯函数（密钥按源名解析专用槽/主槽；effort 两级：条目 reasoningEffort > 装配级
- * 全局缺省（--effort/env）；窗口进 cfg——run 级窗口解析（resolveRunWindow）随当前内芯走）。
+ * 全局缺省（--effort/env）；窗口进 cfg——run 级窗口解析（resolveRunWindow）随当前内芯走；
+ * timeoutMs 装配级旋钮（SUNSHINEX_MODEL_TIMEOUT_MS，D26 尾巴接线：/model 切换路径与主装配链
+ * buildModel/buildTierRouter 同源吃到旋钮），未设不落字段回适配器内建 600s）。
  *  抽为导出纯函数：优先级链可钉（protected 工厂测试子类钉不了构造入参），buildAdapter 单点消费
  */
-export function choiceAdapterConfig(choice: ModelChoice, defs: { reasoningEffort?: ReasoningEffort }): LLMConfig {
+export function choiceAdapterConfig(
+  choice: ModelChoice,
+  defs: { reasoningEffort?: ReasoningEffort; timeoutMs?: number },
+): LLMConfig {
   return {
     provider: 'openai',
     baseURL: choice.baseUrl,
     apiKey: resolveProviderApiKey(choice.provider),
     model: choice.model,
+    ...(defs.timeoutMs !== undefined ? { timeoutMs: defs.timeoutMs } : {}),
     ...(choice.contextWindow !== undefined ? { contextWindow: choice.contextWindow } : {}),
     ...(choice.reasoningEffort !== undefined ? { reasoningEffort: choice.reasoningEffort } : defs.reasoningEffort !== undefined ? { reasoningEffort: defs.reasoningEffort } : {}),
   };
@@ -50,10 +57,13 @@ export class ModelSwitcher implements ModelAdapter {
     for (const c of opts.choices) this.choiceAdapters.set(c.id, this.buildAdapter(c));
   }
 
-  /** 源条目 → OpenAI 协议适配器（cfg 经 choiceAdapterConfig 纯函数：密钥/窗口/两级 effort 单点）。
-   *  protected 工厂：测试子类可注入假内芯钉「换内芯即生效」的转发语义，生产面零额外 API */
+  /** 源条目 → OpenAI 协议适配器（cfg 经 choiceAdapterConfig 纯函数：密钥/窗口/两级 effort/超时旋钮单点）。
+   *  protected 工厂：测试子类可注入假内芯钉「换内芯即生效」的转发语义，生产面零额外 API。
+   *  超时旋钮装配期解析（构造随各源内芯逐个 build，env 运行期不变——与 buildModel/buildTierRouter 同口径：
+   *  未设不落字段回适配器内建 600s） */
   protected buildAdapter(choice: ModelChoice): ModelAdapter {
-    return new OpenAIAdapter(choiceAdapterConfig(choice, this.defs));
+    const timeoutMs = modelTimeoutMsEnv();
+    return new OpenAIAdapter(choiceAdapterConfig(choice, { ...this.defs, ...(timeoutMs !== undefined ? { timeoutMs } : {}) }));
   }
 
   /** 当前生效内芯（选择在场取对应适配器；未选/失配回缺省主适配器） */

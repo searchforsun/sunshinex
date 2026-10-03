@@ -24,7 +24,7 @@ import { fail, ok, Result } from '../result';
 import { slugify } from '../slug';
 
 /** worktree 登记条目（registry.json 数组元素；createdAt 属数据面文件，允许时间戳） */
-export interface WorktreeEntry {
+interface WorktreeEntry {
   name: string;
   path: string;
   branch: string;
@@ -33,19 +33,19 @@ export interface WorktreeEntry {
   keptReason?: string;
 }
 
-export interface CreateWorktreeOptions {
+interface CreateWorktreeOptions {
   sessionId?: string;
   fromBranch?: string;
 }
 
-export type CreateWorktreeResult = Result<{
+type CreateWorktreeResult = Result<{
   name: string;
   path: string;
   branch: string;
   copiedSettings: boolean;
 }>;
 
-export type RemoveWorktreeResult = Result<'removed' | 'kept-dirty'>;
+type RemoveWorktreeResult = Result<'removed' | 'kept-dirty'>;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** slug 截断上限 27：为调用方追加的 `-` + 4 位随机尾留位（slug+尾 ≤ 32，名称上限 64 内充裕） */

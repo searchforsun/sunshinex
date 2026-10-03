@@ -33,7 +33,7 @@ import { useLineEditKeys } from './use-line-edit';
 export { approvalKeyToDecision, approvalDecisionByIndex };
 
 /** 纵向命令面板技能源（session.skillMenuEntries 同构）：lastUsedAt 缺省=从未使用，排最尾部 */
-export interface SlashMenuSkillSource {
+interface SlashMenuSkillSource {
   id: string;
   name?: string;
   description?: string;
@@ -55,7 +55,7 @@ export function buildSlashMenu(buffer: string, skills: readonly SlashMenuSkillSo
 }
 
 /** 输入框占位文案（按会话状态分流；纯函数便于断言） */
-export function inputPlaceholder(status: TuiState['status']): string {
+function inputPlaceholder(status: TuiState['status']): string {
   switch (status) {
     case 'awaiting-approval': return t('Awaiting approval: y approve once / a allow for session / n deny', '等待审批：y 放行一次 / a 本会话放行 / n 拒绝');
     case 'awaiting-plan': return t('Plan awaiting confirmation: y execute / n discard', '计划待确认：y 执行 / n 放弃');
@@ -76,7 +76,7 @@ export function approvalSelectorOptions(): { label: string; description?: string
 }
 
 /** plan 确认选择器选项（首项=执行；Esc 同第二项放弃） */
-export function planSelectorOptions(): { label: string; description?: string }[] {
+function planSelectorOptions(): { label: string; description?: string }[] {
   return [
     { label: t('Execute plan', '执行计划'), description: t('run the steps above', '逐项执行上述计划') },
     { label: t('Keep planning (esc)', '放弃 (esc)'), description: t('discard and return to input', '放弃并回到输入态') },

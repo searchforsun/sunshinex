@@ -3,7 +3,7 @@ import * as path from 'path';
 import { userConfigDir } from './config/env';
 import { McpServerConfig, ProjectContext } from './types';
 
-export interface SunshinexDoc {
+interface SunshinexDoc {
   sections: Record<string, string[]>;
   raw: string;
 }

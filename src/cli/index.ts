@@ -135,7 +135,7 @@ export function usageText(): string {
                                           reasoning effort (request-level)
   --continue                              TUI, resume latest session
   --resume                                TUI, open the session picker to resume
-  --worktree[=<name>]                     TUI, launch in an isolated git worktree
+  --worktree[=<name>]                     TUI or run, launch in an isolated git worktree
   --workdir=<dir>                         workspace directory
   --add-dir=<dir>                         extend trusted dirs (repeatable)
   unrecognized bare words exit with an error; run sunshinex help for usage`,
@@ -159,7 +159,7 @@ export function usageText(): string {
                                           思考强度（请求级参数）
   --continue                              TUI 直接续接最近会话
   --resume                                TUI 弹会话选择卡恢复
-  --worktree[=<name>]                     TUI 在隔离 git worktree 中启动
+  --worktree[=<name>]                     TUI 或 run，在隔离 git worktree 中启动
   --workdir=<dir>                         工作区目录
   --add-dir=<dir>                         扩展信任目录（可重复）
   无法识别的裸词报错不启动；使用 sunshinex help 查看使用方法`,

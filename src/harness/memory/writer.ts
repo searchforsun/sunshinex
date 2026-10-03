@@ -28,7 +28,7 @@ export interface MemoryWriteRequest {
   scope?: Exclude<MemoryScope, 'main'>;
 }
 
-export interface MemoryWriteOutcome {
+interface MemoryWriteOutcome {
   slug: string;
   kind: 'main' | `agents/${string}`;
   observation: string;

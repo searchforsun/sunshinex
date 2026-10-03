@@ -1,5 +1,3 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
 import { buildConsolidationPrompt, CONSOLIDATE_TOOLS } from '../prompts/memory';
@@ -52,7 +50,7 @@ export async function consolidateMemory(opts: {
   }
 }
 
-/** 应用合并集（差分应用，2026-10-02 修复）：先整目录 .bak 快照 → 删除未被输出集代表的既有记录 →
+/** 应用合并集（差分应用，2026-10-02 修复）：先经 store.backup() 整目录快照 → 删除未被输出集代表的既有记录 →
  *  逐条 put 回写。三处针对性修正——
  *  ① 保 created：输出条目按 slug/归一 description/归一 body 命中既有记录即继承其 created（created 是
  *     整理判 stale 的唯一时效依据，全删全写会把它抹平成整理当天，摧毁时效信号）；
@@ -60,20 +58,11 @@ export async function consolidateMemory(opts: {
  *     slug 继续有效，slug 失联只发生在真正被合并改写的条目；
  *  ③ 单条失败跳过不回滚：跨例目重复（MEMORY_DUPLICATE）等条目级失败只丢该条，不再整批回滚——
  *     旧实现的 throw→回滚会让同一失败在阈值以上每次收口重演（静默重试循环）。
- *  意外 fs 异常仍走 .bak 回滚（快照→清当前→拷回），成功后清快照。 */
+ *  意外 fs 异常仍走 store.restore() 回滚（清当前→拷回→删备份），成功后 clearBackup 清快照——
+ *  .bak 命名与目录级 fs 手术已收编为 store 原语（D26/J10），本函数只持句柄编排控制流。 */
 function applyMerged(store: MemoryStore, records: { type: unknown; description: string; body: string }[]): void {
   const before = store.list();
-  // 旧快照清退（只保留本次一份）
-  for (const f of fs.readdirSync(store.dir())) {
-    if (f.startsWith('.bak-')) fs.rmSync(path.join(store.dir(), f), { recursive: true, force: true });
-  }
-  const bak = path.join(store.dir(), `.bak-${Date.now()}`);
-  fs.mkdirSync(bak, { recursive: true });
-  for (const f of fs.readdirSync(store.dir())) {
-    if (f.startsWith('.bak-')) continue;
-    const p = path.join(store.dir(), f);
-    if (fs.statSync(p).isFile()) fs.copyFileSync(p, path.join(bak, f));
-  }
+  const bak = store.backup(); // 旧快照清退 + 全量普通文件拷入（目录级知识归 store）
   try {
     // 输出集 → 既有记录的承接关系（slug 命中或归一 description/body 命中即同一事实）：承接者继承 created
     // （时效信号），slug 相异时旧文件随差分删除——同事实换名 = 原位换稿不并存（否则旧记录留下、新记录
@@ -110,16 +99,10 @@ function applyMerged(store: MemoryStore, records: { type: unknown; description: 
     });
     store.rebuildIndex();
   } catch (e) {
-    // 精确还原：先清当前目录内容（含失败半成品与异形条目如被占位的 MEMORY.md 目录），再从 .bak 整体拷回
-    for (const f of fs.readdirSync(store.dir())) {
-      if (f.startsWith('.bak-')) continue;
-      fs.rmSync(path.join(store.dir(), f), { recursive: true, force: true });
-    }
-    for (const f of fs.readdirSync(bak)) fs.copyFileSync(path.join(bak, f), path.join(store.dir(), f));
-    fs.rmSync(bak, { recursive: true, force: true });
+    store.restore(bak); // 精确还原（清当前→拷回→删备份），目录级知识归 store
     throw e instanceof Error ? e : new Error(String(e)); // 外层 catch 收编为 notify 说明行
   }
-  fs.rmSync(bak, { recursive: true, force: true }); // 成功：不留备份残渣
+  store.clearBackup(bak); // 成功：不留备份残渣
 }
 
 /** 结构化载荷解析；畸形返回 null（静默保持原状） */

@@ -213,3 +213,62 @@ test('todo_write 执行面：条数钳制 >50 拒绝、非法 status 拒绝、fa
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('displayMeta 特征化钉（D26/J1）：旧 VERBS/TARGET_FIELD 双表值逐项迁入注册表（防迁移丢值）', () => {
+  const tmp = tmpDir('sunshinex-display-');
+  try {
+    const safety = makeSafety(tmp);
+    const registry = new ToolRegistry();
+    const stubMemoryWrite = () => ({ ok: true as const, value: { slug: 'stub-slug', existed: false, notice: null } });
+    const stubAsk = async () => ({ type: 'dismissed' as const });
+    for (const t of builtinTools(safety, tmp, { memoryWrite: stubMemoryWrite, ask: stubAsk })) registry.register(t);
+    // 平台三工具产线同形注册点附加（harness/index.ts——工厂文件不在 J1 改动清单）
+    registry.register({ ...makeSpawnTool({} as unknown as SubagentRunner), display: { verb: 'SPAWN' } });
+    registry.register({ ...makeTaskStopTool({} as unknown as TaskRegistry), display: { verb: 'TASK_STOP' } });
+    registry.register({ ...makeTaskWaitTool({} as unknown as TaskRegistry), display: { verb: 'TASK_WAIT' } });
+
+    const meta = registry.displayMeta();
+    assert.equal(Object.keys(meta).length, 16, '13 内置（含条件注册的 memory_write/ask_question）+ spawn/task_stop/task_wait');
+    // 旧 VERBS 表（tui/tool-verbs.ts 迁移前）逐一对应；skill/memory_write 无旧表条目，走名大写派生
+    //（= 迁移前 TUI fallback 呈现 SKILL/MEMORY_WRITE，行为零变化）
+    const verbs = Object.fromEntries(Object.entries(meta).map(([name, m]) => [name, m.verb]));
+    assert.deepEqual(verbs, {
+      ask_question: 'ASK',
+      exec: 'EXEC',
+      read: 'READ',
+      write: 'WRITE',
+      grep: 'GREP',
+      glob: 'GLOB',
+      webfetch: 'FETCH',
+      websearch: 'WEBSEARCH',
+      kb_search: 'SEARCH',
+      worktree: 'WORKTREE',
+      todo_write: 'TODO',
+      spawn: 'SPAWN',
+      task_stop: 'TASK_STOP',
+      task_wait: 'TASK_WAIT',
+      skill: 'SKILL',
+      memory_write: 'MEMORY_WRITE',
+    });
+    // 旧 TARGET_FIELD 表逐一对应（无该表条目的工具不带 targetFields——target 走特殊分支或候选序）
+    const fields = Object.fromEntries(
+      Object.entries(meta)
+        .filter(([, m]) => m.targetFields !== undefined)
+        .map(([name, m]) => [name, [...(m.targetFields as readonly string[])]]),
+    );
+    assert.deepEqual(fields, {
+      ask_question: ['question'],
+      exec: ['command'],
+      read: ['path'],
+      write: ['path'],
+      grep: ['pattern'],
+      glob: ['pattern'],
+      webfetch: ['url'],
+      websearch: ['query'],
+      kb_search: ['query'],
+      worktree: ['name'],
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

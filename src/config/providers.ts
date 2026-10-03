@@ -42,7 +42,7 @@ export function resolveProviderApiKey(name: string): string | undefined {
   return main !== undefined && main !== '' ? main : undefined;
 }
 
-export interface LoadedProviders {
+interface LoadedProviders {
   choices: ModelChoice[];
   warnings: string[];
 }

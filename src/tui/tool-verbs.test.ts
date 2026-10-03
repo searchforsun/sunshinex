@@ -1,7 +1,34 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toolCallLine } from './tool-verbs';
+import { toolCallLine, setToolDisplayMeta, TOOL_VERBS } from './tool-verbs';
 import { t } from '../i18n';
+import { ToolRegistry } from '../harness/tools';
+import { builtinTools } from '../harness/tools/builtin';
+import { makeSpawnTool } from '../harness/subagent';
+import { makeTaskStopTool } from '../harness/tools/task-stop';
+import { makeTaskWaitTool } from '../harness/tools/task-wait';
+import { SafetyChain } from '../harness/security/chain';
+import { SecurityGuard } from '../harness/security/guard';
+import { PolicyEngine } from '../harness/security/policy';
+import { ProcessSandbox } from '../harness/security/sandbox';
+import type { SubagentRunner } from '../harness/subagent';
+import type { TaskRegistry } from '../harness/tasks';
+
+// J1 装配期接线（同产线 createRuntime 形态）：真实注册表 displayMeta → TUI 呈现表。既有断言值即
+// 迁移前旧 VERBS/TARGET_FIELD 表值——本接线即「值随注册下泄、呈现零跟表」的特征化对照
+function wireProductionMeta(): void {
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), process.cwd());
+  const registry = new ToolRegistry();
+  const stubMemoryWrite = () => ({ ok: true as const, value: { slug: 'stub-slug', existed: false, notice: null } });
+  const stubAsk = async () => ({ type: 'dismissed' as const });
+  for (const tool of builtinTools(safety, process.cwd(), { memoryWrite: stubMemoryWrite, ask: stubAsk })) registry.register(tool);
+  // 平台三工具产线同形注册点附加（harness/index.ts）
+  registry.register({ ...makeSpawnTool({} as unknown as SubagentRunner), display: { verb: 'SPAWN' } });
+  registry.register({ ...makeTaskStopTool({} as unknown as TaskRegistry), display: { verb: 'TASK_STOP' } });
+  registry.register({ ...makeTaskWaitTool({} as unknown as TaskRegistry), display: { verb: 'TASK_WAIT' } });
+  setToolDisplayMeta(registry.displayMeta());
+}
+wireProductionMeta();
 
 test('toolCallLine：spawn 映射 SPAWN + label 摘要（规格 §6 调用行口径）', () => {
   assert.equal(toolCallLine('spawn', { prompt: 'x', label: 'w' }), 'SPAWN w');
@@ -61,4 +88,27 @@ test('toolCallLine：task_wait/task_stop 可读 target（2026-09-30 用户裁决
   // i18n 双语面（测试进程语言随环境），t() 包裹的 null-taskIds 文案两面皆可
   assert.equal(toolCallLine('task_wait', { taskIds: null, timeoutSeconds: 60 }), `TASK_WAIT ${t('all running', '全部 running')} · 60s`, 'taskIds=null 等当前全部任务');
   assert.equal(toolCallLine('task_stop', { taskId: 'b7' }), 'TASK_STOP b7', 'task_stop 取 taskId');
+});
+
+test('J1：注入含自定义 display 的表后呈现层用其 verb/targetFields（新工具零跟表即正确呈现）', () => {
+  setToolDisplayMeta({ deploy_service: { verb: 'DEPLOY', targetFields: ['service'] } });
+  assert.equal(toolCallLine('deploy_service', { service: 'api', path: '/x' }), 'DEPLOY api', 'target 按声明字段取，不受候选顺序（path 优先）干扰');
+  assert.equal(toolCallLine('deploy_service', { path: '/x' }), 'DEPLOY {"path":"/x"}', '声明字段缺席回 JSON 摘要（既有兜底语义）');
+  assert.equal(toolCallLine('read', { path: 'a.ts' }), 'READ a.ts', '表外工具走大写原名 fallback（读面动词恰为名大写）');
+  wireProductionMeta(); // 复位产线表：后续用例与同进程后续文件不受本用例注入影响
+});
+
+test('J1：空表 = 纯 fallback（未装配态降级对齐现状未登记工具语义）', () => {
+  setToolDisplayMeta({});
+  assert.equal(toolCallLine('webfetch', { url: 'https://x.dev' }), 'WEBFETCH https://x.dev', '缺注入回大写原名');
+  assert.equal(toolCallLine('grep', { path: '.', pattern: 'needle' }), 'GREP .', '缺注入回候选字段序（path 先于 pattern）');
+  assert.equal(toolCallLine('mcp__fs__read', { path: 'a.txt' }), 'MCP a.txt', 'MCP 统一呈现不随表');
+  assert.equal(TOOL_VERBS.size, 0, '动词集合随空表清空');
+  wireProductionMeta();
+});
+
+test('J1：TOOL_VERBS 随注入表重建——旧 VERBS 全集动词无一丢失（ChildTranscript 分流判据）', () => {
+  for (const verb of ['ASK', 'EXEC', 'READ', 'WRITE', 'GREP', 'GLOB', 'FETCH', 'WEBSEARCH', 'SEARCH', 'SPAWN', 'WORKTREE', 'TODO', 'TASK_WAIT', 'TASK_STOP']) {
+    assert.ok(TOOL_VERBS.has(verb), `动词 ${verb} 应随注入表在集合中`);
+  }
 });

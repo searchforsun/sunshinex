@@ -3,7 +3,7 @@ import * as path from 'path';
 import { loadSunshinex } from '../config';
 import { ProjectContext } from '../types';
 
-export interface Perceived {
+interface Perceived {
   files: string[];
   dependencies: string[];
   project: ProjectContext | null;

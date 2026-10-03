@@ -7,9 +7,9 @@ import { settleMemory } from './extractor';
 import { LearnedSkillStore } from '../skills/learned';
 import { extractLearnedSkill } from '../skills/learned-extract';
 
-export type PipelineOutcome = 'done' | 'failed' | 'stopped';
+type PipelineOutcome = 'done' | 'failed' | 'stopped';
 
-export interface PipelineItem {
+interface PipelineItem {
   kind: 'learned' | 'memory';
   goal: string;
   reply: string;
@@ -17,9 +17,9 @@ export interface PipelineItem {
   digest: string;
 }
 
-export type PipelineNotice = (source: 'memory' | 'skills', line: string) => void;
+type PipelineNotice = (source: 'memory' | 'skills', line: string) => void;
 
-export interface MemoryPipelineDeps {
+interface MemoryPipelineDeps {
   model: ModelAdapter;
   root: string;
   notify: PipelineNotice;

@@ -13,7 +13,7 @@ interface LandlockModule {
   grantArgs(grants: { readOnly: string[]; readWrite: string[] }): string[];
 }
 
-export interface LandlockWrap {
+interface LandlockWrap {
   file: string;
   args: string[];
 }

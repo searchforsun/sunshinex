@@ -54,7 +54,7 @@ export function locateSkillDirs(sourceRoot: string): { dirs: string[]; layout: '
   return { dirs: [], layout: 'candidate' };
 }
 
-export interface InstallOutcome {
+interface InstallOutcome {
   installed: string[];
   skipped: string[];
 }
@@ -79,7 +79,7 @@ export function installSkillsFromDir(skillDir: string, targetRoot: string, force
 }
 
 /** git 浅克隆到临时目录；返回克隆根（调用方负责清理），失败以含 stderr 摘要的错误抛出 */
-export function shallowClone(url: string): string {
+function shallowClone(url: string): string {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-skills-'));
   const r = spawnSync('git', ['clone', '--depth', '1', url, dest], { encoding: 'utf8', windowsHide: true });
   if (r.error) {

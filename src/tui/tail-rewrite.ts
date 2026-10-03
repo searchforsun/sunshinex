@@ -16,7 +16,7 @@ import { ansiLineCount } from './md-ansi';
  */
 
 /** 已打印条目的账本槽位：item 引用恒等 + 渲染形态键（visible/full）+ 打印时行数 */
-export interface LedgerSlot {
+interface LedgerSlot {
   item: ChatItem;
   visible: boolean;
   full: boolean;

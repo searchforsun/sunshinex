@@ -49,7 +49,7 @@ function isSunshineMdTarget(safety: SafetyChain, file: string): boolean {
  *  工具只做入参整形/错误转译，闸门、三级去重、落盘与容量回执全在记忆侧单点（builtin 不复制任何记忆语义）。
  *  入参 `scope`（规格 §4.2 记忆隔离）由**执行期从安全链取**（`safety.memoryScope`，子代理链为 `agents/<id>`），
  *  模型输入面不暴露该字段——模型自选的 scope 一律忽略，防越权改记忆落点。 */
-export type MemoryWriteTool = (input: { type: string; content: string; description?: string; scope?: MemoryScope }) => Result<{
+type MemoryWriteTool = (input: { type: string; content: string; description?: string; scope?: MemoryScope }) => Result<{
   slug: string;
   existed: boolean;
   notice: string | null;
@@ -101,6 +101,7 @@ export function builtinTools(
       name: 'exec',
       description: 'Execute a shell command inside the project sandbox; long-running commands are automatically moved to the background when they time out; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'bash',
+      display: { verb: 'EXEC', targetFields: ['command'] },
       executor: async (input: ToolInput, runtimeSafety) => {
         const cmd = String(input.command ?? '');
         // 执行期安全缝（规格 D6）：cwd 锚定与命令判界取运行期链视图（fork 子链 withRoot 换根克隆注入即生效；
@@ -164,6 +165,7 @@ export function builtinTools(
       description:
         'Read file content (preferred over exec cat/head/tail for any file lookup); optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
+      display: { verb: 'READ', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
         const content = backend.readFile(resolveProjectPath(root, String(input.path)));
         // 空语义归一单点：undefined / JSON null / "null"·"undefined" 字符串字面量（模型把可空联合当字符串传的形态）均按整文件处理
@@ -223,6 +225,7 @@ export function builtinTools(
       description:
         "Write a file's full content — the file is replaced entirely, so pass the complete final content (not a diff or partial edit); read the file first when preserving unchanged regions matters; relative paths are anchored at the project root; writes outside the trusted roots go through permission checks (approval or rejection)",
       category: 'write',
+      display: { verb: 'WRITE', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
         const p = String(input.path);
         const content = String(input.content ?? '');
@@ -262,6 +265,7 @@ export function builtinTools(
       name: 'grep',
       description: 'Regex search (preferred over exec grep for any search); for a file path emit raw matching lines; for a directory search recursively and emit relativePath:line:line',
       category: 'read',
+      display: { verb: 'GREP', targetFields: ['pattern'] },
       executor: async (input: ToolInput) => {
         const { pattern, glob: globFilter } = input as { pattern: string; glob?: string };
         // 与 read/write 同一锚点语义：缺省项目根、相对路径按项目根解析（绝对路径原样）——缺省落 '.' 会按进程 cwd 解析，从父目录启动会话时与 glob 锚点分裂
@@ -308,6 +312,7 @@ export function builtinTools(
       name: 'glob',
       description: 'List files under the project root matching a glob pattern (preferred over exec ls/find for directory listing); returned paths are relative to the project root (feed them back with the project root prepended for absolute access); oversized listing is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
+      display: { verb: 'GLOB', targetFields: ['pattern'] },
       executor: async (input: ToolInput) => {
         // glob 锚活动根（D19-b）：worktree 会话中与 read/grep/exec 同树（chain PATH_TOOLS 无 Glob、无 safePath
         // 注入——锚点须在此自取活动根），缺省回装配根；防「glob 看得到、read 读不到」的锚点分裂变体
@@ -330,6 +335,7 @@ export function builtinTools(
       description:
         'Fetch a URL and return the raw response body (HTML pages come back as raw HTML markup, not extracted text; use grep/read on the saved file to extract content when needed); input { url }, http/https only (protocol floor enforced by the security guard); non-2xx responses fail with WEBFETCH_HTTP_<status>; oversized body is truncated and saved to disk (full output path shown in the result)',
       category: 'network',
+      display: { verb: 'FETCH', targetFields: ['url'] },
       executor: async (input: ToolInput) => {
         const res = await fetch(String(input.url ?? ''));
         if (!res.ok) throw new Error(`WEBFETCH_HTTP_${res.status}`);
@@ -350,6 +356,7 @@ export function builtinTools(
       name: 'websearch',
       description: 'Web search: input { query, count? } (count default 5, max 10); stdout is title/URL/snippet lines; engine endpoint allows http/https only',
       category: 'network',
+      display: { verb: 'WEBSEARCH', targetFields: ['query'] },
       executor: async (input: ToolInput) => {
         const provider = webSearch ?? resolveWebSearchProvider();
         const n = Number(input.count ?? 5);
@@ -372,6 +379,7 @@ export function builtinTools(
       name: 'kb_search',
       description: 'Local vector knowledge-base search: input { query, topK? }, stdout is KbHit[] JSON (id/text/score plus file = source relative path when indexed); degrades to kb_not_configured when not configured (build the index with `sunshinex kb-index <dir>` or the /kb-index command; never blocks other tools)',
       category: 'read',
+      display: { verb: 'SEARCH', targetFields: ['query'] },
       executor: async (input: ToolInput) => {
         if (!kb) throw new CodedToolError('kb_not_configured', 'Knowledge base not configured: set the SUNSHINEX_EMBEDDING_* env (see MANUAL section 2) and build the index with kb-index');
         const hits = await kb.search(String(input.query ?? ''), Number(input.topK ?? 5));
@@ -407,6 +415,7 @@ export function builtinTools(
     description:
       'Write the session todo list (full replacement). Use it for tasks with 3 or more distinct steps: create the list up front, skip it for simpler tasks (1-2 steps). Keep the list live: call this tool at every status transition — set an item in_progress the moment you start working on it, mark it completed the moment it is done (never batch updates to the end), and keep exactly one item in_progress at a time. The panel shows this list to the user in real time, so a stale list reads as stalled work. Task boundaries do not reset the list — append new tasks instead of starting from scratch.',
     category: 'todo',
+    display: { verb: 'TODO' },
     executor: async (input: ToolInput) => {
       if (!todos) throw new CodedToolError('todo_not_configured', 'todo list is not wired in this runtime');
       const arr = input.todos;
@@ -500,6 +509,7 @@ export function builtinTools(
       description:
         'Ask the user a question with selectable options and wait for their answer. Use when you need the user to choose between alternatives, confirm an approach, or provide free-form input. Supports single-select (default), multi-select (multiple) and a free-text "Other" answer (allowCustom). Returns the user\'s selection, their custom answer, or a dismissal notice if they skipped the question.',
       category: 'ask',
+      display: { verb: 'ASK', targetFields: ['question'] },
       executor: async (input: ToolInput) => {
         const question = String(input.question ?? '').trim();
         const rawOptions = Array.isArray(input.options) ? input.options : [];
@@ -550,6 +560,7 @@ export function builtinTools(
     description:
       'Manage the session worktree: create forks an isolated git worktree from the current HEAD and switches the session working root to it (original workspace files stay untouched); exit returns to the main workspace; list shows registered worktrees with branch and dirty status. Runs exclusively on its own (never batched with other tools).',
     category: 'worktree',
+    display: { verb: 'WORKTREE', targetFields: ['name'] },
     executor: async (input) => {
       const action = String(input.action ?? '');
       if (action === 'create') {

@@ -93,7 +93,7 @@ export interface ReactorDeps {
 }
 
 /** 收口沉淀载荷（规格 §3.2）：outcome = 终态归一值（done/failed/stopped）；无最终答复时 reply 归一为空串 */
-export type SettleOutcome = 'done' | 'failed' | 'stopped';
+type SettleOutcome = 'done' | 'failed' | 'stopped';
 export interface SettlePayload {
   goal: string;
   reply: string;
@@ -520,6 +520,6 @@ export class Reactor {
 
 /** 端点侧上下文超长错误识别（规格 F 项）：本地估算偏差时端点拒绝（OpenAI 兼容端点常见措辞，
  *  大小写不敏感）；仅匹配明确超限特征串，其余错误走既有 model-error 通道不误触发压缩 */
-export function isContextOverflowError(message: string): boolean {
+function isContextOverflowError(message: string): boolean {
   return /prompt[_ ]too long|context length|maximum context|too many tokens|request too large/i.test(message);
 }

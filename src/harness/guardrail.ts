@@ -1,7 +1,7 @@
 import { LimitReason } from '../types';
 import { t } from '../i18n';
 
-export interface GuardrailInput {
+interface GuardrailInput {
   /** 当前绝对时刻（ms epoch） */
   now: number;
   /** 绝对截止时刻；缺省＝不设时间限 */
@@ -29,7 +29,7 @@ export function guardrailStop(input: GuardrailInput): LimitReason | null {
   return null;
 }
 
-export interface GuardrailHitMessage {
+interface GuardrailHitMessage {
   status: 'failed' | 'paused';
   error: string;
 }

@@ -33,7 +33,7 @@ export function rolePreset(role: AgentRole): { label: string; framing: string } 
 }
 
 /** 注册制子代理定义（目录注册制解析产物 / 预设角色统一形态） */
-export interface AgentDef {
+interface AgentDef {
   id: string;
   name: string;
   description: string;
@@ -147,12 +147,12 @@ export function resolveSpawnSpec(
 export const SPAWN_TOOL_NAME = 'spawn';
 
 /** todo_write 工具名（规格 D9：fork 子面恒剔除——子代理私有步骤零主链状态污染，进度经既有结论行回写） */
-export const TODO_TOOL_NAME = 'todo_write';
+const TODO_TOOL_NAME = 'todo_write';
 
 /** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队）。对齐关系真实口径：reactor 单批工具
  *  并行上限 PARALLEL_TOOLS_LIMIT=16（prompts/shared 单点），本值 8 为同层 fork 上限——每 fork 自身还会
  *  再开完整工具批，半量级收紧防嵌套扇出失控（旧注「与 reactor 并行批上限 8 同量级」把 16 误写为 8，R9 更正） */
-export const SUBAGENT_CONCURRENCY_LIMIT = 8;
+const SUBAGENT_CONCURRENCY_LIMIT = 8;
 
 /** 子代理预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 不设 token 硬顶，与父级剩余解耦，
  *  只认 SUNSHINEX_SUBAGENT_TOKEN_CAP 显式注入，以 maxSteps/deadline 为护栏） */
@@ -169,7 +169,7 @@ function firstLine(text: string, max = 300): string {
   return line.length > max ? `${line.slice(0, max)}…` : line;
 }
 
-export interface SubagentRunnerDeps {
+interface SubagentRunnerDeps {
   registry: ToolRegistry;
   safety: SafetyChain;
   context: ContextManager;

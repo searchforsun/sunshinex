@@ -8,7 +8,7 @@ import { t } from '../i18n';
 export type RuleChecker = (io: { ctx: LoopContext; goal: string }) => Promise<boolean> | boolean;
 
 /** loop 节点配置：内嵌三模板之一的 Loop 子流程（预算贯通：Graph remaining → Loop maxTokens） */
-export interface LoopNodeConfig {
+interface LoopNodeConfig {
   template: 'test-loop' | 'code-refactor' | 'code-review';
   /** 子流程目标（须含「验收标准：id=描述」段——check 依赖结构化验收清单，缺省回退 ctx.state.goal） */
   goal?: string;
@@ -72,7 +72,7 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
 }
 
 /** 人工审批节点配置 */
-export interface GateNodeConfig {
+interface GateNodeConfig {
   prompt?: string;
   deps?: string[];
 }

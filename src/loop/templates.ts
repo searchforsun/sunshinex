@@ -8,14 +8,14 @@ import { agentNode, checkNode, gateNode, routerNode } from './nodes';
 const DEFAULT_TERMINATION: LoopTermination = { maxIterations: 200, timeoutMs: 43_200_000 };
 
 /** 模板产物：纯数据预组装（节点序列 + 终止参数）+ 就绪引擎 */
-export interface LoopTemplate {
+interface LoopTemplate {
   name: string;
   nodes: LoopEngineNode[];
   termination: LoopTermination;
   engine: LoopEngine;
 }
 
-export interface TemplateOpts {
+interface TemplateOpts {
   termination?: Partial<LoopTermination>;
   ruleCheckers?: Record<string, (io: { ctx: LoopContext; goal: string }) => Promise<boolean> | boolean>;
 }
@@ -148,7 +148,7 @@ export function resolveTemplate(deps: LoopDeps, name: string, opts?: TemplateOpt
 /** 长任务时间兜底：24h（对齐 Graph `DEFAULT_TERMINATION.timeoutMs`（src/graph/templates.ts），失控保底、不进 settings） */
 export const LONG_TASK_TIMEOUT_MS = 86_400_000;
 
-export interface LongTaskOpts extends TemplateOpts {
+interface LongTaskOpts extends TemplateOpts {
   /** 单次 agent 的步数上限；缺省交给 Reactor 的 400（与 reactor 内 maxSteps 缺省同口径） */
   agentMaxSteps?: number;
 }

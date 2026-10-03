@@ -9,7 +9,7 @@ import { ExecResult, McpServerConfig, ToolCategory, ToolInput } from '../../type
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
 const MAX_ARGS_BYTES = 64 * 1024;
 
-export interface McpHostOptions {
+interface McpHostOptions {
   /** 单次 tools/call 超时（缺省 30s；测试注入短超时用） */
   callTimeoutMs?: number;
 }
@@ -42,7 +42,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, code: string, message: string
  * → tools/list → 以 mcp__<server>__<tool> 规范名注册（category external，闸门在 guard）。
  */
 /** 逐服务器装配结果：注册数与警告单（降级语义——服务器失败只损失该服务器工具，警告上屏后继续装配） */
-export interface McpAssemblyReport {
+interface McpAssemblyReport {
   registered: number;
   /** 逐服务器失败警告（连接/握手/拉取/重名），按配置顺序收集 */
   warnings: string[];

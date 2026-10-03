@@ -17,9 +17,22 @@ const CANONICAL_TOOL_NAMES: Record<string, string> = {
   memory_write: 'Write',
 };
 
+/** 工具呈现元数据（D26/J1：呈现知识自 TUI 硬编码表下泄至注册表）——调用行动词与 target 代表字段。
+ *  纯用户面呈现数据，绝不进模型侧 tools schema（reactor 装配面与 toWireTools 只取 name/description/
+ *  parameters，前缀缓存零影响）；MCP 注册的工具不声明（TUI 侧 mcp__ 前缀统一 MCP 呈现） */
+export interface ToolDisplayMeta {
+  /** 调用行动词（英文步骤标识，如 READ/FETCH/SPAWN） */
+  readonly verb: string;
+  /** target 代表字段（按序取首个非空字符串值；缺省回 TUI 候选字段序） */
+  readonly targetFields?: readonly string[];
+}
+
 export interface RegisteredTool extends ToolSpec {
   category: ToolCategory;
   executor: ToolExecutor;
+  /** 呈现元数据（可选，D26/J1）：未声明时 displayMeta() 以工具名大写派生缺省动词（对齐 TUI 原地
+   *  fallback 语义——纯名字工具零声明即正确呈现） */
+  readonly display?: ToolDisplayMeta;
 }
 
 /** 工具域带码错误：executor 以业务错误码中止执行（registry 转译为同码 Result.fail，降级语义不再笼统 EXEC_FAILED） */
@@ -83,6 +96,15 @@ export class ToolRegistry {
 
   get(name: string): RegisteredTool | undefined {
     return this.tools.get(name);
+  }
+
+  /** 呈现元数据表（D26/J1）：工具名 → 动词/代表字段，装配点（tui/runtime createRuntime）下泄 TUI
+   *  呈现层——harness 增改工具时 TUI 呈现零跟表。未声明 display 的条目（skill/memory_write/MCP）
+   *  以工具名大写派生缺省动词：对齐 TUI 原地 fallback 语义，缺省派生放 registry 侧使 TUI 拿到的表自洽 */
+  displayMeta(): Record<string, ToolDisplayMeta> {
+    const out: Record<string, ToolDisplayMeta> = {};
+    for (const tool of this.tools.values()) out[tool.name] = tool.display ?? { verb: tool.name.toUpperCase() };
+    return out;
   }
 
   async execute(name: string, rawInput: ToolInput, safety: SafetyChain): Promise<Result<ExecResult>> {

@@ -27,7 +27,7 @@ export type LoopNodeFn = (ctx: LoopContext, input: NodeOutput | null) => Promise
 export type LoopEngineNode = LoopNodeBase & { run: LoopNodeFn };
 
 /** 技能解析接缝：skillRef 调度的装配位（缺省不启用；结构兼容 SkillsFacade） */
-export interface SkillResolver {
+interface SkillResolver {
   resolve(id: string, params?: Record<string, string>): Result<ResolvedSkill>;
 }
 

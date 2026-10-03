@@ -3,7 +3,7 @@
  * 原始 resize 事件在拖拽窗口时会高频连发（每像素一级），直接每次都整屏重绘会闪烁与卡顿；
  * 防抖只认「安静窗口」结束后的最后一次事件，且首事件立即执行（首次进入即修正布局，不等窗口安静）。
  */
-export interface ResizeDebouncer {
+interface ResizeDebouncer {
   /** 每次 resize 事件调用；返回 true 表示本次应立即执行重绘（首个事件），否则进入防抖等待 */
   bump(): boolean;
   /** 防抖窗口到期回调挂载点：由宿主在 bump() 返回 false 后调度，到期时调用 fire() */
@@ -41,7 +41,7 @@ export interface ResizeSource {
   off(event: 'resize', listener: () => void): unknown;
 }
 
-export interface ResizeGate {
+interface ResizeGate {
   dispose(): void;
 }
 

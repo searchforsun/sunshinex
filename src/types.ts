@@ -88,7 +88,7 @@ export interface ProjectContext {
 }
 
 /** Loop 节点类型 */
-export type LoopNodeKind = 'agent' | 'check' | 'gate' | 'router';
+type LoopNodeKind = 'agent' | 'check' | 'gate' | 'router';
 
 /** Loop 迭代上下文（预算账户：tokensUsed 累计、startedAt 起始时钟、termination 终止参数） */
 export interface LoopContext {
@@ -138,7 +138,7 @@ export interface LoopNodeBase {
 }
 
 /** Loop 节点执行结果（NodeOutput.status 引用） */
-export type LoopResult = 'pass' | 'fail' | 'done';
+type LoopResult = 'pass' | 'fail' | 'done';
 
 /* ===== Graph 编排层（阶段三） ===== */
 
@@ -257,7 +257,7 @@ export interface RouteDecision {
 }
 
 /** TUI/GUI 公共事件面（阶段五 5A SessionEvents；运行时唯一旁路，缺省不发射） */
-export type SessionEventType =
+type SessionEventType =
   | 'token' | 'reasoning' | 'usage' | 'tool-call' | 'tool-result' | 'step'
   | 'route' | 'approval-request' | 'approval-resolved'
   | 'ctx' | 'done' | 'error' | 'notice' | 'model-start' | 'model-end';
@@ -272,7 +272,7 @@ export interface SessionEvent {
 }
 
 /** 审批卡种类（spec 5.2）：'read' 为读围栏（D1）新增通道 */
-export type ApprovalKind = 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write' | 'read';
+type ApprovalKind = 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write' | 'read';
 
 /** 终端化审批请求（guard asker 注入点契约，Task 2 接入） */
 export interface ApprovalRequest {

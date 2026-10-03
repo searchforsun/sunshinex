@@ -1,6 +1,6 @@
 import { EmbeddingProvider } from '../../types';
 
-export interface EmbeddingsConfig {
+interface EmbeddingsConfig {
   baseURL: string;
   apiKey: string;
   model: string;

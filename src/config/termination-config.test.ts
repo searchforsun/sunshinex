@@ -9,6 +9,7 @@ import {
   contextWindowTokens,
   CONTEXT_WINDOW_DEFAULT,
   resolveRunWindow,
+  modelTimeoutMsEnv,
 } from './termination-config';
 
 test('未设/空串回 undefined，消费点取内置缺省', () => {
@@ -63,4 +64,17 @@ test('resolveRunWindow：当前模型窗口 > SUNSHINEX_CONTEXT_WINDOW > 200k �
     if (prev === undefined) delete process.env.SUNSHINEX_CONTEXT_WINDOW;
     else process.env.SUNSHINEX_CONTEXT_WINDOW = prev;
   }
+});
+
+// ── J9b 迁入（2026-10-04 自 runtime.ts 随迁归口）：表值钉权威源在此 ──
+test('modelTimeoutMsEnv：正整数生效；未设/空串/非正整数静默忽略回缺省（600s 内建）——刻意不并入 fail-fast 族', () => {
+  assert.equal(modelTimeoutMsEnv({}), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '  ' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: 'abc' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '-5' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '0' }), undefined, '零同非正整数回缺省（fail-fast 族抛错、本旋钮静默）');
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '300.5' }), undefined);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '30000' }), 30000);
+  assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: ' 30000 ' }), 30000, '首尾空白容差同族口径');
 });

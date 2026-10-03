@@ -1,6 +1,6 @@
 import { ChatItem } from './session';
 
-export interface ItemRenderDecision {
+interface ItemRenderDecision {
   /** 行折叠维度下该条目是否上屏 */
   visible: boolean;
   /** 内容深度维度：思考/工具结果 true 展开全文、false 单行摘要 */

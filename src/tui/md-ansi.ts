@@ -1,20 +1,17 @@
 // src/tui/md-ansi.ts
 import { render as mdRender } from 'markdansi';
 import stringWidth from 'string-width';
-import { highlightLine, HiKind } from './highlight';
+import { highlightLine } from './highlight';
 import { alignTable, inlineText, parseMarkdown } from './markdown';
 import { displayWidth } from './text-band';
+import { hiSgr, MD_HR_CHAR } from './md-theme';
 
-/** HiKind → SGR 前景码（与 MarkdownText HI_COLOR 同色系：magenta/green/gray/yellow） */
-const HI_SGR: Record<HiKind, string> = {
-  keyword: '\x1b[35m', string: '\x1b[32m', comment: '\x1b[90m', number: '\x1b[33m', plain: '',
-};
-
-/** markdansi highlighter 适配：行级 HiSpan → ANSI 着色文本 */
+/** markdansi highlighter 适配：行级 HiSpan → ANSI 着色文本（色码取双链同源表 md-theme 的 sgr 形态，
+ *  与 MarkdownText 的 ink 色名形态同源——改色只动 md-theme.ts 一处） */
 function mdHighlighter(code: string, lang?: string): string {
   return code
     .split('\n')
-    .map((l) => highlightLine(lang ?? '', l).map((s) => `${HI_SGR[s.kind]}${s.text}${s.kind === 'plain' ? '' : '\x1b[0m'}`).join(''))
+    .map((l) => highlightLine(lang ?? '', l).map((s) => `${hiSgr(s.kind)}${s.text}${s.kind === 'plain' ? '' : '\x1b[0m'}`).join(''))
     .join('\n');
 }
 
@@ -268,8 +265,9 @@ function renderSource(src: string, width: number): string {
     const text = seg.lines.join('\n');
     if (seg.kind === 'fence') return renderMdRun(text, width);
     if (seg.kind === 'hr') {
-      // markdansi 分割线带 HR_WIDTH=40 硬上限且用 em-dash——自绘全宽盒线（与 MarkdownText hr 同形态：dim + ─×宽）
-      return `\x1b[2m${'─'.repeat(Math.max(1, width))}\x1b[0m`;
+      // markdansi 分割线带 HR_WIDTH=40 硬上限且用 em-dash——自绘全宽盒线（与 MarkdownText hr 同形态：dim + MD_HR_CHAR×宽，
+      // 字符单源 md-theme.ts）
+      return `\x1b[2m${MD_HR_CHAR.repeat(Math.max(1, width))}\x1b[0m`;
     }
     if (seg.kind !== 'table') return renderProseSegment(text, width);
     // 纯管道行 ≥2 且第二行为分隔行才是 GFM 表格；否则（孤行/畸形）按 prose 走行距律原样呈现

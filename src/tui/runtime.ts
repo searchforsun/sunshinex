@@ -1,6 +1,7 @@
 import type { AskUserSeam } from '../types';
 import { Harness } from '../harness';
 import { buildHarness } from '../runtime';
+import { setToolDisplayMeta } from './tool-verbs';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
@@ -53,6 +54,9 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
   });
   if (opts.mode === 'manual' && opts.onApproval) harness.security.setAsker(opts.onApproval);
+  // 工具呈现表接线（D26/J1）：注册表 display 元数据下泄 TUI 呈现层（工具动词/代表字段随注册走，
+  // harness 增改工具零跟表）；display 为纯呈现数据，不进模型侧 tools schema（SessionController 构造前）
+  setToolDisplayMeta(harness.tools.displayMeta());
 
   // 主链唯一入口（D5）：提交经 Loop 长任务模板（内嵌 Reactor），不再直连 harness.reactor
   const loopDeps: LoopDeps = {

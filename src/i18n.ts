@@ -8,7 +8,7 @@
  * - pick 为模型侧文案（提示词/观察）专用别名：语义上标记「这份双语串会进入模型上下文」，
  *   便于审计提示词组装面的语言来源；行为与 t 完全一致
  */
-export type Language = 'en' | 'zh';
+type Language = 'en' | 'zh';
 
 let current: Language = 'en';
 

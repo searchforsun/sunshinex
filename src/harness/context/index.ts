@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { StorageAdapter } from '../../storage/adapter';
+import { ArchiveStore, createFsArchiveStore } from '../../storage/archive';
 import { ChainAction, ContextItem, HistoryStep } from '../../types';
+import { resolveDataDir } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { formatSkillsIndex, loadSkills } from '../skills';
 import { memoryDir, readMemoryIndex } from '../memory/store';
@@ -29,7 +31,7 @@ export type ContextChange =
   | { kind: 'compact'; chainFrom: number; compacted: ContextItem[] };
 
 /** 会话状态完整快照（restoreSession 载荷：journal 事件流归约产物，/resume 重放直注入） */
-export interface ContextSessionState {
+interface ContextSessionState {
   chain: HistoryStep[];
   chainFrom: number;
   compacted: ContextItem[];
@@ -41,6 +43,8 @@ export interface ContextSessionState {
 export class ContextManager {
   readonly loader: ContextLoader;
   readonly window: ContextWindow;
+  /** 归档存储接缝（D26/J10 IO 收敛）：压缩折链归档（runCompaction 经 CompactionHost）与重读（协调器）的单点 IO */
+  readonly archive: ArchiveStore;
 
   private recent: string[] = [];
   private pendingSkill: string | null = null;
@@ -60,7 +64,10 @@ export class ContextManager {
   private readonly compaction: CompactionCoordinator;
 
   // store 形参保留：装配面签名稳定（graph/tui 侧夹具同形构造）；持久化双轨已并轨至 journal 事件流（S5），context 不再直写存储
-  constructor(private readonly rootPath: string, _store: StorageAdapter) {
+  // archive（D26/J10 注入面，第三可选参）：未注入则缺省 createFsArchiveStore(resolveDataDir(root))——
+  // 缺省实现在门面构造选定（组合行为），IO 本体在 storage 层；测试可注入 spy 版钉「归档/重读经接缝」
+  constructor(private readonly rootPath: string, _store: StorageAdapter, archive?: ArchiveStore) {
+    this.archive = archive ?? createFsArchiveStore(resolveDataDir(rootPath));
     this.loader = new ContextLoader(rootPath);
     this.window = new ContextWindow();
     // Compact Instructions 区提取（E 项）：装配同源读一次；无文件/无区为 null
@@ -76,10 +83,12 @@ export class ContextManager {
       readMemoryIndex: () => memoryIndexText(this.rootPath),
     });
     this.ledger = new ChainLedger();
-    // 压缩协调器：compact 事件的 chainFrom（账本水位）与 compacted（压缩块）经门面回调实时接线
+    // 压缩协调器：compact 事件的 chainFrom（账本水位）与 compacted（压缩块）经门面回调实时接线；
+    // archive 同实例透传（D26/J10）：runCompaction（折链归档）与 apply（重读）共用同一接缝
     this.compaction = new CompactionCoordinator({
       window: this.window,
       root: rootPath,
+      archive: this.archive,
       recentFiles: () => this.recentFiles(),
       compactInstructions: () => this.compactInstructions,
       chainFrom: () => this.ledger.fromView(),

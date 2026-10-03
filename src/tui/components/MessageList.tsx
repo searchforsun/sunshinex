@@ -10,13 +10,14 @@ import { MarkdownText } from './MarkdownText';
 import { LiveArea } from './LiveArea';
 import { TailLedger, printedEntryLines, recomputeTailPlan } from '../tail-rewrite';
 import { renderMd } from '../md-ansi';
+import { REPLY_PREVIEW_MAX_ROWS, REPLY_PREVIEW_MIN_ROWS } from '../md-theme';
 import { theme } from '../theme';
 
 /**
  * Static 区条目：横幅（首条）+ 逐条消息（含当前轮）——打印一次后不再重绘（Claude Code 同款机制），
  * 滚动缓冲中每条内容只出现一次，动态帧不承载任何历史渲染。
  */
-export type TranscriptEntry =
+type TranscriptEntry =
   | { kind: 'banner'; info: BannerInfo }
   | { kind: 'message'; item: ChatItem; full: boolean; visible: boolean };
 
@@ -209,7 +210,8 @@ export function replyPreviewWindow(live: LiveBlock, columns: number, cap: number
  *  全文尾窗（2026-10-01 用户终裁）：尾段全文渲染只按视口物理上限截尾（无恒高小窗、无「…」标记行
  *  ——标记行随截断出现即 +1 行跳动），帧高随内容生长、输入区恒跟内容之后。 */
 function MdBufferPreview({ live, columns, rows, previewCap }: { live: LiveBlock; columns: number; rows: number; previewCap?: number }): JSX.Element | null {
-  const cap = previewCap ?? Math.min(28, Math.max(8, rows - 6));
+  // 上下限常量收 md-theme 单源（R10/R11 交叉面；同值散在 App/ChildInspector，收敛留 R11）
+  const cap = previewCap ?? Math.min(REPLY_PREVIEW_MAX_ROWS, Math.max(REPLY_PREVIEW_MIN_ROWS, rows - 6));
   const lines = replyPreviewWindow(live, columns, cap);
   if (lines.length === 0) return null;
   return (

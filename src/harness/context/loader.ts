@@ -4,7 +4,7 @@ import { ContextItem } from '../../types';
 import { userConfigDir } from '../../config/env';
 
 /** 全局约定文件路径：SUNSHINEX_GLOBAL_SUNSHINE 覆盖（测试钉扎/多配置并存），缺省 ~/.sunshinex/SUNSHINE.md（对标 ~/.claude/CLAUDE.md，跨工作区个人标准） */
-export function globalSunshinePath(): string {
+function globalSunshinePath(): string {
   const override = (process.env.SUNSHINEX_GLOBAL_SUNSHINE ?? '').trim();
   return override.length > 0 ? override : path.join(userConfigDir(), 'SUNSHINE.md');
 }

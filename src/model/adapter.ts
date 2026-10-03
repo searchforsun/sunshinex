@@ -280,7 +280,7 @@ export class OpenAIAdapter implements ModelAdapter {
 }
 
 /** 脚本步骤（function calling 出牌）：toolCalls 空 = stop 收束（content 即 reply）；多调用即并行批 */
-export interface ScriptStep {
+interface ScriptStep {
   /** 本轮旁白（phase 载体，可空） */
   content?: string;
   toolCalls?: Array<{ name: string; args: Record<string, unknown>; id?: string }>;

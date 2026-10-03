@@ -1,7 +1,7 @@
 import { StorageAdapter } from '../storage/adapter';
 
 /** 单次 run 账目条目：成本（tokens）与路由观测（决策）随 run 收尾聚合落盘 */
-export interface RunLedgerEntry {
+interface RunLedgerEntry {
   id: string;
   createdAt: string;
   goal: string;

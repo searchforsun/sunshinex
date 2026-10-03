@@ -1,8 +1,8 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { ContextItem, HistoryStep } from '../../types';
 import { resolveDataDir } from '../../config/data-dir';
+import { ArchiveStore, createFsArchiveStore } from '../../storage/archive';
 import { ContextChunk, ContextWindow, estimateTokens } from './window';
 import { maskText } from '../security/chain';
 import { isModelSummarizer, summarizeWithModel } from './summarizer';
@@ -21,7 +21,7 @@ export interface ApplyCompactionOpts {
 
 /** 压缩协调注入面（D25/H3 拆分自 ContextManager 职责④）：window/根路径与门面回调经构造注入，协调器不反向 import 门面——
  *  compact 事件所需的 chainFrom（链账本水位）与 compacted 的消费方（会话日志订阅）均以回调形式由门面接线，件间零引用。 */
-export interface CompactionCoordinatorDeps {
+interface CompactionCoordinatorDeps {
   /** 上下文窗口（checksum 门禁与重注入拼装；lastChecksum 基线随协调器推进——replay 判定的状态本体） */
   window: ContextWindow;
   /** 项目根（重读文件路径解析） */
@@ -34,17 +34,28 @@ export interface CompactionCoordinatorDeps {
   chainFrom(): number;
   /** 压缩事件回投（门面组合 ContextChange 后分发会话日志，单一事实源挂钩） */
   onCompact(chainFrom: number, compacted: ContextItem[]): void;
+  /** 归档/重读 IO 接缝（D26/J10 IO 收敛）：门面构造恒注入（缺省 fs 实现或 spy 版）；可选形态保既有
+   *  直接构造面（单测 rig 六依赖零 archive）不破——未注入且真实触达 IO 时协调器惰性缺省同款 fs 实现 */
+  archive?: ArchiveStore;
 }
 
 /** 压缩协调器（D25/H3 收编 ContextManager 职责④ + ⑨）：压缩块状态（compacted）、压缩事件计数（compactions）
- *  与重注入协调（checksum 门禁 → 摘要分叉 → 重读 → 预算循环）的单一持有者；模块级 runCompaction（归档 IO）同住本文件。 */
+ *  与重注入协调（checksum 门禁 → 摘要分叉 → 重读 → 预算循环）的单一持有者；模块级 runCompaction（归档与
+ *  重读 IO 一律经 archive 接缝，D26/J10）同住本文件。 */
 export class CompactionCoordinator {
   /** 压缩块（compacted）：apply 落地、assemble/restoreSession 经门面只读消费 */
   private compactedItems: ContextItem[] = [];
   /** 压缩事件计数：first 记 1、new 递增；replay（同一压缩事件幂等重放）不计数 */
   private compactions = 0;
+  /** 直接构造未注入 archive 时的惰性缺省（记忆化；门面路径恒注入，不触达本字段） */
+  private defaultArchive?: ArchiveStore;
 
   constructor(private readonly deps: CompactionCoordinatorDeps) {}
+
+  /** 归档接缝解析：deps.archive 优先；未注入时按项目根解析数据目录惰性建 fs 实现并记忆化 */
+  private archiveStore(): ArchiveStore {
+    return this.deps.archive ?? (this.defaultArchive ??= createFsArchiveStore(resolveDataDir(this.deps.root)));
+  }
 
   /** 压缩重注入：checksum 门禁 → 摘要（模型六要素优先，未传/门禁关闭/失败回退确定性 join）→ 重读最近文件 → 注入块。
    *  返回摘要来源三态：model=模型正文生效；deterministic=确定性回退；replay=同一压缩事件幂等重放（不注入、不计数、不发起模型调用）。 */
@@ -65,7 +76,7 @@ export class CompactionCoordinator {
     for (const rel of this.deps.recentFiles()) {
       try {
         const abs = path.resolve(this.deps.root, rel);
-        const lines = fs.readFileSync(abs, 'utf8').split(/\r?\n/).slice(0, REREAD_MAX_LINES);
+        const lines = this.archiveStore().read(abs).split(/\r?\n/).slice(0, REREAD_MAX_LINES);
         // 重读是文件内容直入上下文的旁路，必须过与工具结果相同的凭据脱敏模式集（B3）
         items.push({ kind: 'memory', content: maskText(`[re-read] ${rel}:\n${lines.join('\n')}`) });
       } catch {
@@ -125,6 +136,8 @@ export interface CompactionHost {
   readonly root: string;
   /** 上下文窗口（确定性选块） */
   readonly window: ContextWindow;
+  /** 归档存储（D26/J10 IO 收敛）：折链全量归档写经此接缝（门面构造注入或缺省 fs 实现） */
+  readonly archive: ArchiveStore;
   chainView(): HistoryStep[];
   foldableItems(assembled: ContextItem[]): ContextItem[];
   applyCompaction(chunks: ContextChunk[], opts?: ApplyCompactionOpts): Promise<'model' | 'deterministic' | 'replay'>;
@@ -135,8 +148,8 @@ export interface CompactionHost {
 /** 压缩协调单点（规格 §4.2/D5，原 index.ts 模块级函数原样收编）：确定性选块 → 摘要分叉（模型优先，失败回退）→ 门禁重注入 → 折叠链前缀。
  *  reactor 自动压缩与 TUI /compact 两入口只传参不各自拼装（防拼装漂移，memory 双写教训）；
  *  replay 幂等重放不折链（防重复推进水位）。
- *  归档 IO 保持现行落点 <dataDir>/archives/（IO 收敛是 D26/J10 另案，本步只搬不改）：先行且仅在将真实折链时写，
- *  写失败降级无指针行，压缩永不因归档失败而失败。 */
+ *  归档 IO 经 CompactionHost.archive 接缝（D26/J10，落点 <dataDir>/archives/、命名与内容逐字节不变，
+ *  IO 本体收敛于 storage 层）：先行且仅在将真实折链时写，写失败降级无指针行，压缩永不因归档失败而失败。 */
 export async function runCompaction(
   cm: CompactionHost,
   items: ContextItem[],
@@ -147,11 +160,8 @@ export async function runCompaction(
   if (folded > 0 && cm.chainView().length > 0) {
     try {
       const rows = cm.chainView().slice(0, Math.min(folded, cm.chainView().length));
-      const archDir = path.join(resolveDataDir(cm.root), 'archives');
-      fs.mkdirSync(archDir, { recursive: true });
       const digest = crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex').slice(0, 8);
-      const file = path.join(archDir, `compaction-${rows.length}-${digest}.jsonl`);
-      fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      const file = cm.archive.write(`compaction-${rows.length}-${digest}.jsonl`, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
       traceLine = `Full trace: ${file}`;
     } catch {
       traceLine = undefined; // 归档失败降级：无指针行，压缩照常

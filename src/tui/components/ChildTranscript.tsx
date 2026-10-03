@@ -14,7 +14,7 @@ import { theme } from '../theme';
  * 不折回即被按行分流拆散成裸正文（真机「归档后多余输入内容/多余工具行」病根）。
  */
 
-export type TranscriptSeg =
+type TranscriptSeg =
   | { kind: 'md'; text: string }
   | { kind: 'call'; text: string }
   | { kind: 'result'; text: string; ok: boolean }
@@ -76,7 +76,7 @@ export function ResultCollapsed({ text, ok, columns }: { text: string; ok: boole
 /** 单段渲染：md → renderMd（markdansi 出口，产物无尾随空行——段间单空行由本层 margin 承载，
  *  与主 agent 区域边界同档）、call → ● [VERB] target（与主 agent ToolRow 调用行同构，与紧随其后的
  *  result 行贴排零 margin）、result/meta → dim 行（margin 1，与下一段保持区域间隔） */
-export function TranscriptSegView({ seg, columns }: { seg: TranscriptSeg; columns: number }): JSX.Element {
+function TranscriptSegView({ seg, columns }: { seg: TranscriptSeg; columns: number }): JSX.Element {
   if (seg.kind === 'md') {
     return (
       <Box marginBottom={1}>

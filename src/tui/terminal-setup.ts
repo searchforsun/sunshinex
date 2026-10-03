@@ -68,7 +68,7 @@ function entryInput(e: Record<string, unknown>): string {
   return '';
 }
 
-export interface TerminalSetupResult {
+interface TerminalSetupResult {
   ok: boolean;
   /** 本次是否写盘（false=已配置幂等跳过 / 解析失败未动盘） */
   changed: boolean;

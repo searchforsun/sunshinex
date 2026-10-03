@@ -11,12 +11,12 @@ import type { TuiState } from '../session';
  * 帧高纪律：本条恒 1 行，调用方（App previewCap / ChildInspector textCap）必须计入 chrome 实账。
  */
 
-export interface KeyHintItem {
+interface KeyHintItem {
   key: string;
   action: string;
 }
 
-export interface KeyHintsView {
+interface KeyHintsView {
   items: KeyHintItem[];
 }
 

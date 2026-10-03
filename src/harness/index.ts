@@ -35,7 +35,7 @@ import { McpHost } from './mcp/client';
 import type { KnowledgeBase } from './knowledge';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
-export const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
+const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
 
 export interface HarnessOptions {
   /** 问询接缝（ask_question 消费方）：缺省 headlessAskStub——headless 下工具恒在清单且诚实告知不可达 */
@@ -198,11 +198,14 @@ export class Harness {
       },
       agents,
     );
-    this.tools.register(makeSpawnTool(this.runner));
-    // task_stop：后台任务停止工具（规格 D8），账本在场恒装配
-    this.tools.register(makeTaskStopTool(this.tasks));
+    // spawn 注册附带呈现元数据（D26/J1）：调用行动词迁自 tui/tool-verbs 旧 VERBS 表；display 为纯
+    // 呈现数据（模型面 schema 只取 name/description/parameters，零影响）。工厂文件（subagent.ts 等）
+    // 不在 J1 改动清单，故在注册点附加
+    this.tools.register({ ...makeSpawnTool(this.runner), display: { verb: 'SPAWN' } });
+    // task_stop：后台任务停止工具（规格 D8），账本在场恒装配；呈现动词同上注册点附加
+    this.tools.register({ ...makeTaskStopTool(this.tasks), display: { verb: 'TASK_STOP' } });
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配
-    this.tools.register(makeTaskWaitTool(this.tasks));
+    this.tools.register({ ...makeTaskWaitTool(this.tasks), display: { verb: 'TASK_WAIT' } });
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,

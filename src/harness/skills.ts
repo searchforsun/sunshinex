@@ -33,7 +33,7 @@ export function parseSkillFrontmatter(md: string): Omit<SkillManifest, 'id'> {
 }
 
 /** 学习技能目录（LearnedSkillStore 写入面与双根合并共用的唯一定位）：落全局数据目录 ~/.sunshinex/projects/<工作区>/data/skills（HOME 不可写回退项目 .data） */
-export function learnedSkillsDir(root: string): string {
+function learnedSkillsDir(root: string): string {
   return path.join(resolveDataDir(root), 'skills');
 }
 
@@ -41,7 +41,7 @@ export function learnedSkillsDir(root: string): string {
 export const PROJECT_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents', '.sunshinex'] as const;
 
 /** 项目级各兼容根下的技能目录（升序） */
-export function projectSkillDirs(root: string): string[] {
+function projectSkillDirs(root: string): string[] {
   return PROJECT_SKILL_ROOTS_ASC.map((dot) => path.join(root, dot, 'skills'));
 }
 

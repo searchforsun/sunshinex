@@ -12,7 +12,7 @@ export interface InkLikeInstance {
  *  变化尾部（2026-09-30 方案 A——段折叠闪屏消除，前缀滚动缓冲原样保留、零空白帧） */
 export type RepaintMode = 'full' | 'tail';
 
-export interface TuiLoopDeps {
+interface TuiLoopDeps {
   /** 首挂 retain 初值补丁（--continue 恢复的输入历史与视图两态；buffer/cursor 易失不还原——规格 D6 边界） */
   initialRetain?: Partial<RetainedUiState>;
   /** resize 事件源（真实 TTY stdout 或测试 EventEmitter） */

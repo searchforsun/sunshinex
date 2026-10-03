@@ -16,7 +16,7 @@ export interface PermissionsConfig {
   additionalDirs: string[];
 }
 
-export interface LoadedPermissions {
+interface LoadedPermissions {
   config: PermissionsConfig;
   warnings: string[];
 }

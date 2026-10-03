@@ -16,7 +16,7 @@ export interface GraphTemplate {
   engine: GraphEngine;
 }
 
-export interface PipelineOpts {
+interface PipelineOpts {
   /** 测试验证子流程的目标与验收（须含「验收标准：id=描述」段——check 依赖结构化验收清单） */
   goal?: string;
   ruleCheckers?: Record<string, RuleChecker>;

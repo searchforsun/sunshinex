@@ -6,7 +6,7 @@ import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { LoopDeps, LoopEngineNode } from './engine';
 
 /** 独立小调用 chat 桩形态（T5 共用）：判据/压缩/记忆/提炼四个一次性调用共用的窄接口 */
-export interface ChatCaller {
+interface ChatCaller {
   chat?(req: ChatRequest): Promise<ChatResult>;
 }
 
@@ -43,7 +43,7 @@ function isCriteriaInput(v: unknown): v is CriteriaInput {
 }
 
 /** 判据错误分级：fatal（认证/配额/模型不存在 → 立即清除）与 recoverable（超时/断连/过载/限流 → 重试后暂停）；fatal 模式优先，均未中按 recoverable（保守暂停） */
-export function classifyJudgeError(message: string): 'fatal' | 'recoverable' {
+function classifyJudgeError(message: string): 'fatal' | 'recoverable' {
   if (/401|402|403|unauthorized|forbidden|quota|insufficient|billing|invalid api key|model not found/i.test(message)) return 'fatal';
   return 'recoverable';
 }

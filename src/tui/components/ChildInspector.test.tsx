@@ -4,6 +4,16 @@ import { render, type TestRenderResult } from '../test-ink';
 import { ChildInspector } from './ChildInspector';
 import { ToolRow } from './ToolRow';
 import { ChildLiveState } from '../session';
+import { setToolDisplayMeta } from '../tool-verbs';
+
+// J1 呈现表接线（产线在 createRuntime；单文件直跑时本文件自行注入）：归档 detail 行按首词是否
+// 工具动词分流 call/md，TOOL_VERBS 随表重建——值取注册表 displayMeta 产线形态（本文件所需子集）
+setToolDisplayMeta({
+  exec: { verb: 'EXEC', targetFields: ['command'] },
+  read: { verb: 'READ', targetFields: ['path'] },
+  glob: { verb: 'GLOB', targetFields: ['pattern'] },
+  websearch: { verb: 'WEBSEARCH', targetFields: ['query'] },
+});
 
 const live = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
   label: 'w', startedAt: Date.now() - 12_000, steps: 14, tokens: 13_000,

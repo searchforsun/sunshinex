@@ -3,7 +3,7 @@
  * **不读 SUNSHINE.md**（2026-09-18 用户裁决）：该文件与 CLAUDE.md 同定位——项目规范、给模型的指令，不承载键值配置。
  * 非法值装配期 fail-fast（沿用 agents/MCP 装配纪律）——不做静默兜底，配置错误必须显式暴露。
  */
-export interface MemoryConfig {
+interface MemoryConfig {
   /** 陈述性记忆总开关（不注入 / 不提取 / 不整理 / 写被拒，四处贯通） */
   autoMemory: boolean;
   /** 程序性记忆（技能沉淀）开关 */

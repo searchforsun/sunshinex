@@ -6,7 +6,7 @@
  * 只对形态可判定的写建立置信值：前导擦除帧、三连中的第三写；其余（冷挂首帧、清屏、2026 单写、
  * 未知裸内容）一律清零为 undefined——tui-loop 对无置信值回落全量路径，永不错位。
  */
-export interface FrameSniffer {
+interface FrameSniffer {
   /** 最近一次置信学习到的动态帧行数；无置信值返回 undefined */
   frameLines(): number | undefined;
   /** 丢弃当前置信值（新挂载前调用，防上一挂载帧高串台） */

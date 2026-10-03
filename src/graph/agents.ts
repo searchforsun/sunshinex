@@ -3,7 +3,7 @@ import { GraphNode } from './engine';
 import { AgentRegistry, SubagentRunner, rolePreset } from '../harness/subagent';
 import { reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 
-export interface RoleAgentOpts {
+interface RoleAgentOpts {
   maxSteps?: number;
   /** 上游依赖节点 id（编排接线用） */
   deps?: string[];

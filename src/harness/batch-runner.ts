@@ -23,7 +23,7 @@ export interface BatchLedger {
 }
 
 /** 单批次执行入参：calls=模型出牌原文，argsOf=出牌消费面已解析的入参（坏参 null），step=当前轮步号 */
-export interface BatchRunInput {
+interface BatchRunInput {
   calls: ToolCallSpec[];
   argsOf: (Record<string, unknown> | null)[];
   step: number;

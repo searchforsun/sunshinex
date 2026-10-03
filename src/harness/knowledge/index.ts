@@ -110,12 +110,12 @@ export function assembleKnowledgeBase(cfg: KbEnv, root: string): KnowledgeBase |
 }
 
 /** indexKnowledgeDir 失败产物：missing 为缺失配置的 env 键（含回退源名，文案口径与 resolveKbEnv 回退链同源） */
-export type KbIndexFailure =
+type KbIndexFailure =
   | { ok: false; reason: 'not-configured'; missing: string[] }
   | { ok: false; reason: 'bad-dir'; dir: string };
 
 /** indexKnowledgeDir 产物：成功携带 backend/数据目录/本次索引块数（CLI/TUI 上屏统计的唯一来源） */
-export type KbIndexResult = { ok: true; backend: string; dataDir: string; chunks: number } | KbIndexFailure;
+type KbIndexResult = { ok: true; backend: string; dataDir: string; chunks: number } | KbIndexFailure;
 
 /** embedding 配置缺失清单（单点供 CLI/TUI 引导文案，防两处各写一份 env 名漂移） */
 function missingEmbeddingEnv(cfg: KbEnv): string[] {

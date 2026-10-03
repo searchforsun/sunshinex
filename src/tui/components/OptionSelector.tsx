@@ -7,12 +7,12 @@ import { slashMenuWindow } from './SlashMenu';
 export const SELECTOR_WINDOW = 8;
 
 /** 选择器选项（AskUserRequest.options 同形；独立定义避免渲染层反向依赖 harness 类型） */
-export interface SelectorOption {
+interface SelectorOption {
   label: string;
   description?: string;
 }
 
-export interface OptionSelectorProps {
+interface OptionSelectorProps {
   question: string;
   options: SelectorOption[];
   /** 高亮行（0-based，作用于全量列表；↑↓ 键经 moveCursor 归位，窗口随之平移） */

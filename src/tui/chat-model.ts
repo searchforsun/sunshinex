@@ -152,12 +152,9 @@ export interface ChildLiveState {
   thinkStartedAt?: number;
 }
 
-/** spawn 调用关联基名（规格 §4.4）：label ?? agent_id ?? 'subagent'（与 Runner 解析同源；消歧后缀不含入内） */
-export function spawnBaseLabel(input: unknown): string {
-  const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
-  const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
-  return str(obj.label) ?? str(obj.agent_id) ?? 'subagent';
-}
+/** spawn 调用关联基名（规格 §4.4）：label ?? agent_id ?? 'subagent'（与 Runner 解析同源；消歧后缀不含入内）。
+ *  D26/J1 收敛单点：实现迁 tool-verbs（extractTarget 的 spawn 分支共用），此处转发导出保持既有导入面 */
+export { spawnBaseLabel } from './tool-verbs';
 
 /** 结构行多行内容续行序列化：续行一律 4 空格缩进（与思考 detail 同一口径）——解析镜像 segmentizeLines
  *  把缩进续行折回上一结构行；不缩进即被按行分流拆散成裸正文（真机「归档后委派词/工具输出整段漏成

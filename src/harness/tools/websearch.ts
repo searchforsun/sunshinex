@@ -14,7 +14,7 @@ export interface WebSearchProvider {
 }
 
 /** 缺省 Provider：DuckDuckGo HTML 端点（无 key、纯 GET）；端点与选型口径统一由 security/websearch-endpoint 提供（guard 域名闸门同源） */
-export class DuckDuckGoProvider implements WebSearchProvider {
+class DuckDuckGoProvider implements WebSearchProvider {
   constructor(private endpoint = DDG_ENDPOINT) {}
 
   async search(query: string, count: number): Promise<WebSearchHit[]> {
@@ -29,7 +29,7 @@ export class DuckDuckGoProvider implements WebSearchProvider {
 }
 
 /** 可选 Provider：Bing Web Search API v7（SUNSHINEX_WEBSEARCH_PROVIDER=bing 时启用，需 SUNSHINEX_BING_API_KEY） */
-export class BingProvider implements WebSearchProvider {
+class BingProvider implements WebSearchProvider {
   constructor(
     private endpoint = BING_ENDPOINT,
     private apiKey = process.env.SUNSHINEX_BING_API_KEY ?? '',

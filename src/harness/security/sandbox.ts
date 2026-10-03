@@ -173,10 +173,10 @@ function globToRegex(pattern: string): string {
 }
 
 /** 决议结果的来源标签（自检观测面用；同时是决议序的可断言契约） */
-export type ShellSource = 'override' | 'posix' | 'git-bash' | 'powershell' | 'comspec';
+type ShellSource = 'override' | 'posix' | 'git-bash' | 'powershell' | 'comspec';
 
 /** shell 决议产物：`args` 为脚本标志前缀，`source` 标明由哪一级决议命中 */
-export interface ResolvedShell {
+interface ResolvedShell {
   file: string;
   args: string[];
   source: ShellSource;

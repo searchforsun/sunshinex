@@ -1,7 +1,7 @@
 /** Markdown 感知分块：标题节聚合；节超长按句子边界切分（保证句子完整），无边界时按上限硬切；块间保留重叠以维持检索召回的上下文连续性 */
 
-export const MAX_CHUNK = 1200;
-export const OVERLAP = 100;
+const MAX_CHUNK = 1200;
+const OVERLAP = 100;
 
 const SENTENCE_ENDINGS = '。！？；!?;';
 
