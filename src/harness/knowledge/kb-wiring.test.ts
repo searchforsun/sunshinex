@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Harness } from '../index';
 import { buildDeps } from '../../runtime';
+import { createRuntime } from '../../tui/runtime';
 import { resolveKbEnv } from '../../config/env';
 import { KnowledgeBase, assembleKnowledgeBase } from './index';
 import { LocalJsonVectorStore } from './store';
@@ -100,6 +101,36 @@ test('buildDeps 装配根：KB env 配置齐全 → kb_search 经 deps.registry 
     assert.ok(r.ok, `buildDeps 接线后 kb_search 应成功：${r.ok ? '' : r.error.code}`);
     const hits = JSON.parse(r.value.stdout) as Array<{ text: string }>;
     assert.ok(hits.length >= 1 && hits[0].text.includes('分散部署'), 'composition root 装配的 kb 应可检索到已索引内容');
+  } finally {
+    delete process.env.SUNSHINEX_EMBEDDING_BASE_URL;
+    delete process.env.SUNSHINEX_EMBEDDING_API_KEY;
+    delete process.env.SUNSHINEX_EMBEDDING_MODEL;
+    delete process.env.SUNSHINEX_KB_DATA_DIR;
+    srv.close();
+  }
+});
+
+test('共享装配单点（D27）：buildDeps 与 createRuntime 两路构造 kb 装配同源——同 env 两路 kb_search 均命中同一索引', async () => {
+  const srv = await startEmbedServer();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-kbwire-dual-'));
+  const kbDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-kbwire-dualdata-'));
+  process.env.SUNSHINEX_EMBEDDING_BASE_URL = srv.url;
+  process.env.SUNSHINEX_EMBEDDING_API_KEY = 'k-test';
+  process.env.SUNSHINEX_EMBEDDING_MODEL = 'embed-m';
+  process.env.SUNSHINEX_KB_DATA_DIR = kbDataDir;
+  try {
+    // 同一 env/数据目录先建索引：两路装配（各自 load 挂接显式数据目录）都应检索到同一内容
+    await assembleKnowledgeBase(resolveKbEnv(process.env as Record<string, string | undefined>), root)?.indexDir(writeDocs());
+    const deps = buildDeps(root, {});
+    const rt = createRuntime({ root });
+    const r1 = await deps.registry.execute('kb_search', { query: '分散部署', topK: 2 }, deps.safety);
+    const r2 = await rt.harness.tools.execute('kb_search', { query: '分散部署', topK: 2 }, rt.harness.safety);
+    assert.ok(r1.ok && r2.ok, `CLI/TUI 两路装配的 kb_search 都应命中（单点 kb 接线若丢失任一路即 kb_not_configured）：CLI=${r1.ok} TUI=${r2.ok}`);
+    assert.ok(
+      JSON.parse(r1.value.stdout).some((h: { text: string }) => h.text.includes('分散部署')) &&
+        JSON.parse(r2.value.stdout).some((h: { text: string }) => h.text.includes('分散部署')),
+      '两路命中同一已索引内容（同 env 同数据目录 = 装配同源）',
+    );
   } finally {
     delete process.env.SUNSHINEX_EMBEDDING_BASE_URL;
     delete process.env.SUNSHINEX_EMBEDDING_API_KEY;

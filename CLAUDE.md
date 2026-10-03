@@ -33,19 +33,20 @@ src/
   cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / skills install；worktree-launch --worktree 装配前解析）
   types.ts            # 全局共享类型（新增共享类型一律在此登记）
   result.ts           # Result 统一结果类型
-  runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
+  runtime.ts          # 运行时装配根（buildHarness 单点 + buildDeps CLI 整形：CLI/TUI/GUI 三面共用）
   paths.ts            # 路径工具单点（isWithin 子树判界，§14）
   textmatch.ts        # 文本匹配原语单点（escapeRegExp/globToRegex，permissions/rules/sandbox 共用）
   slug.ts             # slug 折叠单点（ASCII 小写折叠，tasks/worktree/learned 三方言共用）
   i18n.ts             # 外观双语 t(en, zh) 调用时求值（§15）
   config.ts           # SUNSHINE.md 解析器
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
-  tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、session-journal/snapshots 会话持久化
+  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、session-journal/snapshots 会话持久化
   harness/
     index.ts          # Harness 门面（含 SteeringChannel）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     sunshine-init.ts  # /init 目标构造器（纯函数产出 goal 文本，模型驱动生成/完善 SUNSHINE.md）
     reactor.ts        # 最小闭环引擎（observe→think→act）
+    batch-runner.ts   # 批次执行器（签名去重/串并行政策/执行扇出/批后记账，reactor 消费）
     guardrail.ts      # 护栏停判纯函数（超时→预算→步数序；终态与文案单点，loop/graph 双引擎共用）
     ledger.ts         # per-run 成本账本（selfcheck usage 行数据源）
     skills.ts         # 技能装载与调度（五根兼容链+全局+学习级、resolve 回退链、清单注入）
@@ -78,7 +79,7 @@ SUNSHINE.md          # 项目业务配置
 - Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上
 - 技能与子代理通过「目录约定」加载，第三方工具经 MCP 接入（服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`，项目级撞名遮蔽全局）
 - 错误通道分域：工具与安全域返回 `Result`（可预期失败显式化）；引擎（Reactor/Loop/Graph）在节点边界 `catch` 后转为节点状态与 `reply` 字段（不可预期失败集中化），两条通道不得跨域混用
-- 运行时装配收敛于 `src/runtime.ts`（buildDeps），交互面（CLI/TUI/GUI）只做参数解析与呈现，新增交互面复用同一装配根
+- 运行时装配收敛于 `src/runtime.ts`（`buildHarness` 为 Harness 构造单点、`buildDeps` 为其上 CLI 专用整形层），交互面（CLI/TUI/GUI）只做参数解析与呈现，新增交互面复用同一装配根
 
 ## 5. 编码规范
 

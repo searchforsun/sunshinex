@@ -43,7 +43,16 @@ const SCOPES: Record<string, string[]> = {
     'src/graph/engine.ts',
     'src/graph/templates.ts',
   ],
-  B5: ['src/tui/session.ts'],
+  B5: [
+    'src/tui/session.ts',
+    'src/tui/chat-model.ts',
+    'src/tui/md-stream.ts',
+    'src/tui/commands-memory.ts',
+    'src/tui/commands-model.ts',
+    'src/tui/commands-session.ts',
+    'src/tui/child-panel.ts',
+    'src/tui/approval.ts',
+  ],
   B4: [
     'src/harness/reactor.ts',
     'src/harness/subagent.ts',
@@ -179,6 +188,7 @@ export function chainLiteralLeaks(rel: string): { line: number; text: string }[]
 }
 
 test('写链面零中文钉子：appendChain/appendInstructionLine 的字面量恒英文单语', () => {
-  const hits = chainLiteralLeaks('src/tui/session.ts').map((h) => `src/tui/session.ts:${h.line}  ${h.text}`);
+  // D17 拆分后写链面散在 session 与各拆分件——与 B5 同清单扫描（新拆分件随拆分登记，防扫描面漂移）
+  const hits = SCOPES.B5.flatMap((rel) => chainLiteralLeaks(rel).map((h) => `${rel}:${h.line}  ${h.text}`));
   assert.deepEqual(hits, [], `写链行含中文（链行即使包 t() 也进模型，必须英文单语）：\n${hits.join('\n')}`);
 });

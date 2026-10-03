@@ -1,13 +1,11 @@
-import { moveCursor, OptionSelector, togglePick, filterOptions, SELECTOR_WINDOW } from './OptionSelector';
-import type { AskUserRequest } from '../../types';
+import { OptionSelector, filterOptions } from './OptionSelector';
 import { t } from '../../i18n';
 import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey, keyTrace } from './use-input';
-import { ApprovalDecision } from '../../types';
 import { SessionController, TuiState } from '../session';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
-import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS, slashMenuWindow } from './SlashMenu';
+import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
 import { initialRetained, RetainedUiState } from '../ui-state';
 import { createTailLedger, TailLedger } from '../tail-rewrite';
 import { segmentCount } from '../transcript-view';
@@ -22,14 +20,15 @@ import { ChildPanel } from './ChildPanel';
 import { BrowseList } from './BrowseList';
 import { ChildInspector } from './ChildInspector';
 import { KeyHints, keyHintsFor } from './KeyHints';
+import { useInspectKeys } from './use-inspect-keys';
+import { useBrowseKeys, browseRows } from './use-browse-keys';
+import { useQuestionKeys } from './use-question-keys';
+import { useApprovalKeys, approvalKeyToDecision, approvalDecisionByIndex } from './use-approval-keys';
+import { useLineEditKeys } from './use-line-edit';
 
-/** 审批键盘映射：y 放行一次 / a 本会话放行 / n 拒绝（纯函数，独立单测） */
-export function approvalKeyToDecision(input: string): ApprovalDecision | undefined {
-  if (input === 'y') return 'allow';
-  if (input === 'a') return 'always';
-  if (input === 'n') return 'deny';
-  return undefined;
-}
+// 审批键盘映射与选择器下标→裁决映射随按键分支迁至 use-approval-keys（D17-H2），此处 re-export
+// 保住既有「from './App'」导入面（App.test 等纯函数单测）
+export { approvalKeyToDecision, approvalDecisionByIndex };
 
 /** 纵向命令面板技能源（session.skillMenuEntries 同构）：lastUsedAt 缺省=从未使用，排最尾部 */
 export interface SlashMenuSkillSource {
@@ -74,11 +73,6 @@ export function approvalSelectorOptions(): { label: string; description?: string
   ];
 }
 
-/** 审批选择器下标 → 裁决值（渲染层提交映射单点，防两处漂移） */
-export function approvalDecisionByIndex(idx: number): 'allow' | 'always' | 'deny' {
-  return (['allow', 'always', 'deny'] as const)[idx] ?? 'deny';
-}
-
 /** plan 确认选择器选项（首项=执行；Esc 同第二项放弃） */
 export function planSelectorOptions(): { label: string; description?: string }[] {
   return [
@@ -104,12 +98,12 @@ export function computePreviewCap(rows: number, chromeRows: number): number {
   return Math.max(4, Math.min(28, rows - chromeRows - 1));
 }
 
-/** Home/End 终端转义序列体：ink3 不解析这些功能键，按 ESC 剥离前后的两种形态识别（xterm 与应用模式两族） */
-const HOME_SEQS = ['[H', 'OH', '[1~', '[7~'];
-const END_SEQS = ['[F', 'OF', '[4~', '[8~'];
-
 /** Ink 渲染层（纯渲染 + useInput 垫片键盘分发：垫片保留原始字节，退格/⌦ 经 key.raw 精确分流）：状态全量来自 controller 订阅；
- *  retain 为跨重挂现场（resize/Tab 重挂时输入现场与展开模式不丢）：挂载读初值，每次渲染后实时回写 */
+ *  retain 为跨重挂现场（resize/Tab 重挂时输入现场与展开模式不丢）：挂载读初值，每次渲染后实时回写。
+ *  键盘分发按模态判定序拆为五个 hook（D17-H2 技术债镜像重构，行为零变化）：use-inspect-keys（全屏查看）、
+ *  use-browse-keys（子代理浏览）、use-question-keys（问询卡）、use-approval-keys（审批/plan 卡）、
+ *  use-line-edit（输入行编辑与提交）——各 hook 收编专属状态与分支、handleKey 返回 true=已消费短路；
+ *  共享状态（buffer/cursor/菜单条目等）由本组件持有并经参数注入；判定序全契约见下方 useInput 前置注释 */
 export function App({
   controller,
   banner,
@@ -149,51 +143,10 @@ export function App({
     return v;
   });
   const [state, setState] = React.useState<TuiState>(controller.getState());
-  // AskQuestion 选择器本地态：ref 为输入真值（useInput 处理器经 effect 重挂存在闭包滞后），state 只承载渲染
-  const [qCursor, setQCursorState] = React.useState(0);
-  const [qPicked, setQPickedState] = React.useState<number[]>([]);
-  const [qCustom, setQCustomState] = React.useState(false);
-  const [qText, setQTextState] = React.useState('');
-  const qCursorRef = React.useRef(0);
-  const qPickedRef = React.useRef<number[]>([]);
-  const qCustomRef = React.useRef(false);
-  const qTextRef = React.useRef('');
-  const setQCursor = (v: number): void => { qCursorRef.current = v; setQCursorState(v); };
-  const setQPicked = (v: number[]): void => { qPickedRef.current = v; setQPickedState(v); };
-  const setQCustom = (v: boolean): void => { qCustomRef.current = v; setQCustomState(v); };
-  const setQText = (v: string): void => { qTextRef.current = v; setQTextState(v); };
-  // filterable 卡筛选态（规格 D6/D7）：筛选词 ref 真值 + state 渲染，随新问询卡归位清零
-  // （2026-09-30 用户裁决：翻页改命令面板式光标跟随滑窗，页码态退役——OptionSelector 渲染层承载）
-  const [qFilter, setQFilterState] = React.useState('');
-  const qFilterRef = React.useRef('');
-  const setQFilter = (v: string): void => { qFilterRef.current = v; setQFilterState(v); };
-  // 审批/plan 选择器光标（T3 迁移）：ref 真值 + state 渲染；状态转入时归位首项
-  const [aCursorState, setACursorState] = React.useState(0);
-  const aCursorRef = React.useRef(0);
-  const setACursor = (v: number): void => { aCursorRef.current = v; setACursorState(v); };
-  const [pCursorState, setPCursorState] = React.useState(0);
-  const pCursorRef = React.useRef(0);
-  const setPCursor = (v: number): void => { pCursorRef.current = v; setPCursorState(v); };
-  const statusRef = React.useRef(state.status);
-  React.useEffect(() => {
-    if (state.status !== statusRef.current) {
-      if (state.status === 'awaiting-approval') setACursor(0);
-      if (state.status === 'awaiting-plan') setPCursor(0);
-      statusRef.current = state.status;
-    }
-  }, [state.status]);
-  const qRef = React.useRef<AskUserRequest | undefined>(undefined);
-  React.useEffect(() => {
-    if (state.question && state.question !== qRef.current) {
-      qRef.current = state.question;
-      setQCursor(0);
-      setQPicked([]);
-      setQCustom(false);
-      setQText('');
-      setQFilter('');
-    }
-    if (!state.question && qRef.current) qRef.current = undefined;
-  }, [state.question]);
+  // AskQuestion 问询卡：选择器/勾选/自由输入/筛选词状态与按键分支收编于 useQuestionKeys（D17-H2 模态拆件，行为零变化）
+  const { qCursor, qPicked, qCustom, qText, qFilter, handleKey: handleQuestionKey } = useQuestionKeys({ controller, question: state.question });
+  // 审批/plan 选择器：光标状态、转入归位与两卡按键分支收编于 useApprovalKeys（D17-H2 模态拆件，行为零变化）
+  const { aCursor: aCursorState, pCursor: pCursorState, handleKey: handleApprovalKey } = useApprovalKeys({ controller, status: state.status });
   const [buffer, setBuffer] = React.useState(store.buffer);
   const [cursor, setCursor] = React.useState(store.cursor);
   // 两层展开视图（Tab/Ctrl+O 正交，均经 tui-loop 卸载→清屏→重挂整屏重放，视口永远只有一份历史）：
@@ -205,67 +158,14 @@ export function App({
   // 待办展开开关（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：运行中默认折叠单行，
   // Tab 翻转全量清单；经 retain 跨重挂保留（Tab 触发尾部重挂，不存即重挂打回折叠）
   const [todoExpanded, setTodoExpanded] = React.useState(store.todoExpanded ?? false);
-  // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；
-  // 两态经 retain 跨重挂保留——repaint effect 依赖含 browseMode（行高亮须 Static 整屏重放），不在 retain 则
-  // 一按 Ctrl+B 即卸载重挂、浏览态丢失（真机「按 Ctrl+B 挂死」观感）；旧 retain 快照缺字段回落关闭态
-  const [browseMode, setBrowseMode] = React.useState(store.browseMode ?? false);
-  const browseModeRef = React.useRef(store.browseMode ?? false);
-  const [browseCursor, setBrowseCursor] = React.useState(store.browseCursor ?? 0);
-  const browseCursorRef = React.useRef(store.browseCursor ?? 0);
-  const setBrowse = (mode: boolean, cursor = 0): void => {
-    browseModeRef.current = mode;
-    browseCursorRef.current = cursor;
-    // store 同步先于 setState（对标 setInspectRetained）：browse→inspect 切换经 onRequestRepaint 同步卸载，
-    // 本帧「现场回写」effect 永不再跑（setBrowse(false) 的提交被卸载吞掉），不同步写即重挂后 browseMode
-    // 残留 true——全屏态叠加浏览态吞键（真机「Tab/Esc 须先按 Enter 才生效」病根）
-    store.browseMode = mode;
-    store.browseCursor = cursor;
-    setBrowseMode(mode);
-    setBrowseCursor(cursor);
-  };
-  // 全屏查看模式（规格 §3.3）：live=运行中子代理（实时流式）、archived=已归档 spawn 调用行（detail 回看）；
-  // ref 真值同 browse 先例（useInput 处理器闭包滞后），在场时整页让位（MessageList 保持挂载 live 让位零 Static 重放）
-  const [inspect, setInspect] = React.useState<{ kind: 'live'; label: string } | { kind: 'archived'; seq: number } | undefined>(store.inspect);
-  // 全屏查看 Tab 两态（2026-09-28 用户裁决：完整时间线缺省，Tab 收起为正文形态）——经 retain 跨重挂保留，
-  // 与 browseMode 同款「动态区自绘零重挂」承载，inspect 进入时复位为完整时间线
-  const [inspectExpanded, setInspectExpanded] = React.useState<boolean>(store.inspectExpanded ?? false);
-  const inspectExpandedRef = React.useRef(inspectExpanded);
-  inspectExpandedRef.current = inspectExpanded;
-  const inspectRef = React.useRef(inspect);
-  inspectRef.current = inspect;
-  const setInspectRetained = (v: typeof inspect): void => {
-    keyTrace(`setInspect ${JSON.stringify(v)}`);
-    inspectRef.current = v;
-    store.inspect = v;
-    // 生产路径（有 repaint 通道）：跳过 setState——本调用紧随 onRequestRepaint 同步卸载，setState
-    // 会在注定废弃的旧树上同步提交一次整帧渲染（归档视图=一次性最大帧，真机 280ms+）且 ink 把这帧
-    // **写进 stdout**，随后 clearScreen 重挂又整份重放——同一转录双重倾泻（conpty 冻结+闪屏，真机
-    // 「归档进入要先 Enter」病根：半秒级空窗内用户补按的 Enter 被 inspect 分支静默吞掉）。状态由重挂
-    // 从 store 读（store 先写不变式的终点形态）。无通道（部分测试直挂）：原地 setState 维持旧语义
-    if (onRequestRepaint) {
-      setInspectExpanded(false);
-      store.inspectExpanded = false;
-      onRequestRepaint();
-      return;
-    }
-    setInspect(v);
-    setInspectExpanded(false); // 每次进入复位折叠态（缺省态，对标主 agent 折叠位；store 同步防重挂回旧值）
-    store.inspectExpanded = false;
-  };
   // 键分发 ref 真值（对标 qCursor/browseCursorRef 先例）：子面板更新走 notifyThrottled 节流，
   // 处理器闭包的 state 可能滞后节流一拍，浏览器序列构造必须读 ref 不读闭包
   const stateRef = React.useRef(state);
   stateRef.current = state;
-  /** Ctrl+B 浏览序列单点（2026-09-28 统一口径）：运行中子代理在前（启动序）+ 已完成 spawn 按 subagentMeta.delegatedAt
-   *  委派时间升序在后（旧档字段缺省回落 seq 序）——↑↓ 键盘分发与动态区列表渲染共用同一函数，两侧永不漂移 */
-  const browseRows = (st: TuiState): { id: string; label: string; running?: boolean; seq?: number; meta?: TuiState['messages'][number]['subagentMeta'] }[] => [
-    ...st.children.filter((c) => !c.done).map((c) => ({ id: `live:${c.label}`, label: c.label, running: true as const })),
-    ...st.messages
-      .filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta)
-      .map((m) => ({ id: `archived:${m.seq}`, label: m.text.replace(/^SPAWN /, ''), seq: m.seq, meta: m.subagentMeta }))
-      .sort((a, b) => (a.meta?.delegatedAt ?? a.seq!) - (b.meta?.delegatedAt ?? b.seq!)),
-  ];
-  const [history, setHistory] = React.useState<string[]>(store.history);
+  // 全屏查看模式（规格 §3.3）：状态与按键分支收编于 useInspectKeys（D17-H2 模态拆件，行为零变化）
+  const { inspect, inspectExpanded, inspectRef, setInspectRetained, handleKey: handleInspectKey } = useInspectKeys({ controller, stateRef, store, onRequestRepaint });
+  // 子代理浏览模式（Ctrl+B）：状态与按键分支（含 Ctrl+B 进入）收编于 useBrowseKeys（D17-H2 模态拆件，行为零变化）
+  const { browseMode, browseCursor, browseModeRef, handleKey: handleBrowseKey } = useBrowseKeys({ controller, stateRef, store, enterInspect: setInspectRetained });
   // 技能命令池快照（规格 D6/D7）：会话层 skillMenuEntries 同源（附描述与最近使用）；挂载即读 + 回合边界
   // （sessionTurns 变化）刷新，不逐键读盘——最近使用排序在会话层 loadSkill 落盘后下回合生效
   const [skillMenu, setSkillMenu] = React.useState<SlashMenuSkillSource[]>(() => controller.skillMenuEntries());
@@ -278,7 +178,25 @@ export function App({
   const slashCursorRef = React.useRef(0);
   const setSlashCursor = (v: number): void => { slashCursorRef.current = v; setSlashCursorState(v); };
   React.useEffect(() => { setSlashCursor(0); }, [buffer]);
-  const [histIdx, setHistIdx] = React.useState(store.histIdx);
+  // 纵向命令面板条目（2026-09-30 对标 CC）：'/' 前缀动态过滤（含技能池，最近使用在前）；
+  // 在场性=条目非空 + idle/error（与旧横向提示行同门槛）
+  const menuEntries = React.useMemo(() => buildSlashMenu(buffer, skillMenu), [buffer, skillMenu]);
+  const slashPool = React.useMemo(() => buildSlashMenu('/', skillMenu).map((e) => e.cmd), [skillMenu]);
+  // 输入行编辑：Home/End/⌦/光标/菜单↑↓/撤回排队/历史↑↓/换行/Enter/退格/插入分支与 history/histIdx 状态
+  // 收编于 useLineEditKeys（D17-H2 模态拆件，行为零变化；buffer/cursor 等共享状态经参数传入不复制）
+  const { history, histIdx, setHistIdx, handleKey: handleLineEditKey } = useLineEditKeys({
+    controller,
+    buffer,
+    cursor,
+    setBuffer,
+    setCursor,
+    status: state.status,
+    menuEntries,
+    slashCursorRef,
+    setSlashCursor,
+    initialHistory: store.history,
+    initialHistIdx: store.histIdx,
+  });
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
   // 输入框回填（/rewind //fork，规格 §7）：锚点轮输入取回输入框可编辑重发；每帧检查、takeBackfill 幂等（无回填 no-op，无重渲染环）
   React.useEffect(() => {
@@ -356,10 +274,6 @@ export function App({
   // 待办行（2026-10-01 用户裁决「运行过程中点 Tab 展开 todolist」）：缺省运行中折叠单行，todoExpanded
   // 翻转全量（tabExpanded 计入 chrome 实账，previewCap 随之收缩、帧高有界不触顶）
   const todoRows = state.todos.length > 0 ? (state.status === 'running' && !todoExpanded ? 1 : state.todos.length + 1) : 0;
-  // 纵向命令面板条目（2026-09-30 对标 CC）：'/' 前缀动态过滤（含技能池，最近使用在前）；
-  // 在场性=条目非空 + idle/error（与旧横向提示行同门槛）
-  const menuEntries = React.useMemo(() => buildSlashMenu(buffer, skillMenu), [buffer, skillMenu]);
-  const slashPool = React.useMemo(() => buildSlashMenu('/', skillMenu).map((e) => e.cmd), [skillMenu]);
   // 菜单可见行数：上限 20，随视口与 chrome（输入框/待办/状态栏）实账收缩，防动态帧触顶整屏重写
   const menuMaxRows = Math.max(3, Math.min(SLASH_MENU_MAX_ROWS, rows - inputRows - todoRows - 3));
   // 动态帧总高实账（2026-09-30 用户裁决「贴地不再上提」）：ink3 在 outputHeight >= rows 时 clearTerminal
@@ -414,184 +328,47 @@ export function App({
   });
   const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter) : undefined;
 
+  /* ── 键盘模态判定序契约（D17-H2 显式化：原九层 if 单闭包的隐式截获序，拆 hook 后必须保持不变）──
+   * 1. inspect 全屏查看（use-inspect-keys，在场恒吞键）：Ctrl+C=live 两段停【此子代理】/archived 撤暂停卡；
+   *     Esc=暂停卡在场先撤卡、无卡才退视图；Tab=时间线折叠↔完整两态；其余键吞掉
+   * 2. browse 浏览态（use-browse-keys，在场恒吞键）：列表空自退；Esc 退浏览；↑↓ moveCursor 回环；
+   *     Enter=running 行进 live 全屏/archived 行进回看，随后退浏览；Ctrl+C=退浏览+两次确认暂停
+   * 3. Ctrl+B 进入浏览（use-browse-keys）：无状态门槛、位于问询卡之前，恒吞键（无可进列表亦吞）
+   * 4. 问询卡 awaiting-question（use-question-keys，模态恒吞键，Esc 不回落清缓冲）：filterable 卡
+   *     （Ctrl+C 弃+断；Esc 两段=有词清词/无词弃；⌫删词；↑↓ 滤后视图回环；Enter/Space 经 map 落原下标
+   *     提交；可打印进筛选词）→ qCustom 自由输入态（Esc 返回；Enter 提交 custom；⌫删字；可打印追加）
+   *     → 普通卡（Ctrl+C 弃+断；Esc 弃；↑↓；Enter/Space（customIndex=切自由输入）；数字 1-9 窗口内快选）
+   * 5. Ctrl+C 全局分流（App 保留）：暂停卡二段真中断 → running 挂暂停卡 → interrupt 可达即中断 →
+   *     空闲输入非空=清空缓冲+历史指针复位 -1 → 空闲输入空=请求退出
+   * 6. Esc 全局分流（App 保留）：暂停卡撤卡 → interrupt 可达即中断 → 输入非空=清空（空输入无操作，不退出）
+   * 7. 审批卡 awaiting-approval（use-approval-keys，模态恒吞键）：y/a/n 快捷；Esc=deny；↑↓；
+   *     Space/Enter=光标行裁决；数字 1-3 快选
+   * 8. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y/n；Esc=放弃；↑↓；Space/Enter；1-2 快选
+   * 9. Tab 分流（App 保留）：/ 前缀=斜杠补全（exact 词池内循环邻位+空格 / 补面板选中项+空格）；
+   *     否则=expandAll+todoExpanded 同步翻转（store 先写）并 recordView
+   * 10. Ctrl+O（App 保留）：latestFull 内容深度翻转并 recordView
+   * 11. 输入行编辑（use-line-edit，判定序终点，到达即终结）：Home/End/⌦ CSI 序列 → Ctrl+A/E 双轨 → ←→
+   *     → 菜单在场（idle/error）↑↓ 接管 → running 空缓冲 ↑=撤回排队 → idle/error 单行缓冲 ↑↓=历史回填
+   *     → Shift/Alt+Enter（含 kitty CSI-u）=框内换行 → Enter（菜单提交选中 / 行尾单反斜杠续行 / 整行提交）
+   *     → ⌫退格（\u001B[3~ 前向删除）→ 可打印字符插入
+   * 不变量：模态卡（1-4、7-8）在场即吞键不落输入缓冲；Ctrl+C/Esc 在 5/6 位才具备全局语义；
+   * buffer/cursor 等共享状态由 App 持有、经参数注入各 hook，单一真值不复制 */
   useInput((input: string, key: RawKey) => {
 
-    // 全屏查看模式（规格 §3.3）：最前置接管——Esc 退出恢复主界面，Tab 切「折叠 ↔ 完整时间线」两态
-    //（2026-09-29 Static 时间线化后经生产 repaint 整屏重放，对标主 agent Tab；store 持久化跨重挂保留），
-    // 其余键吞掉不落输入缓冲（纯只读视图，不支持再次会话）
-    if (inspectRef.current) {
-      // Ctrl+C 作用域=本视图（2026-10-02 用户裁决「子agent暂停导致主agent也中断了」）：live 视图两次
-      // Ctrl+C=停【此子代理】（账本单点停，主链零影响、TASK_WAIT 收 stopped 终态自判续跑）——不再走
-      // 主任务 interrupt（旧口径「主链连带子代理」把收尾中的主链一并杀死：真机 4 子代理全完成后主链被杀）。
-      // 归档回看无在跑目标：有卡撤卡防死键、无卡不挂（只读视图口径）
-      if (key.ctrl && input === 'c') {
-        const liveLabel = inspectRef.current.kind === 'live' ? inspectRef.current.label : undefined;
-        if (liveLabel !== undefined) {
-          if (stateRef.current.pauseConfirm) { keyTrace(`inspect child-stop ${liveLabel}`); controller.stopChild(liveLabel); controller.cancelPause(); return; }
-          keyTrace('inspect pause-hang (child)');
-          controller.hangPauseCard();
-          return;
-        }
-        if (stateRef.current.pauseConfirm) { keyTrace('inspect pause-cancel (archived)'); controller.cancelPause(); }
-        return;
-      }
-      // Esc 撤卡优先（对齐主视图 Esc 分层与提示条「Esc 继续运行」承诺）：卡在场先撤卡、视图不动；
-      // 无卡才退出全屏。旧实现无条件退出——pauseConfirm 悬空带回主视图，其后任一 Ctrl+C 都被当
-      // 「第二次确认」直接中断（2026-10-02 真机日志实锤：挂卡 52 秒跨两次视图进出后主视图一按即杀任务）
-      if (key.escape) {
-        if (stateRef.current.pauseConfirm) { keyTrace('inspect pause-cancel'); controller.cancelPause(); return; }
-        keyTrace('inspect esc-exit'); setInspectRetained(undefined); return;
-      }
-      if (key.tab) {
-        keyTrace(`inspect tab-toggle -> ${!inspectExpandedRef.current}`);
-        const next = !inspectExpandedRef.current;
-        inspectExpandedRef.current = next;
-        store.inspectExpanded = next;
-        setInspectExpanded(next);
-        onRequestRepaint?.();
-        return;
-      }
-      return;
-    }
+    // 判定序第 1 位：全屏查看模式（规格 §3.3）——最前置接管，在场恒吞键（分支与状态收编 use-inspect-keys）
+    if (handleInspectKey(input, key)) return;
 
-    // 子代理浏览模式（Ctrl+B 进入）：短接管 ↑/↓/Enter/Esc；其余按键一律吞掉不落输入缓冲。
-    // 光标与模式取 ref 真值（处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；仅 idle/error 可进入。
-    if (browseModeRef.current) {
-      // 统一子代理浏览器（2026-09-28 用户裁决：历史与运行中全部由动态区承载）：合并序列单点口径——
-      // 运行中子代理在前 + 已完成 spawn 委派时间升序在后；常态 ChildPanel 只显运行中，浏览列表两类行统一呈现
-      const st = stateRef.current;
-      const rows = browseRows(st);
-      if (rows.length === 0) { setBrowse(false); return; }
-      const clamp = (n: number): number => Math.max(0, Math.min(rows.length - 1, n));
-      if (key.escape) { setBrowse(false); return; }
-      if (key.upArrow || key.downArrow) {
-        // 光标移动零 repaint（选中列表动态区每帧自绘）；窗口按每页 8 行自动平移（BrowseList 同口径）。
-        // 回环移动（2026-10-02 交互统一）：问询/审批/计划/斜杠菜单全部 moveCursor 回环，浏览列表同款——
-        // 全部列表一套肌肉记忆，到边即停是孤例
-        setBrowse(true, moveCursor(browseCursorRef.current, rows.length, key.upArrow ? -1 : 1));
-        return;
-      }
-      if (key.return) {
-        const row = rows[clamp(browseCursorRef.current)];
-        if (row?.running) {
-          // 运行中 → 进入全屏实时视图（规格 §3.3）
-          setInspectRetained({ kind: 'live', label: row.label });
-        } else if (row?.seq !== undefined) {
-          // 已完成 → 进入全屏回看（detail 派生）
-          setInspectRetained({ kind: 'archived', seq: row.seq });
-        }
-        setBrowse(false);
-        return;
-      }
-      // Ctrl+C：退出浏览并走暂停确认（同主视图两次 Ctrl+C 口径——浏览态原语义只退浏览不暂停，运行中暂停在此不可达）
-      if (key.ctrl && input === 'c') {
-        setBrowse(false);
-        if (stateRef.current.pauseConfirm) controller.interrupt();
-        else controller.requestPause();
-        return;
-      }
-      return;
-    }
-    // Ctrl+B 进入统一子代理浏览器：运行中子代理或已完成 spawn 任一在场即可；state 读 ref 真值
-    if (key.ctrl && input === 'b') {
-      const st = stateRef.current;
-      const rows = browseRows(st);
-      if (rows.length > 0) {
-        setBrowse(true, rows.length - 1); // 光标缺省落最近一条
-      }
-      return;
-    }
+    // 判定序第 2/3 位：子代理浏览模式（browse 在场短接管 ↑/↓/Enter/Esc 恒吞键）与 Ctrl+B 进入
+    //（分支与状态收编 use-browse-keys；进入分支须在问询卡之前——既有判定序原样）
+    if (handleBrowseKey(input, key)) return;
 
-    // AskQuestion 问询卡（AskQuestion 线 T2）：模态接管键盘——↑↓ 移动、Space 选定（单选即选即提交、多选为勾选翻转）、
-    // Enter 提交（多选提交全部勾选，空勾选=放弃）、数字 1-9 快选（多选为勾选翻转）、Other… 项切自由输入；
-    // Esc = 放弃作答（dismissed 属正常观察非错误）；Ctrl+C = 放弃作答并中断任务。
-    // 分支置于全局键之前（Esc 在此不回落清缓冲）；取值一律走 ref 真值，不依赖处理器闭包的新鲜度
+    // 判定序第 4 位：AskQuestion 问询卡（AskQuestion 线 T2）——模态接管键盘恒吞键（三分支与专属状态收编
+    // use-question-keys）；分支置于全局键之前（Esc 在此不回落清缓冲）
     if (state.status === 'awaiting-question' && state.question) {
-      const q = state.question;
-      // filterable 卡（规格 D6–D8；2026-09-30 翻页口径改命令面板式）：可打印字符（含数字）进筛选词、
-      // Backspace 删字、Esc 两段式、词变 cursor 归 0；↑/↓/Space/Enter 作用于全量视图（超窗由渲染层
-      // 光标跟随滑窗自动翻页），实项经 map 落原下标
-      if (q.filterable) {
-        const { view, map } = deriveFilterableView(q.options, qFilterRef.current);
-        if (key.ctrl && input === 'c') { controller.resolveAskAnswer({ type: 'dismissed' }); controller.interrupt(); return; }
-        if (key.escape) {
-          if (qFilterRef.current.length > 0) { setQFilter(''); setQCursor(0); return; }
-          controller.resolveAskAnswer({ type: 'dismissed' });
-          return;
-        }
-        if (key.backspace || key.delete) { setQFilter(qFilterRef.current.slice(0, -1)); setQCursor(0); return; }
-        if (key.upArrow) { setQCursor(moveCursor(qCursorRef.current, view.length, -1)); return; }
-        if (key.downArrow) { setQCursor(moveCursor(qCursorRef.current, view.length, 1)); return; }
-        if (key.return || input === ' ') {
-          const orig = map[qCursorRef.current] ?? -1;
-          if (orig < 0) return;
-          if (key.return) {
-            if (q.multiple) {
-              const labels = qPickedRef.current.map((i) => q.options[i]?.label).filter((l): l is string => typeof l === 'string');
-              controller.resolveAskAnswer(labels.length > 0 ? { type: 'selected', labels } : { type: 'dismissed' });
-            } else {
-              controller.resolveAskAnswer({ type: 'selected', labels: [q.options[orig]!.label] });
-            }
-            return;
-          }
-          if (q.multiple) setQPicked(togglePick(qPickedRef.current, orig, true));
-          else controller.resolveAskAnswer({ type: 'selected', labels: [q.options[orig]!.label] });
-          return;
-        }
-        if (input && !key.ctrl && !key.meta) { setQFilter(qFilterRef.current + input); setQCursor(0); return; }
-        return; // 模态：其余键不落输入缓冲
-      }
-      if (qCustomRef.current) {
-        if (key.escape) { setQCustom(false); setQText(''); return; }
-        if (key.return) {
-          const text = qTextRef.current.trim();
-          if (text !== '') controller.resolveAskAnswer({ type: 'custom', text });
-          return;
-        }
-        if (key.backspace || key.delete) { setQText(qTextRef.current.slice(0, -1)); return; }
-        if (input && !key.ctrl && !key.meta) { setQText(qTextRef.current + input); return; }
-        return;
-      }
-      const submitCustom = (): void => { setQCustom(true); setQText(''); };
-      const submitLabels = (labels: string[]): void =>
-        controller.resolveAskAnswer(labels.length > 0 ? { type: 'selected', labels } : { type: 'dismissed' });
-      if (key.ctrl && input === 'c') {
-        controller.resolveAskAnswer({ type: 'dismissed' });
-        controller.interrupt();
-        return;
-      }
-      if (key.escape) { controller.resolveAskAnswer({ type: 'dismissed' }); return; }
-      if (key.upArrow) { setQCursor(moveCursor(qCursorRef.current, q.options.length, -1)); return; }
-      if (key.downArrow) { setQCursor(moveCursor(qCursorRef.current, q.options.length, 1)); return; }
-      if (key.return) {
-        if (qCursorRef.current === q.customIndex) { submitCustom(); return; }
-        const pickedNow = q.multiple ? [...qPickedRef.current] : [qCursorRef.current];
-        submitLabels(pickedNow.map((i) => q.options[i]?.label).filter((l): l is string => typeof l === 'string'));
-        return;
-      }
-      if (input === ' ') {
-        if (q.multiple) {
-          if (qCursorRef.current === q.customIndex) { submitCustom(); return; }
-          setQPicked(togglePick(qPickedRef.current, qCursorRef.current, true));
-        } else {
-          if (qCursorRef.current === q.customIndex) { submitCustom(); return; }
-          submitLabels([q.options[qCursorRef.current]?.label ?? '']);
-        }
-        return;
-      }
-      // 数字快选（非筛选卡）：序号是窗口内可见行的局部编号（OptionSelector 渲染口径），快选映射同一窗口
-      const n = Number.parseInt(input, 10);
-      const win = slashMenuWindow(q.options.length, qCursorRef.current, SELECTOR_WINDOW);
-      if (Number.isInteger(n) && n >= 1 && n <= win.count) {
-        const idx = win.start + n - 1;
-        if (idx === q.customIndex) { submitCustom(); return; }
-        if (q.multiple) setQPicked(togglePick(qPickedRef.current, idx, true));
-        else submitLabels([q.options[idx].label]);
-        return;
-      }
-      return; // 模态：其余键不落输入缓冲
+      handleQuestionKey(state.question, input, key);
+      return;
     }
-    // Ctrl+C 分流（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」，简化版=一行提示非模态卡）：
+    // 判定序第 5 位：Ctrl+C 分流（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」，简化版=一行提示非模态卡）：
     // 运行中第一次挂提示（任务不停），已挂提示再按=真正中断（主链连带子代理）；
     // 其余等待态=中断；空闲且输入非空=清空输入；空闲且输入空=请求退出
     if (key.ctrl && input === 'c') {
@@ -607,7 +384,7 @@ export function App({
       onExit?.();
       return;
     }
-    // Esc 同源分流：暂停确认卡在场=撤卡继续；运行/等待态=中断；空闲且有输入=清空输入（空闲空输入不退出）
+    // 判定序第 6 位：Esc 同源分流：暂停确认卡在场=撤卡继续；运行/等待态=中断；空闲且有输入=清空输入（空闲空输入不退出）
     if (key.escape) {
       if (stateRef.current.pauseConfirm) { keyTrace('main pause-cancel'); controller.cancelPause(); return; }
       if (controller.interrupt()) return;
@@ -618,32 +395,10 @@ export function App({
       }
       return;
     }
-    // 审批卡（T3 选择器迁移）：y/a/n 单键快捷并存，↑↓ 移动 / Space·Enter 提交 / 数字 1-3 快选 / Esc=拒绝
-    if (state.status === 'awaiting-approval') {
-      const quick = approvalKeyToDecision(input);
-      if (quick) { controller.resolveApproval(quick); return; }
-      if (key.escape) { controller.resolveApproval('deny'); return; }
-      if (key.upArrow) { setACursor(moveCursor(aCursorRef.current, 3, -1)); return; }
-      if (key.downArrow) { setACursor(moveCursor(aCursorRef.current, 3, 1)); return; }
-      if (key.return || input === ' ') { controller.resolveApproval(approvalDecisionByIndex(aCursorRef.current)); return; }
-      const an = Number.parseInt(input, 10);
-      if (Number.isInteger(an) && an >= 1 && an <= 3) { controller.resolveApproval(approvalDecisionByIndex(an - 1)); return; }
-      return;
-    }
-    // plan 确认卡（T3 选择器迁移）：y/n 单键并存，↑↓ 移动 / Space·Enter 提交 / 1-2 快选 / Esc=放弃
-    if (state.status === 'awaiting-plan') {
-      if (input === 'y') { void controller.confirmPlan(true); return; }
-      if (input === 'n') { void controller.confirmPlan(false); return; }
-      if (key.escape) { void controller.confirmPlan(false); return; }
-      if (key.upArrow) { setPCursor(moveCursor(pCursorRef.current, 2, -1)); return; }
-      if (key.downArrow) { setPCursor(moveCursor(pCursorRef.current, 2, 1)); return; }
-      if (key.return || input === ' ') { void controller.confirmPlan(pCursorRef.current === 0); return; }
-      const pn = Number.parseInt(input, 10);
-      if (pn === 1 || pn === 2) { void controller.confirmPlan(pn === 1); return; }
-      return;
-    }
+    // 判定序第 7/8 位：审批卡与 plan 确认卡——模态接管键盘恒吞键（分支与光标状态收编 use-approval-keys）
+    if (handleApprovalKey(input, key)) return;
 
-    // Tab 分流：/ 前缀 → 斜杠补全；否则切换「会话历史展开模式」（Claude Code ctrl+o 同款：清屏后按全展开/折叠
+    // 判定序第 9 位：Tab 分流：/ 前缀 → 斜杠补全；否则切换「会话历史展开模式」（Claude Code ctrl+o 同款：清屏后按全展开/折叠
     // 形态整屏重放，视口永远只有一份历史）——无模态态，↑↓ 永远归输入历史，运行中随时可切
     if (key.tab) {
       if (buffer.startsWith('/')) {
@@ -677,7 +432,7 @@ export function App({
       return;
     }
 
-    // Ctrl+O：第二层切换（内容深度）——当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行展开/收起为全文
+    // 判定序第 10 位：Ctrl+O：第二层切换（内容深度）——当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行展开/收起为全文
     if (key.ctrl && input === 'o') {
       const nextFull = !latestFull;
       setLatestFull(nextFull);
@@ -685,128 +440,10 @@ export function App({
       return;
     }
 
-    // Home/End/⌦：ink3 不解析这些功能键，按原始字节序列识别；Ctrl+A/E 惯例双轨
-    const csi = key.raw.startsWith('\u001B') ? key.raw.slice(1) : '';
-    if (HOME_SEQS.includes(csi)) {
-      setCursor(0);
-      return;
-    }
-    if (END_SEQS.includes(csi)) {
-      setCursor(buffer.length);
-      return;
-    }
-    if (csi === '[3~') {
-      // ⌦ 前向删除：删光标处字符（与退格区分靠 ESC 序列）
-      if (cursor < buffer.length) setBuffer((b) => b.slice(0, cursor) + b.slice(cursor + 1));
-      return;
-    }
-    if (key.ctrl && (input === 'a' || input === 'e')) {
-      setCursor(input === 'a' ? 0 : buffer.length);
-      return;
-    }
-
-    // 光标左右移动（多行缓冲按扁平偏移跨行连续）
-    if (key.leftArrow) {
-      setCursor((c) => Math.max(0, c - 1));
-      return;
-    }
-    if (key.rightArrow) {
-      setCursor((c) => Math.min(buffer.length, c + 1));
-      return;
-    }
-
-    // 纵向命令面板 ↑↓（2026-09-30 对标 CC）：菜单在场即接管方向键，输入历史回填让位（非 / 前缀不受影响）；
-    // 回环移动与问询卡同款 moveCursor 语义，光标取 ref 真值（闭包滞后先例）
-    if ((key.upArrow || key.downArrow) && menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error')) {
-      setSlashCursor(moveCursor(Math.min(slashCursorRef.current, menuEntries.length - 1), menuEntries.length, key.upArrow ? -1 : 1));
-      return;
-    }
-
-    // 运行中撤回排队（对标 CC「Up from the first row」）：有排队穿插且输入框为空时，Up 取回全部待投递行回输入框编辑或清空丢弃
-    // （awaiting-approval 态在 handler 前部已被审批卡分流 return，此处只可能是 running）
-    if (key.upArrow && state.status === 'running' && buffer.length === 0) {
-      const taken = controller.takeBackQueued();
-      if (taken.length > 0) {
-        const text = taken.join('\n');
-        setBuffer(text);
-        setCursor(text.length);
-      }
-      return;
-    }
-
-    // ↑↓：单行缓冲回填输入历史（多行缓冲不劫持，留给后续行内导航）
-    if ((key.upArrow || key.downArrow) && (state.status === 'idle' || state.status === 'error') && !buffer.includes('\n')) {
-      if (key.upArrow && history.length > 0 && histIdx !== 0) {
-        const ni = histIdx === -1 ? history.length - 1 : histIdx - 1;
-        setHistIdx(ni);
-        setBuffer(history[ni]);
-        setCursor(history[ni].length);
-      } else if (key.downArrow && histIdx >= 0) {
-        const ni = histIdx + 1;
-        if (ni < history.length) {
-          setHistIdx(ni);
-          setBuffer(history[ni]);
-          setCursor(history[ni].length);
-        } else {
-          setHistIdx(-1);
-          setBuffer('');
-          setCursor(0);
-        }
-      }
-      return;
-    }
-    // Shift+Enter / Alt+Enter（\x1b\r、\x1b\n、kitty CSI-u）= 输入框内换行（多行缓冲按扁平偏移插入）；
-    // 主链提交仍走单 Enter（\r）。终端缺省 Shift+Enter 与 Enter 同发 \r，需键位绑定发送 \x1b\r
-    if (key.newline) {
-      setBuffer((b) => b.slice(0, cursor) + '\n' + b.slice(cursor));
-      setCursor((c) => c + 1);
-      return;
-    }
-    if (key.return) {
-      // 纵向命令面板 Enter（2026-09-30 对标 CC）：菜单在场即提交选中命令（半 typing '/ne' + Enter 直接跑 '/new'，
-      // 不再落「无法识别命令」）；带参形态（含空格）过滤必空、菜单不在场，走既有整行提交
-      if (menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error')) {
-        const picked = (menuEntries[Math.min(slashCursorRef.current, menuEntries.length - 1)] ?? menuEntries[0])!.cmd;
-        setBuffer('');
-        setCursor(0);
-        setHistIdx(-1);
-        setHistory((h) => [...h.filter((x) => x !== picked), picked].slice(-100));
-        controller.submit(picked);
-        return;
-      }
-      // 行尾单个反斜杠 = 续行（ink3 无法可靠检测 Shift+Enter，回退方案）
-      if (buffer.endsWith('\\') && !buffer.endsWith('\\\\')) {
-        setBuffer((b) => b.slice(0, -1) + '\n');
-        setCursor(buffer.length);
-        return;
-      }
-      const text = buffer.trim();
-      setBuffer('');
-      setCursor(0);
-      setHistIdx(-1);
-      if (text) {
-        setHistory((h) => [...h.filter((x) => x !== text), text].slice(-100));
-        controller.submit(text);
-      }
-      return;
-    }
-    if (key.backspace || key.delete) {
-      if (key.raw === '\u001B[3~') {
-        // ⌦ 前向删除：删光标处字符（ink3 原版 useInput 清空 input 无法与退格区分，走补丁版原始字节）
-        if (cursor < buffer.length) setBuffer((b) => b.slice(0, cursor) + b.slice(cursor + 1));
-        return;
-      }
-      // 退格（\u007F / Ctrl+H）：删光标前字符
-      if (cursor > 0) {
-        setBuffer((b) => b.slice(0, cursor - 1) + b.slice(cursor));
-        setCursor((c) => Math.max(0, c - 1));
-      }
-      return;
-    }
-    if (input && !key.ctrl && !key.meta) {
-      setBuffer((b) => b.slice(0, cursor) + input + b.slice(cursor));
-      setCursor((c) => c + input.length);
-    }
+    // 判定序第 11 位（终点）：输入行编辑与提交——Home/End/⌦/Ctrl+A/E、左右光标、斜杠菜单在场 ↑↓、
+    // 运行中撤回排队 ↑、输入历史 ↑↓、Shift/Alt+Enter 换行、Enter（菜单提交/续行/整行提交）、退格与 ⌦、
+    // 可打印插入（分支与 history/histIdx 状态收编 use-line-edit；到达即终结，恒 true）
+    handleLineEditKey(input, key);
   });
 
   return (

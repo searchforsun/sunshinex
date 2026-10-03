@@ -29,17 +29,16 @@
 
 > 未偿债项在此逐条登记（编号/账本/状态/描述/证据/偿还动作/登记来源）；偿还后在同轮提交中翻转状态并补「关联提交」。本区与上方清理记录互不掺杂。
 
-> 当前未偿债项：D17、D25（余 H2–H5）、D26、D27（D18–D24、D28 已于 2026-10-03 批B/批C偿还入归档，D25 之 H6 已随批C完成）。历史 D1–D4、D6–D16 已归档，D5 转长期挂起不属活动待办。新增债项按下表格式登记。
+> 当前未偿债项：D17（含 H2 App.tsx 同批）、D26、D27（D18–D25、D28 已偿还入归档）。历史 D1–D4、D6–D16 已归档，D5 转长期挂起不属活动待办。新增债项按下表格式登记。
 
 | 编号 | 账本 | 状态 | 描述 | 证据 | 偿还动作 | 登记来源 |
 |---|---|---|---|---|---|---|
 | D17 | H | open | `src/tui/session.ts` 多职责混杂（2026-10-03 通读细化为 16 块：纯函数区/装配/订阅/输入 FIFO/审批挂起/问询/暂停/中断/plan/goal/任务流/斜杠分发 handleSlash 约 355 行/memory+skill 面/持久化编排/事件路由 onEvent/子代理面板/md 流式通道），「改一处坏三处」敏感点；增量 TUI 线持续改写该文件；`components/App.tsx` 974 行（键盘分发 394 行单闭包）为同构镜像，建议同批拆分 | `wc -l` 2351（2026-10-03 实测；2026-09-30 登记 2038、2026-10-02 实测 2163，一日 +188 增速加快）；session 系列测试 25+ 文件就近锚定；拆分边界五步建议见 `docs/TECH-DEBT-SURVEY.md` H1 | 先锚点后动刀：按普查 H1 边界（chat-model/md-stream/commands-*/child-panel/approval）拆独立模块 + App 键分发按模态拆 hook，每步 build + 全量测试全绿；独立批次立项，不混入清理轮 | 2026-09-30 技术债清理轮（2026-10-03 普查刷新） |
-| D25 | H | open（H6 已随批C完成） | 结构性重构批（普查 H2–H5，逐件独立小步、先锚点后动刀，用户裁决本会话直接小步推进）：App.tsx 键盘分发按模态拆 hook（与 D17 同批）；ContextManager 拆 DriftDetector/ChainLedger/CompactionCoordinator；adapter.ts 拆 effort/usage/wire/router 四件（纯搬移）；reactor.chatRound 抽 BatchRunner | 普查 H2/H3/H4/H5（file:line 在案）；H6（builtinTools opts 化）已批C偿还 | 余件按「chatRound → adapter 拆件 → ContextManager → session.ts/App.tsx（与 D17/D27 同批）」顺序推进，每步 build+全量全绿 | 2026-10-03 全仓普查 |
 | D26 | J/G | open | 扩展性中期批（普查 J1/J2/J5/J6/J9/J10、R10 中期、R1）：工具呈现知识硬编码进 tui/tool-verbs（harness 加工具 TUI 静默降级）；`provider==='openai'` 能力探针（新 provider 静默失去摘要/记忆提取）；config↔model 双向互指；App 直读 env + mdWidth 双宽度源；LLMConfig.timeoutMs 死旋钮 + `--model` 无校验；IO 散落三处（压缩归档/重读、consolidate fs 手术）；渲染双链样式知识三份收敛；loadSettingsChain 双胞胎入口收敛（需 main/start 联动） | 普查对应条目（file:line 在案） | 逐件收敛，各条处置建议见普查报告 | 2026-10-03 全仓普查 |
 | D27 | J | open | TUI/CLI 装配双轨：`tui/runtime.ts createRuntime` 直接 new Harness 绕过 `runtime.ts buildDeps`（CLAUDE §4 文档承诺单一 composition root）——两套装配逻辑各自漂移，kb 未接线为首个可见症状（批B 已用 resolveKnowledgeBase 共享单点最小止血，未收敛双轨本体）；两面接缝形态不同（asker/events/todos/approval/outputStyle vs cliAsk/flags）需参数化统一 | 批B D18 执行发现；src/tui/runtime.ts:43 vs src/runtime.ts:81 | createRuntime 收敛为 buildDeps 参数化形态（或抽共享 HarnessOptions 装配函数三面共用）；结构性重构，与 D17/D25 同批规划 | 2026-10-03 批B |
 
 
-### 归档（D1–D24、D28；D5 长期挂起）
+### 归档（D1–D25、D28；D5 长期挂起）
 
 | 编号 | 终态 | 关联提交 | 摘要 |
 |---|---|---|---|
@@ -67,6 +66,7 @@
 | D23 | closed | e9a48bc | plugins 整体退役（用户裁决）：loader.ts+测试+demo 物料删除，README/CLAUDE/SUNSHINE 叙事正向收口（分层方向/目录树/§6 摘除 plugins，扩展机制=技能/子代理/MCP 三件套）；sunshine-init.ts 通用扩展点枚举经核实保留 |
 | D24 | closed | e9a48bc | stopAll 退出收口接线：CliRunDeps.stopAllTasks 透传 + teardownCliRun 链（drain→stopAll→mcpClose 顺序论证）+ tui/entry.ts 'exit' 单钩子；CLI 单元+真子进程 e2e 双钉（摘一行双红实证） |
 | D28 | closed | e9a48bc | kb 索引双入口（用户裁决 CLI+TUI）：knowledge 层 indexKnowledgeDir 单点（node_modules 成本护栏）+ 活性实例登记（当轮 kb_search 即时可检有钉）+ sunshinex kb-index 子命令 + TUI /kb-index + KbHit.file 下泄 + MANUAL 两表；新增测试 14 例 |
+| D25 | closed | e8d94c9 | 结构重构批：H6 builtinTools opts 化（批C）；H5 chatRound→BatchRunner、H4 adapter→effort/usage/wire/router、H3 ContextManager→三件（本批，行为零变化）；H2 App.tsx 键分发拆 hook 并入 D17 同批收官 |
 
 ## 已知取舍与教训登记（迁自规范文档）
 

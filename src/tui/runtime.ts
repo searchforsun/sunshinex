@@ -1,6 +1,6 @@
 import type { AskUserSeam } from '../types';
 import { Harness } from '../harness';
-import { resolveKnowledgeBase } from '../runtime';
+import { buildHarness } from '../runtime';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
@@ -40,18 +40,17 @@ export interface TuiRuntime {
   runLoop(goal: string, opts?: { template?: string; tier?: ModelTier; effort?: ReasoningEffort; signal?: AbortSignal }): Promise<LoopRunResult>;
 }
 
-/** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约 */
+/** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约。
+ *  D27 收敛：Harness 构造经共享装配单点 buildHarness（root/kb 共用面收编于该单点，新增 Harness 接缝只改
+ *  那一处）；TUI 差异面（ask/model/mode/onEvent/todos/addDirs）经 opts 注入，接缝语义逐一保留 */
 export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
-  const harness = new Harness({
+  const harness = buildHarness(opts.root, {
     ...(opts.onAskUser ? { ask: opts.onAskUser } : {}),
-    root: opts.root,
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.mode ? { mode: opts.mode } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
     ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
-    // KB 装配经 composition root 单点（D18 接线；未配置=undefined，kb_search 合法确定降级）
-    kb: resolveKnowledgeBase(opts.root),
   });
   if (opts.mode === 'manual' && opts.onApproval) harness.security.setAsker(opts.onApproval);
 

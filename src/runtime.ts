@@ -1,6 +1,6 @@
 import type { AskUserRequest, AskUserSeam } from './types';
 import * as readline from 'node:readline/promises';
-import { Harness } from './harness';
+import { Harness, HarnessOptions } from './harness';
 import { assembleKnowledgeBase, KnowledgeBase } from './harness/knowledge';
 import { resolveKbEnv } from './config/env';
 import { LoopDeps } from './loop/engine';
@@ -84,6 +84,30 @@ export function resolveKnowledgeBase(root: string): KnowledgeBase | undefined {
   return assembleKnowledgeBase(resolveKbEnv(process.env as Record<string, string | undefined>), root);
 }
 
+/** buildHarness 入参形态：HarnessOptions 的可全缺省视图，唯 kb 除外——kb 恒由本单点经 resolveKnowledgeBase
+ *  解析（类型面上即杜绝调用方再自行拼一份 kb 接线；需要注入 kb 的测试直接用 new Harness） */
+export type HarnessAssemblyOpts = Omit<Partial<HarnessOptions>, 'kb'>;
+
+/**
+ * 共享 Harness 装配单点（D27 收敛，技术债台账验收判据）：CLI `buildDeps` 与 TUI `createRuntime` 的
+ * Harness 构造收编于此——**新增一个 Harness 接缝只改本函数一处**（kb 即前车之鉴：D18 接线前两轨各拼
+ * 一份构造，TUI 侧漏接 kb 为首个可见症状）。
+ * 共用面：root、kb（resolveKnowledgeBase 调用点随本函数归一为全仓唯一生产调用点）。
+ * 差异面由两侧 opts 注入（接缝语义逐一保留）：
+ * - CLI（buildDeps）：mode:'dontAsk' 恒定 + createCliAskSeam 问询；模型不进 Harness（h.model 恒 Stub，
+ *   真实模型只进 LoopDeps.model——既有 CLI 形态，零行为变化）；
+ * - TUI（createRuntime）：ask/model/mode/onEvent/todos 按需注入。
+ * selfcheck 为诊断入口非交互面，保持直接 new Harness（自带 kbError 分支语义，不属 D27 双轨）。
+ */
+export function buildHarness(root: string, opts: HarnessAssemblyOpts = {}): Harness {
+  return new Harness({
+    root,
+    // KB 装配单点收编（D18 接线/D27 去重）：此前 buildDeps 与 createRuntime 各调一次 resolveKnowledgeBase
+    kb: resolveKnowledgeBase(root),
+    ...opts,
+  });
+}
+
 /** CLI run 依赖面（D24）：在 LoopDeps 之上补后台任务收口成员——不直接加进 engine 的 LoopDeps，
  *  因为 loop 引擎不消费它（收口是 CLI 命令生命周期语义，非环执行语义），由装配根透传给命令收尾即可 */
 export interface CliRunDeps extends LoopDeps {
@@ -92,8 +116,9 @@ export interface CliRunDeps extends LoopDeps {
 }
 
 export function buildDeps(root: string, flags: Record<string, string | boolean | string[]>, addDirs?: string[]): CliRunDeps {
-  const kb = resolveKnowledgeBase(root);
-  const h = new Harness({ root, mode: 'dontAsk', ask: createCliAskSeam(), addDirs, kb });
+  // 共享装配单点（D27）：Harness 构造经 buildHarness（root/kb 共用面收编其内）；CLI 差异面 =
+  // 恒 dontAsk + CLI 问询接缝（TTY 编号输入/非 TTY dismissed）；模型不进 Harness（只进下方 deps.model）
+  const h = buildHarness(root, { mode: 'dontAsk', ask: createCliAskSeam(), addDirs });
   const router = buildTierRouter(flags);
   const tier = parseTier(flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   return {

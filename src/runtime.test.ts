@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'fs';
+import * as path from 'path';
 import { buildModel, buildTierRouter, parseTier } from './runtime';
 
 const TIER_ENV_KEYS = ['SUNSHINEX_MODEL_SMALL', 'SUNSHINEX_MODEL_MEDIUM', 'SUNSHINEX_MODEL_LARGE'] as const;
@@ -43,4 +45,21 @@ test('buildTierRouter：按档绑定 + 缺省兜底，显式档解析到绑定�
     assert.equal(router.resolve('small').label, defLabel, '未配置档回退默认承载（同配置标签）');
     assert.equal(router.resolve('medium').label, defLabel);
   });
+});
+
+// ── D27 收敛形态钉（guards.test.ts「唯一实现」同款源码形态断言先例）──
+// 行为零变化的重构只能靠形态钉锁结构：交互面的 Harness 构造必须单点化——
+// kb 即前车之鉴（双轨期 TUI 侧漏接 kb 为首个症状），双轨任何形式复发即红
+test('共享装配单点（D27 形态钉）：runtime.ts 恰一处 Harness 构造（buildHarness 内），tui/runtime.ts 零直接构造/零 kb 自解析', () => {
+  // 测试恒经 dist 执行（run-tests.js），源码定位沿用 guards.test.ts 先例：dist 相对回仓根再进 src
+  const runtimeSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'runtime.ts'), 'utf8');
+  const tuiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'tui', 'runtime.ts'), 'utf8');
+  assert.equal(
+    (runtimeSrc.match(/new Harness\(/g) ?? []).length,
+    1,
+    'runtime.ts 应恰有一处 Harness 构造（buildHarness 共享单点内；buildDeps 等调用方必须经它）',
+  );
+  assert.ok(!tuiSrc.includes('new Harness('), 'tui/runtime.ts 不得绕过共享装配单点直接构造 Harness（D27 双轨复发）');
+  assert.ok(!tuiSrc.includes('resolveKnowledgeBase('), 'tui/runtime.ts 不得自行解析 kb（kb 调用点已归一 buildHarness，复发即两处漂移）');
+  assert.ok(tuiSrc.includes('buildHarness('), 'tui/runtime.ts 应经共享装配单点取 Harness');
 });
