@@ -9,7 +9,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { McpHost } from './client';
 
 /** 起临时端口 mock（port 0 监听，stdout 解析实际端口）；5s 起不来即失败 */
@@ -46,7 +45,6 @@ async function runE2E(mode: 'http' | 'sse'): Promise<void> {
   const safety = new SafetyChain(
     new SecurityGuard(new PolicyEngine(), 'dontAsk', ['fs-http']),
     new ProcessSandbox(),
-    new DryRun(),
     root,
   );
   const registry = new ToolRegistry();

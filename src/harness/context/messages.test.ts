@@ -103,7 +103,7 @@ test('孤立观察行（过渡期现行形态，无前置 tool-call 批）降级
     stableSegment: STABLE,
     snapshot: [],
     compacted: [],
-    chain: chain([{ action: 'read', observation: 'file contents here' }]),
+    chain: chain([{ action: 'tool-result', observation: 'file contents here' }]),
   });
   assert.equal(msgs.length, 2);
   assert.deepEqual(msgs[1], { role: 'user', content: 'file contents here' });
@@ -145,7 +145,7 @@ test('前缀稳定钉子：链尾追一行→消息序列仅尾部增长（序�
       { action: TOOL_RESULT_ACTION, observation: 'contents' },
     ]),
   };
-  const extended = { ...base, chain: [...base.chain, { step: 4, action: 'reply', observation: 'done reply' }] };
+  const extended = { ...base, chain: [...base.chain, { step: 4, action: 'reply' as const, observation: 'done reply' }] };
   const s1 = serialize(buildMessages(base));
   const s2 = serialize(buildMessages(extended));
   assert.ok(s2.startsWith(s1), 'first diff point must fall in the tail-appended segment');
@@ -158,7 +158,7 @@ test('fork 首帧=主链末帧（消息边界严格前缀）', () => {
     { action: 'reply', observation: 'step reply' },
   ]);
   const forkSeed = { stableSegment: STABLE, snapshot: [], compacted: [], chain: mainChain };
-  const forkFrame = { ...forkSeed, chain: [...mainChain, { step: 3, action: 'node', observation: '[child] private steps are not here' }] };
+  const forkFrame = { ...forkSeed, chain: [...mainChain, { step: 3, action: 'node' as const, observation: '[child] private steps are not here' }] };
   const s1 = serialize(buildMessages(forkSeed));
   const s2 = serialize(buildMessages(forkFrame));
   assert.ok(s2.startsWith(s1), 'fork first frame must be a strict prefix of the main-chain frame');
@@ -247,7 +247,7 @@ test('思考回传·无 task 行（fork 种子/子代理私有链）：全链视
 });
 
 test('思考回传·前缀稳定：当轮思考在场时链尾追行仍仅尾部增长（序列化严格前缀）', () => {
-  const base = [
+  const base: HistoryStep[] = [
     { step: 1, action: 'task', observation: 'do it' },
     { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}'), reasoning: 'CoT' },
   ];

@@ -13,13 +13,12 @@ import { SafetyChain } from './security/chain';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
-import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 
 /** 测试装配：真实安全链 / 注册表 / 上下文 + 注入适配器（对齐 reactor.test.ts 样板） */
 function makeDeps(tmp: string, model: ReactorDeps['model']): ReactorDeps {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   return { safety, registry, context: new ContextManager(tmp, new FileStore(tmp)), model };

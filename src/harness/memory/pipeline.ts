@@ -2,8 +2,7 @@ import * as path from 'path';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
 import { resolveMemoryConfig } from '../../config/memory-config';
-import { resolveDataDir } from '../../config/data-dir';
-import { MemoryStore } from './store';
+import { INDEX_NAME, MemoryStore, memoryDir } from './store';
 import { settleMemory } from './extractor';
 import { LearnedSkillStore } from '../skills/learned';
 import { extractLearnedSkill } from '../skills/learned-extract';
@@ -158,7 +157,7 @@ export class MemoryPipeline {
   /** 说明行文案与 harness 既有口径逐字对齐（src/harness/index.ts settleMemory 链行）；
    *  近限提醒（规格 §3.4）以 ` — ` 并入同一行——链行是单行契约，不得以换行拆出无步号裸行 */
   private memoryLine(slugs: string[]): string {
-    const base = `[memory] saved: ${slugs.join(', ')} — recall via read ${path.join(resolveDataDir(this.deps.root), 'memory', 'MEMORY.md')}`;
+    const base = `[memory] saved: ${slugs.join(', ')} — recall via read ${path.join(memoryDir(this.deps.root), INDEX_NAME)}`;
     const near = new MemoryStore(this.deps.root).capacityNotice();
     return near ? `${base} — ${near}` : base;
   }

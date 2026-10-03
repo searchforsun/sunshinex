@@ -52,7 +52,7 @@ test('GraphEngine 同层并发：3 个慢节点 maxConcurrent ≥ 2', async () =
   let cur = 0;
   let max = 0;
   const slow = (id: string): GraphNode =>
-    mkNode(id, 'ci', [], async () => {
+    mkNode(id, 'agent', [], async () => {
       cur += 1;
       max = Math.max(max, cur);
       await new Promise((r) => setTimeout(r, 20));
@@ -68,7 +68,7 @@ test('GraphEngine 同层并发：3 个慢节点 maxConcurrent ≥ 2', async () =
 test('GraphEngine 错误局部化：fail → 传递依赖 skipped，无关分支照常', async () => {
   const eng = new GraphEngine(
     [
-      mkNode('a', 'ci', [], () => out('failed', 0, { reply: '构建失败' })),
+      mkNode('a', 'agent', [], () => out('failed', 0, { reply: '构建失败' })),
       mkNode('b', 'agent', ['a'], () => out('pass')),
       mkNode('c', 'agent', [], () => out('pass')),
     ],
@@ -85,9 +85,9 @@ test('GraphEngine 错误局部化：fail → 传递依赖 skipped，无关分支
 test('GraphEngine 预算超支：tokensUsed ≥ maxTokens → paused（非 failed）', async () => {
   const eng = new GraphEngine(
     [
-      mkNode('a', 'ci', [], () => out('pass', 80)),
-      mkNode('b', 'ci', ['a'], () => out('pass', 90)),
-      mkNode('c', 'ci', ['b'], () => out('pass', 50)),
+      mkNode('a', 'agent', [], () => out('pass', 80)),
+      mkNode('b', 'agent', ['a'], () => out('pass', 90)),
+      mkNode('c', 'agent', ['b'], () => out('pass', 50)),
     ],
     deps,
     term({ maxTokens: 100 }),
@@ -100,11 +100,11 @@ test('GraphEngine 预算超支：tokensUsed ≥ maxTokens → paused（非 faile
 test('GraphEngine 超时：timeoutMs=5 + 慢节点 → failed', async () => {
   const eng = new GraphEngine(
     [
-      mkNode('a', 'ci', [], async () => {
+      mkNode('a', 'agent', [], async () => {
         await new Promise((res) => setTimeout(res, 30));
         return out('pass');
       }),
-      mkNode('b', 'ci', ['a'], () => out('pass')),
+      mkNode('b', 'agent', ['a'], () => out('pass')),
     ],
     deps,
     term({ timeoutMs: 5 }),
@@ -119,7 +119,7 @@ test('GraphEngine paused → resume：审批消费续跑，已 pass 节点不重
   let wRuns = 0;
   const eng = new GraphEngine(
     [
-      mkNode('pre', 'ci', [], () => {
+      mkNode('pre', 'agent', [], () => {
         preRuns += 1;
         return out('pass');
       }),
@@ -129,7 +129,7 @@ test('GraphEngine paused → resume：审批消费续跑，已 pass 节点不重
         if (approvals?.['g'] === false) return out('failed', 0, { reply: '人工拒绝' });
         return out('paused', 0, { reply: '等待人工审批' });
       }),
-      mkNode('w', 'ci', ['g'], () => {
+      mkNode('w', 'agent', ['g'], () => {
         wRuns += 1;
         return out('pass');
       }),

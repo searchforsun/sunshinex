@@ -5,6 +5,9 @@ import { KbHit } from '../../types';
 export interface VectorStore {
   upsert(id: string, vec: number[], meta: Record<string, unknown>): void;
   search(vec: number[], topK: number): KbHit[];
+  /** 按条目 id 读回全量 meta（与 upsert 第三参同形；条目不存在返回 undefined）。
+   *  J8 契约观测通道：search 出参 KbHit 只承 text，meta 是否被后端完整持久化只能经此断言（conformance 同源锁两后端） */
+  metaOf(id: string): Record<string, unknown> | undefined;
   size(): number;
   load(): void;
   flush(): void;
@@ -44,6 +47,10 @@ export class LocalJsonVectorStore implements VectorStore {
     return this.entries.size;
   }
 
+  metaOf(id: string): Record<string, unknown> | undefined {
+    return this.entries.get(id)?.meta;
+  }
+
   load(): void {
     // 契约：损坏存储降级为空库不抛（索引可由 indexDir 全量重建）；解析容错归属后端边界，通用 FileStore 保持严格
     try {
@@ -71,16 +78,17 @@ function dot(a: number[], b: number[]): number {
   return s;
 }
 
-const backends = new Map<string, (storage: StorageAdapter) => VectorStore>();
+const backends = new Map<string, (dataDir: string) => VectorStore>();
 
-/** 后端注册：新增后端 = 一个实现 + 此处注册一行，主链零改动 */
-export function registerVectorBackend(name: string, factory: (storage: StorageAdapter) => VectorStore): void {
+/** 后端注册（J3 修复后形态）：工厂只收 dataDir——落位由装配层显式决定，后端不再自行锚 process.cwd()/直读 env。
+ *  在册注册调用收敛在装配模块（knowledge/index.ts），各后端文件零 import 副作用；新增后端 = 一个实现 + 装配模块注册一行 */
+export function registerVectorBackend(name: string, factory: (dataDir: string) => VectorStore): void {
   backends.set(name, factory);
 }
 
 /** 装配入口：未注册名直接抛错（fail-fast，禁静默回退——错误配置必须在装配期暴露） */
-export function createVectorBackend(name: string, storage: StorageAdapter): VectorStore {
+export function createVectorBackend(name: string, dataDir: string): VectorStore {
   const factory = backends.get(name);
   if (!factory) throw new Error(`Unregistered vector backend: ${name}`);
-  return factory(storage);
+  return factory(dataDir);
 }

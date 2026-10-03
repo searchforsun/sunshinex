@@ -9,7 +9,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 import { createToolOutputArchive, PREVIEW_CHARS } from './output-archive';
 import { Harness } from '../index';
@@ -33,7 +32,6 @@ function registryFor(): { registry: ToolRegistry; safety: SafetyChain; root: str
   const safety = new SafetyChain(
     new SecurityGuard(new PolicyEngine(), 'dontAsk'),
     new ProcessSandbox(),
-    new DryRun(),
     root,
   );
   const registry = new ToolRegistry();
@@ -42,7 +40,7 @@ function registryFor(): { registry: ToolRegistry; safety: SafetyChain; root: str
 }
 
 function safetyFor(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
 }
 
 test('webfetch：http 端点抓取成功', async () => {
@@ -64,7 +62,7 @@ test('webfetch：正文超出口预算截断落盘（统一预算取代旧 100k 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-webfetch-arch-'));
     const archive = createToolOutputArchive(() => dir);
     const registry = new ToolRegistry();
-    for (const t of builtinTools(safetyFor(root), root, undefined, undefined, archive)) registry.register(t);
+    for (const t of builtinTools(safetyFor(root), root, { archive })) registry.register(t);
     const r = await registry.execute('webfetch', { url: srv.url }, safetyFor(root));
     assert.ok(r.ok);
     assert.ok(r.value.stdout.startsWith('x'.repeat(PREVIEW_CHARS)));

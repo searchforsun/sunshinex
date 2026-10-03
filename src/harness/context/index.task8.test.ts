@@ -54,7 +54,7 @@ test('Task8 压缩成功后快照刷新；replay 不刷新', async () => {
   try {
     fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), 'rule-v1');
     const cm = makeCM(tmp);
-    cm.appendChain([{ action: 'read', observation: 'Y'.repeat(2000) }]);
+    cm.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(2000) }]);
     fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), 'rule-v2');
     await runCompaction(cm, cm.assemble([{ kind: 'history', content: '1: read -> Y' }]), {
       summaryTokenBudget: 2000,
@@ -88,7 +88,7 @@ test('Task8 compactInstructions 缓存随快照刷新', async () => {
     fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), ['rule-v2', '## Compact Instructions', 'keep migration notes'].join('\n'));
     // reloadContext（压缩成功路径同一刷新口）后：E 项区缓存应同步重提取
     cm.reloadContext();
-    cm.appendChain([{ action: 'read', observation: 'Y'.repeat(2000) }]);
+    cm.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(2000) }]);
     const seen: string[] = [];
     await runCompaction(cm, cm.assemble([{ kind: 'history', content: '1: read -> Y' }]), {
       summaryTokenBudget: 2000,

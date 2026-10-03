@@ -7,7 +7,6 @@ import { SafetyChain } from './chain';
 import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
-import { DryRun } from './dryrun';
 import { resolveDataDir } from '../../config/data-dir';
 
 /**
@@ -30,7 +29,7 @@ function withChain(
   try {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     fn(chain, root, tmp);
   } finally {
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
@@ -161,7 +160,7 @@ test('dataDir 自身经符号链接传入 → 记忆写窄口按真实路径判�
 
     const root = path.join(real, 'root');
     fs.mkdirSync(root, { recursive: true });
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
 
     const target = path.join(link, 'memory', 'a.md'); // 经链接路径写记忆子树
     const d = chain.evaluate('Write', { path: target });
@@ -202,7 +201,7 @@ test('数据目录回退 <root>/.data（HOME 不可写）→ 记忆写仍受总�
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
     assert.equal(resolveDataDir(root), path.join(root, '.data'), '前提：HOME 不可写 → 数据目录回退项目内 .data');
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     const memoryFile = path.join(root, '.data', 'memory', 'a.md');
     const plain = path.join(root, 'plain.txt');
 

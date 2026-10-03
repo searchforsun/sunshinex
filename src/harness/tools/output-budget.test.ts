@@ -9,20 +9,19 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 import { createToolOutputArchive, PREVIEW_CHARS, TOOL_OUTPUT_CHAR_LIMIT } from './output-archive';
 import { Harness } from '../index';
 import { resolveDataDir } from '../../config/data-dir';
 
 function safetyFor(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
 }
 
 function registryWith(root: string, dir: string): ToolRegistry {
   const archive = createToolOutputArchive(() => dir);
   const registry = new ToolRegistry();
-  for (const t of builtinTools(safetyFor(root), root, undefined, undefined, archive)) registry.register(t);
+  for (const t of builtinTools(safetyFor(root), root, { archive })) registry.register(t);
   return registry;
 }
 
@@ -83,6 +82,25 @@ test('A-2 glob：超预算文件列表截断落盘', async () => {
   if (r.ok) {
     assert.ok(r.value.stdout.length < TOOL_OUTPUT_CHAR_LIMIT + PREVIEW_CHARS);
     assert.match(r.value.stdout, /\[truncated/);
+  }
+});
+
+test('A-2 grep：超预算命中截断并全文落盘（read 路径可恢复全文）', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-budget-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-budget-arch-'));
+  const registry = registryWith(root, dir);
+  const line = `hit ${'g'.repeat(400)}`;
+  const full = Array.from({ length: 100 }, () => line).join('\n'); // ~40.5k 字符 > 30k 预算
+  fs.writeFileSync(path.join(root, 'big.log'), full);
+  const r = await registry.execute('grep', { pattern: 'hit', glob: null, path: 'big.log' }, safetyFor(root));
+  assert.ok(r.ok);
+  if (r.ok) {
+    // 预览=全文首 PREVIEW_CHARS（grep 命中行含换行，不能按连续同字符构造期望——按全文切片断言）
+    assert.ok(r.value.stdout.startsWith(full.slice(0, PREVIEW_CHARS)), '预览前缀在场');
+    const m = r.value.stdout.match(/\[truncated · full output: (.+)\]/);
+    assert.ok(m, '含落盘路径提示');
+    // 恢复路径钉子：模型按提示里的绝对路径读落盘文件可拿回逐字节全文（与 read 超限用例同口径）
+    assert.equal(fs.readFileSync(m![1], 'utf8'), full);
   }
 });
 

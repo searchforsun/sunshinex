@@ -10,18 +10,17 @@ import { SafetyChain } from '../security/chain';
 import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
-import { DryRun } from '../security/dryrun';
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'write-snap-'));
 }
 function makeSafety(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
 }
 function registry(root: string, sink?: ReturnType<typeof makeWriteSnapshotSink>): { registry: ToolRegistry; safety: SafetyChain } {
   const safety = makeSafety(root);
   const r = new ToolRegistry();
-  for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, undefined, sink)) r.register(t);
+  for (const t of builtinTools(safety, root, { writeSnapshot: sink })) r.register(t);
   return { registry: r, safety };
 }
 

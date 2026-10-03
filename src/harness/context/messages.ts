@@ -136,7 +136,7 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
       if (row.reasoning !== undefined && inCurrentTurn(idx)) pendingReasoning = row.reasoning;
       continue;
     }
-    // task/reply/notice/note/deficit/node 及未登记动作：批先闭合，reply→assistant，其余（含指令与元信息行）→user
+    // task/reply/notice/note/deficit/node/memory/role/skill（ChainAction 闭集内全部剩余词汇）：批先闭合，reply→assistant，其余（含指令与元信息行）→user
     flushBatch();
     if (action === 'reply') {
       msgs.push({ role: 'assistant', content: row.observation });

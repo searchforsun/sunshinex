@@ -105,7 +105,7 @@ test('压缩成功后快照刷新（runCompaction → reloadContext 跟随）', 
   await withCM(async (cm, mem) => {
     mem.add({ type: 'project', description: 'memo one', body: 'body one' });
     const cm2 = new ContextManager(cm.root, new FileStore(cm.root));
-    cm2.appendChain([{ action: 'read', observation: 'Y' }]);
+    cm2.appendChain([{ action: 'tool-result', observation: 'Y' }]);
 
     mem.add({ type: 'project', description: 'memo two', body: 'body two' });
     await runCompaction(cm2, cm2.assemble([{ kind: 'history', content: '1: read -> Y' }]), {

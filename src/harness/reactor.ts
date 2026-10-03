@@ -1,4 +1,4 @@
-import { ContextItem, ExecResult, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
+import { ChainAction, ContextItem, ExecResult, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
 import { Result } from '../result';
@@ -13,6 +13,7 @@ import {
   TOOL_POLICY_LINE,
   PHASE_SENTENCE_LINE,
   PARALLEL_POLICY_LINE,
+  PARALLEL_TOOLS_LIMIT,
   ERROR_CONVERGENCE_LINE,
   REFERENCE_DATA_LINE,
   TASK_FOCUS_LINE,
@@ -26,8 +27,9 @@ import { reactorMaxStepsEnv, resolveRunWindow, subagentTokenCapEnv } from '../co
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
-/** 链行（与会话链 HistoryStep 同构）：reasoning=该轮模型思考原文（思考模式续轮回传载荷，挂 phase 行/批首调用行） */
-export interface StepRecord { step: number; action?: string; observation: string; reasoning?: string; }
+/** 链行（与会话链 HistoryStep 同构）：reasoning=该轮模型思考原文（思考模式续轮回传载荷，挂 phase 行/批首调用行）；
+ *  action 与 HistoryStep 同收窄 ChainAction（types.ts 单点登记），回写主链零对位转换 */
+export interface StepRecord { step: number; action?: ChainAction; observation: string; reasoning?: string; }
 export interface RunResult {
   steps: StepRecord[];
   done: boolean;
@@ -70,6 +72,8 @@ export interface ReactorDeps {
   model: ModelAdapter;
   /** 项目根绝对路径（环境事实注入：提示词告知模型工作目录，杜绝相对路径瞎拼） */
   root?: string;
+  /** 活动根提供者（worktree 会话，D19-b）：workDirLine 事实行随会话工作根翻转；null/缺省=主根（与 deps.root 同字节） */
+  activeRoot?: () => string | null;
   router?: ModelRouter;
   /** 成功沉淀钩子：任一终态收口触发一次（done / failed / stopped，D4 全终态）；返回的说明行尾追为链尾 notice 行（规格 §10）；抛错被吞并记链行（沉淀失败不倒灌任务成败） */
   settle?: (r: SettlePayload) => string | void | Promise<string | void>;
@@ -113,10 +117,6 @@ export function buildStepDigest(
   const out = lines.join('\n');
   return out.length > cfg.totalChars ? out.slice(out.length - cfg.totalChars) : out;
 }
-
-/** 并行调用上限：防单轮塞满列表拖长步时延；纯 read/write 类批安全（观察行各自截断兜底），
- *  且超限是整批拒绝白烧一个模型往返——阈值取宽（16）压低撞限频率，真超限仍由拒绝行兜底 */
-const PARALLEL_TOOLS_LIMIT = 16;
 
 /** 批次重复上限：同一批次集合签名最多执行 2 次（首次 + 原样重试一次），超限整批程序性拒绝——防模型同批死循环空烧（与稳定段异常收敛行配套） */
 const MAX_IDENTICAL_CALLS = 2;
@@ -172,6 +172,14 @@ export class Reactor {
     // 压缩水位线（步骤号口径，0=无折叠）：>0 时此号及之前的 steps 已由摘要代表、不再进入 history；
     // 初值必须为 0——种子链行未经压缩、必须照常进 history（链即记忆），seedLastStep 只用于收尾回写防双写
     let compactedUpToStep = 0;
+    // 压缩参拼装单点：主动压缩（滞回门收敛环）与反应式压缩（端点超长兜底）两入口共用同一份第四参
+    // （预算对半、折链水位按种子链行数实时求值、摘要模型=当轮 adapter）——两处各拼曾是漂移温床
+    const compactOpts = () => ({
+      summaryTokenBudget: Math.floor(budget.reserve / 2),
+      rereadTokenBudget: Math.floor(budget.reserve / 2),
+      chainFoldedCount: seed.filter((s) => s.step <= compactedUpToStep).length,
+      summaryModel: adapter,
+    });
     let done = false;
     let reply: string | undefined;
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
@@ -245,12 +253,7 @@ export class Reactor {
           // 水位先算：折叠步骤号只依赖 steps/seed，与压缩结果无关（折链交由 runCompaction 统一执行）
           compactedUpToStep = steps.length > 0 ? steps[steps.length - 1].step : seedLastStep;
           // 压缩协调单点：确定性选块 → 摘要（当前 run 模型，失败回退确定性）→ 门禁重注入 → 折链（防「链+压缩块」双份）
-          await runCompaction(this.deps.context, items, {
-            summaryTokenBudget: Math.floor(budget.reserve / 2),
-            rereadTokenBudget: Math.floor(budget.reserve / 2),
-            chainFoldedCount: seed.filter((s) => s.step <= compactedUpToStep).length,
-            summaryModel: adapter,
-          });
+          await runCompaction(this.deps.context, items, compactOpts());
           lastCompactStep = step;
           items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
           est = this.deps.context.window.estimate(items);
@@ -309,12 +312,7 @@ export class Reactor {
         if (isContextOverflowError(errMsg) && !reactiveUsed) {
           reactiveUsed = true;
           this.emit('error', 'Context overflow at the endpoint — compacting and retrying once');
-          await runCompaction(this.deps.context, items, {
-            summaryTokenBudget: Math.floor(budget.reserve / 2),
-            rereadTokenBudget: Math.floor(budget.reserve / 2),
-            chainFoldedCount: seed.filter((s) => s.step <= compactedUpToStep).length,
-            summaryModel: adapter,
-          });
+          await runCompaction(this.deps.context, items, compactOpts());
           lastCompactStep = step;
           // 重试本步：步号由链尾派生（steps 未变则下轮同号），重建装配面后 continue
           items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
@@ -412,7 +410,8 @@ export class Reactor {
     return chainToHistoryItems(steps.filter((s) => s.step > fromStep));
   }
 
-  /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；工具清单经 tools 字段下发、动作经 tool_calls 结构化承载。
+  /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结（唯一例外：workDirLine 随活动根，
+   *  会话级环境事实、仅 worktree 进出时翻转，见消费行注释）；工具清单经 tools 字段下发、动作经 tool_calls 结构化承载。
    *  输出约定槽位按交互面分叉：outputStyle 缺省 = MARKDOWN_LINE 原文（既有前缀基线零漂移）；命中面 = 面专用行整行替代（零双份）。
    *  公开只读（/context 构成观测消费，与 chatRound 装配同一单点——禁第二处拼装） */
   stableSegment(): string {
@@ -426,7 +425,9 @@ export class Reactor {
       REFERENCE_DATA_LINE,
       TASK_FOCUS_LINE,
       SKILLS_INSTALL_LINE,
-      workDirLine(this.deps.root ?? this.deps.context.root),
+      // 工作目录事实行随活动根（D19-b）：activeRoot 是会话级状态、仅在 worktree 进入/退出时变化（与 cwd 同类
+      // 的环境事实，非时变字段）——进出即合法前缀重写点，其余相邻帧「逐字节前缀稳定」不变量维持；缺省/主区字节不变
+      workDirLine(this.deps.activeRoot?.() ?? this.deps.root ?? this.deps.context.root),
     ].join('\n');
   }
 

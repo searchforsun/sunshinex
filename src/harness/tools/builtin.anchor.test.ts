@@ -7,11 +7,10 @@ import { SafetyChain } from '../security/chain';
 import { ProcessSandbox } from '../security/sandbox';
 import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 
 function makeTools(root: string) {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
   return builtinTools(safety, root);
 }
 

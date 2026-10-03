@@ -13,7 +13,6 @@ import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { SafetyChain } from './security/chain';
-import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
@@ -26,7 +25,7 @@ const DONE = '{"done":true,"reply":"ok"}';
 /** 提示词捕获桩：记录每轮请求消息视图，供稳定段断言 */
 function makeReactor(tmp: string, outputStyle?: OutputStyle): { reactor: Reactor; requests: ChatRequest[] } {
   const store = new FileStore(path.join(tmp, '.data'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
@@ -85,7 +84,7 @@ test('terminal 面相邻步前缀逐字节稳定：稳定段跨步不变，唯�
   const tmp = tmpdir();
   try {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);

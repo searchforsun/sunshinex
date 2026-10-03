@@ -7,11 +7,10 @@ import { ToolRegistry } from '../tools';
 import { SecurityGuard } from '../security/guard';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 
 function setup(root: string): { registry: ToolRegistry; safety: SafetyChain } {
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   return { registry, safety };
@@ -102,4 +101,38 @@ test('grep 目录递归跳过 node_modules/dist/.git 等感知跳过集', async 
   const r = await registry.execute('grep', { path: '.', pattern: 'needle' }, safety);
   assert.equal(r.ok, true);
   if (r.ok) assert.equal(r.value.stdout, 'app.js:1:needle');
+});
+
+test('worktree 会话 glob 锚活动根：列树内文件、不列主区（D19-b，与 read/grep/exec 同树）', async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-globwt-'));
+  const root = path.join(parent, 'main');
+  const tree = path.join(parent, 'tree');
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+  fs.mkdirSync(tree, { recursive: true });
+  fs.writeFileSync(path.join(root, 'src', 'main-only.ts'), 'x\n');
+  fs.writeFileSync(path.join(root, 'README.md'), 'x\n');
+  fs.writeFileSync(path.join(tree, 'tree-only.txt'), 'x\n');
+  try {
+    // 装配形态同 Harness：activeRoot 接缝直取 safety.activeRoot；缺省态（主区）先钉基线
+    const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), root);
+    const registry = new ToolRegistry();
+    for (const t of builtinTools(safety, root, { activeRoot: () => safety.activeRoot })) registry.register(t);
+
+    const base = await registry.execute('glob', { pattern: '**/*' }, safety);
+    assert.ok(base.ok && base.value.stdout.includes('main-only.ts'), '缺省基线：主区文件在列');
+
+    safety.enterWorktree(tree);
+    const inTree = await registry.execute('glob', { pattern: '**/*' }, safety);
+    assert.ok(inTree.ok, `worktree 会话 glob 应成功：${inTree.ok ? '' : inTree.error.message}`);
+    if (inTree.ok) {
+      assert.ok(inTree.value.stdout.includes('tree-only.txt'), `树内文件应列出：${inTree.value.stdout}`);
+      assert.ok(!inTree.value.stdout.includes('main-only.ts'), `主区文件不得混入（锚点分裂病根）：${inTree.value.stdout}`);
+    }
+
+    safety.exitWorktree();
+    const back = await registry.execute('glob', { pattern: '**/*' }, safety);
+    assert.ok(back.ok && back.value.stdout.includes('main-only.ts'), '退出后恢复主区锚点');
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
 });

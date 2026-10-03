@@ -8,7 +8,6 @@ import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { SafetyChain } from './security/chain';
-import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
@@ -44,7 +43,7 @@ class HangingAdapter implements ModelAdapter {
 }
 
 function makeRunner(model: ModelAdapter, tmp: string, opts?: { tasks?: TaskRegistry }): SubagentRunner {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(path.join(tmp, '.data')));

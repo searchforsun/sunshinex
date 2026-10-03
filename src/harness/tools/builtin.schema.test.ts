@@ -15,7 +15,6 @@ import { SafetyChain } from '../security/chain';
 import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
-import { DryRun } from '../security/dryrun';
 
 /**
  * T1（原生 function calling 迁移）工具参数声明化回归钉：
@@ -26,7 +25,7 @@ import { DryRun } from '../security/dryrun';
  */
 
 function makeSafety(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
 }
 
 function tmpDir(prefix: string): string {
@@ -42,7 +41,7 @@ function withRegistries(fn: (ctx: { bare: ToolRegistry; full: ToolRegistry }) =>
     const full = new ToolRegistry();
     const stubMemoryWrite = () => ({ ok: true as const, value: { slug: 'stub-slug', existed: false, notice: null } });
     const stubAsk = async () => ({ type: 'dismissed' as const });
-    for (const t of builtinTools(safety, tmp, undefined, undefined, undefined, undefined, undefined, stubMemoryWrite, stubAsk)) full.register(t);
+    for (const t of builtinTools(safety, tmp, { memoryWrite: stubMemoryWrite, ask: stubAsk })) full.register(t);
     full.register(makeSpawnTool({} as unknown as SubagentRunner));
     fn({ bare, full });
   } finally {
@@ -195,7 +194,7 @@ test('todo_write 执行面：条数钳制 >50 拒绝、非法 status 拒绝、fa
     if (!miss.ok) assert.equal(miss.error.code, 'todo_not_configured');
     const wired: Array<{ text: string; status: string }> = [];
     const reg2 = new ToolRegistry();
-    for (const t of builtinTools(safety, tmp, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, { set: (items) => wired.push(...items) })) reg2.register(t);
+    for (const t of builtinTools(safety, tmp, { todos: { set: (items) => wired.push(...items) } })) reg2.register(t);
     // 现场校正（同上）：INVALID_ARG 断言走 registry 错误通道
     const over = await reg2.execute('todo_write', { todos: Array.from({ length: 51 }, (_, i) => ({ text: `t${i}`, status: 'pending' })) }, safety);
     assert.equal(over.ok, false);

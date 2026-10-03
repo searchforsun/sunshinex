@@ -6,16 +6,22 @@ import { resolveDataDir, userSkillsDir } from '../config/data-dir';
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
+/** frontmatter 词法单点（R6·harness 族）：`---` 块内 `key: value` 行抽取（key 须标识符形态，其余行忽略）。
+ *  skills 宽容策略（缺省回退）与 subagent 严格策略（无块/缺 name 即拒）只共用本词法、策略各自保留 */
+export function parseFrontmatterKV(md: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const m = FRONTMATTER.exec(md);
+  if (!m) return out;
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/.exec(line.trim());
+    if (kv) out[kv[1]] = kv[2].trim();
+  }
+  return out;
+}
+
 /** 解析 skill.md 的简易 frontmatter（--- 块内 key: value；params 为空格分隔的形参清单，kind 仅认 prompt） */
 export function parseSkillFrontmatter(md: string): Omit<SkillManifest, 'id'> {
-  const out: Record<string, string> = { name: '', description: '', version: '0.1.0' };
-  const m = FRONTMATTER.exec(md);
-  if (m) {
-    for (const line of m[1].split(/\r?\n/)) {
-      const kv = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/.exec(line.trim());
-      if (kv) out[kv[1]] = kv[2].trim();
-    }
-  }
+  const out: Record<string, string> = { name: '', description: '', version: '0.1.0', ...parseFrontmatterKV(md) };
   const params = out.params ? out.params.split(/\s+/).filter((p) => p.length > 0) : undefined;
   return {
     name: out.name,

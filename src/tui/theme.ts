@@ -16,4 +16,3 @@ export const theme = {
   error: 'red',
 } as const;
 
-export type ThemeColor = (typeof theme)[keyof typeof theme];

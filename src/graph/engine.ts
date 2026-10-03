@@ -83,12 +83,7 @@ export class GraphEngine {
     return out;
   }
 
-  /** 拓扑扁平序（兼容保留） */
-  topo(): string[] {
-    return this.layers().flat();
-  }
-
-  async run(goal: string, opts: { dryRun?: boolean; state?: Record<string, unknown> } = {}): Promise<GraphRunResult> {
+  async run(goal: string, opts: { state?: Record<string, unknown> } = {}): Promise<GraphRunResult> {
     if (!this.ctx) {
       this.ctx = { state: { goal, ...(opts.state ?? {}) }, tokensUsed: 0, startedAt: Date.now(), results: {}, termination: this.term };
       this.completed.clear();
@@ -96,7 +91,6 @@ export class GraphEngine {
     } else if (opts.state) {
       Object.assign(this.ctx.state, opts.state);
     }
-    if (opts.dryRun) this.ctx.state.__dryRun = true;
     return this.walk(this.layers());
   }
 
@@ -130,12 +124,6 @@ export class GraphEngine {
         // 错误局部化：上游 failed → skipped；上游 paused → 阻塞（暂停传播，resume 后续跑）
         if (node.deps.some((d) => failed.has(d) || ctx.results[d]?.status === 'skipped' || ctx.results[d]?.status === 'paused')) {
           ctx.results[id] = { nodeId: id, status: 'skipped', tokens: 0 };
-          continue;
-        }
-        if (ctx.state.__dryRun === true) {
-          const preview: GraphNodeOutput = { nodeId: id, status: 'pass', reply: t('[dry-run] preview: ' + id + '(' + node.kind + ')', '[dry-run] 预览: ' + id + '(' + node.kind + ')'), tokens: 0 };
-          ctx.results[id] = preview;
-          this.completed.add(id);
           continue;
         }
         runnable.push(node);

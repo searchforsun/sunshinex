@@ -13,8 +13,9 @@ import type { ModelAdapter } from '../model/adapter';
 /**
  * 入口二：worktree 模型工具（计划 T4，规格 §8/D2/D7）：
  * 含状态类调用混批时整轮按出牌顺序串行（reactor 执行面闸门）、manual 免审批（spawn 先例；deny 规则仍先行）、
- * plan 只读闸门对 create/exit 拦截、list 放行；工具内调用 Harness 三方法（create/exit/list→registry 摘要）；
- * 活动根在场：write 相对路径锚活动根（安全链判界基准切换）、exec cwd 锚活动根（builtin 装配 root 单点）。
+ * plan 只读闸门对 create/exit 拦截、list 放行；工具 create/exit 直调 safety.enterWorktree/exitWorktree
+ * （chain 层单点，D19-c 裁决：Harness 侧会话记账接缝已删）；
+ * 活动根在场：write/glob 相对路径锚活动根（安全链判界/工具锚点同源切换）、exec cwd 锚活动根（builtin 装配 root 单点）。
  * 工具清单 +1 = 一次全量前缀断点（规格 D2 已裁决即论据）。
  */
 
@@ -62,24 +63,31 @@ test('T4-1 装配后工具清单含 worktree，类别 worktree，description 恒
     assert.ok(t && /^[\x20-\x7E]+$/.test(t.description), `description 恒英文单语：${t && t.description.slice(0, 40)}`);
   }));
 
-test('T4-2 create 端到端：观察含路径与分支；随后 write 相对路径落 worktree（活动根生效）', () =>
+test('T4-2 create 端到端：观察含路径与分支；glob 锚树/write 相对路径落 worktree（活动根生效）', () =>
   withHarness(
     'dontAsk',
     new ScriptedAdapter([
       JSON.stringify({ tool: 'worktree', input: { action: 'create', name: 'sess' } }),
+      JSON.stringify({ tool: 'glob', input: { pattern: '*' } }),
       JSON.stringify({ tool: 'write', input: { path: 'note.txt', content: 'hi\n' } }),
       JSON.stringify({ done: true, reply: 'ok' }),
     ]),
-    (h, repo, tmp) =>
-      h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
+    (h, repo, tmp) => {
+      // 主区判别物：未提交文件只在主根存在（worktree 自 HEAD 分叉，不含工作区未跟踪文件）
+      fs.writeFileSync(path.join(repo, 'main-only.txt'), 'x\n');
+      return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
         assert.equal(r.done, true, `run 应完成：${JSON.stringify(r.stopReason ?? '')}`);
         const tree = path.join(worktreesRoot(tmp), 'sess');
         const call = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('worktree-sess'));
         assert.ok(call, `create 观察应含路径与分支名，实际步骤：${JSON.stringify(r.steps.map((s) => s.observation.slice(0, 60)))}`);
+        const globRow = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('README.md'));
+        assert.ok(globRow, `worktree 会话 glob 应列树内文件：${JSON.stringify(r.steps.map((s) => s.observation.slice(0, 60)))}`);
+        assert.ok(globRow && !globRow.observation.includes('main-only.txt'), 'glob 锚活动根：主区未提交文件不得混入清单（D19-b）');
         assert.ok(fs.existsSync(path.join(tree, 'note.txt')), 'write 相对路径应锚活动根（落在 worktree 内）');
         assert.ok(!fs.existsSync(path.join(repo, 'note.txt')), 'write 相对路径不得落主根');
         assert.ok(readRegistry(tmp).some((e) => e.name === 'sess'), 'create 应登记');
-      }),
+      });
+    },
   ));
 
 test('T4-3 未激活 exit：WORKTREE_NOT_ACTIVE 显式拒绝（不静默）', () =>
@@ -163,7 +171,7 @@ test('T4-8 活动根在场：exec cwd 锚活动根（相对命令执行位置切
     (h, repo, tmp) => {
       const c = createWorktree(repo, tmp, 'cwdx', {});
       assert.ok(c.ok, `seed create 失败：${c.ok ? '' : c.error.message}`);
-      h.enterWorktree(c.value.path);
+      h.safety.enterWorktree(c.value.path);
       return h.reactor.run({ goal: 'g' }, { maxSteps: 4 }).then((r) => {
         const row = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('worktrees'));
         assert.ok(row, `exec cwd 应锚活动根（pwd 输出树路径）：${JSON.stringify(r.steps.map((s) => s.observation.slice(0, 80)))}`);
@@ -171,10 +179,14 @@ test('T4-8 活动根在场：exec cwd 锚活动根（相对命令执行位置切
     },
   ));
 
-test('T6-N2 create→exit 全程相邻帧前缀逐字节稳定（规格 §12 钉2）', () => {
+test('T6-N2 create→exit 事实行随活动根翻转；同环境段内相邻帧前缀逐字节稳定（D19-b 口径）', () => {
   const prompts: string[] = [];
+  // 帧序（5 帧）：create（主区）→ read/read/exit 前置帧（树内）→ done（退出回主区）；
+  // worktree 进出=合法前缀重写点（与 cwd 同类的会话级环境事实，非时变字段）——跨进出帧不做字节前缀断言，
+  // 只断言「唯一差异是工作目录事实行」；同环境段内相邻帧维持逐字节前缀（规格 §12 钉2 的现行口径）
   const replies = [
     JSON.stringify({ tool: 'worktree', input: { action: 'create', name: 'nail2' } }),
+    JSON.stringify({ tool: 'read', input: { path: 'README.md' } }),
     JSON.stringify({ tool: 'read', input: { path: 'README.md' } }),
     JSON.stringify({ tool: 'worktree', input: { action: 'exit' } }),
     JSON.stringify({ done: true, reply: 'ok' }),
@@ -187,18 +199,32 @@ test('T6-N2 create→exit 全程相邻帧前缀逐字节稳定（规格 §12 钉
     return replies[Math.min(i++, replies.length - 1)];
         }),
   };
-  return withHarness('dontAsk', model, (h) =>
-    h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
+  const factOf = (p: string) => /Current working directory \(project root\): (.*)/.exec(p)?.[1]?.trim();
+  return withHarness('dontAsk', model, (h, repo) =>
+    h.reactor.run({ goal: 'g' }, { maxSteps: 8 }).then((r) => {
       assert.equal(r.done, true);
-      assert.equal(prompts.length, 4, `帧数应为 create/read/exit/done=4：${prompts.length}`);
-      for (let k = 1; k < prompts.length; k++) {
+      assert.equal(prompts.length, 5, `帧数应为 create/read/read/exit/done=5：${prompts.length}`);
+      const facts = prompts.map(factOf);
+      // 事实行翻转：create 后进树、exit 后回主区——与 worktree 工具回执「session working root is now ...」一致
+      assert.equal(facts[0], repo, `第 1 帧应报主根：${facts[0]}`);
+      const tree = facts[1];
+      assert.ok(tree && tree !== repo && /nail2/.test(tree), `create 后事实行应报树路径：${tree}`);
+      assert.equal(facts[2], tree, '树内帧事实行恒定');
+      assert.equal(facts[3], tree, 'exit 调用帧仍处树内（exit 在该帧后才执行）');
+      assert.equal(facts[4], repo, `exit 后回主根：${facts[4]}`);
+      // 同环境段内相邻帧：逐字节前缀稳定（第 2→3、3→4 帧）
+      for (const k of [2, 3]) {
         assert.ok(
           prompts[k]!.startsWith(prompts[k - 1]!),
-          `第 ${k + 1} 帧应以第 ${k} 帧为逐字节前缀（差异只落尾部尾追）：\n前帧尾 60：${prompts[k - 1]!.slice(-60)}\n现帧首 60：${prompts[k]!.slice(0, 60)}`,
+          `第 ${k + 1} 帧应以第 ${k} 帧为逐字节前缀（同环境段内）`,
         );
       }
-      const facts = prompts.map((p) => /Current working directory \(project root\): (.*)/.exec(p)?.[1]?.trim());
-      assert.equal(new Set(facts).size, 1, `事实行整场恒定：${facts.join(' | ')}`);
+      // 跨进出帧（1→2）：唯一差异必须是工作目录事实行（把事实行换回前帧值后恢复字节前缀）
+      const rewritten = prompts[1]!.replace(`Current working directory (project root): ${tree}`, `Current working directory (project root): ${repo}`);
+      assert.ok(
+        rewritten.startsWith(prompts[0]!),
+        `进出重写点的差异应仅限事实行：\n前帧尾 60：${prompts[0]!.slice(-60)}\n改写帧首 60：${rewritten.slice(0, 60)}`,
+      );
     }),
   );
 });

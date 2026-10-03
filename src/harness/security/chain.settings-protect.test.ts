@@ -7,7 +7,6 @@ import { SafetyChain } from './chain';
 import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
-import { DryRun } from './dryrun';
 
 /**
  * settings.json 两级硬保护 + ~/.sunshinex 子树放行：
@@ -28,7 +27,7 @@ function withChain(fn: (chain: SafetyChain, root: string, userCfg: string) => vo
     fs.mkdirSync(userCfg, { recursive: true });
     const dataDir = path.join(userCfg, 'projects', 'p', 'data');
     process.env.SUNSHINEX_DATA_DIR = dataDir;
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     fn(chain, root, userCfg);
     fs.rmSync(root, { recursive: true, force: true });
   } finally {
@@ -84,7 +83,7 @@ test('放行不越记忆窄口：数据目录在 ~/.sunshinex/projects 下且总
     const userCfg = path.join(home, '.sunshinex');
     fs.mkdirSync(userCfg, { recursive: true });
     process.env.SUNSHINEX_DATA_DIR = path.join(userCfg, 'projects', 'p', 'data');
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     const d = chain.evaluate('Write', { path: path.join(userCfg, 'projects', 'p', 'data', 'memory', 'x.md') });
     assert.equal(d.allowed, false, '记忆总开关关闭时写 memory 应拒（不被 ~/.sunshinex 放行绕过）');
     assert.ok(!d.allowed && d.reason.includes('memory write denied'), `拒绝原因应可辨识：${!d.allowed ? d.reason : ''}`);

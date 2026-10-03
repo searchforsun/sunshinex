@@ -24,7 +24,7 @@ export function useSpinFrame(): string {
   return FRAMES[frame % FRAMES.length];
 }
 
-export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80, selected = false }: {
+export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80 }: {
   startedAt: number;
   tokens: number;
   label?: string;
@@ -36,8 +36,6 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
   calls?: ActiveCall[];
   /** 终端列宽：活跃调用行动词按列宽自然省略（缺省 80，既有调用方零破坏） */
   columns?: number;
-  /** 浏览选中态（子代理面板）：反色底上去 dim 保前景对比（灰底叠暗灰不可读，2026-09-28 用户裁决） */
-  selected?: boolean;
 }): JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -77,9 +75,9 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
     );
   }
   return (
-    <Text color={theme.accent} dimColor={selected !== true}>
+    <Text color={theme.accent} dimColor>
       {glyph} {label ? `[${label}] ` : ''}
-      <Text dimColor={selected !== true}>
+      <Text dimColor>
         {verb}… ({formatDuration(secs)}
         {typeof steps === 'number' && steps > 0 ? ` · step ${steps}` : ''} · ↑{formatTokens(tokens)} tokens)
       </Text>

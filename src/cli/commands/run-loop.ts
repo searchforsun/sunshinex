@@ -3,6 +3,7 @@ import { DEFAULT_GOAL_TEMPLATE, resolveTemplate } from '../../loop/templates';
 import { buildDeps } from '../../runtime';
 import { resolveWorktreeLaunchRoot } from '../worktree-launch';
 import { resolveDirArg, flagList } from '../index';
+import { teardownCliRun } from './run-pipeline';
 import { t } from '../../i18n';
 import type { CliArgs } from '../index';
 
@@ -35,11 +36,6 @@ export async function runLoop(args: CliArgs): Promise<void> {
   deps.context.appendInstructionLine(goal);
   const r = await tpl.engine.run(goal);
   console.log(JSON.stringify({ status: r.status, iterations: r.iterations, tokensUsed: r.tokensUsed, criteria: r.criteria, reply: r.reply, error: r.error }, null, 2));
-  // 收尾消化后台沉淀队列（规格 §3.5）：此时用户本就在等命令结束，不构成新增阻塞
-  if (deps.pipeline) await deps.pipeline.drain();
-  // MCP 降级警告上屏：服务器失败只损失该服务器工具，警告不吞
-  for (const w of (deps.mcpWarnings?.() ?? [])) console.warn('mcp warn:', w);
-  // MCP 连接收口：关闭 stdio 子进程，防悬挂事件循环
-  if (deps.mcpClose) await deps.mcpClose();
-  if (r.status !== 'done') process.exitCode = 1;
+  // 收尾统一收口（批A R2）：drain/MCP 警告/连接关闭/退出码判定与 pipeline 命令共用单点
+  await teardownCliRun(deps, r.status);
 }

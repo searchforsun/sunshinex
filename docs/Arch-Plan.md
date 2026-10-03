@@ -38,7 +38,7 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：云端大模型负�
 - **项目感知**（perception.ts）：目录/依赖/SUNSHINE.md/Git 扫描
 - **Reactor 最小闭环**（reactor.ts）：observe→think→act，缺省 400 步宽预算（`SUNSHINEX_MAX_STEPS` 可调）；token 硬顶缺省不设（`SUNSHINEX_MAX_TOKENS` 显式注入才生效——预算是兜底不是限制，子代理同口径走 `SUNSHINEX_SUBAGENT_TOKEN_CAP` 独享值、不继承主链剩余）
 - **统一工具面**（tools.ts / tools/）：read、write、grep、glob、exec、webfetch、websearch、kb_search、skill、memory_write、ask_question，统一注册表 + 安全链；工具参数一律 JSON Schema 声明化
-- **安全管控**（security/）：权限三态（deny/ask/allow）、SafetyChain、ProcessSandbox 子进程单点（exec shell 由 `resolveShell()` 跨平台解析）、凭据脱敏、dry-run 接缝
+- **安全管控**（security/）：权限三态（deny/ask/allow）、SafetyChain、ProcessSandbox 子进程单点（exec shell 由 `resolveShell()` 跨平台解析）、凭据脱敏
 - **记忆双轨**（memory/ + skills/）：程序性记忆 LearnedSkillStore（任务收口沉淀可复用技能，FIFO 上限）+ 陈述性记忆 auto memory（MEMORY.md 索引 + 记录文件，提取挂 settle 单点、后台管线空闲消化、/memory 命令族管理）
 - **技能体系**（skills.ts）：三级根装载（项目级 `.sunshinex` > 全局级 `~/.sunshinex` > 学习级 `data/skills`），标准形态 `{id}/SKILL.md`，清单冻结注入 + skill 工具按需加载正文
 - **子代理**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算源挂载/并发护栏；spawn 工具 + `agents/{id}/agent.md` 目录注册制；同层并发上限 4
@@ -56,18 +56,18 @@ DAG 拓扑引擎（环检测携带环路径）+ loop/agent/gate/ci 四类节点 
 
 ### 2.6 模型适配层（src/model/）
 
-OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路），核心契约走模型原生 function calling；三档算力路由（small/medium/large）为用户级会话参数（`--tier`、/model），请求级字段不进提示词；reasoning_effort 七档思考强度（`--effort`、/model effort）按端点能力阶梯降级探测；per-run 成本账本（ledger.ts）承载 usage 与缓存命中口径。
+OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路），核心契约走模型原生 function calling；三档算力路由（small/medium/large）为用户级会话参数（`--tier`、`/model-tier`），请求级字段不进提示词；`/model` 为多源模型切换（settings `providers` 清单，`源/模型` 即选即切）；reasoning_effort 七档思考强度（`--effort`、`/model-effort`）按端点能力阶梯降级探测；per-run 成本账本（ledger.ts）承载 usage 与缓存命中口径。
 
 ### 2.7 交互面
 
-- **CLI**（src/cli/）：selfcheck / run / pipeline 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计已定稿待实施（`specs/2026-09-21-cli-tui-interaction-redesign.md`）
+- **CLI**（src/cli/）：selfcheck / run / pipeline 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计已落地（设计规格 `specs/2026-09-21-cli-tui-interaction-redesign.md`；fe12d6a / 17f7712）
 - **TUI**（src/tui/，已交付）：会话 REPL、Static 化历史 + 动态帧流式渲染、Markdown 全框线表格（对标 Claude Code）、plan/goal/子代理面板、审批卡与统一选择器、斜杠命令族、状态栏（cache/ctx/turns/steps/tier/effort）、运行中中断与 steering 穿插提示词、worktree 隔离入口
 - **GUI**（规划）：Electron 桌面壳 + Vue3 组件体系，组件选型唯一登记于 `CLAUDE.md §13`
 
 ## 三、技术栈
 
 - 底座：Node.js ≥ 22.9、TypeScript（strict）、pnpm（packageManager 钉版）、node:test（测试零框架依赖）
-- 已引入依赖（用途/收敛边界/回退预案）唯一登记于 `CLAUDE.md §5` 依赖台账：ink + react、markdown-it、highlight.js、string-width、cli-table3、sqlite-vec、@modelcontextprotocol/sdk
+- 已引入依赖（用途/收敛边界/回退预案）唯一登记于 `CLAUDE.md §5` 依赖台账
 - GUI 规划选型唯一登记于 `CLAUDE.md §13` 组件选型登记表（Electron ≥ 30、Vue 3 + Naive UI、Monaco Editor、@antv/g6、xterm.js + node-pty、pinia、splitpanes、chokidar、electron-vite 工程化等）
 - 存储：本地 JSON 底座（src/storage/）；运行时数据（账本/记忆/学习技能/KB/会话日志/worktree）统一落 `~/.sunshinex/projects/<工作区>/data`
 - 配置：settings.json 两级装载（全局 `~/.sunshinex/settings.json` + 项目级 `.sunshinex/settings.json`），语义键 + env 透传块，JSONC 容忍；全局约定层 `~/.sunshinex/SUNSHINE.md` 对标 `~/.claude/CLAUDE.md`

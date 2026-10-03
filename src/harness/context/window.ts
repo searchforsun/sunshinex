@@ -27,14 +27,12 @@ export interface ContextChunk {
   priority: number;
 }
 
-/** 权重表：compact 丢弃序优先级（T2 起消费） */
+/** 权重表：compact 丢弃序优先级（T2 起消费）；kind 联合只含有生产者的四类（S8①） */
 export const KIND_WEIGHT: Record<ContextItem['kind'], number> = {
   system: 1.0,
   instruction: 1.2,
   memory: 0.8,
   history: 0.5,
-  tool: 0.7,
-  result: 0.6,
 };
 
 /** 上下文窗口：加权 token 估算 + 分块 compaction + checksum 重注入（Claude Code 稳定性增强） */
@@ -75,11 +73,9 @@ export class ContextWindow {
           (KIND_WEIGHT[a.c.type as ContextItem['kind']] ?? 0.5) - (KIND_WEIGHT[b.c.type as ContextItem['kind']] ?? 0.5) ||
           a.i - b.i,
       );
-    const dropped = new Set<ContextChunk>();
     let out = kept;
     for (const { c } of order) {
       if (tokensOf(out) <= budget) break;
-      dropped.add(c);
       out = out.filter((x) => x !== c);
     }
     if (tokensOf(out) > budget) {

@@ -10,7 +10,6 @@ import { SafetyChain } from './security/chain';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
-import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { StubAdapter } from '../model/adapter';
 import { Harness } from './index';
@@ -73,7 +72,7 @@ test('Harness MCP 闸门：未登记 server 的 mcp__ 工具被 guard 拒绝', (
 
 /** 引擎级就绪门槛用例夹具：最小 LoopDeps */
 function engineDeps(root: string, extra: Partial<LoopDeps>): { deps: LoopDeps } {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   return {
     deps: {

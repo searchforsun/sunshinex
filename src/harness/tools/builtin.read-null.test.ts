@@ -8,13 +8,12 @@ import { builtinTools } from './builtin';
 import { SafetyChain } from '../security/chain';
 import { SecurityGuard } from '../security/guard';
 import { ProcessSandbox } from '../security/sandbox';
-import { DryRun } from '../security/dryrun';
 
 function setup(): { registry: ToolRegistry; safety: SafetyChain; root: string; cleanup: () => void } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'read-null-'));
   fs.writeFileSync(path.join(root, 'a.txt'), 'l1\nl2\nl3\n');
   const registry = new ToolRegistry();
-  const safety: SafetyChain = new SafetyChain(new SecurityGuard(), new ProcessSandbox(), new DryRun(), root);
+  const safety: SafetyChain = new SafetyChain(new SecurityGuard(), new ProcessSandbox(), root);
   for (const t of builtinTools(safety, root)) registry.register(t);
   return { registry, safety, root, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }

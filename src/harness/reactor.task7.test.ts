@@ -11,7 +11,6 @@ import { SafetyChain } from './security/chain';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
-import { DryRun } from './security/dryrun';
 import { FileStore } from '../storage/adapter';
 import type { ModelAdapter } from '../model/adapter';
 // 测试卫生：本文件压缩断言按 est 精算标定，数据目录钉文件私有目录——共享数据目录被并发写入学习技能时，技能清单进装配产物会破坏精算基线
@@ -24,7 +23,7 @@ function fixture(): { tmp: string; cm: ContextManager; registry: ToolRegistry; s
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshine-t7-'));
   const cm = new ContextManager(tmp, new FileStore(tmp));
   const registry = new ToolRegistry();
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
   return { tmp, cm, registry, safety };
 }
 

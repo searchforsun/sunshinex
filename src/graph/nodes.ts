@@ -96,34 +96,3 @@ export function makeGateNode(id: string, config: GateNodeConfig = {}): GraphNode
     },
   };
 }
-
-/** CI/CD 节点配置：命令注入（真实云端触发由用户配置命令承载，平台 API 集成不做——spec §6 边界） */
-export interface CiNodeConfig {
-  command: string;
-  deps?: string[];
-}
-
-/** CI/CD 节点：经 registry+SafetyChain 执行注入命令（零旁路），exit 0 → pass */
-export function makeCiNode(id: string, config: CiNodeConfig): GraphNode {
-  return {
-    id,
-    kind: 'ci',
-    deps: config.deps ?? [],
-    run: async (ctx, deps) => {
-      if (ctx.state.__dryRun === true) {
-        return { nodeId: id, status: 'pass', reply: t('[dry-run] will run: ' + config.command, '[dry-run] 将执行: ' + config.command), tokens: 0 };
-      }
-      const r = await deps.registry.execute('exec', { command: config.command }, deps.safety);
-      if (r.ok && r.value.exitCode === 0) {
-        const tail = (r.value.stdout || t('(no output)', '（无输出）')).slice(-200);
-        return { nodeId: id, status: 'pass', reply: t('CI passed: ' + tail, 'CI 通过：' + tail), tokens: 0 };
-      }
-      const detail = r.ok
-        ? `exit ${r.value.exitCode}: ${(r.value.stderr || r.value.stdout || t('(no output)', '（无输出）')).slice(-200)}`
-        : typeof r.error === 'string'
-          ? r.error
-          : JSON.stringify(r.error);
-      return { nodeId: id, status: 'failed', reply: t('CI failed: ' + detail, 'CI 失败：' + detail), tokens: 0 };
-    },
-  };
-}

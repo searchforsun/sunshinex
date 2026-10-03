@@ -28,6 +28,8 @@ import { isModelSummarizer } from '../harness/context/summarizer';
 import { LiveTaskState, applyTaskState, initialTaskState } from './task-state';
 import { readSkillUsage, recordSkillUsage } from './skill-usage';
 import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup';
+import { resolveKbEnv } from '../config/env';
+import { indexKnowledgeDir } from '../harness/knowledge';
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';
 
@@ -267,6 +269,7 @@ function slashHelp(): string[] {
     t('  /model-tier    switch model tier (selector)', '  /model-tier    切换模型档位（选择卡）'),
     t('  /model-effort  switch reasoning effort (selector)', '  /model-effort  切换思考强度（选择卡）'),
     t('  /add-dir <dir>  extend trusted directories (read+write, this session)', '  /add-dir <dir>  扩展信任目录（读写，本会话内生效）'),
+    t('  /kb-index [dir] build the knowledge-base index (md/txt, billed embedding)', '  /kb-index [目录] 构建知识库索引（md/txt，走计费 embedding）'),
     t('  /memory        list persistent memories', '  /memory        列出持久记忆'),
     t('  /memory-add    add a memory: /memory-add <text>', '  /memory-add    添加记忆：/memory-add <内容>'),
     t('  /memory-rm     delete memories (multi-select)', '  /memory-rm     删除记忆（多选卡）'),
@@ -1193,7 +1196,7 @@ export class SessionController {
     const cmd = text.split(/\s+/)[0] ?? text;
     // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；
     // 自由文本参数命令（目标/关注点/记忆内容/目录路径）不在枚举范围，带参放行
-    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir']);
+    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir', '/kb-index']);
     // 技能命令（规格 2026-09-22-skill-as-command D4）：意图尾参为自由文本，与 FREE_TEXT_ARGS 同豁免；命中与否由尾部技能分发面裁决
     const isSkillCommand = this.skillCommandIds().includes(cmd.slice(1));
     if (!FREE_TEXT_ARGS.has(cmd) && !isSkillCommand && text !== cmd) {
@@ -1519,6 +1522,7 @@ export class SessionController {
     if (cmd === '/memory-add') return this.memoryAdd(text.slice(cmd.length).trim());
     if (cmd === '/memory-rm') return this.memoryRm();
     if (cmd === '/memory-gc') return this.memoryGc();
+    if (cmd === '/kb-index') return this.kbIndex(text.slice(cmd.length).trim());
     if (cmd === '/memory-on' || cmd === '/memory-off') {
       const on = cmd === '/memory-on';
       if (this.state.status !== 'idle') {
@@ -1753,6 +1757,40 @@ export class SessionController {
     }
     await consolidateMemory({ model: this.runtime.harness.model, root: this.root, force: true });
     this.pushMsg('system', t(`Consolidated persistent memory: ${store.count()} records`, `持久记忆已整理：${store.count()} 条`));
+  }
+
+  /** /kb-index（D28）：显式构建 KB 索引——与 CLI kb-index 子命令共用 knowledge 层单点 indexKnowledgeDir，
+ *  索引对目录内全部 md/txt 走真实计费 embedding（用户显式触发，成本可控性由文件数决定）；
+ *  经会话装配的同一实例写入，kb_search 本会话即时可见（不因实例过期需重启） */
+  private async kbIndex(dirArg: string): Promise<void> {
+    if (this.state.status !== 'idle') {
+      this.pushMsg('system', t('A task is running; /kb-index unavailable now', '当前有任务进行中，暂不能执行 /kb-index'), { level: 'warn' });
+      return;
+    }
+    const target = dirArg === '' ? this.root : path.resolve(this.root, dirArg);
+    this.pushMsg('system', t(`Indexing ${target} (embedding md/txt files…)`, `正在为 ${target} 构建索引（md/txt 文件 embedding…）`));
+    let r;
+    try {
+      r = await indexKnowledgeDir(resolveKbEnv(process.env as Record<string, string | undefined>), this.root, target);
+    } catch (e) {
+      this.pushMsg('system', t(`Knowledge base assembly failed: ${e instanceof Error ? e.message : String(e)}`, `知识库装配失败：${e instanceof Error ? e.message : String(e)}`), { level: 'error' });
+      return;
+    }
+    if (!r.ok) {
+      if (r.reason === 'not-configured') {
+        this.pushMsg('system', t(
+          `Knowledge base not configured — missing ${r.missing.join(', ')}. Set the embedding env (see MANUAL.md section 2), then rerun /kb-index.`,
+          `知识库未配置——缺 ${r.missing.join('、')}。请配置 embedding 环境变量（见 MANUAL.md 第二节）后重跑 /kb-index。`,
+        ), { level: 'warn' });
+      } else {
+        this.pushMsg('system', t(`Not a directory: ${r.dir}`, `目录不存在或不是目录：${r.dir}`), { level: 'error' });
+      }
+      return;
+    }
+    this.pushMsg('system', t(
+      `Knowledge base index built: ${r.chunks} chunks (backend=${r.backend}, dataDir=${r.dataDir}) — kb_search sees it this session`,
+      `知识库索引已构建：${r.chunks} 块（backend=${r.backend}，数据目录 ${r.dataDir}）——kb_search 本会话即时可用`,
+    ));
   }
 
   private onEvent(e: SessionEvent): void {

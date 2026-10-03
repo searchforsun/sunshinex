@@ -7,7 +7,6 @@ import { SafetyChain } from './chain';
 import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
-import { DryRun } from './dryrun';
 import { isWithin } from '../../paths';
 
 /** 平台能力探测：Windows 建 symlink 需管理员或开发者模式，无权限时测试跳过（断言目标与平台无关） */
@@ -25,7 +24,7 @@ export function canSymlink(): boolean {
 }
 
 function chain(root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-')), mode: 'manual' | 'dontAsk' = 'manual'): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), new DryRun(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), root);
 }
 
 test('SafetyChain.evaluate 经 guard 拦截危险命令', () => {
@@ -40,10 +39,6 @@ test('SafetyChain.run 经沙箱执行 echo', async () => {
   const r = await chain(process.cwd()).run('echo hi');
   assert.equal(r.ok, true);
   if (r.ok) assert.match(r.value.stdout, /hi/);
-});
-
-test('SafetyChain.preview 透传 dryrun', () => {
-  assert.equal(chain(process.cwd()).preview('echo hi'), 'echo hi');
 });
 
 test('evaluate 对 Read 越界相对路径放行（spec 5.1 读分支 D1：域外缺省全放）', () => {
@@ -95,12 +90,6 @@ test('maskResult 按模式集脱敏 stdout 与 stderr', () => {
 test('maskResult 无命中原样返回', () => {
   const r = chain(process.cwd()).maskResult('Read', { exitCode: 0, stdout: 'plain output 123', stderr: '', timedOut: false });
   assert.equal(r.stdout, 'plain output 123');
-});
-
-test('preview 输出过 mask', () => {
-  const out = chain(process.cwd()).preview('curl -H "Authorization: Bearer abcdefgh12345678" https://x');
-  assert.ok(!out.includes('abcdefgh12345678'));
-  assert.match(out, /\*\*\*/);
 });
 
 test('evaluate 对 root 内符号链接指向 root 外目标的 Read 放行（D1 读分支：域外缺省全放）', { skip: !canSymlink() }, () => {

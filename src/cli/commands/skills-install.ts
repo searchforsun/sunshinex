@@ -13,18 +13,17 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { userSkillsDir } from '../../config/data-dir';
+import { PROJECT_SKILL_ROOTS_ASC } from '../../harness/skills';
 import { t } from '../../i18n';
 import type { CliArgs } from '../index';
 
-/** 仓库内候选技能目录（先命先止；skills/ 置顶对齐 superpowers 主形态） */
-const REPO_SKILL_DIR_CANDIDATES = [
+/** 仓库内候选技能目录（先命先止；skills/ 置顶对齐 superpowers 主形态；五兼容根取装载根清单单点
+ *  PROJECT_SKILL_ROOTS_ASC 的逆序=装载优先级降序（.sunshinex 最优先），与装载面遮蔽序同源——
+ *  旧本地清单 .claude 先于 .agents 与装载序不一致，本次随单点对齐） */
+const REPO_SKILL_DIR_CANDIDATES: readonly string[] = [
   'skills',
-  path.join('.sunshinex', 'skills'),
-  path.join('.claude', 'skills'),
-  path.join('.agents', 'skills'),
-  path.join('.codex', 'skills'),
-  path.join('.cursor', 'skills'),
-] as const;
+  ...PROJECT_SKILL_ROOTS_ASC.map((dot) => path.join(dot, 'skills')).reverse(),
+];
 
 const SKILL_ID_RE = /^[A-Za-z0-9._-]+$/;
 

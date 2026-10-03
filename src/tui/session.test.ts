@@ -11,6 +11,7 @@ import { ModelSwitcher } from '../model/catalog';
 import { Harness } from '../harness';
 import { TaskRegistry } from '../harness/tasks';
 import { RunOutcome, TuiRuntime } from './runtime';
+import { SLASH_COMMANDS } from './slash-commands';
 import type { ChatRequest } from '../types';
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
@@ -246,8 +247,18 @@ test('会话控制器：/help 列出全部内置命令（SLASH_COMMANDS 同源�
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
     await ctrl.submit('/help');
     const text = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
-    for (const c of ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off']) {
+    for (const c of ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/kb-index', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off']) {
       assert.ok(text.includes(c), `missing ${c}`);
+    }
+    // 反向断言（批A D1）：/help 逐命令一行的文案里，每个 '/' 起始行的命令 token 必须 ∈ SLASH_COMMANDS——
+    // 文案先行、清单缺席的三源漂移（terminal-setup 病根）从此在两侧任一漂移时即红
+    const tokens = text.split('\n')
+      .map((l) => l.trimStart())
+      .filter((l) => l.startsWith('/'))
+      .map((l) => l.split(/\s+/)[0]!);
+    assert.ok(tokens.length >= 20, 'help 应逐命令一行（命令行 token 全量采集）');
+    for (const tok of tokens) {
+      assert.ok(SLASH_COMMANDS.includes(tok), `/help 文案命令 ${tok} 未登记 SLASH_COMMANDS 清单`);
     }
     assert.ok(!/\/model effort|\/memory add|\/memory rm|\/memory gc|\/memory on\b|\/memory off\b/.test(text), '旧子命令语法零残留');
   } finally {
@@ -574,8 +585,8 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
       },
     });
     harness.context.appendChain([
-      { action: 'read', observation: 'Y'.repeat(2000) },
-      { action: 'read', observation: 'Z'.repeat(2000) },
+      { action: 'tool-result', observation: 'Y'.repeat(2000) },
+      { action: 'tool-result', observation: 'Z'.repeat(2000) },
     ]);
     const fake: TuiRuntime = {
       harness,
@@ -599,11 +610,11 @@ test('会话控制器：/compact 非真实模型通道走确定性压缩（门�
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const ctx = ctrl.runtime.harness.context;
-    ctx.appendChain([{ action: 'read', observation: 'Y'.repeat(2000) }]);
+    ctx.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(2000) }]);
     await ctrl.submit('/compact');
     assert.equal(ctx.chainView().length, 0, '链前缀已折叠');
     const sum = ctx.assemble().find((i) => i.content.startsWith('[Compacted summary'));
-    assert.ok(sum && sum.content.includes('- [history] 1: read -> '), '确定性 join 回退');
+    assert.ok(sum && sum.content.includes('- [history] 1: tool-result -> '), '确定性 join 回退');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

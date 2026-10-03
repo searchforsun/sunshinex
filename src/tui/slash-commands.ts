@@ -2,8 +2,9 @@ import { t } from '../i18n';
 
 /** 内置斜杠命令清单唯一源（规格 2026-09-22-skill-as-command D6）：
  *  App 重导出保持既有 import 路径（components/App），session 消费同一单点防双清单漂移；
- *  数组内容与顺序零漂移（原 components/App.tsx 声明照搬），顺序即 Tab 循环顺序。 */
-export const SLASH_COMMANDS = ['/help', '/init', '/status', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
+ *  顺序即 Tab 循环顺序（handleSlash 分支与 /help 文案的相邻排布同源：/terminal-setup 紧随 /status，
+ *  2026-10-03 批A D1 补登——实现与 /help 文案早已在场，清单缺席即三源漂移病根）。 */
+export const SLASH_COMMANDS = ['/help', '/init', '/status', '/terminal-setup', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/kb-index', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
 
 /** 内置命令描述（2026-09-30 纵向命令面板）：键为去斜杠命令词，值为运行期求值的本地化描述——
  *  t() 运行期求值防语言装配冻结（先例：approvalSelectorOptions）；文案与 slashHelp 同源口径收一行为限 */
@@ -12,6 +13,7 @@ export function slashCommandDescriptions(): Record<string, string> {
     help: t('show available commands', '查看可用命令'),
     init: t('analyze & write SUNSHINE.md', '分析生成/完善 SUNSHINE.md'),
     status: t('session & ledger summary', '会话与账本摘要'),
+    'terminal-setup': t('configure terminal keys (Shift+Enter newline, Windows Terminal)', '配置终端键位（Shift+Enter 换行，Windows Terminal）'),
     tasks: t('list background tasks', '列出后台任务'),
     skill: t('load a skill into context', '加载技能进上下文'),
     new: t('new session (soft reset)', '新会话（软重置）'),
@@ -26,6 +28,7 @@ export function slashCommandDescriptions(): Record<string, string> {
     'model-tier': t('switch model tier', '切换模型档位'),
     'model-effort': t('switch reasoning effort', '切换思考强度'),
     'add-dir': t('extend trusted directories', '扩展信任目录'),
+    'kb-index': t('build the knowledge-base index', '构建知识库索引'),
     memory: t('list persistent memories', '列出持久记忆'),
     'memory-add': t('add a memory', '添加记忆'),
     'memory-rm': t('delete memories (multi-select)', '删除记忆（多选卡）'),

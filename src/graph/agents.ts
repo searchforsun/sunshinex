@@ -1,9 +1,7 @@
 import { AgentRole, GraphDeps, GraphNodeOutput } from '../types';
 import { GraphNode } from './engine';
-import { AgentRegistry, ROLE_PRESETS, SubagentRunner, rolePreset } from '../harness/subagent';
+import { AgentRegistry, SubagentRunner, rolePreset } from '../harness/subagent';
 import { reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
-
-export { ROLE_PRESETS };
 
 export interface RoleAgentOpts {
   maxSteps?: number;

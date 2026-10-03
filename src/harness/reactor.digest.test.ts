@@ -5,7 +5,7 @@ import { buildStepDigest, StepRecord } from './reactor';
 test('digest：取尾 20 步、单步 itemChars 截断（未触总长上限时步数守恒）', () => {
   const steps: StepRecord[] = Array.from({ length: 25 }, (_, i) => ({
     step: i + 1,
-    action: 'read',
+    action: 'tool-result',
     observation: `line-${i} ${'x'.repeat(300)}`,
   }));
   // 总长上限放宽到 4000：本用例只验「取尾 + 单步截断」；总长面由下一用例单独验
@@ -16,14 +16,14 @@ test('digest：取尾 20 步、单步 itemChars 截断（未触总长上限时�
   assert.ok(lines[0].includes('line-5'), '取尾：保留最近 20 步（自第 6 步起）');
   assert.ok(lines[19].includes('line-24'));
   assert.ok(lines.every((l) => l.length <= 168), '单步 = 前缀 + itemChars 上限');
-  assert.equal(lines[0].length, '[read] '.length + 120, '单步 = 前缀 + itemChars 上限（itemChars 截观察首行）');
+  assert.equal(lines[0].length, '[tool-result] '.length + 120, '单步 = 前缀 + itemChars 上限（itemChars 截观察首行）');
   assert.ok(d.length <= 4000);
 });
 
 test('digest：总长超 totalChars 时自头部截断、保尾部', () => {
   const steps: StepRecord[] = Array.from({ length: 25 }, (_, i) => ({
     step: i + 1,
-    action: 'read',
+    action: 'tool-result',
     observation: `line-${i} ${'x'.repeat(300)}`,
   }));
   const d = buildStepDigest(steps, { maxSteps: 20, itemChars: 120, totalChars: 1500 });

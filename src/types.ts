@@ -24,13 +24,6 @@ export interface ToolCallSpec {
   argsJson: string;
 }
 
-/** 一轮模型侧动作（adapter 聚合产物：旁白与工具调用同轮，function calling 探针④） */
-export interface StructuredAction {
-  /** 本轮旁白（phase 载体；空串 = 该轮无 ▶ 行） */
-  content: string;
-  toolCalls: ToolCallSpec[];
-}
-
 /** OpenAI 协议兼容消息（D1：链为唯一事实源，消息为 buildMessages 的派生视图形态）。
  *  assistant.reasoning 是思考模式的协议扩展载荷（DeepSeek/Qwen 系 reasoning_content）：交错思考端点
  *  的硬约束是字段在场——''（空串）表示该轮零思考但字段须传、undefined 表示不传（旧任务轮/非思考端点，
@@ -150,7 +143,7 @@ export type LoopResult = 'pass' | 'fail' | 'done';
 /* ===== Graph 编排层（阶段三） ===== */
 
 /** Graph 节点类型 */
-export type GraphNodeKind = 'loop' | 'agent' | 'gate' | 'ci';
+export type GraphNodeKind = 'loop' | 'agent' | 'gate';
 
 /** 节点执行产物（节点间数据流载体） */
 export interface GraphNodeOutput {
@@ -195,21 +188,6 @@ export interface GraphTermination {
 /** Graph 节点依赖容器（结构复用 LoopDeps 五件套，模型/工具/上下文同源零旁路） */
 export type GraphDeps = import('./loop/engine').LoopDeps;
 
-/** 工作流节点定义（数据形态；经 validateWorkflow 校验、instantiateWorkflow 装配执行） */
-export interface GraphNodeDef {
-  id: string;
-  kind: GraphNodeKind;
-  deps: string[];
-  config: Record<string, unknown>;
-}
-
-/** 工作流定义：零依赖数据契约（TS 类型 + 手写校验器等义 JSON Schema 语义，spec §3.6） */
-export interface WorkflowDef {
-  name: string;
-  nodes: GraphNodeDef[];
-  termination: GraphTermination;
-}
-
 /** 三档算力档位（模型路由） */
 export type ModelTier = 'small' | 'medium' | 'large';
 
@@ -218,9 +196,6 @@ export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | '
 
 /** 输出样式分叉（交互面级 run 常量，进稳定段）：terminal=TUI 文字面（围栏带语言标签、图示走 ASCII）；缺省=仅 Markdown 通用约定 */
 export type OutputStyle = 'terminal';
-
-/** 记忆层级 */
-export type MemoryLevel = 'working' | 'episodic' | 'skill';
 
 /** todo_write 条目状态（规格 D5）：三态——「同刻恰一个 in_progress」为使用纪律，由工具 description 承载 */
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
@@ -314,6 +289,9 @@ export interface KbHit {
   id: string;
   text: string;
   score: number;
+  /** 来源文件相对路径（D28 下泄）：索引期随 meta 落库、检索期回填——模型引用命中出处全靠它；
+   *  旧索引/无 meta 的命中不带该键（可选字段，消费方不得假定在场） */
+  file?: string;
 }
 
 /** 技能引用（运行时上下文注入载体：id 定位技能，params 填充 manifest.params 模板形参） */
@@ -327,6 +305,7 @@ export interface McpServerConfig {
   name: string;
   command?: string;
   args?: string[];
+  /** 仅 stdio 传输使用（子进程环境，叠加继承宿主环境，cfg 键覆盖宿主同名）；http/sse 无子进程不消费 */
   env?: Record<string, string>;
   transport?: 'stdio' | 'http' | 'sse';
   url?: string;
@@ -380,9 +359,9 @@ export interface ToolBackend {
 /** 权限决策 */
 export type PermissionDecision = 'allow' | 'ask' | 'deny';
 
-/** 上下文条目 */
+/** 上下文条目（kind 联合只登记有生产者的四类；tool/result 权重无生产者已随 S8① 清出） */
 export interface ContextItem {
-  kind: 'system' | 'instruction' | 'memory' | 'history' | 'tool' | 'result';
+  kind: 'system' | 'instruction' | 'memory' | 'history';
   content: string;
   meta?: Record<string, unknown>;
 }
@@ -393,8 +372,11 @@ export interface ContextItem {
 export interface RuntimeSafetyGate {
   execCwd(): string;
   execCommandAllowed(cmd: string): { allowed: true } | { allowed: false; reason: string };
-  /** 后台 exec 分支的 landlock 包装（spec 5.4；前台在 chain.run 内联；缺省无围栏） */
+  /** 后台 exec 分支的 landlock 包装（spec 5.4；前台经 run 转发在链内取围栏；缺省无围栏） */
   execWrap?(cmd: string): Promise<{ file: string; args: string[] } | null>;
+  /** 前台 exec 执行面转发（D19-a）：判界+landlock 包装在链内 run 单点——隔离子链（withRoot 克隆）的
+   *  写围栏随执行期链锚专属树，不再锚闭包装配链（其可写根恒主根）；缺省回落调用方闭包链（旧行为） */
+  run?(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>>;
 }
 
 /** 工具执行器签名（经安全链执行；第二参为执行期安全缝，registry 注入） */
@@ -409,9 +391,26 @@ export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget
 
 /** TUI 提交的收口投影：只暴露会话层需要的「是否完成 / 终答 / 用量 / 终止原因」，不泄漏引擎结果内部形态 */
 /** 跨 run 链式执行的步骤记录（与 Reactor StepRecord 同形；类型自包含，types 层不反向依赖 harness） */
+
+/** 链行动作词汇（N11③ 单点登记）：写链方按此登记；收窄 HistoryStep.action 使新动作进链前须在此扩员，
+ *  消费面（messages.ts buildMessages）按动作分流——note/notice 同义分裂由此可检 */
+export type ChainAction =
+  | 'task' /* 指令行：任务/plan 步/goal（reactor/subagent/tui/context/graph） */
+  | 'reply' /* 收束正文（reactor） */
+  | 'note' /* 运行备注（reactor/subagent/tui/graph） */
+  | 'notice' /* 用户可见提示（reactor/loop/harness/context/tui） */
+  | 'phase' /* 模型旁白（reactor，messages.ts PHASE_ACTION） */
+  | 'tool-call' /* 工具调用行（reactor，messages.ts TOOL_CALL_ACTION） */
+  | 'tool-result' /* 工具观察行（reactor，messages.ts TOOL_RESULT_ACTION） */
+  | 'deficit' /* 修正环验收缺口（loop check） */
+  | 'node' /* graph/子代理节点结论行（graph nodes/subagent） */
+  | 'memory' /* 记忆注入行（subagent fork 前缀） */
+  | 'role' /* 角色框定行（subagent fork 前缀） */
+  | 'skill'; /* 技能注入行（tui session） */
+
 export interface HistoryStep {
   step: number;
-  action?: string;
+  action?: ChainAction;
   observation: string;
   /** 该轮模型思考原文（思考模式端点的 reasoning_content）：工具调用续轮回传的载荷载体，
    *  挂在 phase 行（在场时）或批首 tool-call 行；buildMessages 仅当前任务轮透出（旧轮剥离防膨胀） */

@@ -6,7 +6,6 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   createWorktree,
-  detectIsolation,
   isDirty,
   isValidWorktreeName,
   readRegistry,
@@ -34,7 +33,7 @@ function makeRepo(): string {
   return root;
 }
 
-test('createWorktree：合法名建树 + 分支分叉 + 建树后 detectIsolation 为真', () => {
+test('createWorktree：合法名建树 + 分支分叉 + registry 登记', () => {
   const root = makeRepo();
   const dataDir = mktmp('sunshinex-wt-data-');
   const r = createWorktree(root, dataDir, 'demo', { sessionId: 'sess-1' });
@@ -46,8 +45,7 @@ test('createWorktree：合法名建树 + 分支分叉 + 建树后 detectIsolatio
   assert.ok(fs.existsSync(path.join(tree, 'README.md')), 'worktree 检出主仓文件');
   assert.equal(git(root, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main', '主仓分支不受影响');
   assert.equal(git(tree, 'rev-parse', '--abbrev-ref', 'HEAD'), 'worktree-demo');
-  assert.equal(detectIsolation(tree), true, '建树后 git-dir ≠ git-common-dir');
-  assert.equal(detectIsolation(root), false, '主仓检测为假');
+  assert.ok(fs.existsSync(path.join(tree, '.git')), 'linked worktree 的 .git 指针文件在场');
   const entry = readRegistry(dataDir).find((e) => e.name === 'demo');
   assert.ok(entry, 'registry 登记在场');
   assert.equal(entry.sessionId, 'sess-1');
@@ -76,14 +74,6 @@ test('createWorktree 错误码矩阵：EXISTS / INVALID_NAME / NOT_A_REPO / GIT_
   const g = createWorktree(unborn, mktmp('sunshinex-wt-data4-'), 'ok-name');
   assert.ok(!g.ok && g.error.code === 'WORKTREE_GIT_FAIL', `expected GIT_FAIL, got ${g.ok ? 'ok' : g.error.code}`);
   assert.ok(g.error.message.length > 0, 'message 附 stderr 截断');
-});
-
-test('detectIsolation：submodule（superproject 非空）按普通仓处理', () => {
-  const child = makeRepo();
-  const parent = makeRepo();
-  git(parent, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', child, 'sub');
-  git(parent, '-c', 'user.email=t@local', '-c', 'user.name=t', 'commit', '-q', '-m', 'add sub');
-  assert.equal(detectIsolation(path.join(parent, 'sub')), false, 'submodule 不是 worktree（Step 0 护栏）');
 });
 
 test('removeWorktree：干净即删（含分支 + registry 移除）；脏即保留并记 keptReason', () => {

@@ -25,18 +25,18 @@ src/
   loop/      # Loop 引擎（生成→校验→修正）
   graph/     # DAG 多角色协作编排
   model/     # 模型适配 + 三档算力路由
-  config/ storage/ plugins/   # 配置装载、存储底座、插件加载
+  config/ storage/   # 配置装载、存储底座
 ```
 
-分层依赖：`graph → loop → harness → model / storage / plugins`；Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。文件级结构详见 [CLAUDE.md](CLAUDE.md)。
+分层依赖：`graph → loop → harness → model / storage`；Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。文件级结构详见 [CLAUDE.md](CLAUDE.md)。
 
 ## 设计亮点
 
 - **统一主链，而非能力拼接**：Claude Code 的指令分层/路径规则、Codex 的算力路由/多执行后端、Hermes 的持久记忆/自我验证，均被拆解为「能力本质」后映射到主链对应环节（Context / Loop / Tool / Safety / Memory），通过统一接口协同。
 - **单一数据流、无旁路**：上下文只能从 Context 进、动作只能从 Tool 出、执行必经 Safety、记忆只走 Memory，每条验收可证伪（反例即不合格）。
 - **工程纪律**：TypeScript strict、CommonJS、`node --test`、TDD 先行；依赖优先 node: 内置、引入优秀第三方不设禁区；TUI/GUI 一律开源组件优先，好用易用对标明星产品（详见 [CLAUDE.md](CLAUDE.md)）。
-- **生产级底座**：项目感知、权限三态（deny→ask→allow）、dry-run、上下文窗口压缩（分块确定性 + checksum）、模型 SDK 可插拔。
-- 能力优先的文件权限边界：全盘可读、写面信任域 + 审批流、用户自定义 permissions 规则、Linux 下 Landlock 内核围栏（详见 MANUAL「permissions 权限规则与信任目录」）
+- **生产级底座**：项目感知、权限三态（deny→ask→allow）、上下文窗口压缩（分块确定性 + checksum）、模型 SDK 可插拔。
+- 能力优先的文件权限边界：全盘可读、写面信任域 + 审批流、用户自定义 permissions 规则、Linux 下 Landlock 内核围栏（详见 MANUAL 第六节「权限模式与审批」）
 
 ## 产品形态（v1.0 个人开发者版）
 
@@ -45,7 +45,7 @@ src/
 - **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，ink + React 构建，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台，开源组件优先）。TUI 内 `/goal <目标>` 触发标准验收修正环，目标支持自然语言条件。
 - **云本地分工**：任意 OpenAI 协议兼容供应商（`settings.json` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
-- **生产级特性**：dry-run 预览、分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发。
+- **生产级特性**：分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发。
 
 ## 快速开始
 
@@ -125,7 +125,7 @@ scripts/release.mjs --version 0.3.1 --clobber  # 同版本重发（覆盖附件�
 ## 扩展机制
 
 - **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
-- **子代理**：`agents/{id}/agent.md` 注册制；**插件**：`plugins/{id}/plugin.json`；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
+- **子代理**：`agents/{id}/agent.md` 注册制；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
 **问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。
 
 ## 文档导航

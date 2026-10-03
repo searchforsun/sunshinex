@@ -7,7 +7,7 @@ export interface ConformanceOptions {
 }
 
 /**
- * 全后端必过的存储契约套件：写入/召回排序、TopK 语义、幂等覆盖、持久化往返、损坏恢复。
+ * 全后端必过的存储契约套件：写入/召回排序、TopK 语义、幂等覆盖、meta 完整往返、持久化往返、损坏恢复。
  * 「可插拔」由第二个真实后端通过本套件证明（spec §3.4）；P1 sqlite-vec 复用，不改断言。
  */
 export function runVectorStoreConformance(create: () => VectorStore, opts: ConformanceOptions = {}): void {
@@ -40,13 +40,28 @@ export function runVectorStoreConformance(create: () => VectorStore, opts: Confo
   assert.equal(s2.size(), 3, 'load 后应恢复全部条目');
   assert.equal(s2.search([0.9, 0.9], 1)[0].text, 'alpha-v2', '持久化后检索语义一致');
 
-  // 损坏恢复：存储损坏后 load 不抛、回退空库（索引可由 indexDir 重建，不阻塞装配）
+  // meta 完整往返（J8 契约锁）：upsert 委托的全量 meta（调用方形态 {text, file}）内存态可读回，
+  // 且经 flush → 独立实例 load 持久化往返后逐键等值——sqlite-vec 的 kb_meta 曾只存 text 丢 file，本段两后端同源锁死
+  s2.upsert('m1', [1, 0], { text: 'meta-doc', file: 'docs/a.md' });
+  assert.equal(s2.metaOf('m1')?.['text'], 'meta-doc', '内存态 metaOf 应读回 text 键');
+  assert.equal(s2.metaOf('m1')?.['file'], 'docs/a.md', '内存态 metaOf 应读回 file 键');
+  s2.upsert('m1', [0, 1], { text: 'meta-doc-v2', file: 'docs/b.md' });
+  assert.equal(s2.metaOf('m1')?.['file'], 'docs/b.md', '覆盖 upsert 应整体替换 meta');
+  s2.flush();
   s2.close?.();
+  const s3 = create();
+  s3.load();
+  assert.equal(s3.metaOf('m1')?.['text'], 'meta-doc-v2', '持久化往返后 text 键等值');
+  assert.equal(s3.metaOf('m1')?.['file'], 'docs/b.md', '持久化往返后 file 键等值（meta 不丢失）');
+  assert.equal(s3.metaOf('no-such-id'), undefined, '不存在的条目 metaOf 应返回 undefined');
+  s3.close?.();
+
+  // 损坏恢复：存储损坏后 load 不抛、回退空库（索引可由 indexDir 重建，不阻塞装配）
   if (opts.corruptStorage) {
     opts.corruptStorage();
-    const s3 = create();
-    assert.doesNotThrow(() => s3.load(), '损坏存储的 load 必须降级不抛');
-    assert.equal(s3.size(), 0, '损坏存储应回退空库');
-    s3.close?.();
+    const s4 = create();
+    assert.doesNotThrow(() => s4.load(), '损坏存储的 load 必须降级不抛');
+    assert.equal(s4.size(), 0, '损坏存储应回退空库');
+    s4.close?.();
   }
 }

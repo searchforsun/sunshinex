@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getLanguage, setLanguage } from '../../i18n';
 import { ContextChunk } from './window';
-import { buildSummaryPrompt } from './summarizer';
+import { buildSummaryPrompt } from '../prompts/summarizer';
 
 function chunk(summary: string, type = 'history'): ContextChunk {
   return { id: summary.slice(0, 8), summary, type, priority: 1 };

@@ -16,7 +16,10 @@ import { MemoryScope } from '../memory/paths';
 
 /** 工具入参路径归一单点：绝对路径原样（信封即语义），相对路径按项目根解析——兑现 schema 声明的
  *  "relative to the project root"。缺此归一相对路径按 Node 进程 cwd 解析，从父目录启动会话时
- *  read/write 与 glob/exec（程序侧锚 root/execCwd）锚点分裂，出现「glob 看得到、read 读不到」 */
+ *  read/write 与 glob/exec（程序侧锚 root/execCwd）锚点分裂，出现「glob 看得到、read 读不到」。
+ *  桩链兜底（C4 裁决·保留实现）：生产链 safePath 恒注入绝对路径使本函数恒 no-op，存活的理由是
+ *  测试桩链直调 executor 时仍需相对路径归一；锚的是**装配根**而非安全链活动根（worktree 会话中
+ *  与 safePath 的活动根语义有差——生产面不可达，桩面语义如此声明） */
 function resolveProjectPath(root: string, p: string): string {
   return path.isAbsolute(p) ? p : path.join(root, p);
 }
@@ -25,6 +28,12 @@ import { resolveDataDir } from '../../config/data-dir';
 
 /** §9.3 快照过期回执文案（写链恒英文单语——CLAUDE.md §15；置于模块级避免每次 builtinTools 调用重建） */
 const SUNSHINE_STALE_NOTICE = 'SUNSHINE.md rewritten — session snapshot is stale until the next refresh point';
+
+/** exec 账本业务标签单点：命令首词（trim + 空白分段首段，空命令回退整串）——直接启动与超时转后台
+ *  两条登记路径共用，防两处 `cmd.trim().split(...)` 各自漂移 */
+function execLabel(cmd: string): string {
+  return cmd.trim().split(/\s+/)[0] ?? cmd;
+}
 
 /** §9.3 触发判据：目标是否为项目根的 SUNSHINE.md。两侧同基准：file 已是安全链 realpath 归一的绝对路径（safePath 注入），
  *  root 侧取安全链构造期归一的 rootReal（root 含符号链接段时字面比较会漏报）；归一异常按 false 兜底（不误报） */
@@ -46,8 +55,33 @@ export type MemoryWriteTool = (input: { type: string; content: string; descripti
   notice: string | null;
 }>;
 
-/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准；webSearch 供测试注入桩 Provider，缺省按环境解析（DDG/Bing）；archive 为工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；memory 为记忆写入接缝（第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；memoryWrite 为 memory_write 工具接缝（第 8 可选参，缺省不注入＝工具清单与第 7 参引入前逐字节一致，注入才注册 memory_write；执行期以本参数捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链） */
-export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBase, webSearch?: WebSearchProvider, archive?: ToolOutputArchive, skills?: SkillsFacade, memory?: MemoryWriteSeam, memoryWrite?: MemoryWriteTool, ask?: AskUserSeam, writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] }, activeRoot?: () => string | null, todos?: { set(items: { text: string; status: TodoStatus }[]): void }, tasks?: TaskRegistry): RegisteredTool[] {
+/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准。装配接缝收敛为单一 opts 具名对象（D25/H6：原 13 位置参形态下相邻同类型接缝（如 kb/webSearch）位置错位编译期不报错，具名后错位即失配）：
+ *  - kb：kb_search 知识库接缝（D18 接线），缺省不注入时 kb_search 按既有契约降级 kb_not_configured；
+ *  - webSearch：websearch 桩 Provider 接缝，供测试注入，缺省按环境解析（DDG/Bing）；
+ *  - archive：工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；
+ *  - skills：skill 工具门面接缝，缺省不注入时 skill 工具报 skill_not_configured；
+ *  - memory：记忆写入接缝（原第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；
+ *  - memoryWrite：memory_write 工具接缝（原第 8 可选参，缺省不注入＝工具清单与 memory 接缝引入前逐字节一致，注入才注册 memory_write；执行期以本字段捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链）；
+ *  - ask：ask_question 问询接缝（原第 9 可选参）；writeSnapshot：write 影子快照接缝；activeRoot：活动根取值接缝（glob/worktree 锚点）；todos：todo_write 接缝；tasks：后台任务账本接缝。 */
+export function builtinTools(
+  safety: SafetyChain,
+  root: string,
+  opts: {
+    kb?: KnowledgeBase;
+    webSearch?: WebSearchProvider;
+    archive?: ToolOutputArchive;
+    skills?: SkillsFacade;
+    memory?: MemoryWriteSeam;
+    memoryWrite?: MemoryWriteTool;
+    ask?: AskUserSeam;
+    writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] };
+    activeRoot?: () => string | null;
+    todos?: { set(items: { text: string; status: TodoStatus }[]): void };
+    tasks?: TaskRegistry;
+  } = {},
+): RegisteredTool[] {
+  // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
+  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -78,7 +112,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           if (tasks === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background execution requires a task registry (not wired in this assembly)');
           if (backend.execBackground === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background exec requires a backend with execBackground');
           const wrap = gateView.execWrap !== undefined ? await gateView.execWrap(cmd) : null;
-          const task = tasks.submit({ kind: 'exec', label: cmd.trim().split(/\s+/)[0] ?? cmd, ownerRun: tasks.currentOwner() });
+          const task = tasks.submit({ kind: 'exec', label: execLabel(cmd), ownerRun: tasks.currentOwner() });
           const started = await backend.execBackground(cmd, {
             cwd: gateView.execCwd(),
             ...(wrap !== null ? { wrap } : {}),
@@ -89,14 +123,17 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           // 轮询法在回执点下发（触发才付费）：参数描述只留输入输出契约，后台工作法随两张启动回执走（本行与下方超时转后台行）
           return execOut(`task ${task.id} started (output: ${task.outputFilePath}); poll that file (it ends with [exit N] when the command finishes) or block with task_wait`);
         }
-        // exec cwd 判定单点（规格 §11）：执行期安全缝锚 cwd——fork 子链换根克隆即锚专属树，缺省装配根
         // 前台超时转后台（规格 D5，对标 CC）：账本在场且非 sleep 开头时带 timeoutToBackground，到点不杀进程、登记转后台
         const wantsBg = tasks !== undefined && !/^\s*sleep(?=\s|$)/.test(cmd.trim());
-        const r = await safety.run(cmd, { cwd: gateView.execCwd(), ...(wantsBg ? { timeoutToBackground: true } : {}) });
+        // 前台执行走运行期链视图（D19-a）：run 内联判界+landlock 包装——fork 子链（withRoot 克隆）的写围栏
+        // 随执行期链锚专属树；旧形态走闭包装配链（其可写根恒主根）架空隔离承诺。视图缺 run（直调桩）回落装配链，行为不变。
+        // 两分支都是成员调用（this 绑定）——不可提取 gateView.run 函数引用（链实例成员解绑即 this 丢失）
+        const fgOpts = { cwd: gateView.execCwd(), ...(wantsBg ? { timeoutToBackground: true } : {}) };
+        const r = await (gateView.run !== undefined ? gateView.run(cmd, fgOpts) : safety.run(cmd, fgOpts));
         if (r.ok && r.value.timedOut && r.value.child) {
           const child = r.value.child;
           const ledger = tasks!;
-          const task = ledger.submit({ kind: 'exec', label: cmd.trim().split(/\s+/)[0] ?? cmd, ownerRun: ledger.currentOwner() });
+          const task = ledger.submit({ kind: 'exec', label: execLabel(cmd), ownerRun: ledger.currentOwner() });
           if (r.value.stdout !== '') ledger.append(task.id, r.value.stdout);
           if (r.value.stderr !== '') ledger.append(task.id, r.value.stderr);
           child.stdout?.on('data', (c: Buffer) => ledger.append(task.id, c.toString('utf8')));
@@ -233,8 +270,8 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           const content = backend.readFile(target);
           const lines = content.split('\n').filter((l) => new RegExp(pattern).test(l));
           // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
-          if (lines.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}; try a shorter substring of the expected text`);
-          return execOut(lines.join('\n'));
+          if (lines.length === 0) return execOut(fitOut('grep', `no matches for pattern "${pattern}" in ${target}; try a shorter substring of the expected text`));
+          return execOut(fitOut('grep', lines.join('\n')));
         }
         // 目录模式复用后端遍历：与 glob 工具同一跳过集（node_modules/.git/dist），glob 过滤与遍历匹配口径一致
         const files = backend.listFiles(target, globFilter ?? '**/*');
@@ -250,13 +287,13 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
           const lines = content.split('\n');
           for (let i = 0; i < lines.length; i++) {
             if (!re.test(lines[i])) continue;
-            if (out.length >= 200) return execOut(out.join('\n') + '\ntruncated: true');
+            if (out.length >= 200) return execOut(fitOut('grep', out.join('\n') + '\ntruncated: true'));
             out.push(`${rel}:${i + 1}:${lines[i]}`);
           }
         }
         // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
-        if (out.length === 0) return execOut(`no matches for pattern "${pattern}" in ${target}; try a shorter substring${globFilter ? ' or drop the glob filter' : ''}`);
-        return execOut(out.join('\n'));
+        if (out.length === 0) return execOut(fitOut('grep', `no matches for pattern "${pattern}" in ${target}; try a shorter substring${globFilter ? ' or drop the glob filter' : ''}`));
+        return execOut(fitOut('grep', out.join('\n')));
       },
     },
     {
@@ -272,7 +309,9 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       description: 'List files under the project root matching a glob pattern (preferred over exec ls/find for directory listing); returned paths are relative to the project root (feed them back with the project root prepended for absolute access); oversized listing is truncated and saved to disk (full output path shown in the result)',
       category: 'read',
       executor: async (input: ToolInput) => {
-        const files = backend.listFiles(root, String(input.pattern ?? '*'));
+        // glob 锚活动根（D19-b）：worktree 会话中与 read/grep/exec 同树（chain PATH_TOOLS 无 Glob、无 safePath
+        // 注入——锚点须在此自取活动根），缺省回装配根；防「glob 看得到、read 读不到」的锚点分裂变体
+        const files = backend.listFiles(activeRoot?.() ?? root, String(input.pattern ?? '*'));
         // 零命中附提示行：避免「ok 但静默空」被误判为通道故障
         if (files.length === 0) return execOut(`no files match pattern "${String(input.pattern ?? '*')}" under project root; try a wildcard such as **/*fragment*`);
         return execOut(fitOut('glob', files.join('\n')));
@@ -331,10 +370,10 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
         },
       },
       name: 'kb_search',
-      description: 'Local vector knowledge-base search: input { query, topK? }, stdout is KbHit[] JSON; degrades to kb_not_configured when not configured (never blocks other tools)',
+      description: 'Local vector knowledge-base search: input { query, topK? }, stdout is KbHit[] JSON (id/text/score plus file = source relative path when indexed); degrades to kb_not_configured when not configured (build the index with `sunshinex kb-index <dir>` or the /kb-index command; never blocks other tools)',
       category: 'read',
       executor: async (input: ToolInput) => {
-        if (!kb) throw new CodedToolError('kb_not_configured', 'Knowledge base not configured: EMBEDDING_* env required and indexDir must be indexed');
+        if (!kb) throw new CodedToolError('kb_not_configured', 'Knowledge base not configured: set the SUNSHINEX_EMBEDDING_* env (see MANUAL section 2) and build the index with kb-index');
         const hits = await kb.search(String(input.query ?? ''), Number(input.topK ?? 5));
         return execOut(JSON.stringify(hits));
       },
@@ -386,13 +425,13 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
       return execOut(`todo list updated: ${items.length} items (${done} completed, ${wip} in progress)`);
     },
   });
-  // 第 8 可选参（规格 §3.7 memory_write）：缺省不注入＝清单与第 7 参引入前逐字节一致（对齐既有「可选参两态不变」不变式）；
+  // memoryWrite 接缝（规格 §3.7 memory_write，原第 8 可选参）：缺省不注入＝清单与 memory 接缝引入前逐字节一致（对齐既有「可选接缝两态不变」不变式）；
   // 注入才注册——接缝必在（无「未配置」分支），错误一律经 CodedToolError 走 Result 错误通道，永不炸任务
   // 记忆 scope 透传要求（Task 6 接线）：executor 闭包持有的是**装配期**那条链的 memoryScope，而子代理 fork 的收窄链
   // 只在执行期经 registry.execute(safety) 注入（executor 不接收运行期链）——故子代理隔离须以带 scope 的链装配子注册表
   // （与 memory-write.test.ts 的 scoped 用例同形态），或另行为 executor 打开运行期链通道；derive() 共享 executor 不够。
   if (memoryWrite !== undefined) {
-    const memoryWriter: MemoryWriteTool = memoryWrite; // 窄化取别名：闭包内不依赖外部窄化（参数可变，TS 不跨回调保留）
+    const memoryWriter: MemoryWriteTool = memoryWrite; // 窄化取别名（历史形态保留）：opts 解构为 const 后 TS 已能跨回调保留窄化，别名仅为最小扰动保留
     tools.push({
       parameters: {
         type: 'object',
@@ -427,7 +466,7 @@ export function builtinTools(safety: SafetyChain, root: string, kb?: KnowledgeBa
     });
   }
 
-  // ask_question 工具（AskQuestion 线 T2）：第 9 可选参注入才注册（两态不变式沿第 7/8 参先例，旧直调零扰动）。
+  // ask_question 工具（AskQuestion 线 T2）：ask 接缝注入才注册（原第 9 可选参；两态不变式沿 memory/memoryWrite 接缝先例，旧直调零扰动）。
   // 问询即用户交互通道本身（规格 D1：零 IO 副作用，manual/plan 免审批沿安全链 ask_question 分支）；
   // 入参钳制与观察文案单点在此，挂起/渲染/CLI 回落全部在 seam 消费方（Harness 装配层）
   if (ask !== undefined) {

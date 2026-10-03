@@ -21,11 +21,6 @@ export type TranscriptSeg =
   | { kind: 'think'; text: string; detail?: string }
   | { kind: 'meta'; text: string };
 
-/** 段行数估算（视口预算用）：md/result 段按源行数 + marginBottom 档 1、结构行恒 1（call 与紧随 result 贴排） */
-export function estimateSegLines(s: TranscriptSeg): number {
-  return s.kind === 'md' || s.kind === 'result' ? s.text.split('\n').length + 1 : s.kind === 'call' ? 1 : 2;
-}
-
 /** detail/转录字符串行 → 结构段：⎿ 前缀为 result、✻ 前缀为思考摘要（后随 4 空格缩进续行折为其 detail）、
  *  4 空格缩进续行折回上一结构行（result 并回正文、meta 并回文本）、首词工具动作为 call、
  *  ⏺ 委派行与统计尾行为 meta，其余正文合并 */

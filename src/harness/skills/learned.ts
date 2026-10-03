@@ -3,6 +3,7 @@ import * as path from 'path';
 import { Result, ok, fail } from '../../result';
 import { resolveDataDir } from '../../config/data-dir';
 import { DEFAULT_LEARNED_SKILL_LIMIT } from '../../config/memory-config';
+import { slugify as asciiSlug } from '../../slug';
 
 const MAX_BODY_CHARS = 2000;
 
@@ -18,19 +19,12 @@ export interface RefinedSkill {
 }
 
 /**
- * goal/name 确定性 slug 化：折叠为 ASCII 小写 slug（`[^a-z0-9]+` → `-`，对标 worktree slugifyLabel 同款口径——
- * 汉字等非 ASCII 一律折叠，防中文目录 id 在跨平台路径与清单出牌面的隐患），截长 40，全折叠回退 learned
- * （撞名避让与清库判断共用同一 slug 面）
+ * goal/name 确定性 slug 化（ASCII 小写、`[^a-z0-9]+` → '-'、截长 40、全折叠回退 'learned'）：
+ * 正则链单点在 src/slug.ts，本处只声明 learned 目录 id 方言参数（learned-extract 运行时依赖本函数，
+ * 撞名避让与清库判断共用同一 slug 面）
  */
 export function slugify(goal: string): string {
-  const slug = goal
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-    .replace(/-+$/g, '');
-  return slug.length > 0 ? slug : 'learned';
+  return asciiSlug(goal, { max: 40, fallback: 'learned' });
 }
 
 function clip(text: string): string {

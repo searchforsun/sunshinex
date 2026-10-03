@@ -86,6 +86,7 @@ function unwrapRedirect(href: string): string {
     const target = u.searchParams.get('uddg');
     return target ? decodeURIComponent(target) : base;
   } catch {
+    // 结果集里混入非法 URL（new URL 抛出）时按「跳过该条」降级（调用方对空串 continue），不使整页解析失败
     return '';
   }
 }

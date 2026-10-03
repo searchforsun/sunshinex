@@ -8,13 +8,12 @@ import { SafetyChain } from './chain';
 import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
-import { DryRun } from './dryrun';
 
 /** 隔离子链执行面判界（规格 2026-09-23-subagent-worktree-isolation §5/D6，对标 CC v2.1.203）：
  * withRoot 换根克隆携带 isolatedRoot 标记——三查仅隔离子链生效，主链与普通子链零介入 */
 
 function chain(root: string, mode: 'manual' | 'dontAsk' = 'dontAsk'): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), new DryRun(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), root);
 }
 
 /** 嵌入命令串的路径形态：sh（git-bash 含）中反斜杠是转义符会被吞掉，统一正斜杠（Windows 原生 git 接受） */

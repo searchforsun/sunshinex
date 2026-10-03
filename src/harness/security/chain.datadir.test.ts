@@ -7,7 +7,6 @@ import { SafetyChain } from './chain';
 import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
-import { DryRun } from './dryrun';
 
 /**
  * 数据目录白名单（规格 D6 + 对齐规格 §4.2）：Read/Grep 放行 dataDir 整子树；
@@ -22,7 +21,7 @@ function withChain(fn: (chain: SafetyChain, root: string, dataDir: string) => vo
   try {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     fn(chain, root, tmp);
   } finally {
     delete process.env.SUNSHINEX_DATA_DIR;

@@ -13,7 +13,6 @@ import {
   windowsBashCandidates,
   windowsPowerShellCandidates,
 } from './sandbox';
-import { DryRun } from './dryrun';
 import { ToolBackend } from '../../types';
 import { spawnSync } from 'child_process';
 
@@ -237,11 +236,6 @@ test('ProcessSandbox 执行不存在命令返回失败', async () => {
   const r = await s.exec('nonexistent_cmd_xyz');
   assert.equal(r.ok, false);
   if (!r.ok) assert.equal(r.error.code, 'EXEC_FAILED');
-});
-
-test('DryRun 预览返回原命令', () => {
-  const d = new DryRun();
-  assert.equal(d.preview('rm -rf /'), 'rm -rf /');
 });
 
 test('ProcessSandbox 是 ToolBackend（name=process，含文件三方法）', () => {

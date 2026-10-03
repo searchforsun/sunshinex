@@ -35,14 +35,18 @@ src/
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildDeps：CLI/TUI/GUI 三面共用）
   paths.ts            # 路径工具单点（isWithin 子树判界，§14）
+  textmatch.ts        # 文本匹配原语单点（escapeRegExp/globToRegex，permissions/rules/sandbox 共用）
+  slug.ts             # slug 折叠单点（ASCII 小写折叠，tasks/worktree/learned 三方言共用）
   i18n.ts             # 外观双语 t(en, zh) 调用时求值（§15）
   config.ts           # SUNSHINE.md 解析器
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
-  tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/highlight 呈现、session-journal/snapshots 会话持久化
+  tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、session-journal/snapshots 会话持久化
   harness/
     index.ts          # Harness 门面（含 SteeringChannel）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
+    sunshine-init.ts  # /init 目标构造器（纯函数产出 goal 文本，模型驱动生成/完善 SUNSHINE.md）
     reactor.ts        # 最小闭环引擎（observe→think→act）
+    guardrail.ts      # 护栏停判纯函数（超时→预算→步数序；终态与文案单点，loop/graph 双引擎共用）
     ledger.ts         # per-run 成本账本（selfcheck usage 行数据源）
     skills.ts         # 技能装载与调度（五根兼容链+全局+学习级、resolve 回退链、清单注入）
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
@@ -57,24 +61,22 @@ src/
     worktree.ts       # git worktree 单点模块（create/remove/list/isDirty/subagentTreeName）
     prompts/          # 提示词模板单点（shared 稳定段共享行；judge/summarizer/memory/learned 一次性调用模板）
     knowledge/        # 本地向量知识库（chunk/store/embed/KnowledgeBase）
-    security/         # guard/policy/rules/modes/sandbox/dryrun/chain + landlock（Linux exec 写围栏）/websearch-endpoint
-    context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/window/session/summarizer（压缩摘要）
+    security/         # guard/policy/rules/modes/sandbox/chain + landlock（Linux exec 写围栏）/websearch-endpoint
+    context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/breakdown（/context 数据面）/window/session/summarizer（压缩摘要）
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
-  graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、workflow.ts、templates.ts
-  model/              # adapter.ts 模型适配 + 三档算力路由；chat-stub.ts 文本协议测试桩
+  graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
+  model/              # adapter.ts 模型适配 + 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
   storage/            # 本地 JSON 存储底座
-  plugins/loader.ts   # 插件加载（plugins/{id}/plugin.json）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
 agents/               # 用户子代理目录（{id}/agent.md，装配期一次性加载 fail-fast）
-plugins/              # 用户插件目录
 SUNSHINE.md          # 项目业务配置
 ```
 
 ## 4. 架构约定
 
-- 分层依赖方向：graph → loop → harness → model / storage / plugins
+- 分层依赖方向：graph → loop → harness → model / storage
 - Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上
-- 插件/技能/子代理通过「目录约定」加载，第三方工具经 MCP 接入（服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`，项目级撞名遮蔽全局）
+- 技能与子代理通过「目录约定」加载，第三方工具经 MCP 接入（服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`，项目级撞名遮蔽全局）
 - 错误通道分域：工具与安全域返回 `Result`（可预期失败显式化）；引擎（Reactor/Loop/Graph）在节点边界 `catch` 后转为节点状态与 `reply` 字段（不可预期失败集中化），两条通道不得跨域混用
 - 运行时装配收敛于 `src/runtime.ts`（buildDeps），交互面（CLI/TUI/GUI）只做参数解析与呈现，新增交互面复用同一装配根
 
@@ -101,12 +103,13 @@ SUNSHINE.md          # 项目业务配置
 | sqlite-vec | KB 向量后端（`SUNSHINEX_KB_BACKEND=sqlite-vec`），收敛于 store 接缝 | local-json（缺省即回退，禁静默切换） |
 | markdown-it | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
 | markdansi | 正文/子代理转录 Markdown→ANSI 流式渲染（session 块缓冲按块放行 + render 单点出口），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 detail 回看解析 | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
+| cli-table3 | Markdown 表格框线渲染，收敛于 `src/tui/markdown.ts` 表格层 | 表格降级为原文行 |
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
 
-## 6. 技能与插件规范
+## 6. 技能规范
 
 - 技能标准形态：`{根}/skills/{id}/SKILL.md`（SKILL.md 优先、skill.md 兜底保三平台装载一致），含 frontmatter（name/description/version）与正文。**装载面仅限标准形态**——`rules/*.mdc`、裸 `AGENTS.md`、`commands/*.md` 均在装载面之外（防回归钉子用例锁定）。
 - 装载优先级（右侧遮蔽左侧，id 撞名就近遮蔽；resolve 仅 SKILL_NOT_FOUND 逐级回退、SKILL_PARAM_MISSING 就近不回退）：
@@ -118,7 +121,6 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 ```
 
 - 技能发现与加载（对标 Claude Code 渐进披露）：name+description 清单由 `formatSkillsIndex` 注入会话冻结段（会话级常量、随快照刷新点重读），模型据清单经 `skill` 工具按 id 加载正文——正文以工具观察尾追进链（装配面前缀零击穿）；`skillRef` 为 loop 内部模板面，仍走置尾一次性注入。
-- 插件：`plugins/{id}/plugin.json`，声明 id/name/version/entry。加载器只做发现与解析，不执行副作用；执行由 Harness 统一调度。
 
 ## 7. 提交与验证
 
@@ -233,7 +235,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - **契约的机器强制（声明即须可执行）**：三平台可部署与 LF 文本两条契约配置机器闸门，声明与事实对齐——① CI 矩阵 `.github/workflows/ci.yml`（ubuntu + windows × Node 22/24，`fail-fast: false`；流水线内注明未覆盖项：探针不入库仅开发机手动执行、macOS 同源按性价比省略）；② `.gitattributes` + `.editorconfig` 双管入库/检出与编辑器落盘字节（Git for Windows 缺省 `core.autocrlf=true`，缺此二件 Windows 侧一次提交即可引入整文件 CRLF 重写）；③ 脚本层子进程启动形态统一 `spawn(ComSpec, ['/c', cmd, ...args])`，不用 `shell: true` 与 `args` 并用（Node ≥ 22.15 弃用，DEP0190）。细节见 `docs/PLATFORM.md`。
 - **平台差异登记**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 显式覆盖（POSIX 兼容、配 `-c` 调用）→ Windows 探测 Git Bash → PowerShell（pwsh 各候选整体先于 powershell.exe，`-NoProfile -Command`，对齐 Claude Code native Windows 口径）→ 末位 `ComSpec` → POSIX `/bin/sh`；决议产物带来源标签（`override`/`git-bash`/`powershell`/`comspec`/`posix`），`selfcheck` 的 `shell :` 行显式上屏。候选序、WSL 启动器排除等机制细节见 `docs/PLATFORM.md`。仓库文本为 LF（由机器强制承载）。
 - **Landlock exec 写围栏（2026-09-24）**：Linux-only（launcher 功能探测内核 landlock ABI），macOS/Windows 为 host 口径（manual 档审批流兜底）；隔离口径三态 `landlock | container | host`，经 `SUNSHINEX_ISOLATION` 显式声明或缺省 auto 探测，selfcheck `isolation :` 行上屏；`SUNSHINEX_SANDBOX=off` 一键关；容器部署时边界层由 Skills Docker 承担
-- **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 README 平台支持矩阵与部署指引。
+- **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 docs/PLATFORM.md 平台支持矩阵与部署指引。
 - **测试命令形态对 shell 中立**：断言前提一律以脚本文件（`node script.js`）或跨 shell 命令承载；shell 语义用例集中在 `security/sandbox.test.ts`（平台分支唯一落点），其余测试只断言工具链行为。
 
 ## 15. 语言规范：外观双语、提示词恒英文

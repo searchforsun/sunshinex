@@ -31,26 +31,6 @@ export function approvalKeyToDecision(input: string): ApprovalDecision | undefin
   return undefined;
 }
 
-/** 斜杠命令清单（补全候选，顺序即 Tab 循环顺序）——唯一源在 ../slash-commands，此处重导出保持既有 import 路径 */
-export { SLASH_COMMANDS };
-
-/** 斜杠补全候选：按 buffer（已 trim）前缀匹配合并池（内置在前 + extra 技能命令池，规格 D7）；非 / 前缀或无匹配返回空 */
-export function slashCandidates(buffer: string, extra: readonly string[] = []): string[] {
-  const t = buffer.trim();
-  if (!t.startsWith('/')) return [];
-  return [...SLASH_COMMANDS, ...extra].filter((c) => c.startsWith(t));
-}
-
-/** Tab 斜杠补全推演（纯函数，规格 D7）：池内 exact → 池内下一位 + 空格（末位回环首位）；否则前缀候选首项 + 空格；无候选 undefined。缺省池=内置清单（与既有行为逐字节等价） */
-export function nextSlashCompletion(buffer: string, pool: readonly string[] = SLASH_COMMANDS): string | undefined {
-  const token = buffer.trim();
-  if (!token.startsWith('/')) return undefined;
-  const exactIdx = pool.indexOf(token);
-  if (exactIdx >= 0) return pool[(exactIdx + 1) % pool.length] + ' ';
-  const candidates = pool.filter((c) => c.startsWith(token));
-  return candidates.length > 0 ? candidates[0] + ' ' : undefined;
-}
-
 /** 纵向命令面板技能源（session.skillMenuEntries 同构）：lastUsedAt 缺省=从未使用，排最尾部 */
 export interface SlashMenuSkillSource {
   id: string;

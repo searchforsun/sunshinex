@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
 import { Result, ok, fail } from '../../result';
+import { escapeRegExp } from '../../textmatch';
 
 /** process 执行后端：命令与文件 IO 的统一执行面；Docker/SSH 后端同接口预留，1D 不实现 */
 export class ProcessSandbox implements ToolBackend {
@@ -143,7 +144,8 @@ export class ProcessSandbox implements ToolBackend {
   }
 }
 
-/** 文件路径 glob 转正则：双星号斜杠匹配零个或多个目录段，单星号与问号不跨越斜杠 */
+/** 文件路径 glob 转正则：双星号斜杠匹配零个或多个目录段，单星号与问号不跨越斜杠
+ *  （路径分段语义，与 textmatch 简单 glob（`*` 跨任意字符）分立，刻意不分流——listFiles 匹配行为逐字节保持） */
 function globToRegex(pattern: string): string {
   let out = '^';
   let i = 0;
@@ -168,10 +170,6 @@ function globToRegex(pattern: string): string {
     }
   }
   return out + '$';
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** 决议结果的来源标签（自检观测面用；同时是决议序的可断言契约） */

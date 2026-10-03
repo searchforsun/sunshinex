@@ -69,6 +69,10 @@ export async function runTui(args: CliArgs): Promise<void> {
   // --add-dir（spec 5.3，可重复 flag）：flagList 归一收集，随既有 opts 传入 createRuntime（TUI 面同一 HarnessOptions）
   const addDirs = flagList(args.flags, 'add-dir');
   const ctrl = new SessionController({ root: launchRoot, mode, models: model, ...(tier ? { tier } : {}), ...(effort ? { effort } : {}), ...(continueLast ? { continueLast: true } : {}), ...(resumePicker ? { resumePicker: true } : {}), ...(addDirs.length > 0 ? { addDirs } : {}) });
+  // 后台任务退出收口（D24，规格 D9 任务属进程）：stopAll 全同步（stop 句柄 kill + 终态行 appendFileSync）
+  // 满足 'exit' 回调同步约束（76db4c4 use-input 的 'exit' 单点同先例）；quit()/SIGINT/自然退出全路径通杀
+  // ——quit() 的 process.exit 不给清理链机会，只能靠本钩子兜底；finish 幂等，与会话内 task_stop/reap 不双终态
+  process.once('exit', () => ctrl.runtime.harness.tasks.stopAll());
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
   const banner = buildBannerInfo({ version: readPackageVersion(), root: launchRoot, model: model.label ?? model.provider });

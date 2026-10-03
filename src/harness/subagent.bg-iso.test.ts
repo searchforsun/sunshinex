@@ -13,7 +13,6 @@ import { SafetyChain } from './security/chain';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
-import { DryRun } from './security/dryrun';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { TaskRegistry } from './tasks';
@@ -69,7 +68,7 @@ test('后台子代理结论全文落任务日志（多行报告不再只留首�
     const root = makeRepo();
     try {
       const report = ['## 结论一', '细节 A', '细节 B'].join('\n');
-      const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+      const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
       const registry = new ToolRegistry();
       for (const t of builtinTools(safety, root)) registry.register(t);
       registry.unregister('spawn');

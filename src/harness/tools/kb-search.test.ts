@@ -8,7 +8,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 import { FileStore } from '../../storage/adapter';
 import { EmbeddingProvider } from '../../types';
@@ -28,9 +27,9 @@ class BucketEmbedding implements EmbeddingProvider {
 
 function setup(kb?: KnowledgeBase): { registry: ToolRegistry; safety: SafetyChain; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-kbtool-'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
-  for (const t of builtinTools(safety, root, kb)) registry.register(t);
+  for (const t of builtinTools(safety, root, { kb })) registry.register(t);
   return { registry, safety, root };
 }
 
@@ -76,4 +75,24 @@ test('kb_search：topK 缺省有合理默认（不抛错）', async () => {
   const r = await registry.execute('kb_search', { query: '分散部署' }, safety);
   assert.ok(r.ok);
   assert.ok(JSON.parse(r.value.stdout).length >= 1);
+});
+
+// D28 file 下泄钉子：meta 带 file 的后端 → 模型可见 file 字段（stdout JSON 含来源相对路径）；旧实现（store.search 原样透传）必红
+test('kb_search：命中出参含 file 字段（来源文件相对路径，模型可引用出处）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-kbtool-file-'));
+  fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'a.md'), '采用分散部署策略。\n');
+  fs.writeFileSync(path.join(dir, 'sub', 'inner.md'), '分散部署子目录说明。\n');
+  const store = new LocalJsonVectorStore(new FileStore(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-kbtool-filestore-'))));
+  const kb = new KnowledgeBase(store, new BucketEmbedding());
+  await kb.indexDir(dir);
+
+  const { registry, safety } = setup(kb);
+  const r = await registry.execute('kb_search', { query: '分散部署', topK: 5 }, safety);
+  assert.ok(r.ok);
+  const hits = JSON.parse(r.value.stdout) as Array<{ text: string; file?: string }>;
+  assert.ok(hits.length >= 2, `应命中两文件，实际 ${hits.length}`);
+  assert.ok(hits.every((h) => typeof h.file === 'string' && h.file.length > 0), `每条命中都应带 file：${JSON.stringify(hits)}`);
+  const files = hits.map((h) => h.file);
+  assert.ok(files.includes('a.md') && files.includes('sub/inner.md'), `file 应为来源相对路径，实际：${JSON.stringify(files)}`);
 });

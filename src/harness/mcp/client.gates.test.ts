@@ -8,7 +8,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { McpHost } from './client';
 
 interface FixtureOpts {
@@ -23,7 +22,6 @@ function makeFixture(opts: FixtureOpts): { registry: ToolRegistry; safety: Safet
   const safety = new SafetyChain(
     new SecurityGuard(new PolicyEngine(), 'dontAsk', opts.guardServers),
     new ProcessSandbox(),
-    new DryRun(),
     root,
   );
   const registry = new ToolRegistry();

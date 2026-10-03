@@ -9,14 +9,13 @@ import { SafetyChain } from '../security/chain';
 import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
-import { DryRun } from '../security/dryrun';
 import { toolCallLine } from '../../tui/tool-verbs';
 import type { AskUserRequest, AskUserAnswer, AskUserSeam } from '../../types';
 
 const OPTIONS2 = [{ label: 'Yes' }, { label: 'No' }];
 
 function makeSafety(root: string, mode: 'manual' | 'dontAsk' | 'plan' = 'dontAsk'): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), new DryRun(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), root);
 }
 
 function tmpDir(prefix: string): string {
@@ -26,7 +25,7 @@ function tmpDir(prefix: string): string {
 function registryWithAsk(root: string, ask: AskUserSeam): { registry: ToolRegistry; safety: SafetyChain } {
   const safety = makeSafety(root);
   const registry = new ToolRegistry();
-  for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, undefined, undefined, ask)) registry.register(t);
+  for (const t of builtinTools(safety, root, { ask })) registry.register(t);
   return { registry, safety };
 }
 

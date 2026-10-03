@@ -97,8 +97,9 @@ test('App：输入 / 出纵向命令面板（一行一命令+描述），逐键�
     const f1 = term.lastFrame() ?? '';
     assert.ok(f1.includes('❯ /help'), '菜单首行选中 /help');
     assert.ok(f1.includes('/init'), '内置命令纵向逐行呈现');
-    assert.ok(f1.includes('/memory'), '深位命令在窗口内（/model-tier 加入后 24 行终端滑窗 18 行，/memory 居窗内）');
+    assert.ok(f1.includes('/add-dir'), '深位命令在窗口内（/terminal-setup 补登后 25 条清单 24 行终端滑窗 18 行，/add-dir 恰居窗内末位）');
     assert.ok(/more|还有/.test(f1), '窗口溢出计数行在场（清单超出滑窗时提示剩余条数）');
+    assert.ok(!f1.includes('/memory'), '窗口外长尾不渲染（/memory 顺延至窗下，经过滤可达，下滑窗口径）');
     assert.ok(!f1.includes('/memory-add'), '窗口外长尾不渲染（经过滤可达，下滑窗口径）');
     assert.ok(!/\/help {2}\/init/.test(f1), '不再横向单行拼接');
     term.write('mem');

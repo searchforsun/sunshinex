@@ -9,7 +9,6 @@ import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { SafetyChain } from './security/chain';
-import { DryRun } from './security/dryrun';
 import type { ToolInput } from '../types';
 
 /**
@@ -28,7 +27,7 @@ test('stripNullInputArgs：null 值键剥除、无 null 原对象直返（零克
 test('registry.execute 剥离单点：null 键不落安全链与 executor（executor 视角键缺席）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tools-nullstrip-'));
   try {
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     let seen: ToolInput | undefined;
     const probe: RegisteredTool = {

@@ -7,6 +7,7 @@
  *   Bash = 命令匹配（尾 `*` 为前缀）；mcp__ 直名（尾 `*` 通配）
  */
 import { parseRule } from '../harness/security/rules';
+import { escapeRegExp } from '../textmatch';
 import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './settings';
 
 export interface PermissionsConfig {
@@ -65,11 +66,7 @@ export function loadPermissions(projectRoot: string): LoadedPermissions {
   };
 }
 
-function escapeRegExp(ch: string): string {
-  return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** 路径 glob → 正则片段（gitignore 风格，spec 5.2）：`**` 跨段、`*`/`?` 不跨段 */
+/** 路径 glob → 正则片段（gitignore 风格，spec 5.2）：`**` 跨段、`*`/`?` 不跨段（语义与 textmatch 简单 glob 分立，刻意不分流） */
 function pathGlobToRegex(pattern: string): string {
   let out = '';
   let i = 0;

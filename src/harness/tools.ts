@@ -1,4 +1,4 @@
-import { ToolSpec, ToolCategory, ToolInput, ToolExecutor, ExecResult } from '../types';
+import { ToolSpec, ToolCategory, ToolInput, ToolExecutor, ExecResult, ExecOpts } from '../types';
 import { Result, ok, fail } from '../result';
 import { SafetyChain } from './security/chain';
 
@@ -102,8 +102,9 @@ export class ToolRegistry {
     try {
       // 执行期安全缝（规格 D6）：注入运行期链视图，fork 子链 withRoot 换根克隆在此生效；
       // execWrap 转发（spec 5.4）：后台 exec 分支经视图取链侧 landlock 包装（gateView.execWrap 缺省即旧行为）。
+      // run 转发（D19-a）：前台 exec 分支经视图取链侧判界+landlock 包装单点（fork 克隆的可写根随链锚树）。
       // `?? null` 收口可选契约的 undefined 余量（RuntimeSafetyGate 契约 Promise<wrap|null>；Task 5 台账 parked 承接）
-      const runtimeSafety = { execCwd: () => safety.execCwd(), execCommandAllowed: (cmd: string) => safety.execCommandAllowed(cmd), execWrap: async (cmd: string) => (await safety.execWrap(cmd)) ?? null };
+      const runtimeSafety = { execCwd: () => safety.execCwd(), execCommandAllowed: (cmd: string) => safety.execCommandAllowed(cmd), execWrap: async (cmd: string) => (await safety.execWrap(cmd)) ?? null, run: (cmd: string, opts?: ExecOpts) => safety.run(cmd, opts) };
       const result = await tool.executor(execInput, runtimeSafety);
       return ok(safety.maskResult(canonical, result));
     } catch (e) {

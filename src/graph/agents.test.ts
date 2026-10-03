@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { makeRoleAgent, ROLE_PRESETS } from './agents';
+import { makeRoleAgent } from './agents';
+import { ROLE_PRESETS } from '../harness/subagent';
 import { GraphDeps, GraphTermination } from './engine';
 import { GraphContext, LoopContext } from '../types';
 import { agentNode } from '../loop/nodes';
@@ -14,7 +15,6 @@ import { SafetyChain } from '../harness/security/chain';
 import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';
 import { ProcessSandbox } from '../harness/security/sandbox';
-import { DryRun } from '../harness/security/dryrun';
 import { ToolRegistry } from '../harness/tools';
 import { builtinTools } from '../harness/tools/builtin';
 
@@ -31,7 +31,7 @@ test('ROLE_PRESETS：与 AgentRole 全集一致且框定非空（英文单语）
 
 /** GraphDeps 装配样板（对齐 nodes.test.ts makeRealDeps）：真实安全链/注册表/上下文 + 注入模型桩 */
 function makeGraphDeps(root: string, model: ModelAdapter): GraphDeps {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   return { safety, registry, context: new ContextManager(root, new FileStore(root)), model };
@@ -67,7 +67,8 @@ test('role agent fork：私有执行零主链回写、终态回写结论行（Ru
       nodeLine && nodeLine.observation.startsWith('[Planner] ') && nodeLine.observation.includes('规划完成'),
       `终态必须回写一行结论（Runner 统一 [label] 前缀口径），实际：${nodeLine?.observation}`,
     );
-    assert.ok(!chain.some((s) => s.action === 'read' || s.action === 'exec'), 'fork 私有步骤不得回写主链');
+    // 链行词汇收窄后（ChainAction），守卫改盯真实词汇：fork 私有的工具调用/观察行不得回写主链
+    assert.ok(!chain.some((s) => s.action === 'tool-call' || s.action === 'tool-result'), 'fork 私有步骤不得回写主链');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

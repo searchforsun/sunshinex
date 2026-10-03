@@ -25,7 +25,8 @@ export function slugifyMemory(title: string): string {
 }
 
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
-const MEMORY_TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
+/** 合法记忆类型集（R7 单点）：extractor 工具入口自校验与 writer 接缝校验共用 import，防三处清单漂移 */
+export const MEMORY_TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
 
 export interface MemoryRecord {
   slug: string;
@@ -55,7 +56,8 @@ function serialize(rec: { type: MemoryType; created: string; modified: string; d
   ].join('\n');
 }
 
-const INDEX_NAME = 'MEMORY.md';
+/** 派生索引文件名（R7 单点）：store 重建/读盘、writer 接缝索引排他、pipeline 说明行指针共用 */
+export const INDEX_NAME = 'MEMORY.md';
 
 /** 索引名的 slug 排他口径（大小写不敏感比较用：`MEMORY.md` 去扩展名即 `memory`） */
 const INDEX_SLUG = 'memory';
@@ -77,7 +79,37 @@ function failSlugInvalid<T>(): Result<T> {
   return fail('MEMORY_SLUG_INVALID', 'invalid memory slug: must be in normalized form and must not be the index name');
 }
 
-/** 解析记录文件（frontmatter 四行 + 正文）；坏文件返回 null 不中断整表扫描 */
+/** 记忆记录 frontmatter 词法单点（R6·memory 族）：`---` 块内首个 ':' 切分的 kv 行抽取，body 原样返回
+ *  （尾部换行剥除等后处理归调用方）。两严格度刻意分立——strict（磁盘读）：开界逐字 `---\n`、行切 '\n'，
+ *  CRLF/尾空白形态不匹配即按坏文件处理（磁盘记录全部经 serialize 落盘为 LF，偏离即损坏信号，宁可跳过）；
+ *  lenient（模型写）：`\s*` 缓冲 + /\r?\n/ 行切，模型产出容错（CRLF/尾空白不拒——读严写宽防手抖形态回流磁盘） */
+export function parseMemoryFrontmatter(raw: string, opts: { lenient: boolean }): { meta: Record<string, string>; body: string } | null {
+  const m = (opts.lenient ? /^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/ : /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/).exec(raw);
+  if (!m) return null;
+  const meta: Record<string, string> = {};
+  for (const line of m[1].split(opts.lenient ? /\r?\n/ : '\n')) {
+    const i = line.indexOf(':');
+    if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return { meta, body: m[2] };
+}
+
+/** 主记忆目录定位单点（R12 收敛）：<dataDir(root)>/memory——store 构造、context 快照/漂移、pipeline 说明行共用 */
+export function memoryDir(root: string): string {
+  return path.join(resolveDataDir(root), 'memory');
+}
+
+/** 索引读盘无副作用形态（R12 收敛）：MemoryStore 构造含 mkdirSync 副作用，context 快照装载/漂移比对
+ *  只读不建目录，经此独立函数复用同一读盘口径；无文件为空串 */
+export function readMemoryIndex(dir: string): string {
+  try {
+    return fs.readFileSync(path.join(dir, INDEX_NAME), 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/** 解析记录文件（frontmatter 四行 + 正文，词法走 parseMemoryFrontmatter strict 形）；坏文件返回 null 不中断整表扫描 */
 function parseRecord(file: string, slug: string): MemoryRecord | null {
   let raw: string;
   try {
@@ -85,13 +117,9 @@ function parseRecord(file: string, slug: string): MemoryRecord | null {
   } catch {
     return null;
   }
-  const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(raw);
-  if (!m) return null;
-  const meta: Record<string, string> = {};
-  for (const line of m[1].split('\n')) {
-    const i = line.indexOf(':');
-    if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-  }
+  const parsed = parseMemoryFrontmatter(raw, { lenient: false });
+  if (parsed === null) return null;
+  const meta = parsed.meta;
   const type = MEMORY_TYPES.includes(meta.type as MemoryType) ? (meta.type as MemoryType) : 'project';
   return {
     slug,
@@ -99,7 +127,7 @@ function parseRecord(file: string, slug: string): MemoryRecord | null {
     created: meta.created ?? '',
     modified: meta.modified ?? meta.created ?? '',
     description: meta.description ?? '',
-    body: m[2].replace(/\n$/, ''),
+    body: parsed.body.replace(/\n$/, ''),
   };
 }
 
@@ -112,7 +140,7 @@ export class MemoryStore {
   private readonly dirPath: string;
 
   constructor(root: string, opts?: { subdir?: string }) {
-    const base = path.join(resolveDataDir(root), 'memory');
+    const base = memoryDir(root);
     // 子目录形态（规格 §5）：子代理自有记忆 memory/agents/<id>，与主目录互不干扰
     this.dirPath = opts?.subdir === undefined ? base : path.join(base, opts.subdir);
     fs.mkdirSync(this.dirPath, { recursive: true });
@@ -148,11 +176,7 @@ export class MemoryStore {
   }
 
   indexText(): string {
-    try {
-      return fs.readFileSync(path.join(this.dirPath, INDEX_NAME), 'utf8');
-    } catch {
-      return '';
-    }
+    return readMemoryIndex(this.dirPath);
   }
 
   /**

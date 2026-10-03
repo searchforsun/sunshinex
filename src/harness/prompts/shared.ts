@@ -37,10 +37,17 @@ export const REFERENCE_DATA_LINE =
 export const PHASE_SENTENCE_LINE =
   'When calling tools you may include a short "phase" sentence as the message content naming the current stage (what the upcoming tool calls are for); include it only when entering a new stage, and skip it for consecutive actions within the same stage and for trivial single-step actions.';
 
+/** 单轮工具批并行上限（R9 常量化单一来源落本叶模块）：reactor 运行时拒绝行与下行提示词政策行同源同值；
+ *  reactor 已 import 本模块，若反向把常量留在 reactor 再由本模块引用会成 CJS 环（shared 在 reactor 导入期
+ *  求值，届时 reactor 尚未执行、常量读到 undefined），故常量随政策行同住提示词面、reactor 反向消费。
+ *  阈值取宽的理由：防单轮塞满列表拖长步时延；纯 read/write 类批安全（观察行各自截断兜底），且超限是
+ *  整批拒绝白烧一个模型往返——取 16 压低撞限频率，真超限仍由 reactor 拒绝行兜底 */
+export const PARALLEL_TOOLS_LIMIT = 16;
+
 /** 并行/串行政策：主动鼓励合批——无排序依赖的调用并入同一轮并发（提升执行吞吐），有序依赖则整轮按出牌顺序串行；
- * 单轮上限 16（与 reactor PARALLEL_TOOLS_LIMIT 对齐；超限由 reactor 运行时拒绝行兜底，静态只留预防性契约不放长解释） */
+ *  单轮上限由 PARALLEL_TOOLS_LIMIT 常量拼装（运行时拒绝行同源；静态只留预防性契约不放长解释） */
 export const PARALLEL_POLICY_LINE =
-  'Batch independent calls proactively: calls with no ordering dependencies run concurrently when grouped in one round (up to 16); put a call after any call it depends on or that mutates the same state — such batches run serially in list order.';
+  `Batch independent calls proactively: calls with no ordering dependencies run concurrently when grouped in one round (up to ${PARALLEL_TOOLS_LIMIT}); put a call after any call it depends on or that mutates the same state — such batches run serially in list order.`;
 
 /** 异常收敛行：参数性失败立刻换参重发；原样重试上限两次，超限换路/跳步/收束三路并列、判断权在模型——防同参死循环空烧。
  *  三路枚举必须留在本静态行：运行时重复批拒绝行按设计只陈述现象不指挥模型（reactor.converge.test.ts「拒绝行不指挥模型」），

@@ -8,7 +8,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 
 /**
@@ -35,7 +34,7 @@ async function withRegistry(
     const realRoot = path.join(tmp, 'real-root');
     fs.mkdirSync(realRoot, { recursive: true });
     const root = rootOverride ?? realRoot;
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, root)) registry.register(t);
     await fn({ registry, safety, root });

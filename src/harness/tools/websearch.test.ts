@@ -9,7 +9,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 import { parseDuckDuckGoHtml, WebSearchHit, WebSearchProvider } from './websearch';
 
@@ -88,11 +87,10 @@ function registryFor(provider?: WebSearchProvider): { registry: ToolRegistry; sa
   const safety = new SafetyChain(
     new SecurityGuard(new PolicyEngine(), 'dontAsk'),
     new ProcessSandbox(),
-    new DryRun(),
     root,
   );
   const registry = new ToolRegistry();
-  for (const t of builtinTools(safety, root, undefined, provider)) registry.register(t);
+  for (const t of builtinTools(safety, root, { webSearch: provider })) registry.register(t);
   return { registry, safety };
 }
 

@@ -9,7 +9,7 @@ import { resolveWorktreeLaunchRoot } from './worktree-launch';
 import { usageText } from './index';
 import type { CliArgs } from './index';
 import { setLanguage, parseLanguage } from '../i18n';
-import { worktreesRoot, readRegistry, detectIsolation } from '../harness/worktree';
+import { worktreesRoot, readRegistry } from '../harness/worktree';
 import { Harness } from '../harness';
 import type { ModelAdapter } from '../model/adapter';
 import { runLoop } from './commands/run-loop';
@@ -69,7 +69,7 @@ test('T3-1 裸 --worktree：自动名 wt-XXXX，root 替换为树路径且已隔
     assert.notEqual(root, repo, 'root 应替换为 worktree 路径');
     assert.ok(root.startsWith(worktreesRoot(tmp) + path.sep), `应落在数据目录 worktrees 下：${root}`);
     assert.match(path.basename(root), /^wt-[a-z0-9]{4}$/, `自动名形态 wt-+4 位随机：${path.basename(root)}`);
-    assert.equal(detectIsolation(root), true, '装配前树已建好（linked worktree）');
+    assert.ok(fs.existsSync(path.join(root, '.git')), '装配前树已建好（linked worktree .git 指针文件在场）');
     const reg = readRegistry(tmp);
     assert.equal(reg.length, 1, '登记表恰一条');
     assert.equal(reg[0] && reg[0].branch, `worktree-${path.basename(root)}`);
@@ -80,7 +80,7 @@ test('T3-2 --worktree=<name>：指定名建树；撞名 fail-fast WORKTREE_EXIST
     const repo = makeRepo();
     const root = resolveWorktreeLaunchRoot(tuiArgs([repo], { worktree: 'demo' }), repo);
     assert.equal(root, path.join(worktreesRoot(tmp), 'demo'));
-    assert.equal(detectIsolation(root), true);
+    assert.ok(fs.existsSync(path.join(root, '.git')), 'linked worktree .git 指针文件在场');
     assert.throws(() => resolveWorktreeLaunchRoot(tuiArgs([repo], { worktree: 'demo' }), repo), /WORKTREE_EXISTS/, '撞名应 fail-fast');
     assert.equal(readRegistry(tmp).length, 1, '撞名不产生第二条登记');
   }));

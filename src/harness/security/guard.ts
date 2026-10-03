@@ -211,7 +211,13 @@ export class SecurityGuard {
   private isReadonlyCommand(specifier: string): boolean {
     const first = specifier.trim().split(/\s+/)[0] ?? '';
     const base = first.split('/').pop() ?? first;
-    return READONLY_WHITELIST.includes(base);
+    if (!READONLY_WHITELIST.includes(base)) return false;
+    // 债 D22：重定向/tee 使白名单命令产生写效果（echo pwned > ~/.bashrc 借 echo 免审批直放，而 ~/.sunshinex
+    // 在 landlock 可写根内，内核围栏亦不拦），首 token 判据失效；命中即不豁免降为 ask——
+    // 误伤方向只是多一次审批，漏放方向是任意写文件，安全侧取舍。
+    // `>` 覆盖 >> 与 2> 等一切重定向形态；`\btee\b` 捕获管道侧写（cat a | tee b）。
+    if (specifier.includes('>') || /\btee\b/.test(specifier)) return false;
+    return true;
   }
 
   /** 破坏性命令底线：首 token basename 归一（防 /bin/rm 绕过）；递归删除/写盘/电源/下载执行管道即拒（spec 2.2） */

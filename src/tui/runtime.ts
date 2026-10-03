@@ -1,5 +1,6 @@
 import type { AskUserSeam } from '../types';
 import { Harness } from '../harness';
+import { resolveKnowledgeBase } from '../runtime';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
@@ -49,6 +50,8 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
     ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
+    // KB 装配经 composition root 单点（D18 接线；未配置=undefined，kb_search 合法确定降级）
+    kb: resolveKnowledgeBase(opts.root),
   });
   if (opts.mode === 'manual' && opts.onApproval) harness.security.setAsker(opts.onApproval);
 

@@ -149,7 +149,7 @@ export function resolveTemplate(deps: LoopDeps, name: string, opts?: TemplateOpt
 export const LONG_TASK_TIMEOUT_MS = 86_400_000;
 
 export interface LongTaskOpts extends TemplateOpts {
-  /** 单次 agent 的步数上限；缺省交给 Reactor 的 200 */
+  /** 单次 agent 的步数上限；缺省交给 Reactor 的 400（与 reactor 内 maxSteps 缺省同口径） */
   agentMaxSteps?: number;
 }
 

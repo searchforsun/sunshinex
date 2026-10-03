@@ -9,18 +9,17 @@ import { SafetyChain } from './security/chain';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
-import { DryRun } from './security/dryrun';
-import { createWorktree, worktreesRoot, readRegistry } from './worktree';
+import { createWorktree, worktreesRoot } from './worktree';
 import { Harness } from './index';
 import { ScriptedAdapter } from '../model/adapter';
 import { dataDirReal } from '../config/data-dir';
 import { isWithin } from '../paths';
 
 /**
- * 安全链活动 root 判定 + Harness 接缝（计划 T2，规格 §11/D6-D9）：
+ * 安全链活动 root 判定 + Harness 只读视图（计划 T2，规格 §11/D6-D9）：
  * 判定序 = 记忆窄口 → 活动根命中放行 → 活动根在场主根写拒 → 既有 root 语义（活动根缺省时与今日逐字节一致）；
- * Harness `enterWorktree`/`exitWorktree`/`cleanupWorktrees` 三接缝引用不重建即生效；
- * fork 子 Reactor 工作目录事实经 `rootProvider` 锚活动根。
+ * worktree 进出接缝单点=安全链（safety.enterWorktree/exitWorktree，D19-c 裁决：Harness 侧会话记账接缝已删，
+ * h.activeRoot 只读镜像保留）；fork 子 Reactor 工作目录事实经 `rootProvider` 锚活动根。
  * 范式：tmpdir 作 root、SUNSHINEX_DATA_DIR 重定向、finally 还原（沿 chain.datadir.test.ts 先例）；
  * git 集成用例一律临时仓内跑，不触用户真实仓（沿 worktree.test.ts 先例）。
  */
@@ -56,7 +55,7 @@ function withChain(fn: (chain: SafetyChain, root: string, tmp: string) => void):
     const root = path.join(tmp, 'root');
     fs.mkdirSync(path.join(root, 'app'), { recursive: true });
     fs.writeFileSync(path.join(root, 'app', 'main.txt'), 'main\n');
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     fn(chain, root, tmp);
   } finally {
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
@@ -137,7 +136,7 @@ test('T2-3 记忆写窄口先于活动根判定：activeRoot 在场记忆路径�
   });
 });
 
-test('T2-4 Harness 接缝：enter/exit 引用不重建即生效；activeRoot 只读访问器缺省 undefined', async () => {
+test('T2-4 活动根接缝单点=安全链：同一链实例切换即生效；h.activeRoot 只读镜像同步', async () => {
   const tmp = mktmp('sunshinex-wtroot-harness-');
   const prev = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = tmp;
@@ -153,14 +152,14 @@ test('T2-4 Harness 接缝：enter/exit 引用不重建即生效；activeRoot 只
 
     const safetyRef = h.safety;
     const runnerRef = h.runner;
-    h.enterWorktree(tree);
-    assert.equal(h.activeRoot, tree, 'enter 后活动根即位');
+    h.safety.enterWorktree(tree);
+    assert.equal(h.activeRoot, tree, 'enter 后只读镜像即位（链单点切换）');
     assert.equal(h.safety, safetyRef, 'safety 引用不重建即生效');
     assert.equal(h.runner, runnerRef, 'runner 引用不重建');
     assert.equal(h.safety.evaluate('Write', { path: path.join(tree, 'n.txt') }).allowed, true, '同一链实例切换即生效：活动根内写放行');
     assert.equal(h.safety.evaluate('Write', { path: path.join(repo, 'm.txt') }).allowed, false, '同一链实例：主根写拒');
 
-    h.exitWorktree();
+    h.safety.exitWorktree();
     assert.equal(h.activeRoot, null, 'exit 后活动根复位');
     assert.equal(h.safety.evaluate('Write', { path: path.join(repo, 'm.txt') }).allowed, true, 'exit 后恢复既有语义');
   } finally {
@@ -170,8 +169,8 @@ test('T2-4 Harness 接缝：enter/exit 引用不重建即生效；activeRoot 只
   }
 });
 
-test('T2-5 fork 工作目录事实=活动根（rootProvider）；cleanupWorktrees 只清本实例树、脏树留 keptReason', async () => {
-  const tmp = mktmp('sunshinex-wtroot-cleanup-');
+test('T2-5 fork 工作目录事实=活动根（rootProvider 镜像链单点）', async () => {
+  const tmp = mktmp('sunshinex-wtroot-fork-');
   const prev = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = tmp;
   try {
@@ -188,12 +187,10 @@ test('T2-5 fork 工作目录事实=活动根（rootProvider）；cleanupWorktree
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
 
     const own = createWorktree(repo, tmp, 'own', {});
-    const foreign = createWorktree(repo, tmp, 'foreign', {});
     assert.ok(own.ok, `own 创建失败：${own.ok ? '' : own.error.message}`);
-    assert.ok(foreign.ok, `foreign 创建失败：${foreign.ok ? '' : foreign.error.message}`);
-    if (!own.ok || !foreign.ok) return;
+    if (!own.ok) return;
 
-    h.enterWorktree(own.value.path);
+    h.safety.enterWorktree(own.value.path);
     // fork 工作目录事实：Runner 经 rootProvider 取活动根装配子 Reactor（deps.rootProvider?.() ?? deps.root）
     h.runner.attachParent(() => ({ maxSteps: 5, tokenCap: 100_000 }));
     const r = await h.runner.runSubagent({ prompt: 'child task', label: 'w' });
@@ -202,29 +199,7 @@ test('T2-5 fork 工作目录事实=活动根（rootProvider）；cleanupWorktree
       childPrompt.includes(`(project root): ${own.value.path}`),
       `fork 首帧工作目录应锚活动根（rootProvider）；实际片段：${childPrompt.slice(0, 200)}`,
     );
-    h.exitWorktree();
-
-    // cleanup：仅本实例进入过的树；干净删（登记移除）、脏留（keptReason）
-    h.cleanupWorktrees();
-    let reg = readRegistry(tmp);
-    assert.ok(!reg.some((e) => e.name === 'own'), '本实例干净树应被清理（登记移除）');
-    assert.ok(!fs.existsSync(path.join(worktreesRoot(tmp), 'own')), '本实例干净树目录应删除');
-    assert.ok(reg.some((e) => e.name === 'foreign'), '非本实例树登记不动');
-    assert.ok(fs.existsSync(path.join(worktreesRoot(tmp), 'foreign')), '非本实例树目录保留');
-
-    const messy = createWorktree(repo, tmp, 'messy', {});
-    assert.ok(messy.ok, `messy 创建失败：${messy.ok ? '' : messy.error.message}`);
-    if (!messy.ok) return;
-    // 实例归属登记（T4 起 create→enter 接线后自动成立）：本会话创建即经 enterWorktree 进清理范围
-    h.enterWorktree(messy.value.path);
-    h.exitWorktree();
-    fs.writeFileSync(path.join(worktreesRoot(tmp), 'messy', 'extra.txt'), 'x\n');
-    h.cleanupWorktrees();
-    reg = readRegistry(tmp);
-    const kept = reg.find((e) => e.name === 'messy');
-    assert.ok(kept, '脏树应保留登记');
-    assert.equal(kept && kept.keptReason, 'dirty', '脏树 keptReason=dirty');
-    assert.ok(fs.existsSync(path.join(worktreesRoot(tmp), 'messy')), '脏树目录保留待清扫');
+    h.safety.exitWorktree();
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prev;

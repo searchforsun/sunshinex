@@ -4,40 +4,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { render } from '../test-ink';
-import { App, slashCandidates, nextSlashCompletion, SLASH_COMMANDS } from './App';
+import { App } from './App';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
 import { initialRetained } from '../ui-state';
-
-test('slashCandidates：/ 前缀匹配命令清单，非 / 前缀返回空', () => {
-  assert.deepEqual(slashCandidates('/'), SLASH_COMMANDS);
-  assert.ok(SLASH_COMMANDS.includes('/resume'), '/resume 已登记补全清单');
-  assert.ok(SLASH_COMMANDS.includes('/goal'), '/goal 已登记补全清单');
-  assert.ok(SLASH_COMMANDS.includes('/skill'), '/skill 已登记补全清单');
-  assert.deepEqual(slashCandidates('/sk'), ['/skill']);
-  assert.deepEqual(slashCandidates('/ne'), ['/new']);
-  assert.deepEqual(slashCandidates('xyz'), []);
-  assert.deepEqual(slashCandidates('/xyz'), []);
-});
-
-test('slashCandidates：extra 合并内置在前（技能命令池，规格 D7）', () => {
-  assert.deepEqual(slashCandidates('/he', ['/hello-world']), ['/help', '/hello-world'], '内置在前、extra 按序追加');
-  const withExtra = slashCandidates('/', ['/hello-world']);
-  assert.equal(withExtra.length, SLASH_COMMANDS.length + 1, '合并池全量');
-  assert.deepEqual(withExtra.slice(0, SLASH_COMMANDS.length), SLASH_COMMANDS, '缺省段逐字节等价（A9 钉）');
-  assert.deepEqual(slashCandidates('/hel', ['/hello-world']), ['/help', '/hello-world'], 'hel 同时命中 /help 与 /hello-world');
-  assert.deepEqual(slashCandidates('/xyz', ['/hello-world']), []);
-});
-
-test('nextSlashCompletion：合并池 Tab 循环推演（纯函数，规格 D7）', () => {
-  const pool = [...SLASH_COMMANDS, '/hello-world'];
-  assert.equal(nextSlashCompletion('/hello-world', pool), '/help ', '池末位 exact 回环首位（A11）');
-  assert.equal(nextSlashCompletion('/new', pool), '/resume ', '内置 exact → 池内下一位（既有邻位钉）');
-  assert.equal(nextSlashCompletion('/ne', pool), '/new ', '前缀候选首项 + 空格');
-  assert.equal(nextSlashCompletion('/xyz', pool), undefined, '无候选');
-  assert.equal(nextSlashCompletion('xyz', pool), undefined, '非 / 前缀');
-  assert.equal(nextSlashCompletion('/new', SLASH_COMMANDS), '/resume ', '缺省池与既有 SLASH_COMMANDS 行为等价');
-});
 
 test('App：Tab 斜杠补全为完整命令 + 空格，再次 Tab 循环到下一命令', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inp1-'));
@@ -54,6 +24,22 @@ test('App：Tab 斜杠补全为完整命令 + 空格，再次 Tab 循环到下�
     await new Promise((r) => setTimeout(r, 150));
     // /resume 登记在 /new 之后：循环邻位由 /compact 变为 /resume（SLASH_COMMANDS 序 /new → /resume → /compact）
     assert.match(lastFrame() ?? '', /\/resume /, '再次 Tab 应循环到下一命令');
+    // 池末位 exact 回环首位（A11 钉，随纯函数用例退役移植到内联行为）：/memory-off 为内置池末位
+    write('\u001B'); // Esc 清空输入（空闲态有输入即清空，历史指针复位）
+    await new Promise((r) => setTimeout(r, 150));
+    write('/memory-off');
+    await new Promise((r) => setTimeout(r, 150));
+    write('\t');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /\/help /, '池末位 exact 应回环补全首位 /help');
+    // 无候选（旧「无候选 undefined」钉的等价判别）：未命中词 Tab 不改写缓冲
+    write('\u001B');
+    await new Promise((r) => setTimeout(r, 150));
+    write('/xyz');
+    await new Promise((r) => setTimeout(r, 150));
+    write('\t');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /❯ \/xyz▊/, '无候选 Tab 不得改写缓冲');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

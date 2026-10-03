@@ -9,7 +9,7 @@ import { theme } from '../theme';
  *  完整转录经全屏查看视图（ChildInspector）查看；外层特殊边框（圆角主题主色，2026-09-27 用户裁决对标 CC）：
  *  与主链活动行视觉分域，派发批一眼可辨。完成态不进面板（2026-09-28 用户裁决：动态区只显运行中、无两页/计数行），
  *  归档即从面板离场折进历史区 SPAWN 行 detail，Ctrl+B 浏览器直接浏览全部已完成。空态渲染零占位帧 */
-export function ChildPanel({ childrenState, columns, selectedLabel }: { childrenState: ChildLiveState[]; columns: number; selectedLabel?: string }): JSX.Element {
+export function ChildPanel({ childrenState, columns }: { childrenState: ChildLiveState[]; columns: number }): JSX.Element {
   // 只承载运行中（2026-09-28 用户裁决）：完成行与计数概览行一律不进动态区，全部完成即面板整体消失
   const rows = childrenState.filter((c) => !c.done);
   if (rows.length === 0) return <Box />;
@@ -38,10 +38,10 @@ export function ChildPanel({ childrenState, columns, selectedLabel }: { children
         <Box key={c.label}>
           {calls.length > 0 ? (
             // 工具活动行（规格 §4.2 面板增强，与主链 taskState 口径对齐）：显示当前调用名+单调用耗时，
-            // 轮换动词是「思考中」的语义、模型正在干活时退回动词即信息量倒挂；选中态反色经 Text backgroundColor 承载
-            <Text backgroundColor={selectedLabel === c.label ? 'gray' : undefined} color={theme.accent} dimColor={selectedLabel !== c.label}>
+            // 轮换动词是「思考中」的语义、模型正在干活时退回动词即信息量倒挂
+            <Text color={theme.accent} dimColor>
               {glyph} [{c.label}]{' '}
-              <Text dimColor={selectedLabel !== c.label}>
+              <Text dimColor>
                 {calls.map((call, i) => (
                   <Text key={call.callId}>
                     {i > 0 ? ' · ' : ''}[{elideByWidth(call.target, perCall)}]{' '}
@@ -52,10 +52,8 @@ export function ChildPanel({ childrenState, columns, selectedLabel }: { children
               </Text>
             </Text>
           ) : (
-            // Spinner 分支（思考中子代理）：反色经包裹 Text 承载（ink3 Box 样式面无 backgroundColor）
-            <Text backgroundColor={selectedLabel === c.label ? 'gray' : undefined}>
-              <Spinner startedAt={c.startedAt} tokens={c.tokens} label={c.label} steps={c.steps} columns={columns} selected={selectedLabel === c.label} />
-            </Text>
+            // Spinner 分支（思考中子代理）
+            <Spinner startedAt={c.startedAt} tokens={c.tokens} label={c.label} steps={c.steps} columns={columns} />
           )}
         </Box>
         );

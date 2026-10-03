@@ -11,7 +11,6 @@ import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';
 import { ProcessSandbox } from '../harness/security/sandbox';
 import { SafetyChain } from '../harness/security/chain';
-import { DryRun } from '../harness/security/dryrun';
 import { ToolRegistry } from '../harness/tools';
 import { builtinTools } from '../harness/tools/builtin';
 import { ScriptedAdapter } from '../model/adapter';
@@ -35,7 +34,7 @@ function makeFixture(): { deps: LoopDeps; context: RecordingContext } {
     path.join(root, '.sunshinex', 'skills', 'greet', 'skill.md'),
     '---\nname: Greet\nversion: 0.1.0\nkind: prompt\nparams: name tone\n---\n\n# Hello {{name}}\n\nTone: {{tone}}。',
   );
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   const context = new RecordingContext(root, new FileStore(path.join(root, '.data')));

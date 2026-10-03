@@ -110,10 +110,10 @@ export class LoopEngine {
     if (this.nodes.length === 0) throw new Error('LoopEngine: node list is empty');
   }
 
-  /** 运行至终态；dryRun 经 ctx.state.__dryRun 透传给节点；skillRef 触发技能首帧注入（解析失败即 failed，不静默） */
+  /** 运行至终态；skillRef 触发技能首帧注入（解析失败即 failed，不静默） */
   async run(
     goal: string,
-    opts?: { state?: Record<string, unknown>; dryRun?: boolean; skillRef?: SkillRef },
+    opts?: { state?: Record<string, unknown>; skillRef?: SkillRef },
   ): Promise<LoopRunResult> {
     // MCP 装配就绪门槛（fail-fast 收敛为确定性失败）：mcp__ 工具注册完成后才进首节点
     if (this.deps.mcpReady) {
@@ -141,7 +141,7 @@ export class LoopEngine {
     }
     const ctx: LoopContext = {
       iteration: 0,
-      state: { ...(opts?.state ?? {}), goal, ...(opts?.dryRun ? { __dryRun: true } : {}) },
+      state: { ...(opts?.state ?? {}), goal },
       tokensUsed: 0,
       startedAt: Date.now(),
       termination: this.termination,

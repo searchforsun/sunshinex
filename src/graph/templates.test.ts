@@ -9,7 +9,6 @@ import { SafetyChain } from '../harness/security/chain';
 import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';
 import { ProcessSandbox } from '../harness/security/sandbox';
-import { DryRun } from '../harness/security/dryrun';
 import { ToolRegistry } from '../harness/tools';
 import { builtinTools } from '../harness/tools/builtin';
 import { ContextManager } from '../harness/context';
@@ -41,7 +40,6 @@ function makeDeps(root: string, model: ModelAdapter, tokensPerCall = 0): { deps:
   const safety = new SafetyChain(
     new SecurityGuard(new PolicyEngine(), 'dontAsk'),
     new ProcessSandbox(),
-    new DryRun(),
     root,
   );
   const registry = new ToolRegistry();

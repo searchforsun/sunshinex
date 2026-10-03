@@ -9,7 +9,6 @@ import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { SafetyChain } from './security/chain';
-import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
@@ -23,9 +22,10 @@ function makeReactor(
   tmp: string,
   adapter: ModelAdapter,
   reverseTools = false,
+  activeRoot?: () => string | null,
 ): { reactor: Reactor; prompts: string[]; requests: ChatRequest[]; context: ContextManager } {
   const store = new FileStore(path.join(tmp, '.data'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   const tools = builtinTools(safety, tmp);
   for (const t of reverseTools ? [...tools].reverse() : tools) registry.register(t);
@@ -40,7 +40,7 @@ function makeReactor(
       return adapter.chat(req, hooks);
     },
   };
-  return { reactor: new Reactor({ registry, safety, context, model: capture }), prompts, requests, context };
+  return { reactor: new Reactor({ registry, safety, context, model: capture, ...(activeRoot ? { activeRoot } : {}) }), prompts, requests, context };
 }
 
 function scripted(replies: string[]): ModelAdapter {
@@ -101,6 +101,28 @@ test('环境事实：提示词注入工作目录绝对路径与工具选择政�
     assert.ok(p.includes(`Current working directory (project root): ${tmp}`), '提示词应含工作目录绝对路径（环境事实）');
     assert.ok(p.includes('Tool choice:'), '提示词应含工具选择政策（专用工具优先、exec 兜底）');
     assert.ok(p.indexOf('Current working directory') > p.indexOf('Context:'), '工作目录属上下文段环境事实');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('workDirLine 随活动根（D19-b）：activeRoot 注入翻转事实行；null/缺省与既有逐字节一致', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-envfact-wt-'));
+  const tree = path.join(tmp, 'wt-tree');
+  fs.mkdirSync(tree);
+  try {
+    // 缺省（无提供者）与提供者报主区（null）必须逐字节同prompt——null=主工作区缺省态，非第三种根
+    const plain = makeReactor(tmp, scripted([DONE_REPLY]));
+    const nullRoot = makeReactor(tmp, scripted([DONE_REPLY]), false, () => null);
+    await plain.reactor.run({ goal: 'g' }, { maxSteps: 2 });
+    await nullRoot.reactor.run({ goal: 'g' }, { maxSteps: 2 });
+    assert.equal(plain.prompts[0], nullRoot.prompts[0], 'activeRoot() === null 时逐字节回落 deps.root（缺省不变量）');
+
+    const inTree = makeReactor(tmp, scripted([DONE_REPLY]), false, () => tree);
+    await inTree.reactor.run({ goal: 'g' }, { maxSteps: 2 });
+    // 事实行整行严格比对（树路径是 tmp 子目录，includes 会前缀误命中）
+    const fact = /Current working directory \(project root\): (.+)/.exec(inTree.prompts[0])?.[1];
+    assert.equal(fact, tree, '事实行应整行报活动根（与 worktree 工具回执一致，不再恒报主根）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

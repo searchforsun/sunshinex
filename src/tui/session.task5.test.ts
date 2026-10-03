@@ -59,8 +59,8 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
       },
     });
     harness.context.appendChain([
-      { action: 'read', observation: 'Y'.repeat(2000) },
-      { action: 'read', observation: 'Z'.repeat(2000) },
+      { action: 'tool-result', observation: 'Y'.repeat(2000) },
+      { action: 'tool-result', observation: 'Z'.repeat(2000) },
     ]);
     const fake: TuiRuntime = {
       harness,
@@ -105,7 +105,7 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
         },
       },
     });
-    harness.context.appendChain([{ action: 'read', observation: 'Y'.repeat(2000) }]);
+    harness.context.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(2000) }]);
     const fake: TuiRuntime = {
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
@@ -140,7 +140,7 @@ test('Task5 自动压缩完成 → 消息流留痕一条 Context compacted 系�
       },
     } as unknown as ModelAdapter;
     const ctrl = new SessionController({ root: tmp, model: adapter });
-    ctrl.context.appendChain([{ action: 'seed', observation: big }]);
+    ctrl.context.appendChain([{ action: 'note', observation: big }]);
     await ctrl.submit('run');
     await ctrl.waitIdle();
     const trace = ctrl.getState().messages.filter((m) => m.role === 'system' && m.text.includes('Context compacted'));

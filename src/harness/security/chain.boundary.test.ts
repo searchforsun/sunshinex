@@ -8,7 +8,6 @@ import { SafetyChain } from './chain';
 import { SecurityGuard } from './guard';
 import { PolicyEngine } from './policy';
 import { ProcessSandbox } from './sandbox';
-import { DryRun } from './dryrun';
 
 interface Fixture { chain: SafetyChain; guard: SecurityGuard; root: string; home: string; restore: () => void }
 
@@ -22,7 +21,7 @@ function withChain(mode: 'manual' | 'dontAsk' | 'plan', fn: (f: Fixture) => void
   process.env.SUNSHINEX_DATA_DIR = path.join(home, '.sunshinex', 'projects', 'p', 'data');
   fs.mkdirSync(process.env.SUNSHINEX_DATA_DIR, { recursive: true });
   const guard = new SecurityGuard(new PolicyEngine(), mode);
-  const chain = new SafetyChain(guard, new ProcessSandbox(), new DryRun(), root);
+  const chain = new SafetyChain(guard, new ProcessSandbox(), root);
   const restore = (): void => {
     if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
     if (prevFence === undefined) delete process.env.SUNSHINEX_READ_FENCE; else process.env.SUNSHINEX_READ_FENCE = prevFence;

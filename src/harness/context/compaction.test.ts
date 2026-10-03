@@ -191,16 +191,16 @@ test('applyCompaction provider 门禁：非 openai 通道不走模型直接确�
 
 test('chainToHistoryItems：链行 → history 条目唯一格式（与 reactor toHistory 同源）', () => {
   const items = chainToHistoryItems([
-    { step: 3, action: 'read', observation: 'o1' },
+    { step: 3, action: 'tool-result', observation: 'o1' },
     { step: 4, observation: 'o2' },
   ]);
-  assert.deepEqual(items.map((i) => i.content), ['3: read -> o1', '4:  -> o2']);
+  assert.deepEqual(items.map((i) => i.content), ['3: tool-result -> o1', '4:  -> o2']);
   assert.ok(items.every((i) => i.kind === 'history'));
 });
 
 test('runCompaction：协调单点——压缩、模型摘要、折链', async () => {
   const { cm } = setup();
-  cm.appendChain([{ action: 'read', observation: 'Y'.repeat(800) }]);
+  cm.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(800) }]);
   const items = cm.assemble(chainToHistoryItems(cm.chainView()));
   const r = await runCompaction(cm, items, {
     summaryTokenBudget: 2000,

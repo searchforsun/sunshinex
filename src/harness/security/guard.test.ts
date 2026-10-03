@@ -18,6 +18,23 @@ test('只读白名单命令默认放行', () => {
   assert.equal(r.allowed, true);
 });
 
+// 债 D22 钉子：白名单首 token 判据遇重定向/tee 写效果即失效，manual 档不再免审批直放（降为 ask 可审批豁免，非硬拒）
+test('manual 档白名单 vs 重定向写：echo/cat 管道 tee 均降为 ask', () => {
+  const g = new SecurityGuard(new PolicyEngine(), 'manual');
+  for (const cmd of ['echo pwned > ~/.bashrc', 'echo x >> f', 'cat a | tee b']) {
+    const r = g.preToolUse('Bash', { command: cmd });
+    assert.equal(r.allowed, false, cmd);
+    if (!r.allowed) assert.equal(r.ask, true, `${cmd} 须是 ask（可交互豁免）而非硬底线拒绝`);
+  }
+});
+
+test('manual 档白名单对照：无重定向只读命令仍免审批直放', () => {
+  const g = new SecurityGuard(new PolicyEngine(), 'manual');
+  for (const cmd of ['echo hello', 'ls -la', 'cd src', 'cat a.txt | grep x']) {
+    assert.equal(g.preToolUse('Bash', { command: cmd }).allowed, true, cmd);
+  }
+});
+
 test('plan 模式下写工具被拒', () => {
   const g = new SecurityGuard(new PolicyEngine(), 'plan');
   const r = g.preToolUse('Write', { path: 'x', content: 'y' });

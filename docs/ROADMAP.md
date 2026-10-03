@@ -108,7 +108,7 @@ flowchart TB
 - [x] 权限与审批终端化：deny/ask/allow 审批卡 + OptionSelector 统一选择器（对标 CC 交互）
 - [x] 会话持久化 + resume（journal 逐事件落盘、崩溃丢失窗口收敛至在飞一个工具步；/resume、--continue、/rewind 代码回退、/fork 不可变分档）
 - [x] 运行控制：中断停止（Esc/Ctrl+C）、steering 穿插提示词（↑ 撤回重排）、ask_question 工具
-- [x] 思考强度 effort 七档（/model effort 会话内切换、端点能力阶梯降级探测）
+- [x] 思考强度 effort 七档（/model-effort 会话内切换、端点能力阶梯降级探测）
 - [x] 斜杠命令选择题化 + 命令面扁平化 + CLI 入口判界统一（设计规格 2026-09-21-cli-tui-interaction-redesign；fe12d6a / 17f7712 落地）
 - [x] Worktree 隔离特性线（设计规格 2026-09-20-worktree-isolation-design；d332a90 / b4cede3 落地）
 

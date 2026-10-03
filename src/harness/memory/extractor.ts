@@ -2,8 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
-import { MemoryRecord, MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD, MemoryType, normalizeText, slugifyMemory } from './store';
-import { consolidateMemory } from './consolidate';
+import { MemoryRecord, MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD, MEMORY_TYPES as WRITABLE_MEMORY_TYPES, MemoryType, normalizeText, slugifyMemory } from './store';
+import { coerceType, consolidateMemory } from './consolidate';
 import { scanMemoryText } from './guards';
 import { MemoryScope } from './paths';
 import { Result, ok, fail } from '../../result';
@@ -73,8 +73,8 @@ export async function settleMemory(opts: {
       const content = typeof c.content === 'string' ? c.content.trim() : '';
       if (!description || !content) continue;
       // 闸门 a（会话性内容不落盘）：结构化条目 schema 不含 scope（scope 不暴露给模型，T1 裁决），
-      // 条目按 persistent 构造，闸门无第二形态可拦
-      const type = c.type === 'user' || c.type === 'feedback' || c.type === 'reference' ? c.type : 'project';
+      // 条目按 persistent 构造，闸门无第二形态可拦；type 收编谓词与整理管线共用 consolidate.coerceType 单点
+      const type = coerceType(c.type);
       try {
         // 闸门 b/c（guards 单点）→ 闸门 e（SUNSHINE.md）→ 闸门 d（store.add 三级去重）全在 admitMemory 内，与 memory_write 工具同链
         const r = admitMemory(store, sunshine, { type, description, body: content });
@@ -104,8 +104,9 @@ function parseItemsPayload(argsJson: string): Candidate[] | null {
   }
 }
 
-/** SUNSHINE.md 材料节字符上限：与注入面漂移块 DRIFT_MAX_CHARS 同水位——材料面预算对齐 */
-const SUNSHINE_EXCERPT_MAX_CHARS = 4096;
+/** SUNSHINE.md 全文截断水位（单一来源，context 漂移块 DRIFT_MAX_CHARS 同水位 import 锚定——
+ *  材料节与漂移说明同属「SUNSHINE 全文进提示词」预算面，两处水位须同进退） */
+export const SUNSHINE_EXCERPT_MAX_CHARS = 4096;
 
 /** SUNSHINE.md 材料节（提取 prompt 用）：skip 指令的可执行数据；缺文件/空文件给确定态占位，模板形态恒定 */
 function sunshineExcerpt(root: string): string {
@@ -131,8 +132,7 @@ function sunshineText(root: string): string {
  *  是常见词不是「已写明的事实」，低于门槛不做包含判定（宁漏判不误杀，残余交整理收敛） */
 const MEMORY_SUNSHINE_OVERLAP_MIN_CHARS = 8;
 
-/** 合法记忆类型集（与 store.ts 的 MEMORY_TYPES 同集；store 未导出该常量，工具入口在此自校验——落盘与三级去重仍归 store.add 单点） */
-const WRITABLE_MEMORY_TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
+/** 合法记忆类型集（R7 单点）：import 别名沿用 WRITABLE 语义——工具入口自校验口径（落盘与三级去重仍归 store.add 单点） */
 
 /** 准入链产出：slug + 本次是否新建（幂等命中为既有项）+ 容量近满提醒（仅新建路径给出） */
 export interface MemoryAdmission {

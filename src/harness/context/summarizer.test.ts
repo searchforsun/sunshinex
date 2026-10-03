@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getLanguage, setLanguage } from '../../i18n';
 import { ContextChunk, estimateTokens } from './window';
-import { buildSummaryPrompt, isModelSummarizer, summarizeWithModel, trimToTokenBudget } from './summarizer';
+import { isModelSummarizer, summarizeWithModel, trimToTokenBudget } from './summarizer';
+import { buildSummaryPrompt } from '../prompts/summarizer';
 import type { ModelAdapter } from '../../model/adapter';
 
 function chunk(summary: string, type = 'history'): ContextChunk {

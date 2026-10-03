@@ -16,6 +16,7 @@ import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import { TaskRegistry } from './tasks';
+import { parseFrontmatterKV } from './skills';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
 /** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 恒英文单语（角色行直接进 fork 提示词） */
@@ -47,15 +48,12 @@ export interface AgentDef {
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
-/** 解析 agent.md 的简易 frontmatter（--- 块内 key: value，与 skills 解析器同风格） */
+/** 解析 agent.md 的简易 frontmatter（词法单点 skills.parseFrontmatterKV；本处只保留严格策略：
+ *  无 frontmatter 块或缺 name 即 fail-fast——注册制物料缺关键字段不得静默降级） */
 export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean; isolation?: 'worktree' } {
-  const out: Record<string, string> = { name: '', description: '', version: '0.1.0' };
   const m = FRONTMATTER.exec(md);
   if (!m) throw new Error('agent.md missing frontmatter');
-  for (const line of m[1].split(/\r?\n/)) {
-    const kv = /^([A-Za-z_][\w]*)\s*:\s*(.*)$/.exec(line.trim());
-    if (kv) out[kv[1]] = kv[2].trim();
-  }
+  const out: Record<string, string> = { name: '', description: '', version: '0.1.0', ...parseFrontmatterKV(md) };
   if (!out.name) throw new Error('agent.md frontmatter missing name');
   return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true', ...(out.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}) };
 }
@@ -148,7 +146,9 @@ export const SPAWN_TOOL_NAME = 'spawn';
 /** todo_write 工具名（规格 D9：fork 子面恒剔除——子代理私有步骤零主链状态污染，进度经既有结论行回写） */
 export const TODO_TOOL_NAME = 'todo_write';
 
-/** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队）；与 reactor 并行批上限 8 同量级对齐 */
+/** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队）。对齐关系真实口径：reactor 单批工具
+ *  并行上限 PARALLEL_TOOLS_LIMIT=16（prompts/shared 单点），本值 8 为同层 fork 上限——每 fork 自身还会
+ *  再开完整工具批，半量级收紧防嵌套扇出失控（旧注「与 reactor 并行批上限 8 同量级」把 16 误写为 8，R9 更正） */
 export const SUBAGENT_CONCURRENCY_LIMIT = 8;
 
 /** 子代理预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 不设 token 硬顶，与父级剩余解耦，
@@ -483,7 +483,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     },
     name: SPAWN_TOOL_NAME,
     description:
-      'Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap 8, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.',
+      `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.`,
     category: 'subagent',
     executor: async (input) => {
       const spec = input as SubagentSpawnInput;

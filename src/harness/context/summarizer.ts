@@ -22,8 +22,6 @@ export function trimToTokenBudget(text: string, budgetTokens: number): string {
 
 import { buildSummaryPrompt, SUMMARY_TOOLS } from '../prompts/summarizer';
 
-export { buildSummaryPrompt };
-
 /** 模型摘要：chat 面一次调用 submit_summary；空产出/抛错/畸形一律 null（调用方回退确定性 join）——压缩永不因摘要失败而失败。
  *  focus 为用户补充关注点（/compact [focus]），措辞标注「优先覆盖」：与既有六要素冲突时以用户点名为准。 */
 export async function summarizeWithModel(model: ModelAdapter, chunks: ContextChunk[], budgetTokens: number, focus?: string): Promise<string | null> {

@@ -2,8 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { KbHit } from '../../types';
-import { registerVectorBackend, VectorStore } from './store';
-import { resolveDataDir } from '../../config/data-dir';
+import { VectorStore } from './store';
 
 /** f32 向量 → vec0 hex blob 字面量：参数化绑定在 vec0 xUpdate 主键校验下不可用（G1 spike 结论），字面量是唯一插入通道 */
 function f32hex(v: number[]): string {
@@ -16,6 +15,7 @@ const SCHEMA = (dim: number) => `CREATE VIRTUAL TABLE IF NOT EXISTS kb_vec USING
  * sqlite-vec 后端：vec0 KNN（欧氏距离），单文件持久化 `vectors.db`。
  * 语义与 local-json 对齐：实例仅经 load() 挂接既有库（load 前为空视图）；id↔rowid 经 kb_meta 映射（vec0 仅接受整数 rowid）。
  * score = 1/(1+distance)：与距离单调反相，保持「越大越相关」契约。
+ * dataDir 由装配层显式传入（J3：后端不自锚 process.cwd()/直读 env）；注册经装配模块 knowledge/index.ts 显式调用，本文件零 import 副作用。
  */
 export class SqliteVecStore implements VectorStore {
   private db: DatabaseSync | null = null;
@@ -33,7 +33,16 @@ export class SqliteVecStore implements VectorStore {
       // vec0 缺失即抛（fail-fast）：后端不可用必须在装配/首写期暴露，禁静默降级
       db.loadExtension(require('sqlite-vec').getLoadablePath());
       db.exec('CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)');
-      db.exec('CREATE TABLE IF NOT EXISTS kb_meta(rowid INTEGER PRIMARY KEY, id TEXT UNIQUE, text TEXT)');
+      db.exec('CREATE TABLE IF NOT EXISTS kb_meta(rowid INTEGER PRIMARY KEY, id TEXT UNIQUE, text TEXT, meta TEXT)');
+      // 建表口径迁移（J8）：旧 kb_meta 无 meta 列（file 等 meta 键静默丢失）。旧数据文件不兼容即重建——
+      // KB 索引本就可由 indexDir 全量重建，保留旧行只会留下「有向量无 meta」的半残索引，故连同 kb_vec 一并废弃、dim 基点复位
+      const cols = db.prepare('PRAGMA table_info(kb_meta)').all() as Array<{ name: string }>;
+      if (cols.length > 0 && !cols.some((c) => c.name === 'meta')) {
+        db.exec('DROP TABLE kb_meta');
+        db.exec('DROP TABLE IF EXISTS kb_vec');
+        db.exec('CREATE TABLE kb_meta(rowid INTEGER PRIMARY KEY, id TEXT UNIQUE, text TEXT, meta TEXT)');
+        db.prepare("DELETE FROM meta WHERE key = 'dim'").run();
+      }
     } catch (e) {
       // 初始化失败必须释放半开句柄：残留连接会让后续覆写/清理同一库文件被操作系统的文件锁拒绝
       // （Windows EBUSY），POSIX 下同属资源泄漏
@@ -59,15 +68,17 @@ export class SqliteVecStore implements VectorStore {
   upsert(id: string, vec: number[], meta: Record<string, unknown>): void {
     this.ensureTable(vec.length);
     const db = this.db as DatabaseSync;
+    // meta 全量持久化（J8）：meta 列承载 upsert 委托的全量键值（text 列保留为检索出参快路径，两列同源同写）
     const text = String(meta.text ?? '');
+    const metaJson = JSON.stringify(meta);
     const row = db.prepare('SELECT rowid FROM kb_meta WHERE id = ?').get(id) as { rowid: number } | undefined;
     let rowid: number;
     let isNew = false;
     if (row) {
-      db.prepare('UPDATE kb_meta SET text = ? WHERE id = ?').run(text, id);
+      db.prepare('UPDATE kb_meta SET text = ?, meta = ? WHERE id = ?').run(text, metaJson, id);
       rowid = row.rowid;
     } else {
-      db.prepare('INSERT INTO kb_meta(id, text) VALUES (?, ?)').run(id, text);
+      db.prepare('INSERT INTO kb_meta(id, text, meta) VALUES (?, ?, ?)').run(id, text, metaJson);
       rowid = (db.prepare('SELECT rowid FROM kb_meta WHERE id = ?').get(id) as { rowid: number }).rowid;
       isNew = true;
     }
@@ -87,6 +98,18 @@ export class SqliteVecStore implements VectorStore {
       const m = this.db?.prepare('SELECT id, text FROM kb_meta WHERE rowid = ?').get(r.rowid) as { id: string; text: string } | undefined;
       return { id: m?.id ?? String(r.rowid), text: m?.text ?? '', score: 1 / (1 + r.distance) };
     });
+  }
+
+  /** J8 契约读回：按 id 解析 meta JSON 全量返回；库未开（load 前）= 空视图返回 undefined，与 size/search 前置态一致 */
+  metaOf(id: string): Record<string, unknown> | undefined {
+    if (!this.db) return undefined;
+    const row = this.db.prepare('SELECT meta FROM kb_meta WHERE id = ?').get(id) as { meta: string | null } | undefined;
+    if (row === undefined || row.meta === null) return undefined;
+    try {
+      return JSON.parse(row.meta) as Record<string, unknown>;
+    } catch {
+      return undefined; // 损坏行按缺失降级（索引可重建），不阻塞读侧
+    }
   }
 
   size(): number {
@@ -125,5 +148,3 @@ export class SqliteVecStore implements VectorStore {
     if (this.db) this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   }
 }
-
-registerVectorBackend('sqlite-vec', () => new SqliteVecStore(process.env.SUNSHINEX_KB_DATA_DIR ?? path.join(resolveDataDir(process.cwd()), 'kb')));

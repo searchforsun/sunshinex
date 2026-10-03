@@ -14,7 +14,6 @@ import { SafetyChain } from './security/chain';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
-import { DryRun } from './security/dryrun';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { ScriptedAdapter } from '../model/adapter';
@@ -200,7 +199,7 @@ test('T5-4 非 git 仓 → 静默兜底：不建树、零 note、主工作区正
 test('T5-5a 缺项目根 → 同静默兜底：正常执行、零链行', async () =>
   withIso(async (tmp) => {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);

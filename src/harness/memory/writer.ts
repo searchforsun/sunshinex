@@ -12,12 +12,9 @@
 import * as path from 'path';
 import { Result, ok, fail } from '../../result';
 import { dataDirReal } from '../../config/data-dir';
-import { MEMORY_INDEX_MAX_LINES, MemoryStore, MemoryType, slugifyMemory } from './store';
+import { MEMORY_INDEX_MAX_LINES, MEMORY_TYPES, INDEX_NAME, MemoryStore, MemoryType, parseMemoryFrontmatter, slugifyMemory } from './store';
 import { scanMemoryText } from './guards';
 import { isMemoryPath, MemoryScope } from './paths';
-
-const INDEX_NAME = 'MEMORY.md';
-const MEMORY_TYPES: readonly MemoryType[] = ['user', 'feedback', 'project', 'reference'];
 
 export interface MemoryWriteRequest {
   root: string;
@@ -38,18 +35,6 @@ export interface MemoryWriteOutcome {
 }
 
 export type MemoryWriteSeam = (req: MemoryWriteRequest) => Result<MemoryWriteOutcome | 'pass'>;
-
-/** 窄 frontmatter 解析（记忆记录四键；无 frontmatter 返回 null） */
-function parseFrontmatter(md: string): { meta: Record<string, string>; body: string } | null {
-  const m = /^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/.exec(md);
-  if (!m) return null;
-  const meta: Record<string, string> = {};
-  for (const line of m[1].split(/\r?\n/)) {
-    const i = line.indexOf(':');
-    if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-  }
-  return { meta, body: m[2] };
-}
 
 export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOutcome | 'pass'> {
   const dataDir = dataDirReal(req.root);
@@ -81,7 +66,8 @@ export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOut
       `Rejected: session-scoped or unsafe content (${flagged}); nothing written`,
     );
   }
-  const parsed = parseFrontmatter(req.content);
+  // 模型写入口走词法单点 lenient 形（CRLF/尾空白容错；磁盘读侧 strict 形的差异见 store.parseMemoryFrontmatter 注释）
+  const parsed = parseMemoryFrontmatter(req.content, { lenient: true });
   if (parsed === null) {
     return fail(
       'MEMORY_WRITE_FRONTMATTER',

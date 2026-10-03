@@ -54,7 +54,7 @@ test('Task6 集成：有区时摘要 prompt 含区体', async () => {
   try {
     fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), ['# P', 'rule', '## Compact Instructions', 'keep migration notes'].join('\n'));
     const cm = new ContextManager(tmp, new FileStore(tmp));
-    cm.appendChain([{ action: 'read', observation: 'Y'.repeat(2000) }]);
+    cm.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(2000) }]);
     const seen: string[] = [];
     await runCompaction(cm, cm.assemble([{ kind: 'history', content: '1: read -> Y' }]), {
       summaryTokenBudget: 2000,
@@ -75,7 +75,7 @@ test('Task6 集成：无区时摘要 prompt 零变形（不含区体/关注点�
   try {
     fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), '# P\nrule\n');
     const cm = new ContextManager(tmp, new FileStore(tmp));
-    cm.appendChain([{ action: 'read', observation: 'Y'.repeat(2000) }]);
+    cm.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(2000) }]);
     const seen: string[] = [];
     await runCompaction(cm, cm.assemble([{ kind: 'history', content: '1: read -> Y' }]), {
       summaryTokenBudget: 2000,

@@ -21,6 +21,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fail, ok, Result } from '../result';
+import { slugify } from '../slug';
 
 /** worktree 登记条目（registry.json 数组元素；createdAt 属数据面文件，允许时间戳） */
 export interface WorktreeEntry {
@@ -102,30 +103,13 @@ function persistRegistry(dataDir: string, entries: WorktreeEntry[]): void {
   fs.writeFileSync(registryFilePath(dataDir), JSON.stringify(entries, null, 2) + '\n');
 }
 
+/** label → 树名 slug 段（≤27 截断、全折叠回退 'wt'）：正则链单点在 src/slug.ts，本处只声明 worktree 方言参数 */
 export function slugifyLabel(label: string): string {
-  const folded = label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, SLUG_MAX)
-    .replace(/-+$/g, '');
-  return folded.length > 0 ? folded : 'wt';
+  return slugify(label, { max: SLUG_MAX, fallback: 'wt' });
 }
 
 export function worktreesRoot(dataDir: string): string {
   return path.join(dataDir, 'worktrees');
-}
-
-export function detectIsolation(root: string): boolean {
-  const gitDir = execGit(root, ['rev-parse', '--git-dir']);
-  const commonDir = execGit(root, ['rev-parse', '--git-common-dir']);
-  // 非 git 仓 / 探测失败 → 按普通仓（fail-closed 不误判隔离）
-  if (!gitDir.ok || !commonDir.ok) return false;
-  // linked worktree 判定前提：git-dir ≠ common-dir（resolve 归一防相对/绝对形态误比）
-  if (path.resolve(root, gitDir.value) === path.resolve(root, commonDir.value)) return false;
-  // submodule 同样满足上式（Step 0 护栏）：superproject 非空按普通仓处理
-  const superProject = execGit(root, ['rev-parse', '--show-superproject-working-tree']);
-  return superProject.ok && superProject.value.length === 0;
 }
 
 /** 拷贝面目录（规格 §6.3 固定拷贝）：脏判据不计入——git 2.47 实测对链接 worktree 的 status 不读

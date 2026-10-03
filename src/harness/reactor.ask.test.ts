@@ -9,7 +9,6 @@ import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { SafetyChain } from './security/chain';
-import { DryRun } from './security/dryrun';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
@@ -22,9 +21,9 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = process.env.SUNSHINEX_USER_SKILLS_DIR ??
 
 function makeReactorWithAsk(tmp: string, steps: string[], ask: AskUserSeam): Reactor {
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
-  for (const t of builtinTools(safety, tmp, undefined, undefined, undefined, undefined, undefined, undefined, ask)) registry.register(t);
+  for (const t of builtinTools(safety, tmp, { ask })) registry.register(t);
   const context = new ContextManager(tmp, store);
   return new Reactor({ registry, safety, context, model: new ScriptedAdapter(steps) });
 }

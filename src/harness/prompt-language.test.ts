@@ -40,7 +40,6 @@ const SCOPES: Record<string, string[]> = {
     'src/loop/templates.ts',
     'src/graph/nodes.ts',
     'src/graph/agents.ts',
-    'src/graph/workflow.ts',
     'src/graph/engine.ts',
     'src/graph/templates.ts',
   ],
@@ -117,17 +116,15 @@ for (const [batch, files] of Object.entries(SCOPES)) {
  * 这些串是「写死的字面量、零写链、只上屏」的**死用户显示**，必须留在文件里且被 t() 包裹。
  * 只跑 leaks() 抓不到「被整体英文化」——zh 分支删干净则零命中，反被误判为合格；故同时断言中文仍在。
  */
-test('回执双语钉子：gate/CI/引擎汇总/dry-run 预览的中文回执必须为 t() 包裹的死用户显示', () => {
+test('回执双语钉子：gate/引擎汇总的中文回执必须为 t() 包裹的死用户显示', () => {
+  // 图域 CI 节点与 dry-run 预览已随 DryRun 退役删除（graph 域会话），对应钉子条目同步移除
   const receipts: Array<[string, string]> = [
     ['src/graph/nodes.ts', '审批通过：'],
     ['src/graph/nodes.ts', '审批拒绝：'],
     ['src/graph/nodes.ts', '等待人工审批：'],
-    ['src/graph/nodes.ts', 'CI 通过：'],
-    ['src/graph/nodes.ts', 'CI 失败：'],
     ['src/graph/engine.ts', '全部节点完成'],
     ['src/graph/engine.ts', '等待人工审批：'],
     ['src/graph/engine.ts', '存在失败节点：'],
-    ['src/graph/engine.ts', '[dry-run] 预览: '],
   ];
   for (const [file, zh] of receipts) {
     const raw = fs.readFileSync(path.join(ROOT, file), 'utf8');

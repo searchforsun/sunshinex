@@ -47,7 +47,7 @@ test('restoreSession：直注入不触发订阅；chainSeq 按链内最大步号
   cm.appendChain([{ observation: '恢复后新步骤' }]);
   const view = cm.chainView();
   assert.deepEqual(view.map((s) => s.step), [3, 4], '步号从最大值续排不回绕');
-  assert.equal(cm.exportSessionState().chainFrom, 0);
+  assert.equal(cm.chainFromView(), 0);
 });
 
 test('export → restore 往返：链视图与压缩块与原实例逐字段一致', async () => {
@@ -66,16 +66,6 @@ test('export → restore 往返：链视图与压缩块与原实例逐字段一�
   const b = setup();
   b.restoreSession({ chain: steps, chainFrom: lastCompact.chainFrom, compacted: lastCompact.compacted });
   assert.deepEqual(b.chainView(), a.chainView(), '链视图（水位折后）一致');
-  assert.deepEqual(b.exportSessionState().chain, a.exportSessionState().chain, '全量链一致');
-  assert.deepEqual(b.exportSessionState().compacted, a.exportSessionState().compacted, '压缩块一致');
-});
-
-test('exportSessionState 深拷贝：改动返回值不回渗内部数组', () => {
-  const cm = setup();
-  cm.appendChain([{ observation: 's1' }]);
-  const snap = cm.exportSessionState();
-  snap.chain.push({ step: 99, observation: '外部注入' });
-  snap.chainFrom = 10;
-  assert.equal(cm.chainView().length, 1);
-  assert.equal(cm.exportSessionState().chainFrom, 0);
+  assert.equal(b.chainFromView(), a.chainFromView(), '压缩水位一致');
+  assert.deepEqual(b.compactedView(), a.compactedView(), '压缩块一致');
 });

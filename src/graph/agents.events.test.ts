@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { makeRoleAgent, ROLE_PRESETS } from './agents';
+import { makeRoleAgent } from './agents';
+import { ROLE_PRESETS } from '../harness/subagent';
 import { GraphEngine } from './engine';
 import { ProcessSandbox } from '../harness/security/sandbox';
 import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';
 import { SafetyChain } from '../harness/security/chain';
-import { DryRun } from '../harness/security/dryrun';
 import { ToolRegistry } from '../harness/tools';
 import { builtinTools } from '../harness/tools/builtin';
 import { ContextManager } from '../harness/context';
@@ -21,7 +21,7 @@ test('Graph 角色节点透传 onEvent：事件贯通到 deps 注入者', async 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-graphev-'));
   try {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);
@@ -53,7 +53,7 @@ test('Graph 不注入 onEvent：角色节点零副作用照常完成', async () 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-graphev2-'));
   try {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);
@@ -86,7 +86,7 @@ test('role agent 收敛 Runner：子代理事件带 subagent 标识透传（单�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-graphev3-'));
   try {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);

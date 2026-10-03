@@ -6,7 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { SLASH_COMMANDS } from './components/App';
+import { SLASH_COMMANDS } from './slash-commands';
 import { MemoryStore } from '../harness/memory/store';
 
 /** /memory 命令族（扁平化 6 命令）：列表 /memory-add（同闸门）/memory-rm 多选卡 /memory-gc /memory-on|off，运行中拒绝，命令清单与帮助同步 */

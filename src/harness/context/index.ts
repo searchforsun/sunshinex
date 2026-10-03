@@ -2,13 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { StorageAdapter } from '../../storage/adapter';
-import { ContextItem, HistoryStep } from '../../types';
+import { ChainAction, ContextItem, HistoryStep } from '../../types';
 import { resolveDataDir } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { formatSkillsIndex, loadSkills } from '../skills';
+import { SUNSHINE_EXCERPT_MAX_CHARS } from '../memory/extractor';
+import { INDEX_NAME, memoryDir, readMemoryIndex } from '../memory/store';
 import { ContextLoader, extractCompactInstructions } from './loader';
 import { ContextWindow, ContextChunk, estimateTokens } from './window';
-import { SessionStore } from './session';
 import { maskText } from '../security/chain';
 import { isModelSummarizer, summarizeWithModel } from './summarizer';
 import type { ModelAdapter } from '../../model/adapter';
@@ -27,7 +28,7 @@ export type ContextChange =
   | { kind: 'append'; steps: HistoryStep[] }
   | { kind: 'compact'; chainFrom: number; compacted: ContextItem[] };
 
-/** 会话状态完整快照（exportSessionState / restoreSession 载荷） */
+/** 会话状态完整快照（restoreSession 载荷：journal 事件流归约产物，/resume 重放直注入） */
 export interface ContextSessionState {
   chain: HistoryStep[];
   chainFrom: number;
@@ -37,7 +38,6 @@ export interface ContextSessionState {
 export class ContextManager {
   readonly loader: ContextLoader;
   readonly window: ContextWindow;
-  readonly session: SessionStore;
 
   private compacted: ContextItem[] = [];
   private recent: string[] = [];
@@ -68,10 +68,10 @@ export class ContextManager {
   /** 记忆索引基线（MEMORY.md 全文；跨轮整理/写入时增量告知，快照仍冻结） */
   private memoryBaseline = '';
 
-  constructor(private readonly rootPath: string, store: StorageAdapter) {
+  // store 形参保留：装配面签名稳定（graph/tui 侧夹具同形构造）；持久化双轨已并轨至 journal 事件流（S5），context 不再直写存储
+  constructor(private readonly rootPath: string, _store: StorageAdapter) {
     this.loader = new ContextLoader(rootPath);
     this.window = new ContextWindow();
-    this.session = new SessionStore(store);
     // Compact Instructions 区提取（E 项）：装配同源读一次；无文件/无区为 null
     const sunshinePath = path.join(rootPath, 'SUNSHINE.md');
     try {
@@ -171,12 +171,7 @@ export class ContextManager {
     this.changeSink = cb;
   }
 
-  /** 会话状态导出（完整快照；深拷贝防外部改写内部数组） */
-  exportSessionState(): ContextSessionState {
-    return { chain: this.chain.map((s) => ({ ...s })), chainFrom: this.chainFrom, compacted: this.compacted.map((i) => ({ ...i })) };
-  }
-
-  /** 会话状态恢复（/resume / --continue）：直接注入，不触发订阅（重放期间日志是读方，不二次记录）；chainSeq 按链内最大步号续排 */
+  /** 会话状态恢复（/resume / --continue）：journal 事件流归约后直注入，不触发订阅（重放期间日志是读方，不二次记录）；chainSeq 按链内最大步号续排 */
   restoreSession(s: ContextSessionState): void {
     this.chain = s.chain.map((st) => ({ ...st }));
     this.chainFrom = s.chainFrom;
@@ -189,8 +184,9 @@ export class ContextManager {
   }
 
   /** 会话链尾追（唯一写入口）：行号由链内序号定死，追加后不重排（裁剪后允许跳号）；
-   *  reasoning（该轮模型思考原文）随行透传——思考模式续轮回传载荷的持久化通道 */
-  appendChain(entries: Array<{ action?: string; observation: string; reasoning?: string }>): void {
+   *  reasoning（该轮模型思考原文）随行透传——思考模式续轮回传载荷的持久化通道；
+   *  action 收窄为 ChainAction 闭集（types.ts N11③ 单点登记）——新动作进链前须先在登记处扩员 */
+  appendChain(entries: Array<{ action?: ChainAction; observation: string; reasoning?: string }>): void {
     const pushed: HistoryStep[] = [];
     for (const e of entries) {
       const step: HistoryStep = { step: ++this.chainSeq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation, ...(e.reasoning !== undefined ? { reasoning: e.reasoning } : {}) };
@@ -239,7 +235,7 @@ export class ContextManager {
     }
     const mem = memoryIndexText(this.rootPath);
     if (mem !== this.memoryBaseline) {
-      out.push(this.memoryDriftText(mem, path.join(resolveDataDir(this.rootPath), 'memory', 'MEMORY.md')));
+      out.push(this.memoryDriftText(mem, path.join(memoryDir(this.rootPath), INDEX_NAME)));
       this.memoryBaseline = mem;
     }
     return out;
@@ -382,7 +378,7 @@ export class ContextManager {
    */
   private memoryIndexItems(): ContextItem[] {
     if (!resolveMemoryConfig().autoMemory) return [];
-    const dir = path.join(resolveDataDir(this.rootPath), 'memory');
+    const dir = memoryDir(this.rootPath);
     const index = memoryIndexText(this.rootPath);
     // 模型侧文案恒英文单语（2026-09-18 用户裁决 + CLAUDE.md §15：提示词恒英文）——不要写成双语对
     const lead = [
@@ -397,13 +393,10 @@ export class ContextManager {
   }
 }
 
-/** 记忆索引读盘单点（快照装载与漂移比对共用，防两处口径漂移）；无文件为空串 */
+/** 记忆索引读盘单点（快照装载与漂移比对共用，防两处口径漂移）：委托 store 无副作用读盘形态
+ *  （MemoryStore 构造含 mkdirSync，快照/比对路径只读不建目录）；无文件为空串 */
 function memoryIndexText(root: string): string {
-  try {
-    return fs.readFileSync(path.join(resolveDataDir(root), 'memory', 'MEMORY.md'), 'utf8');
-  } catch {
-    return '';
-  }
+  return readMemoryIndex(memoryDir(root));
 }
 
 /** 技能 id 集（排序后 join，跨环境逐字节稳定）：漂移比对用——只比 id 集，技能正文永不进上下文 */
@@ -414,8 +407,10 @@ function skillIds(root: string): string {
     .join('\n');
 }
 
-/** 漂移全文块字符上限：超过即截断并附 read <绝对路径> 指针（防单次尾追挤爆上下文） */
-const DRIFT_MAX_CHARS = 4096;
+/** 漂移全文块字符上限：超过即截断并附 read <绝对路径> 指针（防单次尾追挤爆上下文）——
+ *  与提取材料节同水位，单一来源在 extractor.SUNSHINE_EXCERPT_MAX_CHARS（本地别名保留 DRIFT 域语义：
+ *  本处覆盖 SUNSHINE 与记忆索引两类漂移全文，水位须与材料面同进退） */
+const DRIFT_MAX_CHARS = SUNSHINE_EXCERPT_MAX_CHARS;
 
 /** 链行 → history 条目的唯一拼装格式（reactor toHistory 与 TUI /compact 补链共用，防两处漂移） */
 export function chainToHistoryItems(steps: HistoryStep[]): ContextItem[] {

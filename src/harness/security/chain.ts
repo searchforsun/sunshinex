@@ -11,7 +11,6 @@ import { loadGlobalSettings, loadProjectSettings } from '../../config/settings';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { isMemoryPath, MemoryScope } from '../memory/paths';
 import { isWithin } from '../../paths';
-import { DryRun } from './dryrun';
 import { Result, fail } from '../../result';
 import { landlockWrap } from './landlock';
 
@@ -40,7 +39,7 @@ export function maskText(text: string): string {
   return out;
 }
 
-/** 统一安全链：guard 守门 → 路径边界 → 后端执行 + dryrun 预览（mask 出口见 maskResult） */
+/** 统一安全链：guard 守门 → 路径边界 → 后端执行（mask 出口见 maskResult） */
 export class SafetyChain {
   /** 判界基准：root 归一后真实路径（root 可能位于符号链接路径上；不存在时原样回退）。
    *  公开只读：builtin write 的 SUNSHINE.md 回执判据共用同一归一根（§9.3，防双套归一漂移） */
@@ -49,7 +48,6 @@ export class SafetyChain {
   constructor(
     private guard: SecurityGuard,
     readonly backend: ToolBackend,
-    private dryrun: DryRun,
     private readonly root: string,
     /** 记忆写 scope（规格 §4.2）：undefined=主链可写 memory/** 整子树；子代理 fork 传自身 agents/<id> 收窄 */
     readonly memoryScope?: MemoryScope,
@@ -237,13 +235,13 @@ export class SafetyChain {
 
   /** 派生带记忆 scope 的克隆（子代理 fork 用）：其余依赖引用共享，仅 scope 收窄；原实例零突变 */
   withMemoryScope(scope: MemoryScope): SafetyChain {
-    return new SafetyChain(this.guard, this.backend, this.dryrun, this.root, scope);
+    return new SafetyChain(this.guard, this.backend, this.root, scope);
   }
 
   /** 派生换根克隆（隔离子代理专用，规格 2026-09-23-subagent-worktree-isolation D6）：root 置换为专属树并携带
-   * isolatedRoot 标记——exec 判界三查仅隔离子链生效；guard/backend/dryrun/scope 引用共享，活动根态不继承（克隆从缺省态起步，子链 exec cwd 与路径判界天然锚树） */
+   * isolatedRoot 标记——exec 判界三查仅隔离子链生效；guard/backend/scope 引用共享，活动根态不继承（克隆从缺省态起步，子链 exec cwd 与路径判界天然锚树） */
   withRoot(root: string): SafetyChain {
-    const child = new SafetyChain(this.guard, this.backend, this.dryrun, root, this.memoryScope);
+    const child = new SafetyChain(this.guard, this.backend, root, this.memoryScope);
     child.permissions = this.permissions;
     child.additionalDirs = this.additionalDirs;
     child.isolatedRootPath = root;
@@ -445,9 +443,5 @@ export class SafetyChain {
   /** D3 追加单个信任目录（/add-dir 运行期通道；与 settings/CLI 三面同源） */
   addAdditionalDir(dir: string): void {
     this.setAdditionalDirs([...this.additionalDirs, dir]);
-  }
-
-  preview(cmd: string): string {
-    return maskText(this.dryrun.preview(cmd));
   }
 }

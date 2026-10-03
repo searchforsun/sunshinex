@@ -26,10 +26,10 @@ test('B 折链归档：被折链行落 archives/compaction-*.jsonl，压缩块�
   try {
     const { cm } = setup();
     cm.appendChain([
-      { action: 'a', observation: '第一步观察' },
-      { action: 'b', observation: '第二步观察' },
-      { action: 'c', observation: '第三步观察' },
-      { action: 'd', observation: '第四步观察' },
+      { action: 'note', observation: '第一步观察' },
+      { action: 'note', observation: '第二步观察' },
+      { action: 'note', observation: '第三步观察' },
+      { action: 'note', observation: '第四步观察' },
     ]);
     const res = await runCompaction(cm, ITEMS(), { summaryTokenBudget: 2000, rereadTokenBudget: 500, chainFoldedCount: 3 });
     assert.ok(res.via !== 'replay');
@@ -55,8 +55,8 @@ test('B replay 幂等：不重复写归档、不重复加行', async () => {
   try {
     const { cm } = setup();
     cm.appendChain([
-      { action: 'a', observation: '一' },
-      { action: 'b', observation: '二' },
+      { action: 'note', observation: '一' },
+      { action: 'note', observation: '二' },
     ]);
     const items = ITEMS();
     await runCompaction(cm, items, { summaryTokenBudget: 2000, rereadTokenBudget: 500, chainFoldedCount: 2 });
@@ -92,13 +92,13 @@ test('B 归档指针随会话状态持久化：restore 后压缩块仍含 Full t
   try {
     const { cm } = setup();
     cm.appendChain([
-      { action: 'a', observation: '甲' },
-      { action: 'b', observation: '乙' },
+      { action: 'note', observation: '甲' },
+      { action: 'note', observation: '乙' },
     ]);
     await runCompaction(cm, ITEMS(), { summaryTokenBudget: 2000, rereadTokenBudget: 500, chainFoldedCount: 2 });
     const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-cpt-arch-r-'));
     const cm2 = new ContextManager(root2, new FileStore(root2));
-    cm2.restoreSession(cm.exportSessionState());
+    cm2.restoreSession({ chain: cm.chainView(), chainFrom: cm.chainFromView(), compacted: cm.compactedView() });
     const restored = cm2.assemble().find((i) => i.content.startsWith('[Compacted summary'));
     assert.match(restored!.content, /Full trace: /);
   } finally {
@@ -114,8 +114,8 @@ test('B 归档写失败降级：压缩照常完成、无 Full trace 行', async 
   try {
     const { cm } = setup();
     cm.appendChain([
-      { action: 'a', observation: '一' },
-      { action: 'b', observation: '二' },
+      { action: 'note', observation: '一' },
+      { action: 'note', observation: '二' },
     ]);
     const res = await runCompaction(cm, ITEMS(), { summaryTokenBudget: 2000, rereadTokenBudget: 500, chainFoldedCount: 2 });
     assert.ok(res.via !== 'replay');

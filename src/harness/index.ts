@@ -13,7 +13,6 @@ import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
 import { PermissionMode } from './security/modes';
 import { SessionEvent } from '../types';
-import { DryRun } from './security/dryrun';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
@@ -29,11 +28,11 @@ import type { SettlePayload } from './reactor';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
-import { removeWorktree, readRegistry} from './worktree';
 import { loadMcpServers } from '../config';
 import { loadPermissions } from '../config/permissions';
 import * as fs from 'fs';
 import { McpHost } from './mcp/client';
+import type { KnowledgeBase } from './knowledge';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
 export const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
@@ -58,6 +57,9 @@ export interface HarnessOptions {
   outputStyle?: OutputStyle;
   /** D3：CLI/TUI 显式扩目录（与 settings permissions.additionalDirs 合并，三面同源） */
   addDirs?: string[];
+  /** KB 知识库实例（D18 整栈接线）：由装配根（runtime.ts buildDeps / selfcheck）经 assembleKnowledgeBase 构造注入；
+   *  缺省 undefined → kb_search 维持 kb_not_configured 确定降级（「未配置」是合法确定态，非缺陷） */
+  kb?: KnowledgeBase;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -66,7 +68,6 @@ export class Harness {
   readonly tools: ToolRegistry;
   readonly security: SecurityGuard;
   readonly sandbox: ProcessSandbox;
-  readonly dryrun: DryRun;
   readonly safety: SafetyChain;
   readonly context: ContextManager;
   /** 主模型适配器（TUI/GUI 装配 planner 等子运行时复用） */
@@ -97,7 +98,7 @@ export class Harness {
   /** MCP 装配警告单（降级语义）：服务器连接/握手/重名失败只损失该服务器工具，警告收集后继续装配其余服务器 */
   readonly mcpWarnings: () => string[];
 
-  constructor(private opts: HarnessOptions) {
+  constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
     const store = new FileStore(resolveDataDir(base));
     const ledger = new RunLedger(store);
@@ -112,8 +113,7 @@ export class Harness {
     for (const rule of perms.config.deny) policy.add('deny', rule);
     for (const rule of perms.config.allow) policy.add('allow', rule);
     this.security = new SecurityGuard(policy, opts.mode ?? 'dontAsk', mcpServers.map((s) => s.name));
-    this.dryrun = new DryRun();
-    this.safety = new SafetyChain(this.security, this.sandbox, this.dryrun, base);
+    this.safety = new SafetyChain(this.security, this.sandbox, base);
     this.safety.setPermissions(perms.config);
     this.safety.setAdditionalDirs([...perms.config.additionalDirs, ...(opts.addDirs ?? [])]);
     this.permissionWarningList = perms.warnings;
@@ -123,8 +123,21 @@ export class Harness {
     this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/，账本进程内承载
     this.tasks = new TaskRegistry(resolveDataDir(base));
-    // 第 7 参注入记忆写入接缝（规格 §4.4 落点表）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
-    for (const t of builtinTools(this.safety, base, undefined, undefined, createToolOutputArchive(() => resolveDataDir(base)), this.skills, guardMemoryWrite, (input) => writeMemoryFact({ root: base, ...input }), opts.ask ?? headlessAskStub, this.writeSnapshot, () => this.safety.activeRoot, opts.todos ?? { set: () => {} }, this.tasks)) this.tools.register(t);
+    // memory 接缝注入记忆写入（规格 §4.4 落点表，原第 7 参）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
+    // kb 接缝（D18 接线，原第 3 参）：装配根构造的 KnowledgeBase 注入——缺省 undefined 时 kb_search 按既有契约降级 kb_not_configured
+    // 装配接缝具名注入（D25/H6）：原 13 位置参收敛为 opts 对象，接缝错位由编译期失配兜底（webSearch 生产不注入，缺键即省）
+    for (const t of builtinTools(this.safety, base, {
+      kb: opts.kb,
+      archive: createToolOutputArchive(() => resolveDataDir(base)),
+      skills: this.skills,
+      memory: guardMemoryWrite,
+      memoryWrite: (input) => writeMemoryFact({ root: base, ...input }),
+      ask: opts.ask ?? headlessAskStub,
+      writeSnapshot: this.writeSnapshot,
+      activeRoot: () => this.safety.activeRoot,
+      todos: opts.todos ?? { set: () => {} },
+      tasks: this.tasks,
+    })) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
     // 后台沉淀管线（规格 §3.1/§3.5）：收口零等待入队 → 空闲/收尾消化；notify 双通道=链尾 notice 行（模型面）+ notice 事件（用户面），
@@ -196,6 +209,8 @@ export class Harness {
       context: this.context,
       model: this.model,
       root: base,
+      // workDirLine 事实行随会话活动根（D19-b）：与 exec cwd / glob 锚同源（safety 单点），worktree 进出即翻转
+      activeRoot: () => this.safety.activeRoot,
       ledger,
       runner: this.runner,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
@@ -207,9 +222,6 @@ export class Harness {
     });
     this.ledger = ledger;
   }
-
-  /** 本实例进入过的 worktree（cleanupWorktrees 清理范围单点） */
-  private readonly visitedWorktrees = new Set<string>();
 
   private permissionWarningList: string[] = [];
 
@@ -233,29 +245,5 @@ export class Harness {
   /** 活动根只读视图（worktree 会话；null=主工作区缺省态） */
   get activeRoot(): string | null {
     return this.safety.activeRoot;
-  }
-
-  /** 进入 worktree 会话：安全链单点切换活动根，safety/context/runner 引用不重建即生效 */
-  enterWorktree(tree: string): void {
-    this.safety.enterWorktree(tree);
-    this.visitedWorktrees.add(tree);
-  }
-
-  /** 退出 worktree 会话回主工作区；当前不在 worktree 时报错（规格 D6） */
-  exitWorktree(): void {
-    if (this.safety.activeRoot === null) throw new Error('WORKTREE_NOT_ACTIVE: not in a worktree session');
-    this.safety.exitWorktree();
-  }
-
-  /** 收口清理：仅本实例进入过的树（porcelain 空→删；脏→留 + keptReason；失败逐树容忍不中断） */
-  cleanupWorktrees(): void {
-    const base = this.opts.root ?? process.cwd();
-    const dataDir = resolveDataDir(base);
-    for (const tree of this.visitedWorktrees) {
-      const entry = readRegistry(dataDir).find((e) => e.path === tree);
-      if (!entry) continue; // 登记缺失（已清/外来删）容忍：cleanup 是尽力而为的收口
-      void removeWorktree(base, dataDir, entry.name);
-    }
-    this.visitedWorktrees.clear();
   }
 }

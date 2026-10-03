@@ -7,7 +7,6 @@ import { ToolRegistry } from '../tools';
 import { SecurityGuard } from '../security/guard';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 
 /** 工具路径基准稳定性：所有文件类工具与 exec 均以 root 为基准，与进程 cwd 无关 */
@@ -16,7 +15,7 @@ function tmpdir(): string {
 }
 
 function registryWith(root: string): { registry: ToolRegistry; safety: SafetyChain } {
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   // dontAsk：最大权限，验证工具执行链本身而非权限拦截
@@ -90,7 +89,7 @@ test('read 落点跟随安全链 root（safePath 消费自 evaluate）', async (
   const dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-roota-'));
   const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-rootb-'));
   fs.writeFileSync(path.join(dirA, 'in-a.txt'), 'A-content');
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'manual'), new ProcessSandbox(), new DryRun(), dirA);
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'manual'), new ProcessSandbox(), dirA);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, dirB)) registry.register(t);
   const r = await registry.execute('read', { path: 'in-a.txt' }, safety);

@@ -1,6 +1,8 @@
 import type { AskUserRequest, AskUserSeam } from './types';
 import * as readline from 'node:readline/promises';
 import { Harness } from './harness';
+import { assembleKnowledgeBase, KnowledgeBase } from './harness/knowledge';
+import { resolveKbEnv } from './config/env';
 import { LoopDeps } from './loop/engine';
 import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ReasoningEffort, ScriptedAdapter, StubAdapter } from './model/adapter';
 import { ModelTier } from './types';
@@ -76,8 +78,22 @@ export function createCliAskSeam(io?: { isTTY: boolean; question: (q: string) =>
   };
 }
 
-export function buildDeps(root: string, flags: Record<string, string | boolean | string[]>, addDirs?: string[]): LoopDeps {
-  const h = new Harness({ root, mode: 'dontAsk', ask: createCliAskSeam(), addDirs });
+/** KB 装配单点（composition root 供 TUI/CLI 共用；D18 接线）：embedding 未配置 → undefined（kb_search 合法确定降级）；
+ *  显式误配（未注册后端名）在此 fail-fast，不静默回退 local-json */
+export function resolveKnowledgeBase(root: string): KnowledgeBase | undefined {
+  return assembleKnowledgeBase(resolveKbEnv(process.env as Record<string, string | undefined>), root);
+}
+
+/** CLI run 依赖面（D24）：在 LoopDeps 之上补后台任务收口成员——不直接加进 engine 的 LoopDeps，
+ *  因为 loop 引擎不消费它（收口是 CLI 命令生命周期语义，非环执行语义），由装配根透传给命令收尾即可 */
+export interface CliRunDeps extends LoopDeps {
+  /** 停全部 running 后台任务并落 [stopped: process exit] 终态行（规格 D9 任务属进程；teardownCliRun 消费） */
+  stopAllTasks: () => void;
+}
+
+export function buildDeps(root: string, flags: Record<string, string | boolean | string[]>, addDirs?: string[]): CliRunDeps {
+  const kb = resolveKnowledgeBase(root);
+  const h = new Harness({ root, mode: 'dontAsk', ask: createCliAskSeam(), addDirs, kb });
   const router = buildTierRouter(flags);
   const tier = parseTier(flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   return {
@@ -90,6 +106,8 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     runner: h.runner,
     // 后台沉淀管线透传（规格 §3.5）：CLI 命令收尾 await drain，退出前清空队列
     pipeline: h.pipeline,
+    // 后台任务收口透传（D24 接线）：命令终态停全部 running（stop 句柄 kill + 终态行），任务日志不留半截
+    stopAllTasks: () => h.tasks.stopAll(),
     // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），命令收尾 close 防 stdio 子进程悬挂
     mcpReady: h.mcpReady,
     mcpClose: h.mcpClose,

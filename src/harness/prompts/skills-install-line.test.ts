@@ -15,7 +15,6 @@ import { FileStore } from '../../storage/adapter';
 import { PolicyEngine } from '../security/policy';
 import { SecurityGuard } from '../security/guard';
 import { ProcessSandbox } from '../security/sandbox';
-import { DryRun } from '../security/dryrun';
 import { SafetyChain } from '../security/chain';
 
 /** §11 回归：技能安装政策行进稳定段——首步即在，相邻步逐字节不变（差异只允许落在尾部新增段） */
@@ -26,7 +25,7 @@ test('稳定段携带 SKILLS_INSTALL_LINE 且相邻步前缀逐字节稳定', as
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-skills-line-'));
   try {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);

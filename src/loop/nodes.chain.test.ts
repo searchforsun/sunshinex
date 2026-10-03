@@ -14,13 +14,12 @@ import { SafetyChain } from '../harness/security/chain';
 import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';
 import { ProcessSandbox } from '../harness/security/sandbox';
-import { DryRun } from '../harness/security/dryrun';
 import { ToolRegistry } from '../harness/tools';
 import { builtinTools } from '../harness/tools/builtin';
 
 /** 装配样板（对齐 engine.test.ts makeDeps）：真实安全链/注册表/上下文 + 注入模型桩 */
 function makeDeps(tmp: string, model: ModelAdapter): LoopDeps & { context: ContextManager } {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), new DryRun(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));

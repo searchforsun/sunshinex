@@ -48,6 +48,19 @@ export interface McpAssemblyReport {
   warnings: string[];
 }
 
+/**
+ * stdio 子进程环境（债 D21）：显式传 env 才能覆盖 SDK 缺省的「安全子集继承」——
+ * 宿主环境整份继承再叠加 cfg.env 专属覆盖（对齐主流 MCP 客户端：API key 一类服务器配置零丢失）；
+ * process.env 值域含 undefined（可unset），须剔除后才能满足传输参数的 Record<string,string> 形态。
+ */
+function mergedChildEnv(cfg: McpServerConfig): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined) merged[k] = v;
+  }
+  return { ...merged, ...(cfg.env ?? {}) };
+}
+
 export class McpHost {
   private conns = new Map<string, McpConn>();
 
@@ -75,7 +88,7 @@ export class McpHost {
       case 'stdio':
       default:
         if (!cfg.command) throw fail('stdio transport requires a command');
-        return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [] });
+        return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [], env: mergedChildEnv(cfg) });
     }
   }
 

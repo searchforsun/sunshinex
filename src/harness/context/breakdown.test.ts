@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { contextBreakdown } from './breakdown';
 import { estimateTokens } from './window';
-import type { ContextItem, HistoryStep } from '../../types';
+import type { ChainAction, ContextItem, HistoryStep } from '../../types';
 
 const item = (content: string): ContextItem => ({ kind: 'history', content });
-const step = (action: string | undefined, observation: string): HistoryStep => ({ step: 1, ...(action !== undefined ? { action } : {}), observation });
+const step = (action: ChainAction | undefined, observation: string): HistoryStep => ({ step: 1, ...(action !== undefined ? { action } : {}), observation });
 
 function base(over: Partial<Parameters<typeof contextBreakdown>[0]> = {}) {
   return {

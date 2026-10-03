@@ -39,6 +39,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
 | `sunshinex run <dir> --goal="..."` | 标准验收修正环（非 done 退出码 1） |
 | `sunshinex pipeline <dir> --goal="..." [--yes]` | 五节点流水线 gate 审批（`--yes` 跳过交互直接批准） |
 | `sunshinex skills install <git-url \| owner/repo \| 本地目录> [--force]` | 安装技能到全局技能根 `~/.sunshinex/skills`（同名已存在缺省跳过，`--force` 覆盖） |
+| `sunshinex kb-index [目录]` | 构建知识库索引（对目录内 md/txt 走计费 embedding；缺省当前工作区，`node_modules` 与隐藏目录跳过；`kb_search` 检索源，见第二节 KB 配置） |
 
 **启动参数**（全部命令通用）
 
@@ -132,6 +133,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
   "stepDigestTotalChars": 1500,
 
   // ── 知识库 / 嵌入 / 搜索 ──────────────────────────────
+  // 索引经 kb-index 命令显式构建（CLI `sunshinex kb-index <目录>` 或 TUI `/kb-index [目录]`）：索引走计费 embedding，不自动重建
   "kbBackend": "local-json",                         // local-json | sqlite-vec
   "kbDataDir": "",                                   // 知识库目录；留空 = 数据目录/kb
   "embeddingBaseUrl": "",                            // 嵌入服务；留空 = 回退主模型同名字段
@@ -243,9 +245,9 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `● [VERB]` / `⎿ ✓` `⎿ ✗` | 工具调用行 / 结果行 |
 | 系统提示行 | 状态回执（暗色）；`!` 黄色为警示、`✗` 红色为失败（帮助/回执等普通信息不加警示色） |
 | 正文 | 模型答复（Markdown 渲染） |
-| 状态栏 | tokens · ctx 占用 · turns·steps · 模型名 · cache 命中 · todo 进度 · 状态（耗时只在上方活动行以可读时长显示，如 1h 21m 30s） |
+| 状态栏 | tokens · ctx 占用 · turns·steps · 模型名 · effort · cache 命中 · todo 进度 · 状态（耗时只在上方活动行以可读时长显示，如 1h 21m 30s） |
 
-- 提交：回车；行尾单个 `\` 回车为多行续行；运行中继续输入自动排队。
+- 提交：回车；行尾单个 `\` 回车为多行续行；`Shift+Enter` / `Alt+Enter` 插入换行不提交（Shift+Enter 需终端键位绑定——Windows Terminal 首次用 `/terminal-setup` 自动配置，kitty 协议终端原生支持）；运行中继续输入自动排队。
 - 历史回看：`Tab` 折叠/展开过程行（按正文与阶段分段折叠），`Ctrl+O` 展开当前一个轮次（自最近一次输入起）的全部工具与思考行详情全文。
 
 **会话命令**（输入 `/` 后按 `Tab` 补全；命令只认裸形式，带参枚举形态与不在清单的命令统一回执「无法识别命令，使用 /help 查看使用方法」）
@@ -257,12 +259,15 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/goal <目标>` | 标准验收修正环，见 5.2 |
 | `/plan <目标>` | 先规划后执行，见 5.1 |
 | `/status` | 会话与账本摘要 |
+| `/terminal-setup` | 一键配置终端键位：Windows Terminal 写入 Shift+Enter 换行绑定并解绑 Alt+Enter（写前备份、幂等）；未找到 WT 时给 VSCode 指引 |
 | `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径；后台 exec 与后台子代理产生，模型以 `task_wait` 等待到终态并取回执、以 `task_stop` 工具停止） |
 | `/skill` | 加载技能进上下文：选择卡列出可用技能（`↑`/`↓` 选择、输入即筛选、`Esc` 取消），选定即载入、本会话重复加载回执已加载 |
 | `/<技能id>` | 技能即命令：裸形式仅加载（语义同 `/skill` 选定）；带意图 `/<id> <意图>` 加载后一步派发任务；撞名内置命令的技能不注册（内置优先，仍经 `/skill` 卡加载）；命令 token=技能 id，限 `[a-z0-9][a-z0-9_-]*`；Tab 补全与 `/help` 技能段同步列出 |
 | `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |
 | `/model-tier` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效） |
 | `/model-effort` | 切换思考强度：选择卡七档 + default，回执实际生效档 |
+| `/add-dir <目录>` | 向会话追加信任目录（读写同项目根，本会话内生效；另见 6.1 的 `--add-dir` 与配置面） |
+| `/kb-index [目录]` | 构建知识库索引（缺省当前工作区；对目录内 md/txt 走计费 embedding，完成后 `kb_search` 本会话即时可用；同 `sunshinex kb-index`） |
 | `/compact [关注点]` | 立即压缩上下文，可指定优先保留的内容；接近窗口上限时也会自动压缩 |
 | `/context` | 上下文构成报表：各段（系统提示词稳定段 / SUNSHINE.md 指令 / 技能清单 / 记忆索引 / 压缩摘要 / 会话链 / 待注入技能块）的估算 token 大小与占窗口比例，会话链再按动作细分（task / reply / tool-call / tool-result…）；只读观测，不改变上下文 |
 | `/memory` | 列出持久记忆 |
@@ -397,6 +402,7 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 按键 | 作用 |
 | --- | --- |
 | `Enter` | 提交（行尾 `\` 续行） |
+| `Shift+Enter` / `Alt+Enter` | 插入换行不提交（Shift+Enter 需终端键位绑定，Windows Terminal 首次用 `/terminal-setup` 自动配置；kitty 协议终端原生支持） |
 | `Tab` | `/` 开头时补全命令；否则切换历史折叠 / 展开（含待办卡） |
 | `Ctrl+O` | 展开当前一个轮次（自最近一次输入起）的全部工具与思考行全文 |
 | `Ctrl+B` | 子代理浏览模式：`↑/↓` 在 SPAWN 调用行间移动高亮，`Enter` 展开/折叠该行（思考与工具转录），`Esc` 退出；运行中不可进入 |

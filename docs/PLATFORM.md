@@ -7,14 +7,14 @@
 | 能力 | Linux | macOS | Windows |
 |------|-------|-------|---------|
 | 安装 / 构建 / 自检 | 支持 | 支持 | 支持 |
-| CLI（selfcheck / run / pipeline） | 支持 | 支持 | 支持（单行命令） |
+| CLI（selfcheck / run / pipeline / skills install） | 支持 | 支持 | 支持（单行命令） |
 | 工具 exec 命令执行面 | 支持 | 支持 | 支持（Git Bash 自动探测；无 Git 时 PowerShell，末位 cmd 兜底） |
 
 部署条件（三平台通用）：
 
 1. Node.js ≥ 22.9（下限登记于 `package.json` `engines`），实测基线 22 LTS 与 24.x。
 2. `dist/` 不入库：新检出须先 `pnpm install` + `pnpm build`（`pnpm cli` 已内置自动构建，可直接执行）。
-3. 写入 `~/.sunshinex/settings.json`（语义键 + `env` 块填密钥，模板见 MANUAL.md 第三节）；未配置密钥时可用 `--model stub` 先验证链路。
+3. 写入 `~/.sunshinex/settings.json`（语义键 + `env` 块填密钥，模板见 MANUAL.md 第二节）；未配置密钥时可用 `--model stub` 先验证链路。
 4. 包管理器统一 pnpm（`packageManager` 钉版，corepack 启用后自动对齐版本）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，依赖安装与缓存随仓库走。
 
 平台契约的机器强制（声明即须可执行）：

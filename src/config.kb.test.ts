@@ -29,3 +29,9 @@ test('resolveKbEnv：SUNSHINEX_EMBEDDING_* 显式配置优先于 SUNSHINEX_* 主
     { backend: 'local-json', embeddingApiKey: 'emb-key' },
   );
 });
+
+test('resolveKbEnv：SUNSHINEX_KB_DATA_DIR 显式覆盖进入产物（kbDataDir）；未配置/空串缺省', () => {
+  assert.deepEqual(resolveKbEnv({}), { backend: 'local-json' }, '未配置时产物不含 kbDataDir');
+  assert.deepEqual(resolveKbEnv({ SUNSHINEX_KB_DATA_DIR: 'D:/kb-data' }), { backend: 'local-json', kbDataDir: 'D:/kb-data' });
+  assert.deepEqual(resolveKbEnv({ SUNSHINEX_KB_DATA_DIR: '' }), { backend: 'local-json' }, '空串等价未配置');
+});

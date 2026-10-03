@@ -8,7 +8,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { builtinTools } from './builtin';
 import { guardMemoryWrite, MemoryWriteRequest, MemoryWriteSeam } from '../memory/writer';
 import { resolveDataDir } from '../../config/data-dir';
@@ -43,9 +42,9 @@ async function withRegistry(
   try {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     const registry = new ToolRegistry();
-    for (const t of builtinTools(safety, root, undefined, undefined, undefined, undefined, memory)) registry.register(t);
+    for (const t of builtinTools(safety, root, { memory })) registry.register(t);
     await fn({ registry, safety, root, dataDir: resolveDataDir(root) });
   } finally {
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;

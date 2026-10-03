@@ -13,7 +13,6 @@ import { SecurityGuard } from '../security/guard';
 import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
-import { DryRun } from '../security/dryrun';
 import { PermissionMode } from '../security/modes';
 import { Reactor } from '../reactor';
 import { ContextManager } from '../context';
@@ -63,12 +62,12 @@ function registryFor(opts: {
 }): { registry: ToolRegistry; safety: SafetyChain } {
   const guard = new SecurityGuard(new PolicyEngine(), opts.mode);
   if (opts.asker !== undefined) guard.setAsker(opts.asker);
-  const base = new SafetyChain(guard, new ProcessSandbox(), new DryRun(), opts.root);
+  const base = new SafetyChain(guard, new ProcessSandbox(), opts.root);
   const safety = opts.memoryScope !== undefined ? base.withMemoryScope(opts.memoryScope) : base;
   const registry = new ToolRegistry();
   const memoryWrite = (input: { type: string; content: string; description?: string; scope?: MemoryScope }) =>
     writeMemoryFact({ root: opts.root, ...input });
-  for (const t of builtinTools(safety, opts.root, undefined, undefined, undefined, undefined, guardMemoryWrite, memoryWrite)) registry.register(t);
+  for (const t of builtinTools(safety, opts.root, { memory: guardMemoryWrite, memoryWrite })) registry.register(t);
   return { registry, safety };
 }
 
@@ -194,7 +193,7 @@ test('memory_write：工具注册与清单（category=write、英文单语 descr
     assert.equal(/[\u4e00-\u9fff]/.test(desc), false, 'description 英文单语（CLAUDE.md §15）');
 
     // 缺省不注入第 8 参 → 工具清单逐字节零变化（对齐第 7 参两态不变式）
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), new DryRun(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
     const bare = new ToolRegistry();
     for (const t of builtinTools(safety, root)) bare.register(t);
     assert.deepEqual(bare.list().map((t) => t.name), BUILTIN_NAMES);

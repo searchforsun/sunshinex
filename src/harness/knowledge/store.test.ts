@@ -10,11 +10,21 @@ function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-vec-'));
 }
 
-test('注册表：注册后按名创建；未注册名装配期 fail-fast 抛错（禁静默回退）', () => {
-  registerVectorBackend('mem-test', (s) => new LocalJsonVectorStore(s));
-  const s = createVectorBackend('mem-test', new FileStore(tmp()));
+test('注册表：注册后按名创建（工厂收显式 dataDir）；未注册名装配期 fail-fast 抛错（禁静默回退）', () => {
+  registerVectorBackend('mem-test', (dataDir) => new LocalJsonVectorStore(new FileStore(dataDir)));
+  const s = createVectorBackend('mem-test', tmp());
   assert.ok(s);
-  assert.throws(() => createVectorBackend('no-such-backend', new FileStore(tmp())), /Unregistered vector backend/);
+  assert.throws(() => createVectorBackend('no-such-backend', tmp()), /Unregistered vector backend/);
+});
+
+test('local-json：metaOf 契约——upsert 全量 meta 读回、覆盖整体替换、缺失返回 undefined', () => {
+  const s = new LocalJsonVectorStore(new FileStore(tmp()));
+  s.upsert('a', [1, 0], { text: 'alpha', file: 'docs/a.md' });
+  assert.equal(s.metaOf('a')?.['file'], 'docs/a.md');
+  s.upsert('a', [0, 1], { text: 'alpha-v2' });
+  assert.equal(s.metaOf('a')?.['text'], 'alpha-v2');
+  assert.equal(s.metaOf('a')?.['file'], undefined, '覆盖 upsert 的 meta 整体替换（旧键不残留）');
+  assert.equal(s.metaOf('ghost'), undefined);
 });
 
 test('local-json：upsert→search topK 语义与余弦排序', () => {
