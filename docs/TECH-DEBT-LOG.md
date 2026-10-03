@@ -27,19 +27,20 @@
 | 2026-10-03 | 批C工作树（未提交） | e8d94c9（本行补记随批E提交入库） | 代码债 H | 结构批步2–4（D25/H3-H5，行为零变化）：H5 reactor.chatRound 抽 src/harness/batch-runner.ts——批次执行段整块迁出（串行/超限政策、签名去重含两常量、tool-call 挂起事件、超限拒绝路径、串并扇出、批后记账+文件追踪），构造注入 {registry,safety,emit} 窄事件口不捕 Reactor，chatRound 165→约 80 行，新增 3 钉（集合口径去重/串行含重叠反证/16 边界与拒绝事件序）；H4 model/adapter.ts 拆 effort/usage/wire/router 四件纯搬移（wire 三函数原私有静态零实例状态升模块纯函数；adapter 原路径再导出消费方零改动；providers.ts 改指 model/effort 消 D26/J5 的 config→adapter 耦合；CJS 环产物 require 零验证；split.test 四冒烟钉）；H3 ContextManager 拆 context/chain-ledger（58）+drift-detector（122，全回调注入可离线单测）+compaction（177，归档 IO 原落点收编）三件，472→308 行余快照装载/LRU/技能槽/恢复/门面转发（公开签名逐一不变消费方零改动），Compact Instructions 双 try/catch 归一单点（裁决留门面），新增三件 6 钉；CLAUDE §3 model/context 行同步。验证：tsc 零错、全量 1546 例 1544 过/0 败/2 既有跳过、selfcheck exit 0。D25 翻 closed 入归档（H2 并入 D17 同批） |
 | 2026-10-03 | e8d94c9 | a4544bd（本行哈希回填） | 代码债 H/J | 结构批收官（D17+H2+D27，行为零变化、既有测试文件零改动）：D17 session.ts 2389→1306 五步拆分（chat-model 274/md-stream 191/commands-memory+model+session 184+113+201/child-panel 241/approval 129；控制器薄委托保公开 API，25+ 测试零红；prompt-language B5 扫描面同步八件+写链钉改扫清单）；H2 App.tsx 954→591 键分发拆五 hook（use-inspect/browse/question/approval/line-edit；模态判定序十一层显式化为前置契约注释；共享状态参数注入不复制；App 系 25 测试文件 119/119 零改动）；D27 装配双轨收敛——runtime.ts 增 buildHarness 单点（类型面禁 kb 注入、生产面 new Harness 仅剩 buildHarness+selfcheck 诊断两处；CLI buildDeps 整形层签名零变化；TUI createRuntime 经单点、自身接缝逐一原样；kb 两路同源钉+装配单点形态钉双轨复发即红）；CLAUDE §3 tui/batch-runner/runtime 行与 §4 表述实况化。验证：tsc 零错、全量 1548 例 1546 过/0 败/2 既有跳过、selfcheck exit 0。D17/D27 翻 closed 入归档；当前未偿仅 D26（扩展性中期批）与登记轻项 |
 | 2026-10-03 | a4544bd | 704a1e6（本行哈希回填） | 代码债 J/G | D26 轻件组（R1/J2/J6/J9/C5 + 轻项五件，详见随批提交说明）：R1 loadSettingsChain 双胞胎收敛（config/settings 单点、src/index.ts 纯库面零副作用、start 改 cli 入口、零测试同步亲证）；J2 能力位门禁（ModelAdapter.capabilities.chat 声明制，provider 字符串探针退役，17 处真实模型夹具补位，新供应商声明即得模型摘要/提取）；J6 双源收敛（resolveContextWindow 单点 + SessionOpts.mdColumns 注入）；J9 --model 白名单校验+usage 行、timeoutMs 接线 SUNSHINEX_MODEL_TIMEOUT_MS（按档绑定同源）；C5 chain 双骨架归一 decideWithGuard 单点（两入口 raw 口径差异刻意保留——统一即改边缘判定输出）；ModelTier 转出口删除、spawn 三层归一权威层注释、session-journal 两 catch 补 why。验证：tsc 零错、全量 1554 例 1552 过/0 败/2 既有跳过、selfcheck exit 0、库面 require 零副作用。D26 收窄为余项 J1/J10/R10 中期+登记尾巴（catalog timeout 旋钮、run --worktree usage、119 导出冗余、getLanguage） |
+| 2026-10-03 | 704a1e6 | a8ab078（本行哈希回填） | 代码债 J/G | D26 余项清偿（J1/J10/R10 短期+尾巴+导出扫，详见随批提交说明）：J1 工具呈现元数据经 RegisteredTool.display→registry.displayMeta()→createRuntime 装配期注入 TUI，tool-verbs 双硬编码表删除（特征化钉 16 项值逐一对照、schema 面零污染亲证）；J10 ArchiveStore（storage/archive.ts）+CompactionCoordinator 注入（spy 钉）+MemoryStore backup/restore/clearBackup 原语（consolidate 裸 fs 手术收编，全景恢复钉）；R10 评估裁决不并轨（tail-rewrite 行数账本/口径不等/视觉无锚三硬边界）——tui/md-theme.ts 共享常量单点短期收敛（双形态同源表+4 特征化钉），全量并轨四前提立 D29；modelTimeoutMsEnv 迁 termination-config+catalog 接线（旋钮穿透钉）、run --worktree usage 行；导出冗余重推导摘除 98 处（57 文件，零回滚）。验证：tsc 零错、全量 1577/1575/0 败/2 既有跳过、selfcheck exit 0。D26 翻 closed 入归档；新登记 D29（渲染链全量并轨，设计前提四条在案） |
 
 ## 待办债项
 
 > 未偿债项在此逐条登记（编号/账本/状态/描述/证据/偿还动作/登记来源）；偿还后在同轮提交中翻转状态并补「关联提交」。本区与上方清理记录互不掺杂。
 
-> 当前未偿债项：D26（余项 J1/J10/R10 中期+登记尾巴；轻件 R1/J2/J5/J6/J9/C5 已随批F偿还）。历史 D1–D4、D6–D16 已归档，D5 转长期挂起不属活动待办。新增债项按下表格式登记。
+> 当前未偿债项：D29（渲染双链全量并轨，四设计前提在案）。D26 及此前全部债项已偿还入归档。历史 D1–D4、D6–D16 已归档，D5 转长期挂起不属活动待办。新增债项按下表格式登记。
 
 | 编号 | 账本 | 状态 | 描述 | 证据 | 偿还动作 | 登记来源 |
 |---|---|---|---|---|---|---|
-| D26 | J/G | open（轻件已随批F偿还） | 扩展性批余项：J1 工具呈现知识硬编码进 tui/tool-verbs（harness 加工具 TUI 静默降级——经注册表元数据下泄，注意不动模型侧 tools schema 前缀）；J10 IO 散落三处（压缩归档/重读经 StorageAdapter 或独立 ArchiveStore、MemoryStore backup/restore 原语收编 consolidate fs 手术）；R10 中期渲染双链统一（MarkdownText/markdownRowCount 评估并轨 renderMd）；登记尾巴：model/catalog.ts 路径 timeout 旋钮未接、run 的 --worktree usage 行、119 处零跨文件消费导出冗余、i18n getLanguage 测试探针 | 普查 J1/J10/R10；批F未改项报告 | J1/J10/R10 各自独立小步立项（J1 涉事件面契约设计、R10 涉视觉回归——均需先锚点） | 2026-10-03 全仓普查 |
+| D29 | J/G | open | 渲染双链全量并轨（R10 中期余项）：step 行与旧档回放从 markdown.ts+MarkdownText 切换到 renderMd 通道 | 批G 评估结论（三硬边界与四设计前提在案：tail-rewrite.printedEntryLines 随出口切换 ansiLineCount 且 tail-rewrite.ts 进改动面；markdownRowCount 退役或改 renderMd 真跑剥码行数；先落双形态视觉特征化快照；MarkdownText 保留面盘点）；tui/md-theme.ts 已立共享常量正字源 | 按四前提独立立项，先锚点后动刀（视觉回归敏感，快照先行） | 2026-10-03 批G |
 
 
-### 归档（D1–D25、D27、D28；D5 长期挂起）
+### 归档（D1–D28；D5 长期挂起）
 
 | 编号 | 终态 | 关联提交 | 摘要 |
 |---|---|---|---|
@@ -70,6 +71,7 @@
 | D25 | closed | e8d94c9 | 结构重构批：H6 builtinTools opts 化（批C）；H5 chatRound→BatchRunner、H4 adapter→effort/usage/wire/router、H3 ContextManager→三件（本批，行为零变化）；H2 App.tsx 键分发拆 hook 并入 D17 同批收官 |
 | D17 | closed | a4544bd | session.ts 多职责拆分收官：2389→1306 行五步拆分（chat-model/md-stream/commands-×3/child-panel/approval 七件，控制器薄委托公开 API 零破坏，25+ 测试文件零改动全绿）；B5 扫描面随拆分登记防漂移。登记时 2038 行→偿还时 2389，历时 4 天三批（登记/普查刷新/批E） |
 | D27 | closed | a4544bd | TUI/CLI 装配双轨收敛：runtime.ts buildHarness 单点（kb 恒经 resolveKnowledgeBase、生产面 new Harness 仅剩两处），CLI buildDeps 整形层零签名变化，TUI createRuntime 经单点接缝原样；kb 两路同源钉+装配单点形态钉（双轨复发即红） |
+| D26 | closed | a8ab078 | 扩展性批全清：轻件批F（R1/J2/J6/J9/C5+ModelTier 转出口/C6/两 catch）；余项批G（J1 工具元数据下泄/J10 IO 收敛/R10 短期 md-theme 单点+尾巴旋钮两件/98 处零消费导出摘除）；R10 全量并轨另立 D29（四设计前提在案） |
 
 ## 已知取舍与教训登记（迁自规范文档）
 
