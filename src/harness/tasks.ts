@@ -20,9 +20,22 @@ export interface BackgroundTask {
 /** owner 作用域（后台任务线规格 D9）：AsyncLocalStorage 承载 fork 归属，并发 fork 互不串号 */
 const ownerStorage = new AsyncLocalStorage<string>();
 
-/** 统一任务账本单点（后台任务线规格 D1/D10）：ID 空间/生命周期/状态统一承载；进程内 Map 不落盘不跨会话；ID=会话内递增确定性序号，零随机源 */
+/** id 业务段：label ASCII 化 slug（小写、非字母数字折叠连字符、≤16 字符）；CJK 等非拉丁标签回退
+ *  kind（业务全称由 /tasks label 列与任务日志承载，id 段只做可读助记） */
+function labelSlug(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 16)
+    .replace(/-+$/g, '');
+}
+
+/** 统一任务账本单点（后台任务线规格 D1/D10）：ID 空间/生命周期/状态统一承载；进程内 Map 不落盘不跨会话。
+ *  ID=「业务段-时间段-随机段」（2026-10-03 用户裁决「b1 b2 没有业务和时间含义，容易重复」）：旧 b1
+ *  进程计数器每会话归零，跨会话同 id 建档即 writeFileSync 截断覆盖旧任务日志=真数据损失；新方言对标
+ *  newSessionId（UTC 紧凑时间戳+4 位随机尾），跨会话唯一且一眼可读「何时启动了什么」，撞 id 再生成兜底 */
 export class TaskRegistry {
-  private seq = 0;
   private readonly tasks = new Map<string, BackgroundTask>();
   constructor(private readonly tasksDir: string) {}
 
@@ -36,8 +49,14 @@ export class TaskRegistry {
   }
 
   submit(input: { kind: 'exec' | 'subagent'; label: string; ownerRun?: string }): BackgroundTask {
-    this.seq += 1;
-    const id = `b${this.seq}`;
+    const p = (n: number): string => String(n).padStart(2, '0');
+    const gen = (): string => {
+      const now = new Date();
+      const ts = `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}T${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}Z`;
+      return `${labelSlug(input.label) || input.kind}-${ts}-${Math.random().toString(36).slice(2, 6)}`;
+    };
+    let id = gen();
+    while (this.tasks.has(id) || fs.existsSync(path.join(this.tasksDir, 'tasks', `${id}.log`))) id = gen();
     const outputFilePath = path.join(this.tasksDir, 'tasks', `${id}.log`);
     try {
       fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });

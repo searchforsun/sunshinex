@@ -294,7 +294,9 @@ export class SubagentRunner {
     if (ledger === undefined) {
       throw new CodedToolError('NOT_SUPPORTED', 'background spawn requires a task registry (not wired in this assembly)');
     }
-    const label = input.agent_id ?? 'subagent';
+    // 账本 label 与 spec.label 同源（input.label ?? agent_id ?? 'subagent'）：旧口径只取 agent_id——
+    // 模型按 label 出牌时 /tasks 业务列两行同显 'subagent'（2026-10-03 用户实据）；此 label 亦为 id 业务段语义源
+    const label = input.label ?? input.agent_id ?? 'subagent';
     const task = ledger.submit({ kind: 'subagent', label, ownerRun: ledger.currentOwner() });
     const budget = this.getBudget?.();
     const abort = new AbortController();

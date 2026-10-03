@@ -43,7 +43,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
           type: ['array', 'null'],
           items: { type: 'string' },
           description:
-            'Background task ids to wait for, e.g. ["b1","b2"]; null waits for all currently running tasks. Already-finished ids return an idempotent receipt immediately.',
+            'Background task ids to wait for (label-slug-UTCtimestamp-rand form, e.g. ["subagent-20261003T064522Z-a7f3"]); null waits for all currently running tasks. Already-finished ids return an idempotent receipt immediately.',
         },
         timeoutSeconds: {
           type: ['number', 'null'],

@@ -81,7 +81,7 @@ test('spawn 输入校验：双缺 INVALID_ARG / background 两段式开通（D6�
     );
     // T2 起 background:true 走两段式（规格 D6）：不再 NOT_SUPPORTED，改为立即返回任务回执
     const bg = (await spawn!.executor({ prompt: 'x', background: true })) as { stdout: string };
-    assert.match(bg.stdout, /^task b\d+ started/, '两段式立即返回任务回执');
+    assert.match(bg.stdout, /^task \S+ started/, '两段式立即返回任务回执（动态 id：业务-时间-随机方言）');
     await assert.rejects(
       spawn!.executor({ prompt: 'x', tools: ['ghost'] }),
       (e: unknown) => e instanceof CodedToolError && e.code === 'INVALID_ARG',

@@ -11,7 +11,7 @@ export function makeTaskStopTool(tasks: TaskRegistry): RegisteredTool {
       additionalProperties: false,
       required: ['taskId'],
       properties: {
-        taskId: { type: 'string', description: 'Background task id to stop, e.g. b1 (unknown ids return the current task list in the error)' },
+        taskId: { type: 'string', description: 'Background task id to stop (label-slug-UTCtimestamp-rand, e.g. exec-20261003T064522Z-a7f3; unknown ids return the current task list in the error)' },
       },
     },
     name: 'task_stop',

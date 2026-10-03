@@ -398,7 +398,7 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     assert.ok(task.outputFilePath.includes(path.join('data', 'tasks')), '日志落 <dataDir>/tasks/');
     for (let i = 0; i < 200 && tasks.get(task.id)?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
     const obs = await p.then((r) => (r.ok ? r.value.stdout : `EXEC_FAILED: ${r.error.message}`));
-    assert.match(obs, /^task b1 started/);
+    assert.match(obs, new RegExp(`^task ${task.id} started`), '回执含动态任务 id（业务-时间-随机方言）');
     assert.ok(obs.includes(task.outputFilePath), '观察行含输出路径');
     const body = fs.readFileSync(task.outputFilePath, 'utf8');
     assert.ok(body.includes('step-1') && body.includes('step-2'), '输出流式落日志');
@@ -430,15 +430,15 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
     // 驻留 30s 与阈值 6s 拉开余量：快机/低负载下 shell 冷启动 <1s 时 sleep 5 会在阈值前跑完、close 先至不再转后台（双向竞态，stop() 兜底收割）
     const r = await registry.execute('exec', { command: 'echo warm && sleep 30' }, safety);
     assert.ok(r.ok);
-    assert.match(r.value.stdout, /^command moved to background after timeout: task b1/);
-    const task = tasks.get('b1')!;
+    assert.match(r.value.stdout, /^command moved to background after timeout: task \S+/, '转后台回执含动态任务 id');
+    const task = tasks.get(r.value.stdout.match(/^command moved to background after timeout: task (\S+)/)![1]!)!;
     stop = () => task.stop?.();
     assert.equal(task.status, 'running', '超时瞬间任务转后台登记');
     assert.ok(fs.readFileSync(task.outputFilePath, 'utf8').includes('warm'), '超时前已缓冲输出随任务落日志');
     stop();
     // 同口径 10s 安全网（win32 shell 冷启动），taskkill 收割毫秒级退出不受影响
-    for (let i = 0; i < 200 && tasks.get('b1')?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
-    assert.notEqual(tasks.get('b1')?.status, 'running');
+    for (let i = 0; i < 200 && tasks.get(task.id)?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
+    assert.notEqual(tasks.get(task.id)?.status, 'running');
   } finally {
     stop?.();
     await rmExecCwdTree(root);

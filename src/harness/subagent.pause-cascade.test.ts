@@ -109,3 +109,21 @@ test('子代理级联：父中断信号接入后台 spawn——主任务暂停�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('后台 spawn 账本 label 业务化：input.label 优先（/tasks 业务列与 id 业务段的语义源，2026-10-03 用户实据「两行同显 subagent」）', async () => {
+  const tmp = tmpdir('sunshinex-bglbl-');
+  try {
+    const tasks = new TaskRegistry(path.join(tmp, 'data'));
+    const runner = makeRunner(new HangingAdapter(), tmp, { tasks });
+    const r = runner.spawnBackground({ label: 'Web层服务与数据访问分析', prompt: '分析' });
+    const task = tasks.get(r.taskId);
+    assert.ok(task, '账本登记在案');
+    assert.equal(task!.label, 'Web层服务与数据访问分析', 'input.label 优先（旧口径 agent_id ?? subagent 忽略 label）');
+    // 混合脚标签保留 ASCII 段做业务助记（'Web层服务…' → 'web'）；纯 CJK（无任何字母数字）才回退 kind
+    assert.match(task!.id, /^web-\d{8}T\d{6}Z-[a-z0-9]{4}$/, 'id 业务段=ASCII 段 slug + UTC 时间段 + 随机段');
+    task!.stop?.();
+    await waitFor(() => tasks.get(r.taskId)?.status !== 'running', 5000);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
