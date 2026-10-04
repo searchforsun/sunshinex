@@ -364,7 +364,25 @@ export class SubagentRunner {
     const finalLabel = n > 0 ? `${label}#${n + 1}` : label;
     this.inFlightLabels.set(label, n + 1);
     this.inFlight++;
+    // 委派事件发射单点(spec §11/§13 P0):finalLabel 消歧后恒定;后台路径(opts.taskId 在场)
+    // 判 kind=background-task 并携带 taskId;started 之前的早退(参数/并发)不发射
+    const delKind = opts?.taskId !== undefined ? 'background-task' : 'subagent';
+    const emitDelegation = (type: 'delegation-started' | 'delegation-ended', status?: 'done' | 'failed', extra?: { tokens?: number }): void => {
+      this.deps.onEvent?.({
+        type,
+        ts: Date.now(),
+        payload: {
+          delegationId: finalLabel,
+          kind: delKind,
+          label: finalLabel,
+          ...(opts?.taskId !== undefined ? { taskId: opts.taskId } : {}),
+          ...(status !== undefined ? { status } : {}),
+          ...extra,
+        },
+      });
+    };
     try {
+      emitDelegation('delegation-started');
       // D2 双通道声明（入参优先于 frontmatter）；D3 静默兜底——root 缺失或非 git 仓 → iso 静默置空，
       // 零链行、主工作区执行（隔离是增强非承诺）；是仓但建树失败 → fail-bounded 补丁行回链，父任务不炸
       const declaredByAgent = (() => {
@@ -382,6 +400,7 @@ export class SubagentRunner {
         if (created.ok) iso = { name: created.value.name, tree: created.value.path };
         else if (created.error.code !== 'WORKTREE_NOT_A_REPO') {
           this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] isolation failed: ${created.error.code}: ${created.error.message}` }]);
+          emitDelegation('delegation-ended', 'failed');
           return fail('INCOMPLETE', `[${finalLabel}] isolation failed (${created.error.code})`);
         }
       }
@@ -439,6 +458,7 @@ export class SubagentRunner {
           const keptNote = this.settleSubagentTree(iso);
           if (keptNote !== undefined) this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] ${keptNote}` }]);
           this.deps.context.appendChain([{ action: 'node', observation: `[${finalLabel}] ${firstLine(result.reply)}` }]);
+          emitDelegation('delegation-ended', 'done', { tokens: result.tokensUsed ?? 0 });
           return ok({ reply: result.reply, tokens: result.tokensUsed ?? 0 });
         }
         const reason = result.stopReason ?? 'failed';
@@ -446,11 +466,13 @@ export class SubagentRunner {
           const keptNote = this.settleSubagentTree(iso);
           this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] did not finish (${reason})${keptNote !== undefined ? ` — ${keptNote}` : ''}` }]);
         }
+        emitDelegation('delegation-ended', 'failed');
         return fail('INCOMPLETE', `[${finalLabel}] did not finish (${reason})`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'unknown error';
         const keptNote = this.settleSubagentTree(iso);
         this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] failed: ${msg}${keptNote !== undefined ? ` — ${keptNote}` : ''}` }]);
+        emitDelegation('delegation-ended', 'failed');
         return fail('INCOMPLETE', msg);
       }
     } finally {
