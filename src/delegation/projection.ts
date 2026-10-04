@@ -46,8 +46,10 @@ export function applyDelegation(list: Delegation[], e: SessionEvent): Delegation
   if (e.type === 'delegation-started') {
     const entry: Delegation = { id: p.delegationId, kind: p.kind, label: p.label ?? p.delegationId, status: 'running', startedAt: e.ts };
     if (idx < 0) return [...list, entry];
+    const prev = list[idx]!;
     const next = [...list];
-    next[idx] = { ...entry, startedAt: list[idx]!.startedAt };
+    // 重启 vs 重发:前条仍在跑 = 重复投递,保留首起点;前条已终态 = 真重启,起点取新事件时刻
+    next[idx] = prev.status === 'running' ? { ...entry, startedAt: prev.startedAt } : entry;
     return next;
   }
   const base: Delegation =

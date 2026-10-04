@@ -362,7 +362,7 @@ gate-waiting | gate-resolved              # 或复用既有 approval-* 事件
 agent-message                              # P2,L2 层
 ```
 
-约束:payload 结构化(禁 ANSI/预渲染字符串,吸取 §10.4-2 的债);全部进 journal;委派投影(P0)与 TUI 现有 `payload.subagent` 打标分流兼容——`src/tui/session.ts:1051-1057` 的 onEvent 单点扩展一路分支,不动主链路径。
+约束:payload 结构化(禁 ANSI/预渲染字符串,吸取 §10.4-2 的债);全部进 journal;委派投影(P0)与 TUI 现有 `payload.subagent` 打标分流兼容——`src/tui/session.ts:1051-1057` 的 onEvent 单点扩展一路分支,不动主链路径。P0 口径:delegation-* 为会话瞬态不落 journal(归档回看面仍是消息区 SPAWN 行),journal 化随 P1 teams 目录 event sourcing 落地;teamLabel/executorKind 为 P1+ 词汇,P0 载荷未携带。
 
 ---
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GraphDeps, GraphEngine, GraphNode, GraphTermination } from './engine';
-import { GraphContext, GraphNodeOutput, SessionEvent } from '../types';
+import { GraphNodeOutput, SessionEvent } from '../types';
 
 const term = (over: Partial<GraphTermination> = {}): GraphTermination => ({ maxNodes: 12, maxTokens: 100_000, timeoutMs: 60_000, ...over });
 

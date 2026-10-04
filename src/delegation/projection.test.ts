@@ -44,6 +44,19 @@ test('applyDelegation:started 重发幂等(保留首次起点)', () => {
   assert.equal(list[0]!.startedAt, 100);
 });
 
+test('applyDelegation:终态后重启起点取新事件时刻(仅 running 态保留首起点)', () => {
+  let list: Delegation[] = [];
+  list = applyDelegation(list, ev('delegation-started', { delegationId: 'rv', kind: 'subagent' }, 100));
+  list = applyDelegation(list, ev('delegation-ended', { delegationId: 'rv', kind: 'subagent', status: 'done', tokens: 42 }, 300));
+  assert.equal(list[0]!.status, 'done');
+  list = applyDelegation(list, ev('delegation-started', { delegationId: 'rv', kind: 'subagent' }, 500));
+  assert.equal(list.length, 1);
+  assert.equal(list[0]!.status, 'running');
+  assert.equal(list[0]!.startedAt, 500, '真重启:起点取新事件时刻');
+  assert.equal(list[0]!.endedAt, undefined, '重启后终态字段清空');
+  assert.equal(list[0]!.tokens, undefined, '重启后旧 tokens 不残留');
+});
+
 test('GUI 同源验证(spec §13 P0 验收):混合事件流 → 单一订阅者推导统一委派列表', () => {
   let list: Delegation[] = [];
   const stream: SessionEvent[] = [
