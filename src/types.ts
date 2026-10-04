@@ -260,7 +260,12 @@ export interface RouteDecision {
 type SessionEventType =
   | 'token' | 'reasoning' | 'usage' | 'tool-call' | 'tool-result' | 'step'
   | 'route' | 'approval-request' | 'approval-resolved'
-  | 'ctx' | 'done' | 'error' | 'notice' | 'model-start' | 'model-end';
+  | 'ctx' | 'done' | 'error' | 'notice' | 'model-start' | 'model-end'
+  // 委派/任务事件(2026-10-04 多Agent编排 spec §11):P0 只发射 delegation-*;
+  // task-* 为 P1 TaskBoard 词汇、gate-*/agent-message 为 P1/P2 词汇,先立协议面
+  | 'task-created' | 'task-status-changed' | 'task-unlocked' | 'task-blocked'
+  | 'delegation-started' | 'delegation-ended'
+  | 'gate-waiting' | 'gate-resolved' | 'agent-message';
 
 export interface SessionEvent {
   type: SessionEventType;
