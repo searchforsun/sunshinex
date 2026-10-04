@@ -101,6 +101,7 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
     approval: undefined,
     live: undefined,
     children: [],
+    delegations: [],
   };
   ctrl.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
   ctrl.ensureJournal().attach(meta.id);

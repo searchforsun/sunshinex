@@ -4,6 +4,7 @@ import { formatDuration, formatTokens } from './format';
 import type { ModelSwitcher } from '../model/catalog';
 import type { TuiRuntime, TuiRuntimeOpts } from './runtime';
 import type { LiveTaskState } from './task-state';
+import type { Delegation } from '../delegation/projection';
 
 // D17 拆分件步1（docs/TECH-DEBT-SURVEY.md H1）：会话纯模型层——类型与零 this 依赖的纯函数原样迁出；
 // session.ts 转发导出保持既有导入面（组件与测试零改动）。本文件只允许依赖类型与纯工具，不得回引 SessionController。
@@ -180,6 +181,9 @@ export interface TuiState {
   live?: LiveBlock;
   /** 运行中子代理面板态（规格 §4）：首事件创建、spawn 结果归档移除、回合边界清空 */
   children: ChildLiveState[];
+  /** 委派投影(spec §4.5,P0):delegation-* 事件经 applyDelegation 纯函数推导;瞬态不进 journal
+   *  (与 task 同口径)——归档回看面仍是消息区 SPAWN 行,投影只承担运行期生命周期 */
+  delegations: Delegation[];
   /** 活任务三态（规格 §4）：事件流经 applyTaskState 纯函数推导，瞬态不进 journal */
   task: LiveTaskState;
   /** 用户级模型档位（/model-tier 会话内切换；undefined = 缺省档，run 级常量不随步重估） */
@@ -237,6 +241,19 @@ export function resolveContextWindow(state: Pick<TuiState, 'modelWindow'>): numb
 // 选择卡翻页口径（2026-09-30 用户裁决）：More…/Back… 导航行分页退役（原 paginateOptions 已删）——
 // 所有选择卡超窗翻页由渲染层 OptionSelector 光标跟随滑窗统一承载（命令面板式自动翻页），
 // 会话层恒传全量 options
+
+/** 运行中委派行(P0 过渡接线,spec §13):children 运行中 ∪ 投影 running——投影终态对同名
+ *  children 行有否决权(Runner ended 先于归档的窗口期);合成事件测试路径(无 Runner,只建
+ *  children)与真实路径双兜底,保证既有测试全绿;P1 TaskBoard 落地后收敛为投影单源 */
+export function runningDelegations(st: Pick<TuiState, 'delegations' | 'children'>): { label: string; startedAt: number }[] {
+  const out = new Map<string, number>();
+  for (const c of st.children) if (!c.done) out.set(c.label, c.startedAt);
+  for (const d of st.delegations) {
+    if (d.status !== 'running') out.delete(d.id);
+    else if (!out.has(d.id)) out.set(d.id, d.startedAt);
+  }
+  return [...out].map(([label, startedAt]) => ({ label, startedAt })).sort((a, b) => a.startedAt - b.startedAt);
+}
 
 export function slashHelp(): string[] {
   const lines = [

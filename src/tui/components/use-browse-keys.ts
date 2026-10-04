@@ -1,15 +1,17 @@
 import * as React from 'react';
 import { SessionController, TuiState } from '../session';
+import { runningDelegations } from '../chat-model';
 import { RetainedUiState } from '../ui-state';
 import { moveCursor } from './OptionSelector';
 import { BrowseRow } from './BrowseList';
 import type { RawKey } from './use-input';
 
-/** Ctrl+B 浏览序列单点（2026-09-28 统一口径）：运行中子代理在前（启动序）+ 已完成 spawn 按 subagentMeta.delegatedAt
- *  委派时间升序在后（旧档字段缺省回落 seq 序）——↑↓ 键盘分发与动态区列表渲染共用同一函数，两侧永不漂移 */
+/** Ctrl+B 浏览序列单点（2026-09-28 统一口径）：运行中委派在前（启动序,并集选择器口径）+ 已完成 spawn 按
+ *  subagentMeta.delegatedAt 委派时间升序在后（旧档字段缺省回落 seq 序）——↑↓ 键盘分发与动态区列表渲染
+ *  共用同一函数，两侧永不漂移 */
 export function browseRows(st: TuiState): BrowseRow[] {
   return [
-    ...st.children.filter((c) => !c.done).map((c) => ({ id: `live:${c.label}`, label: c.label, running: true as const })),
+    ...runningDelegations(st).map((r) => ({ id: `live:${r.label}`, label: r.label, running: true as const })),
     ...st.messages
       .filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta)
       .map((m) => ({ id: `archived:${m.seq}`, label: m.text.replace(/^SPAWN /, ''), seq: m.seq, meta: m.subagentMeta }))

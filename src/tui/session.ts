@@ -36,6 +36,7 @@ import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup
 import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-memory';
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';
 import { resumeFlow, branchFlow, resumeLatest as resumeLatestFrom } from './commands-session';
+import { applyDelegation } from '../delegation/projection';
 
 // D17 拆分件（docs/TECH-DEBT-SURVEY.md H1 五步边界）：纯模型层迁 chat-model.ts、流式 md 通道迁 md-stream.ts、
 // 命令族迁 commands-*.ts、子代理面板迁 child-panel.ts、挂起协调迁 approval.ts；session.ts 转发导出
@@ -91,6 +92,7 @@ export class SessionController {
     status: 'idle',
     metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0, sessionTotalTokens: 0 },
     children: [],
+    delegations: [],
     task: initialTaskState(),
   };
   private listeners = new Set<(s: TuiState) => void>();
@@ -815,6 +817,7 @@ export class SessionController {
           sessionTotalTokens: 0,
         },
         children: [],
+        delegations: [],
         task: initialTaskState(),
         ...(this.state.tier ? { tier: this.state.tier } : {}),
         ...(this.state.modelId !== undefined ? { modelId: this.state.modelId, modelLabel: this.state.modelLabel, modelWindow: this.state.modelWindow } : {}),
@@ -1053,6 +1056,12 @@ export class SessionController {
     const sub = e.payload?.subagent;
     if (typeof sub === 'string' && sub.length > 0) {
       onChildEvent(this, e, sub);
+      return;
+    }
+    // 委派投影分流(spec §4.5 P0):delegation-* 只进投影,不触达主链消息分支
+    if (e.type === 'delegation-started' || e.type === 'delegation-ended') {
+      this.state = { ...this.state, delegations: applyDelegation(this.state.delegations, e) };
+      this.notifyThrottled();
       return;
     }
     this.state = { ...this.state, task: applyTaskState(this.state.task, e) };

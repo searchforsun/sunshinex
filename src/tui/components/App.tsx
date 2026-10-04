@@ -4,8 +4,9 @@ import * as React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey, keyTrace } from './use-input';
 import { SessionController, TuiState } from '../session';
-// J6 双源收敛：状态栏上下文分母经模型层单点解析（modelWindow ?? env ?? 0），渲染层不直读 env
-import { resolveContextWindow } from '../chat-model';
+// J6 双源收敛：状态栏上下文分母经模型层单点解析（modelWindow ?? env ?? 0），渲染层不直读 env；
+// runningDelegations = 委派投影并集口径（P0 过渡接线）：子代理面板成员/高度实账单点
+import { resolveContextWindow, runningDelegations } from '../chat-model';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
 import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
 import { initialRetained, RetainedUiState } from '../ui-state';
@@ -283,7 +284,7 @@ export function App({
   // 预览行数上限按 chrome 实账收缩（活动行/输入框/待办/子代理面板/状态栏 + 预览 marginBottom 与 … 行预算），
   // 帧高恒 ≤ rows-1，clearTerminal 路径结构性不可达
   const spinnerRows = state.status === 'running' ? 1 : 0;
-  const runningChildren = state.children.filter((c) => !c.done).length;
+  const runningChildren = runningDelegations(state).length;
   const childPanelRows = runningChildren > 0 && !browseMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1
   // 恒驻键提示条（2026-10-02）：所有交互处的快捷键单点承载——矩阵见 keyHintsFor；恒 1 行计入
   // previewCap chrome 实账（不实账即帧高触顶 clearTerminal，子代理视图冻结同病根）；模态卡在场
@@ -510,6 +511,7 @@ export function App({
         <ChildPanel
           childrenState={state.children}
           columns={columns}
+          rows={runningDelegations(state)}
         />
       ) : null}
       {state.approval ? (
