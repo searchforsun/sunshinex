@@ -399,6 +399,8 @@ graph → loop → harness 单向依赖保持;模板宏展开发生在 graph/编
 - GraphEngine 在既有 `hooks.onNodeEnd`/`deps.onEvent` 透传点发射 delegation 事件(消除「Graph 层不发 SessionEvent」的断层,模板宏化前的过渡接线);
 - **验收**:GraphEngine 节点进度事件经 `deps.onEvent` 可订阅(单测断言事件序);TUI 内 spawn/后台任务呈现统一走委派投影、现有行为回归不破(既有 session.subagent-* 测试全绿);一个最小 GUI 原型订阅事件流能列出任务/委派。
 
+> **落地记录**:P0 已交付(`329210f`/`41a41f9`/`f0a3d12`/`c5773be` 四笔,git log `feat(delegation)`/`feat(graph)`/`feat(harness)`/`feat(tui)`)——事件面词汇就位、GraphEngine/Runner 双端发射、TuiState.delegations 投影 + 并集选择器过渡接线;「ChildPanel/Ctrl+B 改为消费投影」以并集口径落地(合成事件测试路径保绿),投影单源收敛随 P1 TaskBoard。
+
 ### P1 TaskBoard 核心
 
 - 域模型 + team 目录 event sourcing(§7.2)+ lead 工具五件套 + harness 强制状态回写(§5.4)+ 依赖环检测;Executor/Inbox 接口定型(实现只有内存/内部);teammate 先用现有 subagent fork 模式顶替(每任务一 spawn);
