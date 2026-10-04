@@ -46,6 +46,16 @@ export class GraphEngine {
     this.term = { ...termination };
   }
 
+  /** 委派事件发射单点(spec §11/§13 P0):节点生命周期 → SessionEvent 公共面。
+   *  label 恒取 node.id(graph 侧无业务 label);payload 结构化禁渲染字符串 */
+  private emitDelegation(type: 'delegation-started' | 'delegation-ended', node: GraphNode, status?: 'done' | 'failed' | 'skipped' | 'paused'): void {
+    this.deps.onEvent?.({
+      type,
+      ts: Date.now(),
+      payload: { delegationId: node.id, kind: 'graph-node', nodeKind: node.kind, label: node.id, ...(status !== undefined ? { status } : {}) },
+    });
+  }
+
   /** Kahn 分层：同层可并发；分层后余量节点即环成员及其下游，抛错含清单 */
   layers(): string[][] {
     const indeg = new Map<string, number>();
@@ -124,6 +134,7 @@ export class GraphEngine {
         // 错误局部化：上游 failed → skipped；上游 paused → 阻塞（暂停传播，resume 后续跑）
         if (node.deps.some((d) => failed.has(d) || ctx.results[d]?.status === 'skipped' || ctx.results[d]?.status === 'paused')) {
           ctx.results[id] = { nodeId: id, status: 'skipped', tokens: 0 };
+          this.emitDelegation('delegation-ended', node, 'skipped');
           continue;
         }
         runnable.push(node);
@@ -157,6 +168,7 @@ export class GraphEngine {
             if (r) inputs[d] = r;
           }
           try {
+            this.emitDelegation('delegation-started', node);
             const o = await node.run(ctx, this.deps, inputs);
             const output: GraphNodeOutput = { ...o, nodeId: node.id };
             ctx.results[node.id] = output;
@@ -164,6 +176,7 @@ export class GraphEngine {
             this.steps += 1;
             if (output.status === 'pass') this.completed.add(node.id);
             else if (output.status === 'failed') failed.add(node.id);
+            this.emitDelegation('delegation-ended', node, output.status === 'pass' ? 'done' : output.status);
             this.hooks?.onNodeEnd?.(node, output);
           } catch (e) {
             const output: GraphNodeOutput = {
@@ -175,6 +188,7 @@ export class GraphEngine {
             ctx.results[node.id] = output;
             this.steps += 1;
             failed.add(node.id);
+            this.emitDelegation('delegation-ended', node, 'failed');
             this.hooks?.onNodeEnd?.(node, output);
           }
         }),
