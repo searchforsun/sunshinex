@@ -2,6 +2,7 @@
 import { runSelfcheck } from './commands/selfcheck';
 import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
+import { runServe } from './commands/serve';
 import { runSkillsInstall } from './commands/skills-install';
 import { runKbIndex } from './commands/kb-index';
 import { runTui } from '../tui/entry';
@@ -76,7 +77,7 @@ export function flagList(flags: CliArgs['flags'], name: string): string[] {
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
-const COMMANDS = ['selfcheck', 'run', 'pipeline', 'skills', 'kb-index', 'help'];
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'help'];
 
 /** 路径形态判据（规格 §6.2）：绝对路径（POSIX `/` 前缀、Windows 盘符）、`.`/`..` 显式相对形态、或含路径分隔符 */
 export function isPathForm(arg: string): boolean {
@@ -122,6 +123,7 @@ export function usageText(): string {
   sunshinex run <dir> --goal="..."        run the standard verify-fix loop (exit code 1 unless done)
   sunshinex pipeline <dir> --goal="..." [--yes]
                                           five-node pipeline with gate approvals (--yes auto-approves)
+  sunshinex serve [dir] [--port=N]        GUI daemon (HTTP control + WS events)
   sunshinex skills install <git-url | owner/repo | local-dir> [--force]
                                           install skills into the global skills root (~/.sunshinex/skills)
   sunshinex kb-index [dir]                build the knowledge-base index for md/txt files (billed embedding; kb_search source)
@@ -147,6 +149,7 @@ export function usageText(): string {
   sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（非 done 退出码 1）
   sunshinex pipeline <dir> --goal="..." [--yes]
                                           五节点流水线 gate 审批（--yes 跳过交互直接批准）
+  sunshinex serve [目录] [--port=N]       GUI daemon（HTTP 控制面 + WS 事件流）
   sunshinex skills install <git-url | owner/repo | 本地目录> [--force]
                                           把技能安装到全局技能根（~/.sunshinex/skills）
   sunshinex kb-index [目录]               构建知识库索引（对目录内 md/txt 走计费 embedding；kb_search 检索源）
@@ -225,6 +228,8 @@ async function main(): Promise<void> {
       return runLoop(args);
     case 'pipeline':
       return runPipeline(args);
+    case 'serve':
+      return runServe(args);
     case 'skills':
       return runSkillsInstall(args);
     case 'kb-index':

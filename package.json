@@ -18,6 +18,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.31",
+    "@types/ws": "^8.5.12",
     "typescript": "^5.6.0"
   },
   "dependencies": {
@@ -29,7 +30,8 @@
     "markdown-it": "^15.0.1",
     "react": "^18.3.1",
     "sqlite-vec": "^0.1.9",
-    "string-width": "4.2.3"
+    "string-width": "4.2.3",
+    "ws": "^8.18.0"
   },
   "optionalDependencies": {
     "@deepseek-ai/node-addon-landlock-run": "^0.1.1"

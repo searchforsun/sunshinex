@@ -35,6 +35,9 @@ importers:
       string-width:
         specifier: 4.2.3
         version: 4.2.3
+      ws:
+        specifier: ^8.18.0
+        version: 8.22.0
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -42,6 +45,9 @@ importers:
       '@types/react':
         specifier: ^18.3.31
         version: 18.3.31
+      '@types/ws':
+        specifier: ^8.5.12
+        version: 8.18.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -96,6 +102,9 @@ packages:
 
   '@types/react@18.3.31':
     resolution: {integrity: sha512-vfEqpXTvwT91yhmwdfouStN2hSKwTvyRs8qpLfADyrq/kxDw0hZM7Wk9Ug1FELj8hIby+S/+kQCSRFF32nv2Qw==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@types/yoga-layout@1.9.2':
     resolution: {integrity: sha512-S9q47ByT2pPvD65IvrWp7qppVMpk9WGMbVq9wbWZOHg6tnXSD4vyhao6nOSBwwfDdV2p3Kx9evA9vI+XWTfDvw==}
@@ -761,6 +770,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.22.0:
+    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   yoga-layout-prebuilt@1.10.0:
     resolution: {integrity: sha512-YnOmtSbv4MTf7RGJMK0FvZ+KD8OEe/J5BNnR0GHhD8J/XcG/Qvxgszm0Un6FTHWW4uHlTgP0IztiXQnGyIR45g==}
     engines: {node: '>=8'}
@@ -826,6 +847,10 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.15
       csstype: 3.2.3
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 22.20.1
 
   '@types/yoga-layout@1.9.2': {}
 
@@ -1487,6 +1512,8 @@ snapshots:
   wrappy@1.0.2: {}
 
   ws@7.5.13: {}
+
+  ws@8.22.0: {}
 
   yoga-layout-prebuilt@1.10.0:
     dependencies:
