@@ -15,6 +15,8 @@ export interface BoardTask {
   assignee?: string;
   /** gate 挂起(spec Ruling 3):派发跳过,review_task(approved) 解锁 */
   gated?: boolean;
+  /** 执行体路由提示(P2):internal=子代理 fork(缺省)/external-cli=外部 CLI 执行体;提示不改派发语义,消费面为 P2 派发路由 */
+  executorHint?: 'internal' | 'external-cli';
   createdAt: number;
   updatedAt: number;
   artifact?: { conclusion?: string; tokens?: number; durationMs?: number };
@@ -27,7 +29,7 @@ export interface TaskBoardState {
 }
 
 export type BoardEvent =
-  | { t: 'task-created'; taskId: string; title: string; spec: string; dependsOn: string[]; ts: number }
+  | { t: 'task-created'; taskId: string; title: string; spec: string; dependsOn: string[]; executorHint?: 'internal' | 'external-cli'; ts: number }
   | { t: 'dependency-added'; taskId: string; dependsOn: string; ts: number }
   | { t: 'assigned'; taskId: string; assignee: string; ts: number }
   | { t: 'status-changed'; taskId: string; from: TaskStatus; to: TaskStatus; ts: number; note?: string; conclusion?: string; tokens?: number; durationMs?: number }
@@ -61,6 +63,7 @@ export function applyBoardEvent(state: TaskBoardState, ev: BoardEvent): TaskBoar
       const task: BoardTask = {
         id: ev.taskId, title: ev.title, spec: ev.spec, status: 'pending',
         dependsOn: [...ev.dependsOn], createdAt: ev.ts, updatedAt: ev.ts,
+        ...(ev.executorHint !== undefined ? { executorHint: ev.executorHint } : {}),
       };
       return { tasks: { ...state.tasks, [ev.taskId]: task }, seq: Math.max(state.seq, Number(ev.taskId.slice(1)) || 0) };
     }

@@ -261,9 +261,10 @@ type SessionEventType =
   | 'token' | 'reasoning' | 'usage' | 'tool-call' | 'tool-result' | 'step'
   | 'route' | 'approval-request' | 'approval-resolved'
   | 'ctx' | 'done' | 'error' | 'notice' | 'model-start' | 'model-end'
-  // 委派/任务事件(2026-10-04 多Agent编排 spec §11):P0 只发射 delegation-*;
-  // task-* 为 P1 TaskBoard 词汇、gate-*/agent-message 为 P1/P2 词汇,先立协议面
+  // 委派/任务事件(2026-10-04 多Agent编排 spec §11):delegation-* 为 P0 起;
+  // task-* 为 TaskBoard 词汇(P1 创建/状态/解锁/阻塞,P2 加边/指派)、gate-*/agent-message 为 P1/P2 词汇
   | 'task-created' | 'task-status-changed' | 'task-unlocked' | 'task-blocked'
+  | 'task-dep-added' | 'task-assigned'
   | 'delegation-started' | 'delegation-ended'
   | 'gate-waiting' | 'gate-resolved' | 'agent-message';
 

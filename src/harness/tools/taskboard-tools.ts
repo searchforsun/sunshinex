@@ -17,26 +17,31 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['title', 'spec', 'dependsOn', 'assignee'],
+      required: ['title', 'spec', 'dependsOn', 'assignee', 'gated', 'executor'],
       properties: {
         title: { type: ['string', 'null'], description: 'Short task title shown on the board.' },
         spec: { type: ['string', 'null'], description: 'Self-contained task description: the executing agent sees ONLY this (no main-chain context), so include everything needed.' },
         dependsOn: { type: ['array', 'null'], items: { type: 'string' }, description: 'Task ids this task depends on (e.g. ["t1"]); null/empty = no dependencies. A task dispatches only after all dependencies are done.' },
         assignee: { type: ['string', 'null'], description: 'Optional assignee label (bookkeeping; executor routing lands in P2).' },
+        gated: { type: ['boolean', 'null'], description: 'Pass true to hold the task behind an approval gate from creation: dispatch skips it until review_task(approved=true).' },
+        executor: { type: ['string', 'null'], enum: ['internal', 'external-cli', null], description: 'Execution routing hint: "internal" = subagent fork (default), "external-cli" = external CLI executor.' },
       },
     },
     name: 'create_task',
     description:
-      'Create a task on the shared task board. Unblocked tasks (no unfinished dependencies, not gated) are dispatched automatically to a subagent; wait with task_wait (taskIds=null). The board persists across sessions.',
+      'Create a task on the shared task board. Unblocked tasks (no unfinished dependencies, not gated) are dispatched automatically to a subagent; wait with task_wait (taskIds=null). The board persists across sessions. Pass gated=true to hold the task behind an approval gate from creation (dispatch skips it until review_task approves). Pass executor ("internal" or "external-cli") as the execution routing hint.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { title?: string | null; spec?: string | null; dependsOn?: string[] | null; assignee?: string | null };
+      const raw = input as { title?: string | null; spec?: string | null; dependsOn?: string[] | null; assignee?: string | null; gated?: boolean | null; executor?: string | null };
+      const executor = raw.executor === 'internal' || raw.executor === 'external-cli' ? raw.executor : undefined;
       const r = board.create({
         title: String(raw.title ?? ''),
         spec: String(raw.spec ?? ''),
         dependsOn: raw.dependsOn ?? undefined,
         assignee: raw.assignee ?? undefined,
+        gated: raw.gated === true,
+        executor,
       });
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
       return { exitCode: 0, stdout: [`task ${r.value.taskId} created; dispatch is automatic for unblocked tasks — block with task_wait (taskIds=null)`, boardTail(board)].join('\n'), stderr: '', timedOut: false };
@@ -118,7 +123,7 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
       },
     },
     name: 'gate_task',
-    description: 'Put a task behind an approval gate: dispatch skips it until review_task(approved=true) resolves the gate. To gate a task from the start, create it with an unsatisfied dependency (e.g. dependsOn a task that is not done) so it has not dispatched, then gate it.',
+    description: 'Put a task behind an approval gate: dispatch skips it until review_task(approved=true) resolves the gate. To gate a task from the start, pass gated=true at create time (create_task).',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {

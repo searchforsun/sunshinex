@@ -72,18 +72,18 @@ export class TaskBoard {
     return this.state;
   }
 
-  /** 面板摘要行(工具 observation 与 TUI 共用):`t1 [in-review] A (等 t2)` 形态 */
+  /** 面板摘要行(工具 observation 与 TUI 共用,P2 英文化):`t1 [in-review] A (needs t2)` 形态 */
   summaryLines(): string[] {
     return Object.values(this.state.tasks)
       .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
       .map((t) => {
-        const dep = t.dependsOn.length > 0 ? ` (等 ${t.dependsOn.join(',')})` : '';
+        const dep = t.dependsOn.length > 0 ? ` (needs ${t.dependsOn.join(',')})` : '';
         const gate = t.gated === true ? ' [gated]' : '';
         return `${t.id} [${t.status}]${gate} ${t.title}${dep}`;
       });
   }
 
-  create(input: { title: string; spec: string; dependsOn?: string[]; assignee?: string }): Result<{ taskId: string }> {
+  create(input: { title: string; spec: string; dependsOn?: string[]; assignee?: string; gated?: boolean; executor?: 'internal' | 'external-cli' }): Result<{ taskId: string }> {
     if (typeof input.title !== 'string' || input.title.length === 0 || typeof input.spec !== 'string' || input.spec.length === 0) {
       return fail('INVALID_ARG', 'create requires non-empty title and spec');
     }
@@ -93,13 +93,21 @@ export class TaskBoard {
     const open = Object.values(this.state.tasks).filter((t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled').length;
     if (open >= this.maxOpen) return fail('INVALID_ARG', `task board open-task limit reached (${this.maxOpen}); review or cancel existing tasks first`);
     const taskId = `t${this.state.seq + 1}`;
-    const ev: BoardEvent = { t: 'task-created', taskId, title: input.title, spec: input.spec, dependsOn: deps, ts: this.now() };
+    const ev: BoardEvent = { t: 'task-created', taskId, title: input.title, spec: input.spec, dependsOn: deps, ts: this.now(), ...(input.executor !== undefined ? { executorHint: input.executor } : {}) };
     this.applyAndPersist(ev);
     if (input.assignee !== undefined && input.assignee.length > 0) {
       this.applyAndPersist({ t: 'assigned', taskId, assignee: input.assignee, ts: this.now() });
     }
-    this.emit('task-created', { taskId, title: input.title, spec: input.spec, dependsOn: deps });
-    this.kick();
+    // 建即 gated(P2):经既有 gate-set 事件表达,不引入新变体——task-created(及 assigned)落流后再挂门,
+    // 发射序同构(task-created 先于 gate-waiting:投影侧按事件序归约,门先于建会丢单)
+    if (input.gated === true) {
+      this.applyAndPersist({ t: 'gate-set', taskId, ts: this.now() });
+    }
+    this.emit('task-created', { taskId, title: input.title, spec: input.spec, dependsOn: deps, ...(input.executor !== undefined ? { executorHint: input.executor } : {}) });
+    if (input.gated === true) {
+      this.emit('gate-waiting', { taskId });
+    }
+    this.kick(); // gated 任务自然不派发;依赖满足后 + 门经 review(approved) 解锁才会派发
     return ok({ taskId });
   }
 
@@ -114,6 +122,7 @@ export class TaskBoard {
     const cycle = hasCycle(candidate);
     if (cycle !== null) return fail('INVALID_ARG', `dependency would create a cycle: ${cycle.join(' -> ')}`);
     this.applyAndPersist({ t: 'dependency-added', taskId, dependsOn, ts: this.now() });
+    this.emit('task-dep-added', { taskId, dependsOn });
     this.kick();
     return ok(undefined);
   }
@@ -123,6 +132,7 @@ export class TaskBoard {
     if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
     if (typeof assignee !== 'string' || assignee.length === 0) return fail('INVALID_ARG', 'assignee must be non-empty');
     this.applyAndPersist({ t: 'assigned', taskId, assignee, ts: this.now() });
+    this.emit('task-assigned', { taskId, assignee });
     return ok(undefined);
   }
 
@@ -265,18 +275,33 @@ export class TaskBoard {
       this.capacityDeferred = true;
       return;
     }
-    // harness 强制回写(§5.4):claimed → in-review/failed,不依赖模型自觉标记;失败 note 带 code+message(与台账 [failed] 行口径对称)
-    const failNote = `execution failed: ${errCode ?? 'UNKNOWN'}: ${errMsg ?? 'no error detail'}`;
-    this.applyAndPersist({
-      t: 'status-changed', taskId: task.id, from: 'claimed', to: okRun ? 'in-review' : 'failed', ts: this.now(),
-      ...(okRun ? { conclusion: reply, tokens, durationMs } : { note: failNote }),
-    });
-    this.emit('task-status-changed', { taskId: task.id, from: 'claimed', status: okRun ? 'in-review' : 'failed', ...(okRun ? {} : { note: failNote }) });
+    // harness 强制回写(§5.4):回写单点 finishExecution——executeOne 与 T2 teammate/外部执行体路径共用,
+    // claimed→in-review/failed 口径单点(不依赖模型自觉标记)
     if (okRun) {
-      this.deps.registry.finish(ledger.id, 'done', { marker: `[conclusion] ${reply}\n` });
+      this.finishExecution(task.id, { ok: true, reply, tokens, durationMs }, ledger.id);
     } else {
-      this.deps.registry.finish(ledger.id, 'failed');
-      this.emitBlockedDownstream(task.id);
+      this.finishExecution(task.id, { ok: false, error: { code: errCode, message: errMsg } }, ledger.id);
+    }
+  }
+
+  /** 执行回写单点(P2 自 executeOne 抽取,T2 teammate/外部执行体路径复用):claimed→in-review/failed 强制迁移
+   *  + task-status-changed 发射 + artifact 并入(conclusion/tokens/durationMs)+ 台账收口(ledgerId 缺省跳过)
+   *  + 失败发直接下游 task-blocked(§4.1 不自动 skip)。失败 note 带 code+message(与台账 [failed] 行口径对称)。
+   *  r.durationMs 由调用方计算传入(计时归执行路径,回写点不持钟);r.error 携带失败详情供 note 组装。 */
+  finishExecution(taskId: string, r: { ok: boolean; reply?: string; tokens?: number; durationMs?: number; error?: { code?: string; message?: string } }, ledgerId?: string): void {
+    const failNote = `execution failed: ${r.error?.code ?? 'UNKNOWN'}: ${r.error?.message ?? 'no error detail'}`;
+    this.applyAndPersist({
+      t: 'status-changed', taskId, from: 'claimed', to: r.ok ? 'in-review' : 'failed', ts: this.now(),
+      ...(r.ok
+        ? { conclusion: r.reply ?? '', tokens: r.tokens ?? 0, ...(r.durationMs !== undefined ? { durationMs: r.durationMs } : {}) }
+        : { note: failNote }),
+    });
+    this.emit('task-status-changed', { taskId, from: 'claimed', status: r.ok ? 'in-review' : 'failed', ...(r.ok ? {} : { note: failNote }) });
+    if (r.ok) {
+      if (ledgerId !== undefined) this.deps.registry.finish(ledgerId, 'done', { marker: `[conclusion] ${r.reply ?? ''}\n` });
+    } else {
+      if (ledgerId !== undefined) this.deps.registry.finish(ledgerId, 'failed');
+      this.emitBlockedDownstream(taskId);
     }
   }
 }

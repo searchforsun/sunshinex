@@ -33,6 +33,22 @@ test('task-* 事件进板投影;delegation 带标签不再误吞(分流防御)',
   }
 });
 
+test('task-dep-added/task-assigned 事件经翻译进板投影(P2 新型)', () => {
+  const tmp = tmpdir('sunshinex-sess-boarddep-');
+  try {
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    ctrl.onEventForTest({ type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', dependsOn: [] } } as never);
+    ctrl.onEventForTest({ type: 'task-created', ts: 101, payload: { taskId: 't2', title: 'B', dependsOn: [] } } as never);
+    ctrl.onEventForTest({ type: 'task-dep-added', ts: 102, payload: { taskId: 't2', dependsOn: 't1' } } as never);
+    ctrl.onEventForTest({ type: 'task-assigned', ts: 103, payload: { taskId: 't2', assignee: 'bob' } } as never);
+    const st = ctrl.getState();
+    assert.deepEqual(st.board.tasks['t2']!.dependsOn, ['t1'], 'task-dep-added → dependency-added 入投影');
+    assert.equal(st.board.tasks['t2']!.assignee, 'bob', 'task-assigned → assigned 入投影');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('/new 重置板投影', () => {
   const tmp = tmpdir('sunshinex-sess-boardnew-');
   try {

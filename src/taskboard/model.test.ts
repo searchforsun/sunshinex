@@ -22,6 +22,14 @@ test('applyBoardEvent:created 建条、status-changed 迁移与 artifact 并入�
   assert.deepEqual(s.tasks['t1']!.artifact, { conclusion: 'done A', tokens: 42, durationMs: 900 });
 });
 
+test('task-created executorHint:随事件入板;缺省时字段缺位(P2)', () => {
+  let s = emptyBoard();
+  s = applyBoardEvent(s, { t: 'task-created', taskId: 't1', title: 'A', spec: 'a', dependsOn: [], ts: 1, executorHint: 'external-cli' });
+  assert.equal(s.tasks['t1']!.executorHint, 'external-cli', 'executorHint 随 task-created 事件入板');
+  s = applyBoardEvent(s, created('t2'));
+  assert.equal('executorHint' in s.tasks['t2']!, false, '不带 executorHint 的 task-created,字段缺位(非 undefined 值)');
+});
+
 test('transitionLegal:合法迁移表', () => {
   assert.ok(transitionLegal('pending', 'claimed'));
   assert.ok(transitionLegal('claimed', 'pending'), '恢复回池合法');

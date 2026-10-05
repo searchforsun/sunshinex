@@ -218,6 +218,167 @@ test('set_dependency 环检测 fail-fast;gate 挂起与解锁;限流;id 单调',
   }
 });
 
+test('create gated:true 建即挂起:task-created→gate-set 落流、gate-waiting 发射,任务不派发(P2)', async () => {
+  const tmp = tmpdir('sunshinex-tb-gated-');
+  try {
+    const h = makeBoard(tmp);
+    const r = h.board.create({ title: 'A', spec: 'a', gated: true });
+    assert.ok(r.ok);
+    await drain();
+    assert.deepEqual(h.calls, [], 'gated 任务不派发(runner 零调用)');
+    const s = h.board.snapshot();
+    assert.equal(s.tasks['t1']!.status, 'pending', 'gated 保持 pending');
+    assert.equal(s.tasks['t1']!.gated, true);
+    const types = h.events.map((e) => e.type);
+    const iCreated = types.indexOf('task-created');
+    const iGate = types.indexOf('gate-waiting');
+    assert.ok(iCreated >= 0 && iGate > iCreated, `发射序 task-created 先于 gate-waiting:${types.join(',')}`);
+    assert.equal((h.events[iGate]!.payload as Record<string, unknown>).taskId, 't1');
+    const raw = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8').split('\n').filter((l) => l.length > 0).map((l) => JSON.parse(l) as { t: string });
+    assert.deepEqual(raw.map((e) => e.t), ['task-created', 'gate-set'], '持久化事件序:task-created 后随 gate-set');
+    // review(approved) 解锁:依赖满足(无依赖)+ 门已解 → 派发
+    await h.board.review('t1', { approved: true });
+    await drain();
+    assert.equal(h.board.snapshot().tasks['t1']!.status, 'in-review', '解锁后派发');
+    assert.deepEqual(h.calls, ['Task t1: A']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('create executor 提示入板:快照与 task-created 事件均带 executorHint(P2)', async () => {
+  const tmp = tmpdir('sunshinex-tb-exec-');
+  try {
+    const h = makeBoard(tmp);
+    const r = h.board.create({ title: 'A', spec: 'a', executor: 'external-cli' });
+    assert.ok(r.ok);
+    assert.equal(h.board.snapshot().tasks['t1']!.executorHint, 'external-cli', '快照 executorHint 设置');
+    const ev = h.events.find((e) => e.type === 'task-created');
+    assert.ok(ev, 'task-created 事件已发');
+    assert.equal((ev!.payload as Record<string, unknown>).executorHint, 'external-cli', '事件载荷带 executorHint');
+    await drain(); // P1/P2 提示不改变派发行为:内部 runner 照常收口
+    assert.equal(h.board.snapshot().tasks['t1']!.status, 'in-review');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('set_dependency/assign 成功路径发 task-dep-added/task-assigned(载荷核字段,P2)', async () => {
+  const tmp = tmpdir('sunshinex-tb-depev-');
+  try {
+    const h = makeBoard(tmp);
+    h.board.create({ title: 'A', spec: 'a' }); // t1 → 派发 in-review
+    h.board.create({ title: 'B', spec: 'b' }); // t2 → 派发 in-review
+    await drain();
+    assert.ok(h.board.setDependency('t2', 't1').ok);
+    const dep = h.events.find((e) => e.type === 'task-dep-added');
+    assert.ok(dep, 'task-dep-added 已发');
+    assert.deepEqual(dep!.payload, { taskId: 't2', dependsOn: 't1' }, '载荷恰为 taskId+dependsOn');
+    assert.ok(h.board.setDependency('t2', 't1').ok, '重复加边 no-op 成功');
+    assert.equal(h.events.filter((e) => e.type === 'task-dep-added').length, 1, 'no-op 不重复发射(变更即发射口径)');
+    assert.ok(h.board.assign('t1', 'alice').ok);
+    const asg = h.events.find((e) => e.type === 'task-assigned');
+    assert.ok(asg, 'task-assigned 已发');
+    assert.deepEqual(asg!.payload, { taskId: 't1', assignee: 'alice' }, '载荷恰为 taskId+assignee');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('summaryLines 英文化:needs/[gated] 标记,无中文字符(P2)', async () => {
+  const tmp = tmpdir('sunshinex-tb-en-');
+  try {
+    const h = makeBoard(tmp);
+    h.board.create({ title: 'A', spec: 'a', gated: true });       // t1 pending [gated]
+    h.board.create({ title: 'B', spec: 'b', dependsOn: ['t1'] });  // t2 pending (needs t1)
+    await drain();
+    const lines = h.board.summaryLines();
+    assert.ok(lines.includes('t1 [pending] [gated] A'), `gated 行形态:${JSON.stringify(lines)}`);
+    assert.ok(lines.includes('t2 [pending] B (needs t1)'), `needs 行形态:${JSON.stringify(lines)}`);
+    assert.ok(lines.every((l) => !/[\u4e00-\u9fff]/.test(l)), `无中文:${JSON.stringify(lines)}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('finishExecution 直调:claimed 回写单点(in-review+artifact+台账收口+状态事件,P2 抽取)', async () => {
+  const tmp = tmpdir('sunshinex-tb-finish-');
+  try {
+    const events: SessionEvent[] = [];
+    const finishes: unknown[][] = [];
+    let release: () => void = () => {};
+    const hang = new Promise<void>((res) => { release = res; });
+    // runner 悬置:claim 后不回,回写由直调 finishExecution 驱动(模拟 T2 外部执行体收口路径)
+    const runner = {
+      runSubagent: async () => {
+        await hang;
+        return { ok: true as const, value: { reply: 'late', tokens: 1 } };
+      },
+    } as unknown as SubagentRunner;
+    const registry = {
+      submit: () => ({ id: 'fx1', stop: () => {} }),
+      append: () => {},
+      finish: (...args: unknown[]) => { finishes.push(args); },
+    } as unknown as TaskRegistry;
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'main')),
+      runner,
+      registry,
+      onEvent: (e) => events.push(e),
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    assert.ok(board.create({ title: 'A', spec: 'a' }).ok);
+    await drain();
+    assert.equal(board.snapshot().tasks['t1']!.status, 'claimed', 'runner 悬置,t1 停在 claimed');
+    board.finishExecution('t1', { ok: true, reply: 'r', tokens: 5 }, 'fx1');
+    const t1 = board.snapshot().tasks['t1']!;
+    assert.equal(t1.status, 'in-review');
+    assert.equal(t1.artifact?.conclusion, 'r');
+    assert.equal(t1.artifact?.tokens, 5);
+    assert.equal(finishes.length, 1, '台账 finish 恰一次');
+    assert.equal(finishes[0]![0], 'fx1');
+    assert.equal(finishes[0]![1], 'done');
+    const st = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'in-review');
+    assert.ok(st, 'task-status-changed(in-review) 已发');
+    // 卫生:放行悬置 runner,drain 收口(迟到的二次回写不改已断言终局)
+    release();
+    await drain();
+    assert.equal(board.snapshot().tasks['t1']!.status, 'in-review');
+
+    // 无 ledgerId 路径:状态照回写,台账收口跳过(独立小板,悬置 runner 同法)
+    const finishes2: unknown[][] = [];
+    let release2: () => void = () => {};
+    const hang2 = new Promise<void>((res) => { release2 = res; });
+    const board2 = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'aux')),
+      runner: {
+        runSubagent: async () => {
+          await hang2;
+          return { ok: true as const, value: { reply: 'late', tokens: 1 } };
+        },
+      } as unknown as SubagentRunner,
+      registry: {
+        submit: () => ({ id: 'ax1', stop: () => {} }),
+        append: () => {},
+        finish: (...args: unknown[]) => { finishes2.push(args); },
+      } as unknown as TaskRegistry,
+      onEvent: () => {},
+    });
+    board2.init();
+    assert.ok(board2.create({ title: 'B', spec: 'b' }).ok);
+    await drain();
+    assert.equal(board2.snapshot().tasks['t1']!.status, 'claimed');
+    board2.finishExecution('t1', { ok: true, reply: 'r2', tokens: 2 });
+    assert.equal(board2.snapshot().tasks['t1']!.status, 'in-review', '无台账路径仍回写状态');
+    assert.equal(finishes2.length, 0, '无 ledgerId 跳过 registry.finish');
+    release2();
+    await drain();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('init 惰性建档:空板零物化 team 目录,首写才建(events.jsonl+board.json)', async () => {
   const tmp = tmpdir('sunshinex-tb-board5-');
   try {

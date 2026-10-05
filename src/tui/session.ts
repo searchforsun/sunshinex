@@ -68,7 +68,7 @@ import type { ChatItem, ChatRole, LiveBlock, TodoItem, TuiState } from './chat-m
 import type { SessionOpts } from './chat-model';
 
 /** SessionEvent(task- 前缀与 gate- 前缀事件) → BoardEvent 翻译单点:与 TaskBoard.emit 载荷口径互为镜像(P1 子集:
- *  created/status/unlocked/blocked/gate 两态;conclusion 等富字段不进 UI 事件,投影无需)。
+ *  created/status/unlocked/blocked/gate 两态;P2 增 dep-added/assigned;conclusion 等富字段不进 UI 事件,投影无需)。
  *  公开 = 镜像属性测试钉口径(mirror.test.ts)消费 */
 export function boardEventFrom(e: SessionEvent): BoardEvent {
   const p = (e.payload ?? {}) as Record<string, unknown>;
@@ -77,6 +77,10 @@ export function boardEventFrom(e: SessionEvent): BoardEvent {
   switch (e.type) {
     case 'task-created':
       return { t: 'task-created', taskId, title: String(p.title ?? ''), spec: String(p.spec ?? ''), dependsOn: Array.isArray(p.dependsOn) ? (p.dependsOn as string[]) : [], ts };
+    case 'task-dep-added':
+      return { t: 'dependency-added', taskId, dependsOn: String(p.dependsOn ?? ''), ts };
+    case 'task-assigned':
+      return { t: 'assigned', taskId, assignee: String(p.assignee ?? ''), ts };
     case 'task-status-changed':
       return { t: 'status-changed', taskId, from: (p.from as TaskStatus) ?? 'pending', to: (p.status as TaskStatus) ?? 'pending', ts };
     case 'gate-waiting':

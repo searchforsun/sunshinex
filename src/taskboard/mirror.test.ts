@@ -1,8 +1,8 @@
 // 镜像属性测试(终审钉口径):TaskBoard 发射(task-*/gate-* SessionEvent)↔ boardEventFrom 翻译 ↔
 // applyBoardEvent 归约三方互为镜像——对代表性事件脚本,经真实 TaskBoard(假 runner 恒成功)逐变更收集事件,
 // 投影侧(翻译 + reducer)终态必须与真相侧 board.snapshot() 结构相等。
-// 口径边界:P1 仅镜像有 SessionEvent 发射的变更(create/review/gate/执行回写);set_dependency 与
-// assign 不发事件(投影面无对应面),脚本刻意回避——变更即发射是本属性成立的前提,不是缺口。
+// 口径边界:P2 起 set_dependency/assign 也发事件(task-dep-added/task-assigned),脚本补两步进覆盖;
+// 变更即发射是本属性成立的前提,不是缺口。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -71,10 +71,13 @@ test('镜像属性:发射↔翻译↔归约的投影终态与真相板一致(代
     await drain();
     assert.ok((await board.review('t2', { approved: true })).ok);  // t2 done
     assert.ok((await board.review('t4', { approved: true })).ok);  // gate 解锁;依赖 t3 failed → 仍 pending
+    // P2 补齐:set_dependency/assign 亦发事件(task-dep-added/task-assigned),进镜像覆盖
+    assert.ok(board.setDependency('t4', 't1').ok); // t1 已 done,加边合法无环
+    assert.ok(board.assign('t4', 'ext-lead').ok);
 
-    // 脚本覆盖面守卫:六类板事件全出现(防脚本退化成空转,属性静默变弱)
+    // 脚本覆盖面守卫:八类板事件全出现(防脚本退化成空转,属性静默变弱)
     const relevant = events.filter((e) => e.type.startsWith('task-') || e.type.startsWith('gate-'));
-    for (const type of ['task-created', 'task-unlocked', 'task-status-changed', 'task-blocked', 'gate-waiting', 'gate-resolved']) {
+    for (const type of ['task-created', 'task-unlocked', 'task-status-changed', 'task-blocked', 'gate-waiting', 'gate-resolved', 'task-dep-added', 'task-assigned']) {
       assert.ok(relevant.some((e) => e.type === type), `脚本应覆盖 ${type} 事件`);
     }
 
