@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { softwarePipelineTemplate } from './templates';
+import { softwarePipelineTemplate, templateToTaskSpecs } from './templates';
 import { GraphDeps } from '../types';
 import { SafetyChain } from '../harness/security/chain';
 import { SecurityGuard } from '../harness/security/guard';
@@ -123,4 +123,35 @@ test('缺省放宽与 env 注入：DEFAULT < env < opts.termination 合并序', 
   }
   const t2 = softwarePipelineTemplate(deps, { termination: { maxNodes: 9 } });
   assert.equal(t2.termination.maxNodes, 9);
+});
+
+test('P2/T6 templateToTaskSpecs：五任务映射——id/依赖边/gated 精确匹配，title 用节点 id，纯函数零装配', () => {
+  const goal = '实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）';
+  const specs = templateToTaskSpecs(goal, { ruleCheckers: ['c1', 'c2'] });
+  // 五节点 → 五任务，序与依赖边按模板链精确匹配
+  assert.deepEqual(specs.map((s) => s.id), ['planner', 'developer', 'test-verify', 'reviewer', 'delivery-gate']);
+  assert.deepEqual(specs.map((s) => s.dependsOn), [[], ['planner'], ['developer'], ['test-verify'], ['reviewer']]);
+  assert.deepEqual(specs.map((s) => s.gated), [undefined, undefined, undefined, undefined, true], '仅 delivery-gate 为 gated');
+  for (const s of specs) assert.equal(s.title, s.id, 'title 用节点 id');
+  // role 任务 spec：首行 Role framing（ROLE_PRESETS 经 rolePreset 同源）+ Current instruction 行（agents.ts taskLine 口径）
+  assert.ok(specs[0]!.spec.startsWith('Role: requirement breakdown, solution and plan\n'), `planner spec 首行 Role：${specs[0]!.spec}`);
+  assert.ok(specs[1]!.spec.startsWith('Role: code implementation, refactoring\n'));
+  assert.ok(specs[3]!.spec.startsWith('Role: convention, logic and security review\n'));
+  assert.ok(specs[0]!.spec.includes(`Current instruction: ${goal}`), 'spec 含 goal');
+  assert.ok(specs[1]!.spec.includes(`Current instruction: ${goal}`));
+  assert.ok(specs[3]!.spec.includes(`Current instruction: ${goal}`));
+  // test-verify：spec 注明 test-loop 语义（goal + ruleCheckers 清单）
+  const tv = specs[2]!;
+  assert.ok(tv.spec.includes('Test-loop'), `test-verify spec 注明 loop 语义：${tv.spec}`);
+  assert.ok(tv.spec.includes(goal));
+  assert.ok(tv.spec.includes('Rule checkers: c1, c2'), 'ruleCheckers 进 test-verify spec');
+  // delivery-gate spec：交付前人工审批提示（非空、非 role 形态）
+  assert.ok(specs[4]!.spec.length > 0);
+  assert.ok(!specs[4]!.spec.startsWith('Role:'));
+});
+
+test('P2/T6 templateToTaskSpecs：ruleCheckers 缺省时 test-verify spec 无 Rule checkers 行', () => {
+  const specs = templateToTaskSpecs('做某事');
+  assert.ok(!specs[2]!.spec.includes('Rule checkers'), '无 checker 不出清单行');
+  assert.ok(specs[2]!.spec.includes('Current instruction: 做某事'), 'goal 恒在');
 });

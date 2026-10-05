@@ -5,6 +5,7 @@ import { assembleKnowledgeBase, KnowledgeBase } from './harness/knowledge';
 import { resolveKbEnv } from './config/env';
 import { modelTimeoutMsEnv } from './config/termination-config';
 import { LoopDeps } from './loop/engine';
+import type { TaskBoard } from './taskboard/board';
 import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ScriptedAdapter, StubAdapter } from './model/adapter';
 import { ModelTier, ReasoningEffort } from './types';
 
@@ -122,6 +123,9 @@ export function buildHarness(root: string, opts: HarnessAssemblyOpts = {}): Harn
 export interface CliRunDeps extends LoopDeps {
   /** 停全部 running 后台任务并落 [stopped: process exit] 终态行（规格 D9 任务属进程；teardownCliRun 消费） */
   stopAllTasks: () => void;
+  /** 任务板协调器透传（P2/T6）：pipeline 命令板路径消费——模板任务集落板/settle 收敛/审批映射 review；
+   *  与 Harness 内建板同实例（事件/持久化同源），不另起装配 */
+  taskboard: TaskBoard;
 }
 
 export function buildDeps(root: string, flags: Record<string, string | boolean | string[]>, addDirs?: string[]): CliRunDeps {
@@ -142,6 +146,8 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     pipeline: h.pipeline,
     // 后台任务收口透传（D24 接线）：命令终态停全部 running（stop 句柄 kill + 终态行），任务日志不留半截
     stopAllTasks: () => h.tasks.stopAll(),
+    // 任务板透传（P2/T6）：pipeline 板路径经 deps.taskboard 消费（与 Harness 内建板同实例）
+    taskboard: h.taskboard,
     // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），命令收尾 close 防 stdio 子进程悬挂
     mcpReady: h.mcpReady,
     mcpClose: h.mcpClose,

@@ -94,6 +94,21 @@ export class TaskBoard {
     return this.state;
   }
 
+  /** 轮询等待板收敛（P2/T6；先例 harness/tasks.ts waitUntilSettled）：100ms 间隔快照，至「无 pending 且无
+   *  claimed」（在飞/待派皆空 = 本轮无事可做）或超时，返回末态快照——超时与否由调用方检视任务态自判
+   *  （直接给状态比 settled 布尔更通用）。注意：gated/依赖未满的 pending 会顶住收敛（等待 lead 审批/关单
+   *  解锁下游），调用方（如 run-pipeline 板路径）应以审批/裁决推进后重入。钟走 Date.now（轮询节拍器，
+   *  不入事件流时间戳，无需注入）。空板/全终态零等待即回。 */
+  async settle(timeoutMs: number): Promise<TaskBoardState> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const busy = Object.values(this.state.tasks).some((t) => t.status === 'pending' || t.status === 'claimed');
+      if (!busy) return this.state;
+      if (Date.now() >= deadline) return this.state;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
   /** 面板摘要行(工具 observation 与 TUI 共用,P2 英文化):`t1 [in-review] A (needs t2)` 形态 */
   summaryLines(): string[] {
     const lines = Object.values(this.state.tasks)

@@ -512,3 +512,50 @@ test('team 预算帽:超帽 claim 前置返回 undefined,teammate 空手而归�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('settle:快 runner 任务完成后早退——快照全终态,不耗满超时(P2/T6)', async () => {
+  const tmp = tmpdir('sunshinex-tb-settle-fast-');
+  try {
+    const h = makeBoard(tmp);
+    assert.ok(h.board.create({ title: 'A', spec: 'a' }).ok);
+    const t0 = Date.now();
+    const st = await h.board.settle(1000);
+    const waited = Date.now() - t0;
+    assert.equal(st.tasks['t1']!.status, 'in-review', '快 runner:claim→执行→回写后 settle 收敛早退');
+    assert.ok(Object.values(st.tasks).every((t) => t.status !== 'pending' && t.status !== 'claimed'), '快照全终态');
+    assert.ok(waited < 1000, `早退不耗满超时(实际 ${waited}ms < 1000ms)`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('settle:慢 runner 超时返回当前态——claimed 悬置不判失败(P2/T6)', async () => {
+  const tmp = tmpdir('sunshinex-tb-settle-slow-');
+  try {
+    let release: () => void = () => {};
+    const hang = new Promise<void>((res) => { release = res; });
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'main')),
+      // 假 runner 悬置不回:任务停在 claimed,settle 超时应返回该当前态
+      runner: {
+        runSubagent: async () => {
+          await hang;
+          return { ok: true as const, value: { reply: 'late', tokens: 1 } };
+        },
+      } as unknown as SubagentRunner,
+      registry: { submit: () => ({ id: 'sx1', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry,
+      onEvent: () => {},
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    assert.ok(board.create({ title: 'S', spec: 's' }).ok);
+    const st = await board.settle(150);
+    assert.equal(st.tasks['t1']!.status, 'claimed', '超时返回当前态(claimed 悬置,不虚构终态)');
+    // 卫生:放行悬置 runner,drain 收口
+    release();
+    await new Promise((r) => setTimeout(r, 250));
+    assert.equal(board.snapshot().tasks['t1']!.status, 'in-review');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
