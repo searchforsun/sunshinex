@@ -277,6 +277,8 @@ test('App：浏览态子代理单点承载——运行中行只在统一列表�
     // 单个运行中子代理（token 在途无 done）：面板态在场，无归档行——合并序列只含运行中项
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'a', label: 'rv' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
+    // 协议补齐（P1 投影单源）：合成流无 Runner，运行行由 delegation 事件入投影（生产同源：subagent Runner 发射）
+    ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'rv', kind: 'subagent', label: 'rv' } } as never);
     ctrl.onEventForTest({ type: 'token', text: 'rv 在途\n', payload: { subagent: 'rv' } } as never);
     const retain = initialRetained();
     term = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} retain={retain} />);

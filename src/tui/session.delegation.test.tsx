@@ -23,8 +23,12 @@ test('delegation 事件进投影:state.delegations 维护、终态对 children �
     let st = ctrl.getState();
     assert.equal(st.delegations.length, 1);
     assert.equal(st.delegations[0]!.id, 'planner');
+    // P1 协议补齐(投影单源):合成子代理流无 Runner,rv 的运行行须由 delegation 事件入投影——
+    // children 只承载转录明细,不再是 runningDelegations 数据源(与受保护 App 测试同一补齐规则)
+    ctrl.onEventForTest({ type: 'delegation-started', ts: 150, payload: { delegationId: 'rv', kind: 'subagent', label: 'rv' } } as never);
+    st = ctrl.getState();
     let rows = runningDelegations(st);
-    assert.deepEqual(rows.map((r) => r.label).sort(), ['planner', 'rv'], '并集:children(rv) ∪ 投影(planner)');
+    assert.deepEqual(rows.map((r) => r.label).sort(), ['planner', 'rv'], '投影单源:running 行全部来自 delegation 事件(planner+rv)');
     // 投影终态否决同名 children 行(rv 的 Runner ended 先行,done 事件迟到)
     ctrl.onEventForTest({ type: 'delegation-ended', ts: 200, payload: { delegationId: 'rv', kind: 'subagent', status: 'done' } } as never);
     st = ctrl.getState();

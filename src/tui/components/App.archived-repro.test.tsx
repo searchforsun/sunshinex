@@ -26,6 +26,8 @@ test('生产编排：browse-Enter 进归档视图——转录单次倾泻（旧�
     // （detail=subagentMeta+transcript 折入调用行，browseRows archived 过滤条件）
     const DETAIL_MARK = 'ARCHIVED-TRANSCRIPT-MARK';
     const ctrl = new SessionController({ root: tmp });
+    // 协议补齐（P1 投影单源）：合成流无 Runner，浏览运行行由 delegation 事件入投影（生产同源：subagent Runner 发射）
+    ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'Research', kind: 'subagent', label: 'Research' } } as never);
     ctrl.onEventForTest({ type: 'token', text: `${DETAIL_MARK}\n`, payload: { subagent: 'Research' } } as never);
     ctrl.onEventForTest({ type: 'tool-call', text: 'SPAWN Research', payload: { input: { prompt: '调研' }, callId: 'c1' } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'done', payload: { ok: true, subagent: 'Research', callId: 'c1' } } as never);

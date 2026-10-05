@@ -5,7 +5,7 @@ import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey, keyTrace } from './use-input';
 import { SessionController, TuiState } from '../session';
 // J6 双源收敛：状态栏上下文分母经模型层单点解析（modelWindow ?? env ?? 0），渲染层不直读 env；
-// runningDelegations = 委派投影并集口径（P0 过渡接线）：子代理面板成员/高度实账单点
+// runningDelegations = 委派投影单源（P1 收敛）：子代理面板成员资格/高度实账单点（children 只是转录明细）
 import { resolveContextWindow, runningDelegations } from '../chat-model';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
 import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
@@ -505,8 +505,9 @@ export function App({
         // （运行中在前 + 已完成委派时间升序）、每页 8 行窗口、光标行反色，动态区每帧自绘 ↑↓ 可见移动零重挂
         <BrowseList key="browse-list" rows={browseRows(state)} cursor={browseCursor} />
       ) : null}
-      {(state.children.length > 0 && !browseMode) ? (
-        // 常态子代理面板（2026-09-28 统一口径）：只承载运行中；浏览态时运行中行由统一列表承载——
+      {(runningChildren > 0 && !browseMode) ? (
+        // 常态子代理面板（2026-09-28 统一口径）：只承载运行中（P1 收敛：门限与 ChildPanel 成员同源——
+        // runningDelegations 投影单源，rows 非空才渲染面板）；浏览态时运行中行由统一列表承载——
         // 同一子代理面板行与列表行双显属重复呈现（2026-09-28 真机双显 bug），浏览态面板整块让位
         <ChildPanel
           childrenState={state.children}

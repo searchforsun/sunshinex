@@ -37,6 +37,8 @@ import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-m
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';
 import { resumeFlow, branchFlow, resumeLatest as resumeLatestFrom } from './commands-session';
 import { applyDelegation } from '../delegation/projection';
+import { applyBoardEvent, emptyBoard } from '../taskboard/model';
+import type { BoardEvent, TaskStatus } from '../taskboard/model';
 
 // D17 拆分件（docs/TECH-DEBT-SURVEY.md H1 五步边界）：纯模型层迁 chat-model.ts、流式 md 通道迁 md-stream.ts、
 // 命令族迁 commands-*.ts、子代理面板迁 child-panel.ts、挂起协调迁 approval.ts；session.ts 转发导出
@@ -64,6 +66,26 @@ export type {
 import { PLAN_TASK_LABEL, applyCtxWatermark, formatTaskStatsLine, slashHelp, spawnBaseLabel, shouldPumpOnIdleBeat } from './chat-model';
 import type { ChatItem, ChatRole, LiveBlock, TodoItem, TuiState } from './chat-model';
 import type { SessionOpts } from './chat-model';
+
+/** SessionEvent(task- 前缀与 gate- 前缀事件) → BoardEvent 翻译单点:与 TaskBoard.emit 载荷口径互为镜像(P1 子集:
+ *  created/status/unlocked/blocked/gate 两态;conclusion 等富字段不进 UI 事件,投影无需) */
+function boardEventFrom(e: SessionEvent): BoardEvent {
+  const p = (e.payload ?? {}) as Record<string, unknown>;
+  const taskId = String(p.taskId ?? '');
+  const ts = e.ts;
+  switch (e.type) {
+    case 'task-created':
+      return { t: 'task-created', taskId, title: String(p.title ?? ''), spec: String(p.spec ?? ''), dependsOn: Array.isArray(p.dependsOn) ? (p.dependsOn as string[]) : [], ts };
+    case 'task-status-changed':
+      return { t: 'status-changed', taskId, from: (p.from as TaskStatus) ?? 'pending', to: (p.status as TaskStatus) ?? 'pending', ts };
+    case 'gate-waiting':
+      return { t: 'gate-set', taskId, ts, ...(typeof p.note === 'string' ? { note: p.note } : {}) };
+    case 'gate-resolved':
+      return { t: 'gate-resolved', taskId, approved: p.approved === true, ts };
+    default:
+      return { t: 'status-changed', taskId, from: 'pending', to: 'pending', ts }; // task-unlocked/task-blocked:投影无状态变化,reducer 原引用返回
+  }
+}
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
@@ -93,6 +115,7 @@ export class SessionController {
     metrics: { turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionTurns: 0, sessionSteps: 0, runs: 0, ctxUsed: 0, turnChildTokens: 0, sessionChildTokens: 0, sessionTotalTokens: 0 },
     children: [],
     delegations: [],
+    board: emptyBoard(),
     task: initialTaskState(),
   };
   private listeners = new Set<(s: TuiState) => void>();
@@ -818,6 +841,7 @@ export class SessionController {
         },
         children: [],
         delegations: [],
+        board: emptyBoard(),
         task: initialTaskState(),
         ...(this.state.tier ? { tier: this.state.tier } : {}),
         ...(this.state.modelId !== undefined ? { modelId: this.state.modelId, modelLabel: this.state.modelLabel, modelWindow: this.state.modelWindow } : {}),
@@ -1052,16 +1076,25 @@ export class SessionController {
   }
 
   private onEvent(e: SessionEvent): void {
-    // 子代理事件分流（规格 §4.1）：带 payload.subagent 标签的事件路由至面板态，不触达主链任何分支
+    // 委派/板事件分流(P1 收敛,spec §11):类型前缀判定前置——即便上游误打 subagent 标签也不误吞(终审裁定);
+    // delegation-* 进委派投影,task-*/gate-* 进板投影,两者都不触达主链消息分支
+    if (e.type.startsWith('delegation-')) {
+      this.state = { ...this.state, delegations: applyDelegation(this.state.delegations, e) };
+      this.notifyThrottled();
+      return;
+    }
+    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
+      const board = applyBoardEvent(this.state.board, boardEventFrom(e));
+      if (board !== this.state.board) {
+        this.state = { ...this.state, board };
+        this.notifyThrottled();
+      }
+      return;
+    }
+    // 子代理事件分流(规格 §4.1):带 payload.subagent 标签的事件路由至面板态,不触达主链任何分支
     const sub = e.payload?.subagent;
     if (typeof sub === 'string' && sub.length > 0) {
       onChildEvent(this, e, sub);
-      return;
-    }
-    // 委派投影分流(spec §4.5 P0):delegation-* 只进投影,不触达主链消息分支
-    if (e.type === 'delegation-started' || e.type === 'delegation-ended') {
-      this.state = { ...this.state, delegations: applyDelegation(this.state.delegations, e) };
-      this.notifyThrottled();
       return;
     }
     this.state = { ...this.state, task: applyTaskState(this.state.task, e) };

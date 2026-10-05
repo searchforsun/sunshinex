@@ -24,6 +24,8 @@ test('App inspect：Tab 切换折叠/完整时间线（经生产 repaint 整屏�
     let current: TestRenderResult | undefined;
     const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
     // 思考段（含 detail 全文）+ 工具对：折叠态 detail 不可见、Tab 展开 detail 可见
+    // 协议补齐（P1 投影单源）：合成流无 Runner，运行行由 delegation 事件入投影
+    ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'w', kind: 'subagent', label: 'w' } } as never);
     ctrl.onEventForTest({ type: 'reasoning', text: '思考全文行甲\n思考全文行乙', payload: { subagent: 'w' } } as never);
     ctrl.onEventForTest({ type: 'token', text: '正文开始\n', payload: { subagent: 'w' } } as never);
     ctrl.onEventForTest({ type: 'tool-call', text: 'READ', payload: { input: { path: 'a.ts' }, subagent: 'w', callId: 'c1' } } as never);
@@ -67,6 +69,8 @@ test('App inspect：browse→Enter 进全屏后浏览态不残留（store 同步
     const retain = { ...initialRetained() };
     let current: TestRenderResult | undefined;
     const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
+    // 协议补齐（P1 投影单源）：合成流无 Runner，运行行由 delegation 事件入投影
+    ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'w', kind: 'subagent', label: 'w' } } as never);
     ctrl.onEventForTest({ type: 'token', text: '正文\n', payload: { subagent: 'w' } } as never);
     const one = render(<App {...props} />);
     current = one;
@@ -100,6 +104,8 @@ test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面�
   try {
     const ctrl = new SessionController({ root: tmp });
     const term = render(<App controller={ctrl} />);
+    // 协议补齐（P1 投影单源）：合成流无 Runner，运行行由 delegation 事件入投影
+    ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'w', kind: 'subagent', label: 'w' } } as never);
     ctrl.onEventForTest({ type: 'token', text: '分析中…\n', payload: { subagent: 'w' } } as never);
     for (let i = 0; i < 40 && !(term.lastFrame() ?? '').includes('[w]'); i++) await sleep(25);
     assert.ok(!(term.lastFrame() ?? '').includes('子代理视图'), '未进入前全屏视图不在场');
@@ -128,6 +134,8 @@ test('App inspect：查看中子代理完成归档——live 离场自动换挡 
     const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
     // 委派（基名 w + 委派词登记）→ 子代理事件建面板态（生产同通道：结果先行、done 收口归档）
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { label: 'w', prompt: '委派任务甲' }, callId: 'c1' } } as never);
+    // 协议补齐（P1 投影单源）：合成流无 Runner，运行行由 delegation 事件入投影；done 归档处补 ended（面板离场同源）
+    ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'w', kind: 'subagent', label: 'w' } } as never);
     ctrl.onEventForTest({ type: 'token', text: '子代理正文\n', payload: { subagent: 'w' } } as never);
     const one = render(<App {...props} />);
     current = one;
@@ -144,6 +152,7 @@ test('App inspect：查看中子代理完成归档——live 离场自动换挡 
     // 结果先行入档（child 未 done → wait）→ done 收口：archiveDeferred 归档——child 从 children 离场、
     // 转录折进 SPAWN 调用行；查看视图必须自动换挡到 archived 形态而非退化「✻ []」
     ctrl.onEventForTest({ type: 'tool-result', text: 'ok', payload: { tool: 'spawn', ok: true, callId: 'c1' } } as never);
+    ctrl.onEventForTest({ type: 'delegation-ended', ts: Date.now(), payload: { delegationId: 'w', kind: 'subagent', status: 'done' } } as never);
     ctrl.onEventForTest({ type: 'done', text: '结论行甲', payload: { subagent: 'w' } } as never);
     await sleep(250); // 换挡 effect → setTimeout 0 → setInspectRetained 触发卸载
     assert.equal(
