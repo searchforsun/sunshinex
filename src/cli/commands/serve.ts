@@ -36,10 +36,12 @@ export async function runServe(args: CliArgs): Promise<void> {
   const daemon = new GuiDaemon({ root, model: buildModel(args.flags) });
   const s = await daemon.start({ port });
 
-  // token 带外通道（§4.3）：写 <dataDir>/serve-token（dataDir 首启可能不存在，recursive 建）
+  // token 带外通道（§4.3）：写 <dataDir>/serve-token（dataDir 首启可能不存在，recursive 建）；
+  // mode 0600：timing-safe 比较裁定依赖「token 对本地读者非秘密」，文件权限是唯一真实边界——多用户机器防护
+  // （终审提升裁定）
   const dataDir = resolveDataDir(root);
   fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(path.join(dataDir, 'serve-token'), s.token, 'utf8');
+  fs.writeFileSync(path.join(dataDir, 'serve-token'), s.token, { mode: 0o600, encoding: 'utf8' });
 
   console.log(`sunshinex serve listening at http://127.0.0.1:${s.port}`);
   console.log(`token: ${s.token}`);

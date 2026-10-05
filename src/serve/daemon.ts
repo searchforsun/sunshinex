@@ -24,9 +24,11 @@ export interface GuiDaemonHandle {
   close(): Promise<void>;
 }
 
-/** 单 run 锁的在场票据：abort 句柄持有即「运行中」，run 收束（含中断/失败）即清位 */
+/** 单 run 锁的在场票据：abort 句柄持有即「运行中」，run 收束（含中断/失败）即清位；done 为 run promise
+ *  本体——teardown 步骤 0 有界等待的锚点（被中止 run 的 settle 收口等待经它观测） */
 interface CurrentRun {
   abort: AbortController;
+  done: Promise<void>;
 }
 
 /** JSON body 上限（1MB）：防无界 body 撑爆 daemon 内存；超限即断连收口 */
@@ -38,6 +40,10 @@ const EVENT_BUFFER_CAP = 512;
 /** WS 保活节拍：30s 一 ping；pong 静默超 60s 即 terminate（close 事件统一清理） */
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
+
+/** teardown 步骤 0 有界等待上限（终审裁定）：被中止 run 的 settle 钩子（沉淀入队）收口窗口，2s 防
+ *  signal 无视的工具悬挂 teardown；超时即放行进后续步骤 */
+const ABORTED_RUN_SETTLE_MS = 2_000;
 
 /**
  * GUI daemon 核心（spec §3）：HTTP 控制面 + WS 事件面 + 会话生命周期。装配零旁路——与 TUI 同一
@@ -147,9 +153,9 @@ export class GuiDaemon {
     }
   }
 
-  /** 幂等 teardown：abort 在跑 run → wss close（逐连接 1001）→ http server close → tasks.stopAll →
-   *  pipeline drain → mcpClose（序同 CLI teardownCliRun 现场，网络面先行关闭——不再接受新请求/新连接、
-   *  在跑 run 中止后再动运行时内脏；细节裁定见各步骤行内注释） */
+  /** 幂等 teardown：abort 在跑 run → 有界等待其 settle 收口（2s 上限）→ wss close（逐连接 1001）→
+   *  http server close → tasks.stopAll → pipeline drain → mcpClose（序同 CLI teardownCliRun 现场，网络面先行关闭——
+   *  不再接受新请求/新连接、在跑 run 中止后再动运行时内脏；细节裁定见各步骤行内注释） */
   close(): Promise<void> {
     if (!this.closePromise) this.closePromise = this.teardown();
     return this.closePromise;
@@ -159,6 +165,18 @@ export class GuiDaemon {
     // 0) 在跑 run 即刻中止（T1 评审裁定：close 时若 run 仍悬挂，其 promise 会拖住事件循环/测试收口；
     //    路径同 /interrupt——runTask 以 stopReason=interrupted 收束，finally 清 current）
     this.current?.abort.abort();
+    // 被中止 run 的 settle 钩子（沉淀入队）需收口后才进 drain——2000ms 有界防 signal 无视的工具悬挂
+    // teardown（终审裁定）；等待先于 stopAll/drain，run 侧入队完型后 drain 才是终态。done 先胜即清
+    // 残留 timer，不给事件循环留 2s 尾巴
+    if (this.current) {
+      const current = this.current;
+      let settleTimer: NodeJS.Timeout | undefined;
+      const bail = new Promise<void>((resolve) => {
+        settleTimer = setTimeout(resolve, ABORTED_RUN_SETTLE_MS);
+      });
+      await Promise.race([current.done, bail]);
+      clearTimeout(settleTimer);
+    }
     // 1) WS 面先收：停 ping 计时器，逐连接 1001 Going Away 后 wss.close——先于 HTTP server close，
     //    升级连接与请求连接同序退场，server close 时无存活的升级套接字拖尾
     if (this.pingTimer) {
@@ -249,15 +267,19 @@ export class GuiDaemon {
       return;
     }
     const abort = new AbortController();
-    this.current = { abort };
     // 202 即回：run 异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败倒面），
-    // finally 清锁——中断（stopReason=interrupted）与正常收束同路径清位
-    void this.runtime
+    // finally 清锁——中断（stopReason=interrupted）与正常收束同路径清位；promise 本体（.then 归一 void）存入票据
+    // done，teardown 步骤 0 的有界等待经它观测收口
+    const p: Promise<void> = this.runtime
       .runTask(goal, { signal: abort.signal })
-      .catch((err) => console.error('[serve] run failed:', err))
+      .catch((err) => {
+        console.error('[serve] run failed:', err);
+      })
+      .then(() => undefined)
       .finally(() => {
         this.current = undefined;
       });
+    this.current = { abort, done: p };
     this.send(res, 202, { ok: true });
   }
 

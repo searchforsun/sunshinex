@@ -38,6 +38,17 @@ class HangingAdapter implements ModelAdapter {
 
 const AUTH = { authorization: 'Bearer test-token', 'content-type': 'application/json' } as Record<string, string>;
 
+/** signal 无视的挂起适配器：chat promise 永不收束（连 abort 也不理）——teardown 步骤 0 有界等待
+ *  上限路径的中正模拟（HangingAdapter 会随 abort 收束，测不出 2s bound 的放行面） */
+class SignalDeafAdapter implements ModelAdapter {
+  readonly provider = 'deaf';
+  calls = 0;
+  async chat(_req: ChatRequest): Promise<ChatResult> {
+    this.calls++;
+    return new Promise<ChatResult>(() => {});
+  }
+}
+
 /** 环境隔离样板：数据目录钉到本用例 tmp（focused 直跑不经 scripts/run-tests.js 预载，须自隔离用户全局区） */
 async function withDaemon(
   model: ModelAdapter,
@@ -143,6 +154,30 @@ test('④ close() 幂等且 close 后 fetch 拒连', async () => {
     await daemon.close(); // 句柄 close 与 daemon.close 同一收口，同样幂等
     // close 后监听已撤：fetch 连接失败以 reject 形态暴露（undici TypeError: fetch failed）
     await assert.rejects(() => fetch(`${base}/healthz`));
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('⑤ close 有界等待被中止 run：signal 无视的悬挂 run 不拖住 teardown（≤3s 上限）', { timeout: 8000 }, async () => {
+  const tmp = tmpdir('sunshinex-serve-teardown-');
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
+  try {
+    const daemon = new GuiDaemon({ root: tmp, model: new SignalDeafAdapter() });
+    const s = await daemon.start({ port: 0, token: 'test-token' });
+    const base = `http://127.0.0.1:${s.port}`;
+    const r = await fetch(`${base}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '挂到天荒地老' }) });
+    assert.equal(r.status, 202);
+    await waitFor(() => daemon.status() === 'running', 3000);
+    // 简化断言（终审定口径）：close 正常返回即无 unhandled 倒面；时序上限断言证 2s 有界等待生效——
+    // run 永不收束，若无界 await 会直接悬挂（timeout 8s 兜底转失败而非挂死套件）
+    const t0 = Date.now();
+    await s.close();
+    const elapsed = Date.now() - t0;
+    assert.ok(elapsed <= 3000, `close 应有界（≤3s）完成，实际 ${elapsed}ms`);
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
