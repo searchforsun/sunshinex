@@ -8,6 +8,7 @@ import {
   recoverOnLoad, TaskBoardState, transitionLegal,
 } from './model';
 import type { TeamStore } from './store';
+import type { TeamRegistry } from './teammate';
 
 /** TaskBoard 协调器(spec §5/§7):操作面(创建/依赖/指派/裁决/门)+ 事件发射(task-* / gate-* 进
  *  SessionEvent 公共面)+ event sourcing 持久化 + 批量并行派发 drain。
@@ -29,6 +30,9 @@ export interface TaskBoardDeps {
   maxOpenTasks?: number;
   /** 容量退避重派间隔(ms):CONCURRENCY_LIMIT 回池后等多少再重派,缺省 1000(测试可注入短值) */
   retryDelayMs?: number;
+  /** teammate 注册表(M2 派发路由):assignee 命中活 teammate → runTask;未指派且有活 teammate → 留给 claim;
+   *  缺省/全停 = P1 fork 路径原样(退化语义)。type-only 导入——teammate.ts 反向引 board 类型,双向值导入会成环 */
+  team?: TeamRegistry;
 }
 
 const DEFAULT_MAX_OPEN = 64;
@@ -40,6 +44,9 @@ export class TaskBoard {
   private draining = false;
   /** 本轮 drain 有任务因 CONCURRENCY_LIMIT 回池:收兵改由退避定时器重派(2026-10-05 终审复审裁定) */
   private capacityDeferred = false;
+  /** 本轮 drain 有未指派任务留给 teammate claim(M2):收兵且不设定时器——claim 循环自持消化;
+   *  不收兵则 while(true) 立即重取同批 pending 任务 = 纯微任务自旋(与 capacityDeferred 同病同防) */
+  private claimDeferred = false;
   private deferredKick?: ReturnType<typeof setTimeout>;
   private readonly now: () => number;
   private readonly maxOpen: number;
@@ -180,6 +187,29 @@ export class TaskBoard {
     this.deps.onEvent?.({ type, payload, ts: this.now() });
   }
 
+  /** teammate 自取(M2 claim 循环):原子取首个 dispatchable 未指派任务 pending→claimed(事件化)。
+   *  assignee 形参仅事件记账,不改任务指派——指派任务走 executeOne 派发路由,不进 claim。
+   *  (同步单线程取置,两 teammate 不会取到同一任务;team 预算帽 T4 落地) */
+  claim(assignee: string): BoardTask | undefined {
+    const task = dispatchable(this.state).find((t) => t.assignee === undefined);
+    if (task === undefined) return undefined;
+    this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now() });
+    this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed', claimedBy: assignee });
+    return this.state.tasks[task.id];
+  }
+
+  /** 指派路由认领(M2,Teammate.execute 入口):pending→claimed(事件化)。幂等双口径:已 claimed 返回
+   *  true(claim() 先行认领的同任务);非 pending(终态/被取走)返回 false,调用方静默放弃 */
+  markClaimed(taskId: string): boolean {
+    const task = this.state.tasks[taskId];
+    if (task === undefined) return false;
+    if (task.status === 'claimed') return true;
+    if (task.status !== 'pending') return false;
+    this.applyAndPersist({ t: 'status-changed', taskId, from: 'pending', to: 'claimed', ts: this.now() });
+    this.emit('task-status-changed', { taskId, from: 'pending', status: 'claimed' });
+    return true;
+  }
+
   /** 上游 failed:直接下游 pending 者发 task-blocked(§4.1 不自动 skip;blockedBy=其依赖中的失败者) */
   private emitBlockedDownstream(failedId: string): void {
     for (const t of Object.values(this.state.tasks)) {
@@ -213,6 +243,10 @@ export class TaskBoard {
           defer = true;
           break; // 容量被占:本轮收兵,定时器让出事件循环(macrotask 完成回调才有机会释放容量)
         }
+        if (this.claimDeferred) {
+          this.claimDeferred = false;
+          break; // 留给 claim:任务仍 pending,原地重取即自旋;teammate claim 循环消化后续轮由 review/create 再 kick
+        }
       }
     } finally {
       this.draining = false;
@@ -225,6 +259,22 @@ export class TaskBoard {
   }
 
   private async executeOne(task: BoardTask): Promise<void> {
+    // M2 派发路由(先于本方法 claimed 落流,teammate 路径自含认领):assignee 命中活 teammate →
+    // 交 runTask(markClaimed + 执行 + 回写 + 续 claim 自含,不 await 整批);未指派且有活 teammate →
+    // 留给 claim 循环(不落 claimed);否则 P1 fork 路径原样(无 team/全停/指派已死 = 退化语义)
+    if (this.deps.team !== undefined) {
+      const tm = task.assignee !== undefined ? this.deps.team.get(task.assignee) : undefined;
+      if (tm !== undefined && !tm.stopped) {
+        void tm.runTask(task).catch(() => { /* 单任务异常不倒灌派发;回写缺失由恢复回池兜底 */ });
+        return;
+      }
+      if (task.assignee === undefined && this.deps.team.hasAlive()) {
+        // 留给 claim:踢活 teammate 认领(可能空闲——claim 循环上次取空已退出)+ 本轮 drain 收兵
+        for (const name of this.deps.team.aliveNames()) this.deps.team.get(name)?.kick();
+        this.claimDeferred = true;
+        return;
+      }
+    }
     this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now() });
     this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed' });
     const ledger = this.deps.registry.submit({ kind: 'subagent', label: `task-${task.id}` });
