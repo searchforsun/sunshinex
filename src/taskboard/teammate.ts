@@ -1,6 +1,6 @@
 /** Teammate 长驻执行体(spec §5 P2):独立 ContextManager(零主链污染)+ 逐任务 fork-scope Reactor
- *  (事件经 tagger 打 payload.subagent 标,复用 ChildPanel 委派通道)+ 单飞 claim 循环(MemoryPipeline
- *  闩形态)+ 派发路由退化语义(无活 teammate = P1 fork 原样)。
+ *  (事件经 tagger 打 payload.subagent 标,复用 ChildPanel 委派通道)+ 单飞 worker(指派队列优先、
+ *  空则 claim,MemoryPipeline 闩形态)+ 派发路由退化语义(无活 teammate = P1 fork 原样)。
  *  与 SubagentRunner 的分工:Runner 是主链按需 fork 的无状态单元;Teammate 是跨任务存续的有状态执行体,
  *  自有链(role 行 + 历次 task 行)即其记忆——每任务 Reactor 的 seed 经缺省 chainView() 取自 own chain。 */
 import type { SessionEvent } from '../types';
@@ -83,9 +83,12 @@ export class Teammate {
   private readonly taskTimeoutMs: number;
   private stoppedFlag = false;
   private busy = false;
-  /** claim 循环单飞闩(MemoryPipeline drain 先例):kick 重入共享在飞循环,绝不并发第二任务 */
+  /** 单飞闩(MemoryPipeline drain 先例):kick 重入共享在飞 worker,绝不并发第二个 execute */
   private claiming = false;
   private framed = false;
+  /** 指派队列(executeOne 派发路由入队):单 worker 每轮先取此队、空则 board.claim——指派与自主认领
+   *  统一单飞,同一时刻至多一个 execute 在飞(own ctx / Reactor seed 串行不变量,2026-10-06 复审裁定) */
+  private assignedQueue: BoardTask[] = [];
 
   constructor(opts: { name: string; framing: string; deps: TeammateDeps }) {
     this.name = opts.name;
@@ -104,43 +107,49 @@ export class Teammate {
     return this.busy;
   }
 
-  /** 空闲踢点:起单飞 claim 循环(在飞则共享,已停不起) */
+  /** 空闲踢点:起单飞 worker(在飞则共享,已停不起)——board 留 claim 分支与 runTask 入队共用此口 */
   kick(): void {
     if (this.claiming || this.stoppedFlag) return;
     this.claiming = true;
-    void (async () => {
-      try {
-        while (!this.stoppedFlag) {
-          const t = this.deps.board.claim(this.name);
-          if (t === undefined) break;
-          try {
-            await this.execute(t);
-          } catch {
-            // 认领/链预置/回写异常吞并(claim 循环存活,MemoryPipeline runWorker 先例);终态缺口由恢复回池兜底
-          }
-        }
-      } finally {
-        this.claiming = false;
-      }
-    })();
+    void this.worker();
   }
 
-  /** 停(AbortController.abort + 置 stopped):busy 任务跑完(在途步边界即刻中止)回写收口后不续 claim;
-   *  幂等——重复 abort 无副作用,kick/claim 循环对 stopped 短路 */
+  /** 单 worker 消费循环(MemoryPipeline runWorker 形态):每轮先取指派队列(FIFO,显式指派优先),
+   *  空则自主认领 board.claim(name);都无则收兵。单飞闩 + 队列收敛 = 同批多指派、指派与认领并发、
+   *  busy 期间 drain 踢点,全部归一到「同一时刻至多一个 execute」——own ctx 永不被并发写 */
+  private async worker(): Promise<void> {
+    try {
+      while (!this.stoppedFlag) {
+        const next = this.assignedQueue.length > 0 ? this.assignedQueue.shift() : this.deps.board.claim(this.name);
+        if (next === undefined) break;
+        this.busy = true;
+        try {
+          await this.execute(next);
+        } catch {
+          // 认领/链预置/回写异常吞并(worker 存续,MemoryPipeline runWorker 先例);终态缺口由恢复回池兜底
+        } finally {
+          this.busy = false;
+        }
+      }
+    } finally {
+      this.claiming = false;
+    }
+  }
+
+  /** 停(AbortController.abort + 置 stopped):busy 任务跑完(在途步边界即刻中止)回写收口后不续取;
+   *  幂等——重复 abort 无副作用,kick/worker 对 stopped 短路;队列余项放弃(pending 留板,恢复回池兜底) */
   stop(): void {
     this.stoppedFlag = true;
     this.abort.abort();
   }
 
-  /** board 指派路径入口(executeOne 派发路由经 void 调用,不 await 整批):置 busy → execute → 续 claim */
+  /** board 指派路径入口(executeOne 派发路由经 void 调用,不 await 整批):入指派队列 + 踢点——
+   *  不直接执行,由单 worker 串行消化(并发 runTask 共享 ctx 的竞态由此消除);
+   *  同任务重复入队去重(worker 在飞上一任务期间 drain 重复派发的窗口) */
   async runTask(task: BoardTask): Promise<void> {
-    this.busy = true;
-    try {
-      await this.execute(task);
-    } finally {
-      this.busy = false;
-      this.kick();
-    }
+    if (this.assignedQueue.some((t) => t.id === task.id)) return;
+    this.assignedQueue.push(task);
+    this.kick();
   }
 
   /** 单任务执行(claim 循环与 runTask 共用):认领 → own chain 预置 → 逐任务 Reactor(fork) → 强制回写 */

@@ -206,3 +206,54 @@ test('帽与停:第 5 个 teammate 注册拒;停后 hasAlive=false,未指派任�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('指派下游不饿死:t1 未指派消化后,依赖它的 t2(assignee w1)解锁也被 w1 消化', async () => {
+  const tmp = tmpdir('sunshinex-tm-down-');
+  try {
+    const rig = makeRig(tmp, true);
+    rig.addTeammate('w1');
+    rig.board.create({ title: 'A', spec: 'do A' }); // t1 未指派
+    rig.board.create({ title: 'B', spec: 'do B', assignee: 'w1', dependsOn: ['t1'] }); // t2 指派下游
+    const t1Done = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
+    assert.ok(t1Done, 't1 消化至 in-review');
+    await rig.board.review('t1', { approved: true }); // 解锁 t2:回写/裁决链路须把它送到 w1
+    const t2Done = await until(() => rig.board.snapshot().tasks['t2']?.status === 'in-review');
+    assert.ok(t2Done, '指派下游 t2 不饿死,同样消化至 in-review');
+    assert.equal(rig.forkCalls.length, 0, '全程零 fork 调用');
+    const ended = rig.events.filter((e) => e.type === 'delegation-ended');
+    assert.deepEqual(ended.map((e) => e.payload?.delegationId).sort(), ['task-t1', 'task-t2'], '两任务 delegation 成对收口');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('同批双指派串行:t1/t2 均 assignee w1 → 单 worker 串行消化,claimed→in-review 无交叉', async () => {
+  const tmp = tmpdir('sunshinex-tm-serial-');
+  try {
+    const rig = makeRig(tmp, true);
+    rig.addTeammate('w1', new CountingAdapter());
+    rig.board.create({ title: 'A', spec: 'a', assignee: 'w1' });
+    rig.board.create({ title: 'B', spec: 'b', assignee: 'w1' });
+    const done = await until(() => {
+      const s = rig.board.snapshot();
+      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+    });
+    assert.ok(done, '两指派任务均消化');
+    assert.equal(rig.forkCalls.length, 0, '零 fork 调用');
+    const s = rig.board.snapshot();
+    // 串行序由共享计数模型钉死:并发共享 ctx 的旧形态无法保证 t1 先收口
+    assert.equal(s.tasks['t1']!.artifact?.conclusion, 'done 1', 't1 先执行(串行序 1)');
+    assert.equal(s.tasks['t2']!.artifact?.conclusion, 'done 2', 't2 后执行(串行序 2)');
+    // 事件序交替无交叉:t1 claimed→in-review 完整收口后 t2 才 claimed(并发旧形态会先双 claimed)
+    const seq = rig.events
+      .filter((e) => e.type === 'task-status-changed')
+      .map((e) => {
+        const p = e.payload as Record<string, unknown>;
+        return `${p.taskId}:${p.status}`;
+      })
+      .filter((x) => x === 't1:claimed' || x === 't1:in-review' || x === 't2:claimed' || x === 't2:in-review');
+    assert.deepEqual(seq, ['t1:claimed', 't1:in-review', 't2:claimed', 't2:in-review'], `串行无交叉,实际:${seq.join(',')}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

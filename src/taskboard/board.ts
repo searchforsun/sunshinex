@@ -44,8 +44,9 @@ export class TaskBoard {
   private draining = false;
   /** 本轮 drain 有任务因 CONCURRENCY_LIMIT 回池:收兵改由退避定时器重派(2026-10-05 终审复审裁定) */
   private capacityDeferred = false;
-  /** 本轮 drain 有未指派任务留给 teammate claim(M2):收兵且不设定时器——claim 循环自持消化;
-   *  不收兵则 while(true) 立即重取同批 pending 任务 = 纯微任务自旋(与 capacityDeferred 同病同防) */
+  /** 本轮 drain 有任务移交 teammate 执行路径(M2:未指派留 claim / 指派入队但 worker 在飞未认领):
+   *  收兵且不设定时器——teammate 单飞 worker 自持消化,消化完 finishExecution 尾 kick 重入;
+   *  不收兵则 while(true) 立即重取同批仍 pending 的任务 = 纯微任务自旋(与 capacityDeferred 同病同防) */
   private claimDeferred = false;
   private deferredKick?: ReturnType<typeof setTimeout>;
   private readonly now: () => number;
@@ -231,6 +232,10 @@ export class TaskBoard {
   private async drain(): Promise<void> {
     if (this.draining) return;
     this.draining = true;
+    // 双旗跨轮互清(2026-10-06 复审 Minor 3):capacity/claim 任一 break 分支只清己旗,对侧旗残留会让
+    // 下一轮在首个批次后过早收兵——入口统一清零,本轮旗由 executeOne 重新置位
+    this.capacityDeferred = false;
+    this.claimDeferred = false;
     let defer = false;
     try {
       while (true) {
@@ -266,6 +271,10 @@ export class TaskBoard {
       const tm = task.assignee !== undefined ? this.deps.team.get(task.assignee) : undefined;
       if (tm !== undefined && !tm.stopped) {
         void tm.runTask(task).catch(() => { /* 单任务异常不倒灌派发;回写缺失由恢复回池兜底 */ });
+        // 入队不等于认领(worker 在飞上一任务时任务仍 pending):不收兵则下轮原地重派同任务
+        // = 纯微任务自旋(worker 空闲时同步认领,此旗空转一轮无害)——收兵,worker 认领/消化后
+        // finishExecution 尾 kick 重入
+        this.claimDeferred = true;
         return;
       }
       if (task.assignee === undefined && this.deps.team.hasAlive()) {
@@ -353,5 +362,8 @@ export class TaskBoard {
       if (ledgerId !== undefined) this.deps.registry.finish(ledgerId, 'failed');
       this.emitBlockedDownstream(taskId);
     }
+    // 回写尾 kick(2026-10-06 复审 Critical 1):teammate/外部执行体路径的回写发生在 drain 之外,
+    // 回写解锁的指派下游必须重入派发(P1 路径在 drain 内调用,闩挡重入零开销;claimDeferred 防自旋)
+    this.kick();
   }
 }
