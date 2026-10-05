@@ -1097,6 +1097,13 @@ export class SessionController {
       }
       return;
     }
+    // agent-message 即时呈现(P2/Ruling 3 裁定:lead 投递轨 = 事件即时呈现 + FileInbox 落档——事件先到
+    // 即先显,落档为重启续读真相源;两轨同源不漂移)。纯消息行,不触达板/委派投影
+    if (e.type === 'agent-message') {
+      const p = (e.payload ?? {}) as { from?: string; to?: string; text?: string };
+      this.pushMsg('system', `[${String(p.from ?? '?')} → ${String(p.to ?? '?')}] ${String(p.text ?? '')}`);
+      return;
+    }
     // 子代理事件分流(规格 §4.1):带 payload.subagent 标签的事件路由至面板态,不触达主链任何分支
     const sub = e.payload?.subagent;
     if (typeof sub === 'string' && sub.length > 0) {

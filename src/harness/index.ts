@@ -25,6 +25,8 @@ import { TaskBoard } from '../taskboard/board';
 import { TeamStore } from '../taskboard/store';
 import { TeamRegistry, Teammate } from '../taskboard/teammate';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
+import { makeSendMessageTool } from '../taskboard/message-tools';
+import { FileInbox } from '../taskboard/file-inbox';
 import { ExternalCliExecutor } from '../taskboard/executors/external-cli';
 import { fail, ok, Result } from '../result';
 import { MemoryPipeline } from './memory/pipeline';
@@ -93,6 +95,9 @@ export class Harness {
   /** teammate 注册表（P2 spec §5 T3）：spawn mode:'team' / frontmatter executor:internal-team 双通道
    *  建出的长驻执行体登记处；注入 TaskBoard 派发路由（assignee 命中/留 claim）与 spawn 分流接缝 */
   readonly team: TeamRegistry;
+  /** agent 间消息收件箱（P2 agent-message,T2）:<dataDir>/teams/main/inbox/<agent>.jsonl append-only 落档;
+   *  主链面与 teammate 面 send_message 共用同一实例（跨面投递单一真相源;lead 收件即 lead.jsonl） */
+  readonly inbox: FileInbox;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
@@ -214,6 +219,9 @@ export class Harness {
     // TeamRegistry(P2 T3):先于 spawn 注册构造——teamAdapter 闭包经 this 引用注册表与任务板(执行期才解引用);
     // 同点注入 TaskBoard 派发路由(T2 接缝 team?:TeamRegistry)
     this.team = new TeamRegistry();
+    // FileInbox 装配（P2 agent-message,T2）:teams/main/inbox 与任务板同 team 目录族;构造零 IO
+    // （send 才惰性建档）,与 taskboard.init 的空板零物化纪律一致
+    this.inbox = new FileInbox(path.join(resolveDataDir(base), 'teams', 'main', 'inbox'));
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
     // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_board/get_task)。
@@ -249,7 +257,19 @@ export class Harness {
             store,
             board: this.taskboard,
             ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-            registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(b, this.taskboard),
+            registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
+              b,
+              this.taskboard,
+              this.team,
+              // teammate 面 send_message（T2 双面之二）:收件人 = lead + 其余活名（排己——不自发）,
+              // from = teammate 名;事件经 onEvent 直达装配层（TUI 即时呈现/落档同轨）
+              makeSendMessageTool({
+                inbox: this.inbox,
+                ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+                knownRecipients: () => ['lead', ...this.team.aliveNames().filter((n) => n !== name)],
+                from: () => name,
+              }),
+            ),
           },
         });
         const registered = this.team.register(tm);
@@ -289,6 +309,15 @@ export class Harness {
     });
     this.taskboard.init();
     for (const t of makeTaskBoardTools(this.taskboard)) this.tools.register(t);
+    // send_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
+    // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
+    // lead 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）
+    this.tools.register(makeSendMessageTool({
+      inbox: this.inbox,
+      ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      knownRecipients: () => this.team.aliveNames(),
+      from: () => 'lead',
+    }));
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,
