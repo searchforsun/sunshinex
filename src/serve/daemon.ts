@@ -4,6 +4,13 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createRuntime, TuiRuntime } from '../tui/runtime';
 import { ModelAdapter } from '../model/adapter';
 import { SessionEvent } from '../types';
+import { applyBoardEvent, emptyBoard } from '../taskboard/model';
+import type { TaskBoardState } from '../taskboard/model';
+import { applyDelegation } from '../delegation/projection';
+import type { Delegation } from '../delegation/projection';
+import { boardEventFrom } from '../tui/session';
+import { TranscriptCollector } from './transcript';
+import type { TranscriptEntry } from './transcript';
 
 /** GUI daemon 构造面：root 为项目目录；model 与 CLI buildModel/TUI 同源注入（三面同一 ModelAdapter 契约） */
 export interface GuiDaemonOpts {
@@ -67,6 +74,12 @@ export class GuiDaemon {
   /** 每 pong 时间戳（WeakMap 旁挂，不入连接对象）：ping 心跳判活依据 */
   private readonly wsLastPong = new WeakMap<WebSocket, number>();
   private pingTimer?: NodeJS.Timeout;
+  /** 影子投影（G2 snapshot 套件）：board/delegation 与 TUI session 同源纯件（boardEventFrom/
+   *  applyBoardEvent / applyDelegation）从同一事件流推导——GUI 重连/刷新直接取快照，无需重放事件 */
+  private board: TaskBoardState = emptyBoard();
+  private delegations: Delegation[] = [];
+  /** 粗粒度转录（spec G2 Ruling 1）：pump 同源喂入，/snapshot 的 messages 字段 */
+  private readonly transcript = new TranscriptCollector();
   /** 单 run 锁外窥（测试/后续 /snapshot 消费）：current 在场即 running */
   readonly status: () => 'idle' | 'running' = () => (this.current ? 'running' : 'idle');
 
@@ -79,11 +92,15 @@ export class GuiDaemon {
     });
   }
 
-  /** 事件泵：环形缓冲写入（满 512 丢最老）+ 实时广播全部连接。序列化一次逐连接 send——同一连接
-   *  的帧恒按 pump 调用序到达（ws 内部发送缓冲有序，无需额外队列） */
+  /** 事件泵：环形缓冲写入（满 512 丢最老）+ 影子投影同步喂入 + 实时广播全部连接。序列化一次逐连接
+   *  send——同一连接的帧恒按 pump 调用序到达（ws 内部发送缓冲有序，无需额外队列）。投影与广播同源
+   *  同序：snapshot 取到的影子态恒等于已广播事件的累积（无连接时投影照走——影子不依赖消费面在场） */
   private pump(e: SessionEvent): void {
     this.eventBuffer.push(e);
     if (this.eventBuffer.length > EVENT_BUFFER_CAP) this.eventBuffer.shift();
+    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) this.board = applyBoardEvent(this.board, boardEventFrom(e));
+    if (e.type.startsWith('delegation-')) this.delegations = applyDelegation(this.delegations, e);
+    this.transcript.push(e);
     if (this.wsClients.size === 0) return;
     const frame = this.frameEvent(e);
     for (const ws of this.wsClients) ws.send(frame);
@@ -112,13 +129,20 @@ export class GuiDaemon {
     return { port: addr.port, token, close: () => this.close() };
   }
 
-  /** WS 面装配：http server 'upgrade' → 验 Bearer 头（同 HTTP 面口径，§4.3）→ wss.handleUpgrade 接管；
-   *  noServer 形态复用同一 http server（端口不另开）。30s ping 保活计时器在此启动，close 时清 */
+  /** WS 面装配：http server 'upgrade' → 鉴权双形态（§4.3 Bearer 头，G2 增补浏览器路径
+   *  `Sec-WebSocket-Protocol: bearer.<token>`——浏览器 WebSocket API 不能自定义请求头，token 只能
+   *  借 subprotocol 名携带）→ wss.handleUpgrade 接管；noServer 形态复用同一 http server（端口不另开）。
+   *  升级响应回显由 ws 库默认行为承担：completeUpgrade 未设 handleProtocols 时取请求协议列表首个
+   *  （websocket-server.js `protocols.values().next().value`）写回 Sec-WebSocket-Protocol——客户端
+   *  恰好只带一个协议（bearer.<token>），回显即原值，客户端 ws.protocol 可直接校验。30s ping 保活
+   *  计时器在此启动，close 时清 */
   private attachWs(server: http.Server, token: string): WebSocketServer {
     const wss = new WebSocketServer({ noServer: true });
     server.on('upgrade', (req, socket, head) => {
+      const viaHeader = req.headers.authorization === `Bearer ${token}`;
+      const viaSubprotocol = req.headers['sec-websocket-protocol'] === `bearer.${token}`;
       // teardown 已启动即不再收新连接（WS 先于 server close 退场，此处与鉴权失败同拒升级）
-      if (this.closePromise || req.headers.authorization !== `Bearer ${token}`) {
+      if (this.closePromise || (!viaHeader && !viaSubprotocol)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
@@ -206,11 +230,12 @@ export class GuiDaemon {
     await this.runtime.harness.mcpClose();
   }
 
-  /** 内部路由表（本任务三端点；/steer、/snapshot、静态资源随 T2/T3 增补，不另起分发机制） */
+  /** 内部路由表（G2 增 /snapshot；/steer、静态资源随 T2/T3 增补，不另起分发机制） */
   private readonly routes: ReadonlyArray<{ method: string; path: string; auth: boolean; run: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> }> = [
     { method: 'GET', path: '/healthz', auth: false, run: async (_req, res) => this.send(res, 200, { ok: true }) },
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res) },
     { method: 'POST', path: '/interrupt', auth: true, run: async (_req, res) => this.handleInterrupt(res) },
+    { method: 'GET', path: '/snapshot', auth: true, run: async (_req, res) => this.send(res, 200, this.snapshot()) },
   ];
 
   private dispatch(req: http.IncomingMessage, res: http.ServerResponse, token: string): void {
@@ -269,7 +294,8 @@ export class GuiDaemon {
     const abort = new AbortController();
     // 202 即回：run 异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败倒面），
     // finally 清锁——中断（stopReason=interrupted）与正常收束同路径清位；promise 本体（.then 归一 void）存入票据
-    // done，teardown 步骤 0 的有界等待经它观测收口
+    // done，teardown 步骤 0 的有界等待经它观测收口。user 条入转录在锁检查之后——409 拒绝的提交不留痕
+    this.transcript.submit(goal);
     const p: Promise<void> = this.runtime
       .runTask(goal, { signal: abort.signal })
       .catch((err) => {
@@ -291,6 +317,12 @@ export class GuiDaemon {
     // 步边界/在途模型调用经 signal 即刻中止（reactor 既有语义），runTask 以 stopReason=interrupted 收束后 finally 清锁
     this.current.abort.abort();
     this.send(res, 200, { ok: true });
+  }
+
+  /** 会话快照（G2 /snapshot 载荷单点）：粗粒度转录 + board/delegations 影子投影 + 运行态——GUI 冷启动/
+   *  刷新经一次拉取恢复全景，细粒度实时面仍走 WS 事件流（两轨分工，spec G2 Ruling 1） */
+  private snapshot(): { messages: TranscriptEntry[]; board: TaskBoardState; delegations: Delegation[]; status: 'idle' | 'running' } {
+    return { messages: this.transcript.entries(), board: this.board, delegations: this.delegations, status: this.status() };
   }
 
   private send(res: http.ServerResponse, status: number, body: Record<string, unknown>): void {

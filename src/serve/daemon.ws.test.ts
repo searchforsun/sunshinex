@@ -195,3 +195,46 @@ test('③.5 双连接广播隔离：其一断连清理后，另一连接继续�
     }
   });
 });
+
+test('④ subprotocol 鉴权（浏览器路径）：bearer.<token> 无 Authorization 头可升级、protocol 回显、补发帧照收；错值拒', async () => {
+  const model = new HangingAdapter();
+  await withWsDaemon(model, async (ctx) => {
+    await ctx.post('长任务');
+    await waitFor(() => model.calls > 0, 3000);
+    // 正确 subprotocol：纯浏览器形态——无 Authorization 头，token 只走 Sec-WebSocket-Protocol
+    const { ws, frames } = await new Promise<{ ws: WebSocket; frames: Frame[] }>((resolve, reject) => {
+      const w = new WebSocket(ctx.ws, ['bearer.test-token']);
+      const collected: Frame[] = [];
+      w.on('message', (data) => {
+        collected.push(JSON.parse(data.toString()) as Frame);
+      });
+      w.once('open', () => resolve({ ws: w, frames: collected }));
+      w.once('error', reject);
+    });
+    try {
+      assert.equal(ws.protocol, 'bearer.test-token', '升级响应应回显请求的 subprotocol（浏览器侧鉴权证据）');
+      await waitFor(() => frames.some((f) => f.e.type === 'model-start'), 3000);
+      assert.ok(frames.every((f) => f.kind === 'event'), '补发帧恒 kind:"event"');
+      assert.ok(frames.some((f) => f.e.type === 'model-start'), 'subprotocol 路径同样享受缓冲补发');
+    } finally {
+      ws.close();
+    }
+    // 错值：拒升级（客户端 error 且无 open）
+    let sawOpen = false;
+    let sawError = false;
+    await new Promise<void>((resolve) => {
+      const w = new WebSocket(ctx.ws, ['bearer.wrong-token']);
+      w.on('open', () => {
+        sawOpen = true;
+        resolve();
+      });
+      w.on('error', () => {
+        sawError = true;
+      });
+      w.on('close', () => resolve());
+    });
+    assert.equal(sawOpen, false, '错 subprotocol 不得升级成功');
+    assert.equal(sawError, true, '401 拒升级应表现为客户端 error');
+  });
+});
+

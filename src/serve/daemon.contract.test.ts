@@ -179,3 +179,46 @@ test('② API 面收口：未知 GET 404+hint；无 token 401；运行中 submit
     await waitFor(() => d.status() === 'idle', 3000);
   });
 });
+
+test('③ GET /snapshot：含工具卡 run 后 messages 三类在场、board 影子 t1 落位、status idle；无 token 401', async () => {
+  // 消费序（taskboard.e2e 实测口径）：主链 create_task 牌 → 执行器内同步派发 fork（fork 消费下一张
+  // done 牌）→ 主链再取（末位 done 牌重复供牌）→ run 收束。create_task 入参六件全给（T1 P2 形态）。
+  const model = new ScriptedAdapter([
+    '{"tool":"create_task","input":{"title":"A","spec":"a","dependsOn":null,"assignee":null,"gated":null,"executor":null}}',
+    '{"done":true,"reply":"task created"}',
+  ]);
+  await withDaemon(model, async (d, ctx) => {
+    // 鉴权面同 submit/interrupt：无 token 401
+    const noTok = await fetch(`${ctx.http}/snapshot`);
+    assert.equal(noTok.status, 401);
+    assert.deepEqual(await noTok.json(), { error: 'unauthorized' });
+
+    await ctx.post('建个任务');
+    await waitFor(() => d.status() === 'idle', 10000);
+
+    const r = await fetch(`${ctx.http}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
+    assert.equal(r.status, 200);
+    const snap = (await r.json()) as {
+      messages: Array<{ seq: number; ts: number; kind: string; md: string }>;
+      board: { tasks: Record<string, { id: string; title: string }>; seq: number };
+      delegations: unknown[];
+      status: string;
+    };
+    // messages：三类粗粒度转录在场（user 提交回显 / assistant 终答 / tool 配对条）
+    const kinds = snap.messages.map((m) => m.kind);
+    assert.ok(kinds.includes('user'), 'messages 含 user 条');
+    assert.ok(kinds.includes('assistant'), 'messages 含 assistant 条');
+    assert.ok(kinds.includes('tool'), 'messages 含 tool 条');
+    const user = snap.messages.find((m) => m.kind === 'user');
+    assert.equal(user?.md, '> 建个任务', 'user 条为 `> <goal>` 形');
+    const tool = snap.messages.find((m) => m.kind === 'tool');
+    assert.ok(tool!.md.startsWith('● create_task\n'), 'tool 条 verb 行为 create_task');
+    assert.ok(tool!.md.includes('task t1 created'), 'tool 条含 result 首行摘要');
+    // 影子投影：pump 喂入的 task-created 经同源 boardEventFrom/applyBoardEvent 落位
+    assert.notEqual(snap.board.tasks.t1, undefined, 'board 影子含 create_task 建出的 t1');
+    assert.equal(snap.board.tasks.t1!.title, 'A');
+    assert.ok(Array.isArray(snap.delegations), 'delegations 影子恒数组');
+    assert.equal(snap.status, 'idle', 'run 收束后 status=idle');
+  });
+});
+
