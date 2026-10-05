@@ -27,6 +27,11 @@ export interface ExternalCliExecutorDeps {
 
 const DEFAULT_DEADLINE_MS = 30 * 60 * 1000;
 
+/** 外部进程并发上限(终审 Item 1):外部进程不经 SUBAGENT_LIMIT 保护——批内 N 个 external 任务会并发
+ *  拉起 N 个 claude 进程(无界失控);内部信号量限 2,排队者 await 挂起,排队等待计入 deadline
+ *  (deadline 竞速的定时器基线在获得槽位后才取,排队超预算自然短促失败) */
+export const MAX_EXTERNAL_CONCURRENT = 2;
+
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -39,12 +44,34 @@ function shellQuote(s: string): string {
 export class ExternalCliExecutor implements ExternalExecutorLike, Executor {
   private readonly deps: ExternalCliExecutorDeps;
   private readonly command: string;
-  /** 在飞进程 pid(Executor.stop 单点用;单飞假设——board 串行派发,一次一个 run) */
+  /** 最近拉起的在飞进程 pid(Executor.stop 单点用):并发已非单飞——批内多个 external 任务并发 run,
+   *  在飞数由内部信号量 MAX_EXTERNAL_CONCURRENT 限界;此字段只记最近一次(粗粒度兜底,
+   *  按任务精确收割走 ledgerTask.stop 接线,见 executeHeld) */
   private currentPid = 0;
+  /** 并发信号量(终审 Item 1):active = 在飞槽位占用数;waiters = 排队者的 resolve 队列(FIFO) */
+  private active = 0;
+  private waiters: Array<() => void> = [];
 
   constructor(deps: ExternalCliExecutorDeps) {
     this.deps = deps;
     this.command = deps.command ?? 'claude';
+  }
+
+  /** 槽位获取:有空位即占(active+1);满则入队挂起,被唤醒者自增——释放方 release 已先减一,
+   *  唤醒补占恰一次(勿双计:release 不代唤醒者加计数) */
+  private async acquire(): Promise<void> {
+    if (this.active < MAX_EXTERNAL_CONCURRENT) {
+      this.active += 1;
+      return;
+    }
+    await new Promise<void>((resolve) => { this.waiters.push(resolve); });
+    this.active += 1; // 被唤醒:槽位由释放方让出,此处补占
+  }
+
+  /** 槽位释放:active-1 后唤醒队首(无等待者即纯减计数) */
+  private release(): void {
+    this.active -= 1;
+    this.waiters.shift()?.();
   }
 
   capabilities() {
@@ -87,8 +114,23 @@ export class ExternalCliExecutor implements ExternalExecutorLike, Executor {
     return { events$, conclusion$, stop: async () => { this.stopCurrent(); } };
   }
 
-  /** 核心执行:登账 → 拉起 → 行缓冲翻译流 → exit/deadline 竞速 → 收口(台账 finish + 终值) */
+  /** 核心执行:并发信号量全程护持(终审 Item 1)——槽位获取 → 持槽执行 → finally 释放(排队等待计入 deadline);
+   *  持槽体 = 登账 → 拉起 → 行缓冲翻译流 → exit/deadline 竞速 → 收口(台账 finish + 终值) */
   private async runWithSink(
+    task: { id: string; title: string; spec: string },
+    budget: { deadlineAt: number },
+    extraSink?: (e: SessionEvent) => void,
+  ): Promise<{ ok: boolean; reply: string; tokens: number }> {
+    await this.acquire();
+    try {
+      return await this.executeHeld(task, budget, extraSink);
+    } finally {
+      this.release();
+    }
+  }
+
+  /** 持槽执行体(仅经 runWithSink 进入,槽位已持有):登账 → 拉起 → 行缓冲翻译流 → exit/deadline 竞速 → 收口 */
+  private async executeHeld(
     task: { id: string; title: string; spec: string },
     budget: { deadlineAt: number },
     extraSink?: (e: SessionEvent) => void,
@@ -178,6 +220,17 @@ export class ExternalCliExecutor implements ExternalExecutorLike, Executor {
       }
       pid = spawned.value.pid;
       this.currentPid = pid;
+      // stop 接线(终审 Item 1):台账 stop 句柄指向本进程强杀——task_stop/reap/stopAll 经台账单点触达,
+      // 不再只依赖 Executor.stop 的「最近进程」粗粒度口径。kill 失败吞:task_stop 单点已兜底 finish 终态
+      ledgerTask.stop = () => {
+        if (pid > 0) {
+          try {
+            this.deps.sandbox.killBackground(pid);
+          } catch {
+            // kill 失败吞(进程已死等):task_stop 侧 finish 单点已兜底,不向上炸
+          }
+        }
+      };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return this.settle(ledgerTask.id, { ok: false, reply: `external executor unavailable: ${msg}`, tokens: 0 });

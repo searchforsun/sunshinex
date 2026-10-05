@@ -60,6 +60,9 @@ export class TaskBoard {
   /** team 预算帽累计用量(spec §5.6):finishExecution 回写时累加(计入所有回写的 tokens,失败通常为 0)——
    *  与 artifact.tokens 同源,init 重放恢复(artifact.tokens 求和),跨重启帽语义续接不清零 */
   private teamTokensUsed = 0;
+  /** 帽耗尽 notice 已发(终审 Item 3,板实例级 one-shot):静默停摆是设计终态(任务留 pending 等帽拆),
+   *  可见性经 notice 单发——kick 重入不重发;板实例重建(重启)视为新一轮,重放后首个帽 break 再发一次 */
+  private capNoticeEmitted = false;
   private readonly now: () => number;
   private readonly maxOpen: number;
   private readonly taskTimeoutMs: number;
@@ -214,14 +217,31 @@ export class TaskBoard {
     return ok(undefined);
   }
 
+  /** lead 取消(终审 Item 2):pending(含 gated / blocked 派生)→ cancelled(LEGAL 既有边)——终态即
+   *  出 open 计数,板容量可回收;claimed 在飞不可直接取消(须先 stop 收口,回写单点保证终态迁移);
+   *  其余终态/非法迁移一律 INVALID_ARG。不发下游 task-blocked:cancelled 依赖的下游本就经派生 blocked
+   *  语义顶住(§4.1 留人裁决),取消本身非执行失败 */
+  cancel(taskId: string): Result<void> {
+    const task = this.state.tasks[taskId];
+    if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
+    if (task.status !== 'pending') {
+      return fail('INVALID_ARG', task.status === 'claimed'
+        ? `cannot cancel a claimed task mid-execution (${taskId}); stop it first`
+        : `cancel expects a pending task (gated/blocked included), ${taskId} is ${task.status}`);
+    }
+    this.applyAndPersist({ t: 'status-changed', taskId, from: 'pending', to: 'cancelled', ts: this.now(), note: 'cancelled by lead' });
+    this.emit('task-status-changed', { taskId, from: 'pending', status: 'cancelled', note: 'cancelled by lead' });
+    return ok(undefined);
+  }
+
   private applyAndPersist(ev: BoardEvent): void {
     this.state = applyBoardEvent(this.state, ev);
     this.deps.store.append(ev);
     this.deps.store.writeSnapshot(this.state);
   }
 
-  private emit(type: SessionEvent['type'], payload: Record<string, unknown>): void {
-    this.deps.onEvent?.({ type, payload, ts: this.now() });
+  private emit(type: SessionEvent['type'], payload: Record<string, unknown>, text?: string): void {
+    this.deps.onEvent?.({ type, payload, ...(text !== undefined ? { text } : {}), ts: this.now() });
   }
 
   /** teammate 自取(M2 claim 循环):原子取首个 dispatchable 未指派任务 pending→claimed(事件化)。
@@ -279,8 +299,21 @@ export class TaskBoard {
       while (true) {
         // team 预算帽前置检查(spec §5.6 超帽留 pending 不失败):整板累计 tokens 达帽即收兵,不派发新批。
         // 不置 capacityDeferred/claimDeferred(无退避定时器、不归队 claim)——任务保持 pending,
-        // 后续 review/create 的 kick 自然重入;用量透出走 summaryLines 尾行,不发阻塞事件
-        if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) break;
+        // 后续 review/create 的 kick 自然重入;用量透出走 summaryLines 尾行,不发阻塞事件。
+        // 帽耗尽 one-shot notice(终审 Item 3):静默停摆是设计终态,但零信号会让 lead 误判板死锁——
+        // 经既有 notice 事件单发一次(板实例级,TUI 渲染 system 行,零新增协议词汇;kick 重入不重发;
+        // Ctrl+T 页脚用量随 P3 数据面)
+        if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) {
+          if (!this.capNoticeEmitted) {
+            this.capNoticeEmitted = true;
+            this.emit(
+              'notice',
+              { source: 'taskboard', used: this.teamTokensUsed, cap: this.deps.teamTokenCap },
+              `team budget exhausted (${this.teamTokensUsed}/${this.deps.teamTokenCap}) tokens — new tasks stay pending until the cap is lifted`,
+            );
+          }
+          break;
+        }
         const batch = dispatchable(this.state);
         if (batch.length === 0) break;
         for (const t of batch) this.emit('task-unlocked', { taskId: t.id });

@@ -19,7 +19,7 @@ function makeBoard(tmp: string): TaskBoard {
 
 const drain = () => new Promise((r) => setImmediate(r));
 
-test('五件套:name/category 全集与 observation 带板摘要', async () => {
+test('六件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;cancel_task 工具面', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools-'));
   try {
     const board = makeBoard(tmp);
@@ -31,6 +31,16 @@ test('五件套:name/category 全集与 observation 带板摘要', async () => {
     assert.equal(r.exitCode, 0);
     assert.match(r.stdout, /t1/, 'observation 含新任务 id');
     await drain();
+    // cancel_task(终审 Item 2):gated 建即 pending——经工具面取消 → cancelled + 板摘要透出
+    await create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, gated: true });
+    assert.equal(board.snapshot().tasks['t2']!.status, 'pending', 'gated 停 pending(可取消面)');
+    const cancel = tools.find((t) => t.name === 'cancel_task')!;
+    const c = await cancel.executor({ taskId: 't2' });
+    assert.equal(c.exitCode, 0);
+    assert.match(c.stdout, /cancelled/, 'observation 确认取消');
+    assert.match(c.stdout, /t2 \[cancelled\]/, '板摘要含 cancelled 行(容量已回收)');
+    assert.equal(board.snapshot().tasks['t2']!.status, 'cancelled');
+    await assert.rejects(() => cancel.executor({ taskId: 't2' }), /cancel expects a pending task/, '终态取消经工具面透出 INVALID_ARG');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -10,7 +10,7 @@
 // ③ 外部同现(spec §8「与内部无感同现」):真 TaskBoard + stub externalExecutor + 真 Teammate,
 //   executorHint 'external-cli' 任务与普通 teammate 任务并行 create——delegation kind 'external-cli'
 //   vs 'subagent' 两事件流共存一收集器,external 终态 in-review。
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -31,6 +31,20 @@ import type { TaskRegistry } from './tasks';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 import type { ExternalExecutorLike } from '../taskboard/executors/external-cli';
+
+// env scrub(终审 Item 1):用例①装配真 Harness,team 帽经 SUNSHINEX_TEAM_TOKEN_CAP 进环境即生效——
+// 开发机若设此变量,7 任务会在两笔回写后被帽拦下,pending 悬置假失败。beforeEach 删、afterEach 恢复
+// 原值(记录在场与否:在场回填原值,不在场维持删除),测试对宿主环境零耦合
+const ENV_CAP = 'SUNSHINEX_TEAM_TOKEN_CAP';
+let envCapSaved: { present: boolean; value?: string } = { present: false };
+beforeEach(() => {
+  envCapSaved = { present: ENV_CAP in process.env, value: process.env[ENV_CAP] };
+  delete process.env[ENV_CAP];
+});
+afterEach(() => {
+  if (envCapSaved.present) process.env[ENV_CAP] = envCapSaved.value;
+  else delete process.env[ENV_CAP];
+});
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

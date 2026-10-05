@@ -265,6 +265,61 @@ test('create executor 提示入板:快照与 task-created 事件均带 executorH
   }
 });
 
+test('cancel:pending/gated/blocked 派生 → cancelled(容量回收),claimed 拒(须先 stop),终态/未知拒(终审 Item 2)', async () => {
+  const tmp = tmpdir('sunshinex-tb-cancel-');
+  try {
+    const h = makeBoard(tmp);
+    h.board.create({ title: 'A', spec: 'a', gated: true }); // t1:gated 停 pending
+    h.board.create({ title: 'B', spec: 'b', dependsOn: ['t1'] }); // t2:依赖未满停 pending
+    await drain();
+    assert.equal(h.board.snapshot().tasks['t1']!.status, 'pending', 'gated 保持 pending');
+    // gated pending 可取消:cancelled 终态即出 open 计数(板容量回收)
+    assert.ok(h.board.cancel('t1').ok, 'gated pending 可取消');
+    assert.equal(h.board.snapshot().tasks['t1']!.status, 'cancelled');
+    const ev = h.events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'cancelled');
+    assert.ok(ev, 'task-status-changed(cancelled) 已发');
+    assert.equal((ev!.payload as Record<string, unknown>).from, 'pending');
+    assert.equal((ev!.payload as Record<string, unknown>).note, 'cancelled by lead');
+    // blocked 派生(t2 依赖已 cancelled 的 t1)仍 pending → 可取消
+    assert.ok(h.board.cancel('t2').ok, 'blocked 派生 pending 可取消');
+    assert.equal(h.board.snapshot().tasks['t2']!.status, 'cancelled');
+    // 终态拒 + 未知 id 拒
+    assert.equal(h.board.cancel('t1').ok, false, '终态任务不可再取消');
+    assert.equal(h.board.cancel('tX').ok, false, '未知任务拒');
+    // 取消以事件落盘(note 同口径)
+    const raw = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8');
+    assert.ok(raw.includes('"note":"cancelled by lead"'), `取消事件带 note 落盘,实际:${raw}`);
+
+    // claimed 拒:悬置 runner 下任务停 claimed——cancel 不得越权改写(回写单点保证终态迁移)
+    const events2: SessionEvent[] = [];
+    let release: () => void = () => {};
+    const hang = new Promise<void>((res) => { release = res; });
+    const board2 = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'aux')),
+      runner: {
+        runSubagent: async () => {
+          await hang;
+          return { ok: true as const, value: { reply: 'late', tokens: 1 } };
+        },
+      } as unknown as SubagentRunner,
+      registry: { submit: () => ({ id: 'cx1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry,
+      onEvent: (e) => events2.push(e),
+    });
+    board2.init();
+    assert.ok(board2.create({ title: 'C', spec: 'c' }).ok);
+    await drain();
+    assert.equal(board2.snapshot().tasks['t1']!.status, 'claimed', '悬置 runner:t1 停 claimed');
+    const r = board2.cancel('t1');
+    assert.equal(r.ok, false, 'claimed 在飞不可直接取消');
+    assert.ok(String(r.error.message).includes('stop it first'), `报错引导先 stop:${String(r.error.message)}`);
+    assert.equal(board2.snapshot().tasks['t1']!.status, 'claimed', 'claimed 不被取消改写');
+    release(); // 卫生:放行悬置 runner,drain 收口
+    await drain();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('set_dependency/assign 成功路径发 task-dep-added/task-assigned(载荷核字段,P2)', async () => {
   const tmp = tmpdir('sunshinex-tb-depev-');
   try {
@@ -458,7 +513,17 @@ test('team 预算帽:drain 前置检查超帽留 pending 不失败,摘要透出�
     const lines = h.board.summaryLines();
     assert.ok(lines.includes('team budget exhausted (20/15) tokens'), `达帽尾行:${JSON.stringify(lines)}`);
     assert.ok(!h.events.some((e) => e.type === 'task-blocked'), '超帽不是失败:不发 task-blocked');
-    // 帽持续:review 关单 kick 与新 create kick 均重入 drain 但仍被前置检查拦下
+    // 帽耗尽 one-shot notice(终审 Item 3):首个帽 break 恰发一次——既有 notice 事件型,text 载荷与
+    // summaryLines 尾行同口径,payload 带 source/used/cap;TUI 渲染 system 行零新增协议词汇
+    const notices = h.events.filter((e) => e.type === 'notice');
+    assert.equal(notices.length, 1, `帽 break 时 notice 恰一次(实际 ${notices.length})`);
+    assert.equal(
+      notices[0]!.text,
+      'team budget exhausted (20/15) tokens — new tasks stay pending until the cap is lifted',
+      'notice 文案与摘要尾行同口径',
+    );
+    assert.deepEqual(notices[0]!.payload, { source: 'taskboard', used: 20, cap: 15 }, 'payload 带 source/used/cap');
+    // 帽持续:review 关单 kick 与新 create kick 均重入 drain 但仍被前置检查拦下(notice 不重发)
     await h.board.review('t1', { approved: true });
     await drain();
     assert.equal(h.board.snapshot().tasks['t3']!.status, 'pending', 'review kick 后仍不派发(帽未拆)');
@@ -467,6 +532,7 @@ test('team 预算帽:drain 前置检查超帽留 pending 不失败,摘要透出�
     const s2 = h.board.snapshot();
     assert.equal(s2.tasks['t3']!.status, 'pending');
     assert.equal(s2.tasks['t4']!.status, 'pending', 'create kick 后仍不派发');
+    assert.equal(h.events.filter((e) => e.type === 'notice').length, 1, 'kick 重入不重发(one-shot)');
 
     // 跨重启重放恢复:新协调器同 store 载入,teamTokensUsed 经 artifact.tokens 求和回 20——
     // 若不重放(计数清零),used=0 < 15 会误派发;断言新任务仍被拦

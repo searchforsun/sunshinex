@@ -1,11 +1,12 @@
-// TaskBoard lead 工具五件套(spec §5.8):主链模型操作任务板的唯一入口——create_task / set_dependency /
-// assign / review_task / gate_task。category 'task';observation 尾附板摘要(summaryLines)供模型一眼
-// 看板;create_task 即触发派发(drain 异步),等待经既有 task_wait(null)(Ruling 1)。
-// lead-only 不变量:五件套随 deriveChildRegistry 扩剔(TASKBOARD_TOOL_NAMES),子代理工具面不可见。
+// TaskBoard lead 工具六件套(spec §5.8 + 终审 Item 2):主链模型操作任务板的唯一入口——create_task /
+// set_dependency / assign / review_task / gate_task / cancel_task。category 'task';observation 尾附板摘要
+// (summaryLines)供模型一眼看板;create_task 即触发派发(drain 异步),等待经既有 task_wait(null)(Ruling 1)。
+// lead-only 不变量:六件套随 deriveChildRegistry/deriveTeammateRegistry 扩剔(TASKBOARD_TOOL_NAMES——
+// 两处 spread 自动随动,增名即扩剔),子代理工具面不可见。
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { TaskBoard } from '../../taskboard/board';
 
-export const TASKBOARD_TOOL_NAMES = ['create_task', 'set_dependency', 'assign', 'review_task', 'gate_task'] as const;
+export const TASKBOARD_TOOL_NAMES = ['create_task', 'set_dependency', 'assign', 'review_task', 'gate_task', 'cancel_task'] as const;
 
 function boardTail(board: TaskBoard): string {
   const lines = board.summaryLines();
@@ -133,5 +134,25 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
       return { exitCode: 0, stdout: ['gate set — task will not dispatch until approved via review_task', boardTail(board)].join('\n'), stderr: '', timedOut: false };
     },
   };
-  return [createTask, setDependency, assign, reviewTask, gateTask];
+  const cancelTask: RegisteredTool = {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['taskId'],
+      properties: {
+        taskId: { type: ['string', 'null'], description: 'Task id to cancel (must be pending; gated or dependency-blocked tasks count as pending).' },
+      },
+    },
+    name: 'cancel_task',
+    description: 'Cancel a pending/gated/blocked task to free board capacity (it moves to cancelled and stops counting toward the open-task limit). Claimed tasks must be stopped first; terminal tasks (done/failed/cancelled) cannot be cancelled.',
+    category: 'task',
+    fullObservation: true,
+    executor: async (input) => {
+      const raw = input as { taskId?: string | null };
+      const r = board.cancel(String(raw.taskId ?? ''));
+      if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
+      return { exitCode: 0, stdout: ['cancelled', boardTail(board)].join('\n'), stderr: '', timedOut: false };
+    },
+  };
+  return [createTask, setDependency, assign, reviewTask, gateTask, cancelTask];
 }
