@@ -6,6 +6,8 @@ import * as path from 'path';
 import { TaskBoard } from './board';
 import { TeamRegistry, Teammate } from './teammate';
 import { TeamStore } from './store';
+import { FileInbox } from './file-inbox';
+import type { Inbox } from './inbox';
 import { ChatRequest, ChatResult, SessionEvent } from '../types';
 import { ProcessSandbox } from '../harness/security/sandbox';
 import { SecurityGuard } from '../harness/security/guard';
@@ -21,14 +23,28 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-/** 自增计数 fake ModelAdapter:chat() 恒一轮 stop 收束(最小桩,现场对齐 ModelAdapter.chat 签名) */
+/** 自增计数 fake ModelAdapter:chat() 恒一轮 stop 收束(最小桩,现场对齐 ModelAdapter.chat 签名);
+ *  chats 捕获每轮消息面全文(T3 回合边界注入断言的可达面:msg 行经 own chain → seed → 模型) */
 class CountingAdapter implements ModelAdapter {
   readonly provider = 'counting';
   n = 0;
-  async chat(_req: ChatRequest): Promise<ChatResult> {
+  readonly chats: string[] = [];
+  async chat(req: ChatRequest): Promise<ChatResult> {
     this.n += 1;
+    this.chats.push(req.messages.map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n'));
     return { finish: 'stop', content: `done ${this.n}`, toolCalls: [] };
   }
+}
+
+/** 子串出现次数(非重叠):消息行恰 N 条的精确计数断言 */
+function countOccurrences(haystack: string, needle: string): number {
+  let n = 0;
+  let i = haystack.indexOf(needle);
+  while (i !== -1) {
+    n += 1;
+    i = haystack.indexOf(needle, i + needle.length);
+  }
+  return n;
 }
 
 interface Rig {
@@ -36,10 +52,12 @@ interface Rig {
   team: TeamRegistry;
   events: SessionEvent[];
   forkCalls: string[];
-  /** 构造 Teammate(不注册);模型可注入以共享计数断言顺序 */
-  makeTeammate(name: string, model?: CountingAdapter): Teammate;
+  /** 真 FileInbox(与装配面同语义;测试按需注入 teammate deps) */
+  inbox: FileInbox;
+  /** 构造 Teammate(不注册);模型可注入以共享计数断言顺序,inbox 可注入以开回合边界注入 */
+  makeTeammate(name: string, model?: CountingAdapter, inbox?: Inbox): Teammate;
   /** 构造并注册 */
-  addTeammate(name: string, model?: CountingAdapter): Teammate;
+  addTeammate(name: string, model?: CountingAdapter, inbox?: Inbox): Teammate;
 }
 
 /** 装配:真 TaskBoard(fake fork runner 计数,P1 路径探测器)+ 可选 team + 真 Teammate(fake model) */
@@ -66,25 +84,28 @@ function makeRig(tmp: string, withTeam: boolean): Rig {
   board.init();
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
   const tools = new ToolRegistry();
-  const depsOf = (name: string, model: CountingAdapter) => ({
+  const inbox = new FileInbox(path.join(tmp, 'teams', 'main', 'inbox'));
+  const depsOf = (name: string, model: CountingAdapter, depInbox?: Inbox) => ({
     safety,
     model,
     registry: tools,
     root: tmp,
     store: new FileStore(path.join(tmp, 'ctx', name)),
     board,
+    ...(depInbox !== undefined ? { inbox: depInbox } : {}),
     onEvent: (e: SessionEvent) => events.push(e),
   });
-  const makeTeammate = (name: string, model?: CountingAdapter): Teammate =>
-    new Teammate({ name, framing: `framing of ${name}`, deps: depsOf(name, model ?? new CountingAdapter()) });
+  const makeTeammate = (name: string, model?: CountingAdapter, depInbox?: Inbox): Teammate =>
+    new Teammate({ name, framing: `framing of ${name}`, deps: depsOf(name, model ?? new CountingAdapter(), depInbox) });
   return {
     board,
     team,
     events,
     forkCalls,
+    inbox,
     makeTeammate,
-    addTeammate: (name: string, model?: CountingAdapter) => {
-      const tm = makeTeammate(name, model);
+    addTeammate: (name: string, model?: CountingAdapter, depInbox?: Inbox) => {
+      const tm = makeTeammate(name, model, depInbox);
       const r = team.register(tm);
       assert.ok(r.ok, `register ${name} 应成功`);
       return tm;
@@ -253,6 +274,101 @@ test('同批双指派串行:t1/t2 均 assignee w1 → 单 worker 串行消化,cl
       })
       .filter((x) => x === 't1:claimed' || x === 't1:in-review' || x === 't2:claimed' || x === 't2:in-review');
     assert.deepEqual(seq, ['t1:claimed', 't1:in-review', 't2:claimed', 't2:in-review'], `串行无交叉,实际:${seq.join(',')}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('回合边界注入(真 FileInbox):空闲期两条消息在首个任务轮可见且先于 task 行,多轮不双注入', async () => {
+  const tmp = tmpdir('sunshinex-tm-inbox-');
+  try {
+    const rig = makeRig(tmp, true);
+    const model = new CountingAdapter();
+    const w1 = rig.addTeammate('w1', model, rig.inbox);
+    // kick 前注入:消息先落收件箱,再建任务(派发路由自动踢点,worker 首轮 execute 前 drain)
+    await rig.inbox.send('w1', { from: 'lead', text: 'hi' });
+    await rig.inbox.send('w1', { from: 'lead', text: 'second note' });
+    rig.board.create({ title: 'A', spec: 'do A' });
+    rig.board.create({ title: 'B', spec: 'do B' });
+    w1.kick(); // 幂等重踢:与派发路由共享在飞 worker
+    const done = await until(() => {
+      const s = rig.board.snapshot();
+      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+    });
+    assert.ok(done, '两任务消化至 in-review');
+    assert.ok(model.chats.length >= 2, '两任务各至少一轮 chat');
+    // 至少一次:首轮消息面即含两条消息行(own chain → Reactor seed → 模型)
+    const first = model.chats[0]!;
+    assert.ok(first.includes('msg:m1 [message from lead] hi'), `首轮应含 m1 行,实际:${first}`);
+    assert.ok(first.includes('msg:m2 [message from lead] second note'), '首轮应含 m2 行');
+    // 回合边界语义:消息行在本任务 task 行之前(drain 先于 execute)
+    assert.ok(first.indexOf('msg:m1') < first.indexOf('Task t1:'), '消息行应先于 task 行');
+    // 幂等(cursor 位点):第二轮起链上消息行恰各一条,不因重 poll 双注入(计数恰 2)
+    for (const c of model.chats) {
+      assert.equal(countOccurrences(c, 'msg:m1 [message from lead] hi'), 1, 'm1 行恰一条');
+      assert.equal(countOccurrences(c, 'msg:m2 [message from lead] second note'), 1, 'm2 行恰一条');
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('msg-id 链前缀去重:poll 重复回放同消息(cursor 归零面)不双注入', async () => {
+  const tmp = tmpdir('sunshinex-tm-dedup-');
+  try {
+    const rig = makeRig(tmp, true);
+    // 位点无关恒回 m1:模拟重启 cursor 归零后的上游重放(至少一次投递的重复侧)
+    const repeating: Inbox = {
+      send: async () => {
+        throw new Error('not used in this test');
+      },
+      poll: () => [{ id: 'm1', from: 'lead', to: 'w1', text: 'hi', ts: 42 }],
+    };
+    const model = new CountingAdapter();
+    rig.addTeammate('w1', model, repeating);
+    rig.board.create({ title: 'A', spec: 'do A' });
+    rig.board.create({ title: 'B', spec: 'do B' });
+    const done = await until(() => {
+      const s = rig.board.snapshot();
+      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+    });
+    assert.ok(done, '两任务消化至 in-review');
+    assert.ok(model.chats.length >= 2, '两轮 chat 在场');
+    for (const c of model.chats) {
+      assert.equal(countOccurrences(c, 'msg:m1 [message from lead] hi'), 1, `每轮 m1 行恰一条(链前缀去重),实际:${c.slice(0, 200)}`);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('未配 inbox 的 teammate 零变化:任务照常消化,消息面零 msg 行', async () => {
+  const tmp = tmpdir('sunshinex-tm-noinbox-');
+  try {
+    const rig = makeRig(tmp, true);
+    const model = new CountingAdapter();
+    rig.addTeammate('w1', model); // deps 不注入 inbox(缺省形态)
+    rig.board.create({ title: 'A', spec: 'do A' });
+    const done = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
+    assert.ok(done, '未配 inbox 不影响消化');
+    assert.ok(model.chats.length >= 1, '至少一轮 chat');
+    assert.ok(model.chats.every((c) => !c.includes('msg:')), '消息面零 msg 行(零行为变化)');
+    assert.equal(rig.board.snapshot().tasks['t1']!.artifact?.conclusion, 'done 1', '结论口径不变');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("'lead' 名注册拒:L2 收件身份唯一性(主会话专属收件名)", () => {
+  const tmp = tmpdir('sunshinex-tm-lead-');
+  try {
+    const rig = makeRig(tmp, true);
+    const r = rig.team.register(rig.makeTeammate('lead'));
+    assert.ok(!r.ok, "'lead' 注册应拒");
+    assert.equal(r.error.code, 'INVALID_ARG');
+    assert.equal(r.error.message, `'lead' is reserved for the main session`);
+    assert.equal(rig.team.get('lead'), undefined, '拒后不入注册表');
+    assert.deepEqual(rig.team.aliveNames(), [], '活名清单不含 lead');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

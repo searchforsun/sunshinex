@@ -12,6 +12,7 @@ import type { SafetyChain } from '../harness/security/chain';
 import type { ModelAdapter } from '../model/adapter';
 import type { ToolRegistry } from '../harness/tools';
 import type { StorageAdapter } from '../storage/adapter';
+import type { Inbox } from './inbox';
 import type { TaskBoard } from './board';
 import type { BoardTask } from './model';
 
@@ -32,6 +33,9 @@ export interface TeammateDeps {
   /** 工具面工厂(T3 注入真派生面):缺省 base.derive({ exclude: [] }) 全克隆——工具无状态、
    *  执行期安全链注入,克隆面与 base 行为等价(T3 落地收窄面前保持全量) */
   registryFactory?: (base: ToolRegistry) => ToolRegistry;
+  /** agent 间消息收件箱(T3 agent-message 回合边界注入):worker 每轮 execute 前 drainInbox——
+   *  poll 本名新消息,按 msg-id 链前缀去重后以 note 行 append own chain;缺省无 inbox = 零行为变化 */
+  inbox?: Inbox;
 }
 
 /** teammate 注册表:帽 4 + 名字索引 + 存活聚合(派发路由的退化判据) */
@@ -40,6 +44,9 @@ export class TeamRegistry {
 
   /** 注册(帽 MAX_TEAMMATES):同名重注册 = 替换语义,旧实例先停(防双 claim 循环) */
   register(t: Teammate): Result<void> {
+    // L2 收件身份唯一性:'lead' 是主会话专属收件名(inbox 的 lead 侧),teammate 占名会让
+    // lead↔teammate 消息身份歧义——注册即拒(评审附带 2,2026-10-06)
+    if (t.name === 'lead') return fail('INVALID_ARG', `'lead' is reserved for the main session`);
     if (this.teammates.size >= MAX_TEAMMATES && this.teammates.get(t.name) === undefined) {
       return fail('INVALID_ARG', `teammate limit reached (${MAX_TEAMMATES})`);
     }
@@ -89,6 +96,9 @@ export class Teammate {
   /** 指派队列(executeOne 派发路由入队):单 worker 每轮先取此队、空则 board.claim——指派与自主认领
    *  统一单飞,同一时刻至多一个 execute 在飞(own ctx / Reactor seed 串行不变量,2026-10-06 复审裁定) */
   private assignedQueue: BoardTask[] = [];
+  /** inbox 消费位点(Ruling 2 内存态):已消费的最大 ts;poll 取严格大于此值——至少一次投递的读侧。
+   *  重启归零后重放由 msg-id 链前缀去重兜底(注入幂等 §7.3) */
+  private inboxCursor = 0;
 
   constructor(opts: { name: string; framing: string; deps: TeammateDeps }) {
     this.name = opts.name;
@@ -122,6 +132,13 @@ export class Teammate {
       while (!this.stoppedFlag) {
         const next = this.assignedQueue.length > 0 ? this.assignedQueue.shift() : this.deps.board.claim(this.name);
         if (next === undefined) break;
+        // 回合边界注入(T3):每轮 execute 前统一 drain inbox(指派与 claim 两路都过此口)——
+        // 消息行先于本任务 task 行 append;注入异常吞并不阻断任务(cursor 未进,下轮重 poll 兜底)
+        try {
+          this.drainInbox();
+        } catch {
+          // 收件箱读取失败容忍(worker 存续先例);至少一次语义由下轮重投递兜底
+        }
         this.busy = true;
         try {
           await this.execute(next);
@@ -134,6 +151,27 @@ export class Teammate {
     } finally {
       this.claiming = false;
     }
+  }
+
+  /** 回合边界消息注入(T3):poll 本名 ts 严格大于位点的消息,逐条按 `msg:<id> ` 前缀扫 own chain
+   *  已含该行则跳过(去重),否则以 note 行 append 链尾——消息行进链不进事件(消费面 = 模型上下文)。
+   *  Ruling 2:cursor 内存态 + msg-id 链前缀去重 = 至少一次 + 注入幂等(§7.3);append 恒在链尾、
+   *  既有前缀不动 = §9.3 缓存友好。返回本轮注入条数。 */
+  private drainInbox(): number {
+    if (this.deps.inbox === undefined) return 0;
+    const msgs = this.deps.inbox.poll(this.name, this.inboxCursor);
+    if (msgs.length === 0) return 0;
+    let injected = 0;
+    for (const m of msgs) {
+      const line = `msg:${m.id} [message from ${m.from}] ${m.text}`;
+      const prefix = `msg:${m.id} `;
+      const dup = this.ctx.chainView().some((s) => s.observation.split('\n').some((l) => l.startsWith(prefix)));
+      if (dup) continue;
+      this.ctx.appendChain([{ action: 'note', observation: line }]);
+      injected += 1;
+    }
+    this.inboxCursor = Math.max(this.inboxCursor, ...msgs.map((m) => m.ts));
+    return injected;
   }
 
   /** 停(AbortController.abort + 置 stopped):busy 任务跑完(在途步边界即刻中止)回写收口后不续取;

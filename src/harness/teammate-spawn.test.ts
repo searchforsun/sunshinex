@@ -41,6 +41,10 @@ test('spawn mode:team:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
     assert.equal(face.get('spawn'), undefined, 'teammate 面不得再生子代');
     assert.equal(face.get('create_task'), undefined, 'teammate 面不得碰板面写操作');
+    // fork 子面剔除 send_message(L2 agent-message T3,评审附带 1):消息身份属 lead+具名 teammate,
+    // fork 子面不发——缺省派生与显式 allowlist 两分支都不得透出
+    assert.equal(h.runner.deriveChildRegistry({}).get('send_message'), undefined, 'fork 子面缺省派生不得含 send_message');
+    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'read'] }).get('send_message'), undefined, '显式 allowlist 亦恒剔除 send_message');
     // 只读板工具回执:gated 任务不派发,直接消费执行体验证摘要口径
     const created = h.taskboard.create({ title: 'A', spec: 'do A stuff', gated: true });
     assert.ok(created.ok);

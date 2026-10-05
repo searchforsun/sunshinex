@@ -256,6 +256,9 @@ export class Harness {
             root: base,
             store,
             board: this.taskboard,
+            // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_message
+            // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
+            inbox: this.inbox,
             ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
             registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
               b,
