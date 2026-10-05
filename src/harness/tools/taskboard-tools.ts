@@ -8,6 +8,11 @@ import type { TaskBoard } from '../../taskboard/board';
 
 export const TASKBOARD_TOOL_NAMES = ['create_task', 'set_dependency', 'assign', 'review_task', 'gate_task', 'cancel_task'] as const;
 
+/** fork 子面剔除族单点(L2 终审 Important):send_message(消息身份属 lead+具名 teammate,fork 子面不发)+
+ *  六件套 lead-only 板工具。三处 fork-scope 派生点同源消费——subagent.ts deriveChildRegistry、loop/nodes.ts
+ *  agentNode、graph/nodes.ts makeLoopNode;增名即扩剔,防漂移由 harness/fork-face.test.ts 钉测(常量即契约)。 */
+export const FORK_EXCLUDED_TOOLS = ['send_message', ...TASKBOARD_TOOL_NAMES] as const;
+
 function boardTail(board: TaskBoard): string {
   const lines = board.summaryLines();
   return lines.length === 0 ? '(task board empty)' : ['board:', ...lines].join('\n');

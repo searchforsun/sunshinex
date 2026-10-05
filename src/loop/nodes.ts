@@ -3,6 +3,7 @@ import { buildJudgePrompt, JUDGE_TOOLS } from '../harness/prompts/judge';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
+import { FORK_EXCLUDED_TOOLS } from '../harness/tools/taskboard-tools';
 import { LoopDeps, LoopEngineNode } from './engine';
 
 /** 独立小调用 chat 桩形态（T5 共用）：判据/压缩/记忆/提炼四个一次性调用共用的窄接口 */
@@ -172,10 +173,12 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
         ctx.termination.maxTokens !== undefined
           ? Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed)
           : undefined;
-      // 「spawn 只在主链工具面」全局不变量收口：fork 私有面派生剔除 spawn 且不携 runner（无嵌套挂载）
+      // 「spawn 只在主链工具面」全局不变量收口 + fork 面剔除族闭合(L2 终审 Important):fork 私有面派生
+      // 剔 spawn 且不携 runner(无嵌套挂载),并同源剔 FORK_EXCLUDED_TOOLS(send_message 消息身份 +
+      // 六件套 lead-only 板工具——防 lead 冒充,与 subagent deriveChildRegistry/graph makeLoopNode 同一常量)
       const childDeps: LoopDeps =
         scope === 'fork'
-          ? { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME] }) }
+          ? { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...FORK_EXCLUDED_TOOLS] }) }
           : deps;
       const reactor = new Reactor(childDeps);
       const r = await reactor.run(
