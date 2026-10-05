@@ -15,24 +15,26 @@ function tmpdir(prefix: string): string {
 
 test('kill -9 于 claimed 时刻:重启恢复,任务回池、事件完整、可继续追加(spec §7.6)', async () => {
   const tmp = tmpdir('sunshinex-tbcrash-');
+  const child = spawn(process.execPath, [path.resolve(__dirname, 'crash-fixture.js')], {
+    env: { ...process.env, SUNSHINEX_DATA_DIR: path.join(tmp, 'data') },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  let out = '';
+  child.stdout!.setEncoding('utf8');
+  child.stdout!.on('data', (c: string) => { out += c; });
   try {
-    const child = spawn(process.execPath, [path.resolve(__dirname, 'crash-fixture.js')], {
-      env: { ...process.env, SUNSHINEX_DATA_DIR: path.join(tmp, 'data') },
-      stdio: ['ignore', 'pipe', 'inherit'],
-    });
-    let out = '';
-    child.stdout!.setEncoding('utf8');
-    child.stdout!.on('data', (c: string) => { out += c; });
-    // 等 fixture 打印 READY(claimed 已落盘)后强杀
+    // 等 fixture 打印 READY(claimed 已落盘)后强杀;10s 兜底定时器在 READY 命中时即清(不留悬挂句柄)
     await new Promise<void>((resolve) => {
       const t = setInterval(() => {
-        if (out.includes('READY')) { clearInterval(t); resolve(); }
+        if (out.includes('READY')) { clearInterval(t); clearTimeout(fallback); resolve(); }
       }, 50);
-      setTimeout(() => { clearInterval(t); resolve(); }, 10_000);
+      const fallback = setTimeout(() => { clearInterval(t); resolve(); }, 10_000);
     });
     assert.ok(out.includes('READY'), 'fixture 达到 claimed 挂起点');
     child.kill('SIGKILL');
     await new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    // 存活性证明(4c 取最简稳健项):杀时进程仍活着——exitCode 非零或信号终局(fixture 两笔 create 均已成功才挂到此处)
+    assert.ok(child.exitCode !== 0 || child.signalCode !== null, `强杀后应非零退出/信号终局,实际 exitCode=${child.exitCode} signal=${child.signalCode}`);
     // 重启恢复:同目录新协调器
     const runner = { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner;
     const registry = { submit: () => ({ id: 'b9', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
@@ -51,6 +53,14 @@ test('kill -9 于 claimed 时刻:重启恢复,任务回池、事件完整、可�
     for (const line of lines) JSON.parse(line);
     assert.ok(lines.some((l) => l.includes('recovered after restart')), '自愈事件在流中');
   } finally {
+    // 收尸守卫:READY 断言失败等早退路径也保证 kill(已退出则守卫跳过,双杀无害);等退出后再清场防文件占用
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await new Promise<void>((resolve) => {
+        child.once('exit', () => resolve());
+        setTimeout(resolve, 5_000).unref?.();
+      });
+    }
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

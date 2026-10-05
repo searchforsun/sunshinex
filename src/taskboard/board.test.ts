@@ -85,9 +85,55 @@ test('执行失败:强制回写 failed + 下游 task-blocked 不自动 skip', as
     const blocked = h.events.find((e) => e.type === 'task-blocked');
     assert.ok(blocked, 'task-blocked 事件已发');
     assert.deepEqual((blocked!.payload as Record<string, unknown>)?.blockedBy, ['t1']);
+    // 失败 note 对称:回写事件带 code+message(与台账 [failed] 行同口径)
+    const raw = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8');
+    assert.ok(raw.includes('"note":"execution failed: INCOMPLETE: no finish"'), `失败 note 含 code:message,实际:${raw}`);
     // lead 裁决:review(t1, approved=false 已是 failed)——对 failed 任务 review 应报错;改判路径走 in-review
     const r = await h.board.review('t1', { approved: true });
     assert.equal(r.ok, false, 'failed 任务不可 review');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CONCURRENCY_LIMIT 回池待派:一次拒绝后重派成功,终局 in-review 而非永久 failed', async () => {
+  const tmp = tmpdir('sunshinex-tb-board6-');
+  try {
+    const events: SessionEvent[] = [];
+    let refused = false;
+    const runner = {
+      runSubagent: async () => {
+        if (!refused) {
+          refused = true;
+          return { ok: false as const, error: { code: 'CONCURRENCY_LIMIT', message: 'Subagent concurrency limit reached (8)' } };
+        }
+        return { ok: true as const, value: { reply: 'ok after retry', tokens: 5 } };
+      },
+    } as unknown as SubagentRunner;
+    const registry = { submit: () => ({ id: 'b6', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry;
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'main')),
+      runner,
+      registry,
+      onEvent: (e) => events.push(e),
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    const r = board.create({ title: 'A', spec: 'a' });
+    assert.ok(r.ok);
+    await drain();
+    await drain(); // 回池重派第二轮(allSettled 后 drain 重取)
+    const s = board.snapshot();
+    assert.equal(s.tasks['t1']!.status, 'in-review', '回池重派后终局 in-review(不永久失败)');
+    assert.ok(!events.some((e) => e.type === 'task-blocked'), '并发拒绝不发下游 blocked');
+    const idx = (pred: (e: SessionEvent) => boolean): number => events.findIndex(pred);
+    const iPend = idx((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'pending');
+    const iReview = idx((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'in-review');
+    assert.ok(iPend >= 0, '回池 pending 事件已发');
+    const pend = events[iPend]!.payload as Record<string, unknown>;
+    assert.equal(pend.from, 'claimed');
+    assert.equal(pend.note, 'concurrency limit, deferred');
+    assert.ok(iReview > iPend, `pending 回池事件先于最终 in-review(${iPend} < ${iReview})`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

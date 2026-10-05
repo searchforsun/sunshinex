@@ -39,8 +39,9 @@ export class TeamStore {
     let raw: string;
     try {
       raw = fs.readFileSync(this.eventsPath(), 'utf8');
-    } catch {
-      return emptyBoard();
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return emptyBoard(); // 缺文件 = 新 team;其余读错误(EACCES 等)上抛不吞
+      throw e;
     }
     let state = emptyBoard();
     for (const line of raw.split('\n')) {

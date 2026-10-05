@@ -68,8 +68,9 @@ import type { ChatItem, ChatRole, LiveBlock, TodoItem, TuiState } from './chat-m
 import type { SessionOpts } from './chat-model';
 
 /** SessionEvent(task- 前缀与 gate- 前缀事件) → BoardEvent 翻译单点:与 TaskBoard.emit 载荷口径互为镜像(P1 子集:
- *  created/status/unlocked/blocked/gate 两态;conclusion 等富字段不进 UI 事件,投影无需) */
-function boardEventFrom(e: SessionEvent): BoardEvent {
+ *  created/status/unlocked/blocked/gate 两态;conclusion 等富字段不进 UI 事件,投影无需)。
+ *  公开 = 镜像属性测试钉口径(mirror.test.ts)消费 */
+export function boardEventFrom(e: SessionEvent): BoardEvent {
   const p = (e.payload ?? {}) as Record<string, unknown>;
   const taskId = String(p.taskId ?? '');
   const ts = e.ts;
@@ -841,7 +842,8 @@ export class SessionController {
         },
         children: [],
         delegations: [],
-        board: emptyBoard(),
+        // 板投影重播种自工作区真相源(harness 任务板快照):任务板是工作区级状态,不随会话轮转化清空
+        board: this.runtime.harness.taskboard.snapshot(),
         task: initialTaskState(),
         ...(this.state.tier ? { tier: this.state.tier } : {}),
         ...(this.state.modelId !== undefined ? { modelId: this.state.modelId, modelLabel: this.state.modelLabel, modelWindow: this.state.modelWindow } : {}),

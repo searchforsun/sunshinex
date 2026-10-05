@@ -40,7 +40,32 @@ test('/new 重置板投影', () => {
     ctrl.onEventForTest({ type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', dependsOn: [] } } as never);
     assert.ok(Object.keys(ctrl.getState().board.tasks).length > 0);
     void ctrl.submit('/new');
-    assert.equal(Object.keys(ctrl.getState().board.tasks).length, 0, '/new 清空板投影');
+    // 非真相源投影(仅事件注入,未经 harness 任务板)/new 后被丢弃,重播种自(空的)工作区快照
+    assert.equal(Object.keys(ctrl.getState().board.tasks).length, 0, '/new 重播种自 harness 快照(此处为空板)');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/new 重播种板投影:任务从工作区真相源(harness 任务板快照)回填,不随轮转化清空', async () => {
+  const tmp = tmpdir('sunshinex-sess-boardseed-');
+  try {
+    // ScriptedAdapter 预置一张 done 牌:taskboard.create 自动派发的真实 fork 一次收口,drain 落定
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const r = ctrl.runtime.harness.taskboard.create({ title: 'A', spec: 'a' });
+    assert.ok(r.ok && r.value.taskId === 't1');
+    const settle = async (pred: () => boolean, ticks = 200): Promise<void> => {
+      for (let i = 0; i < ticks && !pred(); i++) await new Promise((res) => setImmediate(res));
+    };
+    await settle(() => ctrl.runtime.harness.taskboard.snapshot().tasks['t1']?.status === 'in-review');
+    const before = ctrl.getState().board;
+    assert.equal(before.tasks['t1']!.status, 'in-review', '事件投影已进板');
+    assert.equal(before.tasks['t1']!.spec, 'a', '投影携带真实 spec(task-created 事件带 spec)');
+    void ctrl.submit('/new');
+    const after = ctrl.getState().board;
+    assert.ok(after.tasks['t1'] !== undefined, '/new 后板投影重播种自 harness 快照,任务仍在');
+    assert.equal(after.tasks['t1']!.status, 'in-review');
+    assert.equal(after.tasks['t1']!.spec, 'a');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

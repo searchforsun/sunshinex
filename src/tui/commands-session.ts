@@ -4,7 +4,6 @@ import { t } from '../i18n';
 import { resolveDataDir } from '../config/data-dir';
 import { listSessions, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, type SessionMeta } from './session-journal';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
-import { emptyBoard } from '../taskboard/model';
 import type { SessionController } from './session';
 
 // D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：会话谱系命令族（resume/rewind/fork/branchFlow 一族）迁出；
@@ -103,7 +102,8 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
     live: undefined,
     children: [],
     delegations: [],
-    board: emptyBoard(),
+    // 板投影重播种自工作区真相源(harness 任务板快照):任务板是工作区级状态,不随会话恢复清空
+    board: ctrl.runtime.harness.taskboard.snapshot(),
   };
   ctrl.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
   ctrl.ensureJournal().attach(meta.id);

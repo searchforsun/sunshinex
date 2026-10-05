@@ -90,7 +90,7 @@ export class TaskBoard {
     if (input.assignee !== undefined && input.assignee.length > 0) {
       this.applyAndPersist({ t: 'assigned', taskId, assignee: input.assignee, ts: this.now() });
     }
-    this.emit('task-created', { taskId, title: input.title, dependsOn: deps });
+    this.emit('task-created', { taskId, title: input.title, spec: input.spec, dependsOn: deps });
     this.kick();
     return ok({ taskId });
   }
@@ -203,6 +203,8 @@ export class TaskBoard {
     let okRun = false;
     let reply = '';
     let tokens = 0;
+    let errCode: string | undefined;
+    let errMsg: string | undefined;
     try {
       const tokenCap = subagentTokenCapEnv();
       const r = await this.deps.runner.runSubagent(
@@ -221,17 +223,31 @@ export class TaskBoard {
         okRun = true;
         reply = r.value.reply;
         tokens = r.value.tokens;
+      } else {
+        errCode = r.error.code;
+        errMsg = r.error.message;
       }
-    } catch {
+    } catch (e) {
       okRun = false;
+      errCode = 'THROWN';
+      errMsg = e instanceof Error ? e.message : String(e);
     }
     const durationMs = this.now() - startedAt;
-    // harness 强制回写(§5.4):claimed → in-review/failed,不依赖模型自觉标记
+    // 并发护栏拒绝非任务过错:claimed→pending 回池待派(合法迁移,同 §7.4 恢复语义),台账收口 stopped;
+    // 不写 failed、不发下游 blocked——drain 本轮 allSettled 后下一轮重取(并发空位腾出即派)
+    if (!okRun && errCode === 'CONCURRENCY_LIMIT') {
+      this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'claimed', to: 'pending', ts: this.now(), note: 'concurrency limit, deferred' });
+      this.emit('task-status-changed', { taskId: task.id, from: 'claimed', status: 'pending', note: 'concurrency limit, deferred' });
+      this.deps.registry.finish(ledger.id, 'stopped');
+      return;
+    }
+    // harness 强制回写(§5.4):claimed → in-review/failed,不依赖模型自觉标记;失败 note 带 code+message(与台账 [failed] 行口径对称)
+    const failNote = `execution failed: ${errCode ?? 'UNKNOWN'}: ${errMsg ?? 'no error detail'}`;
     this.applyAndPersist({
       t: 'status-changed', taskId: task.id, from: 'claimed', to: okRun ? 'in-review' : 'failed', ts: this.now(),
-      ...(okRun ? { conclusion: reply, tokens, durationMs } : { note: 'execution failed' }),
+      ...(okRun ? { conclusion: reply, tokens, durationMs } : { note: failNote }),
     });
-    this.emit('task-status-changed', { taskId: task.id, from: 'claimed', status: okRun ? 'in-review' : 'failed' });
+    this.emit('task-status-changed', { taskId: task.id, from: 'claimed', status: okRun ? 'in-review' : 'failed', ...(okRun ? {} : { note: failNote }) });
     if (okRun) {
       this.deps.registry.finish(ledger.id, 'done', { marker: `[conclusion] ${reply}\n` });
     } else {
