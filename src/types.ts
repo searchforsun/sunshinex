@@ -244,6 +244,9 @@ export interface SubagentSpawnInput {
   isolation?: 'worktree';
   /** 预留语义位：v1 传 true 报 NOT_SUPPORTED（后台两段式后批开通） */
   background?: boolean;
+  /** 执行体通道（P2 spec §5）：'team' = 不 fork、登记 TeamRegistry 长驻 teammate（claim 未指派任务，
+   *  经 task_stop 停）；缺省 = 普通 fork 子代理。frontmatter `executor: internal-team` 同效（双通道） */
+  mode?: 'team';
 }
 
 /** 模型路由决策留痕（tier + reason + 实际承载适配器，随 run 结果可观测） */

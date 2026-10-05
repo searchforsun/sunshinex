@@ -45,18 +45,22 @@ interface AgentDef {
   memory?: boolean;
   /** 隔离声明（规格 2026-09-23-subagent-worktree-isolation D2）：frontmatter `isolation: worktree`；缺省无 */
   isolation?: 'worktree';
+  /** 执行体路由声明（P2 spec §5）：frontmatter `executor: internal-team | external-cli`——internal-team =
+   *  spawn 该角色时建长驻 teammate 而非 fork；缺省（含内建预设）undefined = 普通 fork */
+  executor?: 'internal-team' | 'external-cli';
 }
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
 /** 解析 agent.md 的简易 frontmatter（词法单点 skills.parseFrontmatterKV；本处只保留严格策略：
  *  无 frontmatter 块或缺 name 即 fail-fast——注册制物料缺关键字段不得静默降级） */
-export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean; isolation?: 'worktree' } {
+export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean; isolation?: 'worktree'; executor?: 'internal-team' | 'external-cli' } {
   const m = FRONTMATTER.exec(md);
   if (!m) throw new Error('agent.md missing frontmatter');
   const out: Record<string, string> = { name: '', description: '', version: '0.1.0', ...parseFrontmatterKV(md) };
   if (!out.name) throw new Error('agent.md frontmatter missing name');
-  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true', ...(out.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}) };
+  const executor = out.executor === 'internal-team' || out.executor === 'external-cli' ? out.executor : undefined;
+  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true', ...(out.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}), ...(executor !== undefined ? { executor } : {}) };
 }
 
 /** 注册表：四角色内建注册 + agents/{id}/agent.md 装配期一次性加载（fail-fast，运行期零增删）。
@@ -82,7 +86,7 @@ export class AgentRegistry {
       if (!fs.existsSync(file)) continue;
       const md = fs.readFileSync(file, 'utf8');
       const meta = parseAgentFrontmatter(md);
-      this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body, ...(meta.memory ? { memory: true } : {}), ...(meta.isolation ? { isolation: meta.isolation } : {}) });
+      this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body, ...(meta.memory ? { memory: true } : {}), ...(meta.isolation ? { isolation: meta.isolation } : {}), ...(meta.executor ? { executor: meta.executor } : {}) });
     }
   }
 
@@ -116,6 +120,7 @@ export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInp
     label: input.label !== undefined && lit(input.label) ? undefined : input.label,
     tools: Array.isArray(input.tools) ? input.tools.filter((t) => !lit(t)) : input.tools,
     isolation: input.isolation !== undefined && lit(input.isolation) ? undefined : input.isolation,
+    mode: input.mode !== undefined && lit(input.mode) ? undefined : input.mode,
   };
 }
 
@@ -265,6 +270,17 @@ export class SubagentRunner {
       if (!this.deps.registry.has(t)) {
         throw new CodedToolError('INVALID_ARG', `Unknown tool: ${t}`);
       }
+    }
+  }
+
+  /** 角色声明的执行体路由（P2 spawn 双通道判据）：agent.md frontmatter `executor` 透出；
+   *  内建预设/未声明/未知名 → undefined（未知名不在此报错——fork 路径 resolveSpawnSpec 统一 fail-fast） */
+  agentExecutor(id: string | undefined): 'internal-team' | 'external-cli' | undefined {
+    if (id === undefined) return undefined;
+    try {
+      return this.agents.resolve(id).executor;
+    } catch {
+      return undefined;
     }
   }
 
@@ -491,32 +507,49 @@ export class SubagentRunner {
 
 /* ---------- spawn 内置工具（主链动态派生入口） ---------- */
 
+/** teammate 创建接缝（P2 spec §5，裁定：回调形态避免本文件反向值 import Teammate——taskboard 侧类型环）：
+ *  spawn 分流命中时经此建长驻 teammate；回执 name 供观察行组装 */
+export interface TeamSpawnSeam {
+  spawn(input: SubagentSpawnInput): Result<{ name: string }>;
+}
+
 /** spawn 工具工厂：同步阻塞形态，子代理最终报告作为该轮工具观察回传；
  * 同轮 tools 数组批量并行由 reactor 并行闸门放行（subagent 类非 bash）；本身无直接 IO 副作用
- * （guard manual 分支免审批），子代理内部每个工具调用独立过安全链 */
-export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
+ * （guard manual 分支免审批），子代理内部每个工具调用独立过安全链。
+ * team 接缝在场时双通道分流（P2）：mode:'team' 或 agent_id 角色声明 executor:'internal-team' →
+ * 建 TeamRegistry 长驻 teammate（不 fork、无并发位、claim 未指派任务、task_stop 可停）；
+ * 内联 prompt（agent_id 缺席）只有 mode 通道——不解析角色 */
+export function makeSpawnTool(runner: SubagentRunner, team?: TeamSpawnSeam): RegisteredTool {
   return {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation'],
+      required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation', 'mode'],
       properties: {
-        prompt: { type: 'string', description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent cannot see this conversation)' },
+        prompt: { type: ['string', 'null'], description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent cannot see this conversation)' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null spawns an inline subagent' },
         label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
         tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
         background: { type: ['boolean', 'null'], description: 'true = two-phase spawn: returns a task id immediately, the subagent runs in the background and its conclusion lands in the task log; block on it with the task_wait tool (or inspect via read)' },
         isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
+        mode: { type: ['string', 'null'], enum: ['team', null], description: 'Execution channel: "team" = register a long-lived teammate on the shared task board instead of a one-shot fork — it claims unassigned board tasks autonomously and is stopped via task_stop; null = ordinary one-shot subagent' },
       },
     },
     name: SPAWN_TOOL_NAME,
     description:
-      `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface.`,
+      `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. mode "team" (or an agent declaring executor internal-team) creates a persistent teammate that works the shared task board instead of a one-shot fork.`,
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
-      const spec = input as SubagentSpawnInput;
+      const spec = normalizeSpawnInput(input as SubagentSpawnInput);
       runner.validateSpawnInput(spec);
+      // P2 teammate 通道：mode 显式声明或角色 frontmatter executor:internal-team → 长驻 teammate;
+      // 失败与 fork 路径同口径(exitCode 1 + 错误行),不炸父任务
+      if (team !== undefined && (spec.mode === 'team' || runner.agentExecutor(spec.agent_id) === 'internal-team')) {
+        const r = team.spawn(spec);
+        if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `teammate ${r.value.name} started (claims unassigned tasks; stop via task_stop)`, stderr: '', timedOut: false };
+      }
       if (spec.background === true) {
         const started = runner.spawnBackground(spec);
         return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})`, stderr: '', timedOut: false };

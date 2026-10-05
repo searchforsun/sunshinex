@@ -98,7 +98,7 @@ test('逐工具 required/properties 与执行器真实入参一一对应', () =>
       kb_search: ['query', 'topK'],
       memory_write: ['type', 'content', 'description'],
       ask_question: ['question', 'options', 'multiple', 'allowCustom'],
-      [SPAWN_TOOL_NAME]: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation'],
+      [SPAWN_TOOL_NAME]: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation', 'mode'],
     };
     for (const [name, keys] of Object.entries(expected)) {
       const tool = full.get(name);
@@ -157,7 +157,7 @@ test('spawn 工厂声明 parameters（至少其一约束留执行面）', () => 
   const p = paramsOf(spawn);
   assert.deepEqual(
     Object.keys(p.properties ?? {}).sort(),
-    ['agent_id', 'background', 'isolation', 'label', 'prompt', 'tools'],
+    ['agent_id', 'background', 'isolation', 'label', 'mode', 'prompt', 'tools'],
     'spawn parameters must mirror SubagentSpawnInput',
   );
   assert.deepEqual((p.properties?.tools as JsonSchema).items?.type, 'string');

@@ -1,4 +1,4 @@
-import type { AskUserSeam, OutputStyle, TodoItem } from '../types';
+import type { AskUserSeam, OutputStyle, SubagentSpawnInput, TodoItem } from '../types';
 import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { ToolRegistry } from './tools';
@@ -23,6 +23,9 @@ import { SkillsFacade, createSkillsFacade } from './skills';
 import { TaskRegistry } from './tasks';
 import { TaskBoard } from '../taskboard/board';
 import { TeamStore } from '../taskboard/store';
+import { TeamRegistry, Teammate } from '../taskboard/teammate';
+import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
+import { fail, ok, Result } from '../result';
 import { MemoryPipeline } from './memory/pipeline';
 import { SteeringChannel } from './steering';
 import { writeMemoryFact } from './memory/extractor';
@@ -85,6 +88,9 @@ export class Harness {
   readonly tasks: TaskRegistry;
   /** 任务板协调器（spec 2026-10-04 §13 P1）：工作区单隐式 team main 的板面操作权威（测试/后续阶段消费） */
   readonly taskboard: TaskBoard;
+  /** teammate 注册表（P2 spec §5 T3）：spawn mode:'team' / frontmatter executor:internal-team 双通道
+   *  建出的长驻执行体登记处；注入 TaskBoard 派发路由（assignee 命中/留 claim）与 spawn 分流接缝 */
+  readonly team: TeamRegistry;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
@@ -203,10 +209,60 @@ export class Harness {
       },
       agents,
     );
+    // TeamRegistry(P2 T3):先于 spawn 注册构造——teamAdapter 闭包经 this 引用注册表与任务板(执行期才解引用);
+    // 同点注入 TaskBoard 派发路由(T2 接缝 team?:TeamRegistry)
+    this.team = new TeamRegistry();
+    // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
+    // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
+    // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_board/get_task)。
+    // 重名裁定(T2 register 为替换语义,spawn 通道在其上收紧):活名重复 spawn → INVALID_ARG fail-fast
+    // (模型换名/先停后建;静默替换会停掉在跑 teammate 且台账悬空);已停同名 → 替换重建(register 原语义)。
+    // 台账登记:kind 'subagent' + label = teammate 名,stop 句柄接 tm.stop——task_stop 即停,日志承载启动行
+    const teamAdapter = {
+      spawn: (input: SubagentSpawnInput): Result<{ name: string }> => {
+        const name = input.label ?? input.agent_id ?? 'worker';
+        const incumbent = this.team.get(name);
+        if (incumbent !== undefined && !incumbent.stopped) {
+          return fail('INVALID_ARG', `teammate name already active: ${name} (stop it via task_stop or spawn with a different label)`);
+        }
+        let framing: string;
+        if (input.agent_id !== undefined) {
+          try {
+            const def = agents.resolve(input.agent_id);
+            framing = `Your role: ${def.name} (${def.id}); duties: ${def.framing}`;
+          } catch (e) {
+            return fail('INVALID_ARG', e instanceof Error ? e.message : String(e));
+          }
+        } else {
+          framing = (input.prompt ?? '').slice(0, 300);
+        }
+        const tm = new Teammate({
+          name,
+          framing,
+          deps: {
+            safety: this.safety,
+            model: this.model,
+            registry: this.tools,
+            root: base,
+            store,
+            board: this.taskboard,
+            ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+            registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(b, this.taskboard),
+          },
+        });
+        const registered = this.team.register(tm);
+        if (!registered.ok) return registered;
+        const ledgerTask = this.tasks.submit({ kind: 'subagent', label: name });
+        ledgerTask.stop = () => tm.stop();
+        this.tasks.append(ledgerTask.id, `[teammate] ${name} started — claims unassigned board tasks; stop via task_stop ${ledgerTask.id}\n`);
+        tm.kick(); // 建即起 claim 循环(「claims unassigned tasks」承诺即时生效;空板自然收兵零开销)
+        return ok({ name });
+      },
+    };
     // spawn 注册附带呈现元数据（D26/J1）：调用行动词迁自 tui/tool-verbs 旧 VERBS 表；display 为纯
     // 呈现数据（模型面 schema 只取 name/description/parameters，零影响）。工厂文件（subagent.ts 等）
     // 不在 J1 改动清单，故在注册点附加
-    this.tools.register({ ...makeSpawnTool(this.runner), display: { verb: 'SPAWN' } });
+    this.tools.register({ ...makeSpawnTool(this.runner, teamAdapter), display: { verb: 'SPAWN' } });
     // task_stop：后台任务停止工具（规格 D8），账本在场恒装配；呈现动词同上注册点附加
     this.tools.register({ ...makeTaskStopTool(this.tasks), display: { verb: 'TASK_STOP' } });
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配
@@ -217,6 +273,7 @@ export class Harness {
       store: new TeamStore(path.join(resolveDataDir(base), 'teams', 'main')),
       runner: this.runner,
       registry: this.tasks,
+      team: this.team,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     });
     this.taskboard.init();
