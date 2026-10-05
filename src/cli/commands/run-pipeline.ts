@@ -7,6 +7,7 @@ import { resolveDirArg, flagList } from '../index';
 import { t } from '../../i18n';
 import { fail, ok, Result } from '../../result';
 import type { TaskBoard } from '../../taskboard/board';
+import type { BoardTask } from '../../taskboard/model';
 import type { CliArgs } from '../index';
 
 /** 交互审批：gate 名单 → {gate: bool}；readline 注入便于测试 */
@@ -85,6 +86,62 @@ export function runPipelineAssembly(
 const SETTLE_TOTAL_MS = Math.min(DEFAULT_TERMINATION.timeoutMs, 10 * 60 * 1000);
 const SETTLE_SLICE_MS = 200;
 
+/** 板路驱动循环（P2/T6，独立导出供宏测直测真循环含 gate 分支）：settle 短片轮询 + lead 自动关单 +
+ *  gated 人工审批。**收敛域 = 管线任务集（ids，装配返回的 idMap.values()）**——板经 teams/main 持久化，
+ *  同工作区二次跑 pipeline 会遇上轮残留任务，非本管线任务一律不可见不动：残留 failed 不秒杀本轮、
+ *  残留交互 in-review 不被越权关单、上轮被拒 gated 不混入本轮审批，亦不进返回回执。
+ *  settle 收敛判据是「无 pending 且无 claimed」而依赖链的中间 in-review 会顶住收敛（dispatchable 要求
+ *  依赖全 done）——引擎路径「节点 pass 即放行下游」的板语义同义映射 = lead 对 in-review 自动
+ *  review(approved) 关单；gated 任务保持 pending 顶住派发，人工审批后解锁。review 失败守卫：记 warn 不走
+ *  死路（状态被外部改判时下轮快照自然接管）；关单/审批后落入 deadline+settle 再循环（不 continue 直跳：
+ *  下游派发需真实时间，防快照自旋）。rl 可注入（测试桩）；yes 直批免交互。 */
+export async function driveBoardPipeline(
+  board: Pick<TaskBoard, 'snapshot' | 'settle' | 'review'>,
+  ids: Iterable<string>,
+  opts: { yes?: boolean; rl?: { question(q: string): Promise<string> }; settleTotalMs?: number; settleSliceMs?: number; warn?: (line: string) => void } = {},
+): Promise<{ status: 'done' | 'failed' | 'rejected' | 'timeout'; tasks: BoardTask[] }> {
+  const mine = new Set(ids);
+  const warn = opts.warn ?? ((line: string) => console.warn(line));
+  const deadline = Date.now() + (opts.settleTotalMs ?? SETTLE_TOTAL_MS);
+  const sliceMs = opts.settleSliceMs ?? SETTLE_SLICE_MS;
+  let status: 'done' | 'failed' | 'rejected' | 'timeout' = 'done';
+  const pipelineTasks = (): BoardTask[] => Object.values(board.snapshot().tasks).filter((t2) => mine.has(t2.id));
+  for (;;) {
+    const tasks = pipelineTasks();
+    const failed = tasks.filter((t2) => t2.status === 'failed');
+    const inReview = tasks.filter((t2) => t2.status === 'in-review');
+    const busy = tasks.filter((t2) => t2.status === 'pending' || t2.status === 'claimed');
+    if (failed.length > 0) { status = 'failed'; break; }
+    if (busy.length === 0 && inReview.length === 0) break; // 管线任务全 done：收敛完成
+    const gates = tasks.filter((t2) => t2.gated === true);
+    if (inReview.length > 0) {
+      // lead 自动关单推进链条（只关本管线任务）
+      for (const t2 of inReview) {
+        const r = board.review(t2.id, { approved: true });
+        if (!r.ok) warn(`[pipeline] review ${t2.id}: ${r.error.code}: ${r.error.message}`);
+      }
+    } else if (gates.length > 0 && busy.every((t2) => t2.gated === true)) {
+      // 仅剩 gated 待审（其余 busy 是超时未清的执行残留则走下方超时分支）：人工审批（非管线任务不混入）
+      const display = gates.map((t2) => `${t2.id} ${t2.title}`);
+      const approvals = opts.yes === true
+        ? Object.fromEntries(display.map((g) => [g, true]))
+        : await confirmApprovals(display, opts.rl ?? readline.createInterface({ input: process.stdin, output: process.stdout }));
+      let rejected = false;
+      for (let i = 0; i < gates.length; i++) {
+        const approved = approvals[display[i]!] === true;
+        const r = board.review(gates[i]!.id, { approved }); // 拒绝维持 gated（板语义），此处不重派
+        if (!r.ok) warn(`[pipeline] review ${gates[i]!.id}: ${r.error.code}: ${r.error.message}`);
+        if (!approved) rejected = true;
+      }
+      if (rejected) { status = 'rejected'; break; }
+      // 门已解：落入 settle 等待 gate 任务执行
+    }
+    if (Date.now() >= deadline) { status = 'timeout'; break; }
+    await board.settle(Math.min(sliceMs, Math.max(1, deadline - Date.now())));
+  }
+  return { status, tasks: pipelineTasks().sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })) };
+}
+
 export async function runPipeline(args: CliArgs): Promise<void> {
   // 目录来源统一单点（规格 §6.2）：与顶层及 run 同判据——--workdir 优先，裸词报「无法识别命令」不启动
   const d = resolveDirArg(args);
@@ -114,55 +171,20 @@ export async function runPipeline(args: CliArgs): Promise<void> {
     return;
   }
 
-  // 驱动循环（P2/T6）：settle 短片轮询 + lead 自动关单 + gated 人工审批。settle 的收敛判据是「无 pending 且
-  // 无 claimed」，而依赖链的中间 in-review 会顶住收敛（dispatchable 要求依赖全 done）——引擎路径「节点 pass
-  // 即放行下游」在板语义下的同义映射 = 流水线 lead 对 in-review 自动 review(approved) 关单为 done，下游才派发；
-  // gated 任务（delivery-gate）保持 pending 顶住派发，映射既有 confirmApprovals 人工审批（id 用板 taskId）。
-  const deadline = Date.now() + SETTLE_TOTAL_MS;
-  let status = 'done';
-  for (;;) {
-    const tasks = Object.values(deps.taskboard.snapshot().tasks);
-    const failed = tasks.filter((t2) => t2.status === 'failed');
-    const inReview = tasks.filter((t2) => t2.status === 'in-review');
-    const busy = tasks.filter((t2) => t2.status === 'pending' || t2.status === 'claimed');
-    if (failed.length > 0) { status = 'failed'; break; }
-    if (inReview.length > 0) {
-      for (const t2 of inReview) deps.taskboard.review(t2.id, { approved: true }); // lead 自动关单推进链条
-      continue;
-    }
-    if (busy.length === 0) break; // 全 done：收敛完成
-    const gates = tasks.filter((t2) => t2.gated === true);
-    if (gates.length > 0 && busy.every((t2) => t2.gated === true)) {
-      // 仅剩 gated 待审（其余 busy 是超时未清的执行残留则走下方超时分支）：人工审批
-      const display = gates.map((t2) => `${t2.id} ${t2.title}`);
-      const approvals = args.flags.yes
-        ? Object.fromEntries(display.map((g) => [g, true]))
-        : await confirmApprovals(display, readline.createInterface({ input: process.stdin, output: process.stdout }));
-      let rejected = false;
-      for (let i = 0; i < gates.length; i++) {
-        const approved = approvals[display[i]!] === true;
-        deps.taskboard.review(gates[i]!.id, { approved }); // 拒绝维持 gated（板语义），此处不重派
-        if (!approved) rejected = true;
-      }
-      if (rejected) { status = 'rejected'; break; }
-      continue; // 门已解：settle 等待 gate 任务执行
-    }
-    if (Date.now() >= deadline) { status = 'timeout'; break; }
-    await deps.taskboard.settle(Math.min(SETTLE_SLICE_MS, Math.max(1, deadline - Date.now())));
-  }
+  // 驱动循环（P2/T6）：收敛域 = 本管线任务集（idMap.values()）——上轮残留任务（failed/交互 in-review/
+  // 被拒 gated）不可见不动；细节见 driveBoardPipeline 注释
+  const result = await driveBoardPipeline(deps.taskboard, asm.value.values(), { yes: Boolean(args.flags.yes) });
 
-  // 汇总回执：每任务一行（in-review 视为完成待审，标注）；失败任务附 artifact 摘要（失败 note 在事件流，
-  // 板状态投影不含——排障走 teams/<board>/events.jsonl）
-  const fin0 = deps.taskboard.snapshot();
-  const all = Object.values(fin0.tasks).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  for (const t2 of all) {
+  // 汇总回执：每任务一行（只含本管线任务；in-review 视为完成待审，标注）；失败任务附 artifact 摘要（失败
+  // note 在事件流，板状态投影不含——排障走 teams/<board>/events.jsonl）
+  for (const t2 of result.tasks) {
     const mark = t2.status === 'in-review' ? 'in-review(完成待审)' : t2.status;
     console.log(`${t2.id} [${mark}] ${t2.title}`);
     if (t2.status === 'failed') console.error(`[failed-task] ${t2.id} ${t2.title}: tokens=${t2.artifact?.tokens ?? 0}（详情见事件流）`);
   }
   // done 判定 = 无 failed/blocked（blocked 为 pending 派生态，pending 即不 clean）且全部 done/in-review
-  const clean = all.length > 0 && all.every((t2) => t2.status === 'done' || t2.status === 'in-review');
-  const fin = clean ? 'done' : status;
+  const clean = result.tasks.length > 0 && result.tasks.every((t2) => t2.status === 'done' || t2.status === 'in-review');
+  const fin = clean ? 'done' : result.status;
   console.log(`run   : ${fin}`);
   await teardownCliRun(deps, fin);
 }

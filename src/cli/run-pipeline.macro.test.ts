@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { assembleBoardTasks } from './commands/run-pipeline';
+import { assembleBoardTasks, driveBoardPipeline } from './commands/run-pipeline';
 import { templateToTaskSpecs } from '../graph/templates';
 import { TaskBoard } from '../taskboard/board';
 import { TeamStore } from '../taskboard/store';
@@ -65,23 +65,56 @@ test('宏测：两段装配落板（idMap/依赖边/gated）+ settle 关单驱�
     assert.equal(st.tasks['t1']!.status, 'in-review');
     assert.equal(st.tasks['t2']!.status, 'pending', '上游 in-review 未关单，下游不派发');
 
-    // 驱动循环（同 runPipeline 口径）：settle → lead 自动关单 in-review → 重入，直至仅剩 gated pending
-    for (let guard = 0; guard < 12; guard++) {
-      const inReview = Object.values(board.snapshot().tasks).filter((t) => t.status === 'in-review');
-      if (inReview.length === 0) break;
-      for (const t of inReview) assert.ok(board.review(t.id, { approved: true }).ok);
-      await board.settle(200); // gated 尾任务顶住收敛时耗满短片即回，不虚等
-    }
+    // 真驱动循环（runPipeline 同款导出面）：rl 注入审批 'y' 走 confirmApprovals gate 分支；
+    // warn 桩抛错 = review 失败守卫不静默（正常路径零 warn）
+    const result = await driveBoardPipeline(board, idMap.values(), {
+      rl: { question: async () => 'y' },
+      settleSliceMs: 50,
+      warn: (line) => { throw new Error(`unexpected warn: ${line}`); },
+    });
+    assert.equal(result.status, 'done');
+    assert.deepEqual(result.tasks.map((t) => t.id), ['t1', 't2', 't3', 't4', 't5'], '回执恰为本管线五任务（数值序）');
+    for (const t of result.tasks) assert.equal(t.status, 'done', `${t.id} 关单为 done`);
     st = board.snapshot();
-    for (const id of ['t1', 't2', 't3', 't4']) assert.equal(st.tasks[id]!.status, 'done', `${id} 关单为 done`);
-    assert.equal(st.tasks['t5']!.status, 'pending', 'gated 任务保持 pending（审批前不派发）');
-    assert.deepEqual(calls, ['Task t1: planner', 'Task t2: developer', 'Task t3: test-verify', 'Task t4: reviewer'], '执行序 = 模板依赖序（gate 未跑）');
-
-    // 审批映射：gated pending → review(approved) → settle → gate 任务执行进 in-review（完成待审）
-    assert.ok(board.review('t5', { approved: true }).ok, 'gate 解锁');
-    st = await board.settle(1000);
-    assert.equal(st.tasks['t5']!.status, 'in-review', 'gate 解锁后派发执行，终态 in-review（完成待审）');
+    assert.equal(st.tasks['t5']!.status, 'done', 'gate 审批通过后执行并关单');
     assert.deepEqual(calls, ['Task t1: planner', 'Task t2: developer', 'Task t3: test-verify', 'Task t4: reviewer', 'Task t5: delivery-gate'], '全五任务按依赖序执行');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('宏测：残留任务不越权——同板预置残留 failed 与交互 in-review，本轮只看管线任务集', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-macro-residual-'));
+  try {
+    const calls: string[] = [];
+    const board = makeBoard(tmp, calls);
+    // 残留 1：上轮失败任务（执行完 in-review 被 lead 拒绝关单 → failed）
+    assert.ok(board.create({ title: 'residual-failed', spec: 'old run' }).ok); // t1
+    await board.settle(300);
+    assert.ok(board.review('t1', { approved: false }).ok);
+    assert.equal(board.snapshot().tasks['t1']!.status, 'failed');
+    // 残留 2：上轮交互 in-review 任务（等人裁决，不该被本轮越权关单）
+    assert.ok(board.create({ title: 'residual-review', spec: 'old run' }).ok); // t2
+    await board.settle(300);
+    assert.equal(board.snapshot().tasks['t2']!.status, 'in-review');
+    // 本轮管线：装配得 t3..t7（planner 无依赖建即派发）
+    const asm = assembleBoardTasks(board, templateToTaskSpecs('目标（验收标准：c1=ok）'));
+    assert.ok(asm.ok);
+    assert.deepEqual([...asm.value.values()], ['t3', 't4', 't5', 't6', 't7'], '板 id 单调续接残留任务');
+    const result = await driveBoardPipeline(board, asm.value.values(), { rl: { question: async () => 'y' }, settleSliceMs: 50 });
+    // 残留 failed 不秒杀本轮：本轮五任务全 done，status done（整板视角会误判 failed）
+    assert.equal(result.status, 'done', '残留 failed 任务不影响本轮判定');
+    assert.deepEqual(result.tasks.map((t) => t.id), ['t3', 't4', 't5', 't6', 't7'], '回执只含本管线任务');
+    for (const t of result.tasks) assert.equal(t.status, 'done');
+    // 残留任务原态保持：交互 in-review 未被本轮关单，failed 维持
+    const st = board.snapshot();
+    assert.equal(st.tasks['t2']!.status, 'in-review', '残留交互 in-review 不被本轮越权关单');
+    assert.equal(st.tasks['t1']!.status, 'failed', '残留 failed 维持原态');
+    // 执行记录：残留任务各恰一次（装配期跑的），本轮零重派——runner 序 = 两残留 + 本轮五任务（依赖序）
+    assert.deepEqual(calls, [
+      'Task t1: residual-failed', 'Task t2: residual-review',
+      'Task t3: planner', 'Task t4: developer', 'Task t5: test-verify', 'Task t6: reviewer', 'Task t7: delivery-gate',
+    ]);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
