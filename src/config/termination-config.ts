@@ -60,6 +60,13 @@ export function subagentTokenCapEnv(env: NodeJS.ProcessEnv = process.env): numbe
   return positiveIntOrUndefined(env, 'SUNSHINEX_SUBAGENT_TOKEN_CAP');
 }
 
+/** team 预算帽（spec §5.6，缺省不设）：任务板整队 tokens 累计上限，超帽后 drain/claim 双前置拦截——
+ *  任务留 pending 不失败；口径同 subagentTokenCapEnv（未设/空=undefined，非正整数 fail-fast 带槽名），
+ *  消费点为 harness 装配处的 TaskBoard 注入（src/harness/index.ts） */
+export function teamTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  return positiveIntOrUndefined(env, 'SUNSHINEX_TEAM_TOKEN_CAP');
+}
+
 /** 模型调用超时 env 解析（J9b 迁入，2026-10-04 归口 termination-config——超时旋钮单点，先例 contextWindowEnv；
  *  对齐 CLAUDE §12「模型调用超时 600s」的可调口径）：SUNSHINEX_MODEL_TIMEOUT_MS 正整数生效，
  * 未设/空串/非正整数静默忽略回适配器内建 600s。**刻意不并入本文件 positiveIntOrUndefined 的

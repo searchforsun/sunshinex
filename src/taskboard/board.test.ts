@@ -6,6 +6,7 @@ import * as path from 'path';
 import { TaskBoard } from './board';
 import { TeamStore } from './store';
 import { SessionEvent } from '../types';
+import { teamTokenCapEnv } from '../config/termination-config';
 import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 
@@ -19,7 +20,7 @@ interface Harness {
   calls: string[]; // runner 收到的 taskLine 序(执行顺序断言)
 }
 
-function makeBoard(tmp: string, opts?: { failReplies?: string[] }): Harness {
+function makeBoard(tmp: string, opts?: { failReplies?: string[]; teamTokenCap?: number }): Harness {
   const events: SessionEvent[] = [];
   const calls: string[] = [];
   const failReplies = opts?.failReplies ?? [];
@@ -38,6 +39,7 @@ function makeBoard(tmp: string, opts?: { failReplies?: string[] }): Harness {
     registry,
     onEvent: (e) => events.push(e),
     now: (() => { let n = 1000; return () => ++n; })(),
+    ...(opts?.teamTokenCap !== undefined ? { teamTokenCap: opts.teamTokenCap } : {}),
   });
   board.init();
   return { board, events, calls };
@@ -420,6 +422,92 @@ test('持久化往返:重启 init 恢复板,claimed 无终态回池(自愈事件
     // 自愈事件已入流:再次裸 load(不 init)重放后 t9 应仍 pending(事件流自洽)
     const raw = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8');
     assert.ok(raw.includes('"note":"recovered after restart"'), '回池以事件落盘');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('teamTokenCapEnv:未设/空=undefined,合法正整数生效,非法 fail-fast 带槽名(T4)', () => {
+  assert.equal(teamTokenCapEnv({}), undefined);
+  assert.equal(teamTokenCapEnv({ SUNSHINEX_TEAM_TOKEN_CAP: '' }), undefined);
+  assert.equal(teamTokenCapEnv({ SUNSHINEX_TEAM_TOKEN_CAP: '  ' }), undefined);
+  assert.equal(teamTokenCapEnv({ SUNSHINEX_TEAM_TOKEN_CAP: '1000000' }), 1_000_000);
+  assert.throws(() => teamTokenCapEnv({ SUNSHINEX_TEAM_TOKEN_CAP: '-5' }), /SUNSHINEX_TEAM_TOKEN_CAP/);
+  assert.throws(() => teamTokenCapEnv({ SUNSHINEX_TEAM_TOKEN_CAP: '0' }), /SUNSHINEX_TEAM_TOKEN_CAP/);
+  assert.throws(() => teamTokenCapEnv({ SUNSHINEX_TEAM_TOKEN_CAP: '2.5' }), /SUNSHINEX_TEAM_TOKEN_CAP/);
+  assert.throws(() => teamTokenCapEnv({ SUNSHINEX_TEAM_TOKEN_CAP: 'abc' }), /SUNSHINEX_TEAM_TOKEN_CAP/);
+});
+
+test('team 预算帽:drain 前置检查超帽留 pending 不失败,摘要透出用量,kick 重入仍不派发(T4)', async () => {
+  const tmp = tmpdir('sunshinex-tb-teamcap-');
+  try {
+    // fake runner 每任务 tokens 10,帽 15:t1(10<15)→ t2(20≥15)→ t3 留 pending
+    const h = makeBoard(tmp, { teamTokenCap: 15 });
+    h.board.create({ title: 'A', spec: 'a' }); // t1
+    await drain();
+    assert.equal(h.board.snapshot().tasks['t1']!.status, 'in-review');
+    assert.ok(h.board.summaryLines().includes('team budget 10/15 tokens'), `未达帽透出用量:${JSON.stringify(h.board.summaryLines())}`);
+    h.board.create({ title: 'B', spec: 'b' }); // t2:used 10 < 15 → 派发
+    await drain();
+    assert.equal(h.board.snapshot().tasks['t2']!.status, 'in-review');
+    h.board.create({ title: 'C', spec: 'c' }); // t3:used 20 ≥ 15 → 不派发
+    await drain();
+    const s = h.board.snapshot();
+    assert.equal(s.tasks['t3']!.status, 'pending', '超帽留 pending 不失败(spec §5.6)');
+    assert.deepEqual(h.calls, ['Task t1: A', 'Task t2: B'], '恰两任务执行,第三个零派发');
+    const lines = h.board.summaryLines();
+    assert.ok(lines.includes('team budget exhausted (20/15) tokens'), `达帽尾行:${JSON.stringify(lines)}`);
+    assert.ok(!h.events.some((e) => e.type === 'task-blocked'), '超帽不是失败:不发 task-blocked');
+    // 帽持续:review 关单 kick 与新 create kick 均重入 drain 但仍被前置检查拦下
+    await h.board.review('t1', { approved: true });
+    await drain();
+    assert.equal(h.board.snapshot().tasks['t3']!.status, 'pending', 'review kick 后仍不派发(帽未拆)');
+    h.board.create({ title: 'D', spec: 'd' }); // t4
+    await drain();
+    const s2 = h.board.snapshot();
+    assert.equal(s2.tasks['t3']!.status, 'pending');
+    assert.equal(s2.tasks['t4']!.status, 'pending', 'create kick 后仍不派发');
+
+    // 跨重启重放恢复:新协调器同 store 载入,teamTokensUsed 经 artifact.tokens 求和回 20——
+    // 若不重放(计数清零),used=0 < 15 会误派发;断言新任务仍被拦
+    const board2 = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'main')),
+      runner: {
+        runSubagent: async (_i: unknown, o?: { taskLine?: string }) => ({ ok: true as const, value: { reply: `r2 ${o?.taskLine ?? ''}`, tokens: 10 } }),
+      } as unknown as SubagentRunner,
+      registry: { submit: () => ({ id: 'r2', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry,
+      onEvent: () => {},
+      teamTokenCap: 15,
+    });
+    board2.init();
+    board2.create({ title: 'E', spec: 'e' }); // t5
+    await drain();
+    const s3 = board2.snapshot();
+    assert.equal(s3.tasks['t5']!.status, 'pending', '重启后帽用量经 artifact.tokens 重放恢复,新任务仍不派发');
+    assert.equal(s3.tasks['t3']!.status, 'pending', '存续 pending 任务保持');
+    assert.ok(board2.summaryLines().includes('team budget exhausted (20/15) tokens'), `重启后摘要仍透出重放用量:${JSON.stringify(board2.summaryLines())}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('team 预算帽:超帽 claim 前置返回 undefined,teammate 空手而归任务留 pending(T4)', async () => {
+  const tmp = tmpdir('sunshinex-tb-teamcap-claim-');
+  try {
+    // 帽 15 / 每任务 10:t1、t2 执行后 used=20 达帽;t3 留 pending,claim 不得放行
+    const h = makeBoard(tmp, { teamTokenCap: 15 });
+    h.board.create({ title: 'A', spec: 'a' });
+    await drain();
+    h.board.create({ title: 'B', spec: 'b' });
+    await drain();
+    h.board.create({ title: 'C', spec: 'c' }); // 超帽:drain 不派发
+    await drain();
+    assert.equal(h.board.snapshot().tasks['t3']!.status, 'pending');
+    const claimed = h.board.claim('w1');
+    assert.equal(claimed, undefined, '超帽 claim 返回 undefined(teammate 空手而归)');
+    assert.equal(h.board.snapshot().tasks['t3']!.status, 'pending', 'claim 拦下后任务仍 pending,零执行');
+    assert.ok(!h.events.some((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === 't3' && (e.payload as Record<string, unknown>)?.status === 'claimed'), 't3 无 claimed 事件');
+    assert.deepEqual(h.calls, ['Task t1: A', 'Task t2: B'], '执行数不变(帽前两批)');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

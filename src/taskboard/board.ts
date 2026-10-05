@@ -33,6 +33,9 @@ export interface TaskBoardDeps {
   /** teammate 注册表(M2 派发路由):assignee 命中活 teammate → runTask;未指派且有活 teammate → 留给 claim;
    *  缺省/全停 = P1 fork 路径原样(退化语义)。type-only 导入——teammate.ts 反向引 board 类型,双向值导入会成环 */
   team?: TeamRegistry;
+  /** team 预算帽(spec §5.6,缺省不设):整板累计 tokens 上限,超帽 drain/claim 双前置拦截——任务留
+   *  pending 不失败;装配处经 teamTokenCapEnv() 注入(src/harness/index.ts) */
+  teamTokenCap?: number;
 }
 
 const DEFAULT_MAX_OPEN = 64;
@@ -49,6 +52,9 @@ export class TaskBoard {
    *  不收兵则 while(true) 立即重取同批仍 pending 的任务 = 纯微任务自旋(与 capacityDeferred 同病同防) */
   private claimDeferred = false;
   private deferredKick?: ReturnType<typeof setTimeout>;
+  /** team 预算帽累计用量(spec §5.6):finishExecution 回写时累加(计入所有回写的 tokens,失败通常为 0)——
+   *  与 artifact.tokens 同源,init 重放恢复(artifact.tokens 求和),跨重启帽语义续接不清零 */
+  private teamTokensUsed = 0;
   private readonly now: () => number;
   private readonly maxOpen: number;
   private readonly taskTimeoutMs: number;
@@ -66,6 +72,9 @@ export class TaskBoard {
     const loaded = this.deps.store.load();
     const { state, recovered } = recoverOnLoad(loaded);
     this.state = state;
+    // team 帽用量重放恢复(T4 裁定):artifact.tokens 是事件流的投影,求和即历史累计——
+    // 重启后帽语义续接,不因进程重启清零导致超额重放
+    this.teamTokensUsed = Object.values(this.state.tasks).reduce((sum, t) => sum + (t.artifact?.tokens ?? 0), 0);
     for (const id of recovered) {
       this.deps.store.append({ t: 'status-changed', taskId: id, from: 'claimed', to: 'pending', ts: this.now(), note: 'recovered after restart' });
       this.emit('task-status-changed', { taskId: id, from: 'claimed', status: 'pending', note: 'recovered after restart' });
@@ -82,13 +91,20 @@ export class TaskBoard {
 
   /** 面板摘要行(工具 observation 与 TUI 共用,P2 英文化):`t1 [in-review] A (needs t2)` 形态 */
   summaryLines(): string[] {
-    return Object.values(this.state.tasks)
+    const lines = Object.values(this.state.tasks)
       .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
       .map((t) => {
         const dep = t.dependsOn.length > 0 ? ` (needs ${t.dependsOn.join(',')})` : '';
         const gate = t.gated === true ? ' [gated]' : '';
         return `${t.id} [${t.status}]${gate} ${t.title}${dep}`;
       });
+    // team 预算帽透出(T4):帽设置即尾行附用量供工具观察,达帽标注 exhausted(spec §5.6)
+    if (this.deps.teamTokenCap !== undefined) {
+      lines.push(this.teamTokensUsed >= this.deps.teamTokenCap
+        ? `team budget exhausted (${this.teamTokensUsed}/${this.deps.teamTokenCap}) tokens`
+        : `team budget ${this.teamTokensUsed}/${this.deps.teamTokenCap} tokens`);
+    }
+    return lines;
   }
 
   create(input: { title: string; spec: string; dependsOn?: string[]; assignee?: string; gated?: boolean; executor?: 'internal' | 'external-cli' }): Result<{ taskId: string }> {
@@ -192,6 +208,8 @@ export class TaskBoard {
    *  assignee 形参仅事件记账,不改任务指派——指派任务走 executeOne 派发路由,不进 claim。
    *  (同步单线程取置,两 teammate 不会取到同一任务;team 预算帽 T4 落地) */
   claim(assignee: string): BoardTask | undefined {
+    // team 预算帽前置(与 drain 同检,spec §5.6):超帽 teammate 空手而归,任务留 pending 不失败
+    if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) return undefined;
     const task = dispatchable(this.state).find((t) => t.assignee === undefined);
     if (task === undefined) return undefined;
     this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now() });
@@ -239,6 +257,10 @@ export class TaskBoard {
     let defer = false;
     try {
       while (true) {
+        // team 预算帽前置检查(spec §5.6 超帽留 pending 不失败):整板累计 tokens 达帽即收兵,不派发新批。
+        // 不置 capacityDeferred/claimDeferred(无退避定时器、不归队 claim)——任务保持 pending,
+        // 后续 review/create 的 kick 自然重入;用量透出走 summaryLines 尾行,不发阻塞事件
+        if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) break;
         const batch = dispatchable(this.state);
         if (batch.length === 0) break;
         for (const t of batch) this.emit('task-unlocked', { taskId: t.id });
@@ -349,6 +371,9 @@ export class TaskBoard {
    *  r.durationMs 由调用方计算传入(计时归执行路径,回写点不持钟);r.error 携带失败详情供 note 组装。 */
   finishExecution(taskId: string, r: { ok: boolean; reply?: string; tokens?: number; durationMs?: number; error?: { code?: string; message?: string } }, ledgerId?: string): void {
     const failNote = `execution failed: ${r.error?.code ?? 'UNKNOWN'}: ${r.error?.message ?? 'no error detail'}`;
+    // team 帽用量累计(T4):计入所有回写的 tokens(与 artifact 同源的 r.tokens),失败通常为 0——
+    // ok/failed 均累加,幂等面由「finishExecution 每任务恰一次」的回写单点不变量保证
+    this.teamTokensUsed += r.tokens ?? 0;
     this.applyAndPersist({
       t: 'status-changed', taskId, from: 'claimed', to: r.ok ? 'in-review' : 'failed', ts: this.now(),
       ...(r.ok

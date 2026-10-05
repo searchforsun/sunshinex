@@ -33,6 +33,7 @@ import { guardMemoryWrite } from './memory/writer';
 import type { SettlePayload } from './reactor';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig } from '../config/memory-config';
+import { teamTokenCapEnv } from '../config/termination-config';
 import { RunLedger } from './ledger';
 import { loadMcpServers } from '../config';
 import { loadPermissions } from '../config/permissions';
@@ -268,12 +269,14 @@ export class Harness {
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配
     this.tools.register({ ...makeTaskWaitTool(this.tasks), display: { verb: 'TASK_WAIT' } });
     // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
-    // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔)
+    // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔);
+    // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast
     this.taskboard = new TaskBoard({
       store: new TeamStore(path.join(resolveDataDir(base), 'teams', 'main')),
       runner: this.runner,
       registry: this.tasks,
       team: this.team,
+      ...(teamTokenCapEnv() !== undefined ? { teamTokenCap: teamTokenCapEnv() } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     });
     this.taskboard.init();
