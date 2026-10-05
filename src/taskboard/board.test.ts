@@ -138,6 +138,22 @@ test('set_dependency 环检测 fail-fast;gate 挂起与解锁;限流;id 单调',
   }
 });
 
+test('init 惰性建档:空板零物化 team 目录,首写才建(events.jsonl+board.json)', async () => {
+  const tmp = tmpdir('sunshinex-tb-board5-');
+  try {
+    const h = makeBoard(tmp);
+    const teamDir = path.join(tmp, 'teams', 'main');
+    assert.equal(fs.existsSync(teamDir), false, '空板 init 不物化 teams 目录(Ruling 2)');
+    const r = h.board.create({ title: 'A', spec: 'a' });
+    assert.ok(r.ok);
+    await drain();
+    assert.ok(fs.existsSync(path.join(teamDir, 'events.jsonl')), '首写后事件文件已建');
+    assert.ok(fs.existsSync(path.join(teamDir, 'board.json')), '首写后快照已建');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('持久化往返:重启 init 恢复板,claimed 无终态回池(自愈事件)', async () => {
   const tmp = tmpdir('sunshinex-tb-board4-');
   try {
