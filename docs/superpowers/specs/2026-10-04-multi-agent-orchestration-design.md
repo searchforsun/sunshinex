@@ -416,6 +416,8 @@ graph → loop → harness 单向依赖保持;模板宏展开发生在 graph/编
 
 > **落地记录**:P2 已交付(2026-10-06,`815a4ad`/`eda099b`+`72ee3d0`/`98106fa`/`8e9b9dd`/`53614d3`/`7355a15`+`1678259`/`0bf511b`/`cb012ba`)——Teammate 长驻执行体(独立 ContextManager + 单飞 claim 队列 + 派发路由退化语义:无活 teammate=P1 fork 原样)+ 创建双通道(spawn mode:'team' / frontmatter executor)+ 只读板工具(L1)+ team 预算帽(SUNSHINEX_TEAM_TOKEN_CAP,重放恢复)+ ExternalCliExecutor(claude code stream-json 经 sandbox.execBackground,黑盒降级,kind 'external-cli')+ 模板宏化(templateToTaskSpecs + pipeline CLI 走板,驱动收敛任务集)+ Ctrl+T 任务视图(gate 行内审批经 askUser 映射 review)+ e2e(3×7 分担/依赖序/帽/外部同现)。全量门禁 1650 例 0 败、selfcheck OK。裁定:agent-message(L2)按「可选」标记移出 P2,随 P3 前置或独立批次;管线语境 in-review 自动关单(「pass 放行下游」板同义映射),交互语境裁决语义不变;DelegationKind 扩 'external-cli';MAX_TEAMMATES=4。
 
+> **落地记录(L2 agent-message 批次)**:已交付(2026-10-06,`11fe993`/`e87352c`/`dc0c6f7`/`a00f1c3`)——FileInbox(teams/main/inbox/<agent>.jsonl append-only,跨重启 id 不撞)+ send_message 双面工具(主链面 lead→teammate、teammate 面任意定向排己)+ agent-message 事件 + TUI 即时呈现 + teammate 回合边界注入(msg-id 链去重,至少一次+幂等)+ e2e 双向。全量门禁 1668 例 0 败。裁定:guardrail 轻校验(结构性「子不能代父批」由工具面收窄保证,注入深检 P3 复核);teammate 位点=内存 cursor+链去重;lead 投递双轨=事件即时+落档;external 执行体无 inbox(P3+);send_message 入 fork 子面剔除(L2 身份专属),'lead' 保留名。**编排子系统自此除 P3-GUI 外全部实现;P3 依赖 5B GUI spec 先行(ROADMAP),另行立项。**
+
 ### P3 = 5B GUI 事件面消费
 
 - GUI 订阅统一事件面:任务列表 → 看板,dependsOn → DAG 图自动推导,teammate → 侧栏;无任何需要「翻译」的 TUI 概念。
