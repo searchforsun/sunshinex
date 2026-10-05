@@ -117,12 +117,14 @@ test('CONCURRENCY_LIMIT 回池待派:一次拒绝后重派成功,终局 in-revie
       registry,
       onEvent: (e) => events.push(e),
       now: (() => { let n = 1000; return () => ++n; })(),
+      retryDelayMs: 10,
     });
     board.init();
     const r = board.create({ title: 'A', spec: 'a' });
     assert.ok(r.ok);
     await drain();
-    await drain(); // 回池重派第二轮(allSettled 后 drain 重取)
+    // 回池后不再微任务自旋重派,由退避定时器(10ms)让出事件循环后重派成功(2026-10-05 终审复审裁定)
+    await new Promise((res) => setTimeout(res, 40));
     const s = board.snapshot();
     assert.equal(s.tasks['t1']!.status, 'in-review', '回池重派后终局 in-review(不永久失败)');
     assert.ok(!events.some((e) => e.type === 'task-blocked'), '并发拒绝不发下游 blocked');
@@ -134,6 +136,38 @@ test('CONCURRENCY_LIMIT 回池待派:一次拒绝后重派成功,终局 in-revie
     assert.equal(pend.from, 'claimed');
     assert.equal(pend.note, 'concurrency limit, deferred');
     assert.ok(iReview > iPend, `pending 回池事件先于最终 in-review(${iPend} < ${iReview})`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CONCURRENCY_LIMIT 持续占用:退避定时器有界重试,无微任务自旋热循环', async () => {
+  const tmp = tmpdir('sunshinex-tb-board7-');
+  try {
+    const events: SessionEvent[] = [];
+    // 假 runner 永远拒绝:容量被非任务板 subagent(main-chain spawn)持满的极端场景
+    const runner = {
+      runSubagent: async () => ({ ok: false as const, error: { code: 'CONCURRENCY_LIMIT', message: 'limit' } }),
+    } as unknown as SubagentRunner;
+    const registry = { submit: () => ({ id: 'b7', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry;
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'main')),
+      runner,
+      registry,
+      onEvent: (e) => events.push(e),
+      now: (() => { let n = 1000; return () => ++n; })(),
+      retryDelayMs: 50,
+    });
+    board.init();
+    const r = board.create({ title: 'A', spec: 'a' });
+    assert.ok(r.ok);
+    await new Promise((res) => setTimeout(res, 500)); // 500ms 观察窗 / 50ms 退避 → 至多 ~10 轮(自旋热循环会是数百轮)
+    const claimed = events.filter((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'claimed').length;
+    assert.ok(claimed >= 2, `退避定时器重派确有发生(实际 ${claimed} 轮)`);
+    assert.ok(claimed <= 10, `无热循环:500ms 窗口 / 50ms 退避至多 ~10 轮(实际 ${claimed};微任务自旋热循环会是数百轮)`);
+    const lines = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8').split('\n').filter((l) => l.length > 0).length;
+    assert.ok(lines <= 40, `事件流有界增长(实际 ${lines} 行;热循环下无界)`);
+    assert.equal(board.snapshot().tasks['t1']!.status, 'pending', '持续占用下任务保持回池等待,不 failed');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

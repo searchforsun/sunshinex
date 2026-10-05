@@ -27,22 +27,30 @@ export interface TaskBoardDeps {
   taskTimeoutMs?: number;
   /** 未终态任务限流(spec §5.8),缺省 64 */
   maxOpenTasks?: number;
+  /** 容量退避重派间隔(ms):CONCURRENCY_LIMIT 回池后等多少再重派,缺省 1000(测试可注入短值) */
+  retryDelayMs?: number;
 }
 
 const DEFAULT_MAX_OPEN = 64;
 const DEFAULT_TASK_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_RETRY_DELAY_MS = 1000;
 
 export class TaskBoard {
   private state: TaskBoardState = emptyBoard();
   private draining = false;
+  /** 本轮 drain 有任务因 CONCURRENCY_LIMIT 回池:收兵改由退避定时器重派(2026-10-05 终审复审裁定) */
+  private capacityDeferred = false;
+  private deferredKick?: ReturnType<typeof setTimeout>;
   private readonly now: () => number;
   private readonly maxOpen: number;
   private readonly taskTimeoutMs: number;
+  private readonly retryDelayMs: number;
 
   constructor(private readonly deps: TaskBoardDeps) {
     this.now = deps.now ?? Date.now;
     this.maxOpen = deps.maxOpenTasks ?? DEFAULT_MAX_OPEN;
     this.taskTimeoutMs = deps.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+    this.retryDelayMs = deps.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   }
 
   /** 载入恢复(§7.5):重放 → claimed 回池(自愈事件落流)→ 不 kick(Ruling 2) */
@@ -176,19 +184,33 @@ export class TaskBoard {
     void this.drain();
   }
 
-  /** 批量并行派发(graph 层内 allSettled 先例):每轮取当前 dispatchable 全批并发,完成后续跑下一轮 */
+  /** 批量并行派发(graph 层内 allSettled 先例):每轮取当前 dispatchable 全批并发,完成后续跑下一轮。
+   *  容量退避(2026-10-05 终审复审裁定):CONCURRENCY_LIMIT 回池若仍在 while(true) 里立即重取,
+   *  runSubagent 同步拒绝 → allSettled 微任务即 resolve → 纯微任务自旋(事件流无界增长 + 饿死才能
+   *  释放容量的 macrotask 完成回调 = 潜在死锁)。故本轮收兵,退避定时器让出事件循环后再 kick 重派。 */
   private async drain(): Promise<void> {
     if (this.draining) return;
     this.draining = true;
+    let defer = false;
     try {
       while (true) {
         const batch = dispatchable(this.state);
         if (batch.length === 0) break;
         for (const t of batch) this.emit('task-unlocked', { taskId: t.id });
         await Promise.allSettled(batch.map((t) => this.executeOne(t)));
+        if (this.capacityDeferred) {
+          this.capacityDeferred = false;
+          defer = true;
+          break; // 容量被占:本轮收兵,定时器让出事件循环(macrotask 完成回调才有机会释放容量)
+        }
       }
     } finally {
       this.draining = false;
+      if (defer) {
+        clearTimeout(this.deferredKick); // 未清不重入:clearTimeout 更稳
+        this.deferredKick = setTimeout(() => { this.deferredKick = undefined; this.kick(); }, this.retryDelayMs);
+        this.deferredKick.unref?.();
+      }
     }
   }
 
@@ -234,11 +256,13 @@ export class TaskBoard {
     }
     const durationMs = this.now() - startedAt;
     // 并发护栏拒绝非任务过错:claimed→pending 回池待派(合法迁移,同 §7.4 恢复语义),台账收口 stopped;
-    // 不写 failed、不发下游 blocked——drain 本轮 allSettled 后下一轮重取(并发空位腾出即派)
+    // 不写 failed、不发下游 blocked——置 capacityDeferred,drain 本轮收兵改由退避定时器重派
+    // (2026-10-05 终审复审裁定:容量被外部占用时定时器让出事件循环,消除微任务自旋热循环)
     if (!okRun && errCode === 'CONCURRENCY_LIMIT') {
       this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'claimed', to: 'pending', ts: this.now(), note: 'concurrency limit, deferred' });
       this.emit('task-status-changed', { taskId: task.id, from: 'claimed', status: 'pending', note: 'concurrency limit, deferred' });
       this.deps.registry.finish(ledger.id, 'stopped');
+      this.capacityDeferred = true;
       return;
     }
     // harness 强制回写(§5.4):claimed → in-review/failed,不依赖模型自觉标记;失败 note 带 code+message(与台账 [failed] 行口径对称)
