@@ -16,6 +16,7 @@ import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import { TaskRegistry } from './tasks';
+import { TASKBOARD_TOOL_NAMES } from './tools/taskboard-tools';
 import { parseFrontmatterKV } from './skills';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
@@ -232,9 +233,10 @@ export class SubagentRunner {
   }
 
   /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点；收窄 spawn+todo_write+ask_question+worktree）：
-   * 缺省 = 父全量 − 这四件；显式 tools = 按名取交集再恒剔除。剔除依据：todo_write 归属主任务单一事实源（D9）；
+   * 缺省 = 父全量 − 这些件；显式 tools = 按名取交集再恒剔除。剔除依据：todo_write 归属主任务单一事实源（D9）；
    * spawn 防子代再生子代（派生树受控）；ask_question 是面向用户的 HITL 通道，fork 执行不中途发问（结论回写即应答）；
-   * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子代理不得改动主会话工作环境 */
+   * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子代理不得改动主会话工作环境；
+   * taskboard 五件套 lead-only(2026-10-05 P1)——板面操作权归主链 lead，子代理不碰板 */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
     if (input?.tools && input.tools.length > 0) {
       const child = this.deps.registry.derive({ only: input.tools });
@@ -242,9 +244,10 @@ export class SubagentRunner {
       child.unregister(SPAWN_TOOL_NAME);
       child.unregister('ask_question');
       child.unregister('worktree');
+      for (const n of TASKBOARD_TOOL_NAMES) child.unregister(n);
       return child;
     }
-    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree'] });
+    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', ...TASKBOARD_TOOL_NAMES] });
   }
 
   /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、tools 未知名 INVALID_ARG（T2 起两段式开通，background 分支放行）。

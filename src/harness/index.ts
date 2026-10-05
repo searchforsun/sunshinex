@@ -8,6 +8,7 @@ import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
 import { makeTaskStopTool } from './tools/task-stop';
 import { makeTaskWaitTool } from './tools/task-wait';
+import { makeTaskBoardTools } from './tools/taskboard-tools';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
@@ -20,6 +21,8 @@ import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { TaskRegistry } from './tasks';
+import { TaskBoard } from '../taskboard/board';
+import { TeamStore } from '../taskboard/store';
 import { MemoryPipeline } from './memory/pipeline';
 import { SteeringChannel } from './steering';
 import { writeMemoryFact } from './memory/extractor';
@@ -80,6 +83,8 @@ export class Harness {
   readonly runner: SubagentRunner;
   /** 统一后台任务账本（后台任务线规格 D1）：exec/spawn 后台任务的 ID 空间/生命周期/状态单点 */
   readonly tasks: TaskRegistry;
+  /** 任务板协调器（spec 2026-10-04 §13 P1）：工作区单隐式 team main 的板面操作权威（测试/后续阶段消费） */
+  readonly taskboard: TaskBoard;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
@@ -206,6 +211,16 @@ export class Harness {
     this.tools.register({ ...makeTaskStopTool(this.tasks), display: { verb: 'TASK_STOP' } });
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配
     this.tools.register({ ...makeTaskWaitTool(this.tasks), display: { verb: 'TASK_WAIT' } });
+    // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
+    // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔)
+    this.taskboard = new TaskBoard({
+      store: new TeamStore(path.join(resolveDataDir(base), 'teams', 'main')),
+      runner: this.runner,
+      registry: this.tasks,
+      ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+    });
+    this.taskboard.init();
+    for (const t of makeTaskBoardTools(this.taskboard)) this.tools.register(t);
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,
