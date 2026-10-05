@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createRuntime, TuiRuntime } from '../tui/runtime';
 import { ModelAdapter } from '../model/adapter';
 import { SessionEvent } from '../types';
@@ -31,12 +32,20 @@ interface CurrentRun {
 /** JSON body 上限（1MB）：防无界 body 撑爆 daemon 内存；超限即断连收口 */
 const MAX_BODY_BYTES = 1024 * 1024;
 
+/** 事件环形缓冲容量（重连补发窗口）：满即丢最老——daemon 长跑不无界涨内存 */
+const EVENT_BUFFER_CAP = 512;
+
+/** WS 保活节拍：30s 一 ping；pong 静默超 60s 即 terminate（close 事件统一清理） */
+const PING_INTERVAL_MS = 30_000;
+const PONG_TIMEOUT_MS = 60_000;
+
 /**
- * GUI daemon 核心（spec §3）：HTTP 控制面 + 会话生命周期。装配零旁路——与 TUI 同一 `createRuntime`
- * 单点（mode 恒 dontAsk：GUI v1 无终端交互面，审批/问询走回执端点，T3 接线），`harness` 公开面
- * （tasks/pipeline/mcpClose）只在 teardown 消费。HTTP 面（本任务）：healthz 免鉴权 + submit/interrupt
- * 经 Bearer token 鉴权（§4.3：仅回环 + token，远程暴露为 v1 非目标）。WS 事件泵随 T2 落地，本任务
- * 仅就位 onEvent 注入点（pump 占位缓冲）。
+ * GUI daemon 核心（spec §3）：HTTP 控制面 + WS 事件面 + 会话生命周期。装配零旁路——与 TUI 同一
+ * `createRuntime` 单点（mode 恒 dontAsk：GUI v1 无终端交互面，审批/问询走回执端点，T3 接线），
+ * `harness` 公开面（tasks/pipeline/mcpClose）只在 teardown 消费。HTTP 面：healthz 免鉴权 +
+ * submit/interrupt 经 Bearer token 鉴权（§4.3：仅回环 + token，远程暴露为 v1 非目标）。WS 事件面
+ * （T2）：onEvent 单点泵入 → `{kind:'event'}` 帧广播全部连接 + 512 环形缓冲，连接建立即补发缓冲
+ * 全量（断线重连恢复窗口）；升级同走 Bearer 头鉴权。
  */
 export class GuiDaemon {
   private readonly runtime: TuiRuntime;
@@ -44,8 +53,14 @@ export class GuiDaemon {
   private server?: http.Server;
   /** 幂等收口：首调落链，后续调用复用同一 Promise（close 链只走一遍） */
   private closePromise?: Promise<void>;
-  /** 事件泵占位缓冲（T2 完整化为 WS 广播 + 有界环形缓冲）：onEvent 注入点本任务就位，事件不丢 */
+  /** 事件环形缓冲（补发窗口）：pump 单点写入，连接建立即全量逐帧补发 */
   private readonly eventBuffer: SessionEvent[] = [];
+  /** WS 面：noServer 挂 http server upgrade；连接 Set=pump 广播面 */
+  private wss?: WebSocketServer;
+  private readonly wsClients = new Set<WebSocket>();
+  /** 每 pong 时间戳（WeakMap 旁挂，不入连接对象）：ping 心跳判活依据 */
+  private readonly wsLastPong = new WeakMap<WebSocket, number>();
+  private pingTimer?: NodeJS.Timeout;
   /** 单 run 锁外窥（测试/后续 /snapshot 消费）：current 在场即 running */
   readonly status: () => 'idle' | 'running' = () => (this.current ? 'running' : 'idle');
 
@@ -58,9 +73,19 @@ export class GuiDaemon {
     });
   }
 
-  /** 事件泵（T2 前占位）：本任务只入缓冲；T2 换广播 + 环形缓冲（重连补发窗口），注入点不变 */
+  /** 事件泵：环形缓冲写入（满 512 丢最老）+ 实时广播全部连接。序列化一次逐连接 send——同一连接
+   *  的帧恒按 pump 调用序到达（ws 内部发送缓冲有序，无需额外队列） */
   private pump(e: SessionEvent): void {
     this.eventBuffer.push(e);
+    if (this.eventBuffer.length > EVENT_BUFFER_CAP) this.eventBuffer.shift();
+    if (this.wsClients.size === 0) return;
+    const frame = this.frameEvent(e);
+    for (const ws of this.wsClients) ws.send(frame);
+  }
+
+  /** 下行帧单点：`{kind:'event', e}` JSON 序列化（补发与实时共用同一帧形） */
+  private frameEvent(e: SessionEvent): string {
+    return JSON.stringify({ kind: 'event', e });
   }
 
   /**
@@ -75,20 +100,78 @@ export class GuiDaemon {
       server.listen(opts?.port ?? 0, '127.0.0.1', () => resolve());
     });
     this.server = server;
+    this.wss = this.attachWs(server, token);
     const addr = server.address();
     if (addr === null || typeof addr === 'string') throw new Error('GuiDaemon: listen address unavailable');
     return { port: addr.port, token, close: () => this.close() };
   }
 
-  /** 幂等 teardown：http server close → tasks.stopAll → pipeline drain → mcpClose（序同 CLI teardownCliRun 现场，
-   *  HTTP 面先行关闭——不再接受新请求后再动运行时内脏；细节裁定见各步骤行内注释） */
+  /** WS 面装配：http server 'upgrade' → 验 Bearer 头（同 HTTP 面口径，§4.3）→ wss.handleUpgrade 接管；
+   *  noServer 形态复用同一 http server（端口不另开）。30s ping 保活计时器在此启动，close 时清 */
+  private attachWs(server: http.Server, token: string): WebSocketServer {
+    const wss = new WebSocketServer({ noServer: true });
+    server.on('upgrade', (req, socket, head) => {
+      // teardown 已启动即不再收新连接（WS 先于 server close 退场，此处与鉴权失败同拒升级）
+      if (this.closePromise || req.headers.authorization !== `Bearer ${token}`) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(req, socket, head, (ws) => this.onWsConnection(ws));
+    });
+    this.pingTimer = setInterval(() => this.heartbeat(), PING_INTERVAL_MS);
+    return wss;
+  }
+
+  /** 连接生命周期：入 Set（广播面）→ 补发缓冲全量 → pong 记时/close 清理。补发在 upgrade 回调内
+   *  同步完成，与后续实时帧（pump 单点）天然无交错——帧序=缓冲序接事件序 */
+  private onWsConnection(ws: WebSocket): void {
+    this.wsClients.add(ws);
+    this.wsLastPong.set(ws, Date.now());
+    ws.on('pong', () => this.wsLastPong.set(ws, Date.now()));
+    // error 必须挂 listener（EventEmitter 契约）：socket 错误细节不倒面，close 统一走清理
+    ws.on('error', () => {});
+    ws.on('close', () => this.wsClients.delete(ws));
+    for (const e of this.eventBuffer) ws.send(this.frameEvent(e));
+  }
+
+  /** 保活心跳：逐连接判活——pong 静默超 60s 即 terminate（close 事件统一清理 Set），否则发 ping */
+  private heartbeat(): void {
+    const now = Date.now();
+    for (const ws of this.wsClients) {
+      if (now - (this.wsLastPong.get(ws) ?? now) > PONG_TIMEOUT_MS) {
+        ws.terminate();
+        continue;
+      }
+      ws.ping();
+    }
+  }
+
+  /** 幂等 teardown：abort 在跑 run → wss close（逐连接 1001）→ http server close → tasks.stopAll →
+   *  pipeline drain → mcpClose（序同 CLI teardownCliRun 现场，网络面先行关闭——不再接受新请求/新连接、
+   *  在跑 run 中止后再动运行时内脏；细节裁定见各步骤行内注释） */
   close(): Promise<void> {
     if (!this.closePromise) this.closePromise = this.teardown();
     return this.closePromise;
   }
 
   private async teardown(): Promise<void> {
-    // 1) HTTP server 先收：close 停接新连接，closeAllConnections 掐掉存活的 keep-alive 空闲连接——
+    // 0) 在跑 run 即刻中止（T1 评审裁定：close 时若 run 仍悬挂，其 promise 会拖住事件循环/测试收口；
+    //    路径同 /interrupt——runTask 以 stopReason=interrupted 收束，finally 清 current）
+    this.current?.abort.abort();
+    // 1) WS 面先收：停 ping 计时器，逐连接 1001 Going Away 后 wss.close——先于 HTTP server close，
+    //    升级连接与请求连接同序退场，server close 时无存活的升级套接字拖尾
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = undefined;
+    }
+    const wss = this.wss;
+    if (wss) {
+      for (const ws of this.wsClients) ws.close(1001);
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+      this.wsClients.clear();
+    }
+    // 2) HTTP server 先收：close 停接新连接，closeAllConnections 掐掉存活的 keep-alive 空闲连接——
     //    否则 undici 连接池的滞留套接字会让 close 回调悬到超时，teardown 时序不可控
     const srv = this.server;
     if (srv) {
@@ -97,11 +180,11 @@ export class GuiDaemon {
         srv.closeAllConnections();
       });
     }
-    // 2) 停全部后台任务（同 CLI D24 理由：任务执行体先停、通道后关，stopAll 同步纯本地记账不抛）
+    // 3) 停全部后台任务（同 CLI D24 理由：任务执行体先停、通道后关，stopAll 同步纯本地记账不抛）
     this.runtime.harness.tasks.stopAll();
-    // 3) 排空后台沉淀管线（此时无新入队源，drain 即终态）
+    // 4) 排空后台沉淀管线（此时无新入队源，drain 即终态）
     await this.runtime.harness.pipeline.drain();
-    // 4) MCP 连接收口：关闭 stdio 子进程，防悬挂事件循环
+    // 5) MCP 连接收口：关闭 stdio 子进程，防悬挂事件循环
     await this.runtime.harness.mcpClose();
   }
 
