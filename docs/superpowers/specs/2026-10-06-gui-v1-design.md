@@ -164,6 +164,7 @@ gui/
 | 批次 | 范围 | 验收 |
 |---|---|---|
 | **G1 daemon 骨架** | serve 命令/HTTP/WS/token/事件泵/submit·interrupt | 契约测试:ScriptedAdapter 一轮对话事件序经 WS 可订阅 |
+| ~~G1 已交付~~ | 2026-10-06,`c6ba520`/`cf6037a`/`7ad24c3`——GuiDaemon(createRuntime 同单点/单 run 锁/teardown 含 abort 在跑 run)+ WS 事件泵({kind:'event'} 帧+512 环形缓冲+连接即补发+Bearer 升级鉴权+ping 保活)+ serve 命令 + 契约收口(全链两轮/404 hint)。全量 1682 例 0 败。裁定:HangingAdapter 挂起测试形态(session.interrupt 同款);413 超限;补发与 101 握手同 TCP 段(客户端收集器构造即挂) | 验收已过 |
 | **G2 gui 骨架** | workspace/vite/连接层/投影复用/snapshot | 无头断言:snapshot 渲染出静态转录与板 |
 | **G3 对话页** | 聊天 reducer/流式/提交/中断/steering/状态栏 | 冒烟:提交→流式渲染→done 收段;断线重连恢复 |
 | **G4 审批问询** | 挂起表/WS 帧/卡片/回执 | 契约:manual 模式审批闭环经 HTTP 回执 |
