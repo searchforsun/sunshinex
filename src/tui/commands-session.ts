@@ -36,7 +36,7 @@ export async function resumeFlow(ctrl: SessionController): Promise<void> {
       ctrl.pushMsg('system', t('No such session: ' + (answer.labels[0] ?? ''), '没有这个会话：' + (answer.labels[0] ?? '')), { level: 'warn' });
       return;
     }
-    restoreFromSession(ctrl, pick);
+    await restoreOrFork(ctrl, pick);
     return;
   }
   // ≤8 档全量直出（2026-09-30 翻页口径统一：滑窗自动翻页由渲染层承载，More…/Back… 循环退役）
@@ -54,7 +54,7 @@ export async function resumeFlow(ctrl: SessionController): Promise<void> {
     ctrl.pushMsg('system', t('No such session: ' + pickedId, '没有这个会话：' + pickedId), { level: 'warn' });
     return;
   }
-  restoreFromSession(ctrl, pick);
+  await restoreOrFork(ctrl, pick);
 }
 
 /** --continue（规格 D1/D3）：续接最近会话（listSessions mtime 降序首项，对标 CC -c）；无档提示后按新会话继续（不静默吞） */
@@ -115,10 +115,30 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   }
 }
 
-/** /rewind //fork 共用分支流程（rewind/fork 规格 §7）：锚点选择 → 分档 → 装载 → 代码回退（可选）→ 回执 + 输入回填 */
-export async function branchFlow(ctrl: SessionController, kind: 'rewind' | 'fork'): Promise<void> {
+/** /resume 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore=现行恢复路径；Fork from…=branchFlow 显式源分档——可从任意历史会话分叉，目标无需是当前会话。
+ *  不走「先 restore 源会话再 branch」：事件级落盘下中间 restore 会把横幅行追加进源档（违背 §7.2 源会话原地保留）并污染分档前缀 */
+async function restoreOrFork(ctrl: SessionController, pick: SessionMeta): Promise<void> {
+  const mode = await ctrl.askUser({
+    question: t('Restore this session, or fork from it?', '恢复该会话，还是从它分叉？'),
+    options: [{ label: 'restore' }, { label: 'Fork from…' }],
+  });
+  if (mode.type === 'dismissed') {
+    ctrl.pushMsg('system', t('Resume cancelled', '已取消恢复'));
+    return;
+  }
+  const mpick = mode.type === 'custom' ? mode.text.trim() : (mode.labels[0] ?? '');
+  if (mpick === 'Fork from…') {
+    await branchFlow(ctrl, 'fork', pick);
+    return;
+  }
+  restoreFromSession(ctrl, pick);
+}
+
+/** /rewind //fork 共用分支流程（rewind/fork 规格 §7）：锚点选择 → 分档 → 装载 → 代码回退（可选）→ 回执 + 输入回填；
+ *  source 缺省=当前会话（/rewind //fork 斜杠入口），显式传入=/resume Fork from… 的任意历史会话（§7.2 入口 B） */
+export async function branchFlow(ctrl: SessionController, kind: 'rewind' | 'fork', source?: SessionMeta): Promise<void> {
   const dataDir = resolveDataDir(ctrl.root);
-  const srcId = ctrl.journal?.currentId;
+  const srcId = source?.id ?? ctrl.journal?.currentId;
   const srcFile = srcId ? path.join(sessionsDir(dataDir), srcId + '.jsonl') : undefined;
   if (!srcId || !srcFile || !fs.existsSync(srcFile)) {
     ctrl.pushMsg('system', t(kind === 'rewind' ? 'No journaled session to rewind' : 'No journaled session to fork', kind === 'rewind' ? '当前会话没有可回退的日志' : '当前会话没有可分叉的日志'), { level: 'warn' });

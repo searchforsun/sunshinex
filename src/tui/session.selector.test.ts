@@ -48,6 +48,9 @@ test('/resume 无参：选择器挂起（问题卡列会话）→ 选中 → 恢
     assert.equal(ctrl2.getState().question?.options.length, 1, '选择器应列出存档会话');
     assert.equal(ctrl2.getState().question?.options[0].label, sessions[0].id);
     ctrl2.resolveAskAnswer({ type: 'selected', labels: [sessions[0].id] });
+    // 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore 默认首项走现行恢复
+    await waitFor(() => ctrl2.getState().question?.question.includes('Restore this session, or fork from it?') ?? false);
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     await p;
     await ctrl2.waitIdle();
     assert.ok(messageTexts(ctrl2).includes('任务一完成'), '选中后应重放目标会话消息面');
@@ -100,6 +103,9 @@ test('/resume：>8 条 filterable 全量卡——一次问询直达恢复（规�
     assert.ok(!q?.options.some((o) => o.label === 'More…'), '会话层不注入导航行');
     const labels = q?.options.map((o) => o.label) ?? [];
     ctrl.resolveAskAnswer({ type: 'selected', labels: [labels[0]!] });
+    // >8 筛选卡与 ≤8 直出卡同走二级动作卡（规格 §7.2 入口 B 对两条选择路径生效）
+    await waitFor(() => ctrl.getState().question?.question.includes('Restore this session, or fork from it?') ?? false);
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     await p;
     await ctrl.waitIdle();
     assert.equal(ctrl.getState().status, 'idle', '选中即恢复目标会话');

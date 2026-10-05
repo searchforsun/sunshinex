@@ -71,6 +71,12 @@ test('归档富化回写日志：resume 回放 SPAWN 行带 detail/subagentMeta�
     const deadline = Date.now() + 5000;
     while (ctrl2.getState().status !== 'awaiting-question' && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
     ctrl2.resolveAskAnswer({ type: 'selected', labels: [ctrl2.getState().question!.options[0]!.label] });
+    // 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore 默认首项走现行恢复
+    const modeDeadline = Date.now() + 5000;
+    while (!(ctrl2.getState().question?.question.includes('fork from it?') ?? false) && Date.now() < modeDeadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     // 等恢复回执（不等 status：resolve 后状态先回 idle、restoreFromSession 仍在异步链上，等 idle 会抢跑断言）
     const deadline2 = Date.now() + 5000;
     while (!ctrl2.getState().messages.some((m) => m.text.includes('Session restored') || m.text.includes('已恢复会话')) && Date.now() < deadline2) {

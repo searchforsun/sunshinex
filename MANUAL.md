@@ -317,7 +317,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 代码回退只跟踪 write 工具改写的文件（pre-image 影子快照，存于数据目录 `sessions/_blobs/`）；exec 命令副作用与外部编辑不跟踪——**不是 git 替代**。
 
-**`/fork` 分叉**：从任意历史轮复制出平行会话并切换过去，源会话原样保留；`/resume` 列表中分叉会话带 `↳ fork from …` 血缘标注。
+**`/fork` 分叉**：从任意历史轮复制出平行会话并切换过去，源会话原样保留；`/resume` 列表中分叉会话带 `↳ fork from …` 血缘标注。在 `/resume` 列表选中历史会话后还可选 `Fork from…`，从该会话的任意任务轮二次分叉（目标无需是当前会话）。
 
 ### 5.5 Worktree 隔离
 

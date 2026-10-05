@@ -47,6 +47,9 @@ test('resumePicker：构造后即弹会话选择卡 → 选中 → 恢复目标�
     const labels = ctrl2.getState().question?.options.map((o) => o.label) ?? [];
     assert.ok(labels.includes(sessions[0].id), '选择卡列出存档会话');
     ctrl2.resolveAskAnswer({ type: 'selected', labels: [sessions[0].id] });
+    // 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore 默认首项走现行恢复
+    await waitFor(() => ctrl2.getState().question?.question.includes('Restore this session, or fork from it?') ?? false);
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     await waitFor(() => ctrl2.getState().status === 'idle');
     assert.ok(messageTexts(ctrl2).includes('要恢复的答复'), '选定后重放目标会话消息面');
   } finally {

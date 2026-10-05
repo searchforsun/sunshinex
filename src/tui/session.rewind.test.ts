@@ -161,6 +161,53 @@ test('/fork：复制平行会话，源档字节不动、两者血缘正确', asy
   }
 });
 
+test('/resume Fork from…：从非活动历史会话分叉（入口 B，规格 §7.2）', async () => {
+  const tmp = tmpdir('rewind-t5g-');
+  const restore = pinDataDir(path.join(tmp, 'data'));
+  try {
+    // 造档：源会话两轮（独立控制器，分叉发起方是另一个会话——目标无需是当前会话）
+    const src = await twoTurnSession(tmp);
+    const dataDir = resolveDataDir(tmp);
+    const srcId = listSessions(dataDir)[0]!.id;
+    const srcFile = path.join(sessionsDir(dataDir), srcId + '.jsonl');
+    const srcBytes = fs.readFileSync(srcFile, 'utf8');
+
+    // 新会话：/resume 选中源会话 → Fork from… → 锚点任务二 → 确认
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"忽略"}']) });
+    const p = ctrl.submit('/resume');
+    const pickQ = await waitQuestion(ctrl, 'Resume which session?');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: [pickQ.options.find((o) => o.label === srcId)!.label] });
+    const modeQ = await waitQuestion(ctrl, 'Restore this session, or fork from it?');
+    assert.deepEqual(modeQ.options.map((o) => o.label), ['restore', 'Fork from…'], '二级动作卡：restore 默认首项 + Fork from…');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['Fork from…'] });
+    const anchorsQ = await waitQuestion(ctrl, 'Fork from which turn?');
+    assert.equal(anchorsQ.options.length, 2, '锚点来自被选中的源会话而非当前会话');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: [anchorsQ.options[1].label] });
+    await waitQuestion(ctrl, 'Fork a parallel session');
+    ctrl.resolveAskAnswer({ type: 'selected', labels: ['fork'] });
+    await p;
+
+    const s = ctrl.getState();
+    assert.equal(s.status, 'idle');
+    // 源档逐字节不动（/resume 命令行落在发起方自建档，不触碰源档）
+    assert.equal(fs.readFileSync(srcFile, 'utf8'), srcBytes, '源档应完全不变');
+    // 新档血缘指向源会话；活动指针切换
+    const metas = listSessions(dataDir);
+    const fork = metas.find((m) => m.forkedFrom?.kind === 'fork')!;
+    assert.equal(fork.forkedFrom?.sourceSessionId, srcId, '血缘指向被选中的历史会话');
+    assert.ok((fork.forkedFrom?.upToLine ?? 0) > 1, '分档含锚点前真实前缀（非空档）');
+    assert.equal(ctrl.journal?.currentId, fork.id, '活动会话切到分叉新档');
+    // 对话面=源会话锚点前重放（任务一轮在、任务二轮不在链上）；锚点输入回填
+    const texts = s.messages.filter((m) => m.role === 'user').map((m) => m.text);
+    assert.ok(texts.includes('任务一'), '分叉档重放源会话锚点前缀');
+    assert.ok(!texts.includes('任务二'), '锚点轮输入不进链');
+    assert.equal(ctrl.takeBackfill(), '任务二');
+  } finally {
+    restore();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('/resume 列表血缘：fork 出的新档列表行带 ↳ 标注', async () => {
   const tmp = tmpdir('rewind-t5d-');
   const restore = pinDataDir(path.join(tmp, 'data'));

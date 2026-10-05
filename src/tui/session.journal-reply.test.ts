@@ -54,6 +54,9 @@ test('resume：流式切块段落全部入档，恢复后正文完整', async ()
     await waitFor(() => ctrl2.getState().status === 'awaiting-question');
     const sessions = listSessions(pinDataDir(tmp));
     ctrl2.resolveAskAnswer({ type: 'selected', labels: [sessions[0].id] });
+    // 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore 默认首项走现行恢复
+    await waitFor(() => ctrl2.getState().question?.question.includes('fork from it?') ?? false);
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     await waitFor(() => ctrl2.getState().status === 'idle');
     const restored = messageTexts(ctrl2);
     assert.ok(restored.includes('第一段结论行'), '恢复后含首段（切块段须入档）');

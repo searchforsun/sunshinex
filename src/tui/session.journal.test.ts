@@ -49,6 +49,9 @@ test('重放一致性：live 会话（任务×2 + /model-tier）重放到新控�
     await waitFor(() => ctrl2.getState().status === 'awaiting-question');
     const cands = ctrl2.getState().question?.options.map((o) => o.label) ?? [];
     ctrl2.resolveAskAnswer({ type: 'selected', labels: [cands[0]!] });
+    // 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore 默认首项走现行恢复
+    await waitFor(() => ctrl2.getState().question?.question.includes('fork from it?') ?? false);
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     await pr;
     await ctrl2.waitIdle();
     const after = ctrl2.getState().messages;
@@ -96,6 +99,9 @@ test('/new 轮转：旧档留存可找回、列表倒序、序号恢复旧会话
     await waitFor(() => ctrl2.getState().status === 'awaiting-question');
     const cands = ctrl2.getState().question?.options.map((o) => o.label) ?? [];
     ctrl2.resolveAskAnswer({ type: 'selected', labels: [cands[1]!] });
+    // 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore 默认首项走现行恢复
+    await waitFor(() => ctrl2.getState().question?.question.includes('fork from it?') ?? false);
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     await pr;
     const texts = ctrl2.getState().messages.map((m) => m.text);
     assert.ok(texts.some((t) => t.includes('任务甲')), '恢复的是旧会话（任务甲）');
@@ -231,6 +237,9 @@ test('/resume 候选排除当前在飞会话（事件级建档后命令输入不
     const cands = ctrl2.getState().question?.options.map((o) => o.label) ?? [];
     assert.equal(cands.length, 1, '候选排除当前在飞自建档后仅剩真实会话');
     ctrl2.resolveAskAnswer({ type: 'selected', labels: [cands[0]!] });
+    // 选中后二级动作卡（rewind/fork 规格 §7.2 入口 B）：restore 默认首项走现行恢复
+    await waitFor(() => ctrl2.getState().question?.question.includes('fork from it?') ?? false);
+    ctrl2.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
     await pr;
     await ctrl2.waitIdle();
     const texts = ctrl2.getState().messages.map((m) => m.text).join('\n');
