@@ -199,8 +199,9 @@ export class GuiDaemon {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const route = this.routes.find((r) => r.method === req.method && r.path === url.pathname);
     if (!route) {
-      // T3 收口为带 hint 的静态缺失提示；本任务简单 404
-      this.send(res, 404, { error: 'not found' });
+      // 静态缺失提示（G1 裁定：恒定 hint，不探测文件系统；GET/POST 未知路径统一带 hint——POST 无 hint
+      // 亦可，统一简化）。G2 起按 dist-gui 探测分流：产物在场则挂静态资源（此处预留挂载点），缺场才回此 404
+      this.send(res, 404, { error: 'not found', hint: 'GUI assets not built — run pnpm --filter gui build (G2)' });
       return;
     }
     // 鉴权（§4.3）：除 healthz 外恒验 Bearer token——恒时比较不做（token 非密钥材料，回环面时序侧信道无实义）
