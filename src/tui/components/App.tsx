@@ -21,10 +21,12 @@ import { StatusBar } from './StatusBar';
 import { Spinner } from './Spinner';
 import { ChildPanel } from './ChildPanel';
 import { BrowseList } from './BrowseList';
+import { BoardList } from './BoardList';
 import { ChildInspector } from './ChildInspector';
 import { KeyHints, keyHintsFor } from './KeyHints';
 import { useInspectKeys } from './use-inspect-keys';
 import { useBrowseKeys, browseRows } from './use-browse-keys';
+import { useBoardKeys, boardRows } from './use-board-keys';
 import { useQuestionKeys } from './use-question-keys';
 import { useApprovalKeys, approvalKeyToDecision, approvalDecisionByIndex } from './use-approval-keys';
 import { useLineEditKeys } from './use-line-edit';
@@ -169,6 +171,10 @@ export function App({
   const { inspect, inspectExpanded, inspectRef, setInspectRetained, handleKey: handleInspectKey } = useInspectKeys({ controller, stateRef, store, onRequestRepaint });
   // 子代理浏览模式（Ctrl+B）：状态与按键分支（含 Ctrl+B 进入）收编于 useBrowseKeys（D17-H2 模态拆件，行为零变化）
   const { browseMode, browseCursor, browseModeRef, handleKey: handleBrowseKey } = useBrowseKeys({ controller, stateRef, store, enterInspect: setInspectRetained });
+  // 任务视图模式（Ctrl+T，P2 spec §10.3）：状态与按键分支（含 gate 行内审批）收编 useBoardKeys——
+  // 行序派生 boardRows 单点、每页 8 行滑窗、gated ⚠ 高亮；局部瞬态不入 retain（检视面非操作现场）；
+  // 与 Ctrl+B 互斥经判定序保证（browse 在场先吞键、board 在场时 browse hook 整体让位，见 useInput 分发）
+  const { boardMode, boardCursor, boardModeRef, handleKey: handleBoardKey } = useBoardKeys({ controller, stateRef });
   // 技能命令池快照（规格 D6/D7）：会话层 skillMenuEntries 同源（附描述与最近使用）；挂载即读 + 回合边界
   // （sessionTurns 变化）刷新，不逐键读盘——最近使用排序在会话层 loadSkill 落盘后下回合生效
   const [skillMenu, setSkillMenu] = React.useState<SlashMenuSkillSource[]>(() => controller.skillMenuEntries());
@@ -246,9 +252,9 @@ export function App({
     const changed = segInitRef.current && segCount !== segCountRef.current;
     segInitRef.current = true;
     segCountRef.current = segCount;
-    // 全屏/浏览态跳过段锚点重绘（2026-09-28 用户裁决）：动态区自绘面在场时整屏拆挂即持续闪屏、
+    // 全屏/浏览/任务视图跳过段锚点重绘（2026-09-28 用户裁决）：动态区自绘面在场时整屏拆挂即持续闪屏、
     // 且重挂空窗吞 Esc/↑↓ 按键；账本照记，退出后从真实基线起算零虚触发
-    if (inspectRef.current || browseModeRef.current) return;
+    if (inspectRef.current || browseModeRef.current || boardModeRef.current) return;
     if (!changed) return;
     const ledger = tailLedgerRef.current!;
     if (ledger.forceFull) {
@@ -285,7 +291,7 @@ export function App({
   // 帧高恒 ≤ rows-1，clearTerminal 路径结构性不可达
   const spinnerRows = state.status === 'running' ? 1 : 0;
   const runningChildren = runningDelegations(state).length;
-  const childPanelRows = runningChildren > 0 && !browseMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1
+  const childPanelRows = runningChildren > 0 && !browseMode && !boardMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1（浏览/任务视图在场让位）
   // 恒驻键提示条（2026-10-02）：所有交互处的快捷键单点承载——矩阵见 keyHintsFor；恒 1 行计入
   // previewCap chrome 实账（不实账即帧高触顶 clearTerminal，子代理视图冻结同病根）；模态卡在场
   // hints=undefined 条退场（卡 hint 承载，零行）
@@ -295,6 +301,7 @@ export function App({
     question: state.question,
     pauseConfirm: state.pauseConfirm,
     browse: browseMode,
+    board: boardMode,
     inspect: inspect !== undefined,
     inspectLive: inspect?.kind === 'live',
     menuVisible: menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error'),
@@ -331,47 +338,62 @@ export function App({
   });
   const fq = state.question?.filterable ? deriveFilterableView(state.question.options, qFilter) : undefined;
 
-  /* ── 键盘模态判定序契约（D17-H2 显式化：原九层 if 单闭包的隐式截获序，拆 hook 后必须保持不变）──
+  /* ── 键盘模态判定序契约（D17-H2 显式化：原九层 if 单闭包的隐式截获序，拆 hook 后必须保持不变；
+   * P2 任务视图插入 browse 之后）──
    * 1. inspect 全屏查看（use-inspect-keys，在场恒吞键）：Ctrl+C=live 两段停【此子代理】/archived 撤暂停卡；
    *     Esc=暂停卡在场先撤卡、无卡才退视图；Tab=时间线折叠↔完整两态；其余键吞掉
    * 2. browse 浏览态（use-browse-keys，在场恒吞键）：列表空自退；Esc 退浏览；↑↓ moveCursor 回环；
    *     Enter=running 行进 live 全屏/archived 行进回看，随后退浏览；Ctrl+C=退浏览+两次确认暂停
    * 3. Ctrl+B 进入浏览（use-browse-keys）：无状态门槛、位于问询卡之前，恒吞键（无可进列表亦吞）
-   * 4. 问询卡 awaiting-question（use-question-keys，模态恒吞键，Esc 不回落清缓冲）：filterable 卡
+   * 4. board 任务视图态（use-board-keys，Ctrl+T，P2 spec §10.3；board 在场时 browse hook 整体让位=互斥）：
+   *     列表空自退；Esc 退视图；↑↓ moveCursor 回环；Enter=gated 行 askUser 问题卡（approve/deny）映射
+   *     taskboard.review（非 gated 行无操作；卡在场让键给第 6 位问询分支，卡裁决后回板视图）；
+   *     Ctrl+C=退视图+两次确认暂停
+   * 5. Ctrl+T 进入任务视图（use-board-keys）：板上有任务才进，恒吞键（空板亦吞）；browse 在场时
+   *     其在场分支已吞键，Ctrl+T 到不了此处（互斥对侧由判定序保证）
+   * 6. 问询卡 awaiting-question（use-question-keys，模态恒吞键，Esc 不回落清缓冲）：filterable 卡
    *     （Ctrl+C 弃+断；Esc 两段=有词清词/无词弃；⌫删词；↑↓ 滤后视图回环；Enter/Space 经 map 落原下标
    *     提交；可打印进筛选词）→ qCustom 自由输入态（Esc 返回；Enter 提交 custom；⌫删字；可打印追加）
    *     → 普通卡（Ctrl+C 弃+断；Esc 弃；↑↓；Enter/Space（customIndex=切自由输入）；数字 1-9 窗口内快选）
-   * 5. Ctrl+C 全局分流（App 保留）：暂停卡二段真中断 → running 挂暂停卡 → interrupt 可达即中断 →
+   * 7. Ctrl+C 全局分流（App 保留）：暂停卡二段真中断 → running 挂暂停卡 → interrupt 可达即中断 →
    *     空闲输入非空=清空缓冲+历史指针复位 -1 → 空闲输入空=请求退出
-   * 6. Esc 全局分流（App 保留）：暂停卡撤卡 → interrupt 可达即中断 → 输入非空=清空（空输入无操作，不退出）
-   * 7. 审批卡 awaiting-approval（use-approval-keys，模态恒吞键）：y/a/n 快捷；Esc=deny；↑↓；
+   * 8. Esc 全局分流（App 保留）：暂停卡撤卡 → interrupt 可达即中断 → 输入非空=清空（空输入无操作，不退出）
+   * 9. 审批卡 awaiting-approval（use-approval-keys，模态恒吞键）：y/a/n 快捷；Esc=deny；↑↓；
    *     Space/Enter=光标行裁决；数字 1-3 快选
-   * 8. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y/n；Esc=放弃；↑↓；Space/Enter；1-2 快选
-   * 9. Tab 分流（App 保留）：/ 前缀=斜杠补全（exact 词池内循环邻位+空格 / 补面板选中项+空格）；
+   * 10. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y/n；Esc=放弃；↑↓；Space/Enter；1-2 快选
+   * 11. Tab 分流（App 保留）：/ 前缀=斜杠补全（exact 词池内循环邻位+空格 / 补面板选中项+空格）；
    *     否则=expandAll+todoExpanded 同步翻转（store 先写）并 recordView
-   * 10. Ctrl+O（App 保留）：latestFull 内容深度翻转并 recordView
-   * 11. 输入行编辑（use-line-edit，判定序终点，到达即终结）：Home/End/⌦ CSI 序列 → Ctrl+A/E 双轨 → ←→
+   * 12. Ctrl+O（App 保留）：latestFull 内容深度翻转并 recordView
+   * 13. 输入行编辑（use-line-edit，判定序终点，到达即终结）：Home/End/⌦ CSI 序列 → Ctrl+A/E 双轨 → ←→
    *     → 菜单在场（idle/error）↑↓ 接管 → running 空缓冲 ↑=撤回排队 → idle/error 单行缓冲 ↑↓=历史回填
    *     → Shift/Alt+Enter（含 kitty CSI-u）=框内换行 → Enter（菜单提交选中 / 行尾单反斜杠续行 / 整行提交）
    *     → ⌫退格（\u001B[3~ 前向删除）→ 可打印字符插入
-   * 不变量：模态卡（1-4、7-8）在场即吞键不落输入缓冲；Ctrl+C/Esc 在 5/6 位才具备全局语义；
-   * buffer/cursor 等共享状态由 App 持有、经参数注入各 hook，单一真值不复制 */
+   * 不变量：模态卡（1-2、4、6、9-10）在场即吞键不落输入缓冲；Ctrl+C/Esc 在 7/8 位才具备全局语义；
+   * buffer/cursor 等共享状态由 App 持有、经参数注入各 hook，单一真值不复制；
+   * browse（2-3）与 board（4-5）互斥：先到在场分支吞键，后者进入分支不可达（App 分发对 browse hook
+   * 加 board 让位守卫，防 board 态 Ctrl+B 经 browse 进入分支误进） */
   useInput((input: string, key: RawKey) => {
 
     // 判定序第 1 位：全屏查看模式（规格 §3.3）——最前置接管，在场恒吞键（分支与状态收编 use-inspect-keys）
     if (handleInspectKey(input, key)) return;
 
     // 判定序第 2/3 位：子代理浏览模式（browse 在场短接管 ↑/↓/Enter/Esc 恒吞键）与 Ctrl+B 进入
-    //（分支与状态收编 use-browse-keys；进入分支须在问询卡之前——既有判定序原样）
-    if (handleBrowseKey(input, key)) return;
+    //（分支与状态收编 use-browse-keys；进入分支须在问询卡之前——既有判定序原样）；
+    // board 任务视图在场时 browse hook 整体让位（互斥：board 恒吞键，Ctrl+B 不得经此误进浏览）
+    if (!boardModeRef.current && handleBrowseKey(input, key)) return;
 
-    // 判定序第 4 位：AskQuestion 问询卡（AskQuestion 线 T2）——模态接管键盘恒吞键（三分支与专属状态收编
+    // 判定序第 4/5 位：任务视图模式（Ctrl+T，P2 spec §10.3；board 在场短接管 ↑/↓/Enter/Esc 恒吞键，
+    // gate 审批问题卡在场时让键给问询分支）与 Ctrl+T 进入——分支与状态收编 use-board-keys；
+    // browse 在场时其吞键已在上一位短路，Ctrl+T 进不了（互斥对侧由判定序保证）
+    if (handleBoardKey(input, key)) return;
+
+    // 判定序第 6 位：AskQuestion 问询卡（AskQuestion 线 T2）——模态接管键盘恒吞键（三分支与专属状态收编
     // use-question-keys）；分支置于全局键之前（Esc 在此不回落清缓冲）
     if (state.status === 'awaiting-question' && state.question) {
       handleQuestionKey(state.question, input, key);
       return;
     }
-    // 判定序第 5 位：Ctrl+C 分流（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」，简化版=一行提示非模态卡）：
+    // 判定序第 7 位：Ctrl+C 分流（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」，简化版=一行提示非模态卡）：
     // 运行中第一次挂提示（任务不停），已挂提示再按=真正中断（主链连带子代理）；
     // 其余等待态=中断；空闲且输入非空=清空输入；空闲且输入空=请求退出
     if (key.ctrl && input === 'c') {
@@ -387,7 +409,7 @@ export function App({
       onExit?.();
       return;
     }
-    // 判定序第 6 位：Esc 同源分流：暂停确认卡在场=撤卡继续；运行/等待态=中断；空闲且有输入=清空输入（空闲空输入不退出）
+    // 判定序第 8 位：Esc 同源分流：暂停确认卡在场=撤卡继续；运行/等待态=中断；空闲且有输入=清空输入（空闲空输入不退出）
     if (key.escape) {
       if (stateRef.current.pauseConfirm) { keyTrace('main pause-cancel'); controller.cancelPause(); return; }
       if (controller.interrupt()) return;
@@ -398,10 +420,10 @@ export function App({
       }
       return;
     }
-    // 判定序第 7/8 位：审批卡与 plan 确认卡——模态接管键盘恒吞键（分支与光标状态收编 use-approval-keys）
+    // 判定序第 9/10 位：审批卡与 plan 确认卡——模态接管键盘恒吞键（分支与光标状态收编 use-approval-keys）
     if (handleApprovalKey(input, key)) return;
 
-    // 判定序第 9 位：Tab 分流：/ 前缀 → 斜杠补全；否则切换「会话历史展开模式」（Claude Code ctrl+o 同款：清屏后按全展开/折叠
+    // 判定序第 11 位：Tab 分流：/ 前缀 → 斜杠补全；否则切换「会话历史展开模式」（Claude Code ctrl+o 同款：清屏后按全展开/折叠
     // 形态整屏重放，视口永远只有一份历史）——无模态态，↑↓ 永远归输入历史，运行中随时可切
     if (key.tab) {
       if (buffer.startsWith('/')) {
@@ -435,7 +457,7 @@ export function App({
       return;
     }
 
-    // 判定序第 10 位：Ctrl+O：第二层切换（内容深度）——当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行展开/收起为全文
+    // 判定序第 12 位：Ctrl+O：第二层切换（内容深度）——当前一个轮次（自最后一条 user 指令行起）的所有工具与思考行展开/收起为全文
     if (key.ctrl && input === 'o') {
       const nextFull = !latestFull;
       setLatestFull(nextFull);
@@ -443,7 +465,7 @@ export function App({
       return;
     }
 
-    // 判定序第 11 位（终点）：输入行编辑与提交——Home/End/⌦/Ctrl+A/E、左右光标、斜杠菜单在场 ↑↓、
+    // 判定序第 13 位（终点）：输入行编辑与提交——Home/End/⌦/Ctrl+A/E、左右光标、斜杠菜单在场 ↑↓、
     // 运行中撤回排队 ↑、输入历史 ↑↓、Shift/Alt+Enter 换行、Enter（菜单提交/续行/整行提交）、退格与 ⌦、
     // 可打印插入（分支与 history/histIdx 状态收编 use-line-edit；到达即终结，恒 true）
     handleLineEditKey(input, key);
@@ -500,12 +522,19 @@ export function App({
         // 消除「疑似卡死」观感；responding 期与流式正文同屏共存
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens + state.metrics.turnChildTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
       ) : null}
-      {browseMode ? (
+      {browseMode && !boardMode ? (
         // 子代理统一列表（2026-09-28 用户裁决）：历史与运行中全部由动态区承载——合并序列单点口径
-        // （运行中在前 + 已完成委派时间升序）、每页 8 行窗口、光标行反色，动态区每帧自绘 ↑↓ 可见移动零重挂
+        // （运行中在前 + 已完成委派时间升序）、每页 8 行窗口、光标行反色，动态区每帧自绘 ↑↓ 可见移动零重挂；
+        // 任务视图在场让位（互斥：键面已由判定序互斥，此处渲染守卫防双显）
         <BrowseList key="browse-list" rows={browseRows(state)} cursor={browseCursor} />
       ) : null}
-      {(runningChildren > 0 && !browseMode) ? (
+      {boardMode ? (
+        // 任务视图（Ctrl+T，P2 spec §10.3）：任务板投影动态区承载——行序 boardRows 单点（id 数值序）、
+        // 每页 8 行窗口、gated ⚠ 高亮，动态区每帧自绘（board 事件经节流通知进帧）；在场时 BrowseList 与
+        // ChildPanel 让位（同 browse 语义），Spinner/输入区保留
+        <BoardList key="board-list" rows={boardRows(state)} cursor={boardCursor} />
+      ) : null}
+      {(runningChildren > 0 && !browseMode && !boardMode) ? (
         // 常态子代理面板（2026-09-28 统一口径）：只承载运行中（P1 收敛：门限与 ChildPanel 成员同源——
         // runningDelegations 投影单源，rows 非空才渲染面板）；浏览态时运行中行由统一列表承载——
         // 同一子代理面板行与列表行双显属重复呈现（2026-09-28 真机双显 bug），浏览态面板整块让位

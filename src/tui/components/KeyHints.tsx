@@ -29,6 +29,8 @@ export function keyHintsFor(s: {
   question?: unknown;
   pauseConfirm?: boolean;
   browse?: boolean;
+  /** 任务视图（Ctrl+T，P2 spec §10.3）接管——与 browse 互斥（键判定序保证，帧面至多其一在场） */
+  board?: boolean;
   inspect?: boolean;
   /** live 全屏（正在跑的子代理）——Ctrl+C 作用域=停此子代理；archived 回看只读无此键（2026-10-02） */
   inspectLive?: boolean;
@@ -66,6 +68,16 @@ export function keyHintsFor(s: {
       ],
     };
   }
+  // 任务视图接管（Ctrl+T）：Enter=gated 行审批（卡在场时本条退场，由卡 hint 承载）；非 gated 行无操作
+  if (s.board) {
+    return {
+      items: [
+        { key: '↑↓', action: t('move', '移动') },
+        { key: 'Enter', action: t('review gate', '审批门') },
+        { key: 'Esc', action: t('exit', '退出') },
+      ],
+    };
+  }
   // 子代理全屏视图：head 只留元数据，键提示由本条承载；live 的 Ctrl+C=两次确认停此子代理，归档回看只读无此键
   if (s.inspect) {
     return s.inspectLive
@@ -83,7 +95,8 @@ export function keyHintsFor(s: {
           ],
         };
   }
-  // 运行中：暂停（两次 Ctrl+C）· 待办展开 · 最近轮详情（子代理在场追加浏览）
+  // 运行中：暂停（两次 Ctrl+C）· 待办展开 · 最近轮详情（子代理在场追加浏览；任务视图常驻可进——
+  // 板投影运行期经 task-*/gate-* 事件持续更新）
   if (s.status === 'running') {
     const items: KeyHintItem[] = [
       { key: 'Ctrl+C', action: t('pause', '暂停') },
@@ -92,6 +105,7 @@ export function keyHintsFor(s: {
       { key: 'Ctrl+O', action: t('detail', '详情') },
     ];
     if (s.hasChildren) items.push({ key: 'Ctrl+B', action: t('subagents', '子代理') });
+    items.push({ key: 'Ctrl+T', action: t('tasks', '任务') });
     return { items };
   }
   // 空闲/出错 + 斜杠菜单在场：面板键（Enter 执行不进条——占位符已引导）
@@ -110,6 +124,7 @@ export function keyHintsFor(s: {
       { key: 'Shift+Enter', action: t('newline', '换行') },
       { key: '↑', action: t('history', '历史') },
       { key: 'Ctrl+B', action: t('subagents', '子代理') },
+      { key: 'Ctrl+T', action: t('tasks', '任务') },
     ],
   };
 }
