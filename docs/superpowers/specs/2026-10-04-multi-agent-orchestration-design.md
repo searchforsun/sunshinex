@@ -414,6 +414,8 @@ graph → loop → harness 单向依赖保持;模板宏展开发生在 graph/编
 - 模板宏化排期本阶段中段(GraphEngine 静态模板展开成任务集注入 TaskBoard,§12.1;2026-10-05 裁定补记——spec §13 原排期空隙);
 - **验收**:3 个 teammate 消化 6+ 任务,预算帽触发时优雅排队;外部执行体经事件翻译在面板/任务板上与内部无感同现。
 
+> **落地记录**:P2 已交付(2026-10-06,`815a4ad`/`eda099b`+`72ee3d0`/`98106fa`/`8e9b9dd`/`53614d3`/`7355a15`+`1678259`/`0bf511b`/`cb012ba`)——Teammate 长驻执行体(独立 ContextManager + 单飞 claim 队列 + 派发路由退化语义:无活 teammate=P1 fork 原样)+ 创建双通道(spawn mode:'team' / frontmatter executor)+ 只读板工具(L1)+ team 预算帽(SUNSHINEX_TEAM_TOKEN_CAP,重放恢复)+ ExternalCliExecutor(claude code stream-json 经 sandbox.execBackground,黑盒降级,kind 'external-cli')+ 模板宏化(templateToTaskSpecs + pipeline CLI 走板,驱动收敛任务集)+ Ctrl+T 任务视图(gate 行内审批经 askUser 映射 review)+ e2e(3×7 分担/依赖序/帽/外部同现)。全量门禁 1650 例 0 败、selfcheck OK。裁定:agent-message(L2)按「可选」标记移出 P2,随 P3 前置或独立批次;管线语境 in-review 自动关单(「pass 放行下游」板同义映射),交互语境裁决语义不变;DelegationKind 扩 'external-cli';MAX_TEAMMATES=4。
+
 ### P3 = 5B GUI 事件面消费
 
 - GUI 订阅统一事件面:任务列表 → 看板,dependsOn → DAG 图自动推导,teammate → 侧栏;无任何需要「翻译」的 TUI 概念。
