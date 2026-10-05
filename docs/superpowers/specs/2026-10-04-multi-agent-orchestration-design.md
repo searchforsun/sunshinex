@@ -406,9 +406,12 @@ graph → loop → harness 单向依赖保持;模板宏展开发生在 graph/编
 - 域模型 + team 目录 event sourcing(§7.2)+ lead 工具五件套 + harness 强制状态回写(§5.4)+ 依赖环检测;Executor/Inbox 接口定型(实现只有内存/内部);teammate 先用现有 subagent fork 模式顶替(每任务一 spawn);
 - **验收(硬)**:§7.6 的 kill -9 崩溃注入测试通过;lead 建任务+依赖按解锁顺序执行;resume 后任务列表完整可续跑。
 
+> **落地记录**:P1 已交付(2026-10-05,`12344dd`/`268aaa4`/`dd59505`+`550b74c`/`0c5f3dd`/`e67568c`/`596ba90`/`1e35f90`/`ae3b51a`,git log `feat(taskboard)`/`feat(harness)`/`feat(tui)`/`test(taskboard)` 可溯)——TaskBoard 域模型/teams 目录 event sourcing(events.jsonl 真相源 + board.json 快照写不读 + init 惰性建档)/lead 工具五件套(lead-only,deriveChildRegistry 扩剔)/批量并行 drain 派发(fork 顶替)+ harness 强制回写/kill -9 崩溃注入硬验收(claimed 回池自愈事件)/TUI 投影单源收敛与板投影。全量门禁 1607 例 0 败、selfcheck OK。裁定:唤醒复用 task_wait(null) 拉模式;team-id 工作区单隐式 main;gate 经 review_task(approved) 解,行内审批卡随 P2;快照读取优化与文件 inbox 随 P2;cancelled 无 P1 工具入口。
+
 ### P2 teammate 长驻 + 外部执行体
 
 - internal-team 执行体(独立 context + 任务队列 + 自主 claim)+ external-cli 适配器(claude code stream-json)+ Ctrl+T 任务视图 + agent-message(L2,可选最后加);
+- 模板宏化排期本阶段中段(GraphEngine 静态模板展开成任务集注入 TaskBoard,§12.1;2026-10-05 裁定补记——spec §13 原排期空隙);
 - **验收**:3 个 teammate 消化 6+ 任务,预算帽触发时优雅排队;外部执行体经事件翻译在面板/任务板上与内部无感同现。
 
 ### P3 = 5B GUI 事件面消费
