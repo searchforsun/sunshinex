@@ -25,6 +25,7 @@ import { TaskBoard } from '../taskboard/board';
 import { TeamStore } from '../taskboard/store';
 import { TeamRegistry, Teammate } from '../taskboard/teammate';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
+import { ExternalCliExecutor } from '../taskboard/executors/external-cli';
 import { fail, ok, Result } from '../result';
 import { MemoryPipeline } from './memory/pipeline';
 import { SteeringChannel } from './steering';
@@ -270,12 +271,19 @@ export class Harness {
     this.tools.register({ ...makeTaskWaitTool(this.tasks), display: { verb: 'TASK_WAIT' } });
     // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
     // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔);
-    // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast
+    // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast;
+    // external-cli 执行体(T5):claude code stream-json 适配,board 侧 executorHint 'external-cli' 路由接管
+    // (无环:executors/external-cli 只依赖 sandbox/tasks/types/executor 接口,零 board 反向引用)
     this.taskboard = new TaskBoard({
       store: new TeamStore(path.join(resolveDataDir(base), 'teams', 'main')),
       runner: this.runner,
       registry: this.tasks,
       team: this.team,
+      externalExecutor: new ExternalCliExecutor({
+        sandbox: this.sandbox,
+        registry: this.tasks,
+        ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+      }),
       ...(teamTokenCapEnv() !== undefined ? { teamTokenCap: teamTokenCapEnv() } : {}),
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     });

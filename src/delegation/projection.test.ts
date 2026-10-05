@@ -57,6 +57,18 @@ test('applyDelegation:终态后重启起点取新事件时刻(仅 running 态保
   assert.equal(list[0]!.tokens, undefined, '重启后旧 tokens 不残留');
 });
 
+test('applyDelegation:kind external-cli 载荷进投影(P2 external-cli 执行体)', () => {
+  let list: Delegation[] = [];
+  list = applyDelegation(list, ev('delegation-started', { delegationId: 'task-t1', kind: 'external-cli', label: 'task-t1' }, 10));
+  assert.equal(list.length, 1);
+  assert.equal(list[0]!.kind, 'external-cli');
+  assert.equal(list[0]!.status, 'running');
+  list = applyDelegation(list, ev('delegation-ended', { delegationId: 'task-t1', kind: 'external-cli', status: 'done', tokens: 42 }, 20));
+  assert.deepEqual(list, [
+    { id: 'task-t1', kind: 'external-cli', label: 'task-t1', status: 'done', startedAt: 10, endedAt: 20, tokens: 42 },
+  ], 'external-cli 起止收敛为单条终态委派');
+});
+
 test('GUI 同源验证(spec §13 P0 验收):混合事件流 → 单一订阅者推导统一委派列表', () => {
   let list: Delegation[] = [];
   const stream: SessionEvent[] = [

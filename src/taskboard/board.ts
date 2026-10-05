@@ -9,6 +9,7 @@ import {
 } from './model';
 import type { TeamStore } from './store';
 import type { TeamRegistry } from './teammate';
+import type { ExternalExecutorLike } from './executors/external-cli';
 
 /** TaskBoard 协调器(spec §5/§7):操作面(创建/依赖/指派/裁决/门)+ 事件发射(task-* / gate-* 进
  *  SessionEvent 公共面)+ event sourcing 持久化 + 批量并行派发 drain。
@@ -36,6 +37,10 @@ export interface TaskBoardDeps {
   /** team 预算帽(spec §5.6,缺省不设):整板累计 tokens 上限,超帽 drain/claim 双前置拦截——任务留
    *  pending 不失败;装配处经 teamTokenCapEnv() 注入(src/harness/index.ts) */
   teamTokenCap?: number;
+  /** external-cli 执行体注入(P2 spec §5):executorHint 'external-cli' 的任务路由至此;缺席 = 提示仅
+   *  记录不改变派发行为(P1 内部路径原样)。分层口径:board 只依赖最小 ExternalExecutorLike 接口
+   *  (type-only 导入防环),真 ExternalCliExecutor 由 harness/index.ts 装配注入 */
+  externalExecutor?: ExternalExecutorLike;
 }
 
 const DEFAULT_MAX_OPEN = 64;
@@ -286,6 +291,12 @@ export class TaskBoard {
   }
 
   private async executeOne(task: BoardTask): Promise<void> {
+    // external-cli 路由(P2,先于 team 路由:任务级 executorHint 是显式声明,强于 assignee/teammate 缺省):
+    // 注入在场才接管;缺席 = 提示退化记录,内部路径原样(与 P1 行为完全一致)
+    if (task.executorHint === 'external-cli' && this.deps.externalExecutor !== undefined) {
+      await this.executeExternal(task, this.deps.externalExecutor);
+      return;
+    }
     // M2 派发路由(先于本方法 claimed 落流,teammate 路径自含认领):assignee 命中活 teammate →
     // 交 runTask(markClaimed + 执行 + 回写 + 续 claim 自含,不 await 整批);未指派且有活 teammate →
     // 留给 claim 循环(不落 claimed);否则 P1 fork 路径原样(无 team/全停/指派已死 = 退化语义)
@@ -363,6 +374,31 @@ export class TaskBoard {
     } else {
       this.finishExecution(task.id, { ok: false, error: { code: errCode, message: errMsg } }, ledger.id);
     }
+  }
+
+  /** external-cli 执行路径(P2):markClaimed 认领 → 委派生命周期事件(kind 'external-cli')→
+   *  executor.run(deadline = 板超时换算)→ finishExecution 强制回写(失败 note 带 EXTERNAL code;
+   *  external 任务的台账在执行体内部,ledgerId 缺省跳过)。黑盒口径:执行体无翻译产出时
+   *  UI 仅见起止(delegation-started/ended),board 不透传其内部细节 */
+  private async executeExternal(task: BoardTask, executor: ExternalExecutorLike): Promise<void> {
+    if (!this.markClaimed(task.id)) return; // 非 pending(被取走/终态):静默放弃
+    const delegationId = `task-${task.id}`;
+    this.emit('delegation-started', { delegationId, kind: 'external-cli', label: delegationId });
+    const startedAt = this.now();
+    let r: { ok: boolean; reply: string; tokens: number };
+    try {
+      r = await executor.run({ id: task.id, title: task.title, spec: task.spec }, { deadlineAt: Date.now() + this.taskTimeoutMs });
+    } catch (e) {
+      // 执行体异常收口:作 EXTERNAL 失败回写(不向上抛——drain 不因单任务炸停)
+      r = { ok: false, reply: e instanceof Error ? e.message : String(e), tokens: 0 };
+    }
+    const durationMs = this.now() - startedAt;
+    if (r.ok) {
+      this.finishExecution(task.id, { ok: true, reply: r.reply, tokens: r.tokens, durationMs });
+    } else {
+      this.finishExecution(task.id, { ok: false, durationMs, error: { code: 'EXTERNAL', message: r.reply } });
+    }
+    this.emit('delegation-ended', { delegationId, kind: 'external-cli', status: r.ok ? 'done' : 'failed', tokens: r.tokens });
   }
 
   /** 执行回写单点(P2 自 executeOne 抽取,T2 teammate/外部执行体路径复用):claimed→in-review/failed 强制迁移

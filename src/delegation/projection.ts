@@ -3,7 +3,7 @@ import type { SessionEvent } from '../types';
 /** 委派投影(spec 2026-10-04 §4.5):spawn/graph 节点/后台任务的统一生命周期投影。
  *  纯函数从 SessionEvent 流推导,零 TUI 依赖——GUI 同源消费点(任何订阅者 + 本 reducer 即可
  *  推导委派列表);会话侧瞬态不落 journal(与 LiveTaskState 同口径,归档面走消息区 SPAWN 行) */
-export type DelegationKind = 'subagent' | 'background-task' | 'graph-node';
+export type DelegationKind = 'subagent' | 'background-task' | 'graph-node' | 'external-cli';
 export type DelegationStatus = 'running' | 'done' | 'failed' | 'skipped' | 'paused';
 
 export interface Delegation {
@@ -32,7 +32,7 @@ export interface DelegationEventPayload {
 function payloadOf(e: SessionEvent): DelegationEventPayload | undefined {
   const p = e.payload as Partial<DelegationEventPayload> | undefined;
   if (typeof p?.delegationId !== 'string' || p.delegationId.length === 0) return undefined;
-  if (p.kind !== 'subagent' && p.kind !== 'background-task' && p.kind !== 'graph-node') return undefined;
+  if (p.kind !== 'subagent' && p.kind !== 'background-task' && p.kind !== 'graph-node' && p.kind !== 'external-cli') return undefined;
   return p as DelegationEventPayload;
 }
 
