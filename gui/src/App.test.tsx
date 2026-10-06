@@ -8,11 +8,12 @@ import type { SnapshotTranscriptEntry } from './chat-reducer';
 import type { ConnectionOpts, ConnectionState, Connection, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow } from './connection';
 
 /**
- * G3.5 App 装配测(路由骨架 home|chat + 会话维连接):vi.mock 连接工厂注入事件——App() 无
- * props 自装配(token 经 localStorage 注入),mock conn 捕获 onEvent(sessionId,…)/onReset/
- * onStateChange 回调面;chat 分支经 Home 真流程进入(工作区展开→Attach 两步链→播种快照)。
- * 断言:路由骨架(会话占位/返回)、帧按会话分发(他会话帧丢弃)、onReset 重置+重播种、
- * md 渲染、Enter 分流(idle sessionSubmit / running sessionSteer)、Stop 中断、状态条。
+ * G3.5 App 装配测(T4δ Chat 页会话化):vi.mock 连接工厂注入事件——App() 无 props 自装配
+ * (token 经 localStorage 注入),mock conn 捕获 onEvent(sessionId,…)/onReset/onStateChange
+ * 回调面;chat 分支经 Home 真流程进入(工作区展开→Attach 两步链→Chat 装配播种快照)。
+ * 断言:路由骨架(Chat 页挂载/占位条退役/返回)、帧按会话分发(他会话帧丢弃)、onReset 重置+
+ * 重播种、md 渲染、Enter 分流(idle sessionSubmit / running sessionSteer)、Stop 中断、状态条、
+ * 种子竞态缓冲(seed 在途帧缓冲→种子落定 seq 过滤补投)、两会话先后打开投影独立。
  */
 
 type FakeSnapshot = SnapshotResponse & { lastSeq: number };
@@ -34,6 +35,17 @@ const h = vi.hoisted(() => {
     submitReject: Error | null = null;
     stateVal: ConnectionState = 'connecting';
     closed = false;
+    /** 播种门(种子竞态测):hold 后 sessionSnapshot 应答悬挂,release 落定——控 seed 在途窗时序 */
+    private snapshotGate: Promise<void> = Promise.resolve();
+    private snapshotGateRelease: () => void = () => {};
+    holdSnapshot(): void {
+      this.snapshotGate = new Promise<void>((resolve) => {
+        this.snapshotGateRelease = resolve;
+      });
+    }
+    releaseSnapshot(): void {
+      this.snapshotGateRelease();
+    }
     constructor(opts: ConnectionOpts) {
       this.opts = opts;
       created.push(this);
@@ -71,7 +83,7 @@ const h = vi.hoisted(() => {
     }
     sessionSnapshot(id: string): Promise<FakeSnapshot> {
       this.snapshotCalls.push(id);
-      return Promise.resolve(this.snapshotResp);
+      return this.snapshotGate.then(() => this.snapshotResp);
     }
     close(): void {
       this.closed = true;
@@ -129,8 +141,8 @@ async function enterChat(): Promise<{ conn: Conn; unmount: () => void }> {
   return { conn, unmount };
 }
 
-const fire = (conn: Conn, e: SessionEvent): void => {
-  act(() => conn.opts.onEvent('s1', e, 0));
+const fire = (conn: Conn, e: SessionEvent, seq = 0): void => {
+  act(() => conn.opts.onEvent('s1', e, seq));
 };
 
 const fireOther = (conn: Conn, e: SessionEvent): void => {
@@ -154,7 +166,7 @@ beforeEach(() => {
   h.created.length = 0;
 });
 
-describe('路由骨架:home | chat(会话占位)', () => {
+describe('路由骨架:home | chat(Chat 页挂载)', () => {
   it('初始 home:工作区列表在场、无对话输入区;顶栏无会话 chip', async () => {
     mount();
     expect(await screen.findByRole('region', { name: 'workspaces' })).toBeDefined();
@@ -162,19 +174,55 @@ describe('路由骨架:home | chat(会话占位)', () => {
     expect(screen.queryByText('session s1')).toBeNull();
   });
 
-  it('Home 选中(Attach 链)→ chat:占位渲染 sessionId(newSession→attach 两步)+ 返回 home', async () => {
+  it('Home 选中(Attach 链)→ chat:Chat 页挂载渲染 sessionId(newSession→attach 两步)+ 返回 home', async () => {
     const { conn, unmount } = await enterChat();
     // 两步链:Attach = newSession(root) + attach(sessionId, journalId)
     expect(conn.newSessionCalls).toEqual(['/w/root-a']);
     expect(conn.attachCalls).toEqual([['s1', 'j1']]);
-    // 占位面:chip 与占位条渲染 sessionId(T4δ 装真 Chat)
+    // Chat 页面:会话 chip 在场、占位条退役(T4δ 真组件装配)
     expect(screen.getByText('session s1')).toBeDefined();
-    expect(document.querySelector('.session-placeholder')?.textContent).toBe('s1');
+    expect(document.querySelector('.session-placeholder')).toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     // 返回 home:对话面退场、工作区列表回归
-    fireEvent.click(screen.getByRole('button', { name: /← 工作区/ }));
+    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
     expect(await screen.findByRole('region', { name: 'workspaces' })).toBeDefined();
     expect(screen.queryByLabelText('message input')).toBeNull();
+    unmount();
+  });
+
+  it('两会话先后打开投影独立:key 隔离——s1 交互→back→s2 打开无 s1 条目,再交互各自 :id', async () => {
+    const { conn, unmount } = mount();
+    openConn(conn);
+    // —— s1:进 chat + 交互(user 回显 + 流式帧)——
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    type('s1 目标');
+    pressEnter();
+    fire(conn, ev('model-start'));
+    fire(conn, ev('token', 's1 流内容'));
+    expect(conn.sessionSubmitCalls).toEqual([['s1', 's1 目标']]);
+    expect(screen.getByText('s1 目标')).toBeDefined();
+    // —— back → home(Chat 卸毁:s1 本地态随组件销毁)——
+    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+    expect(await screen.findByRole('region', { name: 'workspaces' })).toBeDefined();
+    // —— s2:FakeConn 下一会话号;重走 Home 真流程 ——
+    conn.nextSessionId = 's2';
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s2')).toBeDefined());
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    // s2 投影独立:无 s1 条目串扰(组件级隔离——非空起步)
+    expect(screen.queryByText('s1 目标')).toBeNull();
+    expect(screen.queryByText('s1 流内容')).toBeNull();
+    type('s2 目标');
+    pressEnter();
+    expect(conn.sessionSubmitCalls).toEqual([
+      ['s1', 's1 目标'],
+      ['s2', 's2 目标'],
+    ]);
+    expect(screen.getByText('s2 目标')).toBeDefined();
     unmount();
   });
 });
@@ -312,6 +360,60 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     fire(conn, ev('agent-message', undefined, { from: 'a', to: 'b', text: 'ping' }));
     expect(screen.getByText('✻ dev started')).toBeDefined();
     expect(screen.getByText('[a → b] ping')).toBeDefined();
+  });
+});
+
+describe('种子竞态缓冲(T3 收口):seed 在途帧缓冲→种子落定过滤补投', () => {
+  /** 进 chat 且 seed 应答悬挂(在途窗):返回后可先投帧再落定种子 */
+  async function enterChatHeld(): Promise<{ conn: Conn; unmount: () => void }> {
+    const { conn, unmount } = mount();
+    conn.holdSnapshot();
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    openConn(conn);
+    return { conn, unmount };
+  }
+
+  it('在途窗内本会话帧缓冲不投;种子落定后 seq≤lastSeq 丢、>lastSeq 依序补投(无丢帧/无双应用)', async () => {
+    const { conn, unmount } = await enterChatHeld();
+    conn.snapshotResp = snapshotOf({
+      lastSeq: 5,
+      messages: [{ seq: 1, ts: 1, kind: 'user', md: '> 基线目标' }],
+    });
+    // —— seed 在途窗:本会话帧到达(补发/直播混合)——缓冲不投 ——
+    fire(conn, ev('token', '旧帧'), 3); // ≤ lastSeq:种子已含(直播帧先于应答落定)
+    fire(conn, ev('model-start'), 7);
+    fire(conn, ev('token', '新帧'), 8); // > lastSeq:种子切割序之后,须补投
+    expect(document.querySelector('.entry-assistant')).toBeNull(); // 未投(缓冲中)
+    // —— 种子落定:基线直映射 + 缓冲过滤补投 ——
+    conn.releaseSnapshot();
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    expect(screen.getByText('基线目标')).toBeDefined(); // 种子条(md `> …` → blockquote)
+    const assistant = document.querySelector('.entry-assistant');
+    expect(assistant?.textContent).toBe('新帧'); // seq 7/8 补投(流式条已含增量)
+    expect(assistant?.className).toContain('streaming'); // 补投后流式态保持(未 done 收段)
+    expect(screen.queryByText('旧帧')).toBeNull(); // seq 3 ≤ lastSeq:丢(双应用防线)
+    unmount();
+  });
+
+  it('种子落定后的后续帧直投(不再缓冲):流式续推不受竞态窗影响', async () => {
+    const { conn, unmount } = await enterChatHeld();
+    conn.releaseSnapshot();
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    fire(conn, ev('model-start'));
+    fire(conn, ev('token', '直投'));
+    expect(document.querySelector('.entry-assistant')?.textContent).toBe('直投');
+    unmount();
+  });
+
+  it('unmount 清缓冲:在途窗卸载,迟到的种子应答不炸不残留', async () => {
+    const { conn, unmount } = await enterChatHeld();
+    fire(conn, ev('token', '窗内帧'), 3);
+    unmount();
+    conn.releaseSnapshot(); // 迟到应答落定(组件已毁,状态更新无的放矢)
+    await new Promise((r) => setTimeout(r, 0)); // 微任务链冲净
+    expect(document.querySelector('.entry-assistant')).toBeNull();
   });
 });
 

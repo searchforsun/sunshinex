@@ -182,6 +182,29 @@ describe('Home:attach 与 New session 动作链', () => {
     expect(calls.attach).toEqual([]);
   });
 
+  it('Attach 二步失败(attach 500):错误示出、busy 复位、停留首页(T4δ 收口)', async () => {
+    const { conn, calls } = stubConn({
+      rows: [wsRow()],
+      sessions: [sessRow()],
+      newSessionId: 's1',
+      attachFail: new Error('/session/s1/attach -> 500'),
+    });
+    const opened: string[] = [];
+    render(<Home conn={conn} onOpenSession={(id) => opened.push(id)} />);
+    await openRow();
+    await screen.findByRole('button', { name: 'Attach' });
+    fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
+    // 错误示出(不静默);两步链已走完第一步(newSession 成功,attach 拒)
+    expect(await screen.findByText('/session/s1/attach -> 500')).toBeDefined();
+    expect(calls.newSession).toEqual(['/w/root-a']);
+    expect(calls.attach).toEqual([['s1', 'j-20261006a']]);
+    // 停留首页 + 不进会话
+    expect(opened).toEqual([]);
+    expect(screen.getByRole('region', { name: 'workspaces' })).toBeDefined();
+    // busy 复位:Attach 按钮重新可用(可重试)
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Attach' }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
   it('New session → DirPicker 模态(首载 dirpicker())→ 自定义路径输入确认 → newSession → onOpenSession', async () => {
     const { conn, calls } = stubConn({
       dirs: [{ path: '/home/dev', parent: '/home', dirs: ['proj-x'] }],

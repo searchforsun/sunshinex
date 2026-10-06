@@ -192,6 +192,71 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
   }, 30_000);
 });
 
+describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返回 s1 转录在场(App 渲染)', () => {
+  it('attach s1 提交→back→New s2 提交→s2 转录不含 s1 条目;经 UI 重开 s1 journal 转录在场且不含 s2', async () => {
+    const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"s1 终答"}', '{"done":true,"reply":"s2 终答"}']));
+    try {
+      // s1 的 journal(预置历史句;attach 续挂——后续 run 的 chain 行续落同档,重开即可回读)
+      seedWorkspace(env.root, '历史第一句');
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      const submit = async (goal: string): Promise<void> => {
+        const input = screen.getByLabelText('message input');
+        await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+        fireEvent.change(input, { target: { value: goal } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+      };
+      const backHome = async (): Promise<void> => {
+        fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+        await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
+      };
+
+      // —— s1:工作区行展开 → Attach(journal 播种)→ UI 提交 → done ——
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Attach' }, { timeout: 5_000 }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await submit('s1 目标');
+      await waitFor(() => expect(container.textContent).toContain('s1 终答'), { timeout: 10_000 });
+
+      // —— back → s2:New session(DirPicker 同 root 第二会话)→ UI 提交 → done ——
+      await backHome();
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s2')).toBeDefined(), { timeout: 5_000 });
+      await submit('s2 目标');
+      await waitFor(() => expect(container.textContent).toContain('s2 终答'), { timeout: 10_000 });
+      // s2 投影独立:不含 s1 条目(Chat unmount 本地态销毁,无跨会话串扰)
+      expect(container.textContent).not.toContain('s1 目标');
+      expect(container.textContent).not.toContain('s1 终答');
+      expect(container.textContent).not.toContain('历史第一句');
+
+      // —— 经 UI 返回 s1:back → 工作区行展开 → Attach 同一 journal(两步壳)→ 转录播种在场 ——
+      await backHome();
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
+      await screen.findByRole('button', { name: 'Attach' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
+      await waitFor(
+        () => expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('历史第一句'),
+        { timeout: 10_000 },
+      );
+      // 重开转录在场(journal msg 行播种);run 面是 chain 行——restore 入 history 不入转录(daemon
+      // T2 契约:msg 行不续写),故 's1 目标/终答' 不在重开转录;关键断言:无 s2 条目串入(会话隔离)
+      expect(container.textContent).not.toContain('s2 目标');
+      expect(container.textContent).not.toContain('s2 终答');
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
+
 /* ============================================================
  * G3 冒烟验收(会话维迁移):①提交→流式渲染→done 收段(经首页 New session+DirPicker)
  * ②steer 运行中 ③断线重连恢复(daemon 真链路:onReset+全量重放)④静态挂载回 html。

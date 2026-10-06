@@ -1,25 +1,23 @@
-import { memo, useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useEffect, useRef, useState } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState } from './connection';
-import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from './chat-reducer';
-import type { ChatEntry, ChatState } from './chat-reducer';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
 import { Home } from './pages/Home';
+import { Chat } from './pages/Chat';
+import type { ChatSink } from './pages/Chat';
 import type { SessionEvent } from '../../src/types';
 
 /**
- * G3.5 App 路由骨架(会话中心):本地态 'home' | 'chat' + openSessionId——token 门面内单连接
- * (Home HTTP 面与 chat 事件面共用),Home 选中(attach/new)→ chat;顶栏简化(路由 Back +
- * 会话占位 chip + 连接态;旧 Chat|Board tab 退场,G5 板页另议)。
- * 连接装配(会话维):onEvent(sessionId, e, seq) 单 WS 收全会话帧,投影只挂当前会话
- * (sessionRef 判据,他会话帧丢弃);onReset(首连与重连同路径)清投影 + 当前会话重拉
- * sessionSnapshot 重建基线(重连=重置投影+全量重放裁定)。
- * chat 分支为占位骨架:占位条渲染 sessionId(T4δ 装真 Chat 组件),下方暂留 G3 单页对话面
- * 的流式渲染/输入分流(最小适配到 :id 形态——sessionSubmit/sessionSteer/sessionInterrupt),
- * 板/委派投影随事件维稳(G5 页消费)。
+ * G3.5 App 路由壳(会话中心):本地态 'home' | 'chat' + openSessionId——token 门面内单连接
+ * (Home HTTP 面与 chat 事件面共用),Home 选中(attach/new)→ 挂 Chat;顶栏只余全局面
+ * (brand/连接态),会话维顶栏(返回首页/sessionId/状态条)随 Chat 页。
+ * 连接装配(会话维):onEvent(sessionId, e, seq) 单 WS 收全会话帧,sessionRef 判据过滤他会话
+ * (本会话帧经 chatSinkRef 转投 Chat——连接回调闭包装配时固定,Chat 装配期注册 sink);板/委派
+ * 投影随事件维稳(重连=onReset 清零+daemon 全量补发帧重建,G5 板页消费)。
+ * Chat(T4δ)以 key={sessionId} 挂载:对话面本地态(reducer 投影/输入/播种门/竞态缓冲)随组件
+ * 销毁——两会话先后打开各自投影独立,无跨会话串扰,不断连重连。onReset(首连与重连同路径)
+ * → Chat.reset 本会话重播种(重连=重置投影+全量重放裁定)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
  */
 
@@ -75,75 +73,40 @@ function TokenGate({ onSave }: { onSave: (token: string) => void }): JSX.Element
   );
 }
 
-/** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销) */
-const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
-  return (
-    <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.md}</ReactMarkdown>
-    </div>
-  );
-});
-
-/** 应用壳:单连接装配 + 路由(home|chat) + chat 占位分支(旧单页对话面最小适配) */
+/** 应用壳:单连接装配 + 路由(home|chat);chat 分支挂 Chat 页(key={sessionId} 会话隔离) */
 function AppShell({ token }: { token: string }): JSX.Element {
   const [page, setPage] = useState<'home' | 'chat'>('home');
   const [openSessionId, setOpenSessionId] = useState<string>('');
   const [connState, setConnState] = useState<ConnectionState>('connecting');
-  const [chat, setChat] = useState<ChatState>(initialChatState);
   const [board, setBoard] = useState<TaskBoardState>(emptyBoard);
   const [delegations, setDelegations] = useState<Delegation[]>([]);
-  const [input, setInput] = useState('');
-  /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
-   *  (openSession/onReset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
-  const [seeding, setSeeding] = useState(false);
   const connRef = useRef<Connection | null>(null);
-  /** 连接实例态:effect 装配后落位(Home 面消费;null = 装配中占位) */
+  /** 连接实例态:effect 装配后落位(Home/Chat 面消费;null = 装配中占位) */
   const [connInstance, setConnInstance] = useState<Connection | null>(null);
   /** 事件分发判据:连接回调闭包在装配时固定,会话切换经 ref 免闭包陈旧 */
   const sessionRef = useRef<string>('');
   sessionRef.current = openSessionId;
-
-  /** 会话基线重建(打开会话与 onReset 同路径):清投影 → sessionSnapshot 播种;
-   *  迟到应答经 sessionRef 复核(已切会话的种子不污新投影);拉取失败倒 error 条不静默 */
-  const reseed = (id: string): void => {
-    setChat(initialChatState());
-    setBoard(emptyBoard());
-    setDelegations([]);
-    setSeeding(true);
-    connRef.current?.sessionSnapshot(id).then(
-      (snap) => {
-        if (sessionRef.current !== id) return;
-        setChat(seedChatFromSnapshot(snap.messages, snap.status));
-        setBoard(snap.board);
-        setDelegations(snap.delegations);
-        setSeeding(false);
-      },
-      (err: unknown) => {
-        if (sessionRef.current !== id) return;
-        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-        setSeeding(false);
-      },
-    );
-  };
+  /** Chat 事件转投面:Chat 装配期注册(卸载注销)——onEvent/onReset 经此投递 */
+  const chatSinkRef = useRef<ChatSink | null>(null);
 
   useEffect(() => {
     const conn = createConnection({
       baseUrl: import.meta.env.VITE_SERVE_URL ?? location.origin,
       token,
-      onEvent: (sessionId, e: SessionEvent) => {
+      onEvent: (sessionId, e: SessionEvent, seq: number) => {
         if (sessionId !== sessionRef.current) return; // 他会话帧丢弃(连接层全收,投影只挂当前会话)
         if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
           setBoard((b) => applyBoardEvent(b, boardEventFrom(e)));
           return;
         }
         if (e.type.startsWith('delegation-')) setDelegations((d) => applyDelegation(d, e));
-        setChat((c) => applyChatEvent(c, e));
+        chatSinkRef.current?.on(e, seq);
       },
       onReset: () => {
-        // 重连/首连同路径:投影清零;当前会话逐会话重拉快照(多会话重置裁定——连接层不自动拉)
-        const id = sessionRef.current;
-        if (id === '') return;
-        reseed(id);
+        // 重连/首连同路径:板/委派投影清零(随补发帧重建);Chat 投影由 sink.reset 清+本会话重播种
+        setBoard(emptyBoard());
+        setDelegations([]);
+        chatSinkRef.current?.reset();
       },
       onStateChange: setConnState,
     });
@@ -156,62 +119,26 @@ function AppShell({ token }: { token: string }): JSX.Element {
     };
   }, [token]);
 
-  /** Home 选中会话(attach/new 完成):切路由 + 基线播种 */
+  /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线) */
   const openSession = (sessionId: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
     setPage('chat');
-    reseed(sessionId);
   };
 
-  const running = chat.status === 'running';
-
-  /** Enter 分流:idle 提交 / running 插话;本地 user 回显(`> text`),失败倒 error 条 */
-  const send = (): void => {
-    const text = input.trim();
-    const conn = connRef.current;
-    const id = sessionRef.current;
-    if (text === '' || conn === null || id === '') return;
-    setChat((c) => appendUserMessage(c, text));
-    setInput('');
-    const req = running ? conn.sessionSteer(id, text) : conn.sessionSubmit(id, text);
-    void req.catch((err: unknown) => {
-      setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-    });
-  };
-
-  const interrupt = (): void => {
-    const conn = connRef.current;
-    const id = sessionRef.current;
-    if (conn === null || id === '') return;
-    void conn.sessionInterrupt(id).catch((err: unknown) => {
-      setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-    });
+  /** 返回首页:会话关窗(Chat 卸毁本地态;连接保持,再开经 Home 重播种) */
+  const backHome = (): void => {
+    sessionRef.current = '';
+    setOpenSessionId('');
+    setPage('home');
   };
 
   return (
     <div className="app">
       <header className="topbar">
-        {page === 'chat' && (
-          <button type="button" className="back" onClick={() => setPage('home')}>
-            ← 工作区
-          </button>
-        )}
         <span className="brand">sunshinex</span>
-        {page === 'chat' && (
-          <span className="session-chip" title="session(T4δ 装真 Chat 视图)">
-            session {openSessionId}
-          </span>
-        )}
         <span className={`conn-dot conn-${connState}`} aria-label={`connection: ${connState}`} />
         <span className="conn-text">{connState}</span>
-        {page === 'chat' && (
-          <>
-            <span className={`status-text status-${chat.status}`}>{chat.status}</span>
-            <span className="tokens">{chat.tokens} tokens</span>
-            <span className="steps">{chat.steps} steps</span>
-          </>
-        )}
       </header>
       {page === 'home' ? (
         connInstance !== null ? (
@@ -221,40 +148,17 @@ function AppShell({ token }: { token: string }): JSX.Element {
             <p className="home-loading">连接装配中…</p>
           </main>
         )
-      ) : (
-        <>
-          <main className="chat" aria-label="chat">
-            {/* 占位条:渲染 sessionId(T4δ 装真 Chat 组件后退场);下方为 G3 单页对话面暂留 */}
-            <div className="session-placeholder">{openSessionId}</div>
-            {chat.entries.map((entry) => (
-              <ChatEntryView key={entry.key} entry={entry} />
-            ))}
-          </main>
-          <footer className="composer">
-            <input
-              aria-label="message input"
-              className="message-input"
-              value={input}
-              placeholder={running ? '插入运行中会话…' : '给 sunshinex 一个任务…'}
-              disabled={connState !== 'open' || seeding}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) send();
-              }}
-            />
-            {running ? (
-              <button type="button" className="stop" onClick={interrupt}>
-                Stop
-              </button>
-            ) : (
-              <button type="button" className="send" onClick={send} disabled={connState !== 'open' || seeding}>
-                Send
-              </button>
-            )}
-          </footer>
-        </>
-      )}
-      {/* board/delegations 投影 G5 页消费(随事件/快照维稳;本壳只对话流) */}
+      ) : connInstance !== null ? (
+        <Chat
+          key={openSessionId}
+          conn={connInstance}
+          sessionId={openSessionId}
+          connState={connState}
+          onBack={backHome}
+          sinkRef={chatSinkRef}
+        />
+      ) : null}
+      {/* board/delegations 投影 G5 页消费(随事件/重放维稳;本壳只路由与连接装配) */}
     </div>
   );
 }
