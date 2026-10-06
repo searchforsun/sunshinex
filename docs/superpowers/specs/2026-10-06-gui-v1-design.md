@@ -184,6 +184,7 @@ gui/
 | **G3 对话页+会话中心** | 会话管理器(注册表/创建选目录/attach 恢复/多 Harness)/首页(工作区·会话列表·目录选择器)/对话页(流式/提交/中断/steering/状态栏/激活切换) | 冒烟:新建会话选目录→提交→流式渲染→done 收段;切换会话各自独立;恢复历史会话转录在场;断线重连恢复 |
 
 > **修正记录(2026-10-06,用户裁定)**:GUI 采用会话中心模型(对标 Codex)——应用为入口、会话为中心、工作目录是会话属性;推翻 G-D8「v1 单会话」裁定,`--root` 降级为预选。G3 范围相应扩为「会话管理器 + 首页 + 对话页」。
+| ~~G3 对话页部分已交付~~ | 2026-10-06,`55ee7af`/`426c99a`/`b8d6656`/`2d78dda`+`88a24cd`/`17e30d0`——daemon seq 协议(帧 seq 单调+snapshot.lastSeq,重连双应用根除)+steer 端点(SteeringChannel.enqueue 空闲排队恒 200)+静态挂载(防穿越/SPA 兜底/mime 表)+TranscriptCollector 五 kind(§5.3 归档面全);boardEventFrom 抽纯模块 translate.ts(TUI/daemon/gui 三方同源);连接层状态机(四态/指数退避/onResync 基线重置/seq 过滤);chat reducer(流式收段/工具配对/多轮 token 水位)+App 装配(Codex 式单栏/Enter 分流/Stop/状态条)+md 渲染(gfm)。全量 1698 例 0 败;gui typecheck+test 53/53+e2e 4/4。裁定:seq 协议 WS 保持单向(G-D5);重连=基线重置非缝隙拼接;turnTokensBase 仅 run 边界重置(多轮虚增根除);debug.socket() 两行测试钩子;steer 恒 200(enqueue 纯 FIFO)。**未完成:会话中心扩展(管理器/首页/多会话)——用户 2026-10-06 裁定 G-D8 推翻后的新增范围,待 G3.5 批次** | 对话页验收已过;会话中心未启 |
 | **G4 审批问询** | 挂起表/WS 帧/卡片/回执 | 契约:manual 模式审批闭环经 HTTP 回执 |
 | **G5 看板(P3)** | 板投影页/DAG/teammate 侧栏/gate 审批 | 编排 spec P3 验收逐条;gate 审批改板状态 |
 | **G6 预览+diff** | /file 端点/预览页/write diff 并排 | 越界拒;write 观察行 diff 渲染 |
