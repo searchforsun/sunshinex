@@ -334,36 +334,36 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 ### 5.6 任务板与团队协作（多 Agent 编排）
 
-任务板是跨会话持久的共享任务队列（落数据目录 `teams/main/`，`/new` 不清板、重启自动恢复）。三个概念轴：**任务**（自包含 spec + 依赖 + 审批门 + 裁决）、**角色**（`agents/` 目录注册）、**执行体**——无 teammate 在场时任务自动派发给一次性子代理（fork 顶替），有 teammate 在场则由其自主认领。
+任务板是一个任务清单：任务可声明先后依赖、可挂审批门，执行完停在「待复核」等你拍板。清单跨会话保留（重启自动恢复，`/new` 不清空）。
 
-**模型操作面（lead 六件套工具）**——由主链模型调用，用户经对话下达目标即可：
+**日常用法**——直接用自然语言下目标即可，例如「把这批文件重构拆成任务，按依赖跑」。常用说法对照：
 
-| 工具 | 作用 |
+| 你说 | 效果 |
 | --- | --- |
-| `create_task` | 建任务（title / 自包含 spec / dependsOn 依赖 / gated 建即挂门 / executor 执行体 / assignee 指派）；满足依赖即自动派发 |
-| `set_dependency` | 追加依赖边，成环即拒（报环成员清单） |
-| `assign` | 记录指派（同名 teammate 接管该任务的路由） |
-| `review_task` | 裁决：in-review 任务 approved=done / 拒绝=failed；gated 任务 approved=解锁恢复派发 |
-| `gate_task` | 给任务挂人工审批门（派发暂停直至 review_task 批准；也可建任务时直接 `gated: true`） |
-| `cancel_task` | 取消 pending / gated / blocked 任务，回收板容量 |
+| 「建任务……依赖 t1」 | 建任务，前置任务完成后自动开始 |
+| 「t2 要我先确认再动工」 | 给 t2 挂审批门，动工前等你批 |
+| 「t1 通过」 / 「t1 不通过」 | 复核收尾（完成 / 失败），失败会拦住依赖它的任务等你处置 |
+| 「取消 t4」 | 取消未开始的任务 |
+| 「等任务都跑完」 | 模型等待并汇报各任务结果 |
 
-**执行与裁决语义**：执行完成由 harness 强制回写 `in-review`（不依赖模型自觉标记）；lead 裁决后 done/failed；上游 failed 时下游标 blocked **等用户裁决**（不自动跳过）；等待收口用 `task_wait`（`taskIds: null` 等全部在跑）。板上限 64 个未终态任务。
+**Ctrl+T 任务视图**：随时按 `Ctrl+T` 查看板面——每行 `t1 [pending] ⚠ 标题 ← t2 @w1`（编号 / 状态 / 门标记 / 依赖 / 指派者）；`↑/↓` 移动，光标停在 `⚠` 行按 `Enter` 弹 approve / deny 审批卡，`Esc` 退出；与 `Ctrl+B` 互斥。
 
-**teammate（长驻协作代理）**：spawn 入参 `mode: 'team'`（或 agent.md frontmatter `executor: internal-team`）派生——独立上下文、自主认领未指派任务、干完一个接一个；上限 4 个；`task_stop` 停单个。与一次性 spawn 的选择：并行探查、需要主链上下文 → 普通 spawn；长流水、多任务、互相看得见板 → teammate。
+**teammate（长驻协作代理）**：适合一批相关任务持续分工干；独立小探查仍用普通子代理（见 5.3）。
 
-**定向消息（send_message，L2）**：lead ↔ teammate、teammate 相互之间；**回合边界投递**（不打断在跑回合）；消息落 `teams/main/inbox/` 持久，重启不丢。六件套与 lead 侧 send_message 均不出现在子代理 / teammate 工具面。
+- 开：对话里说「派一个 reviewer teammate 分头做」；或在 `agents/{id}/agent.md` 写 `executor: internal-team` 后说「让 xx 来处理」。
+- 看：与子代理同一面板，`Ctrl+B` → `Enter` 查看转录。
+- 停：转录页连按两次 `Ctrl+C`（第一次挂确认，第二次停这一个，主任务不受影响）；上限 4 个。
+- teammate 之间可以互发消息（各自转录里可见，重启不丢）。
 
-**团队预算帽**：`SUNSHINEX_TEAM_TOKEN_CAP`（环境变量，缺省不设）；超帽后新任务留 pending **不判失败**，一次性 notice 提示（`team budget exhausted (X/Y)`）。
+**预算帽**：启动前设环境变量 `SUNSHINEX_TEAM_TOKEN_CAP=500000`（token 数）；用满后新任务排队等待并提示 `team budget exhausted`，已有任务不受影响。
 
-**外部执行体（executor: external-cli）**：`create_task` 带 `executor: 'external-cli'` 的任务交给外部 CLI 代理（claude code headless stream-json）执行——黑盒形态（面板只显起止与结论），并发上限 2，`task_stop` 可杀，CLI 缺失时任务判 failed 并注明。
+**外部执行体**：说「这个任务交给 claude code 做」，该任务由外部 claude 进程执行——面板只显示开始与结论（无中间过程），停止单个同样在转录页连按两次 `Ctrl+C`；机器上没有 claude 命令时任务会失败并注明原因。
 
-**Ctrl+T 任务视图**：输入框上方面板让位给板列表——行形态 `t1 [pending] ⚠ 标题 ← t2 @w1`（状态 / 门标记 / 依赖箭头 / 指派者）；`↑/↓` 移动、`Enter` 于门挂起行弹审批卡（approve / deny 对应 review_task）、`Esc` 退出、空板自退；与 `Ctrl+B` 互斥。
-
-**pipeline 命令**：`sunshinex pipeline` 已走任务板统一调度（模板展开为带依赖任务集，交付门映射为审批门，readline 审批对应 review_task）。
+**流水线一键跑**：`sunshinex pipeline "<目标>"` 按计划→开发→测试→评审→交付的固定顺序执行，交付前终端询问 `y/n` 确认。
 
 ### 5.7 GUI daemon（`sunshinex serve`，预览）
 
-`sunshinex serve [dir] [--port=N]` 启动 GUI 守护进程：`/healthz` 免鉴权探活、Bearer token 鉴权、`GET /snapshot` 全量快照、WebSocket 事件流（512 帧环形缓冲，连接即补发）。TUI 与 GUI 是**同一事件流的两个投影**（G-D10 裁定：跨时间自由切换，非同时双开）；GUI 对话页建设中（`gui/` 包，交互与美学参照 Codex 工作站）。
+`sunshinex serve [dir] [--port=N]` 启动后台服务，终端打印访问地址与鉴权 token（`/healthz` 可探活）；浏览器界面建设中，当前主要供开发调试（`GET /snapshot` 看全量状态，WebSocket 收实时事件）。
 
 ## 六、权限模式与审批
 
