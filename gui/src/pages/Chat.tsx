@@ -186,6 +186,9 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded }: 
     const gen = ++seedGenRef.current;
     pendingRef.current = [];
     seedingRef.current = true;
+    // idle 清卡跳过 reseed 瞬态:initialChatState 的 running→idle 回摆不是真转换——若不豁免,
+    // 重连时运行中挂起卡被瞬态清掉,而 daemon 重发被连接层 pid 去重拦下 → 卡永久丢(G4 不变式)
+    prevStatusRef.current = null;
     setChat(initialChatState());
     setSeeding(true);
     conn.sessionSnapshot(sessionId).then(

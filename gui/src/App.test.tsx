@@ -3,7 +3,7 @@ import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import type { SessionEvent } from '../../src/types';
 import { App } from './App';
-import { emptyBoard } from './projection';
+import { emptyBoard, applyBoardEvent } from './projection';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
 import type { ConnectionOpts, ConnectionState, Connection, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
@@ -720,9 +720,44 @@ describe('G5 Board 页:tab 进入 + 板/委派投影 + team(快照) + 会话维 
     expect(screen.getByLabelText('delegations').textContent).toContain('dev');
     fireResetSession(conn, 's9'); // 他会话:板投影不动
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
-    fireResetSession(conn, 's1'); // 本会话:board/delegations 清(重播种经 sink,快照板不回填 App 投影)
+    fireResetSession(conn, 's1'); // 本会话:board/delegations 清(reset 语义 = swap 新 Harness,旧板作废;
+    // 重播种快照板再经 onSeeded 回填——默认空快照,空态维持)
     await waitFor(() => expect(screen.getByText(/任务板为空/)).toBeDefined());
     expect(screen.getByLabelText('delegations').textContent).not.toContain('dev');
+    unmount();
+  });
+
+  it('会话切换板投影随快照(串态根除):s1 积任务 → back → s2 板为空;重开 s1 板回快照权威态', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, taskCreated('t1', 'Demo'));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
+    // —— back → 开 s2:openSession 清板投影 + s2 快照(空)回填——无 s1 残留 ——
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' })); // tab 切回(Chat 面在场可达)
+    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+    await screen.findByRole('region', { name: 'workspaces' });
+    conn.nextSessionId = 's2';
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s2')).toBeDefined());
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText(/任务板为空/)).toBeDefined(); // s2 快照空板(而非 s1 残留)
+    // —— 重开 s1:快照带板 → onSeeded 回填,Board 即快照权威态(无需事件帧)——
+    conn.snapshotResp = snapshotOf({
+      board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Demo', spec: '', dependsOn: [], ts: 1 }),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' })); // tab 切回
+    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+    await screen.findByRole('region', { name: 'workspaces' });
+    conn.nextSessionId = 's1';
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText('t1 [pending] Demo')).toBeDefined(); // 快照回填的权威板
     unmount();
   });
 });
@@ -766,6 +801,22 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
     fire(conn, ev('model-start')); // idle → running
     expect(screen.getByText(apTitle)).toBeDefined(); // run 中不清
     fire(conn, ev('done', 'fin')); // running → idle(daemon 已 deny 回填)→ 清卡
+    await waitFor(() => expect(screen.queryByText(apTitle)).toBeNull());
+    unmount();
+  });
+
+  it('重连(reseed 瞬态)不清卡:running 中挂起卡在场 → onReset → 播种落定卡仍保留;真 idle 转换仍清(G4 不变式)', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, ev('model-start')); // running:挂起卡的常态现场(run 中审批)
+    fireApproval(conn, 's1', 'p-keep2', apReq);
+    expect(screen.getByText(apTitle)).toBeDefined();
+    act(() => conn.opts.onReset()); // 连接级 reset:reseed 置 initialChatState(idle)瞬态
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    expect(screen.getByText(apTitle)).toBeDefined(); // 瞬态不清——daemon 重发被 pid 去重拦,卡是唯一在场面
+    // reseed 后真转换照常清:快照 idle → model-start(running)→ done(idle)
+    fire(conn, ev('model-start'));
+    fire(conn, ev('done', 'fin'));
     await waitFor(() => expect(screen.queryByText(apTitle)).toBeNull());
     unmount();
   });

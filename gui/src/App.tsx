@@ -17,13 +17,15 @@ import type { SessionEvent } from '../../src/types';
  * (本会话帧经 chatSinkRef 转投 Chat——连接回调闭包装配时固定,Chat 装配期注册 sink);板/委派
  * 投影随事件维稳(重连=onReset 清零+daemon 全量补发帧重建,G5 板页消费)。
  * Chat(T4δ)以 key={sessionId} 挂载:对话面本地态(reducer 投影/输入/播种门/竞态缓冲)随组件
- * 销毁——两会话先后打开各自投影独立,无跨会话串扰,不断断重连。onReset(首连与重连同路径)
+ * 销毁——两会话先后打开各自投影独立,无跨会话串扰,不断连重连。onReset(首连与重连同路径)
  * → Chat.reset 本会话重播种(重连=重置投影+全量重放裁定)。G4 挂起面:onApproval/onAsk/
  * onResetSession 三回调同 pattern——sessionRef 过滤本会话后经 chatSinkRef 转投 Chat 卡片区。
  * G5 看板页:会话内 Chat|Board 双 tab(sessionTab 本地态;Chat 以 hidden 面常驻——tab 切换
  * 不卸毁对话面本地态,挂起卡/竞态缓冲/滚动零重播种)。Board props 全装配:board/delegations
- * 投影 + team(App 态,经 Chat onSeeded 回调自 sessionSnapshot.team 回填——事件流无 teammate
- * 面,reseed 即更新);gate 审批 onReview → conn.boardReview(sessionId, taskId, approved)。
+ * 投影 + team(App 态,经 Chat onSeeded 回调自快照回填——事件流无 teammate 面,reseed 即更新;
+ * 快照本就携带 board/delegations,一并回填:开 s2 即见 s2 快照板而非 s1 残留——会话切换串态
+ * 根除;openSession/backHome 亦清板投影双保险,重开经快照重建权威态)。
+ * gate 审批 onReview → conn.boardReview(sessionId, taskId, approved)。
  * onResetSession(G3.5 交接 d 收口):会话维 reset 除 Chat 重播种外,board/delegations 投影
  * 亦清(此前仅连接级 onReset 清——会话 reset 后板投影悬挂旧任务)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
@@ -149,21 +151,26 @@ function AppShell({ token }: { token: string }): JSX.Element {
     };
   }, [token]);
 
-  /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线);tab 归位 chat + team 清零
-   *  (两会话各自快照回填,防先会话 teammate 串入) */
+  /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线);tab 归位 chat + 板投影/
+   *  team 清零(会话切换串态防线——快照落定后经 onSeeded 重建权威态) */
   const openSession = (sessionId: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
     setSessionTab('chat');
+    setBoard(emptyBoard());
+    setDelegations([]);
     setTeam([]);
     setPage('chat');
   };
 
-  /** 返回首页:会话关窗(Chat 卸毁本地态;连接保持,再开经 Home 重播种) */
+  /** 返回首页:会话关窗(Chat 卸毁本地态;连接保持,再开经 Home 重播种)+ 板投影/team 清零
+   *  (首页期间无会话帧消费,残留即陈旧) */
   const backHome = (): void => {
     sessionRef.current = '';
     setOpenSessionId('');
     setSessionTab('chat');
+    setBoard(emptyBoard());
+    setDelegations([]);
     setTeam([]);
     setPage('home');
   };
@@ -182,9 +189,12 @@ function AppShell({ token }: { token: string }): JSX.Element {
     });
   };
 
-  /** G5 Chat 播种回调:team 自快照回填 App 态(旧档无段防 undefined) */
-  const seedTeam = (snap: SnapshotResponse): void => {
+  /** G5 Chat 播种回调:快照权威态回填 App 投影——team(事件流无此面)+board/delegations
+   *  (快照本就携带:会话打开/reseed 即板随快照,事件帧续推叠加其后;旧档无 team 段防 undefined) */
+  const seedFromSnapshot = (snap: SnapshotResponse): void => {
     setTeam(snap.team ?? []);
+    setBoard(snap.board);
+    setDelegations(snap.delegations);
   };
 
   return (
@@ -222,7 +232,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
               connState={connState}
               onBack={backHome}
               sinkRef={chatSinkRef}
-              onSeeded={seedTeam}
+              onSeeded={seedFromSnapshot}
             />
           </div>
           {sessionTab === 'board' && (

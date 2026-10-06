@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { layoutBoard } from '../board-layout';
-import type { TaskBoardState, Delegation } from '../projection';
+import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 
 /**
  * G5 看板页(编排 spec §10.3 的 GUI 版 / §13 P3):Board 从 props 纯消费——board/delegations
@@ -72,8 +72,17 @@ function BoardList({ board, onReview }: { board: TaskBoardState; onReview: (task
 }
 
 /** DAG 视图:layoutBoard 分层 svg——盒(id+title 截断)+dependsOn 连线(线尾即箭头语义,
- *  自上而下依赖方向);gated 描边高亮/done 降透明度均为类钩子(样式面消费) */
-function BoardDag({ board }: { board: TaskBoardState }): JSX.Element {
+ *  自上而下依赖方向);gated 描边高亮/done 降透明度均为类钩子(样式面消费);节点点击选中
+ *  (selectedId,再点同节点取消)→ 详情面板(brief 明文项:板投影内数据纯展示) */
+function BoardDag({
+  board,
+  selectedId,
+  onSelect,
+}: {
+  board: TaskBoardState;
+  selectedId: string | null;
+  onSelect: (taskId: string) => void;
+}): JSX.Element {
   const nodes = useMemo(() => layoutBoard(Object.values(board.tasks)), [board]);
   if (nodes.length === 0) return <p className="board-empty">任务板为空——尚无任务。</p>;
   const pos = new Map(nodes.map((n) => [n.id, n]));
@@ -103,9 +112,18 @@ function BoardDag({ board }: { board: TaskBoardState }): JSX.Element {
       {nodes.flatMap((n) => {
         const task = board.tasks[n.id];
         if (task === undefined) return [];
-        const cls = `task-box task-status-${task.status}${task.gated === true ? ' gated' : ''}${task.status === 'done' ? ' done' : ''}`;
+        const cls = `task-box task-status-${task.status}${task.gated === true ? ' gated' : ''}${task.status === 'done' ? ' done' : ''}${
+          n.id === selectedId ? ' selected' : ''
+        }`;
         return (
-          <g key={n.id} data-task={n.id} className={cls}>
+          <g
+            key={n.id}
+            data-task={n.id}
+            className={cls}
+            role="button"
+            aria-label={`task ${n.id}`}
+            onClick={() => onSelect(n.id)}
+          >
             <rect x={n.x} y={n.y} width={BOX_W} height={BOX_H} rx={4} />
             <text x={n.x + 8} y={n.y + 18} className="box-id">
               {n.id}
@@ -120,8 +138,46 @@ function BoardDag({ board }: { board: TaskBoardState }): JSX.Element {
   );
 }
 
+/** 选中任务详情面板(DAG 点击选中消费):id/status/title/spec/deps/artifact 摘要——板投影内
+ *  数据纯展示,无动作面 */
+function TaskDetail({ task }: { task: BoardTask }): JSX.Element {
+  const artifact =
+    task.artifact === undefined
+      ? ''
+      : ` · ${task.artifact.conclusion ?? ''}${task.artifact.tokens !== undefined ? ` ${task.artifact.tokens} tokens` : ''}${
+          task.artifact.durationMs !== undefined ? ` ${task.artifact.durationMs}ms` : ''
+        }`;
+  return (
+    <section className="board-detail" aria-label="task detail">
+      <header className="detail-head">{`${task.id} [${task.status}]${task.gated === true ? ' ⚠' : ''} ${task.title}`}</header>
+      <p className="detail-spec">{task.spec !== '' ? task.spec : '(无 spec)'}</p>
+      <p className="detail-meta">{`${task.dependsOn.length > 0 ? `needs ${task.dependsOn.join(' → ')}` : '无依赖'}${
+        task.assignee !== undefined ? ` · @${task.assignee}` : ''
+      }${artifact}`}</p>
+    </section>
+  );
+}
+
 export function Board({ board, delegations, team, onReview, onBack }: BoardProps): JSX.Element {
   const [view, setView] = useState<View>('list');
+  /** DAG 选中任务(再点同节点/Esc 取消;任务消失时详情面板自防御退场) */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Esc 取消选中(仅选中在场时挂听)
+  useEffect(() => {
+    if (selectedId === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setSelectedId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId]);
+
+  const selected = selectedId !== null ? (board.tasks[selectedId] ?? null) : null;
+  const selectNode = (taskId: string): void => {
+    setSelectedId((cur) => (cur === taskId ? null : taskId));
+  };
+
   return (
     <>
       <header className="board-topbar">
@@ -139,7 +195,14 @@ export function Board({ board, delegations, team, onReview, onBack }: BoardProps
       </header>
       <div className="board-body">
         <main className="board-main" aria-label="board">
-          {view === 'list' ? <BoardList board={board} onReview={onReview} /> : <BoardDag board={board} />}
+          {view === 'list' ? (
+            <BoardList board={board} onReview={onReview} />
+          ) : (
+            <>
+              <BoardDag board={board} selectedId={selectedId} onSelect={selectNode} />
+              {selected !== null && <TaskDetail task={selected} />}
+            </>
+          )}
         </main>
         <aside className="team-sidebar" aria-label="team">
           <h3>team</h3>

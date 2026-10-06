@@ -152,6 +152,54 @@ describe('Board:视图切换与顶栏', () => {
   });
 });
 
+describe('Board:DAG 节点点击选中详情(brief 明文项)', () => {
+  const setup = (): void => {
+    render(
+      <Board
+        board={boardOf([
+          task('a', { spec: '做 A 的活', assignee: 'w1' }),
+          task('b', { dependsOn: ['a'], status: 'done', artifact: { conclusion: 'ok', tokens: 12, durationMs: 3400 } }),
+        ])}
+        delegations={[]}
+        team={[]}
+        onReview={noop}
+        onBack={noop}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'DAG' }));
+  };
+
+  it('点击盒 → 选中态(selected 类)+详情面板(id/status/title/spec/deps/assignee/artifact 摘要)', () => {
+    setup();
+    expect(screen.queryByLabelText('task detail')).toBeNull(); // 未选无详情
+    fireEvent.click(document.querySelector('g[data-task="a"]')!);
+    expect(document.querySelector('g[data-task="a"]')!.getAttribute('class')).toContain('selected');
+    const detail = screen.getByLabelText('task detail');
+    expect(detail.textContent).toContain('a [pending] 任务a');
+    expect(detail.textContent).toContain('做 A 的活');
+    expect(detail.textContent).toContain('无依赖 · @w1');
+    // 切选 b:deps 箭头 + artifact 摘要(conclusion/tokens/duration)
+    fireEvent.click(document.querySelector('g[data-task="b"]')!);
+    const d2 = screen.getByLabelText('task detail');
+    expect(d2.textContent).toContain('b [done] 任务b');
+    expect(d2.textContent).toContain('needs a');
+    expect(d2.textContent).toContain('ok');
+    expect(d2.textContent).toContain('12 tokens');
+    expect(d2.textContent).toContain('3400ms');
+  });
+
+  it('再点同节点取消;Esc 取消', () => {
+    setup();
+    fireEvent.click(document.querySelector('g[data-task="a"]')!);
+    expect(screen.getByLabelText('task detail')).toBeDefined();
+    fireEvent.click(document.querySelector('g[data-task="a"]')!); // 再点取消
+    expect(screen.queryByLabelText('task detail')).toBeNull();
+    fireEvent.click(document.querySelector('g[data-task="a"]')!);
+    fireEvent.keyDown(document.body, { key: 'Escape' }); // Esc 取消
+    expect(screen.queryByLabelText('task detail')).toBeNull();
+  });
+});
+
 describe('Board:teammate 侧栏与 delegations 简列', () => {
   it('侧栏行 name + busy 点(busy 色钩);delegations 行 label+status', () => {
     render(
