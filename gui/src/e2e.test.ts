@@ -45,7 +45,13 @@ describe('G2 无头验收：真 daemon 全链 → snapshot → App 渲染', () =
     const daemon = new GuiDaemon({ root: tmp, model: new ScriptedAdapter(CARDS) });
     const s = await daemon.start({ port: 0, token: 'e2e-token' });
     handle = s;
-    conn = createConnection({ baseUrl: `http://127.0.0.1:${s.port}`, token: 'e2e-token' });
+    // G3 连接层重做：单连接生命周期（创建即连 WS，事件经 onEvent 回调消费）——subscribe 退场
+    conn = createConnection({
+      baseUrl: `http://127.0.0.1:${s.port}`,
+      token: 'e2e-token',
+      onEvent: (e) => events.push(e),
+      onResync: () => {},
+    });
   }, 30_000);
 
   afterAll(async () => {
@@ -58,8 +64,6 @@ describe('G2 无头验收：真 daemon 全链 → snapshot → App 渲染', () =
   });
 
   it('全链：初始空 snapshot → submit → 事件流至 done（idle 收敛）→ 转录/板/委派落位 → App 渲染出转录行与板行', async () => {
-    conn.subscribe((e) => events.push(e));
-
     // —— 初始 snapshot：空板空转录 idle（连接装配的冷启动面）——
     const snap0 = await conn.snapshot();
     expect(snap0.messages).toEqual([]);
