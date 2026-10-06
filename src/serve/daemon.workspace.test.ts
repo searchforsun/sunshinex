@@ -371,3 +371,26 @@ test('⑦ POST /session/:id/delete：idle 删 → 200 + 注册表移出 + active
     assert.ok(list.some((m) => m.id === jid), '保留的 journal 仍可被 /sessions 列出（后续 attach 重开可消费）');
   });
 });
+
+test('⑧ /session/new mode 白名单：白名单外值 400 {error:"invalid mode"}；manual/dontAsk/缺省 200', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base, tmp } = ctx;
+    const root = path.join(tmp, 'root-mode');
+    fs.mkdirSync(root, { recursive: true });
+    // 白名单外（undefined|dontAsk|manual 之外）→ 400 恒定文案
+    for (const mode of ['xxxx', 'auto', '', 42, null]) {
+      const r = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, mode }) });
+      assert.equal(r.status, 400, `mode=${JSON.stringify(mode)} 白名单外应 400`);
+      assert.deepEqual(await r.json(), { error: 'invalid mode' }, `mode=${JSON.stringify(mode)} 恒定文案`);
+    }
+    // 白名单内三形态照常 200（manual 透传 / dontAsk 显式 / 缺省）
+    for (const mode of ['manual', 'dontAsk', undefined]) {
+      const r = await fetch(`${base}/session/new`, {
+        method: 'POST',
+        headers: AUTH,
+        body: JSON.stringify({ root, ...(mode !== undefined ? { mode } : {}) }),
+      });
+      assert.equal(r.status, 200, `mode=${String(mode)} 白名单内应 200`);
+    }
+  });
+});

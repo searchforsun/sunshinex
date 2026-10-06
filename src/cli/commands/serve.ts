@@ -18,6 +18,7 @@ export const SERVE_DEFAULT_PORT = 7788;
  * token 落 `<dataDir>/serve-token`（§4.3：GUI 首启读取的带外通道——工作区级，无预选仅终端打印）；
  * SIGINT/SIGTERM → await close() → exit 0。
  * G4：`--manual` 与 --root 组合时预选会话以 manual 权限模式装配（审批/问询挂起面，计划裁定 2）。
+ * G5：`--mode=manual` 与 `--manual` 同义（解析后等价，CLI mode 白名单单点校验在前）。
  */
 export async function runServe(args: CliArgs): Promise<void> {
   // 目录来源统一单点（规格 §6.2）：与 run/pipeline 同判据——--workdir 优先，位置参数目录报 unrecognized 不启动。
@@ -89,8 +90,11 @@ export async function runServe(args: CliArgs): Promise<void> {
   // 预选目录非法（不存在/非目录）fail-fast：用户显式给的路径必须成立，静默空跑更糟
   if (preselect !== undefined) {
     // --manual（G4）：预选会话走 manual 权限模式（审批/问询经 WS 挂起帧 + HTTP 回执闭环）；
-    // 缺省 dontAsk 零行为变化。计划裁定 2：flag 只作用于预选会话——GUI 首页新建会话的 mode 面归后续任务
-    const r = daemon.createSession(preselect, args.flags.manual === true ? { mode: 'manual' } : undefined);
+    // 缺省 dontAsk 零行为变化。计划裁定 2：flag 只作用于预选会话——GUI 首页新建会话的 mode 面归后续任务。
+    // G5：--mode=manual 与 --manual 同义（解析后等价——mode 白名单 manual|plan|dontAsk 已由 CLI 单点
+    // 校验，此处只认 manual；plan/dontAsk 对 serve 预选会话无 manual 语义，维持 dontAsk 缺省）
+    const manual = args.flags.manual === true || args.flags.mode === 'manual';
+    const r = daemon.createSession(preselect, manual ? { mode: 'manual' } : undefined);
     if (!r.ok) {
       console.error(t(`Invalid root: ${preselect} (${r.error.message})`, `非法的根目录：${preselect}（${r.error.message}）`));
       await daemon.close();

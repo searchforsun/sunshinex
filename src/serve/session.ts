@@ -31,13 +31,23 @@ export interface EventFrame {
   e: SessionEvent;
 }
 
-/** GET /session/:id/snapshot 载荷（G2 Ruling 1 两轨分工的归档面快照） */
+/** GET /session/:id/snapshot 载荷（G2 Ruling 1 两轨分工的归档面快照）；G5 增 team 段（teammate
+ *  投影——harness.team 同源），pending 段由 daemon 侧合并（挂起表 daemon 级资产，session 不持——
+ *  见 daemon.handleSnapshot） */
 export interface SessionSnapshot {
   messages: TranscriptEntry[];
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';
   lastSeq: number;
+  team: Array<{ name: string; busy: boolean }>;
+}
+
+/** snapshot 挂起段行（G5）：kind 判别与 daemon 挂起表同源（approval/ask）；pid 为 daemon 级铸造
+ *  票据——跨会话卡恢复（GUI 重启/刷新后重放挂起面）的寻址键 */
+export interface SnapshotPendingRow {
+  pid: string;
+  kind: 'approval' | 'ask';
 }
 
 /** submit 结果：ok=true 受理（HTTP 202 面）；ok=false 拒（运行中 409——不排队，GUI 侧无队列语义，
@@ -325,7 +335,8 @@ export class SessionRuntime {
     this.frames.length = 0;
   }
 
-  /** 会话快照（G2 /snapshot 载荷单点平移；G3 增 lastSeq）：粗粒度转录 + board/delegations 影子投影 +
+  /** 会话快照（G2 /snapshot 载荷单点平移；G3 增 lastSeq；G5 增 team 段）：粗粒度转录 + board/delegations
+   *  影子投影 + teammate 名/busy（TeamRegistry.aliveNames/get/isBusy 同源——GUI Board/Team 面消费）+
    *  运行态 + 事件序列水位——GUI 冷启动/刷新经一次拉取恢复全景，细粒度实时面仍走 WS 事件流（两轨
    *  分工，spec G2 Ruling 1）；lastSeq=本会话已泵最大 seq（与影子态同 tick 读取，pump 序内先影子后
    *  广播）——客户端以「重连后本会话首帧 seq > lastSeq ⇒ 无缺口」判重连补发完备（G4 消费） */
@@ -336,7 +347,18 @@ export class SessionRuntime {
       delegations: this.delegations,
       status: this.status(),
       lastSeq: this.lastSeqNum,
+      team: this.runtimeImpl.harness.team.aliveNames().map((name) => ({
+        name,
+        busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,
+      })),
     };
+  }
+
+  /** run 中止态外窥（G5 ghost 硬化）：current 在场且 abort 信号已发——daemon 侧 manual asker 闭包
+   *  在注册挂起前查此位（interrupt/reset 已回填过旧表，abort 之后到达的 ask 是 ghost：无人再回填，
+   *  直接 deny/dismissed 不入表不广播） */
+  isAborted(): boolean {
+    return this.current?.abort.signal.aborted === true;
   }
 
   /**

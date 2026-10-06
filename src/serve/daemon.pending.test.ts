@@ -6,7 +6,8 @@ import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
-import type { ModelAdapter } from '../model/adapter';
+import type { ModelAdapter, UsageHooks } from '../model/adapter';
+import type { ChatRequest, ChatResult } from '../types';
 
 /** G4 挂起面测试（daemon 级）：manual 会话的审批/问询闭环——WS approval/ask 帧 → HTTP 回执 → run 继续；
  *  interrupt deny 回填（表清 + 写被拒观察）；重连重发未决挂起（pid 同）；404 双路（未知/重复/kind 不符）；
@@ -319,6 +320,106 @@ test('⑥ reset 通知帧：POST /session/:id/reset 尾部广播 {kind:"reset", 
         const f = frames.find((fr) => fr.kind === 'reset')!;
         assert.equal(f.sessionId, sid, 'reset 帧挂所属会话');
         assert.equal(f.seq, undefined, 'reset 帧无 seq（不入单调序列）');
+      } finally {
+        ws.close();
+      }
+    },
+  );
+});
+
+test('⑦ snapshot.pending 段：manual 挂起中含本会话 {pid,kind:"approval"}（跨会话过滤）→ 回执后空', { timeout: 30_000 }, async () => {
+  await withPendingDaemon(
+    (out) => new ScriptedAdapter([writeCard(out, 'pending-snap.txt', 'snap'), '{"done":true,"reply":"ok"}']),
+    async (ctx) => {
+      const sid = ctx.manual();
+      const { ws, frames } = await openCollecting(ctx.ws);
+      try {
+        await ctx.post('写个文件', sid);
+        await waitFor(() => frames.some((f) => f.kind === 'approval'), 10_000);
+        const pid = frames.find((f) => f.kind === 'approval')!.pid!;
+        assert.ok(/^p\d+$/.test(pid), 'pid 形态 p<n>（daemon 级铸造）');
+        // 挂起中：本会话 snapshot.pending 含该条目（daemon 侧合并 + sessionId 过滤）
+        const snapOf = async (target: string): Promise<{ pending: Array<{ pid: string; kind: string }> }> => {
+          const r = await fetch(`${ctx.http}/session/${target}/snapshot`, { headers: ctx.H });
+          assert.equal(r.status, 200);
+          return (await r.json()) as { pending: Array<{ pid: string; kind: string }> };
+        };
+        assert.deepEqual((await snapOf(sid)).pending, [{ pid, kind: 'approval' }], 'pending 含本会话 approval 挂起');
+        // 跨会话过滤：另开 manual 会话（无挂起）——pid 全局铸造但段面按 sessionId 过滤
+        const other = ctx.manual();
+        assert.deepEqual((await snapOf(other)).pending, [], '他会话 snapshot.pending 不串流（sessionId 过滤）');
+        // 回执后：表清，段空
+        const r = await fetch(`${ctx.http}/approval/${pid}`, { method: 'POST', headers: ctx.H, body: JSON.stringify({ decision: 'allow' }) });
+        assert.equal(r.status, 200);
+        assert.deepEqual((await snapOf(sid)).pending, [], '回执后 pending 空');
+        await waitFor(() => frames.some((fr) => fr.e?.type === 'done'), 10_000);
+      } finally {
+        ws.close();
+      }
+    },
+  );
+});
+
+/** 门控适配器（G5 ghost 用例）：首调用挂起至 release()——interrupt 在模型回包前落位，释放后 write
+ *  envelope 的工具执行/asker 触发都发生在 abort 之后（ghost 窗口的确定性复现）；其余调用透传内嵌
+ *  ScriptedAdapter。刻意不监听 signal——中止后仍回包正是本用例的时序前提（reactor 步边界检查发生在
+ *  chatRound 之后，本轮工具照常执行） */
+class GateAdapter implements ModelAdapter {
+  readonly provider = 'gate';
+  calls = 0;
+  private readonly scripted: ScriptedAdapter;
+  private releaseGate?: () => void;
+  private readonly held = new Promise<void>((resolve) => {
+    this.releaseGate = resolve;
+  });
+  constructor(cards: string[]) {
+    this.scripted = new ScriptedAdapter(cards);
+  }
+  release(): void {
+    this.releaseGate?.();
+  }
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
+    this.calls += 1;
+    if (this.calls === 1) await this.held;
+    return this.scripted.chat(req, hooks);
+  }
+  async chatStream(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
+    const r = await this.chat(req, hooks);
+    for (const ch of r.content) onDelta(ch);
+    return r;
+  }
+}
+
+test('⑧ ghost-pending 硬化：interrupt 后模型回包触发 write → asker 查 isAborted 直接 deny——零 approval 帧广播、不入表、run 收束', { timeout: 30_000 }, async () => {
+  const holder: { gate?: GateAdapter } = {};
+  await withPendingDaemon(
+    (out) => {
+      holder.gate = new GateAdapter([writeCard(out, 'ghost-pending.txt', 'nope'), '{"done":true,"reply":"never-reached-gate"}']);
+      return holder.gate;
+    },
+    async (ctx) => {
+      const gate = holder.gate!;
+      const sid = ctx.manual();
+      const { ws, frames } = await openCollecting(ctx.ws);
+      try {
+        await ctx.post('写个文件然后被中止', sid);
+        // 时序锚点：首模型调用已到达且被门控挂起（run 在跑、ask 尚未发生）
+        await waitFor(() => gate.calls >= 1, 5000);
+        // interrupt：abort 落位时挂起表为空（denyPendingFor 无东西可回填）——之后到达的 ask 是 ghost
+        const it = await fetch(`${ctx.http}/session/${sid}/interrupt`, { method: 'POST', headers: ctx.H });
+        assert.equal(it.status, 200, 'interrupt 应 200');
+        // 释放门：模型回 write envelope → 工具触发 → asker 闭包查 isAborted → 直接 deny（不注册不广播）
+        gate.release();
+        // run 有界收束（无僵尸：asker 未悬挂）
+        await waitIdle(ctx.http, ctx.H, sid);
+        // 零 approval/ask 帧广播（事件收集器全量断言）
+        await new Promise((r) => setTimeout(r, 200));
+        assert.equal(frames.filter((f) => f.kind === 'approval').length, 0, 'ghost 窗口零 approval 帧（asker 未注册挂起）');
+        assert.equal(frames.filter((f) => f.kind === 'ask').length, 0, 'ghost 窗口零 ask 帧');
+        // 行为面：deny 下写被拒（目标不落盘）+ snapshot.pending 空
+        assert.equal(fs.existsSync(path.join(ctx.out, 'ghost-pending.txt')), false, 'deny 直接回填——写被拒');
+        const snap = (await (await fetch(`${ctx.http}/session/${sid}/snapshot`, { headers: ctx.H })).json()) as { pending: unknown[] };
+        assert.deepEqual(snap.pending, [], '挂起表零残留');
       } finally {
         ws.close();
       }

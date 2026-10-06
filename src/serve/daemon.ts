@@ -9,6 +9,7 @@ import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
 import type { EventFrame } from './session';
+import type { SnapshotPendingRow } from './session';
 import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
@@ -221,7 +222,11 @@ export class GuiDaemon {
     }
     this.sessionSeq += 1;
     const id = `s${this.sessionSeq}`;
-    const session = new SessionRuntime({
+    // G5 ghost 硬化：asker/onAskUser 闭包经 session 后置引用（构造即赋值，闭包执行期才解引用）——
+    // 注册挂起前查该会话 run 已中止：interrupt/reset/delete 的 denyPendingFor 回填发生在 abort 时点，
+    // abort 之后才到达的 ask 是 ghost（表已清、无人再回填）——直接 deny/dismissed 不入表不广播
+    let session: SessionRuntime | undefined;
+    session = new SessionRuntime({
       id,
       root: abs,
       model: this.model,
@@ -234,17 +239,21 @@ export class GuiDaemon {
         ? {
             mode: 'manual' as const,
             asker: (req: ApprovalRequest): Promise<ApprovalDecision> =>
-              new Promise((resolve) => {
-                const pid = this.nextPendingId();
-                this.pending.set(pid, { kind: 'approval', sessionId: id, req, resolve });
-                this.broadcastFrame({ kind: 'approval', sessionId: id, pid, req });
-              }),
+              session !== undefined && session.isAborted()
+                ? Promise.resolve('deny')
+                : new Promise((resolve) => {
+                    const pid = this.nextPendingId();
+                    this.pending.set(pid, { kind: 'approval', sessionId: id, req, resolve });
+                    this.broadcastFrame({ kind: 'approval', sessionId: id, pid, req });
+                  }),
             onAskUser: (req: AskUserRequest): Promise<AskUserAnswer> =>
-              new Promise((resolve) => {
-                const pid = this.nextPendingId();
-                this.pending.set(pid, { kind: 'ask', sessionId: id, req, resolve });
-                this.broadcastFrame({ kind: 'ask', sessionId: id, pid, req });
-              }),
+              session !== undefined && session.isAborted()
+                ? Promise.resolve({ type: 'dismissed' })
+                : new Promise((resolve) => {
+                    const pid = this.nextPendingId();
+                    this.pending.set(pid, { kind: 'ask', sessionId: id, req, resolve });
+                    this.broadcastFrame({ kind: 'ask', sessionId: id, pid, req });
+                  }),
           }
         : {}),
     });
@@ -463,6 +472,8 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
+    // G5 看板服务面：lead 审批映射（gated 审批解锁 / in-review 关单——GUI Board 页消费）
+    { method: 'POST', path: '/session/:id/board/review', auth: true, run: (req, res, p) => this.handleBoardReview(req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
     // T2 会话回收：running 409（先收 run 再删）；journal 文件保留（磁盘档案非 daemon 生命周期资产）
     { method: 'POST', path: '/session/:id/delete', auth: true, run: async (_req, res, p) => this.handleDelete(res, p.id) },
@@ -618,6 +629,12 @@ export class GuiDaemon {
       return;
     }
     const mode = (parsed.body as { mode?: unknown } | null)?.mode;
+    // G5 白名单收紧：undefined|'dontAsk'|'manual' 之外一律 400 恒定文案（此前静默按 dontAsk 装配——
+    //  传 mode:'auto' 的客户端拿到的是 dontAsk 会话，审批行为与预期不符且无提示）
+    if (mode !== undefined && mode !== 'manual' && mode !== 'dontAsk') {
+      this.send(res, 400, { error: 'invalid mode' });
+      return;
+    }
     const r = this.createSession(root, mode === 'manual' ? { mode: 'manual' } : undefined);
     if (!r.ok) {
       this.send(res, 400, { error: r.error.message });
@@ -746,11 +763,42 @@ export class GuiDaemon {
     this.send(res, 200, { ok: true });
   }
 
-  /** snapshot 处理：会话快照单点（载荷形态见 SessionRuntime.snapshotResponse） */
+  /** snapshot 处理：会话快照单点（载荷形态见 SessionRuntime.snapshotResponse）。G5 增挂起段——
+   *  daemon 侧合并（snapshotResponse 保持 session 内聚不持挂起表）：本会话过滤（entry.sessionId）
+   *  → [{pid, kind}]，跨会话卡恢复（GUI 刷新/重连后重放挂起面）的基座 */
   private handleSnapshot(res: http.ServerResponse, id: string | undefined): void {
     const session = this.sessionFor(res, id);
     if (session === undefined) return;
-    this.send(res, 200, session.snapshotResponse());
+    const pending: SnapshotPendingRow[] = [...this.pending.entries()]
+      .filter(([, entry]) => entry.sessionId === session.id)
+      .map(([pid, entry]) => ({ pid, kind: entry.kind }));
+    this.send(res, 200, { ...session.snapshotResponse(), pending });
+  }
+
+  /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）：body 校验（taskId 非空
+   *  string + approved boolean → 400）→ 该会话 taskboard.review 双语义（gated → 审批：approved
+   *  解锁派发 / 拒绝维持；in-review → 关单：approved=done / 拒=failed）→ r.ok 200 {ok:true} /
+   *  fail 400 {error: r.error.message}（未知任务/状态不符直译）；未知 :id 404（sessionFor 单点）。
+   *  review 触发的 gate-resolved/task-status 事件经该会话 pump 自然广播（既有链，零新协议） */
+  private async handleBoardReview(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const body = parsed.body as { taskId?: unknown; approved?: unknown } | null;
+    if (typeof body?.taskId !== 'string' || body.taskId.length === 0 || typeof body.approved !== 'boolean') {
+      this.send(res, 400, { error: 'taskId must be a non-empty string and approved must be a boolean' });
+      return;
+    }
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    const r = session.runtime.harness.taskboard.review(body.taskId, { approved: body.approved });
+    if (!r.ok) {
+      this.send(res, 400, { error: r.error.message });
+      return;
+    }
+    this.send(res, 200, { ok: true });
   }
 
   /** POST /session/:id/attach {journalId}（T2）：journalId 非空 string 校验 → 未知 :id 404 →
