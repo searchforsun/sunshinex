@@ -36,19 +36,27 @@ const CARDS = [
 
 /** 每场景独立 daemon 装配:tmp 会话根 + projects 根隔离(工作区注册表扫描面 hermetic——
  *  不设 SUNSHINEX_DATA_DIR,令 resolveDataDir 走 <projectsRoot>/<slug>/data 的 T2 注册表形态)
- *  + node ws 客户端 stub;stop 幂等收口全量面 */
-async function startDaemon(model: ModelAdapter, staticRoot?: string): Promise<{ port: number; root: string; stop(): Promise<void> }> {
+ *  + node ws 客户端 stub;stop 幂等收口全量面。G4:model 可为工厂(收会话外 out 目录——manual 写
+ *  挂起卡的目标路径需越会话 root 信任域(T1 先例),先建目录再装适配器);返回面增 out */
+async function startDaemon(
+  model: ModelAdapter | ((outDir: string) => ModelAdapter),
+  staticRoot?: string,
+): Promise<{ port: number; root: string; out: string; stop(): Promise<void> }> {
   vi.stubGlobal('WebSocket', NodeWebSocket);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-g35-e2e-'));
   const root = path.join(tmp, 'root'); // 会话根(New session/DirPicker 确认目标)
   fs.mkdirSync(root, { recursive: true });
+  const out = path.join(tmp, 'out'); // 会话外目录(写工具挂起目标:越信任域)
+  fs.mkdirSync(out, { recursive: true });
   const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
-  const daemon = new GuiDaemon({ model, ...(staticRoot !== undefined ? { staticRoot } : {}) });
+  const m = typeof model === 'function' ? model(out) : model;
+  const daemon = new GuiDaemon({ model: m, ...(staticRoot !== undefined ? { staticRoot } : {}) });
   const s = await daemon.start({ port: 0, token: 'e2e-token' });
   return {
     port: s.port,
     root,
+    out,
     stop: async () => {
       await s.close();
       if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
@@ -445,4 +453,172 @@ describe('G3 冒烟④:静态挂载(daemon staticRoot 指 dist-gui)', () => {
     expect(html).toContain('<div id="root"');
     expect(html).toMatch(/\/assets\/[^"]+\.js/); // 真实 build 产物的哈希资源引用(非桩文件)
   }, 15_000);
+});
+
+/* ============================================================
+ * G4 无头验收(spec §12 G4 行:manual 模式审批闭环经 HTTP 回执)——UI 全链:
+ * ①manual 会话经 HTTP 建立:/session/new 增可选 mode 透传(daemon 面);gui 连接层 newSession
+ *   无该参数(scope 未扩)——e2e 以 fetch 包装器向 App 的 POST /session/new body 注入
+ *   mode:'manual'(端点/挂起链/帧/回执全真,仅 body 一字段测试面补注,报告披露);
+ * ②ScriptedAdapter write envelope(目标=会话外第二 tmp 真文件——越信任域才触发链侧 ask,
+ *   T1 先例)→ manual 挂起 → approval 帧经 WS → ApprovalCard 渲染;
+ * ③Allow 按钮即 HTTP 回执(Chat.sendApproval 经 App 连接 POST /approval/:pid,寻址帧顶层
+ *   pid)→ 回执 200 后卡移除 + run 续进:写落盘 + notice 归档 + done 终答 + idle。
+ * delete 流(轻)见下一 describe。
+ * ============================================================ */
+
+describe('G4 manual 审批闭环:HTTP 建 manual 会话 → UI 提交挂起 → ApprovalCard → Allow 回执 → 写落盘/done/卡消失', () => {
+  it('New session(mode 注入)→ 提交 → 审批卡(kind/subject/reason+三按钮)→ Allow → 卡移除 + 文件落盘 + notice + done 收束', async () => {
+    const WRITE_NAME = 'g4-e2e-approval.txt';
+    const WRITE_CONTENT = 'manual-allow-payload';
+    const env = await startDaemon(
+      (out) =>
+        new ScriptedAdapter([
+          JSON.stringify({ tool: 'write', input: { path: path.join(out, WRITE_NAME), content: WRITE_CONTENT } }),
+          '{"done":true,"reply":"审批放行后收束"}',
+        ]),
+    );
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      // mode 注入包装器:App 自建连接的 newSession 无 mode 参数(gui 连接层缺该面,G5+ 接线)——
+      // e2e 在 fetch 面补注 mode:'manual',仍经真 HTTP 端点建 manual 会话(daemon /session/new 的
+      // 可选 mode 透传面即为此验收所开);其余请求原样透传
+      const realFetch = globalThis.fetch.bind(globalThis);
+      vi.stubGlobal(
+        'fetch',
+        (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+          const req: RequestInfo = typeof input === 'string' ? input : input instanceof URL ? input.href : input;
+          const url = typeof req === 'string' ? req : req.url;
+          if (init?.method === 'POST' && url.endsWith('/session/new') && typeof init.body === 'string') {
+            const body = JSON.parse(init.body) as Record<string, unknown>;
+            return realFetch(req, { ...init, body: JSON.stringify({ ...body, mode: 'manual' }) });
+          }
+          return realFetch(req, init);
+        },
+      );
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— manual 会话经 UI 建立(New session → DirPicker 同 root;包装器注 mode)——
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+
+      // —— UI 提交 → write envelope 越信任域 → manual 挂起 → approval 帧经 WS → ApprovalCard ——
+      const input = screen.getByLabelText('message input');
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+      fireEvent.change(input, { target: { value: 'manual 写一个文件' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => expect(container.querySelector('.approval-card')).not.toBeNull(), { timeout: 10_000 });
+      const title = container.querySelector('.approval-card .card-title');
+      expect(title?.textContent?.startsWith('[approval write]')).toBe(true); // req.kind=write(链侧 ask 形态)
+      expect(title?.textContent).toContain(WRITE_NAME); // subject=写目标路径
+      expect(container.querySelector('.approval-card .card-reason')).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Allow' })).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Always' })).toBeDefined();
+
+      // —— Allow 按钮 = HTTP 回执(经 App 连接 POST /approval/:pid)→ 回执 200 后卡移除 ——
+      fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+      await waitFor(() => expect(container.querySelector('.approval-card')).toBeNull(), { timeout: 5_000 });
+
+      // —— run 续进:第二张 done 牌 → 终答 + idle;写工具真执行(会话外 out 真文件)——
+      await waitFor(
+        () => expect(container.querySelector('.entry-assistant')?.textContent).toContain('审批放行后收束'),
+        { timeout: 10_000 },
+      );
+      expect(fs.readFileSync(path.join(env.out, WRITE_NAME), 'utf8')).toBe(WRITE_CONTENT);
+      // 回执 notice 归档(daemon pump 事件帧 → 转录 notice 条,转录可见面)
+      await waitFor(
+        () => expect(container.querySelector('.entry-notice')?.textContent).toContain('resolved: allow'),
+        { timeout: 5_000 },
+      );
+      expect(container.querySelector('.pending-cards')).toBeNull(); // 卡区整体退场
+      expect(container.querySelector('.status-idle')).toBeDefined();
+      expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('manual 写一个文件');
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 45_000);
+});
+
+describe('G4 delete 流(轻):两会话 idle → Home 行 Delete(confirm 桩)→ 真实链路断言', () => {
+  it('第二会话行 Delete → confirm 真发起 HTTP;现状:journal id 打会话端点 404(接线缺口,示错行保留);daemon 会话 id 删 200/注册表 404/journal 保留', async () => {
+    const env = await startDaemon(
+      new ScriptedAdapter(['{"done":true,"reply":"第一会话完成"}', '{"done":true,"reply":"第二会话完成"}']),
+    );
+    const H: Record<string, string> = { authorization: 'Bearer e2e-token' };
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      const openByPicker = async (): Promise<void> => {
+        fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+        await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+        fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+        fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      };
+      const runOnce = async (goal: string, reply: string): Promise<void> => {
+        const input = screen.getByLabelText('message input');
+        await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+        fireEvent.change(input, { target: { value: goal } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        await waitFor(() => expect(container.querySelector('.entry-assistant')?.textContent).toContain(reply), { timeout: 10_000 });
+      };
+      const backHome = async (): Promise<void> => {
+        fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+        await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
+      };
+
+      // —— 两会话先后建+跑+idle(journal 惰性建档:首 run 落盘,Home 会话行才出现)——
+      await openByPicker();
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await runOnce('第一会话目标', '第一会话完成');
+      await backHome();
+      await openByPicker();
+      await waitFor(() => expect(screen.getByText('session s2')).toBeDefined(), { timeout: 5_000 });
+      await runOnce('第二会话目标', '第二会话完成');
+      await backHome();
+
+      // —— Home:展开工作区行 → 两 journal 行在(listSessions updatedAt 降序:第二会话档在前)——
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
+      await waitFor(() => expect(container.querySelectorAll('.session-row').length).toBe(2), { timeout: 5_000 });
+      const deleteButtons = await screen.findAllByRole('button', { name: /^delete / });
+      expect(deleteButtons.length).toBe(2);
+
+      // —— 第二会话行 Delete(confirm 桩真):Home 接线以 journal id 打 /session/:id/delete ——
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      fireEvent.click(deleteButtons[0]); // 首行 = 最近 journal(第二会话档)
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      // 真实链路现状(接线缺口,T4 报告记档):daemon delete 按会话注册表 id 寻址,journal id 未知 →
+      // 404 → Home 示错、行保留(不消失)——G5+ 需 journal 删除端点或 id 解析接线
+      const err = await screen.findByText(/-> 404/, {}, { timeout: 5_000 });
+      expect(err.textContent).toContain('/delete -> 404');
+      expect(container.querySelectorAll('.session-row').length).toBe(2); // 行未消失(失败不刷新)
+      confirmSpy.mockRestore();
+
+      // —— daemon 会话 id 走真回收面(API 层):200 → 注册表移除(:id 访问 404)→ journal 文件保留 ——
+      const r = await fetch(`http://127.0.0.1:${env.port}/session/s2/delete`, { method: 'POST', headers: H });
+      expect(r.status).toBe(200);
+      const gone = await fetch(`http://127.0.0.1:${env.port}/session/s2/snapshot`, { headers: H });
+      expect(gone.status).toBe(404);
+      const journals = fs
+        .readdirSync(path.join(resolveDataDir(env.root), 'sessions'))
+        .filter((f) => f.endsWith('.jsonl'));
+      expect(journals.length).toBe(2); // journal 保留(T2 裁定:磁盘档案非 daemon 生命周期资产)
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
 });

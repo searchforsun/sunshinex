@@ -602,8 +602,10 @@ export class GuiDaemon {
     return session;
   }
 
-  /** POST /session/new {root}（spec §4.1）：root 必填（无 root 400+迁移提示——旧裸软重置语义让位
-   *  /session/:id/reset）；createSession 单点（存在性/目录校验 INVALID_ARG → 400）→ 200 {ok,sessionId} */
+  /** POST /session/new {root, mode?}（spec §4.1）：root 必填（无 root 400+迁移提示——旧裸软重置语义让位
+   *  /session/:id/reset）；可选 mode:'manual' 透传 createSession（G4 补面：HTTP 建 manual 会话——CLI
+   *  --manual 只作用预选会话,无此面 e2e/客户端无法经 HTTP 装配 manual;其余值含缺省 = dontAsk 零变化）；
+   *  createSession 单点（存在性/目录校验 INVALID_ARG → 400）→ 200 {ok,sessionId} */
   private async handleSessionNew(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const parsed = await this.readJson(req);
     if (!parsed.ok) {
@@ -615,7 +617,8 @@ export class GuiDaemon {
       this.send(res, 400, { error: ROOT_REQUIRED_HINT });
       return;
     }
-    const r = this.createSession(root);
+    const mode = (parsed.body as { mode?: unknown } | null)?.mode;
+    const r = this.createSession(root, mode === 'manual' ? { mode: 'manual' } : undefined);
     if (!r.ok) {
       this.send(res, 400, { error: r.error.message });
       return;
