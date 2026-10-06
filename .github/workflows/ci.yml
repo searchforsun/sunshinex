@@ -49,6 +49,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # gui 面门禁：pretest 先 strict typecheck（经 projection 同源直引主仓 TS 源链）再构建主仓 dist，
+      # e2e 消费发布形态（dist/serve/daemon + dist/model/adapter）；jsdom+ws 纯内存、测试区自清，无平台残留态。
+      # 全矩阵跑（含 Windows）：gui 依赖全为纯 JS（vite/vitest/jsdom），与 §14「声明变事实」的矩阵价值同口径。
+      - name: gui tests
+        run: pnpm --filter sunshinex-gui test
+
       # 部署自检：证明 dist 产物在目标平台可启动。Windows 上这会真实走 resolveShell() 决议链
       # （SUNSHINEX_SHELL → Git Bash 探测 → ComSpec 兜底），runner 预装 Git for Windows，故覆盖 Git Bash 命中路径。
       - name: Selfcheck

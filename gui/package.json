@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "pretest": "cd .. && node scripts/clean-dist.js && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "pnpm run typecheck && cd .. && node scripts/clean-dist.js && tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {

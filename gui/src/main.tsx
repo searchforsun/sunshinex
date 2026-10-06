@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { emptyBoard } from '../../src/taskboard/model';
+import { emptyBoard } from './projection';
 import type { SnapshotResponse } from './connection';
 
 /**
