@@ -5,7 +5,7 @@ import type { SessionEvent } from '../../src/types';
 import { App } from './App';
 import { emptyBoard, applyBoardEvent } from './projection';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
-import type { ConnectionOpts, ConnectionState, Connection, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow } from './connection';
+import type { ConnectionOpts, ConnectionState, Connection, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
 
 /**
@@ -37,6 +37,10 @@ const h = vi.hoisted(() => {
     replyAskCalls: Array<[string, GuiAskAnswer]> = [];
     deleteSessionCalls: string[] = [];
     boardReviewCalls: Array<[string, string, boolean]> = [];
+    readFileCalls: Array<[string, string]> = [];
+    /** G6 Files 预览面应答(readFile 可编程) */
+    fileResp: FileResp = { path: '/w/root-a/src/a.ts', content: 'const x = 1;\n' };
+    fileReject: Error | null = null;
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
     replyReject: Error | null = null;
@@ -111,6 +115,11 @@ const h = vi.hoisted(() => {
     boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
       this.boardReviewCalls.push([sessionId, taskId, approved]);
       return Promise.resolve();
+    }
+    readFile(sessionId: string, path: string): Promise<FileResp> {
+      if (this.fileReject !== null) return Promise.reject(this.fileReject);
+      this.readFileCalls.push([sessionId, path]);
+      return Promise.resolve(this.fileResp);
     }
     close(): void {
       this.closed = true;
@@ -644,6 +653,54 @@ describe('token 门面(无 token 不建连接)', () => {
   });
 });
 
+describe('G6 Files 页:第三 tab + write 工具 path 按钮跳转', () => {
+  it('三 tab 切换:Chat|Board|Files;Files 进入预览面,Chat 常驻零重播种', async () => {
+    const { conn, unmount } = await enterChat();
+    expect(screen.getByRole('button', { name: 'Files' })).toBeDefined(); // 第三 tab 在场
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    expect(screen.getByLabelText('files')).toBeDefined(); // Files 预览面
+    expect(screen.getByRole('button', { name: 'Files' }).getAttribute('aria-pressed')).toBe('true');
+    expect(conn.snapshotCalls).toHaveLength(1); // Chat 常驻:切 tab 不重播种
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByLabelText('board')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' }));
+    expect(screen.getByLabelText('message input')).toBeDefined(); // 回 Chat 对话面在场
+    unmount();
+  });
+
+  it('write 条目 path 按钮 → onOpenFile 跳转:Files tab 激活 + initialPath 自动加载 + 高亮渲染', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    // write tool-call 帧(batch-runner 实发形态:text=工具名,payload.input={path,content})
+    fire(conn, ev('tool-call', 'write', { input: { path: 'src/a.ts', content: 'const y = 2;\n' }, callId: 'c1', status: 'pending' }));
+    fire(conn, ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }));
+    // 展开 write 条目 → path 按钮 → Files tab
+    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' }));
+    expect(screen.getByRole('button', { name: 'Files' }).getAttribute('aria-pressed')).toBe('true');
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts']])); // initialPath 自动加载
+    await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
+    expect(document.querySelector('.files-view .hljs-keyword')).not.toBeNull(); // 高亮 class(const → keyword)
+    // 手动输入换路径:回车加载第二文件
+    conn.fileResp = { path: '/w/root-a/src/b.md', content: '# 标题\n' };
+    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: 'src/b.md' } });
+    fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts'], ['s1', 'src/b.md']]));
+    unmount();
+  });
+
+  it('Files 403 错误态:越界路径错误消息示出', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.fileReject = new Error('/session/s1/file?path=../x -> 403');
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: '../x' } });
+    fireEvent.click(screen.getByRole('button', { name: '加载' }));
+    await waitFor(() => expect(screen.getByText('/session/s1/file?path=../x -> 403')).toBeDefined());
+    expect(document.querySelector('.files-view')).toBeNull();
+    unmount();
+  });
+});
+
 describe('卸载收口(单连接生命周期)', () => {
   it('unmount 关闭连接', async () => {
     const { conn, unmount } = await enterChat();
@@ -651,6 +708,7 @@ describe('卸载收口(单连接生命周期)', () => {
     expect(conn.closed).toBe(true);
   });
 });
+
 
 describe('G5 Board 页:tab 进入 + 板/委派投影 + team(快照) + 会话维 reset', () => {
   const taskCreated = (id: string, title: string, dependsOn: string[] = []): SessionEvent =>

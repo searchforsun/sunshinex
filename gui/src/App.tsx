@@ -6,6 +6,7 @@ import type { TaskBoardState, Delegation } from './projection';
 import { Home } from './pages/Home';
 import { Chat } from './pages/Chat';
 import { Board } from './pages/Board';
+import { Files } from './pages/Files';
 import type { ChatSink } from './pages/Chat';
 import type { SessionEvent } from '../../src/types';
 
@@ -26,6 +27,8 @@ import type { SessionEvent } from '../../src/types';
  * 快照本就携带 board/delegations,一并回填:开 s2 即见 s2 快照板而非 s1 残留——会话切换串态
  * 根除;openSession/backHome 亦清板投影双保险,重开经快照重建权威态)。
  * gate 审批 onReview → conn.boardReview(sessionId, taskId, approved)。
+ * G6 Files 页:会话内第三 tab(Chat|Board|Files);write 工具 path 按钮 → Chat onOpenFile
+ * → 切 Files tab + filesPath 播种(Files key={filesPath} 重挂载,到场自动加载)。
  * onResetSession(G3.5 交接 d 收口):会话维 reset 除 Chat 重播种外,board/delegations 投影
  * 亦清(此前仅连接级 onReset 清——会话 reset 后板投影悬挂旧任务)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
@@ -87,8 +90,10 @@ function TokenGate({ onSave }: { onSave: (token: string) => void }): JSX.Element
 function AppShell({ token }: { token: string }): JSX.Element {
   const [page, setPage] = useState<'home' | 'chat'>('home');
   const [openSessionId, setOpenSessionId] = useState<string>('');
-  /** G5 会话内 tab:chat|board(Chat 常驻 hidden 面,Board 条件挂载——切换零重播种) */
-  const [sessionTab, setSessionTab] = useState<'chat' | 'board'>('chat');
+  /** G5/G6 会话内 tab:chat|board|files(Chat 常驻 hidden 面,Board/Files 条件挂载——切换零重播种) */
+  const [sessionTab, setSessionTab] = useState<'chat' | 'board' | 'files'>('chat');
+  /** G6 Files 跳转路径(Chat write 工具 path 按钮注入):undefined = 手动输入起步;跳转即播种 */
+  const [filesPath, setFilesPath] = useState<string | undefined>(undefined);
   const [connState, setConnState] = useState<ConnectionState>('connecting');
   const [board, setBoard] = useState<TaskBoardState>(emptyBoard);
   const [delegations, setDelegations] = useState<Delegation[]>([]);
@@ -152,11 +157,12 @@ function AppShell({ token }: { token: string }): JSX.Element {
   }, [token]);
 
   /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线);tab 归位 chat + 板投影/
-   *  team 清零(会话切换串态防线——快照落定后经 onSeeded 重建权威态) */
+   *  team 清零(会话切换串态防线——快照落定后经 onSeeded 重建权威态)+ Files 跳转路径复位 */
   const openSession = (sessionId: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
     setSessionTab('chat');
+    setFilesPath(undefined);
     setBoard(emptyBoard());
     setDelegations([]);
     setTeam([]);
@@ -169,10 +175,18 @@ function AppShell({ token }: { token: string }): JSX.Element {
     sessionRef.current = '';
     setOpenSessionId('');
     setSessionTab('chat');
+    setFilesPath(undefined);
     setBoard(emptyBoard());
     setDelegations([]);
     setTeam([]);
     setPage('home');
+  };
+
+  /** G6 write 工具 path 按钮跳转:Files tab + initialPath 播种(Chat 经 onOpenFile 上抛——
+   *  Chat 常驻不卸毁,回 Chat tab 零重播种) */
+  const openFile = (path: string): void => {
+    setFilesPath(path);
+    setSessionTab('files');
   };
 
   /** G5 gate 审批装配:Board onReview → boardReview(sessionId, taskId, approved)——失败倒
@@ -214,13 +228,16 @@ function AppShell({ token }: { token: string }): JSX.Element {
         )
       ) : connInstance !== null ? (
         <div className="session-shell">
-          {/* G5 会话内 tab:Chat|Board(openSessionId 在场才渲染本壳) */}
+          {/* G5/G6 会话内 tab:Chat|Board|Files(openSessionId 在场才渲染本壳) */}
           <nav className="session-tabs" aria-label="session tabs">
             <button type="button" aria-pressed={sessionTab === 'chat'} onClick={() => setSessionTab('chat')}>
               Chat
             </button>
             <button type="button" aria-pressed={sessionTab === 'board'} onClick={() => setSessionTab('board')}>
               Board
+            </button>
+            <button type="button" aria-pressed={sessionTab === 'files'} onClick={() => setSessionTab('files')}>
+              Files
             </button>
           </nav>
           {/* Chat 常驻(hidden 面):tab 切换不卸毁——挂起卡/竞态缓冲/输入零重播种 */}
@@ -233,6 +250,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
               onBack={backHome}
               sinkRef={chatSinkRef}
               onSeeded={seedFromSnapshot}
+              onOpenFile={openFile}
             />
           </div>
           {sessionTab === 'board' && (
@@ -243,6 +261,11 @@ function AppShell({ token }: { token: string }): JSX.Element {
               onReview={reviewTask}
               onBack={() => setSessionTab('chat')}
             />
+          )}
+          {/* G6 Files 页:key={filesPath}——跳转路径变更即重挂载(输入框播种新路径自动加载;
+              手动浏览(undefined)共用空 key,同态复挂零害) */}
+          {sessionTab === 'files' && (
+            <Files key={filesPath ?? ''} conn={connInstance} sessionId={openSessionId} initialPath={filesPath} />
           )}
         </div>
       ) : null}

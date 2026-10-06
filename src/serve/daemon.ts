@@ -14,6 +14,7 @@ import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
+import { isWithin } from '../paths';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
  *  按需装配（--root CLI 参数降级为「启动即预选」，缺省空注册表启动）。model 与 CLI buildModel/TUI
@@ -105,6 +106,13 @@ function parseAskAnswer(v: unknown): AskUserAnswer | null {
 /** JSON body 上限（1MB）：防无界 body 撑爆 daemon 内存；超限即断连收口 */
 const MAX_BODY_BYTES = 1024 * 1024;
 
+/** 文件预览上限（G6 /file 端点，512KB）：≤ 上限全文回执；> 上限读首 512KB + truncated:true
+ *  （预览语义而非 413——Ruling 1 修正：截断标记让 GUI 呈现「文件过大已截断」而非直接拒读） */
+const MAX_PREVIEW_BYTES = 512 * 1024;
+
+/** 二进制探测窗（首 8KB）：UTF-8 文本不含 \0，命中即按二进制拒（415）——预览面只服务文本 */
+const BINARY_PROBE_BYTES = 8 * 1024;
+
 /** WS 保活节拍：30s 一 ping；pong 静默超 60s 即 terminate（close 事件统一清理） */
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
@@ -136,6 +144,23 @@ function mimeOf(file: string): string {
 /** 静态读文件：任何读失败（缺失/目录/权限）归一 null——SPA 兜底与 404 由调用方分径 */
 function readStaticFile(file: string): Promise<Buffer | null> {
   return new Promise((resolve) => fs.readFile(file, (err, data) => resolve(err === null ? data : null)));
+}
+
+/** 判界用路径归一（G6 /file 端点；与 SafetyChain.resolveSafe 同口径）：存在段 realpathSync 解析
+ *  符号链接（新建段字面拼接——resolve 产物无 .. 残留），防「根内符号链接指向根外」的逃逸；整链无
+ *  存在锚（不可达驱动器等）或 realpath 异常回 undefined——调用方回退字面判定（fail-closed 不放行） */
+function realPathOf(abs: string): string | undefined {
+  try {
+    let anchor = abs;
+    while (!fs.existsSync(anchor)) {
+      const parent = path.dirname(anchor);
+      if (parent === anchor) return undefined; // 盘根都不存在：无锚可归一
+      anchor = parent;
+    }
+    return fs.realpathSync(anchor) + abs.slice(anchor.length);
+  } catch {
+    return undefined;
+  }
 }
 
 /** 路由表条目：path 支持 `:name` 段参数（会话维端点 /session/:id/*）；auth 恒验除 healthz */
@@ -472,6 +497,8 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
+    // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
+    { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G5 看板服务面：lead 审批映射（gated 审批解锁 / in-review 关单——GUI Board 页消费）
     { method: 'POST', path: '/session/:id/board/review', auth: true, run: (req, res, p) => this.handleBoardReview(req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
@@ -773,6 +800,75 @@ export class GuiDaemon {
       .filter(([, entry]) => entry.sessionId === session.id)
       .map(([pid, entry]) => ({ pid, kind: entry.kind }));
     this.send(res, 200, { ...session.snapshotResponse(), pending });
+  }
+
+  /** GET /session/:id/file?path=（G6 预览面，Files 页消费）：query path 必填（400）→ 会话解析
+   *  （未知 :id 404）→ path.resolve(session.root, path) 归一（相对/绝对均可）→ 判界：该会话
+   *  harness.safety 的路径判定面——主根 rootReal ∪ 活动工作树根（read 工具同口径信任域；rootReal/
+   *  activeRoot 是 SafetyChain 仅有公开判定面，resolveSafe/read 围栏均私有，additionalDirs 未公开
+   *  不入判界——单根判界口径，记档报告）→ 越界 403 {path outside trusted roots} → fs.statSync
+   *  不存在/非文件 404 → 二进制（首 8KB 含 \0）415 → >512KB 读首 512KB + truncated:true →
+   *  200 {path, content, truncated?}。仅 GET（路由表 method 精确匹配） */
+  private handleFile(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const q = url.searchParams.get('path');
+    if (q === null || q.length === 0) {
+      this.send(res, 400, { error: 'path query param required' });
+      return;
+    }
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    const abs = path.resolve(session.root, q);
+    // 判界基准：目标经 realPathOf 归一（存在段 realpath，防符号链接逃逸——read 工具同口径）；
+    // 归一不可得回退字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）
+    const real = realPathOf(abs) ?? abs;
+    const safety = session.runtime.harness.safety;
+    const roots = [safety.rootReal];
+    const active = safety.activeRoot; // worktree 会话的活动根（null=缺省主根态）
+    if (active !== null) {
+      try {
+        roots.push(fs.existsSync(active) ? fs.realpathSync(active) : active);
+      } catch {
+        roots.push(active);
+      }
+    }
+    const inside = roots.some((r) => real === r || isWithin(r, real));
+    if (!inside) {
+      this.send(res, 403, { error: 'path outside trusted roots' });
+      return;
+    }
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(abs);
+    } catch {
+      this.send(res, 404, { error: 'not found' });
+      return;
+    }
+    if (!st.isFile()) {
+      this.send(res, 404, { error: 'not found' });
+      return;
+    }
+    const truncated = st.size > MAX_PREVIEW_BYTES;
+    const len = truncated ? MAX_PREVIEW_BYTES : st.size;
+    let buf: Buffer;
+    try {
+      const fd = fs.openSync(abs, 'r'); // 只读句柄：预览面零写副作用
+      try {
+        buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, 0);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      this.send(res, 404, { error: 'not found' });
+      return;
+    }
+    // 二进制拒：首 8KB 含 \0 即按二进制定论（UTF-8 文本不含 NUL 字节）
+    if (buf.subarray(0, Math.min(buf.length, BINARY_PROBE_BYTES)).includes(0)) {
+      this.send(res, 415, { error: 'binary file' });
+      return;
+    }
+    this.send(res, 200, { path: abs, content: buf.toString('utf8'), ...(truncated ? { truncated: true } : {}) });
   }
 
   /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）：body 校验（taskId 非空

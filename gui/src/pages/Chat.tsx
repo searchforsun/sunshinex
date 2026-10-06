@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
+import { DiffPanel } from '../diff-panel';
 import type { Connection, ConnectionState, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent } from '../../../src/types';
 
@@ -65,12 +66,75 @@ export interface ChatProps {
   sinkRef: MutableRefObject<ChatSink | null>;
   /** G5 快照落定回调(App 消费 snapshot.team 存态——Board 侧栏;可选防测试桩免配) */
   onSeeded?: (snap: SnapshotResponse) => void;
+  /** G6 write 工具 path 按钮回调(App 切 Files tab 并带 initialPath;可选防测试桩免配) */
+  onOpenFile?: (path: string) => void;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
 type PendingCard =
   | { kind: 'approval'; pid: string; req: GuiApprovalReq }
   | { kind: 'ask'; pid: string; req: GuiAskReq };
+
+/** G6 工具条目结构面:tool-call 帧 payload.input 的本地暂存（chat-reducer 的 ChatEntry 只存 md
+ *  两行文本,diff 展开需 input 原文——本组件 sink.on 面旁路暂存,按 callId 寻址配对条目 key） */
+interface ToolCallInfo {
+  /** 工具规范名（事件 text——batch-runner emit 首参,如 'write'/'read'） */
+  name: string;
+  /** 调用入参原对象（payload.input;write 形态 {path, content} 现场核 builtin.ts） */
+  input: Record<string, unknown>;
+}
+
+/** 工具条 md(`● verb\n⎿ result`)的渲染侧只读拆解——与 chat-reducer 内部同形约定,不入其模块 */
+function verbOf(md: string): string {
+  const nl = md.indexOf('\n');
+  return md.startsWith('● ') && nl > 2 ? md.slice(2, nl) : md;
+}
+
+function resultOf(md: string): string {
+  const m = md.indexOf('⎿ ');
+  return m >= 0 ? md.slice(m + 2) : '';
+}
+
+/** G6 工具条目(折叠态一行/点击展开):write 工具(name==='write',call 名判定——事件 text 即
+ *  注册名)展开 DiffPanel(newStr=input.content;builtin write 是整文件替换写,无 old/new 串对,
+ *  仅右列——oldStr 缺场语义)+ path 文本按钮(onOpenFile 跳 Files 预览);其他工具展开 result
+ *  摘要行。折叠行 `● verb [path] [⎿ result]`——verb 行与 result 行并作一行(md 两行的折叠视图)。 */
+function ToolEntryView({
+  entry,
+  info,
+  onOpenFile,
+}: {
+  entry: ChatEntry;
+  info?: ToolCallInfo;
+  onOpenFile?: (path: string) => void;
+}): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const verb = verbOf(entry.md);
+  const result = resultOf(entry.md);
+  const target = info !== undefined && typeof info.input.path === 'string' ? info.input.path : undefined;
+  const isWrite = info !== undefined && info.name === 'write' && target !== undefined;
+  return (
+    <div className={`entry entry-tool${expanded ? ' tool-expanded' : ''}`}>
+      <button type="button" className="tool-summary" onClick={() => setExpanded((v) => !v)}>
+        {target !== undefined ? `● ${verb} ${target}` : `● ${verb}`}
+        {result !== '' ? ` ⎿ ${result}` : ''}
+      </button>
+      {expanded &&
+        (isWrite && info !== undefined ? (
+          <div className="tool-detail">
+            {onOpenFile !== undefined && (
+              <button type="button" className="tool-path" title="在 Files 页预览" onClick={() => onOpenFile(target!)}>
+                {target}
+              </button>
+            )}
+            <DiffPanel newStr={typeof info.input.content === 'string' ? info.input.content : ''} />
+          </div>
+        ) : (
+          <pre className="tool-result">{result !== '' ? result : '(无结果)'}</pre>
+        ))}
+    </div>
+  );
+}
 
 /** G4 审批卡:三按钮字面即 ApprovalDecision(allow/deny/always)——回执经 HTTP,寻址 pid */
 function ApprovalCard({ req, onDecision }: { req: GuiApprovalReq; onDecision: (decision: string) => void }): JSX.Element {
@@ -160,9 +224,12 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
   );
 });
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
+  /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
+   *  (reducer 的 md 两行不含 input 原文);播种窗内缓冲帧同样暂存(缓冲补投创建的条目可配对) */
+  const [toolInputs, setToolInputs] = useState<Record<string, ToolCallInfo>>({});
   /** G4 挂起卡列表(pid 维:回执落定即移;resetSession/idle 清空) */
   const [cards, setCards] = useState<PendingCard[]>([]);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
@@ -246,6 +313,16 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded }: 
   useEffect(() => {
     const sink: ChatSink = {
       on: (e, seq) => {
+        // G6 工具条 input 暂存:tool-call 帧的 payload.input 旁路存留(先于播种门——缓冲窗内
+        // 到达的帧同样暂存,种子落定后补投创建的条目按 callId 可配对)
+        if (e.type === 'tool-call') {
+          const cid = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
+          if (cid !== '') {
+            const raw = e.payload?.input;
+            const input = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+            setToolInputs((m) => ({ ...m, [cid]: { name: e.text ?? '', input } }));
+          }
+        }
         if (seedingRef.current) {
           pendingRef.current.push({ e, seq }); // 种子在途:缓冲不投(直投会被种子整替清掉)
           return;
@@ -269,6 +346,14 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded }: 
   }, [sinkRef, reseed, addCard]);
 
   const running = chat.status === 'running';
+
+  /** G6 工具条目 → input 暂存配对:条目 key `tool:<callId>`(重复 callId 的 `~n` 后缀剥掉;
+   *  `tool:#`(无 callId 面)与播种条(`s<seq>`)不配对——快照 md 无 input,展开退 result 摘要) */
+  const toolInfoOf = (entry: ChatEntry): ToolCallInfo | undefined => {
+    if (!entry.key.startsWith('tool:') || entry.key.startsWith('tool:#')) return undefined;
+    const cid = (entry.key.slice('tool:'.length).split('~')[0]) ?? '';
+    return cid.length > 0 ? toolInputs[cid] : undefined;
+  };
 
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
    *  时置空本地卡列表;reseed 落定的 idle 快照亦经此路径(挂起已回填,不重建——见文件头裁定) */
@@ -336,9 +421,13 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded }: 
         </section>
       )}
       <main className="chat" aria-label="chat">
-        {chat.entries.map((entry) => (
-          <ChatEntryView key={entry.key} entry={entry} />
-        ))}
+        {chat.entries.map((entry) =>
+          entry.kind === 'tool' ? (
+            <ToolEntryView key={entry.key} entry={entry} info={toolInfoOf(entry)} onOpenFile={onOpenFile} />
+          ) : (
+            <ChatEntryView key={entry.key} entry={entry} />
+          ),
+        )}
       </main>
       <footer className="composer">
         <input

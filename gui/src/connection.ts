@@ -101,6 +101,14 @@ export interface DirPickerResp {
   dirs: string[];
 }
 
+/** GET /session/:id/file?path= 载荷（G6 预览面）：path=daemon 侧 resolve 归一后的绝对路径；
+ *  truncated=true 表示原文超 512KB、content 为首 512KB 截断（预览语义非全文） */
+export interface FileResp {
+  path: string;
+  content: string;
+  truncated?: boolean;
+}
+
 /** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -167,6 +175,9 @@ export interface Connection {
   /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）:gate 双语义(gated 审批
    *  解锁 / in-review 关单)——Board 页 onReview 装配点;400 面=未知任务/状态不符 */
   boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void>;
+  /** GET /session/:id/file?path=（G6 预览面）：path 相对会话 root 或绝对均可；403(越界)/404(不
+   *  存在/目录)/415(二进制)以 HTTP 失败抛错（消息含 status）——Files 页错误态消费 */
+  readFile(sessionId: string, path: string): Promise<FileResp>;
   /** POST /session/:id/delete（T2 会话回收，Home 消费）：running 409；journal 文件保留 */
   deleteSession(id: string): Promise<void>;
   close(): void;
@@ -389,6 +400,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
       return post(`/session/${encodeURIComponent(sessionId)}/board/review`, { taskId, approved });
+    },
+    readFile(sessionId: string, filePath: string): Promise<FileResp> {
+      return getJson<FileResp>(`/session/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(filePath)}`);
     },
     deleteSession(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/delete`);
