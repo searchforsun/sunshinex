@@ -303,6 +303,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
 - 预算护栏：子代理不设 token 硬顶（护栏交给步数与墙钟），需要限时配 `subagentTokenCap`（独享值，不继承主链剩余）；步数上限与主链同源（`maxSteps`）。
 - 自定义角色：放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。
+- 团队形态：spawn 入参 `mode: 'team'` 或 frontmatter `executor: internal-team` 派生长驻 teammate（自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
 
 ### 5.4 会话回退与分叉（/rewind · /fork）
 
@@ -331,6 +332,38 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 生命周期：树落数据目录 `worktrees/<name>/`、分支 `worktree-<name>` 从当前 HEAD 分叉。干净树随会话自动清理（含分支），脏树保留并标记待处置；CLI 非交互路径一律保留。
 
+### 5.6 任务板与团队协作（多 Agent 编排）
+
+任务板是跨会话持久的共享任务队列（落数据目录 `teams/main/`，`/new` 不清板、重启自动恢复）。三个概念轴：**任务**（自包含 spec + 依赖 + 审批门 + 裁决）、**角色**（`agents/` 目录注册）、**执行体**——无 teammate 在场时任务自动派发给一次性子代理（fork 顶替），有 teammate 在场则由其自主认领。
+
+**模型操作面（lead 六件套工具）**——由主链模型调用，用户经对话下达目标即可：
+
+| 工具 | 作用 |
+| --- | --- |
+| `create_task` | 建任务（title / 自包含 spec / dependsOn 依赖 / gated 建即挂门 / executor 执行体 / assignee 指派）；满足依赖即自动派发 |
+| `set_dependency` | 追加依赖边，成环即拒（报环成员清单） |
+| `assign` | 记录指派（同名 teammate 接管该任务的路由） |
+| `review_task` | 裁决：in-review 任务 approved=done / 拒绝=failed；gated 任务 approved=解锁恢复派发 |
+| `gate_task` | 给任务挂人工审批门（派发暂停直至 review_task 批准；也可建任务时直接 `gated: true`） |
+| `cancel_task` | 取消 pending / gated / blocked 任务，回收板容量 |
+
+**执行与裁决语义**：执行完成由 harness 强制回写 `in-review`（不依赖模型自觉标记）；lead 裁决后 done/failed；上游 failed 时下游标 blocked **等用户裁决**（不自动跳过）；等待收口用 `task_wait`（`taskIds: null` 等全部在跑）。板上限 64 个未终态任务。
+
+**teammate（长驻协作代理）**：spawn 入参 `mode: 'team'`（或 agent.md frontmatter `executor: internal-team`）派生——独立上下文、自主认领未指派任务、干完一个接一个；上限 4 个；`task_stop` 停单个。与一次性 spawn 的选择：并行探查、需要主链上下文 → 普通 spawn；长流水、多任务、互相看得见板 → teammate。
+
+**定向消息（send_message，L2）**：lead ↔ teammate、teammate 相互之间；**回合边界投递**（不打断在跑回合）；消息落 `teams/main/inbox/` 持久，重启不丢。六件套与 lead 侧 send_message 均不出现在子代理 / teammate 工具面。
+
+**团队预算帽**：`SUNSHINEX_TEAM_TOKEN_CAP`（环境变量，缺省不设）；超帽后新任务留 pending **不判失败**，一次性 notice 提示（`team budget exhausted (X/Y)`）。
+
+**外部执行体（executor: external-cli）**：`create_task` 带 `executor: 'external-cli'` 的任务交给外部 CLI 代理（claude code headless stream-json）执行——黑盒形态（面板只显起止与结论），并发上限 2，`task_stop` 可杀，CLI 缺失时任务判 failed 并注明。
+
+**Ctrl+T 任务视图**：输入框上方面板让位给板列表——行形态 `t1 [pending] ⚠ 标题 ← t2 @w1`（状态 / 门标记 / 依赖箭头 / 指派者）；`↑/↓` 移动、`Enter` 于门挂起行弹审批卡（approve / deny 对应 review_task）、`Esc` 退出、空板自退；与 `Ctrl+B` 互斥。
+
+**pipeline 命令**：`sunshinex pipeline` 已走任务板统一调度（模板展开为带依赖任务集，交付门映射为审批门，readline 审批对应 review_task）。
+
+### 5.7 GUI daemon（`sunshinex serve`，预览）
+
+`sunshinex serve [dir] [--port=N]` 启动 GUI 守护进程：`/healthz` 免鉴权探活、Bearer token 鉴权、`GET /snapshot` 全量快照、WebSocket 事件流（512 帧环形缓冲，连接即补发）。TUI 与 GUI 是**同一事件流的两个投影**（G-D10 裁定：跨时间自由切换，非同时双开）；GUI 对话页建设中（`gui/` 包，交互与美学参照 Codex 工作站）。
 
 ## 六、权限模式与审批
 
@@ -406,6 +439,7 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | `Tab` | `/` 开头时补全命令；否则切换历史折叠 / 展开（含待办卡） |
 | `Ctrl+O` | 展开当前一个轮次（自最近一次输入起）的全部工具与思考行全文 |
 | `Ctrl+B` | 子代理浏览模式：`↑/↓` 在 SPAWN 调用行间移动高亮，`Enter` 展开/折叠该行（思考与工具转录），`Esc` 退出；运行中不可进入 |
+| `Ctrl+T` | 任务板视图：`↑/↓` 在任务行间移动，`Enter` 于门挂起（⚠）行弹 approve / deny 审批卡，`Esc` 退出；与 `Ctrl+B` 互斥（见 5.6） |
 | `↑` / `↓` | 输入历史（最近 100 条）；运行中且输入为空：`↑` 撤回排队（见第七节） |
 | `←` / `→`、`Home` / `End` | 光标移动（`Ctrl+A` / `Ctrl+E` 跳首尾） |
 | `Backspace` / `Delete` | 删除字符 |
