@@ -187,16 +187,31 @@ describe('status·tokens·steps 聚合', () => {
     expect(s.tokens).toBe(250);
   });
 
-  it('usage 跨 run 累计：model-start 重置轮基线，会话 tokens 不回零', () => {
+  it('usage 跨 run 累计：水位仅在 run 边界重置（idle 态 model-start），会话 tokens 不回零', () => {
     const s = fold([
-      ev('model-start'),
+      ev('model-start'), // run 1 起（idle → 边界重置）
       ev('usage', undefined, { turnTotal: 300 }),
-      ev('done', 'a'),
-      ev('model-start'),
+      ev('done', 'a'), // run 1 收束 → idle
+      ev('model-start'), // run 2 起（idle → 边界重置；新 run turnTotal 从低值重启）
       ev('usage', undefined, { turnTotal: 50 }),
       ev('usage', undefined, { turnTotal: 70 }),
     ]);
     expect(s.tokens).toBe(370);
+  });
+
+  it('多轮 run（工具续轮）不虚增：run 内续 model-start（running 态）不重置水位', () => {
+    // 事件源事实（reactor.ts）：model-start 每 chatRound 一次（:450），turnTotal 为 run 级单调累计
+    // （:293）——轮间重置旧缺陷会把 run 累计值从 0 重复起算（100 + 180 = 280 虚增）
+    const s = fold([
+      ev('model-start'), // run 起（idle → 重置水位）
+      ev('usage', undefined, { turnTotal: 100 }),
+      ev('tool-call', 'read', { callId: 'c1' }),
+      ev('tool-result', 'ok', { callId: 'c1' }),
+      ev('model-start'), // 同 run 第二轮（running）——不重置
+      ev('usage', undefined, { turnTotal: 180 }),
+      ev('done', 'fin'),
+    ]);
+    expect(s.tokens).toBe(180);
   });
 
   it('子代理 usage（payload.subagent）不进主链会话累计；无数值载荷不更新', () => {

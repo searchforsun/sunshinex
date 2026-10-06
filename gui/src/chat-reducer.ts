@@ -10,8 +10,10 @@ import type { SessionEvent } from '../../src/types';
  * - done 收段语义（事件面）：done.text 是终稿——与 streaming 条已累积文本重叠（互为前缀）时以
  *   终稿为准，不重叠则补入（md += text）；无 streaming 条时独立成条（对齐归档面「done 恒有终答条」）。
  * - usage 会话累计口径：事件载荷实际只有 turnTotal（reactor 单 run 累计，核 src/harness/reactor.ts
- *   emit('usage')——无 sessionTotalTokens 字段），故 gui 以「轮内增量、model-start 重置轮基线」
- *   自行累计会话总量；子代理 usage（payload.subagent）不进主链计数（G5 板面另聚）。
+ *   emit('usage')——无 sessionTotalTokens 字段），故 gui 以「run 内增量」自行累计会话总量；
+ *   水位重置仅在 run 边界（idle 态的 model-start）——model-start 是每模型轮一次（reactor.ts:450
+ *   chatRound 内发射），而 turnTotal 是 run 级单调不回零，轮间重置会把各轮水位之和虚增进 tokens。
+ *   子代理 usage（payload.subagent）不进主链计数（G5 板面另聚）。
  * - seed 时 tokens 置 0（会话累计经事件续推；G4 若需精确可在 snapshot 加基线，记档）。
  * - streaming 条在 done/error/model-start/tool-call 收段——不留永久流式标（GUI 光标面）。
  */
@@ -238,7 +240,9 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
       return onToolResult(s, e);
     case 'model-start': {
       const { entries } = sealStreaming(s.entries);
-      return { ...s, entries, status: 'running', turnTokensBase: 0 };
+      // 水位重置仅在 run 边界：model-start 每模型轮一次（reactor.ts:450），turnTotal 是 run 级
+      // 单调累计（reactor.ts:293）——run 内续轮（status=running）不重置，否则多轮 run tokens 虚增
+      return s.status === 'idle' ? { ...s, entries, status: 'running', turnTokensBase: 0 } : { ...s, entries, status: 'running' };
     }
     case 'step':
       return { ...s, steps: s.steps + 1 };

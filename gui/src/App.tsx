@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState } from './connection';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from './chat-reducer';
-import type { ChatState } from './chat-reducer';
+import type { ChatEntry, ChatState } from './chat-reducer';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
 import type { SessionEvent } from '../../src/types';
@@ -15,8 +15,10 @@ import type { SessionEvent } from '../../src/types';
  * - 三投影 useState（chat/board/delegations）+ 单连接 useEffect——onEvent 分发（task-/gate- → 板，
  *   delegation- → 委派+chat notice，其余进 chat reducer）；onResync 全重置（snapshot 唯一基线源：
  *   seedChatFromSnapshot + board/delegations 直取）；onStateChange 记连接态。
- * - token 门面：URL ?token= 开发直连形态 → localStorage('sunshinex.token') 持久；缺场显示输入页。
- * - md 渲染：react-markdown + remark-gfm（entries 按 kind 样式钩子，代码块纯 pre 无高亮）。
+ * - token 门面：URL ?token= 优先（回写 localStorage 持久——刷新/重连免带参）→ localStorage
+ *   ('sunshinex.token')；均缺场显示输入页。
+ * - md 渲染：react-markdown + remark-gfm（entries 按 kind 样式钩子，代码块纯 pre 无高亮）；
+ *   条目 React.memo——reducer 保未动条目引用，流式 token 帧重渲染收敛 O(1)（仅流式条）。
  * - 输入分流：Enter 在 idle=submit / running=steer；Stop 按钮替换提交语义（中断）。
  */
 
@@ -29,12 +31,16 @@ declare global {
   }
 }
 
-/** token 解析（main 装配同源逻辑）：URL ?token= 优先，回落 localStorage 持久 */
+/** token 解析（main 装配同源逻辑）：URL ?token= 优先（非空即回写 localStorage 持久），回落 localStorage */
 const TOKEN_STORAGE_KEY = 'sunshinex.token';
 
 function readToken(): string {
-  const q = new URLSearchParams(location.search);
-  return q.get('token') ?? localStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
+  const fromUrl = new URLSearchParams(location.search).get('token');
+  if (fromUrl !== null && fromUrl !== '') {
+    localStorage.setItem(TOKEN_STORAGE_KEY, fromUrl);
+    return fromUrl;
+  }
+  return localStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
 }
 
 /** 会话根：token 在场才建连接（单连接生命周期，token 变更=重装配） */
@@ -67,6 +73,15 @@ function TokenGate({ onSave }: { onSave: (token: string) => void }): JSX.Element
     </form>
   );
 }
+
+/** 单条渲染单元（React.memo）：reducer 保未动条目引用——流式 token 帧只有流式条重渲染（md 解析 O(1) 摊销） */
+const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
+  return (
+    <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.md}</ReactMarkdown>
+    </div>
+  );
+});
 
 /** 对话页：连接装配 + 三投影 + 输入区（G-D10 单栏） */
 function ChatPage({ token }: { token: string }): JSX.Element {
@@ -140,9 +155,7 @@ function ChatPage({ token }: { token: string }): JSX.Element {
       </header>
       <main className="chat" aria-label="chat">
         {chat.entries.map((entry) => (
-          <div key={entry.key} className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.md}</ReactMarkdown>
-          </div>
+          <ChatEntryView key={entry.key} entry={entry} />
         ))}
       </main>
       <footer className="composer">

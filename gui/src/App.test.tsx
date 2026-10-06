@@ -56,6 +56,19 @@ const h = vi.hoisted(() => {
 
 vi.mock('./connection', () => ({ createConnection: (opts: ConnectionOpts) => new h.FakeConn(opts) }));
 
+/** react-markdown 透明计数桩：包装真实现并计渲染次数——条目 React.memo 的流式收敛回归依据
+ *  （流式 token 帧只有流式条重渲染，稳定条目 md 解析零重跑） */
+const md = vi.hoisted(() => ({ renders: 0 }));
+vi.mock('react-markdown', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-markdown')>();
+  const Real = actual.default;
+  const Counting = (props: React.ComponentProps<typeof Real>): JSX.Element => {
+    md.renders += 1;
+    return <Real {...props} />;
+  };
+  return { default: Counting };
+});
+
 let ts = 0;
 const ev = (type: SessionEvent['type'], text?: string, payload?: Record<string, unknown>): SessionEvent => ({ type, text, payload, ts: ++ts });
 
@@ -165,6 +178,21 @@ describe('对话流渲染：onResync 基线 + 事件续推（md/gfm）', () => {
     expect(document.querySelector('.entry-assistant')?.textContent).toBe('widget done');
   });
 
+  it('条目 React.memo：流式 token 帧只重渲染流式条（稳定条 md 渲染计数不涨）', () => {
+    const { conn } = mount();
+    openWith(conn);
+    type('stable');
+    pressEnter(); // user 条 → 1 次 md 渲染
+    fire(conn, ev('model-start'));
+    fire(conn, ev('token', 'a')); // 流式条开条 → +1
+    const before = md.renders;
+    fire(conn, ev('token', 'b')); // 流式增量：仅流式条重渲染（memo 跳过 user 条）
+    fire(conn, ev('token', 'c'));
+    expect(md.renders).toBe(before + 2);
+    expect(document.querySelector('.entry-assistant')?.textContent).toBe('abc');
+    expect(document.querySelector('.entry-user')?.textContent).toContain('stable');
+  });
+
   it('delegation/agent-message → notice 行（同时喂 delegations 投影不倒面）', () => {
     const { conn } = mount();
     openWith(conn);
@@ -246,6 +274,19 @@ describe('token 门面（无 token 不建连接）', () => {
     expect(h.created).toHaveLength(1);
     expect(h.created[0]!.opts.token).toBe('abc123');
     unmount();
+  });
+
+  it('URL ?token= 直连：以其装配且回写 localStorage 持久（刷新/重连免带参）', () => {
+    window.history.pushState({}, '', '/?token=from-url');
+    try {
+      const { unmount } = render(<App />);
+      expect(h.created).toHaveLength(1);
+      expect(h.created[0]!.opts.token).toBe('from-url');
+      expect(localStorage.getItem('sunshinex.token')).toBe('from-url');
+      unmount();
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
   });
 });
 
