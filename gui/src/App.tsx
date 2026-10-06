@@ -29,6 +29,12 @@ import type { SessionEvent } from '../../src/types';
  * gate 审批 onReview → conn.boardReview(sessionId, taskId, approved)。
  * G6 Files 页:会话内第三 tab(Chat|Board|Files);write 工具 path 按钮 → Chat onOpenFile
  * → 切 Files tab + filesPath 播种(Files key={filesPath} 重挂载,到场自动加载)。
+ * G6 板投影 seq 门(G5 交接 b 根修):Chat 播种窗内到达的 board/delegation 帧若直投投影,
+ * 会被 onSeeded 的快照整替清掉(丢一帧增量——快照在途与事件流的窄竞态)。与 Chat pendingRef
+ * 同构:seeding 期帧入 boardPendingRef;onSeeded 落定后整替快照板再按 seq 过滤重放
+ * (≤ snap.lastSeq 丢——快照已含,再投即双应用;> 逐帧 apply)。窗起讫:openSession/
+ * onReset/onResetSession 起(均致 Chat reseed),onSeeded 止;种子失败窗悬挂至下次重置
+ * (帧持续缓冲不投,与 Chat「无基线不乱投」语义对齐)。
  * onResetSession(G3.5 交接 d 收口):会话维 reset 除 Chat 重播种外,board/delegations 投影
  * 亦清(此前仅连接级 onReset 清——会话 reset 后板投影悬挂旧任务)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
@@ -107,6 +113,18 @@ function AppShell({ token }: { token: string }): JSX.Element {
   sessionRef.current = openSessionId;
   /** Chat 事件转投面:Chat 装配期注册(卸载注销)——onEvent/onReset 经此投递 */
   const chatSinkRef = useRef<ChatSink | null>(null);
+  /** G6 板投影 seq 门:播种窗(快照在途)内 board/delegation 帧缓冲(与 Chat pendingRef 同构
+   *  {seq, e}[])——onSeeded 整替快照板后过滤重放;窗由 Chat reseed 生命周期驱动 */
+  const boardPendingRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
+  /** 板播种窗开关:true = 快照在途(帧入缓冲不直投);onSeeded 落定置 false */
+  const boardSeedingRef = useRef(true);
+
+  /** 播种窗重开(清缓冲):openSession/onReset/onResetSession 三处——均伴随 Chat reseed,
+   *  窗内残留帧属旧基线/旧板,弃 */
+  const reopenBoardSeedWindow = (): void => {
+    boardPendingRef.current = [];
+    boardSeedingRef.current = true;
+  };
 
   useEffect(() => {
     const conn = createConnection({
@@ -115,14 +133,21 @@ function AppShell({ token }: { token: string }): JSX.Element {
       onEvent: (sessionId, e: SessionEvent, seq: number) => {
         if (sessionId !== sessionRef.current) return; // 他会话帧丢弃(连接层全收,投影只挂当前会话)
         if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
-          setBoard((b) => applyBoardEvent(b, boardEventFrom(e)));
+          // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
+          if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
+          else setBoard((b) => applyBoardEvent(b, boardEventFrom(e)));
           return;
         }
-        if (e.type.startsWith('delegation-')) setDelegations((d) => applyDelegation(d, e));
+        if (e.type.startsWith('delegation-')) {
+          if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
+          else setDelegations((d) => applyDelegation(d, e));
+        }
         chatSinkRef.current?.on(e, seq);
       },
       onReset: () => {
-        // 重连/首连同路径:板/委派投影清零(随补发帧重建);Chat 投影由 sink.reset 清+本会话重播种
+        // 重连/首连同路径:板/委派投影清零 + 播种窗重开(随补发帧经 onSeeded 过滤重放;Chat 投影
+        // 由 sink.reset 清+本会话重播种;home 无 sink 时帧被会话过滤,窗恒空悬挂至下次 openSession)
+        reopenBoardSeedWindow();
         setBoard(emptyBoard());
         setDelegations([]);
         chatSinkRef.current?.reset();
@@ -140,7 +165,8 @@ function AppShell({ token }: { token: string }): JSX.Element {
       onResetSession: (sessionId) => {
         if (sessionId !== sessionRef.current) return;
         // G3.5 交接 d 收口(G5):会话维 reset 清 board/delegations 投影(仅连接级 onReset 清的缺口
-        //  ——会话 reset 后旧任务悬挂);Chat 卡区清+重播种经 sink
+        //  ——会话 reset 后旧任务悬挂)+ 播种窗重开清缓冲(窗内帧属旧板,弃);Chat 卡区清+重播种经 sink
+        reopenBoardSeedWindow();
         setBoard(emptyBoard());
         setDelegations([]);
         chatSinkRef.current?.resetSession();
@@ -157,12 +183,13 @@ function AppShell({ token }: { token: string }): JSX.Element {
   }, [token]);
 
   /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线);tab 归位 chat + 板投影/
-   *  team 清零(会话切换串态防线——快照落定后经 onSeeded 重建权威态)+ Files 跳转路径复位 */
+   *  team 清零(会话切换串态防线——快照落定后经 onSeeded 重建权威态)+ 播种窗重开 + Files 跳转路径复位 */
   const openSession = (sessionId: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
     setSessionTab('chat');
     setFilesPath(undefined);
+    reopenBoardSeedWindow();
     setBoard(emptyBoard());
     setDelegations([]);
     setTeam([]);
@@ -170,12 +197,13 @@ function AppShell({ token }: { token: string }): JSX.Element {
   };
 
   /** 返回首页:会话关窗(Chat 卸毁本地态;连接保持,再开经 Home 重播种)+ 板投影/team 清零
-   *  (首页期间无会话帧消费,残留即陈旧) */
+   *  (首页期间无会话帧消费,残留即陈旧)+ 播种窗缓冲清(再开重开窗) */
   const backHome = (): void => {
     sessionRef.current = '';
     setOpenSessionId('');
     setSessionTab('chat');
     setFilesPath(undefined);
+    reopenBoardSeedWindow();
     setBoard(emptyBoard());
     setDelegations([]);
     setTeam([]);
@@ -204,11 +232,27 @@ function AppShell({ token }: { token: string }): JSX.Element {
   };
 
   /** G5 Chat 播种回调:快照权威态回填 App 投影——team(事件流无此面)+board/delegations
-   *  (快照本就携带:会话打开/reseed 即板随快照,事件帧续推叠加其后;旧档无 team 段防 undefined) */
+   *  (快照本就携带:会话打开/reseed 即板随快照)。G6 seq 门(G5 交接 b 根修):整替前先关窗+
+   *  过滤缓冲(≤ snap.lastSeq 丢——快照已含,再投即双应用;> 逐帧依序 apply 重放到快照板上)
+   *  ——播种窗内到达的增量帧不再被整替吞掉(丢一帧增量竞态根除)。lastSeq 运行时必在
+   *  (sessionSnapshot 应答字段;ChatSink 类型面未声明,收窄读取防 undefined 旧档) */
   const seedFromSnapshot = (snap: SnapshotResponse): void => {
+    const lastSeq = (snap as SnapshotResponse & { lastSeq?: number }).lastSeq ?? 0;
+    const replay = boardPendingRef.current.filter((f) => f.seq > lastSeq);
+    boardPendingRef.current = [];
+    boardSeedingRef.current = false;
+    let nextBoard = snap.board;
+    let nextDelegations = snap.delegations;
+    for (const f of replay) {
+      if (f.e.type.startsWith('task-') || f.e.type.startsWith('gate-')) {
+        nextBoard = applyBoardEvent(nextBoard, boardEventFrom(f.e));
+      } else if (f.e.type.startsWith('delegation-')) {
+        nextDelegations = applyDelegation(nextDelegations, f.e);
+      }
+    }
     setTeam(snap.team ?? []);
-    setBoard(snap.board);
-    setDelegations(snap.delegations);
+    setBoard(nextBoard);
+    setDelegations(nextDelegations);
   };
 
   return (

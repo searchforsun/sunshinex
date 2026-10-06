@@ -4,6 +4,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import type { SessionEvent } from '../../src/types';
 import { App } from './App';
 import { emptyBoard, applyBoardEvent } from './projection';
+import { highlightCode } from './highlight';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
 import type { ConnectionOpts, ConnectionState, Connection, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
@@ -134,6 +135,21 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('./connection', () => ({ createConnection: (opts: ConnectionOpts) => new h.FakeConn(opts) }));
+
+/** highlight.js 抛错注入桩(T1 评审回落收口测):仅含 marker 的输入抛错,其余透传真实现——
+ *  既有 Files 页断言(.hljs-keyword 真高亮)不受染 */
+const hljsStub = vi.hoisted(() => ({ marker: 'HLJS-THROW-MARKER' }));
+vi.mock('highlight.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('highlight.js')>();
+  const real = actual.default;
+  const throwing = (code: string, opts: { language: string }): { value: string } => {
+    if (code.includes(hljsStub.marker)) throw new Error('hljs exploded (injected)');
+    return real.highlight(code, opts);
+  };
+  // Proxy 透传全部真面(方法多在原型上,展开拷贝会漏),仅 highlight 拦截
+  const fake = new Proxy(real, { get: (target, prop, receiver) => (prop === 'highlight' ? throwing : Reflect.get(target, prop, receiver)) });
+  return { ...actual, default: fake };
+});
 
 /** react-markdown 透明计数桩:包装真实现并计渲染次数——条目 React.memo 的流式收敛回归依据
  *  (流式 token 帧只有流式条重渲染,稳定条目 md 解析零重跑) */
@@ -699,6 +715,14 @@ describe('G6 Files 页:第三 tab + write 工具 path 按钮跳转', () => {
     expect(document.querySelector('.files-view')).toBeNull();
     unmount();
   });
+
+  it('highlightCode 回落转义(T1 评审必落):hljs.highlight 抛错 → HTML 转义原文返回,无活 <script>', () => {
+    const evil = `<script>${hljsStub.marker}alert(1)</script>`;
+    const out = highlightCode(evil, 'a.ts'); // 'ts' 在映射表内:抛错来自注入桩(非 plaintext 回落旁路)
+    expect(out).not.toContain('<'); // 转义后无任何裸标签开角
+    expect(out).toContain('&lt;script&gt;');
+    expect(out).toContain('&lt;/script&gt;');
+  });
 });
 
 describe('卸载收口(单连接生命周期)', () => {
@@ -816,6 +840,67 @@ describe('G5 Board 页:tab 进入 + 板/委派投影 + team(快照) + 会话维 
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Board' }));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined(); // 快照回填的权威板
+    unmount();
+  });
+});
+
+describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放(G5 交接 b——丢一帧增量根修)', () => {
+  const taskEv = (id: string, title: string): SessionEvent =>
+    ev('task-created', undefined, { taskId: id, title, spec: 's', dependsOn: [] });
+
+  /** 进 chat 且种子应答悬挂(播种窗开——板帧窗同步开):返回后可先投板帧再落定种子 */
+  async function enterChatHeldBoard(): Promise<{ conn: Conn; unmount: () => void }> {
+    const { conn, unmount } = mount();
+    conn.holdSnapshot();
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    openConn(conn);
+    return { conn, unmount };
+  }
+
+  it('播种窗内 task/gate/delegation 帧缓冲不投;整替后 ≤lastSeq 丢、>lastSeq 依序重放(增量不被整替吞)', async () => {
+    const { conn, unmount } = await enterChatHeldBoard();
+    // 窗内三帧:seq 3 gate-waiting(≤ lastSeq——快照已含其效果:门已 resolved)、seq 8 assigned(>——须重放)、
+    // seq 9 委派(>——须重放)
+    fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }), 3);
+    fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }), 8);
+    fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev' }), 9);
+    // 窗内不投:Board 空板 + 委派空(帧在 boardPendingRef 缓冲)
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText(/任务板为空/)).toBeDefined();
+    expect(screen.getByLabelText('delegations').textContent).not.toContain('dev');
+    // 种子:lastSeq 5;快照板 t1(Base,门已 resolved——seq 3 的效果已在快照内)
+    conn.snapshotResp = snapshotOf({
+      lastSeq: 5,
+      board: applyBoardEvent(
+        applyBoardEvent(
+          applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Base', spec: '', dependsOn: [], ts: 1 }),
+          { t: 'gate-set', taskId: 't1', ts: 2 },
+        ),
+        { t: 'gate-resolved', taskId: 't1', approved: true, ts: 3 },
+      ),
+    });
+    conn.releaseSnapshot();
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    // 整替+过滤重放:t1 带 @w1 且无 ⚠(seq 8 重放——丢帧根修判据;seq 3 丢——若重放则门被重新挂上 ⚠,
+    // reducer 对 created 幂等故以 gate-set 重挂为 ≤ 过滤的可观测判据);seq 9 委派重放(行在场)
+    expect(screen.getByText('t1 [pending] Base @w1')).toBeDefined();
+    expect(screen.getByLabelText('delegations').textContent).toContain('dev');
+    // 窗后帧直投(不再缓冲)
+    fire(conn, taskEv('t2', 'Live'), 10);
+    expect(screen.getByText('t2 [pending] Live')).toBeDefined();
+    unmount();
+  });
+
+  it('onResetSession 清缓冲:窗内帧随 reset 弃(旧板作废),新种子不重放', async () => {
+    const { conn, unmount } = await enterChatHeldBoard();
+    fire(conn, taskEv('t1', 'Ghost'), 10); // 窗内缓冲(种子 lastSeq 0,若不清必重放)
+    fireResetSession(conn, 's1'); // 本会话 reset:板投影+缓冲清 → Chat reseed(种子仍 held)
+    conn.releaseSnapshot();
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText(/任务板为空/)).toBeDefined(); // Ghost 未重放
     unmount();
   });
 });

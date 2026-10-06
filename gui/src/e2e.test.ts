@@ -457,9 +457,9 @@ describe('G3 冒烟④:静态挂载(daemon staticRoot 指 dist-gui)', () => {
 
 /* ============================================================
  * G4 无头验收(spec §12 G4 行:manual 模式审批闭环经 HTTP 回执)——UI 全链:
- * ①manual 会话经 HTTP 建立:/session/new 增可选 mode 透传(daemon 面);gui 连接层 newSession
- *   无该参数(scope 未扩)——e2e 以 fetch 包装器向 App 的 POST /session/new body 注入
- *   mode:'manual'(端点/挂起链/帧/回执全真,仅 body 一字段测试面补注,报告披露);
+ * ①manual 会话经 G6 UI 真面建立:DirPicker 确认面板「Manual approvals」勾选 → Home
+ *   newSession(root, 'manual')(G6 前的 fetch body 注入包装器退役——mode 字段由真 UI 面
+ *   发出;本套仅保留不改写任何请求的观察 spy 钉 body 断言);
  * ②ScriptedAdapter write envelope(目标=会话外第二 tmp 真文件——越信任域才触发链侧 ask,
  *   T1 先例)→ manual 挂起 → approval 帧经 WS → ApprovalCard 渲染;
  * ③Allow 按钮即 HTTP 回执(Chat.sendApproval 经 App 连接 POST /approval/:pid,寻址帧顶层
@@ -467,8 +467,8 @@ describe('G3 冒烟④:静态挂载(daemon staticRoot 指 dist-gui)', () => {
  * delete 流(轻)见下一 describe。
  * ============================================================ */
 
-describe('G4 manual 审批闭环:HTTP 建 manual 会话 → UI 提交挂起 → ApprovalCard → Allow 回执 → 写落盘/done/卡消失', () => {
-  it('New session(mode 注入)→ 提交 → 审批卡(kind/subject/reason+三按钮)→ Allow → 卡移除 + 文件落盘 + notice + done 收束', async () => {
+describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂起卡 → Allow 回执 → 写落盘/done/卡消失', () => {
+  it('New session(勾 Manual approvals)→ newSession body mode:manual → 提交挂起 → ApprovalCard → Allow → 落盘 + done 收束', async () => {
     const WRITE_NAME = 'g4-e2e-approval.txt';
     const WRITE_CONTENT = 'manual-allow-payload';
     const env = await startDaemon(
@@ -481,19 +481,17 @@ describe('G4 manual 审批闭环:HTTP 建 manual 会话 → UI 提交挂起 → 
     try {
       localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
-      // mode 注入包装器:App 的 New session 流不选 mode(gui 连接层 newSession 已有 mode 面
-      // ——G5 接线,但 App 面未消费——manual 会话的 UI 入口留待后续)——e2e 在 fetch 面补注
-      // mode:'manual',仍经真 HTTP 端点建 manual 会话(daemon /session/new 的可选 mode 透传面
-      // 即为此验收所开);其余请求原样透传
+      // 观察面(零改写):记录 /session/new body——真 UI 勾选链的 mode:'manual' 断言;
+      // 请求原样透传(非 G6 前的 body 注入包装器)
       const realFetch = globalThis.fetch.bind(globalThis);
+      const newBodies: Array<Record<string, unknown>> = [];
       vi.stubGlobal(
         'fetch',
         (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
           const req: RequestInfo = typeof input === 'string' ? input : input instanceof URL ? input.href : input;
           const url = typeof req === 'string' ? req : req.url;
           if (init?.method === 'POST' && url.endsWith('/session/new') && typeof init.body === 'string') {
-            const body = JSON.parse(init.body) as Record<string, unknown>;
-            return realFetch(req, { ...init, body: JSON.stringify({ ...body, mode: 'manual' }) });
+            newBodies.push(JSON.parse(init.body) as Record<string, unknown>);
           }
           return realFetch(req, init);
         },
@@ -501,12 +499,14 @@ describe('G4 manual 审批闭环:HTTP 建 manual 会话 → UI 提交挂起 → 
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
 
-      // —— manual 会话经 UI 建立(New session → DirPicker 同 root;包装器注 mode)——
+      // —— manual 会话经 UI 真面建立:New session → DirPicker 勾「Manual approvals」→ 确认 ——
       fireEvent.click(screen.getByRole('button', { name: 'New session' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByLabelText('Manual approvals'));
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
       await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      expect(newBodies.some((b) => b.mode === 'manual' && b.root === env.root)).toBe(true); // 真 UI 面 mode 断言
 
       // —— UI 提交 → write envelope 越信任域 → manual 挂起 → approval 帧经 WS → ApprovalCard ——
       const input = screen.getByLabelText('message input');
@@ -602,6 +602,84 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
         .filter((f) => f.endsWith('.jsonl'));
       expect(journals.length).toBe(2); // journal 保留(T2 裁定:磁盘档案非 daemon 生命周期资产)
     } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
+
+/* ============================================================
+ * G6 Board GUI-e2e 全链(G5 验收证据口径的分层测试面落地):真 daemon + ScriptedAdapter
+ * create_task(gated:true)envelope → 事件流(task-created/gate-waiting)→ App 板投影 →
+ * Board tab List(gated ⚠ 行)→ DAG 视图 svg 盒(data-task)→ Approve 点击(经 UI)→
+ * daemon boardReview → gate-resolved/task-status 事件流广播 → 板 UI 自更新(⚠ 消失/状态
+ * 流转 pending→claimed→in-review,fork 派发经 ScriptedAdapter 末位 done 牌重复供牌收束)。
+ * 板投影 seq 门(App 桩测钉语义)此处验真链:开窗/重放不出现在本场景(播种先于提交),
+ * 场景聚焦 gate 审批闭环的端到端因果链。
+ * ============================================================ */
+
+describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 → Approve → gate-resolved/task-status 流 → 板自更新', () => {
+  it('提交建 gated t1 → List ⚠ + Approve 在场 → DAG data-task=t1(gated 类)→ Approve 点击 → ⚠ 消失 t1 in-review', async () => {
+    const env = await startDaemon(
+      new ScriptedAdapter([
+        '{"tool":"create_task","input":{"title":"GateDemo","spec":"gated demo task","dependsOn":null,"assignee":null,"gated":true,"executor":null}}',
+        '{"done":true,"reply":"all done"}',
+      ]),
+    );
+    // 观察连接(等事件流断言用;App 自连接独立收帧)
+    const frames: SessionEvent[] = [];
+    const conn = createConnection({
+      baseUrl: `http://127.0.0.1:${env.port}`,
+      token: 'e2e-token',
+      onEvent: (_sessionId, e) => frames.push(e),
+      onReset: () => {},
+    });
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— New session(DirPicker 真面,缺省不勾 manual)→ 提交 → 主链 create_task(gated)——
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      const input = screen.getByLabelText('message input');
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+      fireEvent.change(input, { target: { value: 'run gated demo' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      // —— 等事件流:task-created + gate-waiting(daemon board.create 发射序)——
+      await waitFor(() => expect(frames.some((e) => e.type === 'task-created')).toBe(true), { timeout: 10_000 });
+      await waitFor(() => expect(frames.some((e) => e.type === 'gate-waiting')).toBe(true), { timeout: 5_000 });
+
+      // —— Board tab → List 视图(缺省):gated ⚠ 行 + 行内 Approve/Deny ——
+      fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+      await waitFor(() => expect(screen.getByText('t1 [pending] GateDemo ⚠')).toBeDefined(), { timeout: 10_000 });
+      expect(screen.getByRole('button', { name: 'Approve t1' })).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Deny t1' })).toBeDefined();
+
+      // —— DAG 视图:svg 盒断言(data-task t1 在场,gated 类钩子)——
+      fireEvent.click(screen.getByRole('button', { name: 'DAG' }));
+      await waitFor(() => expect(container.querySelector('svg.board-dag [data-task="t1"]')).not.toBeNull(), { timeout: 5_000 });
+      expect(container.querySelector('svg.board-dag [data-task="t1"]')?.getAttribute('class')).toContain('gated');
+
+      // —— 回 List → Approve 点击(经 UI:conn.boardReview(s1, t1, true))→ 事件流驱动板自更新 ——
+      fireEvent.click(screen.getByRole('button', { name: 'List' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Approve t1' }));
+      await waitFor(() => expect(frames.some((e) => e.type === 'gate-resolved')).toBe(true), { timeout: 10_000 });
+      await waitFor(() => expect(frames.some((e) => e.type === 'task-status-changed')).toBe(true), { timeout: 5_000 });
+      // 板 UI 更新:门消失 + 状态流转 pending→claimed→…→in-review(fork 消化末位 done 牌后强制回写)
+      await waitFor(() => expect(screen.getByText('t1 [in-review] GateDemo')).toBeDefined(), { timeout: 15_000 });
+      expect(container.textContent).not.toContain('⚠');
+      // 派发面:fork 委派(task-t1)在板侧栏落位
+      await waitFor(() => expect(container.querySelector('.delegation-list')?.textContent).toContain('task-t1'), { timeout: 5_000 });
+    } finally {
+      conn.close();
       await env.stop();
       localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();

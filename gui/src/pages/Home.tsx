@@ -9,7 +9,8 @@ import { DirPicker } from './DirPicker';
  * /自定义路径/确认)。空态引导文案。
  * Attach 两步裁定(daemon 形态对齐):POST /session/new {root} 装配会话 → POST /session/:id/attach
  * {journalId} 播种恢复 → onOpenSession(sessionId)(daemon 会话注册表无「按 journal 直开」端点,
- * attach 需先有会话壳)。New session 单步:newSession(root) 即入。
+ * attach 需先有会话壳)。New session 单步:newSession(root) 即入;G6 增 mode 面——DirPicker
+ * 「Manual approvals」勾选 → newSession(root, 'manual')(G4 fetch 注入面退役,UI 真面建 manual)。
  * G3.5+T2:会话行 Delete 已退役(G5 裁定——以 journal id 打会话端点恒 404,回收改 Chat 顶栏
  * Delete 按 daemon 会话 id 寻址);sessionsOf 应答 slug 守卫——展开切换/收起后的迟到应答丢弃
  * (慢应答不冲当前展开列表)。
@@ -19,7 +20,7 @@ export interface HomeConn {
   workspaces(): Promise<WorkspaceRow[]>;
   sessionsOf(root: string): Promise<SessionRow[]>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
-  newSession(root: string): Promise<{ sessionId: string }>;
+  newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
   attach(sessionId: string, journalId: string): Promise<void>;
 }
 
@@ -114,12 +115,14 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
       );
   };
 
-  /** New session:DirPicker 确认 → newSession(root) → 进会话;失败留在首页示错 */
-  const createSession = (root: string): void => {
+  /** New session:DirPicker 确认 → newSession(root, manual ? 'manual' : undefined)(G6 mode 面
+   *  ——Manual approvals 勾选即建 manual 会话;缺省不发 mode 字段,旧 daemon 兼容)→ 进会话;
+   *  失败留在首页示错 */
+  const createSession = (root: string, manual: boolean): void => {
     if (busy || root === '') return;
     setBusy(true);
     setActionError('');
-    conn.newSession(root).then(
+    conn.newSession(root, manual ? 'manual' : undefined).then(
       ({ sessionId }) => {
         setBusy(false);
         setPickerOpen(false);

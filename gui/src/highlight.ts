@@ -39,11 +39,30 @@ function languageOf(filename?: string): string {
   return lang !== undefined && hljs.getLanguage(lang) !== undefined ? lang : 'plaintext';
 }
 
-/** 代码 → 高亮 HTML：异常防御性回落原文（高亮失败不挡预览） */
+/** 五字符 HTML 转义(& < > " ')——hljs 异常回落面专用(T1 评审必落):产出经
+ *  dangerouslySetInnerHTML 注入,裸返原文即注入面——回落路径必须自转义 */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => {
+    switch (c) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      default:
+        return '&#39;';
+    }
+  });
+}
+
+/** 代码 → 高亮 HTML：异常防御性回落转义原文（高亮失败不挡预览,亦不开注入面） */
 export function highlightCode(code: string, filename?: string): string {
   try {
     return hljs.highlight(code, { language: languageOf(filename) }).value;
   } catch {
-    return code;
+    return escapeHtml(code);
   }
 }

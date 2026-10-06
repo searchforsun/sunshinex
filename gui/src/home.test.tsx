@@ -10,7 +10,8 @@ import { DirPicker } from './pages/DirPicker';
  * 与 DirPicker 组件(逐级浏览/自定义输入/确认取值/取消/服务端错误)——conn 全桩(HTTP 面
  * 不出网),真链在 e2e.test.ts。G5:会话行 Delete 退役(journal id 寻址恒 404——回收改
  * Chat 顶栏 Delete 按 daemon 会话 id;本套钉「行内无 Delete」负断言)+ toggleRow slug
- * 守卫(慢应答丢弃)。
+ * 守卫(慢应答丢弃)。G6:DirPicker「Manual approvals」勾选 → Home newSession(root, mode)
+ * ——mode 参数面桩测(UI 真面全链在 e2e)。
  */
 
 /** Home/DirPicker 桩 conn:调用记录可断言;应答面可注入(含失败注入) */
@@ -28,7 +29,7 @@ interface Stub {
     workspaces: number;
     sessionsOf: string[];
     dirpicker: Array<string | undefined>;
-    newSession: string[];
+    newSession: Array<[string, 'manual' | undefined]>;
     attach: Array<[string, string]>;
   };
 }
@@ -48,8 +49,8 @@ function stubConn(opts: StubOpts = {}): Stub {
       const next = opts.dirs?.[calls.dirpicker.length - 1] ?? { path: path ?? '/home', parent: '/', dirs: [] };
       return Promise.resolve(next);
     },
-    newSession: (root: string) => {
-      calls.newSession.push(root);
+    newSession: (root: string, mode?: 'manual') => {
+      calls.newSession.push([root, mode]);
       if (opts.newSessionFail !== undefined) return Promise.reject(opts.newSessionFail);
       return Promise.resolve({ sessionId: opts.newSessionId ?? 's1' });
     },
@@ -164,7 +165,7 @@ describe('Home:attach 与 New session 动作链', () => {
     await screen.findByRole('button', { name: 'Attach' });
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
     await waitFor(() => expect(opened).toEqual(['s7']));
-    expect(calls.newSession).toEqual(['/w/root-a']);
+    expect(calls.newSession).toEqual([['/w/root-a', undefined]]); // Attach 链不带 mode(缺省)
     expect(calls.attach).toEqual([['s7', 'j-20261006a']]);
   });
 
@@ -198,7 +199,7 @@ describe('Home:attach 与 New session 动作链', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
     // 错误示出(不静默);两步链已走完第一步(newSession 成功,attach 拒)
     expect(await screen.findByText('/session/s1/attach -> 500')).toBeDefined();
-    expect(calls.newSession).toEqual(['/w/root-a']);
+    expect(calls.newSession).toEqual([['/w/root-a', undefined]]);
     expect(calls.attach).toEqual([['s1', 'j-20261006a']]);
     // 停留首页 + 不进会话
     expect(opened).toEqual([]);
@@ -223,7 +224,36 @@ describe('Home:attach 与 New session 动作链', () => {
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: 'D:/work/proj' } });
     fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
     await waitFor(() => expect(opened).toEqual(['s2']));
-    expect(calls.newSession).toEqual(['D:/work/proj']);
+    expect(calls.newSession).toEqual([['D:/work/proj', undefined]]); // 缺省不勾:mode 不发
+  });
+
+  it('G6 mode 面:DirPicker 勾选 Manual approvals → newSession(root, manual);缺省不勾不带 mode', async () => {
+    const { conn, calls } = stubConn({
+      dirs: [
+        { path: '/home/dev', parent: '/home', dirs: [] },
+        { path: '/home/dev', parent: '/home', dirs: [] }, // 第二次打开模态的首载
+      ],
+      newSessionId: 's3',
+    });
+    const opened: string[] = [];
+    render(<Home conn={conn} onOpenSession={(id) => opened.push(id)} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+    await screen.findByRole('dialog', { name: 'choose directory' });
+    // 缺省不勾先确认一次:mode undefined
+    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    await waitFor(() => expect(opened).toEqual(['s3']));
+    expect(calls.newSession).toEqual([['/home/dev', undefined]]);
+    // 重开 DirPicker:勾选 Manual approvals → mode 'manual'
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+    await screen.findByRole('dialog', { name: 'choose directory' });
+    expect((screen.getByLabelText('Manual approvals') as HTMLInputElement).checked).toBe(false); // 缺省不勾(每开重置)
+    fireEvent.click(screen.getByLabelText('Manual approvals'));
+    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    await waitFor(() => expect(opened).toEqual(['s3', 's3']));
+    expect(calls.newSession).toEqual([
+      ['/home/dev', undefined],
+      ['/home/dev', 'manual'],
+    ]);
   });
 
   it('New session 确认失败(daemon 400):错误在模态内示出,不进会话', async () => {
@@ -238,7 +268,7 @@ describe('Home:attach 与 New session 动作链', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
     expect(await screen.findByText('/session/new -> 400')).toBeDefined();
     expect(opened).toEqual([]);
-    expect(calls.newSession).toEqual(['/home']);
+    expect(calls.newSession).toEqual([['/home', undefined]]);
   });
 });
 
@@ -337,6 +367,24 @@ describe('DirPicker 组件(独立 props)', () => {
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: 'D:/elsewhere' } });
     fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
     expect(confirmed).toEqual(['/home/dev', 'D:/elsewhere']);
+  });
+
+  it('G6 manual 勾选:缺省不勾 → onConfirm(path, false);勾选 → onConfirm(path, true)', async () => {
+    const { conn } = dirConn([{ path: '/home/dev', parent: '/home', dirs: [] }]);
+    const confirmed: Array<[string, boolean]> = [];
+    render(<DirPicker conn={conn} onConfirm={(p, m) => confirmed.push([p, m])} onCancel={() => {}} />);
+    await screen.findByText('/home/dev');
+    const box = screen.getByLabelText('Manual approvals') as HTMLInputElement;
+    expect(box.checked).toBe(false); // 缺省不勾
+    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    expect(confirmed).toEqual([['/home/dev', false]]);
+    fireEvent.click(box); // 勾选
+    expect(box.checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    expect(confirmed).toEqual([
+      ['/home/dev', false],
+      ['/home/dev', true],
+    ]);
   });
 
   it('「前往」:自定义路径经服务端校验(dirpicker(typed))→ 当前路径切换', async () => {

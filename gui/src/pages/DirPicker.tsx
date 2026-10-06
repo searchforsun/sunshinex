@@ -7,6 +7,8 @@ import type { DirPickerResp } from '../connection';
  * props 仅 {conn(只要 dirpicker), onConfirm, onCancel}——可独立桩测;遮罩层归调用方(Home)。
  * 确认取值裁定:自定义输入非空优先(不经服务端校验,由 newSession 的 daemon 400 面兜底),
  * 否则取当前浏览路径(已经 dirpicker 校验在场)。
+ * G6 mode 面:确认面板增「Manual approvals」checkbox(缺省不勾)——勾选即 onConfirm 第二参
+ * manual=true,Home 转 newSession(root, 'manual')(G4 manual 会话的 UI 入口,fetch 注入面退役)。
  */
 
 export interface DirPickerConn {
@@ -15,8 +17,8 @@ export interface DirPickerConn {
 
 export interface DirPickerProps {
   conn: DirPickerConn;
-  /** 确认:回抛所选目录绝对路径(自定义输入优先,缺省当前浏览路径) */
-  onConfirm: (path: string) => void;
+  /** 确认:回抛所选目录绝对路径(自定义输入优先,缺省当前浏览路径)+ manual 勾选态(G6 mode 面) */
+  onConfirm: (path: string, manual: boolean) => void;
   onCancel: () => void;
 }
 
@@ -25,6 +27,8 @@ export function DirPicker({ conn, onConfirm, onCancel }: DirPickerProps): JSX.El
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [custom, setCustom] = useState('');
+  /** G6 manual 勾选(缺省不勾):审批/问询挂起会话的 UI 开关 */
+  const [manual, setManual] = useState(false);
 
   const load = useCallback(
     (path?: string): void => {
@@ -48,10 +52,10 @@ export function DirPicker({ conn, onConfirm, onCancel }: DirPickerProps): JSX.El
     load(); // 首载:缺省路径(daemon 侧 home 目录)
   }, [load]);
 
-  /** 确认:自定义输入非空优先(路径分隔符/存在性由服务端 newSession 校验兜底) */
+  /** 确认:自定义输入非空优先(路径分隔符/存在性由服务端 newSession 校验兜底)+ manual 勾选态 */
   const confirm = (): void => {
     const typed = custom.trim();
-    onConfirm(typed !== '' ? typed : (current?.path ?? ''));
+    onConfirm(typed !== '' ? typed : (current?.path ?? ''), manual);
   };
 
   const atRoot = current !== null && current.parent === current.path;
@@ -112,6 +116,17 @@ export function DirPicker({ conn, onConfirm, onCancel }: DirPickerProps): JSX.El
         >
           前往
         </button>
+      </div>
+      <div className="dirpicker-mode">
+        <label className="mode-option">
+          <input
+            type="checkbox"
+            checked={manual}
+            onChange={(e) => setManual(e.target.checked)}
+          />
+          <span>Manual approvals</span>
+        </label>
+        <p className="mode-hint">勾选后审批/问询挂起等待人工裁决(manual 会话)</p>
       </div>
       <footer className="dirpicker-foot">
         <button type="button" onClick={onCancel}>
