@@ -422,6 +422,8 @@ graph → loop → harness 单向依赖保持;模板宏展开发生在 graph/编
 
 - GUI 订阅统一事件面:任务列表 → 看板,dependsOn → DAG 图自动推导,teammate → 侧栏;无任何需要「翻译」的 TUI 概念。
 
+> **落地记录(2026-10-07)**:P3 已交付——GUI G5 批次(`703426b`/`38f2af6`+`a39c209`,gui spec 2026-10-07-g5-board.md):`POST /session/:id/board/review`(gate 审批映射 taskboard.review)+snapshot team/pending 扩段;GUI Board 页(List/DAG 双视图——layoutBoard Kahn 分层纯函数 + SVG;gate 行内审批;teammate 侧栏 busy 点;DAG 节点点击详情);board/delegations 投影会话维重置(onSeeded 快照全回填)。**P3 验收逐条兑现:任务列表→看板 ✓、dependsOn→DAG 自动推导 ✓、teammate→侧栏 ✓、无 TUI 概念翻译 ✓(gui 直 import taskboard/delegation 纯件,§10.4 三边界全程兑现)。编排 spec 自此全量实现(P0/P1/P2/L2/P3 全交付)。**
+
 ---
 
 ## 14. 风险与对策
