@@ -687,3 +687,204 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
     }
   }, 60_000);
 });
+
+/* ============================================================
+ * G7 收口 e2e 两场景(spec §12 G7 行):①write 执行 → 工具条展开 → fetchDiff 双列
+ * (dontAsk 域内直写——判界内写信任域直放,无挂起;预置 tmp 文件 old 内容 → 模型 write
+ * envelope 新内容 → 展开断言 old=pre-image blob/new=磁盘现文件双列);②挂起中断线重连 →
+ * 卡恢复(manual 会话 + 越域 write 挂起,挂起点经 gate 钉在断线窗内——approval 广播零客户端,
+ * 卡不可能在断线前到达;重连后在场即恢复面实证:daemon 挂起重发帧与 snapshot.pending req
+ * 双源合流,addCard pid 防重;单源钉死在 App.test 桩面)→ Allow 回执闭环。
+ * ============================================================ */
+
+describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)→ 工具条展开 → old/new 双内容', () => {
+  it('预置 old → 模型 write 域内直写 → done → 展开工具条 → diff 面板 old/new 双列', async () => {
+    const REL = 'g7-e2e-diff.txt'; // 相对会话 root(域内)——write 信任域直放,无挂起卡
+    const OLD = 'old body line'; // pre-image 源(写前态 blob)
+    const NEW = 'new body line'; // 模型 write envelope 新内容
+    const env = await startDaemon(
+      new ScriptedAdapter([
+        JSON.stringify({ tool: 'write', input: { path: REL, content: NEW } }),
+        '{"done":true,"reply":"写完收束"}',
+      ]),
+    );
+    try {
+      fs.writeFileSync(path.join(env.root, REL), OLD, 'utf8'); // 预置旧文件(写前态)
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— dontAsk 会话经 UI 真面建立(DirPicker 缺省不勾 manual)——
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+
+      // —— 提交 → run:write 域内直执行(无挂起)→ done 收束 ——
+      const input = screen.getByLabelText('message input');
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+      fireEvent.change(input, { target: { value: '改写这个文件' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(
+        () => expect(container.querySelector('.entry-assistant')?.textContent).toContain('写完收束'),
+        { timeout: 10_000 },
+      );
+      expect(fs.readFileSync(path.join(env.root, REL), 'utf8')).toBe(NEW); // 磁盘现文件 = 新内容
+      expect(container.querySelector('.approval-card')).toBeNull(); // dontAsk 域内写零挂起
+      expect(container.querySelector('.status-idle')).toBeDefined();
+
+      // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffPanel 双列 ——
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`● write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) }));
+      // 加载期先示右列现内容(单列+加载标)——双列落定以 old 列在场为准(waitFor 过拉取竞态窗)
+      await waitFor(() => expect(container.querySelector('.diff-panel .diff-old')).not.toBeNull(), { timeout: 5_000 });
+      expect(container.querySelector('.diff-panel .diff-old')?.textContent).toBe(OLD); // old 列 = pre-image blob
+      expect(container.querySelector('.diff-panel .diff-new')?.textContent).toBe(NEW); // new 列 = 磁盘现文件
+      expect(container.querySelectorAll('.diff-panel .diff-col').length).toBe(2); // 双列(old 缺场才单列)
+      expect(container.querySelector('.diff-loading')).toBeNull(); // 拉取落定,非加载态
+      expect(container.querySelector('.tool-path')?.textContent).toBe(REL); // path 跳转按钮(Files 预览入口)
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 45_000);
+});
+
+/** 场景② 适配器:首轮 chat 挂起(gate)——提交后测试先断 App 底层 socket 再放行,把 write 挂起点
+ *  钉在断线窗内(approval 广播零客户端——卡不可能在断线前到达,重连后在场即恢复面实证);后续轮
+ *  直通内嵌 ScriptedAdapter(末位牌重复供牌语义不变) */
+class GatedFirstRoundAdapter implements ModelAdapter {
+  readonly provider = 'gated-e2e';
+  private readonly inner: ScriptedAdapter;
+  private resolveGate: () => void = () => {};
+  readonly gate: Promise<void> = new Promise<void>((resolve) => {
+    this.resolveGate = resolve;
+  });
+  private first = true;
+  constructor(cards: string[]) {
+    this.inner = new ScriptedAdapter(cards);
+  }
+  release(): void {
+    this.resolveGate();
+  }
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    if (this.first) {
+      this.first = false;
+      await this.gate;
+    }
+    return this.inner.chat(req);
+  }
+}
+
+/** 场景② 断线注入面:App 自装配连接无法注入 backoff/取 socket(debug.socket 是连接实例面)——以可
+ *  追踪 WebSocket 桩记录全部客户端实例,测试对 App 的底层 socket 施加 .close()(等价 G3 冒烟③
+ *  conn.debug.socket().close() 的断链语义:非显式 close → 掉线重连路径) */
+function trackSockets(): { sockets: NodeWebSocket[] } {
+  const sockets: NodeWebSocket[] = [];
+  class TrackedWebSocket extends NodeWebSocket {
+    constructor(
+      address: ConstructorParameters<typeof NodeWebSocket>[0],
+      protocols?: ConstructorParameters<typeof NodeWebSocket>[1],
+    ) {
+      super(address, protocols);
+      sockets.push(this);
+    }
+  }
+  vi.stubGlobal('WebSocket', TrackedWebSocket);
+  return { sockets };
+}
+
+describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内)→ 重连 reseed → 卡恢复 → Allow 闭环', () => {
+  it('提交挂起(gate)→ 断 App socket → 放行(广播零客户端)→ 重连 → 卡恢复(req 内容)→ Allow 落盘+done', async () => {
+    const NAME = 'g7-e2e-reconnect.txt';
+    const CONTENT = 'recovered-allow-payload';
+    let gated: GatedFirstRoundAdapter | undefined;
+    const env = await startDaemon(
+      (out) =>
+        (gated = new GatedFirstRoundAdapter([
+          JSON.stringify({ tool: 'write', input: { path: path.join(out, NAME), content: CONTENT } }),
+          '{"done":true,"reply":"恢复后收束"}',
+        ])),
+    );
+    try {
+      const { sockets } = trackSockets(); // App 的 WS 实例可寻(断线注入)
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— manual 会话经 UI 真面建立:DirPicker 勾「Manual approvals」——
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByLabelText('Manual approvals'));
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+
+      // —— 提交:首轮模型轮挂在 gate 上(run 进行中,未到 write 挂起点)——
+      const input = screen.getByLabelText('message input');
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+      fireEvent.change(input, { target: { value: '挂起重连目标' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      // —— 断线注入:App 自装配连接的底层 socket(挂起广播前的零客户端窗)——
+      const appSock = sockets[sockets.length - 1]!;
+      appSock.close();
+      await waitFor(() => expect(screen.getByLabelText('connection: reconnecting')).toBeDefined(), { timeout: 5_000 });
+
+      // —— 放行:write envelope 越域 → manual 挂起 → approval 广播零客户端 ——
+      gated!.release();
+      const H = { authorization: 'Bearer e2e-token' } as Record<string, string>;
+      const deadline = Date.now() + 10_000;
+      let snap = (await (
+        await fetch(`http://127.0.0.1:${env.port}/session/s1/snapshot`, { headers: H })
+      ).json()) as {
+        status: string;
+        pending: Array<{ pid: string; kind: string; req: { kind?: string; subject?: string } }>;
+      };
+      while (snap.pending.length === 0) {
+        if (Date.now() > deadline) throw new Error(`挂起未落定: ${JSON.stringify(snap)}`);
+        await new Promise((r) => setTimeout(r, 50));
+        snap = (await (await fetch(`http://127.0.0.1:${env.port}/session/s1/snapshot`, { headers: H })).json()) as typeof snap;
+      }
+      expect(snap.status).toBe('running'); // 挂起中(run 停在 asker)
+      expect(snap.pending[0]!.kind).toBe('approval');
+      expect(snap.pending[0]!.req.kind).toBe('write'); // G7 req 直序列化(卡恢复的内容源)
+      expect(snap.pending[0]!.req.subject).toContain(NAME);
+
+      // —— 重连(缺省退避 1s)→ onReset → reseed(快照重播种)→ 挂起重发帧/快照 pending 双源合流 → 卡恢复 ——
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(container.querySelector('.approval-card')).not.toBeNull(), { timeout: 10_000 });
+      const title = container.querySelector('.approval-card .card-title');
+      expect(title?.textContent).toContain('[approval write]'); // 卡内容自 req(kind/subject 透传)
+      expect(title?.textContent).toContain(NAME);
+      // reseed 落定:快照转录重播种(用户行在场)
+      await waitFor(
+        () => expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('挂起重连目标'),
+        { timeout: 5_000 },
+      );
+
+      // —— Allow 回执闭环:卡移除 → run 续进 → 写落盘 + done + notice + idle ——
+      fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+      await waitFor(() => expect(container.querySelector('.approval-card')).toBeNull(), { timeout: 5_000 });
+      await waitFor(
+        () => expect(container.querySelector('.entry-assistant')?.textContent).toContain('恢复后收束'),
+        { timeout: 10_000 },
+      );
+      expect(fs.readFileSync(path.join(env.out, NAME), 'utf8')).toBe(CONTENT);
+      await waitFor(
+        () => expect(container.querySelector('.entry-notice')?.textContent).toContain('resolved: allow'),
+        { timeout: 5_000 },
+      );
+      expect(container.querySelector('.status-idle')).toBeDefined();
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
