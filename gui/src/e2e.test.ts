@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket as NodeWebSocket } from 'ws';
 import { createElement } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 // 主仓 dist 直引（G2 装配裁定）：gui pretest 先 clean+tsc 主仓，保证 dist 在场且新鲜——e2e 消费的
 // 就是发布形态（dist/serve/daemon + dist/model/adapter 的 ScriptedAdapter），非 TS 源旁路
 import { GuiDaemon } from '../../dist/serve/daemon';
@@ -32,6 +32,7 @@ describe('G2 无头验收：真 daemon 全链 → snapshot → App 渲染', () =
   let conn: Connection;
   let handle: { close(): Promise<void> };
   let tmp: string;
+  let port = 0;
   let prevDataDir: string | undefined;
   const events: SessionEvent[] = [];
 
@@ -45,6 +46,7 @@ describe('G2 无头验收：真 daemon 全链 → snapshot → App 渲染', () =
     const daemon = new GuiDaemon({ root: tmp, model: new ScriptedAdapter(CARDS) });
     const s = await daemon.start({ port: 0, token: 'e2e-token' });
     handle = s;
+    port = s.port;
     // G3 连接层重做：单连接生命周期（创建即连 WS，事件经 onEvent 回调消费）——subscribe 退场
     conn = createConnection({
       baseUrl: `http://127.0.0.1:${s.port}`,
@@ -60,7 +62,9 @@ describe('G2 无头验收：真 daemon 全链 → snapshot → App 渲染', () =
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevDataDir;
     if (tmp !== undefined) fs.rmSync(tmp, { recursive: true, force: true });
+    localStorage.removeItem('sunshinex.token');
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('全链：初始空 snapshot → submit → 事件流至 done（idle 收敛）→ 转录/板/委派落位 → App 渲染出转录行与板行', async () => {
@@ -114,13 +118,17 @@ describe('G2 无头验收：真 daemon 全链 → snapshot → App 渲染', () =
     expect(types).toContain('delegation-ended');
     expect(types).toContain('done');
 
-    // —— App 渲染（spec §12 G2 验收口径）：静态转录行与板行在场（.ts 文件无 JSX 面，createElement 等价）——
-    const { container } = render(createElement(App, { snapshot: snap1 }));
-    const transcriptRows = Array.from(container.querySelectorAll('.transcript .msg')).map((el) => el.textContent);
-    expect(transcriptRows[0]).toBe('[user] > run demo');
-    expect(transcriptRows.some((r) => r === '[assistant] all done')).toBe(true);
-    expect(transcriptRows.some((r) => r?.startsWith('[tool] ● create_task'))).toBe(true);
-    const board = within(screen.getByLabelText('board'));
-    expect(board.getByText('t1 [in-review] Demo')).toBeDefined();
+    // —— App 装配渲染（G3：App() 无 props 自装配——真连接指向本 daemon，baseUrl 经 vi.stubEnv
+    //    注入 VITE_SERVE_URL、token 经 localStorage 注入；onResync 以 snapshot.messages 种子渲染
+    //    转录 md 面（user 引用块/assistant 终答/tool 配对条）。板行断言随 Board 视图 G5 退场——
+    //    板态本身保留在前段 snapshot 断言）——
+    localStorage.setItem('sunshinex.token', 'e2e-token');
+    vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${port}`);
+    const { container } = render(createElement(App));
+    await waitFor(() => expect(container.querySelector('.entry-assistant')?.textContent).toContain('all done'), { timeout: 5_000 });
+    expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('run demo');
+    const toolRow = container.querySelector('.entry-tool');
+    expect(toolRow?.textContent).toContain('● create_task');
+    expect(screen.getByLabelText('connection: open')).toBeDefined();
   }, 30_000);
 });
