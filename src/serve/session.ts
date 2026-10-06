@@ -7,6 +7,8 @@ import type { TaskBoardState } from '../taskboard/model';
 import { applyDelegation } from '../delegation/projection';
 import type { Delegation } from '../delegation/projection';
 import { boardEventFrom } from '../tui/session';
+import type { ChatItem } from '../tui/session';
+import type { SessionJournal } from '../tui/session-journal';
 import { TranscriptCollector } from './transcript';
 import type { TranscriptEntry } from './transcript';
 
@@ -50,6 +52,30 @@ interface CurrentRun {
   done: Promise<void>;
 }
 
+/** TUI journal msg 行（ChatItem）→ daemon 转录条目映射（T2 attach 播种）：五 kind 收敛——
+ *  user/assistant/tool 直映；system 按 level 分 error/notice；thinking/step 归 notice。
+ *  md 面：user 补 `> ` 引用块（与 collector.submit 同形）；tool 行按 call/result 补 `● `/`⎿ ` 前缀
+ *  （与 collector 的 toolMd 同形）。seq 占位 0——入列时 seed() 续收集器自身计数（两序列不同源） */
+export function journalMessagesToEntries(items: ChatItem[]): TranscriptEntry[] {
+  const kindOf = (it: ChatItem): TranscriptEntry['kind'] => {
+    if (it.role === 'user') return 'user';
+    if (it.role === 'assistant') return 'assistant';
+    if (it.role === 'tool') return 'tool';
+    if (it.role === 'system' && it.level === 'error') return 'error';
+    return 'notice';
+  };
+  const mdOf = (it: ChatItem): string => {
+    if (it.role === 'user') return `> ${it.text}`;
+    if (it.role === 'tool') {
+      if (it.kind !== 'result') return `● ${it.text}`;
+      const first = it.text.split('\n')[0] ?? '';
+      return `⎿ ${first.length > 0 ? first : '…'}`;
+    }
+    return it.text;
+  };
+  return items.map((it) => ({ seq: 0, ts: it.ts, kind: kindOf(it), md: mdOf(it) }));
+}
+
 /** 事件环形缓冲容量（重连补发窗口）：满即丢最老——daemon 长跑不无界涨内存 */
 const EVENT_BUFFER_CAP = 512;
 
@@ -85,6 +111,9 @@ export class SessionRuntime {
   private delegations: Delegation[] = [];
   /** 粗粒度转录（spec G2 Ruling 1）：pump 同源喂入，snapshot 的 messages 字段（reset 换新实例清空） */
   private transcriptImpl = new TranscriptCollector();
+  /** attach 挂载的会话日志（T2）：在场即链行续落（context.onContextChange 订阅）与 teardown seal；
+   *  缺省无日志——daemon 侧新会话不建档（resume 转录由事件转录面承担，msg 行非 TUI ChatItem） */
+  private journal?: SessionJournal;
 
   constructor(opts: SessionRuntimeOpts) {
     this.opts = opts;
@@ -111,6 +140,31 @@ export class SessionRuntime {
   /** 转录收集器外窥（T2 attach 的 msg 行播种位） */
   get transcript(): TranscriptCollector {
     return this.transcriptImpl;
+  }
+
+  /** attach 挂载的 journal id 外窥（daemon attach 双挂守卫与测试面） */
+  get attachedJournalId(): string | undefined {
+    return this.journal?.currentId;
+  }
+
+  /**
+   * 挂载既有 journal（T2 attach 恢复收尾）：播种（链 restoreSession + 转录 seed）由 daemon attach 序
+   *  前置完成（runtime/transcript 外窥），本点做两件事——journal 实例挂载 + context.onContextChange
+   *  同构订阅（TUI SessionController session.ts:199 同形：append→chain 行、compact→compact 行；msg
+   *  行不续写——daemon 的 msg 面是事件转录，非 TUI ChatItem）。此后 run 的链变更经订阅即时续落
+   *  同一 journal 文件；teardown/close 经 dispose seal 收口。
+   */
+  attachJournal(journal: SessionJournal): void {
+    this.journal = journal;
+    this.hookJournalSink();
+  }
+
+  /** journal 落盘订阅单点（单槽）：attach 与 reset 换新运行时后重挂共用 */
+  private hookJournalSink(): void {
+    this.runtimeImpl.harness.context.onContextChange((c) => {
+      if (c.kind === 'append') this.journal?.log({ t: 'chain', steps: c.steps });
+      else this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
+    });
   }
 
   /** 影子投影只读外窥（测试面） */
@@ -187,13 +241,14 @@ export class SessionRuntime {
    * 软重置（旧 /session/new 语义迁入 /session/:id/reset，spec §4.1）：等价 /new 但保留 sessionId——
    * 在跑 run 先中止（有界等待 settle，防僵尸 run 写入清空后的投影）→ 换新运行时（换 Harness 即换
    * 上下文链/沉淀管线/steering 队列，真 /new 等价）→ 旧运行时内脏收口（stopAll→drain→mcpClose）→
-   * 影子/转录/补发缓冲清空。seq 不回拨（全局单调语义：重连客户端后续帧 seq 续接不重号）；journal
-   * seal 不在此面（会话存活，续写同 journal——T2 attach 后语义）
+   * 影子/转录/补发缓冲清空。seq 不回拨（全局单调语义：重连客户端后续帧 seq 续接不重号）；attach 挂载
+   * 的 journal 不 seal 不解挂（会话存活，续写同 journal——T2 语义）——落盘订阅随新运行时重挂。
    */
   async reset(): Promise<void> {
     await this.abortAndSettle();
     const old = this.runtimeImpl;
     this.runtimeImpl = this.assemble();
+    if (this.journal !== undefined) this.hookJournalSink();
     await this.disposeRuntime(old);
     this.board = emptyBoard();
     this.delegations = [];
@@ -217,9 +272,8 @@ export class SessionRuntime {
 
   /**
    * 会话收口（spec §7 收尾序，平移自 daemon 单会话 teardown）：abort 在跑 run → 有界等待其 settle
-   *  收口（2s 上限）→ stopAll → drain → mcpClose（序同 CLI teardownCliRun 现场）。daemon close 序
-   *  以分相形态（abortAndSettle/dispose）并入网络面先行关序，本方法为独立完整序。journal seal
-   *  T2 接入（attach 落档后续写收口）
+   * 收口（2s 上限）→ stopAll → drain → mcpClose（序同 CLI teardownCliRun 现场）→ journal seal。
+   * daemon close 序以分相形态（abortAndSettle/dispose）并入网络面先行关序，本方法为独立完整序。
    */
   async teardown(): Promise<void> {
     await this.abortAndSettle();
@@ -243,9 +297,11 @@ export class SessionRuntime {
 
   /** 收口步骤 3-5（当前运行时）：停全部后台任务（同 CLI D24：任务执行体先停、通道后关，stopAll 同步
    *  纯本地记账不抛）→ 排空后台沉淀管线（此时无新入队源，drain 即终态）→ MCP 连接收口（stdio 子进程
-   *  防悬挂事件循环）。daemon close 的网络面先行序在此相与 abort 相之间切入 */
+   *  防悬挂事件循环）→ journal seal（T2：write 影子快照清单以 snapshots 事件尾追，同 TUI sealJournal
+   *  形态；空清单零事件——drain 后续 seal 幂等）。daemon close 的网络面先行序在此相与 abort 相之间切入 */
   async dispose(): Promise<void> {
     await this.disposeRuntime(this.runtimeImpl);
+    this.journal?.seal(this.runtimeImpl.harness.writeSnapshot.drain());
   }
 
   /** 内脏收口单点（reset 的旧运行时换新后同序收口） */

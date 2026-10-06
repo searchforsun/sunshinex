@@ -1,14 +1,17 @@
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
-import { CodedToolError } from '../harness/tools';
 import { SessionRuntime } from './session';
 import type { EventFrame } from './session';
+import { journalMessagesToEntries } from './session';
+import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
+import { resolveDataDir, projectsRoot } from '../config/data-dir';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
  *  按需装配（--root CLI 参数降级为「启动即预选」，缺省空注册表启动）。model 与 CLI buildModel/TUI
@@ -30,6 +33,16 @@ export interface GuiDaemonHandle {
   port: number;
   token: string;
   close(): Promise<void>;
+}
+
+/** GET /workspaces 行（T2 工作区注册表）：slug=projectsRoot 下工作区目录名；root 经 createSession
+ *  落档的 `<dataDir>/workspace.json` 反解——历史工作区（TUI 时代档）无此档 → root undefined（前端
+ *  不可 attach，仅统计展示）；mtime=dataDir mtime；sessionCount=sessions 目录 jsonl 数（缺目录=0） */
+export interface WorkspaceRow {
+  root?: string;
+  slug: string;
+  mtime: number;
+  sessionCount: number;
 }
 
 /** JSON body 上限（1MB）：防无界 body 撑爆 daemon 内存；超限即断连收口 */
@@ -118,8 +131,11 @@ export class GuiDaemon {
 
   /**
    * 创建会话（spec §7）：root 存在性/目录校验（INVALID_ARG）→ 按 root 装配 SessionRuntime（同 root
-   * 多会话允许——各自独立主链，Ruling 2）→ 入注册表（s<n> 进程内单调）→ 置激活。Result 面：
-   * daemon 级 API（serve --root 预选/后续工作区注册表消费），HTTP 面映射 400/200
+   * 多会话允许——各自独立主链，Ruling 2）→ 入注册表（s<n> 进程内单调）→ 置激活。同时向
+   * `resolveDataDir(root)/workspace.json` 落档 `{root}`（T2 工作区注册表：slug 单向哈希反解不了
+   * root——落档供 GET /workspaces 读回真 root；历史工作区无此档降级 slug-only）。落档尽力而为：
+   * 数据面不可写（只读 projects 根）不挡会话创建，/workspaces 对该工作区降级 slug-only 行。Result
+   * 面：daemon 级 API（serve --root 预选/后续工作区注册表消费），HTTP 面映射 400/200
    */
   createSession(root: string): Result<{ sessionId: string }> {
     const abs = path.resolve(root);
@@ -130,6 +146,13 @@ export class GuiDaemon {
       return fail('INVALID_ARG', `root does not exist: ${abs}`);
     }
     if (!st.isDirectory()) return fail('INVALID_ARG', `root is not a directory: ${abs}`);
+    const dataDir = resolveDataDir(abs);
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root: abs }) + '\n', 'utf8');
+    } catch {
+      // 落档尽力：写失败只让 /workspaces 降级 slug-only，不影响会话装配
+    }
     this.sessionSeq += 1;
     const id = `s${this.sessionSeq}`;
     const session = new SessionRuntime({
@@ -147,9 +170,31 @@ export class GuiDaemon {
     return ok({ sessionId: id });
   }
 
-  /** attach 恢复（spec §7）：journal 链回放重建（reduceJournal 播种）——T2 实装，本任务留桩 */
-  attach(_journalId: string, _root: string): Result<{ sessionId: string }> {
-    throw new CodedToolError('INVALID_STATE', 'attach lands in T2');
+  /**
+   * attach 恢复（spec §7 / T2 实装）：会话 root 的 dataDir 下定位 `<journalId>.jsonl`（未知 id
+   * INVALID_ARG）→ parseJournalFile/reduceJournal（TUI /resume 同源）→ 版本守卫（≠1 拒载）→ 播种：
+   * 链经 context.restoreSession 直注入（TUI resume 单点——比逐条 appendChain 多保真 compact 态且
+   * 不触发变更订阅）、msg 行经 journalMessagesToEntries 映射入 transcript.seed → SessionJournal
+   * attach 续挂 + SessionRuntime.attachJournal 挂订阅（后续 run 的 chain 行续落同档，teardown
+   * seal）→ 置激活。双挂/运行中挂 INVALID_STATE（播种会击穿在飞 run 的链）。
+   */
+  attach(id: string, journalId: string): Result<{ sessionId: string }> {
+    const session = this.sessions.get(id);
+    if (session === undefined) return fail('INVALID_ARG', `unknown session: ${id}`);
+    if (session.attachedJournalId !== undefined) return fail('INVALID_STATE', 'session already has an attached journal');
+    if (session.status() === 'running') return fail('INVALID_STATE', 'cannot attach while a run is in progress');
+    const dataDir = resolveDataDir(session.root);
+    const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
+    if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
+    const replay = reduceJournal(parseJournalFile(file).events);
+    if (replay.version !== 1) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)}`);
+    session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
+    session.transcript.seed(journalMessagesToEntries(replay.messages));
+    const journal = new SessionJournal(dataDir);
+    journal.attach(journalId);
+    session.attachJournal(journal);
+    this.active = id;
+    return ok({ sessionId: id });
   }
 
   /** 会话外窥（测试/后续 T2+ 端点消费）：未知 id 回 undefined */
@@ -297,6 +342,11 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
+    { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
+    // T2 工作区注册表 + 恢复面：workspaces 扫描 / sessions 列档 / dirpicker 目录选择
+    { method: 'GET', path: '/workspaces', auth: true, run: async (_req, res) => this.handleWorkspaces(res) },
+    { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
+    { method: 'GET', path: '/dirpicker', auth: true, run: async (req, res) => this.handleDirpicker(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -516,6 +566,116 @@ export class GuiDaemon {
     const session = this.sessionFor(res, id);
     if (session === undefined) return;
     this.send(res, 200, session.snapshotResponse());
+  }
+
+  /** POST /session/:id/attach {journalId}（T2）：journalId 非空 string 校验 → 未知 :id 404 →
+   *  attach 单点（INVALID_ARG→400 / INVALID_STATE→409）→ 200 {ok,sessionId}（并置激活） */
+  private async handleAttach(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const journalId = (parsed.body as { journalId?: unknown } | null)?.journalId;
+    if (typeof journalId !== 'string' || journalId.length === 0) {
+      this.send(res, 400, { error: 'journalId must be a non-empty string' });
+      return;
+    }
+    if (this.sessions.get(id) === undefined) {
+      this.send(res, 404, { error: 'unknown session' });
+      return;
+    }
+    const r = this.attach(id, journalId);
+    if (!r.ok) {
+      this.send(res, r.error.code === 'INVALID_STATE' ? 409 : 400, { error: r.error.message });
+      return;
+    }
+    this.send(res, 200, { ok: true, sessionId: r.value.sessionId });
+  }
+
+  /** GET /workspaces（T2）：扫 projectsRoot() 下各 `<slug>/data` 存在者——root 经 workspace.json
+   *  反解（历史工作区无档 → slug-only 行不可 attach）；mtime=dataDir mtime；sessionCount=sessions
+   *  子目录 jsonl 计数（缺目录=0）。行序 mtime 降序（最近工作区在前，首页呈现序）；单目录/单档的
+   *  扫描竞态（readdir 与 stat 之间被删）跳过该条目，不击穿整个列表 */
+  private handleWorkspaces(res: http.ServerResponse): void {
+    const rows: WorkspaceRow[] = [];
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
+    } catch {
+      // projects 根不存在/不可读：空注册表（合法态——从未建过会话）
+      this.send(res, 200, rows);
+      return;
+    }
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue;
+      const dataDir = path.join(projectsRoot(), ent.name, 'data');
+      let st: fs.Stats;
+      try {
+        st = fs.statSync(dataDir);
+      } catch {
+        continue;
+      }
+      if (!st.isDirectory()) continue;
+      let root: string | undefined;
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
+        if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
+      } catch {
+        // 历史工作区无档/坏档 → slug-only（root undefined，前端不可 attach）
+      }
+      let sessionCount = 0;
+      try {
+        sessionCount = fs.readdirSync(path.join(dataDir, 'sessions')).filter((f) => f.endsWith('.jsonl')).length;
+      } catch {
+        // sessions 目录不存在 = 0
+      }
+      rows.push({ ...(root !== undefined ? { root } : {}), slug: ent.name, mtime: st.mtimeMs, sessionCount });
+    }
+    rows.sort((a, b) => b.mtime - a.mtime);
+    this.send(res, 200, rows);
+  }
+
+  /** GET /sessions?root=（T2）：root 必填（缺省 400——无 root 无法定位 dataDir）→ listSessions
+   *  （TUI /resume 同源导出：id/file/updatedAt mtime 降序/firstUser 首条用户输入摘要）原样回执 */
+  private handleSessions(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const root = url.searchParams.get('root');
+    if (root === null || root.length === 0) {
+      this.send(res, 400, { error: 'root query param required' });
+      return;
+    }
+    this.send(res, 200, listSessions(resolveDataDir(root)));
+  }
+
+  /** GET /dirpicker?path=（T2 服务端目录选择）：path 缺省 os.homedir()；不存在/非目录 400；
+   *  dirs=readdirSync withFileTypes 只目录 + 排序；parent=resolve('..')（盘根时=自身） */
+  private handleDirpicker(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const abs = path.resolve(url.searchParams.get('path') ?? os.homedir());
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(abs);
+    } catch {
+      this.send(res, 400, { error: `path does not exist: ${abs}` });
+      return;
+    }
+    if (!st.isDirectory()) {
+      this.send(res, 400, { error: `path is not a directory: ${abs}` });
+      return;
+    }
+    let dirs: string[];
+    try {
+      dirs = fs
+        .readdirSync(abs, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+        .sort();
+    } catch {
+      this.send(res, 400, { error: `path is not readable: ${abs}` });
+      return;
+    }
+    this.send(res, 200, { path: abs, parent: path.resolve(abs, '..'), dirs });
   }
 
   private send(res: http.ServerResponse, status: number, body: object): void {

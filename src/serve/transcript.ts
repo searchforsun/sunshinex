@@ -67,6 +67,13 @@ export class TranscriptCollector {
     this.list.push({ seq: this.nextSeq++, ts: Date.now(), kind: 'user', md: `> ${goal}` });
   }
 
+  /** attach 播种批量入列（T2）：journal msg 行映射条目按序入列。seq 由本收集器续发——入参 seq 无效
+   *  （TUI msgSeq 与本收集器序列不同源，沿用会与后续事件条目撞号，G3.5 计划「负数或独立起段」裁定
+   *  取续计数形态）；ts/kind/md 采信入参（md 已在映射面按五 kind 定形） */
+  seed(entries: TranscriptEntry[]): void {
+    for (const e of entries) this.list.push({ ...e, seq: this.nextSeq++ });
+  }
+
   push(e: SessionEvent): void {
     if (e.type === 'done') {
       this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'assistant', md: e.text ?? '' });
