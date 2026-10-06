@@ -27,3 +27,7 @@ scripts/*probe*.js
 .corepack-home/
 
 .worktrees/
+
+# G2 gui 子包（pnpm workspace）：子包 node_modules 与 vite 构建产物（../dist-gui）不入库
+gui/node_modules/
+dist-gui/

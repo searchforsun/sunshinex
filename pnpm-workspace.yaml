@@ -1,0 +1,3 @@
+# G2 gui 子包（spec 裁定：主仓零依赖新增——gui 依赖全落子包自管，workspace 仅纳管 gui 一个成员）
+packages:
+  - gui
