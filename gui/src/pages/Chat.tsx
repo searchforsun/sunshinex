@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
-import type { Connection, ConnectionState, GuiApprovalReq, GuiAskAnswer, GuiAskReq } from '../connection';
+import type { Connection, ConnectionState, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent } from '../../../src/types';
 
 /**
@@ -30,6 +30,12 @@ import type { SessionEvent } from '../../../src/types';
  * 用帧顶层 pid,非 req.id);卡列表 pid 管理——回执成功移,失败(404 已决)也移(不悬挂)。
  * 连接级 reset(重连)卡保留(daemon 未决重发被连接层 pid 去重);会话 reset 帧(resetSession)
  * 清卡(daemon 已 deny/dismissed 回填全部挂起)+清投影重播种。
+ * G5 增两面:①顶栏 Delete(confirm → conn.deleteSession(sessionId) → onBack 回首页——Home
+ * 行 Delete 以 journal id 寻址恒 404 退役,daemon 会话 id 才是回收端点的有效寻址);②status
+ * 转 idle 清卡(effect 观察投影状态:run 收束 = daemon 已对本 run 挂起 deny 回填,本地卡随之
+ * 清——reseed 后快照 status=idle 亦触发,不重建:snapshot.pending 仅 [{pid,kind}] 信号面,卡
+ * req 内容不可恢复,跨会话卡恢复记档 G6+);③onSeeded(快照落定回调,App 借此取 snapshot.team
+ * 存 App 态——事件流无 teammate 面,Board 侧栏的唯一来源)。
  */
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
@@ -57,6 +63,8 @@ export interface ChatProps {
   onBack(): void;
   /** App 持有的转投注册面(见 ChatSink) */
   sinkRef: MutableRefObject<ChatSink | null>;
+  /** G5 快照落定回调(App 消费 snapshot.team 存态——Board 侧栏;可选防测试桩免配) */
+  onSeeded?: (snap: SnapshotResponse) => void;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -152,10 +160,10 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
   );
 });
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
-  /** G4 挂起卡列表(pid 维:回执落定即移;resetSession 清空) */
+  /** G4 挂起卡列表(pid 维:回执落定即移;resetSession/idle 清空) */
   const [cards, setCards] = useState<PendingCard[]>([]);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
    *  (挂载/reset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
@@ -166,6 +174,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
   const pendingRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
   /** 播种代次:后继 reseed(在途窗内重连)使先行应答失效 */
   const seedGenRef = useRef(0);
+  /** G5 idle 清卡:前次 status 记账(ref 免 effect 重复触发)——仅 running→idle 转换清卡 */
+  const prevStatusRef = useRef<ChatState['status'] | null>(null);
+  /** onSeeded 的同步镜像(reseed 闭包经 ref 读,装配期固定免依赖数组抖动) */
+  const onSeededRef = useRef<((snap: SnapshotResponse) => void) | undefined>(onSeeded);
+  onSeededRef.current = onSeeded;
 
   /** 会话基线重建(挂载与 reset 同路径):清投影 + 缓冲 → sessionSnapshot 播种 → 种子落定后
    *  过滤缓冲(seq ≤ snapshot.lastSeq 丢)依序补投;失败倒 error 条不静默 */
@@ -186,6 +199,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
         seedingRef.current = false;
         setSeeding(false);
         setChat(next);
+        onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
       },
       (err: unknown) => {
         if (seedGenRef.current !== gen) return;
@@ -253,6 +267,26 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
 
   const running = chat.status === 'running';
 
+  /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
+   *  时置空本地卡列表;reseed 落定的 idle 快照亦经此路径(挂起已回填,不重建——见文件头裁定) */
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = chat.status;
+    if (prev !== null && prev !== 'idle' && chat.status === 'idle') setCards([]);
+  }, [chat.status]);
+
+  /** G5 会话回收(daemon 会话 id 寻址):confirm → deleteSession → onBack 回首页;
+   *  失败留在会话示错条(HTTP 409 running 等不静默) */
+  const deleteThisSession = (): void => {
+    if (!window.confirm(`删除会话 ${sessionId}?此操作不可恢复(journal 档案保留)。`)) return;
+    void conn.deleteSession(sessionId).then(
+      () => onBack(),
+      (err: unknown) => {
+        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
+      },
+    );
+  };
+
   /** Enter 分流:idle 提交 / running 插话;本地 user 回显(`> text`),失败倒 error 条 */
   const send = (): void => {
     const text = input.trim();
@@ -283,6 +317,9 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
         <span className={`status-text status-${chat.status}`}>{chat.status}</span>
         <span className="tokens">{chat.tokens} tokens</span>
         <span className="steps">{chat.steps} steps</span>
+        <button type="button" className="delete" onClick={deleteThisSession}>
+          Delete
+        </button>
       </header>
       {cards.length > 0 && (
         <section className="pending-cards" aria-label="pending approvals and asks">

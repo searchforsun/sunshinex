@@ -481,9 +481,10 @@ describe('G4 manual 审批闭环:HTTP 建 manual 会话 → UI 提交挂起 → 
     try {
       localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
-      // mode 注入包装器:App 自建连接的 newSession 无 mode 参数(gui 连接层缺该面,G5+ 接线)——
-      // e2e 在 fetch 面补注 mode:'manual',仍经真 HTTP 端点建 manual 会话(daemon /session/new 的
-      // 可选 mode 透传面即为此验收所开);其余请求原样透传
+      // mode 注入包装器:App 的 New session 流不选 mode(gui 连接层 newSession 已有 mode 面
+      // ——G5 接线,但 App 面未消费——manual 会话的 UI 入口留待后续)——e2e 在 fetch 面补注
+      // mode:'manual',仍经真 HTTP 端点建 manual 会话(daemon /session/new 的可选 mode 透传面
+      // 即为此验收所开);其余请求原样透传
       const realFetch = globalThis.fetch.bind(globalThis);
       vi.stubGlobal(
         'fetch',
@@ -548,8 +549,8 @@ describe('G4 manual 审批闭环:HTTP 建 manual 会话 → UI 提交挂起 → 
   }, 45_000);
 });
 
-describe('G4 delete 流(轻):两会话 idle → Home 行 Delete(confirm 桩)→ 真实链路断言', () => {
-  it('第二会话行 Delete → confirm 真发起 HTTP;现状:journal id 打会话端点 404(接线缺口,示错行保留);daemon 会话 id 删 200/注册表 404/journal 保留', async () => {
+describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真实回收全链', () => {
+  it('两会话 idle → s2 会话页顶栏 Delete(confirm 桩)→ 200 → 回 home;daemon 会话 404/journal 保留', async () => {
     const env = await startDaemon(
       new ScriptedAdapter(['{"done":true,"reply":"第一会话完成"}', '{"done":true,"reply":"第二会话完成"}']),
     );
@@ -573,41 +574,27 @@ describe('G4 delete 流(轻):两会话 idle → Home 行 Delete(confirm 桩)→ 
         fireEvent.keyDown(input, { key: 'Enter' });
         await waitFor(() => expect(container.querySelector('.entry-assistant')?.textContent).toContain(reply), { timeout: 10_000 });
       };
-      const backHome = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
-        await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
-      };
 
-      // —— 两会话先后建+跑+idle(journal 惰性建档:首 run 落盘,Home 会话行才出现)——
+      // —— 两会话先后建+跑+idle(s2 留在会话页——顶栏 Delete 的现场)——
       await openByPicker();
       await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
       await runOnce('第一会话目标', '第一会话完成');
-      await backHome();
+      fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+      await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
       await openByPicker();
       await waitFor(() => expect(screen.getByText('session s2')).toBeDefined(), { timeout: 5_000 });
       await runOnce('第二会话目标', '第二会话完成');
-      await backHome();
 
-      // —— Home:展开工作区行 → 两 journal 行在(listSessions updatedAt 降序:第二会话档在前)——
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
-      await waitFor(() => expect(container.querySelectorAll('.session-row').length).toBe(2), { timeout: 5_000 });
-      const deleteButtons = await screen.findAllByRole('button', { name: /^delete / });
-      expect(deleteButtons.length).toBe(2);
-
-      // —— 第二会话行 Delete(confirm 桩真):Home 接线以 journal id 打 /session/:id/delete ——
+      // —— s2 会话页顶栏 Delete(confirm 桩真):以 openSessionId(daemon 会话 id)打
+      //    /session/:id/delete——Home 行 Delete 以 journal id 寻址恒 404 的接线缺口就此退役 ——
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-      fireEvent.click(deleteButtons[0]); // 首行 = 最近 journal(第二会话档)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
       expect(confirmSpy).toHaveBeenCalledTimes(1);
-      // 真实链路现状(接线缺口,T4 报告记档):daemon delete 按会话注册表 id 寻址,journal id 未知 →
-      // 404 → Home 示错、行保留(不消失)——G5+ 需 journal 删除端点或 id 解析接线
-      const err = await screen.findByText(/-> 404/, {}, { timeout: 5_000 });
-      expect(err.textContent).toContain('/delete -> 404');
-      expect(container.querySelectorAll('.session-row').length).toBe(2); // 行未消失(失败不刷新)
+      // 删除成功 → onBack → home 回归(会话关窗)
+      await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
       confirmSpy.mockRestore();
 
-      // —— daemon 会话 id 走真回收面(API 层):200 → 注册表移除(:id 访问 404)→ journal 文件保留 ——
-      const r = await fetch(`http://127.0.0.1:${env.port}/session/s2/delete`, { method: 'POST', headers: H });
-      expect(r.status).toBe(200);
+      // —— daemon 侧真实回收:s2 移出注册表(:id 访问 404);journal 文件保留(磁盘档案)——
       const gone = await fetch(`http://127.0.0.1:${env.port}/session/s2/snapshot`, { headers: H });
       expect(gone.status).toBe(404);
       const journals = fs

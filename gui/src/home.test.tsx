@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { DirPickerResp, SessionRow, WorkspaceRow } from './connection';
 import { Home } from './pages/Home';
@@ -8,8 +8,9 @@ import { DirPicker } from './pages/DirPicker';
 /**
  * G3.5 首页桩测:Home(工作区列表/展开会话/attach 两步链/New→DirPicker 交互链/空态/错误面)
  * 与 DirPicker 组件(逐级浏览/自定义输入/确认取值/取消/服务端错误)——conn 全桩(HTTP 面
- * 不出网),真链在 e2e.test.ts。G4 增:会话行 Delete(confirm 流 + 列表刷新)与 toggleRow
- * slug 守卫(慢应答丢弃)。
+ * 不出网),真链在 e2e.test.ts。G5:会话行 Delete 退役(journal id 寻址恒 404——回收改
+ * Chat 顶栏 Delete 按 daemon 会话 id;本套钉「行内无 Delete」负断言)+ toggleRow slug
+ * 守卫(慢应答丢弃)。
  */
 
 /** Home/DirPicker 桩 conn:调用记录可断言;应答面可注入(含失败注入) */
@@ -20,7 +21,6 @@ interface StubOpts {
   newSessionId?: string;
   newSessionFail?: Error;
   attachFail?: Error;
-  deleteFail?: Error;
 }
 interface Stub {
   conn: HomeConn;
@@ -30,11 +30,10 @@ interface Stub {
     dirpicker: Array<string | undefined>;
     newSession: string[];
     attach: Array<[string, string]>;
-    delete: string[];
   };
 }
 function stubConn(opts: StubOpts = {}): Stub {
-  const calls: Stub['calls'] = { workspaces: 0, sessionsOf: [], dirpicker: [], newSession: [], attach: [], delete: [] };
+  const calls: Stub['calls'] = { workspaces: 0, sessionsOf: [], dirpicker: [], newSession: [], attach: [] };
   const conn: HomeConn = {
     workspaces: () => {
       calls.workspaces += 1;
@@ -57,11 +56,6 @@ function stubConn(opts: StubOpts = {}): Stub {
     attach: (sessionId: string, journalId: string) => {
       calls.attach.push([sessionId, journalId]);
       if (opts.attachFail !== undefined) return Promise.reject(opts.attachFail);
-      return Promise.resolve();
-    },
-    deleteSession: (id: string) => {
-      calls.delete.push(id);
-      if (opts.deleteFail !== undefined) return Promise.reject(opts.deleteFail);
       return Promise.resolve();
     },
   };
@@ -248,48 +242,14 @@ describe('Home:attach 与 New session 动作链', () => {
   });
 });
 
-describe('Home:G4 会话回收(delete)与展开竞态守卫', () => {
-  afterEach(() => {
-    vi.restoreAllMocks(); // window.confirm spy 复原(实现不跨测泄漏)
-  });
-
-  it('Delete:confirm 真 → deleteSession(id) → 列表刷新(行消失);confirm 假不动', async () => {
-    const data: StubOpts = { rows: [wsRow()], sessions: [sessRow()] };
-    const { conn, calls } = stubConn(data);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+describe('Home:G5 会话行 Delete 退役与展开竞态守卫', () => {
+  it('会话行无 Delete 按钮(G5 退役:journal id 寻址恒 404——回收改 Chat 顶栏 Delete)', async () => {
+    const { conn } = stubConn({ rows: [wsRow()], sessions: [sessRow()] });
     render(<Home conn={conn} onOpenSession={() => {}} />);
     await openRow();
     expect(screen.getByText('修一个 bug')).toBeDefined();
-    // 删除后刷新应见到空列表(应答读同一 holder)
-    data.sessions = [];
-    fireEvent.click(screen.getByRole('button', { name: 'delete j-20261006a' }));
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(calls.delete).toEqual(['j-20261006a']));
-    await waitFor(() => expect(calls.sessionsOf).toEqual(['/w/root-a', '/w/root-a']));
-    expect(await screen.findByText(/暂无会话/)).toBeDefined();
-    expect(screen.queryByText('修一个 bug')).toBeNull();
-    // confirm 假:不 delete、不刷新(先收起再重开——右栏 h2 与行文本会同名,收起免多元素撞查询)
-    confirmSpy.mockReturnValue(false);
-    data.sessions = [sessRow()];
-    fireEvent.click(screen.getByRole('button', { name: /root-a-ab12cd34/ })); // 收起
-    fireEvent.click(screen.getByRole('button', { name: 'refresh workspaces' }));
-    await openRow();
-    fireEvent.click(screen.getByRole('button', { name: 'delete j-20261006a' }));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(calls.delete).toEqual(['j-20261006a']); // 仍只有第一次
-    expect(screen.getByText('修一个 bug')).toBeDefined();
-    expect(calls.sessionsOf).toEqual(['/w/root-a', '/w/root-a', '/w/root-a']); // 未触发第四次刷新
-  });
-
-  it('Delete 失败(running 409):错误示出(不静默),行保留', async () => {
-    const { conn, calls } = stubConn({ rows: [wsRow()], sessions: [sessRow()], deleteFail: new Error('/session/j-20261006a/delete -> 409') });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<Home conn={conn} onOpenSession={() => {}} />);
-    await openRow();
-    fireEvent.click(screen.getByRole('button', { name: 'delete j-20261006a' }));
-    expect(await screen.findByText('/session/j-20261006a/delete -> 409')).toBeDefined();
-    expect(screen.getByText('修一个 bug')).toBeDefined(); // 行保留
-    expect(calls.sessionsOf).toEqual(['/w/root-a']); // 未触发刷新
+    expect(screen.queryByRole('button', { name: /^delete / })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 
   it('toggle 守卫:展开 A 应答在途切到 B → A 慢应答丢弃(B 列表不被冲)', async () => {

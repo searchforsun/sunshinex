@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { createConnection } from './connection';
-import type { Connection, ConnectionState } from './connection';
+import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
 import { Home } from './pages/Home';
 import { Chat } from './pages/Chat';
+import { Board } from './pages/Board';
 import type { ChatSink } from './pages/Chat';
 import type { SessionEvent } from '../../src/types';
 
@@ -16,9 +17,15 @@ import type { SessionEvent } from '../../src/types';
  * (本会话帧经 chatSinkRef 转投 Chat——连接回调闭包装配时固定,Chat 装配期注册 sink);板/委派
  * 投影随事件维稳(重连=onReset 清零+daemon 全量补发帧重建,G5 板页消费)。
  * Chat(T4δ)以 key={sessionId} 挂载:对话面本地态(reducer 投影/输入/播种门/竞态缓冲)随组件
- * 销毁——两会话先后打开各自投影独立,无跨会话串扰,不断连重连。onReset(首连与重连同路径)
+ * 销毁——两会话先后打开各自投影独立,无跨会话串扰,不断断重连。onReset(首连与重连同路径)
  * → Chat.reset 本会话重播种(重连=重置投影+全量重放裁定)。G4 挂起面:onApproval/onAsk/
  * onResetSession 三回调同 pattern——sessionRef 过滤本会话后经 chatSinkRef 转投 Chat 卡片区。
+ * G5 看板页:会话内 Chat|Board 双 tab(sessionTab 本地态;Chat 以 hidden 面常驻——tab 切换
+ * 不卸毁对话面本地态,挂起卡/竞态缓冲/滚动零重播种)。Board props 全装配:board/delegations
+ * 投影 + team(App 态,经 Chat onSeeded 回调自 sessionSnapshot.team 回填——事件流无 teammate
+ * 面,reseed 即更新);gate 审批 onReview → conn.boardReview(sessionId, taskId, approved)。
+ * onResetSession(G3.5 交接 d 收口):会话维 reset 除 Chat 重播种外,board/delegations 投影
+ * 亦清(此前仅连接级 onReset 清——会话 reset 后板投影悬挂旧任务)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
  */
 
@@ -78,9 +85,13 @@ function TokenGate({ onSave }: { onSave: (token: string) => void }): JSX.Element
 function AppShell({ token }: { token: string }): JSX.Element {
   const [page, setPage] = useState<'home' | 'chat'>('home');
   const [openSessionId, setOpenSessionId] = useState<string>('');
+  /** G5 会话内 tab:chat|board(Chat 常驻 hidden 面,Board 条件挂载——切换零重播种) */
+  const [sessionTab, setSessionTab] = useState<'chat' | 'board'>('chat');
   const [connState, setConnState] = useState<ConnectionState>('connecting');
   const [board, setBoard] = useState<TaskBoardState>(emptyBoard);
   const [delegations, setDelegations] = useState<Delegation[]>([]);
+  /** G5 teammate 投影(App 态):snapshot.team 经 Chat onSeeded 回填——reseed 即更新 */
+  const [team, setTeam] = useState<Array<{ name: string; busy: boolean }>>([]);
   const connRef = useRef<Connection | null>(null);
   /** 连接实例态:effect 装配后落位(Home/Chat 面消费;null = 装配中占位) */
   const [connInstance, setConnInstance] = useState<Connection | null>(null);
@@ -121,6 +132,10 @@ function AppShell({ token }: { token: string }): JSX.Element {
       },
       onResetSession: (sessionId) => {
         if (sessionId !== sessionRef.current) return;
+        // G3.5 交接 d 收口(G5):会话维 reset 清 board/delegations 投影(仅连接级 onReset 清的缺口
+        //  ——会话 reset 后旧任务悬挂);Chat 卡区清+重播种经 sink
+        setBoard(emptyBoard());
+        setDelegations([]);
         chatSinkRef.current?.resetSession();
       },
       onStateChange: setConnState,
@@ -134,10 +149,13 @@ function AppShell({ token }: { token: string }): JSX.Element {
     };
   }, [token]);
 
-  /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线) */
+  /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线);tab 归位 chat + team 清零
+   *  (两会话各自快照回填,防先会话 teammate 串入) */
   const openSession = (sessionId: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
+    setSessionTab('chat');
+    setTeam([]);
     setPage('chat');
   };
 
@@ -145,7 +163,28 @@ function AppShell({ token }: { token: string }): JSX.Element {
   const backHome = (): void => {
     sessionRef.current = '';
     setOpenSessionId('');
+    setSessionTab('chat');
+    setTeam([]);
     setPage('home');
+  };
+
+  /** G5 gate 审批装配:Board onReview → boardReview(sessionId, taskId, approved)——失败倒
+   *  Chat error 条不静默(经 sink 合成 error 帧,seq 取上界保证种子缓冲过滤恒放行;成功面无
+   *  HTTP 回执帧,daemon 侧 review 触发的 gate-resolved/task-status 事件帧自然回投板投影) */
+  const reviewTask = (taskId: string, approved: boolean): void => {
+    const conn = connRef.current;
+    if (conn === null) return;
+    void conn.boardReview(sessionRef.current, taskId, approved).catch((err: unknown) => {
+      chatSinkRef.current?.on(
+        { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() },
+        Number.MAX_SAFE_INTEGER,
+      );
+    });
+  };
+
+  /** G5 Chat 播种回调:team 自快照回填 App 态(旧档无段防 undefined) */
+  const seedTeam = (snap: SnapshotResponse): void => {
+    setTeam(snap.team ?? []);
   };
 
   return (
@@ -164,16 +203,40 @@ function AppShell({ token }: { token: string }): JSX.Element {
           </main>
         )
       ) : connInstance !== null ? (
-        <Chat
-          key={openSessionId}
-          conn={connInstance}
-          sessionId={openSessionId}
-          connState={connState}
-          onBack={backHome}
-          sinkRef={chatSinkRef}
-        />
+        <div className="session-shell">
+          {/* G5 会话内 tab:Chat|Board(openSessionId 在场才渲染本壳) */}
+          <nav className="session-tabs" aria-label="session tabs">
+            <button type="button" aria-pressed={sessionTab === 'chat'} onClick={() => setSessionTab('chat')}>
+              Chat
+            </button>
+            <button type="button" aria-pressed={sessionTab === 'board'} onClick={() => setSessionTab('board')}>
+              Board
+            </button>
+          </nav>
+          {/* Chat 常驻(hidden 面):tab 切换不卸毁——挂起卡/竞态缓冲/输入零重播种 */}
+          <div className={`pane pane-chat${sessionTab === 'chat' ? '' : ' hidden'}`} hidden={sessionTab !== 'chat'}>
+            <Chat
+              key={openSessionId}
+              conn={connInstance}
+              sessionId={openSessionId}
+              connState={connState}
+              onBack={backHome}
+              sinkRef={chatSinkRef}
+              onSeeded={seedTeam}
+            />
+          </div>
+          {sessionTab === 'board' && (
+            <Board
+              board={board}
+              delegations={delegations}
+              team={team}
+              onReview={reviewTask}
+              onBack={() => setSessionTab('chat')}
+            />
+          )}
+        </div>
       ) : null}
-      {/* board/delegations 投影 G5 页消费(随事件/重放维稳;本壳只路由与连接装配) */}
+      {/* board/delegations 投影 G5 板页消费(随事件/重放维稳;本壳只路由与连接装配) */}
     </div>
   );
 }

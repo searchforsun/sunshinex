@@ -10,8 +10,9 @@ import { DirPicker } from './DirPicker';
  * Attach 两步裁定(daemon 形态对齐):POST /session/new {root} 装配会话 → POST /session/:id/attach
  * {journalId} 播种恢复 → onOpenSession(sessionId)(daemon 会话注册表无「按 journal 直开」端点,
  * attach 需先有会话壳)。New session 单步:newSession(root) 即入。
- * G4:会话行 Delete(confirm 后 deleteSession + 列表刷新);sessionsOf 应答 slug 守卫——展开
- * 切换/收起后的迟到应答丢弃(慢应答不冲当前展开列表)。
+ * G3.5+T2:会话行 Delete 已退役(G5 裁定——以 journal id 打会话端点恒 404,回收改 Chat 顶栏
+ * Delete 按 daemon 会话 id 寻址);sessionsOf 应答 slug 守卫——展开切换/收起后的迟到应答丢弃
+ * (慢应答不冲当前展开列表)。
  */
 
 export interface HomeConn {
@@ -20,8 +21,6 @@ export interface HomeConn {
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   newSession(root: string): Promise<{ sessionId: string }>;
   attach(sessionId: string, journalId: string): Promise<void>;
-  /** POST /session/:id/delete(T2 回收):running 409;journal 文件保留(daemon 侧有界回收) */
-  deleteSession(id: string): Promise<void>;
 }
 
 export interface HomeProps {
@@ -133,25 +132,6 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
     );
   };
 
-  /** Delete(T2 回收):window.confirm 确认 → deleteSession(journalId) → 该工作区列表刷新
-   *  (slug 守卫:应答期间切行/收起则弃刷新);失败示错(409 running 等)行保留 */
-  const deleteJournal = (root: string, slug: string, journalId: string): void => {
-    if (busy) return;
-    if (!window.confirm(`删除会话 ${journalId}?此操作不可恢复。`)) return;
-    setBusy(true);
-    setActionError('');
-    conn.deleteSession(journalId).then(
-      () => {
-        setBusy(false);
-        loadSessions(root, slug); // 列表刷新(守卫内:展开已切走则弃)
-      },
-      (err: unknown) => {
-        setBusy(false);
-        setActionError(err instanceof Error ? err.message : String(err));
-      },
-    );
-  };
-
   return (
     <main className="home" aria-label="home">
       <section className="workspaces" aria-label="workspaces">
@@ -225,17 +205,6 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
                           }}
                         >
                           Attach
-                        </button>
-                        <button
-                          type="button"
-                          className="delete"
-                          aria-label={`delete ${s.id}`}
-                          disabled={busy}
-                          onClick={() => {
-                            if (row.root !== undefined) deleteJournal(row.root, row.slug, s.id);
-                          }}
-                        >
-                          Delete
                         </button>
                       </div>
                     </li>

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import type { SessionEvent } from '../../src/types';
@@ -36,6 +36,7 @@ const h = vi.hoisted(() => {
     replyApprovalCalls: Array<[string, string]> = [];
     replyAskCalls: Array<[string, GuiAskAnswer]> = [];
     deleteSessionCalls: string[] = [];
+    boardReviewCalls: Array<[string, string, boolean]> = [];
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
     replyReject: Error | null = null;
@@ -105,6 +106,10 @@ const h = vi.hoisted(() => {
     deleteSession(id: string): Promise<void> {
       if (this.deleteReject !== null) return Promise.reject(this.deleteReject);
       this.deleteSessionCalls.push(id);
+      return Promise.resolve();
+    }
+    boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
+      this.boardReviewCalls.push([sessionId, taskId, approved]);
       return Promise.resolve();
     }
     close(): void {
@@ -644,5 +649,124 @@ describe('卸载收口(单连接生命周期)', () => {
     const { conn, unmount } = await enterChat();
     unmount();
     expect(conn.closed).toBe(true);
+  });
+});
+
+describe('G5 Board 页:tab 进入 + 板/委派投影 + team(快照) + 会话维 reset', () => {
+  const taskCreated = (id: string, title: string, dependsOn: string[] = []): SessionEvent =>
+    ev('task-created', undefined, { taskId: id, title, spec: 's', dependsOn });
+
+  it('tab 切换:Board 进入(空板占位)→ 返回 Chat(tab 态切回,Chat 常驻不重播种)', async () => {
+    const { conn, unmount } = await enterChat();
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByLabelText('board')).toBeDefined();
+    expect(screen.getByText(/任务板为空/)).toBeDefined();
+    // Chat 常驻(hidden 面):message input 仍在 DOM(tab 切回零重播种)
+    fireEvent.click(screen.getByRole('button', { name: /返回 Chat/ }));
+    expect(screen.getByRole('button', { name: 'Chat' }).getAttribute('aria-pressed')).toBe('true');
+    expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
+    unmount();
+  });
+
+  it('板投影随事件:task-created/assigned/gate 帧 → Board List 行(t1 ⚠ @w1);Approve → conn.boardReview(s1, t1, true)', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, taskCreated('t1', 'Demo'));
+    fire(conn, taskCreated('t2', 'Next', ['t1']));
+    fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }));
+    fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText('t1 [pending] Demo ⚠ @w1')).toBeDefined();
+    expect(screen.getByText('t2 [pending] Next (needs t1)')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve t1' }));
+    await waitFor(() => expect(conn.boardReviewCalls).toEqual([['s1', 't1', true]]));
+    unmount();
+  });
+
+  it('他会话帧不进板投影(sessionRef 过滤在板面前)', async () => {
+    const { conn, unmount } = await enterChat();
+    fireOther(conn, taskCreated('t9', '他会话任务'));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText(/任务板为空/)).toBeDefined();
+    unmount();
+  });
+
+  it('team 侧栏:snapshot.team 经 Chat 播种回填 App 态;onReset 重播种更新', async () => {
+    const { conn, unmount } = mount();
+    conn.snapshotResp = snapshotOf({ team: [{ name: 'w1', busy: true }] });
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    openConn(conn);
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByLabelText('team').textContent).toContain('w1');
+    expect(document.querySelector('.team-dot.busy')).not.toBeNull();
+    // 重播种(连接级 onReset)→ 新 team 回填
+    conn.snapshotResp = snapshotOf({ team: [{ name: 'w2', busy: false }] });
+    act(() => conn.opts.onReset());
+    await waitFor(() => expect(screen.getByLabelText('team').textContent).toContain('w2'));
+    expect(screen.queryByText('w1')).toBeNull();
+    unmount();
+  });
+
+  it('onResetSession(本会话)清 board/delegations 投影;他会话 reset 不清', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, taskCreated('t1', 'Demo'));
+    fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
+    expect(screen.getByLabelText('delegations').textContent).toContain('dev');
+    fireResetSession(conn, 's9'); // 他会话:板投影不动
+    expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
+    fireResetSession(conn, 's1'); // 本会话:board/delegations 清(重播种经 sink,快照板不回填 App 投影)
+    await waitFor(() => expect(screen.getByText(/任务板为空/)).toBeDefined());
+    expect(screen.getByLabelText('delegations').textContent).not.toContain('dev');
+    unmount();
+  });
+});
+
+describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => {
+  const apReq: GuiApprovalReq = { id: 'ap-1', kind: 'write', subject: 'rm -rf /tmp/x' };
+  const apTitle = '[approval write] rm -rf /tmp/x';
+
+  afterEach(() => {
+    vi.restoreAllMocks(); // window.confirm spy 复原
+  });
+
+  it('Delete:confirm 真 → conn.deleteSession(sessionId) → 回 home;confirm 假不动', async () => {
+    const { conn, unmount } = await enterChat();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(conn.deleteSessionCalls).toEqual([]); // 假:不发
+    expect(screen.getByText('session s1')).toBeDefined(); // 留在会话
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(conn.deleteSessionCalls).toEqual(['s1'])); // daemon 会话 id(非 journal id)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'workspaces' })).toBeDefined()); // onBack 回 home
+    unmount();
+  });
+
+  it('Delete 失败(running 409):error 条示出不静默,留在会话', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.deleteReject = new Error('/session/s1/delete -> 409');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(screen.getByText('/session/s1/delete -> 409')).toBeDefined());
+    expect(screen.getByText('session s1')).toBeDefined();
+    unmount();
+  });
+
+  it('status 转 idle 清卡:卡在场 → run(running)→ done(idle)→ 卡区退场', async () => {
+    const { conn, unmount } = await enterChat();
+    fireApproval(conn, 's1', 'p-idle-1', apReq);
+    expect(screen.getByText(apTitle)).toBeDefined();
+    fire(conn, ev('model-start')); // idle → running
+    expect(screen.getByText(apTitle)).toBeDefined(); // run 中不清
+    fire(conn, ev('done', 'fin')); // running → idle(daemon 已 deny 回填)→ 清卡
+    await waitFor(() => expect(screen.queryByText(apTitle)).toBeNull());
+    unmount();
   });
 });

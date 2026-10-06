@@ -22,7 +22,9 @@ import type { Delegation } from '../../src/delegation/projection';
  * G4 挂起面（审批/问询/reset）：approval/ask 挂起帧无 seq 不入单调序列——pid（daemon 级
  * 铸票，连接生命周期维 Set 去重，重连重发幂等）回调上层；回执走 HTTP（replyApproval/
  * replyAsk，寻址统一帧顶层 pid——req.id 是会话内编号非寻址键）；reset 通知帧帧帧回调
- * （onResetSession）；deleteSession（T2 回收端点）供 Home。
+ * （onResetSession）；deleteSession（T2 回收端点）供 Chat 顶栏 Delete（G5:Home 行 Delete 以
+ * journal id 寻址恒 404 退役——会话端点以 daemon 会话 id 寻址才是有效路径）；boardReview
+ * （G5 看板服务面）供 Board 页 gate 行内审批。
  */
 
 /** 粗粒度转录条目(对齐主仓 src/serve/transcript.ts TranscriptEntry;G4 对齐五 kind——
@@ -61,12 +63,17 @@ export type GuiAskAnswer =
   | { type: 'custom'; text: string }
   | { type: 'dismissed' };
 
-/** GET /session/:id/snapshot 载荷形态（T1 会话维，gui 侧契约声明）；lastSeq 见 Connection.sessionSnapshot 交集 */
+/** GET /session/:id/snapshot 载荷形态（T1 会话维，gui 侧契约声明）；lastSeq 见 Connection.sessionSnapshot 交集。
+ *  G5 扩段:team(teammate 投影——harness.team 同源,Board 侧栏消费;daemon 必发,类型上可选防旧档)、
+ *  pending(本会话未决挂起 [{pid,kind}]——跨会话卡恢复基座;pid 在而 req 内容缺,v1 仅作信号面,
+ *  卡内容恢复记档 G6+) */
 export interface SnapshotResponse {
   messages: SnapshotMessage[];
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';
+  team?: Array<{ name: string; busy: boolean }>;
+  pending?: Array<{ pid: string; kind: 'approval' | 'ask' }>;
 }
 
 /** GET /workspaces 行（T2 工作区注册表，对齐主仓 daemon.ts WorkspaceRow）：root 经 workspace.json
@@ -138,8 +145,9 @@ export interface Connection {
   sessionsOf(root: string): Promise<SessionRow[]>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
-  /** POST /session/new {root}：按 root 装配新会话（并置激活）→ {sessionId} */
-  newSession(root: string): Promise<{ sessionId: string }>;
+  /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
+   *  ('manual' 审批问询挂起 / 'dontAsk' 缺省)——缺省不发 body 字段(旧 daemon 兼容) */
+  newSession(root: string, mode?: 'dontAsk' | 'manual'): Promise<{ sessionId: string }>;
   /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
   attach(sessionId: string, journalId: string): Promise<void>;
   /** POST /session/:id/submit {goal}：会话提交（202 受理；409 拒二次提交） */
@@ -156,6 +164,9 @@ export interface Connection {
   replyApproval(pid: string, decision: string): Promise<void>;
   /** POST /ask/:pid/reply {answer}（G4）：answer 三态（GuiAskAnswer）；404 面同上 */
   replyAsk(pid: string, answer: GuiAskAnswer): Promise<void>;
+  /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）:gate 双语义(gated 审批
+   *  解锁 / in-review 关单)——Board 页 onReview 装配点;400 面=未知任务/状态不符 */
+  boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void>;
   /** POST /session/:id/delete（T2 会话回收，Home 消费）：running 409；journal 文件保留 */
   deleteSession(id: string): Promise<void>;
   close(): void;
@@ -346,11 +357,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);
     },
-    async newSession(root: string): Promise<{ sessionId: string }> {
+    async newSession(root: string, mode?: 'dontAsk' | 'manual'): Promise<{ sessionId: string }> {
       const res = await fetch(`${base}/session/new`, {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ root }),
+        body: JSON.stringify(mode === undefined ? { root } : { root, mode }),
       });
       if (!res.ok) throw new Error(`/session/new -> ${res.status}`);
       return (await res.json()) as { sessionId: string };
@@ -375,6 +386,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     replyAsk(pid: string, answer: GuiAskAnswer): Promise<void> {
       return post(`/ask/${encodeURIComponent(pid)}/reply`, { answer });
+    },
+    boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
+      return post(`/session/${encodeURIComponent(sessionId)}/board/review`, { taskId, approved });
     },
     deleteSession(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/delete`);
