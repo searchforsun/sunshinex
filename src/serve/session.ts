@@ -44,10 +44,13 @@ export interface SessionSnapshot {
 }
 
 /** snapshot 挂起段行（G5）：kind 判别与 daemon 挂起表同源（approval/ask）；pid 为 daemon 级铸造
- *  票据——跨会话卡恢复（GUI 重启/刷新后重放挂起面）的寻址键 */
+ *  票据——跨会话卡恢复（GUI 重启/刷新后重放挂起面）的寻址键；G7 增 req=挂起表 entry.req 直序列化
+ *  （ApprovalRequest/AskUserRequest 字面）——GUI reseed 重建卡的内容面（连接层 pid 去重拦了重发帧，
+ *  snapshot 是刷新后卡内容的唯一来源） */
 export interface SnapshotPendingRow {
   pid: string;
   kind: 'approval' | 'ask';
+  req: unknown;
 }
 
 /** submit 结果：ok=true 受理（HTTP 202 面）；ok=false 拒（运行中 409——不排队，GUI 侧无队列语义，

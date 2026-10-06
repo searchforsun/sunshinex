@@ -327,7 +327,7 @@ test('⑥ reset 通知帧：POST /session/:id/reset 尾部广播 {kind:"reset", 
   );
 });
 
-test('⑦ snapshot.pending 段：manual 挂起中含本会话 {pid,kind:"approval"}（跨会话过滤）→ 回执后空', { timeout: 30_000 }, async () => {
+test('⑦ snapshot.pending 段:manual 挂起中含本会话 {pid,kind:"approval",req}(req 直序列化含 subject)→ 回执后空', { timeout: 30_000 }, async () => {
   await withPendingDaemon(
     (out) => new ScriptedAdapter([writeCard(out, 'pending-snap.txt', 'snap'), '{"done":true,"reply":"ok"}']),
     async (ctx) => {
@@ -337,18 +337,25 @@ test('⑦ snapshot.pending 段：manual 挂起中含本会话 {pid,kind:"approva
         await ctx.post('写个文件', sid);
         await waitFor(() => frames.some((f) => f.kind === 'approval'), 10_000);
         const pid = frames.find((f) => f.kind === 'approval')!.pid!;
-        assert.ok(/^p\d+$/.test(pid), 'pid 形态 p<n>（daemon 级铸造）');
-        // 挂起中：本会话 snapshot.pending 含该条目（daemon 侧合并 + sessionId 过滤）
-        const snapOf = async (target: string): Promise<{ pending: Array<{ pid: string; kind: string }> }> => {
+        assert.ok(/^p\d+$/.test(pid), 'pid 形态 p<n>(daemon 级铸造)');
+        // 挂起中:本会话 snapshot.pending 含该条目(daemon 侧合并 + sessionId 过滤);G7 增 req——
+        // 挂起表 entry.req 直序列化(ApprovalRequest 字面),GUI reseed 重建卡的内容面
+        const snapOf = async (target: string): Promise<{ pending: Array<{ pid: string; kind: string; req?: Record<string, unknown> }> }> => {
           const r = await fetch(`${ctx.http}/session/${target}/snapshot`, { headers: ctx.H });
           assert.equal(r.status, 200);
-          return (await r.json()) as { pending: Array<{ pid: string; kind: string }> };
+          return (await r.json()) as { pending: Array<{ pid: string; kind: string; req?: Record<string, unknown> }> };
         };
-        assert.deepEqual((await snapOf(sid)).pending, [{ pid, kind: 'approval' }], 'pending 含本会话 approval 挂起');
-        // 跨会话过滤：另开 manual 会话（无挂起）——pid 全局铸造但段面按 sessionId 过滤
+        const rows = (await snapOf(sid)).pending;
+        assert.equal(rows.length, 1, 'pending 含本会话 approval 挂起(单条)');
+        assert.equal(rows[0]!.pid, pid);
+        assert.equal(rows[0]!.kind, 'approval');
+        assert.equal(rows[0]!.req?.kind, 'write', 'req 直序列化(kind=链侧 ask 形态)');
+        assert.ok(String(rows[0]!.req?.subject ?? '').includes('pending-snap.txt'), 'req 含 subject(写目标路径)');
+        assert.equal(rows[0]!.req?.id, frames.find((f) => f.kind === 'approval')!.req?.id, 'req 与首播帧同源(entry.req 单点)');
+        // 跨会话过滤:另开 manual 会话(无挂起)——pid 全局铸造但段面按 sessionId 过滤
         const other = ctx.manual();
-        assert.deepEqual((await snapOf(other)).pending, [], '他会话 snapshot.pending 不串流（sessionId 过滤）');
-        // 回执后：表清，段空
+        assert.deepEqual((await snapOf(other)).pending, [], '他会话 snapshot.pending 不串流(sessionId 过滤)');
+        // 回执后:表清,段空
         const r = await fetch(`${ctx.http}/approval/${pid}`, { method: 'POST', headers: ctx.H, body: JSON.stringify({ decision: 'allow' }) });
         assert.equal(r.status, 200);
         assert.deepEqual((await snapOf(sid)).pending, [], '回执后 pending 空');

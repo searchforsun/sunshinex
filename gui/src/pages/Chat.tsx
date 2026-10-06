@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { DiffPanel } from '../diff-panel';
-import type { Connection, ConnectionState, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
+import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent } from '../../../src/types';
 
 /**
@@ -34,9 +34,13 @@ import type { SessionEvent } from '../../../src/types';
  * G5 增两面:①顶栏 Delete(confirm → conn.deleteSession(sessionId) → onBack 回首页——Home
  * 行 Delete 以 journal id 寻址恒 404 退役,daemon 会话 id 才是回收端点的有效寻址);②status
  * 转 idle 清卡(effect 观察投影状态:run 收束 = daemon 已对本 run 挂起 deny 回填,本地卡随之
- * 清——reseed 后快照 status=idle 亦触发,不重建:snapshot.pending 仅 [{pid,kind}] 信号面,卡
- * req 内容不可恢复,跨会话卡恢复记档 G6+);③onSeeded(快照落定回调,App 借此取 snapshot.team
+ * 清;reseed 后快照 status=idle 亦触发);③onSeeded(快照落定回调,App 借此取 snapshot.team
  * 存 App 态——事件流无 teammate 面,Board 侧栏的唯一来源)。
+ * G7 增三面:①reseed 挂起卡重建——snapshot.pending 逐项 addCard({pid,kind,req})(req 透传
+ * 落地,刷新/重连后卡内容可恢复;连接层 pid 去重拦了 daemon 重发帧,快照是唯一来源);②reseed
+ * 时 toolInputs 清(旧投影 callId 配对残留不污染新投影);③write 条目展开接 conn.fetchDiff
+ * (old/new 双列;404/失败退单列现内容)。unmount cleanup 增 seedGenRef++(G6 终审首优先):
+ * 在途快照应答经 gen 失配早退,防陈旧 onSeeded 污染 App 态。
  */
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
@@ -96,23 +100,53 @@ function resultOf(md: string): string {
 }
 
 /** G6 工具条目(折叠态一行/点击展开):write 工具(name==='write',call 名判定——事件 text 即
- *  注册名)展开 DiffPanel(newStr=input.content;builtin write 是整文件替换写,无 old/new 串对,
- *  仅右列——oldStr 缺场语义)+ path 文本按钮(onOpenFile 跳 Files 预览);其他工具展开 result
- *  摘要行。折叠行 `● verb [path] [⎿ result]`——verb 行与 result 行并作一行(md 两行的折叠视图)。 */
+ *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
+ *  +加载标,404/失败退单列现内容——快照种子条/无 callId 面恒单列)+ path 文本按钮(onOpenFile
+ *  跳 Files 预览);其他工具展开 result 摘要行。折叠行 `● verb [path] [⎿ result]`——verb 行与
+ *  result 行并作一行(md 两行的折叠视图)。 */
 function ToolEntryView({
   entry,
   info,
+  conn,
+  sessionId,
+  callId,
   onOpenFile,
 }: {
   entry: ChatEntry;
   info?: ToolCallInfo;
+  conn: Connection;
+  sessionId: string;
+  callId?: string;
   onOpenFile?: (path: string) => void;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
+   *  对象=成功(DiffPanel 双列)。拉一次缓存——折叠再展开不重拉 */
+  const [diff, setDiff] = useState<DiffResp | null | undefined>(undefined);
   const verb = verbOf(entry.md);
   const result = resultOf(entry.md);
   const target = info !== undefined && typeof info.input.path === 'string' ? info.input.path : undefined;
   const isWrite = info !== undefined && info.name === 'write' && target !== undefined;
+  const fallbackNew = info !== undefined && typeof info.input.content === 'string' ? info.input.content : '';
+
+  /** 展开且可寻址(callId 在场——种子条/无 callId 面不拉)即异步拉 diff;折叠即弃在途应答
+   *  (面板已不在场),重展开重拉;已缓存(diff≠undefined)不重拉 */
+  useEffect(() => {
+    if (!expanded || isWrite !== true || callId === undefined || diff !== undefined) return;
+    let alive = true;
+    conn.fetchDiff(sessionId, callId).then(
+      (d) => {
+        if (alive) setDiff(d);
+      },
+      () => {
+        if (alive) setDiff(null); // 404 无快照/会话已回收等——退单列现内容
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [expanded, isWrite, callId, diff, conn, sessionId]);
+
   return (
     <div className={`entry entry-tool${expanded ? ' tool-expanded' : ''}`}>
       <button type="button" className="tool-summary" onClick={() => setExpanded((v) => !v)}>
@@ -127,7 +161,18 @@ function ToolEntryView({
                 {target}
               </button>
             )}
-            <DiffPanel newStr={typeof info.input.content === 'string' ? info.input.content : ''} />
+            {diff !== undefined && diff !== null ? (
+              <DiffPanel oldStr={diff.oldContent} newStr={diff.newContent} />
+            ) : diff === null ? (
+              <DiffPanel newStr={fallbackNew} />
+            ) : (
+              <>
+                <div className="diff-loading" role="status">
+                  diff 加载中…
+                </div>
+                <DiffPanel newStr={fallbackNew} />
+              </>
+            )}
           </div>
         ) : (
           <pre className="tool-result">{result !== '' ? result : '(无结果)'}</pre>
@@ -247,8 +292,19 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const onSeededRef = useRef<((snap: SnapshotResponse) => void) | undefined>(onSeeded);
   onSeededRef.current = onSeeded;
 
-  /** 会话基线重建(挂载与 reset 同路径):清投影 + 缓冲 → sessionSnapshot 播种 → 种子落定后
-   *  过滤缓冲(seq ≤ snapshot.lastSeq 丢)依序补投;失败倒 error 条不静默 */
+  /** G4 卡增(同 pid 防重挂——连接层已去重,本地二次防线;G7 reseed 重建复用)与移(回执落定即移) */
+  const addCard = useCallback((card: PendingCard): void => {
+    setCards((cs) => (cs.some((c) => c.pid === card.pid) ? cs : [...cs, card]));
+  }, []);
+  const removeCard = useCallback((pid: string): void => {
+    setCards((cs) => cs.filter((c) => c.pid !== pid));
+  }, []);
+
+  /** 会话基线重建(挂载与 reset 同路径):清投影 + 缓冲 + G7 工具 input 暂存(旧投影的 callId 配对
+   *  残留会污染新投影——reseed 后 tool:#/种子条不该再配到旧 input)→ sessionSnapshot 播种 → 种子
+   *  落定后过滤缓冲(seq ≤ snapshot.lastSeq 丢)依序补投 + G7 挂起卡重建(snapshot.pending 逐项——
+   *  连接层 pid 去重拦了 daemon 重发帧,快照是重连/刷新后卡内容的唯一来源;addCard pid 防重,实时
+   *  挂起帧已挂的卡不重挂);失败倒 error 条不静默 */
   const reseed = useCallback((): void => {
     const gen = ++seedGenRef.current;
     pendingRef.current = [];
@@ -257,6 +313,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     // 重连时运行中挂起卡被瞬态清掉,而 daemon 重发被连接层 pid 去重拦下 → 卡永久丢(G4 不变式)
     prevStatusRef.current = null;
     setChat(initialChatState());
+    setToolInputs({});
     setSeeding(true);
     conn.sessionSnapshot(sessionId).then(
       (snap) => {
@@ -270,6 +327,12 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         setSeeding(false);
         setChat(next);
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
+        // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清)
+        for (const row of snap.pending ?? []) {
+          if (typeof row?.pid !== 'string' || row.pid.length === 0) continue;
+          if (row.kind === 'approval') addCard({ kind: 'approval', pid: row.pid, req: (row.req ?? {}) as GuiApprovalReq });
+          else if (row.kind === 'ask') addCard({ kind: 'ask', pid: row.pid, req: (row.req ?? {}) as GuiAskReq });
+        }
       },
       (err: unknown) => {
         if (seedGenRef.current !== gen) return;
@@ -279,15 +342,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
       },
     );
-  }, [conn, sessionId]);
-
-  /** G4 卡增(同 pid 防重挂——连接层已去重,本地二次防线)与移(回执落定即移) */
-  const addCard = useCallback((card: PendingCard): void => {
-    setCards((cs) => (cs.some((c) => c.pid === card.pid) ? cs : [...cs, card]));
-  }, []);
-  const removeCard = useCallback((pid: string): void => {
-    setCards((cs) => cs.filter((c) => c.pid !== pid));
-  }, []);
+  }, [conn, sessionId, addCard]);
 
   /** G4 回执:寻址用帧顶层 pid(T1 契约);成功移卡,失败(404 已决等)也移——不悬挂。
    *  失败面不再倒 error 条:挂起生命周期以 daemon 挂起表为准,本地卡只是其投影 */
@@ -342,6 +397,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     return () => {
       sinkRef.current = null;
       pendingRef.current = []; // unmount 清缓冲(组件销毁,无跨会话残留)
+      seedGenRef.current++; // G6 终审首优先(G7 落地):在途快照应答的 then 回调经 gen 失配早退——
+      // 防 backHome→重开窗口内陈旧会话快照经 onSeeded 污染 App 态(team/board——旧板落新壳)
     };
   }, [sinkRef, reseed, addCard]);
 
@@ -353,6 +410,14 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     if (!entry.key.startsWith('tool:') || entry.key.startsWith('tool:#')) return undefined;
     const cid = (entry.key.slice('tool:'.length).split('~')[0]) ?? '';
     return cid.length > 0 ? toolInputs[cid] : undefined;
+  };
+
+  /** G7 write 展开的 diff 寻址键:条目 key 同 toolInfoOf 的剥法(`tool:` 前缀 + `~n` 后缀;
+   *  种子条/无 callId 面 undefined——不拉 diff,恒单列现内容) */
+  const callIdOf = (entry: ChatEntry): string | undefined => {
+    if (!entry.key.startsWith('tool:') || entry.key.startsWith('tool:#')) return undefined;
+    const cid = (entry.key.slice('tool:'.length).split('~')[0]) ?? '';
+    return cid.length > 0 ? cid : undefined;
   };
 
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
@@ -423,7 +488,15 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
       <main className="chat" aria-label="chat">
         {chat.entries.map((entry) =>
           entry.kind === 'tool' ? (
-            <ToolEntryView key={entry.key} entry={entry} info={toolInfoOf(entry)} onOpenFile={onOpenFile} />
+            <ToolEntryView
+              key={entry.key}
+              entry={entry}
+              info={toolInfoOf(entry)}
+              conn={conn}
+              sessionId={sessionId}
+              callId={callIdOf(entry)}
+              onOpenFile={onOpenFile}
+            />
           ) : (
             <ChatEntryView key={entry.key} entry={entry} />
           ),

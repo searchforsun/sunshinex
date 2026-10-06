@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Connection } from '../connection';
 import type { FileResp } from '../connection';
 import { highlightCode } from '../highlight';
@@ -10,6 +10,8 @@ import { highlightCode } from '../highlight';
  * truncated 横幅：daemon 侧 >512KB 截断回执（truncated:true）的可见标记。错误态直示 HTTP 面
  * 错误消息（403 越界/404 不存在/415 二进制——连接层抛错含 status）。initialPath 到场自动加载
  * （Chat write 工具 path 按钮跳转面——App 切 Files tab 时注入；输入框随之播种该路径）。
+ * G7 请求序守卫：连续加载时慢旧应答不覆写新请求结果——requestIdRef 单调发号，应答落定时
+ * id ≠ 当前号即丢弃（stale 闭窗）。
  */
 
 export interface FilesProps {
@@ -32,16 +34,26 @@ const EMPTY_LOAD: LoadState = { file: null, error: null, loading: false };
 export function Files({ conn, sessionId, initialPath }: FilesProps): JSX.Element {
   const [pathInput, setPathInput] = useState(initialPath ?? '');
   const [load, setLoad] = useState<LoadState>(EMPTY_LOAD);
+  /** G7 请求序守卫：发号单调节点——发请求 ++,应答落定时号不匹配即过期丢弃 */
+  const requestIdRef = useRef(0);
 
-  /** 加载单点：trim 空 no-op；请求期间置 loading（清旧错误/旧文）,失败倒错误态不静默 */
+  /** 加载单点：trim 空 no-op；请求期间置 loading（清旧错误/旧文）,失败倒错误态不静默；
+   *  应答落定时 requestIdRef 已前进（后续请求已发）即丢弃——慢旧应答不覆写新请求结果 */
   const fetchFile = useCallback(
     (p: string): void => {
       const target = p.trim();
       if (target === '') return;
+      const rid = ++requestIdRef.current;
       setLoad({ file: null, error: null, loading: true });
       void conn.readFile(sessionId, target).then(
-        (f) => setLoad({ file: f, error: null, loading: false }),
-        (err: unknown) => setLoad({ file: null, error: err instanceof Error ? err.message : String(err), loading: false }),
+        (f) => {
+          if (rid !== requestIdRef.current) return; // 过期应答:丢弃
+          setLoad({ file: f, error: null, loading: false });
+        },
+        (err: unknown) => {
+          if (rid !== requestIdRef.current) return; // 过期应答:丢弃
+          setLoad({ file: null, error: err instanceof Error ? err.message : String(err), loading: false });
+        },
       );
     },
     [conn, sessionId],

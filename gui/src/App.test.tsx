@@ -6,7 +6,7 @@ import { App } from './App';
 import { emptyBoard, applyBoardEvent } from './projection';
 import { highlightCode } from './highlight';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
-import type { ConnectionOpts, ConnectionState, Connection, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp } from './connection';
+import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
 
 /**
@@ -42,6 +42,10 @@ const h = vi.hoisted(() => {
     /** G6 Files 预览面应答(readFile 可编程) */
     fileResp: FileResp = { path: '/w/root-a/src/a.ts', content: 'const x = 1;\n' };
     fileReject: Error | null = null;
+    /** G7 diff 面应答(fetchDiff 可编程;缺省拒——write 展开退单列现内容) */
+    diffCalls: Array<[string, string]> = [];
+    diffResp: DiffResp | null = null;
+    diffReject: Error | null = null;
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
     replyReject: Error | null = null;
@@ -121,6 +125,12 @@ const h = vi.hoisted(() => {
       if (this.fileReject !== null) return Promise.reject(this.fileReject);
       this.readFileCalls.push([sessionId, path]);
       return Promise.resolve(this.fileResp);
+    }
+    fetchDiff(sessionId: string, callId: string): Promise<DiffResp> {
+      if (this.diffReject !== null) return Promise.reject(this.diffReject);
+      this.diffCalls.push([sessionId, callId]);
+      if (this.diffResp !== null) return Promise.resolve(this.diffResp);
+      return Promise.reject(new Error(`/session/${sessionId}/diff?callId=${callId} -> 404`));
     }
     close(): void {
       this.closed = true;
@@ -638,6 +648,27 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
     act(() => conn.opts.onReset());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getByText(apTitle)).toBeDefined();
+    unmount();
+  });
+
+  it('G7 reseed 重建挂起卡:snapshot.pending 带 req → 卡渲染在场(subject 来自透传 req)且回执可用;pid 与实时帧防重', async () => {
+    // 刷新/重开面:无实时帧,卡的唯一来源是快照 pending 段(daemon G7 起 req 直序列化)
+    const { conn, unmount } = await mount();
+    conn.snapshotResp = snapshotOf({
+      status: 'running',
+      pending: [{ pid: 'p-snap-1', kind: 'approval', req: apReq }],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /ws-root-a/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    openConn(conn);
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    // 卡内容来自快照 req(kind/subject/reason 直序列化)——刷新后回执闭环照常可用
+    expect(screen.getByText(apTitle)).toBeDefined();
+    expect(screen.getByText('destructive command')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+    await waitFor(() => expect(conn.replyApprovalCalls).toEqual([['p-snap-1', 'allow']]));
+    await waitFor(() => expect(screen.queryByText(apTitle)).toBeNull());
     unmount();
   });
 });

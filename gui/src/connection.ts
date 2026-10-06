@@ -65,15 +65,15 @@ export type GuiAskAnswer =
 
 /** GET /session/:id/snapshot 载荷形态（T1 会话维，gui 侧契约声明）；lastSeq 见 Connection.sessionSnapshot 交集。
  *  G5 扩段:team(teammate 投影——harness.team 同源,Board 侧栏消费;daemon 必发,类型上可选防旧档)、
- *  pending(本会话未决挂起 [{pid,kind}]——跨会话卡恢复基座;pid 在而 req 内容缺,v1 仅作信号面,
- *  卡内容恢复记档 G6+) */
+ *  pending(本会话未决挂起;G7 增 req=挂起表 entry.req 直序列化——连接层 pid 去重拦了重连重发帧,
+ *  snapshot 是刷新/reseed 后卡内容的唯一来源,Chat reseed 据此重建卡) */
 export interface SnapshotResponse {
   messages: SnapshotMessage[];
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';
   team?: Array<{ name: string; busy: boolean }>;
-  pending?: Array<{ pid: string; kind: 'approval' | 'ask' }>;
+  pending?: Array<{ pid: string; kind: 'approval' | 'ask'; req?: unknown }>;
 }
 
 /** GET /workspaces 行（T2 工作区注册表，对齐主仓 daemon.ts WorkspaceRow）：root 经 workspace.json
@@ -106,6 +106,16 @@ export interface DirPickerResp {
 export interface FileResp {
   path: string;
   content: string;
+  truncated?: boolean;
+}
+
+/** GET /session/:id/diff?callId= 载荷（G7 收口交接）：write 调用 pre-image ↔ 磁盘现文件双内容——
+ *  oldContent=写前 pre-image blob（新建写无 blob 缺场）;newContent=磁盘现文件(后续写已覆盖时非
+ *  本调用的 content——现文件语义);truncated=任一侧超 512KB 截断 */
+export interface DiffResp {
+  path: string;
+  oldContent?: string;
+  newContent: string;
   truncated?: boolean;
 }
 
@@ -178,6 +188,9 @@ export interface Connection {
   /** GET /session/:id/file?path=（G6 预览面）：path 相对会话 root 或绝对均可；403(越界)/404(不
    *  存在/目录)/415(二进制)以 HTTP 失败抛错（消息含 status）——Files 页错误态消费 */
   readFile(sessionId: string, path: string): Promise<FileResp>;
+  /** GET /session/:id/diff?callId=（G7 diff 面）：write 调用双内容（见 DiffResp）；404（无快照/
+   *  callId 无帧/会话）以 HTTP 失败抛错——Chat write 展开退单列现内容的判据 */
+  fetchDiff(sessionId: string, callId: string): Promise<DiffResp>;
   /** POST /session/:id/delete（T2 会话回收，Home 消费）：running 409；journal 文件保留 */
   deleteSession(id: string): Promise<void>;
   close(): void;
@@ -403,6 +416,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     readFile(sessionId: string, filePath: string): Promise<FileResp> {
       return getJson<FileResp>(`/session/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(filePath)}`);
+    },
+    fetchDiff(sessionId: string, callId: string): Promise<DiffResp> {
+      return getJson<DiffResp>(`/session/${encodeURIComponent(sessionId)}/diff?callId=${encodeURIComponent(callId)}`);
     },
     deleteSession(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/delete`);

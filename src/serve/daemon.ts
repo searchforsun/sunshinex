@@ -147,8 +147,8 @@ function readStaticFile(file: string): Promise<Buffer | null> {
 }
 
 /** 判界用路径归一（G6 /file 端点；与 SafetyChain.resolveSafe 同口径）：存在段 realpathSync 解析
- *  符号链接（新建段字面拼接——resolve 产物无 .. 残留），防「根内符号链接指向根外」的逃逸；整链无
- *  存在锚（不可达驱动器等）或 realpath 异常回 undefined——调用方回退字面判定（fail-closed 不放行） */
+ * 符号链接（新建段字面拼接——resolve 产物无 .. 残留），防「根内符号链接指向根外」的逃逸；整链无
+ * 存在锚（不可达驱动器等）或 realpath 异常回 undefined——调用方回退字面判定（fail-closed 不放行） */
 function realPathOf(abs: string): string | undefined {
   try {
     let anchor = abs;
@@ -161,6 +161,51 @@ function realPathOf(abs: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** 信任根判定（G6 /file 判界单点；G7 /diff 共用）：主根 rootReal ∪ 活动工作树根（read 工具同口径
+ *  信任域；rootReal/activeRoot 是 SafetyChain 仅有公开判定面）。real 已归一（realPathOf ?? 字面兜底） */
+function insideTrustedRoots(safety: { rootReal: string; activeRoot: string | null }, real: string): boolean {
+  const roots = [safety.rootReal];
+  const active = safety.activeRoot; // worktree 会话的活动根（null=缺省主根态）
+  if (active !== null) {
+    try {
+      roots.push(fs.existsSync(active) ? fs.realpathSync(active) : active);
+    } catch {
+      roots.push(active);
+    }
+  }
+  return roots.some((r) => real === r || isWithin(r, real));
+}
+
+/** 有界读文件（G6 /file 单点；G7 /diff 共用）：≤512KB 全文；>512KB 读首 512KB + truncated:true；
+ *  首 8KB 含 \0 按二进制定论（'binary'）；不存在/非文件/读失败归一 'missing'（调用方 404）——
+ *  预览语义的读侧三态，判界（insideTrustedRoots）由调用方先行 */
+function readFileBounded(resolved: string): { content: string; truncated: boolean } | 'binary' | 'missing' {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(resolved);
+  } catch {
+    return 'missing';
+  }
+  if (!st.isFile()) return 'missing';
+  const truncated = st.size > MAX_PREVIEW_BYTES;
+  const len = truncated ? MAX_PREVIEW_BYTES : st.size;
+  let buf: Buffer;
+  try {
+    const fd = fs.openSync(resolved, 'r'); // 只读句柄：预览面零写副作用
+    try {
+      buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return 'missing';
+  }
+  // 二进制拒：首 8KB 含 \0 即按二进制定论（UTF-8 文本不含 NUL 字节）
+  if (buf.subarray(0, Math.min(buf.length, BINARY_PROBE_BYTES)).includes(0)) return 'binary';
+  return { content: buf.toString('utf8'), truncated };
 }
 
 /** 路由表条目：path 支持 `:name` 段参数（会话维端点 /session/:id/*）；auth 恒验除 healthz */
@@ -499,6 +544,8 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
     // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
+    // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
+    { method: 'GET', path: '/session/:id/diff', auth: true, run: async (req, res, p) => this.handleDiff(req, res, p.id) },
     // G5 看板服务面：lead 审批映射（gated 审批解锁 / in-review 关单——GUI Board 页消费）
     { method: 'POST', path: '/session/:id/board/review', auth: true, run: (req, res, p) => this.handleBoardReview(req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
@@ -792,23 +839,23 @@ export class GuiDaemon {
 
   /** snapshot 处理：会话快照单点（载荷形态见 SessionRuntime.snapshotResponse）。G5 增挂起段——
    *  daemon 侧合并（snapshotResponse 保持 session 内聚不持挂起表）：本会话过滤（entry.sessionId）
-   *  → [{pid, kind}]，跨会话卡恢复（GUI 刷新/重连后重放挂起面）的基座 */
+   *  → [{pid, kind, req}]（G7 增 req=挂起表 entry.req 直序列化——连接层 pid 去重拦了重连重发帧，
+   *  snapshot.pending 是 GUI 刷新/reseed 后卡内容的唯一来源），跨会话卡恢复（GUI 刷新/重连后重放
+   *  挂起面）的基座 */
   private handleSnapshot(res: http.ServerResponse, id: string | undefined): void {
     const session = this.sessionFor(res, id);
     if (session === undefined) return;
     const pending: SnapshotPendingRow[] = [...this.pending.entries()]
       .filter(([, entry]) => entry.sessionId === session.id)
-      .map(([pid, entry]) => ({ pid, kind: entry.kind }));
+      .map(([pid, entry]) => ({ pid, kind: entry.kind, req: entry.req }));
     this.send(res, 200, { ...session.snapshotResponse(), pending });
   }
 
   /** GET /session/:id/file?path=（G6 预览面，Files 页消费）：query path 必填（400）→ 会话解析
-   *  （未知 :id 404）→ path.resolve(session.root, path) 归一（相对/绝对均可）→ 判界：该会话
-   *  harness.safety 的路径判定面——主根 rootReal ∪ 活动工作树根（read 工具同口径信任域；rootReal/
-   *  activeRoot 是 SafetyChain 仅有公开判定面，resolveSafe/read 围栏均私有，additionalDirs 未公开
-   *  不入判界——单根判界口径，记档报告）→ 越界 403 {path outside trusted roots} → fs.statSync
-   *  不存在/非文件 404 → 二进制（首 8KB 含 \0）415 → >512KB 读首 512KB + truncated:true →
-   *  200 {path, content, truncated?}。仅 GET（路由表 method 精确匹配） */
+   *  （未知 :id 404）→ path.resolve(session.root, path) 归一（相对/绝对均可）→ 判界（本会话
+   *  harness.safety 的路径判定面——insideTrustedRoots 单点，/diff 同口径）→ 越界 403 {path
+   *  outside trusted roots} → readFileBounded（G7 抽取共用：missing 404 / binary 415 / >512KB
+   *  截断 truncated:true）→ 200 {path, content, truncated?}。仅 GET（路由表 method 精确匹配） */
   private handleFile(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const q = url.searchParams.get('path');
@@ -822,53 +869,121 @@ export class GuiDaemon {
     // 判界基准：目标经 realPathOf 归一（存在段 realpath，防符号链接逃逸——read 工具同口径）；
     // 归一不可得回退字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）
     const real = realPathOf(abs) ?? abs;
-    const safety = session.runtime.harness.safety;
-    const roots = [safety.rootReal];
-    const active = safety.activeRoot; // worktree 会话的活动根（null=缺省主根态）
-    if (active !== null) {
-      try {
-        roots.push(fs.existsSync(active) ? fs.realpathSync(active) : active);
-      } catch {
-        roots.push(active);
-      }
-    }
-    const inside = roots.some((r) => real === r || isWithin(r, real));
-    if (!inside) {
+    if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
       this.send(res, 403, { error: 'path outside trusted roots' });
       return;
     }
-    let st: fs.Stats;
-    try {
-      st = fs.statSync(abs);
-    } catch {
+    const read = readFileBounded(abs);
+    if (read === 'missing') {
       this.send(res, 404, { error: 'not found' });
       return;
     }
-    if (!st.isFile()) {
-      this.send(res, 404, { error: 'not found' });
-      return;
-    }
-    const truncated = st.size > MAX_PREVIEW_BYTES;
-    const len = truncated ? MAX_PREVIEW_BYTES : st.size;
-    let buf: Buffer;
-    try {
-      const fd = fs.openSync(abs, 'r'); // 只读句柄：预览面零写副作用
-      try {
-        buf = Buffer.alloc(len);
-        fs.readSync(fd, buf, 0, len, 0);
-      } finally {
-        fs.closeSync(fd);
-      }
-    } catch {
-      this.send(res, 404, { error: 'not found' });
-      return;
-    }
-    // 二进制拒：首 8KB 含 \0 即按二进制定论（UTF-8 文本不含 NUL 字节）
-    if (buf.subarray(0, Math.min(buf.length, BINARY_PROBE_BYTES)).includes(0)) {
+    if (read === 'binary') {
       this.send(res, 415, { error: 'binary file' });
       return;
     }
-    this.send(res, 200, { path: abs, content: buf.toString('utf8'), ...(truncated ? { truncated: true } : {}) });
+    this.send(res, 200, { path: abs, content: read.content, ...(read.truncated ? { truncated: true } : {}) });
+  }
+
+  /** GET /session/:id/diff?callId=（G7 收口交接，Chat write 展开/Files 消费）：write 调用的
+   *  pre-image ↔ 磁盘现文件双内容。查询面现场核结论——daemon 会话的 write 影子快照 drain 仅在
+   *  dispose/reset（清单随 seal 落 journal），会话存续期内 sink 内存清单常驻：**run 中与 run 后
+   *  均查内存实时可得**（blob 落盘 <dataDir>/sessions/_blobs/<sha256> 即时可见）。callId → 调用
+   *  对位：帧缓冲（512 环）内按序扫 tool-call 帧——首枚命中 callId 的帧即目标（text=注册名须
+   *  'write'，payload.input.path 解析绝对路径）；同路径此前 write 调用的位次=该次 pre-image 在
+   *  sink 清单的序（nthFor 按调用序对位，同路径多次写各自取写前态）。响应
+   *  200 {path, oldContent?, newContent, truncated?}：oldContent=sink pre-image blob（512KB 截断；
+   *  新建写无 blob 缺场）；newContent=磁盘现文件（readFileBounded——判界/截断/二进制同 /file）；
+   *  truncated=任一侧截断。404 面：未知会话 / callId 无帧（含缓冲环已裁）/ 非 write / 无快照
+   *  （root 外写不入清单）→ {error:'no snapshot'}；400：缺 callId。帧环裁剪的退化：目标帧若已被
+   *  环裁（>512 事件）即 404——GUI 退单列现内容（调用方回执 input.content），记档报告 */
+  private handleDiff(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const callId = url.searchParams.get('callId');
+    if (callId === null || callId.length === 0) {
+      this.send(res, 400, { error: 'callId query param required' });
+      return;
+    }
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    // 帧 copy 一致性：扫描与位次计数同一快照（bufferedFrames 每调用新数组，两遍扫同一引用）
+    const frames = session.bufferedFrames();
+    /** 目标帧定位：首枚 callId 命中的 tool-call（text=注册名，payload.input 形态现场核 batch-runner：
+     *  emit('tool-call', name, {input, callId, status})） */
+    let targetSeq = -1;
+    let targetAbs: string | undefined;
+    for (const f of frames) {
+      const e = f.e;
+      if (e.type !== 'tool-call') continue;
+      const p = e.payload as { callId?: unknown } | undefined;
+      if (p?.callId !== callId) continue;
+      if (e.text !== 'write') {
+        this.send(res, 404, { error: 'no snapshot' }); // 命中 callId 但非 write——无 pre-image 面
+        return;
+      }
+      const inPath = (e.payload as { input?: unknown } | undefined)?.input;
+      const p2 = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;
+      if (typeof p2?.path !== 'string' || p2.path.length === 0) {
+        this.send(res, 404, { error: 'no snapshot' }); // 坏参调用（argsOf null 面）——无快照可查
+        return;
+      }
+      targetAbs = path.resolve(session.root, p2.path);
+      targetSeq = f.seq;
+      break;
+    }
+    if (targetAbs === undefined || targetSeq < 0) {
+      this.send(res, 404, { error: 'no snapshot' }); // 无帧命中（未知 callId/帧环已裁）
+      return;
+    }
+    /** 调用序位次：同路径（resolve 归一后等值）且先于目标的 write 调用数 + 1（sink 清单内的序） */
+    let ordinal = 1;
+    for (const f of frames) {
+      if (f.seq >= targetSeq) break;
+      const e = f.e;
+      if (e.type !== 'tool-call' || e.text !== 'write') continue;
+      const inPath = (e.payload as { input?: unknown } | undefined)?.input;
+      const p = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;
+      if (typeof p?.path === 'string' && p.path.length > 0 && path.resolve(session.root, p.path) === targetAbs) ordinal += 1;
+    }
+    const sink = session.runtime.harness.writeSnapshot;
+    const entry = sink.nthFor(targetAbs, ordinal);
+    if (entry === undefined) {
+      this.send(res, 404, { error: 'no snapshot' }); // root 外写不入清单/序越界——同恒定文案
+      return;
+    }
+    // 判界同 /file：pre-image 在场 ⇒ 写时路径在 root 内，此处防符号链接逃逸（现文件读侧）
+    const real = realPathOf(targetAbs) ?? targetAbs;
+    if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
+      this.send(res, 403, { error: 'path outside trusted roots' });
+      return;
+    }
+    // oldContent：pre-image blob（新建写 entry.deleted 缺场；读侧 512KB 截断）
+    let oldContent: string | undefined;
+    let truncated = false;
+    if (entry.deleted !== true && entry.hash.length > 0) {
+      const blob = sink.readBlob(entry.hash);
+      if (blob !== null) {
+        truncated = blob.length > MAX_PREVIEW_BYTES;
+        oldContent = blob.subarray(0, MAX_PREVIEW_BYTES).toString('utf8');
+      }
+    }
+    // newContent：磁盘现文件（判界/截断/二进制同 /file——readFileBounded 单点）
+    const read = readFileBounded(targetAbs);
+    if (read === 'missing') {
+      this.send(res, 404, { error: 'not found' });
+      return;
+    }
+    if (read === 'binary') {
+      this.send(res, 415, { error: 'binary file' });
+      return;
+    }
+    truncated = truncated || read.truncated;
+    this.send(res, 200, {
+      path: targetAbs,
+      ...(oldContent !== undefined ? { oldContent } : {}),
+      newContent: read.content,
+      ...(truncated ? { truncated: true } : {}),
+    });
   }
 
   /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）：body 校验（taskId 非空
