@@ -17,6 +17,7 @@ export const SERVE_DEFAULT_PORT = 7788;
  * （--model/--effort 等旋钮沿用，daemon 级单例供各会话共享）。启动后打印端口与 token；给了预选目录时
  * token 落 `<dataDir>/serve-token`（§4.3：GUI 首启读取的带外通道——工作区级，无预选仅终端打印）；
  * SIGINT/SIGTERM → await close() → exit 0。
+ * G4：`--manual` 与 --root 组合时预选会话以 manual 权限模式装配（审批/问询挂起面，计划裁定 2）。
  */
 export async function runServe(args: CliArgs): Promise<void> {
   // 目录来源统一单点（规格 §6.2）：与 run/pipeline 同判据——--workdir 优先，位置参数目录报 unrecognized 不启动。
@@ -87,7 +88,9 @@ export async function runServe(args: CliArgs): Promise<void> {
   // active session 行；缺省无预选——空注册表启动，会话经 GUI 首页 / POST /session/new 创建。
   // 预选目录非法（不存在/非目录）fail-fast：用户显式给的路径必须成立，静默空跑更糟
   if (preselect !== undefined) {
-    const r = daemon.createSession(preselect);
+    // --manual（G4）：预选会话走 manual 权限模式（审批/问询经 WS 挂起帧 + HTTP 回执闭环）；
+    // 缺省 dontAsk 零行为变化。计划裁定 2：flag 只作用于预选会话——GUI 首页新建会话的 mode 面归后续任务
+    const r = daemon.createSession(preselect, args.flags.manual === true ? { mode: 'manual' } : undefined);
     if (!r.ok) {
       console.error(t(`Invalid root: ${preselect} (${r.error.message})`, `非法的根目录：${preselect}（${r.error.message}）`));
       await daemon.close();

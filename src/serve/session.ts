@@ -1,7 +1,7 @@
 import { createRuntime } from '../tui/runtime';
 import type { TuiRuntime } from '../tui/runtime';
 import type { ModelAdapter } from '../model/adapter';
-import type { SessionEvent } from '../types';
+import type { ApprovalDecision, ApprovalRequest, AskUserSeam, SessionEvent } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import type { TaskBoardState } from '../taskboard/model';
 import { applyDelegation } from '../delegation/projection';
@@ -15,7 +15,8 @@ import type { TranscriptEntry } from './transcript';
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
  * `createRuntime`（独立泵/影子投影/转录/run 票据），daemon 只持注册表与全局面（seq 计数/WS 连接）。
- * 装配零旁路：与 TUI 同一 `createRuntime` 单点（mode 恒 dontAsk：GUI v1 无终端交互面）。
+ * 装配零旁路：与 TUI 同一 `createRuntime` 单点（mode 缺省 dontAsk；G4 起经 opts 透传 manual + 审批/
+ * 问询两接缝，daemon 挂起表闭包注入）。
  */
 
 /** WS 下行事件帧（会话中心 + G3 seq 协议）：`{kind:'event', sessionId, seq, e}`——sessionId 为帧所属
@@ -93,6 +94,14 @@ export interface SessionRuntimeOpts {
   nextSeq: () => number;
   /** 泵广播面：帧经 daemon WS 层序列化后发全部连接（连接层按 sessionId 分发/过滤，T3） */
   broadcast: (frame: EventFrame) => void;
+  /** 权限模式（G4 manual 接线）：缺省 dontAsk（GUI v1 无终端交互面）；manual 时配合 asker 走
+   *  daemon 挂起表审批（createRuntime 同名单点透传——setAsker 装配形态在 tui/runtime.ts 既有） */
+  mode?: 'dontAsk' | 'manual';
+  /** manual 审批接缝（guard asker 注入位）：透传 createRuntime onApproval——G4 daemon 注挂起表闭包
+   *  （帧广播 + pending 登记），dontAsk 会话缺省不注入 */
+  asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
+  /** 问询接缝（ask_question 消费方）：透传 createRuntime onAskUser——G4 daemon 注挂起表闭包（同上） */
+  onAskUser?: AskUserSeam;
 }
 
 export class SessionRuntime {
@@ -122,13 +131,17 @@ export class SessionRuntime {
     this.runtimeImpl = this.assemble();
   }
 
-  /** 装配单点：与 TUI 同一 createRuntime（mode 恒 dontAsk），onEvent 接本会话泵——reset 复用同点换新 */
+  /** 装配单点：与 TUI 同一 createRuntime（mode 缺省 dontAsk；G4 起 manual 会话透传模式 + 两接缝——
+   *  setAsker 装配形态由 createRuntime 既有单点承担（manual && onApproval 才挂），session 层不重造）；
+   *  onEvent 接本会话泵——reset 复用同点换新 */
   private assemble(): TuiRuntime {
     return createRuntime({
       root: this.opts.root,
       model: this.opts.model,
-      mode: 'dontAsk',
+      mode: this.opts.mode ?? 'dontAsk',
       onEvent: (e) => this.pump(e),
+      ...(this.opts.asker !== undefined ? { onApproval: this.opts.asker } : {}),
+      ...(this.opts.onAskUser !== undefined ? { onAskUser: this.opts.onAskUser } : {}),
     });
   }
 

@@ -4,10 +4,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { SessionRuntime } from './session';
-import type { EventFrame } from './session';
+import type { EventFrame, SessionRuntimeOpts } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import type { ChatRequest, ChatResult } from '../types';
+import type { ApprovalRequest, AskUserRequest, ChatRequest, ChatResult } from '../types';
 
 /** T1 SessionRuntime 平移面测试：从 daemon 单会话态抽出的会话运行时——帧形(sessionId+seq)/影子投影/
  *  转录/submit 202 语义/interrupt/status/snapshotResponse 形态/reset 软重置/teardown 有界收口。
@@ -57,8 +57,9 @@ interface Ctx {
 }
 
 /** 装配样板（环境隔离同 daemon.test.ts）：SUNSHINEX_DATA_DIR 钉 tmp；nextSeq 本地计数器（daemon 级
- *  全局单调的注入面）；broadcast 收集帧。finally 兜 teardown——断言失败也不留悬挂 run/事件循环 */
-async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>): Promise<void> {
+ *  全局单调的注入面）；broadcast 收集帧。extra 透传 mode/asker/onAskUser（G4 manual 接线）。
+ *  finally 兜 teardown——断言失败也不留悬挂 run/事件循环 */
+async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>, extra?: Partial<SessionRuntimeOpts>): Promise<void> {
   const tmp = tmpdir('sunshinex-session-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
@@ -75,6 +76,7 @@ async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>)
         return seq;
       },
       broadcast: (f) => frames.push(f),
+      ...(extra ?? {}),
     });
     await fn({ session, frames, tmp });
   } finally {
@@ -217,5 +219,63 @@ test('⑤ teardown 平移面：signal 无视的悬挂 run 有界收口（≤3s�
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('⑥ mode/asker/onAskUser 透传（G4 manual 接线）：manual 会话 write 越信任域触发 asker、ask_question 触发 onAskUser；缺省 dontAsk 零接缝调用', async () => {
+  // 写目标在会话 root 之外（chain.resolveSafe 写分支：信任域内直放——挂起链只在越域时触发，chain.ts 现场核）
+  const out = tmpdir('sunshinex-session-manual-out-');
+  const approvals: ApprovalRequest[] = [];
+  const asks: AskUserRequest[] = [];
+  const script = (): ScriptedAdapter =>
+    new ScriptedAdapter([
+      JSON.stringify({ tool: 'write', input: { path: path.join(out, 'manual.txt'), content: 'x' } }),
+      JSON.stringify({
+        tool: 'ask_question',
+        input: { question: 'Q?', options: [{ label: 'a', description: null }, { label: 'b', description: null }], multiple: null, allowCustom: null },
+      }),
+      '{"done":true,"reply":"done"}',
+    ]);
+  try {
+    await withSession(
+      script(),
+      async (ctx) => {
+        assert.deepEqual(ctx.session.submit('写与问'), { ok: true });
+        await waitFor(() => ctx.session.status() === 'idle', 10_000);
+        // asker 被调：mode='manual' + asker 透传 → createRuntime 既有 setAsker 装配（session 层不重造）
+        assert.equal(approvals.length, 1, 'asker 恰一次（write 越信任域挂起）');
+        assert.equal(approvals[0].kind, 'write', 'ApprovalRequest.kind=write');
+        assert.ok(approvals[0].id.length > 0, 'ApprovalRequest.id 在场（guard ap-N）');
+        assert.ok(approvals[0].subject.includes('manual.txt'), 'ApprovalRequest.subject=写目标');
+        // onAskUser 被调：manual 装配注入 ask seam → ask_question 工具注册并挂起
+        assert.equal(asks.length, 1, 'onAskUser 恰一次');
+        assert.equal(asks[0].question, 'Q?', 'AskUserRequest.question 透传');
+        assert.equal(asks[0].options.length, 2, 'AskUserRequest.options 透传');
+        // deny 定论：写未落盘
+        assert.equal(fs.existsSync(path.join(out, 'manual.txt')), false, 'deny 回执下写被拒');
+      },
+      {
+        mode: 'manual',
+        asker: async (req) => {
+          approvals.push(req);
+          return 'deny';
+        },
+        onAskUser: async (req) => {
+          asks.push(req);
+          return { type: 'dismissed' };
+        },
+      },
+    );
+    // 对照组：缺省 dontAsk 零接缝注入——写直放落盘（chain dontAsk 分支）、ask_question 未注册（无 seam）
+    fs.rmSync(path.join(out, 'manual.txt'), { force: true });
+    await withSession(script(), async (ctx) => {
+      assert.deepEqual(ctx.session.submit('再写再问'), { ok: true });
+      await waitFor(() => ctx.session.status() === 'idle', 10_000);
+      assert.equal(approvals.length, 1, 'dontAsk 会话不触发 asker（零行为变化）');
+      assert.equal(asks.length, 1, 'dontAsk 会话不触发 onAskUser');
+      assert.equal(fs.existsSync(path.join(out, 'manual.txt')), true, 'dontAsk 写直放落盘');
+    });
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
   }
 });

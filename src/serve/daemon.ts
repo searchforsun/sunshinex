@@ -10,6 +10,7 @@ import type { Result } from '../result';
 import { SessionRuntime } from './session';
 import type { EventFrame } from './session';
 import { journalMessagesToEntries } from './session';
+import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 
@@ -43,6 +44,61 @@ export interface WorkspaceRow {
   slug: string;
   mtime: number;
   sessionCount: number;
+}
+
+/** 挂起面 WS 帧（G4 审批问询，spec §4.2）：无 seq——不入单调序列（挂起非事件流成员，重连重发幂等，
+ *  客户端以 pid 去重）；pid 为 daemon 级铸造的挂起票据（回执端点 `POST /approval/:pid` /
+ *  `POST /ask/:pid/reply` 的寻址键）；req 纯数据直序列化（ApprovalRequest/AskUserRequest 字面） */
+export interface ApprovalFrame {
+  kind: 'approval';
+  sessionId: string;
+  pid: string;
+  req: ApprovalRequest;
+}
+
+/** ask 挂起帧：AskUserRequest 无 id 字段（types.ts 现场核）——pid 由 daemon 单点铸造承载回执寻址 */
+export interface AskFrame {
+  kind: 'ask';
+  sessionId: string;
+  pid: string;
+  req: AskUserRequest;
+}
+
+/** reset 通知帧（G4 裁定 7）：无 seq——GUI 收到即清该会话本地投影并重播种（sessionSnapshot） */
+export interface ResetFrame {
+  kind: 'reset';
+  sessionId: string;
+}
+
+/** daemon 下行帧全并集：pump 事件帧（有 seq）+ 挂起/reset 帧（无 seq）——广播面单点共用序列化 */
+export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | ResetFrame;
+
+/** 挂起表条目（G4 裁定 1）：kind 判别联合——回执端点按 kind 对表（approval 回执打到 ask 挂起 = 404）；
+ *  resolve 即回执值（interrupt/teardown 以 deny/dismissed 回填，TUI approval.ts 先例） */
+type PendingEntry =
+  | { kind: 'approval'; sessionId: string; req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }
+  | { kind: 'ask'; sessionId: string; req: AskUserRequest; resolve: (a: AskUserAnswer) => void };
+
+/** 挂起条目 → WS 帧（首播与重连重发同形同构：kind/sessionId/pid/req 四件） */
+function pendingFrameOf(pid: string, entry: PendingEntry): ApprovalFrame | AskFrame {
+  return entry.kind === 'approval'
+    ? { kind: 'approval', sessionId: entry.sessionId, pid, req: entry.req }
+    : { kind: 'ask', sessionId: entry.sessionId, pid, req: entry.req };
+}
+
+/** AskUserAnswer 回执载荷校验（G4）：三态字面核验——selected 需 string[]、custom 需非空 text、
+ *  dismissed 无参；非法形态回 null（HTTP 面 400）。labels 空数组放行——类型面合法，工具执行面
+ *  自行降级为 dismissed 观察文案（builtin.ts ask_question executor 既有口径） */
+function parseAskAnswer(v: unknown): AskUserAnswer | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const a = v as { type?: unknown; labels?: unknown; text?: unknown };
+  if (a.type === 'dismissed') return { type: 'dismissed' };
+  if (a.type === 'custom') return typeof a.text === 'string' && a.text.length > 0 ? { type: 'custom', text: a.text } : null;
+  if (a.type === 'selected') {
+    if (!Array.isArray(a.labels) || !a.labels.every((l) => typeof l === 'string')) return null;
+    return { type: 'selected', labels: a.labels as string[] };
+  }
+  return null;
 }
 
 /** JSON body 上限（1MB）：防无界 body 撑爆 daemon 内存；超限即断连收口 */
@@ -123,6 +179,11 @@ export class GuiDaemon {
   private readonly staticRoot: string;
   /** 静态面探测结果（start 时一次缓存）：index.html 在场才挂静态，缺场保持 API-only（404 hint 原样） */
   private staticReady = false;
+  /** 挂起表（G4 裁定 1：daemon 级单表，entry 携 sessionId）：pid=daemon 级单调铸造 `p<n>`——guard 的
+   *  ap-N 是会话内序（每会话独立 guard 实例），跨会话可撞，全局唯一由 daemon 单点保证；resolve 后即删
+   *  （重复回执 404 的判据） */
+  private readonly pending = new Map<string, PendingEntry>();
+  private pendingSeq = 0;
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
@@ -135,9 +196,11 @@ export class GuiDaemon {
    * `resolveDataDir(root)/workspace.json` 落档 `{root}`（T2 工作区注册表：slug 单向哈希反解不了
    * root——落档供 GET /workspaces 读回真 root；历史工作区无此档降级 slug-only）。落档尽力而为：
    * 数据面不可写（只读 projects 根）不挡会话创建，/workspaces 对该工作区降级 slug-only 行。Result
-   * 面：daemon 级 API（serve --root 预选/后续工作区注册表消费），HTTP 面映射 400/200
+   * 面：daemon 级 API（serve --root 预选/后续工作区注册表消费），HTTP 面映射 400/200。
+   * G4：opts.mode='manual' 时向会话注入审批/问询两闭包——resolve 挂在 daemon 挂起表条目上 + 广播
+   * 挂起帧（WS 消费面回执 POST /approval/:pid / /ask/:pid/reply）；缺省 dontAsk 零行为变化。
    */
-  createSession(root: string): Result<{ sessionId: string }> {
+  createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }> {
     const abs = path.resolve(root);
     let st: fs.Stats;
     try {
@@ -164,6 +227,23 @@ export class GuiDaemon {
         return this.seqCounter;
       },
       broadcast: (frame) => this.broadcastFrame(frame),
+      ...(opts?.mode === 'manual'
+        ? {
+            mode: 'manual' as const,
+            asker: (req: ApprovalRequest): Promise<ApprovalDecision> =>
+              new Promise((resolve) => {
+                const pid = this.nextPendingId();
+                this.pending.set(pid, { kind: 'approval', sessionId: id, req, resolve });
+                this.broadcastFrame({ kind: 'approval', sessionId: id, pid, req });
+              }),
+            onAskUser: (req: AskUserRequest): Promise<AskUserAnswer> =>
+              new Promise((resolve) => {
+                const pid = this.nextPendingId();
+                this.pending.set(pid, { kind: 'ask', sessionId: id, req, resolve });
+                this.broadcastFrame({ kind: 'ask', sessionId: id, pid, req });
+              }),
+          }
+        : {}),
     });
     this.sessions.set(id, session);
     this.active = id;
@@ -208,14 +288,50 @@ export class GuiDaemon {
   }
 
   /** 全会话收口（独立入口：daemon close 序内以分相形态并入；导出供 T2+ 会话回收类面复用）：
-   *  逐会话完整 teardown 序（abort 有界等待→stopAll→drain→mcpClose），顺序并发 Promise.all */
+   *  逐会话完整 teardown 序（abort 有界等待→stopAll→drain→mcpClose），顺序并发 Promise.all。
+   *  G4：进序前全表挂起回填（deny/dismissed）——悬挂的 asker promise 不回填则被中止 run 永不 settle，
+   *  2s 有界窗口内收不了口 */
   async teardownAll(): Promise<void> {
+    this.denyAllPending();
     await Promise.all([...this.sessions.values()].map((s) => s.teardown()));
   }
 
+  /** 挂起 id 铸造单点（G4）：daemon 级单调 `p<n>`（全局唯一，见 pending 字段注） */
+  private nextPendingId(): string {
+    this.pendingSeq += 1;
+    return `p${this.pendingSeq}`;
+  }
+
+  /** 会话维挂起回填（G4 裁定 3：interrupt/reset=deny 回填——TUI approval.ts 先例）：该会话全部未决
+   *  approval→deny、ask→dismissed 并清表；不发 notice（中止路径的观察行由 run 自身事件面承载） */
+  private denyPendingFor(sessionId: string): void {
+    for (const [pid, entry] of this.pending) {
+      if (entry.sessionId !== sessionId) continue;
+      this.pending.delete(pid);
+      if (entry.kind === 'approval') entry.resolve('deny');
+      else entry.resolve({ type: 'dismissed' });
+    }
+  }
+
+  /** 全表回填（close/teardownAll 同构裁定 3） */
+  private denyAllPending(): void {
+    for (const [pid, entry] of this.pending) {
+      this.pending.delete(pid);
+      if (entry.kind === 'approval') entry.resolve('deny');
+      else entry.resolve({ type: 'dismissed' });
+    }
+  }
+
+  /** 回执落档单点（G4 裁定 1 尾项）：notice 事件帧经该会话 pump——入转录/环形缓冲/广播三面（粗归档
+   *  可见，不发明新事件型）；会话已不在（理论上不可达——挂起条目随会话存续）静默跳过 */
+  private noticePending(entry: PendingEntry, text: string): void {
+    this.sessions.get(entry.sessionId)?.pump({ type: 'notice', text, ts: Date.now() });
+  }
+
   /** 泵广播面（daemon 级单点）：帧序列化一次逐连接 send——同一连接的帧恒按 pump 调用序到达（ws
-   *  内部发送缓冲有序，无需额外队列）；连接层按 sessionId 分发/过滤（T3） */
-  private broadcastFrame(frame: EventFrame): void {
+   *  内部发送缓冲有序，无需额外队列）；连接层按 sessionId 分发/过滤（T3）。G4：签名放宽至 DaemonFrame
+   *  全并集（挂起/reset 帧与事件帧共用本序列化路径） */
+  private broadcastFrame(frame: DaemonFrame): void {
     if (this.wsClients.size === 0) return;
     const json = JSON.stringify(frame);
     for (const ws of this.wsClients) ws.send(json);
@@ -265,10 +381,11 @@ export class GuiDaemon {
     return wss;
   }
 
-  /** 连接生命周期：入 Set（广播面）→ 补发全部会话缓冲 → pong 记时/close 清理。补发在 upgrade 回调内
-   *  同步完成，与后续实时帧（pump 单点）天然无交错——逐会话帧序=缓冲序接事件序；T1 裁定：全部会话
-   *  （s1..sN 会话序，各内缓冲序），客户端按帧面 sessionId 过滤（T3 onSessionEvent）——不收
-   *  `{"kind":"listen"}` 订阅消息（帧全带 sessionId 客户端自滤） */
+  /** 连接生命周期：入 Set（广播面）→ 补发全部会话缓冲 + 重发全部未决挂起帧（G4 裁定 4）→ pong 记时/
+   *  close 清理。补发在 upgrade 回调内同步完成，与后续实时帧（pump 单点）天然无交错——逐会话帧序=缓冲
+   *  序接事件序；T1 裁定：全部会话（s1..sN 会话序，各内缓冲序），客户端按帧面 sessionId 过滤（T3
+   *  onSessionEvent）——不收 `{"kind":"listen"}` 订阅消息（帧全带 sessionId 客户端自滤）。
+   *  挂起重发无 seq：同 pid 帧可能重复到达（首播+重连），客户端以 pid 去重幂等（G4） */
   private onWsConnection(ws: WebSocket): void {
     this.wsClients.add(ws);
     this.wsLastPong.set(ws, Date.now());
@@ -279,6 +396,7 @@ export class GuiDaemon {
     for (const session of this.sessions.values()) {
       for (const f of session.bufferedFrames()) ws.send(JSON.stringify(f));
     }
+    for (const [pid, entry] of this.pending) ws.send(JSON.stringify(pendingFrameOf(pid, entry)));
   }
 
   /** 保活心跳：逐连接判活——pong 静默超 60s 即 terminate（close 事件统一清理 Set），否则发 ping */
@@ -304,7 +422,10 @@ export class GuiDaemon {
    *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（分相并入 =
    *  teardownAll 的逐会话序在会话维保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
-    // 0) 全会话在跑 run 即刻中止（并发）：与单会话序同理——悬挂 run 的 promise 会拖住事件循环/测试
+    // 0) 挂起全表回填（G4 裁定 3）：悬挂的 asker promise 先落 deny/dismissed——被中止 run 才能在
+    //    有界窗口内真正 settle
+    this.denyAllPending();
+    // 0b) 全会话在跑 run 即刻中止（并发）：与单会话序同理——悬挂 run 的 promise 会拖住事件循环/测试
     //    收口；每会话有界等待 2s（Promise.all 并发不叠加）
     await Promise.all([...this.sessions.values()].map((s) => s.abortAndSettle()));
     // 1) WS 面先收：停 ping 计时器，逐连接 1001 Going Away 后 wss.close——先于 HTTP server close，
@@ -343,6 +464,9 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
+    // G4 挂起回执面：pid 为 daemon 级挂起票据（会话无关路由——pid 本身寻址，无会话维前缀）
+    { method: 'POST', path: '/approval/:pid', auth: true, run: (req, res, p) => this.handleApprovalReply(req, res, p.pid) },
+    { method: 'POST', path: '/ask/:pid/reply', auth: true, run: (req, res, p) => this.handleAskReply(req, res, p.pid) },
     // T2 工作区注册表 + 恢复面：workspaces 扫描 / sessions 列档 / dirpicker 目录选择
     { method: 'GET', path: '/workspaces', auth: true, run: async (_req, res) => this.handleWorkspaces(res) },
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
@@ -520,7 +644,9 @@ export class GuiDaemon {
     this.send(res, 202, { ok: true });
   }
 
-  /** interrupt 处理：无在跑 run 409；中止信号发出即 200（run 以 stopReason=interrupted 收束后清锁） */
+  /** interrupt 处理：无在跑 run 409；中止信号发出即 200（run 以 stopReason=interrupted 收束后清锁）。
+   *  G4 裁定 3：中止后该会话全部未决挂起以 deny/dismissed 回填并清表——asker promise 不回填则被中止
+   *  run 永不收束（僵尸 run） */
   private handleInterrupt(res: http.ServerResponse, id: string | undefined): void {
     const session = this.sessionFor(res, id);
     if (session === undefined) return;
@@ -529,6 +655,7 @@ export class GuiDaemon {
       this.send(res, 409, { error: r.error });
       return;
     }
+    this.denyPendingFor(session.id);
     this.send(res, 200, { ok: true });
   }
 
@@ -553,11 +680,64 @@ export class GuiDaemon {
   }
 
   /** reset 处理（旧 /session/new 软重置语义迁入）：中止在跑 run + 换新运行时 + 清投影/转录/缓冲，
-   *  200 {ok:true}（语义面见 SessionRuntime.reset） */
+   *  200 {ok:true}（语义面见 SessionRuntime.reset）。G4：中止前该会话挂起回填（deny/dismissed——
+   *  同 interrupt 裁定 3，防僵尸 asker promise 拖住被中止 run）；收尾广播 `{kind:'reset', sessionId}`
+   *  通知帧（裁定 7：GUI 清本地投影重播种；无 seq，不入单调序列） */
   private async handleReset(res: http.ServerResponse, id: string | undefined): Promise<void> {
     const session = this.sessionFor(res, id);
     if (session === undefined) return;
+    this.denyPendingFor(session.id);
     await session.reset();
+    this.broadcastFrame({ kind: 'reset', sessionId: session.id });
+    this.send(res, 200, { ok: true });
+  }
+
+  /** POST /approval/:pid {decision}（G4）：挂起表命中且 kind 对 → resolve + notice 事件帧（经该会话
+   *  pump，转录可见）+ 200 {ok:true}；未知 pid / 已决（重复回执）/ kind 不符（ask 挂起错打 approval
+   *  端点）统一 404；decision 非法字面 400（ApprovalDecision = 'allow'|'always'|'deny'） */
+  private async handleApprovalReply(req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const decision = (parsed.body as { decision?: unknown } | null)?.decision;
+    if (decision !== 'allow' && decision !== 'always' && decision !== 'deny') {
+      this.send(res, 400, { error: 'decision must be one of: allow, always, deny' });
+      return;
+    }
+    const entry = this.pending.get(pid);
+    if (entry === undefined || entry.kind !== 'approval') {
+      this.send(res, 404, { error: 'unknown pending approval' });
+      return;
+    }
+    this.pending.delete(pid);
+    entry.resolve(decision);
+    this.noticePending(entry, `approval ${pid} resolved: ${decision}`);
+    this.send(res, 200, { ok: true });
+  }
+
+  /** POST /ask/:pid/reply {answer}（G4）：同构 approval 回执——AskUserAnswer 三态载荷校验（400）→
+   *  命中且 kind 对 resolve + notice（`ask <pid> answered`）+ 200；未知/已决/kind 不符 404 */
+  private async handleAskReply(req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const answer = parseAskAnswer((parsed.body as { answer?: unknown } | null)?.answer);
+    if (answer === null) {
+      this.send(res, 400, { error: 'invalid answer: expected {type:"selected",labels} | {type:"custom",text} | {type:"dismissed"}' });
+      return;
+    }
+    const entry = this.pending.get(pid);
+    if (entry === undefined || entry.kind !== 'ask') {
+      this.send(res, 404, { error: 'unknown pending ask' });
+      return;
+    }
+    this.pending.delete(pid);
+    entry.resolve(answer);
+    this.noticePending(entry, `ask ${pid} answered`);
     this.send(res, 200, { ok: true });
   }
 
