@@ -1,17 +1,18 @@
 import type { SessionEvent } from '../types';
 
 /**
- * 粗粒度转录累积器（spec G2 Ruling 1）：daemon 侧从事件流直接累积的归档面快照源——
- * user（submit 回显）/ assistant（done 终答全文）/ tool（call-result 按 callId 配对为单条）三类；
- * token 流式增量、usage/step 等过程事件不进归档面（G3 gui 走事件实时面渲染细粒度，两轨不重复）。
- * 纯件零 IO：不做 md 渲染，只拼字符串面（GUI 侧按 md 自行渲染）。
+ * 粗粒度转录累积器（spec G2 Ruling 1；G3 kind 扩 §5.3 归档面）：daemon 侧从事件流直接累积的
+ * 归档面快照源——user（submit 回显）/ assistant（done 终答全文）/ tool（call-result 按 callId 配对
+ * 为单条）三类 + G3 扩：error（运行错误行）/ notice（提示行、委派起止单行、agent 间消息定向注记）
+ * 两 kind；token 流式增量、usage/step 等过程事件不进归档面（G3 gui 走事件实时面渲染细粒度，两轨
+ * 不重复）。纯件零 IO：不做 md 渲染，只拼字符串面（GUI 侧按 md 自行渲染）。
  */
 export interface TranscriptEntry {
-  /** 全局单调序号（入列顺序，三类共用同一序列） */
+  /** 全局单调序号（入列顺序，五类共用同一序列） */
   seq: number;
-  /** user 条=submit 时刻；assistant/tool 条=源事件 ts */
+  /** user 条=submit 时刻；其余条=源事件 ts */
   ts: number;
-  kind: 'user' | 'assistant' | 'tool';
+  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
   md: string;
 }
 
@@ -37,13 +38,24 @@ function firstLine(text: string | undefined): string {
   return line.length > 0 ? line : '…';
 }
 
+/** 委派起止单行 md（G3 §5.3）：`✻ <label> <started|status>`——label 恒取 payload.label（缺省
+ *  delegationId 兜底），ended 状态面取 payload.status（done/failed/skipped/paused，缺省 ended） */
+function delegationMd(e: SessionEvent): string {
+  const p = e.payload as { label?: unknown; delegationId?: unknown; status?: unknown } | undefined;
+  const label =
+    typeof p?.label === 'string' && p.label.length > 0 ? p.label : typeof p?.delegationId === 'string' && p.delegationId.length > 0 ? p.delegationId : '…';
+  const status = e.type === 'delegation-started' ? 'started' : typeof p?.status === 'string' && p.status.length > 0 ? p.status : 'ended';
+  return `✻ ${label} ${status}`;
+}
+
 /**
  * 转录收集器：daemon.pump 单点喂入（与广播同源同序），GET /snapshot 的 messages 字段即
  * entries() 快照。配对语义：tool-call/tool-result 以 payload.callId 互找归并为同一条——
  * call 先到即入列（result 行占位 …），result 先到亦入列（verb 行占位 …）等迟到者回填；
  * 无 callId 的 result FIFO 兜底配最老未配对条（与 session.ts pendingCalls 同口径）；
- * 再无处可配的孤儿 result 以 payload.tool 为动词独立成条。非 done/tool-call/tool-result
- * 事件一律忽略（粗粒度归档面，Ruling 1）。
+ * 再无处可配的孤儿 result 以 payload.tool 为动词独立成条。G3 kind 扩：error/notice/
+ * delegation-started|ended/agent-message → error|notice 两 kind 单行入档。其余事件
+ * （token/usage/step/route/task-* 等）一律忽略（粗粒度归档面，Ruling 1）。
  */
 export class TranscriptCollector {
   private readonly list: TranscriptEntry[] = [];
@@ -68,7 +80,26 @@ export class TranscriptCollector {
       this.onToolResult(e);
       return;
     }
-    // 其余事件（token/usage/step/route/delegation-*/task-* 等）不进归档面
+    if (e.type === 'error') {
+      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'error', md: e.text ?? 'error' });
+      return;
+    }
+    if (e.type === 'notice') {
+      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: e.text ?? '' });
+      return;
+    }
+    if (e.type === 'delegation-started' || e.type === 'delegation-ended') {
+      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: delegationMd(e) });
+      return;
+    }
+    if (e.type === 'agent-message') {
+      const p = e.payload as { from?: unknown; to?: unknown; text?: unknown } | undefined;
+      const from = typeof p?.from === 'string' && p.from.length > 0 ? p.from : '?';
+      const to = typeof p?.to === 'string' && p.to.length > 0 ? p.to : '?';
+      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: `[${from} → ${to}] ${typeof p?.text === 'string' ? p.text : ''}` });
+      return;
+    }
+    // 其余事件（token/usage/step/route/task-* 等）不进归档面
   }
 
   /** 快照只读：返回列表浅拷贝（条目对象视为不可变——配对回填只发生在收集器内部） */

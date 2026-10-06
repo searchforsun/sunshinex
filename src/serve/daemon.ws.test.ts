@@ -9,9 +9,11 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 
-/** WS 下行帧契约（T2）：恒 {kind:'event', e}——本测试面唯一断言对象 */
+/** WS 下行帧契约（T2 起；G3 seq 协议）：恒 {kind:'event', seq, e}——seq 为 daemon 泵内全局单调序号
+ *  （计数在先帧在后，首帧=1；approval/ask 挂起面帧不带 seq，G4 起另形）——本测试面唯一断言对象 */
 interface Frame {
   kind: string;
+  seq: number;
   e: SessionEvent;
 }
 
@@ -235,6 +237,48 @@ test('④ subprotocol 鉴权（浏览器路径）：bearer.<token> 无 Authoriza
     });
     assert.equal(sawOpen, false, '错 subprotocol 不得升级成功');
     assert.equal(sawError, true, '401 拒升级应表现为客户端 error');
+  });
+});
+
+test('⑤ seq 协议：两轮 submit 全部 event 帧 seq 全局严格递增；补发帧 seq 保留各自值（首帧=1，续轮不重置）', async () => {
+  await withWsDaemon(new ScriptedAdapter(['{"done":true,"reply":"one"}', '{"done":true,"reply":"two"}']), async (ctx) => {
+    const snap = async (): Promise<{ status: string; lastSeq: number }> => {
+      const r = await fetch(`${ctx.http}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
+      assert.equal(r.status, 200);
+      return (await r.json()) as { status: string; lastSeq: number };
+    };
+    const waitIdle = async (): Promise<void> => {
+      const deadline = Date.now() + 10_000;
+      while ((await snap()).status !== 'idle') {
+        if (Date.now() > deadline) throw new Error('waitIdle 超时');
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+    // 第一轮无连接：事件各自带 seq 入环形缓冲（run 收束=done 末事件已泵入），后连线所见全为补发
+    await ctx.post('第一轮');
+    await waitIdle();
+    const { ws, frames } = await openCollecting(ctx.ws);
+    try {
+      await waitFor(() => frames.some((f) => f.e.type === 'done'), 3000);
+      assert.equal(frames[0].seq, 1, '补发首帧 seq=1（计数在先帧在后）');
+      for (let i = 1; i < frames.length; i++) {
+        assert.ok(frames[i].seq > frames[i - 1].seq, `补发帧 seq 严格递增（${i}）`);
+      }
+      // 空闲态（done=末事件）无新事件源：lastSeq 恰等于已广播帧最大 seq
+      const replayMax = Math.max(...frames.map((f) => f.seq));
+      assert.equal((await snap()).lastSeq, replayMax, '补发窗口内 lastSeq=已广播最大 seq');
+
+      // 第二轮连接中实时续推：实时帧 seq 续接补发最大值之后，跨轮全局单调不回绕、不重置
+      await ctx.post('第二轮');
+      await waitFor(() => frames.filter((f) => f.e.type === 'done').length >= 2, 10000);
+      assert.ok(frames[frames.length - 1].seq > replayMax, '第二轮实时帧 seq 续接补发最大值之后');
+      for (let i = 1; i < frames.length; i++) {
+        assert.ok(frames[i].seq > frames[i - 1].seq, `全部帧（补发+实时）seq 全局严格递增（${i}）`);
+      }
+      assert.ok(frames.every((f) => f.kind === 'event'), '全帧恒 kind:"event"');
+    } finally {
+      ws.close();
+    }
   });
 });
 

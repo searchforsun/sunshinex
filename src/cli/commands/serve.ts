@@ -46,7 +46,10 @@ export async function runServe(args: CliArgs): Promise<void> {
     port = n;
   }
 
-  const daemon = new GuiDaemon({ root, model: buildModel(args.flags) });
+  // 静态根（G3）：cwd 相对 dist-gui（serve 从仓库根跑即对）；显式传入 daemon 单点化缺省口径——
+  // 启动探测一次 index.html，在场挂静态（GET 兜底 index.html/SPA），缺场 API-only（404 hint）
+  const staticRoot = path.resolve('dist-gui');
+  const daemon = new GuiDaemon({ root, model: buildModel(args.flags), staticRoot });
   const s = await daemon.start({ port });
 
   // token 带外通道（§4.3）：写 <dataDir>/serve-token（dataDir 首启可能不存在，recursive 建）。
@@ -60,6 +63,13 @@ export async function runServe(args: CliArgs): Promise<void> {
 
   console.log(`sunshinex serve listening at http://127.0.0.1:${s.port}`);
   console.log(`token: ${s.token}`);
+  const staticMounted = fs.existsSync(path.join(staticRoot, 'index.html'));
+  console.log(
+    t(
+      `static root: ${staticRoot}${staticMounted ? '' : ' (GUI assets not built — run pnpm --filter gui build)'}`,
+      `静态根：${staticRoot}${staticMounted ? '' : '（GUI 产物未构建——运行 pnpm --filter gui build）'}`,
+    ),
+  );
 
   // 信号收口：单次化（closing 防双信号重入），await 完整 teardown 序再退（exit 0——用户主动停机非故障）
   let closing = false;

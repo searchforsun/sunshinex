@@ -12,9 +12,10 @@ import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 /** G1 契约收口测试：全链（submit → WS 事件序 → done → 二轮续推）+ API 面收口（404 hint/401/409/400）。
  *  helper 形态照 daemon.ws.test.ts / daemon.test.ts 惯例，本文件自包含 */
 
-/** WS 下行帧契约：恒 {kind:'event', e}——与 daemon.ws.test.ts 同形 */
+/** WS 下行帧契约：恒 {kind:'event', seq, e}——与 daemon.ws.test.ts 同形（G3 seq 协议） */
 interface Frame {
   kind: string;
+  seq: number;
   e: SessionEvent;
 }
 
@@ -54,13 +55,15 @@ interface Ctx {
   post: (goal: string) => Promise<Response>;
 }
 
-/** 装配样板（同 daemon.ws.test.ts 环境隔离）：SUNSHINEX_DATA_DIR 钉 tmp，token 固定 test-token，port 0 */
-async function withDaemon(model: ModelAdapter, fn: (daemon: GuiDaemon, ctx: Ctx) => Promise<void>): Promise<void> {
+/** 装配样板（同 daemon.ws.test.ts 环境隔离）：SUNSHINEX_DATA_DIR 钉 tmp，token 固定 test-token，port 0。
+ *  staticRoot 缺省注入「不存在的 tmp 目录」——静态面恒未挂载（404 hint 原样），测试不依赖
+ *  进程 cwd 是否恰有 dist-gui（仓库根真实在场，hermetic 钉死缺场形态；⑥ 显式传 populated 目录） */
+async function withDaemon(model: ModelAdapter, fn: (daemon: GuiDaemon, ctx: Ctx) => Promise<void>, staticRoot?: string): Promise<void> {
   const tmp = tmpdir('sunshinex-serve-contract-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
   try {
-    const daemon = new GuiDaemon({ root: tmp, model });
+    const daemon = new GuiDaemon({ root: tmp, model, staticRoot: staticRoot ?? path.join(tmp, 'dist-gui-absent') });
     const s = await daemon.start({ port: 0, token: 'test-token' });
     const http = `http://127.0.0.1:${s.port}`;
     const post = async (goal: string): Promise<Response> => {
@@ -222,3 +225,103 @@ test('③ GET /snapshot：含工具卡 run 后 messages 三类在场、board 影
   });
 });
 
+
+test('④ POST /steer：无 token 401；空/空白/非 string text 400；运行中 200 {ok:true}；空闲亦恒 200（排队下一轮生效）', async () => {
+  await withDaemon(new HangingAdapter(), async (d, ctx) => {
+    const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
+    // 401：鉴权面同 submit/interrupt
+    const noTok = await fetch(`${ctx.http}/steer`, { method: 'POST', body: JSON.stringify({ text: 'x' }) });
+    assert.equal(noTok.status, 401);
+    assert.deepEqual(await noTok.json(), { error: 'unauthorized' });
+
+    // 400：text 非非空 string（空串/纯空白/数字/null）——空白串与 SteeringChannel.enqueue 的 trim-忽略口径一致拒
+    for (const text of ['', '   ', 42, null]) {
+      const r = await fetch(`${ctx.http}/steer`, { method: 'POST', headers: H, body: JSON.stringify({ text }) });
+      assert.equal(r.status, 400, `text=${JSON.stringify(text)} 非法 → 400`);
+      assert.equal((await r.json()).error, 'text must be a non-empty string');
+    }
+
+    // 200：运行中投递（挂起 run 占锁中）
+    await ctx.post('长任务');
+    await waitFor(() => d.status() === 'running', 3000);
+    const st = await fetch(`${ctx.http}/steer`, { method: 'POST', headers: H, body: JSON.stringify({ text: '改查另一处' }) });
+    assert.equal(st.status, 200);
+    assert.deepEqual(await st.json(), { ok: true }, '运行中 steer 恒 200 {ok:true}（daemon 不因 steer 倒面）');
+
+    // 收尾清锁后空闲态 steer 亦 200——SteeringChannel 纯内存 FIFO 语义：空闲入队，下一轮步边界 drain 生效
+    const stop = await fetch(`${ctx.http}/interrupt`, { method: 'POST', headers: { authorization: 'Bearer test-token' } });
+    assert.equal(stop.status, 200);
+    await waitFor(() => d.status() === 'idle', 3000);
+    const idle = await fetch(`${ctx.http}/steer`, { method: 'POST', headers: H, body: JSON.stringify({ text: '下一轮先看测试' }) });
+    assert.equal(idle.status, 200, '空闲 steer 恒 200（排队下一轮生效，不 409）');
+    assert.deepEqual(await idle.json(), { ok: true });
+  });
+});
+
+test('⑤ snapshot.lastSeq：idle 态（done=末事件）恰等于 WS 已收帧最大 seq（先影子后广播序内）', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (d, ctx) => {
+    const { ws, frames } = await openCollecting(ctx.ws);
+    try {
+      await ctx.post('跑一轮');
+      await waitFor(() => frames.some((f) => f.e.type === 'done'), 10000);
+      await waitFor(() => d.status() === 'idle', 3000);
+      const r = await fetch(`${ctx.http}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
+      assert.equal(r.status, 200);
+      const snap = (await r.json()) as { lastSeq: number };
+      const maxSeq = Math.max(...frames.map((f) => f.seq));
+      assert.ok(frames.length > 0, '已收帧非空');
+      assert.ok(frames.every((f) => Number.isInteger(f.seq) && f.seq >= 1), '帧 seq 恒 ≥1 整数');
+      assert.equal(snap.lastSeq, maxSeq, 'lastSeq=已收帧最大 seq（重连协议：客户端凭 seq 判缺口）');
+    } finally {
+      ws.close();
+    }
+  });
+});
+
+test('⑥ 静态挂载：GET / 回 index.html（html mime）、/app.js 回 js mime、SPA 兜底、穿越拒 404；缺 staticRoot 文件 → 404+hint 原样', async () => {
+  const tmp = tmpdir('sunshinex-serve-static-');
+  const dir = path.join(tmp, 'dist-gui');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><html>sunshinex gui</html>', 'utf8');
+  fs.writeFileSync(path.join(dir, 'app.js'), 'console.log("gui")', 'utf8');
+  try {
+    await withDaemon(new HangingAdapter(), async (_d, ctx) => {
+      // GET /：目录路径经 root 兜底回 index.html，html mime
+      const idx = await fetch(`${ctx.http}/`);
+      assert.equal(idx.status, 200);
+      assert.ok((idx.headers.get('content-type') ?? '').startsWith('text/html'), '/ 回 text/html');
+      assert.ok((await idx.text()).includes('sunshinex gui'), '/ 回 index.html 本体');
+
+      // 静态文件直读：扩展名 mime 表（js 面）
+      const js = await fetch(`${ctx.http}/app.js`);
+      assert.equal(js.status, 200);
+      assert.ok((js.headers.get('content-type') ?? '').startsWith('text/javascript'), '/app.js 回 text/javascript');
+      assert.equal(await js.text(), 'console.log("gui")');
+
+      // SPA 兜底：root 内未命中路径回 index.html（客户端路由刷新路径不 404）
+      const spa = await fetch(`${ctx.http}/chat/section-2`);
+      assert.equal(spa.status, 200);
+      assert.ok((await spa.text()).includes('sunshinex gui'), '未命中路径兜底 index.html');
+
+      // 穿越拒：%2e%2e%2f 整段不在 URL 规范的四个 dot-segment 形态之内，原样抵 server——decode 后成
+      // ../ 经 join+normalize 越界即 404，不落 SPA 兜底（纯 %2E%2E 形态在 fetch/URL 侧即被 dot-segment
+      // 规范折叠到根，到不了 daemon；本向量专测 daemon 侧穿越防线本体）
+      const trav = await fetch(`${ctx.http}/%2e%2e%2fpackage.json`);
+      assert.equal(trav.status, 404, '路径穿越必须 404（不得读 staticRoot 外文件）');
+      assert.deepEqual(await trav.json(), { error: 'not found', hint: GUI_HINT }, '穿越拒与缺静态同 404 形（不落 SPA）');
+
+      // API 路由恒先于静态：healthz 免鉴权照旧 JSON
+      const h = await fetch(`${ctx.http}/healthz`);
+      assert.deepEqual(await h.json(), { ok: true });
+    }, dir);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+
+  // 缺场形态：staticRoot 指向不存在目录（withDaemon 缺省注入）——未知 GET 保持 G1 的 404+hint 原样
+  await withDaemon(new HangingAdapter(), async (_d, ctx) => {
+    const nf = await fetch(`${ctx.http}/foo`, { headers: { authorization: 'Bearer test-token' } });
+    assert.equal(nf.status, 404);
+    assert.deepEqual(await nf.json(), { error: 'not found', hint: GUI_HINT }, '无静态产物时 404 hint 原样');
+  });
+});

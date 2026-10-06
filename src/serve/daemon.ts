@@ -1,5 +1,7 @@
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createRuntime, TuiRuntime } from '../tui/runtime';
 import { ModelAdapter } from '../model/adapter';
@@ -12,10 +14,13 @@ import { boardEventFrom } from '../tui/session';
 import { TranscriptCollector } from './transcript';
 import type { TranscriptEntry } from './transcript';
 
-/** GUI daemon 构造面：root 为项目目录；model 与 CLI buildModel/TUI 同源注入（三面同一 ModelAdapter 契约） */
+/** GUI daemon 构造面：root 为项目目录；model 与 CLI buildModel/TUI 同源注入（三面同一 ModelAdapter 契约）；
+ *  staticRoot 为 GUI 静态产物目录（G3 静态挂载），缺省 cwd 相对 dist-gui——serve 命令从仓库根跑即对，
+ *  测试注入 tmp 路径保持 hermetic */
 export interface GuiDaemonOpts {
   root: string;
   model: ModelAdapter;
+  staticRoot?: string;
 }
 
 /** start 入参：port 缺省 0（临时端口，返回实际监听值）；token 缺省随机 24 字节 hex（规格 §4.3） */
@@ -52,6 +57,38 @@ const PONG_TIMEOUT_MS = 60_000;
  *  signal 无视的工具悬挂 teardown；超时即放行进后续步骤 */
 const ABORTED_RUN_SETTLE_MS = 2_000;
 
+/** 静态缺失提示（G1 裁定恒定文案；G3 起 dist-gui 在场则 GET 挂静态，缺场仍回此形态） */
+const GUI_ASSETS_HINT = 'GUI assets not built — run pnpm --filter gui build (G2)';
+
+/** 静态 mime 表（G3）：按扩展名映射，缺省 application/octet-stream（浏览器按 Content-Type 处置，
+ *  未知类型不猜测——下载面行为由客户端定） */
+const STATIC_MIME: Readonly<Record<string, string>> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json; charset=utf-8',
+  '.woff2': 'font/woff2',
+};
+
+function mimeOf(file: string): string {
+  return STATIC_MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+}
+
+/** 静态读文件：任何读失败（缺失/目录/权限）归一 null——SPA 兜底与 404 由调用方分径 */
+function readStaticFile(file: string): Promise<Buffer | null> {
+  return new Promise((resolve) => fs.readFile(file, (err, data) => resolve(err === null ? data : null)));
+}
+
+/** 环形缓冲的帧载体（G3 seq 协议）：补发帧各自携带入泵时刻的 seq——重连客户端凭 seq 判缺口 */
+interface BufferedEvent {
+  seq: number;
+  e: SessionEvent;
+}
+
 /**
  * GUI daemon 核心（spec §3）：HTTP 控制面 + WS 事件面 + 会话生命周期。装配零旁路——与 TUI 同一
  * `createRuntime` 单点（mode 恒 dontAsk：GUI v1 无终端交互面，审批/问询走回执端点，T3 接线），
@@ -66,8 +103,10 @@ export class GuiDaemon {
   private server?: http.Server;
   /** 幂等收口：首调落链，后续调用复用同一 Promise（close 链只走一遍） */
   private closePromise?: Promise<void>;
-  /** 事件环形缓冲（补发窗口）：pump 单点写入，连接建立即全量逐帧补发 */
-  private readonly eventBuffer: SessionEvent[] = [];
+  /** 事件环形缓冲（补发窗口）：pump 单点写入，连接建立即全量逐帧补发；帧各自带 seq（G3 重连协议） */
+  private readonly eventBuffer: BufferedEvent[] = [];
+  /** seq 泵计数（G3）：计数在先帧在后（首帧 seq=1），跨 run 全局单调不重置；snapshot.lastSeq 同源 */
+  private seqCounter = 0;
   /** WS 面：noServer 挂 http server upgrade；连接 Set=pump 广播面 */
   private wss?: WebSocketServer;
   private readonly wsClients = new Set<WebSocket>();
@@ -82,8 +121,13 @@ export class GuiDaemon {
   private readonly transcript = new TranscriptCollector();
   /** 单 run 锁外窥（测试/后续 /snapshot 消费）：current 在场即 running */
   readonly status: () => 'idle' | 'running' = () => (this.current ? 'running' : 'idle');
+  /** GUI 静态产物根（G3）：opts 注入，缺省 cwd 相对 dist-gui */
+  private readonly staticRoot: string;
+  /** 静态面探测结果（start 时一次缓存）：index.html 在场才挂静态，缺场保持 API-only（404 hint 原样） */
+  private staticReady = false;
 
   constructor(opts: GuiDaemonOpts) {
+    this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
     this.runtime = createRuntime({
       root: opts.root,
       model: opts.model,
@@ -92,23 +136,28 @@ export class GuiDaemon {
     });
   }
 
-  /** 事件泵：环形缓冲写入（满 512 丢最老）+ 影子投影同步喂入 + 实时广播全部连接。序列化一次逐连接
-   *  send——同一连接的帧恒按 pump 调用序到达（ws 内部发送缓冲有序，无需额外队列）。投影与广播同源
-   *  同序：snapshot 取到的影子态恒等于已广播事件的累积（无连接时投影照走——影子不依赖消费面在场） */
+  /** 事件泵：seq 计数（在先）→ 环形缓冲写入（满 512 丢最老，帧自带 seq）→ 影子投影同步喂入 → 实时
+   *  广播全部连接。序内裁定：计数先于影子先于广播——同 tick 读 /snapshot 时 lastSeq 恒 ≥ 任何已广播帧
+   *  的 seq（影子态与 seq 无交错半态）。序列化一次逐连接 send——同一连接的帧恒按 pump 调用序到达
+   *  （ws 内部发送缓冲有序，无需额外队列）。投影与广播同源同序：snapshot 取到的影子态恒等于已广播
+   *  事件的累积（无连接时投影照走——影子不依赖消费面在场） */
   private pump(e: SessionEvent): void {
-    this.eventBuffer.push(e);
+    this.seqCounter += 1;
+    const buffered: BufferedEvent = { seq: this.seqCounter, e };
+    this.eventBuffer.push(buffered);
     if (this.eventBuffer.length > EVENT_BUFFER_CAP) this.eventBuffer.shift();
     if (e.type.startsWith('task-') || e.type.startsWith('gate-')) this.board = applyBoardEvent(this.board, boardEventFrom(e));
     if (e.type.startsWith('delegation-')) this.delegations = applyDelegation(this.delegations, e);
     this.transcript.push(e);
     if (this.wsClients.size === 0) return;
-    const frame = this.frameEvent(e);
+    const frame = this.frameEvent(buffered);
     for (const ws of this.wsClients) ws.send(frame);
   }
 
-  /** 下行帧单点：`{kind:'event', e}` JSON 序列化（补发与实时共用同一帧形） */
-  private frameEvent(e: SessionEvent): string {
-    return JSON.stringify({ kind: 'event', e });
+  /** 下行帧单点：`{kind:'event', seq, e}` JSON 序列化（补发与实时共用同一帧形；approval/ask 挂起面
+   *  帧不带 seq——G4 重连重发语义另行收口，不入单调序列） */
+  private frameEvent(b: BufferedEvent): string {
+    return JSON.stringify({ kind: 'event', seq: b.seq, e: b.e });
   }
 
   /**
@@ -124,6 +173,8 @@ export class GuiDaemon {
     });
     this.server = server;
     this.wss = this.attachWs(server, token);
+    // 静态面探测（启动一次，缓存布尔）：index.html 在场才挂静态——缺场 GET 保持 G1 的 404+hint 原样
+    this.staticReady = fs.existsSync(path.join(this.staticRoot, 'index.html'));
     const addr = server.address();
     if (addr === null || typeof addr === 'string') throw new Error('GuiDaemon: listen address unavailable');
     return { port: addr.port, token, close: () => this.close() };
@@ -162,7 +213,7 @@ export class GuiDaemon {
     // error 必须挂 listener（EventEmitter 契约）：socket 错误细节不倒面，close 统一走清理
     ws.on('error', () => {});
     ws.on('close', () => this.wsClients.delete(ws));
-    for (const e of this.eventBuffer) ws.send(this.frameEvent(e));
+    for (const b of this.eventBuffer) ws.send(this.frameEvent(b));
   }
 
   /** 保活心跳：逐连接判活——pong 静默超 60s 即 terminate（close 事件统一清理 Set），否则发 ping */
@@ -230,33 +281,74 @@ export class GuiDaemon {
     await this.runtime.harness.mcpClose();
   }
 
-  /** 内部路由表（G2 增 /snapshot；/steer、静态资源随 T2/T3 增补，不另起分发机制） */
+  /** 内部路由表（G2 增 /snapshot；G3 增 /steer；静态资源走 dispatch 的 GET 兜底分支，不占路由表） */
   private readonly routes: ReadonlyArray<{ method: string; path: string; auth: boolean; run: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> }> = [
     { method: 'GET', path: '/healthz', auth: false, run: async (_req, res) => this.send(res, 200, { ok: true }) },
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res) },
     { method: 'POST', path: '/interrupt', auth: true, run: async (_req, res) => this.handleInterrupt(res) },
+    { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res) },
     { method: 'GET', path: '/snapshot', auth: true, run: async (_req, res) => this.send(res, 200, this.snapshot()) },
   ];
 
   private dispatch(req: http.IncomingMessage, res: http.ServerResponse, token: string): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const route = this.routes.find((r) => r.method === req.method && r.path === url.pathname);
-    if (!route) {
-      // 静态缺失提示（G1 裁定：恒定 hint，不探测文件系统；GET/POST 未知路径统一带 hint——POST 无 hint
-      // 亦可，统一简化）。G2 起按 dist-gui 探测分流：产物在场则挂静态资源（此处预留挂载点），缺场才回此 404
-      this.send(res, 404, { error: 'not found', hint: 'GUI assets not built — run pnpm --filter gui build (G2)' });
+    if (route) {
+      // 鉴权（§4.3）：除 healthz 外恒验 Bearer token——恒时比较不做（token 非密钥材料，回环面时序侧信道无实义）
+      if (route.auth && req.headers.authorization !== `Bearer ${token}`) {
+        this.send(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      route.run(req, res).catch((err) => {
+        console.error('[serve] handler error:', err);
+        if (!res.headersSent) this.send(res, 500, { error: 'internal error' });
+        else res.end();
+      });
       return;
     }
-    // 鉴权（§4.3）：除 healthz 外恒验 Bearer token——恒时比较不做（token 非密钥材料，回环面时序侧信道无实义）
-    if (route.auth && req.headers.authorization !== `Bearer ${token}`) {
-      this.send(res, 401, { error: 'unauthorized' });
+    // API 未命中的 GET 且静态产物在场（G3 静态挂载）：安全拼接 + mime + SPA 兜底；仅 GET（HEAD/POST 不挂）
+    if (req.method === 'GET' && this.staticReady) {
+      this.handleStatic(url.pathname, res).catch((err) => {
+        console.error('[serve] static error:', err);
+        if (!res.headersSent) this.send(res, 500, { error: 'internal error' });
+        else res.end();
+      });
       return;
     }
-    route.run(req, res).catch((err) => {
-      console.error('[serve] handler error:', err);
-      if (!res.headersSent) this.send(res, 500, { error: 'internal error' });
-      else res.end();
-    });
+    // 静态缺失提示（G1 裁定：恒定 hint；GET/POST 未知路径统一带 hint）
+    this.send(res, 404, { error: 'not found', hint: GUI_ASSETS_HINT });
+  }
+
+  /** 静态文件面（G3）：pathname → 解码（%2E%2E 类编码穿越在 URL 解析后才现形）→ join+normalize →
+   *  必须仍在 staticRoot 内（前缀判定含分隔符，root 本体即 / 兜底 index.html）→ 未命中（缺失/目录）
+   *  落 SPA 兜底 index.html，兜底亦缺才 404+hint。穿越越界直接 404——不落 SPA 兜底（防以 200 html
+   *  掩盖探测）。免鉴权：GUI 壳非密钥材料，token 只保 API 面 */
+  private async handleStatic(pathname: string, res: http.ServerResponse): Promise<void> {
+    let rel: string;
+    try {
+      rel = decodeURIComponent(pathname);
+    } catch {
+      this.send(res, 404, { error: 'not found', hint: GUI_ASSETS_HINT });
+      return;
+    }
+    const target = path.normalize(path.join(this.staticRoot, rel));
+    if (target !== this.staticRoot && !target.startsWith(this.staticRoot + path.sep)) {
+      this.send(res, 404, { error: 'not found', hint: GUI_ASSETS_HINT });
+      return;
+    }
+    const data = await readStaticFile(target);
+    if (data !== null) {
+      res.writeHead(200, { 'content-type': mimeOf(target) });
+      res.end(data);
+      return;
+    }
+    const index = await readStaticFile(path.join(this.staticRoot, 'index.html'));
+    if (index !== null) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(index);
+      return;
+    }
+    this.send(res, 404, { error: 'not found', hint: GUI_ASSETS_HINT });
   }
 
   /** body 读取 + JSON 解析：解析失败/超限统一以 {status, error} 回执，不抛出（dispatch 已兜 500，此处提前收口带准确码） */
@@ -319,10 +411,31 @@ export class GuiDaemon {
     this.send(res, 200, { ok: true });
   }
 
-  /** 会话快照（G2 /snapshot 载荷单点）：粗粒度转录 + board/delegations 影子投影 + 运行态——GUI 冷启动/
-   *  刷新经一次拉取恢复全景，细粒度实时面仍走 WS 事件流（两轨分工，spec G2 Ruling 1） */
-  private snapshot(): { messages: TranscriptEntry[]; board: TaskBoardState; delegations: Delegation[]; status: 'idle' | 'running' } {
-    return { messages: this.transcript.entries(), board: this.board, delegations: this.delegations, status: this.status() };
+  /** POST /steer（G3）：text 非空 string 校验后入 runtime.harness.steering（现场核对：SteeringChannel
+   *  纯内存 FIFO——enqueue 不做运行态检查，运行中步边界 drain 消费、空闲入队下一轮生效）→ 恒 200
+   *  {ok:true}，无 409 分径（裁定：steering 非独占面，排队语义即承诺） */
+  private async handleSteer(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const text = (parsed.body as { text?: unknown } | null)?.text;
+    // 空白串与 enqueue 的 trim-忽略口径一致前置拒（静默 no-op 的 200 比显式 400 更糟）
+    if (typeof text !== 'string' || text.trim().length === 0) {
+      this.send(res, 400, { error: 'text must be a non-empty string' });
+      return;
+    }
+    this.runtime.harness.steering.enqueue(text);
+    this.send(res, 200, { ok: true });
+  }
+
+  /** 会话快照（G2 /snapshot 载荷单点；G3 增 lastSeq）：粗粒度转录 + board/delegations 影子投影 +
+   *  运行态 + 事件序列水位——GUI 冷启动/刷新经一次拉取恢复全景，细粒度实时面仍走 WS 事件流（两轨
+   *  分工，spec G2 Ruling 1）；lastSeq 与影子态同 tick 读取（pump 序内先影子后广播）——客户端以
+   *  「重连后首帧 seq > snapshot.lastSeq ⇒ 无缺口」判重连补发完备（G4 消费） */
+  private snapshot(): { messages: TranscriptEntry[]; board: TaskBoardState; delegations: Delegation[]; status: 'idle' | 'running'; lastSeq: number } {
+    return { messages: this.transcript.entries(), board: this.board, delegations: this.delegations, status: this.status(), lastSeq: this.seqCounter };
   }
 
   private send(res: http.ServerResponse, status: number, body: Record<string, unknown>): void {
