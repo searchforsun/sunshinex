@@ -9,7 +9,7 @@ import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
 import type { EventFrame } from './session';
-import { journalMessagesToEntries } from './session';
+import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
@@ -198,7 +198,10 @@ export class GuiDaemon {
    * 数据面不可写（只读 projects 根）不挡会话创建，/workspaces 对该工作区降级 slug-only 行。Result
    * 面：daemon 级 API（serve --root 预选/后续工作区注册表消费），HTTP 面映射 400/200。
    * G4：opts.mode='manual' 时向会话注入审批/问询两闭包——resolve 挂在 daemon 挂起表条目上 + 广播
-   * 挂起帧（WS 消费面回执 POST /approval/:pid / /ask/:pid/reply）；缺省 dontAsk 零行为变化。
+   *  挂起帧（WS 消费面回执 POST /approval/:pid / /ask/:pid/reply）；缺省 dontAsk 零行为变化。
+   * T2：出生即挂新 SessionJournal（`new SessionJournal(dataDir)` 惰性建档——首 run 首条 chain append
+   *  才落盘建新档，档 id 同源 newSessionId()；空会话零文件，TUI 惰性先例同构）——首 run 起链持久，
+   *  后续 /sessions 列档与 attach 重开（chain 派生转录）可消费。
    */
   createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }> {
     const abs = path.resolve(root);
@@ -247,6 +250,8 @@ export class GuiDaemon {
     });
     this.sessions.set(id, session);
     this.active = id;
+    // T2 出生 journal：挂载即接 onContextChange 续写链（惰性建档，见 createSession 注释）
+    session.attachJournal(new SessionJournal(dataDir));
     return ok({ sessionId: id });
   }
 
@@ -269,7 +274,11 @@ export class GuiDaemon {
     const replay = reduceJournal(parseJournalFile(file).events);
     if (replay.version !== 1) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)}`);
     session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
-    session.transcript.seed(journalMessagesToEntries(replay.messages));
+    // 转录播种（Ruling 5 双源不重复）：msg 行在场（TUI 档）→ msg 派生；msg 行计数===0（daemon 会话
+    // 档只落 chain）→ chain 行派生兜底（task→user 引用块 / reply→assistant / call+result 配对→tool）——
+    // 两路径互斥，零重复
+    const msgs = journalMessagesToEntries(replay.messages);
+    session.transcript.seed(msgs.length > 0 ? msgs : chainStepsToEntries(replay.chain));
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);
@@ -285,15 +294,6 @@ export class GuiDaemon {
   /** 激活会话 id（无会话时 undefined——裸端点 409 的判据） */
   activeId(): string | undefined {
     return this.active;
-  }
-
-  /** 全会话收口（独立入口：daemon close 序内以分相形态并入；导出供 T2+ 会话回收类面复用）：
-   *  逐会话完整 teardown 序（abort 有界等待→stopAll→drain→mcpClose），顺序并发 Promise.all。
-   *  G4：进序前全表挂起回填（deny/dismissed）——悬挂的 asker promise 不回填则被中止 run 永不 settle，
-   *  2s 有界窗口内收不了口 */
-  async teardownAll(): Promise<void> {
-    this.denyAllPending();
-    await Promise.all([...this.sessions.values()].map((s) => s.teardown()));
   }
 
   /** 挂起 id 铸造单点（G4）：daemon 级单调 `p<n>`（全局唯一，见 pending 字段注） */
@@ -313,7 +313,7 @@ export class GuiDaemon {
     }
   }
 
-  /** 全表回填（close/teardownAll 同构裁定 3） */
+  /** 全表回填（close 序步骤 0，同构裁定 3——分会话 denyPendingFor 的全表形态） */
   private denyAllPending(): void {
     for (const [pid, entry] of this.pending) {
       this.pending.delete(pid);
@@ -419,8 +419,8 @@ export class GuiDaemon {
 
   /** daemon 收口序（平移扩展为全会话形态）：0) 全会话在跑 run 即刻中止 + 有界等待 settle（并发）→
    *  1) WS 面收 → 2) HTTP server 收 → 3) 全会话运行时内脏收口（stopAll→drain→mcpClose，并发）。
-   *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（分相并入 =
-   *  teardownAll 的逐会话序在会话维保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
+   *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（逐会话收口序在会话维
+   *  保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
     // 0) 挂起全表回填（G4 裁定 3）：悬挂的 asker promise 先落 deny/dismissed——被中止 run 才能在
     //    有界窗口内真正 settle
@@ -464,6 +464,8 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
+    // T2 会话回收：running 409（先收 run 再删）；journal 文件保留（磁盘档案非 daemon 生命周期资产）
+    { method: 'POST', path: '/session/:id/delete', auth: true, run: async (_req, res, p) => this.handleDelete(res, p.id) },
     // G4 挂起回执面：pid 为 daemon 级挂起票据（会话无关路由——pid 本身寻址，无会话维前缀）
     { method: 'POST', path: '/approval/:pid', auth: true, run: (req, res, p) => this.handleApprovalReply(req, res, p.pid) },
     { method: 'POST', path: '/ask/:pid/reply', auth: true, run: (req, res, p) => this.handleAskReply(req, res, p.pid) },
@@ -771,6 +773,29 @@ export class GuiDaemon {
       return;
     }
     this.send(res, 200, { ok: true, sessionId: r.value.sessionId });
+  }
+
+  /** POST /session/:id/delete（T2 会话回收，GUI Home 消费）：未知 :id 404；running 409（回收前必须
+   *  先收 run——teardown 会中止在跑 run，静默中止比显式 409 更糟）；idle → 有界 teardown（该会话
+   *  挂起回填 deny/dismissed（同 interrupt 裁定 3，防僵尸 asker）+ abortAndSettle + dispose（含
+   *  journal seal））→ 注册表移出（后续 :id 访问 404、WS 补发不再含该会话）；active 指向该会话即清
+   *  undefined（裸端点回 409 面）；journal 文件保留——磁盘档案非 daemon 生命周期资产，/sessions 列档
+   *  与后续 attach 重开仍可消费 */
+  private async handleDelete(res: http.ServerResponse, id: string): Promise<void> {
+    const session = this.sessions.get(id);
+    if (session === undefined) {
+      this.send(res, 404, { error: 'unknown session' });
+      return;
+    }
+    if (session.status() === 'running') {
+      this.send(res, 409, { error: 'cannot delete while a run is in progress' });
+      return;
+    }
+    this.denyPendingFor(id);
+    await session.teardown();
+    this.sessions.delete(id);
+    if (this.active === id) this.active = undefined;
+    this.send(res, 200, { ok: true });
   }
 
   /** GET /workspaces（T2）：扫 projectsRoot() 下各 `<slug>/data` 存在者——root 经 workspace.json

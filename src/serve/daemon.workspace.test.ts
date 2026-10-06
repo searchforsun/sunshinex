@@ -10,7 +10,22 @@ import { SessionJournal, listSessions, sessionsDir, parseJournalFile, type Journ
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 
 /** T2 工作区注册表 + attach 恢复 + dirpicker：/workspaces 扫描（workspace.json 反解 root）、
- *  /sessions?root= 列档、/dirpicker 目录选择、/session/:id/attach 播种链与转录并续写 journal */
+ *  /sessions?root= 列档、/dirpicker 目录选择、/session/:id/attach 播种链与转录并续写 journal；
+ *  T2 扩：createSession 出生 journal（惰性建档→首 run 链持久）、chain 派生转录播种（msg 缺席兜底，
+ *  Ruling 5 零重复）、POST /session/:id/delete 会话回收（running 409/journal 保留） */
+
+/** 挂起适配器（同 session.test.ts 惯例）：模型调用永挂直至 signal 中止——delete「running 409」面的
+ *  运行中锁中正模拟 */
+class HangingAdapter implements ModelAdapter {
+  readonly provider = 'hanging';
+  async chat(req: { signal?: AbortSignal }): Promise<never> {
+    return new Promise((_, reject) => {
+      const signal = req.signal;
+      if (signal?.aborted) return reject(new Error('Task interrupted'));
+      signal?.addEventListener('abort', () => reject(new Error('Task interrupted')), { once: true });
+    });
+  }
+}
 
 /** 轮询等待（同 daemon.test.ts 惯例）：20ms 片轮询直至 pred 为真，超时抛错 */
 async function waitFor(pred: () => boolean, timeoutMs: number): Promise<void> {
@@ -239,4 +254,120 @@ test('④ POST /session/:id/attach：播种链与转录；submit 续落 chain �
       assert.equal(snapEv.files[0].path, 'a.txt');
     },
   );
+});
+
+test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文件）→ submit 一轮 sessions/ 出新档（chain 行、零 msg）；/sessions?root= 列出；第二会话不同 id；attach 重开 → 转录 chain 派生（user `> <goal>` + assistant reply）', { timeout: 30_000 }, async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"首轮完成"}']), async (ctx) => {
+    const { base, tmp, daemon } = ctx;
+    const root = path.join(tmp, 'root-birth');
+    fs.mkdirSync(root, { recursive: true });
+
+    const s1 = await ctx.newSession(root);
+    // 惰性建档：未 run 前零文件（空会话不产档案，TUI 惰性先例同构）
+    assert.equal(daemon.get(s1)!.attachedJournalId, undefined, '出生 journal 惰性——未 run 无档 id');
+    assert.equal(listSessions(resolveDataDir(root)).length, 0, 'sessions 目录零档');
+
+    const r = await fetch(`${base}/session/${s1}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    assert.equal(r.status, 202);
+    await waitFor(() => daemon.get(s1)!.status() === 'idle', 20_000);
+
+    const jid = daemon.get(s1)!.attachedJournalId;
+    assert.ok(jid, '首 run 后出生 journal 已建档');
+    const file = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+    assert.ok(fs.existsSync(file), 'sessions/ 出现新档 jsonl');
+    const events = parseJournalFile(file).events;
+    assert.equal(events[0]?.t, 'header', '档首 header');
+    const chainSteps = events.flatMap((e) => (e.t === 'chain' ? e.steps : []));
+    assert.ok(chainSteps.some((s) => s.action === 'task' && s.observation === '跑一轮'), 'task 行在档（observation=goal）');
+    assert.ok(chainSteps.some((s) => s.action === 'reply' && s.observation === '首轮完成'), 'reply 行在档');
+    assert.equal(events.filter((e) => e.t === 'msg').length, 0, 'daemon 档零 msg 行');
+
+    // Home 侧列档面：/sessions?root= 含新档
+    const list = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(root)}`, { headers: AUTH })).json()) as SessionMeta[];
+    assert.ok(list.some((m) => m.id === jid), '/sessions?root= 列出新档');
+
+    // 第二会话（同 root 再开）不同 id
+    const s2 = await ctx.newSession(root);
+    assert.notEqual(s2, s1, '第二会话 id 不同');
+
+    // attach 重开：s2 挂 s1 的档 → 转录 chain 派生（daemon 档无 msg——Ruling 5 兜底路径）
+    const att = await fetch(`${base}/session/${s2}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
+    assert.equal(att.status, 200, 'attach 重开 200（s2 出生 journal 惰性未建档——守卫不拦）');
+    const snap = (await (await fetch(`${base}/session/${s2}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
+    const mds = snap.messages.map((m) => m.md);
+    assert.ok(mds.includes('> 跑一轮'), 'chain 派生 user 条（`> <goal>` 引用块，task 行派生）');
+    assert.ok(mds.includes('首轮完成'), 'chain 派生 assistant 条（reply 行派生）');
+  });
+});
+
+test('⑥ attach 播种去重（Ruling 5）：TUI journal msg 行在场 → 转录只含 msg 派生（chain 行不重复派生，长度断言）', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base, tmp } = ctx;
+    const root = path.join(tmp, 'root-dedup');
+    fs.mkdirSync(root, { recursive: true });
+    // 手工 TUI journal：msg 行在场（user/assistant）+ chain 行（task/reply）——msg 优先，chain 派生跳过
+    const { id: jid } = makeJournal(root, [
+      { t: 'user', text: '旧任务' },
+      { t: 'chain', steps: [
+        { step: 1, action: 'task', observation: '旧任务' },
+        { step: 2, action: 'reply', observation: '链内答复（不应派生）' },
+      ] },
+      { t: 'msg', item: { role: 'user', text: '旧任务', ts: 1, seq: 1 } },
+      { t: 'msg', item: { role: 'assistant', text: '旧答复', ts: 2, seq: 2 } },
+    ]);
+    const sid = await ctx.newSession(root);
+    const att = await fetch(`${base}/session/${sid}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
+    assert.equal(att.status, 200);
+    const snap = (await (await fetch(`${base}/session/${sid}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
+    assert.equal(snap.messages.length, 2, 'msg 行在场 → 播种恰 msg 派生条数（chain 派生零追加）');
+    const mds = snap.messages.map((m) => m.md);
+    assert.ok(mds.includes('> 旧任务') && mds.includes('旧答复'), 'msg 派生条在场');
+    assert.ok(!mds.includes('链内答复（不应派生）'), 'chain reply 不重复派生');
+  });
+});
+
+test('⑦ POST /session/:id/delete：idle 删 → 200 + 注册表移出 + active 清 + 再访 404 + journal 文件保留；running 409；未知 :id 404', { timeout: 30_000 }, async () => {
+  await withDaemon(new HangingAdapter(), async (ctx) => {
+    const { base, tmp, daemon } = ctx;
+    const root = path.join(tmp, 'root-del');
+    fs.mkdirSync(root, { recursive: true });
+
+    // 未知 :id → 404
+    const unknown = await fetch(`${base}/session/s999/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(unknown.status, 404, '未知 :id → 404');
+
+    // idle 会话删除（该会话为 active → 删后清 undefined）
+    const s1 = await ctx.newSession(root);
+    assert.equal(daemon.activeId(), s1, '新建即激活');
+    const d1 = await fetch(`${base}/session/${s1}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(d1.status, 200);
+    assert.deepEqual(await d1.json(), { ok: true });
+    assert.equal(daemon.get(s1), undefined, '注册表已移出');
+    assert.equal(daemon.activeId(), undefined, 'active 指向被删会话 → 清 undefined');
+    const gone = await fetch(`${base}/session/${s1}/snapshot`, { headers: AUTH });
+    assert.equal(gone.status, 404, '删后 :id 访问 404');
+
+    // running 会话删除 → 409；收 run 后删 → 200 且 journal 文件保留
+    const s2 = await ctx.newSession(root);
+    assert.equal(daemon.activeId(), s2);
+    const r = await fetch(`${base}/session/${s2}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '长任务' }) });
+    assert.equal(r.status, 202);
+    await waitFor(() => daemon.get(s2)!.status() === 'running', 3000);
+    const busy = await fetch(`${base}/session/${s2}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(busy.status, 409, '运行中删除 → 409');
+    // 收 run：interrupt → idle（出生 journal 已随首条 chain append 建档）
+    const it = await fetch(`${base}/session/${s2}/interrupt`, { method: 'POST', headers: AUTH });
+    assert.equal(it.status, 200);
+    await waitFor(() => daemon.get(s2)!.status() === 'idle', 5000);
+    const jid = daemon.get(s2)!.attachedJournalId;
+    assert.ok(jid, '出生 journal 已建档（可断言文件保留）');
+    const jfile = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+    const d2 = await fetch(`${base}/session/${s2}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(d2.status, 200);
+    assert.equal(daemon.get(s2), undefined, 's2 移出注册表');
+    assert.equal(daemon.activeId(), undefined, 'active 同步清');
+    assert.ok(fs.existsSync(jfile), 'journal 文件保留（磁盘档案非 daemon 生命周期资产）');
+    const list = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(root)}`, { headers: AUTH })).json()) as SessionMeta[];
+    assert.ok(list.some((m) => m.id === jid), '保留的 journal 仍可被 /sessions 列出（后续 attach 重开可消费）');
+  });
 });

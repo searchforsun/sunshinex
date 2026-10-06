@@ -9,6 +9,7 @@ import type { Delegation } from '../delegation/projection';
 import { boardEventFrom } from '../tui/session';
 import type { ChatItem } from '../tui/session';
 import type { SessionJournal } from '../tui/session-journal';
+import type { HistoryStep } from '../types';
 import { TranscriptCollector } from './transcript';
 import type { TranscriptEntry } from './transcript';
 
@@ -77,6 +78,51 @@ export function journalMessagesToEntries(items: ChatItem[]): TranscriptEntry[] {
   return items.map((it) => ({ seq: 0, ts: it.ts, kind: kindOf(it), md: mdOf(it) }));
 }
 
+/** 链行 → daemon 转录条目映射（T2 attach 播种的 msg 缺席兜底，Ruling 5）：daemon 会话 journal 只落
+ *  chain 行（msg 面是事件转录，非 TUI ChatItem）——重开时转录从链派生，映射：task（指令行，与
+ *  Reactor StepRecord 同形）→ user `> <observation>` 引用块；reply → assistant 终答；tool-call +
+ *  tool-result 按步序 FIFO 配对为单条 tool `● 调用行\n⎿ 结果首行`（孤儿 call 悬 `⎿ …`、孤儿 result 悬
+ *  `● …`，与 collector.toolMd 缺面占位同形）；note/notice（含 deficit/node 观察行）→ notice；
+ *  phase/role/memory/skill 过程注记跳过。ts 链行无时刻面（HistoryStep 无 ts 字段）置 0——入列时
+ *  seed() 续收集器自身计数，两序列不同源 */
+export function chainStepsToEntries(steps: HistoryStep[]): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
+  /** 未配对 tool-call 条的下标 FIFO（链按步序追加——result 恒配最老未配对 call，与 collector 口径同构） */
+  const pendingCalls: number[] = [];
+  for (const s of steps) {
+    if (s.action === 'task') {
+      entries.push({ seq: 0, ts: 0, kind: 'user', md: `> ${s.observation}` });
+      continue;
+    }
+    if (s.action === 'reply') {
+      entries.push({ seq: 0, ts: 0, kind: 'assistant', md: s.observation });
+      continue;
+    }
+    if (s.action === 'tool-call') {
+      const i = entries.push({ seq: 0, ts: 0, kind: 'tool', md: `● ${s.observation}\n⎿ …` }) - 1;
+      pendingCalls.push(i);
+      continue;
+    }
+    if (s.action === 'tool-result') {
+      const line = s.observation.split('\n')[0] ?? '';
+      const first = line.length > 0 ? line : '…';
+      const i = pendingCalls.shift();
+      if (i !== undefined) {
+        const hit = entries[i]!;
+        const verb = hit.md.split('\n')[0] ?? '● …';
+        hit.md = `${verb}\n⎿ ${first}`;
+        continue;
+      }
+      entries.push({ seq: 0, ts: 0, kind: 'tool', md: `● …\n⎿ ${first}` });
+      continue;
+    }
+    if (s.action === 'phase' || s.action === 'role' || s.action === 'memory' || s.action === 'skill') continue;
+    // note/notice/deficit/node 与无 action 的裸观察行 → notice（信息行保留呈现）
+    entries.push({ seq: 0, ts: 0, kind: 'notice', md: s.observation });
+  }
+  return entries;
+}
+
 /** 事件环形缓冲容量（重连补发窗口）：满即丢最老——daemon 长跑不无界涨内存 */
 const EVENT_BUFFER_CAP = 512;
 
@@ -120,8 +166,9 @@ export class SessionRuntime {
   private delegations: Delegation[] = [];
   /** 粗粒度转录（spec G2 Ruling 1）：pump 同源喂入，snapshot 的 messages 字段（reset 换新实例清空） */
   private transcriptImpl = new TranscriptCollector();
-  /** attach 挂载的会话日志（T2）：在场即链行续落（context.onContextChange 订阅）与 teardown seal；
-   *  缺省无日志——daemon 侧新会话不建档（resume 转录由事件转录面承担，msg 行非 TUI ChatItem） */
+  /** attach/出生挂载的会话日志（T2）：在场即链行续落（context.onContextChange 订阅）与 teardown seal；
+   *  daemon 侧新会话出生即挂（惰性建档——首 run 首条 append 才落盘，空会话零文件）；resume 转录由
+   *  事件转录面承担，msg 行非 TUI ChatItem（daemon 档只落 chain） */
   private journal?: SessionJournal;
 
   constructor(opts: SessionRuntimeOpts) {
@@ -172,11 +219,17 @@ export class SessionRuntime {
     this.hookJournalSink();
   }
 
-  /** journal 落盘订阅单点（单槽）：attach 与 reset 换新运行时后重挂共用 */
+  /** journal 落盘订阅单点（单槽，后注册覆盖——attachJournal 重挂天然幂等不双写）：attach 与 reset 换新
+   *  运行时后重挂共用；T2 出生 journal 惰性建档——首条 append 时 start() 落 header（空会话零文件，
+   *  TUI SessionJournal 惰性先例同构） */
   private hookJournalSink(): void {
     this.runtimeImpl.harness.context.onContextChange((c) => {
-      if (c.kind === 'append') this.journal?.log({ t: 'chain', steps: c.steps });
-      else this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
+      if (c.kind === 'append') {
+        if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start();
+        this.journal?.log({ t: 'chain', steps: c.steps });
+      } else {
+        this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
+      }
     });
   }
 
@@ -217,12 +270,15 @@ export class SessionRuntime {
   }
 
   /** 提交任务（每会话 run 串行，spec §7）：单 run 锁在先（409 拒二次提交），受理后 202 即回——run
-   *  异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败
-   *  倒面），finally 清锁。user 条入转录在锁检查之后——409 拒绝的提交不留痕 */
+   * 异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败
+   * 倒面），finally 清锁。user 条入转录在锁检查之后——409 拒绝的提交不留痕。任务文本经链尾指令行
+   * 进模型上下文（appendInstructionLine——TUI /goal 同构，tui/session.ts 先例：goal 自身只是观测
+   * 标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源） */
   submit(goal: string): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     const abort = new AbortController();
     this.transcriptImpl.submit(goal);
+    this.runtimeImpl.harness.context.appendInstructionLine(goal);
     const p: Promise<void> = this.runtimeImpl
       .runTask(goal, { signal: abort.signal })
       .catch((err) => {
