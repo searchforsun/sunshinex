@@ -166,6 +166,7 @@ gui/
 | **G1 daemon 骨架** | serve 命令/HTTP/WS/token/事件泵/submit·interrupt | 契约测试:ScriptedAdapter 一轮对话事件序经 WS 可订阅 |
 | ~~G1 已交付~~ | 2026-10-06,`c6ba520`/`cf6037a`/`7ad24c3`——GuiDaemon(createRuntime 同单点/单 run 锁/teardown 含 abort 在跑 run)+ WS 事件泵({kind:'event'} 帧+512 环形缓冲+连接即补发+Bearer 升级鉴权+ping 保活)+ serve 命令 + 契约收口(全链两轮/404 hint)。全量 1682 例 0 败。裁定:HangingAdapter 挂起测试形态(session.interrupt 同款);413 超限;补发与 101 握手同 TCP 段(客户端收集器构造即挂) | 验收已过 |
 | **G2 gui 骨架** | workspace/vite/连接层/投影复用/snapshot | 无头断言:snapshot 渲染出静态转录与板 |
+| ~~G2 已交付~~ | 2026-10-06,`8036689`/`7836a56`/`c65f02e`+`6a5f65c`/`1549608`——daemon snapshot 套件(影子投影同源纯件+TranscriptCollector 粗粒度转录)+WS subprotocol 鉴权(浏览器路径,ws@8 首协议回显)+serve-token JSON/--port 收紧+gui 包(Vite/React/vitest,连接层,投影源码直 import,App 纯渲染)+无头 e2e(真 daemon 全链渲染断言)。全量 1688 例 0 败。裁定:转录源=事件累积器非 journal(daemon 无 SessionController,journal 面 daemon 化随 G3 --continue 再议);退订器断 socket(G3 重连防泄漏);gui pretest 耦合主仓 build;守卫锚点修复(gui/node_modules 行冗余移除,dist-gui 入 SCAN_SKIP_DIRS) | 验收已过 |
 | **G3 对话页** | 聊天 reducer/流式/提交/中断/steering/状态栏 | 冒烟:提交→流式渲染→done 收段;断线重连恢复 |
 | **G4 审批问询** | 挂起表/WS 帧/卡片/回执 | 契约:manual 模式审批闭环经 HTTP 回执 |
 | **G5 看板(P3)** | 板投影页/DAG/teammate 侧栏/gate 审批 | 编排 spec P3 验收逐条;gate 审批改板状态 |
