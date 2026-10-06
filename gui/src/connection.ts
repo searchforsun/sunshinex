@@ -66,6 +66,8 @@ export interface Connection {
   snapshot(): Promise<SnapshotResponse & { lastSeq: number }>;
   close(): void;
   state(): ConnectionState;
+  /** 测试钩子（e2e 断链注入专用）：当前底层 socket（无连接 undefined）——产品面勿消费 */
+  debug: { socket(): WebSocket | undefined };
 }
 
 /** 退避帽（1×2^n 上限） */
@@ -240,5 +242,6 @@ export function createConnection(opts: ConnectionOpts): Connection {
     state(): ConnectionState {
       return status;
     },
+    debug: { socket: (): WebSocket | undefined => ws ?? undefined },
   };
 }
