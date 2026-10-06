@@ -90,6 +90,10 @@ export function createConnection(opts: { baseUrl: string; token: string }): Conn
         sockets.delete(ws);
         ws.onopen = null;
         ws.onmessage = null;
+        // 退订即断本条 socket：只摘 handler 不 close 会留孤儿连接——G3 重连/重订阅逐条累积，daemon
+        // 广播面与浏览器侧双双泄漏。onclose 重入无害：teardown 幂等（delete/置 null），已断 socket 再
+        // close() 亦为 no-op
+        ws.close();
       };
       ws.onclose = teardown;
       ws.onerror = teardown;
