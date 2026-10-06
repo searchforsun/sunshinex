@@ -26,7 +26,7 @@
 ### 1.2 非目标(v1 明确出范围)
 
 - 桌面壳(Tauri/Electron)、系统托盘、全局快捷键、三平台安装包——**壳批次后置独立立项**(ROADMAP 随壳交付);
-- 多会话并行/多窗口切换 UI(v1 一 daemon 一会话;`/sessions` 列表与 attach 留 v1.x);
+- 多窗口同屏并行渲染多会话(v1 一次激活一个;daemon 侧多会话并发运行、创建/切换/恢复在 v1 内——2026-10-06 会话中心修正);
 - 板写操作经 GUI(create_task 等工具调用面板)——v1 看板只读 + gate 审批;
 - 管理面(记忆/技能/插件管理)、双端实时同步配置;
 - 远程暴露(仅回环 + token)。
@@ -35,8 +35,11 @@
 
 | 术语 | 定义 |
 |---|---|
-| **daemon** | `sunshinex serve` 进程:装配 Harness/TuiRuntime + HTTP/WS 端点 + 会话生命周期 |
-| **下行帧** | WS 服务端→浏览器的封装:`{kind:'event', e: SessionEvent}` / `{kind:'approval', req}` / `{kind:'ask', req}` |
+| **daemon** | `sunshinex serve` 进程:**会话管理器**——持有会话注册表,按会话装配 Harness/TuiRuntime,暴露 HTTP/WS 端点(2026-10-06 会话中心修正,原「启动绑定单 root」形态降级为 `--root` 预选) |
+| **工作区(workspace)** | 一个工作目录(root)——数据按 `resolveDataDir(root)` 的 slug 隔离(journal/teams/记忆各归各) |
+| **会话(session)** | 对话单元:`{id, root, runtime, 事件泵/影子投影/转录, journal}`;创建时选目录,attach 时从 journal 恢复;同一工作区可多会话 |
+| **激活会话(active)** | UI 当前查看的会话;后台会话可继续运行(teammate/任务板本就工作区级存活) |
+| **下行帧** | WS 服务端→浏览器的封装:`{kind:'event', sessionId, e: SessionEvent}` / `{kind:'approval', sessionId, req}` / `{kind:'ask', sessionId, req}`(会话中心修正:帧挂会话维) |
 | **投影** | 浏览器侧从 SessionEvent 流派生状态的纯函数层(复用 taskboard/delegation 既有 reducer + 新 chat reducer) |
 | **快照** | `GET /snapshot` 的启动补发:journal 重建的归档转录 + 当前板/委派投影 + 会话元信息 |
 | **回执挂起表** | daemon 内 approval/ask 的 Promise 登记(id → resolve),HTTP 回执驱动 |
@@ -45,18 +48,20 @@
 
 ```
 浏览器(gui/ 子包:React 18 + Vite)              sunshinex 主仓
-┌──────────────────────────┐                  ┌───────────────────────────────┐
-│ 连接层(WS/HTTP/token)     │  WS 单向下行事件   │ sunshinex serve(daemon)        │
-│ 投影层(纯函数 reducer)     │◄────────────────│  ├ createRuntime(同 TUI 单点)  │
-│   ├ chat reducer(新)      │                  │  ├ 事件泵:onEvent→广播+环形缓冲 │
-│   ├ applyBoardEvent(复用) │  HTTP 控制面      │  ├ 回执挂起表(approval/ask)    │
-│   └ applyDelegation(复用) │◄───────────────►│  ├ snapshot 组装(journal+现场) │
-│ 页面层(四页)              │  静态资源 GET     │  └ 静态服务 dist-gui            │
-└──────────────────────────┘                  └───────────────────────────────┘
+┌──────────────────────────┐                  ┌────────────────────────────────────┐
+│ 首页(工作区/会话列表+新建) │  WS 单向下行事件   │ sunshinex serve(daemon=会话管理器)  │
+│ 连接层(WS/HTTP/token)     │◄────────────────│  ├ sessions: Map<id, SessionRuntime>│
+│ 投影层(纯函数 reducer)     │                  │  │   ├ createRuntime(按会话 root) │
+│   ├ chat reducer(新)      │  HTTP 控制面      │  │   ├ 事件泵(环形缓冲,帧挂 sessionId)│
+│   ├ applyBoardEvent(复用) │◄───────────────►│  │   └ 影子投影/转录/journal       │
+│   └ applyDelegation(复用) │  静态资源 GET     │  ├ 工作区注册表(扫 projectsRoot)   │
+│ 页面层(首页+四页)          │                  │  └ 静态服务 dist-gui                │
+└──────────────────────────┘                  └────────────────────────────────────┘
 ```
 
-- **daemon 零 harness 内部改动**:全部经 `TuiRuntimeOpts` 既有接缝(onEvent/onAskUser/onApproval/onTodos)与 `harness` 公开面(steering/tasks/taskboard/security)。
-- **事件泵**:onEvent 回调 → 广播至全部 WS 连接 + 写入有界环形缓冲(重连补发窗口,缺省 512 条;更早历史走 snapshot)。
+- **daemon 零 harness 内部改动**:全部经 `TuiRuntimeOpts` 既有接缝(onEvent/onAskUser/onApproval/onTodos)与 `harness` 公开面(steering/tasks/taskboard/security);每个 SessionRuntime 一个 Harness(按会话 root 经 buildHarness 装配)。
+- **事件泵(每会话一个)**:onEvent 回调 → 广播(帧挂 sessionId)至全部 WS 连接 + 写入该会话有界环形缓冲(重连补发窗口,缺省 512 条;更早历史走 snapshot)。
+- **`--root` CLI 参数降级为「启动即预选工作区」**(无头/开发场景保旧形态;缺省无预选,GUI 从首页新建)。
 
 ## 4. 协议层
 
@@ -64,22 +69,28 @@
 
 | 端点 | 语义 |
 |---|---|
-| `POST /submit` `{goal}` | 提交任务(经 runtime.runTask 主链入口) |
-| `POST /steer` `{text}` | 运行中穿插(→ harness.steering) |
-| `POST /interrupt` | 中止当前 run(AbortController) |
+| `GET /workspaces` | 工作区清单(扫 projectsRoot 的 slug 目录,带 mtime 排序)——首页左栏 |
+| `GET /sessions?root=` | 该工作区的 journal 会话清单(id/mtime/首行摘要)——首页右栏 |
+| `GET /dirpicker?path=` | 服务端目录浏览(列子目录;起始家目录)——新建会话的目录选择器(浏览器无绝对路径选取 API) |
+| `POST /session/new` `{root}` | **创建会话**(按 root 装配 SessionRuntime;返回 sessionId) |
+| `POST /session/:id/attach` `{journalId}` | 恢复历史会话(journal 链回放重建 ContextManager) |
+| `POST /session/:id/submit` `{goal}` | 提交任务(经该会话 runtime.runTask) |
+| `POST /session/:id/steer` `{text}` | 运行中穿插(→ 该会话 harness.steering) |
+| `POST /session/:id/interrupt` | 中止该会话当前 run |
+| `POST /session/:id/reset` | 软重置(等价 /new,原 /session/new 语义) |
+| `GET /session/:id/snapshot` | 启动补发(见 §5.3) |
 | `POST /ask/:id/reply` `{answer: AskUserAnswer}` | 问询回执(驱动挂起表) |
 | `POST /approval/:id` `{decision: ApprovalDecision}` | 审批回执 |
-| `POST /board/review` `{taskId, approved}` | gate 审批(→ taskboard.review;编排 §10.3 同语义) |
-| `POST /session/new` | 软重置(等价 /new) |
-| `GET /snapshot` | 启动补发(见 §5.3) |
-| `GET /sessions` | journal 会话列表(恢复入口,v1 仅启动参数消费) |
+| `POST /board/review` `{taskId, approved}` | gate 审批(→ 激活会话工作区的 taskboard.review;编排 §10.3 同语义) |
 | `GET /file?path=` | 只读文件预览(经 safety 路径判界,拒绝越界) |
 | `GET /*` | dist-gui 静态资源 |
 
+(裁定:回执类 ask/approval 保持无会话前缀——挂起表 id 全局唯一;board/review 挂激活会话的工作区板,团队目录工作区级语义。)
+
 ### 4.2 WS `/events`(单向下行)
 
-- 帧三型:`{kind:'event', e}`(SessionEvent 原样)、`{kind:'approval', req: ApprovalRequest}`、`{kind:'ask', req: AskUserRequest}`。
-- 连接建立即从环形缓冲尾补发(≤512 条),此前历史经 snapshot;心跳 30s(ping/pong)。
+- 帧三型(均挂 `sessionId`):`{kind:'event', sessionId, e: SessionEvent}`(SessionEvent 原样)、`{kind:'approval', sessionId, req: ApprovalRequest}`、`{kind:'ask', sessionId, req: AskUserRequest}`。
+- 连接建立即补发**全部活会话**的环形缓冲尾段(≤512 条/会话,帧按 sessionId 区分),更早历史经各会话 snapshot;心跳 30s(ping/pong)。
 - **裁定**:问询/审批经 WS 封装帧而非新造 SessionEventType——TUI 控制态(问询卡)不塞公共事件面;`approval-request` 词汇保留给未来事件化路径。
 
 ### 4.3 鉴权
@@ -125,11 +136,14 @@ gui/
 3. **任务看板**:板投影(applyBoardEvent 直跑)→ 列表视图(状态/依赖/gated ⚠)与 **DAG 视图**(dependsOn 自动推导,SVG 最小实现)双切换;teammate 侧栏(alive 名单 + busy 态);gated 任务行内审批卡(POST /board/review)。**编排 spec P3 的验收现场**。
 4. **代码预览 + diff**:GET /file 只读预览(语法高亮复用主仓既有 highlight.js 依赖的浏览器版);diff = write 工具观察行的 old/new string 并排(行级 diff,零额外算法依赖)。
 
-## 7. daemon 会话管理
+## 7. daemon 会话管理(会话中心模型,2026-10-06 修正)
 
-- 单会话生命周期:`serve [--continue | --resume <id>]` → journal attach(复用 SessionJournal 载入语义)→ 链重建(ContextManager 由 buildHarness 构造后,journal 的 chain 行回放经 `context.appendChain` 逐条注入)→ idle 待提交。
-- run 串行(与 TUI 同:一次一 run,interrupt 可中止);运行态事件全量进泵。
-- 收尾:SIGINT → stopAllTasks + mcpClose + journal seal(与 teardownCliRun 同序)。
+- **会话注册表**:`sessions: Map<sessionId, SessionRuntime>`;SessionRuntime = `{ id, root, runtime(createRuntime 按该 root), pump 态(缓冲/连接广播), 影子投影/转录, current run 票据 }`。sessionId 方言 `s<n>` 进程内单调。
+- **创建**:`POST /session/new {root}` → root 存在性/目录校验 → 装配;**同 root 多会话允许**(各自独立主链;teams 目录与 serve-token 工作区级共享——任务板跨会话可见是特性)。
+- **恢复**:`attach {journalId}` → 该 root 的 dataDir 下打开 SessionJournal → chain 行回放经 `context.appendChain` 重建 → 影子投影/转录从 journal msg 行播种(归档态)→ idle。
+- **run 串行(每会话)**:一次一 run,interrupt 可中止;运行态事件全量进该会话泵。多会话可各自在跑(N 个 Harness 并发,内存有界——v1 不做空闲回收,记 v1.x)。
+- **收尾**:SIGINT → 全会话 teardown(abort 在跑 run 有界等待 → stopAll → drain → mcpClose → journal seal),序同单会话既有。
+- **安全面裁定**:目录选择 = token 持有者可开任意本地目录;回环+token 威胁模型下接受(CLI 本就按目录全权),dirpicker 不列隐藏目录内容之外的信息面。
 
 ## 8. 仓库与构建
 
@@ -167,7 +181,9 @@ gui/
 | ~~G1 已交付~~ | 2026-10-06,`c6ba520`/`cf6037a`/`7ad24c3`——GuiDaemon(createRuntime 同单点/单 run 锁/teardown 含 abort 在跑 run)+ WS 事件泵({kind:'event'} 帧+512 环形缓冲+连接即补发+Bearer 升级鉴权+ping 保活)+ serve 命令 + 契约收口(全链两轮/404 hint)。全量 1682 例 0 败。裁定:HangingAdapter 挂起测试形态(session.interrupt 同款);413 超限;补发与 101 握手同 TCP 段(客户端收集器构造即挂) | 验收已过 |
 | **G2 gui 骨架** | workspace/vite/连接层/投影复用/snapshot | 无头断言:snapshot 渲染出静态转录与板 |
 | ~~G2 已交付~~ | 2026-10-06,`8036689`/`7836a56`/`c65f02e`+`6a5f65c`/`1549608`——daemon snapshot 套件(影子投影同源纯件+TranscriptCollector 粗粒度转录)+WS subprotocol 鉴权(浏览器路径,ws@8 首协议回显)+serve-token JSON/--port 收紧+gui 包(Vite/React/vitest,连接层,投影源码直 import,App 纯渲染)+无头 e2e(真 daemon 全链渲染断言)。全量 1688 例 0 败。裁定:转录源=事件累积器非 journal(daemon 无 SessionController,journal 面 daemon 化随 G3 --continue 再议);退订器断 socket(G3 重连防泄漏);gui pretest 耦合主仓 build;守卫锚点修复(gui/node_modules 行冗余移除,dist-gui 入 SCAN_SKIP_DIRS) | 验收已过 |
-| **G3 对话页** | 聊天 reducer/流式/提交/中断/steering/状态栏 | 冒烟:提交→流式渲染→done 收段;断线重连恢复 |
+| **G3 对话页+会话中心** | 会话管理器(注册表/创建选目录/attach 恢复/多 Harness)/首页(工作区·会话列表·目录选择器)/对话页(流式/提交/中断/steering/状态栏/激活切换) | 冒烟:新建会话选目录→提交→流式渲染→done 收段;切换会话各自独立;恢复历史会话转录在场;断线重连恢复 |
+
+> **修正记录(2026-10-06,用户裁定)**:GUI 采用会话中心模型(对标 Codex)——应用为入口、会话为中心、工作目录是会话属性;推翻 G-D8「v1 单会话」裁定,`--root` 降级为预选。G3 范围相应扩为「会话管理器 + 首页 + 对话页」。
 | **G4 审批问询** | 挂起表/WS 帧/卡片/回执 | 契约:manual 模式审批闭环经 HTTP 回执 |
 | **G5 看板(P3)** | 板投影页/DAG/teammate 侧栏/gate 审批 | 编排 spec P3 验收逐条;gate 审批改板状态 |
 | **G6 预览+diff** | /file 端点/预览页/write diff 并排 | 越界拒;write 观察行 diff 渲染 |
@@ -195,6 +211,6 @@ gui/
 | G-D5 | WS 单向下行 + HTTP 全控制 | WS 双向 | 控制面可缓存/可测;事件面保持纯流 |
 | G-D6 | 问询/审批走 WS 封装帧,不造新 SessionEventType | 扩公共事件面 | TUI 控制态不塞事件面;词汇留未来事件化 |
 | G-D7 | 主仓仅增 `ws` 依赖 | 自实现 WS / 引大框架 | ws 零传递依赖;协议复杂度不值自实现 |
-| G-D8 | v1 单会话;多会话/切换 v1.x | v1 即多会话 | YAGNI;daemon 生命周期最简 |
+| G-D8 | v1 单会话;多会话/切换 v1.x | v1 即多会话 | YAGNI;daemon 生命周期最简——**已被 2026-10-06 会话中心修正推翻(用户裁定,对标 Codex),见 §12 修正记录** |
 | G-D9 | diff = write 观察行并排,预览 = /file 只读 | 全量 git diff/编辑器集成 | 零新算法依赖;write-snapshot 底座既有 |
 | G-D10 | **GUI 交互/美学参照 Codex 工作站,底座不变**(TUI/GUI = 同一事件流两投影,三面同源);**迁移语义 = 跨时间自由切换**(同工作区交替使用,板/teams/journal 数据同源),非同时双开 | GUI 旁路专有层;与 TUI 交互手感像素级对等;双进程并发同开 | 渲染层是事件流派生物,换皮零协议影响(G-D2/G-D4/§10.4 兑现);GUI 增补先回事件面纪律(§11)保美学自由不腐蚀成旁路;跨进程排他为 G1 终审遗留待决项,双开需求出现时再议 |
