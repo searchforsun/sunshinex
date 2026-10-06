@@ -3,19 +3,22 @@ import type { TaskBoardState } from '../../src/taskboard/model';
 import type { Delegation } from '../../src/delegation/projection';
 
 /**
- * G3 gui 连接层：daemon 控制面的浏览器侧单点，单连接生命周期状态机
- * （connecting → open ⇄ reconnecting → closed）。核心裁定：
- * - seq 单调过滤：帧 seq ≤ 内部 lastSeq 一律丢弃（> 才更新并投）——重连补发帧
- *   双应用（转录/板重复追加）经此根除；lastSeq 唯一写点 = 每次连接的 snapshot 基线。
- * - open 先 snapshot 再收帧：WS open 后补发帧可能与 snapshot HTTP 竞速——在 snapshot
- *   完成前全部缓冲，基线落定（onResync 回调 + open 态）后统一过滤投递（防漏防重）。
- * - 重连 = 基线重置：退避后新连接 open 重新走「snapshot → onResync → open」，lastSeq
- *   以新快照为准（不与旧值取 max——快照是权威全量态）。
- * - 退避重连：非显式 close 的掉线（onclose/onerror）→ reconnecting → base×2^n 帽 30s
- *   重连，连续失败递增、成功建立（snapshot 落定）清零。
- * G2 的 subscribe 多连接语义退场：事件经 opts.onEvent 回调消费（App 装配属 T4）。
- * 类型形态对齐主仓 T1（src/serve/daemon.ts snapshot() 与 frameEvent）——gui 侧独立声明
- * （浏览器 bundle 不引主仓运行时代码，投影纯件经 projection.ts 另轨 re-export）。
+ * G3.5 gui 连接层（会话维）：daemon 控制面的浏览器侧单点，单连接生命周期状态机
+ * （connecting → open ⇄ reconnecting → closed）。骨架平移自 G3 单点版（四态/指数退避/
+ * generation guard/seq 过滤），会话维三处改判：
+ * - 帧按 sessionId 分发：单 WS 收全会话帧（daemon 无订阅概念，连接建立即补发全部会话缓冲），
+ *   连接层不滤会话全交上层 onEvent(sessionId, e, seq)——投影挂哪个会话由上层裁。
+ * - seq 过滤改每会话基线：daemon seq 泵全局单调（跨会话不重号），但多会话补发流按会话序
+ *   s1..sN 交错到达——全局单 lastSeq 会误丢他会话帧，故 Map<sessionId, lastSeq> 各归各。
+ *   基线写点：①每次连接建立清零（重连=全量重放裁定，见下）；②sessionSnapshot(id) 应答
+ *   以 lastSeq 抬高（防快照在途帧双应用——种子替换投影后，≤ 快照切割序的迟到帧照投即重）。
+ * - 重连 = onReset + 全量重放：连接建立（首连与重连同路径）不再自动拉快照——多会话下由
+ *   上层逐会话重拉（sessionSnapshot 供上层），连接层只回调 onReset()（上层清投影）后放行
+ *   全部补发帧（基线清零 → 补发帧各会话依序全过）。旧 onResync(snapshot) 载荷路径退役。
+ * 退避重连/显式 close/generation guard 语义平移：非显式 close 掉线 → reconnecting →
+ * base×2^n 帽 30s 重连，成功建立（open 落定）清零；旧 socket 迟到回调凭代次失效。
+ * 旧名退役（G3.5 裁定）：裸端点 submit/steer/interrupt/snapshot 删除——会话维 :id 形态
+ * 唯一（daemon 侧裸端点仍是激活别名，gui 面不再消费）。
  */
 
 /** 粗粒度转录条目（对齐主仓 src/serve/transcript.ts TranscriptEntry） */
@@ -26,7 +29,7 @@ export interface SnapshotMessage {
   md: string;
 }
 
-/** GET /snapshot 载荷形态（T1 单点，gui 侧契约声明；lastSeq 见 Connection.snapshot 交集） */
+/** GET /session/:id/snapshot 载荷形态（T1 会话维，gui 侧契约声明）；lastSeq 见 Connection.sessionSnapshot 交集 */
 export interface SnapshotResponse {
   messages: SnapshotMessage[];
   board: TaskBoardState;
@@ -34,12 +37,39 @@ export interface SnapshotResponse {
   status: 'idle' | 'running';
 }
 
-/** 连接状态机：启动 connecting；首连 open；掉线 reconnecting；显式 close 恒 closed */
+/** GET /workspaces 行（T2 工作区注册表，对齐主仓 daemon.ts WorkspaceRow）：root 经 workspace.json
+ *  反解——历史工作区（TUI 时代档）无此档 → root undefined（不可 attach，仅统计展示） */
+export interface WorkspaceRow {
+  root?: string;
+  slug: string;
+  mtime: number;
+  sessionCount: number;
+}
+
+/** GET /sessions?root= 行（T2，对齐主仓 session-journal.ts SessionMeta 实际返回）：id=journal id */
+export interface SessionRow {
+  id: string;
+  file: string;
+  updatedAt: number;
+  firstUser?: string;
+  forkedFrom?: { sourceSessionId: string; upToLine: number; kind: 'rewind' | 'fork' };
+}
+
+/** GET /dirpicker?path= 载荷（T2 服务端目录选择）：path=绝对路径，parent=上级（盘根=自身），dirs=子目录名 */
+export interface DirPickerResp {
+  path: string;
+  parent: string;
+  dirs: string[];
+}
+
+/** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
-/** WS 下行帧：`{kind:'event', seq, e}`（T1 单点）；其余 kind（hello 等）/无 seq 帧不入单调序列，忽略 */
+/** WS 下行帧：`{kind:'event', sessionId, seq, e}`（T1 会话维）；其余 kind（hello 等）/无 seq/
+ *  无 sessionId 帧不入单调序列，忽略 */
 interface WsFrame {
   kind: string;
+  sessionId?: string;
   seq?: number;
   e?: SessionEvent;
 }
@@ -47,10 +77,11 @@ interface WsFrame {
 export interface ConnectionOpts {
   baseUrl: string;
   token: string;
-  /** 就绪帧投递（已过 seq 过滤；seq 为帧自带序号） */
-  onEvent: (e: SessionEvent, seq: number) => void;
-  /** 每次（首连与重连）snapshot 落定时回调——页面以该快照重置全量态（基线） */
-  onResync: (snapshot: SnapshotResponse) => void;
+  /** 就绪帧投递（已过每会话 seq 过滤，按帧 sessionId 分发——连接层不滤会话，全给上层） */
+  onEvent: (sessionId: string, e: SessionEvent, seq: number) => void;
+  /** 每次连接建立（首连与重连同路径）回调：上层清各会话投影 + 逐会话重拉 snapshot
+   *  （重连=重置投影+全量重放裁定——连接层不再自动拉快照，sessionSnapshot 供上层重建基线） */
+  onReset: () => void;
   /** 状态机迁移回调（含初始 connecting） */
   onStateChange?: (s: ConnectionState) => void;
   /** 退避基数 ms（缺省 1000；delay = base×2^连续失败数，帽 30s）——测试注入 1 */
@@ -58,12 +89,25 @@ export interface ConnectionOpts {
 }
 
 export interface Connection {
-  submit(goal: string): Promise<void>;
-  /** POST /steer {text}：运行中插话（排队语义）；HTTP 失败抛错（消息含 status） */
-  steer(text: string): Promise<void>;
-  interrupt(): Promise<void>;
-  /** GET /snapshot（ad-hoc 静态读，独立于重连基线流程）；lastSeq 同源 seq 泵 */
-  snapshot(): Promise<SnapshotResponse & { lastSeq: number }>;
+  /** GET /workspaces：工作区注册表扫描（T2） */
+  workspaces(): Promise<WorkspaceRow[]>;
+  /** GET /sessions?root=：工作区会话（journal）列表（T2） */
+  sessionsOf(root: string): Promise<SessionRow[]>;
+  /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
+  dirpicker(path?: string): Promise<DirPickerResp>;
+  /** POST /session/new {root}：按 root 装配新会话（并置激活）→ {sessionId} */
+  newSession(root: string): Promise<{ sessionId: string }>;
+  /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
+  attach(sessionId: string, journalId: string): Promise<void>;
+  /** POST /session/:id/submit {goal}：会话提交（202 受理；409 拒二次提交） */
+  sessionSubmit(id: string, goal: string): Promise<void>;
+  /** POST /session/:id/steer {text}：运行中插话（排队语义）；HTTP 失败抛错（消息含 status） */
+  sessionSteer(id: string, text: string): Promise<void>;
+  /** POST /session/:id/interrupt：中止在跑 run（无在跑 409） */
+  sessionInterrupt(id: string): Promise<void>;
+  /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
+   *  过滤基线（种子替换投影后的迟到补发帧双应用防线） */
+  sessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }>;
   close(): void;
   state(): ConnectionState;
   /** 测试钩子（e2e 断链注入专用）：当前底层 socket（无连接 undefined）——产品面勿消费 */
@@ -84,7 +128,7 @@ function wsUrl(baseUrl: string): string {
 }
 
 export function createConnection(opts: ConnectionOpts): Connection {
-  const { baseUrl, token, onEvent, onResync } = opts;
+  const { baseUrl, token, onEvent, onReset } = opts;
   const onStateChange = opts.onStateChange;
   const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
   const base = baseUrl.replace(/\/+$/, '');
@@ -94,8 +138,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   /** 连续失败计数（成功建立清零）→ 退避指数 n；首个延迟恒 = base×2^0 */
   let failures = 0;
-  /** seq 基线：-1 = 尚未 snapshot（任何帧不投，只缓冲）；此后唯一写点 = 各连接 snapshot.lastSeq */
-  let lastSeq = -1;
+  /** 每会话 seq 基线：连接建立清零（重连=全量重放），sessionSnapshot 应答抬高（防双应用）；
+   *  过滤单点 deliver 只读此表 */
+  const lastSeqBySession = new Map<string, number>();
   /** 连接代次：旧 socket 迟到回调（close 后回放的 onclose、慢到的 snapshot 应答）凭此失效 */
   let generation = 0;
 
@@ -104,17 +149,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
     onStateChange?.(next);
   }
 
-  async function fetchSnapshot(): Promise<SnapshotResponse & { lastSeq: number }> {
-    const res = await fetch(`${base}/snapshot`, { headers: { authorization: `Bearer ${token}` } });
-    if (!res.ok) throw new Error(`/snapshot -> ${res.status}`);
-    return (await res.json()) as SnapshotResponse & { lastSeq: number };
-  }
-
-  /** seq 过滤单点：≤ 基线丢（补发/乱序旧帧），> 更新基线并投 */
-  function deliver(seq: number, e: SessionEvent): void {
-    if (seq <= lastSeq) return;
-    lastSeq = seq;
-    onEvent(e, seq);
+  /** seq 过滤单点（每会话独立）：≤ 基线丢（补发/乱序旧帧），> 更新基线并按 sessionId 投上层 */
+  function deliver(sessionId: string, seq: number, e: SessionEvent): void {
+    if (seq <= (lastSeqBySession.get(sessionId) ?? 0)) return;
+    lastSeqBySession.set(sessionId, seq);
+    onEvent(sessionId, e, seq);
   }
 
   function detach(sock: WebSocket): void {
@@ -150,33 +189,15 @@ export function createConnection(opts: ConnectionOpts): Connection {
     // subprotocol `bearer.<token>` 鉴权（浏览器 WebSocket 不能自定义请求头，T1 裁定的浏览器路径）
     const sock = new WebSocket(wsUrl(base), [`bearer.${token}`]);
     ws = sock;
-    /** snapshot 完成前的帧缓冲：open 与基线落定之间到达的补发帧先进缓冲，落定后统一过滤投递 */
-    const pending: Array<{ seq: number; e: SessionEvent }> = [];
-    /** 基线落定（snapshot→onResync→open 完成）→ 此后帧直投过滤 */
-    let armed = false;
 
     sock.onopen = () => {
       if (status === 'closed' || gen !== generation) return;
-      fetchSnapshot().then(
-        (resp) => {
-          if (status === 'closed' || gen !== generation) return;
-          lastSeq = resp.lastSeq; // 基线重置：以新快照为准（重连不与旧 lastSeq 取 max）
-          armed = true;
-          failures = 0; // 完全建立（snapshot 落定）才清退避计数
-          onResync(resp); // 页面先拿全量态，再进 open、再收增量帧
-          setState('open');
-          for (const f of pending) deliver(f.seq, f.e); // 缓冲帧统一过滤投递（防漏）
-        },
-        () => {
-          // snapshot 失败视同连接失败：断本条 socket，走退避重连
-          if (status === 'closed' || gen !== generation) return;
-          generation += 1;
-          detach(sock);
-          sock.close();
-          if (ws === sock) ws = null;
-          scheduleRetry();
-        },
-      );
+      // 建立=基线清零+投影重置+全量重放：上层先清各会话投影（onReset），随后到达的补发帧
+      // （daemon 连接即发全部会话缓冲）各会话依序全过，上层重拉 snapshot 重建权威态
+      lastSeqBySession.clear();
+      failures = 0; // 完全建立才清退避计数
+      onReset();
+      setState('open');
     };
     sock.onmessage = (ev: MessageEvent) => {
       if (status === 'closed' || gen !== generation) return;
@@ -187,14 +208,17 @@ export function createConnection(opts: ConnectionOpts): Connection {
         return; // 非 JSON 帧忽略
       }
       if (frame?.kind !== 'event' || typeof frame.seq !== 'number' || !frame.e) return;
-      if (!armed) {
-        pending.push({ seq: frame.seq, e: frame.e });
-        return;
-      }
-      deliver(frame.seq, frame.e);
+      if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
+      deliver(frame.sessionId, frame.seq, frame.e);
     };
     sock.onclose = () => onLost(sock, gen);
     sock.onerror = () => onLost(sock, gen);
+  }
+
+  async function getJson<T>(path: string): Promise<T> {
+    const res = await fetch(`${base}${path}`, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    return (await res.json()) as T;
   }
 
   async function post(path: string, body?: unknown): Promise<void> {
@@ -204,6 +228,16 @@ export function createConnection(opts: ConnectionOpts): Connection {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  }
+
+  /** sessionSnapshot 单点：GET + 代次守卫下的基线抬高（慢到应答不污新连接的全量重放窗） */
+  async function fetchSessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }> {
+    const gen = generation;
+    const resp = await getJson<SnapshotResponse & { lastSeq: number }>(`/session/${encodeURIComponent(id)}/snapshot`);
+    if (gen === generation && resp.lastSeq > (lastSeqBySession.get(id) ?? 0)) {
+      lastSeqBySession.set(id, resp.lastSeq);
+    }
+    return resp;
   }
 
   function close(): void {
@@ -226,17 +260,38 @@ export function createConnection(opts: ConnectionOpts): Connection {
   connect();
 
   return {
-    submit(goal: string): Promise<void> {
-      return post('/submit', { goal });
+    workspaces(): Promise<WorkspaceRow[]> {
+      return getJson<WorkspaceRow[]>('/workspaces');
     },
-    steer(text: string): Promise<void> {
-      return post('/steer', { text });
+    sessionsOf(root: string): Promise<SessionRow[]> {
+      return getJson<SessionRow[]>(`/sessions?root=${encodeURIComponent(root)}`);
     },
-    interrupt(): Promise<void> {
-      return post('/interrupt');
+    dirpicker(path?: string): Promise<DirPickerResp> {
+      return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);
     },
-    snapshot(): Promise<SnapshotResponse & { lastSeq: number }> {
-      return fetchSnapshot();
+    async newSession(root: string): Promise<{ sessionId: string }> {
+      const res = await fetch(`${base}/session/new`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ root }),
+      });
+      if (!res.ok) throw new Error(`/session/new -> ${res.status}`);
+      return (await res.json()) as { sessionId: string };
+    },
+    attach(sessionId: string, journalId: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(sessionId)}/attach`, { journalId });
+    },
+    sessionSubmit(id: string, goal: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/submit`, { goal });
+    },
+    sessionSteer(id: string, text: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/steer`, { text });
+    },
+    sessionInterrupt(id: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/interrupt`);
+    },
+    sessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }> {
+      return fetchSessionSnapshot(id);
     },
     close,
     state(): ConnectionState {
