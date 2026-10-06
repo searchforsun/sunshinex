@@ -6,7 +6,8 @@ import type { SessionEvent } from '../types';
 /** 纯件测试（零 daemon/网络）：TranscriptCollector 条目累积与配对语义。
  *  口径钉板：user=`> <goal>`；assistant=done reply 全文；tool=`● <verb>\n⎿ <result 首行>`
  *  （call 未配对占位 `⎯ …` → 实取 `…`；乱序按 callId 归位；无 callId FIFO 兜底）；
- *  G3 kind 扩：error/notice/delegation 两态与 agent-message → error|notice 两 kind 归档（§5.3 归档面） */
+ *  G3 kind 扩：error/notice/delegation 两态与 agent-message → error|notice 两 kind 归档（§5.3 归档面）；
+ *  T5δ 上限：档面 2000 丢最老（submit/push/seed 全入口同裁，与 eventBuffer 512 同构） */
 
 function ev(type: SessionEvent['type'], text?: string, payload?: Record<string, unknown>): SessionEvent {
   return { type, ts: 4242, ...(text !== undefined ? { text } : {}), ...(payload !== undefined ? { payload } : {}) };
@@ -99,5 +100,45 @@ test('⑥ kind 扩五路：error→error（缺 text 回落 error）；notice→n
     'md 口径：error=text|error；notice=text；delegation=`✻ label <started|status>`；agent-message=[from → to] text',
   );
   for (let i = 1; i < es.length; i++) assert.ok(es[i].seq > es[i - 1].seq, 'kind 扩条目共用同一 seq 单调序列');
+});
+
+test('⑦ 上限 2000 丢最老（T5δ）：压 2005 条 user/assistant 混合 → 恒 2000 且最老 5 条出档', () => {
+  const c = new TranscriptCollector();
+  for (let i = 0; i < 2005; i++) {
+    if (i % 2 === 0) c.submit(`goal-${i}`);
+    else c.push(ev('done', `reply-${i}`, { stopReason: 'done' }));
+  }
+  const es = c.entries();
+  assert.equal(es.length, 2000, '超限丢最老，档面恒 2000（与 eventBuffer 512 同构形态）');
+  const mds = new Set(es.map((e) => e.md));
+  for (let i = 0; i < 5; i++) {
+    const oldestMd = i % 2 === 0 ? `> goal-${i}` : `reply-${i}`;
+    assert.ok(!mds.has(oldestMd), `最老第 ${i} 条（${oldestMd}）应已出档`);
+  }
+  assert.ok(mds.has('reply-5') && mds.has('> goal-6') && mds.has('reply-2003') && mds.has('> goal-2004'), '第 6 条起与最新条均在档');
+  for (let i = 1; i < es.length; i++) assert.ok(es[i].seq > es[i - 1].seq, '裁后档内 seq 仍单调');
+});
+
+test('⑧ seed 播种同裁（T5δ）：注入 2005 条超限 → 恒 2000 丢最老；后续 push 续用同一上限', () => {
+  const c = new TranscriptCollector();
+  const batch: Array<{ seq: number; ts: number; kind: 'user' | 'assistant'; md: string }> = [];
+  for (let i = 0; i < 2005; i++) batch.push({ seq: 0, ts: 100 + i, kind: i % 2 === 0 ? 'user' : 'assistant', md: i % 2 === 0 ? `> seed-goal-${i}` : `seed-reply-${i}` });
+  c.seed(batch);
+  let es = c.entries();
+  assert.equal(es.length, 2000, '播种注入同样过 2000 上限');
+  const mds = new Set(es.map((e) => e.md));
+  for (let i = 0; i < 5; i++) {
+    const oldestMd = i % 2 === 0 ? `> seed-goal-${i}` : `seed-reply-${i}`;
+    assert.ok(!mds.has(oldestMd), `播种最老第 ${i} 条（${oldestMd}）应已出档`);
+  }
+  assert.ok(mds.has('seed-reply-5') && mds.has('> seed-goal-6'), '第 6 条起在档');
+  // 裁后继续压条：仍恒 2000（播种与后续事件共用同一入列单点）
+  c.push(ev('done', 'post-seed reply', { stopReason: 'done' }));
+  es = c.entries();
+  assert.equal(es.length, 2000);
+  assert.equal(es[es.length - 1]!.md, 'post-seed reply', '最新条在档');
+  const mds2 = new Set(es.map((e) => e.md));
+  assert.ok(!mds2.has('seed-reply-5'), '再压一条又丢一条最老（原第 6 条出档）');
+  assert.ok(mds2.has('> seed-goal-6'), '次老条仍在档');
 });
 

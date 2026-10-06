@@ -32,6 +32,9 @@ function toolMd(verb: string, resultLine: string): string {
   return `● ${verb}\n⎿ ${resultLine}`;
 }
 
+/** 归档面上限（T5δ）：与 session.ts eventBuffer 512 同构的丢最老环形形态——超限 shift 最老条 */
+const TRANSCRIPT_CAP = 2000;
+
 /** result 首行摘要：多行观察行只取首行；空文本回落 … 占位 */
 function firstLine(text: string | undefined): string {
   const line = (text ?? '').split('\n')[0] ?? '';
@@ -62,21 +65,38 @@ export class TranscriptCollector {
   private readonly pending: PendingTool[] = [];
   private nextSeq = 1;
 
+  /** 入列单点（T5δ 上限收口）：全部条目入口（submit/seed/push 五 kind/tool 两路）统一过此——push 后
+   *  超 TRANSCRIPT_CAP（2000）丢最老（与 session.ts eventBuffer 512 同构形态），每丢一条 stderr 留
+   *  一行痕（collector 每 SessionRuntime 一个、无 id 面，不打会话标识）。被裁条若仍是未配对 tool 条，
+   *  同步退出 pending 池——防迟到 result 回填已出档死条目、FIFO 兜底被已裁条截胡 */
+  private append(entry: TranscriptEntry): void {
+    this.list.push(entry);
+    if (this.list.length > TRANSCRIPT_CAP) {
+      const dropped = this.list.shift();
+      console.error('[serve] transcript trimmed (2000 cap)');
+      if (dropped !== undefined && dropped.kind === 'tool') {
+        const idx = this.pending.findIndex((p) => p.entry === dropped);
+        if (idx >= 0) this.pending.splice(idx, 1);
+      }
+    }
+  }
+
   /** user 条目（daemon /submit 处理器调用）：`> <goal>` 引用块形态 */
   submit(goal: string): void {
-    this.list.push({ seq: this.nextSeq++, ts: Date.now(), kind: 'user', md: `> ${goal}` });
+    this.append({ seq: this.nextSeq++, ts: Date.now(), kind: 'user', md: `> ${goal}` });
   }
 
   /** attach 播种批量入列（T2）：journal msg 行映射条目按序入列。seq 由本收集器续发——入参 seq 无效
    *  （TUI msgSeq 与本收集器序列不同源，沿用会与后续事件条目撞号，G3.5 计划「负数或独立起段」裁定
-   *  取续计数形态）；ts/kind/md 采信入参（md 已在映射面按五 kind 定形） */
+   *  取续计数形态）；ts/kind/md 采信入参（md 已在映射面按五 kind 定形）。逐条过 append——播种同样
+   *  受 2000 上限裁（超限丢最老，T5δ） */
   seed(entries: TranscriptEntry[]): void {
-    for (const e of entries) this.list.push({ ...e, seq: this.nextSeq++ });
+    for (const e of entries) this.append({ ...e, seq: this.nextSeq++ });
   }
 
   push(e: SessionEvent): void {
     if (e.type === 'done') {
-      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'assistant', md: e.text ?? '' });
+      this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'assistant', md: e.text ?? '' });
       return;
     }
     if (e.type === 'tool-call') {
@@ -88,22 +108,22 @@ export class TranscriptCollector {
       return;
     }
     if (e.type === 'error') {
-      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'error', md: e.text ?? 'error' });
+      this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'error', md: e.text ?? 'error' });
       return;
     }
     if (e.type === 'notice') {
-      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: e.text ?? '' });
+      this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: e.text ?? '' });
       return;
     }
     if (e.type === 'delegation-started' || e.type === 'delegation-ended') {
-      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: delegationMd(e) });
+      this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: delegationMd(e) });
       return;
     }
     if (e.type === 'agent-message') {
       const p = e.payload as { from?: unknown; to?: unknown; text?: unknown } | undefined;
       const from = typeof p?.from === 'string' && p.from.length > 0 ? p.from : '?';
       const to = typeof p?.to === 'string' && p.to.length > 0 ? p.to : '?';
-      this.list.push({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: `[${from} → ${to}] ${typeof p?.text === 'string' ? p.text : ''}` });
+      this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: `[${from} → ${to}] ${typeof p?.text === 'string' ? p.text : ''}` });
       return;
     }
     // 其余事件（token/usage/step/route/task-* 等）不进归档面
@@ -128,7 +148,7 @@ export class TranscriptCollector {
     const entry: TranscriptEntry = { seq: this.nextSeq++, ts: e.ts, kind: 'tool', md: '' };
     const p: PendingTool = { entry, ...(callId !== undefined ? { callId } : {}), verb: e.text ?? '…', resultLine: '…' };
     entry.md = toolMd(p.verb, p.resultLine);
-    this.list.push(entry);
+    this.append(entry);
     this.pending.push(p);
   }
 
@@ -147,7 +167,7 @@ export class TranscriptCollector {
       const entry: TranscriptEntry = { seq: this.nextSeq++, ts: e.ts, kind: 'tool', md: '' };
       const p: PendingTool = { entry, callId, verb: '…', resultLine };
       entry.md = toolMd(p.verb, p.resultLine);
-      this.list.push(entry);
+      this.append(entry);
       this.pending.push(p);
       return;
     }
@@ -162,7 +182,7 @@ export class TranscriptCollector {
     }
     // 孤儿 result（无 callId 且无未配对面）：以 payload.tool 为动词独立成条
     const tool = e.payload?.tool;
-    this.list.push({
+    this.append({
       seq: this.nextSeq++,
       ts: e.ts,
       kind: 'tool',
