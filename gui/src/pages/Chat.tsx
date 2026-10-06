@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
-import type { Connection, ConnectionState } from '../connection';
+import type { Connection, ConnectionState, GuiApprovalReq, GuiAskAnswer, GuiAskReq } from '../connection';
 import type { SessionEvent } from '../../../src/types';
 
 /**
@@ -23,6 +23,13 @@ import type { SessionEvent } from '../../../src/types';
  * 种子整替清掉(丢帧),先缓冲;种子落定后以 seq ≤ snapshot.lastSeq 过滤(≤ 切割序者种子已含,
  * 再投即双应用)再依序投 reducer。G3 T3 连接层的单会话 armed/pending 语义在页内复刻(连接层
  * 已无 armed,页面自缓冲;reseed 时清缓冲重来,unmount 随组件销毁)。
+ *
+ * G4 挂起卡片区(转录上方固定区):App 的 onApproval/onAsk 经 sessionRef 过滤本会话后经 sink
+ * 投递——ApprovalCard(kind/subject/reason + Allow/Deny/Always)/AskCard(question + 选项单/多选
+ * + customIndex 自由输入 + Submit/Dismiss);回执走 conn.replyApproval/replyAsk(pid 契约:寻址
+ * 用帧顶层 pid,非 req.id);卡列表 pid 管理——回执成功移,失败(404 已决)也移(不悬挂)。
+ * 连接级 reset(重连)卡保留(daemon 未决重发被连接层 pid 去重);会话 reset 帧(resetSession)
+ * 清卡(daemon 已 deny/dismissed 回填全部挂起)+清投影重播种。
  */
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
@@ -30,8 +37,14 @@ import type { SessionEvent } from '../../../src/types';
 export interface ChatSink {
   /** 本会话帧(已过 App 侧 sessionId 过滤;seq 供种子竞态窗过滤) */
   on(e: SessionEvent, seq: number): void;
-  /** 连接重置(首连/重连):清投影 + 本会话重播种 */
+  /** 连接重置(首连/重连):清投影 + 本会话重播种(卡保留——挂起仍在 daemon 未决) */
   reset(): void;
+  /** G4 审批挂起帧(已过 App 侧 sessionId 过滤;pid = 回执寻址键) */
+  onApproval(pid: string, req: GuiApprovalReq): void;
+  /** G4 问询挂起帧(同上) */
+  onAsk(pid: string, req: GuiAskReq): void;
+  /** G4 会话 reset 通知帧(本会话):清卡(daemon 已 deny/dismissed 回填) + 清投影重播种 */
+  resetSession(): void;
 }
 
 export interface ChatProps {
@@ -46,6 +59,90 @@ export interface ChatProps {
   sinkRef: MutableRefObject<ChatSink | null>;
 }
 
+/** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
+type PendingCard =
+  | { kind: 'approval'; pid: string; req: GuiApprovalReq }
+  | { kind: 'ask'; pid: string; req: GuiAskReq };
+
+/** G4 审批卡:三按钮字面即 ApprovalDecision(allow/deny/always)——回执经 HTTP,寻址 pid */
+function ApprovalCard({ req, onDecision }: { req: GuiApprovalReq; onDecision: (decision: string) => void }): JSX.Element {
+  return (
+    <div className="pending-card approval-card">
+      <div className="card-title">{`[approval ${req.kind ?? '?'}] ${req.subject ?? '(无标题)'}`}</div>
+      {req.reason !== undefined && req.reason !== '' && <div className="card-reason">{req.reason}</div>}
+      <div className="card-actions">
+        <button type="button" className="approve" onClick={() => onDecision('allow')}>
+          Allow
+        </button>
+        <button type="button" className="deny" onClick={() => onDecision('deny')}>
+          Deny
+        </button>
+        <button type="button" className="always" onClick={() => onDecision('always')}>
+          Always
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** G4 问询卡:选项单选(缺省)/多选(multiple);customIndex 在场 → 自由输入面(非空优先于勾选
+ *  → custom 态);Dismiss 即 dismissed(正常放弃非错误)。空选+空输入 Submit 无动作 */
+function AskCard({ req, onSubmit, onDismiss }: { req: GuiAskReq; onSubmit: (answer: GuiAskAnswer) => void; onDismiss: () => void }): JSX.Element {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [custom, setCustom] = useState('');
+  const multiple = req.multiple === true;
+  const allowCustom = req.customIndex !== undefined;
+
+  const toggle = (label: string): void => {
+    setSelected((s) =>
+      multiple ? (s.includes(label) ? s.filter((l) => l !== label) : [...s, label]) : s.includes(label) ? [] : [label],
+    );
+  };
+
+  const submit = (): void => {
+    const text = custom.trim();
+    if (text !== '') {
+      onSubmit({ type: 'custom', text });
+      return;
+    }
+    if (selected.length > 0) onSubmit({ type: 'selected', labels: selected });
+  };
+
+  return (
+    <div className="pending-card ask-card">
+      <div className="card-title">{req.question}</div>
+      <div className="card-options">
+        {req.options.map((o) => (
+          <label key={o.label} className="card-option">
+            <input type={multiple ? 'checkbox' : 'radio'} name="ask-option" checked={selected.includes(o.label)} onChange={() => toggle(o.label)} />
+            <span>
+              {o.label}
+              {o.description !== undefined && o.description !== '' ? ` — ${o.description}` : ''}
+            </span>
+          </label>
+        ))}
+      </div>
+      {allowCustom && (
+        <input
+          aria-label="custom answer"
+          className="card-custom"
+          value={custom}
+          placeholder="Other… 自由输入"
+          onChange={(e) => setCustom(e.target.value)}
+        />
+      )}
+      <div className="card-actions">
+        <button type="button" className="primary" onClick={submit}>
+          Submit
+        </button>
+        <button type="button" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销) */
 const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   return (
@@ -58,6 +155,8 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
 export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
+  /** G4 挂起卡列表(pid 维:回执落定即移;resetSession 清空) */
+  const [cards, setCards] = useState<PendingCard[]>([]);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
    *  (挂载/reset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
   const [seeding, setSeeding] = useState(true);
@@ -98,6 +197,35 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
     );
   }, [conn, sessionId]);
 
+  /** G4 卡增(同 pid 防重挂——连接层已去重,本地二次防线)与移(回执落定即移) */
+  const addCard = useCallback((card: PendingCard): void => {
+    setCards((cs) => (cs.some((c) => c.pid === card.pid) ? cs : [...cs, card]));
+  }, []);
+  const removeCard = useCallback((pid: string): void => {
+    setCards((cs) => cs.filter((c) => c.pid !== pid));
+  }, []);
+
+  /** G4 回执:寻址用帧顶层 pid(T1 契约);成功移卡,失败(404 已决等)也移——不悬挂。
+   *  失败面不再倒 error 条:挂起生命周期以 daemon 挂起表为准,本地卡只是其投影 */
+  const sendApproval = useCallback(
+    (pid: string, decision: string): void => {
+      void conn.replyApproval(pid, decision).then(
+        () => removeCard(pid),
+        () => removeCard(pid),
+      );
+    },
+    [conn, removeCard],
+  );
+  const sendAsk = useCallback(
+    (pid: string, answer: GuiAskAnswer): void => {
+      void conn.replyAsk(pid, answer).then(
+        () => removeCard(pid),
+        () => removeCard(pid),
+      );
+    },
+    [conn, removeCard],
+  );
+
   useEffect(() => {
     const sink: ChatSink = {
       on: (e, seq) => {
@@ -108,6 +236,12 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
         setChat((c) => applyChatEvent(c, e));
       },
       reset: () => reseed(),
+      onApproval: (pid, req) => addCard({ kind: 'approval', pid, req }),
+      onAsk: (pid, req) => addCard({ kind: 'ask', pid, req }),
+      resetSession: () => {
+        setCards([]); // daemon reset 已 deny/dismissed 回填该会话全部挂起——本地卡随之清
+        reseed();
+      },
     };
     sinkRef.current = sink;
     reseed();
@@ -115,7 +249,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
       sinkRef.current = null;
       pendingRef.current = []; // unmount 清缓冲(组件销毁,无跨会话残留)
     };
-  }, [sinkRef, reseed]);
+  }, [sinkRef, reseed, addCard]);
 
   const running = chat.status === 'running';
 
@@ -150,6 +284,17 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef }: ChatProps)
         <span className="tokens">{chat.tokens} tokens</span>
         <span className="steps">{chat.steps} steps</span>
       </header>
+      {cards.length > 0 && (
+        <section className="pending-cards" aria-label="pending approvals and asks">
+          {cards.map((c) =>
+            c.kind === 'approval' ? (
+              <ApprovalCard key={c.pid} req={c.req} onDecision={(d) => sendApproval(c.pid, d)} />
+            ) : (
+              <AskCard key={c.pid} req={c.req} onSubmit={(a) => sendAsk(c.pid, a)} onDismiss={() => sendAsk(c.pid, { type: 'dismissed' })} />
+            ),
+          )}
+        </section>
+      )}
       <main className="chat" aria-label="chat">
         {chat.entries.map((entry) => (
           <ChatEntryView key={entry.key} entry={entry} />

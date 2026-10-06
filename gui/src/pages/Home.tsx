@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { DirPicker } from './DirPicker';
 
@@ -10,6 +10,8 @@ import { DirPicker } from './DirPicker';
  * Attach 两步裁定(daemon 形态对齐):POST /session/new {root} 装配会话 → POST /session/:id/attach
  * {journalId} 播种恢复 → onOpenSession(sessionId)(daemon 会话注册表无「按 journal 直开」端点,
  * attach 需先有会话壳)。New session 单步:newSession(root) 即入。
+ * G4:会话行 Delete(confirm 后 deleteSession + 列表刷新);sessionsOf 应答 slug 守卫——展开
+ * 切换/收起后的迟到应答丢弃(慢应答不冲当前展开列表)。
  */
 
 export interface HomeConn {
@@ -18,6 +20,8 @@ export interface HomeConn {
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   newSession(root: string): Promise<{ sessionId: string }>;
   attach(sessionId: string, journalId: string): Promise<void>;
+  /** POST /session/:id/delete(T2 回收):running 409;journal 文件保留(daemon 侧有界回收) */
+  deleteSession(id: string): Promise<void>;
 }
 
 export interface HomeProps {
@@ -30,10 +34,13 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
   const [listError, setListError] = useState('');
   /** 展开中的工作区 slug(= 选中,右栏详情挂它);同时只展开一行 */
   const [openSlug, setOpenSlug] = useState<string | null>(null);
+  /** openSlug 的同步镜像:sessionsOf 异步应答到达时读(闭包免陈旧——slug 守卫判据) */
+  const openSlugRef = useRef<string | null>(null);
+  openSlugRef.current = openSlug;
   const [openRoot, setOpenRoot] = useState<string>('');
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [sessionsError, setSessionsError] = useState('');
-  /** attach/new 在途(按钮禁用防双发) */
+  /** attach/new/delete 在途(按钮禁用防双发) */
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -54,6 +61,24 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
     loadWorkspaces();
   }, [loadWorkspaces]);
 
+  /** 拉某工作区会话列表(slug 守卫):应答到达时 slug 已非当前展开(切行/收起)则丢弃——
+   *  迟到应答不冲新展开行(慢应答竞态收口) */
+  const loadSessions = useCallback(
+    (root: string, slug: string): void => {
+      conn.sessionsOf(root).then(
+        (list) => {
+          if (openSlugRef.current !== slug) return; // 过期应答:展开已切走/收起,丢
+          setSessions(list);
+        },
+        (err: unknown) => {
+          if (openSlugRef.current !== slug) return;
+          setSessionsError(err instanceof Error ? err.message : String(err));
+        },
+      );
+    },
+    [conn],
+  );
+
   /** 展开/收起工作区行:展开即拉 sessionsOf(root);root 缺场行按钮禁用不可达 */
   const toggleRow = (row: WorkspaceRow): void => {
     if (row.root === undefined) return;
@@ -67,7 +92,7 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
     setOpenRoot(row.root);
     setSessions(null);
     setSessionsError('');
-    conn.sessionsOf(row.root).then(setSessions, (err: unknown) => setSessionsError(err instanceof Error ? err.message : String(err)));
+    loadSessions(row.root, row.slug);
   };
 
   /** Attach 两步:newSession(root) 装配壳 → attach(sessionId, journalId) 播种 → 进会话 */
@@ -100,6 +125,25 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
         setBusy(false);
         setPickerOpen(false);
         onOpenSession(sessionId);
+      },
+      (err: unknown) => {
+        setBusy(false);
+        setActionError(err instanceof Error ? err.message : String(err));
+      },
+    );
+  };
+
+  /** Delete(T2 回收):window.confirm 确认 → deleteSession(journalId) → 该工作区列表刷新
+   *  (slug 守卫:应答期间切行/收起则弃刷新);失败示错(409 running 等)行保留 */
+  const deleteJournal = (root: string, slug: string, journalId: string): void => {
+    if (busy) return;
+    if (!window.confirm(`删除会话 ${journalId}?此操作不可恢复。`)) return;
+    setBusy(true);
+    setActionError('');
+    conn.deleteSession(journalId).then(
+      () => {
+        setBusy(false);
+        loadSessions(root, slug); // 列表刷新(守卫内:展开已切走则弃)
       },
       (err: unknown) => {
         setBusy(false);
@@ -171,16 +215,29 @@ export function Home({ conn, onOpenSession }: HomeProps): JSX.Element {
                           {s.id} · {new Date(s.updatedAt).toLocaleString()}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        className="attach"
-                        disabled={busy}
-                        onClick={() => {
-                          if (row.root !== undefined) attachJournal(row.root, s.id);
-                        }}
-                      >
-                        Attach
-                      </button>
+                      <div className="session-actions">
+                        <button
+                          type="button"
+                          className="attach"
+                          disabled={busy}
+                          onClick={() => {
+                            if (row.root !== undefined) attachJournal(row.root, s.id);
+                          }}
+                        >
+                          Attach
+                        </button>
+                        <button
+                          type="button"
+                          className="delete"
+                          aria-label={`delete ${s.id}`}
+                          disabled={busy}
+                          onClick={() => {
+                            if (row.root !== undefined) deleteJournal(row.root, row.slug, s.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

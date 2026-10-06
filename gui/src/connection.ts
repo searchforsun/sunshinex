@@ -19,15 +19,47 @@ import type { Delegation } from '../../src/delegation/projection';
  * base×2^n 帽 30s 重连，成功建立（open 落定）清零；旧 socket 迟到回调凭代次失效。
  * 旧名退役（G3.5 裁定）：裸端点 submit/steer/interrupt/snapshot 删除——会话维 :id 形态
  * 唯一（daemon 侧裸端点仍是激活别名，gui 面不再消费）。
+ * G4 挂起面（审批/问询/reset）：approval/ask 挂起帧无 seq 不入单调序列——pid（daemon 级
+ * 铸票，连接生命周期维 Set 去重，重连重发幂等）回调上层；回执走 HTTP（replyApproval/
+ * replyAsk，寻址统一帧顶层 pid——req.id 是会话内编号非寻址键）；reset 通知帧帧帧回调
+ * （onResetSession）；deleteSession（T2 回收端点）供 Home。
  */
 
-/** 粗粒度转录条目（对齐主仓 src/serve/transcript.ts TranscriptEntry） */
+/** 粗粒度转录条目(对齐主仓 src/serve/transcript.ts TranscriptEntry;G4 对齐五 kind——
+ *  notice/error 归档面在档,三 kind 子集声明会静默窄化种子数据) */
 export interface SnapshotMessage {
   seq: number;
   ts: number;
-  kind: 'user' | 'assistant' | 'tool';
+  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
   md: string;
 }
+
+/** G4 审批挂起请求(gui 侧契约声明;对齐 daemon ApprovalFrame.req 即 src/types ApprovalRequest
+ *  字面,不引其类型):id 是会话内编号(ap-N)——非回执寻址键,回执统一用帧顶层 pid(T1 契约:
+ *  误用 req.id 打 /approval/:pid 会静默 404)。字段全可选:gui 只展示不消费其结构完整性 */
+export interface GuiApprovalReq {
+  id?: string;
+  kind?: string;
+  subject?: string;
+  reason?: string;
+}
+
+/** G4 问询挂起请求(对齐 AskUserRequest 实发字段——现场核 daemon 帧形态):customIndex 即
+ *  「Other…」自由输入项下标(allowCustom 形态的实载字段,gui 以 customIndex !== undefined
+ *  判输入面在场);filterable 仅 TUI 渲染面消费,gui 忽略 */
+export interface GuiAskReq {
+  question: string;
+  options: Array<{ label: string; description?: string }>;
+  multiple?: boolean;
+  customIndex?: number;
+  filterable?: boolean;
+}
+
+/** G4 问询回执三态(对齐 AskUserAnswer):勾选 / 自定义文本 / 放弃(放弃属正常观察非错误) */
+export type GuiAskAnswer =
+  | { type: 'selected'; labels: string[] }
+  | { type: 'custom'; text: string }
+  | { type: 'dismissed' };
 
 /** GET /session/:id/snapshot 载荷形态（T1 会话维，gui 侧契约声明）；lastSeq 见 Connection.sessionSnapshot 交集 */
 export interface SnapshotResponse {
@@ -65,13 +97,16 @@ export interface DirPickerResp {
 /** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
-/** WS 下行帧：`{kind:'event', sessionId, seq, e}`（T1 会话维）；其余 kind（hello 等）/无 seq/
+/** WS 下行帧：`{kind:'event', sessionId, seq, e}`（T1 会话维）；G4 挂起/reset 帧无 seq 不入单调
+ *  序列（approval/ask 带 pid+req，reset 只挂 sessionId）；其余 kind（hello 等）/无 seq/
  *  无 sessionId 帧不入单调序列，忽略 */
 interface WsFrame {
   kind: string;
   sessionId?: string;
   seq?: number;
   e?: SessionEvent;
+  pid?: string;
+  req?: unknown;
 }
 
 export interface ConnectionOpts {
@@ -82,6 +117,14 @@ export interface ConnectionOpts {
   /** 每次连接建立（首连与重连同路径）回调：上层清各会话投影 + 逐会话重拉 snapshot
    *  （重连=重置投影+全量重放裁定——连接层不再自动拉快照，sessionSnapshot 供上层重建基线） */
   onReset: () => void;
+  /** G4 审批挂起帧回调（pid 为 daemon 级回执寻址键，非 req.id；同 pid 重复帧只回调一次——
+   *  重连重发幂等；会话过滤归上层） */
+  onApproval?: (sessionId: string, pid: string, req: GuiApprovalReq) => void;
+  /** G4 问询挂起帧回调（同上 pid 去重；AskUserRequest 无 id 字段——pid 单点承载寻址） */
+  onAsk?: (sessionId: string, pid: string, req: GuiAskReq) => void;
+  /** G4 会话 reset 通知帧回调（不去重——每帧都回调：一次 HTTP reset = 一次通知；上层清该
+   *  会话投影重播种） */
+  onResetSession?: (sessionId: string) => void;
   /** 状态机迁移回调（含初始 connecting） */
   onStateChange?: (s: ConnectionState) => void;
   /** 退避基数 ms（缺省 1000；delay = base×2^连续失败数，帽 30s）——测试注入 1 */
@@ -108,6 +151,13 @@ export interface Connection {
   /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
    *  过滤基线（种子替换投影后的迟到补发帧双应用防线） */
   sessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }>;
+  /** POST /approval/:pid {decision}（G4）：decision ∈ 'allow'|'always'|'deny'——回执寻址用帧
+   *  顶层 pid（非 req.id）；未知/已决/kind 不符 pid 404（GUI 侧失败也移卡） */
+  replyApproval(pid: string, decision: string): Promise<void>;
+  /** POST /ask/:pid/reply {answer}（G4）：answer 三态（GuiAskAnswer）；404 面同上 */
+  replyAsk(pid: string, answer: GuiAskAnswer): Promise<void>;
+  /** POST /session/:id/delete（T2 会话回收，Home 消费）：running 409；journal 文件保留 */
+  deleteSession(id: string): Promise<void>;
   close(): void;
   state(): ConnectionState;
   /** 测试钩子（e2e 断链注入专用）：当前底层 socket（无连接 undefined）——产品面勿消费 */
@@ -129,6 +179,7 @@ function wsUrl(baseUrl: string): string {
 
 export function createConnection(opts: ConnectionOpts): Connection {
   const { baseUrl, token, onEvent, onReset } = opts;
+  const { onApproval, onAsk, onResetSession } = opts;
   const onStateChange = opts.onStateChange;
   const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
   const base = baseUrl.replace(/\/+$/, '');
@@ -141,6 +192,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
   /** 每会话 seq 基线：连接建立清零（重连=全量重放），sessionSnapshot 应答抬高（防双应用）；
    *  过滤单点 deliver 只读此表 */
   const lastSeqBySession = new Map<string, number>();
+  /** G4 挂起 pid 去重表（连接生命周期维，重连不清——重连重发幂等）：同 pid 帧只回调一次；
+   *  pid 是 daemon 级铸票，跨会话全局唯一，单 Set 足矣 */
+  const seenPids = new Set<string>();
   /** 连接代次：旧 socket 迟到回调（close 后回放的 onclose、慢到的 snapshot 应答）凭此失效 */
   let generation = 0;
 
@@ -154,6 +208,16 @@ export function createConnection(opts: ConnectionOpts): Connection {
     if (seq <= (lastSeqBySession.get(sessionId) ?? 0)) return;
     lastSeqBySession.set(sessionId, seq);
     onEvent(sessionId, e, seq);
+  }
+
+  /** G4 挂起帧单点（无 seq，不入单调序列）：pid 去重后按 kind 回调——同 pid 重复帧（含重连
+   *  重发）只回调一次；reset 通知不走此径（帧帧回调，见 onmessage） */
+  function deliverPending(sessionId: string, pid: string, req: unknown, kind: 'approval' | 'ask'): void {
+    if (typeof req !== 'object' || req === null) return; // 坏载荷忽略
+    if (seenPids.has(pid)) return; // 重连重发/重复帧幂等
+    seenPids.add(pid);
+    if (kind === 'approval') onApproval?.(sessionId, pid, req as GuiApprovalReq);
+    else onAsk?.(sessionId, pid, req as GuiAskReq);
   }
 
   function detach(sock: WebSocket): void {
@@ -207,7 +271,20 @@ export function createConnection(opts: ConnectionOpts): Connection {
       } catch {
         return; // 非 JSON 帧忽略
       }
-      if (frame?.kind !== 'event' || typeof frame.seq !== 'number' || !frame.e) return;
+      if (frame === null || typeof frame !== 'object') return;
+      // G4 会话 reset 通知帧：无 seq/pid——不入单调序列也不去重，帧帧回调
+      if (frame.kind === 'reset') {
+        if (typeof frame.sessionId === 'string' && frame.sessionId.length > 0) onResetSession?.(frame.sessionId);
+        return;
+      }
+      // G4 审批/问询挂起帧：无 seq——pid 去重后回调（寻址键=帧顶层 pid）
+      if (frame.kind === 'approval' || frame.kind === 'ask') {
+        if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
+        if (typeof frame.pid !== 'string' || frame.pid.length === 0) return;
+        deliverPending(frame.sessionId, frame.pid, frame.req, frame.kind);
+        return;
+      }
+      if (frame.kind !== 'event' || typeof frame.seq !== 'number' || !frame.e) return;
       if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
       deliver(frame.sessionId, frame.seq, frame.e);
     };
@@ -292,6 +369,15 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }> {
       return fetchSessionSnapshot(id);
+    },
+    replyApproval(pid: string, decision: string): Promise<void> {
+      return post(`/approval/${encodeURIComponent(pid)}`, { decision });
+    },
+    replyAsk(pid: string, answer: GuiAskAnswer): Promise<void> {
+      return post(`/ask/${encodeURIComponent(pid)}/reply`, { answer });
+    },
+    deleteSession(id: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/delete`);
     },
     close,
     state(): ConnectionState {

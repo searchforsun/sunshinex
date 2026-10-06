@@ -17,7 +17,8 @@ import type { SessionEvent } from '../../src/types';
  * 投影随事件维稳(重连=onReset 清零+daemon 全量补发帧重建,G5 板页消费)。
  * Chat(T4δ)以 key={sessionId} 挂载:对话面本地态(reducer 投影/输入/播种门/竞态缓冲)随组件
  * 销毁——两会话先后打开各自投影独立,无跨会话串扰,不断连重连。onReset(首连与重连同路径)
- * → Chat.reset 本会话重播种(重连=重置投影+全量重放裁定)。
+ * → Chat.reset 本会话重播种(重连=重置投影+全量重放裁定)。G4 挂起面:onApproval/onAsk/
+ * onResetSession 三回调同 pattern——sessionRef 过滤本会话后经 chatSinkRef 转投 Chat 卡片区。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
  */
 
@@ -107,6 +108,20 @@ function AppShell({ token }: { token: string }): JSX.Element {
         setBoard(emptyBoard());
         setDelegations([]);
         chatSinkRef.current?.reset();
+      },
+      // G4 挂起面装配:连接层回调闭包固定,经 sessionRef 过滤本会话后转投 Chat sink(卡片区);
+      //  他会话挂起卡不显(本会话外无渲染面),他会话 reset 不触发重播种
+      onApproval: (sessionId, pid, req) => {
+        if (sessionId !== sessionRef.current) return;
+        chatSinkRef.current?.onApproval(pid, req);
+      },
+      onAsk: (sessionId, pid, req) => {
+        if (sessionId !== sessionRef.current) return;
+        chatSinkRef.current?.onAsk(pid, req);
+      },
+      onResetSession: (sessionId) => {
+        if (sessionId !== sessionRef.current) return;
+        chatSinkRef.current?.resetSession();
       },
       onStateChange: setConnState,
     });

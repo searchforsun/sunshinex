@@ -197,7 +197,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
     const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"s1 终答"}', '{"done":true,"reply":"s2 终答"}']));
     try {
       // s1 的 journal(预置历史句;attach 续挂——后续 run 的 chain 行续落同档,重开即可回读)
-      seedWorkspace(env.root, '历史第一句');
+      const s1Journal = seedWorkspace(env.root, '历史第一句');
       localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
@@ -236,10 +236,15 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       expect(container.textContent).not.toContain('历史第一句');
 
       // —— 经 UI 返回 s1:back → 工作区行展开 → Attach 同一 journal(两步壳)→ 转录播种在场 ——
+      // (T2 起新建会话即挂 journal——列表 s1/s2 两档各一行;播种档无 t:'user' 行 → 无摘要,
+      //  以 journal id 定行:session-meta 含 id 文本)
       await backHome();
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
-      await screen.findByRole('button', { name: 'Attach' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
+      const attachButtons = await screen.findAllByRole('button', { name: 'Attach' }, { timeout: 5_000 });
+      expect(attachButtons.length).toBeGreaterThanOrEqual(2); // s1 播种档 + s2 新建档(T2 即挂)
+      const s1Attach = attachButtons.find((b) => b.closest('.session-row')?.textContent?.includes(s1Journal));
+      expect(s1Attach).toBeDefined();
+      fireEvent.click(s1Attach!);
       await waitFor(
         () => expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('历史第一句'),
         { timeout: 10_000 },

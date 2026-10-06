@@ -40,6 +40,17 @@ class WsStub {
   recv(sessionId: string, seq: number, e: SessionEvent): void {
     this.onmessage?.({ data: JSON.stringify({ kind: 'event', sessionId, seq, e }) });
   }
+  /** G4 挂起帧(approval/ask:顶层 pid + req;对齐 daemon ApprovalFrame/AskFrame 形) */
+  recvApproval(sessionId: string, pid: string, req: unknown): void {
+    this.onmessage?.({ data: JSON.stringify({ kind: 'approval', sessionId, pid, req }) });
+  }
+  recvAsk(sessionId: string, pid: string, req: unknown): void {
+    this.onmessage?.({ data: JSON.stringify({ kind: 'ask', sessionId, pid, req }) });
+  }
+  /** G4 reset 通知帧(只挂 kind+sessionId,无 seq/pid) */
+  recvReset(sessionId: string): void {
+    this.onmessage?.({ data: JSON.stringify({ kind: 'reset', sessionId }) });
+  }
   lose(): void {
     this.onclose?.();
   }
@@ -346,5 +357,95 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     expect(typeof conn.dirpicker).toBe('function');
     expect(typeof conn.newSession).toBe('function');
     expect(typeof conn.attach).toBe('function');
+    // G4 回执/回收面在场
+    expect(typeof conn.replyApproval).toBe('function');
+    expect(typeof conn.replyAsk).toBe('function');
+    expect(typeof conn.deleteSession).toBe('function');
+  });
+
+  it('⑧ G4 挂起/reset 帧路由:approval/ask 按 (sessionId,pid,req) 回调;pid 去重(重连重发幂等);reset 不去重(帧帧回调)', async () => {
+    const approvals: Array<[string, string, unknown]> = [];
+    const asks: Array<[string, string, unknown]> = [];
+    const resets: string[] = [];
+    conn = createConnection({
+      baseUrl: 'http://x',
+      token: 't',
+      onEvent: () => {},
+      onReset: () => {},
+      onApproval: (sessionId, pid, req) => approvals.push([sessionId, pid, req]),
+      onAsk: (sessionId, pid, req) => asks.push([sessionId, pid, req]),
+      onResetSession: (sessionId) => resets.push(sessionId),
+      backoffBaseMs: 1,
+    });
+    const ws = last();
+    ws.openNow();
+    // —— 三 kind 各投:回调收 (sessionId, 帧顶层 pid, req 原文) ——
+    const apReq = { id: 'ap-1', kind: 'write', subject: 'rm -rf /tmp/x', reason: 'destructive' };
+    const askReq = { question: 'which?', options: [{ label: 'a' }, { label: 'b' }], multiple: true, customIndex: 2 };
+    ws.recvApproval('s1', 'p-ap', apReq);
+    ws.recvAsk('s2', 'p-ask', askReq);
+    ws.recvReset('s1');
+    expect(approvals).toEqual([['s1', 'p-ap', apReq]]);
+    expect(asks).toEqual([['s2', 'p-ask', askReq]]);
+    expect(resets).toEqual(['s1']);
+    // —— pid 去重:同 pid 重复帧(approval/ask)只回调一次 ——
+    ws.recvApproval('s1', 'p-ap', apReq);
+    ws.recvApproval('s1', 'p-ap', apReq);
+    ws.recvAsk('s2', 'p-ask', askReq);
+    expect(approvals).toHaveLength(1);
+    expect(asks).toHaveLength(1);
+    // —— 异 pid 照常投;跨会话同 pid 也去重(pid 是 daemon 级铸票,全局唯一) ——
+    ws.recvApproval('s1', 'p-ap2', apReq);
+    expect(approvals).toHaveLength(2);
+    // —— reset 不去重:每次到达都回调(一次 HTTP reset = 一次通知帧) ——
+    ws.recvReset('s1');
+    ws.recvReset('s1');
+    expect(resets).toEqual(['s1', 's1', 's1']);
+    // —— 坏形态忽略:无 sessionId / 无 pid / req 非对象 ——
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'approval', pid: 'p-x', req: apReq }) });
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'approval', sessionId: 's1', req: apReq }) });
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'ask', sessionId: 's1', pid: 'p-y' }) });
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'reset' }) });
+    expect(approvals).toHaveLength(2);
+    expect(asks).toHaveLength(1);
+    expect(resets).toHaveLength(3);
+    // —— 重连重发幂等:掉线重连后 daemon 同 pid 重发 → 仍零新增回调 ——
+    ws.lose();
+    await vi.advanceTimersByTimeAsync(1);
+    const ws2 = last();
+    ws2.openNow();
+    ws2.recvApproval('s1', 'p-ap', apReq);
+    ws2.recvAsk('s2', 'p-ask', askReq);
+    expect(approvals).toHaveLength(2);
+    expect(asks).toHaveLength(1);
+  });
+
+  it('⑨ G4 回执/回收 HTTP 面:replyApproval/replyAsk/deleteSession 的 URL/method/body;非 2xx 抛错含 status', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    const answer = { type: 'selected', labels: ['a', 'b'] } as const;
+    fetchQueue.push(ok(), ok(), ok(), ok(), ok(), ok());
+    await conn.replyApproval('p 1', 'always');
+    await conn.replyAsk('p/2', answer);
+    await conn.replyAsk('p/2', { type: 'custom', text: '自定义答复' });
+    await conn.replyAsk('p/2', { type: 'dismissed' });
+    await conn.deleteSession('s 9');
+    await conn.deleteSession('s9');
+    expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/approval/p%201',
+      'http://127.0.0.1:7788/ask/p%2F2/reply',
+      'http://127.0.0.1:7788/ask/p%2F2/reply',
+      'http://127.0.0.1:7788/ask/p%2F2/reply',
+      'http://127.0.0.1:7788/session/s%209/delete',
+      'http://127.0.0.1:7788/session/s9/delete',
+    ]);
+    expect(fetchLog.map((f) => f.init?.method)).toEqual(Array(6).fill('POST'));
+    expect(fetchLog[0]?.init?.body).toBe(JSON.stringify({ decision: 'always' }));
+    expect(fetchLog[1]?.init?.body).toBe(JSON.stringify({ answer }));
+    expect(fetchLog[2]?.init?.body).toBe(JSON.stringify({ answer: { type: 'custom', text: '自定义答复' } }));
+    expect(fetchLog[3]?.init?.body).toBe(JSON.stringify({ answer: { type: 'dismissed' } }));
+    expect(fetchLog[4]?.init?.body).toBeUndefined(); // delete 无 body
+    // 已决 pid 404 → 抛错含路径与 status(GUI 侧失败也移卡,不静默吞)
+    fetchQueue.push(errResp(404));
+    await expect(conn.replyApproval('p-1', 'allow')).rejects.toThrow('/approval/p-1 -> 404');
   });
 });

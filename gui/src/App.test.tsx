@@ -6,6 +6,7 @@ import { App } from './App';
 import { emptyBoard } from './projection';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
 import type { ConnectionOpts, ConnectionState, Connection, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow } from './connection';
+import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
 
 /**
  * G3.5 App 装配测(T4δ Chat 页会话化):vi.mock 连接工厂注入事件——App() 无 props 自装配
@@ -32,7 +33,13 @@ const h = vi.hoisted(() => {
     newSessionCalls: string[] = [];
     attachCalls: Array<[string, string]> = [];
     snapshotCalls: string[] = [];
+    replyApprovalCalls: Array<[string, string]> = [];
+    replyAskCalls: Array<[string, GuiAskAnswer]> = [];
+    deleteSessionCalls: string[] = [];
     submitReject: Error | null = null;
+    /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
+    replyReject: Error | null = null;
+    deleteReject: Error | null = null;
     stateVal: ConnectionState = 'connecting';
     closed = false;
     /** 播种门(种子竞态测):hold 后 sessionSnapshot 应答悬挂,release 落定——控 seed 在途窗时序 */
@@ -84,6 +91,21 @@ const h = vi.hoisted(() => {
     sessionSnapshot(id: string): Promise<FakeSnapshot> {
       this.snapshotCalls.push(id);
       return this.snapshotGate.then(() => this.snapshotResp);
+    }
+    replyApproval(pid: string, decision: string): Promise<void> {
+      if (this.replyReject !== null) return Promise.reject(this.replyReject);
+      this.replyApprovalCalls.push([pid, decision]);
+      return Promise.resolve();
+    }
+    replyAsk(pid: string, answer: GuiAskAnswer): Promise<void> {
+      if (this.replyReject !== null) return Promise.reject(this.replyReject);
+      this.replyAskCalls.push([pid, answer]);
+      return Promise.resolve();
+    }
+    deleteSession(id: string): Promise<void> {
+      if (this.deleteReject !== null) return Promise.reject(this.deleteReject);
+      this.deleteSessionCalls.push(id);
+      return Promise.resolve();
     }
     close(): void {
       this.closed = true;
@@ -151,6 +173,19 @@ const fireOther = (conn: Conn, e: SessionEvent): void => {
 
 const openConn = (conn: Conn): void => {
   act(() => conn.opts.onStateChange?.('open'));
+};
+
+/** G4 挂起帧模拟(经 App 装配面:opts 回调——App 过滤会话后转投 Chat sink) */
+const fireApproval = (conn: Conn, sessionId: string, pid: string, req: GuiApprovalReq): void => {
+  act(() => conn.opts.onApproval?.(sessionId, pid, req));
+};
+
+const fireAsk = (conn: Conn, sessionId: string, pid: string, req: GuiAskReq): void => {
+  act(() => conn.opts.onAsk?.(sessionId, pid, req));
+};
+
+const fireResetSession = (conn: Conn, sessionId: string): void => {
+  act(() => conn.opts.onResetSession?.(sessionId));
 };
 
 const type = (text: string): void => {
@@ -466,6 +501,114 @@ describe('底部输入区:Enter 分流与 Stop(会话维 :id)', () => {
     type('   ');
     pressEnter();
     expect(conn.sessionSubmitCalls).toEqual([]);
+  });
+});
+
+describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () => {
+  const apReq: GuiApprovalReq = { id: 'ap-3', kind: 'write', subject: 'rm -rf /tmp/x', reason: 'destructive command' };
+  const apTitle = '[approval write] rm -rf /tmp/x';
+
+  it('approval 卡渲染(kind/subject/reason)+ 三按钮回执用帧顶层 pid(非 req.id)+ 回执成功移卡', async () => {
+    const { conn, unmount } = await enterChat();
+    fireApproval(conn, 's1', 'p-ap-9', apReq);
+    expect(screen.getByText(apTitle)).toBeDefined();
+    expect(screen.getByText('destructive command')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+    await waitFor(() => expect(conn.replyApprovalCalls).toEqual([['p-ap-9', 'allow']]));
+    await waitFor(() => expect(screen.queryByText(apTitle)).toBeNull());
+    // Deny / Always 字面(T1 ApprovalDecision 三态)
+    fireApproval(conn, 's1', 'p-a2', apReq);
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+    await waitFor(() => expect(conn.replyApprovalCalls[1]).toEqual(['p-a2', 'deny']));
+    fireApproval(conn, 's1', 'p-a3', apReq);
+    fireEvent.click(screen.getByRole('button', { name: 'Always' }));
+    await waitFor(() => expect(conn.replyApprovalCalls[2]).toEqual(['p-a3', 'always']));
+    unmount();
+  });
+
+  it('回执失败(404 已决)也移卡——不静默悬挂', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.replyReject = new Error('/approval/p-x -> 404');
+    fireApproval(conn, 's1', 'p-x', apReq);
+    expect(screen.getByText(apTitle)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+    await waitFor(() => expect(screen.queryByText(apTitle)).toBeNull());
+    unmount();
+  });
+
+  it('ask 卡:多选勾选 / custom 文本(customIndex 输入面)/ Dismiss 三态回执', async () => {
+    const { conn, unmount } = await enterChat();
+    fireAsk(conn, 's1', 'p-ask-1', {
+      question: '选哪条路?',
+      options: [{ label: '左' }, { label: '右' }, { label: 'Other…' }],
+      multiple: true,
+      customIndex: 2,
+    });
+    expect(screen.getByText('选哪条路?')).toBeDefined();
+    // 多选:勾两项 → Submit → selected labels
+    fireEvent.click(screen.getByLabelText('左'));
+    fireEvent.click(screen.getByLabelText('右'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await waitFor(() => expect(conn.replyAskCalls).toEqual([['p-ask-1', { type: 'selected', labels: ['左', '右'] }]]));
+    await waitFor(() => expect(screen.queryByText('选哪条路?')).toBeNull());
+    // custom 文本:非空 → custom 态(优先于勾选)
+    fireAsk(conn, 's1', 'p-ask-2', { question: 'q2', options: [{ label: 'x' }], customIndex: 1 });
+    fireEvent.click(screen.getByLabelText('x'));
+    fireEvent.change(screen.getByLabelText('custom answer'), { target: { value: '自己写' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await waitFor(() => expect(conn.replyAskCalls[1]).toEqual(['p-ask-2', { type: 'custom', text: '自己写' }]));
+    // Dismiss → dismissed(正常放弃,非错误)
+    fireAsk(conn, 's1', 'p-ask-3', { question: 'q3', options: [{ label: 'y' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(conn.replyAskCalls[2]).toEqual(['p-ask-3', { type: 'dismissed' }]));
+    await waitFor(() => expect(screen.queryByText('q3')).toBeNull());
+    unmount();
+  });
+
+  it('ask 单选(无 multiple):后点替换先点', async () => {
+    const { conn, unmount } = await enterChat();
+    fireAsk(conn, 's1', 'p-ask-4', { question: '单选?', options: [{ label: '甲' }, { label: '乙' }] });
+    fireEvent.click(screen.getByLabelText('甲'));
+    fireEvent.click(screen.getByLabelText('乙'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await waitFor(() => expect(conn.replyAskCalls).toEqual([['p-ask-4', { type: 'selected', labels: ['乙'] }]]));
+    unmount();
+  });
+
+  it('卡按会话过滤:他会话(s9)approval/ask 帧不显卡', async () => {
+    const { conn, unmount } = await enterChat();
+    fireApproval(conn, 's9', 'p-other', apReq);
+    fireAsk(conn, 's9', 'p-other-2', { question: '他会话问询', options: [{ label: 'a' }] });
+    expect(screen.queryByText(apTitle)).toBeNull();
+    expect(screen.queryByText('他会话问询')).toBeNull();
+    unmount();
+  });
+
+  it('reset 帧(本会话):清投影 + 清卡 + 重播种(snapshot 重拉);他会话 reset 忽略', async () => {
+    const { conn, unmount } = await enterChat();
+    fire(conn, ev('model-start'));
+    fire(conn, ev('token', 'reset 前内容'));
+    fireApproval(conn, 's1', 'p-ap-r', apReq);
+    expect(screen.getByText('reset 前内容')).toBeDefined();
+    conn.snapshotResp = snapshotOf({ messages: [{ seq: 1, ts: 1, kind: 'user', md: '> 重播种基线' }] });
+    const seedsBefore = conn.snapshotCalls.length;
+    fireResetSession(conn, 's9'); // 他会话 reset:忽略(不重播种)
+    expect(conn.snapshotCalls.length).toBe(seedsBefore);
+    fireResetSession(conn, 's1'); // 本会话:清投影 + 清卡(daemon 已 deny 回填) + reseed
+    await waitFor(() => expect(conn.snapshotCalls.length).toBe(seedsBefore + 1));
+    await waitFor(() => expect(screen.getByText('重播种基线')).toBeDefined());
+    expect(screen.queryByText('reset 前内容')).toBeNull();
+    expect(screen.queryByText(apTitle)).toBeNull();
+    unmount();
+  });
+
+  it('连接级 onReset(重连):卡保留——daemon 未决重发被连接层 pid 去重,不重挂不丢卡', async () => {
+    const { conn, unmount } = await enterChat();
+    fireApproval(conn, 's1', 'p-keep', apReq);
+    act(() => conn.opts.onReset());
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    expect(screen.getByText(apTitle)).toBeDefined();
+    unmount();
   });
 });
 
