@@ -38,7 +38,7 @@ import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-mode
 import { resumeFlow, branchFlow, resumeLatest as resumeLatestFrom } from './commands-session';
 import { applyDelegation } from '../delegation/projection';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
-import type { BoardEvent, TaskStatus } from '../taskboard/model';
+import { boardEventFrom } from '../taskboard/translate';
 
 // D17 拆分件（docs/TECH-DEBT-SURVEY.md H1 五步边界）：纯模型层迁 chat-model.ts、流式 md 通道迁 md-stream.ts、
 // 命令族迁 commands-*.ts、子代理面板迁 child-panel.ts、挂起协调迁 approval.ts；session.ts 转发导出
@@ -67,30 +67,9 @@ import { PLAN_TASK_LABEL, applyCtxWatermark, formatTaskStatsLine, slashHelp, spa
 import type { ChatItem, ChatRole, LiveBlock, TodoItem, TuiState } from './chat-model';
 import type { SessionOpts } from './chat-model';
 
-/** SessionEvent(task- 前缀与 gate- 前缀事件) → BoardEvent 翻译单点:与 TaskBoard.emit 载荷口径互为镜像(P1 子集:
- *  created/status/unlocked/blocked/gate 两态;P2 增 dep-added/assigned;conclusion 等富字段不进 UI 事件,投影无需)。
- *  公开 = 镜像属性测试钉口径(mirror.test.ts)消费 */
-export function boardEventFrom(e: SessionEvent): BoardEvent {
-  const p = (e.payload ?? {}) as Record<string, unknown>;
-  const taskId = String(p.taskId ?? '');
-  const ts = e.ts;
-  switch (e.type) {
-    case 'task-created':
-      return { t: 'task-created', taskId, title: String(p.title ?? ''), spec: String(p.spec ?? ''), dependsOn: Array.isArray(p.dependsOn) ? (p.dependsOn as string[]) : [], ts };
-    case 'task-dep-added':
-      return { t: 'dependency-added', taskId, dependsOn: String(p.dependsOn ?? ''), ts };
-    case 'task-assigned':
-      return { t: 'assigned', taskId, assignee: String(p.assignee ?? ''), ts };
-    case 'task-status-changed':
-      return { t: 'status-changed', taskId, from: (p.from as TaskStatus) ?? 'pending', to: (p.status as TaskStatus) ?? 'pending', ts };
-    case 'gate-waiting':
-      return { t: 'gate-set', taskId, ts, ...(typeof p.note === 'string' ? { note: p.note } : {}) };
-    case 'gate-resolved':
-      return { t: 'gate-resolved', taskId, approved: p.approved === true, ts };
-    default:
-      return { t: 'status-changed', taskId, from: 'pending', to: 'pending', ts }; // task-unlocked/task-blocked:投影无状态变化,reducer 原引用返回
-  }
-}
+// boardEventFrom 迁出(G3 Task 2):翻译单点已抽纯模块 taskboard/translate.ts(gui 投影实时化消费 +
+// 防浏览器 bundle 拉入 TUI 模块图);此处转发导出保持既有导入面零改(daemon/mirror.test 等既有消费方不迁)
+export { boardEventFrom } from '../taskboard/translate';
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
