@@ -3,22 +3,18 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createRuntime, TuiRuntime } from '../tui/runtime';
 import { ModelAdapter } from '../model/adapter';
-import { SessionEvent } from '../types';
-import { applyBoardEvent, emptyBoard } from '../taskboard/model';
-import type { TaskBoardState } from '../taskboard/model';
-import { applyDelegation } from '../delegation/projection';
-import type { Delegation } from '../delegation/projection';
-import { boardEventFrom } from '../tui/session';
-import { TranscriptCollector } from './transcript';
-import type { TranscriptEntry } from './transcript';
+import { ok, fail } from '../result';
+import type { Result } from '../result';
+import { CodedToolError } from '../harness/tools';
+import { SessionRuntime } from './session';
+import type { EventFrame } from './session';
 
-/** GUI daemon 构造面：root 为项目目录；model 与 CLI buildModel/TUI 同源注入（三面同一 ModelAdapter 契约）；
- *  staticRoot 为 GUI 静态产物目录（G3 静态挂载），缺省 cwd 相对 dist-gui——serve 命令从仓库根跑即对，
- *  测试注入 tmp 路径保持 hermetic */
+/** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
+ *  按需装配（--root CLI 参数降级为「启动即预选」，缺省空注册表启动）。model 与 CLI buildModel/TUI
+ *  同源注入（三面同一 ModelAdapter 契约，daemon 级单例供各会话共享）；staticRoot 为 GUI 静态产物目录
+ *  （G3 静态挂载），缺省 cwd 相对 dist-gui——serve 命令从仓库根跑即对，测试注入 tmp 路径保持 hermetic */
 export interface GuiDaemonOpts {
-  root: string;
   model: ModelAdapter;
   staticRoot?: string;
 }
@@ -36,29 +32,18 @@ export interface GuiDaemonHandle {
   close(): Promise<void>;
 }
 
-/** 单 run 锁的在场票据：abort 句柄持有即「运行中」，run 收束（含中断/失败）即清位；done 为 run promise
- *  本体——teardown 步骤 0 有界等待的锚点（被中止 run 的 settle 收口等待经它观测） */
-interface CurrentRun {
-  abort: AbortController;
-  done: Promise<void>;
-}
-
 /** JSON body 上限（1MB）：防无界 body 撑爆 daemon 内存；超限即断连收口 */
 const MAX_BODY_BYTES = 1024 * 1024;
-
-/** 事件环形缓冲容量（重连补发窗口）：满即丢最老——daemon 长跑不无界涨内存 */
-const EVENT_BUFFER_CAP = 512;
 
 /** WS 保活节拍：30s 一 ping；pong 静默超 60s 即 terminate（close 事件统一清理） */
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
 
-/** teardown 步骤 0 有界等待上限（终审裁定）：被中止 run 的 settle 钩子（沉淀入队）收口窗口，2s 防
- *  signal 无视的工具悬挂 teardown；超时即放行进后续步骤 */
-const ABORTED_RUN_SETTLE_MS = 2_000;
-
 /** 静态缺失提示（G1 裁定恒定文案；G3 起 dist-gui 在场则 GET 挂静态，缺场仍回此形态） */
 const GUI_ASSETS_HINT = 'GUI assets not built — run pnpm --filter gui build (G2)';
+
+/** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
+const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
 
 /** 静态 mime 表（G3）：按扩展名映射，缺省 application/octet-stream（浏览器按 Content-Type 处置，
  *  未知类型不猜测——下载面行为由客户端定） */
@@ -83,44 +68,44 @@ function readStaticFile(file: string): Promise<Buffer | null> {
   return new Promise((resolve) => fs.readFile(file, (err, data) => resolve(err === null ? data : null)));
 }
 
-/** 环形缓冲的帧载体（G3 seq 协议）：补发帧各自携带入泵时刻的 seq——重连客户端凭 seq 判缺口 */
-interface BufferedEvent {
-  seq: number;
-  e: SessionEvent;
+/** 路由表条目：path 支持 `:name` 段参数（会话维端点 /session/:id/*）；auth 恒验除 healthz */
+interface Route {
+  method: string;
+  path: string;
+  auth: boolean;
+  run: (req: http.IncomingMessage, res: http.ServerResponse, params: Record<string, string>) => Promise<void>;
 }
 
 /**
- * GUI daemon 核心（spec §3）：HTTP 控制面 + WS 事件面 + 会话生命周期。装配零旁路——与 TUI 同一
- * `createRuntime` 单点（mode 恒 dontAsk：GUI v1 无终端交互面，审批/问询走回执端点，T3 接线），
- * `harness` 公开面（tasks/pipeline/mcpClose）只在 teardown 消费。HTTP 面：healthz 免鉴权 +
- * submit/interrupt 经 Bearer token 鉴权（§4.3：仅回环 + token，远程暴露为 v1 非目标）。WS 事件面
- * （T2）：onEvent 单点泵入 → `{kind:'event'}` 帧广播全部连接 + 512 环形缓冲，连接建立即补发缓冲
- * 全量（断线重连恢复窗口）；升级同走 Bearer 头鉴权。
+ * GUI daemon 核心（spec §3/§7 会话中心）：HTTP 控制面 + WS 事件面 + 会话注册表。每会话一个
+ * SessionRuntime（按 root 独立装配 createRuntime——独立泵/影子投影/转录/run 票据），daemon 持
+ * 全局面：seq 计数（T1 裁定：全局单调而非每会话——跨会话帧不重号，客户端按 sessionId 过滤后仍是
+ * 严格递增流）、WS 连接面、激活会话指针。HTTP 面：healthz 免鉴权 + 会话维端点（/session/:id/*）
+ * 与裸端点（/submit 等四件 = 激活会话别名，G2 gui 面渐进迁移不破，v1.x 移除）经 Bearer token 鉴权
+ * （§4.3：仅回环 + token，远程暴露为 v1 非目标）。WS 事件面：onEvent 单点泵入 → 帧挂 sessionId
+ * 广播全部连接 + 各会话 512 环形缓冲，连接建立即补发全部会话缓冲（会话序 s1..sN，各内缓冲序——
+ * T1 裁定：全部会话，客户端按 sessionId 过滤）；升级同走 Bearer 头鉴权。
  */
 export class GuiDaemon {
-  private readonly runtime: TuiRuntime;
-  private current?: CurrentRun;
+  private readonly model: ModelAdapter;
+  private readonly sessions = new Map<string, SessionRuntime>();
+  /** 会话 id 方言 s<n>：进程内单调计数（spec §7） */
+  private sessionSeq = 0;
+  /** seq 泵计数（G3 seq 协议 + T1 全局裁定）：计数在先帧在后（首帧 seq=1），跨会话全局单调不重置——
+   *  各会话 snapshot.lastSeq 同一计数器分配故各自单调 */
+  private seqCounter = 0;
+  /** 激活会话（spec §7 Ruling 1）：最近 create/attach 的会话；裸端点与 board/review 挂它。UI 切换 =
+   *  纯前端状态，不改 daemon active（协议兼容层概念，不是 UI 状态） */
+  private active?: string;
   private server?: http.Server;
   /** 幂等收口：首调落链，后续调用复用同一 Promise（close 链只走一遍） */
   private closePromise?: Promise<void>;
-  /** 事件环形缓冲（补发窗口）：pump 单点写入，连接建立即全量逐帧补发；帧各自带 seq（G3 重连协议） */
-  private readonly eventBuffer: BufferedEvent[] = [];
-  /** seq 泵计数（G3）：计数在先帧在后（首帧 seq=1），跨 run 全局单调不重置；snapshot.lastSeq 同源 */
-  private seqCounter = 0;
   /** WS 面：noServer 挂 http server upgrade；连接 Set=pump 广播面 */
   private wss?: WebSocketServer;
   private readonly wsClients = new Set<WebSocket>();
   /** 每 pong 时间戳（WeakMap 旁挂，不入连接对象）：ping 心跳判活依据 */
   private readonly wsLastPong = new WeakMap<WebSocket, number>();
   private pingTimer?: NodeJS.Timeout;
-  /** 影子投影（G2 snapshot 套件）：board/delegation 与 TUI session 同源纯件（boardEventFrom/
-   *  applyBoardEvent / applyDelegation）从同一事件流推导——GUI 重连/刷新直接取快照，无需重放事件 */
-  private board: TaskBoardState = emptyBoard();
-  private delegations: Delegation[] = [];
-  /** 粗粒度转录（spec G2 Ruling 1）：pump 同源喂入，/snapshot 的 messages 字段 */
-  private readonly transcript = new TranscriptCollector();
-  /** 单 run 锁外窥（测试/后续 /snapshot 消费）：current 在场即 running */
-  readonly status: () => 'idle' | 'running' = () => (this.current ? 'running' : 'idle');
   /** GUI 静态产物根（G3）：opts 注入，缺省 cwd 相对 dist-gui */
   private readonly staticRoot: string;
   /** 静态面探测结果（start 时一次缓存）：index.html 在场才挂静态，缺场保持 API-only（404 hint 原样） */
@@ -128,36 +113,67 @@ export class GuiDaemon {
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
-    this.runtime = createRuntime({
-      root: opts.root,
-      model: opts.model,
-      mode: 'dontAsk',
-      onEvent: (e) => this.pump(e),
+    this.model = opts.model;
+  }
+
+  /**
+   * 创建会话（spec §7）：root 存在性/目录校验（INVALID_ARG）→ 按 root 装配 SessionRuntime（同 root
+   * 多会话允许——各自独立主链，Ruling 2）→ 入注册表（s<n> 进程内单调）→ 置激活。Result 面：
+   * daemon 级 API（serve --root 预选/后续工作区注册表消费），HTTP 面映射 400/200
+   */
+  createSession(root: string): Result<{ sessionId: string }> {
+    const abs = path.resolve(root);
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(abs);
+    } catch {
+      return fail('INVALID_ARG', `root does not exist: ${abs}`);
+    }
+    if (!st.isDirectory()) return fail('INVALID_ARG', `root is not a directory: ${abs}`);
+    this.sessionSeq += 1;
+    const id = `s${this.sessionSeq}`;
+    const session = new SessionRuntime({
+      id,
+      root: abs,
+      model: this.model,
+      nextSeq: () => {
+        this.seqCounter += 1;
+        return this.seqCounter;
+      },
+      broadcast: (frame) => this.broadcastFrame(frame),
     });
+    this.sessions.set(id, session);
+    this.active = id;
+    return ok({ sessionId: id });
   }
 
-  /** 事件泵：seq 计数（在先）→ 环形缓冲写入（满 512 丢最老，帧自带 seq）→ 影子投影同步喂入 → 实时
-   *  广播全部连接。序内裁定：计数先于影子先于广播——同 tick 读 /snapshot 时 lastSeq 恒 ≥ 任何已广播帧
-   *  的 seq（影子态与 seq 无交错半态）。序列化一次逐连接 send——同一连接的帧恒按 pump 调用序到达
-   *  （ws 内部发送缓冲有序，无需额外队列）。投影与广播同源同序：snapshot 取到的影子态恒等于已广播
-   *  事件的累积（无连接时投影照走——影子不依赖消费面在场） */
-  private pump(e: SessionEvent): void {
-    this.seqCounter += 1;
-    const buffered: BufferedEvent = { seq: this.seqCounter, e };
-    this.eventBuffer.push(buffered);
-    if (this.eventBuffer.length > EVENT_BUFFER_CAP) this.eventBuffer.shift();
-    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) this.board = applyBoardEvent(this.board, boardEventFrom(e));
-    if (e.type.startsWith('delegation-')) this.delegations = applyDelegation(this.delegations, e);
-    this.transcript.push(e);
+  /** attach 恢复（spec §7）：journal 链回放重建（reduceJournal 播种）——T2 实装，本任务留桩 */
+  attach(_journalId: string, _root: string): Result<{ sessionId: string }> {
+    throw new CodedToolError('INVALID_STATE', 'attach lands in T2');
+  }
+
+  /** 会话外窥（测试/后续 T2+ 端点消费）：未知 id 回 undefined */
+  get(id: string): SessionRuntime | undefined {
+    return this.sessions.get(id);
+  }
+
+  /** 激活会话 id（无会话时 undefined——裸端点 409 的判据） */
+  activeId(): string | undefined {
+    return this.active;
+  }
+
+  /** 全会话收口（独立入口：daemon close 序内以分相形态并入；导出供 T2+ 会话回收类面复用）：
+   *  逐会话完整 teardown 序（abort 有界等待→stopAll→drain→mcpClose），顺序并发 Promise.all */
+  async teardownAll(): Promise<void> {
+    await Promise.all([...this.sessions.values()].map((s) => s.teardown()));
+  }
+
+  /** 泵广播面（daemon 级单点）：帧序列化一次逐连接 send——同一连接的帧恒按 pump 调用序到达（ws
+   *  内部发送缓冲有序，无需额外队列）；连接层按 sessionId 分发/过滤（T3） */
+  private broadcastFrame(frame: EventFrame): void {
     if (this.wsClients.size === 0) return;
-    const frame = this.frameEvent(buffered);
-    for (const ws of this.wsClients) ws.send(frame);
-  }
-
-  /** 下行帧单点：`{kind:'event', seq, e}` JSON 序列化（补发与实时共用同一帧形；approval/ask 挂起面
-   *  帧不带 seq——G4 重连重发语义另行收口，不入单调序列） */
-  private frameEvent(b: BufferedEvent): string {
-    return JSON.stringify({ kind: 'event', seq: b.seq, e: b.e });
+    const json = JSON.stringify(frame);
+    for (const ws of this.wsClients) ws.send(json);
   }
 
   /**
@@ -204,8 +220,10 @@ export class GuiDaemon {
     return wss;
   }
 
-  /** 连接生命周期：入 Set（广播面）→ 补发缓冲全量 → pong 记时/close 清理。补发在 upgrade 回调内
-   *  同步完成，与后续实时帧（pump 单点）天然无交错——帧序=缓冲序接事件序 */
+  /** 连接生命周期：入 Set（广播面）→ 补发全部会话缓冲 → pong 记时/close 清理。补发在 upgrade 回调内
+   *  同步完成，与后续实时帧（pump 单点）天然无交错——逐会话帧序=缓冲序接事件序；T1 裁定：全部会话
+   *  （s1..sN 会话序，各内缓冲序），客户端按帧面 sessionId 过滤（T3 onSessionEvent）——不收
+   *  `{"kind":"listen"}` 订阅消息（帧全带 sessionId 客户端自滤） */
   private onWsConnection(ws: WebSocket): void {
     this.wsClients.add(ws);
     this.wsLastPong.set(ws, Date.now());
@@ -213,7 +231,9 @@ export class GuiDaemon {
     // error 必须挂 listener（EventEmitter 契约）：socket 错误细节不倒面，close 统一走清理
     ws.on('error', () => {});
     ws.on('close', () => this.wsClients.delete(ws));
-    for (const b of this.eventBuffer) ws.send(this.frameEvent(b));
+    for (const session of this.sessions.values()) {
+      for (const f of session.bufferedFrames()) ws.send(JSON.stringify(f));
+    }
   }
 
   /** 保活心跳：逐连接判活——pong 静默超 60s 即 terminate（close 事件统一清理 Set），否则发 ping */
@@ -228,30 +248,20 @@ export class GuiDaemon {
     }
   }
 
-  /** 幂等 teardown：abort 在跑 run → 有界等待其 settle 收口（2s 上限）→ wss close（逐连接 1001）→
-   *  http server close → tasks.stopAll → pipeline drain → mcpClose（序同 CLI teardownCliRun 现场，网络面先行关闭——
-   *  不再接受新请求/新连接、在跑 run 中止后再动运行时内脏；细节裁定见各步骤行内注释） */
+  /** 幂等 teardown：单次化落链（closePromise 守卫），升级拒绝面同判 */
   close(): Promise<void> {
     if (!this.closePromise) this.closePromise = this.teardown();
     return this.closePromise;
   }
 
+  /** daemon 收口序（平移扩展为全会话形态）：0) 全会话在跑 run 即刻中止 + 有界等待 settle（并发）→
+   *  1) WS 面收 → 2) HTTP server 收 → 3) 全会话运行时内脏收口（stopAll→drain→mcpClose，并发）。
+   *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（分相并入 =
+   *  teardownAll 的逐会话序在会话维保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
-    // 0) 在跑 run 即刻中止（T1 评审裁定：close 时若 run 仍悬挂，其 promise 会拖住事件循环/测试收口；
-    //    路径同 /interrupt——runTask 以 stopReason=interrupted 收束，finally 清 current）
-    this.current?.abort.abort();
-    // 被中止 run 的 settle 钩子（沉淀入队）需收口后才进 drain——2000ms 有界防 signal 无视的工具悬挂
-    // teardown（终审裁定）；等待先于 stopAll/drain，run 侧入队完型后 drain 才是终态。done 先胜即清
-    // 残留 timer，不给事件循环留 2s 尾巴
-    if (this.current) {
-      const current = this.current;
-      let settleTimer: NodeJS.Timeout | undefined;
-      const bail = new Promise<void>((resolve) => {
-        settleTimer = setTimeout(resolve, ABORTED_RUN_SETTLE_MS);
-      });
-      await Promise.race([current.done, bail]);
-      clearTimeout(settleTimer);
-    }
+    // 0) 全会话在跑 run 即刻中止（并发）：与单会话序同理——悬挂 run 的 promise 会拖住事件循环/测试
+    //    收口；每会话有界等待 2s（Promise.all 并发不叠加）
+    await Promise.all([...this.sessions.values()].map((s) => s.abortAndSettle()));
     // 1) WS 面先收：停 ping 计时器，逐连接 1001 Going Away 后 wss.close——先于 HTTP server close，
     //    升级连接与请求连接同序退场，server close 时无存活的升级套接字拖尾
     if (this.pingTimer) {
@@ -273,33 +283,63 @@ export class GuiDaemon {
         srv.closeAllConnections();
       });
     }
-    // 3) 停全部后台任务（同 CLI D24 理由：任务执行体先停、通道后关，stopAll 同步纯本地记账不抛）
-    this.runtime.harness.tasks.stopAll();
-    // 4) 排空后台沉淀管线（此时无新入队源，drain 即终态）
-    await this.runtime.harness.pipeline.drain();
-    // 5) MCP 连接收口：关闭 stdio 子进程，防悬挂事件循环
-    await this.runtime.harness.mcpClose();
+    // 3) 全会话运行时内脏收口（并发）：stopAll → drain → mcpClose（序同 CLI teardownCliRun 现场）
+    await Promise.all([...this.sessions.values()].map((s) => s.dispose()));
   }
 
-  /** 内部路由表（G2 增 /snapshot；G3 增 /steer；静态资源走 dispatch 的 GET 兜底分支，不占路由表） */
-  private readonly routes: ReadonlyArray<{ method: string; path: string; auth: boolean; run: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> }> = [
+  /** 内部路由表（T1 会话中心：会话维端点 + 裸端点激活别名；G2 /snapshot、G3 /steer 平移）；
+   *  静态资源走 dispatch 的 GET 兜底分支，不占路由表 */
+  private readonly routes: ReadonlyArray<Route> = [
     { method: 'GET', path: '/healthz', auth: false, run: async (_req, res) => this.send(res, 200, { ok: true }) },
-    { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res) },
-    { method: 'POST', path: '/interrupt', auth: true, run: async (_req, res) => this.handleInterrupt(res) },
-    { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res) },
-    { method: 'GET', path: '/snapshot', auth: true, run: async (_req, res) => this.send(res, 200, this.snapshot()) },
+    { method: 'POST', path: '/session/new', auth: true, run: (req, res) => this.handleSessionNew(req, res) },
+    { method: 'POST', path: '/session/:id/submit', auth: true, run: (req, res, p) => this.handleSubmit(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/steer', auth: true, run: (req, res, p) => this.handleSteer(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
+    { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
+    { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
+    // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
+    { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
+    { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
+    { method: 'POST', path: '/interrupt', auth: true, run: async (_req, res) => this.handleInterrupt(res, undefined) },
+    { method: 'GET', path: '/snapshot', auth: true, run: async (_req, res) => this.handleSnapshot(res, undefined) },
   ];
+
+  /** 路由匹配（段参数 :name）：段数与字面段全等才命中；参数段解码（失败按字面处理，不命中） */
+  private matchRoute(method: string, pathname: string): { route: Route; params: Record<string, string> } | undefined {
+    const segs = pathname.split('/').filter((s) => s.length > 0);
+    for (const route of this.routes) {
+      const rSegs = route.path.split('/').filter((s) => s.length > 0);
+      if (route.method !== method || rSegs.length !== segs.length) continue;
+      const params: Record<string, string> = {};
+      let hit = true;
+      for (let i = 0; i < rSegs.length; i++) {
+        if (rSegs[i].startsWith(':')) {
+          try {
+            params[rSegs[i].slice(1)] = decodeURIComponent(segs[i]);
+          } catch {
+            params[rSegs[i].slice(1)] = segs[i];
+          }
+        } else if (rSegs[i] !== segs[i]) {
+          hit = false;
+          break;
+        }
+      }
+      if (hit) return { route, params };
+    }
+    return undefined;
+  }
 
   private dispatch(req: http.IncomingMessage, res: http.ServerResponse, token: string): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    const route = this.routes.find((r) => r.method === req.method && r.path === url.pathname);
-    if (route) {
-      // 鉴权（§4.3）：除 healthz 外恒验 Bearer token——恒时比较不做（token 非密钥材料，回环面时序侧信道无实义）
-      if (route.auth && req.headers.authorization !== `Bearer ${token}`) {
+    const matched = this.matchRoute(req.method ?? 'GET', url.pathname);
+    if (matched) {
+      // 鉴权（§4.3）：除 healthz 外恒验 Bearer token，且先于会话解析（401 面不泄露会话语义）——恒时
+      // 比较不做（token 非密钥材料，回环面时序侧信道无实义）
+      if (matched.route.auth && req.headers.authorization !== `Bearer ${token}`) {
         this.send(res, 401, { error: 'unauthorized' });
         return;
       }
-      route.run(req, res).catch((err) => {
+      matched.route.run(req, res, matched.params).catch((err) => {
         console.error('[serve] handler error:', err);
         if (!res.headersSent) this.send(res, 500, { error: 'internal error' });
         else res.end();
@@ -367,7 +407,49 @@ export class GuiDaemon {
     }
   }
 
-  private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  /** 会话解析单点：id=undefined 走激活别名（无 active 409 {no active session}——G3 裸端点兼容裁定）；
+   *  显式 id 未知 404 {unknown session}。响应已发即回 undefined（调用方直返） */
+  private sessionFor(res: http.ServerResponse, id: string | undefined): SessionRuntime | undefined {
+    if (id === undefined) {
+      const active = this.active !== undefined ? this.sessions.get(this.active) : undefined;
+      if (active === undefined) {
+        this.send(res, 409, { error: 'no active session' });
+        return undefined;
+      }
+      return active;
+    }
+    const session = this.sessions.get(id);
+    if (session === undefined) {
+      this.send(res, 404, { error: 'unknown session' });
+      return undefined;
+    }
+    return session;
+  }
+
+  /** POST /session/new {root}（spec §4.1）：root 必填（无 root 400+迁移提示——旧裸软重置语义让位
+   *  /session/:id/reset）；createSession 单点（存在性/目录校验 INVALID_ARG → 400）→ 200 {ok,sessionId} */
+  private async handleSessionNew(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const root = (parsed.body as { root?: unknown } | null)?.root;
+    if (typeof root !== 'string' || root.length === 0) {
+      this.send(res, 400, { error: ROOT_REQUIRED_HINT });
+      return;
+    }
+    const r = this.createSession(root);
+    if (!r.ok) {
+      this.send(res, 400, { error: r.error.message });
+      return;
+    }
+    this.send(res, 200, { ok: true, sessionId: r.value.sessionId });
+  }
+
+  /** submit 处理（会话维 + 裸别名共用）：goal 非空 string 校验 → 会话 run 锁（409 拒二次提交）→
+   *  202 即回（受理面；run 异步收束细节见 SessionRuntime.submit） */
+  private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
     const parsed = await this.readJson(req);
     if (!parsed.ok) {
       this.send(res, parsed.status, { error: parsed.error });
@@ -378,67 +460,65 @@ export class GuiDaemon {
       this.send(res, 400, { error: 'goal must be a non-empty string' });
       return;
     }
-    // 单 run 锁（v1 一 daemon 一会话）：运行中拒新提交（409），不排队——GUI 侧无队列语义，排队会静默吞掉用户意图
-    if (this.current) {
-      this.send(res, 409, { error: 'run in progress' });
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    const r = session.submit(goal);
+    if (!r.ok) {
+      this.send(res, r.status, { error: r.error });
       return;
     }
-    const abort = new AbortController();
-    // 202 即回：run 异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败倒面），
-    // finally 清锁——中断（stopReason=interrupted）与正常收束同路径清位；promise 本体（.then 归一 void）存入票据
-    // done，teardown 步骤 0 的有界等待经它观测收口。user 条入转录在锁检查之后——409 拒绝的提交不留痕
-    this.transcript.submit(goal);
-    const p: Promise<void> = this.runtime
-      .runTask(goal, { signal: abort.signal })
-      .catch((err) => {
-        console.error('[serve] run failed:', err);
-      })
-      .then(() => undefined)
-      .finally(() => {
-        this.current = undefined;
-      });
-    this.current = { abort, done: p };
     this.send(res, 202, { ok: true });
   }
 
-  private handleInterrupt(res: http.ServerResponse): void {
-    if (!this.current) {
-      this.send(res, 409, { error: 'no run in progress' });
+  /** interrupt 处理：无在跑 run 409；中止信号发出即 200（run 以 stopReason=interrupted 收束后清锁） */
+  private handleInterrupt(res: http.ServerResponse, id: string | undefined): void {
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    const r = session.interrupt();
+    if (!r.ok) {
+      this.send(res, 409, { error: r.error });
       return;
     }
-    // 步边界/在途模型调用经 signal 即刻中止（reactor 既有语义），runTask 以 stopReason=interrupted 收束后 finally 清锁
-    this.current.abort.abort();
     this.send(res, 200, { ok: true });
   }
 
-  /** POST /steer（G3）：text 非空 string 校验后入 runtime.harness.steering（现场核对：SteeringChannel
-   *  纯内存 FIFO——enqueue 不做运行态检查，运行中步边界 drain 消费、空闲入队下一轮生效）→ 恒 200
-   *  {ok:true}，无 409 分径（裁定：steering 非独占面，排队语义即承诺） */
-  private async handleSteer(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  /** steer 处理（G3）：text 非空 string 校验（空白串与 enqueue 的 trim-忽略口径一致前置拒——静默
+   *  no-op 的 200 比显式 400 更糟）→ 入该会话 steering → 恒 200 {ok:true}，无 409 分径（裁定：
+   *  steering 非独占面，排队语义即承诺） */
+  private async handleSteer(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
     const parsed = await this.readJson(req);
     if (!parsed.ok) {
       this.send(res, parsed.status, { error: parsed.error });
       return;
     }
     const text = (parsed.body as { text?: unknown } | null)?.text;
-    // 空白串与 enqueue 的 trim-忽略口径一致前置拒（静默 no-op 的 200 比显式 400 更糟）
     if (typeof text !== 'string' || text.trim().length === 0) {
       this.send(res, 400, { error: 'text must be a non-empty string' });
       return;
     }
-    this.runtime.harness.steering.enqueue(text);
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    session.steer(text);
     this.send(res, 200, { ok: true });
   }
 
-  /** 会话快照（G2 /snapshot 载荷单点；G3 增 lastSeq）：粗粒度转录 + board/delegations 影子投影 +
-   *  运行态 + 事件序列水位——GUI 冷启动/刷新经一次拉取恢复全景，细粒度实时面仍走 WS 事件流（两轨
-   *  分工，spec G2 Ruling 1）；lastSeq 与影子态同 tick 读取（pump 序内先影子后广播）——客户端以
-   *  「重连后首帧 seq > snapshot.lastSeq ⇒ 无缺口」判重连补发完备（G4 消费） */
-  private snapshot(): { messages: TranscriptEntry[]; board: TaskBoardState; delegations: Delegation[]; status: 'idle' | 'running'; lastSeq: number } {
-    return { messages: this.transcript.entries(), board: this.board, delegations: this.delegations, status: this.status(), lastSeq: this.seqCounter };
+  /** reset 处理（旧 /session/new 软重置语义迁入）：中止在跑 run + 换新运行时 + 清投影/转录/缓冲，
+   *  200 {ok:true}（语义面见 SessionRuntime.reset） */
+  private async handleReset(res: http.ServerResponse, id: string | undefined): Promise<void> {
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    await session.reset();
+    this.send(res, 200, { ok: true });
   }
 
-  private send(res: http.ServerResponse, status: number, body: Record<string, unknown>): void {
+  /** snapshot 处理：会话快照单点（载荷形态见 SessionRuntime.snapshotResponse） */
+  private handleSnapshot(res: http.ServerResponse, id: string | undefined): void {
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    this.send(res, 200, session.snapshotResponse());
+  }
+
+  private send(res: http.ServerResponse, status: number, body: object): void {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
   }

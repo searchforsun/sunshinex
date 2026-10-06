@@ -9,10 +9,12 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 
-/** WS 下行帧契约（T2 起；G3 seq 协议）：恒 {kind:'event', seq, e}——seq 为 daemon 泵内全局单调序号
- *  （计数在先帧在后，首帧=1；approval/ask 挂起面帧不带 seq，G4 起另形）——本测试面唯一断言对象 */
+/** WS 下行帧契约（T1 会话中心）：恒 {kind:'event', sessionId, seq, e}——sessionId 为帧所属会话
+ *  （三型帧均挂——approval/ask 帧 G4 起另形同挂）；seq 为 daemon 级全局单调序号（计数在先帧在后，
+ *  首帧=1，跨会话不重号——G3 seq 协议 + T1 全局裁定）——本测试面唯一断言对象 */
 interface Frame {
   kind: string;
+  sessionId: string;
   seq: number;
   e: SessionEvent;
 }
@@ -47,29 +49,38 @@ class HangingAdapter implements ModelAdapter {
 interface Ctx {
   http: string;
   ws: string;
-  post: (goal: string) => Promise<Response>;
+  /** 首会话 id（helper 内创建，root=daemon tmp） */
+  sid: string;
+  /** 按会话维提交：POST /session/:id/submit */
+  post: (goal: string, sid?: string) => Promise<Response>;
+  /** POST /session/new（root 缺省 daemon tmp）——双会话用例自建第二会话 */
+  newSession: (root?: string) => Promise<string>;
 }
 
-/** 装配样板（同 daemon.test.ts 的环境隔离）：SUNSHINEX_DATA_DIR 钉 tmp，token 固定 test-token，port 0 */
+/** 装配样板（环境隔离同 daemon.test.ts）：SUNSHINEX_DATA_DIR 钉 tmp，token 固定 test-token，port 0；
+ *  会话中心形态——daemon 空注册表启动，helper 内建首会话（root=tmp），既有单会话用例打 :id 端点 */
 async function withWsDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>): Promise<void> {
   const tmp = tmpdir('sunshinex-serve-ws-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
   try {
-    const daemon = new GuiDaemon({ root: tmp, model });
+    const daemon = new GuiDaemon({ model });
     const s = await daemon.start({ port: 0, token: 'test-token' });
     const http = `http://127.0.0.1:${s.port}`;
-    const post = async (goal: string): Promise<Response> => {
-      const r = await fetch(`${http}/submit`, {
-        method: 'POST',
-        headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
-        body: JSON.stringify({ goal }),
-      });
+    const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' } as Record<string, string>;
+    const newSession = async (root?: string): Promise<string> => {
+      const r = await fetch(`${http}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: root ?? tmp }) });
+      assert.equal(r.status, 200, 'session/new 应 200');
+      return ((await r.json()) as { sessionId: string }).sessionId;
+    };
+    const sid = await newSession();
+    const post = async (goal: string, target?: string): Promise<Response> => {
+      const r = await fetch(`${http}/session/${target ?? sid}/submit`, { method: 'POST', headers: H, body: JSON.stringify({ goal }) });
       assert.equal(r.status, 202, 'submit 应 202');
       return r;
     };
     try {
-      await fn({ http, ws: `ws://127.0.0.1:${s.port}`, post });
+      await fn({ http, ws: `ws://127.0.0.1:${s.port}`, sid, post, newSession });
     } finally {
       await s.close();
     }
@@ -94,7 +105,7 @@ function openCollecting(url: string, headers?: Record<string, string>): Promise<
   });
 }
 
-test('① 连接前 submit(hanging)：事件先入缓冲，后连 WS 补发全量既有事件', async () => {
+test('① 连接前 submit(hanging)：事件先入缓冲，后连 WS 补发全量既有事件（帧恒挂 sessionId）', async () => {
   const model = new HangingAdapter();
   await withWsDaemon(model, async (ctx) => {
     await ctx.post('长任务');
@@ -105,6 +116,7 @@ test('① 连接前 submit(hanging)：事件先入缓冲，后连 WS 补发全�
     try {
       await waitFor(() => frames.some((f) => f.e.type === 'model-start'), 3000);
       assert.ok(frames.every((f) => f.kind === 'event'), '补发帧恒 kind:"event"');
+      assert.ok(frames.every((f) => f.sessionId === ctx.sid), '补发帧恒挂所属会话 sessionId');
       assert.ok(frames.some((f) => f.e.type === 'model-start'), '首批帧含连接前的 model-start');
       assert.ok(frames.some((f) => f.e.type === 'route'), 'run 起始 route 事件同样在场');
       const msIdx = frames.findIndex((f) => f.e.type === 'model-start');
@@ -126,6 +138,7 @@ test('② 连接中 submit(单 done 卡)：按序实时收 {kind:"event"} 帧，
       await ctx.post('把测试跑绿');
       await waitFor(() => frames.some((f) => f.e.type === 'done'), 10000);
       assert.ok(frames.every((f) => f.kind === 'event'), '全帧恒 kind:"event"');
+      assert.ok(frames.every((f) => f.sessionId === ctx.sid), '实时帧恒挂所属会话 sessionId');
       const types = frames.map((f) => f.e.type);
       const msIdx = types.indexOf('model-start');
       const doneIdx = types.indexOf('done');
@@ -217,6 +230,7 @@ test('④ subprotocol 鉴权（浏览器路径）：bearer.<token> 无 Authoriza
       assert.equal(ws.protocol, 'bearer.test-token', '升级响应应回显请求的 subprotocol（浏览器侧鉴权证据）');
       await waitFor(() => frames.some((f) => f.e.type === 'model-start'), 3000);
       assert.ok(frames.every((f) => f.kind === 'event'), '补发帧恒 kind:"event"');
+      assert.ok(frames.every((f) => f.sessionId === ctx.sid), '补发帧恒挂 sessionId（subprotocol 路径同帧形）');
       assert.ok(frames.some((f) => f.e.type === 'model-start'), 'subprotocol 路径同样享受缓冲补发');
     } finally {
       ws.close();
@@ -243,7 +257,7 @@ test('④ subprotocol 鉴权（浏览器路径）：bearer.<token> 无 Authoriza
 test('⑤ seq 协议：两轮 submit 全部 event 帧 seq 全局严格递增；补发帧 seq 保留各自值（首帧=1，续轮不重置）', async () => {
   await withWsDaemon(new ScriptedAdapter(['{"done":true,"reply":"one"}', '{"done":true,"reply":"two"}']), async (ctx) => {
     const snap = async (): Promise<{ status: string; lastSeq: number }> => {
-      const r = await fetch(`${ctx.http}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
+      const r = await fetch(`${ctx.http}/session/${ctx.sid}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
       assert.equal(r.status, 200);
       return (await r.json()) as { status: string; lastSeq: number };
     };
@@ -282,3 +296,102 @@ test('⑤ seq 协议：两轮 submit 全部 event 帧 seq 全局严格递增；�
   });
 });
 
+test('⑥ 双会话帧归属：同一连接收两会话帧各挂各 sessionId（广播全连接，帧面按会话标注）', async () => {
+  const model = new HangingAdapter();
+  await withWsDaemon(model, async (ctx) => {
+    // 第二会话：独立 tmp root
+    const tmpB = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-serve-ws-b-'));
+    const s2 = await ctx.newSession(tmpB);
+    assert.notEqual(s2, ctx.sid, '两会话 id 相异');
+
+    const { ws, frames } = await openCollecting(ctx.ws);
+    try {
+      // s1 run（hanging：事件面停在 model-start）
+      await ctx.post('s1 长任务', ctx.sid);
+      await waitFor(() => model.calls > 0, 3000);
+      await waitFor(() => frames.filter((f) => f.sessionId === ctx.sid).some((f) => f.e.type === 'model-start'), 3000);
+      // s2 run（同一连接继续收，帧挂 s2）
+      await ctx.post('s2 长任务', s2);
+      await waitFor(() => model.calls > 1, 3000);
+      await waitFor(() => frames.filter((f) => f.sessionId === s2).some((f) => f.e.type === 'model-start'), 3000);
+
+      // 会话归属：A 会话帧 sid=s1 / B 会话帧 sid=s2，各流各自含完整起步面（route→model-start）
+      const f1 = frames.filter((f) => f.sessionId === ctx.sid);
+      const f2 = frames.filter((f) => f.sessionId === s2);
+      assert.ok(f1.length > 0 && f2.length > 0, '两会话帧均到达同一连接');
+      for (const [label, list] of [['s1', f1] as const, ['s2', f2] as const]) {
+        const types = list.map((f) => f.e.type);
+        assert.ok(types.includes('route'), `${label} 流含 route`);
+        assert.ok(types.indexOf('model-start') > types.indexOf('route'), `${label} 流 route 先于 model-start`);
+      }
+      // 收尾：停掉两个悬挂 run
+      const H = { authorization: 'Bearer test-token' } as Record<string, string>;
+      for (const sid of [ctx.sid, s2]) {
+        const r = await fetch(`${ctx.http}/session/${sid}/interrupt`, { method: 'POST', headers: H });
+        assert.equal(r.status, 200);
+        await waitForAsync(() => sessionIdle(ctx.http, H, sid), 3000);
+      }
+    } finally {
+      ws.close();
+    }
+  });
+});
+
+test('⑦ 双会话补发各归各：重连补发=全会话缓冲逐会话（会话序 s1..sN，各内缓冲序，seq 全局续接）', async () => {
+  const model = new HangingAdapter();
+  await withWsDaemon(model, async (ctx) => {
+    const tmpB = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-serve-ws-b2-'));
+    try {
+      const s2 = await ctx.newSession(tmpB);
+      const H = { authorization: 'Bearer test-token' } as Record<string, string>;
+      // s1 run 起步后中止（块完整收束），再 s2 run 起步后中止——两会话缓冲各有独立事件段
+      await ctx.post('s1 长任务', ctx.sid);
+      await waitFor(() => model.calls > 0, 3000);
+      let r = await fetch(`${ctx.http}/session/${ctx.sid}/interrupt`, { method: 'POST', headers: H });
+      assert.equal(r.status, 200);
+      await waitForAsync(() => sessionIdle(ctx.http, H, ctx.sid), 3000);
+      await ctx.post('s2 长任务', s2);
+      await waitFor(() => model.calls > 1, 3000);
+      r = await fetch(`${ctx.http}/session/${s2}/interrupt`, { method: 'POST', headers: H });
+      assert.equal(r.status, 200);
+      await waitForAsync(() => sessionIdle(ctx.http, H, s2), 3000);
+
+      // 后连连接：所见全为补发——s1 块在前 s2 块在后（会话序），各内 seq 递增，跨块全局续接
+      const { ws, frames } = await openCollecting(ctx.ws);
+      try {
+        await waitFor(() => frames.some((f) => f.sessionId === s2), 3000);
+        const f1 = frames.filter((f) => f.sessionId === ctx.sid);
+        const f2 = frames.filter((f) => f.sessionId === s2);
+        assert.ok(f1.length > 0 && f2.length > 0, '补发含全部会话缓冲（裁定：全会话，客户端按 sessionId 过滤）');
+        assert.equal(frames.indexOf(f1[0]), 0, '补发会话序：s1 块在前');
+        assert.ok(frames.indexOf(f1[f1.length - 1]) < frames.indexOf(f2[0]), 's2 块整个在 s1 块之后');
+        // 各内缓冲序=seq 序；跨块全局单调续接（s1 段先于 s2 段完成，全局计数器不回拨）
+        for (const list of [f1, f2]) {
+          for (let i = 1; i < list.length; i++) assert.ok(list[i].seq > list[i - 1].seq, '块内 seq 递增');
+        }
+        assert.ok(f2[0].seq > f1[f1.length - 1].seq, '跨块 seq 全局续接（daemon 级单调）');
+        // 块内事件面完整：各自含 route（run 起步）
+        assert.ok(f1.some((f) => f.e.type === 'route') && f2.some((f) => f.e.type === 'route'), '各会话块含完整 run 起步面');
+      } finally {
+        ws.close();
+      }
+    } finally {
+      fs.rmSync(tmpB, { recursive: true, force: true });
+    }
+  });
+});
+
+/** 会话 idle 轮询（⑥⑦ 辅助）：snapshot.status 回 idle */
+async function sessionIdle(http: string, H: Record<string, string>, sid: string): Promise<boolean> {
+  const r = await fetch(`${http}/session/${sid}/snapshot`, { headers: H });
+  return ((await r.json()) as { status: string }).status === 'idle';
+}
+
+/** 异步谓词轮询（⑥⑦ 辅助）：20ms 片轮询 await pred 为真，超时抛错 */
+async function waitForAsync(pred: () => Promise<boolean>, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await pred())) {
+    if (Date.now() > deadline) throw new Error('waitFor 超时');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
