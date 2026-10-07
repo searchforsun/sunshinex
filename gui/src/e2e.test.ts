@@ -61,7 +61,9 @@ async function startDaemon(
       await s.close();
       if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
       else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
-      fs.rmSync(tmp, { recursive: true, force: true });
+      // Windows cwd 锁迟滞兜底(G8b pty 场景引入,daemon.test rmTmp 同款):pty shell 以 tmp 为
+      // cwd,teardown killAllFor 后句柄释放可迟于本拍(EPERM)——maxRetries/retryDelay 走 fs 内建重试
+      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     },
   };
 }
@@ -1025,4 +1027,194 @@ describe('G8a-T6 场景B:任务标签内看板消费(CARDS 全链 → 切任务�
       vi.unstubAllGlobals();
     }
   }, 60_000);
+});
+
+/* ============================================================
+ * G8b e2e 两场景(spec §12 G8b 行·终端/目录):场景①——fixture 造 dirA/fileA.ts(内容
+ * 标记串)→ 建会话进 chat → +菜单开目录标签(menuitem 目录)→ mount 惰拉 root → 根行
+ * dirA 在场 → 展开拉单层 → 点 fileA.ts 文件行 → 文件标签开且活动(title=dirA/fileA.ts)
+ * → Files 经 initialPath 自动加载标记串。场景②——App 内 +菜单开终端标签 → jsdom 降级面
+ * 在场(xterm 渲染需真浏览器窗口,渲染面不造假——App.test 断言面 e2e 复钉一次);pty 链路
+ * 以裸 node ws 验,鉴权走子协议 bearer.<token>(gui PtySocket 的浏览器形态,与 daemon.test
+ * 的 Bearer 头形态互补):POST /session/:id/pty 分配 → 连入首帧 replay(新分配可空)→
+ * in 帧下发标记命令(win32 powershell 可执行形态)→ 轮询 data 帧含标记 → 断线重连首帧
+ * replay 解码含标记(64KB 环形缓冲重放,U-D5)→ DELETE kill(kill 同步注销)→ 新 ws
+ * 连入收 error 'pty not found'。
+ * ============================================================ */
+
+describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录标签 → 展开 → 点文件 → 文件标签活动+内容自动加载', () => {
+  it('建会话 → +菜单「目录」→ 根行 dirA → 展开 fileA.ts → 点开 → title=dirA/fileA.ts 活动且 Files 载标记串', async () => {
+    const MARKER = 'g8b-dir-tree-file-marker';
+    const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"目录场景无需模型轮"}']));
+    try {
+      // fixture:会话 root 内 dirA/fileA.ts(标记串内容)——tree 单层列举/文件行跳转/Files 预览的盘面
+      fs.mkdirSync(path.join(env.root, 'dirA'), { recursive: true });
+      fs.writeFileSync(path.join(env.root, 'dirA', 'fileA.ts'), MARKER, 'utf8');
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat(默认「任务」标签活动)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+
+      // —— +菜单开目录标签(content 节「目录」,单例)→ mount 惰拉 root → 根行 dirA 在场 ——
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
+      await waitFor(() => expect(tabsByTitle(container, '目录').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, '目录')[0]!.className).toContain('active'); // 目录标签开且活动
+      expect(container.querySelector('.sx-tabbody .sx-tree')).not.toBeNull(); // 树容器在场
+      const dirRow = await screen.findByRole('button', { name: 'dirA' }, { timeout: 5_000 }); // 根层目录行
+      expect(dirRow.className).toContain('sx-tree-dir');
+
+      // —— 展开 dirA → 惰拉单层(tree?path=dirA)→ fileA.ts 文件行在场 ——
+      fireEvent.click(dirRow);
+      const fileRow = await screen.findByRole('button', { name: 'fileA.ts' }, { timeout: 5_000 });
+      expect(fileRow.className).toContain('sx-tree-file'); // 文件行分型(目录行 sx-tree-dir 相对)
+
+      // —— 点 fileA.ts → openTab('file',{path:'dirA/fileA.ts'})→ 文件标签开且活动;Files
+      //    经 initialPath 自动加载 → 标记串(磁盘真内容)渲染 ——
+      fireEvent.click(fileRow);
+      await waitFor(() => expect(tabsByTitle(container, 'dirA/fileA.ts').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, 'dirA/fileA.ts')[0]!.className).toContain('active'); // 文件标签活动
+      expect(tabsByTitle(container, '目录')[0]!.className).not.toContain('active'); // 目录标签失活
+      await waitFor(
+        () => expect(container.querySelector('.sx-tabbody .files-view')?.textContent).toContain(MARKER),
+        { timeout: 5_000 },
+      );
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
+
+/** pty 专用 WS 的 S→C 帧宽松形(replay/data 携 b;exit 携 code;error 携 message) */
+interface E2ePtyFrame {
+  readonly t: 'replay' | 'data' | 'exit' | 'error';
+  readonly b?: string;
+  readonly code?: number;
+  readonly message?: string;
+}
+
+/** pty 专用 WS 开连接+帧收集(子协议 bearer.<token> 鉴权——gui PtySocket 的浏览器形态;
+ *  message 监听构造后立刻挂:首帧 replay 可与握手响应同 TCP 段到,等 open 再挂会丢帧) */
+function openPtyWs(url: string, token: string): Promise<{ ws: NodeWebSocket; frames: E2ePtyFrame[] }> {
+  return new Promise((resolve, reject) => {
+    const ws = new NodeWebSocket(url, [`bearer.${token}`]);
+    const frames: E2ePtyFrame[] = [];
+    ws.on('message', (data) => {
+      frames.push(JSON.parse(data.toString()) as E2ePtyFrame);
+    });
+    ws.once('open', () => resolve({ ws, frames }));
+    ws.once('error', reject);
+  });
+}
+
+/** data 帧流拼接解码(UTF-8)——终端输出文本的断言面(daemon.test ⑩ 同口径) */
+const ptyDataText = (frames: readonly E2ePtyFrame[]): string =>
+  frames.filter((f) => f.t === 'data').map((f) => Buffer.from(f.b ?? '', 'base64').toString('utf8')).join('');
+
+/** 单帧 b 载荷解码(replay 重放断言面) */
+const ptyDecode = (f: E2ePtyFrame): string => Buffer.from(f.b ?? '', 'base64').toString('utf8');
+
+/** 轮询直至谓词真(裸链轮询收帧用;超时抛带说明) */
+async function waitUntil(pred: () => boolean, ms: number, what: string): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!pred()) {
+    if (Date.now() > deadline) throw new Error(`e2e pty 链等待超时: ${what}`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分配/回环/重连重放/kill 注销', () => {
+  it('App 开终端标签 → 降级面在场;裸链:分配→replay→in 标记→data 含标记→重连 replay 含标记→DELETE kill→error not found', async () => {
+    const MARKER = 'pty-link-ok';
+    const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"终端场景无需模型轮"}']));
+    const H: Record<string, string> = { authorization: 'Bearer e2e-token' };
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话 → +菜单开终端标签(tools 节「终端」):openPty 真分配(conpty 真进程)→ jsdom
+      //    无布局(clientWidth=0)→ 降级面在场(渲染面不造假;链路面归下方裸 ws 验证)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '终端' }));
+      await waitFor(() => expect(tabsByTitle(container, '终端').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, '终端')[0]!.className).toContain('active'); // 终端标签开且活动
+      // 降级面:openPty 落定后守卫触发(分配先行,降级不吞分配——关标签 kill 链照常可寻址)
+      await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined(), { timeout: 15_000 });
+
+      // —— 裸链 1) 分配:POST /session/s1/pty {cols,rows} → 200 {ptyId}(pty-<n> 方言)——
+      const base = `http://127.0.0.1:${env.port}`;
+      const wsBase = `ws://127.0.0.1:${env.port}`;
+      const alloc = await fetch(`${base}/session/s1/pty`, {
+        method: 'POST',
+        headers: H,
+        body: JSON.stringify({ cols: 80, rows: 24 }),
+      });
+      expect(alloc.status).toBe(200);
+      const { ptyId } = (await alloc.json()) as { ptyId: string };
+      expect(/^pty-\d+$/.test(ptyId)).toBe(true);
+
+      // —— 2) 连入:首帧恒 replay(新分配可空)→ in 帧下发标记命令(win32 powershell 可执行形态)
+      //    → data 帧流 base64 解码含标记(shell 回环真链路)——
+      const a = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`, 'e2e-token');
+      try {
+        await waitUntil(() => a.frames.length > 0, 10_000, '连入首帧 replay');
+        expect(a.frames[0]!.t).toBe('replay');
+        const cmd = `node -e "process.stdout.write('${MARKER}')"\r`;
+        a.ws.send(JSON.stringify({ t: 'in', b: Buffer.from(cmd, 'utf8').toString('base64') }));
+        await waitUntil(() => ptyDataText(a.frames).includes(MARKER), 30_000, 'data 帧含标记');
+      } finally {
+        a.ws.close();
+      }
+      await waitUntil(() => a.ws.readyState === NodeWebSocket.CLOSED, 5_000, '首连 ws 关闭');
+
+      // —— 3) 断线重连(close≠kill 进程保活):新 ws 连入 → 首帧 replay 解码含标记(环形缓冲重放)——
+      const b = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`, 'e2e-token');
+      try {
+        await waitUntil(() => b.frames.length > 0, 10_000, '重连首帧 replay');
+        expect(b.frames[0]!.t).toBe('replay');
+        expect(ptyDecode(b.frames[0]!).includes(MARKER)).toBe(true);
+      } finally {
+        b.ws.close();
+      }
+
+      // —— 4) DELETE kill(kill 同步注销:has→false 立即)→ 新 ws 连入收 error 'pty not found'
+      //    后 close(1008)(daemon.test ⑩ 的 Bearer 头 kill 面在此以子协议形态复验)——
+      const kill = await fetch(`${base}/session/s1/pty/${ptyId}`, { method: 'DELETE', headers: H });
+      expect(kill.status).toBe(200);
+      expect(await kill.json()).toEqual({ ok: true });
+      const c = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`, 'e2e-token');
+      try {
+        await waitUntil(() => c.frames.length > 0, 10_000, 'kill 后连入帧');
+        expect(c.frames[0]!.t).toBe('error');
+        expect(c.frames[0]!.message).toBe('pty not found');
+        await waitUntil(() => c.ws.readyState === NodeWebSocket.CLOSED, 5_000, 'error 后 close(1008)');
+      } finally {
+        c.ws.close();
+      }
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 90_000);
 });
