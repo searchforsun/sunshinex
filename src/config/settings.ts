@@ -216,9 +216,35 @@ interface ApplyResult {
   warnings: string[];
 }
 
+/** 本进程装载链自填的 SUNSHINEX_* 槽登记（G8c T2 /settings 来源分层的判据）：applySettings 只填
+ *  缺省槽时单点登记——「槽在 env 但非自填」即真导出环境变量（恒最优先，GUI 禁编+徽标）；自填即
+ *  来自文件链（项目/全局级可编辑）。daemon 不自行调链（CLI 入口先跑、daemon 继承其 env），本登记
+ *  因此覆盖链的所有跑法：无论谁调 applySettings，登记面同一。 */
+const selfFilledSlots = new Set<string>();
+
+/** 本进程经装载链自填的槽名快照（只读视图；PUT /settings 重载链以此为清除清单） */
+export function getSelfFilledSlots(): readonly string[] {
+  return [...selfFilledSlots];
+}
+
+/** 清空自填登记：PUT /settings 成功后重载链前的清场步骤（删 env 槽 + 清集 → applySettings 按新
+ *  文件态重登记）。清集必须在删槽之后、重装之前——否则已删槽的陈旧登记会让下次重载误删真导出值。 */
+export function resetSelfFilledSlots(): void {
+  selfFilledSlots.clear();
+}
+
+/** 文本是否含 JSONC 注释（G8c T2 PUT /settings 的 409 判据）：与 stripJsonComments 同一状态机口径
+ *  （raw !== stripped），BOM 不误报（先剥 BOM 再比对）。结构化改写会丢注释——含注释文件必须走 raw
+ *  编辑面，本函数是那一分流的判定单点。 */
+export function hasJsonComments(text: string): boolean {
+  const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  return stripJsonComments(src) !== src;
+}
+
 /**
  * 装载：parse → flatten → 只填 process.env 未定义键（只填缺省语义）。
  * 已导出环境变量与先装层级（项目 settings）不被覆盖——装载顺序即优先级（D2）。
+ * 只填缺省写入时登记自填槽（selfFilledSlots——见上；G8c T2 /settings 来源分层判据）。
  * 库内零打印零退出：告警数据交入口层决定输出通道，process.exit 属入口层职责。
  */
 export function applySettings(filePath: string): ApplyResult {
@@ -229,6 +255,7 @@ export function applySettings(filePath: string): ApplyResult {
   for (const [slot, value] of Object.entries(slots)) {
     if (process.env[slot] === undefined) {
       process.env[slot] = value;
+      selfFilledSlots.add(slot);
       loaded += 1;
     }
   }

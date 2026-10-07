@@ -14,6 +14,21 @@ import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
+import {
+  SEMANTIC_KEYS,
+  RETIRED_KEYS,
+  applySettings,
+  flattenSettings,
+  getSelfFilledSlots,
+  hasJsonComments,
+  loadGlobalSettings,
+  loadProjectSettings,
+  parseSettingsFile,
+  resetSelfFilledSlots,
+} from '../config/settings';
+import { loadProviders, parseProvidersSpec, resolveProviderApiKey } from '../config/providers';
+import type { ModelChoice } from '../config/providers';
+import type { PermissionsConfig } from '../config/permissions';
 import { isWithin } from '../paths';
 import { PtyManager } from './pty';
 
@@ -229,6 +244,77 @@ function safeDecode(seg: string): string {
  *  靠重连 replay 补，不追赶） */
 function sendPtyFrame(ws: WebSocket, frame: { t: 'data' | 'exit'; b?: string; code?: number }): void {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
+}
+
+// ---------- G8c T2：/settings 面模块级助手（只读视图的文件级拆解 + effective 判定 pure fn） ----------
+
+/** 空 permissions 面（坏形/缺级/缺键的统一缺省形态，与 permissions.ts readLevel 的 EMPTY 同构） */
+const EMPTY_PERMISSIONS: PermissionsConfig = { deny: [], allow: [], additionalDirs: [] };
+
+/** 单文件语义槽集（G8c T2 /settings 来源判定）：parse→flatten 的槽键面。缺失/畸形按空——GET 是
+ *  只读视图，畸形文件的 fail-fast 属装载链（CLI 入口）职责，daemon 不重复裁决只降级视图 */
+function fileSlots(filePath: string): Set<string> {
+  try {
+    const doc = parseSettingsFile(filePath);
+    if (doc === null) return new Set();
+    return new Set(Object.keys(flattenSettings(doc).slots));
+  } catch {
+    return new Set();
+  }
+}
+
+/** 单文件 permissions 键简版读取（G8c T2）：形状校验沿 permissions.ts readLevel 同口径（对象 +
+ *  三字符串数组），坏形/坏数组按空——daemon 需要两级分立视图而 permissions.ts 只出合并态 */
+function filePermissions(filePath: string): PermissionsConfig {
+  try {
+    const doc = parseSettingsFile(filePath);
+    if (doc === null || doc.permissions === undefined) return EMPTY_PERMISSIONS;
+    const raw = doc.permissions;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return EMPTY_PERMISSIONS;
+    const obj = raw as Record<string, unknown>;
+    const strArr = (v: unknown): string[] =>
+      Array.isArray(v) && v.every((s) => typeof s === 'string') ? (v as string[]) : [];
+    return { deny: strArr(obj.deny), allow: strArr(obj.allow), additionalDirs: strArr(obj.additionalDirs) };
+  } catch {
+    return EMPTY_PERMISSIONS;
+  }
+}
+
+/** GET /settings?root= 无 root 时的 providers 面：仅全局文件（loadProviders 需项目 root 定位项目级，
+ *  缺 root 不能以空串调之——否则会读 cwd 相对 .sunshinex/settings.json） */
+function globalProvidersOnly(): { choices: ModelChoice[]; warnings: string[] } {
+  const filePath = loadGlobalSettings();
+  try {
+    const doc = parseSettingsFile(filePath);
+    return parseProvidersSpec(doc === null ? undefined : doc.providers, filePath);
+  } catch {
+    return parseProvidersSpec(undefined, filePath); // 畸形按缺级（装载链职责，此处只降级视图）
+  }
+}
+
+/** /settings keys 行（G8c T2 effective 判定 pure fn）：
+ *  - 槽在 env 且非自填 → 'env'+envOverride（真导出恒最优先，GUI 禁编+徽标）
+ *  - 槽在 env 且自填 → root 项目文件有值 'project'、否则全局文件有值 'global'、否则 'env' 不带
+ *    envOverride（窄缝：链来自其他 root 的项目文件，本视图无从归因，只能如实报 env 面值）
+ *  - 槽缺 → 文件链同判定（project/global），都无 → 'default'；value 恒取 env 槽（槽缺即 null——
+ *    文件有值但未装载的键如实报「有配置但未生效」，不伪装 effective 值） */
+function effectiveKeyRow(
+  key: string,
+  slot: string,
+  selfFilled: ReadonlySet<string>,
+  projectSlots: ReadonlySet<string>,
+  globalSlots: ReadonlySet<string>,
+): { key: string; value: string | null; source: 'env' | 'project' | 'global' | 'default'; envOverride: boolean } {
+  const envValue = process.env[slot];
+  if (envValue !== undefined) {
+    if (!selfFilled.has(slot)) return { key, value: envValue, source: 'env', envOverride: true };
+    if (projectSlots.has(slot)) return { key, value: envValue, source: 'project', envOverride: false };
+    if (globalSlots.has(slot)) return { key, value: envValue, source: 'global', envOverride: false };
+    return { key, value: envValue, source: 'env', envOverride: false };
+  }
+  if (projectSlots.has(slot)) return { key, value: null, source: 'project', envOverride: false };
+  if (globalSlots.has(slot)) return { key, value: null, source: 'global', envOverride: false };
+  return { key, value: null, source: 'default', envOverride: false };
 }
 
 /** 路由表条目：path 支持 `:name` 段参数（会话维端点 /session/:id/*）；auth 恒验除 healthz */
@@ -668,6 +754,10 @@ export class GuiDaemon {
     { method: 'GET', path: '/workspaces', auth: true, run: async (_req, res) => this.handleWorkspaces(res) },
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
     { method: 'GET', path: '/dirpicker', auth: true, run: async (req, res) => this.handleDirpicker(req, res) },
+    // G8c T2 settings 面：effective 视图（来源分层 env>project>global>default）+ 项目级结构化改写
+    // （含注释 409 引流 raw 编辑面；成功后清自填槽重载链，新会话即刻生效）
+    { method: 'GET', path: '/settings', auth: true, run: async (req, res) => this.handleSettingsGet(req, res) },
+    { method: 'PUT', path: '/settings', auth: true, run: (req, res) => this.handleSettingsPut(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -1367,6 +1457,135 @@ export class GuiDaemon {
       return;
     }
     this.send(res, 200, { path: abs, parent: path.resolve(abs, '..'), dirs });
+  }
+
+  /** GET /settings?root=<abs>（G8c T2，Settings 页数据源）：无 root = 仅全局+env 面。keys 按
+   *  SEMANTIC_KEYS 键序全量回执（effective 判定见 effectiveKeyRow 单点）；permissions 三面
+   *  {merged, project, global}（两级文件分立拆解 + 拼接去重合并——与 loadPermissions 同口径的
+   *  视图态）；providers = loadProviders 展开 + apiKeyPresent 布尔（resolveProviderApiKey 判存，
+   *  不显值——密钥永不回传）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
+   *  process.env + 文件面，零副作用 */
+  private handleSettingsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const rootParam = url.searchParams.get('root');
+    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+    const selfFilled = new Set(getSelfFilledSlots());
+    const projectSlots = root !== undefined ? fileSlots(loadProjectSettings(root)) : new Set<string>();
+    const globalSlots = fileSlots(loadGlobalSettings());
+    const keys = Object.entries(SEMANTIC_KEYS).map(([key, slot]) => effectiveKeyRow(key, slot, selfFilled, projectSlots, globalSlots));
+    const globalPerms = filePermissions(loadGlobalSettings());
+    const projectPerms = root !== undefined ? filePermissions(loadProjectSettings(root)) : EMPTY_PERMISSIONS;
+    const merged: PermissionsConfig = {
+      deny: [...new Set([...globalPerms.deny, ...projectPerms.deny])],
+      allow: [...new Set([...globalPerms.allow, ...projectPerms.allow])],
+      additionalDirs: [...new Set([...globalPerms.additionalDirs, ...projectPerms.additionalDirs])],
+    };
+    const loaded = root !== undefined ? loadProviders(root) : globalProvidersOnly();
+    const apiKeyPresent: Record<string, boolean> = {};
+    for (const choice of loaded.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;
+    this.send(res, 200, {
+      keys,
+      permissions: { merged, project: projectPerms, global: globalPerms },
+      providers: { choices: loaded.choices, apiKeyPresent, warnings: loaded.warnings },
+    });
+  }
+
+  /** PUT /settings {root, updates}（G8c T2）：root 必填（缺 400——本端点恒项目级，全局级编辑走 raw）；
+   *  updates 为 Record<语义键, string|number|null>（非对象 400；未知键 400 带 RETIRED 处置提示；
+   *  值类型坏 400）。结构化写：读原文件（缺=空对象 {version:1}）→ 含注释 409 引流 raw 编辑面 →
+   *  改键（null=delete）→ 保 version/env/permissions/providers/未知键（操作原对象自然保）→
+   *  2 空格缩进 JSON 原子写（同目录 tmp+rename，目录缺则 mkdir）→ reloadSettingsChain 重载 →
+   *  200 {ok:true}。畸形 JSON / 根非对象 / version 非 1：409（文件现状挡住结构化改写，与注释同面） */
+  private async handleSettingsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const body = parsed.body as { root?: unknown; updates?: unknown } | null;
+    const rootRaw = body?.root;
+    if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
+      this.send(res, 400, { error: 'root required — PUT is project-scoped; edit the global file via raw editor' });
+      return;
+    }
+    const updates = body?.updates;
+    if (typeof updates !== 'object' || updates === null || Array.isArray(updates)) {
+      this.send(res, 400, { error: 'updates must be an object of key → string | number | null' });
+      return;
+    }
+    // 先全量校验后落盘：任一键坏即 400，零部分写（对比值面 400 与文件面 409 都不动盘）
+    for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
+      if (SEMANTIC_KEYS[key] === undefined) {
+        const retired = RETIRED_KEYS[key];
+        this.send(res, 400, {
+          error: retired !== undefined ? `unknown key "${key}": ${retired}` : `unknown settings key "${key}"`,
+        });
+        return;
+      }
+      if (value !== null && typeof value !== 'string' && typeof value !== 'number') {
+        this.send(res, 400, { error: `value for "${key}" must be string | number | null` });
+        return;
+      }
+    }
+    const root = path.resolve(rootRaw);
+    const target = loadProjectSettings(root);
+    let raw: string | null = null;
+    try {
+      raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
+    } catch {
+      this.send(res, 409, { error: `settings file not readable: ${target}` });
+      return;
+    }
+    if (raw !== null && hasJsonComments(raw)) {
+      this.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
+      return;
+    }
+    let obj: Record<string, unknown>;
+    if (raw === null) {
+      obj = { version: 1 };
+    } else {
+      let parsedRoot: unknown;
+      try {
+        parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 同口径）
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        this.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
+        return;
+      }
+      if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
+        this.send(res, 409, { error: 'settings root must be a JSON object' });
+        return;
+      }
+      const existing = parsedRoot as Record<string, unknown>;
+      if ((existing['version'] ?? 1) !== 1) {
+        this.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
+        return;
+      }
+      obj = existing;
+    }
+    for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
+      if (value === null) delete obj[key];
+      else obj[key] = value;
+    }
+    // 原子写：同目录 tmp + rename（rename 在两平台均原子替换目标）；.sunshinex 目录缺则递归建
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+    fs.renameSync(tmpFile, target);
+    this.reloadSettingsChain(root);
+    this.send(res, 200, { ok: true });
+  }
+
+  /** PUT /settings 成功后的链重载（G8c T2）：清全部自填槽（env 槽 + 登记集，清集在删槽后、重装前）
+   *  → 按项目→全局序重装（applySettings 只填缺省：真导出环境变量恒最优先，重载天然不触碰）。
+   *  窄缝：进程内链可能来自其他 root 的项目文件——本重载以 PUT 目标 root 为准重装，跨 root 场景
+   *  以最近编辑为准。warnings 走 stderr（与 loadSettingsChain 同通道；本方法不得 process.exit） */
+  private reloadSettingsChain(root: string): void {
+    for (const slot of getSelfFilledSlots()) delete process.env[slot];
+    resetSelfFilledSlots();
+    for (const result of [applySettings(loadProjectSettings(root)), applySettings(loadGlobalSettings())]) {
+      for (const w of result.warnings) console.error(`[serve] ${w}`);
+    }
   }
 
   private send(res: http.ServerResponse, status: number, body: object): void {

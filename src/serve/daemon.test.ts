@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -8,6 +8,7 @@ import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult } from '../types';
+import { SEMANTIC_KEYS, applySettings, loadGlobalSettings, loadProjectSettings, resetSelfFilledSlots } from '../config/settings';
 
 /** T1 会话管理器测试：daemon 从单会话改注册表——POST /session/new 创建、/session/:id/* 会话维端点、
  *  裸端点激活别名、双会话并发互不串流、全会话 teardown。既有 G1/G2 单会话用例已迁移 :id 形态（语义不变） */
@@ -581,5 +582,266 @@ test('⑫ tree:单层列举/忽略集/上限截断/判界 403/根缺省/404/400'
     } catch {
       // symlink 特权缺场(非 dev-mode win32 等):链接面留实现注释口径,不阻塞
     }
+  });
+});
+
+// ---------- G8c T2:/settings 端点(GET effective 视图/来源分层 + PUT 结构化改写/自填槽清除重载) ----------
+
+/** /settings 响应 keys 行面 */
+interface SettingsKeyRow {
+  key: string;
+  value: string | null;
+  source: 'env' | 'project' | 'global' | 'default';
+  envOverride: boolean;
+}
+
+/** /settings 响应整体(断言所需的子集面) */
+interface SettingsBody {
+  keys: SettingsKeyRow[];
+  permissions: {
+    merged: { deny: string[]; allow: string[]; additionalDirs: string[] };
+    project: { deny: string[]; allow: string[]; additionalDirs: string[] };
+    global: { deny: string[]; allow: string[]; additionalDirs: string[] };
+  };
+  providers: { choices: Array<{ id: string; provider: string }>; apiKeyPresent: Record<string, boolean>; warnings: string[] };
+}
+
+describe('G8c T2 /settings 端点', () => {
+  /** /settings 用例环境隔离(在 withDaemon 惯例上增设全局配置面):
+   *  - HOME/USERPROFILE 重定向 fakeHome:全局 settings/permissions/providers 面不触碰真实用户家
+   *  - SUNSHINEX_* 槽全量快照→清空→复原:用例内 applySettings 自填与 PUT reload 都写槽,结束必须回到
+   *    进入前态(进入时在场者复原值、新增者删除、用例中被删的既有槽回植)
+   *  - 自填集结束清空(resetSelfFilledSlots):用例登记的自填槽不复串后续用例的来源判定 */
+  async function withSettingsDaemon(fn: (ctx: { daemon: GuiDaemon; base: string; tmp: string; home: string }) => Promise<void>): Promise<void> {
+    const tmp = tmpdir('sunshinex-settings-');
+    const home = path.join(tmp, 'home');
+    fs.mkdirSync(path.join(home, '.sunshinex'), { recursive: true });
+    const prev = { data: process.env.SUNSHINEX_DATA_DIR, home: process.env.HOME, userProfile: process.env.USERPROFILE };
+    const envSnap = new Map<string, string>();
+    for (const k of Object.keys(process.env)) if (k.startsWith('SUNSHINEX_')) envSnap.set(k, process.env[k]!);
+    try {
+      // 清空 SUNSHINEX_* 面(含 run-tests.js 预载的 DATA_DIR 等)再钉本用例值:来源判定不被外部环境染
+      for (const k of [...envSnap.keys()]) delete process.env[k];
+      process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
+      process.env.HOME = home;
+      process.env.USERPROFILE = home;
+      const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+      const s = await daemon.start({ port: 0, token: 'test-token' });
+      try {
+        await fn({ daemon, base: `http://127.0.0.1:${s.port}`, tmp, home });
+      } finally {
+        await s.close();
+      }
+    } finally {
+      for (const k of Object.keys(process.env)) {
+        if (!k.startsWith('SUNSHINEX_')) continue;
+        if (envSnap.has(k)) process.env[k] = envSnap.get(k)!;
+        else delete process.env[k];
+      }
+      for (const [k, v] of envSnap) if (process.env[k] === undefined) process.env[k] = v;
+      resetSelfFilledSlots();
+      if (prev.data === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev.data;
+      if (prev.home === undefined) delete process.env.HOME; else process.env.HOME = prev.home;
+      if (prev.userProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prev.userProfile;
+      rmTmp(tmp);
+    }
+  }
+
+  test('⑬ GET 无 root:真导出 env+envOverride / global / default 三态;键序=SEMANTIC_KEYS;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base, home }) => {
+      const writeGlobal = (json: unknown): void =>
+        fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), JSON.stringify(json, null, 2), 'utf8');
+      process.env.SUNSHINEX_LANGUAGE = 'env-lang'; // 真导出(shell 面):装载链只填缺省,不覆盖
+      writeGlobal({ tier: 'global-tier', contextWindow: 160000 });
+      // 模拟 CLI 入口装载链(daemon 本体不调链、继承入口 env——测试进程内等价复现同一对调用)
+      applySettings(loadGlobalSettings());
+
+      const noAuth = await fetch(`${base}/settings`);
+      assert.equal(noAuth.status, 401, '/settings 无 token 401');
+
+      const r = await fetch(`${base}/settings`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SettingsBody;
+      assert.deepEqual(body.keys.map((k) => k.key), Object.keys(SEMANTIC_KEYS), '键序=SEMANTIC_KEYS 键序(全语义键)');
+      const row = (key: string): SettingsKeyRow => body.keys.find((k) => k.key === key)!;
+      assert.deepEqual(row('language'), { key: 'language', value: 'env-lang', source: 'env', envOverride: true }, '真导出=env 最优先+禁编徽标');
+      assert.deepEqual(row('tier'), { key: 'tier', value: 'global-tier', source: 'global', envOverride: false }, '全局文件键自填→global');
+      assert.deepEqual(row('contextWindow'), { key: 'contextWindow', value: '160000', source: 'global', envOverride: false }, '数字键 String 归一后回显');
+      assert.deepEqual(row('model'), { key: 'model', value: null, source: 'default', envOverride: false }, '未配置=default+null');
+    });
+  });
+
+  test('⑭ GET ?root=项目:项目键 source=project 覆盖 global 同键;槽缺但项目文件有值→project/null', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const writeGlobal = (json: unknown): void =>
+        fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), JSON.stringify(json, null, 2), 'utf8');
+      const proj = path.join(tmp, 'proj');
+      const writeProject = (json: unknown): void => {
+        fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+        fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify(json, null, 2), 'utf8');
+      };
+      writeGlobal({ tier: 'g-tier', language: 'en', contextWindow: 111111 });
+      writeProject({ tier: 'p-tier', model: 'proj-model' });
+      applySettings(loadProjectSettings(proj));
+      applySettings(loadGlobalSettings());
+
+      const r = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SettingsBody;
+      const row = (key: string): SettingsKeyRow => body.keys.find((k) => k.key === key)!;
+      assert.deepEqual(row('tier'), { key: 'tier', value: 'p-tier', source: 'project', envOverride: false }, '项目键覆盖 global 同键→project');
+      assert.deepEqual(row('model'), { key: 'model', value: 'proj-model', source: 'project', envOverride: false }, '项目独有键→project');
+      assert.deepEqual(row('language'), { key: 'language', value: 'en', source: 'global', envOverride: false }, '项目未配置槽回退 global');
+      assert.deepEqual(row('contextWindow'), { key: 'contextWindow', value: '111111', source: 'global', envOverride: false });
+
+      // 槽缺(daemon 从未装载过该 root 的链,SUNSHINEX_MAX_TOKENS 亦未被任何先序装载触碰)+项目文件
+      // 有值:source 走文件链→project,value 恒 env 槽面→null(仅视图归因,不反写 env)
+      const projB = path.join(tmp, 'proj-b');
+      fs.mkdirSync(path.join(projB, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(path.join(projB, '.sunshinex', 'settings.json'), JSON.stringify({ maxTokens: 12345 }), 'utf8');
+      const rb = await fetch(`${base}/settings?root=${encodeURIComponent(projB)}`, { headers: AUTH });
+      assert.equal(rb.status, 200);
+      const rowb = ((await rb.json()) as SettingsBody).keys.find((k) => k.key === 'maxTokens')!;
+      assert.deepEqual(rowb, { key: 'maxTokens', value: null, source: 'project', envOverride: false }, '槽缺+文件有值→project/null(仅项目视图,不反写 env)');
+    });
+  });
+
+  test('⑮ permissions 两级+merged 三面;providers choices(项目整键遮蔽)/apiKeyPresent 布尔/warnings', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), JSON.stringify({
+        permissions: { deny: ['Bash(rm*)'], allow: ['Read(*)'] },
+        providers: [{ name: 'gp', baseUrl: 'https://gp.example', models: ['gm'] }],
+      }, null, 2), 'utf8');
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({
+        permissions: { deny: ['Bash(rm*)', 'Write(/secret/*)'], additionalDirs: ['C:/extra'] },
+        providers: [
+          { name: 'pp', baseUrl: 'https://pp.example', models: ['pm1', 'pm2'] },
+          { name: 'broken', models: [] }, // 坏条目(缺 baseUrl)→warning 且该源跳过
+        ],
+      }, null, 2), 'utf8');
+      process.env.SUNSHINEX_API_KEY = 'sk-present'; // providers 密钥在场面(apiKeyPresent=true)
+
+      const r = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SettingsBody;
+      assert.deepEqual(body.permissions.global, { deny: ['Bash(rm*)'], allow: ['Read(*)'], additionalDirs: [] }, 'global 级原样');
+      assert.deepEqual(body.permissions.project, { deny: ['Bash(rm*)', 'Write(/secret/*)'], allow: [], additionalDirs: ['C:/extra'] }, 'project 级原样');
+      assert.deepEqual(body.permissions.merged, { deny: ['Bash(rm*)', 'Write(/secret/*)'], allow: ['Read(*)'], additionalDirs: ['C:/extra'] }, 'merged=两级拼接去重(loadPermissions 同口径)');
+      assert.deepEqual(body.providers.choices.map((c) => c.id), ['pp/pm1', 'pp/pm2'], '项目 providers 在场即整键遮蔽全局');
+      assert.deepEqual(body.providers.apiKeyPresent, { pp: true }, '密钥在场性=布尔(专用槽>主槽),不显值');
+      assert.equal(body.providers.warnings.length, 1, '坏条目产出一条 warning');
+      assert.ok(body.providers.warnings[0]!.includes('broken'), 'warning 指名坏源');
+    });
+  });
+
+  test('⑯ PUT 改键→GET 反映+盘上复读(保留 version/env/permissions/未知键);未知键/RETIRED/类型坏/缺 root 400;null 删键', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      const file = path.join(proj, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const original = {
+        version: 1,
+        model: 'old-model',
+        tier: 'keep-me',
+        env: { SUNSHINEX_API_KEY: 'preserve-me' },
+        permissions: { deny: ['Bash(rm*)'] },
+        customKey: { nested: true },
+      };
+      fs.writeFileSync(file, JSON.stringify(original, null, 2), 'utf8');
+      applySettings(loadProjectSettings(proj));
+      applySettings(loadGlobalSettings()); // 无全局文件——no-op
+
+      const put = async (body: unknown): Promise<Response> =>
+        fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) });
+
+      // 改键+新增键:盘上复读保留 version/env/permissions/未知键
+      const ok = await put({ root: proj, updates: { model: 'new-model', maxTokens: 999999 } });
+      assert.equal(ok.status, 200);
+      assert.deepEqual(await ok.json(), { ok: true });
+      assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {
+        ...original,
+        model: 'new-model',
+        maxTokens: 999999,
+      }, '结构化改写只动目标键,其余原样保留');
+
+      const g = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      const gBody = (await g.json()) as SettingsBody;
+      const row = (key: string): SettingsKeyRow => gBody.keys.find((k) => k.key === key)!;
+      assert.deepEqual(row('model'), { key: 'model', value: 'new-model', source: 'project', envOverride: false }, 'PUT 后 GET 反映新值(自填槽已重载)');
+
+      // 校验面 400(目标文件不被动)
+      const before400 = fs.readFileSync(file, 'utf8');
+      const unknown = await put({ root: proj, updates: { modle: 'x' } });
+      assert.equal(unknown.status, 400, '拼错键 400');
+      assert.ok(((await unknown.json()) as { error: string }).error.includes('unknown'), '未知键提示');
+      const retired = await put({ root: proj, updates: { dataDir: 'x' } });
+      assert.equal(retired.status, 400, '退役键 400');
+      assert.ok(((await retired.json()) as { error: string }).error.includes('projectsDir'), '退役键带处置提示(换 projectsDir)');
+      const badType = await put({ root: proj, updates: { model: true } });
+      assert.equal(badType.status, 400, '值类型非 string|number|null 400');
+      const noRoot = await put({ updates: { model: 'x' } });
+      assert.equal(noRoot.status, 400, '缺 root 400(PUT 恒项目级,全局走 raw 编辑)');
+      const badUpdates = await put({ root: proj, updates: ['not', 'object'] });
+      assert.equal(badUpdates.status, 400, 'updates 非对象 400');
+      assert.equal(fs.readFileSync(file, 'utf8'), before400, '400 面零盘上副作用');
+
+      // null=删键:盘上键消失,GET 回 default/null
+      const del = await put({ root: proj, updates: { tier: null } });
+      assert.equal(del.status, 200);
+      const onDisk = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+      assert.equal('tier' in onDisk, false, 'null 删键');
+      const g2 = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      const tierRow = ((await g2.json()) as SettingsBody).keys.find((k) => k.key === 'tier')!;
+      assert.deepEqual(tierRow, { key: 'tier', value: null, source: 'default', envOverride: false }, '删键后槽清+回 default');
+    });
+  });
+
+  test('⑰ 含注释文件 PUT→409 {file contains comments, use raw editor},盘上原样', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      const file = path.join(proj, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const raw = '{\n  // 手写注释\n  "model": "m"\n}\n';
+      fs.writeFileSync(file, raw, 'utf8');
+
+      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'x' } }) });
+      assert.equal(r.status, 409);
+      assert.deepEqual(await r.json(), { error: 'file contains comments', hint: 'use raw editor' }, '结构化改写会丢注释→引流 raw 编辑面');
+      assert.equal(fs.readFileSync(file, 'utf8'), raw, '409 面零盘上副作用(注释原样)');
+    });
+  });
+
+  test('⑱ PUT 后自填槽清除重载:SUNSHINEX_CONTEXT_WINDOW 即新值;真导出键改文件成功但 env 值不动', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      const file = path.join(proj, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ contextWindow: 111111 }), 'utf8');
+      applySettings(loadProjectSettings(proj));
+      assert.equal(process.env.SUNSHINEX_CONTEXT_WINDOW, '111111', '链装载自填旧值');
+
+      const put = async (updates: Record<string, string | number | null>): Promise<Response> =>
+        fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates }) });
+
+      const r = await put({ contextWindow: 222222 });
+      assert.equal(r.status, 200);
+      assert.equal(process.env.SUNSHINEX_CONTEXT_WINDOW, '222222', '自填槽清除重载:新值即刻入 env(新会话即刻生效面)');
+
+      // 真导出键:文件改成功,env 值不动(恒最优先)
+      process.env.SUNSHINEX_LANGUAGE = 'env-lang';
+      const r2 = await put({ language: 'file-lang' });
+      assert.equal(r2.status, 200);
+      assert.equal(process.env.SUNSHINEX_LANGUAGE, 'env-lang', '真导出 env 不被重载触碰');
+      assert.equal((JSON.parse(fs.readFileSync(file, 'utf8')) as { language?: string }).language, 'file-lang', '文件面已改');
+
+      const g = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      const body = (await g.json()) as SettingsBody;
+      const langRow = body.keys.find((k) => k.key === 'language')!;
+      const cwRow = body.keys.find((k) => k.key === 'contextWindow')!;
+      assert.deepEqual(langRow, { key: 'language', value: 'env-lang', source: 'env', envOverride: true }, 'GET 仍判 env 最优先');
+      assert.deepEqual(cwRow, { key: 'contextWindow', value: '222222', source: 'project', envOverride: false }, 'GET 反映重载后项目值');
+    });
   });
 });
