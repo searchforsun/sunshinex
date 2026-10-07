@@ -49,8 +49,9 @@ export function loadSunshinex(root: string): ProjectContext | null {
 
 const VALID_TRANSPORTS = ['stdio', 'http', 'sse'] as const;
 
-/** 解析单个 mcp.json 文件为 `mcpServers` 条目数组。文件缺失或 JSON 非法返回 []；非法条目（字段形态或传输与形态矛盾）跳过不抛（装配面宁可少配不可错配） */
-function parseMcpJsonFile(p: string): McpServerConfig[] {
+/** 解析单个 mcp.json 文件为 `mcpServers` 条目数组。文件缺失或 JSON 非法返回 []；非法条目（字段形态或传输与形态矛盾）跳过不抛（装配面宁可少配不可错配）。
+ *  G8c T4 起导出：daemon /settings/mcp 两级视图需逐文件分立拆解（loadMcpServers 只出合并态），签名沿内部形 */
+export function parseMcpJsonFile(p: string): McpServerConfig[] {
   if (!fs.existsSync(p)) return [];
   let raw: unknown;
   try {

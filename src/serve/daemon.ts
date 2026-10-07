@@ -4,6 +4,11 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
@@ -11,7 +16,8 @@ import { SessionRuntime } from './session';
 import type { EventFrame } from './session';
 import type { SnapshotPendingRow } from './session';
 import { journalMessagesToEntries, chainStepsToEntries } from './session';
-import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
+import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, McpServerConfig } from '../types';
+import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
@@ -310,6 +316,112 @@ function validateMcpRawContent(content: string, target: string): void {
   const servers = (parsed as Record<string, unknown>)['mcpServers'];
   if (servers !== undefined && (typeof servers !== 'object' || servers === null || Array.isArray(servers))) {
     throw new Error(`mcp.json "mcpServers" 必须是 JSON 对象: ${target}`);
+  }
+}
+
+// ---------- G8c T4：/settings/mcp 面模块级助手（两级遮蔽视图行 + 单台真探测装配） ----------
+
+/** GET /settings/mcp 行：装载面 McpServerConfig 的打码视图——env 折叠为键名列表（env 值不回传：
+ *  文件本就承载 env 全值，PUT 结构化写全值回写、raw 面另有无打码原文，GET 只供清单呈现）。
+ *  transport 归一：装载面缺省条目（无 transport 字段的 stdio）不带该键，视图面统一显形 'stdio' */
+interface McpServerRow {
+  name: string;
+  transport: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  envKeys: string[];
+  source: 'project' | 'global';
+  shadowed: boolean;
+}
+
+function mcpRow(cfg: McpServerConfig, source: 'project' | 'global', shadowed: boolean): McpServerRow {
+  return {
+    name: cfg.name,
+    transport: cfg.transport ?? 'stdio',
+    ...(cfg.command !== undefined ? { command: cfg.command } : {}),
+    ...(cfg.args !== undefined ? { args: cfg.args } : {}),
+    ...(cfg.url !== undefined ? { url: cfg.url } : {}),
+    envKeys: Object.keys(cfg.env ?? {}),
+    source,
+    shadowed,
+  };
+}
+
+/** probe stdio 子进程环境：宿主环境整份继承 + cfg.env 覆盖（债 D21 同款，与 McpHost 正式装配同一
+ *  环境语义——探测结论对装配期可迁移；process.env 值域含 undefined 须剔除） */
+function probeChildEnv(cfg: McpServerConfig): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined) merged[k] = v;
+  }
+  return { ...merged, ...(cfg.env ?? {}) };
+}
+
+/** probe 临时传输装配：照 McpHost.makeTransport 三分支抄（探测面无 ToolRegistry/CodedToolError 收束，
+ *  plain Error 同文案形；形态字段缺失或 url 非法与连接失败同语义） */
+function makeProbeTransport(cfg: McpServerConfig): Transport {
+  const fail = (msg: string): Error => new Error(`MCP server connection failed (${cfg.name}): ${msg}`);
+  switch (cfg.transport ?? 'stdio') {
+    case 'http':
+    case 'sse': {
+      if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
+      try {
+        const url = new URL(cfg.url);
+        return cfg.transport === 'sse' ? new SSEClientTransport(url) : new StreamableHTTPClientTransport(url);
+      } catch (e) {
+        throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    case 'stdio':
+    default:
+      if (!cfg.command) throw fail('stdio transport requires a command');
+      return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [], env: probeChildEnv(cfg) });
+  }
+}
+
+const PROBE_CONNECT_TIMEOUT_MS = 10_000;
+
+/** 单台真探测（POST /settings/mcp/probe 核心）：临时 Client → connect（10s 竞速超时，计时器必清）
+ *  → serverInfo.name !== 配置名 → identity mismatch（防冒名，与 McpHost 握手同门）→ listTools →
+ *  tools 映射 {name, description?}。失败面全收敛 200 {ok:false, error 截 120}：连接失败包
+ *  connection failed 前缀（与 McpHost 警告单同文案形）；finally 恒 close——半开传输收口（stdio
+ *  子进程残留/SSE EventSource 重连循环都会挂住 daemon 进程） */
+async function probeMcpServer(
+  cfg: McpServerConfig,
+): Promise<{ ok: true; tools: Array<{ name: string; description?: string }> } | { ok: false; error: string }> {
+  const clip = (msg: string): string => (msg.length > 120 ? msg.slice(0, 120) : msg);
+  let client: Client | undefined;
+  try {
+    const transport = makeProbeTransport(cfg);
+    client = new Client({ name: 'sunshinex-mcp-probe', version: '0.1.0' });
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        client.connect(transport),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`connect timed out after ${PROBE_CONNECT_TIMEOUT_MS}ms`)), PROBE_CONNECT_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, error: clip(`connection failed (${cfg.name}): ${msg}`) };
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    const actual = client.getServerVersion()?.name;
+    if (actual !== cfg.name) {
+      return { ok: false, error: clip(`identity mismatch (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'}`) };
+    }
+    const listed = await client.listTools();
+    return {
+      ok: true,
+      tools: listed.tools.map((t) => ({ name: t.name, ...(t.description !== undefined ? { description: t.description } : {}) })),
+    };
+  } catch (e) {
+    return { ok: false, error: clip(e instanceof Error ? e.message : String(e)) };
+  } finally {
+    if (client !== undefined) await client.close().catch(() => {});
   }
 }
 
@@ -783,6 +895,11 @@ export class GuiDaemon {
     // 服务端验证拒存（验证口径=装载口径）+ 原子写；T2 结构化改写 409（含注释/畸形）的引流目标端点
     { method: 'GET', path: '/settings/raw', auth: true, run: async (req, res) => this.handleSettingsRawGet(req, res) },
     { method: 'PUT', path: '/settings/raw', auth: true, run: (req, res) => this.handleSettingsRawPut(req, res) },
+    // G8c T4 mcp 面：两级遮蔽视图 + 单台真探测 + 项目级结构化写（mcp 装配期语义——写盘不触发
+    // settings reload，新会话/下次装配生效）
+    { method: 'GET', path: '/settings/mcp', auth: true, run: async (req, res) => this.handleMcpGet(req, res) },
+    { method: 'POST', path: '/settings/mcp/probe', auth: true, run: (req, res) => this.handleMcpProbe(req, res) },
+    { method: 'PUT', path: '/settings/mcp', auth: true, run: (req, res) => this.handleMcpPut(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -1736,6 +1853,159 @@ export class GuiDaemon {
       else console.error('[serve] raw global settings written without reload — pass root in the request body to reload the settings chain');
     }
     this.send(res, 200, { ok: true });
+  }
+
+  /** GET /settings/mcp?root=（G8c T4，Settings 页 MCP 清单数据源）：loadMcpServers 两级合并语义的
+   *  视图化拆解——直接 parseMcpJsonFile 逐文件读（loadMcpServers 只出合并态）：项目级全量
+   *  （source='project'，shadowed=false）+ 全局逐名（被项目同名遮蔽 → shadowed=true 仍列示，GUI
+   *  可呈现「被遮蔽」态；未遮蔽 → shadowed=false）。无 root = 仅全局清单（与 /settings providers
+   *  面同裁定：空串 root 会让装载面读 cwd 相对 .sunshinex/mcp.json，不可靠）。env 折键名列表，
+   *  transport 缺省归一 stdio（mcpRow 单点） */
+  private handleMcpGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const rootParam = url.searchParams.get('root');
+    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+    const globalServers = parseMcpJsonFile(path.join(userConfigDir(), 'mcp.json'));
+    const projectServers = root !== undefined ? parseMcpJsonFile(path.join(root, '.sunshinex', 'mcp.json')) : [];
+    const projectNames = new Set(projectServers.map((s) => s.name));
+    this.send(res, 200, {
+      servers: [
+        ...projectServers.map((s) => mcpRow(s, 'project', false)),
+        ...globalServers.map((s) => mcpRow(s, 'global', projectNames.has(s.name))),
+      ],
+    });
+  }
+
+  /** POST /settings/mcp/probe {root?, name}（G8c T4）：合并清单定位该名（root 缺省 = 仅全局清单——
+   *  与 GET 同源裁定）→ probeMcpServer 单台真探测（临时装配+握手身份校验+tools/list）。失败面
+   *  （未知名/连接/身份不符/超时）同为 200 {ok:false, error}——探测是诊断面，失败即结果不是错误
+   *  码；name 缺失是请求形态坏 → 400 */
+  private async handleMcpProbe(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const body = parsed.body as { root?: unknown; name?: unknown } | null;
+    const name = body?.name;
+    if (typeof name !== 'string' || name.length === 0) {
+      this.send(res, 400, { error: 'name required — probe target server name' });
+      return;
+    }
+    const rootRaw = body?.root;
+    const root = typeof rootRaw === 'string' && rootRaw.length > 0 ? path.resolve(rootRaw) : undefined;
+    const manifest = root !== undefined ? loadMcpServers(root) : parseMcpJsonFile(path.join(userConfigDir(), 'mcp.json'));
+    const cfg = manifest.find((s) => s.name === name);
+    if (cfg === undefined) {
+      this.send(res, 200, { ok: false, error: `mcp server not found in merged manifest: ${name}` });
+      return;
+    }
+    this.send(res, 200, await probeMcpServer(cfg));
+  }
+
+  /** PUT /settings/mcp {root, servers}（G8c T4）：项目级 mcp.json 整块结构化写（键 mcpServers = 输入
+   *  原样——含 env 全值，文件本就承载 env，GET 面才打码；旧清单整块替换不合并）。root 必填（缺 400，
+   *  全局走 raw 编辑）；逐条形状校验（name 非空串 / transport 枚举 / stdio 需 command / http·sse 需
+   *  url / args 字符串数组 / env 字符串记录）首错 400、全量校验后落盘零部分写；既有文件含注释/畸形
+   *  JSON → 409 引流 raw（与 T2 /settings PUT 同款守卫——结构化改写不越权处置注释/畸形）；原子写
+   *  （同目录 tmp+rename）；成功不触发 settings reload——mcp 不在 settings 链，装配期读取（新会话
+   *  生效）。键面用 null 原型记录承载：'__proto__' 一类名经普通对象赋值会改写原型而非落自键
+   *  （JSON.parse 回读是自键——T2 Object.hasOwn 教训的写面镜像） */
+  private async handleMcpPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const body = parsed.body as { root?: unknown; servers?: unknown } | null;
+    const rootRaw = body?.root;
+    if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
+      this.send(res, 400, { error: 'root required — PUT is project-scoped; edit the global file via raw editor' });
+      return;
+    }
+    const rows = body?.servers;
+    if (!Array.isArray(rows)) {
+      this.send(res, 400, { error: 'servers must be an array of { name, transport?, command?, args?, url?, env? }' });
+      return;
+    }
+    const record: Record<string, unknown> = Object.create(null); // null 原型：'__proto__' 名落自键（见上）
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+        this.send(res, 400, { error: `servers[${i}] must be an object` });
+        return;
+      }
+      const r = row as Record<string, unknown>;
+      if (typeof r.name !== 'string' || r.name.length === 0) {
+        this.send(res, 400, { error: `servers[${i}].name must be a non-empty string` });
+        return;
+      }
+      const transport = r.transport ?? 'stdio';
+      if (transport !== 'stdio' && transport !== 'http' && transport !== 'sse') {
+        this.send(res, 400, { error: `servers[${i}].transport must be "stdio" | "http" | "sse"` });
+        return;
+      }
+      if (transport === 'stdio') {
+        if (typeof r.command !== 'string' || r.command.length === 0) {
+          this.send(res, 400, { error: `servers[${i}]: stdio transport requires a command` });
+          return;
+        }
+      } else if (typeof r.url !== 'string' || r.url.length === 0) {
+        this.send(res, 400, { error: `servers[${i}]: ${transport} transport requires a url` });
+        return;
+      }
+      if (r.args !== undefined && (!Array.isArray(r.args) || !r.args.every((a) => typeof a === 'string'))) {
+        this.send(res, 400, { error: `servers[${i}].args must be an array of strings` });
+        return;
+      }
+      if (
+        r.env !== undefined &&
+        (typeof r.env !== 'object' || r.env === null || Array.isArray(r.env) || !Object.values(r.env).every((v) => typeof v === 'string'))
+      ) {
+        this.send(res, 400, { error: `servers[${i}].env must be an object of string → string` });
+        return;
+      }
+      record[r.name] = row; // 输入原样（含 env 全值与未知字段——写面不擅自裁剪）
+    }
+    const root = path.resolve(rootRaw);
+    const target = path.join(root, '.sunshinex', 'mcp.json');
+    // 409 守卫：既有文件注释/畸形（T2 同款；mcp 装载面严格 JSON，注释文件会被静默读空——结构化写
+    // 不得静默越权改写这类文件）
+    let raw: string | null = null;
+    try {
+      raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
+    } catch {
+      this.send(res, 409, { error: `mcp file not readable: ${target}` });
+      return;
+    }
+    if (raw !== null && hasJsonComments(raw)) {
+      this.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
+      return;
+    }
+    let obj: Record<string, unknown>;
+    if (raw === null) {
+      obj = Object.create(null);
+    } else {
+      let parsedRoot: unknown;
+      try {
+        parsedRoot = JSON.parse(raw); // 严格 JSON：BOM/注释不容忍（与 parseMcpJsonFile 装载口径一致）
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        this.send(res, 409, { error: `mcp file is not valid JSON: ${reason}` });
+        return;
+      }
+      if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
+        this.send(res, 409, { error: 'mcp file root must be a JSON object' });
+        return;
+      }
+      obj = parsedRoot as Record<string, unknown>;
+    }
+    obj['mcpServers'] = record; // 整块替换（mcpServers 键以外顶层键原样保留，与 T2 settings PUT 同语义）
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+    fs.renameSync(tmpFile, target);
+    this.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
   }
 
   private send(res: http.ServerResponse, status: number, body: object): void {

@@ -1088,3 +1088,216 @@ describe('G8c T3 /settings/raw 双文件端点', () => {
     });
   });
 });
+
+// ---------- G8c T4:/settings/mcp 端点族(两级遮蔽视图/单台真探测/项目级结构化写) ----------
+
+/** GET /settings/mcp 行(断言面;transport 已归一——装载面缺省条目不带该字段) */
+interface McpServerRow {
+  name: string;
+  transport: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  envKeys: string[];
+  source: 'project' | 'global';
+  shadowed: boolean;
+}
+
+interface ProbeBody {
+  ok: boolean;
+  tools?: Array<{ name: string; description?: string }>;
+  error?: string;
+}
+
+/** probe 夹具:最小 stdio MCP server(行读 stdin JSON-RPC;id 原样回执;通知不回包)。
+ *  argv[2] 覆写 serverInfo.name(identity mismatch 用例);tools/list 应答单 echo 工具
+ *  (inputSchema 按 SDK ToolSchema 形态必填——probe 响应只映射 name/description,断言面不可见) */
+const PROBE_FIXTURE = [
+  "'use strict';",
+  "const serverName = process.argv[2] || 'probe-fixture';",
+  'function writeLine(msg) { process.stdout.write(JSON.stringify(msg) + "\\n"); }',
+  'function handle(line) {',
+  '  let req;',
+  '  try { req = JSON.parse(line); } catch { return; }',
+  '  const { id, method, params } = req;',
+  '  if (id === undefined || id === null) return;',
+  '  if (method === "initialize") {',
+  '    writeLine({ jsonrpc: "2.0", id, result: {',
+  '      protocolVersion: (params && params.protocolVersion) || "2024-11-05",',
+  '      capabilities: {},',
+  '      serverInfo: { name: serverName, version: "1" },',
+  '    } });',
+  '  } else if (method === "tools/list") {',
+  '    writeLine({ jsonrpc: "2.0", id, result: { tools: [{ name: "echo", description: "fixture tool", inputSchema: { type: "object" } }] } });',
+  '  } else {',
+  '    writeLine({ jsonrpc: "2.0", id, error: { code: -32601, message: "method not found: " + method } });',
+  '  }',
+  '}',
+  "let buffer = '';",
+  "process.stdin.setEncoding('utf8');",
+  "process.stdin.on('data', (chunk) => {",
+  '  buffer += chunk;',
+  '  let idx;',
+  "  while ((idx = buffer.indexOf('\\n')) >= 0) {",
+  "    const line = buffer.slice(0, idx).trim();",
+  '    buffer = buffer.slice(idx + 1);',
+  '    if (line) handle(line);',
+  '  }',
+  '});',
+].join('\n');
+
+describe('G8c T4 /settings/mcp 端点族', () => {
+  test('㉘ GET 两级视图:项目全量+全局逐名(同名被遮蔽 shadowed=true 仍列示);envKeys 只键名值不回传;无 root=仅全局;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'mcp.json'), JSON.stringify({
+        mcpServers: { shared: { command: 'node', args: ['a.js'], env: { SECRET_A: 'va', SECRET_B: 'vb' } } },
+      }, null, 2), 'utf8');
+      fs.writeFileSync(path.join(home, '.sunshinex', 'mcp.json'), JSON.stringify({
+        mcpServers: {
+          shared: { transport: 'http', url: 'https://global.example/mcp' },
+          only: { command: 'node', env: { G: 'gv' } },
+        },
+      }, null, 2), 'utf8');
+
+      const noAuth = await fetch(`${base}/settings/mcp`);
+      assert.equal(noAuth.status, 401, '/settings/mcp 无 token 401');
+
+      const r = await fetch(`${base}/settings/mcp?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as { servers: McpServerRow[] };
+      assert.equal(body.servers.length, 3, '清单=项目 1+全局 2(遮蔽者也列示)');
+      const sharedRows = body.servers.filter((s) => s.name === 'shared');
+      assert.equal(sharedRows.length, 2, '同名两行:project 行+被遮蔽 global 行(序:项目先全局后)');
+      assert.deepEqual(sharedRows[0], {
+        name: 'shared', transport: 'stdio', command: 'node', args: ['a.js'],
+        envKeys: ['SECRET_A', 'SECRET_B'], source: 'project', shadowed: false,
+      }, '项目条目:source=project/shadowed=false/env 折键名列表');
+      assert.deepEqual(sharedRows[1], {
+        name: 'shared', transport: 'http', url: 'https://global.example/mcp',
+        envKeys: [], source: 'global', shadowed: true,
+      }, '全局同名被项目遮蔽→shadowed=true 仍列示');
+      assert.deepEqual(body.servers.find((s) => s.name === 'only'), {
+        name: 'only', transport: 'stdio', command: 'node', envKeys: ['G'], source: 'global', shadowed: false,
+      }, '未被遮蔽的全局条目:source=global/shadowed=false');
+      assert.ok(!JSON.stringify(body).includes('"va"') && !JSON.stringify(body).includes('"vb"'), 'env 值不回传(只键名)');
+
+      // 无 root=仅全局清单(项目级缺席面;空串 root 会读 cwd 相对 .sunshinex/mcp.json,不可靠)
+      const g = await fetch(`${base}/settings/mcp`, { headers: AUTH });
+      const gBody = (await g.json()) as { servers: McpServerRow[] };
+      assert.deepEqual(gBody.servers.map((s) => [s.name, s.source, s.shadowed]), [['shared', 'global', false], ['only', 'global', false]], '无 root 只出全局面');
+    });
+  });
+
+  test('㉙ probe 成功态:fixture stdio server→{ok:true,tools 一枚含 description};未知名同包络 {ok:false};缺 name 400', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const fixture = path.join(tmp, 'mcp-probe-fixture.cjs');
+      fs.writeFileSync(fixture, PROBE_FIXTURE, 'utf8');
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'mcp.json'), JSON.stringify({
+        mcpServers: { 'probe-fixture': { command: process.execPath, args: [fixture] } },
+      }, null, 2), 'utf8');
+
+      const probe = async (reqBody: unknown): Promise<ProbeBody> =>
+        (await (await fetch(`${base}/settings/mcp/probe`, { method: 'POST', headers: AUTH, body: JSON.stringify(reqBody) })).json()) as ProbeBody;
+
+      const r = await probe({ root: proj, name: 'probe-fixture' });
+      assert.equal(r.ok, true, '真探测握手+清单拉取成功');
+      assert.deepEqual(r.tools, [{ name: 'echo', description: 'fixture tool' }], 'tools 一枚含 description(其余字段不透出)');
+
+      // 未知名:探测是诊断面——失败即结果,同 200 包络 {ok:false}
+      const nf = await probe({ root: proj, name: 'nope' });
+      assert.equal(nf.ok, false);
+      assert.ok(typeof nf.error === 'string' && nf.error.includes('nope'), 'error 指名未找到的服务器');
+
+      // 缺 name:形态坏面走 400
+      const bad = await fetch(`${base}/settings/mcp/probe`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: proj }) });
+      assert.equal(bad.status, 400, '缺 name → 400');
+    });
+  });
+
+  test('㉚ probe 失败态:command 不存在→{ok:false,error 含 connection};serverInfo 名不符→{ok:false,error 含 identity mismatch}', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const fixture = path.join(tmp, 'mcp-probe-fixture.cjs');
+      fs.writeFileSync(fixture, PROBE_FIXTURE, 'utf8');
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'mcp.json'), JSON.stringify({
+        mcpServers: {
+          ghost: { command: path.join(tmp, 'definitely-not-a-command-xyz' + (process.platform === 'win32' ? '.exe' : '')) },
+          // 配置名 probe-fixture,fixture 以 argv 覆写 serverInfo.name=other-server → 握手身份不符
+          'probe-fixture': { command: process.execPath, args: [fixture, 'other-server'] },
+        },
+      }, null, 2), 'utf8');
+
+      const probe = async (name: string): Promise<ProbeBody> =>
+        (await (await fetch(`${base}/settings/mcp/probe`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: proj, name }) })).json()) as ProbeBody;
+
+      const ghost = await probe('ghost');
+      assert.equal(ghost.ok, false, '不存在的 command → 探测失败');
+      assert.ok(ghost.error !== undefined && /connection|失败|ENOENT|spawn/i.test(ghost.error), `error 含连接失败义: ${ghost.error}`);
+
+      const mism = await probe('probe-fixture');
+      assert.equal(mism.ok, false, 'serverInfo.name !== 配置名 → 拒(防冒名)');
+      assert.ok(mism.error !== undefined && mism.error.includes('identity mismatch'), `error 含 identity mismatch: ${mism.error}`);
+    });
+  });
+
+  test('㉛ PUT:整块写盘可 GET 复读(遮蔽关系重算/env 全值上盘);形状坏/缺 root 400;409 注释/畸形既有文件;零部分写', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      fs.writeFileSync(path.join(home, '.sunshinex', 'mcp.json'), JSON.stringify({ mcpServers: { g: { command: 'node' } } }, null, 2), 'utf8');
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'mcp.json'), JSON.stringify({ mcpServers: { stale: { command: 'node' } } }, null, 2), 'utf8');
+      const file = path.join(proj, '.sunshinex', 'mcp.json');
+      const put = async (reqBody: unknown): Promise<Response> =>
+        fetch(`${base}/settings/mcp`, { method: 'PUT', headers: AUTH, body: JSON.stringify(reqBody) });
+
+      // 整块替换:新清单一枚,mcpServers=输入原样(含 env 全值——文件本就承载 env,GET 面才打码)
+      const okr = await put({ root: proj, servers: [{ name: 'fresh', transport: 'stdio', command: 'node', args: ['--x'], env: { K: 'V' } }] });
+      assert.equal(okr.status, 200);
+      assert.deepEqual(await okr.json(), { ok: true });
+      assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {
+        mcpServers: { fresh: { name: 'fresh', transport: 'stdio', command: 'node', args: ['--x'], env: { K: 'V' } } },
+      }, '盘上 mcpServers=输入原样(env 全值在盘)');
+
+      // GET 复读:项目级被整块替换,遮蔽关系重算(stale 消失,g 不再被遮蔽)
+      const g = await fetch(`${base}/settings/mcp?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      const gBody = (await g.json()) as { servers: McpServerRow[] };
+      assert.deepEqual(gBody.servers.map((s) => [s.name, s.source, s.shadowed]), [['fresh', 'project', false], ['g', 'global', false]], '两级视图反映新清单');
+
+      // 形状坏→400 首错(全量校验,零部分写)
+      const before = fs.readFileSync(file, 'utf8');
+      const badShapes: Array<[string, unknown[]]> = [
+        ['stdio 缺 command', [{ name: 'x', transport: 'stdio' }]],
+        ['http 缺 url', [{ name: 'x', transport: 'http' }]],
+        ['空名', [{ name: '', command: 'node' }]],
+        ['坏 transport', [{ name: 'x', transport: 'grpc', url: 'https://e' }]],
+      ];
+      for (const [label, servers] of badShapes) {
+        const r = await put({ root: proj, servers });
+        assert.equal(r.status, 400, `${label} → 400`);
+      }
+      const notArray = await put({ root: proj, servers: { nope: true } });
+      assert.equal(notArray.status, 400, 'servers 非数组 → 400');
+      const noRoot = await put({ servers: [] });
+      assert.equal(noRoot.status, 400, '缺 root → 400(PUT 恒项目级,全局走 raw 编辑)');
+      assert.equal(fs.readFileSync(file, 'utf8'), before, '400 面零盘上副作用');
+
+      // 409:既有文件注释/畸形(结构化改写不越权,引流 raw 编辑面;盘原样)
+      const commented = '{\n  // 手写注释\n  "mcpServers": {}\n}\n';
+      fs.writeFileSync(file, commented, 'utf8');
+      const c = await put({ root: proj, servers: [] });
+      assert.equal(c.status, 409);
+      assert.deepEqual(await c.json(), { error: 'file contains comments', hint: 'use raw editor' });
+      assert.equal(fs.readFileSync(file, 'utf8'), commented, '409 面零盘上副作用(注释原样)');
+      fs.writeFileSync(file, '{ not json', 'utf8');
+      const m = await put({ root: proj, servers: [] });
+      assert.equal(m.status, 409, '既有 mcp.json 畸形 JSON → 409');
+      assert.ok(((await m.json()) as { error: string }).error.includes('not valid JSON'), '错误指名畸形 JSON');
+      assert.equal(fs.readFileSync(file, 'utf8'), '{ not json');
+    });
+  });
+});
