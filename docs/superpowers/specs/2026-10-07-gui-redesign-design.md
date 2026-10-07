@@ -130,7 +130,7 @@
 |---|---|
 | ~~G8a~~ | 设计系统(app.css 令牌)+lucide+三栏布局壳+**标签框架**(注册表/标签条/+菜单/开/关/切/去重/每会话态)+**左栏项目分组**(多工作区组/组内会话/组内新建 root 预填)+Chat 迁中栏+文件/任务入标签+chat subagent 过滤修复——~~已交付~~ 2026-10-07(执行注记:壳/标签框架/项目分组左栏/文件任务标签落地,详情 G8e 收官统一回写)。**已知跟进(终审缓议,G8b-e 承接)**:App.test act() 警告收敛+DirPicker 单测回迁(G8e 视觉/卫生波);组头高亮/会话行状态点/禁用条 tooltip 三面 spec §1 未落(G8d 交互清单核);activeRoot 组多行同亮(id 域错配两级判定代价,待 journal-id 映射);sx-menu-add 等类 app.css 补定义+拖宽 user-select(G8e);onUsage 冗余守卫收敛(G8d Agents);TabStrip onNew 死面清理(G8b 触 TabStrip 时) |
 | ~~G8b~~ | **终端全链**(node-pty/pty 管理器/分配端点+专用 WS/环形缓冲重连重放/teardown 清杀 + xterm.js 终端标签)+**目录标签**(tree 端点+树组件)——~~已交付~~ 2026-10-07(执行注记:终端全链+目录标签落地,详情 G8e 收官统一回写)。**已知跟进(终审缓议,G8c-e 承接)**:终端标签 TAB_ICONS 图标(SquareTerminal)与 pty 连接断开内联提示(G8e 视觉波);ptyId↔owner 校验(跨会话误杀一致性疣);StrictMode 首挂双分配(dev-only)/attach 闭包退订句柄+PtyManager.killAll 全杀硬化(G8e 可选);目录标签错误态缓存无重试 |
-| ~~G8c~~ | **设置全链**(/settings 端点族+自填槽清除重载机制+十面板表单/只读清单/记忆概览/技能清单/MCP 清单+探测+编辑/**智能体定义两级清单+增删改+AgentRegistry 两级装载化**/raw JSONC 双文件编辑+来源徽标与生效 toast;导航含「插件」组)——~~已交付~~ 2026-10-08(执行注记:设置全链十面板+端点族+自填槽重载落地,详情 G8e 收官统一回写) |
+| ~~G8c~~ | **设置全链**(/settings 端点族+自填槽清除重载机制+十面板表单/只读清单/记忆概览/技能清单/MCP 清单+探测+编辑/**智能体定义两级清单+增删改+AgentRegistry 两级装载化**/raw JSONC 双文件编辑+来源徽标与生效 toast;导航含「插件」组)——~~已交付~~ 2026-10-08(执行注记:设置全链十面板+端点族+自填槽重载落地,详情 G8e 收官统一回写)。**已知跟进(终审缓议,G8d-e 承接)**:agents 全文读取端点(编辑正文现以 200 字预览守卫兜底)/高级面未知·退役键告警列表+memory 会话内覆盖显示(§2.5 两显示项下料)/RawPane 读取在途切目标窄竞态+scope 滞留(root 清空时)/SettingsForm 无取消守卫+relTime 三份漂移/MANUAL.md 模板补 teamTokenCap 行+键数注释(文档面)/跨 root reload「最近编辑为准」+运行中会话惰性拾取(架构项,per-session 链装化评估)/PUT root 无工作区限制(localhost+token 姿态既判维持) |
 | G8d | Diff 标签接线+Agents 标签(reducer+卡+mini 转录)+Web 标签(iframe+外开)+交互清单落地+e2e |
 | G8e | 全量门禁+两 spec/ROADMAP 回写(壳批次注记维持:原生 webview/托盘) |
 
