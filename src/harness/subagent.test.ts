@@ -1,10 +1,10 @@
 import { textReplyToChatFace } from '../model/chat-stub';
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { AgentRegistry, parseAgentFrontmatter, resolveSpawnSpec, SubagentRunner } from './subagent';
+import { AgentRegistry, builtinAgentRoles, loadAgentsView, parseAgentFrontmatter, resolveSpawnSpec, SubagentRunner } from './subagent';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -68,6 +68,155 @@ test('AgentRegistry：目录注册制加载与畸形 fail-fast（同 skills/MCP 
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+/* ---------- G8c-T1：AgentRegistry 两级装载（全局先装、项目遮蔽）+ 宽容视图 ---------- */
+
+describe('G8c-T1 两级装载与宽容视图', () => {
+  /** fixture 单点：向 <dir>/agents/<id>/agent.md 写一份注册物料 */
+  function writeAgent(dir: string, id: string, md: string): void {
+    fs.mkdirSync(path.join(dir, 'agents', id), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'agents', id, 'agent.md'), md);
+  }
+
+  /** frontmatter 物料模板（extra 透传可选声明键行） */
+  const agentMd = (name: string, body: string, extra = ''): string =>
+    `---\nname: ${name}\ndescription: d-${name}\n${extra}---\n\n${body}`;
+
+  test('①两级装载+项目遮蔽：同 id 项目版胜出；仅全局有 → 全局版可解析', () => {
+    const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ag-global-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ag-proj-'));
+    try {
+      writeAgent(globalDir, 'shared', agentMd('shared-global', '全局版框定'));
+      writeAgent(globalDir, 'glob-only', agentMd('glob-only', '仅全局框定'));
+      writeAgent(root, 'shared', agentMd('shared-project', '项目版框定'));
+      const reg = new AgentRegistry();
+      reg.registerBuiltins();
+      reg.loadAgents(root, globalDir);
+      const shadowed = reg.resolve('shared');
+      assert.equal(shadowed.name, 'shared-project', '项目同名 id 遮蔽全局条目');
+      assert.equal(shadowed.framing, '项目版框定', '遮蔽后框定正文取项目版');
+      assert.equal(reg.resolve('glob-only').name, 'glob-only', '仅全局有 → 全局版装载');
+    } finally {
+      fs.rmSync(globalDir, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('②loadAgentsView：source/遮蔽标记/bodyPreview 截断/畸形宽容入 warnings 不抛', () => {
+    const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-view-global-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-view-proj-'));
+    try {
+      writeAgent(globalDir, 'shared', agentMd('g-shared', '全局正文'));
+      writeAgent(globalDir, 'glob-only', agentMd('glob-only', '仅全局正文'));
+      writeAgent(root, 'shared', agentMd('p-shared', 'P'.repeat(300)));
+      writeAgent(root, 'proj-only', agentMd('proj-only', '仅项目正文'));
+      // 畸形全局物料：视图必须宽容（入 warnings），不影响其余条目
+      fs.mkdirSync(path.join(globalDir, 'agents', 'bad'), { recursive: true });
+      fs.writeFileSync(path.join(globalDir, 'agents', 'bad', 'agent.md'), '无 frontmatter 正文');
+
+      const view = loadAgentsView(root, globalDir);
+      const by = (id: string, source: 'project' | 'global') =>
+        view.entries.find((e) => e.id === id && e.source === source);
+
+      const projShared = by('shared', 'project');
+      assert.ok(projShared, '项目撞名条目在列');
+      assert.equal(projShared.name, 'p-shared');
+      assert.equal(projShared.shadowed, false, '项目条目（生效版）不标 shadowed');
+      assert.equal(projShared.bodyPreview.length, 200, '正文前 200 字符截断');
+      assert.equal(projShared.bodyPreview, 'P'.repeat(200), 'bodyPreview 取 frontmatter 之后正文前段');
+
+      const globShared = by('shared', 'global');
+      assert.ok(globShared, '全局撞名条目保留在列表（不删除）');
+      assert.equal(globShared.name, 'g-shared');
+      assert.equal(globShared.shadowed, true, '项目撞名 → 全局条 shadowed=true');
+
+      assert.ok(by('glob-only', 'global'), '仅全局条目在列');
+      assert.equal(by('glob-only', 'global')!.shadowed, false, '未被遮蔽的全局条目不标 shadowed');
+      assert.equal(by('glob-only', 'global')!.bodyPreview, '仅全局正文');
+      assert.ok(by('proj-only', 'project'), '仅项目条目在列');
+
+      assert.equal(view.warnings.length, 1, '畸形文件恰好入一条 warning');
+      assert.ok(
+        view.warnings[0]!.includes(path.join(globalDir, 'agents', 'bad', 'agent.md')),
+        `warnings 含文件路径，实际：${view.warnings[0]}`,
+      );
+      assert.ok(!view.entries.some((e) => e.id === 'bad'), '畸形条目不入清单');
+    } finally {
+      fs.rmSync(globalDir, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('③两级任一畸形文件 → loadAgents 整次 throw（fail-fast 纪律零变）', () => {
+    const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ff-global-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ff-proj-'));
+    try {
+      writeAgent(globalDir, 'ok-g', agentMd('ok-g', '正常全局'));
+      writeAgent(root, 'ok-p', agentMd('ok-p', '正常项目'));
+      // 全局级畸形
+      fs.mkdirSync(path.join(globalDir, 'agents', 'bad-g'), { recursive: true });
+      fs.writeFileSync(path.join(globalDir, 'agents', 'bad-g', 'agent.md'), '无 frontmatter 正文');
+      const regG = new AgentRegistry();
+      regG.registerBuiltins();
+      assert.throws(() => regG.loadAgents(root, globalDir), /frontmatter/i, '全局级畸形整次 fail-fast');
+
+      // 项目级畸形（全局干净）
+      const cleanGlobal = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ff-clean-'));
+      try {
+        writeAgent(root, 'bad-p', '无 frontmatter 正文');
+        const regP = new AgentRegistry();
+        regP.registerBuiltins();
+        assert.throws(() => regP.loadAgents(root, cleanGlobal), /frontmatter/i, '项目级畸形整次 fail-fast');
+      } finally {
+        fs.rmSync(cleanGlobal, { recursive: true, force: true });
+      }
+    } finally {
+      fs.rmSync(globalDir, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('④无全局目录=空注册（既有单参语义零破坏）；缺省 globalDir=userConfigDir()（HOME 重定向夹具）', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-home-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-solo-'));
+    const prevHome = process.env.HOME;
+    try {
+      writeAgent(root, 'only', agentMd('only', '项目独有框定'));
+      // HOME 指向空夹具（无 .sunshinex）→ 缺省全局目录不存在 = 空注册，单参调用零破坏
+      process.env.HOME = home;
+      const reg = new AgentRegistry();
+      reg.registerBuiltins();
+      reg.loadAgents(root);
+      assert.equal(reg.resolve('only').name, 'only', '项目条目照常装载');
+      assert.throws(() => reg.resolve('ghost'), /not found/i, '全局缺席时不引入任何条目');
+
+      // HOME 下补 .sunshinex/agents → 单参缺省即读全局（userConfigDir 解析验证）
+      writeAgent(path.join(home, '.sunshinex'), 'home-agent', agentMd('home-agent', '家目录全局框定'));
+      const reg2 = new AgentRegistry();
+      reg2.registerBuiltins();
+      reg2.loadAgents(root);
+      assert.equal(reg2.resolve('home-agent').name, 'home-agent', '缺省 globalDir 取 userConfigDir()');
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('⑤builtinAgentRoles：四预设角色展开（role/name/framing）', () => {
+    const roles = builtinAgentRoles();
+    assert.deepEqual(
+      roles.map((r) => r.role),
+      ['planner', 'developer', 'tester', 'reviewer'],
+      '四角色完整展开',
+    );
+    for (const r of roles) {
+      assert.ok(r.name.length > 0, `${r.role} 角色名非空`);
+      assert.ok(r.framing.length > 0, `${r.role} 框定非空`);
+    }
+  });
 });
 
 test('resolveSpawnSpec：同传两行 / 仅 prompt 内联 / 仅 agent_id 缺省续接行 / 显式任务行优先 / 皆缺报错', () => {

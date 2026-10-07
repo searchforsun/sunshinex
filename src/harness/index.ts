@@ -35,6 +35,7 @@ import { writeMemoryFact } from './memory/extractor';
 import { guardMemoryWrite } from './memory/writer';
 import type { SettlePayload } from './reactor';
 import { resolveDataDir } from '../config/data-dir';
+import { userConfigDir } from '../config/env';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { teamTokenCapEnv } from '../config/termination-config';
 import { RunLedger } from './ledger';
@@ -197,10 +198,11 @@ export class Harness {
       settle: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'learned', ...r }),
       settleMemory: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'memory', ...r }),
     };
-    // 子代理执行单元：注册表/安全链/上下文/模型同源装配；agents 目录装配期一次性加载 fail-fast（运行期零增删）
+    // 子代理执行单元：注册表/安全链/上下文/模型同源装配；agents 两级目录（全局 userConfigDir() + 项目 root）
+    // 装配期一次性加载 fail-fast（项目遮蔽全局；运行期零增删）
     const agents = new AgentRegistry();
     agents.registerBuiltins();
-    agents.loadAgents(base);
+    agents.loadAgents(base, userConfigDir());
     this.runner = new SubagentRunner(
       {
         registry: this.tools,

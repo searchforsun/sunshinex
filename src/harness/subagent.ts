@@ -9,6 +9,7 @@ import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
 import { createWorktree, isRepo, removeWorktree, subagentTreeName } from './worktree';
 import { dataDirReal } from '../config/data-dir';
+import { userConfigDir } from '../config/env';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 import { MemoryStore } from './memory/store';
@@ -31,6 +32,15 @@ export const ROLE_PRESETS: Record<AgentRole, { label: string; framing: string }>
 /** 角色预设取值（英文单语）：保留函数形态作为统一入口，防调用点散读 ROLE_PRESETS */
 export function rolePreset(role: AgentRole): { label: string; framing: string } {
   return ROLE_PRESETS[role];
+}
+
+/** 四预设角色平铺清单（G8c T5 设置端点消费面）：role/name/framing 三元组展开，不读盘零副作用 */
+export function builtinAgentRoles(): Array<{ role: AgentRole; name: string; framing: string }> {
+  return (Object.keys(ROLE_PRESETS) as AgentRole[]).map((role) => ({
+    role,
+    name: ROLE_PRESETS[role].label,
+    framing: ROLE_PRESETS[role].framing,
+  }));
 }
 
 /** 注册制子代理定义（目录注册制解析产物 / 预设角色统一形态） */
@@ -76,9 +86,16 @@ export class AgentRegistry {
     }
   }
 
-  /** 扫描 agents/{id}/agent.md；目录不存在 = 空注册（不算错）；畸形文件整次加载 fail-fast（同 skills/MCP 装配纪律） */
-  loadAgents(root: string): void {
-    const dir = path.join(root, 'agents');
+  /** 两级装载（G8c）：全局 <globalDir>/agents/ 先装、项目 <projectRoot>/agents/ 后装遮蔽（同 id 就近覆盖，与
+   *  loadMcpServers/skills 两级链同构）；缺省 globalDir=userConfigDir()（既有单参调用零破坏——全局目录
+   *  不存在 = 空注册）。装配纪律不变：任一级畸形文件整次 loadAgents throw（fail-fast 语义零变） */
+  loadAgents(projectRoot: string, globalDir?: string): void {
+    this.loadAgentsFrom(path.join(globalDir ?? userConfigDir(), 'agents'));
+    this.loadAgentsFrom(path.join(projectRoot, 'agents'));
+  }
+
+  /** 单级目录装载：扫 <dir>/<id>/agent.md；目录不存在 = 空注册（不算错）；畸形文件整次 fail-fast（同 skills/MCP 装配纪律） */
+  private loadAgentsFrom(dir: string): void {
     if (!fs.existsSync(dir)) return;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
@@ -103,6 +120,71 @@ export class AgentRegistry {
   has(id: string): boolean {
     return this.builtins.has(id) || this.defs.has(id);
   }
+}
+
+/* ---------- 两级宽容视图（G8c T5 设置端点消费面；纯函数不经 Registry） ---------- */
+
+/** agents 清单展示条目（loadAgentsView 产物）：与 AgentDef 同字段面的只读投影 + 来源/遮蔽标记 + 正文预览 */
+export interface AgentEntryView {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly memory?: boolean;
+  readonly isolation?: string;
+  readonly executor?: string;
+  /** 条目来源层级：global = <globalDir>/agents/，project = <projectRoot>/agents/ */
+  readonly source: 'project' | 'global';
+  /** true = 被项目同名 id 遮蔽（全局条目保留展示、运行期不生效） */
+  readonly shadowed: boolean;
+  /** frontmatter 之后正文前 200 字符（预览载荷防长正文击穿设置面板） */
+  readonly bodyPreview: string;
+}
+
+/** 两级扫描宽容产物：生效+被遮蔽全量清单 + 逐文件告警（畸形/读失败不抛死，路径入 warnings） */
+export interface AgentsView {
+  readonly entries: AgentEntryView[];
+  readonly warnings: string[];
+}
+
+/** 两级 agents 目录宽容清单（G8c）：与 loadAgents 同扫描几何（<globalDir>/agents/ + <projectRoot>/agents/），
+ *  但逐文件宽容——parseAgentFrontmatter throw / readFileSync 失败一律入 warnings（含文件路径）不抛死；
+ *  项目 id 撞名 → 全局条目 shadowed=true 保留在列表；bodyPreview = frontmatter 之后正文 slice(0,200)。
+ *  清单序：项目条目在前（生效视图优先），全局条目随后。纯函数零状态，不经 Registry */
+export function loadAgentsView(projectRoot: string, globalDir: string): AgentsView {
+  const warnings: string[] = [];
+  const collect = (dir: string, source: 'project' | 'global'): Map<string, AgentEntryView> => {
+    const out = new Map<string, AgentEntryView>();
+    if (!fs.existsSync(dir)) return out;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const file = path.join(dir, entry.name, 'agent.md');
+      if (!fs.existsSync(file)) continue;
+      try {
+        const meta = parseAgentFrontmatter(fs.readFileSync(file, 'utf8'));
+        out.set(entry.name, {
+          id: entry.name,
+          name: meta.name,
+          ...(meta.description ? { description: meta.description } : {}),
+          ...(meta.memory ? { memory: true } : {}),
+          ...(meta.isolation ? { isolation: meta.isolation } : {}),
+          ...(meta.executor ? { executor: meta.executor } : {}),
+          source,
+          shadowed: false,
+          bodyPreview: meta.body.slice(0, 200),
+        });
+      } catch (e) {
+        warnings.push(`${file}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return out;
+  };
+  const global = collect(path.join(globalDir, 'agents'), 'global');
+  const project = collect(path.join(projectRoot, 'agents'), 'project');
+  for (const id of project.keys()) {
+    const g = global.get(id);
+    if (g) global.set(id, { ...g, shadowed: true });
+  }
+  return { entries: [...project.values(), ...global.values()], warnings };
 }
 
 /** 可选点入参归一单点：两病同收——①模型按 schema「null」描述把字面量当字符串传（agent_id:"null" 等），
