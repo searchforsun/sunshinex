@@ -9,9 +9,9 @@ const base = {
   onToggleCollapse: vi.fn(), onCycle: vi.fn(), onCloseActive: vi.fn(),
 };
 
-describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents)', () => {
-  it('注册 file/diff/directory/tasks/agents/terminal;file 按 path、diff 按 callId 判重多实例,directory/tasks/agents 单例,terminal 按 nonce 多实例', () => {
-    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'diff', 'directory', 'tasks', 'agents', 'terminal']);
+describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web)', () => {
+  it('注册 file/diff/directory/tasks/agents/terminal/web;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,directory/tasks/agents 单例,web 按 url 判重多实例', () => {
+    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'diff', 'directory', 'tasks', 'agents', 'terminal', 'web']);
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');
@@ -39,6 +39,13 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents)', 
     expect(terminal.resolveKey({ nonce: 't1' })).toBe('t1');
     expect(terminal.resolveKey({})).toBe('');
     expect(terminal.title({})).toBe('终端');
+    const web = TAB_REGISTRY[6]!;
+    expect(web.group).toBe('tools');
+    expect(web.singleton).toBe(false);
+    expect(web.resolveKey({ url: 'https://a.dev' })).toBe('https://a.dev');
+    expect(web.resolveKey({})).toBe('');
+    expect(web.title({ url: 'https://a.dev' })).toBe('https://a.dev');
+    expect(web.title({})).toBe('Web');
   });
   it('registryProbe 与注册表同口径', () => {
     const p = registryProbe();

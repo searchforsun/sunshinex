@@ -1246,6 +1246,91 @@ describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
   });
 });
 
+describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重挂', () => {
+  /** +菜单开 web(tools 节 'Web' 直调 onOpenType;裸开无 url → 引导面) */
+  const openWeb = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Web' }));
+  };
+
+  /** url 输入回车开档(active 面) */
+  const submitUrl = (url: string): void => {
+    fireEvent.change(screen.getByLabelText('web url input'), { target: { value: url } });
+    fireEvent.keyDown(screen.getByLabelText('web url input'), { key: 'Enter' });
+  };
+
+  it('+菜单开 web → url 输入 example.com 回车 → iframe 在场 title=https://example.com(无 scheme 补全)+ sandbox 四值', async () => {
+    const { conn, unmount } = await enterChat();
+    openWeb();
+    expect(document.querySelector('.sx-tab[title="Web"]')?.classList.contains('active')).toBe(true);
+    expect(screen.getByLabelText('web tab')).toBeDefined();
+    // 裸开无 active:引导文案在场、无 iframe
+    expect(screen.getByText(/输入 URL 回车打开/)).toBeDefined();
+    expect(document.querySelector('.sx-web-frame')).toBeNull();
+    // 回车开档:无 :// 前缀 → 补 https://(title=规范化 url);沙盒四值原样
+    submitUrl('  example.com ');
+    const frame = document.querySelector('.sx-web-frame');
+    expect(frame).not.toBeNull();
+    expect(frame?.getAttribute('title')).toBe('https://example.com'); // 首尾空白亦去
+    expect(frame?.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-same-origin allow-popups');
+    expect(frame?.getAttribute('src')).toBe('https://example.com');
+    // X-Frame 拒嵌引导文案常驻(iframe 侧)
+    expect(screen.getByText(/X-Frame-Options 拒绝内嵌/)).toBeDefined();
+    unmount();
+  });
+
+  it('同 url 再开判重:url 输入不铸新 params(uid 恒 web:)——+菜单再开仍一条标签且聚焦', async () => {
+    const { conn, unmount } = await enterChat();
+    openWeb();
+    submitUrl('example.com');
+    expect(document.querySelector('.sx-web-frame')).not.toBeNull();
+    // 切去任务页(web 失活)→ +菜单再开 web:判重聚焦既有(仍一条,不并立)
+    fireEvent.click(screen.getByRole('button', { name: '任务' }));
+    expect(document.querySelector('.sx-tab[title="Web"]')?.classList.contains('active')).toBe(false);
+    openWeb();
+    expect(document.querySelectorAll('.sx-tab[title="Web"]')).toHaveLength(1);
+    expect(document.querySelector('.sx-tab[title="Web"]')?.classList.contains('active')).toBe(true);
+    unmount();
+  });
+
+  it('外开钮 → window.open(url, _blank, noopener,noreferrer) 断参', async () => {
+    const { conn, unmount } = await enterChat();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      openWeb();
+      // 无 active:外开钮不渲染(无可外开目标)
+      expect(screen.queryByRole('button', { name: '外开' })).toBeNull();
+      submitUrl('example.com');
+      fireEvent.click(screen.getByRole('button', { name: '外开' }));
+      expect(openSpy).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
+      expect(openSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+    unmount();
+  });
+
+  it('刷新钮:nonce bump → iframe key 变更强制重挂(DOM 节替换,title 不变)', async () => {
+    const { conn, unmount } = await enterChat();
+    openWeb();
+    submitUrl('example.com');
+    const before = document.querySelector('.sx-web-frame');
+    expect(before).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    const after = document.querySelector('.sx-web-frame');
+    expect(after).not.toBe(before); // key=`${url}#${nonce}` 变更 → 重挂(新 DOM 节)
+    expect(after?.getAttribute('title')).toBe('https://example.com'); // url 未变仅 bump
+  });
+
+  it('带 scheme 输入原样:http://localhost:3000 → title 原样(含 :// 不补 https)', async () => {
+    const { conn, unmount } = await enterChat();
+    openWeb();
+    submitUrl('http://localhost:3000');
+    expect(document.querySelector('.sx-web-frame')?.getAttribute('title')).toBe('http://localhost:3000');
+    unmount();
+  });
+});
+
 describe('卸载收口(单连接生命周期)', () => {
   it('unmount 关闭连接', async () => {
     const { conn, unmount } = await enterChat();

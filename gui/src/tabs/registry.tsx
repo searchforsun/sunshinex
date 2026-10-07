@@ -12,6 +12,7 @@ import { TerminalTab } from './TerminalTab';
 import { DirectoryTab } from './DirectoryTab';
 import { DiffTab } from './DiffTab';
 import { AgentsTab } from './AgentsTab';
+import { WebTab } from './WebTab';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
 export interface TabServices {
@@ -53,11 +54,11 @@ export interface TabTypeEntry {
   readonly mintParams?: () => import('./tab-state').TabParams;
 }
 
-/** G8a 两类 + G8b terminal/directory + G8d diff/agents:file(按 path 判重多实例)+ diff(write 调用
+/** G8a 两类 + G8b terminal/directory + G8d diff/agents/web:file(按 path 判重多实例)+ diff(write 调用
  * 按 callId 判重多实例——Chat write 条目 path 钮开档,渲染面 fetchDiff 双列/404 降级)+ 目录(每
  * 会话单例,惰拉树文件行跳 file)+ tasks(每会话单例)+ agents(每会话单例——子代理活动聚合卡,
  * G8d:payload.subagent 事件流经 App applyAgentEvent 归约,services.agentActivities 注入)+
- * 终端(nonce 多实例) */
+ * 终端(nonce 多实例)+ web(by url 判重多实例——裸开档 key='' 聚焦既有,标签体内输入开档) */
 export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
@@ -127,6 +128,16 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onPtyAllocated={p.onPtyAllocated}
       />
     ),
+  },
+  {
+    id: 'web',
+    group: 'tools',
+    // title:url 优先(带参开档);裸开档 'Web'——标签条/标题行同源
+    title: (params) => params.url ?? 'Web',
+    // by url 多实例:同 url 重开=聚焦,异 url 并存;「+」菜单裸开 key='' 互判重(聚焦既有)
+    resolveKey: (params) => params.url ?? '',
+    singleton: false,
+    render: (p) => <WebTab params={p.params} />,
   },
 ];
 
