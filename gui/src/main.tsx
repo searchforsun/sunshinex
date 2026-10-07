@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import './app.css';
 
 /**
  * G3 挂载点：App 自装配（无 props）——token 门面（URL ?token= / localStorage 持久）与
