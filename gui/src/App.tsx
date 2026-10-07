@@ -240,6 +240,10 @@ function AppShell({ token }: { token: string }): JSX.Element {
     ptyIdsRef.current.set(uid, ptyId);
   }, []);
 
+  /** G8b pty 记账读取面(TerminalTab 重挂重连判据):命中 = 该标签 pty 存活未 kill——重挂
+   *  跳过 openPty 直连同 ptyId(replay 恢复屏幕);同上 useCallback 稳定注入 */
+  const ptyIdFor = useCallback((uid: string): string | undefined => ptyIdsRef.current.get(uid), []);
+
   /** G8b 关标签链(TabStrip onClose/onCloseActive 共用):被关标签为 terminal 且 pty 已记账 →
    *  fire-and-forget killPty(拒约吞——关标签不等 HTTP;已关会话侧幂等)再关标签态 */
   const closeTabInSession = (uid: string): void => {
@@ -396,6 +400,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
               params: activeTab.params,
               services,
               uid: activeTab.uid,
+              ptyIdFor,
               onPtyAllocated: handlePtyAllocated,
             })}
           </div>

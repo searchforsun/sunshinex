@@ -842,14 +842,32 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
     await screen.findByLabelText('welcome');
     expect(conn.killPtyCalls).toEqual([]);
-    // 重进同会话(journal 重挂 s1):终端标签还原 + 重分配落账 → 关标签 → kill(sessionId, ptyId)
+    // 重进同会话(journal 重挂 s1):终端标签还原 → 重挂走重连径(记账命中,不重开 pty)
     conn.nextSessionId = 's1';
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
     await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
-    await waitFor(() => expect(conn.openPtyCalls).toHaveLength(2)); // 还原重挂的新分配(还原面重开 pty)
+    await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 重挂完成(重连既有 p1)
+    expect(conn.openPtyCalls).toHaveLength(1); // 重连径:还原面不再分配
     fireEvent.click(screen.getByRole('button', { name: 'close tab 终端' }));
     await waitFor(() => expect(conn.killPtyCalls).toEqual([['s1', 'p1']]));
     expect(document.querySelector('.sx-tab[title="终端"]')).toBeNull(); // 标签已移除(承继「任务」)
+    unmount();
+  });
+
+  it('裁定修复:切标签往返重连既有 pty——终端→任务→终端 不再 openPty(记账复用+replay 恢复)', async () => {
+    const { conn, unmount } = await enterChat();
+    openTerminal();
+    await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 首挂分配+记账(uid→p1)
+    expect(conn.openPtyCalls).toHaveLength(1);
+    // 切到「任务」:TerminalTab 卸载——socket dispose 但不 kill(pty 服务侧存活)
+    fireEvent.click(screen.getByRole('button', { name: '任务' }));
+    expect(screen.queryByText('终端渲染需要真浏览器窗口')).toBeNull(); // 终端面退场(卸载)
+    expect(screen.getByLabelText('board')).toBeDefined();
+    expect(conn.killPtyCalls).toEqual([]); // 卸载≠kill
+    // 切回「终端」:重挂走重连径(ptyIdFor 命中既有记账)——openPty 计数不变,降级面照常
+    fireEvent.click(screen.getByRole('button', { name: '终端' }));
+    await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined());
+    expect(conn.openPtyCalls).toHaveLength(1); // 重连既有 pty,不再分配(spec U-D5 等同本地底线)
     unmount();
   });
 });

@@ -26,6 +26,9 @@ export interface TabRenderProps {
   readonly services: TabServices;
   /** G8b:标签实例 uid(App 渲染面单点注入——TerminalTab 记账/守卫单实例面;file/tasks 忽略) */
   readonly uid: string;
+  /** G8b pty 记账读取(TerminalTab 重挂重连判据):命中 = 该标签 pty 存活未 kill,跳过
+   *  openPty 直连同 ptyId(replay 恢复屏幕);App 侧读 ptyIdsRef.current */
+  readonly ptyIdFor: (uid: string) => string | undefined;
   /** G8b pty 生命周期钩子:terminal 标签 openPty 落定回传(App 侧 ptyIdsRef 记账,关标签 kill) */
   readonly onPtyAllocated: (uid: string, ptyId: string) => void;
 }
@@ -77,7 +80,14 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     singleton: false,
     mintParams: () => ({ nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}` }),
     render: (p) => (
-      <TerminalTab conn={p.conn} sessionId={p.sessionId} params={p.params} uid={p.uid} onPtyAllocated={p.onPtyAllocated} />
+      <TerminalTab
+        conn={p.conn}
+        sessionId={p.sessionId}
+        params={p.params}
+        uid={p.uid}
+        ptyIdFor={p.ptyIdFor}
+        onPtyAllocated={p.onPtyAllocated}
+      />
     ),
   },
 ];
