@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { DirPicker } from '../pages/DirPicker';
-import { ChevronRight, Folder, Plus, RefreshCw } from 'lucide-react';
+import { ChevronRight, Folder, Plus, RefreshCw, Settings } from 'lucide-react';
 
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
@@ -31,6 +31,8 @@ export interface ProjectMenuProps {
   readonly activeSessionId: string; // '' = 无会话
   readonly activeRoot: string; // '' = 无(其所属组自动展开)
   readonly onOpenSession: (sessionId: string, root: string) => void;
+  /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
+  readonly onOpenSettings?: () => void;
 }
 
 /** 相对时间(简易):<60s 刚刚;<60m Nm ago;<24h Nh ago;否则 Nd ago */
@@ -43,7 +45,7 @@ function relTime(ts: number): string {
 }
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, connState, activeSessionId, activeRoot, onOpenSession } = props;
+  const { conn, connState, activeSessionId, activeRoot, onOpenSession, onOpenSettings } = props;
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   const [listError, setListError] = useState('');
   /** 展开中的组 slug(手动 toggle 与 activeRoot 自动展开共用同一态);null = 全收 */
@@ -337,6 +339,17 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       <footer className="sx-menu-foot">
         <span className={`conn-dot conn-${connState}`} aria-label={`connection: ${connState}`} />
         <span>{connState}</span>
+        {onOpenSettings !== undefined && (
+          <button
+            type="button"
+            aria-label="open settings"
+            className="sx-iconbtn"
+            title="设置"
+            onClick={onOpenSettings}
+          >
+            <Settings size={16} strokeWidth={1.75} />
+          </button>
+        )}
       </footer>
       {pickerOpen && (
         <div className="modal-overlay">

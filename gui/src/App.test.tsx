@@ -6,7 +6,7 @@ import { App } from './App';
 import { emptyBoard, applyBoardEvent } from './projection';
 import { highlightCode } from './highlight';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
-import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp } from './connection';
+import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp, SettingsView, SettingsKeyRow } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
 
 /**
@@ -60,6 +60,15 @@ const h = vi.hoisted(() => {
      *  同名路径分异桩,单例目录标签不重挂切换的陈旧层断言用) */
     treeBySession: Record<string, Record<string, TreeResp>> = {};
     treeReject: Error | null = null;
+    /** G8c T8 设置面:settings 应答可编程(缺省空 keys);调用记录 [root 归一 '']——root 缺省
+     *  (仅全局)记 ''(与有值 root 分异的断言面);putSettings 记 [root, updates] + 可编程拒;
+     *  memoryStats 同 settings 形(记忆面板概览行数据源) */
+    settingsView: SettingsView = settingsViewOf([]);
+    settingsCalls: string[] = [];
+    putSettingsCalls: Array<[string, Record<string, string | number | null>]> = [];
+    putSettingsReject: Error | null = null;
+    memoryStatsResp: { entries: number; lastWriteAt: number | null } = { entries: 0, lastWriteAt: null };
+    memoryStatsCalls: string[] = [];
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
     replyReject: Error | null = null;
@@ -162,6 +171,19 @@ const h = vi.hoisted(() => {
       if (bySession !== undefined) return Promise.resolve(bySession);
       return Promise.resolve(this.treeByPath[p] ?? { entries: [] });
     }
+    settings(root?: string): Promise<SettingsView> {
+      this.settingsCalls.push(root ?? '');
+      return Promise.resolve(this.settingsView);
+    }
+    putSettings(root: string, updates: Record<string, string | number | null>): Promise<void> {
+      if (this.putSettingsReject !== null) return Promise.reject(this.putSettingsReject);
+      this.putSettingsCalls.push([root, updates]);
+      return Promise.resolve();
+    }
+    memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }> {
+      this.memoryStatsCalls.push(root ?? '');
+      return Promise.resolve(this.memoryStatsResp);
+    }
     close(): void {
       this.closed = true;
     }
@@ -210,6 +232,12 @@ const ev = (type: SessionEvent['type'], text?: string, payload?: Record<string, 
 /** fixture 形态:messages 以五 kind 全集(daemon 实发 TranscriptEntry 面;connection.ts 声明的三 kind 子集经下行收窄断言) */
 function snapshotOf(over: Partial<Omit<FakeSnapshot, 'messages'>> & { messages?: SnapshotTranscriptEntry[] }): FakeSnapshot {
   return { messages: [], board: emptyBoard(), delegations: [], status: 'idle', lastSeq: 0, ...over } as FakeSnapshot;
+}
+
+/** G8c T8 SettingsView fixture:keys 可编程,permissions/providers 恒空(设置表单只消费 keys 面) */
+function settingsViewOf(keys: SettingsKeyRow[]): SettingsView {
+  const emptyPerms = { deny: [], allow: [], additionalDirs: [] };
+  return { keys, permissions: { merged: emptyPerms, project: emptyPerms, global: emptyPerms }, providers: { choices: [], apiKeyPresent: {}, warnings: [] } };
 }
 
 type Conn = InstanceType<typeof h.FakeConn>;
@@ -1229,6 +1257,131 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
     fire(conn, ev('model-start'));
     fire(conn, ev('done', 'fin'));
     await waitFor(() => expect(screen.queryByText(apTitle)).toBeNull());
+    unmount();
+  });
+});
+
+describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来源徽标/toast', () => {
+  /** 通用面板四来源 fixture(env 覆盖/project/global/default 各一)+ 限额面板数字键 */
+  const generalRows: SettingsKeyRow[] = [
+    { key: 'language', value: 'en', source: 'project', envOverride: false },
+    { key: 'shell', value: '/bin/zsh', source: 'env', envOverride: true },
+    { key: 'projectsDir', value: '/home/u/projects', source: 'global', envOverride: false },
+    { key: 'userSkillsDir', value: null, source: 'default', envOverride: false },
+  ];
+
+  /** 打开设置态(从 chat 面:settingsRoot 默认 = openRoot '/w/root-a') */
+  const openSettings = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
+  };
+
+  it('设置钮 → 设置态:SettingsShell 在场(项目选择器+四导航项)、右标签栏与 Chat 退场;「← 返回」→ 回会话态(Chat 重挂)', async () => {
+    const { conn, unmount } = await enterChat();
+    openSettings();
+    // 左栏切换:SettingsShell 在场——项目选择器(值=openRoot,选项经 workspaces() 惰拉后落位)+ 四已实现导航项
+    expect(screen.getByLabelText('settings project')).toBeDefined();
+    await waitFor(() => expect((screen.getByLabelText('settings project') as HTMLSelectElement).value).toBe('/w/root-a'));
+    expect(screen.getByRole('button', { name: '通用' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '上下文与限额' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '记忆' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '知识库与搜索' })).toBeDefined();
+    // ProjectMenu 退场(组头不在)
+    expect(screen.queryByRole('button', GROUP_HEAD)).toBeNull();
+    // 右标签栏整体不渲染 + Chat 主区不在(裁定:设置态 Chat 卸载,返回重播种同 backHome 语义)
+    expect(document.querySelector('.sx-tabstrip')).toBeNull();
+    expect(screen.queryByLabelText('message input')).toBeNull();
+    // 返回 → 回会话态:Chat 重新在场(重挂重播种,输入门落定后启用)
+    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    expect(document.querySelector('.sx-tabstrip')).not.toBeNull();
+    await screen.findByRole('button', GROUP_HEAD); // ProjectMenu 重挂,组列表经 workspaces() 重拉
+    unmount();
+  });
+
+  it('Esc → 回会话态(与返回钮同路径)', async () => {
+    const { conn, unmount } = await enterChat();
+    openSettings();
+    expect(screen.getByLabelText('settings project')).toBeDefined();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    unmount();
+  });
+
+  it('通用面板:行渲染+来源徽标类名+envOverride 禁编;改动保存 → putSettings 断参(数字键 number 化)+ toast + 重拉', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.settingsView = settingsViewOf([...generalRows, { key: 'contextWindow', value: '100000', source: 'project', envOverride: false }]);
+    openSettings();
+    // 面板拉取:settings(root=openRoot)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a']));
+    // 行渲染:值 = 行 value ?? 缺省空(default 行空串)
+    expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe('en');
+    expect((screen.getByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
+    // 来源徽标类名:四态各归其位
+    expect(document.querySelector('.sx-src-env')).not.toBeNull();
+    expect(document.querySelector('.sx-src-project')).not.toBeNull();
+    expect(document.querySelector('.sx-src-global')).not.toBeNull();
+    expect(document.querySelector('.sx-src-default')).not.toBeNull();
+    // envOverride 行禁编 + title 说明
+    expect((screen.getByLabelText('shell') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByLabelText('shell').title).toBe('env 覆盖中,改文件不生效');
+    // 空改动:保存禁用
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    // 改 project 行值 → 保存 → putSettings(root, {改键:新值})
+    fireEvent.change(screen.getByLabelText('language'), { target: { value: 'zh-CN' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(conn.putSettingsCalls).toEqual([['/w/root-a', { language: 'zh-CN' }]]));
+    // toast 出现(sx-toast,3s 自隐——测试窗内恒在场)
+    expect(screen.getByText('已生效:新建会话起')).toBeDefined();
+    expect(document.querySelector('.sx-toast')).not.toBeNull();
+    // 保存成功后重拉 settings
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a', '/w/root-a']));
+    // 切「上下文与限额」面板:数字键改动保存 → number 化(非字符串)
+    fireEvent.click(screen.getByRole('button', { name: '上下文与限额' }));
+    await screen.findByLabelText('contextWindow');
+    fireEvent.change(screen.getByLabelText('contextWindow'), { target: { value: '200000' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(conn.putSettingsCalls).toEqual([['/w/root-a', { language: 'zh-CN' }], ['/w/root-a', { contextWindow: 200000 }]]));
+    unmount();
+  });
+
+  it('保存失败(400):行内错误条原文示出(不静默)', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.settingsView = settingsViewOf(generalRows);
+    conn.putSettingsReject = new Error('/settings -> 400 unknown key');
+    openSettings();
+    await screen.findByLabelText('language');
+    fireEvent.change(screen.getByLabelText('language'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.getByText('/settings -> 400 unknown key')).toBeDefined());
+    unmount();
+  });
+
+  it('项目选择器切换:root 变 → 面板重拉 settings(仅全局 = 无 root 参)', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.settingsView = settingsViewOf(generalRows);
+    openSettings();
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a']));
+    // 切「(仅全局)」:root='' → settings() 无 root 参(FakeConn 记 '')
+    fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a', '']));
+    // 切回项目:root 复位
+    fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '/w/root-a' } });
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a', '', '/w/root-a']));
+    unmount();
+  });
+
+  it('记忆面板:概览行 memoryStats 只读展示「N 条记忆·最近 X」', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.settingsView = settingsViewOf([{ key: 'autoMemory', value: 'on', source: 'default', envOverride: false }]);
+    conn.memoryStatsResp = { entries: 12, lastWriteAt: Date.now() - 60_000 };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '记忆' }));
+    // 概览行数据源:memoryStats(root)
+    await waitFor(() => expect(conn.memoryStatsCalls).toEqual(['/w/root-a']));
+    await waitFor(() => expect(screen.getByText(/12 条记忆/)).toBeDefined());
+    expect(screen.getByText(/最近/)).toBeDefined();
+    // 面板行照常(键行 + 保存)
+    expect((screen.getByLabelText('autoMemory') as HTMLInputElement).value).toBe('on');
     unmount();
   });
 });

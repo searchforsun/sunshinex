@@ -7,6 +7,7 @@ import type { TaskBoardState, Delegation } from './projection';
 import { Chat } from './pages/Chat';
 import type { ChatSink } from './pages/Chat';
 import { ProjectMenu } from './sidebar/ProjectMenu';
+import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
 import type { TabServices } from './tabs/registry';
@@ -132,6 +133,11 @@ function AppShell({ token }: { token: string }): JSX.Element {
   /** G8b pty 记账:terminal 标签 uid → ptyId(TerminalTab onPtyAllocated 落账;关标签 →
    *  killPty 寻址。切标签/会话不清——pty 生命周期属标签不属渲染,backHome 亦不 kill) */
   const ptyIdsRef = useRef(new Map<string, string>());
+  /** G8c-T8 设置态:settingsOpen=true 时三栏内容整体切换(SettingsShell 占左+主栏,右标签栏
+   *  不渲染,Chat 卸载——返回重播种,与 backHome 同语义可接受);settingsRoot=设置面项目上下文
+   *  (开设置时快照 openRoot,无则 ''=仅全局;项目选择器可切) */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsRoot, setSettingsRoot] = useState('');
 
   /** 播种窗重开(清缓冲):openSession/onReset/onResetSession 三处——均伴随 Chat reseed,
    *  窗内残留帧属旧基线/旧板,弃 */
@@ -227,6 +233,19 @@ function AppShell({ token }: { token: string }): JSX.Element {
     setTeam([]);
     setPage('welcome');
   };
+
+  /** G8c-T8 开设置态:settingsRoot 快照当前 openRoot(无会话=''=仅全局);connInstance 在场才
+   *  可达(设置钮只在 ProjectMenu 底栏,其渲染前提即连接装配完成) */
+  const openSettings = useCallback((): void => {
+    setSettingsRoot(openRoot);
+    setSettingsOpen(true);
+  }, [openRoot]);
+
+  /** G8c-T8 回会话态(返回钮/Esc 同路径):page 态未动——开设置前是 chat 则回 chat(Chat 重挂
+   *  重播种),welcome 则回欢迎空态;useCallback 零依赖稳定(SettingsShell Esc effect 依赖面) */
+  const closeSettings = useCallback((): void => {
+    setSettingsOpen(false);
+  }, []);
 
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
    *  tab-state(同目标重开=聚焦既有,单例类型单份) */
@@ -336,79 +355,88 @@ function AppShell({ token }: { token: string }): JSX.Element {
 
   return (
     <div className="sx-shell">
-      {/* 左栏:项目分组(Home 职能内化;装配中占位) */}
-      {connInstance !== null ? (
-        <ProjectMenu
-          conn={connInstance}
-          connState={connState}
-          activeSessionId={openSessionId}
-          activeRoot={openRoot}
-          onOpenSession={openSession}
-        />
+      {settingsOpen && connInstance !== null ? (
+        /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
+           Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
+        <SettingsShell conn={connInstance} root={settingsRoot} onRootChange={setSettingsRoot} onBack={closeSettings} />
       ) : (
-        <nav className="sx-menu" aria-label="projects">
-          <p className="home-loading">连接装配中…</p>
-        </nav>
-      )}
-      {/* 中栏:Chat 恒挂(无会话=欢迎空态) */}
-      <main className="sx-main">
-        {page === 'chat' && connInstance !== null ? (
-          <Chat
-            key={openSessionId}
-            conn={connInstance}
-            sessionId={openSessionId}
-            connState={connState}
-            onBack={backHome}
-            sinkRef={chatSinkRef}
-            onSeeded={seedFromSnapshot}
-            onOpenFile={(p) => openTabInSession('file', { path: p })}
-          />
-        ) : (
-          <div className="sx-welcome" aria-label="welcome">
-            <p>选择左侧会话,或在工作区分组内新建。</p>
-          </div>
-        )}
-      </main>
-      {/* 右栏:会话标签页(无会话=灰条 32px;collapsed 只余折叠钮;标签体=活动标签渲染) */}
-      <aside className="sx-sidebar" style={{ width: sidebarWidth }}>
-        <TabStrip
-          tabs={tabState.tabs}
-          activeUid={tabState.activeUid}
-          collapsed={tabState.collapsed}
-          disabled={page !== 'chat'}
-          onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
-          onClose={closeTabInSession}
-          onNew={() => {}} // 「+」菜单选中类型由菜单直调 onOpenType(T3 装配)
-          onOpenType={(t) => openTabInSession(t, tabEntry(t).mintParams?.())}
-          onToggleCollapse={() =>
-            setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))
-          }
-          onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
-          onCloseActive={() => {
-            const uid = tabState.activeUid;
-            if (uid !== null) closeTabInSession(uid);
-          }}
-        />
-        {page === 'chat' && !tabState.collapsed && connInstance !== null && activeTab !== null && (
-          // key={activeTab.uid}:同型标签(file→file)互切强制重挂——React 同树位同元素类型会复用
-          // 一个 Files 实例(initialPath 自动加载 effect no-op,空标签串上一标签内容/路径输入)
-          <div className="sx-tabbody" key={activeTab.uid}>
+        <>
+          {/* 左栏:项目分组(Home 职能内化;装配中占位) */}
+          {connInstance !== null ? (
+            <ProjectMenu
+              conn={connInstance}
+              connState={connState}
+              activeSessionId={openSessionId}
+              activeRoot={openRoot}
+              onOpenSession={openSession}
+              onOpenSettings={openSettings}
+            />
+          ) : (
+            <nav className="sx-menu" aria-label="projects">
+              <p className="home-loading">连接装配中…</p>
+            </nav>
+          )}
+          {/* 中栏:Chat 恒挂(无会话=欢迎空态) */}
+          <main className="sx-main">
+            {page === 'chat' && connInstance !== null ? (
+              <Chat
+                key={openSessionId}
+                conn={connInstance}
+                sessionId={openSessionId}
+                connState={connState}
+                onBack={backHome}
+                sinkRef={chatSinkRef}
+                onSeeded={seedFromSnapshot}
+                onOpenFile={(p) => openTabInSession('file', { path: p })}
+              />
+            ) : (
+              <div className="sx-welcome" aria-label="welcome">
+                <p>选择左侧会话,或在工作区分组内新建。</p>
+              </div>
+            )}
+          </main>
+          {/* 右栏:会话标签页(无会话=灰条 32px;collapsed 只余折叠钮;标签体=活动标签渲染) */}
+          <aside className="sx-sidebar" style={{ width: sidebarWidth }}>
+            <TabStrip
+              tabs={tabState.tabs}
+              activeUid={tabState.activeUid}
+              collapsed={tabState.collapsed}
+              disabled={page !== 'chat'}
+              onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
+              onClose={closeTabInSession}
+              onNew={() => {}} // 「+」菜单选中类型由菜单直调 onOpenType(T3 装配)
+              onOpenType={(t) => openTabInSession(t, tabEntry(t).mintParams?.())}
+              onToggleCollapse={() =>
+                setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))
+              }
+              onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
+              onCloseActive={() => {
+                const uid = tabState.activeUid;
+                if (uid !== null) closeTabInSession(uid);
+              }}
+            />
+            {page === 'chat' && !tabState.collapsed && connInstance !== null && activeTab !== null && (
+              // key={activeTab.uid}:同型标签(file→file)互切强制重挂——React 同树位同元素类型会复用
+              // 一个 Files 实例(initialPath 自动加载 effect no-op,空标签串上一标签内容/路径输入)
+              <div className="sx-tabbody" key={activeTab.uid}>
 
-            {tabEntry(activeTab.type).render({
-              conn: connInstance,
-              sessionId: openSessionId,
-              params: activeTab.params,
-              services,
-              uid: activeTab.uid,
-              // G8b T7:标签体自治跳转面(DirectoryTab 文件行 → file 标签;Chat onOpenFile 同源)
-              openTab: openTabInSession,
-              ptyIdFor,
-              onPtyAllocated: handlePtyAllocated,
-            })}
-          </div>
-        )}
-        {page === 'chat' && !tabState.collapsed && <div className="sx-resizer" onMouseDown={startResize} />}
-      </aside>
+                {tabEntry(activeTab.type).render({
+                  conn: connInstance,
+                  sessionId: openSessionId,
+                  params: activeTab.params,
+                  services,
+                  uid: activeTab.uid,
+                  // G8b T7:标签体自治跳转面(DirectoryTab 文件行 → file 标签;Chat onOpenFile 同源)
+                  openTab: openTabInSession,
+                  ptyIdFor,
+                  onPtyAllocated: handlePtyAllocated,
+                })}
+              </div>
+            )}
+            {page === 'chat' && !tabState.collapsed && <div className="sx-resizer" onMouseDown={startResize} />}
+          </aside>
+        </>
+      )}
     </div>
   );
 }
