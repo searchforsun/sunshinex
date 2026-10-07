@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { WebSocket } from 'ws';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
@@ -60,6 +61,12 @@ interface Ctx {
   newSession: (root?: string) => Promise<string>;
 }
 
+/** tmp 回收（Windows cwd 锁迟滞兜底）：G8b T3 起 pty 用例的 shell 以 tmp 为 cwd——kill 后句柄
+ *  释放可迟于收口拍（EPERM），maxRetries/retryDelay 走 fs 内建重试面 */
+function rmTmp(tmp: string): void {
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
 /** 环境隔离样板：数据目录钉到本用例 tmp（focused 直跑不经 scripts/run-tests.js 预载，须自隔离用户全局区）。
  *  daemon 构造不再绑 root（会话注册表形态）——各用例经 POST /session/new 按需创建 */
 async function withDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>): Promise<void> {
@@ -84,7 +91,7 @@ async function withDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>):
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    rmTmp(tmp);
   }
 }
 
@@ -359,4 +366,149 @@ test('⑨ 全会话 teardown：signal 无视的悬挂 run 不拖住 close（≤3
     else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+// ---------- G8b T3：pty daemon 接线（分配/kill 路由 + 专用 WS + teardown 插杀） ----------
+
+/** pty WS 帧（S→C 四型）：replay/data 携 b=base64(UTF-8)；exit 携 code；error 携 message */
+interface PtyFrame {
+  t: 'replay' | 'data' | 'exit' | 'error';
+  b?: string;
+  code?: number;
+  message?: string;
+}
+
+/** pty 专用 WS 开连接+帧收集（Bearer 头鉴权；message 监听构造后立刻挂——replay 帧可能与握手响应
+ *  同 TCP 段到达，等 open 后再挂会丢首帧，同 daemon.ws.test openCollecting 教训） */
+function openPty(url: string): Promise<{ ws: WebSocket; frames: PtyFrame[] }> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url, { headers: { authorization: 'Bearer test-token' } });
+    const frames: PtyFrame[] = [];
+    ws.on('message', (data) => {
+      frames.push(JSON.parse(data.toString()) as PtyFrame);
+    });
+    ws.once('open', () => resolve({ ws, frames }));
+    ws.once('error', reject);
+  });
+}
+
+/** data 帧流拼接解码（UTF-8）——终端输出文本的断言面 */
+function ptyDataText(frames: PtyFrame[]): string {
+  return frames.filter((f) => f.t === 'data').map((f) => Buffer.from(f.b ?? '', 'base64').toString('utf8')).join('');
+}
+
+/** 单帧解码（replay 重放断言面） */
+function ptyDecode(f: PtyFrame): string {
+  return Buffer.from(f.b ?? '', 'base64').toString('utf8');
+}
+
+test('⑩ pty 全链：分配→WS 回环→断线重连重放→DELETE kill(幂等)→会话 delete 全杀', { timeout: 90_000 }, async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base } = ctx;
+    const wsBase = base.replace(/^http/, 'ws');
+    const sid = await ctx.newSession();
+
+    // 1) 分配：POST /session/:id/pty {cols,rows} → 200 {ptyId}（pty-<n> 方言）；未知会话 404
+    const alloc = await fetch(`${base}/session/${sid}/pty`, { method: 'POST', headers: AUTH, body: JSON.stringify({ cols: 80, rows: 24 }) });
+    assert.equal(alloc.status, 200, 'POST /session/:id/pty 应 200');
+    const { ptyId } = (await alloc.json()) as { ptyId: string };
+    assert.match(ptyId, /^pty-\d+$/, 'ptyId 方言 pty-<n>');
+    const nf = await fetch(`${base}/session/sX/pty`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(nf.status, 404, '未知会话分配 → 404');
+
+    // 2) WS 回环：连入首帧 replay(可能空) → in 帧下发标记命令 → data 帧流含标记
+    //    （默认 shell 下命令行可用：win32 powershell / 其余 $SHELL??bash 同串均合法）
+    const a = await openPty(`${wsBase}/session/${sid}/pty/${ptyId}`);
+    try {
+      await waitFor(() => a.frames.length > 0, 10_000);
+      assert.equal(a.frames[0].t, 'replay', '连接首帧恒 replay');
+      const cmd = `node -e "process.stdout.write('pty-e2e')"\r`;
+      a.ws.send(JSON.stringify({ t: 'in', b: Buffer.from(cmd, 'utf8').toString('base64') }));
+      await waitFor(() => ptyDataText(a.frames).includes('pty-e2e'), 30_000);
+    } finally {
+      a.ws.close();
+    }
+    await waitFor(() => a.ws.readyState === WebSocket.CLOSED, 5000);
+
+    // 3) 断线重连（close≠kill，进程保活）：新 WS 连入 → 首帧 replay 含此前输出标记（环形缓冲重放）
+    const b = await openPty(`${wsBase}/session/${sid}/pty/${ptyId}`);
+    try {
+      await waitFor(() => b.frames.length > 0, 10_000);
+      assert.equal(b.frames[0].t, 'replay', '重连首帧恒 replay');
+      assert.ok(ptyDecode(b.frames[0]).includes('pty-e2e'), '重放含断线前的输出标记');
+
+      // 4) DELETE kill → 在线 WS 收 exit 帧(非零)后 close；重复 DELETE 幂等 200
+      const kill = await fetch(`${base}/session/${sid}/pty/${ptyId}`, { method: 'DELETE', headers: AUTH });
+      assert.equal(kill.status, 200, 'DELETE kill 应 200');
+      assert.deepEqual(await kill.json(), { ok: true });
+      await waitFor(() => b.frames.some((f) => f.t === 'exit'), 15_000);
+      const exitFrame = b.frames.find((f) => f.t === 'exit')!;
+      assert.notEqual(exitFrame.code, 0, '被 kill 的 pty exit 帧非零');
+      await waitFor(() => b.ws.readyState === WebSocket.CLOSED, 5000);
+    } finally {
+      b.ws.close();
+    }
+    const again = await fetch(`${base}/session/${sid}/pty/${ptyId}`, { method: 'DELETE', headers: AUTH });
+    assert.equal(again.status, 200, '重复 DELETE 幂等 200');
+    assert.deepEqual(await again.json(), { ok: true });
+
+    // 5) 会话 delete → killAllFor：第二台(默认 shell 存活)被连带清杀——在线 WS 收 exit 帧(非零,
+    //    进程死透的可观测证据),之后新 WS 连入收 error 'pty not found'
+    const alloc2 = await fetch(`${base}/session/${sid}/pty`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(alloc2.status, 200, 'body 全缺省(cols/rows 80/24)分配应 200');
+    const { ptyId: ptyId2 } = (await alloc2.json()) as { ptyId: string };
+    assert.notEqual(ptyId2, ptyId, '第二台 id 相异（pty-<n> 单调不复用）');
+    const d = await openPty(`${wsBase}/session/${sid}/pty/${ptyId2}`);
+    try {
+      const del = await fetch(`${base}/session/${sid}/delete`, { method: 'POST', headers: AUTH });
+      assert.equal(del.status, 200, 'idle 会话 delete 应 200');
+      await waitFor(() => d.frames.some((f) => f.t === 'exit'), 15_000);
+      assert.notEqual(d.frames.find((f) => f.t === 'exit')!.code, 0, 'killAllFor 插杀的 exit 帧非零');
+      await waitFor(() => d.ws.readyState === WebSocket.CLOSED, 5000);
+    } finally {
+      d.ws.close();
+    }
+    const c = await openPty(`${wsBase}/session/${sid}/pty/${ptyId2}`);
+    try {
+      await waitFor(() => c.frames.length > 0, 10_000);
+      assert.equal(c.frames[0].t, 'error', 'killAllFor 后连入 → error 帧');
+      assert.equal(c.frames[0].message, 'pty not found');
+      await waitFor(() => c.ws.readyState === WebSocket.CLOSED, 5000);
+    } finally {
+      c.ws.close();
+    }
+  });
+});
+
+test('⑪ pty 鉴权与未知 id：错 token 升级拒 401；未知 ptyId 升级即 error 帧后 close', { timeout: 30_000 }, async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const wsBase = ctx.base.replace(/^http/, 'ws');
+    const sid = await ctx.newSession();
+    // 错 token：401 拒升级——客户端 error 且无 open（同事件面 daemon.ws.test ③ 惯例）
+    let sawOpen = false;
+    let sawError = false;
+    await new Promise<void>((resolve) => {
+      const ws = new WebSocket(`${wsBase}/session/${sid}/pty/pty-9`, { headers: { authorization: 'Bearer wrong-token' } });
+      ws.on('open', () => {
+        sawOpen = true;
+        resolve();
+      });
+      ws.on('error', () => {
+        sawError = true;
+      });
+      ws.on('close', () => resolve());
+    });
+    assert.equal(sawOpen, false, '错 token 不得升级成功');
+    assert.equal(sawError, true, '401 拒升级应表现为客户端 error');
+    // 合法 token + 未知 ptyId：升级成功但即收 error 帧后 close(1008)
+    const c = await openPty(`${wsBase}/session/${sid}/pty/pty-404`);
+    try {
+      await waitFor(() => c.frames.length > 0, 10_000);
+      assert.equal(c.frames[0].t, 'error', '未知 ptyId 首帧 error');
+      assert.equal(c.frames[0].message, 'pty not found');
+      await waitFor(() => c.ws.readyState === WebSocket.CLOSED, 5000);
+    } finally {
+      c.ws.close();
+    }
+  });
 });

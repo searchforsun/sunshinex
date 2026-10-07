@@ -15,6 +15,7 @@ import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest }
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 import { isWithin } from '../paths';
+import { PtyManager } from './pty';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
  *  按需装配（--root CLI 参数降级为「启动即预选」，缺省空注册表启动）。model 与 CLI buildModel/TUI
@@ -208,6 +209,22 @@ function readFileBounded(resolved: string): { content: string; truncated: boolea
   return { content: buf.toString('utf8'), truncated };
 }
 
+/** URL 段解码（G8b T3 pty 升级路径）：坏 % 序列按字面回退（decodeURIComponent throw 面）——
+ *  未命中注册表即 error 帧，fail-closed */
+function safeDecode(seg: string): string {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+/** pty 帧 S→C 下行单点（G8b T3）：readyState 判存——CLOSED/CLOSING 静默丢帧（断线窗口的输出
+ *  靠重连 replay 补，不追赶） */
+function sendPtyFrame(ws: WebSocket, frame: { t: 'data' | 'exit'; b?: string; code?: number }): void {
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
+}
+
 /** 路由表条目：path 支持 `:name` 段参数（会话维端点 /session/:id/*）；auth 恒验除 healthz */
 interface Route {
   method: string;
@@ -255,6 +272,14 @@ export class GuiDaemon {
    *  （重复回执 404 的判据） */
   private readonly pending = new Map<string, PendingEntry>();
   private pendingSeq = 0;
+  /** pty 面（G8b T3）：daemon 持 manager（serve 分层——session.ts 不引 pty，会话回收由 daemon
+   *  在 delete/teardown 两处 killAllFor 插杀）；ptyId 铸造 `pty-<n>` 进程内单调、永不复用（防
+   *  同 id 新会话撞旧缓冲/双连的竞态——T2 缓议裁定） */
+  private readonly ptyManager = new PtyManager();
+  private ptySeq = 0;
+  /** pty 专用 WS 连接面：与事件面 wsClients 独立（不参与事件广播；复用 heartbeat ping + 同一
+   *  wsLastPong 计时；daemon close 随 wss.close 一并退场） */
+  private readonly ptySockets = new Set<WebSocket>();
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
@@ -439,6 +464,8 @@ export class GuiDaemon {
   /** WS 面装配：http server 'upgrade' → 鉴权双形态（§4.3 Bearer 头，G2 增补浏览器路径
    *  `Sec-WebSocket-Protocol: bearer.<token>`——浏览器 WebSocket API 不能自定义请求头，token 只能
    *  借 subprotocol 名携带）→ wss.handleUpgrade 接管；noServer 形态复用同一 http server（端口不另开）。
+   *  G8b T3：`^/session/:sid/pty/:ptyId` 路径分支到 pty 专用连接（帧协议 replay/data/exit/error 与
+   *  事件面完全不同，不分支会串协议）；鉴权同双形态先行。
    *  升级响应回显由 ws 库默认行为承担：completeUpgrade 未设 handleProtocols 时取请求协议列表首个
    *  （websocket-server.js `protocols.values().next().value`）写回 Sec-WebSocket-Protocol——客户端
    *  恰好只带一个协议（bearer.<token>），回显即原值，客户端 ws.protocol 可直接校验。30s ping 保活
@@ -452,6 +479,13 @@ export class GuiDaemon {
       if (this.closePromise || (!viaHeader && !viaSubprotocol)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
+        return;
+      }
+      const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+      const m = /^\/session\/([^/]+)\/pty\/([^/]+)$/.exec(pathname);
+      if (m) {
+        // 段解码失败按字面处理（get 未命中 → error 帧，fail-closed 不放行错位寻址）
+        wss.handleUpgrade(req, socket, head, (ws) => this.onPtyConnection(ws, safeDecode(m[1]), safeDecode(m[2])));
         return;
       }
       wss.handleUpgrade(req, socket, head, (ws) => this.onWsConnection(ws));
@@ -478,16 +512,74 @@ export class GuiDaemon {
     for (const [pid, entry] of this.pending) ws.send(JSON.stringify(pendingFrameOf(pid, entry)));
   }
 
-  /** 保活心跳：逐连接判活——pong 静默超 60s 即 terminate（close 事件统一清理 Set），否则发 ping */
+  /** pty 专用 WS 连接生命周期（G8b T3，帧协议逐字 spec §终端目录）：
+   *  - 未知 ptyId：升级后即发 `{"t":"error","message":"pty not found"}` 后 close(1008)
+   *  - attach 即重放：首帧 `{"t":"replay","b":base64(环形缓冲)}`（断线重连重放，U-D5）
+   *  - 下行：onData → `{"t":"data","b"}` / onExit → `{"t":"exit","code"}` + ws.close(1000)
+   *  - 上行：`{"t":"in","b"}` → write（base64 解 UTF-8）/ `{"t":"resize","cols","rows"}` → resize
+   *    （正整数校验，坏帧/非法形态静默忽略）
+   *  - ws close ≠ kill：断线保活（kill 只走 DELETE / 两处 teardown 插杀），重连靠 replay 补窗；
+   *    T2 回调不可注销——close 置 attached=false 门 + sendPtyFrame readyState 判存双保险
+   *  - resize/write 对已退出会话是 no-op（T2 内建防崩，daemon 侧不 try/catch） */
+  private onPtyConnection(ws: WebSocket, _sessionId: string, ptyId: string): void {
+    const pty = this.ptyManager.get(ptyId);
+    ws.on('error', () => {}); // EventEmitter 契约：挂空 listener，socket 错误细节不倒面（同 onWsConnection）
+    if (pty === undefined) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'error', message: 'pty not found' }));
+      ws.close(1008);
+      return;
+    }
+    this.ptySockets.add(ws);
+    this.wsLastPong.set(ws, Date.now());
+    ws.on('pong', () => this.wsLastPong.set(ws, Date.now()));
+    ws.send(JSON.stringify({ t: 'replay', b: Buffer.from(pty.replay(), 'utf8').toString('base64') }));
+    let attached = true;
+    pty.onData((d) => {
+      if (attached) sendPtyFrame(ws, { t: 'data', b: Buffer.from(d, 'utf8').toString('base64') });
+    });
+    pty.onExit((code) => {
+      if (!attached) return;
+      sendPtyFrame(ws, { t: 'exit', code });
+      ws.close(1000);
+    });
+    ws.on('message', (data) => {
+      let frame: unknown;
+      try {
+        frame = JSON.parse(data.toString());
+      } catch {
+        return; // 坏帧忽略：非 JSON/半截帧静默丢弃
+      }
+      const f = frame as { t?: unknown; b?: unknown; cols?: unknown; rows?: unknown } | null;
+      if (f === null || typeof f !== 'object') return;
+      if (f.t === 'in' && typeof f.b === 'string') {
+        pty.write(Buffer.from(f.b, 'base64').toString('utf8'));
+        return;
+      }
+      if (f.t === 'resize' && Number.isInteger(f.cols) && (f.cols as number) > 0 && Number.isInteger(f.rows) && (f.rows as number) > 0) {
+        pty.resize(f.cols as number, f.rows as number);
+      }
+    });
+    ws.on('close', () => {
+      attached = false;
+      this.ptySockets.delete(ws);
+    });
+  }
+
+  /** 保活心跳：逐连接判活——pong 静默超 60s 即 terminate（close 事件统一清理 Set），否则发 ping；
+   *  G8b T3：pty 专用 WS 共用本面（ptySockets 独立 Set + 同一 wsLastPong 计时） */
   private heartbeat(): void {
     const now = Date.now();
-    for (const ws of this.wsClients) {
-      if (now - (this.wsLastPong.get(ws) ?? now) > PONG_TIMEOUT_MS) {
-        ws.terminate();
-        continue;
-      }
-      ws.ping();
+    for (const ws of this.wsClients) this.beat(ws, now);
+    for (const ws of this.ptySockets) this.beat(ws, now);
+  }
+
+  /** 单连接保活判定（heartbeat 内联步）：超时 terminate / 存活 ping */
+  private beat(ws: WebSocket, now: number): void {
+    if (now - (this.wsLastPong.get(ws) ?? now) > PONG_TIMEOUT_MS) {
+      ws.terminate();
+      return;
     }
+    ws.ping();
   }
 
   /** 幂等 teardown：单次化落链（closePromise 守卫），升级拒绝面同判 */
@@ -507,8 +599,13 @@ export class GuiDaemon {
     // 0b) 全会话在跑 run 即刻中止（并发）：与单会话序同理——悬挂 run 的 promise 会拖住事件循环/测试
     //    收口；每会话有界等待 2s（Promise.all 并发不叠加）
     await Promise.all([...this.sessions.values()].map((s) => s.abortAndSettle()));
+    // 0c) pty 全量插杀（G8b T3，teardown 插杀处之二）：逐会话 killAllFor 覆盖全部条目（owner 恒为
+    //     会话 id——daemon 持 manager、session.ts 不引 pty 的 serve 分层面）。kill 同步注销，exit 帧
+    //     异步送达在线 pty WS（尽力投递，网络面下一拍收口）；防孤儿 conpty 拖住 daemon close
+    for (const id of [...this.sessions.keys()]) this.ptyManager.killAllFor(id);
     // 1) WS 面先收：停 ping 计时器，逐连接 1001 Going Away 后 wss.close——先于 HTTP server close，
-    //    升级连接与请求连接同序退场，server close 时无存活的升级套接字拖尾
+    //    升级连接与请求连接同序退场，server close 时无存活的升级套接字拖尾；pty 专用 WS（ptySockets）
+    //    同拍退场（wss.close 统一收口两面的连接）
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = undefined;
@@ -516,8 +613,10 @@ export class GuiDaemon {
     const wss = this.wss;
     if (wss) {
       for (const ws of this.wsClients) ws.close(1001);
+      for (const ws of this.ptySockets) ws.close(1001);
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       this.wsClients.clear();
+      this.ptySockets.clear();
     }
     // 2) HTTP server 先收：close 停接新连接，closeAllConnections 掐掉存活的 keep-alive 空闲连接——
     //    否则 undici 连接池的滞留套接字会让 close 回调悬到超时，teardown 时序不可控
@@ -551,6 +650,9 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
     // T2 会话回收：running 409（先收 run 再删）；journal 文件保留（磁盘档案非 daemon 生命周期资产）
     { method: 'POST', path: '/session/:id/delete', auth: true, run: async (_req, res, p) => this.handleDelete(res, p.id) },
+    // G8b T3 pty 面：分配（shell 探测 daemon 内定，cols/rows 缺省 80/24）+ kill（幂等）
+    { method: 'POST', path: '/session/:id/pty', auth: true, run: (req, res, p) => this.handlePtyAlloc(req, res, p.id) },
+    { method: 'DELETE', path: '/session/:id/pty/:ptyId', auth: true, run: async (_req, res, p) => this.handlePtyKill(res, p.id, p.ptyId) },
     // G4 挂起回执面：pid 为 daemon 级挂起票据（会话无关路由——pid 本身寻址，无会话维前缀）
     { method: 'POST', path: '/approval/:pid', auth: true, run: (req, res, p) => this.handleApprovalReply(req, res, p.pid) },
     { method: 'POST', path: '/ask/:pid/reply', auth: true, run: (req, res, p) => this.handleAskReply(req, res, p.pid) },
@@ -1056,7 +1158,55 @@ export class GuiDaemon {
     this.denyPendingFor(id);
     await session.teardown();
     this.sessions.delete(id);
+    // G8b T3 插杀（单会话回收处）：会话回收连带清杀其全部 pty（daemon 持 manager——serve 分层，
+    // session.ts 不引 pty）；kill 同步注销 → 该会话 pty 的后续 WS 连入收 error 'pty not found'
+    this.ptyManager.killAllFor(id);
     if (this.active === id) this.active = undefined;
+    this.send(res, 200, { ok: true });
+  }
+
+  /** POST /session/:id/pty {cols?,rows?}（G8b T3 分配面）：cols/rows 缺省 80/24，在场须正整数
+   *  （400）→ 会话解析（未知 :id 404，sessionFor 单点）→ shell 探测 daemon 内定（win32
+   *  powershell.exe / 其余 process.env.SHELL ?? /bin/bash）→ PtyManager.spawn（cwd=session.root、
+   *  owner=:id、env 继承 process.env）→ 200 {ptyId}（`pty-<n>` 单调永不复用）。T5/T6 拿 ptyId 连
+   *  `/session/:id/pty/:ptyId` 专用 WS 升级路径（本文件 attachWs 分支） */
+  private async handlePtyAlloc(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const body = parsed.body as { cols?: unknown; rows?: unknown } | null;
+    const cols = body?.cols ?? 80;
+    const rows = body?.rows ?? 24;
+    if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 1 || typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
+      this.send(res, 400, { error: 'cols and rows must be positive integers' });
+      return;
+    }
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    this.ptySeq += 1;
+    const ptyId = `pty-${this.ptySeq}`;
+    const file = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
+    this.ptyManager.spawn(ptyId, {
+      file,
+      args: [],
+      cwd: session.root,
+      cols,
+      rows,
+      owner: session.id,
+      env: process.env as Record<string, string>,
+    });
+    this.send(res, 200, { ptyId });
+  }
+
+  /** DELETE /session/:id/pty/:ptyId（G8b T3 kill 面）：PtyManager.kill 幂等（无此 id 静默）——重复
+   *  DELETE / 自然退出后再删均 200 {ok:true}；kill 同步注销（has→false 立即），exit 帧异步送达在线
+   *  pty WS。会话解析先行（未知 :id 404，sessionFor 单点——路由面会话维语义一致性） */
+  private handlePtyKill(res: http.ServerResponse, id: string, ptyId: string): void {
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    this.ptyManager.kill(ptyId);
     this.send(res, 200, { ok: true });
   }
 
