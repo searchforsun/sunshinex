@@ -1218,3 +1218,181 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
     }
   }, 90_000);
 });
+
+/* ============================================================
+ * G8c e2e 两场景(spec §7 G8c 行·设置全链终验):场景①——设置改键全链:DirPicker 建会话 →
+ * ProjectMenu 底栏设置钮入设置态 → 通用面板改 language 键 → 保存 → toast「已生效」在场 →
+ * GET /settings?root= 直连 fetch 断言 value 新值+source='project' → stop daemon → 同 root
+ * 重启新 daemon 实例 → GET 仍 project 新值(<root>/.sunshinex/settings.json 磁盘持久化+新
+ * 实例装载链)。root 需存活跨两次 daemon 生命周期——本组弃 startDaemon(其 stop 收口 rm tmp),
+ * 就地装配同款 tmp root/projects 隔离面,收口归场景末统一 rm。场景②——MCP 探测失败态+agents
+ * 增删改:<root>/.sunshinex/mcp.json 预造 bad(stdio 命令缺席)→ 设置态 MCP 面 bad 卡在场 →
+ * 「测试连接」→ ok:false 错误行内;切智能体面 → 新增表单(scope=project/id/name)→ 保存 →
+ * 清单含 e2e-agent → 删除 → 清单空;「← 返回」回会话态 Chat 在场如常。
+ * ============================================================ */
+
+describe('G8c 场景①:设置改键全链——通用面板改 language 保存 → toast → 直连 GET project 新值 → 重启 daemon 仍新值', () => {
+  it('建会话 → 设置钮 → 改 language → 保存 toast 已生效 → GET /settings?root= project 新值 → stop → 新 daemon 实例 → GET 仍 project 新值', async () => {
+    const NEW_LANG = 'fr';
+    // 就地装配:startDaemon 的 stop 会 rm tmp——本组 root 要跨两段 daemon 存活,隔离面(tmp root+
+    // projects 注册表)同款自建,场景末统一收口(rm 重试参数沿 startDaemon Windows 迟滞兜底惯例)
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-g8c-e2e-'));
+    const root = path.join(tmp, 'root');
+    fs.mkdirSync(root, { recursive: true });
+    const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+    process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+    /** 单段 daemon 装配(不带 tmp 收口;模型单 done 牌——本场景无模型轮) */
+    const boot = async (): Promise<{ port: number; stop(): Promise<void> }> => {
+      vi.stubGlobal('WebSocket', NodeWebSocket);
+      const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"设置场景无需模型轮"}']) });
+      const s = await daemon.start({ port: 0, token: 'e2e-token' });
+      return { port: s.port, stop: () => s.close() };
+    };
+    /** GET /settings?root= 直连取单键行(断言面:value+source 两列) */
+    const settingsRow = async (port: number, key: string): Promise<{ value: string | null; source: string }> => {
+      const res = await fetch(`http://127.0.0.1:${port}/settings?root=${encodeURIComponent(root)}`, {
+        headers: { authorization: 'Bearer e2e-token' },
+      });
+      expect(res.status).toBe(200);
+      const view = (await res.json()) as { keys: Array<{ key: string; value: string | null; source: string }> };
+      const row = view.keys.find((k) => k.key === key);
+      expect(row, `settings 视图应含键 ${key}`).toBeDefined();
+      return { value: row!.value, source: row!.source };
+    };
+    let d1: { port: number; stop(): Promise<void> } | undefined;
+    let d2: { port: number; stop(): Promise<void> } | undefined;
+    let unmount: (() => void) | undefined;
+    try {
+      d1 = await boot();
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${d1.port}`);
+      unmount = render(createElement(App)).unmount;
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto,项目 root=会话根)→ chat ——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+
+      // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(SettingsForm 行
+      //    label=键名,aria-label=language)→「保存」→ toast「已生效」在场 ——
+      fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
+      await screen.findByLabelText('settings pane 通用', { timeout: 5_000 });
+      const langInput = await screen.findByLabelText('language', { timeout: 5_000 });
+      fireEvent.change(langInput, { target: { value: NEW_LANG } });
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+      await screen.findByText('已生效:新建会话起', {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场)
+      // 保存后重拉:language 行值回落为新值(来源归因 project)
+      await waitFor(() => expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe(NEW_LANG), { timeout: 5_000 });
+
+      // —— GET /settings?root= 直连 fetch 断言:language 新值 + source='project'(写盘+槽重载链)——
+      const after1 = await settingsRow(d1.port, 'language');
+      expect(after1.value).toBe(NEW_LANG);
+      expect(after1.source).toBe('project');
+
+      // —— stop → 同 root 重启新 daemon 实例 → GET 仍 project 新值(持久化+新实例装载链);
+      //    App 先卸(conn.close 收口,免后台重连噪声)——
+      unmount();
+      unmount = undefined;
+      await d1.stop();
+      d1 = undefined;
+      d2 = await boot();
+      const after2 = await settingsRow(d2.port, 'language');
+      expect(after2.value).toBe(NEW_LANG);
+      expect(after2.source).toBe('project');
+      // 落盘实证:<root>/.sunshinex/settings.json 含 language 新值(PUT 结构化写目标)
+      const onDisk = JSON.parse(fs.readFileSync(path.join(root, '.sunshinex', 'settings.json'), 'utf8')) as Record<string, unknown>;
+      expect(onDisk.language).toBe(NEW_LANG);
+      await d2.stop();
+      d2 = undefined;
+    } finally {
+      unmount?.();
+      await d1?.stop();
+      await d2?.stop();
+      if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+      else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
+
+describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测试连接错误行内;e2e-agent 新增/删除;返回 Chat', () => {
+  it('预造 mcp.json bad → 设置态 MCP 面 bad 卡 → 测试连接 ok:false 错误行内 → 智能体面新增/删除 e2e-agent → 返回会话态 Chat 在场', async () => {
+    const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"设置场景无需模型轮"}']));
+    try {
+      // 预造项目级 mcp.json(建会话前写盘):bad = stdio 命令缺席 → 探测失败态的确定性现场
+      fs.mkdirSync(path.join(env.root, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(
+        path.join(env.root, '.sunshinex', 'mcp.json'),
+        JSON.stringify({ mcpServers: { bad: { name: 'bad', command: 'definitely-missing-xyz' } } }),
+        'utf8',
+      );
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话(项目 root,DirPicker 流)→ chat → 设置态(底栏设置钮,settingsRoot=root)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
+
+      // —— MCP 面(导航项):bad 卡在场(两级清单读 <root>/.sunshinex/mcp.json;命令行示出)——
+      fireEvent.click(screen.getByRole('button', { name: 'MCP' }));
+      await screen.findByLabelText('settings pane MCP', { timeout: 5_000 });
+      await waitFor(() => expect(container.querySelector('.sx-mcp-card .sx-mcp-name')?.textContent).toBe('bad'), { timeout: 5_000 });
+      expect(container.querySelector('.sx-mcp-card')?.textContent).toContain('definitely-missing-xyz');
+
+      // —— 「测试连接」→ probe 真探测(spawn 缺席命令)→ ok:false → 卡内错误行(daemon.test
+      //    ghost 同口径:connection failed 前缀/ENOENT/spawn 任一即可——平台 spawn 报文差异容差)——
+      fireEvent.click(screen.getByRole('button', { name: '测试连接 bad' }));
+      await waitFor(
+        () =>
+          expect(container.querySelector('.sx-mcp-card .home-error')?.textContent ?? '').toMatch(
+            /connection failed \(bad\)|ENOENT|spawn/i,
+          ),
+        { timeout: 15_000 },
+      );
+
+      // —— 智能体面(导航项):「+ 新增」→ 表单 scope=project/id/name →「保存」→ 清单含 e2e-agent ——
+      fireEvent.click(screen.getByRole('button', { name: '智能体' }));
+      await screen.findByLabelText('settings pane 智能体', { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('button', { name: '+ 新增' }));
+      await screen.findByLabelText('agent id', { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('agent scope'), { target: { value: 'project' } });
+      fireEvent.change(screen.getByLabelText('agent id'), { target: { value: 'e2e-agent' } });
+      fireEvent.change(screen.getByLabelText('agent name'), { target: { value: 'E2E' } });
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+      await waitFor(() => expect(container.querySelector('.sx-agent-list')?.textContent).toContain('e2e-agent'), { timeout: 10_000 });
+      expect(container.querySelector('.sx-agent-list')?.textContent).toContain('E2E'); // name 面同卡在场
+
+      // —— 删除(op:delete)→ 清单空(「无自定义智能体。」空态回归)——
+      fireEvent.click(screen.getByRole('button', { name: '删除 e2e-agent(项目)' }));
+      await waitFor(
+        () => {
+          expect(screen.getByText('无自定义智能体。')).toBeDefined();
+          expect(container.querySelector('.sx-agent-list')?.textContent ?? '').not.toContain('e2e-agent');
+        },
+        { timeout: 10_000 },
+      );
+
+      // —— 「← 返回」回会话态:Chat 重挂在场(输入面/连接态如常)——
+      fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+      await waitFor(() => expect(screen.getByLabelText('message input')).toBeDefined(), { timeout: 10_000 });
+      expect(screen.getByLabelText('connection: open')).toBeDefined();
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 90_000);
+});
