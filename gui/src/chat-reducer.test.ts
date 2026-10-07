@@ -163,6 +163,16 @@ describe('五 kind 与 notice 系映射', () => {
     expect(s.entries).toEqual(s0.entries);
     expect(s).toBe(s0); // 全忽略时原状态引用透传（免无谓重渲染）
   });
+
+  it('payload.subagent 事件不入主流(G8a:Agents 标签另聚;delegation 摘要行保留)', () => {
+    let s = initialChatState();
+    s = applyChatEvent(s, { type: 'tool-call', ts: 1, payload: { tool: 'read', subagent: 'ap-1' } } as never);
+    s = applyChatEvent(s, { type: 'tool-result', ts: 2, payload: { tool: 'read', ok: true, subagent: 'ap-1' } } as never);
+    s = applyChatEvent(s, { type: 'token', ts: 3, text: '子代理流字', payload: { subagent: 'ap-1' } } as never);
+    expect(s.entries).toHaveLength(0);
+    s = applyChatEvent(s, { type: 'delegation-started', ts: 4, payload: { label: '搜库', delegationId: 'd1' } } as never);
+    expect(s.entries).toHaveLength(1); // 委派摘要行保留
+  });
 });
 
 describe('status·tokens·steps 聚合', () => {

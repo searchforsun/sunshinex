@@ -223,8 +223,10 @@ function onUsage(s: ChatState, e: SessionEvent): ChatState {
   return { ...s, tokens: s.tokens + delta, turnTokensBase: turnTotal };
 }
 
-/** 事件面单点：chat 投影纯归约（忽略 task-、gate-、route/ctx/model-end/reasoning/approval 系——板面/另轨） */
+/** 事件面单点：chat 投影纯归约（忽略 task-、gate-、route/ctx/model-end/reasoning/approval 系——板面/另轨；
+ *  入口全类型过滤 payload.subagent 子代理事件——G8d Agents 标签另聚，主流零条目） */
 export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
+  if (typeof e.payload?.subagent === 'string') return s; // 子代理事件另轨(Agents 标签,G8d):主流零条目
   switch (e.type) {
     case 'token':
       return onToken(s, e.text ?? '');
