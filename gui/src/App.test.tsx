@@ -1552,6 +1552,75 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     unmount();
   });
 
+  it('MCP 修复环 C1:编辑带 envKeys 卡不改 env 直接保存 → 断参服务器行无 env 键;填 KEY=v → env 含全值', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.mcpServersResp = {
+      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: ['MCP_FS_TOKEN'], source: 'project', shadowed: false }],
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
+    await screen.findByText('fs');
+    // 编辑:env 预填「KEY=」空值行(值视图打码不可知)——不改直接保存:空值条目跳过,行无 env 键
+    // (daemon 原样写盘——env:{KEY:''} 空值坏文件的根除判据)
+    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    expect((screen.getByLabelText('mcp env') as HTMLTextAreaElement).value).toBe('MCP_FS_TOKEN=');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]]]));
+    // 重填值保存 → env 含 {KEY:'v'}(全值回写)
+    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉落定
+    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    fireEvent.change(screen.getByLabelText('mcp env'), { target: { value: 'MCP_FS_TOKEN=v' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(conn.putMcpServersCalls).toEqual([
+        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]],
+        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx', env: { MCP_FS_TOKEN: 'v' } }]],
+      ]),
+    );
+    unmount();
+  });
+
+  it('MCP 修复环 I2:全局卡(含被遮蔽)编辑钮禁用 + title 引流 raw;项目卡编辑钮可用', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.mcpServersResp = {
+      servers: [
+        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], source: 'project', shadowed: false },
+        { name: 'fs', transport: 'http', url: 'https://g/fs', envKeys: [], source: 'global', shadowed: true },
+        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], source: 'global', shadowed: false },
+      ],
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
+    await screen.findByText('web');
+    // 全局卡(未遮蔽/被遮蔽)编辑钮均禁用——写面恒项目级(编辑全局会替换项目同名卡,错路径根除);
+    // title 同删除钮口径:全局级经高级 raw 编辑
+    for (const label of ['编辑 fs(全局)', '编辑 web(全局)']) {
+      const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
+      expect(btn.disabled).toBe(true);
+      expect(btn.title).toBe('全局级经高级 raw 编辑');
+    }
+    // 项目卡编辑钮不受染(可用)
+    expect((screen.getByRole('button', { name: '编辑 fs(项目)' }) as HTMLButtonElement).disabled).toBe(false);
+    unmount();
+  });
+
+  it('MCP 修复环 M4:表单在途时项目选择器清空 root → 保存放行空 root(服务端 400 示出,不静默 return)', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.mcpServersResp = { servers: [] };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
+    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a']));
+    // 开表单后项目选择器切「(仅全局)」:已开表单的保存不再静默——请求带空 root 发出(真链路服务端
+    // 400 root required → 行内错误条;AgentsPane 同口径)
+    fireEvent.click(screen.getByRole('button', { name: '+ 添加服务器' }));
+    fireEvent.change(screen.getByLabelText('mcp name'), { target: { value: 'x' } });
+    fireEvent.change(screen.getByLabelText('mcp command'), { target: { value: 'npx' } });
+    fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['', [{ name: 'x', transport: 'stdio', command: 'npx' }]]]));
+    unmount();
+  });
+
   it('智能体:builtins 四预设位 + 清单卡(chips/遮蔽/warnings)+ 新增表单 putAgent upsert 断参 + 删除 op:delete', async () => {
     const { conn, unmount } = await enterChat();
     conn.agentsViewResp = {
@@ -1654,6 +1723,32 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
     await waitFor(() => expect(screen.getByText(/已保存:新建会话起/)).toBeDefined());
     expect(conn.putSettingsRawCalls).toEqual([['project', '/w/root-a', 'settings', '{ bad']]);
+    unmount();
+  });
+
+  it('高级 raw 修复环 I3:读取后切 scope/file → content/错误/toast 清回未读取态,保存钮 disabled(陈旧不跨目标写)', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.rawResp = { content: '{\n  "language": "zh"\n}\n' };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    // 初始未读取态:保存禁用(先「读取」)
+    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '读取' }));
+    await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"'));
+    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(false);
+    // 切 scope → 回未读取态:content 清空(placeholder 提示先读取)+ 保存禁用
+    fireEvent.change(screen.getByLabelText('raw scope'), { target: { value: 'global' } });
+    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
+    // 重新读取 → 再切 file 维:同款清空+禁用(陈旧内容不得写进另一目标文件)
+    fireEvent.click(screen.getByRole('button', { name: '读取' }));
+    await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"'));
+    fireEvent.change(screen.getByLabelText('raw file'), { target: { value: 'mcp' } });
+    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
+    // 未读取态点击保存:零 putSettingsRaw(A 目标内容写进 B 目标的跨目标错写根除)
+    fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
+    expect(conn.putSettingsRawCalls).toEqual([]);
     unmount();
   });
 });

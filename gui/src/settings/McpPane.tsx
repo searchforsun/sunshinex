@@ -11,7 +11,9 @@ import { SourceBadge } from './SourceBadge';
  * - 「+ 添加服务器」/卡「编辑」→ 受控表单(name/transport select(stdio/http/sse)/command+
  *   args(逗号分隔)/url/env(键=值 行编辑));「保存」=conn.putMcpServers(root, 新清单=
  *   现项目清单替换该名或追加)→ 重拉;400/409 行内错误条。
- * - 写面恒项目级(root 缺省禁写:添加/编辑/删除禁用+提示「选择项目」;全局编辑走高级 raw)。
+ * - 写面恒项目级(root 缺省禁写:添加/编辑/删除禁用+提示「选择项目」;全局卡编辑钮同禁——
+ *   未遮蔽全局卡编辑=整块原样提交会静默消失、被遮蔽全局卡编辑=替换项目同名卡,均为错路径,
+ *   title「全局级经高级 raw 编辑」引流;表单在途时 root 被清空→保存放行空 root 由服务端 400 示出)。
  *   编辑既有卡时 env 值不可知(视图打码)——env 文本域预填「KEY=」空值行提示重填;未填则该
  *   行 env 整体省略(daemon 接受可选 env;原文编辑面是无打码的兜底路径)。
  * - 删除=项目清单滤除该名后整块提交;全局卡(含被遮蔽)不在项目文件内——删除钮禁用。
@@ -115,14 +117,16 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
       if (t === '') continue;
       const eq = t.indexOf('=');
       if (eq <= 0) return `env 行格式应为 KEY=VALUE: ${t}`;
-      env[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
+      const v = t.slice(eq + 1).trim();
+      if (v === '') continue; // KEY= 或 KEY=空白:编辑预填的未重填提示行——空值条目跳过(daemon 原样写盘,{"KEY":""} 是坏文件)
+      env[t.slice(0, eq).trim()] = v;
     }
-    if (Object.keys(env).length > 0) out.env = env;
+    if (Object.keys(env).length > 0) out.env = env; // 全部空 → env 键整体省略
     return out;
   };
 
   const save = (): void => {
-    if (form === null || saving || root === '') return;
+    if (form === null || saving) return; // root='' 在途表单不静默:空 root 放行,服务端 400 行内示出(AgentsPane 同口径)
     const input = buildInput(form);
     if (typeof input === 'string') {
       setFormError(input);
@@ -207,7 +211,8 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                   <button
                     type="button"
                     aria-label={`编辑 ${s.name}(${scopeTag(s)})`}
-                    disabled={root === ''}
+                    disabled={s.source !== 'project' || root === ''}
+                    title={s.source !== 'project' ? '全局级经高级 raw 编辑' : undefined}
                     onClick={() => {
                       setForm({
                         editing: true,

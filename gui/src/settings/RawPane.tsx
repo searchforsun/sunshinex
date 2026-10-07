@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from 'react';
  * (parseSettingsFile 严格口径在服务端,原文保真是本面板价值)。
  * root=''(仅全局)时 scope=project 禁用(提示——scope=project 必带 root,服务端 400 面)。
  * scope=global 时 root 定位面被服务端忽略,请求省参(不留空串伪参)。
+ * 切 scope/file 即回未读取态:content/错误/toast 清 + 保存禁用(placeholder 提示先「读取」)——
+ * 读取前的旧目标内容不跨目标写(部分方向能过服务端验证,守卫在 GUI 侧)。
  */
 
 /** raw 面连接面(结构满足即收,App 传整只 Connection) */
@@ -29,6 +31,8 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
   const [scope, setScope] = useState<'project' | 'global'>(root === '' ? 'global' : 'project');
   const [file, setFile] = useState<'settings' | 'mcp'>('settings');
   const [content, setContent] = useState('');
+  /** 未读取态判据:mount/切目标 即未读取(保存禁用,须先「读取」——陈旧内容不跨目标写) */
+  const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -46,19 +50,30 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
   /** scope=global 恒省 root(服务端忽略定位面);scope=project 必带(禁选守卫在 select) */
   const rootArg = scope === 'project' ? root : undefined;
 
+  /** 切目标(scope/file)回未读取态:content/错误/toast 全清——A 目标内容写进 B 目标是错向,
+   *  部分 project↔global/settings↔mcp 方向还能过服务端验证,守卫必须在 GUI 侧 */
+  const resetUnread = (): void => {
+    setContent('');
+    setLoaded(false);
+    setLoadError('');
+    setSaveError('');
+    setToast('');
+  };
+
   const read = (): void => {
     setLoadError('');
     setSaveError('');
     conn.settingsRaw(scope, rootArg, file).then(
       (v) => {
         setContent(v.content ?? ''); // null = 缺文件:空编辑器(JSONC 保真面由保存写盘建立)
+        setLoaded(true);
       },
       (err: unknown) => setLoadError(errText(err)),
     );
   };
 
   const save = (): void => {
-    if (saving) return;
+    if (saving || !loaded) return;
     setSaving(true);
     setSaveError('');
     conn.putSettingsRaw(scope, rootArg, file, content).then(
@@ -81,7 +96,14 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
       <div className="sx-raw-controls">
         <label>
           层级
-          <select aria-label="raw scope" value={scope} onChange={(e) => setScope(e.target.value as 'project' | 'global')}>
+          <select
+            aria-label="raw scope"
+            value={scope}
+            onChange={(e) => {
+              setScope(e.target.value as 'project' | 'global');
+              resetUnread();
+            }}
+          >
             <option value="project" disabled={root === ''}>
               项目
             </option>
@@ -90,7 +112,14 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
         </label>
         <label>
           文件
-          <select aria-label="raw file" value={file} onChange={(e) => setFile(e.target.value as 'settings' | 'mcp')}>
+          <select
+            aria-label="raw file"
+            value={file}
+            onChange={(e) => {
+              setFile(e.target.value as 'settings' | 'mcp');
+              resetUnread();
+            }}
+          >
             <option value="settings">settings.json</option>
             <option value="mcp">mcp.json</option>
           </select>
@@ -111,7 +140,7 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
         placeholder="读取后编辑;保存前服务端验证(JSONC 注释/未知键保真,畸形拒存)"
       />
       {saveError !== '' && <p className="home-error" role="alert">{saveError}</p>}
-      <button type="button" className="sx-settings-save" disabled={saving} onClick={save}>
+      <button type="button" className="sx-settings-save" disabled={saving || !loaded} onClick={save}>
         验证并保存
       </button>
       {toast !== '' && (
