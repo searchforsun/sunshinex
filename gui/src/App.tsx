@@ -359,6 +359,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
    *  兜底);sessionId 起拖时定格(拖拽中会话切换属病态,不追) */
   const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
     if (page !== 'chat' || openSessionId === '' || tabState.collapsed) return;
+    e.preventDefault(); // 拖宽期间禁原生文本选择拖选(G8e 终审 B;.sx-resizer 另挂 user-select:none)
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;

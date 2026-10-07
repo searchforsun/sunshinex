@@ -16,8 +16,9 @@ import type { TabParams } from './tab-state';
  * → jsdom 守卫(容器 clientWidth/Height=0 → 降级面,xterm 需真盒子量尺寸;真浏览器走
  * xterm)→ Terminal+FitAddon+PtySocket 装配。帧面:replay/data → term.write(b64→utf8);
  * exit → 退出提示写入 term + 退出态条;error → 行内错误条;WS closed(server 侧关且非卸载
- * dispose 致关)→ term 灰字断连提示一行·一次性(G8e-T2;重连=切标签往返 replay 恢复;jsdom
- * 降级守卫互斥无测试面,e2e/人审盖)。输入 term.onData → sendInput;
+ * dispose 致关,且非 exit 后正常收尾关——G8e 终审 C 抑制:横幅词不实,重连也必 404)→ term
+ * 灰字断连提示一行·一次性(G8e-T2;重连=切标签往返 replay 恢复;jsdom 降级守卫互斥无测试面,
+ * e2e/人审盖)。输入 term.onData → sendInput;
  * 尺寸 fit 后 socket.resize(term.cols, term.rows),ResizeObserver 随容器续跟。
  * 卸载 socket.dispose()+term.dispose() **不 kill**——pty 生命周期属标签不属渲染(App 关
  * 标签链单点 kill);重挂经 ptyIdFor 复用同一 pty。
@@ -72,6 +73,9 @@ export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: 
     let cancelled = false;
     /** 断连提示一次性标志(G8e-T2):closed 只写一次,防重复 */
     let disconnectShown = false;
+    /** exit 帧已达标志(G8e 终审 C):exit 后 server 侧 close(1000) 属正常退出收尾——退出语义
+     *  已写 code 行+态条,「连接已断开」横幅词不实(pty 已死,重连也必 404);closed 跳过 */
+    let exited = false;
 
     /** fit 后同步 pty 尺寸(装配尾一次 + ResizeObserver 每回调) */
     const syncSize = (): void => {
@@ -113,16 +117,18 @@ export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: 
             if (f.t === 'replay' || f.t === 'data') term?.write(b64ToUtf8(f.b));
             else if (f.t === 'exit') {
               term?.write(`\r\n[进程已退出 code ${f.code}]`);
+              exited = true; // 后续 close(1000) 属退出收尾,非断连——横幅抑制
               setExitCode(f.code);
             } else if (f.t === 'error') setSocketError(f.message);
           },
-          // 状态面(G8e-T2 断连提示):server 侧关(exit 后 close(1000)/error 后 close(1008)/
-          // 掉线)且非卸载 dispose 致关 → term 写一行灰色提示,一次性(disconnectShown 防重复)。
-          // cancelled 兼卸载判据:cleanup 先置位再 dispose,卸载致关的 closed 回放静默。重连语义
-          // 既有——切标签往返即重挂重连(replay 恢复屏幕),提示语引导。jsdom 降级守卫互斥(xterm
-          // 路径无 jsdom 测试面),本分支归 e2e/人审盖
+          // 状态面(G8e-T2 断连提示):server 侧关(error 后 close(1008)/掉线)且非卸载 dispose
+          //  致关 → term 写一行灰色提示,一次性(disconnectShown 防重复)。cancelled 兼卸载判据:
+          //  cleanup 先置位再 dispose,卸载致关的 closed 回放静默。exited:exit 后 close(1000) 属
+          //  正常退出收尾,横幅词不实(重连也必 404)——跳过。重连语义既有——切标签往返即重挂
+          //  重连(replay 恢复屏幕),提示语引导。jsdom 降级守卫互斥(xterm 路径无 jsdom 测试面),
+          //  本分支归 e2e/人审盖
           onState: (s) => {
-            if (s !== 'closed' || cancelled || disconnectShown || term === null) return;
+            if (s !== 'closed' || cancelled || disconnectShown || term === null || exited) return;
             disconnectShown = true;
             term.write('\r\n\x1b[90m[连接已断开——重连将恢复]\x1b[0m');
           },

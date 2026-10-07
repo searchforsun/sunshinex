@@ -11,7 +11,8 @@ import { useEffect, useRef, useState } from 'react';
  * 滞留根除,回未读取态)。
  * scope=global 时 root 定位面被服务端忽略,请求省参(不留空串伪参)。
  * 切 scope/file 即回未读取态:content/错误/toast 清 + 保存禁用(placeholder 提示先「读取」)——
- * 读取前的旧目标内容不跨目标写(部分方向能过服务端验证,守卫在 GUI 侧)。
+ * 读取前的旧目标内容不跨目标写(部分方向能过服务端验证,守卫在 GUI 侧);在途读同款:切目标
+ * 后迟到应答代不齐弃(G8e 终审 A,read 代守卫)。
  * G8d T5 告警透出:面板顶部渲染 GET /settings warnings(两级 settings.json 的未知/退役键
  * flatten 告警,服务端项目先行拼全局)——与所选 scope/file 无关的文件面体检,逐行 role=alert;
  * 拉取失败静默空(告警是增强面,不挡编辑主流程);root 切换重拉。
@@ -48,6 +49,10 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** G8d T5 文件面告警(未知/退役键):拉取失败/无字段按空——增强面不挡编辑主流程 */
   const [warnings, setWarnings] = useState<string[]>([]);
+  /** read 代计数(G8e 终审 A 在途竞态守卫,镜像 SettingsForm loadGenRef):发起新读/切目标
+   *  (resetUnread)即递增;应答到达时代不齐 = 陈旧(目标已切走)——弃,不置 loaded/不装内容
+   *  (慢读迟到不得把 A 目标内容落进 B 目标的未读取态——保存随 loaded 禁) */
+  const readGenRef = useRef(0);
 
   useEffect(
     () => () => {
@@ -77,6 +82,7 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
   /** 切目标(scope/file)回未读取态:content/错误/toast 全清——A 目标内容写进 B 目标是错向,
    *  部分 project↔global/settings↔mcp 方向还能过服务端验证,守卫必须在 GUI 侧 */
   const resetUnread = (): void => {
+    readGenRef.current += 1; // 在途读作废:迟到应答代不齐即弃(切目标后不置 loaded)
     setContent('');
     setLoaded(false);
     setLoadError('');
@@ -95,14 +101,19 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
   }, [root, scope]);
 
   const read = (): void => {
+    const gen = ++readGenRef.current;
     setLoadError('');
     setSaveError('');
     conn.settingsRaw(scope, rootArg, file).then(
       (v) => {
+        if (readGenRef.current !== gen) return; // 陈旧代:目标已切走,弃——不置 loaded/不装内容
         setContent(v.content ?? ''); // null = 缺文件:空编辑器(JSONC 保真面由保存写盘建立)
         setLoaded(true);
       },
-      (err: unknown) => setLoadError(errText(err)),
+      (err: unknown) => {
+        if (readGenRef.current !== gen) return; // 陈旧代:错误也不落(新代在途/已落)
+        setLoadError(errText(err));
+      },
     );
   };
 

@@ -31,7 +31,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-menu { width: 240px; flex: none; background: var(--bg-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
 .sx-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .sx-sidebar { flex: none; background: var(--bg-1); border-left: 1px solid var(--border); display: flex; flex-direction: column; position: relative; }
-.sx-resizer { position: absolute; left: -4px; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 5; }
+.sx-resizer { position: absolute; left: -4px; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 5; user-select: none; }
 .sx-resizer:hover, .sx-resizer.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
 /* 标签条(T3 消费;G8d U-D21 圆润 polish) */

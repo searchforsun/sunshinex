@@ -126,6 +126,18 @@ const h = vi.hoisted(() => {
     releaseSettings(): void {
       this.settingsGateRelease();
     }
+    /** G8e 终审 A raw 面慢读门(read 代守卫测):hold 后**下一笔** settingsRaw 应答悬挂(单发——
+     *  只拦 hold 后首发一笔,后续直通;应答体在调用时定格——迟到仍回旧内容,竞态面可控) */
+    private rawGate: Promise<void> = Promise.resolve();
+    private rawGateRelease: () => void = () => {};
+    holdRaw(): void {
+      this.rawGate = new Promise<void>((resolve) => {
+        this.rawGateRelease = resolve;
+      });
+    }
+    releaseRaw(): void {
+      this.rawGateRelease();
+    }
     constructor(opts: ConnectionOpts) {
       this.opts = opts;
       created.push(this);
@@ -262,7 +274,10 @@ const h = vi.hoisted(() => {
     settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }> {
       this.settingsRawCalls.push([scope, root ?? '', file]);
       if (this.rawReject !== null) return Promise.reject(this.rawReject);
-      return Promise.resolve(this.rawResp);
+      const gate = this.rawGate;
+      this.rawGate = Promise.resolve(); // 单发:只拦 hold 后首发一笔,后续直通
+      const resp = this.rawResp; // 应答体调用时定格(慢应答迟到仍回旧内容)
+      return gate.then(() => resp);
     }
     putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void> {
       if (this.putSettingsRawReject !== null) return Promise.reject(this.putSettingsRawReject);
@@ -2198,6 +2213,30 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
     expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
     // 未读取态点击保存:零 putSettingsRaw(A 目标内容写进 B 目标的跨目标错写根除)
+    fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
+    expect(conn.putSettingsRawCalls).toEqual([]);
+    unmount();
+  });
+
+  it('G8e 终审 A read 代守卫:慢读在途切目标 → 迟到应答弃——不置 loaded/内容不装载/保存仍禁', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.rawResp = { content: '{\n  "language": "zh"\n}\n' }; // A 目标(项目 settings)内容——迟到面
+    conn.holdRaw(); // A 首笔读取应答悬挂(单发门:后续直通)
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    fireEvent.click(screen.getByRole('button', { name: '读取' }));
+    await waitFor(() => expect(conn.settingsRawCalls).toEqual([['project', '/w/root-a', 'settings']]));
+    // 在途窗切 scope(→global,resetUnread):同步回未读取态
+    fireEvent.change(screen.getByLabelText('raw scope'), { target: { value: 'global' } });
+    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
+    // A 迟到应答落定:陈旧代弃——不置 loaded/不装内容(无守卫则 loaded=true + A 内容入 B 目标)
+    await act(async () => {
+      conn.releaseRaw();
+    });
+    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
+    // 保存点击零发:陈旧内容不写 B 目标(global settings)
     fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
     expect(conn.putSettingsRawCalls).toEqual([]);
     unmount();
