@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **主仓改动白名单**:src/config/settings.ts(自填槽登记)/src/config/config.ts(或 mcp 解析导出,仅按需)/src/harness/subagent.ts+src/harness/index.ts(AgentRegistry 两级化)/src/harness/skills.ts(分组视图导出)/src/serve/daemon.ts/src/serve/daemon.test.ts(+新端点测试文件可并入 daemon.test.ts 或新建 src/serve/settings.test.ts)。**gui 白名单**:gui/src/connection.ts/App.tsx/App.test.tsx+gui/src/settings/(新目录)/e2e.test.ts。越界即违规。
+- **主仓改动白名单**:src/config/settings.ts(自填槽登记)/src/config/config.ts(或 mcp 解析导出,仅按需)/src/harness/subagent.ts+src/harness/index.ts(AgentRegistry 两级化)/src/harness/skills.ts(分组视图导出)/src/serve/daemon.ts/src/serve/daemon.test.ts(+新端点测试文件可并入 daemon.test.ts 或新建 src/serve/settings.test.ts)。**gui 白名单**:gui/src/connection.ts/App.tsx/App.test.tsx+gui/src/settings/(新目录)/gui/src/sidebar/ProjectMenu.tsx(设置钮)/e2e.test.ts。越界即违规。
 - 零新依赖;测试钩子 class 保留;新结构 sx- 前缀;watchdog:逐任务聚焦,T10 全量。
 - **项目上下文裁定(控制器)**:设置端点族带 `root` 查询/body 字段(绝对路径;缺省=仅全局面)。GUI 设置态顶栏项目选择器(/workspaces 列表;默认=最近活跃会话 root,无则空=仅全局)。
 - **生效语义(U-D11)**:保存文件→daemon 清自填槽→以该 root 重跑装载链(项目→全局,只填缺省)→**后续新建会话即刻生效**;运行中会话不回改;真导出 env 恒最优先(覆盖键标徽标+禁编)。
