@@ -9,7 +9,8 @@
 import { Files } from '../pages/Files';
 import { Board } from '../pages/Board';
 import { TerminalTab } from './TerminalTab';
-import type { SingletonProbe, TabTypeId } from './tab-state';
+import { DirectoryTab } from './DirectoryTab';
+import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
 export interface TabServices {
   // App 投影面(G8a:任务标签消费;后续批次按需扩)
@@ -31,6 +32,9 @@ export interface TabRenderProps {
   readonly ptyIdFor: (uid: string) => string | undefined;
   /** G8b pty 生命周期钩子:terminal 标签 openPty 落定回传(App 侧 ptyIdsRef 记账,关标签 kill) */
   readonly onPtyAllocated: (uid: string, ptyId: string) => void;
+  /** G8b T7 会话内开标签面(标签体自治跳转——DirectoryTab 文件行 → openTab('file',{path});
+   *  App 注入 openTabInSession,判重/单例经 tab-state 共口径;file/tasks 忽略) */
+  readonly openTab: (type: TabTypeId, params?: TabParams) => void;
 }
 
 export interface TabTypeEntry {
@@ -45,7 +49,8 @@ export interface TabTypeEntry {
   readonly mintParams?: () => import('./tab-state').TabParams;
 }
 
-/** G8a 两类 + G8b terminal:file(按 path 判重多实例)+ tasks(每会话单例)+ 终端(nonce 多实例) */
+/** G8a 两类 + G8b terminal/directory:file(按 path 判重多实例)+ 目录(每会话单例,惰拉树
+ *  文件行跳 file)+ tasks(每会话单例)+ 终端(nonce 多实例) */
 export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
@@ -54,6 +59,14 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: (params) => params.path ?? '',
     singleton: false,
     render: (p) => <Files conn={p.conn} sessionId={p.sessionId} initialPath={p.params.path} />,
+  },
+  {
+    id: 'directory',
+    group: 'content',
+    title: () => '目录',
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => <DirectoryTab conn={p.conn} sessionId={p.sessionId} openTab={p.openTab} />,
   },
   {
     id: 'tasks',

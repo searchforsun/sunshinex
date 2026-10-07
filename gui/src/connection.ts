@@ -119,6 +119,20 @@ export interface DiffResp {
   truncated?: boolean;
 }
 
+/** GET /session/:id/tree 行（G8b T4 目录面）：name=文件/目录名（单层直读，无路径前缀） */
+export interface TreeEntry {
+  name: string;
+  kind: 'dir' | 'file';
+}
+
+/** GET /session/:id/tree?path= 载荷（G8b T4）：path=相对会话 root 的目录路径（缺省 ''=root，
+ *  判界一致性由服务端保证——403 越界/404 不存在/400 非目录以 HTTP 失败抛错）；truncated=true
+ *  表示超服务端上限截断（T4 定 500 行）——目录树行尾「…已截断」标记的判据 */
+export interface TreeResp {
+  entries: TreeEntry[];
+  truncated?: boolean;
+}
+
 /** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -199,6 +213,9 @@ export interface Connection {
   /** DELETE /session/:id/pty/:ptyId（G8b T3）：同步注销——kill 后新 WS 连入收 error
    *  'pty not found'（注销即失效，无宽限窗） */
   killPty(sessionId: string, ptyId: string): Promise<void>;
+  /** GET /session/:id/tree?path=（G8b T4 目录面，path 缺省 = root 单层直读）：DirectoryTab 逐层
+   *  惰拉的取数面；403 越界/404 不存在/400 非目录以 HTTP 失败抛错（消息含 status） */
+  tree(sessionId: string, path?: string): Promise<TreeResp>;
   close(): void;
   state(): ConnectionState;
   /** 测试钩子（e2e 断链注入专用）：当前底层 socket（无连接 undefined）——产品面勿消费 */
@@ -447,6 +464,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
       const path = `/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`;
       const res = await fetch(`${base}${path}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    },
+    tree(sessionId: string, path?: string): Promise<TreeResp> {
+      // path 缺省/root 省查询参(对齐 T4 缺省 '' 语义;dirpicker 同款)
+      const query = path === undefined || path === '' ? '' : `?path=${encodeURIComponent(path)}`;
+      return getJson<TreeResp>(`/session/${encodeURIComponent(sessionId)}/tree${query}`);
     },
     close,
     state(): ConnectionState {

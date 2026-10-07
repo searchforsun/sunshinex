@@ -400,6 +400,8 @@ function AppShell({ token }: { token: string }): JSX.Element {
               params: activeTab.params,
               services,
               uid: activeTab.uid,
+              // G8b T7:标签体自治跳转面(DirectoryTab 文件行 → file 标签;Chat onOpenFile 同源)
+              openTab: openTabInSession,
               ptyIdFor,
               onPtyAllocated: handlePtyAllocated,
             })}

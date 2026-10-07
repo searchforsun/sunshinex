@@ -6,7 +6,7 @@ import { App } from './App';
 import { emptyBoard, applyBoardEvent } from './projection';
 import { highlightCode } from './highlight';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
-import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp } from './connection';
+import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
 
 /**
@@ -53,6 +53,10 @@ const h = vi.hoisted(() => {
     /** G8b pty 面:openPty 恒应答 ptyId 'p1'(分配调用记录 sessionId/cols/rows);killPty 记录寻址对 */
     openPtyCalls: Array<[string, number, number]> = [];
     killPtyCalls: Array<[string, string]> = [];
+    /** G8b T7 目录树面:tree 按路径可编程(键 ''=root;缺省空);调用记录 [sessionId, path 归一 ''] */
+    treeCalls: Array<[string, string]> = [];
+    treeByPath: Record<string, TreeResp> = {};
+    treeReject: Error | null = null;
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
     replyReject: Error | null = null;
@@ -146,6 +150,12 @@ const h = vi.hoisted(() => {
     killPty(sessionId: string, ptyId: string): Promise<void> {
       this.killPtyCalls.push([sessionId, ptyId]);
       return Promise.resolve();
+    }
+    tree(sessionId: string, path?: string): Promise<TreeResp> {
+      this.treeCalls.push([sessionId, path ?? '']);
+      if (this.treeReject !== null) return Promise.reject(this.treeReject);
+      const p = path ?? '';
+      return Promise.resolve(this.treeByPath[p] ?? { entries: [] });
     }
     close(): void {
       this.closed = true;
@@ -868,6 +878,59 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     fireEvent.click(screen.getByRole('button', { name: '终端' }));
     await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined());
     expect(conn.openPtyCalls).toHaveLength(1); // 重连既有 pty,不再分配(spec U-D5 等同本地底线)
+    unmount();
+  });
+});
+
+describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncated 标记', () => {
+  /** +菜单开目录(菜单 → content 节「目录」直调 onOpenType) */
+  const openDirectory = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
+  };
+
+  it('+菜单开目录:mount 拉 root → 展开 dirA 惰拉单层 → 点 fileA.ts 开文件标签且活动(title=路径);单例两开一标签;收起保留缓存', async () => {
+    const { conn, unmount } = await enterChat();
+    // 桩两级:root(dirA 目录 + fileB.ts 文件)/ dirA(fileA.ts 文件)
+    conn.treeByPath = {
+      '': { entries: [{ name: 'dirA', kind: 'dir' }, { name: 'fileB.ts', kind: 'file' }] },
+      dirA: { entries: [{ name: 'fileA.ts', kind: 'file' }] },
+    };
+    openDirectory();
+    // mount 拉 root:tree(s1, '') 一笔;根级行列表在场(目录行+文件行)
+    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', '']]));
+    expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'fileB.ts' })).toBeDefined();
+    // 单例:再开 = 聚焦既有(仍一个目录标签且活动)
+    openDirectory();
+    expect(document.querySelectorAll('.sx-tab[title="目录"]')).toHaveLength(1);
+    expect(document.querySelector('.sx-tab[title="目录"]')?.classList.contains('active')).toBe(true);
+    // 展开 dirA:惰拉单层(path 拼合 = name)→ 子文件行在场
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA']]));
+    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
+    // 收起:子层退场但缓存保留——再展开不再拉(treeCalls 仍两笔)
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    expect(screen.queryByRole('button', { name: 'fileA.ts' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
+    expect(conn.treeCalls).toHaveLength(2);
+    // 点 fileA.ts:openTab('file', { path: 'dirA/fileA.ts' }) → 文件标签开且活动(title=相对路径)
+    fireEvent.click(screen.getByRole('button', { name: 'fileA.ts' }));
+    expect(document.querySelector('.sx-tab[title="dirA/fileA.ts"]')?.classList.contains('active')).toBe(true);
+    expect(screen.getByLabelText('files')).toBeDefined();
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/fileA.ts']])); // initialPath 自动加载
+    unmount();
+  });
+
+  it('truncated 标记:桩返 truncated:true → 行尾「…已截断」;子层拉失败 → 行内错误消息', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.treeByPath = { '': { entries: [{ name: 'dirA', kind: 'dir' }], truncated: true } };
+    openDirectory();
+    await waitFor(() => expect(screen.getByText('…已截断')).toBeDefined()); // root 级截断标记
+    conn.treeReject = new Error('/session/s1/tree?path=dirA -> 404');
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() => expect(screen.getByText('/session/s1/tree?path=dirA -> 404')).toBeDefined()); // 行内错误态
     unmount();
   });
 });
