@@ -1006,7 +1006,7 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
   }, 60_000);
 });
 
-describe('G8a-T6 场景B:任务标签内看板消费(CARDS 全链 → 切任务标签 → 任务行在场)', () => {
+describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务标签 → 任务行在场', () => {
   it('提交 CARDS → done 收束 → 经「+」菜单开文件标签(任务失活)→ 切回「任务」标签 → t1 行/委派落位', async () => {
     const env = await startDaemon(new ScriptedAdapter(CARDS));
     try {
@@ -1439,7 +1439,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
  * bump 入 iframe key 强制重挂(新 DOM 节点)。
  * ============================================================ */
 
-describe('G8d-T6 场景B:Agents 标签 live 卡——CARDS fork 子代理事件聚合 → 开标签 → 卡在场 + mini 转录展开', () => {
+describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事件聚合 → 开标签 → 卡在场 + mini 转录展开', () => {
   it('提交 CARDS → done 收束 → +菜单开 Agents 标签 → task-t1 卡(label/完成)+ 点卡转录行在场 → 再点收起', async () => {
     const env = await startDaemon(new ScriptedAdapter(CARDS));
     try {

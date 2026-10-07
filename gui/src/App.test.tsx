@@ -460,14 +460,16 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
 describe('状态条:连接点四态 + 会话指标', () => {
   it('初始 connecting 态(工厂初始即报);open 后迁移(home 面同样在场)', async () => {
     const { conn } = mount();
-    expect(await screen.getByLabelText('connection: connecting')).toBeDefined();
+    await act(async () => {}); // ProjectMenu 首载 workspaces 微任务在 act 内落定(act 警告收敛)
+    expect(screen.getByLabelText('connection: connecting')).toBeDefined();
     expect(screen.getByText('connecting')).toBeDefined();
     openConn(conn);
     expect(screen.getByLabelText('connection: open')).toBeDefined();
   });
 
-  it('reconnecting/closed 两态色 hook 亦可表达(onStateChange 透传)', () => {
+  it('reconnecting/closed 两态色 hook 亦可表达(onStateChange 透传)', async () => {
     const { conn } = mount();
+    await act(async () => {}); // 同上:首载微任务在 act 内落定(同步断言前冲净异步面)
     act(() => conn.opts.onStateChange?.('reconnecting'));
     expect(screen.getByLabelText('connection: reconnecting')).toBeDefined();
     act(() => conn.opts.onStateChange?.('closed'));
@@ -584,7 +586,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
   });
 
   it('delegation/agent-message → notice 行(同时喂 delegations 投影不倒面)', async () => {
-    const { conn, unmount } = await enterChat();
+    const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }));
     fire(conn, ev('agent-message', undefined, { from: 'a', to: 'b', text: 'ping' }));
@@ -853,11 +855,12 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
 
   it('G7 reseed 重建挂起卡:snapshot.pending 带 req → 卡渲染在场(subject 来自透传 req)且回执可用;pid 与实时帧防重', async () => {
     // 刷新/重开面:无实时帧,卡的唯一来源是快照 pending 段(daemon G7 起 req 直序列化)
-    const { conn, unmount } = await mount();
+    const { conn, unmount } = mount();
     conn.snapshotResp = snapshotOf({
       status: 'running',
       pending: [{ pid: 'p-snap-1', kind: 'approval', req: apReq }],
     });
+    await act(async () => {}); // 首载 workspaces 在 act 内落定(await mount() 裸 await 会在 env=true 处冲净致 act 警告)
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
     await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
@@ -1392,7 +1395,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
   });
 
   it('刷新钮:nonce bump → iframe key 变更强制重挂(DOM 节替换,title 不变)', async () => {
-    const { conn, unmount } = await enterChat();
+    const { conn } = await enterChat();
     openWeb();
     submitUrl('example.com');
     const before = document.querySelector('.sx-web-frame');
