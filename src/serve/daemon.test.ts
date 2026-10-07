@@ -1503,3 +1503,109 @@ describe('G8c T5 /settings/agents 端点', () => {
     });
   });
 });
+
+// ---------- G8c T6:/settings/skills + /settings/memory-stats 端点(技能三源分组清单+主域记忆概览) ----------
+
+/** GET /settings/skills 应答行(skills.ts SkillsGroup 只读投影;name/description 空串不透出) */
+interface SkillsRow {
+  id: string;
+  name?: string;
+  description?: string;
+}
+
+/** GET /settings/skills 应答整体(断言用) */
+interface SkillsBody {
+  groups: Array<{ source: 'project' | 'user' | 'learned'; skills: SkillsRow[] }>;
+}
+
+describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
+  test('㊱ skills 三源分组:project 五根合并一组(.sunshinex 遮蔽 .claude)+user 全局+learned 项目锚定;跨组同名不去重;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const writeSkill = (dir: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(dir, id), { recursive: true });
+        fs.writeFileSync(path.join(dir, id, 'SKILL.md'), md, 'utf8');
+      };
+      // project 组双根:.sunshinex 原生 alpha(生效)+.claude 兼容 alpha(组内被遮蔽让位)+bare(无 frontmatter→行只含 id)
+      writeSkill(path.join(proj, '.sunshinex', 'skills'), 'alpha', '---\nname: Alpha Native\ndescription: native one\n---\nbody\n');
+      writeSkill(path.join(proj, '.claude', 'skills'), 'alpha', '---\nname: Alpha Compat\n---\ncompat body\n');
+      writeSkill(path.join(proj, '.sunshinex', 'skills'), 'bare', 'no frontmatter\n');
+      // user 组(userSkillsDir=<home>/.sunshinex/skills):alpha 与 project 组同名——跨组不去重,两组各在
+      writeSkill(path.join(home, '.sunshinex', 'skills'), 'alpha', '---\nname: Alpha User\ndescription: user one\n---\nubody\n');
+      // learned 组(SUNSHINEX_DATA_DIR 钉 tmp/data → learnedSkillsDir=tmp/data/skills)
+      writeSkill(path.join(tmp, 'data', 'skills'), 'learned-one', '---\nname: Learned One\n---\nlbody\n');
+
+      const noAuth = await fetch(`${base}/settings/skills?root=${encodeURIComponent(proj)}`);
+      assert.equal(noAuth.status, 401, '/settings/skills 无 token 401');
+
+      const r = await fetch(`${base}/settings/skills?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SkillsBody;
+      assert.deepEqual(body.groups.map((g) => g.source), ['project', 'user', 'learned'], '三组固定序:project→user→learned');
+      const group = (s: string): { skills: SkillsRow[] } => body.groups.find((g) => g.source === s)!;
+
+      // 组内去重沿装载序(优先级降序:.sunshinex 先装,.claude 同名跳过)——恰一行且为原生版
+      assert.deepEqual(group('project').skills.filter((s) => s.id === 'alpha'), [
+        { id: 'alpha', name: 'Alpha Native', description: 'native one' },
+      ], '组内遮蔽:.sunshinex alpha 生效,.claude 同名让位(恰一行)');
+      assert.ok(!group('project').skills.some((s) => s.name === 'Alpha Compat'), '被遮蔽的 .claude 版本不入 project 组');
+      assert.deepEqual(group('project').skills.find((s) => s.id === 'bare'), { id: 'bare' }, '无 frontmatter:name/description 空串不透出(行只含 id)');
+      assert.deepEqual(group('user').skills, [{ id: 'alpha', name: 'Alpha User', description: 'user one' }], 'user 组=全局 userSkillsDir 直扫');
+      assert.deepEqual(group('learned').skills, [{ id: 'learned-one', name: 'Learned One' }], 'learned 组=resolveDataDir(root)/skills');
+      // 跨组不去重:project 与 user 各持 alpha(展示面重复 id 保留,GUI 可标注多源同名)
+      assert.equal(body.groups.filter((g) => g.skills.some((s) => s.id === 'alpha')).length, 2, '跨组同名不去重:两组各在');
+    });
+  });
+
+  test('㊲ skills 无 root=仅 user 组(userSkillsDir 全局可扫;project/learned 均 root 锚定缺席)', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const writeSkill = (dir: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(dir, id), { recursive: true });
+        fs.writeFileSync(path.join(dir, id, 'SKILL.md'), md, 'utf8');
+      };
+      writeSkill(path.join(tmp, 'proj', '.sunshinex', 'skills'), 'proj-only', '---\nname: Proj Only\n---\n');
+      writeSkill(path.join(home, '.sunshinex', 'skills'), 'solo', '---\nname: Solo\n---\n');
+      writeSkill(path.join(tmp, 'data', 'skills'), 'learned-only', '---\nname: Learned Only\n---\n');
+
+      const r = await fetch(`${base}/settings/skills`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SkillsBody;
+      assert.deepEqual(body.groups, [{ source: 'user', skills: [{ id: 'solo', name: 'Solo' }] }], '无 root 只出 user 组;project/learned 目录纵在亦不出');
+    });
+  });
+
+  test('㊳ memory-stats:主域记录条数+最大 mtime(MEMORY.md 索引与 agents/ 子树不计);空态/无 root 零值;GET 零副作用;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(proj, { recursive: true });
+
+      const noAuth = await fetch(`${base}/settings/memory-stats?root=${encodeURIComponent(proj)}`);
+      assert.equal(noAuth.status, 401, '/settings/memory-stats 无 token 401');
+
+      // 空态:主域目录未建(端点只读零副作用,不走 MemoryStore 构造的 mkdirSync)+无 root 零值
+      const empty = await fetch(`${base}/settings/memory-stats?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(empty.status, 200);
+      assert.deepEqual(await empty.json(), { entries: 0, lastWriteAt: null }, '无记忆目录=零值');
+      assert.equal(fs.existsSync(path.join(tmp, 'data', 'memory')), false, 'GET 面零盘上副作用(不建 memory 目录)');
+      const noRoot = await fetch(`${base}/settings/memory-stats`, { headers: AUTH });
+      assert.deepEqual(await noRoot.json(), { entries: 0, lastWriteAt: null }, '无 root=零值(无项目上下文无记忆面)');
+
+      // 造 2 条主域记录+干扰项:MEMORY.md 派生索引、agents/ 子代理子树(均不计主域)
+      const memDir = path.join(tmp, 'data', 'memory');
+      fs.mkdirSync(path.join(memDir, 'agents', 'sub-1'), { recursive: true });
+      fs.writeFileSync(path.join(memDir, 'memo-a.md'), '---\ntype: project\ncreated: 2026-10-01\nmodified: 2026-10-01T00:00:00Z\ndescription: a\n---\nbody a\n', 'utf8');
+      fs.writeFileSync(path.join(memDir, 'memo-b.md'), '---\ntype: user\ncreated: 2026-10-02\nmodified: 2026-10-02T00:00:00Z\ndescription: b\n---\nbody b\n', 'utf8');
+      fs.writeFileSync(path.join(memDir, 'MEMORY.md'), '# Memory Index\n', 'utf8');
+      fs.writeFileSync(path.join(memDir, 'agents', 'sub-1', 'note.md'), 'sub note\n', 'utf8');
+      const older = new Date(Date.now() - 200_000);
+      const newer = new Date(Date.now() - 50_000);
+      fs.utimesSync(path.join(memDir, 'memo-a.md'), older, older);
+      fs.utimesSync(path.join(memDir, 'memo-b.md'), newer, newer);
+
+      const r = await fetch(`${base}/settings/memory-stats?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const expectNewer = fs.statSync(path.join(memDir, 'memo-b.md')).mtimeMs;
+      assert.deepEqual(await r.json(), { entries: 2, lastWriteAt: expectNewer }, '条数=主域记录文件数(索引/agents 子树不计);lastWriteAt=最大 mtime');
+    });
+  });
+});

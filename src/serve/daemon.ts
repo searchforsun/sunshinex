@@ -38,6 +38,8 @@ import type { ModelChoice } from '../config/providers';
 import type { PermissionsConfig } from '../config/permissions';
 import { isWithin } from '../paths';
 import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
+import { loadSkillsGrouped, loadUserSkillsGroup } from '../harness/skills';
+import { memoryDir } from '../harness/memory/store';
 import { PtyManager } from './pty';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
@@ -513,6 +515,38 @@ function effectiveKeyRow(
   return { key, value: null, source: 'default', envOverride: false };
 }
 
+// ---------- G8c T6：/settings/skills + /settings/memory-stats 面模块级助手 ----------
+
+/** GET /settings/memory-stats 统计（G8c T6）：主域记忆目录（memoryDir 单点）只读扫描。
+ *  记录文件口径 = 主目录直属 .md 且非派生索引 MEMORY.md（agents/ 子代理子树与 .bak-* 快照目录
+ *  不是主域记录，isFile 天然排除）；entries=记录文件数，lastWriteAt=最大 mtimeMs（无记录 →
+ *  {entries:0, lastWriteAt:null}）。
+ *  只读面不走 MemoryStore 构造（其 mkdirSync 副作用会让 GET 建目录）——与 list() 的口径差异：
+ *  坏记录（frontmatter 畸形）按文件计——stats 是盘面概览非解析视图；枚举与 stat 间的竞态移除
+ *  按已计不重扫（概览面尽力而为，同 loadSkillsFrom 姿态） */
+function memoryStats(root: string): { entries: number; lastWriteAt: number | null } {
+  const dir = memoryDir(root);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return { entries: 0, lastWriteAt: null }; // 目录不存在/不可读 = 零值（从未写过记忆的合法态）
+  }
+  let count = 0;
+  let last: number | null = null;
+  for (const e of entries) {
+    if (!e.isFile() || !e.name.endsWith('.md') || e.name === 'MEMORY.md') continue;
+    count += 1;
+    try {
+      const mtimeMs = fs.statSync(path.join(dir, e.name)).mtimeMs;
+      if (last === null || mtimeMs > last) last = mtimeMs;
+    } catch {
+      // 枚举与 stat 之间被移除：条目已计（竞态窗口的概览，不回滚重扫）
+    }
+  }
+  return { entries: count, lastWriteAt: last };
+}
+
 /** 路由表条目：path 支持 `:name` 段参数（会话维端点 /session/:id/*）；auth 恒验除 healthz */
 interface Route {
   method: string;
@@ -967,6 +1001,10 @@ export class GuiDaemon {
     // fail-fast 的写盘前防线；delete 幂等；agents 装配期读取，写盘不触发 settings reload）
     { method: 'GET', path: '/settings/agents', auth: true, run: async (req, res) => this.handleAgentsGet(req, res) },
     { method: 'PUT', path: '/settings/agents', auth: true, run: (req, res) => this.handleAgentsPut(req, res) },
+    // G8c T6 skills/memory-stats 面：三源分组清单（project 五根合并一组/user 全局/learned 工作区锚定；
+    // 组内沿装载序去重、跨组不去重——展示面重复 id 保留）+ 主域记忆概览（条数+最近写入，只读零副作用）
+    { method: 'GET', path: '/settings/skills', auth: true, run: async (req, res) => this.handleSkillsGet(req, res) },
+    { method: 'GET', path: '/settings/memory-stats', auth: true, run: async (req, res) => this.handleMemoryStatsGet(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -2176,6 +2214,28 @@ export class GuiDaemon {
       throw err; // IO 面 → dispatch 500 收口
     }
     this.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
+  }
+
+  /** GET /settings/skills?root=（G8c T6，Settings 页 Skills 清单数据源）：root 在场 → loadSkillsGrouped
+   *  三组固定序（project/user/learned；组内沿装载序去重、跨组不去重——重复 id 是多源同名的事实呈现，
+   *  遮蔽裁决属装配面 loadSkills，视图不预裁）。无 root = 仅 user 组（userSkillsDir 全局可扫；
+   *  project/learned 均 root 锚定缺席——空组不占位，与 /settings·/settings/mcp「无 root 仅全局面」
+   *  同裁定，但 skills 的全局面是 userSkillsDir 而非 userConfigDir 文件） */
+  private handleSkillsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const rootParam = url.searchParams.get('root');
+    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+    this.send(res, 200, { groups: root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()] });
+  }
+
+  /** GET /settings/memory-stats?root=（G8c T6，Settings 页记忆概览）：root 在场 → memoryStats 主域
+   *  只读统计（条数/最近写入，见模块级单点）；无 root = 零值（无项目上下文无记忆面——恒定形态，
+   *  不 400：概览页无项目时的空态是合法呈现而非请求形态错） */
+  private handleMemoryStatsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const rootParam = url.searchParams.get('root');
+    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+    this.send(res, 200, root !== undefined ? memoryStats(root) : { entries: 0, lastWriteAt: null });
   }
 
   private send(res: http.ServerResponse, status: number, body: object): void {

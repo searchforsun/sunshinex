@@ -92,11 +92,13 @@ function priorityChain(root: string): string[] {
   return [...projectSkillDirs(root)].reverse().concat([userSkillsDir(), learnedSkillsDir(root)]);
 }
 
-/** 技能清单（规格 v2）：按优先级链降序装载，id 撞名就近遮蔽（被遮蔽者静默让位不抛） */
-export function loadSkills(root: string): SkillManifest[] {
+/** 多根链装载单点（R6 同族收敛）：按入参目录序（=优先级降序）装载，id 撞名就近遮蔽（先装者留、
+ *  后到同名跳过，被遮蔽者静默让位不抛）——loadSkills 全链与 loadSkillsGrouped 各组段共用，
+ *  防两处去重口径漂移 */
+function loadSkillsChain(dirs: string[]): SkillManifest[] {
   const out: SkillManifest[] = [];
   const seen = new Set<string>();
-  for (const dir of priorityChain(root)) {
+  for (const dir of dirs) {
     for (const s of loadSkillsFrom(dir)) {
       if (seen.has(s.id)) continue;
       seen.add(s.id);
@@ -104,6 +106,44 @@ export function loadSkills(root: string): SkillManifest[] {
     }
   }
   return out;
+}
+
+/** 技能清单（规格 v2）：按优先级链降序装载，id 撞名就近遮蔽（被遮蔽者静默让位不抛） */
+export function loadSkills(root: string): SkillManifest[] {
+  return loadSkillsChain(priorityChain(root));
+}
+
+/** 技能三源分组（G8c T6 /settings/skills 数据源）：source 三段对齐装载优先级链的三个语义级——
+ *  project（项目五兼容根合并一组）/ user（全局用户根）/ learned（工作区学习根）。组内去重沿装载序
+ *  （同 loadSkills 语义）；跨组**不去重**——分组是展示面，多源同名 id 两组各在（GUI 可标注遮蔽关系） */
+export interface SkillsGroup {
+  source: 'project' | 'user' | 'learned';
+  skills: Array<{ id: string; name?: string; description?: string }>;
+}
+
+/** 分组行投影：id 恒在，name/description 空串不透出（无 frontmatter 的技能行只含 id） */
+function skillRow(m: SkillManifest): { id: string; name?: string; description?: string } {
+  return {
+    id: m.id,
+    ...(m.name.length > 0 ? { name: m.name } : {}),
+    ...(m.description.length > 0 ? { description: m.description } : {}),
+  };
+}
+
+/** 三源分组装载（G8c T6）：project 段=projectSkillDirs(root) 逆转序（.sunshinex 最优先）合并一组；
+ *  user 段=userSkillsDir()（全局，root 无关）；learned 段=learnedSkillsDir(root)（工作区锚定） */
+export function loadSkillsGrouped(root: string): SkillsGroup[] {
+  return [
+    { source: 'project', skills: loadSkillsChain(projectSkillDirs(root).reverse()).map(skillRow) },
+    { source: 'user', skills: loadSkillsChain([userSkillsDir()]).map(skillRow) },
+    { source: 'learned', skills: loadSkillsChain([learnedSkillsDir(root)]).map(skillRow) },
+  ];
+}
+
+/** 仅 user 组（G8c T6 daemon 裁定）：无项目上下文（root 缺省）时的分组面——userSkillsDir 全局可扫
+ *  仍出 user 组；project/learned 两段均 root 锚定，缺席即不出（空组不占位） */
+export function loadUserSkillsGroup(): SkillsGroup {
+  return { source: 'user', skills: loadSkillsChain([userSkillsDir()]).map(skillRow) };
 }
 
 /** 技能清单格式化（对标 Claude Code 常驻技能清单）：每技能一行 `- name: description`，按 name 码点字典序排序（locale 无关，跨环境逐字节稳定——前置段冻结先例）；description 截 128 加省略号控预算；空清单返回 null（零条目零注入开销） */
