@@ -1,7 +1,7 @@
 # GUI 风格与布局重构(Codex 对标)设计规格
 
 - **日期**:2026-10-07
-- **状态**:设计定稿 v8(子智能体定义两级化裁定并入),待评审,未实施
+- **状态**:设计定稿 v9(主题统一裁定并入:青色主色/现代/简约/圆润/易读),待评审,G8a-c 已交付
 - **来源**:用户 2026-10-07 指令——对标 Codex 风格优化、现代图标、交互人性化;三栏布局;右栏多标签页(+ 号新开任意扩展类型:终端/Web/Diff/文件/目录等);尽量用开源组件,终端、Web 等等同本地体验;左栏以项目分组,一个项目一个工作区;设置页:菜单底部入口,点击后左栏变设置菜单栏,通用设置/agent 能力/各配置实时显示——含记忆、技能、上下文设置等,与配置数据对应;MCP 服务器管理并入设置页;插件与子智能体定义并入设置页;**子智能体定义支持全局级别**(七次裁定累积)
 - **关联**:`docs/superpowers/specs/2026-10-06-gui-v1-design.md`(G1-G7 已交付;本 spec 是其 UI 层重构批次 **G8**)、`docs/ROADMAP.md`(5B)
 - **现状**:gui 包**零 CSS**(class 名仅为测试钩子)——本批建立设计系统并完成布局重构
@@ -92,9 +92,9 @@
 ## 3. 设计系统(设计令牌 + 单 CSS)
 
 - `gui/src/app.css`(单文件,CSS 自定义属性令牌,main.tsx import):
-  - 色板(**暗色优先**,Codex 口径):`--bg-0`(app 背景 #0d1117 系)/`--bg-1`(面板 #161b22)/`--bg-2`(浮层)/`--fg-0/1`(主/次文本)/`--border`(#30363d)/`--accent`(#4493f8)/`--ok`/`--warn`/`--err`;亮色后置(令牌就位,换值即可)。
+  - 色板(**暗色优先**,v9 青色统一口径):`--bg-0` #0d1117 系/`--bg-1` 面板/`--bg-2` 浮层/`--fg-0/1`(次文本提亮 #9aa7b3 系)/`--border`/`--accent` **#22d3ee(青色,hover #06b6d4)**/`--ok`/`--warn`/`--err`;focus 环/连接点在线态/pill 活动态/流式光标一律 accent 单源;亮色后置不变(换值即切)。
   - 排版:系统栈 `ui-sans-serif`;13px 基准/12px 辅助;代码 `ui-monospace` 12px。
-  - 形状:6px 圆角(卡/输入/标签 pill);1px 边框常态;hover 背景 `--bg-2`;focus-visible 2px accent 外环(a11y)。
+  - 形状(v9 圆润口径):**基准圆角 10px**(卡/输入/面板),标签 pill 与 Badge **全圆 999px**,图标钮 8px;1px 边框常态+浮层柔和阴影;hover `--bg-2`;focus-visible 2px accent 外环;简约面(左栏组行/导航)去竖分隔以背景层次代边框;间距 12px 基准留白。
 - 组件级样式类前缀 `sx-`(如 `sx-tabstrip`/`sx-tab`/`sx-tab-active`/`sx-panel`);**既有测试钩子 class 原名保留**(测试零迁移优先;新增结构用 sx- 前缀)。xterm 主题对象从令牌取色保持一体。
 
 ## 4. 图标与开源依赖
@@ -131,7 +131,7 @@
 | ~~G8a~~ | 设计系统(app.css 令牌)+lucide+三栏布局壳+**标签框架**(注册表/标签条/+菜单/开/关/切/去重/每会话态)+**左栏项目分组**(多工作区组/组内会话/组内新建 root 预填)+Chat 迁中栏+文件/任务入标签+chat subagent 过滤修复——~~已交付~~ 2026-10-07(执行注记:壳/标签框架/项目分组左栏/文件任务标签落地,详情 G8e 收官统一回写)。**已知跟进(终审缓议,G8b-e 承接)**:App.test act() 警告收敛+DirPicker 单测回迁(G8e 视觉/卫生波);组头高亮/会话行状态点/禁用条 tooltip 三面 spec §1 未落(G8d 交互清单核);activeRoot 组多行同亮(id 域错配两级判定代价,待 journal-id 映射);sx-menu-add 等类 app.css 补定义+拖宽 user-select(G8e);onUsage 冗余守卫收敛(G8d Agents);TabStrip onNew 死面清理(G8b 触 TabStrip 时) |
 | ~~G8b~~ | **终端全链**(node-pty/pty 管理器/分配端点+专用 WS/环形缓冲重连重放/teardown 清杀 + xterm.js 终端标签)+**目录标签**(tree 端点+树组件)——~~已交付~~ 2026-10-07(执行注记:终端全链+目录标签落地,详情 G8e 收官统一回写)。**已知跟进(终审缓议,G8c-e 承接)**:终端标签 TAB_ICONS 图标(SquareTerminal)与 pty 连接断开内联提示(G8e 视觉波);ptyId↔owner 校验(跨会话误杀一致性疣);StrictMode 首挂双分配(dev-only)/attach 闭包退订句柄+PtyManager.killAll 全杀硬化(G8e 可选);目录标签错误态缓存无重试 |
 | ~~G8c~~ | **设置全链**(/settings 端点族+自填槽清除重载机制+十面板表单/只读清单/记忆概览/技能清单/MCP 清单+探测+编辑/**智能体定义两级清单+增删改+AgentRegistry 两级装载化**/raw JSONC 双文件编辑+来源徽标与生效 toast;导航含「插件」组)——~~已交付~~ 2026-10-08(执行注记:设置全链十面板+端点族+自填槽重载落地,详情 G8e 收官统一回写)。**已知跟进(终审缓议,G8d-e 承接)**:agents 全文读取端点(编辑正文现以 200 字预览守卫兜底)/高级面未知·退役键告警列表+memory 会话内覆盖显示(§2.5 两显示项下料)/RawPane 读取在途切目标窄竞态+scope 滞留(root 清空时)/SettingsForm 无取消守卫+relTime 三份漂移/MANUAL.md 模板补 teamTokenCap 行+键数注释(文档面)/跨 root reload「最近编辑为准」+运行中会话惰性拾取(架构项,per-session 链装化评估)/PUT root 无工作区限制(localhost+token 姿态既判维持) |
-| G8d | Diff 标签接线+Agents 标签(reducer+卡+mini 转录)+Web 标签(iframe+外开)+交互清单落地+e2e |
+| G8d | **主题统一(青色令牌重定+全组件圆润简约 polish+xterm 同步)**+Diff 标签接线+Agents 标签(reducer+卡+mini 转录+**全文读取端点**)+Web 标签(iframe+外开)+交互清单落地+高级面退役键告警+e2e |
 | G8e | 全量门禁+两 spec/ROADMAP 回写(壳批次注记维持:原生 webview/托盘) |
 
 ## 8. 决策记录
@@ -162,3 +162,4 @@
 | U-D18 | 既有测试钩子 class 保留 | 全量 testid 重命名 | 测试零迁移优先;新结构 sx- 前缀隔离 |
 | U-D19 | Enter=提交/Shift+Enter=换行,textarea | 维持单行 input | 人性化输入;对齐主流 chat UX |
 | U-D20 | Diff by callId 多实例 | 多 diff 栈(G8 前案)/栈深 1 | 标签模型天然多 diff 并存,栈 hack 退役 |
+| U-D21 | **主题统一:青色 #22d3ee 主色单源,现代/简约/圆润(基准 10px/pill 全圆)/易读(次文本提亮)**(用户 2026-10-08 裁定) | 多主题色/维持蓝 accent | 用户指令「统一主题色青色和风格,现代,简约,圆润,易读」;单源令牌=xterm/focus/pill/光标一次换全 |
