@@ -193,6 +193,12 @@ export interface Connection {
   fetchDiff(sessionId: string, callId: string): Promise<DiffResp>;
   /** POST /session/:id/delete（T2 会话回收，Home 消费）：running 409；journal 文件保留 */
   deleteSession(id: string): Promise<void>;
+  /** POST /session/:id/pty {cols?,rows?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
+   *  （daemon 缺省 80×24）；Terminal 页（T6）持 ptyId 开专用 WS /session/:id/pty/:ptyId */
+  openPty(sessionId: string, cols?: number, rows?: number): Promise<{ ptyId: string }>;
+  /** DELETE /session/:id/pty/:ptyId（G8b T3）：同步注销——kill 后新 WS 连入收 error
+   *  'pty not found'（注销即失效，无宽限窗） */
+  killPty(sessionId: string, ptyId: string): Promise<void>;
   close(): void;
   state(): ConnectionState;
   /** 测试钩子（e2e 断链注入专用）：当前底层 socket（无连接 undefined）——产品面勿消费 */
@@ -422,6 +428,25 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     deleteSession(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/delete`);
+    },
+    async openPty(sessionId: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
+      const path = `/session/${encodeURIComponent(sessionId)}/pty`;
+      // 缺省尺寸省字段(newSession mode 同款——旧 daemon 兼容;daemon 缺省 80×24)
+      const body: { cols?: number; rows?: number } = {};
+      if (cols !== undefined) body.cols = cols;
+      if (rows !== undefined) body.rows = rows;
+      const res = await fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+      return (await res.json()) as { ptyId: string };
+    },
+    async killPty(sessionId: string, ptyId: string): Promise<void> {
+      const path = `/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`;
+      const res = await fetch(`${base}${path}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`${path} -> ${res.status}`);
     },
     close,
     state(): ConnectionState {
