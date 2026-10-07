@@ -40,15 +40,14 @@ export interface TerminalTabProps {
   readonly onPtyAllocated: (uid: string, ptyId: string) => void;
 }
 
-/** xterm 主题:取 app.css 设计令牌字面值(G8a spec §3——CSS 变量无法跨 canvas 令牌面直引,
- *  sx- 伴生类与变量桥归 G8b-e)——bg=--bg-0 #0d1117 / fg=--fg-0 #e6edf3 /
- *  cursor=--accent #4493f8 / selection=--accent 33% 半透(#4493f855,resizer hover 的
- *  color-mix 30% accent 同源语义) */
+/** xterm 主题:取 app.css 设计令牌字面值(G8a spec §3;G8d U-D21 青色重定——CSS 变量无法跨
+ *  canvas 令牌面直引,sx- 伴生类与变量桥归 G8b-e)——bg=--bg-0 #0d1117 / fg=--fg-0 #e6edf3 /
+ *  cursor=--accent #22d3ee / selection=--accent 25% 半透 rgba(34,211,238,0.25) */
 const XTERM_THEME = {
   background: '#0d1117',
   foreground: '#e6edf3',
-  cursor: '#4493f8',
-  selectionBackground: '#4493f855',
+  cursor: '#22d3ee',
+  selectionBackground: 'rgba(34, 211, 238, 0.25)',
 } as const;
 
 export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: TerminalTabProps): JSX.Element {

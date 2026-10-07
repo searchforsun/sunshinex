@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Plus, PanelLeft, PanelRight, FileText, KanbanSquare, FolderTree } from 'lucide-react';
+import { X, Plus, PanelLeft, PanelRight, FileText, KanbanSquare, FolderTree, SquareTerminal } from 'lucide-react';
 import { TAB_REGISTRY, tabEntry } from './registry';
 import type { TabTypeId } from './tab-state';
 
@@ -29,6 +29,7 @@ const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   file: FileText,
   directory: FolderTree,
   tasks: KanbanSquare,
+  terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
 };
 
 /** 「+」菜单分节序:content → session → tools */
