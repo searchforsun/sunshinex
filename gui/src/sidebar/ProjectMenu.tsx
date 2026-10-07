@@ -238,7 +238,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               <div className="workspace-row" style={{ display: 'flex', alignItems: 'center' }}>
                 <button
                   type="button"
-                  className="workspace-toggle sx-group-head"
+                  className={`workspace-toggle sx-group-head${root !== undefined && root === activeRoot ? ' active' : ''}`}
                   disabled={root === undefined}
                   aria-expanded={openSlug === row.slug}
                   title={root ?? 'root 未登记(历史工作区)——无法恢复会话'}
@@ -301,8 +301,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     // 恒不中(见 task-4 测试:activeSessionId='new-…' vs 行 id='j1')
                     const active =
                       activeSessionId !== '' && (s.id === activeSessionId || root === activeRoot);
+                    // G8e 三面②会话行状态点:id 直配行=accent 实心(运行中会话;与 active 类同判据
+                    // 锚 activeSessionId——不含 root 兜底,兜底行=灰空心「非本行会话」)
+                    const running = s.id === activeSessionId;
                     return (
                       <li key={s.id} className={`session-row sx-session-row${active ? ' active' : ''}`}>
+                        <span className={`sx-session-dot${running ? ' running' : ''}`} title={running ? '运行中会话' : undefined} />
                         <span className="session-summary">{s.firstUser ?? '(无摘要)'}</span>
                         <span className="session-meta">
                           {s.id} · {relTime(s.updatedAt)}

@@ -428,7 +428,6 @@ function AppShell({ token }: { token: string }): JSX.Element {
               disabled={page !== 'chat'}
               onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
               onClose={closeTabInSession}
-              onNew={() => {}} // 「+」菜单选中类型由菜单直调 onOpenType(T3 装配)
               onOpenType={(t) => openTabInSession(t, tabEntry(t).mintParams?.())}
               onToggleCollapse={() =>
                 setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))

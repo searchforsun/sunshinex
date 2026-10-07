@@ -1477,22 +1477,22 @@ describe('G8d-T6 场景B:Agents 标签 live 卡——CARDS fork 子代理事件�
       //    fork 收束序(派发异步)——waitFor 过竞态窗;终态=完成(fork done 事件 + delegation-ended
       //    label 命中双源收敛)——
       await waitFor(
-        () => expect(container.querySelector('.sx-agents-list .sx-agent-card .sx-agent-status')?.textContent).toBe('完成'),
+        () => expect(container.querySelector('.sx-agents-list .sx-subagent-card .sx-subagent-status')?.textContent).toBe('完成'),
         { timeout: 10_000 },
       );
-      const card = container.querySelector('.sx-agents-list .sx-agent-card')!;
+      const card = container.querySelector('.sx-agents-list .sx-subagent-card')!;
       expect(card.textContent).toContain('task-t1'); // label(runSubagent finalLabel 口径)
       expect(container.querySelector('.sx-agents-empty')).toBeNull(); // 空态文案退场(卡在场)
 
       // —— mini 转录折叠展开:点卡头 → 行在场(末位 done 牌 token 逐字符流——剥行首两格
       //    token 缩进前缀后逐行拼回即终稿全文)——
       fireEvent.click(screen.getByRole('button', { name: 'agent card task-t1' }));
-      const lines = container.querySelector('.sx-agent-lines');
+      const lines = container.querySelector('.sx-subagent-lines');
       expect(lines).not.toBeNull();
       expect(lines?.textContent?.split('\n').map((l) => l.replace(/^  /, '')).join('')).toBe('all done');
       // 折叠收起:再点卡头 → 转录退场
       fireEvent.click(screen.getByRole('button', { name: 'agent card task-t1' }));
-      expect(container.querySelector('.sx-agent-lines')).toBeNull();
+      expect(container.querySelector('.sx-subagent-lines')).toBeNull();
     } finally {
       await env.stop();
       localStorage.removeItem('sunshinex.token');

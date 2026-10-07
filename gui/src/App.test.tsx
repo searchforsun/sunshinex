@@ -1253,12 +1253,12 @@ describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
     expect(screen.getByText('运行中')).toBeDefined();
     expect(screen.getByText('1200 tokens')).toBeDefined();
     expect(screen.getByText('write')).toBeDefined();
-    expect(document.querySelector('.sx-agent-dot')).not.toBeNull();
+    expect(document.querySelector('.sx-subagent-dot')).not.toBeNull();
     // 点卡头展开:mini 转录(工具行 + token 行,等宽渲染)
-    expect(document.querySelector('.sx-agent-lines')).toBeNull(); // 折叠态
+    expect(document.querySelector('.sx-subagent-lines')).toBeNull(); // 折叠态
     fireEvent.click(screen.getByRole('button', { name: 'agent card searcher' }));
     expect(screen.getByText(/write src\/a\.ts/)).toBeDefined();
-    expect(document.querySelector('.sx-agent-lines')?.textContent).toContain('分析中');
+    expect(document.querySelector('.sx-subagent-lines')?.textContent).toContain('分析中');
     unmount();
   });
 
@@ -1271,7 +1271,7 @@ describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
     expect(screen.getByText('reviewer')).toBeDefined();
     expect(screen.getByText('失败')).toBeDefined();
-    expect(document.querySelector('.sx-agent-dot')).toBeNull(); // 非 running:动画点退场
+    expect(document.querySelector('.sx-subagent-dot')).toBeNull(); // 非 running:动画点退场
     // 本会话 reset:卡区清空(空态文案;他会话 reset 不清)
     fireResetSession(conn, 's9');
     expect(screen.getByText('reviewer')).toBeDefined();

@@ -17,7 +17,6 @@ export interface TabStripProps {
   readonly disabled?: boolean; // 无会话:整条灰
   readonly onSelect: (uid: string) => void;
   readonly onClose: (uid: string) => void;
-  readonly onNew: () => void; // + 菜单内选中类型由菜单直调 onOpenType
   readonly onOpenType: (type: import('./tab-state').TabTypeId) => void;
   readonly onToggleCollapse: () => void;
   readonly onCycle: (dir: 1 | -1) => void;
@@ -45,7 +44,6 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     disabled = false,
     onSelect,
     onClose,
-    onNew,
     onOpenType,
     onToggleCollapse,
     onCycle,
@@ -96,20 +94,21 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     </button>
   );
 
-  // disabled 整条降透明(本组件唯一内联样式,简报明文允许)
+  // disabled 整条降透明(本组件唯一内联样式,简报明文允许);G8e 三面:title 提示不可用因由
   const stripStyle = disabled ? { opacity: 0.5 } : undefined;
+  const stripTitle = disabled ? '先从左侧选择会话' : undefined;
 
   // collapsed 态:只渲染折叠钮一行(无标签/无「+」)
   if (collapsed) {
     return (
-      <div className="sx-tabstrip" ref={rootRef} style={stripStyle}>
+      <div className="sx-tabstrip" ref={rootRef} style={stripStyle} title={stripTitle}>
         {collapseBtn}
       </div>
     );
   }
 
   return (
-    <div className="sx-tabstrip" ref={rootRef} style={stripStyle}>
+    <div className="sx-tabstrip" ref={rootRef} style={stripStyle} title={stripTitle}>
       {tabs.map((t) => {
         const entry = tabEntry(t.type);
         const title = entry.title(t.params);
@@ -145,7 +144,6 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         className="sx-iconbtn"
         disabled={disabled}
         onClick={() => {
-          onNew();
           setMenuOpen((o) => !o);
         }}
       >

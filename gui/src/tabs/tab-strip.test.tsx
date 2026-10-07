@@ -5,7 +5,7 @@ import { TAB_REGISTRY, registryProbe } from './registry';
 import { ensureSession, openTab } from './tab-state';
 
 const base = {
-  onSelect: vi.fn(), onClose: vi.fn(), onNew: vi.fn(), onOpenType: vi.fn(),
+  onSelect: vi.fn(), onClose: vi.fn(), onOpenType: vi.fn(),
   onToggleCollapse: vi.fn(), onCycle: vi.fn(), onCloseActive: vi.fn(),
 };
 
