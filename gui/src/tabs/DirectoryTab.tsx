@@ -11,6 +11,8 @@ import type { TabTypeId, TabParams } from './tab-state';
  * 点击 = openTab('file', { path })(相对路径以 root 起,判界一致性由服务端保证)。子层 path 拼合:
  * 父 path ? `${父}/${name}` : name。truncated → 行层尾「…已截断」标记;加载/错误行内态。
  * 状态生命周期随组件挂载(切标签卸毁即失——重挂重拉 root,与 Files/TerminalTab 同口径);
+ * 单例跨会话不重挂(uid 恒 'directory:',tabbody key 不变而 sessionId prop 变)——sessionId
+ * 变更即整体重置层缓存+展开集再重拉 root(跨会话陈旧层/陈旧展开根除,G8b-T7 评审 #1 修);
  * sx-tree-* 伴生样式归 G8b-e(app.css 冻结),缩进以行内 paddingLeft 表达(深度 × 14)。
  */
 
@@ -28,8 +30,11 @@ type NodeState =
   | { readonly status: 'error'; readonly message: string }
   | { readonly status: 'loaded'; readonly entries: readonly TreeEntry[]; readonly truncated: boolean };
 
-/** 展开层缓存初始态:root 在途(mount 即拉) */
+/** 展开层缓存初始态:root 在途(mount 即拉);兼作会话切换重置态(模块级只读,可安全共享) */
 const INITIAL_NODES: ReadonlyMap<string, NodeState> = new Map([['', { status: 'loading' }]]);
+
+/** 展开集初始/重置态(模块级共享只读引用——mount 重置同引用 React bail out,零多余重渲染) */
+const INITIAL_EXPANDED: ReadonlySet<string> = new Set();
 
 /** 行缩进(深度 × 14px + 6 基距)——树形视觉面,样式冻结期的行内表达 */
 const indent = (depth: number): CSSProperties => ({ paddingLeft: `${6 + depth * 14}px` });
@@ -41,15 +46,19 @@ export function DirectoryTab({ conn, sessionId, openTab }: DirectoryTabProps): J
   /** 层缓存:path(''=root)→ NodeState;收起不清缓存(再展开命中,不再拉) */
   const [nodes, setNodes] = useState<ReadonlyMap<string, NodeState>>(INITIAL_NODES);
   /** 展开集合:目录行点击切换;收起只摘集合不动缓存 */
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => INITIAL_EXPANDED);
 
   /** 层缓存单点写入(不可变拷——tabbody 同树位重渲染口径) */
   const setNode = useCallback((path: string, s: NodeState): void => {
     setNodes((m) => new Map(m).set(path, s));
   }, []);
 
-  /** mount 拉 root(卸载后迟到应答落态无的放矢——React 18 静默,无泄漏面) */
+  /** mount/会话切换拉 root:sessionId 变更即整体重置层缓存+展开集(单例跨会话不重挂——旧会话
+   *  层缓存命中会渲染他会话子层,必清)再拉新会话 root;mount 时重置同引用 bail out 零成本
+   *  (卸载后迟到应答落态无的放矢——React 18 静默,无泄漏面) */
   useEffect(() => {
+    setNodes(INITIAL_NODES);
+    setExpanded(INITIAL_EXPANDED);
     void conn.tree(sessionId).then(
       (r) => setNode('', { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
       (err: unknown) => setNode('', { status: 'error', message: err instanceof Error ? err.message : String(err) }),

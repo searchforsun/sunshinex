@@ -56,6 +56,9 @@ const h = vi.hoisted(() => {
     /** G8b T7 目录树面:tree 按路径可编程(键 ''=root;缺省空);调用记录 [sessionId, path 归一 ''] */
     treeCalls: Array<[string, string]> = [];
     treeByPath: Record<string, TreeResp> = {};
+    /** G8b-T7 修复测:会话维 tree 应答(sessionId→path→resp;命中优先于 treeByPath——跨会话
+     *  同名路径分异桩,单例目录标签不重挂切换的陈旧层断言用) */
+    treeBySession: Record<string, Record<string, TreeResp>> = {};
     treeReject: Error | null = null;
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
@@ -155,6 +158,8 @@ const h = vi.hoisted(() => {
       this.treeCalls.push([sessionId, path ?? '']);
       if (this.treeReject !== null) return Promise.reject(this.treeReject);
       const p = path ?? '';
+      const bySession = this.treeBySession[sessionId]?.[p];
+      if (bySession !== undefined) return Promise.resolve(bySession);
       return Promise.resolve(this.treeByPath[p] ?? { entries: [] });
     }
     close(): void {
@@ -931,6 +936,67 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     conn.treeReject = new Error('/session/s1/tree?path=dirA -> 404');
     fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
     await waitFor(() => expect(screen.getByText('/session/s1/tree?path=dirA -> 404')).toBeDefined()); // 行内错误态
+    unmount();
+  });
+
+  it('会话切换层缓存重置(单例 uid 跨会话不重挂):直切回 s1 无 s2 陈旧层,展开重拉 + 文件行开标签用本会话路径', async () => {
+    const { conn, unmount } = await enterChat();
+    // 两会话同名目录 dirA 而子层各异(s1 层=fileA.ts / s2 层=fileB.ts)——陈旧层缓存唯一可观测形
+    conn.treeBySession = {
+      s1: {
+        '': { entries: [{ name: 'dirA', kind: 'dir' }] },
+        dirA: { entries: [{ name: 'fileA.ts', kind: 'file' }] },
+      },
+      s2: {
+        '': { entries: [{ name: 'dirA', kind: 'dir' }] },
+        dirA: { entries: [{ name: 'fileB.ts', kind: 'file' }] },
+      },
+    };
+    // —— s1:开目录标签,展开 dirA(fileA.ts 层缓存落定)——
+    openDirectory();
+    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', '']]));
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA']]));
+    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
+    // —— 直切 s2(左栏 Attach,不经返回——page 恒 chat;s2 缺省任务页,目录标签经 key 变更重挂)——
+    // 再开目录:s2 目录标签在场且活动(构造两会话同 uid 'directory:' 的不重挂现场),展开 dirA 缓存 s2 层
+    conn.nextSessionId = 's2';
+    fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s2')).toBeDefined());
+    openDirectory();
+    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', '']]));
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', ''], ['s2', 'dirA']]));
+    expect(screen.getByRole('button', { name: 'fileB.ts' })).toBeDefined();
+    // —— 直切回 s1:tabbody key 仍 'directory:' 不重挂(仅 sessionId prop 变)——修复契约:
+    // 层缓存+展开集随 sessionId 整体重置 + root 重拉——s2 陈旧子层(fileB.ts)退场,dirA 收起
+    conn.nextSessionId = 's1';
+    fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() =>
+      expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', ''], ['s2', 'dirA'], ['s1', '']]),
+    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'fileB.ts' })).toBeNull()); // 陈旧层根除
+    expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined(); // 新会话 root(dirA 在场)
+    expect(screen.queryByRole('button', { name: 'fileA.ts' })).toBeNull(); // 展开集已清:未展开不渲染
+    // 展开 dirA:缓存已清 → 重新拉 s1 层 → fileA.ts 在场(fileB.ts 仍无)
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() =>
+      expect(conn.treeCalls).toEqual([
+        ['s1', ''],
+        ['s1', 'dirA'],
+        ['s2', ''],
+        ['s2', 'dirA'],
+        ['s1', ''],
+        ['s1', 'dirA'],
+      ]),
+    );
+    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'fileB.ts' })).toBeNull();
+    // 点 fileA.ts:文件标签开且活动(title=相对路径),initialPath 以本会话 s1 寻址加载
+    fireEvent.click(screen.getByRole('button', { name: 'fileA.ts' }));
+    expect(document.querySelector('.sx-tab[title="dirA/fileA.ts"]')?.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/fileA.ts']]));
     unmount();
   });
 });
