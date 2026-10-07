@@ -9,9 +9,9 @@ const base = {
   onToggleCollapse: vi.fn(), onCycle: vi.fn(), onCloseActive: vi.fn(),
 };
 
-describe('TAB_REGISTRY(G8a 两类)', () => {
-  it('注册 file/tasks;file 按 path 判重多实例,tasks 单例', () => {
-    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'tasks']);
+describe('TAB_REGISTRY(G8a 两类 + G8b terminal)', () => {
+  it('注册 file/tasks/terminal;file 按 path 判重多实例,tasks 单例,terminal 按 nonce 多实例', () => {
+    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'tasks', 'terminal']);
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');
@@ -19,6 +19,11 @@ describe('TAB_REGISTRY(G8a 两类)', () => {
     const tasks = TAB_REGISTRY[1]!;
     expect(tasks.singleton).toBe(true);
     expect(tasks.title({})).toBe('任务');
+    const terminal = TAB_REGISTRY[2]!;
+    expect(terminal.singleton).toBe(false);
+    expect(terminal.resolveKey({ nonce: 't1' })).toBe('t1');
+    expect(terminal.resolveKey({})).toBe('');
+    expect(terminal.title({})).toBe('终端');
   });
   it('registryProbe 与注册表同口径', () => {
     const p = registryProbe();

@@ -8,6 +8,7 @@
 
 import { Files } from '../pages/Files';
 import { Board } from '../pages/Board';
+import { TerminalTab } from './TerminalTab';
 import type { SingletonProbe, TabTypeId } from './tab-state';
 
 export interface TabServices {
@@ -23,6 +24,10 @@ export interface TabRenderProps {
   readonly sessionId: string;
   readonly params: import('./tab-state').TabParams;
   readonly services: TabServices;
+  /** G8b:标签实例 uid(App 渲染面单点注入——TerminalTab 记账/守卫单实例面;file/tasks 忽略) */
+  readonly uid: string;
+  /** G8b pty 生命周期钩子:terminal 标签 openPty 落定回传(App 侧 ptyIdsRef 记账,关标签 kill) */
+  readonly onPtyAllocated: (uid: string, ptyId: string) => void;
 }
 
 export interface TabTypeEntry {
@@ -32,9 +37,12 @@ export interface TabTypeEntry {
   readonly resolveKey: (params: import('./tab-state').TabParams) => string;
   readonly singleton: boolean;
   readonly render: (props: TabRenderProps) => JSX.Element;
+  /** G8b:「+」菜单开新实例的参数铸造(缺省 undefined = 裸开,按 resolveKey 判重)——terminal
+   *  用 nonce 铸唯一 uid,令同型多实例并存(每标签独立 pty);单例/判重类型无需此面 */
+  readonly mintParams?: () => import('./tab-state').TabParams;
 }
 
-/** G8a 两类:file(按 path 判重多实例)+ tasks(每会话单例) */
+/** G8a 两类 + G8b terminal:file(按 path 判重多实例)+ tasks(每会话单例)+ 终端(nonce 多实例) */
 export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
@@ -58,6 +66,18 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         team={[...p.services.team]}
         onReview={p.services.onReview}
       />
+    ),
+  },
+  {
+    id: 'terminal',
+    group: 'tools',
+    title: () => '终端',
+    // nonce 即判重键:mintParams 铸唯一 → 多实例并存;无 nonce 开档 key='' 互判重(聚焦既有)
+    resolveKey: (params) => params.nonce ?? '',
+    singleton: false,
+    mintParams: () => ({ nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}` }),
+    render: (p) => (
+      <TerminalTab conn={p.conn} sessionId={p.sessionId} params={p.params} uid={p.uid} onPtyAllocated={p.onPtyAllocated} />
     ),
   },
 ];

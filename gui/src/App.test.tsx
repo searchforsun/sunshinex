@@ -50,6 +50,9 @@ const h = vi.hoisted(() => {
     diffCalls: Array<[string, string]> = [];
     diffResp: DiffResp | null = null;
     diffReject: Error | null = null;
+    /** G8b pty 面:openPty 恒应答 ptyId 'p1'(分配调用记录 sessionId/cols/rows);killPty 记录寻址对 */
+    openPtyCalls: Array<[string, number, number]> = [];
+    killPtyCalls: Array<[string, string]> = [];
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
     replyReject: Error | null = null;
@@ -135,6 +138,14 @@ const h = vi.hoisted(() => {
       this.diffCalls.push([sessionId, callId]);
       if (this.diffResp !== null) return Promise.resolve(this.diffResp);
       return Promise.reject(new Error(`/session/${sessionId}/diff?callId=${callId} -> 404`));
+    }
+    openPty(sessionId: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
+      this.openPtyCalls.push([sessionId, cols ?? 0, rows ?? 0]);
+      return Promise.resolve({ ptyId: 'p1' });
+    }
+    killPty(sessionId: string, ptyId: string): Promise<void> {
+      this.killPtyCalls.push([sessionId, ptyId]);
+      return Promise.resolve();
     }
     close(): void {
       this.closed = true;
@@ -799,6 +810,47 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     expect(out).not.toContain('<'); // 转义后无任何裸标签开角
     expect(out).toContain('&lt;script&gt;');
     expect(out).toContain('&lt;/script&gt;');
+  });
+});
+
+describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签 kill 链', () => {
+  /** +菜单开终端(菜单 → tools 节「终端」直调 onOpenType) */
+  const openTerminal = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '终端' }));
+  };
+
+  it('+菜单开终端:openPty(s1,80,24) 分配 + 降级面在场(jsdom 无布局)+ nonce 两开两标签', async () => {
+    const { conn, unmount } = await enterChat();
+    openTerminal();
+    // 分配链:TerminalTab mount → conn.openPty(sessionId, 80, 24) → onPtyAllocated(App ptyIdsRef 记账)
+    // ——降级面在场即分配续体已跑(同微任务:记账先于守卫渲染)
+    await waitFor(() => expect(conn.openPtyCalls).toEqual([['s1', 80, 24]]));
+    await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined());
+    // nonce 多实例:mintParams 铸唯一 resolveKey → 再开 = 第二个终端标签(非判重聚焦既有)
+    openTerminal();
+    expect(document.querySelectorAll('.sx-tab[title="终端"]')).toHaveLength(2);
+    await waitFor(() => expect(conn.openPtyCalls).toHaveLength(2)); // 活动切换重挂:新实例再分配
+    unmount();
+  });
+
+  it('关终端标签 → conn.killPty(s1, p1);backHome 切走不 kill(标签还原重挂后才可关链)', async () => {
+    const { conn, unmount } = await enterChat();
+    openTerminal();
+    await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 记账落定(uid→p1)
+    // backHome:会话切走不 kill——pty 生命周期归标签关闭链,tabStates 每会话保留(spec §1)
+    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    await screen.findByLabelText('welcome');
+    expect(conn.killPtyCalls).toEqual([]);
+    // 重进同会话(journal 重挂 s1):终端标签还原 + 重分配落账 → 关标签 → kill(sessionId, ptyId)
+    conn.nextSessionId = 's1';
+    fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
+    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(conn.openPtyCalls).toHaveLength(2)); // 还原重挂的新分配(还原面重开 pty)
+    fireEvent.click(screen.getByRole('button', { name: 'close tab 终端' }));
+    await waitFor(() => expect(conn.killPtyCalls).toEqual([['s1', 'p1']]));
+    expect(document.querySelector('.sx-tab[title="终端"]')).toBeNull(); // 标签已移除(承继「任务」)
+    unmount();
   });
 });
 

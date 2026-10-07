@@ -129,6 +129,9 @@ function AppShell({ token }: { token: string }): JSX.Element {
   const boardSeedingRef = useRef(true);
   /** 拖宽在途清理句柄:mouseup 解绑外,卸载兜底解绑(会话切走/组件卸毁不泄漏 window 监听) */
   const resizeCleanupRef = useRef<(() => void) | null>(null);
+  /** G8b pty 记账:terminal 标签 uid → ptyId(TerminalTab onPtyAllocated 落账;关标签 →
+   *  killPty 寻址。切标签/会话不清——pty 生命周期属标签不属渲染,backHome 亦不 kill) */
+  const ptyIdsRef = useRef(new Map<string, string>());
 
   /** 播种窗重开(清缓冲):openSession/onReset/onResetSession 三处——均伴随 Chat reseed,
    *  窗内残留帧属旧基线/旧板,弃 */
@@ -229,6 +232,27 @@ function AppShell({ token }: { token: string }): JSX.Element {
    *  tab-state(同目标重开=聚焦既有,单例类型单份) */
   const openTabInSession = (type: TabTypeId, params: TabParams = {}): void => {
     setTabStates((s) => openTab(s, openSessionId, type, params, PROBE));
+  };
+
+  /** G8b pty 分配落定记账(TerminalTab 回传;registry render props 面)——useCallback 零依赖
+   *  (仅 ref)保稳定:TerminalTab 装配 effect 以此为依赖,inline 箭头会令其随 App 重渲染重跑 */
+  const handlePtyAllocated = useCallback((uid: string, ptyId: string): void => {
+    ptyIdsRef.current.set(uid, ptyId);
+  }, []);
+
+  /** G8b 关标签链(TabStrip onClose/onCloseActive 共用):被关标签为 terminal 且 pty 已记账 →
+   *  fire-and-forget killPty(拒约吞——关标签不等 HTTP;已关会话侧幂等)再关标签态 */
+  const closeTabInSession = (uid: string): void => {
+    const t = tabState.tabs.find((x) => x.uid === uid);
+    if (t?.type === 'terminal') {
+      const ptyId = ptyIdsRef.current.get(uid);
+      if (ptyId !== undefined) {
+        ptyIdsRef.current.delete(uid);
+        const conn = connRef.current;
+        if (conn !== null) void conn.killPty(openSessionId, ptyId).catch(() => {});
+      }
+    }
+    setTabStates((s) => closeTab(s, openSessionId, uid));
   };
 
   /** G5 gate 审批装配:任务标签 onReview → boardReview(sessionId, taskId, approved)——失败倒
@@ -349,16 +373,16 @@ function AppShell({ token }: { token: string }): JSX.Element {
           collapsed={tabState.collapsed}
           disabled={page !== 'chat'}
           onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
-          onClose={(uid) => setTabStates((s) => closeTab(s, openSessionId, uid))}
+          onClose={closeTabInSession}
           onNew={() => {}} // 「+」菜单选中类型由菜单直调 onOpenType(T3 装配)
-          onOpenType={(t) => openTabInSession(t)}
+          onOpenType={(t) => openTabInSession(t, tabEntry(t).mintParams?.())}
           onToggleCollapse={() =>
             setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))
           }
           onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
           onCloseActive={() => {
             const uid = tabState.activeUid;
-            if (uid !== null) setTabStates((s) => closeTab(s, openSessionId, uid));
+            if (uid !== null) closeTabInSession(uid);
           }}
         />
         {page === 'chat' && !tabState.collapsed && connInstance !== null && activeTab !== null && (
@@ -371,6 +395,8 @@ function AppShell({ token }: { token: string }): JSX.Element {
               sessionId: openSessionId,
               params: activeTab.params,
               services,
+              uid: activeTab.uid,
+              onPtyAllocated: handlePtyAllocated,
             })}
           </div>
         )}

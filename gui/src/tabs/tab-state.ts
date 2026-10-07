@@ -21,6 +21,9 @@ export interface TabParams {
   readonly url?: string;
   readonly cols?: number;
   readonly rows?: number;
+  /** G8b 终端多实例铸键:「+」菜单每次开铸唯一 nonce(mintParams)→ resolveKey 各异 →
+   *  同型并存(每标签独立 pty);无 nonce 开档互判重(聚焦既有) */
+  readonly nonce?: string;
 }
 
 /** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较) */
