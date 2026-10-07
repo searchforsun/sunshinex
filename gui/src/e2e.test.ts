@@ -891,3 +891,138 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
     }
   }, 60_000);
 });
+
+/* ============================================================
+ * G8a-T6 标签运行时接线两场景(spec §1「新会话默认开『任务』一页」+ Chat write 工具
+ * path 钮开文件标签):场景A——建会话即右栏缺省「任务」单例页且活动;Chat write 条目
+ * path 钮(G7 场景的卡片/展开复用)→ 开文件标签(title=path)置活动;重复点同 path
+ * 判重聚焦不重复(标签条恰一份)。场景B——既有 taskboard 卡片流(CARDS 同款)落板,
+ * 经标签条切回任务标签消费(行文本 = 既有 Board 断言面)。
+ * ============================================================ */
+
+/** 标签条 title 寻位(TabStrip pill 的 title 属性 = tabEntry.title(params)) */
+const tabsByTitle = (container: HTMLElement, title: string): Element[] =>
+  Array.from(container.querySelectorAll(`.sx-tab[title="${title}"]`));
+
+describe('G8a-T6 场景A:默认任务页 + write 条目 path 钮开文件标签(判重聚焦)', () => {
+  it('建会话 → 「任务」标签默认在场且活动 → write path 钮 → 文件标签在场且活动 → 再点同 path → 文件标签恰 1', async () => {
+    const REL = 'g8a-e2e-tab.txt'; // 会话 root 域内相对路径(dontAsk 直写,无挂起卡)
+    const CONTENT = 'tab-dedup-payload';
+    const env = await startDaemon(
+      new ScriptedAdapter([
+        JSON.stringify({ tool: 'write', input: { path: REL, content: CONTENT } }),
+        '{"done":true,"reply":"写完收束"}',
+      ]),
+    );
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat ——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+
+      // —— 默认任务页:右栏标签条唯一标签「任务」且活动(ensureSession 缺省开 tasks 单例)——
+      await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
+      const tasksTab = tabsByTitle(container, '任务')[0]!;
+      expect(tasksTab.className).toContain('active'); // sx-tab active
+      expect(tabsByTitle(container, REL).length).toBe(0); // 文件标签未开
+      // 任务标签体在场:标签体渲染 tabEntry('tasks').render = Board(既有看板面)
+      expect(container.querySelector('.sx-tabbody .board-main')).not.toBeNull();
+
+      // —— write 域内直写(G7 场景复用)→ done 收束 → 工具条目在场 ——
+      const input = screen.getByLabelText('message input');
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+      fireEvent.change(input, { target: { value: '写标签文件' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(
+        () => expect(container.querySelector('.entry-assistant')?.textContent).toContain('写完收束'),
+        { timeout: 10_000 },
+      );
+      expect(fs.readFileSync(path.join(env.root, REL), 'utf8')).toBe(CONTENT); // 真落盘
+
+      // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → 文件标签开且活动(title=path)——
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`● write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) }));
+      const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
+      expect(pathBtn?.textContent).toBe(REL);
+      fireEvent.click(pathBtn!);
+      await waitFor(() => expect(tabsByTitle(container, REL).length).toBe(1), { timeout: 5_000 });
+      const fileTab = tabsByTitle(container, REL)[0]!;
+      expect(fileTab.className).toContain('active'); // 文件标签活动
+      expect(tabsByTitle(container, '任务')[0]!.className).not.toContain('active'); // 任务失活
+      expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 任务 + 文件
+      // 文件标签体:Files 预览(initialPath 自动加载 → 磁盘现文件内容)
+      await waitFor(
+        () => expect(container.querySelector('.sx-tabbody .files-view')?.textContent).toContain(CONTENT),
+        { timeout: 5_000 },
+      );
+
+      // —— 判重聚焦:再点同 path 钮 → 文件标签数恰 1(重开同目标=聚焦既有,不重复)——
+      fireEvent.click(container.querySelector<HTMLButtonElement>('.tool-path')!);
+      expect(tabsByTitle(container, REL).length).toBe(1);
+      expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // 聚焦保持
+      expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 标签总数不变
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
+
+describe('G8a-T6 场景B:任务标签内看板消费(CARDS 全链 → 切任务标签 → 任务行在场)', () => {
+  it('提交 CARDS → done 收束 → 经「+」菜单开文件标签(任务失活)→ 切回「任务」标签 → t1 行/委派落位', async () => {
+    const env = await startDaemon(new ScriptedAdapter(CARDS));
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话 → chat;默认「任务」标签活动(场景A 已钉,此处直用)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
+
+      // —— 既有 taskboard 卡片流(文件头 CARDS 同款):提交 → done 收束 → 板/委派投影落位 ——
+      const input = screen.getByLabelText('message input');
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+      fireEvent.change(input, { target: { value: 'run demo' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(
+        () => expect(container.querySelector('.entry-assistant')?.textContent).toContain('all done'),
+        { timeout: 15_000 },
+      );
+
+      // —— 任务标签失活现场:「+」菜单开文件标签(无参 file → 标签条第二页且活动)——
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
+      await waitFor(() => expect(tabsByTitle(container, '文件').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, '文件')[0]!.className).toContain('active');
+      expect(tabsByTitle(container, '任务')[0]!.className).not.toContain('active');
+      expect(container.querySelector('.sx-tabbody .board-main')).toBeNull(); // 标签体随活动切换
+
+      // —— 切回「任务」标签 → 看板消费:任务行文本在场(既有 Board 断言面)+ 委派侧栏 ——
+      fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[title="任务"]')!);
+      await waitFor(() => expect(screen.getByText('t1 [in-review] Demo')).toBeDefined(), { timeout: 10_000 });
+      expect(tabsByTitle(container, '任务')[0]!.className).toContain('active');
+      expect(container.querySelector('.delegation-list')?.textContent).toContain('task-t1');
+      expect(container.querySelector('.delegation-list')?.textContent).toContain('done');
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
