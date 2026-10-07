@@ -606,47 +606,47 @@ interface SettingsBody {
   providers: { choices: Array<{ id: string; provider: string }>; apiKeyPresent: Record<string, boolean>; warnings: string[] };
 }
 
-describe('G8c T2 /settings 端点', () => {
-  /** /settings 用例环境隔离(在 withDaemon 惯例上增设全局配置面):
-   *  - HOME/USERPROFILE 重定向 fakeHome:全局 settings/permissions/providers 面不触碰真实用户家
-   *  - SUNSHINEX_* 槽全量快照→清空→复原:用例内 applySettings 自填与 PUT reload 都写槽,结束必须回到
-   *    进入前态(进入时在场者复原值、新增者删除、用例中被删的既有槽回植)
-   *  - 自填集结束清空(resetSelfFilledSlots):用例登记的自填槽不复串后续用例的来源判定 */
-  async function withSettingsDaemon(fn: (ctx: { daemon: GuiDaemon; base: string; tmp: string; home: string }) => Promise<void>): Promise<void> {
-    const tmp = tmpdir('sunshinex-settings-');
-    const home = path.join(tmp, 'home');
-    fs.mkdirSync(path.join(home, '.sunshinex'), { recursive: true });
-    const prev = { data: process.env.SUNSHINEX_DATA_DIR, home: process.env.HOME, userProfile: process.env.USERPROFILE };
-    const envSnap = new Map<string, string>();
-    for (const k of Object.keys(process.env)) if (k.startsWith('SUNSHINEX_')) envSnap.set(k, process.env[k]!);
+/** /settings 系用例环境隔离(在 withDaemon 惯例上增设全局配置面;G8c T2/T3 两 describe 共用):
+ *  - HOME/USERPROFILE 重定向 fakeHome:全局 settings/mcp 面不触碰真实用户家
+ *  - SUNSHINEX_* 槽全量快照→清空→复原:用例内 applySettings 自填与 PUT reload 都写槽,结束必须回到
+ *    进入前态(进入时在场者复原值、新增者删除、用例中被删的既有槽回植)
+ *  - 自填集结束清空(resetSelfFilledSlots):用例登记的自填槽不复串后续用例的来源判定 */
+async function withSettingsDaemon(fn: (ctx: { daemon: GuiDaemon; base: string; tmp: string; home: string }) => Promise<void>): Promise<void> {
+  const tmp = tmpdir('sunshinex-settings-');
+  const home = path.join(tmp, 'home');
+  fs.mkdirSync(path.join(home, '.sunshinex'), { recursive: true });
+  const prev = { data: process.env.SUNSHINEX_DATA_DIR, home: process.env.HOME, userProfile: process.env.USERPROFILE };
+  const envSnap = new Map<string, string>();
+  for (const k of Object.keys(process.env)) if (k.startsWith('SUNSHINEX_')) envSnap.set(k, process.env[k]!);
+  try {
+    // 清空 SUNSHINEX_* 面(含 run-tests.js 预载的 DATA_DIR 等)再钉本用例值:来源判定不被外部环境染
+    for (const k of [...envSnap.keys()]) delete process.env[k];
+    process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const s = await daemon.start({ port: 0, token: 'test-token' });
     try {
-      // 清空 SUNSHINEX_* 面(含 run-tests.js 预载的 DATA_DIR 等)再钉本用例值:来源判定不被外部环境染
-      for (const k of [...envSnap.keys()]) delete process.env[k];
-      process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
-      process.env.HOME = home;
-      process.env.USERPROFILE = home;
-      const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
-      const s = await daemon.start({ port: 0, token: 'test-token' });
-      try {
-        await fn({ daemon, base: `http://127.0.0.1:${s.port}`, tmp, home });
-      } finally {
-        await s.close();
-      }
+      await fn({ daemon, base: `http://127.0.0.1:${s.port}`, tmp, home });
     } finally {
-      for (const k of Object.keys(process.env)) {
-        if (!k.startsWith('SUNSHINEX_')) continue;
-        if (envSnap.has(k)) process.env[k] = envSnap.get(k)!;
-        else delete process.env[k];
-      }
-      for (const [k, v] of envSnap) if (process.env[k] === undefined) process.env[k] = v;
-      resetSelfFilledSlots();
-      if (prev.data === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev.data;
-      if (prev.home === undefined) delete process.env.HOME; else process.env.HOME = prev.home;
-      if (prev.userProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prev.userProfile;
-      rmTmp(tmp);
+      await s.close();
     }
+  } finally {
+    for (const k of Object.keys(process.env)) {
+      if (!k.startsWith('SUNSHINEX_')) continue;
+      if (envSnap.has(k)) process.env[k] = envSnap.get(k)!;
+      else delete process.env[k];
+    }
+    for (const [k, v] of envSnap) if (process.env[k] === undefined) process.env[k] = v;
+    resetSelfFilledSlots();
+    if (prev.data === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev.data;
+    if (prev.home === undefined) delete process.env.HOME; else process.env.HOME = prev.home;
+    if (prev.userProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prev.userProfile;
+    rmTmp(tmp);
   }
+}
 
+describe('G8c T2 /settings 端点', () => {
   test('⑬ GET 无 root:真导出 env+envOverride / global / default 三态;键序=SEMANTIC_KEYS;无 token 401', async () => {
     await withSettingsDaemon(async ({ base, home }) => {
       const writeGlobal = (json: unknown): void =>
@@ -874,6 +874,217 @@ describe('G8c T2 /settings 端点', () => {
       assert.equal(r.status, 409, '文件现状挡结构化改写(与注释同面)');
       assert.ok(((await r.json()) as { error: string }).error.includes('not valid JSON'), '错误指名畸形 JSON');
       assert.equal(fs.readFileSync(file, 'utf8'), raw, '409 面零盘上副作用');
+    });
+  });
+});
+
+// ---------- G8c T3:/settings/raw 双文件端点(settings.json+mcp.json 原文编辑+服务端验证拒存+原子写) ----------
+
+describe('G8c T3 /settings/raw 双文件端点', () => {
+  test('㉑ GET 双 scope×双文件:原文逐字复读(JSONC 注释在场);缺文件 {content:null};scope=global 忽略 root', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const projSettings = '{\n  // 项目注释\n  "model": "pm"\n}\n';
+      const projMcp = '{"mcpServers":{"a":{"command":"node"}}}\n';
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), projSettings, 'utf8');
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'mcp.json'), projMcp, 'utf8');
+      const raw = async (q: string): Promise<Response> => fetch(`${base}/settings/raw?${q}`, { headers: AUTH });
+
+      // 全局双文件缺场(home/.sunshinex 在场但无文件)→ content null
+      const gs = await raw('scope=global&file=settings');
+      assert.equal(gs.status, 200, 'GET 全局 settings 应 200');
+      assert.deepEqual(await gs.json(), { content: null }, '全局 settings 缺文件 → {content:null}');
+      const gm = await raw('scope=global&file=mcp');
+      assert.equal(gm.status, 200);
+      assert.deepEqual(await gm.json(), { content: null }, '全局 mcp 缺文件 → {content:null}');
+
+      // 项目双文件往返:原文逐字(注释/缩进/尾随换行保真)
+      const ps = await raw(`scope=project&file=settings&root=${encodeURIComponent(proj)}`);
+      assert.equal(ps.status, 200);
+      assert.deepEqual(await ps.json(), { content: projSettings }, '项目 settings 原文逐字(JSONC 注释在场)');
+      const pm = await raw(`scope=project&file=mcp&root=${encodeURIComponent(proj)}`);
+      assert.equal(pm.status, 200);
+      assert.deepEqual(await pm.json(), { content: projMcp }, '项目 mcp 原文逐字');
+
+      // scope=global 恒忽略 root:带项目 root 仍定位全局(缺文件 null,不受项目文件影响)
+      const gIgn = await raw(`scope=global&file=settings&root=${encodeURIComponent(proj)}`);
+      assert.deepEqual(await gIgn.json(), { content: null }, 'scope=global 忽略 root(仍定位全局)');
+
+      // 全局 mcp 落盘后回读逐字
+      const globalMcp = '{"mcpServers":{"g":{"command":"node"}}}\n';
+      fs.writeFileSync(path.join(home, '.sunshinex', 'mcp.json'), globalMcp, 'utf8');
+      const gm2 = await raw('scope=global&file=mcp');
+      assert.deepEqual(await gm2.json(), { content: globalMcp }, '全局 mcp 原文逐字');
+    });
+  });
+
+  test('㉒ PUT settings 畸形 JSONC→400 带 parseSettingsFile 原文 message(行号在场);拒存零副作用+tmp 清理', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const put = async (body: unknown): Promise<Response> =>
+        fetch(`${base}/settings/raw`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) });
+
+      // 缺场文件面:畸形 JSONC 拒存(文件不得被创建)。第四行缺逗号——注释在场(JSONC)+畸形,
+      // stripJsonComments 保行数后行号仍指向用户文件真实位置
+      const malformed = '{\n  // 手写注释\n  "model": "m"\n  "tier": "x"\n}\n';
+      const r = await put({ scope: 'project', root: proj, file: 'settings', content: malformed });
+      assert.equal(r.status, 400, '畸形 JSONC 拒存 → 400');
+      const body = (await r.json()) as { error: string };
+      assert.ok(body.error.includes('settings.json 解析失败'), '400 带 parseSettingsFile 原文 message');
+      assert.match(body.error, /line \d+/, '解析错误定位行号在场(指向用户文件真实位置)');
+      assert.equal(fs.existsSync(path.join(proj, '.sunshinex', 'settings.json')), false, '拒存:目标文件不被创建');
+
+      // version 非 1 拒存(装载面 fail-fast 同口径)
+      const v2 = await put({ scope: 'project', root: proj, file: 'settings', content: '{"version": 2}' });
+      assert.equal(v2.status, 400, 'version 非 1 → 400');
+
+      // 既有文件面:拒存不动原文 + 验证失败的 tmp 不残留
+      const file = path.join(proj, '.sunshinex', 'settings.json');
+      const original = '{\n  "model": "keep"\n}\n';
+      fs.writeFileSync(file, original, 'utf8');
+      const r2 = await put({ scope: 'project', root: proj, file: 'settings', content: '{ bad' });
+      assert.equal(r2.status, 400);
+      assert.equal(fs.readFileSync(file, 'utf8'), original, '400 面零盘上副作用');
+      assert.equal(
+        fs.readdirSync(path.join(proj, '.sunshinex')).filter((f) => f.includes('.tmp-')).length,
+        0,
+        '验证失败的 tmp 已清理,无残片',
+      );
+    });
+  });
+
+  test('㉓ PUT mcp 畸形→400:非法 JSON/根非对象/mcpServers 非对象/注释(装载面严格 JSON);盘零副作用', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const file = path.join(proj, '.sunshinex', 'mcp.json');
+      const original = '{"mcpServers":{"keep":{"command":"node"}}}\n';
+      fs.writeFileSync(file, original, 'utf8');
+      const put = async (content: unknown): Promise<Response> =>
+        fetch(`${base}/settings/raw`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ scope: 'project', root: proj, file: 'mcp', content }) });
+
+      const badJson = await put('{ not json');
+      assert.equal(badJson.status, 400, '非法 JSON → 400');
+      const e1 = (await badJson.json()) as { error: string };
+      assert.ok(e1.error.includes('mcp.json 解析失败'), '错误指名 mcp 解析失败');
+      assert.match(e1.error, /(line|position) \d+/, '原文解析 reason 在场');
+
+      const badRoot = await put('[1, 2]');
+      assert.equal(badRoot.status, 400, '根数组 → 400');
+      assert.ok(((await badRoot.json()) as { error: string }).error.includes('根必须是 JSON 对象'), '错误指名根对象要求');
+
+      const badServers = await put('{"mcpServers": []}');
+      assert.equal(badServers.status, 400, 'mcpServers 数组 → 400(装载面此形态静默读空,编辑面显式拒)');
+
+      // 注释:装载面(parseMcpJsonFile)严格 JSON——注释文件会被静默读空,验证口径=装载口径,拒存
+      // (与 settings JSONC 面相异:settings 装载面本身容忍注释)
+      const commented = await put('{\n  // 注释\n  "mcpServers": {}\n}\n');
+      assert.equal(commented.status, 400, 'mcp 面不容忍注释(装载口径使然)');
+
+      assert.equal(fs.readFileSync(file, 'utf8'), original, '400 面零盘上副作用');
+    });
+  });
+
+  test('㉔ 合法 PUT 写盘+GET 复读逐字一致(JSONC 注释保真);.sunshinex 目录缺场自动建', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj'); // .sunshinex 故意不预建:验证 PUT 自动 mkdir
+      const rawSettings = '{\n  // 保持注释\n  "model": "raw-model",\n  "env": { "SUNSHINEX_API_KEY": "k" }\n}\n';
+      const rawMcp = '{"mcpServers":{"srv":{"command":"node","args":["--flag"]}}}\n';
+      const put = (scope: string, file: string, content: string, root?: string): Promise<Response> =>
+        fetch(`${base}/settings/raw`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ scope, file, content, ...(root !== undefined ? { root } : {}) }) });
+
+      const rs = await put('project', 'settings', rawSettings, proj);
+      assert.equal(rs.status, 200, '合法 JSONC 写盘应 200(.sunshinex 自动建)');
+      assert.deepEqual(await rs.json(), { ok: true });
+      const rm = await put('project', 'mcp', rawMcp, proj);
+      assert.equal(rm.status, 200);
+      assert.deepEqual(await rm.json(), { ok: true });
+
+      const get = async (q: string): Promise<{ content: string | null }> =>
+        (await (await fetch(`${base}/settings/raw?${q}`, { headers: AUTH })).json()) as { content: string | null };
+      assert.deepEqual(await get(`scope=project&file=settings&root=${encodeURIComponent(proj)}`), { content: rawSettings }, '写后复读逐字一致(注释/缩进/尾随换行保真)');
+      assert.deepEqual(await get(`scope=project&file=mcp&root=${encodeURIComponent(proj)}`), { content: rawMcp }, 'mcp 写后复读逐字一致');
+      assert.equal(fs.readFileSync(path.join(proj, '.sunshinex', 'settings.json'), 'utf8'), rawSettings, '盘上字节=PUT 原文');
+      assert.equal(fs.readFileSync(path.join(proj, '.sunshinex', 'mcp.json'), 'utf8'), rawMcp, '盘上字节=PUT 原文');
+    });
+  });
+
+  test('㉕ scope=global 落 userConfigDir:双文件写 <home>/.sunshinex 下;body root 不改定位不产目录', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const put = async (body: unknown): Promise<Response> =>
+        fetch(`${base}/settings/raw`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) });
+      const gSettings = '{"tier": "global-tier"}\n';
+      const gMcp = '{"mcpServers":{"g":{"command":"node"}}}\n';
+
+      const r1 = await put({ scope: 'global', file: 'settings', content: gSettings });
+      assert.equal(r1.status, 200, 'global settings 写盘应 200(无 root:只写盘)');
+      const decoy = path.join(tmp, 'who-cares');
+      const r2 = await put({ scope: 'global', file: 'mcp', content: gMcp, root: decoy });
+      assert.equal(r2.status, 200);
+      assert.equal(fs.readFileSync(path.join(home, '.sunshinex', 'settings.json'), 'utf8'), gSettings, 'global settings 落 <home>/.sunshinex/settings.json(userConfigDir)');
+      assert.equal(fs.readFileSync(path.join(home, '.sunshinex', 'mcp.json'), 'utf8'), gMcp, 'global mcp 落 <home>/.sunshinex/mcp.json(root 不改定位)');
+      assert.equal(fs.existsSync(decoy), false, 'root 被忽略:不产生目录副作用');
+    });
+  });
+
+  test('㉖ 未知 scope/file→400(GET/PUT);scope=project 缺 root→400(GET/PUT);content 非 string→400', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      const raw = async (q: string): Promise<Response> => fetch(`${base}/settings/raw?${q}`, { headers: AUTH });
+      const put = async (body: unknown): Promise<Response> =>
+        fetch(`${base}/settings/raw`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) });
+
+      const gs = await raw('scope=team&file=settings');
+      assert.equal(gs.status, 400, 'GET 未知 scope → 400');
+      const gf = await raw(`scope=project&file=agents&root=${encodeURIComponent(proj)}`);
+      assert.equal(gf.status, 400, 'GET 未知 file → 400');
+      const gNoRoot = await raw('scope=project&file=settings');
+      assert.equal(gNoRoot.status, 400, 'GET scope=project 缺 root → 400');
+
+      const ps = await put({ scope: 'team', file: 'settings', content: '{}' });
+      assert.equal(ps.status, 400, 'PUT 未知 scope → 400');
+      const pf = await put({ scope: 'project', root: proj, file: 'agents', content: '{}' });
+      assert.equal(pf.status, 400, 'PUT 未知 file → 400');
+      const pNoRoot = await put({ scope: 'project', file: 'settings', content: '{}' });
+      assert.equal(pNoRoot.status, 400, 'PUT scope=project 缺 root → 400');
+      const badContent = await put({ scope: 'project', root: proj, file: 'settings', content: 123 });
+      assert.equal(badContent.status, 400, 'content 非 string → 400');
+    });
+  });
+
+  test('㉗ PUT raw settings reload:project→自填槽即新值;global 带 root→链重载入槽;global 无 root→只写盘槽不动;mcp 不触发', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({ contextWindow: 111111 }), 'utf8');
+      applySettings(loadProjectSettings(proj));
+      applySettings(loadGlobalSettings()); // 无全局文件——no-op
+      assert.equal(process.env.SUNSHINEX_CONTEXT_WINDOW, '111111', '链装载自填旧值');
+
+      const put = async (body: unknown): Promise<Response> =>
+        fetch(`${base}/settings/raw`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) });
+
+      // project 面:PUT raw→清自填槽重载链,槽即新值(沿 T2 ⑱ 手法)
+      const r = await put({ scope: 'project', root: proj, file: 'settings', content: '{\n  // 注释保真\n  "contextWindow": 333333\n}\n' });
+      assert.equal(r.status, 200);
+      assert.equal(process.env.SUNSHINEX_CONTEXT_WINDOW, '333333', 'PUT raw project 后链重载,槽即新值');
+
+      // global 带 root:reload 以该 root 跑链(全局链随跑),全局值入槽
+      const r2 = await put({ scope: 'global', file: 'settings', content: '{"language": "gl-lang"}\n', root: proj });
+      assert.equal(r2.status, 200);
+      assert.equal(process.env.SUNSHINEX_LANGUAGE, 'gl-lang', 'global 写带 root→链重载跑,全局值入槽');
+
+      // global 无 root:只写盘不 reload(裁定:恒不凭空触发项目链 reload)——槽不动
+      const r3 = await put({ scope: 'global', file: 'settings', content: '{"language": "gl-two"}\n' });
+      assert.equal(r3.status, 200);
+      assert.equal(process.env.SUNSHINEX_LANGUAGE, 'gl-lang', 'global 无 root 只写盘:env 槽不动');
+
+      // mcp 面:PUT 不触发 settings 链 reload(mcp 不在链内)——写盘即回
+      const r4 = await put({ scope: 'global', file: 'mcp', content: '{"mcpServers":{}}\n' });
+      assert.equal(r4.status, 200);
+      assert.equal(process.env.SUNSHINEX_CONTEXT_WINDOW, '333333', 'mcp 写盘不动 settings 槽');
     });
   });
 });

@@ -14,6 +14,7 @@ import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
+import { userConfigDir } from '../config/env';
 import {
   SEMANTIC_KEYS,
   RETIRED_KEYS,
@@ -289,6 +290,26 @@ function globalProvidersOnly(): { choices: ModelChoice[]; warnings: string[] } {
     return parseProvidersSpec(doc === null ? undefined : doc.providers, filePath);
   } catch {
     return parseProvidersSpec(undefined, filePath); // 畸形按缺级（装载链职责，此处只降级视图）
+  }
+}
+
+/** PUT /settings/raw 的 mcp 原文验证（G8c T3）——验证口径与装载口径一字不差：严格 JSON.parse
+ *  （parseMcpJsonFile 读盘即此口径：注释与 BOM 均不容忍——注释文件会被装载面静默读空成「零服务器」，
+ *  放行比报错更糟）+ 根对象 + mcpServers 在场须对象（装载面同门：非对象形态静默回 []，原文编辑面
+ *  显式拒）。畸形 throw，message 携带目标路径与原文 reason（→400 面）。 */
+function validateMcpRawContent(content: string, target: string): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (err) {
+    throw new Error(`mcp.json 解析失败（严格 JSON；装载面不容忍注释与 BOM）: ${target}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`mcp.json 根必须是 JSON 对象: ${target}`);
+  }
+  const servers = (parsed as Record<string, unknown>)['mcpServers'];
+  if (servers !== undefined && (typeof servers !== 'object' || servers === null || Array.isArray(servers))) {
+    throw new Error(`mcp.json "mcpServers" 必须是 JSON 对象: ${target}`);
   }
 }
 
@@ -758,6 +779,10 @@ export class GuiDaemon {
     // （含注释 409 引流 raw 编辑面；成功后清自填槽重载链，新会话即刻生效）
     { method: 'GET', path: '/settings', auth: true, run: async (req, res) => this.handleSettingsGet(req, res) },
     { method: 'PUT', path: '/settings', auth: true, run: (req, res) => this.handleSettingsPut(req, res) },
+    // G8c T3 raw 双文件面：settings.json/mcp.json 原文编辑（JSONC 注释保真）——GET 原文复读 + PUT
+    // 服务端验证拒存（验证口径=装载口径）+ 原子写；T2 结构化改写 409（含注释/畸形）的引流目标端点
+    { method: 'GET', path: '/settings/raw', auth: true, run: async (req, res) => this.handleSettingsRawGet(req, res) },
+    { method: 'PUT', path: '/settings/raw', auth: true, run: (req, res) => this.handleSettingsRawPut(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -1596,6 +1621,121 @@ export class GuiDaemon {
         console.error(`[serve] settings reload failed (${filePath}):`, err instanceof Error ? err.message : String(err));
       }
     }
+  }
+
+  /** raw 端点目标文件定位（G8c T3）：scope×file 四象限——file=settings 走 loadProjectSettings/
+   *  loadGlobalSettings 既有单点；file=mcp 走两级装载同款路径（项目 `<root>/.sunshinex/mcp.json`、
+   *  全局 `<userConfigDir>/mcp.json`——与 loadMcpServers 同源）。scope=global 恒忽略 root（定位面；
+   *  root 在 PUT 里另有 reload 锚用途）。调用方保证 scope=project 时 root 非空 */
+  private rawSettingsFile(scope: 'project' | 'global', file: 'settings' | 'mcp', root: string): string {
+    if (scope === 'global') return file === 'settings' ? loadGlobalSettings() : path.join(userConfigDir(), 'mcp.json');
+    return file === 'settings' ? loadProjectSettings(root) : path.join(root, '.sunshinex', 'mcp.json');
+  }
+
+  /** GET /settings/raw?scope=project|global&root=<abs>&file=settings|mcp（G8c T3，raw 编辑面数据源）：
+   *  原文（含注释/缩进/尾随换行）逐字复读——JSONC 保真是 raw 面的存在理由（结构化改写会丢注释）。
+   *  缺文件 → {content:null}（编辑器空态判据）；scope=project 必带 root（缺 400——无 root 无从定位
+   *  项目文件），scope=global 忽略 root（定位恒 userConfigDir）。未知 scope/file 400。 */
+  private handleSettingsRawGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const scope = url.searchParams.get('scope');
+    const file = url.searchParams.get('file');
+    if (scope !== 'project' && scope !== 'global') {
+      this.send(res, 400, { error: 'scope must be "project" or "global"' });
+      return;
+    }
+    if (file !== 'settings' && file !== 'mcp') {
+      this.send(res, 400, { error: 'file must be "settings" or "mcp"' });
+      return;
+    }
+    const rootParam = url.searchParams.get('root');
+    if (scope === 'project' && (rootParam === null || rootParam.length === 0)) {
+      this.send(res, 400, { error: 'root query param required for scope=project' });
+      return;
+    }
+    const target = this.rawSettingsFile(scope, file, rootParam ?? '');
+    let content: string | null = null;
+    if (fs.existsSync(target)) content = fs.readFileSync(target, 'utf8');
+    this.send(res, 200, { content });
+  }
+
+  /** PUT /settings/raw {scope, root?, file, content}（G8c T3）：服务端验证拒存 + 原子写。
+   *  - 验证口径=装载口径：file=settings 经 parseSettingsFile 验（在 tmp 上跑真解析器——验证的就是
+   *    将要落盘的字节；畸形 JSONC/根非对象/version 非 1 → 400 带 parseSettingsFile 原文 message，
+   *    stripJsonComments 保行数故行号指向用户文件真实位置）；file=mcp 经 validateMcpRawContent
+   *    （严格 JSON+根对象+mcpServers 形态——装载面 parseMcpJsonFile 同口径）。
+   *  - 原子写：同目录 tmp + rename（T2 结构化写同款）——非法内容永不到达目标路径（拒存），
+   *    验证失败清 tmp。
+   *  - scope=project 必带 root（缺 400）；scope=global 忽略 root 定位、但 root 在 body 时作为
+   *    reload 锚（file=settings 成功后 reloadSettingsChain(root)——global 链随跑；root 缺省只写盘
+   *    不 reload，stderr 提示——链重载需项目锚，无锚硬 reload 等于拿假 root 跑项目级）。
+   *  - file=mcp 恒不触发 reload（mcp 不在 settings 链）。IO 失败（写/换名）不经本地捕获——沿
+   *    dispatch 500 收口（T2 同惯例）。 */
+  private async handleSettingsRawPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const body = parsed.body as { scope?: unknown; root?: unknown; file?: unknown; content?: unknown } | null;
+    const scope = body?.scope;
+    if (scope !== 'project' && scope !== 'global') {
+      this.send(res, 400, { error: 'scope must be "project" or "global"' });
+      return;
+    }
+    const file = body?.file;
+    if (file !== 'settings' && file !== 'mcp') {
+      this.send(res, 400, { error: 'file must be "settings" or "mcp"' });
+      return;
+    }
+    const content = body?.content;
+    if (typeof content !== 'string') {
+      this.send(res, 400, { error: 'content must be a string' });
+      return;
+    }
+    const rootRaw = body?.root;
+    let root: string | undefined;
+    if (scope === 'project') {
+      if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
+        this.send(res, 400, { error: 'root required for scope=project' });
+        return;
+      }
+      root = path.resolve(rootRaw);
+    } else if (typeof rootRaw === 'string' && rootRaw.length > 0) {
+      root = path.resolve(rootRaw); // global：定位面忽略 root（rawSettingsFile），此处仅留作 reload 锚
+    }
+    const target = this.rawSettingsFile(scope, file, root ?? '');
+    // 原子写+验证拒存：先落同目录 tmp → 验证 tmp（字节面=目标面）→ rename 原子替换；目录缺则递归建
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmpFile, content, 'utf8');
+    try {
+      if (file === 'settings') parseSettingsFile(tmpFile); // 真解析器单点：throw → 400 原文 message
+      else validateMcpRawContent(content, target);
+    } catch (err) {
+      try {
+        fs.unlinkSync(tmpFile); // 拒存清 tmp：目标文件零触碰，不留残片
+      } catch {
+        // tmp 已不在场（写即败等）——无需清
+      }
+      this.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    try {
+      fs.renameSync(tmpFile, target);
+    } catch (err) {
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {
+        // 同上
+      }
+      throw err; // IO 面 → dispatch 500 收口
+    }
+    if (file === 'settings') {
+      if (root !== undefined) this.reloadSettingsChain(root);
+      else console.error('[serve] raw global settings written without reload — pass root in the request body to reload the settings chain');
+    }
+    this.send(res, 200, { ok: true });
   }
 
   private send(res: http.ServerResponse, status: number, body: object): void {
