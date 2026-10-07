@@ -512,3 +512,74 @@ test('⑪ pty 鉴权与未知 id：错 token 升级拒 401；未知 ptyId 升级
     }
   });
 });
+
+// ---------- G8b T4:tree 端点(GET /session/:id/tree 单层目录列举) ----------
+
+test('⑫ tree:单层列举/忽略集/上限截断/判界 403/根缺省/404/400', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base, tmp } = ctx;
+    // 会话 root(独立于 tmp 根:data 目录/逃逸靶不混入 root 列举):dirA/(fileA.ts+sub/)、fileB.ts、
+    // 忽略集四目录(.git/node_modules/dist/dist-gui——造在场以证「在场也不枚举」)
+    const root = path.join(tmp, 'root');
+    fs.mkdirSync(path.join(root, 'dirA', 'sub'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'dirA', 'fileA.ts'), 'x', 'utf8');
+    fs.writeFileSync(path.join(root, 'fileB.ts'), 'x', 'utf8');
+    for (const ign of ['.git', 'node_modules', 'dist', 'dist-gui']) fs.mkdirSync(path.join(root, ign));
+    const sid = await ctx.newSession(root);
+    const tree = async (q: string | null): Promise<Response> =>
+      fetch(q === null ? `${base}/session/${sid}/tree` : `${base}/session/${sid}/tree?path=${encodeURIComponent(q)}`, { headers: AUTH });
+
+    // —— 根缺省(无 path 参数)与 ?path=(空串)同义=会话 root:单层(dirA 内 sub/fileA.ts 不在)、
+    //    忽略集不枚举、目录先序字母序、无 truncated 字段 ——
+    for (const r of [await tree(null), await tree('')]) {
+      assert.equal(r.status, 200, '根缺省/空 path 应 200');
+      assert.deepEqual(await r.json(), { entries: [{ name: 'dirA', kind: 'dir' }, { name: 'fileB.ts', kind: 'file' }] }, '目录先序字母序,忽略集与深层不枚举');
+    }
+
+    // —— 子目录单层:dirA 内 [{sub,dir},{fileA.ts,file}]——目录段先+同段字母序 ——
+    const sub = await tree('dirA');
+    assert.equal(sub.status, 200);
+    assert.deepEqual(await sub.json(), { entries: [{ name: 'sub', kind: 'dir' }, { name: 'fileA.ts', kind: 'file' }] });
+
+    // —— 上限:501 项目录 → 截断恰 500 + truncated:true(且截断保序:首尾可对位) ——
+    const many = path.join(root, 'many');
+    fs.mkdirSync(many);
+    for (let i = 0; i < 501; i++) fs.writeFileSync(path.join(many, `f${String(i).padStart(3, '0')}.ts`), 'x', 'utf8');
+    const rMany = await tree('many');
+    assert.equal(rMany.status, 200);
+    const bMany = (await rMany.json()) as { entries: Array<{ name: string; kind: string }>; truncated?: boolean };
+    assert.equal(bMany.entries.length, 500, '501 项截断至 500');
+    assert.equal(bMany.truncated, true, '超限带 truncated:true');
+    assert.equal(bMany.entries[0].name, 'f000.ts', '截断保序:首项 f000.ts');
+    assert.equal(bMany.entries[499].name, 'f499.ts', '截断保序:末项 f499.ts(f500.ts 被裁)');
+
+    // —— 判界 403:../ 逃逸出会话 root(逃逸靶真实在场——判界先于存在性) ——
+    fs.mkdirSync(path.join(tmp, 'outside'));
+    const r403 = await tree('../outside');
+    assert.equal(r403.status, 403);
+    assert.deepEqual(await r403.json(), { error: 'path outside trusted roots' });
+
+    // —— 不存在 404 / 非目录 400 ——
+    const r404 = await tree('nope');
+    assert.equal(r404.status, 404);
+    assert.deepEqual(await r404.json(), { error: 'not found' });
+    const r400 = await tree('fileB.ts');
+    assert.equal(r400.status, 400);
+    assert.deepEqual(await r400.json(), { error: 'not a directory' });
+
+    // —— 链接条目按 stat 跟随实态分型(win32 junction 恒可造;无特权环境造链失败即跳过本段) ——
+    const links = path.join(root, 'links');
+    fs.mkdirSync(links);
+    try {
+      const toDir = path.join(links, 'toDir');
+      if (process.platform === 'win32') fs.symlinkSync(path.join(root, 'dirA'), toDir, 'junction');
+      else fs.symlinkSync(path.join(root, 'dirA'), toDir, 'dir');
+      fs.symlinkSync(path.join(root, 'fileB.ts'), path.join(links, 'toFile'), 'file');
+      const rLinks = await tree('links');
+      assert.equal(rLinks.status, 200);
+      assert.deepEqual(await rLinks.json(), { entries: [{ name: 'toDir', kind: 'dir' }, { name: 'toFile', kind: 'file' }] }, '链接按跟随实态:目录链接=dir,文件链接=file');
+    } catch {
+      // symlink 特权缺场(非 dev-mode win32 等):链接面留实现注释口径,不阻塞
+    }
+  });
+});

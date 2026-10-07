@@ -114,6 +114,12 @@ const MAX_PREVIEW_BYTES = 512 * 1024;
 /** 二进制探测窗（首 8KB）：UTF-8 文本不含 \0，命中即按二进制拒（415）——预览面只服务文本 */
 const BINARY_PROBE_BYTES = 8 * 1024;
 
+/** tree 忽略名集（G8b T4 /tree 端点）：VCS 内脏/依赖安装物/构建产物——GUI 树的纯噪音，恒不枚举 */
+const IGNORED = new Set(['.git', 'node_modules', 'dist', 'dist-gui']);
+
+/** tree 单层上限（G8b T4）：500 条；超限截断 + truncated:true（GUI 呈现「已截断」而非无界载荷） */
+const TREE_MAX_ENTRIES = 500;
+
 /** WS 保活节拍：30s 一 ping；pong 静默超 60s 即 terminate（close 事件统一清理） */
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
@@ -645,6 +651,8 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
     { method: 'GET', path: '/session/:id/diff', auth: true, run: async (req, res, p) => this.handleDiff(req, res, p.id) },
+    // G8b T4 tree 面：会话 root 内单层目录列举（Files 页树消费；忽略集/500 上限/判界语义见 handleTree）
+    { method: 'GET', path: '/session/:id/tree', auth: true, run: async (req, res, p) => this.handleTree(req, res, p.id) },
     // G5 看板服务面：lead 审批映射（gated 审批解锁 / in-review 关单——GUI Board 页消费）
     { method: 'POST', path: '/session/:id/board/review', auth: true, run: (req, res, p) => this.handleBoardReview(req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
@@ -1086,6 +1094,72 @@ export class GuiDaemon {
       newContent: read.content,
       ...(truncated ? { truncated: true } : {}),
     });
+  }
+
+  /** GET /session/:id/tree?path=<rel>（G8b T4 目录树面，Files 页消费）：path 缺省 ''=会话 root →
+   *  判界样板同 /file（realPathOf 归一 ?? 字面兜底 → insideTrustedRoots，越界 403 恒定文案）→
+   *  statSync 跟随后实态（不存在 404 / 非目录 400）→ readdirSync withFileTypes 单层列举：IGNORED
+   *  名不枚举；symlink/junction 条目按跟随实态分型（dirent 对链接按链接本体分类——指向目录的
+   *  链接 isDirectory()=false，win32 junction 同理，须 statSync 校正；断链/竞态消失的条目跳过）；
+   *  排序=目录段先于文件段、同段 name 码点序；超 TREE_MAX_ENTRIES 截断+truncated:true →
+   *  200 {entries:[{name,kind:'dir'|'file'}],truncated?} */
+  private handleTree(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const rel = url.searchParams.get('path') ?? ''; // 缺 path 与 ?path= 空串同义=会话 root
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    const abs = path.resolve(session.root, rel);
+    // 判界基准同 /file：目标经 realPathOf 归一（存在段 realpath 防符号链接逃逸）；归一不可得回退
+    // 字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）
+    const real = realPathOf(abs) ?? abs;
+    if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
+      this.send(res, 403, { error: 'path outside trusted roots' });
+      return;
+    }
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(abs); // 跟随后实态：指向目录的链接本身就是目录（root 即此口径进入）
+    } catch {
+      this.send(res, 404, { error: 'not found' });
+      return;
+    }
+    if (!st.isDirectory()) {
+      this.send(res, 400, { error: 'not a directory' });
+      return;
+    }
+    let dirents: fs.Dirent[];
+    try {
+      dirents = fs.readdirSync(abs, { withFileTypes: true });
+    } catch {
+      this.send(res, 404, { error: 'not found' }); // stat 在场但列举失败（权限面/竞态删除）：fail-closed 归 404
+      return;
+    }
+    const entries: Array<{ name: string; kind: 'dir' | 'file' }> = [];
+    for (const d of dirents) {
+      if (IGNORED.has(d.name)) continue;
+      // 分型：真实目录/文件直取 dirent；链接（及其它非常规实体——socket/fifo）dirent 按链接本体
+      // 分类（指向目录的链接 isDirectory()=false），statSync 跟随实态校正——断链/竞态消失/跟随落空
+      // 既非 dir 又非 file 的条目不枚举
+      let kind: 'dir' | 'file' | undefined = d.isDirectory() ? 'dir' : d.isFile() ? 'file' : undefined;
+      if (kind === undefined) {
+        try {
+          const follow = fs.statSync(path.join(abs, d.name));
+          kind = follow.isDirectory() ? 'dir' : follow.isFile() ? 'file' : undefined;
+        } catch {
+          kind = undefined;
+        }
+      }
+      if (kind !== undefined) entries.push({ name: d.name, kind });
+    }
+    // 排序口径：目录段先于文件段，同段内 name 码点序（显式 </> 而非 localeCompare——后者随区域/ICU
+    // 漂移，树呈现需跨机确定性；混合大小写段的码点序稳定可预测，目录先序在段级优先）
+    entries.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    });
+    const truncated = entries.length > TREE_MAX_ENTRIES;
+    if (truncated) entries.length = TREE_MAX_ENTRIES; // 截断保序：裁尾，前 500 条维持排序面
+    this.send(res, 200, { entries, ...(truncated ? { truncated: true } : {}) });
   }
 
   /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）：body 校验（taskId 非空
