@@ -57,8 +57,8 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
   it('cycleTab:±1 环回;单标签不动', () => {
     let s = ensureSession({}, 's1', probe);
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, probe);
-    expect(cycleTab(s, 's1', 1).s1.activeUid).toBe('tasks:');   // file→tasks(环回)
-    expect(cycleTab(s, 's1', -1).s1.activeUid).toBe('file:a.ts');
+    expect(cycleTab(s, 's1', 1).s1.activeUid).toBe('tasks:');            // file(末位)→tasks 环回
+    expect(cycleTab(cycleTab(s, 's1', 1), 's1', -1).s1.activeUid).toBe('file:a.ts'); // 链式:去而复返
   });
 
   it('标签态每会话独立', () => {

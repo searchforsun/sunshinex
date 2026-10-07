@@ -7,17 +7,8 @@
  * uid 规约:`type + ':' + resolveKey(type, params)`(无参标签 key='' → uid='tasks:')。
  * 判重/单例口径由 SingletonProbe 注入(T3 registry 提供真实现):resolveKey 相同 =
  * 同目标(重开=聚焦既有);isSingleton(type) = 该类型每会话单份(tasks/agents/directory)。
- *
- * ⚠ 口径裁定(简报测试 #6 第二断言,论证全文见
- * .superpowers/sdd/2026-10-07-g8a-gui-shell-tabs/task-2-report.md):
- * `cycleTab(s, 's1', -1)` 在 [tasks:, file:a.ts]@active=file:a.ts 上期望「留在
- * file:a.ts」——二元素列表下 ±1 环回数学上必落同一邻位((i+1)≡(i-1) mod 2),
- * 纯函数不存在满足「环回」口径的解;而写透共享态令断言链成立的变体又被 StrictMode
- * 双调 updater 纪律否决。故本模块取唯一可绿的纯函数口径:**新标签前插(最新在首,
- * 打开的标签横排/spec §1 未约束插入侧)+ 切换 ±1 夹紧(不环回;空/单标签不动)**,
- * 保 Ctrl+Alt+→/← 与视觉行进方向一致(spec §1「Ctrl+Alt+←/→ 切换标签」)。
- * 若上游把该断言修为链式(先 +1 得 tasks: 再对其 -1 环回 file:a.ts),应回改两处:
- * openTab 改追加(`[...cur.tabs, tab]`)、cycleTab 改环回(`(idx+dir+len)%len`)。
+ * 行序:openTab 追加居末(最新在最右,与标签条末端「+」钮连贯,spec §1 草图);
+ * 切换 cycleTab 活动位 ±1 环回(计划作者裁定口径,测试 #6 为链式断言)。
  */
 
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
@@ -89,9 +80,9 @@ export function ensureSession(states: TabStates, sessionId: string, registry: Si
 
 /**
  * 开标签(判重优先):① resolveKey 同 uid 的既有标签 → 仅置活动(重开同文件/同 Diff/
- * 同 URL=聚焦不重复);② 单例类型 → 既有同类型标签置活动;③ 否则新开 TabInstance
- * 前插置活动(前插裁定见模块头⚠注)。会话缺席时先落空态再开(防御:消费面恒先
- * ensureSession,此分支仅为不炸)。
+ * 同 URL=聚焦不重复);② 单例类型 → 既有同类型标签置活动;③ 否则**追加**新
+ * TabInstance 居末置活动(最新在最右,与标签条末端「+」钮连贯,spec §1)。会话缺席时
+ * 先落空态再开(防御:消费面恒先 ensureSession,此分支仅为不炸)。
  */
 export function openTab(
   states: TabStates,
@@ -109,7 +100,7 @@ export function openTab(
     if (byType !== undefined) return { ...states, [sessionId]: { ...cur, activeUid: byType.uid } };
   }
   const tab: TabInstance = { uid, type, params };
-  return { ...states, [sessionId]: { ...cur, tabs: [tab, ...cur.tabs], activeUid: uid } };
+  return { ...states, [sessionId]: { ...cur, tabs: [...cur.tabs, tab], activeUid: uid } };
 }
 
 /**
@@ -135,17 +126,15 @@ export function setActive(states: TabStates, sessionId: string, uid: string): Ta
 }
 
 /**
- * 切换标签(Ctrl+Alt+→/←):活动位 ±1 **夹紧**(边界不动;空/单标签/无活动位原引用
- * 返回)。±1 环回口径被简报测试 #6 第二断言排除(二元素环回 ±1 必落同位,模块头⚠注),
- * 修正断言后回改 `(idx + dir + len) % len` 即恢复环回。
+ * 切换标签(Ctrl+Alt+→/←):活动位 ±1 **环回**((idx+dir+len)%len——末位 +1 回首位、
+ * 首位 -1 回末位);tabs 空/单标签/无活动位不动(原引用返回)。
  */
 export function cycleTab(states: TabStates, sessionId: string, dir: 1 | -1): TabStates {
   const cur = states[sessionId];
   if (cur === undefined || cur.tabs.length < 2) return states;
   const idx = cur.tabs.findIndex((t) => t.uid === cur.activeUid);
   if (idx < 0) return states;
-  const next = Math.min(cur.tabs.length - 1, Math.max(0, idx + dir));
-  if (next === idx) return states;
+  const next = (idx + dir + cur.tabs.length) % cur.tabs.length;
   return { ...states, [sessionId]: { ...cur, activeUid: cur.tabs[next].uid } };
 }
 
