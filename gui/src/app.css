@@ -38,8 +38,9 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-tabstrip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; }
 .sx-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; color: var(--fg-1); white-space: nowrap; }
 .sx-tab:hover { background: var(--bg-2); }
-/* 活动标签 pill(U-D21 两案取一:底色案——accent 15% 混色+文字 --fg-0;未取描边案) */
-.sx-tab.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--fg-0); }
+/* 活动标签 pill:accent 15% 混色底+文字 --fg-0;G8d-T1 补(裁定③)加 accent 1px 描边——
+   混色底对 bg-2 悬停明度相近(仅色相/文字可辨),描边令活动/悬停即刻可辨(border-box 零布局移) */
+.sx-tab.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--fg-0); border: 1px solid var(--accent); }
 .sx-tab-close { display: inline-flex; padding: 0 2px; border-radius: 999px; color: var(--fg-1); }
 .sx-tab-close:hover { color: var(--fg-0); background: var(--bg-2); }
 .sx-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 8px; color: var(--fg-1); flex: none; }
@@ -57,8 +58,8 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-group-head .sx-count { color: var(--fg-1); font-size: 12px; margin-left: auto; border-radius: 999px; background: var(--bg-2); padding: 0 8px; }
 .sx-session-row { display: flex; width: 100%; align-items: center; gap: 6px; padding: 4px 12px 4px 28px; color: var(--fg-1); text-align: left; }
 .sx-session-row:hover { background: var(--bg-2); color: var(--fg-0); }
-/* G8d 简约面:去竖 accent 条标,以 bg-1(栏底)/bg-2(活动/hover)层次代(U-D21) */
-.sx-session-row.active { background: var(--bg-2); color: var(--fg-0); }
+/* G8d-T1 补(裁定①):竖 accent 条标恢复(G8a 先例回归)——悬停=bg-2 无条,活动=bg-2+条,可辨 */
+.sx-session-row.active { background: var(--bg-2); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
 .sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 8px; color: var(--fg-1); }
 .sx-menu-foot .sx-iconbtn { margin-left: auto; }
 .sx-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--fg-1); }
@@ -72,8 +73,8 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-settings-nav { flex: 1; overflow-y: auto; padding: 6px 0; list-style: none; margin: 0; }
 .sx-settings-nav-item { display: block; width: 100%; text-align: left; padding: 5px 12px; color: var(--fg-1); }
 .sx-settings-nav-item:hover { background: var(--bg-2); color: var(--fg-0); }
-/* G8d 简约面:去竖 accent 条标,以 bg 层次代(U-D21) */
-.sx-settings-nav-item.active { background: var(--bg-2); color: var(--fg-0); }
+/* G8d-T1 补(裁定①):竖 accent 条标恢复(G8c 先例回归)——活动/悬停可辨 */
+.sx-settings-nav-item.active { background: var(--bg-2); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
 
 /* 设置面板表单(主区;G8d 面板 padding 统一 12px) */
 .sx-settings-form { flex: 1; overflow-y: auto; padding: 12px; max-width: 640px; display: flex; flex-direction: column; gap: 10px; }
