@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Plus, PanelLeft, PanelRight, FileText, KanbanSquare } from 'lucide-react';
+import { X, Plus, PanelLeft, PanelRight, FileText, KanbanSquare, FolderTree } from 'lucide-react';
 import { TAB_REGISTRY, tabEntry } from './registry';
 import type { TabTypeId } from './tab-state';
 
@@ -27,6 +27,7 @@ export interface TabStripProps {
 /** 类型图标(pill/菜单共用;G8b-d 增类在此补图标) */
 const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   file: FileText,
+  directory: FolderTree,
   tasks: KanbanSquare,
 };
 
