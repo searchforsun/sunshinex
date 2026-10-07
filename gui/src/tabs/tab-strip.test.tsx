@@ -9,20 +9,27 @@ const base = {
   onToggleCollapse: vi.fn(), onCycle: vi.fn(), onCloseActive: vi.fn(),
 };
 
-describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory)', () => {
-  it('注册 file/directory/tasks/terminal;file 按 path 判重多实例,directory/tasks 单例,terminal 按 nonce 多实例', () => {
-    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'directory', 'tasks', 'terminal']);
+describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff)', () => {
+  it('注册 file/diff/directory/tasks/terminal;file 按 path、diff 按 callId 判重多实例,directory/tasks 单例,terminal 按 nonce 多实例', () => {
+    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'diff', 'directory', 'tasks', 'terminal']);
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');
     expect(file.title({ path: 'a.ts' })).toBe('a.ts');
-    const directory = TAB_REGISTRY[1]!;
+    const diff = TAB_REGISTRY[1]!;
+    expect(diff.singleton).toBe(false);
+    expect(diff.resolveKey({ callId: 'c1' })).toBe('c1');
+    expect(diff.resolveKey({})).toBe('');
+    expect(diff.title({ path: 'a.ts', callId: 'c1' })).toBe('a.ts'); // path 可读优先
+    expect(diff.title({ callId: 'c1' })).toBe('c1');
+    expect(diff.title({})).toBe('Diff');
+    const directory = TAB_REGISTRY[2]!;
     expect(directory.singleton).toBe(true);
     expect(directory.title({})).toBe('目录');
-    const tasks = TAB_REGISTRY[2]!;
+    const tasks = TAB_REGISTRY[3]!;
     expect(tasks.singleton).toBe(true);
     expect(tasks.title({})).toBe('任务');
-    const terminal = TAB_REGISTRY[3]!;
+    const terminal = TAB_REGISTRY[4]!;
     expect(terminal.singleton).toBe(false);
     expect(terminal.resolveKey({ nonce: 't1' })).toBe('t1');
     expect(terminal.resolveKey({})).toBe('');

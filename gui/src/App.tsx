@@ -42,8 +42,10 @@ import type { SessionEvent } from '../../src/types';
  * onResetSession(G3.5 交接 d 收口):会话维 reset 除 Chat 重播种外,board/delegations 投影
  * 亦清(此前仅连接级 onReset 清——会话 reset 后板投影悬挂旧任务)。
  * G8a 标签态:tabStates 每会话独立留存(backHome 不清——重开同会话标签还原,spec §1「每会话
- * 独立」);Chat write 工具 path 按钮 → onOpenFile → openTabInSession('file',{path})(判重聚焦
- * 经 tab-state);右栏 collapsed 只余折叠钮,拖宽边条 clamp 200..720(右栏在右,向左拖=变宽)。
+ * 独立」);G8d 起 Chat write 工具 path 钮主通道 onOpenDiff → openTabInSession('diff',
+ * {callId,path})(by callId 判重多实例);onOpenFile 保留为无 callId 面(种子条)的回退(file
+ * 标签仍可从目录/+菜单开);右栏 collapsed 只余折叠钮,拖宽边条 clamp 200..720(右栏在右,
+ * 向左拖=变宽)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
  */
 
@@ -388,6 +390,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
                 sinkRef={chatSinkRef}
                 onSeeded={seedFromSnapshot}
                 onOpenFile={(p) => openTabInSession('file', { path: p })}
+                onOpenDiff={(callId, path) => openTabInSession('diff', { callId, path })}
               />
             ) : (
               <div className="sx-welcome" aria-label="welcome">

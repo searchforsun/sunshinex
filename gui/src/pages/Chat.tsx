@@ -70,8 +70,13 @@ export interface ChatProps {
   sinkRef: MutableRefObject<ChatSink | null>;
   /** G5 快照落定回调(App 消费 snapshot.team 存态——Board 侧栏;可选防测试桩免配) */
   onSeeded?: (snap: SnapshotResponse) => void;
-  /** G6 write 工具 path 按钮回调(App 切 Files tab 并带 initialPath;可选防测试桩免配) */
+  /** G6 write 工具 path 按钮回调(App 切 Files tab 并带 initialPath;可选防测试桩免配)。G8d 起
+   *  降为回退通道:callId 在场的 write 条目优先走 onOpenDiff(开 diff 标签),callId 缺场(种子
+   *  条/无 callId 面)仍开文件标签预览 */
   onOpenFile?: (path: string) => void;
+  /** G8d write 条目 path 钮主通道:开 diff 标签(callId 寻址,App 接 openTabInSession('diff',
+   *  {callId,path}));可选防测试桩免配——缺场时全部回落 onOpenFile */
+  onOpenDiff?: (callId: string, path: string) => void;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -101,9 +106,10 @@ function resultOf(md: string): string {
 
 /** G6 工具条目(折叠态一行/点击展开):write 工具(name==='write',call 名判定——事件 text 即
  *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
- *  +加载标,404/失败退单列现内容——快照种子条/无 callId 面恒单列)+ path 文本按钮(onOpenFile
- *  跳 Files 预览);其他工具展开 result 摘要行。折叠行 `● verb [path] [⎿ result]`——verb 行与
- *  result 行并作一行(md 两行的折叠视图)。 */
+ *  +加载标,404/失败退单列现内容——快照种子条/无 callId 面恒单列)+ path 文本按钮(G8d 起
+ *  callId 在场优先 onOpenDiff 开 diff 标签,缺场回落 onOpenFile 文件标签预览);其他工具展开
+ *  result 摘要行。折叠行 `● verb [path] [⎿ result]`——verb 行与 result 行并作一行(md 两行
+ *  的折叠视图)。 */
 function ToolEntryView({
   entry,
   info,
@@ -111,6 +117,7 @@ function ToolEntryView({
   sessionId,
   callId,
   onOpenFile,
+  onOpenDiff,
 }: {
   entry: ChatEntry;
   info?: ToolCallInfo;
@@ -118,6 +125,7 @@ function ToolEntryView({
   sessionId: string;
   callId?: string;
   onOpenFile?: (path: string) => void;
+  onOpenDiff?: (callId: string, path: string) => void;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
@@ -156,9 +164,18 @@ function ToolEntryView({
       {expanded &&
         (isWrite && info !== undefined ? (
           <div className="tool-detail">
-            {onOpenFile !== undefined && (
-              <button type="button" className="tool-path" title="在文件标签预览" onClick={() => onOpenFile(target!)}>
-
+            {(onOpenDiff !== undefined || onOpenFile !== undefined) && (
+              // G8d:callId 在场优先开 diff 标签(双列/判重经 registry);缺场(种子条/无 callId 面)
+              // 回落 onOpenFile 文件标签预览——title 同步分流提示
+              <button
+                type="button"
+                className="tool-path"
+                title={onOpenDiff !== undefined && callId !== undefined ? '打开 diff 标签' : '在文件标签预览'}
+                onClick={() => {
+                  if (onOpenDiff !== undefined && callId !== undefined) onOpenDiff(callId, target!);
+                  else onOpenFile?.(target!);
+                }}
+              >
                 {target}
               </button>
             )}
@@ -270,7 +287,7 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
   );
 });
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
   /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
@@ -497,6 +514,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               sessionId={sessionId}
               callId={callIdOf(entry)}
               onOpenFile={onOpenFile}
+              onOpenDiff={onOpenDiff}
             />
           ) : (
             <ChatEntryView key={entry.key} entry={entry} />

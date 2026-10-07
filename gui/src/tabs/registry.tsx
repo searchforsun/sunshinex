@@ -10,6 +10,7 @@ import { Files } from '../pages/Files';
 import { Board } from '../pages/Board';
 import { TerminalTab } from './TerminalTab';
 import { DirectoryTab } from './DirectoryTab';
+import { DiffTab } from './DiffTab';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
 export interface TabServices {
@@ -49,8 +50,9 @@ export interface TabTypeEntry {
   readonly mintParams?: () => import('./tab-state').TabParams;
 }
 
-/** G8a 两类 + G8b terminal/directory:file(按 path 判重多实例)+ 目录(每会话单例,惰拉树
- *  文件行跳 file)+ tasks(每会话单例)+ 终端(nonce 多实例) */
+/** G8a 两类 + G8b terminal/directory + G8d diff:file(按 path 判重多实例)+ diff(write 调用
+ * 按 callId 判重多实例——Chat write 条目 path 钮开档,渲染面 fetchDiff 双列/404 降级)+ 目录(每
+ * 会话单例,惰拉树文件行跳 file)+ tasks(每会话单例)+ 终端(nonce 多实例) */
 export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
@@ -59,6 +61,16 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: (params) => params.path ?? '',
     singleton: false,
     render: (p) => <Files conn={p.conn} sessionId={p.sessionId} initialPath={p.params.path} />,
+  },
+  {
+    id: 'diff',
+    group: 'content',
+    // title:path 可读优先(callId 兜底;裸开档 'Diff')——标签条/标题行同源
+    title: (params) => params.path ?? params.callId ?? 'Diff',
+    // by callId 多实例:同 write 调用重开=聚焦,异 callId 并存
+    resolveKey: (params) => params.callId ?? '',
+    singleton: false,
+    render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} />,
   },
   {
     id: 'directory',

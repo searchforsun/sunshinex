@@ -852,17 +852,14 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     unmount();
   });
 
-  it('write 条目 path 按钮 → onOpenFile 跳转:file 标签激活(title=path)+ initialPath 自动加载 + 高亮渲染', async () => {
+  it('file 标签预览面:「+」菜单开标签 → 路径输入回车加载(readFile 断参)+ 高亮 + 换路径重载(G8d 起 path 钮改开 diff,本面经输入框直达)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
-    // write tool-call 帧(batch-runner 实发形态:text=工具名,payload.input={path,content})
-    fire(conn, ev('tool-call', 'write', { input: { path: 'src/a.ts', content: 'const y = 2;\n' }, callId: 'c1', status: 'pending' }));
-    fire(conn, ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }));
-    // 展开 write 条目 → path 按钮 → 文件标签(G8a:openTabInSession('file',{path}))
-    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
-    fireEvent.click(document.querySelector<HTMLButtonElement>('.tool-path')!);
-    expect(document.querySelector('.sx-tab[title="src/a.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts']])); // initialPath 自动加载
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
+    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: 'src/a.ts' } });
+    fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts']]));
     await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
     expect(document.querySelector('.files-view .hljs-keyword')).not.toBeNull(); // 高亮 class(const → keyword)
     // 手动输入换路径:回车加载第二文件
@@ -876,29 +873,36 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
   it('两个文件标签互切:key={activeTab.uid} 重挂——切回 A 后 initialPath 重新生效(加载请求 path=A,路径输入=A)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
-    // —— 开 file 标签 A:write 条目 path 钮跳转(initialPath=src/a.ts,自动加载)——
-    fire(conn, ev('tool-call', 'write', { input: { path: 'src/a.ts', content: 'const y = 2;\n' }, callId: 'c1', status: 'pending' }));
-    fire(conn, ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }));
-    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
-    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' })); // tool-path 钮(可及名=路径)
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts']]));
-    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' })); // 收起条目(消除同名的 path 钮)
-    // —— 开 file 标签 B:第二条 write,同法 ——
-    fire(conn, ev('tool-call', 'write', { input: { path: 'src/b.ts', content: 'const z = 3;\n' }, callId: 'c2', status: 'pending' }));
-    fire(conn, ev('tool-result', 'written', { tool: 'write', callId: 'c2', status: 'completed' }));
-    fireEvent.click(screen.getByRole('button', { name: '● write src/b.ts ⎿ written' }));
-    fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
+    // G8d 起 Chat path 钮改开 diff 标签——file 标签按 path 开档的入口改为目录树文件行(openTab('file',{path}))
+    conn.treeByPath = {
+      '': { entries: [{ name: 'dirA', kind: 'dir' }] },
+      dirA: { entries: [{ name: 'a.ts', kind: 'file' }, { name: 'b.ts', kind: 'file' }] },
+    };
+    // —— 开 file 标签 A(dirA/a.ts:目录文件行跳转,initialPath 自动加载)——
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'a.ts' })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
+    expect(document.querySelector('.sx-tab[title="dirA/a.ts"]')?.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts']]));
+    // —— 开 file 标签 B:切回目录标签(重挂重拉+展开)再点 b.ts 行 ——
+    fireEvent.click(screen.getByRole('button', { name: '目录' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'b.ts' })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'b.ts' }));
     // 两文件标签在场且 B 活动(判重经 path:两 uid 两页)
-    expect(document.querySelector('.sx-tab[title="src/a.ts"]')).not.toBeNull();
-    expect(document.querySelector('.sx-tab[title="src/b.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts'], ['s1', 'src/b.ts']]));
-    fireEvent.click(screen.getByRole('button', { name: '● write src/b.ts ⎿ written' })); // 收起条目
+    expect(document.querySelector('.sx-tab[title="dirA/a.ts"]')).not.toBeNull();
+    expect(document.querySelector('.sx-tab[title="dirA/b.ts"]')?.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts'], ['s1', 'dirA/b.ts']]));
     // —— 切回 A:tabbody key=uid 强制重挂——initialPath 重新生效(第三笔加载请求 path=A)+ 路径输入回 A
-    // (无 key 时 React 复用 B 的 Files 实例:effect no-op,无第三笔请求且路径输入残留 src/b.ts)
-    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' }));
-    expect(document.querySelector('.sx-tab[title="src/a.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts'], ['s1', 'src/b.ts'], ['s1', 'src/a.ts']]));
-    expect((screen.getByLabelText('file path input') as HTMLInputElement).value).toBe('src/a.ts');
+    // (无 key 时 React 复用 B 的 Files 实例:effect no-op,无第三笔请求且路径输入残留 dirA/b.ts)
+    fireEvent.click(screen.getByRole('button', { name: 'dirA/a.ts' }));
+    expect(document.querySelector('.sx-tab[title="dirA/a.ts"]')?.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts'], ['s1', 'dirA/b.ts'], ['s1', 'dirA/a.ts']]));
+    expect((screen.getByLabelText('file path input') as HTMLInputElement).value).toBe('dirA/a.ts');
     unmount();
   });
 
@@ -1092,6 +1096,84 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     fireEvent.click(screen.getByRole('button', { name: 'fileA.ts' }));
     expect(document.querySelector('.sx-tab[title="dirA/fileA.ts"]')?.classList.contains('active')).toBe(true);
     await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/fileA.ts']]));
+    unmount();
+  });
+});
+
+describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/双列渲染)', () => {
+  /** write 工具条目注入(实时帧 callId 配对面:tool-call+tool-result 两帧) */
+  const fireWrite = (conn: Conn, callId: string, path: string, content: string): void => {
+    fire(conn, ev('tool-call', 'write', { input: { path, content }, callId, status: 'pending' }));
+    fire(conn, ev('tool-result', 'written', { tool: 'write', callId, status: 'completed' }));
+  };
+
+  it('write 条目 path 钮 → diff 标签开且活动(title=path)+ fetchDiff 断参 + 双列渲染(old/new 两列区)', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    conn.diffResp = { path: 'src/a.ts', oldContent: 'const x = 1;\n', newContent: 'const y = 2;\n' };
+    fireWrite(conn, 'c1', 'src/a.ts', 'const y = 2;\n');
+    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' })); // 展开 write 条目
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' })); // tool-path 钮(可及名=路径)→ onOpenDiff 主通道
+    // diff 标签开且活动:title=params.path(比 callId 可读——G8d 开档参数带 path)
+    expect(document.querySelector('.sx-tab[title="src/a.ts"]')?.classList.contains('active')).toBe(true);
+    // fetchDiff 断参:Chat 展开面一笔(G7 既有)+ DiffTab mount 一笔(均 ['s1','c1'])
+    await waitFor(() => expect(conn.diffCalls).toEqual([['s1', 'c1'], ['s1', 'c1']]));
+    // 标题行 path + 双列面(.sx-tabbody 域——Chat 展开面同有 DiffPanel,以标签体 scope 区隔)
+    expect(document.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe('src/a.ts');
+    expect(document.querySelector('.sx-tabbody .diff-old')?.textContent).toBe('const x = 1;\n');
+    expect(document.querySelector('.sx-tabbody .diff-new')?.textContent).toBe('const y = 2;\n');
+    expect(document.querySelector('.sx-tabbody .sx-diff-badge')).toBeNull(); // oldContent 在场:无「新建」标
+    unmount();
+  });
+
+  it('同 callId 重开判重(一标签聚焦不重复,不重挂不重拉);异 callId 多实例并存', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    conn.diffResp = { path: 'src/a.ts', oldContent: 'old a\n', newContent: 'new a\n' };
+    fireWrite(conn, 'c1', 'src/a.ts', 'new a\n');
+    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' }));
+    await waitFor(() => expect(conn.diffCalls).toHaveLength(2)); // Chat 展开面 + DiffTab mount
+    // 重开同 callId:判重聚焦(仍一标签;条目仍展开故 path 钮唯一,经类名直取避标签同名歧义)
+    fireEvent.click(document.querySelector<HTMLButtonElement>('.tool-path')!);
+    expect(document.querySelectorAll('.sx-tab[title="src/a.ts"]')).toHaveLength(1);
+    expect(conn.diffCalls).toHaveLength(2); // 同 uid 聚焦:DiffTab 不重挂不重拉
+    // 异 callId:多实例并存(by callId 判键——两标签互不判重)
+    conn.diffResp = { path: 'src/b.ts', newContent: 'new b\n' };
+    fireWrite(conn, 'c2', 'src/b.ts', 'new b\n');
+    fireEvent.click(screen.getByRole('button', { name: '● write src/b.ts ⎿ written' }));
+    fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' })); // b 的 path 钮(其标签尚不存在,名无歧义)
+    expect(document.querySelectorAll('.sx-tab[title="src/a.ts"]')).toHaveLength(1);
+    expect(document.querySelector('.sx-tab[title="src/b.ts"]')?.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(conn.diffCalls).toHaveLength(4)); // c2:Chat 展开面 + DiffTab mount
+    unmount();
+  });
+
+  it('404 无快照 → 行内降级错误条(callId 示出,标签体无 diff 双列面)', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    // diffResp 缺省 null → FakeConn 拒 404(Chat 展开面退单列现内容——G7 既有;DiffTab 错误条——G8d)
+    fireWrite(conn, 'c3', 'src/gone.ts', 'fallback content\n');
+    fireEvent.click(screen.getByRole('button', { name: '● write src/gone.ts ⎿ written' }));
+    fireEvent.click(screen.getByRole('button', { name: 'src/gone.ts' }));
+    await waitFor(() => expect(screen.getByText('无快照(环已裁或非 write)——callId: c3')).toBeDefined());
+    expect(document.querySelector('.sx-tabbody .sx-diff-error')).not.toBeNull();
+    expect(document.querySelector('.sx-tabbody .diff-panel')).toBeNull(); // 标签体无 diff 渲染面(降级不双列)
+    unmount();
+  });
+
+  it('oldContent 缺场:单列现内容 +「新建」标;truncated → 截断横幅', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    conn.diffResp = { path: 'src/new.ts', newContent: 'fresh\n', truncated: true };
+    fireWrite(conn, 'c4', 'src/new.ts', 'fresh\n');
+    fireEvent.click(screen.getByRole('button', { name: '● write src/new.ts ⎿ written' }));
+    fireEvent.click(screen.getByRole('button', { name: 'src/new.ts' }));
+    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe('src/new.ts'));
+    expect(screen.getByText('新建')).toBeDefined(); // 新建写无 pre-image:单列 + 新建标
+    expect(screen.getByText('内容超限已截断')).toBeDefined(); // truncated 横幅
+    expect(document.querySelector('.sx-tabbody .diff-old')).toBeNull(); // 单列(old 列不渲染)
+    expect(document.querySelector('.sx-tabbody .diff-new')?.textContent).toBe('fresh\n');
     unmount();
   });
 });
