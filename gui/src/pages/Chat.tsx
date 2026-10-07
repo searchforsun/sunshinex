@@ -157,7 +157,8 @@ function ToolEntryView({
         (isWrite && info !== undefined ? (
           <div className="tool-detail">
             {onOpenFile !== undefined && (
-              <button type="button" className="tool-path" title="在 Files 页预览" onClick={() => onOpenFile(target!)}>
+              <button type="button" className="tool-path" title="在文件标签预览" onClick={() => onOpenFile(target!)}>
+
                 {target}
               </button>
             )}
@@ -462,7 +463,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     <>
       <header className="chat-topbar">
         <button type="button" className="back" onClick={onBack}>
-          ← 返回首页
+          ← 返回
         </button>
         <span className="session-chip" title="当前会话">
           session {sessionId}

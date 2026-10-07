@@ -65,6 +65,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   // 快捷键(window keydown,卸载解绑):Alt+W 关活动;Ctrl+Alt+→/← 环回切换;disabled 不响应
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.repeat) return; // 长按连发守卫:按住 Alt+W 只关一次(连发即连关全部标签)
       if (disabled) return;
       if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'w' || e.key === 'W')) {
         onCloseActive();

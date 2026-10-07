@@ -218,7 +218,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
         fireEvent.keyDown(input, { key: 'Enter' });
       };
       const backHome = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+        fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
         await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       };
 
@@ -582,7 +582,7 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       await openByPicker();
       await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
       await runOnce('第一会话目标', '第一会话完成');
-      fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+      fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
       await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       await openByPicker();
       await waitFor(() => expect(screen.getByText('session s2')).toBeDefined(), { timeout: 5_000 });

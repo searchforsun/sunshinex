@@ -19,8 +19,8 @@ export interface BoardProps {
   team: Array<{ name: string; busy: boolean }>;
   /** gate 审批上抛(taskId + approved)——App 接 conn.boardReview(sessionId, taskId, approved) */
   onReview: (taskId: string, approved: boolean) => void;
-  /** 返回 Chat(会话内 tab 切换,App 装配) */
-  onBack: () => void;
+  /** 返回 Chat(会话内 tab 切换,App 装配);缺省不渲染返回钮(任务标签经 registry 装配即无此钮) */
+  onBack?: () => void;
 }
 
 type View = 'list' | 'dag';
@@ -181,9 +181,11 @@ export function Board({ board, delegations, team, onReview, onBack }: BoardProps
   return (
     <>
       <header className="board-topbar">
-        <button type="button" className="back" onClick={onBack}>
-          ← 返回 Chat
-        </button>
+        {onBack !== undefined && (
+          <button type="button" className="back" onClick={onBack}>
+            ← 返回 Chat
+          </button>
+        )}
         <div className="view-toggle" role="group" aria-label="board view">
           <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
             List

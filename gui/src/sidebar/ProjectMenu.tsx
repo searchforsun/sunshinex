@@ -172,6 +172,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     conn.newSession(root, mode === 'manual' ? 'manual' : undefined).then(
       ({ sessionId }) => {
         setBusy(false);
+        loadWorkspaces(); // 组内新建落位即刷新组列表(spec §1:ws-count 随新 rows 到场;attachJournal 不改工作区面不刷)
         onOpenSession(sessionId, root);
       },
       (err: unknown) => {
@@ -191,6 +192,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       ({ sessionId }) => {
         setBusy(false);
         setPickerOpen(false);
+        loadWorkspaces(); // 选新项目根→刷新组列表(spec §1:新装首工作区后左栏即见,activeRoot 自动展开 effect 随新 rows 接手)
         onOpenSession(sessionId, root);
       },
       (err: unknown) => {

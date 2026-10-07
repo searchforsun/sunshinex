@@ -268,7 +268,7 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(document.querySelector('.session-placeholder')).toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     // 返回:对话面退场 → 欢迎空态(左栏常驻)
-    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
     await screen.findByLabelText('welcome');
     expect(screen.queryByLabelText('message input')).toBeNull();
     expect(screen.getByRole('button', GROUP_HEAD)).toBeDefined();
@@ -290,7 +290,7 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(conn.sessionSubmitCalls).toEqual([['s1', 's1 目标']]);
     expect(screen.getByText('s1 目标')).toBeDefined();
     // —— back → welcome(Chat 卸毁:s1 本地态随组件销毁;左栏组仍展开——壳常驻)——
-    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
     await screen.findByLabelText('welcome');
     // —— s2:FakeConn 下一会话号;组已展开(常驻),Attach 直点 ——
     conn.nextSessionId = 's2';
@@ -752,6 +752,35 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     unmount();
   });
 
+  it('两个文件标签互切:key={activeTab.uid} 重挂——切回 A 后 initialPath 重新生效(加载请求 path=A,路径输入=A)', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    // —— 开 file 标签 A:write 条目 path 钮跳转(initialPath=src/a.ts,自动加载)——
+    fire(conn, ev('tool-call', 'write', { input: { path: 'src/a.ts', content: 'const y = 2;\n' }, callId: 'c1', status: 'pending' }));
+    fire(conn, ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }));
+    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' })); // tool-path 钮(可及名=路径)
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts']]));
+    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' })); // 收起条目(消除同名的 path 钮)
+    // —— 开 file 标签 B:第二条 write,同法 ——
+    fire(conn, ev('tool-call', 'write', { input: { path: 'src/b.ts', content: 'const z = 3;\n' }, callId: 'c2', status: 'pending' }));
+    fire(conn, ev('tool-result', 'written', { tool: 'write', callId: 'c2', status: 'completed' }));
+    fireEvent.click(screen.getByRole('button', { name: '● write src/b.ts ⎿ written' }));
+    fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
+    // 两文件标签在场且 B 活动(判重经 path:两 uid 两页)
+    expect(document.querySelector('.sx-tab[title="src/a.ts"]')).not.toBeNull();
+    expect(document.querySelector('.sx-tab[title="src/b.ts"]')?.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts'], ['s1', 'src/b.ts']]));
+    fireEvent.click(screen.getByRole('button', { name: '● write src/b.ts ⎿ written' })); // 收起条目
+    // —— 切回 A:tabbody key=uid 强制重挂——initialPath 重新生效(第三笔加载请求 path=A)+ 路径输入回 A
+    // (无 key 时 React 复用 B 的 Files 实例:effect no-op,无第三笔请求且路径输入残留 src/b.ts)
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' }));
+    expect(document.querySelector('.sx-tab[title="src/a.ts"]')?.classList.contains('active')).toBe(true);
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts'], ['s1', 'src/b.ts'], ['s1', 'src/a.ts']]));
+    expect((screen.getByLabelText('file path input') as HTMLInputElement).value).toBe('src/a.ts');
+    unmount();
+  });
+
   it('Files 403 错误态:越界路径错误消息示出', async () => {
     const { conn, unmount } = await enterChat();
     conn.fileReject = new Error('/session/s1/file?path=../x -> 403');
@@ -864,7 +893,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fire(conn, taskCreated('t1', 'Demo'));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
     // —— back → 开 s2:openSession 清板投影 + s2 快照(空)回填——无 s1 残留(左栏组仍展开,Attach 直点)——
-    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's2';
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
@@ -875,7 +904,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     conn.snapshotResp = snapshotOf({
       board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Demo', spec: '', dependsOn: [], ts: 1 }),
     });
-    fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
+    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's1';
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));

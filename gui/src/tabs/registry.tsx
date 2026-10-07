@@ -57,7 +57,6 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         delegations={[...p.services.delegations]}
         team={[...p.services.team]}
         onReview={p.services.onReview}
-        onBack={() => {}}
       />
     ),
   },

@@ -362,7 +362,10 @@ function AppShell({ token }: { token: string }): JSX.Element {
           }}
         />
         {page === 'chat' && !tabState.collapsed && connInstance !== null && activeTab !== null && (
-          <div className="sx-tabbody">
+          // key={activeTab.uid}:同型标签(file→file)互切强制重挂——React 同树位同元素类型会复用
+          // 一个 Files 实例(initialPath 自动加载 effect no-op,空标签串上一标签内容/路径输入)
+          <div className="sx-tabbody" key={activeTab.uid}>
+
             {tabEntry(activeTab.type).render({
               conn: connInstance,
               sessionId: openSessionId,
