@@ -1,42 +1,48 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
-import { Home } from './pages/Home';
 import { Chat } from './pages/Chat';
-import { Board } from './pages/Board';
-import { Files } from './pages/Files';
 import type { ChatSink } from './pages/Chat';
+import { ProjectMenu } from './sidebar/ProjectMenu';
+import { TabStrip } from './tabs/TabStrip';
+import { tabEntry, registryProbe } from './tabs/registry';
+import type { TabServices } from './tabs/registry';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, setCollapsed, setWidth, emptyTabSession } from './tabs/tab-state';
+import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import type { SessionEvent } from '../../src/types';
 
 /**
- * G3.5 App 路由壳(会话中心):本地态 'home' | 'chat' + openSessionId——token 门面内单连接
- * (Home HTTP 面与 chat 事件面共用),Home 选中(attach/new)→ 挂 Chat;顶栏只余全局面
- * (brand/连接态),会话维顶栏(返回首页/sessionId/状态条)随 Chat 页。
+ * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
+ * 分组/attach/组内新建/添加工作区;连接态点随左栏底栏,brand/topbar 退役)+ 中栏 Chat 恒挂
+ * (page 'welcome'|'chat',无会话=欢迎空态;仍 key={sessionId} 会话隔离)+ 右栏会话标签页
+ * (TabStrip + tabEntry 渲染;tabStates 每会话独立,openSession 经 ensureSession 缺省开
+ * 「任务」单例页)。token 门面(G3 平移)与连接装配(会话维)原样:token 在场才建连接(单连
+ * 接生命周期,token 变更=重装配)。
  * 连接装配(会话维):onEvent(sessionId, e, seq) 单 WS 收全会话帧,sessionRef 判据过滤他会话
  * (本会话帧经 chatSinkRef 转投 Chat——连接回调闭包装配时固定,Chat 装配期注册 sink);板/委派
- * 投影随事件维稳(重连=onReset 清零+daemon 全量补发帧重建,G5 板页消费)。
+ * 投影随事件维稳(重连=onReset 清零+daemon 全量补发帧重建,任务标签消费)。
  * Chat(T4δ)以 key={sessionId} 挂载:对话面本地态(reducer 投影/输入/播种门/竞态缓冲)随组件
  * 销毁——两会话先后打开各自投影独立,无跨会话串扰,不断连重连。onReset(首连与重连同路径)
  * → Chat.reset 本会话重播种(重连=重置投影+全量重放裁定)。G4 挂起面:onApproval/onAsk/
  * onResetSession 三回调同 pattern——sessionRef 过滤本会话后经 chatSinkRef 转投 Chat 卡片区。
- * G5 看板页:会话内 Chat|Board 双 tab(sessionTab 本地态;Chat 以 hidden 面常驻——tab 切换
- * 不卸毁对话面本地态,挂起卡/竞态缓冲/滚动零重播种)。Board props 全装配:board/delegations
- * 投影 + team(App 态,经 Chat onSeeded 回调自快照回填——事件流无 teammate 面,reseed 即更新;
- * 快照本就携带 board/delegations,一并回填:开 s2 即见 s2 快照板而非 s1 残留——会话切换串态
- * 根除;openSession/backHome 亦清板投影双保险,重开经快照重建权威态)。
- * gate 审批 onReview → conn.boardReview(sessionId, taskId, approved)。
- * G6 Files 页:会话内第三 tab(Chat|Board|Files);write 工具 path 按钮 → Chat onOpenFile
- * → 切 Files tab + filesPath 播种(Files key={filesPath} 重挂载,到场自动加载)。
- * G6 板投影 seq 门(G5 交接 b 根修):Chat 播种窗内到达的 board/delegation 帧若直投投影,
- * 会被 onSeeded 的快照整替清掉(丢一帧增量——快照在途与事件流的窄竞态)。与 Chat pendingRef
- * 同构:seeding 期帧入 boardPendingRef;onSeeded 落定后整替快照板再按 seq 过滤重放
+ * G5 板投影(App 态,任务标签经 services 消费):board/delegations + team(经 Chat onSeeded
+ * 回调自快照回填——事件流无 teammate 面,reseed 即更新;快照本就携带 board/delegations,一并
+ * 回填:开 s2 即见 s2 快照板而非 s1 残留——会话切换串态根除;openSession/backHome 亦清板投影
+ * 双保险,重开经快照重建权威态)。gate 审批 onReview → conn.boardReview(sessionId, taskId,
+ * approved)。G6 板投影 seq 门(G5 交接 b 根修):Chat 播种窗内到达的 board/delegation 帧若直
+ * 投投影,会被 onSeeded 的快照整替清掉(丢一帧增量——快照在途与事件流的窄竞态)。与 Chat
+ * pendingRef 同构:seeding 期帧入 boardPendingRef;onSeeded 落定后整替快照板再按 seq 过滤重放
  * (≤ snap.lastSeq 丢——快照已含,再投即双应用;> 逐帧 apply)。窗起讫:openSession/
  * onReset/onResetSession 起(均致 Chat reseed),onSeeded 止;种子失败窗悬挂至下次重置
  * (帧持续缓冲不投,与 Chat「无基线不乱投」语义对齐)。
  * onResetSession(G3.5 交接 d 收口):会话维 reset 除 Chat 重播种外,board/delegations 投影
  * 亦清(此前仅连接级 onReset 清——会话 reset 后板投影悬挂旧任务)。
+ * G8a 标签态:tabStates 每会话独立留存(backHome 不清——重开同会话标签还原,spec §1「每会话
+ * 独立」);Chat write 工具 path 按钮 → onOpenFile → openTabInSession('file',{path})(判重聚焦
+ * 经 tab-state);右栏 collapsed 只余折叠钮,拖宽边条 clamp 200..720(右栏在右,向左拖=变宽)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
  */
 
@@ -60,6 +66,9 @@ function readToken(): string {
   }
   return localStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
 }
+
+/** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
+const PROBE = registryProbe();
 
 /** 会话根:token 在场才建连接(单连接生命周期,token 变更=重装配) */
 export function App(): JSX.Element {
@@ -92,21 +101,21 @@ function TokenGate({ onSave }: { onSave: (token: string) => void }): JSX.Element
   );
 }
 
-/** 应用壳:单连接装配 + 路由(home|chat);chat 分支挂 Chat 页(key={sessionId} 会话隔离) */
+/** 应用壳:单连接装配 + 三栏路由(左 ProjectMenu|中 Chat 恒挂|右标签栏);welcome = 无会话空态 */
 function AppShell({ token }: { token: string }): JSX.Element {
-  const [page, setPage] = useState<'home' | 'chat'>('home');
+  const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
   const [openSessionId, setOpenSessionId] = useState<string>('');
-  /** G5/G6 会话内 tab:chat|board|files(Chat 常驻 hidden 面,Board/Files 条件挂载——切换零重播种) */
-  const [sessionTab, setSessionTab] = useState<'chat' | 'board' | 'files'>('chat');
-  /** G6 Files 跳转路径(Chat write 工具 path 按钮注入):undefined = 手动输入起步;跳转即播种 */
-  const [filesPath, setFilesPath] = useState<string | undefined>(undefined);
+  /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
+  const [openRoot, setOpenRoot] = useState<string>('');
+  /** G8a 标签态总表:每会话独立(backHome 保留——重开同会话标签还原,spec §1) */
+  const [tabStates, setTabStates] = useState<TabStates>({});
   const [connState, setConnState] = useState<ConnectionState>('connecting');
   const [board, setBoard] = useState<TaskBoardState>(emptyBoard);
   const [delegations, setDelegations] = useState<Delegation[]>([]);
   /** G5 teammate 投影(App 态):snapshot.team 经 Chat onSeeded 回填——reseed 即更新 */
   const [team, setTeam] = useState<Array<{ name: string; busy: boolean }>>([]);
   const connRef = useRef<Connection | null>(null);
-  /** 连接实例态:effect 装配后落位(Home/Chat 面消费;null = 装配中占位) */
+  /** 连接实例态:effect 装配后落位(左栏/中栏/标签体消费;null = 装配中占位) */
   const [connInstance, setConnInstance] = useState<Connection | null>(null);
   /** 事件分发判据:连接回调闭包在装配时固定,会话切换经 ref 免闭包陈旧 */
   const sessionRef = useRef<string>('');
@@ -118,6 +127,8 @@ function AppShell({ token }: { token: string }): JSX.Element {
   const boardPendingRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
   /** 板播种窗开关:true = 快照在途(帧入缓冲不直投);onSeeded 落定置 false */
   const boardSeedingRef = useRef(true);
+  /** 拖宽在途清理句柄:mouseup 解绑外,卸载兜底解绑(会话切走/组件卸毁不泄漏 window 监听) */
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   /** 播种窗重开(清缓冲):openSession/onReset/onResetSession 三处——均伴随 Chat reseed,
    *  窗内残留帧属旧基线/旧板,弃 */
@@ -146,7 +157,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
       },
       onReset: () => {
         // 重连/首连同路径:板/委派投影清零 + 播种窗重开(随补发帧经 onSeeded 过滤重放;Chat 投影
-        // 由 sink.reset 清+本会话重播种;home 无 sink 时帧被会话过滤,窗恒空悬挂至下次 openSession)
+        // 由 sink.reset 清+本会话重播种;welcome 无 sink 时帧被会话过滤,窗恒空悬挂至下次 openSession)
         reopenBoardSeedWindow();
         setBoard(emptyBoard());
         setDelegations([]);
@@ -182,13 +193,17 @@ function AppShell({ token }: { token: string }): JSX.Element {
     };
   }, [token]);
 
-  /** Home 选中会话(attach/new 完成):切路由(Chat 装配期自播种基线);tab 归位 chat + 板投影/
-   *  team 清零(会话切换串态防线——快照落定后经 onSeeded 重建权威态)+ 播种窗重开 + Files 跳转路径复位 */
-  const openSession = (sessionId: string): void => {
+  /** 拖宽在途兜底解绑(会话切走/壳卸毁时 window 监听不泄漏) */
+  useEffect(() => () => resizeCleanupRef.current?.(), []);
+
+  /** 左栏选中会话(attach/新建完成):切路由(Chat 装配期自播种基线)+ ensureSession 建席
+   *  (缺省「任务」页)+ 板投影/team 清零(会话切换串态防线——快照落定后经 onSeeded 重建
+   *  权威态)+ 播种窗重开;tabStates 已有该会话则原样(重开同会话标签还原) */
+  const openSession = (sessionId: string, root: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
-    setSessionTab('chat');
-    setFilesPath(undefined);
+    setOpenRoot(root);
+    setTabStates((s) => ensureSession(s, sessionId, PROBE));
     reopenBoardSeedWindow();
     setBoard(emptyBoard());
     setDelegations([]);
@@ -196,31 +211,31 @@ function AppShell({ token }: { token: string }): JSX.Element {
     setPage('chat');
   };
 
-  /** 返回首页:会话关窗(Chat 卸毁本地态;连接保持,再开经 Home 重播种)+ 板投影/team 清零
-   *  (首页期间无会话帧消费,残留即陈旧)+ 播种窗缓冲清(再开重开窗) */
+  /** 返回欢迎态:会话关窗(Chat 卸毁本地态;连接保持,再开经左栏重播种)+ 板投影/team 清零
+   *  (无会话期无帧消费,残留即陈旧)+ 播种窗缓冲清(再开重开窗);tabStates 保留(每会话
+   *  独立留存,spec §1——重开同会话标签还原) */
   const backHome = (): void => {
     sessionRef.current = '';
     setOpenSessionId('');
-    setSessionTab('chat');
-    setFilesPath(undefined);
+    setOpenRoot('');
     reopenBoardSeedWindow();
     setBoard(emptyBoard());
     setDelegations([]);
     setTeam([]);
-    setPage('home');
+    setPage('welcome');
   };
 
-  /** G6 write 工具 path 按钮跳转:Files tab + initialPath 播种(Chat 经 onOpenFile 上抛——
-   *  Chat 常驻不卸毁,回 Chat tab 零重播种) */
-  const openFile = (path: string): void => {
-    setFilesPath(path);
-    setSessionTab('files');
+  /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
+   *  tab-state(同目标重开=聚焦既有,单例类型单份) */
+  const openTabInSession = (type: TabTypeId, params: TabParams = {}): void => {
+    setTabStates((s) => openTab(s, openSessionId, type, params, PROBE));
   };
 
-  /** G5 gate 审批装配:Board onReview → boardReview(sessionId, taskId, approved)——失败倒
+  /** G5 gate 审批装配:任务标签 onReview → boardReview(sessionId, taskId, approved)——失败倒
    *  Chat error 条不静默(经 sink 合成 error 帧,seq 取上界保证种子缓冲过滤恒放行;成功面无
-   *  HTTP 回执帧,daemon 侧 review 触发的 gate-resolved/task-status 事件帧自然回投板投影) */
-  const reviewTask = (taskId: string, approved: boolean): void => {
+   *  HTTP 回执帧,daemon 侧 review 触发的 gate-resolved/task-status 事件帧自然回投板投影)。
+   *  useCallback 零依赖(仅 refs)——services useMemo 稳定 */
+  const reviewTask = useCallback((taskId: string, approved: boolean): void => {
     const conn = connRef.current;
     if (conn === null) return;
     void conn.boardReview(sessionRef.current, taskId, approved).catch((err: unknown) => {
@@ -229,7 +244,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
         Number.MAX_SAFE_INTEGER,
       );
     });
-  };
+  }, []);
 
   /** G5 Chat 播种回调:快照权威态回填 App 投影——team(事件流无此面)+board/delegations
    *  (快照本就携带:会话打开/reseed 即板随快照)。G6 seq 门(G5 交接 b 根修):整替前先关窗+
@@ -255,65 +270,109 @@ function AppShell({ token }: { token: string }): JSX.Element {
     setDelegations(nextDelegations);
   };
 
+  /** 标签体服务面(任务标签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接) */
+  const services = useMemo<TabServices>(
+    () => ({ board, delegations: [...delegations], team: [...team], onReview: reviewTask }),
+    [board, delegations, team, reviewTask],
+  );
+
+  /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
+  const tabState = tabStates[openSessionId] ?? emptyTabSession();
+  const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
+
+  /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;clamp 200..720 在
+   *  tab-state.setWidth 单点),mouseup 解绑 + 移 active 类;每次 move 直接落态(React 批处理
+   *  兜底);sessionId 起拖时定格(拖拽中会话切换属病态,不追) */
+  const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
+    if (page !== 'chat' || openSessionId === '' || tabState.collapsed) return;
+    const el = e.currentTarget;
+    el.classList.add('active');
+    const startX = e.clientX;
+    const startWidth = tabState.width;
+    const sessionId = openSessionId;
+    const onMove = (ev: MouseEvent): void => {
+      setTabStates((s) => setWidth(s, sessionId, startWidth + startX - ev.clientX));
+    };
+    const stop = (): void => {
+      el.classList.remove('active');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', stop);
+      resizeCleanupRef.current = null;
+    };
+    resizeCleanupRef.current = stop;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', stop);
+  };
+
+  const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabState.collapsed ? 32 : tabState.width) : 32;
+
   return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">sunshinex</span>
-        <span className={`conn-dot conn-${connState}`} aria-label={`connection: ${connState}`} />
-        <span className="conn-text">{connState}</span>
-      </header>
-      {page === 'home' ? (
-        connInstance !== null ? (
-          <Home conn={connInstance} onOpenSession={openSession} />
+    <div className="sx-shell">
+      {/* 左栏:项目分组(Home 职能内化;装配中占位) */}
+      {connInstance !== null ? (
+        <ProjectMenu
+          conn={connInstance}
+          connState={connState}
+          activeSessionId={openSessionId}
+          activeRoot={openRoot}
+          onOpenSession={openSession}
+        />
+      ) : (
+        <nav className="sx-menu" aria-label="projects">
+          <p className="home-loading">连接装配中…</p>
+        </nav>
+      )}
+      {/* 中栏:Chat 恒挂(无会话=欢迎空态) */}
+      <main className="sx-main">
+        {page === 'chat' && connInstance !== null ? (
+          <Chat
+            key={openSessionId}
+            conn={connInstance}
+            sessionId={openSessionId}
+            connState={connState}
+            onBack={backHome}
+            sinkRef={chatSinkRef}
+            onSeeded={seedFromSnapshot}
+            onOpenFile={(p) => openTabInSession('file', { path: p })}
+          />
         ) : (
-          <main className="home" aria-label="home">
-            <p className="home-loading">连接装配中…</p>
-          </main>
-        )
-      ) : connInstance !== null ? (
-        <div className="session-shell">
-          {/* G5/G6 会话内 tab:Chat|Board|Files(openSessionId 在场才渲染本壳) */}
-          <nav className="session-tabs" aria-label="session tabs">
-            <button type="button" aria-pressed={sessionTab === 'chat'} onClick={() => setSessionTab('chat')}>
-              Chat
-            </button>
-            <button type="button" aria-pressed={sessionTab === 'board'} onClick={() => setSessionTab('board')}>
-              Board
-            </button>
-            <button type="button" aria-pressed={sessionTab === 'files'} onClick={() => setSessionTab('files')}>
-              Files
-            </button>
-          </nav>
-          {/* Chat 常驻(hidden 面):tab 切换不卸毁——挂起卡/竞态缓冲/输入零重播种 */}
-          <div className={`pane pane-chat${sessionTab === 'chat' ? '' : ' hidden'}`} hidden={sessionTab !== 'chat'}>
-            <Chat
-              key={openSessionId}
-              conn={connInstance}
-              sessionId={openSessionId}
-              connState={connState}
-              onBack={backHome}
-              sinkRef={chatSinkRef}
-              onSeeded={seedFromSnapshot}
-              onOpenFile={openFile}
-            />
+          <div className="sx-welcome" aria-label="welcome">
+            <p>选择左侧会话,或在工作区分组内新建。</p>
           </div>
-          {sessionTab === 'board' && (
-            <Board
-              board={board}
-              delegations={delegations}
-              team={team}
-              onReview={reviewTask}
-              onBack={() => setSessionTab('chat')}
-            />
-          )}
-          {/* G6 Files 页:key={filesPath}——跳转路径变更即重挂载(输入框播种新路径自动加载;
-              手动浏览(undefined)共用空 key,同态复挂零害) */}
-          {sessionTab === 'files' && (
-            <Files key={filesPath ?? ''} conn={connInstance} sessionId={openSessionId} initialPath={filesPath} />
-          )}
-        </div>
-      ) : null}
-      {/* board/delegations 投影 G5 板页消费(随事件/重放维稳;本壳只路由与连接装配) */}
+        )}
+      </main>
+      {/* 右栏:会话标签页(无会话=灰条 32px;collapsed 只余折叠钮;标签体=活动标签渲染) */}
+      <aside className="sx-sidebar" style={{ width: sidebarWidth }}>
+        <TabStrip
+          tabs={tabState.tabs}
+          activeUid={tabState.activeUid}
+          collapsed={tabState.collapsed}
+          disabled={page !== 'chat'}
+          onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
+          onClose={(uid) => setTabStates((s) => closeTab(s, openSessionId, uid))}
+          onNew={() => {}} // 「+」菜单选中类型由菜单直调 onOpenType(T3 装配)
+          onOpenType={(t) => openTabInSession(t)}
+          onToggleCollapse={() =>
+            setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))
+          }
+          onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
+          onCloseActive={() => {
+            const uid = tabState.activeUid;
+            if (uid !== null) setTabStates((s) => closeTab(s, openSessionId, uid));
+          }}
+        />
+        {page === 'chat' && !tabState.collapsed && connInstance !== null && activeTab !== null && (
+          <div className="sx-tabbody">
+            {tabEntry(activeTab.type).render({
+              conn: connInstance,
+              sessionId: openSessionId,
+              params: activeTab.params,
+              services,
+            })}
+          </div>
+        )}
+        {page === 'chat' && !tabState.collapsed && <div className="sx-resizer" onMouseDown={startResize} />}
+      </aside>
     </div>
   );
 }

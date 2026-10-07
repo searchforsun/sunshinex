@@ -219,7 +219,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       };
       const backHome = async (): Promise<void> => {
         fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
-        await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
+        await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       };
 
       // —— s1:工作区行展开 → Attach(journal 播种)→ UI 提交 → done ——
@@ -229,9 +229,9 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       await submit('s1 目标');
       await waitFor(() => expect(container.textContent).toContain('s1 终答'), { timeout: 10_000 });
 
-      // —— back → s2:New session(DirPicker 同 root 第二会话)→ UI 提交 → done ——
+      // —— back → s2:「+ 添加工作区」(DirPicker 同 root 第二会话)→ UI 提交 → done ——
       await backHome();
-      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -243,11 +243,13 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       expect(container.textContent).not.toContain('s1 终答');
       expect(container.textContent).not.toContain('历史第一句');
 
-      // —— 经 UI 返回 s1:back → 工作区行展开 → Attach 同一 journal(两步壳)→ 转录播种在场 ——
+      // —— 经 UI 返回 s1:back → 组重展开收放(sx 壳常驻:组仍展开但列表为展开时快照——收起再
+      //    展开触发 sessionsOf 重拉,s1/s2 档齐)→ Attach 同一 journal(两步壳)→ 转录播种在场 ——
       // (T2 起新建会话即挂 journal——列表 s1/s2 两档各一行;播种档无 t:'user' 行 → 无摘要,
       //  以 journal id 定行:session-meta 含 id 文本)
       await backHome();
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 收起(壳常驻,组仍展开)
+      fireEvent.click(screen.getByTitle(env.root)); // 重展开 → sessionsOf 重拉(含 s2 新建档)
       const attachButtons = await screen.findAllByRole('button', { name: 'Attach' }, { timeout: 5_000 });
       expect(attachButtons.length).toBeGreaterThanOrEqual(2); // s1 播种档 + s2 新建档(T2 即挂)
       const s1Attach = attachButtons.find((b) => b.closest('.session-row')?.textContent?.includes(s1Journal));
@@ -330,8 +332,9 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     const { container } = render(createElement(App));
     await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
 
-    // —— New session → DirPicker 模态:自定义路径输入(真 daemon /dirpicker 服务端)→ 确认 → newSession → chat ——
-    fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+    // —— 「+ 添加工作区」(G8a:New session 按钮退役,DirPicker 流经左栏添加面)→ DirPicker 模态:
+    //    自定义路径输入(真 daemon /dirpicker 服务端)→ 确认 → newSession → chat ——
+    fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
     await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
     fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -499,8 +502,8 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
 
-      // —— manual 会话经 UI 真面建立:New session → DirPicker 勾「Manual approvals」→ 确认 ——
-      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      // —— manual 会话经 UI 真面建立:「+ 添加工作区」 → DirPicker 勾「Manual approvals」→ 确认 ——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByLabelText('Manual approvals'));
@@ -562,7 +565,7 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
 
       const openByPicker = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+        fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
         await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
         fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
         fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -580,7 +583,7 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
       await runOnce('第一会话目标', '第一会话完成');
       fireEvent.click(screen.getByRole('button', { name: /返回首页/ }));
-      await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
+      await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       await openByPicker();
       await waitFor(() => expect(screen.getByText('session s2')).toBeDefined(), { timeout: 5_000 });
       await runOnce('第二会话目标', '第二会话完成');
@@ -590,8 +593,8 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
       expect(confirmSpy).toHaveBeenCalledTimes(1);
-      // 删除成功 → onBack → home 回归(会话关窗)
-      await screen.findByRole('region', { name: 'workspaces' }, { timeout: 5_000 });
+      // 删除成功 → onBack → 欢迎空态回归(会话关窗)
+      await screen.findByLabelText('welcome', {}, { timeout: 5_000 });
       confirmSpy.mockRestore();
 
       // —— daemon 侧真实回收:s2 移出注册表(:id 访问 404);journal 文件保留(磁盘档案)——
@@ -642,8 +645,8 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
 
-      // —— New session(DirPicker 真面,缺省不勾 manual)→ 提交 → 主链 create_task(gated)——
-      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      // —— 「+ 添加工作区」(DirPicker 真面,缺省不勾 manual)→ 提交 → 主链 create_task(gated)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -657,8 +660,8 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await waitFor(() => expect(frames.some((e) => e.type === 'task-created')).toBe(true), { timeout: 10_000 });
       await waitFor(() => expect(frames.some((e) => e.type === 'gate-waiting')).toBe(true), { timeout: 5_000 });
 
-      // —— Board tab → List 视图(缺省):gated ⚠ 行 + 行内 Approve/Deny ——
-      fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+      // —— 任务标签(G8a:右栏默认开「任务」页,Board 恒挂——原 Board tab 钮退役)→ List
+      //    视图(缺省):gated ⚠ 行 + 行内 Approve/Deny ——
       await waitFor(() => expect(screen.getByText('t1 [pending] GateDemo ⚠')).toBeDefined(), { timeout: 10_000 });
       expect(screen.getByRole('button', { name: 'Approve t1' })).toBeDefined();
       expect(screen.getByRole('button', { name: 'Deny t1' })).toBeDefined();
@@ -715,8 +718,8 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
 
-      // —— dontAsk 会话经 UI 真面建立(DirPicker 缺省不勾 manual)——
-      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      // —— dontAsk 会话经 UI 真面建立(DirPicker 缺省不勾 manual;G8a:经「+ 添加工作区」)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -816,8 +819,8 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
 
-      // —— manual 会话经 UI 真面建立:DirPicker 勾「Manual approvals」——
-      fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+      // —— manual 会话经 UI 真面建立:DirPicker 勾「Manual approvals」(G8a:经「+ 添加工作区」)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByLabelText('Manual approvals'));
