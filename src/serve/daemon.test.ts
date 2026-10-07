@@ -514,6 +514,70 @@ test('⑪ pty 鉴权与未知 id：错 token 升级拒 401；未知 ptyId 升级
   });
 });
 
+// ---------- G8e-T4：ptyId↔owner 归属校验（跨会话删/连 fail-closed；幂等面维持） ----------
+
+test('⑪b pty owner 校验：会话 A 分配 B 删→404(不误杀)/本会话删→200/不在 id→200 幂等；B 连 A 的 pty→error 帧后 close', { timeout: 60_000 }, async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base } = ctx;
+    const wsBase = base.replace(/^http/, 'ws');
+    const sidA = await ctx.newSession();
+    const sidB = await ctx.newSession();
+
+    // 1) A 分配 pty → B 对同一 pty DELETE → 404（owner 不符：不 kill 不误杀他人终端）
+    const alloc = await fetch(`${base}/session/${sidA}/pty`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(alloc.status, 200);
+    const { ptyId } = (await alloc.json()) as { ptyId: string };
+    const cross = await fetch(`${base}/session/${sidB}/pty/${ptyId}`, { method: 'DELETE', headers: AUTH });
+    assert.equal(cross.status, 404, '跨会话 DELETE → 404');
+    assert.deepEqual(await cross.json(), { error: 'pty not found for session' });
+
+    // 2) 本会话 DELETE → 200；每台 kill 均挂 A 的 WS 观测 exit 帧+CLOSED（进程死透的可观测等待——
+    //    Windows cwd 锁迟滞下 rmTmp EPERM 的预防面，同 ⑩ 步 4 惯例）
+    const own = await openPty(`${wsBase}/session/${sidA}/pty/${ptyId}`);
+    try {
+      await waitFor(() => own.frames.length > 0, 10_000);
+      assert.equal(own.frames[0].t, 'replay', 'owner 会话正常 attach 首帧 replay');
+      const kill = await fetch(`${base}/session/${sidA}/pty/${ptyId}`, { method: 'DELETE', headers: AUTH });
+      assert.equal(kill.status, 200, 'owner 会话 DELETE → 200');
+      assert.deepEqual(await kill.json(), { ok: true });
+      await waitFor(() => own.frames.some((f) => f.t === 'exit'), 15_000);
+      await waitFor(() => own.ws.readyState === WebSocket.CLOSED, 5000);
+    } finally {
+      own.ws.close();
+    }
+    // 3) 同 id 已不在 Manager → 再删 200 幂等（kill 幂等面不因归属校验回退）
+    const gone = await fetch(`${base}/session/${sidA}/pty/${ptyId}`, { method: 'DELETE', headers: AUTH });
+    assert.equal(gone.status, 200, '不在 Manager 的 id 再删 → 200 幂等');
+    assert.deepEqual(await gone.json(), { ok: true });
+
+    // 4) B 连 A 的第二台 pty（WS attach）→ error 'pty not found for session' 后 close(1008)；
+    //    A 自己随后仍可连（错位连不伤条目），首帧恒 replay；收尾 A DELETE → exit 帧观测后 CLEAN 退场
+    const alloc2 = await fetch(`${base}/session/${sidA}/pty`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(alloc2.status, 200);
+    const { ptyId: ptyId2 } = (await alloc2.json()) as { ptyId: string };
+    const w = await openPty(`${wsBase}/session/${sidB}/pty/${ptyId2}`);
+    try {
+      await waitFor(() => w.frames.length > 0, 10_000);
+      assert.equal(w.frames[0].t, 'error', '跨会话 attach 首帧 error');
+      assert.equal(w.frames[0].message, 'pty not found for session');
+      await waitFor(() => w.ws.readyState === WebSocket.CLOSED, 5000);
+    } finally {
+      w.ws.close();
+    }
+    const ok = await openPty(`${wsBase}/session/${sidA}/pty/${ptyId2}`);
+    try {
+      await waitFor(() => ok.frames.length > 0, 10_000);
+      assert.equal(ok.frames[0].t, 'replay', 'owner 会话连入不受跨会话错连影响');
+      const kill2 = await fetch(`${base}/session/${sidA}/pty/${ptyId2}`, { method: 'DELETE', headers: AUTH });
+      assert.equal(kill2.status, 200);
+      await waitFor(() => ok.frames.some((f) => f.t === 'exit'), 15_000);
+      await waitFor(() => ok.ws.readyState === WebSocket.CLOSED, 5000);
+    } finally {
+      ok.ws.close();
+    }
+  });
+});
+
 // ---------- G8b T4:tree 端点(GET /session/:id/tree 单层目录列举) ----------
 
 test('⑫ tree:单层列举/忽略集/上限截断/判界 403/根缺省/404/400', async () => {
@@ -1582,14 +1646,20 @@ describe('G8d T3 GET /settings/agents/body 端点', () => {
       fs.mkdirSync(path.join(proj, 'agents', 'broken'), { recursive: true });
       fs.writeFileSync(path.join(proj, 'agents', 'broken', 'agent.md'), 'no frontmatter here\n', 'utf8');
 
-      // 404:project 目录存在但无该 id;global 同
+      // 404:project 目录存在但无该 id;global 同;回显 ${scope}/agents/${id} 相对定位——不含绝对路径
       const p404 = await fetch(
         `${base}/settings/agents/body?scope=project&id=absent&root=${encodeURIComponent(proj)}`,
         { headers: AUTH },
       );
       assert.equal(p404.status, 404);
+      const pErr = ((await p404.json()) as { error: string }).error;
+      assert.equal(pErr, 'agent.md not found: project/agents/absent', 'project 404 文案=scope/agents/id 相对定位');
+      assert.ok(!pErr.includes(proj) && !pErr.includes(tmp), 'project 404 不泄绝对路径');
       const g404 = await fetch(`${base}/settings/agents/body?scope=global&id=absent`, { headers: AUTH });
       assert.equal(g404.status, 404);
+      const gErr = ((await g404.json()) as { error: string }).error;
+      assert.equal(gErr, 'agent.md not found: global/agents/absent', 'global 404 文案=scope/agents/id 相对定位');
+      assert.ok(!gErr.includes(home) && !gErr.includes(tmp), 'global 404 不泄绝对路径');
 
       // 400 坏 id:路径分隔/穿越(AGENT_ID_RE 同守卫)
       for (const id of ['a/b', '../escape', '.hidden', '']) {

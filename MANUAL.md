@@ -119,6 +119,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
   "maxGraphNodes": 1000,                            // Graph 全链路节点步累计上限
   // "maxTokens": 2000000,                          // 主链单次提交 token 硬顶（累计用量量纲）；缺省不设——预算是兜底不是限制，护栏交给步数与墙钟
   // "subagentTokenCap": 1000000,                   // 子代理 token 硬顶（独享值，不继承主链剩余）；缺省不设
+  // "teamTokenCap": 1000000,                       // 团队 token 硬顶（主代理团队侧限额，用满后新任务排队，见 5.6）；缺省不设
 
   // ── 界面 ──────────────────────────────────────────────
   "language": "en",                                  // 界面语言 en|zh（--language 参数优先）

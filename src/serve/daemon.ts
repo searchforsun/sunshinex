@@ -848,6 +848,8 @@ export class GuiDaemon {
 
   /** pty 专用 WS 连接生命周期（G8b T3，帧协议逐字 spec §终端目录）：
    *  - 未知 ptyId：升级后即发 `{"t":"error","message":"pty not found"}` 后 close(1008)
+   *  - ptyId 存在但不属本会话（G8e-T4 ownerOf 校验）：同 error 帧 `pty not found for session` 后
+   *    close(1008)——错位寻址（会话 B 连会话 A 的终端）fail-closed，不串读他人终端
    *  - attach 即重放：首帧 `{"t":"replay","b":base64(环形缓冲)}`（断线重连重放，U-D5）
    *  - 下行：onData → `{"t":"data","b"}` / onExit → `{"t":"exit","code"}` + ws.close(1000)
    *  - 上行：`{"t":"in","b"}` → write（base64 解 UTF-8）/ `{"t":"resize","cols","rows"}` → resize
@@ -855,11 +857,18 @@ export class GuiDaemon {
    *  - ws close ≠ kill：断线保活（kill 只走 DELETE / 两处 teardown 插杀），重连靠 replay 补窗；
    *    T2 回调不可注销——close 置 attached=false 门 + sendPtyFrame readyState 判存双保险
    *  - resize/write 对已退出会话是 no-op（T2 内建防崩，daemon 侧不 try/catch） */
-  private onPtyConnection(ws: WebSocket, _sessionId: string, ptyId: string): void {
+  private onPtyConnection(ws: WebSocket, sessionId: string, ptyId: string): void {
     const pty = this.ptyManager.get(ptyId);
     ws.on('error', () => {}); // EventEmitter 契约：挂空 listener，socket 错误细节不倒面（同 onWsConnection）
     if (pty === undefined) {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'error', message: 'pty not found' }));
+      ws.close(1008);
+      return;
+    }
+    // G8e-T4 归属校验：条目在但 owner ≠ 本会话 → 同 error 帧语义（'pty not found for session'）后
+    // close(1008)——错位寻址 fail-closed 不串读；与 get() 同拍同步查，条目在场性一致
+    if (this.ptyManager.ownerOf(ptyId) !== sessionId) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'error', message: 'pty not found for session' }));
       ws.close(1008);
       return;
     }
@@ -1628,10 +1637,17 @@ export class GuiDaemon {
 
   /** DELETE /session/:id/pty/:ptyId（G8b T3 kill 面）：PtyManager.kill 幂等（无此 id 静默）——重复
    *  DELETE / 自然退出后再删均 200 {ok:true}；kill 同步注销（has→false 立即），exit 帧异步送达在线
-   *  pty WS。会话解析先行（未知 :id 404，sessionFor 单点——路由面会话维语义一致性） */
+   *  pty WS。会话解析先行（未知 :id 404，sessionFor 单点——路由面会话维语义一致性）。
+   *  G8e-T4 归属校验：条目在但 owner ≠ :id → 404 'pty not found for session'（跨会话删他人终端
+   *  拒绝且不误杀）；条目不在 → 200 幂等面维持（kill 幂等语义不因校验收紧而回退） */
   private handlePtyKill(res: http.ServerResponse, id: string, ptyId: string): void {
     const session = this.sessionFor(res, id);
     if (session === undefined) return;
+    const owner = this.ptyManager.ownerOf(ptyId);
+    if (owner !== undefined && owner !== session.id) {
+      this.send(res, 404, { error: 'pty not found for session' });
+      return;
+    }
     this.ptyManager.kill(ptyId);
     this.send(res, 200, { ok: true });
   }
@@ -2239,8 +2255,9 @@ export class GuiDaemon {
   /** GET /settings/agents/body?scope=project|global&id=&root=（G8d T3，AgentsPane 编辑全文装载）：
    *  读 <scopeDir>/agents/<id>/agent.md 的 frontmatter 后正文全文（parseAgentFrontmatter 单点——
    *  验证口径=装载口径=bodyPreview 口径，三面同源；bodyPreview 的 200 帽在此不适用）。错误面：
-   *  坏 scope/坏 id（AGENT_ID_RE 同 PUT 守卫）/scope=project 缺 root → 400；文件缺 → 404；畸形
-   *  frontmatter → 400 带 parser 原文 message（清单面入 warnings 不抛死，本端点单文件直达——
+   *  坏 scope/坏 id（AGENT_ID_RE 同 PUT 守卫）/scope=project 缺 root → 400；文件缺 → 404（回显
+   *  `${scope}/agents/${id}` 相对定位——G8e-T4 收敛：不泄 daemon 主机绝对路径，GUI 可原样呈现）；
+   *  畸形 frontmatter → 400 带 parser 原文 message（清单面入 warnings 不抛死，本端点单文件直达——
    *  编辑装载是精确寻址，报错优于静默）。scope=global 恒忽略 root（定位面，PUT 同裁定） */
   private handleAgentsBodyGet(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -2262,7 +2279,7 @@ export class GuiDaemon {
     const scopeDir = scope === 'global' ? userConfigDir() : path.resolve(rootParam as string);
     const file = path.join(scopeDir, 'agents', id, 'agent.md');
     if (!fs.existsSync(file)) {
-      this.send(res, 404, { error: `agent.md not found: ${file}` });
+      this.send(res, 404, { error: `agent.md not found: ${scope}/agents/${id}` });
       return;
     }
     const md = fs.readFileSync(file, 'utf8'); // existsSync 后读失败（竞态移除等）沿 dispatch 500 收口

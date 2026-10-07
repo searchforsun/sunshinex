@@ -124,7 +124,7 @@ interface PtyEntry {
   readonly session: PtySessionImpl;
 }
 
-/** PtyManager：daemon 持有的 pty 总注册表（spawn/get/has/kill/killAllFor/size） */
+/** PtyManager：daemon 持有的 pty 总注册表（spawn/get/ownerOf/has/kill/killAllFor/size） */
 export class PtyManager {
   private readonly sessions = new Map<string, PtyEntry>();
 
@@ -145,6 +145,12 @@ export class PtyManager {
 
   get(id: string): PtySession | undefined {
     return this.sessions.get(id)?.session;
+  }
+
+  /** owner 反查（G8e-T4 daemon ptyId↔会话归属校验面）：条目在 → owner（daemon 会话 id）；
+   *  不在/已注销 → undefined。只读不杀——跨会话误删/误连的判归在 daemon 路由层收口 */
+  ownerOf(id: string): string | undefined {
+    return this.sessions.get(id)?.owner;
   }
 
   has(id: string): boolean {
