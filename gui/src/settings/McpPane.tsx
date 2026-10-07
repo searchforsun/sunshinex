@@ -16,6 +16,9 @@ import { SourceBadge } from './SourceBadge';
  *   title「全局级经高级 raw 编辑」引流;表单在途时 root 被清空→保存放行空 root 由服务端 400 示出)。
  *   编辑既有卡时 env 值不可知(视图打码)——env 文本域预填「KEY=」空值行提示重填;未填则该
  *   行 env 整体省略(daemon 接受可选 env;原文编辑面是无打码的兜底路径)。
+ * - env 丢失确认门(G8c 终审 B):编辑卡原 env 键未全部重填(整块替换会把未重填键从 mcp.json
+ *   删掉)→ 表单渲染确认 checkbox「确认移除未重填的 N 个 env 键」,未勾选保存钮 disabled
+ *   (save 守卫拦 Enter 提交径);勾选=显式确认丢键放行。
  * - 删除=项目清单滤除该名后整块提交;全局卡(含被遮蔽)不在项目文件内——删除钮禁用。
  */
 
@@ -28,7 +31,8 @@ export interface McpPaneConn {
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-/** 表单态(editing=原卡 name——name 是清单键,编辑期锁定防改名追加成双卡) */
+/** 表单态(editing=原卡 name——name 是清单键,编辑期锁定防改名追加成双卡;origEnvKeys=编辑播种的
+ *  原卡 env 键名——env 丢失确认门(G8c 终审 B)判据:整块替换写面会把未重填的键从 mcp.json 删掉) */
 interface McpFormState {
   readonly editing: boolean;
   readonly name: string;
@@ -37,9 +41,27 @@ interface McpFormState {
   args: string;
   url: string;
   env: string;
+  /** 编辑卡原 env 键名(新增/原卡无 env = 空) */
+  readonly origEnvKeys: readonly string[];
+  /** 「确认移除未重填的 env 键」勾选态(有键将丢失时须显式勾选才可保存) */
+  confirmEnvDrop: boolean;
 }
 
-const emptyForm = (): McpFormState => ({ editing: false, name: '', transport: 'stdio', command: '', args: '', url: '', env: '' });
+const emptyForm = (): McpFormState => ({ editing: false, name: '', transport: 'stdio', command: '', args: '', url: '', env: '', origEnvKeys: [], confirmEnvDrop: false });
+
+/** env 文本域 → 已重填键集(与 buildInput 同词法:空值行跳过——「KEY=」预填未重填即视同未覆盖) */
+function filledEnvKeys(envText: string): Set<string> {
+  const keys = new Set<string>();
+  for (const line of envText.split('\n')) {
+    const t = line.trim();
+    if (t === '') continue;
+    const eq = t.indexOf('=');
+    if (eq <= 0) continue;
+    if (t.slice(eq + 1).trim() === '') continue;
+    keys.add(t.slice(0, eq).trim());
+  }
+  return keys;
+}
 
 /** 现清单项目行 → 写面行(env 值打码不可知:省略 env 键,不写空值坏文件) */
 function rowToInput(s: McpRow): McpRowInput {
@@ -125,8 +147,18 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     return out;
   };
 
+  /** 编辑卡将有丢失的原 env 键(env 文本域未重填值的键)——确认门渲染与 save 守卫共用 */
+  const lostEnvKeys: readonly string[] = form === null ? [] : form.origEnvKeys.filter((k) => !filledEnvKeys(form.env).has(k));
+  /** env 丢失确认门阻断态(G8c 终审 B):原卡有 env 键且将有键丢失且未勾选确认 */
+  const envDropBlocked = form !== null && form.editing && form.origEnvKeys.length > 0 && lostEnvKeys.length > 0 && !form.confirmEnvDrop;
+
   const save = (): void => {
     if (form === null || saving) return; // root='' 在途表单不静默:空 root 放行,服务端 400 行内示出(AgentsPane 同口径)
+    /** env 丢失确认门:钮已 disabled,此守卫拦表单 Enter 提交径(不勾选绝不放行丢键写盘) */
+    if (envDropBlocked) {
+      setFormError(`有 ${lostEnvKeys.length} 个原 env 键未重填,保存将从 mcp.json 移除——勾选下方确认项后方可保存`);
+      return;
+    }
     const input = buildInput(form);
     if (typeof input === 'string') {
       setFormError(input);
@@ -221,8 +253,11 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                         command: s.command ?? '',
                         args: s.args !== undefined ? s.args.join(', ') : '',
                         url: s.url ?? '',
-                        /** env 值视图打码不可知——预填「KEY=」空值行提示重填(raw 面是原文兜底) */
+                        /** env 值视图打码不可知——预填「KEY=」空值行提示重填(raw 面是原文兜底);
+                          origEnvKeys 登记原键(env 丢失确认门判据) */
                         env: s.envKeys.map((k) => `${k}=`).join('\n'),
+                        origEnvKeys: [...s.envKeys],
+                        confirmEnvDrop: false,
                       });
                       setFormError('');
                     }}
@@ -294,9 +329,20 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
             env(逐行 KEY=VALUE)
             <textarea aria-label="mcp env" value={form.env} onChange={(e) => setForm({ ...form, env: e.target.value })} rows={3} spellCheck={false} />
           </label>
+          {form.editing && form.origEnvKeys.length > 0 && lostEnvKeys.length > 0 && (
+            <label className="sx-check-row">
+              <input
+                type="checkbox"
+                aria-label="confirm env drop"
+                checked={form.confirmEnvDrop}
+                onChange={(e) => setForm({ ...form, confirmEnvDrop: e.target.checked })}
+              />
+              {`确认移除未重填的 ${lostEnvKeys.length} 个 env 键`}
+            </label>
+          )}
           {formError !== '' && <p className="home-error" role="alert">{formError}</p>}
           <div className="sx-card-actions">
-            <button type="submit" disabled={saving}>
+            <button type="submit" disabled={saving || envDropBlocked}>
               保存
             </button>
             <button

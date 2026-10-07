@@ -668,6 +668,7 @@ describe('G8c T2 /settings 端点', () => {
       assert.deepEqual(row('tier'), { key: 'tier', value: 'global-tier', source: 'global', envOverride: false }, '全局文件键自填→global');
       assert.deepEqual(row('contextWindow'), { key: 'contextWindow', value: '160000', source: 'global', envOverride: false }, '数字键 String 归一后回显');
       assert.deepEqual(row('model'), { key: 'model', value: null, source: 'default', envOverride: false }, '未配置=default+null');
+      assert.deepEqual(row('teamTokenCap'), { key: 'teamTokenCap', value: null, source: 'default', envOverride: false }, 'G8c 终审 C:teamTokenCap 收编语义键面(GET 报行——曾 env-only 致面板静默省略)');
     });
   });
 

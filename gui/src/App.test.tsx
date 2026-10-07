@@ -1552,7 +1552,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     unmount();
   });
 
-  it('MCP 修复环 C1:编辑带 envKeys 卡不改 env 直接保存 → 断参服务器行无 env 键;填 KEY=v → env 含全值', async () => {
+  it('MCP 修复环 C1:编辑带 envKeys 卡不改 env(勾选确认移除)→ 断参服务器行无 env 键;填 KEY=v → env 含全值', async () => {
     const { conn, unmount } = await enterChat();
     conn.mcpServersResp = {
       servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: ['MCP_FS_TOKEN'], source: 'project', shadowed: false }],
@@ -1560,21 +1560,60 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
     await screen.findByText('fs');
-    // 编辑:env 预填「KEY=」空值行(值视图打码不可知)——不改直接保存:空值条目跳过,行无 env 键
+    // 编辑:env 预填「KEY=」空值行(值视图打码不可知)——不改 env 直接保存:env 丢失确认门拦
+    // (终审 B:未勾选确认→保存 disabled;勾选=显式确认丢键)→ 空值条目跳过,行无 env 键
     // (daemon 原样写盘——env:{KEY:''} 空值坏文件的根除判据)
     fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
     expect((screen.getByLabelText('mcp env') as HTMLTextAreaElement).value).toBe('MCP_FS_TOKEN=');
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true); // 未勾选确认:保存禁用
+    fireEvent.click(screen.getByLabelText('confirm env drop'));
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]]]));
-    // 重填值保存 → env 含 {KEY:'v'}(全值回写)
+    // 重填值保存 → env 含 {KEY:'v'}(全值回写;原键全覆盖→确认门不出现)
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉落定
     fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
     fireEvent.change(screen.getByLabelText('mcp env'), { target: { value: 'MCP_FS_TOKEN=v' } });
+    expect(screen.queryByLabelText('confirm env drop')).toBeNull(); // 无键将丢失:确认 checkbox 不渲染
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() =>
       expect(conn.putMcpServersCalls).toEqual([
         ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]],
         ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx', env: { MCP_FS_TOKEN: 'v' } }]],
+      ]),
+    );
+    unmount();
+  });
+
+  it('MCP 终审 B:编辑带 2 envKeys 卡不动 env → 保存 disabled;勾选确认 → putMcp 调用且 env 缺席;重填 1 键+勾选 → env 含该 1 键', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.mcpServersResp = {
+      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: ['K1', 'K2'], source: 'project', shadowed: false }],
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
+    await screen.findByText('fs');
+    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    // 2 键均未重填:确认 checkbox 在场(计数=2)+ 保存 disabled + 零写调用(静默丢 env 根除)
+    expect(screen.getByText('确认移除未重填的 2 个 env 键')).toBeDefined();
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(conn.putMcpServersCalls).toEqual([]);
+    // 勾选确认 → 放行:putMcpServers 调用且断参行 env 缺席
+    fireEvent.click(screen.getByLabelText('confirm env drop'));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]]]));
+    // 重填 1 键(另 1 键仍将丢失→checkbox 计 1+仍须勾选)→ env 恰含该 1 键
+    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉落定
+    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    fireEvent.change(screen.getByLabelText('mcp env'), { target: { value: 'K1=v1' } });
+    expect(screen.getByText('确认移除未重填的 1 个 env 键')).toBeDefined();
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText('confirm env drop'));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(conn.putMcpServersCalls).toEqual([
+        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]],
+        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx', env: { K1: 'v1' } }]],
       ]),
     );
     unmount();
@@ -1667,6 +1706,30 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     fireEvent.click(screen.getByRole('button', { name: '删除 dev(项目)' }));
     await waitFor(() => expect(conn.putAgentCalls).toHaveLength(2));
     expect(conn.putAgentCalls[1]).toEqual({ root: '/w/root-a', scope: 'project', op: 'delete', id: 'dev' });
+    unmount();
+  });
+
+  it('智能体终审 A:编辑 bodyPreview 恰 200 字卡不改正文保存 → 截断守卫阻断(错误条+putAgent 未调);改写正文 → 放行', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.agentsViewResp = {
+      builtins: [],
+      view: { entries: [{ id: 'dev', name: '开发者', source: 'project', shadowed: false, bodyPreview: 'x'.repeat(200) }], warnings: [] },
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '智能体' }));
+    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
+    fireEvent.click(screen.getByRole('button', { name: '编辑 dev(项目)' }));
+    // 不改正文(仍=播种的 200 字预览切片)直接保存 → 守卫阻断:行内错误条 + putAgent 未调
+    // (直接保存即把截断文写盘毁掉余文——GUI 本地守卫根除)
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.getByText(/已被预览截断/)).toBeDefined());
+    expect(screen.getByText(/agents\/dev\/agent\.md/)).toBeDefined(); // 提示指明完整原文兜底路径
+    expect(conn.putAgentCalls).toEqual([]);
+    // 改写正文(≠播种值)= 有意重写 → 放行(body=改写文)
+    fireEvent.change(screen.getByLabelText('agent body'), { target: { value: '改写后的完整正文' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(conn.putAgentCalls).toHaveLength(1));
+    expect(conn.putAgentCalls[0]).toMatchObject({ root: '/w/root-a', scope: 'project', op: 'upsert', id: 'dev', body: '改写后的完整正文' });
     unmount();
   });
 

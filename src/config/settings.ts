@@ -33,6 +33,7 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   maxGraphNodes: 'SUNSHINEX_MAX_GRAPH_NODES',
   maxTokens: 'SUNSHINEX_MAX_TOKENS',
   subagentTokenCap: 'SUNSHINEX_SUBAGENT_TOKEN_CAP',
+  teamTokenCap: 'SUNSHINEX_TEAM_TOKEN_CAP',
   shell: 'SUNSHINEX_SHELL',
   globalSunshine: 'SUNSHINEX_GLOBAL_SUNSHINE',
   kbBackend: 'SUNSHINEX_KB_BACKEND',
