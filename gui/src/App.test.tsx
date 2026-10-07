@@ -6,8 +6,11 @@ import { App } from './App';
 import { emptyBoard, applyBoardEvent } from './projection';
 import { highlightCode } from './highlight';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
-import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp, SettingsView, SettingsKeyRow } from './connection';
+import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp, SettingsView, SettingsKeyRow, ProviderChoice, McpRow, McpRowInput, McpProbeResult, BuiltinRole, AgentsView, SkillsGroup } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
+
+/** putAgent 输入形(connection.ts 内联签名提取——FakeConn 桩记录类型用) */
+type PutAgentInput = Parameters<Connection['putAgent']>[0];
 
 /**
  * G3.5 App 装配测(T4δ Chat 页会话化;G8a 三栏壳适配):vi.mock 连接工厂注入事件——
@@ -69,6 +72,27 @@ const h = vi.hoisted(() => {
     putSettingsReject: Error | null = null;
     memoryStatsResp: { entries: number; lastWriteAt: number | null } = { entries: 0, lastWriteAt: null };
     memoryStatsCalls: string[] = [];
+    /** G8c T9 MCP 面:mcpServers/probe/putMcpServers 三桩(应答可编程;调用记录 root 归一 '') */
+    mcpServersResp: { servers: McpRow[] } = { servers: [] };
+    mcpServersCalls: string[] = [];
+    mcpProbeResp: McpProbeResult = { ok: true, tools: [] };
+    mcpProbeCalls: Array<[string, string]> = [];
+    putMcpServersCalls: Array<[string, McpRowInput[]]> = [];
+    putMcpServersReject: Error | null = null;
+    /** G8c T9 智能体面:agentsView/putAgent 两桩(putAgentReject 注入 400 面) */
+    agentsViewResp: { builtins: BuiltinRole[]; view: AgentsView } = { builtins: [], view: { entries: [], warnings: [] } };
+    agentsViewCalls: string[] = [];
+    putAgentCalls: PutAgentInput[] = [];
+    putAgentReject: Error | null = null;
+    /** G8c T9 技能面:skillsGroups 应答可编程(缺省空组) */
+    skillsGroupsResp: { groups: SkillsGroup[] } = { groups: [] };
+    skillsGroupsCalls: string[] = [];
+    /** G8c T9 raw 面:读取应答/双拒可编程;调用记录 [scope, root 归一 '', file](+content) */
+    rawResp: { content: string | null } = { content: null };
+    rawReject: Error | null = null;
+    settingsRawCalls: Array<['project' | 'global', string, 'settings' | 'mcp']> = [];
+    putSettingsRawCalls: Array<['project' | 'global', string, 'settings' | 'mcp', string]> = [];
+    putSettingsRawReject: Error | null = null;
     submitReject: Error | null = null;
     /** G4 回执失败注入(404 已决面):approval/ask 回执共享 */
     replyReject: Error | null = null;
@@ -184,6 +208,42 @@ const h = vi.hoisted(() => {
       this.memoryStatsCalls.push(root ?? '');
       return Promise.resolve(this.memoryStatsResp);
     }
+    mcpServers(root?: string): Promise<{ servers: McpRow[] }> {
+      this.mcpServersCalls.push(root ?? '');
+      return Promise.resolve(this.mcpServersResp);
+    }
+    mcpProbe(root: string | undefined, name: string): Promise<McpProbeResult> {
+      this.mcpProbeCalls.push([root ?? '', name]);
+      return Promise.resolve(this.mcpProbeResp);
+    }
+    putMcpServers(root: string, servers: McpRowInput[]): Promise<void> {
+      if (this.putMcpServersReject !== null) return Promise.reject(this.putMcpServersReject);
+      this.putMcpServersCalls.push([root, servers]);
+      return Promise.resolve();
+    }
+    agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }> {
+      this.agentsViewCalls.push(root ?? '');
+      return Promise.resolve(this.agentsViewResp);
+    }
+    putAgent(input: PutAgentInput): Promise<void> {
+      if (this.putAgentReject !== null) return Promise.reject(this.putAgentReject);
+      this.putAgentCalls.push(input);
+      return Promise.resolve();
+    }
+    skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }> {
+      this.skillsGroupsCalls.push(root ?? '');
+      return Promise.resolve(this.skillsGroupsResp);
+    }
+    settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }> {
+      this.settingsRawCalls.push([scope, root ?? '', file]);
+      if (this.rawReject !== null) return Promise.reject(this.rawReject);
+      return Promise.resolve(this.rawResp);
+    }
+    putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void> {
+      if (this.putSettingsRawReject !== null) return Promise.reject(this.putSettingsRawReject);
+      this.putSettingsRawCalls.push([scope, root ?? '', file, content]);
+      return Promise.resolve();
+    }
     close(): void {
       this.closed = true;
     }
@@ -234,10 +294,17 @@ function snapshotOf(over: Partial<Omit<FakeSnapshot, 'messages'>> & { messages?:
   return { messages: [], board: emptyBoard(), delegations: [], status: 'idle', lastSeq: 0, ...over } as FakeSnapshot;
 }
 
-/** G8c T8 SettingsView fixture:keys 可编程,permissions/providers 恒空(设置表单只消费 keys 面) */
-function settingsViewOf(keys: SettingsKeyRow[]): SettingsView {
+/** G8c T8/T9 SettingsView fixture:keys 可编程;T9 起 permissions/providers 面可选覆写(缺省恒空) */
+function settingsViewOf(
+  keys: SettingsKeyRow[],
+  over: { permissions?: SettingsView['permissions']; providers?: SettingsView['providers'] } = {},
+): SettingsView {
   const emptyPerms = { deny: [], allow: [], additionalDirs: [] };
-  return { keys, permissions: { merged: emptyPerms, project: emptyPerms, global: emptyPerms }, providers: { choices: [], apiKeyPresent: {}, warnings: [] } };
+  return {
+    keys,
+    permissions: over.permissions ?? { merged: emptyPerms, project: emptyPerms, global: emptyPerms },
+    providers: over.providers ?? { choices: [] as ProviderChoice[], apiKeyPresent: {}, warnings: [] },
+  };
 }
 
 type Conn = InstanceType<typeof h.FakeConn>;
@@ -1382,6 +1449,211 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(screen.getByText(/最近/)).toBeDefined();
     // 面板行照常(键行 + 保存)
     expect((screen.getByLabelText('autoMemory') as HTMLInputElement).value).toBe('on');
+    unmount();
+  });
+});
+
+describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/高级 raw', () => {
+  const openSettings = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
+  };
+
+  it('模型与提供方:模型键表单行在场(SettingsForm 复用)+ providers 只读两卡(apiKeyPresent 点类名/槽名 title)+ warnings 行', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.settingsView = settingsViewOf(
+      [
+        { key: 'model', value: 'gpt-x', source: 'project', envOverride: false },
+        { key: 'baseUrl', value: 'https://api.example.com', source: 'global', envOverride: false },
+      ],
+      {
+        providers: {
+          choices: [
+            { id: 'main', provider: 'openai', model: 'gpt-5', baseUrl: 'https://a', apiKeyEnv: 'OPENAI_API_KEY' },
+            { id: 'aux', provider: 'anthropic', model: 'claude-x', baseUrl: 'https://b', apiKeyEnv: 'ANTHROPIC_API_KEY' },
+          ],
+          apiKeyPresent: { openai: true, anthropic: false },
+          warnings: ['anthropic: api key missing'],
+        },
+      },
+    );
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '模型与提供方' }));
+    // 上:模型键表单引擎复用(行 = daemon 报键面;未报键行省略)
+    await screen.findByLabelText('model');
+    expect((screen.getByLabelText('model') as HTMLInputElement).value).toBe('gpt-x');
+    expect((screen.getByLabelText('baseUrl') as HTMLInputElement).value).toBe('https://api.example.com');
+    // 下:providers 只读卡两枚 + api key 圆点类名(绿=在场/灰=缺)+ 槽名 title
+    await waitFor(() => expect(screen.getByText('gpt-5')).toBeDefined());
+    expect(screen.getByText('claude-x')).toBeDefined();
+    expect(document.querySelector('.sx-api-dot.present')).not.toBeNull();
+    expect((document.querySelector('.sx-api-dot.missing') as HTMLElement | null)?.title).toBe('ANTHROPIC_API_KEY');
+    expect(screen.getByText('anthropic: api key missing')).toBeDefined();
+    unmount();
+  });
+
+  it('MCP:两级清单卡(shadowed 灰显+遮蔽标+envKeys 打码)+ 测试连接 ok:false error 行内 + 添加表单 putMcpServers 整块提交', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.mcpServersResp = {
+      servers: [
+        { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-fs'], envKeys: ['MCP_FS_TOKEN'], source: 'project', shadowed: false },
+        { name: 'fs', transport: 'http', url: 'https://global/fs', envKeys: [], source: 'global', shadowed: true },
+        { name: 'web', transport: 'sse', url: 'https://global/web', envKeys: [], source: 'global', shadowed: false },
+      ],
+    };
+    conn.mcpProbeResp = { ok: false, error: 'connect timeout after 10s' };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
+    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a']));
+    // shadowed 全局卡灰显 + 「被项目遮蔽」标 + env 键名列表(值打码不回传)
+    expect(document.querySelector('.sx-mcp-card.shadowed')).not.toBeNull();
+    expect(screen.getByText('被项目遮蔽')).toBeDefined();
+    expect(screen.getByText('MCP_FS_TOKEN')).toBeDefined();
+    // shadowed 全局卡:删除钮禁用(写面恒项目级)
+    expect((screen.getByRole('button', { name: '删除 fs(全局)' }) as HTMLButtonElement).disabled).toBe(true);
+    // 测试连接 → mcpProbe(root, name);ok:false → 卡内 error 文本行
+    fireEvent.click(screen.getByRole('button', { name: '测试连接 web' }));
+    await waitFor(() => expect(conn.mcpProbeCalls).toEqual([['/w/root-a', 'web']]));
+    await waitFor(() => expect(screen.getByText('connect timeout after 10s')).toBeDefined());
+    // + 添加服务器:表单 → 保存 = putMcpServers(root, 现项目清单 + 新机;全局卡不入清单)
+    fireEvent.click(screen.getByRole('button', { name: '+ 添加服务器' }));
+    fireEvent.change(screen.getByLabelText('mcp name'), { target: { value: 'search' } });
+    fireEvent.change(screen.getByLabelText('mcp command'), { target: { value: 'npx' } });
+    fireEvent.change(screen.getByLabelText('mcp args'), { target: { value: '-y, mcp-search' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(conn.putMcpServersCalls).toEqual([
+        [
+          '/w/root-a',
+          [
+            { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-fs'] },
+            { name: 'search', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-search'] },
+          ],
+        ],
+      ]),
+    );
+    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉
+    unmount();
+  });
+
+  it('MCP:删除项目卡 → putMcpServers 清单减一', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.mcpServersResp = {
+      servers: [
+        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], source: 'project', shadowed: false },
+        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], source: 'global', shadowed: false },
+      ],
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
+    await screen.findByText('fs');
+    fireEvent.click(screen.getByRole('button', { name: '删除 fs(项目)' }));
+    await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', []]])); // 全局卡不入项目清单
+    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a']));
+    unmount();
+  });
+
+  it('智能体:builtins 四预设位 + 清单卡(chips/遮蔽/warnings)+ 新增表单 putAgent upsert 断参 + 删除 op:delete', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.agentsViewResp = {
+      builtins: [
+        { role: 'builder', name: '构建者', framing: '实现计划步骤' },
+        { role: 'reviewer', name: '评审者', framing: '评审交付质量' },
+      ],
+      view: {
+        entries: [
+          { id: 'dev', name: '开发者', description: '写代码', memory: true, isolation: 'workspace', executor: 'local', source: 'project', shadowed: false, bodyPreview: '你是项目内开发者。' },
+          { id: 'dev', name: '全局开发者', source: 'global', shadowed: true, bodyPreview: '全局版。' },
+        ],
+        warnings: ['agents/broken/agent.md: frontmatter parse failed'],
+      },
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '智能体' }));
+    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
+    // builtins 只读卡(role/name/framing)
+    expect(screen.getByText('构建者')).toBeDefined();
+    expect(screen.getByText('builder')).toBeDefined();
+    // entries 卡:属性 chips + shadowed 灰显 + 畸形文件告警卡
+    expect(screen.getByText('开发者')).toBeDefined();
+    expect(screen.getByText('memory')).toBeDefined();
+    expect(screen.getByText('isolation:workspace')).toBeDefined();
+    expect(screen.getByText('executor:local')).toBeDefined();
+    expect(document.querySelector('.sx-agent-card.shadowed')).not.toBeNull();
+    expect(screen.getByText(/frontmatter parse failed/)).toBeDefined();
+    // + 新增 → putAgent upsert(root/scope/op/frontmatter 形/body)
+    fireEvent.click(screen.getByRole('button', { name: '+ 新增' }));
+    fireEvent.change(screen.getByLabelText('agent id'), { target: { value: 'writer' } });
+    fireEvent.change(screen.getByLabelText('agent name'), { target: { value: '写手' } });
+    fireEvent.change(screen.getByLabelText('agent description'), { target: { value: '写文档' } });
+    fireEvent.click(screen.getByLabelText('agent memory'));
+    fireEvent.change(screen.getByLabelText('agent body'), { target: { value: '正文内容' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(conn.putAgentCalls).toEqual([
+        { root: '/w/root-a', scope: 'project', op: 'upsert', id: 'writer', frontmatter: { name: '写手', description: '写文档', memory: true }, body: '正文内容' },
+      ]),
+    );
+    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉
+    // 删除 → putAgent op:'delete'(scope = 卡 source)
+    fireEvent.click(screen.getByRole('button', { name: '删除 dev(项目)' }));
+    await waitFor(() => expect(conn.putAgentCalls).toHaveLength(2));
+    expect(conn.putAgentCalls[1]).toEqual({ root: '/w/root-a', scope: 'project', op: 'delete', id: 'dev' });
+    unmount();
+  });
+
+  it('技能+权限:三源分组只读行 + permissions 三列(merged/project/global)渲染', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.skillsGroupsResp = {
+      groups: [
+        { source: 'project', skills: [{ id: 'proj-skill', name: '项目技能', description: '项目内装载' }] },
+        { source: 'user', skills: [{ id: 'user-skill', description: '用户目录技能' }] },
+        { source: 'learned', skills: [{ id: 'learned-skill' }] },
+      ],
+    };
+    conn.settingsView = settingsViewOf([], {
+      permissions: {
+        merged: { deny: ['Bash(rm *)'], allow: ['Read'], additionalDirs: ['/tmp/x'] },
+        project: { deny: ['Bash(rm *)'], allow: [], additionalDirs: [] },
+        global: { deny: [], allow: ['Read'], additionalDirs: ['/tmp/x'] },
+      },
+    });
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '插件:技能' }));
+    await waitFor(() => expect(conn.skillsGroupsCalls).toEqual(['/w/root-a']));
+    // 三源分组(组标 + 行 id + description)
+    expect(document.querySelector('.sx-skills-src-project')).not.toBeNull();
+    expect(document.querySelector('.sx-skills-src-user')).not.toBeNull();
+    expect(document.querySelector('.sx-skills-src-learned')).not.toBeNull();
+    expect(screen.getByText('proj-skill')).toBeDefined();
+    expect(screen.getByText('user-skill')).toBeDefined();
+    expect(screen.getByText('learned-skill')).toBeDefined();
+    // 权限三列:级别徽标 ×3 + deny/allow/additionalDirs 行(合并列 + 层级列各一现)
+    expect(document.querySelectorAll('.sx-perm-level')).toHaveLength(3);
+    expect(screen.getAllByText('Bash(rm *)')).toHaveLength(2);
+    expect(screen.getAllByText('Read')).toHaveLength(2);
+    expect(screen.getAllByText('/tmp/x')).toHaveLength(2);
+    unmount();
+  });
+
+  it('高级 raw:读取装载 textarea + 保存失败(400)行内错误原文 + 成功 toast', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.rawResp = { content: '{\n  "language": "zh"\n}\n' };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    // 读取:settingsRaw(scope=project, root, file=settings) → textarea 装载原文
+    fireEvent.click(screen.getByRole('button', { name: '读取' }));
+    await waitFor(() => expect(conn.settingsRawCalls).toEqual([['project', '/w/root-a', 'settings']]));
+    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"');
+    // 保存失败(服务端 400 解析错误原文)→ 行内错误条
+    conn.putSettingsRawReject = new Error('/settings/raw -> 400 Unexpected token } in JSON');
+    fireEvent.change(screen.getByLabelText('raw editor'), { target: { value: '{ bad' } });
+    fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
+    await waitFor(() => expect(screen.getByText('/settings/raw -> 400 Unexpected token } in JSON')).toBeDefined());
+    // 成功 → toast(FakeConn 拒面不记调用:仅成功笔在账——[scope, root, file, content])
+    conn.putSettingsRawReject = null;
+    fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
+    await waitFor(() => expect(screen.getByText(/已保存:新建会话起/)).toBeDefined());
+    expect(conn.putSettingsRawCalls).toEqual([['project', '/w/root-a', 'settings', '{ bad']]);
     unmount();
   });
 });

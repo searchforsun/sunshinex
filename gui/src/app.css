@@ -92,3 +92,86 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 
 /* toast(保存成功提示:底部居中,3s 自隐由组件计时) */
 .sx-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 16px; color: var(--fg-0); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); z-index: 60; }
+
+/* ---- G8c T9 复杂面板(特批白名单沿 T8 段:并入 app.css 追加段——单一 CSS 文件约束 U-D10) ---- */
+/* 复杂面板容器(表单+附加节纵向堆叠,共用面板滚动面) */
+.sx-settings-complex { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.sx-settings-complex .sx-settings-form { flex: none; overflow: visible; }
+
+/* 模型与提供方:providers 只读卡 */
+.sx-providers { padding: 0 20px 16px; max-width: 640px; display: flex; flex-direction: column; gap: 8px; }
+.sx-providers h3 { margin: 0; font-size: 13px; color: var(--fg-1); }
+.sx-provider-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sx-provider-card { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.sx-provider-head { display: flex; align-items: center; gap: 8px; }
+.sx-provider-name { font-family: var(--font-mono); font-size: 12px; color: var(--fg-0); }
+.sx-provider-vendor { color: var(--fg-1); font-size: 12px; margin-right: auto; }
+.sx-provider-model { color: var(--fg-1); font-family: var(--font-mono); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.sx-provider-warn { margin: 0; color: var(--warn); font-size: 12px; }
+/* api key 圆点:绿=env 槽在场/灰=缺(title=槽名) */
+.sx-api-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.sx-api-dot.present { background: var(--ok); }
+.sx-api-dot.missing { background: var(--fg-1); opacity: 0.4; }
+
+/* MCP/智能体卡列表 + 共用卡操作/表单 */
+.sx-mcp-list, .sx-agent-list, .sx-agent-builtins { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sx-mcp-card, .sx-agent-card, .sx-agent-builtin { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.sx-mcp-card.shadowed, .sx-agent-card.shadowed { opacity: 0.5; } /* 被项目遮蔽:灰显 */
+.sx-mcp-head, .sx-agent-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sx-mcp-name, .sx-agent-id { font-family: var(--font-mono); font-size: 12px; color: var(--fg-0); }
+.sx-agent-name { color: var(--fg-0); font-weight: 600; }
+.sx-shadow-tag { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 0 4px; }
+.sx-mcp-meta { margin: 0; display: grid; grid-template-columns: 64px 1fr; gap: 2px 8px; font-size: 12px; }
+.sx-mcp-meta dt { color: var(--fg-1); }
+.sx-mcp-meta dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.sx-agent-desc { margin: 0; color: var(--fg-1); font-size: 12px; }
+.sx-agent-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.sx-chip { font-size: 11px; font-family: var(--font-mono); color: var(--fg-1); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+.sx-agent-body summary { color: var(--fg-1); font-size: 12px; cursor: pointer; }
+.sx-agent-body pre { margin: 4px 0 0; padding: 6px; background: var(--bg-0); border: 1px solid var(--border); border-radius: 4px; font: 11px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sx-mcp-probe summary { color: var(--fg-1); font-size: 12px; cursor: pointer; }
+.sx-mcp-probe ul { margin: 4px 0 0; padding-left: 16px; font: 11px var(--font-mono); color: var(--fg-1); }
+.sx-agent-warn { margin: 0; color: var(--warn); font-size: 12px; border: 1px solid var(--warn); border-radius: var(--radius); padding: 6px 8px; }
+.sx-card-actions { display: flex; gap: 8px; }
+.sx-card-actions button, .sx-add-button { padding: 2px 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg-0); }
+.sx-card-actions button:hover:not(:disabled), .sx-add-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.sx-add-button { align-self: flex-start; }
+.sx-card-form { background: var(--bg-1); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.sx-card-form h3 { margin: 0; font-size: 13px; }
+.sx-card-form label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fg-1); }
+.sx-card-form input, .sx-card-form select, .sx-card-form textarea { background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; font: 12px var(--font-mono); }
+.sx-check-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
+
+/* 技能+权限:三源组标 + 权限三列 */
+.sx-skills-group { display: flex; flex-direction: column; gap: 4px; }
+.sx-skills-src { align-self: flex-start; font-size: 11px; color: var(--fg-1); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+.sx-skills-src-project { color: var(--accent); border-color: var(--accent); }
+.sx-skills-src-user { color: var(--fg-1); }
+.sx-skills-src-learned { color: var(--warn); border-color: var(--warn); }
+.sx-skill-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sx-skill-row { display: flex; gap: 8px; align-items: baseline; }
+.sx-skill-id { font-family: var(--font-mono); font-size: 12px; color: var(--fg-0); }
+.sx-skill-desc { color: var(--fg-1); font-size: 12px; }
+.sx-perms-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.sx-perm-col { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.sx-perm-level { display: inline-block; font-size: 11px; border-radius: 4px; padding: 0 5px; margin-bottom: 6px; border: 1px solid var(--border); color: var(--fg-1); }
+.sx-perm-level-merged { color: var(--accent); border-color: var(--accent); }
+.sx-perm-level-project { color: var(--accent); border-color: var(--accent); }
+.sx-perm-level-global { color: var(--fg-1); }
+.sx-perm-rows { margin: 0; font-size: 12px; }
+.sx-perm-rows dt { color: var(--fg-1); margin-top: 4px; }
+.sx-perm-rows dd { margin: 0; font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+.sx-perm-deny { color: var(--err); }
+.sx-perm-allow { color: var(--ok); }
+.sx-perm-empty { color: var(--fg-1); opacity: 0.6; font-style: italic; }
+.sx-perms-note { margin: 0; color: var(--fg-1); font-size: 12px; }
+
+/* 高级 raw 编辑器(等宽;控制行) */
+.sx-raw-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sx-raw-controls label { display: flex; align-items: center; gap: 4px; color: var(--fg-1); font-size: 12px; }
+.sx-raw-controls select { background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px; font: inherit; }
+.sx-raw-controls button { padding: 4px 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg-0); }
+.sx-raw-controls button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.sx-raw-hint { margin: 0; color: var(--fg-1); font-size: 12px; }
+.sx-raw-editor { width: 100%; min-height: 320px; background: var(--bg-0); color: var(--fg-0); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; font: 12px var(--font-mono); resize: vertical; }
+
