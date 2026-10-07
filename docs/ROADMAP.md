@@ -114,7 +114,7 @@ flowchart TB
 
 **5B 桌面端 GUI（对标 Codex 工作台，spec 先行）**：
 
-- [x] GUI 设计规格（复用 SessionEvents 事件面与 asker 契约，三面同源）（2026-10-06 两 spec：gui-v1-design + multi-agent-orchestration，G1-G7 七批次全交付）
+- [x] GUI 设计规格（复用 SessionEvents 事件面与 asker 契约，三面同源）（2026-10-06 两 spec：gui-v1-design + multi-agent-orchestration，G1-G7 七批次全交付）；G8 UI 层重构 G8a-e 五批全交付（2026-10-07-gui-redesign-design.md，门禁=主仓 1781/0+gui 244/0+e2e 19/0）
 - [x] 对话交互、代码预览、diff 对比（GUI v1 范围）（G2-G4/G6/G7 交付：会话中心首页/对话页流式与审批问询、Files 预览高亮、write pre-image diff 双列）
 - [x] 工作流可视化编排与实时监控（任务委派式看板，后置 GUI v2）（G5 已交付——会话中心修正后范围：Board List/DAG 双视图/gate 审批/teammate 侧栏）
 - [ ] 项目记忆管理、技能管理、插件管理（后置：daemon/TUI 侧已有命令面，GUI 管理面随壳批次做）
