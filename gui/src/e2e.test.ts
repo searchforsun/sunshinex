@@ -897,9 +897,11 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
 
 /* ============================================================
  * G8a-T6 标签运行时接线两场景(spec §1「新会话默认开『任务』一页」+ Chat write 工具
- * path 钮开文件标签):场景A——建会话即右栏缺省「任务」单例页且活动;Chat write 条目
- * path 钮(G7 场景的卡片/展开复用)→ 开文件标签(title=path)置活动;重复点同 path
- * 判重聚焦不重复(标签条恰一份)。场景B——既有 taskboard 卡片流(CARDS 同款)落板,
+ * path 钮开标签):场景A(G8d-T6 重写——T2 起 path 钮主通道开 Diff 标签,旧文件标签
+ * 断言随接线退役)——建会话即右栏缺省「任务」单例页且活动;Chat write 条目 path 钮
+ * (G7 场景的卡片/展开复用)→ 开 **Diff** 标签(title=path)置活动 → DiffTab mount 拉
+ * fetchDiff 双列;重复点同 path(同 callId)判重聚焦不重复;文件标签原覆盖保——另走
+ * +菜单「文件」裸开 + 路径输入加载。场景B——既有 taskboard 卡片流(CARDS 同款)落板,
  * 经标签条切回任务标签消费(行文本 = 既有 Board 断言面)。
  * ============================================================ */
 
@@ -907,17 +909,19 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
 const tabsByTitle = (container: HTMLElement, title: string): Element[] =>
   Array.from(container.querySelectorAll(`.sx-tab[title="${title}"]`));
 
-describe('G8a-T6 场景A:默认任务页 + write 条目 path 钮开文件标签(判重聚焦)', () => {
-  it('建会话 → 「任务」标签默认在场且活动 → write path 钮 → 文件标签在场且活动 → 再点同 path → 文件标签恰 1', async () => {
-    const REL = 'g8a-e2e-tab.txt'; // 会话 root 域内相对路径(dontAsk 直写,无挂起卡)
-    const CONTENT = 'tab-dedup-payload';
+describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮开 Diff 标签(判重聚焦;文件标签面走 +菜单)', () => {
+  it('建会话 → 「任务」默认在场且活动 → write path 钮 → Diff 标签开且活动(title=path)→ 双列 → 再点同 path 判重 → +菜单「文件」+路径输入补文件预览', async () => {
+    const REL = 'g8d-e2e-diff-tab.txt'; // 会话 root 域内相对路径(dontAsk 直写,无挂起卡)
+    const OLD = 'diff tab old line'; // pre-image 源(G7 fixture 复用:真 daemon write 影子快照的 old 列)
+    const NEW = 'diff tab new line'; // 模型 write envelope 新内容(磁盘现文件/new 列)
     const env = await startDaemon(
       new ScriptedAdapter([
-        JSON.stringify({ tool: 'write', input: { path: REL, content: CONTENT } }),
+        JSON.stringify({ tool: 'write', input: { path: REL, content: NEW } }),
         '{"done":true,"reply":"写完收束"}',
       ]),
     );
     try {
+      fs.writeFileSync(path.join(env.root, REL), OLD, 'utf8'); // 预置旧文件(写前态——Diff 双列的 old 面)
       localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
@@ -932,9 +936,8 @@ describe('G8a-T6 场景A:默认任务页 + write 条目 path 钮开文件标签(
 
       // —— 默认任务页:右栏标签条唯一标签「任务」且活动(ensureSession 缺省开 tasks 单例)——
       await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
-      const tasksTab = tabsByTitle(container, '任务')[0]!;
-      expect(tasksTab.className).toContain('active'); // sx-tab active
-      expect(tabsByTitle(container, REL).length).toBe(0); // 文件标签未开
+      expect(tabsByTitle(container, '任务')[0]!.className).toContain('active'); // sx-tab active
+      expect(tabsByTitle(container, REL).length).toBe(0); // Diff 标签未开
       // 任务标签体在场:标签体渲染 tabEntry('tasks').render = Board(既有看板面)
       expect(container.querySelector('.sx-tabbody .board-main')).not.toBeNull();
 
@@ -947,29 +950,53 @@ describe('G8a-T6 场景A:默认任务页 + write 条目 path 钮开文件标签(
         () => expect(container.querySelector('.entry-assistant')?.textContent).toContain('写完收束'),
         { timeout: 10_000 },
       );
-      expect(fs.readFileSync(path.join(env.root, REL), 'utf8')).toBe(CONTENT); // 真落盘
+      expect(fs.readFileSync(path.join(env.root, REL), 'utf8')).toBe(NEW); // 真落盘
 
-      // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → 文件标签开且活动(title=path)——
+      // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → **Diff 标签**开且活动(title=path)——
+      //    (G8d T2 语义变更:callId 在场主通道 onOpenDiff;旧断言面 Files/.files-view 随接线退役)
       fireEvent.click(screen.getByRole('button', { name: new RegExp(`● write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) }));
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.textContent).toBe(REL);
+      expect(pathBtn?.title).toBe('打开 diff 标签'); // 主通道标识(缺场回落面才示「在文件标签预览」)
       fireEvent.click(pathBtn!);
       await waitFor(() => expect(tabsByTitle(container, REL).length).toBe(1), { timeout: 5_000 });
-      const fileTab = tabsByTitle(container, REL)[0]!;
-      expect(fileTab.className).toContain('active'); // 文件标签活动
+      expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // Diff 标签活动
       expect(tabsByTitle(container, '任务')[0]!.className).not.toContain('active'); // 任务失活
-      expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 任务 + 文件
-      // 文件标签体:Files 预览(initialPath 自动加载 → 磁盘现文件内容)
+      expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 任务 + Diff
+
+      // —— Diff 标签体:DiffTab mount 拉 conn.fetchDiff(callId)→ 标题行(path)+ DiffPanel
+      //    双列(old=pre-image 影子快照 / new=磁盘现文件)——真 daemon write 影子快照的应答渲染 ——
       await waitFor(
-        () => expect(container.querySelector('.sx-tabbody .files-view')?.textContent).toContain(CONTENT),
+        () => expect(container.querySelector('.sx-tabbody .diff-panel .diff-old')).not.toBeNull(),
         { timeout: 5_000 },
       );
+      expect(container.querySelector('.sx-tabbody .diff-panel .diff-old')?.textContent).toBe(OLD);
+      expect(container.querySelector('.sx-tabbody .diff-panel .diff-new')?.textContent).toBe(NEW);
+      expect(container.querySelectorAll('.sx-tabbody .diff-panel .diff-col').length).toBe(2); // 双列
+      expect(container.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe(REL); // 标题行 path
+      expect(container.querySelector('.sx-tabbody .files-view')).toBeNull(); // 标签体是 Diff 面,非 Files 面
 
-      // —— 判重聚焦:再点同 path 钮 → 文件标签数恰 1(重开同目标=聚焦既有,不重复)——
+      // —— 判重聚焦:再点同 path 钮(同 callId 重开)→ Diff 标签数恰 1(聚焦既有,不重复)——
       fireEvent.click(container.querySelector<HTMLButtonElement>('.tool-path')!);
       expect(tabsByTitle(container, REL).length).toBe(1);
       expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // 聚焦保持
       expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 标签总数不变
+
+      // —— 文件标签面(G8a 原覆盖保:path 钮主通道已迁 Diff,文件标签另走 +菜单裸开 → 路径输入
+      //    加载):「文件」标签开且活动 → 输入 REL 回车 → files-view 载磁盘现文件 ——
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
+      await waitFor(() => expect(tabsByTitle(container, '文件').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, '文件')[0]!.className).toContain('active');
+      const pathInput = screen.getByLabelText('file path input');
+      fireEvent.change(pathInput, { target: { value: REL } });
+      fireEvent.keyDown(pathInput, { key: 'Enter' });
+      await waitFor(
+        () => expect(container.querySelector('.sx-tabbody .files-view')?.textContent).toContain(NEW),
+        { timeout: 5_000 },
+      );
+      expect(container.querySelectorAll('.sx-tab').length).toBe(3); // 任务 + Diff + 文件
     } finally {
       await env.stop();
       localStorage.removeItem('sunshinex.token');
@@ -1396,4 +1423,139 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       vi.unstubAllGlobals();
     }
   }, 90_000);
+});
+
+/* ============================================================
+ * G8d-T6 e2e 收官两新场景(场景A 重写见上 G8a-T6 位——path 钮主通道 Diff 标签):
+ * 场景B——Agents 标签 live 卡:既有 taskboard 卡片流(CARDS 同款)跑出委派,board
+ * P1 fork 路径(executeOne → runner.runSubagent label=task-<id>)子 Reactor 事件经
+ * tagger 打 payload.subagent 标签(harness/subagent.ts L537;daemon 会话泵零过滤广播)
+ * → App onEvent 另轨 applyAgentEvent 归约(不投 chat,与标签开关无关)→ +菜单开
+ * Agents 标签 → 卡在场(label/终态文案)+ 点卡头 mini 转录折叠展开(末位 done 牌
+ * token 逐字符流 = 行面)。
+ * 场景C——Web 标签:+菜单裸开(空态引导)→ url 输入(localhost——真外站零拉取;
+ * jsdom 不渲染 iframe 内容,断言框架属性面)回车 → iframe title=active/sandbox 四值
+ * → 外开钮 window.open stub 断言实参(_blank + noopener 隔离 opener)→ 刷新 nonce
+ * bump 入 iframe key 强制重挂(新 DOM 节点)。
+ * ============================================================ */
+
+describe('G8d-T6 场景B:Agents 标签 live 卡——CARDS fork 子代理事件聚合 → 开标签 → 卡在场 + mini 转录展开', () => {
+  it('提交 CARDS → done 收束 → +菜单开 Agents 标签 → task-t1 卡(label/完成)+ 点卡转录行在场 → 再点收起', async () => {
+    const env = await startDaemon(new ScriptedAdapter(CARDS));
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话 → chat(默认「任务」标签活动;Agents 聚合是 App 态另轨,不依赖标签在场)——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+
+      // —— 既有 taskboard 卡片流(CARDS 同款):提交 → 委派 fork 派发 → 主链 done 收束 ——
+      const input = screen.getByLabelText('message input');
+      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
+      fireEvent.change(input, { target: { value: 'run demo' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(
+        () => expect(container.querySelector('.entry-assistant')?.textContent).toContain('all done'),
+        { timeout: 15_000 },
+      );
+
+      // —— +菜单开 Agents 标签(session 节,每会话单例):开且活动,标签体渲染 AgentsTab ——
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
+      await waitFor(() => expect(tabsByTitle(container, 'Agents').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, 'Agents')[0]!.className).toContain('active');
+      expect(container.querySelector('.sx-tabbody .sx-agents-tab')).not.toBeNull(); // 标签体挂载
+
+      // —— live 卡在场:fork 子链事件(payload.subagent=task-t1)聚合落卡。主链 done 在先不保
+      //    fork 收束序(派发异步)——waitFor 过竞态窗;终态=完成(fork done 事件 + delegation-ended
+      //    label 命中双源收敛)——
+      await waitFor(
+        () => expect(container.querySelector('.sx-agents-list .sx-agent-card .sx-agent-status')?.textContent).toBe('完成'),
+        { timeout: 10_000 },
+      );
+      const card = container.querySelector('.sx-agents-list .sx-agent-card')!;
+      expect(card.textContent).toContain('task-t1'); // label(runSubagent finalLabel 口径)
+      expect(container.querySelector('.sx-agents-empty')).toBeNull(); // 空态文案退场(卡在场)
+
+      // —— mini 转录折叠展开:点卡头 → 行在场(末位 done 牌 token 逐字符流——剥行首两格
+      //    token 缩进前缀后逐行拼回即终稿全文)——
+      fireEvent.click(screen.getByRole('button', { name: 'agent card task-t1' }));
+      const lines = container.querySelector('.sx-agent-lines');
+      expect(lines).not.toBeNull();
+      expect(lines?.textContent?.split('\n').map((l) => l.replace(/^  /, '')).join('')).toBe('all done');
+      // 折叠收起:再点卡头 → 转录退场
+      fireEvent.click(screen.getByRole('button', { name: 'agent card task-t1' }));
+      expect(container.querySelector('.sx-agent-lines')).toBeNull();
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+});
+
+describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost → iframe 沙盒/外开 stub → 刷新重挂', () => {
+  it('建会话 → +菜单「Web」→ 标签开且活动 → 空态引导 → url 输入回车 → iframe(title/src/沙盒)→ 外开 window.open 实参 → 刷新重挂新节点', async () => {
+    const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"web 场景无需模型轮"}']));
+    const TARGET = 'http://localhost:8123/'; // localhost 目标(真外站零拉取;含 :// 不补 scheme)
+    try {
+      localStorage.setItem('sunshinex.token', 'e2e-token');
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+
+      // —— 建会话(标签条需会话在场才可用)→ +菜单「Web」裸开档(key='' 聚焦语义,title='Web')——
+      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
+      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
+      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Web' }));
+      await waitFor(() => expect(tabsByTitle(container, 'Web').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, 'Web')[0]!.className).toContain('active');
+
+      // —— 裸开档空态:引导文案 + url 输入在场(占位符锚)——
+      expect(container.querySelector('.sx-web-empty')).not.toBeNull();
+      const urlInput = screen.getByLabelText('web url input');
+      expect(urlInput.getAttribute('placeholder')).toContain('https');
+      fireEvent.change(urlInput, { target: { value: TARGET } });
+      fireEvent.keyDown(urlInput, { key: 'Enter' });
+
+      // —— iframe 落定:title=active(无障碍名/测试锚),src 原样,sandbox 四值;空态退场 ——
+      const frame1 = container.querySelector('iframe.sx-web-frame');
+      expect(frame1?.getAttribute('title')).toBe(TARGET);
+      expect(frame1?.getAttribute('src')).toBe(TARGET);
+      expect(frame1?.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-same-origin allow-popups');
+      expect(container.querySelector('.sx-web-empty')).toBeNull();
+
+      // —— 外开钮:window.open stub(jsdom noop)→ 点击断言实参(_blank + noopener 隔离 opener)——
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+      fireEvent.click(screen.getByRole('button', { name: '外开' }));
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(openSpy).toHaveBeenCalledWith(TARGET, '_blank', 'noopener,noreferrer');
+      openSpy.mockRestore();
+
+      // —— 刷新重挂:nonce bump 入 iframe key → 强制重挂(新 DOM 节点;url 不变)——
+      const before = container.querySelector('iframe.sx-web-frame');
+      fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+      const after = container.querySelector('iframe.sx-web-frame');
+      expect(after).not.toBe(before);
+      expect(after?.getAttribute('src')).toBe(TARGET);
+    } finally {
+      await env.stop();
+      localStorage.removeItem('sunshinex.token');
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  }, 45_000);
 });
