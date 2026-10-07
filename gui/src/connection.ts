@@ -358,6 +358,10 @@ export interface Connection {
   /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（T5，AgentsPane 表单增删改）：
    *  input 原文即请求体（缺省字段不落 JSON）；scope=project 必带 root（缺 400），delete 不存在幂等 ok */
   putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void>;
+  /** GET /settings/agents/body?scope=&id=&root=（G8d T3，AgentsPane 编辑全文装载）：agent.md
+   *  frontmatter 后正文全文（bodyPreview 200 帽不适用）；root 缺省省查询参（scope=global 忽略
+   *  root）；404（缺文件）/400（坏 id·scope=project 缺 root·畸形 frontmatter）以 HTTP 失败抛错 */
+  agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
   /** GET /settings/skills?root=（T6）：三源分组固定序 project/user/learned（root 缺省 = 仅 user 组） */
   skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }>;
   /** GET /settings/memory-stats?root=（T6）：主域记忆概览（root 缺省 = 零值非 400） */
@@ -670,6 +674,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void> {
       return put('/settings/agents', input);
+    },
+    // G8d T3 全文面:root 缺省省查询参(settings 系同款);scope=global 时 root 定位面被服务端忽略
+    agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {
+      const query = `scope=${scope}&id=${encodeURIComponent(id)}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}`;
+      return getJson<{ body: string }>(`/settings/agents/body?${query}`);
     },
     skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }> {
       return getJson<{ groups: SkillsGroup[] }>(root === undefined ? '/settings/skills' : `/settings/skills?root=${encodeURIComponent(root)}`);

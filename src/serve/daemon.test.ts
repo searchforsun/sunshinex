@@ -1505,6 +1505,89 @@ describe('G8c T5 /settings/agents 端点', () => {
   });
 });
 
+// ---------- G8d T3:GET /settings/agents/body(agent.md 正文全文——AgentsPane 编辑播种) ----------
+
+describe('G8d T3 GET /settings/agents/body 端点', () => {
+  test('㊱ 两 scope 往返:frontmatter 后正文全文(>200 不截断,不含 frontmatter);global 忽略 root;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const writeAgent = (dir: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(dir, 'agents', id), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'agents', id, 'agent.md'), md, 'utf8');
+      };
+      const longBody = `整段正文第一行。\n${'很长的正文行。'.repeat(40)}\n收尾行。`;
+      writeAgent(proj, 'pfull', `---\nname: P Full\ndescription: project full\n---\n${longBody}`);
+      const globalDir = path.join(home, '.sunshinex');
+      writeAgent(globalDir, 'gfull', `---\nname: G Full\n---\n${longBody}`);
+
+      const noAuth = await fetch(`${base}/settings/agents/body?scope=project&id=pfull&root=${encodeURIComponent(proj)}`);
+      assert.equal(noAuth.status, 401, '无 token 401');
+
+      // project 往返:body=frontmatter 后正文全文(预览帽 200 不适用),不含 frontmatter 行
+      const p = await fetch(
+        `${base}/settings/agents/body?scope=project&id=pfull&root=${encodeURIComponent(proj)}`,
+        { headers: AUTH },
+      );
+      assert.equal(p.status, 200);
+      const pBody = (await p.json()) as { body: string };
+      assert.equal(pBody.body, longBody, '正文全文逐字(bodyPreview 截断帽不适用)');
+      assert.ok(!pBody.body.includes('name: P Full'), '不含 frontmatter');
+      assert.ok(pBody.body.length > 200, '超 200 字正文不截断');
+
+      // global 往返:root 被忽略(decoy 不定位)
+      const decoy = path.join(tmp, 'who-cares');
+      const g = await fetch(
+        `${base}/settings/agents/body?scope=global&id=gfull&root=${encodeURIComponent(decoy)}`,
+        { headers: AUTH },
+      );
+      assert.equal(g.status, 200);
+      assert.equal(((await g.json()) as { body: string }).body, longBody, 'global 落 userConfigDir(root 忽略)');
+    });
+  });
+
+  test('㊲ 404(两 scope 缺文件)/400 坏 id(路径穿越)/400 坏 scope·缺 root/400 畸形 frontmatter(带 message)', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(path.join(proj, 'agents', 'ok'), { recursive: true });
+      fs.writeFileSync(path.join(proj, 'agents', 'ok', 'agent.md'), '---\nname: Ok\n---\nbody\n', 'utf8');
+      fs.mkdirSync(path.join(proj, 'agents', 'broken'), { recursive: true });
+      fs.writeFileSync(path.join(proj, 'agents', 'broken', 'agent.md'), 'no frontmatter here\n', 'utf8');
+
+      // 404:project 目录存在但无该 id;global 同
+      const p404 = await fetch(
+        `${base}/settings/agents/body?scope=project&id=absent&root=${encodeURIComponent(proj)}`,
+        { headers: AUTH },
+      );
+      assert.equal(p404.status, 404);
+      const g404 = await fetch(`${base}/settings/agents/body?scope=global&id=absent`, { headers: AUTH });
+      assert.equal(g404.status, 404);
+
+      // 400 坏 id:路径分隔/穿越(AGENT_ID_RE 同守卫)
+      for (const id of ['a/b', '../escape', '.hidden', '']) {
+        const r = await fetch(
+          `${base}/settings/agents/body?scope=project&id=${encodeURIComponent(id)}&root=${encodeURIComponent(proj)}`,
+          { headers: AUTH },
+        );
+        assert.equal(r.status, 400, `id=${JSON.stringify(id)} → 400`);
+      }
+
+      // 400 坏 scope / scope=project 缺 root
+      const badScope = await fetch(`${base}/settings/agents/body?scope=team&id=ok`, { headers: AUTH });
+      assert.equal(badScope.status, 400);
+      const noRoot = await fetch(`${base}/settings/agents/body?scope=project&id=ok`, { headers: AUTH });
+      assert.equal(noRoot.status, 400);
+
+      // 400 畸形 frontmatter:装配解析器原文 message(与 warnings 面同源)
+      const broken = await fetch(
+        `${base}/settings/agents/body?scope=project&id=broken&root=${encodeURIComponent(proj)}`,
+        { headers: AUTH },
+      );
+      assert.equal(broken.status, 400);
+      assert.ok((((await broken.json()) as { error: string }).error).includes('frontmatter'), '错误指名 frontmatter');
+    });
+  });
+});
+
 // ---------- G8c T6:/settings/skills + /settings/memory-stats 端点(技能三源分组清单+主域记忆概览) ----------
 
 /** GET /settings/skills 应答行(skills.ts SkillsGroup 只读投影;name/description 空串不透出) */
@@ -1520,7 +1603,7 @@ interface SkillsBody {
 }
 
 describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
-  test('㊱ skills 三源分组:project 五根合并一组(.sunshinex 遮蔽 .claude)+user 全局+learned 项目锚定;跨组同名不去重;无 token 401', async () => {
+  test('㊳ skills 三源分组:project 五根合并一组(.sunshinex 遮蔽 .claude)+user 全局+learned 项目锚定;跨组同名不去重;无 token 401', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const proj = path.join(tmp, 'proj');
       const writeSkill = (dir: string, id: string, md: string): void => {
@@ -1558,7 +1641,7 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
     });
   });
 
-  test('㊲ skills 无 root=仅 user 组(userSkillsDir 全局可扫;project/learned 均 root 锚定缺席)', async () => {
+  test('㊴ skills 无 root=仅 user 组(userSkillsDir 全局可扫;project/learned 均 root 锚定缺席)', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const writeSkill = (dir: string, id: string, md: string): void => {
         fs.mkdirSync(path.join(dir, id), { recursive: true });
@@ -1575,7 +1658,7 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
     });
   });
 
-  test('㊳ memory-stats:主域记录条数+最大 mtime(MEMORY.md 索引与 agents/ 子树不计);空态/无 root 零值;GET 零副作用;无 token 401', async () => {
+  test('㊵ memory-stats:主域记录条数+最大 mtime(MEMORY.md 索引与 agents/ 子树不计);空态/无 root 零值;GET 零副作用;无 token 401', async () => {
     await withSettingsDaemon(async ({ base, tmp }) => {
       const proj = path.join(tmp, 'proj');
       fs.mkdirSync(proj, { recursive: true });

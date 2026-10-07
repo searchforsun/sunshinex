@@ -1001,6 +1001,9 @@ export class GuiDaemon {
     // fail-fast 的写盘前防线；delete 幂等；agents 装配期读取，写盘不触发 settings reload）
     { method: 'GET', path: '/settings/agents', auth: true, run: async (req, res) => this.handleAgentsGet(req, res) },
     { method: 'PUT', path: '/settings/agents', auth: true, run: (req, res) => this.handleAgentsPut(req, res) },
+    // G8d T3 agents 全文面：agent.md frontmatter 后正文全文（AgentsPane 编辑播种升级——清单面
+    // bodyPreview 200 帽的引流端点；id/scope 守卫与定位裁定同 PUT 面）
+    { method: 'GET', path: '/settings/agents/body', auth: true, run: async (req, res) => this.handleAgentsBodyGet(req, res) },
     // G8c T6 skills/memory-stats 面：三源分组清单（project 五根合并一组/user 全局/learned 工作区锚定；
     // 组内沿装载序去重、跨组不去重——展示面重复 id 保留）+ 主域记忆概览（条数+最近写入，只读零副作用）
     { method: 'GET', path: '/settings/skills', auth: true, run: async (req, res) => this.handleSkillsGet(req, res) },
@@ -2214,6 +2217,43 @@ export class GuiDaemon {
       throw err; // IO 面 → dispatch 500 收口
     }
     this.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
+  }
+
+  /** GET /settings/agents/body?scope=project|global&id=&root=（G8d T3，AgentsPane 编辑全文装载）：
+   *  读 <scopeDir>/agents/<id>/agent.md 的 frontmatter 后正文全文（parseAgentFrontmatter 单点——
+   *  验证口径=装载口径=bodyPreview 口径，三面同源；bodyPreview 的 200 帽在此不适用）。错误面：
+   *  坏 scope/坏 id（AGENT_ID_RE 同 PUT 守卫）/scope=project 缺 root → 400；文件缺 → 404；畸形
+   *  frontmatter → 400 带 parser 原文 message（清单面入 warnings 不抛死，本端点单文件直达——
+   *  编辑装载是精确寻址，报错优于静默）。scope=global 恒忽略 root（定位面，PUT 同裁定） */
+  private handleAgentsBodyGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const scope = url.searchParams.get('scope');
+    if (scope !== 'project' && scope !== 'global') {
+      this.send(res, 400, { error: 'scope must be "project" or "global"' });
+      return;
+    }
+    const id = url.searchParams.get('id');
+    if (id === null || !AGENT_ID_RE.test(id)) {
+      this.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
+      return;
+    }
+    const rootParam = url.searchParams.get('root');
+    if (scope === 'project' && (rootParam === null || rootParam.length === 0)) {
+      this.send(res, 400, { error: 'root required for scope=project' });
+      return;
+    }
+    const scopeDir = scope === 'global' ? userConfigDir() : path.resolve(rootParam as string);
+    const file = path.join(scopeDir, 'agents', id, 'agent.md');
+    if (!fs.existsSync(file)) {
+      this.send(res, 404, { error: `agent.md not found: ${file}` });
+      return;
+    }
+    const md = fs.readFileSync(file, 'utf8'); // existsSync 后读失败（竞态移除等）沿 dispatch 500 收口
+    try {
+      this.send(res, 200, { body: parseAgentFrontmatter(md).body });
+    } catch (err) {
+      this.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   /** GET /settings/skills?root=（G8c T6，Settings 页 Skills 清单数据源）：root 在场 → loadSkillsGrouped

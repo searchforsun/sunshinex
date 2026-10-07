@@ -10,8 +10,11 @@ import { SourceBadge } from './SourceBadge';
  * - 「+ 新增」/卡「编辑」→ 表单(scope select(project/global)/id(新增可编辑,编辑只读——
  *   id 是目录名)/name/description/memory checkbox/isolation/executor/body textarea);
  *   「保存」=conn.putAgent({root?, scope, op:'upsert', id, frontmatter, body})→ 重拉。
- *   编辑卡守卫(G8c 终审 A):播种 body 触 200 截断帽且未改写 → 阻断保存行内示错(防截断文写盘
- *   毁余文);已改写=有意重写放行,完整原文兜底走 agents/<id>/agent.md 直接编辑。
+ *   G8d-T3 全文装载:编辑钮先以 bodyPreview 播种(即时开表单),再 conn.agentBody(source,
+ *   id, root) 拉正文全文升级播种——成功则截断守卫对该表单退役;失败回退 bodyPreview+行内提示
+ *   (守卫保留为兜底——全文装载失败时防截断文写盘)。编辑卡守卫(G8c 终审 A):播种面触 200
+ *   截断帽(=bodyPreview 预览切片)且未改写 → 阻断保存行内示错(防截断文写盘毁余文);已改写=
+ *   有意重写放行,完整原文兜底走 agents/<id>/agent.md 直接编辑。
  *   frontmatter 缺省键不落(name 必填;空串可选键省略;memory 仅 true 落)——与 daemon
  *   「input 原文即请求体(缺省字段不落 JSON)」契约对齐。scope=project 需 root(无 root 时
  *   项目选项禁用——写面守卫,余走服务端 400 面行内示出)。
@@ -32,6 +35,8 @@ export interface PutAgentInput {
 export interface AgentsPaneConn {
   agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }>;
   putAgent(input: PutAgentInput): Promise<void>;
+  /** G8d-T3 正文全文(agent.md frontmatter 后正文;AgentsPane 编辑播种升级面) */
+  agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
 }
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -42,7 +47,8 @@ const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 /** daemon bodyPreview 截断帽(subagent.ts slice(0,200) 同款):长度触帽即原文可能被截——编辑守卫判据 */
 const BODY_PREVIEW_CAP = 200;
 
-/** 表单态(editing=true 时 id 锁定;seededBody=编辑播种的 bodyPreview 原文——截断守卫比对基线) */
+/** 表单态(editing=true 时 id 锁定;seededBody=编辑播种的正文(bodyPreview 回退面/全文升级面)
+ *  ——截断守卫比对基线;bodyFull=true 表示已升级全文装载,守卫对该表单退役) */
 interface AgentFormState {
   scope: 'project' | 'global';
   readonly editing: boolean;
@@ -53,8 +59,10 @@ interface AgentFormState {
   isolation: string;
   executor: string;
   body: string;
-  /** 编辑播种的正文原文(bodyPreview)——save 守卫判「用户是否已改写」的基线 */
+  /** 编辑播种的正文原文——save 守卫判「用户是否已改写」的基线 */
   readonly seededBody: string;
+  /** true = 正文已升级为 agent.md 全文(agentBody 成功)——无截断风险,守卫退役 */
+  readonly bodyFull: boolean;
 }
 
 export interface AgentsPaneProps {
@@ -97,9 +105,10 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
       setFormError('name 必填(frontmatter 首键)');
       return;
     }
-    /** G8c 终审 A 截断守卫:编辑表单播种的是 bodyPreview(200 字切片)——长度触帽即原文可能被截,
-     *  未改正文(仍=播种值)直接保存会把截断文写盘毁掉余文;用户已改写(≠播种值)=有意重写放行。 */
-    if (form.editing && form.seededBody.length >= BODY_PREVIEW_CAP && form.body === form.seededBody) {
+    /** G8c 终审 A 截断守卫(全文装载失败的兜底面):播种面是 bodyPreview(200 字切片)时,长度触帽
+     *  即原文可能被截,未改正文(仍=播种值)直接保存会把截断文写盘毁掉余文;用户已改写(≠播种值)
+     *  =有意重写放行。bodyFull(全文装载成功)无截断风险——守卫退役。 */
+    if (form.editing && !form.bodyFull && form.seededBody.length >= BODY_PREVIEW_CAP && form.body === form.seededBody) {
       setFormError(`原文可能超过 ${BODY_PREVIEW_CAP} 字符已被预览截断——请改写完整正文后保存,或直接编辑 agents/${id}/agent.md 文件`);
       return;
     }
@@ -128,6 +137,25 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
     conn.putAgent({ root: entry.source === 'project' ? root : undefined, scope: entry.source, op: 'delete', id: entry.id }).then(
       () => load(),
       (err: unknown) => setLoadError(errText(err)),
+    );
+  };
+
+  /** G8d-T3 全文装载:agentBody(source,id,root) 成功 → 正文升级全文(用户已动手改写则不覆盖,
+   *  以其输入为准);失败 → 回退预览态(bodyPreview 已播种)+ 行内提示(截断守卫兜底生效)。 */
+  const seedFullBody = (entry: AgentEntryView): void => {
+    conn.agentBody(entry.source, entry.id, root === '' ? undefined : root).then(
+      ({ body }) => {
+        setForm((f) =>
+          f !== null && f.editing && f.id === entry.id && f.scope === entry.source && f.body === f.seededBody
+            ? { ...f, body, seededBody: body, bodyFull: true }
+            : f,
+        );
+      },
+      (err: unknown) => {
+        // 晚到的装载失败不覆盖其后已示出的保存面错误(截断守卫/服务端 400)——仅空错误位时落
+        const msg = `正文全文装载失败,已回退预览:${errText(err)}`;
+        setFormError((prev) => (prev === '' ? msg : prev));
+      },
     );
   };
 
@@ -191,8 +219,10 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
                         executor: e.executor ?? '',
                         body: e.bodyPreview,
                         seededBody: e.bodyPreview,
+                        bodyFull: false,
                       });
                       setFormError('');
+                      seedFullBody(e); // G8d-T3:全文装载升级(失败回退预览+行内提示)
                     }}
                   >
                     编辑
@@ -278,7 +308,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
         type="button"
         className="sx-add-button"
         onClick={() => {
-          setForm({ scope: root === '' ? 'global' : 'project', editing: false, id: '', name: '', description: '', memory: false, isolation: '', executor: '', body: '', seededBody: '' });
+          setForm({ scope: root === '' ? 'global' : 'project', editing: false, id: '', name: '', description: '', memory: false, isolation: '', executor: '', body: '', seededBody: '', bodyFull: false });
           setFormError('');
         }}
       >

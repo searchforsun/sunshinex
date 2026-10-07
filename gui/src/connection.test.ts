@@ -555,6 +555,28 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     await expect(conn.settingsRaw('project', undefined, 'settings')).rejects.toThrow('/settings/raw?scope=project&file=settings -> 400');
   });
 
+  it('⑩b G8d agentBody(GET /settings/agents/body):URL/query 形(scope&id&root 缺省省参)+ 应答解码;404/400 以 HTTP 失败抛错含 status', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    fetchQueue.push(
+      ok({ body: 'frontmatter 之后的完整正文\n多行原样\n' }), // agentBody('project','writer','/w 1')(root 路径编码面)
+      ok({ body: '' }), // agentBody('global','mini')(root 缺省省参;空正文合法态)
+    );
+    await expect(conn.agentBody('project', 'writer', '/w 1')).resolves.toEqual({ body: 'frontmatter 之后的完整正文\n多行原样\n' });
+    await expect(conn.agentBody('global', 'mini')).resolves.toEqual({ body: '' });
+    // URL 面:root 缺省省查询参(settings 系同款);id 编码
+    expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/settings/agents/body?scope=project&id=writer&root=%2Fw%201',
+      'http://127.0.0.1:7788/settings/agents/body?scope=global&id=mini',
+    ]);
+    expect(fetchLog.every((f) => f.init?.method === undefined)).toBe(true); // 读面全 GET
+    expect(fetchLog[0]?.init?.headers).toEqual({ authorization: 'Bearer tok' });
+    // 404(缺文件)/400(畸形 frontmatter)透传:错误消息含路径与 status
+    fetchQueue.push(errResp(404));
+    await expect(conn.agentBody('global', 'gone')).rejects.toThrow('/settings/agents/body?scope=global&id=gone -> 404');
+    fetchQueue.push(errResp(400));
+    await expect(conn.agentBody('project', 'broken', '/w')).rejects.toThrow('/settings/agents/body?scope=project&id=broken&root=%2Fw -> 400');
+  });
+
   it('⑪ G8c 设置写面(PUT/POST):putSettings/putSettingsRaw/putMcpServers/putAgent/mcpProbe 的 URL/verb/body;void PUT 不解析应答体(200 空体过);非 2xx 抛错含 status', async () => {
     conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
     // void 写面应答不解析:json() 一经调用即抛——锁「200 {ok} 只查 ok 不读体」(空体 200 同过)

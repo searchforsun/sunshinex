@@ -11,6 +11,7 @@ import { Board } from '../pages/Board';
 import { TerminalTab } from './TerminalTab';
 import { DirectoryTab } from './DirectoryTab';
 import { DiffTab } from './DiffTab';
+import { AgentsTab } from './AgentsTab';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
 export interface TabServices {
@@ -19,6 +20,8 @@ export interface TabServices {
   readonly delegations: readonly import('../projection').Delegation[];
   readonly team: readonly { name: string; busy: boolean }[];
   readonly onReview: (taskId: string, approved: boolean) => void;
+  /** G8d 子代理活动聚合(App 态 applyAgentEvent 归约;Agents 标签只读消费) */
+  readonly agentActivities: import('./agent-activity').AgentActivities;
 }
 
 export interface TabRenderProps {
@@ -50,9 +53,11 @@ export interface TabTypeEntry {
   readonly mintParams?: () => import('./tab-state').TabParams;
 }
 
-/** G8a 两类 + G8b terminal/directory + G8d diff:file(按 path 判重多实例)+ diff(write 调用
+/** G8a 两类 + G8b terminal/directory + G8d diff/agents:file(按 path 判重多实例)+ diff(write 调用
  * 按 callId 判重多实例——Chat write 条目 path 钮开档,渲染面 fetchDiff 双列/404 降级)+ 目录(每
- * 会话单例,惰拉树文件行跳 file)+ tasks(每会话单例)+ 终端(nonce 多实例) */
+ * 会话单例,惰拉树文件行跳 file)+ tasks(每会话单例)+ agents(每会话单例——子代理活动聚合卡,
+ * G8d:payload.subagent 事件流经 App applyAgentEvent 归约,services.agentActivities 注入)+
+ * 终端(nonce 多实例) */
 export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
@@ -95,6 +100,14 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onReview={p.services.onReview}
       />
     ),
+  },
+  {
+    id: 'agents',
+    group: 'session',
+    title: () => 'Agents',
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => <AgentsTab activities={p.services.agentActivities} />,
   },
   {
     id: 'terminal',

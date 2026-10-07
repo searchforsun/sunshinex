@@ -9,9 +9,9 @@ const base = {
   onToggleCollapse: vi.fn(), onCycle: vi.fn(), onCloseActive: vi.fn(),
 };
 
-describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff)', () => {
-  it('注册 file/diff/directory/tasks/terminal;file 按 path、diff 按 callId 判重多实例,directory/tasks 单例,terminal 按 nonce 多实例', () => {
-    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'diff', 'directory', 'tasks', 'terminal']);
+describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents)', () => {
+  it('注册 file/diff/directory/tasks/agents/terminal;file 按 path、diff 按 callId 判重多实例,directory/tasks/agents 单例,terminal 按 nonce 多实例', () => {
+    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'diff', 'directory', 'tasks', 'agents', 'terminal']);
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');
@@ -29,7 +29,12 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff)', () => {
     const tasks = TAB_REGISTRY[3]!;
     expect(tasks.singleton).toBe(true);
     expect(tasks.title({})).toBe('任务');
-    const terminal = TAB_REGISTRY[4]!;
+    const agents = TAB_REGISTRY[4]!;
+    expect(agents.singleton).toBe(true);
+    expect(agents.group).toBe('session');
+    expect(agents.title({})).toBe('Agents');
+    expect(agents.resolveKey({})).toBe('');
+    const terminal = TAB_REGISTRY[5]!;
     expect(terminal.singleton).toBe(false);
     expect(terminal.resolveKey({ nonce: 't1' })).toBe('t1');
     expect(terminal.resolveKey({})).toBe('');

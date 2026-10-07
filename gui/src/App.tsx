@@ -13,6 +13,8 @@ import { tabEntry, registryProbe } from './tabs/registry';
 import type { TabServices } from './tabs/registry';
 import { ensureSession, openTab, closeTab, setActive, cycleTab, setCollapsed, setWidth, emptyTabSession } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
+import { applyAgentEvent } from './tabs/agent-activity';
+import type { AgentActivities } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
 
 /**
@@ -117,6 +119,9 @@ function AppShell({ token }: { token: string }): JSX.Element {
   const [delegations, setDelegations] = useState<Delegation[]>([]);
   /** G5 teammate 投影(App 态):snapshot.team 经 Chat onSeeded 回填——reseed 即更新 */
   const [team, setTeam] = useState<Array<{ name: string; busy: boolean }>>([]);
+  /** G8d 子代理活动聚合(App 态):payload.subagent 标签流经 applyAgentEvent 归约——Agents 标签
+   *  只读消费(services.agentActivities);delegation 起止 label 命中既有卡时改状态(权威终语) */
+  const [agentActivities, setAgentActivities] = useState<AgentActivities>({});
   const connRef = useRef<Connection | null>(null);
   /** 连接实例态:effect 装配后落位(左栏/中栏/标签体消费;null = 装配中占位) */
   const [connInstance, setConnInstance] = useState<Connection | null>(null);
@@ -162,7 +167,18 @@ function AppShell({ token }: { token: string }): JSX.Element {
         }
         if (e.type.startsWith('delegation-')) {
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
-          else setDelegations((d) => applyDelegation(d, e));
+          else {
+            setDelegations((d) => applyDelegation(d, e));
+            // G8d:delegation 起止无 subagent 标签——payload.label 命中既有卡才改状态(Runner 权威
+            // 终语:ended failed → error·done → done;未建卡原引用返回,React 同引用即免重渲染)
+            setAgentActivities((a) => applyAgentEvent(a, e));
+          }
+        }
+        if (typeof e.payload?.subagent === 'string') {
+          // G8d 子代理事件另轨(Agents 标签聚合):不投 chat——chat reducer 入口另有同判过滤兜底
+          // (种子重放等路径仍过 reducer,零害保留);建卡/行化/水位在此单点归约
+          setAgentActivities((a) => applyAgentEvent(a, e));
+          return;
         }
         chatSinkRef.current?.on(e, seq);
       },
@@ -172,6 +188,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
         reopenBoardSeedWindow();
         setBoard(emptyBoard());
         setDelegations([]);
+        setAgentActivities({}); // G8d:子代理聚合清零(重连补发帧重建——连接层 seq 过滤防双应用)
         chatSinkRef.current?.reset();
       },
       // G4 挂起面装配:连接层回调闭包固定,经 sessionRef 过滤本会话后转投 Chat sink(卡片区);
@@ -191,6 +208,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
         reopenBoardSeedWindow();
         setBoard(emptyBoard());
         setDelegations([]);
+        setAgentActivities({}); // G8d:会话维 reset 子代理聚合同清(swap 新 Harness,旧卡作废)
         chatSinkRef.current?.resetSession();
       },
       onStateChange: setConnState,
@@ -219,6 +237,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
     setBoard(emptyBoard());
     setDelegations([]);
     setTeam([]);
+    setAgentActivities({}); // G8d:会话切换串态防线(板/team 同款——聚合只挂当前会话帧)
     setPage('chat');
   };
 
@@ -233,6 +252,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
     setBoard(emptyBoard());
     setDelegations([]);
     setTeam([]);
+    setAgentActivities({}); // G8d:无会话期无帧消费,残留即陈旧
     setPage('welcome');
   };
 
@@ -319,10 +339,11 @@ function AppShell({ token }: { token: string }): JSX.Element {
     setDelegations(nextDelegations);
   };
 
-  /** 标签体服务面(任务标签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接) */
+  /** 标签体服务面(任务/Agents 标签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接)+
+   *  G8d 子代理活动聚合(AgentsTab 只读) */
   const services = useMemo<TabServices>(
-    () => ({ board, delegations: [...delegations], team: [...team], onReview: reviewTask }),
-    [board, delegations, team, reviewTask],
+    () => ({ board, delegations: [...delegations], team: [...team], onReview: reviewTask, agentActivities }),
+    [board, delegations, team, reviewTask, agentActivities],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */

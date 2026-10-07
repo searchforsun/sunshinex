@@ -13,7 +13,7 @@ import type { SessionEvent } from '../../src/types';
  *   emit('usage')——无 sessionTotalTokens 字段），故 gui 以「run 内增量」自行累计会话总量；
  *   水位重置仅在 run 边界（idle 态的 model-start）——model-start 是每模型轮一次（reactor.ts:450
  *   chatRound 内发射），而 turnTotal 是 run 级单调不回零，轮间重置会把各轮水位之和虚增进 tokens。
- *   子代理 usage（payload.subagent）不进主链计数（G5 板面另聚）。
+ *   子代理 usage（payload.subagent）不进主链计数（G8d Agents 标签另聚——入口过滤单点）。
  * - seed 时 tokens 置 0（会话累计经事件续推；G4 若需精确可在 snapshot 加基线，记档）。
  * - streaming 条在 done/error/model-start/tool-call 收段——不留永久流式标（GUI 光标面）。
  */
@@ -212,9 +212,9 @@ function delegationMd(e: SessionEvent): string {
   return `✻ ${label} ${status}`;
 }
 
-/** usage 会话累计：turnTotal 轮内增量并入（基线 model-start 重置）；子代理用量/无数值载荷不动 */
+/** usage 会话累计：turnTotal 轮内增量并入（基线 model-start 重置）；无数值载荷不动。
+ *  子代理用量（payload.subagent）不经此——入口全类型过滤已单点拦下（G8d Agents 标签另聚） */
 function onUsage(s: ChatState, e: SessionEvent): ChatState {
-  if (typeof e.payload?.subagent === 'string') return s;
   const turnTotal = e.payload?.turnTotal;
   if (typeof turnTotal !== 'number') return s;
   const base = s.turnTokensBase ?? 0;

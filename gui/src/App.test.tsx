@@ -84,6 +84,10 @@ const h = vi.hoisted(() => {
     agentsViewCalls: string[] = [];
     putAgentCalls: PutAgentInput[] = [];
     putAgentReject: Error | null = null;
+    /** G8d T3 全文面:agentBody 应答/拒可编程(缺省拒 404——失败回退面);调用记录 [scope, id, root 归一 ''] */
+    agentBodyResp: { body: string } | null = null;
+    agentBodyReject: Error | null = null;
+    agentBodyCalls: Array<['project' | 'global', string, string]> = [];
     /** G8c T9 技能面:skillsGroups 应答可编程(缺省空组) */
     skillsGroupsResp: { groups: SkillsGroup[] } = { groups: [] };
     skillsGroupsCalls: string[] = [];
@@ -229,6 +233,12 @@ const h = vi.hoisted(() => {
       if (this.putAgentReject !== null) return Promise.reject(this.putAgentReject);
       this.putAgentCalls.push(input);
       return Promise.resolve();
+    }
+    agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {
+      this.agentBodyCalls.push([scope, id, root ?? '']);
+      if (this.agentBodyReject !== null) return Promise.reject(this.agentBodyReject);
+      if (this.agentBodyResp !== null) return Promise.resolve(this.agentBodyResp);
+      return Promise.reject(new Error(`/settings/agents/body?scope=${scope}&id=${encodeURIComponent(id)} -> 404`));
     }
     skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }> {
       this.skillsGroupsCalls.push(root ?? '');
@@ -1178,6 +1188,64 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
   });
 });
 
+describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
+  it('payload.subagent 事件进 Agents 聚合不进 Chat 流;卡(label/状态徽标/tokens/currentTool/running 点)+ 点卡展开 mini 转录', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, ev('tool-call', 'write', { subagent: 'searcher', input: { path: 'src/a.ts' }, callId: 'c1' }));
+    fire(conn, ev('token', '分析中', { subagent: 'searcher' }));
+    fire(conn, ev('usage', undefined, { subagent: 'searcher', turnTotal: 1200 }));
+    // Chat 主流零污染:子代理事件另一轨(无工具条/无流式条)
+    expect(document.querySelector('.entry-tool')).toBeNull();
+    expect(document.querySelector('.entry-assistant')).toBeNull();
+    // 「+」菜单开 Agents 标签(session 组单例):标签开且活动
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
+    expect(document.querySelector('.sx-tab[title="Agents"]')?.classList.contains('active')).toBe(true);
+    expect(screen.getByLabelText('agents tab')).toBeDefined();
+    // 卡面:label + running 徽标 + tokens + currentTool 行 + accent 动画点类
+    expect(screen.getByText('searcher')).toBeDefined();
+    expect(screen.getByText('运行中')).toBeDefined();
+    expect(screen.getByText('1200 tokens')).toBeDefined();
+    expect(screen.getByText('write')).toBeDefined();
+    expect(document.querySelector('.sx-agent-dot')).not.toBeNull();
+    // 点卡头展开:mini 转录(工具行 + token 行,等宽渲染)
+    expect(document.querySelector('.sx-agent-lines')).toBeNull(); // 折叠态
+    fireEvent.click(screen.getByRole('button', { name: 'agent card searcher' }));
+    expect(screen.getByText(/write src\/a\.ts/)).toBeDefined();
+    expect(document.querySelector('.sx-agent-lines')?.textContent).toContain('分析中');
+    unmount();
+  });
+
+  it('status 流转与清板:delegation-ended failed → 失败徽标(running 点退场);onResetSession 清卡回空态', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, ev('token', 'x', { subagent: 'reviewer' }));
+    fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
+    expect(screen.getByText('reviewer')).toBeDefined();
+    expect(screen.getByText('失败')).toBeDefined();
+    expect(document.querySelector('.sx-agent-dot')).toBeNull(); // 非 running:动画点退场
+    // 本会话 reset:卡区清空(空态文案;他会话 reset 不清)
+    fireResetSession(conn, 's9');
+    expect(screen.getByText('reviewer')).toBeDefined();
+    fireResetSession(conn, 's1');
+    await waitFor(() => expect(screen.getByText('暂无子 agent 活动')).toBeDefined());
+    unmount();
+  });
+
+  it('他会话子代理帧不进聚合(sessionRef 过滤在聚合面前)', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fireOther(conn, ev('token', '他会话子代理', { subagent: 'ghost' }));
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
+    expect(screen.getByText('暂无子 agent 活动')).toBeDefined();
+    unmount();
+  });
+});
+
 describe('卸载收口(单连接生命周期)', () => {
   it('unmount 关闭连接', async () => {
     const { conn, unmount } = await enterChat();
@@ -1812,6 +1880,38 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(conn.putAgentCalls).toHaveLength(1));
     expect(conn.putAgentCalls[0]).toMatchObject({ root: '/w/root-a', scope: 'project', op: 'upsert', id: 'dev', body: '改写后的完整正文' });
+    unmount();
+  });
+
+  it('智能体 G8d 全文装载:编辑钮 → conn.agentBody(source,id,root) 播种全文(≥200 不再触发截断守卫);失败回退 bodyPreview+行内提示(守卫兜底)', async () => {
+    const { conn, unmount } = await enterChat();
+    const preview = 'x'.repeat(200); // 恰触预览帽:全文装载成功前守卫本会拦截
+    conn.agentsViewResp = {
+      builtins: [],
+      view: { entries: [{ id: 'dev', name: '开发者', source: 'project', shadowed: false, bodyPreview: preview }], warnings: [] },
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '智能体' }));
+    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
+    // —— 全文装载成功:编辑 → agentBody('project','dev','/w/root-a') → 正文=全文;未改保存放行 ——
+    const full = `${'全文正文行。'.repeat(60)}收尾`;
+    conn.agentBodyResp = { body: full };
+    fireEvent.click(screen.getByRole('button', { name: '编辑 dev(项目)' }));
+    await waitFor(() => expect(conn.agentBodyCalls).toEqual([['project', 'dev', '/w/root-a']]));
+    await waitFor(() => expect((screen.getByLabelText('agent body') as HTMLTextAreaElement).value).toBe(full));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(conn.putAgentCalls).toHaveLength(1));
+    expect(conn.putAgentCalls[0]).toMatchObject({ root: '/w/root-a', scope: 'project', op: 'upsert', id: 'dev', body: full });
+    // —— 失败面:回退 bodyPreview + 行内提示;截断守卫兜底(未改正文保存阻断,零写) ——
+    conn.agentBodyResp = null;
+    conn.agentBodyReject = new Error('/settings/agents/body?scope=project&id=dev -> 404');
+    fireEvent.click(screen.getByRole('button', { name: '编辑 dev(项目)' }));
+    await waitFor(() => expect(conn.agentBodyCalls).toHaveLength(2));
+    await waitFor(() => expect(screen.getByText(/已回退预览/)).toBeDefined());
+    expect((screen.getByLabelText('agent body') as HTMLTextAreaElement).value).toBe(preview);
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.getByText(/已被预览截断/)).toBeDefined());
+    expect(conn.putAgentCalls).toHaveLength(1); // 守卫兜底:失败回退面未再写盘
     unmount();
   });
 
