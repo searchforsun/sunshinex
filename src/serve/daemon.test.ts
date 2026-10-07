@@ -1301,3 +1301,205 @@ describe('G8c T4 /settings/mcp 端点族', () => {
     });
   });
 });
+
+// ---------- G8c T5:/settings/agents 端点(两级宽容清单+builtins 四角色/表单增删改/写后回读验证) ----------
+
+/** GET /settings/agents 应答 view.entries 行(loadAgentsView 产物只读投影;断言整体面) */
+interface AgentEntryRow {
+  id: string;
+  name: string;
+  description?: string;
+  memory?: boolean;
+  isolation?: string;
+  executor?: string;
+  source: 'project' | 'global';
+  shadowed: boolean;
+  bodyPreview: string;
+}
+
+/** GET /settings/agents 应答整体(断言用子集面) */
+interface AgentsBody {
+  builtins: Array<{ role: string; name: string; framing: string }>;
+  view: { entries: AgentEntryRow[]; warnings: string[] };
+}
+
+describe('G8c T5 /settings/agents 端点', () => {
+  test('㉜ GET 两级+builtins 四角色+warnings(畸形宽容);无 token 401;无 root=仅全局(不扫 cwd 相对 agents/)', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const writeAgent = (dir: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(dir, 'agents', id), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'agents', id, 'agent.md'), md, 'utf8');
+      };
+      // 项目级:projA(带可选键)+shared(与全局同名→全局行 shadowed)+broken(缺 frontmatter→warnings 不抛死);
+      // 全局级落 userConfigDir=<home>/.sunshinex(与 PUT global 面同几何)
+      writeAgent(proj, 'projA', '---\nname: Proj A\ndescription: project one\n---\nproj body\n');
+      writeAgent(proj, 'shared', '---\nname: Shared P\n---\nfrom project\n');
+      writeAgent(proj, 'broken', 'no frontmatter here\n');
+      const globalDir = path.join(home, '.sunshinex');
+      writeAgent(globalDir, 'globalA', '---\nname: Global A\n---\nglobal body\n');
+      writeAgent(globalDir, 'shared', '---\nname: Shared G\n---\nfrom global\n');
+
+      const noAuth = await fetch(`${base}/settings/agents`);
+      assert.equal(noAuth.status, 401, '/settings/agents 无 token 401');
+
+      const r = await fetch(`${base}/settings/agents?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as AgentsBody;
+      assert.deepEqual(body.builtins, [
+        { role: 'planner', name: 'Planner', framing: 'requirement breakdown, solution and plan' },
+        { role: 'developer', name: 'Developer', framing: 'code implementation, refactoring' },
+        { role: 'tester', name: 'Tester', framing: 'test case generation, execution and reporting' },
+        { role: 'reviewer', name: 'Reviewer', framing: 'convention, logic and security review' },
+      ], 'builtins=ROLE_PRESETS 四预设角色平铺(role/name/framing)');
+      const ids = body.view.entries.map((e) => e.id);
+      assert.deepEqual(new Set(ids), new Set(['projA', 'shared', 'globalA']), '清单=项目 2+全局 2(同名两行);畸形 broken 不入清单');
+      assert.deepEqual(body.view.entries.filter((e) => e.id === 'shared'), [
+        { id: 'shared', name: 'Shared P', source: 'project', shadowed: false, bodyPreview: 'from project' },
+        { id: 'shared', name: 'Shared G', source: 'global', shadowed: true, bodyPreview: 'from global' },
+      ], '同名两行:项目行生效+全局行 shadowed=true 仍列示(序:项目先全局后)');
+      assert.deepEqual(body.view.entries.find((e) => e.id === 'projA'), {
+        id: 'projA', name: 'Proj A', description: 'project one', source: 'project', shadowed: false, bodyPreview: 'proj body',
+      }, '项目条目:可选键按需透出');
+      assert.deepEqual(body.view.entries.find((e) => e.id === 'globalA'), {
+        id: 'globalA', name: 'Global A', source: 'global', shadowed: false, bodyPreview: 'global body',
+      }, '未被遮蔽的全局条目');
+      assert.equal(body.view.warnings.length, 1, '畸形文件恰一条 warning');
+      assert.ok(body.view.warnings[0]!.includes(path.join(proj, 'agents', 'broken', 'agent.md')), 'warning 含文件路径');
+      assert.ok(ids.indexOf('projA') < ids.indexOf('globalA'), '项目条目先于全局条目(生效视图优先)');
+
+      // 无 root=仅全局清单:projectRoot 哨兵不落 cwd 相对 'agents'——测试进程 cwd=仓库根(真有 agents/
+      // 现目录),若以空串调 loadAgentsView(join('','agents')='agents')会把仓库自身条目扫进来
+      const g = await fetch(`${base}/settings/agents`, { headers: AUTH });
+      assert.equal(g.status, 200);
+      const gBody = (await g.json()) as AgentsBody;
+      assert.deepEqual(
+        gBody.view.entries.map((e) => [e.id, e.source, e.shadowed]).sort(),
+        [['globalA', 'global', false], ['shared', 'global', false]],
+        '无 root 只出全局面(shared 不再被项目遮蔽)',
+      );
+      assert.ok(!gBody.view.entries.some((e) => e.id === 'code-reviewer'), '不扫 cwd 相对 agents/(仓库根现目录——空串 projectRoot 回归的活体陷阱)');
+    });
+  });
+
+  test('㉝ upsert 两 scope 落对路径+frontmatter 键序(name 首位/可选键按需);写后 GET 含新条且零 warnings;global 忽略 root', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const put = async (b: unknown): Promise<Response> =>
+        fetch(`${base}/settings/agents`, { method: 'PUT', headers: AUTH, body: JSON.stringify(b) });
+
+      // project 全量形状:name 首位+description/memory/isolation/executor 按需追加+多行正文原样
+      const full = await put({
+        root: proj, scope: 'project', op: 'upsert', id: 'newagent',
+        frontmatter: { name: 'New Agent', description: 'does many things', memory: true, isolation: 'worktree', executor: 'internal-team' },
+        body: 'Frame line one.\nLine two.',
+      });
+      assert.equal(full.status, 200, 'project upsert 应 200');
+      assert.deepEqual(await full.json(), { ok: true });
+      assert.equal(
+        fs.readFileSync(path.join(proj, 'agents', 'newagent', 'agent.md'), 'utf8'),
+        '---\nname: New Agent\ndescription: does many things\nmemory: true\nisolation: worktree\nexecutor: internal-team\n---\nFrame line one.\nLine two.',
+        '生成 agent.md:frontmatter 键序 name 首位,可选键按需,正文原样',
+      );
+
+      // global 最小形状:仅 name(可选键全缺省不落行)+缺省空正文;root 被忽略(定向 userConfigDir,decoy 不产目录)
+      const decoy = path.join(tmp, 'who-cares');
+      const mini = await put({ root: decoy, scope: 'global', op: 'upsert', id: 'mini', frontmatter: { name: 'Mini' } });
+      assert.equal(mini.status, 200, 'global upsert 应 200');
+      assert.equal(fs.readFileSync(path.join(home, '.sunshinex', 'agents', 'mini', 'agent.md'), 'utf8'), '---\nname: Mini\n---\n', '最小生成:仅 name 键+空正文');
+      assert.equal(fs.existsSync(decoy), false, 'scope=global 忽略 root:不产生目录副作用');
+
+      // 写后 GET:清单含新条目(全字段透出)且 view 零 warnings——生成物必合法(写后回读验证的对外可见面)
+      const r = await fetch(`${base}/settings/agents?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      const body = (await r.json()) as AgentsBody;
+      assert.deepEqual(body.view.entries.find((e) => e.id === 'newagent'), {
+        id: 'newagent', name: 'New Agent', description: 'does many things', memory: true,
+        isolation: 'worktree', executor: 'internal-team', source: 'project', shadowed: false,
+        bodyPreview: 'Frame line one.\nLine two.',
+      }, '新条目全字段透出(bodyPreview=正文预览)');
+      assert.deepEqual(body.view.warnings, [], 'upsert 生成物零 warnings(生成物必过装配解析器)');
+      const g = await fetch(`${base}/settings/agents`, { headers: AUTH });
+      const gBody = (await g.json()) as AgentsBody;
+      assert.ok(gBody.view.entries.some((e) => e.id === 'mini' && e.source === 'global'), '全局 upsert 入仅全局清单');
+    });
+  });
+
+  test('㉞ 校验面 400:坏 id(路径分隔/穿越/点开头)+缺 name+坏类型(换行注入/非布尔 memory/非串 body)+坏 op/scope+缺 root;零盘上副作用', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(proj, { recursive: true });
+      const put = async (b: unknown): Promise<Response> =>
+        fetch(`${base}/settings/agents`, { method: 'PUT', headers: AUTH, body: JSON.stringify(b) });
+      const good = { root: proj, scope: 'project', op: 'upsert', id: 'ok', frontmatter: { name: 'Ok' } };
+
+      // id 安全面:id 直接拼进目录路径,路径分隔/穿越/点开头/空/首字符非字母数字一律 400(upsert 与 delete 同守卫)
+      for (const id of ['a/b', '../escape', '.hidden', 'a b', '-x', '', 'a\\b']) {
+        const r = await put({ ...good, id });
+        assert.equal(r.status, 400, `upsert id=${JSON.stringify(id)} → 400`);
+        const d = await put({ root: proj, scope: 'project', op: 'delete', id });
+        assert.equal(d.status, 400, `delete id=${JSON.stringify(id)} → 400`);
+      }
+
+      // name 必填:frontmatter 缺席/无 name/空串/纯空白/非串/含换行
+      for (const fm of [undefined, {}, { description: 'x' }, { name: '' }, { name: '  ' }, { name: 123 }, { name: 'a\nb' }]) {
+        const r = await put({ ...good, frontmatter: fm });
+        assert.equal(r.status, 400, `frontmatter=${JSON.stringify(fm)} → 400`);
+      }
+      // 可选键类型面:单行 KV 词法——字符串键含换行即拒(换行会注入伪键,多行内容属 body 面)
+      const badDesc = await put({ ...good, frontmatter: { name: 'Ok', description: 'x\nmemory: true' } });
+      assert.equal(badDesc.status, 400, 'description 含换行 → 400');
+      const badIso = await put({ ...good, frontmatter: { name: 'Ok', isolation: 'x\ny' } });
+      assert.equal(badIso.status, 400, 'isolation 含换行 → 400');
+      const badExe = await put({ ...good, frontmatter: { name: 'Ok', executor: 'x\ny' } });
+      assert.equal(badExe.status, 400, 'executor 含换行 → 400');
+      const badMem = await put({ ...good, frontmatter: { name: 'Ok', memory: 'yes' } });
+      assert.equal(badMem.status, 400, 'memory 非布尔 → 400');
+      const badBody = await put({ ...good, body: 123 });
+      assert.equal(badBody.status, 400, 'body 非串 → 400');
+
+      // 请求形态面:坏 op/坏 scope/scope=project 缺 root
+      const badOp = await put({ ...good, op: 'bogus' });
+      assert.equal(badOp.status, 400, '未知 op → 400');
+      const badScope = await put({ ...good, scope: 'team' });
+      assert.equal(badScope.status, 400, '未知 scope → 400');
+      const noRoot = await put({ scope: 'project', op: 'upsert', id: 'ok', frontmatter: { name: 'Ok' } });
+      assert.equal(noRoot.status, 400, 'scope=project 缺 root → 400');
+
+      assert.equal(fs.existsSync(path.join(proj, 'agents')), false, '400 面零盘上副作用(agents 目录不建)');
+    });
+  });
+
+  test('㉟ delete:移除目录+GET 不再含+幂等(不存在同 ok);global delete 定向 userConfigDir(root 忽略)', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const put = async (b: unknown): Promise<Response> =>
+        fetch(`${base}/settings/agents`, { method: 'PUT', headers: AUTH, body: JSON.stringify(b) });
+
+      // project:upsert→delete→目录移除+清单不再含;二次 delete 幂等;从未存在 id 同 ok
+      const up = await put({ root: proj, scope: 'project', op: 'upsert', id: 'delagent', frontmatter: { name: 'Doomed' }, body: 'bye' });
+      assert.equal(up.status, 200);
+      const del = await put({ root: proj, scope: 'project', op: 'delete', id: 'delagent' });
+      assert.equal(del.status, 200);
+      assert.deepEqual(await del.json(), { ok: true });
+      assert.equal(fs.existsSync(path.join(proj, 'agents', 'delagent')), false, '目录已整删(rm -rf)');
+      const again = await put({ root: proj, scope: 'project', op: 'delete', id: 'delagent' });
+      assert.equal(again.status, 200, '重复 delete 幂等 200');
+      assert.deepEqual(await again.json(), { ok: true });
+      const ghost = await put({ root: proj, scope: 'project', op: 'delete', id: 'never-existed' });
+      assert.deepEqual(await ghost.json(), { ok: true }, '删除不存在的 id → 幂等 ok');
+      const g = await fetch(`${base}/settings/agents?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      const gBody = (await g.json()) as AgentsBody;
+      assert.ok(!gBody.view.entries.some((e) => e.id === 'delagent'), 'GET 清单不再含被删条目');
+
+      // global:定向 userConfigDir(root 传 decoy 被忽略——删除面与 upsert 同裁定)
+      const upG = await put({ scope: 'global', op: 'upsert', id: 'gdel', frontmatter: { name: 'G Doomed' } });
+      assert.equal(upG.status, 200);
+      const delG = await put({ root: path.join(tmp, 'decoy'), scope: 'global', op: 'delete', id: 'gdel' });
+      assert.equal(delG.status, 200);
+      assert.equal(fs.existsSync(path.join(home, '.sunshinex', 'agents', 'gdel')), false, 'global delete 落 userConfigDir');
+      const gNoRoot = await fetch(`${base}/settings/agents`, { headers: AUTH });
+      const gNoRootBody = (await gNoRoot.json()) as AgentsBody;
+      assert.ok(!gNoRootBody.view.entries.some((e) => e.id === 'gdel'), '仅全局清单不再含');
+    });
+  });
+});

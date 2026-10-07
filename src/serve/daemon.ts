@@ -37,6 +37,7 @@ import { loadProviders, parseProvidersSpec, resolveProviderApiKey } from '../con
 import type { ModelChoice } from '../config/providers';
 import type { PermissionsConfig } from '../config/permissions';
 import { isWithin } from '../paths';
+import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
 import { PtyManager } from './pty';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
@@ -423,6 +424,68 @@ async function probeMcpServer(
   } finally {
     if (client !== undefined) await client.close().catch(() => {});
   }
+}
+
+// ---------- G8c T5：/settings/agents 面模块级助手（agent.md 生成 + 写后回读验证） ----------
+
+/** PUT /settings/agents upsert 输入的 frontmatter 面（校验后形态）：name 必填，可选键按需；
+ *  调用方已保证字符串值单行（含换行的值在 400 面拒收——frontmatter 是单行 KV 词法，换行注入伪键） */
+interface AgentFrontmatterInput {
+  name: string;
+  description?: string;
+  memory?: boolean;
+  isolation?: string;
+  executor?: string;
+}
+
+/** agent.md 生成（G8c T5 upsert）：frontmatter 键序固定 name 首位、可选键按需追加
+ *  （description→memory→isolation→executor），body 缺省空串。生成物经写后回读 parseAgentFrontmatter
+ *  验证后才落盘目标——装配链 loadAgents 对畸形文件 fail-fast，坏文件会死锁整个会话装配，
+ *  本生成器 + 回读验证是写盘前的防线（handler 内单点消费） */
+function renderAgentMd(fm: AgentFrontmatterInput, body: string): string {
+  const lines = [`name: ${fm.name}`];
+  if (fm.description !== undefined) lines.push(`description: ${fm.description}`);
+  if (fm.memory === true) lines.push('memory: true');
+  if (fm.isolation !== undefined) lines.push(`isolation: ${fm.isolation}`);
+  if (fm.executor !== undefined) lines.push(`executor: ${fm.executor}`);
+  return `---\n${lines.join('\n')}\n---\n${body}`;
+}
+
+/** PUT /settings/agents 的 id 安全面（单点）：id 直接拼进 <scopeDir>/agents/<id>/ 目录路径——
+ *  路径分隔/穿越/点开头等形态一律拒（首字符限字母数字，余字符限 [A-Za-z0-9_-]） */
+const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+/** upsert frontmatter 输入校验+归一（G8c T5，validateMcpRawContent 同款 throw→400 形态）：name 必填
+ *  非空白单行；可选键按需——description/isolation/executor 须单行字符串（frontmatter 是单行 KV 词法，
+ *  含换行的值会注入伪键，多行内容属 body 面）；memory 须布尔。name 先行 trim 归一（parseFrontmatterKV
+ *  值域 trim，输入面先归一防写后回读的回环比对误报） */
+function parseAgentFrontmatterInput(raw: unknown): AgentFrontmatterInput {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error('frontmatter must be an object with required name');
+  }
+  const f = raw as Record<string, unknown>;
+  if (typeof f.name !== 'string' || f.name.trim().length === 0 || /\r|\n/.test(f.name)) {
+    throw new Error('frontmatter.name required (non-empty single-line string)');
+  }
+  const oneLine = (label: string, v: unknown): string | undefined => {
+    if (v === undefined) return undefined;
+    if (typeof v !== 'string') throw new Error(`${label} must be a string`);
+    if (/\r|\n/.test(v)) throw new Error(`${label} must be single-line (multi-line content belongs in body)`);
+    return v;
+  };
+  const description = oneLine('frontmatter.description', f.description);
+  const isolation = oneLine('frontmatter.isolation', f.isolation);
+  const executor = oneLine('frontmatter.executor', f.executor);
+  if (f.memory !== undefined && typeof f.memory !== 'boolean') {
+    throw new Error('frontmatter.memory must be a boolean');
+  }
+  return {
+    name: f.name.trim(),
+    ...(description !== undefined ? { description } : {}),
+    ...(f.memory === true ? { memory: true } : {}),
+    ...(isolation !== undefined ? { isolation } : {}),
+    ...(executor !== undefined ? { executor } : {}),
+  };
 }
 
 /** /settings keys 行（G8c T2 effective 判定 pure fn）：
@@ -900,6 +963,10 @@ export class GuiDaemon {
     { method: 'GET', path: '/settings/mcp', auth: true, run: async (req, res) => this.handleMcpGet(req, res) },
     { method: 'POST', path: '/settings/mcp/probe', auth: true, run: (req, res) => this.handleMcpProbe(req, res) },
     { method: 'PUT', path: '/settings/mcp', auth: true, run: (req, res) => this.handleMcpPut(req, res) },
+    // G8c T5 agents 面：两级宽容清单 + builtins 四角色 / 表单增删改（upsert 写后回读验证——装配
+    // fail-fast 的写盘前防线；delete 幂等；agents 装配期读取，写盘不触发 settings reload）
+    { method: 'GET', path: '/settings/agents', auth: true, run: async (req, res) => this.handleAgentsGet(req, res) },
+    { method: 'PUT', path: '/settings/agents', auth: true, run: (req, res) => this.handleAgentsPut(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -2006,6 +2073,109 @@ export class GuiDaemon {
     fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
     fs.renameSync(tmpFile, target);
     this.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
+  }
+
+  /** GET /settings/agents?root=（G8c T5，Settings 页 Agents 清单数据源）：builtins = builtinAgentRoles
+   *  四预设角色平铺（零读盘零副作用）；view = loadAgentsView 两级宽容清单（项目遮蔽全局 shadowed 标记，
+   *  畸形文件入 warnings 不抛死——视图面不重复装配链的 fail-fast 裁决）。无 root = 仅全局清单：projectRoot
+   *  不能传空串——loadAgentsView 会 join('','agents')='agents' 相对 cwd 误扫（仓库根真有 agents/ 现目录，
+   *  非理论陷阱），改传保证不存在的绝对哨兵（缺目录 = 空项目级，与 loadAgentsFrom 缺目录同语义；较改
+   *  loadAgentsView 加空串特判更小——subagent.ts 语义面零改动，两案取实现最小者） */
+  private handleAgentsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const rootParam = url.searchParams.get('root');
+    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+    const projectRoot = root ?? path.join(os.tmpdir(), `sunshinex-agents-empty-${crypto.randomUUID()}`);
+    this.send(res, 200, { builtins: builtinAgentRoles(), view: loadAgentsView(projectRoot, userConfigDir()) });
+  }
+
+  /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（G8c T5，AgentsPane 表单增删改）：
+   *  - id 安全校验 AGENT_ID_RE → 400（id 直接拼目录路径——路径分隔/穿越/点开头一律拒，upsert 与 delete
+   *    同守卫）；scope=project 必带 root（缺 400），global 恒忽略 root（与 raw/mcp 面同裁定）
+   *  - upsert：先全量校验后落盘零部分写（name 必填非空白；name/description/isolation/executor 单行
+   *    字符串——frontmatter 是单行 KV 词法，含换行的值会注入伪键，多行内容属 body 面；memory 布尔；
+   *    body 字符串缺省空）→ renderAgentMd 生成（键序 name 首位）→ 写同目录 tmp → 回读 tmp 过真解析器
+   *    parseAgentFrontmatter + name 回环（验证口径=装载口径且验证的就是将要落盘的字节；throw/回环不符
+   *    → 清 tmp 500，目标零触碰）→ rename 原子落盘
+   *  - delete：<scopeDir>/agents/<id>/ 存在 → rm -rf；不存在 → 幂等 ok。IO 失败（写/rename/rm）不经
+   *    本地捕获——沿 dispatch 500 收口（T2/T3/T4 同惯例） */
+  private async handleAgentsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const body = parsed.body as { root?: unknown; scope?: unknown; op?: unknown; id?: unknown; frontmatter?: unknown; body?: unknown } | null;
+    const op = body?.op;
+    if (op !== 'upsert' && op !== 'delete') {
+      this.send(res, 400, { error: 'op must be "upsert" or "delete"' });
+      return;
+    }
+    const scope = body?.scope;
+    if (scope !== 'project' && scope !== 'global') {
+      this.send(res, 400, { error: 'scope must be "project" or "global"' });
+      return;
+    }
+    const id = body?.id;
+    if (typeof id !== 'string' || !AGENT_ID_RE.test(id)) {
+      this.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
+      return;
+    }
+    const rootRaw = body?.root;
+    if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
+      this.send(res, 400, { error: 'root required for scope=project' });
+      return;
+    }
+    const scopeDir = scope === 'global' ? userConfigDir() : path.resolve(rootRaw as string); // global 恒忽略 root（定位面）
+    const agentDir = path.join(scopeDir, 'agents', id);
+    if (op === 'delete') {
+      if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true }); // 不存在 = 幂等 ok
+      this.send(res, 200, { ok: true });
+      return;
+    }
+    // upsert 校验面（首错 400，零部分写）：frontmatter 经 parseAgentFrontmatterInput 单点校验+归一
+    let fm: AgentFrontmatterInput;
+    try {
+      fm = parseAgentFrontmatterInput(body?.frontmatter);
+    } catch (err) {
+      this.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    const bodyText = body?.body;
+    if (bodyText !== undefined && typeof bodyText !== 'string') {
+      this.send(res, 400, { error: 'body must be a string' });
+      return;
+    }
+    // 写后回读验证（T3 raw 同款几何）：先落同目录 tmp → 回读 tmp 过真解析器（字节面=目标面）→
+    // throw/回环不符即拒：清 tmp 500，目标文件零触碰（不落盘）。验证口径=装配口径 parseAgentFrontmatter——
+    // 防生成坏文件（装配链 fail-fast 写盘前防线）；单行校验下此路径仅生成器缺陷可达，纯防御层
+    fs.mkdirSync(agentDir, { recursive: true });
+    const target = path.join(agentDir, 'agent.md');
+    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmpFile, renderAgentMd(fm, bodyText ?? ''), 'utf8');
+    try {
+      const meta = parseAgentFrontmatter(fs.readFileSync(tmpFile, 'utf8'));
+      if (meta.name !== fm.name) throw new Error(`round-trip name mismatch: ${JSON.stringify(meta.name)}`);
+    } catch (err) {
+      try {
+        fs.unlinkSync(tmpFile); // 拒存清 tmp：目标文件零触碰，不留残片
+      } catch {
+        // tmp 已不在场（写即败等）——无需清
+      }
+      this.send(res, 500, { error: `generated agent.md failed validation (${target}): ${err instanceof Error ? err.message : String(err)}` });
+      return;
+    }
+    try {
+      fs.renameSync(tmpFile, target);
+    } catch (err) {
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {
+        // 同上
+      }
+      throw err; // IO 面 → dispatch 500 收口
+    }
+    this.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
   }
 
   private send(res: http.ServerResponse, status: number, body: object): void {
