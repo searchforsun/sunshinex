@@ -1,8 +1,8 @@
 # GUI 风格与布局重构(Codex 对标)设计规格
 
 - **日期**:2026-10-07
-- **状态**:设计定稿 v6(MCP 面板并入),待评审,未实施
-- **来源**:用户 2026-10-07 指令——对标 Codex 风格优化、现代图标、交互人性化;三栏布局;右栏多标签页(+ 号新开任意扩展类型:终端/Web/Diff/文件/目录等);尽量用开源组件,终端、Web 等等同本地体验;左栏以项目分组,一个项目一个工作区;设置页:菜单底部入口,点击后左栏变设置菜单栏,通用设置/agent 能力/各配置实时显示——含记忆、技能、上下文设置等,与配置数据对应;**MCP 服务器管理并入设置页**(五次裁定累积)
+- **状态**:设计定稿 v7(插件组+子智能体定义面板并入),待评审,未实施
+- **来源**:用户 2026-10-07 指令——对标 Codex 风格优化、现代图标、交互人性化;三栏布局;右栏多标签页(+ 号新开任意扩展类型:终端/Web/Diff/文件/目录等);尽量用开源组件,终端、Web 等等同本地体验;左栏以项目分组,一个项目一个工作区;设置页:菜单底部入口,点击后左栏变设置菜单栏,通用设置/agent 能力/各配置实时显示——含记忆、技能、上下文设置等,与配置数据对应;MCP 服务器管理并入设置页;**插件与子智能体定义并入设置页**(六次裁定累积)
 - **关联**:`docs/superpowers/specs/2026-10-06-gui-v1-design.md`(G1-G7 已交付;本 spec 是其 UI 层重构批次 **G8**)、`docs/ROADMAP.md`(5B)
 - **现状**:gui 包**零 CSS**(class 名仅为测试钩子)——本批建立设计系统并完成布局重构
 
@@ -11,7 +11,7 @@
 **架构级**(布局重构改变 App 骨架,波及全部页面与测试选择器)。**UI 层 + 四块服务端新增**:
 ①目录标签 `GET /session/:id/tree`(单层列举,复用 /file 会话边界校验);
 ②**真 PTY 终端套件**——主仓新依赖 `node-pty`(开源,win32 conpty 预编译),`POST /session/:id/pty`(分配)+ 专用 WS `/session/:id/pty/:ptyId`(双向流,子协议鉴权同主 WS)+ kill/teardown 清杀;gui 新依赖 `@xterm/xterm`+`@xterm/addon-fit`(开源,VS Code 同款终端);
-③**设置套件**——`GET /settings`(全键 effective 视图:值+来源层级+可编辑性+permissions 合并结果+providers 卡数据)/`PUT /settings`(结构化改写)/`GET|PUT /settings/raw`(JSONC 原文编辑+验证)/`GET /settings/skills`(三来源技能清单)/**`GET /settings/mcp`(两级 mcp.json 合并清单)+`POST /settings/mcp/probe`(单台真实探测连接)+`PUT /settings/mcp`(结构化改写)**,全部锚既有 `src/config/*`+`config.ts loadMcpServers`+`harness/mcp/client.ts McpHost` 真实配置面,零新配置键;
+③**设置套件**——`GET /settings`(全键 effective 视图:值+来源层级+可编辑性+permissions 合并结果+providers 卡数据)/`PUT /settings`(结构化改写)/`GET|PUT /settings/raw`(JSONC 原文编辑+验证)/`GET /settings/skills`(三来源技能清单)/**`GET /settings/mcp`(两级 mcp.json 合并清单)+`POST /settings/mcp/probe`(单台真实探测连接)+`PUT /settings/mcp`(结构化改写)**/**`GET|PUT /settings/agents`(子智能体定义清单与增删改,`<root>/agents/<id>/agent.md`)**,全部锚既有 `src/config/*`+`config.ts loadMcpServers`+`harness/mcp/client.ts McpHost`+`harness/subagent.ts AgentRegistry` 真实配置面,零新配置键;
 ④Agents 标签消费既有 `payload.subagent` 事件(纯 gui 侧)。零既有协议变更。
 **安装风险**:node-pty 若平台预编译缺席则需本地构建(win32=VS Build Tools)——G8b 首任务即装依赖验证,受阻则降级裁定(备选 `@lydell/node-pty` 预编译分支或壳批次化),不影响 G8a/c。
 
@@ -25,8 +25,8 @@
 │   • s2 空闲 │  Chat 常驻    ├────┤  │ ▾ 模型与提供方│   raw 编辑)   │
 │ ▸ 项目B     │              │内容│  │ ▾ 上下文与限额│              │
 │            │  输入区贴底    │    │  │ ▾ 记忆      │              │
-│ + 新会话    │              │    │  │ ▾ 技能/权限/ │              │
-│ + 添加工作区│              │    │  │  MCP/知识库/ │              │
+│ + 新会话    │              │    │  │ ▾ 插件:技能/ │              │
+│ + 添加工作区│              │    │  │  MCP·智能体 │              │
 │ ● 连接 ⚙设置│              │    │  │  高级        │              │
 └────────────┴──────────────┴────┘  └────────────┴──────────────┘
 ```
@@ -67,13 +67,14 @@
 
 **数据面全部锚既有真实配置**(`src/config/settings.ts` 33 语义键两级链+`permissions.ts`+`providers.ts`+`memory-config.ts`+`termination-config.ts`+`harness/skills.ts` 装载器)——零新配置键,GUI 是配置数据的视图与编辑器,不是新配置源。
 
-**面板划分**(左栏设置导航 ↔ 主区面板,每键显示 effective 值+来源徽标[env 覆盖/项目级/全局级/缺省]):
+**面板划分**(左栏设置导航 ↔ 主区面板,每键显示 effective 值+来源徽标[env 覆盖/项目级/全局级/缺省];导航分组:通用/模型与提供方/**插件(技能·MCP·智能体)**/上下文与限额/记忆/权限/知识库与搜索/高级):
 
 | 面板 | 内容(真实键) | 编辑 |
 |---|---|---|
 | **通用** | language/shell/projectsDir/userSkillsDir/globalSunshine | 表单 |
 | **模型与提供方** | model/modelSmall/modelMedium/modelLarge/tier/reasoningEffort/baseUrl;**providers 只读卡**(名称+模型清单+apiKey 状态点=env 在场与否,不显值——密钥只走 env 面) | 表单(providers 只读) |
-| **MCP**(新) | **服务器清单**(两级合并视图:项目级 `.sunshinex/mcp.json` 撞名遮蔽全局,遮蔽项灰显标注):每台卡=名称/传输(stdio/http/sse)/command+args 或 url/env 键名列表(值打码)/来源徽标;**「测试连接」**=daemon 用 McpHost 同栈临时起单台,返回注册工具数+工具名折叠列表或失败原因(装配报告 warnings 同源);添加/编辑/删除服务器表单(名称/传输下拉/command+args/url/env 键值对) | 清单+探测+表单 |
+| **MCP** | **服务器清单**(两级合并视图:项目级 `.sunshinex/mcp.json` 撞名遮蔽全局,遮蔽项灰显标注):每台卡=名称/传输(stdio/http/sse)/command+args 或 url/env 键名列表(值打码)/来源徽标;**「测试连接」**=daemon 用 McpHost 同栈临时起单台,返回注册工具数+工具名折叠列表或失败原因(装配报告 warnings 同源);添加/编辑/删除服务器表单(名称/传输下拉/command+args/url/env 键值对) | 清单+探测+表单 |
+| **智能体**(新) | **子智能体定义清单**(AgentRegistry 同源解析):内建四预设角色只读卡(role key/label/框定摘要)+目录注册 `<root>/agents/<id>/agent.md` 卡(id/name/description/**memory 自有记忆开关**/isolation/executor 外部执行器/正文摘要);**表单增删改**(id/name/description/memory/isolation/executor/角色框定正文 textarea→生成 frontmatter+正文写 agent.md);畸形存量文件以告警卡显示不抛死;**保存前服务端 frontmatter 解析验证**(name 缺失/畸形拒存——装配期 fail-fast 的写盘前防线) | 清单+表单 |
 | **上下文与限额** | contextWindow/maxTokens/subagentTokenCap/teamTokenCap/maxSteps/maxLoopIterations/maxGraphNodes/readFence/sandbox/isolation | 表单 |
 | **记忆** | autoMemory/learnedSkills/learnedSkillLimit/memoryIdleKickMs/stepDigest 三键;**记忆库概览**(条数+最近沉淀时间,daemon 只读统计);会话内覆盖(TUI /memory)当前态显示 | 表单+概览只读 |
 | **技能** | **已装载技能清单**(三来源分组:项目/用户 userSkillsDir/学习沉淀,名称+简述,只读) | 清单只读 |
@@ -81,9 +82,11 @@
 | **知识库与搜索** | kbBackend/kbDataDir/embeddingBaseUrl/embeddingModel/websearchProvider/websearchEndpoint | 表单 |
 | **高级(原始编辑)** | 项目级/全局级 settings.json **与 mcp.json** **JSONC 原文** textarea(注释/env 块/未知键全保真)+「验证」+「保存」 | 原文 |
 
-**编辑双轨制**:表单=结构化改写(保留未知键与 permissions/providers/env 块;**目标文件含注释时拒改并引导高级原文编辑**——防 GUI 写盘抹掉用户注释;同守卫适用 mcp.json);高级=原文编辑(保存前 `parseSettingsFile`/mcp 解析器服务端验证,畸形拒存;原子写)。「未知语义键/退役键」在高级面板以告警列表显示(RETIRED_KEYS 处置提示透出)。
+**「插件」组口径**:sunshinex **现无独立插件运行时**——真实扩展面=技能(三来源)+MCP 服务器+子智能体定义三类,导航以「插件」组收录(子项:技能/MCP/智能体),零死 UI;若未来上插件包(捆绑分发 skills+MCP+agents 的格式),该组直加第四子项。
 
-**生效语义(关键裁定,实时显示的诚实口径)**:装载链=真环境变量 > 项目级 > 全局级 > 缺省(applySettings 只填缺省槽)。daemon 记录自身装入的「自填槽集」;GUI 保存 → daemon 清自填槽 → 重跑装载链 → **后续新建会话即刻生效**;运行中会话配置已捕获**不回改**(与 reset 语义一致);真环境变量覆盖的键标「env 覆盖中,改文件不生效」徽标。每次保存后面板即刷新 effective 视图。**MCP 同口径**:连接在会话装配期建立(McpHost.registerTools 逐台降级),改 mcp.json 仅新会话生效,运行中会话不重连——「测试连接」是即时探测,不触碰运行中会话。
+**编辑双轨制**:表单=结构化改写(保留未知键与 permissions/providers/env 块;**目标文件含注释时拒改并引导高级原文编辑**——防 GUI 写盘抹掉用户注释;同守卫适用 mcp.json;agent.md 为生成式写入不受此限);高级=原文编辑(保存前 `parseSettingsFile`/mcp 解析器服务端验证,畸形拒存;原子写)。「未知语义键/退役键」在高级面板以告警列表显示(RETIRED_KEYS 处置提示透出)。
+
+**生效语义(关键裁定,实时显示的诚实口径)**:装载链=真环境变量 > 项目级 > 全局级 > 缺省(applySettings 只填缺省槽)。daemon 记录自身装入的「自填槽集」;GUI 保存 → daemon 清自填槽 → 重跑装载链 → **后续新建会话即刻生效**;运行中会话配置已捕获**不回改**(与 reset 语义一致);真环境变量覆盖的键标「env 覆盖中,改文件不生效」徽标。每次保存后面板即刷新 effective 视图。**MCP/智能体同口径**:MCP 连接与 AgentRegistry 均在会话装配期建立(逐台降级/一次性加载 fail-fast),改 mcp.json 或 agent.md 仅新会话生效,运行中会话不重连不重载——「测试连接」是即时探测,不触碰运行中会话。
 
 ## 3. 设计系统(设计令牌 + 单 CSS)
 
@@ -116,7 +119,7 @@
 ## 6. 测试策略
 
 - **既有测试零迁移优先**:测试钩子 class 原名保留;结构迁移(Files/Board 入标签)不可避免的选择器变更最小化(容器级 data-testid 加固)。
-- 新增:agent-activity reducer 纯测;标签框架测(开/关/切/去重/单例/每会话独立);tree 端点测(边界拒/忽略项/上限截断);**pty 管理器测**(分配/帧回环/环形缓冲重放/kill/teardown 清杀——node-pty 真进程冒烟);**设置套件测**(effective 视图来源分层/env 覆盖徽标/结构化改写保未知键/含注释文件拒改/raw 验证拒存/自填槽清除重载→新会话生效/运行中会话不回改/**mcp 两级合并遮蔽视图/probe 成败两态/结构化写保真**);App 集成(subagent 事件不再入 Chat 流)。
+- 新增:agent-activity reducer 纯测;标签框架测(开/关/切/去重/单例/每会话独立);tree 端点测(边界拒/忽略项/上限截断);**pty 管理器测**(分配/帧回环/环形缓冲重放/kill/teardown 清杀——node-pty 真进程冒烟);**设置套件测**(effective 视图来源分层/env 覆盖徽标/结构化改写保未知键/含注释文件拒改/raw 验证拒存/自填槽清除重载→新会话生效/运行中会话不回改/**mcp 两级合并遮蔽视图/probe 成败两态/结构化写保真/agents 清单同源解析+畸形告警不抛死+增删改验证拒存**);App 集成(subagent 事件不再入 Chat 流)。
 - e2e:既有 11 例照跑(选择器兼容)+ 新增:Agents 标签 live 卡/目录树展开开文件/+ 菜单开终端跑 `echo` 断言回显/项目组展开拉会话/设置改 language→新会话生效。
 - **无视觉回归测试**(无截图基建,YAGNI)——评审以结构+交互断言为门。
 
@@ -126,7 +129,7 @@
 |---|---|
 | G8a | 设计系统(app.css 令牌)+lucide+三栏布局壳+**标签框架**(注册表/标签条/+菜单/开/关/切/去重/每会话态)+**左栏项目分组**(多工作区组/组内会话/组内新建 root 预填)+Chat 迁中栏+文件/任务入标签+chat subagent 过滤修复 |
 | G8b | **终端全链**(node-pty/pty 管理器/分配端点+专用 WS/环形缓冲重连重放/teardown 清杀 + xterm.js 终端标签)+**目录标签**(tree 端点+树组件) |
-| G8c | **设置全链**(/settings 四端点+自填槽清除重载机制+九面板表单/只读清单/记忆概览/技能清单/**MCP 清单+探测+编辑**+raw JSONC 双文件编辑+来源徽标与生效 toast) |
+| G8c | **设置全链**(/settings 端点族+自填槽清除重载机制+十面板表单/只读清单/记忆概览/技能清单/MCP 清单+探测+编辑/**智能体定义清单+增删改**/raw JSONC 双文件编辑+来源徽标与生效 toast;导航含「插件」组) |
 | G8d | Diff 标签接线+Agents 标签(reducer+卡+mini 转录)+Web 标签(iframe+外开)+交互清单落地+e2e |
 | G8e | 全量门禁+两 spec/ROADMAP 回写(壳批次注记维持:原生 webview/托盘) |
 
@@ -147,6 +150,8 @@
 | U-D11 | 生效语义:daemon 自填槽清除重载→新会话即刻生效;运行中会话不回改;真 env 恒最优先(覆盖键标徽标+禁编) | 保存即热更运行中会话/daemon 重启才生效 | 运行中会话配置不可变与 reset 语义一致;热更=配置漂移泥潭;重启=体验不可接受 |
 | U-D12 | 技能/权限/记忆概览 v1 只读展示(权限编辑走高级原文) | 全面板可编辑 | 三者结构复杂度远超表单承载;只读展示已满足「实时显示」;编辑面按需后置 |
 | U-D12a | **MCP 面板=两级合并清单+单台真实探测(McpHost 同栈临时起)+表单增删改**;生效仅新会话(装配期连接,运行中不重连) | 只读清单(不探测)/daemon 常驻重连 | 探测给「实时显示」真值(注册工具数/失败原因);常驻重连=新协议面+生命周期复杂度,YAGNI;两文件(项目/全局)遮蔽语义与技能装载链同构 |
+| U-D12b | **智能体面板=AgentRegistry 同源清单(内建四预设只读+agents 目录注册)+agent.md 表单化增删改(保存前 frontmatter 解析验证,畸形拒存=装配 fail-fast 的写盘前防线)** | 只读清单/自造定义格式 | 用户裁定「子智能体定义」;目录注册制/frontmatter/内存开关/外部执行器全是既有真数据;生成式写盘无注释抹除问题 |
+| U-D12c | **「插件」=导航组收录技能/MCP/智能体三真实扩展面** | 造独立插件运行时/空态占位页 | sunshinex 现无插件运行时——造=无数据死 UI,空态=占位废页;三扩展面归组即「插件」实质,未来插件包格式直加子项 |
 | U-D13 | 目录=单层列举端点(逐层拉取)+默认忽略 .git/node_modules/dist* | 一次性全量树快照 | 全量树大仓库不可控;逐层=每次请求有界 |
 | U-D14 | 单 CSS 文件+设计令牌 | Tailwind/CSS Modules/inline | 零构建侵入(gui 既有 vite 最简);令牌换值即亮色;~400 行可控 |
 | U-D15 | lucide-react | 手写 SVG sprite/图标字体 | 现代审美标配,tree-shake,一依赖;手绘 20+ 图标质量不可控 |
