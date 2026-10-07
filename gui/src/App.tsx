@@ -332,6 +332,10 @@ function AppShell({ token }: { token: string }): JSX.Element {
         nextBoard = applyBoardEvent(nextBoard, boardEventFrom(f.e));
       } else if (f.e.type.startsWith('delegation-')) {
         nextDelegations = applyDelegation(nextDelegations, f.e);
+        // G8e-T2:delegation 帧补投子代理聚合(与 board/delegation 同窗)——窗外路径本就投
+        // applyAgentEvent(权威终语:ended failed→error/done→done;label 命中既有卡才动),
+        // 窗内缓冲帧此前只重放板/委派不投聚合,delegation 终语在播种窗内被吞(卡滞 running)
+        setAgentActivities((a) => applyAgentEvent(a, f.e));
       }
     }
     setTeam(snap.team ?? []);

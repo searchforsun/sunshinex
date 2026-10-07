@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from 'react';
  * 「验证并保存」(conn.putSettingsRaw → 成功 toast「已保存:新建会话起」/失败(400 带服务端
  * 解析错误原文)行内错误条)。textarea 受控;服务端验证拒存+原子写——GUI 不本地预解析
  * (parseSettingsFile 严格口径在服务端,原文保真是本面板价值)。
- * root=''(仅全局)时 scope=project 禁用(提示——scope=project 必带 root,服务端 400 面)。
+ * root=''(仅全局)时 scope=project 禁用(提示——scope=project 必带 root,服务端 400 面);
+ * root 运行时变 ''(项目选择器切「仅全局」)而 scope 滞留 project → 自动回落 global(G8e-T2
+ * 滞留根除,回未读取态)。
  * scope=global 时 root 定位面被服务端忽略,请求省参(不留空串伪参)。
  * 切 scope/file 即回未读取态:content/错误/toast 清 + 保存禁用(placeholder 提示先「读取」)——
  * 读取前的旧目标内容不跨目标写(部分方向能过服务端验证,守卫在 GUI 侧)。
@@ -81,6 +83,16 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
     setSaveError('');
     setToast('');
   };
+
+  /** G8e-T2 scope 回落:root 变 ''(仅全局)而 scope 滞留 'project' → 自动回落 'global'——
+   *  project 选项已禁,滞留态 select 显禁值且读取/保存会带伪 root('' 串);回落即目标切换,
+   *  同款回未读取态(陈旧内容不跨目标写) */
+  useEffect(() => {
+    if (root !== '' || scope !== 'project') return;
+    setScope('global');
+    resetUnread();
+    // resetUnread 为渲染期重建的纯 setter 组合(无外部依赖),dep 面以 root/scope 转移为准
+  }, [root, scope]);
 
   const read = (): void => {
     setLoadError('');

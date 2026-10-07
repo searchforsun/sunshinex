@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { DirPicker } from '../pages/DirPicker';
+import { relTime } from '../ui-util';
 import { ChevronRight, Folder, Plus, RefreshCw, Settings } from 'lucide-react';
 
 /**
@@ -35,14 +36,7 @@ export interface ProjectMenuProps {
   readonly onOpenSettings?: () => void;
 }
 
-/** 相对时间(简易):<60s 刚刚;<60m Nm ago;<24h Nh ago;否则 Nd ago */
-function relTime(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
-}
+/** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const { conn, connState, activeSessionId, activeRoot, onOpenSession, onOpenSettings } = props;

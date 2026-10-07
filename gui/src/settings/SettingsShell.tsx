@@ -11,6 +11,7 @@ import { SkillsPermsPane } from './SkillsPermsPane';
 import type { SkillsPermsPaneConn } from './SkillsPermsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
+import { errText } from '../ui-util';
 
 /**
  * G8c T8/T9 设置态壳:App settingsOpen 时整体替换三栏内容——左栏(顶栏「← 返回」+ 项目
@@ -48,7 +49,7 @@ const SETTINGS_NAV: ReadonlyArray<{ readonly id: string; readonly title: string 
   { id: 'raw', title: '高级' },
 ];
 
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+/** 错误文案归一:G8e-T2 抽共享 ui-util */
 
 export interface SettingsShellProps {
   readonly conn: SettingsShellConn;

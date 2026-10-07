@@ -114,6 +114,18 @@ const h = vi.hoisted(() => {
     releaseSnapshot(): void {
       this.snapshotGateRelease();
     }
+    /** G8e-T2 设置面慢应答门(load 代守卫测):hold 后**下一笔** settings 应答悬挂(单发——
+     *  只拦 hold 后首发一笔,后续直通;应答体在调用时定格——迟到仍回旧视图,竞态面可控) */
+    private settingsGate: Promise<void> = Promise.resolve();
+    private settingsGateRelease: () => void = () => {};
+    holdSettings(): void {
+      this.settingsGate = new Promise<void>((resolve) => {
+        this.settingsGateRelease = resolve;
+      });
+    }
+    releaseSettings(): void {
+      this.settingsGateRelease();
+    }
     constructor(opts: ConnectionOpts) {
       this.opts = opts;
       created.push(this);
@@ -201,7 +213,10 @@ const h = vi.hoisted(() => {
     }
     settings(root?: string): Promise<SettingsView> {
       this.settingsCalls.push(root ?? '');
-      return Promise.resolve(this.settingsView);
+      const gate = this.settingsGate;
+      this.settingsGate = Promise.resolve(); // 单发:只拦 hold 后首发一笔,后续直通
+      const view = this.settingsView; // 应答体调用时定格(慢应答迟到仍回旧视图)
+      return gate.then(() => view);
     }
     putSettings(root: string, updates: Record<string, string | number | null>): Promise<void> {
       if (this.putSettingsReject !== null) return Promise.reject(this.putSettingsReject);
@@ -1093,6 +1108,27 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     unmount();
   });
 
+  it('G8e-T2 错误层重试:展开失败 → 收起再展开重拉(错误态缓存不命中跳过)→ 第二笔成功行在场', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.treeByPath = {
+      '': { entries: [{ name: 'dirA', kind: 'dir' }] },
+      dirA: { entries: [{ name: 'fileA.ts', kind: 'file' }] },
+    };
+    openDirectory();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
+    // 首拉 dirA 失败:层落 error 行内态
+    conn.treeReject = new Error('/session/s1/tree?path=dirA -> 500');
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
+    await waitFor(() => expect(screen.getByText('/session/s1/tree?path=dirA -> 500')).toBeDefined());
+    // 收起再展开:错误层清除重拉(而非 nodes.has 命中跳过)→ 第二笔 dirA 成功 → 子文件行在场
+    conn.treeReject = null;
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' })); // 收起
+    fireEvent.click(screen.getByRole('button', { name: 'dirA' })); // 再展开 → 重拉
+    await waitFor(() => expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined());
+    expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s1', 'dirA']]); // dirA 两笔(重试面)
+    unmount();
+  });
+
   it('会话切换层缓存重置(单例 uid 跨会话不重挂):直切回 s1 无 s2 陈旧层,展开重拉 + 文件行开标签用本会话路径', async () => {
     const { conn, unmount } = await enterChat();
     // 两会话同名目录 dirA 而子层各异(s1 层=fileA.ts / s2 层=fileB.ts)——陈旧层缓存唯一可观测形
@@ -1548,6 +1584,22 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     expect(screen.getByText(/任务板为空/)).toBeDefined(); // Ghost 未重放
     unmount();
   });
+
+  it('G8e-T2 播种窗内 delegation 帧补投聚合:buffered delegation-ended(failed) → onSeeded 重放后卡终态 error', async () => {
+    const { conn, unmount } = await enterChatHeldBoard();
+    // 窗内:子代理帧直投聚合建卡(running);delegation-ended(failed) 入 boardPending 缓冲(不直投)
+    fire(conn, ev('token', 'x', { subagent: 'reviewer' }), 1);
+    fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }), 2);
+    conn.releaseSnapshot(); // 种子 lastSeq 0:seq 1/2 > 0 → 重放面
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    // Agents 标签:卡 reviewer 终态 error(失败徽标;running 动画点退场)——重放循环补投聚合生效
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
+    expect(screen.getByText('reviewer')).toBeDefined();
+    expect(screen.getByText('失败')).toBeDefined();
+    expect(document.querySelector('.sx-subagent-dot')).toBeNull();
+    unmount();
+  });
 });
 
 describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => {
@@ -1716,6 +1768,25 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     // 切回项目:root 复位
     fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '/w/root-a' } });
     await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a', '', '/w/root-a']));
+    unmount();
+  });
+
+  it('G8e-T2 load 代守卫:root 快切后陈旧慢应答弃——终态=新 root 值(旧应答不覆写)', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.settingsView = settingsViewOf([{ key: 'language', value: 'slow-a', source: 'project', envOverride: false }]);
+    conn.holdSettings(); // A(项目 root)首笔应答悬挂(单发门:后续直通)
+    openSettings();
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a']));
+    // 快切「(仅全局)」:B 应答直通落定(fast-b)
+    conn.settingsView = settingsViewOf([{ key: 'language', value: 'fast-b', source: 'global', envOverride: false }]);
+    fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
+    await waitFor(() => expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe('fast-b'));
+    // A 迟到落定:陈旧代弃——终态仍 fast-b(无守卫则被 slow-a 覆写)
+    await act(async () => {
+      conn.releaseSettings();
+    });
+    expect(conn.settingsCalls).toEqual(['/w/root-a', '']);
+    expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe('fast-b');
     unmount();
   });
 
@@ -2126,6 +2197,22 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     // 未读取态点击保存:零 putSettingsRaw(A 目标内容写进 B 目标的跨目标错写根除)
     fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
     expect(conn.putSettingsRawCalls).toEqual([]);
+    unmount();
+  });
+
+  it('G8e-T2 scope 回落:项目上下文在(=project)→ 切「(仅全局)」→ scope 自动回落 global(project 选项禁,不滞留)', async () => {
+    const { conn, unmount } = await enterChat();
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    // 初始:有项目上下文 → scope=project
+    expect((await screen.findByLabelText('raw scope') as HTMLSelectElement).value).toBe('project');
+    // root → '':scope 不滞留已禁选的 project——自动回落 global
+    fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
+    await waitFor(() => expect((screen.getByLabelText('raw scope') as HTMLSelectElement).value).toBe('global'));
+    expect(
+      ((screen.getByLabelText('raw scope') as HTMLSelectElement).querySelector('option[value="project"]') as HTMLOptionElement)
+        .disabled,
+    ).toBe(true);
     unmount();
   });
 

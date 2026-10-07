@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SettingsKeyRow, SettingsView } from '../connection';
 import { SourceBadge } from './SourceBadge';
+import { relTime, errText } from '../ui-util';
 
 /**
  * G8c T8 通用键值表单引擎(+四简单面板配置):mount/effect 拉 conn.settings(root)→按 pane
@@ -37,8 +38,6 @@ export interface SettingsFormConn {
   putSettings(root: string, updates: Record<string, string | number | null>): Promise<void>;
   memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }>;
 }
-
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** 数字键清单(brief 逐字):input='number' + 保存时 number 化 */
 const NUMBER_KEYS = new Set([
@@ -106,14 +105,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
   },
 ];
 
-/** 相对时间(简易,ProjectMenu 同款逻辑本地复制——跨模块不共用 UI 私助):null = 未写 */
-function relTime(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
-}
+/** 相对时间与错误文案归一:G8e-T2 抽共享 ui-util(三处本地复制收敛) */
 
 export interface SettingsFormProps {
   readonly conn: SettingsFormConn;
@@ -135,12 +127,18 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
   const [stats, setStats] = useState<{ entries: number; lastWriteAt: number | null } | null>(null);
   /** toast 3s 自隐句柄(连续保存重置;卸载兜底清) */
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** load 代计数(G8e-T2 竞态守卫):每次发起新拉即递增;应答到达时代不齐 = 陈旧(root 已
+   *  切走/保存后重拉)——弃,不覆写行表(慢应答迟到不冲新 root 值) */
+  const loadGenRef = useRef(0);
 
-  /** 拉取:settings(root)+ 记忆面板附 memoryStats;成功落行表与输入值(整替——重拉即复位) */
+  /** 拉取:settings(root)+ 记忆面板附 memoryStats;成功落行表与输入值(整替——重拉即复位);
+   *  代守卫:root 快切时旧应答迟到弃(终态=最新代) */
   const load = useCallback((): void => {
+    const gen = ++loadGenRef.current;
     const r = root === '' ? undefined : root; // 仅全局 = 省参(空串 root 服务端不可靠)
     conn.settings(r).then(
       (view) => {
+        if (loadGenRef.current !== gen) return; // 陈旧代:root 已切走,弃
         const byKey = new Map(view.keys.map((k) => [k.key, k]));
         const nextRows: Record<string, SettingsKeyRow> = {};
         const nextValues: Record<string, string> = {};
@@ -154,9 +152,20 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
         setValues(nextValues);
         setLoadError('');
       },
-      (err: unknown) => setLoadError(errText(err)),
+      (err: unknown) => {
+        if (loadGenRef.current !== gen) return; // 陈旧代:错误也不落(新代在途/已落)
+        setLoadError(errText(err));
+      },
     );
-    if (pane.memoryOverview) conn.memoryStats(r).then(setStats, () => setStats(null));
+    if (pane.memoryOverview)
+      conn.memoryStats(r).then(
+        (v) => {
+          if (loadGenRef.current === gen) setStats(v);
+        },
+        () => {
+          if (loadGenRef.current === gen) setStats(null);
+        },
+      );
   }, [conn, root, pane]);
 
   useEffect(() => {

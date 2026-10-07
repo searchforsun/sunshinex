@@ -15,7 +15,9 @@ import type { TabParams } from './tab-state';
  * 80, 24) → onPtyAllocated(uid, ptyId)(App 侧 ptyIdsRef 记账——关标签链 kill 的寻址键)
  * → jsdom 守卫(容器 clientWidth/Height=0 → 降级面,xterm 需真盒子量尺寸;真浏览器走
  * xterm)→ Terminal+FitAddon+PtySocket 装配。帧面:replay/data → term.write(b64→utf8);
- * exit → 退出提示写入 term + 退出态条;error → 行内错误条。输入 term.onData → sendInput;
+ * exit → 退出提示写入 term + 退出态条;error → 行内错误条;WS closed(server 侧关且非卸载
+ * dispose 致关)→ term 灰字断连提示一行·一次性(G8e-T2;重连=切标签往返 replay 恢复;jsdom
+ * 降级守卫互斥无测试面,e2e/人审盖)。输入 term.onData → sendInput;
  * 尺寸 fit 后 socket.resize(term.cols, term.rows),ResizeObserver 随容器续跟。
  * 卸载 socket.dispose()+term.dispose() **不 kill**——pty 生命周期属标签不属渲染(App 关
  * 标签链单点 kill);重挂经 ptyIdFor 复用同一 pty。
@@ -65,8 +67,11 @@ export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: 
     let fit: FitAddon | null = null;
     let observer: ResizeObserver | null = null;
     /** 卸载后迟到应答守卫:openPty 慢应答不落 state/不记账(cancelled 后分配的 pty 无消费面,
-     *  服务侧归 owner teardown——关标签竞态的既定让步,brief fire-and-forget 语义) */
+     *  服务侧归 owner teardown——关标签竞态的既定让步,brief fire-and-forget 语义);兼作卸载
+     *  判据——cleanup 先置位再 socket.dispose(),卸载致关的 closed 回放被吞(断连提示不误报) */
     let cancelled = false;
+    /** 断连提示一次性标志(G8e-T2):closed 只写一次,防重复 */
+    let disconnectShown = false;
 
     /** fit 后同步 pty 尺寸(装配尾一次 + ResizeObserver 每回调) */
     const syncSize = (): void => {
@@ -111,8 +116,16 @@ export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: 
               setExitCode(f.code);
             } else if (f.t === 'error') setSocketError(f.message);
           },
-          // 状态面本标签不消费:exit/error 帧已覆盖可观测异常;卸载 dispose 的 closed 回放静默
-          onState: () => {},
+          // 状态面(G8e-T2 断连提示):server 侧关(exit 后 close(1000)/error 后 close(1008)/
+          // 掉线)且非卸载 dispose 致关 → term 写一行灰色提示,一次性(disconnectShown 防重复)。
+          // cancelled 兼卸载判据:cleanup 先置位再 dispose,卸载致关的 closed 回放静默。重连语义
+          // 既有——切标签往返即重挂重连(replay 恢复屏幕),提示语引导。jsdom 降级守卫互斥(xterm
+          // 路径无 jsdom 测试面),本分支归 e2e/人审盖
+          onState: (s) => {
+            if (s !== 'closed' || cancelled || disconnectShown || term === null) return;
+            disconnectShown = true;
+            term.write('\r\n\x1b[90m[连接已断开——重连将恢复]\x1b[0m');
+          },
         });
         term.onData((d) => socket?.sendInput(d));
         syncSize();

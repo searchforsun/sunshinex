@@ -7,8 +7,9 @@ import type { TabTypeId, TabParams } from './tab-state';
 /**
  * G8b 目录标签体(T7):会话 root 的逐层惰拉树。mount 拉 root(tree(sessionId),path 缺省 '')
  * → 行列表(目录行 = ChevronRight 旋态 + Folder + 名;文件行 = FileText + 名);目录行点击 =
- * 惰拉单层(展开态 Map<path, NodeState> 缓存),再点收起——**缓存保留**(再展开不再拉);文件行
- * 点击 = openTab('file', { path })(相对路径以 root 起,判界一致性由服务端保证)。子层 path 拼合:
+ * 惰拉单层(展开态 Map<path, NodeState> 缓存),再点收起——**缓存保留**(再展开不再拉;错误层
+ * 例外:收起再展开即重试,G8e-T2);文件行点击 = openTab('file', { path })(相对路径以 root
+ * 起,判界一致性由服务端保证)。子层 path 拼合:
  * 父 path ? `${父}/${name}` : name。truncated → 行层尾「…已截断」标记;加载/错误行内态。
  * 状态生命周期随组件挂载(切标签卸毁即失——重挂重拉 root,与 Files/TerminalTab 同口径);
  * 单例跨会话不重挂(uid 恒 'directory:',tabbody key 不变而 sessionId prop 变)——sessionId
@@ -43,7 +44,8 @@ const indent = (depth: number): CSSProperties => ({ paddingLeft: `${6 + depth * 
 const childPath = (dirPath: string, name: string): string => (dirPath === '' ? name : `${dirPath}/${name}`);
 
 export function DirectoryTab({ conn, sessionId, openTab }: DirectoryTabProps): JSX.Element {
-  /** 层缓存:path(''=root)→ NodeState;收起不清缓存(再展开命中,不再拉) */
+  /** 层缓存:path(''=root)→ NodeState;收起不清缓存(再展开命中,不再拉;错误层例外——
+   *  再展开重拉,G8e-T2) */
   const [nodes, setNodes] = useState<ReadonlyMap<string, NodeState>>(INITIAL_NODES);
   /** 展开集合:目录行点击切换;收起只摘集合不动缓存 */
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => INITIAL_EXPANDED);
@@ -65,7 +67,8 @@ export function DirectoryTab({ conn, sessionId, openTab }: DirectoryTabProps): J
     );
   }, [conn, sessionId, setNode]);
 
-  /** 目录行点击:已展开 → 收起(缓存保留);未展开 → 展开 + 未缓存才惰拉单层 */
+  /** 目录行点击:已展开 → 收起(缓存保留);未展开 → 展开 + 非错误缓存命中才免拉——错误层
+   *  例外(G8e-T2):收起再展开即重试(层错误态清除重拉,瞬时故障不永久钉死) */
   const toggleDir = (dirPath: string): void => {
     if (expanded.has(dirPath)) {
       setExpanded((s) => {
@@ -76,8 +79,9 @@ export function DirectoryTab({ conn, sessionId, openTab }: DirectoryTabProps): J
       return;
     }
     setExpanded((s) => new Set(s).add(dirPath));
-    if (nodes.has(dirPath)) return; // 缓存命中:收起再展开零请求
-    setNode(dirPath, { status: 'loading' });
+    const cached = nodes.get(dirPath);
+    if (cached !== undefined && cached.status !== 'error') return; // 缓存命中(loaded/loading):收起再展开零请求
+    setNode(dirPath, { status: 'loading' }); // 未拉/错误层:拉(错误层重拉 = 清除重试)
     void conn.tree(sessionId, dirPath).then(
       (r) => setNode(dirPath, { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
       (err: unknown) => setNode(dirPath, { status: 'error', message: err instanceof Error ? err.message : String(err) }),
