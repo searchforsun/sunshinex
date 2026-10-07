@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SessionEvent } from '../../src/types';
 import { emptyBoard } from './projection';
 import { createConnection } from './connection';
-import type { Connection, SnapshotResponse } from './connection';
+import type { Connection, SnapshotResponse, SettingsView } from './connection';
 
 /**
  * G3.5 连接层状态机桩测(会话维;jsdom 无真 WS/HTTP 服务面):WebSocket/fetch/setTimeout
@@ -447,5 +447,190 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     // 已决 pid 404 → 抛错含路径与 status(GUI 侧失败也移卡,不静默吞)
     fetchQueue.push(errResp(404));
     await expect(conn.replyApproval('p-1', 'allow')).rejects.toThrow('/approval/p-1 -> 404');
+  });
+
+  it('⑩ G8c 设置读面(GET):settings/settingsRaw/mcpServers/agentsView/skillsGroups/memoryStats 的 URL/query 形与应答解码;root 缺省省查询参;路径编码', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    const view: SettingsView = {
+      keys: [
+        { key: 'model', value: 'openai/gpt', source: 'project', envOverride: false },
+        { key: 'apiKey', value: 'sk-env', source: 'env', envOverride: true },
+      ],
+      permissions: {
+        merged: { deny: ['Bash(rm:*)'], allow: ['Read'], additionalDirs: ['/tmp'] },
+        project: { deny: [], allow: ['Read'], additionalDirs: [] },
+        global: { deny: ['Bash(rm:*)'], allow: [], additionalDirs: ['/tmp'] },
+      },
+      providers: {
+        choices: [
+          { id: 'openai/gpt', provider: 'openai', model: 'gpt', baseUrl: 'https://api.x', apiKeyEnv: 'SUNSHINEX_API_KEY_OPENAI' },
+        ],
+        apiKeyPresent: { openai: true },
+        warnings: ['provider "local" has no models'],
+      },
+    };
+    fetchQueue.push(
+      ok(view), // settings('/w 1')(路径含空格——编码面)
+      ok(view), // settings()(root 缺省 = 仅全局+env 面)
+      ok({ content: '{\n  // JSONC 原文\n}\n' }), // settingsRaw('project','/w','mcp')
+      ok({ content: null }), // settingsRaw('global', undefined,'settings')(缺文件空态)
+      ok({
+        servers: [
+          { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'fs-mcp'], envKeys: ['KEY'], source: 'project', shadowed: false },
+          { name: 'web', transport: 'http', url: 'https://mcp.x', envKeys: [], source: 'global', shadowed: true },
+        ],
+      }), // mcpServers('/w')
+      ok({
+        builtins: [{ role: 'planner', name: 'Planner', framing: 'requirement breakdown, solution and plan' }],
+        view: {
+          entries: [
+            {
+              id: 'coder',
+              name: 'Coder',
+              description: '写码',
+              memory: true,
+              source: 'project',
+              shadowed: false,
+              bodyPreview: '正文预览',
+            },
+            { id: 'coder', name: 'Coder', source: 'global', shadowed: true, bodyPreview: '' },
+          ],
+          warnings: ['/g/agents/bad/agent.md: malformed frontmatter'],
+        },
+      }), // agentsView()(root 缺省 = 仅全局清单)
+      ok({
+        groups: [
+          { source: 'project', skills: [{ id: 'pdf', name: 'PDF', description: 'pdf 工具' }] },
+          { source: 'user', skills: [{ id: 'scratch' }] },
+          { source: 'learned', skills: [] },
+        ],
+      }), // skillsGroups('/w')
+      ok({ entries: 0, lastWriteAt: null }), // memoryStats()(root 缺省 = 零值)
+    );
+    // —— 应答解码(结构直读,union/嵌套面全展开) ——
+    await expect(conn.settings('/w 1')).resolves.toEqual(view);
+    await expect(conn.settings()).resolves.toEqual(view);
+    await expect(conn.settingsRaw('project', '/w', 'mcp')).resolves.toEqual({ content: '{\n  // JSONC 原文\n}\n' });
+    await expect(conn.settingsRaw('global', undefined, 'settings')).resolves.toEqual({ content: null });
+    await expect(conn.mcpServers('/w')).resolves.toEqual({
+      servers: [
+        { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'fs-mcp'], envKeys: ['KEY'], source: 'project', shadowed: false },
+        { name: 'web', transport: 'http', url: 'https://mcp.x', envKeys: [], source: 'global', shadowed: true },
+      ],
+    });
+    await expect(conn.agentsView()).resolves.toEqual({
+      builtins: [{ role: 'planner', name: 'Planner', framing: 'requirement breakdown, solution and plan' }],
+      view: {
+        entries: [
+          { id: 'coder', name: 'Coder', description: '写码', memory: true, source: 'project', shadowed: false, bodyPreview: '正文预览' },
+          { id: 'coder', name: 'Coder', source: 'global', shadowed: true, bodyPreview: '' },
+        ],
+        warnings: ['/g/agents/bad/agent.md: malformed frontmatter'],
+      },
+    });
+    await expect(conn.skillsGroups('/w')).resolves.toEqual({
+      groups: [
+        { source: 'project', skills: [{ id: 'pdf', name: 'PDF', description: 'pdf 工具' }] },
+        { source: 'user', skills: [{ id: 'scratch' }] },
+        { source: 'learned', skills: [] },
+      ],
+    });
+    await expect(conn.memoryStats()).resolves.toEqual({ entries: 0, lastWriteAt: null });
+    // —— URL 面:root 缺省省查询参;scope/file 定序;root 路径编码 ——
+    expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/settings?root=%2Fw%201',
+      'http://127.0.0.1:7788/settings',
+      'http://127.0.0.1:7788/settings/raw?scope=project&root=%2Fw&file=mcp',
+      'http://127.0.0.1:7788/settings/raw?scope=global&file=settings',
+      'http://127.0.0.1:7788/settings/mcp?root=%2Fw',
+      'http://127.0.0.1:7788/settings/agents',
+      'http://127.0.0.1:7788/settings/skills?root=%2Fw',
+      'http://127.0.0.1:7788/settings/memory-stats',
+    ]);
+    // 读面全 GET 缺省(init.method 不出现)+ Bearer 头(getJson 单点惯例)
+    expect(fetchLog.every((f) => f.init?.method === undefined)).toBe(true);
+    expect(fetchLog[0]?.init?.headers).toEqual({ authorization: 'Bearer tok' });
+    // 非 2xx 透传既有惯例:错误消息含路径与 status
+    fetchQueue.push(errResp(400));
+    await expect(conn.settingsRaw('project', undefined, 'settings')).rejects.toThrow('/settings/raw?scope=project&file=settings -> 400');
+  });
+
+  it('⑪ G8c 设置写面(PUT/POST):putSettings/putSettingsRaw/putMcpServers/putAgent/mcpProbe 的 URL/verb/body;void PUT 不解析应答体(200 空体过);非 2xx 抛错含 status', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    // void 写面应答不解析:json() 一经调用即抛——锁「200 {ok} 只查 ok 不读体」(空体 200 同过)
+    const bareOk = (): RespLike => ({ ok: true, status: 200, json: async () => { throw new Error('test: void PUT must not read body'); } });
+    const servers = [
+      { name: 'fs', command: 'npx', args: ['-y', 'fs-mcp'], env: { KEY: 'V' } },
+      { name: 'remote', transport: 'http' as const, url: 'https://mcp.x' },
+    ];
+    fetchQueue.push(
+      bareOk(), // putSettings
+      bareOk(), // putSettingsRaw project
+      bareOk(), // putSettingsRaw global(root 缺省)
+      bareOk(), // putMcpServers
+      bareOk(), // putAgent upsert
+      bareOk(), // putAgent delete
+      ok({ ok: true, tools: [{ name: 'read', description: '读文件' }] }), // mcpProbe(root 缺省)
+    );
+    const updates = { model: 'openai/gpt', contextWindow: 200000, apiKey: null };
+    await conn.putSettings('/w', updates);
+    await conn.putSettingsRaw('project', '/w', 'settings', '{}\n');
+    await conn.putSettingsRaw('global', undefined, 'mcp', '{\n  "mcpServers": {}\n}\n');
+    await conn.putMcpServers('/w', servers);
+    await conn.putAgent({ root: '/w', scope: 'project', op: 'upsert', id: 'coder', frontmatter: { name: 'Coder', memory: true }, body: '正文' });
+    await conn.putAgent({ scope: 'global', op: 'delete', id: 'old-one' });
+    await expect(conn.mcpProbe(undefined, 'fs')).resolves.toEqual({ ok: true, tools: [{ name: 'read', description: '读文件' }] });
+    // —— URL/verb 面:四写面 PUT、probe POST ——
+    expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/settings',
+      'http://127.0.0.1:7788/settings/raw',
+      'http://127.0.0.1:7788/settings/raw',
+      'http://127.0.0.1:7788/settings/mcp',
+      'http://127.0.0.1:7788/settings/agents',
+      'http://127.0.0.1:7788/settings/agents',
+      'http://127.0.0.1:7788/settings/mcp/probe',
+    ]);
+    expect(fetchLog.map((f) => f.init?.method)).toEqual(['PUT', 'PUT', 'PUT', 'PUT', 'PUT', 'PUT', 'POST']);
+    // —— body 面:字段名/缺省省字段(root undefined 不落 JSON)逐字 ——
+    expect(fetchLog[0]?.init?.body).toBe(JSON.stringify({ root: '/w', updates }));
+    expect(fetchLog[1]?.init?.body).toBe(JSON.stringify({ scope: 'project', root: '/w', file: 'settings', content: '{}\n' }));
+    expect(fetchLog[2]?.init?.body).toBe(JSON.stringify({ scope: 'global', file: 'mcp', content: '{\n  "mcpServers": {}\n}\n' }));
+    expect(fetchLog[3]?.init?.body).toBe(JSON.stringify({ root: '/w', servers }));
+    expect(fetchLog[4]?.init?.body).toBe(
+      JSON.stringify({ root: '/w', scope: 'project', op: 'upsert', id: 'coder', frontmatter: { name: 'Coder', memory: true }, body: '正文' }),
+    );
+    expect(fetchLog[5]?.init?.body).toBe(JSON.stringify({ scope: 'global', op: 'delete', id: 'old-one' }));
+    expect(fetchLog[6]?.init?.body).toBe(JSON.stringify({ name: 'fs' }));
+    // Bearer + json 头(写面)
+    expect(fetchLog[0]?.init?.headers).toEqual({ authorization: 'Bearer tok', 'content-type': 'application/json' });
+    // —— 非 2xx 透传:400 未知键 / 409 注释面 / 400 缺 root ——
+    fetchQueue.push(errResp(400));
+    await expect(conn.putSettings('/w', { bogus: 'x' })).rejects.toThrow('/settings -> 400');
+    fetchQueue.push(errResp(409));
+    await expect(conn.putSettingsRaw('project', '/w', 'settings', '// c\n')).rejects.toThrow('/settings/raw -> 409');
+    fetchQueue.push(errResp(400));
+    await expect(conn.mcpProbe(undefined, '')).rejects.toThrow('/settings/mcp/probe -> 400');
+  });
+
+  it('⑫ G8c mcpProbe 联合应答两态解码:ok:true tools / ok:false error 均 200 正常落定(探测失败是结果非错误码)', async () => {
+    conn = createConnection({ baseUrl: 'http://x', token: 't', onEvent: () => {}, onReset: () => {} });
+    fetchQueue.push(
+      ok({ ok: true, tools: [{ name: 'read' }, { name: 'write', description: '写文件' }] }),
+      ok({ ok: false, error: 'connection failed (fs): connect ECONNREFUSED' }),
+      ok({ ok: false, error: 'identity mismatch (fs): serverInfo.name=other' }),
+    );
+    const good = await conn.mcpProbe('/w', 'fs');
+    expect(good.ok).toBe(true);
+    if (good.ok) {
+      // ok:true 分支判别式收窄后 tools 直读
+      expect(good.tools).toEqual([{ name: 'read' }, { name: 'write', description: '写文件' }]);
+    }
+    const bad = await conn.mcpProbe('/w', 'fs');
+    expect(bad).toEqual({ ok: false, error: 'connection failed (fs): connect ECONNREFUSED' });
+    const bad2 = await conn.mcpProbe('/w', 'fs');
+    expect(bad2.ok).toBe(false);
+    if (!bad2.ok) expect(bad2.error).toBe('identity mismatch (fs): serverInfo.name=other');
+    // root 在场落 body(JSON 逐字)
+    expect(fetchLog.every((f) => f.init?.body === JSON.stringify({ root: '/w', name: 'fs' }))).toBe(true);
   });
 });

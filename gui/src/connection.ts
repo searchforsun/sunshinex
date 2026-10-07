@@ -133,6 +133,122 @@ export interface TreeResp {
   truncated?: boolean;
 }
 
+// ---------- G8c T7：设置面类型（gui 侧契约声明，字段形与 daemon T2-T6 应答同形；不引服务端类型） ----------
+
+/** GET /settings keys 行（T2，对齐 daemon effectiveKeyRow 产物）：value 恒取 env 槽（槽缺即
+ *  null——文件有值但未装载的键如实报「有配置但未生效」）；source 四态 effective 归因；
+ *  envOverride=true 表示真导出环境变量覆盖文件面（GUI 禁编+徽标） */
+export interface SettingsKeyRow {
+  key: string;
+  value: string | null;
+  source: 'env' | 'project' | 'global' | 'default';
+  envOverride: boolean;
+}
+
+/** permissions 单面（对齐主仓 PermissionsConfig）：deny/allow 命令规则 + additionalDirs 可达目录 */
+export interface PermissionsBlocks {
+  deny: string[];
+  allow: string[];
+  additionalDirs: string[];
+}
+
+/** providers.choices 行（对齐主仓 ModelChoice 的 gui 只读投影——reasoningEffort 宽化为 string，
+ *  GUI 呈现面不消费其枚举约束） */
+export interface ProviderChoice {
+  id: string;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKeyEnv: string;
+  contextWindow?: number;
+  reasoningEffort?: string;
+}
+
+/** GET /settings 载荷（T2 Settings 页数据源）：keys 按 SEMANTIC_KEYS 键序全量；permissions 三面
+ *  {merged=两级拼接去重视图态, project, global}；providers 密钥只报在场布尔不显值 */
+export interface SettingsView {
+  keys: SettingsKeyRow[];
+  permissions: { merged: PermissionsBlocks; project: PermissionsBlocks; global: PermissionsBlocks };
+  providers: { choices: ProviderChoice[]; apiKeyPresent: Record<string, boolean>; warnings: string[] };
+}
+
+/** GET /settings/mcp 行（T4 两级遮蔽视图）：env 打码折叠为键名列表（env 值不回传——PUT 结构化写
+ *  全值回写、raw 面另有无打码原文）；transport 缺省归一显形 'stdio'；shadowed=被项目同名遮蔽 */
+export interface McpRow {
+  name: string;
+  transport: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  envKeys: string[];
+  source: 'project' | 'global';
+  shadowed: boolean;
+}
+
+/** PUT /settings/mcp servers 行（T4 结构化写输入）：与 McpRow 的差面=写面收 env 全值（文件本就
+ *  承载）、无 source/shadowed（写恒项目级、遮蔽是装载态）；transport 可缺省（daemon 归一 stdio） */
+export interface McpRowInput {
+  name: string;
+  transport?: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+}
+
+/** POST /settings/mcp/probe 联合应答：ok:true 携 tools 清单；ok:false 携 error（连接失败/身份
+ *  不符/超时截断文）——探测是诊断面，失败即结果，同为 200 非 HTTP 错误码 */
+export type McpProbeResult = { ok: true; tools: Array<{ name: string; description?: string }> } | { ok: false; error: string };
+
+/** GET /settings/agents builtins 行（T5 四预设角色平铺）：role=AgentRole 字面量（gui 侧宽化为
+ *  string——呈现面不消费枚举闭包），name/framing 取 ROLE_PRESETS */
+export interface BuiltinRole {
+  role: string;
+  name: string;
+  framing: string;
+}
+
+/** GET /settings/agents view.entries 行（T5，对齐主仓 AgentEntryView 只读投影）：source 两级
+ *  归因 + shadowed 被遮蔽标记 + bodyPreview 正文前 200 字符（防长正文击穿设置面板） */
+export interface AgentEntryView {
+  id: string;
+  name: string;
+  description?: string;
+  memory?: boolean;
+  isolation?: string;
+  executor?: string;
+  source: 'project' | 'global';
+  shadowed: boolean;
+  bodyPreview: string;
+}
+
+/** 两级扫描宽容清单（T5）：生效+被遮蔽全量 + 逐文件告警（畸形文件不抛死，路径入 warnings） */
+export interface AgentsView {
+  entries: AgentEntryView[];
+  warnings: string[];
+}
+
+/** PUT /settings/agents upsert 的 frontmatter 面（T5）：name 必填，可选键按需——字符串值须单行
+ *  （frontmatter 是单行 KV 词法，多行内容属 body 面；单行约束由 daemon 400 面守卫） */
+export interface AgentFrontmatterInput {
+  name: string;
+  description?: string;
+  memory?: boolean;
+  isolation?: string;
+  executor?: string;
+}
+
+/** 技能三源分组行（T6，对齐主仓 SkillsGroup）：source 三段 project/user/learned；组内去重沿装载
+ *  序、跨组不去重（多源同名两组各在，遮蔽裁决属装配面）；无 frontmatter 的技能行只含 id */
+export interface SkillsGroup {
+  source: 'project' | 'user' | 'learned';
+  skills: Array<{ id: string; name?: string; description?: string }>;
+}
+
+/** T8/T9 面别名（规划文档中的 Gui 后缀名——与上面主名同一类型，两个导入名均可用） */
+export type AgentsViewGui = AgentsView;
+export type SkillsGroupGui = SkillsGroup;
+
 /** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -216,6 +332,36 @@ export interface Connection {
   /** GET /session/:id/tree?path=（G8b T4 目录面，path 缺省 = root 单层直读）：DirectoryTab 逐层
    *  惰拉的取数面；403 越界/404 不存在/400 非目录以 HTTP 失败抛错（消息含 status） */
   tree(sessionId: string, path?: string): Promise<TreeResp>;
+  /** G8c T7 设置面方法族（T8/T9 Settings 面全数据面；签名与 task-7 brief 逐字对齐）。root 缺省
+   *  = 无项目上下文的仅全局面（服务端同裁定：query 参整体省略，空串 root 不可靠）；写面恒项目级
+   *  （400 缺 root），全局编辑走 raw */
+  /** GET /settings?root=（T2）：effective 视图（keys 来源分层/permissions 三面/providers 打码） */
+  settings(root?: string): Promise<SettingsView>;
+  /** PUT /settings {root, updates}（T2）：语义键结构化改写（null=delete）；400 未知键/类型坏、
+   *  409 文件含注释/畸形（引流 raw 编辑面）以 HTTP 失败抛错 */
+  putSettings(root: string, updates: Record<string, string | number | null>): Promise<void>;
+  /** GET /settings/raw?scope=&root=&file=（T3）：原文逐字复读（JSONC 保真）；缺文件 {content:null}
+   *  是编辑器空态判据；scope=project 必带 root（缺 400） */
+  settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }>;
+  /** PUT /settings/raw {scope, root?, file, content}（T3）：服务端验证拒存+原子写；root 缺省省
+   *  字段（scope=global 无锚只写盘不 reload，scope=project 缺 root 400） */
+  putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void>;
+  /** GET /settings/mcp?root=（T4）：两级遮蔽清单（项目全量 source='project' + 全局逐名 shadowed 标记） */
+  mcpServers(root?: string): Promise<{ servers: McpRow[] }>;
+  /** POST /settings/mcp/probe {root?, name}（T4）：单台真探测联合应答（失败即结果非错误码，见
+   *  McpProbeResult）；root 缺省 = 仅全局清单定位 */
+  mcpProbe(root: string | undefined, name: string): Promise<McpProbeResult>;
+  /** PUT /settings/mcp {root, servers}（T4）：项目级 mcp.json 整块结构化写（旧清单整块替换） */
+  putMcpServers(root: string, servers: McpRowInput[]): Promise<void>;
+  /** GET /settings/agents?root=（T5）：builtins 四预设 + 两级宽容清单（root 缺省 = 仅全局清单） */
+  agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }>;
+  /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（T5，AgentsPane 表单增删改）：
+   *  input 原文即请求体（缺省字段不落 JSON）；scope=project 必带 root（缺 400），delete 不存在幂等 ok */
+  putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void>;
+  /** GET /settings/skills?root=（T6）：三源分组固定序 project/user/learned（root 缺省 = 仅 user 组） */
+  skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }>;
+  /** GET /settings/memory-stats?root=（T6）：主域记忆概览（root 缺省 = 零值非 400） */
+  memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }>;
   close(): void;
   state(): ConnectionState;
   /** 测试钩子（e2e 断链注入专用）：当前底层 socket（无连接 undefined）——产品面勿消费 */
@@ -365,6 +511,28 @@ export function createConnection(opts: ConnectionOpts): Connection {
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   }
 
+  /** PUT 恒带 JSON body（G8c 设置写面）；void 面不读应答体——服务端 200 {ok:true} 只作成功信号，
+   *  不解析（空体 200 同过，也为服务端留改 204 的余地） */
+  async function put(path: string, body: unknown): Promise<void> {
+    const res = await fetch(`${base}${path}`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  }
+
+  /** POST 带 JSON 应答（G8c mcpProbe——联合应答 200 两态均正常落定，非 2xx 才是错误） */
+  async function postJson<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    return (await res.json()) as T;
+  }
+
   /** sessionSnapshot 单点：GET + 代次守卫下的基线抬高（慢到应答不污新连接的全量重放窗） */
   async function fetchSessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }> {
     const gen = generation;
@@ -469,6 +637,47 @@ export function createConnection(opts: ConnectionOpts): Connection {
       // path 缺省/root 省查询参(对齐 T4 缺省 '' 语义;dirpicker 同款)
       const query = path === undefined || path === '' ? '' : `?path=${encodeURIComponent(path)}`;
       return getJson<TreeResp>(`/session/${encodeURIComponent(sessionId)}/tree${query}`);
+    },
+    // ---- G8c T7 设置面：root 缺省省查询参（tree/dirpicker 同款——空串 root 服务端不可靠）；写面
+    // root 缺省省 body 字段（newSession mode 同款）----
+    settings(root?: string): Promise<SettingsView> {
+      return getJson<SettingsView>(root === undefined ? '/settings' : `/settings?root=${encodeURIComponent(root)}`);
+    },
+    putSettings(root: string, updates: Record<string, string | number | null>): Promise<void> {
+      return put('/settings', { root, updates });
+    },
+    settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }> {
+      // scope=global 时 root 定位面被服务端忽略——undefined 即省参（不留 root= 空串伪参）
+      const query = `scope=${scope}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}&file=${file}`;
+      return getJson<{ content: string | null }>(`/settings/raw?${query}`);
+    },
+    putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void> {
+      return put('/settings/raw', { scope, ...(root === undefined ? {} : { root }), file, content });
+    },
+    mcpServers(root?: string): Promise<{ servers: McpRow[] }> {
+      return getJson<{ servers: McpRow[] }>(root === undefined ? '/settings/mcp' : `/settings/mcp?root=${encodeURIComponent(root)}`);
+    },
+    mcpProbe(root: string | undefined, name: string): Promise<McpProbeResult> {
+      return postJson<McpProbeResult>('/settings/mcp/probe', { ...(root === undefined ? {} : { root }), name });
+    },
+    putMcpServers(root: string, servers: McpRowInput[]): Promise<void> {
+      return put('/settings/mcp', { root, servers });
+    },
+    agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }> {
+      return getJson<{ builtins: BuiltinRole[]; view: AgentsView }>(
+        root === undefined ? '/settings/agents' : `/settings/agents?root=${encodeURIComponent(root)}`,
+      );
+    },
+    putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void> {
+      return put('/settings/agents', input);
+    },
+    skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }> {
+      return getJson<{ groups: SkillsGroup[] }>(root === undefined ? '/settings/skills' : `/settings/skills?root=${encodeURIComponent(root)}`);
+    },
+    memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }> {
+      return getJson<{ entries: number; lastWriteAt: number | null }>(
+        root === undefined ? '/settings/memory-stats' : `/settings/memory-stats?root=${encodeURIComponent(root)}`,
+      );
     },
     close,
     state(): ConnectionState {
