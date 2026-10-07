@@ -1513,10 +1513,13 @@ export class GuiDaemon {
       this.send(res, 400, { error: 'updates must be an object of key → string | number | null' });
       return;
     }
-    // 先全量校验后落盘：任一键坏即 400，零部分写（对比值面 400 与文件面 409 都不动盘）
+    // 先全量校验后落盘：任一键坏即 400，零部分写（对比值面 400 与文件面 409 都不动盘）。
+    // 已知键判定用 Object.hasOwn 而非值比对：SEMANTIC_KEYS 是普通对象，toString/__proto__ 等
+    // 原型键经 `SEMANTIC_KEYS[key] === undefined` 会解析到 Object.prototype 成员（非 undefined）
+    // 穿透守卫被写上盘——hasOwn 只认真自键
     for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
-      if (SEMANTIC_KEYS[key] === undefined) {
-        const retired = RETIRED_KEYS[key];
+      if (!Object.hasOwn(SEMANTIC_KEYS, key)) {
+        const retired = Object.hasOwn(RETIRED_KEYS, key) ? RETIRED_KEYS[key] : undefined;
         this.send(res, 400, {
           error: retired !== undefined ? `unknown key "${key}": ${retired}` : `unknown settings key "${key}"`,
         });
@@ -1578,13 +1581,20 @@ export class GuiDaemon {
 
   /** PUT /settings 成功后的链重载（G8c T2）：清全部自填槽（env 槽 + 登记集，清集在删槽后、重装前）
    *  → 按项目→全局序重装（applySettings 只填缺省：真导出环境变量恒最优先，重载天然不触碰）。
+   *  逐级 try/catch：PUT 已写盘成功是既成事实——重装时任一级文件畸形（如全局 settings 坏）不能让
+   *  PUT 回 500（写成功却报失败误导；且坏文件会结构性死锁一切后续结构化改写）。该级跳过、错误经
+   *  stderr 透出（与 warnings 同通道）；畸形文件的 fail-fast 属装载链入口（CLI）职责，不在此处。
    *  窄缝：进程内链可能来自其他 root 的项目文件——本重载以 PUT 目标 root 为准重装，跨 root 场景
-   *  以最近编辑为准。warnings 走 stderr（与 loadSettingsChain 同通道；本方法不得 process.exit） */
+   *  以最近编辑为准 */
   private reloadSettingsChain(root: string): void {
     for (const slot of getSelfFilledSlots()) delete process.env[slot];
     resetSelfFilledSlots();
-    for (const result of [applySettings(loadProjectSettings(root)), applySettings(loadGlobalSettings())]) {
-      for (const w of result.warnings) console.error(`[serve] ${w}`);
+    for (const filePath of [loadProjectSettings(root), loadGlobalSettings()]) {
+      try {
+        for (const w of applySettings(filePath).warnings) console.error(`[serve] ${w}`);
+      } catch (err) {
+        console.error(`[serve] settings reload failed (${filePath}):`, err instanceof Error ? err.message : String(err));
+      }
     }
   }
 

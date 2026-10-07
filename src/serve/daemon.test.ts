@@ -776,6 +776,8 @@ describe('G8c T2 /settings 端点', () => {
       const unknown = await put({ root: proj, updates: { modle: 'x' } });
       assert.equal(unknown.status, 400, '拼错键 400');
       assert.ok(((await unknown.json()) as { error: string }).error.includes('unknown'), '未知键提示');
+      const proto = await put({ root: proj, updates: { toString: 'x' } });
+      assert.equal(proto.status, 400, '原型键穿透守卫:Object.hasOwn 判定,toString 不在自键集即 400(值比对会被 Object.prototype 解析穿透)');
       const retired = await put({ root: proj, updates: { dataDir: 'x' } });
       assert.equal(retired.status, 400, '退役键 400');
       assert.ok(((await retired.json()) as { error: string }).error.includes('projectsDir'), '退役键带处置提示(换 projectsDir)');
@@ -842,6 +844,36 @@ describe('G8c T2 /settings 端点', () => {
       const cwRow = body.keys.find((k) => k.key === 'contextWindow')!;
       assert.deepEqual(langRow, { key: 'language', value: 'env-lang', source: 'env', envOverride: true }, 'GET 仍判 env 最优先');
       assert.deepEqual(cwRow, { key: 'contextWindow', value: '222222', source: 'project', envOverride: false }, 'GET 反映重载后项目值');
+    });
+  });
+
+  test('⑲ 全局 settings 畸形时 PUT 仍 200 且项目文件在盘(reload 逐级容错,写后不 500)', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), '{ not json', 'utf8'); // 全局文件畸形
+      const proj = path.join(tmp, 'proj');
+      const file = path.join(proj, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ model: 'old' }), 'utf8');
+
+      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'written' } }) });
+      assert.equal(r.status, 200, '写盘成功是既成事实——重装时全局文件畸形不反噬 500(误导+坏文件死锁后续改写)');
+      assert.deepEqual(await r.json(), { ok: true });
+      assert.equal((JSON.parse(fs.readFileSync(file, 'utf8')) as { model?: string }).model, 'written', '项目文件如实落盘');
+    });
+  });
+
+  test('⑳ 项目文件畸形 JSON(无注释)PUT→409,盘上原样', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      const file = path.join(proj, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      const raw = '{\n  "model": "m"\n'; // 未闭合:无注释的畸形 JSON
+      fs.writeFileSync(file, raw, 'utf8');
+
+      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'x' } }) });
+      assert.equal(r.status, 409, '文件现状挡结构化改写(与注释同面)');
+      assert.ok(((await r.json()) as { error: string }).error.includes('not valid JSON'), '错误指名畸形 JSON');
+      assert.equal(fs.readFileSync(file, 'utf8'), raw, '409 面零盘上副作用');
     });
   });
 });
