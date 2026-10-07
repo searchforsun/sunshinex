@@ -27,8 +27,10 @@ import type { RawPaneConn } from './RawPane';
  * 重挂——键集/输入值面整体复位)。
  */
 
-/** 壳连接面:workspaces(项目选择器)+ 全部面板连接面的并集(结构满足即收,App 传整只 Connection) */
-export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, AgentsPaneConn, SkillsPermsPaneConn, RawPaneConn {
+/** 壳连接面:workspaces(项目选择器)+ 全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
+ *  RawPaneConn 的 settings 以 Omit 剥除——SettingsFormConn 已供全量 SettingsView 形(其含可选
+ *  warnings,结构满足 RawPane 的告警子集面;接口 extends 同名成员须同一性,故在此收窄拼接) */
+export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, AgentsPaneConn, SkillsPermsPaneConn, Omit<RawPaneConn, 'settings'> {
   workspaces(): Promise<WorkspaceRow[]>;
 }
 

@@ -65,7 +65,7 @@ describe('Board:List 视图', () => {
     expect(screen.getByText('t1 [pending] 任务t1 (needs t2 → t3)')).toBeDefined();
   });
 
-  it('gated 行:⚠ 高亮 + 行内 Approve/Deny → onReview(taskId, true/false);非 gated 行无按钮', () => {
+  it('gated 行:⚠ Badge(sx-badge-warn,⚠ 文本在内)+ 行内 Approve/Deny → onReview;非 gated 行无按钮', () => {
     const reviews: Array<[string, boolean]> = [];
     render(
       <Board
@@ -76,7 +76,9 @@ describe('Board:List 视图', () => {
         onBack={noop}
       />,
     );
-    expect(screen.getByText('t1 [pending] 任务t1 ⚠')).toBeDefined();
+    // G8d T5:⚠ 文本面 Badge 化——行文本剥 ⚠,徽标 span 单独断言(⚠ 文本保持在徽标内)
+    expect(screen.getByText('t1 [pending] 任务t1')).toBeDefined();
+    expect(document.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠');
     fireEvent.click(screen.getByRole('button', { name: 'Approve t1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Deny t1' }));
     expect(reviews).toEqual([

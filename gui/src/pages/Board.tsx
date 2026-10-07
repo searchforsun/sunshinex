@@ -6,10 +6,10 @@ import type { TaskBoardState, Delegation, BoardTask } from '../projection';
  * G5 看板页(编排 spec §10.3 的 GUI 版 / §13 P3):Board 从 props 纯消费——board/delegations
  * 投影来自 App(事件维稳:task-·gate-·delegation- 前缀帧经 applyBoardEvent/applyDelegation),
  * team 来自 App 态(sessionSnapshot.team,Chat 播种回调回填——事件流无 teammate 面)。
- * 双视图:List(行形态 `${id} [${status}]${gated?' ⚠':''} ${title} (needs d1 → d2) @w`——
- * TUI BoardList 同款信息序,gated 行内 Approve/Deny 小按钮 = gate 审批的 GUI 入口)与
- * DAG(layoutBoard 分层 svg:盒 140×50 + dependsOn 连线,gated 描边高亮/done 降透明度——
- * 类钩子交样式面)。右侧 teammate 侧栏(name+busy 点)+delegations 简列(label+status)。
+ * 双视图:List(行形态 `${id} [${status}] ${title}` + gated ⚠ Badge(G8d T5:文本面 sx-badge-warn
+ * 化) + `(needs d1 → d2) @w`——TUI BoardList 同款信息序,gated 行内 Approve/Deny 小按钮 = gate
+ * 审批的 GUI 入口)与 DAG(layoutBoard 分层 svg:盒 140×50 + dependsOn 连线,gated 描边高亮/done
+ * 降透明度——类钩子交样式面)。右侧 teammate 侧栏(name+busy 点)+delegations 简列(label+status)。
  * gate 审批动作经 onReview 上抛(App 装配 conn.boardReview)——本页零连接依赖。
  */
 
@@ -44,7 +44,17 @@ function truncTitle(title: string): string {
   return title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX)}…` : title;
 }
 
-/** List 视图:任务行(状态色钩 task-status-<status>;gated ⚠ + 行内审批) */
+/** gated ⚠ 徽标(G8d T5:文本面 Badge 化):sx-badge/sx-badge-warn 类名挂样式面(全圆/配色归
+ *  G8e),⚠ 文本保持在 span 内(文本断言/无障碍读屏均有实字) */
+function GateBadge(): JSX.Element {
+  return (
+    <span className="sx-badge sx-badge-warn" role="img" aria-label="gate waiting">
+      ⚠
+    </span>
+  );
+}
+
+/** List 视图:任务行(状态色钩 task-status-<status>;gated ⚠ Badge + 行内审批) */
 function BoardList({ board, onReview }: { board: TaskBoardState; onReview: (taskId: string, approved: boolean) => void }): JSX.Element {
   const tasks = Object.values(board.tasks).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   if (tasks.length === 0) return <p className="board-empty">任务板为空——尚无任务。</p>;
@@ -53,7 +63,9 @@ function BoardList({ board, onReview }: { board: TaskBoardState; onReview: (task
       {tasks.map((t) => (
         <li key={t.id} className="board-row">
           <div className={`task-row task-status-${t.status}${t.gated === true ? ' gated' : ''}`}>
-            {`${t.id} [${t.status}] ${t.title}${t.gated === true ? ' ⚠' : ''}${needsText(t.dependsOn)}${t.assignee !== undefined ? ` @${t.assignee}` : ''}`}
+            {`${t.id} [${t.status}] ${t.title}`}
+            {t.gated === true && <GateBadge />}
+            {`${needsText(t.dependsOn)}${t.assignee !== undefined ? ` @${t.assignee}` : ''}`}
           </div>
           {t.gated === true && (
             <span className="gate-actions">
@@ -149,7 +161,11 @@ function TaskDetail({ task }: { task: BoardTask }): JSX.Element {
         }`;
   return (
     <section className="board-detail" aria-label="task detail">
-      <header className="detail-head">{`${task.id} [${task.status}]${task.gated === true ? ' ⚠' : ''} ${task.title}`}</header>
+      <header className="detail-head">
+        {`${task.id} [${task.status}]`}
+        {task.gated === true && <GateBadge />}
+        {` ${task.title}`}
+      </header>
       <p className="detail-spec">{task.spec !== '' ? task.spec : '(无 spec)'}</p>
       <p className="detail-meta">{`${task.dependsOn.length > 0 ? `needs ${task.dependsOn.join(' → ')}` : '无依赖'}${
         task.assignee !== undefined ? ` · @${task.assignee}` : ''

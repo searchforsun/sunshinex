@@ -604,6 +604,8 @@ interface SettingsBody {
     global: { deny: string[]; allow: string[]; additionalDirs: string[] };
   };
   providers: { choices: Array<{ id: string; provider: string }>; apiKeyPresent: Record<string, boolean>; warnings: string[] };
+  /** G8d T5:两级 settings.json 的 flatten 告警(未知/退役键)——项目先行拼全局 */
+  warnings: string[];
 }
 
 /** /settings 系用例环境隔离(在 withDaemon 惯例上增设全局配置面;G8c T2/T3 两 describe 共用):
@@ -875,6 +877,33 @@ describe('G8c T2 /settings 端点', () => {
       assert.equal(r.status, 409, '文件现状挡结构化改写(与注释同面)');
       assert.ok(((await r.json()) as { error: string }).error.includes('not valid JSON'), '错误指名畸形 JSON');
       assert.equal(fs.readFileSync(file, 'utf8'), raw, '409 面零盘上副作用');
+    });
+  });
+});
+
+// ---------- G8d T5:GET /settings warnings(两级 settings.json 未知键/退役键告警透出——RawPane 顶部告警列表数据源) ----------
+
+describe('G8d T5 GET /settings warnings 透出', () => {
+  test('㉙ 项目文件未知键+退役键 → warnings 两级拼接(项目先行);缺文件 → warnings 空', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj-warn');
+      fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
+      // 未知键(拼错面)+ 退役键(配置面主动收回面)各一——flattenSettings 的两类告警文本
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({ nope: 1, dataDir: '/old' }), 'utf8');
+
+      const r = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SettingsBody;
+      assert.equal(body.warnings.length, 2, '未知+退役各一条(全局缺文件零贡献)');
+      assert.ok(body.warnings[0]!.includes('未知语义键 "nope"'), '未知键告警指名键名');
+      assert.ok(body.warnings[1]!.includes('dataDir 须走 projectsDir'), '退役键告警携带处置提示');
+
+      // 缺文件(项目无 .sunshinex + 全局无)→ warnings 空(缺失=没配,不是告警)
+      const clean = path.join(tmp, 'proj-clean');
+      fs.mkdirSync(clean, { recursive: true });
+      const r2 = await fetch(`${base}/settings?root=${encodeURIComponent(clean)}`, { headers: AUTH });
+      assert.equal(r2.status, 200);
+      assert.deepEqual(((await r2.json()) as SettingsBody).warnings, [], '缺文件零告警');
     });
   });
 });

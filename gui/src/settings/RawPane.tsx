@@ -10,12 +10,17 @@ import { useEffect, useRef, useState } from 'react';
  * scope=global 时 root 定位面被服务端忽略,请求省参(不留空串伪参)。
  * 切 scope/file 即回未读取态:content/错误/toast 清 + 保存禁用(placeholder 提示先「读取」)——
  * 读取前的旧目标内容不跨目标写(部分方向能过服务端验证,守卫在 GUI 侧)。
+ * G8d T5 告警透出:面板顶部渲染 GET /settings warnings(两级 settings.json 的未知/退役键
+ * flatten 告警,服务端项目先行拼全局)——与所选 scope/file 无关的文件面体检,逐行 role=alert;
+ * 拉取失败静默空(告警是增强面,不挡编辑主流程);root 切换重拉。
  */
 
 /** raw 面连接面(结构满足即收,App 传整只 Connection) */
 export interface RawPaneConn {
   settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }>;
   putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void>;
+  /** G8d T5 告警数据源:root 缺省 = 仅全局文件面(与 settings() 同裁定) */
+  settings(root?: string): Promise<{ warnings?: string[] }>;
 }
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -39,6 +44,8 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
   const [toast, setToast] = useState('');
   /** toast 3s 自隐句柄(连续保存重置;卸载兜底清) */
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** G8d T5 文件面告警(未知/退役键):拉取失败/无字段按空——增强面不挡编辑主流程 */
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   useEffect(
     () => () => {
@@ -46,6 +53,21 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
     },
     [],
   );
+
+  useEffect(() => {
+    let alive = true;
+    conn.settings(root === '' ? undefined : root).then(
+      (v) => {
+        if (alive) setWarnings(v.warnings ?? []);
+      },
+      () => {
+        if (alive) setWarnings([]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, root]);
 
   /** scope=global 恒省 root(服务端忽略定位面);scope=project 必带(禁选守卫在 select) */
   const rootArg = scope === 'project' ? root : undefined;
@@ -93,6 +115,13 @@ export function RawPane({ conn, root }: RawPaneProps): JSX.Element {
   return (
     <section className="sx-settings-form" aria-label="settings pane 高级">
       <h2>高级(原始编辑)</h2>
+      {warnings.length > 0 && (
+        <div className="sx-raw-warnings" role="alert">
+          {warnings.map((w) => (
+            <p key={w}>{w}</p>
+          ))}
+        </div>
+      )}
       <div className="sx-raw-controls">
         <label>
           层级

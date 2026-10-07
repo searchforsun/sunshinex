@@ -262,7 +262,7 @@ function sendPtyFrame(ws: WebSocket, frame: { t: 'data' | 'exit'; b?: string; co
 const EMPTY_PERMISSIONS: PermissionsConfig = { deny: [], allow: [], additionalDirs: [] };
 
 /** 单文件语义槽集（G8c T2 /settings 来源判定）：parse→flatten 的槽键面。缺失/畸形按空——GET 是
- *  只读视图，畸形文件的 fail-fast 属装载链（CLI 入口）职责，daemon 不重复裁决只降级视图 */
+ * 只读视图，畸形文件的 fail-fast 属装载链（CLI 入口）职责，daemon 不重复裁决只降级视图 */
 function fileSlots(filePath: string): Set<string> {
   try {
     const doc = parseSettingsFile(filePath);
@@ -270,6 +270,18 @@ function fileSlots(filePath: string): Set<string> {
     return new Set(Object.keys(flattenSettings(doc).slots));
   } catch {
     return new Set();
+  }
+}
+
+/** 单文件 flatten 告警（G8d T5 /settings warnings 透出）：未知/退役键告警面——RawPane 顶部告警
+ * 列表数据源。降级风格沿 fileSlots：缺失/畸形按空（GET 只读视图，fail-fast 属装载链） */
+function fileWarnings(filePath: string): string[] {
+  try {
+    const doc = parseSettingsFile(filePath);
+    if (doc === null) return [];
+    return flattenSettings(doc).warnings;
+  } catch {
+    return [];
   }
 }
 
@@ -1713,7 +1725,8 @@ export class GuiDaemon {
    *  SEMANTIC_KEYS 键序全量回执（effective 判定见 effectiveKeyRow 单点）；permissions 三面
    *  {merged, project, global}（两级文件分立拆解 + 拼接去重合并——与 loadPermissions 同口径的
    *  视图态）；providers = loadProviders 展开 + apiKeyPresent 布尔（resolveProviderApiKey 判存，
-   *  不显值——密钥永不回传）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
+   *  不显值——密钥永不回传）。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知/退役
+   *  键，项目先行拼全局）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
    *  process.env + 文件面，零副作用 */
   private handleSettingsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -1733,10 +1746,14 @@ export class GuiDaemon {
     const loaded = root !== undefined ? loadProviders(root) : globalProvidersOnly();
     const apiKeyPresent: Record<string, boolean> = {};
     for (const choice of loaded.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;
+    // G8d T5 warnings：两级 settings.json 的 flatten 告警（未知/退役键）项目先行拼全局——GET /settings
+    // 透出（RawPane 顶部告警列表消费）；降级语义沿 fileSlots（缺文件/畸形按空）
+    const warnings = [...(root !== undefined ? fileWarnings(loadProjectSettings(root)) : []), ...fileWarnings(loadGlobalSettings())];
     this.send(res, 200, {
       keys,
       permissions: { merged, project: projectPerms, global: globalPerms },
       providers: { choices: loaded.choices, apiKeyPresent, warnings: loaded.warnings },
+      warnings,
     });
   }
 

@@ -569,12 +569,57 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
   });
 
   it('delegation/agent-message → notice 行(同时喂 delegations 投影不倒面)', async () => {
-    const { conn } = await enterChat();
+    const { conn, unmount } = await enterChat();
     openConn(conn);
     fire(conn, ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }));
     fire(conn, ev('agent-message', undefined, { from: 'a', to: 'b', text: 'ping' }));
     expect(screen.getByText('✻ dev started')).toBeDefined();
     expect(screen.getByText('[a → b] ping')).toBeDefined();
+  });
+});
+
+describe('G8d T5 交互清单:输入区自增高/流式光标/状态条图标数字组', () => {
+  it('输入区 textarea:多行内容 rows 随行数自增(帽 6),清空回 1;Shift+Enter 不提交', async () => {
+    const { conn, unmount } = await enterChat();
+    const box = screen.getByLabelText('message input') as HTMLTextAreaElement;
+    expect(box.tagName).toBe('TEXTAREA'); // 输入面已迁 textarea
+    expect(box.rows).toBe(1); // 单行起步
+    fireEvent.change(box, { target: { value: 'a\nb\nc\nd' } }); // 3 次换行
+    expect(box.rows).toBe(4); // 行数 = 换行数 + 1(3-6 界内)
+    fireEvent.change(box, { target: { value: '1\n2\n3\n4\n5\n6\n7\n8' } }); // 8 行内容
+    expect(box.rows).toBe(6); // 帽 6 行(不自增无限高)
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true }); // Shift+Enter = 换行(不提交)
+    expect(conn.sessionSubmitCalls).toEqual([]);
+    expect(conn.sessionSteerCalls).toEqual([]);
+    fireEvent.change(box, { target: { value: '' } }); // 清空回 1
+    expect(box.rows).toBe(1);
+    unmount();
+  });
+
+  it('流式光标:streaming 条末 .sx-stream-cursor 在场;done 收段退场', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, ev('model-start'));
+    fire(conn, ev('token', '流内容'));
+    expect(document.querySelector('.entry-assistant.streaming .sx-stream-cursor')).not.toBeNull(); // 流式条末光标
+    fire(conn, ev('done', '流内容'));
+    expect(document.querySelector('.sx-stream-cursor')).toBeNull(); // 收段去光标
+    unmount();
+  });
+
+  it('状态条图标+数字组:tokens/steps 组类名+aria-label+lucide svg 图标在场', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    fire(conn, ev('model-start'));
+    fire(conn, ev('usage', undefined, { turnTotal: 77 }));
+    fire(conn, ev('step', 'x'));
+    expect(screen.getByLabelText('tokens stat')).toBeDefined();
+    expect(screen.getByLabelText('steps stat')).toBeDefined();
+    expect(document.querySelector('.sx-stat-tokens svg')).not.toBeNull(); // 图标组件真挂
+    expect(document.querySelector('.sx-stat-steps svg')).not.toBeNull();
+    expect(screen.getByText('77 tokens')).toBeDefined(); // 文本面保持(数字+单位)
+    expect(screen.getByText('1 steps')).toBeDefined();
+    unmount();
   });
 });
 
@@ -1368,7 +1413,9 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fire(conn, taskCreated('t2', 'Next', ['t1']));
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }));
     fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }));
-    expect(screen.getByText('t1 [pending] Demo ⚠ @w1')).toBeDefined(); // 任务页默认在场:板随事件直显
+    // G8d T5:⚠ 已 Badge 化(sx-badge-warn span,⚠ 文本在内)——行文本断言剥 ⚠,徽标单独断言
+    expect(screen.getByText('t1 [pending] Demo @w1')).toBeDefined(); // 任务页默认在场:板随事件直显
+    expect(document.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠');
     expect(screen.getByText('t2 [pending] Next (needs t1)')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Approve t1' }));
     await waitFor(() => expect(conn.boardReviewCalls).toEqual([['s1', 't1', true]]));
@@ -2079,6 +2126,23 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     // 未读取态点击保存:零 putSettingsRaw(A 目标内容写进 B 目标的跨目标错写根除)
     fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
     expect(conn.putSettingsRawCalls).toEqual([]);
+    unmount();
+  });
+
+  it('G8d T5 高级 raw:退役键/未知键告警透出(GET /settings warnings 逐行渲染,role=alert)', async () => {
+    const { conn, unmount } = await enterChat();
+    conn.settingsView = {
+      ...settingsViewOf([]),
+      warnings: ['settings: 未知语义键 "nope"，已忽略', 'settings: dataDir 须走 projectsDir（按工作区分目录隔离）'],
+    };
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    // 挂载即拉 settings(root)(告警与所选 scope 无关——两级文件整面透出)
+    await waitFor(() => expect(conn.settingsCalls).toContain('/w/root-a'));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('未知语义键 "nope"');
+    expect(alert.textContent).toContain('dataDir 须走 projectsDir');
+    expect(document.querySelector('.sx-raw-warnings')).not.toBeNull();
     unmount();
   });
 });

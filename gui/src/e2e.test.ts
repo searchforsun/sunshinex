@@ -663,8 +663,9 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await waitFor(() => expect(frames.some((e) => e.type === 'gate-waiting')).toBe(true), { timeout: 5_000 });
 
       // —— 任务标签(G8a:右栏默认开「任务」页,Board 恒挂——原 Board tab 钮退役)→ List
-      //    视图(缺省):gated ⚠ 行 + 行内 Approve/Deny ——
-      await waitFor(() => expect(screen.getByText('t1 [pending] GateDemo ⚠')).toBeDefined(), { timeout: 10_000 });
+      //    视图(缺省):gated ⚠ Badge 行 + 行内 Approve/Deny(G8d T5:⚠ 文本面 Badge 化)——
+      await waitFor(() => expect(screen.getByText('t1 [pending] GateDemo')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(container.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠'), { timeout: 5_000 });
       expect(screen.getByRole('button', { name: 'Approve t1' })).toBeDefined();
       expect(screen.getByRole('button', { name: 'Deny t1' })).toBeDefined();
 

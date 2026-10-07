@@ -165,11 +165,14 @@ export interface ProviderChoice {
 }
 
 /** GET /settings 载荷（T2 Settings 页数据源）：keys 按 SEMANTIC_KEYS 键序全量；permissions 三面
- *  {merged=两级拼接去重视图态, project, global}；providers 密钥只报在场布尔不显值 */
+ *  {merged=两级拼接去重视图态, project, global}；providers 密钥只报在场布尔不显值。
+ *  G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知/退役键，项目先行拼全局）——
+ *  RawPane 顶部告警列表数据源；可选防旧 daemon（无该字段） */
 export interface SettingsView {
   keys: SettingsKeyRow[];
   permissions: { merged: PermissionsBlocks; project: PermissionsBlocks; global: PermissionsBlocks };
   providers: { choices: ProviderChoice[]; apiKeyPresent: Record<string, boolean>; warnings: string[] };
+  warnings?: string[];
 }
 
 /** GET /settings/mcp 行（T4 两级遮蔽视图）：env 打码折叠为键名列表（env 值不回传——PUT 结构化写

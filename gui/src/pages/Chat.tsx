@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Coins, Footprints } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { DiffPanel } from '../diff-panel';
@@ -41,6 +42,9 @@ import type { SessionEvent } from '../../../src/types';
  * 时 toolInputs 清(旧投影 callId 配对残留不污染新投影);③write 条目展开接 conn.fetchDiff
  * (old/new 双列;404/失败退单列现内容)。unmount cleanup 增 seedGenRef++(G6 终审首优先):
  * 在途快照应答经 gen 失配早退,防陈旧 onSeeded 污染 App 态。
+ * G8d T5 交互清单:①输入面 textarea 自增高(rows 随换行数 1-6 派生;Enter 提交 preventDefault,
+ * Shift+Enter 换行走默认);②流式条末挂 span.sx-stream-cursor(闪灭动画在 app.css 特批小段);
+ * ③状态条 tokens/steps 改图标+数字组(sx-stat 组类名+lucide Coins/Footprints,样式面归 G8e)。
  */
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
@@ -278,11 +282,14 @@ function AskCard({ req, onSubmit, onDismiss }: { req: GuiAskReq; onSubmit: (answ
   );
 }
 
-/** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销) */
+/** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销)。
+ *  G8d T5:streaming 条末挂流式光标 span.sx-stream-cursor(闪灭动画定义在 app.css 特批小段;done 收段
+ *  条 streaming=false → 光标随 memo 重渲染退场) */
 const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   return (
     <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.md}</ReactMarkdown>
+      {entry.streaming === true && <span className="sx-stream-cursor" aria-hidden="true" />}
     </div>
   );
 });
@@ -486,8 +493,15 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           session {sessionId}
         </span>
         <span className={`status-text status-${chat.status}`}>{chat.status}</span>
-        <span className="tokens">{chat.tokens} tokens</span>
-        <span className="steps">{chat.steps} steps</span>
+        {/* G8d T5 状态条图标+数字组:tokens/steps 组类名挂样式面(G8e),lucide 图标真挂 */}
+        <span className="sx-stat sx-stat-tokens" aria-label="tokens stat">
+          <Coins size={14} strokeWidth={1.75} aria-hidden="true" />
+          {chat.tokens} tokens
+        </span>
+        <span className="sx-stat sx-stat-steps" aria-label="steps stat">
+          <Footprints size={14} strokeWidth={1.75} aria-hidden="true" />
+          {chat.steps} steps
+        </span>
         <button type="button" className="delete" onClick={deleteThisSession}>
           Delete
         </button>
@@ -522,15 +536,21 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         )}
       </main>
       <footer className="composer">
-        <input
+        {/* G8d T5 输入面 textarea 自增高:rows 随内容换行数 1-6 派生(state 单源,清空/提交自然回 1);
+         *  Enter 提交 / Shift+Enter 换行(不 preventDefault——换行是 textarea 默认行为) */}
+        <textarea
           aria-label="message input"
           className="message-input"
           value={input}
+          rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
           placeholder={running ? '插入运行中会话…' : '给 sunshinex 一个任务…'}
           disabled={connState !== 'open' || seeding}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) send();
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault(); // 提交不分流换行进内容面(受控清空,防闪换行)
+              send();
+            }
           }}
         />
         {running ? (
