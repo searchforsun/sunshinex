@@ -11,6 +11,7 @@ import { ContextManager } from '../harness/context';
 import type { SafetyChain } from '../harness/security/chain';
 import type { ModelAdapter } from '../model/adapter';
 import type { ToolRegistry } from '../harness/tools';
+import type { TaskRegistry } from '../harness/tasks';
 import type { StorageAdapter } from '../storage/adapter';
 import type { Inbox } from './inbox';
 import type { TaskBoard } from './board';
@@ -28,6 +29,9 @@ export interface TeammateDeps {
   root: string;
   store: StorageAdapter;
   board: TaskBoard;
+  /** 任务账本(2026-10-06 契约收敛):每板任务登记 task-tN 条目——task_wait(taskIds=null) 才等得到
+   *  teammate 干的活(原缺口:fork 路径登记而 teammate 路径不登,lead 空等 600s);缺省无 = 零行为变化 */
+  tasks?: TaskRegistry;
   onEvent?: (e: SessionEvent) => void;
   /** 单任务执行预算上限(ms),缺省 30 分钟(与 board 同口径) */
   taskTimeoutMs?: number;
@@ -182,6 +186,7 @@ export class Teammate {
   stop(): void {
     this.stoppedFlag = true;
     this.abort.abort();
+    this.currentTaskAbort?.abort(); // 在跑任务随停(否则 task_stop teammate 后 Reactor 还要跑到回合尾)
   }
 
   /** board 指派路径入口(executeOne 派发路由经 void 调用,不 await 整批):入指派队列 + 踢点——
@@ -194,8 +199,17 @@ export class Teammate {
   }
 
   /** 单任务执行(claim 循环与 runTask 共用):认领 → own chain 预置 → 逐任务 Reactor(fork) → 强制回写 */
+  /** 当前在跑任务的 abort 句柄(task_stop task-tN 精确停当前任务;teammate 级 stop 亦级联) */
+  private currentTaskAbort?: AbortController;
+
   private async execute(task: BoardTask): Promise<void> {
     if (!this.deps.board.markClaimed(task.id)) return; // 已被取走/非 pending:静默放弃(claim() 先行者已 claimed,幂等放行)
+    // 板任务台账登记(与 fork 路径同形 task-tN):task_wait(null) 的可等面;stop=精确中止本任务
+    // (Reactor 收到 abort 即 !done→failed 回写;teammate 存活继续 claim 下一任务)
+    const taskAbort = new AbortController();
+    this.currentTaskAbort = taskAbort;
+    const ledger = this.deps.tasks?.submit({ kind: 'subagent', label: `task-${task.id}` });
+    if (ledger !== undefined) ledger.stop = () => taskAbort.abort();
     // own chain 预置:首任务前 role 行(角色框定),每任务前 task 行(自包含指令)——seed 经 Reactor 缺省取 own chain
     if (!this.framed) {
       this.framed = true;
@@ -227,7 +241,7 @@ export class Teammate {
       model: this.deps.model,
       root: this.deps.root,
       onEvent: tagger,
-      signal: this.abort.signal,
+      signal: taskAbort.signal,
     });
     let r: RunResult;
     try {
@@ -249,7 +263,8 @@ export class Teammate {
         ok: false,
         durationMs: Date.now() - startedAt,
         error: { code: 'THROWN', message },
-      });
+      }, ledger?.id);
+      this.currentTaskAbort = undefined;
       return;
     }
     emitDelegation('delegation-ended', r.done ? 'done' : 'failed', r.tokensUsed ?? 0);
@@ -260,6 +275,7 @@ export class Teammate {
       ...(r.tokensUsed !== undefined ? { tokens: r.tokensUsed } : {}),
       durationMs: Date.now() - startedAt,
       ...(r.done ? {} : { error: { code: 'INCOMPLETE', message: r.stopReason ?? 'did not finish' } }),
-    });
+    }, ledger?.id);
+    this.currentTaskAbort = undefined;
   }
 }

@@ -80,6 +80,8 @@ test('task_wait taskIds=null：等全部 running；无 running 立即空回执',
     assert.match(empty.value.stdout, /no background tasks running/);
     const a = tasks.submit({ kind: 'exec', label: 'a' });
     const b = tasks.submit({ kind: 'subagent', label: 'b' });
+    // 长驻 teammate 条目:taskIds=null 排除(存活即 running,等它=等到 task_stop;2026-10-06 契约收敛)
+    const tm = tasks.submit({ kind: 'teammate', label: 'w1' });
     setTimeout(() => {
       tasks.append(a.id, 'out-a\n');
       tasks.finish(a.id, 'done', { exitCode: 2 });
@@ -89,6 +91,11 @@ test('task_wait taskIds=null：等全部 running；无 running 立即空回执',
     assert.ok(r.ok);
     assert.match(r.value.stdout, new RegExp(`${a.id} \\(exec\\) done, exit 2`));
     assert.match(r.value.stdout, new RegExp(`${b.id} \\(subagent\\) stopped`));
+    assert.doesNotMatch(r.value.stdout, new RegExp(tm.id), 'teammate 条目不在 null 等待面');
+    // 显式点名 teammate 仍可等/查状态(null 排除 ≠ 不可见;kind 字面在回执头)
+    const r2 = await registry.execute('task_wait', { taskIds: [tm.id], timeoutSeconds: 0 }, stubSafety);
+    assert.ok(r2.ok);
+    assert.match(r2.value.stdout, /teammate\) running/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -54,7 +54,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
     },
     name: 'task_wait',
     description:
-      'Block until background tasks reach a terminal state (background exec, timed-out-to-background exec, or background subagent) and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. taskIds=null waits for all currently running tasks; on timeout the current status is returned so you can keep waiting or stop the task.',
+      'Block until background tasks reach a terminal state (background exec, timed-out-to-background exec, background subagent, or board tasks dispatched as task-tN — including the ones claimed by teammates) and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. taskIds=null waits for all currently running tasks EXCEPT long-lived teammates (they run until task_stop); on timeout the current status is returned so you can keep waiting or stop the task.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -62,7 +62,9 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
       const rawTimeout = raw.timeoutSeconds ?? null;
       let ids: string[];
       if (raw.taskIds === null || raw.taskIds === undefined) {
-        ids = tasks.list().filter((t) => t.status === 'running').map((t) => t.id);
+        // 长驻 teammate 条目排除(2026-10-06 契约收敛):teammate 存活即 running,等它=等到 task_stop——
+        // task_wait(null) 的语义是「等在跑的活收口」,可收口面=exec/后台 spawn/板任务(task-tN)
+        ids = tasks.list().filter((t) => t.status === 'running' && t.kind !== 'teammate').map((t) => t.id);
         if (ids.length === 0) {
           return { exitCode: 0, stdout: 'no background tasks running', stderr: '', timedOut: false };
         }

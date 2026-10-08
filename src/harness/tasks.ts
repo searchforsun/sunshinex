@@ -7,7 +7,7 @@ import { slugify } from '../slug';
 /** 后台任务记录（后台任务线规格 D2/D3）：账本进程内承载，不落盘不跨会话；输出流式追加 <dataDir>/tasks/<id>.log */
 export interface BackgroundTask {
   id: string;
-  kind: 'exec' | 'subagent';
+  kind: 'exec' | 'subagent' | 'teammate';
   label: string;
   status: 'running' | 'done' | 'failed' | 'stopped';
   outputFilePath: string;
@@ -41,7 +41,7 @@ export class TaskRegistry {
     return ownerStorage.getStore() ?? 'main';
   }
 
-  submit(input: { kind: 'exec' | 'subagent'; label: string; ownerRun?: string }): BackgroundTask {
+  submit(input: { kind: 'exec' | 'subagent' | 'teammate'; label: string; ownerRun?: string }): BackgroundTask {
     const p = (n: number): string => String(n).padStart(2, '0');
     const gen = (): string => {
       const now = new Date();

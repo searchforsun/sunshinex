@@ -28,14 +28,14 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
         title: { type: ['string', 'null'], description: 'Short task title shown on the board.' },
         spec: { type: ['string', 'null'], description: 'Self-contained task description: the executing agent sees ONLY this (no main-chain context), so include everything needed.' },
         dependsOn: { type: ['array', 'null'], items: { type: 'string' }, description: 'Task ids this task depends on (e.g. ["t1"]); null/empty = no dependencies. A task dispatches only after all dependencies are done.' },
-        assignee: { type: ['string', 'null'], description: 'Optional assignee label (bookkeeping; executor routing lands in P2).' },
+        assignee: { type: ['string', 'null'], description: 'Optional teammate name to route this task to (an active teammate picks it up directly; unset = any idle teammate may claim it).' },
         gated: { type: ['boolean', 'null'], description: 'Pass true to hold the task behind an approval gate from creation: dispatch skips it until review_task(approved=true).' },
         executor: { type: ['string', 'null'], enum: ['internal', 'external-cli', null], description: 'Execution routing hint: "internal" = subagent fork (default), "external-cli" = external CLI executor.' },
       },
     },
     name: 'create_task',
     description:
-      'Create a task on the shared task board. Unblocked tasks (no unfinished dependencies, not gated) are dispatched automatically to a subagent; wait with task_wait (taskIds=null). The board persists across sessions. Pass gated=true to hold the task behind an approval gate from creation (dispatch skips it until review_task approves). Pass executor ("internal" or "external-cli") as the execution routing hint.',
+      'Create a task on the shared task board. Unblocked tasks (no unfinished dependencies, not gated) are dispatched automatically — to a subagent fork, or claimed by a registered teammate (assigned tasks go to that teammate). Block on completion with task_wait (taskIds=null waits on dispatched board tasks; long-lived teammates themselves are excluded). The board persists across sessions. Pass gated=true to hold the task behind an approval gate from creation (dispatch skips it until review_task approves). Pass executor ("internal" or "external-cli") as the execution routing hint.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {

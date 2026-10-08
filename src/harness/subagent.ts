@@ -616,12 +616,12 @@ export function makeSpawnTool(runner: SubagentRunner, team?: TeamSpawnSeam): Reg
         tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
         background: { type: ['boolean', 'null'], description: 'true = two-phase spawn: returns a task id immediately, the subagent runs in the background and its conclusion lands in the task log; block on it with the task_wait tool (or inspect via read)' },
         isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
-        mode: { type: ['string', 'null'], enum: ['team', null], description: 'Execution channel: "team" = register a long-lived teammate on the shared task board instead of a one-shot fork — it claims unassigned board tasks autonomously and is stopped via task_stop; null = ordinary one-shot subagent' },
+        mode: { type: ['string', 'null'], enum: ['team', null], description: 'Execution channel: "team" = register a long-lived teammate on the shared task board instead of a one-shot fork — it autonomously claims unassigned board tasks (create its work with create_task; an idle teammate means the board has no unassigned tasks) and runs until task_stop; null = ordinary one-shot subagent' },
       },
     },
     name: SPAWN_TOOL_NAME,
     description:
-      `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. mode "team" (or an agent declaring executor internal-team) creates a persistent teammate that works the shared task board instead of a one-shot fork.`,
+      `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. mode "team" (or an agent declaring executor internal-team) creates a persistent teammate that works the shared task board instead of a one-shot fork — teammates consume board tasks created with create_task, so always create board tasks for a team (spawning teammates without board tasks leaves them idle, and task_wait(null) waits on board tasks rather than on teammates).`,
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
@@ -632,7 +632,7 @@ export function makeSpawnTool(runner: SubagentRunner, team?: TeamSpawnSeam): Reg
       if (team !== undefined && (spec.mode === 'team' || runner.agentExecutor(spec.agent_id) === 'internal-team')) {
         const r = team.spawn(spec);
         if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
-        return { exitCode: 0, stdout: `teammate ${r.value.name} started (claims unassigned tasks; stop via task_stop)`, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks (give it work with create_task; task_wait waits on board tasks, not on teammates); stop via task_stop`, stderr: '', timedOut: false };
       }
       if (spec.background === true) {
         const started = runner.spawnBackground(spec);

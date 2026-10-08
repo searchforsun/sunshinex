@@ -279,9 +279,11 @@ export class Harness {
         });
         const registered = this.team.register(tm);
         if (!registered.ok) return registered;
-        const ledgerTask = this.tasks.submit({ kind: 'subagent', label: name });
+        // kind 'teammate'(2026-10-06 契约收敛):长驻条目不随任务结束——task_wait(null) 排除本 kind,
+        // 否则 lead 建任务后等 teammate 存活条目=600s 空等(用户实机实锤);精确等待走板任务条目 task-tN
+        const ledgerTask = this.tasks.submit({ kind: 'teammate', label: name });
         ledgerTask.stop = () => tm.stop();
-        this.tasks.append(ledgerTask.id, `[teammate] ${name} started — claims unassigned board tasks; stop via task_stop ${ledgerTask.id}\n`);
+        this.tasks.append(ledgerTask.id, `[teammate] ${name} started — claims unassigned board tasks (give it work with create_task); stop via task_stop ${ledgerTask.id}\n`);
         tm.kick(); // 建即起 claim 循环(「claims unassigned tasks」承诺即时生效;空板自然收兵零开销)
         return ok({ name });
       },

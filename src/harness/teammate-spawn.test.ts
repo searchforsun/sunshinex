@@ -27,7 +27,7 @@ test('spawn mode:team:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     assert.ok(obs.includes('teammate w1 started'), `spawn 观察应含 teammate w1 started,实际:${obs}`);
     // 长驻体登记:TeamRegistry 活名 + 台账 subagent 任务(task_stop 目标,stop 句柄已接)
     assert.ok(h.team.aliveNames().includes('w1'), 'w1 应为活 teammate');
-    const ledgerTask = h.tasks.list().find((t) => t.label === 'w1' && t.kind === 'subagent');
+    const ledgerTask = h.tasks.list().find((t) => t.label === 'w1' && t.kind === 'teammate');
     assert.ok(ledgerTask, 'teammate 应登记进任务账本(task_stop 目标)');
     assert.equal(ledgerTask!.status, 'running');
     assert.equal(typeof ledgerTask!.stop, 'function', 'stop 句柄应已接线');

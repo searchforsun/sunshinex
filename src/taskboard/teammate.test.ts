@@ -52,6 +52,8 @@ interface Rig {
   team: TeamRegistry;
   events: SessionEvent[];
   forkCalls: string[];
+  ledgerSubmitted: string[];
+  ledgerFinished: Array<[string, string]>;
   /** 真 FileInbox(与装配面同语义;测试按需注入 teammate deps) */
   inbox: FileInbox;
   /** 构造 Teammate(不注册);模型可注入以共享计数断言顺序,inbox 可注入以开回合边界注入 */
@@ -71,7 +73,15 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
       return { ok: true as const, value: { reply: `fork ${line}`, tokens: 7 } };
     },
   } as unknown as SubagentRunner;
-  const registry = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry;
+  const ledgerSubmitted: string[] = [];
+  const ledgerFinished: Array<[string, string]> = [];
+  const registry = {
+    submit: (input: { kind: string; label: string }) => { ledgerSubmitted.push(input.label); return { id: `lg${ledgerSubmitted.length}`, stop: () => {} }; },
+    append: () => {},
+    finish: (id: string, status: string) => { ledgerFinished.push([id, status]); },
+    list: () => [],
+    get: () => undefined,
+  } as unknown as TaskRegistry;
   const team = new TeamRegistry(cap);
   const board = new TaskBoard({
     store: new TeamStore(path.join(tmp, 'teams', 'main')),
@@ -92,6 +102,7 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     root: tmp,
     store: new FileStore(path.join(tmp, 'ctx', name)),
     board,
+    tasks: registry,
     ...(depInbox !== undefined ? { inbox: depInbox } : {}),
     onEvent: (e: SessionEvent) => events.push(e),
   });
@@ -102,6 +113,8 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     team,
     events,
     forkCalls,
+    ledgerSubmitted,
+    ledgerFinished,
     inbox,
     makeTeammate,
     addTeammate: (name: string, model?: CountingAdapter, depInbox?: Inbox) => {
@@ -373,6 +386,22 @@ test("'lead' 名注册拒:L2 收件身份唯一性(主会话专属收件名)", (
     assert.equal(r.error.message, `'lead' is reserved for the main session`);
     assert.equal(rig.team.get('lead'), undefined, '拒后不入注册表');
     assert.deepEqual(rig.team.aliveNames(), [], '活名清单不含 lead');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+test('板任务台账登记(2026-10-06 契约收敛):teammate 干的活提交 task-tN 条目并随收口 finish——task_wait(null) 的可等面', async () => {
+  const tmp = tmpdir('sunshinex-tm-ledger-');
+  try {
+    const rig = makeRig(tmp, true);
+    rig.board.create({ title: 'A', spec: 'do A' });
+    rig.addTeammate('w1').kick();
+    const settled = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
+    assert.ok(settled, '任务收口');
+    assert.deepEqual(rig.ledgerSubmitted, ['task-t1'], 'submit 以 task-tN 标签登记');
+    assert.equal(rig.ledgerFinished.length, 1);
+    assert.equal(rig.ledgerFinished[0]![0], 'lg1');
+    assert.equal(rig.ledgerFinished[0]![1], 'done');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
