@@ -13,6 +13,8 @@
     "test": "node scripts/clean-dist.js && tsc -p tsconfig.json && node scripts/run-tests.js",
     "selfcheck": "node scripts/clean-dist.js && tsc -p tsconfig.json && node dist/cli/index.js selfcheck",
     "cli": "tsc -p tsconfig.json && node dist/cli/index.js",
+    "shell:dev": "pnpm --filter sunshinex-shell run dev",
+    "shell:smoke": "pnpm --filter sunshinex-shell run smoke",
     "prepublishOnly": "pnpm test && node dist/cli/index.js selfcheck"
   },
   "devDependencies": {

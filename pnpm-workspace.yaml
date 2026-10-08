@@ -1,3 +1,9 @@
-# G2 gui 子包（spec 裁定：主仓零依赖新增——gui 依赖全落子包自管，workspace 仅纳管 gui 一个成员）
+# G2 裁定：主仓零依赖新增——依赖全落子包自管（gui 先例；shell 为 H1 新增成员）
 packages:
   - gui
+  - shell
+
+# pnpm10 默认禁跑依赖 install 脚本；electron 二进制下载（postinstall）须显式放行，esbuild 一并放行以执行其校验脚本
+onlyBuiltDependencies:
+  - electron
+  - esbuild
