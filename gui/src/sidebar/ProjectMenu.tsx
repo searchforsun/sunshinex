@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { DirPicker } from '../pages/DirPicker';
 import { relTime } from '../ui-util';
-import { ChevronRight, Folder, Plus, RefreshCw, Settings } from 'lucide-react';
+import { ChevronRight, Plus, RefreshCw, Settings, SquarePen } from 'lucide-react';
 
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
@@ -21,6 +21,8 @@ import { ChevronRight, Folder, Plus, RefreshCw, Settings } from 'lucide-react';
 export interface ProjectMenuConn {
   workspaces(): Promise<WorkspaceRow[]>;
   sessionsOf(root: string): Promise<SessionRow[]>;
+  /** 跨工作区扁平最近会话(G10-C2 侧栏 Recents 区;daemon /sessions/recent 聚合) */
+  recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
   attach(sessionId: string, journalId: string): Promise<void>;
@@ -59,6 +61,8 @@ function wsName(row: { root?: string; slug: string }): string {
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const { conn, connState, activeSessionId, activeRoot, onOpenSession, onOpenSettings } = props;
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
+  /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
+  const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [listError, setListError] = useState('');
   /** 展开中的组 slug(手动 toggle 与 activeRoot 自动展开共用同一态);null = 全收 */
   const [openSlug, setOpenSlug] = useState<string | null>(null);
@@ -82,6 +86,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       },
       (err: unknown) => setListError(err instanceof Error ? err.message : String(err)),
     );
+    conn.recentSessions().then(setRecents, () => setRecents([])); // Recents 静默降级:空列表即可用
   }, [conn]);
 
   useEffect(() => {
@@ -196,6 +201,24 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     );
   };
 
+  /** 「新对话」nav 行(G10-C2):最近激活工作区直建(auto);无激活工作区禁用(title 提示) */
+  const newChatActive = (): void => {
+    if (busy || activeRoot === '') return;
+    setBusy(true);
+    setActionError('');
+    conn.newSession(activeRoot).then(
+      ({ sessionId }) => {
+        setBusy(false);
+        loadWorkspaces();
+        onOpenSession(sessionId, activeRoot);
+      },
+      (err: unknown) => {
+        setBusy(false);
+        setActionError(err instanceof Error ? err.message : String(err));
+      },
+    );
+  };
+
   /** 「+ 添加工作区」:DirPicker 确认 → newSession(root, manual ? 'manual' : undefined)
    *  (G6 mode 面——Manual approvals 勾选即建 manual 会话)→ onOpenSession;失败留在弹层示错 */
   const createSession = (root: string, manual: boolean): void => {
@@ -219,11 +242,23 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   return (
     <nav className="sx-menu" aria-label="projects">
       <header className="sx-menu-head">
-        <span>项目</span>
-        <button type="button" aria-label="refresh workspaces" className="sx-iconbtn" onClick={loadWorkspaces}>
+        <span className="sx-brand">Sunshinex</span>
+        <button type="button" aria-label="refresh workspaces" className="sx-iconbtn" title="刷新" onClick={loadWorkspaces}>
           <RefreshCw size={16} strokeWidth={1.75} />
         </button>
       </header>
+      <button
+        type="button"
+        className="sx-new-chat"
+        aria-label="new chat"
+        disabled={busy || activeRoot === ''}
+        title={activeRoot === '' ? '先在 Projects 选择工作区' : '新对话'}
+        onClick={newChatActive}
+      >
+        <SquarePen size={16} strokeWidth={1.75} />
+        <span>新对话</span>
+      </button>
+      <div className="sx-side-head">Projects</div>
       <ul className="workspace-list sx-groups" aria-label="workspace groups">
         {rows === null && listError === '' && <li className="home-loading">加载工作区…</li>}
         {listError !== '' && (
@@ -262,7 +297,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                   >
                     <ChevronRight size={16} strokeWidth={1.75} />
                   </span>
-                  <Folder size={16} strokeWidth={1.75} />
                   <span className="ws-slug sx-ws-name">{wsName(row)}</span>
                   <span className="ws-count sx-count" title={`${row.sessionCount} sessions`}>
                     {row.sessionCount}
@@ -349,6 +383,42 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                   })}
                 </ul>
               )}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="sx-side-head">Recents</div>
+      <ul className="recent-list" aria-label="recent sessions">
+        {recents === null && <li className="sessions-loading">加载会话…</li>}
+        {recents !== null && recents.length === 0 && <li className="no-sessions">暂无最近会话</li>}
+        {recents?.map((r) => {
+          const running = r.id === activeSessionId;
+          // active 兜底与组行同判据(activeSessionId 异名:daemon 会话 id ≠ journal id,root 兜底点亮)
+          const active = activeSessionId !== '' && (r.id === activeSessionId || r.root === activeRoot);
+          return (
+            <li
+              key={`${r.root}/${r.id}`}
+              className={`session-row sx-session-row${active ? ' active' : ''}`}
+              title="打开会话"
+              onClick={() => {
+                if (busy) return;
+                attachJournal(r.root, r.id);
+              }}
+            >
+              <span className={`sx-session-dot${running ? ' running' : ''}`} />
+              <span className="session-summary" title={`${r.firstUser ?? ''} · ${r.id}`}>{r.firstUser ?? '(无摘要)'}</span>
+              <span className="session-meta">{relTime(r.updatedAt)}</span>
+              <button
+                type="button"
+                className="attach"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  attachJournal(r.root, r.id);
+                }}
+              >
+                Attach
+              </button>
             </li>
           );
         })}

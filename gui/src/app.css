@@ -1041,3 +1041,21 @@ button:disabled { opacity: 0.5; pointer-events: none; }
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ===== G10-C2 侧栏双区 IA(spec §1):品牌行/新对话 nav/Projects·Recents 分区头 ===== */
+.sx-brand { font-weight: 600; font-size: 14px; letter-spacing: 0.2px; }
+.sx-new-chat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 8px;
+  padding: 0 10px;
+  height: var(--row-h);
+  border-radius: var(--radius-row);
+  color: var(--fg);
+  text-align: left;
+}
+.sx-new-chat:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-new-chat:disabled { color: var(--fg-tertiary); cursor: default; }
+.sx-side-head { padding: 12px 12px 4px; font-size: 12px; color: var(--fg-tertiary); }
+.recent-list { list-style: none; margin: 0; padding: 0 0 8px; }

@@ -27,6 +27,8 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
       sessionsOfRoots.push(root);
       return [{ id: 'j1', firstUser: 'demo goal', updatedAt: Date.now() }] as never;
     },
+    recentSessions: async () =>
+      [{ id: 'j1', firstUser: 'demo goal', updatedAt: Date.now(), root: 'D:/w/p1', slug: 'p1' }] as never,
     dirpicker: async () => ({ path: 'D:/w', parent: 'D:', dirs: ['p1'] }),
     newSession: async (root: string, mode?: 'manual') => ({ sessionId: `new-${root}${mode ? '-m' : ''}` }),
     attach: async () => undefined,
@@ -99,5 +101,21 @@ describe('ProjectMenu(spec §1 左栏项目分组)', () => {
   it('底栏显示连接态点', () => {
     renderMenu(makeConn());
     expect(screen.getByLabelText('connection: online')).toBeTruthy();
+  });
+});
+
+describe('ProjectMenu G10-C2 侧栏双区 IA', () => {
+  it('品牌行/新对话行/Projects·Recents 分区头在场;Recents 扁平列出跨工作区最近会话', async () => {
+    renderMenu(makeConn(), { activeRoot: '' });
+    expect(screen.getByText('Sunshinex')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'new chat' })).toBeDefined();
+    expect(screen.getByText('Projects')).toBeDefined();
+    expect(screen.getByText('Recents')).toBeDefined();
+    expect(await screen.findAllByText('demo goal')).toHaveLength(1); // 组收起态:仅 Recents 行(组展开后组内行再现)
+  });
+
+  it('新对话行:无激活工作区禁用', () => {
+    renderMenu(makeConn(), { activeRoot: '' });
+    expect((screen.getByRole('button', { name: 'new chat' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

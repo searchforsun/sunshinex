@@ -149,6 +149,9 @@ const h = vi.hoisted(() => {
     sessionsOf(_root: string): Promise<SessionRow[]> {
       return Promise.resolve(this.sessionRows);
     }
+    recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>> {
+      return Promise.resolve([]);
+    }
     dirpicker(_path?: string): Promise<DirPickerResp> {
       return Promise.resolve(this.dirpickerResp);
     }

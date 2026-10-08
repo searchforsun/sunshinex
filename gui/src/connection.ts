@@ -294,6 +294,8 @@ export interface Connection {
   workspaces(): Promise<WorkspaceRow[]>;
   /** GET /sessions?root=：工作区会话（journal）列表（T2） */
   sessionsOf(root: string): Promise<SessionRow[]>;
+  /** GET /sessions/recent：跨工作区扁平最近会话（G10-C2 侧栏 Recents 区） */
+  recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
@@ -575,6 +577,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionsOf(root: string): Promise<SessionRow[]> {
       return getJson<SessionRow[]>(`/sessions?root=${encodeURIComponent(root)}`);
+    },
+    recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>> {
+      return getJson<Array<SessionRow & { root: string; slug: string }>>('/sessions/recent');
     },
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);

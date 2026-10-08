@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket as NodeWebSocket } from 'ws';
 import { createElement } from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 // 主仓 dist 直引(G2 装配裁定):gui pretest 先 clean+tsc 主仓,保证 dist 在场且新鲜——e2e 消费的
 // 就是发布形态(dist/serve/daemon + dist/model/adapter 的 ScriptedAdapter),非 TS 源旁路
 import { GuiDaemon } from '../../dist/serve/daemon';
@@ -252,7 +252,9 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       await backHome();
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 收起(壳常驻,组仍展开)
       fireEvent.click(screen.getByTitle(env.root)); // 重展开 → sessionsOf 重拉(含 s2 新建档)
-      const attachButtons = await screen.findAllByRole('button', { name: 'Attach' }, { timeout: 5_000 });
+      // G10-C2:Recents 区同含 Attach 钮——组内断言 scoped 到 session-list(组内重拉面),排除 Recents
+      const groupList = await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 });
+      const attachButtons = await within(groupList).findAllByRole('button', { name: 'Attach' }, { timeout: 5_000 });
       expect(attachButtons.length).toBeGreaterThanOrEqual(2); // s1 播种档 + s2 新建档(T2 即挂)
       // G8f:journal id 从可见 meta 移入摘要 title(行文本只留摘要+相对时间)——定位走 summary title
       const s1Attach = attachButtons.find(
