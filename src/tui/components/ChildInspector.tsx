@@ -21,6 +21,8 @@ type TimelineItem =
   | { kind: 'call'; text: string }
   | { kind: 'result'; text: string; ok: boolean }
   | { kind: 'think'; text: string; detail?: string }
+  | { kind: 'taskBand'; text: string }
+  | { kind: 'msgLine'; text: string }
   | { kind: 'meta'; text: string };
 
 /** 全屏查看视图（2026-09-29 用户裁决重构：视作独立主 agent session）——
@@ -71,6 +73,8 @@ export function ChildInspector(props: {
       flushRun();
       if (l.kind === 'call') items.push({ kind: 'call', text: l.text });
       else if (l.kind === 'result') items.push({ kind: 'result', text: l.text, ok: l.ok !== false });
+      else if (l.kind === 'task') items.push({ kind: 'taskBand', text: l.text });
+      else if (l.kind === 'message') items.push({ kind: 'msgLine', text: l.text });
       else items.push({ kind: 'think', text: l.text, detail: l.detail });
     }
     if (done) flushRun();
@@ -189,6 +193,18 @@ export function ChildInspector(props: {
               <CallRow text={item.text} columns={columns} />
             ) : item.kind === 'think' ? (
               <ThinkRow text={item.text} detail={item.detail} expanded={expanded} columns={columns} />
+            ) : item.kind === 'taskBand' ? (
+              /* 委派任务内容带(2026-10-06 用户定版:每轮任务像主 agent 用户内容一样灰底分带,每轮一条) */
+              <Box flexDirection="column">
+                {bandLines(item.text, columns).map((line, j) => (
+                  <Text key={j} backgroundColor="gray">
+                    {line}
+                  </Text>
+                ))}
+              </Box>
+            ) : item.kind === 'msgLine' ? (
+              /* agent 间交流行(✉ 前缀,与任务带/正文区分;2026-10-06 用户定版) */
+              <Text dimColor>{`✉ ${item.text}`}</Text>
             ) : item.kind === 'meta' ? (
               <Text dimColor>{item.text}</Text>
             ) : (

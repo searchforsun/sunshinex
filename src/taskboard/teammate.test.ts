@@ -167,10 +167,11 @@ test('teammate 自主 claim:未指派任务串行消化至 in-review,fork 路径
     const ended = rig.events.filter((e) => e.type === 'delegation-ended');
     assert.equal(started.length, 2, 'delegation-started × 2');
     assert.equal(ended.length, 2, 'delegation-ended × 2');
-    // 任务分隔行(「多轮对话,每轮一任务」):tagged token 整行,转录面可见轮次边界
-    const dividers = rig.events.filter((e) => e.type === 'token' && (e.text ?? '').startsWith('── Task t1:'));
-    assert.equal(dividers.length, 1, '每任务一条分隔行');
-    assert.equal(dividers[0]!.payload?.subagent, 'w1', '分隔行归属 teammate 转录');
+    // 任务带(「多轮对话,每轮一任务」,2026-10-06 用户定版):tagged step + taskBand,ChildInspector 灰底带渲染
+    const bands = rig.events.filter((e) => e.type === 'step' && typeof e.payload?.taskBand === 'string' && (e.payload.taskBand as string).startsWith('Task t1:'));
+    assert.equal(bands.length, 1, '每任务一条任务带');
+    assert.equal(bands[0]!.payload?.subagent, 'w1', '任务带归属 teammate 转录');
+    assert.ok((bands[0]!.payload?.taskBand as string).includes('do A'), '任务带含任务内容(spec)');
     const ids = [...started, ...ended].map((e) => e.payload?.delegationId).sort();
     assert.deepEqual(ids, ['task-t1', 'task-t1', 'task-t2', 'task-t2']);
     for (const e of [...started, ...ended]) {

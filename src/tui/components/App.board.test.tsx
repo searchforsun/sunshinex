@@ -130,3 +130,20 @@ test('App：Ctrl+T 空板也进视图——「任务板为空」提示框给真�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('browseRows：闲置 teammate 行(跑完后 Ctrl+B 仍可浏览,2026-10-06 用户实机静默修复)——与运行中委派行去重', async () => {
+  const { browseRows } = await import('./use-browse-keys');
+  const st = {
+    delegations: [
+      { id: 'task-t1', kind: 'subagent', label: 'w1', title: '干活中', status: 'running', startedAt: 1 },
+    ],
+    children: [
+      { label: 'w1', startedAt: 1, transcript: [] },   // 工作中:委派行已承载,不双显
+      { label: 'w2', startedAt: 2, transcript: [] },   // 闲置:无委派行 → 补行
+      { label: 'fork1', startedAt: 3, done: true, transcript: [] }, // 已归档 fork:走 SPAWN 归档段
+    ],
+    messages: [],
+  } as never;
+  const rows = browseRows(st);
+  assert.deepEqual(rows.map((r) => r.label), ['w1 · 干活中', 'w2'], '工作中带任务后缀;闲置 teammate 补行;done 不列');
+});

@@ -83,7 +83,7 @@ export interface LiveBlock {
 /** 子代理转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源。
  *  thinking 行对标主 agent ThinkingRow：text=收束摘要（Thought for Ns）、detail=思考全文（Tab 展开呈现）。 */
 export interface ChildLine {
-  kind: 'call' | 'result' | 'text' | 'thinking';
+  kind: 'call' | 'result' | 'text' | 'thinking' | 'task' | 'message';
   text: string;
   ok?: boolean;
   detail?: string;

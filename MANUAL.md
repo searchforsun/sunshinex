@@ -362,7 +362,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | 操作 | 方法 |
 | --- | --- |
 | 开 | 「派一个 reviewer teammate」；或 `agents/{id}/agent.md` 写 `executor: internal-team` |
-| 看 | `Ctrl+B` → `Enter` 转录 |
+| 看 | `Ctrl+B` → `Enter` 转录（行 = `名字 · 当前任务`；转录内每轮任务为灰底内容带，`✉` 行为 agent 间交流） |
 | 停 | 转录页两次 `Ctrl+C`（只停这一个） |
 | 消息 | teammate 间可互发，转录可见 |
 | 看板对照 | `Ctrl+B` 行 = `名字 · 当前任务`；`Ctrl+T` 行 = 任务 + 状态符号 + 执行者 |

@@ -10,8 +10,17 @@ import type { RawKey } from './use-input';
  *  subagentMeta.delegatedAt 委派时间升序在后（旧档字段缺省回落 seq 序）——↑↓ 键盘分发与动态区列表渲染
  *  共用同一函数，两侧永不漂移 */
 export function browseRows(st: TuiState): BrowseRow[] {
+  const running = runningDelegations(st).map((r) => ({ id: `live:${r.label}`, label: r.title !== undefined ? `${r.label} · ${r.title}` : r.label, running: true as const }));
+  // 闲置 teammate 行(2026-10-06 用户实机:跑完后 Ctrl+B 静默无响应=「不启作用」观感)——teammate 常驻
+  // 无 done 事件、SPAWN 行永不归档,children 里留有完整转录(多轮任务带+✉ 交流行);按 label 去重
+  // (工作中者已由委派行承载,不双显)
+  const runningIds = new Set(running.map((r) => r.id));
+  const idle = st.children
+    .filter((c) => !c.done && !runningIds.has(`live:${c.label}`))
+    .map((c) => ({ id: `live:${c.label}`, label: c.label, running: true as const }));
   return [
-    ...runningDelegations(st).map((r) => ({ id: `live:${r.label}`, label: r.title !== undefined ? `${r.label} · ${r.title}` : r.label, running: true as const })),
+    ...running,
+    ...idle,
     ...st.messages
       .filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta)
       .map((m) => ({ id: `archived:${m.seq}`, label: m.text.replace(/^SPAWN /, ''), seq: m.seq, meta: m.subagentMeta }))

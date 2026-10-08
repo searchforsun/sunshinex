@@ -125,6 +125,14 @@ export function onChildEvent(ctrl: SessionController, e: SessionEvent, label: st
       flushBuf();
       closeThink();
       steps = child.steps + 1;
+      // 任务带/消息行(2026-10-06 用户定版):tagged step 载荷落结构行——task=委派任务内容(灰底带),
+      // message=agent 间交流(✉);两者与正文/工具行视觉区分,轮次边界即任务带边界
+      {
+        const taskBand = typeof e.payload?.taskBand === 'string' ? e.payload.taskBand : undefined;
+        const messageLine = typeof e.payload?.messageLine === 'string' ? e.payload.messageLine : undefined;
+        if (taskBand !== undefined) transcript = [...transcript, { kind: 'task' as const, text: taskBand }];
+        else if (messageLine !== undefined) transcript = [...transcript, { kind: 'message' as const, text: messageLine }];
+      }
       break;
     case 'usage':
       // per-run turnTotal 为该子代理 run 的累计值（单一 run），直接采信
@@ -225,7 +233,11 @@ function archiveInto(ctrl: SessionController, pending: { seq: number; base: stri
         ? `⎿ ${l.ok === false ? '✗' : '✓'} ${serializeMultiline(l.text)}`
         : l.kind === 'thinking'
           ? `✻ ${l.text}${l.detail !== undefined && l.detail.length > 0 ? '\n' + l.detail.split('\n').map((x) => `    ${x}`).join('\n') : ''}`
-          : l.text,
+          : l.kind === 'task'
+            ? `▶ ${serializeMultiline(l.text)}`
+            : l.kind === 'message'
+              ? `✉ ${l.text}`
+              : l.text,
     ),
     ...(child.conclusion && !transcriptText.includes(child.conclusion) ? [child.conclusion] : []),
     `${formatDuration(durS)} · ${Math.max(1, child.steps)} steps · ↑${formatTokens(child.tokens)} tokens`,

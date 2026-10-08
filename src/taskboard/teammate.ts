@@ -175,6 +175,11 @@ export class Teammate {
       const dup = this.ctx.chainView().some((s) => s.observation.split('\n').some((l) => l.startsWith(prefix)));
       if (dup) continue;
       this.ctx.appendChain([{ action: 'note', observation: line }]);
+      // 收件消息上屏转录(✉ 行,与任务带区分):tagged step + messageLine,同任务带通道
+      this.deps.onEvent?.({
+        type: 'step', text: '', ts: Date.now(),
+        payload: { subagent: this.name, messageLine: `${m.from}: ${m.text}` },
+      });
       injected += 1;
     }
     this.inboxCursor = Math.max(this.inboxCursor, ...msgs.map((m) => m.ts));
@@ -229,9 +234,14 @@ export class Teammate {
       });
     };
     emitDelegation('delegation-started');
-    // 任务分隔行(转录面「多轮对话,每轮一任务」):tagged token 整行入 transcript,ChildInspector 可见轮次边界
-    this.deps.onEvent?.({ type: 'token', text: `── Task ${task.id}: ${task.title} ──
-`, ts: Date.now(), payload: { subagent: this.name } });
+    // 任务带(2026-10-06 用户定版:子代理转录内「每轮任务内容」像主 agent 用户内容一样分带呈现)——
+    // tagged step + taskBand 载荷,onChildEvent 落 ChildLine{kind:'task'},ChildInspector 灰底带渲染;
+    // 与 send_message 交流行(kind:'message',✉)视觉区分
+    this.deps.onEvent?.({
+      type: 'step', text: '', ts: Date.now(),
+      payload: { subagent: this.name, taskBand: `Task ${task.id}: ${task.title}
+${task.spec}` },
+    });
     const startedAt = Date.now();
     // 转录事件打标(payload.subagent = name,复用 ChildPanel 通道,与 SubagentRunner tagger 同构)
     const tagger = (e: SessionEvent): void => {
