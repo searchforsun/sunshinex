@@ -22,6 +22,7 @@ import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, 
 import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { listCommands } from './commands';
+import { COMMAND_SUPPORT, runCommand } from './session-commands';
 import { ModelSwitcher } from '../model/catalog';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
@@ -1011,7 +1012,8 @@ export class GuiDaemon {
     // T2 工作区注册表 + 恢复面：workspaces 扫描 / sessions 列档 / dirpicker 目录选择
     { method: 'GET', path: '/workspaces', auth: true, run: async (_req, res) => this.handleWorkspaces(res) },
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
-    { method: 'GET', path: '/commands', auth: true, run: async (_req, res) => this.send(res, 200, listCommands()) },
+    { method: 'GET', path: '/commands', auth: true, run: async (_req, res) => this.send(res, 200, { ...listCommands(), supported: COMMAND_SUPPORT }) },
+    { method: 'POST', path: '/session/:id/command', auth: true, run: (req, res, p) => this.handleSessionCommand(req, res, p.id) },
     { method: 'GET', path: '/dirpicker', auth: true, run: async (req, res) => this.handleDirpicker(req, res) },
     // G8c T2 settings 面：effective 视图（来源分层 env>project>global>default）+ 项目级结构化改写
     // （含注释 409 引流 raw 编辑面；成功后清自填槽重载链，新会话即刻生效）
@@ -1321,6 +1323,20 @@ export class GuiDaemon {
    *  → [{pid, kind, req}]（G7 增 req=挂起表 entry.req 直序列化——连接层 pid 去重拦了重连重发帧，
    *  snapshot.pending 是 GUI 刷新/reseed 后卡内容的唯一来源），跨会话卡恢复（GUI 刷新/重连后重放
    *  挂起面）的基座 */
+  /** POST /session/:id/command {line}(G10-C1c):TUI 斜杠命令 daemon 直跑;输出走既有事件流 */
+  private async handleSessionCommand(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const line = (parsed.body as { line?: unknown }).line;
+    if (typeof line !== 'string' || !line.startsWith('/')) return this.send(res, 400, { error: 'invalid command line' });
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    const r = await runCommand(session, line);
+    if (r === 'unsupported') return this.send(res, 400, { error: 'unsupported command' });
+    if (r === 'busy') return this.send(res, 409, { error: 'session is running' });
+    this.send(res, 200, { ok: true });
+  }
+
   /** POST /session/:id/model {model?: string}(G10-C1b):运行中模型切换,daemon 级共享切换器;
    *  无切换器 409 not switchable / 未知 id 400 unknown model(不动现状) */
   private async handleSessionModel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
