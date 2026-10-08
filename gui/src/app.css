@@ -831,6 +831,8 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-theme-row select { flex: 1; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px; font: inherit; }
 
 /* ===== G9-B2 壳与侧栏(spec §2):胶囊行制/运行 spinner/底栏去卡 ===== */
+/* 嵌套列表 UA padding 重置(40px 默认缩进会叠加行 margin 把行推出栏外) */
+.sx-groups ul { margin: 0; padding: 0; list-style: none; }
 .sx-group-head { height: var(--row-h); padding: 0 10px; border-radius: var(--radius-row); }
 .sx-group-head.active { border-radius: var(--radius-row); }
 .sx-settings-nav-item { border-radius: var(--radius-row); }
@@ -839,6 +841,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
   display: flex;
   align-items: center;
   gap: 8px;
+  width: auto;
   height: var(--row-h);
   padding: 0 10px;
   margin: 0 8px 0 28px;
@@ -864,13 +867,16 @@ button:disabled { opacity: 0.5; pointer-events: none; }
   border: none;
   border-radius: 0;
 }
-/* hover 浮现钮:ghost 小方制 */
+/* hover 浮现钮:ghost 小方制;显现时隐时间(Codex「Attach 覆盖时间」语义——半透明底罩不住,直接换显) */
 .sx-session-row .attach {
   background: color-mix(in srgb, var(--fg) 8%, transparent);
   border: none;
   color: var(--accent);
   border-radius: var(--radius-sm);
 }
+.sx-session-row:hover .session-meta,
+.sx-session-row:focus-within .session-meta { opacity: 0; }
+.sx-session-row .session-meta { transition: opacity var(--dur-basic) var(--ease-enter); }
 .sx-menu-pop { border: none; border-radius: var(--radius-lg); box-shadow: var(--elev-prominent); }
 .sx-settings-back { border-radius: var(--radius-sm); }
 
