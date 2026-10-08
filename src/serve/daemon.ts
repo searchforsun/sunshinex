@@ -20,7 +20,7 @@ import type { SnapshotPendingRow } from './session';
 import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, McpServerConfig } from '../types';
 import { loadMcpServers, parseMcpJsonFile } from '../config';
-import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
+import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT, runCommand } from './session-commands';
 import { ModelSwitcher } from '../model/catalog';
@@ -993,6 +993,9 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/model', auth: true, run: (req, res, p) => this.handleSessionModel(req, res, p.id) },
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
     { method: 'POST', path: '/session/:id/steer/cancel', auth: true, run: async (req, res, p) => this.handleSteerCancel(req, res, p.id) },
+    { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
+    { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
+    { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
     // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
@@ -1336,6 +1339,51 @@ export class GuiDaemon {
     if (r === 'unsupported') return this.send(res, 400, { error: 'unsupported command' });
     if (r === 'busy') return this.send(res, 409, { error: 'session is running' });
     this.send(res, 200, { ok: true });
+  }
+
+  /** GET /session/:id/anchors(G10-C1d):任务轮锚点列表(rewind/fork 的 turn 寻址面,1-based) */
+  private handleAnchors(res: http.ServerResponse, id: string): void {
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    const srcId = session.attachedJournalId;
+    if (srcId === undefined) return this.send(res, 409, { error: 'no journaled session' });
+    const parsed = parseJournalFile(path.join(sessionsDir(resolveDataDir(session.root)), srcId + '.jsonl'));
+    const anchors = listAnchors(parsed).map((x, i) => ({ turn: i + 1, text: x.text.length > 96 ? x.text.slice(0, 96) + '…' : x.text }));
+    this.send(res, 200, { anchors });
+  }
+
+  /** POST /session/:id/rewind|fork {turn}(G10-C1d):1-based 轮锚点;不可变分档(branchFrom,源档零改动)。
+   *  rewind=本会话切到新档(attach 重播种,原时间线保留可 /resume);fork=新会话分叉,源会话不动 */
+  private async handleBranch(req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'rewind' | 'fork'): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const turn = (parsed.body as { turn?: unknown }).turn;
+    if (typeof turn !== 'number' || !Number.isInteger(turn) || turn < 1) return this.send(res, 400, { error: 'invalid turn' });
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    if (session.status() === 'running') return this.send(res, 409, { error: 'session is running' });
+    const srcId = session.attachedJournalId;
+    if (srcId === undefined) return this.send(res, 409, { error: 'no journaled session' });
+    const dataDir = resolveDataDir(session.root);
+    const anchors = listAnchors(parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')));
+    const anchor = anchors[turn - 1];
+    if (anchor === undefined) return this.send(res, 400, { error: 'no such turn' });
+    let newId: string;
+    try {
+      newId = branchFrom(dataDir, srcId, anchor.line - 1, kind); // 锚点行不进新档(规格 §5.2)
+    } catch (err) {
+      return this.send(res, 500, { error: 'branch failed: ' + String((err as Error).message) });
+    }
+    if (kind === 'fork') {
+      const created = this.createSession(session.root);
+      if (!created.ok) return this.send(res, 500, { error: created.error.message });
+      const ar = this.attach(created.value.sessionId, newId);
+      if (!ar.ok) return this.send(res, 500, { error: ar.error.message });
+      return this.send(res, 200, { ok: true, sessionId: created.value.sessionId, turn });
+    }
+    const rr = this.attach(id, newId);
+    if (!rr.ok) return this.send(res, 500, { error: rr.error.message });
+    this.send(res, 200, { ok: true, sessionId: id, turn });
   }
 
   /** POST /session/:id/steer/cancel {seq}(G10-C1d):撤回排队插话;越界 400 */
