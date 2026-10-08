@@ -21,6 +21,7 @@ import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, McpServerConfig } from '../types';
 import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
+import { listCommands } from './commands';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import {
@@ -1006,6 +1007,7 @@ export class GuiDaemon {
     // T2 工作区注册表 + 恢复面：workspaces 扫描 / sessions 列档 / dirpicker 目录选择
     { method: 'GET', path: '/workspaces', auth: true, run: async (_req, res) => this.handleWorkspaces(res) },
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
+    { method: 'GET', path: '/commands', auth: true, run: async (_req, res) => this.send(res, 200, listCommands()) },
     { method: 'GET', path: '/dirpicker', auth: true, run: async (req, res) => this.handleDirpicker(req, res) },
     // G8c T2 settings 面：effective 视图（来源分层 env>project>global>default）+ 项目级结构化改写
     // （含注释 409 引流 raw 编辑面；成功后清自填槽重载链，新会话即刻生效）
