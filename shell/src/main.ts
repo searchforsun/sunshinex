@@ -1,25 +1,73 @@
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { appUrl } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
+import { shouldHideOnClose, trayMenu } from './lib/lifecycle';
+import { TRAY_ICON_DATA_URL } from './lib/tray-icon';
 import { startDaemon } from './daemon';
 import type { ShellDaemon } from './daemon';
 
 /** smoke 收口总超时（ms）：ready-to-show 未至 / 收口悬挂的整体守卫，超时按失败退 1（T4 门禁判据） */
 const SMOKE_TOTAL_TIMEOUT_MS = 15_000;
-/** smoke 收口 daemon close 的有界等待（ms）：close 悬挂不阻塞退出判定——有界等待完仍按正常收口退 0 */
-const SMOKE_CLOSE_TIMEOUT_MS = 5_000;
+/** daemon close 的有界等待（ms）：close 悬挂不阻塞退出——有界等待完仍按正常收口走 quit。
+ *  H2-T2 抽公共：smoke 收口与 runQuit 退出序共用同一有界口径（原 SMOKE_CLOSE_TIMEOUT_MS）。 */
+const DAEMON_CLOSE_TIMEOUT_MS = 5_000;
 
 let daemon: ShellDaemon | undefined;
-/** daemon 收口幂等守卫：smoke 收口与 will-quit 兜底共用——已发起则后续调用直接跳过 */
+/** daemon 收口幂等守卫：已发起则后续调用直接跳过（smoke 与 runQuit 共用同一路收口） */
 let daemonCloseInitiated = false;
+/** 驻留判定面：true=退出流程中，关窗放行真关闭。runQuit 与 before-quit（系统关机等）两处置位——双置幂等。 */
+let quitting = false;
+/** runQuit 单点幂等守卫（与驻留面分旗）：退出序「daemon 有界 close → app.quit」是否已发起。
+ *  分旗原因：before-quit 先于 will-quit 置位 quitting，若 runQuit 守卫同旗，非 runQuit 路径
+ *  （系统关机）落 will-quit 兜底时 runQuit 会误短路——收口漏做/挂起。 */
+let quitInitiated = false;
+/** 主窗引用：focusMainWindow 破窗守卫（null/isDestroyed）用；T3 快捷键复用同守卫版 */
+let mainWindow: BrowserWindow | undefined;
+/** 托盘引用必须模块级持有——局部变量无引用会被 GC 回收，托盘图标随之消失（Electron 文档坑） */
+let tray: Tray | undefined;
 
 /** 发起 daemon close（若未发起过且 daemon 在场），返回收口 Promise；已闭/无 daemon 返回 undefined */
 function closeDaemon(): Promise<void> | undefined {
   if (daemon === undefined || daemonCloseInitiated) return undefined;
   daemonCloseInitiated = true;
   return daemon.close();
+}
+
+/** 有界收口（H2-T2 公共化）：daemon.close() 最多等 DAEMON_CLOSE_TIMEOUT_MS，悬挂到点放行；
+ *  close 报错记日志不外抛（收口语义=尽力而为，不阻塞退出裁定）。 */
+async function closeDaemonBounded(): Promise<void> {
+  const closing = closeDaemon();
+  if (closing === undefined) return;
+  try {
+    await Promise.race([
+      closing,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), DAEMON_CLOSE_TIMEOUT_MS)),
+    ]);
+  } catch (err) {
+    console.error('[shell] daemon close failed:', err);
+  }
+}
+
+/** 退出序单点（H2-T2，顺序=QUIT_STEPS：先 daemon 有界 close，后 app 退出）：
+ *  托盘「退出」/ smoke 收口 / will-quit 兜底共用；幂等（quitInitiated 守卫）；
+ *  app.quit() 正常收口退出码 0。 */
+const runQuit = (): void => {
+  if (quitInitiated) return;
+  quitInitiated = true;
+  quitting = true; // 退出流程中：后续关窗事件放行真关闭（before-quit 再置为双置幂等）
+  void closeDaemonBounded().finally(() => app.quit());
+};
+
+/** 破窗守卫版唤起（H1 已知跟进清偿；T3 快捷键复用同函数）：窗不在/已毁 → 日志一行返回；否则 show+focus */
+function focusMainWindow(): void {
+  if (mainWindow === undefined || mainWindow.isDestroyed()) {
+    console.error('[shell] main window unavailable — cannot focus');
+    return;
+  }
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 // 单实例锁（spec H §3）：二实例拿锁失败即退；首实例经 'second-instance' 收编呈现
@@ -48,15 +96,38 @@ if (!app.requestSingleInstanceLock()) {
     console.log(`[shell] daemon listening at http://127.0.0.1:${daemon.port} (token: ${daemon.token})`);
 
     const win = new BrowserWindow({ width: 1200, height: 800, minWidth: 960, minHeight: 600 });
+    mainWindow = win;
     win.loadURL(appUrl(daemon.port, daemon.token)).catch((err) => console.error('[shell] loadURL failed:', err));
 
-    app.on('second-instance', () => {
-      win.show();
-      win.focus();
+    // 驻留序（H-D2）：非退出流程中关窗=preventDefault+hide（会话/PTY 不中断），退出流程放行真关闭
+    win.on('close', (event) => {
+      if (shouldHideOnClose(quitting)) {
+        event.preventDefault();
+        win.hide();
+      }
     });
 
-    // smoke 分支（T4 冒烟门禁）：ready-to-show = 窗口首帧渲染完成，有序收口后 exit 0；
-    // 15s 总超时守卫兜底任何一步悬挂（如 loadURL 失败 → ready-to-show 不至 → 守卫退 1），正常路径 clear
+    // 二实例收编呈现：改走破窗守卫版（原裸 win.show/focus 在窗毁后即抛——H1 已知跟进清偿）
+    app.on('second-instance', () => {
+      focusMainWindow();
+    });
+
+    // 托盘（spec §1 生命周期）：图标=内嵌 16x16 PNG data URL；tooltip+两件套菜单。
+    // 菜单建成即静态（trayMenu(false)）——退出流程中的重复触发由 runQuit 幂等守卫吸收。
+    tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON_DATA_URL));
+    tray.setToolTip('sunshinex');
+    tray.setContextMenu(
+      Menu.buildFromTemplate(
+        trayMenu(false).map((item) => ({
+          label: item.label,
+          enabled: item.enabled,
+          click: item.id === 'show' ? focusMainWindow : runQuit,
+        })),
+      ),
+    );
+
+    // smoke 分支（T4 冒烟门禁）：ready-to-show = 窗口首帧渲染完成，走 runQuit 单点收口
+    // （ready→daemon 有界 close→app.quit，正常路径退出码 0）；15s 总超时守卫兜任何一步悬挂退 1
     if (parseSmokeArgv(process.argv).smoke) {
       const guard = setTimeout(() => {
         console.error('[shell] smoke total timeout — exit 1');
@@ -64,35 +135,23 @@ if (!app.requestSingleInstanceLock()) {
       }, SMOKE_TOTAL_TIMEOUT_MS);
       win.once('ready-to-show', () => {
         clearTimeout(guard);
-        const closing = closeDaemon();
-        void Promise.race([
-          closing ?? Promise.resolve(),
-          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), SMOKE_CLOSE_TIMEOUT_MS)),
-        ]).then(
-          () => app.exit(0),
-          (err) => {
-            // close 报错不掩盖冒烟主断言（窗口已渲染即通过面），记日志后仍按完成退 0
-            console.error('[shell] smoke daemon close failed:', err);
-            app.exit(0);
-          },
-        );
+        runQuit();
       });
     }
   });
 
-  // 退出兜底：常规退出路径（用户关窗等）下确保 daemon close——幂等守卫已闭（smoke 收口先走）则跳过。
-  // close 失败与 smoke 分支同裁定（T3 复核落实）：统一退 0——冒烟判据=「启动到窗口就绪」，
-  // close 失败已日志、不属冒烟语义面，退码不对称会在门禁上制造假红。
+  // 驻留翻面（系统关机等非 runQuit 路径）：before-quit 先于关窗事件——置位 quitting 放行真关闭，
+  // 不阻关机；runQuit 路径已先行置位，此处重置幂等。
+  app.on('before-quit', () => {
+    quitting = true;
+  });
+
+  // 退出兜底（runQuit 语义）：非 runQuit 路径直落至此（如系统关机/他处 app.quit）时挂起 quit，
+  // 转单点完成「daemon 收口→app.quit」；runQuit 路径已在途（quitInitiated）则直接放行——
+  // 重入时守卫短路，幂等防环。
   app.on('will-quit', (event) => {
-    const closing = closeDaemon();
-    if (closing === undefined) return;
+    if (quitInitiated) return;
     event.preventDefault();
-    void closing.then(
-      () => app.exit(0),
-      (err) => {
-        console.error('[shell] daemon close failed:', err);
-        app.exit(0);
-      },
-    );
+    runQuit();
   });
 }
