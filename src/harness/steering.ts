@@ -30,4 +30,16 @@ export class SteeringChannel {
   pending(): number {
     return this.queue.length;
   }
+
+  /** 待投递行快照（G10 队列 chips 展示用；非破坏拷贝） */
+  pendingItems(): string[] {
+    return [...this.queue];
+  }
+
+  /** 按下标撤回一条待投递行（G10 队列 chips 撤回钮；index 为 pendingItems() 下标，越界 false） */
+  removeAt(index: number): boolean {
+    if (index < 0 || index >= this.queue.length) return false;
+    this.queue.splice(index, 1);
+    return true;
+  }
 }

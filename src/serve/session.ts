@@ -45,6 +45,8 @@ export interface SessionSnapshot {
   /** G10-C1b 切换回显段:model=当前选择 id(undefined=缺省主模型/单模型);mode=会话权限态 */
   model?: string;
   mode: SessionMode;
+  /** G10-C1d 排队插话段(steering FIFO 快照;seq=队列下标,cancel 寻址键) */
+  queued: Array<{ seq: number; text: string }>;
 }
 
 /** snapshot 挂起段行（G5）：kind 判别与 daemon 挂起表同源（approval/ask）；pid 为 daemon 级铸造
@@ -384,6 +386,16 @@ export class SessionRuntime {
     return 'ok';
   }
 
+  /** 排队插话(G10-C1d):steering FIFO 快照,seq=队列下标(内存面 ephemeral,cancel 寻址键) */
+  private queuedSteer(): Array<{ seq: number; text: string }> {
+    return this.runtimeImpl.harness.steering.pendingItems().map((text, seq) => ({ seq, text }));
+  }
+
+  /** 撤回排队插话(G10-C1d):按下标撤;越界 false */
+  cancelSteer(seq: number): boolean {
+    return this.runtimeImpl.harness.steering.removeAt(seq);
+  }
+
   snapshotResponse(): SessionSnapshot {
     return {
       messages: this.transcriptImpl.entries(),
@@ -393,6 +405,7 @@ export class SessionRuntime {
       lastSeq: this.lastSeqNum,
       model: this.currentModelId(),
       mode: this.currentMode,
+      queued: this.queuedSteer(),
       team: this.runtimeImpl.harness.team.aliveNames().map((name) => ({
         name,
         busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,

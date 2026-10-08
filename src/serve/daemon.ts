@@ -992,6 +992,7 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
     { method: 'POST', path: '/session/:id/model', auth: true, run: (req, res, p) => this.handleSessionModel(req, res, p.id) },
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/steer/cancel', auth: true, run: async (req, res, p) => this.handleSteerCancel(req, res, p.id) },
     // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
@@ -1334,6 +1335,18 @@ export class GuiDaemon {
     const r = await runCommand(session, line);
     if (r === 'unsupported') return this.send(res, 400, { error: 'unsupported command' });
     if (r === 'busy') return this.send(res, 409, { error: 'session is running' });
+    this.send(res, 200, { ok: true });
+  }
+
+  /** POST /session/:id/steer/cancel {seq}(G10-C1d):撤回排队插话;越界 400 */
+  private async handleSteerCancel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const seq = (parsed.body as { seq?: unknown }).seq;
+    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) return this.send(res, 400, { error: 'invalid seq' });
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    if (!session.cancelSteer(seq)) return this.send(res, 400, { error: 'no such queued entry' });
     this.send(res, 200, { ok: true });
   }
 
