@@ -992,6 +992,8 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
     { method: 'POST', path: '/session/:id/model', auth: true, run: (req, res, p) => this.handleSessionModel(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/tier', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'tier') },
+    { method: 'POST', path: '/session/:id/effort', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'effort') },
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
     { method: 'POST', path: '/session/:id/steer/cancel', auth: true, run: async (req, res, p) => this.handleSteerCancel(req, res, p.id) },
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
@@ -1419,6 +1421,23 @@ export class GuiDaemon {
     if (session === undefined) return;
     if (!session.cancelSteer(seq)) return this.send(res, 400, { error: 'no such queued entry' });
     this.send(res, 200, { ok: true });
+  }
+
+  /** POST /session/:id/tier {tier} / …/effort {effort}(G10-C2b):per-run 覆盖,下一轮生效;
+   *  'default'/缺省字段=清除覆盖回缺省;非法值 400 */
+  private async handleSessionTierEffort(req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'tier' | 'effort'): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const raw = (parsed.body as Record<string, unknown>)[kind];
+    if (raw !== undefined && raw !== 'default' && typeof raw !== 'string') return this.send(res, 400, { error: `invalid ${kind}` });
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    const value = raw === undefined || raw === 'default' ? undefined : (raw as string);
+    const ok = kind === 'tier' ? (value === undefined ? (session.clearTier(), true) : session.setTier(value))
+                               : (value === undefined ? (session.clearEffort(), true) : session.setEffort(value));
+    if (!ok) return this.send(res, 400, { error: `invalid ${kind}` });
+    const snap = session.snapshotResponse();
+    this.send(res, 200, { ok: true, [kind]: kind === 'tier' ? snap.tier : snap.effort });
   }
 
   /** POST /session/:id/model {model?: string}(G10-C1b):运行中模型切换,daemon 级共享切换器;

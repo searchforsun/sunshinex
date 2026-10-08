@@ -63,3 +63,19 @@ test('mode 切换:idle 下三态循环回显;snapshot.mode 随之', () => {
   assert.equal(s.setMode('plan'), 'ok'); // 幂等
   assert.equal(s.snapshotResponse().mode, 'plan');
 });
+
+test('tier/effort 覆盖:合法值回显、default 清除、非法值 false 不动', () => {
+  const s = makeSession();
+  assert.equal(s.snapshotResponse().tier, undefined);
+  assert.equal(s.setTier('large'), true);
+  assert.equal(s.snapshotResponse().tier, 'large');
+  assert.equal(s.setTier('huge'), false);
+  assert.equal(s.snapshotResponse().tier, 'large');
+  s.clearTier();
+  assert.equal(s.snapshotResponse().tier, undefined);
+  assert.equal(s.setEffort('high'), true);
+  assert.equal(s.snapshotResponse().effort, 'high');
+  assert.equal(s.setEffort('nope'), false);
+  s.clearEffort();
+  assert.equal(s.snapshotResponse().effort, undefined);
+});

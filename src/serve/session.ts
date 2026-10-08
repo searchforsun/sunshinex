@@ -1,4 +1,7 @@
 import { createRuntime } from '../tui/runtime';
+import { parseTier } from '../runtime';
+import { parseEffort } from '../model/effort';
+import type { ModelTier, ReasoningEffort } from '../types';
 import { ModelSwitcher } from '../model/catalog';
 import type { TuiRuntime } from '../tui/runtime';
 import type { ModelAdapter } from '../model/adapter';
@@ -45,6 +48,9 @@ export interface SessionSnapshot {
   /** G10-C1b 切换回显段:model=当前选择 id(undefined=缺省主模型/单模型);mode=会话权限态 */
   model?: string;
   mode: SessionMode;
+  /** G10-C2b 档位/思考强度覆盖(undefined=缺省) */
+  tier?: SessionTier;
+  effort?: ReasoningEffort;
   /** G10-C1d 排队插话段(steering FIFO 快照;seq=队列下标,cancel 寻址键) */
   queued: Array<{ seq: number; text: string }>;
 }
@@ -174,6 +180,9 @@ export interface SessionRuntimeOpts {
 /** 会话权限模式（G10-C1b）：dontAsk/manual 为 createRuntime 权限态；plan 为提交通道标记
  *  （计划模式提交经 command 通道走 planFlow,运行时权限态保持 dontAsk/manual 语义） */
 export type SessionMode = 'dontAsk' | 'manual' | 'plan';
+
+/** 运行中切换面(G10-C1b/C2b):tier/effort per-run 注入 runTask opts(与 TUI ctrl.state 同语义,下一轮生效) */
+export type SessionTier = ModelTier;
 
 export class SessionRuntime {
   readonly id: string;
@@ -309,7 +318,11 @@ export class SessionRuntime {
     this.transcriptImpl.submit(goal);
     this.runtimeImpl.harness.context.appendInstructionLine(goal);
     const p: Promise<void> = this.runtimeImpl
-      .runTask(goal, { signal: abort.signal })
+      .runTask(goal, {
+        signal: abort.signal,
+        ...(this.tier ? { tier: this.tier } : {}),
+        ...(this.effort ? { effort: this.effort } : {}),
+      })
       .catch((err) => {
         console.error('[serve] run failed:', err);
       })
@@ -364,6 +377,32 @@ export class SessionRuntime {
     return this.modelSwitcher?.currentId();
   }
 
+  /** 档位/思考强度（G10-C2b 可变面）：per-run 注入 runTask opts,下一轮生效 */
+  private tier?: SessionTier;
+  private effort?: ReasoningEffort;
+
+  setTier(tier: string): boolean {
+    const v = parseTier(tier);
+    if (v === undefined) return false;
+    this.tier = v;
+    return true;
+  }
+
+  clearTier(): void {
+    this.tier = undefined;
+  }
+
+  setEffort(effort: string): boolean {
+    const v = parseEffort(effort);
+    if (v === undefined) return false;
+    this.effort = v;
+    return true;
+  }
+
+  clearEffort(): void {
+    this.effort = undefined;
+  }
+
   /** 模型切换器外窥（G10-C1b;undefined = daemon 装配为单模型,不可切） */
   get modelSwitcher(): ModelSwitcher | null {
     return this.opts.modelSwitcher ?? null;
@@ -405,6 +444,8 @@ export class SessionRuntime {
       lastSeq: this.lastSeqNum,
       model: this.currentModelId(),
       mode: this.currentMode,
+      ...(this.tier ? { tier: this.tier } : {}),
+      ...(this.effort ? { effort: this.effort } : {}),
       queued: this.queuedSteer(),
       team: this.runtimeImpl.harness.team.aliveNames().map((name) => ({
         name,
