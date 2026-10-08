@@ -150,7 +150,7 @@ if (!app.requestSingleInstanceLock()) {
     // （ready→daemon 有界 close→app.quit，正常路径退出码 0）；15s 总超时守卫兜任何一步悬挂退 1
     if (parseSmokeArgv(process.argv).smoke) {
       const guard = setTimeout(() => {
-        console.error('[shell] smoke total timeout — exit 1');
+        console.error('[shell] smoke total timeout — exit 1', { url: (()=>{try{return mainWindow?.webContents.getURL()}catch{return 'n/a'}})(), visible: (()=>{try{return mainWindow?.isVisible()}catch{return 'n/a'}})(), loading: (()=>{try{return mainWindow?.webContents.isLoading()}catch{return 'n/a'}})() });
         app.exit(1);
       }, SMOKE_TOTAL_TIMEOUT_MS);
       win.once('ready-to-show', () => {
