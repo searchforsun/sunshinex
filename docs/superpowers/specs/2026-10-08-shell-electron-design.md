@@ -54,7 +54,7 @@ scripts/shell-smoke.mjs   打包产物冒烟(启动→窗口→自动退出,退�
 | ~~H3~~ | electron-builder(NSIS+portable+图标+extraResources+node-pty rebuild)+shell:dist+产物冒烟脚本+文档——~~已交付~~ 2026-10-08(NSIS+portable 双产物/零 rebuild N-API 口径/portable 冒烟进门禁)。**已知跟进**:NSIS 静默装自动化后置/安装器手验指引在 SDD 报告/node-pty 整包未滤平台+自签面=发布前项/镜像双 env 本机口径 |
 | ~~H4~~ | 收口门禁(主仓/gui/shell 全量+冒烟)+两 spec/ROADMAP 回写——~~已交付~~ 2026-10-08(壳收官:trimmed 重打包产物级实证+全量门禁+统一回写;门禁=主仓 1781/0+gui 245/0+e2e 19/0+shell 14/0+双冒烟 0+selfcheck OK;另清偿 H1/H3 .gitignore 增行未同步 SCAN_SKIP_DIRS 的双源漂移,G2 先例同型) |
 
-> **缓议终局归档(不再挂任务)**:Playwright 交互自动化后置(驻留/托盘/快捷键/外开=手验指引在 SDD 报告)/NSIS 静默装自动化后置/签名证书+prebuilds 平台瘦身=发布前项/release 目录本地卫生(electron-builder 调试副产物,已忽略面外不入 git)/node-pty 升级需重 dist 且 LICENSE 大小写面(白名单按精确文件名 `LICENSE` 匹配,变体名会漏)。
+> **缓议终局归档(不再挂任务)**:Playwright 交互自动化后置(驻留/托盘/快捷键/外开=手验指引在 SDD 报告)/NSIS 静默装自动化后置/签名证书+prebuilds 平台瘦身=发布前项/release 目录本地卫生(electron-builder 调试副产物,已忽略面外不入 git)/node-pty 升级需重 dist 且 LICENSE 大小写面(白名单按精确文件名 `LICENSE` 匹配,变体名会漏)。SCAN_SKIP_DIRS 壳三目录条目为名义对齐:perception 走访按裸名匹配,多段条目(shell/out 等)运行时不生效,构建产物仍入感知清单;段感知匹配为后续任务(既有 walker 设计缺口,非壳批引入)。
 
 ## 5. 决策记录
 

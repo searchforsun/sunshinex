@@ -121,7 +121,7 @@ flowchart TB
 - [x] 双端数据同步：配置、任务、记忆、日志（CLI/TUI/GUI 三面同源）（同 dataDir 三面同源：会话 journal/工作区注册表/write blob 互通）
 - [ ] 系统托盘、全局快捷键、消息通知（壳批次后置：Tauri/Electron 选型+打包，独立 spec 立项）——2026-10-08 壳批次 H1-H4 已交付：Electron 44 桌面壳（托盘驻留序/全局快捷键 Alt+Shift+S/原生外开/NSIS+portable 双产物，spec 2026-10-08-shell-electron-design.md；门禁=主仓 1781/0+gui 245/0+e2e 19/0+shell 14/0+双冒烟 0）；消息通知与 GUI 管理面（管理/技能/插件项）仍待办
 
-**交付物**：交互式 TUI（第一入口，含会话持久化 / resume / rewind / fork）+ 桌面端 GUI v1（对话交互 / 代码预览 / diff），CLI/TUI/GUI 三面数据互通。GUI 线 G1-G7 已交付（daemon 会话中心/对话页/审批问询/看板/预览 diff/收口），壳批次（打包/托盘/快捷键/管理面）后置。
+**交付物**：交互式 TUI（第一入口，含会话持久化 / resume / rewind / fork）+ 桌面端 GUI v1（对话交互 / 代码预览 / diff），CLI/TUI/GUI 三面数据互通。GUI 线 G1-G7 已交付（daemon 会话中心/对话页/审批问询/看板/预览 diff/收口），壳批次（打包/托盘/快捷键/管理面）后置(壳批次 H1-H4 已交付;管理面仍待办)。
 **验收**：TUI 会话内完成一次含计划确认、审批与修正环的真实任务（流式可视、待办同步）；CLI 与 GUI 双端共享同一数据底座，核心功能可视化可用。已过：GUI 无头 e2e 11 例全绿 + 全量测试/selfcheck 门禁绿。
 
 ### 阶段六：测试优化与发布（第 27-28 周）
