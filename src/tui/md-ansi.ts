@@ -1,21 +1,10 @@
 // src/tui/md-ansi.ts
-import type * as markdansiNS from 'markdansi';
+import { render as mdRender } from 'markdansi';
 import stringWidth from 'string-width';
 import { highlightLine } from './highlight';
 import { alignTable, inlineText, parseMarkdown } from './markdown';
 import { displayWidth } from './text-band';
 import { hiSgr, MD_HR_CHAR } from './md-theme';
-
-// markdansi 惰性 require（H1-T4 模块系统缝，同 landlock/ink-output-guard 惰性先例）：包 ESM-only
-// （type:module 且 exports 无 require 条件），静态 import 会在模块初始化期 require(esm)——宿主
-// Node <22.12（Electron 33 内嵌 Node 20）不支持，把整条 serve/daemon→tui 静态链的加载钉死在宿主
-// Node 版本上。首用才取：CLI 宿主 Node ≥22.12 require(esm) 可用；GUI daemon 链只复用 tui/session
-// 状态机、不触 TUI 渲染面，markdansi 永不加载（缺省即零触碰，与 KB 后端惰性同语义）。
-let markdansiCache: typeof markdansiNS | undefined;
-function mdRender(src: string, options: markdansiNS.RenderOptions): string {
-  markdansiCache ??= require('markdansi') as typeof markdansiNS;
-  return markdansiCache.render(src, options);
-}
 
 /** markdansi highlighter 适配：行级 HiSpan → ANSI 着色文本（色码取同源表 md-theme 的 sgr 形态；
  *  原并行的 ink 色名形态已随 D29 回看链退役摘除——渲染单链后改色只动 md-theme.ts 一处） */
