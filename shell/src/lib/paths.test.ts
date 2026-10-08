@@ -3,30 +3,31 @@ import path from 'node:path';
 import { resolveDaemonPaths } from './paths';
 
 describe('resolveDaemonPaths', () => {
-  it('打包态：三件路径均以 resourcesPath 为根，win join 形态（dist/serve/daemon.js、dist/runtime.js、dist-gui）', () => {
+  it('打包态：daemon/runtime 两件指 resourcesPath/app-dist CJS 束（H3-T2 build:app 产物），dist-gui 同根，win join 形态', () => {
     const resourcesPath = 'C:\\sunshinex\\resources';
     const devRepoRoot = 'D:\\repo\\sunshinex';
     const paths = resolveDaemonPaths(true, resourcesPath, devRepoRoot);
 
     expect(paths.daemonEntry).toBe(
-      path.join(resourcesPath, 'dist', 'serve', 'daemon.js'),
+      path.join(resourcesPath, 'app-dist', 'daemon.cjs'),
     );
     expect(paths.buildModelEntry).toBe(
-      path.join(resourcesPath, 'dist', 'runtime.js'),
+      path.join(resourcesPath, 'app-dist', 'runtime.cjs'),
     );
     expect(paths.staticRoot).toBe(path.join(resourcesPath, 'dist-gui'));
 
     // win 路径 join 形态：反斜杠分隔，前缀 + 三件文件名逐字出现。
     expect(paths.daemonEntry.startsWith(resourcesPath + path.sep)).toBe(true);
-    expect(paths.daemonEntry.endsWith('\\dist\\serve\\daemon.js')).toBe(true);
-    expect(paths.buildModelEntry.endsWith('\\dist\\runtime.js')).toBe(true);
+    expect(paths.daemonEntry.endsWith('\\app-dist\\daemon.cjs')).toBe(true);
+    expect(paths.buildModelEntry.endsWith('\\app-dist\\runtime.cjs')).toBe(true);
     expect(paths.staticRoot.endsWith('\\dist-gui')).toBe(true);
 
-    // 打包态不受 devRepoRoot 影响。
+    // 打包态不受 devRepoRoot 影响，且不再指向 dev 臂的 dist/ 编译产物形。
     expect(JSON.stringify(paths)).not.toContain(devRepoRoot);
+    expect(JSON.stringify(paths)).not.toContain('dist\\serve');
   });
 
-  it('开发态：三件路径同构挂在 devRepoRoot 下，与 resourcesPath 无关', () => {
+  it('开发态：三件路径同构挂在 devRepoRoot 下（主仓 dist 编译产物形），与 resourcesPath 无关', () => {
     const resourcesPath = 'C:\\sunshinex\\resources';
     const devRepoRoot = 'D:\\repo\\sunshinex';
     const paths = resolveDaemonPaths(false, resourcesPath, devRepoRoot);

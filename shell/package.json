@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "electron .",
     "build": "node esbuild.mjs",
+    "build:app": "node esbuild.mjs --app",
     "test": "vitest run",
     "smoke": "node ../../scripts/shell-smoke.mjs"
   },
