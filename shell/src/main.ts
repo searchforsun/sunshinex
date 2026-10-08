@@ -74,6 +74,9 @@ function focusMainWindow(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // 冒烟态禁硬件加速:发布链满载环境 GPU 进程可致首绘久滞(ready-to-show 不达,守卫误杀);
+  // 仅 --shell-smoke 生效,正常启动零影响
+  if (parseSmokeArgv(process.argv).smoke) app.disableHardwareAcceleration();
   void app.whenReady().then(async () => {
     try {
       // 两态路径：打包态以 resourcesPath 为根；开发态 getAppPath()=shell 目录（仓根直接子包），

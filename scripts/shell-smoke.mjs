@@ -35,19 +35,19 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-// win32 下 pnpm 是 .cmd，须 shell 拼装（整命令单字符串传，避开 args+shell 的 DEP0190）；
-// POSIX 下不用 shell：args 数组直 spawn（若沿用单串会被整体当作可执行名 → ENOENT），
-// detached 建进程组，超时可整组 kill
-const SMOKE_ARGS = ['--filter', 'sunshinex-shell', 'exec', 'electron', '.', '--shell-smoke'];
-const child =
-  process.platform === 'win32'
-    ? spawn(`pnpm ${SMOKE_ARGS.join(' ')}`, { cwd: repoRoot, stdio: 'inherit', shell: true })
-    : spawn('pnpm', SMOKE_ARGS, {
-        cwd: repoRoot,
-        stdio: 'inherit',
-        env: process.env,
-        detached: true,
-      });
+// 直呼 electron 发行二进制（等价 `electron .`，cli.js 只做转发）——发布链曾现 pnpm exec
+// bin 解析瞬态失败（ERR_PNPM "Command electron not found"，实跑已起、门禁误杀），关键门禁不经包管器。
+const ELECTRON_EXE = path.join(repoRoot, 'shell', 'node_modules', 'electron', 'dist', 'electron.exe');
+if (!fs.existsSync(ELECTRON_EXE)) {
+  console.error(`[shell-smoke] 未找到 ${ELECTRON_EXE}（先 pnpm install + 保留 electron 二进制）`);
+  process.exit(1);
+}
+const child = spawn(ELECTRON_EXE, ['.', '--shell-smoke'], {
+  cwd: path.join(repoRoot, 'shell'),
+  stdio: 'inherit',
+  env: process.env,
+  detached: process.platform !== 'win32',
+});
 
 let timedOut = false;
 const timer = setTimeout(() => {
