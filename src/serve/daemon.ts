@@ -1020,6 +1020,7 @@ export class GuiDaemon {
     // T2 工作区注册表 + 恢复面：workspaces 扫描 / sessions 列档 / dirpicker 目录选择
     { method: 'GET', path: '/workspaces', auth: true, run: async (_req, res) => this.handleWorkspaces(res) },
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
+    { method: 'GET', path: '/sessions/recent', auth: true, run: async (_req, res) => this.handleSessionsRecent(res) },
     { method: 'GET', path: '/commands', auth: true, run: async (_req, res) => this.send(res, 200, { ...listCommands(), supported: COMMAND_SUPPORT }) },
     { method: 'POST', path: '/session/:id/command', auth: true, run: (req, res, p) => this.handleSessionCommand(req, res, p.id) },
     { method: 'GET', path: '/dirpicker', auth: true, run: async (req, res) => this.handleDirpicker(req, res) },
@@ -1848,6 +1849,37 @@ export class GuiDaemon {
     }
     rows.sort((a, b) => b.mtime - a.mtime);
     this.send(res, 200, rows);
+  }
+
+  /** GET /sessions/recent(G10-C2):跨工作区扁平最近会话(侧栏 Recents 区数据源)——遍历注册表
+   *  逐 dataDir listSessions 归并,updatedAt 降序取前 20;每条附 root/slug(attach 两步寻址用) */
+  private handleSessionsRecent(res: http.ServerResponse): void {
+    type RecentRow = { id: string; updatedAt: number; firstUser?: string; root: string; slug: string };
+    const out: RecentRow[] = [];
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
+    } catch {
+      this.send(res, 200, out);
+      return;
+    }
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue;
+      const dataDir = path.join(projectsRoot(), ent.name, 'data');
+      let root: string | undefined;
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
+        if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
+      } catch {
+        root = undefined;
+      }
+      if (root === undefined) continue; // 无 root 不可 attach,不进 Recents
+      for (const r of listSessions(dataDir)) {
+        out.push({ id: r.id, updatedAt: r.updatedAt, ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}), root, slug: ent.name });
+      }
+    }
+    out.sort((a, b) => b.updatedAt - a.updatedAt);
+    this.send(res, 200, out.slice(0, 20));
   }
 
   /** GET /sessions?root=（T2）：root 必填（缺省 400——无 root 无法定位 dataDir）→ listSessions
