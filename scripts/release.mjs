@@ -352,6 +352,15 @@ if (TARGET_VERSION && TARGET_VERSION !== VERSION) {
   TGZ_NAME = `sunshinex-agent-${VERSION}.tgz`;
 }
 
+// ---------- npm pack 前置：GUI 静态产物入包 ----------
+// 安装形态开箱即用（2026-10-08 用户实测定案）：tgz 恒带 web GUI——build gui 后拷 dist-gui → 包根 gui-dist/
+// （package.json files 已列；.gitignore 已忽略）。--no-gui 只关桌面安装包，不关此面。
+say('GUI 产物入包（gui build → gui-dist/）');
+run(PNPM, ['--dir', 'gui', 'run', 'build'], { stdio: 'inherit' });
+fs.rmSync(path.join(ROOT, 'gui-dist'), { recursive: true, force: true });
+fs.cpSync(path.join(ROOT, 'dist-gui'), path.join(ROOT, 'gui-dist'), { recursive: true });
+if (!fs.existsSync(path.join(ROOT, 'gui-dist', 'index.html'))) die('gui-dist/index.html 缺失——gui build 未产出');
+
 // ---------- npm pack ----------
 say(`npm pack → ${TGZ_NAME}`);
 const packOut = run(NPM, ['pack', '--cache', '.npm-cache']).stdout || '';

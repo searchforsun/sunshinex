@@ -48,6 +48,8 @@
   "files": [
     "dist",
     "README.md",
-    "MANUAL.md"
+    "MANUAL.md",
+    "gui-dist",
+    "MANUAL-GUI.md"
   ]
 }

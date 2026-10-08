@@ -51,9 +51,17 @@ export async function runServe(args: CliArgs): Promise<void> {
     port = n;
   }
 
-  // 静态根（G3）：cwd 相对 dist-gui（serve 从仓库根跑即对）；显式传入 daemon 单点化缺省口径——
-  // 启动探测一次 index.html，在场挂静态（GET 兜底 index.html/SPA），缺场 API-only（404 hint）
-  const staticRoot = path.resolve('dist-gui');
+  // 静态根解析链（2026-10-08 安装用户实测定案）：①cwd/dist-gui（开发仓形态，显式覆盖位）——
+  // 缺场回落 ②npm 包内 gui-dist/（安装形态：sunshinex serve 在任意目录开箱即得浏览器 GUI；
+  // 由发版链构建拷入 package root，见 scripts/release.mjs pack 前置）。两级皆缺才 API-only（404 hint）。
+  // 启动探测一次 index.html，在场挂静态（GET 兜底 index.html/SPA）。
+  const cwdGui = path.resolve('dist-gui');
+  const pkgGui = path.resolve(__dirname, '..', '..', '..', 'gui-dist'); // dist/cli/commands/ 三级上溯 → 包根
+  const staticRoot = fs.existsSync(path.join(cwdGui, 'index.html'))
+    ? cwdGui
+    : fs.existsSync(path.join(pkgGui, 'index.html'))
+      ? pkgGui
+      : cwdGui; // 两级皆缺：保留旧口径（探测失败 → API-only hint）
   const daemon = new GuiDaemon({ model: buildModel(args.flags), staticRoot });
   const s = await daemon.start({ port });
 
