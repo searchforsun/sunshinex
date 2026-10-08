@@ -49,6 +49,8 @@ pnpm shell:dist     # 全链：版本同步→引擎→GUI→壳→双安装包�
 
 > 本机网络受限时需双镜像环境变量（仅环境传入，不进仓配）：`ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 与 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。构建失败提示里会打印同款命令。
 
+**发版到 GitHub（维护者，与 TUI 同一流程）**：`node scripts/release.mjs [--bump patch|--version X.Y.Z]` —— 同一 Release 同一 tag 上传**三类安装包**（TUI tgz + GUI Setup/portable exe）；版本落库时自动同步子包、验证链含 GUI/e2e/壳冒烟、安装包过产物级冒烟再上传。`--no-gui` 只发 TUI；`--dry-run` 轻量预览附件与链接；同版本重发加 `--clobber`。用法详见脚本 `--help` 与 README 发版段。
+
 ## 三、界面总览（三栏）
 
 ```
