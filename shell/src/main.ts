@@ -9,7 +9,7 @@ import { startDaemon } from './daemon';
 import type { ShellDaemon } from './daemon';
 
 /** smoke 收口总超时（ms）：ready-to-show 未至 / 收口悬挂的整体守卫，超时按失败退 1（T4 门禁判据） */
-const SMOKE_TOTAL_TIMEOUT_MS = 15_000;
+const SMOKE_TOTAL_TIMEOUT_MS = 45_000; // 满载机器(发版验证链后)冷启余量:15s 曾在发布环境瞬态超时,45s 仍远小于外层门
 /** daemon close 的有界等待（ms）：close 悬挂不阻塞退出——有界等待完仍按正常收口走 quit。
  *  H2-T2 抽公共：smoke 收口与 runQuit 退出序共用同一有界口径（原 SMOKE_CLOSE_TIMEOUT_MS）。 */
 const DAEMON_CLOSE_TIMEOUT_MS = 5_000;

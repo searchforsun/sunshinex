@@ -24,7 +24,7 @@ const REQUIRED_ARTIFACTS = [
 ];
 
 /** 外层总超时（ms）：正常路径窗口闪现即退（主进程内 15s 守卫先行），30s 只兜 spawn 层悬挂 */
-const TOTAL_TIMEOUT_MS = 30_000;
+const TOTAL_TIMEOUT_MS = 90_000;
 
 const missing = REQUIRED_ARTIFACTS.filter((a) => !fs.existsSync(a.file));
 if (missing.length > 0) {
