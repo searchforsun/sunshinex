@@ -198,7 +198,21 @@ if (CHANNEL) {
  * 上层拿到的是「什么都没有」（状态码 0）——本次用户实跑即此形态；fetch 的失败带 cause.code
  * （ENOTFOUND / ETIMEDOUT / CERT_* 等），能直接说出属于哪一类网络问题，依赖面同时收窄一层。
  */
-async function ghApi(method, url, token, opts = {}) {
+/** 网络层瞬断重试：本机到 GitHub 的链路呈间歇(GFW 态——curl/fetch 时通时断 ECONNABORTED/ETIMEDOUT)，
+ * 构建+上传的长窗口内必遇；仅对传输层失败(status===0 且 cause 命中瞬断族)重试 3 次(5s/15s 退避)，
+ * HTTP 4xx/5xx 不重试(服务端语义)。 */
+const TRANSIENT = /ECONNABORTED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNRESET|EPIPE|socket hang up/i;
+async function ghApiWithRetry(method, url, token, opts = {}) {
+  for (let attempt = 1; ; attempt++) {
+    const res = await ghApiOnce(method, url, token, opts);
+    if (res.status !== 0 || !TRANSIENT.test(res.cause || '') || attempt >= 3) return res;
+    const wait = attempt === 1 ? 5_000 : 15_000;
+    console.log(`  (网络瞬断 ${res.cause}，${wait / 1000}s 后重试 ${attempt}/3)`);
+    await new Promise((r) => setTimeout(r, wait));
+  }
+}
+
+async function ghApiOnce(method, url, token, opts = {}) {
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
   const init = { method, headers };
   if (opts.json !== undefined) {
@@ -270,9 +284,9 @@ function apiFail(what, res) {
  * 以一句无信息的失败暴露；预检把同一判断提前到约一秒。--dry-run 恒不联网，故预检只在真实发版跑。
  */
 async function preflight(token) {
-  const repo = await ghApi('GET', `https://api.github.com/repos/${REPO}`, token);
+  const repo = await ghApiWithRetry('GET', `https://api.github.com/repos/${REPO}`, token);
   if (repo.status !== 200) apiFail('仓库访问预检', repo);
-  const who = await ghApi('GET', 'https://api.github.com/user', token);
+  const who = await ghApiWithRetry('GET', 'https://api.github.com/user', token);
   let login = '';
   try {
     login = JSON.parse(who.body)?.login || '';
@@ -398,14 +412,14 @@ if (CHANNEL.kind === 'gh') {
   const API = `https://api.github.com/repos/${REPO}/releases`;
   say(`发布 ${TAG}（GitHub API，${ASSETS.length} 个附件）`);
   // 存在性用 GET 直接问：一次调用同时拿到状态与已有 Release 正文，不去猜 HEAD 的行为
-  const probe = await ghApi('GET', `${API}/tags/${TAG}`, CHANNEL.token);
+  const probe = await ghApiWithRetry('GET', `${API}/tags/${TAG}`, CHANNEL.token);
   let release;
   if (probe.status === 200) {
     release = JSON.parse(probe.body);
     if (!CLOBBER) die(`Release ${TAG} 已存在：发新版本用 --version/--bump，覆盖该版本附件加 --clobber`);
     say(`Release ${TAG} 已存在（id=${release.id}），--clobber 覆盖同名附件`);
   } else if (probe.status === 404) {
-    const created = await ghApi('POST', API, CHANNEL.token, {
+    const created = await ghApiWithRetry('POST', API, CHANNEL.token, {
       json: JSON.stringify({ tag_name: TAG, name: TAG, body: NOTES, target_commitish: HEAD }),
     });
     if (created.status !== 201) apiFail('创建 Release', created);
@@ -421,7 +435,7 @@ if (CHANNEL.kind === 'gh') {
     for (const a of ASSETS) {
       const dup = (Array.isArray(release.assets) ? release.assets : []).find((x) => x.name === a.name);
       if (dup) {
-        const del = await ghApi('DELETE', `https://api.github.com/repos/${REPO}/releases/assets/${dup.id}`, CHANNEL.token);
+        const del = await ghApiWithRetry('DELETE', `https://api.github.com/repos/${REPO}/releases/assets/${dup.id}`, CHANNEL.token);
         if (del.status !== 204 && del.status !== 200) apiFail(`删除同名旧附件 ${dup.name}`, del);
         say(`已删除同名旧附件 ${dup.name}（${Math.max(1, Math.round((dup.size || 0) / 1024))}KB）`);
       }
@@ -429,7 +443,7 @@ if (CHANNEL.kind === 'gh') {
   }
   // 逐附件上传：?name= 须 URL 编码（Setup 产物名含空格）；117MB 级 Buffer 整读可行（GitHub 单附件上限 2GB）
   for (const a of ASSETS) {
-    const up = await ghApi('POST', `${uploadUrl}?name=${encodeURIComponent(a.name)}`, CHANNEL.token, { file: a.file });
+    const up = await ghApiWithRetry('POST', `${uploadUrl}?name=${encodeURIComponent(a.name)}`, CHANNEL.token, { file: a.file });
     if (up.status !== 201) apiFail(`附件上传 ${a.name}`, up);
     say(`附件已上传：${a.name}（${assetSize(a.file)}，${a.label}）`);
   }
