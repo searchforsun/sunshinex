@@ -2,9 +2,10 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Coins, Footprints } from 'lucide-react';
+import { Coins, Copy, Footprints } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
+import { groupEntriesByDay } from '../chat-groups';
 import { DiffPanel } from '../diff-panel';
 import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent } from '../../../src/types';
@@ -45,6 +46,9 @@ import type { SessionEvent } from '../../../src/types';
  * G8d T5 交互清单:①输入面 textarea 自增高(rows 随换行数 1-6 派生;Enter 提交 preventDefault,
  * Shift+Enter 换行走默认);②流式条末挂 span.sx-stream-cursor(闪灭动画在 app.css 特批小段);
  * ③状态条 tokens/steps 改图标+数字组(sx-stat 组类名+lucide Coins/Footprints,样式面归 G8e)。
+ * G9 B3b(spec docs/superpowers/specs/2026-10-08-codex-desktop-1to1-design.md §3):用户条目
+ * UserEntryView(memo)右对齐胶囊+hover 浮现复制(剥 `> ` 前缀写剪贴板,失败 1.5s 示「未复制」);
+ * 条目按日分组(groupEntriesByDay 纯投影)跨日插居中日期分隔——每日组顶部一条,与 Codex 实机同形。
  */
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
@@ -281,6 +285,43 @@ function AskCard({ req, onSubmit, onDismiss }: { req: GuiAskReq; onSubmit: (answ
     </div>
   );
 }
+
+/** 用户条目(Codex 形,G9 spec §3.1):右对齐胶囊(前景 5%/8% 底)+ 下方 hover 浮现复制钮;
+ *  Edit 钮不做(无会话回退功能,spec §0 非目标)。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
+ *  复制失败(权限等)钮 1.5s 示「未复制」tertiary 态,不弹错。memo 同 ChatEntryView——流式帧
+ *  只重渲染流式条(未包 memo 时每帧带动 user 条 md 重渲染,计数回归被击穿)。 */
+const UserEntryView = memo(function UserEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
+  const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
+  const copy = (): void => {
+    const text = entry.md.replace(/^> ?/gm, '');
+    navigator.clipboard?.writeText(text).then(
+      () => setCopied('ok'),
+      () => setCopied('fail'),
+    );
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied('idle'), 1500);
+  };
+  return (
+    <div className="entry entry-user">
+      <div className="user-bubble">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.md}</ReactMarkdown>
+      </div>
+      <div className="user-actions">
+        <button type="button" className="user-action" title={copied === 'fail' ? '未复制' : copied === 'ok' ? '已复制' : '复制'} onClick={copy}>
+          <Copy size={12} strokeWidth={1.75} aria-hidden="true" />
+          {copied === 'ok' ? '已复制' : copied === 'fail' ? '未复制' : '复制'}
+        </button>
+      </div>
+    </div>
+  );
+});
 
 /** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销)。
  *  G8d T5:streaming 条末挂流式光标 span.sx-stream-cursor(闪灭动画定义在 app.css 特批小段;done 收段
@@ -524,22 +565,32 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             <div className="chat-empty-hint">描述目标即可:模型流式作答,工具实时执行,写操作需审批</div>
           </div>
         )}
-        {chat.entries.map((entry) =>
-          entry.kind === 'tool' ? (
-            <ToolEntryView
-              key={entry.key}
-              entry={entry}
-              info={toolInfoOf(entry)}
-              conn={conn}
-              sessionId={sessionId}
-              callId={callIdOf(entry)}
-              onOpenFile={onOpenFile}
-              onOpenDiff={onOpenDiff}
-            />
-          ) : (
-            <ChatEntryView key={entry.key} entry={entry} />
+        {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染) */}
+        {groupEntriesByDay(chat.entries).flatMap((g) => [
+          g.label !== '' ? (
+            <div key={`day:${g.key}`} className="chat-day-sep" role="separator" aria-label={g.label}>
+              {g.label}
+            </div>
+          ) : null,
+          ...g.entries.map((entry) =>
+            entry.kind === 'tool' ? (
+              <ToolEntryView
+                key={entry.key}
+                entry={entry}
+                info={toolInfoOf(entry)}
+                conn={conn}
+                sessionId={sessionId}
+                callId={callIdOf(entry)}
+                onOpenFile={onOpenFile}
+                onOpenDiff={onOpenDiff}
+              />
+            ) : entry.kind === 'user' ? (
+              <UserEntryView key={entry.key} entry={entry} />
+            ) : (
+              <ChatEntryView key={entry.key} entry={entry} />
+            ),
           ),
-        )}
+        ])}
       </main>
       <footer className="composer">
         {/* G8d T5 输入面 textarea 自增高:rows 随内容换行数 1-6 派生(state 单源,清空/提交自然回 1);

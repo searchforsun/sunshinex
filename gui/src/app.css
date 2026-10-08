@@ -726,7 +726,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 /* —— 会话流去盒化:文档流(Codex 式)—— */
 .entry { background: transparent; border: none; border-radius: 0; padding: 6px 2px; }
 .entry:hover { border: none; box-shadow: none; }
-.entry-user { border-left: none; color: var(--fg); font-weight: 500; }
+/* entry-user 右胶囊(Codex 形)详见 G9-B3 段 */
 .entry-user:hover { border-left: none; }
 .entry-notice { background: transparent; border: none; color: var(--fg-secondary); font-size: 12px; }
 .entry-error {
@@ -873,3 +873,31 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 }
 .sx-menu-pop { border: none; border-radius: var(--radius-lg); box-shadow: var(--elev-prominent); }
 .sx-settings-back { border-radius: var(--radius-sm); }
+
+/* ===== G9-B3 会话流(spec §3):用户右胶囊/日期分隔/流区限宽 ===== */
+.entry-user { display: flex; flex-direction: column; align-items: flex-end; font-weight: 400; }
+.entry-user .user-bubble {
+  max-width: 80%;
+  background: var(--bubble-user);
+  border-radius: var(--radius-composer);
+  padding: 8px 12px;
+}
+.entry-user .user-bubble blockquote { margin: 0; padding: 0; border: none; }
+.entry-user .user-actions { display: flex; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
+.entry-user .user-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-tertiary);
+  font-size: 12px;
+}
+.entry-user .user-action:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+/* 日期分隔行:居中灰小字(Codex 形) */
+.chat-day-sep { align-self: center; margin: 8px 0; font-size: 12px; color: var(--fg-tertiary); }
+/* 流区限宽 800 居中 + 条目距 16px */
+.chat { max-width: calc(var(--chat-max) + 2 * var(--thread-gutter)); margin: 0 auto; width: 100%; gap: 16px; }
+/* 空态构图:标题升 Codex 档 */
+.chat-empty-title { font-size: 22px; }
