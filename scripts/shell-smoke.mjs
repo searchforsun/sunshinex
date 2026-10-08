@@ -35,14 +35,18 @@ if (missing.length > 0) {
 }
 
 // win32 下 pnpm 是 .cmd，须 shell 拼装（整命令单字符串传，避开 args+shell 的 DEP0190）；
-// POSIX 下 detached 建进程组，超时可整组 kill
-const SMOKE_COMMAND = 'pnpm --filter sunshinex-shell exec electron . --shell-smoke';
-const child = spawn(SMOKE_COMMAND, {
-  cwd: repoRoot,
-  stdio: 'inherit',
-  shell: process.platform === 'win32',
-  detached: process.platform !== 'win32',
-});
+// POSIX 下不用 shell：args 数组直 spawn（若沿用单串会被整体当作可执行名 → ENOENT），
+// detached 建进程组，超时可整组 kill
+const SMOKE_ARGS = ['--filter', 'sunshinex-shell', 'exec', 'electron', '.', '--shell-smoke'];
+const child =
+  process.platform === 'win32'
+    ? spawn(`pnpm ${SMOKE_ARGS.join(' ')}`, { cwd: repoRoot, stdio: 'inherit', shell: true })
+    : spawn('pnpm', SMOKE_ARGS, {
+        cwd: repoRoot,
+        stdio: 'inherit',
+        env: process.env,
+        detached: true,
+      });
 
 let timedOut = false;
 const timer = setTimeout(() => {
