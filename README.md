@@ -115,6 +115,9 @@ scripts/release.mjs --bump patch|minor|major   # 递增版本号，随发版提�
 scripts/release.mjs --version 0.3.1            # 指定版本发版（写回 package.json）
 scripts/release.mjs --dry-run                  # 只验证 + 打包预览，不触网不落库
 scripts/release.mjs --version 0.3.1 --clobber  # 同版本重发（覆盖附件，须显式授权）
+scripts/release.mjs --no-gui                 # 只发 TUI tgz（跳过 GUI 安装包构建上传）
+
+一次发版 = 同一 Release 同一 tag 上传三类安装包：TUI tgz + GUI Setup/portable exe（版本随根 package.json 单源同步；验证链含 GUI/e2e/壳冒烟；本机网络受限带双镜像 env，见 MANUAL-GUI 二节）
 ```
 
 - 版本语义：默认不覆盖、不递增，每个版本一个新 tag + 新安装链接，旧链接永久可回溯。

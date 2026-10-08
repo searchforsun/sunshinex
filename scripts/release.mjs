@@ -15,7 +15,7 @@ const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const PNPM = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 const usage = () => {
-  console.log(`用法: scripts/release.mjs [--version 0.2.0 | --bump patch|minor|major] [--dry-run] [--skip-verify] [--allow-dirty] [--clobber]
+  console.log(`用法: scripts/release.mjs [--version 0.2.0 | --bump patch|minor|major] [--dry-run] [--skip-verify] [--allow-dirty] [--clobber] [--no-gui]
 
   --version X.Y.Z  以指定版本号发版：写回 package.json 并随发版提交推送（固定版本，不自动递增）
   --bump patch     发版前自动递增版本号并写回 package.json（随发版提交推送）：patch=0.1.0→0.1.1
@@ -24,6 +24,12 @@ const usage = () => {
   --skip-verify    跳过全量测试与 selfcheck（不推荐）
   --allow-dirty    允许工作区未提交/未推送时发布（tag 打在远端 HEAD，本地未推送提交不包含在内）
   --clobber        Release 已存在时覆盖同名附件（同版本重发用；缺省拒绝，防误覆盖已发布版本）
+  --no-gui         跳过 GUI 安装包（Setup/portable exe）的构建与上传，只发 TUI tgz
+                   （非 Windows 主机无 wine 无法出 win 安装包时用；GUI 代码门禁仍照跑）
+
+发版产物（同一 Release、同一版本 tag、不同安装包）：
+  TUI：sunshinex-agent-<ver>.tgz（npm 直装链接）
+  GUI：sunshinex Setup <ver>.exe + sunshinex <ver> portable.exe（版本随根 package.json 单源同步）
 
 版本语义（链接随版本走，一次发布一个永久可回溯的地址）:
   每次发版必须对应新版本号 → 新 tag + 新链接，旧版本 Release 永不覆盖
@@ -80,6 +86,7 @@ let DRY_RUN = false;
 let SKIP_VERIFY = false;
 let ALLOW_DIRTY = false;
 let CLOBBER = false;
+let NO_GUI = false;
 let TARGET_VERSION = '';
 let BUMP = '';
 const argv = process.argv.slice(2);
@@ -89,6 +96,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--skip-verify') SKIP_VERIFY = true;
   else if (a === '--allow-dirty') ALLOW_DIRTY = true;
   else if (a === '--clobber') CLOBBER = true;
+  else if (a === '--no-gui') NO_GUI = true;
   else if (a === '--version') {
     if (i + 1 >= argv.length) die('--version 需要版本号参数，如 --version 0.2.0');
     TARGET_VERSION = argv[++i];
@@ -299,11 +307,17 @@ if (!DRY_RUN && !ALLOW_DIRTY) {
 }
 
 // ---------- 全量验证 ----------
+// 发版产物含 GUI 安装包 → 验证面对齐门禁口径：主仓全量+selfcheck 之外，GUI 全量（含 typecheck/e2e）、
+// 壳单测与开发态冒烟一并进门（--skip-verify 整体跳过，不拆单放水）。
 if (!SKIP_VERIFY) {
-  say('全量验证（tsc + node --test 全量 + selfcheck）');
+  say('全量验证（tsc + node --test 全量 + selfcheck + GUI/e2e + 壳冒烟）');
   if (has(PNPM) || has('pnpm')) run(PNPM, ['run', 'test'], { stdio: 'inherit' });
   else run(NPM, ['run', 'test'], { stdio: 'inherit' });
   run(process.execPath, ['dist/cli/index.js', 'selfcheck'], { stdio: 'inherit' });
+  run(PNPM, ['--dir', 'gui', 'run', 'test'], { stdio: 'inherit' });
+  run(PNPM, ['--dir', 'gui', 'run', 'test:e2e'], { stdio: 'inherit' });
+  run(PNPM, ['--filter', 'sunshinex-shell', 'run', 'test'], { stdio: 'inherit' });
+  run(process.execPath, ['scripts/shell-smoke.mjs'], { stdio: 'inherit' });
 }
 
 // ---------- 版本落库 ----------
@@ -313,8 +327,10 @@ if (TARGET_VERSION && TARGET_VERSION !== VERSION) {
     console.log(`  安装链接：npm install -g https://github.com/${REPO}/releases/download/v${TARGET_VERSION}/sunshinex-agent-${TARGET_VERSION}.tgz`);
     process.exit(0);
   }
-  say(`版本号 ${VERSION} → ${TARGET_VERSION}（写回 package.json，随发版提交推送）`);
+  say(`版本号 ${VERSION} → ${TARGET_VERSION}（写回 package.json + 子包同步，随发版提交推送）`);
   run(NPM, ['version', TARGET_VERSION, '--no-git-tag-version', '--cache', '.npm-cache'], { stdio: 'ignore' });
+  // 子包（gui/shell）版本随根单源同步——发版提交携带齐整版本面，GUI 安装包名与本 tag 一致
+  run(process.execPath, ['scripts/sync-versions.mjs'], { stdio: 'inherit' });
   run('git', ['add', '-A'], { stdio: 'inherit' });
   run('git', ['commit', '-m', `chore(release): v${TARGET_VERSION}`], { stdio: 'inherit' });
   if (run('git', ['push'], { stdio: 'inherit', allowFail: true }).status !== 0) die('版本提交推送失败：处理后重发');
@@ -331,30 +347,60 @@ const bytes = fs.statSync(TGZ).size;
 const humanSize = bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`;
 say(`包体：${humanSize} ${TGZ}`);
 
-const DOWNLOAD_URL = `https://github.com/${REPO}/releases/download/${TAG}/${TGZ}`;
-const NOTES = `SunshineX TUI ${TAG}. Install: npm install -g ${DOWNLOAD_URL}`;
+// ---------- 附件清单（同 Release 多安装包）----------
+// 与 TUI 同一 Release 同一 tag：版本随根单源（shell:dist 链首自动 sync-versions），产物名即版本凭证。
+const SETUP_NAME = `sunshinex Setup ${VERSION}.exe`;
+const PORTABLE_NAME = `sunshinex ${VERSION} portable.exe`;
+const ASSETS = [{ file: TGZ, name: TGZ_NAME, label: 'TUI tgz' }];
+const assetSize = (f) => {
+  const b = fs.statSync(f).size;
+  return b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
+};
+const assetUrl = (name) => `https://github.com/${REPO}/releases/download/${TAG}/${encodeURIComponent(name)}`;
+const DOWNLOAD_URL = assetUrl(TGZ_NAME);
+const NOTES_HEAD = `SunshineX ${TAG}. TUI: npm install -g ${DOWNLOAD_URL}`;
+const NOTES = NO_GUI ? `SunshineX TUI ${TAG}. Install: npm install -g ${DOWNLOAD_URL}` : `${NOTES_HEAD} · GUI desktop: ${assetUrl(SETUP_NAME)} / ${assetUrl(PORTABLE_NAME)}`;
 const HEAD = run('git', ['rev-parse', 'HEAD']).stdout.trim();
 
 if (DRY_RUN) {
-  say(`--dry-run 结束：未创建 Release、未上传附件。正式发布将经 ${CHANNEL ? CHANNEL.label : '（当前无可用通道，需先补通道）'} 上传 ${TGZ_NAME}`);
+  // dry-run 保持轻量（沿「只验证 + 打包」口径）：GUI 安装包不构建，只预览将产出的附件名与链接。
+  say(`--dry-run 结束：未构建 GUI 安装包（正式发布将经 shell:dist 产出并冒烟）、未创建 Release、未上传附件。上传通道：${CHANNEL ? CHANNEL.label : '（当前无可用通道，需先补通道）'}`);
+  console.log(`  附件：${TGZ_NAME}`);
+  if (!NO_GUI) console.log(`  附件（构建后加入）：${SETUP_NAME} / ${PORTABLE_NAME}`);
   console.log(`  安装链接：npm install -g ${DOWNLOAD_URL}`);
   process.exit(0);
 }
 
-// ---------- 上传 ----------
+// ---------- GUI 安装包构建（Setup + portable；--no-gui 跳过；dry-run 已在上一步退出）----------
+if (!NO_GUI) {
+  say('构建 GUI 安装包（shell:dist 全链：版本同步→引擎→GUI→壳→NSIS+portable）');
+  run(PNPM, ['run', 'shell:dist'], { stdio: 'inherit' });
+  const SETUP = path.join(ROOT, 'shell', 'release', SETUP_NAME);
+  const PORTABLE = path.join(ROOT, 'shell', 'release', PORTABLE_NAME);
+  if (!fs.existsSync(SETUP)) die(`GUI 安装包缺失：${SETUP}（electron-builder 产物名不符或构建失败）`);
+  if (!fs.existsSync(PORTABLE)) die(`GUI 安装包缺失：${PORTABLE}`);
+  // 产物级冒烟门禁（portable exe 启动→就绪→有序退；与提交门禁同判据）
+  say('GUI 安装包冒烟（shell-dist-smoke）');
+  run(process.execPath, ['scripts/shell-dist-smoke.mjs'], { stdio: 'inherit' });
+  ASSETS.push({ file: SETUP, name: SETUP_NAME, label: 'GUI Setup' });
+  ASSETS.push({ file: PORTABLE, name: PORTABLE_NAME, label: 'GUI portable' });
+  say(`GUI 安装包就绪：${SETUP_NAME} + ${PORTABLE_NAME}`);
+}
+
+// ---------- 上传（同 Release 多附件）----------
 // CHANNEL 非空由开头的早决保证（真实发版缺通道已在验证前 die；dry-run 已在 pack 后 exit）。
 if (CHANNEL.kind === 'gh') {
-  say(`创建 Release ${TAG}（gh CLI）`);
+  say(`创建 Release ${TAG}（gh CLI，${ASSETS.length} 个附件）`);
   if (run('gh', ['release', 'view', TAG, '-R', REPO], { allowFail: true }).status === 0) {
     if (!CLOBBER) die(`Release ${TAG} 已存在：发新版本用 --version/--bump，覆盖该版本附件加 --clobber`);
-    run('gh', ['release', 'upload', TAG, TGZ, '-R', REPO, '--clobber'], { stdio: 'inherit' });
-    say(`Release ${TAG} 附件覆盖上传完成`);
+    run('gh', ['release', 'upload', TAG, ...ASSETS.map((a) => a.file), '-R', REPO, '--clobber'], { stdio: 'inherit' });
+    say(`Release ${TAG} 附件覆盖上传完成（${ASSETS.map((a) => a.name).join(' + ')}）`);
   } else {
-    run('gh', ['release', 'create', TAG, TGZ, '-R', REPO, '--target', HEAD, '--title', TAG, '--notes', NOTES], { stdio: 'inherit' });
+    run('gh', ['release', 'create', TAG, ...ASSETS.map((a) => a.file), '-R', REPO, '--target', HEAD, '--title', TAG, '--notes', NOTES], { stdio: 'inherit' });
   }
 } else {
   const API = `https://api.github.com/repos/${REPO}/releases`;
-  say(`发布 ${TAG}（GitHub API）`);
+  say(`发布 ${TAG}（GitHub API，${ASSETS.length} 个附件）`);
   // 存在性用 GET 直接问：一次调用同时拿到状态与已有 Release 正文，不去猜 HEAD 的行为
   const probe = await ghApi('GET', `${API}/tags/${TAG}`, CHANNEL.token);
   let release;
@@ -376,18 +422,27 @@ if (CHANNEL.kind === 'gh') {
   // --clobber 的真语义：REST 上传同名附件一律 422 already_exists，必须先删旧附件再传。
   // gh 的 --clobber 是它自己封装了这一步；API 通道此前只认了参数没做这件事，故「已存在 + --clobber」必然 422。
   if (CLOBBER) {
-    const dup = (Array.isArray(release.assets) ? release.assets : []).find((a) => a.name === TGZ_NAME);
-    if (dup) {
-      const del = await ghApi('DELETE', `https://api.github.com/repos/${REPO}/releases/assets/${dup.id}`, CHANNEL.token);
-      if (del.status !== 204 && del.status !== 200) apiFail(`删除同名旧附件 ${dup.name}`, del);
-      say(`已删除同名旧附件 ${dup.name}（${Math.max(1, Math.round((dup.size || 0) / 1024))}KB）`);
+    for (const a of ASSETS) {
+      const dup = (Array.isArray(release.assets) ? release.assets : []).find((x) => x.name === a.name);
+      if (dup) {
+        const del = await ghApi('DELETE', `https://api.github.com/repos/${REPO}/releases/assets/${dup.id}`, CHANNEL.token);
+        if (del.status !== 204 && del.status !== 200) apiFail(`删除同名旧附件 ${dup.name}`, del);
+        say(`已删除同名旧附件 ${dup.name}（${Math.max(1, Math.round((dup.size || 0) / 1024))}KB）`);
+      }
     }
   }
-  const up = await ghApi('POST', `${uploadUrl}?name=${TGZ_NAME}`, CHANNEL.token, { file: TGZ });
-  if (up.status !== 201) apiFail('附件上传', up);
-  say(`附件已上传：${TGZ_NAME}（${humanSize}）`);
+  // 逐附件上传：?name= 须 URL 编码（Setup 产物名含空格）；117MB 级 Buffer 整读可行（GitHub 单附件上限 2GB）
+  for (const a of ASSETS) {
+    const up = await ghApi('POST', `${uploadUrl}?name=${encodeURIComponent(a.name)}`, CHANNEL.token, { file: a.file });
+    if (up.status !== 201) apiFail(`附件上传 ${a.name}`, up);
+    say(`附件已上传：${a.name}（${assetSize(a.file)}，${a.label}）`);
+  }
 }
 
 say('发布完成');
 console.log(`  Release 页：https://github.com/${REPO}/releases/tag/${TAG}`);
-console.log(`  安装命令：npm install -g ${DOWNLOAD_URL}`);
+console.log(`  TUI 安装命令：npm install -g ${DOWNLOAD_URL}`);
+if (!NO_GUI) {
+  console.log(`  GUI 安装包：${assetUrl(SETUP_NAME)}`);
+  console.log(`            ${assetUrl(PORTABLE_NAME)}`);
+}
