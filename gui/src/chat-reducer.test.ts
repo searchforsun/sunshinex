@@ -283,3 +283,15 @@ describe('纯函数性（immutable）', () => {
     expect(s2.entries[0]).not.toBe(s1.entries[0]);
   });
 });
+
+describe('条目时间戳(G9 B3a:日期分隔投影源)', () => {
+  it('事件条透传 e.ts;种子条透传快照 ts;本地回显就地取时', () => {
+    const e = ev('done', 'hi');
+    const s = fold([e]);
+    expect(s.entries[0]!.ts).toBe(e.ts);
+    const seeded = seedChatFromSnapshot([{ seq: 1, ts: 1728380001000, kind: 'user', md: '> yo' }], 'idle');
+    expect(seeded.entries[0]!.ts).toBe(1728380001000);
+    const echoed = appendUserMessage(initialChatState(), 'yo', 999);
+    expect(echoed.entries[0]!.ts).toBe(999);
+  });
+});

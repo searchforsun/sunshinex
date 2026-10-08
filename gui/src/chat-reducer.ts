@@ -18,12 +18,14 @@ import type { SessionEvent } from '../../src/types';
  * - streaming 条在 done/error/model-start/tool-call 收段——不留永久流式标（GUI 光标面）。
  */
 
-/** 对话流条目（md 原文；kind 样式钩子在渲染面，streaming=true 流式光标态） */
+/** 对话流条目（md 原文；kind 样式钩子在渲染面，streaming=true 流式光标态；ts 日期分隔投影源） */
 export interface ChatEntry {
   key: string;
   kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
   md: string;
   streaming?: boolean;
+  /** 条目时间（epoch ms;事件条透传 e.ts,种子条透传快照,本地回显/开条时刻就地取;无源可省） */
+  ts?: number;
 }
 
 /** chat 投影状态：entries 对话流 + 状态栏三指标 */
@@ -50,14 +52,14 @@ export function initialChatState(): ChatState {
 }
 
 /** 用户提交的本地回显条（`> text` 引用块形态，与归档面 transcript.submit 同款——resync 后由快照条取代） */
-export function appendUserMessage(s: ChatState, text: string): ChatState {
-  return { ...s, entries: [...s.entries, { key: `u${s.entries.length}`, kind: 'user', md: `> ${text}` }] };
+export function appendUserMessage(s: ChatState, text: string, ts?: number): ChatState {
+  return { ...s, entries: [...s.entries, { key: `u${s.entries.length}`, kind: 'user', md: `> ${text}`, ts: ts ?? Date.now() }] };
 }
 
 /** onResync 基线：snapshot.messages 直映射（md 原文、无 streaming；tokens/steps 0 起步——事件面续推） */
 export function seedChatFromSnapshot(messages: readonly SnapshotTranscriptEntry[], status: 'idle' | 'running'): ChatState {
   return {
-    entries: messages.map((m) => ({ key: `s${m.seq}`, kind: m.kind, md: m.md })),
+    entries: messages.map((m) => ({ key: `s${m.seq}`, kind: m.kind, md: m.md, ...(m.ts !== undefined ? { ts: m.ts } : {}) })),
     status,
     tokens: 0,
     steps: 0,
@@ -141,7 +143,7 @@ function onToken(s: ChatState, text: string): ChatState {
       return { ...s, entries: replaceAt(s.entries, i, { ...e, md: e.md + text }) };
     }
   }
-  return { ...s, entries: [...s.entries, { key: `a${s.entries.length}`, kind: 'assistant', md: text, streaming: true }] };
+  return { ...s, entries: [...s.entries, { key: `a${s.entries.length}`, kind: 'assistant', md: text, streaming: true, ts: Date.now() }] };
 }
 
 /** done 终稿与已累积的合并：互为前缀（重叠）→ 终稿为准；不重叠 → 补入 */
@@ -156,7 +158,7 @@ function onDone(s: ChatState, e: SessionEvent): ChatState {
   const { entries, sealedIdx } = sealStreaming(s.entries);
   const text = e.text ?? '';
   if (sealedIdx < 0) {
-    return { ...s, status: 'idle', entries: [...entries, { key: `a${entries.length}`, kind: 'assistant', md: text }] };
+    return { ...s, status: 'idle', entries: [...entries, { key: `a${entries.length}`, kind: 'assistant', md: text, ts: e.ts }] };
   }
   const sealed = entries[sealedIdx]!;
   return { ...s, status: 'idle', entries: replaceAt(entries, sealedIdx, { ...sealed, md: mergeFinal(sealed.md, text) }) };
@@ -164,7 +166,7 @@ function onDone(s: ChatState, e: SessionEvent): ChatState {
 
 function onError(s: ChatState, e: SessionEvent): ChatState {
   const { entries } = sealStreaming(s.entries);
-  return { ...s, status: 'idle', entries: [...entries, { key: `e${entries.length}`, kind: 'error', md: e.text ?? 'error' }] };
+  return { ...s, status: 'idle', entries: [...entries, { key: `e${entries.length}`, kind: 'error', md: e.text ?? 'error', ts: e.ts }] };
 }
 
 /** tool-call：callId 命中未配对面（result 先到）→ verb 回填；否则 verb 行即时、result 行占位入列 */
@@ -178,7 +180,7 @@ function onToolCall(s: ChatState, e: SessionEvent): ChatState {
     }
   }
   const key = uniqueKey(callId !== undefined ? `tool:${callId}` : `tool:#${entries.length}`, entries);
-  return { ...s, entries: [...entries, { key, kind: 'tool', md: toolMd(e.text ?? PLACEHOLDER, PLACEHOLDER) }] };
+  return { ...s, entries: [...entries, { key, kind: 'tool', md: toolMd(e.text ?? PLACEHOLDER, PLACEHOLDER), ts: e.ts }] };
 }
 
 /** tool-result：callId 命中未配对面（call 先到）→ result 回填；callId 缺场先入列占位；无 callId FIFO 配最老 / 孤儿独立成条 */
@@ -191,7 +193,7 @@ function onToolResult(s: ChatState, e: SessionEvent): ChatState {
     if (idx >= 0) {
       return { ...s, entries: replaceAt(entries, idx, { ...entries[idx]!, md: toolMd(verbOf(entries[idx]!.md), resultLine) }) };
     }
-    return { ...s, entries: [...entries, { key: uniqueKey(`tool:${callId}`, entries), kind: 'tool', md: toolMd(PLACEHOLDER, resultLine) }] };
+    return { ...s, entries: [...entries, { key: uniqueKey(`tool:${callId}`, entries), kind: 'tool', md: toolMd(PLACEHOLDER, resultLine), ts: e.ts }] };
   }
   // FIFO：最老的无 callId（`tool:#`）未配对面——result 回填（result 先到的孤儿面：result 行被覆盖，verb 占位保留）
   const idx = entries.findIndex((t) => t.kind === 'tool' && t.key.startsWith('tool:#') && toolUnpaired(t.md));
@@ -200,7 +202,7 @@ function onToolResult(s: ChatState, e: SessionEvent): ChatState {
   }
   const tool = e.payload?.tool;
   const verb = typeof tool === 'string' && tool.length > 0 ? tool : PLACEHOLDER;
-  return { ...s, entries: [...entries, { key: `tool:#${entries.length}`, kind: 'tool', md: toolMd(verb, resultLine) }] };
+  return { ...s, entries: [...entries, { key: `tool:#${entries.length}`, kind: 'tool', md: toolMd(verb, resultLine), ts: e.ts }] };
 }
 
 /** 委派起止单行（`✻ label started|status`）：label 取 payload.label 回落 delegationId，status 回落 ended */
@@ -235,7 +237,7 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
     case 'error':
       return onError(s, e);
     case 'notice':
-      return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: e.text ?? '' }] };
+      return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: e.text ?? '', ts: e.ts }] };
     case 'tool-call':
       return onToolCall(s, e);
     case 'tool-result':
@@ -252,12 +254,12 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
       return onUsage(s, e);
     case 'delegation-started':
     case 'delegation-ended':
-      return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: delegationMd(e) }] };
+      return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: delegationMd(e), ts: e.ts }] };
     case 'agent-message': {
       const p = e.payload as { from?: unknown; to?: unknown; text?: unknown } | undefined;
       const from = typeof p?.from === 'string' && p.from.length > 0 ? p.from : '?';
       const to = typeof p?.to === 'string' && p.to.length > 0 ? p.to : '?';
-      return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: `[${from} → ${to}] ${typeof p?.text === 'string' ? p.text : ''}` }] };
+      return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: `[${from} → ${to}] ${typeof p?.text === 'string' ? p.text : ''}`, ts: e.ts }] };
     }
     default:
       return s;
