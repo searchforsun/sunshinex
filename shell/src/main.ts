@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog, Menu, nativeImage, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { appUrl } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
@@ -99,6 +99,17 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow = win;
     win.loadURL(appUrl(daemon.port, daemon.token)).catch((err) => console.error('[shell] loadURL failed:', err));
 
+    // Web 标签「外开」（H2-T3）：window.open / target=_blank 一律放行为原生新窗（同 session——
+    // 同 daemon 域 cookie/localStorage，token 持久面沿 G3）；v1 不做 deny 分流，
+    // 非 http(s) 面（file:// 等）由 Electron 默认策略拒。url 参数留作后续分流钩子。
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      void url;
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: { width: 1100, height: 800 },
+      };
+    });
+
     // 驻留序（H-D2）：非退出流程中关窗=preventDefault+hide（会话/PTY 不中断），退出流程放行真关闭
     win.on('close', (event) => {
       if (shouldHideOnClose(quitting)) {
@@ -111,6 +122,12 @@ if (!app.requestSingleInstanceLock()) {
     app.on('second-instance', () => {
       focusMainWindow();
     });
+
+    // 全局快捷键（H2-T3）：Alt+Shift+S 唤主窗——与 second-instance/托盘共用破窗守卫版
+    // focusMainWindow；注册失败（快捷键被占/权限拒）仅记一行日志不炸，缺席不阻启动主流程。
+    if (!globalShortcut.register('Alt+Shift+S', focusMainWindow)) {
+      console.error('[shell] global shortcut Alt+Shift+S registration failed');
+    }
 
     // 托盘（spec §1 生命周期）：图标=内嵌 16x16 PNG data URL；tooltip+两件套菜单。
     // 菜单建成即静态（trayMenu(false)）——退出流程中的重复触发由 runQuit 幂等守卫吸收。
@@ -150,6 +167,8 @@ if (!app.requestSingleInstanceLock()) {
   // 转单点完成「daemon 收口→app.quit」；runQuit 路径已在途（quitInitiated）则直接放行——
   // 重入时守卫短路，幂等防环。
   app.on('will-quit', (event) => {
+    // 快捷键随进程退场统一注销（H2-T3；unregisterAll 幂等——非 runQuit 路径 will-quit 可两度触发）
+    globalShortcut.unregisterAll();
     if (quitInitiated) return;
     event.preventDefault();
     runQuit();
