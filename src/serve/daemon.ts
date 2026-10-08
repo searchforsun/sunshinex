@@ -22,6 +22,7 @@ import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, 
 import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { listCommands } from './commands';
+import { MemoryStore } from '../harness/memory/store';
 import { COMMAND_SUPPORT, runCommand } from './session-commands';
 import { ModelSwitcher } from '../model/catalog';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
@@ -996,6 +997,7 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
     { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
+    { method: 'POST', path: '/memory/rm', auth: true, run: (req, res) => this.handleMemoryRm(req, res) },
     // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
@@ -1339,6 +1341,27 @@ export class GuiDaemon {
     if (r === 'unsupported') return this.send(res, 400, { error: 'unsupported command' });
     if (r === 'busy') return this.send(res, 409, { error: 'session is running' });
     this.send(res, 200, { ok: true });
+  }
+
+  /** POST /memory/rm {root, slugs}(G10-C1d):记忆删除(记忆面板多选;root 寻址与 TUI /memory-rm 同形) */
+  private async handleMemoryRm(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    {
+      const parsed = await this.readJson(req);
+      if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+      const body = parsed.body as { root?: unknown; slugs?: unknown };
+      if (typeof body.root !== 'string' || body.root.length === 0 || !Array.isArray(body.slugs) || body.slugs.some((x) => typeof x !== 'string')) {
+        return this.send(res, 400, { error: 'root and slugs required' });
+      }
+      const store = new MemoryStore(body.root);
+      const removed: string[] = [];
+      const failed: Array<{ slug: string; error: string }> = [];
+      for (const slug of body.slugs as string[]) {
+        const r = store.remove(slug);
+        if (r.ok) removed.push(slug);
+        else failed.push({ slug, error: r.error.message });
+      }
+      this.send(res, 200, { removed, failed });
+    }
   }
 
   /** GET /session/:id/anchors(G10-C1d):任务轮锚点列表(rewind/fork 的 turn 寻址面,1-based) */
