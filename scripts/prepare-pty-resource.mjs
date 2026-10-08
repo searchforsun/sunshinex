@@ -6,11 +6,14 @@
  * node-pty 源目录只能静态列。pnpm 布局下 node_modules/node-pty 是指向
  * .pnpm/node-pty@x/node_modules/node-pty 的 junction，yml 直列符号链目录的跟随行为不可控。
  * 裁定：dist script 前置本脚本，dirname(fs.realpathSync(require.resolve('node-pty/package.json')))
- * 解符号链拿实目录，递归整包复制到 shell/build/node-pty（electron-builder extraResources
+ * 解符号链拿实目录，按运行时面白名单复制到 shell/build/node-pty（electron-builder extraResources
  * 静列 from: ./build/node-pty → resources/node_modules/node-pty）。
  * node-pty 1.1.0 实目录含 prebuilds/<plat>-<arch>/ 原生二进制（win32 另有 conpty/winpty 全家），
- * 整包复制保证 utils.loadNativeModule 的相对目录探测原样成立。
- * 幂等：先整删旧装配再全量拷（避免陈旧文件残留）；.bin 链接目录剔除（packaged 内无意义）。
+ * lib/prebuilds/package.json 三件保 utils.loadNativeModule 的相对目录探测原样成立。
+ * 幂等：先整删旧装配再全量拷（避免陈旧文件残留）。
+ * H3-T4 收口修正（原整包口径）：只留 lib/prebuilds/package.json 三面——src/typings/deps/
+ * third_party（构建期面）与 *.test.*、*.ts（上游测试/类型）不入装配；一并修 vitest
+ * 缺省发现面扫入 build/node-pty 上游测试的门禁红 + 瘦身入包资源。
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -27,9 +30,18 @@ const ptyRealDir = path.dirname(fs.realpathSync(nodeRequire.resolve('node-pty/pa
 const destDir = path.join(repoRoot, 'shell', 'build', 'node-pty');
 
 fs.rmSync(destDir, { recursive: true, force: true });
+// 运行时白名单：package.json + lib/ + prebuilds/ 树；两树内再剔 *.test.* 与 *.ts。
+// 其余顶层（src/typings/deps/third_party/scripts/.bin/README 等）全不入——构建期与测试面。
+const relFromPty = (src) => path.relative(ptyRealDir, src).split(path.sep).join('/');
 fs.cpSync(ptyRealDir, destDir, {
   recursive: true,
-  filter: (src) => path.basename(src) !== '.bin',
+  filter: (src) => {
+    const rel = relFromPty(src);
+    if (rel === '' || rel === 'package.json') return true;
+    const top = rel.split('/')[0];
+    if (top !== 'lib' && top !== 'prebuilds') return false;
+    return !rel.includes('.test.') && !rel.endsWith('.ts');
+  },
 });
 
 // 装配完整性探针：当前平台 prebuild 的 pty.node 必须在场——缺即红（宁可打包期红不静默坏包）

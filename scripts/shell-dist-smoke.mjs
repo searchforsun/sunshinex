@@ -21,7 +21,9 @@ const candidates = fs.existsSync(releaseDir) ? fs.readdirSync(releaseDir).filter
 if (candidates.length === 0) {
   console.error(
     `[shell-dist-smoke] ${path.relative(repoRoot, releaseDir)} 下未找到 *portable*.exe——先跑 ` +
-      `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ pnpm shell:dist，exit 1`,
+      `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ` +
+      `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ ` +
+      `pnpm shell:dist，exit 1`,
   );
   process.exit(1);
 }

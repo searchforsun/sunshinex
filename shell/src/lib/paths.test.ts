@@ -23,9 +23,9 @@ describe('resolveDaemonPaths', () => {
     expect(paths.staticRoot.endsWith('\\dist-gui')).toBe(true);
 
     // 打包态不受 devRepoRoot 影响，且不再指向 dev 臂的 dist/ 编译产物形。
-    // 负断言须查原串：JSON.stringify 会把反斜杠转义加倍（文本形 dist\\serve），
-    // 对单反斜杠子串 not.toContain 永真——T2 复审 Minor#1，改查 daemonEntry 原串。
-    expect(JSON.stringify(paths)).not.toContain(devRepoRoot);
+    // 负断言须查原串：JSON.stringify 会把反斜杠转义加倍（devRepoRoot/dist\\serve 均单反斜杠形），
+    // 对其 not.toContain 永真——T2 复审 Minor#1 同型，H3-T4 一并清偿为 daemonEntry 原串。
+    expect(paths.daemonEntry).not.toContain(devRepoRoot);
     expect(paths.daemonEntry).not.toContain('dist\\serve');
   });
 
@@ -47,6 +47,7 @@ describe('resolveDaemonPaths', () => {
     expect(paths.buildModelEntry.endsWith('\\dist\\runtime.js')).toBe(true);
     expect(paths.staticRoot.endsWith('\\dist-gui')).toBe(true);
 
-    expect(JSON.stringify(paths)).not.toContain(resourcesPath);
+    // 与 resourcesPath 无关的负断言同型清偿：查 daemonEntry 原串，不走 JSON 文本形。
+    expect(paths.daemonEntry).not.toContain(resourcesPath);
   });
 });

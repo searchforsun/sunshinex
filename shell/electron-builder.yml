@@ -1,5 +1,7 @@
 # H3-T3 electron-builder 配置（win 双产物：NSIS 安装器 + portable 单文件）。
-# 镜像仅运行时传：ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+# 镜像仅运行时传，双 env 口径（缺任一即有 github 直拉慢/超时面）：
+# ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/（electron zip 本体）
+# ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/（winCodeSign/nsis 等 builder 二进制）
 appId: dev.sunshinex.app
 productName: sunshinex
 directories:
