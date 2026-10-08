@@ -21,12 +21,27 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+/**
+ * HOME 隔离（2026-10-08 实机暴露）：loadSkills 除项目根外还并 userSkillsDir()（~/.sunshinex/skills）——
+ * 本机真实装过 superpowers 技能集时，/skill 计数断言被真用户数据污染（24 vs 9）。
+ * 夹具内重定向 HOME/USERPROFILE 至临时目录，与 daemon.test 的 withSettingsDaemon 同口径。
+ */
 async function withRoot(fn: (root: string) => Promise<void>): Promise<void> {
   const root = tmpdir('sunshinex-sess-skill-');
+  const fakeHome = tmpdir('sunshinex-sess-skill-home-');
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
   try {
     await fn(root);
   } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
     fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
   }
 }
 

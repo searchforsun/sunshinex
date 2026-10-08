@@ -38,7 +38,33 @@ export function resolveResumeFlag(args: CliArgs): boolean {
 }
 
 /** TUI 入口：同进程装配会话控制器与 Ink 渲染；manual 审批经键盘 y/a/n 在会话内裁决 */
+/**
+ * Node ≥24 tty 属性面垫片（2026-10-08 用户实测崩溃 + pty 复现实锤）：
+ * 新版 Node 把 WriteStream 的 columns/rows 变为原型 getter-only 访问器，而内部
+ * _refreshSize（SIGWINCH/启动刷新）仍以严格模式强赋值 → 「Cannot assign to read only
+ * property 'columns'」整进程崩溃。为两条流定义自有可写副本，内部赋值落回实例属性即可。
+ * 取当前值兜底（非 tty/未定时为 undefined → 给 80×24 保底，后续内部刷新自行覆写）。
+ */
+function patchTtySizeWritable(): void {
+  for (const stream of [process.stdout, process.stderr]) {
+    for (const key of ['columns', 'rows'] as const) {
+      const current = stream[key];
+      try {
+        Object.defineProperty(stream, key, {
+          value: typeof current === 'number' && current > 0 ? current : key === 'columns' ? 80 : 24,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      } catch {
+        /* 冻结/不可配置流：垫片尽力（现状无此面） */
+      }
+    }
+  }
+}
+
 export async function runTui(args: CliArgs): Promise<void> {
+  patchTtySizeWritable();
   // 相对路径立即收敛为绝对路径：root 全链路（工具沙箱 cwd、guard 边界、上下文工作目录事实）都以绝对路径为准
   const root = path.resolve(args.positional[0] ?? process.cwd());
   // 入口一（规格 §7/D5）：--worktree 装配前解析（fail-fast 于建树失败/互斥冲突），root 替换后走既有装配链
@@ -97,11 +123,11 @@ export async function runTui(args: CliArgs): Promise<void> {
     const real = shieldStdout.columns;
     if (typeof real === 'number' && real > 0) lastKnownCols = real;
     if (!desc || !('value' in desc)) return; // 原生 getter 在位（真实值已可读），无需护盾
-    Object.defineProperty(shieldStdout, 'columns', { value: lastKnownCols, configurable: true });
+    Object.defineProperty(shieldStdout, 'columns', { value: lastKnownCols, writable: true, configurable: true }); // writable:true 必须有:缺省只读 → SIGWINCH 内部 _refreshSize 强赋值即 TypeError 崩进程(2026-10-08 用户实测+pty 复现)
   };
   refreshCols();
   if (typeof shieldStdout.columns !== 'number') {
-    Object.defineProperty(shieldStdout, 'columns', { value: lastKnownCols, configurable: true });
+    Object.defineProperty(shieldStdout, 'columns', { value: lastKnownCols, writable: true, configurable: true }); // writable:true 必须有:缺省只读 → SIGWINCH 内部 _refreshSize 强赋值即 TypeError 崩进程(2026-10-08 用户实测+pty 复现)
   }
   shieldStdout.on?.('resize', refreshCols);
   // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，
