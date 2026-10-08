@@ -2,7 +2,7 @@
 
 终端里的 AI Agent：用自然语言下任务，模型流式作答、工具实时执行，写操作需你审批，复杂目标先规划后执行。
 
-本手册覆盖 CLI 启动与 TUI 交互全量用法；架构、开发与部署见 [README.md](README.md)。
+本手册覆盖 CLI 启动与 TUI 交互全量用法；图形界面见 [MANUAL-GUI.md](MANUAL-GUI.md)；架构、开发与部署见 [README.md](README.md)。
 
 要求：Node.js ≥ 22.9。
 
