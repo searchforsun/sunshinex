@@ -29,7 +29,7 @@ const usage = () => {
 
 发版产物（同一 Release、同一版本 tag、不同安装包）：
   TUI：sunshinex-agent-<ver>.tgz（npm 直装链接）
-  GUI：sunshinex Setup <ver>.exe + sunshinex <ver> portable.exe（版本随根 package.json 单源同步）
+  GUI：sunshinex-<ver>-setup.exe（win 单安装包，NSIS；业界 kebab 命名，版本随根 package.json 单源同步）
 
 版本语义（链接随版本走，一次发布一个永久可回溯的地址）:
   每次发版必须对应新版本号 → 新 tag + 新链接，旧版本 Release 永不覆盖
@@ -349,8 +349,7 @@ say(`包体：${humanSize} ${TGZ}`);
 
 // ---------- 附件清单（同 Release 多安装包）----------
 // 与 TUI 同一 Release 同一 tag：版本随根单源（shell:dist 链首自动 sync-versions），产物名即版本凭证。
-const SETUP_NAME = `sunshinex Setup ${VERSION}.exe`;
-const PORTABLE_NAME = `sunshinex ${VERSION} portable.exe`;
+const SETUP_NAME = `sunshinex-${VERSION}-setup.exe`;
 const ASSETS = [{ file: TGZ, name: TGZ_NAME, label: 'TUI tgz' }];
 const assetSize = (f) => {
   const b = fs.statSync(f).size;
@@ -359,32 +358,29 @@ const assetSize = (f) => {
 const assetUrl = (name) => `https://github.com/${REPO}/releases/download/${TAG}/${encodeURIComponent(name)}`;
 const DOWNLOAD_URL = assetUrl(TGZ_NAME);
 const NOTES_HEAD = `SunshineX ${TAG}. TUI: npm install -g ${DOWNLOAD_URL}`;
-const NOTES = NO_GUI ? `SunshineX TUI ${TAG}. Install: npm install -g ${DOWNLOAD_URL}` : `${NOTES_HEAD} · GUI desktop: ${assetUrl(SETUP_NAME)} / ${assetUrl(PORTABLE_NAME)}`;
+const NOTES = NO_GUI ? `SunshineX TUI ${TAG}. Install: npm install -g ${DOWNLOAD_URL}` : `${NOTES_HEAD} · GUI desktop: ${assetUrl(SETUP_NAME)}`;
 const HEAD = run('git', ['rev-parse', 'HEAD']).stdout.trim();
 
 if (DRY_RUN) {
   // dry-run 保持轻量（沿「只验证 + 打包」口径）：GUI 安装包不构建，只预览将产出的附件名与链接。
   say(`--dry-run 结束：未构建 GUI 安装包（正式发布将经 shell:dist 产出并冒烟）、未创建 Release、未上传附件。上传通道：${CHANNEL ? CHANNEL.label : '（当前无可用通道，需先补通道）'}`);
   console.log(`  附件：${TGZ_NAME}`);
-  if (!NO_GUI) console.log(`  附件（构建后加入）：${SETUP_NAME} / ${PORTABLE_NAME}`);
+  if (!NO_GUI) console.log(`  附件（构建后加入）：${SETUP_NAME}`);
   console.log(`  安装链接：npm install -g ${DOWNLOAD_URL}`);
   process.exit(0);
 }
 
 // ---------- GUI 安装包构建（Setup + portable；--no-gui 跳过；dry-run 已在上一步退出）----------
 if (!NO_GUI) {
-  say('构建 GUI 安装包（shell:dist 全链：版本同步→引擎→GUI→壳→NSIS+portable）');
+  say('构建 GUI 安装包（shell:dist 全链：版本同步→引擎→GUI→壳→NSIS 单安装包）');
   run(PNPM, ['run', 'shell:dist'], { stdio: 'inherit' });
   const SETUP = path.join(ROOT, 'shell', 'release', SETUP_NAME);
-  const PORTABLE = path.join(ROOT, 'shell', 'release', PORTABLE_NAME);
   if (!fs.existsSync(SETUP)) die(`GUI 安装包缺失：${SETUP}（electron-builder 产物名不符或构建失败）`);
-  if (!fs.existsSync(PORTABLE)) die(`GUI 安装包缺失：${PORTABLE}`);
-  // 产物级冒烟门禁（portable exe 启动→就绪→有序退；与提交门禁同判据）
+  // 产物级冒烟门禁（setup 静默装→安装产物启动→就绪→有序退；与提交门禁同判据）
   say('GUI 安装包冒烟（shell-dist-smoke）');
   run(process.execPath, ['scripts/shell-dist-smoke.mjs'], { stdio: 'inherit' });
   ASSETS.push({ file: SETUP, name: SETUP_NAME, label: 'GUI Setup' });
-  ASSETS.push({ file: PORTABLE, name: PORTABLE_NAME, label: 'GUI portable' });
-  say(`GUI 安装包就绪：${SETUP_NAME} + ${PORTABLE_NAME}`);
+  say(`GUI 安装包就绪：${SETUP_NAME}`);
 }
 
 // ---------- 上传（同 Release 多附件）----------
@@ -442,7 +438,4 @@ if (CHANNEL.kind === 'gh') {
 say('发布完成');
 console.log(`  Release 页：https://github.com/${REPO}/releases/tag/${TAG}`);
 console.log(`  TUI 安装命令：npm install -g ${DOWNLOAD_URL}`);
-if (!NO_GUI) {
-  console.log(`  GUI 安装包：${assetUrl(SETUP_NAME)}`);
-  console.log(`            ${assetUrl(PORTABLE_NAME)}`);
-}
+if (!NO_GUI) console.log(`  GUI 安装包：${assetUrl(SETUP_NAME)}`);
