@@ -18,12 +18,15 @@ import type { SessionEvent } from '../../src/types';
  * - streaming 条在 done/error/model-start/tool-call 收段——不留永久流式标（GUI 光标面）。
  */
 
-/** 对话流条目（md 原文；kind 样式钩子在渲染面，streaming=true 流式光标态；ts 日期分隔投影源） */
+/** 对话流条目（md 原文；kind 样式钩子在渲染面，streaming=true 流式光标态；ts 日期分隔投影源）。
+ *  kind 'thinking' 为 gui 投影扩展（reasoning 事件聚合;快照/归档面不产出,重播种即失——Codex 同形） */
 export interface ChatEntry {
   key: string;
-  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
+  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error' | 'thinking';
   md: string;
   streaming?: boolean;
+  /** thinking 专用：段耗时秒（封段时由首尾 ts 差计算;无 ts/不足 1s 省略） */
+  seconds?: number;
   /** 条目时间（epoch ms;事件条透传 e.ts,种子条透传快照,本地回显/开条时刻就地取;无源可省） */
   ts?: number;
 }
@@ -134,16 +137,25 @@ function sealStreaming(entries: readonly ChatEntry[]): { entries: ChatEntry[]; s
   return { entries: entries as ChatEntry[], sealedIdx: -1 };
 }
 
-/** token 增量并入当前 streaming 条（无则开条） */
-function onToken(s: ChatState, text: string): ChatState {
+/** 收思考段（G10-C3 尾追语义）：末位 thinking 条去 streaming 标并计耗时（首条 ts → 封段事件 ts）。 */
+function sealThinking(entries: readonly ChatEntry[], now?: number): ChatEntry[] {
+  const last = entries[entries.length - 1];
+  if (last === undefined || last.kind !== 'thinking' || last.streaming !== true) return entries as ChatEntry[];
+  const seconds = now !== undefined && typeof last.ts === 'number' && now > last.ts ? Math.round((now - last.ts) / 1000) : undefined;
+  return replaceAt(entries, entries.length - 1, { ...last, streaming: undefined, ...(seconds !== undefined ? { seconds } : {}) });
+}
+
+/** token 增量并入当前 streaming 条（无则开条;开条前封思考段——思考先行语义;封段时刻取事件 ts） */
+function onToken(s: ChatState, text: string, now?: number): ChatState {
   if (text === '') return s;
-  for (let i = s.entries.length - 1; i >= 0; i -= 1) {
-    const e = s.entries[i]!;
+  const entries = sealThinking(s.entries, now);
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const e = entries[i]!;
     if (e.kind === 'assistant' && e.streaming === true) {
-      return { ...s, entries: replaceAt(s.entries, i, { ...e, md: e.md + text }) };
+      return { ...s, entries: replaceAt(entries, i, { ...e, md: e.md + text }) };
     }
   }
-  return { ...s, entries: [...s.entries, { key: `a${s.entries.length}`, kind: 'assistant', md: text, streaming: true, ts: Date.now() }] };
+  return { ...s, entries: [...entries, { key: `a${entries.length}`, kind: 'assistant', md: text, streaming: true, ts: Date.now() }] };
 }
 
 /** done 终稿与已累积的合并：互为前缀（重叠）→ 终稿为准；不重叠 → 补入 */
@@ -155,7 +167,7 @@ function mergeFinal(acc: string, fin: string): string {
 }
 
 function onDone(s: ChatState, e: SessionEvent): ChatState {
-  const { entries, sealedIdx } = sealStreaming(s.entries);
+  const { entries, sealedIdx } = sealStreaming(sealThinking(s.entries, e.ts));
   const text = e.text ?? '';
   if (sealedIdx < 0) {
     return { ...s, status: 'idle', entries: [...entries, { key: `a${entries.length}`, kind: 'assistant', md: text, ts: e.ts }] };
@@ -165,13 +177,13 @@ function onDone(s: ChatState, e: SessionEvent): ChatState {
 }
 
 function onError(s: ChatState, e: SessionEvent): ChatState {
-  const { entries } = sealStreaming(s.entries);
+  const { entries } = sealStreaming(sealThinking(s.entries, e.ts));
   return { ...s, status: 'idle', entries: [...entries, { key: `e${entries.length}`, kind: 'error', md: e.text ?? 'error', ts: e.ts }] };
 }
 
 /** tool-call：callId 命中未配对面（result 先到）→ verb 回填；否则 verb 行即时、result 行占位入列 */
 function onToolCall(s: ChatState, e: SessionEvent): ChatState {
-  const { entries } = sealStreaming(s.entries);
+  const { entries } = sealStreaming(sealThinking(s.entries, e.ts));
   const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
   if (callId !== undefined) {
     const idx = entries.findIndex((t) => isPendingCallTool(t, callId));
@@ -185,7 +197,7 @@ function onToolCall(s: ChatState, e: SessionEvent): ChatState {
 
 /** tool-result：callId 命中未配对面（call 先到）→ result 回填；callId 缺场先入列占位；无 callId FIFO 配最老 / 孤儿独立成条 */
 function onToolResult(s: ChatState, e: SessionEvent): ChatState {
-  const { entries } = sealStreaming(s.entries);
+  const { entries } = sealStreaming(sealThinking(s.entries, e.ts));
   const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
   const resultLine = firstLine(e.text);
   if (callId !== undefined) {
@@ -231,11 +243,20 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
   if (typeof e.payload?.subagent === 'string') return s; // 子代理事件另轨(Agents 标签,G8d):主流零条目
   switch (e.type) {
     case 'token':
-      return onToken(s, e.text ?? '');
+      return onToken(s, e.text ?? '', e.ts);
     case 'done':
       return onDone(s, e);
     case 'error':
       return onError(s, e);
+    case 'reasoning': {
+      const text = e.text ?? '';
+      if (text === '') return s;
+      const last = s.entries[s.entries.length - 1];
+      if (last !== undefined && last.kind === 'thinking' && last.streaming === true) {
+        return { ...s, entries: replaceAt(s.entries, s.entries.length - 1, { ...last, md: last.md + text }) };
+      }
+      return { ...s, entries: [...s.entries, { key: `t${s.entries.length}`, kind: 'thinking', md: text, streaming: true, ts: e.ts }] };
+    }
     case 'notice':
       return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: e.text ?? '', ts: e.ts }] };
     case 'tool-call':
@@ -243,7 +264,7 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
     case 'tool-result':
       return onToolResult(s, e);
     case 'model-start': {
-      const { entries } = sealStreaming(s.entries);
+      const { entries } = sealStreaming(sealThinking(s.entries, e.ts));
       // 水位重置仅在 run 边界：model-start 每模型轮一次（reactor.ts:450），turnTotal 是 run 级
       // 单调累计（reactor.ts:293）——run 内续轮（status=running）不重置，否则多轮 run tokens 虚增
       return s.status === 'idle' ? { ...s, entries, status: 'running', turnTokensBase: 0 } : { ...s, entries, status: 'running' };

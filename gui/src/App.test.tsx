@@ -9,6 +9,13 @@ import type { SnapshotTranscriptEntry } from './chat-reducer';
 import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp, SettingsView, SettingsKeyRow, ProviderChoice, McpRow, McpRowInput, McpProbeResult, BuiltinRole, AgentsView, SkillsGroup } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
 
+/** G10-C3 工具行图标化后的定位器:textContent 含给定文本的折叠行 */
+function toolRow(text: string): HTMLButtonElement | null {
+  const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('.tool-summary'));
+  return rows.find((r) => r.textContent?.replace(/\s+/g, ' ').includes(text)) ?? null;
+}
+
+
 /** putAgent 输入形(connection.ts 内联签名提取——FakeConn 桩记录类型用) */
 type PutAgentInput = Parameters<Connection['putAgent']>[0];
 
@@ -368,7 +375,7 @@ async function enterChat(): Promise<{ conn: Conn; unmount: () => void }> {
   const { conn, unmount } = mount();
   fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
   fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-  await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+  await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
   openConn(conn);
   await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
   return { conn, unmount };
@@ -419,7 +426,7 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(await screen.findByRole('button', GROUP_HEAD)).toBeDefined();
     expect(screen.getByLabelText('welcome')).toBeDefined();
     expect(screen.queryByLabelText('message input')).toBeNull();
-    expect(screen.queryByText('session s1')).toBeNull();
+    expect(screen.queryByText('s1', { selector: '.chat-title' })).toBeNull();
   });
 
   it('左栏 Attach 链 → chat:Chat 页挂载渲染 sessionId(newSession→attach 两步)+ 返回 welcome', async () => {
@@ -428,11 +435,11 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(conn.newSessionCalls).toEqual(['/w/root-a']);
     expect(conn.attachCalls).toEqual([['s1', 'j1']]);
     // Chat 页面:会话 chip 在场、占位条退役(T4δ 真组件装配)
-    expect(screen.getByText('session s1')).toBeDefined();
+    expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined();
     expect(document.querySelector('.session-placeholder')).toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     // 返回:对话面退场 → 欢迎空态(左栏常驻)
-    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
     await screen.findByLabelText('welcome');
     expect(screen.queryByLabelText('message input')).toBeNull();
     expect(screen.getByRole('button', GROUP_HEAD)).toBeDefined();
@@ -445,7 +452,7 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     // —— s1:进 chat + 交互(user 回显 + 流式帧)——
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     type('s1 目标');
     pressEnter();
@@ -454,12 +461,12 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(conn.sessionSubmitCalls).toEqual([['s1', 's1 目标']]);
     expect(screen.getByText('s1 目标')).toBeDefined();
     // —— back → welcome(Chat 卸毁:s1 本地态随组件销毁;左栏组仍展开——壳常驻)——
-    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
     await screen.findByLabelText('welcome');
     // —— s2:FakeConn 下一会话号;组已展开(常驻),Attach 直点 ——
     conn.nextSessionId = 's2';
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s2')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     // s2 投影独立:无 s1 条目串扰(组件级隔离——非空起步)
     expect(screen.queryByText('s1 目标')).toBeNull();
@@ -503,9 +510,10 @@ describe('状态条:连接点四态 + 会话指标', () => {
     fire(conn, ev('usage', undefined, { turnTotal: 340 }));
     fire(conn, ev('step', 'a'));
     fire(conn, ev('step', 'b'));
-    expect(screen.getByText('340 tokens')).toBeDefined();
-    expect(screen.getByText('2 steps')).toBeDefined();
-    expect(screen.getByText('running')).toBeDefined();
+    const title = (document.querySelector('.chat-title') as HTMLElement | null)?.getAttribute('title') ?? '';
+    expect(title).toContain('340 tokens');
+    expect(title).toContain('2 steps');
+    expect(title).toContain('运行中');
   });
 });
 
@@ -523,15 +531,16 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     });
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getByText('build the widget')).toBeDefined(); // `> …` → blockquote
-    expect(screen.getByText('● read ⎿ ok')).toBeDefined(); // 两行同段(normalizer 折叠)
+    expect(document.querySelector('.tool-summary')?.textContent).toContain('read'); // 图标化行(●/⎿ 记号退役,G10-C3)
+    expect(document.querySelector('.tool-summary')?.textContent).toContain('ok');
     expect(screen.getByText('✻ dev started')).toBeDefined();
     expect(screen.getByText('boom')).toBeDefined();
     expect(document.querySelector('.entry-user blockquote')).not.toBeNull();
-    expect(screen.getByText('running')).toBeDefined();
+    expect((document.querySelector('.chat-title') as HTMLElement).getAttribute('title')).toContain('运行中');
     unmount();
   });
 
@@ -649,12 +658,9 @@ describe('G8d T5 交互清单:输入区自增高/流式光标/状态条图标数
     fire(conn, ev('model-start'));
     fire(conn, ev('usage', undefined, { turnTotal: 77 }));
     fire(conn, ev('step', 'x'));
-    expect(screen.getByLabelText('tokens stat')).toBeDefined();
-    expect(screen.getByLabelText('steps stat')).toBeDefined();
-    expect(document.querySelector('.sx-stat-tokens svg')).not.toBeNull(); // 图标组件真挂
-    expect(document.querySelector('.sx-stat-steps svg')).not.toBeNull();
-    expect(screen.getByText('77 tokens')).toBeDefined(); // 文本面保持(数字+单位)
-    expect(screen.getByText('1 steps')).toBeDefined();
+    const title = (document.querySelector('.chat-title') as HTMLElement | null)?.getAttribute('title') ?? '';
+    expect(title).toContain('77 tokens'); // 指标收进 hover tooltip(G10 去常显文字)
+    expect(title).toContain('1 steps');
     unmount();
   });
 });
@@ -666,7 +672,7 @@ describe('种子竞态缓冲(T3 收口):seed 在途帧缓冲→种子落定过�
     conn.holdSnapshot();
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     openConn(conn);
     return { conn, unmount };
   }
@@ -882,7 +888,7 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
     await act(async () => {}); // 首载 workspaces 在 act 内落定(await mount() 裸 await 会在 env=true 处冲净致 act 警告)
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     // 卡内容来自快照 req(kind/subject/reason 直序列化)——刷新后回执闭环照常可用
@@ -1045,13 +1051,13 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     openTerminal();
     await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 记账落定(uid→p1)
     // backHome:会话切走不 kill——pty 生命周期归标签关闭链,tabStates 每会话保留(spec §1)
-    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
     await screen.findByLabelText('welcome');
     expect(conn.killPtyCalls).toEqual([]);
     // 重进同会话(journal 重挂 s1):终端标签还原 → 重挂走重连径(记账命中,不重开 pty)
     conn.nextSessionId = 's1';
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 重挂完成(重连既有 p1)
     expect(conn.openPtyCalls).toHaveLength(1); // 重连径:还原面不再分配
     fireEvent.click(screen.getByRole('button', { name: 'close tab 终端' }));
@@ -1174,7 +1180,7 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     // 再开目录:s2 目录标签在场且活动(构造两会话同 uid 'directory:' 的不重挂现场),展开 dirA 缓存 s2 层
     conn.nextSessionId = 's2';
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s2')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title' })).toBeDefined());
     openDirectory();
     await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', '']]));
     fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
@@ -1184,7 +1190,7 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     // 层缓存+展开集随 sessionId 整体重置 + root 重拉——s2 陈旧子层(fileB.ts)退场,dirA 收起
     conn.nextSessionId = 's1';
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     await waitFor(() =>
       expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', ''], ['s2', 'dirA'], ['s1', '']]),
     );
@@ -1225,7 +1231,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     conn.diffResp = { path: 'src/a.ts', oldContent: 'const x = 1;\n', newContent: 'const y = 2;\n' };
     fireWrite(conn, 'c1', 'src/a.ts', 'const y = 2;\n');
-    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' })); // 展开 write 条目
+    fireEvent.click(toolRow('write src/a.ts')!); // 展开 write 条目(●/⎿ 记号退役)
     fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' })); // tool-path 钮(可及名=路径)→ onOpenDiff 主通道
     // diff 标签开且活动:title=params.path(比 callId 可读——G8d 开档参数带 path)
     expect(document.querySelector('.sx-tab[title="src/a.ts"]')?.classList.contains('active')).toBe(true);
@@ -1244,7 +1250,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     conn.diffResp = { path: 'src/a.ts', oldContent: 'old a\n', newContent: 'new a\n' };
     fireWrite(conn, 'c1', 'src/a.ts', 'new a\n');
-    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
+    fireEvent.click(toolRow('write src/a.ts')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' }));
     await waitFor(() => expect(conn.diffCalls).toHaveLength(2)); // Chat 展开面 + DiffTab mount
     // 重开同 callId:判重聚焦(仍一标签;条目仍展开故 path 钮唯一,经类名直取避标签同名歧义)
@@ -1254,7 +1260,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     // 异 callId:多实例并存(by callId 判键——两标签互不判重)
     conn.diffResp = { path: 'src/b.ts', newContent: 'new b\n' };
     fireWrite(conn, 'c2', 'src/b.ts', 'new b\n');
-    fireEvent.click(screen.getByRole('button', { name: '● write src/b.ts ⎿ written' }));
+    fireEvent.click(toolRow('write src/b.ts')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' })); // b 的 path 钮(其标签尚不存在,名无歧义)
     expect(document.querySelectorAll('.sx-tab[title="src/a.ts"]')).toHaveLength(1);
     expect(document.querySelector('.sx-tab[title="src/b.ts"]')?.classList.contains('active')).toBe(true);
@@ -1267,7 +1273,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     // diffResp 缺省 null → FakeConn 拒 404(Chat 展开面退单列现内容——G7 既有;DiffTab 错误条——G8d)
     fireWrite(conn, 'c3', 'src/gone.ts', 'fallback content\n');
-    fireEvent.click(screen.getByRole('button', { name: '● write src/gone.ts ⎿ written' }));
+    fireEvent.click(toolRow('write src/gone.ts')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/gone.ts' }));
     await waitFor(() => expect(screen.getByText('无快照(环已裁或非 write)——callId: c3')).toBeDefined());
     expect(document.querySelector('.sx-tabbody .sx-diff-error')).not.toBeNull();
@@ -1280,7 +1286,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     conn.diffResp = { path: 'src/new.ts', newContent: 'fresh\n', truncated: true };
     fireWrite(conn, 'c4', 'src/new.ts', 'fresh\n');
-    fireEvent.click(screen.getByRole('button', { name: '● write src/new.ts ⎿ written' }));
+    fireEvent.click(toolRow('write src/new.ts')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/new.ts' }));
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe('src/new.ts'));
     expect(screen.getByText('新建')).toBeDefined(); // 新建写无 pre-image:单列 + 新建标
@@ -1492,7 +1498,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     conn.snapshotResp = snapshotOf({ team: [{ name: 'w1', busy: true }] });
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getByLabelText('team').textContent).toContain('w1');
@@ -1527,22 +1533,22 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fire(conn, taskCreated('t1', 'Demo'));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
     // —— back → 开 s2:openSession 清板投影 + s2 快照(空)回填——无 s1 残留(左栏组仍展开,Attach 直点)——
-    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's2';
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s2')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getByText(/任务板为空/)).toBeDefined(); // s2 快照空板(而非 s1 残留)
     // —— 重开 s1:快照带板 → onSeeded 回填,任务页即快照权威态(无需事件帧)——
     conn.snapshotResp = snapshotOf({
       board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Demo', spec: '', dependsOn: [], ts: 1 }),
     });
-    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's1';
     fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined(); // 快照回填的权威板
     unmount();
@@ -1559,7 +1565,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     conn.holdSnapshot();
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined());
     openConn(conn);
     return { conn, unmount };
   }
@@ -1635,12 +1641,14 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
   it('Delete:confirm 真 → conn.deleteSession(sessionId) → 回 welcome;confirm 假不动', async () => {
     const { conn, unmount } = await enterChat();
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(conn.deleteSessionCalls).toEqual([]); // 假:不发
-    expect(screen.getByText('session s1')).toBeDefined(); // 留在会话
+    expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(); // 留在会话
     confirmSpy.mockReturnValue(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
     await waitFor(() => expect(conn.deleteSessionCalls).toEqual(['s1'])); // daemon 会话 id(非 journal id)
     await waitFor(() => expect(screen.getByLabelText('welcome')).toBeDefined()); // onBack → 欢迎空态(会话关窗)
     unmount();
@@ -1650,9 +1658,10 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
     const { conn, unmount } = await enterChat();
     conn.deleteReject = new Error('/session/s1/delete -> 409');
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
     await waitFor(() => expect(screen.getByText('/session/s1/delete -> 409')).toBeDefined());
-    expect(screen.getByText('session s1')).toBeDefined();
+    expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined();
     unmount();
   });
 

@@ -2,7 +2,11 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, Coins, Copy, Footprints, Square } from 'lucide-react';
+import {
+  ArrowLeft, ArrowUp, Bot, Brain, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe,
+  ListTodo, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
@@ -166,8 +170,9 @@ function ToolEntryView({
   return (
     <div className={`entry entry-tool${expanded ? ' tool-expanded' : ''}`}>
       <button type="button" className="tool-summary" onClick={() => setExpanded((v) => !v)}>
-        {target !== undefined ? `● ${verb} ${target}` : `● ${verb}`}
-        {result !== '' ? ` ⎿ ${result}` : ''}
+        <ToolIcon verb={verb} />
+        <span className="tool-verb">{target !== undefined ? `${verb} ${target}` : verb}</span>
+        {result !== '' && <span className="tool-result-inline"> · {result}</span>}
       </button>
       {expanded &&
         (isWrite && info !== undefined ? (
@@ -286,6 +291,36 @@ function AskCard({ req, onSubmit, onDismiss }: { req: GuiAskReq; onSubmit: (answ
   );
 }
 
+/** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件) */
+const TOOL_ICONS: Record<string, LucideIcon> = {
+  read: FileText, write: PenLine, exec: Terminal, grep: Search, glob: FolderSearch,
+  skill: Sparkles, webfetch: Globe, websearch: Globe, memory: Brain, todo_write: ListTodo,
+  worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: ListTodo,
+};
+function ToolIcon({ verb }: { verb: string }): JSX.Element {
+  const Icon = TOOL_ICONS[verb] ?? Wrench;
+  return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
+}
+
+/** 思考链折叠行(G10-C3,Codex「Thought for Ns」同形):收起=「思考 Ns/思考中…」,展开=思考文本井 */
+const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="entry entry-thinking">
+      <button type="button" className="thinking-summary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <ChevronDown
+          size={12}
+          strokeWidth={1.75}
+          aria-hidden="true"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-basic) var(--ease-enter)' }}
+        />
+        {entry.streaming === true ? '思考中…' : entry.seconds !== undefined ? `思考 ${entry.seconds}s` : '思考'}
+      </button>
+      {open && <pre className="thinking-detail">{entry.md}</pre>}
+    </div>
+  );
+});
+
 /** 用户条目(Codex 形,G9 spec §3.1):右对齐胶囊(前景 5%/8% 底)+ 下方 hover 浮现复制钮;
  *  Edit 钮不做(无会话回退功能,spec §0 非目标)。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
  *  复制失败(权限等)钮 1.5s 示「未复制」tertiary 态,不弹错。memo 同 ChatEntryView——流式帧
@@ -343,6 +378,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const [toolInputs, setToolInputs] = useState<Record<string, ToolCallInfo>>({});
   /** G4 挂起卡列表(pid 维:回执落定即移;resetSession/idle 清空) */
   const [cards, setCards] = useState<PendingCard[]>([]);
+  /** 顶栏 ⋯ 菜单开合(G10-C3;外点收) */
+  const [moreOpen, setMoreOpen] = useState(false);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
    *  (挂载/reset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
   const [seeding, setSeeding] = useState(true);
@@ -489,6 +526,17 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
    *  时置空本地卡列表;reseed 落定的 idle 快照亦经此路径(挂起已回填,不重建——见文件头裁定) */
   useEffect(() => {
+    if (moreOpen === false) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element && e.target.closest('.chat-more-pop') === null && e.target.closest('.chat-more') === null) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [moreOpen]);
+
+  useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = chat.status;
     if (prev !== null && prev !== 'idle' && chat.status === 'idle') setCards([]);
@@ -527,25 +575,40 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   return (
     <>
       <header className="chat-topbar">
-        <button type="button" className="back" onClick={onBack}>
-          ← 返回
+        <button type="button" className="back" aria-label="back" title="返回首页" onClick={onBack}>
+          <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        <span className="session-chip" title="当前会话">
-          session {sessionId}
+        <span
+          className="chat-title"
+          title={`${sessionId} · ${chat.tokens} tokens · ${chat.steps} steps${running ? ' · 运行中' : ''}`}
+        >
+          {sessionId}
+          {running && <span className="sx-session-dot running" aria-label="running" />}
         </span>
-        <span className={`status-text status-${chat.status}`}>{chat.status}</span>
-        {/* G8d T5 状态条图标+数字组:tokens/steps 组类名挂样式面(G8e),lucide 图标真挂 */}
-        <span className="sx-stat sx-stat-tokens" aria-label="tokens stat">
-          <Coins size={14} strokeWidth={1.75} aria-hidden="true" />
-          {chat.tokens} tokens
-        </span>
-        <span className="sx-stat sx-stat-steps" aria-label="steps stat">
-          <Footprints size={14} strokeWidth={1.75} aria-hidden="true" />
-          {chat.steps} steps
-        </span>
-        <button type="button" className="delete" onClick={deleteThisSession}>
-          Delete
+        <button
+          type="button"
+          className="chat-more sx-iconbtn"
+          aria-label="chat actions"
+          title="会话操作"
+          onClick={() => setMoreOpen((v) => !v)}
+        >
+          <MoreHorizontal size={16} strokeWidth={1.75} aria-hidden="true" />
         </button>
+        {moreOpen && (
+          <div className="sx-menu-pop chat-more-pop" role="menu" aria-label="chat actions menu">
+            <button
+              type="button"
+              role="menuitem"
+              className="sx-menuitem chat-more-delete"
+              onClick={() => {
+                setMoreOpen(false);
+                deleteThisSession();
+              }}
+            >
+              删除会话
+            </button>
+          </div>
+        )}
       </header>
       {cards.length > 0 && (
         <section className="pending-cards" aria-label="pending approvals and asks">
@@ -586,6 +649,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               />
             ) : entry.kind === 'user' ? (
               <UserEntryView key={entry.key} entry={entry} />
+            ) : entry.kind === 'thinking' ? (
+              <ThinkingEntryView key={entry.key} entry={entry} />
             ) : (
               <ChatEntryView key={entry.key} entry={entry} />
             ),

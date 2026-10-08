@@ -1059,3 +1059,24 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-new-chat:disabled { color: var(--fg-tertiary); cursor: default; }
 .sx-side-head { padding: 12px 12px 4px; font-size: 12px; color: var(--fg-tertiary); }
 .recent-list { list-style: none; margin: 0; padding: 0 0 8px; }
+
+/* ===== G10-C3 主对话区:思考链折叠行/工具行图标化/顶栏精简 ===== */
+.entry-thinking { padding: 0 8px; }
+.entry-thinking .thinking-summary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: var(--radius-row);
+  color: var(--fg-tertiary); font-size: 12px;
+}
+.entry-thinking .thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }
+.entry-thinking .thinking-detail {
+  margin: 4px 0 0; padding: 8px 10px;
+  background: var(--surface-code); border: none; border-radius: var(--radius-md);
+  font: 12px/1.6 var(--font-mono); color: var(--fg-secondary);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.entry-tool .tool-summary { display: flex; align-items: center; gap: 6px; }
+.entry-tool .tool-verb { color: var(--fg-secondary); }
+.entry-tool .tool-result-inline { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--fg); cursor: default; }
+.chat-more { margin-left: auto; }
+.chat-more-pop { top: 40px; right: 8px; }

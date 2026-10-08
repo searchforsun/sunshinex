@@ -11,6 +11,12 @@ import type { ChatSink } from './pages/Chat';
 import type { MutableRefObject } from 'react';
 import type { SessionEvent } from '../../src/types';
 
+/** G10-C3 工具行图标化后的定位器:textContent 含 verb+path 的折叠行(●/⎿ 记号退役) */
+function toolRow(text: string): HTMLButtonElement | null {
+  const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('.tool-summary'));
+  return rows.find((r) => r.textContent?.replace(/\s+/g, ' ').includes(text)) ?? null;
+}
+
 /**
  * G6 预览+diff 组件测:Files 页（输入 Enter 加载/高亮 class/truncated 横幅/403 错误态/
  * initialPath 自动加载 + G7 请求序守卫）、DiffPanel 双列与单列形态、highlightCode 扩展映射、
@@ -168,9 +174,9 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(writeCall('src/a.ts', '新文件体'), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    expect(screen.getByText('● write src/a.ts ⎿ written')).toBeDefined(); // 折叠一行
+    expect(toolRow('write src/a.ts')).toBeDefined(); // 折叠一行(图标化,●/⎿ 退役)
     expect(document.querySelector('.diff-panel')).toBeNull(); // 未展开无面板
-    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
+    fireEvent.click(toolRow('write src/a.ts')!);
     // 加载期先示右列现内容(面板即刻在场),404 应答落定后退单列——形不变
     expect(document.querySelector('.diff-panel')).not.toBeNull();
     expect(document.querySelector('.diff-panel .diff-new')?.textContent).toBe('新文件体');
@@ -188,7 +194,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(writeCall('src/a.ts', '调用入参内容'), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    fireEvent.click(screen.getByRole('button', { name: '● write src/a.ts ⎿ written' }));
+    fireEvent.click(toolRow('write src/a.ts')!);
     await waitFor(() => expect(fetchDiff).toHaveBeenCalledWith('s1', 'c1'));
     await waitFor(() => {
       const cols = document.querySelectorAll('.diff-panel .diff-col');
@@ -206,7 +212,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(writeCall('src/b.ts', 'body'), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    fireEvent.click(screen.getByRole('button', { name: '● write src/b.ts ⎿ written' }));
+    fireEvent.click(toolRow('write src/b.ts')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
     expect(onOpenFile).toHaveBeenCalledWith('src/b.ts');
     unmount();
@@ -219,7 +225,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(ev('tool-call', 'read', { input: { path: 'src/c.ts' }, callId: 'c2', status: 'pending' }), 1);
       sinkRef.current!.on(ev('tool-result', 'file content here', { tool: 'read', callId: 'c2', status: 'completed' }), 2);
     });
-    fireEvent.click(screen.getByRole('button', { name: '● read src/c.ts ⎿ file content here' }));
+    fireEvent.click(toolRow('read src/c.ts')!);
     expect(screen.getByText('file content here')).toBeDefined(); // 展开示 result 摘要
     expect(document.querySelector('.diff-panel')).toBeNull();
     expect(onOpenFile).not.toHaveBeenCalled();
@@ -262,7 +268,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(ev('tool-call', 'write', { input: { path: 'src/x.ts', content: '旧代内容' }, callId: 'c9', status: 'pending' }), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c9', status: 'completed' }), 2);
     });
-    expect(screen.getByText('● write src/x.ts ⎿ written')).toBeDefined();
+    expect(toolRow('write src/x.ts')).toBeDefined();
     act(() => {
       sinkRef.current!.reset(); // reseed(第二快照 lastSeq 2):投影 + toolInputs 清
     });
@@ -272,7 +278,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     act(() => {
       sinkRef.current!.on(ev('tool-result', 'late result line', { tool: 'write', callId: 'c9', status: 'completed' }), 5);
     });
-    fireEvent.click(screen.getByRole('button', { name: /● … ⎿ late result line/ }));
+    fireEvent.click(document.querySelector('.tool-summary')!);
     expect(screen.getByText('late result line')).toBeDefined(); // 展开 result 摘要(非 write 面板)
     expect(document.querySelector('.diff-panel')).toBeNull(); // 旧 input 未配对——无 DiffPanel
     unmount();

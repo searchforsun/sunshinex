@@ -146,7 +146,7 @@ describe('五 kind 与 notice 系映射', () => {
     expect(s.entries.map((e) => e.md)).toEqual(['✻ d7 started', '✻ d7 ended']);
   });
 
-  it('chat 面忽略事件：task-*/gate-*/route/ctx/model-end/reasoning/approval-* 不产生条目', () => {
+  it('chat 面忽略事件：task-*/gate-*/route/ctx/model-end/approval-* 不产生条目(reasoning 已改为思考链聚合,见下组)', () => {
     const s0 = initialChatState();
     const s = fold(
       [
@@ -155,7 +155,6 @@ describe('五 kind 与 notice 系映射', () => {
         ev('route', undefined, { tier: 'small' }),
         ev('ctx', undefined, { used: 1 }),
         ev('model-end'),
-        ev('reasoning', 'think'),
         ev('approval-request', '?', { id: 'q' }),
       ],
       s0,
@@ -293,5 +292,26 @@ describe('条目时间戳(G9 B3a:日期分隔投影源)', () => {
     expect(seeded.entries[0]!.ts).toBe(1728380001000);
     const echoed = appendUserMessage(initialChatState(), 'yo', 999);
     expect(echoed.entries[0]!.ts).toBe(999);
+  });
+});
+
+describe('思考链聚合(G10-C3:reasoning → thinking 条)', () => {
+  it('reasoning 开段续写;assistant token 封段计耗时;新 reasoning 再开新段', () => {
+    let s = applyChatEvent(initialChatState(), { type: 'reasoning', text: '先看', ts: 1000 } as SessionEvent);
+    s = applyChatEvent(s, { type: 'reasoning', text: '结构', ts: 2000 } as SessionEvent);
+    expect(s.entries[0]).toMatchObject({ kind: 'thinking', md: '先看结构', streaming: true });
+    s = applyChatEvent(s, { type: 'token', text: '答', ts: 8000 } as SessionEvent); // 7s 后正文到 → 封段
+    expect(s.entries[0]).toMatchObject({ kind: 'thinking', streaming: undefined, seconds: 7 });
+    expect(s.entries[1]).toMatchObject({ kind: 'assistant', md: '答' });
+    s = applyChatEvent(s, { type: 'reasoning', text: '再想', ts: 9000 } as SessionEvent);
+    expect(s.entries[2]).toMatchObject({ kind: 'thinking', md: '再想', streaming: true });
+  });
+
+  it('done/tool-call 亦封思考段;无 ts 不计秒', () => {
+    let s = applyChatEvent(initialChatState(), { type: 'reasoning', text: '想' } as SessionEvent);
+    s = applyChatEvent(s, { type: 'done', text: '终' } as SessionEvent);
+    expect(s.entries[0]).toMatchObject({ kind: 'thinking', streaming: undefined });
+    expect(s.entries[0]!.seconds).toBeUndefined();
+    expect(s.entries[1]!.kind).toBe('assistant');
   });
 });

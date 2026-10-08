@@ -17,6 +17,13 @@ import { createConnection } from './connection';
 import type { Connection, ConnectionState } from './connection';
 import { App } from './App';
 
+/** G10-C3 工具行图标化定位器(正则匹配 textContent) */
+function toolRowRe(re: RegExp): HTMLButtonElement | null {
+  const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('.tool-summary'));
+  return rows.find((r) => re.test(r.textContent?.replace(/\s+/g, ' ') ?? '')) ?? null;
+}
+
+
 /**
  * G3.5 无头验收 e2e(会话维):真 GuiDaemon(dist)→ createConnection 全链(HTTP 会话维端点 +
  * WS /events 帧挂 sessionId)→ Home 首页全链(工作区/attach 播种/DirPicker 建会话)→ App 渲染。
@@ -178,7 +185,7 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
       // —— Home:工作区行(title=root 在场,可 attach)→ 展开会话列表 → Attach ——
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
       fireEvent.click(await screen.findByRole('button', { name: 'Attach' }, { timeout: 5_000 }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 播种:journal 首条用户输入经 attach → sessionSnapshot 基线 → blockquote 渲染 ——
       await waitFor(
@@ -192,7 +199,7 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
       fireEvent.change(input, { target: { value: 'attach 后提交' } });
       fireEvent.keyDown(input, { key: 'Enter' });
       await waitFor(() => expect(container.querySelector('.entry-assistant')?.textContent).toContain('attach 后答复'), { timeout: 10_000 });
-      expect(screen.getByText('session s1')).toBeDefined(); // 仍在会话(路由态)
+      expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(); // 仍在会话(路由态)
     } finally {
       await env.stop();
       localStorage.removeItem('sunshinex.token');
@@ -220,14 +227,14 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
         fireEvent.keyDown(input, { key: 'Enter' });
       };
       const backHome = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+        fireEvent.click(screen.getByRole('button', { name: 'back' }));
         await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       };
 
       // —— s1:工作区行展开 → Attach(journal 播种)→ UI 提交 → done ——
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
       fireEvent.click(await screen.findByRole('button', { name: 'Attach' }, { timeout: 5_000 }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       await submit('s1 目标');
       await waitFor(() => expect(container.textContent).toContain('s1 终答'), { timeout: 10_000 });
 
@@ -237,7 +244,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s2')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       await submit('s2 目标');
       await waitFor(() => expect(container.textContent).toContain('s2 终答'), { timeout: 10_000 });
       // s2 投影独立:不含 s1 条目(Chat unmount 本地态销毁,无跨会话串扰)
@@ -345,7 +352,7 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
     fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-    await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
     // —— 真实 UI 提交路径:输入 + Enter(idle 分流 = sessionSubmit;输入启用 = 播种落定后)——
     const input = screen.getByLabelText('message input');
@@ -515,7 +522,7 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByLabelText('Manual approvals'));
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       expect(newBodies.some((b) => b.mode === 'manual' && b.root === env.root)).toBe(true); // 真 UI 面 mode 断言
 
       // —— UI 提交 → write envelope 越信任域 → manual 挂起 → approval 帧经 WS → ApprovalCard ——
@@ -587,18 +594,19 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
 
       // —— 两会话先后建+跑+idle(s2 留在会话页——顶栏 Delete 的现场)——
       await openByPicker();
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第一会话目标', '第一会话完成');
-      fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+      fireEvent.click(screen.getByRole('button', { name: 'back' }));
       await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       await openByPicker();
-      await waitFor(() => expect(screen.getByText('session s2')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第二会话目标', '第二会话完成');
 
       // —— s2 会话页顶栏 Delete(confirm 桩真):以 openSessionId(daemon 会话 id)打
       //    /session/:id/delete——Home 行 Delete 以 journal id 寻址恒 404 的接线缺口就此退役 ——
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
       expect(confirmSpy).toHaveBeenCalledTimes(1);
       // 删除成功 → onBack → 欢迎空态回归(会话关窗)
       await screen.findByLabelText('welcome', {}, { timeout: 5_000 });
@@ -657,7 +665,7 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       const input = screen.getByLabelText('message input');
       await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
       fireEvent.change(input, { target: { value: 'run gated demo' } });
@@ -731,7 +739,7 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 提交 → run:write 域内直执行(无挂起)→ done 收束 ——
       const input = screen.getByLabelText('message input');
@@ -747,7 +755,7 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       expect(container.querySelector('.status-idle')).toBeDefined();
 
       // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffPanel 双列 ——
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(`● write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) }));
+      fireEvent.click(toolRowRe(new RegExp(`write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `))!);
       // 加载期先示右列现内容(单列+加载标)——双列落定以 old 列在场为准(waitFor 过拉取竞态窗)
       await waitFor(() => expect(container.querySelector('.diff-panel .diff-old')).not.toBeNull(), { timeout: 5_000 });
       expect(container.querySelector('.diff-panel .diff-old')?.textContent).toBe(OLD); // old 列 = pre-image blob
@@ -833,7 +841,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByLabelText('Manual approvals'));
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 提交:首轮模型轮挂在 gate 上(run 进行中,未到 write 挂起点)——
       const input = screen.getByLabelText('message input');
@@ -937,7 +945,7 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 默认任务页:右栏标签条唯一标签「任务」且活动(ensureSession 缺省开 tasks 单例)——
       await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
@@ -959,7 +967,7 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
 
       // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → **Diff 标签**开且活动(title=path)——
       //    (G8d T2 语义变更:callId 在场主通道 onOpenDiff;旧断言面 Files/.files-view 随接线退役)
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(`● write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) }));
+      fireEvent.click(toolRowRe(new RegExp(`write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `))!);
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.textContent).toBe(REL);
       expect(pathBtn?.title).toBe('打开 diff 标签'); // 主通道标识(缺场回落面才示「在文件标签预览」)
@@ -1025,7 +1033,7 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(文件头 CARDS 同款):提交 → done 收束 → 板/委派投影落位 ——
@@ -1093,7 +1101,7 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
       // —— +菜单开目录标签(content 节「目录」,单例)→ mount 惰拉 root → 根行 dirA 在场 ——
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
@@ -1184,7 +1192,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: '终端' }));
@@ -1307,7 +1315,7 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(SettingsForm 行
       //    label=键名,aria-label=language)→「保存」→ toast「已生效」在场 ——
@@ -1375,7 +1383,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
 
       // —— MCP 面(导航项):bad 卡在场(两级清单读 <root>/.sunshinex/mcp.json;命令行示出)——
@@ -1458,7 +1466,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(CARDS 同款):提交 → 委派 fork 派发 → 主链 done 收束 ——
       const input = screen.getByLabelText('message input');
@@ -1522,7 +1530,7 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
-      await waitFor(() => expect(screen.getByText('session s1')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: 'Web' }));
