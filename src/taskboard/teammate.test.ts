@@ -61,7 +61,7 @@ interface Rig {
 }
 
 /** 装配:真 TaskBoard(fake fork runner 计数,P1 路径探测器)+ 可选 team + 真 Teammate(fake model) */
-function makeRig(tmp: string, withTeam: boolean): Rig {
+function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
   const events: SessionEvent[] = [];
   const forkCalls: string[] = [];
   const runner = {
@@ -72,7 +72,7 @@ function makeRig(tmp: string, withTeam: boolean): Rig {
     },
   } as unknown as SubagentRunner;
   const registry = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry;
-  const team = new TeamRegistry();
+  const team = new TeamRegistry(cap);
   const board = new TaskBoard({
     store: new TeamStore(path.join(tmp, 'teams', 'main')),
     runner,
@@ -202,15 +202,19 @@ test('派发路由:assignee 命中活 teammate → runTask;无 team 注入 → P
   }
 });
 
-test('帽与停:第 5 个 teammate 注册拒;停后 hasAlive=false,未指派任务回退 fork 路径', async () => {
+test('帽与停:超帽注册拒(显式小帽钉死构造缺省);停后 hasAlive=false,未指派任务回退 fork 路径', async () => {
   const tmp = tmpdir('sunshinex-tm-cap-');
   try {
-    const rig = makeRig(tmp, true);
+    const rig = makeRig(tmp, true, 4);
     for (let i = 1; i <= 4; i++) rig.addTeammate(`w${i}`);
     const r5 = rig.team.register(rig.makeTeammate('w5'));
     assert.ok(!r5.ok, '第 5 个注册应失败');
     assert.equal(r5.error.code, 'INVALID_ARG');
     assert.equal(r5.error.message, 'teammate limit reached (4)');
+    // 缺省帽(env 未设)= 8:8 个以内可注册(2026-10-06 用户「4 太少」提额)
+    const dflt = new TeamRegistry();
+    for (let i = 1; i <= 8; i++) assert.ok(dflt.register(rig.makeTeammate(`d${i}`)).ok, `缺省帽第 ${i} 个应成功`);
+    assert.ok(!dflt.register(rig.makeTeammate('d9')).ok, '缺省帽第 9 个应拒');
     // 停:stop 幂等,全停后 hasAlive false
     rig.team.stop('w1');
     rig.team.stop('w1'); // 幂等

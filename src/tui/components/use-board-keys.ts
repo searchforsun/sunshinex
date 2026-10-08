@@ -56,8 +56,10 @@ export function useBoardKeys({
       // 不让键则问询卡键（↑↓/Enter）被板吞死，卡无法作答
       if (st.status === 'awaiting-question' && st.question) return false;
       const rows = boardRows(st);
-      if (rows.length === 0) { setBoard(false); return true; } // 空板自退（/new 重播种清板等）
       if (key.escape) { setBoard(false); return true; }
+      // 空板视图不再自退（2026-10-06 用户实机反馈「Ctrl+T 不起作用」：空板静默吞键无任何反馈）——
+      // 进入即渲染「任务板为空」提示框（BoardList 组件层契约），按键吞掉待板事件/Esc 退出
+      if (rows.length === 0) return true;
       if (key.upArrow || key.downArrow) {
         // 光标移动零 repaint（列表动态区每帧自绘）；窗口按每页 8 行自动平移（BoardList 同口径）；
         // 回环移动（2026-10-02 交互统一）：问询/审批/计划/斜杠/浏览全部 moveCursor 回环，任务视图同款
@@ -90,11 +92,10 @@ export function useBoardKeys({
       }
       return true; // 模态：其余键不落输入缓冲
     }
-    // Ctrl+T 进入任务视图（判定序 browse 之后）：板上有任务才进（空板自退对称）；恒吞键（无可进亦吞，
-    // browse 进入分支同口径）
+    // Ctrl+T 进入任务视图（判定序 browse 之后）：空板也进——渲染「任务板为空」提示框给真实反馈
+    //（同上用户实机反馈；原来空板静默吞键=「不起作用」观感）；恒吞键（browse 进入分支同口径）
     if (key.ctrl && input === 't') {
-      const rows = boardRows(stateRef.current);
-      if (rows.length > 0) setBoard(true, 0); // 光标缺省落首行（id 数值序最小）
+      setBoard(true, 0); // 光标缺省落首行（id 数值序最小）
       return true;
     }
     return false;

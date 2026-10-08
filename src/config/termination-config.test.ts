@@ -10,6 +10,7 @@ import {
   CONTEXT_WINDOW_DEFAULT,
   resolveRunWindow,
   modelTimeoutMsEnv,
+  maxTeammatesEnv,
 } from './termination-config';
 
 test('未设/空串回 undefined，消费点取内置缺省', () => {
@@ -77,4 +78,13 @@ test('modelTimeoutMsEnv：正整数生效；未设/空串/非正整数静默忽�
   assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '300.5' }), undefined);
   assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: '30000' }), 30000);
   assert.equal(modelTimeoutMsEnv({ SUNSHINEX_MODEL_TIMEOUT_MS: ' 30000 ' }), 30000, '首尾空白容差同族口径');
+});
+
+// ── teammate 数量帽（2026-10-06 用户实机「4 太少」提额）：表值钉权威源在此 ──
+test('maxTeammatesEnv：正整数生效；未设/空 = 缺省 8；零/负/非法 fail-fast 带槽名', () => {
+  assert.equal(maxTeammatesEnv({}), 8);
+  assert.equal(maxTeammatesEnv({ SUNSHINEX_MAX_TEAMMATES: '' }), 8);
+  assert.equal(maxTeammatesEnv({ SUNSHINEX_MAX_TEAMMATES: '12' }), 12);
+  assert.throws(() => maxTeammatesEnv({ SUNSHINEX_MAX_TEAMMATES: '0' }), /SUNSHINEX_MAX_TEAMMATES/);
+  assert.throws(() => maxTeammatesEnv({ SUNSHINEX_MAX_TEAMMATES: 'abc' }), /SUNSHINEX_MAX_TEAMMATES/);
 });

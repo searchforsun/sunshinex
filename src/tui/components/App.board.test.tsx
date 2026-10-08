@@ -106,3 +106,27 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('App：Ctrl+T 空板也进视图——「任务板为空」提示框给真实反馈（2026-10-06 用户实机：静默吞键=不起作用观感）', async () => {
+  const tmp = tmpdir('sunshinex-app-board-empty-');
+  let term: TestRenderResult | undefined;
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
+    });
+    term = render(<App controller={ctrl} />);
+    const { write, lastFrame } = term;
+    await new Promise((r) => setTimeout(r, 150));
+    // 无任何 task 事件（空板投影，真实生产形态：lead 未走 create_task 直接派 teammate）
+    write('\u0014'); // Ctrl+T 进入任务视图
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /task board empty/, '空板提示框在场（非静默吞键；t() 测试环境走英文缺省）');
+    write('\u001b'); // Esc 退出
+    await new Promise((r) => setTimeout(r, 150));
+    assert.doesNotMatch(lastFrame() ?? '', /task board empty/, 'Esc 退出空板视图');
+  } finally {
+    term?.unmount();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

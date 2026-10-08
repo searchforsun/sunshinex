@@ -4,7 +4,7 @@
  *  与 SubagentRunner 的分工:Runner 是主链按需 fork 的无状态单元;Teammate 是跨任务存续的有状态执行体,
  *  自有链(role 行 + 历次 task 行)即其记忆——每任务 Reactor 的 seed 经缺省 chainView() 取自 own chain。 */
 import type { SessionEvent } from '../types';
-import { reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
+import { maxTeammatesEnv, reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { fail, ok, Result } from '../result';
 import { Reactor, RunResult } from '../harness/reactor';
 import { ContextManager } from '../harness/context';
@@ -16,8 +16,9 @@ import type { Inbox } from './inbox';
 import type { TaskBoard } from './board';
 import type { BoardTask } from './model';
 
-/** 队伍帽(spec §5.8 团队规模上限):主链上下文带宽是共享资源, teammate 转录都进同一条事件流 */
-export const MAX_TEAMMATES = 4;
+/** 队伍缺省帽(2026-10-06 用户实机反馈「4 太少」提至 8):主链上下文带宽是共享资源,teammate 转录都进
+ *  同一条事件流;实际帽经环境变量 SUNSHINEX_MAX_TEAMMATES 可调(termination-config 单点解析) */
+export const DEFAULT_MAX_TEAMMATES = 8;
 
 export interface TeammateDeps {
   safety: SafetyChain;
@@ -38,17 +39,19 @@ export interface TeammateDeps {
   inbox?: Inbox;
 }
 
-/** teammate 注册表:帽 4 + 名字索引 + 存活聚合(派发路由的退化判据) */
+/** teammate 注册表:帽可配(缺省 DEFAULT_MAX_TEAMMATES,SUNSHINEX_MAX_TEAMMATES 覆盖)+ 名字索引 + 存活聚合(派发路由的退化判据) */
 export class TeamRegistry {
   private teammates = new Map<string, Teammate>();
 
-  /** 注册(帽 MAX_TEAMMATES):同名重注册 = 替换语义,旧实例先停(防双 claim 循环) */
+  constructor(private readonly cap: number = maxTeammatesEnv()) {}
+
+  /** 注册(帽可配):同名重注册 = 替换语义,旧实例先停(防双 claim 循环) */
   register(t: Teammate): Result<void> {
     // L2 收件身份唯一性:'lead' 是主会话专属收件名(inbox 的 lead 侧),teammate 占名会让
     // lead↔teammate 消息身份歧义——注册即拒(评审附带 2,2026-10-06)
     if (t.name === 'lead') return fail('INVALID_ARG', `'lead' is reserved for the main session`);
-    if (this.teammates.size >= MAX_TEAMMATES && this.teammates.get(t.name) === undefined) {
-      return fail('INVALID_ARG', `teammate limit reached (${MAX_TEAMMATES})`);
+    if (this.teammates.size >= this.cap && this.teammates.get(t.name) === undefined) {
+      return fail('INVALID_ARG', `teammate limit reached (${this.cap})`);
     }
     this.teammates.get(t.name)?.stop();
     this.teammates.set(t.name, t);

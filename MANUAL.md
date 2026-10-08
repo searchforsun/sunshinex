@@ -357,7 +357,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 行示例：`t1 [pending] ⚠ 标题 ← t2 @w1`（状态 / 门 / 依赖 / 指派）。
 
-**teammate**（长驻分工用；小探查用 5.3 spawn；上限 4）：
+**teammate**（长驻分工用；小探查用 5.3 spawn；缺省上限 8，环境变量 `SUNSHINEX_MAX_TEAMMATES=<n>` 可调）：
 
 | 操作 | 方法 |
 | --- | --- |

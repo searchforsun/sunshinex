@@ -67,6 +67,12 @@ export function teamTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | 
   return positiveIntOrUndefined(env, 'SUNSHINEX_TEAM_TOKEN_CAP');
 }
 
+/** teammate 数量帽（2026-10-06 用户实机「4 太少」提额）：SUNSHINEX_MAX_TEAMMATES 正整数生效，
+ *  未设/空 = 缺省 8（DEFAULT_MAX_TEAMMATES），非正整数 fail-fast 带槽名；消费点 TeamRegistry 构造缺省 */
+export function maxTeammatesEnv(env: NodeJS.ProcessEnv = process.env): number {
+  return positiveIntOrUndefined(env, 'SUNSHINEX_MAX_TEAMMATES') ?? 8;
+}
+
 /** 模型调用超时 env 解析（J9b 迁入，2026-10-04 归口 termination-config——超时旋钮单点，先例 contextWindowEnv；
  *  对齐 CLAUDE §12「模型调用超时 600s」的可调口径）：SUNSHINEX_MODEL_TIMEOUT_MS 正整数生效，
  * 未设/空串/非正整数静默忽略回适配器内建 600s。**刻意不并入本文件 positiveIntOrUndefined 的
