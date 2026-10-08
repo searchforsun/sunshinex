@@ -1,11 +1,102 @@
-/* G8a 设计令牌(spec §3;G8d U-D21 青色重定):暗色优先;亮色后置=换值即可 */
+/* ===== G9 Codex 1:1 双主题令牌(spec docs/superpowers/specs/2026-10-08-codex-desktop-1to1-design.md §1.2;
+   值源 audit §2;html[data-theme] 切换,缺省暗色,light 整块覆盖;派生 token(--fg-secondary 等)
+   经 color-mix(var(--fg)…) 随主题自动) ===== */
+:root {
+  color-scheme: dark;
+  /* 面 */
+  --surface: #181818;
+  --surface-under: #000;
+  --surface-elevated: #212121;
+  --surface-soft: #303030;
+  --surface-code: #101010;
+  /* 字 */
+  --fg: #dfdfdf;
+  --fg-secondary: color-mix(in srgb, var(--fg) 70%, transparent);
+  --fg-tertiary: color-mix(in srgb, var(--fg) 50%, transparent);
+  --fg-on-solid: #0d0d0d;
+  /* 边(Codex 无实色边框——前景透明度制) */
+  --border: color-mix(in srgb, var(--fg) 8%, transparent);
+  --border-subtle: color-mix(in srgb, var(--fg) 5%, transparent);
+  --border-strong: color-mix(in srgb, var(--fg) 16%, transparent);
+  /* accent 与语义(蓝仅 info/焦点/链接;状态色 dark 300 系/light 500 系) */
+  --accent: #339cff;
+  --accent-strong: #0285ff;
+  --ok: #40c977;
+  --warn: #ff8549;
+  --err: #ff6764;
+  --ok-solid: #00a240;
+  --err-solid: #e02e2a;
+  /* 用户消息胶囊底 */
+  --bubble-user: color-mix(in srgb, var(--fg) 8%, transparent);
+  /* 形状(基础档 ×1.25 比例尺) */
+  --radius-xs: 5px;
+  --radius-sm: 7.5px;
+  --radius-md: 10px;
+  --radius-lg: 12.5px;
+  --radius-xl: 15px;
+  --radius-2xl: 20px;
+  --radius-composer: 22px;
+  --radius-row: 9999px;
+  /* 海拔 */
+  --elev-card: 0 4px 16px rgba(0, 0, 0, 0.2);
+  --elev-prominent: 0 0 0 0.5px var(--border-strong), 0 3px 7.5px rgba(0, 0, 0, 0.18), 0 0 20px rgba(0, 0, 0, 0.2);
+  --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04), 0 4px 80px 8px rgba(0, 0, 0, 0.024),
+    inset 0 0 1px 0 rgba(255, 255, 255, 0.2);
+  /* 动效 */
+  --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-exit: cubic-bezier(0.8, 0, 0.4, 1);
+  --dur-basic: 0.15s;
+  --dur-relaxed: 0.3s;
+  /* 尺度 */
+  --chat-max: 800px;
+  --thread-gutter: 16px;
+  --row-h: 29px;
+  --toolbar-h: 46px;
+  /* 语法高亮(Codex dark 表) */
+  --syntax-comment: #b9b9b9;
+  --syntax-keyword: #f8a6c8;
+  --syntax-literal: #f1a275;
+  --syntax-string: #83d197;
+  --syntax-variable: #b897f4;
+  --syntax-attr: #f9dc78;
+  --syntax-name: #63a8f8;
+  /* 字体 */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', menlo, consolas, 'Liberation Mono', monospace;
+}
+[data-theme='light'] {
+  color-scheme: light;
+  --surface: #fff;
+  --surface-under: #f9f9f9;
+  --surface-elevated: #fff;
+  --surface-soft: #f3f3f3;
+  --surface-code: #fcfcfc;
+  --fg: #1a1c1f;
+  --fg-on-solid: #fff;
+  --bubble-user: color-mix(in srgb, var(--fg) 5%, transparent);
+  --accent-strong: #0169cc;
+  --ok: #00a240;
+  --warn: #e25507;
+  --err: #e02e2a;
+  --elev-card: 0 4px 16px rgba(0, 0, 0, 0.05);
+  --elev-prominent: 0 0 0 0.5px var(--border-strong), 0 3px 7.5px rgba(0, 0, 0, 0.04), 0 0 20px rgba(0, 0, 0, 0.05);
+  --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04), 0 4px 80px 8px rgba(0, 0, 0, 0.024);
+  --syntax-comment: #4f4f4f;
+  --syntax-keyword: #ab4f7a;
+  --syntax-literal: #ac4f23;
+  --syntax-string: #3a843f;
+  --syntax-variable: #643cae;
+  --syntax-attr: #b8802b;
+  --syntax-name: #1f4e94;
+}
+
+/* G8a 设计令牌(旧;G9 Task2 迁移后整块删除;--border 已并入上方新块) */
 :root {
   --bg-0: #0d1117;      /* app 背景 */
   --bg-1: #161b22;      /* 面板 */
   --bg-2: #21262d;      /* 浮层/hover */
   --fg-0: #e6edf3;      /* 主文本 */
   --fg-1: #9aa7b3;      /* 次文本(G8d 微调) */
-  --border: #30363d;
   --accent: #22d3ee;         /* 青色主强调(G8d 重定) */
   --accent-strong: #06b6d4;  /* 强调 hover/pressed 档(G8d 新增) */
   --ok: #3fb950;

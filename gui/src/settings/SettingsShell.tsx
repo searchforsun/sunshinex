@@ -12,6 +12,8 @@ import type { SkillsPermsPaneConn } from './SkillsPermsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
 import { errText } from '../ui-util';
+import { applyTheme, readThemePref, watchSystemTheme } from '../theme';
+import type { ThemePref } from '../theme';
 
 /**
  * G8c T8/T9 设置态壳:App settingsOpen 时整体替换三栏内容——左栏(顶栏「← 返回」+ 项目
@@ -48,6 +50,31 @@ const SETTINGS_NAV: ReadonlyArray<{ readonly id: string; readonly title: string 
   { id: 'kb', title: '知识库与搜索' },
   { id: 'raw', title: '高级' },
 ];
+
+/** 外观主题(G9 spec §1.1):三态持久;system 态跟随系统(watch 随卸载/切换解绑) */
+function ThemeSelect(): JSX.Element {
+  const [pref, setPref] = useState<ThemePref>(readThemePref);
+  useEffect(() => watchSystemTheme(pref), [pref]);
+  return (
+    <div className="sx-theme-row">
+      <label htmlFor="theme-select">外观</label>
+      <select
+        id="theme-select"
+        aria-label="theme"
+        value={pref}
+        onChange={(e) => {
+          const p = e.target.value as ThemePref;
+          setPref(p);
+          applyTheme(p);
+        }}
+      >
+        <option value="system">跟随系统</option>
+        <option value="light">亮色</option>
+        <option value="dark">暗色</option>
+      </select>
+    </div>
+  );
+}
 
 /** 错误文案归一:G8e-T2 抽共享 ui-util */
 
@@ -128,6 +155,7 @@ export function SettingsShell({ conn, root, onRootChange, onBack }: SettingsShel
           </select>
           {listError !== '' && <p className="home-error" role="alert">{listError}</p>}
         </div>
+        <ThemeSelect />
         <ul className="sx-settings-nav">
           {SETTINGS_NAV.map((p) => (
             <li key={p.id}>

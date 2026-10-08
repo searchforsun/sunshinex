@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>sunshinex gui</title>
+    <script>
+      /* 主题首 paint 引导(G9 spec §1.1,防 FOUC):与 src/theme.ts 同语义——缺省暗色 */
+      (function () {
+        var pref = 'system';
+        try { pref = localStorage.getItem('sunshinex.theme') || 'system'; } catch (e) {}
+        var dark =
+          pref === 'dark' ||
+          (pref !== 'light' && (window.matchMedia ? matchMedia('(prefers-color-scheme: dark)').matches : true));
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
