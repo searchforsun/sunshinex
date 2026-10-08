@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { DirPicker } from '../pages/DirPicker';
 import { relTime } from '../ui-util';
+import { t } from '../i18n';
 import { ChevronRight, Plus, RefreshCw, Settings, SquarePen } from 'lucide-react';
 
 /**
@@ -252,13 +253,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         className="sx-new-chat"
         aria-label="new chat"
         disabled={busy || activeRoot === ''}
-        title={activeRoot === '' ? '先在 Projects 选择工作区' : '新对话'}
+        title={activeRoot === '' ? t('Pick a workspace in Projects first', '先在项目区选择工作区') : t('New chat', '新对话')}
         onClick={newChatActive}
       >
         <SquarePen size={16} strokeWidth={1.75} />
-        <span>新对话</span>
+        <span>{t('New chat', '新对话')}</span>
       </button>
-      <div className="sx-side-head">Projects</div>
+      <div className="sx-side-head">{t('Projects', '项目')}</div>
       <ul className="workspace-list sx-groups" aria-label="workspace groups">
         {rows === null && listError === '' && <li className="home-loading">加载工作区…</li>}
         {listError !== '' && (
@@ -387,7 +388,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           );
         })}
       </ul>
-      <div className="sx-side-head">Recents</div>
+      <div className="sx-side-head">{t('Recents', '最近会话')}</div>
       <ul className="recent-list" aria-label="recent sessions">
         {recents === null && <li className="sessions-loading">加载会话…</li>}
         {recents !== null && recents.length === 0 && <li className="no-sessions">暂无最近会话</li>}

@@ -1642,13 +1642,13 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
     const { conn, unmount } = await enterChat();
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(conn.deleteSessionCalls).toEqual([]); // 假:不发
     expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(); // 留在会话
     confirmSpy.mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
     await waitFor(() => expect(conn.deleteSessionCalls).toEqual(['s1'])); // daemon 会话 id(非 journal id)
     await waitFor(() => expect(screen.getByLabelText('welcome')).toBeDefined()); // onBack → 欢迎空态(会话关窗)
     unmount();
@@ -1659,7 +1659,7 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
     conn.deleteReject = new Error('/session/s1/delete -> 409');
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
     await waitFor(() => expect(screen.getByText('/session/s1/delete -> 409')).toBeDefined());
     expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined();
     unmount();
@@ -1744,7 +1744,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf([...generalRows, { key: 'contextWindow', value: '100000', source: 'project', envOverride: false }]);
     openSettings();
     // 面板拉取:settings(root=openRoot)
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a']));
+    // [0]=App 语言同步全局拉取(G10-C3c)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a']));
     // 行渲染:值 = 行 value ?? 缺省空(default 行空串)
     expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe('en');
     expect((screen.getByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
@@ -1766,7 +1767,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(screen.getByText('已生效:新建会话起')).toBeDefined();
     expect(document.querySelector('.sx-toast')).not.toBeNull();
     // 保存成功后重拉 settings
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a', '/w/root-a']));
     // 切「上下文与限额」面板:数字键改动保存 → number 化(非字符串)
     fireEvent.click(screen.getByRole('button', { name: '上下文与限额' }));
     await screen.findByLabelText('contextWindow');
@@ -1792,13 +1793,14 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     const { conn, unmount } = await enterChat();
     conn.settingsView = settingsViewOf(generalRows);
     openSettings();
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a']));
+    // [0]=App 语言同步全局拉取(G10-C3c)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a']));
     // 切「(仅全局)」:root='' → settings() 无 root 参(FakeConn 记 '')
     fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a', '']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a', '']));
     // 切回项目:root 复位
     fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '/w/root-a' } });
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a', '', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a', '', '/w/root-a']));
     unmount();
   });
 
@@ -1807,7 +1809,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'slow-a', source: 'project', envOverride: false }]);
     conn.holdSettings(); // A(项目 root)首笔应答悬挂(单发门:后续直通)
     openSettings();
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['/w/root-a']));
+    // [0]=App 语言同步全局拉取(G10-C3c)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a']));
     // 快切「(仅全局)」:B 应答直通落定(fast-b)
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'fast-b', source: 'global', envOverride: false }]);
     fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
@@ -1816,7 +1819,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     await act(async () => {
       conn.releaseSettings();
     });
-    expect(conn.settingsCalls).toEqual(['/w/root-a', '']);
+    expect(conn.settingsCalls).toEqual(['', '/w/root-a', '']);
     expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe('fast-b');
     unmount();
   });

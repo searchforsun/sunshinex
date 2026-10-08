@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SettingsKeyRow, SettingsView } from '../connection';
 import { SourceBadge } from './SourceBadge';
 import { relTime, errText } from '../ui-util';
+import { parseLanguage, setLanguage } from '../i18n';
 
 /**
  * G8c T8 通用键值表单引擎(+四简单面板配置):mount/effect 拉 conn.settings(root)→按 pane
@@ -201,6 +202,11 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
     conn.putSettings(root, updates).then(
       () => {
         setSaving(false);
+        // 语言键保存即热切换 GUI chrome 双语(G10-C3c;其余键新建会话起)
+        if (updates.language !== undefined && typeof updates.language === 'string') {
+          const lang = parseLanguage(updates.language);
+          if (lang !== undefined) setLanguage(lang);
+        }
         setToast('已生效:新建会话起');
         if (toastTimer.current !== null) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToast(''), 3_000);

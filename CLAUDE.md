@@ -106,6 +106,7 @@ SUNSHINE.md          # 项目业务配置
 | markdansi | 正文/子代理转录/step 行/旧档回放 Markdown→ANSI 渲染（session 块缓冲按块放行 + render 单点出口 + D29 并轨后 MessageRow 渲染层烘焙），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 markdown.ts 表格网格回路（renderGridTable 的 IR 解析） | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
 | cli-table3 | Markdown 表格框线渲染，收敛于 `src/tui/markdown.ts` 表格层 | 表格降级为原文行 |
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
+| mermaid（GUI） | 会话流 mermaid 围栏图渲染（懒加载/失败回落原文），收敛于 `gui/src/Mermaid.tsx` | 回落原文代码块，零会话流依赖 |
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
@@ -216,6 +217,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 编辑器 | Monaco Editor（含 Diff Editor） | 规划选型 | 代码预览/diff 编辑，核心 diff 走 Diff Editor |
 | GUI diff | diff2html | 降级备选 | 仅非编辑器区域轻量 diff 展示，按需引入 |
 | GUI 可视化 | @antv/g6 | 规划选型 | 工作流 DAG 可视化看板（MVP 节点样式先行） |
+| GUI 图渲染 | mermaid | 已引入 | 会话流 mermaid 围栏渲染（懒加载/主题随 data-theme/失败回落），收敛于 `gui/src/Mermaid.tsx` |
 | GUI 终端 | xterm.js + node-pty | 规划选型 | 内嵌终端；node-pty 为原生模块，三端分别编译打包（§14 纪律） |
 | GUI 布局 | splitpanes | 规划选型 | 多面板拖拽分割 |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听 |

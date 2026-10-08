@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import type { MutableRefObject } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -11,8 +11,10 @@ import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapsh
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
 import { DiffPanel } from '../diff-panel';
+import { Mermaid } from '../Mermaid';
 import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent } from '../../../src/types';
+import { t } from '../i18n';
 
 /**
  * T4δ Chat 页(G3 对话面会话化迁移):App 暂留的 G3 单页对话面(reducer/md 渲染/输入分流/Stop/
@@ -291,6 +293,17 @@ function AskCard({ req, onSubmit, onDismiss }: { req: GuiAskReq; onSubmit: (answ
   );
 }
 
+/** markdown 渲染组件面(G10-C3c):mermaid 围栏 → 图组件(懒加载,失败回落原文);其余走默认 pre */
+const mdComponents = {
+  pre(props: { children?: ReactNode }) {
+    const child = Array.isArray(props.children) ? props.children[0] : props.children;
+    const cls = (child as { props?: { className?: string } } | null)?.props?.className ?? '';
+    const code = (child as { props?: { children?: unknown } } | null)?.props?.children;
+    if (cls.includes('language-mermaid')) return <Mermaid chart={String(code ?? '')} />;
+    return <pre>{props.children}</pre>;
+  },
+} as const;
+
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText, write: PenLine, exec: Terminal, grep: Search, glob: FolderSearch,
@@ -314,7 +327,7 @@ const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: Ch
           aria-hidden="true"
           style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-basic) var(--ease-enter)' }}
         />
-        {entry.streaming === true ? '思考中…' : entry.seconds !== undefined ? `思考 ${entry.seconds}s` : '思考'}
+        {entry.streaming === true ? t('Thinking…', '思考中…') : entry.seconds !== undefined ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}s`) : t('Thought', '思考')}
       </button>
       {open && <pre className="thinking-detail">{entry.md}</pre>}
     </div>
@@ -346,12 +359,12 @@ const UserEntryView = memo(function UserEntryView({ entry }: { entry: ChatEntry 
   return (
     <div className="entry entry-user">
       <div className="user-bubble">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.md}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{entry.md}</ReactMarkdown>
       </div>
       <div className="user-actions">
-        <button type="button" className="user-action" title={copied === 'fail' ? '未复制' : copied === 'ok' ? '已复制' : '复制'} onClick={copy}>
+        <button type="button" className="user-action" title={copied === 'fail' ? t('Not copied', '未复制') : copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={copy}>
           <Copy size={12} strokeWidth={1.75} aria-hidden="true" />
-          {copied === 'ok' ? '已复制' : copied === 'fail' ? '未复制' : '复制'}
+          {copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
         </button>
       </div>
     </div>
@@ -364,7 +377,7 @@ const UserEntryView = memo(function UserEntryView({ entry }: { entry: ChatEntry 
 const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   return (
     <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.md}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{entry.md}</ReactMarkdown>
       {entry.streaming === true && <span className="sx-stream-cursor" aria-hidden="true" />}
     </div>
   );
@@ -575,7 +588,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   return (
     <>
       <header className="chat-topbar">
-        <button type="button" className="back" aria-label="back" title="返回首页" onClick={onBack}>
+        <button type="button" className="back" aria-label="back" title={t('Back to home', '返回首页')} onClick={onBack}>
           <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
         </button>
         <span
@@ -589,7 +602,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           type="button"
           className="chat-more sx-iconbtn"
           aria-label="chat actions"
-          title="会话操作"
+          title={t('Session actions', '会话操作')}
           onClick={() => setMoreOpen((v) => !v)}
         >
           <MoreHorizontal size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -605,7 +618,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 deleteThisSession();
               }}
             >
-              删除会话
+              {t('Delete session', '删除会话')}
             </button>
           </div>
         )}
@@ -624,8 +637,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
       <main className="chat" aria-label="chat">
         {chat.entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
-            <div className="chat-empty-title">给 sunshinex 一个任务</div>
-            <div className="chat-empty-hint">描述目标即可:模型流式作答,工具实时执行,写操作需审批</div>
+            <div className="chat-empty-title">{t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
+            <div className="chat-empty-hint">{t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
           </div>
         )}
         {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染) */}
@@ -668,7 +681,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           className="message-input"
           value={input}
           rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
-          placeholder={running ? '插入运行中会话…' : '给 sunshinex 一个任务…'}
+          placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
           disabled={connState !== 'open' || seeding}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -680,7 +693,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         />
         <div className="composer-foot">
           {running ? (
-            <button type="button" className="send" aria-label="stop" title="停止" onClick={interrupt}>
+            <button type="button" className="send" aria-label="stop" title={t('Stop', '停止')} onClick={interrupt}>
               <Square size={12} strokeWidth={2.5} aria-hidden="true" />
             </button>
           ) : (
@@ -688,7 +701,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               type="button"
               className="send"
               aria-label="send"
-              title="发送"
+              title={t('Send', '发送')}
               onClick={send}
               disabled={connState !== 'open' || seeding}
             >

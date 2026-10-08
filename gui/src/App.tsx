@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { parseLanguage, setLanguage } from './i18n';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
@@ -223,6 +224,18 @@ function AppShell({ token }: { token: string }): JSX.Element {
   }, [token]);
 
   /** 拖宽在途兜底解绑(会话切走/壳卸毁时 window 监听不泄漏) */
+  /** GUI chrome 双语(G10-C3c):语言源 = daemon settings language 键,连接装配即同步 */
+  useEffect(() => {
+    if (connInstance === null) return;
+    connInstance.settings().then(
+      (view) => {
+        const raw = view.keys.find((k) => k.key === 'language')?.value ?? undefined;
+        setLanguage(parseLanguage(raw ?? undefined));
+      },
+      () => {},
+    );
+  }, [connInstance]);
+
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
   /** 左栏选中会话(attach/新建完成):切路由(Chat 装配期自播种基线)+ ensureSession 建席

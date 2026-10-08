@@ -1080,3 +1080,8 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .chat-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--fg); cursor: default; }
 .chat-more { margin-left: auto; }
 .chat-more-pop { top: 40px; right: 8px; }
+
+/* ===== G10-C3c mermaid 围栏渲染 ===== */
+.mermaid-svg { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); overflow-x: auto; }
+.mermaid-svg svg { max-width: 100%; }
+.mermaid-pending, .mermaid-fallback { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border: none; border-radius: var(--radius-md); font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }

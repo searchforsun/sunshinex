@@ -606,7 +606,7 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       //    /session/:id/delete——Home 行 Delete 以 journal id 寻址恒 404 的接线缺口就此退役 ——
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
       fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-      fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
       expect(confirmSpy).toHaveBeenCalledTimes(1);
       // 删除成功 → onBack → 欢迎空态回归(会话关窗)
       await screen.findByLabelText('welcome', {}, { timeout: 5_000 });

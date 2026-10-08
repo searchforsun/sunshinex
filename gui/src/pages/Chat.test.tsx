@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+// mermaid 加载失败回落(懒加载降级纪律):工厂抛错即模拟拉包失败
+vi.mock('mermaid', () => {
+  throw new Error('mock: mermaid load failure');
+});
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Chat } from './Chat';
 import type { ChatSink } from './Chat';
@@ -45,14 +49,14 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     const entry = document.querySelector('.entry-user')!;
     expect(entry).toBeTruthy();
     expect(entry.querySelector('.user-bubble')).toBeTruthy();
-    expect(entry.querySelector('button[title="复制"]')).toBeTruthy();
+    expect(entry.querySelector('button[title="Copy"]')).toBeTruthy();
   });
 
   it('复制钮写入剪贴板(剥 > 前缀),成功示「已复制」', async () => {
     mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '> 你好' }]);
-    fireEvent.click(await screen.findByTitle('复制'));
+    fireEvent.click(await screen.findByTitle('Copy'));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('你好');
-    await screen.findByTitle('已复制');
+    await screen.findByTitle('Copied');
   });
 
   it('跨日条目间渲染一条居中日期分隔;同日不渲染', async () => {
@@ -79,5 +83,12 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     ]);
     await screen.findByText('b');
     expect(document.querySelectorAll('.chat-day-sep')).toHaveLength(1);
+  });
+});
+
+describe('mermaid 围栏(G10-C3c)', () => {
+  it('加载失败回落原文代码块(降级纪律,会话流零阻塞)', async () => {
+    mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: '图:\n\n```mermaid\ngraph TD; A-->B\n```' }]);
+    expect(await screen.findByText(/graph TD; A-->B/, {}, { timeout: 5_000 })).toBeTruthy();
   });
 });
