@@ -1,7 +1,7 @@
 # 桌面壳(Electron)设计规格——壳批次 H
 
 - **日期**:2026-10-08
-- **状态**:设计定稿 v1,待评审,未实施
+- **状态**:设计定稿 v1(H1-H4 全量交付收官)
 - **来源**:用户会话既定后置项——「壳批次(后置):Tauri/Electron 选型+打包+托盘/快捷键|独立 spec 立项」(gui-v1 spec §12+ROADMAP 5B);G8 spec U-D7「真原生 webview 归壳批次」
 - **关联**:`2026-10-06-gui-v1-design.md` §12 壳批次行、`2026-10-07-gui-redesign-design.md` U-D7/终局归档
 
@@ -32,9 +32,10 @@ scripts/shell-smoke.mjs   打包产物冒烟(启动→窗口→自动退出,退�
 
 ## 2. 打包(electron-builder)
 
-- win NSIS 安装器+portable 两产物;appId/productName `sunshinex`。
-- extraResources:`dist/`(主仓编译产物,daemon 及依赖树)、`dist-gui/`(静态面)、`gui/node_modules`(gui 运行时零依赖?——gui 为纯静态 vite 产物,**无需** node_modules);主进程自身 esbuild 打单 CJS(main+lib+daemon 装配文件,bundle 进 app.asar)。
-- 原生模块:node-pty 经 electron-builder `npmRebuild` 默认面自动 ABI 重编;asarUnpack 按需。
+- win NSIS 安装器+portable 两产物;appId/productName `sunshinex`(交付实况:electron-builder 26,portable 须显式 `artifactName` 补字样,否则缺省名与 NSIS Setup 难辨且 dist-smoke 通配落空)。
+- extraResources(交付实况):`app-dist/`(esbuild 双入口——主仓 dist 的 daemon.js+runtime.js 各出一件自含 CJS 束,external 仅 node-pty,ws/MCP SDK/markdown 系纯 JS 全内联)+`node-pty/` 单树(prepare-pty-resource 白名单装配,顶层恰 `lib/prebuilds/package.json/LICENSE` 四件,test/ts 源码面零携带,LICENSE=MIT 再分发随附)+`dist-gui/`(gui 纯静态 vite 产物,零 node_modules);壳主进程自身 esbuild 打单 CJS `out/main.cjs` 入 app.asar(external 仅 electron;daemon 经运行时动态 import 加载 app-dist,不进主束)。设计期「dist/ 直携」弃——运行时 require/spawn 面与 pnpm symlink 解析均不可入 asar。
+- 原生模块:`npmRebuild:false`(N-API ABI 稳定零重编,H1/H2 冒烟+portable 冒烟实证)——node-pty 1.1.0 为 node-addon-api 构建,ABI 跨 Electron/Node 版本稳定;npmRebuild 走 node-gyp 全量重建(win 下慢且引入工具链依赖)故关。
+- 镜像双 env 口径:`ELECTRON_MIRROR`(electron zip 本体)+`ELECTRON_BUILDER_BINARIES_MIRROR`(winCodeSign/nsis 等 builder 二进制),缺任一即有 github 直拉慢/超时面。
 - 主仓根 scripts:`shell:dev`(先 build 主仓+gui,再 electron .)/`shell:dist`(全构建+electron-builder)。
 
 ## 3. 测试策略
@@ -51,7 +52,9 @@ scripts/shell-smoke.mjs   打包产物冒烟(启动→窗口→自动退出,退�
 | ~~H1~~ | 壳骨架:shell 包+esbuild 主进程+daemon 进程内装配+BrowserWindow+URL token+单实例锁+shell:dev/单测+冒烟旗标——~~已交付~~ 2026-10-08(执行注记:壳骨架+daemon 进程内装配+冒烟门禁;electron ^44 内嵌 Node 24)。**已知跟进**:单实例锁被占时 smoke 假绿面(收紧判据后置)/smoke 预检未含 out/main.cjs/taskkill 失败理论挂起/@types node 双实例化妆级/H2 承接:托盘+快捷键+驻留序+原生外开 |
 | ~~H2~~ | 托盘+Alt+Shift+S+关窗驻留/托盘退出序+setWindowOpenHandler 原生外开+单测——~~已交付~~ 2026-10-08(执行注记:托盘+驻留序+快捷键+原生外开)。**已知跟进**:驻留/托盘/快捷键/外开=手验指引在 SDD 报告,Playwright 自动化后置;子窗无 min 尺寸/app.exit 路径不注销[进程回收兜底];非 http 外开默认拒;file:// 面记录 |
 | ~~H3~~ | electron-builder(NSIS+portable+图标+extraResources+node-pty rebuild)+shell:dist+产物冒烟脚本+文档——~~已交付~~ 2026-10-08(NSIS+portable 双产物/零 rebuild N-API 口径/portable 冒烟进门禁)。**已知跟进**:NSIS 静默装自动化后置/安装器手验指引在 SDD 报告/node-pty 整包未滤平台+自签面=发布前项/镜像双 env 本机口径 |
-| H4 | 收口门禁(主仓/gui/shell 全量+冒烟)+两 spec/ROADMAP 回写 |
+| ~~H4~~ | 收口门禁(主仓/gui/shell 全量+冒烟)+两 spec/ROADMAP 回写——~~已交付~~ 2026-10-08(壳收官:trimmed 重打包产物级实证+全量门禁+统一回写;门禁=主仓 1781/0+gui 245/0+e2e 19/0+shell 14/0+双冒烟 0+selfcheck OK;另清偿 H1/H3 .gitignore 增行未同步 SCAN_SKIP_DIRS 的双源漂移,G2 先例同型) |
+
+> **缓议终局归档(不再挂任务)**:Playwright 交互自动化后置(驻留/托盘/快捷键/外开=手验指引在 SDD 报告)/NSIS 静默装自动化后置/签名证书+prebuilds 平台瘦身=发布前项/release 目录本地卫生(electron-builder 调试副产物,已忽略面外不入 git)/node-pty 升级需重 dist 且 LICENSE 大小写面(白名单按精确文件名 `LICENSE` 匹配,变体名会漏)。
 
 ## 5. 决策记录
 
