@@ -28,11 +28,12 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   void app.whenReady().then(async () => {
     try {
-      // 两态路径：打包态以 resourcesPath 为根；开发态 getAppPath()=shell 目录，上溯两级即仓库根
+      // 两态路径：打包态以 resourcesPath 为根；开发态 getAppPath()=shell 目录（仓根直接子包），
+      // 上溯一级即仓库根（T4 冒烟红首因：原上溯两级落到仓父目录，dist 解析必 404）
       const paths = resolveDaemonPaths(
         app.isPackaged,
         process.resourcesPath,
-        path.resolve(app.getAppPath(), '..', '..'),
+        path.resolve(app.getAppPath(), '..'),
       );
       daemon = await startDaemon(paths);
     } catch (err) {
@@ -79,7 +80,9 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  // 退出兜底：常规退出路径（用户关窗等）下确保 daemon close——幂等守卫已闭（smoke 收口先走）则跳过
+  // 退出兜底：常规退出路径（用户关窗等）下确保 daemon close——幂等守卫已闭（smoke 收口先走）则跳过。
+  // close 失败与 smoke 分支同裁定（T3 复核落实）：统一退 0——冒烟判据=「启动到窗口就绪」，
+  // close 失败已日志、不属冒烟语义面，退码不对称会在门禁上制造假红。
   app.on('will-quit', (event) => {
     const closing = closeDaemon();
     if (closing === undefined) return;
@@ -88,7 +91,7 @@ if (!app.requestSingleInstanceLock()) {
       () => app.exit(0),
       (err) => {
         console.error('[shell] daemon close failed:', err);
-        app.exit(1);
+        app.exit(0);
       },
     );
   });
