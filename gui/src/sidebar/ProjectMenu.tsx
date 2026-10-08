@@ -36,6 +36,16 @@ export interface ProjectMenuProps {
   readonly onOpenSettings?: () => void;
 }
 
+/** 工作区显示名:真实项目目录名(basename),路径 slug 仅兜底/悬浮(2026-10-08 可读性裁定:
+ *  路径 slug「D-project-bi-mammoth-internal-410e80d4」换行破碎不可读——目录名才是用户心智的项目名) */
+function wsName(row: { root?: string; slug: string }): string {
+  if (row.root !== undefined && row.root !== '') {
+    const base = row.root.split(/[\\/]/).filter(Boolean).pop();
+    if (base !== undefined && base !== '') return base;
+  }
+  return row.slug;
+}
+
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
@@ -245,8 +255,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     <ChevronRight size={16} strokeWidth={1.75} />
                   </span>
                   <Folder size={16} strokeWidth={1.75} />
-                  <span className="ws-slug">{row.slug}</span>
-                  <span className="ws-count sx-count">{row.sessionCount} sessions</span>
+                  <span className="ws-slug sx-ws-name">{wsName(row)}</span>
+                  <span className="ws-count sx-count" title={`${row.sessionCount} sessions`}>
+                    {row.sessionCount}
+                  </span>
                 </button>
                 {root !== undefined && (
                   <button
@@ -301,10 +313,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     return (
                       <li key={s.id} className={`session-row sx-session-row${active ? ' active' : ''}`}>
                         <span className={`sx-session-dot${running ? ' running' : ''}`} title={running ? '运行中会话' : undefined} />
-                        <span className="session-summary">{s.firstUser ?? '(无摘要)'}</span>
-                        <span className="session-meta">
-                          {s.id} · {relTime(s.updatedAt)}
+                        <span className="session-summary" title={`${s.firstUser ?? ''} · ${s.id}`}>
+                          {s.firstUser ?? '(无摘要)'}
                         </span>
+                        <span className="session-meta">{relTime(s.updatedAt)}</span>
                         <button
                           type="button"
                           className="attach"

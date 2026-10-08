@@ -420,7 +420,13 @@ function AppShell({ token }: { token: string }): JSX.Element {
               />
             ) : (
               <div className="sx-welcome" aria-label="welcome">
-                <p>选择左侧会话,或在工作区分组内新建。</p>
+                <div className="sx-welcome-brand">
+                  Sunshinex<span className="sx-welcome-dot" />
+                </div>
+                <p className="sx-welcome-title">选择左侧会话,或在工作区分组内新建</p>
+                <p className="sx-welcome-hint">
+                  <kbd className="sx-kbd">Alt+Shift+S</kbd> 唤起窗口(桌面端) · 右栏「+」打开文件 / 任务 / 终端
+                </p>
               </div>
             )}
           </main>

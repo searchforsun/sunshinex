@@ -357,7 +357,7 @@ function mount(): { conn: Conn; unmount: () => void } {
 }
 
 /** 左栏项目组头定位(ProjectMenu 组头钮可及名 = slug + 会话数;G8a:Home 行退役,组头即展开钮) */
-const GROUP_HEAD = { name: /^ws-root-a 1 sessions$/ };
+const GROUP_HEAD = { name: /^root-a 1$/ }; // G8f 可读性:组头=basename(root)+纯数字计数
 
 /** 左栏真流程进 chat(G8a:ProjectMenu 组头展开 → Attach 两步链(newSession+attach)→ Chat
  *  会话 chip 在场)→ 连接 open + 播种落定(输入启用——seeding 门:基线快照在途时输入禁用) */

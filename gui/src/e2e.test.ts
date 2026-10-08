@@ -254,7 +254,10 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       fireEvent.click(screen.getByTitle(env.root)); // 重展开 → sessionsOf 重拉(含 s2 新建档)
       const attachButtons = await screen.findAllByRole('button', { name: 'Attach' }, { timeout: 5_000 });
       expect(attachButtons.length).toBeGreaterThanOrEqual(2); // s1 播种档 + s2 新建档(T2 即挂)
-      const s1Attach = attachButtons.find((b) => b.closest('.session-row')?.textContent?.includes(s1Journal));
+      // G8f:journal id 从可见 meta 移入摘要 title(行文本只留摘要+相对时间)——定位走 summary title
+      const s1Attach = attachButtons.find(
+        (b) => b.closest('.session-row')?.querySelector('.session-summary')?.getAttribute('title')?.includes(s1Journal),
+      );
       expect(s1Attach).toBeDefined();
       fireEvent.click(s1Attach!);
       await waitFor(

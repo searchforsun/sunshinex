@@ -473,3 +473,123 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .home-loading, .home-empty, .sessions-loading, .no-sessions { list-style: none; padding: 4px 12px; color: var(--fg-1); font-size: 12px; }
 .home-error { list-style: none; padding: 4px 12px; color: var(--err); font-size: 12px; }
 .modal-body .home-error { padding: 0; margin: 8px 0 0; }
+
+/* ===== G8f 可读性与层次(用户对标第二轮):命名/侧栏排版/欢迎态/设置卡式化 ===== */
+
+/* 左栏组头:真实项目名(截断不换行)+纯数字计数 pill */
+.sx-ws-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fg-0);
+}
+.sx-group-head { gap: 8px; }
+.sx-count {
+  min-width: 20px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+}
+
+/* 会话行:摘要省略+相对时间弱化,Attach 收为幽灵小钮 */
+.sx-session-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+.sx-session-row .session-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sx-session-row .session-meta {
+  font-size: 11px;
+  color: var(--fg-1);
+  white-space: nowrap;
+}
+.sx-session-row .attach {
+  font-size: 11px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg-1);
+}
+.sx-session-row .attach:hover {
+  color: var(--fg-0);
+  border-color: var(--accent);
+}
+
+/* 欢迎空态:品牌+主次文案+键位提示 */
+.sx-welcome { gap: 12px; }
+.sx-welcome-brand {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--fg-0);
+}
+.sx-welcome-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.sx-welcome-title { margin: 0; color: var(--fg-1); }
+.sx-welcome-hint { margin: 0; font-size: 12px; color: var(--fg-1); }
+.sx-kbd {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-0);
+}
+
+/* 设置面板:卡式化(容器卡+行分隔+右对齐控件+accent 主钮) */
+.sx-settings-rows {
+  list-style: none;
+  margin: 12px 0;
+  padding: 2px 0;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.sx-setting-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 240px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.sx-setting-row + .sx-setting-row { border-top: 1px solid var(--border); }
+.sx-setting-label { font-weight: 500; overflow-wrap: anywhere; }
+.sx-setting-input {
+  width: 100%;
+  padding: 5px 10px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg-0);
+  font: inherit;
+}
+.sx-setting-input:focus { border-color: var(--accent); outline: none; }
+.sx-setting-input:disabled { opacity: 0.55; }
+.sx-settings-save {
+  padding: 6px 18px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #06202a;
+  font-weight: 600;
+}
+.sx-settings-save:hover { background: var(--accent-strong); }
