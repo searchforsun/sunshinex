@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Coins, Copy, Footprints } from 'lucide-react';
+import { ArrowUp, Coins, Copy, Footprints, Square } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
@@ -594,7 +594,10 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
       </main>
       <footer className="composer">
         {/* G8d T5 输入面 textarea 自增高:rows 随内容换行数 1-6 派生(state 单源,清空/提交自然回 1);
-         *  Enter 提交 / Shift+Enter 换行(不 preventDefault——换行是 textarea 默认行为) */}
+         *  Enter 提交 / Shift+Enter 换行(不 preventDefault——换行是 textarea 默认行为)。
+         *  G9-B4(spec §4):浮卡容器(elevated 面+三层海拔+22px 超椭圆渐进)在 CSS;此处只分结构
+         *  (textarea + composer-foot)并把发送/停止改 28px 圆形实心钮(↑/■ 图标,aria-label
+         *  send/stop 保查询性)——权限/模型 pill 无功能对应物不做(spec §0 复刻纪律)。 */}
         <textarea
           aria-label="message input"
           className="message-input"
@@ -610,15 +613,24 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             }
           }}
         />
-        {running ? (
-          <button type="button" className="stop" onClick={interrupt}>
-            Stop
-          </button>
-        ) : (
-          <button type="button" className="send" onClick={send} disabled={connState !== 'open' || seeding}>
-            Send
-          </button>
-        )}
+        <div className="composer-foot">
+          {running ? (
+            <button type="button" className="send" aria-label="stop" title="停止" onClick={interrupt}>
+              <Square size={12} strokeWidth={2.5} aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="send"
+              aria-label="send"
+              title="发送"
+              onClick={send}
+              disabled={connState !== 'open' || seeding}
+            >
+              <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </footer>
     </>
   );

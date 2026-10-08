@@ -737,10 +737,10 @@ describe('底部输入区:Enter 分流与 Stop(会话维 :id)', () => {
     const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('model-start'));
-    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    fireEvent.click(screen.getByRole('button', { name: 'stop' }));
     expect(conn.sessionInterruptCalls).toEqual(['s1']);
     fire(conn, ev('done', 'fin'));
-    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'stop' })).toBeNull();
   });
 
   it('submit 失败:error 条入列(HTTP 面错误不静默)', async () => {

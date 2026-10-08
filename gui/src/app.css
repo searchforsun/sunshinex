@@ -954,3 +954,53 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 /* diff 标题双色沿 ok/err 语义,弱化为 secondary */
 .sx-diff-tab .diff-title-old { color: var(--err); }
 .sx-diff-tab .diff-title-new { color: var(--ok); }
+
+/* ===== G9-B4 composer 浮卡(spec §4):elevated 面+三层海拔+22px 超椭圆;28px 圆形实心钮 ===== */
+.composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: calc(100% - 32px);
+  max-width: calc(var(--chat-max) + 32px);
+  margin: 0 auto var(--thread-gutter);
+  padding: 8px 12px;
+  background: var(--surface-elevated);
+  border: none;
+  border-radius: var(--radius-composer);
+  box-shadow: var(--elev-composer);
+}
+@supports (corner-shape: superellipse(1.5)) {
+  .composer { corner-shape: superellipse(1.5); }
+}
+.composer .message-input {
+  width: 100%;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  border-radius: 0;
+  padding: 4px;
+  font: inherit;
+  resize: none;
+}
+.composer .message-input:focus { border: none; outline: none; }
+.composer .message-input::placeholder { color: var(--fg-tertiary); opacity: 0.6; }
+.composer-foot { display: flex; justify-content: flex-end; }
+.composer .send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: var(--fg);
+  color: var(--fg-on-solid);
+  transition: background var(--dur-basic) var(--ease-enter);
+}
+.composer .send:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }
+.composer .send:disabled { opacity: 0.4; pointer-events: none; }
