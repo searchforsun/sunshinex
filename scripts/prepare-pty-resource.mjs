@@ -10,6 +10,7 @@
  * 静列 from: ./build/node-pty → resources/node_modules/node-pty）。
  * node-pty 1.1.0 实目录含 prebuilds/<plat>-<arch>/ 原生二进制（win32 另有 conpty/winpty 全家），
  * lib/prebuilds/package.json 三件保 utils.loadNativeModule 的相对目录探测原样成立。
+ * H4-T1：白名单再增顶层 LICENSE 一件——MIT 再分发随附（不随附即违上游许可）。
  * 幂等：先整删旧装配再全量拷（避免陈旧文件残留）。
  * H3-T4 收口修正（原整包口径）：只留 lib/prebuilds/package.json 三面——src/typings/deps/
  * third_party（构建期面）与 *.test.*、*.ts（上游测试/类型）不入装配；一并修 vitest
@@ -30,14 +31,15 @@ const ptyRealDir = path.dirname(fs.realpathSync(nodeRequire.resolve('node-pty/pa
 const destDir = path.join(repoRoot, 'shell', 'build', 'node-pty');
 
 fs.rmSync(destDir, { recursive: true, force: true });
-// 运行时白名单：package.json + lib/ + prebuilds/ 树；两树内再剔 *.test.* 与 *.ts。
+// 运行时白名单：package.json + LICENSE + lib/ + prebuilds/ 树；两树内再剔 *.test.* 与 *.ts。
 // 其余顶层（src/typings/deps/third_party/scripts/.bin/README 等）全不入——构建期与测试面。
+// LICENSE 是白名单件非树——MIT 全文随附（tree 内不可再剔）。
 const relFromPty = (src) => path.relative(ptyRealDir, src).split(path.sep).join('/');
 fs.cpSync(ptyRealDir, destDir, {
   recursive: true,
   filter: (src) => {
     const rel = relFromPty(src);
-    if (rel === '' || rel === 'package.json') return true;
+    if (rel === '' || rel === 'package.json' || rel === 'LICENSE') return true;
     const top = rel.split('/')[0];
     if (top !== 'lib' && top !== 'prebuilds') return false;
     return !rel.includes('.test.') && !rel.endsWith('.ts');
