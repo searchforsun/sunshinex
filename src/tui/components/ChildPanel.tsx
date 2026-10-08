@@ -8,6 +8,8 @@ import { theme } from '../theme';
 export interface ChildRow {
   label: string;
   startedAt: number;
+  /** 当前任务标题(teammate 委派带;行渲染「名 · 任务」,2026-10-06 用户定版)。fork 行不带 */
+  title?: string;
 }
 
 /** 子代理并行面板（动态区，输入框下侧，CC 式）：每个运行中子 agent 一行（规格 §3.1）——运行态信息由单行承载，
@@ -38,7 +40,8 @@ export function ChildPanel({ childrenState, columns, rows }: { childrenState: Ch
         const tokens = c?.tokens ?? 0;
         const steps = c?.steps ?? 0;
         const startedAt = c?.startedAt ?? r.startedAt;
-        const label = r.label;
+        // 「名 · 任务」后缀(2026-10-06 用户定版):teammate 行标识到「谁在干什么」;fork 行无 title 原样
+        const label = r.title !== undefined ? `${r.label} · ${r.title}` : r.label;
         const headCost = glyph.length + 1 + displayWidth(label) + 2;
         const tail = ` · ↑${formatTokens(tokens)} tokens`;
         const durWidths = calls.map((call) => formatDuration(Math.max(0, Math.round((Date.now() - call.startedAt) / 1000))).length);

@@ -49,13 +49,13 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     const { write, lastFrame } = term;
     await new Promise((r) => setTimeout(r, 200)); // 等挂载：ink 未接管 stdin 时首段输入会丢失
     assert.match(lastFrame() ?? '', /[✻✽✶✱✢] \[rv\]/, '常态 ChildPanel 承载运行中行（五帧全集锚定）');
-    assert.doesNotMatch(lastFrame() ?? '', /t1 \[pending\]/, '缺省非任务视图（板不进动态区）');
+    assert.doesNotMatch(lastFrame() ?? '', /t1 ○/, '缺省非任务视图（板不进动态区）');
 
     write('\u0014'); // Ctrl+T 进入任务视图
     await new Promise((r) => setTimeout(r, 200));
     const entered = lastFrame() ?? '';
-    assert.match(entered, /t1 \[pending\] A/, '任务板行进动态区：`${id} [${status}] ${label}`');
-    assert.match(entered, /t2 \[pending\] ⚠ B ← t1 @w1/, 'gated ⚠ 高亮 + 依赖箭头 ← + assignee 后缀 @');
+    assert.match(entered, /t1 ○ A/, '任务板行进动态区：`${id} <符号> ${label}`（符号制,boardRows 单点映射）');
+    assert.match(entered, /t2 ○ ⚠ B ← t1 @w1/, 'gated ⚠ 高亮 + 依赖箭头 ← + 指派后缀 @');
     assert.match(entered, /❯ t1/, '光标缺省落首行（id 数值序最小）');
     assert.match(entered, /review gate/, '键提示条切任务视图组（Enter=审批门）');
     assert.doesNotMatch(entered, /[✻✽✶✱✢] \[rv\]/, '任务视图在场 ChildPanel 让位（同 browse 语义；五帧全集锚定）');
@@ -64,7 +64,7 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     write('\u0002'); // Ctrl+B
     await new Promise((r) => setTimeout(r, 150));
     const afterB = lastFrame() ?? '';
-    assert.match(afterB, /t1 \[pending\]/, '仍在任务视图（Ctrl+B 未切走）');
+    assert.match(afterB, /t1 ○/, '仍在任务视图（Ctrl+B 未切走）');
     assert.doesNotMatch(afterB, /Enter inspect/, 'browse 未进入（board 在场吞键，互斥）');
 
     write('\u001b[B'); // ↓ 光标移到 gated 行 t2
@@ -88,13 +88,13 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     ctrl.onEventForTest({ type: 'gate-resolved', ts: 200, payload: { taskId: 't2', approved: true } } as never);
     await new Promise((r) => setTimeout(r, 200));
     const resolved = lastFrame() ?? '';
-    assert.match(resolved, /t2 \[pending\] B ← t1 @w1/, 'gate 解锁后行恢复 pending（无 ⚠）');
-    assert.doesNotMatch(resolved, /t2 \[pending\] ⚠/, '⚠ 消失（gated 离场）');
+    assert.match(resolved, /t2 ○ B ← t1 @w1/, 'gate 解锁后行恢复 ○（无 ⚠）');
+    assert.doesNotMatch(resolved, /t2 ○ ⚠/, '⚠ 消失（gated 离场）');
 
     write('\u001b'); // Esc 退出任务视图回主界面
     await new Promise((r) => setTimeout(r, 150));
     const exited = lastFrame() ?? '';
-    assert.doesNotMatch(exited, /t1 \[pending\]/, '任务视图退出');
+    assert.doesNotMatch(exited, /t1 ○/, '任务视图退出');
     assert.match(exited, /[✻✽✶✱✢] \[rv\]/, 'ChildPanel 回归常态承载');
 
     // 前提补证：Ctrl+B 本身可用（同列表可进）——上一不进入是互斥挡下，非键坏

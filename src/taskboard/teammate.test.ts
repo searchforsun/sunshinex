@@ -167,11 +167,15 @@ test('teammate 自主 claim:未指派任务串行消化至 in-review,fork 路径
     const ended = rig.events.filter((e) => e.type === 'delegation-ended');
     assert.equal(started.length, 2, 'delegation-started × 2');
     assert.equal(ended.length, 2, 'delegation-ended × 2');
+    // 任务分隔行(「多轮对话,每轮一任务」):tagged token 整行,转录面可见轮次边界
+    const dividers = rig.events.filter((e) => e.type === 'token' && (e.text ?? '').startsWith('── Task t1:'));
+    assert.equal(dividers.length, 1, '每任务一条分隔行');
+    assert.equal(dividers[0]!.payload?.subagent, 'w1', '分隔行归属 teammate 转录');
     const ids = [...started, ...ended].map((e) => e.payload?.delegationId).sort();
     assert.deepEqual(ids, ['task-t1', 'task-t1', 'task-t2', 'task-t2']);
     for (const e of [...started, ...ended]) {
       assert.equal(e.payload?.kind, 'subagent');
-      assert.equal(e.payload?.label, e.payload?.delegationId, 'label 与 delegationId 同 task-tN');
+      assert.equal(e.payload?.label, 'w1', 'label = teammate 名(2026-10-06 用户定版:Ctrl+B 行显执行者名)');
       assert.equal(e.payload?.subagent, undefined, '生命周期事件不带转录标');
     }
     for (const e of ended) assert.equal(e.payload?.status, 'done');
@@ -394,10 +398,14 @@ test('板任务台账登记(2026-10-06 契约收敛):teammate 干的活提交 ta
   const tmp = tmpdir('sunshinex-tm-ledger-');
   try {
     const rig = makeRig(tmp, true);
-    rig.board.create({ title: 'A', spec: 'do A' });
+    // teammate 先在场上,再建任务——create 的同步派发才走 teammate 认领路径(fork 探针零调用为证);
+    // 反序则任务被 create 即时派给 fork(退化语义),用例就测不到 teammate 台账面了
     rig.addTeammate('w1').kick();
+    rig.board.create({ title: 'A', spec: 'do A' });
     const settled = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
     assert.ok(settled, '任务收口');
+    assert.deepEqual(rig.forkCalls, [], 'fork 探针零调用(确系 teammate 路径)');
+    assert.equal(rig.board.snapshot().tasks['t1']!.executedBy, 'w1', 'executedBy 落实际执行者(Ctrl+T 执行者列)');
     assert.deepEqual(rig.ledgerSubmitted, ['task-t1'], 'submit 以 task-tN 标签登记');
     assert.equal(rig.ledgerFinished.length, 1);
     assert.equal(rig.ledgerFinished[0]![0], 'lg1');

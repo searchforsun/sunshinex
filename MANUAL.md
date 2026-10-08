@@ -355,7 +355,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `Enter` | `⚠` 行：approve / deny 审批卡 |
 | `Esc` | 退出 |
 
-行示例：`t1 [pending] ⚠ 标题 ← t2 @w1`（状态 / 门 / 依赖 / 指派）。
+行示例：`t1 ○ ⚠ 标题 ← t2 @w1`——状态用全 TUI 统一符号：○ 待派 · ▸ 执行中 · ◆ 待复核 · ✓ 完成 · ✗ 失败 · ⊘ 取消；`@名字` 为执行者（已执行显实际执行者，未执行显指派）。
 
 **teammate**（长驻分工用；小探查用 5.3 spawn；缺省上限 8，环境变量 `SUNSHINEX_MAX_TEAMMATES=<n>` 可调）：
 
@@ -365,6 +365,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | 看 | `Ctrl+B` → `Enter` 转录 |
 | 停 | 转录页两次 `Ctrl+C`（只停这一个） |
 | 消息 | teammate 间可互发，转录可见 |
+| 看板对照 | `Ctrl+B` 行 = `名字 · 当前任务`；`Ctrl+T` 行 = 任务 + 状态符号 + 执行者 |
 
 **预算帽**：环境变量 `SUNSHINEX_TEAM_TOKEN_CAP=<tokens>`；用满后新任务排队，提示 `team budget exhausted`。
 

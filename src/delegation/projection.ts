@@ -10,6 +10,7 @@ export interface Delegation {
   id: string;
   kind: DelegationKind;
   label: string;
+  title?: string;
   status: DelegationStatus;
   startedAt: number;
   endedAt?: number;
@@ -22,6 +23,8 @@ export interface DelegationEventPayload {
   delegationId: string;
   kind: DelegationKind;
   label?: string;
+  /** 当前任务标题(teammate 委派带,面板/Ctrl+B 行「名 · 任务」后缀);fork 路径不带 */
+  title?: string;
   status?: 'done' | 'failed' | 'skipped' | 'paused';
   taskId?: string;
   nodeKind?: string;
@@ -44,7 +47,7 @@ export function applyDelegation(list: Delegation[], e: SessionEvent): Delegation
   if (p === undefined) return list;
   const idx = list.findIndex((d) => d.id === p.delegationId);
   if (e.type === 'delegation-started') {
-    const entry: Delegation = { id: p.delegationId, kind: p.kind, label: p.label ?? p.delegationId, status: 'running', startedAt: e.ts };
+    const entry: Delegation = { id: p.delegationId, kind: p.kind, label: p.label ?? p.delegationId, ...(p.title !== undefined ? { title: p.title } : {}), status: 'running', startedAt: e.ts };
     if (idx < 0) return [...list, entry];
     const prev = list[idx]!;
     const next = [...list];

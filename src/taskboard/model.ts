@@ -13,6 +13,9 @@ export interface BoardTask {
   status: TaskStatus;
   dependsOn: string[];
   assignee?: string;
+  /** 实际执行者(2026-10-06 用户定版 Ctrl+T 语义「哪个代理执行的」):回写时落,与 assignee(应派谁)正交;
+   *  fork 路径='fork'、teammate=名、external-cli='external-cli' */
+  executedBy?: string;
   /** gate 挂起(spec Ruling 3):派发跳过,review_task(approved) 解锁 */
   gated?: boolean;
   /** 执行体路由提示(P2):internal=子代理 fork(缺省)/external-cli=外部 CLI 执行体;提示不改派发语义,消费面为 P2 派发路由 */
@@ -32,7 +35,7 @@ export type BoardEvent =
   | { t: 'task-created'; taskId: string; title: string; spec: string; dependsOn: string[]; executorHint?: 'internal' | 'external-cli'; ts: number }
   | { t: 'dependency-added'; taskId: string; dependsOn: string; ts: number }
   | { t: 'assigned'; taskId: string; assignee: string; ts: number }
-  | { t: 'status-changed'; taskId: string; from: TaskStatus; to: TaskStatus; ts: number; note?: string; conclusion?: string; tokens?: number; durationMs?: number }
+  | { t: 'status-changed'; taskId: string; from: TaskStatus; to: TaskStatus; ts: number; note?: string; conclusion?: string; tokens?: number; durationMs?: number; by?: string }
   | { t: 'gate-set'; taskId: string; note?: string; ts: number }
   | { t: 'gate-resolved'; taskId: string; approved: boolean; ts: number };
 
@@ -83,7 +86,7 @@ export function applyBoardEvent(state: TaskBoardState, ev: BoardEvent): TaskBoar
       const artifact = ev.conclusion !== undefined || ev.tokens !== undefined || ev.durationMs !== undefined
         ? { ...task.artifact, ...(ev.conclusion !== undefined ? { conclusion: ev.conclusion } : {}), ...(ev.tokens !== undefined ? { tokens: ev.tokens } : {}), ...(ev.durationMs !== undefined ? { durationMs: ev.durationMs } : {}) }
         : task.artifact;
-      return patch(state, ev.taskId, { status: ev.to, updatedAt: ev.ts, ...(artifact !== task.artifact ? { artifact } : {}) });
+      return patch(state, ev.taskId, { status: ev.to, updatedAt: ev.ts, ...(artifact !== task.artifact ? { artifact } : {}), ...(ev.by !== undefined ? { executedBy: ev.by } : {}) });
     }
     case 'gate-set': {
       const task = state.tasks[ev.taskId];

@@ -11,7 +11,7 @@ import type { RawKey } from './use-input';
  *  共用同一函数，两侧永不漂移 */
 export function browseRows(st: TuiState): BrowseRow[] {
   return [
-    ...runningDelegations(st).map((r) => ({ id: `live:${r.label}`, label: r.label, running: true as const })),
+    ...runningDelegations(st).map((r) => ({ id: `live:${r.label}`, label: r.title !== undefined ? `${r.label} · ${r.title}` : r.label, running: true as const })),
     ...st.messages
       .filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta)
       .map((m) => ({ id: `archived:${m.seq}`, label: m.text.replace(/^SPAWN /, ''), seq: m.seq, meta: m.subagentMeta }))

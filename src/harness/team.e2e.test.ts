@@ -177,10 +177,13 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/rev
     assert.equal(reviewed.size, 7, '恰 review×7(approved)');
     const final = h.taskboard.snapshot().tasks;
     for (let i = 1; i <= 7; i++) assert.equal(final[`t${i}`]!.status, 'done', `t${i} 应 done`);
-    // delegation-started ×7 且 label 集恰 task-t1..t7(kind 'subagent'——全内部 teammate 路径)
+    // delegation-started ×7:delegationId 集恰 task-t1..t7;label = teammate 名(UI 执行体视角行名)
     const started = events.filter((e) => e.type === 'delegation-started' && p(e).kind === 'subagent');
     assert.equal(started.length, 7, 'delegation-started 恰 7 条');
-    assert.deepEqual([...new Set(started.map((e) => p(e).label))].sort(), ['task-t1', 'task-t2', 'task-t3', 'task-t4', 'task-t5', 'task-t6', 'task-t7']);
+    assert.deepEqual([...new Set(started.map((e) => p(e).delegationId))].sort(), ['task-t1', 'task-t2', 'task-t3', 'task-t4', 'task-t5', 'task-t6', 'task-t7']);
+    assert.deepEqual([...new Set(started.map((e) => p(e).label))].sort(), ['w1', 'w2', 'w3'], 'label 集 = 三 teammate 名');
+    // 每条委派带当前任务标题(Ctrl+B/面板「名 · 任务」后缀数据源)
+    assert.ok(started.every((e) => typeof p(e).title === 'string' && (p(e).title as string).length > 0), 'delegation-started 带 title');
     // 三 teammate 分担归属:delegation-started(task-tN) 后首个带 payload.subagent 的转录事件 = 执行者
     // (execute() 内 started 发射后 reactor.run 同步走到首个 await——首标事件必属本任务,并发交错不串组)
     const ownerOf = new Map<string, string>();
@@ -298,7 +301,8 @@ test('e2e 外部同现:external-cli 任务与 teammate 任务并行——kind ex
     assert.equal(p(extStarted!).kind, 'external-cli');
     assert.equal(p(extStarted!).label, 'task-t1');
     assert.equal(p(intStarted!).kind, 'subagent');
-    assert.equal(p(intStarted!).label, 'task-t2');
+    assert.equal(p(intStarted!).label, 'w-ext', 'teammate 委派 label = 名字(Ctrl+B 执行体视角)');
+    assert.equal(p(intStarted!).title, 'INT', '委派带当前任务标题(「名 · 任务」后缀数据源)');
     const extEnded = rig.events.find((e) => e.type === 'delegation-ended' && p(e).delegationId === 'task-t1');
     assert.ok(extEnded, 'external delegation-ended 在场');
     assert.equal(p(extEnded!).kind, 'external-cli');

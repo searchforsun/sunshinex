@@ -21,7 +21,7 @@ export function boardEventFrom(e: SessionEvent): BoardEvent {
     case 'task-assigned':
       return { t: 'assigned', taskId, assignee: String(p.assignee ?? ''), ts };
     case 'task-status-changed':
-      return { t: 'status-changed', taskId, from: (p.from as TaskStatus) ?? 'pending', to: (p.status as TaskStatus) ?? 'pending', ts };
+      return { t: 'status-changed', taskId, from: (p.from as TaskStatus) ?? 'pending', to: (p.status as TaskStatus) ?? 'pending', ts, ...(typeof p.by === 'string' ? { by: p.by } : {}) };
     case 'gate-waiting':
       return { t: 'gate-set', taskId, ts, ...(typeof p.note === 'string' ? { note: p.note } : {}) };
     case 'gate-resolved':

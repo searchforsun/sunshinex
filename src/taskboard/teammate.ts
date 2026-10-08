@@ -219,14 +219,19 @@ export class Teammate {
     // delegation 生命周期事件(与 P1 executeOne 同形,delegationId 对齐台账口径 task-tN):直接走 deps.onEvent,
     // 不带转录标——生命周期归会话公共面,transcript 才按 teammate 归属
     const delegationId = `task-${task.id}`;
+    // label = teammate 名(2026-10-06 用户定版 UI 语义:Ctrl+B 行显执行者名字,面板明细按名 join 转录;
+    // delegationId 仍 task-tN 保投影唯一键与台账对齐)
     const emitDelegation = (type: 'delegation-started' | 'delegation-ended', status?: 'done' | 'failed', tokens?: number): void => {
       this.deps.onEvent?.({
         type,
         ts: Date.now(),
-        payload: { delegationId, kind: 'subagent', label: delegationId, ...(status !== undefined ? { status } : {}), ...(tokens !== undefined ? { tokens } : {}) },
+        payload: { delegationId, kind: 'subagent', label: this.name, title: task.title, ...(status !== undefined ? { status } : {}), ...(tokens !== undefined ? { tokens } : {}) },
       });
     };
     emitDelegation('delegation-started');
+    // 任务分隔行(转录面「多轮对话,每轮一任务」):tagged token 整行入 transcript,ChildInspector 可见轮次边界
+    this.deps.onEvent?.({ type: 'token', text: `── Task ${task.id}: ${task.title} ──
+`, ts: Date.now(), payload: { subagent: this.name } });
     const startedAt = Date.now();
     // 转录事件打标(payload.subagent = name,复用 ChildPanel 通道,与 SubagentRunner tagger 同构)
     const tagger = (e: SessionEvent): void => {
@@ -261,6 +266,7 @@ export class Teammate {
       emitDelegation('delegation-ended', 'failed', 0);
       this.deps.board.finishExecution(task.id, {
         ok: false,
+        by: this.name,
         durationMs: Date.now() - startedAt,
         error: { code: 'THROWN', message },
       }, ledger?.id);
@@ -271,6 +277,7 @@ export class Teammate {
     // harness 强制回写单点(P1 finishExecution):claimed→in-review/failed,不依赖模型自觉
     this.deps.board.finishExecution(task.id, {
       ok: r.done,
+      by: this.name,
       ...(r.reply !== undefined ? { reply: r.reply } : {}),
       ...(r.tokensUsed !== undefined ? { tokens: r.tokensUsed } : {}),
       durationMs: Date.now() - startedAt,

@@ -7,14 +7,21 @@ import type { RawKey } from './use-input';
 
 /** 任务板行序单点（仿 browseRows，P2 spec §10.3）：Object.values 按 id 数值序（t2 < t10 的数值语义，
  *  summaryLines 同款 localeCompare numeric）；label = title + 依赖箭头 ` ← t2,t3`（英文 needs 语义用
- *  箭头省宽度）+ assignee 后缀 `@w1`——↑↓ 键盘分发与动态区列表渲染共用同一函数，两侧永不漂移 */
+ *  箭头省宽度）+ 执行者/指派后缀 `@w1`——↑↓ 键盘分发与动态区列表渲染共用同一函数，两侧永不漂移。
+ *  状态符号制（2026-10-06 用户定版：与全 TUI 同一符号语言，替代英文状态词双份口径）——
+ *  ○ 待派 / ▸ 执行中 / ◆ 待复核 / ✓ 完成 / ✗ 失败 / ⊘ 取消；gated 后缀 ⚠ 沿用 */
+const STATUS_SYMBOL: Record<string, string> = {
+  pending: '○', claimed: '▸', 'in-review': '◆', done: '✓', failed: '✗', cancelled: '⊘',
+};
+
 export function boardRows(st: TuiState): BoardRow[] {
   return Object.values(st.board.tasks)
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
     .map((task) => ({
       id: task.id,
-      label: `${task.title}${task.dependsOn.length > 0 ? ` ← ${task.dependsOn.join(',')}` : ''}${task.assignee !== undefined ? ` @${task.assignee}` : ''}`,
-      status: task.status,
+      // @ 后缀(2026-10-06 用户定版 Ctrl+T 语义「哪个代理执行的」):实际执行者优先,未执行回落指派者
+      label: `${task.title}${task.dependsOn.length > 0 ? ` ← ${task.dependsOn.join(',')}` : ''}${(task.executedBy ?? task.assignee) !== undefined ? ` @${task.executedBy ?? task.assignee}` : ''}`,
+      status: STATUS_SYMBOL[task.status] ?? task.status,
       ...(task.gated === true ? { gated: true } : {}),
     }));
 }

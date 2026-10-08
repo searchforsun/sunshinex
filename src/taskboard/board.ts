@@ -418,9 +418,9 @@ export class TaskBoard {
     // harness 强制回写(§5.4):回写单点 finishExecution——executeOne 与 T2 teammate/外部执行体路径共用,
     // claimed→in-review/failed 口径单点(不依赖模型自觉标记)
     if (okRun) {
-      this.finishExecution(task.id, { ok: true, reply, tokens, durationMs }, ledger.id);
+      this.finishExecution(task.id, { ok: true, by: 'fork', reply, tokens, durationMs }, ledger.id);
     } else {
-      this.finishExecution(task.id, { ok: false, error: { code: errCode, message: errMsg } }, ledger.id);
+      this.finishExecution(task.id, { ok: false, by: 'fork', error: { code: errCode, message: errMsg } }, ledger.id);
     }
   }
 
@@ -442,9 +442,9 @@ export class TaskBoard {
     }
     const durationMs = this.now() - startedAt;
     if (r.ok) {
-      this.finishExecution(task.id, { ok: true, reply: r.reply, tokens: r.tokens, durationMs });
+      this.finishExecution(task.id, { ok: true, by: 'external-cli', reply: r.reply, tokens: r.tokens, durationMs });
     } else {
-      this.finishExecution(task.id, { ok: false, durationMs, error: { code: 'EXTERNAL', message: r.reply } });
+      this.finishExecution(task.id, { ok: false, by: 'external-cli', durationMs, error: { code: 'EXTERNAL', message: r.reply } });
     }
     this.emit('delegation-ended', { delegationId, kind: 'external-cli', status: r.ok ? 'done' : 'failed', tokens: r.tokens });
   }
@@ -453,18 +453,19 @@ export class TaskBoard {
    *  + task-status-changed 发射 + artifact 并入(conclusion/tokens/durationMs)+ 台账收口(ledgerId 缺省跳过)
    *  + 失败发直接下游 task-blocked(§4.1 不自动 skip)。失败 note 带 code+message(与台账 [failed] 行口径对称)。
    *  r.durationMs 由调用方计算传入(计时归执行路径,回写点不持钟);r.error 携带失败详情供 note 组装。 */
-  finishExecution(taskId: string, r: { ok: boolean; reply?: string; tokens?: number; durationMs?: number; error?: { code?: string; message?: string } }, ledgerId?: string): void {
+  finishExecution(taskId: string, r: { ok: boolean; by?: string; reply?: string; tokens?: number; durationMs?: number; error?: { code?: string; message?: string } }, ledgerId?: string): void {
     const failNote = `execution failed: ${r.error?.code ?? 'UNKNOWN'}: ${r.error?.message ?? 'no error detail'}`;
     // team 帽用量累计(T4):计入所有回写的 tokens(与 artifact 同源的 r.tokens),失败通常为 0——
     // ok/failed 均累加,幂等面由「finishExecution 每任务恰一次」的回写单点不变量保证
     this.teamTokensUsed += r.tokens ?? 0;
     this.applyAndPersist({
       t: 'status-changed', taskId, from: 'claimed', to: r.ok ? 'in-review' : 'failed', ts: this.now(),
+      ...(r.by !== undefined ? { by: r.by } : {}),
       ...(r.ok
         ? { conclusion: r.reply ?? '', tokens: r.tokens ?? 0, ...(r.durationMs !== undefined ? { durationMs: r.durationMs } : {}) }
         : { note: failNote }),
     });
-    this.emit('task-status-changed', { taskId, from: 'claimed', status: r.ok ? 'in-review' : 'failed', ...(r.ok ? {} : { note: failNote }) });
+    this.emit('task-status-changed', { taskId, from: 'claimed', status: r.ok ? 'in-review' : 'failed', ...(r.by !== undefined ? { by: r.by } : {}), ...(r.ok ? {} : { note: failNote }) });
     if (r.ok) {
       if (ledgerId !== undefined) this.deps.registry.finish(ledgerId, 'done', { marker: `[conclusion] ${r.reply ?? ''}\n` });
     } else {

@@ -15,7 +15,7 @@ export interface BoardRow {
 /** 每页窗口行数（BrowseList 同款滑窗口径）：每页 8 行，超出即翻页 */
 export const BOARD_PAGE_ROWS = 8;
 
-/** 任务板列表（Ctrl+T 任务视图，动态区承载）：行形态 `${id} [${status}]${gated?' ⚠':''} ${label}`、
+/** 任务板列表（Ctrl+T 任务视图，动态区承载）：行形态 `${id} <符号>${gated?' ⚠':''} ${label}`（符号由 boardRows 单点映射）、
  *  每页 8 行窗口、光标行反色（❯ + 灰底，BrowseList 先例）——动态区每帧自绘，↑↓ 可见移动零重挂；
  *  空板渲染提示行（board 模态空板自退，此形态为组件层契约/防御） */
 export function BoardList({ rows, cursor }: { rows: BoardRow[]; cursor: number }): JSX.Element {
@@ -36,7 +36,7 @@ export function BoardList({ rows, cursor }: { rows: BoardRow[]; cursor: number }
         return (
           <Text key={r.id} backgroundColor={selected ? 'gray' : undefined}>
             <Text dimColor={selected}>{selected ? '❯ ' : '  '}</Text>
-            {`${r.id} [${r.status}]`}
+            {`${r.id} ${r.status}`}
             {r.gated === true ? <Text color={selected ? undefined : theme.warn}>{' ⚠'}</Text> : null}
             {` ${r.label}`}
           </Text>

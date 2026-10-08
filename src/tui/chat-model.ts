@@ -249,10 +249,10 @@ export function resolveContextWindow(state: Pick<TuiState, 'modelWindow'>): numb
 /** 运行中委派行(spec §4.5):投影单源(P1 收敛)——children 只是转录明细存储,成员资格唯一源是投影。
  *  真实路径 Runner 始终发 delegation-started/ended(harness/subagent.ts、graph/engine.ts);
  *  合成事件流(无 Runner)需自补 delegation 事件(受保护测试协议) */
-export function runningDelegations(st: Pick<TuiState, 'delegations'>): { label: string; startedAt: number }[] {
+export function runningDelegations(st: Pick<TuiState, 'delegations'>): { label: string; startedAt: number; title?: string }[] {
   return st.delegations
     .filter((d) => d.status === 'running')
-    .map((d) => ({ label: d.label, startedAt: d.startedAt }))
+    .map((d) => ({ label: d.label, startedAt: d.startedAt, ...(d.title !== undefined ? { title: d.title } : {}) }))
     .sort((a, b) => a.startedAt - b.startedAt);
 }
 
