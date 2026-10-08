@@ -106,11 +106,17 @@ export async function runServe(args: CliArgs): Promise<void> {
     console.log(t('no preselected root — create sessions via the GUI home or POST /session/new', '未预选根目录——会话经 GUI 首页或 POST /session/new 创建'));
   }
 
-  // 信号收口：单次化（closing 防双信号重入），await 完整 teardown 序再退（exit 0——用户主动停机非故障）
+  // 信号收口：单次化（closing 防双信号重入），await 完整 teardown 序再退（exit 0——用户主动停机非故障）。
+  // 2026-10-08 用户实测加固：①入口即打一行反馈（Ctrl+C 后终端无回显，用户以为卡死——实为收口在跑
+  // 或 cmd.exe 垫片的 Terminate batch job (Y/N)? 提示在等输入）；②close 加 5s 有界兜底（teardown 任一步
+  // 悬挂也保证可退——理论上各步本就有界，此为保险层）；③Windows 增 Ctrl+Break（SIGBREAK）与 SIGHUP 面。
   let closing = false;
   const shutdown = (): void => {
     if (closing) return;
     closing = true;
+    console.error('[serve] 收到中断信号，正在收口（最多 5s）…');
+    const force = setTimeout(() => process.exit(0), 5_000);
+    force.unref?.();
     void daemon.close().then(
       () => process.exit(0),
       (err) => {
@@ -121,5 +127,7 @@ export async function runServe(args: CliArgs): Promise<void> {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+  process.on('SIGBREAK', shutdown);
+  process.on('SIGHUP', shutdown);
   // 事件循环由 listen socket 持有，无需额外保活定时器
 }
