@@ -5,7 +5,6 @@ import { chunkMarkdown } from './chunk';
 import { VectorStore } from './store';
 import { createVectorBackend, LocalJsonVectorStore, registerVectorBackend } from './store';
 import { OpenAICompatEmbeddings } from './embed';
-import { SqliteVecStore } from './store.sqlite-vec';
 import { resolveDataDir } from '../../config/data-dir';
 import type { KbEnv } from '../../config/env';
 import { FileStore } from '../../storage/adapter';
@@ -15,7 +14,13 @@ const SUNSHINEX_KB_EXTENSIONS = new Set(['.md', '.txt']);
 // 在册后端在装配模块显式注册（D18/J3）：后端文件零 import 副作用、工厂只收显式 dataDir；
 // 新增后端 = 实现一个 VectorStore + 此处注册一行，主链（assembleKnowledgeBase）零改动
 registerVectorBackend('local-json', (dataDir) => new LocalJsonVectorStore(new FileStore(dataDir)));
-registerVectorBackend('sqlite-vec', (dataDir) => new SqliteVecStore(dataDir));
+// sqlite-vec 惰性 require（H1-T4）：node:sqlite 是 Node 22.5+ 内建，静态 import 会把 runtime.js
+// 整链钉死在宿主 Node 版本上（Electron 33 内嵌 Node 20 即模块初始化崩）；注册面恒在，实例化面只在
+// SUNSHINEX_KB_BACKEND=sqlite-vec 显式声明时才触碰 node:sqlite——缺省 local-json 零依赖语义不变
+registerVectorBackend('sqlite-vec', (dataDir) => {
+  const { SqliteVecStore } = require('./store.sqlite-vec') as typeof import('./store.sqlite-vec');
+  return new SqliteVecStore(dataDir);
+});
 
 /** 知识库编排：目录 → 分块 → 向量化 → 存储；检索 = 查询向量化 + 库内余弦 TopK（embedding 桩注入，零真实网络） */
 export class KnowledgeBase {
