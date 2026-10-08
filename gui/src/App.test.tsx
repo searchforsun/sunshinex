@@ -477,9 +477,10 @@ describe('状态条:连接点四态 + 会话指标', () => {
     const { conn } = mount();
     await act(async () => {}); // ProjectMenu 首载 workspaces 微任务在 act 内落定(act 警告收敛)
     expect(screen.getByLabelText('connection: connecting')).toBeDefined();
-    expect(screen.getByText('connecting')).toBeDefined();
+    expect(screen.getByText('连接中')).toBeDefined(); // G8f:连接态中文标签
     openConn(conn);
     expect(screen.getByLabelText('connection: open')).toBeDefined();
+    expect(screen.getByText('已连接')).toBeDefined();
   });
 
   it('reconnecting/closed 两态色 hook 亦可表达(onStateChange 透传)', async () => {

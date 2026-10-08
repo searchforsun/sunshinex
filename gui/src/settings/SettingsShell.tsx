@@ -118,7 +118,10 @@ export function SettingsShell({ conn, root, onRootChange, onBack }: SettingsShel
             {rows?.map((row) =>
               row.root === undefined ? null : (
                 <option key={row.slug} value={row.root}>
-                  {row.slug}
+                  {/* G8f 可读性:显示 basename,slug 进 title 属性(select option 无 title 面较窄,保持简洁) */}
+                  {(row.root !== undefined && row.root !== ''
+                    ? row.root.split(/[\/]/).filter(Boolean).pop()
+                    : row.slug) ?? row.slug}
                 </option>
               ),
             )}

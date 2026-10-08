@@ -435,7 +435,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
             <TabStrip
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}
-              collapsed={tabState.collapsed}
+              collapsed={tabState.collapsed || page !== 'chat'}
               disabled={page !== 'chat'}
               onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
               onClose={closeTabInSession}

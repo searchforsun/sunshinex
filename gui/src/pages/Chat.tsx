@@ -518,6 +518,12 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         </section>
       )}
       <main className="chat" aria-label="chat">
+        {chat.entries.length === 0 && (
+          <div className="chat-empty" aria-label="chat empty">
+            <div className="chat-empty-title">给 sunshinex 一个任务</div>
+            <div className="chat-empty-hint">描述目标即可:模型流式作答,工具实时执行,写操作需审批</div>
+          </div>
+        )}
         {chat.entries.map((entry) =>
           entry.kind === 'tool' ? (
             <ToolEntryView

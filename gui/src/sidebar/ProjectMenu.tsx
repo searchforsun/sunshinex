@@ -36,6 +36,14 @@ export interface ProjectMenuProps {
   readonly onOpenSettings?: () => void;
 }
 
+/** 连接态中文标签(底部状态行;键=ConnectionState 四态) */
+const CONN_LABEL: Record<string, string> = { connecting: '连接中', open: '已连接', reconnecting: '重连中', closed: '未连接' };
+
+/** 遗留档(无 root)显示名:去尾部 hash、dash→空格——slug 是给机器的,人读的是路径词 */
+function legacyName(slug: string): string {
+  return slug.replace(/-[0-9a-f]{8}$/i, '').replace(/-/g, ' ');
+}
+
 /** 工作区显示名:真实项目目录名(basename),路径 slug 仅兜底/悬浮(2026-10-08 可读性裁定:
  *  路径 slug「D-project-bi-mammoth-internal-410e80d4」换行破碎不可读——目录名才是用户心智的项目名) */
 function wsName(row: { root?: string; slug: string }): string {
@@ -43,7 +51,7 @@ function wsName(row: { root?: string; slug: string }): string {
     const base = row.root.split(/[\\/]/).filter(Boolean).pop();
     if (base !== undefined && base !== '') return base;
   }
-  return row.slug;
+  return legacyName(row.slug);
 }
 
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
@@ -311,7 +319,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     // 锚 activeSessionId——不含 root 兜底,兜底行=灰空心「非本行会话」)
                     const running = s.id === activeSessionId;
                     return (
-                      <li key={s.id} className={`session-row sx-session-row${active ? ' active' : ''}`}>
+                      <li
+                        key={s.id}
+                        className={`session-row sx-session-row${active ? ' active' : ''}`}
+                        title="打开会话"
+                        onClick={() => {
+                          if (busy || root === undefined) return;
+                          attachJournal(root, s.id);
+                        }}
+                      >
                         <span className={`sx-session-dot${running ? ' running' : ''}`} title={running ? '运行中会话' : undefined} />
                         <span className="session-summary" title={`${s.firstUser ?? ''} · ${s.id}`}>
                           {s.firstUser ?? '(无摘要)'}
@@ -321,7 +337,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                           type="button"
                           className="attach"
                           disabled={busy}
-                          onClick={() => attachJournal(root, s.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            attachJournal(root, s.id);
+                          }}
                         >
                           Attach
                         </button>
@@ -348,7 +367,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       </div>
       <footer className="sx-menu-foot">
         <span className={`conn-dot conn-${connState}`} aria-label={`connection: ${connState}`} />
-        <span>{connState}</span>
+        <span>{CONN_LABEL[connState] ?? connState}</span>
         {onOpenSettings !== undefined && (
           <button
             type="button"

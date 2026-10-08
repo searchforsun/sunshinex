@@ -499,10 +499,19 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 /* 会话行:摘要省略+相对时间弱化,Attach 收为幽灵小钮 */
 .sx-session-row {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+  padding: 6px 10px 6px 14px;
 }
+.sx-session-row .session-summary { display: block; }
+.sx-session-row .session-meta { display: block; margin-top: 1px; }
+.sx-session-row .attach {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.sx-session-row:hover .attach,
+.sx-session-row:focus-within .attach { opacity: 1; }
 .sx-session-row .session-summary {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -593,3 +602,46 @@ button:disabled { opacity: 0.5; pointer-events: none; }
   font-weight: 600;
 }
 .sx-settings-save:hover { background: var(--accent-strong); }
+
+/* ===== G8f 迭代二:侧栏细节/遗留档灰显/折叠条 ===== */
+.sx-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--fg-1);
+  text-transform: uppercase;
+}
+.sx-group-head { padding: 8px 12px; }
+.sx-group-head .sx-iconbtn { opacity: 0; transition: opacity 0.12s; }
+.sx-group-head:hover .sx-iconbtn,
+.sx-group-head:focus-within .sx-iconbtn { opacity: 1; }
+.workspace-item.no-root .sx-ws-name { color: var(--fg-1); font-weight: 400; font-style: italic; }
+.workspace-item.no-root .sx-count { opacity: 0.6; }
+.sx-menu-foot { font-size: 12px; }
+.sx-add-workspace {
+  width: 100%;
+  padding: 6px 0;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--fg-1);
+  font-size: 12px;
+}
+.sx-add-workspace:hover { color: var(--fg-0); border-color: var(--accent); }
+
+/* ===== G8f 迭代三:聊天空态/面板层次 ===== */
+.chat-empty {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px;
+  text-align: center;
+}
+.chat-empty-title { font-size: 17px; font-weight: 600; color: var(--fg-0); }
+.chat-empty-hint { font-size: 12px; color: var(--fg-1); }
+.sx-session-row { cursor: pointer; }
+.sx-session-row .attach { cursor: pointer; }
