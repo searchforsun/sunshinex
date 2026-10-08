@@ -30,7 +30,8 @@ scripts/*probe*.js
 
 # G2 gui 子包（pnpm workspace）：vite 构建产物（../dist-gui）不入库——子包 node_modules 由上方裸 node_modules/ 覆盖（gitignore 无锚定语义）
 dist-gui/
-gui-dist/   # 发版链拷入的 npm 包内 GUI 产物（pack 面，非源码）
+# 发版链拷入的 npm 包内 GUI 产物（pack 面，非源码）
+gui-dist/
 shell/out/
 # H3-T3 打包面：esbuild daemon 束与 node-pty 实目录装配（dist script 前置生成，均构建产物）
 shell/build/
