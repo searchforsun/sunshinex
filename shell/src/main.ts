@@ -74,9 +74,6 @@ function focusMainWindow(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  // 冒烟态禁硬件加速:发布链满载环境 GPU 进程可致首绘久滞(ready-to-show 不达,守卫误杀);
-  // 仅 --shell-smoke 生效,正常启动零影响
-  if (parseSmokeArgv(process.argv).smoke) app.disableHardwareAcceleration();
   void app.whenReady().then(async () => {
     try {
       // 两态路径：打包态以 resourcesPath 为根；开发态 getAppPath()=shell 目录（仓根直接子包），
@@ -146,17 +143,22 @@ if (!app.requestSingleInstanceLock()) {
       ),
     );
 
-    // smoke 分支（T4 冒烟门禁）：ready-to-show = 窗口首帧渲染完成，走 runQuit 单点收口
-    // （ready→daemon 有界 close→app.quit，正常路径退出码 0）；15s 总超时守卫兜任何一步悬挂退 1
+    // smoke 分支（T4 冒烟门禁）：就绪信号 = did-finish-load（页面加载完成——渲染器起+静态资源服务通，
+    // 语义等价且确定；ready-to-show 系首绘事件，发布链 spawn 环境曾不触发（仪表实证 url 已载/visible/loading:false
+    // 而事件不至，守卫误杀）。收口走 runQuit 单点（ready→daemon 有界 close→app.quit，退出码 0）；
+    // 总超时守卫兜任何一步悬挂退 1。
     if (parseSmokeArgv(process.argv).smoke) {
       const guard = setTimeout(() => {
         console.error('[shell] smoke total timeout — exit 1', { url: (()=>{try{return mainWindow?.webContents.getURL()}catch{return 'n/a'}})(), visible: (()=>{try{return mainWindow?.isVisible()}catch{return 'n/a'}})(), loading: (()=>{try{return mainWindow?.webContents.isLoading()}catch{return 'n/a'}})() });
         app.exit(1);
       }, SMOKE_TOTAL_TIMEOUT_MS);
-      win.once('ready-to-show', () => {
+      const loaded = (): void => {
         clearTimeout(guard);
         runQuit();
-      });
+      };
+      win.webContents.once('did-finish-load', loaded);
+      // 兜底：监听挂上前加载已毕（同 tick attach 后 loadURL 才发起，理论不可达；一行保险）
+      if (!win.webContents.isLoading()) loaded();
     }
   });
 
