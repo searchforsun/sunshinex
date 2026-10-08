@@ -22,6 +22,7 @@ import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, 
 import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { SessionJournal, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { listCommands } from './commands';
+import { ModelSwitcher } from '../model/catalog';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import {
@@ -662,6 +663,7 @@ export class GuiDaemon {
       id,
       root: abs,
       model: this.model,
+      ...(this.model instanceof ModelSwitcher ? { modelSwitcher: this.model } : {}),
       nextSeq: () => {
         this.seqCounter += 1;
         return this.seqCounter;
@@ -987,6 +989,8 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
+    { method: 'POST', path: '/session/:id/model', auth: true, run: (req, res, p) => this.handleSessionModel(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
     // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
@@ -1317,6 +1321,34 @@ export class GuiDaemon {
    *  → [{pid, kind, req}]（G7 增 req=挂起表 entry.req 直序列化——连接层 pid 去重拦了重连重发帧，
    *  snapshot.pending 是 GUI 刷新/reseed 后卡内容的唯一来源），跨会话卡恢复（GUI 刷新/重连后重放
    *  挂起面）的基座 */
+  /** POST /session/:id/model {model?: string}(G10-C1b):运行中模型切换,daemon 级共享切换器;
+   *  无切换器 409 not switchable / 未知 id 400 unknown model(不动现状) */
+  private async handleSessionModel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const body = parsed.body as { model?: unknown };
+    if (body.model !== undefined && typeof body.model !== 'string') return this.send(res, 400, { error: 'invalid model' });
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    if (session.modelSwitcher === null) return this.send(res, 409, { error: 'model not switchable' });
+    if (!session.setModel(body.model === undefined ? undefined : (body.model === '' ? undefined : body.model))) {
+      return this.send(res, 400, { error: 'unknown model' });
+    }
+    this.send(res, 200, { ok: true, model: session.snapshotResponse().model });
+  }
+
+  /** POST /session/:id/mode {mode}(G10-C1b):dontAsk/manual/plan;运行中 409 busy */
+  private async handleSessionMode(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const mode = (parsed.body as { mode?: unknown }).mode;
+    if (mode !== 'dontAsk' && mode !== 'manual' && mode !== 'plan') return this.send(res, 400, { error: 'invalid mode' });
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    if (session.setMode(mode) === 'busy') return this.send(res, 409, { error: 'session is running' });
+    this.send(res, 200, { ok: true, mode });
+  }
+
   private handleSnapshot(res: http.ServerResponse, id: string | undefined): void {
     const session = this.sessionFor(res, id);
     if (session === undefined) return;

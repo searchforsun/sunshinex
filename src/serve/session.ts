@@ -1,4 +1,5 @@
 import { createRuntime } from '../tui/runtime';
+import { ModelSwitcher } from '../model/catalog';
 import type { TuiRuntime } from '../tui/runtime';
 import type { ModelAdapter } from '../model/adapter';
 import type { ApprovalDecision, ApprovalRequest, AskUserSeam, SessionEvent } from '../types';
@@ -41,6 +42,9 @@ export interface SessionSnapshot {
   status: 'idle' | 'running';
   lastSeq: number;
   team: Array<{ name: string; busy: boolean }>;
+  /** G10-C1b 切换回显段:model=当前选择 id(undefined=缺省主模型/单模型);mode=会话权限态 */
+  model?: string;
+  mode: SessionMode;
 }
 
 /** snapshot 挂起段行（G5）：kind 判别与 daemon 挂起表同源（approval/ask）；pid 为 daemon 级铸造
@@ -161,7 +165,13 @@ export interface SessionRuntimeOpts {
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** 问询接缝（ask_question 消费方）：透传 createRuntime onAskUser——G4 daemon 注挂起表闭包（同上） */
   onAskUser?: AskUserSeam;
+  /** 模型切换器（G10-C1b）：daemon 装配为 ModelSwitcher 时注入（全会话共享同一实例——切换 daemon 级生效） */
+  modelSwitcher?: ModelSwitcher;
 }
+
+/** 会话权限模式（G10-C1b）：dontAsk/manual 为 createRuntime 权限态；plan 为提交通道标记
+ *  （计划模式提交经 command 通道走 planFlow,运行时权限态保持 dontAsk/manual 语义） */
+export type SessionMode = 'dontAsk' | 'manual' | 'plan';
 
 export class SessionRuntime {
   readonly id: string;
@@ -184,10 +194,14 @@ export class SessionRuntime {
    *  事件转录面承担，msg 行非 TUI ChatItem（daemon 档只落 chain） */
   private journal?: SessionJournal;
 
+  /** 当前权限模式（G10-C1b 可变面）：setMode 重建 runtime（reset 同路径,转录/影子投影独立不受损） */
+  private currentMode: SessionMode;
+
   constructor(opts: SessionRuntimeOpts) {
     this.opts = opts;
     this.id = opts.id;
     this.root = opts.root;
+    this.currentMode = opts.mode ?? 'dontAsk';
     this.runtimeImpl = this.assemble();
   }
 
@@ -198,7 +212,7 @@ export class SessionRuntime {
     return createRuntime({
       root: this.opts.root,
       model: this.opts.model,
-      mode: this.opts.mode ?? 'dontAsk',
+      mode: this.currentMode === 'plan' ? 'dontAsk' : this.currentMode,
       onEvent: (e) => this.pump(e),
       ...(this.opts.asker !== undefined ? { onApproval: this.opts.asker } : {}),
       ...(this.opts.onAskUser !== undefined ? { onAskUser: this.opts.onAskUser } : {}),
@@ -343,6 +357,33 @@ export class SessionRuntime {
    *  运行态 + 事件序列水位——GUI 冷启动/刷新经一次拉取恢复全景，细粒度实时面仍走 WS 事件流（两轨
    *  分工，spec G2 Ruling 1）；lastSeq=本会话已泵最大 seq（与影子态同 tick 读取，pump 序内先影子后
    *  广播）——客户端以「重连后本会话首帧 seq > lastSeq ⇒ 无缺口」判重连补发完备（G4 消费） */
+  /** 当前模型选择 id（undefined = 缺省主模型;无切换器恒 undefined） */
+  private currentModelId(): string | undefined {
+    return this.modelSwitcher?.currentId();
+  }
+
+  /** 模型切换器外窥（G10-C1b;undefined = daemon 装配为单模型,不可切） */
+  get modelSwitcher(): ModelSwitcher | null {
+    return this.opts.modelSwitcher ?? null;
+  }
+
+  /** 运行中模型切换（G10-C1b）：switchTo 单点;unknown id 幂等 false 不动现状。切换 daemon 级生效 */
+  setModel(id: string | undefined): boolean {
+    const sw = this.modelSwitcher;
+    return sw === null ? false : sw.switchTo(id);
+  }
+
+  /** 权限模式切换（G10-C1b）：idle-only（运行中 409 面归 daemon handler）;重建 runtime 与 reset 同路径,
+   *  转录/影子投影独立字段不受损;换新 runtime 后重挂 journal 落盘订阅（hookJournalSink 单槽幂等） */
+  setMode(mode: SessionMode): 'ok' | 'busy' {
+    if (this.status() !== 'idle') return 'busy';
+    if (mode === this.currentMode) return 'ok';
+    this.currentMode = mode;
+    this.runtimeImpl = this.assemble();
+    if (this.journal !== undefined) this.hookJournalSink();
+    return 'ok';
+  }
+
   snapshotResponse(): SessionSnapshot {
     return {
       messages: this.transcriptImpl.entries(),
@@ -350,6 +391,8 @@ export class SessionRuntime {
       delegations: this.delegations,
       status: this.status(),
       lastSeq: this.lastSeqNum,
+      model: this.currentModelId(),
+      mode: this.currentMode,
       team: this.runtimeImpl.harness.team.aliveNames().map((name) => ({
         name,
         busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,
