@@ -15,6 +15,7 @@
     "cli": "tsc -p tsconfig.json && node dist/cli/index.js",
     "shell:dev": "pnpm --filter sunshinex-shell run dev",
     "shell:smoke": "pnpm --filter sunshinex-shell run smoke",
+    "shell:dist": "pnpm build && pnpm --dir gui run build && pnpm --filter sunshinex-shell run build && pnpm --filter sunshinex-shell run dist",
     "prepublishOnly": "pnpm test && node dist/cli/index.js selfcheck"
   },
   "devDependencies": {

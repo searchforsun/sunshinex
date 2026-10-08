@@ -23,8 +23,10 @@ describe('resolveDaemonPaths', () => {
     expect(paths.staticRoot.endsWith('\\dist-gui')).toBe(true);
 
     // 打包态不受 devRepoRoot 影响，且不再指向 dev 臂的 dist/ 编译产物形。
+    // 负断言须查原串：JSON.stringify 会把反斜杠转义加倍（文本形 dist\\serve），
+    // 对单反斜杠子串 not.toContain 永真——T2 复审 Minor#1，改查 daemonEntry 原串。
     expect(JSON.stringify(paths)).not.toContain(devRepoRoot);
-    expect(JSON.stringify(paths)).not.toContain('dist\\serve');
+    expect(paths.daemonEntry).not.toContain('dist\\serve');
   });
 
   it('开发态：三件路径同构挂在 devRepoRoot 下（主仓 dist 编译产物形），与 resourcesPath 无关', () => {

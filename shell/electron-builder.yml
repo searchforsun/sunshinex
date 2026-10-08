@@ -1,0 +1,41 @@
+# H3-T3 electron-builder 配置（win 双产物：NSIS 安装器 + portable 单文件）。
+# 镜像仅运行时传：ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+appId: dev.sunshinex.app
+productName: sunshinex
+directories:
+  # 打包产物落 shell/release/（根 .gitignore 已忽略；NSIS `sunshinex Setup x.y.z.exe` + portable `sunshinex x.y.z portable.exe`）
+  output: release
+# asar 默认开：入包仅壳主进程束 out/main.cjs + package.json（main 指向）。
+# shell 无生产依赖（devDeps 不入包），daemon 三资源全走 extraResources 平铺 resources/——
+# 原生模块（node-pty .node）与运行时 require/spawn 面不可入 asar。
+files:
+  - out/**
+  - package.json
+extraResources:
+  # GUI 静态（gui vite 构建产物，仓根 dist-gui）
+  - from: ../dist-gui
+    to: dist-gui
+  # daemon 双入口 esbuild CJS 束（H3-T2 build:app 产物）
+  - from: ./build/app-dist
+    to: app-dist
+  # node-pty 实目录装配（dist script 前置 scripts/prepare-pty-resource.mjs 生成；
+  # pnpm symlink 解析在脚本内完成）。to 落 resources/node_modules/node-pty——
+  # resources/app-dist/daemon.cjs 束内 require('node-pty') 沿 node_modules 上溯解析恰命中
+  - from: ./build/node-pty
+    to: node_modules/node-pty
+win:
+  icon: assets/icon.ico
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+# electron-builder 26 portable 缺省名 `${productName} ${version}.exe`——无 portable 字样，
+# 与 NSIS Setup 名难辨且 dist-smoke 通配(*portable*.exe)落空——显式补字样对齐命名契约
+portable:
+  artifactName: ${productName} ${version} portable.${ext}
+# node-pty 1.1.0 为 N-API（node-addon-api）构建，ABI 跨 Electron/Node 版本稳定；
+# H1/H2 壳冒烟（dev 态 Electron 主进程 in-process 加载同一二进制）已实证免重建——
+# 关闭 electron-builder 重编译（npmRebuild 走 node-gyp 全量重建，win 下慢且引入工具链依赖）
+npmRebuild: false

@@ -4,7 +4,7 @@
  *
  * 判据（spec H §冒烟门禁）：主进程 --shell-smoke 分支在窗口首帧（ready-to-show）后
  * 有序收口 daemon 并 app.exit(0)；15s 主进程内守卫兜任何悬挂退 1。本脚本只做三件事：
- *   1. 前置检查 daemon 三件产物在场（不在场不自动构建——stderr 提示命令，exit 1）；
+ *   1. 前置检查构建产物四件在场（daemon 三件 + 壳主进程束 out/main.cjs；不在场不自动构建——stderr 提示命令，exit 1）；
  *   2. spawn `pnpm --filter sunshinex-shell exec electron . --shell-smoke`（cwd=仓根，stdio 继承）；
  *   3. 总超时 30s（超时杀进程树 → exit 1）；子进程退出码透传（0=过 / 非 0=败）。
  */
@@ -15,11 +15,12 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** daemon 三件（resolveDaemonPaths 开发态形状）：缺任一即红，附对应构建命令 */
+/** 预检四件（resolveDaemonPaths 开发态形状 + 壳主进程束）：缺任一即红，附对应构建命令 */
 const REQUIRED_ARTIFACTS = [
   { file: path.join(repoRoot, 'dist', 'serve', 'daemon.js'), build: 'pnpm build' },
   { file: path.join(repoRoot, 'dist', 'runtime.js'), build: 'pnpm build' },
   { file: path.join(repoRoot, 'dist-gui', 'index.html'), build: 'pnpm --dir gui run build' },
+  { file: path.join(repoRoot, 'shell', 'out', 'main.cjs'), build: 'pnpm --filter sunshinex-shell run build' },
 ];
 
 /** 外层总超时（ms）：正常路径窗口闪现即退（主进程内 15s 守卫先行），30s 只兜 spawn 层悬挂 */

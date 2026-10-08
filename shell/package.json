@@ -2,17 +2,21 @@
   "name": "sunshinex-shell",
   "version": "0.1.0",
   "private": true,
+  "description": "sunshinex desktop shell",
+  "author": "sunshinex",
   "main": "out/main.cjs",
   "scripts": {
     "dev": "electron .",
     "build": "node esbuild.mjs",
     "build:app": "node esbuild.mjs --app",
+    "dist": "node ../scripts/prepare-pty-resource.mjs && electron-builder --win",
     "test": "vitest run",
-    "smoke": "node ../../scripts/shell-smoke.mjs"
+    "smoke": "node ../scripts/shell-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.8"
