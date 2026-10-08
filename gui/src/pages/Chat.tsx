@@ -393,6 +393,12 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const [cards, setCards] = useState<PendingCard[]>([]);
   /** 顶栏 ⋯ 菜单开合(G10-C3;外点收) */
   const [moreOpen, setMoreOpen] = useState(false);
+  /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新) */
+  const [sessMode, setSessMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
+  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string }> } | null>(null);
+  const [pillOpen, setPillOpen] = useState<'mode' | 'model' | null>(null);
+  /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
+  const [queued, setQueued] = useState<Array<{ seq: number; text: string }>>([]);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
    *  (挂载/reset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
   const [seeding, setSeeding] = useState(true);
@@ -434,6 +440,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     conn.sessionSnapshot(sessionId).then(
       (snap) => {
         if (seedGenRef.current !== gen) return; // 后继 reseed 已接管(在途窗内重连)
+        setQueued(snap.queued ?? []);
+        if (typeof snap.mode === 'string') setSessMode(snap.mode as 'dontAsk' | 'manual' | 'plan');
         let next = seedChatFromSnapshot(snap.messages, snap.status);
         for (const f of pendingRef.current) {
           if (f.seq > snap.lastSeq) next = applyChatEvent(next, f.e); // ≤ 切割序:种子已含,丢(双应用防线)
@@ -536,6 +544,24 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     return cid.length > 0 ? cid : undefined;
   };
 
+  /** 模型 pill 数据源(G10-C4):挂载即拉(choices 空=不可切,钮隐藏) */
+  useEffect(() => {
+    conn.sessionModel(sessionId).then(
+      (info) => setModelInfo({ current: info.current, choices: info.choices }),
+      () => setModelInfo({ choices: [] }),
+    );
+  }, [conn, sessionId]);
+
+  /** pills 外点收 */
+  useEffect(() => {
+    if (pillOpen === null) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element && e.target.closest('.composer-pills') === null) setPillOpen(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [pillOpen]);
+
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
    *  时置空本地卡列表;reseed 落定的 idle 快照亦经此路径(挂起已回填,不重建——见文件头裁定) */
   useEffect(() => {
@@ -573,7 +599,15 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     if (text === '') return;
     setChat((c) => appendUserMessage(c, text));
     setInput('');
-    const req = running ? conn.sessionSteer(sessionId, text) : conn.sessionSubmit(sessionId, text);
+    let req: Promise<void>;
+    if (running) {
+      req = conn.sessionSteer(sessionId, text);
+    } else if (sessMode === 'plan') {
+      // 计划模式(G10-C4):提交走 /plan 流程(规划→确认卡→逐项执行;确认卡复用既有 ask 通道)
+      req = conn.runCommand(sessionId, `/plan ${text}`);
+    } else {
+      req = conn.sessionSubmit(sessionId, text);
+    }
     void req.catch((err: unknown) => {
       setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
     });
@@ -634,6 +668,27 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           )}
         </section>
       )}
+      {queued.length > 0 && (
+        <div className="steer-queue" aria-label="queued messages">
+          {queued.map((q) => (
+            <span key={q.seq} className="steer-chip" title={q.text}>
+              <span className="steer-chip-text">{q.text}</span>
+              <button
+                type="button"
+                className="steer-chip-cancel"
+                aria-label={`cancel queued ${q.seq}`}
+                title="撤回"
+                onClick={() => {
+                  setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
+                  conn.cancelSteer(sessionId, q.seq).catch(() => {});
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <main className="chat" aria-label="chat">
         {chat.entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
@@ -692,6 +747,74 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           }}
         />
         <div className="composer-foot">
+          <div className="composer-pills">
+            <button
+              type="button"
+              className="composer-pill"
+              aria-label="session mode"
+              title={t('Permissions', '访问权限')}
+              onClick={() => setPillOpen((v) => (v === 'mode' ? null : 'mode'))}
+            >
+              {sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}
+              <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+            {pillOpen === 'mode' && (
+              <div className="sx-menu-pop pill-pop" role="menu" aria-label="session mode menu">
+                {([
+                  ['dontAsk', t('Full access', '完全访问')],
+                  ['manual', t('Confirm changes', '变更确认')],
+                  ['plan', t('Plan mode', '计划模式')],
+                ] as const).map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="menuitem"
+                    className="sx-menuitem"
+                    disabled={m === sessMode}
+                    onClick={() => {
+                      setPillOpen(null);
+                      setSessMode(m);
+                      conn.setSessionMode(sessionId, m).catch(() => {});
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {modelInfo !== null && modelInfo.choices.length > 0 && (
+              <button
+                type="button"
+                className="composer-pill"
+                aria-label="session model"
+                title={t('Model', '模型')}
+                onClick={() => setPillOpen((v) => (v === 'model' ? null : 'model'))}
+              >
+                {modelInfo.current ?? 'default'}
+                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            )}
+            {pillOpen === 'model' && modelInfo !== null && (
+              <div className="sx-menu-pop pill-pop" role="menu" aria-label="session model menu">
+                {modelInfo.choices.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="menuitem"
+                    className="sx-menuitem"
+                    disabled={c.id === modelInfo.current}
+                    onClick={() => {
+                      setPillOpen(null);
+                      setModelInfo((m) => (m === null ? m : { ...m, current: c.id }));
+                      conn.setSessionModel(sessionId, c.id).catch(() => {});
+                    }}
+                  >
+                    {c.id}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {running ? (
             <button type="button" className="send" aria-label="stop" title={t('Stop', '停止')} onClick={interrupt}>
               <Square size={12} strokeWidth={2.5} aria-hidden="true" />

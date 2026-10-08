@@ -28,6 +28,11 @@ function connOf(messages: Seed[]): Connection {
     fetchDiff: () => Promise.resolve({ oldContent: '', newContent: '' }),
     replyApproval: () => Promise.resolve(),
     replyAsk: () => Promise.resolve(),
+    sessionModel: () => Promise.resolve({ current: undefined, explicitDefault: false, choices: [] }),
+    setSessionModel: vi.fn(() => Promise.resolve()),
+    setSessionMode: vi.fn(() => Promise.resolve()),
+    cancelSteer: vi.fn(() => Promise.resolve()),
+    runCommand: vi.fn(() => Promise.resolve()),
   } as unknown as Connection;
 }
 
@@ -90,5 +95,43 @@ describe('mermaid 围栏(G10-C3c)', () => {
   it('加载失败回落原文代码块(降级纪律,会话流零阻塞)', async () => {
     mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: '图:\n\n```mermaid\ngraph TD; A-->B\n```' }]);
     expect(await screen.findByText(/graph TD; A-->B/, {}, { timeout: 5_000 })).toBeTruthy();
+  });
+});
+
+
+describe('composer pills 与排队 chips(G10-C4)', () => {
+  it('权限 pill 三态菜单:切换 manual 调 setSessionMode(manual)', async () => {
+    const setSessionMode = vi.fn(() => Promise.resolve());
+    const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '> a' }]);
+    (conn as unknown as Record<string, unknown>).setSessionMode = setSessionMode;
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'session mode' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm changes' }));
+    expect(setSessionMode).toHaveBeenCalledWith('s1', 'manual');
+  });
+
+  it('排队 chips:snapshot.queued 回显渲染,撤回钮调 cancelSteer(seq)', async () => {
+    const cancelSteer = vi.fn(() => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).cancelSteer = cancelSteer;
+    (conn as unknown as Record<string, unknown>).sessionSnapshot = () =>
+      Promise.resolve({
+        messages: [],
+        status: 'running',
+        board: { tasks: [] },
+        delegations: [],
+        team: [],
+        pending: [],
+        lastSeq: 0,
+        queued: [
+          { seq: 0, text: '排队一' },
+          { seq: 1, text: '排队二' },
+        ],
+      });
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    expect(await screen.findByText('排队一')).toBeTruthy();
+    expect(screen.getByText('排队二')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'cancel queued 0' }));
+    expect(cancelSteer).toHaveBeenCalledWith('s1', 0);
   });
 });

@@ -72,6 +72,10 @@ export interface SnapshotResponse {
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';
+  /** G10 切换/队列回显段 */
+  model?: string;
+  mode?: 'dontAsk' | 'manual' | 'plan';
+  queued?: Array<{ seq: number; text: string }>;
   team?: Array<{ name: string; busy: boolean }>;
   pending?: Array<{ pid: string; kind: 'approval' | 'ask'; req?: unknown }>;
 }
@@ -296,6 +300,24 @@ export interface Connection {
   sessionsOf(root: string): Promise<SessionRow[]>;
   /** GET /sessions/recent：跨工作区扁平最近会话（G10-C2 侧栏 Recents 区） */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
+  /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切) */
+  sessionModel(id: string): Promise<{ current?: string; explicitDefault: boolean; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number }> }>;
+  /** POST /session/:id/model|tier|effort|mode:运行中切换(下一轮生效;G10-C1b/C2b) */
+  setSessionModel(id: string, model?: string): Promise<void>;
+  setSessionTier(id: string, tier?: 'small' | 'medium' | 'large'): Promise<void>;
+  setSessionEffort(id: string, effort?: string): Promise<void>;
+  setSessionMode(id: string, mode: 'dontAsk' | 'manual' | 'plan'): Promise<void>;
+  /** POST /session/:id/steer/cancel:撤回排队插话(G10-C1d) */
+  cancelSteer(id: string, seq: number): Promise<void>;
+  /** POST /session/:id/rewind|fork(G10-C1d):turn=anchors 1-based */
+  rewindSession(id: string, turn: number): Promise<void>;
+  forkSession(id: string, turn: number): Promise<{ sessionId: string }>;
+  /** GET /session/:id/anchors:任务轮锚点(rewind/fork 寻址) */
+  sessionAnchors(id: string): Promise<Array<{ turn: number; text: string }>>;
+  /** POST /memory/rm:记忆删除(G10-C1d) */
+  removeMemory(root: string, slugs: string[]): Promise<{ removed: string[]; failed: Array<{ slug: string; error: string }> }>;
+  /** POST /session/:id/command:斜杠命令直跑(G10-C1c) */
+  runCommand(id: string, line: string): Promise<void>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
@@ -580,6 +602,51 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>> {
       return getJson<Array<SessionRow & { root: string; slug: string }>>('/sessions/recent');
+    },
+    sessionModel(id: string) {
+      return getJson('/session/' + encodeURIComponent(id) + '/model');
+    },
+    async setSessionModel(id: string, model?: string): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/model', { model });
+    },
+    async setSessionTier(id: string, tier?: 'small' | 'medium' | 'large'): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/tier', { tier });
+    },
+    async setSessionEffort(id: string, effort?: string): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/effort', { effort });
+    },
+    async setSessionMode(id: string, mode: 'dontAsk' | 'manual' | 'plan'): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/mode', { mode });
+    },
+    async cancelSteer(id: string, seq: number): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/steer/cancel', { seq });
+    },
+    async rewindSession(id: string, turn: number): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/rewind', { turn });
+    },
+    async forkSession(id: string, turn: number): Promise<{ sessionId: string }> {
+      const res = await fetch(`${base}/session/${encodeURIComponent(id)}/fork`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ turn }),
+      });
+      if (!res.ok) throw new Error(`/session/${id}/fork -> ${res.status}`);
+      return (await res.json()) as { sessionId: string };
+    },
+    sessionAnchors(id: string) {
+      return getJson('/session/' + encodeURIComponent(id) + '/anchors');
+    },
+    async removeMemory(root: string, slugs: string[]) {
+      const res = await fetch(`${base}/memory/rm`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ root, slugs }),
+      });
+      if (!res.ok) throw new Error(`/memory/rm -> ${res.status}`);
+      return (await res.json()) as { removed: string[]; failed: Array<{ slug: string; error: string }> };
+    },
+    async runCommand(id: string, line: string): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/command', { line });
     },
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);

@@ -1085,3 +1085,23 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .mermaid-svg { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); overflow-x: auto; }
 .mermaid-svg svg { max-width: 100%; }
 .mermaid-pending, .mermaid-fallback { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border: none; border-radius: var(--radius-md); font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ===== G10-C4 composer pills 与排队 chips ===== */
+.composer-pills { display: flex; align-items: center; gap: 4px; position: relative; }
+.composer-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--radius-row);
+  color: var(--fg-secondary); font-size: 12px;
+}
+.composer-pill:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.pill-pop { position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 20; min-width: 160px; }
+.steer-queue { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 var(--thread-gutter) 4px; max-width: calc(var(--chat-max) + 2 * var(--thread-gutter)); margin: 0 auto; width: 100%; }
+.steer-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 280px;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg-secondary); font-size: 12px;
+}
+.steer-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steer-chip-cancel { color: var(--fg-tertiary); padding: 0 2px; border-radius: var(--radius-xs); }
+.steer-chip-cancel:hover { color: var(--err); }

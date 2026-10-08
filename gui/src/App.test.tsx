@@ -159,6 +159,19 @@ const h = vi.hoisted(() => {
     recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>> {
       return Promise.resolve([]);
     }
+    sessionModel(): Promise<{ current: undefined; explicitDefault: boolean; choices: never[] }> {
+      return Promise.resolve({ current: undefined, explicitDefault: false, choices: [] });
+    }
+    setSessionModel(): Promise<void> { return Promise.resolve(); }
+    setSessionTier(): Promise<void> { return Promise.resolve(); }
+    setSessionEffort(): Promise<void> { return Promise.resolve(); }
+    setSessionMode(): Promise<void> { return Promise.resolve(); }
+    cancelSteer(): Promise<void> { return Promise.resolve(); }
+    rewindSession(): Promise<void> { return Promise.resolve(); }
+    forkSession(): Promise<{ sessionId: string }> { return Promise.resolve({ sessionId: 'forked' }); }
+    sessionAnchors(): Promise<Array<{ turn: number; text: string }>> { return Promise.resolve([]); }
+    removeMemory(): Promise<{ removed: string[]; failed: never[] }> { return Promise.resolve({ removed: [], failed: [] }); }
+    runCommand(): Promise<void> { return Promise.resolve(); }
     dirpicker(_path?: string): Promise<DirPickerResp> {
       return Promise.resolve(this.dirpickerResp);
     }

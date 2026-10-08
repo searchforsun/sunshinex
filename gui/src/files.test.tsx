@@ -27,9 +27,23 @@ function toolRow(text: string): HTMLButtonElement | null {
 
 const noop = (): void => {};
 
-/** Files 页连接桩:readFile 可编程应答 */
+/** Files 页连接桩:readFile 可编程应答;G10 面(Chat 渲染即拉)零行为桩 */
 function connOf(over: Partial<Connection> = {}): Connection {
-  return { readFile: vi.fn(() => Promise.resolve({ path: '/r/a.ts', content: 'const x = 1;\n' })), ...over } as unknown as Connection;
+  return {
+    readFile: vi.fn(() => Promise.resolve({ path: '/r/a.ts', content: 'const x = 1;\n' })),
+    sessionModel: () => Promise.resolve({ current: undefined, explicitDefault: false, choices: [] }),
+    setSessionModel: () => Promise.resolve(),
+    setSessionTier: () => Promise.resolve(),
+    setSessionEffort: () => Promise.resolve(),
+    setSessionMode: () => Promise.resolve(),
+    cancelSteer: () => Promise.resolve(),
+    rewindSession: () => Promise.resolve(),
+    forkSession: () => Promise.resolve({ sessionId: 'forked' }),
+    sessionAnchors: () => Promise.resolve([]),
+    removeMemory: () => Promise.resolve({ removed: [], failed: [] }),
+    runCommand: () => Promise.resolve(),
+    ...over,
+  } as unknown as Connection;
 }
 
 describe('highlightCode:扩展名→语言映射', () => {
@@ -140,11 +154,22 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     lastSeq: 0,
   });
 
-  /** Chat 直挂连接桩:sessionSnapshot/fetchDiff 可编程(fetchDiff 缺省拒——退单列现内容) */
+  /** Chat 直挂连接桩:sessionSnapshot/fetchDiff 可编程(fetchDiff 缺省拒——退单列现内容);G10 面零行为桩 */
   const chatConn = (over: Partial<Connection> = {}): Connection =>
     ({
       sessionSnapshot: vi.fn(() => Promise.resolve(emptySnap())),
       fetchDiff: vi.fn(() => Promise.reject(new Error('/session/s1/diff?callId=c1 -> 404'))),
+      sessionModel: () => Promise.resolve({ current: undefined, explicitDefault: false, choices: [] }),
+      setSessionModel: () => Promise.resolve(),
+      setSessionTier: () => Promise.resolve(),
+      setSessionEffort: () => Promise.resolve(),
+      setSessionMode: () => Promise.resolve(),
+      cancelSteer: () => Promise.resolve(),
+      rewindSession: () => Promise.resolve(),
+      forkSession: () => Promise.resolve({ sessionId: 'forked' }),
+      sessionAnchors: () => Promise.resolve([]),
+      removeMemory: () => Promise.resolve({ removed: [], failed: [] }),
+      runCommand: () => Promise.resolve(),
       ...over,
     }) as unknown as Connection;
 

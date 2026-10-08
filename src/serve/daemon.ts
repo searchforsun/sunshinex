@@ -991,6 +991,7 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
+    { method: 'GET', path: '/session/:id/model', auth: true, run: async (_req, res, p) => this.handleSessionModelGet(res, p.id) },
     { method: 'POST', path: '/session/:id/model', auth: true, run: (req, res, p) => this.handleSessionModel(req, res, p.id) },
     { method: 'POST', path: '/session/:id/tier', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'tier') },
     { method: 'POST', path: '/session/:id/effort', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'effort') },
@@ -1439,6 +1440,19 @@ export class GuiDaemon {
     if (!ok) return this.send(res, 400, { error: `invalid ${kind}` });
     const snap = session.snapshotResponse();
     this.send(res, 200, { ok: true, [kind]: kind === 'tier' ? snap.tier : snap.effort });
+  }
+
+  /** GET /session/:id/model(G10-C4 模型 pill 数据源):当前选择 + 可选清单(choices 空=不可切) */
+  private handleSessionModelGet(res: http.ServerResponse, id: string): void {
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    const sw = session.modelSwitcher;
+    if (sw === null) return this.send(res, 200, { current: undefined, choices: [], explicitDefault: false });
+    this.send(res, 200, {
+      current: sw.currentId(),
+      explicitDefault: sw.hasExplicitDefault(),
+      choices: sw.choices().map((c) => ({ id: c.id, model: c.model, baseUrl: c.baseUrl, effort: c.reasoningEffort, contextWindow: c.contextWindow })),
+    });
   }
 
   /** POST /session/:id/model {model?: string}(G10-C1b):运行中模型切换,daemon 级共享切换器;
