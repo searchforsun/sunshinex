@@ -27,7 +27,7 @@
 :root { /* = dark(缺省) */
   /* 面 */
   --surface: #181818;          /* 主面板(原 --bg-0 角色,但侧栏另用 under) */
-  --surface-under: #000;       /* 侧栏底(暗);亮色 #f9f9f9 */
+  --surface-under: #131313;    /* 侧栏底(暗);亮色 #f9f9f9。用户实机裁定(2026-10-08):Codex 原值纯黑在 31 行密度下过暗,取 gray-fixed-950 保留一档层次 */
   --surface-elevated: #212121; /* 浮层卡/菜单/composer;亮色按 elevated 系 */
   --surface-soft: #303030;     /* hover 软底(gray-300 dark) */
   --surface-code: #101010;     /* 代码块底(gray-25 dark);亮色 #fcfcfc */

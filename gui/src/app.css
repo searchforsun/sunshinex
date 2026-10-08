@@ -5,7 +5,7 @@
   color-scheme: dark;
   /* 面 */
   --surface: #181818;
-  --surface-under: #000;
+  --surface-under: #131313; /* 用户裁定:纯黑过暗,取 gray-fixed-950 保留一档层次 */
   --surface-elevated: #212121;
   --surface-soft: #303030;
   --surface-code: #101010;
@@ -134,7 +134,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 /* G8e-T1 补:chevron 旋转过渡(旋角由组件内联 transform 落,类只承载过渡) */
 .sx-chevron { display: inline-flex; flex: none; color: var(--fg-secondary); transition: transform 0.15s ease; }
 .sx-group-head .sx-count { color: var(--fg-secondary); font-size: 12px; margin-left: auto; border-radius: 999px; background: var(--surface-soft); padding: 0 8px; }
-.sx-session-row { display: flex; width: 100%; align-items: center; gap: 6px; padding: 4px 12px 4px 28px; color: var(--fg-secondary); text-align: left; }
+.sx-session-row { display: flex; width: 100%; align-items: center; gap: 6px; padding: 4px 12px 4px 28px; color: var(--fg); text-align: left; }
 .sx-session-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G8d-T1 补(裁定①):竖 accent 条标恢复(G8a 先例回归)——悬停=bg-2 无条,活动=bg-2+条,可辨 */
 .sx-session-row.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
