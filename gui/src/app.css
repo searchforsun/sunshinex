@@ -645,3 +645,108 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .chat-empty-hint { font-size: 12px; color: var(--fg-1); }
 .sx-session-row { cursor: pointer; }
 .sx-session-row .attach { cursor: pointer; }
+
+/* ===== G8f-Codex 对标(用户裁定:一比一复刻外观交互美学;统一区域内不用分割线) ===== */
+
+/* —— 会话流去盒化:文档流(Codex 式)—— */
+.entry { background: transparent; border: none; border-radius: 0; padding: 6px 2px; }
+.entry:hover { border: none; box-shadow: none; }
+.entry-user { border-left: none; color: var(--fg-0); font-weight: 500; }
+.entry-user:hover { border-left: none; }
+.entry-notice { background: transparent; border: none; color: var(--fg-1); font-size: 12px; }
+.entry-error {
+  border: none;
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+  color: var(--err);
+  border-radius: 8px;
+}
+.entry-tool { background: transparent; padding: 2px 6px; }
+.chat { padding: 14px 18px; }
+
+/* —— 侧栏:去分割线,pill 制(活动=填充圆角,非左条),单行会话行(hover Attach 覆盖时间) —— */
+.sx-menu-head { border-bottom: none; }
+.sx-menu-foot {
+  margin: 8px;
+  padding: 8px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  border-top: none;
+}
+.sx-menu-add { padding: 0 8px 8px; }
+.sx-add-workspace {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+.sx-add-workspace:hover { background: var(--bg-2); color: var(--fg-0); }
+.sx-session-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  margin-left: 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sx-session-row.active { background: var(--bg-2); box-shadow: none; }
+.sx-session-row .session-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.sx-session-row .session-meta {
+  font-size: 11px;
+  color: var(--fg-1);
+  white-space: nowrap;
+  flex: none;
+}
+.sx-session-row .attach {
+  position: absolute;
+  right: 8px;
+  opacity: 0;
+  background: var(--bg-2);
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.sx-session-row:hover .attach,
+.sx-session-row:focus-within .attach { opacity: 1; }
+.sx-group-head.active {
+  background: var(--bg-2);
+  border-radius: 8px;
+}
+
+/* —— composer:浮卡输入(去顶分割线,输入卡圆角,发送实心 accent) —— */
+.composer { border-top: none; background: transparent; padding: 8px 14px 14px; }
+.composer .message-input {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 9px 12px;
+  resize: none;
+}
+.composer .message-input:focus { border-color: var(--accent); outline: none; }
+.composer .send {
+  background: var(--accent);
+  border: none;
+  color: #06202a;
+  font-weight: 600;
+  border-radius: 10px;
+}
+.composer .send:hover:not(:disabled) { background: var(--accent-strong); }
+.composer .stop { border-radius: 10px; }
+
+/* —— 设置:行间分割线撤除(卡内以间距分层) —— */
+.sx-setting-row + .sx-setting-row { border-top: none; }
+.sx-setting-row { padding: 12px 16px; }
