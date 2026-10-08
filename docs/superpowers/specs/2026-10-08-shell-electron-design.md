@@ -48,7 +48,7 @@ scripts/shell-smoke.mjs   打包产物冒烟(启动→窗口→自动退出,退�
 
 | 批次 | 范围 |
 |---|---|
-| H1 | 壳骨架:shell 包+esbuild 主进程+daemon 进程内装配+BrowserWindow+URL token+单实例锁+shell:dev/单测+冒烟旗标 |
+| ~~H1~~ | 壳骨架:shell 包+esbuild 主进程+daemon 进程内装配+BrowserWindow+URL token+单实例锁+shell:dev/单测+冒烟旗标——~~已交付~~ 2026-10-08(执行注记:壳骨架+daemon 进程内装配+冒烟门禁;electron ^44 内嵌 Node 24)。**已知跟进**:单实例锁被占时 smoke 假绿面(收紧判据后置)/smoke 预检未含 out/main.cjs/taskkill 失败理论挂起/@types node 双实例化妆级/H2 承接:托盘+快捷键+驻留序+原生外开 |
 | H2 | 托盘+Alt+Shift+S+关窗驻留/托盘退出序+setWindowOpenHandler 原生外开+单测 |
 | H3 | electron-builder(NSIS+portable+图标+extraResources+node-pty rebuild)+shell:dist+产物冒烟脚本+文档 |
 | H4 | 收口门禁(主仓/gui/shell 全量+冒烟)+两 spec/ROADMAP 回写 |
