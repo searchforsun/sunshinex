@@ -1004,3 +1004,34 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 }
 .composer .send:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }
 .composer .send:disabled { opacity: 0.4; pointer-events: none; }
+
+/* ===== G9-B5 打磨收尾(spec §5):弹层浮面制/动效统一/reduced-motion ===== */
+.sx-menu-pop {
+  border: none;
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--elev-prominent);
+  backdrop-filter: blur(16px);
+  padding: 4px;
+}
+.sx-menu-pop .sx-menuitem { border-radius: var(--radius-lg); padding: 5px 10px; }
+.sx-toast {
+  background: var(--surface-elevated);
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elev-prominent);
+}
+.dirpicker-list { border: none; border-radius: var(--radius-md); }
+.modal-body { border: none; border-radius: var(--radius-xl); box-shadow: var(--elev-prominent); }
+.token-gate { border: none; border-radius: var(--radius-xl); box-shadow: var(--elev-prominent); }
+/* 动效统一:过渡走 token 曲线(spec §2.9 enter 曲线) */
+.sx-chevron, .sx-tree-chevron { transition: transform var(--dur-basic) var(--ease-enter); }
+.sx-session-row .attach { transition: opacity var(--dur-basic) var(--ease-enter); }
+.sx-tab, .sx-iconbtn, .sx-settings-nav-item { transition: background var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter); }
+/* reduced-motion:全局降级(Codex data-reduced-motion 同语义的媒体查询形态) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
