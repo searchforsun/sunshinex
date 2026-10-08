@@ -1,3 +1,5 @@
+// 警告过滤必须首个 import（node:sqlite 实验横幅在 import 链内即发射）
+import '../warning-filter';
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
