@@ -103,10 +103,9 @@ function WelcomeComposer({
       (list) => {
         const usable = list.filter((r) => r.root !== undefined && r.root !== '');
         // default 工作区(用户裁定):置顶缺省——非文件类任务与对话的落点
-        // default 已被 daemon 注册时去重(自动建目录 → 注册表自动纳入)
-        const withDefault = usable.some((r) => r.root === 'default')
-          ? usable
-          : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...usable];
+        // default 去重:daemon 自动建目录后 root 为完整路径,按 basename 判(不比 root 字面)
+        const hasDefault = usable.some((r) => r.root !== undefined && (r.root.split(/[\/]+/).filter(Boolean).pop() ?? '') === 'default');
+        const withDefault = hasDefault ? usable : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...usable];
         setRows(withDefault);
         setPicked((p) => (p === '' ? 'default' : p));
       },
@@ -175,38 +174,41 @@ function WelcomeComposer({
         <h1 className="welcome-title">{t('What should we build?', '我们来做点什么?')}</h1>
       </div>
       <div className="welcome-dock">
-        <div
-          className="choose-project-bar"
-          role="button"
-          aria-label={t('Choose project', '选择项目')}
-          onClick={() => setProjOpen((v) => !v)}
-        >
-          <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-          <span>{projName}</span>
-        </div>
-        {projOpen && (
-          <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
-            {rows.map((r) => (
-              <button
-                key={r.slug}
-                type="button"
-                role="menuitem"
-                className={`sx-menuitem${r.root === picked ? ' active' : ''}`}
-                onClick={() => {
-                  setPicked(r.root ?? '');
-                  setProjOpen(false);
-                }}
-              >
-                {baseName(r.root ?? r.slug)}
-              </button>
-            ))}
-            <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
-              <Folder size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
-            </button>
-            {hint !== '' && <div className="proj-hint">{hint}</div>}
-          </div>
-        )}
         <div className="welcome-input-card">
+          {rows.length > 0 && (
+            <button
+              type="button"
+              className="choose-project-bar"
+              aria-label={t('Choose project', '选择项目')}
+              onClick={() => setProjOpen((v) => !v)}
+            >
+              <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{projName}</span>
+              <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" style={{ marginLeft: 'auto' }} />
+            </button>
+          )}
+          {projOpen && rows.length > 0 && (
+            <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
+              {rows.map((r) => (
+                <button
+                  key={r.slug}
+                  type="button"
+                  role="menuitem"
+                  className={`sx-menuitem${r.root === picked ? ' active' : ''}`}
+                  onClick={() => {
+                    setPicked(r.root ?? '');
+                    setProjOpen(false);
+                  }}
+                >
+                  {baseName(r.root ?? r.slug)}
+                </button>
+              ))}
+              <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
+                <Folder size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
+              </button>
+              {hint !== '' && <div className="proj-hint">{hint}</div>}
+            </div>
+          )}
           <textarea
             aria-label="welcome goal"
             value={goal}
@@ -220,10 +222,6 @@ function WelcomeComposer({
             }}
           />
           <div className="welcome-input-foot">
-            <span className="composer-pill" aria-hidden="true">
-              <Folder size={12} strokeWidth={1.75} />
-              <span>{projName}</span>
-            </span>
             <button
               type="button"
               className="send"
