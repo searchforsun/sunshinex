@@ -177,7 +177,7 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
       seedWorkspace(env.root, '历史第一句'); // workspace.json + 历史 journal(attach 播种源)
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— Home:工作区行(title=root 在场,可 attach)→ 展开会话列表 → Attach ——
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
@@ -213,7 +213,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       const s1Journal = seedWorkspace(env.root, '历史第一句');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       const submit = async (goal: string): Promise<void> => {
         const input = screen.getByLabelText('message input');
@@ -235,7 +235,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
 
       // —— back → s2:「+ 添加工作区」(DirPicker 同 root 第二会话)→ UI 提交 → done ——
       await backHome();
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -335,11 +335,11 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     // App 挂载:token 门面 + baseUrl 经 stubEnv 注入;初始路由 home(空注册表 → 空态引导)
     vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
     const { container } = render(createElement(App));
-    await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
     // —— 「+ 添加工作区」(G8a:New session 按钮退役,DirPicker 流经左栏添加面)→ DirPicker 模态:
     //    自定义路径输入(真 daemon /dirpicker 服务端)→ 确认 → newSession → chat ——
-    fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+    fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
     await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
     fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -502,10 +502,10 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
         },
       );
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— manual 会话经 UI 真面建立:「+ 添加工作区」 → DirPicker 勾「Manual approvals」→ 确认 ——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByLabelText('Manual approvals'));
@@ -562,10 +562,10 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       const openByPicker = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+        fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
         await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
         fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
         fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -641,10 +641,10 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 「+ 添加工作区」(DirPicker 真面,缺省不勾 manual)→ 提交 → 主链 create_task(gated)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -713,10 +713,10 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       fs.writeFileSync(path.join(env.root, REL), OLD, 'utf8'); // 预置旧文件(写前态)
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— dontAsk 会话经 UI 真面建立(DirPicker 缺省不勾 manual;G8a:经「+ 添加工作区」)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -812,10 +812,10 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       const { sockets } = trackSockets(); // App 的 WS 实例可寻(断线注入)
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— manual 会话经 UI 真面建立:DirPicker 勾「Manual approvals」(G8a:经「+ 添加工作区」)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByLabelText('Manual approvals'));
@@ -831,7 +831,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       // —— 断线注入:App 自装配连接的底层 socket(挂起广播前的零客户端窗)——
       const appSock = sockets[sockets.length - 1]!;
       appSock.close();
-      await waitFor(() => expect(screen.getByLabelText('connection: reconnecting')).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:重连就绪以 home 钮代之
 
       // —— 放行:write envelope 越域 → manual 挂起 → approval 广播零客户端 ——
       gated!.release();
@@ -854,7 +854,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       expect(snap.pending[0]!.req.subject).toContain(NAME);
 
       // —— 重连(缺省退避 1s)→ onReset → reseed(快照重播种)→ 挂起重发帧/快照 pending 双源合流 → 卡恢复 ——
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
       await waitFor(() => expect(container.querySelector('.approval-card')).not.toBeNull(), { timeout: 10_000 });
       const title = container.querySelector('.approval-card .card-title');
       expect(title?.textContent).toContain('[approval write]'); // 卡内容自 req(kind/subject 透传)
@@ -915,10 +915,10 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       fs.writeFileSync(path.join(env.root, REL), OLD, 'utf8'); // 预置旧文件(写前态——Diff 双列的 old 面)
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat ——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -1001,10 +1001,10 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话 → chat;默认「任务」标签活动(场景A 已钉,此处直用)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -1067,10 +1067,10 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       fs.writeFileSync(path.join(env.root, 'dirA', 'fileA.ts'), MARKER, 'utf8');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat(默认「任务」标签活动)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -1155,11 +1155,11 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话 → +菜单开终端标签(tools 节「终端」):openPty 真分配(conpty 真进程)→ jsdom
       //    无布局(clientWidth=0)→ 降级面在场(渲染面不造假;链路面归下方裸 ws 验证)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -1277,10 +1277,10 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       d1 = await boot();
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${d1.port}`);
       unmount = render(createElement(App)).unmount;
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto,项目 root=会话根)→ chat ——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -1343,10 +1343,10 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       );
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(项目 root,DirPicker 流)→ chat → 设置态(底栏设置钮,settingsRoot=root)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -1395,7 +1395,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       // —— 「← 返回」回会话态:Chat 重挂在场(输入面/连接态如常)——
       fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
       await waitFor(() => expect(screen.getByLabelText('message input')).toBeDefined(), { timeout: 10_000 });
-      expect(screen.getByLabelText('connection: open')).toBeDefined();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -1424,10 +1424,10 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话 → chat(默认「任务」标签活动;Agents 聚合是 App 态另轨,不依赖标签在场)——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
@@ -1486,10 +1486,10 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(标签条需会话在场才可用)→ +菜单「Web」裸开档(key='' 聚焦语义,title='Web')——
-      fireEvent.click(screen.getByRole('button', { name: '+ 添加工作区' }));
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
       await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
       fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));

@@ -92,16 +92,12 @@ describe('ProjectMenu(spec §1 左栏项目分组)', () => {
   it('「+ 添加工作区」开 DirPicker 模态(测试钩子 class 复用)', async () => {
     const conn = makeConn();
     renderMenu(conn);
-    fireEvent.click(screen.getByText('+ 添加工作区'));
+    fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
     // 适配(brief 注允许):DirPicker 既有可定位面为 role=dialog aria-label="choose directory";
     // 原 getByTitle('dirpicker') 钩子不在场——断言语义不变 = 模态在场
     expect(screen.getByRole('dialog', { name: 'choose directory' })).toBeTruthy();
   });
 
-  it('底栏显示连接态点', () => {
-    renderMenu(makeConn());
-    expect(screen.getByLabelText('connection: online')).toBeTruthy();
-  });
 });
 
 describe('ProjectMenu G10-C2 侧栏双区 IA', () => {

@@ -497,40 +497,6 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
   });
 });
 
-describe('状态条:连接点四态 + 会话指标', () => {
-  it('初始 connecting 态(工厂初始即报);open 后迁移(home 面同样在场)', async () => {
-    const { conn } = mount();
-    await act(async () => {}); // ProjectMenu 首载 workspaces 微任务在 act 内落定(act 警告收敛)
-    expect(screen.getByLabelText('connection: connecting')).toBeDefined();
-    expect(screen.getByText('连接中')).toBeDefined(); // G8f:连接态中文标签
-    openConn(conn);
-    expect(screen.getByLabelText('connection: open')).toBeDefined();
-    expect(screen.getByText('已连接')).toBeDefined();
-  });
-
-  it('reconnecting/closed 两态色 hook 亦可表达(onStateChange 透传)', async () => {
-    const { conn } = mount();
-    await act(async () => {}); // 同上:首载微任务在 act 内落定(同步断言前冲净异步面)
-    act(() => conn.opts.onStateChange?.('reconnecting'));
-    expect(screen.getByLabelText('connection: reconnecting')).toBeDefined();
-    act(() => conn.opts.onStateChange?.('closed'));
-    expect(screen.getByLabelText('connection: closed')).toBeDefined();
-  });
-
-  it('tokens/steps 随 usage/step 事件聚合显示(chat 面)', async () => {
-    const { conn } = await enterChat();
-    openConn(conn);
-    fire(conn, ev('model-start'));
-    fire(conn, ev('usage', undefined, { turnTotal: 120 }));
-    fire(conn, ev('usage', undefined, { turnTotal: 340 }));
-    fire(conn, ev('step', 'a'));
-    fire(conn, ev('step', 'b'));
-    const title = (document.querySelector('.chat-title') as HTMLElement | null)?.getAttribute('title') ?? '';
-    expect(title).toContain('340 tokens');
-    expect(title).toContain('2 steps');
-    expect(title).toContain('运行中');
-  });
-});
 
 describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
   it('打开会话即播种:snapshotResp.messages 五 kind 直映射渲染(md 原文,user 引用块等 gfm 形)', async () => {

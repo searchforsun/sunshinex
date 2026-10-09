@@ -10,8 +10,8 @@ import { ChevronRight, Plus, RefreshCw, Settings, SquarePen } from 'lucide-react
  * 组列表(GET /workspaces):组头(chevron+Folder+slug+会话数)点击展开惰拉 GET /sessions?root=
  * (slug 守卫照搬 Home——openSlugRef 过期应答丢弃);root 缺场历史组禁用不可展开;组内「+」弹
  * mode 菜单(auto/manual)→ newSession(root, mode) 直进;会话行 Attach 两步(newSession 装配壳
- * → attach 播种)→ onOpenSession(sessionId, root)。底部「+ 添加工作区」开 DirPicker 模态
- * (Home 的 modal-overlay 结构原样)。底栏连接态点(conn-dot conn-{state},App 同款)。
+ * → attach 播种)→ onOpenSession(sessionId, root)。Projects 分区头「+」开 DirPicker 模态(添加工作区;
+ * Home 的 modal-overlay 结构原样)。连接态显示退役(G10:一体本地,无连接语义可显)。
  * activeRoot 组自动展开(T5 App 壳传当前活动工作区;与手动展开共用同一 openSlug 态)。
  * 样式用 app.css T1 的 sx- 类 + Home 既有测试钩子类(workspace-、ws-、session- 前缀与
  * attach、no-root,零 e2e 迁移);唯一内联样式为组行锚定(mode 弹层定位面)与 chevron 旋转。
@@ -39,8 +39,6 @@ export interface ProjectMenuProps {
   readonly onOpenSettings?: () => void;
 }
 
-/** 连接态中文标签(底部状态行;键=ConnectionState 四态) */
-const CONN_LABEL: Record<string, string> = { connecting: '连接中', open: '已连接', reconnecting: '重连中', closed: '未连接' };
 
 /** 遗留档(无 root)显示名:去尾部 hash、dash→空格——slug 是给机器的,人读的是路径词 */
 function legacyName(slug: string): string {
@@ -60,7 +58,7 @@ function wsName(row: { root?: string; slug: string }): string {
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, connState, activeSessionId, activeRoot, onOpenSession, onOpenSettings } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings } = props;
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
   const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
@@ -259,16 +257,32 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <SquarePen size={16} strokeWidth={1.75} />
         <span>{t('New chat', '新对话')}</span>
       </button>
-      <div className="sx-side-head">{t('Projects', '项目')}</div>
+      <div className="sx-side-head sx-side-head-row">
+        <span>{t('Projects', '项目')}</span>
+        <button
+          type="button"
+          className="sx-iconbtn"
+          aria-label="add workspace"
+          title={t('Add workspace', '添加工作区')}
+          onClick={() => {
+            setActionError('');
+            setPickerOpen(true);
+          }}
+        >
+          <Plus size={14} strokeWidth={1.75} />
+        </button>
+      </div>
       <ul className="workspace-list sx-groups" aria-label="workspace groups">
         {rows === null && listError === '' && <li className="home-loading">加载工作区…</li>}
         {listError !== '' && (
           <li className="home-error" role="alert">
-            {listError}
+            {/-> 401$/.test(listError)
+              ? t('Token expired — reopen the URL printed by `serve` (or append ?token=<new> to the address)', 'token 已失效——请重新打开 serve 启动时打印的链接(或在地址后追加 ?token=<新 token>)')
+              : listError}
           </li>
         )}
         {rows !== null && rows.length === 0 && (
-          <li className="home-empty">尚无工作区——「+ 添加工作区」选择项目目录开启第一个。</li>
+          <li className="home-empty">{t('No workspaces yet — add one via + above.', '尚无工作区——用上方「+」添加项目目录。')}</li>
         )}
         {actionError !== '' && !pickerOpen && (
           <li className="home-error" role="alert">
@@ -424,21 +438,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           );
         })}
       </ul>
-      <div className="sx-menu-add">
-        <button
-          type="button"
-          className="sx-add-workspace"
-          onClick={() => {
-            setActionError('');
-            setPickerOpen(true);
-          }}
-        >
-          + 添加工作区
-        </button>
-      </div>
       <footer className="sx-menu-foot">
-        <span className={`conn-dot conn-${connState}`} aria-label={`connection: ${connState}`} />
-        <span>{CONN_LABEL[connState] ?? connState}</span>
         {onOpenSettings !== undefined && (
           <button
             type="button"

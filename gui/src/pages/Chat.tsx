@@ -97,6 +97,9 @@ export interface ChatProps {
   onRewind?: (turn: number) => void;
   /** G10-C4 分叉新会话(从最近任务轮;/fork 底层);App 接 forkSession+openSession;可选 */
   onFork?: () => void;
+  /** G10 欢迎页接力:播种完成后提交的 welcome 目标(setWelcomeGoal 写入;提交即回调清位) */
+  pendingGoal?: { root: string; goal: string };
+  onPendingGoalDone?: () => void;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -444,7 +447,7 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
   );
 });
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork, pendingGoal, onPendingGoalDone }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
   /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
@@ -479,6 +482,10 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   /** onSeeded 的同步镜像(reseed 闭包经 ref 读,装配期固定免依赖数组抖动) */
   const onSeededRef = useRef<((snap: SnapshotResponse) => void) | undefined>(onSeeded);
   onSeededRef.current = onSeeded;
+  const pendingGoalRef = useRef(pendingGoal ?? null);
+  pendingGoalRef.current = pendingGoal ?? null;
+  const onPendingGoalDoneRef = useRef(onPendingGoalDone);
+  onPendingGoalDoneRef.current = onPendingGoalDone;
 
   /** G4 卡增(同 pid 防重挂——连接层已去重,本地二次防线;G7 reseed 重建复用)与移(回执落定即移) */
   const addCard = useCallback((card: PendingCard): void => {
@@ -518,6 +525,13 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         seedingRef.current = false;
         setSeeding(false);
         setChat(next);
+        // G10 欢迎页接力:播种落定即提交 welcome 目标(一次性——done 回调清 App 态位)
+        const pg = pendingGoalRef.current;
+        if (pg !== null && pg.goal.trim() !== '') {
+          pendingGoalRef.current = null;
+          onPendingGoalDoneRef.current?.();
+          conn.sessionSubmit(sessionId, pg.goal).catch(() => {});
+        }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
         // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清)
         for (const row of snap.pending ?? []) {

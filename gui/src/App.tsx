@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { parseLanguage, setLanguage } from './i18n';
+import { parseLanguage, setLanguage, t } from './i18n';
+import { ArrowUp, ChevronDown } from 'lucide-react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
@@ -64,14 +65,121 @@ declare global {
 /** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
 const PROBE = registryProbe();
 
-/** 会话根:token 在场才建连接(单连接生命周期,token 变更=重装配) */
 export function App(): JSX.Element {
   // G10:token 填写逻辑退役——本地 serve 免鉴权档(恒绑回环),连接不再携带凭证
   return <AppShell />;
 }
 
+/** 欢迎页 goal 接力态:welcome 输入的目标,openSession 后由 Chat 播种完成时提交 */
+interface WelcomeGoal {
+  root: string;
+  goal: string;
+}
+
+/** 欢迎页 composer(Codex home 形,G10 用户裁定):居中品牌+项目下拉+输入+发送;
+ *  提交=建会话→openSession→goal 经 pendingGoal 接力由 Chat 播种完成后提交 */
+function WelcomeComposer({
+  conn,
+  onOpened,
+}: {
+  conn: {
+    workspaces(): Promise<Array<{ slug: string; root?: string; sessionCount: number }>>;
+    newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
+  };
+  onOpened: (sessionId: string, root: string, goal: string) => void;
+}): JSX.Element {
+  const [rows, setRows] = useState<Array<{ slug: string; root?: string; sessionCount: number }>>([]);
+  const [picked, setPicked] = useState('');
+  const [goal, setGoal] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    conn.workspaces().then(
+      (list) => {
+        const usable = list.filter((r) => r.root !== undefined && r.root !== '');
+        setRows(usable);
+        setPicked((p) => (p === '' ? (usable[0]?.root ?? '') : p));
+      },
+      () => setRows([]),
+    );
+  }, [conn]);
+  const send = (): void => {
+    const g = goal.trim();
+    if (g === '' || picked === '' || busy) return;
+    setBusy(true);
+    setError('');
+    conn
+      .newSession(picked)
+      .then(({ sessionId }) => onOpened(sessionId, picked, g))
+      .catch((err: unknown) => {
+        setBusy(false);
+        setError(err instanceof Error ? err.message : String(err));
+      });
+  };
+  const projName = picked.split(/[\/]/).filter(Boolean).pop() || t('Choose project', '选择项目');
+  return (
+    <div className="sx-welcome sx-welcome-home" aria-label="welcome">
+      <div className="sx-welcome-brand">
+        Sunshinex<span className="sx-welcome-dot" />
+      </div>
+      {rows.length === 0 ? (
+        <p className="sx-welcome-title">{t('Add a project in the sidebar to start', '先在侧栏 Projects「+」添加项目目录')}</p>
+      ) : (
+        <div className="welcome-composer">
+          <textarea
+            aria-label="welcome goal"
+            className="message-input"
+            rows={2}
+            value={goal}
+            placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}
+            onChange={(e) => setGoal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          <div className="composer-foot">
+            <div className="composer-pills">
+              <span className="composer-pill welcome-project" title={t('Project', '项目')}>
+                <select
+                  aria-label="welcome project"
+                  value={picked}
+                  onChange={(e) => setPicked(e.target.value)}
+                >
+                  {rows.map((r) => (
+                    <option key={r.slug} value={r.root ?? ''}>
+                      {r.root?.split(/[\/]/).filter(Boolean).pop() ?? r.slug}
+                    </option>
+                  ))}
+                </select>
+                <span className="welcome-project-name">{projName}</span>
+                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              </span>
+            </div>
+            <button
+              type="button"
+              className="send"
+              aria-label="send"
+              title={t('Send', '发送')}
+              disabled={busy || goal.trim() === ''}
+              onClick={send}
+            >
+              <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+            </button>
+          </div>
+          {error !== '' && <p className="home-error" role="alert">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 应用壳:单连接装配 + 三栏路由(左 ProjectMenu|中 Chat 恒挂|右标签栏);welcome = 无会话空态 */
 function AppShell(): JSX.Element {
+  /** 欢迎页 goal 接力(G10):welcome 提交建会话后,Chat 播种完成即提交该目标 */
+  const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
   const [openSessionId, setOpenSessionId] = useState<string>('');
   /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
@@ -392,6 +500,8 @@ function AppShell(): JSX.Element {
                 onSeeded={seedFromSnapshot}
                 onOpenFile={(p) => openTabInSession('file', { path: p })}
                 onOpenDiff={(callId, path) => openTabInSession('diff', { callId, path })}
+                pendingGoal={welcomeGoal ?? undefined}
+                onPendingGoalDone={() => setWelcomeGoal(null)}
                 onFork={() => {
                   if (connInstance === null) return;
                   void connInstance
@@ -416,19 +526,20 @@ function AppShell(): JSX.Element {
                     .catch(() => {});
                 }}
               />
+            ) : connInstance !== null ? (
+              <WelcomeComposer
+                conn={connInstance}
+                onOpened={(sessionId, root, goal) => {
+                  setWelcomeGoal({ root, goal });
+                  openSession(sessionId, root);
+                }}
+              />
             ) : (
-              <div className="sx-welcome" aria-label="welcome">
-                <div className="sx-welcome-brand">
-                  Sunshinex<span className="sx-welcome-dot" />
-                </div>
-                <p className="sx-welcome-title">选择左侧会话,或在工作区分组内新建</p>
-                <p className="sx-welcome-hint">
-                  <kbd className="sx-kbd">Alt+Shift+S</kbd> 唤起窗口(桌面端) · 右栏「+」打开文件 / 任务 / 终端
-                </p>
-              </div>
+              <div className="sx-welcome-brand">Sunshinex</div>
             )}
           </main>
-          {/* 右栏:会话标签页(无会话=灰条 32px;collapsed 只余折叠钮;标签体=活动标签渲染) */}
+          {/* 右栏:会话标签页(G10:welcome 态整体不渲染——Codex home 无右栏;chat 态 collapsed=32px 细条) */}
+          {page === 'chat' && (
           <aside className="sx-sidebar" style={{ width: sidebarWidth }}>
             <TabStrip
               tabs={tabState.tabs}
@@ -468,6 +579,7 @@ function AppShell(): JSX.Element {
             )}
             {page === 'chat' && !tabState.collapsed && <div className="sx-resizer" onMouseDown={startResize} />}
           </aside>
+          )}
         </>
       )}
     </div>
