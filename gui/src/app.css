@@ -119,7 +119,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-tab-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 8px; color: var(--fg-secondary); flex: none; }
 .sx-iconbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
-.sx-menu-pop { position: absolute; top: 36px; right: 8px; z-index: 10; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; min-width: 140px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
+.sx-menu-pop { position: absolute; top: 36px; right: 8px; z-index: 10; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; min-width: 140px; }
 .sx-menu-pop .sx-menuitem { display: flex; width: 100%; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; text-align: left; }
 .sx-menu-pop .sx-menuitem:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-tabbody { flex: 1; min-height: 0; overflow: auto; }
@@ -186,7 +186,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-src-default::before { background: transparent; }
 
 /* toast(保存成功提示:底部居中,3s 自隐由组件计时) */
-.sx-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 16px; color: var(--fg); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); z-index: 60; }
+.sx-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 16px; color: var(--fg); z-index: 60; }
 
 /* ---- G8c T9 复杂面板(特批白名单沿 T8 段:并入 app.css 追加段——单一 CSS 文件约束 U-D10) ---- */
 /* 复杂面板容器(表单+附加节纵向堆叠,共用面板滚动面) */
@@ -377,7 +377,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
    user=accent 左边(裁定:与 session-row.active 竖条同语言);notice=虚线轻条;error=err 着色 */
 .chat { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .entry { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; overflow-wrap: anywhere; }
-.entry:hover { border-color: var(--fg-secondary); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
+.entry:hover { border-color: var(--fg-secondary); }
 .entry-user { border-left: 3px solid var(--accent); }
 .entry-user:hover { border-left-color: var(--accent); }
 .entry-notice { background: transparent; border-style: dashed; color: var(--fg-secondary); font-size: 12px; }
@@ -492,7 +492,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 
 /* === DirPicker 模态(modal-overlay 遮罩半透黑;modal-body=bg-1+10px 圆+投影) === */
 .modal-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(1, 4, 9, 0.65); display: flex; align-items: center; justify-content: center; }
-.modal-body { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); padding: 12px; max-width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
+.modal-body { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; max-width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
 .dirpicker { width: 440px; max-width: 100%; display: flex; flex-direction: column; gap: 8px; }
 .dirpicker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--fg); font-weight: 600; }
 .dirpicker-head button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 8px; color: var(--fg-secondary); }
@@ -516,7 +516,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .dirpicker-foot button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 
 /* === token-gate(无连接门面:居中卡+暗色输入+hint;#root 无定位祖——absolute 对视口居中) === */
-.token-gate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 48px)); display: flex; flex-direction: column; gap: 12px; padding: 20px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+.token-gate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 48px)); display: flex; flex-direction: column; gap: 12px; padding: 20px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .token-gate label { display: flex; flex-direction: column; gap: 4px; color: var(--fg-secondary); font-size: 12px; }
 .token-gate input { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; font: 13px var(--font-mono); }
 .token-gate button[type='submit'] { align-self: flex-start; padding: 5px 18px; background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid var(--accent); border-radius: var(--radius-md); color: var(--accent); }
