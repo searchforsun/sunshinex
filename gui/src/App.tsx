@@ -174,41 +174,39 @@ function WelcomeComposer({
         <h1 className="welcome-title">{t('What should we build?', '我们来做点什么?')}</h1>
       </div>
       <div className="welcome-dock">
-        <div className="welcome-input-card">
-          {rows.length > 0 && (
-            <button
-              type="button"
-              className="choose-project-bar"
-              aria-label={t('Choose project', '选择项目')}
-              onClick={() => setProjOpen((v) => !v)}
-            >
-              <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span>{projName}</span>
-              <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" style={{ marginLeft: 'auto' }} />
-            </button>
-          )}
-          {projOpen && rows.length > 0 && (
-            <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
-              {rows.map((r) => (
-                <button
-                  key={r.slug}
-                  type="button"
-                  role="menuitem"
-                  className={`sx-menuitem${r.root === picked ? ' active' : ''}`}
-                  onClick={() => {
-                    setPicked(r.root ?? '');
-                    setProjOpen(false);
-                  }}
-                >
-                  {baseName(r.root ?? r.slug)}
-                </button>
-              ))}
-              <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
-                <Folder size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
+        <button
+          type="button"
+          className="choose-project-bar"
+          aria-label={t('Choose project', '选择项目')}
+          onClick={() => setProjOpen((v) => !v)}
+        >
+          <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span>{projName}</span>
+          <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" style={{ marginLeft: 'auto' }} />
+        </button>
+        {projOpen && (
+          <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
+            {rows.map((r) => (
+              <button
+                key={r.slug}
+                type="button"
+                role="menuitem"
+                className={`sx-menuitem${r.root === picked ? ' active' : ''}`}
+                onClick={() => {
+                  setPicked(r.root ?? '');
+                  setProjOpen(false);
+                }}
+              >
+                {baseName(r.root ?? r.slug)}
               </button>
-              {hint !== '' && <div className="proj-hint">{hint}</div>}
-            </div>
-          )}
+            ))}
+            <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
+              <Folder size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
+            </button>
+            {hint !== '' && <div className="proj-hint">{hint}</div>}
+          </div>
+        )}
+        <div className="welcome-input-card">
           <textarea
             aria-label="welcome goal"
             value={goal}
@@ -222,16 +220,25 @@ function WelcomeComposer({
             }}
           />
           <div className="welcome-input-foot">
-            <button
-              type="button"
-              className="send"
-              aria-label="send"
-              title={t('Send', '发送')}
-              disabled={busy || goal.trim() === '' || picked === ''}
-              onClick={send}
-            >
-              <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
-            </button>
+            <div className="welcome-foot-left">
+              <button type="button" className="composer-pill" aria-label="add attachment" title={t('Add', '添加')}>
+                +
+              </button>
+              <span className="composer-pill">{t('Ask for approval', '需审批')}</span>
+            </div>
+            <div className="welcome-foot-right">
+              <span className="composer-pill">{t('default model', '默认模型')}</span>
+              <button
+                type="button"
+                className="send"
+                aria-label="send"
+                title={t('Send', '发送')}
+                disabled={busy || goal.trim() === '' || picked === ''}
+                onClick={send}
+              >
+                <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

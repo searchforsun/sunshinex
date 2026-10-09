@@ -1206,19 +1206,21 @@ select.sx-setting-select { width: 240px; }
 }
 .choose-project-bar {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 14px;
-  background: transparent;
+  padding: 8px 14px;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-card);
   color: var(--fg-secondary); font-size: 13px;
-  width: 100%; text-align: left; border: none; cursor: pointer;
+  width: calc(100% - 48px); margin: 0 auto;
+  text-align: left; border: none; cursor: pointer;
 }
-.choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); border-radius: var(--radius-sm); }
+.choose-project-bar:hover { background: var(--surface-soft); }
 .chat .choose-project-bar, .composer .choose-project-bar { margin: 0 auto; width: min(720px, 100%); }
 .proj-pop {
-  position: static;
-  max-height: 240px; overflow-y: auto;
-  background: transparent; padding: 0 4px;
-  border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 4px;
+  position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+  max-height: 280px; overflow-y: auto;
+  background: var(--surface-elevated); border-radius: var(--radius-lg);
+  box-shadow: var(--elev-prominent); padding: 4px;
 }
 .proj-browse { display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); border-top: 1px solid var(--border-subtle); border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding-top: 6px; margin-top: 4px; }
 .welcome-input-card {
@@ -1234,6 +1236,8 @@ select.sx-setting-select { width: 240px; }
 }
 .welcome-input-card textarea::placeholder { color: var(--fg-tertiary); opacity: 0.6; }
 .welcome-input-foot { display: flex; align-items: center; justify-content: space-between; }
+.welcome-foot-left { display: flex; align-items: center; gap: 6px; }
+.welcome-foot-right { display: flex; align-items: center; gap: 6px; }
 
 /* ===== G10 欢迎页项目弹层(basename 条目/系统对话框提示) ===== */
 .proj-hint { padding: 6px 10px; font-size: 12px; color: var(--warn); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
