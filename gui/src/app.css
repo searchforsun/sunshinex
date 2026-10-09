@@ -1170,3 +1170,17 @@ select.sx-setting-select { width: 240px; }
 .bgtask-failed .bgtask-status, .bgtask-stopped .bgtask-status { color: var(--err); }
 .mem-check { flex: none; display: flex; }
 .mem-date { flex: none; color: var(--fg-tertiary); font-size: 11px; }
+
+/* ===== G10 欢迎页项目 pill(select 叠透明层,Codex 下拉形) ===== */
+.welcome-project { position: relative; cursor: pointer; }
+.welcome-project-select {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer; border: none;
+}
+.welcome-project-name { pointer-events: none; }
+
+/* ===== G10 欢迎页 composer 尺寸(Codex home 居中窄列) ===== */
+.sx-welcome-home { max-width: 720px; margin: 0 auto; width: 100%; align-self: center; }
+.welcome-composer { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.welcome-composer .message-input { width: 100%; background: var(--surface-elevated); border: none; border-radius: var(--radius-composer); box-shadow: var(--elev-composer); padding: 10px 14px; resize: none; }
+.welcome-composer .composer-foot { display: flex; align-items: center; justify-content: space-between; }

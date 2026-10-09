@@ -116,7 +116,7 @@ function WelcomeComposer({
         setError(err instanceof Error ? err.message : String(err));
       });
   };
-  const projName = picked.split(/[\/]/).filter(Boolean).pop() || t('Choose project', '选择项目');
+  const projName = picked.split(/[\\/]/).filter(Boolean).pop() || t('Choose project', '选择项目');
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="sx-welcome-brand">
@@ -145,12 +145,13 @@ function WelcomeComposer({
               <span className="composer-pill welcome-project" title={t('Project', '项目')}>
                 <select
                   aria-label="welcome project"
+                  className="welcome-project-select"
                   value={picked}
                   onChange={(e) => setPicked(e.target.value)}
                 >
                   {rows.map((r) => (
                     <option key={r.slug} value={r.root ?? ''}>
-                      {r.root?.split(/[\/]/).filter(Boolean).pop() ?? r.slug}
+                      {r.root?.split(/[\\/]/).filter(Boolean).pop() ?? r.slug}
                     </option>
                   ))}
                 </select>
