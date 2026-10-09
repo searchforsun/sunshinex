@@ -1798,8 +1798,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf(generalRows);
     conn.putSettingsReject = new Error('/settings -> 400 unknown key');
     openSettings();
-    await screen.findByLabelText('language');
-    fireEvent.change(screen.getByLabelText('language'), { target: { value: 'x' } });
+    await screen.findByLabelText('projectsDir');
+    fireEvent.change(screen.getByLabelText('projectsDir'), { target: { value: 'x' } }); // 自由文本键(G10 枚举键已下拉化;shell 行 env 覆盖禁编)
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(screen.getByText('/settings -> 400 unknown key')).toBeDefined());
     unmount();

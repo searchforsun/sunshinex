@@ -1274,7 +1274,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
 
 describe('G8c 场景①:设置改键全链——通用面板改 language 保存 → toast → 直连 GET project 新值 → 重启 daemon 仍新值', () => {
   it('建会话 → 设置钮 → 改 language → 保存 toast 已生效 → GET /settings?root= project 新值 → stop → 新 daemon 实例 → GET 仍 project 新值', async () => {
-    const NEW_LANG = 'fr';
+    const NEW_LANG = 'zh-CN';
     // 就地装配:startDaemon 的 stop 会 rm tmp——本组 root 要跨两段 daemon 存活,隔离面(tmp root+
     // projects 注册表)同款自建,场景末统一收口(rm 重试参数沿 startDaemon Windows 迟滞兜底惯例)
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-g8c-e2e-'));

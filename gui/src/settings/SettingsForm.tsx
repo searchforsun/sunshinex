@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SettingsKeyRow, SettingsView } from '../connection';
 import { SourceBadge } from './SourceBadge';
 import { relTime, errText } from '../ui-util';
-import { parseLanguage, setLanguage } from '../i18n';
+import { parseLanguage, setLanguage, t } from '../i18n';
 
 /**
  * G8c T8 通用键值表单引擎(+四简单面板配置):mount/effect 拉 conn.settings(root)→按 pane
@@ -60,6 +60,78 @@ const NUMBER_KEYS = new Set([
 const TOGGLE_KEYS = new Set(['autoMemory', 'learnedSkills']);
 
 const field = (key: string): SettingsFieldDef => ({ key, label: key, input: NUMBER_KEYS.has(key) ? 'number' : 'text' });
+
+/** 键描述(G10-C5 行式行:标题=键名,描述=双语一句;未登记键只显键名) */
+const KEY_DESCRIPTIONS: Record<string, { en: string; zh: string }> = {
+  language: { en: 'Language for the app UI', zh: '界面语言' },
+  shell: { en: 'Shell used for command execution', zh: '命令执行所用 shell' },
+  projectsDir: { en: 'Root directory of workspace registry', zh: '工作区注册表根目录' },
+  userSkillsDir: { en: 'Global user skills directory', zh: '全局用户技能目录' },
+  globalSunshine: { en: 'Global SUNSHINE.md path', zh: '全局 SUNSHINE.md 路径' },
+  contextWindow: { en: 'Model context window (tokens)', zh: '模型上下文窗口(tokens)' },
+  maxTokens: { en: 'Hard cap on tokens per request', zh: '单请求 token 硬顶' },
+  subagentTokenCap: { en: 'Token cap for subagents', zh: '子代理 token 上限' },
+  teamTokenCap: { en: 'Token cap for the team registry', zh: '团队注册表 token 上限' },
+  maxSteps: { en: 'Max reactor steps per run', zh: '单 run 最大 reactor 步数' },
+  maxLoopIterations: { en: 'Max verify-fix loop iterations', zh: '验收修正环最大轮数' },
+  maxGraphNodes: { en: 'Max graph nodes per pipeline', zh: '全链路最大节点步数' },
+  readFence: { en: 'Read-approval fence mode', zh: '读审批围栏模式' },
+  sandbox: { en: 'Command sandbox policy', zh: '命令沙箱策略' },
+  isolation: { en: 'Isolation backend', zh: '隔离后端' },
+  autoMemory: { en: 'Persistent memory pipeline', zh: '持久记忆管线' },
+  learnedSkills: { en: 'Learned skills pipeline', zh: '学习技能沉淀管线' },
+  learnedSkillLimit: { en: 'Learned skill capacity', zh: '学习技能容量上限' },
+  memoryIdleKickMs: { en: 'Idle kick for memory pipeline (ms)', zh: '记忆管线空闲触发(ms)' },
+  stepDigestMaxSteps: { en: 'Digest: max steps summarized', zh: '摘要:最大归纳步数' },
+  stepDigestItemChars: { en: 'Digest: per-item char budget', zh: '摘要:单条字符预算' },
+  stepDigestTotalChars: { en: 'Digest: total char budget', zh: '摘要:总字符预算' },
+  kbBackend: { en: 'Knowledge-base vector backend', zh: '知识库向量后端' },
+  kbDataDir: { en: 'Knowledge-base data directory', zh: '知识库数据目录' },
+  embeddingBaseUrl: { en: 'Embedding API base URL', zh: 'Embedding API 地址' },
+  embeddingModel: { en: 'Embedding model id', zh: 'Embedding 模型 id' },
+  websearchProvider: { en: 'Web search provider', zh: '网页搜索提供方' },
+  websearchEndpoint: { en: 'Web search endpoint', zh: '网页搜索端点' },
+};
+
+/** 枚举键下拉选项(G10-C5:闭集语义键一律下拉,避免自由文本) */
+const ENUM_OPTIONS: Record<string, Array<{ v: string; l: string }>> = {
+  language: [
+    { v: 'en', l: 'English' },
+    { v: 'zh', l: '中文' },
+    { v: 'zh-CN', l: '简体中文' },
+  ],
+  autoMemory: [
+    { v: 'on', l: 'on' },
+    { v: 'off', l: 'off' },
+  ],
+  learnedSkills: [
+    { v: 'on', l: 'on' },
+    { v: 'off', l: 'off' },
+  ],
+  readFence: [
+    { v: 'off', l: 'off' },
+    { v: 'sensitive', l: 'sensitive' },
+    { v: 'all', l: 'all' },
+  ],
+  sandbox: [
+    { v: 'off', l: 'off' },
+    { v: 'on', l: 'on' },
+  ],
+  isolation: [
+    { v: 'auto', l: 'auto' },
+    { v: 'landlock', l: 'landlock' },
+    { v: 'container', l: 'container' },
+    { v: 'host', l: 'host' },
+  ],
+  kbBackend: [
+    { v: 'local-json', l: 'local-json' },
+    { v: 'sqlite-vec', l: 'sqlite-vec' },
+  ],
+  websearchProvider: [
+    { v: 'duckduckgo', l: 'duckduckgo' },
+    { v: 'tavily', l: 'tavily' },
+  ],
+};
 
 const fields = (keys: readonly string[]): SettingsFieldDef[] => keys.map(field);
 
@@ -220,7 +292,7 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
   };
 
   return (
-    <section className="sx-settings-form" aria-label={`settings pane ${pane.title}`}>
+    <section className="sx-settings-form sx-settings-body" aria-label={`settings pane ${pane.title}`}>
       <h2>{pane.title}</h2>
       {pane.memoryOverview && stats !== null && (
         <p className="sx-memory-stats" aria-label="memory stats">
@@ -235,23 +307,51 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
             const row = rows[fd.key];
             if (row === undefined) return null;
             const id = `settings-input-${fd.key}`;
+            const desc = KEY_DESCRIPTIONS[fd.key];
+            const enumOpts = ENUM_OPTIONS[fd.key];
             return (
               <li key={fd.key} className="sx-setting-row">
-                <SourceBadge source={row.source} />
-                <label className="sx-setting-label" htmlFor={id}>
-                  {fd.label}
-                </label>
-                <input
-                  id={id}
-                  aria-label={fd.key}
-                  type={fd.input === 'number' ? 'number' : 'text'}
-                  className="sx-setting-input"
-                  value={values[fd.key] ?? ''}
-                  placeholder={TOGGLE_KEYS.has(fd.key) ? 'on/off' : undefined}
-                  disabled={row.envOverride}
-                  title={row.envOverride ? 'env 覆盖中,改文件不生效' : undefined}
-                  onChange={(e) => setValues((v) => ({ ...v, [fd.key]: e.target.value }))}
-                />
+                <div className="sx-setting-main">
+                  <div className="sx-setting-title">
+                    <SourceBadge source={row.source} />
+                    <label className="sx-setting-label" htmlFor={id}>
+                      {fd.label}
+                    </label>
+                  </div>
+                  {desc !== undefined && <p className="sx-setting-desc">{t(desc.en, desc.zh)}</p>}
+                </div>
+                {enumOpts !== undefined ? (
+                  <select
+                    id={id}
+                    aria-label={fd.key}
+                    className="sx-setting-input sx-setting-select"
+                    value={values[fd.key] ?? ''}
+                    disabled={row.envOverride}
+                    title={row.envOverride ? 'env 覆盖中,改文件不生效' : undefined}
+                    onChange={(e) => setValues((v) => ({ ...v, [fd.key]: e.target.value }))}
+                  >
+                    {enumOpts.some((o) => o.v === (values[fd.key] ?? '')) || (values[fd.key] ?? '') === '' ? null : (
+                      <option value={values[fd.key]}>{values[fd.key]}</option>
+                    )}
+                    {enumOpts.map((o) => (
+                      <option key={o.v} value={o.v}>
+                        {o.l}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id={id}
+                    aria-label={fd.key}
+                    type={fd.input === 'number' ? 'number' : 'text'}
+                    className="sx-setting-input"
+                    value={values[fd.key] ?? ''}
+                    placeholder={TOGGLE_KEYS.has(fd.key) ? 'on/off' : undefined}
+                    disabled={row.envOverride}
+                    title={row.envOverride ? 'env 覆盖中,改文件不生效' : undefined}
+                    onChange={(e) => setValues((v) => ({ ...v, [fd.key]: e.target.value }))}
+                  />
+                )}
               </li>
             );
           })}

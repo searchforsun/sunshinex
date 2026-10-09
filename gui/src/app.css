@@ -1136,3 +1136,15 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .rewind-empty { padding: 4px 10px; font-size: 12px; color: var(--fg-tertiary); }
 .pill-pop-tall { max-height: 320px; overflow-y: auto; }
 .pill-group-head { padding: 6px 10px 2px; font-size: 11px; color: var(--fg-tertiary); }
+
+/* ===== G10-C5 设置页 Codex 同构(居中窄列/行式=标题+描述+右控件/分组 nav) ===== */
+.sx-settings-body { max-width: 720px; margin: 0 auto; width: 100%; }
+.sx-settings-group { padding: 10px 12px 2px; font-size: 11px; color: var(--fg-tertiary); }
+.sx-settings-group-items { list-style: none; margin: 0; padding: 0; }
+.sx-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 10px 0; }
+.sx-setting-row + .sx-setting-row { border-top: 1px solid var(--border-subtle); }
+.sx-setting-main { min-width: 0; }
+.sx-setting-title { display: flex; align-items: center; gap: 6px; }
+.sx-setting-desc { margin: 2px 0 0; font-size: 12px; color: var(--fg-tertiary); }
+.sx-setting-input { width: 240px; flex: none; }
+select.sx-setting-select { width: 240px; }

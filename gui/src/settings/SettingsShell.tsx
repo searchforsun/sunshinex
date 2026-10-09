@@ -37,19 +37,34 @@ export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, Agents
   workspaces(): Promise<WorkspaceRow[]>;
 }
 
-/** 全十项导航(id=渲染分发键;列示序沿 spec §2.5 分组) */
-const SETTINGS_NAV: ReadonlyArray<{ readonly id: string; readonly title: string }> = [
-  { id: 'general', title: '通用' },
-  { id: 'providers', title: '模型与提供方' },
-  { id: 'skills', title: '插件:技能' },
-  { id: 'mcp', title: 'MCP' },
-  { id: 'agents', title: '智能体' },
-  { id: 'limits', title: '上下文与限额' },
-  { id: 'memory', title: '记忆' },
-  { id: 'permissions', title: '权限' },
-  { id: 'kb', title: '知识库与搜索' },
-  { id: 'raw', title: '高级' },
+/** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后) */
+const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: string; readonly items: ReadonlyArray<{ readonly id: string; readonly title: string }> }> = [
+  {
+    group: 'Personal',
+    items: [
+      { id: 'general', title: '通用' },
+      { id: 'providers', title: '模型与提供方' },
+    ],
+  },
+  {
+    group: 'Coding',
+    items: [
+      { id: 'limits', title: '上下文与限额' },
+      { id: 'memory', title: '记忆' },
+      { id: 'kb', title: '知识库与搜索' },
+    ],
+  },
+  {
+    group: 'Integrations',
+    items: [
+      { id: 'skills', title: '插件:技能' },
+      { id: 'mcp', title: 'MCP' },
+      { id: 'agents', title: '智能体' },
+    ],
+  },
+  { group: '', items: [{ id: 'permissions', title: '权限' }, { id: 'raw', title: '高级' }] },
 ];
+const SETTINGS_NAV = SETTINGS_GROUPS.flatMap((g) => g.items);
 
 /** 外观主题(G9 spec §1.1):三态持久;system 态跟随系统(watch 随卸载/切换解绑) */
 function ThemeSelect(): JSX.Element {
@@ -157,16 +172,23 @@ export function SettingsShell({ conn, root, onRootChange, onBack }: SettingsShel
         </div>
         <ThemeSelect />
         <ul className="sx-settings-nav">
-          {SETTINGS_NAV.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                className={`sx-settings-nav-item${p.id === activePane ? ' active' : ''}`}
-                aria-current={p.id === activePane ? 'true' : undefined}
-                onClick={() => setActivePane(p.id)}
-              >
-                {p.title}
-              </button>
+          {SETTINGS_GROUPS.map((g) => (
+            <li key={g.group === '' ? 'plain' : g.group}>
+              {g.group !== '' && <div className="sx-settings-group">{g.group}</div>}
+              <ul className="sx-settings-group-items">
+                {g.items.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      className={`sx-settings-nav-item${p.id === activePane ? ' active' : ''}`}
+                      aria-current={p.id === activePane ? 'true' : undefined}
+                      onClick={() => setActivePane(p.id)}
+                    >
+                      {p.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>
