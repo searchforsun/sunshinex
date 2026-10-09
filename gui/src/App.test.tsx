@@ -172,6 +172,9 @@ const h = vi.hoisted(() => {
     sessionAnchors(): Promise<Array<{ turn: number; text: string }>> { return Promise.resolve([]); }
     removeMemory(): Promise<{ removed: string[]; failed: never[] }> { return Promise.resolve({ removed: [], failed: [] }); }
     runCommand(): Promise<void> { return Promise.resolve(); }
+    commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }> {
+      return Promise.resolve({ commands: [], descriptions: {}, supported: [] });
+    }
     dirpicker(_path?: string): Promise<DirPickerResp> {
       return Promise.resolve(this.dirpickerResp);
     }

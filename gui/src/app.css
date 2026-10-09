@@ -1105,3 +1105,21 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .steer-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .steer-chip-cancel { color: var(--fg-tertiary); padding: 0 2px; border-radius: var(--radius-xs); }
 .steer-chip-cancel:hover { color: var(--err); }
+
+/* ===== G10-C4 「/」命令面板 ===== */
+.cmd-palette {
+  position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  max-height: 280px; overflow-y: auto;
+  background: var(--surface-elevated); border-radius: var(--radius-lg);
+  box-shadow: var(--elev-prominent); padding: 4px;
+}
+.cmd-item {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  padding: 4px 10px; border-radius: var(--radius-sm); color: var(--fg);
+}
+.cmd-item.active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.cmd-item.disabled { color: var(--fg-tertiary); cursor: default; }
+.cmd-item.disabled .cmd-name { text-decoration: line-through; }
+.cmd-name { font-family: var(--font-mono); font-size: 12px; flex: none; }
+.cmd-desc { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer { position: relative; }

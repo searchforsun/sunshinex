@@ -12,6 +12,8 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
 import { DiffPanel } from '../diff-panel';
 import { Mermaid } from '../Mermaid';
+import { CommandPalette, filterCommands } from '../CommandPalette';
+import type { CmdItem } from '../CommandPalette';
 import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent } from '../../../src/types';
 import { t } from '../i18n';
@@ -399,6 +401,9 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | null>(null);
   /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
   const [queued, setQueued] = useState<Array<{ seq: number; text: string }>>([]);
+  /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
+  const [cmdData, setCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
+  const [cmdActive, setCmdActive] = useState(0);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
    *  (挂载/reset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
   const [seeding, setSeeding] = useState(true);
@@ -551,6 +556,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
       () => setModelInfo({ choices: [] }),
     );
   }, [conn, sessionId]);
+
+  /** 命令面板数据源(G10-C4):GET /commands 单点(清单/描述/supported) */
+  useEffect(() => {
+    conn.commands().then(setCmdData, () => setCmdData(null));
+  }, [conn]);
 
   /** pills 外点收 */
   useEffect(() => {
@@ -731,6 +741,15 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
          *  G9-B4(spec §4):浮卡容器(elevated 面+三层海拔+22px 超椭圆渐进)在 CSS;此处只分结构
          *  (textarea + composer-foot)并把发送/停止改 28px 圆形实心钮(↑/■ 图标,aria-label
          *  send/stop 保查询性)——权限/模型 pill 无功能对应物不做(spec §0 复刻纪律)。 */}
+        {cmdData !== null && input.startsWith('/') && (() => {
+          const items = filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported);
+          const active = Math.min(cmdActive, Math.max(0, items.length - 1));
+          const pick = (item: CmdItem): void => {
+            if (!item.ok) return;
+            setInput(item.cmd + ' ');
+          };
+          return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
+        })()}
         <textarea
           aria-label="message input"
           className="message-input"
@@ -740,6 +759,43 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           disabled={connState !== 'open' || seeding}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
+            const paletteItems = cmdData !== null && input.startsWith('/')
+              ? filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported)
+              : null;
+            if (paletteItems !== null) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                setCmdActive((a) => (paletteItems.length === 0 ? 0 : e.key === 'ArrowDown' ? (a + 1) % paletteItems.length : (a - 1 + paletteItems.length) % paletteItems.length));
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setCmdData(null); // 本次收起(重开输入 / 即回)
+                return;
+              }
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                const item = paletteItems[cmdActive];
+                if (item !== undefined) setInput(item.cmd + ' ');
+                return;
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                const item: CmdItem | undefined = paletteItems[cmdActive];
+                if (item !== undefined && input.includes(' ')) {
+                  // 参数已敲:整行直跑(supported 判定在 daemon;集外此处已置灰不可达 active?仍防御)
+                  if (item.ok) {
+                    setInput('');
+                    conn.runCommand(sessionId, input).catch(() => {});
+                  }
+                  return;
+                }
+                if (item !== undefined) {
+                  setInput(item.cmd + ' '); // 补全,面板续开收参数
+                  return;
+                }
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault(); // 提交不分流换行进内容面(受控清空,防闪换行)
               send();

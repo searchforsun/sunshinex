@@ -42,6 +42,7 @@ function connOf(over: Partial<Connection> = {}): Connection {
     sessionAnchors: () => Promise.resolve([]),
     removeMemory: () => Promise.resolve({ removed: [], failed: [] }),
     runCommand: () => Promise.resolve(),
+    commands: () => Promise.resolve({ commands: ['/status', '/compact', '/plan'], descriptions: { status: 's', compact: 'c', plan: 'p' }, supported: ['/status', '/compact'] }),
     ...over,
   } as unknown as Connection;
 }
@@ -170,6 +171,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sessionAnchors: () => Promise.resolve([]),
       removeMemory: () => Promise.resolve({ removed: [], failed: [] }),
       runCommand: () => Promise.resolve(),
+      commands: () => Promise.resolve({ commands: ['/status', '/compact'], descriptions: { status: 's', compact: 'c' }, supported: ['/status', '/compact'] }),
       ...over,
     }) as unknown as Connection;
 

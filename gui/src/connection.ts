@@ -318,6 +318,8 @@ export interface Connection {
   removeMemory(root: string, slugs: string[]): Promise<{ removed: string[]; failed: Array<{ slug: string; error: string }> }>;
   /** POST /session/:id/command:斜杠命令直跑(G10-C1c) */
   runCommand(id: string, line: string): Promise<void>;
+  /** GET /commands:清单+双语描述+supported(G10-C4 命令面板数据源) */
+  commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
@@ -647,6 +649,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async runCommand(id: string, line: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/command', { line });
+    },
+    commands() {
+      return getJson('/commands');
     },
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);

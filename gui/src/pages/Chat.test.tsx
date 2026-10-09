@@ -33,6 +33,7 @@ function connOf(messages: Seed[]): Connection {
     setSessionMode: vi.fn(() => Promise.resolve()),
     cancelSteer: vi.fn(() => Promise.resolve()),
     runCommand: vi.fn(() => Promise.resolve()),
+    commands: () => Promise.resolve({ commands: ['/status', '/compact', '/plan'], descriptions: { status: 's', compact: 'c', plan: 'p' }, supported: ['/status', '/compact'] }),
   } as unknown as Connection;
 }
 
