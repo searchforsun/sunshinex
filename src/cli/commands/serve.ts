@@ -35,6 +35,8 @@ export async function runServe(args: CliArgs): Promise<void> {
   // --port 收紧（G2）：只认纯数字串且 1-65535——parseInt 宽松形态（'12abc'、'0x10'）与裸 --port/
   //  数组形态一律 fail-fast（stderr + exit 1，同「无法识别命令」收口形态）；缺省回落 SERVE_DEFAULT_PORT
   const portRaw = args.flags.port;
+  // --token <t>(G10):显式传入才启用鉴权;缺省免鉴权档(服务恒绑 127.0.0.1,本地工具不设密)
+  const tokenFlag = typeof args.flags.token === 'string' && args.flags.token.length > 0 ? args.flags.token : undefined;
   let port = SERVE_DEFAULT_PORT;
   if (portRaw !== undefined && portRaw !== '') {
     if (typeof portRaw !== 'string' || !/^\d+$/.test(portRaw)) {
@@ -63,7 +65,7 @@ export async function runServe(args: CliArgs): Promise<void> {
       ? pkgGui
       : cwdGui; // 两级皆缺：保留旧口径（探测失败 → API-only hint）
   const daemon = new GuiDaemon({ model: buildModel(args.flags), staticRoot });
-  const s = await daemon.start({ port });
+  const s = await daemon.start({ port, ...(tokenFlag !== undefined ? { token: tokenFlag } : {}) });
 
   // token 带外通道（§4.3）：写 <dataDir>/serve-token（dataDir 首启可能不存在，recursive 建）——工作区级
   // 落档只在给了预选目录时（无预选无工作区可挂，仅终端打印；GUI 首页建会话后 T2 workspace.json 补发现面）。
@@ -74,7 +76,9 @@ export async function runServe(args: CliArgs): Promise<void> {
   if (preselect !== undefined) {
     const dataDir = resolveDataDir(preselect);
     fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(path.join(dataDir, 'serve-token'), JSON.stringify({ token: s.token, port: s.port, pid: process.pid }, null, 2), { mode: 0o600, encoding: 'utf8' });
+    if (s.token !== undefined) {
+      fs.writeFileSync(path.join(dataDir, 'serve-token'), JSON.stringify({ token: s.token, port: s.port, pid: process.pid }, null, 2), { mode: 0o600, encoding: 'utf8' });
+    }
   }
 
   console.log(`sunshinex serve listening at http://127.0.0.1:${s.port}`);
@@ -82,8 +86,12 @@ export async function runServe(args: CliArgs): Promise<void> {
   // 单行入口提示；静态不在场（API-only）保留纯 token 行——无 GUI 可开，指向浏览器只会误导
   const staticMounted = fs.existsSync(path.join(staticRoot, 'index.html'));
   if (staticMounted) {
-    console.log(t(`open http://127.0.0.1:${s.port} in a browser (token: ${s.token})`, `在浏览器打开 http://127.0.0.1:${s.port}（token: ${s.token}）`));
-  } else {
+    console.log(
+      s.token !== undefined
+        ? t(`open http://127.0.0.1:${s.port} in a browser (token: ${s.token})`, `在浏览器打开 http://127.0.0.1:${s.port}（token: ${s.token}）`)
+        : t(`open http://127.0.0.1:${s.port} in a browser (local access, no token)`, `在浏览器打开 http://127.0.0.1:${s.port}（本地访问,免 token）`),
+    );
+  } else if (s.token !== undefined) {
     console.log(`token: ${s.token}`);
   }
   console.log(

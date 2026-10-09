@@ -377,7 +377,6 @@ type Conn = InstanceType<typeof h.FakeConn>;
 
 /** 挂载(token 经 localStorage 注入,同 main 装配的开发持久形态)→ 捕获的 mock conn + 卸载句柄;初始 welcome */
 function mount(): { conn: Conn; unmount: () => void } {
-  localStorage.setItem('sunshinex.token', 'test-token');
   const { unmount } = render(<App />);
   return { conn: h.created.at(-1)!, unmount };
 }
@@ -917,32 +916,6 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
   });
 });
 
-describe('token 门面(无 token 不建连接)', () => {
-  it('无 token:显示输入页,不创建连接;提交后持久并装配', () => {
-    const { unmount } = render(<App />);
-    expect(h.created).toHaveLength(0);
-    expect(screen.getByLabelText('token input')).toBeDefined();
-    fireEvent.change(screen.getByLabelText('token input'), { target: { value: 'abc123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
-    expect(localStorage.getItem('sunshinex.token')).toBe('abc123');
-    expect(h.created).toHaveLength(1);
-    expect(h.created[0]!.opts.token).toBe('abc123');
-    unmount();
-  });
-
-  it('URL ?token= 直连:以其装配且回写 localStorage 持久(刷新/重连免带参)', () => {
-    window.history.pushState({}, '', '/?token=from-url');
-    try {
-      const { unmount } = render(<App />);
-      expect(h.created).toHaveLength(1);
-      expect(h.created[0]!.opts.token).toBe('from-url');
-      expect(localStorage.getItem('sunshinex.token')).toBe('from-url');
-      unmount();
-    } finally {
-      window.history.pushState({}, '', '/');
-    }
-  });
-});
 
 describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转', () => {
   it('右栏标签切换:默认「任务」页(Board);「+」菜单开文件标签 → Files 预览面,Chat 恒挂零重播种', async () => {

@@ -68,7 +68,8 @@ export interface GuiDaemonStartOpts {
 /** start 回执：port 为实际监听端口；close 与 GuiDaemon.close 同一幂等收口 */
 export interface GuiDaemonHandle {
   port: number;
-  token: string;
+  /** undefined = 免鉴权档(G10:本地 serve 缺省);显式 --token 启用时为该值 */
+  token: string | undefined;
   close(): Promise<void>;
 }
 
@@ -789,7 +790,8 @@ export class GuiDaemon {
    * port 0 = 系统分配临时端口，回执返回实际监听值（测试并行不撞口）。
    */
   async start(opts?: GuiDaemonStartOpts): Promise<GuiDaemonHandle> {
-    const token = opts?.token ?? crypto.randomBytes(24).toString('hex');
+    // token 语义(G10 后裁定):undefined = 免鉴权档(服务恒绑 127.0.0.1,本地工具不设密);显式传入才启用鉴权
+    const token = opts?.token;
     const server = http.createServer((req, res) => this.dispatch(req, res, token));
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
@@ -813,13 +815,14 @@ export class GuiDaemon {
    *  （websocket-server.js `protocols.values().next().value`）写回 Sec-WebSocket-Protocol——客户端
    *  恰好只带一个协议（bearer.<token>），回显即原值，客户端 ws.protocol 可直接校验。30s ping 保活
    *  计时器在此启动，close 时清 */
-  private attachWs(server: http.Server, token: string): WebSocketServer {
+  private attachWs(server: http.Server, token: string | undefined): WebSocketServer {
     const wss = new WebSocketServer({ noServer: true });
     server.on('upgrade', (req, socket, head) => {
-      const viaHeader = req.headers.authorization === `Bearer ${token}`;
-      const viaSubprotocol = req.headers['sec-websocket-protocol'] === `bearer.${token}`;
+      const viaHeader = token !== undefined && req.headers.authorization === `Bearer ${token}`;
+      const viaSubprotocol = token !== undefined && req.headers['sec-websocket-protocol'] === `bearer.${token}`;
       // teardown 已启动即不再收新连接（WS 先于 server close 退场，此处与鉴权失败同拒升级）
-      if (this.closePromise || (!viaHeader && !viaSubprotocol)) {
+      // token undefined = 免鉴权档:升级径直放行(回环兜底)
+      if (this.closePromise || (token !== undefined && !viaHeader && !viaSubprotocol)) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
@@ -1086,13 +1089,13 @@ export class GuiDaemon {
     return undefined;
   }
 
-  private dispatch(req: http.IncomingMessage, res: http.ServerResponse, token: string): void {
+  private dispatch(req: http.IncomingMessage, res: http.ServerResponse, token: string | undefined): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const matched = this.matchRoute(req.method ?? 'GET', url.pathname);
     if (matched) {
-      // 鉴权（§4.3）：除 healthz 外恒验 Bearer token，且先于会话解析（401 面不泄露会话语义）——恒时
-      // 比较不做（token 非密钥材料，回环面时序侧信道无实义）
-      if (matched.route.auth && req.headers.authorization !== `Bearer ${token}`) {
+      // 鉴权（§4.3/G10 收敛）：token 在场才验 Bearer（undefined=免鉴权档，恒绑回环兜底）；401 先于
+      // 会话解析（不泄露会话语义）——恒时比较不做（token 非密钥材料，回环面时序侧信道无实义）
+      if (token !== undefined && matched.route.auth && req.headers.authorization !== `Bearer ${token}`) {
         this.send(res, 401, { error: 'unauthorized' });
         return;
       }

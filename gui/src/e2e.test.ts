@@ -59,7 +59,7 @@ async function startDaemon(
   process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
   const m = typeof model === 'function' ? model(out) : model;
   const daemon = new GuiDaemon({ model: m, ...(staticRoot !== undefined ? { staticRoot } : {}) });
-  const s = await daemon.start({ port: 0, token: 'e2e-token' });
+  const s = await daemon.start({ port: 0 });
   return {
     port: s.port,
     root,
@@ -100,7 +100,6 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
     env = await startDaemon(new ScriptedAdapter(CARDS));
     conn = createConnection({
       baseUrl: `http://127.0.0.1:${env.port}`,
-      token: 'e2e-token',
       onEvent: (sessionId, e) => frames.push({ sessionId, e }),
       onReset: () => {},
     });
@@ -109,7 +108,6 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
   afterAll(async () => {
     conn?.close();
     await env?.stop();
-    localStorage.removeItem('sunshinex.token');
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
@@ -177,7 +175,6 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
     const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"attach 后答复"}']));
     try {
       seedWorkspace(env.root, '历史第一句'); // workspace.json + 历史 journal(attach 播种源)
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -202,7 +199,6 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
       expect(screen.getByText('s1', { selector: '.chat-title' })).toBeDefined(); // 仍在会话(路由态)
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -215,7 +211,6 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
     try {
       // s1 的 journal(预置历史句;attach 续挂——后续 run 的 chain 行续落同档,重开即可回读)
       const s1Journal = seedWorkspace(env.root, '历史第一句');
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -279,7 +274,6 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       expect(container.textContent).not.toContain('s2 终答');
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -325,7 +319,6 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     env = await startDaemon(model);
     conn = createConnection({
       baseUrl: `http://127.0.0.1:${env.port}`,
-      token: 'e2e-token',
       onEvent: (_sessionId, e) => events.push(e),
       onReset: () => {},
     });
@@ -334,14 +327,12 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
   afterAll(async () => {
     conn?.close();
     await env?.stop();
-    localStorage.removeItem('sunshinex.token');
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
   it('New session(DirPicker 自定义路径)→ chat → 提交流式 → steer 200 → done 收段', async () => {
     // App 挂载:token 门面 + baseUrl 经 stubEnv 注入;初始路由 home(空注册表 → 空态引导)
-    localStorage.setItem('sunshinex.token', 'e2e-token');
     vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
     const { container } = render(createElement(App));
     await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -392,7 +383,6 @@ describe('G3 冒烟③:断线重连恢复(daemon 真链路,onReset+全量重放)
     env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"首轮答复"}', '{"done":true,"reply":"重连后续答"}']));
     connB = createConnection({
       baseUrl: `http://127.0.0.1:${env.port}`,
-      token: 'e2e-token',
       onEvent: (sessionId, e) => events.push({ sessionId, e }),
       onReset: () => {
         resets += 1;
@@ -405,7 +395,6 @@ describe('G3 冒烟③:断线重连恢复(daemon 真链路,onReset+全量重放)
   afterAll(async () => {
     connB?.close();
     await env?.stop();
-    localStorage.removeItem('sunshinex.token');
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -496,7 +485,6 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
         ]),
     );
     try {
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       // 观察面(零改写):记录 /session/new body——真 UI 勾选链的 mode:'manual' 断言;
       // 请求原样透传(非 G6 前的 body 注入包装器)
@@ -559,7 +547,6 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('manual 写一个文件');
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -571,9 +558,8 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
     const env = await startDaemon(
       new ScriptedAdapter(['{"done":true,"reply":"第一会话完成"}', '{"done":true,"reply":"第二会话完成"}']),
     );
-    const H: Record<string, string> = { authorization: 'Bearer e2e-token' };
+    const H: Record<string, string> = {};
     try {
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -621,7 +607,6 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       expect(journals.length).toBe(2); // journal 保留(T2 裁定:磁盘档案非 daemon 生命周期资产)
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -650,12 +635,10 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
     const frames: SessionEvent[] = [];
     const conn = createConnection({
       baseUrl: `http://127.0.0.1:${env.port}`,
-      token: 'e2e-token',
       onEvent: (_sessionId, e) => frames.push(e),
       onReset: () => {},
     });
     try {
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -700,7 +683,6 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
     } finally {
       conn.close();
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -729,7 +711,6 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
     );
     try {
       fs.writeFileSync(path.join(env.root, REL), OLD, 'utf8'); // 预置旧文件(写前态)
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -765,7 +746,6 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       expect(container.querySelector('.tool-path')?.textContent).toBe(REL); // path 跳转按钮(Files 预览入口)
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -830,7 +810,6 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
     );
     try {
       const { sockets } = trackSockets(); // App 的 WS 实例可寻(断线注入)
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -856,7 +835,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
 
       // —— 放行:write envelope 越域 → manual 挂起 → approval 广播零客户端 ——
       gated!.release();
-      const H = { authorization: 'Bearer e2e-token' } as Record<string, string>;
+      const H = {} as Record<string, string>;
       const deadline = Date.now() + 10_000;
       let snap = (await (
         await fetch(`http://127.0.0.1:${env.port}/session/s1/snapshot`, { headers: H })
@@ -901,7 +880,6 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       expect(container.querySelector('.status-idle')).toBeDefined();
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -935,7 +913,6 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
     );
     try {
       fs.writeFileSync(path.join(env.root, REL), OLD, 'utf8'); // 预置旧文件(写前态——Diff 双列的 old 面)
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1012,7 +989,6 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       expect(container.querySelectorAll('.sx-tab').length).toBe(3); // 任务 + Diff + 文件
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -1023,7 +999,6 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
   it('提交 CARDS → done 收束 → 经「+」菜单开文件标签(任务失活)→ 切回「任务」标签 → t1 行/委派落位', async () => {
     const env = await startDaemon(new ScriptedAdapter(CARDS));
     try {
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1063,7 +1038,6 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       expect(container.querySelector('.delegation-list')?.textContent).toContain('done');
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -1091,7 +1065,6 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       // fixture:会话 root 内 dirA/fileA.ts(标记串内容)——tree 单层列举/文件行跳转/Files 预览的盘面
       fs.mkdirSync(path.join(env.root, 'dirA'), { recursive: true });
       fs.writeFileSync(path.join(env.root, 'dirA', 'fileA.ts'), MARKER, 'utf8');
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1130,7 +1103,6 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       );
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -1179,9 +1151,8 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
   it('App 开终端标签 → 降级面在场;裸链:分配→replay→in 标记→data 含标记→重连 replay 含标记→DELETE kill→error not found', async () => {
     const MARKER = 'pty-link-ok';
     const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"终端场景无需模型轮"}']));
-    const H: Record<string, string> = { authorization: 'Bearer e2e-token' };
+    const H: Record<string, string> = {};
     try {
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1215,7 +1186,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
 
       // —— 2) 连入:首帧恒 replay(新分配可空)→ in 帧下发标记命令(win32 powershell 可执行形态)
       //    → data 帧流 base64 解码含标记(shell 回环真链路)——
-      const a = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`, 'e2e-token');
+      const a = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`);
       try {
         await waitUntil(() => a.frames.length > 0, 10_000, '连入首帧 replay');
         expect(a.frames[0]!.t).toBe('replay');
@@ -1228,7 +1199,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       await waitUntil(() => a.ws.readyState === NodeWebSocket.CLOSED, 5_000, '首连 ws 关闭');
 
       // —— 3) 断线重连(close≠kill 进程保活):新 ws 连入 → 首帧 replay 解码含标记(环形缓冲重放)——
-      const b = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`, 'e2e-token');
+      const b = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`);
       try {
         await waitUntil(() => b.frames.length > 0, 10_000, '重连首帧 replay');
         expect(b.frames[0]!.t).toBe('replay');
@@ -1242,7 +1213,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       const kill = await fetch(`${base}/session/s1/pty/${ptyId}`, { method: 'DELETE', headers: H });
       expect(kill.status).toBe(200);
       expect(await kill.json()).toEqual({ ok: true });
-      const c = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`, 'e2e-token');
+      const c = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`);
       try {
         await waitUntil(() => c.frames.length > 0, 10_000, 'kill 后连入帧');
         expect(c.frames[0]!.t).toBe('error');
@@ -1253,7 +1224,6 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       }
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -1286,13 +1256,13 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
     const boot = async (): Promise<{ port: number; stop(): Promise<void> }> => {
       vi.stubGlobal('WebSocket', NodeWebSocket);
       const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"设置场景无需模型轮"}']) });
-      const s = await daemon.start({ port: 0, token: 'e2e-token' });
+      const s = await daemon.start({ port: 0 });
       return { port: s.port, stop: () => s.close() };
     };
     /** GET /settings?root= 直连取单键行(断言面:value+source 两列) */
     const settingsRow = async (port: number, key: string): Promise<{ value: string | null; source: string }> => {
       const res = await fetch(`http://127.0.0.1:${port}/settings?root=${encodeURIComponent(root)}`, {
-        headers: { authorization: 'Bearer e2e-token' },
+        headers: {},
       });
       expect(res.status).toBe(200);
       const view = (await res.json()) as { keys: Array<{ key: string; value: string | null; source: string }> };
@@ -1305,7 +1275,6 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
     let unmount: (() => void) | undefined;
     try {
       d1 = await boot();
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${d1.port}`);
       unmount = render(createElement(App)).unmount;
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1355,7 +1324,6 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
       else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
       fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -1373,7 +1341,6 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
         JSON.stringify({ mcpServers: { bad: { name: 'bad', command: 'definitely-missing-xyz' } } }),
         'utf8',
       );
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1431,7 +1398,6 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       expect(screen.getByLabelText('connection: open')).toBeDefined();
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -1456,7 +1422,6 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
   it('提交 CARDS → done 收束 → +菜单开 Agents 标签 → task-t1 卡(label/完成)+ 点卡转录行在场 → 再点收起', async () => {
     const env = await startDaemon(new ScriptedAdapter(CARDS));
     try {
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1508,7 +1473,6 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       expect(container.querySelector('.sx-subagent-lines')).toBeNull();
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }
@@ -1520,7 +1484,6 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
     const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"web 场景无需模型轮"}']));
     const TARGET = 'http://localhost:8123/'; // localhost 目标(真外站零拉取;含 :// 不补 scheme)
     try {
-      localStorage.setItem('sunshinex.token', 'e2e-token');
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByLabelText('connection: open')).toBeDefined(), { timeout: 10_000 });
@@ -1566,7 +1529,6 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       expect(after?.getAttribute('src')).toBe(TARGET);
     } finally {
       await env.stop();
-      localStorage.removeItem('sunshinex.token');
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     }

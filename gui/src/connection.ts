@@ -275,7 +275,8 @@ interface WsFrame {
 
 export interface ConnectionOpts {
   baseUrl: string;
-  token: string;
+  /** token(G10 起可选):在场=Bearer/bearer.<t> 鉴权;空=免鉴权(本地 serve 免鉴权档) */
+  token?: string;
   /** 就绪帧投递（已过每会话 seq 过滤，按帧 sessionId 分发——连接层不滤会话，全给上层） */
   onEvent: (sessionId: string, e: SessionEvent, seq: number) => void;
   /** 每次连接建立（首连与重连同路径）回调：上层清各会话投影 + 逐会话重拉 snapshot
@@ -424,6 +425,8 @@ function wsUrl(baseUrl: string): string {
 
 export function createConnection(opts: ConnectionOpts): Connection {
   const { baseUrl, token, onEvent, onReset } = opts;
+  /** 鉴权头(G10:token 空=免鉴权档,不发 authorization) */
+  const authHeaders: Record<string, string> = token === '' || token === undefined ? {} : { authorization: `Bearer ${token}` };
   const { onApproval, onAsk, onResetSession } = opts;
   const onStateChange = opts.onStateChange;
   const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
@@ -496,7 +499,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     if (status === 'closed') return;
     const gen = ++generation;
     // subprotocol `bearer.<token>` 鉴权（浏览器 WebSocket 不能自定义请求头，T1 裁定的浏览器路径）
-    const sock = new WebSocket(wsUrl(base), [`bearer.${token}`]);
+    const sock = new WebSocket(wsUrl(base), token ? [`bearer.${token}`] : []);
     ws = sock;
 
     sock.onopen = () => {
@@ -538,7 +541,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
   }
 
   async function getJson<T>(path: string): Promise<T> {
-    const res = await fetch(`${base}${path}`, { headers: { authorization: `Bearer ${token}` } });
+    const res = await fetch(`${base}${path}`, { headers: authHeaders });
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
     return (await res.json()) as T;
   }
@@ -546,7 +549,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
   async function post(path: string, body?: unknown): Promise<void> {
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: { ...authHeaders, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
@@ -557,7 +560,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
   async function put(path: string, body: unknown): Promise<void> {
     const res = await fetch(`${base}${path}`, {
       method: 'PUT',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { ...authHeaders, 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
@@ -567,7 +570,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
   async function postJson<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { ...authHeaders, 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
@@ -637,7 +640,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async forkSession(id: string, turn: number): Promise<{ sessionId: string }> {
       const res = await fetch(`${base}/session/${encodeURIComponent(id)}/fork`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: { ...authHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ turn }),
       });
       if (!res.ok) throw new Error(`/session/${id}/fork -> ${res.status}`);
@@ -649,7 +652,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async removeMemory(root: string, slugs: string[]) {
       const res = await fetch(`${base}/memory/rm`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: { ...authHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ root, slugs }),
       });
       if (!res.ok) throw new Error(`/memory/rm -> ${res.status}`);
@@ -676,7 +679,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async newSession(root: string, mode?: 'dontAsk' | 'manual'): Promise<{ sessionId: string }> {
       const res = await fetch(`${base}/session/new`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: { ...authHeaders, 'content-type': 'application/json' },
         body: JSON.stringify(mode === undefined ? { root } : { root, mode }),
       });
       if (!res.ok) throw new Error(`/session/new -> ${res.status}`);
@@ -723,7 +726,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
       if (rows !== undefined) body.rows = rows;
       const res = await fetch(`${base}${path}`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: { ...authHeaders, 'content-type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`${path} -> ${res.status}`);

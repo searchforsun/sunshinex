@@ -61,54 +61,17 @@ declare global {
   }
 }
 
-/** token 解析(main 装配同源逻辑):URL ?token= 优先(非空即回写 localStorage 持久),回落 localStorage */
-const TOKEN_STORAGE_KEY = 'sunshinex.token';
-
-function readToken(): string {
-  const fromUrl = new URLSearchParams(location.search).get('token');
-  if (fromUrl !== null && fromUrl !== '') {
-    localStorage.setItem(TOKEN_STORAGE_KEY, fromUrl);
-    return fromUrl;
-  }
-  return localStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
-}
-
 /** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
 const PROBE = registryProbe();
 
 /** 会话根:token 在场才建连接(单连接生命周期,token 变更=重装配) */
 export function App(): JSX.Element {
-  const [token, setToken] = useState<string>(readToken);
-  if (token === '') return <TokenGate onSave={(t) => setToken(t)} />;
-  return <AppShell token={token} />;
-}
-
-/** token 输入页(无 token 不建连接;提交即持久 localStorage 并进入会话) */
-function TokenGate({ onSave }: { onSave: (token: string) => void }): JSX.Element {
-  const [value, setValue] = useState('');
-  return (
-    <form
-      className="token-gate"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const t = value.trim();
-        if (t === '') return;
-        localStorage.setItem(TOKEN_STORAGE_KEY, t);
-        onSave(t);
-      }}
-    >
-      <label>
-        serve token
-        <input aria-label="token input" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
-      </label>
-      <button type="submit">Connect</button>
-      <p className="hint">token 亦可经 URL 携带:?token=&lt;serve-token&gt;</p>
-    </form>
-  );
+  // G10:token 填写逻辑退役——本地 serve 免鉴权档(恒绑回环),连接不再携带凭证
+  return <AppShell />;
 }
 
 /** 应用壳:单连接装配 + 三栏路由(左 ProjectMenu|中 Chat 恒挂|右标签栏);welcome = 无会话空态 */
-function AppShell({ token }: { token: string }): JSX.Element {
+function AppShell(): JSX.Element {
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
   const [openSessionId, setOpenSessionId] = useState<string>('');
   /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
@@ -157,7 +120,6 @@ function AppShell({ token }: { token: string }): JSX.Element {
   useEffect(() => {
     const conn = createConnection({
       baseUrl: import.meta.env.VITE_SERVE_URL ?? location.origin,
-      token,
       onEvent: (sessionId, e: SessionEvent, seq: number) => {
         if (sessionId !== sessionRef.current) return; // 他会话帧丢弃(连接层全收,投影只挂当前会话)
         if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
@@ -221,7 +183,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
       setConnInstance(null);
       conn.close();
     };
-  }, [token]);
+  }, []);
 
   /** 拖宽在途兜底解绑(会话切走/壳卸毁时 window 监听不泄漏) */
   /** GUI chrome 双语(G10-C3c):语言源 = daemon settings language 键,连接装配即同步 */
