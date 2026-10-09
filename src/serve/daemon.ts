@@ -1196,10 +1196,21 @@ export class GuiDaemon {
       this.send(res, parsed.status, { error: parsed.error });
       return;
     }
-    const root = (parsed.body as { root?: unknown } | null)?.root;
-    if (typeof root !== 'string' || root.length === 0) {
+    const rootRaw = (parsed.body as { root?: unknown } | null)?.root;
+    if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
       this.send(res, 400, { error: ROOT_REQUIRED_HINT });
       return;
+    }
+    let root: string = rootRaw;
+    // default 工作区语义(G10 用户裁定):root='default' = 仓库内 default 目录——非文件类任务与
+    // 对话的缺省落点(轻对话不绑具体项目);目录不存在即建,注册表扫描自然纳入
+    if (root === 'default') {
+      root = path.resolve(this.staticRoot, '..', 'default');
+      fs.mkdirSync(root, { recursive: true });
+      const sunshine = path.join(root, 'SUNSHINE.md');
+      if (!fs.existsSync(sunshine)) {
+        fs.writeFileSync(sunshine, '# default\n\nDefault workspace for non-file tasks and conversations.\n', 'utf8');
+      }
     }
     const mode = (parsed.body as { mode?: unknown } | null)?.mode;
     // G5 白名单收紧：undefined|'dontAsk'|'manual' 之外一律 400 恒定文案（此前静默按 dontAsk 装配——

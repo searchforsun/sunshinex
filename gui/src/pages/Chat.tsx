@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   ArrowLeft, ArrowUp, Bot, Brain, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
-  ListTodo, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
+  Folder, ListTodo, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
@@ -100,6 +100,8 @@ export interface ChatProps {
   /** G10 欢迎页接力:播种完成后提交的 welcome 目标(setWelcomeGoal 写入;提交即回调清位) */
   pendingGoal?: { root: string; goal: string };
   onPendingGoalDone?: () => void;
+  /** 会话所属工作区 root(G10 项目条显示;default 会话='default') */
+  root?: string;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -447,7 +449,7 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
   );
 });
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork, pendingGoal, onPendingGoalDone }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork, pendingGoal, onPendingGoalDone, root }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
   /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
@@ -826,6 +828,10 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         ])}
       </main>
       <footer className="composer">
+        <div className="choose-project-bar" aria-label="session project">
+          <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span>{root === undefined || root === '' ? 'default' : root.split(/[\/]/).filter(Boolean).pop()}</span>
+        </div>
         {/* G8d T5 输入面 textarea 自增高:rows 随内容换行数 1-6 派生(state 单源,清空/提交自然回 1);
          *  Enter 提交 / Shift+Enter 换行(不 preventDefault——换行是 textarea 默认行为)。
          *  G9-B4(spec §4):浮卡容器(elevated 面+三层海拔+22px 超椭圆渐进)在 CSS;此处只分结构
