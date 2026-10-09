@@ -493,6 +493,7 @@ function AppShell({ token }: { token: string }): JSX.Element {
                 {tabEntry(activeTab.type).render({
                   conn: connInstance,
                   sessionId: openSessionId,
+                  root: openRoot,
                   params: activeTab.params,
                   services,
                   uid: activeTab.uid,

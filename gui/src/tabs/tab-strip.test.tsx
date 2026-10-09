@@ -10,8 +10,10 @@ const base = {
 };
 
 describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web)', () => {
-  it('注册 file/diff/directory/tasks/agents/terminal/web;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,directory/tasks/agents 单例,web 按 url 判重多实例', () => {
-    expect(TAB_REGISTRY.map((e) => e.id)).toEqual(['file', 'diff', 'directory', 'tasks', 'agents', 'terminal', 'web']);
+  it('注册 file/diff/directory/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,directory/tasks/agents 单例,web 按 url 判重多实例', () => {
+    expect(TAB_REGISTRY.map((e) => e.id)).toEqual([
+      'file', 'diff', 'directory', 'tasks', 'agents', 'context', 'bgtasks', 'memory', 'terminal', 'web',
+    ]);
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');
@@ -34,12 +36,12 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web
     expect(agents.group).toBe('session');
     expect(agents.title({})).toBe('Agents');
     expect(agents.resolveKey({})).toBe('');
-    const terminal = TAB_REGISTRY[5]!;
+    const terminal = TAB_REGISTRY.find((e) => e.id === 'terminal')!;
     expect(terminal.singleton).toBe(false);
     expect(terminal.resolveKey({ nonce: 't1' })).toBe('t1');
     expect(terminal.resolveKey({})).toBe('');
     expect(terminal.title({})).toBe('终端');
-    const web = TAB_REGISTRY[6]!;
+    const web = TAB_REGISTRY.find((e) => e.id === 'web')!;
     expect(web.group).toBe('tools');
     expect(web.singleton).toBe(false);
     expect(web.resolveKey({ url: 'https://a.dev' })).toBe('https://a.dev');

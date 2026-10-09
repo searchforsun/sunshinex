@@ -23,6 +23,8 @@ import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { listCommands } from './commands';
 import { MemoryStore } from '../harness/memory/store';
+import { contextBreakdown } from '../harness/context';
+import { resolveRunWindow } from '../config/termination-config';
 import { COMMAND_SUPPORT, runCommand } from './session-commands';
 import { ModelSwitcher } from '../model/catalog';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
@@ -1001,6 +1003,9 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
     { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
     { method: 'POST', path: '/memory/rm', auth: true, run: (req, res) => this.handleMemoryRm(req, res) },
+    { method: 'GET', path: '/memory', auth: true, run: async (req, res) => this.handleMemoryList(req, res) },
+    { method: 'GET', path: '/session/:id/tasks', auth: true, run: async (_req, res, p) => this.handleSessionTasks(res, p.id) },
+    { method: 'GET', path: '/session/:id/context', auth: true, run: async (_req, res, p) => this.handleSessionContext(res, p.id) },
     // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
@@ -1366,6 +1371,47 @@ export class GuiDaemon {
       }
       this.send(res, 200, { removed, failed });
     }
+  }
+
+  /** GET /session/:id/tasks(G10-C6 后台任务面板):账本行(脱敏——stop 句柄/文件路径不出端点) */
+  private handleSessionTasks(res: http.ServerResponse, id: string): void {
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    const rows = session.runtime.harness.tasks.list().map((t2) => ({
+      id: t2.id, kind: t2.kind, label: t2.label, status: t2.status, startedAt: t2.startedAt, ...(t2.exitCode !== undefined ? { exitCode: t2.exitCode } : {}),
+    }));
+    this.send(res, 200, rows);
+  }
+
+  /** GET /session/:id/context(G10-C6 上下文面板):分段构成结构化面(parts/total/window/free) */
+  private handleSessionContext(res: http.ServerResponse, id: string): void {
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    const ctx = session.runtime.harness.context;
+    const parts = ctx.snapshotPartsView();
+    const b = contextBreakdown({
+      stableSegment: session.runtime.harness.reactor.stableSegment(),
+      instructions: parts.instructions,
+      skills: parts.skills,
+      memory: parts.memory,
+      compacted: ctx.compactedView(),
+      chain: ctx.chainView(),
+      skill: ctx.peekSkill(),
+      window: resolveRunWindow(session.runtime.harness.model),
+      chainFrom: ctx.chainFromView(),
+    });
+    this.send(res, 200, b);
+  }
+
+  /** GET /memory?root=(G10-C6 记忆面板):清单(slug/type/created/modified/description) */
+  private handleMemoryList(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const root = url.searchParams.get('root');
+    if (root === null || root.length === 0) return this.send(res, 400, { error: 'root query param required' });
+    const rows = new MemoryStore(root).list().map((m) => ({
+      slug: m.slug, type: m.type, created: m.created, modified: m.modified, description: m.description,
+    }));
+    this.send(res, 200, rows);
   }
 
   /** GET /session/:id/anchors(G10-C1d):任务轮锚点列表(rewind/fork 的 turn 寻址面,1-based) */

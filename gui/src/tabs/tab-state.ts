@@ -12,7 +12,7 @@
  */
 
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
-export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'directory' | 'terminal' | 'web';
+export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'directory' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory';
 
 /** 开标签目标参数(按类型取用:file=diff=目录用 path、diff 备选 callId、web=url、终端 cols/rows) */
 export interface TabParams {

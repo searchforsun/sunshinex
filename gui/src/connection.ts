@@ -322,6 +322,12 @@ export interface Connection {
   runCommand(id: string, line: string): Promise<void>;
   /** GET /commands:清单+双语描述+supported(G10-C4 命令面板数据源) */
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
+  /** GET /session/:id/context:上下文分段构成(G10-C6 面板) */
+  sessionContext(id: string): Promise<{ parts: Array<{ id: string; tokens: number; count: number }>; chainByAction: Array<{ action: string; tokens: number }>; total: number; window: number; free: number }>;
+  /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板) */
+  sessionTasks(id: string): Promise<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number }>>;
+  /** GET /memory?root=:记忆清单(G10-C6 面板) */
+  memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
@@ -654,6 +660,15 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     commands() {
       return getJson('/commands');
+    },
+    sessionContext(id: string) {
+      return getJson('/session/' + encodeURIComponent(id) + '/context');
+    },
+    sessionTasks(id: string) {
+      return getJson('/session/' + encodeURIComponent(id) + '/tasks');
+    },
+    memoryList(root: string) {
+      return getJson('/memory?root=' + encodeURIComponent(root));
     },
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);

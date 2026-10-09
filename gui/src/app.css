@@ -1148,3 +1148,25 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-setting-desc { margin: 2px 0 0; font-size: 12px; color: var(--fg-tertiary); }
 .sx-setting-input { width: 240px; flex: none; }
 select.sx-setting-select { width: 240px; }
+
+/* ===== G10-C6 右栏三面板(上下文/后台任务/记忆) ===== */
+.insight-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 8px 10px; overflow: auto; }
+.insight-bar { display: flex; gap: 6px; flex: none; }
+.insight-summary { margin: 0; font-size: 12px; color: var(--fg-secondary); }
+.insight-empty { margin: 8px 0; color: var(--fg-tertiary); font-size: 12px; }
+.ctx-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ctx-part { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.ctx-part-id { width: 90px; flex: none; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-part-bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); overflow: hidden; }
+.ctx-part-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.ctx-part-num { width: 64px; flex: none; text-align: right; color: var(--fg-tertiary); font-family: var(--font-mono); font-size: 11px; }
+.bgtask-list, .mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.bgtask-row, .mem-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: 12px; color: var(--fg-secondary); }
+.bgtask-row:hover, .mem-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.bgtask-label, .mem-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bgtask-status { flex: none; }
+.bgtask-running .bgtask-status { color: var(--fg); }
+.bgtask-done .bgtask-status { color: var(--ok); }
+.bgtask-failed .bgtask-status, .bgtask-stopped .bgtask-status { color: var(--err); }
+.mem-check { flex: none; display: flex; }
+.mem-date { flex: none; color: var(--fg-tertiary); font-size: 11px; }

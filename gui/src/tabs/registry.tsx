@@ -12,6 +12,7 @@ import { TerminalTab } from './TerminalTab';
 import { DirectoryTab } from './DirectoryTab';
 import { DiffTab } from './DiffTab';
 import { AgentsTab } from './AgentsTab';
+import { ContextTab, BgTasksTab, MemoryTab } from './InsightTabs';
 import { WebTab } from './WebTab';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -40,6 +41,8 @@ export interface TabRenderProps {
   /** G8b T7 会话内开标签面(标签体自治跳转——DirectoryTab 文件行 → openTab('file',{path});
    *  App 注入 openTabInSession,判重/单例经 tab-state 共口径;file/tasks 忽略) */
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
+  /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
+  readonly root: string;
 }
 
 export interface TabTypeEntry {
@@ -109,6 +112,30 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: () => '',
     singleton: true,
     render: (p) => <AgentsTab activities={p.services.agentActivities} />,
+  },
+  {
+    id: 'context',
+    group: 'session',
+    title: () => '上下文',
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => <ContextTab conn={p.conn} sessionId={p.sessionId} />,
+  },
+  {
+    id: 'bgtasks',
+    group: 'session',
+    title: () => '后台任务',
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => <BgTasksTab conn={p.conn} sessionId={p.sessionId} />,
+  },
+  {
+    id: 'memory',
+    group: 'session',
+    title: () => '记忆',
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => <MemoryTab conn={p.conn} root={p.root} />,
   },
   {
     id: 'terminal',
