@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { ArrowUp, ChevronDown, Folder } from 'lucide-react';
+import { ArrowUp, ChevronDown, Folder, Hand } from 'lucide-react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
@@ -77,8 +77,9 @@ interface WelcomeGoal {
 }
 
 /** 欢迎页 composer(Codex home 形,G10 用户裁定二轮):
- *  构图=logo+大标题居中偏上,composer 簇(Choose project 浮条+输入卡+pills 行)贴底;
- *  项目 pill 点击弹「项目选择弹层」:已注册项目可点选 + 「浏览文件夹…」走原生风格 DirPicker 建新项目 */
+ *  构图=logo+大标题居中偏上,composer 簇贴底;Choose project 独立圆角条嵌在输入卡上沿之后
+ *  (卡盖住条下沿,Codex 叠卡形),点击弹层向上浮出(overlay 不推布局):已注册项目可点选 +
+ *  「浏览文件夹…」走原生风格 DirPicker 建新项目;footer 左右分列(+审批 左/模型+圆发送 右) */
 function WelcomeComposer({
   conn,
   onOpened,
@@ -167,23 +168,31 @@ function WelcomeComposer({
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
-        <svg className="welcome-logo" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
-          <rect x="3" y="3" width="18" height="18" rx="6" />
-          <path d="M9 15V9h4a2 2 0 0 1 0 4H9m4 0a2 2 0 0 1 0 4H9" strokeLinecap="round" />
+        <svg className="welcome-logo" width="120" height="120" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+          <g transform="rotate(-15 36 36)">
+            <g stroke="currentColor" strokeWidth="2.5">
+              <path d="M52.11 30.17A19 11 0 0 1 52.11 41.83" />
+              <path d="M46.07 45.33A19 11 0 0 1 25.93 45.33" />
+              <path d="M19.89 41.83A19 11 0 0 1 19.89 30.17" />
+              <path d="M25.93 26.67A19 11 0 0 1 46.07 26.67" />
+            </g>
+            <circle cx="36" cy="36" r="4.5" fill="currentColor" />
+          </g>
         </svg>
-        <h1 className="welcome-title">{t('What should we build?', '我们来做点什么?')}</h1>
+        <h1 className="welcome-tagline">{t('What should we do today?', '今天要做些什么？')}</h1>
       </div>
       <div className="welcome-dock">
-        <button
-          type="button"
-          className="choose-project-bar"
-          aria-label={t('Choose project', '选择项目')}
-          onClick={() => setProjOpen((v) => !v)}
-        >
-          <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-          <span>{projName}</span>
-          <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" style={{ marginLeft: 'auto' }} />
-        </button>
+        <div className="welcome-options-bar">
+          <button
+            type="button"
+            className="choose-project-bar"
+            aria-label={t('Choose project', '选择项目')}
+            onClick={() => setProjOpen((v) => !v)}
+          >
+            <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{projName}</span>
+          </button>
+        </div>
         {projOpen && (
           <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
             {rows.map((r) => (
@@ -224,10 +233,10 @@ function WelcomeComposer({
               <button type="button" className="composer-pill" aria-label="add attachment" title={t('Add', '添加')}>
                 +
               </button>
-              <span className="composer-pill">{t('Ask for approval', '需审批')}</span>
+              <span className="composer-pill"><Hand size={13} strokeWidth={1.75} aria-hidden="true" />{t('Ask for approval', '需审批')}</span>
             </div>
             <div className="welcome-foot-right">
-              <span className="composer-pill">{t('default model', '默认模型')}</span>
+              <span className="composer-pill">{t('default model', '默认模型')}<ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" /></span>
               <button
                 type="button"
                 className="send"

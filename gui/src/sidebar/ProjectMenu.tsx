@@ -257,23 +257,24 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <SquarePen size={16} strokeWidth={1.75} />
         <span>{t('New chat', '新对话')}</span>
       </button>
-      <div className="sx-side-head sx-side-head-row">
-        <span>{t('Projects', '项目')}</span>
-        <button
-          type="button"
-          className="sx-iconbtn"
-          aria-label="add workspace"
-          title={t('Add workspace', '添加工作区')}
-          onClick={() => {
-            setActionError('');
-            setPickerOpen(true);
-          }}
-        >
-          <Plus size={14} strokeWidth={1.75} />
-        </button>
-      </div>
-      <ul className="workspace-list sx-groups" aria-label="workspace groups">
-        {rows === null && listError === '' && <li className="home-loading">加载工作区…</li>}
+      <div className="sx-side-scroll">
+        <div className="sx-side-head sx-side-head-row">
+          <span>{t('Projects', '项目')}</span>
+          <button
+            type="button"
+            className="sx-iconbtn"
+            aria-label="add workspace"
+            title={t('Add workspace', '添加工作区')}
+            onClick={() => {
+              setActionError('');
+              setPickerOpen(true);
+            }}
+          >
+            <Plus size={14} strokeWidth={1.75} />
+          </button>
+        </div>
+        <ul className="workspace-list sx-groups" aria-label="workspace groups">
+        {rows === null && listError === '' && <li className="home-loading">{t('Loading workspaces…', '加载工作区…')}</li>}
         {listError !== '' && (
           <li className="home-error" role="alert">
             {/-> 401$/.test(listError)
@@ -353,10 +354,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               </div>
               {openSlug === row.slug && root !== undefined && (
                 <ul className="session-list" aria-label="sessions">
-                  {sessions === null && sessionsError === '' && <li className="sessions-loading">加载会话…</li>}
+                  {sessions === null && sessionsError === '' && <li className="sessions-loading">{t('Loading sessions…', '加载会话…')}</li>}
                   {sessionsError !== '' && <li className="home-error">{sessionsError}</li>}
                   {sessions !== null && sessions.length === 0 && (
-                    <li className="no-sessions">暂无会话——组内「+」新建。</li>
+                    <li className="no-sessions">{t('No sessions yet — create one via + above.', '暂无会话——组内「+」新建。')}</li>
                   )}
                   {sessions?.map((s) => {
                     // active 判定:id 直配优先;兜底 activeRoot 组内行点亮——daemon 会话 id
@@ -404,8 +405,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       </ul>
       <div className="sx-side-head">{t('Recents', '最近会话')}</div>
       <ul className="recent-list" aria-label="recent sessions">
-        {recents === null && <li className="sessions-loading">加载会话…</li>}
-        {recents !== null && recents.length === 0 && <li className="no-sessions">暂无最近会话</li>}
+        {recents === null && <li className="sessions-loading">{t('Loading sessions…', '加载会话…')}</li>}
+        {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
         {recents?.map((r) => {
           const running = r.id === activeSessionId;
           // active 兜底与组行同判据(activeSessionId 异名:daemon 会话 id ≠ journal id,root 兜底点亮)
@@ -438,6 +439,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           );
         })}
       </ul>
+      </div>
       <footer className="sx-menu-foot">
         {onOpenSettings !== undefined && (
           <button

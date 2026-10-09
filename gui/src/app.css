@@ -174,8 +174,8 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-setting-row { display: grid; grid-template-columns: 64px minmax(120px, 200px) 1fr; align-items: center; gap: 8px; }
 .sx-setting-label { color: var(--fg); font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
 .sx-setting-input { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: 12px var(--font-mono); width: 100%; }
-.sx-settings-save { align-self: flex-start; margin-top: 6px; padding: 4px 14px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); }
-.sx-settings-save:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.sx-settings-save { align-self: flex-start; margin-top: 6px; padding: 5px 16px; background: var(--fg); border: none; border-radius: var(--radius-md); color: var(--fg-on-solid); font-weight: 500; }
+.sx-settings-save:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); color: var(--fg-on-solid); }
 
 /* 来源徽标(四态:env 橙/project 蓝/global 灰/default 无点) */
 .sx-src-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-secondary); white-space: nowrap; }
@@ -1108,7 +1108,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 
 /* ===== G10-C4 「/」命令面板 ===== */
 .cmd-palette {
-  position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 20;
   max-height: 280px; overflow-y: auto;
   background: var(--surface-elevated); border-radius: var(--radius-lg);
   box-shadow: var(--elev-prominent); padding: 4px;
@@ -1190,10 +1190,11 @@ select.sx-setting-select { width: 240px; }
   max-width: 760px;
   margin: 0 auto;
   width: 100%;
-  padding-top: 18vh;
+  padding-top: 28vh;
 }
-.welcome-hero { display: flex; flex-direction: column; align-items: center; gap: 16px; color: var(--fg-secondary); }
-.welcome-title { margin: 0; font-size: 28px; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; }
+.welcome-hero { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--fg-secondary); }
+.welcome-logo { color: var(--fg-secondary); }
+.welcome-tagline { margin: 0; font-size: 24px; font-weight: 500; color: var(--fg-secondary); letter-spacing: 0.01em; }
 .welcome-dock {
   position: absolute;
   left: 50%;
@@ -1202,22 +1203,38 @@ select.sx-setting-select { width: 240px; }
   width: min(720px, calc(100% - 48px));
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 .choose-project-bar {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 14px;
-  background: var(--surface-elevated);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--elev-card);
+  padding: 6px 14px;
+  background: transparent;
   color: var(--fg-secondary); font-size: 13px;
-  width: calc(100% - 48px); margin: 0 auto;
-  text-align: left; border: none; cursor: pointer;
+  width: 100%; text-align: left; border: none; cursor: pointer;
 }
-.choose-project-bar:hover { background: var(--surface-soft); }
+.choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); border-radius: var(--radius-sm); }
+/* 拓展选项条(Codex 同形):比卡左右各窄 16px 居中,上两角全圆、下两角取直(坐在卡顶不显缺口);
+ * 「选择项目」为条内第一个按钮(后续拓展选项依次排),色比卡暗一档区分层次 */
+.welcome-options-bar {
+  display: flex; align-items: center; gap: 6px;
+  width: calc(100% - 32px); margin: 0 auto;
+  padding: 3px;
+  background: color-mix(in srgb, var(--surface) 60%, var(--surface-elevated));
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.welcome-dock .choose-project-bar {
+  width: auto;
+  gap: 6px;
+  padding: 5px 12px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--radius-md);
+  margin: 0;
+}
+.welcome-dock .choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }
 .chat .choose-project-bar, .composer .choose-project-bar { margin: 0 auto; width: min(720px, 100%); }
 .proj-pop {
-  position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+  position: absolute; bottom: calc(100% + 6px); left: 16px; width: min(440px, 100%); z-index: 30;
   max-height: 280px; overflow-y: auto;
   background: var(--surface-elevated); border-radius: var(--radius-lg);
   box-shadow: var(--elev-prominent); padding: 4px;
@@ -1238,6 +1255,22 @@ select.sx-setting-select { width: 240px; }
 .welcome-input-foot { display: flex; align-items: center; justify-content: space-between; }
 .welcome-foot-left { display: flex; align-items: center; gap: 6px; }
 .welcome-foot-right { display: flex; align-items: center; gap: 6px; }
+/* footer 三钮(+审批/模型)与 Choose project 同风格:同圆角(radius-md)、同 hover 底、同高度档 */
+.welcome-input-foot .composer-pill {
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.welcome-input-foot .composer-pill:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+/* 圆形实心发送钮(同聊天区 .composer .send 形,32px) */
+.welcome-input-foot .send {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 32px; height: 32px; padding: 0; border: none; border-radius: 9999px;
+  background: var(--fg); color: var(--fg-on-solid);
+  transition: background var(--dur-basic) var(--ease-enter);
+}
+.welcome-input-foot .send:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }
+.welcome-input-foot .send:disabled { opacity: 0.4; pointer-events: none; }
 
 /* ===== G10 欢迎页项目弹层(basename 条目/系统对话框提示) ===== */
 .proj-hint { padding: 6px 10px; font-size: 12px; color: var(--warn); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
@@ -1251,3 +1284,56 @@ select.sx-setting-select { width: 240px; }
 }
 .proj-pop .sx-menuitem:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .proj-pop .sx-menuitem.active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* ===== G10-C5 侧栏精修(Codex 对标:分区头大写小字距/无多余线条/同一 12px 栅格) ===== */
+.sx-side-head-row { display: flex; align-items: center; justify-content: space-between; }
+.sx-side-head {
+  padding: 14px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}
+.sx-new-chat {
+  height: 32px;
+  margin: 4px 8px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+.sx-new-chat:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.sx-menu-head { padding: 14px 12px 8px; }
+
+/* G10-C5 续:Projects+Recents 共用滚动区(品牌行/新建/底栏固定;长 Recents 不再顶飞底栏) */
+.sx-side-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.sx-side-scroll .sx-groups { flex: none; overflow: visible; }
+
+/* G10-C5 续:组行对齐修正——按钮撑满行宽+左对齐(默认 center 会把名字挤到中间),计数去药丸底 */
+.sx-group-head { flex: 1; min-width: 0; text-align: left; }
+.sx-group-head .sx-count {
+  min-width: 20px;
+  padding: 0 4px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== G10-C6 右栏看板(Codex 对标:分段控件/卡片去描边,小标题并入分区头语言) ===== */
+.view-toggle { border: none; }
+.team-sidebar { border: none; }
+.team-sidebar h3, .delegations h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}
+
+/* G10-C6 续:会话操作菜单锚定 topbar(原绝对定位落到视口右上,盖住右栏) */
+.chat-topbar { position: relative; }
+.chat-topbar .chat-more-pop { top: calc(100% + 4px); right: 8px; }
