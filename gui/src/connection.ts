@@ -75,6 +75,8 @@ export interface SnapshotResponse {
   /** G10 切换/队列回显段 */
   model?: string;
   mode?: 'dontAsk' | 'manual' | 'plan';
+  tier?: 'small' | 'medium' | 'large';
+  effort?: string;
   queued?: Array<{ seq: number; text: string }>;
   team?: Array<{ name: string; busy: boolean }>;
   pending?: Array<{ pid: string; kind: 'approval' | 'ask'; req?: unknown }>;

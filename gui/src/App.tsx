@@ -430,6 +430,18 @@ function AppShell({ token }: { token: string }): JSX.Element {
                 onSeeded={seedFromSnapshot}
                 onOpenFile={(p) => openTabInSession('file', { path: p })}
                 onOpenDiff={(callId, path) => openTabInSession('diff', { callId, path })}
+                onRewind={(turn) => {
+                  void connInstance
+                    .rewindSession(openSessionId, turn)
+                    .then(() => {
+                      // 回退=换 journal 重新播种(Chat 内 reseed 由 key 不变触发不了——手动重挂:切走再切回同会话)
+                      const rid = openSessionId;
+                      const rr = openRoot;
+                      setPage('welcome');
+                      requestAnimationFrame(() => openSession(rid, rr));
+                    })
+                    .catch(() => {});
+                }}
               />
             ) : (
               <div className="sx-welcome" aria-label="welcome">

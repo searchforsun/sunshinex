@@ -3,7 +3,7 @@ import type { MutableRefObject, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  ArrowLeft, ArrowUp, Bot, Brain, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe,
+  ArrowLeft, ArrowUp, Bot, Brain, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
   ListTodo, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -93,6 +93,8 @@ export interface ChatProps {
   /** G8d write 条目 path 钮主通道:开 diff 标签(callId 寻址,App 接 openTabInSession('diff',
    *  {callId,path}));可选防测试桩免配——缺场时全部回落 onOpenFile */
   onOpenDiff?: (callId: string, path: string) => void;
+  /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
+  onRewind?: (turn: number) => void;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -336,12 +338,47 @@ const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: Ch
   );
 });
 
+/** 回到此轮菜单(G10-C4;/rewind 底层):bubble 钮点击即拉 anchors 列出任务轮,选中回退 */
+function RewindMenu({ onAnchors, onPick }: { onAnchors: () => Promise<Array<{ turn: number; text: string }>>; onPick: (turn: number) => void }): JSX.Element {
+  const [anchors, setAnchors] = useState<Array<{ turn: number; text: string }> | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    onAnchors().then(setAnchors, (err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  }, [onAnchors]);
+  if (error !== '') return <div className="rewind-menu">{error}</div>;
+  if (anchors === null) return <div className="rewind-menu">{t('Loading…', '加载中…')}</div>;
+  return (
+    <div className="rewind-menu" role="menu" aria-label={t('rewind turns', '回退任务轮')}>
+      {anchors.length === 0 && <div className="rewind-empty">{t('No turns to rewind yet', '暂无可回退的任务轮')}</div>}
+      {anchors.map((a) => (
+        <button
+          key={a.turn}
+          type="button"
+          role="menuitem"
+          className="sx-menuitem rewind-item"
+          title={a.text}
+          onClick={() => onPick(a.turn)}
+        >
+          <span className="rewind-turn">{a.turn}</span>
+          <span className="rewind-text">{a.text}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** 用户条目(Codex 形,G9 spec §3.1):右对齐胶囊(前景 5%/8% 底)+ 下方 hover 浮现复制钮;
  *  Edit 钮不做(无会话回退功能,spec §0 非目标)。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
  *  复制失败(权限等)钮 1.5s 示「未复制」tertiary 态,不弹错。memo 同 ChatEntryView——流式帧
  *  只重渲染流式条(未包 memo 时每帧带动 user 条 md 重渲染,计数回归被击穿)。 */
-const UserEntryView = memo(function UserEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
+interface UserEntryOpts {
+  /** 回到此轮(G10-C4 /rewind 底层):拉锚点+确认回退;未配不渲染钮(测试桩免配) */
+  fetchAnchors?: () => Promise<Array<{ turn: number; text: string }>>;
+  onRewind?: (turn: number) => void;
+}
+const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const [rewindOpen, setRewindOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -368,7 +405,27 @@ const UserEntryView = memo(function UserEntryView({ entry }: { entry: ChatEntry 
           <Copy size={12} strokeWidth={1.75} aria-hidden="true" />
           {copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
         </button>
+        {fetchAnchors !== undefined && onRewind !== undefined && (
+          <button
+            type="button"
+            className="user-action"
+            title={t('Rewind to this turn', '回到此轮')}
+            onClick={() => setRewindOpen((v) => !v)}
+          >
+            <History size={12} strokeWidth={1.75} aria-hidden="true" />
+            {t('Rewind', '回退')}
+          </button>
+        )}
       </div>
+      {rewindOpen && fetchAnchors !== undefined && onRewind !== undefined && (
+        <RewindMenu
+          onAnchors={fetchAnchors}
+          onPick={(turn) => {
+            setRewindOpen(false);
+            onRewind(turn);
+          }}
+        />
+      )}
     </div>
   );
 });
@@ -385,7 +442,7 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
   );
 });
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
   /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
@@ -397,6 +454,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const [moreOpen, setMoreOpen] = useState(false);
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新) */
   const [sessMode, setSessMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
+  const [sessTier, setSessTier] = useState<string | undefined>(undefined);
+  const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
   const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string }> } | null>(null);
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | null>(null);
   /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
@@ -447,6 +506,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         if (seedGenRef.current !== gen) return; // 后继 reseed 已接管(在途窗内重连)
         setQueued(snap.queued ?? []);
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'dontAsk' | 'manual' | 'plan');
+        setSessTier(snap.tier);
+        setSessEffort(snap.effort);
         let next = seedChatFromSnapshot(snap.messages, snap.status);
         for (const f of pendingRef.current) {
           if (f.seq > snap.lastSeq) next = applyChatEvent(next, f.e); // ≤ 切割序:种子已含,丢(双应用防线)
@@ -851,7 +912,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               </button>
             )}
             {pillOpen === 'model' && modelInfo !== null && (
-              <div className="sx-menu-pop pill-pop" role="menu" aria-label="session model menu">
+              <div className="sx-menu-pop pill-pop pill-pop-tall" role="menu" aria-label="session model menu">
                 {modelInfo.choices.map((c) => (
                   <button
                     key={c.id}
@@ -866,6 +927,38 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                     }}
                   >
                     {c.id}
+                  </button>
+                ))}
+                <div className="pill-group-head">{t('Tier', '档位')}</div>
+                {(['small', 'medium', 'large'] as const).map((tv) => (
+                  <button
+                    key={tv}
+                    type="button"
+                    role="menuitem"
+                    className="sx-menuitem"
+                    disabled={sessTier === tv}
+                    onClick={() => {
+                      setSessTier(tv);
+                      conn.setSessionTier(sessionId, tv).catch(() => {});
+                    }}
+                  >
+                    {tv}
+                  </button>
+                ))}
+                <div className="pill-group-head">{t('Effort', '思考强度')}</div>
+                {(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((ev2) => (
+                  <button
+                    key={ev2}
+                    type="button"
+                    role="menuitem"
+                    className="sx-menuitem"
+                    disabled={sessEffort === ev2}
+                    onClick={() => {
+                      setSessEffort(ev2);
+                      conn.setSessionEffort(sessionId, ev2).catch(() => {});
+                    }}
+                  >
+                    {ev2}
                   </button>
                 ))}
               </div>
