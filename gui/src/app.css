@@ -1236,3 +1236,13 @@ select.sx-setting-select { width: 240px; }
 
 /* ===== G10 欢迎页项目弹层(basename 条目/系统对话框提示) ===== */
 .proj-hint { padding: 6px 10px; font-size: 12px; color: var(--warn); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
+
+/* G10 欢迎页 proj-pop 内 menuitem 竖排 */
+.proj-pop { display: flex; flex-direction: column; }
+.proj-pop .sx-menuitem {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 5px 10px; border-radius: var(--radius-sm);
+  color: var(--fg); font-size: 13px; text-align: left;
+}
+.proj-pop .sx-menuitem:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.proj-pop .sx-menuitem.active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
