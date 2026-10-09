@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 警告过滤必须首个 import（node:sqlite 实验横幅在 import 链内即发射）
-import './warning-filter';
+import '../warning-filter';
 import { runSelfcheck } from './commands/selfcheck';
 import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
