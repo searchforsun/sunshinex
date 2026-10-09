@@ -1179,8 +1179,57 @@ select.sx-setting-select { width: 240px; }
 }
 .welcome-project-name { pointer-events: none; }
 
-/* ===== G10 欢迎页 composer 尺寸(Codex home 居中窄列) ===== */
-.sx-welcome-home { max-width: 720px; margin: 0 auto; width: 100%; align-self: center; }
-.welcome-composer { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-.welcome-composer .message-input { width: 100%; background: var(--surface-elevated); border: none; border-radius: var(--radius-composer); box-shadow: var(--elev-composer); padding: 10px 14px; resize: none; }
-.welcome-composer .composer-foot { display: flex; align-items: center; justify-content: space-between; }
+/* ===== G10 欢迎页 home 构图(用户裁定二轮):hero 居中偏上,dock 簇贴底(Codex home 同位) ===== */
+.sx-welcome-home {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  height: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+  padding-top: 18vh;
+}
+.welcome-hero { display: flex; flex-direction: column; align-items: center; gap: 16px; color: var(--fg-secondary); }
+.welcome-title { margin: 0; font-size: 28px; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; }
+.welcome-dock {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 32px;
+  width: min(720px, calc(100% - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.choose-project-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-card);
+  color: var(--fg-secondary); font-size: 13px;
+  cursor: pointer;
+}
+.proj-pop {
+  position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 30;
+  min-width: 240px; max-height: 280px; overflow-y: auto;
+  background: var(--surface-elevated); border-radius: var(--radius-lg);
+  box-shadow: var(--elev-prominent); padding: 4px;
+}
+.proj-browse { display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); border-top: 1px solid var(--border-subtle); border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding-top: 6px; margin-top: 4px; }
+.welcome-input-card {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-composer);
+  box-shadow: var(--elev-composer);
+  padding: 12px 14px 10px;
+}
+.welcome-input-card textarea {
+  background: transparent; border: none; color: var(--fg);
+  font: inherit; resize: none; min-height: 44px; outline: none;
+}
+.welcome-input-card textarea::placeholder { color: var(--fg-tertiary); opacity: 0.6; }
+.welcome-input-foot { display: flex; align-items: center; justify-content: space-between; }

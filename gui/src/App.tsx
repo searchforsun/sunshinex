@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { ArrowUp, ChevronDown } from 'lucide-react';
+import { DirPicker } from './pages/DirPicker';
+import { ArrowUp, ChevronDown, Folder } from 'lucide-react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
@@ -76,13 +77,15 @@ interface WelcomeGoal {
   goal: string;
 }
 
-/** 欢迎页 composer(Codex home 形,G10 用户裁定):居中品牌+项目下拉+输入+发送;
- *  提交=建会话→openSession→goal 经 pendingGoal 接力由 Chat 播种完成后提交 */
+/** 欢迎页 composer(Codex home 形,G10 用户裁定二轮):
+ *  构图=logo+大标题居中偏上,composer 簇(Choose project 浮条+输入卡+pills 行)贴底;
+ *  项目 pill 点击弹「项目选择弹层」:已注册项目可点选 + 「浏览文件夹…」走原生风格 DirPicker 建新项目 */
 function WelcomeComposer({
   conn,
   onOpened,
 }: {
   conn: {
+    dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
     workspaces(): Promise<Array<{ slug: string; root?: string; sessionCount: number }>>;
     newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
   };
@@ -93,6 +96,9 @@ function WelcomeComposer({
   const [goal, setGoal] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [projOpen, setProjOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const projRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     conn.workspaces().then(
       (list) => {
@@ -103,6 +109,16 @@ function WelcomeComposer({
       () => setRows([]),
     );
   }, [conn]);
+  useEffect(() => {
+    if (!projOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element && e.target.closest('.proj-pop') === null && e.target.closest('.welcome-project') === null) {
+        setProjOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [projOpen]);
   const send = (): void => {
     const g = goal.trim();
     if (g === '' || picked === '' || busy) return;
@@ -116,20 +132,60 @@ function WelcomeComposer({
         setError(err instanceof Error ? err.message : String(err));
       });
   };
-  const projName = picked.split(/[\\/]/).filter(Boolean).pop() || t('Choose project', '选择项目');
+  const projName = picked === '' ? t('Choose project', '选择项目') : (picked.split(/[\/]/).filter(Boolean).pop() || t('Choose project', '选择项目'));
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
-      <div className="sx-welcome-brand">
-        Sunshinex<span className="sx-welcome-dot" />
+      <div className="welcome-hero">
+        <svg className="welcome-logo" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="6" />
+          <path d="M9 15V9h4a2 2 0 0 1 0 4H9m4 0a2 2 0 0 1 0 4H9" strokeLinecap="round" />
+        </svg>
+        <h1 className="welcome-title">{t('What should we build?', '我们来做点什么?')}</h1>
       </div>
-      {rows.length === 0 ? (
-        <p className="sx-welcome-title">{t('Add a project in the sidebar to start', '先在侧栏 Projects「+」添加项目目录')}</p>
-      ) : (
-        <div className="welcome-composer">
+      <div className="welcome-dock">
+        {rows.length === 0 && (
+          <div className="choose-project-bar">
+            {t('Add a project folder below to start', '先在下方「浏览文件夹…」添加项目目录')}
+          </div>
+        )}
+        {rows.length > 0 && (
+          <div className="choose-project-bar" role="button" aria-label={t('Choose project', '选择项目')} onClick={() => setProjOpen((v) => !v)}>
+            <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{projName}</span>
+          </div>
+        )}
+        {projOpen && (
+          <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')}>
+            {rows.map((r) => (
+              <button
+                key={r.slug}
+                type="button"
+                role="menuitem"
+                className={`sx-menuitem${r.root === picked ? ' active' : ''}`}
+                onClick={() => {
+                  setPicked(r.root ?? '');
+                  setProjOpen(false);
+                }}
+              >
+                {r.root?.split(/[\/]/).filter(Boolean).pop() ?? r.slug}
+              </button>
+            ))}
+            <button
+              type="button"
+              role="menuitem"
+              className="sx-menuitem proj-browse"
+              onClick={() => {
+                setProjOpen(false);
+                setPickerOpen(true);
+              }}
+            >
+              <Folder size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
+            </button>
+          </div>
+        )}
+        <div className="welcome-input-card">
           <textarea
             aria-label="welcome goal"
-            className="message-input"
-            rows={2}
             value={goal}
             placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}
             onChange={(e) => setGoal(e.target.value)}
@@ -140,37 +196,43 @@ function WelcomeComposer({
               }
             }}
           />
-          <div className="composer-foot">
-            <div className="composer-pills">
-              <span className="composer-pill welcome-project" title={t('Project', '项目')}>
-                <select
-                  aria-label="welcome project"
-                  className="welcome-project-select"
-                  value={picked}
-                  onChange={(e) => setPicked(e.target.value)}
-                >
-                  {rows.map((r) => (
-                    <option key={r.slug} value={r.root ?? ''}>
-                      {r.root?.split(/[\\/]/).filter(Boolean).pop() ?? r.slug}
-                    </option>
-                  ))}
-                </select>
-                <span className="welcome-project-name">{projName}</span>
-                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
-              </span>
-            </div>
+          <div className="welcome-input-foot">
+            <button
+              type="button"
+              className="composer-pill welcome-project"
+              title={t('Choose project', '选择项目')}
+              onClick={() => setProjOpen((v) => !v)}
+            >
+              <Folder size={12} strokeWidth={1.75} aria-hidden="true" />
+              <span>{projName}</span>
+              <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+            </button>
             <button
               type="button"
               className="send"
               aria-label="send"
               title={t('Send', '发送')}
-              disabled={busy || goal.trim() === ''}
+              disabled={busy || goal.trim() === '' || picked === ''}
               onClick={send}
             >
               <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
             </button>
           </div>
-          {error !== '' && <p className="home-error" role="alert">{error}</p>}
+        </div>
+      </div>
+      {pickerOpen && (
+        <div className="modal-overlay">
+          <div className="modal-body">
+            <DirPicker
+              conn={conn}
+              onCancel={() => setPickerOpen(false)}
+              onConfirm={(root: string) => {
+                setPickerOpen(false);
+                setPicked(root);
+                conn.workspaces().then((list) => setRows(list.filter((r) => r.root !== undefined && r.root !== '')), () => {});
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
