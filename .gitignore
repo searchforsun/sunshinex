@@ -37,3 +37,6 @@ shell/out/
 shell/build/
 # electron-builder 双产物（NSIS Setup + portable exe）
 shell/release/
+
+# G10:default 工作区(非文件类任务缺省落点,运行时数据)
+default/
