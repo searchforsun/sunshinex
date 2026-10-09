@@ -1214,8 +1214,8 @@ select.sx-setting-select { width: 240px; }
 }
 .chat .choose-project-bar, .composer .choose-project-bar { margin: 0 auto; width: min(720px, 100%); }
 .proj-pop {
-  position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 30;
-  min-width: 240px; max-height: 280px; overflow-y: auto;
+  position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+  max-height: 280px; overflow-y: auto;
   background: var(--surface-elevated); border-radius: var(--radius-lg);
   box-shadow: var(--elev-prominent); padding: 4px;
 }
