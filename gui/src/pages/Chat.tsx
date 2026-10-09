@@ -95,6 +95,8 @@ export interface ChatProps {
   onOpenDiff?: (callId: string, path: string) => void;
   /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
   onRewind?: (turn: number) => void;
+  /** G10-C4 分叉新会话(从最近任务轮;/fork 底层);App 接 forkSession+openSession;可选 */
+  onFork?: () => void;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -442,7 +444,7 @@ const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry 
   );
 });
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
   /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
@@ -714,6 +716,19 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         </button>
         {moreOpen && (
           <div className="sx-menu-pop chat-more-pop" role="menu" aria-label="chat actions menu">
+            {onFork !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="sx-menuitem"
+                onClick={() => {
+                  setMoreOpen(false);
+                  onFork();
+                }}
+              >
+                {t('Fork new session', '分叉新会话')}
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

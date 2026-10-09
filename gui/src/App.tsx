@@ -430,6 +430,17 @@ function AppShell({ token }: { token: string }): JSX.Element {
                 onSeeded={seedFromSnapshot}
                 onOpenFile={(p) => openTabInSession('file', { path: p })}
                 onOpenDiff={(callId, path) => openTabInSession('diff', { callId, path })}
+                onFork={() => {
+                  if (connInstance === null) return;
+                  void connInstance
+                    .sessionAnchors(openSessionId)
+                    .then(async (a) => {
+                      const last = a.length > 0 ? a[a.length - 1]!.turn : 1;
+                      const r = await connInstance.forkSession(openSessionId, last);
+                      openSession(r.sessionId, openRoot);
+                    })
+                    .catch(() => {});
+                }}
                 onRewind={(turn) => {
                   void connInstance
                     .rewindSession(openSessionId, turn)
