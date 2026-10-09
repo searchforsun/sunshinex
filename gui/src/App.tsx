@@ -103,7 +103,10 @@ function WelcomeComposer({
       (list) => {
         const usable = list.filter((r) => r.root !== undefined && r.root !== '');
         // default 工作区(用户裁定):置顶缺省——非文件类任务与对话的落点
-        const withDefault = [{ slug: 'default', root: 'default', sessionCount: 0 }, ...usable.filter((r) => r.root !== 'default')];
+        // default 已被 daemon 注册时去重(自动建目录 → 注册表自动纳入)
+        const withDefault = usable.some((r) => r.root === 'default')
+          ? usable
+          : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...usable];
         setRows(withDefault);
         setPicked((p) => (p === '' ? 'default' : p));
       },
@@ -133,7 +136,7 @@ function WelcomeComposer({
         setError(err instanceof Error ? err.message : String(err));
       });
   };
-  const baseName = (p: string): string => p.split(/[\/]/).filter(Boolean).pop() || p;
+  const baseName = (p: string): string => p.split(/[\\/]+/).filter(Boolean).pop() || p;
   const projName = picked === '' ? t('Choose project', '选择项目') : baseName(picked);
   /** 浏览新文件夹(G10 用户裁定:Win 系统文件对话框)。浏览器安全模型拿不到绝对路径——
    *  选中目录按 basename 匹配已注册工作区;未注册位置提示走桌面版(electron dialog 可得路径)。 */
