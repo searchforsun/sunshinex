@@ -1306,7 +1306,7 @@ select.sx-setting-select { width: 240px; }
 }
 .sx-new-chat {
   height: 32px;
-  margin: 2px 8px;
+  margin: 0 4px 4px;
   padding: 0 4px;
   border: none;
   border-radius: var(--radius-md);
@@ -1385,13 +1385,13 @@ select.sx-setting-select { width: 240px; }
 .sx-session-row {
   height: 32px;
   margin: 0;
-  padding: 0 10px 0 28px;
+  padding: 0 10px 0 24px;
   border-radius: var(--radius-md);
 }
 .sx-session-dot { position: absolute; left: 12px; top: calc(50% - 3.5px); }
 .sx-session-dot.running { left: 11px; top: calc(50% - 5px); }
 .sx-side-head { padding: 14px 8px 6px 12px; }
-.sx-menu-head { padding: 0 12px; height: 32px; margin-bottom: 12px; }
+.sx-menu-head { padding: 0 8px; height: 32px; margin-bottom: 4px; }
 
 /* G10-C9 行盒归属修正:hover/active 提到 workspace-row 整行(含 + 钮区,组行与会话行同宽同色);
    组头本体不再自持底色;会话行 active 只亮当前打开会话(ProjectMenu 去root 兜底) */
@@ -1405,9 +1405,9 @@ select.sx-setting-select { width: 240px; }
 /* G10-C10 分区节奏统一:品牌/新对话/分区头/列表间距成比例,不再挤作一团 */
 .sx-menu-head { padding: 12px 8px 2px 12px; }
 .sx-new-chat { margin: 0 8px 5px; }
-.sx-side-head { padding: 0 12px; margin: 6px 0 5px; }
-.sx-groups { margin: 0; padding: 0 8px; }
-.recent-list { margin: 0; padding: 0 8px; }
+.sx-side-head { padding: 0 8px; margin: 6px 0 5px; }
+.sx-groups { margin: 0; padding: 0 4px; }
+.recent-list { margin: 0; padding: 0 4px; }
 
 
 /* G10-C13 查找面板:项目 + 会话历史搜索(品牌行查找钮开;Esc/外点收) */
