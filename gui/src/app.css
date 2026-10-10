@@ -1405,9 +1405,9 @@ select.sx-setting-select { width: 240px; }
 /* G10-C10 分区节奏统一:品牌/新对话/分区头/列表间距成比例,不再挤作一团 */
 .sx-menu-head { padding: 12px 8px 2px 12px; }
 .sx-new-chat { margin: 0 8px 5px; }
-.sx-side-head { padding: 0 12px; margin: 2px 0 5px; }
-.sx-groups { padding: 0 8px; }
-.recent-list { padding: 0 8px; }
+.sx-side-head { padding: 0 12px; margin: 6px 0 5px; }
+.sx-groups { margin: 0; padding: 0 8px; }
+.recent-list { margin: 0; padding: 0 8px; }
 
 
 /* G10-C13 查找面板:项目 + 会话历史搜索(品牌行查找钮开;Esc/外点收) */
