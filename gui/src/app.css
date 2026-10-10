@@ -1512,6 +1512,14 @@ select.sx-setting-select { width: 240px; }
 .table-wrap th, .table-wrap td { padding: 6px 12px; border: none; border-bottom: 1px solid var(--border-subtle); }
 .table-wrap tr:last-child td { border-bottom: none; }
 .table-wrap tbody tr:nth-child(even) { background: color-mix(in srgb, var(--fg) 2%, transparent); }
+/* mermaid 容器(§5.4):hover 浮现钮;lightbox 淡入+轻缩放,contain 居中 */
+.mermaid-block { position: relative; }
+.mermaid-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.mermaid-block:hover .mermaid-actions, .mermaid-actions:focus-within { opacity: 1; }
+.mermaid-lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.65); display: flex; align-items: center; justify-content: center; animation: sx-fade-in var(--dur-basic) var(--ease-enter); cursor: zoom-out; }
+.mermaid-lightbox-body { max-width: 92vw; max-height: 92vh; overflow: auto; padding: 16px; background: var(--surface-elevated); border-radius: var(--radius-lg); box-shadow: var(--elev-prominent); cursor: default; }
+@keyframes sx-zoom-in { from { opacity: 0; transform: scale(0.96); } }
+.mermaid-lightbox-body { animation: sx-zoom-in var(--dur-relaxed) var(--ease-enter); }
 
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */

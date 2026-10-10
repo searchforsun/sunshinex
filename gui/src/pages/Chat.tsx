@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
-  Info, Folder, ListTodo, MessageSquare, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
+  Info, Folder, ListTodo, Maximize2, MessageSquare, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
@@ -328,7 +328,7 @@ const mdComponents = {
     const raw = el?.props?.children;
     // react-markdown 保留围栏末行换行(value 尾随 \n)——剥掉一个尾换行,复制面/高亮面拿净代码
     const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
-    if (cls.includes('language-mermaid')) return <Mermaid chart={code} />;
+    if (cls.includes('language-mermaid')) return <MermaidBlock chart={code} />;
     const m = /language-([\w-]+)/.exec(cls);
     return <CodeBlock code={code} lang={m?.[1]} />;
   },
@@ -380,6 +380,44 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
     </div>
   );
 });
+
+/** Mermaid 容器(G11 §5.4):hover 显放大/复制钮;放大=lightbox(遮罩 contain 居中,点击/Esc 关,
+ *  Esc 监听随开关挂卸);复制=源码。回落态(fallback/pending)两钮同样在场——降级不失功能 */
+function MermaidBlock({ chart }: { chart: string }): JSX.Element {
+  const [zoom, setZoom] = useState(false);
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === 'Escape') setZoom(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [zoom]);
+  return (
+    <div className="mermaid-block">
+      <Mermaid chart={chart} />
+      <div className="mermaid-actions">
+        <TipButton className="sx-tip-right" tip={t('Zoom', '放大')} label="zoom mermaid" icon={<Maximize2 size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setZoom(true)} />
+        <TipButton
+          className="sx-tip-right"
+          tip={t('Copy', '复制')}
+          label="copy mermaid"
+          icon={<Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+          onClick={() => {
+            navigator.clipboard?.writeText(chart).then(() => undefined, () => undefined);
+          }}
+        />
+      </div>
+      {zoom && (
+        <div className="mermaid-lightbox" role="dialog" aria-label={t('Mermaid preview', 'Mermaid 预览')} onClick={() => setZoom(false)}>
+          <div className="mermaid-lightbox-body" onClick={(e) => e.stopPropagation()}>
+            <Mermaid chart={chart} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件) */
 const TOOL_ICONS: Record<string, LucideIcon> = {

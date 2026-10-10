@@ -109,6 +109,25 @@ describe('mermaid 围栏(G10-C3c)', () => {
   });
 });
 
+describe('MermaidBlock(G11 §5.4)', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(() => Promise.resolve()) },
+      configurable: true,
+    });
+  });
+
+  it('容器带放大/复制钮;放大开 lightbox,Esc 关闭', async () => {
+    mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: ['图:', '', '```mermaid', 'graph TD; A-->B', '```'].join('\n') }]);
+    await screen.findByText(/graph TD; A-->/, {}, { timeout: 5_000 });
+    fireEvent.click(screen.getByRole('button', { name: 'zoom mermaid' }));
+    expect(document.querySelector('.mermaid-lightbox')).not.toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.querySelector('.mermaid-lightbox')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'copy mermaid' }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('graph TD; A-->B');
+  });
+});
 
 describe('composer pills 与排队 chips(G10-C4)', () => {
   it('权限 pill 三态菜单:切换 manual 调 setSessionMode(manual)', async () => {
