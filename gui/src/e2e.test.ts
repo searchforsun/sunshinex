@@ -235,10 +235,10 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
 
       // —— back → s2:「+ 添加工作区」(DirPicker 同 root 第二会话)→ UI 提交 → done ——
       await backHome();
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    console.log("SIDEBAR_DEBUG:", document.querySelector(".sx-side-scroll")?.innerHTML?.slice(0, 2500) ?? "NO SIDEBAR");
+    console.log("TITLE_DEBUG:", document.querySelector(".chat-title-text")?.textContent ?? "NO TITLE");
       await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await submit('s2 目标');
       await waitFor(() => expect(container.textContent).toContain('s2 终答'), { timeout: 10_000 });
@@ -339,11 +339,10 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
 
     // —— 「+ 添加工作区」(G8a:New session 按钮退役,DirPicker 流经左栏添加面)→ DirPicker 模态:
     //    自定义路径输入(真 daemon /dirpicker 服务端)→ 确认 → newSession → chat ——
-    fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-    await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-    fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+        Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+    fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+    console.log("SIDEBAR_DEBUG_G3:", document.querySelector(".sx-side-scroll")?.innerHTML?.slice(0, 2500) ?? "NO SIDEBAR");
 
     // —— 真实 UI 提交路径:输入 + Enter(idle 分流 = sessionSubmit;输入启用 = 播种落定后)——
     const input = screen.getByLabelText('message input');
@@ -504,12 +503,16 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— manual 会话经 UI 真面建立:「+ 添加工作区」 → DirPicker 勾「Manual approvals」→ 确认 ——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByLabelText('Manual approvals'));
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      // —— manual 会话经 UI 真面建立:「+ 添加工作区」→ 原生选择器(pickFolder 桩回 env.root)→
+      //    项目创建落位 → 展开组 → 组内 + mode 弹层点「manual 手动审批」→ newSession mode:'manual' ——
+      // 项目档案 API 直建(原生选择器在 jsdom 无原生面;GUI 行经刷新钮拉取)——manual 会话由组内 + mode 弹层建
+      await realFetch(`http://127.0.0.1:${env.port}/workspace/create`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: env.root }),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'refresh workspaces' }));
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 展开组
+      fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: /manual 手动审批/i }, { timeout: 5_000 }));
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       expect(newBodies.some((b) => b.mode === 'manual' && b.root === env.root)).toBe(true); // 真 UI 面 mode 断言
 
@@ -565,10 +568,8 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       const openByPicker = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-        await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-        fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-        fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+                Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+        fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       };
       const runOnce = async (goal: string, reply: string): Promise<void> => {
         const input = screen.getByLabelText('message input');
@@ -644,10 +645,8 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 「+ 添加工作区」(DirPicker 真面,缺省不勾 manual)→ 提交 → 主链 create_task(gated)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       const input = screen.getByLabelText('message input');
       await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
@@ -716,10 +715,8 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— dontAsk 会话经 UI 真面建立(DirPicker 缺省不勾 manual;G8a:经「+ 添加工作区」)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 提交 → run:write 域内直执行(无挂起)→ done 收束 ——
@@ -814,12 +811,15 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— manual 会话经 UI 真面建立:DirPicker 勾「Manual approvals」(G8a:经「+ 添加工作区」)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByLabelText('Manual approvals'));
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      // —— manual 会话经 UI 真面建立:原生选择器建项目落位 → 展开组 → 组内 + mode 弹层点 manual ——
+      // 项目档案 API 直建(同 G4/G6:pickAndAdd 自动会话会抢占 chat)
+      await fetch(`http://127.0.0.1:${env.port}/workspace/create`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: env.root }),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'refresh workspaces' }));
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 展开组
+      fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: /manual 手动审批/i }, { timeout: 5_000 }));
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 提交:首轮模型轮挂在 gate 上(run 进行中,未到 write 挂起点)——
@@ -918,10 +918,8 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat ——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 默认任务页:右栏标签条唯一标签「任务」且活动(ensureSession 缺省开 tasks 单例)——
@@ -1004,10 +1002,8 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话 → chat;默认「任务」标签活动(场景A 已钉,此处直用)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
 
@@ -1070,10 +1066,8 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat(默认「任务」标签活动)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— +菜单开目录标签(content 节「目录」,单例)→ mount 惰拉 root → 根行 dirA 在场 ——
@@ -1159,10 +1153,8 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
 
       // —— 建会话 → +菜单开终端标签(tools 节「终端」):openPty 真分配(conpty 真进程)→ jsdom
       //    无布局(clientWidth=0)→ 降级面在场(渲染面不造假;链路面归下方裸 ws 验证)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
@@ -1280,10 +1272,11 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto,项目 root=会话根)→ chat ——
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+      fireEvent.click(await screen.findByTitle(root, {}, { timeout: 5_000 })); // 原生选择器选完自动建项目(G10-C11)→ 展开组
+      fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 })); // 组内 + 新建会话
+fireEvent.click(await screen.findByRole('menuitem', { name: /auto 自动审批/i }, { timeout: 5_000 }));
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(SettingsForm 行
@@ -1346,10 +1339,8 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(项目 root,DirPicker 流)→ chat → 设置态(底栏设置钮,settingsRoot=root)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
 
@@ -1427,10 +1418,8 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话 → chat(默认「任务」标签活动;Agents 聚合是 App 态另轨,不依赖标签在场)——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(CARDS 同款):提交 → 委派 fork 派发 → 主链 done 收束 ——
@@ -1489,10 +1478,8 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(标签条需会话在场才可用)→ +菜单「Web」裸开档(key='' 聚焦语义,title='Web')——
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await screen.findByRole('dialog', { name: 'choose directory' }, { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('custom path'), { target: { value: env.root } });
-      fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
