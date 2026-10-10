@@ -85,6 +85,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       next.add(id);
       return next;
     });
+  /** 会话 id → journal 行 id 映射(attach 时记下):行 active 只亮当前打开会话对应的 journal 行,
+   *  不再用 root 兜底(兜底会把同组所有行全点亮,看起来像误 hover) */
+  const [journalOfSession, setJournalOfSession] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const markJournal = (sessionId: string, journalId: string): void =>
+    setJournalOfSession((prev) => {
+      if (prev.get(sessionId) === journalId) return prev;
+      const next = new Map(prev);
+      next.set(sessionId, journalId);
+      return next;
+    });
 
   const loadWorkspaces = useCallback((): void => {
     conn.workspaces().then(
@@ -181,6 +191,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         (sessionId) => {
           setBusy(false);
           markSeen(journalId);
+          markJournal(sessionId, journalId);
           onOpenSession(sessionId, root);
         },
         (err: unknown) => {
@@ -322,9 +333,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                 >
                   <span className="sx-ws-folder" aria-hidden="true">
                     {openSlug === row.slug ? (
-                      <FolderOpen size={15} strokeWidth={1.75} />
+                      <FolderOpen size={16} strokeWidth={1.75} />
                     ) : (
-                      <Folder size={15} strokeWidth={1.75} />
+                      <Folder size={16} strokeWidth={1.75} />
                     )}
                   </span>
                   <span className="ws-slug sx-ws-name">{wsName(row)}</span>
@@ -374,11 +385,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     <li className="no-sessions">{t('No sessions yet — create one via + above.', '暂无会话——组内「+」新建。')}</li>
                   )}
                   {sessions?.map((s) => {
-                    // active 判定:id 直配优先;兜底 activeRoot 组内行点亮——daemon 会话 id
-                    // (newSession 回抛)与 journal 行 id(GET /sessions?root=)异名,id 直配
-                    // 恒不中(见 task-4 测试:activeSessionId='new-…' vs 行 id='j1')
+                    // active 判定:daemon 会话 id 直配,或该会话经 attach 记下的 journal 行 id
+                    // (异名映射,G10-C7 补)——root 兜底退役:整组全亮读作误 hover
                     const active =
-                      activeSessionId !== '' && (s.id === activeSessionId || root === activeRoot);
+                      activeSessionId !== '' &&
+                      (s.id === activeSessionId || journalOfSession.get(activeSessionId) === s.id);
                     // G8e 三面②会话行状态点:id 直配行=accent 实心(运行中会话;与 active 类同判据
                     // 锚 activeSessionId——不含 root 兜底,兜底行=灰空心「非本行会话」)
                     const running = s.id === activeSessionId;
@@ -416,8 +427,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
         {recents?.map((r) => {
           const running = r.id === activeSessionId;
-          // active 兜底与组行同判据(activeSessionId 异名:daemon 会话 id ≠ journal id,root 兜底点亮)
-          const active = activeSessionId !== '' && (r.id === activeSessionId || r.root === activeRoot);
+          // active 同组行:daemon 会话 id 直配或 journal 异名映射;root 兜底退役
+          const active =
+            activeSessionId !== '' &&
+            (r.id === activeSessionId || journalOfSession.get(activeSessionId) === r.id);
           return (
             <li
               key={`${r.root}/${r.id}`}

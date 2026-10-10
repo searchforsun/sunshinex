@@ -82,11 +82,16 @@ describe('ProjectMenu(spec §1 左栏项目分组)', () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1-m', 'D:/w/p1'));
   });
 
-  it('activeRoot 组自动展开;当前会话行 active 态', async () => {
+  it('activeRoot 组自动展开;点开的会话行 active(journal 映射),未点开不亮', async () => {
     const conn = makeConn();
     renderMenu(conn, { activeSessionId: 'new-D:/w/p1', activeRoot: 'D:/w/p1' });
     const row = await screen.findByText('demo goal');
-    expect(row.closest('.sx-session-row')!.className).toContain('active');
+    // 未点开(无 journal 映射):行不亮——root 兜底退役(整组全亮读作误 hover)
+    expect(row.closest('.sx-session-row')!.className).not.toContain('active');
+    // 点开会话行:attach 两步记下会话 id ↔ journal 行映射 → 行 active + 未读蓝点消失
+    fireEvent.click(row);
+    await waitFor(() => expect(row.closest('.sx-session-row')!.className).toContain('active'));
+    expect(row.closest('.sx-session-row')!.querySelector('.sx-session-dot.unseen')).toBeNull();
   });
 
   it('「+ 添加工作区」开 DirPicker 模态(测试钩子 class 复用)', async () => {
