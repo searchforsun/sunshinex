@@ -1590,3 +1590,9 @@ select.sx-setting-select { width: 240px; }
 .sx-session-row { margin-block: 1px; }
 .workspace-item:has(> .workspace-row .sx-group-head.active) > .workspace-row { background: transparent; }
 .sx-group-head.active { background: transparent; }
+
+
+/* G10-C19 分区头动作钮:hover 显示(PROJECTS 头的 + ;RECENTS 头的 New chat 常显) */
+.sx-side-head-btn .sx-iconbtn { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.sx-side-head-btn:hover .sx-iconbtn,
+.sx-side-head-btn:focus-within .sx-iconbtn { opacity: 1; }

@@ -125,7 +125,7 @@ describe('ProjectMenu G10-C2 侧栏双区 IA', () => {
   it('品牌行/新对话行/Projects·Recents 分区头在场;Recents 扁平列出跨工作区最近会话', async () => {
     renderMenu(makeConn(), { activeRoot: '' });
     expect(screen.getByText('Sunshinex')).toBeDefined();
-    expect(screen.getByRole('button', { name: 'new chat' })).toBeDefined();
+    expect(screen.getAllByRole('button', { name: 'new chat' }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Projects')).toBeDefined();
     expect(screen.getByText('Recents')).toBeDefined();
     expect(await screen.findAllByText('demo goal')).toHaveLength(1); // 组收起态:仅 Recents 行(组展开后组内行再现)
@@ -134,8 +134,9 @@ describe('ProjectMenu G10-C2 侧栏双区 IA', () => {
   it('New chat:回欢迎页开新对话(onNewChat)', () => {
     const onNewChat = vi.fn();
     renderMenu(makeConn(), { activeRoot: '', onNewChat });
-    expect((screen.getByRole('button', { name: 'new chat' }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'new chat' }));
+    const btn = screen.getAllByRole('button', { name: 'new chat' })[0] as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
     expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 

@@ -416,7 +416,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     title={t('New chat in this project', '在此项目中新对话')}
                     onClick={() => onComposeIn(root)}
                   >
-                    <Plus size={16} strokeWidth={1.75} />
+                    <SquarePen size={16} strokeWidth={1.75} />
                   </button>
                 )}
               </div>
@@ -481,6 +481,18 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         }}
       >
         <span>{t('Recents', '最近会话')}</span>
+        <button
+          type="button"
+          className="sx-iconbtn"
+          aria-label="new chat"
+          title={t('New chat', '新对话')}
+          onClick={(e) => {
+            e.stopPropagation();
+            onNewChat();
+          }}
+        >
+          <SquarePen size={14} strokeWidth={1.75} />
+        </button>
         <ChevronRight
           size={12}
           strokeWidth={2}
