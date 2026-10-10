@@ -202,7 +202,10 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
     expect(toolRow('write src/a.ts')).toBeDefined(); // 折叠一行(图标化,●/⎿ 退役)
-    expect(document.querySelector('.diff-panel')).toBeNull(); // 未展开无面板
+    // G11 §2 折叠壳常挂载:面板恒在 DOM,折叠由 CSS 收起(.tool-body 无 open 类 + aria-hidden)
+    expect(document.querySelector('.tool-body')?.classList.contains('open')).toBe(false);
+    expect(document.querySelector('.tool-body')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('.diff-panel')).not.toBeNull(); // 常挂载:面板在场(不可见)
     fireEvent.click(toolRow('write src/a.ts')!);
     // 加载期先示右列现内容(面板即刻在场),404 应答落定后退单列——形不变
     expect(document.querySelector('.diff-panel')).not.toBeNull();
