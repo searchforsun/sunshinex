@@ -1493,6 +1493,26 @@ select.sx-setting-select { width: 240px; }
 .code-block pre code { display: block; font: 12.5px/1.7 var(--font-mono); white-space: pre; overflow-wrap: normal; }
 /* hljs 令牌泛化(原 .files-view 前缀收敛为全局——hljs 类只在代码上下文出现) */
 
+/* 正文排版定靶(§5.1):行距/标题阶梯/行内码/列表/hr/链接/图片 */
+.entry { line-height: 1.65; }
+.entry h1 { font-size: 17px; }
+.entry h2 { font-size: 15.5px; }
+.entry h3 { font-size: 14px; }
+.entry h4 { font-size: 13px; }
+.entry h1, .entry h2, .entry h3, .entry h4 { line-height: 1.4; font-weight: 600; margin: 16px 0 8px; }
+.entry :not(pre) > code { font-size: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }
+.entry li { margin: 3px 0; }
+.entry li::marker { color: var(--fg-secondary); }
+.entry hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }
+.entry img { max-width: 100%; border-radius: var(--radius-md); }
+/* 表格(§5.3):横滚圆角容器+表头底+只留横线+斑马纹 */
+.table-wrap { margin: 8px 0; overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.table-wrap table { margin: 0; width: max-content; min-width: 50%; border-collapse: collapse; font-size: 12px; }
+.table-wrap th { background: var(--surface-soft); font-weight: 600; text-align: left; }
+.table-wrap th, .table-wrap td { padding: 6px 12px; border: none; border-bottom: 1px solid var(--border-subtle); }
+.table-wrap tr:last-child td { border-bottom: none; }
+.table-wrap tbody tr:nth-child(even) { background: color-mix(in srgb, var(--fg) 2%, transparent); }
+
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */
 .sx-menu-head {

@@ -236,3 +236,11 @@ describe('代码块 CodeBlock(G11 §5.2)', () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('const a = 1;');
   });
 });
+
+describe('表格容器(G11 §5.3)', () => {
+  it('md 表格包进 .table-wrap 横滚容器', async () => {
+    const md = ['| a | b |', '| --- | --- |', '| 1 | 2 |'].join('\n');
+    mountChat([{ seq: 1, ts: DAY1, kind: 'assistant', md }]);
+    await waitFor(() => expect(document.querySelector('.table-wrap table')).not.toBeNull());
+  });
+});
