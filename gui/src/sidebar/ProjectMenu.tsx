@@ -38,6 +38,10 @@ export interface ProjectMenuProps {
   readonly onOpenSession: (sessionId: string, root: string) => void;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
+  /** 「New chat」:回欢迎页开新对话(G10-C16) */
+  readonly onNewChat: () => void;
+  /** 项目行「+」:回欢迎页并预选该项目与审批模式(G10-C16) */
+  readonly onComposeIn: (root: string, mode?: 'auto' | 'manual') => void;
 }
 
 
@@ -59,7 +63,7 @@ function wsName(row: { root?: string; slug: string }): string {
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn } = props;
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
   const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
@@ -75,7 +79,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
-  const [menuSlug, setMenuSlug] = useState<string | null>(null);
   /** 查找面板(G10-C13):项目 + 会话历史搜索 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -113,6 +116,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   useEffect(() => {
     loadWorkspaces();
   }, [loadWorkspaces]);
+
 
   // 查找面板外点收(钮自身走 click 切换,不在收面)
   useEffect(() => {
@@ -187,18 +191,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     expandGroup(row);
   }, [activeRoot, rows, expandGroup]);
 
-  /** mode 弹层外点收(点组「+」自身走 click 切换,不在收面) */
-  useEffect(() => {
-    if (menuSlug === null) return;
-    const onDown = (e: MouseEvent): void => {
-      const t = e.target;
-      if (t instanceof Element && t.closest('[role="menu"]') === null && t.closest('.sx-iconbtn') === null) {
-        setMenuSlug(null);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [menuSlug]);
 
   /** Attach 两步(daemon 形态对齐,Home 照搬):newSession(root) 装配壳 → attach(sessionId,
    *  journalId) 播种恢复 → onOpenSession(sessionId, root);失败行内报错,busy 防双发 */
@@ -224,45 +216,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       );
   };
 
-  /** 组内「+」新建(mode 弹层选中即调):auto 缺省不发 mode 字段(旧 daemon 兼容)/manual
-   *  显式;失败行内报错 */
-  const createInGroup = (root: string, mode: 'auto' | 'manual'): void => {
-    setMenuSlug(null);
-    if (busy) return;
-    setBusy(true);
-    setActionError('');
-    conn.newSession(root, mode === 'manual' ? 'manual' : undefined).then(
-      ({ sessionId }) => {
-        setBusy(false);
-        markSeen(sessionId);
-        loadWorkspaces(); // 组内新建落位即刷新组列表(spec §1:ws-count 随新 rows 到场;attachJournal 不改工作区面不刷)
-        onOpenSession(sessionId, root);
-      },
-      (err: unknown) => {
-        setBusy(false);
-        setActionError(err instanceof Error ? err.message : String(err));
-      },
-    );
-  };
 
-  /** 「新对话」nav 行(G10-C2):最近激活工作区直建(auto);无激活工作区禁用(title 提示) */
-  const newChatActive = (): void => {
-    if (busy || activeRoot === '') return;
-    setBusy(true);
-    setActionError('');
-    conn.newSession(activeRoot).then(
-      ({ sessionId }) => {
-        setBusy(false);
-        markSeen(sessionId);
-        loadWorkspaces();
-        onOpenSession(sessionId, activeRoot);
-      },
-      (err: unknown) => {
-        setBusy(false);
-        setActionError(err instanceof Error ? err.message : String(err));
-      },
-    );
-  };
+
+
 
   /** 「+ 添加工作区」(G10-C11):原生文件选择器(Win 系统对话框)选完即自动建项目——
    *  浏览器态按名字在 projectsRoot 下建;桌面壳态注册既有目录。建好即展开组并开一个
@@ -277,26 +233,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       );
       return;
     }
-    setBusy(true);
     try {
       const res = await conn.createWorkspace(picked.path !== undefined ? { path: picked.path } : { name: picked.name });
       loadWorkspaces(); // 建项目落位即刷新组列表
-      const row: WorkspaceRow = { slug: res.slug, root: res.root, sessionCount: 0, mtime: Date.now() };
-      expandGroup(row); // 新组展开(惰拉空会话列表)
-      // 直接开一个 auto 会话进 Chat(busy 仍持——内联 newSession,不走 createInGroup 的 busy 闸)
-      conn.newSession(res.root).then(
-        ({ sessionId }) => {
-          setBusy(false);
-          markSeen(sessionId);
-          onOpenSession(sessionId, res.root);
-        },
-        (err: unknown) => {
-          setBusy(false);
-          setActionError(errText(err));
-        },
-      );
+      // 建好即回欢迎页预选该项目(auto 档)——纯回调无 busy,目标提交即刻可用
+      onComposeIn(res.root, 'auto');
     } catch (err) {
-      setBusy(false);
       setActionError(errText(err));
     }
   };
@@ -375,9 +317,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         type="button"
         className="sx-new-chat"
         aria-label="new chat"
-        disabled={busy || activeRoot === ''}
-        title={activeRoot === '' ? t('Pick a workspace in Projects first', '先在项目区选择工作区') : t('New chat', '新对话')}
-        onClick={newChatActive}
+        title={t('New chat', '新对话')}
+        onClick={onNewChat}
       >
         <SquarePen size={16} strokeWidth={1.75} />
         <span>{t('New chat', '新对话')}</span>
@@ -447,33 +388,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     type="button"
                     aria-label={`new session in ${row.slug}`}
                     className="sx-iconbtn"
-                    disabled={busy}
-                    onClick={() => setMenuSlug((s) => (s === row.slug ? null : row.slug))}
+                    title={t('New chat in this project', '在此项目中新对话')}
+                    onClick={() => onComposeIn(root)}
                   >
                     <Plus size={16} strokeWidth={1.75} />
                   </button>
-                )}
-                {menuSlug === row.slug && root !== undefined && (
-                  <div className="sx-menu-pop" role="menu" aria-label="new session mode">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="sx-menuitem"
-                      disabled={busy}
-                      onClick={() => createInGroup(root, 'auto')}
-                    >
-                      auto 自动审批
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="sx-menuitem"
-                      disabled={busy}
-                      onClick={() => createInGroup(root, 'manual')}
-                    >
-                      manual 手动审批
-                    </button>
-                  </div>
                 )}
               </div>
               {openSlug === row.slug && root !== undefined && (

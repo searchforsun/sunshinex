@@ -83,6 +83,8 @@ interface WelcomeGoal {
  *  「浏览文件夹…」走原生风格 DirPicker 建新项目;footer 左右分列(+审批 左/模型+圆发送 右) */
 function WelcomeComposer({
   conn,
+  presetRoot,
+  presetMode,
   onOpened,
 }: {
   conn: {
@@ -92,6 +94,10 @@ function WelcomeComposer({
     /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
     createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   };
+  /** 预选工作区(G10-C16):项目行「+」带来的 preset */
+  presetRoot?: string;
+  /** 预选审批模式(G10-C16):项目行 + 的 manual 档带出 */
+  presetMode?: 'manual';
   onOpened: (sessionId: string, root: string, goal: string) => void;
 }): JSX.Element {
   const [rows, setRows] = useState<Array<{ slug: string; root?: string; sessionCount: number }>>([]);
@@ -100,8 +106,17 @@ function WelcomeComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [projOpen, setProjOpen] = useState(false);
+  /** 审批模式(G10-C16):新会话创建时带出;缺省 dontAsk(TUI 默认权限) */
+  const [mode, setMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
+  const [modeOpen, setModeOpen] = useState(false);
   const [hint, setHint] = useState('');
   const projRef = useRef<HTMLDivElement | null>(null);
+
+  /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换) */
+  useEffect(() => {
+    console.log('DBG preset effect:', presetRoot, 'picked:', picked);
+    if (presetRoot !== undefined && presetRoot !== '' ) setPicked(presetRoot);
+  }, [presetRoot]);
   useEffect(() => {
     conn.workspaces().then(
       (list) => {
@@ -127,13 +142,15 @@ function WelcomeComposer({
     return () => document.removeEventListener('mousedown', onDown);
   }, [projOpen]);
   const send = (): void => {
+    // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
+    const target = picked !== '' ? picked : (presetRoot ?? '');
     const g = goal.trim();
-    if (g === '' || picked === '' || busy) return;
+    if (g === '' || target === '' || busy) return;
     setBusy(true);
     setError('');
     conn
-      .newSession(picked)
-      .then(({ sessionId }) => onOpened(sessionId, picked, g))
+      .newSession(target, mode === 'manual' ? 'manual' : undefined)
+      .then(({ sessionId }) => onOpened(sessionId, target, g))
       .catch((err: unknown) => {
         setBusy(false);
         setError(err instanceof Error ? err.message : String(err));
@@ -233,12 +250,45 @@ function WelcomeComposer({
               }
             }}
           />
+          {error !== '' && <div className="proj-hint" role="alert">{error}</div>}
           <div className="welcome-input-foot">
             <div className="welcome-foot-left">
               <button type="button" className="composer-pill" aria-label="add attachment" title={t('Add', '添加')}>
                 +
               </button>
-              <span className="composer-pill"><Hand size={13} strokeWidth={1.75} aria-hidden="true" />{t('Ask for approval', '需审批')}</span>
+              <button
+          type="button"
+          className="composer-pill"
+          aria-label="approval mode"
+          title={t('Approval mode for this session', '本会话的审批模式')}
+          onClick={() => setModeOpen((v) => !v)}
+        >
+          <Hand size={13} strokeWidth={1.75} aria-hidden="true" />
+          {mode === 'manual' ? t('Confirm changes', '变更确认') : mode === 'plan' ? t('Plan mode', '计划模式') : t('Full access', '完全访问')}
+          <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+        {modeOpen && (
+          <div className="sx-menu-pop pill-pop" role="menu" aria-label="approval mode menu">
+            {([
+              ['dontAsk', t('Full access', '完全访问')],
+              ['manual', t('Confirm changes', '变更确认')],
+              ['plan', t('Plan mode', '计划模式')],
+            ] as const).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                role="menuitem"
+                className={`sx-menuitem${m === mode ? ' active' : ''}`}
+                onClick={() => {
+                  setMode(m);
+                  setModeOpen(false);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
             </div>
             <div className="welcome-foot-right">
               <span className="composer-pill">{t('default model', '默认模型')}<ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" /></span>
@@ -265,6 +315,8 @@ function AppShell(): JSX.Element {
   /** 欢迎页 goal 接力(G10):welcome 提交建会话后,Chat 播种完成即提交该目标 */
   const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
+  /** 欢迎页预选工作区(G10-C16):New chat=空(自选);项目行「+」=该项目(快捷预选) */
+  const [composePresetRoot, setComposePresetRoot] = useState<string | null>(null);
   const [openSessionId, setOpenSessionId] = useState<string>('');
   /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
   const [openRoot, setOpenRoot] = useState<string>('');
@@ -565,6 +617,14 @@ function AppShell(): JSX.Element {
               activeRoot={openRoot}
               onOpenSession={openSession}
               onOpenSettings={openSettings}
+              onNewChat={() => {
+                setComposePresetRoot(null);
+                setPage('welcome');
+              }}
+              onComposeIn={(root) => {
+                setComposePresetRoot(root);
+                setPage('welcome');
+              }}
             />
           ) : (
             <nav className="sx-menu" aria-label="projects">
@@ -614,6 +674,7 @@ function AppShell(): JSX.Element {
             ) : connInstance !== null ? (
               <WelcomeComposer
                 conn={connInstance}
+                presetRoot={composePresetRoot ?? undefined}
                 onOpened={(sessionId, root, goal) => {
                   setWelcomeGoal({ root, goal });
                   openSession(sessionId, root);

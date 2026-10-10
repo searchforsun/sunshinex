@@ -45,7 +45,16 @@ const open = vi.fn();
 
 function renderMenu(conn: ProjectMenuConn, props?: Partial<Parameters<typeof ProjectMenu>[0]>) {
   return render(
-    <ProjectMenu conn={conn} connState="online" activeSessionId="" activeRoot="" onOpenSession={open} {...props} />,
+    <ProjectMenu
+      conn={conn}
+      connState="online"
+      activeSessionId=""
+      activeRoot=""
+      onOpenSession={open}
+      onNewChat={() => {}}
+      onComposeIn={() => {}}
+      {...props}
+    />,
   );
 }
 
@@ -69,22 +78,20 @@ describe('ProjectMenu(spec §1 左栏项目分组)', () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1'));
   });
 
-  it('组内「+」新建:mode 弹层选 auto→newSession(root)→onOpenSession', async () => {
-    const conn = makeConn();
-    renderMenu(conn);
+  it('组内「+」:回欢迎页并预选该项目(onComposeIn)', async () => {
+    const onComposeIn = vi.fn();
+    renderMenu(makeConn(), { activeRoot: '', onComposeIn });
     fireEvent.click(await screen.findByText('p1'));
-    fireEvent.click(await screen.findByRole('button', { name: 'new session in p1' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /auto/i }));
-    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1'));
+    fireEvent.click(screen.getByRole('button', { name: 'new session in p1' }));
+    expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1');
   });
 
-  it('组内「+」新建:manual→newSession(root,"manual")', async () => {
-    const conn = makeConn();
-    renderMenu(conn);
+  it('组内「+」(manual 档测试):同样回欢迎页预选该项目', async () => {
+    const onComposeIn = vi.fn();
+    renderMenu(makeConn(), { activeRoot: '', onComposeIn });
     fireEvent.click(await screen.findByText('p1'));
-    fireEvent.click(await screen.findByRole('button', { name: 'new session in p1' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /manual/i }));
-    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1-m', 'D:/w/p1'));
+    fireEvent.click(screen.getByRole('button', { name: 'new session in p1' }));
+    expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1');
   });
 
   it('activeRoot 组自动展开;点开的会话行 active(journal 映射),未点开不亮', async () => {
@@ -124,8 +131,19 @@ describe('ProjectMenu G10-C2 侧栏双区 IA', () => {
     expect(await screen.findAllByText('demo goal')).toHaveLength(1); // 组收起态:仅 Recents 行(组展开后组内行再现)
   });
 
-  it('新对话行:无激活工作区禁用', () => {
-    renderMenu(makeConn(), { activeRoot: '' });
-    expect((screen.getByRole('button', { name: 'new chat' }) as HTMLButtonElement).disabled).toBe(true);
+  it('New chat:回欢迎页开新对话(onNewChat)', () => {
+    const onNewChat = vi.fn();
+    renderMenu(makeConn(), { activeRoot: '', onNewChat });
+    expect((screen.getByRole('button', { name: 'new chat' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'new chat' }));
+    expect(onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('项目行 +:回欢迎页并预选该项目(onComposeIn)', async () => {
+    const onComposeIn = vi.fn();
+    renderMenu(makeConn(), { activeRoot: '', onComposeIn });
+    fireEvent.click(await screen.findByText('p1')); // 展开组
+    fireEvent.click(screen.getByRole('button', { name: 'new session in p1' }));
+    expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1');
   });
 });

@@ -238,6 +238,10 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
       await backHome();
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
     console.log("SIDEBAR_DEBUG:", document.querySelector(".sx-side-scroll")?.innerHTML?.slice(0, 2500) ?? "NO SIDEBAR");
     console.log("TITLE_DEBUG:", document.querySelector(".chat-title-text")?.textContent ?? "NO TITLE");
       await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
@@ -342,6 +346,10 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     //    自定义路径输入(真 daemon /dirpicker 服务端)→ 确认 → newSession → chat ——
         Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
     fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
     console.log("SIDEBAR_DEBUG_G3:", document.querySelector(".sx-side-scroll")?.innerHTML?.slice(0, 2500) ?? "NO SIDEBAR");
 
@@ -508,18 +516,14 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— manual 会话经 UI 真面建立:展开组 → 组内 + mode 弹层点「manual 手动审批」→ newSession mode:'manual' ——
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 展开组
-      fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 }));
-      fireEvent.click(await screen.findByRole('menuitem', { name: /manual 手动审批/i }, { timeout: 5_000 }));
+      // —— manual 会话经 UI 真面建立:欢迎页目标提交(WelcomeComposer 带 preset mode:manual)——
+      const goal = screen.getByLabelText('welcome goal');
+      fireEvent.change(goal, { target: { value: 'manual 写一个文件' } });
+      fireEvent.keyDown(goal, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
-      expect(newBodies.some((b) => b.mode === 'manual' && b.root === env.root)).toBe(true); // 真 UI 面 mode 断言
+      expect(newBodies.some((b) => b.mode === 'manual' && b.root === env.root)).toBe(true); // newSession body mode 断言
 
-      // —— UI 提交 → write envelope 越信任域 → manual 挂起 → approval 帧经 WS → ApprovalCard ——
-      const input = screen.getByLabelText('message input');
-      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
-      fireEvent.change(input, { target: { value: 'manual 写一个文件' } });
-      fireEvent.keyDown(input, { key: 'Enter' });
+      // —— 首轮模型轮 → write envelope 越信任域 → manual 挂起 → approval 帧经 WS → ApprovalCard ——
       await waitFor(() => expect(container.querySelector('.approval-card')).not.toBeNull(), { timeout: 10_000 });
       const title = container.querySelector('.approval-card .card-title');
       expect(title?.textContent?.startsWith('[approval write]')).toBe(true); // req.kind=write(链侧 ask 形态)
@@ -569,6 +573,10 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       const openByPicker = async (): Promise<void> => {
                 Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
         fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       };
       const runOnce = async (goal: string, reply: string): Promise<void> => {
         const input = screen.getByLabelText('message input');
@@ -647,6 +655,10 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       // —— 「+ 添加工作区」(DirPicker 真面,缺省不勾 manual)→ 提交 → 主链 create_task(gated)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       const input = screen.getByLabelText('message input');
       await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
@@ -717,6 +729,10 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       // —— dontAsk 会话经 UI 真面建立(DirPicker 缺省不勾 manual;G8a:经「+ 添加工作区」)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 提交 → run:write 域内直执行(无挂起)→ done 收束 ——
@@ -815,17 +831,14 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— manual 会话经 UI 真面建立:展开组 → 组内 + mode 弹层点 manual ——
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 展开组
-      fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 }));
-      fireEvent.click(await screen.findByRole('menuitem', { name: /manual 手动审批/i }, { timeout: 5_000 }));
+      // —— manual 会话经 UI 真面建立:审批模式选「变更确认」→ 欢迎页目标提交(mode:manual 随会话带出)——
+      //    首轮模型轮挂在 Gated adapter 的 gate 上(run 进行中)——
+      fireEvent.click(screen.getByRole('button', { name: 'approval mode' }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: /变更确认|confirm changes/i }));
+      const goal = screen.getByLabelText('welcome goal');
+      fireEvent.change(goal, { target: { value: '挂起重连目标' } });
+      fireEvent.keyDown(goal, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
-
-      // —— 提交:首轮模型轮挂在 gate 上(run 进行中,未到 write 挂起点)——
-      const input = screen.getByLabelText('message input');
-      await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
-      fireEvent.change(input, { target: { value: '挂起重连目标' } });
-      fireEvent.keyDown(input, { key: 'Enter' });
 
       // —— 断线注入:App 自装配连接的底层 socket(挂起广播前的零客户端窗)——
       const appSock = sockets[sockets.length - 1]!;
@@ -919,6 +932,10 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat ——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 默认任务页:右栏标签条唯一标签「任务」且活动(ensureSession 缺省开 tasks 单例)——
@@ -1003,6 +1020,10 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       // —— 建会话 → chat;默认「任务」标签活动(场景A 已钉,此处直用)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
 
@@ -1067,6 +1088,10 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto)→ chat(默认「任务」标签活动)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— +菜单开目录标签(content 节「目录」,单例)→ mount 惰拉 root → 根行 dirA 在场 ——
@@ -1154,6 +1179,10 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       //    无布局(clientWidth=0)→ 降级面在场(渲染面不造假;链路面归下方裸 ws 验证)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
@@ -1340,6 +1369,10 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       // —— 建会话(项目 root,DirPicker 流)→ chat → 设置态(底栏设置钮,settingsRoot=root)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
 
@@ -1419,6 +1452,10 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       // —— 建会话 → chat(默认「任务」标签活动;Agents 聚合是 App 态另轨,不依赖标签在场)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(CARDS 同款):提交 → 委派 fork 派发 → 主链 done 收束 ——
@@ -1479,6 +1516,10 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       // —— 建会话(标签条需会话在场才可用)→ +菜单「Web」裸开档(key='' 聚焦语义,title='Web')——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
+    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+    const goalInput = screen.getByLabelText('welcome goal');
+    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
