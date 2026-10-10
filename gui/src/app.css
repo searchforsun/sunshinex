@@ -1307,7 +1307,7 @@ select.sx-setting-select { width: 240px; }
 .sx-new-chat {
   height: 32px;
   margin: 0 4px 4px;
-  padding: 0 4px;
+  padding: 0;
   border: none;
   border-radius: var(--radius-md);
   font-size: 13px;
@@ -1385,7 +1385,7 @@ select.sx-setting-select { width: 240px; }
 .sx-session-row {
   height: 32px;
   margin: 0;
-  padding: 0 10px 0 24px;
+  padding: 0 10px 0 28px;
   border-radius: var(--radius-md);
 }
 .sx-session-dot { position: absolute; left: 12px; top: calc(50% - 3.5px); }
@@ -1454,3 +1454,11 @@ select.sx-setting-select { width: 240px; }
 }
 .sx-tip:hover::after { opacity: 1; }
 .sx-tip-right::after { left: auto; right: 0; transform: none; } /* 贴右缘钮(code-head/mermaid-actions)防裁切 */
+
+/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */
+.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 12px; color: var(--fg-tertiary); }
+.entry-run.live { color: var(--fg-secondary); }
+.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.run-spinner { width: 10px; height: 10px; flex: none; border-radius: 50%; border: 1.5px solid var(--fg-tertiary); border-top-color: var(--fg); animation: sx-spin 1s linear infinite; }
+@keyframes sx-fade-in { from { opacity: 0; } }
+.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
