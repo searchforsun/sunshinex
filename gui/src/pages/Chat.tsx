@@ -326,6 +326,45 @@ function ToolIcon({ verb }: { verb: string }): JSX.Element {
   return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
 
+/** 秒数格式:<60s 「34s」,≥60s 「2m 5s」(状态行/尾条共用) */
+function runElapsed(seconds: number): string {
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+/** tokens 格式:8400 → 8.4k tokens;840 → 840 tokens */
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
+}
+
+/** run 状态行(G11 §1.2):streaming=Working(旋转环+1s tick+会话 tokens;不经 memo——tick 自驱动);
+ *  封段=✓ Worked for Xs 淡灰保留。种子历史无 run 条,重连后自下一轮 model-start 恢复(spec §0) */
+function RunEntryView({ entry, tokens }: { entry: ChatEntry; tokens: number }): JSX.Element {
+  const [, setTick] = useState(0);
+  const streaming = entry.streaming === true;
+  useEffect(() => {
+    if (!streaming) return;
+    const h = setInterval(() => setTick((v) => v + 1), 1_000);
+    return () => clearInterval(h);
+  }, [streaming]);
+  if (!streaming) {
+    return (
+      <div className="entry entry-run sealed" aria-label="run summary">
+        <Check size={12} strokeWidth={1.75} aria-hidden="true" />
+        <span>{entry.seconds !== undefined ? t(`Worked for ${runElapsed(entry.seconds)}`, `已运行 ${runElapsed(entry.seconds)}`) : t('Worked', '已运行')}</span>
+      </div>
+    );
+  }
+  const elapsed = entry.ts !== undefined ? Math.max(0, Math.round((Date.now() - entry.ts) / 1000)) : 0;
+  return (
+    <div className="entry entry-run live" role="status" aria-label="run status">
+      <span className="run-spinner" aria-hidden="true" />
+      <span>{t('Working', '运行中')}</span>
+      <span className="run-meta">{runElapsed(elapsed)}</span>
+      <span className="run-meta">{fmtTokens(tokens)}</span>
+    </div>
+  );
+}
+
 /** 统一图标钮(G11 §8):纯图标 + data-tip Tooltip(视觉层)+ aria-label(可达性/查询锚)。
  *  不用原生 title;复制成功反馈由调用面换 icon/tip,本组件无状态 */
 function TipButton({ tip, label, icon, onClick, className }: { tip: string; label: string; icon: ReactNode; onClick?: () => void; className?: string }): JSX.Element {
@@ -901,7 +940,9 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             </div>
           ) : null,
           ...g.entries.map((entry) =>
-            entry.kind === 'tool' ? (
+            entry.kind === 'run' ? (
+              <RunEntryView key={entry.key} entry={entry} tokens={chat.tokens} />
+            ) : entry.kind === 'tool' ? (
               <ToolEntryView
                 key={entry.key}
                 entry={entry}

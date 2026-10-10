@@ -3,10 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('mermaid', () => {
   throw new Error('mock: mermaid load failure');
 });
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Chat } from './Chat';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
+import type { SessionEvent } from '../../../src/types';
 
 /** G9-B3b 会话流 Codex 形:用户右胶囊(+hover 复制)/跨日居中日期分隔(DOM 契约:
  *  .entry-user>.user-bubble+.user-actions>.user-action[aria-label=Copy];.chat-day-sep[role=separator]) */
@@ -39,6 +40,15 @@ function connOf(messages: Seed[]): Connection {
 
 function mountChat(messages: Seed[]): void {
   render(<Chat conn={connOf(messages)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+}
+
+/** 播种落定:冲微任务使 sessionSnapshot 应答处理完毕(seeding 门开,后继 fire 直投 reducer) */
+async function flushed(): Promise<void> {
+  await act(async () => {});
+}
+/** 投递本会话帧(seq 恒 1——页面不过滤 seq,连接层职责) */
+function fire(e: SessionEvent): void {
+  act(() => sinkRef.current!.on(e, 1));
 }
 
 describe('Chat 会话流 Codex 形(B3b)', () => {
@@ -134,5 +144,25 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(screen.getByText('排队二')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'cancel queued 0' }));
     expect(cancelSteer).toHaveBeenCalledWith('s1', 0);
+  });
+});
+
+describe('run 状态行(G11 §1)', () => {
+  it('model-start 后 .entry-run.live 显示 Working;done 封段后 .entry-run.sealed 显示 Worked for', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    expect(document.querySelector('.entry-run.live')?.textContent).toContain('Working');
+    fire({ type: 'token', text: '答', ts: Date.now() });
+    fire({ type: 'done', text: '答', ts: Date.now() + 34_000 });
+    expect(document.querySelector('.entry-run.sealed')?.textContent).toContain('Worked for 34s');
+  });
+
+  it('live 行显示会话 tokens(usage 载荷续推,k 格式)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'usage', payload: { turnTotal: 8400 }, ts: Date.now() });
+    expect(document.querySelector('.entry-run.live')?.textContent).toContain('8.4k tokens');
   });
 });
