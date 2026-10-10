@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { errText, pickFolderNative, relTime } from '../ui-util';
 import { t } from '../i18n';
-import { Folder, FolderOpen, Plus, Search, Settings, SquarePen } from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen, Plus, Search, Settings, SquarePen } from 'lucide-react';
 
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
@@ -79,6 +79,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
+  /** 分区折叠(G10-C18):PROJECTS/RECENTS 分区头可折叠(平滑过渡) */
+  const [projectsOpen, setProjectsOpen] = useState(true);
+  const [recentsOpen, setRecentsOpen] = useState(true);
   /** 查找面板(G10-C13):项目 + 会话历史搜索 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -176,7 +179,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     if (openSlug === row.slug) {
       openSlugRef.current = null;
       setOpenSlug(null);
-      setSessions(null);
       return;
     }
     expandGroup(row);
@@ -324,24 +326,47 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <span>{t('New chat', '新对话')}</span>
       </button>
       <div className="sx-side-scroll">
-        <div className="sx-side-head sx-side-head-row">
+        <div
+          className="sx-side-head sx-side-head-row sx-side-head-btn"
+          role="button"
+          aria-expanded={projectsOpen}
+          tabIndex={0}
+          onClick={() => setProjectsOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setProjectsOpen((v) => !v);
+            }
+          }}
+        >
           <span>{t('Projects', '项目')}</span>
+          <ChevronRight
+            size={12}
+            strokeWidth={2}
+            aria-hidden="true"
+            className={`sx-side-chev${projectsOpen ? ' open' : ''}`}
+          />
           <button
             type="button"
             className="sx-iconbtn"
             aria-label="add workspace"
             title={t('Add workspace', '添加工作区')}
             disabled={busy}
-            onClick={() => void pickAndAdd()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActionError('');
+              void pickAndAdd();
+            }}
           >
             <Plus size={14} strokeWidth={1.75} />
           </button>
         </div>
+        <div className={`sx-collapse${projectsOpen ? ' open' : ''}`}>
         <ul className="workspace-list sx-groups" aria-label="workspace groups">
         {rows === null && listError === '' && <li className="home-loading">{t('Loading workspaces…', '加载工作区…')}</li>}
         {listError !== '' && (
           <li className="home-error" role="alert">
-            {/-> 401$/.test(listError)
+            {listError.startsWith('-> 401')
               ? t('Token expired — reopen the URL printed by `serve` (or append ?token=<new> to the address)', 'token 已失效——请重新打开 serve 启动时打印的链接(或在地址后追加 ?token=<新 token>)')
               : listError}
           </li>
@@ -395,7 +420,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                   </button>
                 )}
               </div>
-              {openSlug === row.slug && root !== undefined && (
+              {root !== undefined && (
+              <div className={`sx-collapse${openSlug === row.slug ? ' open' : ''}`}>
                 <ul className="session-list" aria-label="sessions">
                   {sessions === null && sessionsError === '' && <li className="sessions-loading">{t('Loading sessions…', '加载会话…')}</li>}
                   {sessionsError !== '' && <li className="home-error">{sessionsError}</li>}
@@ -434,12 +460,35 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     );
                   })}
                 </ul>
+              </div>
               )}
             </li>
           );
         })}
       </ul>
-      <div className="sx-side-head">{t('Recents', '最近会话')}</div>
+      </div>
+      <div
+        className="sx-side-head sx-side-head-btn"
+        role="button"
+        aria-expanded={recentsOpen}
+        tabIndex={0}
+        onClick={() => setRecentsOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setRecentsOpen((v) => !v);
+          }
+        }}
+      >
+        <span>{t('Recents', '最近会话')}</span>
+        <ChevronRight
+          size={12}
+          strokeWidth={2}
+          aria-hidden="true"
+          className={`sx-side-chev${recentsOpen ? ' open' : ''}`}
+        />
+      </div>
+      <div className={`sx-collapse${recentsOpen ? ' open' : ''}`}>
       <ul className="recent-list" aria-label="recent sessions">
         {recents === null && <li className="sessions-loading">{t('Loading sessions…', '加载会话…')}</li>}
         {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
@@ -470,6 +519,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           );
         })}
       </ul>
+      </div>
       </div>
       <footer className="sx-menu-foot">
         {onOpenSettings !== undefined && (

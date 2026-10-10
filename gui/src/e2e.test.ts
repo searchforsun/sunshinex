@@ -368,7 +368,7 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     // —— steer 运行中(hanging 模型轮内):经 conn.sessionSteer POST /session/:id/steer,200 不炸 ——
     await conn.sessionSteer('s1', '运行中插话');
 
-    // —— release → 模型轮收束 → done 事件 → streaming 收段:md 终稿全文在场、无流式残留、idle ——
+        // —— release → 模型轮收束 → done 事件 → streaming 收段:md 终稿全文在场、无流式残留、idle ——
     model.release();
     await waitFor(() => expect(container.querySelector('.entry-assistant:not(.streaming)')?.textContent).toContain('终稿答复'), { timeout: 10_000 });
     expect(container.querySelector('.streaming')).toBeNull();
