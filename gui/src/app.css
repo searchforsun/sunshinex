@@ -1408,3 +1408,33 @@ select.sx-setting-select { width: 240px; }
 .sx-side-head { padding: 16px 8px 6px 12px; }
 .sx-groups { padding: 2px 8px 8px; }
 .recent-list { padding: 2px 8px 8px; }
+
+
+/* G10-C13 查找面板:项目 + 会话历史搜索(品牌行查找钮开;Esc/外点收) */
+.sx-menu { position: relative; }
+.sx-side-search {
+  position: absolute; top: 44px; left: 8px; right: 8px; z-index: 25;
+  background: var(--surface-elevated); border-radius: var(--radius-md);
+  box-shadow: var(--elev-prominent); padding: 6px;
+  max-height: 440px; display: flex; flex-direction: column;
+}
+.sx-side-search input {
+  height: 30px; padding: 0 8px; flex: none;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--fg); font-size: 13px; outline: none;
+}
+.sx-side-search input:focus { border-color: var(--border-strong); }
+.sx-side-search-list { overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.sx-search-sec {
+  padding: 6px 8px 2px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg-tertiary);
+}
+.sx-search-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 5px 8px; border-radius: var(--radius-sm);
+  color: var(--fg); font-size: 13px; text-align: left;
+}
+.sx-search-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-search-row svg { flex: none; color: var(--fg-secondary); }
+.sx-search-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-search-meta { margin-left: auto; flex: none; color: var(--fg-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }

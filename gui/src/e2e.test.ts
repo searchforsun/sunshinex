@@ -501,16 +501,14 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
           return realFetch(req, init);
         },
       );
-      const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
-
-      // —— manual 会话经 UI 真面建立:「+ 添加工作区」→ 原生选择器(pickFolder 桩回 env.root)→
-      //    项目创建落位 → 展开组 → 组内 + mode 弹层点「manual 手动审批」→ newSession mode:'manual' ——
-      // 项目档案 API 直建(原生选择器在 jsdom 无原生面;GUI 行经刷新钮拉取)——manual 会话由组内 + mode 弹层建
+      // —— 项目档案 render 前直建(原生选择器在 jsdom 无原生面;GUI mount loadWorkspaces 即拉取)——
       await realFetch(`http://127.0.0.1:${env.port}/workspace/create`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: env.root }),
       });
-      fireEvent.click(screen.getByRole('button', { name: 'refresh workspaces' }));
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
+
+      // —— manual 会话经 UI 真面建立:展开组 → 组内 + mode 弹层点「manual 手动审批」→ newSession mode:'manual' ——
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 展开组
       fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 }));
       fireEvent.click(await screen.findByRole('menuitem', { name: /manual 手动审批/i }, { timeout: 5_000 }));
@@ -810,15 +808,14 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
     try {
       const { sockets } = trackSockets(); // App 的 WS 实例可寻(断线注入)
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
-      const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
-
-      // —— manual 会话经 UI 真面建立:原生选择器建项目落位 → 展开组 → 组内 + mode 弹层点 manual ——
-      // 项目档案 API 直建(同 G4/G6:pickAndAdd 自动会话会抢占 chat)
+      // 项目档案 render 前直建(同 G4/G6:pickAndAdd 自动会话会抢占 chat)
       await fetch(`http://127.0.0.1:${env.port}/workspace/create`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: env.root }),
       });
-      fireEvent.click(screen.getByRole('button', { name: 'refresh workspaces' }));
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
+
+      // —— manual 会话经 UI 真面建立:展开组 → 组内 + mode 弹层点 manual ——
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 展开组
       fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 }));
       fireEvent.click(await screen.findByRole('menuitem', { name: /manual 手动审批/i }, { timeout: 5_000 }));

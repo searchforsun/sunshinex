@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { errText, pickFolderNative, relTime } from '../ui-util';
 import { t } from '../i18n';
-import { Folder, FolderOpen, Plus, RefreshCw, Settings, SquarePen } from 'lucide-react';
+import { Folder, FolderOpen, Plus, Search, Settings, SquarePen } from 'lucide-react';
 
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
  * 组列表(GET /workspaces):组头(chevron+Folder+slug+会话数)点击展开惰拉 GET /sessions?root=
  * (slug 守卫照搬 Home——openSlugRef 过期应答丢弃);root 缺场历史组禁用不可展开;组内「+」弹
  * mode 菜单(auto/manual)→ newSession(root, mode) 直进;会话行 Attach 两步(newSession 装配壳
- * → attach 播种)→ onOpenSession(sessionId, root)。Projects 分区头「+」开原生文件选择器(选完自动建项目, G10-C11;
+ * → attach 播种)→ onOpenSession(sessionId, root)。Projects 分区头「+」开原生文件选择器(选完自动建项目, G10-C11);品牌行查找钮开项目/会话搜索面板 + 30s 定时自动刷新(G10-C13);
  * Home 的 modal-overlay 结构原样)。连接态显示退役(G10:一体本地,无连接语义可显)。
  * activeRoot 组自动展开(T5 App 壳传当前活动工作区;与手动展开共用同一 openSlug 态)。
  * 样式用 app.css T1 的 sx- 类 + Home 既有测试钩子类(workspace-、ws-、session- 前缀与
@@ -76,6 +76,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [actionError, setActionError] = useState('');
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
   const [menuSlug, setMenuSlug] = useState<string | null>(null);
+  /** 查找面板(G10-C13):项目 + 会话历史搜索 */
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
   /** 已读会话集(本次运行内):点开过的会话不再显示蓝色未读光点;运行中恒显示转圈 */
   const [seenIds, setSeenIds] = useState<ReadonlySet<string>>(() => new Set());
   const markSeen = (id: string): void =>
@@ -109,6 +112,25 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
   useEffect(() => {
     loadWorkspaces();
+  }, [loadWorkspaces]);
+
+  // 查找面板外点收(钮自身走 click 切换,不在收面)
+  useEffect(() => {
+    if (!searchOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target;
+      if (t instanceof Element && t.closest('.sx-side-search') === null && t.closest('[aria-label="search"]') === null) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [searchOpen]);
+
+  // 30s 定时自动刷新(G10-C13:替代手动刷新钮;loadWorkspaces 同刷 Recents)
+  useEffect(() => {
+    const timer = setInterval(() => loadWorkspaces(), 30_000);
+    return () => clearInterval(timer);
   }, [loadWorkspaces]);
 
   /** 拉展开组的会话列表(slug 守卫,Home 照搬):应答到达时 slug 已非当前展开(切组/收起)
@@ -193,6 +215,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           markSeen(journalId);
           markJournal(sessionId, journalId);
           onOpenSession(sessionId, root);
+          loadWorkspaces(); // 点会话即刷新(G10-C13:计数/最近区即时更新)
         },
         (err: unknown) => {
           setBusy(false);
@@ -282,10 +305,72 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     <nav className="sx-menu" aria-label="projects">
       <header className="sx-menu-head">
         <span className="sx-brand">Sunshinex</span>
-        <button type="button" aria-label="refresh workspaces" className="sx-iconbtn" title="刷新" onClick={loadWorkspaces}>
-          <RefreshCw size={16} strokeWidth={1.75} />
+        <button type="button" aria-label="search" className="sx-iconbtn" title={t('Search projects & sessions', '搜索项目与会话')} onClick={() => setSearchOpen((v) => !v)}>
+          <Search size={16} strokeWidth={1.75} />
         </button>
       </header>
+      {searchOpen && (
+        <div className="sx-side-search" role="search" aria-label={t('Search projects & sessions', '搜索项目与会话')}>
+          <input
+            autoFocus
+            value={query}
+            placeholder={t('Search projects & sessions', '搜索项目与会话…')}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setSearchOpen(false);
+            }}
+          />
+          <div className="sx-side-search-list">
+            <div className="sx-search-sec">{t('Projects', '项目')}</div>
+            {(rows ?? [])
+              .filter((r) => query.trim() === '' || wsName(r).toLowerCase().includes(query.trim().toLowerCase()))
+              .map((r) => (
+                <button
+                  key={r.slug}
+                  type="button"
+                  className="sx-search-row"
+                  onClick={() => {
+                    const row = (rows ?? []).find((x) => x.slug === r.slug);
+                    if (row !== undefined && row.root !== undefined) expandGroup(row);
+                    setSearchOpen(false);
+                  }}
+                >
+                  <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                  <span className="sx-search-label">{wsName(r)}</span>
+                  <span className="sx-search-meta">{r.sessionCount}</span>
+                </button>
+              ))}
+            <div className="sx-search-sec">{t('Recent sessions', '会话历史')}</div>
+            {(recents ?? [])
+              .filter((r) => query.trim() === '' || (r.firstUser ?? '').toLowerCase().includes(query.trim().toLowerCase()))
+              .slice(0, 12)
+              .map((r) => {
+                const running = r.id === activeSessionId;
+                return (
+                  <button
+                    key={r.root + '/' + r.id}
+                    type="button"
+                    className="sx-search-row"
+                    title={r.firstUser ?? undefined}
+                    onClick={() => {
+                      if (busy) return;
+                      attachJournal(r.root, r.id);
+                      setSearchOpen(false);
+                    }}
+                  >
+                    {running ? (
+                      <span className="sx-session-dot running" />
+                    ) : !seenIds.has(r.id) ? (
+                      <span className="sx-session-dot unseen" />
+                    ) : null}
+                    <span className="sx-search-label">{r.firstUser ?? '(无摘要)'}</span>
+                    <span className="sx-search-meta">{relTime(r.updatedAt)}</span>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
       <button
         type="button"
         className="sx-new-chat"
