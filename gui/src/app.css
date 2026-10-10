@@ -1534,6 +1534,10 @@ select.sx-setting-select { width: 240px; }
 .user-edit-send { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: 9999px; background: var(--fg); color: var(--fg-on-solid); transition: background var(--dur-basic) var(--ease-enter); }
 .user-edit-send:hover { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }
 
+/* 新条目入场(§8):淡入+4px 上移,每条目挂载一次(key 稳定,流式更新不重触发) */
+@keyframes sx-entry-in { from { opacity: 0; transform: translateY(4px); } }
+.chat .entry { animation: sx-entry-in 0.2s var(--ease-enter); }
+/* 状态行/工具行等已各自带过渡;此处收口:动效一律走 token 曲线,无额外 JS */
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */
 .sx-menu-head {
