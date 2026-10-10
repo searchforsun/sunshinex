@@ -881,7 +881,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-settings-back { border-radius: var(--radius-sm); }
 
 /* ===== G9-B3 会话流(spec §3):用户右胶囊/日期分隔/流区限宽 ===== */
-.entry-user { display: flex; flex-direction: column; align-items: flex-end; font-weight: 400; }
+.entry-user { position: relative; display: flex; flex-direction: column; align-items: flex-end; font-weight: 400; }
 .entry-user .user-bubble {
   max-width: 80%;
   background: var(--bubble-user);
@@ -889,7 +889,16 @@ button:disabled { opacity: 0.5; pointer-events: none; }
   padding: 8px 12px;
 }
 .entry-user .user-bubble blockquote { margin: 0; padding: 0; border: none; }
-.entry-user .user-actions { display: flex; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+/* 复制钮 hover 浮现:绝对定位挂气泡下沿——不占布局高度(原 flex 占位即用户消息"下边距大"的根因) */
+.entry-user .user-actions {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 0;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--dur-basic) var(--ease-enter);
+}
 .entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
 .entry-user .user-action {
   display: inline-flex;

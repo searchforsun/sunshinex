@@ -222,7 +222,8 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
         fireEvent.keyDown(input, { key: 'Enter' });
       };
       const backHome = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: 'back' }));
+        fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
         await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       };
 
@@ -583,7 +584,8 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       await openByPicker();
       await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第一会话目标', '第一会话完成');
-      fireEvent.click(screen.getByRole('button', { name: 'back' }));
+      fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
       await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       await openByPicker();
       await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
@@ -927,7 +929,7 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       expect(tabsByTitle(container, '任务')[0]!.className).toContain('active'); // sx-tab active
       expect(tabsByTitle(container, REL).length).toBe(0); // Diff 标签未开
       // 任务标签体在场:标签体渲染 tabEntry('tasks').render = Board(既有看板面)
-      expect(container.querySelector('.sx-tabbody .board-main')).not.toBeNull();
+      expect(container.querySelector('.sx-tabbody .board-body')).not.toBeNull(); // 空板:容器在场、无占位(G10-C12)
 
       // —— write 域内直写(G7 场景复用)→ done 收束 → 工具条目在场 ——
       const input = screen.getByLabelText('message input');

@@ -3,7 +3,7 @@ import type { MutableRefObject, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  ArrowLeft, ArrowUp, Bot, Brain, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
+  ArrowUp, Bot, Brain, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
   Folder, ListTodo, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -755,9 +755,6 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   return (
     <>
       <header className="chat-topbar">
-        <button type="button" className="back" aria-label="back" title={t('Back to home', '返回首页')} onClick={onBack}>
-          <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
-        </button>
         {titleEditing ? (
           <input
             className="chat-title-input"
@@ -800,6 +797,19 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         </button>
         {moreOpen && (
           <div className="sx-menu-pop chat-more-pop" role="menu" aria-label="chat actions menu">
+            {onBack !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="sx-menuitem"
+                onClick={() => {
+                  setMoreOpen(false);
+                  onBack();
+                }}
+              >
+                {t('Back to home', '返回首页')}
+              </button>
+            )}
             {onFork !== undefined && (
               <button
                 type="button"

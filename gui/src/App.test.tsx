@@ -454,7 +454,8 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(document.querySelector('.session-placeholder')).toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     // 返回:对话面退场 → 欢迎空态(左栏常驻)
-    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
     await screen.findByLabelText('welcome');
     expect(screen.queryByLabelText('message input')).toBeNull();
     expect(screen.getByRole('button', GROUP_HEAD)).toBeDefined();
@@ -476,7 +477,8 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(conn.sessionSubmitCalls).toEqual([['s1', 's1 目标']]);
     expect(screen.getByText('s1 目标')).toBeDefined();
     // —— back → welcome(Chat 卸毁:s1 本地态随组件销毁;左栏组仍展开——壳常驻)——
-    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
     await screen.findByLabelText('welcome');
     // —— s2:FakeConn 下一会话号;组已展开(常驻),会话行直点 ——
     conn.nextSessionId = 's2';
@@ -888,7 +890,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     const { conn, unmount } = await enterChat();
     // G8a:会话缺省开「任务」单例页且活动——Board 看板面即右栏标签体;Chat 恒中栏(输入面常驻)
     expect(document.querySelector('.sx-tab[title="任务"]')?.classList.contains('active')).toBe(true);
-    expect(screen.getByLabelText('board')).toBeDefined();
+    expect(document.querySelector('.board-body')).not.toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // Chat 常驻:开标签不重播种
     // 「+」菜单开文件标签(无参 file → 标签条第二页且活动):Files 预览面
@@ -900,7 +902,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
     // 切回「任务」标签:Board 回归(仍零重播种)
     fireEvent.click(screen.getByRole('button', { name: '任务' }));
-    expect(screen.getByLabelText('board')).toBeDefined();
+    expect(document.querySelector('.board-body')).not.toBeNull();
     expect(conn.snapshotCalls).toHaveLength(1);
     unmount();
   });
@@ -1006,7 +1008,8 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     openTerminal();
     await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 记账落定(uid→p1)
     // backHome:会话切走不 kill——pty 生命周期归标签关闭链,tabStates 每会话保留(spec §1)
-    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
     await screen.findByLabelText('welcome');
     expect(conn.killPtyCalls).toEqual([]);
     // 重进同会话(journal 重挂 s1):终端标签还原 → 重挂走重连径(记账命中,不重开 pty)
@@ -1029,7 +1032,7 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     // 切到「任务」:TerminalTab 卸载——socket dispose 但不 kill(pty 服务侧存活)
     fireEvent.click(screen.getByRole('button', { name: '任务' }));
     expect(screen.queryByText('终端渲染需要真浏览器窗口')).toBeNull(); // 终端面退场(卸载)
-    expect(screen.getByLabelText('board')).toBeDefined();
+    expect(document.querySelector('.board-body')).not.toBeNull();
     expect(conn.killPtyCalls).toEqual([]); // 卸载≠kill
     // 切回「终端」:重挂走重连径(ptyIdFor 命中既有记账)——openPty 计数不变,降级面照常
     fireEvent.click(screen.getByRole('button', { name: '终端' }));
@@ -1408,11 +1411,11 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
   const taskCreated = (id: string, title: string, dependsOn: string[] = []): SessionEvent =>
     ev('task-created', undefined, { taskId: id, title, spec: 's', dependsOn });
 
-  it('任务页默认在场(空板占位);开文件标签再切回,Board 回归(Chat 恒挂不重播种)', async () => {
+  it('任务页默认在场(空板不渲染占位);开文件标签再切回,Board 回归(Chat 恒挂不重播种)', async () => {
     const { conn, unmount } = await enterChat();
     // G8a:右栏缺省「任务」页——Board 空板占位直接在场;Chat 恒中栏(输入面常驻)
-    expect(screen.getByLabelText('board')).toBeDefined();
-    expect(screen.getByText(/任务板为空/)).toBeDefined();
+    expect(document.querySelector('.board-body')).not.toBeNull();
+    expect(document.querySelector('.board-main')).toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // 播种恰一次
     // 开文件标签(任务失活)→ 切回「任务」标签:标签体随活动切换,零重播种
@@ -1420,7 +1423,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
     expect(screen.queryByLabelText('board')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '任务' }));
-    expect(screen.getByLabelText('board')).toBeDefined();
+    expect(document.querySelector('.board-body')).not.toBeNull();
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
     unmount();
   });
@@ -1444,7 +1447,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
   it('他会话帧不进板投影(sessionRef 过滤在板面前)', async () => {
     const { conn, unmount } = await enterChat();
     fireOther(conn, taskCreated('t9', '他会话任务'));
-    expect(screen.getByText(/任务板为空/)).toBeDefined();
+    expect(document.querySelector('.board-main')).toBeNull();
     unmount();
   });
 
@@ -1477,8 +1480,8 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
     fireResetSession(conn, 's1'); // 本会话:board/delegations 清(reset 语义 = swap 新 Harness,旧板作废;
     // 重播种快照板再经 onSeeded 回填——默认空快照,空态维持)
-    await waitFor(() => expect(screen.getByText(/任务板为空/)).toBeDefined());
-    expect(screen.getByLabelText('delegations').textContent).not.toContain('dev');
+    await waitFor(() => expect(document.querySelector('.board-main')).toBeNull());
+    expect(screen.queryByLabelText('delegations')).toBeNull(); // 清空后整节不渲染
     unmount();
   });
 
@@ -1488,18 +1491,20 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fire(conn, taskCreated('t1', 'Demo'));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
     // —— back → 开 s2:openSession 清板投影 + s2 快照(空)回填——无 s1 残留(左栏组仍展开,会话行直点)——
-    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's2';
     fireEvent.click(screen.getByTitle('打开会话'));
     await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    expect(screen.getByText(/任务板为空/)).toBeDefined(); // s2 快照空板(而非 s1 残留)
+    expect(document.querySelector('.board-main')).toBeNull(); // s2 快照空板(而非 s1 残留)
     // —— 重开 s1:快照带板 → onSeeded 回填,任务页即快照权威态(无需事件帧)——
     conn.snapshotResp = snapshotOf({
       board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Demo', spec: '', dependsOn: [], ts: 1 }),
     });
-    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
+fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's1';
     fireEvent.click(screen.getByTitle('打开会话'));
@@ -1533,8 +1538,8 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }), 8);
     fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev' }), 9);
     // 窗内不投:任务页默认在场,空板 + 委派空(帧在 boardPendingRef 缓冲)
-    expect(screen.getByText(/任务板为空/)).toBeDefined();
-    expect(screen.getByLabelText('delegations').textContent).not.toContain('dev');
+    expect(document.querySelector('.board-main')).toBeNull();
+    expect(screen.queryByLabelText('delegations')).toBeNull(); // 窗内帧缓冲,委派未投
     // 种子:lastSeq 5;快照板 t1(Base,门已 resolved——seq 3 的效果已在快照内)
     conn.snapshotResp = snapshotOf({
       lastSeq: 5,
@@ -1564,7 +1569,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     fireResetSession(conn, 's1'); // 本会话 reset:板投影+缓冲清 → Chat reseed(种子仍 held)
     conn.releaseSnapshot();
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    expect(screen.getByText(/任务板为空/)).toBeDefined(); // Ghost 未重放
+    expect(document.querySelector('.board-main')).toBeNull(); // Ghost 未重放(空板不渲染)
     unmount();
   });
 

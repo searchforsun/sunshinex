@@ -88,9 +88,11 @@ describe('Board:List 视图', () => {
     expect(screen.queryByRole('button', { name: 'Approve t2' })).toBeNull();
   });
 
-  it('空板:占位提示(List/DAG 两视图同防御)', () => {
-    render(<Board board={boardOf([])} delegations={[]} team={[]} onReview={noop} onBack={noop} />);
-    expect(screen.getByText(/任务板为空/)).toBeDefined();
+  it('空板:整块不渲染(G10-C12 空态门禁——无工具条/无占位)', () => {
+    const { container } = render(<Board board={boardOf([])} delegations={[]} team={[]} onReview={noop} onBack={noop} />);
+    expect(container.querySelector('.board-topbar')).toBeNull();
+    expect(container.querySelector('.board-empty')).toBeNull();
+    expect(container.querySelector('.board-body')).not.toBeNull(); // 容器在,内容空
   });
 });
 

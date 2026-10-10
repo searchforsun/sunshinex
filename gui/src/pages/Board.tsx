@@ -194,57 +194,71 @@ export function Board({ board, delegations, team, onReview, onBack }: BoardProps
     setSelectedId((cur) => (cur === taskId ? null : taskId));
   };
 
+  // 空态门禁(G10-C12):无任务时整块(List/DAG 工具条+空占位)不渲染;team/delegations 全空时侧栏也不渲染
+  const hasTasks = Object.keys(board.tasks).length > 0;
+  const hasSide = team.length > 0 || delegations.length > 0;
+
   return (
     <>
-      <header className="board-topbar">
-        {onBack !== undefined && (
-          <button type="button" className="back" onClick={onBack}>
-            ← 返回 Chat
-          </button>
-        )}
-        <div className="view-toggle" role="group" aria-label="board view">
-          <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
-            List
-          </button>
-          <button type="button" aria-pressed={view === 'dag'} className={view === 'dag' ? 'active' : ''} onClick={() => setView('dag')}>
-            DAG
-          </button>
-        </div>
-      </header>
-      <div className="board-body">
-        <main className="board-main" aria-label="board">
-          {view === 'list' ? (
-            <BoardList board={board} onReview={onReview} />
-          ) : (
-            <>
-              <BoardDag board={board} selectedId={selectedId} onSelect={selectNode} />
-              {selected !== null && <TaskDetail task={selected} />}
-            </>
+      {hasTasks && (
+        <header className="board-topbar">
+          {onBack !== undefined && (
+            <button type="button" className="back" onClick={onBack}>
+              ← 返回 Chat
+            </button>
           )}
-        </main>
-        <aside className="team-sidebar" aria-label="team">
-          <h3>team</h3>
-          {team.length === 0 && <p className="team-empty">无在册 teammate。</p>}
-          <ul className="team-list">
-            {team.map((m) => (
-              <li key={m.name} className="teammate">
-                <span className={`team-dot${m.busy ? ' busy' : ''}`} aria-label={m.busy ? 'busy' : 'free'} />
-                {m.name}
-              </li>
-            ))}
-          </ul>
-          <section className="delegations" aria-label="delegations">
-            <h3>delegations</h3>
-            {delegations.length === 0 && <p className="delegations-empty">暂无委派。</p>}
-            <ul className="delegation-list">
-              {delegations.map((d) => (
-                <li key={d.id} className={`delegation delegation-${d.status}`}>
-                  {`${d.label} [${d.status}]`}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </aside>
+          <div className="view-toggle" role="group" aria-label="board view">
+            <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
+              List
+            </button>
+            <button type="button" aria-pressed={view === 'dag'} className={view === 'dag' ? 'active' : ''} onClick={() => setView('dag')}>
+              DAG
+            </button>
+          </div>
+        </header>
+      )}
+      <div className="board-body">
+        {hasTasks && (
+          <main className="board-main" aria-label="board">
+            {view === 'list' ? (
+              <BoardList board={board} onReview={onReview} />
+            ) : (
+              <>
+                <BoardDag board={board} selectedId={selectedId} onSelect={selectNode} />
+                {selected !== null && <TaskDetail task={selected} />}
+              </>
+            )}
+          </main>
+        )}
+        {hasSide && (
+          <aside className="team-sidebar" aria-label="team">
+            {team.length > 0 && (
+              <>
+                <h3>team</h3>
+                <ul className="team-list">
+                  {team.map((m) => (
+                    <li key={m.name} className="teammate">
+                      <span className={`team-dot${m.busy ? ' busy' : ''}`} aria-label={m.busy ? 'busy' : 'free'} />
+                      {m.name}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {delegations.length > 0 && (
+              <section className="delegations" aria-label="delegations">
+                <h3>delegations</h3>
+                <ul className="delegation-list">
+                  {delegations.map((d) => (
+                    <li key={d.id} className={`delegation delegation-${d.status}`}>
+                      {`${d.label} [${d.status}]`}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </aside>
+        )}
       </div>
     </>
   );
