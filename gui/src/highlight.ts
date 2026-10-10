@@ -66,3 +66,14 @@ export function highlightCode(code: string, filename?: string): string {
     return escapeHtml(code);
   }
 }
+
+/** 围栏语言 → 高亮 HTML(G11 §5.2,Chat CodeBlock 消费):语言名直查(hljs 全量包,表外/未注册
+ *  回落 plaintext);异常防御性回落转义原文——与 highlightCode 同注入面纪律 */
+export function highlightByLang(code: string, lang?: string): string {
+  try {
+    const name = lang !== undefined && hljs.getLanguage(lang) !== undefined ? lang : 'plaintext';
+    return hljs.highlight(code, { language: name }).value;
+  } catch {
+    return escapeHtml(code);
+  }
+}

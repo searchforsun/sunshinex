@@ -483,11 +483,11 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .files-truncated { flex: none; align-self: flex-start; margin: 8px 12px; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 1px 10px; font-size: 11px; }
 .files-view { flex: 1; min-height: 0; margin: 8px 12px; padding: 10px 12px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font: 12px var(--font-mono); overflow: auto; }
 /* hljs 令牌着色(无主题 css 导入——令牌口径就地取色,暗底可读;plaintext 无 span 零牵连) */
-.files-view .hljs-keyword, .files-view .hljs-selector-tag, .files-view .hljs-built_in { color: var(--syntax-keyword); }
-.files-view .hljs-string, .files-view .hljs-attr, .files-view .hljs-attribute { color: var(--syntax-string); }
-.files-view .hljs-number, .files-view .hljs-literal { color: var(--syntax-literal); }
-.files-view .hljs-comment { color: var(--syntax-comment); font-style: italic; }
-.files-view .hljs-title, .files-view .hljs-name { color: var(--syntax-name); }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: var(--syntax-keyword); }
+.hljs-string, .hljs-attr, .hljs-attribute { color: var(--syntax-string); }
+.hljs-number, .hljs-literal { color: var(--syntax-literal); }
+.hljs-comment { color: var(--syntax-comment); font-style: italic; }
+.hljs-title, .hljs-name { color: var(--syntax-name); }
 
 /* === DirPicker 模态(modal-overlay 遮罩半透黑;modal-body=bg-1+10px 圆+投影) === */
 .modal-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(1, 4, 9, 0.65); display: flex; align-items: center; justify-content: center; }
@@ -1482,6 +1482,16 @@ select.sx-setting-select { width: 240px; }
 .entry-md-body { min-width: 0; flex: 1; }
 .entry-md-body > :last-child { margin-bottom: 0; }
 .entry > .entry-md:last-child > .entry-md-body > :last-child { margin-bottom: 0; }
+
+/* 代码块卡(§5.2):禁折行横滚+头部栏;复制钮 hover 浮现 */
+.code-block { margin: 8px 0; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
+.code-head { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 6px 0 12px; }
+.code-lang { font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary); }
+.code-head .sx-tip { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.code-block:hover .code-head .sx-tip, .code-head .sx-tip:focus-visible { opacity: 1; }
+.code-block pre { margin: 0; padding: 12px 14px; background: transparent; border: none; border-radius: 0; overflow-x: auto; }
+.code-block pre code { display: block; font: 12.5px/1.7 var(--font-mono); white-space: pre; overflow-wrap: normal; }
+/* hljs 令牌泛化(原 .files-view 前缀收敛为全局——hljs 类只在代码上下文出现) */
 
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */

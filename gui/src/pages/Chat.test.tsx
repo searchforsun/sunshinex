@@ -225,3 +225,14 @@ describe('系统行图标(G11 §4)', () => {
     expect(document.querySelector('.entry-error .entry-icon svg')).not.toBeNull();
   });
 });
+
+describe('代码块 CodeBlock(G11 §5.2)', () => {
+  it('围栏代码卡:语言标+hljs 高亮+复制写剪贴板', async () => {
+    mountChat([{ seq: 1, ts: DAY1, kind: 'assistant', md: ['```ts', 'const a = 1;', '```'].join('\n') }]);
+    await waitFor(() => expect(document.querySelector('.code-block')).not.toBeNull());
+    expect(document.querySelector('.code-lang')?.textContent).toBe('ts');
+    expect(document.querySelector('.code-block code .hljs-keyword')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'copy code' }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('const a = 1;');
+  });
+});

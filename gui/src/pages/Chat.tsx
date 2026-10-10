@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,6 +11,7 @@ import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapsh
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
 import { DiffPanel } from '../diff-panel';
+import { highlightByLang } from '../highlight';
 import { Mermaid } from '../Mermaid';
 import { CommandPalette, filterCommands } from '../CommandPalette';
 import type { CmdItem } from '../CommandPalette';
@@ -317,16 +318,68 @@ function AskCard({ req, onSubmit, onDismiss }: { req: GuiAskReq; onSubmit: (answ
   );
 }
 
-/** markdown 渲染组件面(G10-C3c):mermaid 围栏 → 图组件(懒加载,失败回落原文);其余走默认 pre */
+/** markdown 渲染组件面(G11 §5):pre 分流——mermaid 围栏→Mermaid(懒加载/失败回落,Task 9 起
+ *  带放大/复制);其余围栏→CodeBlock(hljs+头部);table→横滚容器(§5.3) */
 const mdComponents = {
   pre(props: { children?: ReactNode }) {
     const child = Array.isArray(props.children) ? props.children[0] : props.children;
-    const cls = (child as { props?: { className?: string } } | null)?.props?.className ?? '';
-    const code = (child as { props?: { children?: unknown } } | null)?.props?.children;
-    if (cls.includes('language-mermaid')) return <Mermaid chart={String(code ?? '')} />;
-    return <pre>{props.children}</pre>;
+    const el = child as { props?: { className?: string; children?: unknown } } | null;
+    const cls = el?.props?.className ?? '';
+    const raw = el?.props?.children;
+    // react-markdown 保留围栏末行换行(value 尾随 \n)——剥掉一个尾换行,复制面/高亮面拿净代码
+    const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
+    if (cls.includes('language-mermaid')) return <Mermaid chart={code} />;
+    const m = /language-([\w-]+)/.exec(cls);
+    return <CodeBlock code={code} lang={m?.[1]} />;
+  },
+  table(props: { children?: ReactNode }) {
+    return (
+      <div className="table-wrap">
+        <table>{props.children}</table>
+      </div>
+    );
   },
 } as const;
+
+/** 代码块卡(G11 §5.2):surface-code 面+头部栏(语言名+复制钮 hover 浮现)+hljs 高亮;
+ *  代码禁折行(white-space:pre+横滚)——排版错乱主因即旧版强折行。memo 按 code+lang,
+ *  流式增量帧仅末块重算 */
+const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
+  const html = useMemo(() => highlightByLang(code, lang), [code, lang]);
+  const copy = (): void => {
+    navigator.clipboard?.writeText(code).then(
+      () => setCopied(true),
+      () => undefined,
+    );
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="code-block">
+      <div className="code-head">
+        <span className="code-lang">{lang ?? ''}</span>
+        <TipButton
+          className="sx-tip-right"
+          tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+          label="copy code"
+          icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+          onClick={copy}
+        />
+      </div>
+      <pre>
+        <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+      </pre>
+    </div>
+  );
+});
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
