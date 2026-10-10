@@ -1526,6 +1526,14 @@ select.sx-setting-select { width: 240px; }
 .run-footer .sx-tip { color: var(--fg-tertiary); }
 .run-stats { display: inline-flex; gap: 10px; margin-left: auto; font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+/* 用户编辑卡(§7):composer 同款浮卡(elevated+radius-composer+海拔),占满流区宽 */
+.user-edit-card { display: flex; flex-direction: column; gap: 6px; width: 100%; background: var(--surface-elevated); border-radius: var(--radius-composer); box-shadow: var(--elev-composer); padding: 12px 14px 10px; animation: sx-fade-in var(--dur-basic) var(--ease-enter); }
+.user-edit-input { width: 100%; min-height: 44px; background: transparent; border: none; outline: none; color: var(--fg); font: inherit; resize: none; }
+.user-edit-input::placeholder { color: var(--fg-tertiary); opacity: 0.6; }
+.user-edit-foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.user-edit-send { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: 9999px; background: var(--fg); color: var(--fg-on-solid); transition: background var(--dur-basic) var(--ease-enter); }
+.user-edit-send:hover { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }
+
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */
 .sx-menu-head {

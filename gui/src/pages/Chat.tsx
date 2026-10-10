@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, GitFork, Globe, History,
-  Info, Folder, ListTodo, Maximize2, MessageSquare, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
+  Info, Folder, ListTodo, Maximize2, MessageSquare, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
@@ -547,15 +547,20 @@ function RewindMenu({ onAnchors, onPick }: { onAnchors: () => Promise<Array<{ tu
 }
 
 /** 用户条目(Codex 形,G9 spec §3.1):右对齐胶囊(前景 5%/8% 底)+ 下方 hover 浮现复制钮;
- *  Edit 钮不做(无会话回退功能,spec §0 非目标)。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
+ *  G11 §7 增编辑卡:hover 浮现 Edit 钮,点击气泡原位变 composer 同款浮卡(textarea 预填剥 `> `
+ *  原文+取消/发送),发送经 onSend(=Chat 的 submitText,与 composer 同一提交路径)发新消息,
+ *  Esc 取消回气泡。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
  *  复制失败(权限等)钮 1.5s 示「未复制」tertiary 态,不弹错。memo 同 ChatEntryView——流式帧
- *  只重渲染流式条(未包 memo 时每帧带动 user 条 md 重渲染,计数回归被击穿)。 */
+ *  只重渲染流式条(未包 memo 时每帧带动 user 条 md 重渲染,计数回归被击穿);onSend 由调用面
+ *  传 useCallback 稳定引用,memo 语义保持。 */
 interface UserEntryOpts {
   /** 回到此轮(G10-C4 /rewind 底层):拉锚点+确认回退;未配不渲染钮(测试桩免配) */
   fetchAnchors?: () => Promise<Array<{ turn: number; text: string }>>;
   onRewind?: (turn: number) => void;
+  /** §7 编辑卡发送回调(=Chat.submitText):未配不渲染 Edit 钮(测试桩免配) */
+  onSend?: (text: string) => void;
 }
-const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {
+const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [rewindOpen, setRewindOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -574,6 +579,49 @@ const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewin
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied('idle'), 1500);
   };
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const openEdit = (): void => {
+    setDraft(entry.md.replace(/^> ?/gm, ''));
+    setEditing(true);
+  };
+  const sendEdit = (): void => {
+    const text = draft.trim();
+    setEditing(false);
+    if (text !== '') onSend?.(text);
+  };
+  if (editing) {
+    return (
+      <div className="entry entry-user">
+        <div className="user-edit-card">
+          <textarea
+            aria-label="edit message"
+            className="user-edit-input"
+            autoFocus
+            value={draft}
+            rows={Math.min(6, Math.max(1, (draft.match(/\n/g) ?? []).length + 1))}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setEditing(false);
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                sendEdit();
+              }
+            }}
+          />
+          <div className="user-edit-foot">
+            <TipButton tip={t('Cancel', '取消')} label="cancel edit" icon={<X size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setEditing(false)} />
+            <button type="button" className="user-edit-send" aria-label="send edit" title={t('Send', '发送')} onClick={sendEdit}>
+              <ArrowUp size={14} strokeWidth={2.25} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="entry entry-user">
       <div className="user-bubble">
@@ -587,6 +635,9 @@ const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewin
           icon={copied === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
           onClick={copy}
         />
+        {onSend !== undefined && (
+          <TipButton className="user-action" tip={t('Edit', '编辑')} label="Edit" icon={<PenLine size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={openEdit} />
+        )}
         {fetchAnchors !== undefined && onRewind !== undefined && (
           <TipButton
             className="user-action"
@@ -967,24 +1018,30 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     );
   };
 
+  /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
+   *  本地回显新条,失败倒 error 条;空文本忽略 */
+  const submitText = useCallback(
+    (text: string): void => {
+      const trimmed = text.trim();
+      if (trimmed === '') return;
+      setChat((c) => appendUserMessage(c, trimmed));
+      let req: Promise<void>;
+      if (running) req = conn.sessionSteer(sessionId, trimmed);
+      else if (sessMode === 'plan') req = conn.runCommand(sessionId, `/plan ${trimmed}`);
+      else req = conn.sessionSubmit(sessionId, trimmed);
+      void req.catch((err: unknown) => {
+        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
+      });
+    },
+    [conn, sessionId, running, sessMode],
+  );
+
   /** Enter 分流:idle 提交 / running 插话;本地 user 回显(`> text`),失败倒 error 条 */
   const send = (): void => {
     const text = input.trim();
     if (text === '') return;
-    setChat((c) => appendUserMessage(c, text));
     setInput('');
-    let req: Promise<void>;
-    if (running) {
-      req = conn.sessionSteer(sessionId, text);
-    } else if (sessMode === 'plan') {
-      // 计划模式(G10-C4):提交走 /plan 流程(规划→确认卡→逐项执行;确认卡复用既有 ask 通道)
-      req = conn.runCommand(sessionId, `/plan ${text}`);
-    } else {
-      req = conn.sessionSubmit(sessionId, text);
-    }
-    void req.catch((err: unknown) => {
-      setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-    });
+    submitText(text);
   };
 
   const interrupt = (): void => {
@@ -1161,7 +1218,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 onOpenDiff={onOpenDiff}
               />
             ) : entry.kind === 'user' ? (
-              <UserEntryView key={entry.key} entry={entry} />
+              <UserEntryView key={entry.key} entry={entry} onSend={submitText} />
             ) : entry.kind === 'thinking' ? (
               <ThinkingEntryView key={entry.key} entry={entry} />
             ) : entry.kind === 'assistant' || entry.kind === 'notice' || entry.kind === 'error' ? (

@@ -290,3 +290,24 @@ describe('run 尾部操作条(G11 §6)', () => {
     expect(document.querySelector('.run-footer')).toBeNull();
   });
 });
+
+describe('用户气泡编辑卡(G11 §7)', () => {
+  it('编辑:预填原文;发送=新消息(sessionSubmit+新回显条);Esc 取消回气泡', async () => {
+    const sessionSubmit = vi.fn(() => Promise.resolve());
+    const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '> 你好' }]);
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await screen.findByText('你好');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const box = screen.getByRole('textbox', { name: 'edit message' }) as HTMLTextAreaElement;
+    expect(box.value).toBe('你好');
+    fireEvent.change(box, { target: { value: '你好,再来一次' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
+    expect(sessionSubmit).toHaveBeenCalledWith('s1', '你好,再来一次');
+    await screen.findAllByText('你好,再来一次');
+    // 发送后流内已有两条 user 气泡(原条+新回显条),各带 Edit 钮——getByRole 多元素会抛,取首条
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'edit message' }), { key: 'Escape' });
+    expect(screen.queryByRole('textbox', { name: 'edit message' })).toBeNull();
+  });
+});
