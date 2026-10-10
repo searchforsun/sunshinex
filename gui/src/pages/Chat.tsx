@@ -394,21 +394,34 @@ function TipButton({ tip, label, icon, onClick, className }: { tip: string; labe
   );
 }
 
-/** 思考链折叠行(G10-C3,Codex「Thought for Ns」同形):收起=「思考 Ns/思考中…」,展开=思考文本井 */
+/** 思考链折叠行(G11 §3):折叠=Brain 图标+「思考中…/思考 Ns」+末行内联预览(尾锚定,新内容自右
+ *  推入旧文左流=「往前流动」,左缘 mask 渐隐);展开=全文内滚容器(streaming 时 effect 逐帧吸底,
+ *  直设 scrollTop 不平滑——逐 token 跟手)。展开/折叠 grid-rows 过渡(同工具行公式) */
 const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const streaming = entry.streaming === true;
+  const lastLine = entry.md.split('\n').filter((l) => l.trim() !== '').at(-1) ?? '';
+  useEffect(() => {
+    if (open && streaming && scrollRef.current !== null) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [open, streaming, entry.md]);
   return (
-    <div className="entry entry-thinking">
+    <div className={`entry entry-thinking${open ? ' open' : ''}`}>
       <button type="button" className="thinking-summary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <ChevronDown
-          size={12}
-          strokeWidth={1.75}
-          aria-hidden="true"
-          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-basic) var(--ease-enter)' }}
-        />
-        {entry.streaming === true ? t('Thinking…', '思考中…') : entry.seconds !== undefined ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}s`) : t('Thought', '思考')}
+        <ChevronDown className="think-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
+        <Brain size={12} strokeWidth={1.75} aria-hidden="true" />
+        <span className="thinking-label">
+          {streaming ? t('Thinking…', '思考中…') : entry.seconds !== undefined ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}s`) : t('Thought', '思考')}
+        </span>
+        {!open && lastLine !== '' && <span className="thinking-preview">{lastLine}</span>}
       </button>
-      {open && <pre className="thinking-detail">{entry.md}</pre>}
+      <div className="think-body">
+        <div className="think-body-inner">
+          <div className="thinking-scroll" ref={scrollRef}>
+            <pre className="thinking-detail">{entry.md}</pre>
+          </div>
+        </div>
+      </div>
     </div>
   );
 });

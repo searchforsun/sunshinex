@@ -1451,9 +1451,10 @@ select.sx-setting-select { width: 240px; }
 /* 条目左对齐统一(§2):正文/工具/思考同一 x 起点 */
 .entry { padding: 4px 8px; }
 .entry-tool { padding: 2px 8px; }
-/* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8) */
-.tool-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter); }
-.entry-tool.open .tool-body { grid-template-rows: 1fr; opacity: 1; }
+/* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8);visibility 折叠尾切(T4 评审可达性补丁:
+ * 折叠态内容不可聚焦/不入可达性树,过渡收尾才隐——动画期仍可见,零布局移) */
+.tool-body { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }
+.entry-tool.open .tool-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
 .tool-body-inner { min-height: 0; overflow: hidden; }
 /* Input/Output 双段(§2):段头小标+各段 280px 内滚 */
 .tool-io { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 2px; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); }
@@ -1461,6 +1462,20 @@ select.sx-setting-select { width: 240px; }
 .tool-io-pre { margin: 0; max-height: 280px; overflow: auto; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* write diff 面同加内滚(§2) */
 .entry-tool .tool-detail .diff-cols { max-height: 280px; overflow: auto; }
+/* 思考行(§3):预览尾锚定(direction:rtl 流动)+左缘渐隐;展开 grid-rows+320px 内滚吸底 */
+.entry-thinking { padding: 2px 8px; }
+.thinking-summary { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg-tertiary); font-size: 12px; }
+.thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }
+.think-chevron { flex: none; transition: transform var(--dur-basic) var(--ease-enter); }
+.entry-thinking.open .think-chevron { transform: rotate(180deg); }
+.thinking-label { flex: none; }
+.thinking-preview { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; direction: rtl; text-align: left; -webkit-mask-image: linear-gradient(90deg, transparent, #000 28px); mask-image: linear-gradient(90deg, transparent, #000 28px); }
+/* visibility 折叠尾切(T4 评审可达性补丁,同 .tool-body):折叠态内容不可聚焦/不入可达性树 */
+.think-body { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }
+.entry-thinking.open .think-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
+.think-body-inner { min-height: 0; overflow: hidden; }
+.thinking-scroll { max-height: 320px; overflow-y: auto; margin-top: 4px; }
+.thinking-scroll .thinking-detail { margin: 0; }
 
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */

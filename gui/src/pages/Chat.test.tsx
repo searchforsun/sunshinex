@@ -188,3 +188,24 @@ describe('工具行展开 Input/Output(G11 §2)', () => {
     expect(document.querySelector('.tool-io')?.textContent).toContain('out2');
   });
 });
+
+describe('思考行(G11 §3)', () => {
+  it('折叠预览示末个非空行;展开有 open 类与内滚容器', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'reasoning', text: '第一行\n第二行', ts: Date.now() });
+    expect(document.querySelector('.thinking-preview')?.textContent).toBe('第二行');
+    expect(document.querySelector('.think-body')).not.toBeNull();
+    fireEvent.click(document.querySelector('.thinking-summary')!);
+    expect(document.querySelector('.entry-thinking.open')).not.toBeNull();
+    expect(document.querySelector('.thinking-scroll')).not.toBeNull();
+    expect(document.querySelector('.thinking-detail')?.textContent).toContain('第一行');
+  });
+
+  it('Brain 图标在场', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'reasoning', text: '想', ts: Date.now() });
+    expect(document.querySelector('.entry-thinking .thinking-summary svg')).not.toBeNull();
+  });
+});
