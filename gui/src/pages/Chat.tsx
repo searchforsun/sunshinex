@@ -906,10 +906,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         ])}
       </main>
       <footer className="composer">
-        <div className="choose-project-bar" aria-label="session project">
-          <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-          <span>{root === undefined || root === '' ? 'default' : root.split(/[\/]/).filter(Boolean).pop()}</span>
-        </div>
+        {/* G10-C12:项目条是新对话(欢迎页)专属——会话中 composer 即正常形态,不再外挂项目条 */}
         {/* G8d T5 输入面 textarea 自增高:rows 随内容换行数 1-6 派生(state 单源,清空/提交自然回 1);
          *  Enter 提交 / Shift+Enter 换行(不 preventDefault——换行是 textarea 默认行为)。
          *  G9-B4(spec §4):浮卡容器(elevated 面+三层海拔+22px 超椭圆渐进)在 CSS;此处只分结构
