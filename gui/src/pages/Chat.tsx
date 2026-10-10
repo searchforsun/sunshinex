@@ -440,9 +440,11 @@ function fmtTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
 }
 
-/** run 状态行(G11 §1.2):streaming=Working(旋转环+1s tick+会话 tokens;不经 memo——tick 自驱动);
- *  封段=✓ Worked for Xs 淡灰保留。种子历史无 run 条,重连后自下一轮 model-start 恢复(spec §0) */
-function RunEntryView({ entry, tokens }: { entry: ChatEntry; tokens: number }): JSX.Element {
+/** run 状态行(G11 §1.2):streaming=Working(旋转环+1s tick+会话 tokens);封段=✓ Worked for Xs 淡灰
+ *  保留。memo 包裹:sealed 行 entry/tokens 双稳定→不随 token 帧重渲;tick 是组件内部 state 自驱动,
+ *  memo 不影响;tokens 变化(usage 帧)仍重渲(期望行为)。种子历史无 run 条,重连后自下一轮
+ *  model-start 恢复(spec §0) */
+const RunEntryView = memo(function RunEntryView({ entry, tokens }: { entry: ChatEntry; tokens: number }): JSX.Element {
   const [, setTick] = useState(0);
   const streaming = entry.streaming === true;
   useEffect(() => {
@@ -463,11 +465,12 @@ function RunEntryView({ entry, tokens }: { entry: ChatEntry; tokens: number }): 
     <div className="entry entry-run live" role="status" aria-label="run status">
       <span className="run-spinner" aria-hidden="true" />
       <span>{t('Working', '运行中')}</span>
-      <span className="run-meta">{runElapsed(elapsed)}</span>
-      <span className="run-meta">{fmtTokens(tokens)}</span>
+      {/* 耗时/tokens 每秒变,读屏会整行每秒重播——视觉辅助标 aria-hidden,主文本「Working」保持可播报(终审 Minor-2) */}
+      <span className="run-meta" aria-hidden="true">{runElapsed(elapsed)}</span>
+      <span className="run-meta" aria-hidden="true">{fmtTokens(tokens)}</span>
     </div>
   );
-}
+});
 
 /** 统一图标钮(G11 §8):纯图标 + data-tip Tooltip(视觉层)+ aria-label(可达性/查询锚)。
  *  不用原生 title;复制成功反馈由调用面换 icon/tip,本组件无状态 */
@@ -549,7 +552,7 @@ function RewindMenu({ onAnchors, onPick }: { onAnchors: () => Promise<Array<{ tu
 /** 用户条目(Codex 形,G9 spec §3.1):右对齐胶囊(前景 5%/8% 底)+ 下方 hover 浮现复制钮;
  *  G11 §7 增编辑卡:hover 浮现 Edit 钮,点击气泡原位变 composer 同款浮卡(textarea 预填剥 `> `
  *  原文+取消/发送),发送经 onSend(=Chat 的 submitText,与 composer 同一提交路径)发新消息,
- *  Esc 取消回气泡。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
+ *  成功才关卡(失败保卡保草稿,spec §9),Esc 取消回气泡。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
  *  复制失败(权限等)钮 1.5s 示「未复制」tertiary 态,不弹错。memo 同 ChatEntryView——流式帧
  *  只重渲染流式条(未包 memo 时每帧带动 user 条 md 重渲染,计数回归被击穿);onSend 由调用面
  *  传 useCallback 稳定引用,memo 语义保持。 */
@@ -557,8 +560,9 @@ interface UserEntryOpts {
   /** 回到此轮(G10-C4 /rewind 底层):拉锚点+确认回退;未配不渲染钮(测试桩免配) */
   fetchAnchors?: () => Promise<Array<{ turn: number; text: string }>>;
   onRewind?: (turn: number) => void;
-  /** §7 编辑卡发送回调(=Chat.submitText):未配不渲染 Edit 钮(测试桩免配) */
-  onSend?: (text: string) => void;
+  /** §7 编辑卡发送回调(=Chat.submitText,Promise:void:resolve 关卡,reject 保卡保草稿——
+   *  spec §9 提交失败草稿不丢):未配不渲染 Edit 钮(测试桩免配) */
+  onSend?: (text: string) => Promise<void>;
 }
 const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
@@ -587,8 +591,20 @@ const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewin
   };
   const sendEdit = (): void => {
     const text = draft.trim();
-    setEditing(false);
-    if (text !== '') onSend?.(text);
+    if (text === '') {
+      setEditing(false); // 空文本:关卡不发(现状保持)
+      return;
+    }
+    const result = onSend?.(text);
+    if (result === undefined) {
+      setEditing(false); // 未配 onSend 的测试桩:直接关卡
+      return;
+    }
+    // 成功才关卡;失败保卡保草稿(spec §9:提交失败草稿不丢,错误条已由 submitText 落)
+    void result.then(
+      () => setEditing(false),
+      () => undefined,
+    );
   };
   if (editing) {
     return (
@@ -674,8 +690,11 @@ function systemIconOf(entry: ChatEntry): ReactNode {
 /** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销)。
  *  G8d T5:streaming 条末挂流式光标 span.sx-stream-cursor(闪灭动画定义在 app.css 特批小段;done 收段
  *  条 streaming=false → 光标随 memo 重渲染退场)。G11 §4 结构化:.entry-md 包装(含 icon 时 has-icon
- *  类)+.entry-md-body 内 md 与光标(后代查询兼容);footer 参数预留(Task 10 消费,本任务不传) */
-const ChatEntryView = memo(function ChatEntryView({ entry, footer }: { entry: ChatEntry; footer?: ReactNode }): JSX.Element {
+ *  类)+.entry-md-body 内 md 与光标(后代查询兼容)。G11 §6 终审:footer 收敛为 footerRun(条目引用
+ *  而非元素)——调用面传 `runFooterByEntry.get(entry.key)`(undefined 恒稳定,reducer 保条目引用,浅
+ *  比较恢复命中),组件内在场时自渲染 RunFooter;终审前传 ReactNode 每帧新建元素击穿 memo,长会话
+ *  每 token 触发历史末条全文重解析 */
+const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void }): JSX.Element {
   const icon = systemIconOf(entry);
   return (
     <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
@@ -686,7 +705,7 @@ const ChatEntryView = memo(function ChatEntryView({ entry, footer }: { entry: Ch
           {entry.streaming === true && <span className="sx-stream-cursor" aria-hidden="true" />}
         </div>
       </div>
-      {footer}
+      {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={onFork} />}
     </div>
   );
 });
@@ -746,7 +765,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const [sessTier, setSessTier] = useState<string | undefined>(undefined);
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
   const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string }> } | null>(null);
-  const [pillOpen, setPillOpen] = useState<'mode' | 'model' | null>(null);
+  const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'effort' | 'context' | null>(null);
   /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
   const [queued, setQueued] = useState<Array<{ seq: number; text: string }>>([]);
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
@@ -1019,18 +1038,20 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   };
 
   /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
-   *  本地回显新条,失败倒 error 条;空文本忽略 */
+   *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
+   *  (spec §9:提交失败草稿不丢);成功 resolve;空文本 resolve 忽略 */
   const submitText = useCallback(
-    (text: string): void => {
+    (text: string): Promise<void> => {
       const trimmed = text.trim();
-      if (trimmed === '') return;
+      if (trimmed === '') return Promise.resolve();
       setChat((c) => appendUserMessage(c, trimmed));
       let req: Promise<void>;
       if (running) req = conn.sessionSteer(sessionId, trimmed);
       else if (sessMode === 'plan') req = conn.runCommand(sessionId, `/plan ${trimmed}`);
       else req = conn.sessionSubmit(sessionId, trimmed);
-      void req.catch((err: unknown) => {
+      return req.catch((err: unknown) => {
         setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
+        throw err;
       });
     },
     [conn, sessionId, running, sessMode],
@@ -1041,7 +1062,9 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     const text = input.trim();
     if (text === '') return;
     setInput('');
-    submitText(text);
+    // fire-and-forget 语义不变:错误面已在 submitText 内倒 error 条;显式吞 rethrow——纯 `void`
+    // 不消化 rejection,会留 unhandled rejection(改动前 rejection 被 req.catch 全消费)
+    submitText(text).catch(() => undefined);
   };
 
   const interrupt = (): void => {
@@ -1054,7 +1077,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
    *  model-start 先插 run 条,token/thinking/tool 随后)——元数据向前取:run 边界收口时把上一段
    *  末条 sealed assistant 配给其前最近的已封段 run;流尾 assistant 且 status=idle 亦挂(防御面,
    *  种子历史无 run 条,元数据缺省省略)。
-   *  memo 纪律:仅各段末条携带 footer prop,其余条目 footer=undefined 恒稳定——流式零额外重渲染 */
+   *  memo 纪律(终审):仅各段末条携带 footerRun(条目引用——reducer 保条目引用,跨 token 帧恒稳定),
+   *  其余条目 footerRun=undefined 恒稳定——流式零额外重渲染(传元素每帧新建击穿 memo,已废) */
   const runFooterByEntry = new Map<string, ChatEntry>();
   let lastSealedAssistant: ChatEntry | null = null;
   let pendingRun: ChatEntry | null = null;
@@ -1222,11 +1246,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             ) : entry.kind === 'thinking' ? (
               <ThinkingEntryView key={entry.key} entry={entry} />
             ) : entry.kind === 'assistant' || entry.kind === 'notice' || entry.kind === 'error' ? (
-              <ChatEntryView
-                key={entry.key}
-                entry={entry}
-                footer={runFooterByEntry.has(entry.key) ? <RunFooter text={entry.md} run={runFooterByEntry.get(entry.key)} onFork={onFork} /> : undefined}
-              />
+              <ChatEntryView key={entry.key} entry={entry} footerRun={runFooterByEntry.get(entry.key)} onFork={onFork} />
             ) : (
               <ChatEntryView key={entry.key} entry={entry} />
             ),

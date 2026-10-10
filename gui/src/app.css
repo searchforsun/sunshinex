@@ -1462,10 +1462,12 @@ select.sx-setting-select { width: 240px; }
 .tool-io-pre { margin: 0; max-height: 280px; overflow: auto; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* write diff 面同加内滚(§2) */
 .entry-tool .tool-detail .diff-cols { max-height: 280px; overflow: auto; }
-/* 思考行(§3):预览尾锚定(direction:rtl 流动)+左缘渐隐;展开 grid-rows+320px 内滚吸底 */
+/* 思考行(§3):预览尾锚定(direction:rtl 流动)+左缘渐隐;展开 grid-rows+320px 内滚吸底。
+ * 选择器带 .entry-thinking 前缀(终审 Minor-1):0,2,0 同特异性,靠 G11 段后位取胜旧 G10-C3
+ * 同名规则——裸 .thinking-summary (0,1,0) 落败,折叠行形态半生效 */
 .entry-thinking { padding: 2px 8px; }
-.thinking-summary { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg-tertiary); font-size: 12px; }
-.thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }
+.entry-thinking .thinking-summary { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg-tertiary); font-size: 12px; }
+.entry-thinking .thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }
 .think-chevron { flex: none; transition: transform var(--dur-basic) var(--ease-enter); }
 .entry-thinking.open .think-chevron { transform: rotate(180deg); }
 .thinking-label { flex: none; }
@@ -1557,3 +1559,34 @@ select.sx-setting-select { width: 240px; }
 .workspace-item .workspace-row > .sx-iconbtn { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
 .workspace-item:hover .workspace-row > .sx-iconbtn,
 .workspace-item:focus-within .workspace-row > .sx-iconbtn { opacity: 1; }
+
+
+/* G10-C18 分区折叠与行距统一:折叠平滑过渡;所有行 28px + 行间 1px 不粘连;项目行去常亮高亮;分区头 hover 显示折叠箭头 */
+.sx-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.22s var(--ease-enter);
+}
+.sx-collapse.open { grid-template-rows: 1fr; }
+.sx-collapse > * { overflow: hidden; min-height: 0; }
+.sx-side-head-btn {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+}
+.sx-side-head-btn:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.sx-side-chev {
+  margin-left: auto;
+  color: var(--fg-tertiary);
+  opacity: 0;
+  transition: transform var(--dur-basic) var(--ease-enter), opacity var(--dur-basic) var(--ease-enter);
+}
+.sx-side-head-btn:hover .sx-side-chev { opacity: 1; }
+.sx-side-chev.open { transform: rotate(90deg); }
+.sx-side-head-btn .sx-iconbtn { margin-left: 0; }
+.sx-group-head { margin-block: 1px; }
+.sx-session-row { margin-block: 1px; }
+.workspace-item:has(> .workspace-row .sx-group-head.active) > .workspace-row { background: transparent; }
+.sx-group-head.active { background: transparent; }
