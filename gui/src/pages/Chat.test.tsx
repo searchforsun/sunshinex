@@ -263,3 +263,30 @@ describe('表格容器(G11 §5.3)', () => {
     await waitFor(() => expect(document.querySelector('.table-wrap table')).not.toBeNull());
   });
 });
+
+describe('run 尾部操作条(G11 §6)', () => {
+  it('末条正文下挂条:复制/fork 钮与 steps/tokens/时间', async () => {
+    const onFork = vi.fn();
+    render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onFork={onFork} />);
+    await flushed();
+    const now = Date.now();
+    fire({ type: 'model-start', ts: now });
+    fire({ type: 'token', text: '答', ts: now });
+    fire({ type: 'done', text: '答', ts: now, payload: { steps: 12, tokensUsed: 8400 } });
+    const footer = document.querySelector('.run-footer');
+    expect(footer?.textContent).toContain('12 steps');
+    expect(footer?.textContent).toContain('8.4k tokens');
+    fireEvent.click(screen.getByRole('button', { name: 'fork session' }));
+    expect(onFork).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'copy reply' }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('答');
+  });
+
+  it('run 仍在跑(流尾 streaming)不挂条', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'token', text: '写一半', ts: Date.now() });
+    expect(document.querySelector('.run-footer')).toBeNull();
+  });
+});

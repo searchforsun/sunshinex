@@ -1250,7 +1250,7 @@ select.sx-setting-select { width: 240px; }
 }
 .welcome-input-card textarea::placeholder { color: var(--fg-tertiary); opacity: 0.6; }
 .welcome-input-foot { display: flex; align-items: center; justify-content: space-between; }
-.welcome-foot-left { display: flex; align-items: center; gap: 6px; }
+.welcome-foot-left { position: relative; display: flex; align-items: center; gap: 6px; }
 .welcome-foot-right { display: flex; align-items: center; gap: 6px; }
 /* footer 三钮(+审批/模型)与 Choose project 同风格:同圆角(radius-md)、同 hover 底、同高度档 */
 .welcome-input-foot .composer-pill {
@@ -1520,6 +1520,11 @@ select.sx-setting-select { width: 240px; }
 .mermaid-lightbox-body { max-width: 92vw; max-height: 92vh; overflow: auto; padding: 16px; background: var(--surface-elevated); border-radius: var(--radius-lg); box-shadow: var(--elev-prominent); cursor: default; }
 @keyframes sx-zoom-in { from { opacity: 0; transform: scale(0.96); } }
 .mermaid-lightbox-body { animation: sx-zoom-in var(--dur-relaxed) var(--ease-enter); }
+
+/* run 尾部操作条(§6):常显淡灰,钮 hover 提亮;统计 tabular-nums 右靠 */
+.run-footer { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
+.run-footer .sx-tip { color: var(--fg-tertiary); }
+.run-stats { display: inline-flex; gap: 10px; margin-left: auto; font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */

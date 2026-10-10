@@ -3,7 +3,7 @@ import type { MutableRefObject, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
+  AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, GitFork, Globe, History,
   Info, Folder, ListTodo, Maximize2, MessageSquare, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -640,6 +640,46 @@ const ChatEntryView = memo(function ChatEntryView({ entry, footer }: { entry: Ch
   );
 });
 
+/** run 尾部操作条(G11 §6,对标 Codex 回复工具行):复制该条 md/fork 新会话 + 封段统计
+ *  (steps·tokens·HH:mm,数据缺省逐项省略)。常显淡灰(截图裁定),钮 hover 提亮 */
+function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undefined; onFork?: () => void }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
+  const copy = (): void => {
+    navigator.clipboard?.writeText(text).then(
+      () => setCopied(true),
+      () => undefined,
+    );
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1500);
+  };
+  const time = run?.endedTs !== undefined ? new Date(run.endedTs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : undefined;
+  return (
+    <div className="run-footer">
+      <TipButton
+        tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+        label="copy reply"
+        icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+        onClick={copy}
+      />
+      {onFork !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={onFork} />}
+      {(run?.steps !== undefined || run?.tokens !== undefined) && (
+        <span className="run-stats">
+          {run?.steps !== undefined && <span>{`${run.steps} steps`}</span>}
+          {run?.tokens !== undefined && <span>{fmtTokens(run.tokens)}</span>}
+          {time !== undefined && <span>{time}</span>}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork, pendingGoal, onPendingGoalDone, root }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
@@ -953,6 +993,28 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     });
   };
 
+  /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer
+   *  model-start 先插 run 条,token/thinking/tool 随后)——元数据向前取:run 边界收口时把上一段
+   *  末条 sealed assistant 配给其前最近的已封段 run;流尾 assistant 且 status=idle 亦挂(防御面,
+   *  种子历史无 run 条,元数据缺省省略)。
+   *  memo 纪律:仅各段末条携带 footer prop,其余条目 footer=undefined 恒稳定——流式零额外重渲染 */
+  const runFooterByEntry = new Map<string, ChatEntry>();
+  let lastSealedAssistant: ChatEntry | null = null;
+  let pendingRun: ChatEntry | null = null;
+  for (const e of chat.entries) {
+    if (e.kind === 'run') {
+      if (lastSealedAssistant !== null && pendingRun !== null) runFooterByEntry.set(lastSealedAssistant.key, pendingRun);
+      lastSealedAssistant = null;
+      pendingRun = e.streaming === true ? null : e;
+    } else if (e.kind === 'assistant' && e.streaming !== true) {
+      lastSealedAssistant = e;
+    }
+  }
+  if (lastSealedAssistant !== null) {
+    if (pendingRun !== null) runFooterByEntry.set(lastSealedAssistant.key, pendingRun);
+    else if (chat.status === 'idle') runFooterByEntry.set(lastSealedAssistant.key, lastSealedAssistant);
+  }
+
   return (
     <>
       <header className="chat-topbar">
@@ -1102,6 +1164,12 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               <UserEntryView key={entry.key} entry={entry} />
             ) : entry.kind === 'thinking' ? (
               <ThinkingEntryView key={entry.key} entry={entry} />
+            ) : entry.kind === 'assistant' || entry.kind === 'notice' || entry.kind === 'error' ? (
+              <ChatEntryView
+                key={entry.key}
+                entry={entry}
+                footer={runFooterByEntry.has(entry.key) ? <RunFooter text={entry.md} run={runFooterByEntry.get(entry.key)} onFork={onFork} /> : undefined}
+              />
             ) : (
               <ChatEntryView key={entry.key} entry={entry} />
             ),
