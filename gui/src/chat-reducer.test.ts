@@ -59,10 +59,11 @@ describe('流式 token 拼接与 done 收段', () => {
 
   it('error：error 条入列 + status idle + 悬挂 streaming 条收段（不留永久流式标）', () => {
     const s = fold([ev('model-start'), ev('token', 'half'), ev('error', 'boom')]);
-    expect(s.entries).toHaveLength(2);
-    expect(s.entries[0]!.streaming).toBeUndefined();
-    expect(s.entries[0]!.md).toBe('half');
-    expect(s.entries[1]).toMatchObject({ kind: 'error', md: 'boom' });
+    expect(s.entries).toHaveLength(3); // G11：model-start 先插 run 条目，assistant/error 顺延
+    expect(s.entries[0]!.kind).toBe('run');
+    expect(s.entries[1]!.streaming).toBeUndefined();
+    expect(s.entries[1]!.md).toBe('half');
+    expect(s.entries[2]).toMatchObject({ kind: 'error', md: 'boom' });
     expect(s.status).toBe('idle');
   });
 });
@@ -292,6 +293,49 @@ describe('条目时间戳(G9 B3a:日期分隔投影源)', () => {
     expect(seeded.entries[0]!.ts).toBe(1728380001000);
     const echoed = appendUserMessage(initialChatState(), 'yo', 999);
     expect(echoed.entries[0]!.ts).toBe(999);
+  });
+});
+
+describe('run 边界条目(G11 状态行:idle→running 插入,done/error 封段计时)', () => {
+  it('idle 态 model-start 插入 run 条目(streaming 标+ts);running 续轮不重复插', () => {
+    let s = applyChatEvent(initialChatState(), { type: 'model-start', ts: 1_000 } as SessionEvent);
+    expect(s.entries).toHaveLength(1);
+    expect(s.entries[0]).toMatchObject({ kind: 'run', md: '', streaming: true, ts: 1_000 });
+    s = applyChatEvent(s, { type: 'model-start', ts: 5_000 } as SessionEvent);
+    expect(s.entries).toHaveLength(1);
+  });
+
+  it('done 封段:去 streaming 标、seconds 计 ts 差、steps/tokens 透传 done 载荷、endedTs 回填', () => {
+    let s = applyChatEvent(initialChatState(), { type: 'model-start', ts: 1_000 } as SessionEvent);
+    s = applyChatEvent(s, { type: 'token', text: '答', ts: 2_000 } as SessionEvent);
+    s = applyChatEvent(s, { type: 'done', text: '答', ts: 34_500, payload: { steps: 12, tokensUsed: 8400 } } as SessionEvent);
+    const run = s.entries.find((e) => e.kind === 'run')!;
+    expect(run).toMatchObject({ kind: 'run', streaming: undefined, seconds: 34, steps: 12, tokens: 8400, endedTs: 34_500 });
+  });
+
+  it('error 亦封段(seconds 回填,无统计载荷);无 ts 不计秒', () => {
+    let s = applyChatEvent(initialChatState(), { type: 'model-start', ts: 1_000 } as SessionEvent);
+    s = applyChatEvent(s, { type: 'error', text: 'boom', ts: 4_000 } as SessionEvent);
+    expect(s.entries[0]).toMatchObject({ kind: 'run', streaming: undefined, seconds: 3 });
+    let s2 = applyChatEvent(initialChatState(), { type: 'model-start' } as SessionEvent); // 无 ts → run 条无起算点
+    s2 = applyChatEvent(s2, { type: 'done', text: 'x', ts: 2_000 } as SessionEvent);
+    expect(s2.entries[0]).toMatchObject({ kind: 'run', streaming: undefined });
+    expect(s2.entries[0]!.seconds).toBeUndefined();
+  });
+
+  it('done 无 run 条目(直答面)不补插;多轮 run 各自成段', () => {
+    const s = fold([ev('done', 'direct')]);
+    expect(s.entries.map((e) => e.kind)).toEqual(['assistant']);
+    let s2 = applyChatEvent(initialChatState(), { type: 'model-start', ts: 1_000 } as SessionEvent);
+    s2 = applyChatEvent(s2, { type: 'done', text: 'a', ts: 2_000 } as SessionEvent);
+    s2 = applyChatEvent(s2, { type: 'model-start', ts: 10_000 } as SessionEvent);
+    s2 = applyChatEvent(s2, { type: 'done', text: 'b', ts: 13_000 } as SessionEvent);
+    expect(s2.entries.filter((e) => e.kind === 'run').map((r) => r.seconds)).toEqual([1, 3]);
+  });
+
+  it('seed 快照不产 run 条目(历史归档无 run 标)', () => {
+    const s = seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'running');
+    expect(s.entries.map((e) => e.kind)).toEqual(['assistant']);
   });
 });
 

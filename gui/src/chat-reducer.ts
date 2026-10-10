@@ -22,13 +22,18 @@ import type { SessionEvent } from '../../src/types';
  *  kind 'thinking' 为 gui 投影扩展（reasoning 事件聚合;快照/归档面不产出,重播种即失——Codex 同形） */
 export interface ChatEntry {
   key: string;
-  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error' | 'thinking';
+  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error' | 'thinking' | 'run';
   md: string;
   streaming?: boolean;
   /** thinking 专用：段耗时秒（封段时由首尾 ts 差计算;无 ts/不足 1s 省略） */
   seconds?: number;
   /** 条目时间（epoch ms;事件条透传 e.ts,种子条透传快照,本地回显/开条时刻就地取;无源可省） */
   ts?: number;
+  /** run 专用（G11 状态行）：封段统计——done 载荷 {steps, tokensUsed} 透传 */
+  steps?: number;
+  tokens?: number;
+  /** run 专用：收段时刻（完成时间渲染源） */
+  endedTs?: number;
 }
 
 /** chat 投影状态：entries 对话流 + 状态栏三指标 */
@@ -145,6 +150,26 @@ function sealThinking(entries: readonly ChatEntry[], now?: number): ChatEntry[] 
   return replaceAt(entries, entries.length - 1, { ...last, streaming: undefined, ...(seconds !== undefined ? { seconds } : {}) });
 }
 
+/** 封 run 段（G11 状态行）：最后一条 streaming run 条去标并回填耗时/统计。
+ *  seconds 首尾 ts 差取整;steps/tokens 透传 done 载荷;endedTs=收段事件 ts。无 run 条透传原数组 */
+function sealRun(entries: readonly ChatEntry[], now: number | undefined, stat?: { steps?: number; tokens?: number }): ChatEntry[] {
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const e = entries[i]!;
+    if (e.kind === 'run' && e.streaming === true) {
+      const seconds = now !== undefined && typeof e.ts === 'number' && now > e.ts ? Math.round((now - e.ts) / 1000) : undefined;
+      return replaceAt(entries, i, {
+        ...e,
+        streaming: undefined,
+        ...(seconds !== undefined ? { seconds } : {}),
+        ...(stat?.steps !== undefined ? { steps: stat.steps } : {}),
+        ...(stat?.tokens !== undefined ? { tokens: stat.tokens } : {}),
+        ...(now !== undefined ? { endedTs: now } : {}),
+      });
+    }
+  }
+  return entries as ChatEntry[];
+}
+
 /** token 增量并入当前 streaming 条（无则开条;开条前封思考段——思考先行语义;封段时刻取事件 ts） */
 function onToken(s: ChatState, text: string, now?: number): ChatState {
   if (text === '') return s;
@@ -167,17 +192,22 @@ function mergeFinal(acc: string, fin: string): string {
 }
 
 function onDone(s: ChatState, e: SessionEvent): ChatState {
-  const { entries, sealedIdx } = sealStreaming(sealThinking(s.entries, e.ts));
+  const base = sealStreaming(sealThinking(s.entries, e.ts));
+  const entries = sealRun(base.entries, e.ts, {
+    steps: typeof e.payload?.steps === 'number' ? e.payload.steps : undefined,
+    tokens: typeof e.payload?.tokensUsed === 'number' ? e.payload.tokensUsed : undefined,
+  });
   const text = e.text ?? '';
-  if (sealedIdx < 0) {
+  if (base.sealedIdx < 0) {
     return { ...s, status: 'idle', entries: [...entries, { key: `a${entries.length}`, kind: 'assistant', md: text, ts: e.ts }] };
   }
-  const sealed = entries[sealedIdx]!;
-  return { ...s, status: 'idle', entries: replaceAt(entries, sealedIdx, { ...sealed, md: mergeFinal(sealed.md, text) }) };
+  const sealed = entries[base.sealedIdx]!;
+  return { ...s, status: 'idle', entries: replaceAt(entries, base.sealedIdx, { ...sealed, md: mergeFinal(sealed.md, text) }) };
 }
 
 function onError(s: ChatState, e: SessionEvent): ChatState {
-  const { entries } = sealStreaming(sealThinking(s.entries, e.ts));
+  const base = sealStreaming(sealThinking(s.entries, e.ts));
+  const entries = sealRun(base.entries, e.ts);
   return { ...s, status: 'idle', entries: [...entries, { key: `e${entries.length}`, kind: 'error', md: e.text ?? 'error', ts: e.ts }] };
 }
 
@@ -265,9 +295,15 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
       return onToolResult(s, e);
     case 'model-start': {
       const { entries } = sealStreaming(sealThinking(s.entries, e.ts));
+      if (s.status !== 'idle') return { ...s, entries, status: 'running' }; // run 内续轮:不重插 run 条、不重置水位
       // 水位重置仅在 run 边界：model-start 每模型轮一次（reactor.ts:450），turnTotal 是 run 级
       // 单调累计（reactor.ts:293）——run 内续轮（status=running）不重置，否则多轮 run tokens 虚增
-      return s.status === 'idle' ? { ...s, entries, status: 'running', turnTokensBase: 0 } : { ...s, entries, status: 'running' };
+      return {
+        ...s,
+        entries: [...entries, { key: `run:${entries.length}`, kind: 'run' as const, md: '', streaming: true as const, ts: e.ts }],
+        status: 'running',
+        turnTokensBase: 0,
+      };
     }
     case 'step':
       return { ...s, steps: s.steps + 1 };
