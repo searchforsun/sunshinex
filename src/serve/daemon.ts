@@ -27,7 +27,7 @@ import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { COMMAND_SUPPORT, runCommand } from './session-commands';
 import { ModelSwitcher } from '../model/catalog';
-import { resolveDataDir, projectsRoot } from '../config/data-dir';
+import { resolveDataDir, projectsRoot, projectSlug } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import {
   SEMANTIC_KEYS,
@@ -1003,6 +1003,9 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
     // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——标题缓存/编辑态在客户端
     { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
+    // G10-C11 建项目面：原生文件选择器选完自动建项目——name=浏览器态(projectsRoot 下建目录+初始化)、
+    // path=桌面壳态(系统对话框回全路径,直接注册外部根);同名幂等返回既有行
+    { method: 'POST', path: '/workspace/create', auth: true, run: (req, res) => this.handleWorkspaceCreate(req, res) },
     { method: 'POST', path: '/session/:id/steer/cancel', auth: true, run: async (req, res, p) => this.handleSteerCancel(req, res, p.id) },
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
@@ -1380,6 +1383,46 @@ export class GuiDaemon {
     } catch (err) {
       this.send(res, 503, { error: err instanceof Error ? err.message : String(err) });
     }
+  }
+
+  /** POST /workspace/create {name}|{path}(G10-C11):原生文件选择器确认后自动建项目。
+   *  name=浏览器态(showDirectoryPicker 只回名字):projectsRoot 下建 <name>/ 并初始化
+   *  data/sessions + data/workspace.json{root:<name> 目录};path=桌面壳态:注册该既有目录为
+   *  项目根(workspace.json 落 projectsRoot/<basename>/data)。同名/同根幂等返回既有行 */
+  private async handleWorkspaceCreate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const body = parsed.body as { name?: unknown; path?: unknown };
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const extPath = typeof body.path === 'string' ? path.resolve(body.path) : '';
+    let root: string;
+    if (extPath !== '') {
+      let st: fs.Stats;
+      try {
+        st = fs.statSync(extPath);
+      } catch {
+        return this.send(res, 400, { error: 'path does not exist' });
+      }
+      if (!st.isDirectory()) return this.send(res, 400, { error: 'path is not a directory' });
+      root = extPath;
+    } else {
+      if (name === '' || /[\\/:*?"<>|]/.test(name)) return this.send(res, 400, { error: 'invalid project name' });
+      root = path.join(projectsRoot(), name);
+      fs.mkdirSync(root, { recursive: true });
+    }
+    const dataDir = path.join(projectsRoot(), projectSlug(root), 'data');
+    const wsFile = path.join(dataDir, 'workspace.json');
+    if (fs.existsSync(wsFile)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(wsFile, 'utf8')) as { root?: unknown };
+        if (raw?.root === root) return this.send(res, 200, { ok: true, root, slug: projectSlug(root) });
+      } catch {
+        // 坏档:按新初始化覆写
+      }
+    }
+    fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
+    fs.writeFileSync(wsFile, JSON.stringify({ root }, null, 2));
+    this.send(res, 200, { ok: true, root, slug: projectSlug(root) });
   }
 
   /** POST /session/:id/command {line}(G10-C1c):TUI 斜杠命令 daemon 直跑;输出走既有事件流 */

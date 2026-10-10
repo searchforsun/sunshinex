@@ -307,6 +307,9 @@ export interface Connection {
   sessionModel(id: string): Promise<{ current?: string; explicitDefault: boolean; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number }> }>;
   /** 模型总结会话标题(G10-C7):text=首条用户消息;daemon 一次 chat 调用回 ≤20 字标题(503=模型未接线) */
   sessionTitle(id: string, text: string): Promise<{ title: string }>;
+  /** 建项目(G10-C11):原生文件选择器确认后注册/创建工作区。name=浏览器态(projectsRoot 下建)
+   *  / path=桌面壳态(注册既有目录);同名幂等返回既有行 */
+  createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   /** POST /session/:id/model|tier|effort|mode:运行中切换(下一轮生效;G10-C1b/C2b) */
   setSessionModel(id: string, model?: string): Promise<void>;
   setSessionTier(id: string, tier?: 'small' | 'medium' | 'large'): Promise<void>;
@@ -623,6 +626,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionTitle(id: string, text: string) {
       return postJson<{ ok: true; title: string }>('/session/' + encodeURIComponent(id) + '/title', { text });
+    },
+    createWorkspace(body: { name?: string; path?: string }) {
+      return postJson<{ ok: true; root: string; slug: string }>('/workspace/create', body);
     },
     async setSessionModel(id: string, model?: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/model', { model });

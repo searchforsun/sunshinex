@@ -31,6 +31,11 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
       [{ id: 'j1', firstUser: 'demo goal', updatedAt: Date.now(), root: 'D:/w/p1', slug: 'p1' }] as never,
     dirpicker: async () => ({ path: 'D:/w', parent: 'D:', dirs: ['p1'] }),
     newSession: async (root: string, mode?: 'manual') => ({ sessionId: `new-${root}${mode ? '-m' : ''}` }),
+    createWorkspace: vi.fn(async (body: { name?: string; path?: string }) => ({
+      ok: true as const,
+      root: body.path ?? `D:/MyWorkStation/sunshinex/${body.name ?? 'project'}`,
+      slug: `p-${body.name ?? 'ext'}`,
+    })),
     attach: async () => undefined,
   };
   return conn;
@@ -94,13 +99,17 @@ describe('ProjectMenu(spec §1 左栏项目分组)', () => {
     expect(row.closest('.sx-session-row')!.querySelector('.sx-session-dot.unseen')).toBeNull();
   });
 
-  it('「+ 添加工作区」开 DirPicker 模态(测试钩子 class 复用)', async () => {
+  it('「+ 添加工作区」:原生选择器选完 → createWorkspace 建项目(G10-C11)', async () => {
     const conn = makeConn();
     renderMenu(conn);
+    // jsdom 无 showDirectoryPicker——桩一个原生选择器(选回名字 p9)
+    Object.defineProperty(window, 'showDirectoryPicker', {
+      configurable: true,
+      value: async () => ({ name: 'p9' }),
+    });
     fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-    // 适配(brief 注允许):DirPicker 既有可定位面为 role=dialog aria-label="choose directory";
-    // 原 getByTitle('dirpicker') 钩子不在场——断言语义不变 = 模态在场
-    expect(screen.getByRole('dialog', { name: 'choose directory' })).toBeTruthy();
+    await waitFor(() => expect(conn.createWorkspace).toHaveBeenCalledWith({ name: 'p9' }));
+    delete (window as { showDirectoryPicker?: unknown }).showDirectoryPicker;
   });
 
 });

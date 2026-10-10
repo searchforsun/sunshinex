@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
-import { DirPicker } from '../pages/DirPicker';
-import { relTime } from '../ui-util';
+import { errText, pickFolderNative, relTime } from '../ui-util';
 import { t } from '../i18n';
 import { Folder, FolderOpen, Plus, RefreshCw, Settings, SquarePen } from 'lucide-react';
 
@@ -10,7 +9,7 @@ import { Folder, FolderOpen, Plus, RefreshCw, Settings, SquarePen } from 'lucide
  * 组列表(GET /workspaces):组头(chevron+Folder+slug+会话数)点击展开惰拉 GET /sessions?root=
  * (slug 守卫照搬 Home——openSlugRef 过期应答丢弃);root 缺场历史组禁用不可展开;组内「+」弹
  * mode 菜单(auto/manual)→ newSession(root, mode) 直进;会话行 Attach 两步(newSession 装配壳
- * → attach 播种)→ onOpenSession(sessionId, root)。Projects 分区头「+」开 DirPicker 模态(添加工作区;
+ * → attach 播种)→ onOpenSession(sessionId, root)。Projects 分区头「+」开原生文件选择器(选完自动建项目, G10-C11;
  * Home 的 modal-overlay 结构原样)。连接态显示退役(G10:一体本地,无连接语义可显)。
  * activeRoot 组自动展开(T5 App 壳传当前活动工作区;与手动展开共用同一 openSlug 态)。
  * 样式用 app.css T1 的 sx- 类 + Home 既有测试钩子类(workspace-、ws-、session- 前缀与
@@ -26,6 +25,8 @@ export interface ProjectMenuConn {
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
+  /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
+  createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   attach(sessionId: string, journalId: string): Promise<void>;
 }
 
@@ -73,7 +74,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** attach/组内新建/添加工作区在途(按钮禁用防双发) */
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
   const [menuSlug, setMenuSlug] = useState<string | null>(null);
   /** 已读会话集(本次运行内):点开过的会话不再显示蓝色未读光点;运行中恒显示转圈 */
@@ -241,25 +241,41 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     );
   };
 
-  /** 「+ 添加工作区」:DirPicker 确认 → newSession(root, manual ? 'manual' : undefined)
-   *  (G6 mode 面——Manual approvals 勾选即建 manual 会话)→ onOpenSession;失败留在弹层示错 */
-  const createSession = (root: string, manual: boolean): void => {
-    if (busy || root === '') return;
-    setBusy(true);
+  /** 「+ 添加工作区」(G10-C11):原生文件选择器(Win 系统对话框)选完即自动建项目——
+   *  浏览器态按名字在 projectsRoot 下建;桌面壳态注册既有目录。建好即展开组并开一个
+   *  auto 会话(对齐旧 DirPicker 确认后进会话的交互);失败行内报错 */
+  const pickAndAdd = async (): Promise<void> => {
     setActionError('');
-    conn.newSession(root, manual ? 'manual' : undefined).then(
-      ({ sessionId }) => {
-        setBusy(false);
-        markSeen(sessionId);
-        setPickerOpen(false);
-        loadWorkspaces(); // 选新项目根→刷新组列表(spec §1:新装首工作区后左栏即见,activeRoot 自动展开 effect 随新 rows 接手)
-        onOpenSession(sessionId, root);
-      },
-      (err: unknown) => {
-        setBusy(false);
-        setActionError(err instanceof Error ? err.message : String(err));
-      },
-    );
+    const picked = await pickFolderNative();
+    if (picked === null) return;
+    if (picked === 'unsupported') {
+      setActionError(
+        t('Native folder picker needs a Chromium browser or the desktop app', '原生文件夹选择需要 Chrome/Edge 浏览器或桌面版'),
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await conn.createWorkspace(picked.path !== undefined ? { path: picked.path } : { name: picked.name });
+      loadWorkspaces(); // 建项目落位即刷新组列表
+      const row: WorkspaceRow = { slug: res.slug, root: res.root, sessionCount: 0, mtime: Date.now() };
+      expandGroup(row); // 新组展开(惰拉空会话列表)
+      // 直接开一个 auto 会话进 Chat(busy 仍持——内联 newSession,不走 createInGroup 的 busy 闸)
+      conn.newSession(res.root).then(
+        ({ sessionId }) => {
+          setBusy(false);
+          markSeen(sessionId);
+          onOpenSession(sessionId, res.root);
+        },
+        (err: unknown) => {
+          setBusy(false);
+          setActionError(errText(err));
+        },
+      );
+    } catch (err) {
+      setBusy(false);
+      setActionError(errText(err));
+    }
   };
 
   return (
@@ -289,10 +305,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             className="sx-iconbtn"
             aria-label="add workspace"
             title={t('Add workspace', '添加工作区')}
-            onClick={() => {
-              setActionError('');
-              setPickerOpen(true);
-            }}
+            disabled={busy}
+            onClick={() => void pickAndAdd()}
           >
             <Plus size={14} strokeWidth={1.75} />
           </button>
@@ -309,7 +323,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         {rows !== null && rows.length === 0 && (
           <li className="home-empty">{t('No workspaces yet — add one via + above.', '尚无工作区——用上方「+」添加项目目录。')}</li>
         )}
-        {actionError !== '' && !pickerOpen && (
+        {actionError !== '' && (
           <li className="home-error" role="alert">
             {actionError}
           </li>
@@ -466,18 +480,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           </button>
         )}
       </footer>
-      {pickerOpen && (
-        <div className="modal-overlay">
-          <div className="modal-body">
-            <DirPicker conn={conn} onCancel={() => setPickerOpen(false)} onConfirm={createSession} />
-            {actionError !== '' && (
-              <p className="home-error" role="alert">
-                {actionError}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
     </nav>
   );
 }

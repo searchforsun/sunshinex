@@ -4,6 +4,7 @@ import { ArrowUp, ChevronDown, Folder, Hand } from 'lucide-react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
+import { pickFolderNative, errText } from './ui-util';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
 import { Chat } from './pages/Chat';
@@ -88,6 +89,8 @@ function WelcomeComposer({
     dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
     workspaces(): Promise<Array<{ slug: string; root?: string; sessionCount: number }>>;
     newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
+    /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
+    createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   };
   onOpened: (sessionId: string, root: string, goal: string) => void;
 }): JSX.Element {
@@ -142,27 +145,29 @@ function WelcomeComposer({
    *  选中目录按 basename 匹配已注册工作区;未注册位置提示走桌面版(electron dialog 可得路径)。 */
   const browseFolder = async (): Promise<void> => {
     setHint('');
-    const picker = (window as unknown as { showDirectoryPicker?: () => Promise<{ name: string }> }).showDirectoryPicker;
-    if (typeof picker !== 'function') {
-      setHint(t('Folder picking needs a Chromium browser or the desktop app', '选择文件夹需要 Chromium 浏览器或桌面版'));
+    const picked = await pickFolderNative();
+    if (picked === null) return;
+    if (picked === 'unsupported') {
+      setHint(t('Native folder picker needs a Chromium browser or the desktop app', '原生文件夹选择需要 Chromium 浏览器或桌面版'));
+      return;
+    }
+    // 同名已注册 → 直接选中;新名字 → 自动建项目(注册+初始化)并选中——统一交互(G10-C11)
+    const match = rows.find((r) => r.root !== undefined && baseName(r.root) === picked.name);
+    if (match?.root !== undefined) {
+      setPicked(match.root);
+      setProjOpen(false);
       return;
     }
     try {
-      const handle = await picker();
-      const match = rows.find((r) => r.root !== undefined && baseName(r.root) === handle.name);
-      if (match?.root !== undefined) {
-        setPicked(match.root);
-        setProjOpen(false);
-      } else {
-        setHint(
-          t(
-            `"${handle.name}" is not a registered workspace — open serve with --root, or use the desktop app`,
-            `“${handle.name}” 未注册为工作区——请用 --root 启动注册,或使用桌面版`,
-          ),
-        );
-      }
-    } catch {
-      /* 用户取消:静默 */
+      const res = await conn.createWorkspace(picked.path !== undefined ? { path: picked.path } : { name: picked.name });
+      setRows((prev) => {
+        const list = prev ?? [];
+        return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
+      });
+      setPicked(res.root);
+      setProjOpen(false);
+    } catch (err) {
+      setHint(err instanceof Error ? err.message : String(err));
     }
   };
   return (

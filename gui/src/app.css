@@ -1392,3 +1392,10 @@ select.sx-setting-select { width: 240px; }
   background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
 .sx-group-head:hover, .sx-group-head.active, .sx-group-head.active { background: transparent; }
+
+/* G10-C10 分区节奏统一:品牌/新对话/分区头/列表间距成比例(10-20-10),不再挤作一团 */
+.sx-menu-head { padding: 14px 8px 6px 12px; }
+.sx-new-chat { margin: 4px 8px; }
+.sx-side-head { padding: 16px 8px 6px 12px; }
+.sx-groups { padding: 2px 8px 8px; }
+.recent-list { padding: 2px 8px 8px; }
