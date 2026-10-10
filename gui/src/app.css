@@ -1454,7 +1454,7 @@ select.sx-setting-select { width: 240px; }
 /* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8);visibility 折叠尾切(T4 评审可达性补丁:
  * 折叠态内容不可聚焦/不入可达性树,过渡收尾才隐——动画期仍可见,零布局移) */
 .tool-body { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }
-.entry-tool.open .tool-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
+.entry-tool.open .tool-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s; }
 .tool-body-inner { min-height: 0; overflow: hidden; }
 /* Input/Output 双段(§2):段头小标+各段 280px 内滚 */
 .tool-io { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 2px; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); }
@@ -1472,7 +1472,7 @@ select.sx-setting-select { width: 240px; }
 .thinking-preview { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; direction: rtl; text-align: left; -webkit-mask-image: linear-gradient(90deg, transparent, #000 28px); mask-image: linear-gradient(90deg, transparent, #000 28px); }
 /* visibility 折叠尾切(T4 评审可达性补丁,同 .tool-body):折叠态内容不可聚焦/不入可达性树 */
 .think-body { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }
-.entry-thinking.open .think-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
+.entry-thinking.open .think-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s; }
 .think-body-inner { min-height: 0; overflow: hidden; }
 .thinking-scroll { max-height: 320px; overflow-y: auto; margin-top: 4px; }
 .thinking-scroll .thinking-detail { margin: 0; }
