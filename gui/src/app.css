@@ -1293,7 +1293,7 @@ select.sx-setting-select { width: 240px; }
   color: var(--fg-tertiary);
 }
 .sx-new-chat {
-  height: 32px;
+  height: 28px;
   margin: 0 4px 4px;
   padding: 0;
   border: none;
@@ -1364,13 +1364,13 @@ select.sx-setting-select { width: 240px; }
    会话行文字与项目名精确对齐(=组图标右沿+8 间距),状态点落行首留白槽不挤文字 ===== */
 .sx-groups, .recent-list { padding: 4px 8px 8px; }
 .sx-group-head {
-  height: 32px;
+  height: 28px;
   padding: 0 4px;
   border-radius: var(--radius-md);
 }
 .sx-group-head.active { border-radius: var(--radius-md); }
 .sx-session-row {
-  height: 32px;
+  height: 28px;
   margin: 0;
   padding: 0 10px 0 28px;
   border-radius: var(--radius-md);
@@ -1483,7 +1483,7 @@ select.sx-setting-select { width: 240px; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 32px;
+  height: 28px;
   padding: 0 8px;
   margin-bottom: 2px;
   font-size: 12px;
