@@ -3,13 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('mermaid', () => {
   throw new Error('mock: mermaid load failure');
 });
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Chat } from './Chat';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
 
 /** G9-B3b 会话流 Codex 形:用户右胶囊(+hover 复制)/跨日居中日期分隔(DOM 契约:
- *  .entry-user>.user-bubble+.user-actions>.user-action[title=复制];.chat-day-sep[role=separator]) */
+ *  .entry-user>.user-bubble+.user-actions>.user-action[aria-label=Copy];.chat-day-sep[role=separator]) */
 
 const sinkRef = { current: null as ChatSink | null };
 const DAY1 = new Date(2026, 0, 10, 10).getTime();
@@ -55,14 +55,14 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     const entry = document.querySelector('.entry-user')!;
     expect(entry).toBeTruthy();
     expect(entry.querySelector('.user-bubble')).toBeTruthy();
-    expect(entry.querySelector('button[title="Copy"]')).toBeTruthy();
+    expect(entry.querySelector('button[aria-label="Copy"]')).toBeTruthy();
   });
 
   it('复制钮写入剪贴板(剥 > 前缀),成功示「已复制」', async () => {
     mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '> 你好' }]);
-    fireEvent.click(await screen.findByTitle('Copy'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('你好');
-    await screen.findByTitle('Copied');
+    await waitFor(() => expect(document.querySelector('.entry-user .user-actions .sx-tip')?.getAttribute('data-tip')).toBe('Copied'));
   });
 
   it('跨日条目间渲染一条居中日期分隔;同日不渲染', async () => {

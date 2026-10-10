@@ -3,7 +3,7 @@ import type { MutableRefObject, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  ArrowUp, Bot, Brain, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
+  ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
   Folder, ListTodo, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -326,6 +326,22 @@ function ToolIcon({ verb }: { verb: string }): JSX.Element {
   return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
 
+/** 统一图标钮(G11 §8):纯图标 + data-tip Tooltip(视觉层)+ aria-label(可达性/查询锚)。
+ *  不用原生 title;复制成功反馈由调用面换 icon/tip,本组件无状态 */
+function TipButton({ tip, label, icon, onClick, className }: { tip: string; label: string; icon: ReactNode; onClick?: () => void; className?: string }): JSX.Element {
+  return (
+    <button
+      type="button"
+      className={className !== undefined ? `sx-tip ${className}` : 'sx-tip'}
+      aria-label={label}
+      data-tip={tip}
+      onClick={onClick}
+    >
+      {icon}
+    </button>
+  );
+}
+
 /** 思考链折叠行(G10-C3,Codex「Thought for Ns」同形):收起=「思考 Ns/思考中…」,展开=思考文本井 */
 const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -408,20 +424,21 @@ const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewin
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{entry.md}</ReactMarkdown>
       </div>
       <div className="user-actions">
-        <button type="button" className="user-action" title={copied === 'fail' ? t('Not copied', '未复制') : copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={copy}>
-          <Copy size={12} strokeWidth={1.75} aria-hidden="true" />
-          {copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
-        </button>
+        <TipButton
+          className="user-action"
+          tip={copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
+          label="Copy"
+          icon={copied === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+          onClick={copy}
+        />
         {fetchAnchors !== undefined && onRewind !== undefined && (
-          <button
-            type="button"
+          <TipButton
             className="user-action"
-            title={t('Rewind to this turn', '回到此轮')}
+            tip={t('Rewind to this turn', '回到此轮')}
+            label="Rewind"
+            icon={<History size={12} strokeWidth={1.75} aria-hidden="true" />}
             onClick={() => setRewindOpen((v) => !v)}
-          >
-            <History size={12} strokeWidth={1.75} aria-hidden="true" />
-            {t('Rewind', '回退')}
-          </button>
+          />
         )}
       </div>
       {rewindOpen && fetchAnchors !== undefined && onRewind !== undefined && (
