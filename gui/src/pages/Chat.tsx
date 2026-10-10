@@ -1349,6 +1349,26 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
             )}
+            {pillOpen === 'effort' && (
+              <div className="sx-menu-pop pill-pop" role="menu" aria-label="effort menu">
+                {(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((ev2) => (
+                  <button
+                    key={ev2}
+                    type="button"
+                    role="menuitem"
+                    className="sx-menuitem"
+                    disabled={sessEffort === ev2}
+                    onClick={() => {
+                      setPillOpen(null);
+                      setSessEffort(ev2);
+                      conn.setSessionEffort(sessionId, ev2).catch(() => {});
+                    }}
+                  >
+                    {ev2}
+                  </button>
+                ))}
+              </div>
+            )}
             {pillOpen === 'model' && modelInfo !== null && (
               <div className="sx-menu-pop pill-pop pill-pop-tall" role="menu" aria-label="session model menu">
                 {modelInfo.choices.map((c) => (
@@ -1381,22 +1401,6 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                     }}
                   >
                     {tv}
-                  </button>
-                ))}
-                <div className="pill-group-head">{t('Effort', '思考强度')}</div>
-                {(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((ev2) => (
-                  <button
-                    key={ev2}
-                    type="button"
-                    role="menuitem"
-                    className="sx-menuitem"
-                    disabled={sessEffort === ev2}
-                    onClick={() => {
-                      setSessEffort(ev2);
-                      conn.setSessionEffort(sessionId, ev2).catch(() => {});
-                    }}
-                  >
-                    {ev2}
                   </button>
                 ))}
               </div>
