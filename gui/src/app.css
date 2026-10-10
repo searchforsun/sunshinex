@@ -125,7 +125,6 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-tabbody { flex: 1; min-height: 0; overflow: auto; }
 
 /* 左栏项目分组(T4 消费) */
-.sx-menu-head { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .sx-groups { flex: 1; overflow-y: auto; padding: 6px 0; }
 .sx-group-head { display: flex; width: 100%; align-items: center; gap: 6px; padding: 5px 12px; color: var(--fg); }
 .sx-group-head:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
@@ -679,16 +678,6 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .sx-settings-save:hover { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
 
 /* ===== G8f 迭代二:侧栏细节/遗留档灰显/折叠条 ===== */
-.sx-menu-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: var(--fg-secondary);
-  text-transform: uppercase;
-}
 .sx-group-head { padding: 8px 12px; }
 .sx-group-head .sx-iconbtn { opacity: 0; transition: opacity 0.12s; }
 .sx-group-head:hover .sx-iconbtn,
@@ -739,7 +728,6 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 .chat { padding: 14px 18px; }
 
 /* —— 侧栏:去分割线,pill 制(活动=填充圆角,非左条),单行会话行(hover Attach 覆盖时间) —— */
-.sx-menu-head { border-bottom: none; }
 .sx-menu-foot {
   margin: 8px;
   padding: 8px 10px;
@@ -1315,7 +1303,6 @@ select.sx-setting-select { width: 240px; }
 .sx-new-chat:hover:not(:disabled) {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
 }
-.sx-menu-head { padding: 14px 12px 8px; }
 
 /* G10-C5 续:Projects+Recents 共用滚动区(品牌行/新建/底栏固定;长 Recents 不再顶飞底栏) */
 .sx-side-scroll { flex: 1; min-height: 0; overflow-y: auto; }
@@ -1391,7 +1378,6 @@ select.sx-setting-select { width: 240px; }
 .sx-session-dot { position: absolute; left: 12px; top: calc(50% - 3.5px); }
 .sx-session-dot.running { left: 11px; top: calc(50% - 5px); }
 .sx-side-head { padding: 14px 8px 6px 12px; }
-.sx-menu-head { padding: 0 8px; height: 32px; margin-bottom: 4px; }
 
 /* G10-C9 行盒归属修正:hover/active 提到 workspace-row 整行(含 + 钮区,组行与会话行同宽同色);
    组头本体不再自持底色;会话行 active 只亮当前打开会话(ProjectMenu 去root 兜底) */
@@ -1403,11 +1389,10 @@ select.sx-setting-select { width: 240px; }
 .sx-group-head:hover, .sx-group-head.active, .sx-group-head.active { background: transparent; }
 
 /* G10-C10 分区节奏统一:品牌/新对话/分区头/列表间距成比例,不再挤作一团 */
-.sx-menu-head { padding: 12px 8px 2px 12px; }
 .sx-new-chat { margin: 0 8px 5px; }
 .sx-side-head { padding: 0 8px; margin: 6px 0 5px; }
 .sx-groups { margin: 0; padding: 0 4px; }
-.recent-list { margin: 0; padding: 0 4px; }
+.recent-list { margin: 0; padding: 0 4px 8px; }
 
 
 /* G10-C13 查找面板:项目 + 会话历史搜索(品牌行查找钮开;Esc/外点收) */
@@ -1462,3 +1447,33 @@ select.sx-setting-select { width: 240px; }
 .run-spinner { width: 10px; height: 10px; flex: none; border-radius: 50%; border: 1.5px solid var(--fg-tertiary); border-top-color: var(--fg); animation: sx-spin 1s linear infinite; }
 @keyframes sx-fade-in { from { opacity: 0; } }
 .entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
+
+/* 条目左对齐统一(§2):正文/工具/思考同一 x 起点 */
+.entry { padding: 4px 8px; }
+.entry-tool { padding: 2px 8px; }
+/* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8) */
+.tool-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter); }
+.entry-tool.open .tool-body { grid-template-rows: 1fr; opacity: 1; }
+.tool-body-inner { min-height: 0; overflow: hidden; }
+/* Input/Output 双段(§2):段头小标+各段 280px 内滚 */
+.tool-io { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 2px; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); }
+.io-label { font-size: 11px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--fg-tertiary); }
+.tool-io-pre { margin: 0; max-height: 280px; overflow: auto; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* write diff 面同加内滚(§2) */
+.entry-tool .tool-detail .diff-cols { max-height: 280px; overflow: auto; }
+
+
+/* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */
+.sx-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--fg-secondary);
+  text-transform: uppercase;
+}

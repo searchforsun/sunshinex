@@ -116,6 +116,8 @@ interface ToolCallInfo {
   name: string;
   /** 调用入参原对象（payload.input;write 形态 {path, content} 现场核 builtin.ts） */
   input: Record<string, unknown>;
+  /** tool-result 全文(sink.on 旁路暂存;乱序双到达合并;种子条无槽回落 md 首行) */
+  result?: string;
 }
 
 /** 工具条 md(`● verb\n⎿ result`)的渲染侧只读拆解——与 chat-reducer 内部同形约定,不入其模块 */
@@ -133,8 +135,8 @@ function resultOf(md: string): string {
  *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
  *  +加载标,404/失败退单列现内容——快照种子条/无 callId 面恒单列)+ path 文本按钮(G8d 起
  *  callId 在场优先 onOpenDiff 开 diff 标签,缺场回落 onOpenFile 文件标签预览);其他工具展开
- *  result 摘要行。折叠行 `● verb [path] [⎿ result]`——verb 行与 result 行并作一行(md 两行
- *  的折叠视图)。 */
+ *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚;result 旁路暂存,
+ *  种子条回落 md 首行)。折叠壳 grid 化(0fr→1fr 生长):展开面常挂 DOM,折叠仅 CSS 收起。 */
 function ToolEntryView({
   entry,
   info,
@@ -161,6 +163,8 @@ function ToolEntryView({
   const target = info !== undefined && typeof info.input.path === 'string' ? info.input.path : undefined;
   const isWrite = info !== undefined && info.name === 'write' && target !== undefined;
   const fallbackNew = info !== undefined && typeof info.input.content === 'string' ? info.input.content : '';
+  /** 展开面 Output 全文:旁路暂存优先,种子条 info 缺省回落 md 首行 */
+  const fullResult = info?.result ?? result;
 
   /** 展开且可寻址(callId 在场——种子条/无 callId 面不拉)即异步拉 diff;折叠即弃在途应答
    *  (面板已不在场),重展开重拉;已缓存(diff≠undefined)不重拉 */
@@ -181,46 +185,55 @@ function ToolEntryView({
   }, [expanded, isWrite, callId, diff, conn, sessionId]);
 
   return (
-    <div className={`entry entry-tool${expanded ? ' tool-expanded' : ''}`}>
-      <button type="button" className="tool-summary" onClick={() => setExpanded((v) => !v)}>
+    <div className={`entry entry-tool${expanded ? ' open' : ''}`}>
+      <button type="button" className="tool-summary" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
         <ToolIcon verb={verb} />
         <span className="tool-verb">{target !== undefined ? `${verb} ${target}` : verb}</span>
         {result !== '' && <span className="tool-result-inline"> · {result}</span>}
       </button>
-      {expanded &&
-        (isWrite && info !== undefined ? (
-          <div className="tool-detail">
-            {(onOpenDiff !== undefined || onOpenFile !== undefined) && (
-              // G8d:callId 在场优先开 diff 标签(双列/判重经 registry);缺场(种子条/无 callId 面)
-              // 回落 onOpenFile 文件标签预览——title 同步分流提示
-              <button
-                type="button"
-                className="tool-path"
-                title={onOpenDiff !== undefined && callId !== undefined ? '打开 diff 标签' : '在文件标签预览'}
-                onClick={() => {
-                  if (onOpenDiff !== undefined && callId !== undefined) onOpenDiff(callId, target!);
-                  else onOpenFile?.(target!);
-                }}
-              >
-                {target}
-              </button>
-            )}
-            {diff !== undefined && diff !== null ? (
-              <DiffPanel oldStr={diff.oldContent} newStr={diff.newContent} />
-            ) : diff === null ? (
-              <DiffPanel newStr={fallbackNew} />
-            ) : (
-              <>
-                <div className="diff-loading" role="status">
-                  diff 加载中…
-                </div>
+      <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
+        <div className="tool-body-inner">
+          {isWrite && info !== undefined ? (
+            <div className="tool-detail">
+              {/* path 钮与 diff 面原逻辑原样搬入(G8d 分流不变) */}
+              {(onOpenDiff !== undefined || onOpenFile !== undefined) && (
+                <button
+                  type="button"
+                  className="tool-path"
+                  title={onOpenDiff !== undefined && callId !== undefined ? '打开 diff 标签' : '在文件标签预览'}
+                  onClick={() => {
+                    if (onOpenDiff !== undefined && callId !== undefined) onOpenDiff(callId, target!);
+                    else onOpenFile?.(target!);
+                  }}
+                >
+                  {target}
+                </button>
+              )}
+              {diff !== undefined && diff !== null ? (
+                <DiffPanel oldStr={diff.oldContent} newStr={diff.newContent} />
+              ) : diff === null ? (
                 <DiffPanel newStr={fallbackNew} />
-              </>
-            )}
-          </div>
-        ) : (
-          <pre className="tool-result">{result !== '' ? result : '(无结果)'}</pre>
-        ))}
+              ) : (
+                <>
+                  <div className="diff-loading" role="status">diff 加载中…</div>
+                  <DiffPanel newStr={fallbackNew} />
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="tool-io">
+              {info !== undefined && Object.keys(info.input).length > 0 && (
+                <>
+                  <div className="io-label">{t('Input', '输入')}</div>
+                  <pre className="tool-io-pre">{JSON.stringify(info.input, null, 2)}</pre>
+                </>
+              )}
+              <div className="io-label">{t('Output', '输出')}</div>
+              <pre className="tool-io-pre">{fullResult !== '' ? fullResult : t('(no result)', '(无结果)')}</pre>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -683,7 +696,17 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           if (cid !== '') {
             const raw = e.payload?.input;
             const input = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-            setToolInputs((m) => ({ ...m, [cid]: { name: e.text ?? '', input } }));
+            setToolInputs((m) => ({ ...m, [cid]: { name: e.text ?? '', input, result: m[cid]?.result } }));
+          }
+        }
+        if (e.type === 'tool-result') {
+          const cid = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
+          if (cid !== '') {
+            const tool = typeof e.payload?.tool === 'string' ? e.payload.tool : '';
+            setToolInputs((m) => ({
+              ...m,
+              [cid]: { name: m[cid]?.name ?? tool, input: m[cid]?.input ?? {}, result: e.text ?? '' },
+            }));
           }
         }
         if (seedingRef.current) {

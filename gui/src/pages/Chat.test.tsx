@@ -166,3 +166,25 @@ describe('run 状态行(G11 §1)', () => {
     expect(document.querySelector('.entry-run.live')?.textContent).toContain('8.4k tokens');
   });
 });
+
+describe('工具行展开 Input/Output(G11 §2)', () => {
+  it('展开显示 input JSON 与 result 全文(md 只含首行)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'c1', input: { command: 'ls -la' } } });
+    fire({ type: 'tool-result', text: 'file1\nfile2', ts: Date.now(), payload: { callId: 'c1' } });
+    fireEvent.click(document.querySelector('.tool-summary')!);
+    const io = document.querySelector('.tool-io');
+    expect(io?.textContent).toContain('"command"');
+    expect(io?.textContent).toContain('file2');
+  });
+
+  it('result 先到 call 后到(乱序)同样配对全文', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-result', text: 'out1\nout2', ts: Date.now(), payload: { callId: 'c9' } });
+    fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: 'c9', input: { path: 'a.ts' } } });
+    fireEvent.click(document.querySelector('.tool-summary')!);
+    expect(document.querySelector('.tool-io')?.textContent).toContain('out2');
+  });
+});
