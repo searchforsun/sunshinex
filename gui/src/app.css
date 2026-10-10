@@ -1390,7 +1390,7 @@ select.sx-setting-select { width: 240px; }
 
 /* G10-C10 分区节奏统一:品牌/新对话/分区头/列表间距成比例,不再挤作一团 */
 .sx-new-chat { margin: 0 8px 5px; }
-.sx-side-head { padding: 0 8px; margin: 6px 0 5px; }
+.sx-side-head { padding: 0 8px; margin: 3px 0 2px; }
 .sx-groups { margin: 0; padding: 0 4px; }
 .recent-list { margin: 0; padding: 0 4px 8px; }
 
@@ -1485,7 +1485,7 @@ select.sx-setting-select { width: 240px; }
   justify-content: space-between;
   height: 32px;
   padding: 0 8px;
-  margin-bottom: 8px;
+  margin-bottom: 2px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 1px;
