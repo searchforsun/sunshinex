@@ -1492,3 +1492,7 @@ select.sx-setting-select { width: 240px; }
   color: var(--fg-secondary);
   text-transform: uppercase;
 }
+/* G10-C15 项目行右侧 + 钮:hover 浮现(默认隐藏;行悬停/键盘聚焦行内时显示) */
+.workspace-item .workspace-row > .sx-iconbtn { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.workspace-item:hover .workspace-row > .sx-iconbtn,
+.workspace-item:focus-within .workspace-row > .sx-iconbtn { opacity: 1; }
