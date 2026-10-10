@@ -470,6 +470,50 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
   const [cmdData, setCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
   const [cmdActive, setCmdActive] = useState(0);
+  /** 会话标题(G10-C7):手改 > 模型总结(≤20 字) > 会话 id。手改与总结各自落 localStorage
+   *  (手改后不再发起总结调用;总结失败静默回落会话 id)。点击标题即改 */
+  const [titleOverride, setTitleOverride] = useState<string | null>(() => {
+    const v = localStorage.getItem(`sunshinex.title.${sessionId}`);
+    return v !== null && v.trim() !== '' ? v : null;
+  });
+  const [autoTitle, setAutoTitle] = useState<string | null>(() => {
+    const v = localStorage.getItem(`sunshinex.autotitle.${sessionId}`);
+    return v !== null && v.trim() !== '' ? v : null;
+  });
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const firstUserText = (() => {
+    const md = chat.entries.find((e) => e.kind === 'user')?.md ?? '';
+    return md.startsWith('> ') ? md.slice(2) : md;
+  })();
+  const displayTitle = titleOverride ?? autoTitle ?? sessionId;
+  const commitTitle = (): void => {
+    const v = titleDraft.trim();
+    if (v === '' || v === displayTitle) {
+      setTitleEditing(false);
+      return;
+    }
+    setTitleOverride(v);
+    localStorage.setItem(`sunshinex.title.${sessionId}`, v);
+    setTitleEditing(false);
+  };
+  /** 模型总结(一次):有首条消息且尚无标题/手改时调用;失败静默(回落首条截取),结果落 localStorage */
+  useEffect(() => {
+    if (titleOverride !== null || autoTitle !== null || firstUserText === '') return;
+    if (typeof conn.sessionTitle !== 'function') return;
+    let alive = true;
+    conn.sessionTitle(sessionId, firstUserText).then(
+      ({ title }) => {
+        if (!alive || title.trim() === '') return;
+        setAutoTitle(title);
+        localStorage.setItem(`sunshinex.autotitle.${sessionId}`, title);
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, sessionId, firstUserText, titleOverride, autoTitle]);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
    *  (挂载/reset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
   const [seeding, setSeeding] = useState(true);
@@ -714,13 +758,37 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         <button type="button" className="back" aria-label="back" title={t('Back to home', '返回首页')} onClick={onBack}>
           <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        <span
-          className="chat-title"
-          title={`${sessionId} · ${chat.tokens} tokens · ${chat.steps} steps${running ? ' · 运行中' : ''}`}
-        >
-          {sessionId}
-          {running && <span className="sx-session-dot running" aria-label="running" />}
-        </span>
+        {titleEditing ? (
+          <input
+            className="chat-title-input"
+            value={titleDraft}
+            maxLength={40}
+            autoFocus
+            aria-label={t('Session title', '会话标题')}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitTitle();
+              if (e.key === 'Escape') setTitleEditing(false);
+            }}
+          />
+        ) : (
+          <span className="chat-title" title={`${sessionId} · ${chat.tokens} tokens · ${chat.steps} steps${running ? ' · 运行中' : ''}`}>
+            <button
+              type="button"
+              className="chat-title-btn"
+              title={t('Click to rename', '点击重命名')}
+              onClick={() => {
+                setTitleDraft(displayTitle);
+                setTitleEditing(true);
+              }}
+            >
+              <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span className="chat-title-text">{displayTitle}</span>
+            </button>
+            {running && <span className="sx-session-dot running" aria-label="running" />}
+          </span>
+        )}
         <button
           type="button"
           className="chat-more sx-iconbtn"

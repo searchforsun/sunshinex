@@ -305,6 +305,8 @@ export interface Connection {
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切) */
   sessionModel(id: string): Promise<{ current?: string; explicitDefault: boolean; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number }> }>;
+  /** 模型总结会话标题(G10-C7):text=首条用户消息;daemon 一次 chat 调用回 ≤20 字标题(503=模型未接线) */
+  sessionTitle(id: string, text: string): Promise<{ title: string }>;
   /** POST /session/:id/model|tier|effort|mode:运行中切换(下一轮生效;G10-C1b/C2b) */
   setSessionModel(id: string, model?: string): Promise<void>;
   setSessionTier(id: string, tier?: 'small' | 'medium' | 'large'): Promise<void>;
@@ -618,6 +620,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionModel(id: string) {
       return getJson('/session/' + encodeURIComponent(id) + '/model');
+    },
+    sessionTitle(id: string, text: string) {
+      return postJson<{ ok: true; title: string }>('/session/' + encodeURIComponent(id) + '/title', { text });
     },
     async setSessionModel(id: string, model?: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/model', { model });

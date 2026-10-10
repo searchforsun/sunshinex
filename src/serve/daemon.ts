@@ -1001,6 +1001,8 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/tier', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'tier') },
     { method: 'POST', path: '/session/:id/effort', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'effort') },
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
+    // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——标题缓存/编辑态在客户端
+    { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
     { method: 'POST', path: '/session/:id/steer/cancel', auth: true, run: async (req, res, p) => this.handleSteerCancel(req, res, p.id) },
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
@@ -1352,6 +1354,34 @@ export class GuiDaemon {
    *  → [{pid, kind, req}]（G7 增 req=挂起表 entry.req 直序列化——连接层 pid 去重拦了重连重发帧，
    *  snapshot.pending 是 GUI 刷新/reseed 后卡内容的唯一来源），跨会话卡恢复（GUI 刷新/重连后重放
    *  挂起面）的基座 */
+  /** POST /session/:id/title {text}(G10-C7):模型一次性总结会话标题(≤20 字,只回标题本身);
+   *  无状态不落盘——标题缓存与编辑态由客户端 localStorage 承载;模型未接线/调用失败 503 降级 */
+  private async handleSessionTitle(req: http.IncomingMessage, res: http.ServerResponse, _id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const text = (parsed.body as { text?: unknown }).text;
+    if (typeof text !== 'string' || text.trim() === '') return this.send(res, 400, { error: 'invalid text' });
+    // 真实模型门禁(J2 能力位):Stub/Scripted 桩不消耗脚本队列(e2e 断言不漂移),503 由客户端静默降级
+    if (this.model.capabilities?.chat !== true) {
+      return this.send(res, 503, { error: 'model not wired — title summarization unavailable' });
+    }
+    try {
+      const r = await this.model.chat({
+        messages: [
+          {
+            role: 'user',
+            content: `为下面的会话内容生成一个不超过20字的简短标题。只输出标题本身,不要引号、句号或任何前后缀:\n${text.slice(0, 600)}`,
+          },
+        ],
+      });
+      const cleaned = r.content.trim().replace(/^["'「『]+|["'」』.。!！?？]+$/g, '');
+      const title = cleaned === '' ? text.trim().slice(0, 20) : cleaned.slice(0, 24);
+      this.send(res, 200, { ok: true, title });
+    } catch (err) {
+      this.send(res, 503, { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   /** POST /session/:id/command {line}(G10-C1c):TUI 斜杠命令 daemon 直跑;输出走既有事件流 */
   private async handleSessionCommand(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
     const parsed = await this.readJson(req);

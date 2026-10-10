@@ -60,7 +60,7 @@ describe('ProjectMenu(spec §1 左栏项目分组)', () => {
     const conn = makeConn();
     renderMenu(conn);
     fireEvent.click(await screen.findByText('p1'));
-    fireEvent.click(await screen.findByText('Attach'));
+    fireEvent.click(await screen.findByTitle('打开会话'));
     await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1'));
   });
 

@@ -3,7 +3,7 @@ import type { SessionRow, WorkspaceRow } from '../connection';
 import { DirPicker } from '../pages/DirPicker';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { ChevronRight, Plus, RefreshCw, Settings, SquarePen } from 'lucide-react';
+import { Folder, FolderOpen, Plus, RefreshCw, Settings, SquarePen } from 'lucide-react';
 
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
@@ -76,6 +76,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState(false);
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
   const [menuSlug, setMenuSlug] = useState<string | null>(null);
+  /** 已读会话集(本次运行内):点开过的会话不再显示蓝色未读光点;运行中恒显示转圈 */
+  const [seenIds, setSeenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const markSeen = (id: string): void =>
+    setSeenIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
 
   const loadWorkspaces = useCallback((): void => {
     conn.workspaces().then(
@@ -171,6 +180,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       .then(
         (sessionId) => {
           setBusy(false);
+          markSeen(journalId);
           onOpenSession(sessionId, root);
         },
         (err: unknown) => {
@@ -190,6 +200,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     conn.newSession(root, mode === 'manual' ? 'manual' : undefined).then(
       ({ sessionId }) => {
         setBusy(false);
+        markSeen(sessionId);
         loadWorkspaces(); // 组内新建落位即刷新组列表(spec §1:ws-count 随新 rows 到场;attachJournal 不改工作区面不刷)
         onOpenSession(sessionId, root);
       },
@@ -208,6 +219,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     conn.newSession(activeRoot).then(
       ({ sessionId }) => {
         setBusy(false);
+        markSeen(sessionId);
         loadWorkspaces();
         onOpenSession(sessionId, activeRoot);
       },
@@ -227,6 +239,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     conn.newSession(root, manual ? 'manual' : undefined).then(
       ({ sessionId }) => {
         setBusy(false);
+        markSeen(sessionId);
         setPickerOpen(false);
         loadWorkspaces(); // 选新项目根→刷新组列表(spec §1:新装首工作区后左栏即见,activeRoot 自动展开 effect 随新 rows 接手)
         onOpenSession(sessionId, root);
@@ -307,11 +320,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                   title={root ?? 'root 未登记(历史工作区)——无法恢复会话'}
                   onClick={() => toggleGroup(row)}
                 >
-                  <span
-                    className="sx-chevron"
-                    style={{ transform: openSlug === row.slug ? 'rotate(90deg)' : 'none' }}
-                  >
-                    <ChevronRight size={16} strokeWidth={1.75} />
+                  <span className="sx-ws-folder" aria-hidden="true">
+                    {openSlug === row.slug ? (
+                      <FolderOpen size={15} strokeWidth={1.75} />
+                    ) : (
+                      <Folder size={15} strokeWidth={1.75} />
+                    )}
                   </span>
                   <span className="ws-slug sx-ws-name">{wsName(row)}</span>
                   <span className="ws-count sx-count" title={`${row.sessionCount} sessions`}>
@@ -378,22 +392,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                           attachJournal(root, s.id);
                         }}
                       >
-                        <span className={`sx-session-dot${running ? ' running' : ''}`} title={running ? '运行中会话' : undefined} />
+                        {running ? (
+                          <span className="sx-session-dot running" title="运行中会话" />
+                        ) : !seenIds.has(s.id) ? (
+                          <span className="sx-session-dot unseen" />
+                        ) : null}
                         <span className="session-summary" title={`${s.firstUser ?? ''} · ${s.id}`}>
                           {s.firstUser ?? '(无摘要)'}
                         </span>
                         <span className="session-meta">{relTime(s.updatedAt)}</span>
-                        <button
-                          type="button"
-                          className="attach"
-                          disabled={busy}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            attachJournal(root, s.id);
-                          }}
-                        >
-                          Attach
-                        </button>
                       </li>
                     );
                   })}
@@ -421,20 +428,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                 attachJournal(r.root, r.id);
               }}
             >
-              <span className={`sx-session-dot${running ? ' running' : ''}`} />
+              {running ? (
+                <span className="sx-session-dot running" />
+              ) : !seenIds.has(r.id) ? (
+                <span className="sx-session-dot unseen" />
+              ) : null}
               <span className="session-summary" title={`${r.firstUser ?? ''} · ${r.id}`}>{r.firstUser ?? '(无摘要)'}</span>
               <span className="session-meta">{relTime(r.updatedAt)}</span>
-              <button
-                type="button"
-                className="attach"
-                disabled={busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  attachJournal(r.root, r.id);
-                }}
-              >
-                Attach
-              </button>
             </li>
           );
         })}

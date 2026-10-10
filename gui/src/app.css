@@ -1337,3 +1337,29 @@ select.sx-setting-select { width: 240px; }
 /* G10-C6 续:会话操作菜单锚定 topbar(原绝对定位落到视口右上,盖住右栏) */
 .chat-topbar { position: relative; }
 .chat-topbar .chat-more-pop { top: calc(100% + 4px); right: 8px; }
+
+/* G10-C7 会话行状态制:闲置行无前缀;运行=转圈;完成未看=accent 蓝点(点开即消失);去 Attach 钮 */
+.sx-session-dot.unseen {
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  border: none;
+}
+.sx-ws-folder { display: inline-flex; flex: none; color: var(--fg-secondary); }
+
+/* G10-C7 会话标题:可点击改名(文件夹图标+省略号),编辑态为描边输入框 */
+.chat-title-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 0; max-width: 360px; padding: 3px 8px;
+  border: none; border-radius: var(--radius-sm);
+  color: var(--fg); font-size: 13px; font-weight: 500;
+}
+.chat-title-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.chat-title-btn svg { flex: none; color: var(--fg-secondary); }
+.chat-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-title-input {
+  height: 26px; width: 280px; padding: 0 8px;
+  border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--fg);
+  font-size: 13px; font-weight: 500; outline: none;
+}
