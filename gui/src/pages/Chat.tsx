@@ -3,8 +3,8 @@ import type { MutableRefObject, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
-  Folder, ListTodo, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
+  AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, Globe, History,
+  Info, Folder, ListTodo, MessageSquare, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
@@ -519,14 +519,32 @@ const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewin
   );
 });
 
+/** 系统行图标(G11 §4):error=AlertCircle;notice 按 md 形态分流(委派 ✻=Bot/agent 消息 [a → b]
+ *  =MessageSquare/通用=Info)。md 原文不动,纯前置装饰 */
+function systemIconOf(entry: ChatEntry): ReactNode {
+  if (entry.kind === 'error') return <AlertCircle size={12} strokeWidth={1.75} aria-hidden="true" />;
+  if (entry.kind !== 'notice') return null;
+  if (entry.md.startsWith('✻')) return <Bot size={12} strokeWidth={1.75} aria-hidden="true" />;
+  if (/^\[[^\]]+ → [^\]]+\]/.test(entry.md)) return <MessageSquare size={12} strokeWidth={1.75} aria-hidden="true" />;
+  return <Info size={12} strokeWidth={1.75} aria-hidden="true" />;
+}
+
 /** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销)。
  *  G8d T5:streaming 条末挂流式光标 span.sx-stream-cursor(闪灭动画定义在 app.css 特批小段;done 收段
- *  条 streaming=false → 光标随 memo 重渲染退场) */
-const ChatEntryView = memo(function ChatEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
+ *  条 streaming=false → 光标随 memo 重渲染退场)。G11 §4 结构化:.entry-md 包装(含 icon 时 has-icon
+ *  类)+.entry-md-body 内 md 与光标(后代查询兼容);footer 参数预留(Task 10 消费,本任务不传) */
+const ChatEntryView = memo(function ChatEntryView({ entry, footer }: { entry: ChatEntry; footer?: ReactNode }): JSX.Element {
+  const icon = systemIconOf(entry);
   return (
     <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{entry.md}</ReactMarkdown>
-      {entry.streaming === true && <span className="sx-stream-cursor" aria-hidden="true" />}
+      <div className={`entry-md${icon !== null ? ' has-icon' : ''}`}>
+        {icon !== null && <span className="entry-icon">{icon}</span>}
+        <div className="entry-md-body">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{entry.md}</ReactMarkdown>
+          {entry.streaming === true && <span className="sx-stream-cursor" aria-hidden="true" />}
+        </div>
+      </div>
+      {footer}
     </div>
   );
 });

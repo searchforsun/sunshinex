@@ -1476,6 +1476,12 @@ select.sx-setting-select { width: 240px; }
 .think-body-inner { min-height: 0; overflow: hidden; }
 .thinking-scroll { max-height: 320px; overflow-y: auto; margin-top: 4px; }
 .thinking-scroll .thinking-detail { margin: 0; }
+/* 系统行图标(§4):图标前置列+md 体;末元素 margin 收口随之内移一层 */
+.entry-md.has-icon { display: flex; align-items: flex-start; gap: 6px; }
+.entry-icon { flex: none; margin-top: 2px; color: var(--fg-tertiary); }
+.entry-md-body { min-width: 0; flex: 1; }
+.entry-md-body > :last-child { margin-bottom: 0; }
+.entry > .entry-md:last-child > .entry-md-body > :last-child { margin-bottom: 0; }
 
 
 /* G10-C14 侧栏头部单一规则(历史 6 处分散 .sx-menu-head 规则收敛):32px 标准行 + 大写字标 */
