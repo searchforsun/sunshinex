@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { t } from '../i18n';
 import { resolveDataDir } from '../config/data-dir';
-import { listSessions, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, type SessionMeta } from './session-journal';
+import { listSessions, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
+import { createRuntime } from '../tui/runtime';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import type { SessionController } from './session';
 
@@ -21,7 +22,7 @@ export async function resumeFlow(ctrl: SessionController): Promise<void> {
   }
   // >8 项切 filterable 卡（规格 D6/D8）：全量直出、渲染层筛选，一次问询直达；≤8 项维持既有循环形态不变
   if (sessions.length > 8) {
-    const items = sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') }));
+    const items = sessions.map((s) => ({ label: s.id, description: (s.title ?? s.firstUser) ? (s.title ?? s.firstUser)!.slice(0, 60) : t('(no user input)', '（无用户输入）') }));
     const answer = await ctrl.askUser({
       question: t('Resume which session? (type to filter)', '恢复哪个会话？（输入即筛选）'),
       options: items,
@@ -42,7 +43,7 @@ export async function resumeFlow(ctrl: SessionController): Promise<void> {
   // ≤8 档全量直出（2026-09-30 翻页口径统一：滑窗自动翻页由渲染层承载，More…/Back… 循环退役）
   const answer = await ctrl.askUser({
     question: t('Resume which session?', '恢复哪个会话？'),
-    options: sessions.map((s) => ({ label: s.id, description: s.firstUser ? s.firstUser.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
+    options: sessions.map((s) => ({ label: s.id, description: (s.title ?? s.firstUser) ? (s.title ?? s.firstUser)!.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
   });
   if (answer.type === 'dismissed') {
     ctrl.pushMsg('system', t('Resume cancelled', '已取消恢复'));
@@ -221,4 +222,37 @@ export async function branchFlow(ctrl: SessionController, kind: 'rewind' | 'fork
   }
   ctrl.state = { ...ctrl.state, backfill: anchor.text }; // 锚点轮输入回填（重发经正常任务提交进链）
   ctrl.notify();
+}
+
+/** G14.29 辅助问答流程（/btw /side，对标 Codex side conversation）：fork 整档旁路（side 标记，
+ *  列表全滤除）+ 一次性隔离 runtime 跑一轮问答——答案以 ⪽ 旁白落屏，主链上下文零污染。
+ *  runtime 用完即弃（mcpClose 收口），不接 UI 事件（旁白由 ctrl.pushMsg 单点承载）。 */
+export async function btwFlow(ctrl: SessionController, question: string): Promise<void> {
+  const journalId = ctrl.ensureJournal().currentId;
+  if (journalId === undefined) {
+    ctrl.pushMsg('system', t('No journaled session to fork', '无已建档会话可 fork'), { level: 'warn' });
+    return;
+  }
+  const dataDir = resolveDataDir(ctrl.root);
+  let forkId: string;
+  try {
+    const parsed = parseJournalFile(path.join(sessionsDir(dataDir), journalId + '.jsonl'));
+    forkId = branchFrom(dataDir, journalId, parsed.lines.length, 'fork');
+  } catch (err) {
+    ctrl.pushMsg('system', t(`Fork failed: ${err instanceof Error ? err.message : String(err)}`, `分档失败：${err instanceof Error ? err.message : String(err)}`), { level: 'warn' });
+    return;
+  }
+  writeSessionMeta(dataDir, forkId, { side: true });
+  ctrl.pushMsg('system', t('⪽ side session: thinking on a forked side chain…', '⪽ 辅助会话：fork 旁路思考中…'));
+  const rt = createRuntime({ root: ctrl.root, model: ctrl.runtime.harness.model, onEvent: () => {} });
+  try {
+    rt.harness.context.appendInstructionLine(question);
+    const outcome = await rt.runTask(question);
+    const reply = (outcome?.reply ?? '').trim();
+    ctrl.pushMsg('system', reply === '' ? t('⪽ side session: no reply', '⪽ 辅助会话：无回复') : `⪽ ${reply}`);
+  } catch (err) {
+    ctrl.pushMsg('system', t(`⪽ side failed: ${err instanceof Error ? err.message : String(err)}`, `⪽ 辅助会话失败：${err instanceof Error ? err.message : String(err)}`), { level: 'warn' });
+  } finally {
+    void rt.harness.mcpClose?.().catch(() => undefined);
+  }
 }

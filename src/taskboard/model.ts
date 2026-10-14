@@ -13,7 +13,8 @@ export interface BoardTask {
   status: TaskStatus;
   dependsOn: string[];
   assignee?: string;
-  /** 实际执行者(2026-10-06 用户定版 Ctrl+T 语义「哪个代理执行的」):回写时落,与 assignee(应派谁)正交;
+  /** 实际执行者(2026-10-06 用户定版 Ctrl+T 语义「哪个代理执行的」):认领即落(status-changed by,2026-10-09
+   *  修:旧认领路径不带 by,执行期 @owner 空窗)、回写刷新;与 assignee(应派谁)正交;
    *  fork 路径='fork'、teammate=名、external-cli='external-cli' */
   executedBy?: string;
   /** gate 挂起(spec Ruling 3):派发跳过,review_task(approved) 解锁 */

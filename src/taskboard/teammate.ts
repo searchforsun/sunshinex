@@ -208,7 +208,7 @@ export class Teammate {
   private currentTaskAbort?: AbortController;
 
   private async execute(task: BoardTask): Promise<void> {
-    if (!this.deps.board.markClaimed(task.id)) return; // 已被取走/非 pending:静默放弃(claim() 先行者已 claimed,幂等放行)
+    if (!this.deps.board.markClaimed(task.id, this.name)) return; // 已被取走/非 pending:静默放弃(claim() 先行者已 claimed,幂等放行)
     // 板任务台账登记(与 fork 路径同形 task-tN):task_wait(null) 的可等面;stop=精确中止本任务
     // (Reactor 收到 abort 即 !done→failed 回写;teammate 存活继续 claim 下一任务)
     const taskAbort = new AbortController();

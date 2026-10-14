@@ -316,6 +316,52 @@ test('⑦ POST /session/:id/reset（旧 /session/new 软重置迁入）：200 �
   });
 });
 
+test('⑦b rename/title-get（G14.16 标题统一流）：建档后 rename 落旁车→GET 回读；/sessions 同源带 title；409/400/404 面', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"旁路答案"}']), async (ctx) => {
+    const { base } = ctx;
+    const sid = await ctx.newSession();
+    // 无档会话(未跑首轮):rename 409(空会话零落盘不变式),title-get 回空对象
+    assert.equal((await fetch(`${base}/session/${sid}/rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({ title: '早改' }) })).status, 409);
+    assert.deepEqual(await (await fetch(`${base}/session/${sid}/title/get`, { headers: AUTH })).json(), {});
+    // 跑一轮建档(journal.start 于首次持久)后再 rename:200 回显 trim;GET 回读一致
+    const r = await fetch(`${base}/session/${sid}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    assert.equal(r.status, 202);
+    await waitFor(() => ctx.daemon.get(sid)!.status() === 'idle', 10_000);
+    const rn = await fetch(`${base}/session/${sid}/rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({ title: '  自定义名  ' }) });
+    assert.equal(rn.status, 200);
+    assert.deepEqual(await rn.json(), { ok: true, title: '自定义名' });
+    const g1 = await fetch(`${base}/session/${sid}/title/get`, { headers: AUTH });
+    assert.deepEqual(await g1.json(), { title: '自定义名' });
+    // 列表同源:GET /sessions?root= 恰一行带 title + G14.17 会话级统计(runs/tokens/上文/建档时刻)
+    const rows = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(ctx.tmp)}`, { headers: AUTH })).json()) as Array<{ id: string; title?: string; runs?: number; tokens?: number; steps?: number; createdAt?: string; ctxWindow?: number; model?: string }>;
+    const withTitle = rows.filter((x) => x.title === '自定义名');
+    assert.equal(withTitle.length, 1);
+    const stat = withTitle[0]!;
+    assert.equal(stat.runs, 1, 'run 收尾 meta 累积');
+    assert.equal(typeof stat.tokens, 'number');
+    assert.ok((stat.steps ?? 0) >= 1, '链步数累计');
+    assert.equal(typeof stat.createdAt, 'string', 'header createdAt 兜底');
+    assert.ok((stat.ctxWindow ?? 0) > 0, '窗口预算落 meta');
+    assert.equal(typeof stat.model, 'string', '模型标识落 meta');
+    // G14.29 btw:fork 旁路一轮(脚本下一步给旁路 runtime)——reply 回执 + side 会话列表滤除
+    const btw = await fetch(`${base}/session/${sid}/btw`, { method: 'POST', headers: AUTH, body: JSON.stringify({ question: '为什么?' }) });
+    assert.equal(btw.status, 200);
+    const btwBody = (await btw.json()) as { reply: string; sessionId: string };
+    assert.equal(btwBody.reply, '旁路答案');
+    assert.notEqual(btwBody.sessionId, sid);
+    const sideRows = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(ctx.tmp)}`, { headers: AUTH })).json()) as Array<{ id: string; title?: string; side?: boolean }>;
+    assert.equal(sideRows.some((r) => r.id === btwBody.sessionId), false, 'side 会话不进列表');
+    assert.equal(sideRows.some((r) => r.title === '自定义名'), true, '主会话仍在列');
+
+    // 400 面:空 title/非法 id;404 未知会话
+    assert.equal((await fetch(`${base}/session/${sid}/rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({ title: '  ' }) })).status, 400);
+    assert.equal((await fetch(`${base}/session/${sid}/rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({}) })).status, 400);
+    assert.equal((await fetch(`${base}/session/..%5C../rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({ title: 'x' }) })).status, 400);
+    assert.equal((await fetch(`${base}/session/sX/rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({ title: 'x' }) })).status, 404);
+    assert.equal((await fetch(`${base}/session/sX/title/get`, { headers: AUTH })).status, 404);
+  });
+});
+
 test('⑧ close() 幂等且 close 后 fetch 拒连', async () => {
   const tmp = tmpdir('sunshinex-serve-close-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;

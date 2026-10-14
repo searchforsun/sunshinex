@@ -49,14 +49,14 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     const { write, lastFrame } = term;
     await new Promise((r) => setTimeout(r, 200)); // 等挂载：ink 未接管 stdin 时首段输入会丢失
     assert.match(lastFrame() ?? '', /[✻✽✶✱✢] \[rv\]/, '常态 ChildPanel 承载运行中行（五帧全集锚定）');
-    assert.doesNotMatch(lastFrame() ?? '', /t1 ○/, '缺省非任务视图（板不进动态区）');
+    assert.doesNotMatch(lastFrame() ?? '', /○ A/, '缺省非任务视图（板不进动态区）');
 
     write('\u0014'); // Ctrl+T 进入任务视图
     await new Promise((r) => setTimeout(r, 200));
     const entered = lastFrame() ?? '';
-    assert.match(entered, /t1 ○ A/, '任务板行进动态区：`${id} <符号> ${label}`（符号制,boardRows 单点映射）');
-    assert.match(entered, /t2 ○ ⚠ B ← t1 @w1/, 'gated ⚠ 高亮 + 依赖箭头 ← + 指派后缀 @');
-    assert.match(entered, /❯ t1/, '光标缺省落首行（id 数值序最小）');
+    assert.match(entered, /○ A/, '任务板行进动态区：`<符号> ${label}`（符号制,boardRows 单点映射;id 不上屏）');
+    assert.match(entered, /○ ⚠ B ← t1 @w1/, 'gated ⚠ 高亮 + 依赖箭头 ← + 指派后缀 @');
+    assert.match(entered, /❯ ○/, '光标缺省落首行（id 数值序最小）');
     assert.match(entered, /review gate/, '键提示条切任务视图组（Enter=审批门）');
     assert.doesNotMatch(entered, /[✻✽✶✱✢] \[rv\]/, '任务视图在场 ChildPanel 让位（同 browse 语义；五帧全集锚定）');
 
@@ -64,17 +64,17 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     write('\u0002'); // Ctrl+B
     await new Promise((r) => setTimeout(r, 150));
     const afterB = lastFrame() ?? '';
-    assert.match(afterB, /t1 ○/, '仍在任务视图（Ctrl+B 未切走）');
+    assert.match(afterB, /○ A/, '仍在任务视图（Ctrl+B 未切走）');
     assert.doesNotMatch(afterB, /Enter inspect/, 'browse 未进入（board 在场吞键，互斥）');
 
     write('\u001b[B'); // ↓ 光标移到 gated 行 t2
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /❯ t2/, '↓ 光标移到 gated 行');
+    assert.match(lastFrame() ?? '', /❯ ○ ⚠/, '↓ 光标移到 gated 行');
 
     write('\r'); // Enter 于 gated 行 → gate 审批问题卡（askUser 经问询管线挂起）
     await new Promise((r) => setTimeout(r, 200));
     const card = lastFrame() ?? '';
-    assert.match(card, /Approve gate on t2\?/, 'gate 审批问题卡出现');
+    assert.match(card, /Approve gate on B\?/, 'gate 审批问题卡出现（问句按标题锚行——id 不上屏）');
     assert.match(card, /approve/, 'approve 选项在卡（首项=光标缺省位）');
 
     write('\r'); // Enter 提交首项 approve（问询卡接管键盘——board 让键给问询分支）
@@ -82,19 +82,19 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     assert.deepEqual(reviewCalls, [{ id: 't2', approved: true }], '裁决映射 taskboard.review(t2, approved)');
     const answered = lastFrame() ?? '';
     assert.doesNotMatch(answered, /Approve gate on/, '卡裁决后收起（回 prevStatus）');
-    assert.match(answered, /❯ t2/, '板态跨审批卡存续（回板视图）');
+    assert.match(answered, /❯ ○ ⚠/, '板态跨审批卡存续（回板视图）');
 
     // gate-resolved 事件自更新投影（生产由真实 taskboard 发射；直喂同构事件断言帧面恢复可派发形态）
     ctrl.onEventForTest({ type: 'gate-resolved', ts: 200, payload: { taskId: 't2', approved: true } } as never);
     await new Promise((r) => setTimeout(r, 200));
     const resolved = lastFrame() ?? '';
-    assert.match(resolved, /t2 ○ B ← t1 @w1/, 'gate 解锁后行恢复 ○（无 ⚠）');
-    assert.doesNotMatch(resolved, /t2 ○ ⚠/, '⚠ 消失（gated 离场）');
+    assert.match(resolved, /○ B ← t1 @w1/, 'gate 解锁后行恢复 ○（无 ⚠）');
+    assert.doesNotMatch(resolved, /○ ⚠/, '⚠ 消失（gated 离场）');
 
     write('\u001b'); // Esc 退出任务视图回主界面
     await new Promise((r) => setTimeout(r, 150));
     const exited = lastFrame() ?? '';
-    assert.doesNotMatch(exited, /t1 ○/, '任务视图退出');
+    assert.doesNotMatch(exited, /○ A/, '任务视图退出');
     assert.match(exited, /[✻✽✶✱✢] \[rv\]/, 'ChildPanel 回归常态承载');
 
     // 前提补证：Ctrl+B 本身可用（同列表可进）——上一不进入是互斥挡下，非键坏
@@ -146,4 +146,36 @@ test('browseRows：闲置 teammate 行(跑完后 Ctrl+B 仍可浏览,2026-10-06 
   } as never;
   const rows = browseRows(st);
   assert.deepEqual(rows.map((r) => r.label), ['w1 · 干活中', 'w2'], '工作中带任务后缀;闲置 teammate 补行;done 不列');
+  assert.deepEqual(rows.map((r) => r.childLabel), ['w1', 'w2'], 'child join 键=委派原名(全屏视图按名 join 转录,2026-10-09 修空白病根)');
+});
+
+test('App：Ctrl+B → Enter 进 team 子代理全屏视图——委派行展示带任务后缀、child 按原名 join（2026-10-09 修「team 子代理视图整页空白」）', async () => {
+  const tmp = tmpdir('sunshinex-app-browse-team-inspect-');
+  let term: TestRenderResult | undefined;
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
+    });
+    // 运行中 team 委派行（label=w1 + 任务 title，「名 · 任务」展示形态，teammate.execute 生产同构）
+    // + 同名 child 转录（payload.subagent 打标复用 ChildPanel 通道）
+    ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'task-t1', kind: 'subagent', label: 'w1', title: '元数据分析' } } as never);
+    ctrl.onEventForTest({ type: 'tool-call', text: 'read', payload: { subagent: 'w1', input: { path: 'a.md' } } } as never);
+
+    term = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
+    const { write, lastFrame, allOutput } = term;
+    await new Promise((r) => setTimeout(r, 200)); // 等挂载
+    write('\u0002'); // Ctrl+B 进入浏览（唯一行=运行中委派行,光标落 0）
+    await new Promise((r) => setTimeout(r, 150));
+    assert.match(lastFrame() ?? '', /w1 · 元数据分析/, '浏览行显「名 · 任务」拼接形态');
+    write('\r'); // Enter → 全屏实时视图（child join 键须为原名 w1）
+    await new Promise((r) => setTimeout(r, 150));
+    const frame = lastFrame() ?? '';
+    assert.match(frame, /\[w1\] subagent view/, '头部 label=原名 w1（病根形态是 `[] subagent view` 空白整页）');
+    assert.doesNotMatch(frame, /\[\] subagent view/, '不再出现空 label 全屏视图');
+    assert.match(allOutput(), /\[READ\] a\.md/, '转录按原名 join 呈现（Static 时间线入滚动缓冲,allOutput 断言）');
+  } finally {
+    term?.unmount();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

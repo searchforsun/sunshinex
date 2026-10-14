@@ -10,14 +10,21 @@ import type { RawKey } from './use-input';
  *  subagentMeta.delegatedAt 委派时间升序在后（旧档字段缺省回落 seq 序）——↑↓ 键盘分发与动态区列表渲染
  *  共用同一函数，两侧永不漂移 */
 export function browseRows(st: TuiState): BrowseRow[] {
-  const running = runningDelegations(st).map((r) => ({ id: `live:${r.label}`, label: r.title !== undefined ? `${r.label} · ${r.title}` : r.label, running: true as const }));
+  const running = runningDelegations(st).map((r) => ({
+    id: `live:${r.label}`,
+    label: r.title !== undefined ? `${r.label} · ${r.title}` : r.label,
+    // child join 键=委派原名（ChildLiveState.label）：展示带任务后缀、查找按原名——
+    // Enter 用展示串当锚点则 children.find 落空（真机「team 子代理视图整页空白」病根）
+    childLabel: r.label,
+    running: true as const,
+  }));
   // 闲置 teammate 行(2026-10-06 用户实机:跑完后 Ctrl+B 静默无响应=「不启作用」观感)——teammate 常驻
   // 无 done 事件、SPAWN 行永不归档,children 里留有完整转录(多轮任务带+✉ 交流行);按 label 去重
   // (工作中者已由委派行承载,不双显)
   const runningIds = new Set(running.map((r) => r.id));
   const idle = st.children
     .filter((c) => !c.done && !runningIds.has(`live:${c.label}`))
-    .map((c) => ({ id: `live:${c.label}`, label: c.label, running: true as const }));
+    .map((c) => ({ id: `live:${c.label}`, label: c.label, childLabel: c.label, running: true as const }));
   return [
     ...running,
     ...idle,
@@ -89,8 +96,8 @@ export function useBrowseKeys({
       if (key.return) {
         const row = rows[clamp(browseCursorRef.current)];
         if (row?.running) {
-          // 运行中 → 进入全屏实时视图（规格 §3.3）
-          enterInspect({ kind: 'live', label: row.label });
+          // 运行中 → 进入全屏实时视图（规格 §3.3）：child join 键用原名（childLabel），非展示串
+          enterInspect({ kind: 'live', label: row.childLabel ?? row.label });
         } else if (row?.seq !== undefined) {
           // 已完成 → 进入全屏回看（detail 派生）
           enterInspect({ kind: 'archived', seq: row.seq });

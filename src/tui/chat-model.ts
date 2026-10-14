@@ -266,6 +266,8 @@ export function slashHelp(): string[] {
     t('  /resume        resume a saved session (selector, auto-scroll window)', '  /resume        恢复已保存会话（选择卡，滑窗自动翻页）'),
     t('  /rewind        rewind current session to an earlier turn', '  /rewind        回退当前会话到更早的任务轮'),
     t('  /fork          fork a parallel session from any past turn', '  /fork          从任意历史轮分叉出平行会话'),
+    t('  /btw <question>  side Q&A on a fork (stays off the main chain)', '  /btw <问题>    辅助问答（fork 旁路，不进主链）'),
+    t('  /side <question>  alias of /btw', '  /side <问题>   辅助问答（/btw 别名）'),
     t('  /compact       compress context: /compact [focus]', '  /compact       压缩上下文：/compact [关注点]'),
     t('  /context       context usage breakdown (parts, size, share)', '  /context       上下文构成（各段大小与占比）'),
     t('  /model         switch model (provider list from settings.json)', '  /model         切换模型（settings.json 多源清单选择卡）'),

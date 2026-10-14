@@ -11,6 +11,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { createRuntime } from '../tui/runtime';
 import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
@@ -20,7 +21,8 @@ import type { SnapshotPendingRow } from './session';
 import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, McpServerConfig } from '../types';
 import { loadMcpServers, parseMcpJsonFile } from '../config';
-import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../tui/session-journal';
+import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import type { SessionSidecarMeta } from '../tui/session-journal';
 import { listCommands } from './commands';
 import { MemoryStore } from '../harness/memory/store';
 import { contextBreakdown } from '../harness/context';
@@ -642,8 +644,17 @@ export class GuiDaemon {
    *  才落盘建新档，档 id 同源 newSessionId()；空会话零文件，TUI 惰性先例同构）——首 run 起链持久，
    *  后续 /sessions 列档与 attach 重开（chain 派生转录）可消费。
    */
+  /** G14.10 B 方案:default 工作区锚定专用临时目录——root 字面 'default'(GUI 欢迎页非项目
+   *  会话的缺省锚点)解析为 <tmp>/sunshinex-default(缺场 mkdir recursive):临时任务的文件
+   *  落在系统临时目录,不再污染仓库/项目目录。非字面 root(显式项目路径)不经过此处。 */
+  private defaultScratchRoot(): string {
+    const dir = path.join(os.tmpdir(), 'sunshinex-default');
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
   createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }> {
-    const abs = path.resolve(root);
+    const abs = root === 'default' ? this.defaultScratchRoot() : path.resolve(root);
     let st: fs.Stats;
     try {
       st = fs.statSync(abs);
@@ -719,14 +730,19 @@ export class GuiDaemon {
     const dataDir = resolveDataDir(session.root);
     const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
     if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
-    const replay = reduceJournal(parseJournalFile(file).events);
+    const replayEvents = parseJournalFile(file).events;
+    const replay = reduceJournal(replayEvents);
     if (replay.version !== 1) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)}`);
     session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
+    // G14.15 runmeta 收集(按 run 序对位):journal runmeta 行 = GUI 回放 Worked 行/统计的数据源
+    const runMetas = replayEvents
+      .filter((e) => e.t === 'runmeta')
+      .map((e) => ({ seconds: e.seconds, steps: e.steps, runSteps: e.runSteps, tokens: e.tokens, cacheTokens: e.cacheTokens, endedTs: e.endedTs }));
     // 转录播种（Ruling 5 双源不重复）：msg 行在场（TUI 档）→ msg 派生；msg 行计数===0（daemon 会话
     // 档只落 chain）→ chain 行派生兜底（task→user 引用块 / reply→assistant / call+result 配对→tool）——
     // 两路径互斥，零重复
     const msgs = journalMessagesToEntries(replay.messages);
-    session.transcript.seed(msgs.length > 0 ? msgs : chainStepsToEntries(replay.chain));
+    session.transcript.seed(msgs.length > 0 ? msgs : chainStepsToEntries(replay.chain, runMetas));
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);
@@ -1001,8 +1017,11 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/tier', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'tier') },
     { method: 'POST', path: '/session/:id/effort', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'effort') },
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
-    // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——标题缓存/编辑态在客户端
+    // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——落盘走 rename(G14.16)
     { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
+    // G14.16 标题统一流：rename 落旁车 <id>.meta.json(侧栏/TUI 列表同源)；GET 回读(重开回显)
+    { method: 'POST', path: '/session/:id/rename', auth: true, run: (req, res, p) => this.handleSessionRename(req, res, p.id) },
+    { method: 'GET', path: '/session/:id/title/get', auth: true, run: async (_req, res, p) => this.handleSessionTitleGet(res, p.id) },
     // G10-C11 建项目面：原生文件选择器选完自动建项目——name=浏览器态(projectsRoot 下建目录+初始化)、
     // path=桌面壳态(系统对话框回全路径,直接注册外部根);同名幂等返回既有行
     { method: 'POST', path: '/workspace/create', auth: true, run: (req, res) => this.handleWorkspaceCreate(req, res) },
@@ -1010,6 +1029,8 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
     { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
+    // G14.29 辅助问答：fork 整档旁路 + 隔离一轮，主会话零污染（TUI /btw 同机制）
+    { method: 'POST', path: '/session/:id/btw', auth: true, run: (req, res, p) => this.handleSessionBtw(req, res, p.id) },
     { method: 'POST', path: '/memory/rm', auth: true, run: (req, res) => this.handleMemoryRm(req, res) },
     { method: 'GET', path: '/memory', auth: true, run: async (req, res) => this.handleMemoryList(req, res) },
     { method: 'GET', path: '/session/:id/tasks', auth: true, run: async (_req, res, p) => this.handleSessionTasks(res, p.id) },
@@ -1207,11 +1228,11 @@ export class GuiDaemon {
       return;
     }
     let root: string = rootRaw;
-    // default 工作区语义(G10 用户裁定):root='default' = 仓库内 default 目录——非文件类任务与
-    // 对话的缺省落点(轻对话不绑具体项目);目录不存在即建,注册表扫描自然纳入
+    // default 工作区语义(G10 用户裁定 + G14.10 B 方案):root='default' = 非文件类任务与对话的
+    // 缺省落点——锚定专用临时目录 <tmp>/sunshinex-default(用户裁定:临时任务的文件不再落仓库);
+    // 目录缺场即建,注册表扫描自然纳入
     if (root === 'default') {
-      root = path.resolve(this.staticRoot, '..', 'default');
-      fs.mkdirSync(root, { recursive: true });
+      root = this.defaultScratchRoot();
       const sunshine = path.join(root, 'SUNSHINE.md');
       if (!fs.existsSync(sunshine)) {
         fs.writeFileSync(sunshine, '# default\n\nDefault workspace for non-file tasks and conversations.\n', 'utf8');
@@ -1385,6 +1406,79 @@ export class GuiDaemon {
     }
   }
 
+  /** 会话 id 形验（旁车文件名面）：newSessionId 产物字符集（时间戳+随机尾/attach journal id 同源），
+   *  拒路径序列——旁车按 id 拼 sessionsDir 路径，越界 id 不得穿透 */
+  private static validSessionId(id: string): boolean {
+    return /^[A-Za-z0-9_-]{1,128}$/.test(id);
+  }
+
+  /** POST /session/:id/btw {question}(G14.29 辅助问答,对标 Codex /side /btw):fork 整档旁路
+   *  (side 标记,列表滤除)+ 一次性隔离 runtime 跑一轮问答,reply 直接回执——主会话上下文零污染。
+   *  超时 180s 兜底;runtime 用完即弃(mcpClose 收口) */
+  private async handleSessionBtw(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    if (!GuiDaemon.validSessionId(id)) return this.send(res, 400, { error: 'invalid session id' });
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const question = (parsed.body as { question?: unknown }).question;
+    if (typeof question !== 'string' || question.trim() === '') return this.send(res, 400, { error: 'invalid question' });
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    const srcId = session.attachedJournalId;
+    if (srcId === undefined) return this.send(res, 409, { error: 'no journaled session' });
+    const dataDir = resolveDataDir(session.root);
+    let forkId: string;
+    try {
+      const journal = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl'));
+      forkId = branchFrom(dataDir, srcId, journal.lines.length, 'fork');
+    } catch (err) {
+      return this.send(res, 500, { error: 'fork failed: ' + String((err as Error).message) });
+    }
+    writeSessionMeta(dataDir, forkId, { side: true });
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 180_000);
+    const rt = createRuntime({ root: session.root, model: this.model, onEvent: () => {} });
+    try {
+      rt.harness.context.appendInstructionLine(question);
+      const outcome = await rt.runTask(question, { signal: abort.signal });
+      this.send(res, 200, { ok: true, reply: outcome?.reply ?? '', sessionId: forkId });
+    } catch (err) {
+      this.send(res, 503, { error: err instanceof Error ? err.message : String(err), sessionId: forkId });
+    } finally {
+      clearTimeout(timer);
+      void rt.harness.mcpClose?.().catch(() => undefined);
+    }
+  }
+
+  /** POST /session/:id/rename {title}(G14.16 标题统一流)：旁车 <journalId>.meta.json 落盘——
+   *  键用 attachedJournalId(列表 listSessions 以 journal 档为行,rename 必须同键才可见)；
+   *  无档会话 409(空会话零落盘不变式不破——GUI 乐观上屏静默降级,首轮建档后再改即持久)。
+   *  title trim 非空、帽 80 字 */
+  private async handleSessionRename(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    if (!GuiDaemon.validSessionId(id)) return this.send(res, 400, { error: 'invalid session id' });
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const raw = (parsed.body as { title?: unknown }).title;
+    if (typeof raw !== 'string' || raw.trim() === '') return this.send(res, 400, { error: 'invalid title' });
+    const title = raw.trim().slice(0, 80);
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    const journalId = session.attachedJournalId;
+    if (journalId === undefined) return this.send(res, 409, { error: 'no journaled session' });
+    writeSessionMeta(resolveDataDir(session.root), journalId, { title });
+    this.send(res, 200, { ok: true, title });
+  }
+
+  /** GET /session/:id/title/get(G14.16)：旁车标题回读(重开回显;无档/无旁车 = 无自定义名,
+   *  title 缺省回空对象——客户端回落摘要,不当作错误) */
+  private handleSessionTitleGet(res: http.ServerResponse, id: string): void {
+    if (!GuiDaemon.validSessionId(id)) return this.send(res, 400, { error: 'invalid session id' });
+    const session = this.sessions.get(id);
+    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
+    const journalId = session.attachedJournalId;
+    if (journalId === undefined) return this.send(res, 200, {});
+    this.send(res, 200, { title: readSessionMeta(resolveDataDir(session.root), journalId).title });
+  }
+
   /** POST /workspace/create {name}|{path}(G10-C11):原生文件选择器确认后自动建项目。
    *  name=浏览器态(showDirectoryPicker 只回名字):projectsRoot 下建 <name>/ 并初始化
    *  data/sessions + data/workspace.json{root:<name> 目录};path=桌面壳态:注册该既有目录为
@@ -1519,22 +1613,31 @@ export class GuiDaemon {
     if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
     const turn = (parsed.body as { turn?: unknown }).turn;
     if (typeof turn !== 'number' || !Number.isInteger(turn) || turn < 1) return this.send(res, 400, { error: 'invalid turn' });
+    const side = (parsed.body as { side?: unknown }).side === true; // G14.29:辅助会话标记(列表滤除)
     const session = this.sessions.get(id);
     if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
     if (session.status() === 'running') return this.send(res, 409, { error: 'session is running' });
     const srcId = session.attachedJournalId;
     if (srcId === undefined) return this.send(res, 409, { error: 'no journaled session' });
     const dataDir = resolveDataDir(session.root);
-    const anchors = listAnchors(parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')));
-    const anchor = anchors[turn - 1];
-    if (anchor === undefined) return this.send(res, 400, { error: 'no such turn' });
+    let cutLine: number;
+    if (side) {
+      // G14.29 辅助 fork:整档继承(上下文完整),turn 不参与寻址
+      cutLine = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')).lines.length;
+    } else {
+      const anchors = listAnchors(parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')));
+      const anchor = anchors[turn - 1];
+      if (anchor === undefined) return this.send(res, 400, { error: 'no such turn' });
+      cutLine = anchor.line - 1; // 锚点行不进新档(规格 §5.2)
+    }
     let newId: string;
     try {
-      newId = branchFrom(dataDir, srcId, anchor.line - 1, kind); // 锚点行不进新档(规格 §5.2)
+      newId = branchFrom(dataDir, srcId, cutLine, kind);
     } catch (err) {
       return this.send(res, 500, { error: 'branch failed: ' + String((err as Error).message) });
     }
     if (kind === 'fork') {
+      if (side) writeSessionMeta(dataDir, newId, { side: true });
       const created = this.createSession(session.root);
       if (!created.ok) return this.send(res, 500, { error: created.error.message });
       const ar = this.attach(created.value.sessionId, newId);
@@ -1581,8 +1684,11 @@ export class GuiDaemon {
     if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
     const sw = session.modelSwitcher;
     if (sw === null) return this.send(res, 200, { current: undefined, choices: [], explicitDefault: false });
+    // current 回退(SUNSHINEX_MODEL 显式档):切换器未选时 default 内芯即 env 模型——回其名供 GUI
+    // pill 显示具体模型(Codex 同形),而非「默认模型」占位
+    const envDefault = (process.env.SUNSHINEX_MODEL ?? '').trim();
     this.send(res, 200, {
-      current: sw.currentId(),
+      current: sw.currentId() ?? (envDefault !== '' ? envDefault : undefined),
       explicitDefault: sw.hasExplicitDefault(),
       choices: sw.choices().map((c) => ({ id: c.id, model: c.model, baseUrl: c.baseUrl, effort: c.reasoningEffort, contextWindow: c.contextWindow })),
     });
@@ -1641,9 +1747,12 @@ export class GuiDaemon {
     if (session === undefined) return;
     const abs = path.resolve(session.root, q);
     // 判界基准：目标经 realPathOf 归一（存在段 realpath，防符号链接逃逸——read 工具同口径）；
-    // 归一不可得回退字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）
+    // 归一不可得回退字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）。
+    // G14.40:本会话数据档(data/memory 等)一并放行——memory 产物是用户可见面,Files 预览可达
     const real = realPathOf(abs) ?? abs;
-    if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
+    const dataRoot = path.resolve(resolveDataDir(session.root), 'data');
+    const inData = real === dataRoot || real.startsWith(dataRoot + path.sep);
+    if (!inData && !insideTrustedRoots(session.runtime.harness.safety, real)) {
       this.send(res, 403, { error: 'path outside trusted roots' });
       return;
     }
@@ -1705,22 +1814,32 @@ export class GuiDaemon {
       targetSeq = f.seq;
       break;
     }
-    if (targetAbs === undefined || targetSeq < 0) {
-      this.send(res, 404, { error: 'no snapshot' }); // 无帧命中（未知 callId/帧环已裁）
-      return;
+    let entry: ReturnType<typeof session.runtime.harness.writeSnapshot.nthFor>;
+    if (targetAbs !== undefined && targetSeq >= 0) {
+      /** 调用序位次：同路径（resolve 归一后等值）且先于目标的 write 调用数 + 1（sink 清单内的序） */
+      let ordinal = 1;
+      for (const f of frames) {
+        if (f.seq >= targetSeq) break;
+        const e = f.e;
+        if (e.type !== 'tool-call' || e.text !== 'write') continue;
+        const inPath = (e.payload as { input?: unknown } | undefined)?.input;
+        const p = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;
+        if (typeof p?.path === 'string' && p.path.length > 0 && path.resolve(session.root, p.path) === targetAbs) ordinal += 1;
+      }
+      const sink = session.runtime.harness.writeSnapshot;
+      entry = sink.nthFor(targetAbs, ordinal);
+    } else {
+      // G14.4 回退：callId 不可寻（重放会话/帧环已裁）且带 path 参数 → journal snapshots 行末次
+      // pre-image（重放会话展开 diff 仍真，与折叠行 stat 同源不假增）
+      const relParam = url.searchParams.get('path');
+      const fb = relParam !== null && relParam !== '' ? session.diffPreImageFor(relParam) : undefined;
+      if (fb === undefined) {
+        this.send(res, 404, { error: 'no snapshot' });
+        return;
+      }
+      targetAbs = fb.abs;
+      entry = fb.entry;
     }
-    /** 调用序位次：同路径（resolve 归一后等值）且先于目标的 write 调用数 + 1（sink 清单内的序） */
-    let ordinal = 1;
-    for (const f of frames) {
-      if (f.seq >= targetSeq) break;
-      const e = f.e;
-      if (e.type !== 'tool-call' || e.text !== 'write') continue;
-      const inPath = (e.payload as { input?: unknown } | undefined)?.input;
-      const p = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;
-      if (typeof p?.path === 'string' && p.path.length > 0 && path.resolve(session.root, p.path) === targetAbs) ordinal += 1;
-    }
-    const sink = session.runtime.harness.writeSnapshot;
-    const entry = sink.nthFor(targetAbs, ordinal);
     if (entry === undefined) {
       this.send(res, 404, { error: 'no snapshot' }); // root 外写不入清单/序越界——同恒定文案
       return;
@@ -1735,7 +1854,7 @@ export class GuiDaemon {
     let oldContent: string | undefined;
     let truncated = false;
     if (entry.deleted !== true && entry.hash.length > 0) {
-      const blob = sink.readBlob(entry.hash);
+      const blob = session.runtime.harness.writeSnapshot.readBlob(entry.hash);
       if (blob !== null) {
         truncated = blob.length > MAX_PREVIEW_BYTES;
         oldContent = blob.subarray(0, MAX_PREVIEW_BYTES).toString('utf8');
@@ -1986,12 +2105,8 @@ export class GuiDaemon {
       } catch {
         // 历史工作区无档/坏档 → slug-only（root undefined，前端不可 attach）
       }
-      let sessionCount = 0;
-      try {
-        sessionCount = fs.readdirSync(path.join(dataDir, 'sessions')).filter((f) => f.endsWith('.jsonl')).length;
-      } catch {
-        // sessions 目录不存在 = 0
-      }
+      // G14.32:计数与列表同源(listSessions——side 辅助会话滤除),徽标不再虚高
+      const sessionCount = listSessions(dataDir).length;
       rows.push({ ...(root !== undefined ? { root } : {}), slug: ent.name, mtime: st.mtimeMs, sessionCount });
     }
     rows.sort((a, b) => b.mtime - a.mtime);
@@ -2001,7 +2116,9 @@ export class GuiDaemon {
   /** GET /sessions/recent(G10-C2):跨工作区扁平最近会话(侧栏 Recents 区数据源)——遍历注册表
    *  逐 dataDir listSessions 归并,updatedAt 降序取前 20;每条附 root/slug(attach 两步寻址用) */
   private handleSessionsRecent(res: http.ServerResponse): void {
-    type RecentRow = { id: string; updatedAt: number; firstUser?: string; root: string; slug: string };
+    type RecentRow = {
+      id: string; updatedAt: number; firstUser?: string; root: string; slug: string;
+    } & Partial<Pick<SessionSidecarMeta, 'title' | 'runs' | 'steps' | 'tokens' | 'seconds' | 'cacheTokens' | 'promptTokens' | 'childTokens' | 'ctxUsed' | 'ctxWindow' | 'model' | 'effort'>> & { createdAt?: string; liveSessionId?: string };
     const out: RecentRow[] = [];
     let entries: fs.Dirent[];
     try {
@@ -2010,6 +2127,7 @@ export class GuiDaemon {
       this.send(res, 200, out);
       return;
     }
+    const liveByJournal = this.liveSessionByJournal(); // G14.52:行附活跃会话 id(运行圆点直比)
     for (const ent of entries) {
       if (!ent.isDirectory()) continue;
       const dataDir = path.join(projectsRoot(), ent.name, 'data');
@@ -2021,8 +2139,33 @@ export class GuiDaemon {
         root = undefined;
       }
       if (root === undefined) continue; // 无 root 不可 attach,不进 Recents
+      const isDefaultWs = (root: string): boolean => {
+        const base = root.split(/[\/]+/).filter(Boolean).pop() ?? '';
+        return base === 'default' || base.startsWith('sunshinex-default');
+      };
       for (const r of listSessions(dataDir)) {
-        out.push({ id: r.id, updatedAt: r.updatedAt, ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}), root, slug: ent.name });
+        if (!isDefaultWs(root)) continue; // G14.35:RECENTS 只收默认锚点工作区(非项目会话的家;项目会话归各组)
+        out.push({
+          id: r.id,
+          updatedAt: r.updatedAt,
+          ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
+          ...(r.title !== undefined ? { title: r.title } : {}),
+          ...(r.runs !== undefined ? { runs: r.runs } : {}),
+          ...(r.steps !== undefined ? { steps: r.steps } : {}),
+          ...(r.tokens !== undefined ? { tokens: r.tokens } : {}),
+          ...(r.seconds !== undefined ? { seconds: r.seconds } : {}),
+          ...(r.cacheTokens !== undefined ? { cacheTokens: r.cacheTokens } : {}),
+          ...(r.promptTokens !== undefined ? { promptTokens: r.promptTokens } : {}),
+          ...(r.childTokens !== undefined ? { childTokens: r.childTokens } : {}),
+          ...(r.ctxUsed !== undefined ? { ctxUsed: r.ctxUsed } : {}),
+          ...(r.ctxWindow !== undefined ? { ctxWindow: r.ctxWindow } : {}),
+          ...(r.model !== undefined ? { model: r.model } : {}),
+          ...(r.effort !== undefined ? { effort: r.effort } : {}),
+          ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),
+          root,
+          slug: ent.name,
+          ...(liveByJournal.get(r.id) !== undefined ? { liveSessionId: liveByJournal.get(r.id) } : {}),
+        });
       }
     }
     out.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -2038,7 +2181,27 @@ export class GuiDaemon {
       this.send(res, 400, { error: 'root query param required' });
       return;
     }
-    this.send(res, 200, listSessions(resolveDataDir(root)));
+    // G14.52:行附 liveSessionId(journal ↔ 活跃会话反查)——GUI 侧栏行运行圆点直比会话 id,
+    // 不再依赖 attach 时的本地映射(新建会话首条 append 前无 journal id,映射缺位圆点不亮)
+    const liveByJournal = this.liveSessionByJournal();
+    const rows = listSessions(resolveDataDir(root)).map((r) => {
+      const live = liveByJournal.get(r.id);
+      return live !== undefined ? { ...r, liveSessionId: live } : r;
+    });
+    this.send(res, 200, rows);
+  }
+
+  /** journal id → 运行中会话 id 反查(G14.52):registry 扫 attachedJournalId,仅取 status=running——
+   *  圆点语义是「运行中」而非「已挂载」(挂载贯穿会话全程,若不滤则收束后圆点常驻);出生 journal
+   *  惰性铸造,首条 append 前无 id(该窗口行无标注,刷新后即齐) */
+  private liveSessionByJournal(): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const s of this.sessions.values()) {
+      if (s.status() !== 'running') continue;
+      const jid = s.attachedJournalId;
+      if (jid !== undefined) m.set(jid, s.id);
+    }
+    return m;
   }
 
   /** GET /dirpicker?path=（T2 服务端目录选择）：path 缺省 os.homedir()；不存在/非目录 400；

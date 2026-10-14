@@ -46,15 +46,93 @@ export type JournalEvent =
   | { t: 'todos'; items: TodoItem[] }
   /** 用户级会话参数快照（末值覆盖）：tier=档位、effort=思考强度、modelId=/model 选择（`源/模型`；undefined 字段=该项回缺省） */
   | { t: 'model'; tier?: ModelTier; effort?: ReasoningEffort; modelId?: string }
-  | { t: 'view'; expandAll: boolean; latestFull: boolean };
+  | { t: 'view'; expandAll: boolean; latestFull: boolean }
+  /** G14.15 run 收尾元数据(GUI Worked 行/统计回放):daemon run 结束时落——秒数/步数/tokens/结束时刻 */
+  | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number };
 
-export interface SessionMeta {
+export interface SessionMeta extends SessionSidecarMeta {
   id: string;
   file: string;
   updatedAt: number;
   firstUser?: string;
-  /** 分档血缘（branchFrom 产物；原生会话档无此字段） */
+  /** 建档时刻（journal header createdAt 直读；旁车不另存创建时间防双源漂移） */
+  createdAt?: string;
   forkedFrom?: ForkedFrom;
+}
+
+/** 会话级旁车元数据（G14.17：<dataDir>/sessions/<id>.meta.json，单文件读改写合并——
+ *  daemon run 收尾与 TUI closeTask 同构写入，rename 写标题；列表/回溯面零重放直读） */
+export interface SessionSidecarMeta {
+  /** 自定义会话名（G14.16 标题统一流；缺省回落 firstUser 摘要） */
+  title?: string;
+  /** 末次活动 epoch ms（run 收尾/closeTask；列表排序仍以 journal mtime 为准） */
+  updatedAt?: number;
+  /** 累计 run 数（TUI 侧取台账 summary().runs，serve 侧逐 run +1） */
+  runs?: number;
+  /** 累计链步数 */
+  steps?: number;
+  /** 累计 tokens（主链口径；TUI 另记子代理 childTokens） */
+  tokens?: number;
+  /** 累计运行秒数 */
+  seconds?: number;
+  /** 累计 prompt 缓存命中 tokens（reactor usage 事件 cacheHitTotal 口径） */
+  cacheTokens?: number;
+  /** 累计 prompt tokens（真实上下文逐请求消耗） */
+  promptTokens?: number;
+  /** 累计子代理 tokens（TUI 口径；serve 暂缺子代理聚合不写） */
+  childTokens?: number;
+  /** 末次上文占用（ctx 事件 exact 权威值；快照语义非累计） */
+  ctxUsed?: number;
+  /** 末次窗口预算（resolveRunWindow 同源） */
+  ctxWindow?: number;
+  /** 末次模型（id/label/provider 同源字符串） */
+  model?: string;
+  /** 末次思考强度 */
+  effort?: string;
+  /** 辅助会话标记(G14.29 /btw /side 旁路档)——listSessions 全列表滤除,不进 RECENTS 与 /resume */
+  side?: boolean;
+}
+
+const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
+  'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds',
+  'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'side',
+];
+/** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流） */
+const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort']);
+/** 布尔值键（G14.29 side 辅助会话标记） */
+const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side']);
+
+/** 读会话旁车元数据：缺失/坏 JSON/未知键一律容错（未知键丢弃防脏数据回流），值类型不合法即弃该键 */
+export function readSessionMeta(dataDir: string, id: string): SessionSidecarMeta {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(sessionsDir(dataDir), id + '.meta.json'), 'utf8')) as Record<string, unknown>;
+    const out: SessionSidecarMeta = {};
+    for (const k of SIDECAR_KEYS) {
+      const v = raw[k];
+      if (SIDECAR_STR_KEYS.has(k)) {
+        if (typeof v === 'string' && v.trim() !== '') (out as Record<string, unknown>)[k] = v;
+      } else if (SIDECAR_BOOL_KEYS.has(k)) {
+        if (typeof v === 'boolean') (out as Record<string, unknown>)[k] = v;
+      } else if (typeof v === 'number' && Number.isFinite(v)) {
+        (out as Record<string, unknown>)[k] = v;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** 写会话旁车元数据（读改写合并单点）：patch 只落已知键且剔除 undefined——调用方自行
+ *  读旧值算累计（runs/tokens 等加法语义在调用面，本帮手只管合并与原子性） */
+export function writeSessionMeta(dataDir: string, id: string, patch: SessionSidecarMeta): void {
+  const merged = { ...readSessionMeta(dataDir, id) };
+  for (const k of SIDECAR_KEYS) {
+    const v = patch[k];
+    if (v !== undefined) (merged as Record<string, unknown>)[k] = v;
+  }
+  fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
+  fs.writeFileSync(path.join(sessionsDir(dataDir), id + '.meta.json'), JSON.stringify(merged), 'utf8');
 }
 
 interface ParsedJournal {
@@ -193,18 +271,29 @@ export function listSessions(dataDir: string): SessionMeta[] {
     }
     let firstUser: string | undefined;
     let forked: ForkedFrom | undefined;
+    let headerCreatedAt: string | undefined;
     try {
       for (const line of fs.readFileSync(file, 'utf8').split('\n').slice(0, 8)) {
         if (!line.trim()) continue;
         try {
           const e = JSON.parse(line) as JournalEvent;
-          if (e.t === 'header' && e.forkedFrom) {
-            forked = e.forkedFrom;
+          if (e.t === 'header') {
+            headerCreatedAt = e.createdAt;
+            if (e.forkedFrom) forked = e.forkedFrom;
             continue;
           }
           if (e.t === 'user') {
             firstUser = e.text;
             break;
+          }
+          // daemon(GUI)会话不落 user 行——goal 以链首 task 步入档(serve/session.ts appendInstructionLine);
+          // 首条链行即取首个 task 观测作摘要,否则侧栏列表恒「无摘要」(TUI 会话有 user 行,先到先取不受扰)
+          if (e.t === 'chain') {
+            const task = e.steps.find((s) => s.action === 'task' && s.observation.length > 0);
+            if (task !== undefined) {
+              firstUser = task.observation;
+              break;
+            }
           }
         } catch {
           // 坏行截断停止摘要扫描：头 8 行内出现撕裂/损坏行（事件级落盘的在飞崩溃窗口）即后续行不可信——
@@ -219,11 +308,16 @@ export function listSessions(dataDir: string): SessionMeta[] {
     const labeled = forked
       ? `↳ ${forked.kind} from ${forked.sourceSessionId.slice(0, 8)}${firstUser ? ' · ' + firstUser : ''}`
       : firstUser;
+    const sid = name.slice(0, -'.jsonl'.length);
+    const side = readSessionMeta(dataDir, sid);
+    if (side.side === true) continue; // G14.29:辅助会话不进任何列表(RECENTS//resume//sessions)
     metas.push({
-      id: name.slice(0, -'.jsonl'.length),
+      id: sid,
       file,
       updatedAt,
       ...(labeled !== undefined ? { firstUser: labeled } : {}),
+      ...side,
+      ...(headerCreatedAt !== undefined ? { createdAt: headerCreatedAt } : {}),
       ...(forked ? { forkedFrom: forked } : {}),
     });
   }
@@ -238,9 +332,21 @@ interface JournalAnchor {
 /** 任务锚点枚举（规格 D4）：每条 user 事件一个锚点（斜杠命令行不入菜单，含 /rewind //fork 自身入档行），line 为文件 1-based 行号 */
 export function listAnchors(parsed: ParsedJournal): JournalAnchor[] {
   const anchors: JournalAnchor[] = [];
+  let sawUser = false;
   parsed.events.forEach((e, i) => {
-    if (e.t !== 'user' || e.text.startsWith('/')) return;
-    anchors.push({ line: i + 1, text: e.text });
+    if (e.t === 'user' && !e.text.startsWith('/')) {
+      sawUser = true;
+      anchors.push({ line: i + 1, text: e.text });
+    }
+  });
+  if (sawUser) return anchors;
+  // G14.29:daemon(GUI)档只落 chain(无 user 行)——以链内 task 行为轮锚点,
+  // rewind/fork 的寻址面对 GUI 会话同样成立(TUI 档 user 行路径不变)
+  parsed.events.forEach((e, i) => {
+    if (e.t !== 'chain') return;
+    for (const st of e.steps) {
+      if (st.action === 'task' && st.observation.length > 0) anchors.push({ line: i + 1, text: st.observation });
+    }
   });
   return anchors;
 }

@@ -14,8 +14,14 @@ import { boardEventFrom } from '../tui/session';
 import type { ChatItem } from '../tui/session';
 import type { SessionJournal } from '../tui/session-journal';
 import type { HistoryStep } from '../types';
+import * as fs from 'fs';
+import * as path from 'path';
+import { resolveDataDir } from '../config/data-dir';
+import type { SnapshotEntry } from '../tui/session-journal';
 import { TranscriptCollector } from './transcript';
 import type { TranscriptEntry } from './transcript';
+import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
+import { resolveRunWindow } from '../config/termination-config';
 
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
@@ -110,11 +116,63 @@ export function journalMessagesToEntries(items: ChatItem[]): TranscriptEntry[] {
  *  `● …`，与 collector.toolMd 缺面占位同形）；note/notice（含 deficit/node 观察行）→ notice；
  *  phase/role/memory/skill 过程注记跳过。ts 链行无时刻面（HistoryStep 无 ts 字段）置 0——入列时
  *  seed() 续收集器自身计数，两序列不同源 */
-export function chainStepsToEntries(steps: HistoryStep[]): TranscriptEntry[] {
+export interface RunMeta {
+  seconds?: number;
+  steps?: number;
+  tokens?: number;
+  cacheTokens?: number;
+  endedTs?: number;
+}
+
+export function chainStepsToEntries(steps: HistoryStep[], runMetas: RunMeta[] = []): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   /** 未配对 tool-call 条的下标 FIFO（链按步序追加——result 恒配最老未配对 call，与 collector 口径同构） */
   const pendingCalls: number[] = [];
+  // G14.16:按 task 行切 run 组——run 条在每组第一行(工作 Ns+分割线),meta 对位
+  const runs: HistoryStep[][] = [];
+  let cur: HistoryStep[] = [];
   for (const s of steps) {
+    if (s.action === 'task' && cur.length > 0) {
+      runs.push(cur);
+      cur = [];
+    }
+    cur.push(s);
+  }
+  if (cur.length > 0) runs.push(cur);
+  for (const [ri, runSteps] of runs.entries()) {
+    const meta = runMetas[ri];
+    pendingCalls.length = 0;
+    // G14.22 轮次顺序=[用户输入]→[Worked 行+分割线]→[工具/回复]:组首 task 行(用户消息)先于
+    // run 头条出列(live 路径同序——提交回显在 model-start 之前),Worked 行描述的是其后这段工作
+    let groupStart = 0;
+    if (runSteps[0] !== undefined && runSteps[0].action === 'task') {
+      // ts 采组内 runmeta endedTs(链行无时刻面;ts=0 会把日分隔线挤到用户气泡之下)
+      entries.push({ seq: 0, ts: meta?.endedTs ?? 0, kind: 'user', md: `> ${runSteps[0].observation}` });
+      groupStart = 1;
+    }
+    entries.push({
+      seq: 0,
+      ts: meta?.endedTs ?? 0,
+      kind: 'run',
+      md: '',
+      ...(meta !== undefined
+        ? {
+            meta: {
+              ...(meta.seconds !== undefined ? { seconds: meta.seconds } : {}),
+              ...(meta.steps !== undefined ? { steps: meta.steps } : {}),
+              ...(meta.tokens !== undefined ? { tokens: meta.tokens } : {}),
+              ...(meta.cacheTokens !== undefined ? { cacheTokens: meta.cacheTokens } : {}),
+            },
+          }
+        : {}),
+    });
+    for (let gi = groupStart; gi < runSteps.length; gi++) {
+    const s = runSteps[gi];
+    // G14.23 思考回放:链行携带的 reasoning(挂 phase 行/批首 tool-call 行)映射 thinking 条,
+    // 紧贴其归属行之前——live 的思考流(事件面)回放后不蒸发
+    if (s.reasoning !== undefined && s.reasoning.trim() !== '') {
+      entries.push({ seq: 0, ts: 0, kind: 'thinking', md: s.reasoning, ...(s.thinkSeconds !== undefined ? { seconds: s.thinkSeconds } : {}) });
+    }
     if (s.action === 'task') {
       entries.push({ seq: 0, ts: 0, kind: 'user', md: `> ${s.observation}` });
       continue;
@@ -144,6 +202,7 @@ export function chainStepsToEntries(steps: HistoryStep[]): TranscriptEntry[] {
     if (s.action === 'phase' || s.action === 'role' || s.action === 'memory' || s.action === 'skill') continue;
     // note/notice/deficit/node 与无 action 的裸观察行 → notice（信息行保留呈现）
     entries.push({ seq: 0, ts: 0, kind: 'notice', md: s.observation });
+  }
   }
   return entries;
 }
@@ -200,6 +259,13 @@ export class SessionRuntime {
   private delegations: Delegation[] = [];
   /** 粗粒度转录（spec G2 Ruling 1）：pump 同源喂入，snapshot 的 messages 字段（reset 换新实例清空） */
   private transcriptImpl = new TranscriptCollector();
+  /** G14.17 run 内 usage/ctx 末值（pump 旁路捕获，run 收尾落旁车 meta 后随下次 submit 清零） */
+  private runUsage?: { total: number; cache: number; prompt: number };
+  private runCtxUsed?: number;
+  /** G14.20 done 载荷会话累计步数（steps 语义单一源,runmeta/旁车覆盖写） */
+  private runDoneSteps?: number;
+  /** G14.56 本轮自身步数(done 载荷 runSteps;runmeta 落档,GUI 回放 run 尾部「本轮」口径) */
+  private runRunSteps?: number;
   /** attach/出生挂载的会话日志（T2）：在场即链行续落（context.onContextChange 订阅）与 teardown seal；
    *  daemon 侧新会话出生即挂（惰性建档——首 run 首条 append 才落盘，空会话零文件）；resume 转录由
    *  事件转录面承担，msg 行非 TUI ChatItem（daemon 档只落 chain） */
@@ -252,6 +318,36 @@ export class SessionRuntime {
    *  行不续写——daemon 的 msg 面是事件转录，非 TUI ChatItem）。此后 run 的链变更经订阅即时续落
    *  同一 journal 文件；teardown/close 经 dispose seal 收口。
    */
+  /** G14 diff 回退面：callId 不可寻（重放会话帧缓冲无此调用）时按相对路径找 journal snapshots
+   *  行的末次 pre-image（写快照 blob 内容寻址落盘，journal 行内 path→hash 即可重建）。
+   *  判界：路径必须落会话 root 内。 */
+  diffPreImageFor(relPath: string): { abs: string; entry: SnapshotEntry } | undefined {
+    const id = this.journal?.currentId;
+    if (id === undefined) return undefined;
+    const abs = path.resolve(this.root, relPath);
+    const rel = path.relative(this.root, abs);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return undefined;
+    const relPosix = rel.split(path.sep).join('/');
+    const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+    let last: SnapshotEntry | undefined;
+    try {
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        if (!line.includes('"snapshots"')) continue;
+        try {
+          const e = JSON.parse(line) as { t?: string; files?: SnapshotEntry[] };
+          if (e.t !== 'snapshots' || !Array.isArray(e.files)) continue;
+          for (const f of e.files) if (f.path === relPosix) last = f;
+        } catch {
+          // 坏行跳过（快照行撕裂不阻断扫描）
+        }
+      }
+    } catch {
+      return undefined;
+    }
+    if (last === undefined) return undefined;
+    return { abs, entry: last };
+  }
+
   attachJournal(journal: SessionJournal): void {
     this.journal = journal;
     this.hookJournalSink();
@@ -296,6 +392,24 @@ export class SessionRuntime {
     const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e };
     this.frames.push(frame);
     if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
+    // G14.17 meta 素材旁路：run 内末次 usage（turnTotal/cacheHitTotal/promptTotal 累计覆盖语义，
+    // 取尾值即本轮全量）与末次 ctx exact 占用——run 收尾一并落旁车 meta
+    if (e.type === 'usage') {
+      const p = e.payload ?? {};
+      this.runUsage = {
+        total: typeof p.turnTotal === 'number' ? p.turnTotal : 0,
+        cache: typeof p.cacheHitTotal === 'number' ? p.cacheHitTotal : 0,
+        prompt: typeof p.promptTotal === 'number' ? p.promptTotal : 0,
+      };
+    } else if (e.type === 'ctx' && typeof e.payload?.used === 'number') {
+      this.runCtxUsed = e.payload.used;
+    } else if (e.type === 'done' && typeof e.payload?.steps === 'number') {
+      // G14.20 steps 语义统一:done 载荷 steps=reactor 会话累计步数(steps.length 含种子链)——
+      // runmeta/旁车照抄该值(覆盖语义),与圆环/侧栏 meta 同一口径;链行增量口径废弃(少计)
+      this.runDoneSteps = e.payload.steps;
+      // G14.56:runSteps=本轮自身步数(reactor seedLen 后去重计)——GUI run 尾部「本轮」口径
+      this.runRunSteps = typeof e.payload.runSteps === 'number' ? e.payload.runSteps : undefined;
+    }
     if (e.type.startsWith('task-') || e.type.startsWith('gate-')) this.board = applyBoardEvent(this.board, boardEventFrom(e));
     if (e.type.startsWith('delegation-')) this.delegations = applyDelegation(this.delegations, e);
     this.transcriptImpl.push(e);
@@ -315,6 +429,11 @@ export class SessionRuntime {
   submit(goal: string): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     const abort = new AbortController();
+    const startedAt = Date.now();
+    this.runUsage = undefined;
+    this.runCtxUsed = undefined;
+    this.runDoneSteps = undefined;
+    this.runRunSteps = undefined;
     this.transcriptImpl.submit(goal);
     this.runtimeImpl.harness.context.appendInstructionLine(goal);
     const p: Promise<void> = this.runtimeImpl
@@ -326,7 +445,40 @@ export class SessionRuntime {
       .catch((err) => {
         console.error('[serve] run failed:', err);
       })
-      .then(() => undefined)
+      .then((outcome) => {
+        // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
+        const endedTs = Date.now();
+        const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
+        this.journal?.log({
+          t: 'runmeta',
+          seconds,
+          ...(this.runDoneSteps !== undefined ? { steps: this.runDoneSteps } : {}),
+          ...(this.runRunSteps !== undefined ? { runSteps: this.runRunSteps } : {}),
+          tokens: outcome?.tokensUsed,
+          ...(this.runUsage !== undefined ? { cacheTokens: this.runUsage.cache } : {}),
+          endedTs,
+        });
+        // G14.17 会话级旁车 meta 累积：runs/steps/tokens/秒数/缓存与 prompt 累计/末次上文占用/
+        // 模型档位——列表与回溯面零重放直读（读旧值算累计,单 run 锁下无并发写面）
+        const journalId = this.journal?.currentId;
+        if (journalId !== undefined && outcome !== undefined) {
+          const prev = readSessionMeta(resolveDataDir(this.root), journalId);
+          const u = this.runUsage;
+          const model = this.runtimeImpl.harness.model;
+          writeSessionMeta(resolveDataDir(this.root), journalId, {
+            updatedAt: endedTs,
+            runs: (prev.runs ?? 0) + 1,
+            ...(this.runDoneSteps !== undefined ? { steps: this.runDoneSteps } : {}), // 累计口径覆盖写
+            tokens: (prev.tokens ?? 0) + (outcome.tokensUsed ?? 0),
+            seconds: (prev.seconds ?? 0) + seconds,
+            ...(u !== undefined ? { cacheTokens: (prev.cacheTokens ?? 0) + u.cache, promptTokens: (prev.promptTokens ?? 0) + u.prompt } : {}),
+            ...(this.runCtxUsed !== undefined ? { ctxUsed: this.runCtxUsed } : {}),
+            ctxWindow: resolveRunWindow(model),
+            ...(model.label !== undefined ? { model: model.label } : { model: model.provider }),
+            ...(this.effort !== undefined ? { effort: this.effort } : {}),
+          });
+        }
+      })
       .finally(() => {
         this.current = undefined;
       });

@@ -245,27 +245,29 @@ export class TaskBoard {
   }
 
   /** teammate 自取(M2 claim 循环):原子取首个 dispatchable 未指派任务 pending→claimed(事件化)。
-   *  assignee 形参仅事件记账,不改任务指派——指派任务走 executeOne 派发路由,不进 claim。
+   *  assignee 形参=认领者名(事件记账+执行者归因): Ctrl+T 行 @owner 在执行期即可见(spec §10.2「这个任务
+   *  被谁接着」)——归因键统一 by(2026-10-09 修:旧发射键 claimedBy 与 translate 读取键 by 错位,执行者
+   *  归因死线;persist 同步带 by,重启重放 owner 不丢)。
    *  (同步单线程取置,两 teammate 不会取到同一任务;team 预算帽 T4 落地) */
   claim(assignee: string): BoardTask | undefined {
     // team 预算帽前置(与 drain 同检,spec §5.6):超帽 teammate 空手而归,任务留 pending 不失败
     if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) return undefined;
     const task = dispatchable(this.state).find((t) => t.assignee === undefined);
     if (task === undefined) return undefined;
-    this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now() });
-    this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed', claimedBy: assignee });
+    this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now(), by: assignee });
+    this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed', by: assignee });
     return this.state.tasks[task.id];
   }
 
-  /** 指派路由认领(M2,Teammate.execute 入口):pending→claimed(事件化)。幂等双口径:已 claimed 返回
-   *  true(claim() 先行认领的同任务);非 pending(终态/被取走)返回 false,调用方静默放弃 */
-  markClaimed(taskId: string): boolean {
+  /** 指派路由认领(M2,Teammate.execute 入口):pending→claimed(事件化),by=认领者名(执行者归因,口径同 claim)。
+   *  幂等双口径:已 claimed 返回 true(claim() 先行认领的同任务);非 pending(终态/被取走)返回 false,调用方静默放弃 */
+  markClaimed(taskId: string, by: string): boolean {
     const task = this.state.tasks[taskId];
     if (task === undefined) return false;
     if (task.status === 'claimed') return true;
     if (task.status !== 'pending') return false;
-    this.applyAndPersist({ t: 'status-changed', taskId, from: 'pending', to: 'claimed', ts: this.now() });
-    this.emit('task-status-changed', { taskId, from: 'pending', status: 'claimed' });
+    this.applyAndPersist({ t: 'status-changed', taskId, from: 'pending', to: 'claimed', ts: this.now(), by });
+    this.emit('task-status-changed', { taskId, from: 'pending', status: 'claimed', by });
     return true;
   }
 
@@ -365,8 +367,8 @@ export class TaskBoard {
         return;
       }
     }
-    this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now() });
-    this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed' });
+    this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now(), by: 'fork' });
+    this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed', by: 'fork' });
     const ledger = this.deps.registry.submit({ kind: 'subagent', label: `task-${task.id}` });
     const abort = new AbortController();
     ledger.stop = () => abort.abort();
@@ -429,7 +431,7 @@ export class TaskBoard {
    *  external 任务的台账在执行体内部,ledgerId 缺省跳过)。黑盒口径:执行体无翻译产出时
    *  UI 仅见起止(delegation-started/ended),board 不透传其内部细节 */
   private async executeExternal(task: BoardTask, executor: ExternalExecutorLike): Promise<void> {
-    if (!this.markClaimed(task.id)) return; // 非 pending(被取走/终态):静默放弃
+    if (!this.markClaimed(task.id, 'external-cli')) return; // 非 pending(被取走/终态):静默放弃
     const delegationId = `task-${task.id}`;
     this.emit('delegation-started', { delegationId, kind: 'external-cli', label: delegationId });
     const startedAt = this.now();

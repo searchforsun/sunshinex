@@ -579,6 +579,59 @@ test('team 预算帽:超帽 claim 前置返回 undefined,teammate 空手而归�
   }
 });
 
+test('认领归因:claim/markClaimed/executeOne 三路径 by 贯通——执行期 executedBy 即落(Ctrl+T @owner 不空窗,2026-10-09 修 claimedBy 死键)', async () => {
+  const tmp = tmpdir('sunshinex-tb-claim-by-');
+  try {
+    let release: () => void = () => {};
+    const hang = new Promise<void>((res) => { release = res; });
+    const events: SessionEvent[] = [];
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'main')),
+      // runner 悬置:t1 走 executeOne fork 认领后停在 claimed——归因必须在认领瞬间落,不依赖回写
+      runner: {
+        runSubagent: async () => {
+          await hang;
+          return { ok: true as const, value: { reply: 'late', tokens: 1 } };
+        },
+      } as unknown as SubagentRunner,
+      registry: { submit: () => ({ id: 'by1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry,
+      onEvent: (e) => events.push(e),
+      now: (() => { let n = 2000; return () => ++n; })(),
+    });
+    board.init();
+    try {
+      board.create({ title: 'A', spec: 'a' }); // t1:kick → drain 同步认领(executeOne fork)后悬置于 runner
+      await drain();
+      board.create({ title: 'B', spec: 'b' }); // t2:drain 已在飞(draining 闩)→ 留 pending,给 claim() 取
+      const s1 = board.snapshot();
+      assert.equal(s1.tasks['t1']!.status, 'claimed', 'runner 悬置,t1 停 claimed');
+      assert.equal(s1.tasks['t1']!.executedBy, 'fork', 'fork 路径认领即归因(旧:执行期 executedBy 空窗)');
+      const forkEv = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === 't1' && (e.payload as Record<string, unknown>)?.status === 'claimed');
+      assert.equal((forkEv!.payload as Record<string, unknown>)?.by, 'fork', 'fork 认领事件带 by(投影侧 translate 读 by)');
+
+      const claimed = board.claim('w1'); // t2:teammate 自取路径
+      assert.equal(claimed?.id, 't2');
+      const s2 = board.snapshot();
+      assert.equal(s2.tasks['t2']!.executedBy, 'w1', 'claim 认领即归因(Ctrl+T 行执行期显 @w1)');
+      const claimEv = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === 't2' && (e.payload as Record<string, unknown>)?.status === 'claimed');
+      assert.equal((claimEv!.payload as Record<string, unknown>)?.by, 'w1', 'claim 事件带 by 键(旧 claimedBy 键无人消费=死线)');
+      assert.equal((claimEv!.payload as Record<string, unknown>)?.claimedBy, undefined, '旧 claimedBy 死键不再发射');
+      // 持久化面:归因落 events.jsonl,重启重放 owner 不丢
+      const raw = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8');
+      assert.ok(raw.includes('"by":"w1"'), `claim 归因落流(实际:${raw.slice(-400)})`);
+
+      // markClaimed 幂等面:已被 claim() 先行者认领 → 返回 true 且不覆盖归因
+      assert.equal(board.markClaimed('t2', 'w2'), true, '已 claimed 幂等放行');
+      assert.equal(board.snapshot().tasks['t2']!.executedBy, 'w1', '幂等路径不覆盖先行者归因');
+    } finally {
+      release();
+    }
+    await drain();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('settle:快 runner 任务完成后早退——快照全终态,不耗满超时(P2/T6)', async () => {
   const tmp = tmpdir('sunshinex-tb-settle-fast-');
   try {

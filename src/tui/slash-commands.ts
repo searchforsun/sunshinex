@@ -4,7 +4,7 @@ import { t } from '../i18n';
  *  App 重导出保持既有 import 路径（components/App），session 消费同一单点防双清单漂移；
  *  顺序即 Tab 循环顺序（handleSlash 分支与 /help 文案的相邻排布同源：/terminal-setup 紧随 /status，
  *  2026-10-03 批A D1 补登——实现与 /help 文案早已在场，清单缺席即三源漂移病根）。 */
-export const SLASH_COMMANDS = ['/help', '/init', '/status', '/terminal-setup', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/kb-index', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
+export const SLASH_COMMANDS = ['/help', '/init', '/status', '/terminal-setup', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/btw', '/side', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/kb-index', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
 
 /** 内置命令描述（2026-09-30 纵向命令面板）：键为去斜杠命令词，值为运行期求值的本地化描述——
  *  t() 运行期求值防语言装配冻结（先例：approvalSelectorOptions）；文案与 slashHelp 同源口径收一行为限 */
@@ -20,6 +20,8 @@ export function slashCommandDescriptions(): Record<string, string> {
     resume: t('resume a saved session', '恢复已保存会话'),
     rewind: t('rewind to an earlier turn', '回退到更早的任务轮'),
     fork: t('fork a parallel session', '分叉出平行会话'),
+    btw: t('side Q&A on a forked side session: /btw <question>', '辅助问答（fork 旁路，不进主链）：/btw <问题>'),
+    side: t('side Q&A (alias of /btw)', '辅助问答（/btw 别名）'),
     compact: t('compress context', '压缩上下文'),
     context: t('context usage breakdown', '上下文各段占比与大小'),
     plan: t('plan first, execute on approval', '先规划后执行'),

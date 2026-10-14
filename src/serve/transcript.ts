@@ -12,8 +12,12 @@ export interface TranscriptEntry {
   seq: number;
   /** user 条=submit 时刻；其余条=源事件 ts */
   ts: number;
-  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
+  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error' | 'run' | 'thinking';
   md: string;
+  /** G14.24:thinking 条思考秒数(chain 行 thinkSeconds 回放;run 条时长走 meta.seconds 不走此键) */
+  seconds?: number;
+  /** G14.16:run 条统计(runmeta 对位)——seed 映射到 GUI run 条的 Worked 时长/步数/tokens */
+  meta?: { seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number };
 }
 
 /** 未配对 tool 条的旁挂记账（条目本体已在列表，缺面由 result/call 迟到回填） */

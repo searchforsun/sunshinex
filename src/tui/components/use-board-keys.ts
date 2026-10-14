@@ -20,6 +20,7 @@ export function boardRows(st: TuiState): BoardRow[] {
     .map((task) => ({
       id: task.id,
       // @ 后缀(2026-10-06 用户定版 Ctrl+T 语义「哪个代理执行的」):实际执行者优先,未执行回落指派者
+      title: task.title,
       label: `${task.title}${task.dependsOn.length > 0 ? ` ← ${task.dependsOn.join(',')}` : ''}${(task.executedBy ?? task.assignee) !== undefined ? ` @${task.executedBy ?? task.assignee}` : ''}`,
       status: STATUS_SYMBOL[task.status] ?? task.status,
       ...(task.gated === true ? { gated: true } : {}),
@@ -77,10 +78,11 @@ export function useBoardKeys({
         const row = rows[Math.max(0, Math.min(rows.length - 1, boardCursorRef.current))];
         if (row?.gated === true) {
           // gate 行内审批（spec §10.3）：askUser 问题卡映射 review——approve 解锁派发/deny 维持挂起；
-          // dismissed 静默（沿问询卡取消语义）；review 同步裁决（gate-resolved 事件驱动投影自更新）
+          // 问句用标题锚行（2026-10-09 id 不上屏后问句对行靠标题；dismissed 静默沿问询卡取消语义）；
+          // review 同步裁决（gate-resolved 事件驱动投影自更新）
           void (async () => {
             const req = await controller.askUser({
-              question: t(`Approve gate on ${row.id}?`, `放行 ${row.id} 的门？`),
+              question: t(`Approve gate on ${row.title}?`, `放行「${row.title}」的门？`),
               options: [{ label: 'approve' }, { label: 'deny' }],
             });
             if (req.type === 'dismissed') return;

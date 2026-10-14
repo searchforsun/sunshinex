@@ -3,10 +3,14 @@ import { t } from '../../i18n';
 import { theme } from '../theme';
 import { formatDuration } from '../format';
 
-/** 浏览列表行：live（运行中子代理，label 锚定全屏实时视图）与 archived（已完成 spawn 归档行，seq 锚定 detail 回看）两类统一投影 */
+/** 浏览列表行：live（运行中子代理，childLabel 锚定全屏实时视图）与 archived（已完成 spawn 归档行，seq 锚定 detail 回看）两类统一投影 */
 export interface BrowseRow {
   id: string;
+  /** 展示标签（live 行 = `名 · 任务` 拼接形态） */
   label: string;
+  /** live 行 child join 键（ChildLiveState.label 原名，children 精确查找锚点）：委派行展示带 ` · 任务`
+   *  后缀（2026-10-06 用户定版），全屏视图按原名 join 转录——缺省回落 label（fork 行原名即展示名） */
+  childLabel?: string;
   /** 运行中子代理行（Enter → 全屏实时视图）；缺省为已完成 spawn 归档行（Enter → detail 回看） */
   running?: boolean;
   /** 归档 spawn 调用行 seq（archived 行回看锚点；live 行缺省） */

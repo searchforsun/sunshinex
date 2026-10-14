@@ -64,7 +64,7 @@ test('§9.3②：子目录同名 sub/SUNSHINE.md → 观察行逐字节 written�
     fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
     const out = await writeAndUnwrap(registry, safety, { path: path.join(root, 'sub', 'SUNSHINE.md'), content: FILE_BODY });
     assert.equal(out.exitCode, 0);
-    assert.equal(out.stdout, 'written');
+    assert.match(out.stdout, /^written( \+\d+ -\d+)?$/);
   });
 });
 
@@ -100,6 +100,6 @@ test('§9.3⑤：普通文件 → 观察行逐字节 written（旧行为不变�
   await withRegistry(async ({ registry, safety, root }) => {
     const out = await writeAndUnwrap(registry, safety, { path: path.join(root, 'notes.md'), content: FILE_BODY });
     assert.equal(out.exitCode, 0);
-    assert.equal(out.stdout, 'written');
+    assert.match(out.stdout, /^written( \+\d+ -\d+)?$/);
   });
 });

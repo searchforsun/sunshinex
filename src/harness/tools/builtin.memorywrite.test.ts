@@ -107,7 +107,7 @@ test('未注入接缝：记忆路径＝旧行为逐字节不变（观察行 writ
     const absPath = path.join(dataDir, 'memory', 'prefers-pnpm.md');
     const r = await registry.execute('write', { path: absPath, content: RAW }, safety);
     assert.equal(r.ok, true, `窄口放行的记忆路径仍可裸写：${r.ok ? '' : r.error.message}`);
-    if (r.ok) assert.equal(r.value.stdout, 'written', '旧观察行不变');
+    if (r.ok) assert.match(r.value.stdout, /^written/, '旧观察行前缀不变（G14 起尾随 diff stat）');
     assert.equal(fs.readFileSync(absPath, 'utf8'), RAW, '不经接缝即不规范化（旧行为逐字节）');
     assert.equal(fs.existsSync(path.join(dataDir, 'memory', 'MEMORY.md')), false, '旧行为不重建索引');
   });
@@ -127,7 +127,7 @@ test('注入接缝但不含 memory 依赖的既有工具行为不变（write 非
   await withRegistry(async ({ registry, safety, root, dataDir }) => {
     const w = await registry.execute('write', { path: 'notes/a.txt', content: 'hello memory seam\n' }, safety);
     assert.equal(w.ok, true);
-    if (w.ok) assert.equal(w.value.stdout, 'written', '非记忆路径原样交回常规写入');
+    if (w.ok) assert.match(w.value.stdout, /^written/, '非记忆路径原样交回常规写入（尾随 diff stat）');
     assert.equal(fs.readFileSync(path.join(root, 'notes', 'a.txt'), 'utf8'), 'hello memory seam\n');
     assert.equal(fs.existsSync(path.join(dataDir, 'memory')), false, 'pass 路径零记忆副作用');
 

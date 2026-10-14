@@ -424,6 +424,8 @@ export interface HistoryStep {
   /** 该轮模型思考原文（思考模式端点的 reasoning_content）：工具调用续轮回传的载荷载体，
    *  挂在 phase 行（在场时）或批首 tool-call 行；buildMessages 仅当前任务轮透出（旧轮剥离防膨胀） */
   reasoning?: string;
+  /** 思考持续秒数（首条 reasoning 增量→轮收束；G14.24 回放思考行时长面,与 reasoning 同行伴生） */
+  thinkSeconds?: number;
 }
 
 export interface RunOutcome {

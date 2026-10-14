@@ -165,7 +165,7 @@ export class ContextManager {
   /** 会话链尾追（唯一写入口，薄委托 ChainLedger.append 后组合 append 事件）；行号由链内序号定死，追加后不重排（裁剪后允许跳号）；
    *  reasoning（该轮模型思考原文）随行透传——思考模式续轮回传载荷的持久化通道；
    *  action 收窄为 ChainAction 闭集（types.ts N11③ 单点登记）——新动作进链前须先在登记处扩员 */
-  appendChain(entries: Array<{ action?: ChainAction; observation: string; reasoning?: string }>): void {
+  appendChain(entries: Array<{ action?: ChainAction; observation: string; reasoning?: string; thinkSeconds?: number }>): void {
     const pushed = this.ledger.append(entries);
     if (pushed.length > 0) this.changeSink?.({ kind: 'append', steps: pushed });
   }

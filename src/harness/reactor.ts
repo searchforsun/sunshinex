@@ -28,7 +28,7 @@ import { reactorMaxStepsEnv, resolveRunWindow, subagentTokenCapEnv } from '../co
 export interface Task { goal: string; }
 /** 链行（与会话链 HistoryStep 同构）：reasoning=该轮模型思考原文（思考模式续轮回传载荷，挂 phase 行/批首调用行）；
  *  action 与 HistoryStep 同收窄 ChainAction（types.ts 单点登记），回写主链零对位转换 */
-export interface StepRecord { step: number; action?: ChainAction; observation: string; reasoning?: string; }
+export interface StepRecord { step: number; action?: ChainAction; observation: string; reasoning?: string; thinkSeconds?: number; }
 export interface RunResult {
   steps: StepRecord[];
   done: boolean;
@@ -337,7 +337,7 @@ export class Reactor {
       this.deps.context.appendChain(
         steps
           .filter((s) => s.step > cut)
-          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}) })),
+          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}), ...(s.thinkSeconds !== undefined ? { thinkSeconds: s.thinkSeconds } : {}) })),
       );
       if (done && reply) {
         this.deps.context.appendChain([{ action: 'reply', observation: reply }]);
@@ -396,8 +396,16 @@ export class Reactor {
         // 账本失败不倒灌任务成败
       }
     }
-    // 收尾事件：done 必发（正常/异常路径共用出口）；error 已在失败点提前发出
-    this.emit('done', reply, { steps: steps.length, tokensUsed, stopReason });
+    // 收尾事件：done 必发（正常/异常路径共用出口）；error 已在失败点提前发出。
+    // G14.56:runSteps=本轮自身步数（seedLen 之后，按去重步号计与 maxIterations 同口径；纯问答轮
+    // 无工具步,有回复记 1——footer 不出现「0 steps」）；steps 仍为会话累计（旁车 meta/圆环消费）
+    const runStepCount = new Set(steps.slice(seedLen).map((s) => s.step)).size;
+    this.emit('done', reply, {
+      steps: steps.length,
+      runSteps: done && reply !== '' ? Math.max(runStepCount, 1) : runStepCount,
+      tokensUsed,
+      stopReason,
+    });
     // spawn 预算源摘除：只在 run 存续期有效，防 run 外孤儿派生（Runner INVALID_STATE 兜底）
     this.deps.runner?.detachParent();
     return { steps, done, reply, tokensUsed, route, stopReason, ...(compactedUpToStep > 0 ? { compactedUpTo: compactedUpToStep } : {}) };
@@ -459,17 +467,24 @@ export class Reactor {
     const tools = [...this.deps.registry.list()]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, ...(t.parameters ? { parameters: t.parameters } : {}) } }));
+    // G14.24 思考计时:包一层 onReasoning 捕获首增量时刻(思考模式端点才触发)
+    let reasoningStart: number | undefined;
+    const timedHooks: UsageHooks = hooks.onReasoning !== undefined
+      ? { ...hooks, onReasoning: (t) => { if (reasoningStart === undefined) reasoningStart = Date.now(); hooks.onReasoning?.(t); } }
+      : hooks;
     const req: ChatRequest = { messages, tools, ...(signal ? { signal } : {}), ...(effort !== undefined ? { effort } : {}) };
     let result: ChatResult;
     if (adapter.chatStream) {
-      result = await adapter.chatStream(req, (t) => this.emit('token', t), hooks);
+      result = await adapter.chatStream(req, (t) => this.emit('token', t), timedHooks);
     } else {
-      result = await adapter.chat(req, hooks);
+      result = await adapter.chat(req, timedHooks);
       // 非流式适配器同一权威源（2026-09-30 phase 通道退役）：工具轮叙述以单帧 token 补入正文通道，
       // 与流式轮同一条 flushReply 入档路径（终稿轮除外——reply 经 done 事件既有通道承载）
       if (result.finish !== 'stop' && result.content && result.content.length > 0) this.emit('token', result.content);
     }
     this.emit('model-end', undefined, { step, ms: Date.now() - startedAt });
+    // G14.24 思考时长:首条 reasoning 增量→轮收束(整轮模型调用即思考窗口;无思考增量 undefined)
+    const thinkSeconds = reasoningStart !== undefined ? Math.max(1, Math.round((Date.now() - reasoningStart) / 1000)) : undefined;
     if (result.finish === 'stop') return { done: true, reply: result.content || 'Done' };
 
     const calls = result.toolCalls;
@@ -491,9 +506,9 @@ export class Reactor {
     // 思考原文随轮入链（链为唯一事实源）：phase 行在场挂 phase 行、否则挂批首调用行——
     // buildMessages 由此把 reasoning_content 回传给交错思考端点（DeepSeek/Qwen 系工具续轮硬约束）；
     // 终稿轮（finish=stop）不入链：回合已收束、后续是新任务轮，回传无消费方
-    if (result.content) steps.push({ step, action: PHASE_ACTION, observation: result.content, ...(result.reasoning ? { reasoning: result.reasoning } : {}) });
+    if (result.content) steps.push({ step, action: PHASE_ACTION, observation: result.content, ...(result.reasoning ? { reasoning: result.reasoning, thinkSeconds } : {}) });
     // 调用行先行入链（批内连续，buildMessages 聚合为 assistant+tool_calls）；被拒/坏参调用同样入链保证 role:tool 配对完整
-    for (let i = 0; i < calls.length; i++) steps.push({ step, action: TOOL_CALL_ACTION, observation: formatToolCallLine(calls[i].name, calls[i].argsJson), ...(i === 0 && !result.content && result.reasoning ? { reasoning: result.reasoning } : {}) });
+    for (let i = 0; i < calls.length; i++) steps.push({ step, action: TOOL_CALL_ACTION, observation: formatToolCallLine(calls[i].name, calls[i].argsJson), ...(i === 0 && !result.content && result.reasoning ? { reasoning: result.reasoning, thinkSeconds } : {}) });
 
     const argsOf = calls.map((c) => {
       try {

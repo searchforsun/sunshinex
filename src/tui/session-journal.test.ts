@@ -8,8 +8,10 @@ import {
   listSessions,
   newSessionId,
   parseJournalFile,
+  readSessionMeta,
   reduceJournal,
   sessionsDir,
+  writeSessionMeta,
   type JournalEvent,
 } from './session-journal';
 
@@ -98,6 +100,57 @@ test('seal：清单非空尾追 snapshots 事件、空清单零事件（规格 D
   j.seal([{ path: 'src/a.ts', hash: 'h1' }]);
   const lines = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as JournalEvent);
   assert.deepEqual(lines[1], { t: 'snapshots', files: [{ path: 'src/a.ts', hash: 'h1' }] });
+});
+
+test('listSessions 旁车 meta（G14.17）：title/统计透出、坏值容错、createdAt 取 header；旁车不入档列表', () => {
+  const dataDir = tmp();
+  const j = new SessionJournal(dataDir);
+  j.start();
+  j.log({ t: 'user', text: '首条输入' });
+  const id = j.currentId!;
+  // 无旁车:仅 firstUser 摘要,title/统计缺席
+  let rows = listSessions(dataDir);
+  assert.equal(rows.length, 1, 'meta.json 不入档列表');
+  assert.equal(rows[0]!.firstUser, '首条输入');
+  assert.equal(rows[0]!.title, undefined);
+  // 写 meta(标题+累计统计):listSessions 全量透出;createdAt 取 header(旁车不另存创建时刻)
+  writeSessionMeta(dataDir, id, { title: '自定义名', runs: 1, tokens: 1200, cacheTokens: 800, ctxUsed: 42_000, ctxWindow: 200_000, model: 'glm-5.3-flash', effort: 'medium' });
+  rows = listSessions(dataDir);
+  const row = rows[0]!;
+  assert.equal(row.title, '自定义名');
+  assert.equal(row.firstUser, '首条输入', '摘要原样保留');
+  assert.equal(row.runs, 1);
+  assert.equal(row.tokens, 1200);
+  assert.equal(row.cacheTokens, 800);
+  assert.equal(row.ctxUsed, 42_000);
+  assert.equal(row.ctxWindow, 200_000);
+  assert.equal(row.model, 'glm-5.3-flash');
+  assert.equal(row.effort, 'medium');
+  assert.equal(typeof row.createdAt, 'string', 'header createdAt 兜底');
+  // 读改写合并:第二笔只带统计,标题保留(调用面读旧值算累计——这里模拟 runs +1)
+  const prev = readSessionMeta(dataDir, id);
+  writeSessionMeta(dataDir, id, { runs: (prev.runs ?? 0) + 1, tokens: (prev.tokens ?? 0) + 300 });
+  const merged = readSessionMeta(dataDir, id);
+  assert.equal(merged.title, '自定义名', '合并不丢标题');
+  assert.equal(merged.runs, 2);
+  assert.equal(merged.tokens, 1500);
+  assert.equal(listSessions(dataDir)[0]!.runs, 2);
+  // 坏旁车(坏 JSON):静默降级全空,但 header createdAt 兜底不受扰
+  fs.writeFileSync(path.join(sessionsDir(dataDir), id + '.meta.json'), '{oops', 'utf8');
+  const degraded = listSessions(dataDir)[0]!;
+  assert.equal(degraded.title, undefined);
+  assert.equal(degraded.runs, undefined);
+  assert.equal(typeof degraded.createdAt, 'string', '坏旁车不影响 header createdAt 兜底');
+  // 空白 title/非法值类型:该键弃置不回流
+  writeSessionMeta(dataDir, id, { title: '   ', runs: Number.NaN });
+  const cleaned = readSessionMeta(dataDir, id);
+  assert.equal(cleaned.title, undefined);
+  assert.equal(cleaned.runs, undefined);
+  // side 标记:列表全滤除(G14.29 辅助会话)
+  writeSessionMeta(dataDir, id, { side: true });
+  assert.equal(listSessions(dataDir).length, 0);
+  writeSessionMeta(dataDir, id, { side: false });
+  assert.equal(listSessions(dataDir).length, 1);
 });
 
 test('逐事件追加零越界写：仅本档追加，旧档与其余文件零触碰（规格 D4）', () => {

@@ -26,7 +26,7 @@ import { sunshineInitGoal } from '../harness/sunshine-init';
 import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SessionJournal, newSessionId } from './session-journal';
+import { SessionJournal, newSessionId, readSessionMeta, writeSessionMeta } from './session-journal';
 import { resolveDataDir } from '../config/data-dir';
 import { SLASH_COMMANDS } from './slash-commands';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
@@ -35,7 +35,7 @@ import { readSkillUsage, recordSkillUsage } from './skill-usage';
 import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup';
 import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-memory';
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';
-import { resumeFlow, branchFlow, resumeLatest as resumeLatestFrom } from './commands-session';
+import { resumeFlow, btwFlow, branchFlow, resumeLatest as resumeLatestFrom } from './commands-session';
 import { applyDelegation } from '../delegation/projection';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import { boardEventFrom } from '../taskboard/translate';
@@ -465,6 +465,34 @@ export class SessionController {
     this.journal?.log({ t: 'model', ...(this.state.tier ? { tier: this.state.tier } : {}), ...(this.state.effort ? { effort: this.state.effort } : {}), ...(this.state.modelId !== undefined ? { modelId: this.state.modelId } : {}) });
   }
 
+  /** 会话级旁车 meta 写入（G14.17，closeTask 收尾单点）：任务轮数/本轮 tokens/缓存/prompt/
+   *  子代理与任务步数/秒数逐 run 累加、ctxUsed 快照末值——列表与 /resume 回溯面零重放直读。
+   *  未建档静默跳过（空会话零落盘不变式）；累计加法在调用面读旧值自算（单 run 串行无并发写面） */
+  private writeSidecarMeta(closingStats: { startedAt: number; startSteps: number } | undefined): void {
+    const id = this.journal?.currentId;
+    if (id === undefined) return;
+    const m = this.state.metrics;
+    const prev = readSessionMeta(resolveDataDir(this.root), id);
+    const model = this.runtime.harness.model;
+    const seconds = closingStats !== undefined ? Math.max(1, Math.round((Date.now() - closingStats.startedAt) / 1000)) : undefined;
+    // G14.20 steps 会话累计口径:m.sessionSteps 即全会话 step 计数,覆盖写非累加
+    const steps = m.sessionSteps > 0 ? m.sessionSteps : undefined;
+    writeSessionMeta(resolveDataDir(this.root), id, {
+      updatedAt: Date.now(),
+      runs: (prev.runs ?? 0) + 1, // 任务轮口径(closeTask 每轮 +1;台账 summary().runs 含内部子 run 不作会话轮数)
+      ...(steps !== undefined ? { steps: steps } : {}), // 会话累计口径覆盖写(G14.20)
+      tokens: (prev.tokens ?? 0) + m.turnTokens,
+      ...(seconds !== undefined ? { seconds: (prev.seconds ?? 0) + seconds } : {}),
+      cacheTokens: (prev.cacheTokens ?? 0) + m.turnCacheTokens,
+      promptTokens: (prev.promptTokens ?? 0) + m.turnPromptTokens,
+      childTokens: (prev.childTokens ?? 0) + m.turnChildTokens,
+      ...(m.ctxUsed > 0 ? { ctxUsed: m.ctxUsed } : {}),
+      ctxWindow: resolveRunWindow(model),
+      ...(this.state.modelId !== undefined ? { model: this.state.modelId } : model.label !== undefined ? { model: model.label } : { model: model.provider }),
+      ...(this.state.effort !== undefined ? { effort: this.state.effort } : {}),
+    });
+  }
+
   /** todo 清单唯一写点（规格 D6）：state 更新 + journal 即时落盘 + notify；模型工具/plan 引擎两条运行期路径共用。journal 重放为恢复路径，直接赋值不走此点（防重放自我回写） */
   private setTodos(items: TodoItem[]): void {
     this.state = { ...this.state, todos: items };
@@ -533,6 +561,7 @@ export class SessionController {
     this.flushPendingCalls();
     this.taskAbort = undefined;
     // 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径产出（基线差值，含子代理合并口径）；中断经抑制位跳过；error 态不走 closeTask
+    const closingStats = this.taskStats;
     if (this.taskStats && !this.taskStatsSuppressed) {
       const ts = this.taskStats;
       const m = this.state.metrics;
@@ -541,6 +570,7 @@ export class SessionController {
       this.pushMsg('system', formatTaskStatsLine(Math.round((Date.now() - ts.startedAt) / 1000), m.sessionSteps - ts.startSteps, mainTokens + childTokens, childTokens));
     }
     this.taskStats = undefined;
+    this.writeSidecarMeta(closingStats);
     this.state = {
       ...this.state,
       status: 'idle',
@@ -705,7 +735,7 @@ export class SessionController {
     const cmd = text.split(/\s+/)[0] ?? text;
     // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；
     // 自由文本参数命令（目标/关注点/记忆内容/目录路径）不在枚举范围，带参放行
-    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir', '/kb-index']);
+    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir', '/kb-index', '/btw', '/side']);
     // 技能命令（规格 2026-09-22-skill-as-command D4）：意图尾参为自由文本，与 FREE_TEXT_ARGS 同豁免；命中与否由尾部技能分发面裁决
     const isSkillCommand = this.skillCommandIds().includes(cmd.slice(1));
     if (!FREE_TEXT_ARGS.has(cmd) && !isSkillCommand && text !== cmd) {
@@ -864,6 +894,21 @@ export class SessionController {
         return;
       }
       await resumeFlow(this);
+      return;
+    }
+    if (cmd === '/btw' || cmd === '/side') {
+      // G14.29 辅助问答（对标 Codex /side /btw）：fork 整档旁路 + 隔离一轮，答案旁白落屏不进主链；
+      // idle 守卫沿 /resume 先例；问题为自由文本尾参（FREE_TEXT_ARGS 同豁免）
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /btw unavailable now', '当前有任务进行中，暂不能执行 /btw'), { level: 'warn' });
+        return;
+      }
+      const question = text.slice(cmd.length).trim();
+      if (question === '') {
+        this.pushMsg('system', t('Usage: /btw <question>', '用法：/btw <问题>'), { level: 'warn' });
+        return;
+      }
+      await btwFlow(this, question);
       return;
     }
     if (cmd === '/rewind' || cmd === '/fork') {
