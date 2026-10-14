@@ -12,7 +12,7 @@
  */
 
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
-export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'directory' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory';
+export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'directory' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'sidechat';
 
 /** 开标签目标参数(按类型取用:file=diff=目录用 path、diff 备选 callId、web=url、终端 cols/rows) */
 export interface TabParams {
@@ -24,6 +24,8 @@ export interface TabParams {
   /** G8b 终端多实例铸键:「+」菜单每次开铸唯一 nonce(mintParams)→ resolveKey 各异 →
    *  同型并存(每标签独立 pty);无 nonce 开档互判重(聚焦既有) */
   readonly nonce?: string;
+  /** G14.29 辅助对话:fork 旁路会话 id(sidechat 标签寻址;同一辅助会话重开=聚焦) */
+  readonly sideId?: string;
 }
 
 /** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较) */
@@ -63,7 +65,7 @@ export interface SingletonProbe {
 
 /** 空会话缺省面:无标签、无活动、不折叠、缺省宽 */
 export function emptyTabSession(): TabSessionState {
-  return { tabs: [], activeUid: null, collapsed: false, width: DEFAULT_TAB_WIDTH };
+  return { tabs: [], activeUid: null, collapsed: true, width: DEFAULT_TAB_WIDTH };
 }
 
 /** uid 规约单点:type + ':' + resolveKey(无参 key='' → 'tasks:') */
@@ -71,14 +73,12 @@ const tabUid = (type: TabTypeId, params: TabParams, probe: SingletonProbe): stri
   `${type}:${probe.resolveKey(type, params)}`;
 
 /**
- * 会话在席保障:无该会话 → 建空态并按探针缺省开 tasks 单例页(spec §1「新会话默认开
- * 『任务』一页」;tasks 未注册单例时留空态);已有 → 原引用返回(未动即未变,
- * 测试以 toBe 断言)。注意走 openTab 而非直拼,令缺省页同样过 uid 规约与置活动口径。
+ * 会话在席保障:无该会话 → 建空态(零标签——G14.27 用户裁定:不再默认开『任务』页,右栏
+ * 空态显示推荐项卡片);已有 → 原引用返回(未动即未变,测试以 toBe 断言)。
  */
 export function ensureSession(states: TabStates, sessionId: string, registry: SingletonProbe): TabStates {
   if (states[sessionId] !== undefined) return states;
-  const seeded: TabStates = { ...states, [sessionId]: emptyTabSession() };
-  return registry.isSingleton('tasks') ? openTab(seeded, sessionId, 'tasks', {}, registry) : seeded;
+  return { ...states, [sessionId]: emptyTabSession() };
 }
 
 /**

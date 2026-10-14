@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
-import { errText, pickFolderNative, relTime } from '../ui-util';
+import { errText, fmtTokens, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
-import { ChevronRight, Folder, FolderOpen, Plus, Search, Settings, SquarePen } from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen, FolderPlus, Search, Settings, SquarePen } from 'lucide-react';
+import { DirPicker } from '../pages/DirPicker';
 
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
@@ -35,6 +36,10 @@ export interface ProjectMenuProps {
   readonly connState: string; // 'connecting'|'online'|'offline'|'reconnecting'(显示态)
   readonly activeSessionId: string; // '' = 无会话
   readonly activeRoot: string; // '' = 无(其所属组自动展开)
+  /** G14.16 标题统一流联动:rename 落盘后 App bump——变化即重拉 recentSessions(侧栏即时同名) */
+  readonly recentVersion?: number;
+  /** G14.52 活动会话运行态(App 本地权威,model-start 置位/done·error 复位):圆点亮熄以此为准 */
+  readonly runActive?: boolean;
   readonly onOpenSession: (sessionId: string, root: string) => void;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
@@ -50,8 +55,40 @@ function legacyName(slug: string): string {
   return slug.replace(/-[0-9a-f]{8}$/i, '').replace(/-/g, ' ');
 }
 
+/** 会话统计行(G14.17 回溯面):旁车 meta 有几段拼几段——轮/步/tokens/缓存/上文占比/模型·档位/
+ *  建档时刻;RECENTS 与搜索行 tooltip 消费,空 meta 返回 ''(行 tooltip 退化为标题+id) */
+function sessionMetaLine(r: SessionRow & { root: string; slug: string }): string {
+  const parts: string[] = [];
+  if (r.runs !== undefined) parts.push(t(`${r.runs} runs`, `${r.runs} 轮`));
+  if (r.steps !== undefined) parts.push(t(`${r.steps} steps`, `${r.steps} 步`));
+  if (r.tokens !== undefined) parts.push(fmtTokens(r.tokens));
+  if (r.cacheTokens !== undefined) parts.push(t(`cache ${fmtTokens(r.cacheTokens)}`, `缓存 ${fmtTokens(r.cacheTokens)}`));
+  if (r.ctxUsed !== undefined && r.ctxWindow !== undefined && r.ctxWindow > 0) {
+    const pct = Math.min(100, Math.round((r.ctxUsed / r.ctxWindow) * 100));
+    parts.push(t(`ctx ${pct}%`, `上文 ${pct}%`));
+  }
+  if (r.model !== undefined) parts.push(r.effort !== undefined ? `${r.model} · ${r.effort}` : r.model);
+  if (r.createdAt !== undefined) parts.push(t(`created ${shortLocalTime(r.createdAt)}`, `创建于 ${shortLocalTime(r.createdAt)}`));
+  return parts.join(' · ');
+}
+
 /** 工作区显示名:真实项目目录名(basename),路径 slug 仅兜底/悬浮(2026-10-08 可读性裁定:
  *  路径 slug「D-project-bi-mammoth-internal-410e80d4」换行破碎不可读——目录名才是用户心智的项目名) */
+/** default 锚点唯一化(G14.10):临时锚 <tmp>/sunshinex-default 在场时,旧仓库内 default
+ *  工作区行隐藏(目录与历史会话保留,RECENTS/搜索仍可达)——两个「default」行只示其一 */
+function visibleWorkspaces(rows: WorkspaceRow[]): WorkspaceRow[] {
+  const baseOf = (root: string): string => root.split(/[\\/]/).filter(Boolean).pop() ?? '';
+  // G14.34:默认锚点工作区(sunshinex-default,非项目会话的落点)不再入 PROJECTS 列表——
+  // 其会话仍经 RECENTS 可达(attach 只需 root/slug,与工作区行在场与否无关)
+  return rows.filter((r) => {
+    if (r.root === undefined) return true;
+    const base = baseOf(r.root);
+    if (base === 'sunshinex-default') return false; // G14.34:默认锚点不入 PROJECTS(会话走 RECENTS)
+    if (base === 'default' && r.sessionCount === 0) return false; // 仓内遗留 default 死行(0 会话)同隐
+    return true;
+  });
+}
+
 function wsName(row: { root?: string; slug: string }): string {
   if (row.root !== undefined && row.root !== '') {
     const base = row.root.split(/[\\/]/).filter(Boolean).pop();
@@ -64,13 +101,21 @@ function wsName(row: { root?: string; slug: string }): string {
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn } = props;
+  const recentVersion = props.recentVersion ?? 0;
+  const runActive = props.runActive ?? false;
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
   const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
+  const [recentsOpen, setRecentsOpen] = useState(true);
+  /** G14.42 默认锚点工作区 root(RECENTS 头 ✎ 新建默认会话用;无注册行不示钮) */
+  const defaultAnchorRoot = (rows ?? []).find(
+    (r) => r.root !== undefined && r.root.split(/[\\/]+/).filter(Boolean).pop() === 'sunshinex-default',
+  )?.root;
   const [listError, setListError] = useState('');
-  /** 展开中的组 slug(手动 toggle 与 activeRoot 自动展开共用同一态);null = 全收 */
+  /** G14.51 浏览器态服务端目录选择弹层(添加工作区无桌面壳时) */
+  const [dirOpen, setDirOpen] = useState(false);
+  /** 展开中的组 slug(G14.32 恢复组展开;null = 全收)+ sessionsOf 应答缓存/错误 */
   const [openSlug, setOpenSlug] = useState<string | null>(null);
-  /** openSlug 的同步镜像:sessionsOf 异步应答到达时读(闭包免陈旧——slug 守卫判据) */
   const openSlugRef = useRef<string | null>(null);
   openSlugRef.current = openSlug;
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
@@ -81,7 +126,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
   /** 分区折叠(G10-C18):PROJECTS/RECENTS 分区头可折叠(平滑过渡) */
   const [projectsOpen, setProjectsOpen] = useState(true);
-  const [recentsOpen, setRecentsOpen] = useState(true);
   /** 查找面板(G10-C13):项目 + 会话历史搜索 */
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -118,7 +162,63 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
   useEffect(() => {
     loadWorkspaces();
-  }, [loadWorkspaces]);
+  }, [loadWorkspaces, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
+
+  /** 拉展开组的会话列表(slug 守卫):应答到达时已切组/收起则丢弃(慢应答竞态收口) */
+  const loadSessions = useCallback(
+    (root: string, slug: string): void => {
+      conn.sessionsOf(root).then(
+        (list) => {
+          if (openSlugRef.current !== slug) return;
+          setSessions(list);
+        },
+        (err: unknown) => {
+          if (openSlugRef.current !== slug) return;
+          setSessionsError(err instanceof Error ? err.message : String(err));
+        },
+      );
+    },
+    [conn],
+  );
+
+  /** 展开组:展开即惰拉 sessionsOf(root);ref 先行同步写(守卫须已见新 slug) */
+  const expandGroup = useCallback(
+    (row: WorkspaceRow): void => {
+      if (row.root === undefined) return;
+      openSlugRef.current = row.slug;
+      setOpenSlug(row.slug);
+      setSessions(null);
+      setSessionsError('');
+      loadSessions(row.root, row.slug);
+    },
+    [loadSessions],
+  );
+
+  const toggleGroup = (row: WorkspaceRow): void => {
+    if (row.root === undefined) return;
+    if (openSlug === row.slug) {
+      openSlugRef.current = null;
+      setOpenSlug(null);
+      return;
+    }
+    expandGroup(row);
+  };
+
+  /** activeRoot 组自动展开(当前会话所属组;与手动 toggle 共用 openSlug 态) */
+  useEffect(() => {
+    const row = (rows ?? []).find((r) => r.root === activeRoot);
+    if (row === undefined || openSlugRef.current === row.slug) return;
+    expandGroup(row);
+  }, [activeRoot, rows, expandGroup]);
+
+  /** G14.52:run 起跑/收束(App recentVersion bump)时,展开中的组重拉会话行——liveSessionId
+   *  运行圆点跟手。组列表只在展开时惰拉,不重拉则行恒为展开时刻快照(圆点不亮/不熄) */
+  useEffect(() => {
+    if (recentVersion === 0 || openSlugRef.current === null) return;
+    const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
+    if (row?.root !== undefined) loadSessions(row.root, row.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recentVersion 即刷新信号;rows/openSlugRef 取现值
+  }, [recentVersion]);
 
 
   // 查找面板外点收(钮自身走 click 切换,不在收面)
@@ -134,64 +234,17 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     return () => document.removeEventListener('mousedown', onDown);
   }, [searchOpen]);
 
-  // 30s 定时自动刷新(G10-C13:替代手动刷新钮;loadWorkspaces 同刷 Recents)
+  // 30s 定时自动刷新(G10-C13)+ 窗口聚焦刷新(G14.9:回窗即见最新会话列表)
   useEffect(() => {
     const timer = setInterval(() => loadWorkspaces(), 30_000);
-    return () => clearInterval(timer);
+    const onFocus = (): void => loadWorkspaces();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [loadWorkspaces]);
 
-  /** 拉展开组的会话列表(slug 守卫,Home 照搬):应答到达时 slug 已非当前展开(切组/收起)
-   *  则丢弃——迟到应答不冲新展开组(慢应答竞态收口) */
-  const loadSessions = useCallback(
-    (root: string, slug: string): void => {
-      conn.sessionsOf(root).then(
-        (list) => {
-          if (openSlugRef.current !== slug) return; // 过期应答:展开已切走/收起,丢
-          setSessions(list);
-        },
-        (err: unknown) => {
-          if (openSlugRef.current !== slug) return;
-          setSessionsError(err instanceof Error ? err.message : String(err));
-        },
-      );
-    },
-    [conn],
-  );
-
-  /** 展开组(手动 toggle / activeRoot 自动共用入口):展开即惰拉 sessionsOf(root)。
-   *  ref 先行同步写:自动展开走 effect 路径,setOpenSlug 的重渲染可能晚于 sessionsOf
-   *  已 resolve 的微任务续体——守卫届时须已见新 slug,否则唯一应答被当过期丢弃 */
-  const expandGroup = useCallback(
-    (row: WorkspaceRow): void => {
-      if (row.root === undefined) return;
-      openSlugRef.current = row.slug;
-      setOpenSlug(row.slug);
-      setSessions(null);
-      setSessionsError('');
-      loadSessions(row.root, row.slug);
-    },
-    [loadSessions],
-  );
-
-  /** 展开/收起组:root 缺场历史组按钮禁用不可达 */
-  const toggleGroup = (row: WorkspaceRow): void => {
-    if (row.root === undefined) return;
-    if (openSlug === row.slug) {
-      openSlugRef.current = null;
-      setOpenSlug(null);
-      return;
-    }
-    expandGroup(row);
-  };
-
-  /** activeRoot 组自动展开:mount/activeRoot 变化(含刷新后 rows 新到场)时,其组未展开则
-   *  展开并拉会话;手动收起后 deps 不变不重扰,刷新替换 rows 数组后会重新评估 */
-  useEffect(() => {
-    if (activeRoot === '' || rows === null) return;
-    const row = rows.find((r) => r.root === activeRoot);
-    if (row === undefined || openSlugRef.current === row.slug) return;
-    expandGroup(row);
-  }, [activeRoot, rows, expandGroup]);
 
 
   /** Attach 两步(daemon 形态对齐,Home 照搬):newSession(root) 装配壳 → attach(sessionId,
@@ -222,27 +275,37 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
 
 
-  /** 「+ 添加工作区」(G10-C11):原生文件选择器(Win 系统对话框)选完即自动建项目——
-   *  浏览器态按名字在 projectsRoot 下建;桌面壳态注册既有目录。建好即展开组并开一个
-   *  auto 会话(对齐旧 DirPicker 确认后进会话的交互);失败行内报错 */
-  const pickAndAdd = async (): Promise<void> => {
+  /** 「+ 添加工作区」(G10-C11 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
+   *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
+   *  目录(旧按 name 在 projectsRoot 下 mkdir 的行为废除)。登记后回欢迎页预选该项目。 */
+  const pickAndAdd = (): void => {
     setActionError('');
-    const picked = await pickFolderNative();
-    if (picked === null) return;
-    if (picked === 'unsupported') {
-      setActionError(
-        t('Native folder picker needs a Chromium browser or the desktop app', '原生文件夹选择需要 Chrome/Edge 浏览器或桌面版'),
-      );
+    const shell = (window as unknown as { sunshinex?: { pickFolder?: () => Promise<string | null> } }).sunshinex;
+    if (typeof shell?.pickFolder === 'function') {
+      void shell.pickFolder().then((p) => {
+        if (p === null) return;
+        conn
+          .createWorkspace({ path: p })
+          .then((res) => {
+            loadWorkspaces(); // 建项目落位即刷新组列表
+            onComposeIn(res.root); // 纯回调无 busy,目标提交即刻可用
+          })
+          .catch((err: unknown) => setActionError(errText(err)));
+      });
       return;
     }
-    try {
-      const res = await conn.createWorkspace(picked.path !== undefined ? { path: picked.path } : { name: picked.name });
-      loadWorkspaces(); // 建项目落位即刷新组列表
-      // 建好即回欢迎页预选该项目(auto 档)——纯回调无 busy,目标提交即刻可用
-      onComposeIn(res.root, 'auto');
-    } catch (err) {
-      setActionError(errText(err));
-    }
+    setDirOpen(true);
+  };
+  /** DirPicker 确认:登记所选既有目录为工作区(同桌面壳后段;已登记幂等) */
+  const registerFolder = (p: string): void => {
+    setDirOpen(false);
+    conn
+      .createWorkspace({ path: p })
+      .then((res) => {
+        loadWorkspaces();
+        onComposeIn(res.root);
+      })
+      .catch((err: unknown) => setActionError(errText(err)));
   };
 
   return (
@@ -253,6 +316,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           <Search size={16} strokeWidth={1.75} />
         </button>
       </header>
+      <button
+        type="button"
+        className="sx-new-chat"
+        aria-label="new chat"
+        title={t('New chat', '新对话')}
+        onClick={onNewChat}
+      >
+        <SquarePen size={16} strokeWidth={1.75} />
+        <span>{t('New chat', '新对话')}</span>
+      </button>
       {searchOpen && (
         <div className="sx-side-search" role="search" aria-label={t('Search projects & sessions', '搜索项目与会话')}>
           <input
@@ -275,7 +348,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                   className="sx-search-row"
                   onClick={() => {
                     const row = (rows ?? []).find((x) => x.slug === r.slug);
-                    if (row !== undefined && row.root !== undefined) expandGroup(row);
+                    if (row !== undefined && row.root !== undefined) onComposeIn(row.root);
                     setSearchOpen(false);
                   }}
                 >
@@ -286,16 +359,20 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               ))}
             <div className="sx-search-sec">{t('Recent sessions', '会话历史')}</div>
             {(recents ?? [])
-              .filter((r) => query.trim() === '' || (r.firstUser ?? '').toLowerCase().includes(query.trim().toLowerCase()))
+              .filter((r) => query.trim() === '' || (r.title ?? r.firstUser ?? '').toLowerCase().includes(query.trim().toLowerCase()))
               .slice(0, 12)
               .map((r) => {
-                const running = r.id === activeSessionId;
+                // G14.52 running 身份:活动会话以 runActive 为准(收束即时熄);他会话看 daemon 标注
+                const isMapped = r.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === r.id;
+                const running = isMapped ? activeSessionId !== '' && runActive : r.liveSessionId !== undefined;
+                const label = r.title ?? r.firstUser ?? t('New session', '新会话');
+                const metaLine = sessionMetaLine(r);
                 return (
                   <button
                     key={r.root + '/' + r.id}
                     type="button"
                     className="sx-search-row"
-                    title={r.firstUser ?? undefined}
+                    title={`${label}${metaLine !== '' ? `\n${metaLine}` : ''}`}
                     onClick={() => {
                       if (busy) return;
                       attachJournal(r.root, r.id);
@@ -307,7 +384,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                     ) : !seenIds.has(r.id) ? (
                       <span className="sx-session-dot unseen" />
                     ) : null}
-                    <span className="sx-search-label">{r.firstUser ?? '(无摘要)'}</span>
+                    <span className="sx-search-label">{label}</span>
                     <span className="sx-search-meta">{relTime(r.updatedAt)}</span>
                   </button>
                 );
@@ -315,16 +392,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           </div>
         </div>
       )}
-      <button
-        type="button"
-        className="sx-new-chat"
-        aria-label="new chat"
-        title={t('New chat', '新对话')}
-        onClick={onNewChat}
-      >
-        <SquarePen size={16} strokeWidth={1.75} />
-        <span>{t('New chat', '新对话')}</span>
-      </button>
+      {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
       <div className="sx-side-scroll">
         <div
           className="sx-side-head sx-side-head-row sx-side-head-btn"
@@ -350,188 +418,196 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             type="button"
             className="sx-iconbtn"
             aria-label="add workspace"
-            title={t('Add workspace', '添加工作区')}
+            title={t('Open a folder as workspace', '打开文件夹作为工作区')}
             disabled={busy}
             onClick={(e) => {
               e.stopPropagation();
               setActionError('');
-              void pickAndAdd();
+              pickAndAdd();
             }}
           >
-            <Plus size={14} strokeWidth={1.75} />
+            <FolderPlus size={14} strokeWidth={1.75} />
           </button>
         </div>
         <div className={`sx-collapse${projectsOpen ? ' open' : ''}`}>
-        <ul className="workspace-list sx-groups" aria-label="workspace groups">
-        {rows === null && listError === '' && <li className="home-loading">{t('Loading workspaces…', '加载工作区…')}</li>}
-        {listError !== '' && (
-          <li className="home-error" role="alert">
-            {listError.startsWith('-> 401')
-              ? t('Token expired — reopen the URL printed by `serve` (or append ?token=<new> to the address)', 'token 已失效——请重新打开 serve 启动时打印的链接(或在地址后追加 ?token=<新 token>)')
-              : listError}
-          </li>
-        )}
-        {rows !== null && rows.length === 0 && (
-          <li className="home-empty">{t('No workspaces yet — add one via + above.', '尚无工作区——用上方「+」添加项目目录。')}</li>
-        )}
-        {actionError !== '' && (
-          <li className="home-error" role="alert">
-            {actionError}
-          </li>
-        )}
-        {rows?.map((row) => {
-          const root = row.root; // const 捕获:root 收窄可入回调
-          return (
-            <li
-              key={row.slug}
-              className={`workspace-item${root === undefined ? ' no-root' : ''}`}
-              style={{ position: 'relative' }} // mode 弹层(sx-menu-pop absolute)锚定本组行
-            >
-              <div className="workspace-row" style={{ display: 'flex', alignItems: 'center' }}>
-                <button
-                  type="button"
-                  className={`workspace-toggle sx-group-head${root !== undefined && root === activeRoot ? ' active' : ''}`}
-                  disabled={root === undefined}
-                  aria-expanded={openSlug === row.slug}
-                  title={root ?? 'root 未登记(历史工作区)——无法恢复会话'}
-                  onClick={() => toggleGroup(row)}
+          <ul className="workspace-list sx-groups" aria-label="workspace groups">
+            {rows === null && listError === '' && <li className="home-loading">{t('Loading workspaces…', '加载工作区…')}</li>}
+            {listError !== '' && (
+              <li className="home-error" role="alert">
+                {listError.startsWith('-> 401')
+                  ? t('Token expired — reopen the URL printed by `serve` (or append ?token=<new> to the address)', 'token 已失效——请重新打开 serve 启动时打印的链接(或在地址后追加 ?token=<新 token>)')
+                  : listError}
+              </li>
+            )}
+            {rows !== null && rows.length === 0 && (
+              <li className="home-empty">{t('No workspaces yet — add one via + above.', '尚无工作区——用上方「+」添加项目目录。')}</li>
+            )}
+            {actionError !== '' && (
+              <li className="home-error" role="alert">
+                {actionError}
+              </li>
+            )}
+            {visibleWorkspaces(rows ?? []).map((row) => {
+              const root = row.root; // const 捕获:root 收窄可入回调
+              return (
+                <li
+                  key={row.slug}
+                  className={`workspace-item${root === undefined ? ' no-root' : ''}`}
+                  style={{ position: 'relative' }}
                 >
-                  <span className="sx-ws-folder" aria-hidden="true">
-                    {openSlug === row.slug ? (
-                      <FolderOpen size={16} strokeWidth={1.75} />
-                    ) : (
-                      <Folder size={16} strokeWidth={1.75} />
-                    )}
-                  </span>
-                  <span className="ws-slug sx-ws-name">{wsName(row)}</span>
-                  <span className="ws-count sx-count" title={`${row.sessionCount} sessions`}>
-                    {row.sessionCount}
-                  </span>
-                </button>
-                {root !== undefined && (
-                  <button
-                    type="button"
-                    aria-label={`new session in ${row.slug}`}
-                    className="sx-iconbtn"
-                    title={t('New chat in this project', '在此项目中新对话')}
-                    onClick={() => onComposeIn(root)}
-                  >
-                    <SquarePen size={16} strokeWidth={1.75} />
-                  </button>
-                )}
-              </div>
-              {root !== undefined && (
-              <div className={`sx-collapse${openSlug === row.slug ? ' open' : ''}`}>
-                <ul className="session-list" aria-label="sessions">
-                  {sessions === null && sessionsError === '' && <li className="sessions-loading">{t('Loading sessions…', '加载会话…')}</li>}
-                  {sessionsError !== '' && <li className="home-error">{sessionsError}</li>}
-                  {sessions !== null && sessions.length === 0 && (
-                    <li className="no-sessions">{t('No sessions yet — create one via + above.', '暂无会话——组内「+」新建。')}</li>
-                  )}
-                  {sessions?.map((s) => {
-                    // active 判定:daemon 会话 id 直配,或该会话经 attach 记下的 journal 行 id
-                    // (异名映射,G10-C7 补)——root 兜底退役:整组全亮读作误 hover
-                    const active =
-                      activeSessionId !== '' &&
-                      (s.id === activeSessionId || journalOfSession.get(activeSessionId) === s.id);
-                    // G8e 三面②会话行状态点:id 直配行=accent 实心(运行中会话;与 active 类同判据
-                    // 锚 activeSessionId——不含 root 兜底,兜底行=灰空心「非本行会话」)
-                    const running = s.id === activeSessionId;
-                    return (
-                      <li
-                        key={s.id}
-                        className={`session-row sx-session-row${active ? ' active' : ''}`}
-                        title="打开会话"
-                        onClick={() => {
-                          if (busy || root === undefined) return;
-                          attachJournal(root, s.id);
-                        }}
+                  <div className="workspace-row" style={{ display: 'flex', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className={`workspace-toggle sx-group-head${root !== undefined && root === activeRoot ? ' active' : ''}`}
+                      disabled={root === undefined}
+                      aria-expanded={openSlug === row.slug}
+                      title={root ?? 'root 未登记(历史工作区)——无法新建会话'}
+                      onClick={() => toggleGroup(row)}
+                    >
+                      <span className="sx-ws-folder" aria-hidden="true">
+                        {openSlug === row.slug ? <FolderOpen size={16} strokeWidth={1.75} /> : <Folder size={16} strokeWidth={1.75} />}
+                      </span>
+                      <span className="ws-slug sx-ws-name">{wsName(row)}</span>
+                      <span className="ws-count sx-count" title={`${row.sessionCount} sessions`}>
+                        {row.sessionCount}
+                      </span>
+                    </button>
+                    {root !== undefined && (
+                      <button
+                        type="button"
+                        aria-label={`new session in ${row.slug}`}
+                        className="sx-iconbtn"
+                        title={t('New chat in this project', '在此项目中新对话')}
+                        onClick={() => onComposeIn(root)}
                       >
-                        {running ? (
-                          <span className="sx-session-dot running" title="运行中会话" />
-                        ) : !seenIds.has(s.id) ? (
-                          <span className="sx-session-dot unseen" />
-                        ) : null}
-                        <span className="session-summary" title={`${s.firstUser ?? ''} · ${s.id}`}>
-                          {s.firstUser ?? '(无摘要)'}
-                        </span>
-                        <span className="session-meta">{relTime(s.updatedAt)}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      </div>
-      <div
-        className="sx-side-head sx-side-head-btn"
-        role="button"
-        aria-expanded={recentsOpen}
-        tabIndex={0}
-        onClick={() => setRecentsOpen((v) => !v)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setRecentsOpen((v) => !v);
-          }
-        }}
-      >
-        <span>{t('Recents', '最近会话')}</span>
-        <button
-          type="button"
-          className="sx-iconbtn"
-          aria-label="new chat"
-          title={t('New chat', '新对话')}
-          onClick={(e) => {
-            e.stopPropagation();
-            onNewChat();
+                        <SquarePen size={14} strokeWidth={1.75} />
+                      </button>
+                    )}
+                  </div>
+                  {root !== undefined && (
+                    <div className={`sx-collapse${openSlug === row.slug ? ' open' : ''}`}>
+                      <ul className="session-list" aria-label="sessions">
+                        {sessionsError !== '' && <li className="home-error">{sessionsError}</li>}
+                        {/* G14.35:RECENTS 只收默认锚点会话,组内列表恢复展示本项目全部会话 */}
+                        {sessions !== null && sessions.length === 0 && (
+                          <li className="no-sessions">{t('No sessions', '暂无会话')}</li>
+                        )}
+                        {sessions?.map((sr) => {
+                          // G14.52:活动会话圆点以 runActive 为准;他会话看 daemon 标注
+                          const active =
+                            activeSessionId !== '' &&
+                            (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
+                          const running = active
+                            ? runActive
+                            : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
+                          const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
+                          return (
+                            <li
+                              key={sr.id}
+                              className={`session-row sx-session-row${active ? ' active' : ''}`}
+                              title="打开会话"
+                              onClick={() => {
+                                if (busy || root === undefined) return;
+                                attachJournal(root, sr.id);
+                              }}
+                            >
+                              {running ? (
+                                <span className="sx-session-dot running" title="运行中会话" />
+                              ) : !seenIds.has(sr.id) ? (
+                                <span className="sx-session-dot unseen" />
+                              ) : null}
+                              <span className="session-summary" title={`${label} · ${sr.id}`}>{label}</span>
+                              <span className="session-meta">{relTime(sr.updatedAt)}</span>
+                            </li>
+                              );
+                            })}
+                      </ul>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {/* RECENTS 在 PROJECTS 下侧(用户裁定);空态「暂无最近会话」占位 */}
+        {/* G14.42:RECENTS 头同 PROJECTS 款——chevron 紧跟标题(hover 显形/点击折叠),✎ 新建默认会话 */}
+        <div
+          className="sx-side-head sx-side-head-row sx-side-head-btn"
+          role="button"
+          aria-expanded={recentsOpen}
+          tabIndex={0}
+          onClick={() => setRecentsOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setRecentsOpen((v) => !v);
+            }
           }}
         >
-          <SquarePen size={14} strokeWidth={1.75} />
-        </button>
-        <ChevronRight
-          size={12}
-          strokeWidth={2}
-          aria-hidden="true"
-          className={`sx-side-chev${recentsOpen ? ' open' : ''}`}
-        />
-      </div>
-      <div className={`sx-collapse${recentsOpen ? ' open' : ''}`}>
-      <ul className="recent-list" aria-label="recent sessions">
-        {recents === null && <li className="sessions-loading">{t('Loading sessions…', '加载会话…')}</li>}
-        {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
-        {recents?.map((r) => {
-          const running = r.id === activeSessionId;
-          // active 同组行:daemon 会话 id 直配或 journal 异名映射;root 兜底退役
-          const active =
-            activeSessionId !== '' &&
-            (r.id === activeSessionId || journalOfSession.get(activeSessionId) === r.id);
-          return (
-            <li
-              key={`${r.root}/${r.id}`}
-              className={`session-row sx-session-row${active ? ' active' : ''}`}
-              title="打开会话"
-              onClick={() => {
-                if (busy) return;
-                attachJournal(r.root, r.id);
+          <span>{t('Recents', '最近会话')}</span>
+          <ChevronRight
+            size={12}
+            strokeWidth={2}
+            aria-hidden="true"
+            className={`sx-side-chev${recentsOpen ? ' open' : ''}`}
+          />
+          {defaultAnchorRoot !== undefined && (
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="new default chat"
+              title={t('New chat in default workspace', '默认工作区新对话')}
+              onClick={(e) => {
+                e.stopPropagation();
+                onComposeIn(defaultAnchorRoot);
               }}
             >
-              {running ? (
-                <span className="sx-session-dot running" />
-              ) : !seenIds.has(r.id) ? (
-                <span className="sx-session-dot unseen" />
-              ) : null}
-              <span className="session-summary" title={`${r.firstUser ?? ''} · ${r.id}`}>{r.firstUser ?? '(无摘要)'}</span>
-              <span className="session-meta">{relTime(r.updatedAt)}</span>
-            </li>
-          );
-        })}
-      </ul>
-      </div>
+              <SquarePen size={14} strokeWidth={1.75} />
+            </button>
+          )}
+        </div>
+        <div className={`sx-collapse${recentsOpen ? ' open' : ''}`}>
+        <ul className="recent-list" aria-label="recent sessions">
+          {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
+          {recents?.map((r) => {
+            // G14.52:活动会话圆点以 runActive 为准;他会话看 daemon 标注
+            const active =
+              activeSessionId !== '' &&
+              (r.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === r.id);
+            const running = active
+              ? runActive
+              : r.liveSessionId !== undefined && r.liveSessionId !== activeSessionId;
+            const label = r.title ?? r.firstUser ?? t('New session', '新会话');
+            const metaLine = sessionMetaLine(r);
+            return (
+              <li
+                key={`${r.root}/${r.id}`}
+                className={`session-row sx-session-row${active ? ' active' : ''}`}
+                title="打开会话"
+                onClick={() => {
+                  if (busy) return;
+                  attachJournal(r.root, r.id);
+                }}
+              >
+                {running ? (
+                  <span className="sx-session-dot running" />
+                ) : !seenIds.has(r.id) ? (
+                  <span className="sx-session-dot unseen" />
+                ) : null}
+                <span className="session-summary" title={`${label}${metaLine !== '' ? `\n${metaLine}` : ''} · ${r.id}`}>{label}</span>
+                <span className="session-meta">{relTime(r.updatedAt)}</span>
+              </li>
+            );
+          })}
+        </ul>
+        </div>
+        {dirOpen && (
+          <div className="modal-overlay" onClick={() => setDirOpen(false)}>
+            <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+              <DirPicker conn={conn} showManual={false} onCancel={() => setDirOpen(false)} onConfirm={registerFolder} />
+            </div>
+          </div>
+        )}
       </div>
       <footer className="sx-menu-foot">
         {onOpenSettings !== undefined && (
@@ -542,7 +618,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             title="设置"
             onClick={onOpenSettings}
           >
-            <Settings size={16} strokeWidth={1.75} />
+            <Settings size={18} strokeWidth={1.75} />
           </button>
         )}
       </footer>

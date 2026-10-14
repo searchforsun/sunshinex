@@ -17,6 +17,19 @@ export function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** tokens 格式(G14.17 自 Chat.tsx 导出共享):8400 → 8.4k tokens;840 → 840 tokens */
+export function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
+}
+
+/** ISO 时刻 → 本地短时刻(创建时间回溯面):'2026-10-11T05:24:29.123Z' → '10-11 13:24' */
+export function shortLocalTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** 原生文件夹选择(G10-C11,统一交互单点):桌面壳走 IPC 系统对话框(回全路径);浏览器走
  *  showDirectoryPicker(Win 原生对话框——安全模型只回名字,建项目交 daemon /workspace/create)。
  *  返回 {name[,path]} | 'unsupported'(环境无原生选择器) | null(用户取消) */

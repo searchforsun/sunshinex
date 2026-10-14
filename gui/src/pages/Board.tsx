@@ -218,6 +218,12 @@ export function Board({ board, delegations, team, onReview, onBack }: BoardProps
         </header>
       )}
       <div className="board-body">
+        {!hasTasks && !hasSide && (
+          <div className="board-empty-state" role="status">
+            <p className="board-empty-title">任务板为空</p>
+            <p className="board-empty-hint">智能体创建任务后会显示在这里。</p>
+          </div>
+        )}
         {hasTasks && (
           <main className="board-main" aria-label="board">
             {view === 'list' ? (

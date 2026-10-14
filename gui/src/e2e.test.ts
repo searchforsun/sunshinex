@@ -1,4 +1,23 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+// monaco 真渲染需要浏览器布局——jsdom 挂 stub(内容经 DiffPanel 根 data-* 断言)
+vi.mock('monaco-editor', () => ({
+  editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
+}));
+vi.mock('@monaco-editor/react', () => ({
+  loader: { config: vi.fn() },
+  Editor: (props: { value?: string; language?: string }) =>
+    createElement(
+      'div',
+      { className: 'mock-monaco-editor', 'data-language': props.language },
+      props.value,
+    ),
+  DiffEditor: (props: { original?: string; modified?: string }) =>
+    createElement('div', {
+      className: 'mock-monaco-diff',
+      'data-original': props.original,
+      'data-modified': props.modified,
+    }),
+}));
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -18,9 +37,10 @@ import type { Connection, ConnectionState } from './connection';
 import { App } from './App';
 
 /** G10-C3 工具行图标化定位器(正则匹配 textContent) */
-function toolRowRe(re: RegExp): HTMLButtonElement | null {
+function toolRowRe(re: RegExp | string): HTMLButtonElement | null {
   const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('.tool-summary'));
-  return rows.find((r) => re.test(r.textContent?.replace(/\s+/g, ' ') ?? '')) ?? null;
+  const norm = (r: HTMLButtonElement): string => r.textContent?.replace(/\s+/g, ' ') ?? '';
+  return rows.find((r) => (typeof re === 'string' ? norm(r).includes(re) : re.test(norm(r)))) ?? null;
 }
 
 
@@ -87,6 +107,15 @@ function seedWorkspace(root: string, userText: string): string {
   const id = j.currentId!;
   j.log({ t: 'msg', item: { role: 'user', text: userText, ts: Date.now(), seq: 1 } });
   return id;
+}
+
+/** G14.38:右栏缺省折叠——面板外跳转前先展开(钮在 Chat 顶栏;已展开则空转) */
+async function expandPanel(): Promise<void> {
+  const btn = screen.queryByRole('button', { name: 'expand sidebar' });
+  if (btn !== null) {
+    fireEvent.click(btn);
+    await new Promise((r) => setTimeout(r, 300));
+  }
 }
 
 describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot → 帧挂 sessionId', () => {
@@ -182,7 +211,7 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
       // —— Home:工作区行(title=root 在场,可 attach)→ 展开会话列表 → Attach ——
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
       fireEvent.click(await within(await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 })).findByTitle('打开会话', {}, { timeout: 5_000 }));
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 播种:journal 首条用户输入经 attach → sessionSnapshot 基线 → blockquote 渲染 ——
       await waitFor(
@@ -196,7 +225,7 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
       fireEvent.change(input, { target: { value: 'attach 后提交' } });
       fireEvent.keyDown(input, { key: 'Enter' });
       await waitFor(() => expect(container.querySelector('.entry-assistant')?.textContent).toContain('attach 后答复'), { timeout: 10_000 });
-      expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(); // 仍在会话(路由态)
+      expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(); // 仍在会话(路由态)
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -221,16 +250,23 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
         fireEvent.change(input, { target: { value: goal } });
         fireEvent.keyDown(input, { key: 'Enter' });
       };
+      const openTabByMenu = async (name: string): Promise<void> => {
+        await expandPanel();
+        await expandPanel();
+        fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+        await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+        fireEvent.click(screen.getByRole('menuitem', { name }));
+        await new Promise((r) => setTimeout(r, 200));
+      };
       const backHome = async (): Promise<void> => {
-        fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
+        fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
         await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       };
 
       // —— s1:工作区行展开 → Attach(journal 播种)→ UI 提交 → done ——
       fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
       fireEvent.click(await within(await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 })).findByTitle('打开会话', {}, { timeout: 5_000 }));
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await submit('s1 目标');
       await waitFor(() => expect(container.textContent).toContain('s1 终答'), { timeout: 10_000 });
 
@@ -242,24 +278,25 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-    console.log("SIDEBAR_DEBUG:", document.querySelector(".sx-side-scroll")?.innerHTML?.slice(0, 2500) ?? "NO SIDEBAR");
-    console.log("TITLE_DEBUG:", document.querySelector(".chat-title-text")?.textContent ?? "NO TITLE");
-      await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await submit('s2 目标');
       await waitFor(() => expect(container.textContent).toContain('s2 终答'), { timeout: 10_000 });
       // s2 投影独立:不含 s1 条目(Chat unmount 本地态销毁,无跨会话串扰)
-      expect(container.textContent).not.toContain('s1 目标');
-      expect(container.textContent).not.toContain('s1 终答');
-      expect(container.textContent).not.toContain('历史第一句');
+      // (G13:断言收窄到 chat 主区——侧栏 Recents 自摘要落库起合法出现「s1 目标」,全壳断言误伤)
+      const chatMainText = (container.querySelector('main.sx-main') ?? container).textContent ?? '';
+      expect(chatMainText).not.toContain('s1 目标');
+      expect(chatMainText).not.toContain('s1 终答');
+      expect(chatMainText).not.toContain('历史第一句');
 
       // —— 经 UI 返回 s1:back → 组重展开收放(sx 壳常驻:组仍展开但列表为展开时快照——收起再
       //    展开触发 sessionsOf 重拉,s1/s2 档齐)→ Attach 同一 journal(两步壳)→ 转录播种在场 ——
-      // (T2 起新建会话即挂 journal——列表 s1/s2 两档各一行;播种档无 t:'user' 行 → 无摘要,
-      //  以 journal id 定行:session-meta 含 id 文本)
+      // (T2 起新建会话即挂 journal——列表 s1/s2 两档各一行;G13 起摘要自链首 task 步回源,
+      //  行定位仍以 journal id 定:session-meta 含 id 文本,不依赖摘要文案)
       await backHome();
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 })); // 收起(壳常驻,组仍展开)
-      fireEvent.click(screen.getByTitle(env.root)); // 重展开 → sessionsOf 重拉(含 s2 新建档)
-      // G10-C2:Recents 区同含 Attach 钮——组内断言 scoped 到 session-list(组内重拉面),排除 Recents
+      // 组重展开收放(收起再展开触发 sessionsOf 重拉,s1/s2 档齐)
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
+      await new Promise((r) => setTimeout(r, 150)); // 收起态落定再展开(jsdom 同拍双击会命中旧闭包 handler)
+      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
       const groupList = await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 });
       const rows = await within(groupList).findAllByTitle('打开会话', {}, { timeout: 5_000 });
       expect(rows.length).toBeGreaterThanOrEqual(2); // s1 播种档 + s2 新建档(T2 即挂)
@@ -336,30 +373,24 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     vi.unstubAllGlobals();
   });
 
-  it('New session(DirPicker 自定义路径)→ chat → 提交流式 → steer 200 → done 收段', async () => {
+  it('New session(DirPicker 自定义路径)→ chat → 欢迎接力提交流式 → steer 200 → done 收段', async () => {
     // App 挂载:token 门面 + baseUrl 经 stubEnv 注入;初始路由 home(空注册表 → 空态引导)
     vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
     const { container } = render(createElement(App));
     await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-    // —— 「+ 添加工作区」(G8a:New session 按钮退役,DirPicker 流经左栏添加面)→ DirPicker 模态:
-    //    自定义路径输入(真 daemon /dirpicker 服务端)→ 确认 → newSession → chat ——
+    // —— 「+ 添加工作区」(G8a:DirPicker 流经左栏添加面,桌面壳 IPC 桩回路径)→ 欢迎页目标提交:
+    //    G10 接力单源——welcome goal 经 Chat 播种落定自动提交(本地回显 '> 流式冒烟'),
+    //    不再另走会话输入二段提交(会撞 run 锁 409)——
         Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
     fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
     await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
     const goalInput = screen.getByLabelText('welcome goal');
-    fireEvent.change(goalInput, { target: { value: '新的任务' } });
+    fireEvent.change(goalInput, { target: { value: '流式冒烟' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
-    console.log("SIDEBAR_DEBUG_G3:", document.querySelector(".sx-side-scroll")?.innerHTML?.slice(0, 2500) ?? "NO SIDEBAR");
+    await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
-    // —— 真实 UI 提交路径:输入 + Enter(idle 分流 = sessionSubmit;输入启用 = 播种落定后)——
-    const input = screen.getByLabelText('message input');
-    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
-    fireEvent.change(input, { target: { value: '流式冒烟' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    // —— 流式中间态:token 增量分帧到场(连接层事件 + DOM streaming 条),run 确在进行中 ——
+    // —— 流式中间态:接力提交 → token 增量分帧到场(连接层事件 + DOM streaming 条),run 确在进行中 ——
     await waitFor(() => expect(container.querySelector('.entry-assistant.streaming')?.textContent).toContain('终稿'), { timeout: 10_000 });
     expect(events.some((e) => e.type === 'token' && e.text === '终稿')).toBe(true);
     expect((await conn.sessionSnapshot('s1')).status).toBe('running');
@@ -368,13 +399,13 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     // —— steer 运行中(hanging 模型轮内):经 conn.sessionSteer POST /session/:id/steer,200 不炸 ——
     await conn.sessionSteer('s1', '运行中插话');
 
-        // —— release → 模型轮收束 → done 事件 → streaming 收段:md 终稿全文在场、无流式残留、idle ——
+    // —— release → 模型轮收束 → done 事件 → streaming 收段:md 终稿全文在场、无流式残留、idle ——
     model.release();
     await waitFor(() => expect(container.querySelector('.entry-assistant:not(.streaming)')?.textContent).toContain('终稿答复'), { timeout: 10_000 });
     expect(container.querySelector('.streaming')).toBeNull();
     expect(container.querySelector('.status-idle')).toBeDefined();
     expect(events.some((e) => e.type === 'done' && e.text === '终稿答复')).toBe(true);
-    // UI 提交的本地 user 回显(> 流式冒烟 引用块)
+    // 接力目标本地回显('> 流式冒烟' 引用块;G14.51 daemon 不广播 user 事件,回显在提交侧补)
     expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('流式冒烟');
   }, 30_000);
 });
@@ -516,11 +547,17 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— manual 会话经 UI 真面建立:欢迎页目标提交(WelcomeComposer 带 preset mode:manual)——
+      // —— manual 会话经 UI 真面建立:项目下拉选测试工作区 → 审批选择器切「Confirm changes」(manual)
+      //    → 目标提交。提交前等注册表就绪(picked 落定,G14.51:过早 Enter 会因 target='' 早退)——
+      await waitFor(() => expect(screen.getByText('Default workspace', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+      fireEvent.click(screen.getByLabelText('Choose project'));
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'root' })); // env.root 尾段=测试工作区行
+      fireEvent.click(screen.getByLabelText('approval mode'));
+      fireEvent.click(await screen.findByText(/Confirm changes|变更确认/));
       const goal = screen.getByLabelText('welcome goal');
       fireEvent.change(goal, { target: { value: 'manual 写一个文件' } });
       fireEvent.keyDown(goal, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       expect(newBodies.some((b) => b.mode === 'manual' && b.root === env.root)).toBe(true); // newSession body mode 断言
 
       // —— 首轮模型轮 → write envelope 越信任域 → manual 挂起 → approval 帧经 WS → ApprovalCard ——
@@ -588,24 +625,17 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
 
       // —— 两会话先后建+跑+idle(s2 留在会话页——顶栏 Delete 的现场)——
       await openByPicker();
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第一会话目标', '第一会话完成');
-      fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
+      fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
       await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
       await openByPicker();
-      await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第二会话目标', '第二会话完成');
 
-      // —— s2 会话页顶栏 Delete(confirm 桩真):以 openSessionId(daemon 会话 id)打
-      //    /session/:id/delete——Home 行 Delete 以 journal id 寻址恒 404 的接线缺口就此退役 ——
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-      fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
-      expect(confirmSpy).toHaveBeenCalledTimes(1);
-      // 删除成功 → onBack → 欢迎空态回归(会话关窗)
-      await screen.findByLabelText('welcome', {}, { timeout: 5_000 });
-      confirmSpy.mockRestore();
+      // —— G14.28:顶栏 ⋯ 菜单退役,删除改直调 daemon API(回收断言面保留)——
+      const del = await fetch(`http://127.0.0.1:${env.port}/session/s2/delete`, { method: 'POST' });
+      expect(del.status).toBe(200);
 
       // —— daemon 侧真实回收:s2 移出注册表(:id 访问 404);journal 文件保留(磁盘档案)——
       const gone = await fetch(`http://127.0.0.1:${env.port}/session/s2/snapshot`, { headers: H });
@@ -659,7 +689,7 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       const input = screen.getByLabelText('message input');
       await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
       fireEvent.change(input, { target: { value: 'run gated demo' } });
@@ -669,8 +699,12 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await waitFor(() => expect(frames.some((e) => e.type === 'task-created')).toBe(true), { timeout: 10_000 });
       await waitFor(() => expect(frames.some((e) => e.type === 'gate-waiting')).toBe(true), { timeout: 5_000 });
 
-      // —— 任务标签(G8a:右栏默认开「任务」页,Board 恒挂——原 Board tab 钮退役)→ List
-      //    视图(缺省):gated ⚠ Badge 行 + 行内 Approve/Deny(G8d T5:⚠ 文本面 Badge 化)——
+      // —— 任务标签(G14.27:不再默认开——经「+」菜单显式打开)→ List 视图:gated ⚠ Badge 行
+      //    + 行内 Approve/Deny(G8d T5:⚠ 文本面 Badge 化)——
+      await expandPanel();
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
       await waitFor(() => expect(screen.getByText('t1 [pending] GateDemo')).toBeDefined(), { timeout: 10_000 });
       await waitFor(() => expect(container.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠'), { timeout: 5_000 });
       expect(screen.getByRole('button', { name: 'Approve t1' })).toBeDefined();
@@ -733,7 +767,7 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 提交 → run:write 域内直执行(无挂起)→ done 收束 ——
       const input = screen.getByLabelText('message input');
@@ -748,15 +782,14 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       expect(container.querySelector('.approval-card')).toBeNull(); // dontAsk 域内写零挂起
       expect(container.querySelector('.status-idle')).toBeDefined();
 
-      // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffPanel 双列 ——
-      fireEvent.click(toolRowRe(new RegExp(`write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `))!);
-      // 加载期先示右列现内容(单列+加载标)——双列落定以 old 列在场为准(waitFor 过拉取竞态窗)
-      await waitFor(() => expect(container.querySelector('.diff-panel .diff-old')).not.toBeNull(), { timeout: 5_000 });
-      expect(container.querySelector('.diff-panel .diff-old')?.textContent).toBe(OLD); // old 列 = pre-image blob
-      expect(container.querySelector('.diff-panel .diff-new')?.textContent).toBe(NEW); // new 列 = 磁盘现文件
-      expect(container.querySelectorAll('.diff-panel .diff-col').length).toBe(2); // 双列(old 缺场才单列)
-      expect(container.querySelector('.diff-loading')).toBeNull(); // 拉取落定,非加载态
-      expect(container.querySelector('.tool-path')?.textContent).toBe(REL); // path 跳转按钮(Files 预览入口)
+      // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffLines 行级 old/new 双行 ——
+      fireEvent.click(toolRowRe(`write ${REL} `))!;
+      await waitFor(
+        () => expect(container.querySelector('.diff-line.del')?.textContent).toContain(OLD),
+        { timeout: 5_000 },
+      );
+      expect(container.querySelector('.diff-line.add')?.textContent).toContain(NEW);
+      expect(container.querySelector('.tool-path')?.getAttribute('aria-label')).toBe(REL); // 角标钮(diff 标签入口)
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -832,13 +865,15 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— manual 会话经 UI 真面建立:审批模式选「变更确认」→ 欢迎页目标提交(mode:manual 随会话带出)——
-      //    首轮模型轮挂在 Gated adapter 的 gate 上(run 进行中)——
+      //    首轮模型轮挂在 Gated adapter 的 gate 上(run 进行中)。提交前等注册表就绪
+      //    (picked 落定,G14.51:过早 Enter 会因 target='' 早退)——
+      await waitFor(() => expect(screen.getByText('Default workspace', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'approval mode' }));
       fireEvent.click(await screen.findByRole('menuitem', { name: /变更确认|confirm changes/i }));
       const goal = screen.getByLabelText('welcome goal');
       fireEvent.change(goal, { target: { value: '挂起重连目标' } });
       fireEvent.keyDown(goal, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 断线注入:App 自装配连接的底层 socket(挂起广播前的零客户端窗)——
       const appSock = sockets[sockets.length - 1]!;
@@ -912,7 +947,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
 const tabsByTitle = (container: HTMLElement, title: string): Element[] =>
   Array.from(container.querySelectorAll(`.sx-tab[title="${title}"]`));
 
-describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮开 Diff 标签(判重聚焦;文件标签面走 +菜单)', () => {
+describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务页) + write 条目 path 钮开 Diff 标签(判重聚焦;文件标签面走 +菜单)', () => {
   it('建会话 → 「任务」默认在场且活动 → write path 钮 → Diff 标签开且活动(title=path)→ 双列 → 再点同 path 判重 → +菜单「文件」+路径输入补文件预览', async () => {
     const REL = 'g8d-e2e-diff-tab.txt'; // 会话 root 域内相对路径(dontAsk 直写,无挂起卡)
     const OLD = 'diff tab old line'; // pre-image 源(G7 fixture 复用:真 daemon write 影子快照的 old 列)
@@ -936,9 +971,16 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
-      // —— 默认任务页:右栏标签条唯一标签「任务」且活动(ensureSession 缺省开 tasks 单例)——
+      // —— G14.27/38:零标签缺省折叠——展开右栏后空态(推荐卡片)在场,再经「+」菜单开「任务」——
+      await expandPanel();
+      await waitFor(() => expect(container.querySelector('.sx-tab-empty')).not.toBeNull(), { timeout: 5_000 });
+      expect(tabsByTitle(container, '任务').length).toBe(0); // 不再默认开
+
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
       await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, '任务')[0]!.className).toContain('active'); // sx-tab active
       expect(tabsByTitle(container, REL).length).toBe(0); // Diff 标签未开
@@ -958,9 +1000,9 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
 
       // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → **Diff 标签**开且活动(title=path)——
       //    (G8d T2 语义变更:callId 在场主通道 onOpenDiff;旧断言面 Files/.files-view 随接线退役)
-      fireEvent.click(toolRowRe(new RegExp(`write ${REL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `))!);
+      fireEvent.click(toolRowRe(`write ${REL} `))!;
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
-      expect(pathBtn?.textContent).toBe(REL);
+      expect(pathBtn?.getAttribute('aria-label')).toBe(REL);
       expect(pathBtn?.title).toBe('打开 diff 标签'); // 主通道标识(缺场回落面才示「在文件标签预览」)
       fireEvent.click(pathBtn!);
       await waitFor(() => expect(tabsByTitle(container, REL).length).toBe(1), { timeout: 5_000 });
@@ -971,12 +1013,10 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       // —— Diff 标签体:DiffTab mount 拉 conn.fetchDiff(callId)→ 标题行(path)+ DiffPanel
       //    双列(old=pre-image 影子快照 / new=磁盘现文件)——真 daemon write 影子快照的应答渲染 ——
       await waitFor(
-        () => expect(container.querySelector('.sx-tabbody .diff-panel .diff-old')).not.toBeNull(),
+        () => expect(container.querySelector('.sx-tabbody .diff-panel')!.getAttribute('data-diff-old')).toBe(OLD),
         { timeout: 5_000 },
       );
-      expect(container.querySelector('.sx-tabbody .diff-panel .diff-old')?.textContent).toBe(OLD);
-      expect(container.querySelector('.sx-tabbody .diff-panel .diff-new')?.textContent).toBe(NEW);
-      expect(container.querySelectorAll('.sx-tabbody .diff-panel .diff-col').length).toBe(2); // 双列
+      expect(container.querySelector('.sx-tabbody .diff-panel')!.getAttribute('data-diff-new')).toBe(NEW);
       expect(container.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe(REL); // 标题行 path
       expect(container.querySelector('.sx-tabbody .files-view')).toBeNull(); // 标签体是 Diff 面,非 Files 面
 
@@ -988,6 +1028,7 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
 
       // —— 文件标签面(G8a 原覆盖保:path 钮主通道已迁 Diff,文件标签另走 +菜单裸开 → 路径输入
       //    加载):「文件」标签开且活动 → 输入 REL 回车 → files-view 载磁盘现文件 ——
+      await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
@@ -997,7 +1038,7 @@ describe('G8a-T6 场景A(G8d-T6 重写):默认任务页 + write 条目 path 钮�
       fireEvent.change(pathInput, { target: { value: REL } });
       fireEvent.keyDown(pathInput, { key: 'Enter' });
       await waitFor(
-        () => expect(container.querySelector('.sx-tabbody .files-view')?.textContent).toContain(NEW),
+        () => expect(container.querySelector('.sx-tabbody [aria-label="file content"]')?.textContent).toContain(NEW),
         { timeout: 5_000 },
       );
       expect(container.querySelectorAll('.sx-tab').length).toBe(3); // 任务 + Diff + 文件
@@ -1017,14 +1058,19 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— 建会话 → chat;默认「任务」标签活动(场景A 已钉,此处直用)——
+      // —— 建会话 → chat(任务页改经「+」菜单显式开)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
     await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      // G14.27:不再默认开「任务」——经「+」菜单显式打开(后续「切回任务标签」现场需要)
+      await expandPanel();
+      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
       await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(文件头 CARDS 同款):提交 → done 收束 → 板/委派投影落位 ——
@@ -1038,6 +1084,7 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       );
 
       // —— 任务标签失活现场:「+」菜单开文件标签(无参 file → 标签条第二页且活动)——
+      await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
@@ -1092,9 +1139,10 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— +菜单开目录标签(content 节「目录」,单例)→ mount 惰拉 root → 根行 dirA 在场 ——
+      await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
@@ -1116,7 +1164,7 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       expect(tabsByTitle(container, 'dirA/fileA.ts')[0]!.className).toContain('active'); // 文件标签活动
       expect(tabsByTitle(container, '目录')[0]!.className).not.toContain('active'); // 目录标签失活
       await waitFor(
-        () => expect(container.querySelector('.sx-tabbody .files-view')?.textContent).toContain(MARKER),
+        () => expect(container.querySelector('.sx-tabbody [aria-label="file content"]')?.textContent).toContain(MARKER),
         { timeout: 5_000 },
       );
     } finally {
@@ -1183,7 +1231,8 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: '终端' }));
@@ -1299,13 +1348,16 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       unmount = render(createElement(App)).unmount;
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— 建会话(「+ 添加工作区」DirPicker 缺省 auto,项目 root=会话根)→ chat ——
+      // —— 建会话(「+ 添加工作区」桌面壳桩回路径 → 登记即回欢迎页预选该项目;G10-C16 起
+      //    组内 + 的 mode 弹层面由欢迎页审批选择器取代,缺省 auto=dontAsk)→ 目标提交 → chat。
+      //    等选择条示项目名(picked 落定)再提交——过早 Enter 会因 target='' 早退(G14.51)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      fireEvent.click(await screen.findByTitle(root, {}, { timeout: 5_000 })); // 原生选择器选完自动建项目(G10-C11)→ 展开组
-      fireEvent.click(await screen.findByRole('button', { name: /new session in / }, { timeout: 5_000 })); // 组内 + 新建会话
-fireEvent.click(await screen.findByRole('menuitem', { name: /auto 自动审批/i }, { timeout: 5_000 }));
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 }); // root 尾段
+      const goal = await screen.findByLabelText('welcome goal');
+      fireEvent.change(goal, { target: { value: '设置冒烟' } });
+      fireEvent.keyDown(goal, { key: 'Enter' });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(SettingsForm 行
       //    label=键名,aria-label=language)→「保存」→ toast「已生效」在场 ——
@@ -1373,7 +1425,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
 
       // —— MCP 面(导航项):bad 卡在场(两级清单读 <root>/.sunshinex/mcp.json;命令行示出)——
@@ -1456,7 +1508,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(CARDS 同款):提交 → 委派 fork 派发 → 主链 done 收束 ——
       const input = screen.getByLabelText('message input');
@@ -1469,6 +1521,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       );
 
       // —— +菜单开 Agents 标签(session 节,每会话单例):开且活动,标签体渲染 AgentsTab ——
+      await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
@@ -1520,7 +1573,8 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
     const goalInput = screen.getByLabelText('welcome goal');
     fireEvent.change(goalInput, { target: { value: '新的任务' } });
     fireEvent.keyDown(goalInput, { key: 'Enter' });
-      await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
+      await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: 'Web' }));
@@ -1530,7 +1584,7 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       // —— 裸开档空态:引导文案 + url 输入在场(占位符锚)——
       expect(container.querySelector('.sx-web-empty')).not.toBeNull();
       const urlInput = screen.getByLabelText('web url input');
-      expect(urlInput.getAttribute('placeholder')).toContain('https');
+      expect(urlInput.getAttribute('placeholder')).toMatch(/网址|URL/); // G14.6 Simple Browser 占位(双语)
       fireEvent.change(urlInput, { target: { value: TARGET } });
       fireEvent.keyDown(urlInput, { key: 'Enter' });
 

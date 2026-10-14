@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -7,11 +8,24 @@ import react from '@vitejs/plugin-react';
 // dev 启动示例：VITE_SERVE_URL=http://127.0.0.1:7788 pnpm --filter sunshinex-gui dev
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: [
+      {
+        // monaco worker:exports 子路径 + ?worker query 在 rollup/vitest 解析不了——alias 直指实文件
+        find: 'monaco-editor/esm/vs/editor/editor.worker.js?worker',
+        replacement: path.resolve('node_modules/monaco-editor/esm/vs/editor/editor.worker.js') + '?worker',
+      },
+    ],
+  },
   build: {
     outDir: '../dist-gui',
     emptyOutDir: true,
   },
   test: {
+    alias: {
+      // vitest 解析带 query 的 exports 子路径失败——worker 导入指向 stub(jsdom 不实例化)
+      'monaco-editor/esm/vs/editor/editor.worker.js?worker': new URL('./src/monaco-worker-stub.ts', import.meta.url).pathname,
+    },
     environment: 'jsdom',
     // globals: true 令 @testing-library/react 的 afterEach 自动 cleanup 生效（显式 import vitest 不影响）
     globals: true,

@@ -1,4 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+// monaco 真渲染需要浏览器布局——jsdom 挂 stub(内容经 DiffPanel 根 data-* 断言)
+vi.mock('monaco-editor', () => ({
+  editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
+}));
+vi.mock('@monaco-editor/react', () => ({
+  loader: { config: vi.fn() },
+  Editor: (props: { value?: string; language?: string }) => (
+    <div className="mock-monaco-editor" data-language={props.language}>
+      {props.value}
+    </div>
+  ),
+  DiffEditor: (props: { original?: string; modified?: string }) => (
+    <div className="mock-monaco-diff" data-original={props.original} data-modified={props.modified} />
+  ),
+}));
 import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import type { SessionEvent } from '../../src/types';
@@ -157,7 +172,8 @@ const h = vi.hoisted(() => {
       return Promise.resolve(this.sessionRows);
     }
     recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>> {
-      return Promise.resolve([]);
+      // G14.9 IA:会话只在 RECENTS 列——mock 与 sessionsOf 同源,补 root/slug 供行点击寻址
+      return Promise.resolve(this.sessionRows.map((s) => ({ ...s, root: '/w/root-a', slug: 'root-a' })));
     }
     sessionModel(): Promise<{ current: undefined; explicitDefault: boolean; choices: never[] }> {
       return Promise.resolve({ current: undefined, explicitDefault: false, choices: [] });
@@ -386,10 +402,23 @@ const GROUP_HEAD = { name: /^root-a 1$/ }; // G8f 可读性:组头=basename(root
 
 /** 左栏真流程进 chat(G8a:ProjectMenu 组头展开 → Attach 两步链(newSession+attach)→ Chat
  *  会话 chip 在场)→ 连接 open + 播种落定(输入启用——seeding 门:基线快照在途时输入禁用) */
+/** G14.27:任务页不再默认开——测试经 new tab 菜单显式打开(单例判重,已开即聚焦) */
+/** G14.38:缺省折叠——条不在场时先点顶栏「展开侧边栏」(+钮在条上) */
+function expandSidebarIfCollapsed(): void {
+  const btn = document.querySelector('button[aria-label="expand sidebar"]');
+  if (btn !== null) fireEvent.click(btn);
+}
+
+function openTasksTab(): void {
+  expandSidebarIfCollapsed();
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
+}
+
 async function enterChat(): Promise<{ conn: Conn; unmount: () => void }> {
   const { conn, unmount } = mount();
   fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
-  fireEvent.click(await screen.findByTitle('打开会话'));
+  fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
   await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
   openConn(conn);
   await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
@@ -454,8 +483,7 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(document.querySelector('.session-placeholder')).toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     // 返回:对话面退场 → 欢迎空态(左栏常驻)
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
     expect(screen.queryByLabelText('message input')).toBeNull();
     expect(screen.getByRole('button', GROUP_HEAD)).toBeDefined();
@@ -467,7 +495,7 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
     openConn(conn);
     // —— s1:进 chat + 交互(user 回显 + 流式帧)——
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
-    fireEvent.click(await screen.findByTitle('打开会话'));
+    fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     type('s1 目标');
@@ -475,14 +503,13 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
     fire(conn, ev('model-start'));
     fire(conn, ev('token', 's1 流内容'));
     expect(conn.sessionSubmitCalls).toEqual([['s1', 's1 目标']]);
-    expect(screen.getByText('s1 目标')).toBeDefined();
+    expect(screen.getAllByText('s1 目标')[0]).toBeDefined(); // G14.15:标题回落同文——scope 到用户气泡
     // —— back → welcome(Chat 卸毁:s1 本地态随组件销毁;左栏组仍展开——壳常驻)——
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
     // —— s2:FakeConn 下一会话号;组已展开(常驻),会话行直点 ——
     conn.nextSessionId = 's2';
-    fireEvent.click(screen.getByTitle('打开会话'));
+    fireEvent.click((screen.getAllByTitle('打开会话')[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     // s2 投影独立:无 s1 条目串扰(组件级隔离——非空起步)
@@ -494,7 +521,7 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
       ['s1', 's1 目标'],
       ['s2', 's2 目标'],
     ]);
-    expect(screen.getByText('s2 目标')).toBeDefined();
+    expect(screen.getAllByText('s2 目标')[0]).toBeDefined();
     unmount();
   });
 });
@@ -513,13 +540,14 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
       ],
     });
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
-    fireEvent.click(await screen.findByTitle('打开会话'));
+    fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    expect(screen.getByText('build the widget')).toBeDefined(); // `> …` → blockquote
+    expect(screen.getAllByText('build the widget')[0]).toBeDefined(); // `> …` → blockquote
     expect(document.querySelector('.tool-summary')?.textContent).toContain('read'); // 图标化行(●/⎿ 记号退役,G10-C3)
-    expect(document.querySelector('.tool-summary')?.textContent).toContain('ok');
+    expect(document.querySelector('.tool-summary')?.textContent).not.toContain('⎿'); // 结果行记号不回归
+    expect(document.querySelector('.run-live-line')?.textContent).toContain('0 steps'); // G14.52:运行状态行常驻流区末行(原工具行尾参)
     expect(screen.getByText('✻ dev started')).toBeDefined();
     expect(screen.getByText('boom')).toBeDefined();
     expect(document.querySelector('.entry-user blockquote')).not.toBeNull();
@@ -654,7 +682,7 @@ describe('种子竞态缓冲(T3 收口):seed 在途帧缓冲→种子落定过�
     const { conn, unmount } = mount();
     conn.holdSnapshot();
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
-    fireEvent.click(await screen.findByTitle('打开会话'));
+    fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     return { conn, unmount };
@@ -674,7 +702,7 @@ describe('种子竞态缓冲(T3 收口):seed 在途帧缓冲→种子落定过�
     // —— 种子落定:基线直映射 + 缓冲过滤补投 ——
     conn.releaseSnapshot();
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    expect(screen.getByText('基线目标')).toBeDefined(); // 种子条(md `> …` → blockquote)
+    expect(screen.getAllByText('基线目标')[0]).toBeDefined(); // 种子条(md `> …` → blockquote)
     const assistant = document.querySelector('.entry-assistant');
     expect(assistant?.textContent).toBe('新帧'); // seq 7/8 补投(流式条已含增量)
     expect(assistant?.className).toContain('streaming'); // 补投后流式态保持(未 done 收段)
@@ -710,7 +738,7 @@ describe('底部输入区:Enter 分流与 Stop(会话维 :id)', () => {
     pressEnter();
     expect(conn.sessionSubmitCalls).toEqual([['s1', 'do the thing']]);
     expect(conn.sessionSteerCalls).toEqual([]);
-    expect(screen.getByText('do the thing')).toBeDefined(); // `> do the thing` → blockquote 正文
+    expect(screen.getAllByText('do the thing')[0]).toBeDefined(); // `> do the thing` → blockquote 正文(标题回落同文——scope 到气泡)
     expect((screen.getByLabelText('message input') as HTMLInputElement).value).toBe('');
   });
 
@@ -722,7 +750,7 @@ describe('底部输入区:Enter 分流与 Stop(会话维 :id)', () => {
     pressEnter();
     expect(conn.sessionSteerCalls).toEqual([['s1', 'mid-run nudge']]);
     expect(conn.sessionSubmitCalls).toEqual([]);
-    expect(screen.getByText('mid-run nudge')).toBeDefined();
+    expect(screen.getAllByText('mid-run nudge')[0]).toBeDefined();
   });
 
   it('Stop 按钮:running 在场且点击 sessionInterrupt(id);idle 态退场', async () => {
@@ -846,7 +874,7 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
     expect(conn.snapshotCalls.length).toBe(seedsBefore);
     fireResetSession(conn, 's1'); // 本会话:清投影 + 清卡(daemon 已 deny 回填) + reseed
     await waitFor(() => expect(conn.snapshotCalls.length).toBe(seedsBefore + 1));
-    await waitFor(() => expect(screen.getByText('重播种基线')).toBeDefined());
+    await waitFor(() => expect(screen.getAllByText('重播种基线')[0]).toBeDefined());
     expect(screen.queryByText('reset 前内容')).toBeNull();
     expect(screen.queryByText(apTitle)).toBeNull();
     unmount();
@@ -870,7 +898,7 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
     });
     await act(async () => {}); // 首载 workspaces 在 act 内落定(await mount() 裸 await 会在 env=true 处冲净致 act 警告)
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
-    fireEvent.click(await screen.findByTitle('打开会话'));
+    fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
@@ -888,12 +916,13 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
 describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转', () => {
   it('右栏标签切换:默认「任务」页(Board);「+」菜单开文件标签 → Files 预览面,Chat 恒挂零重播种', async () => {
     const { conn, unmount } = await enterChat();
-    // G8a:会话缺省开「任务」单例页且活动——Board 看板面即右栏标签体;Chat 恒中栏(输入面常驻)
+    openTasksTab(); // G14.27:不再默认开,显式打开
     expect(document.querySelector('.sx-tab[title="任务"]')?.classList.contains('active')).toBe(true);
     expect(document.querySelector('.board-body')).not.toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // Chat 常驻:开标签不重播种
     // 「+」菜单开文件标签(无参 file → 标签条第二页且活动):Files 预览面
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
     expect(screen.getByLabelText('files')).toBeDefined();
@@ -901,7 +930,9 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     expect(screen.queryByLabelText('board')).toBeNull(); // 标签体随活动切换
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
     // 切回「任务」标签:Board 回归(仍零重播种)
-    fireEvent.click(screen.getByRole('button', { name: '任务' }));
+    expandSidebarIfCollapsed();
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
     expect(document.querySelector('.board-body')).not.toBeNull();
     expect(conn.snapshotCalls).toHaveLength(1);
     unmount();
@@ -910,18 +941,17 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
   it('file 标签预览面:「+」菜单开标签 → 路径输入回车加载(readFile 断参)+ 高亮 + 换路径重载(G8d 起 path 钮改开 diff,本面经输入框直达)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
     fireEvent.change(screen.getByLabelText('file path input'), { target: { value: 'src/a.ts' } });
     fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
     await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts']]));
     await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
-    expect(document.querySelector('.files-view .hljs-keyword')).not.toBeNull(); // 高亮 class(const → keyword)
-    // 手动输入换路径:回车加载第二文件
-    conn.fileResp = { path: '/w/root-a/src/b.md', content: '# 标题\n' };
-    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: 'src/b.md' } });
-    fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'src/a.ts'], ['s1', 'src/b.md']]));
+    expect(document.querySelector('.mock-monaco-editor')!.getAttribute('data-language')).toBe('typescript'); // G14.5 monaco 面
+    expect(document.querySelector('.files-breadcrumb')?.textContent).toContain('a.ts'); // 面包屑末级
+    // G14.5 UX:已加载态无常驻输入行——换路径经目录树/工具行重开(手动输入仅空/错误态)
+    expect(screen.queryByLabelText('file path input')).toBeNull();
     unmount();
   });
 
@@ -934,6 +964,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
       dirA: { entries: [{ name: 'a.ts', kind: 'file' }, { name: 'b.ts', kind: 'file' }] },
     };
     // —— 开 file 标签 A(dirA/a.ts:目录文件行跳转,initialPath 自动加载)——
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
@@ -957,19 +988,20 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     fireEvent.click(screen.getByRole('button', { name: 'dirA/a.ts' }));
     expect(document.querySelector('.sx-tab[title="dirA/a.ts"]')?.classList.contains('active')).toBe(true);
     await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts'], ['s1', 'dirA/b.ts'], ['s1', 'dirA/a.ts']]));
-    expect((screen.getByLabelText('file path input') as HTMLInputElement).value).toBe('dirA/a.ts');
+    expect(document.querySelector('.files-breadcrumb .files-crumb-name')?.textContent).toBe('a.ts'); // 重挂后面包屑末级=A(G14.5)
     unmount();
   });
 
   it('Files 403 错误态:越界路径错误消息示出', async () => {
     const { conn, unmount } = await enterChat();
     conn.fileReject = new Error('/session/s1/file?path=../x -> 403');
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
     fireEvent.change(screen.getByLabelText('file path input'), { target: { value: '../x' } });
-    fireEvent.click(screen.getByRole('button', { name: '加载' }));
+    fireEvent.click(screen.getByRole('button', { name: /加载|^Load$/ }));
     await waitFor(() => expect(screen.getByText('/session/s1/file?path=../x -> 403')).toBeDefined());
-    expect(document.querySelector('.files-view')).toBeNull();
+    expect(screen.getByLabelText('file path input')).toBeDefined(); // 错误态保留输入行(重试入口)
     unmount();
   });
 
@@ -985,6 +1017,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
 describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签 kill 链', () => {
   /** +菜单开终端(菜单 → tools 节「终端」直调 onOpenType) */
   const openTerminal = (): void => {
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '终端' }));
   };
@@ -1008,13 +1041,12 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     openTerminal();
     await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 记账落定(uid→p1)
     // backHome:会话切走不 kill——pty 生命周期归标签关闭链,tabStates 每会话保留(spec §1)
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
     expect(conn.killPtyCalls).toEqual([]);
     // 重进同会话(journal 重挂 s1):终端标签还原 → 重挂走重连径(记账命中,不重开 pty)
     conn.nextSessionId = 's1';
-    fireEvent.click(await screen.findByTitle('打开会话'));
+    fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 重挂完成(重连既有 p1)
     expect(conn.openPtyCalls).toHaveLength(1); // 重连径:还原面不再分配
@@ -1030,7 +1062,9 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
     await waitFor(() => expect(screen.getByText('终端渲染需要真浏览器窗口')).toBeDefined()); // 首挂分配+记账(uid→p1)
     expect(conn.openPtyCalls).toHaveLength(1);
     // 切到「任务」:TerminalTab 卸载——socket dispose 但不 kill(pty 服务侧存活)
-    fireEvent.click(screen.getByRole('button', { name: '任务' }));
+    expandSidebarIfCollapsed();
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
     expect(screen.queryByText('终端渲染需要真浏览器窗口')).toBeNull(); // 终端面退场(卸载)
     expect(document.querySelector('.board-body')).not.toBeNull();
     expect(conn.killPtyCalls).toEqual([]); // 卸载≠kill
@@ -1045,6 +1079,7 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
 describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncated 标记', () => {
   /** +菜单开目录(菜单 → content 节「目录」直调 onOpenType) */
   const openDirectory = (): void => {
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
   };
@@ -1087,7 +1122,7 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     const { conn, unmount } = await enterChat();
     conn.treeByPath = { '': { entries: [{ name: 'dirA', kind: 'dir' }], truncated: true } };
     openDirectory();
-    await waitFor(() => expect(screen.getByText('…已截断')).toBeDefined()); // root 级截断标记
+    await waitFor(() => expect(screen.getByText(/已截断|truncated/)).toBeDefined()); // root 级截断标记
     conn.treeReject = new Error('/session/s1/tree?path=dirA -> 404');
     fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
     await waitFor(() => expect(screen.getByText('/session/s1/tree?path=dirA -> 404')).toBeDefined()); // 行内错误态
@@ -1137,7 +1172,7 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     // —— 直切 s2(左栏 Attach,不经返回——page 恒 chat;s2 缺省任务页,目录标签经 key 变更重挂)——
     // 再开目录:s2 目录标签在场且活动(构造两会话同 uid 'directory:' 的不重挂现场),展开 dirA 缓存 s2 层
     conn.nextSessionId = 's2';
-    fireEvent.click(screen.getByTitle('打开会话'));
+    fireEvent.click((screen.getAllByTitle('打开会话')[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
     openDirectory();
     await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', '']]));
@@ -1147,7 +1182,7 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     // —— 直切回 s1:tabbody key 仍 'directory:' 不重挂(仅 sessionId prop 变)——修复契约:
     // 层缓存+展开集随 sessionId 整体重置 + root 重拉——s2 陈旧子层(fileB.ts)退场,dirA 收起
     conn.nextSessionId = 's1';
-    fireEvent.click(screen.getByTitle('打开会话'));
+    fireEvent.click((screen.getAllByTitle('打开会话')[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() =>
       expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', ''], ['s2', 'dirA'], ['s1', '']]),
@@ -1189,7 +1224,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     conn.diffResp = { path: 'src/a.ts', oldContent: 'const x = 1;\n', newContent: 'const y = 2;\n' };
     fireWrite(conn, 'c1', 'src/a.ts', 'const y = 2;\n');
-    fireEvent.click(toolRow('write src/a.ts')!); // 展开 write 条目(●/⎿ 记号退役)
+    fireEvent.click(toolRow('a.ts src/')!); // 展开 write 条目(●/⎿ 记号退役)
     fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' })); // tool-path 钮(可及名=路径)→ onOpenDiff 主通道
     // diff 标签开且活动:title=params.path(比 callId 可读——G8d 开档参数带 path)
     expect(document.querySelector('.sx-tab[title="src/a.ts"]')?.classList.contains('active')).toBe(true);
@@ -1197,8 +1232,9 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     await waitFor(() => expect(conn.diffCalls).toEqual([['s1', 'c1'], ['s1', 'c1']]));
     // 标题行 path + 双列面(.sx-tabbody 域——Chat 展开面同有 DiffPanel,以标签体 scope 区隔)
     expect(document.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe('src/a.ts');
-    expect(document.querySelector('.sx-tabbody .diff-old')?.textContent).toBe('const x = 1;\n');
-    expect(document.querySelector('.sx-tabbody .diff-new')?.textContent).toBe('const y = 2;\n');
+    const tabPanel = document.querySelector('.sx-tabbody .diff-panel')!;
+    expect(tabPanel.getAttribute('data-diff-old')).toBe('const x = 1;\n');
+    expect(tabPanel.getAttribute('data-diff-new')).toBe('const y = 2;\n');
     expect(document.querySelector('.sx-tabbody .sx-diff-badge')).toBeNull(); // oldContent 在场:无「新建」标
     unmount();
   });
@@ -1208,7 +1244,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     conn.diffResp = { path: 'src/a.ts', oldContent: 'old a\n', newContent: 'new a\n' };
     fireWrite(conn, 'c1', 'src/a.ts', 'new a\n');
-    fireEvent.click(toolRow('write src/a.ts')!);
+    fireEvent.click(toolRow('a.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' }));
     await waitFor(() => expect(conn.diffCalls).toHaveLength(2)); // Chat 展开面 + DiffTab mount
     // 重开同 callId:判重聚焦(仍一标签;条目仍展开故 path 钮唯一,经类名直取避标签同名歧义)
@@ -1218,7 +1254,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     // 异 callId:多实例并存(by callId 判键——两标签互不判重)
     conn.diffResp = { path: 'src/b.ts', newContent: 'new b\n' };
     fireWrite(conn, 'c2', 'src/b.ts', 'new b\n');
-    fireEvent.click(toolRow('write src/b.ts')!);
+    fireEvent.click(toolRow('b.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' })); // b 的 path 钮(其标签尚不存在,名无歧义)
     expect(document.querySelectorAll('.sx-tab[title="src/a.ts"]')).toHaveLength(1);
     expect(document.querySelector('.sx-tab[title="src/b.ts"]')?.classList.contains('active')).toBe(true);
@@ -1231,7 +1267,7 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     // diffResp 缺省 null → FakeConn 拒 404(Chat 展开面退单列现内容——G7 既有;DiffTab 错误条——G8d)
     fireWrite(conn, 'c3', 'src/gone.ts', 'fallback content\n');
-    fireEvent.click(toolRow('write src/gone.ts')!);
+    fireEvent.click(toolRow('gone.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/gone.ts' }));
     await waitFor(() => expect(screen.getByText('无快照(环已裁或非 write)——callId: c3')).toBeDefined());
     expect(document.querySelector('.sx-tabbody .sx-diff-error')).not.toBeNull();
@@ -1244,13 +1280,13 @@ describe('G8d Diff 标签:write 条目接线(callId 多实例/判重/404 降级/
     openConn(conn);
     conn.diffResp = { path: 'src/new.ts', newContent: 'fresh\n', truncated: true };
     fireWrite(conn, 'c4', 'src/new.ts', 'fresh\n');
-    fireEvent.click(toolRow('write src/new.ts')!);
+    fireEvent.click(toolRow('new.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/new.ts' }));
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe('src/new.ts'));
     expect(screen.getByText('新建')).toBeDefined(); // 新建写无 pre-image:单列 + 新建标
     expect(screen.getByText('内容超限已截断')).toBeDefined(); // truncated 横幅
-    expect(document.querySelector('.sx-tabbody .diff-old')).toBeNull(); // 单列(old 列不渲染)
-    expect(document.querySelector('.sx-tabbody .diff-new')?.textContent).toBe('fresh\n');
+    expect(document.querySelector('.sx-tabbody .diff-panel')!.getAttribute('data-diff-old')).toBe('');
+    expect(document.querySelector('.sx-tabbody .diff-panel')!.getAttribute('data-diff-new')).toBe('fresh\n');
     unmount();
   });
 });
@@ -1266,6 +1302,7 @@ describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
     expect(document.querySelector('.entry-tool')).toBeNull();
     expect(document.querySelector('.entry-assistant')).toBeNull();
     // 「+」菜单开 Agents 标签(session 组单例):标签开且活动
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
     expect(document.querySelector('.sx-tab[title="Agents"]')?.classList.contains('active')).toBe(true);
@@ -1289,6 +1326,7 @@ describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
     openConn(conn);
     fire(conn, ev('token', 'x', { subagent: 'reviewer' }));
     fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }));
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
     expect(screen.getByText('reviewer')).toBeDefined();
@@ -1306,6 +1344,7 @@ describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     fireOther(conn, ev('token', '他会话子代理', { subagent: 'ghost' }));
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
     expect(screen.getByText('暂无子 agent 活动')).toBeDefined();
@@ -1316,6 +1355,7 @@ describe('G8d Agents 标签:子代理事件分流 + 聚合卡渲染', () => {
 describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重挂', () => {
   /** +菜单开 web(tools 节 'Web' 直调 onOpenType;裸开无 url → 引导面) */
   const openWeb = (): void => {
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Web' }));
   };
@@ -1331,8 +1371,8 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     openWeb();
     expect(document.querySelector('.sx-tab[title="Web"]')?.classList.contains('active')).toBe(true);
     expect(screen.getByLabelText('web tab')).toBeDefined();
-    // 裸开无 active:引导文案在场、无 iframe
-    expect(screen.getByText(/输入 URL 回车打开/)).toBeDefined();
+    // 裸开无 active:VSCode Simple Browser 同形空态(地球+引导)、无 iframe
+    expect(screen.getByText(/Paste or type a URL|粘贴或输入 URL/)).toBeDefined();
     expect(document.querySelector('.sx-web-frame')).toBeNull();
     // 回车开档:无 :// 前缀 → 补 https://(title=规范化 url);沙盒四值原样
     submitUrl('  example.com ');
@@ -1341,8 +1381,6 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     expect(frame?.getAttribute('title')).toBe('https://example.com'); // 首尾空白亦去
     expect(frame?.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-same-origin allow-popups');
     expect(frame?.getAttribute('src')).toBe('https://example.com');
-    // X-Frame 拒嵌引导文案常驻(iframe 侧)
-    expect(screen.getByText(/X-Frame-Options 拒绝内嵌/)).toBeDefined();
     unmount();
   });
 
@@ -1352,7 +1390,9 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     submitUrl('example.com');
     expect(document.querySelector('.sx-web-frame')).not.toBeNull();
     // 切去任务页(web 失活)→ +菜单再开 web:判重聚焦既有(仍一条,不并立)
-    fireEvent.click(screen.getByRole('button', { name: '任务' }));
+    expandSidebarIfCollapsed();
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
     expect(document.querySelector('.sx-tab[title="Web"]')?.classList.contains('active')).toBe(false);
     openWeb();
     expect(document.querySelectorAll('.sx-tab[title="Web"]')).toHaveLength(1);
@@ -1365,8 +1405,8 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     try {
       openWeb();
-      // 无 active:外开钮不渲染(无可外开目标)
-      expect(screen.queryByRole('button', { name: '外开' })).toBeNull();
+      // 无 active:外开钮禁用(无可外开目标;G14.6 Simple Browser 形态恒驻工具行)
+      expect((screen.getByRole('button', { name: '外开' }) as HTMLButtonElement).disabled).toBe(true);
       submitUrl('example.com');
       fireEvent.click(screen.getByRole('button', { name: '外开' }));
       expect(openSpy).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
@@ -1413,16 +1453,19 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
 
   it('任务页默认在场(空板不渲染占位);开文件标签再切回,Board 回归(Chat 恒挂不重播种)', async () => {
     const { conn, unmount } = await enterChat();
-    // G8a:右栏缺省「任务」页——Board 空板占位直接在场;Chat 恒中栏(输入面常驻)
+    openTasksTab(); // G14.27:不再默认开——菜单显式打开后空板占位在场
     expect(document.querySelector('.board-body')).not.toBeNull();
     expect(document.querySelector('.board-main')).toBeNull();
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // 播种恰一次
     // 开文件标签(任务失活)→ 切回「任务」标签:标签体随活动切换,零重播种
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
     expect(screen.queryByLabelText('board')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '任务' }));
+    expandSidebarIfCollapsed();
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
     expect(document.querySelector('.board-body')).not.toBeNull();
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
     unmount();
@@ -1431,6 +1474,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
   it('板投影随事件:task-created/assigned/gate 帧 → Board List 行(t1 ⚠ @w1);Approve → conn.boardReview(s1, t1, true)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
+    openTasksTab();
     fire(conn, taskCreated('t1', 'Demo'));
     fire(conn, taskCreated('t2', 'Next', ['t1']));
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }));
@@ -1455,10 +1499,11 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     const { conn, unmount } = mount();
     conn.snapshotResp = snapshotOf({ team: [{ name: 'w1', busy: true }] });
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
-    fireEvent.click(await screen.findByTitle('打开会话'));
+    fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    openTasksTab();
     expect(screen.getByLabelText('team').textContent).toContain('w1');
     expect(document.querySelector('.team-dot.busy')).not.toBeNull();
     // 重播种(连接级 onReset)→ 新 team 回填
@@ -1472,6 +1517,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
   it('onResetSession(本会话)清 board/delegations 投影;他会话 reset 不清', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
+    openTasksTab();
     fire(conn, taskCreated('t1', 'Demo'));
     fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev' }));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
@@ -1488,14 +1534,14 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
   it('会话切换板投影随快照(串态根除):s1 积任务 → back → s2 板为空;重开 s1 板回快照权威态', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
+    openTasksTab();
     fire(conn, taskCreated('t1', 'Demo'));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined();
     // —— back → 开 s2:openSession 清板投影 + s2 快照(空)回填——无 s1 残留(左栏组仍展开,会话行直点)——
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's2';
-    fireEvent.click(screen.getByTitle('打开会话'));
+    fireEvent.click((screen.getAllByTitle('打开会话')[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(document.querySelector('.board-main')).toBeNull(); // s2 快照空板(而非 s1 残留)
@@ -1503,11 +1549,10 @@ fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/
     conn.snapshotResp = snapshotOf({
       board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Demo', spec: '', dependsOn: [], ts: 1 }),
     });
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-fireEvent.click(screen.getByRole('menuitem', { name: /back to home|返回首页/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
     conn.nextSessionId = 's1';
-    fireEvent.click(screen.getByTitle('打开会话'));
+    fireEvent.click((screen.getAllByTitle('打开会话')[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getByText('t1 [pending] Demo')).toBeDefined(); // 快照回填的权威板
@@ -1524,7 +1569,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     const { conn, unmount } = mount();
     conn.holdSnapshot();
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
-    fireEvent.click(await screen.findByTitle('打开会话'));
+    fireEvent.click(((await screen.findAllByTitle('打开会话'))[0] as HTMLElement));
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     return { conn, unmount };
@@ -1532,6 +1577,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
 
   it('播种窗内 task/gate/delegation 帧缓冲不投;整替后 ≤lastSeq 丢、>lastSeq 依序重放(增量不被整替吞)', async () => {
     const { conn, unmount } = await enterChatHeldBoard();
+    openTasksTab();
     // 窗内三帧:seq 3 gate-waiting(≤ lastSeq——快照已含其效果:门已 resolved)、seq 8 assigned(>——须重放)、
     // seq 9 委派(>——须重放)
     fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }), 3);
@@ -1581,6 +1627,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     conn.releaseSnapshot(); // 种子 lastSeq 0:seq 1/2 > 0 → 重放面
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     // Agents 标签:卡 reviewer 终态 error(失败徽标;running 动画点退场)——重放循环补投聚合生效
+    expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
     expect(screen.getByText('reviewer')).toBeDefined();
@@ -1598,32 +1645,7 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
     vi.restoreAllMocks(); // window.confirm spy 复原
   });
 
-  it('Delete:confirm 真 → conn.deleteSession(sessionId) → 回 welcome;confirm 假不动', async () => {
-    const { conn, unmount } = await enterChat();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(conn.deleteSessionCalls).toEqual([]); // 假:不发
-    expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined(); // 留在会话
-    confirmSpy.mockReturnValue(true);
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
-    await waitFor(() => expect(conn.deleteSessionCalls).toEqual(['s1'])); // daemon 会话 id(非 journal id)
-    await waitFor(() => expect(screen.getByLabelText('welcome')).toBeDefined()); // onBack → 欢迎空态(会话关窗)
-    unmount();
-  });
-
-  it('Delete 失败(running 409):error 条示出不静默,留在会话', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.deleteReject = new Error('/session/s1/delete -> 409');
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    fireEvent.click(screen.getByRole('button', { name: 'chat actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete session' }));
-    await waitFor(() => expect(screen.getByText('/session/s1/delete -> 409')).toBeDefined());
-    expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined();
-    unmount();
-  });
+  // G14.28:顶栏 ⋯ 菜单退役,删除会话暂无 UI 入口(conn.deleteSession API 面保留)——两用例随菜单移除
 
   it('status 转 idle 清卡:卡在场 → run(running)→ done(idle)→ 卡区退场', async () => {
     const { conn, unmount } = await enterChat();
@@ -1685,7 +1707,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     // 返回 → 回会话态:Chat 重新在场(重挂重播种,输入门落定后启用)
     fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    expect(document.querySelector('.sx-tabstrip')).not.toBeNull();
+    // G14.38:缺省折叠——条不在场,返回面以输入门与 Chat 在场断言
+
     await screen.findByRole('button', GROUP_HEAD); // ProjectMenu 重挂,组列表经 workspaces() 重拉
     unmount();
   });
@@ -1705,7 +1728,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     openSettings();
     // 面板拉取:settings(root=openRoot)
     // [0]=App 语言同步全局拉取(G10-C3c)
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a']));
     // 行渲染:值 = 行 value ?? 缺省空(default 行空串)
     expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe('en');
     expect((screen.getByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
@@ -1727,7 +1750,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(screen.getByText('已生效:新建会话起')).toBeDefined();
     expect(document.querySelector('.sx-toast')).not.toBeNull();
     // 保存成功后重拉 settings
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '/w/root-a']));
     // 切「上下文与限额」面板:数字键改动保存 → number 化(非字符串)
     fireEvent.click(screen.getByRole('button', { name: '上下文与限额' }));
     await screen.findByLabelText('contextWindow');
@@ -1754,13 +1777,13 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf(generalRows);
     openSettings();
     // [0]=App 语言同步全局拉取(G10-C3c)
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a']));
     // 切「(仅全局)」:root='' → settings() 无 root 参(FakeConn 记 '')
     fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a', '']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '']));
     // 切回项目:root 复位
     fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '/w/root-a' } });
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a', '', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '', '/w/root-a']));
     unmount();
   });
 
@@ -1770,7 +1793,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.holdSettings(); // A(项目 root)首笔应答悬挂(单发门:后续直通)
     openSettings();
     // [0]=App 语言同步全局拉取(G10-C3c)
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a']));
     // 快切「(仅全局)」:B 应答直通落定(fast-b)
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'fast-b', source: 'global', envOverride: false }]);
     fireEvent.change(screen.getByLabelText('settings project'), { target: { value: '' } });
@@ -1779,7 +1802,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     await act(async () => {
       conn.releaseSettings();
     });
-    expect(conn.settingsCalls).toEqual(['', '/w/root-a', '']);
+    expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '']);
     expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe('fast-b');
     unmount();
   });

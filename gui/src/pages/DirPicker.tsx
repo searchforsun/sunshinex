@@ -20,9 +20,11 @@ export interface DirPickerProps {
   /** 确认:回抛所选目录绝对路径(自定义输入优先,缺省当前浏览路径)+ manual 勾选态(G6 mode 面) */
   onConfirm: (path: string, manual: boolean) => void;
   onCancel: () => void;
+  /** G14.51 工作区登记复用(欢迎页浏览/侧栏添加工作区):审批模式另有选择器,藏 G6 manual 勾选 */
+  showManual?: boolean;
 }
 
-export function DirPicker({ conn, onConfirm, onCancel }: DirPickerProps): JSX.Element {
+export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirPickerProps): JSX.Element {
   const [current, setCurrent] = useState<DirPickerResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -117,17 +119,19 @@ export function DirPicker({ conn, onConfirm, onCancel }: DirPickerProps): JSX.El
           前往
         </button>
       </div>
-      <div className="dirpicker-mode">
-        <label className="mode-option">
-          <input
-            type="checkbox"
-            checked={manual}
-            onChange={(e) => setManual(e.target.checked)}
-          />
-          <span>Manual approvals</span>
-        </label>
-        <p className="mode-hint">勾选后审批/问询挂起等待人工裁决(manual 会话)</p>
-      </div>
+      {showManual && (
+        <div className="dirpicker-mode">
+          <label className="mode-option">
+            <input
+              type="checkbox"
+              checked={manual}
+              onChange={(e) => setManual(e.target.checked)}
+            />
+            <span>Manual approvals</span>
+          </label>
+          <p className="mode-hint">勾选后审批/问询挂起等待人工裁决(manual 会话)</p>
+        </div>
+      )}
       <footer className="dirpicker-foot">
         <button type="button" onClick={onCancel}>
           取消

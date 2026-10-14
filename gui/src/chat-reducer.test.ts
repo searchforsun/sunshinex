@@ -57,14 +57,18 @@ describe('流式 token 拼接与 done 收段', () => {
     expect(s.entries.map((e) => e.md)).toEqual(['a', 'b']);
   });
 
-  it('error：error 条入列 + status idle + 悬挂 streaming 条收段（不留永久流式标）', () => {
+  it('error：error 条入列但不封段不改状态(G14.51:done 必发,收口统一归 done——旁路错误不再裂条)', () => {
     const s = fold([ev('model-start'), ev('token', 'half'), ev('error', 'boom')]);
     expect(s.entries).toHaveLength(3); // G11：model-start 先插 run 条目，assistant/error 顺延
     expect(s.entries[0]!.kind).toBe('run');
-    expect(s.entries[1]!.streaming).toBeUndefined();
+    expect(s.entries[1]!.streaming).toBe(true); // 流式条保持在场,done 到达仍可合入终稿
     expect(s.entries[1]!.md).toBe('half');
     expect(s.entries[2]).toMatchObject({ kind: 'error', md: 'boom' });
-    expect(s.status).toBe('idle');
+    expect(s.status).toBe('running');
+    // 后续 done 照常收口:合并入同条,不裂两截
+    const s2 = applyChatEvent(s, ev('done', 'half boom'));
+    expect(s2.entries.filter((e) => e.kind === 'assistant')).toHaveLength(1);
+    expect(s2.status).toBe('idle');
   });
 });
 
@@ -176,7 +180,7 @@ describe('五 kind 与 notice 系映射', () => {
 });
 
 describe('status·tokens·steps 聚合', () => {
-  it('model-start→running；done/error→idle', () => {
+  it('model-start→running；done→idle(error 不改态,收口归 done)', () => {
     let s = initialChatState();
     s = applyChatEvent(s, ev('model-start'));
     expect(s.status).toBe('running');
@@ -185,6 +189,8 @@ describe('status·tokens·steps 聚合', () => {
     s = applyChatEvent(s, ev('model-start'));
     expect(s.status).toBe('running');
     s = applyChatEvent(s, ev('error', 'bad'));
+    expect(s.status).toBe('running'); // G14.51:旁路错误不收口
+    s = applyChatEvent(s, ev('done', 'ok'));
     expect(s.status).toBe('idle');
   });
 
@@ -195,6 +201,36 @@ describe('status·tokens·steps 聚合', () => {
       ev('usage', undefined, { turnTotal: 250 }),
     ]);
     expect(s.tokens).toBe(250);
+  });
+
+  it('usage 缓存命中累计（G14.18）：cacheHitTotal 与 tokens 同基线法，跨 run 累加不回零', () => {
+    const s = fold([
+      ev('model-start'),
+      ev('usage', undefined, { turnTotal: 100, cacheHitTotal: 80 }),
+      ev('usage', undefined, { turnTotal: 250, cacheHitTotal: 180 }), // run 内水位覆盖语义:增量 100
+      ev('done', 'a'),
+      ev('model-start'),
+      ev('usage', undefined, { turnTotal: 50, cacheHitTotal: 40 }), // 新 run 低水位重启:再增 40
+    ]);
+    expect(s.tokens).toBe(300);
+    expect(s.cacheTokens).toBe(220);
+  });
+
+  it('usage 无缓存回告（端点不支持）：cacheTokens 恒 0,tokens 照常累计', () => {
+    const s = fold([
+      ev('model-start'),
+      ev('usage', undefined, { turnTotal: 120 }),
+      ev('usage', undefined, { turnTotal: 200 }),
+    ]);
+    expect(s.tokens).toBe(200);
+    expect(s.cacheTokens).toBe(0);
+  });
+
+  it('run 条尾插居 user 回显之后（G14.22）：轮次=[用户输入]→[Worked 行]→[回复]', () => {
+    let s = initialChatState();
+    s = appendUserMessage(s, '列出文件'); // 提交回显先入列
+    s = applyChatEvent(s, ev('model-start')); // run 边界:run 条尾插,自然居 user 后
+    expect(s.entries.map((e) => e.kind)).toEqual(['user', 'run']);
   });
 
   it('usage 跨 run 累计：水位仅在 run 边界重置（idle 态 model-start），会话 tokens 不回零', () => {
@@ -264,11 +300,49 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     expect(s.steps).toBe(0);
   });
 
+  it('G14.51 快照竞态:running 且末 run 无 meta——部分回复按流式态摄入,done 合入不裂条', () => {
+    // 挂载播种与流式跑动竞态:快照捕获到在途轮的部分回复(journal 已落档的 token 前缀)
+    const seeded = seedChatFromSnapshot(
+      [
+        { seq: 1, ts: 1, kind: 'user', md: '> goal' },
+        { seq: 2, ts: 2, kind: 'run', md: '' },
+        { seq: 3, ts: 3, kind: 'assistant', md: '终稿' },
+        { seq: 4, ts: 4, kind: 'notice', md: '✻ learned' },
+      ],
+      'running',
+    );
+    const asst = seeded.entries.find((e) => e.kind === 'assistant');
+    expect(asst?.streaming).toBe(true); // 种子即流式态(done 可寻址)
+    const runE = seeded.entries.find((e) => e.kind === 'run');
+    expect(runE?.streaming).toBe(true); // Working 计时续推
+    // 后续帧照常续推 + done 合入同条(不追加新条)
+    let s = applyChatEvent(seeded, ev('token', '答复'));
+    s = applyChatEvent(s, ev('done', '终稿答复', { steps: 3 }));
+    const assistants = s.entries.filter((e) => e.kind === 'assistant');
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0]!.md).toBe('终稿答复');
+    expect(s.status).toBe('idle');
+  });
+
+  it('G14.51 快照竞态边界:末 run 已封(轮间静默)不标流式——上一轮回答不得并入下轮', () => {
+    const seeded = seedChatFromSnapshot(
+      [
+        { seq: 1, ts: 1, kind: 'run', md: '', meta: { seconds: 5, steps: 2, tokens: 100 } },
+        { seq: 2, ts: 2, kind: 'assistant', md: '上一轮回答' },
+        { seq: 3, ts: 3, kind: 'notice', md: '✻ between rounds' },
+      ],
+      'running',
+    );
+    const asst = seeded.entries.find((e) => e.kind === 'assistant');
+    expect(asst?.streaming).toBeUndefined();
+    const runE = seeded.entries.find((e) => e.kind === 'run');
+    expect(runE?.streaming).toBeUndefined();
+  });
+
   it('seed 后事件续推：usage 从 0 基线续（重连 token 显示接受归零裁定，事件面续推）', () => {
     const s = applyChatEvent(seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'idle'), ev('model-start'));
     const s2 = applyChatEvent(s, ev('usage', undefined, { turnTotal: 10 }));
-    expect(s2.tokens).toBe(10);
-  });
+    expect(s2.tokens).toBe(10);  });
 });
 
 describe('纯函数性（immutable）', () => {
@@ -313,10 +387,12 @@ describe('run 边界条目(G11 状态行:idle→running 插入,done/error 封段
     expect(run).toMatchObject({ kind: 'run', streaming: undefined, seconds: 34, steps: 12, tokens: 8400, endedTs: 34_500 });
   });
 
-  it('error 亦封段(seconds 回填,无统计载荷);无 ts 不计秒', () => {
+  it('error 不封段(G14.51):run 保持流式,done 收口计时;done 无 ts 不计秒', () => {
     let s = applyChatEvent(initialChatState(), { type: 'model-start', ts: 1_000 } as SessionEvent);
     s = applyChatEvent(s, { type: 'error', text: 'boom', ts: 4_000 } as SessionEvent);
-    expect(s.entries[0]).toMatchObject({ kind: 'run', streaming: undefined, seconds: 3 });
+    expect(s.entries[0]).toMatchObject({ kind: 'run', streaming: true }); // 旁路错误不打断 run
+    s = applyChatEvent(s, { type: 'done', text: 'x', ts: 5_000 } as SessionEvent);
+    expect(s.entries[0]).toMatchObject({ kind: 'run', streaming: undefined, seconds: 4 });
     let s2 = applyChatEvent(initialChatState(), { type: 'model-start' } as SessionEvent); // 无 ts → run 条无起算点
     s2 = applyChatEvent(s2, { type: 'done', text: 'x', ts: 2_000 } as SessionEvent);
     expect(s2.entries[0]).toMatchObject({ kind: 'run', streaming: undefined });

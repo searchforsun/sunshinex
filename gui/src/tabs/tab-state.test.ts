@@ -11,10 +11,11 @@ const probe: SingletonProbe = {
 };
 
 describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
-  it('ensureSession:新会话缺省开 tasks 单例;已有会话原样', () => {
+  it('ensureSession:新会话零标签空态且默认折叠(G14.27/38);已有会话原样', () => {
     const s = ensureSession({}, 's1', probe);
-    expect(s.s1.tabs.map((t) => t.type)).toEqual(['tasks']);
-    expect(s.s1.activeUid).toBe('tasks:');
+    expect(s.s1.tabs).toEqual([]);
+    expect(s.s1.activeUid).toBeNull();
+    expect(s.s1.collapsed).toBe(true);
     const again = ensureSession(s, 's1', probe);
     expect(again).toBe(s); // 引用相等=未动
   });
@@ -24,7 +25,7 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, probe);
     s = openTab(s, 's1', 'file', { path: 'b.ts' }, probe);
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, probe);
-    expect(s.s1.tabs).toHaveLength(3); // tasks + a + b
+    expect(s.s1.tabs).toHaveLength(2); // a + b
     expect(s.s1.activeUid).toBe('file:a.ts');
   });
 
@@ -57,7 +58,7 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
   it('cycleTab:±1 环回;单标签不动', () => {
     let s = ensureSession({}, 's1', probe);
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, probe);
-    expect(cycleTab(s, 's1', 1).s1.activeUid).toBe('tasks:');            // file(末位)→tasks 环回
+    expect(cycleTab(s, 's1', 1).s1.activeUid).toBe('file:a.ts');         // 仅一页:环回自身
     expect(cycleTab(cycleTab(s, 's1', 1), 's1', -1).s1.activeUid).toBe('file:a.ts'); // 链式:去而复返
   });
 
@@ -65,8 +66,8 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     let s = ensureSession({}, 's1', probe);
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, probe);
     const s2 = ensureSession(s, 's2', probe);
-    expect(s2.s2.tabs.map((t) => t.type)).toEqual(['tasks']);
-    expect(s2.s1.tabs).toHaveLength(2); // s1 未被 s2 操作扰动
+    expect(s2.s2.tabs).toEqual([]);
+    expect(s2.s1.tabs).toHaveLength(1); // s1 未被 s2 操作扰动
   });
 
   it('setWidth clamp 200..720;setCollapsed 切换', () => {
@@ -81,7 +82,7 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     const e = emptyTabSession();
     expect(e.tabs).toHaveLength(0);
     expect(e.activeUid).toBeNull();
-    expect(e.collapsed).toBe(false);
+    expect(e.collapsed).toBe(true); // G14.38:零标签新会话缺省折叠(右栏不自动打开)
     expect(e.width).toBe(DEFAULT_TAB_WIDTH);
   });
 });

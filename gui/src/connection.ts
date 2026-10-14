@@ -91,13 +91,29 @@ export interface WorkspaceRow {
   sessionCount: number;
 }
 
-/** GET /sessions?root= 行（T2，对齐主仓 session-journal.ts SessionMeta 实际返回）：id=journal id */
+/** GET /sessions?root= 行（T2，对齐主仓 session-journal.ts SessionMeta 实际返回）：id=journal id；
+ *  title=自定义会话名 + 会话级统计（G14.17 旁车 meta：runs/steps/tokens/缓存/上文/模型档位，回溯面） */
 export interface SessionRow {
   id: string;
   file: string;
   updatedAt: number;
   firstUser?: string;
+  title?: string;
+  createdAt?: string;
+  runs?: number;
+  steps?: number;
+  tokens?: number;
+  seconds?: number;
+  cacheTokens?: number;
+  promptTokens?: number;
+  childTokens?: number;
+  ctxUsed?: number;
+  ctxWindow?: number;
+  model?: string;
+  effort?: string;
   forkedFrom?: { sourceSessionId: string; upToLine: number; kind: 'rewind' | 'fork' };
+  /** G14.52:该 journal 当前挂载的活跃会话 id(daemon 反查标注)——侧栏行运行圆点直比,不依赖 attach 本地映射 */
+  liveSessionId?: string;
 }
 
 /** GET /dirpicker?path= 载荷（T2 服务端目录选择）：path=绝对路径，parent=上级（盘根=自身），dirs=子目录名 */
@@ -307,6 +323,12 @@ export interface Connection {
   sessionModel(id: string): Promise<{ current?: string; explicitDefault: boolean; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number }> }>;
   /** 模型总结会话标题(G10-C7):text=首条用户消息;daemon 一次 chat 调用回 ≤20 字标题(503=模型未接线) */
   sessionTitle(id: string, text: string): Promise<{ title: string }>;
+  /** 会话名持久化(G14.16 标题统一流):POST /session/:id/rename 落旁车 meta——顶栏/侧栏同源 */
+  /** G14.29 辅助问答(/btw /side):fork 旁路档上隔离跑一轮,主会话零污染 */
+  btw(id: string, question: string): Promise<{ reply: string; sessionId: string }>;
+  renameSession(id: string, title: string): Promise<{ ok: true; title: string }>;
+  /** 自定义会话名回读(G14.16):GET /session/:id/title/get;title=undefined 即无自定义名 */
+  getSessionTitle(id: string): Promise<{ title?: string }>;
   /** 建项目(G10-C11):原生文件选择器确认后注册/创建工作区。name=浏览器态(projectsRoot 下建)
    *  / path=桌面壳态(注册既有目录);同名幂等返回既有行 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
@@ -319,7 +341,7 @@ export interface Connection {
   cancelSteer(id: string, seq: number): Promise<void>;
   /** POST /session/:id/rewind|fork(G10-C1d):turn=anchors 1-based */
   rewindSession(id: string, turn: number): Promise<void>;
-  forkSession(id: string, turn: number): Promise<{ sessionId: string }>;
+  forkSession(id: string, turn: number, side?: boolean): Promise<{ sessionId: string }>;
   /** GET /session/:id/anchors:任务轮锚点(rewind/fork 寻址) */
   sessionAnchors(id: string): Promise<Array<{ turn: number; text: string }>>;
   /** POST /memory/rm:记忆删除(G10-C1d) */
@@ -363,7 +385,7 @@ export interface Connection {
   readFile(sessionId: string, path: string): Promise<FileResp>;
   /** GET /session/:id/diff?callId=（G7 diff 面）：write 调用双内容（见 DiffResp）；404（无快照/
    *  callId 无帧/会话）以 HTTP 失败抛错——Chat write 展开退单列现内容的判据 */
-  fetchDiff(sessionId: string, callId: string): Promise<DiffResp>;
+  fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp>;
   /** POST /session/:id/delete（T2 会话回收，Home 消费）：running 409；journal 文件保留 */
   deleteSession(id: string): Promise<void>;
   /** POST /session/:id/pty {cols?,rows?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
@@ -627,6 +649,15 @@ export function createConnection(opts: ConnectionOpts): Connection {
     sessionTitle(id: string, text: string) {
       return postJson<{ ok: true; title: string }>('/session/' + encodeURIComponent(id) + '/title', { text });
     },
+    btw(id: string, question: string) {
+      return postJson<{ reply: string; sessionId: string }>('/session/' + encodeURIComponent(id) + '/btw', { question });
+    },
+    renameSession(id: string, title: string) {
+      return postJson<{ ok: true; title: string }>('/session/' + encodeURIComponent(id) + '/rename', { title });
+    },
+    getSessionTitle(id: string) {
+      return getJson<{ title?: string }>('/session/' + encodeURIComponent(id) + '/title/get');
+    },
     createWorkspace(body: { name?: string; path?: string }) {
       return postJson<{ ok: true; root: string; slug: string }>('/workspace/create', body);
     },
@@ -648,11 +679,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async rewindSession(id: string, turn: number): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/rewind', { turn });
     },
-    async forkSession(id: string, turn: number): Promise<{ sessionId: string }> {
+    async forkSession(id: string, turn: number, side?: boolean): Promise<{ sessionId: string }> {
       const res = await fetch(`${base}/session/${encodeURIComponent(id)}/fork`, {
         method: 'POST',
         headers: { ...authHeaders, 'content-type': 'application/json' },
-        body: JSON.stringify({ turn }),
+        body: JSON.stringify({ turn, ...(side === true ? { side: true } : {}) }),
       });
       if (!res.ok) throw new Error(`/session/${id}/fork -> ${res.status}`);
       return (await res.json()) as { sessionId: string };
@@ -723,8 +754,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     readFile(sessionId: string, filePath: string): Promise<FileResp> {
       return getJson<FileResp>(`/session/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(filePath)}`);
     },
-    fetchDiff(sessionId: string, callId: string): Promise<DiffResp> {
-      return getJson<DiffResp>(`/session/${encodeURIComponent(sessionId)}/diff?callId=${encodeURIComponent(callId)}`);
+    fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp> {
+      // path 随参(G14.4):callId 未中(重放会话)时 daemon 按 journal snapshots 行回退真 pre-image
+      const p = path !== undefined && path !== '' ? `&path=${encodeURIComponent(path)}` : '';
+      return getJson<DiffResp>(`/session/${encodeURIComponent(sessionId)}/diff?callId=${encodeURIComponent(callId)}${p}`);
     },
     deleteSession(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/delete`);

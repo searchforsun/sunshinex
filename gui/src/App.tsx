@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { ArrowUp, ChevronDown, Folder, Hand } from 'lucide-react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import { ArrowUp, ChevronDown, MessageCircle, Folder, FolderPlus, Hand, ListTodo, SquareTerminal } from 'lucide-react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
-import { pickFolderNative, errText } from './ui-util';
+import { DirPicker } from './pages/DirPicker';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
-import { Chat } from './pages/Chat';
+import { Chat, baseModelName } from './pages/Chat';
 import type { ChatSink } from './pages/Chat';
+import { ComposerCard } from './composer/ComposerCard';
+import { EffortChip, EffortSlider } from './effort-slider';
+import { ComposerPlusPanel } from './composer/ComposerPlusPanel';
 import { ProjectMenu } from './sidebar/ProjectMenu';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
@@ -66,11 +69,18 @@ declare global {
 /** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
 const PROBE = registryProbe();
 
+/** G12 左栏宽度档:clamp 与持久化键(拖拽手柄在 .sx-menu-resizer;宽度经 --menu-w 落 .sx-menu) */
+const MENU_WIDTH_MIN = 220;
+const MENU_WIDTH_MAX = 420;
+const MENU_WIDTH_DEFAULT = 260;
+const MENU_WIDTH_KEY = 'sunshinex.menuWidth';
+
 export function App(): JSX.Element {
   // G10:token 填写逻辑退役——本地 serve 免鉴权档(恒绑回环),连接不再携带凭证
   return <AppShell />;
 }
 
+/** 思考强度档位(G14.10):滑动块 0..5 与档位一一对应(daemon effort 白名单序) */
 /** 欢迎页 goal 接力态:welcome 输入的目标,openSession 后由 Chat 播种完成时提交 */
 interface WelcomeGoal {
   root: string;
@@ -93,6 +103,19 @@ function WelcomeComposer({
     newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
     /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
     createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
+    /** + 附加面板数据源(G12 三轮;文件区需会话——欢迎页不传 sessionId 不渲染) */
+    commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
+    skillsGroups(root?: string): Promise<{
+      groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string }> }>;
+    }>;
+    tree(sessionId: string, path?: string): Promise<{ entries: Array<{ name: string; kind: 'dir' | 'file' }>; truncated?: boolean }>;
+    /** 缺省模型名回显(G13 反馈轮):settings model 键——欢迎页 pill 显示具体模型而非静态「default model」 */
+    settings(root?: string): Promise<{
+      keys: Array<{ key: string; value: string | null }>;
+      providers: { choices: Array<{ id: string; model: string; effort?: string }> };
+    }>;
+    setSessionModel(id: string, model?: string): Promise<void>;
+    setSessionEffort(id: string, effort?: string): Promise<void>;
   };
   /** 预选工作区(G10-C16):项目行「+」带来的 preset */
   presetRoot?: string;
@@ -106,15 +129,46 @@ function WelcomeComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [projOpen, setProjOpen] = useState(false);
+  /** G14.51 浏览器态服务端目录选择弹层(Browse folders 无桌面壳时) */
+  const [dirOpen, setDirOpen] = useState(false);
+  /** + 附加面板(G12 三轮):命令/技能列表浮层(卡顶同宽);文件区需会话,欢迎页不渲染 */
+  const [plusOpen, setPlusOpen] = useState(false);
   /** 审批模式(G10-C16):新会话创建时带出;缺省 dontAsk(TUI 默认权限) */
   const [mode, setMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
   const [modeOpen, setModeOpen] = useState(false);
   const [hint, setHint] = useState('');
+  /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
+  const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
+  const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
+  const [selModel, setSelModel] = useState<string | undefined>(undefined);
+  const [selEffort, setSelEffort] = useState<string>('medium');
+  const [modelOpen, setModelOpen] = useState(false);
   const projRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    conn.settings().then(
+      (view) => {
+        setDefaultModel(view.keys.find((k) => k.key === 'model')?.value ?? undefined);
+        setModelChoices(view.providers.choices);
+      },
+      () => undefined,
+    );
+  }, [conn]);
+
+  // 弹层外点收(模型/强度弹层)
+  useEffect(() => {
+    if (!modelOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element && e.target.closest('.sx-menu-pop') === null && e.target.closest('[aria-label="model"]') === null) {
+        setModelOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [modelOpen]);
 
   /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换) */
   useEffect(() => {
-    console.log('DBG preset effect:', presetRoot, 'picked:', picked);
     if (presetRoot !== undefined && presetRoot !== '' ) setPicked(presetRoot);
   }, [presetRoot]);
   useEffect(() => {
@@ -122,11 +176,22 @@ function WelcomeComposer({
       (list) => {
         const usable = list.filter((r) => r.root !== undefined && r.root !== '');
         // default 工作区(用户裁定):置顶缺省——非文件类任务与对话的落点
-        // default 去重:daemon 自动建目录后 root 为完整路径,按 basename 判(不比 root 字面)
-        const hasDefault = usable.some((r) => r.root !== undefined && (r.root.split(/[\/]+/).filter(Boolean).pop() ?? '') === 'default');
-        const withDefault = hasDefault ? usable : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...usable];
+        // G14.10 B 方案:default 锚定专用临时目录(daemon 侧 <tmp>/sunshinex-default),按 basename
+        // 识别('sunshinex-default' 为新锚,'default' 兼容旧仓库内工作区);无注册行时回落字面
+        // 'default'(daemon createSession 同规则解析)。default 行置顶。
+        const baseOf = (root: string): string => root.split(/[\\/]+/).filter(Boolean).pop() ?? '';
+        // G14.34 去重:default 与 sunshinex-default*(含旧临时锚点的带尾哈希变体)同义——
+        // 全部坍缩为唯一「默认工作区」项(root 取现存锚点行;全无则回落字面 'default')
+        const isDefaultNm = (nm: string): boolean => nm === 'default' || nm.startsWith('sunshinex-default');
+        const anchorRow =
+          usable.find((r) => r.root !== undefined && baseOf(r.root) === 'sunshinex-default') ??
+          usable.find((r) => isDefaultNm(baseOf(r.root ?? r.slug)));
+        const deduped = usable.filter((r) => !isDefaultNm(baseOf(r.root ?? r.slug)));
+        const withDefault = anchorRow !== undefined
+          ? [anchorRow, ...deduped]
+          : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...deduped];
         setRows(withDefault);
-        setPicked((p) => (p === '' ? 'default' : p));
+        setPicked((p) => (p === '' ? (anchorRow?.root ?? 'default') : p));
       },
       () => setRows([]),
     );
@@ -141,6 +206,17 @@ function WelcomeComposer({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [projOpen]);
+  /** + 面板外点收(面板内点与 + 钮自持) */
+  useEffect(() => {
+    if (!plusOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element && e.target.closest('.sx-plus-panel') === null && e.target.closest('.composer-plus-btn') === null) {
+        setPlusOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [plusOpen]);
   const send = (): void => {
     // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
     const target = picked !== '' ? picked : (presetRoot ?? '');
@@ -150,47 +226,68 @@ function WelcomeComposer({
     setError('');
     conn
       .newSession(target, mode === 'manual' ? 'manual' : undefined)
-      .then(({ sessionId }) => onOpened(sessionId, target, g))
+      .then(({ sessionId }) => {
+        // G14.10:欢迎页选定的模型/思考强度随会话创建下发(会话未建前无 /session/:id 面)
+        if (selModel !== undefined) void conn.setSessionModel(sessionId, selModel).catch(() => undefined);
+        if (selEffort !== undefined) void conn.setSessionEffort(sessionId, selEffort).catch(() => undefined);
+        onOpened(sessionId, target, g);
+      })
       .catch((err: unknown) => {
         setBusy(false);
         setError(err instanceof Error ? err.message : String(err));
       });
   };
   const baseName = (p: string): string => p.split(/[\\/]+/).filter(Boolean).pop() || p;
-  const projName = picked === '' ? t('Choose project', '选择项目') : baseName(picked);
-  /** 浏览新文件夹(G10 用户裁定:Win 系统文件对话框)。浏览器安全模型拿不到绝对路径——
-   *  选中目录按 basename 匹配已注册工作区;未注册位置提示走桌面版(electron dialog 可得路径)。 */
+  /** G14.34:默认锚点统一显示「默认工作区」(default/sunshinex-default*带尾哈希变体同义) */
+  const isDefaultPicked = picked !== '' && (() => {
+    const nm = baseName(picked);
+    return nm === 'default' || nm.startsWith('sunshinex-default');
+  })();
+  const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
+  /** 浏览新文件夹(G10 用户裁定 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
+   *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
+   *  目录(旧 showDirectoryPicker 拿不到路径按 name 建目录的行为废除)。已登记幂等(daemon
+   *  workspace.json 同 root 直返 ok)。 */
   const browseFolder = async (): Promise<void> => {
     setHint('');
-    const picked = await pickFolderNative();
-    if (picked === null) return;
-    if (picked === 'unsupported') {
-      setHint(t('Native folder picker needs a Chromium browser or the desktop app', '原生文件夹选择需要 Chromium 浏览器或桌面版'));
+    const shell = (window as unknown as { sunshinex?: { pickFolder?: () => Promise<string | null> } }).sunshinex;
+    if (typeof shell?.pickFolder === 'function') {
+      const p = await shell.pickFolder();
+      if (p === null) return;
+      try {
+        const res = await conn.createWorkspace({ path: p });
+        setRows((prev) => {
+          const list = prev ?? [];
+          return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
+        });
+        setPicked(res.root);
+        setProjOpen(false);
+      } catch (err) {
+        setHint(err instanceof Error ? err.message : String(err));
+      }
       return;
     }
-    // 同名已注册 → 直接选中;新名字 → 自动建项目(注册+初始化)并选中——统一交互(G10-C11)
-    const match = rows.find((r) => r.root !== undefined && baseName(r.root) === picked.name);
-    if (match?.root !== undefined) {
-      setPicked(match.root);
-      setProjOpen(false);
-      return;
-    }
-    try {
-      const res = await conn.createWorkspace(picked.path !== undefined ? { path: picked.path } : { name: picked.name });
-      setRows((prev) => {
-        const list = prev ?? [];
-        return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
-      });
-      setPicked(res.root);
-      setProjOpen(false);
-    } catch (err) {
-      setHint(err instanceof Error ? err.message : String(err));
-    }
+    setDirOpen(true);
+  };
+  /** DirPicker 确认:登记所选既有目录为工作区并选中(同桌面壳后段) */
+  const registerFolder = (p: string): void => {
+    setDirOpen(false);
+    conn
+      .createWorkspace({ path: p })
+      .then((res) => {
+        setRows((prev) => {
+          const list = prev ?? [];
+          return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
+        });
+        setPicked(res.root);
+        setProjOpen(false);
+      })
+      .catch((err: unknown) => setHint(err instanceof Error ? err.message : String(err)));
   };
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
-        <svg className="welcome-logo" width="120" height="120" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+        <svg className="welcome-logo" width="100" height="100" viewBox="0 0 72 72" fill="none" aria-hidden="true">
           <g transform="rotate(-15 36 36)">
             <g stroke="currentColor" strokeWidth="2.5">
               <path d="M52.11 30.17A19 11 0 0 1 52.11 41.83" />
@@ -228,70 +325,141 @@ function WelcomeComposer({
                   setProjOpen(false);
                 }}
               >
-                {baseName(r.root ?? r.slug)}
+                {(() => {
+                  const nm = baseName(r.root ?? r.slug);
+                  return nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
+                })()}
               </button>
             ))}
             <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
-              <Folder size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
+              <FolderPlus size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
             </button>
             {hint !== '' && <div className="proj-hint">{hint}</div>}
           </div>
         )}
-        <div className="welcome-input-card">
-          <textarea
-            aria-label="welcome goal"
-            value={goal}
-            placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}
-            onChange={(e) => setGoal(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
-          {error !== '' && <div className="proj-hint" role="alert">{error}</div>}
-          <div className="welcome-input-foot">
-            <div className="welcome-foot-left">
-              <button type="button" className="composer-pill" aria-label="add attachment" title={t('Add', '添加')}>
-                +
-              </button>
-              <button
-          type="button"
-          className="composer-pill"
-          aria-label="approval mode"
-          title={t('Approval mode for this session', '本会话的审批模式')}
-          onClick={() => setModeOpen((v) => !v)}
-        >
-          <Hand size={13} strokeWidth={1.75} aria-hidden="true" />
-          {mode === 'manual' ? t('Confirm changes', '变更确认') : mode === 'plan' ? t('Plan mode', '计划模式') : t('Full access', '完全访问')}
-          <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-        {modeOpen && (
-          <div className="sx-menu-pop pill-pop" role="menu" aria-label="approval mode menu">
-            {([
-              ['dontAsk', t('Full access', '完全访问')],
-              ['manual', t('Confirm changes', '变更确认')],
-              ['plan', t('Plan mode', '计划模式')],
-            ] as const).map(([m, label]) => (
-              <button
-                key={m}
-                type="button"
-                role="menuitem"
-                className={`sx-menuitem${m === mode ? ' active' : ''}`}
-                onClick={() => {
-                  setMode(m);
-                  setModeOpen(false);
-                }}
-              >
-                {label}
-              </button>
-            ))}
+        {dirOpen && (
+          <div className="modal-overlay" onClick={() => setDirOpen(false)}>
+            <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+              <DirPicker conn={conn} showManual={false} onCancel={() => setDirOpen(false)} onConfirm={registerFolder} />
+            </div>
           </div>
         )}
-            </div>
-            <div className="welcome-foot-right">
-              <span className="composer-pill">{t('default model', '默认模型')}<ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" /></span>
+        {/* 输入卡 = 会话中同一份 ComposerCard(唯一差异:欢迎页在卡外多项目选择条) */}
+        <ComposerCard
+          label="welcome goal"
+          value={goal}
+          rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
+          placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}
+          onChange={setGoal}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          overlays={
+            plusOpen ? (
+              <ComposerPlusPanel
+                conn={conn}
+                root={picked !== '' ? picked : undefined}
+                onInsert={(text) => {
+                  setGoal((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
+                  setPlusOpen(false);
+                }}
+              />
+            ) : null
+          }
+          belowInput={error !== '' ? <div className="proj-hint" role="alert">{error}</div> : undefined}
+          footLeft={
+            <>
+              {/* + 开附加面板(卡顶同宽浮层:命令/技能;文件区需会话——欢迎页不渲染) */}
+              <button
+                type="button"
+                className="composer-pill composer-plus-btn"
+                aria-label="add attachment"
+                aria-expanded={plusOpen}
+                title={t('Add skills, commands or files', '添加技能、命令或文件')}
+                onClick={() => setPlusOpen((v) => !v)}
+              >
+                +
+              </button>
+              {/* 审批模式:弹层锚按钮正上方(pill-anchor) */}
+              <div className="pill-anchor">
+                <button
+                  type="button"
+                  className="composer-pill"
+                  aria-label="approval mode"
+                  aria-expanded={modeOpen}
+                  title={t('Approval mode for this session', '本会话的审批模式')}
+                  onClick={() => setModeOpen((v) => !v)}
+                >
+                  <Hand size={13} strokeWidth={1.75} aria-hidden="true" />
+                  {mode === 'manual' ? t('Confirm changes', '变更确认') : mode === 'plan' ? t('Plan mode', '计划模式') : t('Full access', '完全访问')}
+                  <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+                {modeOpen && (
+                  <div className="sx-menu-pop pill-pop" role="menu" aria-label="approval mode menu">
+                    {([
+                      ['dontAsk', t('Full access', '完全访问')],
+                      ['manual', t('Confirm changes', '变更确认')],
+                      ['plan', t('Plan mode', '计划模式')],
+                    ] as const).map(([m, label]) => (
+                      <button
+                        key={m}
+                        type="button"
+                        role="menuitem"
+                        className={`sx-menuitem${m === mode ? ' active' : ''}`}
+                        onClick={() => {
+                          setMode(m);
+                          setModeOpen(false);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          }
+          footRight={
+            <>
+              {/* 模型 pill(G14.10 Codex 形):点击弹层 = 模型列表 + 思考强度滑动块;选定随会话创建下发 */}
+              <div className="pill-anchor">
+              <button
+                type="button"
+                className="composer-pill"
+                aria-label="model"
+                aria-expanded={modelOpen}
+                title={selModel ?? defaultModel ?? undefined}
+                onClick={() => setModelOpen((v) => !v)}
+              >
+                {baseModelName(selModel ?? defaultModel)}
+                {selEffort !== undefined && <EffortChip effort={selEffort} />}
+                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+              {modelOpen && (
+                <div className="sx-menu-pop pill-pop pill-pop-right" role="menu" aria-label="model menu">
+                  {modelChoices.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="menuitem"
+                      className={`sx-menuitem${(selModel ?? defaultModel) !== undefined && c.id === (selModel ?? defaultModel) ? ' active' : ''}`}
+                      title={c.id}
+                      onClick={() => {
+                        setSelModel(c.id);
+                        if (c.effort !== undefined) setSelEffort(c.effort);
+                      }}
+                    >
+                      {baseModelName(c.id)}
+                    </button>
+                  ))}
+                  <div className="pill-group-head">{t('Reasoning effort', '思考强度')}</div>
+                  <EffortSlider value={selEffort ?? 'medium'} onChange={setSelEffort} />
+                </div>
+              )}
+              </div>
               <button
                 type="button"
                 className="send"
@@ -302,9 +470,9 @@ function WelcomeComposer({
               >
                 <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
       </div>
     </div>
   );
@@ -320,6 +488,10 @@ function AppShell(): JSX.Element {
   const [openSessionId, setOpenSessionId] = useState<string>('');
   /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
   const [openRoot, setOpenRoot] = useState<string>('');
+  /** G14.16 标题统一流联动:rename 落盘后 bump → ProjectMenu 重拉 recentSessions(侧栏即时同名) */
+  const [recentVersion, setRecentVersion] = useState(0);
+  /** G14.52 活动会话运行态(GUI 本地权威):model-start 置位,done/error 复位——侧栏运行圆点消费 */
+  const [runActive, setRunActive] = useState(false);
   /** G8a 标签态总表:每会话独立(backHome 保留——重开同会话标签还原,spec §1) */
   const [tabStates, setTabStates] = useState<TabStates>({});
   const [connState, setConnState] = useState<ConnectionState>('connecting');
@@ -338,6 +510,8 @@ function AppShell(): JSX.Element {
   sessionRef.current = openSessionId;
   /** Chat 事件转投面:Chat 装配期注册(卸载注销)——onEvent/onReset 经此投递 */
   const chatSinkRef = useRef<ChatSink | null>(null);
+  /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子代理不聚) */
+  const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
   /** G6 板投影 seq 门:播种窗(快照在途)内 board/delegation 帧缓冲(与 Chat pendingRef 同构
    *  {seq, e}[])——onSeeded 整替快照板后过滤重放;窗由 Chat reseed 生命周期驱动 */
   const boardPendingRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
@@ -353,6 +527,14 @@ function AppShell(): JSX.Element {
    *  (开设置时快照 openRoot,无则 ''=仅全局;项目选择器可切) */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsRoot, setSettingsRoot] = useState('');
+  /** G12 左栏宽度可调:拖右缘边条改 --menu-w(clamp 220..420),localStorage 持久;SettingsShell
+   *  的左栏同为 .sx-menu,随同一变量联动 */
+  const [menuWidth, setMenuWidth] = useState<number>(() => {
+    const raw = Number(localStorage.getItem(MENU_WIDTH_KEY));
+    return Number.isFinite(raw) && raw >= MENU_WIDTH_MIN && raw <= MENU_WIDTH_MAX ? raw : MENU_WIDTH_DEFAULT;
+  });
+  /** 左栏拖宽在途清理句柄(mouseup 解绑;卸载兜底) */
+  const menuResizeCleanupRef = useRef<(() => void) | null>(null);
 
   /** 播种窗重开(清缓冲):openSession/onReset/onResetSession 三处——均伴随 Chat reseed,
    *  窗内残留帧属旧基线/旧板,弃 */
@@ -365,7 +547,15 @@ function AppShell(): JSX.Element {
     const conn = createConnection({
       baseUrl: import.meta.env.VITE_SERVE_URL ?? location.origin,
       onEvent: (sessionId, e: SessionEvent, seq: number) => {
-        if (sessionId !== sessionRef.current) return; // 他会话帧丢弃(连接层全收,投影只挂当前会话)
+        if (e.type === 'model-start' || e.type === 'done') setRecentVersion((v) => v + 1); // G14.52:run 起跑/收束都刷侧栏(运行圆点亮起与熄灭跟手)
+        if (sessionId === sessionRef.current && (e.type === 'model-start' || e.type === 'done' || e.type === 'error')) {
+          setRunActive(e.type === 'model-start'); // G14.52:活动会话运行态本地权威(daemon 标注有清锁竞态,收束圆点以此熄灭)
+        }
+        if (sessionId !== sessionRef.current) {
+          // G14.29 辅助会话帧:只投旁路聊天流(板/委派/子代理投影不涉旁路,丢弃)
+          if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
+          return;
+        }
         if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
           // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
@@ -401,15 +591,24 @@ function AppShell(): JSX.Element {
       // G4 挂起面装配:连接层回调闭包固定,经 sessionRef 过滤本会话后转投 Chat sink(卡片区);
       //  他会话挂起卡不显(本会话外无渲染面),他会话 reset 不触发重播种
       onApproval: (sessionId, pid, req) => {
-        if (sessionId !== sessionRef.current) return;
+        if (sessionId !== sessionRef.current) {
+          sideSinksRef.current.get(sessionId)?.current?.onApproval(pid, req);
+          return;
+        }
         chatSinkRef.current?.onApproval(pid, req);
       },
       onAsk: (sessionId, pid, req) => {
-        if (sessionId !== sessionRef.current) return;
+        if (sessionId !== sessionRef.current) {
+          sideSinksRef.current.get(sessionId)?.current?.onAsk(pid, req);
+          return;
+        }
         chatSinkRef.current?.onAsk(pid, req);
       },
       onResetSession: (sessionId) => {
-        if (sessionId !== sessionRef.current) return;
+        if (sessionId !== sessionRef.current) {
+          sideSinksRef.current.get(sessionId)?.current?.resetSession();
+          return;
+        }
         // G3.5 交接 d 收口(G5):会话维 reset 清 board/delegations 投影(仅连接级 onReset 清的缺口
         //  ——会话 reset 后旧任务悬挂)+ 播种窗重开清缓冲(窗内帧属旧板,弃);Chat 卡区清+重播种经 sink
         reopenBoardSeedWindow();
@@ -443,10 +642,30 @@ function AppShell(): JSX.Element {
   }, [connInstance]);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
+  /** 左栏拖宽在途兜底解绑(壳卸毁时 window 监听不泄漏) */
+  useEffect(() => () => menuResizeCleanupRef.current?.(), []);
 
   /** 左栏选中会话(attach/新建完成):切路由(Chat 装配期自播种基线)+ ensureSession 建席
    *  (缺省「任务」页)+ 板投影/team 清零(会话切换串态防线——快照落定后经 onSeeded 重建
    *  权威态)+ 播种窗重开;tabStates 已有该会话则原样(重开同会话标签还原) */
+  /** G14.29 辅助对话:fork 主会话整档(side 标记,列表滤除)→ 右栏 sidechat 标签绑定旁路会话。
+   *  帧路由经 sideSinksRef(onEvent 同键转投);卡点与 /btw /side 输入拦截同汇本口 */
+  const startSideChat = (): void => {
+    const conn = connRef.current;
+    if (conn === null || openSessionId === '') return;
+    void (async () => {
+      try {
+        const anchors = await conn.sessionAnchors(openSessionId);
+        const last = anchors.length > 0 ? anchors[anchors.length - 1]!.turn : 1;
+        const r = await conn.forkSession(openSessionId, last, true);
+        sideSinksRef.current.set(r.sessionId, { current: null });
+        openTabInSession('sidechat', { sideId: r.sessionId });
+      } catch {
+        /* fork 失败静默(旁路非关键路径) */
+      }
+    })();
+  };
+
   const openSession = (sessionId: string, root: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
@@ -491,6 +710,8 @@ function AppShell(): JSX.Element {
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
    *  tab-state(同目标重开=聚焦既有,单例类型单份) */
   const openTabInSession = (type: TabTypeId, params: TabParams = {}): void => {
+    // G14.38:程序化开标签即展开右栏(默认折叠下 write/diff/目录跳转/卡片开面板均可见)
+    setTabStates((st) => setCollapsed(st, openSessionId, false));
     setTabStates((s) => openTab(s, openSessionId, type, params, PROBE));
   };
 
@@ -600,8 +821,33 @@ function AppShell(): JSX.Element {
 
   const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabState.collapsed ? 32 : tabState.width) : 32;
 
+  /** G12 左栏拖宽边条 mousedown:window mousemove 计算宽(左栏在左侧,向右拖=变宽;clamp
+   *  220..420 模块级常量单点),mouseup 解绑+持久化;settings 态不渲染手柄 */
+  const startMenuResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.classList.add('active');
+    const startX = e.clientX;
+    const startWidth = menuWidth;
+    let next = startWidth;
+    const onMove = (ev: MouseEvent): void => {
+      next = Math.min(MENU_WIDTH_MAX, Math.max(MENU_WIDTH_MIN, startWidth + ev.clientX - startX));
+      setMenuWidth(next);
+    };
+    const stop = (): void => {
+      el.classList.remove('active');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', stop);
+      menuResizeCleanupRef.current = null;
+      localStorage.setItem(MENU_WIDTH_KEY, String(next));
+    };
+    menuResizeCleanupRef.current = stop;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', stop);
+  };
+
   return (
-    <div className="sx-shell">
+    <div className="sx-shell" style={{ '--menu-w': `${menuWidth}px` } as CSSProperties}>
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
            Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
@@ -615,6 +861,8 @@ function AppShell(): JSX.Element {
               connState={connState}
               activeSessionId={openSessionId}
               activeRoot={openRoot}
+              recentVersion={recentVersion}
+              runActive={runActive}
               onOpenSession={openSession}
               onOpenSettings={openSettings}
               onNewChat={() => {
@@ -631,6 +879,15 @@ function AppShell(): JSX.Element {
               <p className="home-loading">连接装配中…</p>
             </nav>
           )}
+          {/* G12 左栏拖宽手柄:overlay 在 nav 右缘(负 margin 零布局占位),拖动改 --menu-w */}
+          <div
+            className="sx-menu-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('Resize sidebar', '调整侧栏宽度')}
+            title={t('Drag to resize', '拖动调整宽度')}
+            onMouseDown={startMenuResize}
+          />
           {/* 中栏:Chat 恒挂(无会话=欢迎空态) */}
           <main className="sx-main">
             {page === 'chat' && connInstance !== null ? (
@@ -647,6 +904,10 @@ function AppShell(): JSX.Element {
                 pendingGoal={welcomeGoal ?? undefined}
                 onPendingGoalDone={() => setWelcomeGoal(null)}
                 root={openRoot}
+                onRenamed={() => setRecentVersion((v) => v + 1)}
+                showExpandSidebar={tabState.collapsed}
+                onExpandSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, false))}
+                onSideChat={startSideChat}
                 onFork={() => {
                   if (connInstance === null) return;
                   void connInstance
@@ -684,8 +945,8 @@ function AppShell(): JSX.Element {
               <div className="sx-welcome-brand">Sunshinex</div>
             )}
           </main>
-          {/* 右栏:会话标签页(G10:welcome 态整体不渲染——Codex home 无右栏;chat 态 collapsed=32px 细条) */}
-          {page === 'chat' && (
+          {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
+          {page === 'chat' && !tabState.collapsed && (
           <aside className="sx-sidebar" style={{ width: sidebarWidth }}>
             <TabStrip
               tabs={tabState.tabs}
@@ -720,7 +981,24 @@ function AppShell(): JSX.Element {
                   openTab: openTabInSession,
                   ptyIdFor,
                   onPtyAllocated: handlePtyAllocated,
+                  // G14.29 辅助对话:按 sideId 注入旁路 sink(App onEvent 同键路由帧)
+                  chatSinkRef: activeTab.params.sideId !== undefined ? sideSinksRef.current.get(activeTab.params.sideId) : undefined,
                 })}
+              </div>
+            )}
+            {page === 'chat' && !tabState.collapsed && activeTab === null && (
+              // G14.27 零标签空态=Codex 推荐项:标题+副题+三张常用页卡(点击即开,不再默认开任务页)
+              <div className="sx-tab-empty">
+                <div className="sx-tab-empty-title">{t('Open tabs', '打开标签页')}</div>
+                <div className="sx-tab-empty-sub">{t('Choose tabs to open in the side panel.', '选择要在侧边面板中打开的标签。')}</div>
+                <div className="sx-tab-empty-cards">
+                  {([['side', MessageCircle, t('Side chat', '辅助对话'), startSideChat], ['tasks', ListTodo, t('Tasks', '任务'), () => openTabInSession('tasks')], ['terminal', SquareTerminal, t('Terminal', '终端'), () => openTabInSession('terminal', tabEntry('terminal').mintParams?.())]] as const).map(([key, Icon, label, onClick]) => (
+                    <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>
+                      <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {page === 'chat' && !tabState.collapsed && <div className="sx-resizer" onMouseDown={startResize} />}

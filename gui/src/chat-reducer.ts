@@ -43,8 +43,16 @@ export interface ChatState {
   /** 会话累计 tokens（usage 事件续推；seed 归零，见文件头裁定） */
   tokens: number;
   steps: number;
+  /** 会话累计 prompt 缓存命中 tokens（usage.cacheHitTotal 续推，与 tokens 同基线法；G14.18 圆环回溯面） */
+  cacheTokens: number;
   /** 内部记账（勿消费）：当前 run 的 usage.turnTotal 水位——model-start 重置；tokens 增量基线 */
   turnTokensBase?: number;
+  /** 内部记账（勿消费）：当前 run 的 cacheHitTotal 水位——run 边界重置；cache 增量基线 */
+  turnCacheBase?: number;
+}
+
+export function initialChatState(): ChatState {
+  return { entries: [], status: 'idle', tokens: 0, steps: 0, cacheTokens: 0, turnTokensBase: 0, turnCacheBase: 0 };
 }
 
 /** snapshot.messages 载荷形态（gui 侧契约声明，五 kind；对齐 daemon TranscriptEntry，不引其类型） */
@@ -53,10 +61,11 @@ export interface SnapshotTranscriptEntry {
   ts?: number;
   kind: ChatEntry['kind'];
   md: string;
-}
-
-export function initialChatState(): ChatState {
-  return { entries: [], status: 'idle', tokens: 0, steps: 0, turnTokensBase: 0 };
+  /** G14.16:run 条统计(runmeta 对位)——Worked 行时长与 footer 步数/tokens 回放;
+   *  G14.56:runSteps=本轮自身步数(缺场=旧档,footer 回退累计口径) */
+  meta?: { seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number };
+  /** G14.24:thinking 条思考秒数(回放面) */
+  seconds?: number;
 }
 
 /** 用户提交的本地回显条（`> text` 引用块形态，与归档面 transcript.submit 同款——resync 后由快照条取代） */
@@ -66,12 +75,66 @@ export function appendUserMessage(s: ChatState, text: string, ts?: number): Chat
 
 /** onResync 基线：snapshot.messages 直映射（md 原文、无 streaming；tokens/steps 0 起步——事件面续推） */
 export function seedChatFromSnapshot(messages: readonly SnapshotTranscriptEntry[], status: 'idle' | 'running'): ChatState {
+  // G14.18:回放会话的累计基线自 run 条 meta 求和(runmeta journal 对位)——tokens/steps 不从零起,
+  // 圆环弹层重开即真值;cache 无回放面恒 0(事件面续推仅对本浏览器在场的 run 生效)
+  let tokens = 0;
+  let steps = 0;
+  let cacheTokens = 0;
+  let lastRunOpen = false; // 末个 run 条是否在途(无 meta=未收段);无 run 条=false
+  for (const m of messages) {
+    if (m.kind !== 'run') continue;
+    lastRunOpen = m.meta === undefined;
+    if (m.meta === undefined) continue;
+    tokens += m.meta.tokens ?? 0;
+    steps = Math.max(steps, m.meta.steps ?? 0); // steps=会话累计口径,取末次覆盖值
+    cacheTokens += m.meta.cacheTokens ?? 0;
+  }
+  const entries: ChatEntry[] = messages.map((m) => ({
+    key: `s${m.seq}`,
+    kind: m.kind,
+    md: m.md,
+    ...(m.ts !== undefined ? { ts: m.ts } : {}),
+    ...(m.kind === 'thinking' && m.seconds !== undefined ? { seconds: m.seconds } : {}),
+    ...(m.kind === 'run' && m.meta !== undefined
+      ? {
+          seconds: m.meta.seconds,
+          steps: m.meta.runSteps ?? m.meta.steps, // G14.56:footer 本轮口径优先(旧档回退累计)
+          tokens: m.meta.tokens,
+          ...(m.ts !== undefined && m.ts > 0 ? { endedTs: m.ts } : {}), // 回放 ts=runmeta endedTs,footer 时刻面
+        }
+      : {}),
+  }));
+  // G14.51 快照竞态收口:status=running 且末个 run 条无 meta(在途未收段)时,其后的部分回复/
+  // 思考是半成品,须按流式态摄入——否则 done 到达时找不到流式条,终稿误追加成新条(回复裂两截);
+  // 在途 run 条同标,Working 计时随帧续推。轮间静默期(末 run 已封)不标——上一轮回答不得并入下轮
+  if (status === 'running' && lastRunOpen) {
+    let runIdx = -1;
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      if (entries[i]!.kind === 'run') {
+        runIdx = i;
+        break;
+      }
+    }
+    if (runIdx >= 0) {
+      entries[runIdx] = { ...entries[runIdx]!, streaming: true };
+      for (let i = entries.length - 1; i > runIdx; i -= 1) {
+        const e = entries[i]!;
+        if (e.kind === 'assistant' || e.kind === 'thinking') {
+          entries[i] = { ...e, streaming: true };
+          break;
+        }
+        if (e.kind === 'tool' || e.kind === 'user') break; // 段界:工具在途/轮首——其后无部分文本段
+      }
+    }
+  }
   return {
-    entries: messages.map((m) => ({ key: `s${m.seq}`, kind: m.kind, md: m.md, ...(m.ts !== undefined ? { ts: m.ts } : {}) })),
+    entries,
     status,
-    tokens: 0,
-    steps: 0,
+    tokens,
+    steps,
+    cacheTokens,
     turnTokensBase: 0,
+    turnCacheBase: 0,
   };
 }
 
@@ -193,22 +256,28 @@ function mergeFinal(acc: string, fin: string): string {
 
 function onDone(s: ChatState, e: SessionEvent): ChatState {
   const base = sealStreaming(sealThinking(s.entries, e.ts));
+  // G14.56:footer steps=本轮自身步数(done 载荷 runSteps;旧载荷缺场回退会话累计)
+  const footerSteps = typeof e.payload?.runSteps === 'number' ? e.payload.runSteps : e.payload?.steps;
   const entries = sealRun(base.entries, e.ts, {
-    steps: typeof e.payload?.steps === 'number' ? e.payload.steps : undefined,
+    steps: typeof footerSteps === 'number' ? footerSteps : undefined,
     tokens: typeof e.payload?.tokensUsed === 'number' ? e.payload.tokensUsed : undefined,
   });
   const text = e.text ?? '';
+  // 步数口径(G14.20 统一):done 载荷 steps=reactor 会话累计步数(steps.length,含种子链)——
+  // 直接采用(footer/圆环/旁车 meta 同一口径);载荷缺面回落事件计数原值
+  const runSteps = typeof e.payload?.steps === 'number' ? e.payload.steps : s.steps;
   if (base.sealedIdx < 0) {
-    return { ...s, status: 'idle', entries: [...entries, { key: `a${entries.length}`, kind: 'assistant', md: text, ts: e.ts }] };
+    return { ...s, status: 'idle', steps: runSteps, entries: [...entries, { key: `a${entries.length}`, kind: 'assistant', md: text, ts: e.ts }] };
   }
   const sealed = entries[base.sealedIdx]!;
-  return { ...s, status: 'idle', entries: replaceAt(entries, base.sealedIdx, { ...sealed, md: mergeFinal(sealed.md, text) }) };
+  return { ...s, status: 'idle', steps: runSteps, entries: replaceAt(entries, base.sealedIdx, { ...sealed, md: mergeFinal(sealed.md, text) }) };
 }
 
+/** error 条只入列不封段(G14.51):daemon 契约 done 必发(正常/异常同出口,reactor.ts 收尾)——
+ *  运行中旁路错误(上下文溢出重试/提交 409 撞 busy)若在此封 streaming 条,done 到达时找不到
+ *  流式条,终稿误追加成新条(回复裂两截);收口统一让位 done */
 function onError(s: ChatState, e: SessionEvent): ChatState {
-  const base = sealStreaming(sealThinking(s.entries, e.ts));
-  const entries = sealRun(base.entries, e.ts);
-  return { ...s, status: 'idle', entries: [...entries, { key: `e${entries.length}`, kind: 'error', md: e.text ?? 'error', ts: e.ts }] };
+  return { ...s, entries: [...s.entries, { key: `e${s.entries.length}`, kind: 'error', md: e.text ?? 'error', ts: e.ts }] };
 }
 
 /** tool-call：callId 命中未配对面（result 先到）→ verb 回填；否则 verb 行即时、result 行占位入列 */
@@ -263,8 +332,18 @@ function onUsage(s: ChatState, e: SessionEvent): ChatState {
   if (typeof turnTotal !== 'number') return s;
   const base = s.turnTokensBase ?? 0;
   const delta = Math.max(0, turnTotal - base);
-  if (delta === 0 && turnTotal === base) return s;
-  return { ...s, tokens: s.tokens + delta, turnTokensBase: turnTotal };
+  // cacheHitTotal 与 turnTotal 同为 run 级单调累计——同基线法增量续推（端点无缓存回告恒 0）
+  const cacheTotal = e.payload?.cacheHitTotal;
+  const cacheBase = s.turnCacheBase ?? 0;
+  const cacheDelta = typeof cacheTotal === 'number' ? Math.max(0, cacheTotal - cacheBase) : 0;
+  if (delta === 0 && turnTotal === base && cacheDelta === 0 && cacheTotal === cacheBase) return s;
+  return {
+    ...s,
+    tokens: s.tokens + delta,
+    ...(cacheDelta > 0 ? { cacheTokens: s.cacheTokens + cacheDelta } : {}),
+    turnTokensBase: turnTotal,
+    ...(typeof cacheTotal === 'number' ? { turnCacheBase: cacheTotal } : {}),
+  };
 }
 
 /** 事件面单点：chat 投影纯归约（忽略 task-、gate-、route/ctx/model-end/reasoning/approval 系——板面/另轨；
@@ -298,11 +377,14 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
       if (s.status !== 'idle') return { ...s, entries, status: 'running' }; // run 内续轮:不重插 run 条、不重置水位
       // 水位重置仅在 run 边界：model-start 每模型轮一次（reactor.ts:450），turnTotal 是 run 级
       // 单调累计（reactor.ts:293）——run 内续轮（status=running）不重置，否则多轮 run tokens 虚增
+      // G14.22 轮次顺序=[用户输入]→[Worked 行+分割线]→[工具/回复]:run 条尾插(user 回显先入列
+      // 故自然居其后,与回放 seed 同序);Worked 行描述的是其后这段工作
       return {
         ...s,
         entries: [...entries, { key: `run:${entries.length}`, kind: 'run' as const, md: '', streaming: true as const, ts: e.ts }],
         status: 'running',
         turnTokensBase: 0,
+        turnCacheBase: 0,
       };
     }
     case 'step':

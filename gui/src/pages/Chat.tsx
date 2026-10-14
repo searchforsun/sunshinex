@@ -1,19 +1,25 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MutableRefObject, ReactNode } from 'react';
+import type { MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, Copy, FileText, FolderSearch, GitBranch, GitFork, Globe, History,
-  Info, Folder, ListTodo, Maximize2, MessageSquare, MoreHorizontal, PenLine, Search, Sparkles, Square, Terminal, Wrench, X,
+  AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, Database, FileText, FolderSearch, GitBranch, GitFork, Globe, History,
+  Info, Folder, ListTodo, Maximize2, MessageSquare, PanelRight, PenLine, Search, Sparkles, Square, SquareTerminal, Terminal, Wrench, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
-import { DiffPanel } from '../diff-panel';
-import { highlightByLang } from '../highlight';
+import { ComposerCard } from '../composer/ComposerCard';
+import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
+import { DiffLines } from '../diff-lines';
+import { FileIcon } from '../file-icon';
+import { highlightByLang, highlightCode } from '../highlight';
 import { Mermaid } from '../Mermaid';
 import { CommandPalette, filterCommands } from '../CommandPalette';
+import { ContextRing } from '../context-ring';
+import { EffortChip, EffortSlider } from '../effort-slider';
+import { fmtTokens as fmtTokensShared } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent } from '../../../src/types';
@@ -103,6 +109,17 @@ export interface ChatProps {
   onPendingGoalDone?: () => void;
   /** 会话所属工作区 root(G10 项目条显示;default 会话='default') */
   root?: string;
+  /** 标题落盘后上抛(G14.16:App bump recentVersion → 侧栏 RECENTS 即时同名) */
+  onRenamed?: () => void;
+  /** G14.28:右栏折叠时顶栏右侧示「展开侧栏」钮(折叠态不渲染 32px 细条) */
+  showExpandSidebar?: boolean;
+  onExpandSidebar?: () => void;
+  /** G14.29 输入 /btw /side 拦截:开辅助对话旁路标签(不动 daemon 提交面) */
+  onSideChat?: () => void;
+  /** G14.31 辅助对话全新视图:种子历史不落屏(上下文只在模型侧),开播即空会话观感 */
+  freshView?: boolean;
+  /** G14.32 顶栏定名(辅助对话):压过会话名回落链,不露注册 id */
+  fixedTitle?: string;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -121,15 +138,91 @@ interface ToolCallInfo {
   result?: string;
 }
 
-/** 工具条 md(`● verb\n⎿ result`)的渲染侧只读拆解——与 chat-reducer 内部同形约定,不入其模块 */
+/** 工具条 md(`● [tool] name {json}\n⎿ result`)的渲染侧只读拆解——reducer 组装为 `● ` + 事件原文
+ *  (batch-runner 行为 `[tool] name {json}`),两层前缀都剥;旧 journal `● name {json}` 同兼容 */
 function verbOf(md: string): string {
   const nl = md.indexOf('\n');
-  return md.startsWith('● ') && nl > 2 ? md.slice(2, nl) : md;
+  let head = (nl > 0 ? md.slice(0, nl) : md).trim();
+  if (head.startsWith('● ')) head = head.slice(2).trim();
+  if (head.startsWith('[tool] ')) head = head.slice(7).trim();
+  const sp = head.indexOf(' ');
+  return sp > 0 ? head.slice(0, sp) : head;
 }
 
 function resultOf(md: string): string {
   const m = md.indexOf('⎿ ');
   return m >= 0 ? md.slice(m + 2) : '';
+}
+
+/** 种子条工具信息还原:md 首行 `● [tool] name {json}` → {name, input}——种子回放无旁路 info,
+ *  折叠行不再裸渲 JSON(与实时帧 `write path · 结果` 同形);参数段缺失/非 JSON 只出工具名 */
+function toolMdInfo(md: string): { name: string; input: Record<string, unknown> } | undefined {
+  const nl = md.indexOf('\n');
+  let head = (nl > 0 ? md.slice(0, nl) : md).trim();
+  if (head.startsWith('● ')) head = head.slice(2).trim();
+  if (head.startsWith('[tool] ')) head = head.slice(7).trim();
+  const sp = head.indexOf(' ');
+  const name = sp > 0 ? head.slice(0, sp) : head;
+  if (name === '') return undefined;
+  if (sp <= 0) return { name, input: {} };
+  try {
+    const parsed = JSON.parse(head.slice(sp + 1)) as unknown;
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { name, input: parsed as Record<string, unknown> };
+    }
+  } catch {
+    // 参数段非 JSON:只出工具名,不裸渲参数原文
+  }
+  return { name, input: {} };
+}
+
+/** 折叠行目标字段(工具展示元数据同口径):各内置工具取其主字段;换行拍平,超长中段省略 */
+function toolTargetOf(name: string, input: Record<string, unknown>): string | undefined {
+  const key =
+    name === 'exec'
+      ? 'command'
+      : name === 'grep' || name === 'glob'
+        ? 'pattern'
+        : name === 'websearch'
+          ? 'query'
+          : name === 'webfetch'
+            ? 'url'
+            : name === 'skill'
+              ? 'id'
+              : 'path';
+  const v = input[key];
+  if (typeof v !== 'string' || v === '') return undefined;
+  const flat = (v.split('\n')[0] ?? v).trim();
+  if (flat.length <= 72) return flat;
+  return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
+}
+
+/** 各工具执行中标签(G14.13):「正在…」双语;未知工具回落 正在执行 */
+const RUNNING_LABELS: Record<string, [string, string]> = {
+  read: ['Reading file', '正在读取'],
+  write: ['Writing file', '正在写入'],
+  exec: ['Running command', '正在执行'],
+  glob: ['Searching files', '正在搜索文件'],
+  grep: ['Searching', '正在搜索'],
+  skill: ['Loading skill', '正在加载技能'],
+  webfetch: ['Fetching page', '正在抓取网页'],
+  websearch: ['Searching the web', '正在搜索网页'],
+  memory_write: ['Saving memory', '正在保存记忆'],
+  spawn: ['Starting subagent', '正在启动子智能体'],
+};
+
+/** 文件行拆分(G14.8):basename + 所在目录(恒显,根目录 = './')——文件名后永远看得到位置 */
+function fileLabelOf(path: string): { base: string; dir: string } {
+  const norm = path.replace(/\\/g, '/');
+  const base = norm.split('/').pop() ?? norm;
+  const dir = norm.slice(0, norm.length - base.length);
+  return { base, dir }; // 根目录文件 dir = ''(名称即相对路径,不重复显示)
+}
+
+/** write 结果首行 `written +3 -1` → diff stat 拆分(G14 底层同源);无 stat 回空 */
+function writeStatOf(result: string): { added?: string; removed?: string } {
+  const m = /\+(\d+) -(\d+)/.exec(result);
+  return m === null ? {} : { added: `+${m[1]}`, removed: `-${m[2]}` };
 }
 
 /** G6 工具条目(折叠态一行/点击展开):write 工具(name==='write',call 名判定——事件 text 即
@@ -157,22 +250,42 @@ function ToolEntryView({
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
-   *  对象=成功(DiffPanel 双列)。拉一次缓存——折叠再展开不重拉 */
+   *  对象=成功(diff2html 面板)。拉一次缓存——折叠再展开不重拉 */
   const [diff, setDiff] = useState<DiffResp | null | undefined>(undefined);
   const verb = verbOf(entry.md);
   const result = resultOf(entry.md);
-  const target = info !== undefined && typeof info.input.path === 'string' ? info.input.path : undefined;
-  const isWrite = info !== undefined && info.name === 'write' && target !== undefined;
-  const fallbackNew = info !== undefined && typeof info.input.content === 'string' ? info.input.content : '';
-  /** 展开面 Output 全文:旁路暂存优先,种子条 info 缺省回落 md 首行 */
+  /** 折叠行动词/目标:旁路 info 优先,种子条回落 md 首行 JSON 还原——两路同形(`write path`) */
+  const mdInfo = info ?? toolMdInfo(entry.md);
+  const toolName = mdInfo !== undefined ? mdInfo.name : verb;
+  const input = mdInfo?.input ?? {};
+  const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
+  const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
+  const skillId =
+    toolName === 'skill' && typeof (input.id ?? input.name) === 'string' ? String(input.id ?? input.name) : undefined;
+  const target = mdInfo !== undefined ? toolTargetOf(toolName, input) : undefined;
+  /** write 分型(G14):折叠=文件名+相对路径+diff stat,展开=diff2html;read 分型:整行=打开文件标签 */
+  const isWrite = toolName === 'write' && path !== undefined;
+  const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
+  const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
+  const stat = isWrite ? writeStatOf(result) : {};
+  /** G14.13 全工具双态:结果未回(占位符 …)=执行中(波纹+「正在…」);结果已回=各型折叠行 */
+  const executing = result === '…' || result === '';
+  const runningLabel = (() => {
+    const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
+    return t(pair[0], pair[1]);
+  })();
+  /** 展开面全文:旁路暂存优先,种子条 info 缺省回落 md 首行(skill 正文/长输出同源) */
   const fullResult = info?.result ?? result;
 
-  /** 展开且可寻址(callId 在场——种子条/无 callId 面不拉)即异步拉 diff;折叠即弃在途应答
+  /** 展开且可寻址(callId 在场——无 callId 面不拉)即异步拉 diff;折叠即弃在途应答
    *  (面板已不在场),重展开重拉;已缓存(diff≠undefined)不重拉 */
   useEffect(() => {
-    if (!expanded || isWrite !== true || callId === undefined || diff !== undefined) return;
+    if (!expanded || isWrite !== true || diff !== undefined) return;
+    if (callId === undefined && path === undefined) return; // 两无:无从寻快照(理论不可达)
+    // G14.4:种子回放行无 callId——占位 id + path 随参,daemon 按 journal snapshots 行回退真 pre-image
+    const cid = callId ?? 'replay';
     let alive = true;
-    conn.fetchDiff(sessionId, callId).then(
+    conn.fetchDiff(sessionId, cid, path).then(
       (d) => {
         if (alive) setDiff(d);
       },
@@ -185,55 +298,138 @@ function ToolEntryView({
     };
   }, [expanded, isWrite, callId, diff, conn, sessionId]);
 
-  return (
-    <div className={`entry entry-tool${expanded ? ' open' : ''}`}>
-      <button type="button" className="tool-summary" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
-        <ToolIcon verb={verb} />
-        <span className="tool-verb">{target !== undefined ? `${verb} ${target}` : verb}</span>
-        {result !== '' && <span className="tool-result-inline"> · {result}</span>}
-      </button>
-      <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
-        <div className="tool-body-inner">
-          {isWrite && info !== undefined ? (
-            <div className="tool-detail">
-              {/* path 钮与 diff 面原逻辑原样搬入(G8d 分流不变) */}
-              {(onOpenDiff !== undefined || onOpenFile !== undefined) && (
-                <button
-                  type="button"
-                  className="tool-path"
-                  title={onOpenDiff !== undefined && callId !== undefined ? '打开 diff 标签' : '在文件标签预览'}
-                  onClick={() => {
-                    if (onOpenDiff !== undefined && callId !== undefined) onOpenDiff(callId, target!);
-                    else onOpenFile?.(target!);
-                  }}
-                >
-                  {target}
-                </button>
-              )}
-              {diff !== undefined && diff !== null ? (
-                <DiffPanel oldStr={diff.oldContent} newStr={diff.newContent} />
-              ) : diff === null ? (
-                <DiffPanel newStr={fallbackNew} />
-              ) : (
-                <>
-                  <div className="diff-loading" role="status">diff 加载中…</div>
-                  <DiffPanel newStr={fallbackNew} />
-                </>
-              )}
-            </div>
+  /** 折叠行主体(G14 分型):文件工具=文件名+相对路径(+stat);exec=完整命令;skill=名;其余=动词+目标 */
+  const collapsed = (
+    <>
+      {executing ? (
+        <span className="tool-verb exec-running">
+          <span className="exec-ripple-icon">
+            <ToolIcon verb={toolName} />
+          </span>
+          <span className="exec-running-text">{runningLabel}</span>
+        </span>
+      ) : path !== undefined && (isWrite || toolName === 'read') ? (
+        <>
+          {/* G14.4 行序:工具图标(前置)+工具名+文件图标+文件名+相对路径(+stat);结果不进折叠行 */}
+          <span className="tool-verb">{toolName}</span>
+          {' '}
+          <FileIcon path={path} />
+          {' '}
+          {isWrite && onOpenFile !== undefined ? (
+            <span
+              role="button"
+              tabIndex={-1}
+              className="tool-file-base tool-file-link"
+              title={t('Open in file tab', '在文件标签预览')}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFile(path);
+              }}
+            >
+              {fileLabel!.base}
+              {fileLabel!.dir !== '' && <span className="tool-file-rel">{' '}{fileLabel!.dir}</span>}
+            </span>
           ) : (
-            <div className="tool-io">
-              {info !== undefined && Object.keys(info.input).length > 0 && (
-                <>
-                  <div className="io-label">{t('Input', '输入')}</div>
-                  <pre className="tool-io-pre">{JSON.stringify(info.input, null, 2)}</pre>
-                </>
-              )}
-              <div className="io-label">{t('Output', '输出')}</div>
-              <pre className="tool-io-pre">{fullResult !== '' ? fullResult : t('(no result)', '(无结果)')}</pre>
-            </div>
+            <>
+              <span className="tool-file-base">{fileLabel!.base}</span>
+              {fileLabel!.dir !== '' && <span className="tool-file-rel">{' '}{fileLabel!.dir}</span>}
+            </>
+          )}
+          {isWrite && stat.added !== undefined && <span className="tool-stat tool-stat-add">{' '}{stat.added}</span>}
+          {isWrite && stat.removed !== undefined && <span className="tool-stat tool-stat-del">{' '}{stat.removed}</span>}
+        </>
+      ) : toolName === 'skill' ? (
+        <>
+          <span className="tool-verb">skill</span>
+          {skillId !== undefined && <span className="tool-file-base">{' · '}{skillId}</span>}
+        </>
+      ) : command !== undefined ? (
+        <>
+          <span className="tool-verb">{'exec'}</span>
+          {/* G14.50:展开态不重复命令文本(下方 $ 行已完整示出) */}
+          {!expanded && <span className="tool-file-base tool-cmd">{' '}{command}</span>}
+        </>
+      ) : (
+        <span className="tool-verb">{target !== undefined ? `${toolName} ${target}` : toolName}</span>
+      )}
+    </>
+  );
+
+  /** 展开面主体(G14 分型):write=diff2html;skill=md 正文;exec=$ 命令高亮+输出;其余=输出原文 */
+  let body: JSX.Element;
+  if (isWrite) {
+    const fallbackNew = typeof input.content === 'string' ? input.content : '';
+    const openDiff =
+      onOpenDiff !== undefined && callId !== undefined && path !== undefined
+        ? (): void => {
+            onOpenDiff(callId, path);
+          }
+        : onOpenFile !== undefined && path !== undefined
+          ? (): void => {
+              onOpenFile(path);
+            }
+          : undefined;
+    const openDiffTitle =
+      onOpenDiff !== undefined && callId !== undefined ? '打开 diff 标签' : '在文件标签预览';
+    body = (
+      <div className="tool-detail">
+        {/* G14.51:自绘行级 diff;⇄ 开 diff 标签钮迁入(原 DiffPanel 角标钮,可及名=路径) */}
+        <div className="tool-diffwrap">
+          <DiffLines oldStr={diff?.oldContent} newStr={diff !== null && diff !== undefined ? diff.newContent : fallbackNew} path={path} maxHeight={280} />
+          {openDiff !== undefined && (
+            <button
+              type="button"
+              className="tool-path"
+              aria-label={path}
+              title={openDiffTitle}
+              onClick={openDiff}
+            >
+              <span aria-hidden="true">⇄</span>
+            </button>
           )}
         </div>
+      </div>
+    );
+  } else if (toolName === 'skill') {
+    body = (
+      <div className="tool-md">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{fullResult}</ReactMarkdown>
+      </div>
+    );
+  } else if (command !== undefined) {
+    body = (
+      // G14.50:命令与输出合一区(终端形态:$ 行高亮 + 输出同块,不再分输入/输出两段)
+      <div className="tool-exec">
+        <pre className="tool-io-pre">
+          <span className="exec-prompt" aria-hidden="true">$ </span>
+          <code dangerouslySetInnerHTML={{ __html: highlightCode(command, 'cmd.sh') }} />
+          {'\n'}
+          {fullResult !== '' ? fullResult : t('(no result)', '(无结果)')}
+        </pre>
+      </div>
+    );
+  } else {
+    body = <pre className="tool-io-pre">{fullResult !== '' ? fullResult : t('(no result)', '(无结果)')}</pre>;
+  }
+
+  return (
+    <div className={`entry entry-tool${expanded ? ' open' : ''}`}>
+      <button
+        type="button"
+        className="tool-summary"
+        aria-expanded={isRead ? undefined : expanded}
+        title={isRead ? t('Open in file tab', '在文件标签预览') : undefined}
+        onClick={() => {
+          if (isRead) onOpenFile?.(path!);
+          else setExpanded((v) => !v);
+        }}
+      >
+        <ToolIcon verb={toolName} />
+        {collapsed}
+        {!isRead && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
+      </button>
+      <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
+        <div className="tool-body-inner">{body}</div>
       </div>
     </div>
   );
@@ -421,7 +617,7 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
-  read: FileText, write: PenLine, exec: Terminal, grep: Search, glob: FolderSearch,
+  read: FileText, write: PenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
   skill: Sparkles, webfetch: Globe, websearch: Globe, memory: Brain, todo_write: ListTodo,
   worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: ListTodo,
 };
@@ -435,16 +631,23 @@ function runElapsed(seconds: number): string {
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-/** tokens 格式:8400 → 8.4k tokens;840 → 840 tokens */
+/** tokens 格式:共享面迁移 ui-util.fmtTokens(G14.17)——本文件 re-export 保既有引用零迁移 */
 function fmtTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
+  return fmtTokensShared(n);
+}
+
+/** 模型显示名(G12 二轮):剥 provider 前缀——'openai/gpt-5.2' → 'gpt-5.2'(id 全文留 title);
+ *  空值回落「默认模型」。欢迎页同口径消费(G13 反馈轮导出) */
+export function baseModelName(id: string | undefined): string {
+  if (id === undefined || id === '') return t('default model', '默认模型');
+  return id.split('/').pop() || id;
 }
 
 /** run 状态行(G11 §1.2):streaming=Working(旋转环+1s tick+会话 tokens);封段=✓ Worked for Xs 淡灰
  *  保留。memo 包裹:sealed 行 entry/tokens 双稳定→不随 token 帧重渲;tick 是组件内部 state 自驱动,
  *  memo 不影响;tokens 变化(usage 帧)仍重渲(期望行为)。种子历史无 run 条,重连后自下一轮
  *  model-start 恢复(spec §0) */
-const RunEntryView = memo(function RunEntryView({ entry, tokens }: { entry: ChatEntry; tokens: number }): JSX.Element {
+const RunEntryView = memo(function RunEntryView({ entry, tokens, collapsed, onToggle }: { entry: ChatEntry; tokens: number; collapsed?: boolean; onToggle?: (key: string) => void }): JSX.Element {
   const [, setTick] = useState(0);
   const streaming = entry.streaming === true;
   useEffect(() => {
@@ -453,21 +656,41 @@ const RunEntryView = memo(function RunEntryView({ entry, tokens }: { entry: Chat
     return () => clearInterval(h);
   }, [streaming]);
   if (!streaming) {
+    // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形
     return (
-      <div className="entry entry-run sealed" aria-label="run summary">
-        <Check size={12} strokeWidth={1.75} aria-hidden="true" />
+      <div
+        className="entry entry-run sealed"
+        aria-label="run summary"
+        role={onToggle !== undefined ? 'button' : undefined}
+        tabIndex={onToggle !== undefined ? 0 : undefined}
+        aria-expanded={onToggle !== undefined ? !collapsed : undefined}
+        onClick={onToggle !== undefined ? () => onToggle(entry.key) : undefined}
+        onKeyDown={
+          onToggle !== undefined
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onToggle(entry.key);
+                }
+              }
+            : undefined
+        }
+      >
         <span>{entry.seconds !== undefined ? t(`Worked for ${runElapsed(entry.seconds)}`, `已运行 ${runElapsed(entry.seconds)}`) : t('Worked', '已运行')}</span>
+        {onToggle !== undefined && (
+          <span className="run-chev" aria-hidden="true">
+            {collapsed ? <ChevronRight size={12} strokeWidth={1.75} /> : <ChevronDown size={12} strokeWidth={1.75} />}
+          </span>
+        )}
       </div>
     );
   }
   const elapsed = entry.ts !== undefined ? Math.max(0, Math.round((Date.now() - entry.ts) / 1000)) : 0;
+  // G14.11:状态行只示时长(圆圈/tokens 迁工具行尾)——tokens 参数保留由调用面透传(历史签名)
   return (
     <div className="entry entry-run live" role="status" aria-label="run status">
-      <span className="run-spinner" aria-hidden="true" />
       <span>{t('Working', '运行中')}</span>
-      {/* 耗时/tokens 每秒变,读屏会整行每秒重播——视觉辅助标 aria-hidden,主文本「Working」保持可播报(终审 Minor-2) */}
       <span className="run-meta" aria-hidden="true">{runElapsed(elapsed)}</span>
-      <span className="run-meta" aria-hidden="true">{fmtTokens(tokens)}</span>
     </div>
   );
 });
@@ -493,21 +716,37 @@ function TipButton({ tip, label, icon, onClick, className }: { tip: string; labe
  *  直设 scrollTop 不平滑——逐 token 跟手)。展开/折叠 grid-rows 过渡(同工具行公式) */
 const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [, setTick] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const streaming = entry.streaming === true;
-  const lastLine = entry.md.split('\n').filter((l) => l.trim() !== '').at(-1) ?? '';
+  useEffect(() => {
+    if (!streaming) return;
+    const h = setInterval(() => setTick((v) => v + 1), 1_000); // G14.37:流式秒针——头部持续计数
+    return () => clearInterval(h);
+  }, [streaming]);
   useEffect(() => {
     if (open && streaming && scrollRef.current !== null) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [open, streaming, entry.md]);
+  // G14.37 流式两件套:头部秒数持续计数 / 内容右向流动窗(G14.52:速率显示去——思考行占满整行)
+  const elapsed = streaming && entry.ts !== undefined ? Math.max(1, Math.round((Date.now() - entry.ts) / 1000)) : undefined;
+  const flow = streaming ? entry.md.slice(-80) : '';
   return (
     <div className={`entry entry-thinking${open ? ' open' : ''}`}>
       <button type="button" className="thinking-summary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <ChevronDown className="think-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
         <Brain size={12} strokeWidth={1.75} aria-hidden="true" />
         <span className="thinking-label">
-          {streaming ? t('Thinking…', '思考中…') : entry.seconds !== undefined ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}s`) : t('Thought', '思考')}
+          {streaming
+            ? t(`Thinking ${elapsed ?? 0}s`, `思考中 ${elapsed ?? 0}s`)
+            : entry.seconds !== undefined
+              ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}s`)
+              : t('Thought', '思考')}
         </span>
-        {!open && lastLine !== '' && <span className="thinking-preview">{lastLine}</span>}
+        {streaming && !open && flow !== '' && (
+          <span className="thinking-flow" aria-hidden="true">
+            {flow}
+          </span>
+        )}
+        <ChevronRight className="think-chev" size={12} strokeWidth={1.75} aria-hidden="true" />
       </button>
       <div className="think-body">
         <div className="think-body-inner">
@@ -687,6 +926,19 @@ function systemIconOf(entry: ChatEntry): ReactNode {
   return <Info size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
 
+/** G14.19 旁白分类(G14 批):[skills]/[memory] 打头的学习/记忆系统信息用专用图标(Sparkles/
+ *  Database 微着色)+剥标签前缀——与一般系统提示(Info 灰)一眼区分;非此类回 null 走 systemIconOf */
+function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | null {
+  if (entry.kind !== 'notice') return null;
+  if (entry.md.startsWith('[skills]')) {
+    return { icon: <Sparkles size={12} strokeWidth={1.75} aria-hidden="true" />, md: entry.md.slice('[skills]'.length).trimStart() };
+  }
+  if (entry.md.startsWith('[memory]')) {
+    return { icon: <Database size={12} strokeWidth={1.75} aria-hidden="true" />, md: entry.md.slice('[memory]'.length).trimStart() };
+  }
+  return null;
+}
+
 /** 单条渲染单元(React.memo):reducer 保未动条目引用——流式 token 帧只有流式条重渲染(md 解析 O(1) 摊销)。
  *  G8d T5:streaming 条末挂流式光标 span.sx-stream-cursor(闪灭动画定义在 app.css 特批小段;done 收段
  *  条 streaming=false → 光标随 memo 重渲染退场)。G11 §4 结构化:.entry-md 包装(含 icon 时 has-icon
@@ -695,13 +947,14 @@ function systemIconOf(entry: ChatEntry): ReactNode {
  *  比较恢复命中),组件内在场时自渲染 RunFooter;终审前传 ReactNode 每帧新建元素击穿 memo,长会话
  *  每 token 触发历史末条全文重解析 */
 const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void }): JSX.Element {
-  const icon = systemIconOf(entry);
+  const accent = noticeAccentOf(entry);
+  const icon = accent !== null ? accent.icon : systemIconOf(entry);
   return (
     <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
       <div className={`entry-md${icon !== null ? ' has-icon' : ''}`}>
-        {icon !== null && <span className="entry-icon">{icon}</span>}
+        {icon !== null && <span className={`entry-icon${accent !== null ? ' accent' : ''}`}>{icon}</span>}
         <div className="entry-md-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{entry.md}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
           {entry.streaming === true && <span className="sx-stream-cursor" aria-hidden="true" />}
         </div>
       </div>
@@ -741,7 +994,7 @@ function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undef
       {onFork !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={onFork} />}
       {(run?.steps !== undefined || run?.tokens !== undefined) && (
         <span className="run-stats">
-          {run?.steps !== undefined && <span>{`${run.steps} steps`}</span>}
+          {run?.steps !== undefined && <span>{run.steps === 1 ? t('1 step', '1 步') : `${run.steps} steps`}</span>}
           {run?.tokens !== undefined && <span>{fmtTokens(run.tokens)}</span>}
           {time !== undefined && <span>{time}</span>}
         </span>
@@ -750,7 +1003,7 @@ function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undef
   );
 }
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork, pendingGoal, onPendingGoalDone, root }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   const [input, setInput] = useState('');
   /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
@@ -758,63 +1011,95 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const [toolInputs, setToolInputs] = useState<Record<string, ToolCallInfo>>({});
   /** G4 挂起卡列表(pid 维:回执落定即移;resetSession/idle 清空) */
   const [cards, setCards] = useState<PendingCard[]>([]);
-  /** 顶栏 ⋯ 菜单开合(G10-C3;外点收) */
-  const [moreOpen, setMoreOpen] = useState(false);
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新) */
   const [sessMode, setSessMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
-  const [sessTier, setSessTier] = useState<string | undefined>(undefined);
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
-  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string }> } | null>(null);
-  const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'effort' | 'context' | null>(null);
+  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string; effort?: string }> } | null>(null);
+  /** pill 开合('plus' = + 附加面板) */
+  const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
+  /** textarea 引用(+ 面板插入收口后焦点回输入框) */
+  /** textarea 引用(+ 面板插入收口后焦点回输入框) */
+  /** 流区贴底跟随(G13 反馈轮):滚动容器 ref + 「用户是否贴底」旁路 ref——贴底(含初始态)时
+   *  每次渲染(流式 token/条目增删)自动归底;用户上翻超阈值即放手,再触底恢复跟随 */
+  const chatScrollRef = useRef<HTMLElement | null>(null);
+  const chatStickRef = useRef(true);
   /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
   const [queued, setQueued] = useState<Array<{ seq: number; text: string }>>([]);
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
   const [cmdData, setCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
   const [cmdActive, setCmdActive] = useState(0);
-  /** 会话标题(G10-C7):手改 > 模型总结(≤20 字) > 会话 id。手改与总结各自落 localStorage
-   *  (手改后不再发起总结调用;总结失败静默回落会话 id)。点击标题即改 */
-  const [titleOverride, setTitleOverride] = useState<string | null>(() => {
-    const v = localStorage.getItem(`sunshinex.title.${sessionId}`);
-    return v !== null && v.trim() !== '' ? v : null;
-  });
-  const [autoTitle, setAutoTitle] = useState<string | null>(() => {
-    const v = localStorage.getItem(`sunshinex.autotitle.${sessionId}`);
-    return v !== null && v.trim() !== '' ? v : null;
-  });
+  /** 会话标题(G14.16/G14.17 统一流):单源=daemon 旁车 meta——rename 落盘、挂载 GET 回读,
+   *  顶栏/侧栏/TUI 一名三处;零历史兼容(旧 localStorage 键不读不迁,旧会话删档重测)。
+   *  缺省回落首条用户消息摘要,再落会话 id。点击标题即改 */
+  const [title, setTitle] = useState<string | null>(null);
+  const [titleLoaded, setTitleLoaded] = useState(false);
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const firstUserText = (() => {
     const md = chat.entries.find((e) => e.kind === 'user')?.md ?? '';
     return md.startsWith('> ') ? md.slice(2) : md;
   })();
-  const displayTitle = titleOverride ?? autoTitle ?? sessionId;
+  const displayTitle = fixedTitle ?? title ?? (firstUserText !== '' ? firstUserText : sessionId);
+  /** onRenamed 同步镜像(applyTitle 闭包经 ref 读,免依赖数组抖动) */
+  const onRenamedRef = useRef(onRenamed);
+  onRenamedRef.current = onRenamed;
+  /** rename 单点(G14.16):乐观上屏 + 旁车落盘(静默降级——失败面下次挂载 GET 回读回真值) +
+   *  侧栏刷新上抛 */
+  const applyTitle = useCallback(
+    (v: string): void => {
+      setTitle(v);
+      if (typeof conn.renameSession === 'function') void conn.renameSession(sessionId, v).catch(() => undefined);
+      onRenamedRef.current?.();
+    },
+    [conn, sessionId],
+  );
   const commitTitle = (): void => {
+    setTitleEditing(false);
     const v = titleDraft.trim();
-    if (v === '' || v === displayTitle) {
-      setTitleEditing(false);
+    if (v === '' || v === displayTitle) return;
+    applyTitle(v);
+  };
+  /** 挂载回读(一次):服务端有名→采用;GET 落定前 titleLoaded 门关着——总结调用不抢跑,
+   *  改名标题恒压过模型总结(免 GET/总结竞争互覆)。GET 未知会话 404 静默(Chat 仅挂于 live 会话) */
+  useEffect(() => {
+    if (typeof conn.getSessionTitle !== 'function') {
+      setTitleLoaded(true);
       return;
     }
-    setTitleOverride(v);
-    localStorage.setItem(`sunshinex.title.${sessionId}`, v);
-    setTitleEditing(false);
-  };
-  /** 模型总结(一次):有首条消息且尚无标题/手改时调用;失败静默(回落首条截取),结果落 localStorage */
+    let alive = true;
+    conn.getSessionTitle(sessionId).then(
+      ({ title: srv }) => {
+        if (!alive) return;
+        if (srv !== undefined && srv.trim() !== '') setTitle(srv);
+        setTitleLoaded(true);
+      },
+      () => {
+        if (alive) setTitleLoaded(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, sessionId]);
+  /** 模型总结(一次,回读落定后):无自定义名且有首条消息时调用,结果走 applyTitle 落盘统一流;
+   *  失败静默回落摘要。tried 门:503 降级/竞争下不反复重发 */
+  const summarizeTriedRef = useRef(false);
   useEffect(() => {
-    if (titleOverride !== null || autoTitle !== null || firstUserText === '') return;
+    if (!titleLoaded || title !== null || firstUserText === '' || summarizeTriedRef.current) return;
     if (typeof conn.sessionTitle !== 'function') return;
+    summarizeTriedRef.current = true;
     let alive = true;
     conn.sessionTitle(sessionId, firstUserText).then(
-      ({ title }) => {
-        if (!alive || title.trim() === '') return;
-        setAutoTitle(title);
-        localStorage.setItem(`sunshinex.autotitle.${sessionId}`, title);
+      ({ title: gen }) => {
+        if (!alive || gen.trim() === '') return;
+        applyTitle(gen.trim());
       },
       () => undefined,
     );
     return () => {
       alive = false;
     };
-  }, [conn, sessionId, firstUserText, titleOverride, autoTitle]);
+  }, [conn, sessionId, firstUserText, title, titleLoaded, applyTitle]);
   /** 播种在途门:基线快照落定前输入禁用——本地 user 回显先于种子落定会被种子整替清掉
    *  (挂载/reset → sessionSnapshot 异步应答),提交必须在权威基线之后 */
   const [seeding, setSeeding] = useState(true);
@@ -862,9 +1147,12 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         if (seedGenRef.current !== gen) return; // 后继 reseed 已接管(在途窗内重连)
         setQueued(snap.queued ?? []);
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'dontAsk' | 'manual' | 'plan');
-        setSessTier(snap.tier);
         setSessEffort(snap.effort);
         let next = seedChatFromSnapshot(snap.messages, snap.status);
+        if (freshView === true) {
+          // G14.31 辅助对话:全新视图——种子历史清零不落屏(上下文只在模型侧,新帧照常续推)
+          next = { ...next, entries: [], tokens: 0, steps: 0, cacheTokens: 0 };
+        }
         for (const f of pendingRef.current) {
           if (f.seq > snap.lastSeq) next = applyChatEvent(next, f.e); // ≤ 切割序:种子已含,丢(双应用防线)
         }
@@ -872,11 +1160,13 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         seedingRef.current = false;
         setSeeding(false);
         setChat(next);
-        // G10 欢迎页接力:播种落定即提交 welcome 目标(一次性——done 回调清 App 态位)
+        // G10 欢迎页接力:播种落定即提交 welcome 目标(一次性——done 回调清 App 态位)。
+        // G14.51:先本地回显再提交——daemon 不广播 user 事件,接力目标不回显则运行全程不可见
         const pg = pendingGoalRef.current;
         if (pg !== null && pg.goal.trim() !== '') {
           pendingGoalRef.current = null;
           onPendingGoalDoneRef.current?.();
+          setChat((c) => appendUserMessage(c, pg.goal));
           conn.sessionSubmit(sessionId, pg.goal).catch(() => {});
         }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
@@ -966,6 +1256,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   }, [sinkRef, reseed, addCard]);
 
   const running = chat.status === 'running';
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   /** G6 工具条目 → input 暂存配对:条目 key `tool:<callId>`(重复 callId 的 `~n` 后缀剥掉;
    *  `tool:#`(无 callId 面)与播种条(`s<seq>`)不配对——快照 md 无 input,展开退 result 摘要) */
@@ -991,16 +1282,54 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     );
   }, [conn, sessionId]);
 
+  /** G14.18 上下文圆环数据:sessionContext 拉取单点——挂载/run 收尾(status 回 idle)/运行中
+   *  4s 轮询/悬停展开(圆环 onOpen)四路触发;失败静默保旧值(圆环退化为 0 占用不扰流区)。
+   *  G14.21 parts 透传:上下文构成逐段明细(弹层组成面) */
+  const [ctxInfo, setCtxInfo] = useState<{ total: number; window: number; parts: Array<{ id: string; tokens: number; count: number }> } | null>(null);
+  const refreshCtx = useCallback((): void => {
+    if (typeof conn.sessionContext !== 'function') return;
+    conn.sessionContext(sessionId).then(
+      (b) => setCtxInfo({ total: b.total, window: b.window, parts: b.parts ?? [] }),
+      () => undefined,
+    );
+  }, [conn, sessionId]);
+  useEffect(() => {
+    setCtxInfo(null);
+    refreshCtx();
+  }, [refreshCtx]);
+  useEffect(() => {
+    if (chat.status !== 'idle') return; // run 收尾刷新(运行中由下方轮询与悬停面覆盖)
+    refreshCtx();
+  }, [chat.status, refreshCtx]); // eslint-disable-line react-hooks/exhaustive-deps -- status 回 idle 即轮尾信号
+  useEffect(() => {
+    if (chat.status !== 'running') return;
+    const iv = setInterval(refreshCtx, 4000);
+    return () => clearInterval(iv);
+  }, [chat.status, refreshCtx]);
+  /** 会话任务轮数(run 条计数——圆环弹层「轮次」;回放种子条同口径) */
+  const runCount = chat.entries.reduce((n, e) => (e.kind === 'run' ? n + 1 : n), 0);
+
+  /** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;上翻 >80px 放手,
+   *  再触底恢复。useEffect 无依赖面=每渲染后跑,滚动判断在 onScroll 单点维护 */
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el !== null && chatStickRef.current) el.scrollTop = el.scrollHeight;
+  });
+
   /** 命令面板数据源(G10-C4):GET /commands 单点(清单/描述/supported) */
   useEffect(() => {
     conn.commands().then(setCmdData, () => setCmdData(null));
   }, [conn]);
 
-  /** pills 外点收 */
+  /** pills/+ 面板外点收(面板内点与 + 钮自持——多选文件连续点选不闪收) */
   useEffect(() => {
     if (pillOpen === null) return;
     const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.composer-pills') === null) setPillOpen(null);
+      if (e.target instanceof Element) {
+        if (e.target.closest('.sx-plus-panel') !== null || e.target.closest('.composer-plus-btn') !== null) return;
+        if (pillOpen !== 'plus' && e.target.closest('.composer-pills') !== null) return;
+        setPillOpen(null);
+      }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -1008,16 +1337,6 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
 
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
    *  时置空本地卡列表;reseed 落定的 idle 快照亦经此路径(挂起已回填,不重建——见文件头裁定) */
-  useEffect(() => {
-    if (moreOpen === false) return;
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.chat-more-pop') === null && e.target.closest('.chat-more') === null) {
-        setMoreOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [moreOpen]);
 
   useEffect(() => {
     const prev = prevStatusRef.current;
@@ -1027,15 +1346,54 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
 
   /** G5 会话回收(daemon 会话 id 寻址):confirm → deleteSession → onBack 回首页;
    *  失败留在会话示错条(HTTP 409 running 等不静默) */
-  const deleteThisSession = (): void => {
-    if (!window.confirm(`删除会话 ${sessionId}?此操作不可恢复(journal 档案保留)。`)) return;
-    void conn.deleteSession(sessionId).then(
-      () => onBack(),
-      (err: unknown) => {
-        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-      },
-    );
-  };
+  /** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;visibleEntries 把折叠轮区间内的
+   *  工具/思考行滤出(用户气泡/回复/旁白保留),渲染层纯过滤零侵入 reducer */
+  const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
+  const toggleRun = useCallback((key: string): void => {
+    setCollapsedRuns((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+  const visibleEntries = useMemo(() => {
+    if (collapsedRuns.size === 0) return chat.entries;
+    const out: ChatEntry[] = [];
+    let hide = false;
+    for (const e of chat.entries) {
+      if (e.kind === 'run') {
+        hide = collapsedRuns.has(e.key);
+        out.push(e);
+        continue;
+      }
+      if (hide && (e.kind === 'tool' || e.kind === 'thinking')) continue;
+      out.push(e);
+    }
+    return out;
+  }, [chat.entries, collapsedRuns]);
+
+  /** G14.48 展开/折叠不闪动:贴地(阅读位在底)→ 钉底,内容整体上移;未贴地 → 锚定被点行,
+   *  内容整体下移——两侧永不同时动。capture 先于行内 toggle 记 preTop,动画收尾后再校正一次;
+   *  原生 scroll-anchor 关闭(overflow-anchor:none)防与本校正互搏 */
+  const onEntryToggleClick = useCallback((e: ReactMouseEvent<HTMLDivElement>): void => {
+    const target = e.target instanceof Element ? e.target.closest('.thinking-summary, .tool-summary') : null;
+    const row = target !== null ? target.closest('.entry') : null;
+    const el = chatScrollRef.current;
+    if (target === null || row === null || el === null) return;
+    const preTop = row.getBoundingClientRect().top;
+    const stick = chatStickRef.current;
+    const restore = (): void => {
+      if (stick) {
+        el.scrollTop = el.scrollHeight;
+        return;
+      }
+      if (!row.isConnected) return;
+      el.scrollTop += row.getBoundingClientRect().top - preTop;
+    };
+    requestAnimationFrame(restore);
+    setTimeout(restore, 240); // 0.22s grid 动画收尾后再校正一次
+  }, []);
 
   /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
    *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
@@ -1044,6 +1402,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     (text: string): Promise<void> => {
       const trimmed = text.trim();
       if (trimmed === '') return Promise.resolve();
+      // G14.29:/btw /side 输入拦截——开辅助对话旁路标签(Codex 同款;不占主链提交面)
+      if (/^\/(btw|side)(\s|$)/.test(trimmed)) {
+        onSideChat?.();
+        return Promise.resolve();
+      }
       setChat((c) => appendUserMessage(c, trimmed));
       let req: Promise<void>;
       if (running) req = conn.sessionSteer(sessionId, trimmed);
@@ -1099,7 +1462,10 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   return (
     <>
       <header className="chat-topbar">
-        {titleEditing ? (
+        {fixedTitle === '' ? (
+          // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
+          <span className="chat-title" />
+        ) : titleEditing ? (
           <input
             className="chat-title-input"
             value={titleDraft}
@@ -1127,58 +1493,19 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
               <span className="chat-title-text">{displayTitle}</span>
             </button>
-            {running && <span className="sx-session-dot running" aria-label="running" />}
+            {/* G14.52:运行态圆点迁侧栏会话行左缘(顶栏不再双显) */}
           </span>
         )}
-        <button
-          type="button"
-          className="chat-more sx-iconbtn"
-          aria-label="chat actions"
-          title={t('Session actions', '会话操作')}
-          onClick={() => setMoreOpen((v) => !v)}
-        >
-          <MoreHorizontal size={16} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-        {moreOpen && (
-          <div className="sx-menu-pop chat-more-pop" role="menu" aria-label="chat actions menu">
-            {onBack !== undefined && (
-              <button
-                type="button"
-                role="menuitem"
-                className="sx-menuitem"
-                onClick={() => {
-                  setMoreOpen(false);
-                  onBack();
-                }}
-              >
-                {t('Back to home', '返回首页')}
-              </button>
-            )}
-            {onFork !== undefined && (
-              <button
-                type="button"
-                role="menuitem"
-                className="sx-menuitem"
-                onClick={() => {
-                  setMoreOpen(false);
-                  onFork();
-                }}
-              >
-                {t('Fork new session', '分叉新会话')}
-              </button>
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              className="sx-menuitem chat-more-delete"
-              onClick={() => {
-                setMoreOpen(false);
-                deleteThisSession();
-              }}
-            >
-              {t('Delete session', '删除会话')}
-            </button>
-          </div>
+        {showExpandSidebar && (
+          <button
+            type="button"
+            className="sx-iconbtn chat-expand"
+            aria-label="expand sidebar"
+            title={t('Expand sidebar', '展开侧边栏')}
+            onClick={onExpandSidebar}
+          >
+            <PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />
+          </button>
         )}
       </header>
       {cards.length > 0 && (
@@ -1213,15 +1540,25 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           ))}
         </div>
       )}
-      <main className="chat" aria-label="chat">
+      <main
+        className="chat"
+        aria-label="chat"
+        ref={chatScrollRef}
+        onClickCapture={onEntryToggleClick}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          chatStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+      >
         {chat.entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
             <div className="chat-empty-title">{t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
             <div className="chat-empty-hint">{t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
           </div>
         )}
-        {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染) */}
-        {groupEntriesByDay(chat.entries).flatMap((g) => [
+        {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染);
+            G14.31 折叠轮:sealed run 头点击 → 其后工具/思考行隐藏(用户/回复/旁白保留) */}
+        {groupEntriesByDay(visibleEntries).flatMap((g) => [
           g.label !== '' ? (
             <div key={`day:${g.key}`} className="chat-day-sep" role="separator" aria-label={g.label}>
               {g.label}
@@ -1229,7 +1566,13 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           ) : null,
           ...g.entries.map((entry) =>
             entry.kind === 'run' ? (
-              <RunEntryView key={entry.key} entry={entry} tokens={chat.tokens} />
+              <RunEntryView
+                key={entry.key}
+                entry={entry}
+                tokens={chat.tokens}
+                collapsed={collapsedRuns.has(entry.key)}
+                onToggle={entry.streaming === true ? undefined : toggleRun}
+              />
             ) : entry.kind === 'tool' ? (
               <ToolEntryView
                 key={entry.key}
@@ -1252,198 +1595,227 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             ),
           ),
         ])}
+        {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;
+            原「尾参挂最后一个工具行」只在工具执行期可见且左缘随工具行缩进不齐——独立成行对齐 */}
+        {running && (
+          <div className="run-live-line" role="status" aria-label="run status">
+            <span className="run-spinner" aria-hidden="true" />
+            <span>{`${chat.steps} steps`}</span>
+            <span>{fmtTokens(chat.tokens)}</span>
+          </div>
+        )}
       </main>
-      <footer className="composer">
-        {/* G10-C12:项目条是新对话(欢迎页)专属——会话中 composer 即正常形态,不再外挂项目条 */}
-        {/* G8d T5 输入面 textarea 自增高:rows 随内容换行数 1-6 派生(state 单源,清空/提交自然回 1);
-         *  Enter 提交 / Shift+Enter 换行(不 preventDefault——换行是 textarea 默认行为)。
-         *  G9-B4(spec §4):浮卡容器(elevated 面+三层海拔+22px 超椭圆渐进)在 CSS;此处只分结构
-         *  (textarea + composer-foot)并把发送/停止改 28px 圆形实心钮(↑/■ 图标,aria-label
-         *  send/stop 保查询性)——权限/模型 pill 无功能对应物不做(spec §0 复刻纪律)。 */}
-        {cmdData !== null && input.startsWith('/') && (() => {
-          const items = filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported);
-          const active = Math.min(cmdActive, Math.max(0, items.length - 1));
-          const pick = (item: CmdItem): void => {
-            if (!item.ok) return;
-            setInput(item.cmd + ' ');
-          };
-          return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
-        })()}
-        <textarea
-          aria-label="message input"
-          className="message-input"
-          value={input}
-          rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
-          placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
-          disabled={connState !== 'open' || seeding}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            const paletteItems = cmdData !== null && input.startsWith('/')
-              ? filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported)
-              : null;
-            if (paletteItems !== null) {
-              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                setCmdActive((a) => (paletteItems.length === 0 ? 0 : e.key === 'ArrowDown' ? (a + 1) % paletteItems.length : (a - 1 + paletteItems.length) % paletteItems.length));
-                return;
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setCmdData(null); // 本次收起(重开输入 / 即回)
-                return;
-              }
-              if (e.key === 'Tab') {
-                e.preventDefault();
-                const item = paletteItems[cmdActive];
-                if (item !== undefined) setInput(item.cmd + ' ');
-                return;
-              }
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                const item: CmdItem | undefined = paletteItems[cmdActive];
-                if (item !== undefined && input.includes(' ')) {
-                  // 参数已敲:整行直跑(supported 判定在 daemon;集外此处已置灰不可达 active?仍防御)
-                  if (item.ok) {
-                    setInput('');
-                    conn.runCommand(sessionId, input).catch(() => {});
-                  }
-                  return;
-                }
-                if (item !== undefined) {
-                  setInput(item.cmd + ' '); // 补全,面板续开收参数
-                  return;
-                }
-              }
+      {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
+       *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
+       *  发送/停止共用 32px 圆形实心钮(↑/■,aria-label send/stop 保查询性) */}
+      <ComposerCard
+        className="composer"
+        label="message input"
+        value={input}
+        rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
+        placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
+        disabled={connState !== 'open' || seeding}
+        onChange={setInput}
+        onKeyDown={(e) => {
+          const paletteItems = cmdData !== null && input.startsWith('/')
+            ? filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported)
+            : null;
+          if (paletteItems !== null) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              setCmdActive((a) => (paletteItems.length === 0 ? 0 : e.key === 'ArrowDown' ? (a + 1) % paletteItems.length : (a - 1 + paletteItems.length) % paletteItems.length));
+              return;
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setCmdData(null); // 本次收起(重开输入 / 即回)
+              return;
+            }
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              const item = paletteItems[cmdActive];
+              if (item !== undefined) setInput(item.cmd + ' ');
+              return;
             }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault(); // 提交不分流换行进内容面(受控清空,防闪换行)
-              send();
+              e.preventDefault();
+              const item: CmdItem | undefined = paletteItems[cmdActive];
+              if (item !== undefined && input.includes(' ')) {
+                // 参数已敲:整行直跑(supported 判定在 daemon;集外此处已置灰不可达 active?仍防御)
+                if (item.ok) {
+                  setInput('');
+                  conn.runCommand(sessionId, input).catch(() => {});
+                }
+                return;
+              }
+              if (item !== undefined) {
+                setInput(item.cmd + ' '); // 补全,面板续开收参数
+                return;
+              }
             }
-          }}
-        />
-        <div className="composer-foot">
+          }
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault(); // 提交不分流换行进内容面(受控清空,防闪换行)
+            send();
+          }
+        }}
+        overlays={
+          pillOpen === 'plus' ? (
+            <ComposerPlusPanel
+              conn={conn}
+              sessionId={sessionId}
+              root={root}
+              onInsert={(text) => {
+                setInput((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
+                setPillOpen(null);
+                inputRef.current?.focus();
+              }}
+            />
+          ) : cmdData !== null && input.startsWith('/') ? (
+            (() => {
+              const items = filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported);
+              const active = Math.min(cmdActive, Math.max(0, items.length - 1));
+              const pick = (item: CmdItem): void => {
+                if (!item.ok) return;
+                setInput(item.cmd + ' ');
+              };
+              return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
+            })()
+          ) : null
+        }
+        inputRef={inputRef}
+        footLeft={
           <div className="composer-pills">
+            {/* 与欢迎页同构(G12 三轮):+ 开附加面板(卡顶同宽浮层:命令/技能/文件) */}
             <button
               type="button"
-              className="composer-pill"
-              aria-label="session mode"
-              title={t('Permissions', '访问权限')}
-              onClick={() => setPillOpen((v) => (v === 'mode' ? null : 'mode'))}
+              className="composer-pill composer-plus-btn"
+              aria-label="add attachment"
+              aria-expanded={pillOpen === 'plus'}
+              title={t('Add skills, commands or files', '添加技能、命令或文件')}
+              onClick={() => setPillOpen((v) => (v === 'plus' ? null : 'plus'))}
             >
-              {sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}
-              <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              +
             </button>
-            {pillOpen === 'mode' && (
-              <div className="sx-menu-pop pill-pop" role="menu" aria-label="session mode menu">
-                {([
-                  ['dontAsk', t('Full access', '完全访问')],
-                  ['manual', t('Confirm changes', '变更确认')],
-                  ['plan', t('Plan mode', '计划模式')],
-                ] as const).map(([m, label]) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="menuitem"
-                    className="sx-menuitem"
-                    disabled={m === sessMode}
-                    onClick={() => {
-                      setPillOpen(null);
-                      setSessMode(m);
-                      conn.setSessionMode(sessionId, m).catch(() => {});
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {modelInfo !== null && modelInfo.choices.length > 0 && (
+            {/* 审批模式:弹层锚按钮正上方(pill-anchor) */}
+            <div className="pill-anchor">
+              <button
+                type="button"
+                className="composer-pill"
+                aria-label="session mode"
+                aria-expanded={pillOpen === 'mode'}
+                title={t('Permissions', '访问权限')}
+                onClick={() => setPillOpen((v) => (v === 'mode' ? null : 'mode'))}
+              >
+                <span className="pill-label">{sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}</span>
+                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+              {pillOpen === 'mode' && (
+                <div className="sx-menu-pop pill-pop" role="menu" aria-label="session mode menu">
+                  {([
+                    ['dontAsk', t('Full access', '完全访问')],
+                    ['manual', t('Confirm changes', '变更确认')],
+                    ['plan', t('Plan mode', '计划模式')],
+                  ] as const).map(([m, label]) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="menuitem"
+                      className="sx-menuitem"
+                      disabled={m === sessMode}
+                      onClick={() => {
+                        setPillOpen(null);
+                        setSessMode(m);
+                        conn.setSessionMode(sessionId, m).catch(() => {});
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        }
+        footRight={
+          <div className="composer-pills composer-pills-right">
+            {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存 */}
+            <ContextRing
+              used={ctxInfo?.total ?? 0}
+              window={ctxInfo?.window ?? 0}
+              parts={ctxInfo?.parts ?? []}
+              runs={runCount}
+              steps={chat.steps}
+              tokens={chat.tokens}
+              cacheTokens={chat.cacheTokens}
+              onOpen={refreshCtx}
+            />
+            {/* 模型 pill:显示实际模型名(剥 provider 前缀);菜单=模型列表+思考强度,锚按钮正上方,
+                选中不收口(一连选模型+强度,外点/再点收) */}
+            <div className="pill-anchor">
               <button
                 type="button"
                 className="composer-pill"
                 aria-label="session model"
-                title={t('Model', '模型')}
+                aria-expanded={pillOpen === 'model'}
+                title={modelInfo?.current ?? t('default model', '默认模型')}
                 onClick={() => setPillOpen((v) => (v === 'model' ? null : 'model'))}
               >
-                {modelInfo.current ?? 'default'}
+                <span className="pill-label">{baseModelName(modelInfo?.current)}</span>
+                {/* 思考强度随名(G13 反馈轮):`模型 · effort` 同 pill,Codex 同形 */}
+                <EffortChip effort={sessEffort ?? 'medium'} />
                 <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
-            )}
-            {pillOpen === 'effort' && (
-              <div className="sx-menu-pop pill-pop" role="menu" aria-label="effort menu">
-                {(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((ev2) => (
-                  <button
-                    key={ev2}
-                    type="button"
-                    role="menuitem"
-                    className="sx-menuitem"
-                    disabled={sessEffort === ev2}
-                    onClick={() => {
-                      setPillOpen(null);
-                      setSessEffort(ev2);
-                      conn.setSessionEffort(sessionId, ev2).catch(() => {});
+              {pillOpen === 'model' && (
+                <div className="sx-menu-pop pill-pop pill-pop-right pill-pop-tall" role="menu" aria-label="session model menu">
+                  {(modelInfo?.choices ?? []).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="menuitem"
+                      className="sx-menuitem"
+                      disabled={c.id === modelInfo?.current}
+                      title={c.id}
+                      onClick={() => {
+                        setModelInfo((m) => (m === null ? m : { ...m, current: c.id }));
+                        // 源自带档位强度(G13 反馈轮):切换即随名展示(快照回显前先乐观落)
+                        if (c.effort !== undefined) setSessEffort(c.effort);
+                        conn.setSessionModel(sessionId, c.id).catch(() => {});
+                      }}
+                    >
+                      {baseModelName(c.id)}
+                    </button>
+                  ))}
+                  {/* G14.14:强度滑块与欢迎页同一渲染(EffortSlider 共享) */}
+                  <EffortSlider
+                    value={sessEffort ?? 'medium'}
+                    onChange={(ev) => {
+                      setSessEffort(ev);
+                      conn.setSessionEffort(sessionId, ev).catch(() => {});
                     }}
-                  >
-                    {ev2}
-                  </button>
-                ))}
-              </div>
-            )}
-            {pillOpen === 'model' && modelInfo !== null && (
-              <div className="sx-menu-pop pill-pop pill-pop-tall" role="menu" aria-label="session model menu">
-                {modelInfo.choices.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="menuitem"
-                    className="sx-menuitem"
-                    disabled={c.id === modelInfo.current}
-                    onClick={() => {
-                      setPillOpen(null);
-                      setModelInfo((m) => (m === null ? m : { ...m, current: c.id }));
-                      conn.setSessionModel(sessionId, c.id).catch(() => {});
-                    }}
-                  >
-                    {c.id}
-                  </button>
-                ))}
-                <div className="pill-group-head">{t('Tier', '档位')}</div>
-                {(['small', 'medium', 'large'] as const).map((tv) => (
-                  <button
-                    key={tv}
-                    type="button"
-                    role="menuitem"
-                    className="sx-menuitem"
-                    disabled={sessTier === tv}
-                    onClick={() => {
-                      setSessTier(tv);
-                      conn.setSessionTier(sessionId, tv).catch(() => {});
-                    }}
-                  >
-                    {tv}
-                  </button>
-                ))}
-              </div>
+                  />
+                </div>
+              )}
+            </div>
+            {running ? (
+              <button type="button" className="send" aria-label="stop" title={t('Stop', '停止')} onClick={interrupt}>
+                <Square size={12} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="send"
+                aria-label="send"
+                title={t('Send', '发送')}
+                onClick={send}
+                disabled={connState !== 'open' || seeding}
+              >
+                <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+              </button>
             )}
           </div>
-          {running ? (
-            <button type="button" className="send" aria-label="stop" title={t('Stop', '停止')} onClick={interrupt}>
-              <Square size={12} strokeWidth={2.5} aria-hidden="true" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="send"
-              aria-label="send"
-              title={t('Send', '发送')}
-              onClick={send}
-              disabled={connState !== 'open' || seeding}
-            >
-              <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
-            </button>
-          )}
-        </div>
-      </footer>
+        }
+      />
     </>
   );
 }

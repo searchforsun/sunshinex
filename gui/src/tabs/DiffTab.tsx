@@ -36,7 +36,7 @@ export function DiffTab({ conn, sessionId, params }: DiffTabProps): JSX.Element 
     if (callId === undefined) return; // 裸开档(无 callId):不拉,引导文案面
     let alive = true;
     setLoad({ status: 'loading' });
-    conn.fetchDiff(sessionId, callId).then(
+    conn.fetchDiff(sessionId, callId, params.path).then(
       (resp) => {
         if (alive) setLoad({ status: 'loaded', resp });
       },
@@ -93,7 +93,7 @@ export function DiffTab({ conn, sessionId, params }: DiffTabProps): JSX.Element 
         {resp.oldContent === undefined && <span className="sx-diff-badge">新建</span>}
         {resp.truncated === true && <span className="sx-diff-truncated">内容超限已截断</span>}
       </div>
-      <DiffPanel oldStr={resp.oldContent} newStr={resp.newContent} />
+      <DiffPanel oldStr={resp.oldContent} newStr={resp.newContent} path={resp.path} />
     </div>
   );
 }

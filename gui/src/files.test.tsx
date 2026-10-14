@@ -1,3 +1,19 @@
+// monaco 真渲染需要浏览器布局——jsdom 挂 stub(内容经 DiffPanel 根 data-* 断言)
+vi.mock('monaco-editor', () => ({
+  editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
+}));
+vi.mock('@monaco-editor/react', () => ({
+  loader: { config: vi.fn() },
+  Editor: (props: { value?: string; language?: string }) => (
+    <div className="mock-monaco-editor" data-language={props.language}>
+      {props.value}
+    </div>
+  ),
+  DiffEditor: (props: { original?: string; modified?: string }) => (
+    <div className="mock-monaco-diff" data-original={props.original} data-modified={props.modified} />
+  ),
+}));
+
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
@@ -64,26 +80,19 @@ describe('highlightCode:扩展名→语言映射', () => {
   });
 });
 
-describe('DiffPanel:双列/单列形态', () => {
-  it('old+new:双列 pre(左 old 右 new)+ 标题行 − old / + new', () => {
-    render(<DiffPanel oldStr="旧内容" newStr="新内容" />);
+describe('DiffPanel:Monaco DiffEditor 装载(G14.5 data-* 面)', () => {
+  it('old+new:双态入参在根 data-* 上逐字保留', () => {
+    render(<DiffPanel oldStr="旧内容" newStr="新内容" path="x.ts" />);
     expect(screen.getByLabelText('diff')).toBeDefined();
-    expect(screen.getByText('− old')).toBeDefined();
-    expect(screen.getByText('+ new')).toBeDefined();
-    const cols = document.querySelectorAll('.diff-panel .diff-col');
-    expect(cols).toHaveLength(2);
-    expect(cols[0]!.textContent).toBe('旧内容');
-    expect(cols[0]!.className).toContain('diff-old');
-    expect(cols[1]!.textContent).toBe('新内容');
-    expect(cols[1]!.className).toContain('diff-new');
+    const panel = document.querySelector('.diff-panel')!;
+    expect(panel.getAttribute('data-diff-old')).toBe('旧内容');
+    expect(panel.getAttribute('data-diff-new')).toBe('新内容');
   });
 
-  it('无 oldStr:只右列(write 整文件替换写形态)', () => {
+  it('无 oldStr:data-diff-old 为空串(新建文件形态)', () => {
     render(<DiffPanel newStr="唯一内容" />);
-    const cols = document.querySelectorAll('.diff-panel .diff-col');
-    expect(cols).toHaveLength(1);
-    expect(cols[0]!.className).toContain('diff-new');
-    expect(cols[0]!.textContent).toBe('唯一内容');
+    expect(document.querySelector('.diff-panel')!.getAttribute('data-diff-old')).toBe('');
+    expect(document.querySelector('.diff-panel')!.getAttribute('data-diff-new')).toBe('唯一内容');
   });
 });
 
@@ -95,7 +104,8 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
     fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
     await waitFor(() => expect(conn.readFile).toHaveBeenCalledWith('s1', 'src/a.ts'));
     await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
-    expect(document.querySelector('.files-view .hljs-keyword')).not.toBeNull(); // const → keyword
+    expect(document.querySelector('.mock-monaco-editor')!.getAttribute('data-language')).toBe('typescript'); // G14.5 monaco 面
+    expect(screen.getByText('a.ts')).toBeDefined(); // 面包屑末级文件名
     expect(document.querySelector('.files-truncated')).toBeNull(); // 未截断无横幅
   });
 
@@ -132,7 +142,7 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
     const conn = connOf({ readFile: vi.fn(() => Promise.reject(new Error('/session/s1/file?path=../x -> 403'))) });
     render(<Files conn={conn} sessionId="s1" />);
     fireEvent.change(screen.getByLabelText('file path input'), { target: { value: '../x' } });
-    fireEvent.click(screen.getByRole('button', { name: '加载' }));
+    fireEvent.click(screen.getByRole('button', { name: /加载|^Load$/ }));
     await waitFor(() => expect(screen.getByText('/session/s1/file?path=../x -> 403')).toBeDefined());
     expect(document.querySelector('.files-view')).toBeNull(); // 无内容面
   });
@@ -141,7 +151,8 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
     const conn = connOf();
     render(<Files conn={conn} sessionId="s1" initialPath="src/jump.ts" />);
     await waitFor(() => expect(conn.readFile).toHaveBeenCalledWith('s1', 'src/jump.ts'));
-    expect((screen.getByLabelText('file path input') as HTMLInputElement).value).toBe('src/jump.ts');
+    await waitFor(() => expect(screen.getByText('a.ts')).toBeDefined()); // 面包屑末级=文件名(应答 path 决定;G14.5 无常驻输入行)
+    // (getByText 须在播种渲染后断言——上方 waitFor 只保证 readFile 调用,不保证状态落位)
   });
 });
 
@@ -195,27 +206,26 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
   const writeCall = (path: string, content: string): SessionEvent =>
     ev('tool-call', 'write', { input: { path, content }, callId: 'c1', status: 'pending' });
 
-  it('write 条目:折叠态一行(● write <path> ⎿ result);点击展开 DiffPanel 右列=input.content(fetchDiff 404 退单列)', async () => {
+  it('write 条目:折叠=文件名+相对路径(+stat);点击展开自绘行级 diff(404 退新文件全行 add)', async () => {
     const { sinkRef, unmount } = await mountChat();
     act(() => {
       sinkRef.current!.on(writeCall('src/a.ts', '新文件体'), 1);
-      sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
+      sinkRef.current!.on(ev('tool-result', 'written +1 -0', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    expect(toolRow('write src/a.ts')).toBeDefined(); // 折叠一行(图标化,●/⎿ 退役)
-    // G11 §2 折叠壳常挂载:面板恒在 DOM,折叠由 CSS 收起(.tool-body 无 open 类 + aria-hidden)
+    const row = toolRow('write a.ts src/ +1 -0')!;
+    expect(row).toBeDefined(); // 折叠一行:文件名 强调 + 相对路径 弱色 + stat
+    // G11 §2 折叠壳常挂载:diff 行块恒在 DOM,折叠由 CSS 收起(.tool-body 无 open 类 + aria-hidden)
     expect(document.querySelector('.tool-body')?.classList.contains('open')).toBe(false);
     expect(document.querySelector('.tool-body')?.getAttribute('aria-hidden')).toBe('true');
-    expect(document.querySelector('.diff-panel')).not.toBeNull(); // 常挂载:面板在场(不可见)
-    fireEvent.click(toolRow('write src/a.ts')!);
-    // 加载期先示右列现内容(面板即刻在场),404 应答落定后退单列——形不变
-    expect(document.querySelector('.diff-panel')).not.toBeNull();
-    expect(document.querySelector('.diff-panel .diff-new')?.textContent).toBe('新文件体');
-    await waitFor(() => expect(document.querySelectorAll('.diff-panel .diff-col')).toHaveLength(1)); // 404 退单列(现内容)
-    expect(document.querySelector('.diff-panel .diff-new')?.textContent).toBe('新文件体');
+    expect(document.querySelector('.diff-lines')).not.toBeNull(); // 常挂载:diff 行块在场(不可见)
+    fireEvent.click(row);
+    // 加载期先示右列现内容(行块即刻在场),404 应答落定后退新文件形态——行块不变
+    expect(document.querySelector('.diff-lines')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.diff-line.add')?.textContent).toContain('新文件体'));
     unmount();
   });
 
-  it('G7 write 展开:fetchDiff 成功 → DiffPanel 双列(oldContent/newContent)+ 调用 (sessionId, callId)', async () => {
+  it('G7 write 展开:fetchDiff 成功 → DiffLines 行级 del/add(oldContent/newContent)+ 调用 (sessionId, callId)', async () => {
     const fetchDiff = vi.fn(() =>
       Promise.resolve({ path: '/r/src/a.ts', oldContent: '写前旧文', newContent: '磁盘现文件' } as DiffResp),
     );
@@ -224,41 +234,42 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(writeCall('src/a.ts', '调用入参内容'), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    fireEvent.click(toolRow('write src/a.ts')!);
-    await waitFor(() => expect(fetchDiff).toHaveBeenCalledWith('s1', 'c1'));
+    fireEvent.click(toolRow('write a.ts src/')!);
+    await waitFor(() => expect(fetchDiff).toHaveBeenCalledWith('s1', 'c1', 'src/a.ts')); // G14.4:path 随参
     await waitFor(() => {
-      const cols = document.querySelectorAll('.diff-panel .diff-col');
-      expect(cols).toHaveLength(2); // 双列:左 pre-image 右现文件
-      expect(cols[0]!.textContent).toBe('写前旧文');
-      expect(cols[1]!.textContent).toBe('磁盘现文件');
+      expect(document.querySelector('.diff-line.del')?.textContent).toContain('写前旧文'); // pre-image 行
+      expect(document.querySelector('.diff-line.add')?.textContent).toContain('磁盘现文件'); // 现文件行
     });
     unmount();
   });
 
-  it('write 展开:path 文本按钮 → onOpenFile(path)', async () => {
+  it('write 展开:path 文本按钮 → onOpenFile(path);折叠行文件名可点直达(G14.8)', async () => {
     const onOpenFile = vi.fn();
     const { sinkRef, unmount } = await mountChat({ onOpenFile });
     act(() => {
       sinkRef.current!.on(writeCall('src/b.ts', 'body'), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    fireEvent.click(toolRow('write src/b.ts')!);
+    // 折叠行文件名可点直达文件预览(stopPropagation,不触发展开)
+    fireEvent.click(screen.getByText('b.ts', { selector: '.tool-file-link' })!);
+    expect(onOpenFile).toHaveBeenCalledWith('src/b.ts');
+    expect(document.querySelector('.entry-tool.open')).toBeNull();
+    fireEvent.click(toolRow('write b.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
     expect(onOpenFile).toHaveBeenCalledWith('src/b.ts');
     unmount();
   });
 
-  it('非 write 工具(read):展开 result 摘要,无 DiffPanel 无 path 按钮', async () => {
+  it('read 条目(G14 分型):整行=打开文件标签(不展开,无 DiffPanel)', async () => {
     const onOpenFile = vi.fn();
     const { sinkRef, unmount } = await mountChat({ onOpenFile });
     act(() => {
       sinkRef.current!.on(ev('tool-call', 'read', { input: { path: 'src/c.ts' }, callId: 'c2', status: 'pending' }), 1);
       sinkRef.current!.on(ev('tool-result', 'file content here', { tool: 'read', callId: 'c2', status: 'completed' }), 2);
     });
-    fireEvent.click(toolRow('read src/c.ts')!);
-    expect(screen.getByText('file content here')).toBeDefined(); // 展开示 result 摘要
-    expect(document.querySelector('.diff-panel')).toBeNull();
-    expect(onOpenFile).not.toHaveBeenCalled();
+    fireEvent.click(toolRow('read c.ts src/')!);
+    expect(onOpenFile).toHaveBeenCalledWith('src/c.ts'); // 整行点击 = 侧栏文件预览
+    expect(document.querySelector('.diff-panel')).toBeNull(); // read 无 diff 面
     unmount();
   });
 
@@ -298,7 +309,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(ev('tool-call', 'write', { input: { path: 'src/x.ts', content: '旧代内容' }, callId: 'c9', status: 'pending' }), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c9', status: 'completed' }), 2);
     });
-    expect(toolRow('write src/x.ts')).toBeDefined();
+    expect(toolRow('write x.ts src/')).toBeDefined();
     act(() => {
       sinkRef.current!.reset(); // reseed(第二快照 lastSeq 2):投影 + toolInputs 清
     });

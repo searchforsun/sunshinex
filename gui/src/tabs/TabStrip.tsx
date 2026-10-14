@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Plus, PanelLeft, PanelRight, FileText, KanbanSquare, FolderTree, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { X, Plus, PanelLeft, PanelRight, FileText, KanbanSquare, FolderTree, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
 import { TAB_REGISTRY, tabEntry } from './registry';
 import type { TabTypeId } from './tab-state';
 
@@ -25,6 +25,7 @@ export interface TabStripProps {
 
 /** 类型图标(pill/菜单共用;G8b-d 增类在此补图标) */
 const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
+  sidechat: MessageCircle,
   file: FileText,
   directory: FolderTree,
   tasks: KanbanSquare,
@@ -82,11 +83,13 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     return () => window.removeEventListener('keydown', onKey);
   }, [disabled, onCloseActive, onCycle]);
 
-  const collapseBtn = (
+  // G14.28:展开态钉最右侧(mlAuto);折叠态细条已由 App 整体不渲染(保留本钮兜底)
+  const collapseBtn = (mlAuto: boolean) => (
     <button
       type="button"
       aria-label="collapse sidebar"
       className="sx-iconbtn"
+      style={mlAuto ? { marginLeft: 'auto' } : undefined}
       disabled={disabled}
       onClick={onToggleCollapse}
     >
@@ -102,13 +105,15 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   if (collapsed) {
     return (
       <div className="sx-tabstrip" ref={rootRef} style={stripStyle} title={stripTitle}>
-        {collapseBtn}
+        {collapseBtn(false)}
       </div>
     );
   }
 
   return (
     <div className="sx-tabstrip" ref={rootRef} style={stripStyle} title={stripTitle}>
+      {/* G14.39:标签滚动区独立(overflow-x auto 只裁标签);+/弹窗在滚动区外,弹窗不被条裁切 */}
+      <div className="sx-tabstrip-scroll">
       {tabs.map((t) => {
         const entry = tabEntry(t.type);
         const title = entry.title(t.params);
@@ -138,6 +143,9 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           </button>
         );
       })}
+      </div>
+      {/* G14.39:「+」弹窗跟随按钮、开在其下(相对锚容器;原 absolute right:8px 钉右缘) */}
+      <div className="sx-strip-newtab" style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
       <button
         type="button"
         aria-label="new tab"
@@ -180,7 +188,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           })}
         </div>
       )}
-      {collapseBtn}
+      </div>
+      {collapseBtn(true)}
     </div>
   );
 }

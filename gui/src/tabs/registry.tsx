@@ -15,6 +15,7 @@ import { AgentsTab } from './AgentsTab';
 import { ContextTab, BgTasksTab, MemoryTab } from './InsightTabs';
 import { WebTab } from './WebTab';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
+import type { MutableRefObject } from 'react';
 
 export interface TabServices {
   // App 投影面(G8a:任务标签消费;后续批次按需扩)
@@ -43,6 +44,8 @@ export interface TabRenderProps {
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
   readonly root: string;
+  /** G14.29 辅助对话(App 按 sideId 注入旁路聊天 sink——App onEvent 同键路由帧;他型忽略) */
+  readonly chatSinkRef?: MutableRefObject<import('../pages/Chat').ChatSink | null>;
 }
 
 export interface TabTypeEntry {
@@ -62,6 +65,8 @@ export interface TabTypeEntry {
  * 会话单例,惰拉树文件行跳 file)+ tasks(每会话单例)+ agents(每会话单例——子代理活动聚合卡,
  * G8d:payload.subagent 事件流经 App applyAgentEvent 归约,services.agentActivities 注入)+
  * 终端(nonce 多实例)+ web(by url 判重多实例——裸开档 key='' 聚焦既有,标签体内输入开档) */
+import { Chat } from '../pages/Chat';
+
 export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
@@ -87,7 +92,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => '目录',
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <DirectoryTab conn={p.conn} sessionId={p.sessionId} openTab={p.openTab} />,
+    render: (p) => <DirectoryTab conn={p.conn} sessionId={p.sessionId} root={p.root} openTab={p.openTab} />,
   },
   {
     id: 'tasks',
@@ -166,7 +171,33 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     singleton: false,
     render: (p) => <WebTab params={p.params} />,
   },
-];
+  {
+    id: 'sidechat',
+    group: 'session',
+    // G14.29 辅助对话:fork 旁路会话绑定的完整 Chat(sideId 寻址;帧路由经 App chatSinkRef)
+    title: (params) => (params.sideId !== undefined ? '辅助对话' : '辅助对话'),
+    resolveKey: (params) => params.sideId ?? '',
+    singleton: false,
+    render: (p) =>
+      p.chatSinkRef !== undefined && p.params.sideId !== undefined ? (
+        // G14.30 贴地壳:窄面板内 flex 列(头部/流区滚动/composer 钉底)
+        <div className="sx-sidechat">
+          <Chat
+            conn={p.conn}
+            sessionId={p.params.sideId}
+            connState="open"
+            onBack={() => {}}
+            sinkRef={p.chatSinkRef}
+            root={p.root}
+            freshView
+            fixedTitle=""
+          />
+        </div>
+      ) : (
+        <></>
+      ),
+    },
+  ];
 
 /** 查表:缺则 throw(开档/渲染面共用;新类型入表前先炸可见,不静默) */
 export function tabEntry(id: TabTypeId): TabTypeEntry {

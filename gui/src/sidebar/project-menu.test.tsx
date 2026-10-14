@@ -4,14 +4,9 @@ import { ProjectMenu } from './ProjectMenu';
 import type { ProjectMenuConn } from './ProjectMenu';
 
 /**
- * 落盘说明(brief task-4):本文件 = brief 测试代码逐字落盘,唯三适配(brief 原文在本仓
- * RTL16+React18.3+tsc strict 环境无法转绿,详见 task-4-report.md):
- * 1) DirPicker 模态断言(brief 明文允许)——以 DirPicker 既有 role=dialog 面;
- * 2) 前四例的 p1 定位改 await findByText——RTL render 为同步 act(dist/pure.js renderRoot
- *    证实,asyncWrapper 仅挂 waitFor),不冲已 resolve promise 的微任务续体,同步
- *    getByText 恒 miss;同元素同断言语义,home.test.tsx 既有同款惯例。
- * 3) stub 的 roots 注解 string[][] 改 string[]——brief 笔误(push 的是 root 字符串且断言
- *    toEqual(['D:/w/p1']),运行时本就是 string[];纯类型面,运行时零改动)。
+ * G14.9 launcher IA:会话只在 RECENTS 列(顶部主列表,空态「暂无最近会话」占位);
+ * PROJECTS 分组=启动器(点击回欢迎页预选该项目,不再内联列会话);搜索面板项目行同语义。
+ * 历史锚:本文件前身为 brief task-4 落盘(适配注记见 git),launcher 化后按新 IA 重写用例。
  */
 
 /** stub conn:一项目组(p1, root 在场)+ 一历史组(p2, root 缺场) */
@@ -58,77 +53,62 @@ function renderMenu(conn: ProjectMenuConn, props?: Partial<Parameters<typeof Pro
   );
 }
 
-describe('ProjectMenu(spec §1 左栏项目分组)', () => {
-  it('工作区=组;组头点击展开惰拉 sessions(root 缺场组禁用)', async () => {
+describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', () => {
+  it('项目行=展开器(G14.32):点击展开组内会话列表(惰拉 sessionsOf);hover 钮=onComposeIn;root 缺场组禁用', async () => {
+    const onComposeIn = vi.fn();
     const conn = makeConn();
-    renderMenu(conn);
+    renderMenu(conn, { onComposeIn });
     expect(await screen.findByText('p1')).toBeTruthy();
     expect(screen.getByText('p2')).toBeTruthy();
     expect((screen.getByTitle(/root 未登记/) as HTMLButtonElement).disabled).toBe(true);
+    // 组行点击=展开:惰拉 sessionsOf,组内会话行在场(组行/RECENTS 行/recents 去重前同文——取首个)
     fireEvent.click(await screen.findByText('p1'));
-    expect(await screen.findByText('demo goal')).toBeTruthy();
-    expect(conn.roots).toEqual(['D:/w/p1']); // 惰拉:仅展开才请求
-  });
-
-  it('Attach 两步(newSession+attach)→ onOpenSession(sessionId, root)', async () => {
-    const conn = makeConn();
-    renderMenu(conn);
-    fireEvent.click(await screen.findByText('p1'));
-    fireEvent.click(await screen.findByTitle('打开会话'));
-    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1'));
-  });
-
-  it('组内「+」:回欢迎页并预选该项目(onComposeIn)', async () => {
-    const onComposeIn = vi.fn();
-    renderMenu(makeConn(), { activeRoot: '', onComposeIn });
-    fireEvent.click(await screen.findByText('p1'));
-    fireEvent.click(screen.getByRole('button', { name: 'new session in p1' }));
+    await waitFor(() => expect(conn.roots).toEqual(['D:/w/p1']));
+    expect((await screen.findAllByText('demo goal'))[0]).toBeTruthy();
+    // 新对话入口移至行尾 hover 钮:点击才 onComposeIn
+    fireEvent.click(screen.getByLabelText('new session in p1'));
     expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1');
   });
 
-  it('组内「+」(manual 档测试):同样回欢迎页预选该项目', async () => {
-    const onComposeIn = vi.fn();
-    renderMenu(makeConn(), { activeRoot: '', onComposeIn });
-    fireEvent.click(await screen.findByText('p1'));
-    fireEvent.click(screen.getByRole('button', { name: 'new session in p1' }));
-    expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1');
-  });
-
-  it('activeRoot 组自动展开;点开的会话行 active(journal 映射),未点开不亮', async () => {
+  it('RECENTS 行=Attach 两步(newSession+attach)→ onOpenSession + 行 active + 未读点消失', async () => {
     const conn = makeConn();
-    renderMenu(conn, { activeSessionId: 'new-D:/w/p1', activeRoot: 'D:/w/p1' });
+    renderMenu(conn, { activeSessionId: 'new-D:/w/p1' });
     const row = await screen.findByText('demo goal');
-    // 未点开(无 journal 映射):行不亮——root 兜底退役(整组全亮读作误 hover)
-    expect(row.closest('.sx-session-row')!.className).not.toContain('active');
-    // 点开会话行:attach 两步记下会话 id ↔ journal 行映射 → 行 active + 未读蓝点消失
     fireEvent.click(row);
+    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1'));
     await waitFor(() => expect(row.closest('.sx-session-row')!.className).toContain('active'));
     expect(row.closest('.sx-session-row')!.querySelector('.sx-session-dot.unseen')).toBeNull();
   });
 
-  it('「+ 添加工作区」:原生选择器选完 → createWorkspace 建项目(G10-C11)', async () => {
+  it('「+ 添加工作区」:浏览器态开服务端 DirPicker → 确认登记既有目录(G14.51 只登记不建目录)', async () => {
     const conn = makeConn();
     renderMenu(conn);
-    // jsdom 无 showDirectoryPicker——桩一个原生选择器(选回名字 p9)
-    Object.defineProperty(window, 'showDirectoryPicker', {
-      configurable: true,
-      value: async () => ({ name: 'p9' }),
-    });
     fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-    await waitFor(() => expect(conn.createWorkspace).toHaveBeenCalledWith({ name: 'p9' }));
-    delete (window as { showDirectoryPicker?: unknown }).showDirectoryPicker;
+    // DirPicker 弹层在场(缺省 home 起;桩回 D:/w)——确认取当前浏览路径
+    await screen.findByRole('dialog', { name: 'choose directory' });
+    fireEvent.click(await screen.findByRole('button', { name: '选择此目录' }));
+    // {path} 分支=登记既有目录;旧 {name} 建目录分支不再被 GUI 触达
+    await waitFor(() => expect(conn.createWorkspace).toHaveBeenCalledWith({ path: 'D:/w' }));
   });
 
+  it('「+ 添加工作区」:桌面壳 IPC 回全路径 → createWorkspace({path}) 直登(不开弹层)', async () => {
+    const conn = makeConn();
+    Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => 'D:/w/p9' } });
+    renderMenu(conn);
+    fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
+    await waitFor(() => expect(conn.createWorkspace).toHaveBeenCalledWith({ path: 'D:/w/p9' }));
+    delete (window as { sunshinex?: unknown }).sunshinex;
+  });
 });
 
-describe('ProjectMenu G10-C2 侧栏双区 IA', () => {
-  it('品牌行/新对话行/Projects·Recents 分区头在场;Recents 扁平列出跨工作区最近会话', async () => {
+describe('ProjectMenu G10-C2 侧栏(分区头与 Recents 恒显)', () => {
+  it('品牌行/新对话行/Recents·Projects 分区头在场;RECENTS 列出跨工作区最近会话', async () => {
     renderMenu(makeConn(), { activeRoot: '' });
     expect(screen.getByText('Sunshinex')).toBeDefined();
     expect(screen.getAllByRole('button', { name: 'new chat' }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Projects')).toBeDefined();
     expect(screen.getByText('Recents')).toBeDefined();
-    expect(await screen.findAllByText('demo goal')).toHaveLength(1); // 组收起态:仅 Recents 行(组展开后组内行再现)
+    expect(screen.getByText('Projects')).toBeDefined();
+    expect(await screen.findAllByText('demo goal')).toHaveLength(1); // 唯一会话列表
   });
 
   it('New chat:回欢迎页开新对话(onNewChat)', () => {
@@ -140,11 +120,15 @@ describe('ProjectMenu G10-C2 侧栏双区 IA', () => {
     expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 
-  it('项目行 +:回欢迎页并预选该项目(onComposeIn)', async () => {
+  it('搜索面板项目行:点击同样回欢迎页预选该项目(onComposeIn)', async () => {
     const onComposeIn = vi.fn();
-    renderMenu(makeConn(), { activeRoot: '', onComposeIn });
-    fireEvent.click(await screen.findByText('p1')); // 展开组
-    fireEvent.click(screen.getByRole('button', { name: 'new session in p1' }));
-    expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1');
+    const conn = makeConn();
+    renderMenu(conn, { onComposeIn });
+    await screen.findByText('p1');
+    fireEvent.click(screen.getByRole('button', { name: 'search' }));
+    // 搜索面板在前、组行在后——按容器内按钮精确定位(避免组行同名文本歧义)
+    const searchRow = Array.from(document.querySelectorAll('.sx-side-search button')).find((b) => (b.textContent ?? '').startsWith('p1'));
+    fireEvent.click(searchRow!);
+    await waitFor(() => expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1'));
   });
 });
