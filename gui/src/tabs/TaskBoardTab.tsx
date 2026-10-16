@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Maximize2, X } from 'lucide-react';
 import { layoutBoard } from '../board-layout';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
-import { DELEGATION_STATUS_TEXT } from './AgentsTab';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
 
 /**
- * G14.174 「任务板」页签体（原 Agents 页签重定位,用户裁决「Agents→任务板」+「任务面板也是卡片流,
- * 分两种卡片类型」+「切换按钮放卡片开头,每张卡独立切换」）:
- * 卡片流——任务按创建批次分卡(createdAt 间隔 >2min 即新批,时间由上到下、渲染最新在顶);
- * 每卡头部 = 视图切换(列表|流程图,逐卡独立)+ 关联轮次用户输入(单行省略) + 右侧创建时间;
- * 卡体两型——任务列表(状态点+任务名+执行子代理名,点击跳对应子代理页签;gated 行内 Approve/Deny)
- * | 流程图(完整 DAG:节点同信息+依赖曲线连线,节点点击同跳转)。
- * 测试钩子沿用:svg.board-dag/[data-task]/gated 类钩、.delegation-list/.delegation-main、
- * 行内 Approve/Deny 按钮、aria-label `${id} [${status}] ${title}`。
- *
- * DAG 选型:沿用仓内 layoutBoard(Kahn 分层,零新依赖)+自绘 svg——react-flow/elk 的交互壳与
- * 暗色 token 风格相性差且体积大;分层+状态色+曲线连线已满足「任务关联关系」主诉求。
+ * G14.174 「任务板」页签体(原 Agents 页签重定位):卡片流——任务按创建批次分卡(≈每轮一卡,
+ * createdAt 间隔 >2min 即新批,时间由上到下、渲染最新在顶)。
+ * G14.213 按用户设计重构:
+ * - 卡头 = [列表|流程图 切换(左)] + 轮次用户输入(单行省略) + 时间(右)
+ * - 只显示任务:页内 DELEGATIONS 委派段去除(委派状态走右侧徽标面);行=状态图标+任务名+
+ *   执行子代理名(仅执行/完成态显,等待态不显)→ 点击跳对应子 agent 页签(等待态不跳)
+ * - 状态图标三态:运行(claimed/in_review)=转圈;完成=蓝点;等待(pending)=灰点;失败=红点
+ * - DAG:预设高度滚动,右上角放大钮 → 弹窗大图(同一 svg 复用);节点同列表行语义
+ * 测试钩子沿用:svg.board-dag/[data-task]/gated 类钩、行内 Approve/Deny 按钮、
+ * aria-label `${id} [${status}] ${title}`。DAG 选型:仓内 layoutBoard(Kahn 分层,零新依赖)+自绘 svg。
  */
 
 export interface TaskBoardTabProps {
@@ -58,7 +57,7 @@ function groupTasks(tasks: BoardTask[]): BoardTask[][] {
 
 type CardView = 'list' | 'dag';
 
-/** 单卡:头部=视图切换+轮次输入+创建时间;体=列表|DAG 两型 */
+/** 单卡:头部=[列表|流程图(左)]+轮次输入(单行省略)+时间;体=列表|DAG 两型;DAG 可放大弹窗 */
 function TaskCard({
   group,
   board,
@@ -75,12 +74,15 @@ function TaskCard({
   onReview?: (taskId: string, approved: boolean) => void;
 }): JSX.Element {
   const [view, setView] = useState<CardView>('list');
+  const [zoom, setZoom] = useState(false);
   const latestMs = group.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
   const byId = useMemo(() => new Map(group.map((x) => [x.id, x])), [group]);
+  const dagEl = (
+    <TaskDag group={group} board={board} delegations={delegations} onOpenAgent={onOpenAgent} byId={byId} />
+  );
   return (
     <section className="tb-card">
       <div className="tb-card-head">
-        <span className="todo-card-goal">{turnGoal !== '' ? turnGoal : t('(no turn input)', '(未关联轮次输入)')}</span>
         <div className="view-toggle" role="group" aria-label="task card view">
           <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
             {t('List', '列表')}
@@ -89,83 +91,77 @@ function TaskCard({
             DAG
           </button>
         </div>
+        <span className="todo-card-goal">{turnGoal !== '' ? turnGoal : t('(no turn input)', '(未关联轮次输入)')}</span>
         <span className="todo-card-time">{shortStampMs(latestMs)}</span>
       </div>
       {view === 'list' ? (
-        <>
-          <ul className="tb-task-list" aria-label="task list">
-            {group.map((task) => {
-              const d = agentOfTask(task, delegations);
-              const agentName = d !== undefined ? (d.title !== undefined && d.title !== '' ? d.title : d.label) : task.assignee !== undefined ? `@${task.assignee}` : '';
-              return (
-                <li key={task.id} className={`tb-task-row task-status-${task.status}${task.gated === true ? ' gated' : ''}`}>
-                  <button
-                    type="button"
-                    className="tb-task-main" data-task-id={task.id} data-task-title={task.title}
-                    aria-label={`${task.id} [${task.status}] ${task.title}`}
-                    data-tip={agentName !== '' ? t('Open subagent transcript', '打开子代理转录') : undefined}
-                    onClick={() => {
-                      if (d !== undefined) {
-                        const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                        onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText.slice(0, 2000));
-                      }
-                    }}
-                  >
-                    <span className={`tb-status-dot task-status-${task.status}`} aria-hidden="true" />
-                    <span className="tb-task-title">
-                      {task.title !== '' ? task.title : task.id}
-                      {task.gated === true && <span className="sx-badge sx-badge-warn" role="img" aria-label="gate waiting">⚠</span>}
-                    </span>
-                    {agentName !== '' && <span className="tb-task-agent">{agentName}</span>}
-                  </button>
-                  {task.gated === true && (
-                    <span className="gate-actions">
-                      <button type="button" className="approve" onClick={() => onReview?.(task.id, true)}>
-                        {`Approve ${task.id}`}
-                      </button>
-                      <button type="button" className="deny" onClick={() => onReview?.(task.id, false)}>
-                        {`Deny ${task.id}`}
-                      </button>
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-          {delegations.length > 0 && (
-            <section className="delegations" aria-label="delegations">
-              <h3>delegations</h3>
-              <ul className="delegation-list">
-                {delegations.map((d) => {
-                  const name = d.title !== undefined && d.title !== '' ? d.title : d.label;
-                  return (
-                    <li key={d.id} className={`delegation delegation-${d.status}`}>
-                      <button
-                        type="button"
-                        className="delegation-main"
-                        aria-label={`open agent ${d.label}`}
-                        data-tip={t('Open subagent transcript', '打开子代理转录')}
-                        onClick={() => onOpenAgent?.(d.label, name, d.title)}
-                      >
-                          <span className="delegation-title">{name}</span>
-                          <span className={`sx-subagent-status delegation-${d.status}`}>{DELEGATION_STATUS_TEXT[d.status] ?? d.status}</span>
-                      </button>
-                      {d.label !== name && <span className="delegation-id">{d.label}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-        </>
+        <ul className="tb-task-list" aria-label="task list">
+          {group.map((task) => {
+            const d = agentOfTask(task, delegations);
+            // G14.213 子代理名仅执行/完成态显(等待态无委派不显);点击仅委派在场可跳
+            const agentName = d !== undefined ? (d.label !== '' ? d.label : (d.title ?? '')) : '';
+            return (
+              <li key={task.id} className={`tb-task-row task-status-${task.status}${task.gated === true ? ' gated' : ''}`}>
+                <button
+                  type="button"
+                  className="tb-task-main" data-task-id={task.id} data-task-title={task.title}
+                  aria-label={`${task.id} [${task.status}] ${task.title}`}
+                  data-tip={agentName !== '' ? t('Open subagent transcript', '打开子代理转录') : undefined}
+                  onClick={() => {
+                    if (d === undefined) return; // 等待态:无执行子代理,不跳转
+                    const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
+                    onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText.slice(0, 2000));
+                  }}
+                >
+                  <span className={`tb-status-dot task-status-${task.status}`} aria-hidden="true" />
+                  <span className="tb-task-title">
+                    {task.title !== '' ? task.title : task.id}
+                    {task.gated === true && <span className="sx-badge sx-badge-warn" role="img" aria-label="gate waiting">⚠</span>}
+                  </span>
+                  {agentName !== '' && <span className="tb-task-agent">{agentName}</span>}
+                </button>
+                {task.gated === true && (
+                  <span className="gate-actions">
+                    <button type="button" className="approve" onClick={() => onReview?.(task.id, true)}>
+                      {`Approve ${task.id}`}
+                    </button>
+                    <button type="button" className="deny" onClick={() => onReview?.(task.id, false)}>
+                      {`Deny ${task.id}`}
+                    </button>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       ) : (
-        <TaskDag group={group} board={board} delegations={delegations} onOpenAgent={onOpenAgent} byId={byId} />
+        <div className="tb-dag-wrap">
+          <div className="board-dag-scroll tb-dag-scroll">{dagEl}</div>
+          {/* G14.213 右上角放大钮:弹窗大图(同一 DAG 复用) */}
+          <button type="button" className="tb-dag-zoom" aria-label={t('Zoom DAG', '放大流程图')} data-tip={t('Zoom', '放大')} onClick={() => setZoom(true)}>
+            <Maximize2 size={13} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      {zoom && (
+        <div className="dag-zoom-overlay" onClick={() => setZoom(false)}>
+          <div className="dag-zoom-body" onClick={(e) => e.stopPropagation()}>
+            <div className="dag-zoom-head">
+              <span className="todo-card-goal">{turnGoal !== '' ? turnGoal : t('(no turn input)', '(未关联轮次输入)')}</span>
+              <button type="button" className="tb-dag-zoom-close" aria-label={t('Close', '关闭')} onClick={() => setZoom(false)}>
+                <X size={14} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="board-dag-scroll dag-zoom-scroll">{dagEl}</div>
+          </div>
+        </div>
       )}
     </section>
   );
 }
 
-/** 流程图体(完整 DAG):节点=状态点+任务名+子代理名;依赖曲线连线(箭头指向下游) */
+/** 流程图体(完整 DAG):节点=状态点+任务名(+执行子代理名,等待态不显);依赖曲线连线(箭头指向下游);
+ *  节点点击同列表行——仅委派在场(执行/完成态)跳对应子 agent,等待态不跳 */
 function TaskDag({
   group,
   board,
@@ -221,7 +217,8 @@ function TaskDag({
           const task = byId.get(n.id) ?? board.tasks[n.id];
           if (task === undefined) return [];
           const d = agentOfTask(task, delegations);
-          const agentName = d !== undefined ? (d.title !== undefined && d.title !== '' ? d.title : d.label) : task.assignee !== undefined ? `@${task.assignee}` : '';
+          // G14.213 子代理名仅执行/完成态显(等待态不显);点击仅委派在场可跳(等待态不跳)
+          const agentName = d !== undefined ? (d.label !== '' ? d.label : (d.title ?? '')) : '';
           const cls = `task-box task-status-${task.status}${task.gated === true ? ' gated' : ''}${task.status === 'done' ? ' done' : ''}`;
           return (
             <g
@@ -231,10 +228,9 @@ function TaskDag({
               role="button"
               aria-label={`${task.id} [${task.status}] ${task.title}`}
               onClick={() => {
-                if (d !== undefined) {
-                  const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                  onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText.slice(0, 2000));
-                }
+                if (d === undefined) return; // 等待态:无执行子代理,不跳转
+                const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
+                onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText.slice(0, 2000));
               }}
             >
               <rect x={n.x} y={n.y} width={BOX_W} height={BOX_H} rx={22} /> /* G14.204 */
@@ -242,9 +238,11 @@ function TaskDag({
               <text x={n.x + 26} y={n.y + 21} className="box-title">
                 {trunc(task.title !== '' ? task.title : task.id, 14)}
               </text>
-              <text x={n.x + 12} y={n.y + 40} className="box-agent">
-                {trunc(agentName !== '' ? agentName : `${t('pending dispatch', '待派发')} · ${task.id}`, 20)}
-              </text>
+              {agentName !== '' && (
+                <text x={n.x + 12} y={n.y + 40} className="box-agent">
+                  {trunc(agentName, 20)}
+                </text>
+              )}
             </g>
           );
         })}
@@ -273,7 +271,7 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
   }, [focus?.nonce, focus?.ref]);
   const tasks = useMemo(() => Object.values(board.tasks), [board]);
   const groups = useMemo(() => groupTasks(tasks), [tasks]);
-  if (tasks.length === 0 && delegations.length === 0) {
+  if (tasks.length === 0) {
     return (
       <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
         <div className="board-empty-state" role="status">
@@ -284,11 +282,10 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
     );
   }
   return (
-    <div className="taskboard-cards" aria-label="task board">
-      {/* G14.174 无任务但有委派(纯 fork 派发)也出一卡承载委派区 */}
-      {(groups.length > 0 ? [...groups].reverse() : [[]]).map((group, i) => (
+    <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
+      {[...groups].reverse().map((group) => (
         <TaskCard
-          key={group[0]?.id ?? `delegations-only-${i}`}
+          key={group[0]?.id ?? `group-${group.length}`}
           group={group}
           board={board}
           delegations={delegations}

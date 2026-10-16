@@ -243,7 +243,7 @@
   border: none; border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-tertiary); cursor: pointer;
 }.files-act:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
-/* G14.121 md 格式化预览面:prose 基础排版;mermaid/代码块组件自带样式 */.files-md { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px 24px; font: 13px/1.7 var(--font-ui); }.files-md h1, .files-md h2, .files-md h3, .files-md h4 { margin: 14px 0 8px; line-height: 1.35; }.files-md p { margin: 6px 0; }.files-md ul, .files-md ol { margin: 6px 0; padding-left: 22px; }.files-md blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--border); color: var(--fg-secondary); }.files-md a { color: var(--accent); }.files-md code { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--radius-xs); padding: 0 4px; font: 12px var(--font-mono); }.files-md table { border-collapse: collapse; margin: 8px 0; }.files-md th, .files-md td { border: 1px solid var(--border); padding: 4px 10px; }.files-editor { flex: 1; min-height: 0; }
+/* G14.121 md 格式化预览面:prose 基础排版;mermaid/代码块组件自带样式 */.files-md { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px 24px; font: 13px/1.7 var(--font-ui); }.files-md h1, .files-md h2, .files-md h3, .files-md h4 { margin: 14px 0 8px; line-height: 1.35; }.files-md p { margin: 6px 0; }.files-md ul, .files-md ol { margin: 6px 0; padding-left: 22px; }.files-md blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--border); color: var(--fg-secondary); }.files-md a { color: var(--accent); }/* G14.213 行内限定(:not(pre)>code):灰底/内边距只上行内 code——块代码吃灰底则横滚露区无底(底色须归不滚动的 .code-block 卡) */.files-md :not(pre) > code { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--radius-xs); padding: 0 4px; font: 12px var(--font-mono); }.files-md table { border-collapse: collapse; margin: 8px 0; }.files-md th, .files-md td { border: 1px solid var(--border); padding: 4px 10px; }.files-editor { flex: 1; min-height: 0; }
 /* 空态(裸开档):引导+路径输入(加载入口仅此处与错误态在场) */.files-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; }.files-hint { margin: 40px 0 12px; text-align: center; color: var(--fg-tertiary); font-size: 12px; }.files-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 24px; }.files-path { flex: 1; min-width: 0; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: 12px var(--font-mono); }.files-load { flex: none; padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); }.files-load:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }.files-loading { flex: none; padding: 4px 12px; color: var(--fg-secondary); font-size: 12px; }.files-error { flex: none; margin: 8px 24px; color: var(--err); border: 1px solid var(--err); border-radius: var(--radius-md); padding: 6px 8px; font-size: 12px; }.files-truncated { flex: none; margin: 6px 12px; color: var(--warn); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 1px 10px; font-size: 11px; }
 /* hljs 令牌着色(无主题 css 导入——令牌口径就地取色,暗底可读;plaintext 无 span 零牵连) */.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: var(--syntax-keyword); }.hljs-string, .hljs-attr, .hljs-attribute { color: var(--syntax-string); }.hljs-number, .hljs-literal { color: var(--syntax-literal); }.hljs-comment { color: var(--syntax-comment); font-style: italic; }.hljs-title, .hljs-name { color: var(--syntax-name); }
 
@@ -630,7 +630,8 @@
   position: absolute; left: 0; top: 50%; transform: translateY(-50%);
   width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center;
 }
-/* 用户气泡 token 同款着色(行内 code 形态) */.user-bubble code { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--radius-xs); padding: 0 3px; font-style: normal; }.sx-composer-input::placeholder { color: var(--fg-tertiary); opacity: 0.6; }.sx-composer-input:disabled { opacity: 0.5; }.sx-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.sx-composer-foot-left, .sx-composer-foot-right { display: flex; align-items: center; gap: 6px; min-width: 0; }.sx-composer-foot-left { position: relative; }.sx-composer .composer-pill { padding: 5px 10px; border-radius: var(--radius-sm); }.sx-composer .composer-pill:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }.sx-composer .send {
+/* G14.211 芯片显形宽度=原文宽度:file 芯片去水平 padding(2px 也算缝),行锚 :L 段弱色 */.sx-composer-highlight .hn-file { padding: 0; }.sx-composer-highlight .hn-file .hn-file-lines { color: var(--fg-tertiary); }
+/* 用户气泡 token 同款着色(行内 code 形态;G14.213 行内限定——气泡内围栏块不吃 accent 底) */.user-bubble :not(pre) > code { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--radius-xs); padding: 0 3px; font-style: normal; }.sx-composer-input::placeholder { color: var(--fg-tertiary); opacity: 0.6; }.sx-composer-input:disabled { opacity: 0.5; }.sx-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.sx-composer-foot-left, .sx-composer-foot-right { display: flex; align-items: center; gap: 6px; min-width: 0; }.sx-composer-foot-left { position: relative; }.sx-composer .composer-pill { padding: 5px 10px; border-radius: var(--radius-sm); }.sx-composer .composer-pill:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }.sx-composer .send {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -698,7 +699,7 @@
   color: var(--fg-tertiary); font-size: 12px;
 }.entry-thinking .thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }.entry-thinking .thinking-detail {
   margin: 4px 0 0; padding: 8px 10px;
-  background: var(--surface-code); border: none; border-radius: var(--radius-md); /* G14.184 思考详情代码块=md */
+  /* G14.211 背景/圆角上移至 .thinking-scroll(边框固定)——弧度挂滚动视口,内滚不再滚成直角 */
   font: 12px/1.6 var(--font-mono); color: var(--fg-secondary);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }.entry-tool .tool-summary { display: flex; align-items: center; gap: 6px; }.entry-tool .tool-verb { color: var(--fg-secondary); }.entry-tool .tool-result-inline { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.chat-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; color: var(--fg); cursor: default; }.chat-more { margin-left: auto; }.chat-more-pop { top: 40px; right: 8px; }
@@ -1053,10 +1054,13 @@
 /* 思考行(§3):预览尾锚定(direction:rtl 流动)+左缘渐隐;展开 grid-rows+320px 内滚吸底。
  * 选择器带 .entry-thinking 前缀(终审 Minor-1):0,2,0 同特异性,靠 G11 段后位取胜旧 G10-C3
  * 同名规则——裸 .thinking-summary (0,1,0) 落败,折叠行形态半生效 */.entry-thinking { padding: 2px 8px; }.entry-thinking .thinking-summary { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg-tertiary); font-size: 12px; }.entry-thinking .thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }.think-chevron { flex: none; transition: transform var(--dur-basic) var(--ease-enter); }.entry-thinking.open .think-chevron { transform: rotate(180deg); }.thinking-label { flex: none; }
-/* visibility 折叠尾切(T4 评审可达性补丁,同 .tool-body):折叠态内容不可聚焦/不入可达性树 */.think-body { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }.entry-thinking.open .think-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s; }.think-body-inner { min-height: 0; overflow: hidden; }.thinking-scroll { max-height: 320px; overflow-y: auto; margin-top: 4px; }.thinking-scroll .thinking-detail { margin: 0; }
+/* visibility 折叠尾切(T4 评审可达性补丁,同 .tool-body):折叠态内容不可聚焦/不入可达性树 */.think-body { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }.entry-thinking.open .think-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s; }.think-body-inner { min-height: 0; overflow: hidden; }
+/* G14.211 思考卡=滚动视口本身:背景/圆角(边框)固定不动,内容在框内滚动——上下滑动时四角恒圆,
+   不再随 pre 滚走露出方形裁切边;滚动条(全局 8px 细条)收在圆角框内 */
+.thinking-scroll { max-height: 320px; overflow-y: auto; margin-top: 4px; background: var(--surface-code); border-radius: var(--radius-md); }.thinking-scroll .thinking-detail { margin: 0; background: transparent; border-radius: 0; }
 /* 系统行图标(§4):图标前置列+md 体;末元素 margin 收口随之内移一层 */.entry-md.has-icon { display: flex; align-items: flex-start; gap: 6px; }.entry-icon { flex: none; margin-top: 2px; color: var(--fg-tertiary); }.entry-md-body { min-width: 0; flex: 1; }.entry-md-body > :last-child { margin-bottom: 0; }.entry > .entry-md:last-child > .entry-md-body > :last-child { margin-bottom: 0; }
 
-/* 代码块卡(§5.2):禁折行横滚+头部栏;复制钮 hover 浮现 */.code-block { margin: 8px 0; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }.code-head { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 6px 0 12px; }.code-lang { font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary); }.code-head .sx-tip { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }.code-block:hover .code-head .sx-tip, .code-head .sx-tip:focus-visible { opacity: 1; }.code-block pre { margin: 0; padding: 12px 14px; background: transparent; border: none; border-radius: 0; overflow-x: auto; }.code-block pre code { display: block; font: 12.5px/1.7 var(--font-mono); white-space: pre; overflow-wrap: normal; }
+/* 代码块卡(§5.2):禁折行横滚+头部栏;复制钮 hover 浮现 */.code-block { margin: 8px 0; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }.code-head { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 6px 0 12px; }.code-lang { font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary); }.code-head .sx-tip { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }.code-block:hover .code-head .sx-tip, .code-head .sx-tip:focus-visible { opacity: 1; }.code-block pre { margin: 0; padding: 12px 14px; background: transparent; border: none; border-radius: 0; overflow-x: auto; }.code-block pre code { display: block; font: 12.5px/1.7 var(--font-mono); white-space: pre; overflow-wrap: normal; background: transparent; border-radius: 0; padding: 0; } /* G14.213 显式复位:嵌入面(.files-md 等)行内 code 规则不得渗入块代码——底色恒由本卡承担 */
 /* hljs 令牌泛化(原 .files-view 前缀收敛为全局——hljs 类只在代码上下文出现) */
 
 /* 正文排版定靶(§5.1):行距/标题阶梯/行内码/列表/hr/链接/图片 */.entry { line-height: 1.65; }.entry h1 { font-size: 17px; }.entry h2 { font-size: 15.5px; }.entry h3 { font-size: 14px; }.entry h4 { font-size: 13px; }.entry h1, .entry h2, .entry h3, .entry h4 { line-height: 1.4; font-weight: 600; margin: 16px 0 8px; }.entry :not(pre) > code { font-size: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }.entry li { margin: 3px 0; }.entry li::marker { color: var(--fg-secondary); }.entry hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }.entry img { max-width: 100%; border-radius: var(--radius-md); }
@@ -1079,21 +1083,21 @@
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
   transform-origin: center center; user-select: none; /* G14.123 去 will-change:合成层拉伸是模糊源 */
-}.mermaid-lb-pan .mermaid-svg { background: transparent; margin: 0; padding: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }.mermaid-lb-pan .mermaid-svg svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }.mermaid-lb-actions {
+}.mermaid-lb-pan .mermaid-svg { background: transparent; margin: 0; padding: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: visible; /* 壳绝不裁剪:hidden/auto 会成为随内容平移的固定裁剪窗,svg 超出壳的带区永不可见(拖动只是移窗)——裁剪只属于不动的 .mermaid-lightbox-body;基础规则 overflow-x:auto 在此一并禁用 */ }.mermaid-lb-pan .mermaid-svg svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }.mermaid-lb-actions {
   position: absolute; top: 10px; right: 10px; z-index: 3;
   display: inline-flex; align-items: center; gap: 6px;
 }.mermaid-lb-actions button {
   min-width: 30px; height: 30px; padding: 0 8px;
-  border-radius: var(--radius-sm); border: 1px solid var(--border);
-  background: var(--surface-elevated); color: var(--fg); font-size: 13px;
+  border-radius: var(--radius-sm); border: none;
+  background: transparent; color: var(--fg); font-size: 13px;
   cursor: pointer; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
-}.mermaid-lb-actions button:hover { border-color: var(--fg-tertiary); }
+}.mermaid-lb-actions button:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* G14.117 缩放百分比:定宽防 +/− 抖动 */.mermaid-lb-zoom {
   min-width: 44px; height: 30px; line-height: 30px; text-align: center;
   font-size: 12px; color: var(--fg-secondary); user-select: none;
   font-variant-numeric: tabular-nums;
-}.mermaid-lb-actions button:hover { border-color: var(--fg-tertiary); }
+}.mermaid-lb-actions button:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 @keyframes sx-zoom-in { from { opacity: 0; transform: scale(0.96); } }.mermaid-lightbox-body { animation: sx-zoom-in var(--dur-relaxed) var(--ease-enter); }
 
 /* run 尾部操作条(§6,G14.19 裁定):复制图标与正文左缘对齐——22px 钮内 12px 图标居中内缩 5px,
@@ -1267,6 +1271,10 @@
 
 /* ===== G14.13 会话流行距与 Working 分割线 ===== */
 /* 工具/思考行距收紧:条目间距 8px(≈行高),内容块(user/assistant)保持呼吸 */.chat { gap: 8px; }.entry-user, .entry-assistant { margin-top: 10px; }
+/* G14.213 穿插正文(思考/工具行之间的 assistant 段)不吃内容块呼吸——与行距 8px 对齐 */
+.chat .entry-thinking + .entry-assistant,
+.chat .entry-tool + .entry-assistant,
+.chat .seg-collapse + .entry-assistant { margin-top: 0; }
 /* Working 状态行下横分割线(状态与执行流分隔) */.entry-run.live, .entry-run.sealed { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
 
 /* ===== G14.13 exec 执行中态:波纹(外扩环+文字流光) ===== */.exec-running { color: var(--fg-secondary); }
@@ -1407,7 +1415,9 @@
   border-radius: 999px !important;
 }.monaco-scrollable-element > .scrollbar > .slider:hover { background: color-mix(in srgb, var(--fg) 30%, transparent) !important; }.monaco-scrollable-element > .scrollbar.vertical > .slider { left: 1px !important; width: 6px !important; }.monaco-scrollable-element > .scrollbar.horizontal > .slider { top: 1px !important; height: 6px !important; }
 
-/* G14.48:展开/折叠滚动位移由 onEntryToggleClick 单点接管——关原生 scroll anchoring 防互搏 */.chat { overflow-anchor: none; }
+/* G14.48:展开/折叠滚动位移由 onEntryToggleClick 单点接管。G14.211 原生 scroll anchoring
+   回归恒开——右栏展开重排/异步内容闪帧等外部高度变化,视口由浏览器锚定不再上下跳;
+   仅折叠/展开校正窗口内由 onEntryToggleClick 临时关停防互搏 */.chat { overflow-anchor: auto; }
 
 /* G14.52 运行状态行:圆圈+步数+tokens 常驻流区末行(轮次完成/停止即隐);
    独立成行左缘对齐其他行(padding 同 .entry),替代「尾参挂最后工具行」的旧形态 */.run-live-line {
@@ -1457,16 +1467,28 @@
 .todo-card-time { flex: none; font: 11px var(--font-mono); color: var(--fg-tertiary); }
 .todo-card-list { padding: 4px 0 0 6px; }
 .tb-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tb-card-head .view-toggle { margin-left: auto; flex: none; }
 .tb-task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .tb-task-row { display: flex; flex-direction: column; gap: 2px; }
 .tb-task-main { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; border: none; background: transparent; padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; color: var(--fg); font-size: 12.5px; }
 .tb-task-main:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-.tb-status-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-tertiary); }
-.tb-status-dot.task-status-claimed { background: var(--accent); }
-.tb-status-dot.task-status-in_review { background: var(--warn); }
-.tb-status-dot.task-status-done { background: var(--ok); }
+/* G14.213 状态图标三态:运行(claimed/in_review)=转圈;完成=蓝点;等待(pending)=灰点;失败=红点 */
+.tb-status-dot { flex: none; box-sizing: border-box; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-tertiary); }
+.tb-status-dot.task-status-claimed,
+.tb-status-dot.task-status-in_review { background: transparent; border: 1.5px solid var(--accent); border-top-color: transparent; animation: sx-spin 1s linear infinite; }
+.tb-status-dot.task-status-done { background: var(--accent); }
 .tb-status-dot.task-status-failed { background: var(--err); }
+/* G14.213 DAG 预设高度滚动 + 右上角放大钮 + 弹窗大图 */
+.tb-dag-wrap { position: relative; }
+.tb-card .board-dag-scroll.tb-dag-scroll { height: 260px; }
+.tb-dag-zoom { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--fg-secondary); cursor: pointer; }
+.tb-dag-zoom:hover { color: var(--fg); border-color: var(--fg-secondary); }
+.dag-zoom-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(1, 4, 9, 0.7); display: flex; align-items: center; justify-content: center; }
+.dag-zoom-body { display: flex; flex-direction: column; width: min(1100px, 94vw); height: min(82vh, 860px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.dag-zoom-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.dag-zoom-head .todo-card-goal { flex: 1; }
+.dag-zoom-head .tb-dag-zoom-close { display: inline-flex; border: none; background: transparent; color: var(--fg-secondary); cursor: pointer; padding: 2px; }
+.dag-zoom-head .tb-dag-zoom-close:hover { color: var(--fg); }
+.dag-zoom-scroll { flex: 1; min-height: 0; }
 .tb-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .tb-task-agent { flex: none; font-size: 11px; color: var(--fg-tertiary); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-todos-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -1551,9 +1573,10 @@
 .sx-side-scroll .sx-groups .sx-session-row .session-summary { margin-left: 10px; }
 .sx-side-scroll .recent-list .sx-session-row .session-summary { margin-left: 6px; }
 
-/* G14.152 运行/未读圆点随文字列右移(文字 x=38,圆点右缘 32 留 6px 间隙,不再贴左缘) */
+/* G14.152 运行/未读圆点随文字列右移(文字 x=34,圆点右缘 28 留 6px 间隙,不再贴左缘)。
+   G14.213 运行环与圆点同位——此前 running 单独 left 26 右缘恰贴正文 x=34(「太贴」) */
 .sx-side-scroll .sx-session-dot { left: 20px; }
-.sx-side-scroll .sx-session-dot.running { left: 26px; }
+.sx-side-scroll .sx-session-dot.running { left: 20px; }
 
 
 /* G14.154 文件选区悬浮工具条(双动作):跟随选区上方,ReactDOM 面非 monaco overlay */
@@ -1584,8 +1607,9 @@
 .board-dag .dag-edge.done { opacity: 0.3; }
 .board-dag .dag-arrow { fill: var(--fg-secondary); opacity: 0.7; }
 .board-dag .dag-dot { fill: var(--fg-tertiary); }
-.board-dag .task-status-claimed .dag-dot { fill: var(--accent); }
-.board-dag .task-status-in_review .dag-dot { fill: var(--warn); }
+/* G14.213 DAG 节点状态点:运行=accent 呼吸;完成=ok 绿(节点文案绿系)……用户三态以列表为准,DAG 同步 */
+.board-dag .task-status-claimed .dag-dot { fill: var(--accent); animation: sx-subagent-breathe 1.6s ease-in-out infinite; }
+.board-dag .task-status-in_review .dag-dot { fill: var(--accent); animation: sx-subagent-breathe 1.6s ease-in-out infinite; }
 .board-dag .task-status-done .dag-dot { fill: var(--ok); }
 .board-dag .task-status-failed .dag-dot { fill: var(--err); }
 .board-dag .box-agent { fill: var(--fg-tertiary); font: 10.5px var(--font-ui); }
@@ -1593,15 +1617,11 @@
 .board-dag .task-box rect { fill: var(--surface); }
 .board-dag .task-box:hover rect { stroke: var(--accent); }
 
-/* ===== G14.175 子代理转录页 v2:主对话式渲染(用户气泡/思考行/assistant md/工具行,无输入框) ===== */
+/* ===== G14.175 子代理转录页 v2:主对话式渲染(用户气泡/思考行/assistant md/工具行,无输入框) =====
+   G14.213 渲染组件换正(ChatEntryView/ThinkingEntryView/ToolEntryView 同一套),页内 md 字号/
+   p 边距覆盖与自绘 tool-row 样式退役——视觉即主对话 */
 .sx-agent-thread { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; }
 .sx-agent-thread .user-bubble { max-width: 85%; margin-left: auto; }
-.sx-agent-thread .entry-assistant .entry-md-body { font: 13px/1.65 var(--font-ui); color: var(--fg); overflow-wrap: anywhere; }
-.sx-agent-thread .entry-assistant .entry-md-body p { margin: 0 0 6px; }
-.sx-agent-thread .entry-assistant .entry-md-body p:last-child { margin-bottom: 0; }
-.sx-agent-thread .child-tool-row { padding: 0; }
-.sx-agent-thread .tool-row-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.sx-agent-thread .child-tool-mark { flex: none; color: var(--fg-tertiary); align-self: center; }
 .sx-agent-thread .child-tool-mark.ok { color: var(--ok); }
 .sx-agent-thread .child-tool-mark.fail { color: var(--err); }
 .sx-agent-thread .child-thinking { font: 12px/1.6 var(--font-ui); color: var(--fg-tertiary); background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1610,10 +1630,13 @@
 .tb-task-main.flash { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: var(--radius-sm); }
 
 /* ===== G14.177 顶栏动态计数按钮(待办/任务/后台任务):靠右聚拢,不挤压标题与展开钮 ===== */
-.chat-dyn-buttons { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.chat-dyn-btn { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 2px 8px; border: 1px solid var(--border); border-radius: 9999px; background: var(--surface-soft); color: var(--fg-secondary); font-size: 11px; cursor: pointer; white-space: nowrap; }
-.chat-dyn-btn:hover { color: var(--fg); border-color: var(--fg-secondary); }
+/* G14.213 幽灵钮化:无底色无边框,顶栏 hover 浮现;待办钮转圈绿色;侧栏展开不再隐藏(组件面) */
+.chat-dyn-buttons { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.chat-dyn-btn { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 2px 6px; border: none; border-radius: 9999px; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; white-space: nowrap; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.chat-topbar:hover .chat-dyn-btn, .chat-dyn-btn:hover { opacity: 1; }
+.chat-dyn-btn:hover { color: var(--fg); }
 .chat-dyn-btn .run-spinner { width: 9px; height: 9px; border-width: 1.5px; }
+.chat-dyn-btn.todo .run-spinner { border-color: color-mix(in srgb, var(--ok) 30%, transparent); border-top-color: var(--ok); }
 .chat-dyn-buttons + .chat-expand { margin-left: 0; } /* 按钮组在场时收掉展开钮的 auto——聚拢贴右,不摊开 */
 
 /* ===== G14.178 后台任务卡片流:状态点色 + 展开详情行 ===== */
@@ -1830,6 +1853,11 @@ input.sx-setting-input { width: 100%; }
 .sx-collapse-recents .sx-session-dot { left: 4px; }
 .sx-collapse-recents .sx-session-dot.running { left: 4px; }
 
+/* G14.213 最近行圆点与项目组行圆点同列(组行点 x=24;最近行行缘 x=10 → left 14 补齐;
+   G14.197 的 4px 是旧几何,文字列已随 G14.152 右移)。运行态同规 */
+.sx-side-scroll .recent-list .sx-session-dot { left: 14px; }
+.sx-side-scroll .recent-list .sx-session-dot.running { left: 14px; }
+
 /* ---- 技能工具行:搜索+来源筛选;卡片头(id+来源 chip 单色) ---- */
 .sx-skills-toolbar { display: flex; align-items: center; gap: 10px; }
 .sx-skills-toolbar .sx-skills-search { flex: 1; max-width: 320px; }
@@ -1873,7 +1901,7 @@ input.sx-setting-input { width: 100%; }
 
 /* G14.205 代码块自动换行切换:默认横向滚动;开启后 pre-wrap 纵向(无横向滚动条);切换钮开启态高亮 */
 .code-block pre.wrap { white-space: pre-wrap; overflow-x: hidden; }
-.code-block pre.wrap code { word-break: break-all; }
+.code-block pre.wrap code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .code-wrap-on { color: var(--accent); }
 
 /* G14.206 代码块头部按钮组:换行+复制归组靠右(避免 space-between 把换行钮摊到中间) */

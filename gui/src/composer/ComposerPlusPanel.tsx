@@ -6,7 +6,8 @@ import { FileIcon } from '../file-icon';
  * 「+」附加面板(G12 统一 composer):浮在输入卡上方、与卡同宽(absolute left/right 0,锚
  * `.sx-composer`,经 ComposerCard overlays 槽渲染)。三区列表:
  * - 命令:GET /commands,点击插入 `/cmd `(回车执行——会话内走 / 命令通道);
- * - 技能:GET /settings/skills 三源(project/user/learned)按 id 去重合并,点击插入 `/skill <id>`;
+ * - 技能:GET /settings/skills 三源(project/user/learned)按 id 去重合并,点击插入 `/<id>`
+ *   (G14.213 skills 纯文本语义:不再走 /skill <id> 命令形态——daemon 已 400);
  * - 文件:仅会话内(sessionId 在场)——GET /session/:id/tree 逐级浏览工作区目录,点击文件插入
  *   相对路径;欢迎页无会话不渲染此区。
  * 插入即收口:调用面 onInsert 负责落文本+关面板+焦点回输入框。
@@ -159,7 +160,7 @@ export function ComposerPlusPanel({
       {skills === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
       {skills !== null && skills.length === 0 && <div className="sx-plus-empty">{t('No skills', '暂无技能')}</div>}
       {skills?.map((s) => (
-        <button key={s.id} type="button" role="menuitem" className="sx-plus-row" data-tip={s.desc} onClick={() => onInsert(`/skill ${s.id} `)}>
+        <button key={s.id} type="button" role="menuitem" className="sx-plus-row" data-tip={s.desc} onClick={() => onInsert(`/${s.id} `)}>
           <span className="sx-plus-name">{s.id}</span>
           <span className="sx-plus-desc">{s.desc}</span>
         </button>

@@ -14,6 +14,8 @@ export interface CmdItem {
   /** 前缀匹配 0 分;包含匹配按位置——前缀优先 */
   idx: number;
   ok: boolean;
+  /** G14.213 命令=走命令通道;skill=纯文本语义(有参数已敲时 Enter 落普通发送,不 runCommand) */
+  kind: 'cmd' | 'skill';
 }
 
 export function filterCommands(
@@ -27,7 +29,7 @@ export function filterCommands(
     .map((c) => {
       const name = c.slice(1);
       const idx = name.indexOf(q);
-      return { cmd: c, name, desc: descriptions[name] ?? '', idx, ok: supported.includes(c) };
+      return { cmd: c, name, desc: descriptions[name] ?? '', idx, ok: supported.includes(c), kind: 'cmd' as const };
     })
     // G14.160 不可用命令不展示(supported 过滤;曾经灰化+划线,用户裁定直接不列)
     .filter((x) => x.idx >= 0 && x.ok)

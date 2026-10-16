@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import type { KeyboardEvent, MutableRefObject, ReactNode } from 'react';
+import type { ClipboardEvent, CompositionEvent, FormEvent, KeyboardEvent, MutableRefObject, ReactNode } from 'react';
 
 /**
  * 统一 composer 卡(G12 用户裁定「不要两个版本」):欢迎页与会话中共用同一份输入卡实现——
@@ -21,6 +21,14 @@ export interface ComposerCardProps {
   rows?: number;
   onChange: (value: string) => void;
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  /** G14.212 token 原子性守卫(Chat tokenGuardVerdict):beforeinput/paste/composition 三面拦
+   *  「token 中间插入/部分删除」——命中即阻止,插入面光标钉 token 尾,删除面扩整删 */
+  onBeforeInput?: (e: FormEvent<HTMLTextAreaElement>) => void;
+  onPasteGuard?: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  onCompositionGuard?: (e: CompositionEvent<HTMLTextAreaElement>) => void;
+  /** G14.213 光标不落 token 中间:选区变化归位(↑↓/Home/End 等原生移动的兜底) */
+  onSelectGuard?: () => void;
+  onCompositionEndGuard?: () => void;
   /** 卡根附加类(会话语境的限宽/贴底在 `.composer`) */
   className?: string;
   /** absolute 浮层(命令面板等),锚卡根渲染在输入之前 */
@@ -48,6 +56,11 @@ export function ComposerCard({
   rows = 1,
   onChange,
   onKeyDown,
+  onBeforeInput,
+  onPasteGuard,
+  onCompositionGuard,
+  onSelectGuard,
+  onCompositionEndGuard,
   onInputClick,
   onDropFile,
   className,
@@ -79,6 +92,11 @@ export function ComposerCard({
             rows={rows}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
+            onBeforeInput={onBeforeInput}
+            onPaste={onPasteGuard}
+            onCompositionStart={onCompositionGuard}
+            onCompositionEnd={onCompositionEndGuard}
+            onSelect={onSelectGuard}
             onClick={() => onInputClick?.()}
             onDragOver={(e) => {
               if (onDropFile !== undefined && [...e.dataTransfer.types].includes('text/sunshinex-file')) e.preventDefault();
@@ -111,6 +129,11 @@ export function ComposerCard({
           rows={rows}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
+          onBeforeInput={onBeforeInput}
+          onPaste={onPasteGuard}
+          onCompositionStart={onCompositionGuard}
+          onCompositionEnd={onCompositionEndGuard}
+          onSelect={onSelectGuard}
         />
       )}
       {belowInput}

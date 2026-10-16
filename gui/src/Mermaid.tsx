@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Mermaid 图渲染(G10-C3c):懒加载 mermaid(代码分包,首块 mermaid 代码出现才拉);
+ * Mermaid 图渲染(G10-C3c):代码分包(不进主 bundle;G14.2xx 起模块加载即预取 chunk——
+ * 会话进场首图免付 ~1s 等待,桌面本地资产不碍首屏);
  * 主题随 html[data-theme](MutationObserver 监听,切换即重渲);渲染失败/超时回落原文代码块
  * (会话流零阻塞,spec §10 降级纪律)。
  * G13 批次1:base 主题 + 主题变量取 app.css 令牌同值——dark 下不再出现 mermaid 默认亮底节点
  * (节点面=--surface-elevated/文字=--fg/连线=fg 50%),与流区底色同源。
+ * G14.2xx 会话进场不割裂:①模块加载即预取 mermaid chunk(首图免在进场时付 ~1s 动态导入);
+ * ②渲染缓存(主题+图源→svg)——重进会话/重挂载同步直出,不再「先代码块 1s 后弹图」;
+ * ③渲染落定广播 sx-mermaid-settled——撑高发生在组件内 state,贴底跟随方(Chat)借此补归底。
  */
 
 /** 两套主题变量(与 app.css :root / [data-theme='light'] 手工同值;mermaid 无法读 CSS 变量) */
@@ -54,6 +58,18 @@ function currentTheme(): keyof typeof MERMAID_VARS {
   return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 }
 
+/** 模块预取:本模块随 Chat/Files 静态链加载,chunk 即刻在后台拉起(测试 mock 同经此路径);
+ *  失败归一 undefined,由渲染处按错误回落 */
+const mermaidReady: Promise<typeof import('mermaid') | undefined> = import('mermaid').catch(() => undefined);
+
+/** 渲染缓存(主题+图源→svg):进程内存态;超上限整体清(图源重复率低,LRU 不值得) */
+const svgCache = new Map<string, string>();
+const cacheKey = (theme: string, chart: string): string => `${theme}\u0000${chart}`;
+/** 测试钩子:缓存是模块态,用例间清空以复现 pending/现渲路径 */
+export function mermaidCacheClear(): void {
+  svgCache.clear();
+}
+
 /** G14.86 语法容错:未加引号的节点标签含 < / > / ? 时自动补双引号(模型产出高频病——
  *  裸标签遇 HTML 敏感字符 mermaid 解析必炸回退源码);已引号标签(含 <br>)不动 */
 export function repairMermaid(chart: string): string {
@@ -64,7 +80,8 @@ export function repairMermaid(chart: string): string {
 }
 
 export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: boolean) => void }): JSX.Element {
-  const [svg, setSvg] = useState<string | null>(null);
+  /** G14.2xx 缓存直出:命中即同步首绘(无 pending 态、无进场撑高跳变),未命中走异步现渲 */
+  const [svg, setSvg] = useState<string | null>(() => svgCache.get(cacheKey(currentTheme(), chart)) ?? null);
   /** G14.94 渲染失败态:错误消息(红)+源代码同框——修复有据 */
   const [failed, setFailed] = useState<string | null>(null);
   const idRef = useRef(`mmd-${Math.random().toString(36).slice(2)}`);
@@ -77,15 +94,37 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
     return () => obs.disconnect();
   }, []);
 
+  /** G14.2xx 落定广播:svg/回落提交后发全局事件——撑高发生在组件内 state,不触发父流区
+   *  重渲染,贴底跟随方(Chat)监听此事件补归底(会话进场多图连发由消费方 rAF 合并) */
+  useEffect(() => {
+    if (svg === null && failed === null) return;
+    window.dispatchEvent(new Event('sx-mermaid-settled'));
+  }, [svg, failed]);
+
   useEffect(() => {
     let alive = true;
+    const key = cacheKey(currentTheme(), chart);
+    const cached = svgCache.get(key);
+    if (cached !== undefined) {
+      setSvg(cached);
+      setFailed(null);
+      onStatus?.(true);
+      return () => {
+        alive = false;
+      };
+    }
     (async () => {
       try {
-        const mermaid = (await import('mermaid')).default;
-        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
+        const mod = await mermaidReady;
+        if (mod === undefined) throw new Error('mermaid unavailable');
+        const mermaid = mod.default;
+        // look 钉 classic:v12 默认 neo 给节点画挤出式重影边(用户视为边框 bug)
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
         const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), 5_000));
         const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
         if (alive) {
+          if (svgCache.size >= 200) svgCache.clear();
+          svgCache.set(key, r.svg);
           setSvg(r.svg);
           setFailed(null);
           onStatus?.(true); // G14.122 渲染成败上抛(消费方按态收放放大钮)

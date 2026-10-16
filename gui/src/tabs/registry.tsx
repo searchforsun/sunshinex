@@ -160,6 +160,8 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     render: (p) => (
       <AgentTranscriptTab
         label={p.params.label ?? ''}
+        conn={p.conn}
+        sessionId={p.sessionId}
         activities={p.services.agentActivities[p.params.label ?? '']}
         delegations={p.services.delegations}
         board={p.services.board}

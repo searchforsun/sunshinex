@@ -1306,22 +1306,26 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     fire(conn, ev('tool-call', 'write', { subagent: 'searcher', input: { path: 'src/a.ts' }, callId: 'c1' }));
     fire(conn, ev('token', '分析中', { subagent: 'searcher' }));
     fire(conn, ev('usage', undefined, { subagent: 'searcher', turnTotal: 1200 }));
-    fire(conn, ev('delegation-started', undefined, { delegationId: 'searcher', kind: 'subagent', label: 'searcher' }));
+    fire(conn, ev('task-created', undefined, { taskId: 't1', title: 'searcher 分析', spec: 's', dependsOn: [] }));
+    fire(conn, ev('delegation-started', undefined, { delegationId: 'searcher', kind: 'subagent', label: 'searcher', title: 'searcher 分析' }));
     // Chat 主流零污染:子代理事件另一轨(无工具条/无流式条)
     expect(document.querySelector('.entry-tool')).toBeNull();
     expect(document.querySelector('.entry-assistant')).toBeNull();
-    // 「+」菜单开任务板页签(G14.174:Agents → 任务板):委派行在场
+    // 「+」菜单开任务板页签(G14.174:Agents → 任务板):任务行在场(状态点+任务名+子代理名)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
     expect(document.querySelector('.sx-tab[data-title="任务板"]')?.classList.contains('active')).toBe(true);
     expect(screen.getByLabelText('task board')).toBeDefined();
-    const row = screen.getByRole('button', { name: 'open agent searcher' });
-    expect(row.textContent).toContain('searcher');
-    expect(row.textContent).toContain('运行中'); // delegation-started → running 徽标
+    const row = screen.getByRole('button', { name: 't1 [pending] searcher 分析' });
+    expect(row.textContent).toContain('searcher'); // 执行子代理名(委派 label)
+    expect(row.closest('.tb-task-row')?.className).toContain('task-status-pending'); // 状态点=灰(等待)
     // G14.164 点行开只读转录页:agent 标签(title=显示名定格;页内无输入框),转录=工具行+token 行
     expect(document.querySelector('.sx-agent-page')).toBeNull(); // 未点行无 agent 页
     fireEvent.click(row);
+    await new Promise((r) => setTimeout(r, 300));
+    console.log('TABS:', [...document.querySelectorAll('.sx-tab')].map((x) => x.getAttribute('data-title')).join('|'));
+    console.log('AGENT PAGE:', document.querySelector('.sx-tabbody .sx-agent-page') !== null, 'BODY:', document.querySelector('.sx-tabbody')?.textContent?.slice(0, 200));
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull());
     expect(document.querySelector('.sx-tab[data-title="searcher"]')?.classList.contains('active')).toBe(true);
     const thread = document.querySelector('.sx-agent-thread');
@@ -1332,18 +1336,26 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     unmount();
   });
 
-  it('status 流转与清板:delegation-ended failed → 失败徽标;onResetSession 清聚合回空态', async () => {
+  it('status 流转与清板:delegation-ended failed → 行带失败子代理名;onResetSession 清聚合回空态', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
+    fire(conn, ev('task-created', undefined, { taskId: 't2', title: 'reviewer 审阅', spec: 's', dependsOn: [] }));
     fire(conn, ev('token', 'x', { subagent: 'reviewer' }));
+    fire(conn, ev('delegation-started', undefined, { delegationId: 'reviewer', kind: 'subagent', label: 'reviewer', title: 'reviewer 审阅' }));
     fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }));
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
-    const row = screen.getByRole('button', { name: 'open agent reviewer' });
-    expect(row.textContent).toContain('失败'); // 终语徽标
+    const row = screen.getByRole('button', { name: 't2 [pending] reviewer 审阅' });
+    expect(row.textContent).toContain('reviewer'); // 执行子代理名(已执行态显)
     fireEvent.click(row);
-    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull());
+    await waitFor(
+      () =>
+        expect(
+          document.querySelector('.sx-tabbody .sx-agent-page'),
+          `tabs=${[...document.querySelectorAll('.sx-tab')].map((x) => x.getAttribute('data-title')).join(',')}|body=${(document.querySelector('.sx-tabbody')?.textContent ?? 'NOBODY').slice(0, 150)}`,
+        ).not.toBeNull(),
+    );
  // 状态经转录取证(页头已随 G14.202 去除)
     // 本会话 reset:聚合清空(agent 页回退无活动态);他会话 reset 不清
     fireResetSession(conn, 's9');
@@ -1515,15 +1527,15 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     openConn(conn);
     openTasksTab();
     fire(conn, taskCreated('t1', 'Demo'));
-    fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev' }));
-    expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined();
-    expect(screen.getByLabelText('delegations').textContent).toContain('dev');
+    fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev', title: 'Demo' }));
+    const devRow = screen.getByRole('button', { name: 't1 [pending] Demo' });
+    expect(devRow.textContent).toContain('dev'); // 执行子代理名(委派 label)在任务行
     fireResetSession(conn, 's9'); // 他会话:板投影不动
     expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined();
     fireResetSession(conn, 's1'); // 本会话:board/delegations 清(reset 语义 = swap 新 Harness,旧板作废;
     // 重播种快照板再经 onSeeded 回填——默认空快照,空态维持)
     await waitFor(() => expect(document.querySelector('.board-main')).toBeNull());
-    expect(screen.queryByLabelText('delegations')).toBeNull(); // 清空后整节不渲染
+    expect(document.querySelector('.tb-task-list')).toBeNull(); // 清空后任务列表不渲染
     unmount();
   });
 
@@ -1578,7 +1590,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     // seq 9 委派(>——须重放)
     fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }), 3);
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }), 8);
-    fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev' }), 9);
+    fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev', title: 'Base' }), 9);
     // 窗内不投:任务页默认在场,空板 + 委派空(帧在 boardPendingRef 缓冲)
     expect(document.querySelector('.tb-task-list')).toBeNull();
     expect(screen.queryByLabelText('delegations')).toBeNull(); // 窗内帧缓冲,委派未投
@@ -1598,7 +1610,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     // 整替+过滤重放:t1 带 @w1 且无 ⚠(seq 8 重放——丢帧根修判据;seq 3 丢——若重放则门被重新挂上 ⚠,
     // reducer 对 created 幂等故以 gate-set 重挂为 ≤ 过滤的可观测判据);seq 9 委派重放(行在场)
     expect(screen.getByRole('button', { name: 't1 [pending] Base' })).toBeDefined();
-    expect(screen.getByLabelText('delegations').textContent).toContain('dev');
+    expect(screen.getByRole('button', { name: 't1 [pending] Base' }).textContent).toContain('dev'); // 委派重放:行带子代理名
     // 窗后帧直投(不再缓冲)
     fire(conn, taskEv('t2', 'Live'), 10);
     expect(screen.getByRole('button', { name: 't2 [pending] Live' })).toBeDefined();
@@ -1615,19 +1627,20 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     unmount();
   });
 
-  it('G8e-T2 播种窗内 delegation 帧补投聚合:buffered delegation-ended(failed) → onSeeded 重放后卡终态 error', async () => {
+  it('G8e-T2 播种窗内 delegation 帧补投聚合:buffered delegation-ended(failed) → onSeeded 重放后行带子代理名', async () => {
     const { conn, unmount } = await enterChatHeldBoard();
-    // 窗内:子代理帧直投聚合建卡(running);delegation-ended(failed) 入 boardPending 缓冲(不直投)
-    fire(conn, ev('token', 'x', { subagent: 'reviewer' }), 1);
-    fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }), 2);
-    conn.releaseSnapshot(); // 种子 lastSeq 0:seq 1/2 > 0 → 重放面
+    // 窗内:任务+子代理帧直投聚合建卡(running);delegation-ended(failed) 入 boardPending 缓冲(不直投)
+    fire(conn, ev('task-created', undefined, { taskId: 't1', title: 'reviewer', spec: 's', dependsOn: [] }), 1);
+    fire(conn, ev('token', 'x', { subagent: 'reviewer' }), 2);
+    fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }), 3);
+    conn.releaseSnapshot(); // 种子 lastSeq 0:seq 1/2/3 > 0 → 重放面
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    // Agents 标签:卡 reviewer 终态 error(失败徽标;running 动画点退场)——重放循环补投聚合生效
+    // 任务板:任务行绑定委派(label=任务名同文)→ 行显子代理名(重放循环补投聚合生效;
+    // 失败终态现存委派投影,行内不再出「失败」徽标——G14.213 只显示任务)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
     expect(screen.getAllByText('reviewer').length).toBeGreaterThan(0);
-    expect(screen.getByText('失败')).toBeDefined();
     expect(document.querySelector('.sx-subagent-dot')).toBeNull();
     unmount();
   });

@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { X, Plus, PanelLeft, PanelRight, FileText, FolderTree, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { FileIcon, hasFileTypeIcon } from '../file-icon';
 import { TAB_REGISTRY, tabEntry } from './registry';
 import type { TabTypeId } from './tab-state';
 
@@ -129,6 +130,9 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         const entry = tabEntry(t.type);
         const title = entry.title(t.params);
         const Icon = TAB_ICONS[t.type] ?? FileText;
+        // G14.211 文件标签显对应文件类型图标(vscode-icons 集内);未命中回落通用文档图标
+        const filePath = t.type === 'file' ? t.params.path : undefined;
+        const useFileIcon = filePath !== undefined && hasFileTypeIcon(filePath);
         return (
           <button
             key={t.uid}
@@ -153,7 +157,11 @@ export function TabStrip(props: TabStripProps): JSX.Element {
             }}
             onClick={() => onSelect(t.uid)}
           >
-            <Icon size={16} strokeWidth={1.75} />
+            {useFileIcon && filePath !== undefined ? (
+              <FileIcon path={filePath} size={16} />
+            ) : (
+              <Icon size={16} strokeWidth={1.75} />
+            )}
             <span>{title}</span>
             <span
               role="button"

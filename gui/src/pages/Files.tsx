@@ -91,11 +91,12 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
   filePathRef.current = load.file?.path ?? '';
   const rootRef = useRef(root);
   rootRef.current = root;
-  const selRef = useRef<{ insert: string } | null>(null);
+  /** G14.211 选区载荷=rel+行锚(两种显形派生:短写 @文件名:L 进当前任务[账本解析],全路径 @rel:L 进辅助对话) */
+  const selRef = useRef<{ rel: string; lines: string } | null>(null);
   const selRangeRef = useRef<{ line: number } | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.154 悬浮工具条状态(绝对定位 React 面,跟随选区;弃 monaco overlay——其位置不随选区重算) */
-  const [selBar, setSelBar] = useState<{ top: number; left: number; insert: string } | null>(null);
+  const [selBar, setSelBar] = useState<{ top: number; left: number; rel: string; lines: string } | null>(null);
   useEffect(() => () => { editorRef.current = null; }, []);
 
   /** 加载单点：trim 空 no-op；请求期间保留旧文（切换不闪空）,失败倒错误态不静默 */
@@ -184,7 +185,10 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
               <button
                 type="button"
                 onClick={() => {
-                  window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text: selBar.insert } }));
+                  // G14.211 短写插入:@文件名:L(芯片短、光标贴);全相对路径随事件入会话侧
+                  // pickRelRef 账本,发送期 expandFileRefs 据此展开为完整 md 链接
+                  const base = selBar.rel.split(/[\\/]/).pop() ?? selBar.rel;
+                  window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text: `@${base}:${selBar.lines}`, rel: selBar.rel } }));
                   setSelBar(null);
                 }}
               >
@@ -193,7 +197,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
               <button
                 type="button"
                 onClick={() => {
-                  onSideAsk?.(selBar.insert);
+                  // 辅助对话无会话侧账本:保持全路径 token(路径直解析,不依赖记账)
+                  onSideAsk?.(`@${selBar.rel}:${selBar.lines}`);
                   setSelBar(null);
                 }}
               >
@@ -289,9 +294,9 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                       let rel = file.replace(/\\/g, '/');
                       const rootNorm = (rootRef.current ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
                       if (rootNorm !== '' && rel.startsWith(rootNorm + '/')) rel = rel.slice(rootNorm.length + 1);
-                      selRef.current = { insert: `@${rel}:${lines}` };
+                      selRef.current = { rel, lines };
                       selRangeRef.current = { line: s };
-                      setSelBar({ insert: `@${rel}:${lines}`, top: 0, left: 8 });
+                      setSelBar({ rel, lines, top: 0, left: 8 });
                       place(s);
                     });
                     ed.onDidScrollChange(refresh);

@@ -45,15 +45,6 @@ function firstLine(text: string | undefined): string {
   return line.length > 0 ? line : '…';
 }
 
-/** 委派起止单行 md（G3 §5.3）：`✻ <label> <started|status>`——label 恒取 payload.label（缺省
- *  delegationId 兜底），ended 状态面取 payload.status（done/failed/skipped/paused，缺省 ended） */
-function delegationMd(e: SessionEvent): string {
-  const p = e.payload as { label?: unknown; delegationId?: unknown; status?: unknown } | undefined;
-  const label =
-    typeof p?.label === 'string' && p.label.length > 0 ? p.label : typeof p?.delegationId === 'string' && p.delegationId.length > 0 ? p.delegationId : '…';
-  const status = e.type === 'delegation-started' ? 'started' : typeof p?.status === 'string' && p.status.length > 0 ? p.status : 'ended';
-  return `✻ ${label} ${status}`;
-}
 
 /**
  * 转录收集器：daemon.pump 单点喂入（与广播同源同序），GET /snapshot 的 messages 字段即
@@ -98,9 +89,36 @@ export class TranscriptCollector {
     for (const e of entries) this.append({ ...e, seq: this.nextSeq++ });
   }
 
+  /** G14.213 流式正文段积累:token 增量进缓冲,段边界(任何非流内事件)落一条 assistant。
+   *  此前 assistant 仅 done 落终答全文——ask_question/门审等无 done 的轮次,穿插正文只在
+   *  live 事件流里,刷新重放即丢(「截断穿插正文消失」) */
+  private textBuf = '';
+  private flushText(): string | undefined {
+    const buf = this.textBuf;
+    this.textBuf = '';
+    if (buf.trim() === '') return undefined;
+    this.append({ seq: this.nextSeq++, ts: Date.now(), kind: 'assistant', md: buf });
+    return buf;
+  }
+
   push(e: SessionEvent): void {
+    // 段边界判定:流内事件(token/推理流/usage/step/ctx)不落段;其余(tool-call/提问/门审/
+    // notice/委派等)先 flush 已积累正文再处理,保证 [assistant 段][tool 行] 归档顺序。
+    // done 例外——自带 flush+终答去重,不在此预 flush
+    const streaming =
+      e.type === 'token' || e.type === 'reasoning' || e.type === 'usage' || e.type === 'step' || e.type === 'ctx';
+    if (!streaming && e.type !== 'done') this.flushText();
+    if (e.type === 'token') {
+      this.textBuf += e.text ?? '';
+      return;
+    }
     if (e.type === 'done') {
-      this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'assistant', md: e.text ?? '' });
+      // 缓冲余量先落(=末段流式全文);done 终答与之同文则不重复入档,不同文(异常面)才补
+      const flushed = this.flushText();
+      const finalText = (e.text ?? '').trim();
+      if (finalText !== '' && finalText !== (flushed ?? '').trim()) {
+        this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'assistant', md: e.text ?? '' });
+      }
       return;
     }
     if (e.type === 'tool-call') {
@@ -119,10 +137,6 @@ export class TranscriptCollector {
       this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: e.text ?? '' });
       return;
     }
-    if (e.type === 'delegation-started' || e.type === 'delegation-ended') {
-      this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: delegationMd(e) });
-      return;
-    }
     if (e.type === 'agent-message') {
       const p = e.payload as { from?: unknown; to?: unknown; text?: unknown } | undefined;
       const from = typeof p?.from === 'string' && p.from.length > 0 ? p.from : '?';
@@ -130,7 +144,8 @@ export class TranscriptCollector {
       this.append({ seq: this.nextSeq++, ts: e.ts, kind: 'notice', md: `[${from} → ${to}] ${typeof p?.text === 'string' ? p.text : ''}` });
       return;
     }
-    // 其余事件（token/usage/step/route/task-* 等）不进归档面
+    // G14.213 delegation-started/ended 生命周期状态不入转录(用户裁定「started/done 状态提示
+    // 不显示」)——委派面板走事件投影不受影响;其余事件(token/usage/step/route/task-* 等)不进归档面
   }
 
   /** 快照只读：返回列表浅拷贝（条目对象视为不可变——配对回填只发生在收集器内部） */

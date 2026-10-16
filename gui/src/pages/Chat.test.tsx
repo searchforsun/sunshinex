@@ -25,6 +25,7 @@ vi.mock('@monaco-editor/react', () => ({
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { setLanguage } from '../../src/i18n';
 import { Chat, expandFileRefs, tokenDeleteRange } from './Chat';
+import { mermaidCacheClear } from '../Mermaid';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
 import type { SessionEvent } from '../../../src/types';
@@ -204,6 +205,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
 });
 
 describe('mermaid 围栏(G10-C3c)', () => {
+  beforeEach(() => mermaidCacheClear()); // G14.2xx 渲染缓存是模块态——清空以复现 pending/现渲路径
   it('加载失败回落原文代码块(降级纪律,会话流零阻塞)', async () => {
     mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: '图:\n\n```mermaid\ngraph TD; A-->B\n```' }]);
     expect(await screen.findByText(/graph TD; A-->B/, {}, { timeout: 5_000 })).toBeTruthy();
@@ -212,6 +214,7 @@ describe('mermaid 围栏(G10-C3c)', () => {
 
 describe('MermaidBlock(G11 §5.4)', () => {
   beforeEach(() => {
+    mermaidCacheClear(); // G14.2xx 同上:前用例已缓存同源图,清空保 pending 路径
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn(() => Promise.resolve()) },
       configurable: true,
@@ -542,7 +545,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-result', text: 'done', ts: Date.now(), payload: { callId: 'w3' } });
     const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => {
       const t = x.textContent ?? '';
-      return t.includes('等待任务') || t.includes('task_wait');
+      return t.includes('等待') || t.includes('task_wait');
     });
     expect(rows[0]!.textContent).toContain('分析：TUI 交互面, 分析：GUI 交互面'); // 板 id 直查映射
     expect(rows[1]!.textContent).toContain('分析：TUI 交互面'); // 台账长 id 剥尾+剥 task- 前缀命中
@@ -564,7 +567,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       fire({ type: 'tool-call', text: 'create_task', ts: Date.now(), payload: { callId: 'ct2', input: { title: '测试构建', spec: 'y', dependsOn: null, assignee: null, gated: null, executor: null } } });
       fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct2' } });
       row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
-      expect(row.textContent).toContain('创建任务');
+      expect(row.textContent).toContain('建单');
       expect(row.textContent).toContain('测试构建');
       // 未登记工具(MCP 面)回退原名不硬翻
       fire({ type: 'tool-call', text: 'mcp_foo_bar', ts: Date.now(), payload: { callId: 'm1', input: {} } });

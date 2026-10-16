@@ -105,7 +105,7 @@ export interface ProjectMenuProps {
   readonly recentVersion?: number;
   /** G14.52 活动会话运行态(App 本地权威,model-start 置位/done·error 复位):圆点亮熄以此为准 */
   readonly runActive?: boolean;
-  readonly onOpenSession: (sessionId: string, root: string) => void;
+  readonly onOpenSession: (sessionId: string, root: string, journalId?: string) => void;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
@@ -331,7 +331,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           setBusy(false);
           markSeen(journalId, journalUpdatedAt ?? Date.now());
           markJournal(sessionId, journalId);
-          onOpenSession(sessionId, root);
+          onOpenSession(sessionId, root, journalId); // G14.213 journalId 随行下发(滚动位存档稳定键)
           loadWorkspaces(); // 点会话即刷新(G10-C13:计数/最近区即时更新)
         },
         (err: unknown) => {
@@ -535,7 +535,7 @@ ${metaLine}` : ''}`}
               </li>
             )}
             {rows !== null && rows.length === 0 && (
-              <li className="home-empty">{t('No workspaces yet — add one via + above.', '尚无工作区——用上方「+」添加项目目录。')}</li>
+              <li className="home-empty">{t('No projects yet', '暂无项目')}</li>
             )}
             {actionError !== '' && (
               <li className="home-error" role="alert">

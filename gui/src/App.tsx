@@ -9,7 +9,8 @@ import type { TodoItem } from '../../src/types';
 import { DirPicker } from './pages/DirPicker';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
-import { Chat, FilePalette, ModeIcon, baseModelName, expandFileRefs, fileHit, renderMentionSpans } from './pages/Chat';
+import { Chat, FilePalette, ModeIcon, atomicRange, baseModelName, expandFileRefs, fileHit, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './pages/Chat';
+import { CommandPalette, filterCommands } from './CommandPalette';
 import type { ChatSink } from './pages/Chat';
 import { ComposerCard } from './composer/ComposerCard';
 import { EffortChip, EffortSlider } from './effort-slider';
@@ -162,9 +163,41 @@ function WelcomeComposer({
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
   const [filePalActive, setFilePalActive] = useState(0);
+  // G14.211 @ 面板点外即收(与会话内 Chat 同构):焦点离开输入框后 Esc 不可达,点外须收口
+  useEffect(() => {
+    const onDocPointerDown = (e: PointerEvent): void => {
+      if (e.target instanceof Element && !e.target.closest('.sx-composer')) setFilePal(null);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, []);
   const goalRef = useRef<HTMLTextAreaElement | null>(null);
   /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析) */
   const pickRelRef = useRef(new Map<string, string>());
+  /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
+  const goalComposingRef = useRef(false);
+  /** G14.213 欢迎页 / 命令面板(与会话内同构):命令清单+技能(skillsGroups,无会话依赖) */
+  const [welcomeCmdData, setWelcomeCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
+  const [welcomeSkills, setWelcomeSkills] = useState<Array<{ id: string; desc: string }>>([]);
+  const [welcomeCmdActive, setWelcomeCmdActive] = useState(0);
+  const [welcomeSlashDismissed, setWelcomeSlashDismissed] = useState<string | null>(null);
+  useEffect(() => {
+    conn.commands().then(setWelcomeCmdData, () => setWelcomeCmdData(null));
+  }, [conn]);
+  useEffect(() => {
+    if (picked === '') { setWelcomeSkills([]); return; }
+    let alive = true;
+    conn.skillsGroups?.(picked).then(
+      (r) => {
+        if (!alive) return;
+        const out: Array<{ id: string; desc: string }> = [];
+        for (const g of r.groups) for (const s of g.skills) if (!out.some((x) => x.id === s.id)) out.push({ id: s.id, desc: s.description ?? '' });
+        setWelcomeSkills(out);
+      },
+      () => { if (alive) setWelcomeSkills([]); },
+    );
+    return () => { alive = false; };
+  }, [conn, picked]);
 
   useEffect(() => {
     conn.settings().then(
@@ -290,6 +323,23 @@ function WelcomeComposer({
     return nm === 'default' || nm.startsWith('sunshinex-default');
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
+  /** G14.213 欢迎页 / 面板项(渲染期,光标位置):行首 /token → 命令+技能;空=面板不开 */
+  const welcomeSlashItems = (() => {
+    const caret = goalRef.current?.selectionStart ?? goal.length;
+    const tok = slashTokenAt(goal, caret);
+    if (tok === null || !tok.atStart || welcomeCmdData === null || `/${tok.query}` === (welcomeSlashDismissed ?? '\u0000')) return null;
+    const cmds = filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, tok.query, welcomeCmdData.supported);
+    const q = tok.query.toLowerCase();
+    const skills = welcomeSkills
+      .filter((s) => q === '' || s.id.toLowerCase().startsWith(q) || s.id.toLowerCase().includes(q))
+      .slice(0, 8)
+      .map((s) => {
+        const idx = s.id.toLowerCase().indexOf(q);
+        return { cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
+      });
+    const all = [...cmds, ...skills];
+    return all.length > 0 ? all : null;
+  })();
   /** G14.113 欢迎页分支选择(picked 为 git 目录时显):分支清单/当前分支/切换 */
   const [gitBr, setGitBr] = useState<{ current: string; branches: string[] } | null>(null);
   const [branchOpen, setBranchOpen] = useState(false);
@@ -481,6 +531,7 @@ function WelcomeComposer({
           placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}
           onChange={(v) => {
             setGoal(v);
+            setWelcomeSlashDismissed(null); // G14.213 Esc 收起后任何编辑即重新放行 / 面板
             // G14.124 面板跟随输入(光标前 @token 即开);无匹配=渲染面自然关闭
             const caret = goalRef.current?.selectionStart ?? v.length;
             const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
@@ -494,6 +545,51 @@ function WelcomeComposer({
             }
           }}
           onKeyDown={(e) => {
+            // G14.212 token 原子性(与会话内同构):整删 + 不可在 token 中间落字(键入/IME)
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              const ta = e.currentTarget as HTMLTextAreaElement;
+              const caret = ta.selectionStart ?? goal.length;
+              if (ta.selectionStart === ta.selectionEnd) {
+                const range = tokenDeleteRange(goal, caret, e.key);
+                if (range !== null) {
+                  e.preventDefault();
+                  const [s, e2] = range;
+                  setGoal((prev) => prev.slice(0, s) + prev.slice(e2));
+                  requestAnimationFrame(() => { goalRef.current?.setSelectionRange(s, s); });
+                  return;
+                }
+              }
+            }
+            if ((e.key.length === 1 || e.key === 'Process') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              const ta = e.currentTarget as HTMLTextAreaElement;
+              const cs = ta.selectionStart ?? goal.length;
+              const ce = ta.selectionEnd ?? cs;
+              const [as, ae] = atomicRange(goal, cs, ce);
+              if (as !== cs || ae !== ce) {
+                e.preventDefault();
+                ta.setSelectionRange(ae, ae);
+                return;
+              }
+            }
+            // G14.213 ←/→ 单击跨整个 token(有选区时原生移动)
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+              const ta = e.currentTarget as HTMLTextAreaElement;
+              const c = ta.selectionStart ?? 0;
+              const ce = ta.selectionEnd ?? c;
+              if (c === ce) {
+                const dir = e.key === 'ArrowLeft' ? -1 : 1;
+                const nc = c + dir;
+                if (nc >= 0 && nc <= ta.value.length) {
+                  const span = tokenSpanAt(ta.value, nc);
+                  if (span !== null) {
+                    e.preventDefault();
+                    const to = dir < 0 ? span[0] : span[1];
+                    ta.setSelectionRange(to, to);
+                  }
+                }
+              }
+            }
+            if (e.key !== 'Process' && e.nativeEvent.isComposing !== true) goalComposingRef.current = false;
             // G14.121 @ 文件面板(与会话内同构):任意位置 @token → 最近改动文件清单;
             // 选中插入 @相对路径(发送期统一展开为 md 绝对链接);面板开时 Enter/↑↓ 归面板
             const taEl = e.currentTarget as HTMLTextAreaElement;
@@ -529,17 +625,112 @@ function WelcomeComposer({
                 const atEnd = atFrom + 1 + filePal.query.length;
                 setGoal((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
                 setFilePal(null);
+                // G14.211 光标钉在插入 token 之后(程序化改值,旧光标位恢复=token 中间)
+                requestAnimationFrame(() => {
+                  const g = goalRef.current;
+                  if (g === null) return;
+                  const to = Math.min(atFrom + base.length + 2, g.value.length);
+                  g.setSelectionRange(to, to);
+                });
                 return;
               }
             }
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
+            // G14.213 欢迎页 / 命令+技能面板(与会话内同构):行首 /token → 面板;↑↓ 选择、
+            // Enter/Tab 补全 `/cmd `(执行发生在会话建立后:pendingGoal 经 submitText 命令门控),
+            // Esc 本次收起;无匹配=面板不开
+            const slashTok = slashTokenAt(goal, caret);
+            const slashItems =
+              slashTok !== null && slashTok.atStart && welcomeCmdData !== null && `/${slashTok.query}` !== (welcomeSlashDismissed ?? '\u0000')
+                ? [
+                  ...filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, slashTok.query, welcomeCmdData.supported),
+                  ...welcomeSkills
+                    .filter((s) => slashTok.query === '' || s.id.toLowerCase().startsWith(slashTok.query.toLowerCase()) || s.id.toLowerCase().includes(slashTok.query.toLowerCase()))
+                    .slice(0, 8)
+                    .map((s) => {
+                      const idx = s.id.toLowerCase().indexOf(slashTok.query.toLowerCase());
+                      return { cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
+                    }),
+                ]
+                : [];
+            if (slashTok !== null && slashItems.length > 0) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                setWelcomeCmdActive((a) => (e.key === 'ArrowDown' ? (a + 1) % slashItems.length : (a - 1 + slashItems.length) % slashItems.length));
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setWelcomeCmdActive(0);
+                setWelcomeSlashDismissed(`/${slashTok.query}`);
+                return;
+              }
+              if ((e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) || e.key === 'Tab') {
+                e.preventDefault();
+                const item = slashItems[Math.min(welcomeCmdActive, slashItems.length - 1)];
+                if (item !== undefined) {
+                  setGoal((prev) => prev.slice(0, slashTok.from) + item.cmd + ' ' + prev.slice(caret));
+                  setWelcomeCmdActive(0);
+                }
+                return;
+              }
             }
-          }}
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            onBeforeInput={(e) => {
+              // G14.212 token 原子性兜底面(与会话内同构)
+              const ev = e.nativeEvent as InputEvent;
+              const ta = e.currentTarget;
+              const s = ta.selectionStart ?? 0;
+              const en = ta.selectionEnd ?? 0;
+              const v = tokenGuardVerdict(goal, s, en, ev.inputType ?? '');
+              if (v.action === 'redirectEnd') {
+                e.preventDefault();
+                ta.setSelectionRange(v.to, v.to);
+              } else if (v.action === 'splice') {
+                e.preventDefault();
+                setGoal((prev) => prev.slice(0, v.s) + prev.slice(v.e));
+                requestAnimationFrame(() => ta.setSelectionRange(v.s, v.s));
+              }
+            }}
+            onPasteGuard={(e) => {
+              const ta = e.currentTarget;
+              const s = ta.selectionStart ?? 0;
+              const en = ta.selectionEnd ?? 0;
+              const [as, ae] = atomicRange(goal, s, en);
+              if (as !== s || ae !== en) {
+                e.preventDefault();
+                ta.setSelectionRange(ae, ae);
+              }
+            }}
+            onCompositionGuard={(e) => {
+              goalComposingRef.current = true; // G14.213 组合中:onSelect 归位跳过
+              const ta = e.currentTarget;
+              const s = ta.selectionStart ?? 0;
+              const en = ta.selectionEnd ?? 0;
+              const [as, ae] = atomicRange(goal, s, en);
+              if (as !== s || ae !== en) e.preventDefault();
+            }}
+            onCompositionEndGuard={() => {
+              goalComposingRef.current = false;
+            }}
+            onSelectGuard={() => {
+              // G14.213 光标不落 token 中间:↑↓/Home/End 等原生移动后的兜底归位(IME 组合中跳过)
+              if (goalComposingRef.current) return;
+              const ta = goalRef.current;
+              if (ta === null) return;
+              const s = ta.selectionStart ?? 0;
+              const en = ta.selectionEnd ?? 0;
+              if (s !== en) return;
+              const span = tokenSpanAt(ta.value, s);
+              if (span !== null) ta.setSelectionRange(span[1], span[1]);
+            }}
           overlays={
-            // G14.121 @ 文件面板优先(命中才渲染;点击行=插入绝对路径,面板收起)
-            filePal !== null && picked !== '' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
+            // G14.121 @ 文件面板优先(命中才渲染;点击行=插入绝对路径,面板收起);
+            // G14.211 锚点校验:@ 被删后面板残留在此拦下(同 Chat 渲染面)
+            filePal !== null && picked !== '' && goal[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
               <FilePalette
                 items={filePalFiles.filter((f) => fileHit(f, filePal.query)).slice(0, 12)}
                 active={Math.min(filePalActive, 11)}
@@ -552,8 +743,33 @@ function WelcomeComposer({
                   const atEnd = atFrom + 1 + filePal.query.length;
                   setGoal((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
                   setFilePal(null);
+                  // G14.211 焦点回输入框 + 光标钉在插入 token 之后(面板行点击带走焦点,
+                  // 不回焦则后续键入落空;旧光标位恢复=token 中间)
+                  goalRef.current?.focus();
+                  requestAnimationFrame(() => {
+                    const g = goalRef.current;
+                    if (g === null) return;
+                    const to = Math.min(atFrom + base.length + 2, g.value.length);
+                    g.setSelectionRange(to, to);
+                  });
                 }}
               />
+            ) : welcomeSlashItems !== null ? (
+              (() => {
+                // G14.213 欢迎页 / 命令+技能面板:行点击补全 `/cmd `(执行在会话建立后)
+                const items = welcomeSlashItems;
+                const active = Math.min(welcomeCmdActive, Math.max(0, items.length - 1));
+                const pick = (item: { cmd: string; ok: boolean }): void => {
+                  if (!item.ok) return;
+                  const tok = slashTokenAt(goal, goalRef.current?.selectionStart ?? goal.length);
+                  const from = tok !== null ? tok.from : goal.length;
+                  const caret = goalRef.current?.selectionStart ?? goal.length;
+                  setGoal(goal.slice(0, from) + item.cmd + ' ' + goal.slice(caret));
+                  setWelcomeCmdActive(0);
+                  goalRef.current?.focus();
+                };
+                return <CommandPalette items={items} active={active} onHover={setWelcomeCmdActive} onPick={pick} />;
+              })()
             ) : plusOpen ? (
               <ComposerPlusPanel
                 conn={conn}
@@ -690,6 +906,9 @@ function AppShell(): JSX.Element {
   /** 欢迎页预选工作区(G10-C16):New chat=空(自选);项目行「+」=该项目(快捷预选) */
   const [composePresetRoot, setComposePresetRoot] = useState<string | null>(null);
   const [openSessionId, setOpenSessionId] = useState<string>('');
+  /** G14.213 会话 journal 档案 id(滚动位存档等跨重挂持久面的稳定键):sessionId 是活动会话
+   *  别名(每次重开 newSession+attach 重新发号),journal id 跨重挂/daemon 重启不变;缺省=sessionId */
+  const [openJournalId, setOpenJournalId] = useState<string>('');
   /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
   const [openRoot, setOpenRoot] = useState<string>('');
   /** G14.16 标题统一流联动:rename 落盘后 bump → ProjectMenu 重拉 recentSessions(侧栏即时同名) */
@@ -899,9 +1118,10 @@ function AppShell(): JSX.Element {
     })();
   };
 
-  const openSession = (sessionId: string, root: string): void => {
+  const openSession = (sessionId: string, root: string, journalId?: string): void => {
     sessionRef.current = sessionId;
     setOpenSessionId(sessionId);
+    setOpenJournalId(journalId !== undefined && journalId !== '' ? journalId : sessionId);
     setOpenRoot(root);
     setTabStates((s) => ensureSession(s, sessionId, PROBE));
     reopenBoardSeedWindow();
@@ -920,6 +1140,7 @@ function AppShell(): JSX.Element {
   const backHome = (): void => {
     sessionRef.current = '';
     setOpenSessionId('');
+    setOpenJournalId('');
     setOpenRoot('');
     reopenBoardSeedWindow();
     setBoard(emptyBoard());
@@ -945,12 +1166,34 @@ function AppShell(): JSX.Element {
   }, []);
 
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
-   *  tab-state(同目标重开=聚焦既有,单例类型单份) */
-  const openTabInSession = (type: TabTypeId, params: TabParams = {}): void => {
+   *  tab-state(同目标重开=聚焦既有,单例类型单份)。G14.211 useCallback+sessionRef 零依赖
+   *  稳定:内联闭包随 App 渲染换新,击穿 ChatEntryView memo——点一次文件=全列表重渲染闪帧
+   *  (正文抖动源之一);sessionRef 恒同步 openSessionId,无过期闭包面 */
+  const openTabInSession = useCallback((type: TabTypeId, params: TabParams = {}): void => {
     // G14.38:程序化开标签即展开右栏(默认折叠下 write/diff/目录跳转/卡片开面板均可见)
-    setTabStates((st) => setCollapsed(st, openSessionId, false));
-    setTabStates((s) => openTab(s, openSessionId, type, params, PROBE));
+    setTabStates((st) => setCollapsed(st, sessionRef.current, false));
+    setTabStates((s) => openTab(s, sessionRef.current, type, params, PROBE));
+  }, []);
+  const openFileTab = useCallback((p: string): void => { openTabInSession('file', { path: p }); }, [openTabInSession]);
+  const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('diff', { callId, path }); }, [openTabInSession]);
+  const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string): void => { openTabInSession('agent', { label, agentTitle, task }); }, [openTabInSession]);
+  const openAgentsTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
+  const openTabType = useCallback((type: TabTypeId): void => { openTabInSession(type, {}); }, [openTabInSession]);
+  const openMemoryTab = useCallback((): void => { openTabInSession('memory'); }, [openTabInSession]);
+  /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */
+  const forkLatestRef = useRef(() => {});
+  forkLatestRef.current = (): void => {
+    if (connInstance === null) return;
+    void connInstance
+      .sessionAnchors(openSessionId)
+      .then(async (a) => {
+        const last = a.length > 0 ? a[a.length - 1]!.turn : 1;
+        const r = await connInstance.forkSession(openSessionId, last);
+        openSession(r.sessionId, openRoot);
+      })
+      .catch(showOpError);
   };
+  const onForkStable = useCallback((): void => { forkLatestRef.current(); }, []);
 
   /** G8b pty 分配落定记账(TerminalTab 回传;registry render props 面)——useCallback 零依赖
    *  (仅 ref)保稳定:TerminalTab 装配 effect 以此为依赖,inline 箭头会令其随 App 重渲染重跑 */
@@ -1132,18 +1375,19 @@ function AppShell(): JSX.Element {
                 key={openSessionId}
                 conn={connInstance}
                 sessionId={openSessionId}
+                journalId={openJournalId}
                 connState={connState}
                 onBack={backHome}
                 sinkRef={chatSinkRef}
                 onSeeded={seedFromSnapshot}
-                onOpenFile={(p) => openTabInSession('file', { path: p })}
-                onOpenDiff={(callId, path) => openTabInSession('diff', { callId, path })}
-                onOpenAgent={(label, agentTitle, task) => openTabInSession('agent', { label, agentTitle, task })}
+                onOpenFile={openFileTab}
+                onOpenDiff={openDiffTab}
+                onOpenAgent={openAgentTab}
                 onOpenTask={(ref) => {
-                  openTabInSession('agents', {});
+                  openAgentsTab();
                   setTaskFocus({ ref, nonce: Date.now() });
                 }}
-                onOpenTab={(type) => openTabInSession(type, {})}
+                onOpenTab={openTabType}
                 board={board}
                 onTodoBatches={setTodoBatches}
                 onTurnGoal={setTurnGoal}
@@ -1155,18 +1399,8 @@ function AppShell(): JSX.Element {
                 showExpandSidebar={tabState.collapsed}
                 onExpandSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, false))}
                 onSideChat={startSideChat}
-                onOpenMemory={() => openTabInSession('memory')}
-                onFork={() => {
-                  if (connInstance === null) return;
-                  void connInstance
-                    .sessionAnchors(openSessionId)
-                    .then(async (a) => {
-                      const last = a.length > 0 ? a[a.length - 1]!.turn : 1;
-                      const r = await connInstance.forkSession(openSessionId, last);
-                      openSession(r.sessionId, openRoot);
-                    })
-                    .catch(showOpError);
-                }}
+                onOpenMemory={openMemoryTab}
+                onFork={onForkStable}
                 onRewind={(turn) => {
                   void connInstance
                     .rewindSession(openSessionId, turn)
@@ -1174,8 +1408,9 @@ function AppShell(): JSX.Element {
                       // 回退=换 journal 重新播种(Chat 内 reseed 由 key 不变触发不了——手动重挂:切走再切回同会话)
                       const rid = openSessionId;
                       const rr = openRoot;
+                      const rj = openJournalId;
                       setPage('welcome');
-                      requestAnimationFrame(() => openSession(rid, rr));
+                      requestAnimationFrame(() => openSession(rid, rr, rj));
                     })
                     .catch(showOpError);
                 }}

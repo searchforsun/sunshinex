@@ -140,6 +140,9 @@ export interface ChatProps {
   freshView?: boolean;
   /** G14.32 顶栏定名(辅助对话):压过会话名回落链,不露注册 id */
   fixedTitle?: string;
+  /** G14.213 滚动位存档键:journal 档案 id(稳定跨重挂/重启)。sessionId 是活动会话别名
+   *  (每次重开经 newSession+attach 重新发号,s165→s167),按它存档永远失配;未配回落 sessionId */
+  journalId?: string;
 }
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
@@ -174,11 +177,13 @@ function resultOf(md: string): string {
   return m >= 0 ? md.slice(m + 2) : '';
 }
 
-/** G14.177 顶栏动态计数按钮(待办/任务/后台任务):转圈图标+数量;0 个不显;点击开对应页签。
- *  靠右聚拢(margin-left:auto)不挤压标题与展开钮;后台任务数 5s 轮询 /session/:id/tasks */
-function ChatDynButtons({ todoActive, taskActive, conn, sessionId, onOpenTab }: {
+/** G14.177 顶栏动态计数按钮(待办/任务/后台任务):转圈图标+数量;点击开对应页签。
+ *  G14.213 原子化三改:①仅运行中显示(轮次收束即隐,待办是否完结无关);②侧栏展开不再隐藏
+ *  (挂载点去掉 collapsed 门);③幽灵钮化——无底色、顶栏 hover 浮现,待办钮转圈绿色 */
+function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOpenTab }: {
   todoActive: number;
   taskActive: number;
+  running: boolean;
   conn: Connection;
   sessionId: string;
   onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
@@ -206,11 +211,12 @@ function ChatDynButtons({ todoActive, taskActive, conn, sessionId, onOpenTab }: 
       window.clearInterval(timer);
     };
   }, [conn, sessionId]);
-  if (todoActive === 0 && taskActive === 0 && bgRunning === 0) return null;
+  // G14.213 轮次收束即隐:running 熄灭按钮组整体不显(待办/任务是否完结无关)
+  if (!running || (todoActive === 0 && taskActive === 0 && bgRunning === 0)) return null;
   return (
     <div className="chat-dyn-buttons" role="group" aria-label="live counters">
       {todoActive > 0 && (
-        <button type="button" className="chat-dyn-btn" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
+        <button type="button" className="chat-dyn-btn todo" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
           <span className="run-spinner" aria-hidden="true" />
           {t(`${todoActive} todos`, `${todoActive} 待办`)}
         </button>
@@ -260,14 +266,16 @@ function toolMdInfo(md: string): { name: string; input: Record<string, unknown> 
   return { name, input: {} };
 }
 
-/** G14.168 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名) */
+/** G14.168 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名)。
+ *  G14.213 两字优先:能两字表意的不用多字(查阅/查找/抓取/搜索/记忆/派生/停止/等待/检索/
+ *  建单/依赖/分派/复审/门审/取消);工作树无自然两字,保留 */
 const TOOL_VERB_ZH: Record<string, string> = {
-  read: '读取', write: '写入', exec: '执行', grep: '搜索内容', glob: '找文件',
-  skill: '技能', webfetch: '抓取网页', websearch: '搜索网页', memory_write: '保存记忆',
-  todo_write: '待办', worktree: '工作树', spawn: '分派子代理', task_stop: '停止任务',
-  task_wait: '等待任务', kb_search: '知识库检索', ask_question: '提问',
-  create_task: '创建任务', set_dependency: '设置依赖', assign: '分派任务',
-  review_task: '复审任务', gate_task: '门审任务', cancel_task: '取消任务',
+  read: '读取', write: '写入', exec: '执行', grep: '查阅', glob: '查找',
+  skill: '技能', webfetch: '抓取', websearch: '搜索', memory_write: '记忆',
+  todo_write: '待办', worktree: '工作树', spawn: '派生', task_stop: '停止',
+  task_wait: '等待', kb_search: '检索', ask_question: '提问',
+  create_task: '建单', set_dependency: '依赖', assign: '分派',
+  review_task: '复审', gate_task: '门审', cancel_task: '取消',
 };
 function zhToolName(name: string): string {
   const zh = TOOL_VERB_ZH[name];
@@ -341,7 +349,7 @@ function writeStatOf(result: string): { added?: string; removed?: string } {
  *  callId 在场优先 onOpenDiff 开 diff 标签,缺场回落 onOpenFile 文件标签预览);其他工具展开
  *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚;result 旁路暂存,
  *  种子条回落 md 首行)。折叠壳 grid 化(0fr→1fr 生长):展开面常挂 DOM,折叠仅 CSS 收起。 */
-function ToolEntryView({
+export function ToolEntryView({
   entry,
   info,
   conn,
@@ -949,30 +957,84 @@ export function tokenDeleteRange(text: string, caret: number, key: 'Backspace' |
   }
   return null;
 }
-/** G14.139 token 显形文本:含 :L 行锚 → 文件名(L30-L35);否则取文件名 */
-function tokenDisplayText(token: string): string {
-  const m2 = /^(.*):(L\d+(?:-L\d+)?)$/.exec(token);
-  if (m2 !== null) {
-    const base = m2[1].split(/[\\/]/).pop() ?? m2[1];
-    return `${base}(${m2[2]})`;
+
+/** G14.212 token 原子区间:编辑区间与非明文 token 部分相交(未整段覆盖)→ 扩为完整 token;
+ *  返回与入参相同=无部分相交,编辑放行。整段覆盖(token 全落在区间内)=有意整替,放行 */
+export function atomicRange(text: string, start: number, end: number): [number, number] {
+  let pos = 0;
+  let s = start;
+  let e = end;
+  for (const tk of splitMentionTokens(text)) {
+    if (tk.kind === 'plain') { pos += tk.text.length; continue; }
+    const ts = pos;
+    const te = pos + tk.text.length;
+    pos = te;
+    const covers = start <= ts && end >= te;
+    if (start < te && end > ts && !covers) { s = Math.min(s, ts); e = Math.max(e, te); }
   }
-  return token.split(/[\\/]/).pop() ?? token;
+  return [s, e];
 }
 
-/** G14.132 输入框高亮层(导出共享——欢迎页 composer 同款):file token 渲染文件图标+文件名
- *  (无蒙版,与气泡 file-link 同视觉;@ 字符透明化保字宽对齐,图标落 @ 位) */
+export type TokenGuardVerdict =
+  | { action: 'allow' }
+  | { action: 'redirectEnd'; to: number }
+  | { action: 'splice'; s: number; e: number };
+
+const INSERT_INPUT_TYPES = new Set(['insertText', 'insertReplacementText', 'insertCompositionText', 'insertParagraph', 'insertLineBreak', 'insertFromPaste', 'insertFromDrop']);
+const DELETE_INPUT_TYPES = new Set(['deleteContentBackward', 'deleteContentForward', 'deleteByCut', 'deleteByDrag', 'deleteCompositionText', 'deleteWordBackward', 'deleteWordForward', 'deleteSoftLineBackward', 'deleteSoftLineForward', 'deleteHardLineBackward', 'deleteHardLineForward']);
+
+/** G14.212 beforeinput 判定(token 原子性):插入面部分命中 token → 阻止+光标钉 token 尾(再击
+ *  落边界);删除面部分命中 → 扩为整 token 删。整段覆盖/边界编辑放行(:L 行锚续写、有意整替) */
+export function tokenGuardVerdict(text: string, start: number, end: number, inputType: string): TokenGuardVerdict {
+  if (INSERT_INPUT_TYPES.has(inputType)) {
+    const [s, e] = atomicRange(text, start, end);
+    if (s !== start || e !== end) return { action: 'redirectEnd', to: e };
+    return { action: 'allow' };
+  }
+  if (DELETE_INPUT_TYPES.has(inputType)) {
+    const [s, e] = atomicRange(text, start, end);
+    if (s !== start || e !== end) return { action: 'splice', s, e };
+    return { action: 'allow' };
+  }
+  return { action: 'allow' };
+}
+
+/** G14.213 严格包含 caret 的 token 区间(s < caret < e;首尾边界不算内);无则 null。
+ *  「光标不落 token 中间」的归位判据——点击/方向键/原生移动统一钉到边界 */
+export function tokenSpanAt(text: string, caret: number): [number, number] | null {
+  let pos = 0;
+  for (const tk of splitMentionTokens(text)) {
+    if (tk.kind === 'plain') { pos += tk.text.length; continue; }
+    const s = pos;
+    const e2 = pos + tk.text.length;
+    pos = e2;
+    if (caret > s && caret < e2) return [s, e2];
+  }
+  return null;
+}
+/** G14.132 输入框高亮层(导出共享——欢迎页 composer 同款):file token 渲染文件图标+显形文本。
+ *  G14.211 显形=原始字形(tokenBody 原样,行锚 :L 段弱色)——显示宽度逐字形等于原文,
+ *  光标恒贴芯片右沿;此前 basename/`(L..L)` 变换画宽>原文宽,光标后留缝 */
 export const renderMentionSpans = (text: string): ReactNode =>
   splitMentionTokens(text).map((tk, i) => {
     if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
     if (tk.kind === 'file') {
       const tokenBody = tk.text.slice(1);
+      const anchor = /^(.*)(:L\d+(?:-L\d+)?)$/.exec(tokenBody);
       return (
         <span key={i} className="hn hn-file">
           <span className="hn-file-ico" aria-hidden="true">
             <FileIcon path={tokenBody.replace(/:L\d+(?:-L\d+)?$/, '')} />
           </span>
           <span className="hn-file-at" aria-hidden="true">@</span>
-          {tokenDisplayText(tokenBody)}
+          {anchor === null ? (
+            tokenBody
+          ) : (
+            <>
+              {anchor[1]}
+              <span className="hn-file-lines">{anchor[2]}</span>
+            </>
+          )}
         </span>
       );
     }
@@ -1176,11 +1238,29 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
 /** Mermaid 容器(G11 §5.4):hover 显放大/复制钮;放大=lightbox(遮罩 contain 居中,点击/Esc 关,
  *  Esc 监听随开关挂卸);复制=源码。回落态(fallback/pending)两钮同样在场——降级不失功能。
  *  G14.122:渲染失败 → 放大钮收起(浮层只属成功图);浮层内容=克隆已渲 SVG(不二次渲染,
- *  免 concurrent render 空白);浮层面板下移缩窄,不遮标签条钮 */
+ *  免 concurrent render 空白);浮层面板下移缩窄,不遮标签条钮
+ *  G14.2xx 视图手感:拖动钳制(内容恒不全丢)、滚轮绕指针缩放、按钮绕视心缩放(不跳) */
 function MermaidBlock({ chart }: { chart: string }): JSX.Element {
   const [zoom, setZoom] = useState(false);
   /** 渲染成败(null=在途):false 即收放大钮 */
   const [renderOk, setRenderOk] = useState<boolean | null>(null);
+  /** G14.2xx 复制回显:与 CodeBlock 同款——图标换 ✓ 1.5s + tooltip 变「已复制」 */
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+  const copyChart = (): void => {
+    navigator.clipboard?.writeText(chart).then(
+      () => setCopied(true),
+      () => undefined,
+    );
+    if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 1500);
+  };
   // G14.107 lightbox 视图态:缩放(s)/平移(x,y);滚轮缩放+拖动平移+按钮组(+ % − [] X)
   const [view, setView] = useState({ x: 0, y: 0, s: 1 });
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
@@ -1188,7 +1268,42 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
    *  baseRef=100% 基准尺寸(克隆时刻实测)——G14.123 真矢量缩放的参照 */
   const inlineRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<{ w: number; h: number } | null>(null);
+  /** G14.2xx 平移钳制:内容与面板每轴恒有 ≥56 本地 px 交集——图拖不出可视区
+   *  (修「拖动后被截断/原始边框外没有渲染」:此前无界,图可整个拖出面板变全空) */
+  const clampView = (v: { x: number; y: number; s: number }): { x: number; y: number; s: number } => {
+    const body = bodyRef.current;
+    const base = baseRef.current;
+    if (body === null || base === null) return v;
+    const z = zoomScale();
+    const panelW = body.getBoundingClientRect().width / z / 2;
+    const panelH = body.getBoundingClientRect().height / z / 2;
+    const m = 56;
+    const axis = (pos: number, half: number, panel: number): number => {
+      const lo = m - panel - half;
+      const hi = panel - m + half;
+      if (lo > hi) return 0; // 极限小窗:居中
+      return Math.min(hi, Math.max(lo, pos));
+    };
+    return { x: axis(v.x, (base.w * v.s) / 2, panelW), y: axis(v.y, (base.h * v.s) / 2, panelH), s: v.s };
+  };
+  /** G14.2xx 缩放:按钮(focal 缺省)绕当前视心——拖身后 +/− 不再跳回面板中心;
+   *  滚轮(focal=指针面板本地坐标)绕指针定针——正在看的位置保持不动 */
+  const zoomAt = (factor: number, focal?: { x: number; y: number }): void => {
+    setView((v) => {
+      const s1 = Math.min(8, Math.max(0.2, Math.round(v.s * factor * 100) / 100));
+      if (s1 === v.s) return v;
+      const k = s1 / v.s;
+      return clampView({
+        x: focal === undefined ? v.x * k : focal.x + (v.x - focal.x) * k,
+        y: focal === undefined ? v.y * k : focal.y + (v.y - focal.y) * k,
+        s: s1,
+      });
+    });
+  };
+  const zoomAtRef = useRef(zoomAt);
+  zoomAtRef.current = zoomAt; // 滚轮原生监听取最新(组件体内函数每渲染换身份)
   useEffect(() => {
     if (zoom) setView({ x: 0, y: 0, s: 1 }); // 开盒复位
   }, [zoom]);
@@ -1221,7 +1336,7 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
       const d = dragRef.current;
       if (d === null) return;
       // client 增量是视觉 px,view.x/y 写本地 transform=视觉/根放缩(ui-zoom.ts 契约)
-      setView((v) => ({ ...v, x: d.ox + (ev.clientX - d.sx) / zoomScale(), y: d.oy + (ev.clientY - d.sy) / zoomScale() }));
+      setView((v) => clampView({ ...v, x: d.ox + (ev.clientX - d.sx) / zoomScale(), y: d.oy + (ev.clientY - d.sy) / zoomScale() }));
     };
     const onUp = (): void => {
       dragRef.current = null;
@@ -1235,9 +1350,24 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
       document.removeEventListener('mouseup', onUp);
     };
   }, [zoom]);
-  const zoomBy = (factor: number): void => {
-    setView((v) => ({ ...v, s: Math.min(8, Math.max(0.2, Math.round(v.s * factor * 100) / 100)) }));
-  };
+  // G14.2xx 滚轮缩放挂原生非被动监听:preventDefault 挡背景聊天流跟滚(lightbox 在 .chat
+  // 滚动祖先内),focal=指针位置绕点缩放
+  useEffect(() => {
+    if (!zoom) return;
+    const el = bodyRef.current;
+    if (el === null) return;
+    const onWheel = (ev: WheelEvent): void => {
+      ev.preventDefault();
+      const r = el.getBoundingClientRect();
+      const z = zoomScale();
+      zoomAtRef.current(ev.deltaY < 0 ? 1.15 : 1 / 1.15, {
+        x: (ev.clientX - r.left) / z - r.width / (2 * z),
+        y: (ev.clientY - r.top) / z - r.height / (2 * z),
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [zoom]);
   return (
     <div className="mermaid-block">
       <div ref={inlineRef} className="mermaid-inline">
@@ -1249,12 +1379,10 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
         )}
         <TipButton
           className="sx-tip-right"
-          tip={t('Copy', '复制')}
+          tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
           label="copy mermaid"
-          icon={<Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
-          onClick={() => {
-            navigator.clipboard?.writeText(chart).then(() => undefined, () => undefined);
-          }}
+          icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+          onClick={copyChart}
         />
       </div>
       {zoom && (
@@ -1263,11 +1391,12 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
           role="dialog"
           aria-label={t('Mermaid preview', 'Mermaid 预览')}
           onClick={() => setZoom(false)}
-          onWheel={(e) => zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15)}
         >
-          {/* 拖动平移:svg wrapper 上 mousedown 捕获,window move/up 驱动;transform 三元组应用;
-              内容=克隆 SVG(G14.122,开盒时 useEffect 填充);动作钮随体(不遮标签条) */}
+          {/* 拖动平移:svg wrapper 上 mousedown 捕获,window move/up 驱动(钳制在 clampView);
+              滚轮缩放=原生非被动监听挂 body(绕指针);内容=克隆 SVG(G14.122,开盒时 useEffect 填充);
+              动作钮随体(不遮标签条) */}
           <div
+            ref={bodyRef}
             className="mermaid-lightbox-body"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => {
@@ -1275,10 +1404,10 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
             }}
           >
             <div className="mermaid-lb-actions" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-              <button type="button" aria-label={t('Zoom in', '放大')} onClick={() => zoomBy(1.2)}>+</button>
-              {/* G14.117 缩放百分比(+ − 之间);方框钮=复位视图 */}
+              <button type="button" aria-label={t('Zoom out', '缩小')} onClick={() => zoomAt(1 / 1.2)}>−</button>
+              {/* G14.117 缩放百分比(− + 之间);方框钮=复位视图 */}
               <span className="mermaid-lb-zoom">{Math.round(view.s * 100)}%</span>
-              <button type="button" aria-label={t('Zoom out', '缩小')} onClick={() => zoomBy(1 / 1.2)}>−</button>
+              <button type="button" aria-label={t('Zoom in', '放大')} onClick={() => zoomAt(1.2)}>+</button>
               <button type="button" aria-label={t('Reset view', '复位')} onClick={() => setView({ x: 0, y: 0, s: 1 })}>
                 <Square size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
@@ -1405,7 +1534,7 @@ function TipButton({ tip, label, icon, onClick, className }: { tip: string; labe
 /** 思考链折叠行(G11 §3):折叠=Brain 图标+「思考中…/思考 Ns」+末行内联预览(尾锚定,新内容自右
  *  推入旧文左流=「往前流动」,左缘 mask 渐隐);展开=全文内滚容器(streaming 时 effect 逐帧吸底,
  *  直设 scrollTop 不平滑——逐 token 跟手)。展开/折叠 grid-rows 过渡(同工具行公式) */
-const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
+export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [, setTick] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -1694,7 +1823,7 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | nul
  *  而非元素)——调用面传 `runFooterByEntry.get(entry.key)`(undefined 恒稳定,reducer 保条目引用,浅
  *  比较恢复命中),组件内在场时自渲染 RunFooter;终审前传 ReactNode 每帧新建元素击穿 memo,长会话
  *  每 token 触发历史末条全文重解析 */
-const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void }): JSX.Element {
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
   // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建)
@@ -1837,68 +1966,70 @@ function RunChangesBar({
   );
 }
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onRewind, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab }: ChatProps): JSX.Element {
+/** G14.212 会话滚动位存档(localStorage `sunshinex.chat-scroll`):id → { d: 距底 px, t: 时刻 }。
+ *  非贴底(>80px,同贴底判定阈值)才记;贴底离开删档(再进照旧跳底)。内存单例跨 Chat 重挂载
+ *  存活(key 换装即读),localStorage 节流落盘(冷却 800ms 直写+尾随写);容量封顶 100(超出丢
+ *  最旧),存储满/禁用静默 */
+const SCROLL_KEY = 'sunshinex.chat-scroll';
+type ScrollMem = Record<string, { d: number; t: number }>;
+let scrollMem: ScrollMem | null = null;
+let scrollFlushAt = 0;
+let scrollFlushTimer: ReturnType<typeof setTimeout> | null = null;
+function scrollMemMap(): ScrollMem {
+  if (scrollMem !== null) return scrollMem;
+  try {
+    const raw = localStorage.getItem(SCROLL_KEY);
+    const obj = raw === null ? null : (JSON.parse(raw) as ScrollMem);
+    scrollMem = obj !== null && typeof obj === 'object' ? obj : {};
+  } catch {
+    scrollMem = {};
+  }
+  return scrollMem;
+}
+function flushScrollMem(): void {
+  if (scrollFlushTimer !== null) {
+    clearTimeout(scrollFlushTimer);
+    scrollFlushTimer = null;
+  }
+  scrollFlushAt = Date.now();
+  if (scrollMem === null) return;
+  try {
+    const entries = Object.entries(scrollMem)
+      .sort((a, b) => b[1].t - a[1].t)
+      .slice(0, 100);
+    localStorage.setItem(SCROLL_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    /* 存储满/禁用:静默 */
+  }
+}
+function saveScrollPos(id: string, dist: number): void {
+  const m = scrollMemMap();
+  if (dist <= 0) delete m[id];
+  else m[id] = { d: Math.round(dist), t: Date.now() };
+  if (scrollFlushTimer !== null) return;
+  if (Date.now() - scrollFlushAt > 800) flushScrollMem();
+  else scrollFlushTimer = setTimeout(flushScrollMem, 800);
+}
+/** 存档读取:仅非贴底位(≤80px 视为贴底语义,回 null 走跳底) */
+function peekScrollPos(id: string): number | null {
+  const hit = scrollMemMap()[id];
+  const out = hit !== undefined && hit.d > 80 ? hit.d : null;
+  return out;
+}
+
+/** G14.95 slash 面板令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能)。
+ *  模块层导出(App 欢迎页 /命令 目标分流复用) */
+export const slashTokenAt = (text: string, caret: number): { query: string; from: number; atStart: boolean } | null => {
+  const m = /\/([\w-]*)$/.exec(text.slice(0, caret));
+  if (m === null) return null;
+  return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
+};
+
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onRewind, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
+  /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
+  const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
 
-  /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
-   *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签 */
-  const todoBatches = useMemo<TodoBatch[]>(() => {
-    const out: TodoBatch[] = [];
-    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
-    let lastGoal = '';
-    for (const e of chat.entries) {
-      if (e.kind === 'user') lastGoal = strip(e.md);
-      if (e.kind !== 'tool') continue;
-      const info = toolMdInfo(e.md);
-      if (info === undefined || info.name !== 'todo_write') continue;
-      const arr = Array.isArray(info.input.todos) ? (info.input.todos as Array<Record<string, unknown>>) : [];
-      const items = arr
-        .map((o) => ({
-          text: String(o?.text ?? ''),
-          status: (o?.status === 'completed' ? 'completed' : o?.status === 'in_progress' ? 'in_progress' : 'pending') as TodoBatch['items'][number]['status'],
-        }))
-        .filter((x) => x.text !== '');
-      if (items.length === 0) continue;
-      out.push({ key: e.key, ts: e.ts ?? 0, goal: lastGoal, items });
-    }
-    // G14.179 同清单合并:条目文本签名相同=同一份待办的进度推进(0/3→2/3→3/3 三卡即重复——
-    // 用户裁决「同属一个不拆」),按签名只保留最新一批,按其时间正序输出
-    const bySig = new Map<string, TodoBatch>();
-    for (const b of out) {
-      const sig = b.items.map((x) => x.text).join('\n');
-      const prev = bySig.get(sig);
-      if (prev === undefined || b.ts >= prev.ts) bySig.set(sig, b);
-    }
-    return [...bySig.values()].sort((a, b) => a.ts - b.ts);
-  }, [chat.entries]);
-
-  /** G14.177 顶栏动态计数:待办=末批(最新)未完成条目;任务板=pending+claimed 任务 */
-  const todoActive = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.filter((x) => x.status !== 'completed').length : 0;
-  const taskActive = board !== undefined ? Object.values(board.tasks).filter((x) => x.status === 'pending' || x.status === 'claimed').length : 0;
-
-  /** G14.174 关联轮次用户输入(最近一条 user 行;md 链接折叠为标签文本——goal 供单行省略头) */
-  const turnGoal = useMemo(() => {
-    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
-    for (let i = chat.entries.length - 1; i >= 0; i -= 1) {
-      const e = chat.entries[i]!;
-      if (e.kind === 'user') return strip(e.md);
-    }
-    return '';
-  }, [chat.entries]);
-
-  // 上报去重(性能面):entries 每 token 帧都换新引用——序列化签名不变就不上报,
-  // 否则 App 级 setState 跟着每帧放大重渲染(稳定条 md 计数上涨,G14.174 回归)
-  const batchSig = useMemo(() => JSON.stringify(todoBatches), [todoBatches]);
-  const reportedBatchSig = useRef('');
-  useEffect(() => {
-    if (batchSig === reportedBatchSig.current) return;
-    reportedBatchSig.current = batchSig;
-    onTodoBatches?.(todoBatches);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchSig]);
-  useEffect(() => {
-    onTurnGoal?.(turnGoal);
-  }, [turnGoal, onTurnGoal]);
 
   /** G14.172 任务名映射(转录自建):create_task 行回执 `task tN created` → 标题——板投影是内存态
    *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表 */
@@ -1954,7 +2085,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   /** 流区贴底跟随(G13 反馈轮):滚动容器 ref + 「用户是否贴底」旁路 ref——贴底(含初始态)时
    *  每次渲染(流式 token/条目增删)自动归底;用户上翻超阈值即放手,再触底恢复跟随 */
   const chatScrollRef = useRef<HTMLElement | null>(null);
-  const chatStickRef = useRef(true);
+  // G14.212/G14.213 再进恢复上次浏览位:挂载读非贴底存档(距底 px,键=journalId 稳定身份)——
+  // 存档位待恢复 + 贴底跟随挂起(stick 初值 false,每渲染归底 effect 让位;恢复后 onScroll 接管)。
+  // 贴底离开无存档=照旧跳底
+  const scrollRestoreRef = useRef<number | null>(peekScrollPos(archiveKey));
+  const chatStickRef = useRef(scrollRestoreRef.current === null);
   /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
   const [queued, setQueued] = useState<Array<{ seq: number; text: string }>>([]);
   /** G14.87 队列条折叠:折叠只留摘要行,不推高 dock(正文让位) */
@@ -1970,9 +2105,21 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
   const [filePalActive, setFilePalActive] = useState(0);
+  // G14.211 @ 面板点外即收:收口此前只有 Esc/改写输入两条路,焦点离开输入框后 Esc 不可达、
+  // 点外无处理 = 面板滞留(「无法关闭」直感)。pointerdown 落 composer 卡外即收;面板行在
+  // 卡内(overlays 锚卡根),选中点击不受影响
+  useEffect(() => {
+    const onDocPointerDown = (e: PointerEvent): void => {
+      if (e.target instanceof Element && !e.target.closest('.sx-composer')) setFilePal(null);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, []);
   const filesCacheRef = useRef<{ key: string; files: string[] } | null>(null);
   /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析第一优先) */
   const pickRelRef = useRef(new Map<string, string>());
+  /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
+  const composingRef = useRef(false);
   /** 解析器:@文件名 → 相对路径(选中记账优先,工作区索引按 mtime 最近兜底) */
   const resolveFileRef = useCallback(
     (name: string): string | undefined => {
@@ -2066,11 +2213,6 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     (conn.skillCommands?.(sessionId) ?? Promise.resolve([])).then(setSkillCmds, () => setSkillCmds([]));
   }, [conn, sessionId]);
   /** G14.95 slash 面板令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能) */
-  const slashTokenAt = (text: string, caret: number): { query: string; from: number; atStart: boolean } | null => {
-    const m = /\/([\w-]*)$/.exec(text.slice(0, caret));
-    if (m === null) return null;
-    return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
-  };
   const slashItemsFor = (token: { query: string; atStart: boolean } | null): CmdItem[] => {
     if (token === null) return [];
     const q = token.query.toLowerCase();
@@ -2084,7 +2226,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
       .map((s) => {
         const name = s.id;
         const idx = name.toLowerCase().indexOf(q);
-        return { cmd: `/${s.id}`, name, desc: s.description, idx: idx < 0 ? name.length : idx, ok: true };
+        // G14.213 kind='skill':有参数已敲时 Enter 落纯文本发送,不走命令通道(daemon 已 400)
+        return { cmd: `/${s.id}`, name, desc: s.description, idx: idx < 0 ? name.length : idx, ok: true, kind: 'skill' as const };
       });
     return [...cmds, ...skills];
   };
@@ -2226,11 +2369,9 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         if (pg !== null && pg.goal.trim() !== '') {
           pendingGoalRef.current = null;
           onPendingGoalDoneRef.current?.();
-          setChat((c) => appendUserMessage(c, pg.goal));
-          conn.sessionSubmit(sessionId, pg.goal).catch((err: unknown) => {
-            // 接力目标提交失败必须可见(同 submitText error 条)——欢迎页首条目标无声丢失不可接受
-            setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-          });
+          // G14.213 走 submitText 单点(命令门控随行):欢迎页 /命令 目标建会话后按 supported
+          // 清单走命令通道,skills/普通文本照文本提交——此前裸 sessionSubmit,/命令全成纯文本
+          submitTextRef.current(pg.goal).catch(() => undefined);
         }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
         // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清)
@@ -2333,6 +2474,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     reseed();
     return () => {
       sinkRef.current = null;
+      flushScrollMem(); // G14.212 滚动位存档落盘(节流尾随写外的兜底)
       pendingRef.current = []; // unmount 清缓冲(组件销毁,无跨会话残留)
       seedGenRef.current++; // G6 终审首优先(G7 落地):在途快照应答的 then 回调经 gen 失配早退——
       // 防 backHome→重开窗口内陈旧会话快照经 onSeeded 污染 App 态(team/board——旧板落新壳)
@@ -2357,7 +2499,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const liveSteps = lastLiveRun?.stepsBase !== undefined ? Math.max(0, chat.steps - lastLiveRun.stepsBase) : chat.steps;
   const liveTokens = lastLiveRun?.tokensBase !== undefined ? Math.max(0, chat.tokens - lastLiveRun.tokensBase) : chat.tokens;
   /** G14.74 回到底部钮:非贴底即显(滚动 handler 里置态,值不变时 React 自动跳过重渲染) */
-  const [atBottom, setAtBottom] = useState(true);
+  const [atBottom, setAtBottom] = useState(scrollRestoreRef.current === null); // G14.212 恢复中非贴底:跳底钮即显
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   /** G6 工具条目 → input 暂存配对:条目 key `tool:<callId>`(重复 callId 的 `~n` 后缀剥掉;
@@ -2367,6 +2509,69 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     const cid = (entry.key.slice('tool:'.length).split('~')[0]) ?? '';
     return cid.length > 0 ? toolInputs[cid] : undefined;
   };
+
+  /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
+   *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签。
+   *  G14.213 块移至 toolInfoOf 之后:input 两路解析(info=live 配对暂存优先,md 兜底)——
+   *  此前只解析 md,TUI 流式面 tool 行 md 不带 JSON 输入,待办批次恒空(顶栏无计数/
+   *  待办页签「暂无待办」),而工具行本体走 info 路径照常渲染清单 */
+  const todoBatches = useMemo<TodoBatch[]>(() => {
+    const out: TodoBatch[] = [];
+    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
+    let lastGoal = '';
+    for (const e of chat.entries) {
+      if (e.kind === 'user') lastGoal = strip(e.md);
+      if (e.kind !== 'tool') continue;
+      const info = toolInfoOf(e) ?? toolMdInfo(e.md);
+      if (info === undefined || info.name !== 'todo_write') continue;
+      const arr = Array.isArray(info.input.todos) ? (info.input.todos as Array<Record<string, unknown>>) : [];
+      const items = arr
+        .map((o) => ({
+          text: String(o?.text ?? ''),
+          status: (o?.status === 'completed' ? 'completed' : o?.status === 'in_progress' ? 'in_progress' : 'pending') as TodoBatch['items'][number]['status'],
+        }))
+        .filter((x) => x.text !== '');
+      if (items.length === 0) continue;
+      out.push({ key: e.key, ts: e.ts ?? 0, goal: lastGoal, items });
+    }
+    // G14.179 同清单合并:条目文本签名相同=同一份待办的进度推进(0/3→2/3→3/3 三卡即重复——
+    // 用户裁决「同属一个不拆」),按签名只保留最新一批,按其时间正序输出
+    const bySig = new Map<string, TodoBatch>();
+    for (const b of out) {
+      const sig = b.items.map((x) => x.text).join('\n');
+      const prev = bySig.get(sig);
+      if (prev === undefined || b.ts >= prev.ts) bySig.set(sig, b);
+    }
+    return [...bySig.values()].sort((a, b) => a.ts - b.ts);
+  }, [chat.entries, toolInputs]);
+
+  /** G14.177 顶栏动态计数:待办=末批(最新)未完成条目;任务板=pending+claimed 任务 */
+  const todoActive = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.filter((x) => x.status !== 'completed').length : 0;
+  const taskActive = board !== undefined ? Object.values(board.tasks).filter((x) => x.status === 'pending' || x.status === 'claimed').length : 0;
+
+  /** G14.174 关联轮次用户输入(最近一条 user 行;md 链接折叠为标签文本——goal 供单行省略头) */
+  const turnGoal = useMemo(() => {
+    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
+    for (let i = chat.entries.length - 1; i >= 0; i -= 1) {
+      const e = chat.entries[i]!;
+      if (e.kind === 'user') return strip(e.md);
+    }
+    return '';
+  }, [chat.entries]);
+
+  // 上报去重(性能面):entries 每 token 帧都换新引用——序列化签名不变就不上报,
+  // 否则 App 级 setState 跟着每帧放大重渲染(稳定条 md 计数上涨,G14.174 回归)
+  const batchSig = useMemo(() => JSON.stringify(todoBatches), [todoBatches]);
+  const reportedBatchSig = useRef('');
+  useEffect(() => {
+    if (batchSig === reportedBatchSig.current) return;
+    reportedBatchSig.current = batchSig;
+    onTodoBatches?.(todoBatches);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchSig]);
+  useEffect(() => {
+    onTurnGoal?.(turnGoal);
+  }, [turnGoal, onTurnGoal]);
 
   /** G7 write 展开的 diff 寻址键:条目 key 同 toolInfoOf 的剥法(`tool:` 前缀 + `~n` 后缀;
    *  种子条/无 callId 面 undefined——不拉 diff,恒单列现内容) */
@@ -2417,6 +2622,47 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     const el = chatScrollRef.current;
     if (el !== null && chatStickRef.current) el.scrollTop = el.scrollHeight;
   });
+
+  /** G14.212/G14.213 存档位恢复:种子落定(非 seeding 且条目非空)后 rAF 收敛滚动到存档距底位。
+   *  内容尚不足高(mermaid/代码高亮等懒渲染还在撑)不硬落——clamp 会错落到顶;逐帧等到位再落,
+   *  1.5s 超时按当时可达位兜底(贴底跟随已由 stick=false 挂起,等待期无人争滚动) */
+  useEffect(() => {
+    const d = scrollRestoreRef.current;
+    if (d === null || seeding || chat.entries.length === 0) return;
+    scrollRestoreRef.current = null;
+    let raf = 0;
+    const t0 = Date.now();
+    const step = (): void => {
+      const el = chatScrollRef.current;
+      if (el === null) return;
+      const max = el.scrollHeight - el.clientHeight;
+      if (max < d && Date.now() - t0 < 1500) {
+        raf = requestAnimationFrame(step);
+        return;
+      }
+      el.scrollTop = Math.min(d, max);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [seeding, chat.entries.length]);
+
+  /** G14.2xx mermaid 异步撑高补归底:图渲染落定是 Mermaid 组件内 state,不触发本组件重渲染,
+   *  上方逐渲染归底收不到信号——监听落定广播,贴底态 rAF 合并补归底(进场多图连发只归一次) */
+  useEffect(() => {
+    let raf = 0;
+    const onSettled = (): void => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const el = chatScrollRef.current;
+        if (el !== null && chatStickRef.current) el.scrollTop = el.scrollHeight;
+      });
+    };
+    window.addEventListener('sx-mermaid-settled', onSettled);
+    return () => {
+      window.removeEventListener('sx-mermaid-settled', onSettled);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
 
   /** 命令面板数据源(G10-C4):GET /commands 单点(清单/描述/supported) */
   useEffect(() => {
@@ -2520,6 +2766,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     const row = target !== null ? target.closest('.entry') : null;
     const el = chatScrollRef.current;
     if (target === null || row === null || el === null) return;
+    el.style.overflowAnchor = 'none'; // G14.211 校正窗口内关原生锚定(防互搏),收窗即还原恒 auto
     const preTop = row.getBoundingClientRect().top;
     const stick = chatStickRef.current;
     // G14.64:贴地时贯穿整个展开/收合动画(0.22s grid)逐帧钉底——单次校正会让视口随动画
@@ -2539,7 +2786,16 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     };
     requestAnimationFrame(restore);
     if (!stick) setTimeout(restore, 240); // 0.22s grid 动画收尾后再校正一次(非贴地路径)
+    setTimeout(() => { el.style.overflowAnchor = ''; }, 320);
   }, []);
+  /** G14.211 entry 面回调稳定化(memo 生效前提):内联闭包每次渲染换新,任一 prop 变即
+   *  全量 entry 重渲染——点一次文件=整列表闪帧(正文抖动源之一) */
+  const onEntryOpenDiff = useCallback((p: string): void => { onOpenDiff?.('', p); }, [onOpenDiff]);
+  const onEntryRestore = useCallback((p: string): void => {
+    conn.restoreChange(sessionId, p).catch(() => {
+      setChat((c) => applyChatEvent(c, { type: 'error', text: t('Revert failed', '撤销失败'), ts: Date.now() }));
+    });
+  }, [conn, sessionId]);
 
   /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
    *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
@@ -2562,25 +2818,33 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
       if (running) req = conn.sessionSteer(sessionId, trimmed).then(() => refreshQueued(), () => {});
       else if (sessMode === 'plan') req = conn.runCommand(sessionId, `/plan ${trimmed}`);
       else if (/^\/[a-z][\w-]*(\s|$)/i.test(trimmed)) {
-        // G14.95 / 前缀语义:先试命令通道(词边界精确匹配),daemon 判 unsupported(400)即当
-        // 普通文本提交——模型自主判断(系统提示词 skills 清单含「/skill-id 引用优先加载」提示);
-        // 运行中/plan 档不在此列(运行中 / 前缀随 steer 入队当文本)
-        req = conn
-          .runCommand(sessionId, trimmed)
-          .catch(async (err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            if (!/unsupported/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
-            await conn.sessionSubmit(sessionId, trimmed);
-          })
-          .then(() => undefined);
+        // G14.213 skills 回归纯文本:仅「daemon supported 清单内」的 / 词走命令通道,skills/
+        // 未知名一律当普通文本提交(系统提示词 skills 清单含「/skill-id 引用优先加载」提示,
+        // 模型自主判断)。此前一律先试命令通道、报文含 unsupported 才回落——daemon 现回 400
+        // 报文不带该字样,回落失效直接倒错误条(「还是识别成命令了」)
+        const word = (/^\/([a-z][\w-]*)/i.exec(trimmed)?.[1] ?? '').toLowerCase();
+        const isCommand = cmdData?.supported.some((c) => c.toLowerCase() === `/${word}`) ?? false;
+        if (isCommand) {
+          req = conn
+            .runCommand(sessionId, trimmed)
+            .catch(async (err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              if (!/unsupported|400|bad request/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
+              await conn.sessionSubmit(sessionId, trimmed); // 清单过期兜底:命令通道拒即回退纯文本
+            })
+            .then(() => undefined);
+        } else req = conn.sessionSubmit(sessionId, trimmed);
       } else req = conn.sessionSubmit(sessionId, trimmed);
       return req.catch((err: unknown) => {
         setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
         throw err;
       });
     },
-    [conn, sessionId, running, sessMode, root, resolveFileRef],
+    [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData],
   );
+  /** G14.213 欢迎页接力取用(ref 跳板):seed effect 依赖面固定,经此恒取最新 submitText */
+  const submitTextRef = useRef(submitText);
+  submitTextRef.current = submitText;
 
   /** Enter 分流:idle 提交 / running 插话;本地 user 回显(`> text`),失败倒 error 条 */
   const send = (): void => {
@@ -2633,10 +2897,21 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   /** G14.139 文件标签选区「添加到会话」:接收插入事件(文件图标+文件名(L30-L35) token 落输入框) */
   useEffect(() => {
     const onInsert = (ev: Event): void => {
-      const detail = (ev as CustomEvent<{ text?: string }>).detail;
+      const detail = (ev as CustomEvent<{ text?: string; rel?: string }>).detail;
       if (detail === undefined || typeof detail.text !== 'string' || detail.text === '') return;
+      // G14.211 短写 token(@文件名:L):全相对路径入账本,发送期 expandFileRefs 据此展开
+      if (typeof detail.rel === 'string' && detail.rel !== '') {
+        const base = detail.rel.split(/[\\/]/).pop() ?? detail.rel;
+        pickRelRef.current.set(base, detail.rel);
+      }
       setInput((prev) => (prev.trim() === '' ? `${detail.text} ` : `${prev.replace(/\s+$/, '')} ${detail.text} `));
       inputRef.current?.focus();
+      // G14.211 光标钉尾:focus 恢复的是 textarea 旧光标位(此前离开输入框时留在原处),
+      // 渲染提交后一帧再设到末尾——否则光标落回旧位=token 中间(「不挨着文件」)
+      requestAnimationFrame(() => {
+        const ta = inputRef.current;
+        if (ta !== null) ta.setSelectionRange(ta.value.length, ta.value.length);
+      });
     };
     window.addEventListener('sunshinex:insert-ref', onInsert);
     return () => window.removeEventListener('sunshinex:insert-ref', onInsert);
@@ -2645,8 +2920,12 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
    *  按 token 区间命中判定;解析同发送期口径:记账/索引兜底/带目录直用) */
   const onInputClick = (): void => {
     const ta = inputRef.current;
-    if (ta === null || onOpenFile === undefined) return;
+    if (ta === null) return;
     const caret = ta.selectionStart ?? 0;
+    // G14.213 点击落在 token 中间 → 光标钉 token 尾(file token 命中开标签的行为在先,不变)
+    const span0 = tokenSpanAt(input, caret);
+    if (span0 !== null) ta.setSelectionRange(span0[1], span0[1]);
+    if (onOpenFile === undefined) return;
     let pos = 0;
     for (const tk of splitMentionTokens(input)) {
       const s = pos;
@@ -2699,9 +2978,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             {/* G14.52:运行态圆点迁侧栏会话行左缘(顶栏不再双显) */}
           </span>
         )}
-        {showExpandSidebar && (
-          <ChatDynButtons todoActive={todoActive} taskActive={taskActive} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
-        )}
+        <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
         {showExpandSidebar && (
           <button
             type="button"
@@ -2724,6 +3001,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           chatStickRef.current = stick;
           setAtBottom(stick);
+          // G14.213 容量守卫:内容高不足以形成有效滚动位(短会话/mermaid 换渲等瞬时塌陷)不记不删
+          // ——防塌陷窗内的杂散 scroll 事件把非贴底存档误清(实测曾在浏览中途被清档)
+          if (el.scrollHeight - el.clientHeight > 80) {
+            saveScrollPos(archiveKey, stick ? 0 : el.scrollHeight - el.scrollTop - el.clientHeight); // 贴底删档/非贴底记距底位
+          }
         }}
       >
         {chat.entries.length === 0 && (
@@ -2810,12 +3092,8 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                   key={entry.key}
                   entry={entry}
                   footerRun={runFooterByEntry.get(entry.key)}
-                  onOpenDiff={(p) => onOpenDiff?.('', p)}
-                  onRestore={(p) => {
-                    conn.restoreChange(sessionId, p).catch(() => {
-                      setChat((c) => applyChatEvent(c, { type: 'error', text: t('Revert failed', '撤销失败'), ts: Date.now() }));
-                    });
-                  }}
+                  onOpenDiff={onEntryOpenDiff}
+                  onRestore={onEntryRestore}
                   onFork={onFork}
                   onOpenFile={onOpenFile}
                 />,
@@ -3030,6 +3308,38 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           }
         }}
         onKeyDown={(e) => {
+          // G14.212 token 原子性:不可在 token 中间落字(字符键/空格/IME Process)——阻止并把
+          // 光标钉到 token 尾,下一击落边界;边界编辑(:L 行锚续写)放行
+          if ((e.key.length === 1 || e.key === 'Process') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const taA = e.currentTarget as HTMLTextAreaElement;
+            const cs = taA.selectionStart ?? input.length;
+            const ce = taA.selectionEnd ?? cs;
+            const [as, ae] = atomicRange(input, cs, ce);
+            if (as !== cs || ae !== ce) {
+              e.preventDefault();
+              taA.setSelectionRange(ae, ae);
+              return;
+            }
+          }
+          // G14.213 ←/→ 单击跨整个 token(尾→头 / 头→尾,不逐字走进中间);有选区时原生移动
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            const taA = e.currentTarget as HTMLTextAreaElement;
+            const c = taA.selectionStart ?? 0;
+            const ce = taA.selectionEnd ?? c;
+            if (c === ce) {
+              const dir = e.key === 'ArrowLeft' ? -1 : 1;
+              const nc = c + dir;
+              if (nc >= 0 && nc <= taA.value.length) {
+                const span = tokenSpanAt(taA.value, nc);
+                if (span !== null) {
+                  e.preventDefault();
+                  const to = dir < 0 ? span[0] : span[1];
+                  taA.setSelectionRange(to, to);
+                }
+              }
+            }
+          }
+          if (e.key !== 'Process' && e.nativeEvent.isComposing !== true) composingRef.current = false; // 组合结束兜底复位(合成事件无 isComposing,取原生)
           // G14.148 /memory(-rm) 精确输入 + Enter → 开记忆标签(不进面板补全循环/命令通道;
           // TUI 交互多选在 GUI 的同位=记忆标签的勾选删除面)
           if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && /^\/memory(-rm)?\s*$/.test(input)) {
@@ -3055,14 +3365,19 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           }
           // G14.85 @ 工作区文件选择:光标前 @token → 文件面板(方向循环/Enter 选中/Esc 关闭)
           // G14.121 token 兼容绝对路径(:\ /);选中插入绝对路径(底层索引统一绝对路径口径)
+          // G14.211 面板活性=锚点仍在(input[filePal.from]==='@'):键面 preventDefault 直改
+          // 输入(token 整删等)不触发 onChange,残锚面板在此收口——否则空输入仍按残 query
+          // 命中旧文件,面板滞留且 Enter 可幽灵插入
           const taEl = e.currentTarget as HTMLTextAreaElement;
           const caret = taEl.selectionStart ?? input.length;
           const atMatch = /@([\w./:\\-]*)$/.exec(input.slice(0, caret));
-          if (atMatch !== null || filePal !== null) {
-            if (atMatch !== null) {
-              setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
-              void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
-            }
+          if (atMatch !== null) {
+            setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
+            void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
+          } else if (filePal !== null && input[filePal.from] !== '@') {
+            setFilePal(null);
+          }
+          if (atMatch !== null || (filePal !== null && input[filePal.from] === '@')) {
             const items = filePalFiles.filter((f) => fileHit(f, filePal?.query ?? '')).slice(0, 12);
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();
@@ -3112,15 +3427,18 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               return;
             }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
               const item: CmdItem | undefined = slashItems[cmdActive];
-              if (item !== undefined && input.includes(' ') && item.ok && slashToken.atStart) {
-                // 参数已敲:整行直跑(supported 判定在 daemon;集外此处已置灰不可达 active?仍防御)
+              // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单);skill 项不在此列——
+              // 落底部纯文本发送(daemon 已 400,skills 普通文本语义)
+              if (item !== undefined && item.kind === 'cmd' && input.includes(' ') && item.ok && slashToken.atStart) {
+                e.preventDefault();
                 setInput('');
                 conn.runCommand(sessionId, input).catch(() => {});
                 return;
               }
-              if (item !== undefined) {
+              // 补全仅当 / 词尚未敲完(无参数);skill 项参数已敲同样落底部纯文本发送
+              if (item !== undefined && !input.includes(' ')) {
+                e.preventDefault();
                 setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret)); // 补全,面板续开收参数
                 return;
               }
@@ -3131,9 +3449,60 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             send();
           }
         }}
+        onBeforeInput={(e) => {
+          // G14.212 token 原子性兜底面:键入/IME/粘贴/拖放的 beforeinput 部分命中 token 即拦
+          // (插入=光标钉 token 尾;删除=扩整删)——keydown 网之外的编辑面在此收口
+          const ev = e.nativeEvent as InputEvent;
+          const ta = e.currentTarget;
+          const s = ta.selectionStart ?? 0;
+          const en = ta.selectionEnd ?? 0;
+          const v = tokenGuardVerdict(input, s, en, ev.inputType ?? '');
+          if (v.action === 'redirectEnd') {
+            e.preventDefault();
+            ta.setSelectionRange(v.to, v.to);
+          } else if (v.action === 'splice') {
+            e.preventDefault();
+            setInput((prev) => prev.slice(0, v.s) + prev.slice(v.e));
+            requestAnimationFrame(() => ta.setSelectionRange(v.s, v.s));
+          }
+        }}
+        onPasteGuard={(e) => {
+          const ta = e.currentTarget;
+          const s = ta.selectionStart ?? 0;
+          const en = ta.selectionEnd ?? 0;
+          const [as, ae] = atomicRange(input, s, en);
+          if (as !== s || ae !== en) {
+            e.preventDefault();
+            ta.setSelectionRange(ae, ae);
+          }
+        }}
+        onCompositionGuard={(e) => {
+          composingRef.current = true; // G14.213 组合中:onSelect 归位跳过
+          const ta = e.currentTarget;
+          const s = ta.selectionStart ?? 0;
+          const en = ta.selectionEnd ?? 0;
+          const [as, ae] = atomicRange(input, s, en);
+          if (as !== s || ae !== en) e.preventDefault();
+        }}
+        onCompositionEndGuard={() => {
+          composingRef.current = false;
+        }}
+        onSelectGuard={() => {
+          // G14.213 光标不落 token 中间:↑↓/Home/End 等原生移动后的兜底归位(钉 token 尾;
+          // ←→ 在 keydown 已跨 token);IME 组合中跳过防打断
+          if (composingRef.current) return;
+          const ta = inputRef.current;
+          if (ta === null) return;
+          const s = ta.selectionStart ?? 0;
+          const en = ta.selectionEnd ?? 0;
+          if (s !== en) return;
+          const span = tokenSpanAt(ta.value, s);
+          if (span !== null) ta.setSelectionRange(span[1], span[1]);
+        }}
         overlays={
-          // G14.121 @ 文件面板(此前数据链在而渲染面缺失——@ 弹窗从未出现的根因):命中才渲染
-          filePal !== null && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
+          // G14.121 @ 文件面板(此前数据链在而渲染面缺失——@ 弹窗从未出现的根因):命中才渲染;
+          // G14.211 锚点校验:@ 已被整删/程序化改写后 filePal 残留,锚位不再是 '@' 即不渲染
+          filePal !== null && input[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
             <FilePalette
               items={filePalFiles.filter((f) => fileHit(f, filePal.query)).slice(0, 12)}
               active={Math.min(filePalActive, 11)}
@@ -3147,6 +3516,14 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 setInput((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
                 setFilePal(null);
                 inputRef.current?.focus();
+                // G14.211 光标钉在插入 token 之后(@+名+空格右沿):面板行点击前 textarea 的
+                // 旧光标位在 @query 内,focus 恢复旧位=落回 token 中间
+                requestAnimationFrame(() => {
+                  const ta = inputRef.current;
+                  if (ta === null) return;
+                  const to = Math.min(atFrom + base.length + 2, ta.value.length);
+                  ta.setSelectionRange(to, to);
+                });
               }}
             />
           ) : pillOpen === 'plus' ? (
@@ -3179,11 +3556,20 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         highlight={renderHighlightSpans(input)}
         onInputClick={onInputClick}
         onDropFile={(rel) => {
-          // G14.144 拖入文件 → caret 处插 @相对路径(发送期自动展开 md 链接)
+          // G14.144 拖入文件 → caret 处插 @文件名(短写,账本解析;G14.211 原 @全相对路径过长)
           const ta = inputRef.current;
           const pos = ta?.selectionStart ?? input.length;
-          setInput((prev) => prev.slice(0, pos) + `@${rel} ` + prev.slice(pos));
+          const base = rel.split(/[\\/]/).pop() ?? rel;
+          pickRelRef.current.set(base, rel);
+          setInput((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
           inputRef.current?.focus();
+          // G14.211 光标钉在插入 token 之后(同 onPick:旧光标位恢复=token 中间)
+          requestAnimationFrame(() => {
+            const ta2 = inputRef.current;
+            if (ta2 === null) return;
+            const to = Math.min(pos + base.length + 2, ta2.value.length);
+            ta2.setSelectionRange(to, to);
+          });
         }}
         footLeft={
           <div className="composer-pills">

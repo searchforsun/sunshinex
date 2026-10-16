@@ -13,21 +13,33 @@ function ev(type: SessionEvent['type'], text?: string, payload?: Record<string, 
   return { type, ts: 4242, ...(text !== undefined ? { text } : {}), ...(payload !== undefined ? { payload } : {}) };
 }
 
-test('① submit+done(reply)：user/assistant 两条序与内容；其余事件忽略', () => {
+test('① submit+流式段+done：段边界落 assistant(G14.213),末段与 done 同文不重复;usage/route 不产条目', () => {
   const c = new TranscriptCollector();
-  c.push(ev('token', '流式'));
-  c.push(ev('usage', undefined, { turnTotal: 1 }));
   c.submit('把测试跑绿');
-  c.push(ev('route', undefined, { tier: 'base' }));
-  c.push(ev('done', '测试全绿', { stopReason: 'done' }));
+  c.push(ev('token', '先跑'));
+  c.push(ev('usage', undefined, { turnTotal: 1 }));
+  c.push(ev('route', undefined, { tier: 'base' })); // 段边界:已积累流式段落档
+  c.push(ev('token', '后查通过'));
+  c.push(ev('done', '后查通过', { stopReason: 'done' }));
   const es = c.entries();
-  assert.equal(es.length, 2, 'token/usage/route 非归档面事件不产条目');
+  assert.equal(es.length, 3, '流式段与终答各自入档;usage/route 非归档面事件不产条目');
   assert.equal(es[0]!.kind, 'user');
   assert.equal(es[0]!.md, '> 把测试跑绿');
   assert.equal(es[1]!.kind, 'assistant');
-  assert.equal(es[1]!.md, '测试全绿');
-  assert.equal(es[1]!.ts, 4242, 'assistant 条 ts=done 事件 ts');
-  assert.ok(es[0]!.seq < es[1]!.seq, 'seq 全局单调');
+  assert.equal(es[1]!.md, '先跑');
+  assert.equal(es[2]!.kind, 'assistant');
+  assert.equal(es[2]!.md, '后查通过');
+  assert.ok(es[0]!.seq < es[1]!.seq && es[1]!.seq < es[2]!.seq, 'seq 全局单调');
+});
+
+test('①b done 终答与流式缓冲同文 → 不重复入档', () => {
+  const c = new TranscriptCollector();
+  c.push(ev('token', '只有一段'));
+  c.push(ev('done', '只有一段', { stopReason: 'done' }));
+  const es = c.entries();
+  assert.equal(es.length, 1);
+  assert.equal(es[0]!.kind, 'assistant');
+  assert.equal(es[0]!.md, '只有一段');
 });
 
 test('② tool-call+tool-result 同 callId：单条配对 md（verb 行 + result 首行）', () => {
@@ -79,7 +91,7 @@ test('⑤ call 未配对：占位条定格（result 永不到场不蒸发）', (
   assert.ok(es[0]!.seq < es[1]!.seq);
 });
 
-test('⑥ kind 扩五路：error→error（缺 text 回落 error）；notice→notice；delegation-started/ended→单行 notice（ended 取 payload.status）；agent-message→[from → to] text', () => {
+test('⑥ kind 扩五路：error→error（缺 text 回落 error）；notice→notice；delegation-started/ended 不入转录（G14.213 状态提示不显示）；agent-message→[from → to] text', () => {
   const c = new TranscriptCollector();
   c.push(ev('error', 'boom'));
   c.push(ev('error')); // 无 text 面：md 回落字面 'error'
@@ -91,13 +103,13 @@ test('⑥ kind 扩五路：error→error（缺 text 回落 error）；notice→n
   const es = c.entries();
   assert.deepEqual(
     es.map((e) => e.kind),
-    ['error', 'error', 'notice', 'notice', 'notice', 'notice', 'notice'],
-    '五路归档只产 error/notice 两 kind',
+    ['error', 'error', 'notice', 'notice'],
+    '归档只产 error/notice 两 kind;delegation 状态不入转录(G14.213)',
   );
   assert.deepEqual(
     es.map((e) => e.md),
-    ['boom', 'error', '技能已安装', '✻ build started', '✻ build done', '✻ deploy failed', '[lead → worker] 先跑测试'],
-    'md 口径：error=text|error；notice=text；delegation=`✻ label <started|status>`；agent-message=[from → to] text',
+    ['boom', 'error', '技能已安装', '[lead → worker] 先跑测试'],
+    'md 口径：error=text|error；notice=text；agent-message=[from → to] text',
   );
   for (let i = 1; i < es.length; i++) assert.ok(es[i].seq > es[i - 1].seq, 'kind 扩条目共用同一 seq 单调序列');
 });

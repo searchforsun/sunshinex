@@ -1,24 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Check, ChevronRight, Copy, Wrench } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import { t } from '../i18n';
 import type { AgentActivity } from './agent-activity';
 import type { Delegation, TaskBoardState } from '../projection';
-import { CollapsibleBubble } from '../pages/Chat';
+import type { Connection } from '../connection';
+import { ChatEntryView, CollapsibleBubble, ThinkingEntryView, ToolEntryView } from '../pages/Chat';
+import type { ChatEntry } from '../chat-reducer';
 
 /**
- * G14.175 子代理只读转录标签页（agent 类型标签体）v2——**完全继承主对话渲染方式，只去掉输入框**
- * （用户裁决；TUI 子代理面板同款实现）：
+ * G14.175 子代理只读转录标签页（agent 类型标签体）——**完全继承主对话渲染方式，只去掉输入框**
+ * （用户裁决；TUI 子代理面板同款实现）。G14.213 渲染组件整体换正：assistant→ChatEntryView /
+ * thinking→ThinkingEntryView / tool→ToolEntryView（动词两字化、图标、折叠壳与主对话同一套），
+ * 废弃页内自绘的 ToolRow/ReactMarkdown 直渲（此前 token/text 两路样式分裂、思考行自绘 💭）。
  * - 用户输入 = 任务内容（活动流 taskBand 优先，缺省回落开档参数 task——spawn 行带 prompt/看板行带任务标题）
- * - 正文/思考/工具流 = 活动流滑窗映射主对话三态：thinking→思考行 / token(连续合并)→assistant 正文 /
- *   tool→工具行（✓/✗ 回执吸附到前一条调用）
- * - 页签图标 = 机器人（Bot，TabStrip TAB_ICONS.agent）
+ * - 滑窗行 → ChatEntry：token 连续合并为 assistant；text 行=独立 assistant 段；thinking→思考行；
+ *   tool→工具行（✓/✗ 回执吸附为 ⎿ 行）
  * 活动流是会话内存态：页面刷新后回退空态（无活动记录）。
  */
 
 export interface AgentTranscriptTabProps {
   readonly label: string;
+  readonly conn: Connection;
+  readonly sessionId: string;
   readonly activities: AgentActivity | undefined;
   readonly delegations: readonly Delegation[];
   readonly board: TaskBoardState;
@@ -26,79 +29,70 @@ export interface AgentTranscriptTabProps {
   readonly task?: string;
 }
 
-/** 滑窗行 → 主对话三态块：token 连续合并为 assistant；✓/✗ 吸附前一条 tool；thinking 独立行 */
-interface ChatBlock {
-  kind: 'assistant' | 'tool' | 'thinking';
-  text: string;
-  result?: 'ok' | 'fail';
-}
-
-function toBlocks(lines: AgentActivity['lines']): ChatBlock[] {
-  const blocks: ChatBlock[] = [];
+/** 滑窗行 → 主对话 ChatEntry：token 连续合并 assistant；text=独立 assistant 段；
+ *  thinking 独立行；tool 调用行 `● verb target`,✓/✗ 回执吸附为 `⎿ 完成/失败` */
+function toEntries(lines: AgentActivity['lines']): ChatEntry[] {
+  const entries: ChatEntry[] = [];
+  const push = (kind: ChatEntry['kind'], md: string): void => {
+    entries.push({ key: `ag${entries.length}`, kind, md });
+  };
   for (const l of lines) {
     if (l.kind === 'token') {
-      const last = blocks[blocks.length - 1];
-      if (last !== undefined && last.kind === 'assistant') last.text += l.text;
-      else blocks.push({ kind: 'assistant', text: l.text });
+      const last = entries[entries.length - 1];
+      if (last !== undefined && last.kind === 'assistant') last.md += l.text;
+      else push('assistant', l.text);
+      continue;
+    }
+    if (l.kind === 'text') {
+      push('assistant', l.text);
       continue;
     }
     if (l.kind === 'thinking') {
-      blocks.push({ kind: 'thinking', text: l.text });
+      push('thinking', l.text);
       continue;
     }
-    // tool 行:✓/✗ 前缀=回执,吸附前一条 tool 块;否则即调用行
+    // tool 行:✓/✗ 前缀=回执,吸附前一条未收执 tool 的 ⎿ 行;否则孤儿回执独立成条
     if (l.text.startsWith('✓') || l.text.startsWith('✗')) {
-      const last = blocks[blocks.length - 1];
-      if (last !== undefined && last.kind === 'tool' && last.result === undefined) {
-        last.result = l.text.startsWith('✓') ? 'ok' : 'fail';
+      const last = entries[entries.length - 1];
+      const receipt = l.text.startsWith('✓') ? '完成' : '失败';
+      if (last !== undefined && last.kind === 'tool' && !last.md.includes('\n⎿ ')) {
+        last.md += `\n⎿ ${receipt}`;
         continue;
       }
-      blocks.push({ kind: 'tool', text: '', result: l.text.startsWith('✓') ? 'ok' : 'fail' });
+      push('tool', `● …\n⎿ ${receipt}`);
       continue;
     }
-    blocks.push({ kind: 'tool', text: l.text });
+    push('tool', `● ${l.text}`);
   }
-  return blocks;
+  return entries;
 }
 
-/** 工具行:首词=动词(图标),其余=目标;✓/✗ 回执尾随 */
-function ToolRow({ text, result }: { text: string; result?: 'ok' | 'fail' }): JSX.Element {
+/** 活动行文本 → ToolEntryView 的 info(name+input):首词=动词,余文按动词键位入 input——
+ *  折叠行 target 与主对话同口径(read/write/glob→path,exec→command,grep/glob→pattern 兜底 path) */
+function toolInfoOf(text: string): { name: string; input: Record<string, unknown> } {
   const sp = text.indexOf(' ');
-  const verb = sp > 0 ? text.slice(0, sp) : text;
-  const rest = sp > 0 ? text.slice(sp + 1) : '';
-  return (
-    <div className={`entry entry-tool child-tool-row${result === 'fail' ? ' fail' : ''}`}>
-      <div className="tool-row-line">
-        {result !== undefined ? (
-          result === 'ok' ? (
-            <Check size={12} strokeWidth={2} className="child-tool-mark ok" aria-hidden="true" />
-          ) : (
-            <Wrench size={12} strokeWidth={1.75} className="child-tool-mark fail" aria-hidden="true" />
-          )
-        ) : (
-          <ChevronRight size={12} strokeWidth={1.75} className="child-tool-mark" aria-hidden="true" />
-        )}
-        {result === undefined ? (
-          <>
-            <span className="tool-verb">{verb}</span>
-            {rest !== '' && <span className="tool-file-base tool-cmd">{' '}{rest}</span>}
-          </>
-        ) : (
-          <span className="tool-file-base tool-cmd">
-            {result === 'ok' ? '完成' : '失败'}
-            {rest !== '' ? ` · ${rest.trim()}` : ''}
-          </span>
-        )}
-      </div>
-    </div>
-  );
+  const name = (sp > 0 ? text.slice(0, sp) : text).trim();
+  const rest = sp > 0 ? text.slice(sp + 1).trim() : '';
+  const input: Record<string, unknown> =
+    name === 'exec'
+      ? { command: rest }
+      : name === 'grep' || name === 'glob'
+        ? { pattern: rest }
+        : name === 'websearch'
+          ? { query: rest }
+          : name === 'webfetch'
+            ? { url: rest }
+            : name === 'skill'
+              ? { id: rest }
+              : { path: rest };
+  return { name, input };
 }
 
-export function AgentTranscriptTab({ activities, task }: AgentTranscriptTabProps): JSX.Element {
+export function AgentTranscriptTab({ conn, sessionId, activities, task }: AgentTranscriptTabProps): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
   const lines = activities?.lines ?? [];
-  const blocks = toBlocks(lines);
+  const entries = toEntries(lines);
   // 追行吸底:转录更新即滚到最底(只读面恒跟最新)
   useEffect(() => {
     const el = bodyRef.current;
@@ -137,24 +131,13 @@ export function AgentTranscriptTab({ activities, task }: AgentTranscriptTabProps
             </div>
           ) : null
         ) : (
-          blocks.map((b, i) => {
-            if (b.kind === 'assistant') {
-              return (
-                <div key={i} className="entry entry-assistant">
-                  <div className="entry-md-body">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{b.text}</ReactMarkdown>
-                  </div>
-                </div>
-              );
+          entries.map((e) => {
+            if (e.kind === 'thinking') return <ThinkingEntryView key={e.key} entry={e} />;
+            if (e.kind === 'tool') {
+              const head = e.md.startsWith('● ') ? (e.md.slice(2).split('\n')[0] ?? '') : e.md;
+              return <ToolEntryView key={e.key} entry={e} info={toolInfoOf(head)} conn={conn} sessionId={sessionId} />;
             }
-            if (b.kind === 'thinking') {
-              return (
-                <div key={i} className="entry entry-thinking">
-                  <div className="child-thinking">💭 {b.text.length > 400 ? `${b.text.slice(0, 400)}…` : b.text}</div>
-                </div>
-              );
-            }
-            return <ToolRow key={i} text={b.text} result={b.result} />;
+            return <ChatEntryView key={e.key} entry={e} />;
           })
         )}
       </div>

@@ -19,12 +19,29 @@ function iconIdOf(fileName: string): string {
   return `vscode-icons:file-type-${base.replace(/^light_/, '')}`;
 }
 
-export function FileIcon({ path, folder, open }: { path: string; folder?: boolean; open?: boolean }): JSX.Element {
+/** 文件名是否命中 vscode-icons 类型图标（G14.211 文件标签页消费:命中显类型图标,未命中由调用面回落通用图标） */
+export function hasFileTypeIcon(path: string): boolean {
+  const raw = getIconForFile(path.split(/[\\/]+/).pop() ?? path);
+  return raw !== null && raw !== undefined && raw !== '';
+}
+
+export function FileIcon({
+  path,
+  folder,
+  open,
+  size = 14,
+}: {
+  path: string;
+  folder?: boolean;
+  open?: boolean;
+  /** G14.211 可选尺寸（文件标签页 16 与 lucide 同框;缺省 14 恒稳） */
+  size?: number;
+}): JSX.Element {
   const icon =
     folder === true
       ? open === true
         ? 'vscode-icons:default-folder-opened'
         : 'vscode-icons:default-folder'
       : iconIdOf(path.split(/[\\/]+/).pop() ?? path);
-  return <Icon icon={icon} width={14} height={14} aria-hidden="true" style={{ flex: 'none' }} />;
+  return <Icon icon={icon} width={size} height={size} aria-hidden="true" style={{ flex: 'none' }} />;
 }

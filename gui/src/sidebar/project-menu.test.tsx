@@ -78,7 +78,7 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     renderMenu(conn, { activeSessionId: 'new-D:/w/p1' });
     const row = await screen.findByText('demo goal');
     fireEvent.click(row);
-    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1'));
+    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'j1')); // G14.213 journalId 随行
     await waitFor(() => expect(row.closest('.sx-session-row')!.className).toContain('active'));
     expect(row.closest('.sx-session-row')!.querySelector('.sx-session-dot.unseen')).toBeNull();
   });
