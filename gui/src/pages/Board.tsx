@@ -245,7 +245,7 @@ export function Board({ board, delegations, team, onReview, onBack, todos, onOpe
         )}
         {!hasTasks && !hasSide && (todos === undefined || todos.length === 0) && (
           <div className="board-empty-state" role="status">
-            <p className="board-empty-title">任务板为空</p>
+            <p className="board-empty-title">{t('Task board is empty', '任务板为空')}</p>
             <p className="board-empty-hint">{t('Tasks appear here once agents create them.', '智能体创建任务后会显示在这里。')}</p>
           </div>
         )}

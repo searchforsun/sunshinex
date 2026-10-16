@@ -378,7 +378,7 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
           const p = parseLanguage(v);
           if (p !== undefined) setLanguage(p);
         }
-        setToast('已生效:新建会话起');
+        setToast(t('Applied — takes effect for new sessions', '已生效：新建会话起'));
         if (toastTimer.current !== null) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToast(''), 3_000);
         load(); // 重拉:来源徽标重归因(保脏合并——在途编辑不被 clobber)

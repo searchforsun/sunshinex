@@ -219,8 +219,8 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
     return (
       <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
         <div className="board-empty-state" role="status">
-          <p className="board-empty-title">任务板为空</p>
-          <p className="board-empty-hint">智能体创建任务后会显示在这里。</p>
+          <p className="board-empty-title">{t('Task board is empty', '任务板为空')}</p>
+          <p className="board-empty-hint">{t('Tasks appear here once agents create them.', '智能体创建任务后会显示在这里。')}</p>
         </div>
       </div>
     );

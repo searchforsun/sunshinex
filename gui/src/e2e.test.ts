@@ -1319,7 +1319,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
 
 /* ============================================================
  * G8c e2e 两场景(spec §7 G8c 行·设置全链终验):场景①——设置改键全链:DirPicker 建会话 →
- * ProjectMenu 底栏设置钮入设置态 → 通用面板改 language 键 → 保存 → toast「已生效」在场 →
+ * ProjectMenu 底栏设置钮入设置态 → 通用面板改 language 键 → 保存 → toast「Applied — takes effect for new sessions」在场 →
  * GET /settings?root= 直连 fetch 断言 value 新值+source='project' → stop daemon → 同 root
  * 重启新 daemon 实例 → GET 仍 project 新值(<root>/.sunshinex/settings.json 磁盘持久化+新
  * 实例装载链)。root 需存活跨两次 daemon 生命周期——本组弃 startDaemon(其 stop 收口 rm tmp),
@@ -1330,7 +1330,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
  * ============================================================ */
 
 describe('G8c 场景①:设置改键全链——通用面板改 language 保存 → toast → 直连 GET project 新值 → 重启 daemon 仍新值', () => {
-  it('建会话 → 设置钮 → 改 language → 保存 toast 已生效 → GET /settings?root= project 新值 → stop → 新 daemon 实例 → GET 仍 project 新值', async () => {
+  it('建会话 → 设置钮 → 改 language → 保存 toast（Applied — takes effect for new sessions） → GET /settings?root= project 新值 → stop → 新 daemon 实例 → GET 仍 project 新值', async () => {
     const NEW_LANG = 'zh-CN';
     // 就地装配:startDaemon 的 stop 会 rm tmp——本组 root 要跨两段 daemon 存活,隔离面(tmp root+
     // projects 注册表)同款自建,场景末统一收口(rm 重试参数沿 startDaemon Windows 迟滞兜底惯例)
@@ -1387,7 +1387,7 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       await screen.findByLabelText('settings pane 通用', { timeout: 5_000 });
       fireEvent.click(await screen.findByLabelText('language', { timeout: 5_000 }));
       fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
-      await screen.findByText('已生效:新建会话起', {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场)
+      await screen.findByText('Applied — takes effect for new sessions', {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场)
       // 保存后重拉:language 触发钮显新值标签(来源归因 project——写回项目档)
       await waitFor(() => expect(screen.getByLabelText('language').textContent).toContain(NEW_LANG === 'zh-CN' ? '简体中文' : NEW_LANG), { timeout: 5_000 });
 

@@ -1374,7 +1374,7 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
-    expect(screen.getByText('任务板为空')).toBeDefined(); // 他会话帧零投影
+    expect(screen.getByText(/^Task board is empty|任务板为空$/)).toBeDefined(); // 他会话帧零投影
     expect(screen.queryByLabelText('open agent ghost')).toBeNull();
     unmount();
   });
@@ -1761,7 +1761,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     fireEvent.blur(screen.getByLabelText('projectsDir'));
     await waitFor(() => expect(conn.putSettingsCalls).toEqual([['global', '', { projectsDir: '/home/u/other' }]]));
     // toast 出现(sx-toast,3s 自隐——测试窗内恒在场)
-    expect(screen.getByText('已生效:新建会话起')).toBeDefined();
+    expect(screen.getByText(/Applied — takes effect|已生效：新建会话起/)).toBeDefined();
     // 保存成功后重拉 settings
     await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '/w/root-a']));
     // select 换项自动保存(project 桶:language source=project)
@@ -2221,7 +2221,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     // 成功 → toast(记录面 [scope, root 归一 '', file, content])
     conn.putSettingsRawReject = null;
     fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
-    await waitFor(() => expect(screen.getByText(/已保存:新建会话起/)).toBeDefined());
+    await waitFor(() => expect(screen.getByText(/Saved — applies|已保存：新建会话起/)).toBeDefined());
     expect(conn.putSettingsRawCalls).toEqual([['global', '', 'settings', '{ bad']]);
     unmount();
   });
