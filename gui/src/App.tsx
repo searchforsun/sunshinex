@@ -306,6 +306,8 @@ function WelcomeComposer({
       .newSession(target, mode === 'manual' ? 'manual' : undefined)
       .then(({ sessionId }) => {
         // G14.10:欢迎页选定的模型/思考强度随会话创建下发(会话未建前无 /session/:id 面)
+        // 随建下发失败降级为缺省模型/强度继续开session(会话已建,回滚无意义);选择面下次可再切——
+        // 降级可见面=模型 pill 实际档位,非静默丢失(轻口径,D30 收口口径)
         if (selModel !== undefined) void conn.setSessionModel(sessionId, selModel).catch(() => undefined);
         if (selEffort !== undefined) void conn.setSessionEffort(sessionId, selEffort).catch(() => undefined);
         onOpened(sessionId, target, g);
@@ -1211,6 +1213,7 @@ function AppShell(): JSX.Element {
       if (ptyId !== undefined) {
         ptyIdsRef.current.delete(uid);
         const conn = connRef.current;
+        // killPty 尽力而为:标签已关,失败=daemon 侧 pty 随会话 teardown 兜底回收,无用户可见后果
         if (conn !== null) void conn.killPty(openSessionId, ptyId).catch(() => {});
       }
     }

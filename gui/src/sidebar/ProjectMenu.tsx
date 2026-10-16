@@ -299,7 +299,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         conn
           .sessionsOf(r.root as string)
           .then((list) => list.map((x) => ({ ...x, root: r.root as string, slug: r.slug })))
-          .catch(() => []),
+          .catch(() => []), // 刷新失败按空清单降级(侧栏计数面,非权威数据;下次展开重拉)
       ),
     ).then((groups) => setAllSessions(groups.flat()));
   }, [searchOpen, rows, conn]);
