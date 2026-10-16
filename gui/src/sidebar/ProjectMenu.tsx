@@ -1,9 +1,72 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
-import { errText, fmtTokens, relTime, shortLocalTime } from '../ui-util';
+import { errText, fmtTokens, pickWorkspaceFolder, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
-import { ChevronRight, Folder, FolderOpen, FolderPlus, Search, Settings, SquarePen } from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen, Search, Settings, SquarePen } from 'lucide-react';
+
+/** G14.75 模糊匹配:大小写不敏感子序列(字符依次命中即过);空查询恒真 */
+function fuzzyHit(text: string, query: string): boolean {
+  if (query.trim() === '') return true;
+  let i = 0;
+  const t = text.toLowerCase();
+  for (const ch of query.trim().toLowerCase()) {
+    i = t.indexOf(ch, i);
+    if (i < 0) return false;
+    i += 1;
+  }
+  return true;
+}
+
+/** G14.68 添加工作区图标:文件夹 + 右上角加号(lucide FolderPlus 加号居中,不符用户裁定) */
+export function FolderAddIcon({ size = 16, strokeWidth = 1.75 }: { size?: number; strokeWidth?: number }): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 文件夹整体下移,右上角留白给加号(G14.68:加号在右上角,非居中) */}
+      <g transform="translate(0 2)">
+        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+      </g>
+      <path d="M18 .8v5" />
+      <path d="M15.5 3.3h5" />
+    </svg>
+  );
+}
 import { DirPicker } from '../pages/DirPicker';
+
+/** G14.195 已读会话持久化(localStorage `sunshinex.seen-sessions`):id → 最近已读 updatedAt。
+ *  刷新不再全员亮蓝点(原内存 Set「本次运行内」即清空);行 updatedAt 新于已读时刻即重新视为
+ *  未读(真·未读)。容量封顶 200(超出丢最旧),存储满/禁用静默。 */
+const SEEN_KEY = 'sunshinex.seen-sessions';
+type SeenMap = Record<string, number>;
+function loadSeenMap(): SeenMap {
+  try {
+    const raw = localStorage.getItem(SEEN_KEY);
+    if (raw === null) return {};
+    const obj = JSON.parse(raw) as SeenMap;
+    return obj !== null && typeof obj === 'object' ? obj : {};
+  } catch {
+    return {};
+  }
+}
+function persistSeenMap(m: SeenMap): void {
+  try {
+    const entries = Object.entries(m)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 200);
+    localStorage.setItem(SEEN_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    /* 存储满/禁用:静默 */
+  }
+}
 
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
@@ -28,6 +91,8 @@ export interface ProjectMenuConn {
   newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
   /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
+  /** G14.69 原生选择定位:按标记文件找所选目录绝对路径 */
+  locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
   attach(sessionId: string, journalId: string): Promise<void>;
 }
 
@@ -55,19 +120,18 @@ function legacyName(slug: string): string {
   return slug.replace(/-[0-9a-f]{8}$/i, '').replace(/-/g, ' ');
 }
 
+/** G14.115 RECENTS 分页显形:默认 10 条(约近 3 天窗),「显示更多」步进 10,上限=全量;收起复位 */
+const RECENT_VISIBLE_DEFAULT = 10;
+const RECENT_VISIBLE_STEP = 10;
+
 /** 会话统计行(G14.17 回溯面):旁车 meta 有几段拼几段——轮/步/tokens/缓存/上文占比/模型·档位/
  *  建档时刻;RECENTS 与搜索行 tooltip 消费,空 meta 返回 ''(行 tooltip 退化为标题+id) */
 function sessionMetaLine(r: SessionRow & { root: string; slug: string }): string {
+  // G14.106 会话行 tooltip 收敛两行:会话名称(调用方拼)+「N 轮 M 步 · 创建于 时间」——
+  // tokens/缓存/上文/模型/孤立 id 等全家桶退役
   const parts: string[] = [];
-  if (r.runs !== undefined) parts.push(t(`${r.runs} runs`, `${r.runs} 轮`));
-  if (r.steps !== undefined) parts.push(t(`${r.steps} steps`, `${r.steps} 步`));
-  if (r.tokens !== undefined) parts.push(fmtTokens(r.tokens));
-  if (r.cacheTokens !== undefined) parts.push(t(`cache ${fmtTokens(r.cacheTokens)}`, `缓存 ${fmtTokens(r.cacheTokens)}`));
-  if (r.ctxUsed !== undefined && r.ctxWindow !== undefined && r.ctxWindow > 0) {
-    const pct = Math.min(100, Math.round((r.ctxUsed / r.ctxWindow) * 100));
-    parts.push(t(`ctx ${pct}%`, `上文 ${pct}%`));
-  }
-  if (r.model !== undefined) parts.push(r.effort !== undefined ? `${r.model} · ${r.effort}` : r.model);
+  if (r.runs !== undefined) parts.push(t(`${r.runs} run${r.runs === 1 ? '' : 's'}`, `${r.runs} 轮`));
+  if (r.steps !== undefined) parts.push(t(`${r.steps} step${r.steps === 1 ? '' : 's'}`, `${r.steps} 步`));
   if (r.createdAt !== undefined) parts.push(t(`created ${shortLocalTime(r.createdAt)}`, `创建于 ${shortLocalTime(r.createdAt)}`));
   return parts.join(' · ');
 }
@@ -84,7 +148,6 @@ function visibleWorkspaces(rows: WorkspaceRow[]): WorkspaceRow[] {
     if (r.root === undefined) return true;
     const base = baseOf(r.root);
     if (base === 'sunshinex-default') return false; // G14.34:默认锚点不入 PROJECTS(会话走 RECENTS)
-    if (base === 'default' && r.sessionCount === 0) return false; // 仓内遗留 default 死行(0 会话)同隐
     return true;
   });
 }
@@ -107,6 +170,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
   const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [recentsOpen, setRecentsOpen] = useState(true);
+  /** G14.115 最近会话逐步显形:默认 10 条,「显示更多」每次多放 10 条,「收起」/分区折叠复位 */
+  const [recentLimit, setRecentLimit] = useState(RECENT_VISIBLE_DEFAULT);
   /** G14.42 默认锚点工作区 root(RECENTS 头 ✎ 新建默认会话用;无注册行不示钮) */
   const defaultAnchorRoot = (rows ?? []).find(
     (r) => r.root !== undefined && r.root.split(/[\\/]+/).filter(Boolean).pop() === 'sunshinex-default',
@@ -128,14 +193,18 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [projectsOpen, setProjectsOpen] = useState(true);
   /** 查找面板(G10-C13):项目 + 会话历史搜索 */
   const [searchOpen, setSearchOpen] = useState(false);
+  /** G14.75 聚合搜索:全部工作区的会话扁平集(打开搜索时聚合一次,rows 变化重拉) */
+  const [allSessions, setAllSessions] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [query, setQuery] = useState('');
-  /** 已读会话集(本次运行内):点开过的会话不再显示蓝色未读光点;运行中恒显示转圈 */
-  const [seenIds, setSeenIds] = useState<ReadonlySet<string>>(() => new Set());
-  const markSeen = (id: string): void =>
-    setSeenIds((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.add(id);
+  /** 已读会话映射(localStorage 持久化):id → 最近已读 updatedAt;刷新不清空 */
+  const [seenMap, setSeenMap] = useState<SeenMap>(() => loadSeenMap());
+  /** 未读判定:行 updatedAt 新于已读时刻即未读 */
+  const isUnseen = (id: string, updatedAt: number): boolean => (seenMap[id] ?? -1) < updatedAt;
+  const markSeen = (id: string, updatedAt: number): void =>
+    setSeenMap((prev) => {
+      if ((prev[id] ?? -1) >= updatedAt) return prev;
+      const next = { ...prev, [id]: updatedAt };
+      persistSeenMap(next);
       return next;
     });
   /** 会话 id → journal 行 id 映射(attach 时记下):行 active 只亮当前打开会话对应的 journal 行,
@@ -221,18 +290,19 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   }, [recentVersion]);
 
 
-  // 查找面板外点收(钮自身走 click 切换,不在收面)
+  // G14.75 聚合搜索:打开时拉全部工作区会话(sessionsOf 每工作区一次,失败静默为空)
   useEffect(() => {
     if (!searchOpen) return;
-    const onDown = (e: MouseEvent): void => {
-      const t = e.target;
-      if (t instanceof Element && t.closest('.sx-side-search') === null && t.closest('[aria-label="search"]') === null) {
-        setSearchOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [searchOpen]);
+    const targets = visibleWorkspaces(rows ?? []).filter((r) => r.root !== undefined);
+    void Promise.all(
+      targets.map((r) =>
+        conn
+          .sessionsOf(r.root as string)
+          .then((list) => list.map((x) => ({ ...x, root: r.root as string, slug: r.slug })))
+          .catch(() => []),
+      ),
+    ).then((groups) => setAllSessions(groups.flat()));
+  }, [searchOpen, rows, conn]);
 
   // 30s 定时自动刷新(G10-C13)+ 窗口聚焦刷新(G14.9:回窗即见最新会话列表)
   useEffect(() => {
@@ -249,7 +319,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
   /** Attach 两步(daemon 形态对齐,Home 照搬):newSession(root) 装配壳 → attach(sessionId,
    *  journalId) 播种恢复 → onOpenSession(sessionId, root);失败行内报错,busy 防双发 */
-  const attachJournal = (root: string, journalId: string): void => {
+  const attachJournal = (root: string, journalId: string, journalUpdatedAt?: number): void => {
     if (busy) return;
     setBusy(true);
     setActionError('');
@@ -259,7 +329,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       .then(
         (sessionId) => {
           setBusy(false);
-          markSeen(journalId);
+          markSeen(journalId, journalUpdatedAt ?? Date.now());
           markJournal(sessionId, journalId);
           onOpenSession(sessionId, root);
           loadWorkspaces(); // 点会话即刷新(G10-C13:计数/最近区即时更新)
@@ -294,7 +364,22 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       });
       return;
     }
-    setDirOpen(true);
+    // G14.69 浏览器态:原生系统文件夹选择(showDirectoryPicker)→ 标记文件定位绝对路径→登记;
+    // 取消静默;不支持/权限被拒/定位超时 → 回退自建目录浏览
+    void pickWorkspaceFolder((q) => conn.locateWorkspace(q)).then((r) => {
+      if (r === null) return;
+      if (r !== 'unsupported' && r !== 'denied' && r !== 'timeout') {
+        conn
+          .createWorkspace({ path: r.path })
+          .then((res) => {
+            loadWorkspaces();
+            onComposeIn(res.root);
+          })
+          .catch((err: unknown) => setActionError(errText(err)));
+        return;
+      }
+      setDirOpen(true);
+    });
   };
   /** DirPicker 确认:登记所选既有目录为工作区(同桌面壳后段;已登记幂等) */
   const registerFolder = (p: string): void => {
@@ -312,7 +397,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     <nav className="sx-menu" aria-label="projects">
       <header className="sx-menu-head">
         <span className="sx-brand">Sunshinex</span>
-        <button type="button" aria-label="search" className="sx-iconbtn" title={t('Search projects & sessions', '搜索项目与会话')} onClick={() => setSearchOpen((v) => !v)}>
+        <button type="button" aria-label="search" className="sx-iconbtn" data-tip={t('Search projects & sessions', '搜索项目与会话')} onClick={() => setSearchOpen((v) => !v)}>
           <Search size={16} strokeWidth={1.75} />
         </button>
       </header>
@@ -320,79 +405,89 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         type="button"
         className="sx-new-chat"
         aria-label="new chat"
-        title={t('New chat', '新对话')}
         onClick={onNewChat}
       >
         <SquarePen size={16} strokeWidth={1.75} />
         <span>{t('New chat', '新对话')}</span>
       </button>
       {searchOpen && (
-        <div className="sx-side-search" role="search" aria-label={t('Search projects & sessions', '搜索项目与会话')}>
-          <input
-            autoFocus
-            value={query}
-            placeholder={t('Search projects & sessions', '搜索项目与会话…')}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setSearchOpen(false);
-            }}
-          />
-          <div className="sx-side-search-list">
-            <div className="sx-search-sec">{t('Projects', '项目')}</div>
-            {(rows ?? [])
-              .filter((r) => query.trim() === '' || wsName(r).toLowerCase().includes(query.trim().toLowerCase()))
-              .map((r) => (
-                <button
-                  key={r.slug}
-                  type="button"
-                  className="sx-search-row"
-                  onClick={() => {
-                    const row = (rows ?? []).find((x) => x.slug === r.slug);
-                    if (row !== undefined && row.root !== undefined) onComposeIn(row.root);
-                    setSearchOpen(false);
-                  }}
-                >
-                  <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-                  <span className="sx-search-label">{wsName(r)}</span>
-                  <span className="sx-search-meta">{r.sessionCount}</span>
-                </button>
-              ))}
-            <div className="sx-search-sec">{t('Recent sessions', '会话历史')}</div>
-            {(recents ?? [])
-              .filter((r) => query.trim() === '' || (r.title ?? r.firstUser ?? '').toLowerCase().includes(query.trim().toLowerCase()))
-              .slice(0, 12)
-              .map((r) => {
-                // G14.52 running 身份:活动会话以 runActive 为准(收束即时熄);他会话看 daemon 标注
-                const isMapped = r.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === r.id;
-                const running = isMapped ? activeSessionId !== '' && runActive : r.liveSessionId !== undefined;
-                const label = r.title ?? r.firstUser ?? t('New session', '新会话');
-                const metaLine = sessionMetaLine(r);
-                return (
+        <div className="modal-overlay" onClick={() => setSearchOpen(false)}>
+          <div
+            className="sx-search-modal"
+            role="search"
+            aria-label={t('Search projects & sessions', '搜索项目与会话')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              autoFocus
+              value={query}
+              placeholder={t('Search projects & sessions', '搜索项目与会话…')}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearchOpen(false);
+              }}
+            />
+            <div className="sx-search-modal-list">
+              <div className="sx-search-sec">{t('Projects', '项目')}</div>
+              {(rows ?? [])
+                .filter((r) => fuzzyHit(wsName(r) + ' ' + r.slug, query))
+                .map((r) => (
                   <button
-                    key={r.root + '/' + r.id}
+                    key={r.slug}
                     type="button"
                     className="sx-search-row"
-                    title={`${label}${metaLine !== '' ? `\n${metaLine}` : ''}`}
                     onClick={() => {
-                      if (busy) return;
-                      attachJournal(r.root, r.id);
+                      const row = (rows ?? []).find((x) => x.slug === r.slug);
+                      if (row !== undefined && row.root !== undefined) onComposeIn(row.root);
                       setSearchOpen(false);
                     }}
                   >
-                    {running ? (
-                      <span className="sx-session-dot running" />
-                    ) : !seenIds.has(r.id) ? (
-                      <span className="sx-session-dot unseen" />
-                    ) : null}
-                    <span className="sx-search-label">{label}</span>
-                    <span className="sx-search-meta">{relTime(r.updatedAt)}</span>
+                    <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                    <span className="sx-search-label">{wsName(r)}</span>
+                    <span className="sx-search-meta">{r.sessionCount}</span>
                   </button>
-                );
-              })}
+                ))}
+              {(rows ?? []).length === 0 && <div className="sx-search-empty">{t('No matching projects', '无匹配项目')}</div>}
+              <div className="sx-search-sec">{t('Sessions', '会话')}</div>
+              {(allSessions ?? [])
+                .filter((r) => fuzzyHit((r.title ?? r.firstUser ?? '') + ' ' + r.id, query))
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .slice(0, 20)
+                .map((r) => {
+                  // G14.52 running 身份:活动会话以 runActive 为准(收束即时熄);他会话看 daemon 标注
+                  const isMapped = r.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === r.id;
+                  const running = isMapped ? activeSessionId !== '' && runActive : r.liveSessionId !== undefined;
+                  const label = r.title ?? r.firstUser ?? t('New session', '新会话');
+                  const metaLine = sessionMetaLine(r);
+                  return (
+                    <button
+                      key={r.root + '/' + r.id}
+                      type="button"
+                      className="sx-search-row"
+                      data-tip={`${label}${metaLine !== '' ? `
+${metaLine}` : ''}`}
+                      onClick={() => {
+                        if (busy) return;
+                        attachJournal(r.root, r.id, r.updatedAt);
+                        setSearchOpen(false);
+                      }}
+                    >
+                      {running ? (
+                        <span className="sx-session-dot running" />
+                      ) : isUnseen(r.id, r.updatedAt) ? (
+                        <span className="sx-session-dot unseen" />
+                      ) : null}
+                      <span className="sx-search-label">{label}</span>
+                      <span className="sx-search-meta">{relTime(r.updatedAt)}</span>
+                    </button>
+                  );
+                })}
+              {(allSessions ?? []).length === 0 && <div className="sx-search-empty">{t('No matching sessions', '无匹配会话')}</div>}
+            </div>
           </div>
         </div>
       )}
-      {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
+            {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
       <div className="sx-side-scroll">
         <div
           className="sx-side-head sx-side-head-row sx-side-head-btn"
@@ -418,7 +513,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             type="button"
             className="sx-iconbtn"
             aria-label="add workspace"
-            title={t('Open a folder as workspace', '打开文件夹作为工作区')}
+            data-tip={t('Open a folder as workspace', '打开文件夹作为工作区')}
             disabled={busy}
             onClick={(e) => {
               e.stopPropagation();
@@ -426,7 +521,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               pickAndAdd();
             }}
           >
-            <FolderPlus size={14} strokeWidth={1.75} />
+            <FolderAddIcon size={14} />
           </button>
         </div>
         <div className={`sx-collapse${projectsOpen ? ' open' : ''}`}>
@@ -461,14 +556,14 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                       className={`workspace-toggle sx-group-head${root !== undefined && root === activeRoot ? ' active' : ''}`}
                       disabled={root === undefined}
                       aria-expanded={openSlug === row.slug}
-                      title={root ?? 'root 未登记(历史工作区)——无法新建会话'}
+                      data-tip={root ?? 'root 未登记(历史工作区)——无法新建会话'}
                       onClick={() => toggleGroup(row)}
                     >
                       <span className="sx-ws-folder" aria-hidden="true">
                         {openSlug === row.slug ? <FolderOpen size={16} strokeWidth={1.75} /> : <Folder size={16} strokeWidth={1.75} />}
                       </span>
                       <span className="ws-slug sx-ws-name">{wsName(row)}</span>
-                      <span className="ws-count sx-count" title={`${row.sessionCount} sessions`}>
+                      <span className="ws-count sx-count">
                         {row.sessionCount}
                       </span>
                     </button>
@@ -477,7 +572,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                         type="button"
                         aria-label={`new session in ${row.slug}`}
                         className="sx-iconbtn"
-                        title={t('New chat in this project', '在此项目中新对话')}
+                        data-tip={t('New chat in this project', '在此项目中新对话')}
                         onClick={() => onComposeIn(root)}
                       >
                         <SquarePen size={14} strokeWidth={1.75} />
@@ -501,22 +596,30 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                             ? runActive
                             : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
                           const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
+                          // G14.188 项目组会话行同样 hover 出会话信息(与最近会话行同款;贴主对话缘)
+                          const srMeta = [
+                            sr.runs !== undefined ? t(`${sr.runs} rounds`, `${sr.runs} 轮`) : '',
+                            sr.steps !== undefined ? t(`${sr.steps} steps`, `${sr.steps} 步`) : '',
+                            sr.createdAt !== undefined ? `${t('Created', '创建于')} ${sr.createdAt.slice(5, 16).replace('T', ' ')}` : '',
+                          ].filter((x) => x !== '').join(' · ');
                           return (
                             <li
                               key={sr.id}
                               className={`session-row sx-session-row${active ? ' active' : ''}`}
-                              title="打开会话"
+                              data-session-row="1"
+                              data-tip={`${label}${srMeta !== '' ? `\n${srMeta}` : ''}`}
+                              data-tip-pos="right"
                               onClick={() => {
                                 if (busy || root === undefined) return;
-                                attachJournal(root, sr.id);
+                                attachJournal(root, sr.id, sr.updatedAt);
                               }}
                             >
                               {running ? (
-                                <span className="sx-session-dot running" title="运行中会话" />
-                              ) : !seenIds.has(sr.id) ? (
+                                <span className="sx-session-dot running" />
+                              ) : isUnseen(sr.id, sr.updatedAt) ? (
                                 <span className="sx-session-dot unseen" />
                               ) : null}
-                              <span className="session-summary" title={`${label} · ${sr.id}`}>{label}</span>
+                              <span className="session-summary" data-id={sr.id}>{label}</span>
                               <span className="session-meta">{relTime(sr.updatedAt)}</span>
                             </li>
                               );
@@ -536,11 +639,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           role="button"
           aria-expanded={recentsOpen}
           tabIndex={0}
-          onClick={() => setRecentsOpen((v) => !v)}
+          onClick={() => {
+            setRecentsOpen((v) => !v);
+            setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               setRecentsOpen((v) => !v);
+              setRecentLimit(RECENT_VISIBLE_DEFAULT);
             }
           }}
         >
@@ -556,7 +663,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               type="button"
               className="sx-iconbtn"
               aria-label="new default chat"
-              title={t('New chat in default workspace', '默认工作区新对话')}
+              data-tip={t('New chat in default workspace', '默认工作区新对话')}
               onClick={(e) => {
                 e.stopPropagation();
                 onComposeIn(defaultAnchorRoot);
@@ -566,10 +673,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             </button>
           )}
         </div>
-        <div className={`sx-collapse${recentsOpen ? ' open' : ''}`}>
+        <div className={`sx-collapse sx-collapse-recents${recentsOpen ? ' open' : ''}`}>
         <ul className="recent-list" aria-label="recent sessions">
           {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
-          {recents?.map((r) => {
+          {(recents ?? []).slice(0, recentLimit).map((r) => {
             // G14.52:活动会话圆点以 runActive 为准;他会话看 daemon 标注
             const active =
               activeSessionId !== '' &&
@@ -583,7 +690,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               <li
                 key={`${r.root}/${r.id}`}
                 className={`session-row sx-session-row${active ? ' active' : ''}`}
-                title="打开会话"
+                data-session-row="1"
                 onClick={() => {
                   if (busy) return;
                   attachJournal(r.root, r.id);
@@ -591,14 +698,50 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               >
                 {running ? (
                   <span className="sx-session-dot running" />
-                ) : !seenIds.has(r.id) ? (
+                ) : isUnseen(r.id, r.updatedAt) ? (
                   <span className="sx-session-dot unseen" />
                 ) : null}
-                <span className="session-summary" title={`${label}${metaLine !== '' ? `\n${metaLine}` : ''} · ${r.id}`}>{label}</span>
+                <span className="session-summary" data-tip={`${label}${metaLine !== '' ? `\n${metaLine}` : ''}`} data-tip-pos="right">{label}</span>
                 <span className="session-meta">{relTime(r.updatedAt)}</span>
               </li>
             );
           })}
+          {/* G14.115 尾行分页控件:有藏 >「显示更多」(步进 10);已全放且曾展开 >「收起」复位 */}
+          {recents !== null && recents.length > RECENT_VISIBLE_DEFAULT && (
+            recents.length > recentLimit ? (
+              <li
+                key="recent-more"
+                className="recent-more"
+                role="button"
+                tabIndex={0}
+                onClick={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents.length))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents.length));
+                  }
+                }}
+              >
+                {t('Show more', '显示更多')}
+              </li>
+            ) : recentLimit > RECENT_VISIBLE_DEFAULT ? (
+              <li
+                key="recent-less"
+                className="recent-more"
+                role="button"
+                tabIndex={0}
+                onClick={() => setRecentLimit(RECENT_VISIBLE_DEFAULT)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setRecentLimit(RECENT_VISIBLE_DEFAULT);
+                  }
+                }}
+              >
+                {t('Collapse', '收起')}
+              </li>
+            ) : null
+          )}
         </ul>
         </div>
         {dirOpen && (
@@ -615,7 +758,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             type="button"
             aria-label="open settings"
             className="sx-iconbtn"
-            title="设置"
+            data-tip="设置"
             onClick={onOpenSettings}
           >
             <Settings size={18} strokeWidth={1.75} />

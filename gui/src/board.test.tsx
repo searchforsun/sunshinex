@@ -205,17 +205,19 @@ describe('Board:DAG 节点点击选中详情(brief 明文项)', () => {
 });
 
 describe('Board:teammate 侧栏与 delegations 简列', () => {
-  it('侧栏行 name + busy 点(busy 色钩);delegations 行 label+status', () => {
+  it('侧栏行 name + busy 点(busy 色钩);delegations 行 title(缺省回 label)+本地化状态徽标', () => {
+    const onOpenAgent = vi.fn();
     render(
       <Board
         board={boardOf([])}
-        delegations={[del(), del({ id: 'd2', label: 'probe', status: 'done' })]}
+        delegations={[del(), del({ id: 'd2', label: 'probe', status: 'done' }), del({ id: 'd3', label: 'l1', title: '架构分析', status: 'running' })]}
         team={[
           { name: 'w1', busy: true },
           { name: 'w2', busy: false },
         ]}
         onReview={noop}
         onBack={noop}
+        onOpenAgent={onOpenAgent}
       />,
     );
     const sidebar = screen.getByLabelText('team');
@@ -223,10 +225,16 @@ describe('Board:teammate 侧栏与 delegations 简列', () => {
     expect(sidebar.textContent).toContain('w2');
     expect(sidebar.querySelectorAll('.team-dot.busy')).toHaveLength(1); // busy 点色钩子
     const dels = screen.getByLabelText('delegations');
-    expect(dels.textContent).toContain('dev worker');
-    expect(dels.textContent).toContain('running');
+    expect(dels.textContent).toContain('dev worker'); // title 缺省回 label
+    expect(dels.textContent).toContain('运行中'); // G14.164 徽标本地化
     expect(dels.textContent).toContain('probe');
-    expect(dels.textContent).toContain('done');
+    expect(dels.textContent).toContain('完成');
+    expect(dels.textContent).toContain('架构分析'); // 委派带 title 直显任务名
+    // G14.164 行点击开子代理只读页:(label, 显示名) 上抛
+    fireEvent.click(screen.getByRole('button', { name: 'open agent l1' }));
+    expect(onOpenAgent).toHaveBeenCalledWith('l1', '架构分析');
+    fireEvent.click(screen.getByRole('button', { name: 'open agent probe' }));
+    expect(onOpenAgent).toHaveBeenCalledWith('probe', 'probe');
   });
 });
 

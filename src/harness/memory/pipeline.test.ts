@@ -80,6 +80,7 @@ function skillBody(dataDir: string, id: string): string {
 }
 
 const REFINED = JSON.stringify({
+  action: 'create',
   skill: {
     name: 'verify-before-done',
     description: 'Assert green before done',
@@ -113,7 +114,7 @@ test('pipeline：有模型 → 入队零等待，drain 后落盘语义技能并 
   const calls: string[] = [];
   const model = scriptedModel((prompt) => (prompt.includes('learned-extraction') ? REFINED : '{"memories":[]}'), calls);
   await withPipeline(model, async ({ p, notified }) => {
-    p.enqueue({ kind: 'learned', goal: 'g', reply: 'r', outcome: 'done', digest: '1. [read] a.ts -> ok' });
+    p.enqueue({ kind: 'learned', goal: 'g', reply: 'r', outcome: 'done', digest: '1. [read] a.ts -> ok\n2. [write] b.ts -> ok\n3. [exec] test -> ok' });
     assert.equal(p.pending(), 1, '入队即返回、不等模型');
     await p.drain();
     assert.equal(p.pending(), 0);
@@ -122,7 +123,7 @@ test('pipeline：有模型 → 入队零等待，drain 后落盘语义技能并 
   });
 });
 
-test('pipeline：记忆说明行与 harness 既有口径逐字一致（含 recall via read 路径）', async () => {
+test('pipeline：记忆说明行无路径引用（G14.106 GUI 可见面去 recall 指针）', async () => {
   const envelope = JSON.stringify({
     items: [{ type: 'project', description: 'uses pnpm workspaces', content: 'repo manages packages with pnpm workspaces' }],
   });
@@ -132,8 +133,9 @@ test('pipeline：记忆说明行与 harness 既有口径逐字一致（含 recal
     await p.drain();
     const line = notified.find(([s]) => s === 'memory')?.[1];
     assert.ok(line, '记忆通道应有 notify');
-    assert.ok(line.startsWith('[memory] saved: '));
-    assert.ok(line.includes(` — recall via read ${path.join(dataDir, 'memory', 'MEMORY.md')}`), `口径不一致: ${line}`);
+    assert.ok(line.startsWith('[memory] saved: uses-pnpm-workspaces'), `口径: ${line}`);
+    assert.ok(!line.includes('recall via read'), '不再含 recall 路径指针(正文链接化污染源)');
+    assert.ok(!line.includes('MEMORY.md'), '不含 MEMORY.md 路径');
     assert.equal(notified.filter(([s]) => s === 'skills').length, 0, '记忆条目不经 learned 通道');
   });
 });
@@ -156,16 +158,16 @@ test('pipeline：单 worker 串行（并发模型调用计数恒 ≤ 1）', asyn
     },
   } as unknown as ModelAdapter;
   await withPipeline(model, async ({ p }) => {
-    p.enqueue({ kind: 'learned', goal: 'a', reply: 'r', outcome: 'done', digest: '' });
-    p.enqueue({ kind: 'learned', goal: 'b', reply: 'r', outcome: 'done', digest: '' });
+    p.enqueue({ kind: 'learned', goal: 'a', reply: 'r', outcome: 'done', digest: '1. [read] a.ts -> ok\n2. [write] b.ts -> ok\n3. [exec] c -> ok' });
+    p.enqueue({ kind: 'learned', goal: 'b', reply: 'r', outcome: 'done', digest: '1. [read] a.ts -> ok\n2. [write] b.ts -> ok\n3. [exec] c -> ok' });
     await p.drain();
     assert.equal(peak, 1);
     assert.equal(p.pending(), 0, 'drain 返回即队列清空');
   });
 });
 
-test('pipeline：模型判无可复用教训（{"skill":null}）→ 零落盘零 notify', async () => {
-  const model = scriptedModel(() => '{"skill":null}', []);
+test('pipeline：模型判无可复用教训（{"action":"skip"}）→ 零落盘零 notify', async () => {
+  const model = scriptedModel(() => '{"action":"skip"}', []);
   await withPipeline(model, async ({ p, notified, dataDir }) => {
     p.enqueue({ kind: 'learned', goal: 'g', reply: 'r', outcome: 'done', digest: '' });
     await p.drain();
@@ -174,15 +176,42 @@ test('pipeline：模型判无可复用教训（{"skill":null}）→ 零落盘零
   });
 });
 
-test('pipeline：技术失败（畸形 JSON）→ 回退确定性写盘（沉淀不因技术故障丢失）', async () => {
-  const model = scriptedModel(() => 'not json at all', []);
+test('pipeline：技术失败（畸形 JSON）→ 重试后丢弃零落盘（G14.92 宁缺勿滥,无回退）', async () => {
+  let calls = 0;
+  const model = scriptedModel(() => {
+    calls += 1;
+    return 'not json at all';
+  }, []);
   await withPipeline(model, async ({ p, notified, dataDir }) => {
-    p.enqueue({ kind: 'learned', goal: 'g', reply: 'r', outcome: 'done', digest: '' });
+    p.enqueue({ kind: 'learned', goal: 'g', reply: 'r', outcome: 'done', digest: '1. [read] a.ts -> ok\n2. [write] b.ts -> ok\n3. [exec] c -> ok' });
     await p.drain();
-    const ids = skillIds(dataDir);
-    assert.equal(ids.length, 1, '技术失败回退确定性写盘');
-    assert.ok(skillBody(dataDir, ids[0]).includes('# Goal'), '回退走确定性体，不因技术故障丢失沉淀');
-    assert.ok(notified.some(([s, l]) => s === 'skills' && l.startsWith('[skills] learned: ')));
+    assert.deepEqual(skillIds(dataDir), [], '带病产物不进技能库——回退路径已废除');
+    assert.equal(notified.filter(([s]) => s === 'skills').length, 0);
+    assert.equal(calls, 3, '首次 + 2 次带错误反馈重试');
+  });
+});
+
+test('pipeline：update 裁决 → 原地覆盖既有技能（不新增目录,容量守恒）', async () => {
+  const updated = JSON.stringify({
+    action: 'update',
+    id: 'deploy-strategy',
+    skill: {
+      name: 'deploy-strategy',
+      description: 'Merged deployment lesson',
+      body: '## When to Use\nx\n## Procedure\ny\n## Pitfalls\nz — because w\n## Verification\nv',
+    },
+  });
+  const model = scriptedModel((prompt) => (prompt.includes('learned-extraction') ? updated : '{"memories":[]}'), []);
+  await withPipeline(model, async ({ p, notified, dataDir }) => {
+    // 预置既有技能目录（上一轮沉淀）
+    const dir = path.join(dataDir, 'skills', 'deploy-strategy');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'skill.md'), '---\nname: old\ndescription: old\nversion: 0.1.0\n---\nold body');
+    p.enqueue({ kind: 'learned', goal: 'refine deploy', reply: 'r', outcome: 'done', digest: '1. [read] deploy.md -> ok\n2. [write] deploy.sh -> ok\n3. [exec] deploy -> ok' });
+    await p.drain();
+    assert.deepEqual(skillIds(dataDir), ['deploy-strategy'], '原地更新不新增目录');
+    assert.ok(skillBody(dataDir, 'deploy-strategy').includes('Merged deployment lesson'), '正文已合并更新');
+    assert.ok(notified.some(([s, l]) => s === 'skills' && l.includes('[skills] updated: deploy-strategy')));
   });
 });
 

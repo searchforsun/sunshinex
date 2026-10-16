@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, RefreshCw, ChevronsDownUp, Search, X } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { Connection, TreeEntry } from '../connection';
@@ -53,11 +53,17 @@ export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabPro
     setNodes((m) => new Map(m).set(path, s));
   }, []);
 
+  /** G14.112 git 状态映射(path → modified/untracked/deleted/renamed/ignored):树节点着色/徽标/暗淡 */
+  const [gitMap, setGitMap] = useState<Record<string, string>>({});
   /** mount/会话切换拉 root:整体重置(层缓存+展开集+过滤)再拉新会话 root */
   useEffect(() => {
     setNodes(INITIAL_NODES);
     setExpanded(INITIAL_EXPANDED);
     setFilter('');
+    (conn.gitStatus?.(sessionId) ?? Promise.resolve({ branch: '', map: {} })).then(
+      (r) => setGitMap(r.map ?? {}),
+      () => setGitMap({}),
+    );
     void conn.tree(sessionId).then(
       (r) => setNode('', { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
       (err: unknown) => setNode('', { status: 'error', message: err instanceof Error ? err.message : String(err) }),
@@ -75,6 +81,25 @@ export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabPro
   }, [conn, sessionId, setNode]);
 
   const collapseAll = useCallback((): void => setExpanded(new Set()), []);
+
+  /** G14.143 目录级 git 聚合:变更文件的祖先目录标记聚合状态(modified 压过 untracked)——
+   *  目录行名着色 + 右缘圆点(VSCode 同位) */
+  const dirGit = useMemo(() => {
+    const rank: Record<string, number> = { modified: 3, renamed: 3, deleted: 3, untracked: 1 };
+    const out: Record<string, string> = {};
+    for (const raw of Object.keys(gitMap)) {
+      const st = gitMap[raw]!;
+      if (st !== 'modified' && st !== 'renamed' && st !== 'deleted' && st !== 'untracked') continue;
+      const clean = raw.replace(/\/$/, '');
+      const parts = clean.split('/');
+      for (let i = 1; i < parts.length; i += 1) {
+        const dir = parts.slice(0, i).join('/');
+        const cur = out[dir];
+        if (cur === undefined || (rank[st] ?? 0) > (rank[cur] ?? 0)) out[dir] = (rank[st] ?? 0) >= 3 ? 'modified' : 'untracked';
+      }
+    }
+    return out;
+  }, [gitMap]);
 
   const toggleDir = (dirPath: string): void => {
     if (expanded.has(dirPath)) {
@@ -129,12 +154,20 @@ export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabPro
         {/* G14.7 修复:展开子层紧跟父行(原「子层集中尾渲染」把子项顶到列表末尾——VSCode 是就地展开) */}
         {visible.map((e) => {
           const p = childPath(dirPath, e.name);
+          // G14.112 git 状态(相对 root 归一后查映射):文件/折叠 ignored 目录均命中;
+          // ignored → 整行暗淡;文件 → 尾缀状态徽标(M/U/D/R)
+          const relNorm = p.split('\\').join('/');
+          const gst = gitMap[relNorm] ?? (e.kind === 'dir' ? gitMap[relNorm + '/'] : undefined);
+          const dimmed = gst === 'ignored';
+          const badge = gst === 'modified' ? 'M' : gst === 'untracked' ? 'U' : gst === 'deleted' ? 'D' : gst === 'renamed' ? 'R' : null;
+          // G14.143 目录级聚合状态:自身 untracked(整目录新)优先,否则取祖先聚合(modified 压 untracked)
+          const dirGitSt = e.kind === 'dir' ? (gst === 'untracked' ? 'untracked' : dirGit[relNorm]) : undefined;
           return (
             <Fragment key={e.name}>
               {e.kind === 'dir' ? (
                 <button
                   type="button"
-                  className="sx-tree-row sx-tree-dir"
+                  className={`sx-tree-row sx-tree-dir${dimmed ? ' sx-tree-ignored' : ''}${dirGitSt !== undefined ? ` sx-tree-git-${dirGitSt}` : ''}`}
                   style={indent(depth)}
                   aria-expanded={expanded.has(p)}
                   onClick={() => toggleDir(p)}
@@ -146,16 +179,30 @@ export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabPro
                   />
                   <FileIcon path={e.name} folder open={expanded.has(p)} />
                   <span className="sx-tree-name">{e.name}</span>
+                  {/* G14.143 目录态=右缘圆点(VSCode 同位),不走字母徽标 */}
+                  {dirGitSt !== undefined ? (
+                    <span className={`sx-tree-dot st-${dirGitSt}`} aria-hidden="true" />
+                  ) : (
+                    badge !== null && <span className={`sx-tree-badge st-${gst}`}>{badge}</span>
+                  )}
                 </button>
               ) : (
                 <button
                   type="button"
-                  className="sx-tree-row sx-tree-file"
+                  className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}`}
                   style={indent(depth)}
                   onClick={() => openFile(p)}
+                  draggable
+                  onDragStart={(e) => {
+                    // G14.144 拖文件名到输入框=自动 @文件(text/sunshinex-file 私有类型供 composer 接)
+                    e.dataTransfer.setData('text/sunshinex-file', relNorm);
+                    e.dataTransfer.setData('text/plain', relNorm);
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
                 >
                   <FileIcon path={e.name} />
                   <span className="sx-tree-name">{e.name}</span>
+                  {badge !== null && <span className={`sx-tree-badge st-${gst}`}>{badge}</span>}
                 </button>
               )}
               {e.kind === 'dir' && expanded.has(p) ? renderLevel(p, depth + 1) : null}
@@ -178,12 +225,12 @@ export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabPro
       {/* 头行(VSCode explorer 同位):工作区名 + 刷新/全部折叠 */}
       {wsName !== undefined && (
         <div className="sx-tree-head">
-          <span className="sx-tree-head-name" title={root}>{wsName}</span>
+          <span className="sx-tree-head-name" data-tip={root}>{wsName}</span>
           <span className="sx-tree-head-actions">
-            <button type="button" className="sx-iconbtn" aria-label="refresh" title={t('Refresh', '刷新')} onClick={refresh}>
+            <button type="button" className="sx-iconbtn" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={refresh}>
               <RefreshCw size={13} strokeWidth={1.75} />
             </button>
-            <button type="button" className="sx-iconbtn" aria-label="collapse all" title={t('Collapse All', '全部折叠')} onClick={collapseAll}>
+            <button type="button" className="sx-iconbtn" aria-label="collapse all" data-tip={t('Collapse All', '全部折叠')} onClick={collapseAll}>
               <ChevronsDownUp size={13} strokeWidth={1.75} />
             </button>
           </span>

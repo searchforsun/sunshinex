@@ -7,15 +7,23 @@
  */
 
 import { Files } from '../pages/Files';
-import { Board } from '../pages/Board';
 import { TerminalTab } from './TerminalTab';
 import { DirectoryTab } from './DirectoryTab';
 import { DiffTab } from './DiffTab';
-import { AgentsTab } from './AgentsTab';
-import { ContextTab, BgTasksTab, MemoryTab } from './InsightTabs';
+import { AgentTranscriptTab } from './AgentTranscriptTab';
+import { TodoCardsTab } from './TodoCardsTab';
+import { TaskBoardTab } from './TaskBoardTab';
+import { BgTasksTab, MemoryTab } from './InsightTabs';
 import { WebTab } from './WebTab';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 import type { MutableRefObject } from 'react';
+
+/** G14.114 标签条/标题行文件名化:取路径末段(win/posix 双分隔,滤空段防尾分隔符) */
+const baseName = (p: string): string =>
+  p
+    .split(/[\\/]/)
+    .filter((s) => s.length > 0)
+    .pop() ?? p;
 
 export interface TabServices {
   // App 投影面(G8a:任务标签消费;后续批次按需扩)
@@ -25,6 +33,14 @@ export interface TabServices {
   readonly onReview: (taskId: string, approved: boolean) => void;
   /** G8d 子代理活动聚合(App 态 applyAgentEvent 归约;Agents 标签只读消费) */
   readonly agentActivities: import('./agent-activity').AgentActivities;
+  /** G14.137 会话待办(todo_write 上抛):任务标签「会话待办」区数据源 */
+  readonly todos: import('../../../src/types').TodoItem[];
+  /** G14.174 待办批次(每批 todo_write 一卡;Chat 从转录重建上抛)——「待办」页签数据面 */
+  readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
+  /** G14.174 关联轮次用户输入(Chat 上抛最近一条 user 行)——任务板/待办卡片头共用 */
+  readonly turnGoal: string;
+  /** G14.176 create_task 行点开的定位信号(App 注入;nonce 变更即滚动高亮) */
+  readonly taskFocus: { ref: string; nonce: number } | null;
 }
 
 export interface TabRenderProps {
@@ -42,6 +58,8 @@ export interface TabRenderProps {
   /** G8b T7 会话内开标签面(标签体自治跳转——DirectoryTab 文件行 → openTab('file',{path});
    *  App 注入 openTabInSession,判重/单例经 tab-state 共口径;file/tasks 忽略) */
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
+  /** G14.154 辅助对话带问启动(fork+开辅助标签;文件选区「在辅助对话中提问」通道) */
+  readonly startSideChat?: (insert?: string) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
   readonly root: string;
   /** G14.29 辅助对话(App 按 sideId 注入旁路聊天 sink——App onEvent 同键路由帧;他型忽略) */
@@ -71,20 +89,30 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
     group: 'content',
-    title: (params) => params.path ?? '文件',
+    // G14.114 文件类标签只显文件名(全路径在标签体内已有:file 面包屑/diff 头)——win/posix 双分隔
+    title: (params) => (params.path !== undefined ? baseName(params.path) : '文件'),
     resolveKey: (params) => params.path ?? '',
     singleton: false,
-    render: (p) => <Files conn={p.conn} sessionId={p.sessionId} initialPath={p.params.path} />,
+    render: (p) => (
+      <Files
+        conn={p.conn}
+        sessionId={p.sessionId}
+        initialPath={p.params.path}
+        root={p.root}
+        onOpenFile={(path) => p.openTab('file', { path })}
+        onSideAsk={(text: string) => p.startSideChat?.(text)}
+      />
+    ),
   },
   {
     id: 'diff',
     group: 'content',
-    // title:path 可读优先(callId 兜底;裸开档 'Diff')——标签条/标题行同源
-    title: (params) => params.path ?? params.callId ?? 'Diff',
+    // title:文件名可读优先(callId 兜底;裸开档 'Diff')——标签条/标题行同源
+    title: (params) => (params.path !== undefined ? baseName(params.path) : params.callId ?? '审查'),
     // by callId 多实例:同 write 调用重开=聚焦,异 callId 并存
     resolveKey: (params) => params.callId ?? '',
     singleton: false,
-    render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} />,
+    render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} onOpenFile={(path) => p.openTab('file', { path })} />,
   },
   {
     id: 'directory',
@@ -97,34 +125,47 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'tasks',
     group: 'session',
-    title: () => '任务',
+    // G14.174 重定位:任务页签 → 待办(每批 todo_write 一卡的卡片流;原看板迁任务板页签)
+    title: () => '待办',
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => <TodoCardsTab batches={p.services.todoBatches} />,
+  },
+  {
+    id: 'agents',
+    group: 'session',
+    // G14.174 重定位:Agents 页签 → 任务板(卡片流双卡型:任务列表|流程图,逐卡切换)
+    title: () => '任务板',
     resolveKey: () => '',
     singleton: true,
     render: (p) => (
-      <Board
+      <TaskBoardTab
         board={p.services.board}
-        // 既有 Board 收可变数组而 TabServices 按简报签名为 readonly——浅拷贝桥接(pages 不改)
         delegations={[...p.services.delegations]}
-        team={[...p.services.team]}
+        turnGoal={p.services.turnGoal}
+        focus={p.services.taskFocus}
+        onOpenAgent={(label, agentTitle) => p.openTab('agent', { label, agentTitle })}
         onReview={p.services.onReview}
       />
     ),
   },
   {
-    id: 'agents',
+    id: 'agent',
     group: 'session',
-    title: () => 'Agents',
-    resolveKey: () => '',
-    singleton: true,
-    render: (p) => <AgentsTab activities={p.services.agentActivities} />,
-  },
-  {
-    id: 'context',
-    group: 'session',
-    title: () => '上下文',
-    resolveKey: () => '',
-    singleton: true,
-    render: (p) => <ContextTab conn={p.conn} sessionId={p.sessionId} />,
+    // G14.164 子代理只读转录页:title=开档时定格的显示名(AgentsTab 传 agentTitle;raw label 在页头)
+    title: (params) => params.agentTitle ?? params.label ?? 'agent',
+    // by label 多实例:同 agent 重开=聚焦,异 agent 并存;被动入口(菜单不列)
+    resolveKey: (params) => params.label ?? '',
+    singleton: false,
+    render: (p) => (
+      <AgentTranscriptTab
+        label={p.params.label ?? ''}
+        activities={p.services.agentActivities[p.params.label ?? '']}
+        delegations={p.services.delegations}
+        board={p.services.board}
+        task={p.params.task}
+      />
+    ),
   },
   {
     id: 'bgtasks',
@@ -132,7 +173,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => '后台任务',
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <BgTasksTab conn={p.conn} sessionId={p.sessionId} />,
+    render: (p) => <BgTasksTab conn={p.conn} sessionId={p.sessionId} turnGoal={p.services.turnGoal} />,
   },
   {
     id: 'memory',
@@ -191,6 +232,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
             root={p.root}
             freshView
             fixedTitle=""
+            initialInsert={p.params.insert}
           />
         </div>
       ) : (

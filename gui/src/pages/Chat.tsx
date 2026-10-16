@@ -1,17 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { CSSProperties, MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, Database, FileText, FolderSearch, GitBranch, GitFork, Globe, History,
-  Info, Folder, ListTodo, Maximize2, MessageSquare, PanelRight, PenLine, Search, Sparkles, Square, SquareTerminal, Terminal, Wrench, X,
+  AlertCircle, ArrowDown, ArrowRight, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Circle, Copy, Database, Eye, FileText, FolderSearch, GitBranch, GitFork, GitMerge, Globe, HelpCircle, History,
+  BookOpen, Hourglass, Info, Folder, GripVertical, ListPlus, ListTodo, Maximize2, MessageSquare, MessageCircleQuestion, PanelRight, PenLine, Search, ShieldCheck, Sparkles, Square, SquareTerminal, Telescope, Terminal, Trash2, ArrowUpToLine, CornerDownRight, Unlock, UserPlus, WrapText, Wrench, X, XCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
+import { zoomScale } from '../ui-zoom';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
+import type { TaskBoardState } from '../projection';
 import { DiffLines } from '../diff-lines';
 import { FileIcon } from '../file-icon';
 import { highlightByLang, highlightCode } from '../highlight';
@@ -22,7 +24,7 @@ import { EffortChip, EffortSlider } from '../effort-slider';
 import { fmtTokens as fmtTokensShared } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
-import type { SessionEvent } from '../../../src/types';
+import type { SessionEvent, TodoItem } from '../../../src/types';
 import { t } from '../i18n';
 
 /**
@@ -97,9 +99,25 @@ export interface ChatProps {
    *  降为回退通道:callId 在场的 write 条目优先走 onOpenDiff(开 diff 标签),callId 缺场(种子
    *  条/无 callId 面)仍开文件标签预览 */
   onOpenFile?: (path: string) => void;
+  /** G14.137 todo_write 清单上抛(App 存态喂任务标签会话待办区) */
+  onTodos?: (todos: TodoItem[]) => void;
+  /** G14.154 挂载即落的初始引用(文件选区「在辅助对话中提问」经 fork 参数携带) */
+  initialInsert?: string;
   /** G8d write 条目 path 钮主通道:开 diff 标签(callId 寻址,App 接 openTabInSession('diff',
    *  {callId,path}));可选防测试桩免配——缺场时全部回落 onOpenFile */
   onOpenDiff?: (callId: string, path: string) => void;
+  /** G14.171 spawn 行子代理名=蓝色链接:点开对应 agent 只读标签页(App 接 openTabInSession('agent',{label,agentTitle})) */
+  onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
+  /** G14.176 create_task 行任务名=蓝色链接:点开任务板并定位高亮对应卡(App 接 openTabInSession('agents')+focus 定位) */
+  onOpenTask?: (taskRef: string) => void;
+  /** G14.177 顶栏动态计数按钮:打开对应页签(待办=tasks/任务板=agents/后台任务=bgtasks) */
+  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
+  /** G14.172 task_wait 行任务名解析材料(任务板投影;App 注入会话板) */
+  board?: TaskBoardState;
+  /** G14.174 待办批次上抛(每批 todo_write 一卡:时间/关联轮次输入/条目;App 经 services 供待办页签) */
+  onTodoBatches?: (batches: TodoBatch[]) => void;
+  /** G14.174 关联轮次用户输入上抛(最近一条 user 行;任务板卡片头共用) */
+  onTurnGoal?: (goal: string) => void;
   /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
   onRewind?: (turn: number) => void;
   /** G10-C4 分叉新会话(从最近任务轮;/fork 底层);App 接 forkSession+openSession;可选 */
@@ -116,6 +134,8 @@ export interface ChatProps {
   onExpandSidebar?: () => void;
   /** G14.29 输入 /btw /side 拦截:开辅助对话旁路标签(不动 daemon 提交面) */
   onSideChat?: () => void;
+  /** G14.148 /memory(-rm) 拦截:开记忆标签(GUI 的删除面;daemon 命令通道不支持 TUI 交互多选) */
+  onOpenMemory?: () => void;
   /** G14.31 辅助对话全新视图:种子历史不落屏(上下文只在模型侧),开播即空会话观感 */
   freshView?: boolean;
   /** G14.32 顶栏定名(辅助对话):压过会话名回落链,不露注册 id */
@@ -154,6 +174,70 @@ function resultOf(md: string): string {
   return m >= 0 ? md.slice(m + 2) : '';
 }
 
+/** G14.177 顶栏动态计数按钮(待办/任务/后台任务):转圈图标+数量;0 个不显;点击开对应页签。
+ *  靠右聚拢(margin-left:auto)不挤压标题与展开钮;后台任务数 5s 轮询 /session/:id/tasks */
+function ChatDynButtons({ todoActive, taskActive, conn, sessionId, onOpenTab }: {
+  todoActive: number;
+  taskActive: number;
+  conn: Connection;
+  sessionId: string;
+  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
+}): JSX.Element | null {
+  const [bgRunning, setBgRunning] = useState(0);
+  useEffect(() => {
+    // 测试桩/旧连接可能未实现 sessionTasks——探活失败静默零计数(按钮全隐,不炸树)
+    if (typeof conn.sessionTasks !== 'function') return;
+    let alive = true;
+    const poll = (): void => {
+      Promise.resolve()
+        .then(() => conn.sessionTasks(sessionId))
+        .then(
+          (rows) => {
+            if (alive) setBgRunning(rows.filter((r) => r.status === 'running').length);
+          },
+          () => undefined,
+        )
+        .catch(() => undefined);
+    };
+    poll();
+    const timer = window.setInterval(poll, 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [conn, sessionId]);
+  if (todoActive === 0 && taskActive === 0 && bgRunning === 0) return null;
+  return (
+    <div className="chat-dyn-buttons" role="group" aria-label="live counters">
+      {todoActive > 0 && (
+        <button type="button" className="chat-dyn-btn" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
+          <span className="run-spinner" aria-hidden="true" />
+          {t(`${todoActive} todos`, `${todoActive} 待办`)}
+        </button>
+      )}
+      {taskActive > 0 && (
+        <button type="button" className="chat-dyn-btn" data-tip={t('Open task board', '打开任务板')} onClick={() => onOpenTab?.('agents')}>
+          <span className="run-spinner" aria-hidden="true" />
+          {t(`${taskActive} tasks`, `${taskActive} 任务`)}
+        </button>
+      )}
+      {bgRunning > 0 && (
+        <button type="button" className="chat-dyn-btn" data-tip={t('Open background tasks', '打开后台任务')} onClick={() => onOpenTab?.('bgtasks')}>
+          <span className="run-spinner" aria-hidden="true" />
+          {t(`${bgRunning} background`, `${bgRunning} 后台任务`)}
+        </button>
+      )}
+    </div>
+  );
+}
+/** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——「待办」页签数据面 */
+export interface TodoBatch {
+  key: string;
+  ts: number;
+  goal: string;
+  items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
+}
+
 /** 种子条工具信息还原:md 首行 `● [tool] name {json}` → {name, input}——种子回放无旁路 info,
  *  折叠行不再裸渲 JSON(与实时帧 `write path · 结果` 同形);参数段缺失/非 JSON 只出工具名 */
 function toolMdInfo(md: string): { name: string; input: Record<string, unknown> } | undefined {
@@ -174,6 +258,20 @@ function toolMdInfo(md: string): { name: string; input: Record<string, unknown> 
     // 参数段非 JSON:只出工具名,不裸渲参数原文
   }
   return { name, input: {} };
+}
+
+/** G14.168 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名) */
+const TOOL_VERB_ZH: Record<string, string> = {
+  read: '读取', write: '写入', exec: '执行', grep: '搜索内容', glob: '找文件',
+  skill: '技能', webfetch: '抓取网页', websearch: '搜索网页', memory_write: '保存记忆',
+  todo_write: '待办', worktree: '工作树', spawn: '分派子代理', task_stop: '停止任务',
+  task_wait: '等待任务', kb_search: '知识库检索', ask_question: '提问',
+  create_task: '创建任务', set_dependency: '设置依赖', assign: '分派任务',
+  review_task: '复审任务', gate_task: '门审任务', cancel_task: '取消任务',
+};
+function zhToolName(name: string): string {
+  const zh = TOOL_VERB_ZH[name];
+  return zh === undefined ? name : t(name, zh);
 }
 
 /** 折叠行目标字段(工具展示元数据同口径):各内置工具取其主字段;换行拍平,超长中段省略 */
@@ -199,7 +297,7 @@ function toolTargetOf(name: string, input: Record<string, unknown>): string | un
 
 /** 各工具执行中标签(G14.13):「正在…」双语;未知工具回落 正在执行 */
 const RUNNING_LABELS: Record<string, [string, string]> = {
-  read: ['Reading file', '正在读取'],
+  read: ['Reading file', '正在读取文件'],
   write: ['Writing file', '正在写入'],
   exec: ['Running command', '正在执行'],
   glob: ['Searching files', '正在搜索文件'],
@@ -208,7 +306,19 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   webfetch: ['Fetching page', '正在抓取网页'],
   websearch: ['Searching the web', '正在搜索网页'],
   memory_write: ['Saving memory', '正在保存记忆'],
-  spawn: ['Starting subagent', '正在启动子智能体'],
+  spawn: ['Dispatching subagent', '正在分派子代理'],
+  task_wait: ['Waiting for tasks', '正在等待任务'],
+  task_stop: ['Stopping task', '正在停止任务'],
+  todo_write: ['Updating todos', '正在更新待办'],
+  worktree: ['Preparing worktree', '正在准备工作树'],
+  kb_search: ['Searching knowledge base', '正在检索知识库'],
+  ask_question: ['Waiting for answer', '正在等待回答'],
+  create_task: ['Creating task', '正在创建任务'],
+  set_dependency: ['Setting dependency', '正在设置依赖'],
+  assign: ['Assigning task', '正在分派任务'],
+  review_task: ['Reviewing task', '正在复审任务'],
+  gate_task: ['Gating task', '正在门审任务'],
+  cancel_task: ['Cancelling task', '正在取消任务'],
 };
 
 /** 文件行拆分(G14.8):basename + 所在目录(恒显,根目录 = './')——文件名后永远看得到位置 */
@@ -239,6 +349,9 @@ function ToolEntryView({
   callId,
   onOpenFile,
   onOpenDiff,
+  onOpenAgent,
+  onOpenTask,
+  taskNameOf,
 }: {
   entry: ChatEntry;
   info?: ToolCallInfo;
@@ -247,6 +360,12 @@ function ToolEntryView({
   callId?: string;
   onOpenFile?: (path: string) => void;
   onOpenDiff?: (callId: string, path: string) => void;
+  /** G14.171 spawn 行子代理名=蓝色链接,点开对应 agent 只读标签页(App 注入 openTabInSession) */
+  onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
+  /** G14.176 create_task 行任务名=蓝色链接,点开任务板定位高亮对应卡(App 注入) */
+  onOpenTask?: (taskRef: string) => void;
+  /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
+  taskNameOf?: (id: string) => string;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
@@ -268,14 +387,62 @@ function ToolEntryView({
   const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
   const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
   const stat = isWrite ? writeStatOf(result) : {};
+  /** G14.171 spawn 子代理名(label ?? agent_id)——运行态文案与折叠行链接共用 */
+  const spawnAgentName =
+    toolName === 'spawn'
+      ? typeof input.label === 'string' && input.label !== ''
+        ? input.label
+        : typeof input.agent_id === 'string'
+          ? input.agent_id
+          : ''
+      : '';
+  /** G14.172 task_wait 折叠行任务名(taskNameOf 单点解析;同名去重)——用户裁决「等待任务显示任务名称,不要用 id」 */
+  const waitTaskNames = toolName === 'task_wait'
+    ? [
+        ...new Set(
+          (Array.isArray(input.taskIds) ? (input.taskIds as unknown[]) : [])
+            .filter((x): x is string => typeof x === 'string')
+            .map((id) => (taskNameOf !== undefined ? taskNameOf(id) : id)),
+        ),
+      ]
+    : [];
   /** G14.13 全工具双态:结果未回(占位符 …)=执行中(波纹+「正在…」);结果已回=各型折叠行 */
   const executing = result === '…' || result === '';
   const runningLabel = (() => {
+    // G14.166 spawn 运行态带子代理名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
+    if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
     const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
     return t(pair[0], pair[1]);
   })();
   /** 展开面全文:旁路暂存优先,种子条 info 缺省回落 md 首行(skill 正文/长输出同源) */
   const fullResult = info?.result ?? result;
+  /** G14.82 ask_question 结构化问答体:问题+选项(✓ 选中)+用户回答(选/自定义/跳过),替代原始 I/O */
+  const askInput: { question: string; options: Array<{ label: string; description?: string }> } | null =
+    toolName === 'ask_question'
+      ? (typeof input.question === 'string'
+          ? {
+              question: input.question,
+              options: Array.isArray(input.options)
+                ? input.options.map((o) => {
+                    const ob = (o ?? {}) as { label?: unknown; description?: unknown };
+                    const label = String(ob.label ?? '').trim();
+                    const description = typeof ob.description === 'string' && ob.description.trim() !== '' ? ob.description.trim() : undefined;
+                    return description !== undefined ? { label, description } : { label };
+                  })
+                : [],
+            }
+          : null)
+      : null;
+  const askAnswer = (() => {
+    const r = fullResult.trim();
+    if (r === '' || r === '…') return { kind: 'pending' as const };
+    if (r.startsWith('answers: ')) return { kind: 'answers' as const, labels: r.slice(9).split('; ').map((x) => x.trim()) };
+    if (r.startsWith('answer: ')) return { kind: 'answer' as const, labels: [r.slice(8).trim()] };
+    if (r.startsWith('custom: ')) return { kind: 'custom' as const, text: r.slice(8).trim() };
+    return { kind: 'dismissed' as const };
+  })();
+  const askChosen = new Set(askAnswer.kind === 'answers' || askAnswer.kind === 'answer' ? askAnswer.labels : []);
+
 
   /** 展开且可寻址(callId 在场——无 callId 面不拉)即异步拉 diff;折叠即弃在途应答
    *  (面板已不在场),重展开重拉;已缓存(diff≠undefined)不重拉 */
@@ -303,15 +470,13 @@ function ToolEntryView({
     <>
       {executing ? (
         <span className="tool-verb exec-running">
-          <span className="exec-ripple-icon">
-            <ToolIcon verb={toolName} />
-          </span>
+          {/* G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定) */}
           <span className="exec-running-text">{runningLabel}</span>
         </span>
       ) : path !== undefined && (isWrite || toolName === 'read') ? (
         <>
           {/* G14.4 行序:工具图标(前置)+工具名+文件图标+文件名+相对路径(+stat);结果不进折叠行 */}
-          <span className="tool-verb">{toolName}</span>
+          <span className="tool-verb">{zhToolName(toolName)}</span>
           {' '}
           <FileIcon path={path} />
           {' '}
@@ -320,7 +485,7 @@ function ToolEntryView({
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-file-link"
-              title={t('Open in file tab', '在文件标签预览')}
+              data-tip={t('Open in file tab', '在文件标签预览')}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenFile(path);
@@ -338,26 +503,122 @@ function ToolEntryView({
           {isWrite && stat.added !== undefined && <span className="tool-stat tool-stat-add">{' '}{stat.added}</span>}
           {isWrite && stat.removed !== undefined && <span className="tool-stat tool-stat-del">{' '}{stat.removed}</span>}
         </>
-      ) : toolName === 'skill' ? (
+      ) : toolName === 'ask_question' ? (
+        /* G14.82:折叠行直接示问题文本(问询即内容,非动词+目标) */
         <>
-          <span className="tool-verb">skill</span>
-          {skillId !== undefined && <span className="tool-file-base">{' · '}{skillId}</span>}
+          <span className="tool-verb">{t('ask', '提问')}</span>
+          <span className="tool-file-base tool-cmd">{' '}{typeof input.question === 'string' ? input.question : ''}</span>
+        </>
+      ) : toolName === 'todo_write' ? (
+        /* G14.138 折叠行本地化;G14.199 格式「待办 {完成}/{总数}」(对号去除,用户裁定) */
+        (() => {
+          const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
+          const done = arr.filter((o) => (o ?? {}).status === 'completed').length;
+          return (
+            <>
+              <span className="tool-verb">{t('todo', '待办')}</span>
+              <span className="tool-file-base tool-cmd">{` ${done}/${arr.length}`}</span>
+            </>
+          );
+        })()
+      ) : toolName === 'create_task' ? (
+        /* G14.168 折叠行带任务名;G14.176 任务名=蓝色链接,点开任务板定位高亮对应卡 */
+        <>
+          <span className="tool-verb">{t('create_task', '创建任务')}</span>
+          {onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
+            <span
+              role="button"
+              tabIndex={-1}
+              className="tool-file-base tool-agent-link"
+              data-tip={t('Open task board card', '在任务板中定位')}
+              onClick={(e) => {
+                e.stopPropagation();
+                const created = /task (\S+) created/.exec(result);
+                onOpenTask(created !== null ? created[1]! : (input.title as string));
+              }}
+            >
+              {' '}{input.title}
+            </span>
+          ) : (
+            <span className="tool-file-base tool-cmd">
+              {typeof input.title === 'string' ? ` ${input.title}` : ''}
+            </span>
+          )}
+        </>
+      ) : toolName === 'spawn' ? (
+        /* G14.166 折叠行带子代理名(G14.171:蓝色链接,点开对应 agent 只读标签页) */
+        <>
+          <span className="tool-verb">{t('spawn', '分派子代理')}</span>
+          {spawnAgentName !== '' && onOpenAgent !== undefined ? (
+            <span
+              role="button"
+              tabIndex={-1}
+              className="tool-file-base tool-agent-link"
+              data-tip={t('Open subagent transcript', '打开子代理转录')}
+              onClick={(e) => {
+                e.stopPropagation(); // 不触发行展开
+                onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : undefined);
+              }}
+            >
+              {' '}{spawnAgentName}
+            </span>
+          ) : (
+            <span className="tool-file-base tool-cmd">{spawnAgentName !== '' ? ` ${spawnAgentName}` : ''}</span>
+          )}
+        </>
+      ) : toolName === 'task_wait' ? (
+        /* G14.167 折叠行带等待任务名(G14.172:任务板解析为任务名,不用 id;null=等全部在跑) */
+        <>
+          <span className="tool-verb">{t('task_wait', '等待任务')}</span>
+          <span className="tool-file-base tool-cmd">
+            {' '}
+            {waitTaskNames.length > 0
+              ? waitTaskNames.join(', ')
+              : Array.isArray(input.taskIds)
+                ? ''
+                : t('all background tasks', '全部后台任务')}
+          </span>
         </>
       ) : command !== undefined ? (
         <>
-          <span className="tool-verb">{'exec'}</span>
+          <span className="tool-verb">{t('exec', '执行')}</span>
           {/* G14.50:展开态不重复命令文本(下方 $ 行已完整示出) */}
           {!expanded && <span className="tool-file-base tool-cmd">{' '}{command}</span>}
         </>
       ) : (
-        <span className="tool-verb">{target !== undefined ? `${toolName} ${target}` : toolName}</span>
+        /* G14.168 动词中文展示单点(MCP 等未登记工具回退原名)+目标字段 */
+        <span className="tool-verb">
+          {zhToolName(toolName)}
+          {target !== undefined ? ` ${target}` : ''}
+        </span>
       )}
     </>
   );
 
-  /** 展开面主体(G14 分型):write=diff2html;skill=md 正文;exec=$ 命令高亮+输出;其余=输出原文 */
+  /** 展开面主体(G14 分型):write=diff2html;skill=md 正文;exec=$ 命令高亮+输出;
+   *  todo_write=本地化清单(G14.138,daemon 英文结果不进展开面);其余=输出原文 */
   let body: JSX.Element;
-  if (isWrite) {
+  if (toolName === 'todo_write') {
+    const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
+    body = (
+      <div className="tool-todos" aria-label="todo list">
+        {arr.length === 0 && <div className="tool-todo tool-todo-empty">{t('(empty list)', '（空清单）')}</div>}
+        {arr.map((o, i) => {
+          const st = (o ?? {}).status === 'completed' ? 'completed' : (o ?? {}).status === 'in_progress' ? 'in_progress' : 'pending';
+          return (
+            <div key={i} className={`tool-todo tool-todo-${st}`}>
+              {/* G14.169 统一圆圈三态:完成=蓝底√/进行=→/等待=虚线圈(用户裁决,替代 ☑◐☐ 字符) */}
+              <span className={`todo-dot ${st}`} aria-hidden="true">
+                {st === 'completed' && <Check size={9} strokeWidth={3} />}
+                {st === 'in_progress' && <ArrowRight size={9} strokeWidth={3} />}
+              </span>
+              <span className="tool-todo-text">{typeof (o ?? {}).text === 'string' ? String((o ?? {}).text) : ''}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  } else if (isWrite) {
     const fallbackNew = typeof input.content === 'string' ? input.content : '';
     const openDiff =
       onOpenDiff !== undefined && callId !== undefined && path !== undefined
@@ -381,7 +642,7 @@ function ToolEntryView({
               type="button"
               className="tool-path"
               aria-label={path}
-              title={openDiffTitle}
+              data-tip={openDiffTitle}
               onClick={openDiff}
             >
               <span aria-hidden="true">⇄</span>
@@ -393,7 +654,30 @@ function ToolEntryView({
   } else if (toolName === 'skill') {
     body = (
       <div className="tool-md">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{fullResult}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdComponentsPlain}>{fullResult}</ReactMarkdown>
+      </div>
+    );
+  } else if (toolName === 'ask_question' && askInput !== null) {
+    const askQ = askInput;
+    // G14.82:结构化问答体——问题+选项清单(✓ 用户所选/跳过态)+回答条,替代原始 I/O 文本块
+    // G14.102 回答行去「✓ Answered」前缀:回答态只示回答内容(accent),skip 示「Skipped」(灰),
+    // 自定义示输入内容;等待态保留 spinner+文案
+    const answerRow =
+      askAnswer.kind === 'answers' || askAnswer.kind === 'answer'
+        ? { kind: 'answer' as const, text: askAnswer.labels.join('、') }
+        : askAnswer.kind === 'custom'
+          ? { kind: 'custom' as const, text: askAnswer.text }
+          : askAnswer.kind === 'dismissed'
+            ? { kind: 'dismissed' as const, text: t('Skipped', '已跳过') }
+            : { kind: 'waiting' as const, text: t('Waiting for answer', '等待回答') };
+    // G14.84/G14.102:展开体=问题(加重)+回答结果,普通展开区域包裹(选项清单挂起表单已示,不复读)
+    body = (
+      <div className="tool-md ask-record">
+        <div className="ask-q">{askQ.question}</div>
+        <div className={`ask-answer kind-${answerRow.kind}`}>
+          {answerRow.kind === 'waiting' && <span className="run-spinner" aria-hidden="true" />}
+          <span className="ask-answer-text">{answerRow.text}</span>
+        </div>
       </div>
     );
   } else if (command !== undefined) {
@@ -418,7 +702,7 @@ function ToolEntryView({
         type="button"
         className="tool-summary"
         aria-expanded={isRead ? undefined : expanded}
-        title={isRead ? t('Open in file tab', '在文件标签预览') : undefined}
+        data-tip={isRead ? t('Open in file tab', '在文件标签预览') : undefined}
         onClick={() => {
           if (isRead) onOpenFile?.(path!);
           else setExpanded((v) => !v);
@@ -435,113 +719,416 @@ function ToolEntryView({
   );
 }
 
-/** G4 审批卡:三按钮字面即 ApprovalDecision(allow/deny/always)——回执经 HTTP,寻址 pid */
+/** G4 审批卡:三按钮字面即 ApprovalDecision(allow/deny/always)——回执经 HTTP,寻址 pid。
+ *  G14.88 dock 形态(与 ask 同容器);按钮同 ask 的 primary/次级款(去绿实心/红字花哨款);
+ *  G14.90 卡头图标(ShieldCheck 标识审批面) */
 function ApprovalCard({ req, onDecision }: { req: GuiApprovalReq; onDecision: (decision: string) => void }): JSX.Element {
   return (
     <div className="pending-card approval-card">
-      <div className="card-title">{`[approval ${req.kind ?? '?'}] ${req.subject ?? '(无标题)'}`}</div>
+      <div className="card-head">
+        <span className="card-head-icon">
+          <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" />
+        </span>
+        <div className="card-title">{`[approval ${req.kind ?? '?'}] ${req.subject ?? '(无标题)'}`}</div>
+      </div>
       {req.reason !== undefined && req.reason !== '' && <div className="card-reason">{req.reason}</div>}
       <div className="card-actions">
-        <button type="button" className="approve" onClick={() => onDecision('allow')}>
-          Allow
+        <button type="button" className="primary" onClick={() => onDecision('allow')}>
+          {t('Allow', '允许')}
         </button>
-        <button type="button" className="deny" onClick={() => onDecision('deny')}>
-          Deny
+        <button type="button" onClick={() => onDecision('deny')}>
+          {t('Deny', '拒绝')}
         </button>
-        <button type="button" className="always" onClick={() => onDecision('always')}>
-          Always
+        <button type="button" onClick={() => onDecision('always')}>
+          {t('Always', '总是允许')}
         </button>
       </div>
     </div>
   );
 }
 
-/** G4 问询卡:选项单选(缺省)/多选(multiple);customIndex 在场 → 自由输入面(非空优先于勾选
- *  → custom 态);Dismiss 即 dismissed(正常放弃非错误)。空选+空输入 Submit 无动作 */
-function AskCard({ req, onSubmit, onDismiss }: { req: GuiAskReq; onSubmit: (answer: GuiAskAnswer) => void; onDismiss: () => void }): JSX.Element {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [custom, setCustom] = useState('');
+/** 单题作答态(dock 级提交校验用):labels=勾选的选项;custom=自由输入(非空优先) */
+interface AskPick {
+  labels: string[];
+  custom: string;
+}
+
+const pickAnswered = (p: AskPick | undefined): boolean => p !== undefined && (p.labels.length > 0 || p.custom.trim() !== '');
+
+/** G4 问询卡(G14.91 受控化):选项卡片化(整卡可点,选中 accent 边+勾图标);Other=默认自由输入卡
+ *  (✎+输入框合二为一,customIndex 占位项不再单列——底层 custom 答案恒可发);提交区在 dock 底部统一承载。
+ *  G14.93 隐现内部化:溢出检测在卡内选项区——mask 只渐隐选项内容,外框恒完整 */
+function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; onPick: (patch: Partial<AskPick>) => void }): JSX.Element {
   const multiple = req.multiple === true;
-  const allowCustom = req.customIndex !== undefined;
-
-  const toggle = (label: string): void => {
-    setSelected((s) =>
-      multiple ? (s.includes(label) ? s.filter((l) => l !== label) : [...s, label]) : s.includes(label) ? [] : [label],
-    );
-  };
-
-  const submit = (): void => {
-    const text = custom.trim();
-    if (text !== '') {
-      onSubmit({ type: 'custom', text });
+  const selected = pick.labels;
+  const optionsRef = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useEffect(() => {
+    const el = optionsRef.current;
+    if (el === null) {
+      setOverflowing(false);
       return;
     }
-    if (selected.length > 0) onSubmit({ type: 'selected', labels: selected });
+    const sync = (): void => setOverflowing(el.scrollHeight > el.clientHeight + 2);
+    sync();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [req.options.length]);
+
+  const toggle = (label: string): void => {
+    onPick({
+      labels: multiple ? (selected.includes(label) ? selected.filter((l) => l !== label) : [...selected, label]) : selected.includes(label) ? [] : [label],
+    });
   };
 
   return (
     <div className="pending-card ask-card">
-      <div className="card-title">{req.question}</div>
-      <div className="card-options">
-        {req.options.map((o) => (
-          <label key={o.label} className="card-option">
-            <input type={multiple ? 'checkbox' : 'radio'} name="ask-option" checked={selected.includes(o.label)} onChange={() => toggle(o.label)} />
-            <span>
-              {o.label}
-              {o.description !== undefined && o.description !== '' ? ` — ${o.description}` : ''}
-            </span>
-          </label>
-        ))}
+      <div className="card-head">
+        <span className="card-head-icon">
+          <MessageCircleQuestion size={15} strokeWidth={1.75} aria-hidden="true" />
+        </span>
+        <div className="card-title">{req.question}</div>
       </div>
-      {allowCustom && (
-        <input
-          aria-label="custom answer"
-          className="card-custom"
-          value={custom}
-          placeholder="Other… 自由输入"
-          onChange={(e) => setCustom(e.target.value)}
-        />
-      )}
-      <div className="card-actions">
-        <button type="button" className="primary" onClick={submit}>
-          Submit
-        </button>
-        <button type="button" onClick={onDismiss}>
-          Dismiss
-        </button>
+      <div className={`card-options${overflowing ? ' overflowing' : ''}`} ref={optionsRef}>
+        {req.options.map((o, i) => {
+          if (i === req.customIndex) return null; // G14.91 Other 占位项与输入卡合二为一
+          const checked = selected.includes(o.label);
+          return (
+            <label key={o.label} className={`card-option${checked ? ' checked' : ''}`}>
+              <input type={multiple ? 'checkbox' : 'radio'} name={`ask-option-${req.question}`} checked={checked} onChange={() => toggle(o.label)} />
+              <span className="card-option-icon">
+                {checked ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : <Circle size={14} strokeWidth={1.75} aria-hidden="true" />}
+              </span>
+              <span className="card-option-text">
+                {o.label}
+                {o.description !== undefined && o.description !== '' && <span className="card-option-desc">{` — ${o.description}`}</span>}
+              </span>
+            </label>
+          );
+        })}
+        <div className={`card-custom-card${pick.custom.trim() !== '' ? ' filled' : ''}`}>
+          <span className="card-option-icon">
+            <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <input
+            aria-label="custom answer"
+            className="card-custom"
+            value={pick.custom}
+            placeholder={t('Other… free input', '其他… 自由输入')}
+            onChange={(e) => onPick({ custom: e.target.value })}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-/** markdown 渲染组件面(G11 §5):pre 分流——mermaid 围栏→Mermaid(懒加载/失败回落,Task 9 起
- *  带放大/复制);其余围栏→CodeBlock(hljs+头部);table→横滚容器(§5.3) */
-const mdComponents = {
-  pre(props: { children?: ReactNode }) {
-    const child = Array.isArray(props.children) ? props.children[0] : props.children;
-    const el = child as { props?: { className?: string; children?: unknown } } | null;
-    const cls = el?.props?.className ?? '';
-    const raw = el?.props?.children;
-    // react-markdown 保留围栏末行换行(value 尾随 \n)——剥掉一个尾换行,复制面/高亮面拿净代码
-    const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
-    if (cls.includes('language-mermaid')) return <MermaidBlock chart={code} />;
-    const m = /language-([\w-]+)/.exec(cls);
-    return <CodeBlock code={code} lang={m?.[1]} />;
-  },
-  table(props: { children?: ReactNode }) {
-    return (
-      <div className="table-wrap">
-        <table>{props.children}</table>
-      </div>
-    );
-  },
-} as const;
+/** G14.85 @ 文件模糊匹配:子序列命中(G14.121 导出共享——欢迎页 composer 同一面板) */
+export function fileHit(file: string, query: string): boolean {
+  if (query === '') return true;
+  let i = 0;
+  const fl = file.toLowerCase();
+  for (const ch of query.toLowerCase()) {
+    i = fl.indexOf(ch, i);
+    if (i < 0) return false;
+    i += 1;
+  }
+  return true;
+}
+
+/** G14.85 @ 文件面板:工作区文件清单(G14.134 行=文件名+紧跟的相对目录后缀;
+ *  G14.121 导出共享——欢迎页复用;G14.135 通栏定位不随 @ 移动) */
+export function FilePalette({
+  items,
+  active,
+  onPick,
+  onHover,
+}: {
+  items: string[];
+  active: number;
+  onPick: (p: string) => void;
+  onHover: (i: number) => void;
+}): JSX.Element {
+  // G14.163 ↑↓ 移动时选中项滚入可视区(block:nearest 最小滚动;过滤后 items 变也跟随)
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [active, items]);
+  return (
+    <div className="file-palette" role="listbox" aria-label={t('Workspace files', '工作区文件')}>
+      {items.length === 0 && <div className="file-palette-empty">{t('No matching files', '无匹配文件')}</div>}
+      {items.map((f, i) => {
+        const si = f.lastIndexOf('/');
+        const base = si < 0 ? f : f.slice(si + 1);
+        const dir = si < 0 ? '' : f.slice(0, si + 1);
+        return (
+          <button
+            key={f}
+            ref={i === active ? activeRef : undefined}
+            type="button"
+            role="option"
+            aria-selected={i === active}
+            className={`file-palette-row${i === active ? ' active' : ''}`}
+            onMouseEnter={() => onHover(i)}
+            onClick={() => onPick(f)}
+          >
+            <FileIcon path={f} />
+            <span className="file-palette-name">{base}</span>
+            {dir !== '' && <span className="file-palette-dir">{dir}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** G14.85 工具体用无链接版(输出面不需要文件交互) */
+/** G14.95 token 提取:@路径=文件引用;/词(行首/空白后)=命令或技能引用。
+ *  返回分段序列(plain 原样、file/cmd/skill 着色)——输入框高亮层与用户气泡共用一套口径 */
+export interface MentionToken {
+  text: string;
+  kind: 'plain' | 'file' | 'cmd' | 'skill';
+}
+
+export function splitMentionTokens(text: string): MentionToken[] {
+  // G14.121 @ 分支扩 `:\\`:绝对路径 token(D:/ws/a.ts、D:\ws\a.ts)整体着色
+  const re = /@[\w./:\\-]+|(^|\s)(\/[a-z][\w-]*)/gi;
+  const out: MentionToken[] = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    const idx = m.index ?? 0;
+    const matched = m[0];
+    if (idx > last) out.push({ text: text.slice(last, idx), kind: 'plain' });
+    if (matched.startsWith('@')) out.push({ text: matched, kind: 'file' });
+    else {
+      const lead = m[1] ?? '';
+      if (lead !== '') out.push({ text: lead, kind: 'plain' });
+      const word = m[2] ?? '';
+      const atLineStart = idx === 0;
+      out.push({ text: word, kind: atLineStart ? 'cmd' : 'skill' });
+    }
+    last = idx + matched.length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last), kind: 'plain' });
+  return out;
+}
+
+/** 用户气泡 markdown 的 token 视觉化:token 包行内 code(特殊样式),原文不变(复制走 entry.md);
+ *  保留 \`> \` 引用前缀(气泡 blockquote 形态不变),仅对行内内容做 token 包装。
+ *  G14.116 file token 显形去 @ 前缀(图标+名称由 buildUserMdComponents 接管) */
+export function renderUserMd(md: string): string {
+  const wrap = (line: string): string =>
+    splitMentionTokens(line)
+      .map((t) => {
+        if (t.kind === 'plain') return t.text;
+        if (t.kind === 'file') return '`' + (t.text.startsWith('@') ? t.text.slice(1) : t.text) + '`';
+        return '`' + t.text + '`';
+      })
+      .join('');
+  return md
+    .split('\n')
+    .map((line) => {
+      const m = /^(> ?)(.*)$/.exec(line);
+      return m === null ? wrap(line) : m[1] + wrap(m[2] ?? '');
+    })
+    .join('\n');
+}
+
+/** G14.156 token 整删判定:Backspace/Delete 与 caret → 应整删的 token 区间(无则 null)。
+ *  非明文 token(文件/命令/技能)作为整体:Backspace 在 token 内(含末位)、Delete 在 token 内(含首位)即整删 */
+export function tokenDeleteRange(text: string, caret: number, key: 'Backspace' | 'Delete'): [number, number] | null {
+  let pos = 0;
+  for (const tk of splitMentionTokens(text)) {
+    if (tk.kind === 'plain') { pos += tk.text.length; continue; }
+    const s = pos;
+    const e2 = pos + tk.text.length;
+    pos = e2;
+    if (key === 'Backspace' && caret > s && caret <= e2) return [s, e2];
+    if (key === 'Delete' && caret >= s && caret < e2) return [s, e2];
+  }
+  return null;
+}
+/** G14.139 token 显形文本:含 :L 行锚 → 文件名(L30-L35);否则取文件名 */
+function tokenDisplayText(token: string): string {
+  const m2 = /^(.*):(L\d+(?:-L\d+)?)$/.exec(token);
+  if (m2 !== null) {
+    const base = m2[1].split(/[\\/]/).pop() ?? m2[1];
+    return `${base}(${m2[2]})`;
+  }
+  return token.split(/[\\/]/).pop() ?? token;
+}
+
+/** G14.132 输入框高亮层(导出共享——欢迎页 composer 同款):file token 渲染文件图标+文件名
+ *  (无蒙版,与气泡 file-link 同视觉;@ 字符透明化保字宽对齐,图标落 @ 位) */
+export const renderMentionSpans = (text: string): ReactNode =>
+  splitMentionTokens(text).map((tk, i) => {
+    if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
+    if (tk.kind === 'file') {
+      const tokenBody = tk.text.slice(1);
+      return (
+        <span key={i} className="hn hn-file">
+          <span className="hn-file-ico" aria-hidden="true">
+            <FileIcon path={tokenBody.replace(/:L\d+(?:-L\d+)?$/, '')} />
+          </span>
+          <span className="hn-file-at" aria-hidden="true">@</span>
+          {tokenDisplayText(tokenBody)}
+        </span>
+      );
+    }
+    return <span key={i} className={`hn hn-${tk.kind}`}>{tk.text}</span>;
+  });
+
+/** G14.129/139 @ 引用发送期展开:输入框短写 `@文件名`(选中记账)或 `@相对路径` 或
+ *  `@相对路径:L30-L35`(文件标签选区加引用) → md 原生超链接——行锚形态
+ *  `[文件名 L30-L35](./相对路径#L30-L35)`,其余 `[文件名](./相对路径)`;标准 ./ 相对格式,
+ *  daemon 相对会话根解析;纯文件名 token 经 resolve 解析(选中记账/最近索引兜底),解析不到原样保留 */
+export function expandFileRefs(
+  text: string,
+  root: string | undefined,
+  resolve?: (name: string) => string | undefined,
+): string {
+  if (root === undefined || root === '' || root === 'default') return text;
+  return text.replace(/@([\w./:\\-]+)/g, (raw, p: string) => {
+    const anchor = /^(.*):(L\d+(?:-L\d+)?)$/.exec(p);
+    const pathPart = anchor !== null ? anchor[1] : p;
+    const lines = anchor !== null ? anchor[2] : '';
+    const name = pathPart.split(/[\\/]/).pop() ?? pathPart;
+    const rel = pathPart.includes('/') ? pathPart : resolve?.(name);
+    if (rel === undefined || rel === '') return raw;
+    const head = anchor !== null ? `${name} ${lines}` : name;
+    return `[${head}](./${rel.replace(/^\.\//, '')}${lines !== '' ? `#${lines}` : ''})`;
+  });
+}
+
+/** G14.124 文件链接放行:react-markdown 缺省 urlTransform 剥非 web 协议(C:/… 全灭)——
+ *  md 链接口径要求 href 原样抵达 a 覆写(file 链接渲染为 span 不产 <a href>,无注入面) */
+export const keepUrl = (url: string): string => url;
+
+/** G14.121 无链接版组件面(导出共享——Files 页 md 预览复用:mermaid/代码块/表格同源) */
+export const mdComponentsPlain = buildMdComponents(() => undefined);
+
+/** G14.133 审批模式三档统一图标(pill 与菜单同源——静态 Hand 两套渲染退役):
+ *  plan=ListTodo / dontAsk=Unlock / manual=ShieldCheck */
+export function ModeIcon({ mode, size = 13 }: { mode: 'dontAsk' | 'manual' | 'plan'; size?: number }): JSX.Element {
+  const Icon = mode === 'plan' ? ListTodo : mode === 'manual' ? ShieldCheck : Unlock;
+  return <Icon size={size} strokeWidth={1.75} aria-hidden="true" />;
+}
+
+/** G14.121 文件 token 显形名:绝对/相对路径一律显末段文件名(全路径进 title 悬浮) */
+function tokenDisplayName(p: string): string {
+  return p.split(/[\\/]/).filter((s) => s.length > 0).pop() ?? p;
+}
+
+/** G14.125 用户气泡组件面:标准 md 链接文件化(a 覆写,onOpenFile 在场才可点;web 新窗)——
+ *  非标引用(@token code/裸路径)不做文件渲染(G14.125 去兼容),保持通用 chip 原样 */
+function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
+  return {
+    ...mdComponentsPlain,
+    // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点;web 链接新窗)
+    a(props: { href?: string; children?: ReactNode }) {
+      const href = props.href ?? '';
+      if (onOpenFile === undefined || href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
+      if (/^(https?:|\/\/)/i.test(href)) {
+        return (
+          <a href={href} target="_blank" rel="noreferrer">
+            {props.children}
+          </a>
+        );
+      }
+      return (
+        <span
+          role="button"
+          tabIndex={0}
+          className="file-link"
+          title={href}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenFile(href);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.stopPropagation();
+              onOpenFile(href);
+            }
+          }}
+        >
+          <FileIcon path={href} />
+          <span className="file-link-name">{tokenDisplayName(href)}</span>
+        </span>
+      );
+    },
+  };
+}
+
+/** G14.125 md 组件面工厂(导出——Files 页 md 预览复用,传各自 onOpenFile):pre 分流
+ *  (mermaid 围栏→Mermaid 懒加载/失败回落,其余围栏→CodeBlock hljs+头部)+ table 横滚 +
+ *  md 原生超链接文件化(G14.124:非 web href=文件路径 → icon+文件名 file-link,点击开侧栏;
+ *  web 链接新窗 <a>;非标准 md 引用——裸路径/代码形态 token——不做文件渲染,G14.125 去兼容) */
+export function buildMdComponents(onOpenFile: (p: string) => void): Record<string, (props: { children?: ReactNode }) => JSX.Element> {
+  return {
+    pre(props: { children?: ReactNode }) {
+      const child = Array.isArray(props.children) ? props.children[0] : props.children;
+      const el = child as { props?: { className?: string; children?: unknown } } | null;
+      const cls = el?.props?.className ?? '';
+      const raw = el?.props?.children;
+      // react-markdown 保留围栏末行换行(value 尾随 \n)——剥掉一个尾换行,复制面/高亮面拿净代码
+      const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
+      if (cls.includes('language-mermaid')) return <MermaidBlock chart={code} />;
+      const m = /language-([\w-]+)/.exec(cls);
+      return <CodeBlock code={code} lang={m?.[1]} />;
+    },
+    table(props: { children?: ReactNode }) {
+      return (
+        <div className="table-wrap">
+          <table>{props.children}</table>
+        </div>
+      );
+    },
+    // G14.124 md 原生超链接 → 文件引用:非 web 协议 href 视为文件路径,渲染 icon+文件名
+    // (token 同款 file-link),点击/回车开侧栏 file 标签;web 链接新窗 <a>
+    a(props: { href?: string; children?: ReactNode }) {
+      const href = props.href ?? '';
+      if (href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
+      if (/^(https?:|\/\/)/i.test(href)) {
+        return (
+          <a href={href} target="_blank" rel="noreferrer">
+            {props.children}
+          </a>
+        );
+      }
+      return (
+        <span
+          role="button"
+          tabIndex={0}
+          className="file-link"
+          title={href}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenFile(href);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.stopPropagation();
+              onOpenFile(href);
+            }
+          }}
+        >
+          <FileIcon path={href} />
+          <span className="file-link-name">{tokenDisplayName(href)}</span>
+        </span>
+      );
+    },
+  };
+}
 
 /** 代码块卡(G11 §5.2):surface-code 面+头部栏(语言名+复制钮 hover 浮现)+hljs 高亮;
  *  代码禁折行(white-space:pre+横滚)——排版错乱主因即旧版强折行。memo 按 code+lang,
  *  流式增量帧仅末块重算 */
 const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
+  // G14.205 自动换行切换:默认横向滚动,开启后 pre-wrap 纵向排布(无横向滚动条)
+  const [wrap, setWrap] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -562,15 +1149,24 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
     <div className="code-block">
       <div className="code-head">
         <span className="code-lang">{lang ?? ''}</span>
-        <TipButton
-          className="sx-tip-right"
-          tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
-          label="copy code"
-          icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
-          onClick={copy}
-        />
+        <span className="code-head-actions">
+          <TipButton
+            className="sx-tip-right"
+            tip={wrap ? t('Overflow scroll', '横向滚动') : t('Wrap long lines', '自动换行')}
+            label="toggle code wrap"
+            icon={<WrapText size={12} strokeWidth={1.75} aria-hidden="true" className={wrap ? 'code-wrap-on' : undefined} />}
+            onClick={() => setWrap((v) => !v)}
+          />
+          <TipButton
+            className="sx-tip-right"
+            tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+            label="copy code"
+            icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            onClick={copy}
+          />
+        </span>
       </div>
-      <pre>
+      <pre className={wrap ? 'wrap' : undefined}>
         <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
       </pre>
     </div>
@@ -578,22 +1174,79 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
 });
 
 /** Mermaid 容器(G11 §5.4):hover 显放大/复制钮;放大=lightbox(遮罩 contain 居中,点击/Esc 关,
- *  Esc 监听随开关挂卸);复制=源码。回落态(fallback/pending)两钮同样在场——降级不失功能 */
+ *  Esc 监听随开关挂卸);复制=源码。回落态(fallback/pending)两钮同样在场——降级不失功能。
+ *  G14.122:渲染失败 → 放大钮收起(浮层只属成功图);浮层内容=克隆已渲 SVG(不二次渲染,
+ *  免 concurrent render 空白);浮层面板下移缩窄,不遮标签条钮 */
 function MermaidBlock({ chart }: { chart: string }): JSX.Element {
   const [zoom, setZoom] = useState(false);
+  /** 渲染成败(null=在途):false 即收放大钮 */
+  const [renderOk, setRenderOk] = useState<boolean | null>(null);
+  // G14.107 lightbox 视图态:缩放(s)/平移(x,y);滚轮缩放+拖动平移+按钮组(+ % − [] X)
+  const [view, setView] = useState({ x: 0, y: 0, s: 1 });
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  /** G14.122 SVG 克隆源/宿:开盒把行内已渲 SVG 拷进浮层(轻秒开,无重渲竞态);
+   *  baseRef=100% 基准尺寸(克隆时刻实测)——G14.123 真矢量缩放的参照 */
+  const inlineRef = useRef<HTMLDivElement | null>(null);
+  const panRef = useRef<HTMLDivElement | null>(null);
+  const baseRef = useRef<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    if (zoom) setView({ x: 0, y: 0, s: 1 }); // 开盒复位
+  }, [zoom]);
+  useEffect(() => {
+    if (zoom && panRef.current !== null && inlineRef.current !== null) {
+      panRef.current.innerHTML = inlineRef.current.innerHTML;
+      const svg = panRef.current.querySelector('svg');
+      if (svg !== null) {
+        const r = svg.getBoundingClientRect();
+        baseRef.current = { w: r.width / zoomScale(), h: r.height / zoomScale() }; // 视觉→本地(svg 宽高写本地)
+      }
+    }
+  }, [zoom, renderOk]);
+  // G14.123 真矢量缩放:缩放改写 svg 布局宽高(viewBox 按档重排,逐档锐利),transform 只承担平移
+  useEffect(() => {
+    const svg = panRef.current?.querySelector('svg') ?? null;
+    const base = baseRef.current;
+    if (svg === null || base === null) return;
+    svg.style.maxWidth = 'none';
+    svg.style.maxHeight = 'none';
+    svg.style.width = `${Math.round(base.w * view.s * 100) / 100}px`;
+    svg.style.height = `${Math.round(base.h * view.s * 100) / 100}px`;
+  }, [view.s, zoom, renderOk]);
   useEffect(() => {
     if (!zoom) return;
     const onKey = (ev: KeyboardEvent): void => {
       if (ev.key === 'Escape') setZoom(false);
     };
+    const onMove = (ev: MouseEvent): void => {
+      const d = dragRef.current;
+      if (d === null) return;
+      // client 增量是视觉 px,view.x/y 写本地 transform=视觉/根放缩(ui-zoom.ts 契约)
+      setView((v) => ({ ...v, x: d.ox + (ev.clientX - d.sx) / zoomScale(), y: d.oy + (ev.clientY - d.sy) / zoomScale() }));
+    };
+    const onUp = (): void => {
+      dragRef.current = null;
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
   }, [zoom]);
+  const zoomBy = (factor: number): void => {
+    setView((v) => ({ ...v, s: Math.min(8, Math.max(0.2, Math.round(v.s * factor * 100) / 100)) }));
+  };
   return (
     <div className="mermaid-block">
-      <Mermaid chart={chart} />
+      <div ref={inlineRef} className="mermaid-inline">
+        <Mermaid chart={chart} onStatus={setRenderOk} />
+      </div>
       <div className="mermaid-actions">
-        <TipButton className="sx-tip-right" tip={t('Zoom', '放大')} label="zoom mermaid" icon={<Maximize2 size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setZoom(true)} />
+        {renderOk !== false && (
+          <TipButton className="sx-tip-right" tip={t('Zoom', '放大')} label="zoom mermaid" icon={<Maximize2 size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setZoom(true)} />
+        )}
         <TipButton
           className="sx-tip-right"
           tip={t('Copy', '复制')}
@@ -605,9 +1258,37 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
         />
       </div>
       {zoom && (
-        <div className="mermaid-lightbox" role="dialog" aria-label={t('Mermaid preview', 'Mermaid 预览')} onClick={() => setZoom(false)}>
-          <div className="mermaid-lightbox-body" onClick={(e) => e.stopPropagation()}>
-            <Mermaid chart={chart} />
+        <div
+          className="mermaid-lightbox"
+          role="dialog"
+          aria-label={t('Mermaid preview', 'Mermaid 预览')}
+          onClick={() => setZoom(false)}
+          onWheel={(e) => zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15)}
+        >
+          {/* 拖动平移:svg wrapper 上 mousedown 捕获,window move/up 驱动;transform 三元组应用;
+              内容=克隆 SVG(G14.122,开盒时 useEffect 填充);动作钮随体(不遮标签条) */}
+          <div
+            className="mermaid-lightbox-body"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => {
+              dragRef.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+            }}
+          >
+            <div className="mermaid-lb-actions" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+              <button type="button" aria-label={t('Zoom in', '放大')} onClick={() => zoomBy(1.2)}>+</button>
+              {/* G14.117 缩放百分比(+ − 之间);方框钮=复位视图 */}
+              <span className="mermaid-lb-zoom">{Math.round(view.s * 100)}%</span>
+              <button type="button" aria-label={t('Zoom out', '缩小')} onClick={() => zoomBy(1 / 1.2)}>−</button>
+              <button type="button" aria-label={t('Reset view', '复位')} onClick={() => setView({ x: 0, y: 0, s: 1 })}>
+                <Square size={12} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+              <button type="button" aria-label={t('Close', '关闭')} onClick={() => setZoom(false)}>✕</button>
+            </div>
+            <div
+              ref={panRef}
+              className="mermaid-lb-pan"
+              style={{ transform: `translate(${view.x}px, ${view.y}px)`, cursor: dragRef.current !== null ? 'grabbing' : 'grab' }}
+            />
           </div>
         </div>
       )}
@@ -615,20 +1296,24 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
   );
 }
 
-/** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件) */
+/** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);G14.168 taskboard 六工具专属图标(去扳手默认) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText, write: PenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
-  skill: Sparkles, webfetch: Globe, websearch: Globe, memory: Brain, todo_write: ListTodo,
-  worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: ListTodo,
+  skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
+  worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: Hourglass, kb_search: BookOpen,
+  ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
+  create_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
+  review_task: Eye, gate_task: ShieldCheck, cancel_task: XCircle,
 };
 function ToolIcon({ verb }: { verb: string }): JSX.Element {
   const Icon = TOOL_ICONS[verb] ?? Wrench;
   return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
 
-/** 秒数格式:<60s 「34s」,≥60s 「2m 5s」(状态行/尾条共用) */
+/** 秒数格式(G14.118 中文单位):<60s 「34秒」;≥60s 「1分10秒」(状态行/尾条共用;en 恒英文单位) */
 function runElapsed(seconds: number): string {
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  if (seconds < 60) return t(`${seconds}s`, `${seconds}秒`);
+  return t(`${Math.floor(seconds / 60)}m ${seconds % 60}s`, `${Math.floor(seconds / 60)}分 ${seconds % 60}秒`); // G14.185b 分秒之间加间隙
 }
 
 /** tokens 格式:共享面迁移 ui-util.fmtTokens(G14.17)——本文件 re-export 保既有引用零迁移 */
@@ -676,7 +1361,13 @@ const RunEntryView = memo(function RunEntryView({ entry, tokens, collapsed, onTo
             : undefined
         }
       >
-        <span>{entry.seconds !== undefined ? t(`Worked for ${runElapsed(entry.seconds)}`, `已运行 ${runElapsed(entry.seconds)}`) : t('Worked', '已运行')}</span>
+        <span>
+          {entry.stopped === true
+            ? t('Stopped', '已停止')
+            : entry.seconds !== undefined
+              ? t(`Worked for ${runElapsed(entry.seconds)}`, `已运行 ${runElapsed(entry.seconds)}`)
+              : t('Worked', '已运行')}
+        </span>
         {onToggle !== undefined && (
           <span className="run-chev" aria-hidden="true">
             {collapsed ? <ChevronRight size={12} strokeWidth={1.75} /> : <ChevronDown size={12} strokeWidth={1.75} />}
@@ -729,16 +1420,16 @@ const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: Ch
   }, [open, streaming, entry.md]);
   // G14.37 流式两件套:头部秒数持续计数 / 内容右向流动窗(G14.52:速率显示去——思考行占满整行)
   const elapsed = streaming && entry.ts !== undefined ? Math.max(1, Math.round((Date.now() - entry.ts) / 1000)) : undefined;
-  const flow = streaming ? entry.md.slice(-80) : '';
+  const flow = streaming ? entry.md.slice(-220) : ''; // G14.79:加宽尾窗,宽行下思考内容充满整行
   return (
     <div className={`entry entry-thinking${open ? ' open' : ''}`}>
       <button type="button" className="thinking-summary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Brain size={12} strokeWidth={1.75} aria-hidden="true" />
         <span className="thinking-label">
           {streaming
-            ? t(`Thinking ${elapsed ?? 0}s`, `思考中 ${elapsed ?? 0}s`)
+            ? t(`Thinking ${elapsed ?? 0}s`, `思考中 ${elapsed ?? 0}秒`)
             : entry.seconds !== undefined
-              ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}s`)
+              ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}秒`)
               : t('Thought', '思考')}
         </span>
         {streaming && !open && flow !== '' && (
@@ -777,7 +1468,7 @@ function RewindMenu({ onAnchors, onPick }: { onAnchors: () => Promise<Array<{ tu
           type="button"
           role="menuitem"
           className="sx-menuitem rewind-item"
-          title={a.text}
+          data-tip={a.text}
           onClick={() => onPick(a.turn)}
         >
           <span className="rewind-turn">{a.turn}</span>
@@ -799,11 +1490,65 @@ interface UserEntryOpts {
   /** 回到此轮(G10-C4 /rewind 底层):拉锚点+确认回退;未配不渲染钮(测试桩免配) */
   fetchAnchors?: () => Promise<Array<{ turn: number; text: string }>>;
   onRewind?: (turn: number) => void;
+  /** G14.110 气泡内 @文件 token 点击 → 打开 file 标签(未配=无行为) */
+  onOpenFile?: (p: string) => void;
   /** §7 编辑卡发送回调(=Chat.submitText,Promise:void:resolve 关卡,reject 保卡保草稿——
    *  spec §9 提交失败草稿不丢):未配不渲染 Edit 钮(测试桩免配) */
   onSend?: (text: string) => Promise<void>;
 }
-const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {
+/** G14.181/G14.202 用户气泡限高折叠:默认 168px;折叠态最后一行渐变隐现(加强);
+ *  展开钮在气泡下侧居中(独占一行不占内容);展开钮=气泡下侧居中独钮;复制归各页自有动作行 */
+const USER_BUBBLE_CLAMP = 168;
+export function CollapsibleBubble({ text, render }: { text: string; render: (md: string) => ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = innerRef.current;
+    if (el === null) return;
+    // scrollHeight=内容全高(与 max-height/overflow 无关)——超过阈值才出浮钮
+    setClamped(el.scrollHeight > USER_BUBBLE_CLAMP + 8);
+  }, [text]);
+  const shown = open || !clamped;
+  return (
+    <div className="user-bubble-wrap">
+      <div ref={innerRef} className={`user-bubble${shown ? '' : ' user-bubble-clamped'}${open ? ' user-bubble-open' : ''}`}>
+        {render(text)}
+        {/* G14.208 展开态:钮行在气泡内部独占一行(不遮正文不跑外面) */}
+        {open && (
+          <div className="user-bubble-toggle-row">
+            <button
+              type="button"
+              className="user-bubble-toggle"
+              aria-expanded={open}
+              aria-label={t('Collapse', '收起')}
+              onClick={() => setOpen(false)}
+            >
+              <ChevronUp size={12} strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
+      {/* 折叠态:钮悬浮在气泡内底部渐隐区(不遮可见内容) */}
+      {clamped && !open && (
+        <div className="user-bubble-toggle-row floating">
+          <button
+            type="button"
+            className="user-bubble-toggle"
+            aria-expanded={open}
+            aria-label={t('Expand', '展开')}
+            onClick={() => setOpen(true)}
+          >
+            <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend, onOpenFile }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
+  const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile), [onOpenFile]);
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [rewindOpen, setRewindOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -869,7 +1614,7 @@ const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewin
           />
           <div className="user-edit-foot">
             <TipButton tip={t('Cancel', '取消')} label="cancel edit" icon={<X size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setEditing(false)} />
-            <button type="button" className="user-edit-send" aria-label="send edit" title={t('Send', '发送')} onClick={sendEdit}>
+            <button type="button" className="user-edit-send" aria-label="send edit" data-tip={t('Send', '发送')} onClick={sendEdit}>
               <ArrowUp size={14} strokeWidth={2.25} aria-hidden="true" />
             </button>
           </div>
@@ -879,9 +1624,12 @@ const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewin
   }
   return (
     <div className="entry entry-user">
-      <div className="user-bubble">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{entry.md}</ReactMarkdown>
-      </div>
+      <CollapsibleBubble
+        text={entry.md}
+        render={(md) => (
+          <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdComponents}>{renderUserMd(md)}</ReactMarkdown>
+        )}
+      />
       <div className="user-actions">
         <TipButton
           className="user-action"
@@ -946,19 +1694,27 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | nul
  *  而非元素)——调用面传 `runFooterByEntry.get(entry.key)`(undefined 恒稳定,reducer 保条目引用,浅
  *  比较恢复命中),组件内在场时自渲染 RunFooter;终审前传 ReactNode 每帧新建元素击穿 memo,长会话
  *  每 token 触发历史末条全文重解析 */
-const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void }): JSX.Element {
+const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void }): JSX.Element {
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
+  // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建)
+  const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined)), [onOpenFile]);
   return (
     <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
       <div className={`entry-md${icon !== null ? ' has-icon' : ''}`}>
         {icon !== null && <span className={`entry-icon${accent !== null ? ' accent' : ''}`}>{icon}</span>}
         <div className="entry-md-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
-          {entry.streaming === true && <span className="sx-stream-cursor" aria-hidden="true" />}
+          <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
         </div>
       </div>
       {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={onFork} />}
+      {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
+        <RunChangesBar
+          changes={footerRun.changes}
+          onOpenDiff={onOpenDiff}
+          onRestore={onRestore}
+        />
+      )}
     </div>
   );
 });
@@ -1003,8 +1759,184 @@ function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undef
   );
 }
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onRewind, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle }: ChatProps): JSX.Element {
+/** G14.100 轮尾变动汇总条(对标 Codex):「N 个文件已更改 +X -Y」折叠条+右侧撤销(整轮);
+ *  展开逐文件(图标+名称+目录+±+行尾撤销);点击文件名 → 侧栏 diff 标签自动展开对应项;
+ *  撤销 = restore 回 HEAD(本轮新建 → 删除),已撤销项本地隐藏 */
+function RunChangesBar({
+  changes,
+  onOpenDiff,
+  onRestore,
+}: {
+  changes: ReadonlyArray<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
+  onOpenDiff?: (path: string) => void;
+  onRestore?: (path: string) => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [restored, setRestored] = useState<ReadonlySet<string>>(new Set());
+  const visible = changes.filter((c) => !restored.has(c.path));
+  const add = visible.reduce((n, c) => n + (c.added ?? (c as { newLines?: number }).newLines ?? 0), 0);
+  const del = visible.reduce((n, c) => n + (c.deleted ?? 0), 0);
+  const restore = (path: string): void => {
+    onRestore?.(path);
+    setRestored((s) => new Set(s).add(path));
+  };
+  return (
+    <div className="run-changes" aria-label={t('run changes', '本轮改动')}>
+      <div className="run-changes-head">
+        <button type="button" className="run-changes-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
+          <span>
+            {t(`${visible.length} files changed`, `${visible.length} 个文件已更改`)}
+          </span>
+          <span className="run-changes-stat">
+            <span className="sx-change-add">{`+${add}`}</span>
+            <span className="sx-change-del">{`-${del}`}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="run-changes-undo"
+          data-tip={t('Revert all changes in this turn', '撤销本轮全部变动')}
+          onClick={() => visible.forEach((c) => restore(c.path))}
+        >
+          {t('Undo', '撤销')}
+        </button>
+      </div>
+      {open && (
+        <div className="run-changes-list">
+          {visible.map((c) => {
+            const norm = c.path.replaceAll('\\', '/');
+            const base = norm.split('/').pop() ?? norm;
+            const dir = norm.slice(0, norm.length - base.length);
+            return (
+              <div key={c.path} className="run-changes-row">
+                <FileIcon path={c.path} />
+                <button type="button" className="run-changes-name" onClick={() => onOpenDiff?.(c.path)}>
+                  {base}
+                </button>
+                <span className="run-changes-dir">{dir}</span>
+                <span className="run-changes-stat">
+                  {c.added === null ? (
+                    <span className="sx-change-new">{t('new', '新建')}</span>
+                  ) : (
+                    <>
+                      <span className="sx-change-add">{`+${c.added}`}</span>
+                      <span className="sx-change-del">{`-${c.deleted}`}</span>
+                    </>
+                  )}
+                </span>
+                <button type="button" className="run-changes-undo-row" data-tip={t('Revert this file', '撤销此文件')} onClick={() => restore(c.path)}>
+                  {t('Undo', '撤销')}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onRewind, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
+
+  /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
+   *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签 */
+  const todoBatches = useMemo<TodoBatch[]>(() => {
+    const out: TodoBatch[] = [];
+    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
+    let lastGoal = '';
+    for (const e of chat.entries) {
+      if (e.kind === 'user') lastGoal = strip(e.md);
+      if (e.kind !== 'tool') continue;
+      const info = toolMdInfo(e.md);
+      if (info === undefined || info.name !== 'todo_write') continue;
+      const arr = Array.isArray(info.input.todos) ? (info.input.todos as Array<Record<string, unknown>>) : [];
+      const items = arr
+        .map((o) => ({
+          text: String(o?.text ?? ''),
+          status: (o?.status === 'completed' ? 'completed' : o?.status === 'in_progress' ? 'in_progress' : 'pending') as TodoBatch['items'][number]['status'],
+        }))
+        .filter((x) => x.text !== '');
+      if (items.length === 0) continue;
+      out.push({ key: e.key, ts: e.ts ?? 0, goal: lastGoal, items });
+    }
+    // G14.179 同清单合并:条目文本签名相同=同一份待办的进度推进(0/3→2/3→3/3 三卡即重复——
+    // 用户裁决「同属一个不拆」),按签名只保留最新一批,按其时间正序输出
+    const bySig = new Map<string, TodoBatch>();
+    for (const b of out) {
+      const sig = b.items.map((x) => x.text).join('\n');
+      const prev = bySig.get(sig);
+      if (prev === undefined || b.ts >= prev.ts) bySig.set(sig, b);
+    }
+    return [...bySig.values()].sort((a, b) => a.ts - b.ts);
+  }, [chat.entries]);
+
+  /** G14.177 顶栏动态计数:待办=末批(最新)未完成条目;任务板=pending+claimed 任务 */
+  const todoActive = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.filter((x) => x.status !== 'completed').length : 0;
+  const taskActive = board !== undefined ? Object.values(board.tasks).filter((x) => x.status === 'pending' || x.status === 'claimed').length : 0;
+
+  /** G14.174 关联轮次用户输入(最近一条 user 行;md 链接折叠为标签文本——goal 供单行省略头) */
+  const turnGoal = useMemo(() => {
+    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
+    for (let i = chat.entries.length - 1; i >= 0; i -= 1) {
+      const e = chat.entries[i]!;
+      if (e.kind === 'user') return strip(e.md);
+    }
+    return '';
+  }, [chat.entries]);
+
+  // 上报去重(性能面):entries 每 token 帧都换新引用——序列化签名不变就不上报,
+  // 否则 App 级 setState 跟着每帧放大重渲染(稳定条 md 计数上涨,G14.174 回归)
+  const batchSig = useMemo(() => JSON.stringify(todoBatches), [todoBatches]);
+  const reportedBatchSig = useRef('');
+  useEffect(() => {
+    if (batchSig === reportedBatchSig.current) return;
+    reportedBatchSig.current = batchSig;
+    onTodoBatches?.(todoBatches);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchSig]);
+  useEffect(() => {
+    onTurnGoal?.(turnGoal);
+  }, [turnGoal, onTurnGoal]);
+
+  /** G14.172 任务名映射(转录自建):create_task 行回执 `task tN created` → 标题——板投影是内存态
+   *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表 */
+  const taskTitleMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of chat.entries) {
+      if (e.kind !== 'tool') continue;
+      const info = toolMdInfo(e.md);
+      if (info === undefined || info.name !== 'create_task') continue;
+      const title = typeof info.input.title === 'string' ? info.input.title.trim() : '';
+      const created = /task (\S+) created/.exec(e.md);
+      if (title !== '' && created !== null) {
+        m.set(created[1]!, title);
+        m.set(`task-${created[1]!}`, title);
+      }
+    }
+    return m;
+  }, [chat.entries]);
+
+  /** G14.172 任务 id → 展示名单点:board 直查 → 转录映射(剥台账时间戳尾/剥 task- 前缀两级) → 短 id 兜底
+   *  ——用户裁决「等待任务显示任务名称,不要用 id」 */
+  const taskNameOf = useCallback(
+    (id: string): string => {
+      const probe = (cand: string): string | undefined => {
+        const fromMap = taskTitleMap.get(cand);
+        if (fromMap !== undefined) return fromMap;
+        const t = board?.tasks[cand];
+        return t !== undefined && t.title !== '' ? t.title : undefined;
+      };
+      if (taskTitleMap.has(id) || board?.tasks[id] !== undefined) {
+        const hit = probe(id);
+        if (hit !== undefined) return hit;
+      }
+      const short = id.replace(/-\d{8}T\d{6}Z-[0-9a-z]+$/i, '');
+      return probe(short) ?? probe(short.replace(/^task-/, '')) ?? short;
+    },
+    [board, taskTitleMap],
+  );
   const [input, setInput] = useState('');
   /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
    *  (reducer 的 md 两行不含 input 原文);播种窗内缓冲帧同样暂存(缓冲补投创建的条目可配对) */
@@ -1025,9 +1957,134 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const chatStickRef = useRef(true);
   /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
   const [queued, setQueued] = useState<Array<{ seq: number; text: string }>>([]);
+  /** G14.87 队列条折叠:折叠只留摘要行,不推高 dock(正文让位) */
+  const [queueFolded, setQueueFolded] = useState(false);
+  /** G14.83 队列操作后同步 daemon 快照(seq 会重排) */
+  const refreshQueued = useCallback((): void => {
+    conn.sessionSnapshot(sessionId).then(
+      (s2) => setQueued(s2.queued ?? []),
+      () => {},
+    );
+  }, [conn, sessionId]);
+  /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
+  const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
+  const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
+  const [filePalActive, setFilePalActive] = useState(0);
+  const filesCacheRef = useRef<{ key: string; files: string[] } | null>(null);
+  /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析第一优先) */
+  const pickRelRef = useRef(new Map<string, string>());
+  /** 解析器:@文件名 → 相对路径(选中记账优先,工作区索引按 mtime 最近兜底) */
+  const resolveFileRef = useCallback(
+    (name: string): string | undefined => {
+      const picked = pickRelRef.current.get(name);
+      if (picked !== undefined) return picked;
+      const files = filesCacheRef.current?.files;
+      if (files !== undefined) {
+        const hit = files.find((f) => (f.split('/').pop() ?? f) === name);
+        if (hit !== undefined) return hit;
+      }
+      return undefined;
+    },
+    [],
+  );
+  const loadWorkspaceFiles = useCallback(async (): Promise<string[]> => {
+    // G14.121 root 在场走 /workspace/files 索引(mtime 倒序=最近改动优先);否则回落 tree BFS
+    if (root !== undefined && root !== '' && root !== 'default') {
+      const cached = filesCacheRef.current;
+      if (cached !== null && cached.key === root) return cached.files;
+      let files: string[] = [];
+      try {
+        files = (await conn.workspaceFiles(root)).files.map((f) => f.path);
+      } catch {
+        files = [];
+      }
+      filesCacheRef.current = { key: root, files };
+      return files;
+    }
+    const cached = filesCacheRef.current;
+    if (cached !== null && cached.key === sessionId) return cached.files;
+    const skip = new Set(['node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode']);
+    const cap = { n: 600 };
+    const walk = async (p2: string, depth: number): Promise<string[]> => {
+      if (depth > 4 || cap.n <= 0) return [];
+      let entries: Array<{ name: string; kind: 'dir' | 'file' }> = [];
+      try {
+        const r = await conn.tree(sessionId, p2 === '' ? undefined : p2);
+        entries = r.entries;
+        if (r.truncated === true) cap.n -= 200;
+      } catch {
+        return [];
+      }
+      const out: string[] = [];
+      for (const e of entries) {
+        if (cap.n <= 0) break;
+        const rel = p2 === '' ? e.name : `${p2}/${e.name}`;
+        if (e.kind === 'file') {
+          out.push(rel);
+          cap.n -= 1;
+        } else if (!skip.has(e.name)) {
+          out.push(...(await walk(rel, depth + 1)));
+        }
+      }
+      return out;
+    };
+    const files = await walk('', 0);
+    filesCacheRef.current = { key: sessionId, files };
+    return files;
+  }, [conn, sessionId, root]);
+  // G14.127 索引预热:会话打开即拉清单(手打 @根目录文件 无目录信息,发送期解析全靠它——
+  // 不能等面板首次打开才拉);失败静默(面板降级可用)
+  useEffect(() => {
+    if (root !== undefined && root !== '' && root !== 'default') void loadWorkspaceFiles();
+  }, [loadWorkspaceFiles, root]);
+  /** G14.83 暂停当前轮并立即发送本条:撤队列→中断当前 run→等 idle→作为新任务提交。
+   *  G14.89 本地回显用户气泡(与 submitText 同款)——submit 无回显帧时气泡不缺席 */
+  const pauseAndSend = useCallback(
+    async (q: { seq: number; text: string }): Promise<void> => {
+      setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
+      await conn.cancelSteer(sessionId, q.seq).catch(() => {});
+      await conn.sessionInterrupt(sessionId).catch(() => {});
+      for (let i = 0; i < 20; i += 1) {
+        const snap = await conn.sessionSnapshot(sessionId).catch(() => undefined);
+        if (snap !== undefined && snap.status === 'idle') break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      setChat((c) => appendUserMessage(c, q.text));
+      await conn.sessionSubmit(sessionId, expandFileRefs(q.text, root, resolveFileRef)).catch(() => {});
+    },
+    [conn, sessionId, root, resolveFileRef],
+  );
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
   const [cmdData, setCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
   const [cmdActive, setCmdActive] = useState(0);
+  /** G14.95 技能命令清单(会话维):/ 面板混入技能项;中间 / 只弹技能 */
+  const [skillCmds, setSkillCmds] = useState<Array<{ id: string; description: string }>>([]);
+  useEffect(() => {
+    (conn.skillCommands?.(sessionId) ?? Promise.resolve([])).then(setSkillCmds, () => setSkillCmds([]));
+  }, [conn, sessionId]);
+  /** G14.95 slash 面板令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能) */
+  const slashTokenAt = (text: string, caret: number): { query: string; from: number; atStart: boolean } | null => {
+    const m = /\/([\w-]*)$/.exec(text.slice(0, caret));
+    if (m === null) return null;
+    return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
+  };
+  const slashItemsFor = (token: { query: string; atStart: boolean } | null): CmdItem[] => {
+    if (token === null) return [];
+    const q = token.query.toLowerCase();
+    const cmds =
+      token.atStart && cmdData !== null
+        ? filterCommands(cmdData.commands, cmdData.descriptions, token.query, cmdData.supported)
+        : [];
+    const skills = skillCmds
+      .filter((s) => q === '' || s.id.toLowerCase().startsWith(q) || s.id.toLowerCase().includes(q))
+      .slice(0, 8)
+      .map((s) => {
+        const name = s.id;
+        const idx = name.toLowerCase().indexOf(q);
+        return { cmd: `/${s.id}`, name, desc: s.description, idx: idx < 0 ? name.length : idx, ok: true };
+      });
+    return [...cmds, ...skills];
+  };
   /** 会话标题(G14.16/G14.17 统一流):单源=daemon 旁车 meta——rename 落盘、挂载 GET 回读,
    *  顶栏/侧栏/TUI 一名三处;零历史兼容(旧 localStorage 键不读不迁,旧会话删档重测)。
    *  缺省回落首条用户消息摘要,再落会话 id。点击标题即改 */
@@ -1209,6 +2266,10 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   );
 
   useEffect(() => {
+    // G14.154 辅助对话首问:挂载即把携带的选区引用落输入框(仅一次)
+    if (initialInsert !== undefined && initialInsert !== '') {
+      setInput((prev) => (prev.trim() === '' ? `${initialInsert} ` : `${prev.replace(/\s+$/, '')} ${initialInsert} `));
+    }
     const sink: ChatSink = {
       on: (e, seq) => {
         // G6 工具条 input 暂存:tool-call 帧的 payload.input 旁路存留(先于播种门——缓冲窗内
@@ -1219,6 +2280,18 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             const raw = e.payload?.input;
             const input = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
             setToolInputs((m) => ({ ...m, [cid]: { name: e.text ?? '', input, result: m[cid]?.result } }));
+            // G14.137 todo_write → 任务标签「会话待办」区上抛(清单全量替换语义)
+            if ((e.text ?? '') === 'todo_write' && onTodos !== undefined) {
+              const arr = input.todos;
+              if (Array.isArray(arr)) {
+                const items = arr
+                  .filter((o) => o !== null && typeof o === 'object')
+                  .map((o) => o as { text?: unknown; status?: unknown })
+                  .filter((o) => typeof o.text === 'string' && typeof o.status === 'string')
+                  .map((o) => ({ text: o.text as string, status: o.status as TodoItem['status'] }));
+                onTodos(items);
+              }
+            }
           }
         }
         if (e.type === 'tool-result') {
@@ -1230,6 +2303,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               [cid]: { name: m[cid]?.name ?? tool, input: m[cid]?.input ?? {}, result: e.text ?? '' },
             }));
           }
+        }
+        if (e.type === 'done') {
+          // G14.89 轮收束:daemon 自动续发消费队首——done 即刷+延迟再刷(续发落在 finally,晚于 done 帧)
+          refreshQueued();
+          window.setTimeout(() => refreshQueued(), 700);
         }
         if (seedingRef.current) {
           pendingRef.current.push({ e, seq }); // 种子在途:缓冲不投(直投会被种子整替清掉)
@@ -1256,6 +2334,24 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   }, [sinkRef, reseed, addCard]);
 
   const running = chat.status === 'running';
+  /** G14.63 运行状态行「本轮」口径:末个流式 run 的基线差值(会话累计−轮起点);无基线回退累计 */
+  /** G14.80 未决问询卡:ask 挂起时输入框变为选择题表单 */
+  const askCards = cards.filter((c) => c.kind === 'ask');
+  /** G14.91 ask 作答态(dock 级统一提交):pid → {labels, custom};任一题未答不可提交 */
+  const [askPicks, setAskPicks] = useState<Record<string, AskPick>>({});
+  // 卡组更替(全答提交/跳过/回执移除)即清作答态,防陈旧 pid 累积
+  useEffect(() => {
+    if (askCards.length === 0) setAskPicks({});
+  }, [askCards.length]);
+  /** G14.88 审批卡 dock 化:挂起时 dock 变确认框(输入框/队列隐藏),确认后恢复——与 ask 同形 */
+  const approvalCards = cards.filter((c) => c.kind === 'approval');
+  const lastLiveRun = running
+    ? [...chat.entries].reverse().find((e) => e.kind === 'run' && e.streaming === true)
+    : undefined;
+  const liveSteps = lastLiveRun?.stepsBase !== undefined ? Math.max(0, chat.steps - lastLiveRun.stepsBase) : chat.steps;
+  const liveTokens = lastLiveRun?.tokensBase !== undefined ? Math.max(0, chat.tokens - lastLiveRun.tokensBase) : chat.tokens;
+  /** G14.74 回到底部钮:非贴底即显(滚动 handler 里置态,值不变时 React 自动跳过重渲染) */
+  const [atBottom, setAtBottom] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   /** G6 工具条目 → input 暂存配对:条目 key `tool:<callId>`(重复 callId 的 `~n` 后缀剥掉;
@@ -1321,6 +2417,27 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     conn.commands().then(setCmdData, () => setCmdData(null));
   }, [conn]);
 
+  /** G14.87 dock 高度实测驱动正文底部 padding:队列展开/textarea 增行使 dock 长高,
+   *  固定 padding(132px)下 dock 会盖住正文尾行——ResizeObserver 把实测高度写进 .chat
+   *  padding-bottom,正文整体上移不被遮;卸载复原 CSS 缺省 */
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const chat = chatScrollRef.current;
+    const dock = dockRef.current;
+    if (chat === null || dock === null || typeof ResizeObserver === 'undefined') return; // jsdom 无 RO:测试态跳过
+    const sync = (): void => {
+      // dock 高是视觉 px(gBCR),padding 写本地空间=视觉/根放缩(ui-zoom.ts 契约)
+      chat.style.paddingBottom = `calc(var(--thread-gutter) + ${Math.ceil(dock.getBoundingClientRect().height / zoomScale()) + 18}px)`;
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(dock);
+    return () => {
+      ro.disconnect();
+      chat.style.paddingBottom = '';
+    };
+  }, []);
+
   /** pills/+ 面板外点收(面板内点与 + 钮自持——多选文件连续点选不闪收) */
   useEffect(() => {
     if (pillOpen === null) return;
@@ -1346,8 +2463,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
 
   /** G5 会话回收(daemon 会话 id 寻址):confirm → deleteSession → onBack 回首页;
    *  失败留在会话示错条(HTTP 409 running 等不静默) */
-  /** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;visibleEntries 把折叠轮区间内的
-   *  工具/思考行滤出(用户气泡/回复/旁白保留),渲染层纯过滤零侵入 reducer */
+  /** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;hiddenKeys=折叠区间内的
+   *  工具/思考行 key(用户气泡/回复/旁白保留)。G14.73:隐藏条目保持挂载,渲染层包进
+   *  seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
+   *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
+   *  (phase 叙述/中间解释默认不露),展开轮时照常可见 */
   const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
   const toggleRun = useCallback((key: string): void => {
     setCollapsedRuns((prev) => {
@@ -1357,42 +2477,62 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
       return next;
     });
   }, []);
-  const visibleEntries = useMemo(() => {
-    if (collapsedRuns.size === 0) return chat.entries;
-    const out: ChatEntry[] = [];
+  const hiddenKeys = useMemo(() => {
+    const s = new Set<string>();
     let hide = false;
+    /** 段内 sealed assistant 收集:段收口(run 再启/流尽)时除末条外入 hidden */
+    let segAssistants: string[] = [];
+    const closeSeg = (): void => {
+      if (hide) for (let i = 0; i < segAssistants.length - 1; i += 1) s.add(segAssistants[i]!);
+      segAssistants = [];
+    };
     for (const e of chat.entries) {
       if (e.kind === 'run') {
+        closeSeg();
         hide = collapsedRuns.has(e.key);
-        out.push(e);
         continue;
       }
-      if (hide && (e.kind === 'tool' || e.kind === 'thinking')) continue;
-      out.push(e);
+      if (e.kind === 'assistant') {
+        if (e.streaming !== true) segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
+        continue;
+      }
+      if (e.kind === 'user') {
+        closeSeg();
+        continue;
+      }
+      if (hide && (e.kind === 'tool' || e.kind === 'thinking')) s.add(e.key);
     }
-    return out;
+    closeSeg();
+    return s;
   }, [chat.entries, collapsedRuns]);
 
   /** G14.48 展开/折叠不闪动:贴地(阅读位在底)→ 钉底,内容整体上移;未贴地 → 锚定被点行,
    *  内容整体下移——两侧永不同时动。capture 先于行内 toggle 记 preTop,动画收尾后再校正一次;
    *  原生 scroll-anchor 关闭(overflow-anchor:none)防与本校正互搏 */
   const onEntryToggleClick = useCallback((e: ReactMouseEvent<HTMLDivElement>): void => {
-    const target = e.target instanceof Element ? e.target.closest('.thinking-summary, .tool-summary') : null;
+    const target = e.target instanceof Element ? e.target.closest('.thinking-summary, .tool-summary, .entry-run.sealed') : null;
     const row = target !== null ? target.closest('.entry') : null;
     const el = chatScrollRef.current;
     if (target === null || row === null || el === null) return;
     const preTop = row.getBoundingClientRect().top;
     const stick = chatStickRef.current;
+    // G14.64:贴地时贯穿整个展开/收合动画(0.22s grid)逐帧钉底——单次校正会让视口随动画
+    // 增高先下滑、兜底再上跳;未贴地锚定被点行(行自身展开,行顶不动,单次校正已足)
     const restore = (): void => {
       if (stick) {
-        el.scrollTop = el.scrollHeight;
+        const t0 = performance.now();
+        const pin = (): void => {
+          el.scrollTop = el.scrollHeight;
+          if (performance.now() - t0 < 300) requestAnimationFrame(pin);
+        };
+        requestAnimationFrame(pin);
         return;
       }
       if (!row.isConnected) return;
-      el.scrollTop += row.getBoundingClientRect().top - preTop;
+      el.scrollTop += (row.getBoundingClientRect().top - preTop) / zoomScale(); // gBCR 视觉差→scrollTop 本地空间
     };
     requestAnimationFrame(restore);
-    setTimeout(restore, 240); // 0.22s grid 动画收尾后再校正一次
+    if (!stick) setTimeout(restore, 240); // 0.22s grid 动画收尾后再校正一次(非贴地路径)
   }, []);
 
   /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
@@ -1400,24 +2540,40 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
    *  (spec §9:提交失败草稿不丢);成功 resolve;空文本 resolve 忽略 */
   const submitText = useCallback(
     (text: string): Promise<void> => {
-      const trimmed = text.trim();
+      // G14.124 @短写 → md 绝对链接(模型/正文/气泡统一 md 链接口径);命令面(/开头)不展开
+      const expanded = expandFileRefs(text, root, resolveFileRef).trim();
+      const trimmed = expanded.trim();
       if (trimmed === '') return Promise.resolve();
       // G14.29:/btw /side 输入拦截——开辅助对话旁路标签(Codex 同款;不占主链提交面)
       if (/^\/(btw|side)(\s|$)/.test(trimmed)) {
         onSideChat?.();
         return Promise.resolve();
       }
-      setChat((c) => appendUserMessage(c, trimmed));
+      // G14.89 运行中入队不本地回显:气泡等轮收束自动发送时由 submit 回显(队列语义=还没发生);
+      // idle/plan 提交即发生,照旧回显
+      if (!running) setChat((c) => appendUserMessage(c, trimmed));
       let req: Promise<void>;
-      if (running) req = conn.sessionSteer(sessionId, trimmed);
+      if (running) req = conn.sessionSteer(sessionId, trimmed).then(() => refreshQueued(), () => {});
       else if (sessMode === 'plan') req = conn.runCommand(sessionId, `/plan ${trimmed}`);
-      else req = conn.sessionSubmit(sessionId, trimmed);
+      else if (/^\/[a-z][\w-]*(\s|$)/i.test(trimmed)) {
+        // G14.95 / 前缀语义:先试命令通道(词边界精确匹配),daemon 判 unsupported(400)即当
+        // 普通文本提交——模型自主判断(系统提示词 skills 清单含「/skill-id 引用优先加载」提示);
+        // 运行中/plan 档不在此列(运行中 / 前缀随 steer 入队当文本)
+        req = conn
+          .runCommand(sessionId, trimmed)
+          .catch(async (err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!/unsupported/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
+            await conn.sessionSubmit(sessionId, trimmed);
+          })
+          .then(() => undefined);
+      } else req = conn.sessionSubmit(sessionId, trimmed);
       return req.catch((err: unknown) => {
         setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
         throw err;
       });
     },
-    [conn, sessionId, running, sessMode],
+    [conn, sessionId, running, sessMode, root, resolveFileRef],
   );
 
   /** Enter 分流:idle 提交 / running 插话;本地 user 回显(`> text`),失败倒 error 条 */
@@ -1459,6 +2615,47 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
     else if (chat.status === 'idle') runFooterByEntry.set(lastSealedAssistant.key, lastSealedAssistant);
   }
 
+  /** G14.95 面板项(渲染期,光标位置):/ 令牌 → 面板项;空=面板不开(无匹配自动关) */
+  const slashPanelItems: CmdItem[] | null = (() => {
+    const caret = inputRef.current?.selectionStart ?? input.length;
+    const items = slashItemsFor(slashTokenAt(input, caret));
+    return items.length > 0 ? items : null;
+  })();
+
+  /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版) */
+  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text);
+  /** G14.139 文件标签选区「添加到会话」:接收插入事件(文件图标+文件名(L30-L35) token 落输入框) */
+  useEffect(() => {
+    const onInsert = (ev: Event): void => {
+      const detail = (ev as CustomEvent<{ text?: string }>).detail;
+      if (detail === undefined || typeof detail.text !== 'string' || detail.text === '') return;
+      setInput((prev) => (prev.trim() === '' ? `${detail.text} ` : `${prev.replace(/\s+$/, '')} ${detail.text} `));
+      inputRef.current?.focus();
+    };
+    window.addEventListener('sunshinex:insert-ref', onInsert);
+    return () => window.removeEventListener('sunshinex:insert-ref', onInsert);
+  }, []);
+  /** G14.135 输入区点击 @文件 token → 解析并开侧栏 file 标签(click 后 caret 已落在 textarea,
+   *  按 token 区间命中判定;解析同发送期口径:记账/索引兜底/带目录直用) */
+  const onInputClick = (): void => {
+    const ta = inputRef.current;
+    if (ta === null || onOpenFile === undefined) return;
+    const caret = ta.selectionStart ?? 0;
+    let pos = 0;
+    for (const tk of splitMentionTokens(input)) {
+      const s = pos;
+      const e = pos + tk.text.length;
+      pos = e;
+      if (tk.kind !== 'file' || caret <= s || caret > e) continue;
+      const token = tk.text.slice(1);
+      const anchor = /^(.*):(L\d+(?:-L\d+)?)$/.exec(token);
+      const name = anchor !== null ? anchor[1] : token;
+      const rel = resolveFileRef(name.split('/').pop() ?? name) ?? (name.includes('/') ? name : undefined);
+      if (rel !== undefined) onOpenFile(rel);
+      return;
+    }
+  };
+
   return (
     <>
       <header className="chat-topbar">
@@ -1480,11 +2677,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             }}
           />
         ) : (
-          <span className="chat-title" title={`${sessionId} · ${chat.tokens} tokens · ${chat.steps} steps${running ? ' · 运行中' : ''}`}>
+          <span className="chat-title" data-tip={`${sessionId} · ${chat.tokens} tokens · ${chat.steps} steps${running ? ' · 运行中' : ''}`}>
             <button
               type="button"
               className="chat-title-btn"
-              title={t('Click to rename', '点击重命名')}
+              data-tip={t('Click to rename', '点击重命名')}
               onClick={() => {
                 setTitleDraft(displayTitle);
                 setTitleEditing(true);
@@ -1497,49 +2694,20 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           </span>
         )}
         {showExpandSidebar && (
+          <ChatDynButtons todoActive={todoActive} taskActive={taskActive} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
+        )}
+        {showExpandSidebar && (
           <button
             type="button"
             className="sx-iconbtn chat-expand"
             aria-label="expand sidebar"
-            title={t('Expand sidebar', '展开侧边栏')}
+            data-tip={t('Expand sidebar', '展开侧边栏')}
             onClick={onExpandSidebar}
           >
             <PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />
           </button>
         )}
       </header>
-      {cards.length > 0 && (
-        <section className="pending-cards" aria-label="pending approvals and asks">
-          {cards.map((c) =>
-            c.kind === 'approval' ? (
-              <ApprovalCard key={c.pid} req={c.req} onDecision={(d) => sendApproval(c.pid, d)} />
-            ) : (
-              <AskCard key={c.pid} req={c.req} onSubmit={(a) => sendAsk(c.pid, a)} onDismiss={() => sendAsk(c.pid, { type: 'dismissed' })} />
-            ),
-          )}
-        </section>
-      )}
-      {queued.length > 0 && (
-        <div className="steer-queue" aria-label="queued messages">
-          {queued.map((q) => (
-            <span key={q.seq} className="steer-chip" title={q.text}>
-              <span className="steer-chip-text">{q.text}</span>
-              <button
-                type="button"
-                className="steer-chip-cancel"
-                aria-label={`cancel queued ${q.seq}`}
-                title="撤回"
-                onClick={() => {
-                  setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
-                  conn.cancelSteer(sessionId, q.seq).catch(() => {});
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
       <main
         className="chat"
         aria-label="chat"
@@ -1547,7 +2715,9 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         onClickCapture={onEntryToggleClick}
         onScroll={(e) => {
           const el = e.currentTarget;
-          chatStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          chatStickRef.current = stick;
+          setAtBottom(stick);
         }}
       >
         {chat.entries.length === 0 && (
@@ -1558,72 +2728,370 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
         )}
         {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染);
             G14.31 折叠轮:sealed run 头点击 → 其后工具/思考行隐藏(用户/回复/旁白保留) */}
-        {groupEntriesByDay(visibleEntries).flatMap((g) => [
-          g.label !== '' ? (
-            <div key={`day:${g.key}`} className="chat-day-sep" role="separator" aria-label={g.label}>
-              {g.label}
-            </div>
-          ) : null,
-          ...g.entries.map((entry) =>
-            entry.kind === 'run' ? (
-              <RunEntryView
-                key={entry.key}
-                entry={entry}
-                tokens={chat.tokens}
-                collapsed={collapsedRuns.has(entry.key)}
-                onToggle={entry.streaming === true ? undefined : toggleRun}
-              />
-            ) : entry.kind === 'tool' ? (
-              <ToolEntryView
-                key={entry.key}
-                entry={entry}
-                info={toolInfoOf(entry)}
-                conn={conn}
-                sessionId={sessionId}
-                callId={callIdOf(entry)}
-                onOpenFile={onOpenFile}
-                onOpenDiff={onOpenDiff}
-              />
-            ) : entry.kind === 'user' ? (
-              <UserEntryView key={entry.key} entry={entry} onSend={submitText} />
-            ) : entry.kind === 'thinking' ? (
-              <ThinkingEntryView key={entry.key} entry={entry} />
-            ) : entry.kind === 'assistant' || entry.kind === 'notice' || entry.kind === 'error' ? (
-              <ChatEntryView key={entry.key} entry={entry} footerRun={runFooterByEntry.get(entry.key)} onFork={onFork} />
-            ) : (
-              <ChatEntryView key={entry.key} entry={entry} />
-            ),
-          ),
-        ])}
+        {groupEntriesByDay(chat.entries).flatMap((g) => {
+          const nodes: ReactNode[] = [];
+          if (g.label !== '') {
+            nodes.push(
+              <div key={`day:${g.key}`} className="chat-day-sep" role="separator" aria-label={g.label}>
+                {g.label}
+              </div>,
+            );
+          }
+          /** G14.73:连续的折叠区条目(工具/思考)聚成一段,包进 seg-collapse 平滑容器——
+           *  展开与收合都是 grid 高度过渡,不再瞬切 */
+          let seg: ChatEntry[] = [];
+          const flushSeg = (): void => {
+            if (seg.length === 0) return;
+            const closed = hiddenKeys.has(seg[0]!.key);
+            nodes.push(
+              <div key={`seg:${seg[0]!.key}`} className={`seg-collapse${closed ? '' : ' open'}`}>
+                <div className="seg-inner">
+                  {seg.map((e2) =>
+                    e2.kind === 'thinking' ? (
+                      <ThinkingEntryView key={e2.key} entry={e2} />
+                    ) : e2.kind === 'assistant' ? (
+                      <ChatEntryView key={e2.key} entry={e2} onOpenDiff={(p) => onOpenDiff?.('', p)} />
+                    ) : (
+                      <ToolEntryView
+                        key={e2.key}
+                        entry={e2}
+                        info={toolInfoOf(e2)}
+                        conn={conn}
+                        sessionId={sessionId}
+                        callId={callIdOf(e2)}
+                        onOpenFile={onOpenFile}
+                        onOpenDiff={onOpenDiff}
+                        onOpenAgent={onOpenAgent}
+                        onOpenTask={onOpenTask}
+                        taskNameOf={taskNameOf}
+                      />
+                    ),
+                  )}
+                </div>
+              </div>,
+            );
+            seg = [];
+          };
+          for (const entry of g.entries) {
+            // G14.136 折叠态的中间正文随工具/思考一起进 seg-collapse 平滑折叠
+            if (entry.kind === 'tool' || entry.kind === 'thinking' || (entry.kind === 'assistant' && hiddenKeys.has(entry.key))) {
+              seg.push(entry);
+              continue;
+            }
+            flushSeg();
+            if (entry.kind === 'run') {
+              nodes.push(
+                <RunEntryView
+                  key={entry.key}
+                  entry={entry}
+                  tokens={chat.tokens}
+                  collapsed={collapsedRuns.has(entry.key)}
+                  onToggle={entry.streaming === true ? undefined : toggleRun}
+                />,
+              );
+            } else if (entry.kind === 'user') {
+              nodes.push(
+                <UserEntryView
+                  key={entry.key}
+                  entry={entry}
+                  onSend={submitText}
+                  onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
+                />,
+              );
+            } else {
+              nodes.push(
+                <ChatEntryView
+                  key={entry.key}
+                  entry={entry}
+                  footerRun={runFooterByEntry.get(entry.key)}
+                  onOpenDiff={(p) => onOpenDiff?.('', p)}
+                  onRestore={(p) => {
+                    conn.restoreChange(sessionId, p).catch(() => {
+                      setChat((c) => applyChatEvent(c, { type: 'error', text: t('Revert failed', '撤销失败'), ts: Date.now() }));
+                    });
+                  }}
+                  onFork={onFork}
+                  onOpenFile={onOpenFile}
+                />,
+              );
+            }
+          }
+          flushSeg();
+          return nodes;
+        })}
         {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;
             原「尾参挂最后一个工具行」只在工具执行期可见且左缘随工具行缩进不齐——独立成行对齐 */}
         {running && (
           <div className="run-live-line" role="status" aria-label="run status">
             <span className="run-spinner" aria-hidden="true" />
-            <span>{`${chat.steps} steps`}</span>
-            <span>{fmtTokens(chat.tokens)}</span>
+            <span>{`${liveSteps} steps`}</span>
+            <span>{fmtTokens(liveTokens)}</span>
           </div>
         )}
       </main>
       {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
        *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
        *  发送/停止共用 32px 圆形实心钮(↑/■,aria-label send/stop 保查询性) */}
-      <ComposerCard
-        className="composer"
-        label="message input"
+      <div className="chat-dock" ref={dockRef}>
+        <div className="chat-dock-fade" aria-hidden="true" />
+      {/* G14.88 审批挂起时队列条隐藏(dock 整体让位确认框),确认/拒绝后恢复 */}
+      {queued.length > 0 && approvalCards.length === 0 && (
+        <div className="steer-queue" aria-label="queued messages">
+          {/* G14.87 折叠摘要行:嵌条头部(欢迎页 options-bar 同形),折叠只留此行不推高 dock */}
+          <button
+            type="button"
+            className="steer-fold"
+            aria-expanded={!queueFolded}
+            onClick={() => setQueueFolded((v) => !v)}
+          >
+            <span>
+              {t('Queued', '排队')} · {queued.length}
+            </span>
+            <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className={queueFolded ? 'steer-fold-chev up' : 'steer-fold-chev'} />
+          </button>
+          {!queueFolded && (
+        <div
+          className="steer-list"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const from = Number(e.dataTransfer.getData('text/steer-seq'));
+            const to = Number((e.target instanceof Element ? e.target.closest('[data-seq]') : null)?.getAttribute('data-seq') ?? NaN);
+            if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
+            setQueued((qs) => {
+              const arr = [...qs];
+              const [m] = arr.splice(from, 1);
+              arr.splice(to, 0, m);
+              return arr.map((x, i2) => ({ ...x, seq: i2 }));
+            });
+            conn.moveSteer(sessionId, from, to).then(refreshQueued, () => {});
+          }}
+        >
+          {queued.map((q, i) => (
+            <div
+              key={q.seq}
+              data-seq={i}
+              className="steer-row"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/steer-seq', String(i));
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+            >
+              <span className="steer-grip" data-tip={t('Drag to reorder', '拖拽调整排序')}>
+                <GripVertical size={14} strokeWidth={1.75} aria-hidden="true" />
+              </span>
+              <span className="steer-row-text">{q.text}</span>
+              <span className="steer-row-actions">
+                <button
+                  type="button"
+                  className="steer-act"
+                  data-tip={t('Pause current round and start next with this', '暂停当前轮次,直接开启下一轮发送本条')}
+                  onClick={() => void pauseAndSend(q)}
+                >
+                  <ArrowUpToLine size={12} strokeWidth={1.75} aria-hidden="true" />
+                  {t('Now', '立即')}
+                </button>
+                <button
+                  type="button"
+                  className="steer-act"
+                  data-tip={t('Move to front, inject at next step', '提到队首,下一轮立即插入发送')}
+                  onClick={() => {
+                    conn.frontSteer(sessionId, q.seq).then(refreshQueued, () => {});
+                  }}
+                >
+                  <CornerDownRight size={12} strokeWidth={1.75} aria-hidden="true" />
+                  {t('Insert', '插入')}
+                </button>
+                <button
+                  type="button"
+                  className="steer-act steer-act-icon"
+                  aria-label={t('Edit in input box', '放回输入框编辑')}
+                  data-tip={t('Edit in input box', '放回输入框编辑')}
+                  onClick={() => {
+                    setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
+                    conn.cancelSteer(sessionId, q.seq).catch(() => {});
+                    setInput(q.text);
+                  }}
+                >
+                  <PenLine size={12} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="steer-act steer-act-icon"
+                  aria-label={t('Delete', '删除')}
+                  data-tip={t('Delete', '删除')}
+                  onClick={() => {
+                    setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
+                    conn.cancelSteer(sessionId, q.seq).catch(() => {});
+                  }}
+                >
+                  <Trash2 size={12} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+          )}
+        </div>
+      )}
+        {!atBottom && (
+          <button
+            type="button"
+            className="jump-down"
+            aria-label="scroll to bottom"
+            title={t('Scroll to bottom', '回到底部')}
+            onClick={() => {
+              const el = chatScrollRef.current;
+              if (el !== null) el.scrollTo({ top: el.scrollHeight }); // G14.74:直接跳底(用户裁定)
+            }}
+          >
+            <ArrowDown size={16} strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
+        {approvalCards.length > 0 ? (
+          /* G14.88:审批挂起时输入框变为确认框(与 ask 同形)——Allow/Deny/Always 回执后恢复输入框 */
+          <div className="ask-dock">
+            {approvalCards.map((c) => (
+              <ApprovalCard key={c.pid} req={c.req} onDecision={(d) => sendApproval(c.pid, d)} />
+            ))}
+          </div>
+        ) : askCards.length > 0 ? (
+          /* G14.80/G14.91:ask_question 挂起时输入框变为选择题表单——卡列表纵排(单卡内选项自滚)+
+             固定提交区(右下):多题任一未答不可提交;跳过=全部 dismissed;全部处理完恢复输入框 */
+          <div className="ask-dock">
+            <div className="ask-scroll">
+              {askCards.map((c) => (
+                <AskCard
+                  key={c.pid}
+                  req={c.req}
+                  pick={askPicks[c.pid] ?? { labels: [], custom: '' }}
+                  onPick={(patch) =>
+                    setAskPicks((m) => {
+                      const base = m[c.pid] ?? { labels: [], custom: '' };
+                      return { ...m, [c.pid]: { ...base, ...patch } };
+                    })
+                  }
+                />
+              ))}
+            </div>
+            <div className="ask-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  askCards.forEach((c) => sendAsk(c.pid, { type: 'dismissed' }));
+                  setAskPicks({});
+                }}
+              >
+                {t('Skip', '跳过')}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={!askCards.every((c) => pickAnswered(askPicks[c.pid]))}
+                onClick={() => {
+                  askCards.forEach((c) => {
+                    const p = askPicks[c.pid];
+                    const custom = p?.custom.trim() ?? '';
+                    if (custom !== '') sendAsk(c.pid, { type: 'custom', text: custom });
+                    else if ((p?.labels.length ?? 0) > 0) sendAsk(c.pid, { type: 'selected', labels: p!.labels });
+                  });
+                  setAskPicks({});
+                }}
+              >
+                {t('Submit', '提交')}
+              </button>
+            </div>
+          </div>
+        ) : (
+        <ComposerCard
+          className="chat-composer"
+          label="message input"
         value={input}
         rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
         placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
         disabled={connState !== 'open' || seeding}
-        onChange={setInput}
+        onChange={(v) => {
+          setInput(v);
+          // G14.124 面板跟随输入(光标前 @token 即开,裸 @ 也开);无匹配=渲染面自然关闭
+          const caret = inputRef.current?.selectionStart ?? v.length;
+          const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
+          if (m !== null) {
+            setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
+            void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
+          } else if (filePal !== null) {
+            setFilePal(null);
+          }
+        }}
         onKeyDown={(e) => {
-          const paletteItems = cmdData !== null && input.startsWith('/')
-            ? filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported)
-            : null;
-          if (paletteItems !== null) {
+          // G14.148 /memory(-rm) 精确输入 + Enter → 开记忆标签(不进面板补全循环/命令通道;
+          // TUI 交互多选在 GUI 的同位=记忆标签的勾选删除面)
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && /^\/memory(-rm)?\s*$/.test(input)) {
+            e.preventDefault();
+            setInput('');
+            onOpenMemory?.();
+            return;
+          }
+          // G14.156 @/技能 token 整体删除:无选区时 token 内 Backspace/Delete 整删不逐字符
+          if (e.key === 'Backspace' || e.key === 'Delete') {
+            const ta = e.currentTarget as HTMLTextAreaElement;
+            const caret = ta.selectionStart ?? input.length;
+            if (ta.selectionStart === ta.selectionEnd) {
+              const range = tokenDeleteRange(input, caret, e.key);
+              if (range !== null) {
+                e.preventDefault();
+                const [s, e2] = range;
+                setInput((prev) => prev.slice(0, s) + prev.slice(e2));
+                requestAnimationFrame(() => { inputRef.current?.setSelectionRange(s, s); });
+                return;
+              }
+            }
+          }
+          // G14.85 @ 工作区文件选择:光标前 @token → 文件面板(方向循环/Enter 选中/Esc 关闭)
+          // G14.121 token 兼容绝对路径(:\ /);选中插入绝对路径(底层索引统一绝对路径口径)
+          const taEl = e.currentTarget as HTMLTextAreaElement;
+          const caret = taEl.selectionStart ?? input.length;
+          const atMatch = /@([\w./:\\-]*)$/.exec(input.slice(0, caret));
+          if (atMatch !== null || filePal !== null) {
+            if (atMatch !== null) {
+              setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
+              void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
+            }
+            const items = filePalFiles.filter((f) => fileHit(f, filePal?.query ?? '')).slice(0, 12);
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();
-              setCmdActive((a) => (paletteItems.length === 0 ? 0 : e.key === 'ArrowDown' ? (a + 1) % paletteItems.length : (a - 1 + paletteItems.length) % paletteItems.length));
+              if (items.length > 0) {
+                setFilePalActive((a) => (e.key === 'ArrowDown' ? (a + 1) % items.length : (a - 1 + items.length) % items.length));
+                setFilePal((fp) => fp ?? { query: '', from: 0 });
+              }
+              return;
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setFilePal(null);
+              return;
+            }
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && items.length > 0) {
+              e.preventDefault();
+              const rel = items[Math.min(filePalActive, items.length - 1)];
+              // G14.126 选中只插短写 @文件名(输入框显形=图标+文件名);相对路径记入账本,
+              // 发送期 expandFileRefs 据此展开为 md 绝对链接;按 @token 区间替换
+              const base = rel.split('/').pop() ?? rel;
+              pickRelRef.current.set(base, rel);
+              const atFrom = filePal?.from ?? caret - (atMatch?.[1]?.length ?? 0) - 1;
+              const atEnd = atFrom + 1 + (filePal?.query ?? '').length;
+              setInput((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
+              setFilePal(null);
+              return;
+            }
+          }
+          // G14.95 / 面板:开头=命令+技能;中间=仅技能;无匹配(items 空)面板不开=自动关
+          const slashToken = atMatch === null ? slashTokenAt(input, caret) : null;
+          const slashItems = slashItemsFor(slashToken);
+          if (slashToken !== null && slashItems.length > 0) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              setCmdActive((a) => (e.key === 'ArrowDown' ? (a + 1) % slashItems.length : (a - 1 + slashItems.length) % slashItems.length));
               return;
             }
             if (e.key === 'Escape') {
@@ -1633,23 +3101,21 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
             }
             if (e.key === 'Tab') {
               e.preventDefault();
-              const item = paletteItems[cmdActive];
-              if (item !== undefined) setInput(item.cmd + ' ');
+              const item = slashItems[cmdActive];
+              if (item !== undefined) setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret));
               return;
             }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              const item: CmdItem | undefined = paletteItems[cmdActive];
-              if (item !== undefined && input.includes(' ')) {
+              const item: CmdItem | undefined = slashItems[cmdActive];
+              if (item !== undefined && input.includes(' ') && item.ok && slashToken.atStart) {
                 // 参数已敲:整行直跑(supported 判定在 daemon;集外此处已置灰不可达 active?仍防御)
-                if (item.ok) {
-                  setInput('');
-                  conn.runCommand(sessionId, input).catch(() => {});
-                }
+                setInput('');
+                conn.runCommand(sessionId, input).catch(() => {});
                 return;
               }
               if (item !== undefined) {
-                setInput(item.cmd + ' '); // 补全,面板续开收参数
+                setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret)); // 补全,面板续开收参数
                 return;
               }
             }
@@ -1660,7 +3126,24 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           }
         }}
         overlays={
-          pillOpen === 'plus' ? (
+          // G14.121 @ 文件面板(此前数据链在而渲染面缺失——@ 弹窗从未出现的根因):命中才渲染
+          filePal !== null && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
+            <FilePalette
+              items={filePalFiles.filter((f) => fileHit(f, filePal.query)).slice(0, 12)}
+              active={Math.min(filePalActive, 11)}
+              onHover={setFilePalActive}
+              onPick={(p) => {
+                // G14.126 选中只插短写 @文件名,相对路径记入账本(发送期展开)
+                const base = p.split('/').pop() ?? p;
+                pickRelRef.current.set(base, p);
+                const atFrom = filePal.from;
+                const atEnd = atFrom + 1 + filePal.query.length;
+                setInput((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
+                setFilePal(null);
+                inputRef.current?.focus();
+              }}
+            />
+          ) : pillOpen === 'plus' ? (
             <ComposerPlusPanel
               conn={conn}
               sessionId={sessionId}
@@ -1671,19 +3154,31 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 inputRef.current?.focus();
               }}
             />
-          ) : cmdData !== null && input.startsWith('/') ? (
+          ) : slashPanelItems !== null ? (
             (() => {
-              const items = filterCommands(cmdData.commands, cmdData.descriptions, input.slice(1), cmdData.supported);
+              const items = slashPanelItems;
               const active = Math.min(cmdActive, Math.max(0, items.length - 1));
               const pick = (item: CmdItem): void => {
                 if (!item.ok) return;
-                setInput(item.cmd + ' ');
+                const tok = slashTokenAt(input, input.length);
+                const from = tok !== null ? tok.from : input.length;
+                const caret = inputRef.current?.selectionStart ?? input.length;
+                setInput(input.slice(0, from) + item.cmd + ' ' + input.slice(caret));
               };
               return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
             })()
           ) : null
         }
         inputRef={inputRef}
+        highlight={renderHighlightSpans(input)}
+        onInputClick={onInputClick}
+        onDropFile={(rel) => {
+          // G14.144 拖入文件 → caret 处插 @相对路径(发送期自动展开 md 链接)
+          const ta = inputRef.current;
+          const pos = ta?.selectionStart ?? input.length;
+          setInput((prev) => prev.slice(0, pos) + `@${rel} ` + prev.slice(pos));
+          inputRef.current?.focus();
+        }}
         footLeft={
           <div className="composer-pills">
             {/* 与欢迎页同构(G12 三轮):+ 开附加面板(卡顶同宽浮层:命令/技能/文件) */}
@@ -1692,7 +3187,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               className="composer-pill composer-plus-btn"
               aria-label="add attachment"
               aria-expanded={pillOpen === 'plus'}
-              title={t('Add skills, commands or files', '添加技能、命令或文件')}
+              data-tip={t('Add skills, commands or files', '添加技能、命令或文件')}
               onClick={() => setPillOpen((v) => (v === 'plus' ? null : 'plus'))}
             >
               +
@@ -1704,33 +3199,38 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 className="composer-pill"
                 aria-label="session mode"
                 aria-expanded={pillOpen === 'mode'}
-                title={t('Permissions', '访问权限')}
                 onClick={() => setPillOpen((v) => (v === 'mode' ? null : 'mode'))}
               >
+                <ModeIcon mode={sessMode} />
                 <span className="pill-label">{sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}</span>
                 <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {pillOpen === 'mode' && (
-                <div className="sx-menu-pop pill-pop" role="menu" aria-label="session mode menu">
+                <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="session mode menu">
                   {([
-                    ['dontAsk', t('Full access', '完全访问')],
-                    ['manual', t('Confirm changes', '变更确认')],
-                    ['plan', t('Plan mode', '计划模式')],
-                  ] as const).map(([m, label]) => (
-                    <button
-                      key={m}
-                      type="button"
-                      role="menuitem"
-                      className="sx-menuitem"
-                      disabled={m === sessMode}
-                      onClick={() => {
-                        setPillOpen(null);
-                        setSessMode(m);
-                        conn.setSessionMode(sessionId, m).catch(() => {});
-                      }}
-                    >
-                      {label}
-                    </button>
+                    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — no changes until you approve', '先规划方案,经你确认后才执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
+                    { m: 'dontAsk' as const, label: t('Full access', '完全访问'), desc: t('Full permissions — no confirmation prompts', '完全权限,操作不再逐一确认'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
+                    { m: 'manual' as const, label: t('Confirm changes', '变更确认'), desc: t('Writes and commands ask first', '写入与命令需逐一确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
+                  ]).map((row, idx) => (
+                    <div key={row.m} className="mode-pop-group">
+                      {idx === 1 && <div className="mode-pop-sep" />}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={`mode-item${sessMode === row.m ? ' active' : ''}`}
+                        onClick={() => {
+                          setPillOpen(null);
+                          setSessMode(row.m);
+                          conn.setSessionMode(sessionId, row.m).catch(() => {});
+                        }}
+                      >
+                        <span className="mode-item-icon">{row.icon}</span>
+                        <span className="mode-item-body">
+                          <span className="mode-item-name">{row.label}</span>
+                          <span className="mode-item-desc">{row.desc}</span>
+                        </span>
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -1758,7 +3258,6 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 className="composer-pill"
                 aria-label="session model"
                 aria-expanded={pillOpen === 'model'}
-                title={modelInfo?.current ?? t('default model', '默认模型')}
                 onClick={() => setPillOpen((v) => (v === 'model' ? null : 'model'))}
               >
                 <span className="pill-label">{baseModelName(modelInfo?.current)}</span>
@@ -1775,7 +3274,7 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                       role="menuitem"
                       className="sx-menuitem"
                       disabled={c.id === modelInfo?.current}
-                      title={c.id}
+                      data-tip={c.id}
                       onClick={() => {
                         setModelInfo((m) => (m === null ? m : { ...m, current: c.id }));
                         // 源自带档位强度(G13 反馈轮):切换即随名展示(快照回显前先乐观落)
@@ -1797,16 +3296,17 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 </div>
               )}
             </div>
-            {running ? (
-              <button type="button" className="send" aria-label="stop" title={t('Stop', '停止')} onClick={interrupt}>
+            {/* G14.89 运行中输入框有内容 → 显示发送(入队)而非停止;空输入才是停止 */}
+            {running && input.trim() === '' ? (
+              <button type="button" className="send" aria-label="stop" data-tip={t('Stop', '停止')} onClick={interrupt}>
                 <Square size={12} strokeWidth={2.5} aria-hidden="true" />
               </button>
             ) : (
               <button
                 type="button"
-                className="send"
+                className="send tip-right"
                 aria-label="send"
-                title={t('Send', '发送')}
+                data-tip={t('Send', '发送')}
                 onClick={send}
                 disabled={connState !== 'open' || seeding}
               >
@@ -1814,8 +3314,11 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
               </button>
             )}
           </div>
+          }
+        />
+        )
         }
-      />
+      </div>
     </>
   );
 }

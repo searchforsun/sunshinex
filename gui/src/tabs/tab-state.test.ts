@@ -70,9 +70,9 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     expect(s2.s1.tabs).toHaveLength(1); // s1 未被 s2 操作扰动
   });
 
-  it('setWidth clamp 200..720;setCollapsed 切换', () => {
+  it('setWidth clamp 440..720(G14.196);setCollapsed 切换', () => {
     const s = ensureSession({}, 's1', probe);
-    expect(setWidth(s, 's1', 99).s1.width).toBe(200);
+    expect(setWidth(s, 's1', 99).s1.width).toBe(440);
     expect(setWidth(s, 's1', 999).s1.width).toBe(720);
     expect(setWidth(s, 's1', 500).s1.width).toBe(500);
     expect(setCollapsed(s, 's1', true).s1.collapsed).toBe(true);

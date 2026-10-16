@@ -1,8 +1,8 @@
 /**
- * G8c T8 来源徽标(SettingsShell 表单行消费):SettingsKeyRow.source 四态 effective 归因的
- * 渲染面——env=橙点+「env」/project=蓝点+「项目」/global=灰点+「全局」/default=无徽标(渲染
- * 空 span,占位保行内布局稳定)。title=来源说明(hover 提示);类名 sx-src-{source} 供测试
- * 与样式定位。纯展示组件,零状态。
+ * G8c T8 来源徽标(SettingsShell 表单行消费;设置重构二轮):SettingsKeyRow.source 四态
+ * effective 归因的渲染面——键名**后置**单色 hairline chip(env/project/global 三态文案,
+ * default 隐藏不占位;前置圆点已移除——键名恒左对齐,色彩区分面撤销,title=来源说明 hover
+ * 提示)。类名 sx-src-{source} 供测试与样式定位。纯展示组件,零状态。
  */
 
 export type SettingsSource = 'env' | 'project' | 'global' | 'default';
@@ -22,7 +22,7 @@ export function SourceBadge({ source }: SourceBadgeProps): JSX.Element {
   if (source === 'default') return <span className="sx-src-badge sx-src-default" />;
   const b = BADGES[source];
   return (
-    <span className={`sx-src-badge sx-src-${source}`} title={b.title}>
+    <span className={`sx-src-badge sx-src-${source}`} data-tip={b.title}>
       {b.text}
     </span>
   );

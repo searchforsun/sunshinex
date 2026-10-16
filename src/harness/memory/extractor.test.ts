@@ -88,7 +88,7 @@ test('openai 桩：候选落盘 + prompt 含当前日期与自包含化条款', 
     assert.equal(prompts.length, 1);
     assert.ok(prompts[0].includes(new Date().toISOString().slice(0, 10)), '当前日期注入（解相对指代前提）');
     assert.ok(/absolute (date|YYYY)|specific entity|no relative time|do not refer/i.test(prompts[0]), '自包含化条款在 prompt');
-    assert.match(prompts[0], /Be conservative — it is fine to extract nothing/);
+    assert.match(prompts[0], /EPISODIC \/ SEMANTIC memory/); // G14.92 职责划界与情景触发条款
     assert.equal(mem.count(), 1);
     assert.equal(mem.list()[0].slug, 'uses-pnpm-workspaces');
   });
@@ -220,5 +220,62 @@ test('闸门 e：门槛以下的碎片短词不做包含判定（宁漏判不误
     const env = JSON.stringify({ memories: [{ type: 'project', description: 'pnpm', content: 'build tooling is pnpm based' }] });
     await settleMemory({ goal: 'g', reply: 'r', model: openaiStub(env).model, root });
     assert.equal(mem.count(), 1, '4 字符碎片低于包含门槛 → 放行，残余交整理收敛');
+  });
+});
+
+/** items 直出桩（2026-10-15 增删改用例）：绕过 memories 信封，直接出 submit_memory_items 载荷 */
+function itemsStub(items: unknown[]): Capturing {
+  const prompts: string[] = [];
+  const model: ModelAdapter = {
+    provider: 'openai',
+    capabilities: { chat: true },
+    chat: async (req) => {
+      prompts.push(req.messages.map((m) => (m.role === 'user' ? m.content : '')).join('\n'));
+      return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items }) }] };
+    },
+  };
+  return { model, prompts };
+}
+
+test('增删改：带 slug 条目原地更新、retract 条目删除既有记录（2026-10-15 用户裁决）', async () => {
+  await withMem(async (mem) => {
+    assert.ok(mem.add({ type: 'project', description: 'uses pnpm workspaces', body: 'repo manages packages with pnpm workspaces' }).ok);
+    const before = mem.list().find((r) => r.slug === 'uses-pnpm-workspaces')!;
+    const { model } = itemsStub([
+      { slug: 'uses-pnpm-workspaces', type: 'project', description: 'uses pnpm workspaces', content: 'repo switched to npm workspaces in 2026-10' },
+      { retract: true, slug: 'uses-pnpm-workspaces' },
+    ]);
+    // 同批先更新后删除：两支各按序生效（更新落盘、随后退役）
+    await settleMemory({ goal: 'g', reply: 'r', model, root: mem.dir() });
+    assert.equal(mem.count(), 0, 'retract 已删除该记录');
+  });
+});
+
+test('增删改：更新与新增分属同批互不影响；notify 浮出 updated/retracted 行', async () => {
+  await withMem(async (mem) => {
+    assert.ok(mem.add({ type: 'project', description: 'old fact a', body: 'body of old fact a' }).ok);
+    const lines: string[] = [];
+    const { model } = itemsStub([
+      { slug: 'old-fact-a', type: 'project', description: 'old fact a revised', content: 'revised body of fact a' },
+      { retract: true, slug: 'old-fact-a' },
+      { type: 'project', description: 'brand new fact', content: 'body of brand new fact' },
+    ]);
+    const saved = await settleMemory({ goal: 'g', reply: 'r', model, root: mem.dir(), notify: (l) => lines.push(l) });
+    assert.deepEqual(saved, ['brand-new-fact'], '只有新增计入 saved');
+    assert.ok(lines.some((l) => l.startsWith('[memory] updated:')), `应有 updated 行: ${lines.join(' | ')}`);
+    assert.ok(lines.some((l) => l.startsWith('[memory] retracted:')), `应有 retracted 行: ${lines.join(' | ')}`);
+    assert.equal(mem.count(), 1, '更新后又被退役 → 仅剩新增');
+    assert.ok(mem.has('brand-new-fact'));
+  });
+});
+
+test('增删改：提取 prompt 含既有记录清单与维护条款（模型持 slug 才能改/删）', async () => {
+  await withMem(async (mem) => {
+    assert.ok(mem.add({ type: 'feedback', description: 'prefer vitest over jest', body: 'user prefers vitest' }).ok);
+    const { model, prompts } = itemsStub([]);
+    await settleMemory({ goal: 'g', reply: 'r', model, root: mem.dir() });
+    assert.ok(prompts[0].includes('prefer-vitest-over-jest'), '既有 slug 进材料');
+    assert.ok(/RETIRE|retract/i.test(prompts[0]), '退役条款在 prompt');
+    assert.ok(/REVISE|update/i.test(prompts[0]), '更新条款在 prompt');
   });
 });

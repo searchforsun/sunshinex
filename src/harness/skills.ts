@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SkillManifest } from '../types';
 import { Result, ok, fail } from '../result';
-import { resolveDataDir, userSkillsDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir, userSkillsDir } from '../config/data-dir';
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
@@ -33,7 +33,7 @@ export function parseSkillFrontmatter(md: string): Omit<SkillManifest, 'id'> {
 }
 
 /** 学习技能目录（LearnedSkillStore 写入面与双根合并共用的唯一定位）：落全局数据目录 ~/.sunshinex/projects/<工作区>/data/skills（HOME 不可写回退项目 .data） */
-function learnedSkillsDir(root: string): string {
+export function learnedSkillsDir(root: string): string {
   return path.join(resolveDataDir(root), 'skills');
 }
 
@@ -118,6 +118,9 @@ export function loadSkills(root: string): SkillManifest[] {
  *  （同 loadSkills 语义）；跨组**不去重**——分组是展示面，多源同名 id 两组各在（GUI 可标注遮蔽关系） */
 export interface SkillsGroup {
   source: 'project' | 'user' | 'learned';
+  /** 项目归属显示名(设置·技能页项目筛选面;scope=all 跨项目枚举时携带——project 组=当前项目,
+   *  learned 组=沉淀时项目;user 组无归属不载) */
+  project?: string;
   skills: Array<{ id: string; name?: string; description?: string }>;
 }
 
@@ -138,6 +141,53 @@ export function loadSkillsGrouped(root: string): SkillsGroup[] {
     { source: 'user', skills: loadSkillsChain([userSkillsDir()]).map(skillRow) },
     { source: 'learned', skills: loadSkillsChain([learnedSkillsDir(root)]).map(skillRow) },
   ];
+}
+
+/** 跨项目技能全量分组（设置·技能页「项目筛选」数据面）：枚举 projectsRoot 下全部注册项目域，
+ *  逐域产出 project 组（该域根的五根合并，归属=basename(workspace.json.root)）与 learned 组
+ *  （域内 data/skills，归属同上；历史档缺根 → 仅 learned、归属回退 slug）。root 入参 = 当前
+ *  项目锚：其 project 组置首（归属=basename(root)，未注册项目亦覆盖），域枚举跳过其 project 组
+ *  防重复；装载走同款 loadSkillsChain，空组滤除。设置页 root 可能为空（欢迎页入口）——本枚举
+ *  不依赖 root，跨项目可见性由此全面承担 */
+export function loadCrossProjectSkillGroups(root?: string): SkillsGroup[] {
+  const base = projectsRoot();
+  let domains: string[] = [];
+  try {
+    domains = fs.readdirSync(base).filter((s) => fs.existsSync(path.join(base, s, 'data')));
+  } catch {
+    return [];
+  }
+  const out: SkillsGroup[] = [];
+  if (root !== undefined) {
+    for (const g of loadSkillsGrouped(root)) {
+      if (g.source === 'project' && g.skills.length > 0) out.push({ ...g, project: path.basename(root) });
+    }
+  }
+  const seenRoots = new Set<string>(root !== undefined ? [path.resolve(root).toLowerCase()] : []);
+  for (const slug of domains) {
+    const domain = path.join(base, slug);
+    let domRoot: string | undefined;
+    try {
+      const reg = JSON.parse(fs.readFileSync(path.join(domain, 'data', 'workspace.json'), 'utf8')) as { root?: unknown };
+      if (typeof reg?.root === 'string' && reg.root.length > 0) domRoot = reg.root;
+    } catch {
+      /* 历史档无 workspace.json → slug 兜底(仅 learned) */
+    }
+    if (domRoot !== undefined) {
+      const key = path.resolve(domRoot).toLowerCase();
+      if (!seenRoots.has(key)) {
+        seenRoots.add(key);
+        for (const g of loadSkillsGrouped(domRoot)) {
+          if (g.source === 'project' && g.skills.length > 0) out.push({ ...g, project: path.basename(domRoot) });
+        }
+      }
+    }
+    const learned = loadSkillsChain([path.join(domain, 'data', 'skills')]).map(skillRow);
+    if (learned.length > 0) {
+      out.push({ source: 'learned', project: domRoot !== undefined ? path.basename(domRoot) : slug, skills: learned });
+    }
+  }
+  return out;
 }
 
 /** 仅 user 组（G8c T6 daemon 裁定）：无项目上下文（root 缺省）时的分组面——userSkillsDir 全局可扫

@@ -7,6 +7,8 @@
  * 纯 node 跨平台（Windows 经 node.exe 直跑，无 shell 语法依赖）；递归收集 dist 下 *.test.js 后交 node --test。
  */
 const { spawnSync } = require('child_process');
+// G14.104 测试基线语言钉 en（产品缺省 zh）：断言面以 en 书写，语言专项由 i18n.test 覆盖
+process.env.SUNSHINEX_LANGUAGE = 'en';
 const fs = require('fs');
 const path = require('path');
 

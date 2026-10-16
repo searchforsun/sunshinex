@@ -127,8 +127,9 @@ test('Harness 装配：缺省开启沉淀，learnSkills:false 可关', async () 
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   try {
     process.env.SUNSHINEX_DATA_DIR = path.join(tmp1, '.data');
+    // goal 含 ASCII——G14.81 门控:纯中文 goal 塌缩 learned-N 噪声不再落盘(缺省关门槛语义由本用例守护)
     const h1 = new Harness({ root: tmp1, model: new ScriptedAdapter(['{"done":true,"reply":"验收手册"}']) });
-    const r1 = await h1.reactor.run({ goal: '验收手册' }, { maxSteps: 3 });
+    const r1 = await h1.reactor.run({ goal: '验收手册 acceptance' }, { maxSteps: 3 });
     assert.equal(r1.done, true);
     const dir1 = path.join(tmp1, '.data', 'skills');
     assert.ok(fs.existsSync(dir1), '缺省开启：学习产物应落盘');

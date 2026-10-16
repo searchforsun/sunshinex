@@ -128,7 +128,7 @@ test('① GET /workspaces：createSession 落 workspace.json（root 反解）；
     assert.ok(typeof aRow.mtime === 'number' && aRow.mtime > 0, 'mtime=dataDir mtime');
 
     const bRow = rows.find((x) => x.root === path.resolve(rootB));
-    assert.ok(bRow, 'root-b 行同样反解');
+    assert.ok(bRow, 'root-b 行同样反解（注册表恒全量——下拉可选中刚建 0 会话工作区）');
     assert.equal(bRow.sessionCount, 0, '无 sessions 目录 = 0');
 
     const legacy = rows.find((x) => x.slug === legacySlug);

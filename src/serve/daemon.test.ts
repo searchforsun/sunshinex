@@ -8,7 +8,7 @@ import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult } from '../types';
-import { SEMANTIC_KEYS, applySettings, loadGlobalSettings, loadProjectSettings, resetSelfFilledSlots } from '../config/settings';
+import { SEMANTIC_KEYS, applySettings, loadGlobalSettings, loadProjectSettings, resetSelfFilledSlots, stripJsonComments } from '../config/settings';
 
 /** T1 会话管理器测试：daemon 从单会话改注册表——POST /session/new 创建、/session/:id/* 会话维端点、
  *  裸端点激活别名、双会话并发互不串流、全会话 teardown。既有 G1/G2 单会话用例已迁移 :id 形态（语义不变） */
@@ -380,6 +380,29 @@ test('⑧ close() 幂等且 close 后 fetch 拒连', async () => {
     else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('G14.69 /workspace/locate:标记文件定位所选目录(roots 覆写直指,超时回 null)', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base, tmp } = ctx;
+    const picked = path.join(tmp, 'picked-dir');
+    fs.mkdirSync(picked, { recursive: true });
+    const token = 'sunshinex-pick-abc123def456';
+    fs.writeFileSync(path.join(picked, token), '', 'utf8');
+    const post = async (p2: string, body: unknown): Promise<{ status: number; json: { path?: string | null; error?: string } }> => {
+      const r = await fetch(`${base}${p2}`, { method: 'POST', headers: AUTH, body: JSON.stringify(body) });
+      return { status: r.status, json: (await r.json()) as { path?: string | null; error?: string } };
+    };
+    const hit = await post('/workspace/locate', { token, roots: [tmp] });
+    assert.equal(hit.status, 200);
+    assert.ok(hit.json.path !== null && hit.json.path !== undefined);
+    assert.equal(path.resolve(hit.json.path!).toLowerCase(), picked.toLowerCase());
+    const miss = await post('/workspace/locate', { token: 'sunshinex-pick-000000000000', roots: [tmp] });
+    assert.equal(miss.status, 200);
+    assert.equal(miss.json.path, null);
+    const bad = await post('/workspace/locate', { token: 'short', roots: [tmp] });
+    assert.equal(bad.status, 400);
+  });
 });
 
 test('⑨ 全会话 teardown：signal 无视的悬挂 run 不拖住 close（≤3s 上限，双会话并行收口）', { timeout: 8000 }, async () => {
@@ -913,18 +936,57 @@ describe('G8c T2 /settings 端点', () => {
     });
   });
 
-  test('⑰ 含注释文件 PUT→409 {file contains comments, use raw editor},盘上原样', async () => {
+  test('⑰ 含注释文件 PUT→手术写(注释保留,只动目标键);多行值等不支持形态 409,盘上原样', async () => {
     await withSettingsDaemon(async ({ base, tmp }) => {
       const proj = path.join(tmp, 'proj');
       const file = path.join(proj, '.sunshinex', 'settings.json');
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
-      const raw = '{\n  // 手写注释\n  "model": "m"\n}\n';
+      const raw = [
+        '{',
+        '  // 头注释',
+        '  "version": 1,',
+        '  "language": "en",          // 界面语言 en|zh',
+        '  "contextWindow": 1000000,  // 上下文窗口',
+        '  /* 块注释',
+        '     跨行 */',
+        '  "tier": "large"',
+        '}',
+        '',
+      ].join('\n');
       fs.writeFileSync(file, raw, 'utf8');
 
-      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'x' } }) });
-      assert.equal(r.status, 409);
-      assert.deepEqual(await r.json(), { error: 'file contains comments', hint: 'use raw editor' }, '结构化改写会丢注释→引流 raw 编辑面');
-      assert.equal(fs.readFileSync(file, 'utf8'), raw, '409 面零盘上副作用(注释原样)');
+      // 改值:注释逐字保留,只动目标键;块注释行原样
+      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { language: 'zh-CN', contextWindow: 200000 } }) });
+      assert.equal(r.status, 200);
+      const onDisk = fs.readFileSync(file, 'utf8');
+      assert.ok(onDisk.includes('"language": "zh-CN",          // 界面语言 en|zh'), '行尾注释逐字保留');
+      assert.ok(onDisk.includes('"contextWindow": 200000,  // 上下文窗口'), '改值行注释保留');
+      assert.ok(onDisk.includes('/* 块注释'), '跨行块注释保留');
+      assert.ok(onDisk.includes('"tier": "large"'), '未触及键原样');
+      const parsed = JSON.parse(stripJsonComments(onDisk)) as Record<string, unknown>;
+      assert.equal(parsed['language'], 'zh-CN');
+      assert.equal(parsed['contextWindow'], 200000);
+
+      // 删键(null):整行移除+悬挂逗号修整,注释不串位;GET 回 default
+      const r2 = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { contextWindow: null } }) });
+      assert.equal(r2.status, 200);
+      const afterDel = fs.readFileSync(file, 'utf8');
+      assert.equal(afterDel.includes('contextWindow'), false, '删键后行消失');
+      assert.ok(afterDel.includes('"tier": "large"'), '末键无逗号保持合法');
+      assert.equal((JSON.parse(stripJsonComments(afterDel)) as Record<string, unknown>)['tier'], 'large', '删键后文件仍可解析');
+
+      // 增键(原文件无此键):根 `{` 后插入
+      const r3 = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { maxTokens: 999 } }) });
+      assert.equal(r3.status, 200);
+      const afterIns = fs.readFileSync(file, 'utf8');
+      assert.equal((JSON.parse(stripJsonComments(afterIns)) as Record<string, unknown>)['maxTokens'], 999, '插入键可解析');
+
+      // 多行值(不支持形态;须含注释才进手术路径——无注释多行走常规结构化写,整键改写合法):409 引流 raw,盘上原样
+      const multiline = '{\n  // 注释\n  "model": {\n    "nested": true\n  }\n}\n';
+      fs.writeFileSync(file, multiline, 'utf8');
+      const r4 = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'x' } }) });
+      assert.equal(r4.status, 409);
+      assert.equal(fs.readFileSync(file, 'utf8'), multiline, '409 面零盘上副作用');
     });
   });
 
@@ -957,6 +1019,37 @@ describe('G8c T2 /settings 端点', () => {
       const cwRow = body.keys.find((k) => k.key === 'contextWindow')!;
       assert.deepEqual(langRow, { key: 'language', value: 'env-lang', source: 'env', envOverride: true }, 'GET 仍判 env 最优先');
       assert.deepEqual(cwRow, { key: 'contextWindow', value: '222222', source: 'project', envOverride: false }, 'GET 反映重载后项目值');
+    });
+  });
+
+  test('⑱b PUT scope=global:结构化写用户级文件(root 省略合法,env/version 保留,GET 回 global);缺 updates/project 缺 root 仍 400', async () => {
+    await withSettingsDaemon(async ({ base, home }) => {
+      const gfile = path.join(home, '.sunshinex', 'settings.json');
+      fs.writeFileSync(gfile, JSON.stringify({ version: 1, model: 'g-old', env: { SUNSHINEX_API_KEY: 'keep' } }), 'utf8');
+      applySettings(loadGlobalSettings());
+
+      const r = await fetch(`${base}/settings`, {
+        method: 'PUT',
+        headers: AUTH,
+        body: JSON.stringify({ scope: 'global', updates: { model: 'g-new', maxTokens: 123 } }),
+      });
+      assert.equal(r.status, 200);
+      assert.deepEqual(await r.json(), { ok: true });
+      assert.deepEqual(
+        JSON.parse(fs.readFileSync(gfile, 'utf8')),
+        { version: 1, model: 'g-new', maxTokens: 123, env: { SUNSHINEX_API_KEY: 'keep' } },
+        '全局文件结构化改写:只动目标键,version/env 保留',
+      );
+
+      const g = await fetch(`${base}/settings`, { headers: AUTH });
+      const row = ((await g.json()) as SettingsBody).keys.find((k) => k.key === 'model')!;
+      assert.deepEqual(row, { key: 'model', value: 'g-new', source: 'global', envOverride: false }, 'GET(无 root)反映全局新值');
+
+      // 语义不因新参松动:缺 updates 400;scope=project(缺省)缺 root 400
+      const noUpdates = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ scope: 'global' }) });
+      assert.equal(noUpdates.status, 400, 'updates 缺失 400');
+      const projNoRoot = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ updates: { model: 'x' } }) });
+      assert.equal(projNoRoot.status, 400, 'scope=project 缺 root 400(缺省语义不变)');
     });
   });
 
@@ -1742,9 +1835,9 @@ interface SkillsRow {
   description?: string;
 }
 
-/** GET /settings/skills 应答整体(断言用) */
+/** GET /settings/skills 应答整体(断言用;project=scope=all 跨项目视图的归属名) */
 interface SkillsBody {
-  groups: Array<{ source: 'project' | 'user' | 'learned'; skills: SkillsRow[] }>;
+  groups: Array<{ source: 'project' | 'user' | 'learned'; project?: string; skills: SkillsRow[] }>;
 }
 
 describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
@@ -1783,6 +1876,37 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(group('learned').skills, [{ id: 'learned-one', name: 'Learned One' }], 'learned 组=resolveDataDir(root)/skills');
       // 跨组不去重:project 与 user 各持 alpha(展示面重复 id 保留,GUI 可标注多源同名)
       assert.equal(body.groups.filter((g) => g.skills.some((s) => s.id === 'alpha')).length, 2, '跨组同名不去重:两组各在');
+    });
+  });
+
+  test('㊳b skills scope=all:user+当前项目 project 组(带归属名)+跨项目学习沉淀逐项目分组', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const writeSkill = (dir: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(dir, id), { recursive: true });
+        fs.writeFileSync(path.join(dir, id, 'SKILL.md'), md, 'utf8');
+      };
+      const proj = path.join(tmp, 'proj');
+      writeSkill(path.join(proj, '.sunshinex', 'skills'), 'alpha', '---\nname: Alpha\ndescription: d\n---\nbody\n');
+      writeSkill(path.join(home, '.sunshinex', 'skills'), 'solo', '---\nname: Solo\n---\n');
+      // 外域项目:projects/<slug>/data/{workspace.json(注册根),skills(学习沉淀)}——归属名=根 basename
+      const domain = path.join(home, '.sunshinex', 'projects', 'slug-xyz', 'data');
+      writeSkill(path.join(domain, 'skills'), 'learned-xyz', '---\nname: Learned Xyz\n---\nlbody\n');
+      fs.writeFileSync(path.join(domain, 'workspace.json'), JSON.stringify({ root: path.join(tmp, 'xyz-root') }), 'utf8');
+
+      const r = await fetch(`${base}/settings/skills?root=${encodeURIComponent(proj)}&scope=all`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SkillsBody;
+      assert.deepEqual(body.groups.map((g) => g.source), ['user', 'project', 'learned'], '固定序:user→project→learned(逐项目)');
+      const user = body.groups.find((g) => g.source === 'user')!;
+      assert.equal(user.project, undefined, 'user 组无项目归属');
+      const projGroup = body.groups.find((g) => g.source === 'project')!;
+      assert.equal(projGroup.project, 'proj', 'project 组归属=当前项目显示名(basename(root))');
+      assert.deepEqual(projGroup.skills, [{ id: 'alpha', name: 'Alpha', description: 'd' }]);
+      assert.deepEqual(
+        body.groups.filter((g) => g.source === 'learned'),
+        [{ source: 'learned', project: 'xyz-root', skills: [{ id: 'learned-xyz', name: 'Learned Xyz' }] }],
+        '跨项目学习沉淀逐项目分组:归属=workspace.json 根 basename(缺档回退 slug)',
+      );
     });
   });
 
@@ -1837,4 +1961,20 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(await r.json(), { entries: 2, lastWriteAt: expectNewer }, '条数=主域记录文件数(索引/agents 子树不计);lastWriteAt=最大 mtime');
     });
   });
+});
+
+/** G14.170 node 步骤不进 GUI 转录:子代理结论/图节点回执([task-tN] …)是内部管线通知——
+ *  完成可见性归委派徽标/Agents 页;note/notice 等信息行照旧保留 */
+test('chainStepsToEntries:node 动作行跳过;note/notice 保留为 notice 条', async () => {
+  const { chainStepsToEntries } = await import('./session');
+  const entries = chainStepsToEntries([
+    { action: 'task', step: 1, observation: '跑分析' },
+    { action: 'node', step: 2, observation: '[task-t1] 子代理分析完成。以下为 Task t1 的分析报告。' },
+    { action: 'note', step: 3, observation: '[task-t2] did not finish (failed)' },
+    { action: 'notice', step: 4, observation: '[memory] saved: demo' },
+  ]);
+  const kinds = entries.map((e) => e.kind);
+  assert.equal(kinds.filter((k) => k === 'notice').length, 2, 'note/notice 各一条');
+  assert.ok(entries.every((e) => !e.md.includes('[task-t1]')), 'node 结论行不出现');
+  assert.ok(entries.some((e) => e.md.includes('did not finish')), 'note 失败行保留');
 });

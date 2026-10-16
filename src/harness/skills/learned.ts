@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { learnedSkillsDir } from '../skills';
 import * as path from 'path';
 import { Result, ok, fail } from '../../result';
 import { resolveDataDir } from '../../config/data-dir';
@@ -34,12 +35,25 @@ function clip(text: string): string {
 /**
  * 学习技能写入面：成功任务沉淀为 <全局数据目录>/skills/{id}/skill.md（~/.sunshinex/projects/<工作区>/data，不入工作区不入库；
  * 用户技能 skills/ 恒优先于学习产物，本类只管写入不参与运行时合并）。
- * 撞名追加 -2/-3… 不覆盖既有产物；目录上限由控制面 opts.limit 驱动（缺省 DEFAULT_LEARNED_SKILL_LIMIT，对齐 CAP.skill），超限按 mtime 删最旧。
+ * 撞名=原地更新（2026-10-15 用户裁决「禁止 -1/-2 后缀，要在之前 skills 上修改」）：同 slug 二次沉淀覆盖既有产物，
+ * 不产 -2/-3 副本；目录上限由控制面 opts.limit 驱动（缺省 DEFAULT_LEARNED_SKILL_LIMIT，对齐 CAP.skill），超限按 mtime 删最旧。
  */
 export class LearnedSkillStore {
   constructor(private root: string) {}
 
-  settle(goal: string, reply: string, opts?: { limit?: number; refined?: RefinedSkill }): Result<string> {
+  /** G14.81 已沉淀技能 id 清单(目录名=name slug)——提炼 prompt 的去重/合并上下文 */
+  names(): string[] {
+    try {
+      return fs
+        .readdirSync(learnedSkillsDir(this.root), { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name);
+    } catch {
+      return [];
+    }
+  }
+
+  settle(goal: string, reply: string, opts?: { limit?: number; refined?: RefinedSkill }): Result<{ id: string; updated: boolean }> {
     const g = goal.trim();
     const rep = reply.trim();
     // refined 在场时不要求 reply：失败/中止的任务没有最终答复，但同样值得沉淀（replied 才校验 reply 非空）
@@ -50,12 +64,28 @@ export class LearnedSkillStore {
     this.evictOldest(dir, opts?.limit ?? DEFAULT_LEARNED_SKILL_LIMIT);
 
     const refined = opts?.refined;
-    const id = this.allocateId(dir, slugify(refined ? refined.name : g));
+    const id = slugify(refined ? refined.name : g);
+    const updated = fs.existsSync(path.join(dir, id));
     const name = refined ? refined.name.slice(0, 60) : `settle:${g.slice(0, 30)}`;
     const description = refined ? refined.description.slice(0, 60) : `learned settle — ${g.slice(0, 30)}`;
     const body = refined
       ? clip(refined.body)
       : ['# Goal', '', g, '', '# Successful reply', '', clip(rep)].join('\n');
+    this.writeSkillFile(dir, id, name, description, body);
+    return ok({ id, updated });
+  }
+
+  /** G14.92 原地更新：覆盖既有 id 的 frontmatter 与正文（去重于源头——相近主题合并进既有技能，
+   *  不新增目录）。id 不存在 → fail（调用方降级 create）。不计新增、不触发逐出（容量守恒） */
+  updateExisting(id: string, refined: RefinedSkill): Result<string> {
+    const dir = path.join(resolveDataDir(this.root), 'skills');
+    const target = path.join(dir, id, 'skill.md');
+    if (!fs.existsSync(target)) return fail('SKILL_UPDATE_MISSING', `SKILL_UPDATE_MISSING: ${id}`);
+    this.writeSkillFile(dir, id, refined.name.slice(0, 60), refined.description.slice(0, 60), clip(refined.body));
+    return ok(id);
+  }
+
+  private writeSkillFile(dir: string, id: string, name: string, description: string, body: string): void {
     const md = [
       '---',
       `name: ${name}`,
@@ -71,17 +101,9 @@ export class LearnedSkillStore {
     ].join('\n');
     fs.mkdirSync(path.join(dir, id), { recursive: true });
     fs.writeFileSync(path.join(dir, id, 'skill.md'), md);
-    return ok(id);
   }
 
-  /** 撞名追加 -2/-3…：首个空位即落位，既有产物零覆盖 */
-  private allocateId(dir: string, base: string): string {
-    let candidate = base;
-    for (let n = 2; fs.existsSync(path.join(dir, candidate)); n += 1) {
-      candidate = `${base}-${n}`;
-    }
-    return candidate;
-  }
+  /** 撞名原地更新已收编进 settle（同 slug 覆盖，不产 -2 副本）；allocateId 撞名避让循环随之退役 */
 
   /**
    * 超上限按 mtime 升序删最旧，为本次沉淀腾出 1 个空位（limit 由控制面配置驱动）。

@@ -1,99 +1,227 @@
-import { useEffect, useState } from 'react';
-import { DiffPanel } from '../diff-panel';
+import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, RefreshCw, Upload, GitCommitVertical } from 'lucide-react';
+import { DiffLines } from '../diff-lines';
+import { FileIcon } from '../file-icon';
+import { t } from '../i18n';
 import type { Connection, DiffResp } from '../connection';
 import type { TabParams } from './tab-state';
 
 /**
- * G8d Diff 标签体(T2):write 调用的 pre-image ↔ 磁盘现文件双列呈现(spec §2 Diff 行)。
- * mount 以 params.callId 拉 conn.fetchDiff(sessionId, callId)(G7 既有面)→ 成功:标题行
- * (path = params.path 优先回落应答 path;oldContent 缺场 →「新建」标;truncated → 截断横幅)
- * + DiffPanel 双列复用(G6 既有渲染——old 缺场自动单列现内容);404 无快照(daemon {error:
- * 'no-snapshot'} 面,连接层以 HTTP 失败抛——消息含状态码)→ 行内降级错误条带 callId;其他
- * HTTP 失败原文示出;callId 缺场(「+」菜单裸开)→ 引导文案不拉。状态随挂载(切标签卸毁即失,
- * 重挂重拉——Files/DirectoryTab 同口径)。sx-diff-* 伴生样式归 G8d-e(app.css 冻结期)。
+ * G14.99 Diff 标签终态:工作区未提交变动目录(未暂存视图)——
+ * 顶栏(分支+刷新+提交/推送钮) / 文件列表(图标+名称+目录后缀+±统计,行点击展开内嵌
+ * DiffLines flat;文件名点击开 file 标签预览) / params.path 在场(主对话 write 条目点击)
+ * 即自动展开对应项。params.callId 历史语义(write 时刻快照)保留:callId 在场且 path 不在
+ * 变动列表 → 回落旧单文件 diff 视图(G8d 面)。提交/推送弹窗:message 输入 + 双动作。
+ * G14.120:单开 accordion(同一时刻至多一个文件展开,diff 平铺无内滚——纵向滚动统一外层);
+ * hunk 折叠(上下文各留 4 行)+ LCS 行配对(行号双列不错位)。
  */
 
 export interface DiffTabProps {
   readonly conn: Connection;
-  /** 当前会话(:id 寻址维) */
   readonly sessionId: string;
-  /** 开档参数:callId 寻址判重键;path 可选(title 与标题行的可读优先面——Chat 开档时透传) */
   readonly params: TabParams;
+  /** 点击文件名 → 打开 file 标签预览(App 注入 openTabInSession('file')) */
+  readonly onOpenFile?: (path: string) => void;
 }
 
-/** 拉取态四分:在途 / 404 无快照降级 / 其他错误(原文) / 成功 */
-type DiffLoad =
-  | { readonly status: 'loading' }
-  | { readonly status: 'no-snapshot'; readonly callId: string }
-  | { readonly status: 'error'; readonly message: string }
-  | { readonly status: 'loaded'; readonly resp: DiffResp };
+interface ChangeFile {
+  path: string;
+  status: string;
+  added: number | null;
+  deleted: number | null;
+}
 
-export function DiffTab({ conn, sessionId, params }: DiffTabProps): JSX.Element {
-  const [load, setLoad] = useState<DiffLoad>({ status: 'loading' });
-  const callId = params.callId;
+/** 目录后缀拆分(名称+所在目录,与文件面板同构) */
+function splitPath(p: string): { base: string; dir: string } {
+  const norm = p.replaceAll('\\', '/');
+  const base = norm.split('/').pop() ?? norm;
+  return { base, dir: norm.slice(0, norm.length - base.length) };
+}
+
+export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): JSX.Element {
+  const autoPath = params.path;
+  // G14.109 LegacyDiff 退役:diff 标签统一 ChangesView,params.path 自动展开对应项
+  // (write 时刻快照语义由 git 当前变动视图替代——点 write 行即定位工作区变动)
+  const [branch, setBranch] = useState('');
+  const [files, setFiles] = useState<ChangeFile[]>([]);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  /** G14.120 单开 accordion:同一时刻至多展开一个文件的 diff(开新即合旧),纵向滚动交外层 */
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const [contents, setContents] = useState<Record<string, { oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>>({});
+  const [loadingPath, setLoadingPath] = useState<string | null>(null);
+  const [commitOpen, setCommitOpen] = useState(false);
+  const [commitMsg, setCommitMsg] = useState('');
+  const [busy, setBusy] = useState<'commit' | 'push' | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  /** 列表里是否含 params.path(含 → 自动展开该项;不含且 callId 在场 → 旧单文件视图) */
+  const [autoPathInList, setAutoPathInList] = useState<boolean | null>(null);
+
+  const refresh = useCallback((): void => {
+    (conn.sessionChanges?.(sessionId) ?? Promise.resolve({ branch: '', files: [] })).then(
+      (r) => {
+        setBranch(r.branch);
+        setFiles(r.files);
+        setLoadErr(null);
+        if (autoPath !== undefined) setAutoPathInList(r.files.some((f) => f.path === autoPath));
+      },
+      (err: unknown) => setLoadErr(err instanceof Error ? err.message : String(err)),
+    );
+  }, [conn, sessionId, autoPath]);
 
   useEffect(() => {
-    if (callId === undefined) return; // 裸开档(无 callId):不拉,引导文案面
-    let alive = true;
-    setLoad({ status: 'loading' });
-    conn.fetchDiff(sessionId, callId, params.path).then(
-      (resp) => {
-        if (alive) setLoad({ status: 'loaded', resp });
+    refresh();
+  }, [refresh]);
+
+  const fetchContent = useCallback((p: string): void => {
+    if (loadingPath !== null || contents[p] !== undefined) return;
+    setLoadingPath(p);
+    conn.sessionChangeContent(sessionId, p).then(
+      (c) => {
+        setContents((m) => ({ ...m, [p]: c }));
+        setLoadingPath(null);
+      },
+      () => setLoadingPath(null),
+    );
+  }, [conn, sessionId, contents, loadingPath]);
+
+  useEffect(() => {
+    if (autoPathInList !== true || autoPath === undefined) return;
+    setOpenPath(autoPath); // 主对话 write 点击 → 自动展开对应项(单开:合掉他项)
+    fetchContent(autoPath); // 展开即拉内容(否则 loading 悬挂)
+  }, [autoPathInList, autoPath, fetchContent]);
+
+  const toggle = (p: string): void => {
+    setOpenPath((cur) => {
+      const next = cur === p ? null : p;
+      if (next !== null) fetchContent(next);
+      return next;
+    });
+  };
+
+  const runGit = (kind: 'commit' | 'push'): void => {
+    setBusy(kind);
+    setResult(null);
+    const req = kind === 'commit' ? conn.commitChanges(sessionId, commitMsg) : conn.pushChanges(sessionId);
+    void req.then(
+      () => {
+        setBusy(null);
+        setResult({ ok: true, text: kind === 'commit' ? t('Committed', '已提交') : t('Pushed', '已推送') });
+        if (kind === 'commit') {
+          setCommitMsg('');
+          setCommitOpen(false);
+          refresh();
+        }
       },
       (err: unknown) => {
-        if (!alive) return;
-        const message = err instanceof Error ? err.message : String(err);
-        // 404 = 无快照(环已裁或非 write)——降级文案面;其余(HTTP 面)原文示出不静默
-        if (message.includes('-> 404')) setLoad({ status: 'no-snapshot', callId });
-        else setLoad({ status: 'error', message });
+        setBusy(null);
+        setResult({ ok: false, text: err instanceof Error ? err.message : String(err) });
       },
     );
-    return () => {
-      alive = false; // 卸载弃在途应答(标签体已不在场)
-    };
-  }, [conn, sessionId, callId]);
+  };
 
-  if (callId === undefined) {
-    return (
-      <div className="sx-diff-tab" aria-label="diff tab">
-        <div className="sx-diff-status">无 callId——从对话 write 工具条目的路径钮打开。</div>
-      </div>
-    );
-  }
-  if (load.status === 'loading') {
-    return (
-      <div className="sx-diff-tab" aria-label="diff tab">
-        <div className="sx-diff-status" role="status">
-          diff 加载中…
-        </div>
-      </div>
-    );
-  }
-  if (load.status === 'no-snapshot') {
-    return (
-      <div className="sx-diff-tab" aria-label="diff tab">
-        <div className="sx-diff-error">{`无快照(环已裁或非 write)——callId: ${load.callId}`}</div>
-      </div>
-    );
-  }
-  if (load.status === 'error') {
-    return (
-      <div className="sx-diff-tab" aria-label="diff tab">
-        <div className="sx-diff-error">{load.message}</div>
-      </div>
-    );
-  }
-  const resp = load.resp;
+
   return (
-    <div className="sx-diff-tab" aria-label="diff tab">
-      <div className="sx-diff-head">
-        <span className="sx-diff-path" title={resp.path}>
-          {params.path ?? resp.path}
+    <div className="sx-diff-tab sx-changes" aria-label="diff tab">
+      <div className="sx-changes-bar">
+        <span className="sx-changes-branch" data-tip={t('Unstaged working tree', '未暂存的工作区变动')}>
+          {branch !== '' ? branch : t('Changes', '变动')}
         </span>
-        {resp.oldContent === undefined && <span className="sx-diff-badge">新建</span>}
-        {resp.truncated === true && <span className="sx-diff-truncated">内容超限已截断</span>}
+        <span className="sx-changes-bar-actions">
+          <button type="button" className="sx-changes-act" aria-label={t('Commit', '提交')} data-tip={t('Commit', '提交')} onClick={() => setCommitOpen((v) => !v)}>
+            <GitCommitVertical size={13} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+          <button type="button" className="sx-changes-act" aria-label={t('Push', '推送')} data-tip={t('Push', '推送')} onClick={() => runGit('push')}>
+            <Upload size={13} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+          <button type="button" className="sx-changes-act" aria-label={t('Refresh', '刷新')} data-tip={t('Refresh', '刷新')} onClick={refresh}>
+            <RefreshCw size={13} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </span>
       </div>
-      <DiffPanel oldStr={resp.oldContent} newStr={resp.newContent} path={resp.path} />
+      {commitOpen && (
+        <div className="sx-changes-commit">
+          <textarea
+            aria-label="commit message"
+            className="sx-changes-commit-msg"
+            rows={3}
+            placeholder={t('Commit message…', '提交信息…')}
+            value={commitMsg}
+            onChange={(e) => setCommitMsg(e.target.value)}
+          />
+          <div className="sx-changes-commit-foot">
+            <button type="button" disabled={busy !== null} onClick={() => { setCommitOpen(false); setResult(null); }}>
+              {t('Cancel', '取消')}
+            </button>
+            <button type="button" className="primary" disabled={busy !== null || commitMsg.trim() === ''} onClick={() => runGit('commit')}>
+              {busy === 'commit' ? t('Committing…', '提交中…') : t('Commit', '提交')}
+            </button>
+          </div>
+        </div>
+      )}
+      {result !== null && (
+        <div className={`sx-changes-result ${result.ok ? 'ok' : 'err'}`} role="status">
+          {result.text}
+        </div>
+      )}
+      {loadErr !== null && <div className="sx-changes-result err">{loadErr}</div>}
+      {files.length === 0 && loadErr === null && (
+        <div className="sx-changes-empty">{t('No uncommitted changes', '没有未提交的变动')}</div>
+      )}
+      <div className="sx-changes-list">
+        {files.map((f) => {
+          const { base, dir } = splitPath(f.path);
+          const open = openPath === f.path;
+          const c = contents[f.path];
+          return (
+            /* G14.104 整行点击展开(文件名除外=开标签);展开钮移最右;无边框 */
+            <div key={f.path} className={`sx-change${open ? ' open' : ''}`}>
+              <div
+                className="sx-change-row"
+                role="button"
+                tabIndex={-1}
+                aria-expanded={open}
+                onClick={() => toggle(f.path)}
+              >
+                <FileIcon path={f.path} />
+                <button
+                  type="button"
+                  className="sx-change-name"
+                  data-tip={t('Open file tab', '打开文件标签')}
+                  onClick={(e) => {
+                    e.stopPropagation(); // 文件名=开 file 标签,不触发行展开
+                    onOpenFile?.(f.path);
+                  }}
+                >
+                  {base}
+                </button>
+                <span className="sx-change-dir">{dir}</span>
+                <span className="sx-change-stat">
+                  {f.added === null ? (
+                    <span className="sx-change-new">{t('new', '新建')}</span>
+                  ) : (
+                    <>
+                      <span className="sx-change-add">{`+${f.added}`}</span>
+                      <span className="sx-change-del">{`-${f.deleted}`}</span>
+                    </>
+                  )}
+                </span>
+                <span className="sx-change-toggle" aria-hidden="true">
+                  {open ? <ChevronUp size={13} strokeWidth={1.75} /> : <ChevronDown size={13} strokeWidth={1.75} />}
+                </span>
+              </div>
+              {open && (
+                <div className="sx-change-body">
+                  {loadingPath === f.path || c === undefined ? (
+                    <div className="sx-change-loading" role="status">{t('loading diff…', 'diff 加载中…')}</div>
+                  ) : (
+                    <DiffLines oldStr={c.oldContent} newStr={c.newContent} path={f.path} collapsible variant="flat" />
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

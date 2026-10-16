@@ -8,6 +8,7 @@ import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
 import { BatchRunner } from './batch-runner';
 import {
+  FILE_PATH_LINE,
   IDENTITY_LINE,
   outputStyleLine,
   TOOL_POLICY_LINE,
@@ -183,6 +184,9 @@ export class Reactor {
       summaryModel: adapter,
     });
     let done = false;
+    // G14.83 终稿轮思考(入链挂 reply 行)
+    let doneReasoning: string | undefined;
+    let doneThinkSeconds: number | undefined;
     let reply: string | undefined;
     let tokensUsed = 0; // 真实模型用量累计（adapter usage 回传聚合）
     let cacheHitTokens = 0; // prompt 缓存命中累计（adapter onCache 回传聚合）
@@ -213,7 +217,8 @@ export class Reactor {
         stopReason = 'interrupted';
         break;
       }
-      // 运行中穿插消费（对标 CC queued messages，用户→运行时方向）：每个步边界 drain 一次，
+      // 运行中穿插消费（G14.89 两档语义）：步边界 drain 只取「插入发送」条目(置首标记)注入当前轮；
+      // 普通排队条目不经此路径——留通道由会话层轮收束自动补跑为下一轮(排队=等当前轮完成)。
       // 用户穿插行以 task 记录尾追加 steps——下一装配面 history 自然携带（尾追、零前缀击穿），
       // session 作用域收束时随全量步骤回写主链（可审计、跨轮可见）。
       // 消费门=本 run 已起步（≥1 新步）：起步前穿插留通道，避免吞进零新步 done 终稿；
@@ -297,6 +302,9 @@ export class Reactor {
         if (outcome.done) {
           done = true;
           reply = outcome.reply;
+          // G14.83:终稿轮思考原文/时长上抛——链写回时挂 reply 行(刷新回放 Thought 行不丢)
+          doneReasoning = outcome.reasoning;
+          doneThinkSeconds = outcome.thinkSeconds;
           stopReason = 'done';
           // step done 事件发射契约（session 收束面/TUI 终态依赖此事件，前缀面不受影响）
           this.emit('step', 'done', { step });
@@ -340,7 +348,14 @@ export class Reactor {
           .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}), ...(s.thinkSeconds !== undefined ? { thinkSeconds: s.thinkSeconds } : {}) })),
       );
       if (done && reply) {
-        this.deps.context.appendChain([{ action: 'reply', observation: reply }]);
+        this.deps.context.appendChain([{
+          action: 'reply',
+          observation: reply,
+          // G14.83:终稿轮思考挂 reply 行——刷新回放 Thought 行不丢(此前终稿轮 reasoning 不入链,刷新即丢)
+          ...(doneReasoning !== undefined && doneReasoning !== ''
+            ? { reasoning: doneReasoning, ...(doneThinkSeconds !== undefined ? { thinkSeconds: doneThinkSeconds } : {}) }
+            : {}),
+        }]);
       } else {
         this.deps.context.appendChain([{ action: 'note', observation: `Task ended without completion (${stopReason ?? 'unknown'})` }]);
       }
@@ -438,6 +453,8 @@ export class Reactor {
       // 工作目录事实行随活动根（D19-b）：activeRoot 是会话级状态、仅在 worktree 进入/退出时变化（与 cwd 同类
       // 的环境事实，非时变字段）——进出即合法前缀重写点，其余相邻帧「逐字节前缀稳定」不变量维持；缺省/主区字节不变
       workDirLine(this.deps.activeRoot?.() ?? this.deps.root ?? this.deps.context.root),
+      // G14.121 文件引用路径行：回复提及文件一律绝对路径（GUI 文件 token 链接按绝对路径寻址）
+      FILE_PATH_LINE,
     ].join('\n');
   }
 
@@ -453,7 +470,7 @@ export class Reactor {
     hooks: UsageHooks,
     effort: ReasoningEffort | undefined,
     signal: AbortSignal | undefined,
-  ): Promise<{ done: boolean; reply?: string }> {
+  ): Promise<{ done: boolean; reply?: string; reasoning?: string; thinkSeconds?: number }> {
     const startedAt = Date.now();
     this.emit('model-start', undefined, { step });
     const messages = buildMessages({
@@ -467,10 +484,12 @@ export class Reactor {
     const tools = [...this.deps.registry.list()]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, ...(t.parameters ? { parameters: t.parameters } : {}) } }));
-    // G14.24 思考计时:包一层 onReasoning 捕获首增量时刻(思考模式端点才触发)
+    // G14.24 思考计时:包一层 onReasoning 捕获首增量时刻(思考模式端点才触发);
+    // G14.83:同步累计轮内思考原文——终稿轮 reasoning 随 done 上抛入链(刷新回放 Thought 行不再丢)
     let reasoningStart: number | undefined;
+    let roundReasoning = '';
     const timedHooks: UsageHooks = hooks.onReasoning !== undefined
-      ? { ...hooks, onReasoning: (t) => { if (reasoningStart === undefined) reasoningStart = Date.now(); hooks.onReasoning?.(t); } }
+      ? { ...hooks, onReasoning: (t) => { if (reasoningStart === undefined) reasoningStart = Date.now(); roundReasoning += t; hooks.onReasoning?.(t); } }
       : hooks;
     const req: ChatRequest = { messages, tools, ...(signal ? { signal } : {}), ...(effort !== undefined ? { effort } : {}) };
     let result: ChatResult;
@@ -485,7 +504,10 @@ export class Reactor {
     this.emit('model-end', undefined, { step, ms: Date.now() - startedAt });
     // G14.24 思考时长:首条 reasoning 增量→轮收束(整轮模型调用即思考窗口;无思考增量 undefined)
     const thinkSeconds = reasoningStart !== undefined ? Math.max(1, Math.round((Date.now() - reasoningStart) / 1000)) : undefined;
-    if (result.finish === 'stop') return { done: true, reply: result.content || 'Done' };
+    if (result.finish === 'stop') {
+      const reasoning = roundReasoning !== '' ? roundReasoning : result.reasoning;
+      return { done: true, reply: result.content || 'Done', ...(reasoning !== undefined && reasoning !== '' ? { reasoning, ...(thinkSeconds !== undefined ? { thinkSeconds } : {}) } : {}) };
+    }
 
     const calls = result.toolCalls;
     if (calls.length === 0) {

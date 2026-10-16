@@ -121,6 +121,8 @@ test('selfcheck：permissions 装配告警上屏——形状非法走 warnings �
 });
 
 // ── kb 就绪行真实化（D18/S1）：就绪行必须反映真实装配而非 env 解析推断 ────────────────
+process.env.SUNSHINEX_LANGUAGE = 'en'; // selfcheck 输出文案走 t——钉 en 断英文行（G14.104 缺省 zh 后）
+
 // 无 KB env（CI/门禁口径）：exit 0 + 未配置降级文案
 test('selfcheck：无 KB env → knowledge 行「未配置→调用时降级」且 exit 0', () => {
   const f = makeFixture('kb-off');

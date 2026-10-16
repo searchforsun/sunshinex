@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Plus, PanelLeft, PanelRight, FileText, KanbanSquare, FolderTree, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { X, Plus, PanelLeft, PanelRight, FileText, FolderTree, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
 import { TAB_REGISTRY, tabEntry } from './registry';
 import type { TabTypeId } from './tab-state';
 
@@ -17,6 +17,8 @@ export interface TabStripProps {
   readonly disabled?: boolean; // 无会话:整条灰
   readonly onSelect: (uid: string) => void;
   readonly onClose: (uid: string) => void;
+  /** G14.111 拖拽重排回调(App 落 tabStates 数组重排) */
+  readonly onReorder?: (fromUid: string, toUid: string) => void;
   readonly onOpenType: (type: import('./tab-state').TabTypeId) => void;
   readonly onToggleCollapse: () => void;
   readonly onCycle: (dir: 1 | -1) => void;
@@ -27,15 +29,21 @@ export interface TabStripProps {
 const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   sidechat: MessageCircle,
   file: FileText,
+  diff: GitCompare, // G14.180 审查(改动对比)——与欢迎页快捷卡同图标
   directory: FolderTree,
-  tasks: KanbanSquare,
+  tasks: ListTodo, // G14.180 待办——与欢迎页快捷卡同图标
   agents: Bot, // G8d 子代理活动聚合卡
+  agent: Bot, // G14.175 子代理只读转录页(机器人图标,用户裁决)
+  bgtasks: Hourglass, // G14.180 后台任务(等待执行)
+  memory: Brain, // G14.180 持久记忆
   terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
   web: Globe, // G8d 内嵌网页标签
 };
 
 /** 「+」菜单分节序:content → session → tools */
 const GROUP_ORDER: readonly ('content' | 'session' | 'tools')[] = ['content', 'session', 'tools'];
+/** G14.159 不入「+」菜单的标签类型(类型仍注册:目录树/工具行照常开 file 标签,既有标签照常渲染) */
+const MENU_HIDDEN = new Set(['file', 'context', 'agent']);
 
 export function TabStrip(props: TabStripProps): JSX.Element {
   const {
@@ -45,6 +53,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     disabled = false,
     onSelect,
     onClose,
+    onReorder,
     onOpenType,
     onToggleCollapse,
     onCycle,
@@ -52,6 +61,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // G14.111 拖拽重排:draggable 标签 dragstart 记 uid,dragover 命中目标即回调重排(App 落数组)
+  const dragUidRef = useRef<string | null>(null);
 
   // 菜单外点关闭:menuOpen 在席时挂 document mousedown,落点在本条外即收(点 + 自身走 click 切换)
   useEffect(() => {
@@ -104,14 +115,14 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   // collapsed 态:只渲染折叠钮一行(无标签/无「+」)
   if (collapsed) {
     return (
-      <div className="sx-tabstrip" ref={rootRef} style={stripStyle} title={stripTitle}>
+      <div className="sx-tabstrip" ref={rootRef} style={stripStyle} data-tip={stripTitle}>
         {collapseBtn(false)}
       </div>
     );
   }
 
   return (
-    <div className="sx-tabstrip" ref={rootRef} style={stripStyle} title={stripTitle}>
+    <div className="sx-tabstrip" ref={rootRef} style={stripStyle} data-tip={stripTitle}>
       {/* G14.39:标签滚动区独立(overflow-x auto 只裁标签);+/弹窗在滚动区外,弹窗不被条裁切 */}
       <div className="sx-tabstrip-scroll">
       {tabs.map((t) => {
@@ -123,8 +134,23 @@ export function TabStrip(props: TabStripProps): JSX.Element {
             key={t.uid}
             type="button"
             className={`sx-tab${t.uid === activeUid ? ' active' : ''}`}
-            title={title}
+            data-title={title}
             disabled={disabled}
+            draggable={!disabled}
+            onDragStart={(e) => {
+              dragUidRef.current = t.uid;
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/tab-uid', t.uid);
+            }}
+            onDragOver={(e) => {
+              if (dragUidRef.current !== null && dragUidRef.current !== t.uid) e.preventDefault(); // 允许落点
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = dragUidRef.current;
+              dragUidRef.current = null;
+              if (from !== null && from !== t.uid) onReorder?.(from, t.uid);
+            }}
             onClick={() => onSelect(t.uid)}
           >
             <Icon size={16} strokeWidth={1.75} />
@@ -160,7 +186,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
       {menuOpen && (
         <div className="sx-menu-pop" role="menu" aria-label="new tab types">
           {GROUP_ORDER.map((g) => {
-            const entries = TAB_REGISTRY.filter((e) => e.group === g);
+            // G14.159 文件/上下文不走「+」菜单:文件由目录树/工具行开档,上下文面板按需经命令;已有标签不受影响
+            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id));
             if (entries.length === 0) return null;
             return (
               <div key={g} role="group" aria-label={g}>

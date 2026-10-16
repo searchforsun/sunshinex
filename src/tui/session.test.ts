@@ -266,14 +266,13 @@ test('会话控制器：/help 列出全部内置命令（SLASH_COMMANDS 同源�
   }
 });
 
-test('会话控制器：命令词不在清单统一无法识别文案（warn 级，规格 D2）', async () => {
+test('会话控制器：命令词不在清单 → 当普通文本发布（G14.95 / 前缀语义,与 GUI 同）', async () => {
   const tmp = tmpdir('sunshinex-sess-bogus-');
   try {
-    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     await ctrl.submit('/bogus');
-    const hit = ctrl.getState().messages.find((m) => m.role === 'system' && m.text.includes('Unrecognized command'));
-    assert.ok(hit, '统一无法识别文案');
-    assert.equal(hit.level, 'warn', 'warn 级回执');
+    assert.ok(!ctrl.getState().messages.some((m) => m.text.includes('Unrecognized command')), '不再报无法识别');
+    assert.ok(ctrl.getState().messages.some((m) => m.role === 'user' && m.text.includes('/bogus')), '/bogus 以用户消息原样发布(模型自主判断)');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

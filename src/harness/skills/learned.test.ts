@@ -20,7 +20,7 @@ test('settle：写入 .data/skills/{id}/skill.md，frontmatter 可读回且可 r
     const r = store.settle('实现 sqlite-vec 后端', '选型 node:sqlite vec0，零编译接入');
     assert.ok(r.ok);
     if (!r.ok) return;
-    const id = r.value;
+    const id = r.value.id;
     assert.equal(id, 'sqlite-vec', '中文 goal 经 ASCII slug 只留字母数字段，id 为规范 ASCII slug');
     const file = path.join(root, '.data', 'skills', id, 'skill.md');
     assert.ok(fs.existsSync(file));
@@ -36,16 +36,22 @@ test('settle：写入 .data/skills/{id}/skill.md，frontmatter 可读回且可 r
   }
 });
 
-test('settle：同名 goal 二次沉淀得 -2 后缀，不覆盖既有产物', () => {
+test('settle：同名 goal 二次沉淀=原地更新（2026-10-15 用户裁决：禁止 -2 后缀，在原 skill 上修改）', () => {
   const { root, store } = makeRoot();
   try {
     const r1 = store.settle('部署手册', '第一版');
     const r2 = store.settle('部署手册', '第二版');
     assert.ok(r1.ok && r2.ok);
     if (!r1.ok || !r2.ok) return;
-    assert.equal(r1.value, 'learned', '纯中文 goal 全折叠回退 learned');
-    assert.equal(r2.value, 'learned-2', '撞名避让得 -2 后缀');
+    assert.equal(r1.value.id, 'learned', '纯中文 goal 全折叠回退 learned');
+    assert.equal(r1.value.updated, false, '首写非更新');
+    assert.equal(r2.value.id, 'learned', '同 slug 原位，不产 -2 副本');
+    assert.equal(r2.value.updated, true, '撞名沉淀归为更新');
     assert.ok(fs.existsSync(path.join(root, '.data', 'skills', 'learned', 'skill.md')));
+    assert.ok(!fs.existsSync(path.join(root, '.data', 'skills', 'learned-2')), '禁止 -2 目录');
+    const body = fs.readFileSync(path.join(root, '.data', 'skills', 'learned', 'skill.md'), 'utf8');
+    assert.ok(body.includes('第二版'), '既有产物被新内容覆盖');
+    assert.equal(store.names().filter((n) => n === 'learned').length, 1, '目录恒一');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -144,8 +150,8 @@ test('learned：refined 落盘用语义 frontmatter 与 body，id 由 name 派�
     });
     assert.ok(r.ok);
     if (!r.ok) return;
-    assert.equal(r.value, 'verify-before-done');
-    const md = fs.readFileSync(path.join(root, '.data', 'skills', r.value, 'skill.md'), 'utf8');
+    assert.equal(r.value.id, 'verify-before-done');
+    const md = fs.readFileSync(path.join(root, '.data', 'skills', r.value.id, 'skill.md'), 'utf8');
     assert.ok(md.includes('name: verify-before-done'));
     assert.ok(md.includes('description: Assert full-suite green before reporting done'));
     assert.ok(md.includes('## Pitfalls'));
@@ -154,15 +160,17 @@ test('learned：refined 落盘用语义 frontmatter 与 body，id 由 name 派�
   }
 });
 
-test('learned：refined 允许空 reply；缺省路径（无 refined）逐字节不变', () => {
+test('learned：refined 允许空 reply；缺省路径同 slug 二次沉淀=原地更新', () => {
   const { root, store } = makeRoot();
   try {
     const a = store.settle('some goal', 'some reply');
     const b = store.settle('some goal', 'some reply');
     assert.ok(a.ok && b.ok);
     if (!a.ok || !b.ok) return;
-    assert.equal(a.value, 'some-goal');
-    assert.equal(b.value, 'some-goal-2'); // 撞名避让不变
+    assert.equal(a.value.id, 'some-goal');
+    assert.equal(a.value.updated, false, '首写非更新');
+    assert.equal(b.value.id, 'some-goal', '同 slug 原位（禁 -2 副本）');
+    assert.equal(b.value.updated, true, '二次沉淀归为更新');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

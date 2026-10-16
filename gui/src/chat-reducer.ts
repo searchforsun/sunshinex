@@ -29,11 +29,18 @@ export interface ChatEntry {
   seconds?: number;
   /** 条目时间（epoch ms;事件条透传 e.ts,种子条透传快照,本地回显/开条时刻就地取;无源可省） */
   ts?: number;
+  /** G14.63 run 专用:轮起点基线(会话累计 steps/tokens)——运行状态行「本轮」口径的减数 */
+  stepsBase?: number;
+  tokensBase?: number;
   /** run 专用（G11 状态行）：封段统计——done 载荷 {steps, tokensUsed} 透传 */
   steps?: number;
   tokens?: number;
   /** run 专用：收段时刻（完成时间渲染源） */
   endedTs?: number;
+  /** G14.209 run 专用:停止态(中断/失败收口——运行条显「已停止」不显时长) */
+  stopped?: boolean;
+  /** G14.100 run 专用:本轮 git 变动增量(轮尾汇总条;撤销面按 path 寻址) */
+  changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }>;
 }
 
 /** chat 投影状态：entries 对话流 + 状态栏三指标 */
@@ -63,7 +70,16 @@ export interface SnapshotTranscriptEntry {
   md: string;
   /** G14.16:run 条统计(runmeta 对位)——Worked 行时长与 footer 步数/tokens 回放;
    *  G14.56:runSteps=本轮自身步数(缺场=旧档,footer 回退累计口径) */
-  meta?: { seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number };
+  meta?: {
+    seconds?: number;
+    steps?: number;
+    runSteps?: number;
+    tokens?: number;
+    cacheTokens?: number;
+    changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }>;
+    /** G14.210 停止态(中断/失败收口)——回放运行条显「已停止」 */
+    stopped?: boolean;
+  };
   /** G14.24:thinking 条思考秒数(回放面) */
   seconds?: number;
 }
@@ -100,7 +116,9 @@ export function seedChatFromSnapshot(messages: readonly SnapshotTranscriptEntry[
           seconds: m.meta.seconds,
           steps: m.meta.runSteps ?? m.meta.steps, // G14.56:footer 本轮口径优先(旧档回退累计)
           tokens: m.meta.tokens,
+          ...(m.meta.stopped === true ? { stopped: true } : {}), // G14.210 停止态回放
           ...(m.ts !== undefined && m.ts > 0 ? { endedTs: m.ts } : {}), // 回放 ts=runmeta endedTs,footer 时刻面
+          ...(m.meta.changes !== undefined && m.meta.changes.length > 0 ? { changes: m.meta.changes } : {}),
         }
       : {}),
   }));
@@ -215,7 +233,7 @@ function sealThinking(entries: readonly ChatEntry[], now?: number): ChatEntry[] 
 
 /** 封 run 段（G11 状态行）：最后一条 streaming run 条去标并回填耗时/统计。
  *  seconds 首尾 ts 差取整;steps/tokens 透传 done 载荷;endedTs=收段事件 ts。无 run 条透传原数组 */
-function sealRun(entries: readonly ChatEntry[], now: number | undefined, stat?: { steps?: number; tokens?: number }): ChatEntry[] {
+function sealRun(entries: readonly ChatEntry[], now: number | undefined, stat?: { steps?: number; tokens?: number; stopped?: boolean }): ChatEntry[] {
   for (let i = entries.length - 1; i >= 0; i -= 1) {
     const e = entries[i]!;
     if (e.kind === 'run' && e.streaming === true) {
@@ -226,6 +244,7 @@ function sealRun(entries: readonly ChatEntry[], now: number | undefined, stat?: 
         ...(seconds !== undefined ? { seconds } : {}),
         ...(stat?.steps !== undefined ? { steps: stat.steps } : {}),
         ...(stat?.tokens !== undefined ? { tokens: stat.tokens } : {}),
+        ...(stat?.stopped === true ? { stopped: true } : {}),
         ...(now !== undefined ? { endedTs: now } : {}),
       });
     }
@@ -258,9 +277,12 @@ function onDone(s: ChatState, e: SessionEvent): ChatState {
   const base = sealStreaming(sealThinking(s.entries, e.ts));
   // G14.56:footer steps=本轮自身步数(done 载荷 runSteps;旧载荷缺场回退会话累计)
   const footerSteps = typeof e.payload?.runSteps === 'number' ? e.payload.runSteps : e.payload?.steps;
+  // G14.209 停止态入条:done 载荷 stopReason 非 done(中断/失败)→运行条显「已停止」不显时长
+  const stopped = typeof e.payload?.stopReason === 'string' && e.payload.stopReason !== 'done';
   const entries = sealRun(base.entries, e.ts, {
     steps: typeof footerSteps === 'number' ? footerSteps : undefined,
     tokens: typeof e.payload?.tokensUsed === 'number' ? e.payload.tokensUsed : undefined,
+    stopped,
   });
   const text = e.text ?? '';
   // 步数口径(G14.20 统一):done 载荷 steps=reactor 会话累计步数(steps.length,含种子链)——
@@ -353,6 +375,9 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
   switch (e.type) {
     case 'token':
       return onToken(s, e.text ?? '', e.ts);
+    case 'user':
+      // G14.89 daemon 队列自动续发的回显帧(HTTP 提交路径不产——GUI 本地回显)
+      return appendUserMessage(s, e.text ?? '');
     case 'done':
       return onDone(s, e);
     case 'error':
@@ -367,7 +392,38 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
       return { ...s, entries: [...s.entries, { key: `t${s.entries.length}`, kind: 'thinking', md: text, streaming: true, ts: e.ts }] };
     }
     case 'notice':
+      // G14.90 ask 回执归档行冗余(结构化问答体已示✓ Answered)——主流不渲染(journal 审计面保留)
+      if (/^ask p\S+ answered$/.test(e.text ?? '')) return s;
+      // G14.106 memory 索引漂移 notice(含 Memory Index 全文)是模型链行——GUI 可见面不渲染
+      if ((e.text ?? '').startsWith('[memory] index changed')) return s;
       return { ...s, entries: [...s.entries, { key: `n${s.entries.length}`, kind: 'notice', md: e.text ?? '', ts: e.ts }] };
+    case 'runmeta': {
+      // G14.100 run 收尾元数据帧:末个 run 条补全统计+本轮 changes(demo 汇总条数据源;
+      // journal 落档后 pump——晚于 done 帧,run 条已封段)
+      const p = e.payload ?? {};
+      let idx = -1;
+      for (let i = s.entries.length - 1; i >= 0; i -= 1) {
+        if (s.entries[i]!.kind === 'run') { idx = i; break; }
+      }
+      if (idx < 0) return s;
+      const cur = s.entries[idx]!;
+      const raw = p.changes;
+      const changes = Array.isArray(raw)
+        ? raw
+            .map((c) => {
+              const o = (c ?? {}) as { path?: unknown; status?: unknown; added?: unknown; deleted?: unknown; newLines?: unknown };
+              return { path: String(o.path ?? ''), status: String(o.status ?? ''), added: typeof o.added === 'number' ? o.added : null, deleted: typeof o.deleted === 'number' ? o.deleted : null, ...(typeof o.newLines === 'number' ? { newLines: o.newLines } : {}) };
+            })
+            .filter((c) => c.path !== '')
+        : undefined;
+      return { ...s, entries: replaceAt(s.entries, idx, {
+        ...cur,
+        ...(typeof p.runSteps === 'number' ? { steps: p.runSteps } : {}),
+        ...(typeof p.tokens === 'number' ? { tokens: p.tokens } : {}),
+        ...(typeof p.endedTs === 'number' ? { endedTs: p.endedTs } : {}),
+        ...(changes !== undefined && changes.length > 0 ? { changes } : {}),
+      }) };
+    }
     case 'tool-call':
       return onToolCall(s, e);
     case 'tool-result':
@@ -381,7 +437,7 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
       // 故自然居其后,与回放 seed 同序);Worked 行描述的是其后这段工作
       return {
         ...s,
-        entries: [...entries, { key: `run:${entries.length}`, kind: 'run' as const, md: '', streaming: true as const, ts: e.ts }],
+        entries: [...entries, { key: `run:${entries.length}`, kind: 'run' as const, md: '', streaming: true as const, ts: e.ts, stepsBase: s.steps, tokensBase: s.tokens }],
         status: 'running',
         turnTokensBase: 0,
         turnCacheBase: 0,

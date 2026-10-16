@@ -44,7 +44,7 @@ export function DiffPanel({ oldStr, newStr, path, onOpenDiff, openDiffTitle, hei
           type="button"
           className="tool-path diff-open-tab"
           aria-label={path ?? 'open diff'}
-          title={openDiffTitle}
+          data-tip={openDiffTitle}
           onClick={onOpenDiff}
         >
           <span aria-hidden="true">⇄</span>

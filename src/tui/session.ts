@@ -1016,7 +1016,9 @@ export class SessionController {
       if (loaded !== 'failed' && intent) await this.runTaskFlow(intent);
       return;
     }
-    this.pushMsg('system', t('Unrecognized command. Use /help to see available commands', '无法识别命令，使用 /help 查看使用方法'), { level: 'warn' });
+    // G14.95 / 前缀未匹配任何命令 → 当普通文本(与 GUI 同语义):模型自主判断
+    // (系统提示词 skills 清单含「/skill-id 引用优先加载」提示),不再报「无法识别命令」
+    await this.runTaskFlow(text);
   }
 
   /** 技能命令注册表（规格 2026-09-22-skill-as-command D6 单点）：list() 现读磁盘（学习沉淀即时可见）；

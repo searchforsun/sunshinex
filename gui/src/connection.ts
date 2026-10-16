@@ -264,9 +264,11 @@ export interface AgentFrontmatterInput {
 }
 
 /** 技能三源分组行（T6，对齐主仓 SkillsGroup）：source 三段 project/user/learned；组内去重沿装载
- *  序、跨组不去重（多源同名两组各在，遮蔽裁决属装配面）；无 frontmatter 的技能行只含 id */
+ *  序、跨组不去重（多源同名两组各在，遮蔽裁决属装配面）；无 frontmatter 的技能行只含 id。
+ *  project=项目归属显示名（scope=all 跨项目视图携带——项目筛选数据面；常规视图不载） */
 export interface SkillsGroup {
   source: 'project' | 'user' | 'learned';
+  project?: string;
   skills: Array<{ id: string; name?: string; description?: string }>;
 }
 
@@ -332,6 +334,8 @@ export interface Connection {
   /** 建项目(G10-C11):原生文件选择器确认后注册/创建工作区。name=浏览器态(projectsRoot 下建)
    *  / path=桌面壳态(注册既有目录);同名幂等返回既有行 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
+  /** G14.69 原生选择定位:按标记文件全盘找所选目录绝对路径(超时/未找到 path:null) */
+  locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
   /** POST /session/:id/model|tier|effort|mode:运行中切换(下一轮生效;G10-C1b/C2b) */
   setSessionModel(id: string, model?: string): Promise<void>;
   setSessionTier(id: string, tier?: 'small' | 'medium' | 'large'): Promise<void>;
@@ -339,6 +343,9 @@ export interface Connection {
   setSessionMode(id: string, mode: 'dontAsk' | 'manual' | 'plan'): Promise<void>;
   /** POST /session/:id/steer/cancel:撤回排队插话(G10-C1d) */
   cancelSteer(id: string, seq: number): Promise<void>;
+  /** G14.83 排队条目重排(拖拽排序)/置首(插入发送=下一轮立即注入) */
+  moveSteer(id: string, from: number, to: number): Promise<void>;
+  frontSteer(id: string, seq: number): Promise<void>;
   /** POST /session/:id/rewind|fork(G10-C1d):turn=anchors 1-based */
   rewindSession(id: string, turn: number): Promise<void>;
   forkSession(id: string, turn: number, side?: boolean): Promise<{ sessionId: string }>;
@@ -350,12 +357,28 @@ export interface Connection {
   runCommand(id: string, line: string): Promise<void>;
   /** GET /commands:清单+双语描述+supported(G10-C4 命令面板数据源) */
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
+  /** G14.95 技能命令清单(会话维):GUI 命令面板混入技能项 */
+  skillCommands(id: string): Promise<Array<{ id: string; description: string }>>;
+  /** G14.99 工作区未提交变动面（Diff 标签数据源） */
+  sessionChanges(id: string): Promise<{ branch: string; files: Array<{ path: string; status: string; added: number | null; deleted: number | null }> }>;
+  /** G14.112 目录树 git 状态映射(含 ignored 目录折叠):path → modified/untracked/deleted/renamed/ignored */
+  gitStatus(id: string): Promise<{ branch: string; map: Record<string, string> }>;
+  /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
+  gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
+  gitCheckout(root: string, branch: string): Promise<void>;
+  /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先 */
+  workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }> }>;
+  sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
+  commitChanges(id: string, message: string): Promise<void>;
+  pushChanges(id: string): Promise<void>;
+  /** G14.100 撤销单个变动文件(restore 回 HEAD/删除本轮新建) */
+  restoreChange(id: string, path: string): Promise<void>;
   /** GET /session/:id/context:上下文分段构成(G10-C6 面板) */
   sessionContext(id: string): Promise<{ parts: Array<{ id: string; tokens: number; count: number }>; chainByAction: Array<{ action: string; tokens: number }>; total: number; window: number; free: number }>;
   /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板) */
   sessionTasks(id: string): Promise<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number }>>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
-  memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string }>>;
+  memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string; body: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
@@ -402,9 +425,10 @@ export interface Connection {
    *  （400 缺 root），全局编辑走 raw */
   /** GET /settings?root=（T2）：effective 视图（keys 来源分层/permissions 三面/providers 打码） */
   settings(root?: string): Promise<SettingsView>;
-  /** PUT /settings {root, updates}（T2）：语义键结构化改写（null=delete）；400 未知键/类型坏、
-   *  409 文件含注释/畸形（引流 raw 编辑面）以 HTTP 失败抛错 */
-  putSettings(root: string, updates: Record<string, string | number | null>): Promise<void>;
+  /** PUT /settings {scope, root?, updates}（T2）：语义键结构化改写（null=delete）；scope 缺省
+   *  'project'（必带 root），'global' 写用户级文件（root 省略）——GUI 逐项写回来源文件两面；
+   *  400 未知键/类型坏、409 文件含注释/畸形（引流 raw 编辑面）以 HTTP 失败抛错 */
+  putSettings(scope: 'project' | 'global', root: string | undefined, updates: Record<string, string | number | null>): Promise<void>;
   /** GET /settings/raw?scope=&root=&file=（T3）：原文逐字复读（JSONC 保真）；缺文件 {content:null}
    *  是编辑器空态判据；scope=project 必带 root（缺 400） */
   settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }>;
@@ -428,7 +452,9 @@ export interface Connection {
    *  root）；404（缺文件）/400（坏 id·scope=project 缺 root·畸形 frontmatter）以 HTTP 失败抛错 */
   agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
   /** GET /settings/skills?root=（T6）：三源分组固定序 project/user/learned（root 缺省 = 仅 user 组） */
-  skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }>;
+  /** all=true：跨项目视图（scope=all——user 全局 + 当前项目 project 组 + 全项目学习沉淀逐项目
+   *  分组，组带 project 归属名）；缺省 = 当前 root 视图（T6 原语义，composer 技能清单消费） */
+  skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }>;
   /** GET /settings/memory-stats?root=（T6）：主域记忆概览（root 缺省 = 零值非 400） */
   memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }>;
   close(): void;
@@ -661,6 +687,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     createWorkspace(body: { name?: string; path?: string }) {
       return postJson<{ ok: true; root: string; slug: string }>('/workspace/create', body);
     },
+    locateWorkspace(body: { token: string; roots?: string[] }) {
+      return postJson<{ path: string | null }>('/workspace/locate', body);
+    },
     async setSessionModel(id: string, model?: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/model', { model });
     },
@@ -675,6 +704,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async cancelSteer(id: string, seq: number): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/steer/cancel', { seq });
+    },
+    async moveSteer(id: string, from: number, to: number): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/steer/move', { from, to });
+    },
+    async frontSteer(id: string, seq: number): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/steer/front', { seq });
     },
     async rewindSession(id: string, turn: number): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/rewind', { turn });
@@ -705,6 +740,36 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     commands() {
       return getJson('/commands');
+    },
+    skillCommands(id: string) {
+      return getJson<Array<{ id: string; description: string }>>(`/session/${encodeURIComponent(id)}/skill-commands`);
+    },
+    sessionChanges(id: string) {
+      return getJson(`/session/${encodeURIComponent(id)}/changes`);
+    },
+    gitStatus(id: string) {
+      return getJson(`/session/${encodeURIComponent(id)}/git-status`);
+    },
+    gitBranches(root: string) {
+      return getJson(`/git/branches?root=${encodeURIComponent(root)}`);
+    },
+    workspaceFiles(root: string) {
+      return getJson(`/workspace/files?root=${encodeURIComponent(root)}`);
+    },
+    async gitCheckout(root: string, branch: string) {
+      await post('/git/checkout', { root, branch });
+    },
+    sessionChangeContent(id: string, path: string) {
+      return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}`);
+    },
+    async commitChanges(id: string, message: string) {
+      await post('/session/' + encodeURIComponent(id) + '/changes/commit', { message });
+    },
+    async pushChanges(id: string) {
+      await post('/session/' + encodeURIComponent(id) + '/changes/push', {});
+    },
+    async restoreChange(id: string, path: string) {
+      await post('/session/' + encodeURIComponent(id) + '/changes/restore', { path });
     },
     sessionContext(id: string) {
       return getJson('/session/' + encodeURIComponent(id) + '/context');
@@ -791,8 +856,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     settings(root?: string): Promise<SettingsView> {
       return getJson<SettingsView>(root === undefined ? '/settings' : `/settings?root=${encodeURIComponent(root)}`);
     },
-    putSettings(root: string, updates: Record<string, string | number | null>): Promise<void> {
-      return put('/settings', { root, updates });
+    putSettings(scope: 'project' | 'global', root: string | undefined, updates: Record<string, string | number | null>): Promise<void> {
+      // scope=global 时 root 定位面被服务端忽略——undefined 即省参（不留 root 空串伪参，raw 写同款）
+      return put('/settings', { scope, ...(root === undefined ? {} : { root }), updates });
     },
     settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }> {
       // scope=global 时 root 定位面被服务端忽略——undefined 即省参（不留 root= 空串伪参）
@@ -824,8 +890,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
       const query = `scope=${scope}&id=${encodeURIComponent(id)}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}`;
       return getJson<{ body: string }>(`/settings/agents/body?${query}`);
     },
-    skillsGroups(root?: string): Promise<{ groups: SkillsGroup[] }> {
-      return getJson<{ groups: SkillsGroup[] }>(root === undefined ? '/settings/skills' : `/settings/skills?root=${encodeURIComponent(root)}`);
+    skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }> {
+      const parts = [root === undefined ? '' : `root=${encodeURIComponent(root)}`, ...(all === true ? ['scope=all'] : [])].filter(Boolean);
+      return getJson<{ groups: SkillsGroup[] }>(parts.length === 0 ? '/settings/skills' : `/settings/skills?${parts.join('&')}`);
     },
     memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }> {
       return getJson<{ entries: number; lastWriteAt: number | null }>(

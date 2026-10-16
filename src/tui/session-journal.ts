@@ -47,8 +47,9 @@ export type JournalEvent =
   /** 用户级会话参数快照（末值覆盖）：tier=档位、effort=思考强度、modelId=/model 选择（`源/模型`；undefined 字段=该项回缺省） */
   | { t: 'model'; tier?: ModelTier; effort?: ReasoningEffort; modelId?: string }
   | { t: 'view'; expandAll: boolean; latestFull: boolean }
-  /** G14.15 run 收尾元数据(GUI Worked 行/统计回放):daemon run 结束时落——秒数/步数/tokens/结束时刻 */
-  | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number };
+  /** G14.15 run 收尾元数据(GUI Worked 行/统计回放):daemon run 结束时落——秒数/步数/tokens/结束时刻。
+   *  G14.100 changes=本轮 git 变动增量(路径/状态/±行数)——GUI 轮尾汇总条(展开逐文件/撤销) */
+  | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number; stopped?: boolean; changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }> };
 
 export interface SessionMeta extends SessionSidecarMeta {
   id: string;

@@ -10,7 +10,7 @@
  */
 type Language = 'en' | 'zh';
 
-let current: Language = 'en';
+let current: Language = 'en'; // [rollback-probe] G14.104 缺省回 en 验证卡死归因
 
 export function getLanguage(): Language {
   return current;
@@ -25,7 +25,8 @@ export function t(en: string, zh: string): string {
   return current === 'zh' ? zh : en;
 }
 
-/** 从 CLI flag 解析语言：仅字符串 'zh' 生效，其余（含缺省/裸 flag 的 false/非法值）一律 en */
+/** 从 CLI flag/settings 值解析语言（G14.104 缺省 zh）：未设置(undefined)→zh（产品主用户群中文，
+ *  杜绝骨架英文×数据中文的混排观感）；显式 'en'→en；显式 'zh'/其他→zh。settings 语言键可显式切换 */
 export function parseLanguage(raw: string | boolean | undefined): Language {
-  return raw === 'zh' ? 'zh' : 'en';
+  return raw === 'en' ? 'en' : 'zh';
 }

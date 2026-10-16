@@ -12,7 +12,7 @@
  */
 
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
-export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'directory' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'sidechat';
+export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'agent' | 'directory' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'sidechat';
 
 /** 开标签目标参数(按类型取用:file=diff=目录用 path、diff 备选 callId、web=url、终端 cols/rows) */
 export interface TabParams {
@@ -26,6 +26,14 @@ export interface TabParams {
   readonly nonce?: string;
   /** G14.29 辅助对话:fork 旁路会话 id(sidechat 标签寻址;同一辅助会话重开=聚焦) */
   readonly sideId?: string;
+  /** G14.154 辅助对话首问(文件选区「在辅助对话中提问」携带,挂载即落输入框) */
+  readonly insert?: string;
+  /** G14.164 子代理只读标签:payload.subagent 标签(Agents 卡点开;同 agent 重开=聚焦) */
+  readonly label?: string;
+  /** G14.164 开档时定格的 agent 显示名(resolveAgentName 产物;标签条标题用——title() 无 services 入参) */
+  readonly agentTitle?: string;
+  /** G14.175 子代理的用户输入(任务内容):spawn 行带 prompt、看板行带任务标题——无活动流时的正文兜底 */
+  readonly task?: string;
 }
 
 /** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较) */
@@ -35,7 +43,7 @@ export interface TabInstance {
   readonly params: TabParams;
 }
 
-/** 单会话标签态:tabs 行序即标签条渲染序;width 200..720(clamp 于 setWidth) */
+/** 单会话标签态:tabs 行序即标签条渲染序;width 440..720(clamp 于 setWidth;G14.183 最小列宽=主对话/侧栏共用) */
 export interface TabSessionState {
   readonly tabs: readonly TabInstance[];
   readonly activeUid: string | null;
@@ -47,10 +55,10 @@ export interface TabSessionState {
 export type TabStates = Readonly<Record<string, TabSessionState>>;
 
 /** 右栏缺省宽(双列 Diff 可读;spec §1) */
-export const DEFAULT_TAB_WIDTH = 420;
+export const DEFAULT_TAB_WIDTH = 520;
 
 /** 拖拽调宽边界(spec §1:200-720px clamp)——模块私有,setWidth 单点执行 */
-const MIN_TAB_WIDTH = 200;
+const MIN_TAB_WIDTH = 440; // G14.183/G14.196:与主对话 .sx-main min-width 同值(共用最小列宽,用户裁定)
 const MAX_TAB_WIDTH = 720;
 
 /**
@@ -97,7 +105,18 @@ export function openTab(
   const cur = states[sessionId] ?? emptyTabSession();
   const uid = tabUid(type, params, probe);
   const byUid = cur.tabs.find((t) => t.uid === uid);
-  if (byUid !== undefined) return { ...states, [sessionId]: { ...cur, activeUid: byUid.uid } };
+  if (byUid !== undefined) {
+    // G14.100 命中既有标签 → 聚焦并更新 params(diff 标签 path 载荷联动:点对话文件行
+    // 自动展开对应项——同 key(changes 视图)参数刷新,不重开新档)
+    return {
+      ...states,
+      [sessionId]: {
+        ...cur,
+        activeUid: byUid.uid,
+        tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)),
+      },
+    };
+  }
   if (probe.isSingleton(type)) {
     const byType = cur.tabs.find((t) => t.type === type);
     if (byType !== undefined) return { ...states, [sessionId]: { ...cur, activeUid: byType.uid } };
@@ -119,6 +138,20 @@ export function closeTab(states: TabStates, sessionId: string, uid: string): Tab
   const activeUid =
     cur.activeUid === uid ? (tabs.length === 0 ? null : tabs[Math.min(idx, tabs.length - 1)].uid) : cur.activeUid;
   return { ...states, [sessionId]: { ...cur, tabs, activeUid } };
+}
+
+/** G14.111 拖拽重排:fromUid 标签移到 toUid 所在位(数组 splice 对调,活动位不变——
+ *  拖拽重排不改活动标签;uid 缺席/相同/会话缺席 → 原引用返回) */
+export function reorderTab(states: TabStates, sessionId: string, fromUid: string, toUid: string): TabStates {
+  const cur = states[sessionId];
+  if (cur === undefined) return states;
+  const from = cur.tabs.findIndex((t) => t.uid === fromUid);
+  const to = cur.tabs.findIndex((t) => t.uid === toUid);
+  if (from < 0 || to < 0 || from === to) return states;
+  const tabs = [...cur.tabs];
+  const [moved] = tabs.splice(from, 1);
+  tabs.splice(to, 0, moved);
+  return { ...states, [sessionId]: { ...cur, tabs } };
 }
 
 /** 置活动:uid 在席才落(活动位恒指向存在标签的不变式);否则原引用返回 */

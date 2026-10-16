@@ -22,6 +22,9 @@ import { TranscriptCollector } from './transcript';
 import type { TranscriptEntry } from './transcript';
 import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
+import { SLASH_COMMANDS } from '../tui/slash-commands';
+import { listChanges, restoreChange, diffChangeSets } from './session-changes';
+import type { ChangeFile } from './session-changes';
 
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
@@ -119,9 +122,15 @@ export function journalMessagesToEntries(items: ChatItem[]): TranscriptEntry[] {
 export interface RunMeta {
   seconds?: number;
   steps?: number;
+  /** G14.78 本轮自身步数(reactor done 直出;旧档缺场 → 相邻累计差回退) */
+  runSteps?: number;
   tokens?: number;
   cacheTokens?: number;
   endedTs?: number;
+  /** G14.210 停止态(中断/失败收口)——GUI 回放运行条显「已停止」 */
+  stopped?: boolean;
+  /** G14.100 本轮 git 变动增量(路径/状态/±行数)——GUI 轮尾汇总条 */
+  changes?: ChangeFile[];
 }
 
 export function chainStepsToEntries(steps: HistoryStep[], runMetas: RunMeta[] = []): TranscriptEntry[] {
@@ -139,8 +148,21 @@ export function chainStepsToEntries(steps: HistoryStep[], runMetas: RunMeta[] = 
     cur.push(s);
   }
   if (cur.length > 0) runs.push(cur);
+  // G14.78:每轮步数=相邻 runmeta 累计差(与 TUI 同口径,旧档无 runSteps 也能出本轮值);
+  // 显式 runSteps(新档 reactor 直出)优先
+  let prevSteps = 0;
+  const runStepsOf = (meta: RunMeta | undefined): number | undefined => {
+    if (meta?.runSteps !== undefined) return meta.runSteps;
+    if (meta?.steps !== undefined) {
+      const delta = Math.max(0, meta.steps - prevSteps);
+      prevSteps = meta.steps;
+      return delta;
+    }
+    return undefined;
+  };
   for (const [ri, runSteps] of runs.entries()) {
     const meta = runMetas[ri];
+    const runStepsDelta = runStepsOf(meta);
     pendingCalls.length = 0;
     // G14.22 轮次顺序=[用户输入]→[Worked 行+分割线]→[工具/回复]:组首 task 行(用户消息)先于
     // run 头条出列(live 路径同序——提交回显在 model-start 之前),Worked 行描述的是其后这段工作
@@ -160,29 +182,35 @@ export function chainStepsToEntries(steps: HistoryStep[], runMetas: RunMeta[] = 
             meta: {
               ...(meta.seconds !== undefined ? { seconds: meta.seconds } : {}),
               ...(meta.steps !== undefined ? { steps: meta.steps } : {}),
+              ...(runStepsDelta !== undefined ? { runSteps: runStepsDelta } : {}),
               ...(meta.tokens !== undefined ? { tokens: meta.tokens } : {}),
+              ...(meta.stopped === true ? { stopped: true } : {}),
               ...(meta.cacheTokens !== undefined ? { cacheTokens: meta.cacheTokens } : {}),
+              ...(meta.stopped === true ? { stopped: true } : {}),
+              ...(meta.changes !== undefined && meta.changes.length > 0 ? { changes: meta.changes } : {}),
             },
           }
         : {}),
     });
     for (let gi = groupStart; gi < runSteps.length; gi++) {
     const s = runSteps[gi];
+    // G14.173 步骤行盖轮时间戳(待办卡/工具行的创建时间来源;旧档 0 由显示面回退)
+    const stepTs = meta?.endedTs ?? 0;
     // G14.23 思考回放:链行携带的 reasoning(挂 phase 行/批首 tool-call 行)映射 thinking 条,
     // 紧贴其归属行之前——live 的思考流(事件面)回放后不蒸发
     if (s.reasoning !== undefined && s.reasoning.trim() !== '') {
-      entries.push({ seq: 0, ts: 0, kind: 'thinking', md: s.reasoning, ...(s.thinkSeconds !== undefined ? { seconds: s.thinkSeconds } : {}) });
+      entries.push({ seq: 0, ts: stepTs, kind: 'thinking', md: s.reasoning, ...(s.thinkSeconds !== undefined ? { seconds: s.thinkSeconds } : {}) });
     }
     if (s.action === 'task') {
-      entries.push({ seq: 0, ts: 0, kind: 'user', md: `> ${s.observation}` });
+      entries.push({ seq: 0, ts: stepTs, kind: 'user', md: `> ${s.observation}` });
       continue;
     }
     if (s.action === 'reply') {
-      entries.push({ seq: 0, ts: 0, kind: 'assistant', md: s.observation });
+      entries.push({ seq: 0, ts: stepTs, kind: 'assistant', md: s.observation });
       continue;
     }
     if (s.action === 'tool-call') {
-      const i = entries.push({ seq: 0, ts: 0, kind: 'tool', md: `● ${s.observation}\n⎿ …` }) - 1;
+      const i = entries.push({ seq: 0, ts: stepTs, kind: 'tool', md: `● ${s.observation}\n⎿ …` }) - 1;
       pendingCalls.push(i);
       continue;
     }
@@ -196,12 +224,13 @@ export function chainStepsToEntries(steps: HistoryStep[], runMetas: RunMeta[] = 
         hit.md = `${verb}\n⎿ ${first}`;
         continue;
       }
-      entries.push({ seq: 0, ts: 0, kind: 'tool', md: `● …\n⎿ ${first}` });
+      entries.push({ seq: 0, ts: stepTs, kind: 'tool', md: `● …\n⎿ ${first}` });
       continue;
     }
     if (s.action === 'phase' || s.action === 'role' || s.action === 'memory' || s.action === 'skill') continue;
-    // note/notice/deficit/node 与无 action 的裸观察行 → notice（信息行保留呈现）
-    entries.push({ seq: 0, ts: 0, kind: 'notice', md: s.observation });
+    if (s.action === 'node') continue; // G14.170:node=子代理结论/图节点回执([task-tN] …完成/报告)——内部管线通知不进 GUI 转录(完成可见性归委派徽标/Agents 页;用户裁定「系统提示/底层不显示」)
+    // note/notice/deficit 与无 action 的裸观察行 → notice（信息行保留呈现）
+    entries.push({ seq: 0, ts: stepTs, kind: 'notice', md: s.observation });
   }
   }
   return entries;
@@ -273,6 +302,11 @@ export class SessionRuntime {
 
   /** 当前权限模式（G10-C1b 可变面）：setMode 重建 runtime（reset 同路径,转录/影子投影独立不受损） */
   private currentMode: SessionMode;
+
+  /** 运行档外窥（G14.90）：daemon 挂起闭包按当前档判定——pill 切 manual 后新建会话无需重建注入面 */
+  isManual(): boolean {
+    return this.currentMode === 'manual';
+  }
 
   constructor(opts: SessionRuntimeOpts) {
     this.opts = opts;
@@ -430,12 +464,18 @@ export class SessionRuntime {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     const abort = new AbortController();
     const startedAt = Date.now();
+    // G14.100 本轮改动基线(run 前 git 变动集):收尾差集=本轮增量(runmeta.changes 供 GUI 汇总条)
+    let runBaseChanges: ChangeFile[] = [];
+    void listChanges(this.root).then((r) => {
+      if (r.ok) runBaseChanges = r.value.files;
+    }).catch(() => {});
     this.runUsage = undefined;
     this.runCtxUsed = undefined;
     this.runDoneSteps = undefined;
     this.runRunSteps = undefined;
     this.transcriptImpl.submit(goal);
     this.runtimeImpl.harness.context.appendInstructionLine(goal);
+    let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
     const p: Promise<void> = this.runtimeImpl
       .runTask(goal, {
         signal: abort.signal,
@@ -445,18 +485,44 @@ export class SessionRuntime {
       .catch((err) => {
         console.error('[serve] run failed:', err);
       })
-      .then((outcome) => {
+      .then(async (outcome) => {
+        runOutcome = outcome ?? undefined;
+        // G14.100 本轮改动差集(基线→现状):文件级增量进 runmeta(GUI 轮尾汇总条)
+        let runChanges: ChangeFile[] = [];
+        try {
+          const now = await listChanges(this.root);
+          if (now.ok) runChanges = diffChangeSets(runBaseChanges, now.value.files);
+        } catch {
+          // 差集失败不挡收尾(汇总条缺本轮数据可接受)
+        }
         // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
         const endedTs = Date.now();
         const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
         this.journal?.log({
           t: 'runmeta',
+          // G14.210 停止态入档:中断/失败收口(非 done)→GUI 回放运行条显「已停止」
+          ...(outcome?.stopReason !== undefined && outcome.stopReason !== 'done' ? { stopped: true } : {}),
           seconds,
           ...(this.runDoneSteps !== undefined ? { steps: this.runDoneSteps } : {}),
           ...(this.runRunSteps !== undefined ? { runSteps: this.runRunSteps } : {}),
           tokens: outcome?.tokensUsed,
           ...(this.runUsage !== undefined ? { cacheTokens: this.runUsage.cache } : {}),
           endedTs,
+          ...(runChanges.length > 0 ? { changes: runChanges } : {}),
+        });
+        // G14.100 runmeta 帧(实时轮汇总条数据源):journal 落档后广播,journal 不广播 GUI 无从感知
+        this.pump({
+          type: 'runmeta',
+          ts: endedTs,
+          payload: {
+            seconds,
+            ...(this.runDoneSteps !== undefined ? { steps: this.runDoneSteps } : {}),
+            ...(this.runRunSteps !== undefined ? { runSteps: this.runRunSteps } : {}),
+            tokens: outcome?.tokensUsed,
+            ...(this.runUsage !== undefined ? { cacheTokens: this.runUsage.cache } : {}),
+            endedTs,
+            ...(runChanges.length > 0 ? { changes: runChanges } : {}),
+          },
         });
         // G14.17 会话级旁车 meta 累积：runs/steps/tokens/秒数/缓存与 prompt 累计/末次上文占用/
         // 模型档位——列表与回溯面零重放直读（读旧值算累计,单 run 锁下无并发写面）
@@ -481,6 +547,17 @@ export class SessionRuntime {
       })
       .finally(() => {
         this.current = undefined;
+        // G14.89 轮收束自动发下一轮:队列非空即取队首续跑(排队语义=等当前轮完成自动发);
+        // interrupted(用户主动停)不续——停止即停,队列留存由用户决定;余下条目保序回队
+        if (runOutcome?.stopReason !== 'interrupted') {
+          const pending = this.runtimeImpl.harness.steering.takePending();
+          if (pending.length > 0) {
+            for (const t of pending.slice(1)) this.runtimeImpl.harness.steering.enqueue(t);
+            // G14.89 user 回显帧:内部续发不经 HTTP 提交(GUI 无本地回显),pump 帧补气泡
+            this.pump({ type: 'user', text: pending[0], ts: Date.now() });
+            this.submit(pending[0]);
+          }
+        }
       });
     this.current = { abort, done: p };
     return { ok: true };
@@ -575,6 +652,26 @@ export class SessionRuntime {
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) this.hookJournalSink();
     return 'ok';
+  }
+
+  /** G14.83 队列重排:from → to(拖拽排序);置首=插入发送(下一轮立即注入) */
+  steerMove(seq: number, to: number): boolean {
+    return this.runtimeImpl.harness.steering.move(seq, to);
+  }
+
+  steerFront(seq: number): boolean {
+    return this.runtimeImpl.harness.steering.moveToFront(seq);
+  }
+
+  /** G14.95 技能命令清单(会话维,/session/:id/skill-commands 数据面):字符集合法+撞名内置词排除
+   *  (TUI skillCommandIds 同口径),GUI 命令面板混入技能项 */
+  skillCommands(): Array<{ id: string; description: string }> {
+    const builtin = new Set(SLASH_COMMANDS.map((c) => c.slice(1)));
+    return this.runtimeImpl.harness.skills
+      .list()
+      .filter((m) => /^[a-z0-9][a-z0-9_-]*$/.test(m.id) && !builtin.has(m.id))
+      .map((m) => ({ id: m.id, description: m.description }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
   /** 排队插话(G10-C1d):steering FIFO 快照,seq=队列下标(内存面 ephemeral,cancel 寻址键) */

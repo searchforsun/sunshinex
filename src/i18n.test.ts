@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { t, getLanguage, setLanguage, parseLanguage } from './i18n';
 import { describeIncomplete } from './tui/stop-reason';
 
-test('parseLanguage：仅 zh 生效，缺省与非法值一律 en', () => {
-  assert.equal(parseLanguage(undefined), 'en');
-  assert.equal(parseLanguage(true), 'en');
-  assert.equal(parseLanguage('en'), 'en');
-  assert.equal(parseLanguage('fr'), 'en');
+test('parseLanguage：缺省 zh（G14.104 主用户群中文,杜绝混排）；显式 en 才 en', () => {
+  assert.equal(parseLanguage(undefined), 'zh');
+  assert.equal(parseLanguage(true), 'zh');
+  assert.equal(parseLanguage('fr'), 'zh');
   assert.equal(parseLanguage('zh'), 'zh');
+  assert.equal(parseLanguage('en'), 'en');
 });
 
 test('t：按进程语言取值；setLanguage 影响后续调用（用后复原）', () => {

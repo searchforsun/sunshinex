@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { ArrowUp, ChevronDown, MessageCircle, Folder, FolderPlus, Hand, ListTodo, SquareTerminal } from 'lucide-react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
+import { GitBranch, ArrowUp, ChevronDown, GitCompare, MessageCircle, Folder, ListTodo, ShieldCheck, SquareTerminal, Unlock } from 'lucide-react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { createConnection } from './connection';
+import { splitMentionTokens } from './pages/Chat';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
+import type { TodoItem } from '../../src/types';
 import { DirPicker } from './pages/DirPicker';
 import { applyBoardEvent, applyDelegation, boardEventFrom, emptyBoard } from './projection';
 import type { TaskBoardState, Delegation } from './projection';
-import { Chat, baseModelName } from './pages/Chat';
+import { Chat, FilePalette, ModeIcon, baseModelName, expandFileRefs, fileHit, renderMentionSpans } from './pages/Chat';
 import type { ChatSink } from './pages/Chat';
 import { ComposerCard } from './composer/ComposerCard';
 import { EffortChip, EffortSlider } from './effort-slider';
@@ -17,11 +19,13 @@ import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
 import type { TabServices } from './tabs/registry';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, setCollapsed, setWidth, emptyTabSession } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, emptyTabSession } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { applyAgentEvent } from './tabs/agent-activity';
 import type { AgentActivities } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
+import { pickWorkspaceFolder } from './ui-util';
+import { FolderAddIcon } from './sidebar/ProjectMenu';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -103,6 +107,11 @@ function WelcomeComposer({
     newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
     /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
     createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
+    /** G14.194 原生选择标记定位(daemon 全盘找标记回绝对路径) */
+    locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
+    /** G14.113 分支清单/切换(欢迎页分支选择;实现体见 createConnection) */
+    gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
+    gitCheckout(root: string, branch: string): Promise<void>;
     /** + 附加面板数据源(G12 三轮;文件区需会话——欢迎页不传 sessionId 不渲染) */
     commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
     skillsGroups(root?: string): Promise<{
@@ -114,8 +123,13 @@ function WelcomeComposer({
       keys: Array<{ key: string; value: string | null }>;
       providers: { choices: Array<{ id: string; model: string; effort?: string }> };
     }>;
+    /** G14.121 工作区文件索引(@ 文件面板;posix 相对路径+mtime 倒序=最近改动优先) */
+    workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }> }>;
     setSessionModel(id: string, model?: string): Promise<void>;
     setSessionEffort(id: string, effort?: string): Promise<void>;
+    /** G14.113 分支清单/切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
+    gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
+    gitCheckout(root: string, branch: string): Promise<void>;
   };
   /** 预选工作区(G10-C16):项目行「+」带来的 preset */
   presetRoot?: string;
@@ -144,6 +158,13 @@ function WelcomeComposer({
   const [selEffort, setSelEffort] = useState<string>('medium');
   const [modelOpen, setModelOpen] = useState(false);
   const projRef = useRef<HTMLDivElement | null>(null);
+  /** G14.121 @ 文件面板:光标前 @token 触发;数据= picked 工作区索引(mtime 倒序);选中插 @相对路径 */
+  const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
+  const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
+  const [filePalActive, setFilePalActive] = useState(0);
+  const goalRef = useRef<HTMLTextAreaElement | null>(null);
+  /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析) */
+  const pickRelRef = useRef(new Map<string, string>());
 
   useEffect(() => {
     conn.settings().then(
@@ -166,6 +187,26 @@ function WelcomeComposer({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [modelOpen]);
+
+  // G14.133 审批模式弹层外点收(与 modelOpen 同款;菜单内点与锚钮自持)
+  useEffect(() => {
+    if (!modeOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element && e.target.closest('.sx-menu-pop') === null && e.target.closest('[aria-label="approval mode"]') === null) {
+        setModeOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [modeOpen]);
+
+  // G14.127 索引预热:选中工作区即拉清单(手打 @根目录文件 的发送期解析不依赖面板开过)
+  useEffect(() => {
+    if (picked === '') return;
+    void conn
+      .workspaceFiles?.(picked)
+      ?.then((r) => setFilePalFiles(r.files.map((f) => f.path)), () => undefined);
+  }, [picked, conn]);
 
   /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换) */
   useEffect(() => {
@@ -220,7 +261,12 @@ function WelcomeComposer({
   const send = (): void => {
     // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
     const target = picked !== '' ? picked : (presetRoot ?? '');
-    const g = goal.trim();
+    // G14.124 @短写发送期展开为 md 绝对链接(与会话内 submitText 同口径)
+    const g = expandFileRefs(goal, target, (name) => {
+      const picked = pickRelRef.current.get(name);
+      if (picked !== undefined) return picked;
+      return filePalFiles.find((f) => (f.split('/').pop() ?? f) === name);
+    }).trim();
     if (g === '' || target === '' || busy) return;
     setBusy(true);
     setError('');
@@ -244,6 +290,32 @@ function WelcomeComposer({
     return nm === 'default' || nm.startsWith('sunshinex-default');
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
+  /** G14.113 欢迎页分支选择(picked 为 git 目录时显):分支清单/当前分支/切换 */
+  const [gitBr, setGitBr] = useState<{ current: string; branches: string[] } | null>(null);
+  const [branchOpen, setBranchOpen] = useState(false);
+  const branchRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (picked === '' || isDefaultPicked) { setGitBr(null); setBranchOpen(false); return; }
+    let alive = true;
+    conn.gitBranches(picked).then(
+      (r) => { if (alive) setGitBr(r.branches.length > 0 ? r : null); },
+      () => { if (alive) setGitBr(null); },
+    );
+    return () => { alive = false; };
+  }, [picked, conn, isDefaultPicked]);
+  useEffect(() => {
+    if (!branchOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      if (branchRef.current !== null && e.target instanceof Node && !branchRef.current.contains(e.target)) setBranchOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [branchOpen]);
+  const checkoutBranch = (branch: string): void => {
+    void conn.gitCheckout(picked, branch).then(() => {
+      void conn.gitBranches(picked).then((r) => setGitBr(r.branches.length > 0 ? r : null));
+    });
+  };
   /** 浏览新文件夹(G10 用户裁定 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
    *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
    *  目录(旧 showDirectoryPicker 拿不到路径按 name 建目录的行为废除)。已登记幂等(daemon
@@ -267,6 +339,26 @@ function WelcomeComposer({
       }
       return;
     }
+    // G14.194 浏览器态也走 Win 原生对话框(showDirectoryPicker+标记定位,同侧栏添加工作区);
+    // 取消静默;不支持/权限被拒/定位超时 → 回退自建 DirPicker
+    const picked = await pickWorkspaceFolder((q) => conn.locateWorkspace(q));
+    if (picked === null) return;
+    if (picked !== 'unsupported' && picked !== 'denied' && picked !== 'timeout') {
+      try {
+        const res = await conn.createWorkspace({ path: picked.path });
+        setRows((prev) => {
+          const list = prev ?? [];
+          return list.some((x) => x.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
+        });
+        setPicked(res.root);
+        setProjOpen(false);
+      } catch (err) {
+        setHint(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+    if (picked === 'denied') setHint(t('Folder permission denied', '文件夹写权限被拒'));
+    if (picked === 'timeout') setHint(t('Could not locate the picked folder', '未能定位所选文件夹'));
     setDirOpen(true);
   };
   /** DirPicker 确认:登记所选既有目录为工作区并选中(同桌面壳后段) */
@@ -311,6 +403,41 @@ function WelcomeComposer({
             <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
             <span>{projName}</span>
           </button>
+          {/* G14.113 分支选择 pill(git 目录才显):当前分支+弹层切换 */}
+          {gitBr !== null && gitBr.current !== '' && (
+            <div className="pill-anchor" ref={branchRef}>
+              <button
+                type="button"
+                className="composer-pill branch-pill"
+                aria-label="git branch"
+                aria-expanded={branchOpen}
+                data-tip={`${t('Current branch', '当前分支')}: ${gitBr.current}`}
+                onClick={() => setBranchOpen((v) => !v)}
+              >
+                <GitBranch size={13} strokeWidth={1.75} aria-hidden="true" />
+                <span className="branch-pill-name">{gitBr.current}</span>
+                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+              {branchOpen && (
+                <div className="sx-menu-pop pill-pop" role="menu" aria-label={t('Branch', '分支')}>
+                  {gitBr.branches.map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      role="menuitem"
+                      className={`sx-menuitem${b === gitBr.current ? ' active' : ''}`}
+                      onClick={() => {
+                        setBranchOpen(false);
+                        checkoutBranch(b);
+                      }}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {projOpen && (
           <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
@@ -332,7 +459,7 @@ function WelcomeComposer({
               </button>
             ))}
             <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
-              <FolderPlus size={14} strokeWidth={1.75} aria-hidden="true" /> {t('Browse folders…', '浏览文件夹…')}
+              <FolderAddIcon size={14} /> {t('Browse folders…', '浏览文件夹…')}
             </button>
             {hint !== '' && <div className="proj-hint">{hint}</div>}
           </div>
@@ -347,18 +474,87 @@ function WelcomeComposer({
         {/* 输入卡 = 会话中同一份 ComposerCard(唯一差异:欢迎页在卡外多项目选择条) */}
         <ComposerCard
           label="welcome goal"
+          inputRef={goalRef}
+          highlight={renderMentionSpans(goal)}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
           placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}
-          onChange={setGoal}
+          onChange={(v) => {
+            setGoal(v);
+            // G14.124 面板跟随输入(光标前 @token 即开);无匹配=渲染面自然关闭
+            const caret = goalRef.current?.selectionStart ?? v.length;
+            const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
+            if (m !== null) {
+              setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
+              if (picked !== '') {
+                void conn.workspaceFiles(picked).then((r) => setFilePalFiles(r.files.map((f) => f.path)), () => setFilePalFiles([]));
+              }
+            } else if (filePal !== null) {
+              setFilePal(null);
+            }
+          }}
           onKeyDown={(e) => {
+            // G14.121 @ 文件面板(与会话内同构):任意位置 @token → 最近改动文件清单;
+            // 选中插入 @相对路径(发送期统一展开为 md 绝对链接);面板开时 Enter/↑↓ 归面板
+            const taEl = e.currentTarget as HTMLTextAreaElement;
+            const caret = taEl.selectionStart ?? goal.length;
+            const atMatch = /@([\w./:\\-]*)$/.exec(goal.slice(0, caret));
+            if (atMatch !== null) {
+              setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
+              if (picked !== '') {
+                void conn.workspaceFiles(picked).then((r) => setFilePalFiles(r.files.map((f) => f.path)), () => setFilePalFiles([]));
+              }
+            } else if (filePal !== null) {
+              setFilePal(null);
+            }
+            const items = picked === '' ? [] : filePalFiles.filter((f) => fileHit(f, filePal?.query ?? '')).slice(0, 12);
+            if (filePal !== null && items.length > 0) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                setFilePalActive((a) => (e.key === 'ArrowDown' ? (a + 1) % items.length : (a - 1 + items.length) % items.length));
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setFilePal(null);
+                return;
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                const rel = items[Math.min(filePalActive, items.length - 1)];
+                // G14.126 选中只插短写 @文件名(显形=图标+文件名),相对路径记账供发送期展开
+                const base = rel.split('/').pop() ?? rel;
+                pickRelRef.current.set(base, rel);
+                const atFrom = filePal.from;
+                const atEnd = atFrom + 1 + filePal.query.length;
+                setGoal((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
+                setFilePal(null);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               send();
             }
           }}
           overlays={
-            plusOpen ? (
+            // G14.121 @ 文件面板优先(命中才渲染;点击行=插入绝对路径,面板收起)
+            filePal !== null && picked !== '' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
+              <FilePalette
+                items={filePalFiles.filter((f) => fileHit(f, filePal.query)).slice(0, 12)}
+                active={Math.min(filePalActive, 11)}
+                onHover={setFilePalActive}
+                onPick={(p) => {
+                  // G14.126 选中只插短写 @文件名,相对路径记账供发送期展开
+                  const base = p.split('/').pop() ?? p;
+                  pickRelRef.current.set(base, p);
+                  const atFrom = filePal.from;
+                  const atEnd = atFrom + 1 + filePal.query.length;
+                  setGoal((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
+                  setFilePal(null);
+                }}
+              />
+            ) : plusOpen ? (
               <ComposerPlusPanel
                 conn={conn}
                 root={picked !== '' ? picked : undefined}
@@ -393,29 +589,37 @@ function WelcomeComposer({
                   title={t('Approval mode for this session', '本会话的审批模式')}
                   onClick={() => setModeOpen((v) => !v)}
                 >
-                  <Hand size={13} strokeWidth={1.75} aria-hidden="true" />
+                  {/* G14.133 分档图标与菜单同源(ModeIcon)——静态 Hand 两套渲染退役 */}
+                  <ModeIcon mode={mode} />
                   {mode === 'manual' ? t('Confirm changes', '变更确认') : mode === 'plan' ? t('Plan mode', '计划模式') : t('Full access', '完全访问')}
                   <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                 {modeOpen && (
-                  <div className="sx-menu-pop pill-pop" role="menu" aria-label="approval mode menu">
+                  <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="approval mode menu">
+                    {/* G14.113 与会话内 mode-pop 同构:Plan 首位+横线+两执行档;图标+双行(名称+解释) */}
                     {([
-                      ['dontAsk', t('Full access', '完全访问')],
-                      ['manual', t('Confirm changes', '变更确认')],
-                      ['plan', t('Plan mode', '计划模式')],
-                    ] as const).map(([m, label]) => (
-                      <button
-                        key={m}
-                        type="button"
-                        role="menuitem"
-                        className={`sx-menuitem${m === mode ? ' active' : ''}`}
-                        onClick={() => {
-                          setMode(m);
-                          setModeOpen(false);
-                        }}
-                      >
-                        {label}
-                      </button>
+                      { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — no changes until you approve', '先规划方案,经你确认后才执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
+                      { m: 'dontAsk' as const, label: t('Full access', '完全访问'), desc: t('Full permissions — no confirmation prompts', '完全权限,操作不再逐一确认'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
+                      { m: 'manual' as const, label: t('Confirm changes', '变更确认'), desc: t('Writes and commands ask first', '写入与命令需逐一确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
+                    ]).map((row, idx) => (
+                      <div key={row.m} className="mode-pop-group">
+                        {idx === 1 && <div className="mode-pop-sep" />}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={`mode-item${mode === row.m ? ' active' : ''}`}
+                          onClick={() => {
+                            setMode(row.m);
+                            setModeOpen(false);
+                          }}
+                        >
+                          <span className="mode-item-icon">{row.icon}</span>
+                          <span className="mode-item-body">
+                            <span className="mode-item-name">{row.label}</span>
+                            <span className="mode-item-desc">{row.desc}</span>
+                          </span>
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -496,12 +700,19 @@ function AppShell(): JSX.Element {
   const [tabStates, setTabStates] = useState<TabStates>({});
   const [connState, setConnState] = useState<ConnectionState>('connecting');
   const [board, setBoard] = useState<TaskBoardState>(emptyBoard);
+  /** G14.137 会话待办(todo_write 上抛):任务标签「会话待办」区数据源;会话切换清零(与板同纪律) */
+  const [sessionTodos, setSessionTodos] = useState<TodoItem[]>([]);
   const [delegations, setDelegations] = useState<Delegation[]>([]);
   /** G5 teammate 投影(App 态):snapshot.team 经 Chat onSeeded 回填——reseed 即更新 */
   const [team, setTeam] = useState<Array<{ name: string; busy: boolean }>>([]);
   /** G8d 子代理活动聚合(App 态):payload.subagent 标签流经 applyAgentEvent 归约——Agents 标签
    *  只读消费(services.agentActivities);delegation 起止 label 命中既有卡时改状态(权威终语) */
   const [agentActivities, setAgentActivities] = useState<AgentActivities>({});
+  /** G14.174 待办批次/关联轮次输入(Chat 从转录重建上抛)——待办/任务板页签数据面 */
+  const [todoBatches, setTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
+  const [turnGoal, setTurnGoal] = useState('');
+  /** G14.176 create_task 行点开的定位信号(任务板滚动高亮对应卡) */
+  const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number } | null>(null);
   const connRef = useRef<Connection | null>(null);
   /** 连接实例态:effect 装配后落位(左栏/中栏/标签体消费;null = 装配中占位) */
   const [connInstance, setConnInstance] = useState<Connection | null>(null);
@@ -523,8 +734,9 @@ function AppShell(): JSX.Element {
    *  killPty 寻址。切标签/会话不清——pty 生命周期属标签不属渲染,backHome 亦不 kill) */
   const ptyIdsRef = useRef(new Map<string, string>());
   /** G8c-T8 设置态:settingsOpen=true 时三栏内容整体切换(SettingsShell 占左+主栏,右标签栏
-   *  不渲染,Chat 卸载——返回重播种,与 backHome 同语义可接受);settingsRoot=设置面项目上下文
-   *  (开设置时快照 openRoot,无则 ''=仅全局;项目选择器可切) */
+   *  不渲染,Chat 卸载——返回重播种,与 backHome 同语义可接受);settingsRoot=设置面隐式项目
+   *  上下文(开设置时快照 openRoot,无则 ''=仅全局;无顶部切换面——项目区分下沉到配置项徽标,
+   *  项目级行以此为写回锚) */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsRoot, setSettingsRoot] = useState('');
   /** G12 左栏宽度可调:拖右缘边条改 --menu-w(clamp 220..420),localStorage 持久;SettingsShell
@@ -584,6 +796,9 @@ function AppShell(): JSX.Element {
         // 由 sink.reset 清+本会话重播种;welcome 无 sink 时帧被会话过滤,窗恒空悬挂至下次 openSession)
         reopenBoardSeedWindow();
         setBoard(emptyBoard());
+        setTodoBatches([]);
+        setTurnGoal('');
+      setSessionTodos([]);
         setDelegations([]);
         setAgentActivities({}); // G8d:子代理聚合清零(重连补发帧重建——连接层 seq 过滤防双应用)
         chatSinkRef.current?.reset();
@@ -613,6 +828,8 @@ function AppShell(): JSX.Element {
         //  ——会话 reset 后旧任务悬挂)+ 播种窗重开清缓冲(窗内帧属旧板,弃);Chat 卡区清+重播种经 sink
         reopenBoardSeedWindow();
         setBoard(emptyBoard());
+        setTodoBatches([]);
+        setTurnGoal('');
         setDelegations([]);
         setAgentActivities({}); // G8d:会话维 reset 子代理聚合同清(swap 新 Harness,旧卡作废)
         chatSinkRef.current?.resetSession();
@@ -629,13 +846,20 @@ function AppShell(): JSX.Element {
   }, []);
 
   /** 拖宽在途兜底解绑(会话切走/壳卸毁时 window 监听不泄漏) */
+  /** G14.104 语言切换重渲染触发(t 为模块级非响应式) */
+  const [langTick, setLangTick] = useState(0);
+  const renderHighlightSpans = (text: string): ReactNode =>
+    splitMentionTokens(text).map((t, i) =>
+      t.kind === 'plain' ? <span key={i}>{t.text}</span> : <span key={i} className={`hn hn-${t.kind}`}>{t.text}</span>,
+    );
   /** GUI chrome 双语(G10-C3c):语言源 = daemon settings language 键,连接装配即同步 */
   useEffect(() => {
     if (connInstance === null) return;
     connInstance.settings().then(
       (view) => {
         const raw = view.keys.find((k) => k.key === 'language')?.value ?? undefined;
-        setLanguage(parseLanguage(raw ?? undefined));
+        if (raw !== undefined) setLanguage(parseLanguage(raw)); // 未设置不覆盖(缺省 zh 由 i18n 模块承载;测试钉 en 由 setup 承载)
+        setLangTick((v) => v + 1); // G14.104 语言是模块级非响应式——补一次重渲染,静止页面即时翻语言
       },
       () => {},
     );
@@ -650,7 +874,7 @@ function AppShell(): JSX.Element {
    *  权威态)+ 播种窗重开;tabStates 已有该会话则原样(重开同会话标签还原) */
   /** G14.29 辅助对话:fork 主会话整档(side 标记,列表滤除)→ 右栏 sidechat 标签绑定旁路会话。
    *  帧路由经 sideSinksRef(onEvent 同键转投);卡点与 /btw /side 输入拦截同汇本口 */
-  const startSideChat = (): void => {
+  const startSideChat = (insert?: string): void => {
     const conn = connRef.current;
     if (conn === null || openSessionId === '') return;
     void (async () => {
@@ -659,7 +883,7 @@ function AppShell(): JSX.Element {
         const last = anchors.length > 0 ? anchors[anchors.length - 1]!.turn : 1;
         const r = await conn.forkSession(openSessionId, last, true);
         sideSinksRef.current.set(r.sessionId, { current: null });
-        openTabInSession('sidechat', { sideId: r.sessionId });
+        openTabInSession('sidechat', { sideId: r.sessionId, insert });
       } catch {
         /* fork 失败静默(旁路非关键路径) */
       }
@@ -673,6 +897,8 @@ function AppShell(): JSX.Element {
     setTabStates((s) => ensureSession(s, sessionId, PROBE));
     reopenBoardSeedWindow();
     setBoard(emptyBoard());
+        setTodoBatches([]);
+        setTurnGoal('');
     setDelegations([]);
     setTeam([]);
     setAgentActivities({}); // G8d:会话切换串态防线(板/team 同款——聚合只挂当前会话帧)
@@ -688,6 +914,8 @@ function AppShell(): JSX.Element {
     setOpenRoot('');
     reopenBoardSeedWindow();
     setBoard(emptyBoard());
+        setTodoBatches([]);
+        setTurnGoal('');
     setDelegations([]);
     setTeam([]);
     setAgentActivities({}); // G8d:无会话期无帧消费,残留即陈旧
@@ -786,8 +1014,8 @@ function AppShell(): JSX.Element {
   /** 标签体服务面(任务/Agents 标签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接)+
    *  G8d 子代理活动聚合(AgentsTab 只读) */
   const services = useMemo<TabServices>(
-    () => ({ board, delegations: [...delegations], team: [...team], onReview: reviewTask, agentActivities }),
-    [board, delegations, team, reviewTask, agentActivities],
+    () => ({ board, delegations: [...delegations], team: [...team], onReview: reviewTask, agentActivities, todos: [...sessionTodos], todoBatches, turnGoal, taskFocus }),
+    [board, delegations, team, reviewTask, agentActivities, sessionTodos, todoBatches, turnGoal, taskFocus],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -851,7 +1079,7 @@ function AppShell(): JSX.Element {
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
            Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
-        <SettingsShell conn={connInstance} root={settingsRoot} onRootChange={setSettingsRoot} onBack={closeSettings} />
+        <SettingsShell conn={connInstance} root={settingsRoot} onBack={closeSettings} />
       ) : (
         <>
           {/* 左栏:项目分组(Home 职能内化;装配中占位) */}
@@ -901,13 +1129,24 @@ function AppShell(): JSX.Element {
                 onSeeded={seedFromSnapshot}
                 onOpenFile={(p) => openTabInSession('file', { path: p })}
                 onOpenDiff={(callId, path) => openTabInSession('diff', { callId, path })}
+                onOpenAgent={(label, agentTitle, task) => openTabInSession('agent', { label, agentTitle, task })}
+                onOpenTask={(ref) => {
+                  openTabInSession('agents', {});
+                  setTaskFocus({ ref, nonce: Date.now() });
+                }}
+                onOpenTab={(type) => openTabInSession(type, {})}
+                board={board}
+                onTodoBatches={setTodoBatches}
+                onTurnGoal={setTurnGoal}
                 pendingGoal={welcomeGoal ?? undefined}
                 onPendingGoalDone={() => setWelcomeGoal(null)}
                 root={openRoot}
+                onTodos={setSessionTodos}
                 onRenamed={() => setRecentVersion((v) => v + 1)}
                 showExpandSidebar={tabState.collapsed}
                 onExpandSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, false))}
                 onSideChat={startSideChat}
+                onOpenMemory={() => openTabInSession('memory')}
                 onFork={() => {
                   if (connInstance === null) return;
                   void connInstance
@@ -954,6 +1193,7 @@ function AppShell(): JSX.Element {
               collapsed={tabState.collapsed || page !== 'chat'}
               disabled={page !== 'chat'}
               onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
+              onReorder={(from, to) => setTabStates((s) => reorderTab(s, openSessionId, from, to))}
               onClose={closeTabInSession}
               onOpenType={(t) => openTabInSession(t, tabEntry(t).mintParams?.())}
               onToggleCollapse={() =>
@@ -979,6 +1219,7 @@ function AppShell(): JSX.Element {
                   uid: activeTab.uid,
                   // G8b T7:标签体自治跳转面(DirectoryTab 文件行 → file 标签;Chat onOpenFile 同源)
                   openTab: openTabInSession,
+                  startSideChat,
                   ptyIdFor,
                   onPtyAllocated: handlePtyAllocated,
                   // G14.29 辅助对话:按 sideId 注入旁路 sink(App onEvent 同键路由帧)
@@ -992,7 +1233,7 @@ function AppShell(): JSX.Element {
                 <div className="sx-tab-empty-title">{t('Open tabs', '打开标签页')}</div>
                 <div className="sx-tab-empty-sub">{t('Choose tabs to open in the side panel.', '选择要在侧边面板中打开的标签。')}</div>
                 <div className="sx-tab-empty-cards">
-                  {([['side', MessageCircle, t('Side chat', '辅助对话'), startSideChat], ['tasks', ListTodo, t('Tasks', '任务'), () => openTabInSession('tasks')], ['terminal', SquareTerminal, t('Terminal', '终端'), () => openTabInSession('terminal', tabEntry('terminal').mintParams?.())]] as const).map(([key, Icon, label, onClick]) => (
+                  {([['side', MessageCircle, t('Side chat', '辅助对话'), () => startSideChat()], ['tasks', ListTodo, t('Todos', '待办'), () => openTabInSession('tasks')], ['diff', GitCompare, t('Review', '审查'), () => openTabInSession('diff')]] as const).map(([key, Icon, label, onClick]) => (
                     <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>
                       <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
                       <span>{label}</span>

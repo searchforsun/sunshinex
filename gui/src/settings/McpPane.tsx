@@ -196,7 +196,6 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
   return (
     <section className="sx-settings-form" aria-label="settings pane MCP">
       <h2>MCP 服务器</h2>
-      {root === '' && <p className="home-loading">未选择项目:清单为仅全局视图,添加/编辑/删除需项目上下文(写面为项目级;全局编辑走「高级」)。</p>}
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
       {servers === null && loadError === '' && <p className="home-loading">加载 MCP 清单…</p>}
       {servers !== null && servers.length === 0 && loadError === '' && <p className="home-loading">无 MCP 服务器。</p>}

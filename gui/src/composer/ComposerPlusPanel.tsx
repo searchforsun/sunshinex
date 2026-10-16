@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
+import { FileIcon } from '../file-icon';
 
 /**
  * 「+」附加面板(G12 统一 composer):浮在输入卡上方、与卡同宽(absolute left/right 0,锚
@@ -16,6 +17,8 @@ export interface PlusPanelConn {
     groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string }> }>;
   }>;
   tree(sessionId: string, path?: string): Promise<{ entries: Array<{ name: string; kind: 'dir' | 'file' }>; truncated?: boolean }>;
+  /** G14.128 工作区文件索引(文件区平铺:名+相对目录,最近改动优先);缺省回落 tree 浏览 */
+  workspaceFiles?(root: string): Promise<{ files: Array<{ path: string; mtime: number }> }>;
 }
 
 function parentOf(path: string): string {
@@ -48,7 +51,14 @@ export function ComposerPlusPanel({
     let alive = true;
     conn.commands().then(
       (r) => {
-        if (alive) setCmds(r.commands.map((c) => ({ name: c, desc: r.descriptions[c] ?? '' })));
+        if (!alive) return;
+        // G14.145 只列可用命令(supported 在场即过滤)+行内说明(descriptions 键不带斜杠,双键兼容)
+        const supported = Array.isArray(r.supported) ? r.supported : [];
+        setCmds(
+          r.commands
+            .filter((c) => supported.length === 0 || supported.includes(c))
+            .map((c) => ({ name: c, desc: r.descriptions[c] ?? r.descriptions[c.replace(/^\//, '')] ?? '' })),
+        );
       },
       () => {
         if (alive) setCmds([]);
@@ -103,13 +113,44 @@ export function ComposerPlusPanel({
     };
   }, [conn, sessionId, path]);
 
+  /** G14.128 文件区平铺(工作区索引):名+相对目录后缀,最近改动优先;root 缺场回落 tree 浏览 */
+  const [indexed, setIndexed] = useState<Array<{ rel: string; base: string; dir: string }> | null>(null);
+  useEffect(() => {
+    if (root === undefined || root === '' || conn.workspaceFiles === undefined) {
+      setIndexed(null);
+      return;
+    }
+    let alive = true;
+    conn.workspaceFiles(root).then(
+      (r) => {
+        if (!alive) return;
+        setIndexed(
+          r.files.slice(0, 60).map((f) => {
+            const si = f.path.lastIndexOf('/');
+            return {
+              rel: f.path,
+              base: si < 0 ? f.path : f.path.slice(si + 1),
+              dir: si < 0 ? '' : f.path.slice(0, si + 1),
+            };
+          }),
+        );
+      },
+      () => {
+        if (alive) setIndexed(null);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, root]);
+
   return (
     <div className="sx-plus-panel" role="menu" aria-label={t('Add context', '添加附件')}>
       <div className="sx-plus-sec">{t('Commands', '命令')}</div>
       {cmds === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
       {cmds !== null && cmds.length === 0 && <div className="sx-plus-empty">{t('No commands', '暂无命令')}</div>}
       {cmds?.map((c) => (
-        <button key={c.name} type="button" role="menuitem" className="sx-plus-row" title={c.desc} onClick={() => onInsert(c.name + ' ')}>
+        <button key={c.name} type="button" role="menuitem" className="sx-plus-row" data-tip={c.desc} onClick={() => onInsert(c.name + ' ')}>
           <span className="sx-plus-name">{c.name}</span>
           <span className="sx-plus-desc">{c.desc}</span>
         </button>
@@ -118,40 +159,59 @@ export function ComposerPlusPanel({
       {skills === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
       {skills !== null && skills.length === 0 && <div className="sx-plus-empty">{t('No skills', '暂无技能')}</div>}
       {skills?.map((s) => (
-        <button key={s.id} type="button" role="menuitem" className="sx-plus-row" title={s.desc} onClick={() => onInsert(`/skill ${s.id} `)}>
+        <button key={s.id} type="button" role="menuitem" className="sx-plus-row" data-tip={s.desc} onClick={() => onInsert(`/skill ${s.id} `)}>
           <span className="sx-plus-name">{s.id}</span>
           <span className="sx-plus-desc">{s.desc}</span>
         </button>
       ))}
-      {sessionId !== undefined && (
+      {/* G14.128 文件区:root 索引在场即渲染(欢迎页也可用);否则会话内回落 tree 浏览 */}
+      {(indexed !== null || sessionId !== undefined) && (
         <>
           <div className="sx-plus-sec">{t('Files', '文件')}</div>
-          {path !== '' && (
-            <button
-              type="button"
-              role="menuitem"
-              className="sx-plus-row"
-              onClick={() => setPath(parentOf(path))}
-            >
-              <span className="sx-plus-name">../</span>
-              <span className="sx-plus-desc">{path}</span>
-            </button>
+          {indexed !== null ? (
+            <>
+              {/* G14.128 平铺索引:名+相对目录后缀(@ 同源),点击插入 @相对路径 */}
+              {indexed.length === 0 && <div className="sx-plus-empty">{t('(empty)', '(空)')}</div>}
+              {indexed.map((f) => (
+                <button key={f.rel} type="button" role="menuitem" className="sx-plus-row" onClick={() => onInsert(`@${f.rel} `)}>
+                  <FileIcon path={f.rel} />
+                  <span className="sx-plus-name">{f.base}</span>
+                  {f.dir !== '' && <span className="sx-plus-desc">{f.dir}</span>}
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              {path !== '' && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="sx-plus-row"
+                  onClick={() => setPath(parentOf(path))}
+                >
+                  <span className="sx-plus-name">../</span>
+                  <span className="sx-plus-desc">{path}</span>
+                </button>
+              )}
+              {entries === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
+              {entries !== null && entries.length === 0 && <div className="sx-plus-empty">{t('(empty)', '(空)')}</div>}
+              {entries?.map((e) => {
+                const rel = path === '' ? e.name : `${path}/${e.name}`;
+                return e.kind === 'dir' ? (
+                  <button key={rel} type="button" role="menuitem" className="sx-plus-row" onClick={() => setPath(rel)}>
+                    <FileIcon path={rel} folder />
+                    <span className="sx-plus-name">{e.name}/</span>
+                  </button>
+                ) : (
+                  <button key={rel} type="button" role="menuitem" className="sx-plus-row" onClick={() => onInsert(`@${rel} `)}>
+                    <FileIcon path={rel} />
+                    <span className="sx-plus-name">{e.name}</span>
+                  </button>
+                );
+              })}
+              {truncated && <div className="sx-plus-empty">{t('…truncated', '…已截断')}</div>}
+            </>
           )}
-          {entries === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
-          {entries !== null && entries.length === 0 && <div className="sx-plus-empty">{t('(empty)', '(空)')}</div>}
-          {entries?.map((e) => {
-            const rel = path === '' ? e.name : `${path}/${e.name}`;
-            return e.kind === 'dir' ? (
-              <button key={rel} type="button" role="menuitem" className="sx-plus-row" onClick={() => setPath(rel)}>
-                <span className="sx-plus-name">{e.name}/</span>
-              </button>
-            ) : (
-              <button key={rel} type="button" role="menuitem" className="sx-plus-row" onClick={() => onInsert(rel)}>
-                <span className="sx-plus-name">{e.name}</span>
-              </button>
-            );
-          })}
-          {truncated && <div className="sx-plus-empty">{t('…truncated', '…已截断')}</div>}
         </>
       )}
     </div>

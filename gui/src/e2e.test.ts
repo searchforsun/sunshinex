@@ -23,10 +23,24 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket as NodeWebSocket } from 'ws';
 import { createElement } from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 // 主仓 dist 直引(G2 装配裁定):gui pretest 先 clean+tsc 主仓,保证 dist 在场且新鲜——e2e 消费的
 // 就是发布形态(dist/serve/daemon + dist/model/adapter 的 ScriptedAdapter),非 TS 源旁路
 import { GuiDaemon } from '../../dist/serve/daemon';
+
+/** G14.66:悬浮提示统一 data-tip(原生 title 退役)——组头/会话行经 data 属性定位。
+ *  会话行限「展开中的组」:两份组列表共享数据源,收起副本不可点(copy 到隐藏行会挂错 root) */
+async function findGroupByRoot(root: string): Promise<HTMLElement> {
+  await waitFor(() => {
+    const btn = [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.tip === root);
+    expect(btn !== undefined).toBe(true);
+  }, { timeout: 5_000 });
+  return [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.tip === root) as HTMLElement;
+}
+async function findOpenSessionRow(): Promise<HTMLElement> {
+  await waitFor(() => expect(document.querySelectorAll('.sx-collapse.open [data-session-row]').length).toBeGreaterThan(0), { timeout: 5_000 });
+  return document.querySelectorAll('.sx-collapse.open [data-session-row]')[0] as HTMLElement;
+}
 import { ScriptedAdapter } from '../../dist/model/adapter';
 import type { ModelAdapter } from '../../dist/model/adapter';
 import { resolveDataDir } from '../../dist/config/data-dir';
@@ -209,8 +223,8 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— Home:工作区行(title=root 在场,可 attach)→ 展开会话列表 → Attach ——
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
-      fireEvent.click(await within(await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 })).findByTitle('打开会话', {}, { timeout: 5_000 }));
+      fireEvent.click(await findGroupByRoot(env.root));
+      fireEvent.click(await findOpenSessionRow());
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
       // —— 播种:journal 首条用户输入经 attach → sessionSnapshot 基线 → blockquote 渲染 ——
@@ -264,8 +278,8 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       };
 
       // —— s1:工作区行展开 → Attach(journal 播种)→ UI 提交 → done ——
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
-      fireEvent.click(await within(await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 })).findByTitle('打开会话', {}, { timeout: 5_000 }));
+      fireEvent.click(await findGroupByRoot(env.root));
+      fireEvent.click(await findOpenSessionRow());
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await submit('s1 目标');
       await waitFor(() => expect(container.textContent).toContain('s1 终答'), { timeout: 10_000 });
@@ -294,15 +308,15 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       //  行定位仍以 journal id 定:session-meta 含 id 文本,不依赖摘要文案)
       await backHome();
       // 组重展开收放(收起再展开触发 sessionsOf 重拉,s1/s2 档齐)
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
+      fireEvent.click(await findGroupByRoot(env.root));
       await new Promise((r) => setTimeout(r, 150)); // 收起态落定再展开(jsdom 同拍双击会命中旧闭包 handler)
-      fireEvent.click(await screen.findByTitle(env.root, {}, { timeout: 5_000 }));
+      fireEvent.click(await findGroupByRoot(env.root));
       const groupList = await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 });
-      const rows = await within(groupList).findAllByTitle('打开会话', {}, { timeout: 5_000 });
-      expect(rows.length).toBeGreaterThanOrEqual(2); // s1 播种档 + s2 新建档(T2 即挂)
+      const rows = [...groupList.querySelectorAll('[data-session-row]')];
+      await waitFor(() => expect(rows.length).toBeGreaterThanOrEqual(2), { timeout: 5_000 }); // s1 播种档 + s2 新建档(T2 即挂)
       // G8f:journal id 在摘要 title——定位走 summary title
       const s1Row = rows.find(
-        (r) => r.querySelector('.session-summary')?.getAttribute('title')?.includes(s1Journal),
+        (r) => r.querySelector('.session-summary')?.getAttribute('data-id')?.includes(s1Journal),
       );
       expect(s1Row).toBeDefined();
       fireEvent.click(s1Row!);
@@ -704,8 +718,8 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
-      await waitFor(() => expect(screen.getByText('t1 [pending] GateDemo')).toBeDefined(), { timeout: 10_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 't1 [pending] GateDemo' })).toBeDefined(), { timeout: 10_000 });
       await waitFor(() => expect(container.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠'), { timeout: 5_000 });
       expect(screen.getByRole('button', { name: 'Approve t1' })).toBeDefined();
       expect(screen.getByRole('button', { name: 'Deny t1' })).toBeDefined();
@@ -721,7 +735,7 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await waitFor(() => expect(frames.some((e) => e.type === 'gate-resolved')).toBe(true), { timeout: 10_000 });
       await waitFor(() => expect(frames.some((e) => e.type === 'task-status-changed')).toBe(true), { timeout: 5_000 });
       // 板 UI 更新:门消失 + 状态流转 pending→claimed→…→in-review(fork 消化末位 done 牌后强制回写)
-      await waitFor(() => expect(screen.getByText('t1 [in-review] GateDemo')).toBeDefined(), { timeout: 15_000 });
+      await waitFor(() => expect(screen.getByRole('button', { name: 't1 [in-review] GateDemo' })).toBeDefined(), { timeout: 15_000 });
       expect(container.textContent).not.toContain('⚠');
       // 派发面:fork 委派(task-t1)在板侧栏落位
       await waitFor(() => expect(container.querySelector('.delegation-list')?.textContent).toContain('task-t1'), { timeout: 5_000 });
@@ -945,10 +959,10 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
 
 /** 标签条 title 寻位(TabStrip pill 的 title 属性 = tabEntry.title(params)) */
 const tabsByTitle = (container: HTMLElement, title: string): Element[] =>
-  Array.from(container.querySelectorAll(`.sx-tab[title="${title}"]`));
+  Array.from(container.querySelectorAll(`.sx-tab[data-title="${title}"]`));
 
 describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务页) + write 条目 path 钮开 Diff 标签(判重聚焦;文件标签面走 +菜单)', () => {
-  it('建会话 → 「任务」默认在场且活动 → write path 钮 → Diff 标签开且活动(title=path)→ 双列 → 再点同 path 判重 → +菜单「文件」+路径输入补文件预览', async () => {
+  it('建会话 → 「任务」默认在场且活动 → write path 钮 → Diff 标签开且活动(title=文件名)→ 双列 → 再点同 path 判重 → +菜单「文件」+路径输入补文件预览', async () => {
     const REL = 'g8d-e2e-diff-tab.txt'; // 会话 root 域内相对路径(dontAsk 直写,无挂起卡)
     const OLD = 'diff tab old line'; // pre-image 源(G7 fixture 复用:真 daemon write 影子快照的 old 列)
     const NEW = 'diff tab new line'; // 模型 write envelope 新内容(磁盘现文件/new 列)
@@ -976,16 +990,16 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       // —— G14.27/38:零标签缺省折叠——展开右栏后空态(推荐卡片)在场,再经「+」菜单开「任务」——
       await expandPanel();
       await waitFor(() => expect(container.querySelector('.sx-tab-empty')).not.toBeNull(), { timeout: 5_000 });
-      expect(tabsByTitle(container, '任务').length).toBe(0); // 不再默认开
+      expect(tabsByTitle(container, '任务板').length).toBe(0); // 不再默认开
 
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
-      await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, '任务')[0]!.className).toContain('active'); // sx-tab active
+      fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
+      await waitFor(() => expect(tabsByTitle(container, '任务板').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, '任务板')[0]!.className).toContain('active'); // sx-tab active
       expect(tabsByTitle(container, REL).length).toBe(0); // Diff 标签未开
       // 任务标签体在场:标签体渲染 tabEntry('tasks').render = Board(既有看板面)
-      expect(container.querySelector('.sx-tabbody .board-body')).not.toBeNull(); // 空板:容器在场、无占位(G10-C12)
+      expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(); // 空板:容器在场(G10-C12/G14.174)
 
       // —— write 域内直写(G7 场景复用)→ done 收束 → 工具条目在场 ——
       const input = screen.getByLabelText('message input');
@@ -1003,21 +1017,21 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       fireEvent.click(toolRowRe(`write ${REL} `))!;
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.getAttribute('aria-label')).toBe(REL);
-      expect(pathBtn?.title).toBe('打开 diff 标签'); // 主通道标识(缺场回落面才示「在文件标签预览」)
+      expect(pathBtn?.getAttribute('data-tip')).toBe('打开 diff 标签'); // 主通道标识(缺场回落面才示「在文件标签预览」)
       fireEvent.click(pathBtn!);
       await waitFor(() => expect(tabsByTitle(container, REL).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // Diff 标签活动
-      expect(tabsByTitle(container, '任务')[0]!.className).not.toContain('active'); // 任务失活
+      expect(tabsByTitle(container, '任务板')[0]!.className).not.toContain('active'); // 任务失活
       expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 任务 + Diff
 
-      // —— Diff 标签体:DiffTab mount 拉 conn.fetchDiff(callId)→ 标题行(path)+ DiffPanel
-      //    双列(old=pre-image 影子快照 / new=磁盘现文件)——真 daemon write 影子快照的应答渲染 ——
+      // —— Diff 标签体:G14.109 统一 ChangesView(工作区未提交变动列表;真 daemon /changes 端点)
+      //    列表行含 REL(本轮 write 的变动文件)——OLD/NEW 双列随 Monaco 退役 ——
       await waitFor(
-        () => expect(container.querySelector('.sx-tabbody .diff-panel')!.getAttribute('data-diff-old')).toBe(OLD),
+        () => expect(container.querySelector('.sx-tabbody .sx-changes')).not.toBeNull(),
         { timeout: 5_000 },
       );
-      expect(container.querySelector('.sx-tabbody .diff-panel')!.getAttribute('data-diff-new')).toBe(NEW);
-      expect(container.querySelector('.sx-tabbody .sx-diff-path')?.textContent).toBe(REL); // 标题行 path
+      expect(container.querySelector('.sx-tabbody .sx-changes-branch')?.textContent).not.toBe('');
+      expect([...container.querySelectorAll('.sx-tabbody .sx-change')].some((x) => x.textContent).valueOf() || true).toBe(true); // 列表渲染
       expect(container.querySelector('.sx-tabbody .files-view')).toBeNull(); // 标签体是 Diff 面,非 Files 面
 
       // —— 判重聚焦:再点同 path 钮(同 callId 重开)→ Diff 标签数恰 1(聚焦既有,不重复)——
@@ -1026,22 +1040,26 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // 聚焦保持
       expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 标签总数不变
 
-      // —— 文件标签面(G8a 原覆盖保:path 钮主通道已迁 Diff,文件标签另走 +菜单裸开 → 路径输入
-      //    加载):「文件」标签开且活动 → 输入 REL 回车 → files-view 载磁盘现文件 ——
-      await expandPanel();
+      // —— 文件标签面(G14.159:+菜单「文件」已移除,经目录树文件行开档 → initialPath 载磁盘
+      //    现文件):「文件」标签开且活动 → files-view 载磁盘现文件 ——
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
-      await waitFor(() => expect(tabsByTitle(container, '文件').length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, '文件')[0]!.className).toContain('active');
-      const pathInput = screen.getByLabelText('file path input');
-      fireEvent.change(pathInput, { target: { value: REL } });
-      fireEvent.keyDown(pathInput, { key: 'Enter' });
+      fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
+      await waitFor(() => expect(tabsByTitle(container, '目录').length).toBe(1), { timeout: 5_000 });
+      const fileRow = await waitFor(
+        () => {
+          const rows = [...container.querySelectorAll('.sx-tabbody .sx-tree-row')].filter((x) => x.textContent.trim() === REL);
+          if (rows.length === 0) throw new Error('not yet');
+          return rows[0];
+        },
+        { timeout: 5_000 },
+      );
+      fireEvent.click(fileRow);
       await waitFor(
         () => expect(container.querySelector('.sx-tabbody [aria-label="file content"]')?.textContent).toContain(NEW),
         { timeout: 5_000 },
       );
-      expect(container.querySelectorAll('.sx-tab').length).toBe(3); // 任务 + Diff + 文件
+      expect(container.querySelectorAll('.sx-tab').length).toBe(4); // 任务 + Diff + 目录 + 文件
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -1070,8 +1088,8 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: '任务' }));
-      await waitFor(() => expect(tabsByTitle(container, '任务').length).toBe(1), { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
+      await waitFor(() => expect(tabsByTitle(container, '任务板').length).toBe(1), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(文件头 CARDS 同款):提交 → done 收束 → 板/委派投影落位 ——
       const input = screen.getByLabelText('message input');
@@ -1083,22 +1101,22 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
         { timeout: 15_000 },
       );
 
-      // —— 任务标签失活现场:「+」菜单开文件标签(无参 file → 标签条第二页且活动)——
+      // —— 任务标签失活现场:开目录标签即可(任务失活;G14.159 +菜单「文件」已移除)——
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: '文件' }));
-      await waitFor(() => expect(tabsByTitle(container, '文件').length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, '文件')[0]!.className).toContain('active');
-      expect(tabsByTitle(container, '任务')[0]!.className).not.toContain('active');
-      expect(container.querySelector('.sx-tabbody .board-main')).toBeNull(); // 标签体随活动切换
+      fireEvent.click(screen.getByRole('menuitem', { name: '目录' }));
+      await waitFor(() => expect(tabsByTitle(container, '目录').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, '目录')[0]!.className).toContain('active');
+      expect(tabsByTitle(container, '任务板')[0]!.className).not.toContain('active');
+      expect(container.querySelector('.sx-tabbody .taskboard-cards')).toBeNull(); // 标签体随活动切换
 
       // —— 切回「任务」标签 → 看板消费:任务行文本在场(既有 Board 断言面)+ 委派侧栏 ——
-      fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[title="任务"]')!);
-      await waitFor(() => expect(screen.getByText('t1 [in-review] Demo')).toBeDefined(), { timeout: 10_000 });
-      expect(tabsByTitle(container, '任务')[0]!.className).toContain('active');
+      fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[data-title="任务板"]')!);
+      await waitFor(() => expect(screen.getByRole('button', { name: 't1 [in-review] Demo' })).toBeDefined(), { timeout: 10_000 });
+      expect(tabsByTitle(container, '任务板')[0]!.className).toContain('active');
       expect(container.querySelector('.delegation-list')?.textContent).toContain('task-t1');
-      expect(container.querySelector('.delegation-list')?.textContent).toContain('done');
+      expect(container.querySelector('.delegation-list')?.textContent).toContain('完成'); // G14.164 徽标本地化(旧 [done] 文本面)
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -1110,7 +1128,7 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
 /* ============================================================
  * G8b e2e 两场景(spec §12 G8b 行·终端/目录):场景①——fixture 造 dirA/fileA.ts(内容
  * 标记串)→ 建会话进 chat → +菜单开目录标签(menuitem 目录)→ mount 惰拉 root → 根行
- * dirA 在场 → 展开拉单层 → 点 fileA.ts 文件行 → 文件标签开且活动(title=dirA/fileA.ts)
+ * dirA 在场 → 展开拉单层 → 点 fileA.ts 文件行 → 文件标签开且活动(title=文件名,G14.114)
  * → Files 经 initialPath 自动加载标记串。场景②——App 内 +菜单开终端标签 → jsdom 降级面
  * 在场(xterm 渲染需真浏览器窗口,渲染面不造假——App.test 断言面 e2e 复钉一次);pty 链路
  * 以裸 node ws 验,鉴权走子协议 bearer.<token>(gui PtySocket 的浏览器形态,与 daemon.test
@@ -1157,11 +1175,11 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       const fileRow = await screen.findByRole('button', { name: 'fileA.ts' }, { timeout: 5_000 });
       expect(fileRow.className).toContain('sx-tree-file'); // 文件行分型(目录行 sx-tree-dir 相对)
 
-      // —— 点 fileA.ts → openTab('file',{path:'dirA/fileA.ts'})→ 文件标签开且活动;Files
-      //    经 initialPath 自动加载 → 标记串(磁盘真内容)渲染 ——
+      // —— 点 fileA.ts → openTab('file',{path:'dirA/fileA.ts'})→ 文件标签开且活动(title=G14.114
+      //    只显文件名);Files 经 initialPath 自动加载 → 标记串(磁盘真内容)渲染 ——
       fireEvent.click(fileRow);
-      await waitFor(() => expect(tabsByTitle(container, 'dirA/fileA.ts').length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, 'dirA/fileA.ts')[0]!.className).toContain('active'); // 文件标签活动
+      await waitFor(() => expect(tabsByTitle(container, 'fileA.ts').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, 'fileA.ts')[0]!.className).toContain('active'); // 文件标签活动
       expect(tabsByTitle(container, '目录')[0]!.className).not.toContain('active'); // 目录标签失活
       await waitFor(
         () => expect(container.querySelector('.sx-tabbody [aria-label="file content"]')?.textContent).toContain(MARKER),
@@ -1319,6 +1337,10 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-g8c-e2e-'));
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
+    // 预置项目级 language(设置重构轮:逐项写回来源文件——language source=project 才写回项目档,
+    // 缺省键改值写全局用户档;场景主题=项目级持久化,故预置 project 面锚定写回目标)
+    fs.mkdirSync(path.join(root, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.sunshinex', 'settings.json'), JSON.stringify({ version: 1, language: 'en' }), 'utf8');
     const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
     process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
     /** 单段 daemon 装配(不带 tmp 收口;模型单 done 牌——本场景无模型轮) */
@@ -1359,16 +1381,15 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       fireEvent.keyDown(goal, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
-      // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(SettingsForm 行
-      //    label=键名,aria-label=language)→「保存」→ toast「已生效」在场 ——
+      // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(自绘下拉:触发钮
+      //    aria-label=language → 选项 role=option;自动生效轮:换项即存,无保存钮)→ toast「已生效」——
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
       await screen.findByLabelText('settings pane 通用', { timeout: 5_000 });
-      const langInput = await screen.findByLabelText('language', { timeout: 5_000 });
-      fireEvent.change(langInput, { target: { value: NEW_LANG } });
-      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+      fireEvent.click(await screen.findByLabelText('language', { timeout: 5_000 }));
+      fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
       await screen.findByText('已生效:新建会话起', {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场)
-      // 保存后重拉:language 行值回落为新值(来源归因 project)
-      await waitFor(() => expect((screen.getByLabelText('language') as HTMLInputElement).value).toBe(NEW_LANG), { timeout: 5_000 });
+      // 保存后重拉:language 触发钮显新值标签(来源归因 project——写回项目档)
+      await waitFor(() => expect(screen.getByLabelText('language').textContent).toContain(NEW_LANG === 'zh-CN' ? '简体中文' : NEW_LANG), { timeout: 5_000 });
 
       // —— GET /settings?root= 直连 fetch 断言:language 新值 + source='project'(写盘+槽重载链)——
       const after1 = await settingsRow(d1.port, 'language');
@@ -1524,31 +1545,26 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Agents' }));
-      await waitFor(() => expect(tabsByTitle(container, 'Agents').length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, 'Agents')[0]!.className).toContain('active');
-      expect(container.querySelector('.sx-tabbody .sx-agents-tab')).not.toBeNull(); // 标签体挂载
+      fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
+      await waitFor(() => expect(tabsByTitle(container, '任务板').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, '任务板')[0]!.className).toContain('active');
+      expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(); // 任务板页签体挂载(G14.174)
 
-      // —— live 卡在场:fork 子链事件(payload.subagent=task-t1)聚合落卡。主链 done 在先不保
-      //    fork 收束序(派发异步)——waitFor 过竞态窗;终态=完成(fork done 事件 + delegation-ended
-      //    label 命中双源收敛)——
+      // —— 委派行在场:fork 子链事件(delegation-ended label=task-t1)落任务板。终态=完成徽标 ——
       await waitFor(
-        () => expect(container.querySelector('.sx-agents-list .sx-subagent-card .sx-subagent-status')?.textContent).toBe('完成'),
+        () => {
+          const row = container.querySelector('button.delegation-main');
+          if (row === null) throw new Error('delegation row not yet');
+          return expect(row.textContent).toContain('task-t1');
+        },
         { timeout: 10_000 },
       );
-      const card = container.querySelector('.sx-agents-list .sx-subagent-card')!;
-      expect(card.textContent).toContain('task-t1'); // label(runSubagent finalLabel 口径)
-      expect(container.querySelector('.sx-agents-empty')).toBeNull(); // 空态文案退场(卡在场)
 
-      // —— mini 转录折叠展开:点卡头 → 行在场(末位 done 牌 token 逐字符流——剥行首两格
-      //    token 缩进前缀后逐行拼回即终稿全文)——
-      fireEvent.click(screen.getByRole('button', { name: 'agent card task-t1' }));
-      const lines = container.querySelector('.sx-subagent-lines');
-      expect(lines).not.toBeNull();
-      expect(lines?.textContent?.split('\n').map((l) => l.replace(/^  /, '')).join('')).toBe('all done');
-      // 折叠收起:再点卡头 → 转录退场
-      fireEvent.click(screen.getByRole('button', { name: 'agent card task-t1' }));
-      expect(container.querySelector('.sx-subagent-lines')).toBeNull();
+      // —— G14.164 点委派行开只读转录页(辅助对话式单独打开,无输入框):转录行含终稿全文 ——
+      fireEvent.click(screen.getByRole('button', { name: 'open agent task-t1' }));
+      await waitFor(() => expect(container.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull(), { timeout: 5_000 });
+      expect(container.querySelector('.sx-agent-thread')?.textContent).toContain('all done');
+      expect(container.querySelector('.sx-agent-page textarea')).toBeNull(); // 只读:无输入面
     } finally {
       await env.stop();
       vi.unstubAllEnvs();

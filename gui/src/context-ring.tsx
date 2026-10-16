@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t } from './i18n';
 import { fmtTokens } from './ui-util';
+import { zoomScale } from './ui-zoom';
 
 /**
  * G14.18 上下文圆环(composer 模型 pill 左侧):SVG donut 示上文占用率(ctx 面 used/window),
@@ -66,12 +67,30 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
   const { used, window: win, parts, runs, steps, tokens, cacheTokens, onOpen } = props;
   const [open, setOpen] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  const popRef = useRef<HTMLDivElement | null>(null);
+  // G14.62:弹层锚圆环向左展开,窄主区会压过菜单分界——展开后量主区左界,越界即右移收回。
+  // 用 translateX(right:0 锚定下 margin-left 会被 auto 边吸收,不位移)
+  useEffect(() => {
+    if (!open) return;
+    const pop = popRef.current;
+    const main = document.querySelector('.sx-main');
+    if (pop === null || main === null) return;
+    pop.style.transform = '';
+    const over = main.getBoundingClientRect().left + 8 - pop.getBoundingClientRect().left;
+    // over 是视觉 px(gBCR 同域),transform 写本地空间=视觉/根放缩(ui-zoom.ts 跨空间契约)
+    if (over > 0) pop.style.transform = `translateX(${Math.round(over / zoomScale())}px)`;
+  }, [open]);
   const pct = win > 0 ? Math.min(100, Math.round((used / win) * 100)) : 0;
   // 弧长与示数分离:占用 >0 即画最短 3% 弧(大窗口小会话真值四舍五入为 0% 时圆环不可辨);
   // 弹层示数仍用真实 pct
   const arc = used > 0 ? Math.max(pct, 3) : 0;
   const lv = level(pct);
-  const fmt = (n: number): string => n.toLocaleString('en-US');
+  // G14.77:数值 k/m 单位化(1.2k / 1m;整位 .0 去尾)
+  const fmt = (n: number): string => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
+    return String(n);
+  };
 
   const show = (): void => {
     window.clearTimeout(timer.current);
@@ -83,14 +102,16 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
     timer.current = window.setTimeout(() => setOpen(false), 150); // 越缝宽限:锚与弹层间隙不闪收
   };
 
+  // G14.97 百分比一位小数(00.0%);token k/m 同 fmt
+  const pct1 = (n: number): string => `${(Math.round(n * 10) / 10).toFixed(1)}%`;
+
   return (
     <div className="ctx-ring" onMouseEnter={show} onMouseLeave={hide}>
       <button
         type="button"
-        className="ctx-ring-btn"
+        className="ctx-ring-btn tip-right"
         aria-label={t('Context usage', '上下文占用')}
         aria-expanded={open}
-        title={t('Context usage', '上下文占用')}
         onFocus={show}
         onBlur={hide}
         onClick={() => setOpen((v) => !v)}
@@ -111,10 +132,18 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
         </svg>
       </button>
       {open && (
-        <div className="sx-menu-pop pill-pop pill-pop-right ctx-pop" role="status" aria-label={t('Context details', '上下文详情')}>
+        <div
+          ref={popRef}
+          className="sx-menu-pop pill-pop pill-pop-right ctx-pop"
+          role="status"
+          aria-label={t('Context details', '上下文详情')}
+          onMouseEnter={show}
+          onMouseLeave={hide}
+        >
+          {/* G14.97 三分区横线分割:上下文(构成含 token+百分比) / 轮次步数 / 缓存命中率(含具体量) */}
           <div className="ctx-pop-row">
             <span className="k">{t('Context', '上下文')}</span>
-            <span className="v">{`${fmt(used)} / ${fmt(win)} · ${pct}%`}</span>
+            <span className="v">{`${fmt(used)} / ${fmt(win)} · ${pct1((used / Math.max(1, win)) * 100)}`}</span>
           </div>
           {parts.length > 0 && (
             <>
@@ -123,24 +152,26 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
                 <div className="ctx-pop-row sub" key={p.id}>
                   <span className="k">{partName(p.id)}</span>
                   <span className="v">
-                    {fmt(p.tokens)}
+                    {`${fmt(p.tokens)} · ${pct1((p.tokens / Math.max(1, used)) * 100)}`}
                     {p.count > 1 ? <span className="dim">{` · ${p.count}`}</span> : null}
                   </span>
                 </div>
               ))}
             </>
           )}
+          <div className="ctx-pop-sep" />
           <div className="ctx-pop-row">
             <span className="k">{t('Turns / Steps', '轮次 / 步数')}</span>
             <span className="v">{`${runs} / ${steps}`}</span>
           </div>
+          <div className="ctx-pop-sep" />
           <div className="ctx-pop-row">
-            <span className="k">Tokens</span>
-            <span className="v">{fmt(tokens)}</span>
-          </div>
-          <div className="ctx-pop-row">
-            <span className="k">{t('Cache hits', '缓存命中')}</span>
-            <span className="v">{fmt(cacheTokens)}</span>
+            <span className="k">{t('Cache hit rate', '缓存命中率')}</span>
+            <span className="v">
+              {tokens > 0
+                ? `${pct1((cacheTokens / tokens) * 100)} · ${fmt(cacheTokens)}/${fmt(tokens)}`
+                : '0.0%'}
+            </span>
           </div>
         </div>
       )}

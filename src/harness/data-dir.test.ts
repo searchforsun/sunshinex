@@ -18,7 +18,7 @@ test('Harness：运行时数据落 ~/.sunshinex/projects/<工作区>/data，工�
     process.env.HOME = fakeHome;
     process.env.USERPROFILE = fakeHome;
     const h = new Harness({ root, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
-    const r = await h.reactor.run({ goal: '数据目录装配验收' }, { maxSteps: 2 });
+    const r = await h.reactor.run({ goal: 'data-dir 装配验收' }, { maxSteps: 2 }); // goal 含 ASCII——G14.81 门控:纯中文 goal slug 塌缩 learned-N 噪声不落盘
     assert.equal(r.done, true);
     const projects = path.join(fakeHome, '.sunshinex', 'projects');
     const slugs = fs.readdirSync(projects);

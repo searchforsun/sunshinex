@@ -119,6 +119,7 @@ test('learned 提炼走 chat 面（tools 字段 submit_refined_skill）', async 
           id: 'call_0',
           name: 'submit_refined_skill',
           argsJson: JSON.stringify({
+            action: 'create',
             skill: {
               name: 'fix-flaky-tests',
               description: 'Stabilize flaky async tests by pinning data dirs',
@@ -130,7 +131,7 @@ test('learned 提炼走 chat 面（tools 字段 submit_refined_skill）', async 
     },
   ]);
   const { extractLearnedSkill } = await import('../harness/skills/learned-extract');
-  const out = await extractLearnedSkill(stub, { goal: 'g', reply: 'r', outcome: 'done', digest: 'd' });
+  const out = await extractLearnedSkill(stub, { goal: 'g', reply: 'r', outcome: 'done', digest: 'd', recent: [], existing: [] });
   assert.ok(out?.skill, 'refined skill must be produced');
   assert.equal(out!.skill!.name, 'fix-flaky-tests');
   const names = (stub.requests[0].tools ?? []).map((t) => t.function.name);

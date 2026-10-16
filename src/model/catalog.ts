@@ -50,6 +50,9 @@ export class ModelSwitcher implements ModelAdapter {
   private readonly def: ModelAdapter;
   private readonly choiceAdapters = new Map<string, ModelAdapter>();
   private selectedId?: string;
+  /** G14.92 能力位声明：切换器恒具备 chat 面（内芯均为 OpenAI 协议适配器）——未声明时
+   *  isModelSummarizer 判假，memory/learned 提炼管线在 daemon 下被整体跳过（提炼从未发生） */
+  readonly capabilities: { chat?: boolean } = { chat: true };
 
   constructor(opts: ModelSwitcherOpts) {
     this.defs = opts;

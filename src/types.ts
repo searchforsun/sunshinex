@@ -264,6 +264,10 @@ type SessionEventType =
   | 'token' | 'reasoning' | 'usage' | 'tool-call' | 'tool-result' | 'step'
   | 'route' | 'approval-request' | 'approval-resolved'
   | 'ctx' | 'done' | 'error' | 'notice' | 'model-start' | 'model-end'
+  // G14.89 user 回显帧:仅 daemon 队列自动续发 pump(HTTP 提交路径不产——GUI 本地回显)
+  | 'user'
+  // G14.100 runmeta 帧:run 收尾元数据广播(实时轮尾汇总条;journal 落档同步 pump)
+  | 'runmeta'
   // 委派/任务事件(2026-10-04 多Agent编排 spec §11):delegation-* 为 P0 起;
   // task-* 为 TaskBoard 词汇(P1 创建/状态/解锁/阻塞,P2 加边/指派)、gate-*/agent-message 为 P1/P2 词汇
   | 'task-created' | 'task-status-changed' | 'task-unlocked' | 'task-blocked'

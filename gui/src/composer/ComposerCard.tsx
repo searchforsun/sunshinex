@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { KeyboardEvent, MutableRefObject, ReactNode } from 'react';
 
 /**
@@ -7,6 +8,8 @@ import type { KeyboardEvent, MutableRefObject, ReactNode } from 'react';
  * (welcome-dock 内)多一个项目选择条,卡本体零差异。
  * overlays 命令面板/浮层锚定卡根(position:relative);belowInput 承载输入与 footer 之间的
  * 行内内容(错误条)。label 即 textarea 的 aria-label(测试查询锚:'welcome goal'/'message input')。
+ * G14.95 高亮层:highlight 在场 → textarea 文字透明,背后同步排版的高亮层着色 token
+ * (@文件 //命令 //skill);缺省无层,textarea 正常显字。
  */
 export interface ComposerCardProps {
   /** textarea aria-label(查询锚) */
@@ -29,6 +32,12 @@ export interface ComposerCardProps {
   footRight?: ReactNode;
   /** textarea 引用(插入面板收口后焦点回输入框) */
   inputRef?: MutableRefObject<HTMLTextAreaElement | null>;
+  /** G14.95 token 高亮层(与 textarea 同排版;缺省无层,textarea 正常显字) */
+  highlight?: ReactNode;
+  /** G14.135 输入区点击(坐标落点已换算 caret):@文件 token 点击开侧栏标签 */
+  onInputClick?: () => void;
+  /** G14.144 目录树文件拖入:rel 路径落输入框(自动 @文件) */
+  onDropFile?: (rel: string) => void;
 }
 
 export function ComposerCard({
@@ -39,27 +48,71 @@ export function ComposerCard({
   rows = 1,
   onChange,
   onKeyDown,
+  onInputClick,
+  onDropFile,
   className,
   overlays,
   belowInput,
   footLeft,
   footRight,
   inputRef,
+  highlight,
 }: ComposerCardProps): JSX.Element {
+  const hlRef = useRef<HTMLDivElement | null>(null);
   return (
     <div className={className !== undefined ? `sx-composer ${className}` : 'sx-composer'}>
       {overlays}
-      <textarea
-        ref={inputRef}
-        aria-label={label}
-        className="sx-composer-input"
-        value={value}
-        placeholder={placeholder}
-        disabled={disabled}
-        rows={rows}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-      />
+      {highlight !== undefined ? (
+        /* G14.106 包裹式对齐:highlight 与 textarea 同 wrapper 同盒(inset 0 即 textarea 盒),
+           天然无错位(此前 inset 挂卡根,少卡的 padding 位移 → 文字偏左上) */
+        <div className="sx-composer-inputwrap">
+          <div className="sx-composer-highlight" aria-hidden="true" ref={hlRef}>
+            {highlight}
+          </div>
+          <textarea
+            ref={inputRef}
+            aria-label={label}
+            className="sx-composer-input transparent-text"
+            value={value}
+            placeholder={placeholder}
+            disabled={disabled}
+            rows={rows}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            onClick={() => onInputClick?.()}
+            onDragOver={(e) => {
+              if (onDropFile !== undefined && [...e.dataTransfer.types].includes('text/sunshinex-file')) e.preventDefault();
+            }}
+            onDrop={(e) => {
+              const rel = e.dataTransfer.getData('text/sunshinex-file');
+              if (onDropFile !== undefined && rel !== '') {
+                e.preventDefault();
+                e.stopPropagation();
+                onDropFile(rel);
+              }
+            }}
+            onScroll={(e) => {
+              const hl = hlRef.current;
+              if (hl !== null) {
+                hl.scrollTop = e.currentTarget.scrollTop;
+                hl.scrollLeft = e.currentTarget.scrollLeft;
+              }
+            }}
+          />
+        </div>
+      ) : (
+        <textarea
+          ref={inputRef}
+          aria-label={label}
+          className="sx-composer-input"
+          value={value}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={rows}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+        />
+      )}
       {belowInput}
       <div className="sx-composer-foot">
         <div className="sx-composer-foot-left">{footLeft}</div>

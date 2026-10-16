@@ -138,6 +138,25 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('512KB'));
   });
 
+  it('G14.119 面包屑锚点:工作区内文件锚到工作区名显相对路径,区外才显绝对路径', async () => {
+    const conn = connOf({
+      readFile: vi.fn((_: string, p: string) =>
+        Promise.resolve({ path: p, content: 'x' } as FileResp)),
+    });
+    const { rerender } = render(
+      <Files conn={conn} sessionId="s1" initialPath="D:\\ws\\demo\\src\\main.java" root="D:\\ws\\demo" />,
+    );
+    await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
+    expect([...document.querySelectorAll('.files-crumb')].map((c) => c.textContent)).toEqual([
+      'demo', 'src', 'main.java',
+    ]); // 区内:工作区名 + 相对段
+    rerender(<Files conn={conn} sessionId="s1" initialPath="C:/other/x.ts" root="D:\\ws\\demo" />);
+    await waitFor(() => expect(screen.getByText('x.ts')).toBeDefined());
+    expect([...document.querySelectorAll('.files-crumb')].map((c) => c.textContent)).toEqual([
+      'C:', 'other', 'x.ts',
+    ]); // 区外:绝对段原样
+  });
+
   it('403 错误态:readFile 拒绝 → 错误消息示出(含 status)', async () => {
     const conn = connOf({ readFile: vi.fn(() => Promise.reject(new Error('/session/s1/file?path=../x -> 403'))) });
     render(<Files conn={conn} sessionId="s1" />);

@@ -16,7 +16,8 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     roots: sessionsOfRoots,
     workspaces: async () => [
       { slug: 'p1', root: 'D:/w/p1', sessionCount: 1, mtime: Date.now() },
-      { slug: 'p2', root: undefined, sessionCount: 0, mtime: Date.now() },
+      { slug: 'p2', root: undefined, sessionCount: 1, mtime: Date.now() },
+      { slug: 'p3-junk', root: 'C:/Temp/sunshinex/harness-x', sessionCount: 0, mtime: Date.now() },
     ] as never,
     sessionsOf: async (root: string) => {
       sessionsOfRoots.push(root);
@@ -32,6 +33,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
       slug: `p-${body.name ?? 'ext'}`,
     })),
     attach: async () => undefined,
+    locateWorkspace: async () => ({ path: null }),
   };
   return conn;
 }
@@ -60,7 +62,8 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     renderMenu(conn, { onComposeIn });
     expect(await screen.findByText('p1')).toBeTruthy();
     expect(screen.getByText('p2')).toBeTruthy();
-    expect((screen.getByTitle(/root 未登记/) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('harness-x')).toBeTruthy(); // 0 会话档照常入册(行文案=root basename, G14.189 回退)
+    expect((document.querySelector('[data-tip^="root 未登记"]') as HTMLButtonElement).disabled).toBe(true);
     // 组行点击=展开:惰拉 sessionsOf,组内会话行在场(组行/RECENTS 行/recents 去重前同文——取首个)
     fireEvent.click(await screen.findByText('p1'));
     await waitFor(() => expect(conn.roots).toEqual(['D:/w/p1']));
@@ -127,8 +130,51 @@ describe('ProjectMenu G10-C2 侧栏(分区头与 Recents 恒显)', () => {
     await screen.findByText('p1');
     fireEvent.click(screen.getByRole('button', { name: 'search' }));
     // 搜索面板在前、组行在后——按容器内按钮精确定位(避免组行同名文本歧义)
-    const searchRow = Array.from(document.querySelectorAll('.sx-side-search button')).find((b) => (b.textContent ?? '').startsWith('p1'));
+    const searchRow = Array.from(document.querySelectorAll('.sx-search-modal button')).find((b) => (b.textContent ?? '').startsWith('p1'));
     fireEvent.click(searchRow!);
     await waitFor(() => expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1'));
+  });
+});
+
+describe('ProjectMenu G14.115 RECENTS 分页显形(默认 10 条,步进 10,收起复位)', () => {
+  it('默认只示 10 条+尾行「Show more」;每次步进 10;全放后「Collapse」复位;分区头折叠再展开回默认', async () => {
+    const conn = makeConn();
+    conn.recentSessions = async () =>
+      Array.from({ length: 25 }, (_, i) => ({
+        id: `j${i}`, firstUser: `session ${i}`, updatedAt: Date.now() - i * 1000, root: 'D:/w/p1', slug: 'p1',
+      })) as never;
+    renderMenu(conn, { activeRoot: '' });
+    await waitFor(() => expect(screen.getByText('session 0')).toBeDefined());
+    expect(screen.queryByText('session 10')).toBeNull(); // 默认只示 10
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(screen.getByText('session 19')).toBeDefined();
+    expect(screen.queryByText('session 20')).toBeNull(); // 步进 10,不一次放完
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(screen.getByText('session 24')).toBeDefined(); // 全量 25
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
+    expect(screen.getByText('session 9')).toBeDefined();
+    expect(screen.queryByText('session 10')).toBeNull(); // 收起复位默认
+    // 分区头折叠→再展开:同样回默认显形
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(screen.getByText('session 24')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Recents' })); // 折叠(复位)
+    fireEvent.click(screen.getByRole('button', { name: 'Recents' })); // 再展开
+    expect(screen.getByText('session 9')).toBeDefined();
+    expect(screen.queryByText('session 10')).toBeNull();
+  });
+
+  it('会话数 ≤ 10:无分页尾行(Show more/Collapse 均不示)', async () => {
+    const conn = makeConn();
+    conn.recentSessions = async () =>
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `k${i}`, firstUser: `few ${i}`, updatedAt: Date.now() - i * 1000, root: 'D:/w/p1', slug: 'p1',
+      })) as never;
+    renderMenu(conn, { activeRoot: '' });
+    await waitFor(() => expect(screen.getByText('few 0')).toBeDefined());
+    expect(screen.getByText('few 9')).toBeDefined(); // 全量在场
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull();
   });
 });

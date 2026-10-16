@@ -63,7 +63,7 @@ test('id 撞名三级遮蔽：项目 > 全局 > 学习，list 恒一且项目版
     writeUserSkill(root, 'dup', 'ProjDup');
     writeGlobalSkill(globalDir, 'dup', 'GlobalDup');
     const r = new LearnedSkillStore(root).settle('dup', '机器版');
-    assert.ok(r.ok && r.value === 'dup');
+    assert.ok(r.ok && r.value.id === 'dup');
     const facade = createSkillsFacade(root);
     const hits = facade.list().filter((s) => s.id === 'dup');
     assert.equal(hits.length, 1);

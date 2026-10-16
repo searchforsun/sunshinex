@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
-import { MemoryRecord, MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD, MEMORY_TYPES as WRITABLE_MEMORY_TYPES, MemoryType, normalizeText, slugifyMemory } from './store';
+import { MemoryRecord, MemoryStore, MEMORY_CONSOLIDATE_THRESHOLD, MEMORY_TYPES as WRITABLE_MEMORY_TYPES, MemoryType, isSafeSlug, normalizeText, slugifyMemory } from './store';
 import { coerceType, consolidateMemory } from './consolidate';
 import { scanMemoryText } from './guards';
 import { MemoryScope } from './paths';
@@ -26,6 +26,10 @@ interface Candidate {
   description?: unknown;
   content?: unknown;
   scope?: unknown;
+  /** 既有记录 slug：在场=对该记录原地更新（content 必需；description 缺省沿用既有） */
+  slug?: unknown;
+  /** true=退役该 slug 记录（删除；content/description 不需要）——过期/错误/被取代条目的清理口 */
+  retract?: unknown;
 }
 
 
@@ -57,6 +61,8 @@ export async function settleMemory(opts: {
             new Date().toISOString().slice(0, 10),
             sunshineExcerpt(opts.root),
             (opts.digest ?? '').trim() || '(none)',
+            // 既有记录节（2026-10-15 增删改）：模型持 slug 才能更新/退役既有条目，不再只会追加
+            new MemoryStore(opts.root).list().map((r) => ({ slug: r.slug, type: r.type, created: r.created, description: r.description })),
           ),
         },
       ],
@@ -68,14 +74,37 @@ export async function settleMemory(opts: {
     if (!candidates) return saved;
     const store = new MemoryStore(opts.root);
     const sunshine = sunshineText(opts.root);
+    const updated: string[] = [];
+    const retracted: string[] = [];
     for (const c of candidates) {
-      const description = typeof c.description === 'string' ? c.description.trim() : '';
-      const content = typeof c.content === 'string' ? c.content.trim() : '';
-      if (!description || !content) continue;
-      // 闸门 a（会话性内容不落盘）：结构化条目 schema 不含 scope（scope 不暴露给模型，T1 裁决），
-      // 条目按 persistent 构造，闸门无第二形态可拦；type 收编谓词与整理管线共用 consolidate.coerceType 单点
-      const type = coerceType(c.type);
+      const cSlug = typeof c.slug === 'string' ? c.slug.trim() : '';
       try {
+        // 退役分支（2026-10-15 用户裁决「删除过期条目自己处理」）：{"retract":true,"slug":"..."} → store.remove
+        if (c.retract === true) {
+          if (cSlug === '' || !isSafeSlug(cSlug)) continue;
+          const rm = store.remove(cSlug);
+          if (rm.ok) retracted.push(cSlug);
+          continue;
+        }
+        // 更新分支：带 slug 的条目原位改写（保 created、刷新 modified），不走 add 去重
+        if (cSlug !== '') {
+          const content = typeof c.content === 'string' ? c.content.trim() : '';
+          const ex = store.list().find((r) => r.slug === cSlug);
+          if (content === '' || ex === undefined) continue;
+          const rawDesc = typeof c.description === 'string' ? c.description.trim() : '';
+          const description = (rawDesc || ex.description).slice(0, 80);
+          // 闸门 b/c 同链（guards 单点）：改写内容同样过扫描
+          if (scanMemoryText(`${description}\n${content}`) !== null) continue;
+          const put = store.put({ slug: cSlug, type: coerceType(c.type), description, body: content });
+          if (put.ok) updated.push(cSlug);
+          continue;
+        }
+        const description = typeof c.description === 'string' ? c.description.trim() : '';
+        const content = typeof c.content === 'string' ? c.content.trim() : '';
+        if (!description || !content) continue;
+        // 闸门 a（会话性内容不落盘）：结构化条目 schema 不含 scope（scope 不暴露给模型，T1 裁决），
+        // 条目按 persistent 构造，闸门无第二形态可拦；type 收编谓词与整理管线共用 consolidate.coerceType 单点
+        const type = coerceType(c.type);
         // 闸门 b/c（guards 单点）→ 闸门 e（SUNSHINE.md）→ 闸门 d（store.add 三级去重）全在 admitMemory 内，与 memory_write 工具同链
         const r = admitMemory(store, sunshine, { type, description, body: content });
         // 幂等命中（重复项解析回既有 slug）不算本次新增：批量语义与迁移前逐条一致；超限报错不阻断后续条目
@@ -84,6 +113,9 @@ export async function settleMemory(opts: {
         // 旁路纪律：单条落盘失败不影响其余条目与任务收口
       }
     }
+    // 增删改可见性（2026-10-15）：updated/retracted 各自浮出一行说明（saved 行仍由调用方按容量提醒拼接）
+    if (updated.length > 0) opts.notify?.(`[memory] updated: ${updated.join(', ')}`);
+    if (retracted.length > 0) opts.notify?.(`[memory] retracted: ${retracted.join(', ')}`);
     // 整理触发（规格 §5）：同收口串行——先提取入库、后判定阈值整理；阈值未达零调用（consolidateMemory 内部门禁）
     if (store.count() >= MEMORY_CONSOLIDATE_THRESHOLD) {
       await consolidateMemory({ model: opts.model, root: opts.root, notify: opts.notify });
@@ -192,6 +224,10 @@ function findExistingDuplicate(store: MemoryStore, input: { description: string;
  * 本单点收结构化事实（type/content/description），slug 由 description 折叠（`add`）。两者共用同一组闸门单点（`./guards`）
  * 与同一落盘基座（`MemoryStore`：去重/规范化/索引重建/容量两级），不各自拼装——闸门不会因入口不同而放宽。
  *
+ * 增删改三动作（2026-10-15 用户裁决「记忆增删改都要自己处理」）：`action` 缺省 `'save'`（原行为）；
+ * `'update'` 按 `slug` 原地改写既有记录（保 created、刷新 modified；description 缺省沿用既有）；
+ * `'delete'` 按 `slug` 删除过期/错误记录。update/delete 目标不存在 → MEMORY_NOT_FOUND（带码浮出，不静默）。
+ *
  * 语义：off 或 scope/类型非法/正文空 → 带码失败且零副作用（off 判门先于 store 构造，连记忆目录都不建）；
  * 重复写幂等返回既有 slug（`existed: true`）；成功附容量近满提醒（超限仍由 `store.add` 报 MEMORY_INDEX_OVER_LIMIT 浮出）。
  *
@@ -205,20 +241,45 @@ export function writeMemoryFact(opts: {
   type: string;
   content: string;
   description?: string;
+  action?: 'save' | 'update' | 'delete';
+  slug?: string;
   scope?: MemoryScope;
 }): Result<MemoryAdmission> {
   // 总开关最先判（规格 §7「不注入 / 不提取 / 不整理 / 写被拒」四贯通之一）：关闭即零副作用——不 mkdir、不扫描、不落盘
   if (!resolveMemoryConfig().autoMemory) return fail('MEMORY_DISABLED', 'memory write denied: auto memory is off');
   const subdir = memorySubdir(opts.scope);
   if (!subdir.ok) return subdir;
+  const store = subdir.value === undefined ? new MemoryStore(opts.root) : new MemoryStore(opts.root, { subdir: subdir.value });
+
+  if (opts.action === 'delete') {
+    if (!opts.slug || !isSafeSlug(opts.slug)) return fail('MEMORY_SLUG_INVALID', 'delete requires the slug of an existing record');
+    const rm = store.remove(opts.slug);
+    if (!rm.ok) return fail(rm.error.code, rm.error.message);
+    return ok({ slug: opts.slug, existed: true, notice: store.capacityNotice() });
+  }
+
   if (!WRITABLE_MEMORY_TYPES.includes(opts.type as MemoryType)) {
     return fail('MEMORY_TYPE_INVALID', `unknown memory type: ${opts.type} (expect one of ${WRITABLE_MEMORY_TYPES.join('|')})`);
   }
+
+  if (opts.action === 'update') {
+    if (!opts.slug || !isSafeSlug(opts.slug)) return fail('MEMORY_SLUG_INVALID', 'update requires the slug of an existing record');
+    const existing = store.list().find((r) => r.slug === opts.slug);
+    if (existing === undefined) return fail('MEMORY_NOT_FOUND', `no such memory: ${opts.slug}`);
+    const content = opts.content.trim();
+    if (!content) return fail('MEMORY_EMPTY', 'memory content must not be empty');
+    const hit = scanMemoryText(`${existing.description}\n${content}`);
+    if (hit !== null) return fail('MEMORY_WRITE_SCAN', `Rejected: session-scoped or unsafe content (${hit}); nothing written`);
+    const description = (opts.description?.trim() || existing.description).slice(0, 80);
+    const put = store.put({ slug: opts.slug, type: opts.type as MemoryType, description, body: content });
+    if (!put.ok) return fail(put.error.code, put.error.message);
+    return ok({ slug: put.value.slug, existed: true, notice: store.capacityNotice() });
+  }
+
   const content = opts.content.trim();
   if (!content) return fail('MEMORY_EMPTY', 'memory content must not be empty');
   // description 缺省取正文首行、截 80（单行口径与 MemoryRecord.description 一致；正文去掉首尾空白后首行必非空）
   const description = (opts.description?.trim() || content.split('\n')[0].trim()).slice(0, 80);
-  const store = subdir.value === undefined ? new MemoryStore(opts.root) : new MemoryStore(opts.root, { subdir: subdir.value });
   return admitMemory(store, sunshineText(opts.root), {
     type: opts.type as MemoryType,
     description,

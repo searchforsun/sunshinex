@@ -164,7 +164,6 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
   return (
     <section className="sx-settings-form" aria-label="settings pane 智能体">
       <h2>智能体</h2>
-      {root === '' && <p className="home-loading">未选择项目:清单为仅全局视图(scope=项目需项目上下文)。</p>}
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
       {data === null && loadError === '' && <p className="home-loading">加载智能体清单…</p>}
       {data !== null && (

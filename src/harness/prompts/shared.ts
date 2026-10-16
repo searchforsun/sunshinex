@@ -67,3 +67,9 @@ export const SKILLS_INSTALL_LINE =
 export function workDirLine(root: string): string {
   return `Current working directory (project root): ${root}`;
 }
+
+/** 文件引用路径行（G14.129）：回复中提及文件一律输出 Markdown 链接，链接文本=文件名；
+ *  工作区内文件用相对项目根的 ./ 路径做目标，工作区外文件用绝对路径做目标——
+ *  GUI 渲染面把这类链接统一渲染为可点文件引用（文件标签页直达） */
+export const FILE_PATH_LINE =
+  'When referencing a file in your reply, always output a Markdown link with the file name as the link text: for files inside the project workspace use a target relative to the project root with a leading ./ (for example [file.tsx](./src/file.tsx)); for files outside the workspace use the absolute path as the target (for example [notes.txt](D:/data/notes.txt)). The UI renders such links as clickable file references.';

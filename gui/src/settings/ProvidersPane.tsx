@@ -4,27 +4,57 @@ import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
 
 /**
- * G8c T9 模型与提供方面板:上=SettingsForm 表单引擎复用(pane 定义模型五键
- * model/modelSmall/modelMedium/modelLarge + tier/reasoningEffort/baseUrl——全 text 输入,
- * 键名与 daemon SEMANTIC_KEYS 逐字对齐;引擎自带来源徽标/env 禁编/保存 toast 面);
+ * G8c T9 模型与提供方面板(设置重构轮):上=SettingsForm 表单引擎复用(pane 分组卡——模型档位
+ * 四键 model/modelSmall/Medium/Large 走 combo 自由文本+providers 现配模型动态建议;请求参数
+ * tier/reasoningEffort 闭集下拉 + baseUrl 文本——键名与 daemon SEMANTIC_KEYS 逐字对齐;引擎
+ * 自带来源徽标/env 禁编/逐项写回/保存 toast 面);
  * 下=providers 只读卡列表(conn.settings(root) 的 providers.choices 逐卡:名称/模型行/
  * apiKeyPresent 圆点——绿=env 槽在场/灰=缺,title=apiKeyEnv 槽名)+warnings 告警行。
  * providers 是只读呈现面(密钥只走 env 面,GUI 不编辑);本组件对 settings 发两笔请求
  * (表单引擎一笔 + providers 卡一笔——视图分面,各自独立加载态)。
  */
 
-/** 模型与提供方面板定义(SettingsForm 消费;全 text——数字键集不含此七键) */
+const EFFORTS: ReadonlyArray<{ v: string; l: string }> = [
+  { v: 'none', l: 'none' },
+  { v: 'minimal', l: 'minimal' },
+  { v: 'low', l: 'low' },
+  { v: 'medium', l: 'medium' },
+  { v: 'high', l: 'high' },
+  { v: 'xhigh', l: 'xhigh' },
+  { v: 'max', l: 'max' },
+];
+
+/** 模型与提供方面板定义(SettingsForm 消费;模型键 combo=动态建议,数字键集不含此七键;
+ *  组标题中文字面量——模块加载期 t() 冻结违禁,与 SETTINGS_PANES 同口径) */
 const PROVIDERS_PANE: SettingsPaneDef = {
   id: 'providers',
   title: '模型与提供方',
-  fields: [
-    { key: 'model', label: 'model', input: 'text' },
-    { key: 'modelSmall', label: 'modelSmall', input: 'text' },
-    { key: 'modelMedium', label: 'modelMedium', input: 'text' },
-    { key: 'modelLarge', label: 'modelLarge', input: 'text' },
-    { key: 'tier', label: 'tier', input: 'text' },
-    { key: 'reasoningEffort', label: 'reasoningEffort', input: 'text' },
-    { key: 'baseUrl', label: 'baseUrl', input: 'text' },
+  groups: [
+    {
+      title: '模型档位',
+      fields: [
+        { key: 'model', control: 'combo' },
+        { key: 'modelSmall', control: 'combo' },
+        { key: 'modelMedium', control: 'combo' },
+        { key: 'modelLarge', control: 'combo' },
+      ],
+    },
+    {
+      title: '请求参数',
+      fields: [
+        {
+          key: 'tier',
+          control: 'select',
+          options: [
+            { v: 'small', l: 'small' },
+            { v: 'medium', l: 'medium' },
+            { v: 'large', l: 'large' },
+          ],
+        },
+        { key: 'reasoningEffort', control: 'select', options: EFFORTS },
+        { key: 'baseUrl', control: 'text' },
+      ],
+    },
   ],
 };
 

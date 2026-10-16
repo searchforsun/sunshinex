@@ -145,13 +145,13 @@ test('A4 撞名内置：内置分支先行拦截，撞名技能仅可经 /skill 
   });
 });
 
-test('A5 非法 id：字符集外不注册，输入统一无法识别', async () => {
+test('A5 非法 id：字符集外不注册，输入当普通文本（G14.95,不报无法识别）', async () => {
   await withIsolatedData(async (root) => {
     writeSkill(root, 'Bad.Id', 'Bad', 'invalid id');
-    const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
+    const ctrl = new SessionController({ root, model: new ScriptedAdapter(['{"done":true,"reply":"x"}']) });
     assert.ok(!ctrl.skillCommandIds().includes('Bad.Id'), '注册表排除非法 id');
     await ctrl.submit('/Bad.Id');
-    assert.ok(sysTexts(ctrl).some((x) => x.includes('Unrecognized command')), '统一无法识别文案');
+    assert.ok(!sysTexts(ctrl).some((x) => x.includes('Unrecognized command')), '不再报无法识别(当普通文本)');
     assert.equal(chainEntries(root).filter((s) => s.action === 'skill').length, 0, '零注入');
   });
 });

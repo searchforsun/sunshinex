@@ -33,9 +33,10 @@ test('done 任务收口触发提取：openai 记录桩候选落盘', async () =>
     const h = new Harness({ root, mode: 'dontAsk', model });
     const r = await h.reactor.run({ goal: 'deploy the app' }, { maxSteps: 3 });
     assert.ok(r.done);
-    assert.equal(memCount(root), 0, '收口零等待：run 返回时后台尚未落盘（规格 §3.1 D2）');
+    // G14.92：learned 通道证据密度门挡后零模型调用，后台 worker 消费快于 run 返回——
+    // 「run 返回时尚未落盘」的时序断言不再成立（enqueue 零等待语义不变，只是消费变快），以 drain 后落盘为准
     await h.pipeline.drain();
-    assert.equal(memCount(root), 1, 'settle 单点并行提取落盘（drain 后）');
+    assert.equal(memCount(root), 1, 'settle 单点并行提取落盘');
   });
 });
 

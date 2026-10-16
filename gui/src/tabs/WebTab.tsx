@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Lock, RotateCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Lock, Maximize2, RotateCw } from 'lucide-react';
 import type { TabParams } from './tab-state';
 import { t } from '../i18n';
 
@@ -36,6 +36,10 @@ export function WebTab({ params }: WebTabProps): JSX.Element {
   const [input, setInput] = useState(params.url ?? '');
   /** 刷新 bump:入 iframe key —— 变更即强制重挂(= 重新加载) */
   const [nonce, setNonce] = useState(0);
+  /** G14.158 显示控制:缩放倍率 / 宽度比(50/75/100%) / 适应窗口(宽度比失效,撑满等比缩放) */
+  const [zoom, setZoom] = useState(1);
+  const [widthPct, setWidthPct] = useState(100);
+  const [fitWindow, setFitWindow] = useState(false);
 
   const active = nav.index >= 0 ? (nav.urls[nav.index] ?? null) : null;
 
@@ -69,7 +73,7 @@ export function WebTab({ params }: WebTabProps): JSX.Element {
           type="button"
           className="sx-web-nav"
           aria-label="后退"
-          title={t('Back', '后退')}
+          data-tip={t('Back', '后退')}
           disabled={nav.index <= 0}
           onClick={back}
         >
@@ -79,7 +83,7 @@ export function WebTab({ params }: WebTabProps): JSX.Element {
           type="button"
           className="sx-web-nav"
           aria-label="前进"
-          title={t('Forward', '前进')}
+          data-tip={t('Forward', '前进')}
           disabled={nav.index >= nav.urls.length - 1}
           onClick={forward}
         >
@@ -89,7 +93,7 @@ export function WebTab({ params }: WebTabProps): JSX.Element {
           type="button"
           className="sx-web-nav"
           aria-label="刷新"
-          title={t('Reload', '刷新')}
+          data-tip={t('Reload', '刷新')}
           disabled={active === null}
           onClick={reload}
         >
@@ -112,11 +116,53 @@ export function WebTab({ params }: WebTabProps): JSX.Element {
           type="button"
           className="sx-web-nav"
           aria-label="外开"
-          title={t('Open in system browser', '在系统浏览器打开')}
+          data-tip={t('Open in system browser', '在系统浏览器打开')}
           disabled={active === null}
           onClick={openExternal}
         >
           <ExternalLink size={13} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+        {/* G14.158 显示控制:缩放 −/倍率/+(0.5~2)+宽度比循环(100/75/50%)+适应窗口(等比撑满) */}
+        <button
+          type="button"
+          className="sx-web-nav"
+          aria-label="zoom out"
+          data-tip={t('Zoom out', '缩小')}
+          disabled={active === null || zoom <= 0.5}
+          onClick={() => setZoom((v) => Math.max(0.5, Math.round((v - 0.1) * 10) / 10))}
+        >
+          −
+        </button>
+        <span className="sx-web-zoom">{Math.round(zoom * 100)}%</span>
+        <button
+          type="button"
+          className="sx-web-nav"
+          aria-label="zoom in"
+          data-tip={t('Zoom in', '放大')}
+          disabled={active === null || zoom >= 2}
+          onClick={() => setZoom((v) => Math.min(2, Math.round((v + 0.1) * 10) / 10))}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="sx-web-nav sx-web-fit"
+          aria-label="fit width cycle"
+          data-tip={`${t('Width', '宽度比')} ${widthPct}% — ${t('click to cycle', '点击循环')}`}
+          disabled={active === null}
+          onClick={() => setWidthPct((v) => (v === 100 ? 75 : v === 75 ? 50 : 100))}
+        >
+          {widthPct}%
+        </button>
+        <button
+          type="button"
+          className={`sx-web-nav${fitWindow ? ' active' : ''}`}
+          aria-label="fit window"
+          data-tip={t('Fit window', '适应窗口')}
+          disabled={active === null}
+          onClick={() => setFitWindow((v) => !v)}
+        >
+          <Maximize2 size={13} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
       {active === null ? (
@@ -126,13 +172,21 @@ export function WebTab({ params }: WebTabProps): JSX.Element {
           <p className="sx-web-empty-hint">{t('Paste or type a URL to open a page.', '粘贴或输入 URL 以打开网页。')}</p>
         </div>
       ) : (
-        <iframe
-          key={`${active}#${nonce}`}
-          className="sx-web-frame"
-          title={active}
-          src={active}
-          sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
-        />
+        <div className={`sx-web-frame-wrap${fitWindow ? ' fit' : ''}`}>
+          <iframe
+            key={`${active}#${nonce}`}
+            className="sx-web-frame"
+            title={active}
+            src={active}
+            sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+            style={{
+              width: fitWindow ? '100%' : `${widthPct}%`,
+              height: `calc(100% / ${zoom})`,
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top left',
+            }}
+          />
+        </div>
       )}
     </div>
   );

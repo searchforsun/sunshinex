@@ -10,6 +10,10 @@ import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
 import { readSkillUsage, recordSkillUsage } from '../skill-usage';
 
+/** 全局技能目录重定向（与他测同惯例）：本机装有真实全局技能（插件目录）时 skills.list()
+ *  会扫入，skill-usage 用例的 skillMenuEntries 断言必须只见到用例自置技能 */
+process.env.SUNSHINEX_USER_SKILLS_DIR = process.env.SUNSHINEX_USER_SKILLS_DIR ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-slashmenu-uskills-'));
+
 function tmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }

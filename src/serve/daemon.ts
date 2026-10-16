@@ -28,6 +28,7 @@ import { MemoryStore } from '../harness/memory/store';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { COMMAND_SUPPORT, runCommand } from './session-commands';
+import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
 import { resolveDataDir, projectsRoot, projectSlug } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
@@ -42,13 +43,14 @@ import {
   loadProjectSettings,
   parseSettingsFile,
   resetSelfFilledSlots,
+  surgicalSettingsUpdate,
 } from '../config/settings';
 import { loadProviders, parseProvidersSpec, resolveProviderApiKey } from '../config/providers';
 import type { ModelChoice } from '../config/providers';
 import type { PermissionsConfig } from '../config/permissions';
 import { isWithin } from '../paths';
 import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
-import { loadSkillsGrouped, loadUserSkillsGroup } from '../harness/skills';
+import { loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, SkillsGroup } from '../harness/skills';
 import { memoryDir } from '../harness/memory/store';
 import { PtyManager } from './pty';
 
@@ -685,27 +687,27 @@ export class GuiDaemon {
         return this.seqCounter;
       },
       broadcast: (frame) => this.broadcastFrame(frame),
-      ...(opts?.mode === 'manual'
-        ? {
-            mode: 'manual' as const,
-            asker: (req: ApprovalRequest): Promise<ApprovalDecision> =>
-              session !== undefined && session.isAborted()
-                ? Promise.resolve('deny')
-                : new Promise((resolve) => {
-                    const pid = this.nextPendingId();
-                    this.pending.set(pid, { kind: 'approval', sessionId: id, req, resolve });
-                    this.broadcastFrame({ kind: 'approval', sessionId: id, pid, req });
-                  }),
-            onAskUser: (req: AskUserRequest): Promise<AskUserAnswer> =>
-              session !== undefined && session.isAborted()
-                ? Promise.resolve({ type: 'dismissed' })
-                : new Promise((resolve) => {
-                    const pid = this.nextPendingId();
-                    this.pending.set(pid, { kind: 'ask', sessionId: id, req, resolve });
-                    this.broadcastFrame({ kind: 'ask', sessionId: id, pid, req });
-                  }),
-          }
-        : {}),
+      ...(opts?.mode === 'manual' ? { mode: 'manual' as const } : {}),
+      // G14.90/G14.93 两接缝无条件注入;档位判定在闭包内——pill 切 manual 即生效,不依赖创建时快照。
+      // asker(审批)按档:dontAsk 自动放行语义由 guard 前置(不到这里),到这里的非 manual 视为拒绝兜底。
+      // onAskUser 恒挂起(G14.93 用户裁定):ask_question 是模型主动问用户,任何权限档都必须等真实回答,
+      // 不可静默跳过;ghost(run 已中止)仍直接 dismissed 不入表
+      asker: (req: ApprovalRequest): Promise<ApprovalDecision> =>
+        session === undefined || session.isAborted() || !session.isManual()
+          ? Promise.resolve('deny')
+          : new Promise((resolve) => {
+              const pid = this.nextPendingId();
+              this.pending.set(pid, { kind: 'approval', sessionId: id, req, resolve });
+              this.broadcastFrame({ kind: 'approval', sessionId: id, pid, req });
+            }),
+      onAskUser: (req: AskUserRequest): Promise<AskUserAnswer> =>
+        session === undefined || session.isAborted()
+          ? Promise.resolve({ type: 'dismissed' })
+          : new Promise((resolve) => {
+              const pid = this.nextPendingId();
+              this.pending.set(pid, { kind: 'ask', sessionId: id, req, resolve });
+              this.broadcastFrame({ kind: 'ask', sessionId: id, pid, req });
+            }),
     });
     this.sessions.set(id, session);
     this.active = id;
@@ -737,7 +739,7 @@ export class GuiDaemon {
     // G14.15 runmeta 收集(按 run 序对位):journal runmeta 行 = GUI 回放 Worked 行/统计的数据源
     const runMetas = replayEvents
       .filter((e) => e.t === 'runmeta')
-      .map((e) => ({ seconds: e.seconds, steps: e.steps, runSteps: e.runSteps, tokens: e.tokens, cacheTokens: e.cacheTokens, endedTs: e.endedTs }));
+      .map((e) => ({ seconds: e.seconds, steps: e.steps, runSteps: e.runSteps, tokens: e.tokens, cacheTokens: e.cacheTokens, endedTs: e.endedTs, stopped: e.stopped === true }));
     // 转录播种（Ruling 5 双源不重复）：msg 行在场（TUI 档）→ msg 派生；msg 行计数===0（daemon 会话
     // 档只落 chain）→ chain 行派生兜底（task→user 引用块 / reply→assistant / call+result 配对→tool）——
     // 两路径互斥，零重复
@@ -1025,7 +1027,12 @@ export class GuiDaemon {
     // G10-C11 建项目面：原生文件选择器选完自动建项目——name=浏览器态(projectsRoot 下建目录+初始化)、
     // path=桌面壳态(系统对话框回全路径,直接注册外部根);同名幂等返回既有行
     { method: 'POST', path: '/workspace/create', auth: true, run: (req, res) => this.handleWorkspaceCreate(req, res) },
+    // G14.69 原生选择定位:浏览器态 showDirectoryPicker 拿不到绝对路径——GUI 在所选目录落标记
+    // 文件,daemon 全盘 BFS 找标记即得绝对路径(限时/噪声目录跳过/roots 可覆写供测试)
+    { method: 'POST', path: '/workspace/locate', auth: true, run: (req, res) => this.handleWorkspaceLocate(req, res) },
     { method: 'POST', path: '/session/:id/steer/cancel', auth: true, run: async (req, res, p) => this.handleSteerCancel(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/steer/move', auth: true, run: async (req, res, p) => this.handleSteerMove(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/steer/front', auth: true, run: async (req, res, p) => this.handleSteerFront(req, res, p.id) },
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
     { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
@@ -1057,6 +1064,81 @@ export class GuiDaemon {
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
     { method: 'GET', path: '/sessions/recent', auth: true, run: async (_req, res) => this.handleSessionsRecent(res) },
     { method: 'GET', path: '/commands', auth: true, run: async (_req, res) => this.send(res, 200, { ...listCommands(), supported: COMMAND_SUPPORT }) },
+    { method: 'GET', path: '/session/:id/skill-commands', auth: true, run: async (_req, res, p) => this.send(res, 200, this.sessionFor(res, p.id)?.skillCommands() ?? []) },
+    // G14.113 分支清单/切换(欢迎页分支选择弹窗;root 必传 query/body)
+    { method: 'GET', path: '/git/branches', auth: true, run: async (req, res) => {
+        const root = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('root') ?? '';
+        if (root === '') return this.send(res, 400, { error: 'root query param required' });
+        this.send(res, 200, await gitBranches(path.resolve(root)));
+      } },
+    // G14.121 工作区文件索引(@ 文件面板;root 必传,文件按 mtime 倒序=最近改动优先)
+    { method: 'GET', path: '/workspace/files', auth: true, run: async (req, res) => {
+        const root = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('root') ?? '';
+        if (root === '') return this.send(res, 400, { error: 'root query param required' });
+        this.send(res, 200, { files: await workspaceFiles(path.resolve(root)) });
+      } },
+    { method: 'POST', path: '/git/checkout', auth: true, run: async (req, res) => {
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const root = (parsed.body as { root?: unknown }).root;
+        const branch = (parsed.body as { branch?: unknown }).branch;
+        if (typeof root !== 'string' || typeof branch !== 'string') return this.send(res, 400, { error: 'root and branch required' });
+        const r = await checkoutBranch(path.resolve(root), branch);
+        if (!r.ok) return this.send(res, 400, { error: r.error });
+        this.send(res, 200, { ok: true });
+      } },
+    { method: 'GET', path: '/session/:id/git-status', auth: true, run: async (_req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const res2 = await gitStatusMap(session.root);
+        if (!res2.ok) return this.send(res, 500, { error: res2.error });
+        this.send(res, 200, res2.value);
+      } },
+    // G14.99 工作区未提交变动面（Diff 标签数据源）：git 只读清单/单文件内容/提交/推送
+    { method: 'GET', path: '/session/:id/changes', auth: true, run: async (_req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const r = await listChanges(session.root);
+        if (!r.ok) return this.send(res, 500, { error: r.error });
+        this.send(res, 200, r.value);
+      } },
+    { method: 'GET', path: '/session/:id/changes/content', auth: true, run: async (req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const rel = new URL(req.url ?? '/', 'http://x').searchParams.get('path') ?? '';
+        const r = await changeContent(session.root, rel);
+        if (!r.ok) return this.send(res, 400, { error: r.error });
+        this.send(res, 200, r.value);
+      } },
+    { method: 'POST', path: '/session/:id/changes/commit', auth: true, run: async (req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const message = (parsed.body as { message?: unknown }).message;
+        if (typeof message !== 'string') return this.send(res, 400, { error: 'message required' });
+        const r = await commitChanges(session.root, message);
+        if (!r.ok) return this.send(res, 400, { error: r.error });
+        this.send(res, 200, { ok: true, out: r.value.out });
+      } },
+    { method: 'POST', path: '/session/:id/changes/push', auth: true, run: async (_req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const r = await pushChanges(session.root);
+        if (!r.ok) return this.send(res, 400, { error: r.error });
+        this.send(res, 200, { ok: true, out: r.value.out });
+      } },
+    { method: 'POST', path: '/session/:id/changes/restore', auth: true, run: async (req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const pathArg = (parsed.body as { path?: unknown }).path;
+        if (typeof pathArg !== 'string') return this.send(res, 400, { error: 'path required' });
+        const r = await restoreChange(session.root, pathArg);
+        if (!r.ok) return this.send(res, 400, { error: r.error });
+        this.send(res, 200, { ok: true });
+      } },
     { method: 'POST', path: '/session/:id/command', auth: true, run: (req, res, p) => this.handleSessionCommand(req, res, p.id) },
     { method: 'GET', path: '/dirpicker', auth: true, run: async (req, res) => this.handleDirpicker(req, res) },
     // G8c T2 settings 面：effective 视图（来源分层 env>project>global>default）+ 项目级结构化改写
@@ -1170,7 +1252,8 @@ export class GuiDaemon {
     }
     const index = await readStaticFile(path.join(this.staticRoot, 'index.html'));
     if (index !== null) {
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      // G14.95 no-cache:index.html 恒回源(assets 文件名带内容 hash 可长缓存)——开发迭代不再踩旧壳缓存
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
       res.end(index);
       return;
     }
@@ -1483,6 +1566,66 @@ export class GuiDaemon {
    *  name=浏览器态(showDirectoryPicker 只回名字):projectsRoot 下建 <name>/ 并初始化
    *  data/sessions + data/workspace.json{root:<name> 目录};path=桌面壳态:注册该既有目录为
    *  项目根(workspace.json 落 projectsRoot/<basename>/data)。同名/同根幂等返回既有行 */
+  /** POST /workspace/locate {token, roots?}(G14.69 原生选择定位):浏览器 File System Access
+   *  只回目录名不回路径——GUI 在用户所选目录写一枚标记文件,daemon 从各盘根 BFS 找同名标记文件,
+   *  所在目录即所选文件夹绝对路径。roots 覆写供测试/加速;超时/未找到回 path:null(GUI 回退自建浏览) */
+  private async handleWorkspaceLocate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const body = parsed.body as { token?: unknown; roots?: unknown };
+    const token = typeof body.token === 'string' ? body.token : '';
+    if (token.length < 8) return this.send(res, 400, { error: 'invalid token' });
+    const roots = Array.isArray(body.roots) && body.roots.every((r) => typeof r === 'string') && body.roots.length > 0
+      ? (body.roots as string[]).map((r) => path.resolve(r))
+      : this.systemScanRoots();
+    const found = await this.walkForMarker(roots, token, 20_000);
+    this.send(res, 200, { path: found });
+  }
+
+  /** 系统扫描根(Windows=各盘根;其余平台家目录);盘符探测 C..Z 存在即入列 */
+  private systemScanRoots(): string[] {
+    if (process.platform !== 'win32') return [os.homedir()];
+    const roots: string[] = [];
+    for (let i = 67; i <= 90; i += 1) {
+      const drive = `${String.fromCharCode(i)}:\\`;
+      if (fs.existsSync(drive)) roots.push(drive);
+    }
+    return roots.length > 0 ? roots : [os.homedir()];
+  }
+
+  /** 多根 BFS 找标记文件(标记文件名=token):单次 readdir 即判本目录是否命中;噪声目录
+   *  (系统/程序目录/node_modules/$ 开头)剪枝,深度 ≤10,整体限时;命中即返绝对路径 */
+  private async walkForMarker(roots: string[], token: string, capMs: number): Promise<string | null> {
+    const deadline = Date.now() + capMs;
+    const skip = new Set([
+      'windows', 'program files', 'program files (x86)', 'programdata', 'appdata',
+      '$recycle.bin', 'system volume information', '$windows.~bt', 'recovery', 'perflogs',
+      'node_modules', '.git',
+    ]);
+    const queue: Array<{ dir: string; depth: number }> = roots.map((r) => ({ dir: r, depth: 0 }));
+    while (queue.length > 0) {
+      if (Date.now() > deadline) return null;
+      const { dir, depth } = queue.shift()!;
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue; // 无权限/系统占用——跳过
+      }
+      for (const ent of entries) {
+        if (ent.isFile() && ent.name === token) return dir;
+      }
+      if (depth >= 10) continue;
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const name = ent.name.toLowerCase();
+        if (name.startsWith('$') || skip.has(name)) continue;
+        queue.push({ dir: path.join(dir, ent.name), depth: depth + 1 });
+      }
+    }
+    return null;
+  }
+
   private async handleWorkspaceCreate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const parsed = await this.readJson(req);
     if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
@@ -1589,8 +1732,9 @@ export class GuiDaemon {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const root = url.searchParams.get('root');
     if (root === null || root.length === 0) return this.send(res, 400, { error: 'root query param required' });
+    // G14.147 body 一并返回(记忆页详情展开;记录体量小,清单直带全文)
     const rows = new MemoryStore(root).list().map((m) => ({
-      slug: m.slug, type: m.type, created: m.created, modified: m.modified, description: m.description,
+      slug: m.slug, type: m.type, created: m.created, modified: m.modified, description: m.description, body: m.body,
     }));
     this.send(res, 200, rows);
   }
@@ -1650,6 +1794,32 @@ export class GuiDaemon {
   }
 
   /** POST /session/:id/steer/cancel {seq}(G10-C1d):撤回排队插话;越界 400 */
+  /** POST /session/:id/steer/move {from,to}(G14.83 拖拽排序) */
+  private async handleSteerMove(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const { from, to } = (parsed.body ?? {}) as { from?: unknown; to?: unknown };
+    if (typeof from !== 'number' || typeof to !== 'number' || !Number.isInteger(from) || !Number.isInteger(to)) {
+      return this.send(res, 400, { error: 'from/to must be integers' });
+    }
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    if (!session.steerMove(from, to)) return this.send(res, 400, { error: 'no such queued entry' });
+    this.send(res, 200, { ok: true });
+  }
+
+  /** POST /session/:id/steer/front {seq}(G14.83 插入发送=置首) */
+  private async handleSteerFront(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const seq = (parsed.body as { seq?: unknown } | null)?.seq;
+    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) return this.send(res, 400, { error: 'invalid seq' });
+    const session = this.sessionFor(res, id);
+    if (session === undefined) return;
+    if (!session.steerFront(seq)) return this.send(res, 400, { error: 'no such queued entry' });
+    this.send(res, 200, { ok: true });
+  }
+
   private async handleSteerCancel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
     const parsed = await this.readJson(req);
     if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
@@ -1748,11 +1918,14 @@ export class GuiDaemon {
     const abs = path.resolve(session.root, q);
     // 判界基准：目标经 realPathOf 归一（存在段 realpath，防符号链接逃逸——read 工具同口径）；
     // 归一不可得回退字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）。
-    // G14.40:本会话数据档(data/memory 等)一并放行——memory 产物是用户可见面,Files 预览可达
+    // G14.40:本会话数据档(data/memory 等)一并放行——memory 产物是用户可见面,Files 预览可达。
+    // G14.106 修复:resolveDataDir 本身即 .../data(原再拼 'data' 成 \data\data,放行从未生效)
     const real = realPathOf(abs) ?? abs;
-    const dataRoot = path.resolve(resolveDataDir(session.root), 'data');
+    const dataRoot = path.resolve(resolveDataDir(session.root));
     const inData = real === dataRoot || real.startsWith(dataRoot + path.sep);
     if (!inData && !insideTrustedRoots(session.runtime.harness.safety, real)) {
+      // G14.106 判界拒绝诊断(root/dataDir/real 三点对照——memory 放行失配的定位面)
+      console.error(`[file 403] root=${session.root} dataRoot=${dataRoot} real=${real}`);
       this.send(res, 403, { error: 'path outside trusted roots' });
       return;
     }
@@ -2105,7 +2278,13 @@ export class GuiDaemon {
       } catch {
         // 历史工作区无档/坏档 → slug-only（root undefined，前端不可 attach）
       }
+      if (root === undefined && ent.name.includes('sunshinex-default')) {
+        // G14.96 默认锚点历史档降级:slug 自证身份,root 回锚定路径(可 attach/可开回)
+        root = path.join(os.tmpdir(), 'sunshinex-default');
+      }
       // G14.32:计数与列表同源(listSessions——side 辅助会话滤除),徽标不再虚高
+      // G14.165 回退:注册表恒全量(欢迎页项目下拉要能选到刚建 0 会话的工作区);
+      // 0 会话残渣的隐藏归 GUI 侧栏渲染层(sessionCount>0 门)
       const sessionCount = listSessions(dataDir).length;
       rows.push({ ...(root !== undefined ? { root } : {}), slug: ent.name, mtime: st.mtimeMs, sessionCount });
     }
@@ -2138,9 +2317,15 @@ export class GuiDaemon {
       } catch {
         root = undefined;
       }
-      if (root === undefined) continue; // 无 root 不可 attach,不进 Recents
+      if (root === undefined) {
+        // G14.96 历史档降级:workspace.json 缺失(TUI 时代档/落档失败)但 slug 含默认锚点名
+        // → 视为默认工作区(root 回锚定路径,attach 可用),不再被过滤出 RECENTS;
+        // 非默认命名维持跳过(项目会话归 PROJECTS 各组,组列表由 /workspaces 承载)
+        if (!ent.name.includes('sunshinex-default')) continue;
+        root = path.join(os.tmpdir(), 'sunshinex-default');
+      }
       const isDefaultWs = (root: string): boolean => {
-        const base = root.split(/[\/]+/).filter(Boolean).pop() ?? '';
+        const base = root.split(/[\\/]+/).filter(Boolean).pop() ?? '';
         return base === 'default' || base.startsWith('sunshinex-default');
       };
       for (const r of listSessions(dataDir)) {
@@ -2270,22 +2455,24 @@ export class GuiDaemon {
     });
   }
 
-  /** PUT /settings {root, updates}（G8c T2）：root 必填（缺 400——本端点恒项目级，全局级编辑走 raw）；
-   *  updates 为 Record<语义键, string|number|null>（非对象 400；未知键 400 带 RETIRED 处置提示；
-   *  值类型坏 400）。结构化写：读原文件（缺=空对象 {version:1}）→ 含注释 409 引流 raw 编辑面 →
-   *  改键（null=delete）→ 保 version/env/permissions/providers/未知键（操作原对象自然保）→
-   *  2 空格缩进 JSON 原子写（同目录 tmp+rename，目录缺则 mkdir）→ reloadSettingsChain 重载 →
-   *  200 {ok:true}。畸形 JSON / 根非对象 / version 非 1：409（文件现状挡住结构化改写，与注释同面） */
+  /** PUT /settings {scope?, root?, updates}（G8c T2）：scope 缺省 'project'（root 必填，缺 400）；
+   *  scope='global' 写用户级文件（root 定位面被忽略——与 raw 端点同裁定），GUI 设置页「逐项写回
+   *  来源文件」的数据面。updates 为 Record<语义键, string|number|null>（非对象 400；未知键 400 带
+   *  RETIRED 处置提示；值类型坏 400）。结构化写：读原文件（缺=空对象 {version:1}）→ 含注释 409
+   *  引流 raw 编辑面 → 改键（null=delete）→ 保 version/env/permissions/providers/未知键（操作原
+   *  对象自然保）→ 2 空格缩进 JSON 原子写（同目录 tmp+rename，目录缺则 mkdir）→ reloadSettingsChain
+   *  重载 → 200 {ok:true}。畸形 JSON / 根非对象 / version 非 1：409（文件现状挡住结构化改写，与注释同面） */
   private async handleSettingsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const parsed = await this.readJson(req);
     if (!parsed.ok) {
       this.send(res, parsed.status, { error: parsed.error });
       return;
     }
-    const body = parsed.body as { root?: unknown; updates?: unknown } | null;
+    const body = parsed.body as { scope?: unknown; root?: unknown; updates?: unknown } | null;
+    const scope = body?.scope === 'global' ? 'global' : 'project';
     const rootRaw = body?.root;
-    if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
-      this.send(res, 400, { error: 'root required — PUT is project-scoped; edit the global file via raw editor' });
+    if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
+      this.send(res, 400, { error: 'root required — project-scoped PUT needs a root; pass scope:"global" for the user-level file' });
       return;
     }
     const updates = body?.updates;
@@ -2310,8 +2497,8 @@ export class GuiDaemon {
         return;
       }
     }
-    const root = path.resolve(rootRaw);
-    const target = loadProjectSettings(root);
+    const root = typeof rootRaw === 'string' && rootRaw.length > 0 ? path.resolve(rootRaw) : undefined;
+    const target = scope === 'global' ? loadGlobalSettings() : loadProjectSettings(root!);
     let raw: string | null = null;
     try {
       raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
@@ -2320,7 +2507,19 @@ export class GuiDaemon {
       return;
     }
     if (raw !== null && hasJsonComments(raw)) {
-      this.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
+      // 注释保留式手术写(设置自动保存轮):逐行只动目标键,行尾注释/缩进/其余键逐字保真;
+      // 不支持形态(多行/嵌套值、单行对象、复验不过)→ 仍 409 引流 raw 编辑面,零盘上副作用
+      const patched = surgicalSettingsUpdate(raw, updates as Record<string, string | number | null>);
+      if (patched === null) {
+        this.send(res, 409, { error: 'file contains comments in an unsupported layout', hint: 'use raw editor' });
+        return;
+      }
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      const tmpPatched = `${target}.tmp-${process.pid}-${Date.now()}`;
+      fs.writeFileSync(tmpPatched, patched, 'utf8');
+      fs.renameSync(tmpPatched, target);
+      this.reloadSettingsChain(root);
+      this.send(res, 200, { ok: true });
       return;
     }
     let obj: Record<string, unknown>;
@@ -2365,11 +2564,11 @@ export class GuiDaemon {
    *  PUT 回 500（写成功却报失败误导；且坏文件会结构性死锁一切后续结构化改写）。该级跳过、错误经
    *  stderr 透出（与 warnings 同通道）；畸形文件的 fail-fast 属装载链入口（CLI）职责，不在此处。
    *  窄缝：进程内链可能来自其他 root 的项目文件——本重载以 PUT 目标 root 为准重装，跨 root 场景
-   *  以最近编辑为准 */
-  private reloadSettingsChain(root: string): void {
+   *  以最近编辑为准；root 缺省（scope=global 结构化写）只重装全局面 */
+  private reloadSettingsChain(root: string | undefined): void {
     for (const slot of getSelfFilledSlots()) delete process.env[slot];
     resetSelfFilledSlots();
-    for (const filePath of [loadProjectSettings(root), loadGlobalSettings()]) {
+    for (const filePath of [...(root !== undefined ? [loadProjectSettings(root)] : []), loadGlobalSettings()]) {
       try {
         for (const w of applySettings(filePath).warnings) console.error(`[serve] ${w}`);
       } catch (err) {
@@ -2796,6 +2995,13 @@ export class GuiDaemon {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const rootParam = url.searchParams.get('root');
     const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+    // scope=all(设置·技能页「项目筛选」视图):user 全局 + 注册项目域全枚举(project 组与 learned
+    // 组逐域归属项目名;root 入场仅作当前项目组置首锚——设置页 root 可能为空,枚举不依赖它)
+    if (url.searchParams.get('scope') === 'all') {
+      const groups: SkillsGroup[] = [loadUserSkillsGroup(), ...loadCrossProjectSkillGroups(root)];
+      this.send(res, 200, { groups });
+      return;
+    }
     this.send(res, 200, { groups: root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()] });
   }
 

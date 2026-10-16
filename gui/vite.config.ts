@@ -27,6 +27,7 @@ export default defineConfig({
       'monaco-editor/esm/vs/editor/editor.worker.js?worker': new URL('./src/monaco-worker-stub.ts', import.meta.url).pathname,
     },
     environment: 'jsdom',
+    setupFiles: ['./src/test-setup.ts'],
     // globals: true 令 @testing-library/react 的 afterEach 自动 cleanup 生效（显式 import vitest 不影响）
     globals: true,
   },

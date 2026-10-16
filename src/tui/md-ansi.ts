@@ -1,5 +1,6 @@
 // src/tui/md-ansi.ts
 import { render as mdRender } from 'markdansi';
+import type { Theme as MdTheme } from 'markdansi';
 import stringWidth from 'string-width';
 import { highlightLine } from './highlight';
 import { alignTable, inlineText, parseMarkdown } from './markdown';
@@ -101,7 +102,8 @@ function normalizeMd(src: string): string {
 }
 
 /** 主题覆盖（2026-09-30 用户裁决）：标题/表头不再用黄色（与系统警告 warn 撞色），与加粗正文同色系 */
-const RENDER_THEME = { heading: { bold: true }, tableHeader: { bold: true } };
+/** G14.125 正文 md 链接(文件引用等)渲染为青色文件名——markdansi link 槽位统一上色 */
+const RENDER_THEME: MdTheme = { heading: { bold: true }, tableHeader: { bold: true }, link: { color: 'cyan' } };
 
 /** 正文行距档位（2026-10-01 用户裁决三连：「增加一定的行距」→「不同区域不同行距，整体协调」→
  *  「有序列表还是有多余的行距」终裁）：prose 逻辑行间插入的空行数——按区域分级施加：**列表项

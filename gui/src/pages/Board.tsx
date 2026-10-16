@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Check } from 'lucide-react';
 import { layoutBoard } from '../board-layout';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
+import type { TodoItem } from '../../../src/types';
+import { DELEGATION_STATUS_TEXT } from '../tabs/AgentsTab';
 
 /**
  * G5 看板页(编排 spec §10.3 的 GUI 版 / §13 P3):Board 从 props 纯消费——board/delegations
@@ -21,6 +24,10 @@ export interface BoardProps {
   onReview: (taskId: string, approved: boolean) => void;
   /** 返回 Chat(会话内 tab 切换,App 装配);缺省不渲染返回钮(任务标签经 registry 装配即无此钮) */
   onBack?: () => void;
+  /** G14.137 会话待办(todo_write 清单):板上常驻区,独立于任务板任务 */
+  todos?: TodoItem[];
+  /** G14.164 委派行点开子代理只读页(label + 显示名;缺省无动作——纯展示档) */
+  onOpenAgent?: (label: string, agentTitle: string) => void;
 }
 
 type View = 'list' | 'dag';
@@ -136,7 +143,7 @@ function BoardDag({
             aria-label={`task ${n.id}`}
             onClick={() => onSelect(n.id)}
           >
-            <rect x={n.x} y={n.y} width={BOX_W} height={BOX_H} rx={4} />
+            <rect x={n.x} y={n.y} width={BOX_W} height={BOX_H} rx={10} />
             <text x={n.x + 8} y={n.y + 18} className="box-id">
               {n.id}
             </text>
@@ -174,7 +181,7 @@ function TaskDetail({ task }: { task: BoardTask }): JSX.Element {
   );
 }
 
-export function Board({ board, delegations, team, onReview, onBack }: BoardProps): JSX.Element {
+export function Board({ board, delegations, team, onReview, onBack, todos, onOpenAgent }: BoardProps): JSX.Element {
   const [view, setView] = useState<View>('list');
   /** DAG 选中任务(再点同节点/Esc 取消;任务消失时详情面板自防御退场) */
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -218,7 +225,24 @@ export function Board({ board, delegations, team, onReview, onBack }: BoardProps
         </header>
       )}
       <div className="board-body">
-        {!hasTasks && !hasSide && (
+        {todos !== undefined && todos.length > 0 && (
+          <section className="board-todos" aria-label="session todos">
+            <div className="board-todos-head">会话待办</div>
+            <ul className="board-todos-list">
+              {todos.map((td, i) => (
+                <li key={i} className={"todo-item todo-" + td.status}>
+                  {/* G14.169 统一圆圈三态(与 Chat todo_write 展开体同款):完成=蓝底√/进行=→/等待=虚线圈 */}
+                  <span className={`todo-dot ${td.status}`} aria-hidden="true">
+                    {td.status === 'completed' && <Check size={9} strokeWidth={3} />}
+                    {td.status === 'in_progress' && <ArrowRight size={9} strokeWidth={3} />}
+                  </span>
+                  <span className={"todo-text" + (td.status === 'completed' ? ' done' : '')}>{td.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {!hasTasks && !hasSide && (todos === undefined || todos.length === 0) && (
           <div className="board-empty-state" role="status">
             <p className="board-empty-title">任务板为空</p>
             <p className="board-empty-hint">智能体创建任务后会显示在这里。</p>
@@ -230,7 +254,10 @@ export function Board({ board, delegations, team, onReview, onBack }: BoardProps
               <BoardList board={board} onReview={onReview} />
             ) : (
               <>
-                <BoardDag board={board} selectedId={selectedId} onSelect={selectNode} />
+                {/* G14.164 DAG 滚动壳:svg 自然尺寸横向滚动(旧 max-width:100% 整体缩放致文字不可读——用户裁决） */}
+                <div className="board-dag-scroll">
+                  <BoardDag board={board} selectedId={selectedId} onSelect={selectNode} />
+                </div>
                 {selected !== null && <TaskDetail task={selected} />}
               </>
             )}
@@ -254,12 +281,26 @@ export function Board({ board, delegations, team, onReview, onBack }: BoardProps
             {delegations.length > 0 && (
               <section className="delegations" aria-label="delegations">
                 <h3>delegations</h3>
+                {/* G14.164 委派行可读化:任务名(title 缺省回 label)+状态徽标,行点击开子代理只读页(被动入口) */}
                 <ul className="delegation-list">
-                  {delegations.map((d) => (
-                    <li key={d.id} className={`delegation delegation-${d.status}`}>
-                      {`${d.label} [${d.status}]`}
-                    </li>
-                  ))}
+                  {delegations.map((d) => {
+                    const title = d.title !== undefined && d.title !== '' ? d.title : d.label;
+                    return (
+                      <li key={d.id} className={`delegation delegation-${d.status}`}>
+                        <button
+                          type="button"
+                          className="delegation-main"
+                          aria-label={`open agent ${d.label}`}
+                          data-tip="打开子代理只读转录"
+                          onClick={() => onOpenAgent?.(d.label, title)}
+                        >
+                          <span className="delegation-title">{title}</span>
+                          <span className={`sx-subagent-status delegation-${d.status}`}>{DELEGATION_STATUS_TEXT[d.status] ?? d.status}</span>
+                        </button>
+                        {d.label !== title && <span className="delegation-id">{d.label}</span>}
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             )}

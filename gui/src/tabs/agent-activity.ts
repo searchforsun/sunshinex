@@ -24,14 +24,20 @@ export interface AgentActivity {
   status: 'running' | 'done' | 'error';
   tokens: number;
   currentTool?: string;
-  lines: Array<{ kind: 'tool' | 'text' | 'token'; text: string }>;
+  /** 任务内容=用户输入（teammate 任务带 step.taskBand；G14.175 主对话式渲染的用户气泡） */
+  taskBand?: string;
+  /**
+   * 转录滑窗（G14.175 kind 扩 'thinking'：reasoning 事件流按相邻合并为一条思考行——
+   * 渲染面映射为主对话三态：thinking→思考行 / token→assistant 正文 / tool→工具行）
+   */
+  lines: Array<{ kind: 'tool' | 'text' | 'token' | 'thinking'; text: string }>;
 }
 
 /** 聚合态：key = payload.subagent 标签 */
 export type AgentActivities = Readonly<Record<string, AgentActivity>>;
 
-/** 每卡转录滑窗（尾部保留行数） */
-const LINES_MAX = 20;
+/** 单卡转录滑窗（尾部保留行数；G14.164 提到 240——agent 只读标签页整段转录消费，卡面只显摘要行） */
+const LINES_MAX = 240;
 /** tool 行截断帽（名 + 入参摘要整行） */
 const TOOL_LINE_MAX = 80;
 /** token 行截断帽 */
@@ -53,8 +59,8 @@ function inputSummary(input: unknown): string {
   }
 }
 
-/** 行入列 + 滑窗（尾部 20） */
-function pushLine(lines: ReadonlyArray<AgentActivity['lines'][number]>, line: { kind: 'tool' | 'text' | 'token'; text: string }): AgentActivity['lines'] {
+/** 行入列 + 滑窗（尾部 240;G14.175 kind 扩 thinking） */
+function pushLine(lines: ReadonlyArray<AgentActivity['lines'][number]>, line: AgentActivity['lines'][number]): AgentActivity['lines'] {
   return [...lines, line].slice(-LINES_MAX);
 }
 
@@ -74,7 +80,7 @@ function bumpTokens(card: AgentActivity, payload: Record<string, unknown> | unde
  *   态）→ done。不变事件原引用返回。
  */
 export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActivities {
-  const p = e.payload as { subagent?: unknown; label?: unknown; status?: unknown; turnTotal?: unknown; ok?: unknown; tool?: unknown; input?: unknown } | undefined;
+  const p = e.payload as { subagent?: unknown; label?: unknown; status?: unknown; turnTotal?: unknown; ok?: unknown; tool?: unknown; input?: unknown; taskBand?: unknown } | undefined;
   const label = p?.subagent;
   if (typeof label !== 'string' || label.length === 0) {
     // delegation 系（无 subagent 标签）：payload.label 命中既有卡才改状态；其余/未命中原引用
@@ -105,6 +111,17 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
       };
       return { ...s, [label]: next };
     }
+    case 'reasoning': {
+      // G14.175 思考流:reasoning 增量按相邻合并为一条思考行(渲染面=主对话思考行;截 2000 防单轮刷爆滑窗)
+      const text = e.text ?? '';
+      if (text === '') return s;
+      const last = card.lines[card.lines.length - 1];
+      if (last !== undefined && last.kind === 'thinking') {
+        const merged = clip(last.text + text, 2000);
+        return { ...s, [label]: { ...card, lines: [...card.lines.slice(0, -1), { kind: 'thinking', text: merged }] } };
+      }
+      return { ...s, [label]: { ...card, lines: pushLine(card.lines, { kind: 'thinking', text: clip(text, 2000) }) } };
+    }
     case 'token': {
       const text = e.text ?? '';
       let next = bumpTokens(card, p); // 防御面：token 帧随行携带 turnTotal 则按水位累计（常态无）
@@ -125,7 +142,12 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
       if (card.status !== 'running') return s; // error 粘滞/已 done：不动
       return { ...s, [label]: { ...card, status: 'done' } };
     }
-    default:
-      return s; // model-start/step/notice/reasoning… 不动卡（原引用）
+    default: {
+      // G14.175 任务带(teammate 派发的任务内容=子代理的用户输入):step.taskBand 捕获上浮
+      if (e.type === 'step' && typeof p?.taskBand === 'string' && p.taskBand !== '' && card.taskBand !== p.taskBand) {
+        return { ...s, [label]: { ...card, taskBand: p.taskBand } };
+      }
+      return s; // model-start/step/route… 不动卡（原引用）
+    }
   }
 }

@@ -535,7 +535,13 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
         { source: 'learned', skills: [] },
       ],
     });
+
     await expect(conn.memoryStats()).resolves.toEqual({ entries: 0, lastWriteAt: null });
+    // scope=all 跨项目视图:root+scope=all 双参定序(技能页项目筛选数据面)
+    fetchQueue.push(ok({ groups: [{ source: 'learned', project: 'other', skills: [] }] }));
+    await expect(conn.skillsGroups('/w', true)).resolves.toEqual({
+      groups: [{ source: 'learned', project: 'other', skills: [] }],
+    });
     // —— URL 面:root 缺省省查询参;scope/file 定序;root 路径编码 ——
     expect(fetchLog.map((f) => f.url)).toEqual([
       'http://127.0.0.1:7788/settings?root=%2Fw%201',
@@ -546,6 +552,7 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
       'http://127.0.0.1:7788/settings/agents',
       'http://127.0.0.1:7788/settings/skills?root=%2Fw',
       'http://127.0.0.1:7788/settings/memory-stats',
+      'http://127.0.0.1:7788/settings/skills?root=%2Fw&scope=all',
     ]);
     // 读面全 GET 缺省(init.method 不出现)+ Bearer 头(getJson 单点惯例)
     expect(fetchLog.every((f) => f.init?.method === undefined)).toBe(true);
@@ -586,7 +593,8 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
       { name: 'remote', transport: 'http' as const, url: 'https://mcp.x' },
     ];
     fetchQueue.push(
-      bareOk(), // putSettings
+      bareOk(), // putSettings project
+      bareOk(), // putSettings global(root 缺省——设置重构轮:逐项写回来源文件)
       bareOk(), // putSettingsRaw project
       bareOk(), // putSettingsRaw global(root 缺省)
       bareOk(), // putMcpServers
@@ -595,15 +603,17 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
       ok({ ok: true, tools: [{ name: 'read', description: '读文件' }] }), // mcpProbe(root 缺省)
     );
     const updates = { model: 'openai/gpt', contextWindow: 200000, apiKey: null };
-    await conn.putSettings('/w', updates);
+    await conn.putSettings('project', '/w', updates);
+    await conn.putSettings('global', undefined, updates);
     await conn.putSettingsRaw('project', '/w', 'settings', '{}\n');
     await conn.putSettingsRaw('global', undefined, 'mcp', '{\n  "mcpServers": {}\n}\n');
     await conn.putMcpServers('/w', servers);
     await conn.putAgent({ root: '/w', scope: 'project', op: 'upsert', id: 'coder', frontmatter: { name: 'Coder', memory: true }, body: '正文' });
     await conn.putAgent({ scope: 'global', op: 'delete', id: 'old-one' });
     await expect(conn.mcpProbe(undefined, 'fs')).resolves.toEqual({ ok: true, tools: [{ name: 'read', description: '读文件' }] });
-    // —— URL/verb 面:四写面 PUT、probe POST ——
+    // —— URL/verb 面:写面 PUT、probe POST ——
     expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/settings',
       'http://127.0.0.1:7788/settings',
       'http://127.0.0.1:7788/settings/raw',
       'http://127.0.0.1:7788/settings/raw',
@@ -612,22 +622,23 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
       'http://127.0.0.1:7788/settings/agents',
       'http://127.0.0.1:7788/settings/mcp/probe',
     ]);
-    expect(fetchLog.map((f) => f.init?.method)).toEqual(['PUT', 'PUT', 'PUT', 'PUT', 'PUT', 'PUT', 'POST']);
-    // —— body 面:字段名/缺省省字段(root undefined 不落 JSON)逐字 ——
-    expect(fetchLog[0]?.init?.body).toBe(JSON.stringify({ root: '/w', updates }));
-    expect(fetchLog[1]?.init?.body).toBe(JSON.stringify({ scope: 'project', root: '/w', file: 'settings', content: '{}\n' }));
-    expect(fetchLog[2]?.init?.body).toBe(JSON.stringify({ scope: 'global', file: 'mcp', content: '{\n  "mcpServers": {}\n}\n' }));
-    expect(fetchLog[3]?.init?.body).toBe(JSON.stringify({ root: '/w', servers }));
-    expect(fetchLog[4]?.init?.body).toBe(
+    expect(fetchLog.map((f) => f.init?.method)).toEqual(['PUT', 'PUT', 'PUT', 'PUT', 'PUT', 'PUT', 'PUT', 'POST']);
+    // —— body 面:字段名/缺省省字段(scope=global 时 root undefined 不落 JSON)逐字 ——
+    expect(fetchLog[0]?.init?.body).toBe(JSON.stringify({ scope: 'project', root: '/w', updates }));
+    expect(fetchLog[1]?.init?.body).toBe(JSON.stringify({ scope: 'global', updates }));
+    expect(fetchLog[2]?.init?.body).toBe(JSON.stringify({ scope: 'project', root: '/w', file: 'settings', content: '{}\n' }));
+    expect(fetchLog[3]?.init?.body).toBe(JSON.stringify({ scope: 'global', file: 'mcp', content: '{\n  "mcpServers": {}\n}\n' }));
+    expect(fetchLog[4]?.init?.body).toBe(JSON.stringify({ root: '/w', servers }));
+    expect(fetchLog[5]?.init?.body).toBe(
       JSON.stringify({ root: '/w', scope: 'project', op: 'upsert', id: 'coder', frontmatter: { name: 'Coder', memory: true }, body: '正文' }),
     );
-    expect(fetchLog[5]?.init?.body).toBe(JSON.stringify({ scope: 'global', op: 'delete', id: 'old-one' }));
-    expect(fetchLog[6]?.init?.body).toBe(JSON.stringify({ name: 'fs' }));
+    expect(fetchLog[6]?.init?.body).toBe(JSON.stringify({ scope: 'global', op: 'delete', id: 'old-one' }));
+    expect(fetchLog[7]?.init?.body).toBe(JSON.stringify({ name: 'fs' }));
     // Bearer + json 头(写面)
     expect(fetchLog[0]?.init?.headers).toEqual({ authorization: 'Bearer tok', 'content-type': 'application/json' });
     // —— 非 2xx 透传:400 未知键 / 409 注释面 / 400 缺 root ——
     fetchQueue.push(errResp(400));
-    await expect(conn.putSettings('/w', { bogus: 'x' })).rejects.toThrow('/settings -> 400');
+    await expect(conn.putSettings('project', '/w', { bogus: 'x' })).rejects.toThrow('/settings -> 400');
     fetchQueue.push(errResp(409));
     await expect(conn.putSettingsRaw('project', '/w', 'settings', '// c\n')).rejects.toThrow('/settings/raw -> 409');
     fetchQueue.push(errResp(400));

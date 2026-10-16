@@ -2,10 +2,11 @@ import * as path from 'path';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
 import { resolveMemoryConfig } from '../../config/memory-config';
-import { INDEX_NAME, MemoryStore, memoryDir } from './store';
+import { MemoryStore } from './store';
 import { settleMemory } from './extractor';
 import { LearnedSkillStore } from '../skills/learned';
-import { extractLearnedSkill } from '../skills/learned-extract';
+import { extractLearnedSkill, validSkillName } from '../skills/learned-extract';
+import { slugify as slugifyPreview } from '../skills/learned';
 
 type PipelineOutcome = 'done' | 'failed' | 'stopped';
 
@@ -99,38 +100,67 @@ export class MemoryPipeline {
     else await this.consumeMemory(item);
   }
 
-  /** 无真实模型：与今日行为一致——done 走确定性 learned 写盘并返回说明行；failed/stopped 与记忆提取跳过 */
+  /** G14.81 近轮环（旧→新，容量 6）：跨轮合成上下文 */
+  private recentSettles: Array<{ goal: string; outcome: string }> = [];
+
+  /** 无真实模型：与今日行为一致——done 走确定性 learned 写盘并返回说明行；failed/stopped 与记忆提取跳过。
+   *  G14.81 门控：仅收 goal 含 ASCII 的输入——非 ASCII goal 会 slug 塌缩成 learned-N 噪声目录（用户裁定不产） */
   private runDeterministic(item: PipelineItem): string | undefined {
     if (item.kind !== 'learned') return undefined;
     if (item.outcome !== 'done' || !item.reply) return undefined;
     const cfg = resolveMemoryConfig();
     if (!this.learnedEnabled()) return undefined;
+    // G14.92 名字质量门:确定性路径同样不产噪声——slug 须含字母且 >=3 字符('34'/'rm' 类纯数字/单词命令挡外;
+    // 非 ASCII goal 塌缩 'learned' 同挡)。无模型判价值,宁缺勿滥
+    const slug = slugifyPreview(item.goal);
+    if (!validSkillName(slug)) {
+      this.recentSettlesPush(item.goal, item.outcome);
+      return undefined;
+    }
+    this.recentSettlesPush(item.goal, item.outcome);
     const r = new LearnedSkillStore(this.deps.root).settle(item.goal, item.reply, { limit: cfg.learnedSkillLimit });
-    return r.ok ? `[skills] learned: ${r.value}` : undefined;
+    // 撞名沉淀=原地更新（2026-10-15 用户裁决）：updated 时文案归 updated，不再产 -N 副本
+    return r.ok ? `[skills] ${r.value.updated ? 'updated' : 'learned'}: ${r.value.id}` : undefined;
+  }
+
+  private recentSettlesPush(goal: string, outcome: string): void {
+    this.recentSettles.push({ goal, outcome });
+    if (this.recentSettles.length > 6) this.recentSettles.shift();
   }
 
   private async consumeLearned(item: PipelineItem): Promise<void> {
     const cfg = resolveMemoryConfig();
     if (!this.learnedEnabled()) return;
+    const store = new LearnedSkillStore(this.deps.root);
+    const recent = this.recentSettles.slice(-6); // 当前轮入环前取——跨轮合成上下文
+    this.recentSettlesPush(item.goal, item.outcome);
     try {
-      const ex = await extractLearnedSkill(this.deps.model, {
+      // G14.92 证据密度门（先于模型调用）：工具步 <3 的任务几乎必为单命令/问答/增删单文件类琐碎操作
+      // （本轮实测噪声源），直接跳过提炼——跨轮合成不受影响（recent 环照常入环，模型可跨轮合并）
+      const stepLines = item.digest.split('\n').filter((l) => l.trim().length > 0).length;
+      if (stepLines < 3) return;
+      // 三态裁决（重试环在 extractLearnedSkill 内——三次皆败 skip 丢弃，无回退写盘：
+      // 回退产物 learned:34/rm 类噪声正是污染源，宁缺勿滥）
+      const verdict = await extractLearnedSkill(this.deps.model, {
         goal: item.goal,
         reply: item.reply,
         outcome: item.outcome,
         digest: item.digest,
+        recent,
+        existing: store.names(),
       });
-      const store = new LearnedSkillStore(this.deps.root);
-      if (ex && ex.skill) {
-        const r = store.settle(item.goal, item.reply, { limit: cfg.learnedSkillLimit, refined: ex.skill });
-        if (r.ok) this.deps.notify('skills', `[skills] learned: ${r.value}`);
-        return;
+      if (verdict.action === 'skip' || verdict.skill === undefined) return;
+      if (verdict.action === 'update') {
+        // 原地更新:相近主题合并进既有技能(容量守恒,不新增目录);目标已删降级 create
+        const u = store.updateExisting(verdict.id ?? '', verdict.skill);
+        if (u.ok) {
+          this.deps.notify('skills', `[skills] updated: ${u.value}`);
+          return;
+        }
       }
-      if (ex === null && item.outcome === 'done' && item.reply) {
-        // 技术失败回退确定性写盘：沉淀永不因技术故障丢失
-        const r = store.settle(item.goal, item.reply, { limit: cfg.learnedSkillLimit });
-        if (r.ok) this.deps.notify('skills', `[skills] learned: ${r.value}`);
-      }
-      // ex.skill === null：模型判无可复用教训 → 零落盘（宁少勿滥）
+      // create 裁决撞名时 settle 原地覆盖（2026-10-15 用户裁决「禁止 -1/-2 后缀」），文案随 updated 归位
+      const r = store.settle(item.goal, item.reply, { limit: cfg.learnedSkillLimit, refined: verdict.skill });
+      if (r.ok) this.deps.notify('skills', `[skills] ${r.value.updated ? 'updated' : 'learned'}: ${r.value.id}`);
     } catch {
       // 旁路纪律
     }
@@ -154,10 +184,10 @@ export class MemoryPipeline {
     }
   }
 
-  /** 说明行文案与 harness 既有口径逐字对齐（src/harness/index.ts settleMemory 链行）；
-   *  近限提醒（规格 §3.4）以 ` — ` 并入同一行——链行是单行契约，不得以换行拆出无步号裸行 */
+  /** 说明行文案（G14.106 GUI 可见面去路径引用——recall 指针只留在 TUI/链行侧,径经链接化会
+   *  在正文拖出长蓝链）；近限提醒（规格 §3.4）以 ` — ` 并入同一行——单行契约不拆 */
   private memoryLine(slugs: string[]): string {
-    const base = `[memory] saved: ${slugs.join(', ')} — recall via read ${path.join(memoryDir(this.deps.root), INDEX_NAME)}`;
+    const base = `[memory] saved: ${slugs.join(', ')}`;
     const near = new MemoryStore(this.deps.root).capacityNotice();
     return near ? `${base} — ${near}` : base;
   }

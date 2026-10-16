@@ -25,8 +25,9 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
   const cmd = line.split(/\s/)[0] ?? '';
   if (!isCommandSupported(line)) return 'unsupported';
   if (IDLE_ONLY.has(cmd) && s.status() !== 'idle') return 'busy';
-  const collector = s.transcript;
-  const notice = (text: string): void => collector.push({ type: 'notice', text, ts: Date.now() });
+  // G14.95 notice 走 pump 单点(pump 已含 transcript 入列+WS 广播)——原只入快照不广播,
+  // GUI 实时面看不到命令回执(压缩/状态等)
+  const notice = (text: string): void => s.pump({ type: 'notice', text, ts: Date.now() });
 
   if (cmd === '/status') {
     const snap = s.snapshotResponse();

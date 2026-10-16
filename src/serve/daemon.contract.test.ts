@@ -134,7 +134,9 @@ test('① 全链跨会话：s1 轮 run 事件流至 done → 新建 s2 二轮续
       assert.equal(frames[firstDone].e.text, 'one');
       // run 收束：status 回 idle 后事件面静止——末帧即 done（done 后无尾随事件源）
       await waitFor(() => ctx.daemon.get(ctx.sid)!.status() === 'idle', 3000);
-      assert.equal(frames[frames.length - 1].e.type, 'done', 'idle 时末事件 type 为 done');
+      // G14.100 runmeta 帧（收尾元数据，done 后 pump）是合法尾随事件——末帧 ∈ {done, runmeta}
+      const lastType = frames[frames.length - 1].e.type;
+      assert.ok(lastType === 'done' || lastType === 'runmeta', `idle 时末事件为 done/runmeta，实际 ${String(lastType)}`);
       const s1MaxSeq = Math.max(...frames.map((f) => f.seq));
 
       // —— 第二轮（s2 新会话）：同一连接续推，帧挂 s2、seq 跨会话全局续接 ——

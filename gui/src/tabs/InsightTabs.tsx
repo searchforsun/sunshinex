@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, RefreshCw, Trash2 } from 'lucide-react';
 import type { Connection } from '../connection';
+import { t } from '../i18n';
 
 /**
  * G10-C6 右栏三面板(spec §7 映射:/context /tasks /memory 的 GUI 承载):
@@ -18,7 +20,7 @@ type CtxBreakdown = {
 };
 
 type TaskRow = { id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number };
-type MemoryRow = { slug: string; type: string; created: string; modified: string; description: string };
+type MemoryRow = { slug: string; type: string; created: string; modified: string; description: string; body: string };
 
 function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; error: string; reload: () => void } {
   const [data, setData] = useState<T | null>(null);
@@ -53,8 +55,8 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
   return (
     <div className="insight-tab">
       <div className="insight-bar">
-        <button type="button" className="sx-web-reload" onClick={reload}>
-          刷新
+        <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
+          <RefreshCw size={13} strokeWidth={1.75} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -81,62 +83,131 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
 }
 
 /** 后台任务面板:/tasks 账本行(exec/spawn 运行面,与任务板分立) */
-export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
+export function BgTasksTab({ conn, sessionId, turnGoal }: { conn: Connection; sessionId: string; turnGoal: string }): JSX.Element {
   const { data, error, reload } = useFetch<TaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
+  // G14.178 卡片流:每任务一卡(状态点+关联轮次输入省略+创建时间),点击展开详情;新任务在顶
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string): void =>
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const rows = [...(data ?? [])].sort((a, b) => b.startedAt - a.startedAt);
+  const pad = (n: number): string => String(n).padStart(2, '0');
   return (
     <div className="insight-tab">
       <div className="insight-bar">
-        <button type="button" className="sx-web-reload" onClick={reload}>
-          刷新
+        <button
+          type="button"
+          className="sx-changes-act"
+          aria-label="refresh"
+          data-tip={t('Refresh', '刷新')}
+          onClick={reload}
+        >
+          <RefreshCw size={13} strokeWidth={1.75} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
-      {data !== null && data.length === 0 && <p className="insight-empty">暂无后台任务</p>}
+      {data !== null && data.length === 0 && (
+        <div className="board-empty-state" role="status">
+          <p className="board-empty-title">{t('No background tasks', '暂无后台任务')}</p>
+          <p className="board-empty-hint">{t('Background exec/spawn tasks will appear here.', '后台 exec/spawn 任务会显示在这里。')}</p>
+        </div>
+      )}
       {data !== null && data.length > 0 && (
-        <ul className="bgtask-list">
-          {data.map((r) => (
-            <li key={r.id} className={`bgtask-row bgtask-${r.status}`}>
-              <span className="bgtask-label" title={r.id}>
-                {r.label}
-              </span>
-              <span className="bgtask-status">{r.status}</span>
-            </li>
-          ))}
-        </ul>
+        <div className="todo-cards" aria-label="background tasks">
+          {rows.map((r) => {
+            const open = expanded.has(r.id);
+            const d = new Date(r.startedAt);
+            const time = Number.isNaN(d.getTime()) ? '--:--' : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            return (
+              <section key={r.id} className="tb-card">
+                <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(r.id)}>
+                  {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
+                  <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
+                  <span className="todo-card-goal">{turnGoal !== '' ? turnGoal : r.label}</span>
+                  <span className="todo-card-time">{time}</span>
+                </button>
+                {open && (
+                  <div className="bg-detail">
+                    <div className="bg-detail-row">
+                      <span className="bg-detail-key">{t('Task', '任务')}</span>
+                      <span className="bg-detail-val">{r.label}</span>
+                    </div>
+                    <div className="bg-detail-row">
+                      <span className="bg-detail-key">{t('Kind', '类型')}</span>
+                      <span className="bg-detail-val">{r.kind}</span>
+                    </div>
+                    <div className="bg-detail-row">
+                      <span className="bg-detail-key">{t('Status', '状态')}</span>
+                      <span className={`bg-detail-val bg-${r.status}`}>{r.status}</span>
+                    </div>
+                    {r.exitCode !== undefined && (
+                      <div className="bg-detail-row">
+                        <span className="bg-detail-key">exit</span>
+                        <span className="bg-detail-val">{r.exitCode}</span>
+                      </div>
+                    )}
+                    <div className="bg-detail-row">
+                      <span className="bg-detail-key">id</span>
+                      <span className="bg-detail-val bg-detail-mono">{r.id}</span>
+                    </div>
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-/** 记忆面板:/memory 清单 + /memory/rm 删除 */
+/** 记忆面板:/memory 清单(body 全文)+ /memory/rm 删除。
+ *  G14.147 对标 diff 页交互:行点击展开详情(全文),删除=图标钮(单行 Trash/批量带计数) */
 export function MemoryTab({ conn, root }: { conn: Connection; root: string }): JSX.Element {
   const fetcher = useCallback(() => conn.memoryList(root), [conn, root]);
   const { data, error, reload } = useFetch<MemoryRow[]>(fetcher, [conn, root]);
   const [selected, setSelected] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  const remove = (slugs: string[]): void => {
+    if (slugs.length === 0 || root === '') return;
+    setDeleting(true);
+    conn
+      .removeMemory(root, slugs)
+      .then(() => {
+        setSelected((s) => s.filter((x) => !slugs.includes(x)));
+        if (expandedSlug !== null && slugs.includes(expandedSlug)) setExpandedSlug(null);
+        reload();
+      })
+      .finally(() => setDeleting(false));
+  };
   return (
     <div className="insight-tab">
       <div className="insight-bar">
-        <button type="button" className="sx-web-reload" onClick={reload}>
-          刷新
+        <button
+          type="button"
+          className="sx-changes-act"
+          aria-label="refresh"
+          data-tip={t('Refresh', '刷新')}
+          onClick={reload}
+        >
+          <RefreshCw size={13} strokeWidth={1.75} />
         </button>
         {selected.length > 0 && (
           <button
             type="button"
-            className="sx-web-reload"
+            className="sx-changes-act"
+            aria-label="delete selected"
+            data-tip={`${t('Delete selected', '删除所选')} (${selected.length})`}
             disabled={deleting || root === ''}
-            onClick={() => {
-              setDeleting(true);
-              conn
-                .removeMemory(root, selected)
-                .then(() => {
-                  setSelected([]);
-                  reload();
-                })
-                .finally(() => setDeleting(false));
-            }}
+            onClick={() => remove(selected)}
           >
-            删除({selected.length})
+            <Trash2 size={13} strokeWidth={1.75} />
+            <span className="mem-count">{selected.length}</span>
           </button>
         )}
       </div>
@@ -146,20 +217,50 @@ export function MemoryTab({ conn, root }: { conn: Connection; root: string }): J
       {root !== '' && data !== null && data.length > 0 && (
         <ul className="mem-list">
           {data.map((m) => (
-            <li key={m.slug} className="mem-row">
-              <label className="mem-check">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(m.slug)}
-                  onChange={(e) =>
-                    setSelected((s) => (e.target.checked ? [...s, m.slug] : s.filter((x) => x !== m.slug)))
-                  }
-                />
-              </label>
-              <span className="mem-body" title={m.description}>
-                {m.description}
-              </span>
-              <span className="mem-date">{m.modified.slice(0, 10)}</span>
+            <li key={m.slug} className={`mem-row${expandedSlug === m.slug ? ' open' : ''}`}>
+              <div className="mem-rowline">
+                <label className="mem-check">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(m.slug)}
+                    onChange={(e) =>
+                      setSelected((s) => (e.target.checked ? [...s, m.slug] : s.filter((x) => x !== m.slug)))
+                    }
+                  />
+                </label>
+                <span
+                  className="mem-body"
+                  role="button"
+                  tabIndex={0}
+                  title={m.description}
+                  onClick={() => setExpandedSlug((s) => (s === m.slug ? null : m.slug))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') setExpandedSlug((s) => (s === m.slug ? null : m.slug));
+                  }}
+                >
+                  {m.description}
+                </span>
+                <span className="mem-date">{m.modified.slice(0, 10)}</span>
+                <button
+                  type="button"
+                  className="sx-changes-act mem-del"
+                  aria-label={`delete ${m.slug}`}
+                  data-tip={t('Delete', '删除')}
+                  disabled={deleting}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove([m.slug]);
+                  }}
+                >
+                  <Trash2 size={13} strokeWidth={1.75} />
+                </button>
+              </div>
+              {expandedSlug === m.slug && (
+                <div className="mem-detail">
+                  <div className="mem-meta">{m.type} · {t('created', '创建')} {m.created.slice(0, 10)}</div>
+                  <pre className="mem-body-text">{m.body}</pre>
+                </div>
+              )}
             </li>
           ))}
         </ul>

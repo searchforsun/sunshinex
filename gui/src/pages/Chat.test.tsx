@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-// mermaid 加载失败回落(懒加载降级纪律):工厂抛错即模拟拉包失败
-vi.mock('mermaid', () => {
-  throw new Error('mock: mermaid load failure');
-});
+// mermaid 成功 stub(G14.122 起 zoom 钮受渲染成败门控——成功态才可开 lightbox):
+// initialize/render 落定回 svg,走 onStatus(true) 正链
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(() => Promise.resolve({ svg: '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>' })),
+  },
+}));
 // monaco 真渲染需要浏览器布局——jsdom 挂 stub(与 App.test 同款;G14.41 write 行 diff 面板)
 vi.mock('monaco-editor', () => ({
   editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
@@ -19,7 +23,8 @@ vi.mock('@monaco-editor/react', () => ({
   ),
 }));
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { Chat } from './Chat';
+import { setLanguage } from '../../src/i18n';
+import { Chat, expandFileRefs, tokenDeleteRange } from './Chat';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
 import type { SessionEvent } from '../../../src/types';
@@ -84,6 +89,86 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(entry.querySelector('button[aria-label="Copy"]')).toBeTruthy();
   });
 
+  it('G14.156 tokenDeleteRange:token 内 Backspace/Delete 整删区间判定,明文不命中', () => {
+    const text = '看一下 @src/a.ts:L30-L35 和 /plan 以及 @b';
+    // 区间核算:@token=4..21,空格 21..24,/plan=24..29
+    expect(tokenDeleteRange(text, 21, 'Backspace')).toEqual([4, 21]);   // 末位整删
+    expect(tokenDeleteRange(text, 10, 'Backspace')).toEqual([4, 21]);   // 中间也整删
+    expect(tokenDeleteRange(text, 4, 'Delete')).toEqual([4, 21]);       // 首位 Delete 整删
+    expect(tokenDeleteRange(text, 2, 'Backspace')).toBeNull();          // 明文不命中
+    expect(tokenDeleteRange(text, 26, 'Backspace')).toEqual([24, 29]);  // /plan 命令 token 同整删
+    expect(tokenDeleteRange(text, 0, 'Delete')).toBeNull();             // 首位 Delete 无 token
+  });
+
+  it('G14.129 expandFileRefs:@相对路径 → [文件名](./相对) 标准格式;@文件名 经 resolve 解析,解析不到原样', () => {
+    expect(expandFileRefs('看 @src/a.ts 和 @b', 'D:/ws/demo')).toBe('看 [a.ts](./src/a.ts) 和 @b');
+    expect(expandFileRefs('看 @a.ts', 'D:/ws/demo', (n) => (n === 'a.ts' ? 'src/a.ts' : undefined))).toBe(
+      '看 [a.ts](./src/a.ts)',
+    ); // 选中记账/索引兜底解析
+    expect(expandFileRefs('看 @missing.ts', 'D:/ws/demo', () => undefined)).toBe('看 @missing.ts');
+    expect(expandFileRefs('无 root @src/a.ts 保持', undefined)).toBe('无 root @src/a.ts 保持');
+    expect(expandFileRefs('看 @src/a.ts:L30-L35', 'D:/ws/demo')).toBe(
+      '看 [a.ts L30-L35](./src/a.ts#L30-L35)',
+    ); // G14.139 行锚:链接文本带行号,目标带 #L 锚
+    expect(expandFileRefs('default @src/a.ts 保持', 'default')).toBe('default @src/a.ts 保持');
+  });
+
+  it('G14.124 md 原生超链接 → 文件引用渲染(icon+文件名),点击开侧栏;web 链接原样 <a>', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      <Chat
+        conn={connOf([{ seq: 1, ts: DAY1, kind: 'assistant', md: '改 [DiffTab.tsx](gui/src/tabs/DiffTab.tsx) 与 [官网](https://example.com)' }])}
+        sessionId="s1"
+        connState="open"
+        onBack={() => {}}
+        sinkRef={sinkRef}
+        onOpenFile={onOpenFile}
+      />,
+    );
+    const link = await screen.findByRole('button', { name: 'DiffTab.tsx' });
+    expect(link.className).toContain('file-link');
+    expect(link.getAttribute('title')).toBe('gui/src/tabs/DiffTab.tsx');
+    fireEvent.click(link);
+    expect(onOpenFile).toHaveBeenCalledWith('gui/src/tabs/DiffTab.tsx');
+    const web = screen.getByText('官网').closest('a');
+    expect(web?.getAttribute('href')).toBe('https://example.com'); // web 链接不受影响
+  });
+
+  it('G14.124 气泡 md 链接(引用回显形态):file href 渲染为可点文件引用', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      <Chat
+        conn={connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '> 再看一下 [steer-verify.txt](C:/Users/x/sunshinex-default/steer-verify.txt)' }])}
+        sessionId="s1"
+        connState="open"
+        onBack={() => {}}
+        sinkRef={sinkRef}
+        onOpenFile={onOpenFile}
+      />,
+    );
+    const link = await screen.findByRole('button', { name: 'steer-verify.txt' });
+    expect(link.className).toContain('file-link');
+    expect(link.getAttribute('title')).toBe('C:/Users/x/sunshinex-default/steer-verify.txt');
+  });
+
+  it('G14.125 气泡非标引用不做文件渲染:@token 退通用 code chip,只认标准 md 链接(G14.124)', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      <Chat
+        conn={connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '看一下 @changes-bar-probe.md 就好 /plan 别的' }])}
+        sessionId="s1"
+        connState="open"
+        onBack={() => {}}
+        sinkRef={sinkRef}
+        onOpenFile={onOpenFile}
+      />,
+    );
+    await screen.findAllByText(/changes-bar-probe\.md/); // 气泡 chip+标题回落同文(取在场即可)
+    expect(document.querySelector('.user-bubble .file-link')).toBeNull(); // 无专属文件渲染
+    expect(document.querySelectorAll('.user-bubble code').length).toBeGreaterThanOrEqual(2); // @token 与 /plan 均通用 chip
+    expect(onOpenFile).not.toHaveBeenCalled();
+  });
+
   it('复制钮写入剪贴板(剥 > 前缀),成功示「已复制」', async () => {
     mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '> 你好' }]);
     fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
@@ -133,11 +218,17 @@ describe('MermaidBlock(G11 §5.4)', () => {
     });
   });
 
-  it('容器带放大/复制钮;放大开 lightbox,Esc 关闭', async () => {
-    mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: ['图:', '', '```mermaid', 'graph TD; A-->B', '```'].join('\n') }]);
+  it('容器带放大/复制钮;放大开 lightbox,Esc 关闭;G14.117 +−之间百分比显形联动,方框钮复位;G14.122 浮层=克隆 SVG', async () => {    mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: ['图:', '', '```mermaid', 'graph TD; A-->B', '```'].join('\n') }]);
     await screen.findByText(/graph TD; A-->/, {}, { timeout: 5_000 });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'zoom mermaid' })).toBeDefined()); // 渲染成功才在场
     fireEvent.click(screen.getByRole('button', { name: 'zoom mermaid' }));
     expect(document.querySelector('.mermaid-lightbox')).not.toBeNull();
+    expect(document.querySelector('.mermaid-lb-pan svg')).not.toBeNull(); // 克隆 SVG 在浮层
+    expect(document.querySelector('.mermaid-lb-zoom')?.textContent).toBe('100%'); // 缺省 100%
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(document.querySelector('.mermaid-lb-zoom')?.textContent).toBe('120%'); // 步进联动
+    fireEvent.click(screen.getByRole('button', { name: 'Reset view' }));
+    expect(document.querySelector('.mermaid-lb-zoom')?.textContent).toBe('100%'); // 方框钮复位
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(document.querySelector('.mermaid-lightbox')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'copy mermaid' }));
@@ -152,7 +243,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     (conn as unknown as Record<string, unknown>).setSessionMode = setSessionMode;
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     fireEvent.click(await screen.findByRole('button', { name: 'session mode' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm changes' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Confirm changes/ })); // G14.98 双行(名称+解释)→可访问名含解释,正则匹配
     expect(setSessionMode).toHaveBeenCalledWith('s1', 'manual');
   });
 
@@ -177,7 +268,8 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     expect(await screen.findByText('排队一')).toBeTruthy();
     expect(screen.getByText('排队二')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'cancel queued 0' }));
+    // G14.83:删除钮(垃圾桶)撤回队列条目
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
     expect(cancelSteer).toHaveBeenCalledWith('s1', 0);
   });
 });
@@ -211,7 +303,7 @@ describe('run 状态行(G11 §1)', () => {
     fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: 'cr', input: { path: 'src/a.ts' } } });
     let row = document.querySelector('.tool-summary')!;
     expect(row.textContent).toMatch(/Reading file|正在读取/);
-    expect(row.querySelector('.exec-ripple-icon')).not.toBeNull();
+    expect(row.querySelector('.exec-ripple-icon')).toBeNull(); // G14.88 纯流光文字(图标+波纹退役)
     expect(row.textContent).not.toContain('src/');
     fire({ type: 'tool-result', text: 'content', ts: Date.now(), payload: { callId: 'cr' } });
     row = document.querySelector('.tool-summary')!;
@@ -349,13 +441,13 @@ describe('用户气泡编辑卡(G11 §7)', () => {
 });
 
 describe('exec 执行中/完成双态(G14.13)', () => {
-  it('执行中(result 未回):波纹图标+「正在执行」,不含命令', async () => {
+  it('执行中(result 未回):流光文字「正在执行」(G14.88 无图标),不含命令', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'cx', input: { command: 'npm test' } } });
     const row = document.querySelector('.tool-summary')!;
     expect(row.textContent).toMatch(/Running|正在执行/); // 双语(测试默认 en)
-    expect(row.querySelector('.exec-ripple-icon')).not.toBeNull();
+    expect(row.querySelector('.exec-ripple-icon')).toBeNull(); // G14.88 图标+波纹退役
     expect(row.textContent).not.toContain('npm test'); // 命令在完成后才示出
   });
 
@@ -383,12 +475,16 @@ describe('G14.18 上下文圆环', () => {
     });
     fireEvent.mouseEnter(ring);
     const pop = document.querySelector('.ctx-pop')!;
-    expect(pop.textContent).toContain('6,577');
-    expect(pop.textContent).toContain('1,000,000');
+    // G14.77 k/m 单位化;G14.97 百分比一位小数+分区横线;构成含具体 token
+    expect(pop.textContent).toContain('6.6k / 1m · 0.7%');
+    expect(pop.textContent).toContain('429 · 6.5%'); // 构成项=token 数+百分比并存
+    expect(pop.querySelectorAll('.ctx-pop-sep').length).toBe(2); // 上下文/轮次/缓存三分区
     expect(pop.textContent).toContain('Turns / Steps');
-    expect(pop.textContent).toContain('System'); // G14.21 构成明细逐段
+    expect(pop.textContent).toContain('System');
+    expect(pop.textContent).toContain('%'); // 细项相对占比
     expect(pop.textContent).toContain('Chain');
     expect(pop.textContent).toContain('· 3'); // 条数缀
+    expect(pop.textContent).toMatch(/缓存命中率|Cache hit rate/);
     expect(pop.textContent).not.toContain('Model'); // 模型行去除(pill 在侧,冗余)
     fireEvent.mouseLeave(ring);
     await waitFor(() => expect(document.querySelector('.ctx-pop')).toBeNull());
@@ -408,10 +504,96 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(runRow.getAttribute('aria-expanded')).toBe('true');
     expect(runRow.querySelector('.run-chev')).not.toBeNull();
     fireEvent.click(runRow);
-    expect(document.querySelector('.entry-tool')).toBeNull(); // 工具行随轮折叠
+    // G14.73:工具行保持挂载,包进收起的 seg-collapse(visibility hidden,平滑过渡)
+    const collapsedSeg = document.querySelector('.seg-collapse:not(.open)');
+    expect(collapsedSeg).not.toBeNull();
+    expect(collapsedSeg?.querySelector('.entry-tool')).not.toBeNull();
     expect(runRow.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(runRow);
-    expect(document.querySelector('.entry-tool')).not.toBeNull(); // 再点展开
+    expect(document.querySelector('.seg-collapse.open .entry-tool')).not.toBeNull(); // 再点展开
+    expect(document.querySelector('.seg-collapse:not(.open)')).toBeNull();
+  });
+
+  it('G14.166 spawn 折叠行带子代理名(label 优先,回退 agent_id;无名只出动词)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 's1', input: { prompt: 'x', label: '架构分析' } } });
+    fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 's2', input: { prompt: 'x', agent_id: 'reviewer' } } });
+    fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 's3', input: { prompt: 'x' } } });
+    const rows = [...document.querySelectorAll('.entry-tool')];
+    expect(rows).toHaveLength(3);
+    expect(rows[0]!.textContent).toContain('架构分析'); // label 同源(时间线卡/委派标签)
+    expect(rows[1]!.textContent).toContain('reviewer'); // agent_id 兜底
+    expect(rows[2]!.textContent).not.toMatch(/spawn\s+\S/); // 无名:只出动词,不编名
+  });
+
+  it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_task 标题;null=全部后台任务)', async () => {
+    // 历史/重启场景板投影为空——任务名从转录里的 create_task 行回执重建(task tN created → 标题)
+    mountChat([
+      { seq: 1, kind: 'tool', md: '● [tool] create_task {"title":"分析：TUI 交互面","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
+      { seq: 2, kind: 'tool', md: '● [tool] create_task {"title":"分析：GUI 交互面","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t3 created; dispatch is automatic' },
+    ] as never);
+    await flushed();
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['t2', 't3'], timeoutSeconds: null } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'w1' } });
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w2', input: { taskIds: ['task-t2-20261015T153105Z-da2n'], timeoutSeconds: null } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'w2' } });
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w3', input: { taskIds: null, timeoutSeconds: 30 } } });
+    fire({ type: 'tool-result', text: 'done', ts: Date.now(), payload: { callId: 'w3' } });
+    const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => {
+      const t = x.textContent ?? '';
+      return t.includes('等待任务') || t.includes('task_wait');
+    });
+    expect(rows[0]!.textContent).toContain('分析：TUI 交互面, 分析：GUI 交互面'); // 板 id 直查映射
+    expect(rows[1]!.textContent).toContain('分析：TUI 交互面'); // 台账长 id 剥尾+剥 task- 前缀命中
+    expect(rows[1]!.textContent).not.toContain('task-t2-20261015T153105Z'); // 不显全 id
+    expect(rows[2]!.textContent).toMatch(/全部后台任务|all background tasks/); // null 语义本地化
+  });
+
+  it('G14.168 create_task 折叠行带任务名;zh 态动词本地化(en 态原字面;未登记工具回退原名)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-call', text: 'create_task', ts: Date.now(), payload: { callId: 'ct1', input: { title: '架构分析', spec: 'x', dependsOn: null, assignee: null, gated: null, executor: null } } });
+    fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct1' } });
+    let row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
+    expect(row.textContent).toContain('create_task'); // en 态原字面
+    expect(row.textContent).toContain('架构分析'); // 任务名跟行
+    // zh 态:已渲染行不回溯,新入行即中文化
+    setLanguage('zh');
+    try {
+      fire({ type: 'tool-call', text: 'create_task', ts: Date.now(), payload: { callId: 'ct2', input: { title: '测试构建', spec: 'y', dependsOn: null, assignee: null, gated: null, executor: null } } });
+      fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct2' } });
+      row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
+      expect(row.textContent).toContain('创建任务');
+      expect(row.textContent).toContain('测试构建');
+      // 未登记工具(MCP 面)回退原名不硬翻
+      fire({ type: 'tool-call', text: 'mcp_foo_bar', ts: Date.now(), payload: { callId: 'm1', input: {} } });
+      fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'm1' } });
+      row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
+    expect(row.textContent).toContain('mcp_foo_bar');
+    } finally {
+      setLanguage('en');
+    }
+  });
+
+  it('G14.171 spawn 行子代理名=蓝色链接,点击上抛 onOpenAgent(label, title)', async () => {
+    const onOpenAgent = vi.fn();
+    const first = render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
+    await flushed();
+    fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 'sp1', input: { prompt: 'x', label: '分析：架构与运行时装配' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'sp1' } });
+    const link = document.querySelector('.tool-agent-link');
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toContain('分析：架构与运行时装配');
+    fireEvent.click(link!);
+    expect(onOpenAgent).toHaveBeenCalledWith('分析：架构与运行时装配', '分析：架构与运行时装配', 'x'); // G14.175 第三参=spawn prompt
+    first.unmount();
+    // 无 onOpenAgent(测试桩缺省):回落纯文本不渲染链接
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 'sp2', input: { prompt: 'x', label: '分析' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'sp2' } });
+    expect(document.querySelector('.tool-agent-link')).toBeNull();
   });
 
   it('freshView:种子历史不落屏(辅助对话全新视图)', async () => {
@@ -446,3 +628,55 @@ describe('G14.41 write 行 diffstat 保留', () => {
   });
 });
 
+
+describe('G14.177 顶栏动态计数按钮', () => {
+  it('待办未完成>0 → 显「N 待办」按钮,点击 onOpenTab(tasks);全完成(0)不渲染', async () => {
+    const onOpenTab = vi.fn();
+    const seeds = [
+      { seq: 1, kind: 'tool', md: '● [tool] todo_write {"todos":[{"text":"已完成项","status":"completed"},{"text":"进行中项","status":"in_progress"},{"text":"等待项","status":"pending"}]}\n⎿ ok' },
+    ] as never;
+    const first = render(<Chat conn={connOf(seeds)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    await flushed();
+    const btn = document.querySelector('.chat-dyn-btn');
+    expect(btn?.textContent).toMatch(/2 (todos|待办)/); // 测试语言态双语 // 未完成=in_progress+pending
+    fireEvent.click(btn!);
+    expect(onOpenTab).toHaveBeenCalledWith('tasks');
+    // 全完成:末批 0 未完成 → 按钮隐(不占位)
+    first.unmount();
+    const done = [
+      { seq: 1, kind: 'tool', md: '● [tool] todo_write {"todos":[{"text":"已完成项","status":"completed"}]}\n⎿ ok' },
+    ] as never;
+    render(<Chat conn={connOf(done)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    await flushed();
+    expect(document.querySelector('.chat-dyn-btn')).toBeNull();
+  });
+});
+
+describe('G14.181 用户气泡限高折叠', () => {
+  it('超高默认折叠+底部浮钮,点击展开/收起;短气泡不受影响', async () => {
+    const longMd = '很长的用户输入。'.repeat(120);
+    // jsdom 无布局:钉 scrollHeight=500 触发量测(>168+8)
+    const desc = Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 500 });
+    try {
+      const first = render(<Chat conn={connOf([{ seq: 1, kind: 'user', md: longMd } as never])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+      await flushed();
+      expect(document.querySelector('.user-bubble-clamped')).not.toBeNull(); // 默认折叠
+      expect(document.querySelector('.user-bubble-toggle-row')).not.toBeNull(); // 气泡下侧展开钮行(G14.202)
+      expect(document.querySelector('.user-bubble-float')).toBeNull(); // 复制钮归 user-actions 行(浮钮组退役,G14.202)
+      fireEvent.click(screen.getByLabelText('Expand'));
+      expect(document.querySelector('.user-bubble-clamped')).toBeNull(); // 展开
+      expect(document.querySelector('.user-bubble-open')).not.toBeNull(); // G14.206e 展开态气泡底部留位(浮钮内侧不遮末行)
+      fireEvent.click(screen.getByLabelText('Collapse'));
+      expect(document.querySelector('.user-bubble-clamped')).not.toBeNull(); // 再收起
+      expect(document.querySelector('.user-bubble-open')).toBeNull(); // 收起后留位撤销
+      first.unmount();
+    } finally {
+      delete (HTMLElement.prototype as unknown as { scrollHeight?: unknown }).scrollHeight;
+    }
+    // 短气泡:无折叠无浮钮
+    render(<Chat conn={connOf([{ seq: 1, kind: 'user', md: '继续' } as never])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    expect(document.querySelector('.user-bubble-clamped')).toBeNull();
+    expect(document.querySelector('.user-bubble-toggle')).toBeNull();
+  });
+});

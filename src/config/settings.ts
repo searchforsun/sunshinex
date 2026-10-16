@@ -78,7 +78,8 @@ interface SettingsDoc {
  * 块注释按原样吞掉但保留其跨行数，使 JSON.parse 报错行号仍指向用户文件里的真实位置。
  * 尾随逗号不在容忍之列：仍按严格 JSON 报错（既有钉子用例覆盖），口径见 MANUAL.md。
  */
-function stripJsonComments(input: string): string {
+/** 剥注释文本（导出供 daemon 测试复验注释保留式手术写产物;行为同 parseSettingsFile 内口径） */
+export function stripJsonComments(input: string): string {
   const src = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input; // 记事本另存为 UTF-8 会带 BOM
   let out = '';
   let i = 0;
@@ -235,11 +236,222 @@ export function resetSelfFilledSlots(): void {
 }
 
 /** 文本是否含 JSONC 注释（G8c T2 PUT /settings 的 409 判据）：与 stripJsonComments 同一状态机口径
- *  （raw !== stripped），BOM 不误报（先剥 BOM 再比对）。结构化改写会丢注释——含注释文件必须走 raw
- *  编辑面，本函数是那一分流的判定单点。 */
+ *  （raw !== stripped），BOM 不误报（先剥 BOM 再比对）。含注释文件的结构化写走 surgicalSettingsUpdate
+ *  （注释保留式逐行手术），本函数仍是不支持形态（多行值等）回退 409 引流 raw 编辑面的判定单点。 */
 export function hasJsonComments(text: string): boolean {
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   return stripJsonComments(src) !== src;
+}
+
+/**
+ * 注释保留式结构化改写（设置自动保存轮）：带 JSONC 注释的 settings 文本上做逐行手术——只动
+ * updates 指名的根级键，行尾注释/缩进/空行/其余键原样保留。设计域：语义键值恒为单行标量
+ * （string/number，updates 校验面保证；多行/对象/数组值不在域内 → 返回 null，调用方回退 409）。
+ * - 改值：定位根级键行，重写「键: 值」段，行尾逗号与注释逐字保留；
+ * - 删值（null）：整行移除，随后的逗号修整遍清掉悬挂逗号（严格 JSON 本就禁尾随逗号，剥之恒安全）；
+ * - 增值：根 `{` 行后插入新键行（尾随逗号由修整遍兜底）。
+ * 产出一律经 JSON.parse(剥注释) 复验：不可解析或未触及键值漂移 → 返回 null（调用方 409，零盘上副作用）。
+ * BOM 原样保真；行注释 `//` 与跨行块注释状态机口径与 stripJsonComments 一致。
+ */
+export function surgicalSettingsUpdate(
+  raw: string,
+  updates: Record<string, string | number | null>,
+): string | null {
+  const bom = raw.charCodeAt(0) === 0xfeff;
+  const src = bom ? raw.slice(1) : raw;
+  const lines = src.split('\n');
+  const pending: Record<string, string | number | null> = { ...updates };
+  const out: string[] = [];
+  let depth = 0; // 未闭合 '{' 计数:根对象开括号后 =1,根级键行即 depth 1(嵌套对象/数组元素 ≥2)
+  let inString = false;
+  let inBlock = false;
+  let rootOpenLine = -1; // 根 `{` 所在行(插入新键锚点;要求 `{` 独占一行——单行对象不支持 → null)
+
+  /** 行内字符扫描:维护 inString/inBlock/depth;返回值段信息(仅根级键行有意义) */
+  const scanLine = (
+    line: string,
+  ): { key: string; prefix: string; hadComma: boolean; suffix: string } | { nested: true } | null => {
+    let i = 0;
+    let key: string | null = null;
+    let colon = -1;
+    while (i < line.length) {
+      const ch = line[i]!;
+      if (inBlock) {
+        if (ch === '*' && line[i + 1] === '/') {
+          inBlock = false;
+          i += 2;
+          continue;
+        }
+        i += 1;
+        continue;
+      }
+      if (inString) {
+        if (ch === '\\') {
+          i += 2;
+          continue;
+        }
+        if (ch === '"') inString = false;
+        i += 1;
+        continue;
+      }
+      if (ch === '/' && line[i + 1] === '/') return key === null ? null : { key, prefix: line.slice(0, colon < 0 ? i : colon), hadComma: false, suffix: line.slice(colon < 0 ? i : i) };
+      if (ch === '/' && line[i + 1] === '*') {
+        inBlock = true;
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        // 根级字符串:可能是键(后随 ':')——收键串
+        if (depth === 1 && key === null) {
+          let j = i + 1;
+          while (j < line.length && line[j] !== '"') {
+            if (line[j] === '\\') j += 1;
+            j += 1;
+          }
+          if (j >= line.length) return null; // 键串未闭合(畸形)→ 交由复验/409
+          let k = j + 1;
+          while (k < line.length && (line[k] === ' ' || line[k] === '\t')) k += 1;
+          if (line[k] === ':') {
+            key = line.slice(i + 1, j);
+            let m = k + 1;
+            while (m < line.length && (line[m] === ' ' || line[m] === '\t')) m += 1;
+            colon = m; // 前缀含冒号后空白:重建行保持原「键: 值」间距样式
+            i = m;
+            continue;
+          }
+        }
+        inString = true;
+        i += 1;
+        continue;
+      }
+      if (ch === '{') depth += 1;
+      else if (ch === '}') depth -= 1;
+      i += 1;
+    }
+    return key === null ? null : { key, prefix: line.slice(0, colon), hadComma: false, suffix: '' };
+  };
+
+  /** 值段解析:自 colon 起扫标量值(string/number/true/false/null),返回 [值尾, 其后是否有逗号];
+   *  值为多行/嵌套({/[ 开)→ null(不在手术域) */
+  const scanValue = (
+    line: string,
+    from: number,
+  ): { end: number; hadComma: boolean } | null => {
+    let i = from;
+    while (i < line.length && (line[i] === ' ' || line[i] === '\t')) i += 1;
+    if (i >= line.length) return null; // 值在后续行(多行值)→ 不在域内
+    if (line[i] === '{' || line[i] === '[') return null;
+    if (line[i] === '"') {
+      i += 1;
+      while (i < line.length && line[i] !== '"') {
+        if (line[i] === '\\') i += 1;
+        i += 1;
+      }
+      if (i >= line.length) return null; // 串未闭合(值跨行)
+      i += 1;
+    } else {
+      while (i < line.length && line[i] !== ',' && !(line[i] === '/' && line[i + 1] === '/')) i += 1;
+      const token = line.slice(from, i).trim();
+      if (token === '' || /[{[\n]/.test(token)) return null;
+    }
+    let hadComma = false;
+    let j = i;
+    while (j < line.length && (line[j] === ' ' || line[j] === '\t')) j += 1;
+    if (line[j] === ',') {
+      hadComma = true;
+      i = j + 1;
+    }
+    return { end: i, hadComma };
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === '{' && depth === 0 && rootOpenLine === -1) {
+      rootOpenLine = out.length; // 根开括号行(独占一行才可作插入锚)
+    }
+    const info = scanLine(line);
+    if (info !== null && 'key' in info && depth === 1 && Object.hasOwn(pending, info.key)) {
+      const key = info.key;
+      const v = pending[key];
+      delete pending[key];
+      if (v === null) continue; // 删键:整行移出输出(逗号修整遍兜底悬挂逗号)
+      const val = scanValue(line, info.prefix.length);
+      if (val === null) return null; // 多行/嵌套值不在手术域 → 调用方 409
+      const suffix = line.slice(val.end); // 行尾注释/空白逐字保留
+      out.push(`${info.prefix}${JSON.stringify(v)}${val.hadComma ? ',' : ''}${suffix}`);
+      continue;
+    }
+    out.push(line);
+    // 行内块注释收口后的深度已由 scanLine 维护;此处无需额外动作
+  }
+
+  // 增键:根 `{` 行后逐行插入(尾随逗号交修整遍;待插键含 null=删不存在的键 → 无事)
+  const inserts = Object.entries(pending).filter(([, v]) => v !== null);
+  if (inserts.length > 0) {
+    if (rootOpenLine === -1) return null; // 单行对象/无根括号 → 不在域内
+    let at = rootOpenLine + 1;
+    for (const [k, v] of inserts) {
+      out.splice(at, 0, `  ${JSON.stringify(k)}: ${JSON.stringify(v)},`);
+      at += 1;
+    }
+  }
+
+  // 逗号修整:剥「逗号 + 空白 + }/]」(严格 JSON 本禁尾随逗号,剥之恒安全;删键/插入的悬挂逗号兜底)
+  let text = out.join('\n');
+  {
+    let res = '';
+    let i = 0;
+    let s = false;
+    while (i < text.length) {
+      const ch = text[i]!;
+      if (s) {
+        res += ch;
+        if (ch === '\\') {
+          res += text[i + 1] ?? '';
+          i += 2;
+          continue;
+        }
+        if (ch === '"') s = false;
+        i += 1;
+        continue;
+      }
+      if (ch === '"') {
+        s = true;
+        res += ch;
+        i += 1;
+        continue;
+      }
+      if (ch === ',') {
+        let j = i + 1;
+        while (j < text.length && (text[j] === ' ' || text[j] === '\t' || text[j] === '\n' || text[j] === '\r')) j += 1;
+        if (text[j] === '}' || text[j] === ']') {
+          i += 1; // 跳过逗号,不输出
+          continue;
+        }
+      }
+      res += ch;
+      i += 1;
+    }
+    text = res;
+  }
+
+  // 复验:剥注释后必须可解析,且未触及键的原值逐字不漂移(可解析但语义漂移同样拒绝)
+  try {
+    const before = JSON.parse(stripJsonComments(src)) as Record<string, unknown>;
+    const after = JSON.parse(stripJsonComments(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text)) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null ? after[k] !== undefined : JSON.stringify(after[k]) !== JSON.stringify(v)) return null;
+    }
+    for (const k of Object.keys(before)) {
+      if (!Object.hasOwn(updates, k) && JSON.stringify(after[k]) !== JSON.stringify(before[k])) return null;
+    }
+    for (const k of Object.keys(after)) {
+      if (!Object.hasOwn(before, k) && !Object.hasOwn(updates, k)) return null;
+    }
+  } catch {
+    return null;
+  }
+  return (bom ? '﻿' : '') + text;
 }
 
 /**

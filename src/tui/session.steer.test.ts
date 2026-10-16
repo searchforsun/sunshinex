@@ -40,7 +40,7 @@ function gatedAdapter(responses: string[]): { adapter: ModelAdapter; gate: { pro
   return { adapter, gate };
 }
 
-test('运行中穿插：步边界同轮消费，穿插行入会话链（对标 CC queued messages）', async () => {
+test('运行中穿插(G14.89 两档)：普通入队不步边界消费——轮收束补跑为下一轮（排队=等当前轮完成）', async () => {
   const tmp = tmpdir('sunshinex-sess-steer1-');
   try {
     const { adapter, gate } = gatedAdapter([
@@ -55,12 +55,12 @@ test('运行中穿插：步边界同轮消费，穿插行入会话链（对标 C
     gate.release();
     await run;
     await ctrl.waitIdle();
-    assert.equal(ctrl.steeringPending(), 0, '穿插行已被步边界消费');
+    assert.equal(ctrl.steeringPending(), 0, '穿插行已由轮收束兜底补跑消费');
     const chain = ctrl.runtime.harness.context.chainView();
-    const steerIdx = chain.findIndex((s) => s.action === 'task' && s.observation === 'User steer: also check the README');
-    assert.ok(steerIdx >= 0, '穿插行以 task 行尾追进会话链');
+    const steerIdx = chain.findIndex((s) => s.action === 'task' && s.observation.includes('User steer: also check the README'));
+    assert.ok(steerIdx >= 0, '穿插行以 task 行（补跑轮指令行）入会话链');
     const replyIdx = chain.findIndex((s) => s.action === 'reply');
-    assert.ok(replyIdx > steerIdx, '穿插在终稿 reply 之前入链（同轮生效而非收口补跑）');
+    assert.ok(steerIdx > replyIdx, '穿插在首轮终稿 reply 之后入链（轮收束补跑为下一轮，而非同轮注入）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

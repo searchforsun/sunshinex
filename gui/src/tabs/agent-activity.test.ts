@@ -84,12 +84,12 @@ describe('工具行与滑窗', () => {
     expect(s.dev!.lines[1]).toEqual({ kind: 'tool', text: '✗ read' });
   });
 
-  it('lines 滑窗:每卡尾部 20 行(第 21 行起最旧行滚出)', () => {
+  it('lines 滑窗:每卡尾部 240 行(G14.164 只读页整段转录;第 241 行起最旧行滚出)', () => {
     let s = applyAgentEvent({}, sub('token', 'dev', 'l0'));
-    for (let i = 1; i <= 25; i += 1) s = applyAgentEvent(s, sub('token', 'dev', `l${i}`));
-    expect(s.dev!.lines).toHaveLength(20);
+    for (let i = 1; i <= 245; i += 1) s = applyAgentEvent(s, sub('token', 'dev', `l${i}`));
+    expect(s.dev!.lines).toHaveLength(240);
     expect(s.dev!.lines[0]).toEqual({ kind: 'token', text: 'l6' }); // l0..l5 滚出
-    expect(s.dev!.lines.at(-1)).toEqual({ kind: 'token', text: 'l25' });
+    expect(s.dev!.lines.at(-1)).toEqual({ kind: 'token', text: 'l245' });
     // 滑窗按卡独立:第二卡从零起算
     s = applyAgentEvent(s, sub('token', 'other', 'x'));
     expect(s.other!.lines).toHaveLength(1);

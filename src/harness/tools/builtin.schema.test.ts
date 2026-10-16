@@ -96,7 +96,7 @@ test('逐工具 required/properties 与执行器真实入参一一对应', () =>
       websearch: ['query', 'count'],
       worktree: ['action', 'name'],
       kb_search: ['query', 'topK'],
-      memory_write: ['type', 'content', 'description'],
+      memory_write: ['action', 'slug', 'type', 'content', 'description'],
       ask_question: ['question', 'options', 'multiple', 'allowCustom'],
       [SPAWN_TOOL_NAME]: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation', 'mode'],
     };

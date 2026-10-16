@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import type { WorkspaceRow } from '../connection';
 import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
 import { ProvidersPane } from './ProvidersPane';
@@ -7,47 +6,46 @@ import { McpPane } from './McpPane';
 import type { McpPaneConn } from './McpPane';
 import { AgentsPane } from './AgentsPane';
 import type { AgentsPaneConn } from './AgentsPane';
-import { SkillsPermsPane } from './SkillsPermsPane';
-import type { SkillsPermsPaneConn } from './SkillsPermsPane';
+import { SkillsPane } from './SkillsPane';
+import type { SkillsPaneConn } from './SkillsPane';
+import { PermissionsPane } from './PermissionsPane';
+import type { PermissionsPaneConn } from './PermissionsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
-import { errText } from '../ui-util';
-import { applyTheme, readThemePref, watchSystemTheme } from '../theme';
-import type { ThemePref } from '../theme';
 
 /**
- * G8c T8/T9 设置态壳:App settingsOpen 时整体替换三栏内容——左栏(顶栏「← 返回」+ 项目
- * 选择器 + 导航列表)+ 主区(所选面板);右标签栏由 App 不渲染(设置态外置)。Esc 与返回
- * 钮同路径回会话态(document keydown——设置态独占窗,Chat 已卸载无冲突面)。
- * 项目选择器(aria-label="settings project"):空选项「(仅全局)」+ /workspaces 列表
- * (root 在场的组;Shell 自拉 conn.workspaces()),当前值 = settingsRoot(App 态——切换经
- * onRootChange 上抛,面板随 root 重拉)。
- * T9 导航扩全十项(spec §2.5 分组列示序):通用/模型与提供方/插件(技能·MCP·智能体)/
- * 上下文与限额/记忆/权限/知识库与搜索/高级——四简单面板走 SettingsForm(SETTINGS_PANES
- * 定义),五复杂面板各自组件(ProvidersPane/McpPane/AgentsPane/SkillsPermsPane/RawPane;
- * 「插件:技能」与「权限」两导航项同体渲染 SkillsPermsPane——上技能下权限,只读)。
- * 选中态 activePane 本地 state(默认「通用」),主区以 key={paneId} 挂载(面板互切强制
- * 重挂——键集/输入值面整体复位)。
+ * G8c T8/T9 设置态壳(设置重构轮):App settingsOpen 时整体替换三栏内容——左栏(顶栏「← 返回」
+ * + 导航列表)+ 主区(所选面板);右标签栏由 App 不渲染(设置态外置)。Esc 与返回钮同路径回
+ * 会话态(document keydown——设置态独占窗,Chat 已卸载无冲突面)。
+ * 顶部项目选择器与外观行已移除(设置重构轮):项目区分下沉到配置项——行首 SourceBadge 徽标
+ * 逐项标示 effective 来源(env/项目/全局/缺省),改动逐项写回来源文件(表单引擎见 SettingsForm);
+ * 外观主题移入「通用」首卡(ThemeRow)。root 为隐式项目上下文(App 快照打开设置时的活动工作区),
+ * 只读不改——项目级行的读写锚,无顶部切换面。
+ * T9 导航扩全十项(spec §2.5 分组列示序):通用/模型与提供方/上下文与限额/记忆/知识库与搜索/
+ * 技能/MCP/智能体/权限/高级——四简单面板走 SettingsForm(SETTINGS_PANES 定义),五复杂
+ * 面板各自组件(ProvidersPane/McpPane/AgentsPane/SkillsPane/PermissionsPane/RawPane;
+ * 设置重构二轮起「技能」「权限」两导航项各自独立面板——原同体渲染致内容重复,已拆分)。
+ * 选中态 activePane 本地 state(默认「通用」),主区以 key={paneId} 挂载(面板互切强制重挂——
+ * 键集/输入值面整体复位)。
  */
 
-/** 壳连接面:workspaces(项目选择器)+ 全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
+/** 壳连接面:全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
  *  RawPaneConn 的 settings 以 Omit 剥除——SettingsFormConn 已供全量 SettingsView 形(其含可选
- *  warnings,结构满足 RawPane 的告警子集面;接口 extends 同名成员须同一性,故在此收窄拼接) */
-export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, AgentsPaneConn, SkillsPermsPaneConn, Omit<RawPaneConn, 'settings'> {
-  workspaces(): Promise<WorkspaceRow[]>;
-}
+ *  warnings,结构满足 RawPane/PermissionsPane 的告警/权限子集面;接口 extends 同名成员须同一性,
+ *  故在此收窄拼接) */
+export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, Omit<RawPaneConn, 'settings'> {}
 
 /** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后) */
 const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: string; readonly items: ReadonlyArray<{ readonly id: string; readonly title: string }> }> = [
   {
-    group: 'Personal',
+    group: '个人',
     items: [
       { id: 'general', title: '通用' },
       { id: 'providers', title: '模型与提供方' },
     ],
   },
   {
-    group: 'Coding',
+    group: '编码',
     items: [
       { id: 'limits', title: '上下文与限额' },
       { id: 'memory', title: '记忆' },
@@ -55,9 +53,9 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: string; readonly items: R
     ],
   },
   {
-    group: 'Integrations',
+    group: '集成',
     items: [
-      { id: 'skills', title: '插件:技能' },
+      { id: 'skills', title: '技能' },
       { id: 'mcp', title: 'MCP' },
       { id: 'agents', title: '智能体' },
     ],
@@ -66,56 +64,18 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: string; readonly items: R
 ];
 const SETTINGS_NAV = SETTINGS_GROUPS.flatMap((g) => g.items);
 
-/** 外观主题(G9 spec §1.1):三态持久;system 态跟随系统(watch 随卸载/切换解绑) */
-function ThemeSelect(): JSX.Element {
-  const [pref, setPref] = useState<ThemePref>(readThemePref);
-  useEffect(() => watchSystemTheme(pref), [pref]);
-  return (
-    <div className="sx-theme-row">
-      <label htmlFor="theme-select">外观</label>
-      <select
-        id="theme-select"
-        aria-label="theme"
-        value={pref}
-        onChange={(e) => {
-          const p = e.target.value as ThemePref;
-          setPref(p);
-          applyTheme(p);
-        }}
-      >
-        <option value="system">跟随系统</option>
-        <option value="light">亮色</option>
-        <option value="dark">暗色</option>
-      </select>
-    </div>
-  );
-}
-
 /** 错误文案归一:G8e-T2 抽共享 ui-util */
 
 export interface SettingsShellProps {
   readonly conn: SettingsShellConn;
-  /** 项目上下文('' = 仅全局) */
+  /** 隐式项目上下文('' = 仅全局;App 快照打开设置时的活动工作区,无切换面) */
   readonly root: string;
-  readonly onRootChange: (root: string) => void;
   /** 「← 返回」/Esc:回会话态(App 侧关设置态) */
   readonly onBack: () => void;
 }
 
-export function SettingsShell({ conn, root, onRootChange, onBack }: SettingsShellProps): JSX.Element {
-  const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
-  const [listError, setListError] = useState('');
+export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.Element {
   const [activePane, setActivePane] = useState(SETTINGS_NAV[0]!.id); // 默认「通用」
-
-  useEffect(() => {
-    conn.workspaces().then(
-      (list) => {
-        setRows(list);
-        setListError('');
-      },
-      (err: unknown) => setListError(errText(err)),
-    );
-  }, [conn]);
 
   /** Esc → 回会话态(与返回钮同路径) */
   useEffect(() => {
@@ -138,10 +98,11 @@ export function SettingsShell({ conn, root, onRootChange, onBack }: SettingsShel
       case 'agents':
         return <AgentsPane key="agents" conn={conn} root={root} />;
       case 'skills':
+        return <SkillsPane key="skills" conn={conn} root={root} title="技能" />;
       case 'permissions':
-        return <SkillsPermsPane key={activePane} conn={conn} root={root} title={SETTINGS_NAV.find((n) => n.id === activePane)!.title} />;
+        return <PermissionsPane key="permissions" conn={conn} root={root} title="权限" />;
       default:
-        return <RawPane key="raw" conn={conn} root={root} />;
+        return <RawPane key="raw" conn={conn} />;
     }
   };
 
@@ -154,23 +115,6 @@ export function SettingsShell({ conn, root, onRootChange, onBack }: SettingsShel
           </button>
           <span>设置</span>
         </header>
-        <div className="sx-settings-project">
-          <select aria-label="settings project" value={root} onChange={(e) => onRootChange(e.target.value)}>
-            <option value="">(仅全局)</option>
-            {rows?.map((row) =>
-              row.root === undefined ? null : (
-                <option key={row.slug} value={row.root}>
-                  {/* G8f 可读性:显示 basename,slug 进 title 属性(select option 无 title 面较窄,保持简洁) */}
-                  {(row.root !== undefined && row.root !== ''
-                    ? row.root.split(/[\/]/).filter(Boolean).pop()
-                    : row.slug) ?? row.slug}
-                </option>
-              ),
-            )}
-          </select>
-          {listError !== '' && <p className="home-error" role="alert">{listError}</p>}
-        </div>
-        <ThemeSelect />
         <ul className="sx-settings-nav">
           {SETTINGS_GROUPS.map((g) => (
             <li key={g.group === '' ? 'plain' : g.group}>
@@ -193,7 +137,7 @@ export function SettingsShell({ conn, root, onRootChange, onBack }: SettingsShel
           ))}
         </ul>
       </nav>
-      <main className="sx-main">{renderPane()}</main>
+      <main className="sx-main sx-settings-main">{renderPane()}</main>
     </>
   );
 }

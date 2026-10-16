@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DirPickerResp } from '../connection';
+import { t } from '../i18n';
 
 /**
  * 服务端目录选择器(G3.5 首页会话创建入口):逐级浏览 GET /dirpicker(缺省 home 目录起)
@@ -127,7 +128,7 @@ export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirP
               checked={manual}
               onChange={(e) => setManual(e.target.checked)}
             />
-            <span>Manual approvals</span>
+            <span>{t('Manual approvals', '手动审批')}</span>
           </label>
           <p className="mode-hint">勾选后审批/问询挂起等待人工裁决(manual 会话)</p>
         </div>

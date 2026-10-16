@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { t } from './i18n';
 
 /**
@@ -28,7 +29,8 @@ export function filterCommands(
       const idx = name.indexOf(q);
       return { cmd: c, name, desc: descriptions[name] ?? '', idx, ok: supported.includes(c) };
     })
-    .filter((x) => x.idx >= 0)
+    // G14.160 不可用命令不展示(supported 过滤;曾经灰化+划线,用户裁定直接不列)
+    .filter((x) => x.idx >= 0 && x.ok)
     .sort((a, b) => a.idx - b.idx);
 }
 
@@ -41,12 +43,18 @@ export interface CommandPaletteProps {
 
 export function CommandPalette(props: CommandPaletteProps): JSX.Element {
   const { items, active, onHover, onPick } = props;
+  // G14.163 ↑↓ 移动时选中项滚入可视区(block:nearest 最小滚动;items 变化即过滤后 active 行也换)
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [active, items]);
   return (
     <div className="cmd-palette" role="listbox" aria-label={t('command palette', '命令面板')}>
       {items.length === 0 && <div className="cmd-empty">{t('No matching command', '没有匹配的命令')}</div>}
       {items.map((item, i) => (
         <button
           key={item.cmd}
+          ref={i === active ? activeRef : undefined}
           type="button"
           role="option"
           aria-selected={i === active}

@@ -65,7 +65,7 @@ function registryFor(opts: {
   const base = new SafetyChain(guard, new ProcessSandbox(), opts.root);
   const safety = opts.memoryScope !== undefined ? base.withMemoryScope(opts.memoryScope) : base;
   const registry = new ToolRegistry();
-  const memoryWrite = (input: { type: string; content: string; description?: string; scope?: MemoryScope }) =>
+  const memoryWrite = (input: { type: string; content: string; description?: string; action?: 'save' | 'update' | 'delete'; slug?: string; scope?: MemoryScope }) =>
     writeMemoryFact({ root: opts.root, ...input });
   for (const t of builtinTools(safety, opts.root, { memory: guardMemoryWrite, memoryWrite })) registry.register(t);
   return { registry, safety };
@@ -402,5 +402,47 @@ test('memory_write：scope 非法形态 fail-closed（越界子目录零落盘�
     const mainOk = writeMemoryFact({ root, ...FACT, scope: 'main' });
     assert.ok(mainOk.ok);
     assert.deepEqual(recordFiles(dataDir), [`${FACT_SLUG}.md`]);
+  });
+});
+
+test('memory_write：action=update 按 slug 原地改写（保 created、刷新 modified、description 缺省沿用）', async () => {
+  await withRoot(({ root, dataDir }) => {
+    const save = writeMemoryFact({ root, ...FACT });
+    assert.ok(save.ok);
+    const before = new MemoryStore(root).list().find((r) => r.slug === FACT_SLUG)!;
+    const r = writeMemoryFact({ root, type: 'project', content: 'Repo switched to npm workspaces in 2026-10', slug: FACT_SLUG, action: 'update' });
+    assert.ok(r.ok, `应更新：${r.ok ? '' : r.error.message}`);
+    if (!r.ok) return;
+    assert.equal(r.value.slug, FACT_SLUG);
+    assert.deepEqual(recordFiles(dataDir), [`${FACT_SLUG}.md`], '原地改写不新增文件（禁 -2 副本）');
+    const after = new MemoryStore(root).list().find((x) => x.slug === FACT_SLUG)!;
+    assert.equal(after.body, 'Repo switched to npm workspaces in 2026-10', '正文已改写');
+    assert.equal(after.description, 'pnpm store is repo-local', 'description 缺省沿用既有');
+    assert.equal(after.created, before.created, 'created 保留（时效信号）');
+    assert.notEqual(after.modified, before.modified, 'modified 刷新');
+  });
+});
+
+test('memory_write：action=delete 按 slug 删除并重建索引；目标不存在 MEMORY_NOT_FOUND', async () => {
+  await withRoot(({ root, dataDir }) => {
+    assert.ok(writeMemoryFact({ root, ...FACT }).ok);
+    const r = writeMemoryFact({ root, type: 'project', content: '', slug: FACT_SLUG, action: 'delete' });
+    assert.ok(r.ok, `应删除：${r.ok ? '' : r.error.message}`);
+    assert.deepEqual(recordFiles(dataDir), [], '记录已删');
+    assert.equal(fs.existsSync(path.join(dataDir, 'memory', 'MEMORY.md')), true, '索引重建（空集保持文件存在形态）');
+    const missing = writeMemoryFact({ root, type: 'project', content: '', slug: 'no-such-slug', action: 'delete' });
+    assert.equal(missing.ok, false);
+    if (!missing.ok) assert.equal(missing.error.code, 'MEMORY_NOT_FOUND');
+  });
+});
+
+test('memory_write：update 目标不存在 MEMORY_NOT_FOUND；delete 缺 slug INVALID_ARG（工具面）', async () => {
+  await withRoot(async ({ root }) => {
+    const upd = writeMemoryFact({ root, type: 'project', content: 'x', slug: 'no-such-slug', action: 'update' });
+    assert.equal(upd.ok, false);
+    if (!upd.ok) assert.equal(upd.error.code, 'MEMORY_NOT_FOUND');
+    const reg = registryFor({ root, mode: 'dontAsk' });
+    const bad = await reg.registry.execute('memory_write', { action: 'delete', slug: null, type: 'project', content: null, description: null }, reg.safety);
+    assert.equal(bad.ok, false, 'delete 缺 slug 拒绝');
   });
 });

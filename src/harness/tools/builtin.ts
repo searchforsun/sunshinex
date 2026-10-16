@@ -50,7 +50,7 @@ function isSunshineMdTarget(safety: SafetyChain, file: string): boolean {
  *  工具只做入参整形/错误转译，闸门、三级去重、落盘与容量回执全在记忆侧单点（builtin 不复制任何记忆语义）。
  *  入参 `scope`（规格 §4.2 记忆隔离）由**执行期从安全链取**（`safety.memoryScope`，子代理链为 `agents/<id>`），
  *  模型输入面不暴露该字段——模型自选的 scope 一律忽略，防越权改记忆落点。 */
-type MemoryWriteTool = (input: { type: string; content: string; description?: string; scope?: MemoryScope }) => Result<{
+type MemoryWriteTool = (input: { type: string; content: string; description?: string; action?: 'save' | 'update' | 'delete'; slug?: string; scope?: MemoryScope }) => Result<{
   slug: string;
   existed: boolean;
   notice: string | null;
@@ -459,32 +459,51 @@ export function builtinTools(
       parameters: {
         type: 'object',
         additionalProperties: false,
-        required: ['type', 'content', 'description'],
+        required: ['action', 'slug', 'type', 'content', 'description'],
         properties: {
+          action: { type: ['string', 'null'], description: 'save=new fact (default when null), update=revise the record at slug in place, delete=retire the record at slug (obsolete/wrong/superseded)' },
+          slug: { type: ['string', 'null'], description: 'existing record slug — required for update/delete, null for save' },
           type: { type: 'string', enum: ['user', 'feedback', 'project', 'reference'], description: 'Memory type: user preference / corrective feedback / project fact / external reference' },
-          content: { type: 'string', description: 'ONE atomic durable fact (absolute dates; no session-relative wording)' },
-          description: { type: ['string', 'null'], description: 'Short description used for the memory index; null omits it' },
+          content: { type: ['string', 'null'], description: 'ONE atomic durable fact (absolute dates; no session-relative wording). Required for save/update; null for delete' },
+          description: { type: ['string', 'null'], description: 'Short description used for the memory index; null omits it (update keeps the existing one)' },
         },
       },
       name: 'memory_write',
       description:
-        'Persist ONE durable fact to long-term memory when it is worth remembering across sessions — a user preference, corrective feedback, or a non-obvious project fact. Be conservative: it is fine to save nothing. Do NOT save anything derivable from the repo or code (file contents, git history, code structure) or transient task state (current todo, in-progress step, plan progress). Duplicates return the existing entry. Fails when memory is disabled.',
+        'Maintain long-term memory: save ONE durable fact when it is worth remembering across sessions — a user preference, corrective feedback, or a non-obvious project fact. Also maintains the store: action=update revises an existing record by slug (no near-duplicate copies), action=delete retires an obsolete/wrong record by slug. Be conservative: it is fine to save nothing. Do NOT save anything derivable from the repo or code (file contents, git history, code structure) or transient task state (current todo, in-progress step, plan progress). Duplicates return the existing entry. Fails when memory is disabled.',
       category: 'write',
       executor: async (input: ToolInput) => {
+        const rawAction = input.action === undefined || input.action === null ? 'save' : String(input.action);
+        if (rawAction !== 'save' && rawAction !== 'update' && rawAction !== 'delete') {
+          throw new CodedToolError('INVALID_ARG', `action must be save|update|delete, got "${rawAction}"`);
+        }
+        const action = rawAction as 'save' | 'update' | 'delete';
         const type = String(input.type ?? '');
-        const content = String(input.content ?? '').trim();
-        if (content === '') throw new CodedToolError('INVALID_ARG', 'content must not be empty');
+        const slug = input.slug === undefined || input.slug === null ? undefined : String(input.slug);
+        if ((action === 'update' || action === 'delete') && (slug === undefined || slug.trim() === '')) {
+          throw new CodedToolError('INVALID_ARG', `${action} requires the slug of an existing record`);
+        }
+        const content = input.content === undefined || input.content === null ? '' : String(input.content).trim();
+        if (action !== 'delete' && content === '') throw new CodedToolError('INVALID_ARG', 'content must not be empty');
         const rawDescription = input.description;
         const description = rawDescription === undefined ? undefined : String(rawDescription);
         // scope 只从安全链取（模型输入面的 scope 一律忽略）：子代理链 = agents/<id>，主链 = 主记忆目录
         const scope = safety.memoryScope;
-        const payload = { type, content, ...(description !== undefined ? { description } : {}), ...(scope !== undefined ? { scope } : {}) };
+        const payload = {
+          type,
+          content,
+          ...(slug !== undefined ? { slug } : {}),
+          ...(action !== 'save' ? { action } : {}),
+          ...(description !== undefined ? { description } : {}),
+          ...(scope !== undefined ? { scope } : {}),
+        };
         const r = memoryWriter(payload);
         if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
         // 观察行单行契约（链渲染 `${step}: ${action} -> ${observation}`）：近满提醒以 ` | ` 拼接，不得换行
-        const suffix = r.value.existed ? ' (already exists)' : '';
+        const verb = action === 'delete' ? 'Deleted memory' : action === 'update' ? 'Updated memory' : 'Saved memory';
+        const suffix = action === 'save' && r.value.existed ? ' (already exists)' : '';
         const notice = r.value.notice !== null ? ` | ${r.value.notice}` : '';
-        return execOut(`Saved memory: ${r.value.slug}${suffix}${notice}`);
+        return execOut(`${verb}: ${r.value.slug}${suffix}${notice}`);
       },
     });
   }
