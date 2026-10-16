@@ -1237,7 +1237,7 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
  *  G14.122:渲染失败 → 放大钮收起(浮层只属成功图);浮层内容=克隆已渲 SVG(不二次渲染,
  *  免 concurrent render 空白);浮层面板下移缩窄,不遮标签条钮
  *  G14.2xx 视图手感:拖动钳制(内容恒不全丢)、滚轮绕指针缩放、按钮绕视心缩放(不跳) */
-function MermaidBlock({ chart }: { chart: string }): JSX.Element {
+export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClick?: (nodeId: string) => void }): JSX.Element {
   const [zoom, setZoom] = useState(false);
   /** 渲染成败(null=在途):false 即收放大钮 */
   const [renderOk, setRenderOk] = useState<boolean | null>(null);
@@ -1261,6 +1261,19 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
   // G14.107 lightbox 视图态:缩放(s)/平移(x,y);滚轮缩放+拖动平移+按钮组(+ % − [] X)
   const [view, setView] = useState({ x: 0, y: 0, s: 1 });
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  /** G14.213 节点点击绑定(消费方语义,如任务 DAG 跳子代理):内联渲染落定与 lightbox 克隆后各绑一次 */
+  const bindNodes = (root: HTMLElement | null): void => {
+    if (root === null || onNodeClick === undefined) return;
+    for (const g of Array.from(root.querySelectorAll('g.node'))) {
+      const nodeId = g.getAttribute('data-id') ?? g.id.replace(/^flowchart-/, '').replace(/-\d+$/, '');
+      if (nodeId === '') continue;
+      (g as HTMLElement).style.cursor = onNodeClick !== undefined ? 'pointer' : '';
+      g.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        onNodeClick(nodeId);
+      });
+    }
+  };
   /** G14.122 SVG 克隆源/宿:开盒把行内已渲 SVG 拷进浮层(轻秒开,无重渲竞态);
    *  baseRef=100% 基准尺寸(克隆时刻实测)——G14.123 真矢量缩放的参照 */
   const inlineRef = useRef<HTMLDivElement | null>(null);
@@ -1305,6 +1318,11 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
     if (zoom) setView({ x: 0, y: 0, s: 1 }); // 开盒复位
   }, [zoom]);
   useEffect(() => {
+    if (renderOk !== true) return;
+    const t = setTimeout(() => bindNodes(inlineRef.current), 0); // G14.213 内联渲染落定即绑节点点击
+    return () => clearTimeout(t);
+  }, [renderOk]);
+  useEffect(() => {
     if (zoom && panRef.current !== null && inlineRef.current !== null) {
       panRef.current.innerHTML = inlineRef.current.innerHTML;
       const svg = panRef.current.querySelector('svg');
@@ -1312,6 +1330,7 @@ function MermaidBlock({ chart }: { chart: string }): JSX.Element {
         const r = svg.getBoundingClientRect();
         baseRef.current = { w: r.width / zoomScale(), h: r.height / zoomScale() }; // 视觉→本地(svg 宽高写本地)
       }
+      bindNodes(panRef.current); // G14.213 克隆面节点点击重绑(innerHTML 克隆不带监听)
     }
   }, [zoom, renderOk]);
   // G14.123 真矢量缩放:缩放改写 svg 布局宽高(viewBox 按档重排,逐档锐利),transform 只承担平移

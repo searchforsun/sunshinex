@@ -1477,20 +1477,16 @@
 .tb-status-dot.task-status-in_review { background: transparent; border: 1.5px solid var(--accent); border-top-color: transparent; animation: sx-spin 1s linear infinite; }
 .tb-status-dot.task-status-done { background: var(--accent); }
 .tb-status-dot.task-status-failed { background: var(--err); }
-/* G14.213 DAG 预设高度滚动 + 右上角放大钮 + 弹窗大图 */
+/* G14.213 DAG 预设高度滚动(mermaid/dagre 开源渲染);边=虚线流动动画 */
 .tb-dag-wrap { position: relative; }
 .tb-card .board-dag-scroll.tb-dag-scroll { height: 260px; }
-.tb-dag-zoom { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--fg-secondary); cursor: pointer; }
-.tb-dag-zoom:hover { color: var(--fg); border-color: var(--fg-secondary); }
-.dag-zoom-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(1, 4, 9, 0.7); display: flex; align-items: center; justify-content: center; }
-.dag-zoom-body { display: flex; flex-direction: column; width: min(1100px, 94vw); height: min(82vh, 860px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
-.dag-zoom-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-.dag-zoom-head .todo-card-goal { flex: 1; }
-.dag-zoom-head .tb-dag-zoom-close { display: inline-flex; border: none; background: transparent; color: var(--fg-secondary); cursor: pointer; padding: 2px; }
-.dag-zoom-head .tb-dag-zoom-close:hover { color: var(--fg); }
-.dag-zoom-scroll { flex: 1; min-height: 0; }
+.tb-dag-scroll .mermaid-svg { width: max-content; min-width: 100%; }
+.tb-dag-scroll svg .flowchart-link .path,
+.tb-dag-scroll svg .edgePaths .path,
+.tb-dag-scroll svg path.flowchart-link { stroke-dasharray: 6 4; animation: tb-dash 0.9s linear infinite; }
+@keyframes tb-dash { to { stroke-dashoffset: -10; } }
 .tb-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
-.tb-task-agent { flex: none; font-size: 11px; color: var(--fg-tertiary); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-task-agent { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fg-tertiary); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-todos-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .todo-item { display: flex; align-items: baseline; gap: 8px; font: 12.5px/1.6 var(--font-ui); }
 /* G14.169 统一圆圈三态(用户裁决,替代 ☑◐☐ 字符;Chat todo_write 展开体同款共用):

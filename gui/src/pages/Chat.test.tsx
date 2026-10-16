@@ -39,10 +39,10 @@ const DAY2 = new Date(2026, 0, 11, 10).getTime();
 
 type Seed = { seq: number; ts?: number; kind: 'user' | 'assistant'; md: string };
 
-function connOf(messages: Seed[]): Connection {
+function connOf(messages: Seed[], status: 'idle' | 'running' = 'idle'): Connection {
   return {
     sessionSnapshot: () =>
-      Promise.resolve({ messages, status: 'idle', board: { tasks: [] }, delegations: [], team: [], pending: [], lastSeq: 0 }),
+      Promise.resolve({ messages, status, board: { tasks: [] }, delegations: [], team: [], pending: [], lastSeq: 0 }),
     sessionSubmit: () => Promise.resolve(),
     sessionSteer: () => Promise.resolve(),
     sessionInterrupt: () => Promise.resolve(),
@@ -633,12 +633,12 @@ describe('G14.41 write 行 diffstat 保留', () => {
 
 
 describe('G14.177 顶栏动态计数按钮', () => {
-  it('待办未完成>0 → 显「N 待办」按钮,点击 onOpenTab(tasks);全完成(0)不渲染', async () => {
+  it('运行中+待办未完成>0 → 显「N 待办」按钮,点击 onOpenTab(tasks);全完成(0)不渲染;G14.213 轮次收束即隐(未完结也隐)', async () => {
     const onOpenTab = vi.fn();
     const seeds = [
       { seq: 1, kind: 'tool', md: '● [tool] todo_write {"todos":[{"text":"已完成项","status":"completed"},{"text":"进行中项","status":"in_progress"},{"text":"等待项","status":"pending"}]}\n⎿ ok' },
     ] as never;
-    const first = render(<Chat conn={connOf(seeds)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
     await flushed();
     const btn = document.querySelector('.chat-dyn-btn');
     expect(btn?.textContent).toMatch(/2 (todos|待办)/); // 测试语言态双语 // 未完成=in_progress+pending
@@ -649,7 +649,12 @@ describe('G14.177 顶栏动态计数按钮', () => {
     const done = [
       { seq: 1, kind: 'tool', md: '● [tool] todo_write {"todos":[{"text":"已完成项","status":"completed"}]}\n⎿ ok' },
     ] as never;
-    render(<Chat conn={connOf(done)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    await flushed();
+    expect(document.querySelector('.chat-dyn-btn')).toBeNull();
+    // G14.213 轮次收束(idle)即隐:待办未完结也隐
+    first.unmount();
+    render(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
     await flushed();
     expect(document.querySelector('.chat-dyn-btn')).toBeNull();
   });

@@ -1304,6 +1304,7 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     const { conn, unmount } = await enterChat();
     openConn(conn);
     fire(conn, ev('tool-call', 'write', { subagent: 'searcher', input: { path: 'src/a.ts' }, callId: 'c1' }));
+    fire(conn, ev('tool-result', 'ok', { subagent: 'searcher', callId: 'c1', tool: 'write', ok: true }));
     fire(conn, ev('token', '分析中', { subagent: 'searcher' }));
     fire(conn, ev('usage', undefined, { subagent: 'searcher', turnTotal: 1200 }));
     fire(conn, ev('task-created', undefined, { taskId: 't1', title: 'searcher 分析', spec: 's', dependsOn: [] }));
@@ -1329,7 +1330,8 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull());
     expect(document.querySelector('.sx-tab[data-title="searcher"]')?.classList.contains('active')).toBe(true);
     const thread = document.querySelector('.sx-agent-thread');
-    expect(thread?.textContent).toContain('write src/a.ts');
+    expect(thread?.textContent).toContain('write'); // en 态动词原字面(配对后非执行中标签)
+    expect(thread?.textContent).toContain('a.ts');
     expect(thread?.textContent).toContain('分析中');
     expect(document.querySelector('.sx-agent-page textarea')).toBeNull(); // 只读:无输入面
 
