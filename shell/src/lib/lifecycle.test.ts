@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { QUIT_STEPS, shouldHideOnClose, trayMenu } from './lifecycle';
+import { QUIT_STEPS, resolveUiLang, shouldHideOnClose, trayMenu } from './lifecycle';
 
 describe('shouldHideOnClose', () => {
   it('非退出态关窗 → 驻留:隐藏而非真关闭', () => {
@@ -11,16 +11,34 @@ describe('shouldHideOnClose', () => {
   });
 });
 
+describe('resolveUiLang', () => {
+  it('locale 归一:zh 前缀系全归 zh,余者 en 兜底', () => {
+    expect(resolveUiLang('zh-CN')).toBe('zh');
+    expect(resolveUiLang('zh_TW')).toBe('zh');
+    expect(resolveUiLang('zh')).toBe('zh');
+    expect(resolveUiLang('en-US')).toBe('en');
+    expect(resolveUiLang('de-DE')).toBe('en');
+    expect(resolveUiLang('')).toBe('en');
+  });
+});
+
 describe('trayMenu', () => {
-  it('常驻态:显示/退出两项全 enabled,label 逐字', () => {
-    expect(trayMenu(false)).toEqual([
+  it('zh 态:显示/退出两项全 enabled,label 逐字', () => {
+    expect(trayMenu(false, 'zh')).toEqual([
       { id: 'show', label: '显示 sunshinex', enabled: true },
       { id: 'quit', label: '退出', enabled: true },
     ]);
   });
 
+  it('en 态:英文标签(纪律⑤ 外观双语)', () => {
+    expect(trayMenu(false, 'en')).toEqual([
+      { id: 'show', label: 'Show sunshinex', enabled: true },
+      { id: 'quit', label: 'Quit', enabled: true },
+    ]);
+  });
+
   it('收口中:label 原样,enabled 全 false(防退出流程中重复触发)', () => {
-    expect(trayMenu(true)).toEqual([
+    expect(trayMenu(true, 'zh')).toEqual([
       { id: 'show', label: '显示 sunshinex', enabled: false },
       { id: 'quit', label: '退出', enabled: false },
     ]);

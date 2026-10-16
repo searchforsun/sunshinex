@@ -3,7 +3,7 @@ import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, Tray } f
 import { resolveDaemonPaths } from './lib/paths';
 import { appUrl } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
-import { shouldHideOnClose, trayMenu } from './lib/lifecycle';
+import { resolveUiLang, shouldHideOnClose, trayMenu, type UiLang } from './lib/lifecycle';
 import { TRAY_ICON_DATA_URL } from './lib/tray-icon';
 import { startDaemon } from './daemon';
 import type { ShellDaemon } from './daemon';
@@ -13,6 +13,8 @@ const SMOKE_TOTAL_TIMEOUT_MS = 45_000; // 满载机器(发版验证链后)冷启
 /** daemon close 的有界等待（ms）：close 悬挂不阻塞退出——有界等待完仍按正常收口走 quit。
  *  H2-T2 抽公共：smoke 收口与 runQuit 退出序共用同一有界口径（原 SMOKE_CLOSE_TIMEOUT_MS）。 */
 const DAEMON_CLOSE_TIMEOUT_MS = 5_000;
+/** 外观语言单次决议（D33 纪律⑤）：托盘是壳唯一用户可见文案面，按宿主 locale 装配期定档、会话内恒定。 */
+const UI_LANG: UiLang = resolveUiLang(app.getLocale());
 
 let daemon: ShellDaemon | undefined;
 /** daemon 收口幂等守卫：已发起则后续调用直接跳过（smoke 与 runQuit 共用同一路收口） */
@@ -135,7 +137,7 @@ if (!app.requestSingleInstanceLock()) {
     tray.setToolTip('sunshinex');
     tray.setContextMenu(
       Menu.buildFromTemplate(
-        trayMenu(false).map((item) => ({
+        trayMenu(false, UI_LANG).map((item) => ({
           label: item.label,
           enabled: item.enabled,
           click: item.id === 'show' ? focusMainWindow : runQuit,
