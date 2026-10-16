@@ -10,16 +10,13 @@ import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
-import type { SnapshotPendingRow } from './session';
 import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
-import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, reduceJournal, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import type { SessionSidecarMeta } from '../tui/session-journal';
 import { listCommands } from './commands';
 import { MemoryStore } from '../harness/memory/store';
-import { contextBreakdown } from '../harness/context';
-import { resolveRunWindow } from '../config/termination-config';
-import { COMMAND_SUPPORT, runCommand } from './session-commands';
+import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
 import { resolveDataDir, projectsRoot, projectSlug } from '../config/data-dir';
@@ -33,14 +30,15 @@ import {
 import { PtyManager } from './pty';
 import * as configHandlers from './config-handlers';
 import type { ConfigHandlerIo } from './config-handlers';
+import { validSessionId } from './session-handlers';
+import * as sessionHandlers from './session-handlers';
+import type { SessionHandlerIo } from './session-handlers';
+import * as fileHandlers from './file-handlers';
+import type { FileHandlerIo } from './file-handlers';
 import {
   GUI_ASSETS_HINT,
-  MAX_PREVIEW_BYTES,
-  insideTrustedRoots,
   mimeOf,
-  readFileBounded,
   readStaticFile,
-  realPathOf,
   safeDecode,
 } from './daemon-static';
 import {
@@ -96,11 +94,7 @@ export interface WorkspaceRow {
 const MAX_BODY_BYTES = 1024 * 1024;
 
 
-/** tree 忽略名集（G8b T4 /tree 端点）：VCS 内脏/依赖安装物/构建产物——GUI 树的纯噪音，恒不枚举 */
-const IGNORED = new Set(['.git', 'node_modules', 'dist', 'dist-gui']);
 
-/** tree 单层上限（G8b T4）：500 条；超限截断 + truncated:true（GUI 呈现「已截断」而非无界载荷） */
-const TREE_MAX_ENTRIES = 500;
 
 /** WS 保活节拍：30s 一 ping；pong 静默超 60s 即 terminate（close 事件统一清理） */
 const PING_INTERVAL_MS = 30_000;
@@ -884,74 +878,19 @@ export class GuiDaemon {
 
   /** submit 处理（会话维 + 裸别名共用）：goal 非空 string 校验 → 会话 run 锁（409 拒二次提交）→
    *  202 即回（受理面；run 异步收束细节见 SessionRuntime.submit） */
-  private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const goal = (parsed.body as { goal?: unknown } | null)?.goal;
-    if (typeof goal !== 'string' || goal.length === 0) {
-      this.send(res, 400, { error: 'goal must be a non-empty string' });
-      return;
-    }
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const r = session.submit(goal);
-    if (!r.ok) {
-      this.send(res, r.status, { error: r.error });
-      return;
-    }
-    this.send(res, 202, { ok: true });
-  }
 
   /** interrupt 处理：无在跑 run 409；中止信号发出即 200（run 以 stopReason=interrupted 收束后清锁）。
    *  G4 裁定 3：中止后该会话全部未决挂起以 deny/dismissed 回填并清表——asker promise 不回填则被中止
    *  run 永不收束（僵尸 run） */
-  private handleInterrupt(res: http.ServerResponse, id: string | undefined): void {
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const r = session.interrupt();
-    if (!r.ok) {
-      this.send(res, 409, { error: r.error });
-      return;
-    }
-    this.denyPendingFor(session.id);
-    this.send(res, 200, { ok: true });
-  }
 
   /** steer 处理（G3）：text 非空 string 校验（空白串与 enqueue 的 trim-忽略口径一致前置拒——静默
    *  no-op 的 200 比显式 400 更糟）→ 入该会话 steering → 恒 200 {ok:true}，无 409 分径（裁定：
    *  steering 非独占面，排队语义即承诺） */
-  private async handleSteer(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const text = (parsed.body as { text?: unknown } | null)?.text;
-    if (typeof text !== 'string' || text.trim().length === 0) {
-      this.send(res, 400, { error: 'text must be a non-empty string' });
-      return;
-    }
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    session.steer(text);
-    this.send(res, 200, { ok: true });
-  }
 
   /** reset 处理（旧 /session/new 软重置语义迁入）：中止在跑 run + 换新运行时 + 清投影/转录/缓冲，
    *  200 {ok:true}（语义面见 SessionRuntime.reset）。G4：中止前该会话挂起回填（deny/dismissed——
    *  同 interrupt 裁定 3，防僵尸 asker promise 拖住被中止 run）；收尾广播 `{kind:'reset', sessionId}`
    *  通知帧（裁定 7：GUI 清本地投影重播种；无 seq，不入单调序列） */
-  private async handleReset(res: http.ServerResponse, id: string | undefined): Promise<void> {
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    this.denyPendingFor(session.id);
-    await session.reset();
-    this.broadcastFrame({ kind: 'reset', sessionId: session.id });
-    this.send(res, 200, { ok: true });
-  }
 
   /** POST /approval/:pid {decision}（G4）：挂起表命中且 kind 对 → resolve + notice 事件帧（经该会话
    *  pump，转录可见）+ 200 {ok:true}；未知 pid / 已决（重复回执）/ kind 不符（ask 挂起错打 approval
@@ -1009,43 +948,14 @@ export class GuiDaemon {
    *  挂起面）的基座 */
   /** POST /session/:id/title {text}(G10-C7):模型一次性总结会话标题(≤20 字,只回标题本身);
    *  无状态不落盘——标题缓存与编辑态由客户端 localStorage 承载;模型未接线/调用失败 503 降级 */
-  private async handleSessionTitle(req: http.IncomingMessage, res: http.ServerResponse, _id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const text = (parsed.body as { text?: unknown }).text;
-    if (typeof text !== 'string' || text.trim() === '') return this.send(res, 400, { error: 'invalid text' });
-    // 真实模型门禁(J2 能力位):Stub/Scripted 桩不消耗脚本队列(e2e 断言不漂移),503 由客户端静默降级
-    if (this.model.capabilities?.chat !== true) {
-      return this.send(res, 503, { error: 'model not wired — title summarization unavailable' });
-    }
-    try {
-      const r = await this.model.chat({
-        messages: [
-          {
-            role: 'user',
-            content: `为下面的会话内容生成一个不超过20字的简短标题。只输出标题本身,不要引号、句号或任何前后缀:\n${text.slice(0, 600)}`,
-          },
-        ],
-      });
-      const cleaned = r.content.trim().replace(/^["'「『]+|["'」』.。!！?？]+$/g, '');
-      const title = cleaned === '' ? text.trim().slice(0, 20) : cleaned.slice(0, 24);
-      this.send(res, 200, { ok: true, title });
-    } catch (err) {
-      this.send(res, 503, { error: err instanceof Error ? err.message : String(err) });
-    }
-  }
 
   /** 会话 id 形验（旁车文件名面）：newSessionId 产物字符集（时间戳+随机尾/attach journal id 同源），
    *  拒路径序列——旁车按 id 拼 sessionsDir 路径，越界 id 不得穿透 */
-  private static validSessionId(id: string): boolean {
-    return /^[A-Za-z0-9_-]{1,128}$/.test(id);
-  }
-
   /** POST /session/:id/btw {question}(G14.29 辅助问答,对标 Codex /side /btw):fork 整档旁路
    *  (side 标记,列表滤除)+ 一次性隔离 runtime 跑一轮问答,reply 直接回执——主会话上下文零污染。
    *  超时 180s 兜底;runtime 用完即弃(mcpClose 收口) */
   private async handleSessionBtw(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    if (!GuiDaemon.validSessionId(id)) return this.send(res, 400, { error: 'invalid session id' });
+    if (!validSessionId(id)) return this.send(res, 400, { error: 'invalid session id' });
     const parsed = await this.readJson(req);
     if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
     const question = (parsed.body as { question?: unknown }).question;
@@ -1082,31 +992,9 @@ export class GuiDaemon {
    *  键用 attachedJournalId(列表 listSessions 以 journal 档为行,rename 必须同键才可见)；
    *  无档会话 409(空会话零落盘不变式不破——GUI 乐观上屏静默降级,首轮建档后再改即持久)。
    *  title trim 非空、帽 80 字 */
-  private async handleSessionRename(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    if (!GuiDaemon.validSessionId(id)) return this.send(res, 400, { error: 'invalid session id' });
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const raw = (parsed.body as { title?: unknown }).title;
-    if (typeof raw !== 'string' || raw.trim() === '') return this.send(res, 400, { error: 'invalid title' });
-    const title = raw.trim().slice(0, 80);
-    const session = this.sessions.get(id);
-    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
-    const journalId = session.attachedJournalId;
-    if (journalId === undefined) return this.send(res, 409, { error: 'no journaled session' });
-    writeSessionMeta(resolveDataDir(session.root), journalId, { title });
-    this.send(res, 200, { ok: true, title });
-  }
 
   /** GET /session/:id/title/get(G14.16)：旁车标题回读(重开回显;无档/无旁车 = 无自定义名,
    *  title 缺省回空对象——客户端回落摘要,不当作错误) */
-  private handleSessionTitleGet(res: http.ServerResponse, id: string): void {
-    if (!GuiDaemon.validSessionId(id)) return this.send(res, 400, { error: 'invalid session id' });
-    const session = this.sessions.get(id);
-    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
-    const journalId = session.attachedJournalId;
-    if (journalId === undefined) return this.send(res, 200, {});
-    this.send(res, 200, { title: readSessionMeta(resolveDataDir(session.root), journalId).title });
-  }
 
   /** POST /workspace/create {name}|{path}(G10-C11):原生文件选择器确认后自动建项目。
    *  name=浏览器态(showDirectoryPicker 只回名字):projectsRoot 下建 <name>/ 并初始化
@@ -1208,20 +1096,6 @@ export class GuiDaemon {
     this.send(res, 200, { ok: true, root, slug: projectSlug(root) });
   }
 
-  /** POST /session/:id/command {line}(G10-C1c):TUI 斜杠命令 daemon 直跑;输出走既有事件流 */
-  private async handleSessionCommand(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const line = (parsed.body as { line?: unknown }).line;
-    if (typeof line !== 'string' || !line.startsWith('/')) return this.send(res, 400, { error: 'invalid command line' });
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const r = await runCommand(session, line);
-    if (r === 'unsupported') return this.send(res, 400, { error: 'unsupported command' });
-    if (r === 'busy') return this.send(res, 409, { error: 'session is running' });
-    this.send(res, 200, { ok: true });
-  }
-
   /** POST /memory/rm {root, slugs}(G10-C1d):记忆删除(记忆面板多选;root 寻址与 TUI /memory-rm 同形) */
   private async handleMemoryRm(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     {
@@ -1243,36 +1117,6 @@ export class GuiDaemon {
     }
   }
 
-  /** GET /session/:id/tasks(G10-C6 后台任务面板):账本行(脱敏——stop 句柄/文件路径不出端点) */
-  private handleSessionTasks(res: http.ServerResponse, id: string): void {
-    const session = this.sessions.get(id);
-    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
-    const rows = session.runtime.harness.tasks.list().map((t2) => ({
-      id: t2.id, kind: t2.kind, label: t2.label, status: t2.status, startedAt: t2.startedAt, ...(t2.exitCode !== undefined ? { exitCode: t2.exitCode } : {}),
-    }));
-    this.send(res, 200, rows);
-  }
-
-  /** GET /session/:id/context(G10-C6 上下文面板):分段构成结构化面(parts/total/window/free) */
-  private handleSessionContext(res: http.ServerResponse, id: string): void {
-    const session = this.sessions.get(id);
-    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
-    const ctx = session.runtime.harness.context;
-    const parts = ctx.snapshotPartsView();
-    const b = contextBreakdown({
-      stableSegment: session.runtime.harness.reactor.stableSegment(),
-      instructions: parts.instructions,
-      skills: parts.skills,
-      memory: parts.memory,
-      compacted: ctx.compactedView(),
-      chain: ctx.chainView(),
-      skill: ctx.peekSkill(),
-      window: resolveRunWindow(session.runtime.harness.model),
-      chainFrom: ctx.chainFromView(),
-    });
-    this.send(res, 200, b);
-  }
-
   /** GET /memory?root=(G10-C6 记忆面板):清单(slug/type/created/modified/description) */
   private handleMemoryList(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = urlOf(req);
@@ -1283,17 +1127,6 @@ export class GuiDaemon {
       slug: m.slug, type: m.type, created: m.created, modified: m.modified, description: m.description, body: m.body,
     }));
     this.send(res, 200, rows);
-  }
-
-  /** GET /session/:id/anchors(G10-C1d):任务轮锚点列表(rewind/fork 的 turn 寻址面,1-based) */
-  private handleAnchors(res: http.ServerResponse, id: string): void {
-    const session = this.sessions.get(id);
-    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
-    const srcId = session.attachedJournalId;
-    if (srcId === undefined) return this.send(res, 409, { error: 'no journaled session' });
-    const parsed = parseJournalFile(path.join(sessionsDir(resolveDataDir(session.root)), srcId + '.jsonl'));
-    const anchors = listAnchors(parsed).map((x, i) => ({ turn: i + 1, text: x.text.length > 96 ? x.text.slice(0, 96) + '…' : x.text }));
-    this.send(res, 200, { anchors });
   }
 
   /** POST /session/:id/rewind|fork {turn}(G10-C1d):1-based 轮锚点;不可变分档(branchFrom,源档零改动)。
@@ -1339,153 +1172,17 @@ export class GuiDaemon {
     this.send(res, 200, { ok: true, sessionId: id, turn });
   }
 
-  /** POST /session/:id/steer/cancel {seq}(G10-C1d):撤回排队插话;越界 400 */
-  /** POST /session/:id/steer/move {from,to}(G14.83 拖拽排序) */
-  private async handleSteerMove(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const { from, to } = (parsed.body ?? {}) as { from?: unknown; to?: unknown };
-    if (typeof from !== 'number' || typeof to !== 'number' || !Number.isInteger(from) || !Number.isInteger(to)) {
-      return this.send(res, 400, { error: 'from/to must be integers' });
-    }
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    if (!session.steerMove(from, to)) return this.send(res, 400, { error: 'no such queued entry' });
-    this.send(res, 200, { ok: true });
-  }
-
-  /** POST /session/:id/steer/front {seq}(G14.83 插入发送=置首) */
-  private async handleSteerFront(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const seq = (parsed.body as { seq?: unknown } | null)?.seq;
-    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) return this.send(res, 400, { error: 'invalid seq' });
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    if (!session.steerFront(seq)) return this.send(res, 400, { error: 'no such queued entry' });
-    this.send(res, 200, { ok: true });
-  }
-
-  private async handleSteerCancel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const seq = (parsed.body as { seq?: unknown }).seq;
-    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) return this.send(res, 400, { error: 'invalid seq' });
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    if (!session.cancelSteer(seq)) return this.send(res, 400, { error: 'no such queued entry' });
-    this.send(res, 200, { ok: true });
-  }
-
   /** POST /session/:id/tier {tier} / …/effort {effort}(G10-C2b):per-run 覆盖,下一轮生效;
    *  'default'/缺省字段=清除覆盖回缺省;非法值 400 */
-  private async handleSessionTierEffort(req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'tier' | 'effort'): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const raw = (parsed.body as Record<string, unknown>)[kind];
-    if (raw !== undefined && raw !== 'default' && typeof raw !== 'string') return this.send(res, 400, { error: `invalid ${kind}` });
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const value = raw === undefined || raw === 'default' ? undefined : (raw as string);
-    const ok = kind === 'tier' ? (value === undefined ? (session.clearTier(), true) : session.setTier(value))
-                               : (value === undefined ? (session.clearEffort(), true) : session.setEffort(value));
-    if (!ok) return this.send(res, 400, { error: `invalid ${kind}` });
-    const snap = session.snapshotResponse();
-    this.send(res, 200, { ok: true, [kind]: kind === 'tier' ? snap.tier : snap.effort });
-  }
-
-  /** GET /session/:id/model(G10-C4 模型 pill 数据源):当前选择 + 可选清单(choices 空=不可切) */
-  private handleSessionModelGet(res: http.ServerResponse, id: string): void {
-    const session = this.sessions.get(id);
-    if (session === undefined) return this.send(res, 404, { error: 'unknown session' });
-    const sw = session.modelSwitcher;
-    if (sw === null) return this.send(res, 200, { current: undefined, choices: [], explicitDefault: false });
-    // current 回退(SUNSHINEX_MODEL 显式档):切换器未选时 default 内芯即 env 模型——回其名供 GUI
-    // pill 显示具体模型(Codex 同形),而非「默认模型」占位
-    const envDefault = (process.env.SUNSHINEX_MODEL ?? '').trim();
-    this.send(res, 200, {
-      current: sw.currentId() ?? (envDefault !== '' ? envDefault : undefined),
-      explicitDefault: sw.hasExplicitDefault(),
-      choices: sw.choices().map((c) => ({ id: c.id, model: c.model, baseUrl: c.baseUrl, effort: c.reasoningEffort, contextWindow: c.contextWindow })),
-    });
-  }
 
   /** POST /session/:id/model {model?: string}(G10-C1b):运行中模型切换,daemon 级共享切换器;
    *  无切换器 409 not switchable / 未知 id 400 unknown model(不动现状) */
-  private async handleSessionModel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const body = parsed.body as { model?: unknown };
-    if (body.model !== undefined && typeof body.model !== 'string') return this.send(res, 400, { error: 'invalid model' });
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    if (session.modelSwitcher === null) return this.send(res, 409, { error: 'model not switchable' });
-    if (!session.setModel(body.model === undefined ? undefined : (body.model === '' ? undefined : body.model))) {
-      return this.send(res, 400, { error: 'unknown model' });
-    }
-    this.send(res, 200, { ok: true, model: session.snapshotResponse().model });
-  }
-
-  /** POST /session/:id/mode {mode}(G10-C1b):dontAsk/manual/plan;运行中 409 busy */
-  private async handleSessionMode(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const mode = (parsed.body as { mode?: unknown }).mode;
-    if (mode !== 'dontAsk' && mode !== 'manual' && mode !== 'plan') return this.send(res, 400, { error: 'invalid mode' });
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    if (session.setMode(mode) === 'busy') return this.send(res, 409, { error: 'session is running' });
-    this.send(res, 200, { ok: true, mode });
-  }
-
-  private handleSnapshot(res: http.ServerResponse, id: string | undefined): void {
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const pending: SnapshotPendingRow[] = [...this.pending.entries()]
-      .filter(([, entry]) => entry.sessionId === session.id)
-      .map(([pid, entry]) => ({ pid, kind: entry.kind, req: entry.req }));
-    this.send(res, 200, { ...session.snapshotResponse(), pending });
-  }
 
   /** GET /session/:id/file?path=（G6 预览面，Files 页消费）：query path 必填（400）→ 会话解析
    *  （未知 :id 404）→ path.resolve(session.root, path) 归一（相对/绝对均可）→ 判界（本会话
    *  harness.safety 的路径判定面——insideTrustedRoots 单点，/diff 同口径）→ 越界 403 {path
    *  outside trusted roots} → readFileBounded（G7 抽取共用：missing 404 / binary 415 / >512KB
    *  截断 truncated:true）→ 200 {path, content, truncated?}。仅 GET（路由表 method 精确匹配） */
-  private handleFile(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
-    const url = urlOf(req);
-    const q = url.searchParams.get('path');
-    if (q === null || q.length === 0) {
-      this.send(res, 400, { error: 'path query param required' });
-      return;
-    }
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const abs = path.resolve(session.root, q);
-    // 判界基准：目标经 realPathOf 归一（存在段 realpath，防符号链接逃逸——read 工具同口径）；
-    // 归一不可得回退字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）。
-    // G14.40:本会话数据档(data/memory 等)一并放行——memory 产物是用户可见面,Files 预览可达。
-    // G14.106 修复:resolveDataDir 本身即 .../data(原再拼 'data' 成 \data\data,放行从未生效)
-    const real = realPathOf(abs) ?? abs;
-    const dataRoot = path.resolve(resolveDataDir(session.root));
-    const inData = real === dataRoot || real.startsWith(dataRoot + path.sep);
-    if (!inData && !insideTrustedRoots(session.runtime.harness.safety, real)) {
-      // G14.106 判界拒绝诊断(root/dataDir/real 三点对照——memory 放行失配的定位面)
-      console.error(`[file 403] root=${session.root} dataRoot=${dataRoot} real=${real}`);
-      this.send(res, 403, { error: 'path outside trusted roots' });
-      return;
-    }
-    const read = readFileBounded(abs);
-    if (read === 'missing') {
-      this.send(res, 404, { error: 'not found' });
-      return;
-    }
-    if (read === 'binary') {
-      this.send(res, 415, { error: 'binary file' });
-      return;
-    }
-    this.send(res, 200, { path: abs, content: read.content, ...(read.truncated ? { truncated: true } : {}) });
-  }
 
   /** GET /session/:id/diff?callId=（G7 收口交接，Chat write 展开/Files 消费）：write 调用的
    *  pre-image ↔ 磁盘现文件双内容。查询面现场核结论——daemon 会话的 write 影子快照 drain 仅在
@@ -1499,104 +1196,6 @@ export class GuiDaemon {
    *  truncated=任一侧截断。404 面：未知会话 / callId 无帧（含缓冲环已裁）/ 非 write / 无快照
    *  （root 外写不入清单）→ {error:'no snapshot'}；400：缺 callId。帧环裁剪的退化：目标帧若已被
    *  环裁（>512 事件）即 404——GUI 退单列现内容（调用方回执 input.content），记档报告 */
-  private handleDiff(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
-    const url = urlOf(req);
-    const callId = url.searchParams.get('callId');
-    if (callId === null || callId.length === 0) {
-      this.send(res, 400, { error: 'callId query param required' });
-      return;
-    }
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    // 帧 copy 一致性：扫描与位次计数同一快照（bufferedFrames 每调用新数组，两遍扫同一引用）
-    const frames = session.bufferedFrames();
-    /** 目标帧定位：首枚 callId 命中的 tool-call（text=注册名，payload.input 形态现场核 batch-runner：
-     *  emit('tool-call', name, {input, callId, status})） */
-    let targetSeq = -1;
-    let targetAbs: string | undefined;
-    for (const f of frames) {
-      const e = f.e;
-      if (e.type !== 'tool-call') continue;
-      const p = e.payload as { callId?: unknown } | undefined;
-      if (p?.callId !== callId) continue;
-      if (e.text !== 'write') {
-        this.send(res, 404, { error: 'no snapshot' }); // 命中 callId 但非 write——无 pre-image 面
-        return;
-      }
-      const inPath = (e.payload as { input?: unknown } | undefined)?.input;
-      const p2 = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;
-      if (typeof p2?.path !== 'string' || p2.path.length === 0) {
-        this.send(res, 404, { error: 'no snapshot' }); // 坏参调用（argsOf null 面）——无快照可查
-        return;
-      }
-      targetAbs = path.resolve(session.root, p2.path);
-      targetSeq = f.seq;
-      break;
-    }
-    let entry: ReturnType<typeof session.runtime.harness.writeSnapshot.nthFor>;
-    if (targetAbs !== undefined && targetSeq >= 0) {
-      /** 调用序位次：同路径（resolve 归一后等值）且先于目标的 write 调用数 + 1（sink 清单内的序） */
-      let ordinal = 1;
-      for (const f of frames) {
-        if (f.seq >= targetSeq) break;
-        const e = f.e;
-        if (e.type !== 'tool-call' || e.text !== 'write') continue;
-        const inPath = (e.payload as { input?: unknown } | undefined)?.input;
-        const p = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;
-        if (typeof p?.path === 'string' && p.path.length > 0 && path.resolve(session.root, p.path) === targetAbs) ordinal += 1;
-      }
-      const sink = session.runtime.harness.writeSnapshot;
-      entry = sink.nthFor(targetAbs, ordinal);
-    } else {
-      // G14.4 回退：callId 不可寻（重放会话/帧环已裁）且带 path 参数 → journal snapshots 行末次
-      // pre-image（重放会话展开 diff 仍真，与折叠行 stat 同源不假增）
-      const relParam = url.searchParams.get('path');
-      const fb = relParam !== null && relParam !== '' ? session.diffPreImageFor(relParam) : undefined;
-      if (fb === undefined) {
-        this.send(res, 404, { error: 'no snapshot' });
-        return;
-      }
-      targetAbs = fb.abs;
-      entry = fb.entry;
-    }
-    if (entry === undefined) {
-      this.send(res, 404, { error: 'no snapshot' }); // root 外写不入清单/序越界——同恒定文案
-      return;
-    }
-    // 判界同 /file：pre-image 在场 ⇒ 写时路径在 root 内，此处防符号链接逃逸（现文件读侧）
-    const real = realPathOf(targetAbs) ?? targetAbs;
-    if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
-      this.send(res, 403, { error: 'path outside trusted roots' });
-      return;
-    }
-    // oldContent：pre-image blob（新建写 entry.deleted 缺场；读侧 512KB 截断）
-    let oldContent: string | undefined;
-    let truncated = false;
-    if (entry.deleted !== true && entry.hash.length > 0) {
-      const blob = session.runtime.harness.writeSnapshot.readBlob(entry.hash);
-      if (blob !== null) {
-        truncated = blob.length > MAX_PREVIEW_BYTES;
-        oldContent = blob.subarray(0, MAX_PREVIEW_BYTES).toString('utf8');
-      }
-    }
-    // newContent：磁盘现文件（判界/截断/二进制同 /file——readFileBounded 单点）
-    const read = readFileBounded(targetAbs);
-    if (read === 'missing') {
-      this.send(res, 404, { error: 'not found' });
-      return;
-    }
-    if (read === 'binary') {
-      this.send(res, 415, { error: 'binary file' });
-      return;
-    }
-    truncated = truncated || read.truncated;
-    this.send(res, 200, {
-      path: targetAbs,
-      ...(oldContent !== undefined ? { oldContent } : {}),
-      newContent: read.content,
-      ...(truncated ? { truncated: true } : {}),
-    });
-  }
 
   /** GET /session/:id/tree?path=<rel>（G8b T4 目录树面，Files 页消费）：path 缺省 ''=会话 root →
    *  判界样板同 /file（realPathOf 归一 ?? 字面兜底 → insideTrustedRoots，越界 403 恒定文案）→
@@ -1605,115 +1204,15 @@ export class GuiDaemon {
    *  链接 isDirectory()=false，win32 junction 同理，须 statSync 校正；断链/竞态消失的条目跳过）；
    *  排序=目录段先于文件段、同段 name 码点序；超 TREE_MAX_ENTRIES 截断+truncated:true →
    *  200 {entries:[{name,kind:'dir'|'file'}],truncated?} */
-  private handleTree(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
-    const url = urlOf(req);
-    const rel = url.searchParams.get('path') ?? ''; // 缺 path 与 ?path= 空串同义=会话 root
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const abs = path.resolve(session.root, rel);
-    // 判界基准同 /file：目标经 realPathOf 归一（存在段 realpath 防符号链接逃逸）；归一不可得回退
-    // 字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）
-    const real = realPathOf(abs) ?? abs;
-    if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
-      this.send(res, 403, { error: 'path outside trusted roots' });
-      return;
-    }
-    let st: fs.Stats;
-    try {
-      st = fs.statSync(abs); // 跟随后实态：指向目录的链接本身就是目录（root 即此口径进入）
-    } catch {
-      this.send(res, 404, { error: 'not found' });
-      return;
-    }
-    if (!st.isDirectory()) {
-      this.send(res, 400, { error: 'not a directory' });
-      return;
-    }
-    let dirents: fs.Dirent[];
-    try {
-      dirents = fs.readdirSync(abs, { withFileTypes: true });
-    } catch {
-      this.send(res, 404, { error: 'not found' }); // stat 在场但列举失败（权限面/竞态删除）：fail-closed 归 404
-      return;
-    }
-    const entries: Array<{ name: string; kind: 'dir' | 'file' }> = [];
-    for (const d of dirents) {
-      if (IGNORED.has(d.name)) continue;
-      // 分型：真实目录/文件直取 dirent；链接（及其它非常规实体——socket/fifo）dirent 按链接本体
-      // 分类（指向目录的链接 isDirectory()=false），statSync 跟随实态校正——断链/竞态消失/跟随落空
-      // 既非 dir 又非 file 的条目不枚举
-      let kind: 'dir' | 'file' | undefined = d.isDirectory() ? 'dir' : d.isFile() ? 'file' : undefined;
-      if (kind === undefined) {
-        try {
-          const follow = fs.statSync(path.join(abs, d.name));
-          kind = follow.isDirectory() ? 'dir' : follow.isFile() ? 'file' : undefined;
-        } catch {
-          kind = undefined;
-        }
-      }
-      if (kind !== undefined) entries.push({ name: d.name, kind });
-    }
-    // 排序口径：目录段先于文件段，同段内 name 码点序（显式 </> 而非 localeCompare——后者随区域/ICU
-    // 漂移，树呈现需跨机确定性；混合大小写段的码点序稳定可预测，目录先序在段级优先）
-    entries.sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
-      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-    });
-    const truncated = entries.length > TREE_MAX_ENTRIES;
-    if (truncated) entries.length = TREE_MAX_ENTRIES; // 截断保序：裁尾，前 500 条维持排序面
-    this.send(res, 200, { entries, ...(truncated ? { truncated: true } : {}) });
-  }
 
   /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）：body 校验（taskId 非空
    *  string + approved boolean → 400）→ 该会话 taskboard.review 双语义（gated → 审批：approved
    *  解锁派发 / 拒绝维持；in-review → 关单：approved=done / 拒=failed）→ r.ok 200 {ok:true} /
    *  fail 400 {error: r.error.message}（未知任务/状态不符直译）；未知 :id 404（sessionFor 单点）。
    *  review 触发的 gate-resolved/task-status 事件经该会话 pump 自然广播（既有链，零新协议） */
-  private async handleBoardReview(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const body = parsed.body as { taskId?: unknown; approved?: unknown } | null;
-    if (typeof body?.taskId !== 'string' || body.taskId.length === 0 || typeof body.approved !== 'boolean') {
-      this.send(res, 400, { error: 'taskId must be a non-empty string and approved must be a boolean' });
-      return;
-    }
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const r = session.runtime.harness.taskboard.review(body.taskId, { approved: body.approved });
-    if (!r.ok) {
-      this.send(res, 400, { error: r.error.message });
-      return;
-    }
-    this.send(res, 200, { ok: true });
-  }
 
   /** POST /session/:id/attach {journalId}（T2）：journalId 非空 string 校验 → 未知 :id 404 →
    *  attach 单点（INVALID_ARG→400 / INVALID_STATE→409）→ 200 {ok,sessionId}（并置激活） */
-  private async handleAttach(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const journalId = (parsed.body as { journalId?: unknown } | null)?.journalId;
-    if (typeof journalId !== 'string' || journalId.length === 0) {
-      this.send(res, 400, { error: 'journalId must be a non-empty string' });
-      return;
-    }
-    if (this.sessions.get(id) === undefined) {
-      this.send(res, 404, { error: 'unknown session' });
-      return;
-    }
-    const r = this.attach(id, journalId);
-    if (!r.ok) {
-      this.send(res, r.error.code === 'INVALID_STATE' ? 409 : 400, { error: r.error.message });
-      return;
-    }
-    this.send(res, 200, { ok: true, sessionId: r.value.sessionId });
-  }
 
   /** POST /session/:id/delete（T2 会话回收，GUI Home 消费）：未知 :id 404；running 409（回收前必须
    *  先收 run——teardown 会中止在跑 run，静默中止比显式 409 更糟）；idle → 有界 teardown（该会话
@@ -2043,6 +1542,126 @@ export class GuiDaemon {
   private handleMemoryStatsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
     configHandlers.handleMemoryStatsGet(this.configIo, req, res);
   }
+
+  // ---------- D31 批2 分域：会话控制面迁 session-handlers.ts（io 九面：send/readJson/sessionFor/
+  //  sessions/denyPendingFor/broadcastFrame/pending/model/attach），文件面迁 file-handlers.ts
+  //  （io 两面）；本类保留路由表与薄委托，行为零变化（daemon.test 为锚） ----------
+  private get sessionIo(): SessionHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      readJson: (req) => this.readJson(req),
+      sessionFor: (res, id) => this.sessionFor(res, id),
+      sessions: this.sessions,
+      denyPendingFor: (sessionId) => this.denyPendingFor(sessionId),
+      broadcastFrame: (frame) => this.broadcastFrame(frame),
+      pending: this.pending,
+      model: this.model,
+      attach: (id, journalId) => this.attach(id, journalId),
+    };
+  }
+
+  private get fileIo(): FileHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      sessionFor: (res, id) => this.sessionFor(res, id),
+    };
+  }
+  private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
+    await sessionHandlers.handleSubmit(this.sessionIo, req, res, id);
+  }
+
+  private handleInterrupt(res: http.ServerResponse, id: string | undefined): void {
+    sessionHandlers.handleInterrupt(this.sessionIo, res, id);
+  }
+
+  private async handleSteer(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
+    await sessionHandlers.handleSteer(this.sessionIo, req, res, id);
+  }
+
+  private async handleReset(res: http.ServerResponse, id: string | undefined): Promise<void> {
+    await sessionHandlers.handleReset(this.sessionIo, res, id);
+  }
+
+  private async handleSessionCommand(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSessionCommand(this.sessionIo, req, res, id);
+  }
+
+  private handleSessionTasks(res: http.ServerResponse, id: string): void {
+    sessionHandlers.handleSessionTasks(this.sessionIo, res, id);
+  }
+
+  private handleSessionContext(res: http.ServerResponse, id: string): void {
+    sessionHandlers.handleSessionContext(this.sessionIo, res, id);
+  }
+
+  private handleAnchors(res: http.ServerResponse, id: string): void {
+    sessionHandlers.handleAnchors(this.sessionIo, res, id);
+  }
+
+  private handleSnapshot(res: http.ServerResponse, id: string | undefined): void {
+    sessionHandlers.handleSnapshot(this.sessionIo, res, id);
+  }
+
+  private async handleSteerMove(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSteerMove(this.sessionIo, req, res, id);
+  }
+
+  private async handleSteerFront(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSteerFront(this.sessionIo, req, res, id);
+  }
+
+  private async handleSteerCancel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSteerCancel(this.sessionIo, req, res, id);
+  }
+
+  private async handleSessionTierEffort(req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'tier' | 'effort'): Promise<void> {
+    await sessionHandlers.handleSessionTierEffort(this.sessionIo, req, res, id, kind);
+  }
+
+  private handleSessionModelGet(res: http.ServerResponse, id: string): void {
+    sessionHandlers.handleSessionModelGet(this.sessionIo, res, id);
+  }
+
+  private async handleSessionModel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSessionModel(this.sessionIo, req, res, id);
+  }
+
+  private async handleSessionMode(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSessionMode(this.sessionIo, req, res, id);
+  }
+
+  private async handleBoardReview(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleBoardReview(this.sessionIo, req, res, id);
+  }
+
+  private async handleSessionRename(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSessionRename(this.sessionIo, req, res, id);
+  }
+
+  private handleSessionTitleGet(res: http.ServerResponse, id: string): void {
+    sessionHandlers.handleSessionTitleGet(this.sessionIo, res, id);
+  }
+
+  private async handleSessionTitle(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSessionTitle(this.sessionIo, req, res, id);
+  }
+
+  private async handleAttach(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleAttach(this.sessionIo, req, res, id);
+  }
+
+  private handleFile(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    fileHandlers.handleFile(this.fileIo, req, res, id);
+  }
+
+  private handleDiff(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    fileHandlers.handleDiff(this.fileIo, req, res, id);
+  }
+
+  private handleTree(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    fileHandlers.handleTree(this.fileIo, req, res, id);
+  }
+
 
   private send(res: http.ServerResponse, status: number, body: object): void {
     res.writeHead(status, { 'content-type': 'application/json' });
