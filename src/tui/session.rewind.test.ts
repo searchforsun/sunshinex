@@ -166,7 +166,7 @@ test('/resume Fork from…：从非活动历史会话分叉（入口 B，规格 
   const restore = pinDataDir(path.join(tmp, 'data'));
   try {
     // 造档：源会话两轮（独立控制器，分叉发起方是另一个会话——目标无需是当前会话）
-    const src = await twoTurnSession(tmp);
+    await twoTurnSession(tmp);
     const dataDir = resolveDataDir(tmp);
     const srcId = listSessions(dataDir)[0]!.id;
     const srcFile = path.join(sessionsDir(dataDir), srcId + '.jsonl');

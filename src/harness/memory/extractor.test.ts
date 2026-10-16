@@ -180,7 +180,7 @@ test('settle 尾部阈值触发整理（先提取入库、后判定阈值整理�
 });
 
 test('提取材料并入 SUNSHINE.md 全文与步骤摘要（skip 指令的可执行数据）', async () => {
-  await withMem(async (mem, tmp) => {
+  await withMem(async (_mem, tmp) => {
     const root = path.join(tmp, 'root');
     fs.writeFileSync(path.join(root, 'SUNSHINE.md'), 'Rule: the monolith port is 8123.\n');
     const cap = openaiStub('{"memories":[]}');
@@ -240,7 +240,6 @@ function itemsStub(items: unknown[]): Capturing {
 test('增删改：带 slug 条目原地更新、retract 条目删除既有记录（2026-10-15 用户裁决）', async () => {
   await withMem(async (mem) => {
     assert.ok(mem.add({ type: 'project', description: 'uses pnpm workspaces', body: 'repo manages packages with pnpm workspaces' }).ok);
-    const before = mem.list().find((r) => r.slug === 'uses-pnpm-workspaces')!;
     const { model } = itemsStub([
       { slug: 'uses-pnpm-workspaces', type: 'project', description: 'uses pnpm workspaces', content: 'repo switched to npm workspaces in 2026-10' },
       { retract: true, slug: 'uses-pnpm-workspaces' },

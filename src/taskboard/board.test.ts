@@ -189,7 +189,7 @@ test('set_dependency 环检测 fail-fast;gate 挂起与解锁;限流;id 单调',
     assert.equal(cyc.ok, false);
     assert.ok(String(cyc.error.message).includes('cycle'), `报错含环提示:${String(cyc.error.message)}`);
     // gate:新任务挂起不派发,approved 解锁
-    const g = h.board.create({ title: 'C', spec: 'c' });
+    h.board.create({ title: 'C', spec: 'c' });
     await drain();
     assert.equal(h.board.snapshot().tasks['t3']!.status, 'in-review');
     h.board.review('t3', { approved: true });

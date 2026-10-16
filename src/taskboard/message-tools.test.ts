@@ -93,7 +93,7 @@ test('text 校验:空文本拒、4001 超长拒(≤4000 合法)', async () => {
   }
 });
 
-test('teammate 面:deriveTeammateRegistry(base, board, team, tool) → send_message/get_board/get_task 在场、五件套不在场;排己 knownRecipients 闭包拒自发', async () => {
+test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/get_board/get_task 在场、五件套不在场;排己 knownRecipients 闭包拒自发', async () => {
   const tmp = tmpdir('sunshinex-tb-msgtool-4-');
   try {
     const base = new ToolRegistry();
@@ -118,7 +118,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, team, tool) → send_mess
       knownRecipients: () => ['lead', ...team.aliveNames().filter((n) => n !== 'w2')],
       from: () => 'w2',
     });
-    const face = deriveTeammateRegistry(base, board, team, msgTool);
+    const face = deriveTeammateRegistry(base, board, msgTool);
     assert.ok(face.get('send_message') !== undefined, 'teammate 面应含 send_message');
     assert.ok(face.get('get_board') !== undefined, 'teammate 面应含 get_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');

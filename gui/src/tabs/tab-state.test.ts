@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  emptyTabSession, ensureSession, openTab, closeTab, setActive, cycleTab,
-  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, type TabStates, type SingletonProbe,
+  emptyTabSession, ensureSession, openTab, closeTab, cycleTab,
+  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, type SingletonProbe,
 } from './tab-state';
 
 /** 判重/单例探针(T3 registry 提供真实现;此处 stub 同口径:file 按 path,tasks 单例) */

@@ -1,7 +1,6 @@
 import { DiffEditor } from '@monaco-editor/react';
 import { useMemo } from 'react';
 import { monacoLangOf, useSxTheme } from './monaco-setup';
-import { t } from './i18n';
 
 /**
  * G6 diff 面板（Chat 工具条 write 展开 / Diff 标签消费）——G14.5 起换 Monaco DiffEditor

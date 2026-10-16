@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, RefreshCw, Upload, GitCommitVertical } from 'lu
 import { DiffLines } from '../diff-lines';
 import { FileIcon } from '../file-icon';
 import { t } from '../i18n';
-import type { Connection, DiffResp } from '../connection';
+import type { Connection } from '../connection';
 import type { TabParams } from './tab-state';
 
 /**

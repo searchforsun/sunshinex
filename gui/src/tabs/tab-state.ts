@@ -84,7 +84,8 @@ const tabUid = (type: TabTypeId, params: TabParams, probe: SingletonProbe): stri
  * 会话在席保障:无该会话 → 建空态(零标签——G14.27 用户裁定:不再默认开『任务』页,右栏
  * 空态显示推荐项卡片);已有 → 原引用返回(未动即未变,测试以 toBe 断言)。
  */
-export function ensureSession(states: TabStates, sessionId: string, registry: SingletonProbe): TabStates {
+// _registry 预留接缝:单例在席探针(当前无消费面,签名保形——App/tab-strip 调用点零迁移)
+export function ensureSession(states: TabStates, sessionId: string, _registry: SingletonProbe): TabStates {
   if (states[sessionId] !== undefined) return states;
   return { ...states, [sessionId]: emptyTabSession() };
 }

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from './i18n';
-import { fmtTokens } from './ui-util';
 import { zoomScale } from './ui-zoom';
 
 /**

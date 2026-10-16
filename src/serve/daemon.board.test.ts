@@ -7,7 +7,6 @@ import { WebSocket } from 'ws';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import type { SessionEvent } from '../types';
 
 /** G5 看板服务面测试：POST /session/:id/board/review（gate 审批映射——review 触发的
  *  gate-resolved/task-status 事件经该会话 pump 自然广播，既有链零新协议）+ snapshot.team 扩段

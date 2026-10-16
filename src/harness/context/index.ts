@@ -13,7 +13,6 @@ import { DriftDetector } from './drift-detector';
 import { ChainLedger } from './chain-ledger';
 import { CompactionCoordinator } from './compaction';
 import type { ApplyCompactionOpts } from './compaction';
-import type { ModelAdapter } from '../../model/adapter';
 
 export { contextBreakdown } from './breakdown';
 export type { BreakdownPart, BreakdownPartId, ChainActionStat, ContextBreakdown } from './breakdown';

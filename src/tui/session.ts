@@ -1,4 +1,4 @@
-import type { AskUserAnswer, AskUserRequest, AskUserSeam } from '../types';
+import type { AskUserAnswer, AskUserRequest } from '../types';
 import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
 import { t } from '../i18n';
 import { formatContextBreakdown } from './format';

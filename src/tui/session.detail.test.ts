@@ -138,7 +138,7 @@ test('会话 /btw（G14.29）：fork 旁路一轮,答案 ⪽ 旁白落屏;主链
     });
     await ctrl.submit('主线任务');
     await ctrl.waitIdle();
-    const mainId = ctrl.ensureJournal().currentId!;
+    ctrl.ensureJournal();
     const dataDir = resolveDataDir(tmp);
     const before = new Set(fs.readdirSync(sessionsDir(dataDir))); // 同文件它用例共享 pinned dataDir——按增量断言
     await ctrl.submit('/btw 为什么这么改?');

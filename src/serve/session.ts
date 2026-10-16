@@ -23,7 +23,7 @@ import type { TranscriptEntry } from './transcript';
 import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
 import { SLASH_COMMANDS } from '../tui/slash-commands';
-import { listChanges, restoreChange, diffChangeSets } from './session-changes';
+import { listChanges, diffChangeSets } from './session-changes';
 import type { ChangeFile } from './session-changes';
 
 /**
@@ -560,6 +560,12 @@ export class SessionRuntime {
           }
         }
       });
+    // run 链终态收口：链上无 catch（收尾落档的 journal/meta 写失败——e2e teardown rm 后的迟到写窗、
+    // 或 runTask 本身异常）会成 unhandled rejection；此处倒 error 帧可见化（teardown 后 pump 仅入
+    // 影子缓冲，broadcast 无客户端为 no-op，安全）
+    p.catch((err: unknown) => {
+      this.pump({ type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() });
+    });
     this.current = { abort, done: p };
     return { ok: true };
   }
@@ -732,7 +738,9 @@ export class SessionRuntime {
     const bail = new Promise<void>((resolve) => {
       settleTimer = setTimeout(resolve, ABORTED_RUN_SETTLE_MS);
     });
-    await Promise.race([current.done, bail]);
+    // race 面吞拒：done 的拒绝（中止收尾落档的写失败等）已经 p.catch 倒 error 帧可见化——
+    // settle 等待的语义是「等其落定」而非「随其失败」，拒绝不得拖垮 teardown/close 序
+    await Promise.race([current.done.catch(() => undefined), bail]);
     clearTimeout(settleTimer);
   }
 

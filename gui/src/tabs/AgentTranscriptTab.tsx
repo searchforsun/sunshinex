@@ -6,7 +6,6 @@ import { t } from '../i18n';
 import type { AgentActivity } from './agent-activity';
 import type { Delegation, TaskBoardState } from '../projection';
 import { CollapsibleBubble } from '../pages/Chat';
-import { DELEGATION_STATUS_TEXT, resolveAgentName } from './AgentsTab';
 
 /**
  * G14.175 子代理只读转录标签页（agent 类型标签体）v2——**完全继承主对话渲染方式，只去掉输入框**
@@ -25,13 +24,6 @@ export interface AgentTranscriptTabProps {
   readonly board: TaskBoardState;
   /** 开档定格的任务内容（用户输入兜底；无 taskBand 时上屏） */
   readonly task?: string;
-}
-
-/** 委派终态徽标（若该 label 有委派条目，头部补一枚） */
-function DelegationBadge({ delegations, label }: { delegations: readonly Delegation[]; label: string }): JSX.Element | null {
-  const d = delegations.find((x) => x.label === label || x.id === label);
-  if (d === undefined) return null;
-  return <span className={`sx-subagent-status delegation-${d.status}`}>{DELEGATION_STATUS_TEXT[d.status] ?? d.status}</span>;
 }
 
 /** 滑窗行 → 主对话三态块：token 连续合并为 assistant；✓/✗ 吸附前一条 tool；thinking 独立行 */
@@ -102,7 +94,7 @@ function ToolRow({ text, result }: { text: string; result?: 'ok' | 'fail' }): JS
   );
 }
 
-export function AgentTranscriptTab({ label, activities, delegations, board, task }: AgentTranscriptTabProps): JSX.Element {
+export function AgentTranscriptTab({ activities, task }: AgentTranscriptTabProps): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
   const lines = activities?.lines ?? [];

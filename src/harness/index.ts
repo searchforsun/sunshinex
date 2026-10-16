@@ -265,7 +265,6 @@ export class Harness {
             registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
               b,
               this.taskboard,
-              this.team,
               // teammate 面 send_message（T2 双面之二）:收件人 = lead + 其余活名（排己——不自发）,
               // from = teammate 名;事件经 onEvent 直达装配层（TUI 即时呈现/落档同轨）
               makeSendMessageTool({

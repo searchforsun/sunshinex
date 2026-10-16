@@ -118,7 +118,6 @@ test('e2e teammate→lead:派生面直测 send_message → lead.jsonl 落档(fro
     const face = deriveTeammateRegistry(
       h.tools,
       h.taskboard,
-      h.team,
       makeSendMessageTool({ inbox: h.inbox, onEvent: (e) => events.push(e), knownRecipients: () => ['lead'], from: () => 'w1' }),
     );
     assert.ok(face.get('send_message') !== undefined, '派生面应含 send_message');

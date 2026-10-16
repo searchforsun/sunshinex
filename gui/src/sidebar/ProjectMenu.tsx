@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
-import { errText, fmtTokens, pickWorkspaceFolder, relTime, shortLocalTime } from '../ui-util';
+import { errText, pickWorkspaceFolder, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
 import { ChevronRight, Folder, FolderOpen, Search, Settings, SquarePen } from 'lucide-react';
 

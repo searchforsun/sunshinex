@@ -17,7 +17,6 @@ import type { ModelAdapter } from '../model/adapter';
  * dontAsk 会话（root 内写信任域直放）——write 直执行无挂起，快照照捕（capture 只记 root 内路径）。
  */
 
-const AUTH = { authorization: 'Bearer test-token' } as Record<string, string>;
 
 /** 预览/截断上限(与 daemon 常量同值):512KB——新旧内容各按此截断 */
 const MAX = 512 * 1024;

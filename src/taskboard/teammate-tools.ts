@@ -70,12 +70,10 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
  *  (与 SubagentRunner.deriveChildRegistry 同剔除集——teammate 不得再生子代、不得碰板面写操作),
  *  再注册 get_board/get_task;messageTool 在场则追加注册 send_message(T2 双面裁定:send_message 不入
  *  TASKBOARD_TOOL_NAMES——teammate 面也要有,lead-only 剔除表不适用;排己白名单由装配点闭包注入)。
- *  team 接缝(P2 agent-message):teammate 面收件人活名单的数据源(harness registryFactory 消费)。
  *  原 registry 零突变;每次调用新面(装配期一次性,teammate.ts registryFactory 消费) */
 export function deriveTeammateRegistry(
   base: ToolRegistry,
   board: TaskBoard,
-  team?: { aliveNames(): string[] },
   messageTool?: RegisteredTool,
 ): ToolRegistry {
   const face = base.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', ...TASKBOARD_TOOL_NAMES] });

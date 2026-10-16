@@ -128,7 +128,7 @@ test('pipeline：记忆说明行无路径引用（G14.106 GUI 可见面去 recal
     items: [{ type: 'project', description: 'uses pnpm workspaces', content: 'repo manages packages with pnpm workspaces' }],
   });
   const model = scriptedModel(() => envelope, []);
-  await withPipeline(model, async ({ p, notified, dataDir }) => {
+  await withPipeline(model, async ({ p, notified }) => {
     p.enqueue({ kind: 'memory', goal: 'g', reply: 'r', outcome: 'done', digest: '' });
     await p.drain();
     const line = notified.find(([s]) => s === 'memory')?.[1];

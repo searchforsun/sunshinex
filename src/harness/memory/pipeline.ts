@@ -1,4 +1,3 @@
-import * as path from 'path';
 import type { ModelAdapter } from '../../model/adapter';
 import { isModelSummarizer } from '../context/summarizer';
 import { resolveMemoryConfig } from '../../config/memory-config';
