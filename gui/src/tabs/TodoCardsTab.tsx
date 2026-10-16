@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { t } from '../i18n';
+import { shortStampMs } from '../ui-util';
 import type { TodoBatch } from '../pages/Chat';
 
 /**
@@ -12,15 +13,6 @@ import type { TodoBatch } from '../pages/Chat';
 
 export interface TodoCardsTabProps {
   readonly batches: readonly TodoBatch[];
-}
-
-const pad = (n: number): string => String(n).padStart(2, '0');
-
-/** 毫秒时刻 → 本地短时刻(同 ui-util.shortLocalTime 口径,入参为 ms;旧档无时刻回退 --:--) */
-function shortTime(ms: number): string {
-  if (!(ms > 0)) return '--:--';
-  const d = new Date(ms);
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function TodoCardsTab({ batches }: TodoCardsTabProps): JSX.Element {
@@ -63,7 +55,7 @@ export function TodoCardsTab({ batches }: TodoCardsTabProps): JSX.Element {
               {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
               <span className="todo-card-count">{`${done}/${b.items.length}`}</span>
               <span className="todo-card-goal">{b.goal !== '' ? b.goal : t('(no turn input)', '(未关联轮次输入)')}</span>
-              <span className="todo-card-time">{shortTime(b.ts)}</span>
+              <span className="todo-card-time">{shortStampMs(b.ts)}</span>
             </button>
             {open && (
               <ul className="board-todos-list todo-card-list">

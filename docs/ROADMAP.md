@@ -117,11 +117,12 @@ flowchart TB
 - [x] GUI 设计规格（复用 SessionEvents 事件面与 asker 契约，三面同源）（2026-10-06 两 spec：gui-v1-design + multi-agent-orchestration，G1-G7 七批次全交付）；G8 UI 层重构 G8a-e 五批全交付（2026-10-07-gui-redesign-design.md，门禁=主仓 1781/0+gui 244/0+e2e 19/0）
 - [x] 对话交互、代码预览、diff 对比（GUI v1 范围）（G2-G4/G6/G7 交付：会话中心首页/对话页流式与审批问询、Files 预览高亮、write pre-image diff 双列）
 - [x] 工作流可视化编排与实时监控（任务委派式看板，后置 GUI v2）（G5 已交付——会话中心修正后范围：Board List/DAG 双视图/gate 审批/teammate 侧栏）
-- [ ] 项目记忆管理、技能管理、插件管理（后置：daemon/TUI 侧已有命令面，GUI 管理面随壳批次做）
+- [x] GUI 管理面：智能体 / MCP 管理（设置页增删改 + 测试连接）、记忆清单与删除（右栏记忆面板）、技能与权限只读查看（编辑走文件面）
 - [x] 双端数据同步：配置、任务、记忆、日志（CLI/TUI/GUI 三面同源）（同 dataDir 三面同源：会话 journal/工作区注册表/write blob 互通）
-- [ ] 系统托盘、全局快捷键、消息通知（壳批次后置：Tauri/Electron 选型+打包，独立 spec 立项）——2026-10-08 壳批次 H1-H4 已交付：Electron 44 桌面壳（托盘驻留序/全局快捷键 Alt+Shift+S/原生外开/NSIS+portable 双产物，spec 2026-10-08-shell-electron-design.md；门禁=主仓 1781/0+gui 245/0+e2e 19/0+shell 14/0+双冒烟 0）；消息通知与 GUI 管理面（管理/技能/插件项）仍待办
+- [x] 系统托盘、全局快捷键（壳批次 H1-H4 已交付：Electron 44 桌面壳——托盘驻留序 / 全局快捷键 Alt+Shift+S / 原生外开 / NSIS+portable 双产物，spec 2026-10-08-shell-electron-design.md；门禁=主仓 1781/0+gui 245/0+e2e 19/0+shell 14/0+双冒烟 0）
+- [ ] 消息通知（桌面端系统通知）
 
-**交付物**：交互式 TUI（第一入口，含会话持久化 / resume / rewind / fork）+ 桌面端 GUI v1（对话交互 / 代码预览 / diff），CLI/TUI/GUI 三面数据互通。GUI 线 G1-G7 已交付（daemon 会话中心/对话页/审批问询/看板/预览 diff/收口），壳批次（打包/托盘/快捷键/管理面）后置(壳批次 H1-H4 已交付;管理面仍待办)。
+**交付物**：交互式 TUI（第一入口，含会话持久化 / resume / rewind / fork）+ 桌面端 GUI v1（对话交互 / 代码预览 / diff / 任务看板 / 终端 / 设置管理面），CLI/TUI/GUI 三面数据互通。GUI 线 G1-G7 已交付（daemon 会话中心/对话页/审批问询/看板/预览 diff/收口）+ 壳批次 H1-H4 已交付（Electron 打包/托盘/快捷键）。
 **验收**：TUI 会话内完成一次含计划确认、审批与修正环的真实任务（流式可视、待办同步）；CLI 与 GUI 双端共享同一数据底座，核心功能可视化可用。已过：GUI 无头 e2e 11 例全绿 + 全量测试/selfcheck 门禁绿。
 
 ### 阶段六：测试优化与发布（第 27-28 周）
@@ -132,14 +133,14 @@ flowchart TB
 - [ ] 长任务基准集（目标形态可靠性口径）：固定任务库量化完成率与人工干预次数，可自动判定走脚本化、需人工判定走观察台账，不入提交门禁（防端点抖动污染 CI）
 - [ ] 性能优化：缓存命中率观测（探针口径已建）、响应速度、内存占用
 - [ ] 跨平台打包：CLI 全局包 + GitHub Release 发版链已交付（release.mjs），GUI 桌面端三平台安装包随 5B
-- [ ] 完善文档：使用手册（MANUAL.md 拆分规划）、开发文档、插件开发手册
+- [x] 使用手册拆分：MANUAL.md（CLI + TUI）+ MANUAL-GUI.md（GUI 桌面端/浏览器），开发文档以 CLAUDE.md / docs/ 承载
 
 **交付物**：v1.0 正式版本、完整文档、安装包。
 **验收**：全量测试通过，三平台安装包可安装运行。
 
 ## 5. 当前进度
 
-阶段一至四已全部完成，阶段五 5A（TUI）已深度交付、5B（GUI）G1-G7 已交付（壳批次：Tauri/Electron 打包+托盘/快捷键/管理面后置）：
+阶段一至四已全部完成，阶段五（5A TUI + 5B GUI 与桌面壳批次）已交付：
 
 - [x] 阶段一 Harness 底座（perception / reactor / tools / security / context / memory / skills）
 - [x] 阶段二 Loop Engine（engine + 四类节点、/goal 验收修正环、CLI run）
@@ -150,7 +151,7 @@ flowchart TB
 
 当前基线（2026-10-07 实测）：tsc strict 零报错、全量 1738 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 无头 e2e 11 例全绿。实施记录见各 plan 执行回写与 reports/。
 
-下一步（目标形态排期，见 docs/GOAL.md）：GUI 壳批次（独立 spec 立项）与长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子代理生态沉淀分享 → 插件生命周期与依赖管理）。
+下一步（目标形态排期，见 docs/GOAL.md）：长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子代理生态沉淀分享）。
 
 ## 6. 验证策略
 
@@ -165,4 +166,4 @@ flowchart TB
 
 ## 7. 目录结构
 
-实装为 src/ 扁平分层（与历史规划中的 src/agent/* 嵌套示意不同，扁平分层为既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/tasks/prompts/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/storage`、`src/plugins`、`src/config`、`src/runtime.ts`、`src/tui`、`src/cli`。逐文件说明见根目录 `CLAUDE.md §3`；`src/gui` 随阶段五 5B 建立。
+实装为 src/ 扁平分层（与历史规划中的 src/agent/* 嵌套示意不同，扁平分层为既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/tasks/prompts/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/taskboard`、`src/delegation`、`src/serve`、`src/storage`、`src/config`、`src/runtime.ts`、`src/tui`、`src/cli`；GUI 双件为根级 pnpm 工作区包 `gui/`（React 前端，构建产物 dist-gui/）与 `shell/`（Electron 桌面壳）。逐文件说明见根目录 `CLAUDE.md §3`。

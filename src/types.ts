@@ -284,6 +284,22 @@ export interface SessionEvent {
   ts: number;
 }
 
+/** TaskBoard / 委派投影共享类型登记点（§3「新增共享类型一律在此登记」）：类型本体随域 reducer
+ *  单点（taskboard/model、delegation/projection）保持内聚，此处 type-only re-export 供跨层消费方
+ *  按唯一登记处引用（编译期擦除，零运行时环）。 */
+export type {
+  TaskStatus,
+  BoardTask,
+  TaskBoardState,
+  BoardEvent,
+} from './taskboard/model';
+export type {
+  DelegationKind,
+  DelegationStatus,
+  Delegation,
+  DelegationEventPayload,
+} from './delegation/projection';
+
 /** 审批卡种类（spec 5.2）：'read' 为读围栏（D1）新增通道 */
 type ApprovalKind = 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write' | 'read';
 

@@ -10,7 +10,7 @@
 - 技术栈：TypeScript（strict）+ Node.js，CommonJS 模块
 - 定位：云端推理，本地负责编排、执行、安全与记忆
 - 对标：OpenAI Codex / Claude Code / Hermes
-- 交互面对标：TUI 已交付（对标 Claude Code）、GUI 规划中（对标 Codex 工作台）——构建规范见 §13
+- 交互面对标：TUI（对标 Claude Code）与 GUI（对标 Codex 工作台，Electron 桌面壳 + 浏览器双形态）均已交付——构建规范见 §13
 
 ## 2. 常用命令
 
@@ -20,6 +20,8 @@ pnpm start      # 运行入口（node dist/index.js）
 pnpm selfcheck  # 编译并运行骨架自检
 pnpm test      # 编译 + 全量单测（scripts/run-tests.js 启动，测试数据目录钉仓内 .data-test 防污染用户全局区）
 pnpm cli       # CLI 执行面（内置自动构建，自动装载 settings.json）
+pnpm gui:build # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
+pnpm shell:dist # 构建 Electron 桌面安装包 → shell/release/（shell/ 工作区包）
 pnpm install   # 安装依赖
 ```
 
@@ -38,6 +40,7 @@ src/
   textmatch.ts        # 文本匹配原语单点（escapeRegExp/globToRegex，permissions/rules/sandbox 共用）
   slug.ts             # slug 折叠单点（ASCII 小写折叠，tasks/worktree/learned 三方言共用）
   i18n.ts             # 外观双语 t(en, zh) 调用时求值（§15）
+  warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
   tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal/snapshots 会话持久化
@@ -67,7 +70,12 @@ src/
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
   model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
+  taskboard/          # 任务板域模型与协调器（model 纯 reducer/board 协调/store 落盘/translate 事件翻译/teammate 长驻队友/inbox 消息收件/executors 执行体）
+  delegation/         # 委派投影（projection 纯 reducer：spawn/后台任务/graph 节点统一生命周期，TUI/GUI 同源消费点）
+  serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 buildHarness 单点）
   storage/            # 本地 JSON 存储底座；archive.ts（ArchiveStore 接口 + fs 实现，归档读写单点）
+gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
+shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/NSIS+portable 打包；daemon 以子进程装配，壳与主仓零编译期耦合）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
 agents/               # 用户子代理目录（{id}/agent.md，装配期一次性加载 fail-fast）
 SUNSHINE.md          # 项目业务配置
@@ -108,6 +116,8 @@ SUNSHINE.md          # 项目业务配置
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
 | mermaid（GUI） | 会话流 mermaid 围栏图渲染（懒加载/失败回落原文），收敛于 `gui/src/Mermaid.tsx` | 回落原文代码块，零会话流依赖 |
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |
+| ws | GUI daemon WebSocket 服务面（会话事件流 / PTY 帧下行），收敛于 `src/serve/daemon.ts` 接缝 | 事件面退 HTTP 快照轮询（GET 快照路径已在） |
+| node-pty | GUI 终端标签伪终端宿主（PTY 分配与 I/O 中继），收敛于 `src/serve/pty.ts` 接缝（原生模块，安装期编译） | 终端标签降级不可用提示，daemon 其余面不受影响 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
 
@@ -211,27 +221,27 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | TUI Markdown 流式渲染 | markdansi | 已引入 | 正文/子代理转录流式切块与 ANSI 渲染（完成行紧排缓冲、块边界整块渲染，表格/围栏整块收口），收敛于 `src/tui/md-ansi.ts` 单点出口 |
 | TUI 高亮 | highlight.js | 已引入 | 代码块语法高亮，收敛于 `src/tui/highlight.ts` |
 | TUI 宽度 | string-width | 已引入 | 中英混排/全角字符宽度测量 |
-| GUI 桌面壳 | Electron | 规划选型 | 桌面容器，未来收敛于 `src/gui/` |
-| GUI 组件库 | Vue 3 + Vite + Naive UI | 规划选型 | 界面组件（对话、看板、表单、文件树） |
-| GUI 状态管理 | pinia | 规划选型 | Vue 3 官方状态库，收敛于 `src/gui/` 渲染层 |
-| GUI 编辑器 | Monaco Editor（含 Diff Editor） | 规划选型 | 代码预览/diff 编辑，核心 diff 走 Diff Editor |
-| GUI diff | diff2html | 降级备选 | 仅非编辑器区域轻量 diff 展示，按需引入 |
-| GUI 可视化 | @antv/g6 | 规划选型 | 工作流 DAG 可视化看板（MVP 节点样式先行） |
+| GUI 框架 | React 18 + Vite | 已引入 | 界面构建与前端工具链，收敛于 `gui/` 工作区包（构建产物 dist-gui/） |
+| GUI 状态管理 | React hooks/useReducer | 已引入 | 会话状态归 Chat reducer 与 App 级 hook，无外部状态库 |
+| GUI Markdown | react-markdown + remark-gfm | 已引入 | 会话流正文渲染（对话页/文件预览/子代理转录，代码高亮走 highlight.js） |
+| GUI 编辑器 | Monaco Editor（@monaco-editor/react，含 DiffEditor） | 已引入 | 文件预览语法高亮与 diff 双列对比，收敛于 `gui/src/monaco-setup.ts` + `gui/src/diff-panel.tsx` |
 | GUI 图渲染 | mermaid | 已引入 | 会话流 mermaid 围栏渲染（懒加载/主题随 data-theme/失败回落），收敛于 `gui/src/Mermaid.tsx` |
-| GUI 终端 | xterm.js + node-pty | 规划选型 | 内嵌终端；node-pty 为原生模块，三端分别编译打包（§14 纪律） |
-| GUI 布局 | splitpanes | 规划选型 | 多面板拖拽分割 |
-| GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听 |
-| GUI 内嵌浏览器 | WebContentsView | 规划选型 | Electron ≥ 30 原生 API |
-| GUI 工程化 | electron-vite + electron-builder + electron-updater | 规划选型 | 构建/打包/自动更新，原生模块三端 CI 打包 |
+| GUI 图标 | lucide-react + @iconify/react（vscode-icons 集） | 已引入 | 界面图标与文件树文件图标 |
+| GUI 终端 | @xterm/xterm + @xterm/addon-fit（前端）+ node-pty（宿主） | 已引入 | 内嵌终端：gui 渲染、daemon 经 node-pty 分配 PTY（原生模块，§5 台账） |
+| GUI 任务板 DAG | 仓内 layoutBoard（Kahn 分层）+ 自绘 svg | 已引入 | 任务依赖图布局与连线，收敛于 `gui/src/board-layout.ts`，零新依赖 |
+| GUI 桌面壳 | Electron | 已引入 | 桌面容器（托盘驻留/全局快捷键/原生外开），收敛于 `shell/` 工作区包 |
+| GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS+portable 打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
+| GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |
+| GUI 内嵌浏览器 | WebContentsView | 规划选型 | Electron ≥ 30 原生 API（现行 Web 标签为 iframe，禁内嵌站点走系统外开） |
 | GUI 可选增强 | dockerode + tree-kill | 可选增强 | Compute Use 容器执行/进程管理，按需引入 |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
 - **体验基线**：交互细节向对标产品看齐——快捷键符合终端惯例、输出有渲染降级（窄终端/无色彩环境不花屏）、状态与错误信息用户可读；体验取舍拿不准时以「明星产品怎么做」为参照。
 - **引入流程**：新依赖登记 `package.json`，在 README/Arch-Plan 标注用途，`pnpm build` + `pnpm test` 全量验证后方可交付；规划选型转正时同步更新本表状态。
 
-### GUI 风格铁律（§13.1，2026-10-14 用户裁定）
+### GUI 风格铁律（§13.1）
 
-1. **圆角一致（2026-10-15 修订：面状容器全局对标输入框）**：一切可见的**面状容器**——用户气泡、悬浮提示（data-tip 气泡）、标签页、表格、代码块、弹窗、菜单弹层、卡片（ask/审批/变动汇总等）——圆角一律对标输入框（`var(--radius-composer)`，22px），全局一致禁止混用；`.table-wrap` 等带边框容器以 `overflow:hidden` 裁齐内表格。**控件小件**（按钮、行内 code、chip/徽标、菜单项、勾选钮）保持 `--radius-xs/sm` 分级；进度条/滚动条滑条等线形元素保持全圆（`999px`）；状态圆点保持 `50%`。新增组件按此分级落值，禁止引入新圆角字面量（用 `--radius-*` 变量）。**2026-10-15 二轮全量盘点**：46 处违例清零**2026-10-15 三轮定版（用户裁定「弧度太大」）**：22 仅保留于输入框/编辑卡本体；锚定控件弹层（菜单/面板/调色板/toast/tooltip/放大层）降为 lg(12.5)；正文内容块（表格/代码块/thinking 展开/审批卡/ask 卡/变动汇总/工具体/mermaid 内联块/diff 行块/标签页本条）统一 md(10)；行式选择行降 sm(7.5)；diff 折叠条 999px→md。——弹层/弹窗容器（菜单弹层、文件面板、项目弹层、搜索弹窗、回退菜单、mermaid 放大层、令牌门、toast、审批卡、命令/工具面、目录列表）统一 `--radius-composer`；菜单项/hover 行/队友行/目录行/薄条统一 `--radius-sm`；行内 code/kbd/徽标字面量统一 `var(--radius-xs)`。残留字面量均为被后规则覆盖的死定义。**2026-10-15 四轮定版（用户裁定「弧度全局对标主输入框」）**：token 层 `--radius-sm/md/lg/xl/2xl` 全量上调为 22px（=`--radius-composer`）——hover 行/菜单项/按钮/卡片/代码块/内容块/浮层/tooltip/折叠条/用户气泡一律 22px 同弧度，SM 以下仅 `--radius-xs(5px)`（行内 code/chip/徽标小件）、线形元素（进度条/滚动条 4px、胶囊 999px、状态点 50%）与 SVG rx 按面另行落值；新增面状组件一律 `var(--radius-composer)`，禁止回退旧分级字面量。
+1. **圆角一致**：token 层 `--radius-sm/md/lg/xl/2xl` 全量为 22px（=`--radius-composer`，主输入框同弧度）——面状容器与控件面（用户气泡、浮层、tooltip、按钮、卡片、代码块、内容块、折叠条、hover 行、菜单项）一律 22px 同弧度；`--radius-xs`（5px）仅用于行内 code/chip/徽标等控件小件；线形元素（进度条/滚动条 4px、胶囊 999px、状态点 50%）与 SVG rx 按面另行落值。新增面状组件一律 `var(--radius-composer)`，圆角取值一律走 `--radius-*` 变量；`.table-wrap` 等带边框容器以 `overflow:hidden` 裁齐内表格。
 2. **悬浮提示统一自定义**：全局 hover 提示一律走自绘气泡——元素挂 `data-tip="…"`（CSS 属性驱动，`app.css` G14.66 段），贴右缘元素加 `tip-right` 防裁切；**禁止使用原生 `title` 提示**（原生悬浮与自绘风格不可共存）。`title` 属性仅允许用于无障碍名（如 iframe），不得承担可见提示。测试/e2e 定位相应改走 `[data-tip=…]`/`dataset.tip`。
 3. **展开/收合一律平滑过渡**：任何可折叠区域（run 轮次段、工具体、思考体、目录/侧栏分组等）的展开与收合都必须带高度过渡动画（grid `0fr→1fr` 模式，`--dur-relaxed` 档），**禁止瞬切**；贴底场景需贯穿动画期逐帧钉底（G14.64），避免「先滑后跳」。新增可折叠面一律复用 `.sx-collapse`/`.seg-collapse` 容器模式。
 4. **悬浮提示克制**：可见文字已说明的元素**不加**悬浮提示（如「New chat」钮、模型/权限 pill、计数徽标、会话行等）——提示只用于图标钮、截断文本、状态解释等「看不到才需要」的场景；实现走 `data-tip` 全局单例（规则 2）。

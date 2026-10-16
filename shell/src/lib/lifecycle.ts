@@ -5,7 +5,7 @@ export function shouldHideOnClose(quitting: boolean): boolean {
   return !quitting;
 }
 
-export interface TrayMenuItem {
+interface TrayMenuItem {
   id: 'show' | 'quit';
   label: string;
   enabled: boolean;

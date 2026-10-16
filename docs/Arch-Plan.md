@@ -15,7 +15,7 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：云端大模型负�
 
 ### 2.1 分层与装配
 
-分层依赖方向：`graph → loop → harness → model / storage / plugins`。Graph 节点可嵌入 Loop 子流程，二者均运行在 Harness 底座之上。运行时装配收敛于 `src/runtime.ts`（buildDeps），CLI/TUI/GUI 交互面只做参数解析与呈现、共用同一装配根。
+分层依赖方向：`graph → loop → harness → model / storage`。Graph 节点可嵌入 Loop 子流程，二者均运行在 Harness 底座之上。运行时装配收敛于 `src/runtime.ts`（buildHarness 单点 + buildDeps CLI 整形层），CLI/TUI/GUI 交互面只做参数解析与呈现、共用同一装配根。
 
 ### 2.2 上下文模型：单一基座 + fork
 
@@ -60,15 +60,15 @@ OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路）�
 
 ### 2.7 交互面
 
-- **CLI**（src/cli/）：selfcheck / run / pipeline 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计已落地（设计规格 `specs/2026-09-21-cli-tui-interaction-redesign.md`；fe12d6a / 17f7712）
+- **CLI**（src/cli/）：selfcheck / run / pipeline / serve / skills install / kb-index 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计已落地（设计规格 `specs/2026-09-21-cli-tui-interaction-redesign.md`；fe12d6a / 17f7712）
 - **TUI**（src/tui/，已交付）：会话 REPL、Static 化历史 + 动态帧流式渲染、Markdown 全框线表格（对标 Claude Code）、plan/goal/子代理面板、审批卡与统一选择器、斜杠命令族、状态栏（cache/ctx/turns/steps/tier/effort）、运行中中断与 steering 穿插提示词、worktree 隔离入口
-- **GUI**（规划）：Electron 桌面壳 + Vue3 组件体系，组件选型唯一登记于 `CLAUDE.md §13`
+- **GUI**（已交付）：React 前端（gui/ 工作区包，浏览器模式经 `serve` daemon）+ Electron 桌面壳（shell/ 工作区包，托盘/全局快捷键/安装包），组件选型唯一登记于 `CLAUDE.md §13`
 
 ## 三、技术栈
 
 - 底座：Node.js ≥ 22.9、TypeScript（strict）、pnpm（packageManager 钉版）、node:test（测试零框架依赖）
 - 已引入依赖（用途/收敛边界/回退预案）唯一登记于 `CLAUDE.md §5` 依赖台账
-- GUI 规划选型唯一登记于 `CLAUDE.md §13` 组件选型登记表（Electron ≥ 30、Vue 3 + Naive UI、Monaco Editor、@antv/g6、xterm.js + node-pty、pinia、splitpanes、chokidar、electron-vite 工程化等）
+- GUI 组件选型（已引入与规划选型分态登记）唯一登记于 `CLAUDE.md §13` 组件选型登记表
 - 存储：本地 JSON 底座（src/storage/）；运行时数据（账本/记忆/学习技能/KB/会话日志/worktree）统一落 `~/.sunshinex/projects/<工作区>/data`
 - 配置：settings.json 两级装载（全局 `~/.sunshinex/settings.json` + 项目级 `.sunshinex/settings.json`），语义键 + env 透传块，JSONC 容忍；全局约定层 `~/.sunshinex/SUNSHINE.md` 对标 `~/.claude/CLAUDE.md`
 - 平台：Windows / macOS / Linux 三平台可部署，LF 由 `.gitattributes` + `.editorconfig` 机器强制，CI 矩阵 ubuntu+windows × Node 22/24；机制细节见 `docs/PLATFORM.md`

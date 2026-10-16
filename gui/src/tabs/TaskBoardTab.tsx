@@ -3,6 +3,7 @@ import { layoutBoard } from '../board-layout';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { DELEGATION_STATUS_TEXT } from './AgentsTab';
 import { t } from '../i18n';
+import { shortStampMs } from '../ui-util';
 
 /**
  * G14.174 「任务板」页签体（原 Agents 页签重定位,用户裁决「Agents→任务板」+「任务面板也是卡片流,
@@ -31,15 +32,8 @@ export interface TaskBoardTabProps {
   readonly focus?: { ref: string; nonce: number } | null;
 }
 
-const pad = (n: number): string => String(n).padStart(2, '0');
 /** 批次切分间隔:相邻创建时刻超过该值即视为新一轮任务的卡片(ms) */
 const BATCH_GAP_MS = 120_000;
-
-function shortTime(ms: number): string {
-  if (!(ms > 0)) return '--:--';
-  const d = new Date(ms);
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 /** 任务 → 执行子代理:委派表按 delegationId/label 的 `task-<id>` 形态或 title 同文命中 */
 function agentOfTask(task: BoardTask, delegations: readonly Delegation[]): Delegation | undefined {
@@ -95,7 +89,7 @@ function TaskCard({
             DAG
           </button>
         </div>
-        <span className="todo-card-time">{shortTime(latestMs)}</span>
+        <span className="todo-card-time">{shortStampMs(latestMs)}</span>
       </div>
       {view === 'list' ? (
         <>

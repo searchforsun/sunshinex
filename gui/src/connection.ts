@@ -272,10 +272,6 @@ export interface SkillsGroup {
   skills: Array<{ id: string; name?: string; description?: string }>;
 }
 
-/** T8/T9 面别名（规划文档中的 Gui 后缀名——与上面主名同一类型，两个导入名均可用） */
-export type AgentsViewGui = AgentsView;
-export type SkillsGroupGui = SkillsGroup;
-
 /** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 

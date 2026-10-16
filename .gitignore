@@ -40,3 +40,6 @@ shell/release/
 
 # G10:default 工作区(非文件类任务缺省落点,运行时数据)
 default/
+
+# GUI 截图验收物料（G 线视觉轮的实机截图,过程产物不入库）
+.shots/

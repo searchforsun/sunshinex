@@ -19,9 +19,9 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 
 | 交互面 | 对标 | 定位 |
 |--------|------|------|
-| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / skills install / tui） |
+| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / serve / skills install / kb-index / tui） |
 | TUI | Claude Code | 第一入口，v1.0 默认交互面，持续打磨 |
-| GUI | Codex 工作台 | 尽快立项（spec 先行）；GUI v1 = 对话交互 + 代码预览 / diff，工作流可视化看板后置 GUI v2 |
+| GUI | Codex 工作台 | 已交付：对话交互 + 代码预览 / diff + 任务看板 + 终端 / Web / Agents 标签 + 设置管理面（Electron 桌面壳与浏览器双形态） |
 
 三面共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；最外层一律开源组件优先（CLAUDE.md §13）。
 
@@ -32,11 +32,10 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 
 **跨天持久化 + resume 升格一等能力**：全会话口径——会话链、消息、UI 状态全还原（对标 `claude --resume`），`/goal` 跨天续走为首个消费场景。
 
-## 扩展生态：三层按序深化
+## 扩展生态：两层按序深化
 
 1. **MCP 三传输生产化收尾**（stdio / streamable http / sse 接缝已交付）。
 2. **技能 / 子代理生态**：记忆→技能沉淀的分享机制 + agents 注册制体系深化。
-3. **插件系统**：生命周期与依赖管理强化。
 
 架构保持通用、不与编码域耦合——编码工作方式由 SUNSHINE.md 承载，内核契约任何领域可用。
 
@@ -52,4 +51,4 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 
 ## 近期排期（归口 ROADMAP）
 
-GUI 设计规格（纸面）∥ 会话持久化 + resume（实施）并行启动 → 长任务基准集建设 → 扩展生态深化。量化里程碑与阶段排期见 `docs/ROADMAP.md`。
+长任务基准集建设 → 扩展生态深化。量化里程碑与阶段排期见 `docs/ROADMAP.md`。

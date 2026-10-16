@@ -29,30 +29,25 @@ export function fmtTokens(n: number): string {
 export function shortLocalTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const p = (n: number): string => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 
-/** 原生文件夹选择(G10-C11,统一交互单点):桌面壳走 IPC 系统对话框(回全路径);浏览器走
- *  showDirectoryPicker(Win 原生对话框——安全模型只回名字,建项目交 daemon /workspace/create)。
- *  返回 {name[,path]} | 'unsupported'(环境无原生选择器) | null(用户取消) */
-export async function pickFolderNative(): Promise<{ name: string; path?: string } | 'unsupported' | null> {
-  const w = window as unknown as { sunshinex?: { pickFolder?: () => Promise<string | null> } };
-  if (typeof w.sunshinex?.pickFolder === 'function') {
-    const p = await w.sunshinex.pickFolder();
-    if (p === null) return null;
-    return { name: p.split(/[\\/]/).filter(Boolean).pop() ?? p, path: p };
-  }
-  const picker = (window as unknown as {
-    showDirectoryPicker?: (opts?: { mode?: 'read' | 'readwrite' }) => Promise<{ name: string }>;
-  }).showDirectoryPicker;
-  if (typeof picker !== 'function') return 'unsupported';
-  try {
-    const handle = await picker({ mode: 'readwrite' });
-    return { name: handle.name };
-  } catch {
-    return null; // 用户取消(原生对话框 AbortError)
-  }
+const p2 = (n: number): string => String(n).padStart(2, '0');
+
+/** 毫秒时刻 → 本地短时戳(MM-DD HH:mm;待办/任务板卡头创建时间、Insight 行同源):
+ *  旧档无时刻(≤0)或非法日期回退 '--:--' */
+export function shortStampMs(ms: number): string {
+  if (!(ms > 0)) return '--:--';
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '--:--';
+  return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+}
+
+/** 毫秒时刻 → 本地短时刻(HH:mm;run 尾部完成时间):非法日期回退 '--:--' */
+export function shortClockMs(ms: number): string {
+  const d = new Date(ms);
+  if (!(ms > 0) || Number.isNaN(d.getTime())) return '--:--';
+  return `${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 
 /** G14.69 原生工作区选择结果:null=用户取消;字符串态=降级原因(GUI 回退自建目录浏览) */

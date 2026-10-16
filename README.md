@@ -19,13 +19,17 @@ graph LR
 
 ```text
 src/
-  cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install；裸命令进交互终端）
+  cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index；裸命令进交互终端）
   tui/       # 交互式终端（ink + React，对标 Claude Code，v1.0 默认入口）
   harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子代理、知识库
   loop/      # Loop 引擎（生成→校验→修正）
   graph/     # DAG 多角色协作编排
   model/     # 模型适配 + 三档算力路由
+  taskboard/ delegation/   # 任务板与委派投影域模型（TUI/GUI 同源）
+  serve/     # GUI daemon（HTTP + WebSocket 服务、PTY 中继、配置面）
   config/ storage/   # 配置装载、存储底座
+gui/         # 浏览器 GUI 前端（React 18 + Vite 工作区包，构建产物 dist-gui/）
+shell/       # Electron 桌面壳工作区包（托盘驻留、全局快捷键、安装包打包）
 ```
 
 分层依赖：`graph → loop → harness → model / storage`；Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。文件级结构详见 [CLAUDE.md](CLAUDE.md)。
@@ -42,7 +46,7 @@ src/
 
 > 目标形态以 [docs/GOAL.md](docs/GOAL.md) 为单一权威，本节为概览。
 
-- **三面入口**：CLI 基础执行面（已交付）+ 交互式 TUI（对标 Claude Code，ink + React 构建，v1.0 默认入口）+ Electron 桌面端（对标 Codex 工作台，开源组件优先）。TUI 内 `/goal <目标>` 触发标准验收修正环，目标支持自然语言条件。
+- **三面入口（均已交付）**：CLI 基础执行面 + 交互式 TUI（对标 Claude Code，ink + React 构建，v1.0 默认入口）+ GUI 桌面端/浏览器双形态（对标 Codex 工作台，Electron 壳 + React 前端）。TUI 内 `/goal <目标>` 触发标准验收修正环，目标支持自然语言条件。
 - **云本地分工**：任意 OpenAI 协议兼容供应商（`settings.json` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
 - **生产级特性**：分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发；**多 Agent 编排**——持久任务板（依赖/审批门/裁决）+ 长驻 teammate + 外部 CLI 执行体（claude code）+ 定向消息，崩溃可恢复（kill -9 验收）。
@@ -94,13 +98,13 @@ pnpm test && pnpm selfcheck    # 全量单测 / 骨架自检
 
 ```bash
 # ① GitHub Release 链接直装（推荐，无需 npm 账号）
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.1/sunshinex-agent-0.3.1.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.4.0/sunshinex-agent-0.4.0.tgz
 
 # ② npm registry（正式发布后可用）
 npm install -g sunshinex-agent
 
 # ③ 本地打包安装
-npm pack && npm install -g ./sunshinex-agent-0.3.1.tgz
+npm pack && npm install -g ./sunshinex-agent-0.4.0.tgz
 ```
 
 > npm ≥ 12 走 ① 报 `EALLOWREMOTE`（`allow-remote` 缺省禁止从 URL 取包）：加 `--allow-remote=all`，或先 `curl -LO` 下载 tarball 再按 ③ 本地安装（不受该限制）。
@@ -112,9 +116,9 @@ npm pack && npm install -g ./sunshinex-agent-0.3.1.tgz
 ```bash
 scripts/release.mjs                            # 按 package.json 当前版本发版
 scripts/release.mjs --bump patch|minor|major   # 递增版本号，随发版提交推送
-scripts/release.mjs --version 0.3.1            # 指定版本发版（写回 package.json）
+scripts/release.mjs --version 0.4.0            # 指定版本发版（写回 package.json）
 scripts/release.mjs --dry-run                  # 只验证 + 打包预览，不触网不落库
-scripts/release.mjs --version 0.3.1 --clobber  # 同版本重发（覆盖附件，须显式授权）
+scripts/release.mjs --version 0.4.0 --clobber  # 同版本重发（覆盖附件，须显式授权）
 scripts/release.mjs --no-gui                 # 只发 TUI tgz（跳过 GUI 安装包构建上传）
 
 一次发版 = 同一 Release 同一 tag 上传两类安装包：TUI tgz（sunshinex-agent-<ver>.tgz）+ GUI 单安装包（sunshinex-<ver>-setup.exe，NSIS，业界 kebab 命名；版本随根 package.json 单源同步；验证链含 GUI/e2e/壳冒烟与安装包静默装冒烟；本机网络受限带双镜像 env，见 MANUAL-GUI 开发者节）

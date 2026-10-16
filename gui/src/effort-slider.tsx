@@ -1,5 +1,3 @@
-import { t } from './i18n';
-
 /** 思考强度档位(G14.14 共享):滑动块 0..5 与档位一一对应(daemon effort 白名单序) */
 export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
@@ -30,5 +28,3 @@ export function EffortSlider({ value, onChange }: { value: string; onChange: (v:
 export function EffortChip({ effort }: { effort: string }): JSX.Element {
   return <span className="model-effort-chip">{effort}</span>;
 }
-
-export const effortT = (en: string, zh: string): string => t(en, zh);

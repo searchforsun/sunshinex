@@ -77,7 +77,7 @@
 
 ```bash
 sunshinex serve               # 浏览器模式（npm 安装版开箱即用——包内自带 web GUI，任意目录可跑）
-pnpm serve                    # 源码仓形态同款（优先用仓内 dist-gui）
+pnpm cli serve                # 源码仓形态同款（优先用仓内 dist-gui）
 pnpm --dir gui dev            # 前端热更开发（配合上一行）
 pnpm shell:dist               # 本地构建安装包 → shell/release/
 node scripts/release.mjs      # 发版：同一 Release 上传 TUI tgz + GUI setup.exe

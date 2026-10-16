@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw, Trash2 } from 'lucide-react';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
+import { shortStampMs } from '../ui-util';
 
 /**
  * G10-C6 右栏三面板(spec §7 映射:/context /tasks /memory 的 GUI 承载):
@@ -95,7 +96,6 @@ export function BgTasksTab({ conn, sessionId, turnGoal }: { conn: Connection; se
       return next;
     });
   const rows = [...(data ?? [])].sort((a, b) => b.startedAt - a.startedAt);
-  const pad = (n: number): string => String(n).padStart(2, '0');
   return (
     <div className="insight-tab">
       <div className="insight-bar">
@@ -120,8 +120,7 @@ export function BgTasksTab({ conn, sessionId, turnGoal }: { conn: Connection; se
         <div className="todo-cards" aria-label="background tasks">
           {rows.map((r) => {
             const open = expanded.has(r.id);
-            const d = new Date(r.startedAt);
-            const time = Number.isNaN(d.getTime()) ? '--:--' : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            const time = shortStampMs(r.startedAt);
             return (
               <section key={r.id} className="tb-card">
                 <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(r.id)}>

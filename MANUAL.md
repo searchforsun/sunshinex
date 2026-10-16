@@ -21,10 +21,10 @@ pnpm test              # 全量单测
 **正式安装（npm 全局）**
 
 ```bash
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.1/sunshinex-agent-0.3.1.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.4.0/sunshinex-agent-0.4.0.tgz
 # npm ≥ 12 报 EALLOWREMOTE（allow-remote 缺省 none）时二选一：
 #   加开关：npm install -g --allow-remote=all <上面的链接>
-#   或先下载再本地装（allow-file 缺省 all，不受此限）：curl -LO <链接> && npm install -g ./sunshinex-agent-0.3.1.tgz
+#   或先下载再本地装（allow-file 缺省 all，不受此限）：curl -LO <链接> && npm install -g ./sunshinex-agent-0.4.0.tgz
 ```
 
 **命令总表**
@@ -38,6 +38,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.3.
 | `sunshinex selfcheck` | 骨架自检 |
 | `sunshinex run <dir> --goal="..."` | 标准验收修正环（非 done 退出码 1） |
 | `sunshinex pipeline <dir> --goal="..." [--yes]` | 五节点流水线 gate 审批（`--yes` 跳过交互直接批准） |
+| `sunshinex serve [目录] [--port=N] [--token=T] [--manual]` | 启动 GUI daemon（HTTP+WebSocket，浏览器访问 GUI；缺省绑定回环且免鉴权，显式 `--token` 才启用鉴权、`--port` 缺省 7788、`--manual` 预选会话以 manual 权限模式装配；详见 [MANUAL-GUI](MANUAL-GUI.md)） |
 | `sunshinex skills install <git-url \| owner/repo \| 本地目录> [--force]` | 安装技能到全局技能根 `~/.sunshinex/skills`（同名已存在缺省跳过，`--force` 覆盖） |
 | `sunshinex kb-index [目录]` | 构建知识库索引（对目录内 md/txt 走计费 embedding；缺省当前工作区，`node_modules` 与隐藏目录跳过；`kb_search` 检索源，见第二节 KB 配置） |
 
