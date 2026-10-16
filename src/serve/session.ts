@@ -466,9 +466,10 @@ export class SessionRuntime {
     const startedAt = Date.now();
     // G14.100 本轮改动基线(run 前 git 变动集):收尾差集=本轮增量(runmeta.changes 供 GUI 汇总条)
     let runBaseChanges: ChangeFile[] = [];
+    let runBaseKnown = false; // 基线不可得时收尾不报改动面——空基线差集会把存量文件全算本轮增量(误报)
     void listChanges(this.root).then((r) => {
-      if (r.ok) runBaseChanges = r.value.files;
-    }).catch(() => {});
+      if (r.ok) { runBaseChanges = r.value.files; runBaseKnown = true; }
+    }).catch(() => {}); // 旁路:基线探测失败不阻断 run 启动,收尾按 runBaseKnown 收窄
     this.runUsage = undefined;
     this.runCtxUsed = undefined;
     this.runDoneSteps = undefined;
@@ -491,7 +492,7 @@ export class SessionRuntime {
         let runChanges: ChangeFile[] = [];
         try {
           const now = await listChanges(this.root);
-          if (now.ok) runChanges = diffChangeSets(runBaseChanges, now.value.files);
+          if (now.ok && runBaseKnown) runChanges = diffChangeSets(runBaseChanges, now.value.files);
         } catch {
           // 差集失败不挡收尾(汇总条缺本轮数据可接受)
         }

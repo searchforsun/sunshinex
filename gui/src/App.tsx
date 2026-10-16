@@ -705,6 +705,15 @@ function AppShell(): JSX.Element {
   const [delegations, setDelegations] = useState<Delegation[]>([]);
   /** G5 teammate 投影(App 态):snapshot.team 经 Chat onSeeded 回填——reseed 即更新 */
   const [team, setTeam] = useState<Array<{ name: string; busy: boolean }>>([]);
+  /** 会话级操作(fork/rewind)失败提示:sx-toast 底部浮出 3s 自隐(设置页同形态)——旁路失败此前零反馈,
+   *  用户点「分叉/回到此轮」无响应会误以为成功 */
+  const [opError, setOpError] = useState('');
+  const opErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showOpError = (err: unknown): void => {
+    setOpError(err instanceof Error ? err.message : String(err));
+    if (opErrorTimer.current !== null) clearTimeout(opErrorTimer.current);
+    opErrorTimer.current = setTimeout(() => setOpError(''), 3_000);
+  };
   /** G8d 子代理活动聚合(App 态):payload.subagent 标签流经 applyAgentEvent 归约——Agents 标签
    *  只读消费(services.agentActivities);delegation 起止 label 命中既有卡时改状态(权威终语) */
   const [agentActivities, setAgentActivities] = useState<AgentActivities>({});
@@ -1156,7 +1165,7 @@ function AppShell(): JSX.Element {
                       const r = await connInstance.forkSession(openSessionId, last);
                       openSession(r.sessionId, openRoot);
                     })
-                    .catch(() => {});
+                    .catch(showOpError);
                 }}
                 onRewind={(turn) => {
                   void connInstance
@@ -1168,7 +1177,7 @@ function AppShell(): JSX.Element {
                       setPage('welcome');
                       requestAnimationFrame(() => openSession(rid, rr));
                     })
-                    .catch(() => {});
+                    .catch(showOpError);
                 }}
               />
             ) : connInstance !== null ? (
@@ -1246,6 +1255,11 @@ function AppShell(): JSX.Element {
           </aside>
           )}
         </>
+      )}
+      {opError !== '' && (
+        <div className="sx-toast" role="alert">
+          {opError}
+        </div>
       )}
     </div>
   );

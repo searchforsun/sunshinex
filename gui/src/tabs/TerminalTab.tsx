@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { PtySocket } from './PtySocket';
 import { b64ToUtf8 } from './pty-codec';
 import type { PtyFrame } from './pty-codec';
+import { toWsUrl } from '../connection';
 import type { Connection } from '../connection';
 import type { TabParams } from './tab-state';
 
@@ -111,7 +112,7 @@ export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: 
         term.loadAddon(fit);
         term.open(container);
         socket = new PtySocket({
-          url: `${location.origin.replace(/^http/, 'ws')}/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`,
+          url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`,
           token: localStorage.getItem('sunshinex.token') ?? '',
           onFrame: (f: PtyFrame): void => {
             if (f.t === 'replay' || f.t === 'data') term?.write(b64ToUtf8(f.b));

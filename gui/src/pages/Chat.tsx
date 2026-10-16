@@ -21,7 +21,7 @@ import { Mermaid } from '../Mermaid';
 import { CommandPalette, filterCommands } from '../CommandPalette';
 import { ContextRing } from '../context-ring';
 import { EffortChip, EffortSlider } from '../effort-slider';
-import { fmtTokens as fmtTokensShared } from '../ui-util';
+import { fmtTokens as fmtTokensShared, shortClockMs } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent, TodoItem } from '../../../src/types';
@@ -1738,7 +1738,7 @@ function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undef
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1500);
   };
-  const time = run?.endedTs !== undefined ? new Date(run.endedTs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : undefined;
+  const time = run?.endedTs !== undefined ? shortClockMs(run.endedTs) : undefined;
   return (
     <div className="run-footer">
       <TipButton
@@ -2042,15 +2042,18 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
   const pauseAndSend = useCallback(
     async (q: { seq: number; text: string }): Promise<void> => {
       setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
-      await conn.cancelSteer(sessionId, q.seq).catch(() => {});
-      await conn.sessionInterrupt(sessionId).catch(() => {});
+      await conn.cancelSteer(sessionId, q.seq).catch(() => {}); // 撤队列失败不阻断:条目已本地移除,重复撤幂等
+      await conn.sessionInterrupt(sessionId).catch(() => {}); // 中断失败不阻断:下方 snapshot 等 idle 兜底,仍未停则 submit 409 倒 error 条
       for (let i = 0; i < 20; i += 1) {
         const snap = await conn.sessionSnapshot(sessionId).catch(() => undefined);
         if (snap !== undefined && snap.status === 'idle') break;
         await new Promise((r) => setTimeout(r, 150));
       }
       setChat((c) => appendUserMessage(c, q.text));
-      await conn.sessionSubmit(sessionId, expandFileRefs(q.text, root, resolveFileRef)).catch(() => {});
+      await conn.sessionSubmit(sessionId, expandFileRefs(q.text, root, resolveFileRef)).catch((err: unknown) => {
+        // 提交失败必须可见(409=上一 run 未及退出/网络失败)——静默即「暂停并发送」的消息无声丢失
+        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
+      });
     },
     [conn, sessionId, root, resolveFileRef],
   );
@@ -2224,7 +2227,10 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
           pendingGoalRef.current = null;
           onPendingGoalDoneRef.current?.();
           setChat((c) => appendUserMessage(c, pg.goal));
-          conn.sessionSubmit(sessionId, pg.goal).catch(() => {});
+          conn.sessionSubmit(sessionId, pg.goal).catch((err: unknown) => {
+            // 接力目标提交失败必须可见(同 submitText error 条)——欢迎页首条目标无声丢失不可接受
+            setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
+          });
         }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
         // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清)

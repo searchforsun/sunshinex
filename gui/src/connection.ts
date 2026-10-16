@@ -467,9 +467,14 @@ const DEFAULT_BACKOFF_BASE_MS = 1_000;
 /** baseUrl 的 http(s) 面 → ws(s) 面（浏览器 WebSocket 不接受 http 前缀；已 ws(s) 则原样透传） */
 function wsUrl(baseUrl: string): string {
   let url = baseUrl.replace(/\/+$/, '');
-  if (url.startsWith('http://')) url = `ws://${url.slice('http://'.length)}`;
-  else if (url.startsWith('https://')) url = `wss://${url.slice('https://'.length)}`;
-  return `${url}/events`;
+  return `${toWsUrl(url)}/events`;
+}
+
+/** http(s)→ws(s) 协议换前缀单点（WS 事件流与 pty 终端通道共用）；非 http(s) 输入原样返回 */
+export function toWsUrl(httpUrl: string): string {
+  if (httpUrl.startsWith('https://')) return `wss://${httpUrl.slice('https://'.length)}`;
+  if (httpUrl.startsWith('http://')) return `ws://${httpUrl.slice('http://'.length)}`;
+  return httpUrl;
 }
 
 export function createConnection(opts: ConnectionOpts): Connection {

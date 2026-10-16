@@ -92,7 +92,7 @@ if (!app.requestSingleInstanceLock()) {
       app.exit(1);
       return;
     }
-    // 入口提示一行（沿 serve 惯例：port + token）
+    // 入口提示一行（沿 serve 惯例：port + token；回环字面量就地维护，见 lib/app-url.ts 头注）
     console.log(`[shell] daemon listening at http://127.0.0.1:${daemon.port} (token: ${daemon.token})`);
 
     const win = new BrowserWindow({ width: 1200, height: 800, minWidth: 960, minHeight: 600 });

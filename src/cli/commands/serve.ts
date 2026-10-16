@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { GuiDaemon } from '../../serve/daemon';
+import { GuiDaemon, LOOPBACK_HOST } from '../../serve/daemon';
 import { buildModel } from '../../runtime';
 import { parseEffort } from '../../model/adapter';
 import { ModelSwitcher } from '../../model/catalog';
@@ -101,15 +101,15 @@ export async function runServe(args: CliArgs): Promise<void> {
     }
   }
 
-  console.log(`sunshinex serve listening at http://127.0.0.1:${s.port}`);
+  console.log(`sunshinex serve listening at http://${LOOPBACK_HOST}:${s.port}`);
   // 浏览器入口提示（T5δ）：静态探测在场（index.html 已构建）时 token 行合并为「浏览器打开+token」
   // 单行入口提示；静态不在场（API-only）保留纯 token 行——无 GUI 可开，指向浏览器只会误导
   const staticMounted = fs.existsSync(path.join(staticRoot, 'index.html'));
   if (staticMounted) {
     console.log(
       s.token !== undefined
-        ? t(`open http://127.0.0.1:${s.port} in a browser (token: ${s.token})`, `在浏览器打开 http://127.0.0.1:${s.port}（token: ${s.token}）`)
-        : t(`open http://127.0.0.1:${s.port} in a browser (local access, no token)`, `在浏览器打开 http://127.0.0.1:${s.port}（本地访问,免 token）`),
+        ? t(`open http://${LOOPBACK_HOST}:${s.port} in a browser (token: ${s.token})`, `在浏览器打开 http://${LOOPBACK_HOST}:${s.port}（token: ${s.token}）`)
+        : t(`open http://${LOOPBACK_HOST}:${s.port} in a browser (local access, no token)`, `在浏览器打开 http://${LOOPBACK_HOST}:${s.port}（本地访问,免 token）`),
     );
   } else if (s.token !== undefined) {
     console.log(`token: ${s.token}`);

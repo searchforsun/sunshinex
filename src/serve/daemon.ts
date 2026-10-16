@@ -77,6 +77,17 @@ export interface GuiDaemonHandle {
   close(): Promise<void>;
 }
 
+/** daemon 恒绑回环（G10 免鉴权档裁定「本地工具不设密」）：bind 面与 serve 打印面同源单点 */
+export const LOOPBACK_HOST = '127.0.0.1';
+
+/** 请求 URL 解析单点：base 仅为解析锚（host 不参与实际绑定），pathname/search 统一出口 */
+function urlOf(req: http.IncomingMessage): URL {
+  return new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
+}
+
+/** 旁车 fork/ask 一次性调用墙钟上限：旁车与主链长任务预算解耦，到点 abort 收口（fork 问询面唯一消费） */
+const FORK_ABORT_TIMEOUT_MS = 180_000;
+
 /** GET /workspaces 行（T2 工作区注册表）：slug=projectsRoot 下工作区目录名；root 经 createSession
  *  落档的 `<dataDir>/workspace.json` 反解——历史工作区（TUI 时代档）无此档 → root undefined（前端
  *  不可 attach，仅统计展示）；mtime=dataDir mtime；sessionCount=sessions 目录 jsonl 数（缺目录=0） */
@@ -813,7 +824,7 @@ export class GuiDaemon {
     const server = http.createServer((req, res) => this.dispatch(req, res, token));
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
-      server.listen(opts?.port ?? 0, '127.0.0.1', () => resolve());
+      server.listen(opts?.port ?? 0, LOOPBACK_HOST, () => resolve());
     });
     this.server = server;
     this.wss = this.attachWs(server, token);
@@ -845,7 +856,7 @@ export class GuiDaemon {
         socket.destroy();
         return;
       }
-      const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+      const pathname = urlOf(req).pathname;
       const m = /^\/session\/([^/]+)\/pty\/([^/]+)$/.exec(pathname);
       if (m) {
         // 段解码失败按字面处理（get 未命中 → error 帧，fail-closed 不放行错位寻址）
@@ -1067,13 +1078,13 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/skill-commands', auth: true, run: async (_req, res, p) => this.send(res, 200, this.sessionFor(res, p.id)?.skillCommands() ?? []) },
     // G14.113 分支清单/切换(欢迎页分支选择弹窗;root 必传 query/body)
     { method: 'GET', path: '/git/branches', auth: true, run: async (req, res) => {
-        const root = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('root') ?? '';
+        const root = urlOf(req).searchParams.get('root') ?? '';
         if (root === '') return this.send(res, 400, { error: 'root query param required' });
         this.send(res, 200, await gitBranches(path.resolve(root)));
       } },
     // G14.121 工作区文件索引(@ 文件面板;root 必传,文件按 mtime 倒序=最近改动优先)
     { method: 'GET', path: '/workspace/files', auth: true, run: async (req, res) => {
-        const root = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('root') ?? '';
+        const root = urlOf(req).searchParams.get('root') ?? '';
         if (root === '') return this.send(res, 400, { error: 'root query param required' });
         this.send(res, 200, { files: await workspaceFiles(path.resolve(root)) });
       } },
@@ -1105,7 +1116,7 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/changes/content', auth: true, run: async (req, res, p) => {
         const session = this.sessionFor(res, p.id);
         if (session === undefined) return;
-        const rel = new URL(req.url ?? '/', 'http://x').searchParams.get('path') ?? '';
+        const rel = urlOf(req).searchParams.get('path') ?? '';
         const r = await changeContent(session.root, rel);
         if (!r.ok) return this.send(res, 400, { error: r.error });
         this.send(res, 200, r.value);
@@ -1198,7 +1209,7 @@ export class GuiDaemon {
   }
 
   private dispatch(req: http.IncomingMessage, res: http.ServerResponse, token: string | undefined): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const matched = this.matchRoute(req.method ?? 'GET', url.pathname);
     if (matched) {
       // 鉴权（§4.3/G10 收敛）：token 在场才验 Bearer（undefined=免鉴权档，恒绑回环兜底）；401 先于
@@ -1518,7 +1529,7 @@ export class GuiDaemon {
     }
     writeSessionMeta(dataDir, forkId, { side: true });
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 180_000);
+    const timer = setTimeout(() => abort.abort(), FORK_ABORT_TIMEOUT_MS);
     const rt = createRuntime({ root: session.root, model: this.model, onEvent: () => {} });
     try {
       rt.harness.context.appendInstructionLine(question);
@@ -1729,7 +1740,7 @@ export class GuiDaemon {
 
   /** GET /memory?root=(G10-C6 记忆面板):清单(slug/type/created/modified/description) */
   private handleMemoryList(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const root = url.searchParams.get('root');
     if (root === null || root.length === 0) return this.send(res, 400, { error: 'root query param required' });
     // G14.147 body 一并返回(记忆页详情展开;记录体量小,清单直带全文)
@@ -1907,7 +1918,7 @@ export class GuiDaemon {
    *  outside trusted roots} → readFileBounded（G7 抽取共用：missing 404 / binary 415 / >512KB
    *  截断 truncated:true）→ 200 {path, content, truncated?}。仅 GET（路由表 method 精确匹配） */
   private handleFile(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const q = url.searchParams.get('path');
     if (q === null || q.length === 0) {
       this.send(res, 400, { error: 'path query param required' });
@@ -1954,7 +1965,7 @@ export class GuiDaemon {
    *  （root 外写不入清单）→ {error:'no snapshot'}；400：缺 callId。帧环裁剪的退化：目标帧若已被
    *  环裁（>512 事件）即 404——GUI 退单列现内容（调用方回执 input.content），记档报告 */
   private handleDiff(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const callId = url.searchParams.get('callId');
     if (callId === null || callId.length === 0) {
       this.send(res, 400, { error: 'callId query param required' });
@@ -2060,7 +2071,7 @@ export class GuiDaemon {
    *  排序=目录段先于文件段、同段 name 码点序；超 TREE_MAX_ENTRIES 截断+truncated:true →
    *  200 {entries:[{name,kind:'dir'|'file'}],truncated?} */
   private handleTree(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const rel = url.searchParams.get('path') ?? ''; // 缺 path 与 ?path= 空串同义=会话 root
     const session = this.sessionFor(res, id);
     if (session === undefined) return;
@@ -2360,7 +2371,7 @@ export class GuiDaemon {
   /** GET /sessions?root=（T2）：root 必填（缺省 400——无 root 无法定位 dataDir）→ listSessions
    *  （TUI /resume 同源导出：id/file/updatedAt mtime 降序/firstUser 首条用户输入摘要）原样回执 */
   private handleSessions(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const root = url.searchParams.get('root');
     if (root === null || root.length === 0) {
       this.send(res, 400, { error: 'root query param required' });
@@ -2392,7 +2403,7 @@ export class GuiDaemon {
   /** GET /dirpicker?path=（T2 服务端目录选择）：path 缺省 os.homedir()；不存在/非目录 400；
    *  dirs=readdirSync withFileTypes 只目录 + 排序；parent=resolve('..')（盘根时=自身） */
   private handleDirpicker(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const abs = path.resolve(url.searchParams.get('path') ?? os.homedir());
     let st: fs.Stats;
     try {
@@ -2427,7 +2438,7 @@ export class GuiDaemon {
    *  键，项目先行拼全局）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
    *  process.env + 文件面，零副作用 */
   private handleSettingsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const rootParam = url.searchParams.get('root');
     const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
     const selfFilled = new Set(getSelfFilledSlots());
@@ -2591,7 +2602,7 @@ export class GuiDaemon {
    *  缺文件 → {content:null}（编辑器空态判据）；scope=project 必带 root（缺 400——无 root 无从定位
    *  项目文件），scope=global 忽略 root（定位恒 userConfigDir）。未知 scope/file 400。 */
   private handleSettingsRawGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const scope = url.searchParams.get('scope');
     const file = url.searchParams.get('file');
     if (scope !== 'project' && scope !== 'global') {
@@ -2699,7 +2710,7 @@ export class GuiDaemon {
    *  面同裁定：空串 root 会让装载面读 cwd 相对 .sunshinex/mcp.json，不可靠）。env 折键名列表，
    *  transport 缺省归一 stdio（mcpRow 单点） */
   private handleMcpGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const rootParam = url.searchParams.get('root');
     const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
     const globalServers = parseMcpJsonFile(path.join(userConfigDir(), 'mcp.json'));
@@ -2852,7 +2863,7 @@ export class GuiDaemon {
    *  非理论陷阱），改传保证不存在的绝对哨兵（缺目录 = 空项目级，与 loadAgentsFrom 缺目录同语义；较改
    *  loadAgentsView 加空串特判更小——subagent.ts 语义面零改动，两案取实现最小者） */
   private handleAgentsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const rootParam = url.searchParams.get('root');
     const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
     const projectRoot = root ?? path.join(os.tmpdir(), `sunshinex-agents-empty-${crypto.randomUUID()}`);
@@ -2956,7 +2967,7 @@ export class GuiDaemon {
    *  畸形 frontmatter → 400 带 parser 原文 message（清单面入 warnings 不抛死，本端点单文件直达——
    *  编辑装载是精确寻址，报错优于静默）。scope=global 恒忽略 root（定位面，PUT 同裁定） */
   private handleAgentsBodyGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const scope = url.searchParams.get('scope');
     if (scope !== 'project' && scope !== 'global') {
       this.send(res, 400, { error: 'scope must be "project" or "global"' });
@@ -2992,7 +3003,7 @@ export class GuiDaemon {
    *  project/learned 均 root 锚定缺席——空组不占位，与 /settings·/settings/mcp「无 root 仅全局面」
    *  同裁定，但 skills 的全局面是 userSkillsDir 而非 userConfigDir 文件） */
   private handleSkillsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const rootParam = url.searchParams.get('root');
     const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
     // scope=all(设置·技能页「项目筛选」视图):user 全局 + 注册项目域全枚举(project 组与 learned
@@ -3009,7 +3020,7 @@ export class GuiDaemon {
    *  只读统计（条数/最近写入，见模块级单点）；无 root = 零值（无项目上下文无记忆面——恒定形态，
    *  不 400：概览页无项目时的空态是合法呈现而非请求形态错） */
   private handleMemoryStatsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const url = urlOf(req);
     const rootParam = url.searchParams.get('root');
     const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
     this.send(res, 200, root !== undefined ? memoryStats(root) : { entries: 0, lastWriteAt: null });
