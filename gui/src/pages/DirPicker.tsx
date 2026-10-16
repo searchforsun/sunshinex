@@ -73,7 +73,7 @@ export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirP
         </button>
       </header>
       <div className="dirpicker-path" aria-label="current path">
-        {current?.path ?? (loading ? '加载中…' : '')}
+        {current?.path ?? (loading ? t('Loading…', '加载中…') : '')}
       </div>
       {error !== '' && (
         <p className="dirpicker-error" role="alert">
@@ -100,13 +100,13 @@ export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirP
             </button>
           </li>
         ))}
-        {current !== null && current.dirs.length === 0 && <li className="dir-empty">无子目录</li>}
+        {current !== null && current.dirs.length === 0 && <li className="dir-empty">{t('No subdirectories', '无子目录')}</li>}
       </ul>
       <div className="dirpicker-custom">
         <input
           aria-label="custom path"
           value={custom}
-          placeholder="或输入绝对路径"
+          placeholder={t('or type an absolute path', '或输入绝对路径')}
           onChange={(e) => setCustom(e.target.value)}
         />
         <button

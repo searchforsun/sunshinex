@@ -181,7 +181,7 @@ describe('Board:DAG 节点点击选中详情(brief 明文项)', () => {
     const detail = screen.getByLabelText('task detail');
     expect(detail.textContent).toContain('a [pending] 任务a');
     expect(detail.textContent).toContain('做 A 的活');
-    expect(detail.textContent).toContain('无依赖 · @w1');
+    expect(detail.textContent).toContain('no dependencies · @w1');
     // 切选 b:deps 箭头 + artifact 摘要(conclusion/tokens/duration)
     fireEvent.click(document.querySelector('g[data-task="b"]')!);
     const d2 = screen.getByLabelText('task detail');

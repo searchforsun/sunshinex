@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import { layoutBoard } from '../board-layout';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
+import { t } from '../i18n';
 import type { TodoItem } from '../../../src/types';
 import { DELEGATION_STATUS_TEXT } from '../tabs/AgentsTab';
 
@@ -64,7 +65,7 @@ function GateBadge(): JSX.Element {
 /** List 视图:任务行(状态色钩 task-status-<status>;gated ⚠ Badge + 行内审批) */
 function BoardList({ board, onReview }: { board: TaskBoardState; onReview: (taskId: string, approved: boolean) => void }): JSX.Element {
   const tasks = Object.values(board.tasks).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  if (tasks.length === 0) return <p className="board-empty">任务板为空——尚无任务。</p>;
+  if (tasks.length === 0) return <p className="board-empty">{t('Task board is empty — no tasks yet.', '任务板为空——尚无任务。')}</p>;
   return (
     <ul className="board-list" aria-label="task list">
       {tasks.map((t) => (
@@ -103,7 +104,7 @@ function BoardDag({
   onSelect: (taskId: string) => void;
 }): JSX.Element {
   const nodes = useMemo(() => layoutBoard(Object.values(board.tasks)), [board]);
-  if (nodes.length === 0) return <p className="board-empty">任务板为空——尚无任务。</p>;
+  if (nodes.length === 0) return <p className="board-empty">{t('Task board is empty — no tasks yet.', '任务板为空——尚无任务。')}</p>;
   const pos = new Map(nodes.map((n) => [n.id, n]));
   const maxX = Math.max(...nodes.map((n) => n.x));
   const maxY = Math.max(...nodes.map((n) => n.y));
@@ -173,8 +174,8 @@ function TaskDetail({ task }: { task: BoardTask }): JSX.Element {
         {task.gated === true && <GateBadge />}
         {` ${task.title}`}
       </header>
-      <p className="detail-spec">{task.spec !== '' ? task.spec : '(无 spec)'}</p>
-      <p className="detail-meta">{`${task.dependsOn.length > 0 ? `needs ${task.dependsOn.join(' → ')}` : '无依赖'}${
+      <p className="detail-spec">{task.spec !== '' ? task.spec : t('(no spec)', '(无 spec)')}</p>
+      <p className="detail-meta">{`${task.dependsOn.length > 0 ? `needs ${task.dependsOn.join(' → ')}` : t('no dependencies', '无依赖')}${
         task.assignee !== undefined ? ` · @${task.assignee}` : ''
       }${artifact}`}</p>
     </section>
@@ -227,7 +228,7 @@ export function Board({ board, delegations, team, onReview, onBack, todos, onOpe
       <div className="board-body">
         {todos !== undefined && todos.length > 0 && (
           <section className="board-todos" aria-label="session todos">
-            <div className="board-todos-head">会话待办</div>
+            <div className="board-todos-head">{t('Session todos', '会话待办')}</div>
             <ul className="board-todos-list">
               {todos.map((td, i) => (
                 <li key={i} className={"todo-item todo-" + td.status}>
@@ -245,7 +246,7 @@ export function Board({ board, delegations, team, onReview, onBack, todos, onOpe
         {!hasTasks && !hasSide && (todos === undefined || todos.length === 0) && (
           <div className="board-empty-state" role="status">
             <p className="board-empty-title">任务板为空</p>
-            <p className="board-empty-hint">智能体创建任务后会显示在这里。</p>
+            <p className="board-empty-hint">{t('Tasks appear here once agents create them.', '智能体创建任务后会显示在这里。')}</p>
           </div>
         )}
         {hasTasks && (
@@ -291,7 +292,7 @@ export function Board({ board, delegations, team, onReview, onBack, todos, onOpe
                           type="button"
                           className="delegation-main"
                           aria-label={`open agent ${d.label}`}
-                          data-tip="打开子代理只读转录"
+                          data-tip={t('Open agent transcript', '打开子代理只读转录')}
                           onClick={() => onOpenAgent?.(d.label, title)}
                         >
                           <span className="delegation-title">{title}</span>
