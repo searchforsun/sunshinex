@@ -88,3 +88,44 @@ describe('D30 pauseAndSend 吞错收口（判别用例）', () => {
     expect(screen.queryByText(/run in progress/)).toBeNull();
   });
 });
+
+describe('D30 欢迎页接力判别用例', () => {
+  it('接力目标提交失败 → error 条可见（submitText 单点路径,用户气泡不缺席）', async () => {
+    let snapCount = 0;
+    const sessionSubmit = vi.fn(() => Promise.reject(new Error('run in progress')));
+    const conn = {
+      sessionSnapshot: () => {
+        snapCount += 1;
+        return Promise.resolve({ messages: [], status: 'idle', board: { tasks: [] }, delegations: [], team: [], pending: [], lastSeq: 0 });
+      },
+      sessionSubmit,
+      sessionSteer: vi.fn(() => Promise.resolve()),
+      sessionInterrupt: vi.fn(() => Promise.resolve()),
+      cancelSteer: vi.fn(() => Promise.resolve()),
+      commands: vi.fn(() => Promise.resolve({ commands: [], descriptions: {}, supported: [] })),
+      sessionModel: vi.fn(() => Promise.resolve({ current: undefined, explicitDefault: false, choices: [] })),
+      setSessionModel: vi.fn(() => Promise.resolve()),
+      setSessionMode: vi.fn(() => Promise.resolve()),
+      runCommand: vi.fn(() => Promise.resolve()),
+      deleteSession: vi.fn(() => Promise.resolve()),
+      fetchDiff: vi.fn(() => Promise.resolve({ oldContent: '', newContent: '' })),
+      replyApproval: vi.fn(() => Promise.resolve()),
+      replyAsk: vi.fn(() => Promise.resolve()),
+      sessionContext: vi.fn(() => Promise.resolve({ parts: [], chainByAction: [], total: 0, window: 1, free: 1 })),
+    } as unknown as Connection;
+    render(
+      <Chat
+        conn={conn}
+        sessionId="s1"
+        connState="open"
+        onBack={() => {}}
+        sinkRef={sinkRef}
+        pendingGoal={{ root: '/w', goal: '接力的一条' }}
+        onPendingGoalDone={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getAllByText('接力的一条')[0]).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/run in progress/)).toBeTruthy());
+    expect(sessionSubmit).toHaveBeenCalledWith('s1', '接力的一条');
+  });
+});
