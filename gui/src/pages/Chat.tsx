@@ -2267,6 +2267,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const applyTitle = useCallback(
     (v: string): void => {
       setTitle(v);
+                    // 改名失败=顶栏回落 daemon 权威名(下次快照刷新),不静默改写本地
       if (typeof conn.renameSession === 'function') void conn.renameSession(sessionId, v).catch(() => undefined);
       onRenamedRef.current?.();
     },
