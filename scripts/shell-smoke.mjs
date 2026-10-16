@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * H1-T4 壳冒烟门禁：electron 启动 → 窗口 ready-to-show → 有序退，以退出码判据。
+ * H1-T4 壳冒烟门禁：electron 启动 → 页面加载完成（did-finish-load）→ 有序退，以退出码判据。
  *
- * 判据（spec H §冒烟门禁）：主进程 --shell-smoke 分支在窗口首帧（ready-to-show）后
- * 有序收口 daemon 并 app.exit(0)；15s 主进程内守卫兜任何悬挂退 1。本脚本只做三件事：
+ * 判据（spec H §冒烟门禁）：主进程 --shell-smoke 分支在 did-finish-load（加载完成——渲染器起+
+ * 静态资源服务通；首绘系 ready-to-show 事件在发布链 spawn 环境非确定，4a37557 定版改信号）后
+ * 有序收口 daemon 并 app.exit(0)；45s 主进程内守卫兜任何悬挂退 1。本脚本只做三件事：
  *   1. 前置检查构建产物四件在场（daemon 三件 + 壳主进程束 out/main.cjs；不在场不自动构建——stderr 提示命令，exit 1）；
- *   2. spawn `pnpm --filter sunshinex-shell exec electron . --shell-smoke`（cwd=仓根，stdio 继承）；
- *   3. 总超时 30s（超时杀进程树 → exit 1）；子进程退出码透传（0=过 / 非 0=败）。
+ *   2. spawn 直呼 electron.exe `--shell-smoke`（cwd=仓根，stdio 继承；pnpm bin 解析瞬态根除，7ba9486）；
+ *   3. 总超时 90s（超时杀进程树 → exit 1）；子进程退出码透传（0=过 / 非 0=败）。
  */
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
