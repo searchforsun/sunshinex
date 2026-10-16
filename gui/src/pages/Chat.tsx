@@ -21,7 +21,7 @@ import { Mermaid } from '../Mermaid';
 import { CommandPalette, filterCommands } from '../CommandPalette';
 import { ContextRing } from '../context-ring';
 import { EffortChip, EffortSlider } from '../effort-slider';
-import { fmtTokens as fmtTokensShared, shortClockMs } from '../ui-util';
+import { fmtTokens as fmtTokensShared, pathBasename, shortClockMs } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import type { Connection, ConnectionState, DiffResp, GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent, TodoItem } from '../../../src/types';
@@ -332,7 +332,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
 /** 文件行拆分(G14.8):basename + 所在目录(恒显,根目录 = './')——文件名后永远看得到位置 */
 function fileLabelOf(path: string): { base: string; dir: string } {
   const norm = path.replace(/\\/g, '/');
-  const base = norm.split('/').pop() ?? norm;
+  const base = pathBasename(norm);
   const dir = norm.slice(0, norm.length - base.length);
   return { base, dir }; // 根目录文件 dir = ''(名称即相对路径,不重复显示)
 }
@@ -1451,7 +1451,7 @@ function fmtTokens(n: number): string {
  *  空值回落「默认模型」。欢迎页同口径消费(G13 反馈轮导出) */
 export function baseModelName(id: string | undefined): string {
   if (id === undefined || id === '') return t('default model', '默认模型');
-  return id.split('/').pop() || id;
+  return pathBasename(id);
 }
 
 /** run 状态行(G11 §1.2):streaming=Working(旋转环+1s tick+会话 tokens);封段=✓ Worked for Xs 淡灰
@@ -1932,7 +1932,7 @@ function RunChangesBar({
         <div className="run-changes-list">
           {visible.map((c) => {
             const norm = c.path.replaceAll('\\', '/');
-            const base = norm.split('/').pop() ?? norm;
+            const base = pathBasename(norm);
             const dir = norm.slice(0, norm.length - base.length);
             return (
               <div key={c.path} className="run-changes-row">
@@ -2124,7 +2124,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       if (picked !== undefined) return picked;
       const files = filesCacheRef.current?.files;
       if (files !== undefined) {
-        const hit = files.find((f) => (f.split('/').pop() ?? f) === name);
+        const hit = files.find((f) => (pathBasename(f)) === name);
         if (hit !== undefined) return hit;
       }
       return undefined;
@@ -2932,7 +2932,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       const token = tk.text.slice(1);
       const anchor = /^(.*):(L\d+(?:-L\d+)?)$/.exec(token);
       const name = anchor !== null ? anchor[1] : token;
-      const rel = resolveFileRef(name.split('/').pop() ?? name) ?? (name.includes('/') ? name : undefined);
+      const rel = resolveFileRef(pathBasename(name)) ?? (name.includes('/') ? name : undefined);
       if (rel !== undefined) onOpenFile(rel);
       return;
     }
@@ -3393,7 +3393,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               const rel = items[Math.min(filePalActive, items.length - 1)];
               // G14.126 选中只插短写 @文件名(输入框显形=图标+文件名);相对路径记入账本,
               // 发送期 expandFileRefs 据此展开为 md 绝对链接;按 @token 区间替换
-              const base = rel.split('/').pop() ?? rel;
+              const base = pathBasename(rel);
               pickRelRef.current.set(base, rel);
               const atFrom = filePal?.from ?? caret - (atMatch?.[1]?.length ?? 0) - 1;
               const atEnd = atFrom + 1 + (filePal?.query ?? '').length;
@@ -3505,7 +3505,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               onHover={setFilePalActive}
               onPick={(p) => {
                 // G14.126 选中只插短写 @文件名,相对路径记入账本(发送期展开)
-                const base = p.split('/').pop() ?? p;
+                const base = pathBasename(p);
                 pickRelRef.current.set(base, p);
                 const atFrom = filePal.from;
                 const atEnd = atFrom + 1 + filePal.query.length;

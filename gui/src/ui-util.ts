@@ -25,6 +25,12 @@ export function fmtTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
 }
 
+/** 路径 basename 单点（D34 口径收敛）：双分隔符归一（Windows 反斜杠/POSIX 斜杠）、
+ *  空段滤除、无分隔符原样返回——daemon 下发 POSIX 相对路径与 Windows 绝对路径两面同源。 */
+export function pathBasename(p: string): string {
+  return p.split(/[\\/]+/).filter(Boolean).pop() ?? p;
+}
+
 /** ISO 时刻 → 本地短时刻(创建时间回溯面):'2026-10-11T05:24:29.123Z' → '10-11 13:24' */
 export function shortLocalTime(iso: string): string {
   const d = new Date(iso);

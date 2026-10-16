@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { pathBasename } from '../ui-util';
 import { ChevronDown, ChevronUp, RefreshCw, Upload, GitCommitVertical } from 'lucide-react';
 import { DiffLines } from '../diff-lines';
 import { FileIcon } from '../file-icon';
@@ -34,7 +35,7 @@ interface ChangeFile {
 /** 目录后缀拆分(名称+所在目录,与文件面板同构) */
 function splitPath(p: string): { base: string; dir: string } {
   const norm = p.replaceAll('\\', '/');
-  const base = norm.split('/').pop() ?? norm;
+  const base = pathBasename(norm);
   return { base, dir: norm.slice(0, norm.length - base.length) };
 }
 

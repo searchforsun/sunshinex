@@ -9,3 +9,10 @@ declare module '@iconify-json/vscode-icons/icons.json' {
   const value: Record<string, unknown>;
   export default value;
 }
+
+/** 桌面壳桥（D33 单点声明：shell main 经 contextBridge 注入；浏览器态缺席） */
+interface Window {
+  sunshinex?: {
+    pickFolder?: () => Promise<string | null>;
+  };
+}

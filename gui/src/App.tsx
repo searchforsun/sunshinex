@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
 import { GitBranch, ArrowUp, ChevronDown, GitCompare, MessageCircle, Folder, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
+import { pathBasename } from './ui-util';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import type { TodoItem } from '../../src/types';
@@ -296,7 +297,7 @@ function WelcomeComposer({
     const g = expandFileRefs(goal, target, (name) => {
       const picked = pickRelRef.current.get(name);
       if (picked !== undefined) return picked;
-      return filePalFiles.find((f) => (f.split('/').pop() ?? f) === name);
+      return filePalFiles.find((f) => (pathBasename(f)) === name);
     }).trim();
     if (g === '' || target === '' || busy) return;
     setBusy(true);
@@ -314,7 +315,7 @@ function WelcomeComposer({
         setError(err instanceof Error ? err.message : String(err));
       });
   };
-  const baseName = (p: string): string => p.split(/[\\/]+/).filter(Boolean).pop() || p;
+  const baseName = pathBasename;
   /** G14.34:默认锚点统一显示「默认工作区」(default/sunshinex-default*带尾哈希变体同义) */
   const isDefaultPicked = picked !== '' && (() => {
     const nm = baseName(picked);
@@ -370,7 +371,7 @@ function WelcomeComposer({
    *  workspace.json 同 root 直返 ok)。 */
   const browseFolder = async (): Promise<void> => {
     setHint('');
-    const shell = (window as unknown as { sunshinex?: { pickFolder?: () => Promise<string | null> } }).sunshinex;
+    const shell = window.sunshinex;
     if (typeof shell?.pickFolder === 'function') {
       const p = await shell.pickFolder();
       if (p === null) return;
@@ -619,7 +620,7 @@ function WelcomeComposer({
                 e.preventDefault();
                 const rel = items[Math.min(filePalActive, items.length - 1)];
                 // G14.126 选中只插短写 @文件名(显形=图标+文件名),相对路径记账供发送期展开
-                const base = rel.split('/').pop() ?? rel;
+                const base = pathBasename(rel);
                 pickRelRef.current.set(base, rel);
                 const atFrom = filePal.from;
                 const atEnd = atFrom + 1 + filePal.query.length;
@@ -737,7 +738,7 @@ function WelcomeComposer({
                 onHover={setFilePalActive}
                 onPick={(p) => {
                   // G14.126 选中只插短写 @文件名,相对路径记账供发送期展开
-                  const base = p.split('/').pop() ?? p;
+                  const base = pathBasename(p);
                   pickRelRef.current.set(base, p);
                   const atFrom = filePal.from;
                   const atEnd = atFrom + 1 + filePal.query.length;

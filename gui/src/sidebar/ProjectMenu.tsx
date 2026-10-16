@@ -350,7 +350,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  目录(旧按 name 在 projectsRoot 下 mkdir 的行为废除)。登记后回欢迎页预选该项目。 */
   const pickAndAdd = (): void => {
     setActionError('');
-    const shell = (window as unknown as { sunshinex?: { pickFolder?: () => Promise<string | null> } }).sunshinex;
+    const shell = window.sunshinex;
     if (typeof shell?.pickFolder === 'function') {
       void shell.pickFolder().then((p) => {
         if (p === null) return;

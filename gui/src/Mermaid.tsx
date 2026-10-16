@@ -66,6 +66,8 @@ const mermaidReady: Promise<typeof import('mermaid') | undefined> = import('merm
 const svgCache = new Map<string, string>();
 const cacheKey = (theme: string, chart: string): string => `${theme}\u0000${chart}`;
 /** 测试钩子:缓存是模块态,用例间清空以复现 pending/现渲路径 */
+const RENDER_TIMEOUT_MS = 5_000; // mermaid 渲染超时(D33 具名):到点回落原文代码块
+
 export function mermaidCacheClear(): void {
   svgCache.clear();
 }
@@ -120,7 +122,7 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
         const mermaid = mod.default;
         // look 钉 classic:v12 默认 neo 给节点画挤出式重影边(用户视为边框 bug)
         mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
-        const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), 5_000));
+        const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
         const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
         if (alive) {
           if (svgCache.size >= 200) svgCache.clear();
