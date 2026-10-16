@@ -202,6 +202,7 @@ function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOp
           },
           () => undefined,
         )
+          // 轮询失败按计数保持降级(顶栏徽标非权威数据,下一拍重拉)
         .catch(() => undefined);
     };
     poll();
@@ -2388,6 +2389,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           onPendingGoalDoneRef.current?.();
           // G14.213 走 submitText 单点(命令门控随行):欢迎页 /命令 目标建会话后按 supported
           // 清单走命令通道,skills/普通文本照文本提交——此前裸 sessionSubmit,/命令全成纯文本
+          // 外层吞错属良性:submitText 内部已倒 error 条(失败可见),此处仅吸收 rejection 形态
           submitTextRef.current(pg.goal).catch(() => undefined);
         }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
@@ -2870,6 +2872,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setInput('');
     // fire-and-forget 语义不变:错误面已在 submitText 内倒 error 条;显式吞 rethrow——纯 `void`
     // 不消化 rejection,会留 unhandled rejection(改动前 rejection 被 req.catch 全消费)
+      // 补全路径命令执行失败=无输出行(可重试);错误条可见化由主提交路径承担
     submitText(text).catch(() => undefined);
   };
 
@@ -3210,6 +3213,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
                   data-tip={t('Edit in input box', '放回输入框编辑')}
                   onClick={() => {
                     setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
+                    // cancel 失败=daemon 队列保留原条目,下次 refreshQueued 重拉自纠(行重现可再操作)
+                    // 删除同理:本地即消,daemon 侧残留由 refreshQueued 重拉自纠
                     conn.cancelSteer(sessionId, q.seq).catch(() => {});
                     setInput(q.text);
                   }}
