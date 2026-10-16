@@ -1,15 +1,24 @@
 import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { SessionRuntime } from './session';
 import type { SnapshotPendingRow } from './session';
 import type { Result } from '../result';
-import type { DaemonFrame, PendingEntry } from './daemon-wire';
+import { parseAskAnswer, urlOf, type DaemonFrame, type PendingEntry } from './daemon-wire';
 import type { ModelAdapter } from '../model/adapter';
-import { listAnchors, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { createRuntime } from '../tui/runtime';
+
+/** sidecar 问询墙钟上限（fork/ask 旁车一次性调用，与主链长任务预算解耦） */
+const FORK_ABORT_TIMEOUT_MS = 180_000;
+
+/** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
+const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
+import { branchFrom, listAnchors, listSessions, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta, type SessionSidecarMeta } from '../tui/session-journal';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
-import { resolveDataDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir } from '../config/data-dir';
 
 /** 会话控制面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：submit/interrupt/steer 族/reset/snapshot/
  *  anchors/tier/effort/model/mode/command/tasks/context/board-review/rename/title/attach——类状态
@@ -30,9 +39,12 @@ export interface SessionHandlerIo {
   sessions: Map<string, SessionRuntime>;
   denyPendingFor(sessionId: string): void;
   broadcastFrame(frame: DaemonFrame): void;
-  pending: ReadonlyMap<string, PendingEntry>;
+  pending: Map<string, PendingEntry>;
   model: ModelAdapter;
   attach(id: string, journalId: string): Result<{ sessionId: string }>;
+  createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }>;
+  defaultScratchRoot(): string;
+  noticePending(entry: PendingEntry, text: string): void;
 }
 
 export async function handleSubmit(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
@@ -355,4 +367,250 @@ export async function handleAttach(io: SessionHandlerIo, req: http.IncomingMessa
     return;
   }
   io.send(res, 200, { ok: true, sessionId: r.value.sessionId });
+}
+
+export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const rootRaw = (parsed.body as { root?: unknown } | null)?.root;
+  if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
+    io.send(res, 400, { error: ROOT_REQUIRED_HINT });
+    return;
+  }
+  let root: string = rootRaw;
+  // default 工作区语义(G10 用户裁定 + G14.10 B 方案):root='default' = 非文件类任务与对话的
+  // 缺省落点——锚定专用临时目录 <tmp>/sunshinex-default(用户裁定:临时任务的文件不再落仓库);
+  // 目录缺场即建,注册表扫描自然纳入
+  if (root === 'default') {
+    root = io.defaultScratchRoot();
+    const sunshine = path.join(root, 'SUNSHINE.md');
+    if (!fs.existsSync(sunshine)) {
+      fs.writeFileSync(sunshine, '# default\n\nDefault workspace for non-file tasks and conversations.\n', 'utf8');
+    }
+  }
+  const mode = (parsed.body as { mode?: unknown } | null)?.mode;
+  // G5 白名单收紧：undefined|'dontAsk'|'manual' 之外一律 400 恒定文案（此前静默按 dontAsk 装配——
+  //  传 mode:'auto' 的客户端拿到的是 dontAsk 会话，审批行为与预期不符且无提示）
+  if (mode !== undefined && mode !== 'manual' && mode !== 'dontAsk') {
+    io.send(res, 400, { error: 'invalid mode' });
+    return;
+  }
+  const r = io.createSession(root, mode === 'manual' ? { mode: 'manual' } : undefined);
+  if (!r.ok) {
+    io.send(res, 400, { error: r.error.message });
+    return;
+  }
+  io.send(res, 200, { ok: true, sessionId: r.value.sessionId });
+}
+
+export async function handleApprovalReply(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const decision = (parsed.body as { decision?: unknown } | null)?.decision;
+  if (decision !== 'allow' && decision !== 'always' && decision !== 'deny') {
+    io.send(res, 400, { error: 'decision must be one of: allow, always, deny' });
+    return;
+  }
+  const entry = io.pending.get(pid);
+  if (entry === undefined || entry.kind !== 'approval') {
+    io.send(res, 404, { error: 'unknown pending approval' });
+    return;
+  }
+  io.pending.delete(pid);
+  entry.resolve(decision);
+  io.noticePending(entry, `approval ${pid} resolved: ${decision}`);
+  io.send(res, 200, { ok: true });
+}
+
+export async function handleAskReply(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const answer = parseAskAnswer((parsed.body as { answer?: unknown } | null)?.answer);
+  if (answer === null) {
+    io.send(res, 400, { error: 'invalid answer: expected {type:"selected",labels} | {type:"custom",text} | {type:"dismissed"}' });
+    return;
+  }
+  const entry = io.pending.get(pid);
+  if (entry === undefined || entry.kind !== 'ask') {
+    io.send(res, 404, { error: 'unknown pending ask' });
+    return;
+  }
+  io.pending.delete(pid);
+  entry.resolve(answer);
+  io.noticePending(entry, `ask ${pid} answered`);
+  io.send(res, 200, { ok: true });
+}
+
+export async function handleSessionBtw(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+  if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const question = (parsed.body as { question?: unknown }).question;
+  if (typeof question !== 'string' || question.trim() === '') return io.send(res, 400, { error: 'invalid question' });
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  const srcId = session.attachedJournalId;
+  if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
+  const dataDir = resolveDataDir(session.root);
+  let forkId: string;
+  try {
+    const journal = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl'));
+    forkId = branchFrom(dataDir, srcId, journal.lines.length, 'fork');
+  } catch (err) {
+    return io.send(res, 500, { error: 'fork failed: ' + String((err as Error).message) });
+  }
+  writeSessionMeta(dataDir, forkId, { side: true });
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), FORK_ABORT_TIMEOUT_MS);
+  const rt = createRuntime({ root: session.root, model: io.model, onEvent: () => {} });
+  try {
+    rt.harness.context.appendInstructionLine(question);
+    const outcome = await rt.runTask(question, { signal: abort.signal });
+    io.send(res, 200, { ok: true, reply: outcome?.reply ?? '', sessionId: forkId });
+  } catch (err) {
+    io.send(res, 503, { error: err instanceof Error ? err.message : String(err), sessionId: forkId });
+  } finally {
+    clearTimeout(timer);
+    void rt.harness.mcpClose?.().catch(() => undefined);
+  }
+}
+
+export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'rewind' | 'fork'): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const turn = (parsed.body as { turn?: unknown }).turn;
+  if (typeof turn !== 'number' || !Number.isInteger(turn) || turn < 1) return io.send(res, 400, { error: 'invalid turn' });
+  const side = (parsed.body as { side?: unknown }).side === true; // G14.29:辅助会话标记(列表滤除)
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  if (session.status() === 'running') return io.send(res, 409, { error: 'session is running' });
+  const srcId = session.attachedJournalId;
+  if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
+  const dataDir = resolveDataDir(session.root);
+  let cutLine: number;
+  if (side) {
+    // G14.29 辅助 fork:整档继承(上下文完整),turn 不参与寻址
+    cutLine = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')).lines.length;
+  } else {
+    const anchors = listAnchors(parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')));
+    const anchor = anchors[turn - 1];
+    if (anchor === undefined) return io.send(res, 400, { error: 'no such turn' });
+    cutLine = anchor.line - 1; // 锚点行不进新档(规格 §5.2)
+  }
+  let newId: string;
+  try {
+    newId = branchFrom(dataDir, srcId, cutLine, kind);
+  } catch (err) {
+    return io.send(res, 500, { error: 'branch failed: ' + String((err as Error).message) });
+  }
+  if (kind === 'fork') {
+    if (side) writeSessionMeta(dataDir, newId, { side: true });
+    const created = io.createSession(session.root);
+    if (!created.ok) return io.send(res, 500, { error: created.error.message });
+    const ar = io.attach(created.value.sessionId, newId);
+    if (!ar.ok) return io.send(res, 500, { error: ar.error.message });
+    return io.send(res, 200, { ok: true, sessionId: created.value.sessionId, turn });
+  }
+  const rr = io.attach(id, newId);
+  if (!rr.ok) return io.send(res, 500, { error: rr.error.message });
+  io.send(res, 200, { ok: true, sessionId: id, turn });
+}
+
+export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerResponse): void {
+  type RecentRow = {
+    id: string; updatedAt: number; firstUser?: string; root: string; slug: string;
+  } & Partial<Pick<SessionSidecarMeta, 'title' | 'runs' | 'steps' | 'tokens' | 'seconds' | 'cacheTokens' | 'promptTokens' | 'childTokens' | 'ctxUsed' | 'ctxWindow' | 'model' | 'effort'>> & { createdAt?: string; liveSessionId?: string };
+  const out: RecentRow[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
+  } catch {
+    io.send(res, 200, out);
+    return;
+  }
+  const liveByJournal = liveSessionByJournal(io.sessions); // G14.52:行附活跃会话 id(运行圆点直比)
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dataDir = path.join(projectsRoot(), ent.name, 'data');
+    let root: string | undefined;
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
+      if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
+    } catch {
+      root = undefined;
+    }
+    if (root === undefined) {
+      // G14.96 历史档降级:workspace.json 缺失(TUI 时代档/落档失败)但 slug 含默认锚点名
+      // → 视为默认工作区(root 回锚定路径,attach 可用),不再被过滤出 RECENTS;
+      // 非默认命名维持跳过(项目会话归 PROJECTS 各组,组列表由 /workspaces 承载)
+      if (!ent.name.includes('sunshinex-default')) continue;
+      root = path.join(os.tmpdir(), 'sunshinex-default');
+    }
+    const isDefaultWs = (root: string): boolean => {
+      const base = root.split(/[\\/]+/).filter(Boolean).pop() ?? '';
+      return base === 'default' || base.startsWith('sunshinex-default');
+    };
+    for (const r of listSessions(dataDir)) {
+      if (!isDefaultWs(root)) continue; // G14.35:RECENTS 只收默认锚点工作区(非项目会话的家;项目会话归各组)
+      out.push({
+        id: r.id,
+        updatedAt: r.updatedAt,
+        ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
+        ...(r.title !== undefined ? { title: r.title } : {}),
+        ...(r.runs !== undefined ? { runs: r.runs } : {}),
+        ...(r.steps !== undefined ? { steps: r.steps } : {}),
+        ...(r.tokens !== undefined ? { tokens: r.tokens } : {}),
+        ...(r.seconds !== undefined ? { seconds: r.seconds } : {}),
+        ...(r.cacheTokens !== undefined ? { cacheTokens: r.cacheTokens } : {}),
+        ...(r.promptTokens !== undefined ? { promptTokens: r.promptTokens } : {}),
+        ...(r.childTokens !== undefined ? { childTokens: r.childTokens } : {}),
+        ...(r.ctxUsed !== undefined ? { ctxUsed: r.ctxUsed } : {}),
+        ...(r.ctxWindow !== undefined ? { ctxWindow: r.ctxWindow } : {}),
+        ...(r.model !== undefined ? { model: r.model } : {}),
+        ...(r.effort !== undefined ? { effort: r.effort } : {}),
+        ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),
+        root,
+        slug: ent.name,
+        ...(liveByJournal.get(r.id) !== undefined ? { liveSessionId: liveByJournal.get(r.id) } : {}),
+      });
+    }
+  }
+  out.sort((a, b) => b.updatedAt - a.updatedAt);
+  io.send(res, 200, out.slice(0, 20));
+}
+
+export function handleSessions(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const url = urlOf(req);
+  const root = url.searchParams.get('root');
+  if (root === null || root.length === 0) {
+    io.send(res, 400, { error: 'root query param required' });
+    return;
+  }
+  // G14.52:行附 liveSessionId(journal ↔ 活跃会话反查)——GUI 侧栏行运行圆点直比会话 id,
+  // 不再依赖 attach 时的本地映射(新建会话首条 append 前无 journal id,映射缺位圆点不亮)
+  const liveByJournal = liveSessionByJournal(io.sessions);
+  const rows = listSessions(resolveDataDir(root)).map((r) => {
+    const live = liveByJournal.get(r.id);
+    return live !== undefined ? { ...r, liveSessionId: live } : r;
+  });
+  io.send(res, 200, rows);
+}
+
+export function liveSessionByJournal(sessions: Map<string, SessionRuntime>): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const s of sessions.values()) {
+    if (s.status() !== 'running') continue;
+    const jid = s.attachedJournalId;
+    if (jid !== undefined) m.set(jid, s.id);
+  }
+  return m;
 }
