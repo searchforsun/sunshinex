@@ -15,11 +15,10 @@ import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest }
 import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, reduceJournal, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import type { SessionSidecarMeta } from '../tui/session-journal';
 import { listCommands } from './commands';
-import { MemoryStore } from '../harness/memory/store';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
-import { resolveDataDir, projectsRoot, projectSlug } from '../config/data-dir';
+import { resolveDataDir, projectsRoot } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -34,6 +33,10 @@ import { validSessionId } from './session-handlers';
 import * as sessionHandlers from './session-handlers';
 import type { SessionHandlerIo } from './session-handlers';
 import * as fileHandlers from './file-handlers';
+import * as workspaceHandlers from './workspace-handlers';
+import type { WorkspaceHandlerIo } from './workspace-handlers';
+import * as ptyHandlers from './pty-handlers';
+import type { PtyHandlerIo } from './pty-handlers';
 import type { FileHandlerIo } from './file-handlers';
 import {
   GUI_ASSETS_HINT,
@@ -1003,131 +1006,6 @@ export class GuiDaemon {
   /** POST /workspace/locate {token, roots?}(G14.69 原生选择定位):浏览器 File System Access
    *  只回目录名不回路径——GUI 在用户所选目录写一枚标记文件,daemon 从各盘根 BFS 找同名标记文件,
    *  所在目录即所选文件夹绝对路径。roots 覆写供测试/加速;超时/未找到回 path:null(GUI 回退自建浏览) */
-  private async handleWorkspaceLocate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const body = parsed.body as { token?: unknown; roots?: unknown };
-    const token = typeof body.token === 'string' ? body.token : '';
-    if (token.length < 8) return this.send(res, 400, { error: 'invalid token' });
-    const roots = Array.isArray(body.roots) && body.roots.every((r) => typeof r === 'string') && body.roots.length > 0
-      ? (body.roots as string[]).map((r) => path.resolve(r))
-      : this.systemScanRoots();
-    const found = await this.walkForMarker(roots, token, 20_000);
-    this.send(res, 200, { path: found });
-  }
-
-  /** 系统扫描根(Windows=各盘根;其余平台家目录);盘符探测 C..Z 存在即入列 */
-  private systemScanRoots(): string[] {
-    if (process.platform !== 'win32') return [os.homedir()];
-    const roots: string[] = [];
-    for (let i = 67; i <= 90; i += 1) {
-      const drive = `${String.fromCharCode(i)}:\\`;
-      if (fs.existsSync(drive)) roots.push(drive);
-    }
-    return roots.length > 0 ? roots : [os.homedir()];
-  }
-
-  /** 多根 BFS 找标记文件(标记文件名=token):单次 readdir 即判本目录是否命中;噪声目录
-   *  (系统/程序目录/node_modules/$ 开头)剪枝,深度 ≤10,整体限时;命中即返绝对路径 */
-  private async walkForMarker(roots: string[], token: string, capMs: number): Promise<string | null> {
-    const deadline = Date.now() + capMs;
-    const skip = new Set([
-      'windows', 'program files', 'program files (x86)', 'programdata', 'appdata',
-      '$recycle.bin', 'system volume information', '$windows.~bt', 'recovery', 'perflogs',
-      'node_modules', '.git',
-    ]);
-    const queue: Array<{ dir: string; depth: number }> = roots.map((r) => ({ dir: r, depth: 0 }));
-    while (queue.length > 0) {
-      if (Date.now() > deadline) return null;
-      const { dir, depth } = queue.shift()!;
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        continue; // 无权限/系统占用——跳过
-      }
-      for (const ent of entries) {
-        if (ent.isFile() && ent.name === token) return dir;
-      }
-      if (depth >= 10) continue;
-      for (const ent of entries) {
-        if (!ent.isDirectory()) continue;
-        const name = ent.name.toLowerCase();
-        if (name.startsWith('$') || skip.has(name)) continue;
-        queue.push({ dir: path.join(dir, ent.name), depth: depth + 1 });
-      }
-    }
-    return null;
-  }
-
-  private async handleWorkspaceCreate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-    const body = parsed.body as { name?: unknown; path?: unknown };
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const extPath = typeof body.path === 'string' ? path.resolve(body.path) : '';
-    let root: string;
-    if (extPath !== '') {
-      let st: fs.Stats;
-      try {
-        st = fs.statSync(extPath);
-      } catch {
-        return this.send(res, 400, { error: 'path does not exist' });
-      }
-      if (!st.isDirectory()) return this.send(res, 400, { error: 'path is not a directory' });
-      root = extPath;
-    } else {
-      if (name === '' || /[\\/:*?"<>|]/.test(name)) return this.send(res, 400, { error: 'invalid project name' });
-      root = path.join(projectsRoot(), name);
-      fs.mkdirSync(root, { recursive: true });
-    }
-    const dataDir = path.join(projectsRoot(), projectSlug(root), 'data');
-    const wsFile = path.join(dataDir, 'workspace.json');
-    if (fs.existsSync(wsFile)) {
-      try {
-        const raw = JSON.parse(fs.readFileSync(wsFile, 'utf8')) as { root?: unknown };
-        if (raw?.root === root) return this.send(res, 200, { ok: true, root, slug: projectSlug(root) });
-      } catch {
-        // 坏档:按新初始化覆写
-      }
-    }
-    fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
-    fs.writeFileSync(wsFile, JSON.stringify({ root }, null, 2));
-    this.send(res, 200, { ok: true, root, slug: projectSlug(root) });
-  }
-
-  /** POST /memory/rm {root, slugs}(G10-C1d):记忆删除(记忆面板多选;root 寻址与 TUI /memory-rm 同形) */
-  private async handleMemoryRm(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    {
-      const parsed = await this.readJson(req);
-      if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-      const body = parsed.body as { root?: unknown; slugs?: unknown };
-      if (typeof body.root !== 'string' || body.root.length === 0 || !Array.isArray(body.slugs) || body.slugs.some((x) => typeof x !== 'string')) {
-        return this.send(res, 400, { error: 'root and slugs required' });
-      }
-      const store = new MemoryStore(body.root);
-      const removed: string[] = [];
-      const failed: Array<{ slug: string; error: string }> = [];
-      for (const slug of body.slugs as string[]) {
-        const r = store.remove(slug);
-        if (r.ok) removed.push(slug);
-        else failed.push({ slug, error: r.error.message });
-      }
-      this.send(res, 200, { removed, failed });
-    }
-  }
-
-  /** GET /memory?root=(G10-C6 记忆面板):清单(slug/type/created/modified/description) */
-  private handleMemoryList(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const root = url.searchParams.get('root');
-    if (root === null || root.length === 0) return this.send(res, 400, { error: 'root query param required' });
-    // G14.147 body 一并返回(记忆页详情展开;记录体量小,清单直带全文)
-    const rows = new MemoryStore(root).list().map((m) => ({
-      slug: m.slug, type: m.type, created: m.created, modified: m.modified, description: m.description, body: m.body,
-    }));
-    this.send(res, 200, rows);
-  }
 
   /** POST /session/:id/rewind|fork {turn}(G10-C1d):1-based 轮锚点;不可变分档(branchFrom,源档零改动)。
    *  rewind=本会话切到新档(attach 重播种,原时间线保留可 /resume);fork=新会话分叉,源会话不动 */
@@ -1245,97 +1123,17 @@ export class GuiDaemon {
    *  powershell.exe / 其余 process.env.SHELL ?? /bin/bash）→ PtyManager.spawn（cwd=session.root、
    *  owner=:id、env 继承 process.env）→ 200 {ptyId}（`pty-<n>` 单调永不复用）。T5/T6 拿 ptyId 连
    *  `/session/:id/pty/:ptyId` 专用 WS 升级路径（本文件 attachWs 分支） */
-  private async handlePtyAlloc(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const body = parsed.body as { cols?: unknown; rows?: unknown } | null;
-    const cols = body?.cols ?? 80;
-    const rows = body?.rows ?? 24;
-    if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 1 || typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
-      this.send(res, 400, { error: 'cols and rows must be positive integers' });
-      return;
-    }
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    this.ptySeq += 1;
-    const ptyId = `pty-${this.ptySeq}`;
-    const file = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
-    this.ptyManager.spawn(ptyId, {
-      file,
-      args: [],
-      cwd: session.root,
-      cols,
-      rows,
-      owner: session.id,
-      env: process.env as Record<string, string>,
-    });
-    this.send(res, 200, { ptyId });
-  }
 
   /** DELETE /session/:id/pty/:ptyId（G8b T3 kill 面）：PtyManager.kill 幂等（无此 id 静默）——重复
    *  DELETE / 自然退出后再删均 200 {ok:true}；kill 同步注销（has→false 立即），exit 帧异步送达在线
    *  pty WS。会话解析先行（未知 :id 404，sessionFor 单点——路由面会话维语义一致性）。
    *  G8e-T4 归属校验：条目在但 owner ≠ :id → 404 'pty not found for session'（跨会话删他人终端
    *  拒绝且不误杀）；条目不在 → 200 幂等面维持（kill 幂等语义不因校验收紧而回退） */
-  private handlePtyKill(res: http.ServerResponse, id: string, ptyId: string): void {
-    const session = this.sessionFor(res, id);
-    if (session === undefined) return;
-    const owner = this.ptyManager.ownerOf(ptyId);
-    if (owner !== undefined && owner !== session.id) {
-      this.send(res, 404, { error: 'pty not found for session' });
-      return;
-    }
-    this.ptyManager.kill(ptyId);
-    this.send(res, 200, { ok: true });
-  }
 
   /** GET /workspaces（T2）：扫 projectsRoot() 下各 `<slug>/data` 存在者——root 经 workspace.json
    *  反解（历史工作区无档 → slug-only 行不可 attach）；mtime=dataDir mtime；sessionCount=sessions
    *  子目录 jsonl 计数（缺目录=0）。行序 mtime 降序（最近工作区在前，首页呈现序）；单目录/单档的
    *  扫描竞态（readdir 与 stat 之间被删）跳过该条目，不击穿整个列表 */
-  private handleWorkspaces(res: http.ServerResponse): void {
-    const rows: WorkspaceRow[] = [];
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
-    } catch {
-      // projects 根不存在/不可读：空注册表（合法态——从未建过会话）
-      this.send(res, 200, rows);
-      return;
-    }
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      const dataDir = path.join(projectsRoot(), ent.name, 'data');
-      let st: fs.Stats;
-      try {
-        st = fs.statSync(dataDir);
-      } catch {
-        continue;
-      }
-      if (!st.isDirectory()) continue;
-      let root: string | undefined;
-      try {
-        const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
-        if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
-      } catch {
-        // 历史工作区无档/坏档 → slug-only（root undefined，前端不可 attach）
-      }
-      if (root === undefined && ent.name.includes('sunshinex-default')) {
-        // G14.96 默认锚点历史档降级:slug 自证身份,root 回锚定路径(可 attach/可开回)
-        root = path.join(os.tmpdir(), 'sunshinex-default');
-      }
-      // G14.32:计数与列表同源(listSessions——side 辅助会话滤除),徽标不再虚高
-      // G14.165 回退:注册表恒全量(欢迎页项目下拉要能选到刚建 0 会话的工作区);
-      // 0 会话残渣的隐藏归 GUI 侧栏渲染层(sessionCount>0 门)
-      const sessionCount = listSessions(dataDir).length;
-      rows.push({ ...(root !== undefined ? { root } : {}), slug: ent.name, mtime: st.mtimeMs, sessionCount });
-    }
-    rows.sort((a, b) => b.mtime - a.mtime);
-    this.send(res, 200, rows);
-  }
 
   /** GET /sessions/recent(G10-C2):跨工作区扁平最近会话(侧栏 Recents 区数据源)——遍历注册表
    *  逐 dataDir listSessions 归并,updatedAt 降序取前 20;每条附 root/slug(attach 两步寻址用) */
@@ -1436,33 +1234,6 @@ export class GuiDaemon {
 
   /** GET /dirpicker?path=（T2 服务端目录选择）：path 缺省 os.homedir()；不存在/非目录 400；
    *  dirs=readdirSync withFileTypes 只目录 + 排序；parent=resolve('..')（盘根时=自身） */
-  private handleDirpicker(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const abs = path.resolve(url.searchParams.get('path') ?? os.homedir());
-    let st: fs.Stats;
-    try {
-      st = fs.statSync(abs);
-    } catch {
-      this.send(res, 400, { error: `path does not exist: ${abs}` });
-      return;
-    }
-    if (!st.isDirectory()) {
-      this.send(res, 400, { error: `path is not a directory: ${abs}` });
-      return;
-    }
-    let dirs: string[];
-    try {
-      dirs = fs
-        .readdirSync(abs, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name)
-        .sort();
-    } catch {
-      this.send(res, 400, { error: `path is not readable: ${abs}` });
-      return;
-    }
-    this.send(res, 200, { path: abs, parent: path.resolve(abs, '..'), dirs });
-  }
 
 
   // ---------- D31 分域拆分：配置面处理器迁 config-handlers.ts（io 注入 send/readJson/
@@ -1565,6 +1336,57 @@ export class GuiDaemon {
       send: (res, status, body) => this.send(res, status, body),
       sessionFor: (res, id) => this.sessionFor(res, id),
     };
+  }
+
+  // ---------- D31 批3 分域：工作区面迁 workspace-handlers.ts（io 两面）、pty 面迁 pty-handlers.ts
+  //  （io 五面，ptyId 铸造经 nextPtyId 回调持守类内单调 seq）、memory 两处理器并入 config-handlers ——
+  //  本类保留路由表与薄委托，行为零变化（daemon.test 为锚） ----------
+  private get workspaceIo(): WorkspaceHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      readJson: (req) => this.readJson(req),
+    };
+  }
+
+  private get ptyIo(): PtyHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      readJson: (req) => this.readJson(req),
+      sessionFor: (res, id) => this.sessionFor(res, id),
+      ptyManager: this.ptyManager,
+      nextPtyId: () => `pty-${(this.ptySeq += 1)}`,
+    };
+  }
+  private async handleWorkspaceLocate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await workspaceHandlers.handleWorkspaceLocate(this.workspaceIo, req, res);
+  }
+
+  private async handleWorkspaceCreate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await workspaceHandlers.handleWorkspaceCreate(this.workspaceIo, req, res);
+  }
+
+  private handleWorkspaces(res: http.ServerResponse): void {
+    workspaceHandlers.handleWorkspaces(this.workspaceIo, res);
+  }
+
+  private handleDirpicker(req: http.IncomingMessage, res: http.ServerResponse): void {
+    workspaceHandlers.handleDirpicker(this.workspaceIo, req, res);
+  }
+
+  private async handleMemoryRm(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handleMemoryRm(this.configIo, req, res);
+  }
+
+  private handleMemoryList(req: http.IncomingMessage, res: http.ServerResponse): void {
+    configHandlers.handleMemoryList(this.configIo, req, res);
+  }
+
+  private async handlePtyAlloc(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await ptyHandlers.handlePtyAlloc(this.ptyIo, req, res, id);
+  }
+
+  private handlePtyKill(res: http.ServerResponse, id: string, ptyId: string): void {
+    ptyHandlers.handlePtyKill(this.ptyIo, res, id, ptyId);
   }
   private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
     await sessionHandlers.handleSubmit(this.sessionIo, req, res, id);
