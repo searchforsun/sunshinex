@@ -1393,7 +1393,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
   };
 
   it('+菜单开 web → url 输入 example.com 回车 → iframe 在场 title=https://example.com(无 scheme 补全)+ sandbox 四值', async () => {
-    const { conn, unmount } = await enterChat();
+    const { unmount } = await enterChat();
     openWeb();
     expect(document.querySelector('.sx-tab[data-title="Web"]')?.classList.contains('active')).toBe(true);
     expect(screen.getByLabelText('web tab')).toBeDefined();
@@ -1411,7 +1411,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
   });
 
   it('同 url 再开判重:url 输入不铸新 params(uid 恒 web:)——+菜单再开仍一条标签且聚焦', async () => {
-    const { conn, unmount } = await enterChat();
+    const { unmount } = await enterChat();
     openWeb();
     submitUrl('example.com');
     expect(document.querySelector('.sx-web-frame')).not.toBeNull();
@@ -1427,7 +1427,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
   });
 
   it('外开钮 → window.open(url, _blank, noopener,noreferrer) 断参', async () => {
-    const { conn, unmount } = await enterChat();
+    const { unmount } = await enterChat();
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     try {
       openWeb();
@@ -1444,7 +1444,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
   });
 
   it('刷新钮:nonce bump → iframe key 变更强制重挂(DOM 节替换,title 不变)', async () => {
-    const { conn } = await enterChat();
+    await enterChat();
     openWeb();
     submitUrl('example.com');
     const before = document.querySelector('.sx-web-frame');
@@ -1456,7 +1456,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
   });
 
   it('带 scheme 输入原样:http://localhost:3000 → title 原样(含 :// 不补 https)', async () => {
-    const { conn, unmount } = await enterChat();
+    const { unmount } = await enterChat();
     openWeb();
     submitUrl('http://localhost:3000');
     expect(document.querySelector('.sx-web-frame')?.getAttribute('title')).toBe('http://localhost:3000');
@@ -1702,7 +1702,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
   };
 
   it('设置钮 → 设置态:SettingsShell 在场(导航项;顶部项目选择器已移除)、右标签栏与 Chat 退场;「← 返回」→ 回会话态(Chat 重挂)', async () => {
-    const { conn, unmount } = await enterChat();
+    const { unmount } = await enterChat();
     openSettings();
     // 左栏切换:SettingsShell 在场——顶部项目选择器/外观行已移除(设置重构轮:项目区分下沉到
     // 配置项徽标、外观移入通用卡),导航项在场
@@ -1726,7 +1726,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
   });
 
   it('Esc → 回会话态(与返回钮同路径)', async () => {
-    const { conn, unmount } = await enterChat();
+    const { unmount } = await enterChat();
     openSettings();
     expect(screen.getByRole('button', { name: '通用' })).toBeDefined();
     fireEvent.keyDown(document, { key: 'Escape' });

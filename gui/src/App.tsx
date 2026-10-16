@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { GitBranch, ArrowUp, ChevronDown, GitCompare, MessageCircle, Folder, ListTodo, ShieldCheck, SquareTerminal, Unlock } from 'lucide-react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
+import { GitBranch, ArrowUp, ChevronDown, GitCompare, MessageCircle, Folder, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
 import { createConnection } from './connection';
-import { splitMentionTokens } from './pages/Chat';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import type { TodoItem } from '../../src/types';
 import { DirPicker } from './pages/DirPicker';
@@ -99,7 +98,6 @@ interface WelcomeGoal {
 function WelcomeComposer({
   conn,
   presetRoot,
-  presetMode,
   onOpened,
 }: {
   conn: {
@@ -184,20 +182,20 @@ function WelcomeComposer({
   useEffect(() => {
     conn.commands().then(setWelcomeCmdData, () => setWelcomeCmdData(null));
   }, [conn]);
-  useEffect(() => {
-    if (picked === '') { setWelcomeSkills([]); return; }
-    let alive = true;
+  /** G14.213 技能清单惰性拉取:敲 `/` 起手才拉一次(挂载即拉会污染 G8c skillsGroupsCalls 计数) */
+  const welcomeSkillsFetchedRef = useRef(false);
+  const fetchWelcomeSkills = (): void => {
+    if (welcomeSkillsFetchedRef.current) return;
+    welcomeSkillsFetchedRef.current = true;
     conn.skillsGroups?.(picked).then(
       (r) => {
-        if (!alive) return;
         const out: Array<{ id: string; desc: string }> = [];
         for (const g of r.groups) for (const s of g.skills) if (!out.some((x) => x.id === s.id)) out.push({ id: s.id, desc: s.description ?? '' });
         setWelcomeSkills(out);
       },
-      () => { if (alive) setWelcomeSkills([]); },
+      () => undefined,
     );
-    return () => { alive = false; };
-  }, [conn, picked]);
+  };
 
   useEffect(() => {
     conn.settings().then(
@@ -532,6 +530,7 @@ function WelcomeComposer({
           onChange={(v) => {
             setGoal(v);
             setWelcomeSlashDismissed(null); // G14.213 Esc 收起后任何编辑即重新放行 / 面板
+            if (v.includes('/')) fetchWelcomeSkills(); // G14.213 惰性拉技能清单(敲 / 起手一次)
             // G14.124 面板跟随输入(光标前 @token 即开);无匹配=渲染面自然关闭
             const caret = goalRef.current?.selectionStart ?? v.length;
             const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
@@ -545,6 +544,7 @@ function WelcomeComposer({
             }
           }}
           onKeyDown={(e) => {
+            if (e.key === '/') fetchWelcomeSkills(); // G14.213 / 起手即拉技能清单
             // G14.212 token 原子性(与会话内同构):整删 + 不可在 token 中间落字(键入/IME)
             if (e.key === 'Backspace' || e.key === 'Delete') {
               const ta = e.currentTarget as HTMLTextAreaElement;
@@ -1075,11 +1075,7 @@ function AppShell(): JSX.Element {
 
   /** 拖宽在途兜底解绑(会话切走/壳卸毁时 window 监听不泄漏) */
   /** G14.104 语言切换重渲染触发(t 为模块级非响应式) */
-  const [langTick, setLangTick] = useState(0);
-  const renderHighlightSpans = (text: string): ReactNode =>
-    splitMentionTokens(text).map((t, i) =>
-      t.kind === 'plain' ? <span key={i}>{t.text}</span> : <span key={i} className={`hn hn-${t.kind}`}>{t.text}</span>,
-    );
+  const [, setLangTick] = useState(0); // G14.104 语言切换重渲染(t 非响应式,tick 驱动)
   /** GUI chrome 双语(G10-C3c):语言源 = daemon settings language 键,连接装配即同步 */
   useEffect(() => {
     if (connInstance === null) return;

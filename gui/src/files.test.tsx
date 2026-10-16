@@ -15,7 +15,6 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 import { describe, it, expect, vi } from 'vitest';
-import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { Files } from './pages/Files';
 import { DiffPanel } from './diff-panel';

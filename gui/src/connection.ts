@@ -1,6 +1,3 @@
-import type { SessionEvent } from '../../src/types';
-import type { TaskBoardState } from '../../src/taskboard/model';
-import type { Delegation } from '../../src/delegation/projection';
 import { createConnectionTransport, DEFAULT_BACKOFF_BASE_MS } from './connection-transport';
 export { toWsUrl } from './connection-transport';
 export * from './connection-types';

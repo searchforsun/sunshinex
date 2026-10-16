@@ -75,7 +75,7 @@ export function mermaidCacheClear(): void {
 export function repairMermaid(chart: string): string {
   return chart.replace(
     /(\[\[|\[|\(|\(\()([^"[\()<>]*[<>?][^"[\()<>]*)(\]\]|\]|\)|\)\))/g,
-    (m, open, label, close) => `${open}"${label.trim().replace(/"/g, '#quot;')}"${close}`,
+    (_m, open, label, close) => `${open}"${label.trim().replace(/"/g, '#quot;')}"${close}`,
   );
 }
 

@@ -1,10 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  AlertCircle, ArrowDown, ArrowRight, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Circle, Copy, Database, Eye, FileText, FolderSearch, GitBranch, GitFork, GitMerge, Globe, HelpCircle, History,
-  BookOpen, Hourglass, Info, Folder, GripVertical, ListPlus, ListTodo, Maximize2, MessageSquare, MessageCircleQuestion, PanelRight, PenLine, Search, ShieldCheck, Sparkles, Square, SquareTerminal, Telescope, Terminal, Trash2, ArrowUpToLine, CornerDownRight, Unlock, UserPlus, WrapText, Wrench, X, XCircle,
+  AlertCircle, ArrowDown, ArrowRight, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Circle, Copy, Database, Eye, FileText, FolderSearch, GitBranch, GitFork, GitMerge, Globe, History,
+  BookOpen, Hourglass, Info, Folder, GripVertical, ListPlus, ListTodo, Maximize2, MessageSquare, MessageCircleQuestion, PanelRight, PenLine, Search, ShieldCheck, Sparkles, Square, SquareTerminal, Telescope, Trash2, ArrowUpToLine, CornerDownRight, Unlock, UserPlus, WrapText, Wrench, X, XCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from '../chat-reducer';
@@ -387,8 +387,6 @@ export function ToolEntryView({
   const input = mdInfo?.input ?? {};
   const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
   const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
-  const skillId =
-    toolName === 'skill' && typeof (input.id ?? input.name) === 'string' ? String(input.id ?? input.name) : undefined;
   const target = mdInfo !== undefined ? toolTargetOf(toolName, input) : undefined;
   /** write 分型(G14):折叠=文件名+相对路径+diff stat,展开=diff2html;read 分型:整行=打开文件标签 */
   const isWrite = toolName === 'write' && path !== undefined;
@@ -449,7 +447,6 @@ export function ToolEntryView({
     if (r.startsWith('custom: ')) return { kind: 'custom' as const, text: r.slice(8).trim() };
     return { kind: 'dismissed' as const };
   })();
-  const askChosen = new Set(askAnswer.kind === 'answers' || askAnswer.kind === 'answer' ? askAnswer.labels : []);
 
 
   /** 展开且可寻址(callId 在场——无 callId 面不拉)即异步拉 diff;折叠即弃在途应答
@@ -532,7 +529,7 @@ export function ToolEntryView({
       ) : toolName === 'create_task' ? (
         /* G14.168 折叠行带任务名;G14.176 任务名=蓝色链接,点开任务板定位高亮对应卡 */
         <>
-          <span className="tool-verb">{t('create_task', '创建任务')}</span>
+          <span className="tool-verb">{zhToolName('create_task')}</span>
           {onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
             <span
               role="button"
@@ -1461,7 +1458,7 @@ export function baseModelName(id: string | undefined): string {
  *  保留。memo 包裹:sealed 行 entry/tokens 双稳定→不随 token 帧重渲;tick 是组件内部 state 自驱动,
  *  memo 不影响;tokens 变化(usage 帧)仍重渲(期望行为)。种子历史无 run 条,重连后自下一轮
  *  model-start 恢复(spec §0) */
-const RunEntryView = memo(function RunEntryView({ entry, tokens, collapsed, onToggle }: { entry: ChatEntry; tokens: number; collapsed?: boolean; onToggle?: (key: string) => void }): JSX.Element {
+const RunEntryView = memo(function RunEntryView({ entry, collapsed, onToggle }: { entry: ChatEntry; collapsed?: boolean; onToggle?: (key: string) => void }): JSX.Element {
   const [, setTick] = useState(0);
   const streaming = entry.streaming === true;
   useEffect(() => {
@@ -2025,7 +2022,7 @@ export const slashTokenAt = (text: string, caret: number): { query: string; from
   return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
 };
 
-export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onRewind, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
@@ -3072,7 +3069,6 @@ export function Chat({ conn, sessionId, connState, onBack, sinkRef, onSeeded, on
                 <RunEntryView
                   key={entry.key}
                   entry={entry}
-                  tokens={chat.tokens}
                   collapsed={collapsedRuns.has(entry.key)}
                   onToggle={entry.streaming === true ? undefined : toggleRun}
                 />,

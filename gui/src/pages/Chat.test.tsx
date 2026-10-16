@@ -659,7 +659,7 @@ describe('G14.181 用户气泡限高折叠', () => {
   it('超高默认折叠+底部浮钮,点击展开/收起;短气泡不受影响', async () => {
     const longMd = '很长的用户输入。'.repeat(120);
     // jsdom 无布局:钉 scrollHeight=500 触发量测(>168+8)
-    const desc = Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 500 });
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 500 });
     try {
       const first = render(<Chat conn={connOf([{ seq: 1, kind: 'user', md: longMd } as never])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
       await flushed();

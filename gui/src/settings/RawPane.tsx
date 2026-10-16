@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Select } from './controls';
-import { t } from '../i18n';
 
 /**
  * G8c T9 高级面板(设置重构轮:仅全局+自动回显)——scope 面移除,恒 'global':本面板只编辑
