@@ -1,26 +1,18 @@
 // 警告过滤必须首个 import（node:sqlite 实验横幅在 import 链内即发射）
 import '../warning-filter';
 import * as http from 'node:http';
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { createRuntime } from '../tui/runtime';
 import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
-import type { EventFrame } from './session';
 import type { SnapshotPendingRow } from './session';
 import { journalMessagesToEntries, chainStepsToEntries } from './session';
-import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, McpServerConfig } from '../types';
-import { loadMcpServers, parseMcpJsonFile } from '../config';
+import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, listAnchors, branchFrom, listSessions, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import type { SessionSidecarMeta } from '../tui/session-journal';
 import { listCommands } from './commands';
@@ -31,28 +23,37 @@ import { COMMAND_SUPPORT, runCommand } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
 import { resolveDataDir, projectsRoot, projectSlug } from '../config/data-dir';
-import { userConfigDir } from '../config/env';
 import {
-  SEMANTIC_KEYS,
-  RETIRED_KEYS,
   applySettings,
-  flattenSettings,
   getSelfFilledSlots,
-  hasJsonComments,
   loadGlobalSettings,
   loadProjectSettings,
-  parseSettingsFile,
   resetSelfFilledSlots,
-  surgicalSettingsUpdate,
 } from '../config/settings';
-import { loadProviders, parseProvidersSpec, resolveProviderApiKey } from '../config/providers';
-import type { ModelChoice } from '../config/providers';
-import type { PermissionsConfig } from '../config/permissions';
-import { isWithin } from '../paths';
-import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
-import { loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, SkillsGroup } from '../harness/skills';
-import { memoryDir } from '../harness/memory/store';
 import { PtyManager } from './pty';
+import * as configHandlers from './config-handlers';
+import type { ConfigHandlerIo } from './config-handlers';
+import {
+  GUI_ASSETS_HINT,
+  MAX_PREVIEW_BYTES,
+  insideTrustedRoots,
+  mimeOf,
+  readFileBounded,
+  readStaticFile,
+  realPathOf,
+  safeDecode,
+} from './daemon-static';
+import {
+  parseAskAnswer,
+  pendingFrameOf,
+  urlOf,
+  LOOPBACK_HOST,
+  type DaemonFrame,
+  type PendingEntry,
+} from './daemon-wire';
+
+export { LOOPBACK_HOST } from './daemon-wire';
+export type { ApprovalFrame, AskFrame, ResetFrame, DaemonFrame } from './daemon-wire';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
  *  按需装配（--root CLI 参数降级为「启动即预选」，缺省空注册表启动）。model 与 CLI buildModel/TUI
@@ -77,14 +78,6 @@ export interface GuiDaemonHandle {
   close(): Promise<void>;
 }
 
-/** daemon 恒绑回环（G10 免鉴权档裁定「本地工具不设密」）：bind 面与 serve 打印面同源单点 */
-export const LOOPBACK_HOST = '127.0.0.1';
-
-/** 请求 URL 解析单点：base 仅为解析锚（host 不参与实际绑定），pathname/search 统一出口 */
-function urlOf(req: http.IncomingMessage): URL {
-  return new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
-}
-
 /** 旁车 fork/ask 一次性调用墙钟上限：旁车与主链长任务预算解耦，到点 abort 收口（fork 问询面唯一消费） */
 const FORK_ABORT_TIMEOUT_MS = 180_000;
 
@@ -98,70 +91,10 @@ export interface WorkspaceRow {
   sessionCount: number;
 }
 
-/** 挂起面 WS 帧（G4 审批问询，spec §4.2）：无 seq——不入单调序列（挂起非事件流成员，重连重发幂等，
- *  客户端以 pid 去重）；pid 为 daemon 级铸造的挂起票据（回执端点 `POST /approval/:pid` /
- *  `POST /ask/:pid/reply` 的寻址键）；req 纯数据直序列化（ApprovalRequest/AskUserRequest 字面） */
-export interface ApprovalFrame {
-  kind: 'approval';
-  sessionId: string;
-  pid: string;
-  req: ApprovalRequest;
-}
-
-/** ask 挂起帧：AskUserRequest 无 id 字段（types.ts 现场核）——pid 由 daemon 单点铸造承载回执寻址 */
-export interface AskFrame {
-  kind: 'ask';
-  sessionId: string;
-  pid: string;
-  req: AskUserRequest;
-}
-
-/** reset 通知帧（G4 裁定 7）：无 seq——GUI 收到即清该会话本地投影并重播种（sessionSnapshot） */
-export interface ResetFrame {
-  kind: 'reset';
-  sessionId: string;
-}
-
-/** daemon 下行帧全并集：pump 事件帧（有 seq）+ 挂起/reset 帧（无 seq）——广播面单点共用序列化 */
-export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | ResetFrame;
-
-/** 挂起表条目（G4 裁定 1）：kind 判别联合——回执端点按 kind 对表（approval 回执打到 ask 挂起 = 404）；
- *  resolve 即回执值（interrupt/teardown 以 deny/dismissed 回填，TUI approval.ts 先例） */
-type PendingEntry =
-  | { kind: 'approval'; sessionId: string; req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }
-  | { kind: 'ask'; sessionId: string; req: AskUserRequest; resolve: (a: AskUserAnswer) => void };
-
-/** 挂起条目 → WS 帧（首播与重连重发同形同构：kind/sessionId/pid/req 四件） */
-function pendingFrameOf(pid: string, entry: PendingEntry): ApprovalFrame | AskFrame {
-  return entry.kind === 'approval'
-    ? { kind: 'approval', sessionId: entry.sessionId, pid, req: entry.req }
-    : { kind: 'ask', sessionId: entry.sessionId, pid, req: entry.req };
-}
-
-/** AskUserAnswer 回执载荷校验（G4）：三态字面核验——selected 需 string[]、custom 需非空 text、
- *  dismissed 无参；非法形态回 null（HTTP 面 400）。labels 空数组放行——类型面合法，工具执行面
- *  自行降级为 dismissed 观察文案（builtin.ts ask_question executor 既有口径） */
-function parseAskAnswer(v: unknown): AskUserAnswer | null {
-  if (typeof v !== 'object' || v === null) return null;
-  const a = v as { type?: unknown; labels?: unknown; text?: unknown };
-  if (a.type === 'dismissed') return { type: 'dismissed' };
-  if (a.type === 'custom') return typeof a.text === 'string' && a.text.length > 0 ? { type: 'custom', text: a.text } : null;
-  if (a.type === 'selected') {
-    if (!Array.isArray(a.labels) || !a.labels.every((l) => typeof l === 'string')) return null;
-    return { type: 'selected', labels: a.labels as string[] };
-  }
-  return null;
-}
 
 /** JSON body 上限（1MB）：防无界 body 撑爆 daemon 内存；超限即断连收口 */
 const MAX_BODY_BYTES = 1024 * 1024;
 
-/** 文件预览上限（G6 /file 端点，512KB）：≤ 上限全文回执；> 上限读首 512KB + truncated:true
- *  （预览语义而非 413——Ruling 1 修正：截断标记让 GUI 呈现「文件过大已截断」而非直接拒读） */
-const MAX_PREVIEW_BYTES = 512 * 1024;
-
-/** 二进制探测窗（首 8KB）：UTF-8 文本不含 \0，命中即按二进制拒（415）——预览面只服务文本 */
-const BINARY_PROBE_BYTES = 8 * 1024;
 
 /** tree 忽略名集（G8b T4 /tree 端点）：VCS 内脏/依赖安装物/构建产物——GUI 树的纯噪音，恒不枚举 */
 const IGNORED = new Set(['.git', 'node_modules', 'dist', 'dist-gui']);
@@ -173,106 +106,10 @@ const TREE_MAX_ENTRIES = 500;
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
 
-/** 静态缺失提示（G1 裁定恒定文案；G3 起 dist-gui 在场则 GET 挂静态，缺场仍回此形态） */
-const GUI_ASSETS_HINT = 'GUI assets not built — run pnpm --filter gui build (G2)';
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
 
-/** 静态 mime 表（G3）：按扩展名映射，缺省 application/octet-stream（浏览器按 Content-Type 处置，
- *  未知类型不猜测——下载面行为由客户端定） */
-const STATIC_MIME: Readonly<Record<string, string>> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-  '.json': 'application/json; charset=utf-8',
-  '.woff2': 'font/woff2',
-};
-
-function mimeOf(file: string): string {
-  return STATIC_MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
-}
-
-/** 静态读文件：任何读失败（缺失/目录/权限）归一 null——SPA 兜底与 404 由调用方分径 */
-function readStaticFile(file: string): Promise<Buffer | null> {
-  return new Promise((resolve) => fs.readFile(file, (err, data) => resolve(err === null ? data : null)));
-}
-
-/** 判界用路径归一（G6 /file 端点；与 SafetyChain.resolveSafe 同口径）：存在段 realpathSync 解析
- * 符号链接（新建段字面拼接——resolve 产物无 .. 残留），防「根内符号链接指向根外」的逃逸；整链无
- * 存在锚（不可达驱动器等）或 realpath 异常回 undefined——调用方回退字面判定（fail-closed 不放行） */
-function realPathOf(abs: string): string | undefined {
-  try {
-    let anchor = abs;
-    while (!fs.existsSync(anchor)) {
-      const parent = path.dirname(anchor);
-      if (parent === anchor) return undefined; // 盘根都不存在：无锚可归一
-      anchor = parent;
-    }
-    return fs.realpathSync(anchor) + abs.slice(anchor.length);
-  } catch {
-    return undefined;
-  }
-}
-
-/** 信任根判定（G6 /file 判界单点；G7 /diff 共用）：主根 rootReal ∪ 活动工作树根（read 工具同口径
- *  信任域；rootReal/activeRoot 是 SafetyChain 仅有公开判定面）。real 已归一（realPathOf ?? 字面兜底） */
-function insideTrustedRoots(safety: { rootReal: string; activeRoot: string | null }, real: string): boolean {
-  const roots = [safety.rootReal];
-  const active = safety.activeRoot; // worktree 会话的活动根（null=缺省主根态）
-  if (active !== null) {
-    try {
-      roots.push(fs.existsSync(active) ? fs.realpathSync(active) : active);
-    } catch {
-      roots.push(active);
-    }
-  }
-  return roots.some((r) => real === r || isWithin(r, real));
-}
-
-/** 有界读文件（G6 /file 单点；G7 /diff 共用）：≤512KB 全文；>512KB 读首 512KB + truncated:true；
- *  首 8KB 含 \0 按二进制定论（'binary'）；不存在/非文件/读失败归一 'missing'（调用方 404）——
- *  预览语义的读侧三态，判界（insideTrustedRoots）由调用方先行 */
-function readFileBounded(resolved: string): { content: string; truncated: boolean } | 'binary' | 'missing' {
-  let st: fs.Stats;
-  try {
-    st = fs.statSync(resolved);
-  } catch {
-    return 'missing';
-  }
-  if (!st.isFile()) return 'missing';
-  const truncated = st.size > MAX_PREVIEW_BYTES;
-  const len = truncated ? MAX_PREVIEW_BYTES : st.size;
-  let buf: Buffer;
-  try {
-    const fd = fs.openSync(resolved, 'r'); // 只读句柄：预览面零写副作用
-    try {
-      buf = Buffer.alloc(len);
-      fs.readSync(fd, buf, 0, len, 0);
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch {
-    return 'missing';
-  }
-  // 二进制拒：首 8KB 含 \0 即按二进制定论（UTF-8 文本不含 NUL 字节）
-  if (buf.subarray(0, Math.min(buf.length, BINARY_PROBE_BYTES)).includes(0)) return 'binary';
-  return { content: buf.toString('utf8'), truncated };
-}
-
-/** URL 段解码（G8b T3 pty 升级路径）：坏 % 序列按字面回退（decodeURIComponent throw 面）——
- *  未命中注册表即 error 帧，fail-closed */
-function safeDecode(seg: string): string {
-  try {
-    return decodeURIComponent(seg);
-  } catch {
-    return seg;
-  }
-}
 
 /** pty 帧 S→C 下行单点（G8b T3）：readyState 判存——CLOSED/CLOSING 静默丢帧（断线窗口的输出
  *  靠重连 replay 补，不追赶） */
@@ -280,308 +117,6 @@ function sendPtyFrame(ws: WebSocket, frame: { t: 'data' | 'exit'; b?: string; co
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
 }
 
-// ---------- G8c T2：/settings 面模块级助手（只读视图的文件级拆解 + effective 判定 pure fn） ----------
-
-/** 空 permissions 面（坏形/缺级/缺键的统一缺省形态，与 permissions.ts readLevel 的 EMPTY 同构） */
-const EMPTY_PERMISSIONS: PermissionsConfig = { deny: [], allow: [], additionalDirs: [] };
-
-/** 单文件语义槽集（G8c T2 /settings 来源判定）：parse→flatten 的槽键面。缺失/畸形按空——GET 是
- * 只读视图，畸形文件的 fail-fast 属装载链（CLI 入口）职责，daemon 不重复裁决只降级视图 */
-function fileSlots(filePath: string): Set<string> {
-  try {
-    const doc = parseSettingsFile(filePath);
-    if (doc === null) return new Set();
-    return new Set(Object.keys(flattenSettings(doc).slots));
-  } catch {
-    return new Set();
-  }
-}
-
-/** 单文件 flatten 告警（G8d T5 /settings warnings 透出）：未知/退役键告警面——RawPane 顶部告警
- * 列表数据源。降级风格沿 fileSlots：缺失/畸形按空（GET 只读视图，fail-fast 属装载链） */
-function fileWarnings(filePath: string): string[] {
-  try {
-    const doc = parseSettingsFile(filePath);
-    if (doc === null) return [];
-    return flattenSettings(doc).warnings;
-  } catch {
-    return [];
-  }
-}
-
-/** 单文件 permissions 键简版读取（G8c T2）：形状校验沿 permissions.ts readLevel 同口径（对象 +
- *  三字符串数组），坏形/坏数组按空——daemon 需要两级分立视图而 permissions.ts 只出合并态 */
-function filePermissions(filePath: string): PermissionsConfig {
-  try {
-    const doc = parseSettingsFile(filePath);
-    if (doc === null || doc.permissions === undefined) return EMPTY_PERMISSIONS;
-    const raw = doc.permissions;
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return EMPTY_PERMISSIONS;
-    const obj = raw as Record<string, unknown>;
-    const strArr = (v: unknown): string[] =>
-      Array.isArray(v) && v.every((s) => typeof s === 'string') ? (v as string[]) : [];
-    return { deny: strArr(obj.deny), allow: strArr(obj.allow), additionalDirs: strArr(obj.additionalDirs) };
-  } catch {
-    return EMPTY_PERMISSIONS;
-  }
-}
-
-/** GET /settings?root= 无 root 时的 providers 面：仅全局文件（loadProviders 需项目 root 定位项目级，
- *  缺 root 不能以空串调之——否则会读 cwd 相对 .sunshinex/settings.json） */
-function globalProvidersOnly(): { choices: ModelChoice[]; warnings: string[] } {
-  const filePath = loadGlobalSettings();
-  try {
-    const doc = parseSettingsFile(filePath);
-    return parseProvidersSpec(doc === null ? undefined : doc.providers, filePath);
-  } catch {
-    return parseProvidersSpec(undefined, filePath); // 畸形按缺级（装载链职责，此处只降级视图）
-  }
-}
-
-/** PUT /settings/raw 的 mcp 原文验证（G8c T3）——验证口径与装载口径一字不差：严格 JSON.parse
- *  （parseMcpJsonFile 读盘即此口径：注释与 BOM 均不容忍——注释文件会被装载面静默读空成「零服务器」，
- *  放行比报错更糟）+ 根对象 + mcpServers 在场须对象（装载面同门：非对象形态静默回 []，原文编辑面
- *  显式拒）。畸形 throw，message 携带目标路径与原文 reason（→400 面）。 */
-function validateMcpRawContent(content: string, target: string): void {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch (err) {
-    throw new Error(`mcp.json 解析失败（严格 JSON；装载面不容忍注释与 BOM）: ${target}: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`mcp.json 根必须是 JSON 对象: ${target}`);
-  }
-  const servers = (parsed as Record<string, unknown>)['mcpServers'];
-  if (servers !== undefined && (typeof servers !== 'object' || servers === null || Array.isArray(servers))) {
-    throw new Error(`mcp.json "mcpServers" 必须是 JSON 对象: ${target}`);
-  }
-}
-
-// ---------- G8c T4：/settings/mcp 面模块级助手（两级遮蔽视图行 + 单台真探测装配） ----------
-
-/** GET /settings/mcp 行：装载面 McpServerConfig 的打码视图——env 折叠为键名列表（env 值不回传：
- *  文件本就承载 env 全值，PUT 结构化写全值回写、raw 面另有无打码原文，GET 只供清单呈现）。
- *  transport 归一：装载面缺省条目（无 transport 字段的 stdio）不带该键，视图面统一显形 'stdio' */
-interface McpServerRow {
-  name: string;
-  transport: 'stdio' | 'http' | 'sse';
-  command?: string;
-  args?: string[];
-  url?: string;
-  envKeys: string[];
-  source: 'project' | 'global';
-  shadowed: boolean;
-}
-
-function mcpRow(cfg: McpServerConfig, source: 'project' | 'global', shadowed: boolean): McpServerRow {
-  return {
-    name: cfg.name,
-    transport: cfg.transport ?? 'stdio',
-    ...(cfg.command !== undefined ? { command: cfg.command } : {}),
-    ...(cfg.args !== undefined ? { args: cfg.args } : {}),
-    ...(cfg.url !== undefined ? { url: cfg.url } : {}),
-    envKeys: Object.keys(cfg.env ?? {}),
-    source,
-    shadowed,
-  };
-}
-
-/** probe stdio 子进程环境：宿主环境整份继承 + cfg.env 覆盖（债 D21 同款，与 McpHost 正式装配同一
- *  环境语义——探测结论对装配期可迁移；process.env 值域含 undefined 须剔除） */
-function probeChildEnv(cfg: McpServerConfig): Record<string, string> {
-  const merged: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v !== undefined) merged[k] = v;
-  }
-  return { ...merged, ...(cfg.env ?? {}) };
-}
-
-/** probe 临时传输装配：照 McpHost.makeTransport 三分支抄（探测面无 ToolRegistry/CodedToolError 收束，
- *  plain Error 同文案形；形态字段缺失或 url 非法与连接失败同语义） */
-function makeProbeTransport(cfg: McpServerConfig): Transport {
-  const fail = (msg: string): Error => new Error(`MCP server connection failed (${cfg.name}): ${msg}`);
-  switch (cfg.transport ?? 'stdio') {
-    case 'http':
-    case 'sse': {
-      if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
-      try {
-        const url = new URL(cfg.url);
-        return cfg.transport === 'sse' ? new SSEClientTransport(url) : new StreamableHTTPClientTransport(url);
-      } catch (e) {
-        throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    case 'stdio':
-    default:
-      if (!cfg.command) throw fail('stdio transport requires a command');
-      return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [], env: probeChildEnv(cfg) });
-  }
-}
-
-const PROBE_CONNECT_TIMEOUT_MS = 10_000;
-
-/** 单台真探测（POST /settings/mcp/probe 核心）：临时 Client → connect（10s 竞速超时，计时器必清）
- *  → serverInfo.name !== 配置名 → identity mismatch（防冒名，与 McpHost 握手同门）→ listTools →
- *  tools 映射 {name, description?}。失败面全收敛 200 {ok:false, error 截 120}：连接失败包
- *  connection failed 前缀（与 McpHost 警告单同文案形）；finally 恒 close——半开传输收口（stdio
- *  子进程残留/SSE EventSource 重连循环都会挂住 daemon 进程） */
-async function probeMcpServer(
-  cfg: McpServerConfig,
-): Promise<{ ok: true; tools: Array<{ name: string; description?: string }> } | { ok: false; error: string }> {
-  const clip = (msg: string): string => (msg.length > 120 ? msg.slice(0, 120) : msg);
-  let client: Client | undefined;
-  try {
-    const transport = makeProbeTransport(cfg);
-    client = new Client({ name: 'sunshinex-mcp-probe', version: '0.1.0' });
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        client.connect(transport),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`connect timed out after ${PROBE_CONNECT_TIMEOUT_MS}ms`)), PROBE_CONNECT_TIMEOUT_MS);
-        }),
-      ]);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return { ok: false, error: clip(`connection failed (${cfg.name}): ${msg}`) };
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
-    const actual = client.getServerVersion()?.name;
-    if (actual !== cfg.name) {
-      return { ok: false, error: clip(`identity mismatch (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'}`) };
-    }
-    const listed = await client.listTools();
-    return {
-      ok: true,
-      tools: listed.tools.map((t) => ({ name: t.name, ...(t.description !== undefined ? { description: t.description } : {}) })),
-    };
-  } catch (e) {
-    return { ok: false, error: clip(e instanceof Error ? e.message : String(e)) };
-  } finally {
-    if (client !== undefined) await client.close().catch(() => {});
-  }
-}
-
-// ---------- G8c T5：/settings/agents 面模块级助手（agent.md 生成 + 写后回读验证） ----------
-
-/** PUT /settings/agents upsert 输入的 frontmatter 面（校验后形态）：name 必填，可选键按需；
- *  调用方已保证字符串值单行（含换行的值在 400 面拒收——frontmatter 是单行 KV 词法，换行注入伪键） */
-interface AgentFrontmatterInput {
-  name: string;
-  description?: string;
-  memory?: boolean;
-  isolation?: string;
-  executor?: string;
-}
-
-/** agent.md 生成（G8c T5 upsert）：frontmatter 键序固定 name 首位、可选键按需追加
- *  （description→memory→isolation→executor），body 缺省空串。生成物经写后回读 parseAgentFrontmatter
- *  验证后才落盘目标——装配链 loadAgents 对畸形文件 fail-fast，坏文件会死锁整个会话装配，
- *  本生成器 + 回读验证是写盘前的防线（handler 内单点消费） */
-function renderAgentMd(fm: AgentFrontmatterInput, body: string): string {
-  const lines = [`name: ${fm.name}`];
-  if (fm.description !== undefined) lines.push(`description: ${fm.description}`);
-  if (fm.memory === true) lines.push('memory: true');
-  if (fm.isolation !== undefined) lines.push(`isolation: ${fm.isolation}`);
-  if (fm.executor !== undefined) lines.push(`executor: ${fm.executor}`);
-  return `---\n${lines.join('\n')}\n---\n${body}`;
-}
-
-/** PUT /settings/agents 的 id 安全面（单点）：id 直接拼进 <scopeDir>/agents/<id>/ 目录路径——
- *  路径分隔/穿越/点开头等形态一律拒（首字符限字母数字，余字符限 [A-Za-z0-9_-]） */
-const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-
-/** upsert frontmatter 输入校验+归一（G8c T5，validateMcpRawContent 同款 throw→400 形态）：name 必填
- *  非空白单行；可选键按需——description/isolation/executor 须单行字符串（frontmatter 是单行 KV 词法，
- *  含换行的值会注入伪键，多行内容属 body 面）；memory 须布尔。name 先行 trim 归一（parseFrontmatterKV
- *  值域 trim，输入面先归一防写后回读的回环比对误报） */
-function parseAgentFrontmatterInput(raw: unknown): AgentFrontmatterInput {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new Error('frontmatter must be an object with required name');
-  }
-  const f = raw as Record<string, unknown>;
-  if (typeof f.name !== 'string' || f.name.trim().length === 0 || /\r|\n/.test(f.name)) {
-    throw new Error('frontmatter.name required (non-empty single-line string)');
-  }
-  const oneLine = (label: string, v: unknown): string | undefined => {
-    if (v === undefined) return undefined;
-    if (typeof v !== 'string') throw new Error(`${label} must be a string`);
-    if (/\r|\n/.test(v)) throw new Error(`${label} must be single-line (multi-line content belongs in body)`);
-    return v;
-  };
-  const description = oneLine('frontmatter.description', f.description);
-  const isolation = oneLine('frontmatter.isolation', f.isolation);
-  const executor = oneLine('frontmatter.executor', f.executor);
-  if (f.memory !== undefined && typeof f.memory !== 'boolean') {
-    throw new Error('frontmatter.memory must be a boolean');
-  }
-  return {
-    name: f.name.trim(),
-    ...(description !== undefined ? { description } : {}),
-    ...(f.memory === true ? { memory: true } : {}),
-    ...(isolation !== undefined ? { isolation } : {}),
-    ...(executor !== undefined ? { executor } : {}),
-  };
-}
-
-/** /settings keys 行（G8c T2 effective 判定 pure fn）：
- *  - 槽在 env 且非自填 → 'env'+envOverride（真导出恒最优先，GUI 禁编+徽标）
- *  - 槽在 env 且自填 → root 项目文件有值 'project'、否则全局文件有值 'global'、否则 'env' 不带
- *    envOverride（窄缝：链来自其他 root 的项目文件，本视图无从归因，只能如实报 env 面值）
- *  - 槽缺 → 文件链同判定（project/global），都无 → 'default'；value 恒取 env 槽（槽缺即 null——
- *    文件有值但未装载的键如实报「有配置但未生效」，不伪装 effective 值） */
-function effectiveKeyRow(
-  key: string,
-  slot: string,
-  selfFilled: ReadonlySet<string>,
-  projectSlots: ReadonlySet<string>,
-  globalSlots: ReadonlySet<string>,
-): { key: string; value: string | null; source: 'env' | 'project' | 'global' | 'default'; envOverride: boolean } {
-  const envValue = process.env[slot];
-  if (envValue !== undefined) {
-    if (!selfFilled.has(slot)) return { key, value: envValue, source: 'env', envOverride: true };
-    if (projectSlots.has(slot)) return { key, value: envValue, source: 'project', envOverride: false };
-    if (globalSlots.has(slot)) return { key, value: envValue, source: 'global', envOverride: false };
-    return { key, value: envValue, source: 'env', envOverride: false };
-  }
-  if (projectSlots.has(slot)) return { key, value: null, source: 'project', envOverride: false };
-  if (globalSlots.has(slot)) return { key, value: null, source: 'global', envOverride: false };
-  return { key, value: null, source: 'default', envOverride: false };
-}
-
-// ---------- G8c T6：/settings/skills + /settings/memory-stats 面模块级助手 ----------
-
-/** GET /settings/memory-stats 统计（G8c T6）：主域记忆目录（memoryDir 单点）只读扫描。
- *  记录文件口径 = 主目录直属 .md 且非派生索引 MEMORY.md（agents/ 子代理子树与 .bak-* 快照目录
- *  不是主域记录，isFile 天然排除）；entries=记录文件数，lastWriteAt=最大 mtimeMs（无记录 →
- *  {entries:0, lastWriteAt:null}）。
- *  只读面不走 MemoryStore 构造（其 mkdirSync 副作用会让 GET 建目录）——与 list() 的口径差异：
- *  坏记录（frontmatter 畸形）按文件计——stats 是盘面概览非解析视图；枚举与 stat 间的竞态移除
- *  按已计不重扫（概览面尽力而为，同 loadSkillsFrom 姿态） */
-function memoryStats(root: string): { entries: number; lastWriteAt: number | null } {
-  const dir = memoryDir(root);
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return { entries: 0, lastWriteAt: null }; // 目录不存在/不可读 = 零值（从未写过记忆的合法态）
-  }
-  let count = 0;
-  let last: number | null = null;
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith('.md') || e.name === 'MEMORY.md') continue;
-    count += 1;
-    try {
-      const mtimeMs = fs.statSync(path.join(dir, e.name)).mtimeMs;
-      if (last === null || mtimeMs > last) last = mtimeMs;
-    } catch {
-      // 枚举与 stat 之间被移除：条目已计（竞态窗口的概览，不回滚重扫）
-    }
-  }
-  return { entries: count, lastWriteAt: last };
-}
 
 /** 路由表条目：path 支持 `:name` 段参数（会话维端点 /session/:id/*）；auth 恒验除 healthz */
 interface Route {
@@ -2430,143 +1965,16 @@ export class GuiDaemon {
     this.send(res, 200, { path: abs, parent: path.resolve(abs, '..'), dirs });
   }
 
-  /** GET /settings?root=<abs>（G8c T2，Settings 页数据源）：无 root = 仅全局+env 面。keys 按
-   *  SEMANTIC_KEYS 键序全量回执（effective 判定见 effectiveKeyRow 单点）；permissions 三面
-   *  {merged, project, global}（两级文件分立拆解 + 拼接去重合并——与 loadPermissions 同口径的
-   *  视图态）；providers = loadProviders 展开 + apiKeyPresent 布尔（resolveProviderApiKey 判存，
-   *  不显值——密钥永不回传）。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知/退役
-   *  键，项目先行拼全局）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
-   *  process.env + 文件面，零副作用 */
-  private handleSettingsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const rootParam = url.searchParams.get('root');
-    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-    const selfFilled = new Set(getSelfFilledSlots());
-    const projectSlots = root !== undefined ? fileSlots(loadProjectSettings(root)) : new Set<string>();
-    const globalSlots = fileSlots(loadGlobalSettings());
-    const keys = Object.entries(SEMANTIC_KEYS).map(([key, slot]) => effectiveKeyRow(key, slot, selfFilled, projectSlots, globalSlots));
-    const globalPerms = filePermissions(loadGlobalSettings());
-    const projectPerms = root !== undefined ? filePermissions(loadProjectSettings(root)) : EMPTY_PERMISSIONS;
-    const merged: PermissionsConfig = {
-      deny: [...new Set([...globalPerms.deny, ...projectPerms.deny])],
-      allow: [...new Set([...globalPerms.allow, ...projectPerms.allow])],
-      additionalDirs: [...new Set([...globalPerms.additionalDirs, ...projectPerms.additionalDirs])],
-    };
-    const loaded = root !== undefined ? loadProviders(root) : globalProvidersOnly();
-    const apiKeyPresent: Record<string, boolean> = {};
-    for (const choice of loaded.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;
-    // G8d T5 warnings：两级 settings.json 的 flatten 告警（未知/退役键）项目先行拼全局——GET /settings
-    // 透出（RawPane 顶部告警列表消费）；降级语义沿 fileSlots（缺文件/畸形按空）
-    const warnings = [...(root !== undefined ? fileWarnings(loadProjectSettings(root)) : []), ...fileWarnings(loadGlobalSettings())];
-    this.send(res, 200, {
-      keys,
-      permissions: { merged, project: projectPerms, global: globalPerms },
-      providers: { choices: loaded.choices, apiKeyPresent, warnings: loaded.warnings },
-      warnings,
-    });
-  }
 
-  /** PUT /settings {scope?, root?, updates}（G8c T2）：scope 缺省 'project'（root 必填，缺 400）；
-   *  scope='global' 写用户级文件（root 定位面被忽略——与 raw 端点同裁定），GUI 设置页「逐项写回
-   *  来源文件」的数据面。updates 为 Record<语义键, string|number|null>（非对象 400；未知键 400 带
-   *  RETIRED 处置提示；值类型坏 400）。结构化写：读原文件（缺=空对象 {version:1}）→ 含注释 409
-   *  引流 raw 编辑面 → 改键（null=delete）→ 保 version/env/permissions/providers/未知键（操作原
-   *  对象自然保）→ 2 空格缩进 JSON 原子写（同目录 tmp+rename，目录缺则 mkdir）→ reloadSettingsChain
-   *  重载 → 200 {ok:true}。畸形 JSON / 根非对象 / version 非 1：409（文件现状挡住结构化改写，与注释同面） */
-  private async handleSettingsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const body = parsed.body as { scope?: unknown; root?: unknown; updates?: unknown } | null;
-    const scope = body?.scope === 'global' ? 'global' : 'project';
-    const rootRaw = body?.root;
-    if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
-      this.send(res, 400, { error: 'root required — project-scoped PUT needs a root; pass scope:"global" for the user-level file' });
-      return;
-    }
-    const updates = body?.updates;
-    if (typeof updates !== 'object' || updates === null || Array.isArray(updates)) {
-      this.send(res, 400, { error: 'updates must be an object of key → string | number | null' });
-      return;
-    }
-    // 先全量校验后落盘：任一键坏即 400，零部分写（对比值面 400 与文件面 409 都不动盘）。
-    // 已知键判定用 Object.hasOwn 而非值比对：SEMANTIC_KEYS 是普通对象，toString/__proto__ 等
-    // 原型键经 `SEMANTIC_KEYS[key] === undefined` 会解析到 Object.prototype 成员（非 undefined）
-    // 穿透守卫被写上盘——hasOwn 只认真自键
-    for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
-      if (!Object.hasOwn(SEMANTIC_KEYS, key)) {
-        const retired = Object.hasOwn(RETIRED_KEYS, key) ? RETIRED_KEYS[key] : undefined;
-        this.send(res, 400, {
-          error: retired !== undefined ? `unknown key "${key}": ${retired}` : `unknown settings key "${key}"`,
-        });
-        return;
-      }
-      if (value !== null && typeof value !== 'string' && typeof value !== 'number') {
-        this.send(res, 400, { error: `value for "${key}" must be string | number | null` });
-        return;
-      }
-    }
-    const root = typeof rootRaw === 'string' && rootRaw.length > 0 ? path.resolve(rootRaw) : undefined;
-    const target = scope === 'global' ? loadGlobalSettings() : loadProjectSettings(root!);
-    let raw: string | null = null;
-    try {
-      raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
-    } catch {
-      this.send(res, 409, { error: `settings file not readable: ${target}` });
-      return;
-    }
-    if (raw !== null && hasJsonComments(raw)) {
-      // 注释保留式手术写(设置自动保存轮):逐行只动目标键,行尾注释/缩进/其余键逐字保真;
-      // 不支持形态(多行/嵌套值、单行对象、复验不过)→ 仍 409 引流 raw 编辑面,零盘上副作用
-      const patched = surgicalSettingsUpdate(raw, updates as Record<string, string | number | null>);
-      if (patched === null) {
-        this.send(res, 409, { error: 'file contains comments in an unsupported layout', hint: 'use raw editor' });
-        return;
-      }
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      const tmpPatched = `${target}.tmp-${process.pid}-${Date.now()}`;
-      fs.writeFileSync(tmpPatched, patched, 'utf8');
-      fs.renameSync(tmpPatched, target);
-      this.reloadSettingsChain(root);
-      this.send(res, 200, { ok: true });
-      return;
-    }
-    let obj: Record<string, unknown>;
-    if (raw === null) {
-      obj = { version: 1 };
-    } else {
-      let parsedRoot: unknown;
-      try {
-        parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 同口径）
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        this.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
-        return;
-      }
-      if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
-        this.send(res, 409, { error: 'settings root must be a JSON object' });
-        return;
-      }
-      const existing = parsedRoot as Record<string, unknown>;
-      if ((existing['version'] ?? 1) !== 1) {
-        this.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
-        return;
-      }
-      obj = existing;
-    }
-    for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
-      if (value === null) delete obj[key];
-      else obj[key] = value;
-    }
-    // 原子写：同目录 tmp + rename（rename 在两平台均原子替换目标）；.sunshinex 目录缺则递归建
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-    fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
-    fs.renameSync(tmpFile, target);
-    this.reloadSettingsChain(root);
-    this.send(res, 200, { ok: true });
+  // ---------- D31 分域拆分：配置面处理器迁 config-handlers.ts（io 注入 send/readJson/
+  //  reloadSettingsChain 三面——配置块对类状态的全部触点）；本类保留路由表与薄委托，行为零变化
+  //  （daemon.test 全量为锚）。wire/static/config-helpers 助手域随批迁叶子模块 ----------
+  private get configIo(): ConfigHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      readJson: (req) => this.readJson(req),
+      reloadSettingsChain: (root) => this.reloadSettingsChain(root),
+    };
   }
 
   /** PUT /settings 成功后的链重载（G8c T2）：清全部自填槽（env 槽 + 登记集，清集在删槽后、重装前）
@@ -2588,442 +1996,52 @@ export class GuiDaemon {
     }
   }
 
-  /** raw 端点目标文件定位（G8c T3）：scope×file 四象限——file=settings 走 loadProjectSettings/
-   *  loadGlobalSettings 既有单点；file=mcp 走两级装载同款路径（项目 `<root>/.sunshinex/mcp.json`、
-   *  全局 `<userConfigDir>/mcp.json`——与 loadMcpServers 同源）。scope=global 恒忽略 root（定位面；
-   *  root 在 PUT 里另有 reload 锚用途）。调用方保证 scope=project 时 root 非空 */
-  private rawSettingsFile(scope: 'project' | 'global', file: 'settings' | 'mcp', root: string): string {
-    if (scope === 'global') return file === 'settings' ? loadGlobalSettings() : path.join(userConfigDir(), 'mcp.json');
-    return file === 'settings' ? loadProjectSettings(root) : path.join(root, '.sunshinex', 'mcp.json');
+  private handleSettingsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    configHandlers.handleSettingsGet(this.configIo, req, res);
   }
 
-  /** GET /settings/raw?scope=project|global&root=<abs>&file=settings|mcp（G8c T3，raw 编辑面数据源）：
-   *  原文（含注释/缩进/尾随换行）逐字复读——JSONC 保真是 raw 面的存在理由（结构化改写会丢注释）。
-   *  缺文件 → {content:null}（编辑器空态判据）；scope=project 必带 root（缺 400——无 root 无从定位
-   *  项目文件），scope=global 忽略 root（定位恒 userConfigDir）。未知 scope/file 400。 */
+  private async handleSettingsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handleSettingsPut(this.configIo, req, res);
+  }
+
   private handleSettingsRawGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const scope = url.searchParams.get('scope');
-    const file = url.searchParams.get('file');
-    if (scope !== 'project' && scope !== 'global') {
-      this.send(res, 400, { error: 'scope must be "project" or "global"' });
-      return;
-    }
-    if (file !== 'settings' && file !== 'mcp') {
-      this.send(res, 400, { error: 'file must be "settings" or "mcp"' });
-      return;
-    }
-    const rootParam = url.searchParams.get('root');
-    if (scope === 'project' && (rootParam === null || rootParam.length === 0)) {
-      this.send(res, 400, { error: 'root query param required for scope=project' });
-      return;
-    }
-    const target = this.rawSettingsFile(scope, file, rootParam ?? '');
-    let content: string | null = null;
-    if (fs.existsSync(target)) content = fs.readFileSync(target, 'utf8');
-    this.send(res, 200, { content });
+    configHandlers.handleSettingsRawGet(this.configIo, req, res);
   }
 
-  /** PUT /settings/raw {scope, root?, file, content}（G8c T3）：服务端验证拒存 + 原子写。
-   *  - 验证口径=装载口径：file=settings 经 parseSettingsFile 验（在 tmp 上跑真解析器——验证的就是
-   *    将要落盘的字节；畸形 JSONC/根非对象/version 非 1 → 400 带 parseSettingsFile 原文 message，
-   *    stripJsonComments 保行数故行号指向用户文件真实位置）；file=mcp 经 validateMcpRawContent
-   *    （严格 JSON+根对象+mcpServers 形态——装载面 parseMcpJsonFile 同口径）。
-   *  - 原子写：同目录 tmp + rename（T2 结构化写同款）——非法内容永不到达目标路径（拒存），
-   *    验证失败清 tmp。
-   *  - scope=project 必带 root（缺 400）；scope=global 忽略 root 定位、但 root 在 body 时作为
-   *    reload 锚（file=settings 成功后 reloadSettingsChain(root)——global 链随跑；root 缺省只写盘
-   *    不 reload，stderr 提示——链重载需项目锚，无锚硬 reload 等于拿假 root 跑项目级）。
-   *  - file=mcp 恒不触发 reload（mcp 不在 settings 链）。IO 失败（写/换名）不经本地捕获——沿
-   *    dispatch 500 收口（T2 同惯例）。 */
   private async handleSettingsRawPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const body = parsed.body as { scope?: unknown; root?: unknown; file?: unknown; content?: unknown } | null;
-    const scope = body?.scope;
-    if (scope !== 'project' && scope !== 'global') {
-      this.send(res, 400, { error: 'scope must be "project" or "global"' });
-      return;
-    }
-    const file = body?.file;
-    if (file !== 'settings' && file !== 'mcp') {
-      this.send(res, 400, { error: 'file must be "settings" or "mcp"' });
-      return;
-    }
-    const content = body?.content;
-    if (typeof content !== 'string') {
-      this.send(res, 400, { error: 'content must be a string' });
-      return;
-    }
-    const rootRaw = body?.root;
-    let root: string | undefined;
-    if (scope === 'project') {
-      if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
-        this.send(res, 400, { error: 'root required for scope=project' });
-        return;
-      }
-      root = path.resolve(rootRaw);
-    } else if (typeof rootRaw === 'string' && rootRaw.length > 0) {
-      root = path.resolve(rootRaw); // global：定位面忽略 root（rawSettingsFile），此处仅留作 reload 锚
-    }
-    const target = this.rawSettingsFile(scope, file, root ?? '');
-    // 原子写+验证拒存：先落同目录 tmp → 验证 tmp（字节面=目标面）→ rename 原子替换；目录缺则递归建
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-    fs.writeFileSync(tmpFile, content, 'utf8');
-    try {
-      if (file === 'settings') parseSettingsFile(tmpFile); // 真解析器单点：throw → 400 原文 message
-      else validateMcpRawContent(content, target);
-    } catch (err) {
-      try {
-        fs.unlinkSync(tmpFile); // 拒存清 tmp：目标文件零触碰，不留残片
-      } catch {
-        // tmp 已不在场（写即败等）——无需清
-      }
-      this.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
-      return;
-    }
-    try {
-      fs.renameSync(tmpFile, target);
-    } catch (err) {
-      try {
-        fs.unlinkSync(tmpFile);
-      } catch {
-        // 同上
-      }
-      throw err; // IO 面 → dispatch 500 收口
-    }
-    if (file === 'settings') {
-      if (root !== undefined) this.reloadSettingsChain(root);
-      else console.error('[serve] raw global settings written without reload — pass root in the request body to reload the settings chain');
-    }
-    this.send(res, 200, { ok: true });
+    await configHandlers.handleSettingsRawPut(this.configIo, req, res);
   }
 
-  /** GET /settings/mcp?root=（G8c T4，Settings 页 MCP 清单数据源）：loadMcpServers 两级合并语义的
-   *  视图化拆解——直接 parseMcpJsonFile 逐文件读（loadMcpServers 只出合并态）：项目级全量
-   *  （source='project'，shadowed=false）+ 全局逐名（被项目同名遮蔽 → shadowed=true 仍列示，GUI
-   *  可呈现「被遮蔽」态；未遮蔽 → shadowed=false）。无 root = 仅全局清单（与 /settings providers
-   *  面同裁定：空串 root 会让装载面读 cwd 相对 .sunshinex/mcp.json，不可靠）。env 折键名列表，
-   *  transport 缺省归一 stdio（mcpRow 单点） */
   private handleMcpGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const rootParam = url.searchParams.get('root');
-    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-    const globalServers = parseMcpJsonFile(path.join(userConfigDir(), 'mcp.json'));
-    const projectServers = root !== undefined ? parseMcpJsonFile(path.join(root, '.sunshinex', 'mcp.json')) : [];
-    const projectNames = new Set(projectServers.map((s) => s.name));
-    this.send(res, 200, {
-      servers: [
-        ...projectServers.map((s) => mcpRow(s, 'project', false)),
-        ...globalServers.map((s) => mcpRow(s, 'global', projectNames.has(s.name))),
-      ],
-    });
+    configHandlers.handleMcpGet(this.configIo, req, res);
   }
 
-  /** POST /settings/mcp/probe {root?, name}（G8c T4）：合并清单定位该名（root 缺省 = 仅全局清单——
-   *  与 GET 同源裁定）→ probeMcpServer 单台真探测（临时装配+握手身份校验+tools/list）。失败面
-   *  （未知名/连接/身份不符/超时）同为 200 {ok:false, error}——探测是诊断面，失败即结果不是错误
-   *  码；name 缺失是请求形态坏 → 400 */
   private async handleMcpProbe(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const body = parsed.body as { root?: unknown; name?: unknown } | null;
-    const name = body?.name;
-    if (typeof name !== 'string' || name.length === 0) {
-      this.send(res, 400, { error: 'name required — probe target server name' });
-      return;
-    }
-    const rootRaw = body?.root;
-    const root = typeof rootRaw === 'string' && rootRaw.length > 0 ? path.resolve(rootRaw) : undefined;
-    const manifest = root !== undefined ? loadMcpServers(root) : parseMcpJsonFile(path.join(userConfigDir(), 'mcp.json'));
-    const cfg = manifest.find((s) => s.name === name);
-    if (cfg === undefined) {
-      this.send(res, 200, { ok: false, error: `mcp server not found in merged manifest: ${name}` });
-      return;
-    }
-    this.send(res, 200, await probeMcpServer(cfg));
+    await configHandlers.handleMcpProbe(this.configIo, req, res);
   }
 
-  /** PUT /settings/mcp {root, servers}（G8c T4）：项目级 mcp.json 整块结构化写（键 mcpServers = 输入
-   *  原样——含 env 全值，文件本就承载 env，GET 面才打码；旧清单整块替换不合并）。root 必填（缺 400，
-   *  全局走 raw 编辑）；逐条形状校验（name 非空串 / transport 枚举 / stdio 需 command / http·sse 需
-   *  url / args 字符串数组 / env 字符串记录）首错 400、全量校验后落盘零部分写；既有文件含注释/畸形
-   *  JSON → 409 引流 raw（与 T2 /settings PUT 同款守卫——结构化改写不越权处置注释/畸形）；原子写
-   *  （同目录 tmp+rename）；成功不触发 settings reload——mcp 不在 settings 链，装配期读取（新会话
-   *  生效）。键面用 null 原型记录承载：'__proto__' 一类名经普通对象赋值会改写原型而非落自键
-   *  （JSON.parse 回读是自键——T2 Object.hasOwn 教训的写面镜像） */
   private async handleMcpPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const body = parsed.body as { root?: unknown; servers?: unknown } | null;
-    const rootRaw = body?.root;
-    if (typeof rootRaw !== 'string' || rootRaw.length === 0) {
-      this.send(res, 400, { error: 'root required — PUT is project-scoped; edit the global file via raw editor' });
-      return;
-    }
-    const rows = body?.servers;
-    if (!Array.isArray(rows)) {
-      this.send(res, 400, { error: 'servers must be an array of { name, transport?, command?, args?, url?, env? }' });
-      return;
-    }
-    const record: Record<string, unknown> = Object.create(null); // null 原型：'__proto__' 名落自键（见上）
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      if (typeof row !== 'object' || row === null || Array.isArray(row)) {
-        this.send(res, 400, { error: `servers[${i}] must be an object` });
-        return;
-      }
-      const r = row as Record<string, unknown>;
-      if (typeof r.name !== 'string' || r.name.length === 0) {
-        this.send(res, 400, { error: `servers[${i}].name must be a non-empty string` });
-        return;
-      }
-      const transport = r.transport ?? 'stdio';
-      if (transport !== 'stdio' && transport !== 'http' && transport !== 'sse') {
-        this.send(res, 400, { error: `servers[${i}].transport must be "stdio" | "http" | "sse"` });
-        return;
-      }
-      if (transport === 'stdio') {
-        if (typeof r.command !== 'string' || r.command.length === 0) {
-          this.send(res, 400, { error: `servers[${i}]: stdio transport requires a command` });
-          return;
-        }
-      } else if (typeof r.url !== 'string' || r.url.length === 0) {
-        this.send(res, 400, { error: `servers[${i}]: ${transport} transport requires a url` });
-        return;
-      }
-      if (r.args !== undefined && (!Array.isArray(r.args) || !r.args.every((a) => typeof a === 'string'))) {
-        this.send(res, 400, { error: `servers[${i}].args must be an array of strings` });
-        return;
-      }
-      if (
-        r.env !== undefined &&
-        (typeof r.env !== 'object' || r.env === null || Array.isArray(r.env) || !Object.values(r.env).every((v) => typeof v === 'string'))
-      ) {
-        this.send(res, 400, { error: `servers[${i}].env must be an object of string → string` });
-        return;
-      }
-      record[r.name] = row; // 输入原样（含 env 全值与未知字段——写面不擅自裁剪）
-    }
-    const root = path.resolve(rootRaw);
-    const target = path.join(root, '.sunshinex', 'mcp.json');
-    // 409 守卫：既有文件注释/畸形（T2 同款；mcp 装载面严格 JSON，注释文件会被静默读空——结构化写
-    // 不得静默越权改写这类文件）
-    let raw: string | null = null;
-    try {
-      raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
-    } catch {
-      this.send(res, 409, { error: `mcp file not readable: ${target}` });
-      return;
-    }
-    if (raw !== null && hasJsonComments(raw)) {
-      this.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
-      return;
-    }
-    let obj: Record<string, unknown>;
-    if (raw === null) {
-      obj = Object.create(null);
-    } else {
-      let parsedRoot: unknown;
-      try {
-        parsedRoot = JSON.parse(raw); // 严格 JSON：BOM/注释不容忍（与 parseMcpJsonFile 装载口径一致）
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        this.send(res, 409, { error: `mcp file is not valid JSON: ${reason}` });
-        return;
-      }
-      if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
-        this.send(res, 409, { error: 'mcp file root must be a JSON object' });
-        return;
-      }
-      obj = parsedRoot as Record<string, unknown>;
-    }
-    obj['mcpServers'] = record; // 整块替换（mcpServers 键以外顶层键原样保留，与 T2 settings PUT 同语义）
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-    fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
-    fs.renameSync(tmpFile, target);
-    this.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
+    await configHandlers.handleMcpPut(this.configIo, req, res);
   }
 
-  /** GET /settings/agents?root=（G8c T5，Settings 页 Agents 清单数据源）：builtins = builtinAgentRoles
-   *  四预设角色平铺（零读盘零副作用）；view = loadAgentsView 两级宽容清单（项目遮蔽全局 shadowed 标记，
-   *  畸形文件入 warnings 不抛死——视图面不重复装配链的 fail-fast 裁决）。无 root = 仅全局清单：projectRoot
-   *  不能传空串——loadAgentsView 会 join('','agents')='agents' 相对 cwd 误扫（仓库根真有 agents/ 现目录，
-   *  非理论陷阱），改传保证不存在的绝对哨兵（缺目录 = 空项目级，与 loadAgentsFrom 缺目录同语义；较改
-   *  loadAgentsView 加空串特判更小——subagent.ts 语义面零改动，两案取实现最小者） */
   private handleAgentsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const rootParam = url.searchParams.get('root');
-    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-    const projectRoot = root ?? path.join(os.tmpdir(), `sunshinex-agents-empty-${crypto.randomUUID()}`);
-    this.send(res, 200, { builtins: builtinAgentRoles(), view: loadAgentsView(projectRoot, userConfigDir()) });
+    configHandlers.handleAgentsGet(this.configIo, req, res);
   }
 
-  /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（G8c T5，AgentsPane 表单增删改）：
-   *  - id 安全校验 AGENT_ID_RE → 400（id 直接拼目录路径——路径分隔/穿越/点开头一律拒，upsert 与 delete
-   *    同守卫）；scope=project 必带 root（缺 400），global 恒忽略 root（与 raw/mcp 面同裁定）
-   *  - upsert：先全量校验后落盘零部分写（name 必填非空白；name/description/isolation/executor 单行
-   *    字符串——frontmatter 是单行 KV 词法，含换行的值会注入伪键，多行内容属 body 面；memory 布尔；
-   *    body 字符串缺省空）→ renderAgentMd 生成（键序 name 首位）→ 写同目录 tmp → 回读 tmp 过真解析器
-   *    parseAgentFrontmatter + name 回环（验证口径=装载口径且验证的就是将要落盘的字节；throw/回环不符
-   *    → 清 tmp 500，目标零触碰）→ rename 原子落盘
-   *  - delete：<scopeDir>/agents/<id>/ 存在 → rm -rf；不存在 → 幂等 ok。IO 失败（写/rename/rm）不经
-   *    本地捕获——沿 dispatch 500 收口（T2/T3/T4 同惯例） */
   private async handleAgentsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const parsed = await this.readJson(req);
-    if (!parsed.ok) {
-      this.send(res, parsed.status, { error: parsed.error });
-      return;
-    }
-    const body = parsed.body as { root?: unknown; scope?: unknown; op?: unknown; id?: unknown; frontmatter?: unknown; body?: unknown } | null;
-    const op = body?.op;
-    if (op !== 'upsert' && op !== 'delete') {
-      this.send(res, 400, { error: 'op must be "upsert" or "delete"' });
-      return;
-    }
-    const scope = body?.scope;
-    if (scope !== 'project' && scope !== 'global') {
-      this.send(res, 400, { error: 'scope must be "project" or "global"' });
-      return;
-    }
-    const id = body?.id;
-    if (typeof id !== 'string' || !AGENT_ID_RE.test(id)) {
-      this.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
-      return;
-    }
-    const rootRaw = body?.root;
-    if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
-      this.send(res, 400, { error: 'root required for scope=project' });
-      return;
-    }
-    const scopeDir = scope === 'global' ? userConfigDir() : path.resolve(rootRaw as string); // global 恒忽略 root（定位面）
-    const agentDir = path.join(scopeDir, 'agents', id);
-    if (op === 'delete') {
-      if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true }); // 不存在 = 幂等 ok
-      this.send(res, 200, { ok: true });
-      return;
-    }
-    // upsert 校验面（首错 400，零部分写）：frontmatter 经 parseAgentFrontmatterInput 单点校验+归一
-    let fm: AgentFrontmatterInput;
-    try {
-      fm = parseAgentFrontmatterInput(body?.frontmatter);
-    } catch (err) {
-      this.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
-      return;
-    }
-    const bodyText = body?.body;
-    if (bodyText !== undefined && typeof bodyText !== 'string') {
-      this.send(res, 400, { error: 'body must be a string' });
-      return;
-    }
-    // 写后回读验证（T3 raw 同款几何）：先落同目录 tmp → 回读 tmp 过真解析器（字节面=目标面）→
-    // throw/回环不符即拒：清 tmp 500，目标文件零触碰（不落盘）。验证口径=装配口径 parseAgentFrontmatter——
-    // 防生成坏文件（装配链 fail-fast 写盘前防线）；单行校验下此路径仅生成器缺陷可达，纯防御层
-    fs.mkdirSync(agentDir, { recursive: true });
-    const target = path.join(agentDir, 'agent.md');
-    const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-    fs.writeFileSync(tmpFile, renderAgentMd(fm, bodyText ?? ''), 'utf8');
-    try {
-      const meta = parseAgentFrontmatter(fs.readFileSync(tmpFile, 'utf8'));
-      if (meta.name !== fm.name) throw new Error(`round-trip name mismatch: ${JSON.stringify(meta.name)}`);
-    } catch (err) {
-      try {
-        fs.unlinkSync(tmpFile); // 拒存清 tmp：目标文件零触碰，不留残片
-      } catch {
-        // tmp 已不在场（写即败等）——无需清
-      }
-      this.send(res, 500, { error: `generated agent.md failed validation (${target}): ${err instanceof Error ? err.message : String(err)}` });
-      return;
-    }
-    try {
-      fs.renameSync(tmpFile, target);
-    } catch (err) {
-      try {
-        fs.unlinkSync(tmpFile);
-      } catch {
-        // 同上
-      }
-      throw err; // IO 面 → dispatch 500 收口
-    }
-    this.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
+    await configHandlers.handleAgentsPut(this.configIo, req, res);
   }
 
-  /** GET /settings/agents/body?scope=project|global&id=&root=（G8d T3，AgentsPane 编辑全文装载）：
-   *  读 <scopeDir>/agents/<id>/agent.md 的 frontmatter 后正文全文（parseAgentFrontmatter 单点——
-   *  验证口径=装载口径=bodyPreview 口径，三面同源；bodyPreview 的 200 帽在此不适用）。错误面：
-   *  坏 scope/坏 id（AGENT_ID_RE 同 PUT 守卫）/scope=project 缺 root → 400；文件缺 → 404（回显
-   *  `${scope}/agents/${id}` 相对定位——G8e-T4 收敛：不泄 daemon 主机绝对路径，GUI 可原样呈现）；
-   *  畸形 frontmatter → 400 带 parser 原文 message（清单面入 warnings 不抛死，本端点单文件直达——
-   *  编辑装载是精确寻址，报错优于静默）。scope=global 恒忽略 root（定位面，PUT 同裁定） */
   private handleAgentsBodyGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const scope = url.searchParams.get('scope');
-    if (scope !== 'project' && scope !== 'global') {
-      this.send(res, 400, { error: 'scope must be "project" or "global"' });
-      return;
-    }
-    const id = url.searchParams.get('id');
-    if (id === null || !AGENT_ID_RE.test(id)) {
-      this.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
-      return;
-    }
-    const rootParam = url.searchParams.get('root');
-    if (scope === 'project' && (rootParam === null || rootParam.length === 0)) {
-      this.send(res, 400, { error: 'root required for scope=project' });
-      return;
-    }
-    const scopeDir = scope === 'global' ? userConfigDir() : path.resolve(rootParam as string);
-    const file = path.join(scopeDir, 'agents', id, 'agent.md');
-    if (!fs.existsSync(file)) {
-      this.send(res, 404, { error: `agent.md not found: ${scope}/agents/${id}` });
-      return;
-    }
-    const md = fs.readFileSync(file, 'utf8'); // existsSync 后读失败（竞态移除等）沿 dispatch 500 收口
-    try {
-      this.send(res, 200, { body: parseAgentFrontmatter(md).body });
-    } catch (err) {
-      this.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
-    }
+    configHandlers.handleAgentsBodyGet(this.configIo, req, res);
   }
 
-  /** GET /settings/skills?root=（G8c T6，Settings 页 Skills 清单数据源）：root 在场 → loadSkillsGrouped
-   *  三组固定序（project/user/learned；组内沿装载序去重、跨组不去重——重复 id 是多源同名的事实呈现，
-   *  遮蔽裁决属装配面 loadSkills，视图不预裁）。无 root = 仅 user 组（userSkillsDir 全局可扫；
-   *  project/learned 均 root 锚定缺席——空组不占位，与 /settings·/settings/mcp「无 root 仅全局面」
-   *  同裁定，但 skills 的全局面是 userSkillsDir 而非 userConfigDir 文件） */
   private handleSkillsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const rootParam = url.searchParams.get('root');
-    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-    // scope=all(设置·技能页「项目筛选」视图):user 全局 + 注册项目域全枚举(project 组与 learned
-    // 组逐域归属项目名;root 入场仅作当前项目组置首锚——设置页 root 可能为空,枚举不依赖它)
-    if (url.searchParams.get('scope') === 'all') {
-      const groups: SkillsGroup[] = [loadUserSkillsGroup(), ...loadCrossProjectSkillGroups(root)];
-      this.send(res, 200, { groups });
-      return;
-    }
-    this.send(res, 200, { groups: root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()] });
+    configHandlers.handleSkillsGet(this.configIo, req, res);
   }
 
-  /** GET /settings/memory-stats?root=（G8c T6，Settings 页记忆概览）：root 在场 → memoryStats 主域
-   *  只读统计（条数/最近写入，见模块级单点）；无 root = 零值（无项目上下文无记忆面——恒定形态，
-   *  不 400：概览页无项目时的空态是合法呈现而非请求形态错） */
   private handleMemoryStatsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = urlOf(req);
-    const rootParam = url.searchParams.get('root');
-    const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-    this.send(res, 200, root !== undefined ? memoryStats(root) : { entries: 0, lastWriteAt: null });
+    configHandlers.handleMemoryStatsGet(this.configIo, req, res);
   }
 
   private send(res: http.ServerResponse, status: number, body: object): void {

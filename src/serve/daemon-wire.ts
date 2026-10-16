@@ -1,0 +1,72 @@
+import * as http from 'node:http';
+import type { EventFrame } from './session';
+import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
+
+/** daemon 下行 wire 面（D31 分域拆分自 daemon.ts）：HTTP URL 解析原语（urlOf/LOOPBACK_HOST）+
+ *  下行帧形态（事件帧并集/审批/问询/reset）与挂起表条目——叶子模块，daemon 与各 handler 域共用，
+ *  零上层依赖（防 config 域 → daemon 类的运行时环）。
+ */
+
+/** daemon 恒绑回环（G10 免鉴权档裁定「本地工具不设密」）：bind 面与 serve 打印面同源单点 */
+export const LOOPBACK_HOST = '127.0.0.1';
+
+/** 请求 URL 解析单点：base 仅为解析锚（host 不参与实际绑定），pathname/search 统一出口 */
+export function urlOf(req: http.IncomingMessage): URL {
+  return new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
+}
+
+
+/** 挂起面 WS 帧（G4 审批问询，spec §4.2）：无 seq——不入单调序列（挂起非事件流成员，重连重发幂等，
+ *  客户端以 pid 去重）；pid 为 daemon 级铸造的挂起票据（回执端点 `POST /approval/:pid` /
+ *  `POST /ask/:pid/reply` 的寻址键）；req 纯数据直序列化（ApprovalRequest/AskUserRequest 字面） */
+export interface ApprovalFrame {
+  kind: 'approval';
+  sessionId: string;
+  pid: string;
+  req: ApprovalRequest;
+}
+
+/** ask 挂起帧：AskUserRequest 无 id 字段（types.ts 现场核）——pid 由 daemon 单点铸造承载回执寻址 */
+export interface AskFrame {
+  kind: 'ask';
+  sessionId: string;
+  pid: string;
+  req: AskUserRequest;
+}
+
+/** reset 通知帧（G4 裁定 7）：无 seq——GUI 收到即清该会话本地投影并重播种（sessionSnapshot） */
+export interface ResetFrame {
+  kind: 'reset';
+  sessionId: string;
+}
+
+/** daemon 下行帧全并集：pump 事件帧（有 seq）+ 挂起/reset 帧（无 seq）——广播面单点共用序列化 */
+export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | ResetFrame;
+
+/** 挂起表条目（G4 裁定 1）：kind 判别联合——回执端点按 kind 对表（approval 回执打到 ask 挂起 = 404）；
+ *  resolve 即回执值（interrupt/teardown 以 deny/dismissed 回填，TUI approval.ts 先例） */
+export type PendingEntry =
+  | { kind: 'approval'; sessionId: string; req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }
+  | { kind: 'ask'; sessionId: string; req: AskUserRequest; resolve: (a: AskUserAnswer) => void };
+
+/** 挂起条目 → WS 帧（首播与重连重发同形同构：kind/sessionId/pid/req 四件） */
+export function pendingFrameOf(pid: string, entry: PendingEntry): ApprovalFrame | AskFrame {
+  return entry.kind === 'approval'
+    ? { kind: 'approval', sessionId: entry.sessionId, pid, req: entry.req }
+    : { kind: 'ask', sessionId: entry.sessionId, pid, req: entry.req };
+}
+
+/** AskUserAnswer 回执载荷校验（G4）：三态字面核验——selected 需 string[]、custom 需非空 text、
+ *  dismissed 无参；非法形态回 null（HTTP 面 400）。labels 空数组放行——类型面合法，工具执行面
+ *  自行降级为 dismissed 观察文案（builtin.ts ask_question executor 既有口径） */
+export function parseAskAnswer(v: unknown): AskUserAnswer | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const a = v as { type?: unknown; labels?: unknown; text?: unknown };
+  if (a.type === 'dismissed') return { type: 'dismissed' };
+  if (a.type === 'custom') return typeof a.text === 'string' && a.text.length > 0 ? { type: 'custom', text: a.text } : null;
+  if (a.type === 'selected') {
+    if (!Array.isArray(a.labels) || !a.labels.every((l) => typeof l === 'string')) return null;
+    return { type: 'selected', labels: a.labels as string[] };
+  }
+  return null;
+}
