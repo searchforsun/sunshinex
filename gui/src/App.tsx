@@ -80,6 +80,16 @@ export function App(): JSX.Element {
 }
 
 
+/** G5/G14.137 会话维投影总容器(D34 串态收口,第二十五轮):board/会话待办/委派/team 四件一容器
+ *  ——清零点(onReset/onResetSession/openSession/backHome)整替一处,人工枚举漏项的开集弱点根除 */
+interface SessionProjection {
+  board: TaskBoardState;
+  sessionTodos: TodoItem[];
+  delegations: Delegation[];
+  team: Array<{ name: string; busy: boolean }>;
+}
+const EMPTY_PROJECTION = (): SessionProjection => ({ board: emptyBoard(), sessionTodos: [], delegations: [], team: [] });
+
 /** 应用壳:单连接装配 + 三栏路由(左 ProjectMenu|中 Chat 恒挂|右标签栏);welcome = 无会话空态 */
 function AppShell(): JSX.Element {
   /** 欢迎页 goal 接力(G10):welcome 提交建会话后,Chat 播种完成即提交该目标 */
@@ -100,12 +110,11 @@ function AppShell(): JSX.Element {
   /** G8a 标签态总表:每会话独立(backHome 保留——重开同会话标签还原,spec §1) */
   const [tabStates, setTabStates] = useState<TabStates>({});
   const [connState, setConnState] = useState<ConnectionState>('connecting');
-  const [board, setBoard] = useState<TaskBoardState>(emptyBoard);
-  /** G14.137 会话待办(todo_write 上抛):任务标签「会话待办」区数据源;会话切换清零(与板同纪律) */
-  const [sessionTodos, setSessionTodos] = useState<TodoItem[]>([]);
-  const [delegations, setDelegations] = useState<Delegation[]>([]);
-  /** G5 teammate 投影(App 态):snapshot.team 经 Chat onSeeded 回填——reseed 即更新 */
-  const [team, setTeam] = useState<Array<{ name: string; busy: boolean }>>([]);
+  const [projection, setProjection] = useState<SessionProjection>(EMPTY_PROJECTION);
+  /** Chat onTodos 适配(todo_write 批整替进投影;useCallback 恒稳,消费面 JSX 不变) */
+  const setSessionTodos = useCallback((todos: TodoItem[]): void => {
+    setProjection((p) => ({ ...p, sessionTodos: todos }));
+  }, []);
   /** 会话级操作(fork/rewind)失败提示:sx-toast 底部浮出 3s 自隐(设置页同形态)——旁路失败此前零反馈,
    *  用户点「分叉/回到此轮」无响应会误以为成功 */
   const [opError, setOpError] = useState('');
@@ -181,13 +190,13 @@ function AppShell(): JSX.Element {
         if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
           // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
-          else setBoard((b) => applyBoardEvent(b, boardEventFrom(e)));
+          else setProjection((p) => ({ ...p, board: applyBoardEvent(p.board, boardEventFrom(e)) }));
           return;
         }
         if (e.type.startsWith('delegation-')) {
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
           else {
-            setDelegations((d) => applyDelegation(d, e));
+            setProjection((p) => ({ ...p, delegations: applyDelegation(p.delegations, e) }));
             // G8d:delegation 起止无 subagent 标签——payload.label 命中既有卡才改状态(Runner 权威
             // 终语:ended failed → error·done → done;未建卡原引用返回,React 同引用即免重渲染)
             setAgentActivities((a) => applyAgentEvent(a, e));
@@ -205,11 +214,9 @@ function AppShell(): JSX.Element {
         // 重连/首连同路径:板/委派投影清零 + 播种窗重开(随补发帧经 onSeeded 过滤重放;Chat 投影
         // 由 sink.reset 清+本会话重播种;welcome 无 sink 时帧被会话过滤,窗恒空悬挂至下次 openSession)
         reopenBoardSeedWindow();
-        setBoard(emptyBoard());
+        setProjection(EMPTY_PROJECTION()); // D34 串态收口:board/todos/delegations/team 一处整替
         setTodoBatches([]);
         setTurnGoal('');
-      setSessionTodos([]);
-        setDelegations([]);
         setAgentActivities({}); // G8d:子代理聚合清零(重连补发帧重建——连接层 seq 过滤防双应用)
         chatSinkRef.current?.reset();
       },
@@ -237,10 +244,9 @@ function AppShell(): JSX.Element {
         // G3.5 交接 d 收口(G5):会话维 reset 清 board/delegations 投影(仅连接级 onReset 清的缺口
         //  ——会话 reset 后旧任务悬挂)+ 播种窗重开清缓冲(窗内帧属旧板,弃);Chat 卡区清+重播种经 sink
         reopenBoardSeedWindow();
-        setBoard(emptyBoard());
+        setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之一随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-        setDelegations([]);
         setAgentActivities({}); // G8d:会话维 reset 子代理聚合同清(swap 新 Harness,旧卡作废)
         chatSinkRef.current?.resetSession();
       },
@@ -303,11 +309,9 @@ function AppShell(): JSX.Element {
     setOpenRoot(root);
     setTabStates((s) => ensureSession(s, sessionId, PROBE));
     reopenBoardSeedWindow();
-    setBoard(emptyBoard());
+    setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-    setDelegations([]);
-    setTeam([]);
     setAgentActivities({}); // G8d:会话切换串态防线(板/team 同款——聚合只挂当前会话帧)
     setPage('chat');
   };
@@ -321,11 +325,9 @@ function AppShell(): JSX.Element {
     setOpenJournalId('');
     setOpenRoot('');
     reopenBoardSeedWindow();
-    setBoard(emptyBoard());
+    setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-    setDelegations([]);
-    setTeam([]);
     setAgentActivities({}); // G8d:无会话期无帧消费,残留即陈旧
     setPage('welcome');
   };
@@ -437,16 +439,14 @@ function AppShell(): JSX.Element {
         setAgentActivities((a) => applyAgentEvent(a, f.e));
       }
     }
-    setTeam(snap.team ?? []);
-    setBoard(nextBoard);
-    setDelegations(nextDelegations);
+    setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [] }));
   };
 
   /** 标签体服务面(任务/Agents 标签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接)+
    *  G8d 子代理活动聚合(AgentsTab 只读) */
   const services = useMemo<TabServices>(
-    () => ({ board, delegations: [...delegations], team: [...team], onReview: reviewTask, agentActivities, todos: [...sessionTodos], todoBatches, turnGoal, taskFocus }),
-    [board, delegations, team, reviewTask, agentActivities, sessionTodos, todoBatches, turnGoal, taskFocus],
+    () => ({ board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, agentActivities, todos: [...projection.sessionTodos], todoBatches, turnGoal, taskFocus }),
+    [projection, reviewTask, agentActivities, todoBatches, turnGoal, taskFocus],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -567,7 +567,7 @@ function AppShell(): JSX.Element {
                   setTaskFocus({ ref, nonce: Date.now() });
                 }}
                 onOpenTab={openTabType}
-                board={board}
+                board={projection.board}
                 onTodoBatches={setTodoBatches}
                 onTurnGoal={setTurnGoal}
                 pendingGoal={welcomeGoal ?? undefined}
