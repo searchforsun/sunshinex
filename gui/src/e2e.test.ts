@@ -1120,8 +1120,9 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[data-title="任务板"]')!);
       await waitFor(() => expect(screen.getByRole('button', { name: 't1 [in-review] Demo' })).toBeDefined(), { timeout: 10_000 });
       expect(tabsByTitle(container, '任务板')[0]!.className).toContain('active');
-      expect(container.querySelector('.delegation-list')?.textContent).toContain('task-t1');
-      expect(container.querySelector('.delegation-list')?.textContent).toContain('完成'); // G14.164 徽标本地化(旧 [done] 文本面)
+      // 委派面(G14.213 任务板重构:旧 .delegation-list 侧栏退役):fork 委派落 t1 行内执行
+      // 子代理徽标(agentOfTask 按 task-<id> 命中 → 🤖 徽标入行);状态面已在行名 [in-review] 断过
+      await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain('task-t1'), { timeout: 10_000 });
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
