@@ -220,6 +220,7 @@ function onUsage(s: ChatState, e: SessionEvent): ChatState {
  *  不重置,否则多轮 run tokens 虚增)、done 回 idle;error 不动(G14.51:done 必发,收口让位) */
 export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
   if (typeof e.payload?.subagent === 'string') return s; // 子代理事件另轨(Agents 标签,G8d):主流零条目零计数
+  if (e.type === 'queue') return s; // P5 队列面事件(UseSessionEvents 截收 setQueued):不入转录投影(防御——default 分支会把当边界误闭合开启段)
   const k = applyEvent(s.k, e);
   let next: ChatState = { ...s, k };
   switch (e.type) {

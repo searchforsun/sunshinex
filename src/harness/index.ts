@@ -30,7 +30,6 @@ import { FileInbox } from '../taskboard/file-inbox';
 import { ExternalCliExecutor } from '../taskboard/executors/external-cli';
 import { fail, ok, Result } from '../result';
 import { MemoryPipeline } from './memory/pipeline';
-import { SteeringChannel } from './steering';
 import { writeMemoryFact } from './memory/extractor';
 import { guardMemoryWrite } from './memory/writer';
 import type { SettlePayload } from './reactor';
@@ -103,8 +102,9 @@ export class Harness {
   readonly ledger: RunLedger;
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
   readonly pipeline: MemoryPipeline;
-  /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向）：会话层运行中入队，Reactor 步边界 drain 消费 */
-  readonly steering: SteeringChannel;
+  /** 步边界穿插源(P5 内核化,spec §12):等待队列态归会话内核(SteeringChannel 退役),会话层装配时
+   *  挂入取走口(缺省空——不挂即无穿插);Reactor 步边界经此取走置首条目文本注入当前轮 */
+  steerSource: () => string[] = () => [];
   /** 沉淀双钩子单点（规格 §3.1/§3.5）：单发 Reactor 与 loop 内构造的 Reactor 同源透传，防两处拼装漂移 */
   readonly settleHooks: {
     settle: (r: SettlePayload) => string | undefined;
@@ -171,7 +171,6 @@ export class Harness {
       learnedEnabled: () => opts.learnSkills ?? resolveMemoryConfig().learnedSkills,
       memoryEnabled: () => (opts.memoryOverride ?? resolveMemoryConfig().autoMemory) === true,
     });
-    this.steering = new SteeringChannel();
     // MCP 装配链（两级 mcp.json → McpHost）：注册链 fail-fast（连接/握手/拉取任一失败即 run 入口转确定性失败），guard 名单已构造期注入；懒连接——首次 run 前才发起，空配置零开销
     let mcpHost: McpHost | undefined;
     let mcpWarnings: string[] = [];
@@ -337,7 +336,7 @@ export class Harness {
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.outputStyle ? { outputStyle: opts.outputStyle } : {}),
       // 运行中穿插（对标 CC queued messages）：步边界 drain 单点；未消费行由会话层收口兜底补跑
-      steer: () => this.steering.drain(),
+      steer: () => this.steerSource(),
       // 沉淀双钩子零等待入队（规格 §3.1/§3.5 D2）：收口同步路径不再 await 模型调用；开关判门在管线内逐项求值
       ...this.settleHooks,
     });

@@ -114,8 +114,9 @@ export function interrupt(ctrl: SessionController): boolean {
     return true;
   }
   // 待投递穿插行随中断一并丢弃（用户意图是停，不是继续跑）；已消费穿插行已随步入链，不受影响
-  if (ctrl.runtime.harness.steering.pending() > 0) {
-    const dropped = ctrl.runtime.harness.steering.takePending().length;
+  // （P5 内核态:走 ctrl 队列 API——steer 行落档随发）
+  if (ctrl.steeringPending() > 0) {
+    const dropped = ctrl.queueTakeAll().length;
     ctrl.pushMsg('system', t(`Queued tasks dropped: ${dropped}`, `已丢弃排队任务：${dropped} 条`), { level: 'warn' });
   }
   ctrl.notify();

@@ -206,6 +206,8 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
           { t: 'seg', kind: 'assistant', md: '先前的答复', ts: 20, seq: 2 },
           { t: 'msg', item: { role: 'user', text: '先前的任务', ts: 1, seq: 1 } },
           { t: 'msg', item: { role: 'assistant', text: '先前的答复', ts: 2, seq: 2 } },
+          { t: 'steer', items: [{ seq: 0, text: '旧队列条目', front: false }] },
+          { t: 'steer', items: [{ seq: 0, text: '装载条一', front: false }, { seq: 1, text: '装载条二', front: true }] },
         ],
         2,
       );
@@ -236,6 +238,13 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
       // 链播种：主链含既有 task 行
       const chainObs = daemon.get(sid)!.runtime.harness.context.chainView().map((s) => s.observation);
       assert.ok(chainObs.includes('先前的任务'), '主链播种（restoreSession 直注入）');
+
+      // 等待队列装载(P5 spec §12):末条 steer 行整列回种,snapshot.queued 回显
+      const snapQ = (await (await fetch(`${base}/session/${sid}/snapshot`, { headers: AUTH })).json()) as { queued: Array<{ seq: number; text: string }> };
+      assert.deepEqual(snapQ.queued, [
+        { seq: 0, text: '装载条一' },
+        { seq: 1, text: '装载条二' },
+      ], '队列装载(末条 steer 行为准,旧行覆盖)');
 
       // submit 一轮 → journal 续落 chain 行（文件尾新增）
       const r = await fetch(`${base}/session/${sid}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '再跑一轮' }) });

@@ -16,7 +16,7 @@ import type { SessionJournal } from '../tui/session-journal';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SnapshotEntry } from '../tui/session-journal';
-import { SessionKernel, type KernelEvent } from '../session/kernel';
+import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
 import { kernelEventRows } from '../session/v2log';
 import type { KernelEntry } from '../session/entry';
 import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
@@ -181,8 +181,9 @@ export class SessionRuntime {
   /** v2 落档单点(P2,spec §3.2):内核段级事件 → journal 行(kernelEventRows 共享映射,P3 起
    *  daemon/TUI 同一写形)。journal 未挂载即丢弃;惰性建档对齐 chain 订阅(首条段级行落 header)。
    *  chain/compact 行走 onContextChange 既有订阅、runmeta 行走 submit() 收尾既有路径——三条写路
-   *  同档不重叠 */
+   *  同档不重叠。P5:steer 事件双消费——旁路广播 queue 帧(不经 pump,防主链投影误闭合)+整列落档 */
   private persistKernelEvent(ev: KernelEvent): void {
+    if (ev.t === 'steer') this.emitQueueFrame(ev.items);
     const j = this.journal;
     if (j === undefined) return;
     try {
@@ -193,17 +194,35 @@ export class SessionRuntime {
     }
   }
 
+  /** queue 事件旁路广播(P5,spec §12):队列变更不发 SessionEvent 主链(pump 会喂转录内核与影子
+   *  投影,default 分支把 queue 当边界误闭合开启段)——单走 seq 分配+环形缓冲+广播;重连补发经
+   *  frames 环窗天然覆盖(新连接回放最后一条 queue 帧=最新队列) */
+  private emitQueueFrame(items: SteerItem[]): void {
+    const seq = this.opts.nextSeq();
+    this.lastSeqNum = seq;
+    const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e: { type: 'queue', payload: { items }, ts: Date.now() } };
+    this.frames.push(frame);
+    if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
+    this.opts.broadcast(frame);
+  }
+
   /** v2 档装载入核(attach 序调用,daemon.ts 持 journalId 位):reduceV2Rows 重放条目 seed——
    *  seq 原样沿用(truncate 对位),不触发落档事件(防装载双写) */
   kernelSeed(entries: ReadonlyArray<KernelEntry>): void {
     this.kernel.seed(entries);
   }
 
+  /** 等待队列装载(P5,spec §12):attach 序调 reduceSteerRows 重放末条 steer 行 → 内核回种
+   *  (不发事件防双写;快照 queued 即刻可见) */
+  steerSeed(items: ReadonlyArray<SteerItem>): void {
+    this.kernel.steerRestore(items);
+  }
+
   /** 装配单点：与 TUI 同一 createRuntime（mode 缺省 dontAsk；G4 起 manual 会话透传模式 + 两接缝——
    *  setAsker 装配形态由 createRuntime 既有单点承担（manual && onApproval 才挂），session 层不重造）；
-   *  onEvent 接本会话泵——reset 复用同点换新 */
+   *  onEvent 接本会话泵——reset 复用同点换新。P5:步边界穿插源挂内核取走口（steerSource 可换插缝） */
   private assemble(): TuiRuntime {
-    return createRuntime({
+    const rt = createRuntime({
       root: this.opts.root,
       model: this.opts.model,
       mode: this.currentMode === 'plan' ? 'dontAsk' : this.currentMode,
@@ -211,6 +230,8 @@ export class SessionRuntime {
       ...(this.opts.asker !== undefined ? { onApproval: this.opts.asker } : {}),
       ...(this.opts.onAskUser !== undefined ? { onAskUser: this.opts.onAskUser } : {}),
     });
+    rt.harness.steerSource = () => this.kernel.steerDrain();
+    return rt;
   }
 
   /** 运行时本体外窥（T2 attach 播种/T5 扩展消费；harness 公开面只在 teardown 消费） */
@@ -433,13 +454,14 @@ export class SessionRuntime {
         this.current = undefined;
         // G14.89 轮收束自动发下一轮:队列非空即取队首续跑(排队语义=等当前轮完成自动发);
         // interrupted(用户主动停)不续——停止即停,队列留存由用户决定;余下条目保序回队
+        // (P5:取走/回队均走内核——steer 行落档+queue 帧广播随发)
         if (runOutcome?.stopReason !== 'interrupted') {
-          const pending = this.runtimeImpl.harness.steering.takePending();
+          const pending = this.kernel.steerTakePending();
           if (pending.length > 0) {
-            for (const t of pending.slice(1)) this.runtimeImpl.harness.steering.enqueue(t);
+            for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text);
             // G14.89 user 回显帧:内部续发不经 HTTP 提交(GUI 无本地回显),pump 帧补气泡
-            this.pump({ type: 'user', text: pending[0], ts: Date.now() });
-            this.submit(pending[0]);
+            this.pump({ type: 'user', text: pending[0]!.text, ts: Date.now() });
+            this.submit(pending[0]!.text);
           }
         }
       });
@@ -461,10 +483,11 @@ export class SessionRuntime {
     return { ok: true };
   }
 
-  /** 运行中穿插（G3 steer 平移）：SteeringChannel 纯内存 FIFO——enqueue 不做运行态检查，运行中步边界
-   *  drain 消费、空闲入队下一轮生效（排队语义即承诺，恒 200 由 HTTP 面承担） */
+  /** 运行中穿插（G3 steer 平移）：队列态在内核(P5)——enqueue 不做运行态检查，运行中步边界
+   *  drain 消费、空闲入队下一轮生效（排队语义即承诺，恒 200 由 HTTP 面承担）;steer 行落档与
+   *  queue 帧广播经 onKernelEvent 单槽随发 */
   steer(text: string): void {
-    this.runtimeImpl.harness.steering.enqueue(text);
+    this.kernel.steerEnqueue(text);
   }
 
   /**
@@ -547,13 +570,18 @@ export class SessionRuntime {
     return 'ok';
   }
 
-  /** G14.83 队列重排:from → to(拖拽排序);置首=插入发送(下一轮立即注入) */
+  /** G14.83 队列重排:from → to(拖拽排序);置首=插入发送(下一轮立即注入)——P5 走内核态 */
   steerMove(seq: number, to: number): boolean {
-    return this.runtimeImpl.harness.steering.move(seq, to);
+    return this.kernel.steerMove(seq, to);
   }
 
   steerFront(seq: number): boolean {
-    return this.runtimeImpl.harness.steering.moveToFront(seq);
+    return this.kernel.steerMoveToFront(seq);
+  }
+
+  /** P5 队列编辑(spec §12.2):第 seq 条文本改写;越界/空白 false */
+  steerEdit(seq: number, text: string): boolean {
+    return this.kernel.steerEditAt(seq, text);
   }
 
   /** G14.95 技能命令清单(会话维,/session/:id/skill-commands 数据面):字符集合法+撞名内置词排除
@@ -567,14 +595,14 @@ export class SessionRuntime {
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
-  /** 排队插话(G10-C1d):steering FIFO 快照,seq=队列下标(内存面 ephemeral,cancel 寻址键) */
+  /** 排队插话(G10-C1d):内核队列快照(P5),seq=位置下标(每次变更重排,cancel 寻址键) */
   private queuedSteer(): Array<{ seq: number; text: string }> {
-    return this.runtimeImpl.harness.steering.pendingItems().map((text, seq) => ({ seq, text }));
+    return this.kernel.steerPendingItems().map(({ seq, text }) => ({ seq, text }));
   }
 
   /** 撤回排队插话(G10-C1d):按下标撤;越界 false */
   cancelSteer(seq: number): boolean {
-    return this.runtimeImpl.harness.steering.removeAt(seq);
+    return this.kernel.steerRemoveAt(seq);
   }
 
   snapshotResponse(): SessionSnapshot {

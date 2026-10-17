@@ -282,6 +282,31 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
     expect(cancelSteer).toHaveBeenCalledWith('s1', 0);
   });
+
+  it('P5 queue 帧:变更帧实时回显 chips(替代轮询);不入转录投影(零条目);内联编辑钮调 editSteer(seq,text)', async () => {
+    const editSteer = vi.fn(() => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).editSteer = editSteer;
+    (conn as unknown as Record<string, unknown>).sessionSnapshot = () =>
+      Promise.resolve({ messages: [], status: 'running', board: { tasks: [] }, delegations: [], team: [], pending: [], lastSeq: 0, queued: [{ seq: 0, text: '排队一' }] });
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    expect(screen.getByText('排队一')).toBeTruthy();
+    // queue 帧:全量列表权威回显(替换快照态)
+    fire({ type: 'queue', ts: Date.now(), payload: { items: [{ seq: 0, text: '排队一改', front: false }, { seq: 1, text: '新条', front: false }] } });
+    expect(await screen.findByText('排队一改')).toBeTruthy();
+    expect(screen.getByText('新条')).toBeTruthy();
+    expect(document.querySelector('.steer-fold')?.textContent).toContain('2');
+    // 队列帧不进转录(零条目)
+    expect(document.querySelectorAll('.entry-user, .entry-notice').length).toBe(0);
+    // 内联编辑:Pencil 钮 → 行变输入框 → 改文回车 → editSteer(seq,text)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit inline' })[0]);
+    const input = screen.getByLabelText('Edit queued message') as HTMLInputElement;
+    expect(input.value).toBe('排队一改');
+    fireEvent.change(input, { target: { value: '改后文本' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(editSteer).toHaveBeenCalledWith('s1', 0, '改后文本');
+  });
 });
 
 describe('run 状态行(G11 §1)', () => {

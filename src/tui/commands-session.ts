@@ -8,7 +8,7 @@ import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { renderMd } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
 import type { ChatItem } from './chat-model';
-import { reduceV2Rows } from '../session/v2log';
+import { reduceSteerRows, reduceV2Rows } from '../session/v2log';
 import type { KernelEntry } from '../session/entry';
 import type { SessionController } from './session';
 
@@ -155,6 +155,7 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   };
   ctrl.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
   ctrl.kernelSeedForRestore(entries); // 转录面入核:后续 live 条目 seg 行 seq 续接(P3)
+  ctrl.queueRestore(reduceSteerRows(parsed.events)); // 等待队列回种(P5):末条 steer 行整列恢复
   ctrl.ensureJournal().attach(meta.id);
   // 模型配置漂移告警（状态注入后上屏，防被 replay.messages 吞掉）
   if (modelDriftWarn !== undefined) ctrl.pushMsg('system', modelDriftWarn, { level: 'warn' });

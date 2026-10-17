@@ -329,7 +329,7 @@ test('⑫ truncate:保留 seq<=upToSeq 前缀;序号不复用,后续条目续接
 test('⑬ 段级事件面(v2 写者契约):seg-open open 标志/seg-update 回填/段闭合落终态;token 拼接零事件', () => {
   const events: Array<{ t: string; seq?: number; open?: boolean; kind?: string }> = [];
   const k = new SessionKernel({
-    onKernelEvent: (e) => events.push(e.t === 'truncate' ? { t: e.t, seq: e.upToSeq } : { t: e.t, seq: e.entry.seq, open: 'open' in e ? e.open : undefined, kind: e.entry.kind }),
+    onKernelEvent: (e) => events.push(e.t === 'truncate' ? { t: e.t, seq: e.upToSeq } : e.t === 'steer' ? { t: e.t } : { t: e.t, seq: e.entry.seq, open: 'open' in e ? e.open : undefined, kind: e.entry.kind }),
   });
   pump(k, ev('user', '问'), ev('token', '答'));
   assert.deepEqual(
@@ -374,4 +374,58 @@ test('⑮ 子代理事件另轨:payload.subagent 零条目(G8d 入口过滤单�
     ['user'],
     '子代理事件不进主流转录',
   );
+});
+
+test('⓯ 等待队列(P5 内核化,spec §12):入队/编辑/重排/置首/撤回全操作——seq 位置重排、front 标记、变更即发 steer 整列事件', () => {
+  const events: Array<{ t: string; items?: Array<{ seq: number; text: string; front: boolean }> }> = [];
+  const k = new SessionKernel({ onKernelEvent: (e) => { if (e.t === 'steer') events.push({ t: e.t, items: e.items.map((x) => ({ ...x })) }); } });
+  k.steerEnqueue('  一  '); // trim 入队
+  k.steerEnqueue('二');
+  k.steerEnqueue('   '); // 空白忽略
+  assert.deepEqual(k.steerPendingItems(), [
+    { seq: 0, text: '一', front: false },
+    { seq: 1, text: '二', front: false },
+  ]);
+  assert.equal(events.length, 2, '空白入队零事件');
+  assert.deepEqual(events[0]!.items, [{ seq: 0, text: '一', front: false }]);
+  assert.ok(k.steerEditAt(1, '二改'), '编辑命中');
+  assert.equal(k.steerEditAt(9, 'x'), false, '越界编辑 false');
+  assert.ok(k.steerMove(1, 0), '重排');
+  assert.ok(k.steerMoveToFront(1), '置首+front 标记');
+  assert.deepEqual(k.steerPendingItems(), [
+    { seq: 0, text: '一', front: true },
+    { seq: 1, text: '二改', front: false },
+  ]);
+  assert.ok(k.steerRemoveAt(0), '撤回');
+  assert.equal(k.steerRemoveAt(9), false, '越界撤回 false');
+  assert.deepEqual(k.steerPendingItems(), [{ seq: 0, text: '二改', front: false }]);
+  assert.equal(events.length, 6, '每次变更一事件(空白/越界零事件)');
+  assert.deepEqual(events[events.length - 1]!.items, [{ seq: 0, text: '二改', front: false }], '事件=变更后整列快照');
+});
+
+test('⓯b 队列消费语义:steerDrain 仅取走 front 条(步边界注入);steerTakePending 全取(轮收束补跑);steerRestore 装载零事件', () => {
+  const events: unknown[] = [];
+  const k = new SessionKernel({ onKernelEvent: (e) => { if (e.t === 'steer') events.push(e); } });
+  k.steerRestore([
+    { seq: 0, text: '甲', front: false },
+    { seq: 1, text: '乙', front: true },
+    { seq: 2, text: '丙', front: false },
+  ]);
+  assert.equal(events.length, 0, '装载回种不发事件(防双写)');
+  assert.deepEqual(k.steerDrain(), ['乙'], 'drain 只取置首');
+  assert.deepEqual(k.steerPendingItems().map((x) => x.text), ['甲', '丙'], '普通条目留队并重排');
+  assert.deepEqual(k.steerTakePending().map((x) => x.text), ['甲', '丙'], 'takePending 全取');
+  assert.deepEqual(k.steerDrain(), []);
+  assert.equal(k.steerPendingItems().length, 0);
+});
+
+test('⓯c 队列与转录互不扰动:steer 事件不产条目;pump 段面不受队列操作影响(G14.51 开启段保持)', () => {
+  const k = new SessionKernel();
+  pump(k, ev('user', '问'), ev('token', '答'));
+  k.steerEnqueue('插话');
+  const es = k.replay();
+  assert.deepEqual(es.map((e) => e.kind), ['user', 'assistant'], '队列操作零转录条目');
+  assert.equal(k.openSeg(), es[1]!.seq, '开启段游标不受扰');
+  pump(k, ev('done', '答', { stopReason: 'done' }));
+  assert.equal(k.replay().length, 2, '后续 done 仍正常闭合合并');
 });

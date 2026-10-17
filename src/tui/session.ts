@@ -27,7 +27,7 @@ import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, newSessionId, readSessionMeta, writeSessionMeta } from './session-journal';
-import { SessionKernel } from '../session/kernel';
+import { SessionKernel, type SteerItem } from '../session/kernel';
 import type { KernelEntry } from '../session/entry';
 import { kernelEventRows } from '../session/v2log';
 import { resolveDataDir } from '../config/data-dir';
@@ -116,10 +116,16 @@ export class SessionController {
    *  换新走 kernelSeedForRestore(/new 清空/resume 装载) */
   private kernel: SessionKernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
 
-  /** v2 落档单点:内核段级事件 → journal 行(kernelEventRows 共享映射,daemon 同形);未建档丢弃
-   *  (惰性建档由 submit 的 user 行既有点承担——自然语言提交先落 user 行再 kernel.submit,序不丢) */
+  /** v2 落档单点:内核段级事件 → journal 行(kernelEventRows 共享映射,daemon 同形);惰性建档
+   *  对齐 daemon(P5 起 steer 行可先于自然语言提交到达——队列面板插入即落,无 run 也有档) */
   private persistKernelEvent(ev: import('../session/kernel').KernelEvent): void {
-    for (const row of kernelEventRows(ev)) this.journal?.log(row);
+    const j = this.ensureJournal();
+    try {
+      if (j.currentId === undefined) j.start(2);
+      for (const row of kernelEventRows(ev)) j.log(row);
+    } catch {
+      // 尽力落档:写失败不影响运行面
+    }
   }
 
   /** v2 档装载入核(resume/rewind 装载序,commands-session 消费):换新内核(旧档条目不串档)后 seed,
@@ -127,6 +133,44 @@ export class SessionController {
   kernelSeedForRestore(entries: ReadonlyArray<KernelEntry>): void {
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.kernel.seed(entries);
+  }
+
+  // ---- 等待队列面(P5 内核化,spec §12):态在内核,面板/键位/中断路径经此组读写——
+  // 变更即发 steer 事件,落档(P3 既有 persistKernelEvent)随行;TUI 无广播面(单 UI 直读) ----
+
+  /** 待投递快照(面板渲染/计数) */
+  queueItems(): SteerItem[] {
+    return this.kernel.steerPendingItems();
+  }
+
+  queueEnqueue(text: string): void {
+    this.kernel.steerEnqueue(text);
+  }
+
+  queueEditAt(seq: number, text: string): boolean {
+    return this.kernel.steerEditAt(seq, text);
+  }
+
+  queueMove(from: number, to: number): boolean {
+    return this.kernel.steerMove(from, to);
+  }
+
+  queueMoveToFront(seq: number): boolean {
+    return this.kernel.steerMoveToFront(seq);
+  }
+
+  queueRemoveAt(seq: number): boolean {
+    return this.kernel.steerRemoveAt(seq);
+  }
+
+  /** 取走全部(撤回取回/中断丢弃) */
+  queueTakeAll(): SteerItem[] {
+    return this.kernel.steerTakePending();
+  }
+
+  /** 队列装载(resume 序,commands-session 消费):末条 steer 行回种,不发事件零双写 */
+  queueRestore(items: ReadonlyArray<SteerItem>): void {
+    this.kernel.steerRestore(items);
   }
   /** 恢复携带的 UI 现场（--continue / /resume 重放产物；entry 经 takeRestoredUi 播种 retain，一次性取走）；
    *  公开 = commands-session 恢复三面注入点 */
@@ -278,9 +322,9 @@ export class SessionController {
     this.kernel.submit(text);
     this.md.clear();
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
-      // 运行中穿插（对标 CC queued messages，用户→运行时方向、非模型工具面）：入 steering 通道，
-      // reactor 步边界 drain 同轮消费；未被消费的行由收口兜底 drainQueue 补跑
-      this.runtime.harness.steering.enqueue(text);
+      // 运行中穿插（对标 CC queued messages，用户→运行时方向、非模型工具面）：入内核队列(P5)，
+      // reactor 步边界经 steerSource 取走置首行同轮消费；未被消费的行由收口兜底 drainQueue 补跑
+      this.kernel.steerEnqueue(text);
       this.pushMsg('system', t(`Queued: ${text}`, `已排队：${text}`));
       return;
     }
@@ -735,20 +779,20 @@ export class SessionController {
     }
   }
 
-  /** 待投递穿插行数（TUI 队列展示/撤回判定用） */
+  /** 待投递穿插行数（兼容旧测试面；队列管理走 queueItems 组） */
   steeringPending(): number {
-    return this.runtime.harness.steering.pending();
+    return this.kernel.steerPendingItems().length;
   }
 
   /** 撤回取回（对标 CC Up 键取回队列）：取走全部未投递穿插行（按入队序）；App 层回填输入框逐行编辑或清空丢弃 */
   takeBackQueued(): string[] {
-    return this.runtime.harness.steering.takePending();
+    return this.kernel.steerTakePending().map((x) => x.text);
   }
 
   /** 运行中穿插收口兜底（对标 CC「turn 结束仍有排队→最旧者作下一轮」）：未被步边界消费的行按入队序补跑为新任务 */
   private async drainQueue(): Promise<void> {
-    for (const line of this.runtime.harness.steering.takePending()) {
-      await this.runTaskFlow(line);
+    for (const it of this.kernel.steerTakePending()) {
+      await this.runTaskFlow(it.text);
     }
   }
 

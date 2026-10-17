@@ -27,6 +27,8 @@ import { KeyHints, keyHintsFor } from './KeyHints';
 import { useInspectKeys } from './use-inspect-keys';
 import { useBrowseKeys, browseRows } from './use-browse-keys';
 import { useBoardKeys, boardRows } from './use-board-keys';
+import { useQueueKeys } from './use-queue-keys';
+import { QueuePanel } from './QueuePanel';
 import { useQuestionKeys } from './use-question-keys';
 import { useApprovalKeys, approvalKeyToDecision, approvalDecisionByIndex } from './use-approval-keys';
 import { useLineEditKeys } from './use-line-edit';
@@ -175,6 +177,9 @@ export function App({
   // 行序派生 boardRows 单点、每页 8 行滑窗、gated ⚠ 高亮；局部瞬态不入 retain（检视面非操作现场）；
   // 与 Ctrl+B 互斥经判定序保证（browse 在场先吞键、board 在场时 browse hook 整体让位，见 useInput 分发）
   const { boardMode, boardCursor, boardModeRef, handleKey: handleBoardKey } = useBoardKeys({ controller, stateRef });
+  // 等待队列管理面板（Ctrl+Q，P5 spec §12.3）：状态与按键分支收编 useQueueKeys——查看/编辑/删除/
+  // 插入/直接发送/置首/重排；轻模态（任务卡在场让位自关），局部瞬态不入 retain（board 同口径）
+  const { queueMode, queueCursor, queueModeRef, draft: queueDraft, draftSeq: queueDraftSeq, handleKey: handleQueueKey } = useQueueKeys({ controller, stateRef });
   // 技能命令池快照（规格 D6/D7）：会话层 skillMenuEntries 同源（附描述与最近使用）；挂载即读 + 回合边界
   // （sessionTurns 变化）刷新，不逐键读盘——最近使用排序在会话层 loadSkill 落盘后下回合生效
   const [skillMenu, setSkillMenu] = React.useState<SlashMenuSkillSource[]>(() => controller.skillMenuEntries());
@@ -254,7 +259,7 @@ export function App({
     segCountRef.current = segCount;
     // 全屏/浏览/任务视图跳过段锚点重绘（2026-09-28 用户裁决）：动态区自绘面在场时整屏拆挂即持续闪屏、
     // 且重挂空窗吞 Esc/↑↓ 按键；账本照记，退出后从真实基线起算零虚触发
-    if (inspectRef.current || browseModeRef.current || boardModeRef.current) return;
+    if (inspectRef.current || browseModeRef.current || boardModeRef.current || queueModeRef.current) return;
     if (!changed) return;
     const ledger = tailLedgerRef.current!;
     if (ledger.forceFull) {
@@ -291,7 +296,7 @@ export function App({
   // 帧高恒 ≤ rows-1，clearTerminal 路径结构性不可达
   const spinnerRows = state.status === 'running' ? 1 : 0;
   const runningChildren = runningDelegations(state).length;
-  const childPanelRows = runningChildren > 0 && !browseMode && !boardMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1（浏览/任务视图在场让位）
+  const childPanelRows = runningChildren > 0 && !browseMode && !boardMode && !queueMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1（浏览/任务视图/队列面板在场让位）
   // 恒驻键提示条（2026-10-02）：所有交互处的快捷键单点承载——矩阵见 keyHintsFor；恒 1 行计入
   // previewCap chrome 实账（不实账即帧高触顶 clearTerminal，子代理视图冻结同病根）；模态卡在场
   // hints=undefined 条退场（卡 hint 承载，零行）
@@ -302,6 +307,7 @@ export function App({
     pauseConfirm: state.pauseConfirm,
     browse: browseMode,
     board: boardMode,
+    queue: queueMode,
     inspect: inspect !== undefined,
     inspectLive: inspect?.kind === 'live',
     menuVisible: menuEntries.length > 0 && (state.status === 'idle' || state.status === 'error'),
@@ -386,6 +392,10 @@ export function App({
     // gate 审批问题卡在场时让键给问询分支）与 Ctrl+T 进入——分支与状态收编 use-board-keys；
     // browse 在场时其吞键已在上一位短路，Ctrl+T 进不了（互斥对侧由判定序保证）
     if (handleBoardKey(input, key)) return;
+
+    // 判定序第 5b 位：等待队列管理面板（Ctrl+Q，P5 spec §12.3）——面板在场恒吞键（分支与状态收编
+    // use-queue-keys）；轻模态：任务卡（审批/问询/计划）在场 hook 自让位交键，Ctrl+Q 进入不抢卡
+    if (handleQueueKey(input, key)) return;
 
     // 判定序第 6 位：AskQuestion 问询卡（AskQuestion 线 T2）——模态接管键盘恒吞键（三分支与专属状态收编
     // use-question-keys）；分支置于全局键之前（Esc 在此不回落清缓冲）
@@ -534,7 +544,12 @@ export function App({
         // ChildPanel 让位（同 browse 语义），Spinner/输入区保留
         <BoardList key="board-list" rows={boardRows(state)} cursor={boardCursor} />
       ) : null}
-      {(runningChildren > 0 && !browseMode && !boardMode) ? (
+      {(queueMode && !browseMode && !boardMode) ? (
+        // 等待队列管理面板（Ctrl+Q，P5 spec §12.3）：内核队列直读快照、draft 行内联（编辑/插入），
+        // 动态区每帧自绘；浏览/任务视图在场让位（键面已由判定序互斥，渲染守卫防双显）
+        <QueuePanel key="queue-panel" items={controller.queueItems()} cursor={queueCursor} draft={queueDraft} draftSeq={queueDraftSeq} />
+      ) : null}
+      {(runningChildren > 0 && !browseMode && !boardMode && !queueMode) ? (
         // 常态子代理面板（2026-09-28 统一口径）：只承载运行中（P1 收敛：门限与 ChildPanel 成员同源——
         // runningDelegations 投影单源，rows 非空才渲染面板）；浏览态时运行中行由统一列表承载——
         // 同一子代理面板行与列表行双显属重复呈现（2026-09-28 真机双显 bug），浏览态面板整块让位

@@ -58,7 +58,9 @@ export type JournalEvent =
   /** run 条开启行(md='' 条目;收尾统计由 runmeta 行对位,悬空 run-open 重放标 stopped) */
   | { t: 'run-open'; ts: number; seq: number }
   /** 视界截断行(rewind/compact/reset;upToSeq=0 即全清;重放在流中位置即时生效) */
-  | { t: 'truncate'; upToSeq: number };
+  | { t: 'truncate'; upToSeq: number }
+  /** 等待队列行(P5 内核化 spec §12;整列重写——每次变更一行全量,重放取末行为准;reduceJournal 忽略) */
+  | { t: 'steer'; items: Array<{ seq: number; text: string; front: boolean }> };
 
 export interface SessionMeta extends SessionSidecarMeta {
   id: string;

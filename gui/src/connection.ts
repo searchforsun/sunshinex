@@ -55,6 +55,8 @@ export interface Connection {
   /** G14.83 排队条目重排(拖拽排序)/置首(插入发送=下一轮立即注入) */
   moveSteer(id: string, from: number, to: number): Promise<void>;
   frontSteer(id: string, seq: number): Promise<void>;
+  /** POST /session/:id/steer/edit:队列条目内联改写(P5 spec §12.2) */
+  editSteer(id: string, seq: number, text: string): Promise<void>;
   /** POST /session/:id/rewind|fork(G10-C1d):turn=anchors 1-based */
   rewindSession(id: string, turn: number): Promise<void>;
   forkSession(id: string, turn: number, side?: boolean): Promise<{ sessionId: string }>;
@@ -290,6 +292,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async frontSteer(id: string, seq: number): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/steer/front', { seq });
+    },
+    async editSteer(id: string, seq: number, text: string): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/steer/edit', { seq, text });
     },
     async rewindSession(id: string, turn: number): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/rewind', { turn });

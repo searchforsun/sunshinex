@@ -197,7 +197,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setInput,
     setChat,
     setQueued,
-    refreshQueued,
     setSessMode,
     setSessEffort,
     submitTextRef,

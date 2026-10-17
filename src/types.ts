@@ -268,6 +268,9 @@ type SessionEventType =
   | 'user'
   // G14.100 runmeta 帧:run 收尾元数据广播(实时轮尾汇总条;journal 落档同步 pump)
   | 'runmeta'
+  // P5 等待队列变更帧(spec §12):队列任何变更广播全量列表(payload.items)——TUI/GUI 实时识别,
+  // 退役快照轮询;不经 pump 主链(旁路帧:不喂转录内核/影子投影,防边界误闭合)
+  | 'queue'
   // 委派/任务事件(2026-10-04 多Agent编排 spec §11):delegation-* 为 P0 起;
   // task-* 为 TaskBoard 词汇(P1 创建/状态/解锁/阻塞,P2 加边/指派)、gate-*/agent-message 为 P1/P2 词汇
   | 'task-created' | 'task-status-changed' | 'task-unlocked' | 'task-blocked'

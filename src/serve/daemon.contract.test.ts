@@ -275,13 +275,25 @@ test('④ POST /session/:id/steer：无 token 401；空/空白/非 string text 4
     assert.equal(st.status, 200);
     assert.deepEqual(await st.json(), { ok: true }, '运行中 steer 恒 200 {ok:true}（daemon 不因 steer 倒面）');
 
-    // 收尾清锁后空闲态 steer 亦 200——SteeringChannel 纯内存 FIFO 语义：空闲入队，下一轮步边界 drain 生效
+    // 收尾清锁后空闲态 steer 亦 200——队列态在内核(P5):空闲入队,下一轮步边界 drain 生效
     const stop = await fetch(`${ctx.http}/session/${ctx.sid}/interrupt`, { method: 'POST', headers: { authorization: 'Bearer test-token' } });
     assert.equal(stop.status, 200);
     await waitFor(() => ctx.daemon.get(ctx.sid)!.status() === 'idle', 3000);
     const idle = await fetch(`${ctx.http}/session/${ctx.sid}/steer`, { method: 'POST', headers: H, body: JSON.stringify({ text: '下一轮先看测试' }) });
     assert.equal(idle.status, 200, '空闲 steer 恒 200（排队下一轮生效，不 409）');
     assert.deepEqual(await idle.json(), { ok: true });
+
+    // P5 spec §12:steer/edit 编辑队列条目;越界/空白 400
+    const snap0 = (await (await fetch(`${ctx.http}/session/${ctx.sid}/snapshot`, { headers: H })).json()) as { queued: Array<{ seq: number }> };
+    assert.ok(snap0.queued.length >= 2, '前序入队两条在场');
+    const bad = await fetch(`${ctx.http}/session/${ctx.sid}/steer/edit`, { method: 'POST', headers: H, body: JSON.stringify({ seq: 99, text: 'x' }) });
+    assert.equal(bad.status, 400, '越界 edit 400');
+    const blank = await fetch(`${ctx.http}/session/${ctx.sid}/steer/edit`, { method: 'POST', headers: H, body: JSON.stringify({ seq: 0, text: '   ' }) });
+    assert.equal(blank.status, 400, '空白 text edit 400');
+    const edit = await fetch(`${ctx.http}/session/${ctx.sid}/steer/edit`, { method: 'POST', headers: H, body: JSON.stringify({ seq: snap0.queued[0]!.seq, text: '改后的插话' }) });
+    assert.equal(edit.status, 200);
+    const snap1 = (await (await fetch(`${ctx.http}/session/${ctx.sid}/snapshot`, { headers: H })).json()) as { queued: Array<{ seq: number; text: string }> };
+    assert.equal(snap1.queued.find((q) => q.seq === snap0.queued[0]!.seq)?.text, '改后的插话', 'edit 后快照回显新文本');
   });
 });
 

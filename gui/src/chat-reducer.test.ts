@@ -433,3 +433,17 @@ describe('思考链聚合(G10-C3:reasoning → thinking 条)', () => {
     expect(s.entries[1]!.kind).toBe('assistant');
   });
 });
+
+describe('queue 面板事件(P5:不入转录投影)', () => {
+  it('queue 帧直通守卫:返回原引用零变更;开启段不被误闭合', () => {
+    let s = applyChatEvent(initialChatState(), { type: 'user', text: '问', ts: 1000 } as SessionEvent);
+    s = applyChatEvent(s, { type: 'token', text: '答', ts: 2000 } as SessionEvent);
+    const openSeq = s.entries[1]!.seq;
+    const before = s;
+    const next = applyChatEvent(s, { type: 'queue', ts: 3000, payload: { items: [{ seq: 0, text: 'x', front: false }] } } as unknown as SessionEvent);
+    expect(next).toBe(before);
+    expect(next.entries).toHaveLength(2);
+    expect(next.entries[1]!.seq).toBe(openSeq);
+    expect(next.entries[1]!.streaming).toBe(true);
+  });
+});

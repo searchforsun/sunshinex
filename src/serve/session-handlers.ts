@@ -256,6 +256,21 @@ export async function handleSteerCancel(io: SessionHandlerIo, req: http.Incoming
   io.send(res, 200, { ok: true });
 }
 
+
+/** POST /session/:id/steer/edit {seq,text}(P5 spec §12.2):队列条目内联改写;text 空白串 400
+ *  (与 handleSteer 的 trim-忽略口径一致前置拒),越界 400(与 cancel/move 同形) */
+export async function handleSteerEdit(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const body = (parsed.body ?? {}) as { seq?: unknown; text?: unknown };
+  if (typeof body.seq !== 'number' || !Number.isInteger(body.seq) || body.seq < 0) return io.send(res, 400, { error: 'invalid seq' });
+  if (typeof body.text !== 'string' || body.text.trim() === '') return io.send(res, 400, { error: 'text must be a non-empty string' });
+  const session = io.sessionFor(res, id);
+  if (session === undefined) return;
+  if (!session.steerEdit(body.seq, body.text)) return io.send(res, 400, { error: 'no such queued entry' });
+  io.send(res, 200, { ok: true });
+}
+
 export async function handleSessionTierEffort(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'tier' | 'effort'): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });

@@ -31,6 +31,8 @@ export function keyHintsFor(s: {
   browse?: boolean;
   /** 任务视图（Ctrl+T，P2 spec §10.3）接管——与 browse 互斥（键判定序保证，帧面至多其一在场） */
   board?: boolean;
+  /** 等待队列管理面板（Ctrl+Q，P5 spec §12.3）接管——轻模态，与 browse/board 判定序互斥 */
+  queue?: boolean;
   inspect?: boolean;
   /** live 全屏（正在跑的子代理）——Ctrl+C 作用域=停此子代理；archived 回看只读无此键（2026-10-02） */
   inspectLive?: boolean;
@@ -78,6 +80,21 @@ export function keyHintsFor(s: {
       ],
     };
   }
+  // 等待队列面板接管（Ctrl+Q，P5）：六操作+排序；超宽按序截断（编辑/删除/发送优先）
+  if (s.queue) {
+    return {
+      items: [
+        { key: '↑↓', action: t('move', '移动') },
+        { key: 'E', action: t('edit', '编辑') },
+        { key: 'D', action: t('delete', '删除') },
+        { key: 'N', action: t('send now', '直接发送') },
+        { key: 'I', action: t('insert', '插入') },
+        { key: 'F', action: t('to front', '置首') },
+        { key: 'Ctrl+↑↓', action: t('reorder', '重排') },
+        { key: 'Esc', action: t('exit', '退出') },
+      ],
+    };
+  }
   // 子代理全屏视图：head 只留元数据，键提示由本条承载；live 的 Ctrl+C=两次确认停此子代理，归档回看只读无此键
   if (s.inspect) {
     return s.inspectLive
@@ -106,6 +123,7 @@ export function keyHintsFor(s: {
     ];
     if (s.hasChildren) items.push({ key: 'Ctrl+B', action: t('subagents', '子代理') });
     items.push({ key: 'Ctrl+T', action: t('tasks', '任务') });
+    items.push({ key: 'Ctrl+Q', action: t('queued', '队列') });
     return { items };
   }
   // 空闲/出错 + 斜杠菜单在场：面板键（Enter 执行不进条——占位符已引导）
@@ -125,6 +143,7 @@ export function keyHintsFor(s: {
       { key: '↑', action: t('history', '历史') },
       { key: 'Ctrl+B', action: t('subagents', '子代理') },
       { key: 'Ctrl+T', action: t('tasks', '任务') },
+      { key: 'Ctrl+Q', action: t('queued', '队列') },
     ],
   };
 }

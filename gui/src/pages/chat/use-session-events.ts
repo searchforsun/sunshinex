@@ -36,9 +36,8 @@ export function useSessionEvents(deps: {
   /** G14.154 辅助对话首问:挂载即把携带的选区引用落输入框(仅一次) */
   initialInsert?: string;
   setInput: Dispatch<SetStateAction<string>>;
-  /** 队列面(reseed 回显 snapshot.queued;done 帧后续发重拉) */
+  /** 队列面(reseed 回显 snapshot.queued;P5 起 queue 帧实时推) */
   setQueued: Dispatch<SetStateAction<Array<{ seq: number; text: string }>>>;
-  refreshQueued: () => void;
   /** 会话 pill(snapshot 回显面) */
   setSessMode: Dispatch<SetStateAction<'dontAsk' | 'manual' | 'plan'>>;
   setSessEffort: Dispatch<SetStateAction<string | undefined>>;
@@ -70,7 +69,6 @@ export function useSessionEvents(deps: {
     setInput,
     setChat,
     setQueued,
-    refreshQueued,
     setSessMode,
     setSessEffort,
     submitTextRef,
@@ -230,10 +228,21 @@ export function useSessionEvents(deps: {
             }));
           }
         }
-        if (e.type === 'done') {
-          // G14.89 轮收束:daemon 自动续发消费队首——done 即刷+延迟再刷(续发落在 finally,晚于 done 帧)
-          refreshQueued();
-          window.setTimeout(() => refreshQueued(), 700);
+        if (e.type === 'queue') {
+          // P5 等待队列变更帧(spec §12):payload.items=全量列表权威态,实时回显替代轮询
+          // (done 帧 double-refresh 退役——轮收束消费/回队走内核 ops,帧随发);播种窗内亦直投
+          // (reseed 快照是初始权威,后至帧恒更新)
+          const arr = e.payload?.items;
+          if (Array.isArray(arr)) {
+            setQueued(
+              arr
+                .filter((o) => o !== null && typeof o === 'object')
+                .map((o) => o as { seq?: unknown; text?: unknown })
+                .filter((o) => typeof o.text === 'string' && typeof o.seq === 'number')
+                .map((o) => ({ seq: o.seq as number, text: o.text as string })),
+            );
+          }
+          return; // 队列面事件不入转录投影(applyChatEvent 有守卫,此为省一趟)
         }
         if (seedingRef.current) {
           pendingRef.current.push({ e, seq }); // 种子在途:缓冲不投(直投会被种子整替清掉)

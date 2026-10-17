@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reduceV2Rows } from './v2log';
+import { reduceSteerRows, reduceV2Rows, kernelEventRows } from './v2log';
 import { SessionKernel } from './kernel';
 import type { KernelEvent } from './kernel';
 import type { KernelEntry } from './entry';
@@ -37,6 +37,10 @@ function kernelEventsToRows(events: KernelEvent[]): Record<string, unknown>[] {
     if (e.t === 'seg-update') {
       const en = e.entry;
       rows.push({ t: 'seg-update', seq: en.seq, ts: en.ts, ...(en.name !== undefined ? { name: en.name } : {}), ...(en.input !== undefined ? { input: en.input } : {}), ...(en.result !== undefined ? { result: en.result } : {}) });
+      continue;
+    }
+    if (e.t === 'steer') {
+      rows.push({ t: 'steer', items: e.items.map((x) => ({ ...x })) });
       continue;
     }
     rows.push({ t: 'truncate', upToSeq: e.upToSeq });
@@ -174,4 +178,35 @@ test('往返:乱序 result 先行 + reset truncate 全清', () => {
   const k4 = new SessionKernel();
   k4.seed(reduceV2Rows(rows2));
   assert.equal(k4.replay().length, 0, 'truncate 行重放=清空视界');
+});
+
+test('steer 行读面(P5,spec §12):reduceSteerRows 取末行为准+字段净化;kernelEventRows 映射整列', () => {
+  // 末条 steer 行覆盖前行(整列重写语义)
+  assert.deepEqual(
+    reduceSteerRows([
+      { t: 'steer', items: [{ seq: 0, text: '旧', front: false }] },
+      { t: 'seg', kind: 'user', md: '> x', ts: 1, seq: 1 }, // 段行不扰
+      { t: 'steer', items: [{ seq: 0, text: '甲', front: false }, { seq: 1, text: '乙', front: true }] },
+    ]),
+    [
+      { seq: 0, text: '甲', front: false },
+      { seq: 1, text: '乙', front: true },
+    ],
+  );
+  // 净化:非串 text 弃、front 严判 true、坏 seq 夹取、空 text 行丢弃
+  assert.deepEqual(
+    reduceSteerRows([{ t: 'steer', items: [{ seq: 5, text: '好', front: 'yes' }, { seq: -1, text: 42, front: true }, { text: '', front: false }, 'junk' as unknown as Record<string, unknown>] }]),
+    [{ seq: 5, text: '好', front: false }],
+  );
+  assert.deepEqual(reduceSteerRows([{ t: 'seg', kind: 'user', md: '>', ts: 1, seq: 1 }]), [], '无 steer 行=空列');
+  // 写读往返:内核队列变更 → steer 事件(kernelEventRows 映射走同一行形) → reduceSteerRows 回种与 live 等价
+  const events: KernelEvent[] = [];
+  const k = new SessionKernel({ onKernelEvent: (e) => events.push(e) });
+  k.steerEnqueue('一');
+  k.steerEnqueue('二');
+  k.steerMoveToFront(1);
+  const rows = events.flatMap((e) => kernelEventRows(e));
+  const k2 = new SessionKernel();
+  k2.steerRestore(reduceSteerRows(rows));
+  assert.deepEqual(k2.steerPendingItems(), k.steerPendingItems(), '装载往返等价');
 });

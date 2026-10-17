@@ -165,9 +165,11 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
         if (e.handlers.size === 0) return;
         const handler = [...e.handlers][e.handlers.size - 1]!;
         // 单点解析分发：raw 保留原始字节；键位判定与 ink3 原版逐行一致
+        // （P5 增补：Ctrl+↑/↓（\u001B[1;5A/B）归并 upArrow/downArrow + ctrl——队列面板重排键）
+        const ctrlArrow = /^\u001B\[1;5([AB])$/.exec(bytes);
         const key: RawKey = {
-          upArrow: bytes === '\u001B[A',
-          downArrow: bytes === '\u001B[B',
+          upArrow: bytes === '\u001B[A' || ctrlArrow?.[1] === 'A',
+          downArrow: bytes === '\u001B[B' || ctrlArrow?.[1] === 'B',
           leftArrow: bytes === '\u001B[D',
           rightArrow: bytes === '\u001B[C',
           pageDown: bytes === '\u001B[6~',
@@ -187,6 +189,7 @@ const useInput = (inputHandler: (input: string, key: RawKey) => void, options: {
             /^\u001B\[13;\d*u$/.test(bytes), // kitty CSI-u：Shift(2)/Ctrl(5)+Enter
         };
         if (bytes <= '\u001A' && !key.return) key.ctrl = true;
+        if (ctrlArrow) key.ctrl = true;
         if (bytes.startsWith('\u001B')) key.meta = true;
         const input =
           bytes <= '\u001A' && !key.return ? String.fromCharCode(bytes.charCodeAt(0) + 'a'.charCodeAt(0) - 1) : bytes;

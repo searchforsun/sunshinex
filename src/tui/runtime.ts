@@ -69,7 +69,8 @@ export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
     ...(harness.ledger ? { ledger: harness.ledger } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     // 运行中穿插（对标 CC queued messages）：循环内构造的 Reactor 与单发 Reactor 同源消费通道
-    steer: () => harness.steering.drain(),
+    // （P5 内核化：取走口为可换插缝，会话层装配后挂内核实现——缺省空即无穿插）
+    steer: () => harness.steerSource(),
     // 沉淀双钩子与收尾管线（规格 §3.1/§3.5）：TUI 主链经 loop 构造 Reactor，钩子必须随 LoopDeps 透传才会触发
     ...harness.settleHooks,
     // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），dispose 收口防 stdio 子进程悬挂

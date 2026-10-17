@@ -1,13 +1,22 @@
 import type { SessionEvent } from '../types';
 import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState } from './entry';
 
-/** 内核段级事件(spec §3.1b 词汇收缩——视图/持久化层只消费这些,token 级遥测不出内核):
- *  差分自 applyEvent 前后态推导,条目引用未变的零噪声。 */
+/** 等待队列条目(P5 内核化,spec §12):seq=位置下标(每次变更整列重排,端点寻址键);
+ *  front=插入发送(reactor 步边界 drain 注入当前轮),false 仅排队等轮收束补跑。 */
+export interface SteerItem {
+  seq: number;
+  text: string;
+  front: boolean;
+}
+
+/** 内核事件(spec §3.1b 词汇收缩——视图/持久化层只消费这些,token 级遥测不出内核):
+ *  段级四型差分自 applyEvent 前后态推导,条目引用未变的零噪声;steer 型为队列变更整列快照。 */
 export type KernelEvent =
   | { t: 'seg-open'; entry: KernelEntry; open: boolean } // 条目新建;open=true 开启段(落档等 seg-close),false 即终态(立即落)
   | { t: 'seg-close'; entry: KernelEntry } // 正文/思考段闭合(终态 md/seconds;done 终稿合并同发)
   | { t: 'seg-update'; entry: KernelEntry } // 工具条回填(name/input/result——重放按 seq upsert)
-  | { t: 'truncate'; upToSeq: number }; // rewind/compact/reset 视界截断(upToSeq=0 即全清)
+  | { t: 'truncate'; upToSeq: number } // rewind/compact/reset 视界截断(upToSeq=0 即全清)
+  | { t: 'steer'; items: SteerItem[] }; // 等待队列变更(整列重写快照;持久化整列落一行,广播走全量列表)
 
 /**
  * SessionKernel:会话转录唯一投影 + 事件泵(spec 2026-10-17-session-kernel §3/§6)。
@@ -18,6 +27,9 @@ export type KernelEvent =
  */
 export class SessionKernel {
   private state: KernelState = initialKernelState();
+  /** 等待队列(P5 内核化,spec §12):内核同体持有但不进 KernelState——队列非转录,不参与
+   *  applyEvent 纯面;变更走 steer 事件外抛(持久化+广播双消费),装载经 steerRestore 回种防双写 */
+  private steerItems: SteerItem[] = [];
   private readonly onKernelEvent?: (ev: KernelEvent) => void;
 
   constructor(opts?: { onKernelEvent?: (ev: KernelEvent) => void }) {
@@ -90,6 +102,91 @@ export class SessionKernel {
       openSeg: st.openSeg <= upToSeq ? st.openSeg : -1,
     };
     this.emit({ t: 'truncate', upToSeq });
+  }
+
+  // ---- 等待队列(P5 内核化,spec §12):变更即发 steer 事件(整列快照),读面不外抛 ----
+
+  /** 入队一条用户穿插行(空白忽略,保持入队序;缺省仅排队——轮收束自动发下一轮) */
+  steerEnqueue(text: string): void {
+    const t = text.trim();
+    if (!t) return;
+    this.steerItems = [...this.steerItems, { seq: this.steerItems.length, text: t, front: false }];
+    this.emitSteer();
+  }
+
+  /** 编辑第 seq 条文本(越界 false;front 标记保留) */
+  steerEditAt(seq: number, text: string): boolean {
+    const t = text.trim();
+    const idx = this.steerItems.findIndex((x) => x.seq === seq);
+    if (idx < 0 || !t) return false;
+    this.steerItems = this.steerItems.map((x) => (x.seq === seq ? { ...x, text: t } : x));
+    this.emitSteer();
+    return true;
+  }
+
+  /** 重排 from → to(下标越界按边界夹紧)——排队条目拖拽排序 */
+  steerMove(from: number, to: number): boolean {
+    if (from < 0 || from >= this.steerItems.length) return false;
+    const t = Math.max(0, Math.min(to, this.steerItems.length - 1));
+    if (from === t) return false;
+    const arr = [...this.steerItems];
+    const [item] = arr.splice(from, 1);
+    arr.splice(t, 0, item!);
+    this.steerItems = arr;
+    this.emitSteer();
+    return true;
+  }
+
+  /** 置首并标记步边界可注入(插入发送=不等轮次完成,下一步立即注入当前轮) */
+  steerMoveToFront(seq: number): boolean {
+    const idx = this.steerItems.findIndex((x) => x.seq === seq);
+    if (idx < 0) return false;
+    const item = this.steerItems[idx]!;
+    this.steerItems = [{ ...item, front: true }, ...this.steerItems.filter((x) => x.seq !== seq)];
+    this.emitSteer();
+    return true;
+  }
+
+  /** 撤回第 seq 条(越界 false) */
+  steerRemoveAt(seq: number): boolean {
+    if (!this.steerItems.some((x) => x.seq === seq)) return false;
+    this.steerItems = this.steerItems.filter((x) => x.seq !== seq);
+    this.emitSteer();
+    return true;
+  }
+
+  /** 步边界 drain(reactor 消费口):仅取走置首条目按序返回文本——普通排队条目留待轮收束补跑 */
+  steerDrain(): string[] {
+    if (!this.steerItems.some((x) => x.front)) return [];
+    const out = this.steerItems.filter((x) => x.front).map((x) => x.text);
+    this.steerItems = this.steerItems.filter((x) => !x.front);
+    this.emitSteer();
+    return out;
+  }
+
+  /** 取走全部未投递行(轮收束补跑/中断丢弃/撤回取回共用),按入队序 */
+  steerTakePending(): SteerItem[] {
+    if (this.steerItems.length === 0) return [];
+    const out = this.steerItems;
+    this.steerItems = [];
+    this.emitSteer();
+    return out;
+  }
+
+  /** 待投递快照(非破坏拷贝,不发事件——队列面板/ chips 展示面) */
+  steerPendingItems(): SteerItem[] {
+    return this.steerItems.map((x) => ({ ...x }));
+  }
+
+  /** 装载回种(v2 steer 行重放/attach):整列替换并按位置归一 seq,不发事件(防装载双写) */
+  steerRestore(items: ReadonlyArray<SteerItem>): void {
+    this.steerItems = items.map((x, i) => ({ ...x, seq: i }));
+  }
+
+  /** 队列变更外抛单点:先按位置归一 seq(重排/删撤后的位置即寻址键,spec §12 seq=位置下标),再发整列快照 */
+  private emitSteer(): void {
+    this.steerItems = this.steerItems.map((x, i) => (x.seq === i ? x : { ...x, seq: i }));
+    this.emit({ t: 'steer', items: this.steerPendingItems() });
   }
 
   private emit(ev: KernelEvent): void {

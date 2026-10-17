@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { render } from '../test-ink';
 import { KeyHints, keyHintsFor, fitHints } from './KeyHints';
 
-test('keyHintsFor 矩阵：运行中=暂停/换行/待办/详情/任务，子代理在场追加 Ctrl+B', () => {
+test('keyHintsFor 矩阵：运行中=暂停/换行/待办/详情/任务/队列，子代理在场追加 Ctrl+B', () => {
   const base = keyHintsFor({ status: 'running' })!;
-  assert.deepEqual(base.items.map((i) => i.key), ['Ctrl+C', 'Shift+Enter', 'Tab', 'Ctrl+O', 'Ctrl+T']);
+  assert.deepEqual(base.items.map((i) => i.key), ['Ctrl+C', 'Shift+Enter', 'Tab', 'Ctrl+O', 'Ctrl+T', 'Ctrl+Q']);
   const withChildren = keyHintsFor({ status: 'running', hasChildren: true })!;
-  assert.deepEqual(withChildren.items.map((i) => i.key), ['Ctrl+C', 'Shift+Enter', 'Tab', 'Ctrl+O', 'Ctrl+B', 'Ctrl+T'], '子代理在场追加浏览键，任务视图常驻');
+  assert.deepEqual(withChildren.items.map((i) => i.key), ['Ctrl+C', 'Shift+Enter', 'Tab', 'Ctrl+O', 'Ctrl+B', 'Ctrl+T', 'Ctrl+Q'], '子代理在场追加浏览键，任务视图/队列常驻');
 });
 
 test('keyHintsFor 矩阵：空闲两态与 inspect/browse/board/pauseConfirm（/help 不进条——占位符已承载，冗余裁决）', () => {
   const idle = keyHintsFor({ status: 'idle' })!;
-  assert.deepEqual(idle.items.map((i) => i.key), ['Shift+Enter', '↑', 'Ctrl+B', 'Ctrl+T'], '缺省条=换行/历史/子代理/任务（Tab 补全只在菜单态——空闲无 / 前缀 Tab 实为折叠视图，不误导）');
+  assert.deepEqual(idle.items.map((i) => i.key), ['Shift+Enter', '↑', 'Ctrl+B', 'Ctrl+T', 'Ctrl+Q'], '缺省条=换行/历史/子代理/任务/队列（Tab 补全只在菜单态——空闲无 / 前缀 Tab 实为折叠视图，不误导）');
   const menu = keyHintsFor({ status: 'idle', menuVisible: true })!;
   assert.deepEqual(menu.items.map((i) => i.key), ['↑↓', 'Tab'], '斜杠菜单在场换面板键（Enter 由占位符承载）');
   const inspectLive = keyHintsFor({ status: 'running', inspect: true, inspectLive: true })!;
@@ -23,6 +23,8 @@ test('keyHintsFor 矩阵：空闲两态与 inspect/browse/board/pauseConfirm（/
   assert.deepEqual(browse.items.map((i) => i.key), ['↑↓', 'Enter', 'Esc'], '浏览接管键');
   const board = keyHintsFor({ status: 'idle', board: true })!;
   assert.deepEqual(board.items.map((i) => i.key), ['↑↓', 'Enter', 'Esc'], '任务视图接管键（Ctrl+T，P2 spec §10.3；Enter=gate 行审批）');
+  const queue = keyHintsFor({ status: 'idle', queue: true })!;
+  assert.deepEqual(queue.items.map((i) => i.key), ['↑↓', 'E', 'D', 'N', 'I', 'F', 'Ctrl+↑↓', 'Esc'], '等待队列面板接管键（Ctrl+Q，P5 spec §12.3）');
   const pause = keyHintsFor({ status: 'running', pauseConfirm: true })!;
   assert.equal(pause.items[0]!.key.includes('Ctrl+C') || pause.items[0]!.key.includes('ctrl+c'), true, '首键=再按 Ctrl+C');
   assert.equal(pause.items[1]!.key, 'Esc');

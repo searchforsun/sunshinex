@@ -11,7 +11,7 @@ import type { Result } from '../result';
 import { SessionRuntime } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, parseJournalFile, reduceJournal, sessionsDir } from "../tui/session-journal";
-import { reduceV2Rows } from '../session/v2log';
+import { reduceSteerRows, reduceV2Rows } from '../session/v2log';
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
@@ -273,6 +273,8 @@ export class GuiDaemon {
     session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
     // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
     session.kernelSeed(reduceV2Rows(replayEvents));
+    // 等待队列装载(P5 spec §12):末条 steer 行整列回种(无行=空队列)
+    session.steerSeed(reduceSteerRows(replayEvents));
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);
@@ -561,6 +563,7 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/steer/cancel', auth: true, run: async (req, res, p) => this.handleSteerCancel(req, res, p.id) },
     { method: 'POST', path: '/session/:id/steer/move', auth: true, run: async (req, res, p) => this.handleSteerMove(req, res, p.id) },
     { method: 'POST', path: '/session/:id/steer/front', auth: true, run: async (req, res, p) => this.handleSteerFront(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/steer/edit', auth: true, run: async (req, res, p) => this.handleSteerEdit(req, res, p.id) },
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
     { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
@@ -1204,6 +1207,10 @@ export class GuiDaemon {
 
   private async handleSteerCancel(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
     await sessionHandlers.handleSteerCancel(this.sessionIo, req, res, id);
+  }
+
+  private async handleSteerEdit(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSteerEdit(this.sessionIo, req, res, id);
   }
 
   private async handleSessionTierEffort(req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'tier' | 'effort'): Promise<void> {

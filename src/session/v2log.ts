@@ -1,5 +1,5 @@
 import { sanitizeChanges, toolMd, type KernelEntry, type RunMeta } from './entry';
-import type { KernelEvent } from './kernel';
+import type { KernelEvent, SteerItem } from './kernel';
 import type { JournalEvent } from '../tui/session-journal';
 
 /**
@@ -17,6 +17,7 @@ import type { JournalEvent } from '../tui/session-journal';
  *  (tool 带 result 时回填行随落);seg-close 落闭合段终态;seg-update 落回填行;truncate 落截断行。 */
 export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
   if (ev.t === 'truncate') return [{ t: 'truncate', upToSeq: ev.upToSeq }];
+  if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front })) }];
   const e = ev.entry;
   if (ev.t === 'seg-open') {
     if (e.kind === 'run') return [{ t: 'run-open', ts: e.ts, seq: e.seq }];
@@ -86,6 +87,8 @@ export interface V2RowLike {
   v?: unknown;
   id?: unknown;
   createdAt?: unknown;
+  /** P5 steer 行(items 整列重写;转录读面忽略,steer 读面专取) */
+  items?: unknown;
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
@@ -196,4 +199,26 @@ export function reduceV2Rows(rows: ReadonlyArray<V2RowLike>): KernelEntry[] {
     break; // 只看末个 run 条(在途只可能有一个)
   }
   return entries;
+}
+
+/** steer 行读面(P5,spec §12):扫全行取**末条** steer 行(整列重写语义=末行为准),字段净化回落
+ *  (text 非串弃、front 严判 true、seq 非负夹取);无 steer 行回空列。 */
+export function reduceSteerRows(rows: ReadonlyArray<V2RowLike>): SteerItem[] {
+  let items: SteerItem[] = [];
+  for (const row of rows) {
+    if (row.t !== 'steer' || !Array.isArray(row.items)) continue;
+    const next: SteerItem[] = [];
+    let seq = 0;
+    for (const raw of row.items) {
+      if (raw === null || typeof raw !== 'object') continue;
+      const o = raw as { seq?: unknown; text?: unknown; front?: unknown };
+      const text = str(o.text);
+      if (text === undefined || text.trim() === '') continue;
+      const s = num(o.seq);
+      next.push({ seq: s !== undefined && s >= 0 ? s : seq, text, front: o.front === true });
+      seq += 1;
+    }
+    items = next;
+  }
+  return items;
 }
