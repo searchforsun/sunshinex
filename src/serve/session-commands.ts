@@ -69,7 +69,7 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
     const ctx = s.runtime.harness.context;
     const parts = ctx.snapshotPartsView();
     const b = contextBreakdown({
-      stableSegment: s.runtime.harness.reactor.stableSegment(),
+      stableSegment: s.runtime.harness.stableSegment(),
       instructions: parts.instructions,
       skills: parts.skills,
       memory: parts.memory,

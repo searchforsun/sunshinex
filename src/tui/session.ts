@@ -1012,7 +1012,7 @@ export class SessionController {
       const ctx = this.runtime.harness.context;
       const parts = ctx.snapshotPartsView();
       const b = contextBreakdown({
-        stableSegment: this.runtime.harness.reactor.stableSegment(),
+        stableSegment: this.runtime.harness.stableSegment(),
         instructions: parts.instructions,
         skills: parts.skills,
         memory: parts.memory,

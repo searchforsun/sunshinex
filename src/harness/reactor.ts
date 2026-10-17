@@ -7,19 +7,7 @@ import { ToolRegistry } from './tools';
 import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
 import { BatchRunner } from './batch-runner';
-import {
-  FILE_PATH_LINE,
-  IDENTITY_LINE,
-  outputStyleLine,
-  TOOL_POLICY_LINE,
-  PHASE_SENTENCE_LINE,
-  PARALLEL_POLICY_LINE,
-  ERROR_CONVERGENCE_LINE,
-  REFERENCE_DATA_LINE,
-  TASK_FOCUS_LINE,
-  SKILLS_INSTALL_LINE,
-  workDirLine,
-} from './prompts/shared';
+import { stableSegmentOf } from './prompts/shared';
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
@@ -435,27 +423,15 @@ export class Reactor {
     return chainToHistoryItems(steps.filter((s) => s.step > fromStep));
   }
 
-  /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结（唯一例外：workDirLine 随活动根，
-   *  会话级环境事实、仅 worktree 进出时翻转，见消费行注释）；工具清单经 tools 字段下发、动作经 tool_calls 结构化承载。
-   *  输出约定槽位按交互面分叉：outputStyle 缺省 = MARKDOWN_LINE 原文（既有前缀基线零漂移）；命中面 = 面专用行整行替代（零双份）。
-   *  公开只读（/context 构成观测消费，与 chatRound 装配同一单点——禁第二处拼装） */
+  /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；薄委托 stableSegmentOf
+   *  纯函数（P7 统一入口:观测面出执行器命名空间,Harness.stableSegment 同源零第二拼装） */
   stableSegment(): string {
-    return [
-      IDENTITY_LINE,
-      outputStyleLine(this.deps.outputStyle),
-      PHASE_SENTENCE_LINE,
-      TOOL_POLICY_LINE,
-      PARALLEL_POLICY_LINE,
-      ERROR_CONVERGENCE_LINE,
-      REFERENCE_DATA_LINE,
-      TASK_FOCUS_LINE,
-      SKILLS_INSTALL_LINE,
-      // 工作目录事实行随活动根（D19-b）：activeRoot 是会话级状态、仅在 worktree 进入/退出时变化（与 cwd 同类
-      // 的环境事实，非时变字段）——进出即合法前缀重写点，其余相邻帧「逐字节前缀稳定」不变量维持；缺省/主区字节不变
-      workDirLine(this.deps.activeRoot?.() ?? this.deps.root ?? this.deps.context.root),
-      // G14.121 文件引用路径行：回复提及文件一律绝对路径（GUI 文件 token 链接按绝对路径寻址）
-      FILE_PATH_LINE,
-    ].join('\n');
+    return stableSegmentOf({
+      ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
+      activeRoot: this.deps.activeRoot,
+      ...(this.deps.root !== undefined ? { root: this.deps.root } : {}),
+      contextRoot: this.deps.context.root,
+    });
   }
 
   /** 模型一轮：buildMessages 消息视图 + tools 字段 → 结构化动作消费。

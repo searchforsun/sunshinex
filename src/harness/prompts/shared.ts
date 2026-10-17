@@ -73,3 +73,32 @@ export function workDirLine(root: string): string {
  *  GUI 渲染面把这类链接统一渲染为可点文件引用（文件标签页直达） */
 export const FILE_PATH_LINE =
   'When referencing a file in your reply, always output a Markdown link with the file name as the link text: for files inside the project workspace use a target relative to the project root with a leading ./ (for example [file.tsx](./src/file.tsx)); for files outside the workspace use the absolute path as the target (for example [notes.txt](D:/data/notes.txt)). The UI renders such links as clickable file references.';
+
+/** 稳定段拼装纯函数（P7 统一入口：观测面出执行器命名空间）：身份/输出约定/工具政策/工作目录——
+ *  逐字节冻结（唯一例外：workDirLine 随活动根，会话级环境事实、仅 worktree 进出时翻转——进出即合法
+ *  前缀重写点，其余相邻帧「逐字节前缀稳定」不变量维持）。Reactor.stableSegment 与 Harness.stableSegment
+ *  同一单点——禁第二处拼装（/context 构成观测消费） */
+export function stableSegmentOf(opts: {
+  /** 输出样式分叉（交互面级 run 常量）：命中面 = 面专用行整行替代 MARKDOWN_LINE 槽位（零双份）；缺省 = 通用约定原文 */
+  outputStyle?: OutputStyle;
+  /** 活动根观测（worktree 会话；随进出翻转工作目录行） */
+  activeRoot?: () => string | null;
+  /** 装配根（缺省回落） */
+  root?: string;
+  /** 上下文根（末级回落——deps.context.root） */
+  contextRoot: string;
+}): string {
+  return [
+    IDENTITY_LINE,
+    outputStyleLine(opts.outputStyle),
+    PHASE_SENTENCE_LINE,
+    TOOL_POLICY_LINE,
+    PARALLEL_POLICY_LINE,
+    ERROR_CONVERGENCE_LINE,
+    REFERENCE_DATA_LINE,
+    TASK_FOCUS_LINE,
+    SKILLS_INSTALL_LINE,
+    workDirLine(opts.activeRoot?.() ?? opts.root ?? opts.contextRoot),
+    FILE_PATH_LINE,
+  ].join('\n');
+}

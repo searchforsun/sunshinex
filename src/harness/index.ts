@@ -15,10 +15,11 @@ import { ProcessSandbox } from './security/sandbox';
 import { PermissionMode } from './security/modes';
 import { SessionEvent } from '../types';
 import { SafetyChain } from './security/chain';
+import { Reactor } from './reactor';
+import { stableSegmentOf } from './prompts/shared';
 import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
-import { Reactor } from './reactor';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { TaskRegistry } from './tasks';
 import { TaskBoard } from '../taskboard/board';
@@ -82,7 +83,12 @@ export class Harness {
   readonly context: ContextManager;
   /** 主模型适配器（TUI/GUI 装配 planner 等子运行时复用） */
   readonly model: ModelAdapter;
+  /** 单发执行缝（D5 裁定的测试/工具面残留):生产主链唯一入口=KernelRuntime.runTask→Loop 模板
+   *  (P7 形态钉锁死——生产源码零 `.reactor.run` 直跑);本实例仅供 harness 级测试驱动执行器,
+   *  与 loop 内构造的 Reactor 同源接线(settleHooks/steer/ledger)不漂移 */
   readonly reactor: Reactor;
+  /** 稳定段 outputStyle 装配口径（P7,构造期缓存——run 级常量） */
+  private readonly stableOutputStyle?: OutputStyle;
   readonly skills: SkillsFacade;
   /** write 影子快照单点（rewind/fork 规格 §6.1）：write 工具落盘前捕获 pre-image，任务收口随 user 事件落盘 */
   readonly writeSnapshot: ReturnType<typeof makeWriteSnapshotSink>;
@@ -323,6 +329,9 @@ export class Harness {
       knownRecipients: () => this.team.aliveNames(),
       from: () => 'lead',
     }));
+    // P7:稳定段观测面装配口径缓存(outputStyle 是 run 级常量)——harness.stableSegment 与 reactor
+    // 构造行同源,不引入第二份 deps 面
+    this.stableOutputStyle = opts.outputStyle;
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,
@@ -341,6 +350,16 @@ export class Harness {
       ...this.settleHooks,
     });
     this.ledger = ledger;
+  }
+
+  /** 稳定段观测面（P7:出执行器命名空间）——/context 构成观测消费,与 Reactor chatRound 装配同一
+   *  stableSegmentOf 单点(零第二拼装);生产/测试观测统一走此薄委托,不再借道 harness.reactor */
+  stableSegment(): string {
+    return stableSegmentOf({
+      ...(this.stableOutputStyle ? { outputStyle: this.stableOutputStyle } : {}),
+      activeRoot: () => this.safety.activeRoot,
+      contextRoot: this.context.root,
+    });
   }
 
   private permissionWarningList: string[] = [];

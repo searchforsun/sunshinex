@@ -119,7 +119,7 @@ test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致�
     );
     assert.equal(ctx.chainFromView(), 0, '未压缩水位 0');
     const b = contextBreakdown({
-      stableSegment: ctrl.runtime.harness.reactor.stableSegment(),
+      stableSegment: ctrl.runtime.harness.stableSegment(),
       instructions: parts.instructions,
       skills: parts.skills,
       memory: parts.memory,

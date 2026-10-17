@@ -191,7 +191,7 @@ export function handleSessionContext(io: SessionHandlerIo, res: http.ServerRespo
   const ctx = session.runtime.harness.context;
   const parts = ctx.snapshotPartsView();
   const b = contextBreakdown({
-    stableSegment: session.runtime.harness.reactor.stableSegment(),
+    stableSegment: session.runtime.harness.stableSegment(),
     instructions: parts.instructions,
     skills: parts.skills,
     memory: parts.memory,
