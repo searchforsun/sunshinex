@@ -1387,7 +1387,7 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       await screen.findByLabelText('settings pane 通用', { timeout: 5_000 });
       fireEvent.click(await screen.findByLabelText('language', { timeout: 5_000 }));
       fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
-      await screen.findByText('Applied — takes effect for new sessions', {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场)
+      await screen.findByText(/Applied — takes effect for new sessions|已生效：新建会话起/, {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场;上一步已切 zh,渲染中文面——钉双语容忍,App.test 第十一轮同解)
       // 保存后重拉:language 触发钮显新值标签(来源归因 project——写回项目档)
       await waitFor(() => expect(screen.getByLabelText('language').textContent).toContain(NEW_LANG === 'zh-CN' ? '简体中文' : NEW_LANG), { timeout: 5_000 });
 
