@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { ArrowDown, Folder, ListTodo, PanelRight, ShieldCheck, Unlock } from 'lucide-react';
+import { ArrowDown, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
-import { groupEntriesByDay } from '../chat-groups';
 import { zoomScale } from '../ui-zoom';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import type { TaskBoardState } from '../projection';
 import { CommandPalette, filterCommands } from '../CommandPalette';
-import { fmtTokens as fmtTokensShared, pathBasename } from '../ui-util';
+import { pathBasename } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, SnapshotResponse } from '../connection';
 import type { SessionEvent, TodoItem } from '../../../src/types';
@@ -61,6 +60,8 @@ import { t } from '../i18n';
 import { useCommandPalette } from './chat/use-command-palette';
 import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
 import { SteerQueue } from './chat/SteerQueue';
+import { ChatTopbar } from './chat/ChatTopbar';
+import { MessageList } from './chat/MessageList';
 import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
@@ -68,14 +69,12 @@ import { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, 
 export { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock } from './chat/md-render';
-import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './chat/EntryViews';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
 import type { AskPick } from './chat/PendingCards';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
 import { useQueue } from './chat/use-queue';
-import { ToolEntryView, toolMdInfo } from './chat/ToolEntry';
+import { toolMdInfo } from './chat/ToolEntry';
 export { ToolEntryView } from './chat/ToolEntry';
-import { ToolSegBlock } from './chat/ToolGroups';
 export type { TodoBatch } from './chat/ToolEntry';
 import type { TodoBatch } from './chat/ToolEntry';
 export interface ChatSink {
@@ -168,7 +167,7 @@ export interface ToolCallInfo {
 /** G14.177 顶栏动态计数按钮(待办/任务/后台任务):转圈图标+数量;点击开对应页签。
  *  G14.213 原子化三改:①仅运行中显示(轮次收束即隐,待办是否完结无关);②侧栏展开不再隐藏
  *  (挂载点去掉 collapsed 门);③幽灵钮化——无底色、顶栏 hover 浮现,待办钮转圈绿色 */
-function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOpenTab }: {
+export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOpenTab }: {
   todoActive: number;
   taskActive: number;
   running: boolean;
@@ -202,6 +201,7 @@ function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOp
   }, [conn, sessionId]);
   // G14.213 轮次收束即隐:running 熄灭按钮组整体不显(待办/任务是否完结无关)
   if (!running || (todoActive === 0 && taskActive === 0 && bgRunning === 0)) return null;
+
   return (
     <div className="chat-dyn-buttons" role="group" aria-label="live counters">
       {todoActive > 0 && (
@@ -240,9 +240,6 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'dontAsk' | 'manual' | 'pl
 
 
 /** tokens 格式:共享面迁移 ui-util.fmtTokens(G14.17)——本文件 re-export 保既有引用零迁移 */
-function fmtTokens(n: number): string {
-  return fmtTokensShared(n);
-}
 
 
 
@@ -961,174 +958,66 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     }
   };
 
+  /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
+   *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位) */
+  const handleChatScroll = (e: { currentTarget: HTMLElement }): void => {
+    const el = e.currentTarget;
+    const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    chatStickRef.current = stick;
+    setAtBottom(stick);
+    if (el.scrollHeight - el.clientHeight > 80) {
+      saveScrollPos(archiveKey, stick ? 0 : el.scrollHeight - el.scrollTop - el.clientHeight);
+    }
+  };
+
   return (
     <>
-      <header className="chat-topbar">
-        {fixedTitle === '' ? (
-          // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
-          <span className="chat-title" />
-        ) : titleEditing ? (
-          <input
-            className="chat-title-input"
-            value={titleDraft}
-            maxLength={40}
-            autoFocus
-            aria-label={t('Session title', '会话标题')}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitTitle();
-              if (e.key === 'Escape') setTitleEditing(false);
-            }}
-          />
-        ) : (
-          <span className="chat-title" data-tip={`${sessionId} · ${chat.tokens} tokens · ${chat.steps} steps${running ? ' · 运行中' : ''}`}>
-            <button
-              type="button"
-              className="chat-title-btn"
-              data-tip={t('Click to rename', '点击重命名')}
-              onClick={() => {
-                setTitleDraft(displayTitle);
-                setTitleEditing(true);
-              }}
-            >
-              <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span className="chat-title-text">{displayTitle}</span>
-            </button>
-            {/* G14.52:运行态圆点迁侧栏会话行左缘(顶栏不再双显) */}
-          </span>
-        )}
-        <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
-        {showExpandSidebar && (
-          <button
-            type="button"
-            className="sx-iconbtn chat-expand"
-            aria-label="expand sidebar"
-            data-tip={t('Expand sidebar', '展开侧边栏')}
-            onClick={onExpandSidebar}
-          >
-            <PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        )}
-      </header>
-      <main
-        className="chat"
-        aria-label="chat"
-        ref={chatScrollRef}
-        onClickCapture={onEntryToggleClick}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-          chatStickRef.current = stick;
-          setAtBottom(stick);
-          // G14.213 容量守卫:内容高不足以形成有效滚动位(短会话/mermaid 换渲等瞬时塌陷)不记不删
-          // ——防塌陷窗内的杂散 scroll 事件把非贴底存档误清(实测曾在浏览中途被清档)
-          if (el.scrollHeight - el.clientHeight > 80) {
-            saveScrollPos(archiveKey, stick ? 0 : el.scrollHeight - el.scrollTop - el.clientHeight); // 贴底删档/非贴底记距底位
-          }
-        }}
-      >
-        {chat.entries.length === 0 && (
-          <div className="chat-empty" aria-label="chat empty">
-            <div className="chat-empty-title">{t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
-            <div className="chat-empty-hint">{t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
-          </div>
-        )}
-        {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染);
-            G14.31 折叠轮:sealed run 头点击 → 其后工具/思考行隐藏(用户/回复/旁白保留) */}
-        {groupEntriesByDay(chat.entries).flatMap((g) => {
-          const nodes: ReactNode[] = [];
-          if (g.label !== '') {
-            nodes.push(
-              <div key={`day:${g.key}`} className="chat-day-sep" role="separator" aria-label={g.label}>
-                {g.label}
-              </div>,
-            );
-          }
-          /** G14.73:连续的折叠区条目(工具/思考)聚成一段,包进 seg-collapse 平滑容器——
-           *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
-          let seg: ChatEntry[] = [];
-          const flushSeg = (): void => {
-            if (seg.length === 0) return;
-            const segEntries = seg;
-            nodes.push(
-              <ToolSegBlock
-                key={`seg:${segEntries[0]!.key}`}
-                seg={segEntries}
-                closed={hiddenKeys.has(segEntries[0]!.key)}
-                renderTool={(e2) => (
-                  <ToolEntryView
-                    key={e2.key}
-                    entry={e2}
-                    info={toolInfoOf(e2)}
-                    conn={conn}
-                    sessionId={sessionId}
-                    callId={callIdOf(e2)}
-                    onOpenFile={onOpenFile}
-                    onOpenDiff={onOpenDiff}
-                    onOpenAgent={onOpenAgent}
-                    onOpenTask={onOpenTask}
-                    taskNameOf={taskNameOf}
-                  />
-                )}
-                renderThinking={(e2) => <ThinkingEntryView key={e2.key} entry={e2} />}
-                renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={(p) => onOpenDiff?.('', p)} />}
-              />,
-            );
-            seg = [];
-          };
-          for (const entry of g.entries) {
-            // G14.136 折叠态的中间正文随工具/思考一起进 seg-collapse 平滑折叠
-            if (entry.kind === 'tool' || entry.kind === 'thinking' || (entry.kind === 'assistant' && hiddenKeys.has(entry.key))) {
-              seg.push(entry);
-              continue;
-            }
-            flushSeg();
-            if (entry.kind === 'run') {
-              nodes.push(
-                <RunEntryView
-                  key={entry.key}
-                  entry={entry}
-                  collapsed={collapsedRuns.has(entry.key)}
-                  onToggle={entry.streaming === true ? undefined : toggleRun}
-                />,
-              );
-            } else if (entry.kind === 'user') {
-              nodes.push(
-                <UserEntryView
-                  key={entry.key}
-                  entry={entry}
-                  onSend={submitText}
-                  onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
-                />,
-              );
-            } else {
-              nodes.push(
-                <ChatEntryView
-                  key={entry.key}
-                  entry={entry}
-                  footerRun={runFooterByEntry.get(entry.key)}
-                  onOpenDiff={onEntryOpenDiff}
-                  onRestore={onEntryRestore}
-                  onFork={onFork}
-                  onOpenFile={onOpenFile}
-                />,
-              );
-            }
-          }
-          flushSeg();
-          return nodes;
-        })}
-        {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;
-            原「尾参挂最后一个工具行」只在工具执行期可见且左缘随工具行缩进不齐——独立成行对齐 */}
-        {running && (
-          <div className="run-live-line" role="status" aria-label="run status">
-            <span className="run-spinner" aria-hidden="true" />
-            <span>{`${liveSteps} steps`}</span>
-            <span>{fmtTokens(liveTokens)}</span>
-          </div>
-        )}
-      </main>
+      <ChatTopbar
+        fixedTitle={fixedTitle}
+        titleEditing={titleEditing}
+        titleDraft={titleDraft}
+        setTitleDraft={setTitleDraft}
+        commitTitle={commitTitle}
+        setTitleEditing={setTitleEditing}
+        displayTitle={displayTitle}
+        sessionId={sessionId}
+        tokens={chat.tokens}
+        steps={chat.steps}
+        running={running}
+        todoActive={todoActive}
+        taskActive={taskActive}
+        conn={conn}
+        onOpenTab={onOpenTab}
+        showExpandSidebar={showExpandSidebar}
+        onExpandSidebar={onExpandSidebar}
+      />
+
+      <MessageList
+        entries={chat.entries}
+        hiddenKeys={hiddenKeys}
+        toolInfoOf={toolInfoOf}
+        callIdOf={callIdOf}
+        conn={conn}
+        sessionId={sessionId}
+        onOpenFile={onOpenFile}
+        onOpenDiff={onOpenDiff}
+        onOpenAgent={onOpenAgent}
+        onOpenTask={onOpenTask}
+        taskNameOf={taskNameOf}
+        collapsedRuns={collapsedRuns}
+        toggleRun={toggleRun}
+        submitText={submitText}
+        runFooterByEntry={runFooterByEntry}
+        onEntryOpenDiff={onEntryOpenDiff}
+        onEntryRestore={onEntryRestore}
+        onFork={onFork}
+        onEntryToggleClick={onEntryToggleClick}
+        chatScrollRef={chatScrollRef}
+        onScroll={handleChatScroll}
+        running={running}
+        liveSteps={liveSteps}
+        liveTokens={liveTokens}
+      />
       {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
        *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
        *  发送/停止共用 32px 圆形实心钮(↑/■,aria-label send/stop 保查询性) */}
