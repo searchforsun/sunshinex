@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
 import { ArrowDown, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
-import { zoomScale } from '../ui-zoom';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import type { TaskBoardState } from '../projection';
@@ -62,6 +61,8 @@ import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
 import { SteerQueue } from './chat/SteerQueue';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOf } from './chat/use-chat-derived';
+import { useChatScroll } from './chat/use-chat-scroll';
+import { useChatFold } from './chat/use-chat-fold';
 import { MessageList } from './chat/MessageList';
 import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
@@ -484,6 +485,24 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   });
   const runFooterByEntry = runFooterMapOf(chat.entries, chat.status);
 
+  // 滚动四 effects + 轮次折叠簇(批F-5):refs 宿主持有,行为零变化
+  const { dockRef } = useChatScroll({
+    chatScrollRef,
+    chatStickRef,
+    scrollRestoreRef,
+    seeding,
+    entriesLen: chat.entries.length,
+  });
+  const { collapsedRuns, toggleRun, hiddenKeys, onEntryToggleClick, onEntryOpenDiff, onEntryRestore } = useChatFold({
+    chat,
+    setChat,
+    conn,
+    sessionId,
+    onOpenDiff,
+    chatScrollRef,
+    chatStickRef,
+  });
+
   const running = chat.status === 'running';
   /** G14.63 运行状态行「本轮」口径:末个流式 run 的基线差值(会话累计−轮起点);无基线回退累计 */
   /** G14.80 未决问询卡:ask 挂起时输入框变为选择题表单 */
@@ -558,75 +577,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** 会话任务轮数(run 条计数——圆环弹层「轮次」;回放种子条同口径) */
   const runCount = chat.entries.reduce((n, e) => (e.kind === 'run' ? n + 1 : n), 0);
 
-  /** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;上翻 >80px 放手,
-   *  再触底恢复。useEffect 无依赖面=每渲染后跑,滚动判断在 onScroll 单点维护 */
-  useEffect(() => {
-    const el = chatScrollRef.current;
-    if (el !== null && chatStickRef.current) el.scrollTop = el.scrollHeight;
-  });
-
-  /** G14.212/G14.213 存档位恢复:种子落定(非 seeding 且条目非空)后 rAF 收敛滚动到存档距底位。
-   *  内容尚不足高(mermaid/代码高亮等懒渲染还在撑)不硬落——clamp 会错落到顶;逐帧等到位再落,
-   *  1.5s 超时按当时可达位兜底(贴底跟随已由 stick=false 挂起,等待期无人争滚动) */
-  useEffect(() => {
-    const d = scrollRestoreRef.current;
-    if (d === null || seeding || chat.entries.length === 0) return;
-    scrollRestoreRef.current = null;
-    let raf = 0;
-    const t0 = Date.now();
-    const step = (): void => {
-      const el = chatScrollRef.current;
-      if (el === null) return;
-      const max = el.scrollHeight - el.clientHeight;
-      if (max < d && Date.now() - t0 < 1500) {
-        raf = requestAnimationFrame(step);
-        return;
-      }
-      el.scrollTop = Math.min(d, max);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [seeding, chat.entries.length]);
-
-  /** G14.2xx mermaid 异步撑高补归底:图渲染落定是 Mermaid 组件内 state,不触发本组件重渲染,
-   *  上方逐渲染归底收不到信号——监听落定广播,贴底态 rAF 合并补归底(进场多图连发只归一次) */
-  useEffect(() => {
-    let raf = 0;
-    const onSettled = (): void => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const el = chatScrollRef.current;
-        if (el !== null && chatStickRef.current) el.scrollTop = el.scrollHeight;
-      });
-    };
-    window.addEventListener('sx-mermaid-settled', onSettled);
-    return () => {
-      window.removeEventListener('sx-mermaid-settled', onSettled);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-
-
-  /** G14.87 dock 高度实测驱动正文底部 padding:队列展开/textarea 增行使 dock 长高,
-   *  固定 padding(132px)下 dock 会盖住正文尾行——ResizeObserver 把实测高度写进 .chat
-   *  padding-bottom,正文整体上移不被遮;卸载复原 CSS 缺省 */
-  const dockRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const chat = chatScrollRef.current;
-    const dock = dockRef.current;
-    if (chat === null || dock === null || typeof ResizeObserver === 'undefined') return; // jsdom 无 RO:测试态跳过
-    const sync = (): void => {
-      // dock 高是视觉 px(gBCR),padding 写本地空间=视觉/根放缩(ui-zoom.ts 契约)
-      chat.style.paddingBottom = `calc(var(--thread-gutter) + ${Math.ceil(dock.getBoundingClientRect().height / zoomScale()) + 18}px)`;
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(dock);
-    return () => {
-      ro.disconnect();
-      chat.style.paddingBottom = '';
-    };
-  }, []);
 
   /** pills/+ 面板外点收(面板内点与 + 钮自持——多选文件连续点选不闪收) */
   useEffect(() => {
@@ -644,87 +594,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** G5 会话回收(daemon 会话 id 寻址):confirm → deleteSession → onBack 回首页;
    *  失败留在会话示错条(HTTP 409 running 等不静默) */
-  /** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;hiddenKeys=折叠区间内的
-   *  工具/思考行 key(用户气泡/回复/旁白保留)。G14.73:隐藏条目保持挂载,渲染层包进
-   *  seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
-   *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
-   *  (phase 叙述/中间解释默认不露),展开轮时照常可见 */
-  const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
-  const toggleRun = useCallback((key: string): void => {
-    setCollapsedRuns((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-  const hiddenKeys = useMemo(() => {
-    const s = new Set<string>();
-    let hide = false;
-    /** 段内 sealed assistant 收集:段收口(run 再启/流尽)时除末条外入 hidden */
-    let segAssistants: string[] = [];
-    const closeSeg = (): void => {
-      if (hide) for (let i = 0; i < segAssistants.length - 1; i += 1) s.add(segAssistants[i]!);
-      segAssistants = [];
-    };
-    for (const e of chat.entries) {
-      if (e.kind === 'run') {
-        closeSeg();
-        hide = collapsedRuns.has(e.key);
-        continue;
-      }
-      if (e.kind === 'assistant') {
-        if (e.streaming !== true) segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
-        continue;
-      }
-      if (e.kind === 'user') {
-        closeSeg();
-        continue;
-      }
-      if (hide && (e.kind === 'tool' || e.kind === 'thinking')) s.add(e.key);
-    }
-    closeSeg();
-    return s;
-  }, [chat.entries, collapsedRuns]);
-
-  /** G14.48 展开/折叠不闪动:贴地(阅读位在底)→ 钉底,内容整体上移;未贴地 → 锚定被点行,
-   *  内容整体下移——两侧永不同时动。capture 先于行内 toggle 记 preTop,动画收尾后再校正一次;
-   *  原生 scroll-anchor 关闭(overflow-anchor:none)防与本校正互搏 */
-  const onEntryToggleClick = useCallback((e: ReactMouseEvent<HTMLDivElement>): void => {
-    const target = e.target instanceof Element ? e.target.closest('.thinking-summary, .tool-summary, .entry-run.sealed') : null;
-    const row = target !== null ? target.closest('.entry') : null;
-    const el = chatScrollRef.current;
-    if (target === null || row === null || el === null) return;
-    el.style.overflowAnchor = 'none'; // G14.211 校正窗口内关原生锚定(防互搏),收窗即还原恒 auto
-    const preTop = row.getBoundingClientRect().top;
-    const stick = chatStickRef.current;
-    // G14.64:贴地时贯穿整个展开/收合动画(0.22s grid)逐帧钉底——单次校正会让视口随动画
-    // 增高先下滑、兜底再上跳;未贴地锚定被点行(行自身展开,行顶不动,单次校正已足)
-    const restore = (): void => {
-      if (stick) {
-        const t0 = performance.now();
-        const pin = (): void => {
-          el.scrollTop = el.scrollHeight;
-          if (performance.now() - t0 < 300) requestAnimationFrame(pin);
-        };
-        requestAnimationFrame(pin);
-        return;
-      }
-      if (!row.isConnected) return;
-      el.scrollTop += (row.getBoundingClientRect().top - preTop) / zoomScale(); // gBCR 视觉差→scrollTop 本地空间
-    };
-    requestAnimationFrame(restore);
-    if (!stick) setTimeout(restore, 240); // 0.22s grid 动画收尾后再校正一次(非贴地路径)
-    setTimeout(() => { el.style.overflowAnchor = ''; }, 320);
-  }, []);
-  /** G14.211 entry 面回调稳定化(memo 生效前提):内联闭包每次渲染换新,任一 prop 变即
-   *  全量 entry 重渲染——点一次文件=整列表闪帧(正文抖动源之一) */
-  const onEntryOpenDiff = useCallback((p: string): void => { onOpenDiff?.('', p); }, [onOpenDiff]);
-  const onEntryRestore = useCallback((p: string): void => {
-    conn.restoreChange(sessionId, p).catch(() => {
-      setChat((c) => applyChatEvent(c, { type: 'error', text: t('Revert failed', '撤销失败'), ts: Date.now() }));
-    });
-  }, [conn, sessionId]);
 
   /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
    *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
