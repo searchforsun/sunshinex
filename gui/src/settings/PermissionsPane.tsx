@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { t } from '../i18n';
 import type { SettingsView } from '../connection';
 
 /**
@@ -14,9 +15,9 @@ export interface PermissionsPaneConn {
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-/** 权限三列级别徽标文案 */
+/** 权限三列级别徽标文案(标签渲染期 t() 求值——G14.213,模块常量不冻结文案) */
 const PERM_LEVELS = ['merged', 'project', 'global'] as const;
-const PERM_LABEL: Record<(typeof PERM_LEVELS)[number], string> = { merged: '合并', project: '项目', global: '全局' };
+const permLabel = (lv: (typeof PERM_LEVELS)[number]): string => (lv === 'merged' ? t('Merged', '合并') : lv === 'project' ? t('Project', '项目') : t('Global', '全局'));
 
 export interface PermissionsPaneProps {
   readonly conn: PermissionsPaneConn;
@@ -57,7 +58,7 @@ export function PermissionsPane({ conn, root, title }: PermissionsPaneProps): JS
         <div className="sx-perms-cols">
           {PERM_LEVELS.map((level) => (
             <div key={level} className="sx-perm-col">
-              <span className={`sx-perm-level sx-perm-level-${level}`}>{PERM_LABEL[level]}</span>
+              <span className={`sx-perm-level sx-perm-level-${level}`}>{permLabel(level)}</span>
               <dl className="sx-perm-rows">
                 <dt>deny</dt>
                 {perms[level].deny.length === 0 ? <dd className="sx-perm-empty">(空)</dd> : perms[level].deny.map((x) => <dd key={x} className="sx-perm-deny">{x}</dd>)}

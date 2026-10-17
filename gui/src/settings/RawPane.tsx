@@ -180,7 +180,7 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
         />
         <div className="sx-save-bar">
           <button type="button" className="sx-settings-save" disabled={saving || !loaded} onClick={save}>
-            验证并保存
+            {t('Verify & save', '验证并保存')}
           </button>
         </div>
         {saveError !== '' && <p className="home-error" role="alert">{saveError}</p>}

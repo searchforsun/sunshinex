@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { t } from '../i18n';
 import type { McpRow, McpRowInput, McpProbeResult } from '../connection';
 import { SourceBadge } from './SourceBadge';
 
@@ -120,15 +121,15 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
   /** 表单行 → McpRowInput(空字段省键;args 逗号分隔;env 逐行 K=V) */
   const buildInput = (f: McpFormState): McpRowInput | string => {
     const name = f.name.trim();
-    if (name === '') return '名称不能为空';
+    if (name === '') return t('Name is required', '名称不能为空');
     const out: McpRowInput = { name, transport: f.transport };
     if (f.transport === 'stdio') {
       const cmd = f.command.trim();
-      if (cmd === '') return 'stdio 传输需要 command';
+      if (cmd === '') return t('stdio transport requires command', 'stdio 传输需要 command');
       out.command = cmd;
     } else {
       const url = f.url.trim();
-      if (url === '') return `${f.transport} 传输需要 url`;
+      if (url === '') return t(`${f.transport} transport requires url`, `${f.transport} 传输需要 url`);
       out.url = url;
     }
     const args = f.args.split(',').map((a) => a.trim()).filter((a) => a !== '');
@@ -156,7 +157,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     if (form === null || saving) return; // root='' 在途表单不静默:空 root 放行,服务端 400 行内示出(AgentsPane 同口径)
     /** env 丢失确认门:钮已 disabled,此守卫拦表单 Enter 提交径(不勾选绝不放行丢键写盘) */
     if (envDropBlocked) {
-      setFormError(`有 ${lostEnvKeys.length} 个原 env 键未重填,保存将从 mcp.json 移除——勾选下方确认项后方可保存`);
+      setFormError(t(`${lostEnvKeys.length} original env keys were not refilled; saving removes them from mcp.json — check the confirmation box below to save`, `有 ${lostEnvKeys.length} 个原 env 键未重填,保存将从 mcp.json 移除——勾选下方确认项后方可保存`));
       return;
     }
     const input = buildInput(form);
@@ -191,11 +192,11 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     );
   };
 
-  const scopeTag = (s: McpRow): string => (s.source === 'project' ? '项目' : '全局');
+  const scopeTag = (s: McpRow): string => (s.source === 'project' ? t('Project', '项目') : t('Global', '全局'));
 
   return (
     <section className="sx-settings-form" aria-label="settings pane MCP">
-      <h2>MCP 服务器</h2>
+      <h2>{t('MCP servers', 'MCP 服务器')}</h2>
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
       {servers === null && loadError === '' && <p className="home-loading">加载 MCP 清单…</p>}
       {servers !== null && servers.length === 0 && loadError === '' && <p className="home-loading">无 MCP 服务器。</p>}
@@ -208,7 +209,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                 <div className="sx-mcp-head">
                   <span className="sx-mcp-name">{s.name}</span>
                   <SourceBadge source={s.source} />
-                  {s.shadowed && <span className="sx-shadow-tag">被项目遮蔽</span>}
+                  {s.shadowed && <span className="sx-shadow-tag">{t('Shadowed by project', '被项目遮蔽')}</span>}
                 </div>
                 <dl className="sx-mcp-meta">
                   <dt>传输</dt>
@@ -236,14 +237,14 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                   )}
                 </dl>
                 <div className="sx-card-actions">
-                  <button type="button" aria-label={`测试连接 ${s.name}`} disabled={probing.includes(s.name)} onClick={() => probe(s.name)}>
-                    测试连接
+                  <button type="button" aria-label={`${t('Test connection', '测试连接')} ${s.name}`} disabled={probing.includes(s.name)} onClick={() => probe(s.name)}>
+                    {t('Test connection', '测试连接')}
                   </button>
                   <button
                     type="button"
-                    aria-label={`编辑 ${s.name}(${scopeTag(s)})`}
+                    aria-label={`${t('Edit', '编辑')} ${s.name}(${scopeTag(s)})`}
                     disabled={s.source !== 'project' || root === ''}
-                    title={s.source !== 'project' ? '全局级经高级 raw 编辑' : undefined}
+                    title={s.source !== 'project' ? t('Global-level — edit via Advanced raw', '全局级经高级 raw 编辑') : undefined}
                     onClick={() => {
                       setForm({
                         editing: true,
@@ -265,9 +266,9 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                   </button>
                   <button
                     type="button"
-                    aria-label={`删除 ${s.name}(${scopeTag(s)})`}
+                    aria-label={`${t('Delete', '删除')} ${s.name}(${scopeTag(s)})`}
                     disabled={s.source !== 'project' || root === ''}
-                    title={s.source !== 'project' ? '全局卡不在项目文件内(全局编辑走「高级」)' : undefined}
+                    title={s.source !== 'project' ? t('Global card not in project file (edit globally via Advanced)', '全局卡不在项目文件内(全局编辑走「高级」)') : undefined}
                     onClick={() => remove(s.name)}
                   >
                     删除
@@ -299,7 +300,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
             save();
           }}
         >
-          <h3>{form.editing ? `编辑 ${form.name}` : '添加服务器(项目级)'}</h3>
+          <h3>{form.editing ? t(`Edit ${form.name}`, `编辑 ${form.name}`) : t('Add server (project)', '添加服务器(项目级)')}</h3>
           <label>
             名称
             <input aria-label="mcp name" value={form.name} readOnly={form.editing} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -336,13 +337,13 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                 checked={form.confirmEnvDrop}
                 onChange={(e) => setForm({ ...form, confirmEnvDrop: e.target.checked })}
               />
-              {`确认移除未重填的 ${lostEnvKeys.length} 个 env 键`}
+              {t(`Confirm removal of ${lostEnvKeys.length} unfilled env keys`, `确认移除未重填的 ${lostEnvKeys.length} 个 env 键`)}
             </label>
           )}
           {formError !== '' && <p className="home-error" role="alert">{formError}</p>}
           <div className="sx-card-actions">
             <button type="submit" disabled={saving || envDropBlocked}>
-              保存
+              {t('Save', '保存')}
             </button>
             <button
               type="button"
@@ -357,7 +358,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
         </form>
       )}
       <button type="button" className="sx-add-button" disabled={root === ''} onClick={() => { setForm(emptyForm()); setFormError(''); }}>
-        + 添加服务器
+        {t('+ Add server', '+ 添加服务器')}
       </button>
     </section>
   );

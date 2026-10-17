@@ -18,6 +18,7 @@ import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import type { SessionEvent } from '../../src/types';
 import { App } from './App';
+import { setLanguage } from './i18n';
 import { emptyBoard, applyBoardEvent } from './projection';
 import { highlightCode } from './highlight';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
@@ -1692,6 +1693,8 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
 });
 
 describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来源徽标/toast', () => {
+  beforeEach(() => setLanguage('en')); // G14.213 设置面 t() 化:钉 en 防前序语言切换用例泄漏
+
   /** 通用面板四来源 fixture(env 覆盖/project/global/default 各一)+ 限额面板数字键 */
   const generalRows: SettingsKeyRow[] = [
     { key: 'language', value: 'en', source: 'project', envOverride: false },
@@ -1711,17 +1714,17 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     // 左栏切换:SettingsShell 在场——顶部项目选择器/外观行已移除(设置重构轮:项目区分下沉到
     // 配置项徽标、外观移入通用卡),导航项在场
     expect(screen.queryByLabelText('settings project')).toBeNull();
-    expect(screen.getByRole('button', { name: '通用' })).toBeDefined();
-    expect(screen.getByRole('button', { name: '上下文与限额' })).toBeDefined();
-    expect(screen.getByRole('button', { name: '记忆' })).toBeDefined();
-    expect(screen.getByRole('button', { name: '知识库与搜索' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'General' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Context & limits' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Memory' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Knowledge & search' })).toBeDefined();
     // ProjectMenu 退场(组头不在)
     expect(screen.queryByRole('button', GROUP_HEAD)).toBeNull();
     // 右标签栏整体不渲染 + Chat 主区不在(裁定:设置态 Chat 卸载,返回重播种同 backHome 语义)
     expect(document.querySelector('.sx-tabstrip')).toBeNull();
     expect(screen.queryByLabelText('message input')).toBeNull();
     // 返回 → 回会话态:Chat 重新在场(重挂重播种,输入门落定后启用)
-    fireEvent.click(screen.getByRole('button', { name: '← 返回' }));
+    fireEvent.click(screen.getByRole('button', { name: '← Back' }));
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     // G14.38:缺省折叠——条不在场,返回面以输入门与 Chat 在场断言
 
@@ -1732,7 +1735,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
   it('Esc → 回会话态(与返回钮同路径)', async () => {
     const { unmount } = await enterChat();
     openSettings();
-    expect(screen.getByRole('button', { name: '通用' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'General' })).toBeDefined();
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     unmount();
@@ -1755,9 +1758,9 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(document.querySelector('.sx-src-default')).not.toBeNull();
     // envOverride 行禁编 + title 说明
     expect((screen.getByLabelText('shell') as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByLabelText('shell').title).toBe('env 覆盖中,改文件不生效');
+    expect(screen.getByLabelText('shell').title).toBe('Overridden by env — read-only');
     // 自动生效轮:无保存钮(键值行失焦/换项即存;「添加类」表单才保留显式保存)
-    expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     // text 失焦自动保存(global 桶:projectsDir source=global)
     fireEvent.change(screen.getByLabelText('projectsDir'), { target: { value: '/home/u/other' } });
     fireEvent.blur(screen.getByLabelText('projectsDir'));
@@ -1773,6 +1776,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
       expect(conn.putSettingsCalls).toEqual([['global', '', { projectsDir: '/home/u/other' }], ['project', '/w/root-a', { language: 'zh-CN' }]]),
     );
     // 切「上下文与限额」面板:数字键失焦 → number 化(非字符串);source=project → project 桶
+    // (上一行 language 已切 zh-CN 且壳层 tick 重渲染——导航此刻是 zh 面,G14.213)
     fireEvent.click(screen.getByRole('button', { name: '上下文与限额' }));
     await screen.findByLabelText('contextWindow');
     fireEvent.change(screen.getByLabelText('contextWindow'), { target: { value: '200000' } });
@@ -1808,11 +1812,11 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a']));
     // 快切「记忆」:B 应答直通落定(通用卸载,language 行不在场)
     conn.settingsView = settingsViewOf([{ key: 'autoMemory', value: 'on', source: 'default', envOverride: false }]);
-    fireEvent.click(screen.getByRole('button', { name: '记忆' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Memory' }));
     await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '/w/root-a']));
     // 切回「通用」:C 应答直通落定(fast-b)
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'fast-b', source: 'global', envOverride: false }]);
-    fireEvent.click(screen.getByRole('button', { name: '通用' }));
+    fireEvent.click(screen.getByRole('button', { name: 'General' }));
     await waitFor(() => expect(screen.getByLabelText('language').textContent).toContain('fast-b'));
     // A 迟到落定:陈旧代弃——终态仍 fast-b(无守卫则被 slow-a 覆写)
     await act(async () => {
@@ -1827,11 +1831,11 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf([{ key: 'autoMemory', value: 'on', source: 'default', envOverride: false }]);
     conn.memoryStatsResp = { entries: 12, lastWriteAt: Date.now() - 60_000 };
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '记忆' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Memory' }));
     // 概览行数据源:memoryStats(root)
     await waitFor(() => expect(conn.memoryStatsCalls).toEqual(['/w/root-a']));
-    await waitFor(() => expect(screen.getByText(/12 条记忆/)).toBeDefined());
-    expect(screen.getByText(/最近/)).toBeDefined();
+    await waitFor(() => expect(screen.getByText(/12 memories/)).toBeDefined());
+    expect(screen.getByText(/last write/)).toBeDefined();
     // 面板行照常(select 触发钮显当值 on + 保存)
     expect(screen.getByLabelText('autoMemory').textContent).toContain('on');
     unmount();
@@ -1839,6 +1843,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
 });
 
 describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/高级 raw', () => {
+  beforeEach(() => setLanguage('en')); // G14.213 同上
+
   const openSettings = (): void => {
     fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
   };
@@ -1862,7 +1868,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
       },
     );
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '模型与提供方' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Models & providers' }));
     // 上:模型键表单引擎复用(行 = daemon 报键面;未报键行省略;模型键=combo 输入)
     await screen.findByLabelText('model');
     expect((screen.getByLabelText('model') as HTMLInputElement).value).toBe('gpt-x');
@@ -1896,20 +1902,20 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a']));
     // shadowed 全局卡灰显 + 「被项目遮蔽」标 + env 键名列表(值打码不回传)
     expect(document.querySelector('.sx-mcp-card.shadowed')).not.toBeNull();
-    expect(screen.getByText('被项目遮蔽')).toBeDefined();
+    expect(screen.getByText('Shadowed by project')).toBeDefined();
     expect(screen.getByText('MCP_FS_TOKEN')).toBeDefined();
     // shadowed 全局卡:删除钮禁用(写面恒项目级)
-    expect((screen.getByRole('button', { name: '删除 fs(全局)' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Delete fs(Global)' }) as HTMLButtonElement).disabled).toBe(true);
     // 测试连接 → mcpProbe(root, name);ok:false → 卡内 error 文本行
-    fireEvent.click(screen.getByRole('button', { name: '测试连接 web' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection web' }));
     await waitFor(() => expect(conn.mcpProbeCalls).toEqual([['/w/root-a', 'web']]));
     await waitFor(() => expect(screen.getByText('connect timeout after 10s')).toBeDefined());
     // + 添加服务器:表单 → 保存 = putMcpServers(root, 现项目清单 + 新机;全局卡不入清单)
-    fireEvent.click(screen.getByRole('button', { name: '+ 添加服务器' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Add server' }));
     fireEvent.change(screen.getByLabelText('mcp name'), { target: { value: 'search' } });
     fireEvent.change(screen.getByLabelText('mcp command'), { target: { value: 'npx' } });
     fireEvent.change(screen.getByLabelText('mcp args'), { target: { value: '-y, mcp-search' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(conn.putMcpServersCalls).toEqual([
         [
@@ -1936,7 +1942,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
     await screen.findByText('fs');
-    fireEvent.click(screen.getByRole('button', { name: '删除 fs(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete fs(Project)' }));
     await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', []]])); // 全局卡不入项目清单
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a']));
     unmount();
@@ -1953,19 +1959,19 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     // 编辑:env 预填「KEY=」空值行(值视图打码不可知)——不改 env 直接保存:env 丢失确认门拦
     // (终审 B:未勾选确认→保存 disabled;勾选=显式确认丢键)→ 空值条目跳过,行无 env 键
     // (daemon 原样写盘——env:{KEY:''} 空值坏文件的根除判据)
-    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
     expect((screen.getByLabelText('mcp env') as HTMLTextAreaElement).value).toBe('MCP_FS_TOKEN=');
-    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true); // 未勾选确认:保存禁用
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true); // 未勾选确认:保存禁用
     fireEvent.click(screen.getByLabelText('confirm env drop'));
-    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]]]));
     // 重填值保存 → env 含 {KEY:'v'}(全值回写;原键全覆盖→确认门不出现)
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉落定
-    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
     fireEvent.change(screen.getByLabelText('mcp env'), { target: { value: 'MCP_FS_TOKEN=v' } });
     expect(screen.queryByLabelText('confirm env drop')).toBeNull(); // 无键将丢失:确认 checkbox 不渲染
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(conn.putMcpServersCalls).toEqual([
         ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]],
@@ -1983,23 +1989,23 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
     await screen.findByText('fs');
-    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
     // 2 键均未重填:确认 checkbox 在场(计数=2)+ 保存 disabled + 零写调用(静默丢 env 根除)
-    expect(screen.getByText('确认移除未重填的 2 个 env 键')).toBeDefined();
-    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Confirm removal of 2 unfilled env keys')).toBeDefined();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
     expect(conn.putMcpServersCalls).toEqual([]);
     // 勾选确认 → 放行:putMcpServers 调用且断参行 env 缺席
     fireEvent.click(screen.getByLabelText('confirm env drop'));
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]]]));
     // 重填 1 键(另 1 键仍将丢失→checkbox 计 1+仍须勾选)→ env 恰含该 1 键
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉落定
-    fireEvent.click(screen.getByRole('button', { name: '编辑 fs(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
     fireEvent.change(screen.getByLabelText('mcp env'), { target: { value: 'K1=v1' } });
-    expect(screen.getByText('确认移除未重填的 1 个 env 键')).toBeDefined();
-    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Confirm removal of 1 unfilled env keys')).toBeDefined();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('confirm env drop'));
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(conn.putMcpServersCalls).toEqual([
         ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]],
@@ -2023,13 +2029,13 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     await screen.findByText('web');
     // 全局卡(未遮蔽/被遮蔽)编辑钮均禁用——写面恒项目级(编辑全局会替换项目同名卡,错路径根除);
     // title 同删除钮口径:全局级经高级 raw 编辑
-    for (const label of ['编辑 fs(全局)', '编辑 web(全局)']) {
+    for (const label of ['Edit fs(Global)', 'Edit web(Global)']) {
       const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
       expect(btn.disabled).toBe(true);
-      expect(btn.title).toBe('全局级经高级 raw 编辑');
+      expect(btn.title).toBe('Global-level — edit via Advanced raw');
     }
     // 项目卡编辑钮不受染(可用)
-    expect((screen.getByRole('button', { name: '编辑 fs(项目)' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Edit fs(Project)' }) as HTMLButtonElement).disabled).toBe(false);
     unmount();
   });
 
@@ -2058,7 +2064,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
       },
     };
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '智能体' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Agents' }));
     await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
     // builtins 只读卡(role/name/framing)
     expect(screen.getByText('构建者')).toBeDefined();
@@ -2071,13 +2077,13 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     expect(document.querySelector('.sx-agent-card.shadowed')).not.toBeNull();
     expect(screen.getByText(/frontmatter parse failed/)).toBeDefined();
     // + 新增 → putAgent upsert(root/scope/op/frontmatter 形/body)
-    fireEvent.click(screen.getByRole('button', { name: '+ 新增' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ New' }));
     fireEvent.change(screen.getByLabelText('agent id'), { target: { value: 'writer' } });
     fireEvent.change(screen.getByLabelText('agent name'), { target: { value: '写手' } });
     fireEvent.change(screen.getByLabelText('agent description'), { target: { value: '写文档' } });
     fireEvent.click(screen.getByLabelText('agent memory'));
     fireEvent.change(screen.getByLabelText('agent body'), { target: { value: '正文内容' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(conn.putAgentCalls).toEqual([
         { root: '/w/root-a', scope: 'project', op: 'upsert', id: 'writer', frontmatter: { name: '写手', description: '写文档', memory: true }, body: '正文内容' },
@@ -2085,7 +2091,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     );
     await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉
     // 删除 → putAgent op:'delete'(scope = 卡 source)
-    fireEvent.click(screen.getByRole('button', { name: '删除 dev(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete dev(Project)' }));
     await waitFor(() => expect(conn.putAgentCalls).toHaveLength(2));
     expect(conn.putAgentCalls[1]).toEqual({ root: '/w/root-a', scope: 'project', op: 'delete', id: 'dev' });
     unmount();
@@ -2098,18 +2104,18 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
       view: { entries: [{ id: 'dev', name: '开发者', source: 'project', shadowed: false, bodyPreview: 'x'.repeat(200) }], warnings: [] },
     };
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '智能体' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Agents' }));
     await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
-    fireEvent.click(screen.getByRole('button', { name: '编辑 dev(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit dev(Project)' }));
     // 不改正文(仍=播种的 200 字预览切片)直接保存 → 守卫阻断:行内错误条 + putAgent 未调
     // (直接保存即把截断文写盘毁掉余文——GUI 本地守卫根除)
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(screen.getByText(/已被预览截断/)).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText(/preview-truncated/)).toBeDefined());
     expect(screen.getByText(/agents\/dev\/agent\.md/)).toBeDefined(); // 提示指明完整原文兜底路径
     expect(conn.putAgentCalls).toEqual([]);
     // 改写正文(≠播种值)= 有意重写 → 放行(body=改写文)
     fireEvent.change(screen.getByLabelText('agent body'), { target: { value: '改写后的完整正文' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(conn.putAgentCalls).toHaveLength(1));
     expect(conn.putAgentCalls[0]).toMatchObject({ root: '/w/root-a', scope: 'project', op: 'upsert', id: 'dev', body: '改写后的完整正文' });
     unmount();
@@ -2123,26 +2129,26 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
       view: { entries: [{ id: 'dev', name: '开发者', source: 'project', shadowed: false, bodyPreview: preview }], warnings: [] },
     };
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '智能体' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Agents' }));
     await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
     // —— 全文装载成功:编辑 → agentBody('project','dev','/w/root-a') → 正文=全文;未改保存放行 ——
     const full = `${'全文正文行。'.repeat(60)}收尾`;
     conn.agentBodyResp = { body: full };
-    fireEvent.click(screen.getByRole('button', { name: '编辑 dev(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit dev(Project)' }));
     await waitFor(() => expect(conn.agentBodyCalls).toEqual([['project', 'dev', '/w/root-a']]));
     await waitFor(() => expect((screen.getByLabelText('agent body') as HTMLTextAreaElement).value).toBe(full));
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(conn.putAgentCalls).toHaveLength(1));
     expect(conn.putAgentCalls[0]).toMatchObject({ root: '/w/root-a', scope: 'project', op: 'upsert', id: 'dev', body: full });
     // —— 失败面:回退 bodyPreview + 行内提示;截断守卫兜底(未改正文保存阻断,零写) ——
     conn.agentBodyResp = null;
     conn.agentBodyReject = new Error('/settings/agents/body?scope=project&id=dev -> 404');
-    fireEvent.click(screen.getByRole('button', { name: '编辑 dev(项目)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit dev(Project)' }));
     await waitFor(() => expect(conn.agentBodyCalls).toHaveLength(2));
     await waitFor(() => expect(screen.getByText(/已回退预览/)).toBeDefined());
     expect((screen.getByLabelText('agent body') as HTMLTextAreaElement).value).toBe(preview);
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(screen.getByText(/已被预览截断/)).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText(/preview-truncated/)).toBeDefined());
     expect(conn.putAgentCalls).toHaveLength(1); // 守卫兜底:失败回退面未再写盘
     unmount();
   });
@@ -2165,7 +2171,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     });
     openSettings();
     // —— 技能面板:平铺卡片,逐卡来源标(单色 chip),搜索+来源筛选双过滤 ——
-    fireEvent.click(await screen.findByRole('button', { name: '技能' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Skills' }));
     await waitFor(() => expect(conn.skillsGroupsCalls).toEqual([['/w/root-a', true]]));
     expect(screen.getByText('proj-skill')).toBeDefined();
     expect(screen.getByText('user-skill')).toBeDefined();
@@ -2173,7 +2179,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     expect(screen.getByText('项目内装载')).toBeDefined();
     // 卡片归属标:项目级显项目名,user/learned 显三态文案
     expect(screen.getByText('proj-skill').closest('.sx-skill-card')?.querySelector('.sx-skill-src-project')?.textContent).toBe('root-a');
-    expect(screen.getByText('user-skill').closest('.sx-skill-card')?.querySelector('.sx-skill-src-user')?.textContent).toBe('全局');
+    expect(screen.getByText('user-skill').closest('.sx-skill-card')?.querySelector('.sx-skill-src-user')?.textContent).toBe('Global');
     expect(screen.getByText('learned-skill').closest('.sx-skill-card')?.querySelector('.sx-skill-src-learned')?.textContent).toBe('other-proj');
     // 项目筛选:选「other-proj」→ 仅 learned-skill 在列;回「全部项目」恢复全量
     fireEvent.click(screen.getByLabelText('skills project'));
@@ -2182,24 +2188,24 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     expect(screen.queryByText('proj-skill')).toBeNull();
     expect(screen.queryByText('user-skill')).toBeNull();
     fireEvent.click(screen.getByLabelText('skills project'));
-    fireEvent.click(screen.getByRole('option', { name: '全部项目' }));
+    fireEvent.click(screen.getByRole('option', { name: 'All projects' }));
     expect(screen.getByText('proj-skill')).toBeDefined();
     // 来源筛选:选「项目」→ 仅 project 卡在列
     fireEvent.click(screen.getByLabelText('skills source'));
-    fireEvent.click(screen.getByRole('option', { name: '项目' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Project' }));
     expect(screen.getByText('proj-skill')).toBeDefined();
     expect(screen.queryByText('user-skill')).toBeNull();
     expect(screen.queryByText('learned-skill')).toBeNull();
     // 回「全部来源」+搜索 'proj':搜索过滤照常(与筛选叠加)
     fireEvent.click(screen.getByLabelText('skills source'));
-    fireEvent.click(screen.getByRole('option', { name: '全部来源' }));
+    fireEvent.click(screen.getByRole('option', { name: 'All sources' }));
     fireEvent.change(screen.getByLabelText('skills search'), { target: { value: 'proj' } });
     expect(screen.getByText('proj-skill')).toBeDefined();
     expect(screen.queryByText('user-skill')).toBeNull();
     fireEvent.change(screen.getByLabelText('skills search'), { target: { value: '' } });
     expect(screen.getByText('user-skill')).toBeDefined();
     // —— 权限独立面板(不再与技能同体重复):三列级别徽标 + deny/allow/additionalDirs 行 ——
-    fireEvent.click(screen.getByRole('button', { name: '权限' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Permissions' }));
     await waitFor(() => expect(document.querySelectorAll('.sx-perm-level')).toHaveLength(3));
     expect(screen.getAllByText('Bash(rm *)')).toHaveLength(2);
     expect(screen.getAllByText('Read')).toHaveLength(2);
@@ -2211,18 +2217,18 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     const { conn, unmount } = await enterChat();
     conn.rawResp = { content: '{\n  "language": "zh"\n}\n' };
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
     // 自动回显:mount 即读取(无需手动「读取」——「无法回显」观感根除);scope 恒 global,root 省参
     await waitFor(() => expect(conn.settingsRawCalls).toEqual([['global', '', 'settings']]));
     expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"');
     // 保存失败(服务端 400 解析错误原文)→ 行内错误条
     conn.putSettingsRawReject = new Error('/settings/raw -> 400 Unexpected token } in JSON');
     fireEvent.change(screen.getByLabelText('raw editor'), { target: { value: '{ bad' } });
-    fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verify & save' }));
     await waitFor(() => expect(screen.getByText('/settings/raw -> 400 Unexpected token } in JSON')).toBeDefined());
     // 成功 → toast(记录面 [scope, root 归一 '', file, content])
     conn.putSettingsRawReject = null;
-    fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verify & save' }));
     await waitFor(() => expect(screen.getByText(/Saved — applies|已保存：新建会话起/)).toBeDefined());
     expect(conn.putSettingsRawCalls).toEqual([['global', '', 'settings', '{ bad']]);
     unmount();
@@ -2232,18 +2238,18 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     const { conn, unmount } = await enterChat();
     conn.rawResp = { content: '{\n  "language": "zh"\n}\n' };
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
     await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"'));
-    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(false);
     // 切文件(自绘下拉):同步回未读取态(content 清 + 保存禁),随即自动读取新文件
     conn.rawResp = { content: '{\n  "mcpServers": {}\n}\n' };
     fireEvent.click(screen.getByLabelText('raw file'));
     fireEvent.click(screen.getByRole('option', { name: 'mcp.json' }));
     expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
-    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(true);
     // 自动重读落定:mcp 原文装载(settings 原文不跨文件残留)
     await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('mcpServers'));
-    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(false);
     expect(conn.settingsRawCalls).toEqual([['global', '', 'settings'], ['global', '', 'mcp']]);
     // 未读取态点击保存:零 putSettingsRaw(A 文件内容写进 B 文件的跨文件错写根除——守卫在自动重读窗)
     unmount();
@@ -2254,10 +2260,10 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     conn.rawResp = { content: '{\n  "language": "zh"\n}\n' }; // A 文件(settings)内容——迟到面
     conn.holdRaw(); // mount 自动读取应答悬挂(单发门:后续直通)
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
     await waitFor(() => expect(conn.settingsRawCalls).toEqual([['global', '', 'settings']]));
     expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
-    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(true);
     // 在途窗切文件:同步回未读取态(自动重读直通落定 mcp 原文)
     conn.rawResp = { content: '{\n  "mcpServers": {}\n}\n' };
     fireEvent.click(screen.getByLabelText('raw file'));
@@ -2268,9 +2274,9 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
       conn.releaseRaw();
     });
     expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('mcpServers');
-    expect((screen.getByRole('button', { name: '验证并保存' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(false);
     // 保存写的是 B 文件现内容(A 迟到内容不入写面)
-    fireEvent.click(screen.getByRole('button', { name: '验证并保存' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verify & save' }));
     await waitFor(() => expect(conn.putSettingsRawCalls).toEqual([['global', '', 'mcp', '{\n  "mcpServers": {}\n}\n']]));
     unmount();
   });
@@ -2282,7 +2288,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
       warnings: ['settings: 未知语义键 "nope"，已忽略', 'settings: dataDir 须走 projectsDir（按工作区分目录隔离）'],
     };
     openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: '高级' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
     // 挂载即拉 settings(告警与编辑目标无关注面;高级=仅全局 → root 省参,[0]=App 同步,[1]=raw 面)
     await waitFor(() => expect(conn.settingsCalls.filter((c) => c === '').length).toBeGreaterThanOrEqual(2));
     const alert = await screen.findByRole('alert');

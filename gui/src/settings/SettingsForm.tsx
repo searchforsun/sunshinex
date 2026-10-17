@@ -38,19 +38,20 @@ export interface SettingsFieldDef {
 }
 
 /** 分组卡(设置重构轮):一卡一语义盒——标题+可选描述+字段行;themeRow/zoomRow=组首渲染
- *  外观/界面放缩行(GUI 本地偏好,非 settings 键) */
+ *  外观/界面放缩行(GUI 本地偏好,非 settings 键)。标题双语对(G14.213):渲染期 t() 求值,
+ *  模块常量只存数据不冻结文案(语言切换即翻) */
 export interface SettingsGroupDef {
-  readonly title: string;
+  readonly title: { readonly en: string; readonly zh: string };
   readonly desc?: { readonly en: string; readonly zh: string };
   readonly fields: readonly SettingsFieldDef[];
   readonly themeRow?: boolean;
   readonly zoomRow?: boolean;
 }
 
-/** 面板配置:id(导航/重挂键)+title(导航项与面板标题)+groups(分组卡列)+记忆概览行开关 */
+/** 面板配置:id(导航/重挂键)+title(导航项与面板标题双语对)+groups(分组卡列)+记忆概览行开关 */
 export interface SettingsPaneDef {
   readonly id: string;
-  readonly title: string;
+  readonly title: { readonly en: string; readonly zh: string };
   readonly groups: readonly SettingsGroupDef[];
   /** 记忆面板:true = 顶部概览行(memoryStats 只读) */
   readonly memoryOverview?: boolean;
@@ -117,32 +118,33 @@ const num = (key: string): SettingsFieldDef => ({ key, control: 'number' });
 const sel = (key: string, options: readonly SelectOption[]): SettingsFieldDef => ({ key, control: 'select', options });
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
 
-/** 四简单面板(SETTINGS_PANES):键名与 daemon SEMANTIC_KEYS 逐字对齐;分组卡=语义盒 */
+/** 四简单面板(SETTINGS_PANES):键名与 daemon SEMANTIC_KEYS 逐字对齐;分组卡=语义盒。
+ *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文字面量,设置页永不随语言切换 */
 export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
   {
     id: 'general',
-    title: '通用',
+    title: { en: 'General', zh: '通用' },
     groups: [
-      { title: '界面与外观', themeRow: true, zoomRow: true, fields: [sel('language', [
+      { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, fields: [sel('language', [
         { v: 'en', l: 'English' },
         { v: 'zh-CN', l: '简体中文' },
       ])] },
       {
-        title: '路径',
+        title: { en: 'Paths', zh: '路径' },
         fields: [text('projectsDir'), text('userSkillsDir'), text('globalSunshine')],
       },
-      { title: '命令执行', fields: [text('shell')] },
+      { title: { en: 'Command execution', zh: '命令执行' }, fields: [text('shell')] },
     ],
   },
   {
     id: 'limits',
-    title: '上下文与限额',
+    title: { en: 'Context & limits', zh: '上下文与限额' },
     groups: [
-      { title: '上下文窗口', fields: [num('contextWindow'), num('maxTokens')] },
-      { title: '子代理与团队', fields: [num('subagentTokenCap'), num('teamTokenCap')] },
-      { title: '步数与循环', fields: [num('maxSteps'), num('maxLoopIterations'), num('maxGraphNodes')] },
+      { title: { en: 'Context window', zh: '上下文窗口' }, fields: [num('contextWindow'), num('maxTokens')] },
+      { title: { en: 'Subagents & team', zh: '子代理与团队' }, fields: [num('subagentTokenCap'), num('teamTokenCap')] },
+      { title: { en: 'Steps & loops', zh: '步数与循环' }, fields: [num('maxSteps'), num('maxLoopIterations'), num('maxGraphNodes')] },
       {
-        title: '安全围栏',
+        title: { en: 'Safety fences', zh: '安全围栏' },
         fields: [
           sel('readFence', [
             { v: 'off', l: 'off' },
@@ -162,20 +164,20 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
   },
   {
     id: 'memory',
-    title: '记忆',
+    title: { en: 'Memory', zh: '记忆' },
     memoryOverview: true,
     groups: [
-      { title: '管线开关', fields: [sel('autoMemory', ON_OFF), sel('learnedSkills', ON_OFF)] },
-      { title: '容量与触发', fields: [num('learnedSkillLimit'), num('memoryIdleKickMs')] },
-      { title: '轮次摘要', fields: [num('stepDigestMaxSteps'), num('stepDigestItemChars'), num('stepDigestTotalChars')] },
+      { title: { en: 'Pipeline switches', zh: '管线开关' }, fields: [sel('autoMemory', ON_OFF), sel('learnedSkills', ON_OFF)] },
+      { title: { en: 'Capacity & triggers', zh: '容量与触发' }, fields: [num('learnedSkillLimit'), num('memoryIdleKickMs')] },
+      { title: { en: 'Turn digests', zh: '轮次摘要' }, fields: [num('stepDigestMaxSteps'), num('stepDigestItemChars'), num('stepDigestTotalChars')] },
     ],
   },
   {
     id: 'kb',
-    title: '知识库与搜索',
+    title: { en: 'Knowledge & search', zh: '知识库与搜索' },
     groups: [
       {
-        title: '知识库',
+        title: { en: 'Knowledge base', zh: '知识库' },
         fields: [
           sel('kbBackend', [
             { v: 'local-json', l: 'local-json' },
@@ -184,9 +186,9 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
           text('kbDataDir'),
         ],
       },
-      { title: 'Embedding', fields: [text('embeddingBaseUrl'), modelCombo('embeddingModel')] },
+      { title: { en: 'Embedding', zh: 'Embedding' }, fields: [text('embeddingBaseUrl'), modelCombo('embeddingModel')] },
       {
-        title: '网页搜索',
+        title: { en: 'Web search', zh: '网页搜索' },
         fields: [
           sel('websearchProvider', [
             { v: 'duckduckgo', l: 'duckduckgo' },
@@ -207,18 +209,18 @@ function ThemeRow(): JSX.Element {
     <div className="sx-setting-row">
       <div className="sx-setting-main">
         <div className="sx-setting-title">
-          <span className="sx-setting-label">外观</span>
+          <span className="sx-setting-label">{t('Appearance', '外观')}</span>
         </div>
-        <p className="sx-setting-desc">界面主题:跟随系统/亮色/暗色</p>
+        <p className="sx-setting-desc">{t('UI theme: system / light / dark', '界面主题:跟随系统/亮色/暗色')}</p>
       </div>
       <div className="sx-setting-ctl">
       <Select
         ariaLabel="theme"
         value={pref}
         options={[
-          { v: 'system', l: '跟随系统' },
-          { v: 'light', l: '亮色' },
-          { v: 'dark', l: '暗色' },
+          { v: 'system', l: t('System', '跟随系统') },
+          { v: 'light', l: t('Light', '亮色') },
+          { v: 'dark', l: t('Dark', '暗色') },
         ]}
         onChange={(v) => {
           setPref(v as ThemePref);
@@ -237,9 +239,9 @@ function ZoomRow(): JSX.Element {
     <div className="sx-setting-row">
       <div className="sx-setting-main">
         <div className="sx-setting-title">
-          <span className="sx-setting-label">界面放缩</span>
+          <span className="sx-setting-label">{t('UI zoom', '界面放缩')}</span>
         </div>
-        <p className="sx-setting-desc">全局放缩字体/图标/布局</p>
+        <p className="sx-setting-desc">{t('Global zoom for fonts / icons / layout', '全局放缩字体/图标/布局')}</p>
       </div>
       <div className="sx-setting-ctl">
         <Select
@@ -269,11 +271,13 @@ export interface SettingsFormProps {
   /** 项目上下文('' = 仅全局;读面归一为省参;source='project' 行的写回锚) */
   readonly root: string;
   readonly pane: SettingsPaneDef;
+  /** G14.213 语言键保存后上抛(壳层 tick 重渲染——t 非响应式,本组件外的 t() 面才需要) */
+  readonly onLanguageChanged?: () => void;
 }
 
 /** 改动桶(逐项写回来源文件):source='project' → project;global/default → global */
 
-export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Element {
+export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFormProps): JSX.Element {
   /** 键行表(pane 键过滤后;null = 加载中) */
   const [rows, setRows] = useState<Record<string, SettingsKeyRow> | null>(null);
   /** 输入当前值(键→字符串面;number 输入亦暂存字符串,保存时化型) */
@@ -368,15 +372,19 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
       .then(() =>
         isProject
           ? root === ''
-            ? Promise.reject(new Error('项目级配置需项目上下文——请在项目内打开设置再修改'))
+            ? Promise.reject(new Error(t('Project-level settings need a project context — open settings inside a project', '项目级配置需项目上下文——请在项目内打开设置再修改')))
             : conn.putSettings('project', root, { [fd.key]: v })
           : conn.putSettings('global', undefined, { [fd.key]: v }),
       )
       .then(() => {
-        // 语言键保存即热切换 GUI chrome 双语(G10-C3c;其余键新建会话起)
+        // 语言键保存即热切换 GUI chrome 双语(G10-C3c;其余键新建会话起);onLanguageChanged 上抛
+        // 重渲染壳(G14.213——t 非响应式,导航/标题等本组件外的 t() 面不重拉不翻面)
         if (fd.key === 'language' && typeof v === 'string') {
           const p = parseLanguage(v);
-          if (p !== undefined) setLanguage(p);
+          if (p !== undefined) {
+            setLanguage(p);
+            onLanguageChanged?.();
+          }
         }
         setToast(t('Applied — takes effect for new sessions', '已生效：新建会话起'));
         if (toastTimer.current !== null) clearTimeout(toastTimer.current);
@@ -392,7 +400,7 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
   const renderControl = (fd: SettingsFieldDef, row: SettingsKeyRow): JSX.Element => {
     const value = values[fd.key] ?? '';
     const disabled = row.envOverride;
-    const title = row.envOverride ? 'env 覆盖中,改文件不生效' : undefined;
+    const title = row.envOverride ? t('Overridden by env — read-only', 'env 覆盖中,改文件不生效') : undefined;
     if (fd.control === 'select') {
       const base = typeof fd.options === 'function' ? fd.options({ models }) : (fd.options ?? []);
       const opts = base.some((o) => o.v === value) || value === '' ? base : [{ v: value, l: value }, ...base];
@@ -403,7 +411,7 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
           options={opts}
           disabled={disabled}
           title={title}
-          placeholder='未设置'
+          placeholder={t('Unset', '未设置')}
           onChange={(v) => {
             setValues((vals) => ({ ...vals, [fd.key]: v }));
             persistField(fd, v); // 换项即存(自动生效轮)
@@ -444,26 +452,26 @@ export function SettingsForm({ conn, root, pane }: SettingsFormProps): JSX.Eleme
   };
 
   return (
-    <section className="sx-settings-form sx-settings-body" aria-label={`settings pane ${pane.title}`}>
-      <h2>{pane.title}</h2>
+    <section className="sx-settings-form sx-settings-body" aria-label={`settings pane ${pane.id}`}>
+      <h2>{t(pane.title.en, pane.title.zh)}</h2>
       {pane.memoryOverview && stats !== null && (
         <div className="sx-card sx-memory-card">
           <p className="sx-memory-stats" aria-label="memory stats">
-            {stats.entries} 条记忆
-            {stats.lastWriteAt !== null ? ` · 最近 ${relTime(stats.lastWriteAt)}` : ''}
+            {t(`${stats.entries} memories`, `${stats.entries} 条记忆`)}
+            {stats.lastWriteAt !== null ? t(` · last write ${relTime(stats.lastWriteAt)}`, ` · 最近 ${relTime(stats.lastWriteAt)}`) : ''}
           </p>
         </div>
       )}
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
-      {rows === null && loadError === '' && <p className="home-loading">加载设置…</p>}
+      {rows === null && loadError === '' && <p className="home-loading">{t('Loading settings…', '加载设置…')}</p>}
       {rows !== null &&
         pane.groups.map((g) => {
           const visible = g.fields.filter((fd) => rows[fd.key] !== undefined);
           if (!g.themeRow && visible.length === 0) return null; // daemon 未报键的组整卡省略
           return (
-            <div key={g.title} className="sx-card sx-settings-card">
+            <div key={g.title.en} className="sx-card sx-settings-card">
               <div className="sx-card-head">
-                <span className="sx-card-title">{g.title}</span>
+                <span className="sx-card-title">{t(g.title.en, g.title.zh)}</span>
                 {g.desc !== undefined && <span className="sx-card-desc">{t(g.desc.en, g.desc.zh)}</span>}
               </div>
               <div className="sx-card-rows">

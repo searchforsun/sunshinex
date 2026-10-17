@@ -1390,7 +1390,7 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(自绘下拉:触发钮
       //    aria-label=language → 选项 role=option;自动生效轮:换项即存,无保存钮)→ toast「已生效」——
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
-      await screen.findByLabelText('settings pane 通用', { timeout: 5_000 });
+      await screen.findByLabelText('settings pane general', { timeout: 5_000 });
       fireEvent.click(await screen.findByLabelText('language', { timeout: 5_000 }));
       fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
       await screen.findByText(/Applied — takes effect for new sessions|已生效：新建会话起/, {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场;上一步已切 zh,渲染中文面——钉双语容忍,App.test 第十一轮同解)
@@ -1474,7 +1474,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
 
       // —— 智能体面(导航项):「+ 新增」→ 表单 scope=project/id/name →「保存」→ 清单含 e2e-agent ——
       fireEvent.click(screen.getByRole('button', { name: '智能体' }));
-      await screen.findByLabelText('settings pane 智能体', { timeout: 5_000 });
+      await screen.findByLabelText('settings pane agents', { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: '+ 新增' }));
       await screen.findByLabelText('agent id', { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('agent scope'), { target: { value: 'project' } });

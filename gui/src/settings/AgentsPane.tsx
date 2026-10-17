@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { t } from '../i18n';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsView, BuiltinRole } from '../connection';
 import { SourceBadge } from './SourceBadge';
 
@@ -98,18 +99,18 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
     const id = form.id.trim();
     const name = form.name.trim();
     if (form.editing === false && !AGENT_ID_RE.test(id)) {
-      setFormError('id 须匹配 /^[A-Za-z0-9][A-Za-z0-9_-]*$/(用作目录名)');
+      setFormError(t('id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as directory name)', 'id 须匹配 /^[A-Za-z0-9][A-Za-z0-9_-]*$/(用作目录名)'));
       return;
     }
     if (name === '') {
-      setFormError('name 必填(frontmatter 首键)');
+      setFormError(t('name is required (first frontmatter key)', 'name 必填(frontmatter 首键)'));
       return;
     }
     /** G8c 终审 A 截断守卫(全文装载失败的兜底面):播种面是 bodyPreview(200 字切片)时,长度触帽
      *  即原文可能被截,未改正文(仍=播种值)直接保存会把截断文写盘毁掉余文;用户已改写(≠播种值)
      *  =有意重写放行。bodyFull(全文装载成功)无截断风险——守卫退役。 */
     if (form.editing && !form.bodyFull && form.seededBody.length >= BODY_PREVIEW_CAP && form.body === form.seededBody) {
-      setFormError(`原文可能超过 ${BODY_PREVIEW_CAP} 字符已被预览截断——请改写完整正文后保存,或直接编辑 agents/${id}/agent.md 文件`);
+      setFormError(t(`Body may exceed ${BODY_PREVIEW_CAP} chars and was preview-truncated — rewrite the full body before saving, or edit agents/${id}/agent.md directly`, `原文可能超过 ${BODY_PREVIEW_CAP} 字符已被预览截断——请改写完整正文后保存,或直接编辑 agents/${id}/agent.md 文件`));
       return;
     }
     /** 缺省字段不落请求体:可选键空串省略、memory 仅 true 落(daemon 单行 KV 词法约束) */
@@ -159,11 +160,11 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
     );
   };
 
-  const scopeTag = (source: AgentEntryView['source']): string => (source === 'project' ? '项目' : '全局');
+  const scopeTag = (source: AgentEntryView['source']): string => (source === 'project' ? t('Project', '项目') : t('Global', '全局'));
 
   return (
-    <section className="sx-settings-form" aria-label="settings pane 智能体">
-      <h2>智能体</h2>
+    <section className="sx-settings-form" aria-label="settings pane agents">
+      <h2>{t('Agents', '智能体')}</h2>
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
       {data === null && loadError === '' && <p className="home-loading">加载智能体清单…</p>}
       {data !== null && (
@@ -181,7 +182,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
             ))}
           </ul>
           <h3>已注册(agents 目录)</h3>
-          {data.view.entries.length === 0 && <p className="home-loading">无自定义智能体。</p>}
+          {data.view.entries.length === 0 && <p className="home-loading">{t('No custom agents.', '无自定义智能体。')}</p>}
           <ul className="sx-agent-list">
             {data.view.entries.map((e) => (
               <li key={`${e.source}:${e.id}`} className={`sx-agent-card${e.shadowed ? ' shadowed' : ''}`}>
@@ -204,7 +205,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
                 <div className="sx-card-actions">
                   <button
                     type="button"
-                    aria-label={`编辑 ${e.id}(${scopeTag(e.source)})`}
+                    aria-label={`${t('Edit', '编辑')} ${e.id}(${scopeTag(e.source)})`}
                     onClick={() => {
                       setForm({
                         /** 编辑卡 scope 预选 = 卡 source(可切——项目覆盖全局是合法形) */
@@ -224,10 +225,10 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
                       seedFullBody(e); // G8d-T3:全文装载升级(失败回退预览+行内提示)
                     }}
                   >
-                    编辑
+                    {t('Edit', '编辑')}
                   </button>
-                  <button type="button" aria-label={`删除 ${e.id}(${scopeTag(e.source)})`} onClick={() => remove(e)}>
-                    删除
+                  <button type="button" aria-label={`${t('Delete', '删除')} ${e.id}(${scopeTag(e.source)})`} onClick={() => remove(e)}>
+                    {t('Delete', '删除')}
                   </button>
                 </div>
               </li>
@@ -248,14 +249,14 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
             save();
           }}
         >
-          <h3>{form.editing ? `编辑 ${form.id}` : '新增智能体'}</h3>
+          <h3>{form.editing ? t(`Edit ${form.id}`, `编辑 ${form.id}`) : t('New agent', '新增智能体')}</h3>
           <label>
             层级
             <select aria-label="agent scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as AgentFormState['scope'] })}>
               <option value="project" disabled={root === ''}>
-                项目{root === '' ? '(需项目上下文)' : ''}
+                {t('Project', '项目')}{root === '' ? t(' (needs project context)', '(需项目上下文)') : ''}
               </option>
-              <option value="global">全局</option>
+              <option value="global">{t('Global', '全局')}</option>
             </select>
           </label>
           <label>
@@ -289,7 +290,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
           {formError !== '' && <p className="home-error" role="alert">{formError}</p>}
           <div className="sx-card-actions">
             <button type="submit" disabled={saving}>
-              保存
+              {t('Save', '保存')}
             </button>
             <button
               type="button"
@@ -311,7 +312,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
           setFormError('');
         }}
       >
-        + 新增
+        {t('+ New', '+ 新增')}
       </button>
     </section>
   );

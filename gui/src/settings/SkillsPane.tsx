@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { t } from '../i18n';
 import type { SkillsGroup } from '../connection';
 import { Select } from './controls';
 
@@ -19,12 +20,15 @@ const errText = (err: unknown): string => (err instanceof Error ? err.message : 
 /** 来源筛选项值 */
 type SourceFilter = 'all' | SkillsGroup['source'];
 
-const SOURCE_FILTER_OPTIONS: ReadonlyArray<{ v: SourceFilter; l: string }> = [
-  { v: 'all', l: '全部来源' },
-  { v: 'project', l: '项目' },
-  { v: 'user', l: '全局' },
-  { v: 'learned', l: '学习沉淀' },
+/** 来源筛选项(值恒定;标签渲染期 t() 求值——G14.213 设置面 i18n,模块常量不冻结文案) */
+const SOURCE_FILTER_OPTIONS: ReadonlyArray<{ v: SourceFilter; en: string; zh: string }> = [
+  { v: 'all', en: 'All sources', zh: '全部来源' },
+  { v: 'project', en: 'Project', zh: '项目' },
+  { v: 'user', en: 'Global', zh: '全局' },
+  { v: 'learned', en: 'Learned', zh: '学习沉淀' },
 ];
+const sourceFilterOptions = (): Array<{ v: SourceFilter; l: string }> =>
+  SOURCE_FILTER_OPTIONS.map((o) => ({ v: o.v, l: t(o.en, o.zh) }));
 
 interface SkillRow {
   readonly id: string;
@@ -113,7 +117,7 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
           <Select
             ariaLabel="skills source"
             value={sourceFilter}
-            options={SOURCE_FILTER_OPTIONS}
+            options={sourceFilterOptions()}
             onChange={(v) => setSourceFilter(v as SourceFilter)}
           />
         </div>
@@ -121,7 +125,7 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
           <Select
             ariaLabel="skills project"
             value={projectFilter}
-            options={projectOptions.map((p) => (p === 'all' ? { v: 'all', l: '全部项目' } : { v: p, l: p }))}
+            options={projectOptions.map((p) => (p === 'all' ? { v: 'all', l: t('All projects', '全部项目') } : { v: p, l: p }))}
             onChange={(v) => setProjectFilter(v)}
           />
         </div>
@@ -129,7 +133,7 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
       {filtered === null && loadError === '' && <p className="home-loading">加载技能清单…</p>}
       {filtered !== null && filtered.length === 0 && (
         <p className="home-loading">
-          {query.trim() === '' && sourceFilter === 'all' && projectFilter === 'all' ? '无已装载技能。' : '无匹配技能。'}
+          {query.trim() === '' && sourceFilter === 'all' && projectFilter === 'all' ? t('No skills loaded.', '无已装载技能。') : t('No matching skills.', '无匹配技能。')}
         </p>
       )}
       {filtered !== null && filtered.length > 0 && (
@@ -138,8 +142,8 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
             <div key={s.id} className="sx-card sx-skill-card">
               <div className="sx-skill-head">
                 <span className="sx-skill-id">{s.id}</span>
-                <span className={`sx-skill-src sx-skill-src-${s.source}`} title={s.project !== undefined ? `归属项目:${s.project}` : '全局技能'}>
-                  {s.project !== undefined ? s.project : '全局'}
+                <span className={`sx-skill-src sx-skill-src-${s.source}`} title={s.project !== undefined ? t(`Belongs to project: ${s.project}`, `归属项目:${s.project}`) : t('Global skill', '全局技能')}>
+                  {s.project !== undefined ? s.project : t('Global', '全局')}
                 </span>
               </div>
               {s.desc !== '' && <span className="sx-skill-desc">{s.desc}</span>}

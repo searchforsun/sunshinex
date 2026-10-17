@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { t } from '../i18n';
 import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
 import { ProvidersPane } from './ProvidersPane';
@@ -35,32 +36,33 @@ import type { RawPaneConn } from './RawPane';
  *  故在此收窄拼接) */
 export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, Omit<RawPaneConn, 'settings'> {}
 
-/** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后) */
-const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: string; readonly items: ReadonlyArray<{ readonly id: string; readonly title: string }> }> = [
+/** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后)。
+ *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */
+const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; readonly zh: string } | ''; readonly items: ReadonlyArray<{ readonly id: string; readonly title: { readonly en: string; readonly zh: string } }> }> = [
   {
-    group: '个人',
+    group: { en: 'Personal', zh: '个人' },
     items: [
-      { id: 'general', title: '通用' },
-      { id: 'providers', title: '模型与提供方' },
+      { id: 'general', title: { en: 'General', zh: '通用' } },
+      { id: 'providers', title: { en: 'Models & providers', zh: '模型与提供方' } },
     ],
   },
   {
-    group: '编码',
+    group: { en: 'Coding', zh: '编码' },
     items: [
-      { id: 'limits', title: '上下文与限额' },
-      { id: 'memory', title: '记忆' },
-      { id: 'kb', title: '知识库与搜索' },
+      { id: 'limits', title: { en: 'Context & limits', zh: '上下文与限额' } },
+      { id: 'memory', title: { en: 'Memory', zh: '记忆' } },
+      { id: 'kb', title: { en: 'Knowledge & search', zh: '知识库与搜索' } },
     ],
   },
   {
-    group: '集成',
+    group: { en: 'Integrations', zh: '集成' },
     items: [
-      { id: 'skills', title: '技能' },
-      { id: 'mcp', title: 'MCP' },
-      { id: 'agents', title: '智能体' },
+      { id: 'skills', title: { en: 'Skills', zh: '技能' } },
+      { id: 'mcp', title: { en: 'MCP', zh: 'MCP' } },
+      { id: 'agents', title: { en: 'Agents', zh: '智能体' } },
     ],
   },
-  { group: '', items: [{ id: 'permissions', title: '权限' }, { id: 'raw', title: '高级' }] },
+  { group: '', items: [{ id: 'permissions', title: { en: 'Permissions', zh: '权限' } }, { id: 'raw', title: { en: 'Advanced', zh: '高级' } }] },
 ];
 const SETTINGS_NAV = SETTINGS_GROUPS.flatMap((g) => g.items);
 
@@ -76,6 +78,9 @@ export interface SettingsShellProps {
 
 export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.Element {
   const [activePane, setActivePane] = useState(SETTINGS_NAV[0]!.id); // 默认「通用」
+  /** G14.213 语言切换 tick:SettingsForm 语言键保存 → onLanguageChanged → 本壳重渲染
+   *  (t 非响应式——导航/分组/壳头等本组件的 t() 面不 tick 不翻面) */
+  const [, setLangTick] = useState(0);
 
   /** Esc → 回会话态(与返回钮同路径) */
   useEffect(() => {
@@ -89,7 +94,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
   /** 主区渲染分发:表单面板查 SETTINGS_PANES 定义,复杂面板各归其件(skills/permissions 同体) */
   const renderPane = (): JSX.Element => {
     const formDef = SETTINGS_PANES.find((p) => p.id === activePane);
-    if (formDef !== undefined) return <SettingsForm key={formDef.id} conn={conn} root={root} pane={formDef} />;
+    if (formDef !== undefined)
+      return <SettingsForm key={formDef.id} conn={conn} root={root} pane={formDef} onLanguageChanged={() => setLangTick((v) => v + 1)} />;
     switch (activePane) {
       case 'providers':
         return <ProvidersPane key="providers" conn={conn} root={root} />;
@@ -98,9 +104,9 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       case 'agents':
         return <AgentsPane key="agents" conn={conn} root={root} />;
       case 'skills':
-        return <SkillsPane key="skills" conn={conn} root={root} title="技能" />;
+        return <SkillsPane key="skills" conn={conn} root={root} title={t('Skills', '技能')} />;
       case 'permissions':
-        return <PermissionsPane key="permissions" conn={conn} root={root} title="权限" />;
+        return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} />;
       default:
         return <RawPane key="raw" conn={conn} />;
     }
@@ -108,17 +114,17 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
 
   return (
     <>
-      <nav className="sx-menu" aria-label="settings">
+      <nav className="sx-menu" aria-label={t('settings', '设置')}>
         <header className="sx-menu-head sx-settings-head">
           <button type="button" className="sx-settings-back" onClick={onBack}>
-            ← 返回
+            {t('← Back', '← 返回')}
           </button>
-          <span>设置</span>
+          <span>{t('Settings', '设置')}</span>
         </header>
         <ul className="sx-settings-nav">
           {SETTINGS_GROUPS.map((g) => (
-            <li key={g.group === '' ? 'plain' : g.group}>
-              {g.group !== '' && <div className="sx-settings-group">{g.group}</div>}
+            <li key={g.group === '' ? 'plain' : g.group.en}>
+              {g.group !== '' && <div className="sx-settings-group">{t(g.group.en, g.group.zh)}</div>}
               <ul className="sx-settings-group-items">
                 {g.items.map((p) => (
                   <li key={p.id}>
@@ -128,7 +134,7 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
                       aria-current={p.id === activePane ? 'true' : undefined}
                       onClick={() => setActivePane(p.id)}
                     >
-                      {p.title}
+                      {t(p.title.en, p.title.zh)}
                     </button>
                   </li>
                 ))}

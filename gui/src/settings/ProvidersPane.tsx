@@ -25,13 +25,13 @@ const EFFORTS: ReadonlyArray<{ v: string; l: string }> = [
 ];
 
 /** 模型与提供方面板定义(SettingsForm 消费;模型键 combo=动态建议,数字键集不含此七键;
- *  组标题中文字面量——模块加载期 t() 冻结违禁,与 SETTINGS_PANES 同口径) */
+ *  标题双语对(G14.213 设置面 i18n)——渲染期 t() 求值,模块常量只存数据不冻结文案) */
 const PROVIDERS_PANE: SettingsPaneDef = {
   id: 'providers',
-  title: '模型与提供方',
+  title: { en: 'Models & providers', zh: '模型与提供方' },
   groups: [
     {
-      title: '模型档位',
+      title: { en: 'Model tiers', zh: '模型档位' },
       fields: [
         { key: 'model', control: 'combo' },
         { key: 'modelSmall', control: 'combo' },
@@ -40,7 +40,7 @@ const PROVIDERS_PANE: SettingsPaneDef = {
       ],
     },
     {
-      title: '请求参数',
+      title: { en: 'Request parameters', zh: '请求参数' },
       fields: [
         {
           key: 'tier',
