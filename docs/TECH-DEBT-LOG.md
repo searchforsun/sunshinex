@@ -111,6 +111,7 @@
 | T5 | 历史教训 | `STATUS_LABEL` / `SLASH_HELP` 模块级常量冻结曾在加载期冻死语言 → `t()` 调用时求值 | CLAUDE.md §15 |
 | 2026-10-17（第十六轮） | 2738d11 | 本提交（台账行随本提交入库） | 代码债 H（D32 批B-3 数据部） | use-workspace-files hook 抽取（数据部，按台账既定「数据/UI 拆离」路径）：文件索引装载（root 索引/tree BFS 回落双形态+600 上限+噪声跳过）、会话/root 键缓存、挂载预热、resolveFileRef 解析器（pickRelRef 记账优先+索引兜底）迁 chat/use-workspace-files.ts（89 行，四依赖注入:conn/sessionId/root/pickRelRef）；记账写入面与 composingRef 留 Chat UI 部。Chat 双测试文件 40/40 锚点绿+tsc 零错（flag 态），Chat.tsx →3135 行 |
 | T6 | 历史教训 | Git for Windows 缺省 `core.autocrlf=true`，缺 `.gitattributes` + `.editorconfig` 时一次提交即可引入整文件 CRLF 重写 → 双管机器强制 | CLAUDE.md §14 |
+| 2026-10-17（第十七轮） | 2f932be | 本提交（台账行随本提交入库） | 代码债 H（D32 批C-1） | RunFooter/RunChangesBar/TipButton 三渲染件迁 chat/RunFooter.tsx（146 行，纯渲染 props 注入；TipButton 为 RunFooter 独占消费随批迁出并转导出）。Chat.tsx →3003 行（累计 3324→3003）。验证：gui tsc 零错（flag 态）、gui 全量 324/329（5 例 e2e 既有，已立案） |
 | T7 | 历史教训 | 测试编入宿主 shell 方言的失效面：Windows 无 Git Bash 时 `ls`/`cat` 不可用、内联 `node -e` 引号被字面量化、断言恒真失去判别力 → 测试命令一律脚本文件或跨 shell 命令承载 | CLAUDE.md §14 |
 | T8 | 选型注记 | BrowserView 自 Electron 30 起弃用 → GUI 内嵌浏览器采用 WebContentsView | CLAUDE.md §13 |
 | T9 | 取舍（接受） | 配置承载面正名 settings.json（语义键承载设置、`env` 块承载密钥）；`.env` 文件渠道退役，`.gitignore` 仍忽略 `.env` 防旧文件误提交密钥（ignore 项的 why 注释保留） | README（2026-09-30 M 类存在史收敛迁入） |
