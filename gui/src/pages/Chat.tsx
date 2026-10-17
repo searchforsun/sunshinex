@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import {
-  ArrowDown, ArrowUp, ChevronDown, Folder,
-  GripVertical, ListTodo, PanelRight, PenLine, ShieldCheck,
-  Square, Trash2, ArrowUpToLine, CornerDownRight, Unlock
-} from 'lucide-react';
+import { ArrowDown, ChevronDown, Folder, GripVertical, ListTodo, PanelRight, PenLine, ShieldCheck, Trash2, ArrowUpToLine, CornerDownRight, Unlock } from 'lucide-react';
 import { applyChatEvent, appendUserMessage, initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { groupEntriesByDay } from '../chat-groups';
@@ -13,8 +9,6 @@ import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import type { TaskBoardState } from '../projection';
 import { CommandPalette, filterCommands } from '../CommandPalette';
-import { ContextRing } from '../context-ring';
-import { EffortChip, EffortSlider } from '../effort-slider';
 import { fmtTokens as fmtTokensShared, pathBasename } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, SnapshotResponse } from '../connection';
@@ -65,13 +59,14 @@ import { t } from '../i18n';
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
  *  App 侧经 ref 转投免闭包陈旧 */
 import { useCommandPalette } from './chat/use-command-palette';
+import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard, AskCard, pickAnswered } from './chat/PendingCards';
 import { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock } from './chat/md-render';
-import { baseModelName, ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './chat/EntryViews';
+import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './chat/EntryViews';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
 import type { AskPick } from './chat/PendingCards';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
@@ -1593,141 +1588,39 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           });
         }}
         footLeft={
-          <div className="composer-pills">
-            {/* 与欢迎页同构(G12 三轮):+ 开附加面板(卡顶同宽浮层:命令/技能/文件) */}
-            <button
-              type="button"
-              className="composer-pill composer-plus-btn"
-              aria-label="add attachment"
-              aria-expanded={pillOpen === 'plus'}
-              data-tip={t('Add skills, commands or files', '添加技能、命令或文件')}
-              onClick={() => setPillOpen((v) => (v === 'plus' ? null : 'plus'))}
-            >
-              +
-            </button>
-            {/* 审批模式:弹层锚按钮正上方(pill-anchor) */}
-            <div className="pill-anchor">
-              <button
-                type="button"
-                className="composer-pill"
-                aria-label="session mode"
-                aria-expanded={pillOpen === 'mode'}
-                onClick={() => setPillOpen((v) => (v === 'mode' ? null : 'mode'))}
-              >
-                <ModeIcon mode={sessMode} />
-                <span className="pill-label">{sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}</span>
-                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
-              </button>
-              {pillOpen === 'mode' && (
-                <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="session mode menu">
-                  {([
-                    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — no changes until you approve', '先规划方案,经你确认后才执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                    { m: 'dontAsk' as const, label: t('Full access', '完全访问'), desc: t('Full permissions — no confirmation prompts', '完全权限,操作不再逐一确认'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                    { m: 'manual' as const, label: t('Confirm changes', '变更确认'), desc: t('Writes and commands ask first', '写入与命令需逐一确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                  ]).map((row, idx) => (
-                    <div key={row.m} className="mode-pop-group">
-                      {idx === 1 && <div className="mode-pop-sep" />}
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={`mode-item${sessMode === row.m ? ' active' : ''}`}
-                        onClick={() => {
-                          setPillOpen(null);
-                          setSessMode(row.m);
-                          conn.setSessionMode(sessionId, row.m).catch(() => {});
-                        }}
-                      >
-                        <span className="mode-item-icon">{row.icon}</span>
-                        <span className="mode-item-body">
-                          <span className="mode-item-name">{row.label}</span>
-                          <span className="mode-item-desc">{row.desc}</span>
-                        </span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <ComposerPillsLeft
+            pillOpen={pillOpen}
+            setPillOpen={setPillOpen}
+            sessMode={sessMode}
+            setSessMode={setSessMode}
+            conn={conn}
+            sessionId={sessionId}
+          />
         }
         footRight={
-          <div className="composer-pills composer-pills-right">
-            {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存 */}
-            <ContextRing
-              used={ctxInfo?.total ?? 0}
-              window={ctxInfo?.window ?? 0}
-              parts={ctxInfo?.parts ?? []}
-              runs={runCount}
-              steps={chat.steps}
-              tokens={chat.tokens}
-              cacheTokens={chat.cacheTokens}
-              onOpen={refreshCtx}
-            />
-            {/* 模型 pill:显示实际模型名(剥 provider 前缀);菜单=模型列表+思考强度,锚按钮正上方,
-                选中不收口(一连选模型+强度,外点/再点收) */}
-            <div className="pill-anchor">
-              <button
-                type="button"
-                className="composer-pill"
-                aria-label="session model"
-                aria-expanded={pillOpen === 'model'}
-                onClick={() => setPillOpen((v) => (v === 'model' ? null : 'model'))}
-              >
-                <span className="pill-label">{baseModelName(modelInfo?.current)}</span>
-                {/* 思考强度随名(G13 反馈轮):`模型 · effort` 同 pill,Codex 同形 */}
-                <EffortChip effort={sessEffort ?? 'medium'} />
-                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
-              </button>
-              {pillOpen === 'model' && (
-                <div className="sx-menu-pop pill-pop pill-pop-right pill-pop-tall" role="menu" aria-label="session model menu">
-                  {(modelInfo?.choices ?? []).map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      role="menuitem"
-                      className="sx-menuitem"
-                      disabled={c.id === modelInfo?.current}
-                      data-tip={c.id}
-                      onClick={() => {
-                        setModelInfo((m) => (m === null ? m : { ...m, current: c.id }));
-                        // 源自带档位强度(G13 反馈轮):切换即随名展示(快照回显前先乐观落)
-                        if (c.effort !== undefined) setSessEffort(c.effort);
-                        conn.setSessionModel(sessionId, c.id).catch(() => {});
-                      }}
-                    >
-                      {baseModelName(c.id)}
-                    </button>
-                  ))}
-                  {/* G14.14:强度滑块与欢迎页同一渲染(EffortSlider 共享) */}
-                  <EffortSlider
-                    value={sessEffort ?? 'medium'}
-                    onChange={(ev) => {
-                      setSessEffort(ev);
-                      conn.setSessionEffort(sessionId, ev).catch(() => {});
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-            {/* G14.89 运行中输入框有内容 → 显示发送(入队)而非停止;空输入才是停止 */}
-            {running && input.trim() === '' ? (
-              <button type="button" className="send" aria-label="stop" data-tip={t('Stop', '停止')} onClick={interrupt}>
-                <Square size={12} strokeWidth={2.5} aria-hidden="true" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="send tip-right"
-                aria-label="send"
-                data-tip={t('Send', '发送')}
-                onClick={send}
-                disabled={connState !== 'open' || seeding}
-              >
-                <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          }
+          <ComposerPillsRight
+            pillOpen={pillOpen}
+            setPillOpen={setPillOpen}
+            conn={conn}
+            sessionId={sessionId}
+            ctxInfo={ctxInfo}
+            refreshCtx={refreshCtx}
+            runCount={runCount}
+            steps={chat.steps}
+            tokens={chat.tokens}
+            cacheTokens={chat.cacheTokens}
+            modelInfo={modelInfo}
+            setModelInfo={setModelInfo}
+            sessEffort={sessEffort}
+            setSessEffort={setSessEffort}
+            running={running}
+            input={input}
+            send={send}
+            interrupt={interrupt}
+            connState={connState}
+            seeding={seeding}
+          />
+        }
         />
         )
         }
