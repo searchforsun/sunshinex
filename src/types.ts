@@ -300,6 +300,19 @@ export type {
   DelegationEventPayload,
 } from './delegation/projection';
 
+/** 工作区未提交变动文件行（共享登记点；本体自 serve/session-changes 上收——内核 RunMeta.changes
+ *  与 git 探测面共引此形，gui 侧另有同形局部声明不引） */
+export interface ChangeFile {
+  /** 仓库相对路径（/ 分隔） */
+  path: string;
+  status: 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed';
+  /** numstat 增删行数（untracked 为 null——前端示「新建」） */
+  added: number | null;
+  deleted: number | null;
+  /** G14.100 untracked 新文件的行数（合计用——numstat 无 untracked） */
+  newLines?: number;
+}
+
 /** 审批卡种类（spec 5.2）：'read' 为读围栏（D1）新增通道 */
 type ApprovalKind = 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write' | 'read';
 

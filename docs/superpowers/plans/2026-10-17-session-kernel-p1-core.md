@@ -34,18 +34,20 @@ interface KernelEntry {
 
 ## 任务
 
-- [ ] 1. `src/session/entry.ts`:模型 + `applyEvent`(纯函数,state 进出,零副作用)
-- [ ] 2. `src/session/kernel.ts`:`SessionKernel`——`pump(e)`(seq 分配 + applyEvent)、`replay()`(条目只读快照)、`truncate(seq)`(rewind/compact 预留)
-- [ ] 3. `src/session/kernel.test.ts`:用例合并表——
+- [x] 1. `src/session/entry.ts`:模型 + `applyEvent`(纯函数,state 进出,零副作用)
+- [x] 2. `src/session/kernel.ts`:`SessionKernel`——`pump(e)`(seq 分配 + applyEvent)、`replay()`(条目只读快照)、`truncate(seq)`(rewind/compact 预留)
+- [x] 3. `src/session/kernel.test.ts`:用例合并表——
   - token 段聚合(transcript.test ①/chat-reducer 流式光标语义)
   - 配对乱序 FIFO(transcript.test ③④)
   - done 收段+runmeta(transcript.test ①/daemon runmeta)
   - delegation 不产条目(G14.213)
   - thinking seconds(Chat.test 思考秒语义)
   - truncate
-- [ ] 4. 回归:三份旧实现与全部既有测试零改动全绿(本 plan 不接线)
+- [x] 4. 回归:三份旧实现与全部既有测试零改动全绿(本 plan 不接线)
 
-## 验收
+## 验收(2026-10-17 实测)
 
-- `node --test dist/session/kernel.test.js` 全绿;`vitest run` GUI 全绿;`tsc` 双侧干净。
+- `node --test dist/session/kernel.test.js` 21/21 全绿;daemon `node scripts/run-tests.js` 1837 过 0 挂;`vitest run` GUI 333 全绿;`tsc` 双侧干净。
+- 附带类型上收(纯 type 迁移,零运行时):`ChangeFile` → `src/types.ts` 登记点;`RunMeta` 本体 → `src/session/entry.ts`(serve/session re-export 供既有消费方)。
+- 实现裁定补记(超出计划文字的两点,均有用例钉板):① 乱序 result 先行路径,迟到 call 除回填 name 外同步回填 input(§3.3 元数据完整);② default 分支非流内事件(route/model-end/approval/task/gate/delegation 系)一律先封流式段(collector G14.213 同构——不产条目的事件也承担段边界职责)。
 - 明确产出:**内核单测全绿的新模块**——消费者接线在 P2(daemon)/P3(TUI)/P4(GUI)。

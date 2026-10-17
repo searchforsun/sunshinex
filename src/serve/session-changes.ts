@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Result, ok, fail } from '../result';
+import type { ChangeFile } from '../types';
 
 /**
  * G14.99 工作区未提交变动面（Diff 标签数据源）：git 只读探测 + commit/push 执行。
@@ -22,18 +23,6 @@ function git(root: string, args: string[]): Promise<{ ok: true; out: string } | 
       resolve({ ok: true, out: String(stdout ?? '') });
     });
   });
-}
-
-/** 变动文件行（列表面） */
-export interface ChangeFile {
-  /** 仓库相对路径（/ 分隔） */
-  path: string;
-  status: 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed';
-  /** numstat 增删行数（untracked 为 null——前端示「新建」） */
-  added: number | null;
-  deleted: number | null;
-  /** G14.100 untracked 新文件的行数（合计合计用——numstat 无 untracked） */
-  newLines?: number;
 }
 
 /** 未提交变动清单：working tree + index 合并视图（git status --porcelain 单源，numstat 补行数） */

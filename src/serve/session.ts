@@ -25,7 +25,11 @@ import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
 import { SLASH_COMMANDS } from '../tui/slash-commands';
 import { listChanges, diffChangeSets } from './session-changes';
-import type { ChangeFile } from './session-changes';
+import type { ChangeFile } from '../types';
+import type { RunMeta } from '../session/entry';
+
+/** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
+export type { RunMeta } from '../session/entry';
 
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
@@ -120,20 +124,6 @@ export function journalMessagesToEntries(items: ChatItem[]): TranscriptEntry[] {
  *  `● …`，与 collector.toolMd 缺面占位同形）；note/notice（含 deficit/node 观察行）→ notice；
  *  phase/role/memory/skill 过程注记跳过。ts 链行无时刻面（HistoryStep 无 ts 字段）置 0——入列时
  *  seed() 续收集器自身计数，两序列不同源 */
-export interface RunMeta {
-  seconds?: number;
-  steps?: number;
-  /** G14.78 本轮自身步数(reactor done 直出;旧档缺场 → 相邻累计差回退) */
-  runSteps?: number;
-  tokens?: number;
-  cacheTokens?: number;
-  endedTs?: number;
-  /** G14.210 停止态(中断/失败收口)——GUI 回放运行条显「已停止」 */
-  stopped?: boolean;
-  /** G14.100 本轮 git 变动增量(路径/状态/±行数)——GUI 轮尾汇总条 */
-  changes?: ChangeFile[];
-}
-
 export function chainStepsToEntries(steps: HistoryStep[], runMetas: RunMeta[] = []): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   /** 未配对 tool-call 条的下标 FIFO（链按步序追加——result 恒配最老未配对 call，与 collector 口径同构） */
