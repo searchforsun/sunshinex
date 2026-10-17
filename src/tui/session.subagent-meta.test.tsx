@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
+import { parseJournalFile } from './session-journal';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -47,14 +48,14 @@ test('INVALID_ARG 即败零子事件：spawn 调用行无 subagentMeta（折叠�
   }
 });
 
-test('归档富化回写日志：resume 回放 SPAWN 行带 detail/subagentMeta（2026-09-30 真机「历史归档只显示 1 个」病根）', async () => {
+test('resume 回放 SPAWN 行=v2 seg 重建(P3):调用行随档(name/input),detail/subagentMeta 为内存富化不跨重启', async () => {
   const tmp = tmpdir('sunshinex-sess-spawnjournal-');
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = path.join(tmp, '.data-pin');
   fs.mkdirSync(dataDir, { recursive: true });
   process.env.SUNSHINEX_DATA_DIR = dataDir;
   try {
-    // 会话一：两个子代理归档（各自 SPAWN 行经 'msg' 入档 + 'msg-update' 富化回写）
+    // 会话一：两个子代理归档(内存富化 detail/subagentMeta;持久化面=内核 seg 行,无 msg/msg-update)
     const ctrl1 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     await ctrl1.submit('跑两个');
     await ctrl1.waitIdle();
@@ -66,7 +67,7 @@ test('归档富化回写日志：resume 回放 SPAWN 行带 detail/subagentMeta�
     }
     assert.equal(ctrl1.getState().messages.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta).length, 2, '前置：两行归档带 meta');
 
-    // 会话二（重启语义）：resumePicker 选中该档 → 回放后归档行须带 detail/subagentMeta（Ctrl+B 历史归档数据源）
+    // 会话二（重启语义）：resume 重建后 SPAWN 行在场（name/input 随档），meta/detail 不跨重启（内存富化，显式取舍）
     const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"忽略"}']), resumePicker: true });
     const deadline = Date.now() + 5000;
     while (ctrl2.getState().status !== 'awaiting-question' && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
@@ -82,9 +83,14 @@ test('归档富化回写日志：resume 回放 SPAWN 行带 detail/subagentMeta�
     while (!ctrl2.getState().messages.some((m) => m.text.includes('Session restored') || m.text.includes('已恢复会话')) && Date.now() < deadline2) {
       await new Promise((r) => setTimeout(r, 20));
     }
-    const archived = ctrl2.getState().messages.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN ') && m.subagentMeta);
-    assert.equal(archived.length, 2, 'resume 回放后两行归档带 meta（历史归档不再消失）');
-    assert.ok(archived.every((m) => m.detail !== undefined), 'detail 同步回放（Ctrl+O/全屏回看数据源）');
+    const spawns = ctrl2.getState().messages.filter((m) => m.kind === 'call' && m.text.startsWith('SPAWN '));
+    assert.equal(spawns.length, 2, 'resume 回放后两行 SPAWN 在档(seg 重建,name/input 随档)');
+    assert.ok(spawns.every((m) => m.subagentMeta === undefined), 'subagentMeta 不跨重启(内存富化归渲染面)');
+    // 档面:零 msg/msg-update 行(转录=seg 单点)
+    const jid = ctrl1.journal!.currentId!;
+    const events = parseJournalFile(path.join(dataDir, 'sessions', `${jid}.jsonl`)).events;
+    assert.equal(events.filter((e) => e.t === 'msg' || e.t === 'msg-update').length, 0, 'msg 面零写入(v2)');
+    assert.equal(events.filter((e) => e.t === 'seg' && e.kind === 'tool').length >= 2, true, 'spawn 调用条 seg 行在档');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });

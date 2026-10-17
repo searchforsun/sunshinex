@@ -1,4 +1,6 @@
 import { sanitizeChanges, toolMd, type KernelEntry, type RunMeta } from './entry';
+import type { KernelEvent } from './kernel';
+import type { JournalEvent } from '../tui/session-journal';
 
 /**
  * v2 段级行重放(session-kernel spec §3.2 装载序):seg/run-open/seg-update/truncate/runmeta 行 →
@@ -9,6 +11,56 @@ import { sanitizeChanges, toolMd, type KernelEntry, type RunMeta } from './entry
  * run-open 开 run 条;runmeta 行对位末个 run 条 meta 合入(changes 经 sanitize);
  * 末尾悬空 run(无 runmeta 对位——daemon 随重启已死)标 `meta.stopped=true`,回放显「已停止」。
  */
+
+/** 内核段级事件 → v2 行(write 映射单点,daemon(P2)/TUI(P3) 写者共用):
+ *  seg-open 的 run→run-open 行、assistant/thinking 开启段不落(等 seg-close)、其余即终态落 seg 行
+ *  (tool 带 result 时回填行随落);seg-close 落闭合段终态;seg-update 落回填行;truncate 落截断行。 */
+export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
+  if (ev.t === 'truncate') return [{ t: 'truncate', upToSeq: ev.upToSeq }];
+  const e = ev.entry;
+  if (ev.t === 'seg-open') {
+    if (e.kind === 'run') return [{ t: 'run-open', ts: e.ts, seq: e.seq }];
+    if (ev.open && (e.kind === 'assistant' || e.kind === 'thinking')) return []; // 开启段:等闭合落终态
+    const rows: JournalEvent[] = [
+      {
+        t: 'seg',
+        kind: e.kind,
+        md: e.md,
+        ts: e.ts,
+        seq: e.seq,
+        ...(e.callId !== undefined ? { callId: e.callId } : {}),
+        ...(e.name !== undefined ? { name: e.name } : {}),
+        ...(e.input !== undefined ? { input: e.input } : {}),
+        ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+      },
+    ];
+    if (e.kind === 'tool' && e.result !== undefined) rows.push({ t: 'seg-update', seq: e.seq, ts: e.ts, result: e.result });
+    return rows;
+  }
+  if (ev.t === 'seg-close') {
+    if (e.kind !== 'assistant' && e.kind !== 'thinking') return []; // 发射面只产正文/思考闭合(防御性)
+    return [
+      {
+        t: 'seg',
+        kind: e.kind,
+        md: e.md,
+        ts: e.ts,
+        seq: e.seq,
+        ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+      },
+    ];
+  }
+  return [
+    {
+      t: 'seg-update',
+      seq: e.seq,
+      ts: e.ts,
+      ...(e.name !== undefined ? { name: e.name } : {}),
+      ...(e.input !== undefined ? { input: e.input } : {}),
+      ...(e.result !== undefined ? { result: e.result } : {}),
+    },
+  ];
+}
 
 /** v2 段级行的载荷面(journal 行的松散形态——行解析自 JSON,字段不予信任;v1 行字段在列仅为透传类型面) */
 export interface V2RowLike {

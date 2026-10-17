@@ -5,6 +5,11 @@ import { resolveDataDir } from '../config/data-dir';
 import { listSessions, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
 import { createRuntime } from '../tui/runtime';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
+import { renderMd } from './md-ansi';
+import { toolCallLine } from './tool-verbs';
+import type { ChatItem } from './chat-model';
+import { reduceV2Rows } from '../session/v2log';
+import type { KernelEntry } from '../session/entry';
 import type { SessionController } from './session';
 
 // D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：会话谱系命令族（resume/rewind/fork/branchFlow 一族）迁出；
@@ -69,17 +74,59 @@ export function resumeLatest(ctrl: SessionController): void {
   restoreFromSession(ctrl, meta);
 }
 
-/** 恢复会话（规格 §6 恢复三面）：flush 当前 → 解析目标日志 → 版本守卫 → 三面直注入 → journal 续挂目标档 */
+/** 内核条目 → 静态区消息重建(P3,resume v2 装载面):形态与 live 入档对齐——user 剥引用块原文;
+ *  assistant 终态 md 现渲 ANSI;thinking 折叠摘要行(closeLiveBlock 同形,detail 保全文);
+ *  tool call+result 两件(toolCallLine(name,input)/结果全文,CC 配对同形);notice/error→system 行
+ *  (error 带 `Error: ` 前缀与 live 同形);run 跳过(状态栏承载)。seq 重建自 1。 */
+export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () => number): ChatItem[] {
+  const items: ChatItem[] = [];
+  for (const e of entries) {
+    const seq = items.length + 1;
+    if (e.kind === 'user') {
+      items.push({ role: 'user', text: e.md.startsWith('> ') ? e.md.slice(2) : e.md, ts: e.ts, seq });
+      continue;
+    }
+    if (e.kind === 'assistant') {
+      items.push({ role: 'assistant', text: renderMd(e.md, mdWidth()), ts: e.ts, seq, ansi: true });
+      continue;
+    }
+    if (e.kind === 'thinking') {
+      items.push({ role: 'thinking', text: `Thought for ${e.seconds ?? 0}s`, detail: e.md, ts: e.ts, seq });
+      continue;
+    }
+    if (e.kind === 'tool') {
+      items.push({ role: 'tool', kind: 'call', text: toolCallLine(e.name ?? '…', e.input), pending: false, callId: e.callId, ts: e.ts, seq });
+      items.push({ role: 'tool', kind: 'result', text: e.result?.text ?? '…', ok: e.result?.ok ?? true, callId: e.callId, ts: e.ts, seq: items.length + 2 });
+      continue;
+    }
+    if (e.kind === 'error') {
+      items.push({ role: 'system', level: 'error', text: `Error: ${e.md}`, ts: e.ts, seq });
+      continue;
+    }
+    if (e.kind === 'notice') {
+      items.push({ role: 'system', text: e.md, ts: e.ts, seq });
+    }
+    // run:跳过(轮统计由状态栏/旁车 meta 承载,静态区无 run 行形态)
+  }
+  return items;
+}
+
+/** 恢复会话（规格 §6 恢复三面;P3 v2 装载序）：flush 当前 → 解析目标日志 → 版本守卫(v2) →
+ *  三面直注入(链/压缩归 ContextManager;转录=seg 面重建消息区 + 内核 seed 续写;待办/档位归控制器)
+ *  → journal 续挂目标档 */
 function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   const parsed = parseJournalFile(meta.file);
   const replay = reduceJournal(parsed.events);
-  if (replay.version !== 1) {
+  if (replay.version !== 2) {
     ctrl.pushMsg('system', t('Cannot restore this session: unsupported journal version', '无法恢复该会话：日志版本不受支持'), { level: 'error' });
     return;
   }
+  // 转录面:seg 行重放 → 消息区重建 + 内核 seed(后续 live 条目 seq 续接,落档零双写)
+  const entries = reduceV2Rows(parsed.events);
+  const messages = entriesToChatItems(entries, () => ctrl.mdWidth());
   // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
   ctrl.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
-  ctrl.msgSeq = replay.nextSeq;
+  ctrl.msgSeq = messages.length;
   // 模型选择还原（/model）：档内 modelId 事件末值即目标态（undefined = 回缺省主模型，内芯一并复位）；
   // 配置漂移（id 已不在清单）保持当前不硬切、告警行随状态注入后上屏（注入前 push 会被 replay.messages 吞掉）
   let modelDriftWarn: string | undefined;
@@ -91,7 +138,7 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   }
   ctrl.state = {
     ...ctrl.state,
-    messages: replay.messages,
+    messages, // seg 面重建(P3;v2 档无 msg 行,replay.messages 恒空)
     todos: replay.todos,
     status: 'idle',
     ...(replay.tier !== undefined ? { tier: replay.tier } : {}),
@@ -107,6 +154,7 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
     board: ctrl.runtime.harness.taskboard.snapshot(),
   };
   ctrl.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
+  ctrl.kernelSeedForRestore(entries); // 转录面入核:后续 live 条目 seg 行 seq 续接(P3)
   ctrl.ensureJournal().attach(meta.id);
   // 模型配置漂移告警（状态注入后上屏，防被 replay.messages 吞掉）
   if (modelDriftWarn !== undefined) ctrl.pushMsg('system', modelDriftWarn, { level: 'warn' });

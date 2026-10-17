@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { SnapshotEntry } from '../tui/session-journal';
 import { SessionKernel, type KernelEvent } from '../session/kernel';
+import { kernelEventRows } from '../session/v2log';
 import type { KernelEntry } from '../session/entry';
 import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
@@ -177,65 +178,16 @@ export class SessionRuntime {
     this.runtimeImpl = this.assemble();
   }
 
-  /** v2 落档单点(P2,spec §3.2):内核段级事件 → journal 行。journal 未挂载(出生会话 attach 前/
-   *  惰性建档前)即丢弃——空会话零文件;写失败尽力语义(下次事件续写)。映射:run-open 条 → run-open
-   *  行;assistant/thinking 开启段不落(等 seg-close);闭合段与其余终态条目 → seg 行;工具回填 →
-   *  seg-update 行(result 随行,重放按 seq upsert);truncate → truncate 行。chain/compact 行走
-   *  onContextChange 既有订阅、runmeta 行走 submit() 收尾既有路径——三条写路同档不重叠 */
+  /** v2 落档单点(P2,spec §3.2):内核段级事件 → journal 行(kernelEventRows 共享映射,P3 起
+   *  daemon/TUI 同一写形)。journal 未挂载即丢弃;惰性建档对齐 chain 订阅(首条段级行落 header)。
+   *  chain/compact 行走 onContextChange 既有订阅、runmeta 行走 submit() 收尾既有路径——三条写路
+   *  同档不重叠 */
   private persistKernelEvent(ev: KernelEvent): void {
     const j = this.journal;
     if (j === undefined) return;
     try {
       if (j.currentId === undefined) j.start(2); // 惰性建档(chain 订阅同构):首条段级行落 header——首 run 的 user/run-open 行不再丢档
-      if (ev.t === 'seg-open') {
-        const e = ev.entry;
-        if (e.kind === 'run') {
-          j.log({ t: 'run-open', ts: e.ts, seq: e.seq });
-          return;
-        }
-        if (ev.open && (e.kind === 'assistant' || e.kind === 'thinking')) return; // 开启段:等闭合落终态
-        j.log({
-          t: 'seg',
-          kind: e.kind, // run 已上支;余 kind 直映(seg 行词汇无 run)
-          md: e.md,
-          ts: e.ts,
-          seq: e.seq,
-          ...(e.callId !== undefined ? { callId: e.callId } : {}),
-          ...(e.name !== undefined ? { name: e.name } : {}),
-          ...(e.input !== undefined ? { input: e.input } : {}),
-          ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
-        });
-        if (e.kind === 'tool' && e.result !== undefined) {
-          j.log({ t: 'seg-update', seq: e.seq, ts: e.ts, result: e.result }); // result 先行出生:回填行随落
-        }
-        return;
-      }
-      if (ev.t === 'seg-close') {
-        const e = ev.entry;
-        if (e.kind !== 'assistant' && e.kind !== 'thinking') return; // 发射面只产正文/思考闭合(防御性)
-        j.log({
-          t: 'seg',
-          kind: e.kind,
-          md: e.md,
-          ts: e.ts,
-          seq: e.seq,
-          ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
-        });
-        return;
-      }
-      if (ev.t === 'seg-update') {
-        const e = ev.entry;
-        j.log({
-          t: 'seg-update',
-          seq: e.seq,
-          ts: e.ts,
-          ...(e.name !== undefined ? { name: e.name } : {}),
-          ...(e.input !== undefined ? { input: e.input } : {}),
-          ...(e.result !== undefined ? { result: e.result } : {}),
-        });
-        return;
-      }
-      j.log({ t: 'truncate', upToSeq: ev.upToSeq });
+      for (const row of kernelEventRows(ev)) j.log(row);
     } catch {
       // 尽力落档:写失败不影响运行面
     }

@@ -27,6 +27,9 @@ import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, newSessionId, readSessionMeta, writeSessionMeta } from './session-journal';
+import { SessionKernel } from '../session/kernel';
+import type { KernelEntry } from '../session/entry';
+import { kernelEventRows } from '../session/v2log';
 import { resolveDataDir } from '../config/data-dir';
 import { SLASH_COMMANDS } from './slash-commands';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
@@ -108,6 +111,23 @@ export class SessionController {
   /** 会话事件日志（规格 2026-09-17-session-persistence D4 + 2026-09-22 事件级即时落盘）：持久化事件随产生落盘（惰性建档，空会话零文件）；
    *  公开 = commands-session 谱系命令读 currentId/attach 续挂，建档写点仍收敛在 ensureJournal/rotate */
   journal?: SessionJournal;
+  /** 会话内核转录(P3,session-kernel spec §3.2):转录持久化面单点——事件经段级投影落 v2 seg 行,
+   *  msg/msg-update 行退役(渲染归档与转录归档分离:命令回显/卡即 ephemeral,对话面随档)。
+   *  换新走 kernelSeedForRestore(/new 清空/resume 装载) */
+  private kernel: SessionKernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
+
+  /** v2 落档单点:内核段级事件 → journal 行(kernelEventRows 共享映射,daemon 同形);未建档丢弃
+   *  (惰性建档由 submit 的 user 行既有点承担——自然语言提交先落 user 行再 kernel.submit,序不丢) */
+  private persistKernelEvent(ev: import('../session/kernel').KernelEvent): void {
+    for (const row of kernelEventRows(ev)) this.journal?.log(row);
+  }
+
+  /** v2 档装载入核(resume/rewind 装载序,commands-session 消费):换新内核(旧档条目不串档)后 seed,
+   *  seg 行 seq 原样沿用、后续 live 条目自 max+1 续接;不触发落档事件(装载零双写) */
+  kernelSeedForRestore(entries: ReadonlyArray<KernelEntry>): void {
+    this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
+    this.kernel.seed(entries);
+  }
   /** 恢复携带的 UI 现场（--continue / /resume 重放产物；entry 经 takeRestoredUi 播种 retain，一次性取走）；
    *  公开 = commands-session 恢复三面注入点 */
   restoredUi?: { history: string[]; expandAll: boolean; latestFull: boolean };
@@ -244,9 +264,9 @@ export class SessionController {
   async submit(input: string): Promise<void> {
     const text = input.trim();
     if (!text) return;
-    // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于回显入志
+    // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于回显入志；v2 建档(P3 段级词汇)
     const j = this.ensureJournal();
-    j.start();
+    j.start(2);
     j.log({ t: 'user', text });
     // 用户输入回显上屏（含斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
     this.pushMsg('user', text);
@@ -254,6 +274,8 @@ export class SessionController {
       await this.handleSlash(text);
       return;
     }
+    // 内核转录(P3):自然语言轮=对话 user 条(新轮与 steer 入队两支同源;slash 命令回显不入转录面)
+    this.kernel.submit(text);
     this.md.clear();
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
       // 运行中穿插（对标 CC queued messages，用户→运行时方向、非模型工具面）：入 steering 通道，
@@ -829,6 +851,7 @@ export class SessionController {
     if (cmd === '/new') {
       // /new 轮转化（规格 D2）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回
       this.journal?.rotate(newSessionId());
+      this.kernelSeedForRestore([]); // 内核换新(空转录)——旧会话段行随旧档,新档从零起
       this.runtime.harness.security.clearSessionAllows();
       this.memoryOverride = undefined;
       setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
@@ -1108,6 +1131,9 @@ export class SessionController {
   }
 
   private onEvent(e: SessionEvent): void {
+    // 内核转录泵(P3,session-kernel spec):转录持久化面单点——事件先经内核段级投影落 v2 行,
+    // 渲染面(静态区/实时区)路径不动;子代理事件(payload.subagent)内核自守卫零条目
+    this.kernel.pump(e);
     // 委派/板事件分流(P1 收敛,spec §11):类型前缀判定前置——即便上游误打 subagent 标签也不误吞(终审裁定);
     // delegation-* 进委派投影,task-*/gate-* 进板投影,两者都不触达主链消息分支
     if (e.type.startsWith('delegation-')) {
@@ -1304,21 +1330,21 @@ export class SessionController {
     this.appendMessages([{ role, text, ts: Date.now(), seq: ++this.msgSeq, ...(extra ?? {}) }]);
   }
 
-  /** 消息区唯一追加写点（单一挂钩点）：改 state + 逐条落 journal + 通知三件套单点——pushMsg（单条）、
+  /** 消息区唯一追加写点（单一挂钩点）：改 state + 通知两件套单点——pushMsg（单条）、
    *  tool-result 成对入档、flushPendingCalls 批量兜底共用；任何绕过此点手拼 messages 的路径都会让
-   *  未来加在写点上的不变量静默失效（b705855 丢 notify 真机前科）。恢复注入不经此处（零重复入志，文档化特例） */
+   *  加在写点上的不变量静默失效（b705855 丢 notify 真机前科）。恢复注入不经此处（零前缀击穿，文档化特例）。
+   *  P3:journal 面不再落 msg 行——转录持久化由内核 seg 行单点承载(onEvent→kernel.pump),静态区
+   *  仅渲染归档(命令回显/卡/md ANSI 归档即 ephemeral,resume 重建对话面) */
   private appendMessages(items: ChatItem[]): void {
     if (items.length === 0) return;
     this.state = { ...this.state, messages: [...this.state.messages, ...items] };
-    for (const item of items) this.journal?.log({ t: 'msg', item });
     this.notify();
   }
 
-  /** 已入档消息的唯一覆盖写点：同 seq 原位替换 + 'msg-update' 回写（归档富化唯一消费方）；
-   *  公开 = child-panel 归档富化回写消费 */
+  /** 已入档消息的唯一覆盖写点：同 seq 原位替换（归档富化唯一消费方——child-panel SPAWN 行富化）；
+   *  P3:富化只改内存渲染态,持久化面由内核 tool 条(input 全量随档)承载。公开 = child-panel 归档富化回写消费 */
   updateMessage(item: ChatItem): void {
     this.state = { ...this.state, messages: this.state.messages.map((m) => (m.seq === item.seq ? item : m)) };
-    this.journal?.log({ t: 'msg-update', item });
     this.notify();
   }
 

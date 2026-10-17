@@ -418,9 +418,9 @@ export class SessionJournal {
     this.startId(newSessionId(), version);
   }
 
-  /** 轮转（/new）：换新 id，新 header 立即写盘（旧档已在盘零改动） */
-  rotate(id: string): void {
-    this.startId(id, 1);
+  /** 轮转（/new）：换新 id，新 header 立即写盘（旧档已在盘零改动）；v2=段级词汇(P3 起 TUI 档 v2) */
+  rotate(id: string, version = 2): void {
+    this.startId(id, version);
   }
 
   /** 续挂既有日志（/resume / --continue / 分档）：档已在盘，仅切 id，不重复 header */

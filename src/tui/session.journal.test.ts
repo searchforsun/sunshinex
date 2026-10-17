@@ -26,7 +26,7 @@ function pinDataDir(root: string): string {
   return dataDir;
 }
 
-test('重放一致性：live 会话（任务×2 + /model-tier）重放到新控制器，消息/链/档位逐字段一致，seq 续排不回绕', async () => {
+test('重放一致性：live 会话（任务×2 + /model-tier）重放到新控制器——对话面=seg 重建，命令卡即 ephemeral，seq 续排不回绕', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   pinDataDir(tmp);
@@ -40,9 +40,6 @@ test('重放一致性：live 会话（任务×2 + /model-tier）重放到新控�
     await pm;
     await ctrl1.submit('第二个任务');
     await ctrl1.waitIdle();
-    const before = ctrl1.getState().messages.map((m) => ({ role: m.role, text: m.text, seq: m.seq }));
-    const beforeChain = ctrl1.context.chainView();
-    const maxSeq = before.length > 0 ? before[before.length - 1].seq : 0;
 
     const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"恢复后完成"}']) });
     const pr = ctrl2.submit('/resume');
@@ -55,18 +52,27 @@ test('重放一致性：live 会话（任务×2 + /model-tier）重放到新控�
     await pr;
     await ctrl2.waitIdle();
     const after = ctrl2.getState().messages;
-    assert.equal(after.length, before.length + 1, '恢复流 = 存档消息 + 恢复提示行');
-    assert.deepEqual(after.slice(0, before.length).map((m) => ({ role: m.role, text: m.text, seq: m.seq })), before, '消息流逐字段一致（role/text/seq，ts 随档还原）');
-    assert.equal(after[after.length - 1].role, 'system');
-    assert.deepEqual(ctrl2.context.chainView(), beforeChain, '链视图逐字段一致');
+    // 对话面重建(P3 seg 面):user 原文 ×2 + assistant ANSI ×2 + 恢复横幅;/model-tier 卡与命令回显即 ephemeral 不还原
+    const plain = (s: string): string => s.replace(/\u001b\[[0-9;]*m/g, '');
+    assert.equal(after.length, 5, '恢复流 = user/assistant×2 轮 + 恢复提示行(命令卡不还原)');
+    assert.equal(after[0].role, 'user');
+    assert.equal(after[0].text, '第一个任务', 'user 条剥引用块原文还原');
+    assert.equal(after[1].role, 'assistant');
+    assert.ok(plain(after[1].text).includes('任务一完成'), 'assistant 条终稿在档(ANSI 现渲)');
+    assert.equal(after[2].text, '第二个任务', '第二轮 user 条在档');
+    assert.ok(plain(after[3].text).includes('任务二完成'), '第二轮 assistant 条在档');
+    assert.equal(after[4].role, 'system', '恢复横幅殿后');
+    const beforeChain = ctrl2.context.chainView();
+    assert.ok(beforeChain.some((s) => s.observation.includes('第一个任务')), '链视图还原(restoreSession)');
     assert.equal(ctrl2.getState().tier, 'large', '档位还原');
     assert.equal(ctrl2.getState().status, 'idle', '恢复后安全缺省 idle');
+    const maxSeq = after[after.length - 1].seq;
 
-    // seq 续排：恢复后新任务的消息 seq 严格大于存档最大 seq
+    // seq 续排：恢复后新任务的消息 seq 严格大于存档重建序
     await ctrl2.submit('恢复后新输入');
     await ctrl2.waitIdle();
     const msgs = ctrl2.getState().messages;
-    assert.ok(msgs.slice(before.length + 1).every((m) => m.seq > maxSeq), 'seq 续排不回绕');
+    assert.ok(msgs.slice(after.length).every((m) => m.seq > maxSeq), 'seq 续排不回绕');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prev;
@@ -130,16 +136,16 @@ test('斜杠会话即时建档（事件级）：/help 落 header+user，恢复�
   }
 });
 
-test('continueLast：手工日志全词汇还原（消息/链/待办/档位/模型选择/视图/输入历史），横幅上屏，UI 现场一次性取用', async () => {
+test('continueLast：手工 v2 档全词汇还原（seg 转录/链/待办/档位/模型选择/视图/输入历史），横幅上屏，UI 现场一次性取用', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = pinDataDir(tmp);
   try {
     const j = new SessionJournal(dataDir);
-    j.start();
+    j.start(2);
     j.log({ t: 'user', text: '历史输入一' });
-    j.log({ t: 'msg', item: { role: 'user', text: '历史输入一', ts: 1, seq: 1 } });
-    j.log({ t: 'msg', item: { role: 'assistant', text: '历史答复', ts: 2, seq: 2 } });
+    j.log({ t: 'seg', kind: 'user', md: '> 历史输入一', ts: 1, seq: 1 });
+    j.log({ t: 'seg', kind: 'assistant', md: '历史答复', ts: 2, seq: 2 });
     j.log({ t: 'chain', steps: [{ step: 1, action: 'task', observation: '指令行' }] });
     j.log({ t: 'todos', items: [{ text: '待办甲', status: 'pending' }] });
     j.log({ t: 'model', tier: 'small', modelId: 'deepseek/deepseek-chat' });
@@ -168,7 +174,7 @@ test('continueLast：手工日志全词汇还原（消息/链/待办/档位/模�
 
     // 配置漂移：档内 modelId 已不在 providers 清单 → 告警上屏、保持当前（缺省内芯）不硬切
     const j2 = new SessionJournal(dataDir);
-    j2.start();
+    j2.start(2);
     j2.log({ t: 'user', text: '漂移档输入' });
     j2.log({ t: 'model', modelId: 'gone/model' });
     const sw2 = new ModelSwitcher({
@@ -198,10 +204,10 @@ test('日志尾行撕裂：恢复到最后一条完整事件并上屏提示', as
     const id = newSessionId();
     const file = path.join(sessionsDir(dataDir), id + '.jsonl');
     fs.writeFileSync(file, [
-      JSON.stringify({ t: 'header', v: 1, id, createdAt: 'x' }),
+      JSON.stringify({ t: 'header', v: 2, id, createdAt: 'x' }),
       JSON.stringify({ t: 'user', text: '完整输入' }),
-      JSON.stringify({ t: 'msg', item: { role: 'user', text: '完整输入', ts: 1, seq: 1 } }),
-      '{"t":"msg","item":{"ro',
+      JSON.stringify({ t: 'seg', kind: 'user', md: '> 完整输入', ts: 1, seq: 1 }),
+      '{"t":"seg","kin',
     ].join('\n'), 'utf8');
     const events = parseJournalFile(file).events;
     const r = reduceJournal(events);

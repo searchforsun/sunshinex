@@ -346,9 +346,10 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       return { ...state, entries: replaceAt(state.entries, idx, { ...cur, meta }) };
     }
     default: {
-      // 非流内事件(route/model-end/approval 系/task 系/gate 系/delegation 系)一律先封流式段
-      // ——collector G14.213 同构:不产条目的事件也承担段边界职责;usage/step/ctx 流内不封
-      const inStream = e.type === 'usage' || e.type === 'step' || e.type === 'ctx';
+      // 非流内事件(route/approval 系/task 系/gate 系/delegation 系)一律先封流式段
+      // ——collector G14.213 同构:不产条目的事件也承担段边界职责;usage/step/ctx/model-end 流内
+      // 不封(model-end 每模型轮收尾即发——封段会把轮内正文与 done 终稿裂成重复两条,实测 TUI 往返抓出)
+      const inStream = e.type === 'usage' || e.type === 'step' || e.type === 'ctx' || e.type === 'model-end';
       return inStream ? state : sealSeg(state, e.ts);
     }
   }
