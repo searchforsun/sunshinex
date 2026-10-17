@@ -59,6 +59,20 @@ export class TranscriptCollector {
   private readonly list: TranscriptEntry[] = [];
   private readonly pending: PendingTool[] = [];
   private nextSeq = 1;
+  /** G14.213b 转录增量持久化钩子:append 单点回调整条目——会话运行时接会话维 JSONL 落档,
+   *  daemon 重启/会话重开后回种,中途刷新不再空窗(流式正文段边界落档见 push 内 textBuf) */
+  private readonly onAppend?: (entry: TranscriptEntry) => void;
+  /** seed 播种期标记:回种(文件/attach 链派生)不触发 onAppend,防持久化重放双写 */
+  private seeding = false;
+
+  constructor(opts?: { onAppend?: (entry: TranscriptEntry) => void }) {
+    this.onAppend = opts?.onAppend;
+  }
+
+  /** 现有条目数(持久化回种与 attach 播种的互斥判据消费面) */
+  count(): number {
+    return this.list.length;
+  }
 
   /** 入列单点（T5δ 上限收口）：全部条目入口（submit/seed/push 五 kind/tool 两路）统一过此——push 后
    *  超 TRANSCRIPT_CAP（2000）丢最老（与 session.ts eventBuffer 512 同构形态），每丢一条 stderr 留
@@ -66,6 +80,7 @@ export class TranscriptCollector {
    *  同步退出 pending 池——防迟到 result 回填已出档死条目、FIFO 兜底被已裁条截胡 */
   private append(entry: TranscriptEntry): void {
     this.list.push(entry);
+    if (!this.seeding) this.onAppend?.(entry); // G14.213b 活跃入档即落盘(seed 回种不双写)
     if (this.list.length > TRANSCRIPT_CAP) {
       const dropped = this.list.shift();
       console.error('[serve] transcript trimmed (2000 cap)');
@@ -86,7 +101,9 @@ export class TranscriptCollector {
    *  取续计数形态）；ts/kind/md 采信入参（md 已在映射面按五 kind 定形）。逐条过 append——播种同样
    *  受 2000 上限裁（超限丢最老，T5δ） */
   seed(entries: TranscriptEntry[]): void {
+    this.seeding = true;
     for (const e of entries) this.append({ ...e, seq: this.nextSeq++ });
+    this.seeding = false;
   }
 
   /** G14.213 流式正文段积累:token 增量进缓冲,段边界(任何非流内事件)落一条 assistant。

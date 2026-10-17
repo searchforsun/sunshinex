@@ -1,4 +1,6 @@
 import { createRuntime } from '../tui/runtime';
+import { sessionsDir } from '../tui/session-journal';
+import { resolveDataDir } from '../config/data-dir';
 import { parseTier } from '../runtime';
 import { parseEffort } from '../model/effort';
 import type { ModelTier, ReasoningEffort } from '../types';
@@ -16,7 +18,6 @@ import type { SessionJournal } from '../tui/session-journal';
 import type { HistoryStep } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
-import { resolveDataDir } from '../config/data-dir';
 import type { SnapshotEntry } from '../tui/session-journal';
 import { TranscriptCollector } from './transcript';
 import type { TranscriptEntry } from './transcript';
@@ -287,7 +288,9 @@ export class SessionRuntime {
   private board: TaskBoardState = emptyBoard();
   private delegations: Delegation[] = [];
   /** 粗粒度转录（spec G2 Ruling 1）：pump 同源喂入，snapshot 的 messages 字段（reset 换新实例清空） */
-  private transcriptImpl = new TranscriptCollector();
+  /** G14.213b 转录持久化:构造即回种 <id>.transcript.jsonl(上次进程的增量档),活跃入档即追加——
+   *  daemon 重启/会话重开后中途历史不空窗;坏档/无档静默空转录起档 */
+  private transcriptImpl: TranscriptCollector;
   /** G14.17 run 内 usage/ctx 末值（pump 旁路捕获，run 收尾落旁车 meta 后随下次 submit 清零） */
   private runUsage?: { total: number; cache: number; prompt: number };
   private runCtxUsed?: number;
@@ -303,6 +306,11 @@ export class SessionRuntime {
   /** 当前权限模式（G10-C1b 可变面）：setMode 重建 runtime（reset 同路径,转录/影子投影独立不受损） */
   private currentMode: SessionMode;
 
+  /** 转录条目数外窥(G14.213b):attach 播种互斥判据——持久化档已回种则不再链派生播种(防重复) */
+  transcriptCount(): number {
+    return this.transcriptImpl.count();
+  }
+
   /** 运行档外窥（G14.90）：daemon 挂起闭包按当前档判定——pill 切 manual 后新建会话无需重建注入面 */
   isManual(): boolean {
     return this.currentMode === 'manual';
@@ -313,6 +321,30 @@ export class SessionRuntime {
     this.id = opts.id;
     this.root = opts.root;
     this.currentMode = opts.mode ?? 'dontAsk';
+    const transcriptFile = path.join(sessionsDir(resolveDataDir(this.root)), `${this.id}.transcript.jsonl`);
+    this.transcriptImpl = new TranscriptCollector({
+      onAppend: (entry) => {
+        try {
+          fs.appendFileSync(transcriptFile, `${JSON.stringify(entry)}\n`, 'utf8');
+        } catch {
+          // 尽力落档:写失败不影响运行面(下次入档续写)
+        }
+      },
+    });
+    try {
+      if (fs.existsSync(transcriptFile)) {
+        const rows = fs
+          .readFileSync(transcriptFile, 'utf8')
+          .split('\n')
+          .filter((l) => l.trim() !== '')
+          .slice(-2000) // 与档面 2000 上限同裁
+          .map((l) => JSON.parse(l) as TranscriptEntry)
+          .filter((x) => x !== undefined && typeof x?.kind === 'string');
+        this.transcriptImpl.seed(rows);
+      }
+    } catch {
+      // 坏档忽略:空转录起档
+    }
     this.runtimeImpl = this.assemble();
   }
 

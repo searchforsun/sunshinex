@@ -278,8 +278,11 @@ export class GuiDaemon {
     // 转录播种（Ruling 5 双源不重复）：msg 行在场（TUI 档）→ msg 派生；msg 行计数===0（daemon 会话
     // 档只落 chain）→ chain 行派生兜底（task→user 引用块 / reply→assistant / call+result 配对→tool）——
     // 两路径互斥，零重复
+    // G14.213b 播种互斥:持久化档已回种(计数>0)则不再链/msg 派生播种——重开叠加即重复
     const msgs = journalMessagesToEntries(replay.messages);
-    session.transcript.seed(msgs.length > 0 ? msgs : chainStepsToEntries(replay.chain, runMetas));
+    if (session.transcriptCount() === 0) {
+      session.transcript.seed(msgs.length > 0 ? msgs : chainStepsToEntries(replay.chain, runMetas));
+    }
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);
