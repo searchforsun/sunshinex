@@ -321,7 +321,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
               </div>
             )}
           </div>
-          {load.loading && <div className="files-loading" role="status">加载中…</div>}
+          {load.loading && <div className="files-loading" role="status">{t('Loading…', '加载中…')}</div>}
         </>
       ) : (
         <div className="files-empty">
@@ -341,7 +341,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
               {t('Load', '加载')}
             </button>
           </div>
-          {load.loading && <div className="files-loading" role="status">加载中…</div>}
+          {load.loading && <div className="files-loading" role="status">{t('Loading…', '加载中…')}</div>}
           {load.error !== null && <div className="files-error">{load.error}</div>}
         </div>
       )}

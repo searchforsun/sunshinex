@@ -1356,7 +1356,7 @@ function AppShell(): JSX.Element {
             />
           ) : (
             <nav className="sx-menu" aria-label="projects">
-              <p className="home-loading">连接装配中…</p>
+              <p className="home-loading">{t('Connecting…', '连接装配中…')}</p>
             </nav>
           )}
           {/* G12 左栏拖宽手柄:overlay 在 nav 右缘(负 margin 零布局占位),拖动改 --menu-w */}
