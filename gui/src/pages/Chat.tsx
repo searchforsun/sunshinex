@@ -263,22 +263,16 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [atBottom, setAtBottom] = useState(scrollRestoreRef.current === null); // G14.212 恢复中非贴底:跳底钮即显
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  /** G6 工具条目 → input 暂存配对:条目 key `tool:<callId>`(重复 callId 的 `~n` 后缀剥掉;
-   *  `tool:#`(无 callId 面)与播种条(`s<seq>`)不配对——快照 md 无 input,展开退 result 摘要) */
+  /** G6 工具条目 → input 暂存配对:P4 起 callId 直挂条目(内核条目 input 全量随档,旧 key 编码解码退役) */
   const toolInfoOf = (entry: ChatEntry): ToolCallInfo | undefined => {
-    if (!entry.key.startsWith('tool:') || entry.key.startsWith('tool:#')) return undefined;
-    const cid = (entry.key.slice('tool:'.length).split('~')[0]) ?? '';
-    return cid.length > 0 ? toolInputs[cid] : undefined;
+    const cid = entry.callId;
+    return cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
   };
 
-
-
-  /** G7 write 展开的 diff 寻址键:条目 key 同 toolInfoOf 的剥法(`tool:` 前缀 + `~n` 后缀;
-   *  种子条/无 callId 面 undefined——不拉 diff,恒单列现内容) */
+  /** G7 write 展开的 diff 寻址键:条目 callId 直取(无 callId 面 undefined——不拉 diff,恒单列现内容) */
   const callIdOf = (entry: ChatEntry): string | undefined => {
-    if (!entry.key.startsWith('tool:') || entry.key.startsWith('tool:#')) return undefined;
-    const cid = (entry.key.slice('tool:'.length).split('~')[0]) ?? '';
-    return cid.length > 0 ? cid : undefined;
+    const cid = entry.callId;
+    return cid !== undefined && cid.length > 0 ? cid : undefined;
   };
 
 

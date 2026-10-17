@@ -368,16 +368,16 @@ describe('思考行(G11 §3)', () => {
 });
 
 describe('系统行图标(G11 §4)', () => {
-  it('notice 通用=Info/委派 ✻=Bot/agent 消息=MessageSquare,error=AlertCircle——均 .entry-icon 前置', async () => {
+  it('notice 通用=Info/agent 消息=MessageSquare,error=AlertCircle——均 .entry-icon 前置;delegation 状态行零渲染(G14.213)', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'notice', text: 'hello', ts: Date.now() });
     expect(document.querySelector('.entry-notice .entry-icon svg')).not.toBeNull();
     expect(document.querySelector('.entry-notice')?.textContent).toContain('hello');
     fire({ type: 'delegation-started', payload: { label: 'dev', delegationId: 'd1' }, ts: Date.now() });
-    expect(document.querySelectorAll('.entry-notice .entry-icon').length).toBe(2);
+    expect(document.querySelectorAll('.entry-notice .entry-icon').length).toBe(1); // 委派状态行不入主流
     fire({ type: 'agent-message', payload: { from: 'boss', to: 'dev', text: 'hi' }, ts: Date.now() });
-    expect(document.querySelectorAll('.entry-notice .entry-icon').length).toBe(3);
+    expect(document.querySelectorAll('.entry-notice .entry-icon').length).toBe(2);
     fire({ type: 'error', text: 'boom', ts: Date.now() });
     expect(document.querySelector('.entry-error .entry-icon svg')).not.toBeNull();
   });

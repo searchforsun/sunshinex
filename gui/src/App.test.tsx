@@ -632,12 +632,12 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     expect(document.querySelector('.entry-user')?.textContent).toContain('stable');
   });
 
-  it('delegation/agent-message → notice 行(同时喂 delegations 投影不倒面)', async () => {
+  it('agent-message → notice 行;delegation 状态行零渲染(G14.213 内核语义,投影面照常喂入不倒面)', async () => {
     const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }));
     fire(conn, ev('agent-message', undefined, { from: 'a', to: 'b', text: 'ping' }));
-    expect(screen.getByText('✻ dev started')).toBeDefined();
+    expect(screen.queryByText('✻ dev started')).toBeNull();
     expect(screen.getByText('[a → b] ping')).toBeDefined();
   });
 });

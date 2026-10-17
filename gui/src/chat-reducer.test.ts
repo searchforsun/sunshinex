@@ -127,7 +127,7 @@ describe('工具 callId 配对（乱序回填，单条两行）', () => {
 });
 
 describe('五 kind 与 notice 系映射', () => {
-  it('notice/delegation/agent-message → notice 条（delegation 单行 ✻ label status）', () => {
+  it('notice/agent-message → notice 条;delegation 状态行零条目(G14.213 内核语义,可见性归委派徽标/Agents 页)', () => {
     const s = fold(
       [
         ev('notice', 'hello'),
@@ -140,15 +140,13 @@ describe('五 kind 与 notice 系映射', () => {
     expect(s.entries.map((e) => `${e.kind}|${e.md}`)).toEqual([
       'user|> go',
       'notice|hello',
-      'notice|✻ dev started',
-      'notice|✻ dev done',
       'notice|[boss → dev] hi',
     ]);
   });
 
-  it('delegation label 缺省回落 delegationId，status 缺省 ended', () => {
+  it('delegation 两态(label 缺省回落 delegationId)同样零条目', () => {
     const s = fold([ev('delegation-started', undefined, { delegationId: 'd7' }), ev('delegation-ended', undefined, { delegationId: 'd7' })]);
-    expect(s.entries.map((e) => e.md)).toEqual(['✻ d7 started', '✻ d7 ended']);
+    expect(s.entries).toHaveLength(0);
   });
 
   it('chat 面忽略事件：task-*/gate-*/route/ctx/model-end/approval-* 不产生条目(reasoning 已改为思考链聚合,见下组)', () => {
@@ -175,7 +173,7 @@ describe('五 kind 与 notice 系映射', () => {
     s = applyChatEvent(s, { type: 'token', ts: 3, text: '子代理流字', payload: { subagent: 'ap-1' } } as never);
     expect(s.entries).toHaveLength(0);
     s = applyChatEvent(s, { type: 'delegation-started', ts: 4, payload: { label: '搜库', delegationId: 'd1' } } as never);
-    expect(s.entries).toHaveLength(1); // 委派摘要行保留
+    expect(s.entries).toHaveLength(0); // 委派状态行零条目(G14.213)
   });
 });
 
@@ -289,11 +287,11 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
       'running',
     );
     expect(s.entries.map((e) => ({ key: e.key, kind: e.kind, md: e.md, streaming: e.streaming }))).toEqual([
-      { key: 's1', kind: 'user', md: '> goal', streaming: undefined },
-      { key: 's2', kind: 'tool', md: '● read\n⎿ ok', streaming: undefined },
-      { key: 's3', kind: 'assistant', md: 'answer', streaming: undefined },
-      { key: 's4', kind: 'notice', md: '✻ dev started', streaming: undefined },
-      { key: 's5', kind: 'error', md: 'boom', streaming: undefined },
+      { key: 'k1', kind: 'user', md: '> goal', streaming: undefined },
+      { key: 'k2', kind: 'tool', md: '● read\n⎿ ok', streaming: undefined },
+      { key: 'k3', kind: 'assistant', md: 'answer', streaming: undefined },
+      { key: 'k4', kind: 'notice', md: '✻ dev started', streaming: undefined },
+      { key: 'k5', kind: 'error', md: 'boom', streaming: undefined },
     ]);
     expect(s.status).toBe('running');
     expect(s.tokens).toBe(0);

@@ -24,11 +24,10 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   taskActive: number;
 } {
   const { chat, toolInputs, board, onTodoBatches, onTurnGoal } = deps;
-  // G6 工具条目 → input 配对(与宿主 toolInfoOf 同式:键 tool:<callId>,`~n` 后缀剥;#面/种子条不配)
+  // G6 工具条目 → input 配对(P4:callId 直挂条目,内核 input 全量随档,旧 key 编码解码退役)
   const toolInfoOf = (entry: ChatEntry): ToolCallInfo | undefined => {
-    if (!entry.key.startsWith('tool:') || entry.key.startsWith('tool:#')) return undefined;
-    const cid = entry.key.slice('tool:'.length).split('~')[0] ?? '';
-    return cid.length > 0 ? toolInputs[cid] : undefined;
+    const cid = entry.callId;
+    return cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
   };
 /** G14.172 任务名映射(转录自建):create_task 行回执 `task tN created` → 标题——板投影是内存态
  *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表 */
