@@ -4,10 +4,11 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { SessionRuntime } from './session';
-import type { EventFrame, SessionRuntimeOpts } from './session';
+import type { DaemonFrame } from './daemon-wire';
+import type { SessionRuntimeOpts } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import type { ApprovalRequest, AskUserRequest, ChatRequest, ChatResult } from '../types';
+import type { ChatRequest, ChatResult } from '../types';
 
 /** T1 SessionRuntime 平移面测试：从 daemon 单会话态抽出的会话运行时——帧形(sessionId+seq)/影子投影/
  *  转录/submit 202 语义/interrupt/status/snapshotResponse 形态/reset 软重置/teardown 有界收口。
@@ -52,7 +53,7 @@ class SignalDeafAdapter implements ModelAdapter {
 
 interface Ctx {
   session: SessionRuntime;
-  frames: EventFrame[];
+  frames: DaemonFrame[];
   tmp: string;
 }
 
@@ -64,7 +65,8 @@ async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>,
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
   let seq = 0;
-  const frames: EventFrame[] = [];
+  let pidSeq = 0;
+  const frames: DaemonFrame[] = [];
   let session: SessionRuntime | undefined;
   try {
     session = new SessionRuntime({
@@ -76,6 +78,7 @@ async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>,
         return seq;
       },
       broadcast: (f) => frames.push(f),
+      mintPid: () => `pt${(pidSeq += 1)}`, // 测试面铸造(产线=daemon `p<n>` 单调,语义同)
       ...(extra ?? {}),
     });
     await fn({ session, frames, tmp });
@@ -98,9 +101,10 @@ test('① pump 平移面：帧恒 {kind:"event",sessionId,seq,e}、seq 计数在
     assert.equal(ctx.frames.length, 3, '每 pump 一次广播一帧');
     assert.deepEqual(ctx.frames[0], { kind: 'event', sessionId: 's1', seq: 1, e: e1 }, '首帧 seq=1（计数在先帧在后）且挂会话 id');
     assert.deepEqual(ctx.frames[2], { kind: 'event', sessionId: 's1', seq: 3, e: e3 });
-    for (let i = 1; i < ctx.frames.length; i++) {
-      assert.ok(ctx.frames[i].seq > ctx.frames[i - 1].seq, `seq 单调递增（${i}）`);
-      assert.equal(ctx.frames[i].sessionId, 's1', '全帧恒挂本会话 sessionId');
+    const events = ctx.frames.filter((f) => f.kind === 'event');
+    for (let i = 1; i < events.length; i++) {
+      assert.ok(events[i].seq > events[i - 1].seq, `seq 单调递增（${i}）`);
+      assert.equal(events[i].sessionId, 's1', '全帧恒挂本会话 sessionId');
     }
     // 补发窗口与广播同源：缓冲帧即已广播帧（逐字段等）
     const buffered = ctx.session.bufferedFrames();
@@ -141,7 +145,7 @@ test('② 实跑平移面：submit 受理→running→done→idle；转录三类
     assert.ok(Array.isArray(snap.messages) && snap.messages.length > 0);
     assert.notEqual(snap.board.tasks.t1, undefined);
     assert.ok(Array.isArray(snap.delegations));
-    assert.equal(snap.lastSeq, Math.max(...ctx.frames.map((f) => f.seq)), 'lastSeq=已广播帧最大 seq');
+    assert.equal(snap.lastSeq, Math.max(...ctx.frames.filter((f) => f.kind === 'event').map((f) => f.seq)), 'lastSeq=已广播事件帧最大 seq');
     assert.ok(ctx.frames.length > 0 && ctx.frames.every((f) => f.sessionId === 's1'), '实跑帧恒挂 sessionId');
   });
 });
@@ -184,7 +188,7 @@ test('④ reset 软重置（旧 /session/new 语义迁入）：运行中先中�
     const after = ctx.session.submit('重置后再跑');
     assert.deepEqual(after, { ok: true }, 'reset 后可再 submit');
     await waitFor(() => ctx.session.status() === 'running', 3000);
-    await waitFor(() => ctx.frames.some((f) => f.seq > snap.lastSeq), 3000);
+    await waitFor(() => ctx.frames.some((f) => f.kind === 'event' && f.seq > snap.lastSeq), 3000);
     ctx.session.interrupt();
     await waitFor(() => ctx.session.status() === 'idle', 3000);
     const seqAfter = ctx.session.snapshotResponse().lastSeq;
@@ -206,6 +210,7 @@ test('⑤ teardown 平移面：signal 无视的悬挂 run 有界收口（≤3s�
       return seq;
     },
     broadcast: () => {},
+    mintPid: () => 'p9',
   });
   try {
     session.submit('挂到天荒地老');
@@ -222,11 +227,9 @@ test('⑤ teardown 平移面：signal 无视的悬挂 run 有界收口（≤3s�
   }
 });
 
-test('⑥ mode/asker/onAskUser 透传（G4 manual 接线）：manual 会话 write 越信任域触发 asker、ask_question 触发 onAskUser；缺省 dontAsk 零接缝调用', async () => {
+test('⑥ 挂起表下沉（G4/P6 §4）：manual 会话 write 越信任域挂起 approval（帧+表+快照同源）→deny 回执写被拒;ask_question 挂起 ask→dismissed;dontAsk 写直放、ask 仍挂起（G14.93）', async () => {
   // 写目标在会话 root 之外（chain.resolveSafe 写分支：信任域内直放——挂起链只在越域时触发，chain.ts 现场核）
   const out = tmpdir('sunshinex-session-manual-out-');
-  const approvals: ApprovalRequest[] = [];
-  const asks: AskUserRequest[] = [];
   const script = (): ScriptedAdapter =>
     new ScriptedAdapter([
       JSON.stringify({ tool: 'write', input: { path: path.join(out, 'manual.txt'), content: 'x' } }),
@@ -241,38 +244,45 @@ test('⑥ mode/asker/onAskUser 透传（G4 manual 接线）：manual 会话 writ
       script(),
       async (ctx) => {
         assert.deepEqual(ctx.session.submit('写与问'), { ok: true });
+        // approval 挂起:帧广播+会话表登记(快照段同源,P6 §4)
+        await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'approval'), 10_000);
+        const apRow = ctx.session.pendingSnapshot().find((r) => r.kind === 'approval')!;
+        const apFrames = ctx.frames.filter((f) => f.kind === 'approval');
+        assert.equal(apFrames.length, 1, 'approval 帧恰一(广播面)');
+        const ap0 = apFrames[0] as { pid: string; req: { kind: string; subject: string } };
+        assert.equal(ap0.pid, apRow.pid, '帧与表同 pid(daemon 级铸造票据)');
+        assert.equal(ap0.req.kind, 'write', 'ApprovalRequest.kind=write');
+        assert.ok(ap0.req.subject.includes('manual.txt'), 'ApprovalRequest.subject=写目标');
+        // deny 回执:命中→写被拒;重复回执 false(404 面)
+        assert.equal(ctx.session.resolvePendingApproval(apRow.pid, 'deny'), true, 'deny 回执命中');
+        assert.equal(ctx.session.resolvePendingApproval(apRow.pid, 'deny'), false, '重复回执 false(已删表)');
+        // ask_question 挂起(G14.93):ask 帧+表
+        await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'ask'), 10_000);
+        const askRow = ctx.session.pendingSnapshot().find((r) => r.kind === 'ask')!;
+        const ask0 = ctx.frames.filter((f) => f.kind === 'ask').at(-1) as { pid: string; req: { question: string; options: unknown[] } };
+        assert.equal(ask0.pid, askRow.pid, 'ask 帧与表同 pid');
+        assert.equal(ask0.req.question, 'Q?', 'AskUserRequest.question 透传');
+        assert.equal(ask0.req.options.length, 2, 'AskUserRequest.options 透传');
+        assert.equal(ctx.session.resolvePendingAsk(askRow.pid, { type: 'dismissed' }), true, 'dismissed 回执命中');
         await waitFor(() => ctx.session.status() === 'idle', 10_000);
-        // asker 被调：mode='manual' + asker 透传 → createRuntime 既有 setAsker 装配（session 层不重造）
-        assert.equal(approvals.length, 1, 'asker 恰一次（write 越信任域挂起）');
-        assert.equal(approvals[0].kind, 'write', 'ApprovalRequest.kind=write');
-        assert.ok(approvals[0].id.length > 0, 'ApprovalRequest.id 在场（guard ap-N）');
-        assert.ok(approvals[0].subject.includes('manual.txt'), 'ApprovalRequest.subject=写目标');
-        // onAskUser 被调：manual 装配注入 ask seam → ask_question 工具注册并挂起
-        assert.equal(asks.length, 1, 'onAskUser 恰一次');
-        assert.equal(asks[0].question, 'Q?', 'AskUserRequest.question 透传');
-        assert.equal(asks[0].options.length, 2, 'AskUserRequest.options 透传');
-        // deny 定论：写未落盘
         assert.equal(fs.existsSync(path.join(out, 'manual.txt')), false, 'deny 回执下写被拒');
+        // 回执 notice 入转录(P6 随迁语义:daemon noticePending → 会话 pump)
+        const notices = ctx.session.sessionKernel.replay().filter((m) => m.kind === 'notice');
+        assert.ok(notices.some((n) => n.md.includes(`approval ${apRow.pid} resolved: deny`)), 'approval 回执 notice 入转录');
+        assert.ok(notices.some((n) => n.md.includes(`ask ${askRow.pid} answered`)), 'ask 回执 notice 入转录');
       },
-      {
-        mode: 'manual',
-        asker: async (req) => {
-          approvals.push(req);
-          return 'deny';
-        },
-        onAskUser: async (req) => {
-          asks.push(req);
-          return { type: 'dismissed' };
-        },
-      },
+      { mode: 'manual' },
     );
-    // 对照组：缺省 dontAsk 零接缝注入——写直放落盘（chain dontAsk 分支）、ask_question 未注册（无 seam）
+    // 对照组 dontAsk:写直放落盘(guard 自动放行前置,零 approval 帧/表);ask_question 仍挂起(G14.93 任意档)
     fs.rmSync(path.join(out, 'manual.txt'), { force: true });
     await withSession(script(), async (ctx) => {
       assert.deepEqual(ctx.session.submit('再写再问'), { ok: true });
+      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'ask'), 10_000);
+      assert.equal(ctx.frames.filter((f) => f.kind === 'approval').length, 0, 'dontAsk 零 approval(guard 前置放行)');
+      assert.equal(ctx.session.pendingSnapshot().filter((r) => r.kind === 'approval').length, 0, 'dontAsk 零 approval 表项');
+      const row = ctx.session.pendingSnapshot().find((r) => r.kind === 'ask')!;
+      assert.equal(ctx.session.resolvePendingAsk(row.pid, { type: 'dismissed' }), true);
       await waitFor(() => ctx.session.status() === 'idle', 10_000);
-      assert.equal(approvals.length, 1, 'dontAsk 会话不触发 asker（零行为变化）');
-      assert.equal(asks.length, 1, 'dontAsk 会话不触发 onAskUser');
       assert.equal(fs.existsSync(path.join(out, 'manual.txt')), true, 'dontAsk 写直放落盘');
     });
   } finally {

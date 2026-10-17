@@ -2,7 +2,7 @@ import type { AskUserAnswer, AskUserRequest } from '../types';
 import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
 import { t } from '../i18n';
 import { formatContextBreakdown } from './format';
-import { RunOutcome, TuiRuntime, createRuntime } from './runtime';
+import { RunOutcome, KernelRuntime, createKernelRuntime } from '../session/runtime';
 import type { ModelSwitcher } from '../model/catalog';
 import { renderMd } from './md-ansi';
 import { MdStream, appendLiveText, closeLiveBlock, sealLiveReply } from './md-stream';
@@ -76,7 +76,7 @@ export { boardEventFrom } from '../taskboard/translate';
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
-  readonly runtime: TuiRuntime;
+  readonly runtime: KernelRuntime;
   /** 项目根（公开 = 命令族/子代理拆分件消费：memory/kb-index 的库基准、归档统计等；与 runtime 装配同源） */
   readonly root: string;
   /** 流式 md 通道（D17 拆分件 md-stream，持有者 trait）：块缓冲/围栏/已推源/水位/规划轮归档抑制
@@ -233,7 +233,7 @@ export class SessionController {
     // 主模型装配单点：切换器在场即以其为主模型（/model 换内芯即时贯通 reactor/子代理/压缩）；
     // 否则回落单模型适配器（无 providers 配置的既有形态）
     const mainModel = opts.models ?? opts.model;
-    this.runtime = opts.runtime ?? createRuntime({
+    this.runtime = opts.runtime ?? createKernelRuntime({
       root: opts.root,
       ...(mainModel ? { model: mainModel } : {}),
       ...(opts.mode ? { mode: opts.mode } : {}),

@@ -1,13 +1,13 @@
 import type { AskUserSeam } from '../types';
 import { Harness } from '../harness';
 import { buildHarness } from '../runtime';
-import { setToolDisplayMeta } from './tool-verbs';
+import { setToolDisplayMeta } from '../tui/tool-verbs';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
 import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, OutputStyle, ReasoningEffort, RunOutcome, SessionEvent, TodoItem } from '../types';
 
-export interface TuiRuntimeOpts {
+export interface KernelRuntimeOpts {
   /** 问询接缝（ask_question 消费方）：SessionController 缺省接自身问询管线；外部注入用于 headless/脚本 */
   onAskUser?: AskUserSeam;
   root: string;
@@ -33,7 +33,7 @@ export interface TuiRuntimeOpts {
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
 export type { RunOutcome };
 
-export interface TuiRuntime {
+export interface KernelRuntime {
   harness: Harness;
   /** scope 线程：session=主链（缺省）；fork=私有执行（零主链回写）——/init 与规划轮 fork 隔离用 */
   runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; effort?: ReasoningEffort; scope?: 'session' | 'fork'; signal?: AbortSignal }): Promise<RunOutcome>;
@@ -41,10 +41,11 @@ export interface TuiRuntime {
   runLoop(goal: string, opts?: { template?: string; tier?: ModelTier; effort?: ReasoningEffort; signal?: AbortSignal }): Promise<LoopRunResult>;
 }
 
-/** TUI 运行时接缝：同进程装配 Harness（数据底座全局数据目录天然同源）；GUI 阶段如需隔离可换 daemon 实现同契约。
- *  D27 收敛：Harness 构造经共享装配单点 buildHarness（root/kb 共用面收编于该单点，新增 Harness 接缝只改
- *  那一处）；TUI 差异面（ask/model/mode/onEvent/todos/addDirs）经 opts 注入，接缝语义逐一保留 */
-export function createRuntime(opts: TuiRuntimeOpts): TuiRuntime {
+/** 内核运行时接缝（§10-5 正名,原 TuiRuntime):TUI 与 daemon 共用的装配单点——buildHarness 取
+ *  Harness + Loop 主链入口（runTask/runLoop),随内核落位 src/session。D27 收敛：Harness 构造经共享
+ *  装配单点 buildHarness（root/kb 共用面收编于该单点，新增 Harness 接缝只改那一处）；差异面
+ *  （ask/model/mode/onEvent/todos/addDirs）经 opts 注入，接缝语义逐一保留 */
+export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
   const harness = buildHarness(opts.root, {
     ...(opts.onAskUser ? { ask: opts.onAskUser } : {}),
     ...(opts.model ? { model: opts.model } : {}),

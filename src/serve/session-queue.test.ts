@@ -19,6 +19,7 @@ function makeSession(): SessionRuntime {
       return () => ++n;
     })(),
     broadcast: () => {},
+    mintPid: () => 'p1',
   });
 }
 
@@ -50,6 +51,7 @@ test('P5 queue 帧广播(spec §12):每次队列变更一帧 payload.items=全�
       return () => ++n;
     })(),
     broadcast: (f) => frames.push(f as never),
+    mintPid: () => 'p1',
   });
   s.steer('一');
   s.steerEdit(0, '一改');

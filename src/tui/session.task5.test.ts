@@ -7,7 +7,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import type { ModelAdapter } from '../model/adapter';
 import { Harness } from '../harness';
-import { TuiRuntime } from './runtime';
+import { KernelRuntime } from '../session/runtime';
 
 /** Task 5（规格 D 项）：/compact [focus] + 观测小件（自动压缩消息流留痕、轮首 miss 提示） */
 
@@ -63,7 +63,7 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
       { action: 'tool-result', observation: 'Y'.repeat(2000) },
       { action: 'tool-result', observation: 'Z'.repeat(2000) },
     ]);
-    const fake: TuiRuntime = {
+    const fake: KernelRuntime = {
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
       runLoop: async () => {
@@ -108,7 +108,7 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
       },
     });
     harness.context.appendChain([{ action: 'tool-result', observation: 'Y'.repeat(2000) }]);
-    const fake: TuiRuntime = {
+    const fake: KernelRuntime = {
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
       runLoop: async () => {

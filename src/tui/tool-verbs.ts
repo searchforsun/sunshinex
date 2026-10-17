@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import type { ToolDisplayMeta } from '../harness/tools';
 
 /** 工具呈现层（D26/J1 收敛为消费者）：动词/代表字段不再本文件硬编码，随工具注册表 display 元数据
- *  经 setToolDisplayMeta 装配期注入（产线接线 tui/runtime createRuntime）——harness 增改工具时
+ *  经 setToolDisplayMeta 装配期注入（产线接线 session/runtime createKernelRuntime）——harness 增改工具时
  *  呈现零跟表。本文件保留：注入注入口、fallback（未登记工具大写原名 + 候选字段序）、extractTarget
  *  的平台工具特殊 target 分支（多字段格式无法以 targetFields 表达）。 */
 

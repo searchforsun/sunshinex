@@ -102,7 +102,7 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  /** 呈现元数据表（D26/J1）：工具名 → 动词/代表字段，装配点（tui/runtime createRuntime）下泄 TUI
+  /** 呈现元数据表（D26/J1）：工具名 → 动词/代表字段，装配点（session/runtime createKernelRuntime）下泄 TUI
    *  呈现层——harness 增改工具时 TUI 呈现零跟表。未声明 display 的条目（skill/memory_write/MCP）
    *  以工具名大写派生缺省动词：对齐 TUI 原地 fallback 语义，缺省派生放 registry 侧使 TUI 拿到的表自洽 */
   displayMeta(): Record<string, ToolDisplayMeta> {

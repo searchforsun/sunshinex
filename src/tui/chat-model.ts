@@ -2,7 +2,7 @@ import type { ApprovalDecision, ApprovalRequest, AskUserRequest, AskUserSeam, Mo
 import { t } from '../i18n';
 import { formatDuration, formatTokens } from './format';
 import type { ModelSwitcher } from '../model/catalog';
-import type { TuiRuntime, TuiRuntimeOpts } from './runtime';
+import type { KernelRuntime, KernelRuntimeOpts } from '../session/runtime';
 import type { LiveTaskState } from './task-state';
 import type { Delegation } from '../delegation/projection';
 import type { TaskBoardState } from '../taskboard/model';
@@ -209,7 +209,7 @@ export interface TuiState {
   pauseConfirm?: boolean;
 }
 
-export interface SessionOpts extends TuiRuntimeOpts {
+export interface SessionOpts extends KernelRuntimeOpts {
   /** 启动即续接最近会话（CLI --continue；规格 D1/D5）。无档位时提示并以新会话继续，不静默吞 */
   continueLast?: boolean;
   /** 启动即弹会话选择卡（--resume） */
@@ -220,8 +220,8 @@ export interface SessionOpts extends TuiRuntimeOpts {
   asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** 问询接缝覆盖（headless/脚本注入；缺省会话装配把 seam 接到本控制器问询管线） */
   onAskUser?: AskUserSeam;
-  /** 运行时注入位：缺省自建 createRuntime(opts)；测试可注入假实现以隔离长任务 */
-  runtime?: TuiRuntime;
+  /** 运行时注入位：缺省自建 createKernelRuntime(opts)；测试可注入假实现以隔离长任务 */
+  runtime?: KernelRuntime;
   /** 流式 md 渲染宽度源（J6 双源收敛）：装配层/测试注入终端列宽——渲染层经 useStdout 取宽、通道经本源取宽，
    *  两面同源；缺省不注入回退 process.stdout.columns（既有口径，Ink 宿主 stdout 即 process.stdout，生产行为不变） */
   mdColumns?: () => number;

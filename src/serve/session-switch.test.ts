@@ -39,6 +39,7 @@ function makeSession(): SessionRuntime {
       return () => ++n;
     })(),
     broadcast: () => {},
+    mintPid: () => 'p1',
   });
 }
 

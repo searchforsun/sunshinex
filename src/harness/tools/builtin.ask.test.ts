@@ -12,7 +12,7 @@ import { ProcessSandbox } from '../security/sandbox';
 import { toolCallLine, setToolDisplayMeta } from '../../tui/tool-verbs';
 import type { AskUserRequest, AskUserAnswer, AskUserSeam } from '../../types';
 
-// J1 呈现表接线（产线在 tui/runtime createRuntime；单文件直跑时自行注入本文件所需条目，
+// J1 呈现表接线（产线在 session/runtime createKernelRuntime；单文件直跑时自行注入本文件所需条目，
 // 值取注册表 displayMeta 产线形态）
 setToolDisplayMeta({ ask_question: { verb: 'ASK', targetFields: ['question'] } });
 

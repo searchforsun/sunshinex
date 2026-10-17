@@ -10,7 +10,7 @@ import type { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
 import { Harness } from '../harness';
 import { TaskRegistry } from '../harness/tasks';
-import { RunOutcome, TuiRuntime } from './runtime';
+import { RunOutcome, KernelRuntime } from '../session/runtime';
 import { SLASH_COMMANDS } from './slash-commands';
 import type { ChatRequest } from '../types';
 
@@ -284,7 +284,7 @@ test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；
     const harness = new Harness({ root: tmp, mode: 'dontAsk' });
     const seen: Array<string | undefined> = [];
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
-    const fake: TuiRuntime = {
+    const fake: KernelRuntime = {
       harness,
       runTask: async (_goal, o) => {
         seen.push(o?.tier);
@@ -317,7 +317,7 @@ test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 
   try {
     const harness = new Harness({ root: tmp, mode: 'dontAsk' });
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
-    const fake: TuiRuntime = {
+    const fake: KernelRuntime = {
       harness,
       runTask: async () => base,
       runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
@@ -386,7 +386,7 @@ test('会话控制器：/model-effort 八项单选即选即切，default 清除�
     const harness = new Harness({ root: tmp, mode: 'dontAsk' });
     const seenEfforts: Array<string | undefined> = [];
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
-    const fake: TuiRuntime = {
+    const fake: KernelRuntime = {
       harness,
       runTask: async (_goal, o) => {
         seenEfforts.push(o?.effort);
@@ -429,7 +429,7 @@ test('会话控制器：装配级 tier 作为初始档位并下传任务', async
   try {
     const harness = new Harness({ root: tmp, mode: 'dontAsk' });
     const seen: Array<string | undefined> = [];
-    const fake: TuiRuntime = {
+    const fake: KernelRuntime = {
       harness,
       runTask: async (_goal, o) => {
         seen.push(o?.tier);
@@ -588,7 +588,7 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
       { action: 'tool-result', observation: 'Y'.repeat(2000) },
       { action: 'tool-result', observation: 'Z'.repeat(2000) },
     ]);
-    const fake: TuiRuntime = {
+    const fake: KernelRuntime = {
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
       runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },

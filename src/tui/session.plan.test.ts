@@ -8,7 +8,7 @@ import { PLAN_TASK_LABEL, SessionController } from './session';
 import { parseJournalFile, sessionsDir } from './session-journal';
 import { resolveDataDir } from '../config/data-dir';
 import { getLanguage, setLanguage } from '../i18n';
-import { createRuntime } from './runtime';
+import { createKernelRuntime } from '../session/runtime';
 import { ScriptedAdapter } from '../model/adapter';
 import { Reactor, ReactorOpts } from '../harness/reactor';
 import { LONG_TASK_TIMEOUT_MS } from '../loop/templates';
@@ -143,7 +143,7 @@ test('会话层：/plan 规划段经主链产出编号步骤并进确认卡', as
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"1. 改 A 文件\\n2. 跑测试"}']),
     });
@@ -177,13 +177,13 @@ test('会话层：/plan 规划段经主链——探针证明不走 graph 角色�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-probe-'));
   const orig = Reactor.prototype.run;
   const calls: Array<{ self: Reactor; goal: string; opts: ReactorOpts | undefined; at: number }> = [];
-  // 仓内两处之一（另见 src/tui/runtime.test.ts）类型逃逸（局限在此函数表达式）：原型补丁的 this 语义 TS 不保留，故断言回原方法签名；未引入 any
+  // 仓内两处之一（另见 src/session/runtime.test.ts）类型逃逸（局限在此函数表达式）：原型补丁的 this 语义 TS 不保留，故断言回原方法签名；未引入 any
   Reactor.prototype.run = function (this: Reactor, ...args: Parameters<Reactor['run']>): ReturnType<Reactor['run']> {
     calls.push({ self: this, goal: String(args[0].goal), opts: args[1], at: Date.now() });
     return orig.call(this, ...args);
   } as Reactor['run'];
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"1. 改 A 文件\\n2. 跑测试"}']),
     });

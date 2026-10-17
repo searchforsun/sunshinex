@@ -6,7 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Harness } from '../index';
 import { buildDeps } from '../../runtime';
-import { createRuntime } from '../../tui/runtime';
+import { createKernelRuntime } from '../../session/runtime';
 import { resolveKbEnv } from '../../config/env';
 import { KnowledgeBase, assembleKnowledgeBase } from './index';
 import { LocalJsonVectorStore } from './store';
@@ -122,7 +122,7 @@ test('共享装配单点（D27）：buildDeps 与 createRuntime 两路构造 kb 
     // 同一 env/数据目录先建索引：两路装配（各自 load 挂接显式数据目录）都应检索到同一内容
     await assembleKnowledgeBase(resolveKbEnv(process.env as Record<string, string | undefined>), root)?.indexDir(writeDocs());
     const deps = buildDeps(root, {});
-    const rt = createRuntime({ root });
+    const rt = createKernelRuntime({ root });
     const r1 = await deps.registry.execute('kb_search', { query: '分散部署', topK: 2 }, deps.safety);
     const r2 = await rt.harness.tools.execute('kb_search', { query: '分散部署', topK: 2 }, rt.harness.safety);
     assert.ok(r1.ok && r2.ok, `CLI/TUI 两路装配的 kb_search 都应命中（单点 kb 接线若丢失任一路即 kb_not_configured）：CLI=${r1.ok} TUI=${r2.ok}`);

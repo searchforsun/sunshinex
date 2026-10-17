@@ -99,20 +99,20 @@ export function resolveKnowledgeBase(root: string): KnowledgeBase | undefined {
 export type HarnessAssemblyOpts = Omit<Partial<HarnessOptions>, 'kb'>;
 
 /**
- * 共享 Harness 装配单点（D27 收敛，技术债台账验收判据）：CLI `buildDeps` 与 TUI `createRuntime` 的
+ * 共享 Harness 装配单点（D27 收敛，技术债台账验收判据）：CLI `buildDeps` 与内核 `createKernelRuntime` 的
  * Harness 构造收编于此——**新增一个 Harness 接缝只改本函数一处**（kb 即前车之鉴：D18 接线前两轨各拼
  * 一份构造，TUI 侧漏接 kb 为首个可见症状）。
  * 共用面：root、kb（resolveKnowledgeBase 调用点随本函数归一为全仓唯一生产调用点）。
  * 差异面由两侧 opts 注入（接缝语义逐一保留）：
  * - CLI（buildDeps）：mode:'dontAsk' 恒定 + createCliAskSeam 问询；模型不进 Harness（h.model 恒 Stub，
  *   真实模型只进 LoopDeps.model——既有 CLI 形态，零行为变化）；
- * - TUI（createRuntime）：ask/model/mode/onEvent/todos 按需注入。
+ * - 内核运行时（createKernelRuntime）：ask/model/mode/onEvent/todos 按需注入。
  * selfcheck 为诊断入口非交互面，保持直接 new Harness（自带 kbError 分支语义，不属 D27 双轨）。
  */
 export function buildHarness(root: string, opts: HarnessAssemblyOpts = {}): Harness {
   return new Harness({
     root,
-    // KB 装配单点收编（D18 接线/D27 去重）：此前 buildDeps 与 createRuntime 各调一次 resolveKnowledgeBase
+    // KB 装配单点收编（D18 接线/D27 去重）：此前 buildDeps 与 createKernelRuntime 各调一次 resolveKnowledgeBase
     kb: resolveKnowledgeBase(root),
     ...opts,
   });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createRuntime } from './runtime';
+import { createKernelRuntime } from './runtime';
 import { ScriptedAdapter } from '../model/adapter';
 import { textReplyAdapter } from '../model/chat-stub';
 import { Reactor, ReactorOpts } from '../harness/reactor';
@@ -33,7 +33,7 @@ test('createRuntime：TUI 面缺省恒 terminal——稳定段携带输出样式
       prompts.push(prompt);
       return '{"done":true,"reply":"ok"}';
     });
-    const rt = createRuntime({ root: tmp, model: capture });
+    const rt = createKernelRuntime({ root: tmp, model: capture });
     await rt.runTask('样式验收', { maxSteps: 2 });
     assert.ok(
       prompts.some((p) => p.includes('explicit language tag')) &&
@@ -54,14 +54,14 @@ test('createRuntime：事件贯通 + runTask 完成 + runs 账本落盘（会话
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
   try {
     const events: SessionEvent[] = [];
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
       onEvent: (e) => events.push(e),
     });
     const r = await rt.runTask('做一件事');
     assert.equal(r.done, true);
-    assert.ok(events.some((e) => e.type === 'done'), 'done 事件应贯通到 TuiRuntime 注入者');
+    assert.ok(events.some((e) => e.type === 'done'), 'done 事件应贯通到 KernelRuntime 注入者');
     assert.ok(events.some((e) => e.type === 'token'), 'token 事件应贯通');
     assert.equal(rt.harness.ledger.summary().runs, 1, '账本经 TUI run 同样落盘（会话同源）');
   } finally {
@@ -74,7 +74,7 @@ test('createRuntime：manual 模式 + onApproval 脚本应答 → 非白名单�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt2-'));
   try {
     let asked = 0;
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       mode: 'manual',
       model: new ScriptedAdapter([
@@ -97,7 +97,7 @@ test('createRuntime：manual 模式 + onApproval 脚本应答 → 非白名单�
 test('createRuntime：不传 onApproval 时 manual 保持阶段一拒绝语义（写命令被拒）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt3-'));
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       mode: 'manual',
       model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
@@ -114,7 +114,7 @@ test('createRuntime：model 透传到 harness.model（TUI 装配链不静默回�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt4-'));
   try {
     const m = new ScriptedAdapter(['{"done":true,"reply":"ok"}']);
-    const rt = createRuntime({ root: tmp, model: m });
+    const rt = createKernelRuntime({ root: tmp, model: m });
     assert.equal(rt.harness.model, m, '模型装配不得在接缝处丢失');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -124,7 +124,7 @@ test('createRuntime：model 透传到 harness.model（TUI 装配链不静默回�
 test('createRuntime：主链经 Loop——不做任何事也走长任务模板（iterations 可观测）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt5-'));
   try {
-    const rt = createRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const rt = createKernelRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const r = await rt.runTask('做一件事');
     assert.equal(r.done, true);
     assert.equal(r.stopReason, 'done');
@@ -136,7 +136,7 @@ test('createRuntime：主链经 Loop——不做任何事也走长任务模板�
 test('createRuntime：未完成时返回结构化 stopReason（不再只有 done=false）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt6-'));
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter(['{"tool":"glob","input":{"pattern":"*"},"done":false}']),
     });
@@ -161,7 +161,7 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
   const events: SessionEvent[] = [];
   const tmp1 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt7-'));
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp1,
       model: new ScriptedAdapter(TOOL_CALLS_400),
       onEvent: (e) => events.push(e),
@@ -180,7 +180,7 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
   const events2: SessionEvent[] = [];
   const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt7b-'));
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp2,
       model: new ScriptedAdapter(TOOL_CALLS_400),
       onEvent: (e) => events2.push(e),
@@ -206,7 +206,7 @@ test('createRuntime：主链归属钉死——探针证明不触碰 harness.reac
     return orig.call(this, ...args);
   } as Reactor['run'];
   try {
-    const rt = createRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const rt = createKernelRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     await rt.runTask('做一件事');
     assert.ok(calls.length > 0, '探针应捕获到 Reactor.run 调用');
     assert.ok(
@@ -239,7 +239,7 @@ test('createRuntime：主链归属钉死——探针证明不触碰 harness.reac
 test('createRuntime：不泄漏引擎内部形态——RunOutcome 只投影会话层字段', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt9-'));
   try {
-    const rt = createRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    const rt = createKernelRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const r = await rt.runTask('做一件事');
     const keys = Object.keys(r);
     for (const k of ['steps', 'route', 'iterations', 'state']) {
@@ -261,7 +261,7 @@ test('createRuntime：seedHistory 链式下传至内层 Reactor + RunOutcome.his
     return orig.call(this, ...args);
   } as Reactor['run'];
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       // 首轮带一次工具调用：零工具步的 run 无 history 可产出（RunOutcome.history 契约：空则不投影）
       model: new ScriptedAdapter(['{"tool":"glob","input":{"pattern":"*"},"done":false}', '{"done":true,"reply":"第一步结论"}']),
@@ -286,7 +286,7 @@ test('createRuntime：seedHistory 链式下传至内层 Reactor + RunOutcome.his
 test('runTask scope=fork：作用域线程至 LoopDeps、主链零回写', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-fork-'));
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
     });
@@ -304,7 +304,7 @@ test('createRuntime.runLoop：缺省 test-loop 修正环跑通，结果原样透
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data'); // 账本隔离：runs===1 精确断言不与跑批互染（本文件首例同款）
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter([
         { content: '', toolCalls: [] },
@@ -325,14 +325,14 @@ test('createRuntime.runLoop：缺省 test-loop 修正环跑通，结果原样透
 test('createRuntime.runLoop：未知模板报错；判据未过回修一轮后 done，tier 路由事件贯通', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-goal2-'));
   try {
-    const rt = createRuntime({
+    const rt = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter([{ content: '', toolCalls: [] }]),
     });
     await assert.rejects(() => rt.runLoop('x（验收标准：t1=y）', { template: 'nope' }), /Unknown template: nope/);
 
     const events: SessionEvent[] = [];
-    const rt2 = createRuntime({
+    const rt2 = createKernelRuntime({
       root: tmp,
       model: new ScriptedAdapter([
         { content: '', toolCalls: [] },

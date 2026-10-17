@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { PLAN_TASK_LABEL, SessionController } from './session';
-import { TuiRuntime, RunOutcome } from './runtime';
+import { KernelRuntime, RunOutcome } from '../session/runtime';
 import { Harness } from '../harness';
 import type { ChatResult } from '../types';
 import type { ModelAdapter } from '../model/adapter';
@@ -14,7 +14,7 @@ import type { ModelAdapter } from '../model/adapter';
  * 规划轮按 goal 分流：命中规划指令即回编号步骤计划（规划段并入主链后同样经 runTask）；
  * 其余调用（计划项执行）恒回传入的 outcome，供未完成路径断言。
  */
-function fakeRuntime(harness: Harness, outcome: RunOutcome): TuiRuntime {
+function fakeRuntime(harness: Harness, outcome: RunOutcome): KernelRuntime {
   const planOutcome: RunOutcome = {
     done: true,
     reply: '1. 第一步\n2. 第二步',

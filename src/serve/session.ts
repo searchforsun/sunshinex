@@ -1,12 +1,12 @@
-import { createRuntime } from '../tui/runtime';
+import { createKernelRuntime } from '../session/runtime';
 import { resolveDataDir } from '../config/data-dir';
 import { parseTier } from '../runtime';
 import { parseEffort } from '../model/effort';
 import type { ModelTier, ReasoningEffort } from '../types';
 import { ModelSwitcher } from '../model/catalog';
-import type { TuiRuntime } from '../tui/runtime';
+import type { KernelRuntime } from '../session/runtime';
 import type { ModelAdapter } from '../model/adapter';
-import type { ApprovalDecision, ApprovalRequest, AskUserSeam, SessionEvent } from '../types';
+import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, SessionEvent } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import type { TaskBoardState } from '../taskboard/model';
 import { applyDelegation } from '../delegation/projection';
@@ -24,14 +24,15 @@ import { resolveRunWindow } from '../config/termination-config';
 import { SLASH_COMMANDS } from '../tui/slash-commands';
 import { listChanges, diffChangeSets } from './session-changes';
 import type { ChangeFile } from '../types';
+import type { ApprovalFrame, AskFrame, DaemonFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
 
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
  * `createRuntime`（独立泵/影子投影/转录/run 票据），daemon 只持注册表与全局面（seq 计数/WS 连接）。
- * 装配零旁路：与 TUI 同一 `createRuntime` 单点（mode 缺省 dontAsk；G4 起经 opts 透传 manual + 审批/
- * 问询两接缝，daemon 挂起表闭包注入）。
+ * 装配零旁路：与 TUI 同一 `createKernelRuntime` 单点（mode 缺省 dontAsk；P6 §4 挂起接缝无条件注入——
+ * 审批/问询挂起表在会话,daemon 只注入 mintPid/broadcast 网络寻址两接缝）。
  */
 
 /** WS 下行事件帧（会话中心 + G3 seq 协议）：`{kind:'event', sessionId, seq, e}`——sessionId 为帧所属
@@ -104,18 +105,34 @@ export interface SessionRuntimeOpts {
   model: ModelAdapter;
   /** seq 分配器：daemon 级全局单调计数（T1 裁定——跨会话不重号，帧过滤按全局单调语义不破） */
   nextSeq: () => number;
-  /** 泵广播面：帧经 daemon WS 层序列化后发全部连接（连接层按 sessionId 分发/过滤，T3） */
-  broadcast: (frame: EventFrame) => void;
-  /** 权限模式（G4 manual 接线）：缺省 dontAsk（GUI v1 无终端交互面）；manual 时配合 asker 走
-   *  daemon 挂起表审批（createRuntime 同名单点透传——setAsker 装配形态在 tui/runtime.ts 既有） */
+  /** 泵广播面：帧经 daemon WS 层序列化后发全部连接（连接层按 sessionId 分发/过滤，T3）。
+   *  P6 放宽至 DaemonFrame 全并集——事件帧与挂起帧同路（挂起帧由会话自己组帧广播） */
+  broadcast: (frame: DaemonFrame) => void;
+  /** 权限模式（G4 manual 接线）：缺省 dontAsk（GUI v1 无终端交互面）；manual 时 guard asker 走
+   *  本会话挂起表（suspendApproval 内判定——P6 §4 下沉后装配接缝在 assemble() 无条件注入） */
   mode?: 'dontAsk' | 'manual';
-  /** manual 审批接缝（guard asker 注入位）：透传 createRuntime onApproval——G4 daemon 注挂起表闭包
-   *  （帧广播 + pending 登记），dontAsk 会话缺省不注入 */
-  asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
-  /** 问询接缝（ask_question 消费方）：透传 createRuntime onAskUser——G4 daemon 注挂起表闭包（同上） */
-  onAskUser?: AskUserSeam;
+  /** 挂起 id 铸造接缝（P6 §4）：daemon 级单调 `p<n>`（跨会话全局唯一——回执端点寻址键），
+   *  会话注册挂起时调用；铸造权留 daemon（网络寻址面职责，spec §4 裁定） */
+  mintPid: () => string;
   /** 模型切换器（G10-C1b）：daemon 装配为 ModelSwitcher 时注入（全会话共享同一实例——切换 daemon 级生效） */
   modelSwitcher?: ModelSwitcher;
+}
+
+/** 挂起表条目（P6 §4 下沉,原 daemon-wire 资产）：kind 判别联合；resolve 即回执值（interrupt/reset
+ *  以 deny/dismissed 回填,TUI approval.ts 先例）。sessionId 出模型——条目恒在所属会话表内,同会话
+ *  寻址自明;wire 帧（ApprovalFrame/AskFrame）由会话组帧时携带自身 id */
+export type PendingEntry =
+  | { kind: 'approval'; req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }
+  | { kind: 'ask'; req: AskUserRequest; resolve: (a: AskUserAnswer) => void };
+
+/** snapshot 挂起段行（G5/P6 后由会话自产）：kind 判别与挂起表同源（approval/ask）；pid 为 daemon 级
+ *  铸造票据——跨会话卡恢复（GUI 重启/刷新后重放挂起面）的寻址键；req=挂起表 entry.req 直序列化
+ *  （ApprovalRequest/AskUserRequest 字面）——GUI reseed 重建卡的内容面（连接层 pid 去重拦了重发帧,
+ *  snapshot 是刷新后卡内容的唯一来源） */
+export interface SnapshotPendingRow {
+  pid: string;
+  kind: 'approval' | 'ask';
+  req: unknown;
 }
 
 /** 会话权限模式（G10-C1b）：dontAsk/manual 为 createRuntime 权限态；plan 为提交通道标记
@@ -130,7 +147,7 @@ export class SessionRuntime {
   readonly root: string;
   private readonly opts: SessionRuntimeOpts;
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
-  private runtimeImpl: TuiRuntime;
+  private runtimeImpl: KernelRuntime;
   private current?: CurrentRun;
   /** 事件环形缓冲（补发窗口）：pump 单点写入，连接建立即逐会话补发；帧自带 seq+sessionId */
   private readonly frames: EventFrame[] = [];
@@ -144,6 +161,10 @@ export class SessionRuntime {
    *  journal 行（seg/seg-update/run-open/truncate;chain/compact/runmeta 行为既有路径）——
    *  collector 与 G14.213b 第二 jsonl 退役,装载走 attach 位 reduceV2Rows */
   private kernel: SessionKernel;
+  /** 挂起表（P6 §4 下沉,spec 裁定「挂起是会话事件,不随连接生灭」）：approval/ask 未决条目,
+   *  pid=daemon 铸造票据（opts.mintPid）;resolve 后即删（重复回执 404 判据）。daemon 保留网络
+   *  寻址（pid 铸造/回执路由/帧传输）与本表只读外窥（快照合并/WS 重发） */
+  private readonly pending = new Map<string, PendingEntry>();
   /** G14.17 run 内 usage/ctx 末值（pump 旁路捕获，run 收尾落旁车 meta 后随下次 submit 清零） */
   private runUsage?: { total: number; cache: number; prompt: number };
   private runCtxUsed?: number;
@@ -218,24 +239,96 @@ export class SessionRuntime {
     this.kernel.steerRestore(items);
   }
 
-  /** 装配单点：与 TUI 同一 createRuntime（mode 缺省 dontAsk；G4 起 manual 会话透传模式 + 两接缝——
-   *  setAsker 装配形态由 createRuntime 既有单点承担（manual && onApproval 才挂），session 层不重造）；
-   *  onEvent 接本会话泵——reset 复用同点换新。P5:步边界穿插源挂内核取走口（steerSource 可换插缝） */
-  private assemble(): TuiRuntime {
-    const rt = createRuntime({
+  /** 装配单点：与 TUI 同一 createKernelRuntime（mode 缺省 dontAsk）——onEvent 接本会话泵,reset 复用
+   *  同点换新。P6 §4 挂起接缝无条件注入（守卫在 suspend* 内）：manual 审批走本会话挂起表
+   *  （isManual 判定),ask_question 任意档挂起（G14.93 裁定）,ghost 窗（isAborted）直接回落不入表 */
+  private assemble(): KernelRuntime {
+    const rt = createKernelRuntime({
       root: this.opts.root,
       model: this.opts.model,
       mode: this.currentMode === 'plan' ? 'dontAsk' : this.currentMode,
       onEvent: (e) => this.pump(e),
-      ...(this.opts.asker !== undefined ? { onApproval: this.opts.asker } : {}),
-      ...(this.opts.onAskUser !== undefined ? { onAskUser: this.opts.onAskUser } : {}),
+      onApproval: (req) => this.suspendApproval(req),
+      onAskUser: (req) => this.suspendAsk(req),
     });
     rt.harness.steerSource = () => this.kernel.steerDrain();
     return rt;
   }
 
+  // ---- 挂起表（P6 §4 下沉）：注册/回执/回填/外窥,daemon 只做寻址与传输 ----
+
+  /** manual 审批挂起（guard asker 注入位）：dontAsk 自动放行语义由 guard 前置（不到这里）,到这里的
+   *  非 manual 视为拒绝兜底;ghost（run 已中止——interrupt/reset/delete 的 denyPending 回填发生在
+   *  abort 时点,其后的迟到 asker 调用即幽灵）直接 deny 不入表不广播（G14.10） */
+  private suspendApproval(req: ApprovalRequest): Promise<ApprovalDecision> {
+    if (this.isAborted() || !this.isManual()) return Promise.resolve('deny');
+    return new Promise((resolve) => {
+      const pid = this.opts.mintPid();
+      this.pending.set(pid, { kind: 'approval', req, resolve });
+      const frame: ApprovalFrame = { kind: 'approval', sessionId: this.id, pid, req };
+      this.opts.broadcast(frame);
+    });
+  }
+
+  /** 问询挂起（G14.93 用户裁定：ask_question 是模型主动问用户,任何权限档都必须等真实回答,不可静默
+   *  跳过）;ghost 窗直接 dismissed 不入表（同上） */
+  private suspendAsk(req: AskUserRequest): Promise<AskUserAnswer> {
+    if (this.isAborted()) return Promise.resolve({ type: 'dismissed' });
+    return new Promise((resolve) => {
+      const pid = this.opts.mintPid();
+      this.pending.set(pid, { kind: 'ask', req, resolve });
+      const frame: AskFrame = { kind: 'ask', sessionId: this.id, pid, req };
+      this.opts.broadcast(frame);
+    });
+  }
+
+  /** 审批回执（kind 判别——approval 回执打到 ask 挂起 = false→HTTP 404）：删表→resolve→notice 入
+   *  转录三面（G4 裁定 1 尾项：粗归档可见,不发明新事件型） */
+  resolvePendingApproval(pid: string, decision: ApprovalDecision): boolean {
+    const entry = this.pending.get(pid);
+    if (entry === undefined || entry.kind !== 'approval') return false;
+    this.pending.delete(pid);
+    entry.resolve(decision);
+    this.pump({ type: 'notice', text: `approval ${pid} resolved: ${decision}`, ts: Date.now() });
+    return true;
+  }
+
+  /** 问询回执（同上,ask 判别） */
+  resolvePendingAsk(pid: string, answer: AskUserAnswer): boolean {
+    const entry = this.pending.get(pid);
+    if (entry === undefined || entry.kind !== 'ask') return false;
+    this.pending.delete(pid);
+    entry.resolve(answer);
+    this.pump({ type: 'notice', text: `ask ${pid} answered`, ts: Date.now() });
+    return true;
+  }
+
+  /** 全部未决回填（G4 裁定 3：interrupt/reset=deny 回填——TUI approval.ts 先例）：approval→deny、
+   *  ask→dismissed 并清表;不发 notice（中止路径的观察行由 run 自身事件面承载） */
+  denyPending(): void {
+    for (const entry of this.pending.values()) {
+      if (entry.kind === 'approval') entry.resolve('deny');
+      else entry.resolve({ type: 'dismissed' });
+    }
+    this.pending.clear();
+  }
+
+  /** 快照挂起段（G5）：`{pid,kind,req}` 行列,daemon handleSnapshot 直并入 snapshot 载荷 */
+  pendingSnapshot(): SnapshotPendingRow[] {
+    return [...this.pending.entries()].map(([pid, entry]) => ({ pid, kind: entry.kind, req: entry.req }));
+  }
+
+  /** WS 重连重发面（G4 裁定 4）：挂起帧与首播同形同构（daemon 建连序逐会话收集直发） */
+  pendingFrames(): Array<ApprovalFrame | AskFrame> {
+    return [...this.pending.entries()].map(([pid, entry]) =>
+      entry.kind === 'approval'
+        ? { kind: 'approval' as const, sessionId: this.id, pid, req: entry.req }
+        : { kind: 'ask' as const, sessionId: this.id, pid, req: entry.req },
+    );
+  }
+
   /** 运行时本体外窥（T2 attach 播种/T5 扩展消费；harness 公开面只在 teardown 消费） */
-  get runtime(): TuiRuntime {
+  get runtime(): KernelRuntime {
     return this.runtimeImpl;
   }
 
@@ -668,7 +761,7 @@ export class SessionRuntime {
   }
 
   /** 内脏收口单点（reset 的旧运行时换新后同序收口） */
-  private async disposeRuntime(rt: TuiRuntime): Promise<void> {
+  private async disposeRuntime(rt: KernelRuntime): Promise<void> {
     rt.harness.tasks.stopAll();
     await rt.harness.pipeline.drain();
     await rt.harness.mcpClose();

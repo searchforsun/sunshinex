@@ -3,11 +3,11 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { SessionRuntime } from './session';
-import type { SnapshotPendingRow } from './session';
 import type { Result } from '../result';
-import { parseAskAnswer, urlOf, type DaemonFrame, type PendingEntry } from './daemon-wire';
+import { parseAskAnswer, urlOf, type DaemonFrame } from './daemon-wire';
+import type { AskUserAnswer } from '../types';
 import type { ModelAdapter } from '../model/adapter';
-import { createRuntime } from '../tui/runtime';
+import { createKernelRuntime } from '../session/runtime';
 
 /** sidecar 问询墙钟上限（fork/ask 旁车一次性调用，与主链长任务预算解耦） */
 const FORK_ABORT_TIMEOUT_MS = 180_000;
@@ -39,12 +39,13 @@ export interface SessionHandlerIo {
   sessions: Map<string, SessionRuntime>;
   denyPendingFor(sessionId: string): void;
   broadcastFrame(frame: DaemonFrame): void;
-  pending: Map<string, PendingEntry>;
   model: ModelAdapter;
   attach(id: string, journalId: string): Result<{ sessionId: string }>;
   createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }>;
   defaultScratchRoot(): string;
-  noticePending(entry: PendingEntry, text: string): void;
+  /** 挂起回执路由（P6 §4：表在会话）——daemon 迭代会话表寻址,命中 false 即 404 */
+  resolveApproval(pid: string, decision: 'allow' | 'always' | 'deny'): boolean;
+  resolveAsk(pid: string, answer: AskUserAnswer): boolean;
 }
 
 export async function handleSubmit(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
@@ -334,10 +335,8 @@ export async function handleSessionMode(io: SessionHandlerIo, req: http.Incoming
 export function handleSnapshot(io: SessionHandlerIo, res: http.ServerResponse, id: string | undefined): void {
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  const pending: SnapshotPendingRow[] = [...io.pending.entries()]
-    .filter(([, entry]) => entry.sessionId === session.id)
-    .map(([pid, entry]) => ({ pid, kind: entry.kind, req: entry.req }));
-  io.send(res, 200, { ...session.snapshotResponse(), pending });
+  // P6 §4:挂起段由会话自产（表下沉后快照合并零过滤）
+  io.send(res, 200, { ...session.snapshotResponse(), pending: session.pendingSnapshot() });
 }
 
 export async function handleBoardReview(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
@@ -432,14 +431,11 @@ export async function handleApprovalReply(io: SessionHandlerIo, req: http.Incomi
     io.send(res, 400, { error: 'decision must be one of: allow, always, deny' });
     return;
   }
-  const entry = io.pending.get(pid);
-  if (entry === undefined || entry.kind !== 'approval') {
+  // P6 §4:回执路由到会话表(命中 false=未知 pid/kind 错配/已回执删除 → 404);notice 入转录在会话面
+  if (!io.resolveApproval(pid, decision)) {
     io.send(res, 404, { error: 'unknown pending approval' });
     return;
   }
-  io.pending.delete(pid);
-  entry.resolve(decision);
-  io.noticePending(entry, `approval ${pid} resolved: ${decision}`);
   io.send(res, 200, { ok: true });
 }
 
@@ -454,14 +450,10 @@ export async function handleAskReply(io: SessionHandlerIo, req: http.IncomingMes
     io.send(res, 400, { error: 'invalid answer: expected {type:"selected",labels} | {type:"custom",text} | {type:"dismissed"}' });
     return;
   }
-  const entry = io.pending.get(pid);
-  if (entry === undefined || entry.kind !== 'ask') {
+  if (!io.resolveAsk(pid, answer)) {
     io.send(res, 404, { error: 'unknown pending ask' });
     return;
   }
-  io.pending.delete(pid);
-  entry.resolve(answer);
-  io.noticePending(entry, `ask ${pid} answered`);
   io.send(res, 200, { ok: true });
 }
 
@@ -486,7 +478,7 @@ export async function handleSessionBtw(io: SessionHandlerIo, req: http.IncomingM
   writeSessionMeta(dataDir, forkId, { side: true });
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), FORK_ABORT_TIMEOUT_MS);
-  const rt = createRuntime({ root: session.root, model: io.model, onEvent: () => {} });
+  const rt = createKernelRuntime({ root: session.root, model: io.model, onEvent: () => {} });
   try {
     rt.harness.context.appendInstructionLine(question);
     const outcome = await rt.runTask(question, { signal: abort.signal });

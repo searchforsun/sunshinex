@@ -3,7 +3,7 @@ import * as path from 'path';
 import { t } from '../i18n';
 import { resolveDataDir } from '../config/data-dir';
 import { listSessions, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
-import { createRuntime } from '../tui/runtime';
+import { createKernelRuntime } from '../session/runtime';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { renderMd } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
@@ -293,7 +293,7 @@ export async function btwFlow(ctrl: SessionController, question: string): Promis
   }
   writeSessionMeta(dataDir, forkId, { side: true });
   ctrl.pushMsg('system', t('⪽ side session: thinking on a forked side chain…', '⪽ 辅助会话：fork 旁路思考中…'));
-  const rt = createRuntime({ root: ctrl.root, model: ctrl.runtime.harness.model, onEvent: () => {} });
+  const rt = createKernelRuntime({ root: ctrl.root, model: ctrl.runtime.harness.model, onEvent: () => {} });
   try {
     rt.harness.context.appendInstructionLine(question);
     const outcome = await rt.runTask(question);

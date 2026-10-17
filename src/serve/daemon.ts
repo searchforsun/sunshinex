@@ -9,7 +9,7 @@ import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
-import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
+import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { SessionJournal, parseJournalFile, reduceJournal, sessionsDir } from "../tui/session-journal";
 import { reduceSteerRows, reduceV2Rows } from '../session/v2log';
 import { listCommands } from './commands';
@@ -42,11 +42,9 @@ import {
   safeDecode,
 } from './daemon-static';
 import {
-  pendingFrameOf,
   urlOf,
   LOOPBACK_HOST,
   type DaemonFrame,
-  type PendingEntry,
 } from './daemon-wire';
 
 export { LOOPBACK_HOST } from './daemon-wire';
@@ -149,10 +147,8 @@ export class GuiDaemon {
   private readonly staticRoot: string;
   /** 静态面探测结果（start 时一次缓存）：index.html 在场才挂静态，缺场保持 API-only（404 hint 原样） */
   private staticReady = false;
-  /** 挂起表（G4 裁定 1：daemon 级单表，entry 携 sessionId）：pid=daemon 级单调铸造 `p<n>`——guard 的
-   *  ap-N 是会话内序（每会话独立 guard 实例），跨会话可撞，全局唯一由 daemon 单点保证；resolve 后即删
-   *  （重复回执 404 的判据） */
-  private readonly pending = new Map<string, PendingEntry>();
+  /** 挂起 id 铸造计数（P6 §4：表下沉会话后 daemon 只留 pid 单调铸造——跨会话全局唯一的回执寻址键;
+   *  guard 的 ap-N 是会话内序会撞,全局唯一由本单点保证） */
   private pendingSeq = 0;
   /** pty 面（G8b T3）：daemon 持 manager（serve 分层——session.ts 不引 pty，会话回收由 daemon
    *  在 delete/teardown 两处 killAllFor 插杀）；ptyId 铸造 `pty-<n>` 进程内单调、永不复用（防
@@ -208,11 +204,9 @@ export class GuiDaemon {
     }
     this.sessionSeq += 1;
     const id = `s${this.sessionSeq}`;
-    // G5 ghost 硬化：asker/onAskUser 闭包经 session 后置引用（构造即赋值，闭包执行期才解引用）——
-    // 注册挂起前查该会话 run 已中止：interrupt/reset/delete 的 denyPendingFor 回填发生在 abort 时点，
-    // abort 之后才到达的 ask 是 ghost（表已清、无人再回填）——直接 deny/dismissed 不入表不广播
-    let session: SessionRuntime | undefined;
-    session = new SessionRuntime({
+    // P6 §4 挂起表下沉会话:daemon 只注入网络寻址两接缝(mintPid/broadcast)——注册/守卫(ghost 硬化
+    // isAborted/manual 档位判定)/组帧/回执全部在 SessionRuntime 挂起面(suspendApproval/suspendAsk)
+    const session = new SessionRuntime({
       id,
       root: abs,
       model: this.model,
@@ -223,26 +217,10 @@ export class GuiDaemon {
       },
       broadcast: (frame) => this.broadcastFrame(frame),
       ...(opts?.mode === 'manual' ? { mode: 'manual' as const } : {}),
-      // G14.90/G14.93 两接缝无条件注入;档位判定在闭包内——pill 切 manual 即生效,不依赖创建时快照。
-      // asker(审批)按档:dontAsk 自动放行语义由 guard 前置(不到这里),到这里的非 manual 视为拒绝兜底。
-      // onAskUser 恒挂起(G14.93 用户裁定):ask_question 是模型主动问用户,任何权限档都必须等真实回答,
-      // 不可静默跳过;ghost(run 已中止)仍直接 dismissed 不入表
-      asker: (req: ApprovalRequest): Promise<ApprovalDecision> =>
-        session === undefined || session.isAborted() || !session.isManual()
-          ? Promise.resolve('deny')
-          : new Promise((resolve) => {
-              const pid = this.nextPendingId();
-              this.pending.set(pid, { kind: 'approval', sessionId: id, req, resolve });
-              this.broadcastFrame({ kind: 'approval', sessionId: id, pid, req });
-            }),
-      onAskUser: (req: AskUserRequest): Promise<AskUserAnswer> =>
-        session === undefined || session.isAborted()
-          ? Promise.resolve({ type: 'dismissed' })
-          : new Promise((resolve) => {
-              const pid = this.nextPendingId();
-              this.pending.set(pid, { kind: 'ask', sessionId: id, req, resolve });
-              this.broadcastFrame({ kind: 'ask', sessionId: id, pid, req });
-            }),
+      mintPid: () => {
+        this.pendingSeq += 1;
+        return `p${this.pendingSeq}`;
+      },
     });
     this.sessions.set(id, session);
     this.active = id;
@@ -292,36 +270,31 @@ export class GuiDaemon {
     return this.active;
   }
 
-  /** 挂起 id 铸造单点（G4）：daemon 级单调 `p<n>`（全局唯一，见 pending 字段注） */
-  private nextPendingId(): string {
-    this.pendingSeq += 1;
-    return `p${this.pendingSeq}`;
-  }
-
-  /** 会话维挂起回填（G4 裁定 3：interrupt/reset=deny 回填——TUI approval.ts 先例）：该会话全部未决
-   *  approval→deny、ask→dismissed 并清表；不发 notice（中止路径的观察行由 run 自身事件面承载） */
+  /** 会话维挂起回填（G4 裁定 3：interrupt/reset=deny 回填）：P6 §4 表在会话——薄委托 denyPending
+   *  （approval→deny、ask→dismissed 清表,不发 notice）;未知会话静默（与旧全表过滤等价） */
   private denyPendingFor(sessionId: string): void {
-    for (const [pid, entry] of this.pending) {
-      if (entry.sessionId !== sessionId) continue;
-      this.pending.delete(pid);
-      if (entry.kind === 'approval') entry.resolve('deny');
-      else entry.resolve({ type: 'dismissed' });
-    }
+    this.sessions.get(sessionId)?.denyPending();
   }
 
-  /** 全表回填（close 序步骤 0，同构裁定 3——分会话 denyPendingFor 的全表形态） */
+  /** 全表回填（close 序步骤 0，同构裁定 3——分会话 denyPending 的全表形态） */
   private denyAllPending(): void {
-    for (const [pid, entry] of this.pending) {
-      this.pending.delete(pid);
-      if (entry.kind === 'approval') entry.resolve('deny');
-      else entry.resolve({ type: 'dismissed' });
-    }
+    for (const session of this.sessions.values()) session.denyPending();
   }
 
-  /** 回执落档单点（G4 裁定 1 尾项）：notice 事件帧经该会话 pump——入转录/环形缓冲/广播三面（粗归档
-   *  可见，不发明新事件型）；会话已不在（理论上不可达——挂起条目随会话存续）静默跳过 */
-  private noticePending(entry: PendingEntry, text: string): void {
-    this.sessions.get(entry.sessionId)?.pump({ type: 'notice', text, ts: Date.now() });
+  /** 挂起回执路由（P6 §4）：pid 无会话前缀（`p<n>` 全局票据）——迭代各会话表寻址;命中 false 即
+   *  404（未知 pid / kind 错配 / 已回执删除） */
+  private resolveApproval(pid: string, decision: ApprovalDecision): boolean {
+    for (const session of this.sessions.values()) {
+      if (session.resolvePendingApproval(pid, decision)) return true;
+    }
+    return false;
+  }
+
+  private resolveAsk(pid: string, answer: AskUserAnswer): boolean {
+    for (const session of this.sessions.values()) {
+      if (session.resolvePendingAsk(pid, answer)) return true;
+    }
+    return false;
   }
 
   /** 泵广播面（daemon 级单点）：帧序列化一次逐连接 send——同一连接的帧恒按 pump 调用序到达（ws
@@ -402,8 +375,8 @@ export class GuiDaemon {
     ws.on('close', () => this.wsClients.delete(ws));
     for (const session of this.sessions.values()) {
       for (const f of session.bufferedFrames()) ws.send(JSON.stringify(f));
+      for (const frame of session.pendingFrames()) ws.send(JSON.stringify(frame)); // 挂起重发(P6 §4:表在会话)
     }
-    for (const [pid, entry] of this.pending) ws.send(JSON.stringify(pendingFrameOf(pid, entry)));
   }
 
   /** pty 专用 WS 连接生命周期（G8b T3，帧协议逐字 spec §终端目录）：
@@ -1068,12 +1041,12 @@ export class GuiDaemon {
       sessions: this.sessions,
       denyPendingFor: (sessionId) => this.denyPendingFor(sessionId),
       broadcastFrame: (frame) => this.broadcastFrame(frame),
-      pending: this.pending,
       model: this.model,
       attach: (id, journalId) => this.attach(id, journalId),
       createSession: (root, opts) => this.createSession(root, opts),
       defaultScratchRoot: () => this.defaultScratchRoot(),
-      noticePending: (entry, text) => this.noticePending(entry, text),
+      resolveApproval: (pid, decision) => this.resolveApproval(pid, decision),
+      resolveAsk: (pid, answer) => this.resolveAsk(pid, answer),
     };
   }
 

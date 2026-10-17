@@ -1,7 +1,7 @@
 /** 模型适配层：统一推理接口，多后端可插拔。H4 拆件后本件收编：契约类型（ModelAdapter/UsageHooks）、
  *  LLMConfig、StubAdapter、OpenAIAdapter（传输+编排+effort 探测状态机+SSE 流式重组）、ScriptedAdapter
  *  脚本 DSL；effort 档位原语/usage 三提取器/wire 序列化/三档路由已下沉 effort.ts/usage.ts/wire.ts/router.ts，
- *  此处按原路径再导出（对齐 tui/runtime.ts RunOutcome 注释先例），既有 './adapter' 导入点零改动 */
+ *  此处按原路径再导出（对齐 session/runtime.ts RunOutcome 注释先例），既有 './adapter' 导入点零改动 */
 import { ReasoningEffort, ChatRequest, ChatResult, ToolCallSpec} from '../types';
 import { t } from '../i18n';
 import { contextWindowEnv } from '../config/termination-config';
