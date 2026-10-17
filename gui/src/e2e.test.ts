@@ -657,7 +657,8 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       const journals = fs
         .readdirSync(path.join(resolveDataDir(env.root), 'sessions'))
         .filter((f) => f.endsWith('.jsonl'));
-      expect(journals.length).toBe(2); // journal 保留(T2 裁定:磁盘档案非 daemon 生命周期资产)
+      // G14.213b 起同目录并存 <id>.transcript.jsonl(转录持久化)——journal 断言面只认会话档
+      expect(journals.filter((f) => !f.endsWith('.transcript.jsonl')).length).toBe(2); // journal 保留(T2 裁定:磁盘档案非 daemon 生命周期资产)
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
