@@ -70,6 +70,7 @@ import { t } from '../i18n';
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
  *  App 侧经 ref 转投免闭包陈旧 */
+import { useQueue } from './chat/use-queue';
 import { ToolEntryView, toolMdInfo } from './chat/ToolEntry';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
@@ -1595,17 +1596,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   // 贴底离开无存档=照旧跳底
   const scrollRestoreRef = useRef<number | null>(peekScrollPos(archiveKey));
   const chatStickRef = useRef(scrollRestoreRef.current === null);
-  /** 排队插话 chips(G10-C4;snapshot.queued 回显,撤回即本地移除) */
-  const [queued, setQueued] = useState<Array<{ seq: number; text: string }>>([]);
-  /** G14.87 队列条折叠:折叠只留摘要行,不推高 dock(正文让位) */
-  const [queueFolded, setQueueFolded] = useState(false);
-  /** G14.83 队列操作后同步 daemon 快照(seq 会重排) */
-  const refreshQueued = useCallback((): void => {
-    conn.sessionSnapshot(sessionId).then(
-      (s2) => setQueued(s2.queued ?? []),
-      () => {},
-    );
-  }, [conn, sessionId]);
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
@@ -1689,25 +1679,15 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   useEffect(() => {
     if (root !== undefined && root !== '' && root !== 'default') void loadWorkspaceFiles();
   }, [loadWorkspaceFiles, root]);
-  /** G14.83 暂停当前轮并立即发送本条:撤队列→中断当前 run→等 idle→作为新任务提交。
-   *  G14.89 本地回显用户气泡(与 submitText 同款)——submit 无回显帧时气泡不缺席 */
-  const pauseAndSend = useCallback(
-    async (q: { seq: number; text: string }): Promise<void> => {
-      setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
-      await conn.cancelSteer(sessionId, q.seq).catch(() => {}); // 撤队列失败不阻断:条目已本地移除,重复撤幂等
-      await conn.sessionInterrupt(sessionId).catch(() => {}); // 中断失败不阻断:下方 snapshot 等 idle 兜底,仍未停则 submit 409 倒 error 条
-      for (let i = 0; i < 20; i += 1) {
-        const snap = await conn.sessionSnapshot(sessionId).catch(() => undefined);
-        if (snap !== undefined && snap.status === 'idle') break;
-        await new Promise((r) => setTimeout(r, 150));
-      }
-      setChat((c) => appendUserMessage(c, q.text));
-      await conn.sessionSubmit(sessionId, expandFileRefs(q.text, root, resolveFileRef)).catch((err: unknown) => {
-        // 提交失败必须可见(409=上一 run 未及退出/网络失败)——静默即「暂停并发送」的消息无声丢失
-        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-      });
-    },
-    [conn, sessionId, root, resolveFileRef],
+  /** 队列面 hook(D32 批B):排队 chips 状态/折叠/refreshQueued/pauseAndSend——会话流可见化与 @ 展开
+   *  依赖注入（resolveFileRef 此处已完成声明）；行为零变化（Chat.pause-send.test 为锚） */
+  const { queued, setQueued, queueFolded, setQueueFolded, refreshQueued, pauseAndSend } = useQueue(
+    conn,
+    sessionId,
+    root,
+    resolveFileRef,
+    expandFileRefs,
+    setChat,
   );
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
   const [cmdData, setCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
