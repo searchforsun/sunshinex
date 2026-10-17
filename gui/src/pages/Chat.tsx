@@ -70,6 +70,7 @@ import { t } from '../i18n';
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
  *  App 侧经 ref 转投免闭包陈旧 */
+import { useCommandPalette } from './chat/use-command-palette';
 import { useQueue } from './chat/use-queue';
 import { ToolEntryView, toolMdInfo } from './chat/ToolEntry';
 export { ToolEntryView } from './chat/ToolEntry';
@@ -1689,14 +1690,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     expandFileRefs,
     setChat,
   );
-  /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
-  const [cmdData, setCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
-  const [cmdActive, setCmdActive] = useState(0);
-  /** G14.95 技能命令清单(会话维):/ 面板混入技能项;中间 / 只弹技能 */
-  const [skillCmds, setSkillCmds] = useState<Array<{ id: string; description: string }>>([]);
-  useEffect(() => {
-    (conn.skillCommands?.(sessionId) ?? Promise.resolve([])).then(setSkillCmds, () => setSkillCmds([]));
-  }, [conn, sessionId]);
+  const { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds } = useCommandPalette(conn, sessionId);
   /** G14.95 slash 面板令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能) */
   const slashItemsFor = (token: { query: string; atStart: boolean } | null): CmdItem[] => {
     if (token === null) return [];
@@ -2151,10 +2145,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     };
   }, []);
 
-  /** 命令面板数据源(G10-C4):GET /commands 单点(清单/描述/supported) */
-  useEffect(() => {
-    conn.commands().then(setCmdData, () => setCmdData(null));
-  }, [conn]);
 
   /** G14.87 dock 高度实测驱动正文底部 padding:队列展开/textarea 增行使 dock 长高,
    *  固定 padding(132px)下 dock 会盖住正文尾行——ResizeObserver 把实测高度写进 .chat
