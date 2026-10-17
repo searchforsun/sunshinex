@@ -79,10 +79,10 @@ async function withDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>):
 }
 
 /** 手工 journal 造档（SessionJournal 既有导出）：header 建档 + 给定事件逐条落盘，回档 id 与文件路径 */
-function makeJournal(root: string, events: JournalEvent[]): { id: string; file: string } {
+function makeJournal(root: string, events: JournalEvent[], version = 1): { id: string; file: string } {
   const dataDir = resolveDataDir(root);
   const j = new SessionJournal(dataDir);
-  j.start();
+  j.start(version);
   const id = j.currentId!;
   for (const e of events) j.log(e);
   return { id, file: path.join(sessionsDir(dataDir), id + '.jsonl') };
@@ -188,7 +188,7 @@ test('③ GET /sessions?root=：列 journal（id/updatedAt/firstUser 摘要）�
   });
 });
 
-test('④ POST /session/:id/attach：播种链与转录；submit 续落 chain 行（不落 msg）；teardown seal snapshots；未知 journalId 400 / 双挂 409', { timeout: 30_000 }, async () => {
+test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；submit 续落 chain+seg 行（不落 msg）；teardown seal snapshots；未知 journalId 400 / 双挂 409', { timeout: 30_000 }, async () => {
   await withDaemon(
     new ScriptedAdapter(['{"phase":"act","tool":"write","input":{"path":"a.txt","content":"new"}}', '{"done":true,"reply":"第二轮完成"}']),
     async (ctx) => {
@@ -196,13 +196,19 @@ test('④ POST /session/:id/attach：播种链与转录；submit 续落 chain �
       const root = path.join(tmp, 'root-att');
       fs.mkdirSync(root, { recursive: true });
       fs.writeFileSync(path.join(root, 'a.txt'), 'old', 'utf8');
-      // 手工 journal：header + user + chain + msg（user/assistant 两行）
-      const { id: jid, file } = makeJournal(root, [
-        { t: 'user', text: '先前的任务' },
-        { t: 'chain', steps: [{ step: 1, action: 'task', observation: '先前的任务' }] },
-        { t: 'msg', item: { role: 'user', text: '先前的任务', ts: 1, seq: 1 } },
-        { t: 'msg', item: { role: 'assistant', text: '先前的答复', ts: 2, seq: 2 } },
-      ]);
+      // 手工 v2 journal：header + user + chain + seg 面（user/tool/assistant）+ msg 两行（v1 残留形态——装载忽略）
+      const { id: jid, file } = makeJournal(
+        root,
+        [
+          { t: 'user', text: '先前的任务' },
+          { t: 'chain', steps: [{ step: 1, action: 'task', observation: '先前的任务' }] },
+          { t: 'seg', kind: 'user', md: '> 先前的任务', ts: 10, seq: 1 },
+          { t: 'seg', kind: 'assistant', md: '先前的答复', ts: 20, seq: 2 },
+          { t: 'msg', item: { role: 'user', text: '先前的任务', ts: 1, seq: 1 } },
+          { t: 'msg', item: { role: 'assistant', text: '先前的答复', ts: 2, seq: 2 } },
+        ],
+        2,
+      );
       const linesBefore = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.length > 0).length;
 
       const sid = await ctx.newSession(root);
@@ -222,11 +228,11 @@ test('④ POST /session/:id/attach：播种链与转录；submit 续落 chain �
       const again = await fetch(`${base}/session/${sid}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
       assert.equal(again.status, 409, '同会话二次 attach → 409');
 
-      // 转录播种：snapshot 的 messages 含播种条（user `> ` 引用块 + assistant 原文）
+      // 转录装载：snapshot 的 messages = seg 面重放（user `> ` 引用块 + assistant 原文；msg 行不入转录面）
       const snap = (await (await fetch(`${base}/session/${sid}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
       const mds = snap.messages.map((m) => m.md);
-      assert.ok(mds.includes('> 先前的任务'), 'user 播种条（引用块形态）');
-      assert.ok(mds.includes('先前的答复'), 'assistant 播种条');
+      assert.ok(mds.includes('> 先前的任务'), 'user 装载条（seg 行,引用块形态）');
+      assert.ok(mds.includes('先前的答复'), 'assistant 装载条（seg 行）');
       // 链播种：主链含既有 task 行
       const chainObs = daemon.get(sid)!.runtime.harness.context.chainView().map((s) => s.observation);
       assert.ok(chainObs.includes('先前的任务'), '主链播种（restoreSession 直注入）');
@@ -243,7 +249,12 @@ test('④ POST /session/:id/attach：播种链与转录；submit 续落 chain �
       assert.equal(newSteps[0].step, 2, '步号续排（restoreSession 按链内最大步号续号，播种行 step=1）');
       assert.ok(newSteps.some((s) => s.observation.includes('write')), 'write 调用行在档');
       assert.ok(newSteps.some((s) => s.action === 'reply' && s.observation === '第二轮完成'), 'reply 行在档');
-      assert.equal(events.filter((e) => e.t === 'msg').length, 2, 'daemon 侧只落 chain——msg 行不续写');
+      assert.equal(events.filter((e) => e.t === 'msg').length, 2, 'daemon 侧只落 chain+seg——msg 行不续写');
+      // v2 段面续落：本轮 seg 行在档（user 回显 + run-open + 终答闭合段）
+      const segs = events.flatMap((e) => (e.t === 'seg' ? [e] : []));
+      assert.ok(segs.some((s) => s.kind === 'user' && s.md === '> 再跑一轮'), 'user 段行续落');
+      assert.ok(segs.some((s) => s.kind === 'assistant' && s.md === '第二轮完成'), '终答闭合段行续落');
+      assert.ok(events.some((e) => e.t === 'run-open'), 'run-open 行在档');
 
       // teardown → journal seal（write 影子快照清单以 snapshots 事件尾追；现场形态=drain 非空才落）
       await daemon.get(sid)!.teardown();
@@ -277,6 +288,7 @@ test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文�
     assert.ok(fs.existsSync(file), 'sessions/ 出现新档 jsonl');
     const events = parseJournalFile(file).events;
     assert.equal(events[0]?.t, 'header', '档首 header');
+    assert.equal((events[0] as { v?: number }).v, 2, 'daemon 出生档 header v=2（段级词汇）');
     const chainSteps = events.flatMap((e) => (e.t === 'chain' ? e.steps : []));
     assert.ok(chainSteps.some((s) => s.action === 'task' && s.observation === '跑一轮'), 'task 行在档（observation=goal）');
     assert.ok(chainSteps.some((s) => s.action === 'reply' && s.observation === '首轮完成'), 'reply 行在档');
@@ -290,39 +302,44 @@ test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文�
     const s2 = await ctx.newSession(root);
     assert.notEqual(s2, s1, '第二会话 id 不同');
 
-    // attach 重开：s2 挂 s1 的档 → 转录 chain 派生（daemon 档无 msg——Ruling 5 兜底路径）
+    // attach 重开：s2 挂 s1 的档 → 转录 seg 面重放（v2 装载——首轮的 user/run-open/终答段行在档）
     const att = await fetch(`${base}/session/${s2}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
     assert.equal(att.status, 200, 'attach 重开 200（s2 出生 journal 惰性未建档——守卫不拦）');
     const snap = (await (await fetch(`${base}/session/${s2}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
     const mds = snap.messages.map((m) => m.md);
-    assert.ok(mds.includes('> 跑一轮'), 'chain 派生 user 条（`> <goal>` 引用块，task 行派生）');
-    assert.ok(mds.includes('首轮完成'), 'chain 派生 assistant 条（reply 行派生）');
+    assert.ok(mds.includes('> 跑一轮'), 'seg 重放 user 条（`> <goal>` 引用块）');
+    assert.ok(mds.includes('首轮完成'), 'seg 重放 assistant 条（终答闭合段）');
+    assert.ok(snap.messages.some((m) => m.kind === 'run'), 'run 条在档（run-open 行重放;runmeta 对位）');
   });
 });
 
-test('⑥ attach 播种去重（Ruling 5）：TUI journal msg 行在场 → 转录只含 msg 派生（chain 行不重复派生，长度断言）', async () => {
+test('⑥ attach v2 装载面分离：msg 行不入转录（v1 遗留形态忽略）；转录只认 seg 面', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
     const { base, tmp } = ctx;
     const root = path.join(tmp, 'root-dedup');
     fs.mkdirSync(root, { recursive: true });
-    // 手工 TUI journal：msg 行在场（user/assistant）+ chain 行（task/reply）——msg 优先，chain 派生跳过
-    const { id: jid } = makeJournal(root, [
-      { t: 'user', text: '旧任务' },
-      { t: 'chain', steps: [
-        { step: 1, action: 'task', observation: '旧任务' },
-        { step: 2, action: 'reply', observation: '链内答复（不应派生）' },
-      ] },
-      { t: 'msg', item: { role: 'user', text: '旧任务', ts: 1, seq: 1 } },
-      { t: 'msg', item: { role: 'assistant', text: '旧答复', ts: 2, seq: 2 } },
-    ]);
+    // v2 档：msg 行（TUI 遗留形态）+ chain 行 + seg 面——装载只认 seg 面,msg/chain 不产转录条
+    const { id: jid } = makeJournal(
+      root,
+      [
+        { t: 'chain', steps: [
+          { step: 1, action: 'task', observation: '旧任务' },
+          { step: 2, action: 'reply', observation: '链内答复（不应派生）' },
+        ] },
+        { t: 'msg', item: { role: 'user', text: '旧任务', ts: 1, seq: 1 } },
+        { t: 'msg', item: { role: 'assistant', text: '旧答复', ts: 2, seq: 2 } },
+        { t: 'seg', kind: 'user', md: '> seg 任务', ts: 10, seq: 1 },
+      ],
+      2,
+    );
     const sid = await ctx.newSession(root);
     const att = await fetch(`${base}/session/${sid}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
     assert.equal(att.status, 200);
     const snap = (await (await fetch(`${base}/session/${sid}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
-    assert.equal(snap.messages.length, 2, 'msg 行在场 → 播种恰 msg 派生条数（chain 派生零追加）');
-    const mds = snap.messages.map((m) => m.md);
-    assert.ok(mds.includes('> 旧任务') && mds.includes('旧答复'), 'msg 派生条在场');
-    assert.ok(!mds.includes('链内答复（不应派生）'), 'chain reply 不重复派生');
+    assert.equal(snap.messages.length, 1, '转录恰 seg 面条数（msg 行零派生、chain 行零派生）');
+    assert.equal(snap.messages[0].md, '> seg 任务', 'seg 面条目在场');
+    assert.ok(!snap.messages.some((m) => m.md === '旧答复'), 'msg 行不入转录');
+    assert.ok(!snap.messages.some((m) => m.md === '链内答复（不应派生）'), 'chain 行不入转录');
   });
 });
 

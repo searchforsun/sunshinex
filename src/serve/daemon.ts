@@ -9,9 +9,9 @@ import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
-import { journalMessagesToEntries, chainStepsToEntries } from './session';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import { SessionJournal, parseJournalFile, reduceJournal, sessionsDir } from "../tui/session-journal";
+import { reduceV2Rows } from '../session/v2log';
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
@@ -252,12 +252,12 @@ export class GuiDaemon {
   }
 
   /**
-   * attach 恢复（spec §7 / T2 实装）：会话 root 的 dataDir 下定位 `<journalId>.jsonl`（未知 id
-   * INVALID_ARG）→ parseJournalFile/reduceJournal（TUI /resume 同源）→ 版本守卫（≠1 拒载）→ 播种：
-   * 链经 context.restoreSession 直注入（TUI resume 单点——比逐条 appendChain 多保真 compact 态且
-   * 不触发变更订阅）、msg 行经 journalMessagesToEntries 映射入 transcript.seed → SessionJournal
-   * attach 续挂 + SessionRuntime.attachJournal 挂订阅（后续 run 的 chain 行续落同档，teardown
-   * seal）→ 置激活。双挂/运行中挂 INVALID_STATE（播种会击穿在飞 run 的链）。
+   * attach 恢复（spec §4b v2 装载序,P2）：会话 root 的 dataDir 下定位 `<journalId>.jsonl`（未知 id
+   * INVALID_ARG）→ parseJournalFile → 版本守卫（v2 段级词汇;v1 旧档拒载,dev 用 purge 脚本清理）→
+   * 装载双读面:reduceJournal(chain/compact → restoreSession 上下文;model/todos/view 参数面不动) +
+   * reduceV2Rows(seg/seg-update/run-open/runmeta/truncate → kernel.seed 转录投影,seq 原样沿用)→
+   * SessionJournal attach 续挂 + SessionRuntime.attachJournal 挂订阅（后续 run 的 chain 行与段级行
+   * 续落同档,teardown seal）→ 置激活。双挂/运行中挂 INVALID_STATE（播种会击穿在飞 run 的链）。
    */
   attach(id: string, journalId: string): Result<{ sessionId: string }> {
     const session = this.sessions.get(id);
@@ -269,20 +269,10 @@ export class GuiDaemon {
     if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
     const replayEvents = parseJournalFile(file).events;
     const replay = reduceJournal(replayEvents);
-    if (replay.version !== 1) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)}`);
+    if (replay.version !== 2) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v2 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
     session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
-    // G14.15 runmeta 收集(按 run 序对位):journal runmeta 行 = GUI 回放 Worked 行/统计的数据源
-    const runMetas = replayEvents
-      .filter((e) => e.t === 'runmeta')
-      .map((e) => ({ seconds: e.seconds, steps: e.steps, runSteps: e.runSteps, tokens: e.tokens, cacheTokens: e.cacheTokens, endedTs: e.endedTs, stopped: e.stopped === true }));
-    // 转录播种（Ruling 5 双源不重复）：msg 行在场（TUI 档）→ msg 派生；msg 行计数===0（daemon 会话
-    // 档只落 chain）→ chain 行派生兜底（task→user 引用块 / reply→assistant / call+result 配对→tool）——
-    // 两路径互斥，零重复
-    // G14.213b 播种互斥:持久化档已回种(计数>0)则不再链/msg 派生播种——重开叠加即重复
-    const msgs = journalMessagesToEntries(replay.messages);
-    if (session.transcriptCount() === 0) {
-      session.transcript.seed(msgs.length > 0 ? msgs : chainStepsToEntries(replay.chain, runMetas));
-    }
+    // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
+    session.kernelSeed(reduceV2Rows(replayEvents));
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);

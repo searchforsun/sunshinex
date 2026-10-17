@@ -186,24 +186,38 @@ test('⑦ 上限 2000 丢最老(T5δ):压 2005 条 user/assistant 混合 → 恒
   for (let i = 1; i < es.length; i++) assert.ok(es[i]!.seq > es[i - 1]!.seq, '裁后档内 seq 仍单调');
 });
 
-test('⑧ seed 播种同裁:注入 2005 条超限 → 恒 2000;后续 pump 续用同一上限;seed 不触发 onAppend', () => {
-  const appended: KernelEntry[] = [];
-  const k = new SessionKernel({ onAppend: (e) => appended.push(e) });
+test('⑧ seed 播种同裁:注入 2005 条超限 → 恒 2000;后续 pump 续用同一上限;seed 不触发事件;seq 保留形态', () => {
+  const events: string[] = [];
+  const k = new SessionKernel({ onKernelEvent: (e) => events.push(e.t) });
   const batch: Array<Omit<KernelEntry, 'seq'>> = [];
   for (let i = 0; i < 2005; i++)
     batch.push({ ts: 100 + i, kind: i % 2 === 0 ? 'user' : 'assistant', md: i % 2 === 0 ? `> seed-goal-${i}` : `seed-reply-${i}` });
   k.seed(batch);
   let es = k.replay();
   assert.equal(es.length, 2000, '播种注入同样过 2000 上限');
-  assert.equal(appended.length, 0, 'seed 回种不触发持久化回调(防双写)');
-  assert.ok(es[0]!.seq >= 1 && es[es.length - 1]!.seq < 2006, 'seq 由内核续发(入参 seq 无效)');
+  assert.equal(events.length, 0, 'seed 回种不触发内核事件(防装载双写)');
+  assert.ok(es[0]!.seq >= 1 && es[es.length - 1]!.seq < 2006, 'seq 由内核续发(入参缺省形态)');
   const mds = new Set(es.map((e) => e.md));
   assert.ok(!mds.has('> seed-goal-0') && mds.has('seed-reply-5') && mds.has('> seed-goal-6'), '最老 5 条出档,第 6 条起在档');
+  // seq 保留形态(v2 行与 live 同源):显式 seq 原样沿用,truncate 对位依赖
+  const k2 = new SessionKernel();
+  k2.seed([
+    { seq: 3, ts: 1, kind: 'user', md: '> 一' },
+    { seq: 7, ts: 2, kind: 'assistant', md: '答' },
+  ]);
+  k2.pump(ev('user', '二'));
+  const es2 = k2.replay();
+  assert.deepEqual(
+    es2.map((e) => e.seq),
+    [3, 7, 8],
+    '显式 seq 沿用;后续条目自 max+1 续发',
+  );
   k.pump(ev('done', 'post-seed reply', { stopReason: 'done' }));
   es = k.replay();
   assert.equal(es.length, 2000);
   assert.equal(es[es.length - 1]!.md, 'post-seed reply', '最新条在档');
-  assert.equal(appended.length, 1, 'pump 的新条目触发回调(播种后恢复正常落档)');
+  assert.equal(events.length, 1, 'pump 的新条目触发事件(播种后恢复正常落档)');
+  assert.equal(events[0], 'seg-open');
   const mds2 = new Set(es.map((e) => e.md));
   assert.ok(!mds2.has('seed-reply-5'), '再压一条又丢一条最老');
   assert.ok(mds2.has('> seed-goal-6'), '次老条仍在档');
@@ -312,18 +326,33 @@ test('⑫ truncate:保留 seq<=upToSeq 前缀;序号不复用,后续条目续接
   assert.ok(es[2]!.seq > cut, 'truncate 后新条目 seq 续接(不复用被截号段)');
 });
 
-test('⑬ onAppend:新入列条目逐条回调;回填/合并不重复回调', () => {
-  const appended: KernelEntry[] = [];
-  const k = new SessionKernel({ onAppend: (e) => appended.push(e) });
+test('⑬ 段级事件面(v2 写者契约):seg-open open 标志/seg-update 回填/段闭合落终态;token 拼接零事件', () => {
+  const events: Array<{ t: string; seq?: number; open?: boolean; kind?: string }> = [];
+  const k = new SessionKernel({
+    onKernelEvent: (e) => events.push(e.t === 'truncate' ? { t: e.t, seq: e.upToSeq } : { t: e.t, seq: e.entry.seq, open: 'open' in e ? e.open : undefined, kind: e.entry.kind }),
+  });
   pump(k, ev('user', '问'), ev('token', '答'));
-  assert.equal(appended.length, 2, 'user 条 + 开启 assistant 条各回调一次');
+  assert.deepEqual(
+    events.map((e) => `${e.t}:${e.kind}:${e.open}`),
+    ['seg-open:user:false', 'seg-open:assistant:true'],
+    'user 即终态(open=false);正文开启段 open=true',
+  );
   k.pump(ev('token', '案'));
-  assert.equal(appended.length, 2, 'token 并入开启段不回调');
+  assert.equal(events.length, 2, 'token 并入开启段零事件(落档等闭合)');
   k.pump(ev('tool-call', 'read', { callId: 'c9' }));
-  assert.equal(appended.length, 3, 'call 占位条回调');
+  assert.equal(events.length, 4, 'tool-call 段边界:先发开启正文段闭合,再发工具条开启');
+  assert.equal(events[2]!.t, 'seg-close');
+  assert.equal(events[3]!.t, 'seg-open');
   k.pump(ev('tool-result', 'ok', { callId: 'c9', ok: true }));
-  assert.equal(appended.length, 3, 'result 回填既有条不回调');
-  assert.equal(appended.map((e) => e.md)[0], '> 问');
+  assert.equal(events.length, 5);
+  assert.equal(events[4]!.t, 'seg-update', 'result 回填 → seg-update 行事件');
+  k.pump(ev('done', '答案', { stopReason: 'done' }, 9999));
+  assert.equal(events.length, 6);
+  assert.equal(events[5]!.t, 'seg-open', 'done 无开启段:终答以闭合态直建(open=false,写者立即落行)');
+  // truncate 事件
+  k.truncate(0);
+  assert.equal(events.length, 7);
+  assert.equal(events[6]!.t, 'truncate');
 });
 
 test('⑭ reducer 纯件:applyEvent 零副作用(入参态不变)', () => {

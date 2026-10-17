@@ -1,5 +1,4 @@
 import { createRuntime } from '../tui/runtime';
-import { sessionsDir } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
 import { parseTier } from '../runtime';
 import { parseEffort } from '../model/effort';
@@ -13,21 +12,17 @@ import type { TaskBoardState } from '../taskboard/model';
 import { applyDelegation } from '../delegation/projection';
 import type { Delegation } from '../delegation/projection';
 import { boardEventFrom } from '../tui/session';
-import type { ChatItem } from '../tui/session';
 import type { SessionJournal } from '../tui/session-journal';
-import type { HistoryStep } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SnapshotEntry } from '../tui/session-journal';
-import { TranscriptCollector } from './transcript';
-import type { TranscriptEntry } from './transcript';
+import { SessionKernel, type KernelEvent } from '../session/kernel';
+import type { KernelEntry } from '../session/entry';
 import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
 import { SLASH_COMMANDS } from '../tui/slash-commands';
 import { listChanges, diffChangeSets } from './session-changes';
 import type { ChangeFile } from '../types';
-import type { RunMeta } from '../session/entry';
-
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
 
@@ -53,7 +48,7 @@ export interface EventFrame {
  *  投影——harness.team 同源），pending 段由 daemon 侧合并（挂起表 daemon 级资产，session 不持——
  *  见 daemon.handleSnapshot） */
 export interface SessionSnapshot {
-  messages: TranscriptEntry[];
+  messages: KernelEntry[];
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';
@@ -91,140 +86,6 @@ export type SessionInterruptResult = { ok: true } | { ok: false; error: string }
 interface CurrentRun {
   abort: AbortController;
   done: Promise<void>;
-}
-
-/** TUI journal msg 行（ChatItem）→ daemon 转录条目映射（T2 attach 播种）：五 kind 收敛——
- *  user/assistant/tool 直映；system 按 level 分 error/notice；thinking/step 归 notice。
- *  md 面：user 补 `> ` 引用块（与 collector.submit 同形）；tool 行按 call/result 补 `● `/`⎿ ` 前缀
- *  （与 collector 的 toolMd 同形）。seq 占位 0——入列时 seed() 续收集器自身计数（两序列不同源） */
-export function journalMessagesToEntries(items: ChatItem[]): TranscriptEntry[] {
-  const kindOf = (it: ChatItem): TranscriptEntry['kind'] => {
-    if (it.role === 'user') return 'user';
-    if (it.role === 'assistant') return 'assistant';
-    if (it.role === 'tool') return 'tool';
-    if (it.role === 'system' && it.level === 'error') return 'error';
-    return 'notice';
-  };
-  const mdOf = (it: ChatItem): string => {
-    if (it.role === 'user') return `> ${it.text}`;
-    if (it.role === 'tool') {
-      if (it.kind !== 'result') return `● ${it.text}`;
-      const first = it.text.split('\n')[0] ?? '';
-      return `⎿ ${first.length > 0 ? first : '…'}`;
-    }
-    return it.text;
-  };
-  return items.map((it) => ({ seq: 0, ts: it.ts, kind: kindOf(it), md: mdOf(it) }));
-}
-
-/** 链行 → daemon 转录条目映射（T2 attach 播种的 msg 缺席兜底，Ruling 5）：daemon 会话 journal 只落
- *  chain 行（msg 面是事件转录，非 TUI ChatItem）——重开时转录从链派生，映射：task（指令行，与
- *  Reactor StepRecord 同形）→ user `> <observation>` 引用块；reply → assistant 终答；tool-call +
- *  tool-result 按步序 FIFO 配对为单条 tool `● 调用行\n⎿ 结果首行`（孤儿 call 悬 `⎿ …`、孤儿 result 悬
- *  `● …`，与 collector.toolMd 缺面占位同形）；note/notice（含 deficit/node 观察行）→ notice；
- *  phase/role/memory/skill 过程注记跳过。ts 链行无时刻面（HistoryStep 无 ts 字段）置 0——入列时
- *  seed() 续收集器自身计数，两序列不同源 */
-export function chainStepsToEntries(steps: HistoryStep[], runMetas: RunMeta[] = []): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  /** 未配对 tool-call 条的下标 FIFO（链按步序追加——result 恒配最老未配对 call，与 collector 口径同构） */
-  const pendingCalls: number[] = [];
-  // G14.16:按 task 行切 run 组——run 条在每组第一行(工作 Ns+分割线),meta 对位
-  const runs: HistoryStep[][] = [];
-  let cur: HistoryStep[] = [];
-  for (const s of steps) {
-    if (s.action === 'task' && cur.length > 0) {
-      runs.push(cur);
-      cur = [];
-    }
-    cur.push(s);
-  }
-  if (cur.length > 0) runs.push(cur);
-  // G14.78:每轮步数=相邻 runmeta 累计差(与 TUI 同口径,旧档无 runSteps 也能出本轮值);
-  // 显式 runSteps(新档 reactor 直出)优先
-  let prevSteps = 0;
-  const runStepsOf = (meta: RunMeta | undefined): number | undefined => {
-    if (meta?.runSteps !== undefined) return meta.runSteps;
-    if (meta?.steps !== undefined) {
-      const delta = Math.max(0, meta.steps - prevSteps);
-      prevSteps = meta.steps;
-      return delta;
-    }
-    return undefined;
-  };
-  for (const [ri, runSteps] of runs.entries()) {
-    const meta = runMetas[ri];
-    const runStepsDelta = runStepsOf(meta);
-    pendingCalls.length = 0;
-    // G14.22 轮次顺序=[用户输入]→[Worked 行+分割线]→[工具/回复]:组首 task 行(用户消息)先于
-    // run 头条出列(live 路径同序——提交回显在 model-start 之前),Worked 行描述的是其后这段工作
-    let groupStart = 0;
-    if (runSteps[0] !== undefined && runSteps[0].action === 'task') {
-      // ts 采组内 runmeta endedTs(链行无时刻面;ts=0 会把日分隔线挤到用户气泡之下)
-      entries.push({ seq: 0, ts: meta?.endedTs ?? 0, kind: 'user', md: `> ${runSteps[0].observation}` });
-      groupStart = 1;
-    }
-    entries.push({
-      seq: 0,
-      ts: meta?.endedTs ?? 0,
-      kind: 'run',
-      md: '',
-      ...(meta !== undefined
-        ? {
-            meta: {
-              ...(meta.seconds !== undefined ? { seconds: meta.seconds } : {}),
-              ...(meta.steps !== undefined ? { steps: meta.steps } : {}),
-              ...(runStepsDelta !== undefined ? { runSteps: runStepsDelta } : {}),
-              ...(meta.tokens !== undefined ? { tokens: meta.tokens } : {}),
-              ...(meta.stopped === true ? { stopped: true } : {}),
-              ...(meta.cacheTokens !== undefined ? { cacheTokens: meta.cacheTokens } : {}),
-              ...(meta.stopped === true ? { stopped: true } : {}),
-              ...(meta.changes !== undefined && meta.changes.length > 0 ? { changes: meta.changes } : {}),
-            },
-          }
-        : {}),
-    });
-    for (let gi = groupStart; gi < runSteps.length; gi++) {
-    const s = runSteps[gi];
-    // G14.173 步骤行盖轮时间戳(待办卡/工具行的创建时间来源;旧档 0 由显示面回退)
-    const stepTs = meta?.endedTs ?? 0;
-    // G14.23 思考回放:链行携带的 reasoning(挂 phase 行/批首 tool-call 行)映射 thinking 条,
-    // 紧贴其归属行之前——live 的思考流(事件面)回放后不蒸发
-    if (s.reasoning !== undefined && s.reasoning.trim() !== '') {
-      entries.push({ seq: 0, ts: stepTs, kind: 'thinking', md: s.reasoning, ...(s.thinkSeconds !== undefined ? { seconds: s.thinkSeconds } : {}) });
-    }
-    if (s.action === 'task') {
-      entries.push({ seq: 0, ts: stepTs, kind: 'user', md: `> ${s.observation}` });
-      continue;
-    }
-    if (s.action === 'reply') {
-      entries.push({ seq: 0, ts: stepTs, kind: 'assistant', md: s.observation });
-      continue;
-    }
-    if (s.action === 'tool-call') {
-      const i = entries.push({ seq: 0, ts: stepTs, kind: 'tool', md: `● ${s.observation}\n⎿ …` }) - 1;
-      pendingCalls.push(i);
-      continue;
-    }
-    if (s.action === 'tool-result') {
-      const line = s.observation.split('\n')[0] ?? '';
-      const first = line.length > 0 ? line : '…';
-      const i = pendingCalls.shift();
-      if (i !== undefined) {
-        const hit = entries[i]!;
-        const verb = hit.md.split('\n')[0] ?? '● …';
-        hit.md = `${verb}\n⎿ ${first}`;
-        continue;
-      }
-      entries.push({ seq: 0, ts: stepTs, kind: 'tool', md: `● …\n⎿ ${first}` });
-      continue;
-    }
-    if (s.action === 'phase' || s.action === 'role' || s.action === 'memory' || s.action === 'skill') continue;
-    if (s.action === 'node') continue; // G14.170:node=子代理结论/图节点回执([task-tN] …完成/报告)——内部管线通知不进 GUI 转录(完成可见性归委派徽标/Agents 页;用户裁定「系统提示/底层不显示」)
-    // note/notice/deficit 与无 action 的裸观察行 → notice（信息行保留呈现）
-    entries.push({ seq: 0, ts: stepTs, kind: 'notice', md: s.observation });
-  }
-  }
-  return entries;
 }
 
 /** 事件环形缓冲容量（重连补发窗口）：满即丢最老——daemon 长跑不无界涨内存 */
@@ -277,10 +138,11 @@ export class SessionRuntime {
   /** 影子投影（G2 snapshot 套件）：board/delegation 与 TUI session 同源纯件从同一事件流推导 */
   private board: TaskBoardState = emptyBoard();
   private delegations: Delegation[] = [];
-  /** 粗粒度转录（spec G2 Ruling 1）：pump 同源喂入，snapshot 的 messages 字段（reset 换新实例清空） */
-  /** G14.213b 转录持久化:构造即回种 <id>.transcript.jsonl(上次进程的增量档),活跃入档即追加——
-   *  daemon 重启/会话重开后中途历史不空窗;坏档/无档静默空转录起档 */
-  private transcriptImpl: TranscriptCollector;
+  /** 会话内核转录（session-kernel spec §3,P2 接入）：pump 同源喂入,snapshot 的 messages 字段
+   *  （reset 换新实例清空）。持久化 = v2 单档唯一写者：内核段级事件经 persistKernelEvent 落
+   *  journal 行（seg/seg-update/run-open/truncate;chain/compact/runmeta 行为既有路径）——
+   *  collector 与 G14.213b 第二 jsonl 退役,装载走 attach 位 reduceV2Rows */
+  private kernel: SessionKernel;
   /** G14.17 run 内 usage/ctx 末值（pump 旁路捕获，run 收尾落旁车 meta 后随下次 submit 清零） */
   private runUsage?: { total: number; cache: number; prompt: number };
   private runCtxUsed?: number;
@@ -296,9 +158,9 @@ export class SessionRuntime {
   /** 当前权限模式（G10-C1b 可变面）：setMode 重建 runtime（reset 同路径,转录/影子投影独立不受损） */
   private currentMode: SessionMode;
 
-  /** 转录条目数外窥(G14.213b):attach 播种互斥判据——持久化档已回种则不再链派生播种(防重复) */
+  /** 转录条目数外窥(装载互斥判据与测试面) */
   transcriptCount(): number {
-    return this.transcriptImpl.count();
+    return this.kernel.count();
   }
 
   /** 运行档外窥（G14.90）：daemon 挂起闭包按当前档判定——pill 切 manual 后新建会话无需重建注入面 */
@@ -311,31 +173,78 @@ export class SessionRuntime {
     this.id = opts.id;
     this.root = opts.root;
     this.currentMode = opts.mode ?? 'dontAsk';
-    const transcriptFile = path.join(sessionsDir(resolveDataDir(this.root)), `${this.id}.transcript.jsonl`);
-    this.transcriptImpl = new TranscriptCollector({
-      onAppend: (entry) => {
-        try {
-          fs.appendFileSync(transcriptFile, `${JSON.stringify(entry)}\n`, 'utf8');
-        } catch {
-          // 尽力落档:写失败不影响运行面(下次入档续写)
-        }
-      },
-    });
-    try {
-      if (fs.existsSync(transcriptFile)) {
-        const rows = fs
-          .readFileSync(transcriptFile, 'utf8')
-          .split('\n')
-          .filter((l) => l.trim() !== '')
-          .slice(-2000) // 与档面 2000 上限同裁
-          .map((l) => JSON.parse(l) as TranscriptEntry)
-          .filter((x) => x !== undefined && typeof x?.kind === 'string');
-        this.transcriptImpl.seed(rows);
-      }
-    } catch {
-      // 坏档忽略:空转录起档
-    }
+    this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.runtimeImpl = this.assemble();
+  }
+
+  /** v2 落档单点(P2,spec §3.2):内核段级事件 → journal 行。journal 未挂载(出生会话 attach 前/
+   *  惰性建档前)即丢弃——空会话零文件;写失败尽力语义(下次事件续写)。映射:run-open 条 → run-open
+   *  行;assistant/thinking 开启段不落(等 seg-close);闭合段与其余终态条目 → seg 行;工具回填 →
+   *  seg-update 行(result 随行,重放按 seq upsert);truncate → truncate 行。chain/compact 行走
+   *  onContextChange 既有订阅、runmeta 行走 submit() 收尾既有路径——三条写路同档不重叠 */
+  private persistKernelEvent(ev: KernelEvent): void {
+    const j = this.journal;
+    if (j === undefined) return;
+    try {
+      if (j.currentId === undefined) j.start(2); // 惰性建档(chain 订阅同构):首条段级行落 header——首 run 的 user/run-open 行不再丢档
+      if (ev.t === 'seg-open') {
+        const e = ev.entry;
+        if (e.kind === 'run') {
+          j.log({ t: 'run-open', ts: e.ts, seq: e.seq });
+          return;
+        }
+        if (ev.open && (e.kind === 'assistant' || e.kind === 'thinking')) return; // 开启段:等闭合落终态
+        j.log({
+          t: 'seg',
+          kind: e.kind, // run 已上支;余 kind 直映(seg 行词汇无 run)
+          md: e.md,
+          ts: e.ts,
+          seq: e.seq,
+          ...(e.callId !== undefined ? { callId: e.callId } : {}),
+          ...(e.name !== undefined ? { name: e.name } : {}),
+          ...(e.input !== undefined ? { input: e.input } : {}),
+          ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+        });
+        if (e.kind === 'tool' && e.result !== undefined) {
+          j.log({ t: 'seg-update', seq: e.seq, ts: e.ts, result: e.result }); // result 先行出生:回填行随落
+        }
+        return;
+      }
+      if (ev.t === 'seg-close') {
+        const e = ev.entry;
+        if (e.kind !== 'assistant' && e.kind !== 'thinking') return; // 发射面只产正文/思考闭合(防御性)
+        j.log({
+          t: 'seg',
+          kind: e.kind,
+          md: e.md,
+          ts: e.ts,
+          seq: e.seq,
+          ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+        });
+        return;
+      }
+      if (ev.t === 'seg-update') {
+        const e = ev.entry;
+        j.log({
+          t: 'seg-update',
+          seq: e.seq,
+          ts: e.ts,
+          ...(e.name !== undefined ? { name: e.name } : {}),
+          ...(e.input !== undefined ? { input: e.input } : {}),
+          ...(e.result !== undefined ? { result: e.result } : {}),
+        });
+        return;
+      }
+      j.log({ t: 'truncate', upToSeq: ev.upToSeq });
+    } catch {
+      // 尽力落档:写失败不影响运行面
+    }
+  }
+
+  /** v2 档装载入核(attach 序调用,daemon.ts 持 journalId 位):reduceV2Rows 重放条目 seed——
+   *  seq 原样沿用(truncate 对位),不触发落档事件(防装载双写) */
+  kernelSeed(entries: ReadonlyArray<KernelEntry>): void {
+    this.kernel.seed(entries);
   }
 
   /** 装配单点：与 TUI 同一 createRuntime（mode 缺省 dontAsk；G4 起 manual 会话透传模式 + 两接缝——
@@ -357,9 +266,9 @@ export class SessionRuntime {
     return this.runtimeImpl;
   }
 
-  /** 转录收集器外窥（T2 attach 的 msg 行播种位） */
-  get transcript(): TranscriptCollector {
-    return this.transcriptImpl;
+  /** 会话内核外窥(测试/attach 消费;replay 只读) */
+  get sessionKernel(): SessionKernel {
+    return this.kernel;
   }
 
   /** attach 挂载的 journal id 外窥（daemon attach 双挂守卫与测试面） */
@@ -415,7 +324,7 @@ export class SessionRuntime {
   private hookJournalSink(): void {
     this.runtimeImpl.harness.context.onContextChange((c) => {
       if (c.kind === 'append') {
-        if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start();
+        if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start(2); // v2 档:daemon 会话 header v=2(段级行词汇)
         this.journal?.log({ t: 'chain', steps: c.steps });
       } else {
         this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
@@ -468,7 +377,7 @@ export class SessionRuntime {
     }
     if (e.type.startsWith('task-') || e.type.startsWith('gate-')) this.board = applyBoardEvent(this.board, boardEventFrom(e));
     if (e.type.startsWith('delegation-')) this.delegations = applyDelegation(this.delegations, e);
-    this.transcriptImpl.push(e);
+    this.kernel.pump(e);
     this.opts.broadcast(frame);
   }
 
@@ -496,7 +405,7 @@ export class SessionRuntime {
     this.runCtxUsed = undefined;
     this.runDoneSteps = undefined;
     this.runRunSteps = undefined;
-    this.transcriptImpl.submit(goal);
+    this.kernel.submit(goal);
     this.runtimeImpl.harness.context.appendInstructionLine(goal);
     let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
     const p: Promise<void> = this.runtimeImpl
@@ -621,7 +530,10 @@ export class SessionRuntime {
     await this.disposeRuntime(old);
     this.board = emptyBoard();
     this.delegations = [];
-    this.transcriptImpl = new TranscriptCollector();
+    // 转录清空(v2):truncate 行落档(upToSeq=0 全清——重放视界与 live 清空对齐)+ 内核换新
+    // (同一 onKernelEvent 挂点,后续段落新行;truncate 前落行——换新后旧条目不再可达)
+    this.kernel.truncate(0);
+    this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.frames.length = 0;
   }
 
@@ -715,7 +627,7 @@ export class SessionRuntime {
 
   snapshotResponse(): SessionSnapshot {
     return {
-      messages: this.transcriptImpl.entries(),
+      messages: this.kernel.replay(),
       board: this.board,
       delegations: this.delegations,
       status: this.status(),

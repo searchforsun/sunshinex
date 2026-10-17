@@ -109,7 +109,7 @@ test('① pump 平移面：帧恒 {kind:"event",sessionId,seq,e}、seq 计数在
     // 影子投影平移面：task-created 经 boardEventFrom/applyBoardEvent 落位
     assert.equal(ctx.session.shadowBoard.tasks.t1?.title, 'A', '影子 board 含 pump 喂入的 t1');
     // 转录平移面：notice/done 入归档面
-    const mds = ctx.session.transcript.entries().map((m) => m.kind);
+    const mds = ctx.session.sessionKernel.replay().map((m) => m.kind);
     assert.ok(mds.includes('notice') && mds.includes('assistant'), '转录含 notice 与 done→assistant 条');
   });
 });
@@ -126,11 +126,11 @@ test('② 实跑平移面：submit 受理→running→done→idle；转录三类
     assert.deepEqual(r, { ok: true }, '空闲 submit 受理（HTTP 202 面）');
     await waitFor(() => ctx.session.status() === 'idle', 10_000);
     // 转录三类：user 提交回显 / tool 配对条 / assistant 终答
-    const kinds = ctx.session.transcript.entries().map((m) => m.kind);
+    const kinds = ctx.session.sessionKernel.replay().map((m) => m.kind);
     assert.ok(kinds.includes('user'), '转录含 user 条');
     assert.ok(kinds.includes('tool'), '转录含 tool 条');
     assert.ok(kinds.includes('assistant'), '转录含 assistant 条');
-    const user = ctx.session.transcript.entries().find((m) => m.kind === 'user');
+    const user = ctx.session.sessionKernel.replay().find((m) => m.kind === 'user');
     assert.equal(user?.md, '> 建个任务', 'user 条为 `> <goal>` 形');
     // 影子：实跑事件流泵入投影
     assert.equal(ctx.session.shadowBoard.tasks.t1?.title, 'A', '实跑后影子 board 含 t1');

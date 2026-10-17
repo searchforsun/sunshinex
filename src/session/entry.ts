@@ -80,8 +80,8 @@ function firstLine(text: string | undefined): string {
   return line.length > 0 ? line : PLACEHOLDER;
 }
 
-/** tool 条 md 单点:`● <name>` + `⎿ <result 首行>` 两行;缺面 … 占位 */
-function toolMd(name: string, resultLine: string): string {
+/** tool 条 md 单点:`● <name>` + `⎿ <result 首行>` 两行;缺面 … 占位(v2 重放回填同用此形) */
+export function toolMd(name: string, resultLine: string): string {
   return `● ${name}\n⎿ ${resultLine}`;
 }
 
@@ -129,8 +129,8 @@ function sealSeg(s: KernelState, now: number): KernelState {
   return { ...s, entries: replaceAt(s.entries, idx, { ...cur, ...(seconds !== undefined ? { seconds } : {}) }), openSeg: -1 };
 }
 
-/** runmeta changes 载荷净化(外部 payload 不予信任:面缺省回落、空 path 丢弃) */
-function sanitizeChanges(raw: unknown): ChangeFile[] | undefined {
+/** runmeta changes 载荷净化(外部 payload 不予信任:面缺省回落、空 path 丢弃;v2 runmeta 行重放同用) */
+export function sanitizeChanges(raw: unknown): ChangeFile[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: ChangeFile[] = [];
   for (const c of raw) {
@@ -354,10 +354,21 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
   }
 }
 
-/** 历史播种(v2 档装载/attach 派生,P2 接线):重编号续计数、过同一上限;播种条目一律视为
- *  已闭合(不动流式记账/配对池),不触发 onAppend(kernel 侧职责) */
-export function applySeed(state: KernelState, entries: ReadonlyArray<Omit<KernelEntry, 'seq'>>): KernelState {
-  let st = state;
-  for (const e of entries) st = appendEntry(st, e);
-  return st;
+/** 历史播种(v2 档装载/attach 派生):入参 seq>0 原样沿用(v2 行 seq 与 live 同源——truncate 行
+ *  upToSeq 对位依赖),缺省/0 才续发(链派生等异源播种);nextSeq = max+1。播种条目一律视为已闭合
+ *  (不动流式记账/配对池),不触发 kernel 事件(kernel 侧职责) */
+export function applySeed(state: KernelState, entries: ReadonlyArray<Omit<KernelEntry, 'seq'> & { seq?: number }>): KernelState {
+  let auto = state.nextSeq;
+  let maxSeq = state.nextSeq - 1;
+  const seeded: KernelEntry[] = entries.map((e) => {
+    const seq = typeof e.seq === 'number' && Number.isInteger(e.seq) && e.seq > 0 ? e.seq : auto++;
+    if (seq > maxSeq) maxSeq = seq;
+    return { ...e, seq } as KernelEntry;
+  });
+  let st: KernelState = { ...state, entries: [...state.entries, ...seeded] };
+  while (st.entries.length > CAP) {
+    const dropped = st.entries.shift();
+    if (dropped !== undefined && dropped.kind === 'tool') st = { ...st, pending: st.pending.filter((p) => p.seq !== dropped.seq) };
+  }
+  return { ...st, nextSeq: maxSeq + 1 };
 }

@@ -49,7 +49,16 @@ export type JournalEvent =
   | { t: 'view'; expandAll: boolean; latestFull: boolean }
   /** G14.15 run 收尾元数据(GUI Worked 行/统计回放):daemon run 结束时落——秒数/步数/tokens/结束时刻。
    *  G14.100 changes=本轮 git 变动增量(路径/状态/±行数)——GUI 轮尾汇总条(展开逐文件/撤销) */
-  | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number; stopped?: boolean; changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }> };
+  | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number; stopped?: boolean; changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }> }
+  // ===== v2 段级行(session-kernel spec §3.2,daemon 会话 v:2 档专用;reduceJournal 忽略——TUI 重放不受扰) =====
+  /** 转录段行:即终态条目(user/notice/error/tool)与闭合段(assistant/thinking,seconds=思考秒);seq=live 序号原样随档(truncate 对位依赖) */
+  | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number }
+  /** 工具条回填行(重放按 seq upsert:name/input/result 缺面回填,result 回填后 md 重算) */
+  | { t: 'seg-update'; seq: number; ts: number; name?: string; input?: Record<string, unknown>; result?: { text: string; ok: boolean } }
+  /** run 条开启行(md='' 条目;收尾统计由 runmeta 行对位,悬空 run-open 重放标 stopped) */
+  | { t: 'run-open'; ts: number; seq: number }
+  /** 视界截断行(rewind/compact/reset;upToSeq=0 即全清;重放在流中位置即时生效) */
+  | { t: 'truncate'; upToSeq: number };
 
 export interface SessionMeta extends SessionSidecarMeta {
   id: string;
@@ -402,15 +411,16 @@ export class SessionJournal {
     return this.id;
   }
 
-  /** 建档（首个持久化事件触发）：生成 id，header 立即写盘 */
-  start(): void {
+  /** 建档（首个持久化事件触发）：生成 id，header 立即写盘。version=档 schema 版本（v1=TUI 词汇;
+   *  v2=+段级行,session-kernel spec §3.2——daemon 会话传 2,TUI 面缺省 1 不受扰） */
+  start(version = 1): void {
     if (this.id) return;
-    this.startId(newSessionId());
+    this.startId(newSessionId(), version);
   }
 
   /** 轮转（/new）：换新 id，新 header 立即写盘（旧档已在盘零改动） */
   rotate(id: string): void {
-    this.startId(id);
+    this.startId(id, 1);
   }
 
   /** 续挂既有日志（/resume / --continue / 分档）：档已在盘，仅切 id，不重复 header */
@@ -430,10 +440,10 @@ export class SessionJournal {
     this.log({ t: 'snapshots', files });
   }
 
-  private startId(id: string): void {
+  private startId(id: string, version = 1): void {
     this.id = id;
     fs.mkdirSync(this.dir, { recursive: true });
-    const header: JournalHeader = { t: 'header', v: 1, id, createdAt: new Date().toISOString() };
+    const header: JournalHeader = { t: 'header', v: version, id, createdAt: new Date().toISOString() };
     fs.writeFileSync(path.join(this.dir, id + '.jsonl'), JSON.stringify(header) + '\n', 'utf8');
   }
 }

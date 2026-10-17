@@ -1963,18 +1963,39 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
   });
 });
 
-/** G14.170 node 步骤不进 GUI 转录:子代理结论/图节点回执([task-tN] …)是内部管线通知——
- *  完成可见性归委派徽标/Agents 页;note/notice 等信息行照旧保留 */
-test('chainStepsToEntries:node 动作行跳过;note/notice 保留为 notice 条', async () => {
-  const { chainStepsToEntries } = await import('./session');
-  const entries = chainStepsToEntries([
-    { action: 'task', step: 1, observation: '跑分析' },
-    { action: 'node', step: 2, observation: '[task-t1] 子代理分析完成。以下为 Task t1 的分析报告。' },
-    { action: 'note', step: 3, observation: '[task-t2] did not finish (failed)' },
-    { action: 'notice', step: 4, observation: '[memory] saved: demo' },
-  ]);
-  const kinds = entries.map((e) => e.kind);
-  assert.equal(kinds.filter((k) => k === 'notice').length, 2, 'note/notice 各一条');
-  assert.ok(entries.every((e) => !e.md.includes('[task-t1]')), 'node 结论行不出现');
-  assert.ok(entries.some((e) => e.md.includes('did not finish')), 'note 失败行保留');
+
+/** P2 v2 装载(session-kernel spec §4b):seg 面重放入核——daemon 重启/会话重开后转录不空窗;
+ *  v1 旧档拒载(no-compat,dev 清理走 scripts/purge-legacy-sessions.mjs) */
+test('attach v2 装载:seg/seg-update 重放入核 + v1 旧档拒载', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const sid = await ctx.newSession();
+    const sessionsDir = path.join(ctx.tmp, 'data', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    const rows = [
+      { t: 'header', v: 2, id: 'att-j', createdAt: '2026-10-17T00:00:00.000Z' },
+      { t: 'chain', steps: [{ action: 'task', step: 1, observation: '上一轮目标' }] },
+      { t: 'seg', kind: 'user', md: '> 上一轮目标', ts: 100, seq: 1 },
+      { t: 'seg', kind: 'tool', md: '● read\n⎿ …', ts: 200, seq: 2, callId: 'c1', name: 'read', input: { path: 'a.ts' } },
+      { t: 'seg-update', seq: 2, ts: 300, result: { text: 'body', ok: true } },
+      { t: 'seg', kind: 'assistant', md: '终答', ts: 400, seq: 3 },
+      { t: 'runmeta', seconds: 9, steps: 2, runSteps: 1, tokens: 777, endedTs: 500 },
+    ];
+    fs.writeFileSync(path.join(sessionsDir, 'att-j.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const r = ctx.daemon.attach(sid, 'att-j');
+    assert.ok(r.ok, 'attach v2 受理');
+    const session = ctx.daemon.get(sid)!;
+    const es = session.sessionKernel.replay();
+    assert.deepEqual(
+      es.map((e) => e.kind),
+      ['user', 'tool', 'assistant'],
+      'seg 面重放入核(转录不空窗)',
+    );
+    assert.equal(es[1]!.md, '● read\n⎿ body', 'seg-update 回填往返(md 重算)');
+    assert.equal(es[1]!.input !== undefined ? (es[1]!.input as { path?: string }).path : undefined, 'a.ts', 'input 全量随档');
+    // v1 旧档拒载(no-compat)
+    const sid2 = await ctx.newSession();
+    fs.writeFileSync(path.join(sessionsDir, 'v1-j.jsonl'), JSON.stringify({ t: 'header', v: 1, id: 'v1-j', createdAt: 'x' }) + '\n');
+    const r2 = ctx.daemon.attach(sid2, 'v1-j');
+    assert.equal(r2.ok, false, 'v1 旧档 INVALID_ARG');
+  });
 });

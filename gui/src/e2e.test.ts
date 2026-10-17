@@ -109,17 +109,16 @@ async function startDaemon(
   };
 }
 
-/** 工作区造场:workspace.json(root 反解档,Home 可 attach 判据)+ 历史 journal(首条用户
- *  ChatItem——reduceJournal 的 messages 只积 msg 行,t:'user' 行入 history 不入转录)——
- *  首页列表/attach 播种全链的盘面;回 journal id */
+/** 工作区造场:workspace.json(root 反解档,Home 可 attach 判据)+ 历史 v2 journal(首条用户 seg 行——
+ *  v2 装载只认 seg 面)——首页列表/attach 播种全链的盘面;回 journal id */
 function seedWorkspace(root: string, userText: string): string {
   const dataDir = resolveDataDir(root);
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root }) + '\n', 'utf8');
   const j = new SessionJournal(dataDir);
-  j.start();
+  j.start(2);
   const id = j.currentId!;
-  j.log({ t: 'msg', item: { role: 'user', text: userText, ts: Date.now(), seq: 1 } });
+  j.log({ t: 'seg', kind: 'user', md: `> ${userText}`, ts: Date.now(), seq: 1 });
   return id;
 }
 
