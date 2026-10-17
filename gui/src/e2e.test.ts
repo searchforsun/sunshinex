@@ -1556,18 +1556,15 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       expect(tabsByTitle(container, '任务板')[0]!.className).toContain('active');
       expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(); // 任务板页签体挂载(G14.174)
 
-      // —— 委派行在场:fork 子链事件(delegation-ended label=task-t1)落任务板。终态=完成徽标 ——
+      // —— 委派投影(G14.213 任务板重构:旧板 .delegation-main 行退役):fork 委派落 t1 行内
+      //    执行子代理徽标(agentOfTask 按 task-<id> 命中)——
       await waitFor(
-        () => {
-          const row = container.querySelector('button.delegation-main');
-          if (row === null) throw new Error('delegation row not yet');
-          return expect(row.textContent).toContain('task-t1');
-        },
+        () => expect(container.querySelector('.taskboard-cards')?.textContent).toContain('task-t1'),
         { timeout: 10_000 },
       );
 
-      // —— G14.164 点委派行开只读转录页(辅助对话式单独打开,无输入框):转录行含终稿全文 ——
-      fireEvent.click(screen.getByRole('button', { name: 'open agent task-t1' }));
+      // —— 点任务行开只读转录页(行内 onOpenAgent 跳转,辅助对话式单独打开无输入框):转录行含终稿全文 ——
+      fireEvent.click(screen.getByRole('button', { name: 't1 [in-review] Demo' }));
       await waitFor(() => expect(container.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull(), { timeout: 5_000 });
       expect(container.querySelector('.sx-agent-thread')?.textContent).toContain('all done');
       expect(container.querySelector('.sx-agent-page textarea')).toBeNull(); // 只读:无输入面
