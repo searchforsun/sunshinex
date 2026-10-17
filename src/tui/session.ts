@@ -130,15 +130,91 @@ export class SessionController {
    *  凭登记跳过,双档案消除 */
   private foldedThinkingSeq = -1;
 
-  /** 视图归档面(P8 第一刀:thinking 闭合):折叠行出自内核条目(seconds/md)——与恢复面
-   *  (entriesToChatItems e.seconds 同形)同源,closeLiveBlock 本地折叠退役 */
+  /** 视图归档面(P8):静态区转录条由内核段级事件驱动,原始事件不再自建——与恢复面
+   *  (entriesToChatItems)同源,字段全出自内核条目(payload 完整随档,渲染端零推导)。
+   *  分臂:seg-close(thinking)=折叠行+live 解散;seg-open(tool)=通道冲刷(工具行出现前清尾块)
+   *  +挂起行/委派提示词捕获;seg-update(tool)=成对定格;seg-open(notice/error)=说明/错误行。
+   *  seg-close(assistant) **不做通道冲刷**:中途边界(done 前的 notice 沉淀行等)若在此清通道,
+   *  done 终稿对账的 pushedSource 基线即被清空→全文二次入档(真机实测);通道基准留给 done,
+   *  工具边界冲刷在 seg-open(tool) 臂(先冲刷后挂起,尾块先于工具行落静态区) */
   private archiveKernelEventToView(ev: KernelEvent): void {
-    if (ev.t !== 'seg-close' || ev.entry.kind !== 'thinking') return;
-    if (ev.entry.seq === this.foldedThinkingSeq) {
-      this.foldedThinkingSeq = -1; // error 旁路已就地折叠,消费登记位
+    if (ev.t === 'seg-close') {
+      const e = ev.entry;
+      if (e.kind === 'thinking') {
+        if (e.seq === this.foldedThinkingSeq) {
+          this.foldedThinkingSeq = -1; // error 旁路已就地折叠,消费登记位
+        } else {
+          this.pushMsg('thinking', `Thought for ${e.seconds ?? 0}s`, { detail: e.md });
+        }
+        closeLiveBlock(this); // live 解散(静默):折叠行已由本臂承载,原始边界分支已退役
+      }
       return;
     }
-    this.pushMsg('thinking', `Thought for ${ev.entry.seconds ?? 0}s`, { detail: ev.entry.md });
+    if (ev.t === 'seg-open') {
+      const e = ev.entry;
+      if (e.kind === 'tool') {
+        sealLiveReply(this); // 工具边界旁白封口:尾块先落静态区,工具行其后来(S2 起自原始面移此)
+        return this.archiveToolOpen(e);
+      }
+      if (e.kind === 'notice') return void this.pushMsg('system', e.md); // agent-message 同形(内核归 notice 条)
+      if (e.kind === 'error') return void this.pushMsg('system', t(`Error: ${e.md}`, `错误：${e.md}`), { level: 'error' });
+      return; // run(状态栏)/assistant·thinking(流式面)/user(submit 本地回显)不入投影
+    }
+    if (ev.t === 'seg-update') {
+      this.archiveToolEntry(ev.entry); // 发射面只产 tool 回填(P3 §3.1b)
+    }
+  }
+
+  /** tool 条挂起行入列(seg-open 视图臂):CC 模式延迟入档——运行中由动态区活动行唯一承载;
+   *  spawn 提示词捕获照迁(面板态创建时挂载)。result 在场(孤儿/result 先行)走旧孤儿语义:
+   *  配空调用行定格、不压 spawnCalls(两段式 spawn 的完成通知在配对池已空时即此形态) */
+  private archiveToolOpen(e: KernelEntry): void {
+    if (e.result !== undefined) {
+      // 旧 raw 孤儿口径:call 行空文本定格(非 toolCallLine——防两段式完成通知再生 SPAWN 行),无关联栈
+      const callItem: ChatItem = { role: 'tool', text: '', ts: e.ts, seq: ++this.msgSeq, kind: 'call', pending: false, callId: e.callId };
+      const item: ChatItem = {
+        role: 'tool', text: e.result.text, ts: e.ts, seq: ++this.msgSeq,
+        kind: 'result', ok: e.result.ok, callId: e.callId,
+        ...(e.result.full !== undefined ? { detail: e.result.full } : {}),
+      };
+      this.appendMessages([callItem, item]);
+      this.archivedToolSeqs.add(e.seq);
+      return;
+    }
+    this.pendingCalls = [
+      ...this.pendingCalls.filter((p) => p.callId === undefined || p.callId !== e.callId),
+      { callId: e.callId, text: toolCallLine(e.name ?? '…', e.input), input: e.input },
+    ];
+    if (e.name === 'spawn') {
+      const prompt = typeof e.input?.prompt === 'string' && e.input.prompt.length > 0 ? e.input.prompt : undefined;
+      if (prompt !== undefined) this.childPrompts.set(spawnBaseLabel(e.input), prompt);
+    }
+    this.notify();
+  }
+
+  /** tool 条成对定格(seg-update 视图臂/含 result 的 seg-open):调用行+结果行出自内核条目;
+   *  spawn 关联栈压栈+归档照迁。result 先行条此后 call 回填再发 seg-update——凭 seq 去重只定格一次 */
+  private archiveToolEntry(e: KernelEntry): void {
+    if (e.result === undefined || this.archivedToolSeqs.has(e.seq)) return;
+    this.archivedToolSeqs.add(e.seq);
+    const pi = this.pendingCalls.findIndex((p) => (e.callId !== undefined ? p.callId === e.callId : p.callId === undefined));
+    if (pi >= 0) this.pendingCalls.splice(pi, 1);
+    const callItem: ChatItem = {
+      role: 'tool', text: toolCallLine(e.name ?? '…', e.input), ts: e.ts, seq: ++this.msgSeq,
+      kind: 'call', pending: false, callId: e.callId,
+    };
+    const item: ChatItem = {
+      role: 'tool', text: e.result.text, ts: e.ts, seq: ++this.msgSeq,
+      kind: 'result', ok: e.result.ok,
+      callId: e.callId,
+      ...(e.result.full !== undefined ? { detail: e.result.full } : {}),
+    };
+    this.appendMessages([callItem, item]);
+    if (e.name === 'spawn') {
+      // spawn 调用关联栈:压栈定格行 seq 与委派时刻(浏览列表委派时间序数据源),成对语义下紧随其后弹出归档
+      this.spawnCalls.push({ seq: callItem.seq, base: spawnBaseLabel(e.input), delegatedAt: callItem.ts });
+      archiveChild(this);
+    }
   }
 
   /** error 旁路的思考就地折叠(旧 closeLiveBlock 行为平移):live 思考块折叠为摘要行,登记内核
@@ -166,11 +242,12 @@ export class SessionController {
 
   /** v2 档装载入核(resume/rewind 装载序,commands-session 消费):换新内核(旧档条目不串档)后 seed,
    *  seg 行 seq 原样沿用、后续 live 条目自 max+1 续接;不触发落档事件(装载零双写)。
-   *  视图归档登记位随内核换新一并复位(旧内核的折叠登记不跨档) */
+   *  视图归档登记位随内核换新一并复位(旧内核的折叠/定格登记不跨档) */
   kernelSeedForRestore(entries: ReadonlyArray<KernelEntry>): void {
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.applyKernelEvent(ev) });
     this.kernel.seed(entries);
     this.foldedThinkingSeq = -1;
+    this.archivedToolSeqs = new Set();
   }
 
   // ---- 等待队列面(P5 内核化,spec §12):态在内核,面板/键位/中断路径经此组读写——
@@ -224,8 +301,11 @@ export class SessionController {
    *  公开 = child-panel 拆分件消费（/new 整栈清空在本体重置） */
   spawnCalls: { seq: number; base: string; wait?: boolean; delegatedAt: number }[] = [];
   /** 运行中挂起的调用行（CC 模式延迟入档）：tool-call 挂起不进历史区（底部活动行唯一承载运行态），
-   *  tool-result 回程时调用行+结果行成对定格入档；收尾未回程者补档不蒸发 */
-  private pendingCalls: { callId?: string; text: string; input?: unknown; verb: string }[] = [];
+   *  tool-result 回程时调用行+结果行成对定格入档；收尾未回程者补档不蒸发。
+   *  P8:挂起行出自内核 seg-open(tool) 视图臂（archiveToolOpen），定格在 seg-update 臂（archiveToolEntry） */
+  private pendingCalls: { callId?: string; text: string; input?: unknown }[] = [];
+  /** 已定格 tool 条登记(P8 视图归档面去重):result 先行条的 call 回填也发 seg-update——凭 seq 只定格一次 */
+  private archivedToolSeqs = new Set<number>();
   /** 挂起的审批裁决（manual 模式 suspendAsker 挂起）；公开 = 拆分件 approval 消费（挂起/回填/中断拒绝单点） */
   pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费；unref 不阻塞进程退出 */
@@ -649,13 +729,17 @@ export class SessionController {
   }
 
   /** 未回程调用补入档单点（CC 模式延迟入档的兜底）：任务收尾/中断时挂起调用降级定格——
-   *  调用行单独入档退出 pending（无结果行），产出不蒸发；正常回程路径不经此点 */
+   *  调用行单独入档退出 pending（无结果行），产出不蒸发；正常回程路径不经此点。
+   *  P8:挂起面从内核推导（pendingTools——「在池即未回程」，种子条目天然不含）；登记 seq 防
+   *  迟到 seg-update 二次定格 */
   private flushPendingCalls(): void {
-    if (this.pendingCalls.length === 0) return;
-    const flushed: ChatItem[] = this.pendingCalls.map((p) => ({
-      role: 'tool', text: p.text, ts: Date.now(), seq: ++this.msgSeq,
-      kind: 'call', pending: false, callId: p.callId,
+    const pend = this.kernel.pendingTools().filter((e) => !this.archivedToolSeqs.has(e.seq));
+    if (pend.length === 0) return;
+    const flushed: ChatItem[] = pend.map((e) => ({
+      role: 'tool', text: toolCallLine(e.name ?? '…', e.input), ts: Date.now(), seq: ++this.msgSeq,
+      kind: 'call', pending: false, callId: e.callId,
     }));
+    for (const e of pend) this.archivedToolSeqs.add(e.seq);
     this.pendingCalls = [];
     this.appendMessages(flushed);
   }
@@ -1213,8 +1297,8 @@ export class SessionController {
   }
 
   private onEvent(e: SessionEvent): void {
-    // 内核转录泵(P3,session-kernel spec):转录持久化面单点——事件先经内核段级投影落 v2 行,
-    // 渲染面(静态区/实时区)路径不动;子代理事件(payload.subagent)内核自守卫零条目
+    // 内核转录泵(P3,session-kernel spec):转录持久化+视图归档单分发(applyKernelEvent)——静态区
+    // 转录条出自段级事件,原始分支只做通道/动态区/指标事务;子代理事件内核自守卫零条目
     this.kernel.pump(e);
     // 委派/板事件分流(P1 收敛,spec §11):类型前缀判定前置——即便上游误打 subagent 标签也不误吞(终审裁定);
     // delegation-* 进委派投影,task-*/gate-* 进板投影,两者都不触达主链消息分支
@@ -1231,14 +1315,11 @@ export class SessionController {
       }
       return;
     }
-    // agent-message 即时呈现(P2/Ruling 3 裁定:lead 投递轨 = 事件即时呈现 + FileInbox 落档——事件先到
-    // 即先显,落档为重启续读真相源;两轨同源不漂移)。纯消息行,不触达板/委派投影
-    if (e.type === 'agent-message') {
-      const p = (e.payload ?? {}) as { from?: string; to?: string; text?: string };
-      this.pushMsg('system', `[${String(p.from ?? '?')} → ${String(p.to ?? '?')}] ${String(p.text ?? '')}`);
-      return;
-    }
+    // agent-message 即时呈现(P2/Ruling 3)已收编内核:seg-open(notice) 视图臂出显示行(md 同形),
+    // 原始分支退役(P8);FileInbox 落档轨不受影响(harness 侧自有写入)
+
     // 子代理事件分流(规格 §4.1):带 payload.subagent 标签的事件路由至面板态,不触达主链任何分支
+    // (内核对 subagent 事件零条目——面板态是子代理唯一显示面)
     const sub = e.payload?.subagent;
     if (typeof sub === 'string' && sub.length > 0) {
       onChildEvent(this, e, sub);
@@ -1246,10 +1327,6 @@ export class SessionController {
     }
     this.state = { ...this.state, task: applyTaskState(this.state.task, e) };
     switch (e.type) {
-      case 'notice':
-        // 收口说明行用户面（规格 §10）：记忆/技能沉淀以一行增量告知（内容为英文链行原文，照原样不译）
-        this.pushMsg('system', String(e.payload?.text ?? e.text ?? ''));
-        return;
       case 'token':
         // chat 主通道正文增量直连（token 承载纯正文，无协议骨架过滤层）：live 累积 + markdansi 行级喂入（片段即时入档）
         this.appendLive('reply', e.text ?? '');
@@ -1301,54 +1378,12 @@ export class SessionController {
         this.notify();
         return;
       }
-      case 'tool-call': {
-        this.sealReply();
-        const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
-        // 调用行延迟入档（CC 模式）：运行中调用行由动态区活动行唯一承载，历史区零 pending 行；
-        // 回程时调用行+结果行成对定格（动态区紧贴转录末尾，定格视觉即原地完成）
-        const entry = {
-          callId,
-          text: toolCallLine(e.text ?? '', e.payload?.input),
-          input: e.payload?.input,
-          verb: e.text ?? '',
-        };
-        this.pendingCalls = [...this.pendingCalls.filter((p) => p.callId === undefined || p.callId !== callId), entry];
-        // 委派提示词捕获（规格 §4.2）：spawn 的 input.prompt 按基名暂存，子面板态创建时挂载、归档清理
-        if (e.text === 'spawn') {
-          const pin = e.payload?.input as Record<string, unknown> | undefined;
-          const prompt = typeof pin?.prompt === 'string' && pin.prompt.length > 0 ? pin.prompt : undefined;
-          if (prompt !== undefined) this.childPrompts.set(spawnBaseLabel(pin), prompt);
-        }
-        // 即时通知（b705855 延迟入档重构时随 pushMsg 一起丢失）：挂起清单变更与底部活动行出现都依赖本通知，
-        // 缺失即委派期动态区零变化、观感像卡住
-        this.notify();
+      case 'tool-call':
+      case 'tool-result':
+        // P8 收编:挂起行/委派提示词/成对定格/spawn 关联栈全归内核 seg-open·seg-update 视图臂
+        // (archiveToolOpen/archiveToolEntry);边界旁白封口在 seg-close(assistant) 臂(sealLiveReply)。
+        // 落此仅当事件不经 pump(测试直呼面不存在)——防御性空分支
         return;
-      }
-      case 'tool-result': {
-        const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : undefined;
-        // 取回挂起调用行（callId 命中优先，undefined FIFO 兜底——与旧乱序插回同口径）
-        const idx = this.pendingCalls.findIndex((p) => (callId !== undefined ? p.callId === callId : p.callId === undefined));
-        const pending = this.pendingCalls.splice(idx >= 0 ? idx : 0, 1)[0];
-        const callItem: ChatItem = {
-          role: 'tool', text: pending?.text ?? '', ts: Date.now(), seq: ++this.msgSeq,
-          kind: 'call', pending: false, callId,
-        };
-        const item: ChatItem = {
-          role: 'tool', text: e.text ?? '', ts: Date.now(), seq: ++this.msgSeq,
-          kind: 'result', ok: e.payload?.ok === true,
-          // callId 随行入档（2026-09-28 真机残留修复）：历史区 SPAWN 行整对剔除以 result.callId → call 行 seq
-          // 配对，结果行缺 callId 即永不命中、spawn 结果行整对泄漏进主时间线
-          callId,
-          detail: typeof e.payload?.full === 'string' ? e.payload.full : undefined,
-        };
-        this.appendMessages([callItem, item]);
-        if (e.payload?.tool === 'spawn' && pending !== undefined) {
-          // spawn 调用关联栈：调用行此刻才入档，压栈其真实 seq 与委派时刻（浏览列表委派时间序数据源），成对语义下紧随其后弹出归档
-          this.spawnCalls.push({ seq: callItem.seq, base: spawnBaseLabel(pending?.input), delegatedAt: callItem.ts });
-          archiveChild(this);
-        }
-        return;
-      }
       case 'step': {
         // 步数计账：模型动作步（done 收尾帧不计、子代理事件已分流不达此处），会话累计、/new 归零（状态栏 turns/steps 段数据源）
         // phase 叙述通道已退役（2026-09-30 用户裁决，单一权威源）：叙述只走 token→正文一条通道
@@ -1396,13 +1431,13 @@ export class SessionController {
         return;
       }
       case 'error':
-        // 错误旁路不封段(G14.51:done 必发,内核收口让位)——思考行按旧行为就地折叠并登记 seq,
-        // 随后 done 的 seg-close(thinking) 凭登记跳过(P8 视图归档面去重)
+        // 错误旁路不封段(G14.51:done 必发,内核收口让位)——思考行就地折叠并登记 seq,随后 done 的
+        // seg-close(thinking) 凭登记跳过;错误显示行已由 seg-open(error) 视图臂承载(P8),本分支只剩
+        // 通道清理/挂起补档/指标事务
         this.foldOpenThinking();
         this.closeLive();
         this.md.clear();
         this.flushPendingCalls();
-        this.pushMsg('system', t(`Error: ${e.text ?? '(no detail)'}`, `错误：${e.text ?? '（无说明）'}`), { level: 'error' });
         this.refreshMetrics();
         return;
       default:
@@ -1460,11 +1495,6 @@ export class SessionController {
    *  reply 不落消息：终稿由 done 接管） */
   private closeLive(): void {
     closeLiveBlock(this);
-  }
-
-  /** 工具边界旁白封口（委托 md-stream.sealLiveReply：live reply 冲刷收口 + 通道置空，细节见拆分件） */
-  private sealReply(): void {
-    sealLiveReply(this);
   }
 
   /** done/error 后刷新账本 runs（缓存命中率已升格会话累计口径，随 usage 事件增量更新） */

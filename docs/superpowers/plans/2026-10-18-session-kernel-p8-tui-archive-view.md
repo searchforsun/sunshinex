@@ -90,10 +90,33 @@ TUI(usageBase+turnTotal 求和)与 GUI(turnTokensBase 水位差值)对同一 `us
 
 | 步 | 内容 | 状态 |
 |---|---|---|
-| S1 | 内核事件单分发散 + thinking 折叠收编 + 快照游标直供 | ✅ 本提交 |
-| S2 | tool 面(seg-open/seg-update 视图臂 + flush 推导化 + 原始分支退役) | 待做 |
-| S3 | assistant/done 对账面(seg-close 非 done 封段 + done 分支瘦身) | 待做 |
-| S4 | notice/agent-message/error 条目面 | 待做 |
+| S1 | 内核事件单分发散 + thinking 折叠收编 + 快照游标直供 | ✅ d90c82d |
+| S2 | tool 面(seg-open/seg-update 视图臂 + flush 推导化 + 原始分支退役) | ✅ 本提交 |
+| S3 | assistant/done 对账面(seg-close 非 done 封段 + done 分支瘦身) | ✅ 本提交(定版见 §2.1) |
+| S4 | notice/agent-message/error 条目面 | ✅ 本提交 |
+
+### 2.1 S3 实施定版(与 §1.2 设计差异)
+
+**seg-close(assistant) 不做任何通道事务**(设计稿的「非 done 边界封段冲刷」取消)——真机实测:
+done 前的 notice 沉淀行触发 seg-close(assistant) 时冲刷通道,done 终稿对账的 pushedSource 基线
+即被清空,finalText 以空基线全量补推→**回复双份入档**(selfcheck 流式探针实锤)。通道冲刷挪至
+seg-open(tool) 臂(工具行出现前清尾块,先冲刷后挂起);thinking 折叠臂补 closeLiveBlock(live
+解散,原始边界分支退役后无人解散 live)。done 分支零改动(对账/规划轮/model-error 裁定原样)。
+
+### 2.2 S2 实施定版(真机发现)
+
+**spawn 两段式结果协议**:spawn 的完成通知(tool-result「xxx 完成」)在配对池已空时成为内核孤儿
+条目(seg-open with result)——视图臂按旧孤儿口径定格:**call 行空文本**(非 toolCallLine,防再生
+SPAWN 行)、不压 spawnCalls 关联栈(5 并行 spawn 乱序完成用例实锤,10≠5)。result 先行条此后
+call 回填再发 seg-update,凭 archivedToolSeqs 去重只定格一次。flush 改 kernel.pendingTools()
+推导(新增访问器,种子条目天然不含),登记 seq 防迟到回填二次定格。
+
+### 2.3 内核侧配套
+
+- `KernelEntry.result` 增 `full?: string`(全量观测随档,batch-runner payload.full)——TUI detail
+  展开与恢复面(entriesToChatItems)同源,修复恢复面丢失全量观测的既有缺口;v2 seg-update 行
+  随 result 对象自然携带。
+- `SessionKernel.pendingTools()` 新增:未配对 tool 条视图(§1.1 flush 推导面)。
 
 ## 3. 回归面
 

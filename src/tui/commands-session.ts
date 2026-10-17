@@ -96,7 +96,11 @@ export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () 
     }
     if (e.kind === 'tool') {
       items.push({ role: 'tool', kind: 'call', text: toolCallLine(e.name ?? '…', e.input), pending: false, callId: e.callId, ts: e.ts, seq });
-      items.push({ role: 'tool', kind: 'result', text: e.result?.text ?? '…', ok: e.result?.ok ?? true, callId: e.callId, ts: e.ts, seq: items.length + 2 });
+      items.push({
+        role: 'tool', kind: 'result', text: e.result?.text ?? '…', ok: e.result?.ok ?? true, callId: e.callId, ts: e.ts, seq: items.length + 2,
+        // 全量观测随档(P8 result.full):detail 展开与 live 同源——旧档无 full 字段自然缺省
+        ...(e.result?.full !== undefined ? { detail: e.result.full } : {}),
+      });
       continue;
     }
     if (e.kind === 'error') {

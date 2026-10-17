@@ -41,8 +41,8 @@ export interface KernelEntry {
   callId?: string;
   name?: string;
   input?: Record<string, unknown>;
-  /** tool:结果回执(call/result 配对回填;全文 + ok) */
-  result?: { text: string; ok: boolean };
+  /** tool:结果回执(call/result 配对回填;text=观察行截断文本 + ok + full=全量观测——detail 展开与恢复面同源) */
+  result?: { text: string; ok: boolean; full?: string };
   /** thinking:段耗时秒(封段时首尾 ts 差取整) */
   seconds?: number;
   /** run:收段统计(done 填基础面,runmeta 帧补全/覆盖) */
@@ -221,7 +221,12 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       const sealed = sealSeg(state, e.ts);
       const callId = typeof e.payload?.callId === 'string' && e.payload.callId !== '' ? e.payload.callId : undefined;
       const resultLine = firstLine(e.text);
-      const result = { text: e.text ?? '', ok: typeof e.payload?.ok === 'boolean' ? e.payload.ok : true };
+      const result = {
+        text: e.text ?? '',
+        ok: typeof e.payload?.ok === 'boolean' ? e.payload.ok : true,
+        // 全量观测随档(batch-runner payload.full):detail 展开与恢复面同一来源,live/restore 零推导
+        ...(typeof e.payload?.full === 'string' ? { full: e.payload.full } : {}),
+      };
       const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, md: toolMd(name, resultLine), result });
       if (callId !== undefined) {
         const pi = sealed.pending.findIndex((p) => p.callId === callId);

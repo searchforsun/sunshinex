@@ -24,7 +24,8 @@ export type KernelEvent =
  * truncate 承载 rewind/compact/reset 的视图截断;onKernelEvent 为段级事件外抛面
  * (P2 daemon 持久化写者经它落 v2 行;seed 回种不触发——防双写)。
  * 收编进度:P1-P5 落地(daemon 唯一 v2 写者/TUI 持久化+恢复/GUI 投影/steer 队列);
- * P8 收 TUI 静态归档面(thinking 折叠已收编,tool/done/notice 面见 plans/2026-10-18-session-kernel-p8)。
+ * P8 全量收编 TUI 静态归档面(tool 成对定格/thinking 折叠/notice/error 条目全由段级事件驱动,
+ * 原始事件自建投影退役——TUI 静态区=内核投影的渲染形,见 plans/2026-10-18-session-kernel-p8)。
  */
 export class SessionKernel {
   private state: KernelState = initialKernelState();
@@ -90,6 +91,17 @@ export class SessionKernel {
 
   openSeg(): number {
     return this.state.openSeg;
+  }
+
+  /** 未配对 tool 条视图(P8 flush 推导面):pending 池对应条目原样返回——种子不含(播种不动配对池),
+   *  CAP 裁剪同步退出,「在池即未回程」不变式由 reducer 单点维持 */
+  pendingTools(): KernelEntry[] {
+    const out: KernelEntry[] = [];
+    for (const p of this.state.pending) {
+      const e = this.state.entries.find((x) => x.seq === p.seq);
+      if (e !== undefined) out.push(e);
+    }
+    return out;
   }
 
   /** 视图截断(rewind/compact/reset):保留 seq<=upToSeq(0=全清);序号不复用;发 truncate 事件落行 */
