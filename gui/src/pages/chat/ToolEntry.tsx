@@ -74,15 +74,17 @@ export function toolMdInfo(md: string): { name: string; input: Record<string, un
   return { name, input: {} };
 }
 
-/** G14.168 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名)。
- *  G14.213 两字优先:能两字表意的不用多字(查阅/查找/抓取/搜索/记忆/派生/停止/等待/检索/
- *  建单/依赖/分派/复审/门审/取消);工作树无自然两字,保留 */
+/** 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名)。
+ *  G14.216 命名口径(用户裁定,替代 G14.213「两字优先」):自然两字且项目既定的保留不动——
+ *  读取/写入/执行/查阅/查找/搜索/抓取/停止/取消/分派/复审/门审/提问(工作树为项目自然词);
+ *  凑两字而失读性的展开为目标域词,与运行态标签(RUNNING_LABELS)同口径——加载技能、保存记忆、
+ *  更新待办、等待任务、检索知识库、创建任务、设置依赖、分派子代理 */
 const TOOL_VERB_ZH: Record<string, string> = {
   read: '读取', write: '写入', exec: '执行', grep: '查阅', glob: '查找',
-  skill: '技能', webfetch: '抓取', websearch: '搜索', memory_write: '记忆',
-  todo_write: '待办', worktree: '工作树', spawn: '派生', task_stop: '停止',
-  task_wait: '等待', kb_search: '检索', ask_question: '提问',
-  create_task: '建单', set_dependency: '依赖', assign: '分派',
+  skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
+  todo_write: '更新待办', worktree: '工作树', spawn: '分派子代理', task_stop: '停止',
+  task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
+  create_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
   review_task: '复审', gate_task: '门审', cancel_task: '取消',
 };
 export function zhToolName(name: string): string {

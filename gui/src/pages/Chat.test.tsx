@@ -664,7 +664,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       fire({ type: 'tool-call', text: 'create_task', ts: Date.now(), payload: { callId: 'ct2', input: { title: '测试构建', spec: 'y', dependsOn: null, assignee: null, gated: null, executor: null } } });
       fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct2' } });
       row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
-      expect(row.textContent).toContain('建单');
+      expect(row.textContent).toContain('创建任务'); // G14.216 命名口径(替代「建单」两字压缩)
       expect(row.textContent).toContain('测试构建');
       // 未登记工具(MCP 面)回退原名不硬翻
       fire({ type: 'tool-call', text: 'mcp_foo_bar', ts: Date.now(), payload: { callId: 'm1', input: {} } });
