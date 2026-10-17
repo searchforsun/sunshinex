@@ -71,6 +71,7 @@ import { t } from '../i18n';
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
  *  App 侧经 ref 转投免闭包陈旧 */
 import { useCommandPalette } from './chat/use-command-palette';
+import { useWorkspaceFiles } from './chat/use-workspace-files';
 import { useQueue } from './chat/use-queue';
 import { ToolEntryView, toolMdInfo } from './chat/ToolEntry';
 export { ToolEntryView } from './chat/ToolEntry';
@@ -1611,75 +1612,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     document.addEventListener('pointerdown', onDocPointerDown);
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, []);
-  const filesCacheRef = useRef<{ key: string; files: string[] } | null>(null);
   /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析第一优先) */
   const pickRelRef = useRef(new Map<string, string>());
   /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
   const composingRef = useRef(false);
-  /** 解析器:@文件名 → 相对路径(选中记账优先,工作区索引按 mtime 最近兜底) */
-  const resolveFileRef = useCallback(
-    (name: string): string | undefined => {
-      const picked = pickRelRef.current.get(name);
-      if (picked !== undefined) return picked;
-      const files = filesCacheRef.current?.files;
-      if (files !== undefined) {
-        const hit = files.find((f) => (pathBasename(f)) === name);
-        if (hit !== undefined) return hit;
-      }
-      return undefined;
-    },
-    [],
-  );
-  const loadWorkspaceFiles = useCallback(async (): Promise<string[]> => {
-    // G14.121 root 在场走 /workspace/files 索引(mtime 倒序=最近改动优先);否则回落 tree BFS
-    if (root !== undefined && root !== '' && root !== 'default') {
-      const cached = filesCacheRef.current;
-      if (cached !== null && cached.key === root) return cached.files;
-      let files: string[] = [];
-      try {
-        files = (await conn.workspaceFiles(root)).files.map((f) => f.path);
-      } catch {
-        files = [];
-      }
-      filesCacheRef.current = { key: root, files };
-      return files;
-    }
-    const cached = filesCacheRef.current;
-    if (cached !== null && cached.key === sessionId) return cached.files;
-    const skip = new Set(['node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode']);
-    const cap = { n: 600 };
-    const walk = async (p2: string, depth: number): Promise<string[]> => {
-      if (depth > 4 || cap.n <= 0) return [];
-      let entries: Array<{ name: string; kind: 'dir' | 'file' }> = [];
-      try {
-        const r = await conn.tree(sessionId, p2 === '' ? undefined : p2);
-        entries = r.entries;
-        if (r.truncated === true) cap.n -= 200;
-      } catch {
-        return [];
-      }
-      const out: string[] = [];
-      for (const e of entries) {
-        if (cap.n <= 0) break;
-        const rel = p2 === '' ? e.name : `${p2}/${e.name}`;
-        if (e.kind === 'file') {
-          out.push(rel);
-          cap.n -= 1;
-        } else if (!skip.has(e.name)) {
-          out.push(...(await walk(rel, depth + 1)));
-        }
-      }
-      return out;
-    };
-    const files = await walk('', 0);
-    filesCacheRef.current = { key: sessionId, files };
-    return files;
-  }, [conn, sessionId, root]);
-  // G14.127 索引预热:会话打开即拉清单(手打 @根目录文件 无目录信息,发送期解析全靠它——
-  // 不能等面板首次打开才拉);失败静默(面板降级可用)
-  useEffect(() => {
-    if (root !== undefined && root !== '' && root !== 'default') void loadWorkspaceFiles();
-  }, [loadWorkspaceFiles, root]);
+  /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
+  const { resolveFileRef, loadWorkspaceFiles } = useWorkspaceFiles(conn, sessionId, root, pickRelRef);
   /** 队列面 hook(D32 批B):排队 chips 状态/折叠/refreshQueued/pauseAndSend——会话流可见化与 @ 展开
    *  依赖注入（resolveFileRef 此处已完成声明）；行为零变化（Chat.pause-send.test 为锚） */
   const { queued, setQueued, queueFolded, setQueueFolded, refreshQueued, pauseAndSend } = useQueue(
