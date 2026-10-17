@@ -1,7 +1,10 @@
 # D32 Chat.tsx 上帝组件拆分实施计划（立项方案）
 
 > 状态：**主体已清（批A/批A′/批B 数据部/批C-1…C-5 共九批落库，Chat.tsx 3324→1739，−48%）**；
-> 余第六批（Chat() JSX 骨架 dock/composer 分解，需 props 面设计、风险升档）与 filePal UI 部
+> 第六批 F-1..F-6 已落库（第二十六轮,Chat.tsx 1737→1049:ComposerPills/SteerQueue/AskDock/
+> ChatTopbar/MessageList 五渲染件 + use-chat-derived/scroll/fold/title/session-info 五 hooks,
+> DOM 面/行为零变化）；余 F-7（提交路径 §7 hook + composer 侧挂面 + 类型面外迁,≤800 余约
+> 250 行）。filePal UI 部
 > 留置裁定（composer 键链域，见台账第二十轮）。进度详见 `docs/TECH-DEBT-LOG.md` D32 行与
 > 第十三~二十一轮台账行。
 > 台账：`docs/TECH-DEBT-LOG.md` D32（H·重，2026-10-17 清理轮普查登记）。
