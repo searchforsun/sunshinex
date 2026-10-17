@@ -10,6 +10,8 @@ import type { ProjectMenuConn } from './ProjectMenu';
  */
 
 /** stub conn:一项目组(p1, root 在场)+ 一历史组(p2, root 缺场) */
+const FIXED_TS = 1_728_000_000_000; // 会话行时间戳钉值(夹具确定性——见 sessionsOf 注)
+
 function makeConn(): ProjectMenuConn & { roots: string[] } {
   const sessionsOfRoots: string[] = [];
   const conn: ProjectMenuConn & { roots: string[] } = {
@@ -21,10 +23,12 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     ] as never,
     sessionsOf: async (root: string) => {
       sessionsOfRoots.push(root);
-      return [{ id: 'j1', firstUser: 'demo goal', updatedAt: Date.now() }] as never;
+      // 时间戳钉常量:点击后的 loadWorkspaces 重拉会再次取 updatedAt——取 Date.now() 时重拉值
+      // 新于 markSeen 时刻即未读点复现(同毫秒才通过,毫秒掷硬币抖动源)
+      return [{ id: 'j1', firstUser: 'demo goal', updatedAt: FIXED_TS }] as never;
     },
     recentSessions: async () =>
-      [{ id: 'j1', firstUser: 'demo goal', updatedAt: Date.now(), root: 'D:/w/p1', slug: 'p1' }] as never,
+      [{ id: 'j1', firstUser: 'demo goal', updatedAt: FIXED_TS, root: 'D:/w/p1', slug: 'p1' }] as never,
     dirpicker: async () => ({ path: 'D:/w', parent: 'D:', dirs: ['p1'] }),
     newSession: async (root: string, mode?: 'manual') => ({ sessionId: `new-${root}${mode ? '-m' : ''}` }),
     createWorkspace: vi.fn(async (body: { name?: string; path?: string }) => ({
@@ -80,7 +84,8 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     fireEvent.click(row);
     await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'j1')); // G14.213 journalId 随行
     await waitFor(() => expect(row.closest('.sx-session-row')!.className).toContain('active'));
-    expect(row.closest('.sx-session-row')!.querySelector('.sx-session-dot.unseen')).toBeNull();
+    // 未读点消失晚于 active 类一帧(markRead 异步回写)——裸断言在帧隙必抖(waitFor 钉)
+    await waitFor(() => expect(row.closest('.sx-session-row')!.querySelector('.sx-session-dot.unseen')).toBeNull());
   });
 
   it('「+ 添加工作区」:浏览器态开服务端 DirPicker → 确认登记既有目录(G14.51 只登记不建目录)', async () => {

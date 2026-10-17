@@ -150,47 +150,25 @@ export function appendUserMessage(s: ChatState, text: string, ts?: number): Chat
 }
 
 /** onResync 基线：snapshot.messages（内核条目）直 seed——转录投影零推导;计数器自 run meta 求和
- *  （G14.18:回放会话累计不从零起）;G14.51 partial-run 流式派生保留（running 且末 run 无 meta=在途,
- *  末 run+尾随部分段标流式,done 到达不裂段） */
-export function seedChatFromSnapshot(messages: readonly SnapshotTranscriptEntry[], status: 'idle' | 'running'): ChatState {
+ *  （G14.18:回放会话累计不从零起）。流式游标(P4 归位):快照携带内核 openRun/openSeg 直用——
+ *  客户端从条目反推的派生块退役(推断只能近似「末 run+尾随部分段」,内核游标是精确权威);
+ *  流式态由内核派生(非事后贴标),后续 token 并入部分段、done 合入同条不裂 */
+export function seedChatFromSnapshot(
+  messages: readonly SnapshotTranscriptEntry[],
+  status: 'idle' | 'running',
+  cursors: { openRun: number; openSeg: number },
+): ChatState {
   let tokens = 0;
   let steps = 0;
   let cacheTokens = 0;
-  let lastRunOpen = false; // 末个 run 条是否在途(无 meta=未收段);无 run 条=false
   for (const m of messages) {
-    if (m.kind !== 'run') continue;
-    lastRunOpen = m.meta === undefined;
-    if (m.meta === undefined) continue;
+    if (m.kind !== 'run' || m.meta === undefined) continue;
     tokens += m.meta.tokens ?? 0;
     steps = Math.max(steps, m.meta.steps ?? 0); // steps=会话累计口径,取末次覆盖值
     cacheTokens += m.meta.cacheTokens ?? 0;
   }
   const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens, steps, cacheTokens, turnTokensBase: 0, turnCacheBase: 0, runBases: {} };
-  // G14.51 快照竞态收口:running 且末 run 在途(无 meta)→ 恢复内核游标(openRun/openSeg)——
-  // 流式态由内核派生(非事后贴标),后续 token 并入部分段、done 合入同条不裂
-  if (status === 'running' && lastRunOpen) {
-    let runSeq = -1;
-    for (let i = s.k.entries.length - 1; i >= 0; i -= 1) {
-      const e = s.k.entries[i]!;
-      if (e.kind === 'run') {
-        runSeq = e.seq;
-        break;
-      }
-    }
-    if (runSeq >= 0) {
-      const runIdx = s.k.entries.findIndex((e) => e.seq === runSeq);
-      let partialSeq = -1;
-      for (let i = s.k.entries.length - 1; i > runIdx; i -= 1) {
-        const e = s.k.entries[i]!;
-        if (e.kind === 'assistant' || e.kind === 'thinking') {
-          partialSeq = e.seq;
-          break;
-        }
-        if (e.kind === 'tool' || e.kind === 'user') break; // 段界:工具在途/轮首——其后无部分文本段
-      }
-      s.k = { ...s.k, openRun: runSeq, openSeg: partialSeq };
-    }
-  }
+  s.k = { ...s.k, openRun: cursors.openRun, openSeg: cursors.openSeg };
   return { ...s, entries: mapEntries(s.k, s.runBases) };
 }
 

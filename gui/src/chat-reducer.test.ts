@@ -285,6 +285,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
         { seq: 5, ts: 5, kind: 'error', md: 'boom' },
       ],
       'running',
+      { openRun: -1, openSeg: -1 },
     );
     expect(s.entries.map((e) => ({ key: e.key, kind: e.kind, md: e.md, streaming: e.streaming }))).toEqual([
       { key: 'k1', kind: 'user', md: '> goal', streaming: undefined },
@@ -298,8 +299,9 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     expect(s.steps).toBe(0);
   });
 
-  it('G14.51 快照竞态:running 且末 run 无 meta——部分回复按流式态摄入,done 合入不裂条', () => {
-    // 挂载播种与流式跑动竞态:快照捕获到在途轮的部分回复(journal 已落档的 token 前缀)
+  it('G14.51 快照竞态:P4 起游标由快照直供(内核权威,不再从条目反推)——部分回复按流式态摄入,done 合入不裂条', () => {
+    // 挂载播种与流式跑动竞态:快照捕获到在途轮的部分回复(journal 已落档的 token 前缀);
+    // openRun/openSeg 由 daemon 内核游标随快照携带,客户端零推导
     const seeded = seedChatFromSnapshot(
       [
         { seq: 1, ts: 1, kind: 'user', md: '> goal' },
@@ -308,7 +310,10 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
         { seq: 4, ts: 4, kind: 'notice', md: '✻ learned' },
       ],
       'running',
+      { openRun: 2, openSeg: 3 },
     );
+    expect(seeded.k.openRun).toBe(2); // 游标直落内核态
+    expect(seeded.k.openSeg).toBe(3);
     const asst = seeded.entries.find((e) => e.kind === 'assistant');
     expect(asst?.streaming).toBe(true); // 种子即流式态(done 可寻址)
     const runE = seeded.entries.find((e) => e.kind === 'run');
@@ -322,7 +327,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     expect(s.status).toBe('idle');
   });
 
-  it('G14.51 快照竞态边界:末 run 已封(轮间静默)不标流式——上一轮回答不得并入下轮', () => {
+  it('G14.51 快照竞态边界:游标 -1(末 run 已封/轮间静默)不标流式——上一轮回答不得并入下轮', () => {
     const seeded = seedChatFromSnapshot(
       [
         { seq: 1, ts: 1, kind: 'run', md: '', meta: { seconds: 5, steps: 2, tokens: 100 } },
@@ -330,6 +335,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
         { seq: 3, ts: 3, kind: 'notice', md: '✻ between rounds' },
       ],
       'running',
+      { openRun: -1, openSeg: -1 },
     );
     const asst = seeded.entries.find((e) => e.kind === 'assistant');
     expect(asst?.streaming).toBeUndefined();
@@ -338,7 +344,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
   });
 
   it('seed 后事件续推：usage 从 0 基线续（重连 token 显示接受归零裁定，事件面续推）', () => {
-    const s = applyChatEvent(seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'idle'), ev('model-start'));
+    const s = applyChatEvent(seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'idle', { openRun: -1, openSeg: -1 }), ev('model-start'));
     const s2 = applyChatEvent(s, ev('usage', undefined, { turnTotal: 10 }));
     expect(s2.tokens).toBe(10);  });
 });
@@ -361,7 +367,7 @@ describe('条目时间戳(G9 B3a:日期分隔投影源)', () => {
     const e = ev('done', 'hi');
     const s = fold([e]);
     expect(s.entries[0]!.ts).toBe(e.ts);
-    const seeded = seedChatFromSnapshot([{ seq: 1, ts: 1728380001000, kind: 'user', md: '> yo' }], 'idle');
+    const seeded = seedChatFromSnapshot([{ seq: 1, ts: 1728380001000, kind: 'user', md: '> yo' }], 'idle', { openRun: -1, openSeg: -1 });
     expect(seeded.entries[0]!.ts).toBe(1728380001000);
     const echoed = appendUserMessage(initialChatState(), 'yo', 999);
     expect(echoed.entries[0]!.ts).toBe(999);
@@ -408,7 +414,7 @@ describe('run 边界条目(G11 状态行:idle→running 插入,done/error 封段
   });
 
   it('seed 快照不产 run 条目(历史归档无 run 标)', () => {
-    const s = seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'running');
+    const s = seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'running', { openRun: -1, openSeg: -1 });
     expect(s.entries.map((e) => e.kind)).toEqual(['assistant']);
   });
 });
@@ -438,12 +444,12 @@ describe('queue 面板事件(P5:不入转录投影)', () => {
   it('queue 帧直通守卫:返回原引用零变更;开启段不被误闭合', () => {
     let s = applyChatEvent(initialChatState(), { type: 'user', text: '问', ts: 1000 } as SessionEvent);
     s = applyChatEvent(s, { type: 'token', text: '答', ts: 2000 } as SessionEvent);
-    const openSeq = s.entries[1]!.seq;
+    const openKey = s.entries[1]!.key;
     const before = s;
     const next = applyChatEvent(s, { type: 'queue', ts: 3000, payload: { items: [{ seq: 0, text: 'x', front: false }] } } as unknown as SessionEvent);
     expect(next).toBe(before);
     expect(next.entries).toHaveLength(2);
-    expect(next.entries[1]!.seq).toBe(openSeq);
+    expect(next.entries[1]!.key).toBe(openKey);
     expect(next.entries[1]!.streaming).toBe(true);
   });
 });

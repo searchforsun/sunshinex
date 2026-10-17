@@ -1,5 +1,5 @@
 import { isFenceLine, normalizeCjkLine, renderMd, stripAnsi } from './md-ansi';
-import type { ChatItem, ChatRole, LiveBlock } from './chat-model';
+import type { LiveBlock } from './chat-model';
 
 // D17 拆分件步2（docs/TECH-DEBT-SURVEY.md H1）：流式 md 通道状态机——以持有者 trait 形态从 session.ts 迁出。
 // 依赖只限 md-ansi 与 chat-model（不得回引 session.ts），对控制器的全部依赖经下方窄接口回呼。
@@ -122,7 +122,8 @@ export class MdStream {
 }
 
 /** live 区协调宿主面（结构化窄接口，SessionController 天然实现）：live 块协调函数对控制器状态面的全部依赖。
- *  通道回呼（镜像/入档/宽度）不经此面——协调函数只驱 host.md，由 MdStream 自持的 host 回呼控制器 */
+ *  通道回呼（镜像/入档/宽度）不经此面——协调函数只驱 host.md，由 MdStream 自持的 host 回呼控制器。
+ *  P8:pushMsg 自接口退役（thinking 折叠归内核 seg-close 归档面，本通道不再产出消息条目） */
 export interface LiveCoordHost {
   readonly md: MdStream;
   /** live 块读点（state.live 单点） */
@@ -131,7 +132,6 @@ export interface LiveCoordHost {
   set liveBlock(live: LiveBlock | undefined);
   notify(): void;
   notifyThrottled(): void;
-  pushMsg(role: ChatRole, text: string, extra?: Partial<Pick<ChatItem, 'kind' | 'ok' | 'pending' | 'callId' | 'detail' | 'level' | 'ansi'>>): void;
 }
 
 /** 追加实时区内容：同类续接；异类先收束旧块（thinking 折叠为摘要行；reply→thinking 交错经 sealLiveReply
@@ -160,16 +160,12 @@ export function appendLiveText(host: LiveCoordHost, kind: LiveBlock['kind'], del
   host.notify(); // 块首帧即时上屏：保证流式可观测与首字延迟，后续增量并入合帧窗口
 }
 
-/** 收束实时区：thinking 折叠为一行摘要；reply 不落消息（终稿由 done 接管） */
+/** 收束实时区（P8 起纯解散）：thinking 折叠行改由内核 seg-close 事件承载（session.ts 归档面，
+ *  与恢复面 entriesToChatItems 同源），reply 不落消息（终稿由 done/通道接管）——本函数只负责
+ *  live 块离场，不再产出任何消息条目 */
 export function closeLiveBlock(host: LiveCoordHost): void {
-  const live = host.liveBlock;
-  if (!live) return;
+  if (!host.liveBlock) return;
   host.liveBlock = undefined;
-  if (live.kind === 'thinking') {
-    const secs = Math.max(1, Math.round((Date.now() - live.startedAt) / 1000));
-    host.pushMsg('thinking', `Thought for ${secs}s`, { detail: live.text });
-    return;
-  }
   host.notify();
 }
 

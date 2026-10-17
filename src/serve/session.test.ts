@@ -146,6 +146,8 @@ test('② 实跑平移面：submit 受理→running→done→idle；转录三类
     assert.notEqual(snap.board.tasks.t1, undefined);
     assert.ok(Array.isArray(snap.delegations));
     assert.equal(snap.lastSeq, Math.max(...ctx.frames.filter((f) => f.kind === 'event').map((f) => f.seq)), 'lastSeq=已广播事件帧最大 seq');
+    assert.equal(snap.openRun, -1, '完成后内核流式游标归位(-1)——快照客户端零反推');
+    assert.equal(snap.openSeg, -1);
     assert.ok(ctx.frames.length > 0 && ctx.frames.every((f) => f.sessionId === 's1'), '实跑帧恒挂 sessionId');
   });
 });
@@ -155,6 +157,7 @@ test('③ run 锁平移面：运行中二次 submit 拒（409 面）；interrupt
     const first = ctx.session.submit('长任务');
     assert.deepEqual(first, { ok: true });
     await waitFor(() => ctx.session.status() === 'running', 3000);
+    assert.ok(ctx.session.snapshotResponse().openRun >= 0, '运行中快照携带内核 openRun 游标(模型轮已开 run 条)');
     const second = ctx.session.submit('再来');
     assert.deepEqual(second, { ok: false, status: 409, error: 'run in progress' }, '运行中 submit 拒且不排队');
     const it = ctx.session.interrupt();

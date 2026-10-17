@@ -51,6 +51,9 @@ export interface EventFrame {
  *  见 daemon.handleSnapshot） */
 export interface SessionSnapshot {
   messages: KernelEntry[];
+  /** 内核流式游标(G14.51 归位):快照时刻的 openRun/openSeg——客户端装载直用,不再从条目反推 */
+  openRun: number;
+  openSeg: number;
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';
@@ -701,6 +704,8 @@ export class SessionRuntime {
   snapshotResponse(): SessionSnapshot {
     return {
       messages: this.kernel.replay(),
+      openRun: this.kernel.openRun(),
+      openSeg: this.kernel.openSeg(),
       board: this.board,
       delegations: this.delegations,
       status: this.status(),

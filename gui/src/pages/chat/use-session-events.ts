@@ -127,7 +127,10 @@ export function useSessionEvents(deps: {
         setQueued(snap.queued ?? []);
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'dontAsk' | 'manual' | 'plan');
         setSessEffort(snap.effort);
-        let next = seedChatFromSnapshot(snap.messages, snap.status);
+        let next = seedChatFromSnapshot(snap.messages, snap.status, {
+          openRun: snap.openRun ?? -1,
+          openSeg: snap.openSeg ?? -1,
+        });
         if (freshView === true) {
           // G14.31 辅助对话:全新视图——种子历史清零不落屏(上下文只在模型侧,新帧照常续推)
           next = { ...next, entries: [], tokens: 0, steps: 0, cacheTokens: 0 };

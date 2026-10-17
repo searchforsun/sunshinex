@@ -23,7 +23,8 @@ export type KernelEvent =
  * 事件经 pump 单点驱动纯 reducer(entry.ts);seq 由状态机自分配;replay 只读快照;
  * truncate 承载 rewind/compact/reset 的视图截断;onKernelEvent 为段级事件外抛面
  * (P2 daemon 持久化写者经它落 v2 行;seed 回种不触发——防双写)。
- * P1-P2 消费者:daemon(v2 写者);TUI/GUI 旧投影仍在,P3/P4 逐个退役。
+ * 收编进度:P1-P5 落地(daemon 唯一 v2 写者/TUI 持久化+恢复/GUI 投影/steer 队列);
+ * P8 收 TUI 静态归档面(thinking 折叠已收编,tool/done/notice 面见 plans/2026-10-18-session-kernel-p8)。
  */
 export class SessionKernel {
   private state: KernelState = initialKernelState();

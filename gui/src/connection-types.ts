@@ -74,6 +74,9 @@ export type GuiAskAnswer =
  *  snapshot 是刷新/reseed 后卡内容的唯一来源,Chat reseed 据此重建卡) */
 export interface SnapshotResponse {
   messages: SnapshotMessage[];
+  /** 内核流式游标(P4 归位):快照时刻 openRun/openSeg(-1 无)——seed 直用,客户端不再从条目反推 */
+  openRun?: number;
+  openSeg?: number;
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';

@@ -27,7 +27,7 @@ import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, newSessionId, readSessionMeta, writeSessionMeta } from './session-journal';
-import { SessionKernel, type SteerItem } from '../session/kernel';
+import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
 import type { KernelEntry } from '../session/entry';
 import { kernelEventRows } from '../session/v2log';
 import { resolveDataDir } from '../config/data-dir';
@@ -113,8 +113,44 @@ export class SessionController {
   journal?: SessionJournal;
   /** 会话内核转录(P3,session-kernel spec §3.2):转录持久化面单点——事件经段级投影落 v2 seg 行,
    *  msg/msg-update 行退役(渲染归档与转录归档分离:命令回显/卡即 ephemeral,对话面随档)。
-   *  换新走 kernelSeedForRestore(/new 清空/resume 装载) */
-  private kernel: SessionKernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
+   *  换新走 kernelSeedForRestore(/new 清空/resume 装载)。P8 起 onKernelEvent 双消费:
+   *  持久化落档 + 视图归档(段闭合事件驱动静态区转录条,applyKernelEvent 单点) */
+  private kernel: SessionKernel = new SessionKernel({ onKernelEvent: (ev) => this.applyKernelEvent(ev) });
+
+  /** 内核事件单分发面(P8):持久化落档(P3 既有)+ 视图归档(段级事件驱动)。同步序保证:onEvent
+   *  内 pump 先于原始事件分支运行——视图归档先到,原始分支只做通道/动态区/指标事务,静态区
+   *  转录条不再从原始事件自建(数据同源,唯一差异只剩渲染形态) */
+  private applyKernelEvent(ev: KernelEvent): void {
+    this.persistKernelEvent(ev);
+    this.archiveKernelEventToView(ev);
+  }
+
+  /** error 旁路的思考折叠登记位(G14.51 配套):内核遇 error 故意不封开启段(done 必发,收口让位),
+   *  渲染面按旧行为就地折叠(foldOpenThinking)并登记条目 seq——随后 done 的 seg-close(thinking)
+   *  凭登记跳过,双档案消除 */
+  private foldedThinkingSeq = -1;
+
+  /** 视图归档面(P8 第一刀:thinking 闭合):折叠行出自内核条目(seconds/md)——与恢复面
+   *  (entriesToChatItems e.seconds 同形)同源,closeLiveBlock 本地折叠退役 */
+  private archiveKernelEventToView(ev: KernelEvent): void {
+    if (ev.t !== 'seg-close' || ev.entry.kind !== 'thinking') return;
+    if (ev.entry.seq === this.foldedThinkingSeq) {
+      this.foldedThinkingSeq = -1; // error 旁路已就地折叠,消费登记位
+      return;
+    }
+    this.pushMsg('thinking', `Thought for ${ev.entry.seconds ?? 0}s`, { detail: ev.entry.md });
+  }
+
+  /** error 旁路的思考就地折叠(旧 closeLiveBlock 行为平移):live 思考块折叠为摘要行,登记内核
+   *  openSeg seq 供闭合事件去重;非思考 live(或无 live)零事务 */
+  private foldOpenThinking(): void {
+    const live = this.state.live;
+    if (live === undefined || live.kind !== 'thinking') return;
+    const seq = this.kernel.openSeg();
+    const secs = Math.max(1, Math.round((Date.now() - live.startedAt) / 1000));
+    this.pushMsg('thinking', `Thought for ${secs}s`, { detail: live.text });
+    if (seq >= 0) this.foldedThinkingSeq = seq;
+  }
 
   /** v2 落档单点:内核段级事件 → journal 行(kernelEventRows 共享映射,daemon 同形);惰性建档
    *  对齐 daemon(P5 起 steer 行可先于自然语言提交到达——队列面板插入即落,无 run 也有档) */
@@ -129,10 +165,12 @@ export class SessionController {
   }
 
   /** v2 档装载入核(resume/rewind 装载序,commands-session 消费):换新内核(旧档条目不串档)后 seed,
-   *  seg 行 seq 原样沿用、后续 live 条目自 max+1 续接;不触发落档事件(装载零双写) */
+   *  seg 行 seq 原样沿用、后续 live 条目自 max+1 续接;不触发落档事件(装载零双写)。
+   *  视图归档登记位随内核换新一并复位(旧内核的折叠登记不跨档) */
   kernelSeedForRestore(entries: ReadonlyArray<KernelEntry>): void {
-    this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
+    this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.applyKernelEvent(ev) });
     this.kernel.seed(entries);
+    this.foldedThinkingSeq = -1;
   }
 
   // ---- 等待队列面(P5 内核化,spec §12):态在内核,面板/键位/中断路径经此组读写——
@@ -1358,6 +1396,9 @@ export class SessionController {
         return;
       }
       case 'error':
+        // 错误旁路不封段(G14.51:done 必发,内核收口让位)——思考行按旧行为就地折叠并登记 seq,
+        // 随后 done 的 seg-close(thinking) 凭登记跳过(P8 视图归档面去重)
+        this.foldOpenThinking();
         this.closeLive();
         this.md.clear();
         this.flushPendingCalls();
@@ -1415,7 +1456,8 @@ export class SessionController {
     return this.mdColumns?.() ?? process.stdout.columns ?? 80;
   }
 
-  /** 收束实时区（委托 md-stream.closeLiveBlock：thinking 折叠为一行摘要；reply 不落消息——终稿由 done 接管） */
+  /** 收束实时区（委托 md-stream.closeLiveBlock，P8 起纯解散——thinking 折叠归内核 seg-close 归档面，
+   *  reply 不落消息：终稿由 done 接管） */
   private closeLive(): void {
     closeLiveBlock(this);
   }
