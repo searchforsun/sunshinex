@@ -62,6 +62,8 @@ import { SteerQueue } from './chat/SteerQueue';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOf } from './chat/use-chat-derived';
 import { useChatScroll } from './chat/use-chat-scroll';
+import { useChatTitle } from './chat/use-chat-title';
+import { useChatSessionInfo } from './chat/use-chat-session-info';
 import { useChatFold } from './chat/use-chat-fold';
 import { MessageList } from './chat/MessageList';
 import { AskDock } from './chat/AskDock';
@@ -313,7 +315,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新) */
   const [sessMode, setSessMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
-  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string; effort?: string }> } | null>(null);
   /** pill 开合('plus' = + 附加面板) */
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
   /** textarea 引用(+ 面板插入收口后焦点回输入框) */
@@ -376,79 +377,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       });
     return [...cmds, ...skills];
   };
-  /** 会话标题(G14.16/G14.17 统一流):单源=daemon 旁车 meta——rename 落盘、挂载 GET 回读,
-   *  顶栏/侧栏/TUI 一名三处;零历史兼容(旧 localStorage 键不读不迁,旧会话删档重测)。
-   *  缺省回落首条用户消息摘要,再落会话 id。点击标题即改 */
-  const [title, setTitle] = useState<string | null>(null);
-  const [titleLoaded, setTitleLoaded] = useState(false);
-  const [titleEditing, setTitleEditing] = useState(false);
-  const [titleDraft, setTitleDraft] = useState('');
-  const firstUserText = (() => {
-    const md = chat.entries.find((e) => e.kind === 'user')?.md ?? '';
-    return md.startsWith('> ') ? md.slice(2) : md;
-  })();
-  const displayTitle = fixedTitle ?? title ?? (firstUserText !== '' ? firstUserText : sessionId);
-  /** onRenamed 同步镜像(applyTitle 闭包经 ref 读,免依赖数组抖动) */
-  const onRenamedRef = useRef(onRenamed);
-  onRenamedRef.current = onRenamed;
-  /** rename 单点(G14.16):乐观上屏 + 旁车落盘(静默降级——失败面下次挂载 GET 回读回真值) +
-   *  侧栏刷新上抛 */
-  const applyTitle = useCallback(
-    (v: string): void => {
-      setTitle(v);
-                    // 改名失败=顶栏回落 daemon 权威名(下次快照刷新),不静默改写本地
-      if (typeof conn.renameSession === 'function') void conn.renameSession(sessionId, v).catch(() => undefined);
-      onRenamedRef.current?.();
-    },
-    [conn, sessionId],
-  );
-  const commitTitle = (): void => {
-    setTitleEditing(false);
-    const v = titleDraft.trim();
-    if (v === '' || v === displayTitle) return;
-    applyTitle(v);
-  };
-  /** 挂载回读(一次):服务端有名→采用;GET 落定前 titleLoaded 门关着——总结调用不抢跑,
-   *  改名标题恒压过模型总结(免 GET/总结竞争互覆)。GET 未知会话 404 静默(Chat 仅挂于 live 会话) */
-  useEffect(() => {
-    if (typeof conn.getSessionTitle !== 'function') {
-      setTitleLoaded(true);
-      return;
-    }
-    let alive = true;
-    conn.getSessionTitle(sessionId).then(
-      ({ title: srv }) => {
-        if (!alive) return;
-        if (srv !== undefined && srv.trim() !== '') setTitle(srv);
-        setTitleLoaded(true);
-      },
-      () => {
-        if (alive) setTitleLoaded(true);
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [conn, sessionId]);
-  /** 模型总结(一次,回读落定后):无自定义名且有首条消息时调用,结果走 applyTitle 落盘统一流;
-   *  失败静默回落摘要。tried 门:503 降级/竞争下不反复重发 */
-  const summarizeTriedRef = useRef(false);
-  useEffect(() => {
-    if (!titleLoaded || title !== null || firstUserText === '' || summarizeTriedRef.current) return;
-    if (typeof conn.sessionTitle !== 'function') return;
-    summarizeTriedRef.current = true;
-    let alive = true;
-    conn.sessionTitle(sessionId, firstUserText).then(
-      ({ title: gen }) => {
-        if (!alive || gen.trim() === '') return;
-        applyTitle(gen.trim());
-      },
-      () => undefined,
-    );
-    return () => {
-      alive = false;
-    };
-  }, [conn, sessionId, firstUserText, title, titleLoaded, applyTitle]);
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
   const submitTextRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
@@ -503,6 +431,16 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     chatStickRef,
   });
 
+  // 标题子系统 + 模型/圆环数据面(批F-6)
+  const { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle } = useChatTitle({
+    conn,
+    sessionId,
+    fixedTitle,
+    entries: chat.entries,
+    onRenamed,
+  });
+  const { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount } = useChatSessionInfo({ conn, sessionId, chat });
+
   const running = chat.status === 'running';
   /** G14.63 运行状态行「本轮」口径:末个流式 run 的基线差值(会话累计−轮起点);无基线回退累计 */
   /** G14.80 未决问询卡:ask 挂起时输入框变为选择题表单 */
@@ -542,40 +480,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     return cid.length > 0 ? cid : undefined;
   };
 
-  /** 模型 pill 数据源(G10-C4):挂载即拉(choices 空=不可切,钮隐藏) */
-  useEffect(() => {
-    conn.sessionModel(sessionId).then(
-      (info) => setModelInfo({ current: info.current, choices: info.choices }),
-      () => setModelInfo({ choices: [] }),
-    );
-  }, [conn, sessionId]);
-
-  /** G14.18 上下文圆环数据:sessionContext 拉取单点——挂载/run 收尾(status 回 idle)/运行中
-   *  4s 轮询/悬停展开(圆环 onOpen)四路触发;失败静默保旧值(圆环退化为 0 占用不扰流区)。
-   *  G14.21 parts 透传:上下文构成逐段明细(弹层组成面) */
-  const [ctxInfo, setCtxInfo] = useState<{ total: number; window: number; parts: Array<{ id: string; tokens: number; count: number }> } | null>(null);
-  const refreshCtx = useCallback((): void => {
-    if (typeof conn.sessionContext !== 'function') return;
-    conn.sessionContext(sessionId).then(
-      (b) => setCtxInfo({ total: b.total, window: b.window, parts: b.parts ?? [] }),
-      () => undefined,
-    );
-  }, [conn, sessionId]);
-  useEffect(() => {
-    setCtxInfo(null);
-    refreshCtx();
-  }, [refreshCtx]);
-  useEffect(() => {
-    if (chat.status !== 'idle') return; // run 收尾刷新(运行中由下方轮询与悬停面覆盖)
-    refreshCtx();
-  }, [chat.status, refreshCtx]); // eslint-disable-line react-hooks/exhaustive-deps -- status 回 idle 即轮尾信号
-  useEffect(() => {
-    if (chat.status !== 'running') return;
-    const iv = setInterval(refreshCtx, 4000);
-    return () => clearInterval(iv);
-  }, [chat.status, refreshCtx]);
-  /** 会话任务轮数(run 条计数——圆环弹层「轮次」;回放种子条同口径) */
-  const runCount = chat.entries.reduce((n, e) => (e.kind === 'run' ? n + 1 : n), 0);
 
 
   /** pills/+ 面板外点收(面板内点与 + 钮自持——多选文件连续点选不闪收) */
