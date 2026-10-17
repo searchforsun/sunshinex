@@ -78,6 +78,7 @@ import { useWorkspaceFiles } from './chat/use-workspace-files';
 import { useQueue } from './chat/use-queue';
 import { ToolEntryView, toolMdInfo } from './chat/ToolEntry';
 export { ToolEntryView } from './chat/ToolEntry';
+import { ToolSegBlock } from './chat/ToolGroups';
 export type { TodoBatch } from './chat/ToolEntry';
 import type { TodoBatch } from './chat/ToolEntry';
 export interface ChatSink {
@@ -1048,37 +1049,34 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             );
           }
           /** G14.73:连续的折叠区条目(工具/思考)聚成一段,包进 seg-collapse 平滑容器——
-           *  展开与收合都是 grid 高度过渡,不再瞬切 */
+           *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
           let seg: ChatEntry[] = [];
           const flushSeg = (): void => {
             if (seg.length === 0) return;
-            const closed = hiddenKeys.has(seg[0]!.key);
+            const segEntries = seg;
             nodes.push(
-              <div key={`seg:${seg[0]!.key}`} className={`seg-collapse${closed ? '' : ' open'}`}>
-                <div className="seg-inner">
-                  {seg.map((e2) =>
-                    e2.kind === 'thinking' ? (
-                      <ThinkingEntryView key={e2.key} entry={e2} />
-                    ) : e2.kind === 'assistant' ? (
-                      <ChatEntryView key={e2.key} entry={e2} onOpenDiff={(p) => onOpenDiff?.('', p)} />
-                    ) : (
-                      <ToolEntryView
-                        key={e2.key}
-                        entry={e2}
-                        info={toolInfoOf(e2)}
-                        conn={conn}
-                        sessionId={sessionId}
-                        callId={callIdOf(e2)}
-                        onOpenFile={onOpenFile}
-                        onOpenDiff={onOpenDiff}
-                        onOpenAgent={onOpenAgent}
-                        onOpenTask={onOpenTask}
-                        taskNameOf={taskNameOf}
-                      />
-                    ),
-                  )}
-                </div>
-              </div>,
+              <ToolSegBlock
+                key={`seg:${segEntries[0]!.key}`}
+                seg={segEntries}
+                closed={hiddenKeys.has(segEntries[0]!.key)}
+                renderTool={(e2) => (
+                  <ToolEntryView
+                    key={e2.key}
+                    entry={e2}
+                    info={toolInfoOf(e2)}
+                    conn={conn}
+                    sessionId={sessionId}
+                    callId={callIdOf(e2)}
+                    onOpenFile={onOpenFile}
+                    onOpenDiff={onOpenDiff}
+                    onOpenAgent={onOpenAgent}
+                    onOpenTask={onOpenTask}
+                    taskNameOf={taskNameOf}
+                  />
+                )}
+                renderThinking={(e2) => <ThinkingEntryView key={e2.key} entry={e2} />}
+                renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={(p) => onOpenDiff?.('', p)} />}
+              />,
             );
             seg = [];
           };

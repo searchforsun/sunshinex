@@ -1268,6 +1268,8 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     // 异 callId:多实例并存(by callId 判键——ChangesView 渲染统一,标签粒度保留)
     conn.diffResp = { path: 'src/b.ts', newContent: 'new b\n' };
     fireWrite(conn, 'c2', 'src/b.ts', 'new b\n');
+    // G14.215:相邻同类已完成 write 折为聚合行——成员行收起态不可达,先展开聚合头再操作成员
+    fireEvent.click(document.querySelector('.tool-group-head')!);
     fireEvent.click(toolRow('b.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
     expect(document.querySelectorAll('.sx-tab[data-title=\'a.ts\']')).toHaveLength(1);

@@ -73,6 +73,13 @@ function fire(e: SessionEvent): void {
   act(() => sinkRef.current!.on(e, 1));
 }
 
+/** G14.215 ghost 落定:归并渐收行的卸载定时器在 act 内耗散,后续断言不见 ghost 残留(动画窗 420ms+余量) */
+async function ghostsSettled(): Promise<void> {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 520));
+  });
+}
+
 describe('Chat 会话流 Codex 形(B3b)', () => {
   beforeEach(() => {
     Object.defineProperty(navigator, 'clipboard', {
@@ -551,6 +558,96 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(rows[1]!.textContent).toContain('分析：TUI 交互面'); // 台账长 id 剥尾+剥 task- 前缀命中
     expect(rows[1]!.textContent).not.toContain('task-t2-20261015T153105Z'); // 不显全 id
     expect(rows[2]!.textContent).toMatch(/全部后台任务|all background tasks/); // null 语义本地化
+  });
+
+  it('G14.214 task_* 折叠行带任务名(review/gate/cancel/assign/set_dependency 经 taskNameOf;task_stop 完成态取回执 label;set_dependency 双名箭头)', async () => {
+    mountChat([
+      { seq: 1, kind: 'tool', md: '● [tool] create_task {"title":"架构评审","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t1 created; dispatch is automatic' },
+      { seq: 2, kind: 'tool', md: '● [tool] create_task {"title":"用例补齐","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
+    ] as never);
+    await flushed();
+    fire({ type: 'tool-call', text: 'review_task', ts: Date.now(), payload: { callId: 'r1', input: { taskId: 't1', approved: true, note: null } } });
+    fire({ type: 'tool-result', text: 'review recorded', ts: Date.now(), payload: { callId: 'r1' } });
+    fire({ type: 'tool-call', text: 'task_stop', ts: Date.now(), payload: { callId: 'st1', input: { taskId: 'exec-20261017T101010Z-ab12' } } });
+    fire({ type: 'tool-result', text: 'task exec-20261017T101010Z-ab12 stopped (架构分析)', ts: Date.now(), payload: { callId: 'st1' } });
+    fire({ type: 'tool-call', text: 'set_dependency', ts: Date.now(), payload: { callId: 'd1', input: { taskId: 't2', dependsOn: 't1' } } });
+    fire({ type: 'tool-result', text: 'dependency added', ts: Date.now(), payload: { callId: 'd1' } });
+    const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => /review_task|task_stop|set_dependency/.test(x.textContent ?? ''));
+    expect(rows).toHaveLength(3);
+    // 断言钉折叠壳(.tool-summary)——entry 全量 textContent 含隐藏展开体(原始结果行自带 id,不属折叠行展示面)
+    const sum = (i: number): string => rows[i]!.querySelector('.tool-summary')?.textContent ?? '';
+    expect(sum(0)).toContain('架构评审'); // 板任务名跟行(转录映射)
+    expect(sum(0)).not.toContain('t1'); // 不显裸 id
+    expect(sum(1)).toContain('架构分析'); // 后台 id 走回执 label 兜底(非 board 面)
+    expect(sum(1)).not.toContain('exec-20261017'); // 不显台账长 id
+    expect(sum(2)).toContain('用例补齐'); // set_dependency 双名:任务 ← 依赖目标
+    expect(sum(2)).toContain('←');
+    expect(sum(2)).toContain('架构评审');
+  });
+
+  it('G14.215 相邻同类已完成工具行>1 折为聚合头;点击展开成员平级铺开(原生工具行);计数 1 不聚合', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: 'r1', input: { path: 'a.ts' } } });
+    fire({ type: 'tool-result', text: 'aaa', ts: Date.now(), payload: { callId: 'r1' } });
+    expect(document.querySelector('.tool-group-head')).toBeNull(); // 计数 1:单行保持
+    expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(1);
+    fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: 'r2', input: { path: 'b.ts' } } });
+    fire({ type: 'tool-result', text: 'bbb', ts: Date.now(), payload: { callId: 'r2' } });
+    const head = document.querySelector('.tool-group-head')!;
+    expect(head.textContent).toMatch(/Queried files ×2|查询了 2 次文件/); // 聚合头计数文案
+    const members = document.querySelector('.tool-group-members')!;
+    expect(members.classList.contains('open')).toBe(false); // 缺省收起
+    expect(members.querySelectorAll('.entry-tool')).toHaveLength(2); // 成员挂载但 CSS 收起
+    fireEvent.click(head);
+    const open = document.querySelector('.tool-group-members.open');
+    expect(open).not.toBeNull(); // 点击展开
+    expect(open!.querySelectorAll('.entry-tool')).toHaveLength(2); // 成员平级铺开
+    expect(open!.querySelector('.entry-tool .tool-summary')).not.toBeNull(); // 成员=原生工具行(折叠壳保持)
+    await ghostsSettled();
+  });
+
+  it('G14.215 运行中不进组;完成后归入上方聚合行(计数增长+ghost 渐收行到点卸载)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e1', input: { command: 'ls' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e1' } });
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e2', input: { command: 'pwd' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e2' } });
+    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×2|执行了 2 次命令/);
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e3', input: { command: 'echo hi' } } });
+    // 运行中:独立行在组外,不进成员
+    expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(2);
+    expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(1);
+    fire({ type: 'tool-result', text: 'hi', ts: Date.now(), payload: { callId: 'e3' } });
+    // 完成:归组(计数 ×3)+ghost 在动画窗内在场
+    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×3|执行了 3 次命令/);
+    expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(3);
+    expect(document.querySelector('.tool-ghost')).not.toBeNull();
+    await ghostsSettled();
+    expect(document.querySelector('.tool-ghost')).toBeNull(); // 动画到点卸载
+    expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0); // 独立行已归位
+  });
+
+  it('G14.215 禁止重排:非同类行切断分组,组只吃相邻同类(布局顺序=出牌顺序)', async () => {
+    mountChat([]);
+    await flushed();
+    const fireRead = (id: string, p: string): void => {
+      fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: id, input: { path: p } } });
+      fire({ type: 'tool-result', text: 'x', ts: Date.now(), payload: { callId: id } });
+    };
+    fireRead('r1', 'a.ts');
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e1', input: { command: 'ls' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e1' } });
+    fireRead('r2', 'b.ts');
+    fireRead('r3', 'c.ts');
+    await ghostsSettled();
+    const kids = [...document.querySelectorAll('.seg-inner > *')];
+    expect(kids[0]!.classList.contains('entry-tool')).toBe(true); // read 单行(计数 1)
+    expect(kids[1]!.classList.contains('entry-tool')).toBe(true); // exec 独立行(不被吞)
+    expect(kids[2]!.classList.contains('tool-group')).toBe(true); // 相邻 read×2 成组
+    expect(kids[2]!.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(2);
+    expect(document.querySelectorAll('.tool-group-head')).toHaveLength(1); // 全段仅一组
   });
 
   it('G14.168 create_task 折叠行带任务名;zh 态动词本地化(en 态原字面;未登记工具回退原名)', async () => {

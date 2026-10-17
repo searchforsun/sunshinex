@@ -137,6 +137,20 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   cancel_task: ['Cancelling task', '正在取消任务'],
 };
 
+/** G14.214 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，
+ *  折叠行默认分型只出动词（复审/停止…五连发无从分辨）——任务名经 taskNameOf 单点解析后跟行 */
+const TASK_OP_TOOLS = new Set(['task_stop', 'review_task', 'gate_task', 'cancel_task', 'assign', 'set_dependency']);
+
+/** G14.214 运行态动词对（拼接任务名替代泛文案，仿 spawn G14.166 先例）；折叠行动词走 zhToolName 既有映射 */
+const TASK_OP_RUNNING: Record<string, [string, string]> = {
+  task_stop: ['Stopping', '正在停止'],
+  review_task: ['Reviewing', '正在复审'],
+  gate_task: ['Gating', '正在门审'],
+  cancel_task: ['Cancelling', '正在取消'],
+  assign: ['Assigning', '正在分派'],
+  set_dependency: ['Setting dependency of', '正在设置依赖'],
+};
+
 /** 文件行拆分(G14.8):basename + 所在目录(恒显,根目录 = './')——文件名后永远看得到位置 */
 export function fileLabelOf(path: string): { base: string; dir: string } {
   const norm = path.replace(/\\/g, '/');
@@ -220,11 +234,35 @@ export function ToolEntryView({
         ),
       ]
     : [];
+  /** G14.214 task_* 折叠行/运行态任务名：input.taskId 经 taskNameOf 单点解析（board 直查→转录映射→短 id 兜底，
+   *  与 task_wait G14.172 同口径）；set_dependency 额外解析 dependsOn（「任务 ← 依赖目标」双名）。
+   *  缺 taskId/解析器（测试桩、种子条旧格式）不进该分型，回落默认动词行 */
+  const taskOpName = (() => {
+    if (!TASK_OP_TOOLS.has(toolName)) return undefined;
+    const id = typeof input.taskId === 'string' && input.taskId !== '' ? input.taskId : undefined;
+    if (id === undefined) return undefined;
+    // task_stop 完成态优先取回执 label（后台任务 id 不在 board/转录面，taskNameOf 只剩短 id 兜底——
+    // 回执行 `task <id> stopped (<label>)` 携带真实名）；未完成/无 label 落 taskNameOf 链
+    if (toolName === 'task_stop') {
+      const m = new RegExp(`task ${id} stopped \\((.*)\\)`).exec(result);
+      if (m !== null && m[1] !== '') return m[1]!;
+    }
+    return taskNameOf !== undefined ? taskNameOf(id) : id;
+  })();
+  const taskOpDepName = (() => {
+    if (toolName !== 'set_dependency') return undefined;
+    const id = typeof input.dependsOn === 'string' && input.dependsOn !== '' ? input.dependsOn : undefined;
+    if (id === undefined) return undefined;
+    return taskNameOf !== undefined ? taskNameOf(id) : id;
+  })();
   /** G14.13 全工具双态:结果未回(占位符 …)=执行中(波纹+「正在…」);结果已回=各型折叠行 */
   const executing = result === '…' || result === '';
   const runningLabel = (() => {
     // G14.166 spawn 运行态带子代理名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
+    // G14.214 task_* 运行态带任务名——「正在复审 架构评审」替代泛文案（taskOpName 已在场即有值）
+    const opPair = taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
+    if (opPair !== undefined) return t(`${opPair[0]} ${taskOpName}`, `${opPair[1]} ${taskOpName}`);
     const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
     return t(pair[0], pair[1]);
   })();
@@ -390,6 +428,15 @@ export function ToolEntryView({
               : Array.isArray(input.taskIds)
                 ? ''
                 : t('all background tasks', '全部后台任务')}
+          </span>
+        </>
+      ) : taskOpName !== undefined ? (
+        /* G14.214 task_* 折叠行带任务名(复审/停止/门审/取消/分派;set_dependency 双名「任务 ← 依赖目标」) */
+        <>
+          <span className="tool-verb">{zhToolName(toolName)}</span>
+          <span className="tool-file-base tool-cmd">
+            {' '}{taskOpName}
+            {taskOpDepName !== undefined && ` ← ${taskOpDepName}`}
           </span>
         </>
       ) : command !== undefined ? (

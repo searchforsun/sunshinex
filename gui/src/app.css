@@ -1919,3 +1919,27 @@ input.sx-setting-input { width: 100%; }
 /* G14.208b 折叠态浮钮:绝对定位贴气泡内底部渐隐区(此前规则被后段覆盖丢失导致跑外侧) */
 .user-bubble-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 8px; margin-top: 0; pointer-events: none; }
 .user-bubble-toggle-row.floating .user-bubble-toggle { pointer-events: auto; }
+
+/* G14.215 工具聚合行:同类相邻已完成工具行 >1 折为聚合头(图标+计数文案+chevron),
+   展开成员平级铺开(透明网格容器仅作高度动画,零视觉嵌套);ghost=归并渐收行 */
+.tool-group { display: flex; flex-direction: column; animation: tool-group-in var(--dur-relaxed) var(--ease-enter); }
+@keyframes tool-group-in { from { opacity: 0; transform: translateY(-4px); } }
+.tool-group-head {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  padding: 2px 8px; border-radius: var(--radius-sm); color: var(--fg-secondary);
+}
+.tool-group-head:hover, .tool-group-head:focus-visible { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); }
+.tool-group-label { font-size: 13px; animation: tool-count-pop var(--dur-basic) var(--ease-enter); transform-origin: left center; }
+@keyframes tool-count-pop { from { transform: scale(1.12); color: var(--fg); } }
+.tool-group-head .tool-chev { opacity: 1; }
+.tool-group-head.open .tool-chev { transform: rotate(90deg); }
+/* 成员展开壳:与 .tool-body 同配方(grid-rows 0fr→1fr + visibility 折叠尾切) */
+.tool-group-members { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }
+.tool-group-members.open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s; }
+.tool-group-members-inner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* ghost:完成后归入上方聚合行——挂载即播收合(1fr→0fr+上移淡出),到点卸载;不可交互 */
+.tool-ghost { display: grid; grid-template-rows: 1fr; pointer-events: none; animation: tool-merge-up 0.36s var(--ease-exit) forwards; }
+@keyframes tool-merge-up { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
+.tool-ghost-clip { min-height: 0; overflow: hidden; }
+/* 聚合块与相邻单行保持工具行既有紧排节奏(seg gap 16px 由负 margin 归一,同 .entry-tool 链) */
+.chat .tool-group + .entry-tool, .chat .entry-tool + .tool-group { margin-top: -10px; }
