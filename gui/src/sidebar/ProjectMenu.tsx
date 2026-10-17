@@ -5,7 +5,6 @@ import { t } from '../i18n';
 import { ChevronRight, Folder, FolderOpen, Search, Settings, SquarePen } from 'lucide-react';
 import { DirPicker } from '../pages/DirPicker';
 import {
-  fuzzyHit,
   FolderAddIcon,
   loadSeenMap,
   persistSeenMap,
@@ -16,6 +15,7 @@ import {
   wsName,
 } from './project-menu-util';
 import type { SeenMap } from './project-menu-util';
+import { ProjectSearch } from './project-menu-search';
 
 // FolderAddIcon 消费方(App.tsx)零迁移:原路径再导出
 export { FolderAddIcon } from './project-menu-util';
@@ -318,81 +318,20 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <span>{t('New chat', '新对话')}</span>
       </button>
       {searchOpen && (
-        <div className="modal-overlay" onClick={() => setSearchOpen(false)}>
-          <div
-            className="sx-search-modal"
-            role="search"
-            aria-label={t('Search projects & sessions', '搜索项目与会话')}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              autoFocus
-              value={query}
-              placeholder={t('Search projects & sessions', '搜索项目与会话…')}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setSearchOpen(false);
-              }}
-            />
-            <div className="sx-search-modal-list">
-              <div className="sx-search-sec">{t('Projects', '项目')}</div>
-              {(rows ?? [])
-                .filter((r) => fuzzyHit(wsName(r) + ' ' + r.slug, query))
-                .map((r) => (
-                  <button
-                    key={r.slug}
-                    type="button"
-                    className="sx-search-row"
-                    onClick={() => {
-                      const row = (rows ?? []).find((x) => x.slug === r.slug);
-                      if (row !== undefined && row.root !== undefined) onComposeIn(row.root);
-                      setSearchOpen(false);
-                    }}
-                  >
-                    <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-                    <span className="sx-search-label">{wsName(r)}</span>
-                    <span className="sx-search-meta">{r.sessionCount}</span>
-                  </button>
-                ))}
-              {(rows ?? []).length === 0 && <div className="sx-search-empty">{t('No matching projects', '无匹配项目')}</div>}
-              <div className="sx-search-sec">{t('Sessions', '会话')}</div>
-              {(allSessions ?? [])
-                .filter((r) => fuzzyHit((r.title ?? r.firstUser ?? '') + ' ' + r.id, query))
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-                .slice(0, 20)
-                .map((r) => {
-                  // G14.52 running 身份:活动会话以 runActive 为准(收束即时熄);他会话看 daemon 标注
-                  const isMapped = r.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === r.id;
-                  const running = isMapped ? activeSessionId !== '' && runActive : r.liveSessionId !== undefined;
-                  const label = r.title ?? r.firstUser ?? t('New session', '新会话');
-                  const metaLine = sessionMetaLine(r);
-                  return (
-                    <button
-                      key={r.root + '/' + r.id}
-                      type="button"
-                      className="sx-search-row"
-                      data-tip={`${label}${metaLine !== '' ? `
-${metaLine}` : ''}`}
-                      onClick={() => {
-                        if (busy) return;
-                        attachJournal(r.root, r.id, r.updatedAt);
-                        setSearchOpen(false);
-                      }}
-                    >
-                      {running ? (
-                        <span className="sx-session-dot running" />
-                      ) : isUnseen(r.id, r.updatedAt) ? (
-                        <span className="sx-session-dot unseen" />
-                      ) : null}
-                      <span className="sx-search-label">{label}</span>
-                      <span className="sx-search-meta">{relTime(r.updatedAt)}</span>
-                    </button>
-                  );
-                })}
-              {(allSessions ?? []).length === 0 && <div className="sx-search-empty">{t('No matching sessions', '无匹配会话')}</div>}
-            </div>
-          </div>
-        </div>
+        <ProjectSearch
+          rows={rows}
+          allSessions={allSessions}
+          query={query}
+          onQuery={setQuery}
+          onClose={() => setSearchOpen(false)}
+          activeSessionId={activeSessionId}
+          runActive={runActive}
+          journalOfSession={journalOfSession}
+          busy={busy}
+          isUnseen={isUnseen}
+          onAttach={attachJournal}
+          onComposeIn={onComposeIn}
+        />
       )}
             {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
       <div className="sx-side-scroll">
