@@ -1928,18 +1928,26 @@ input.sx-setting-input { width: 100%; }
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
   padding: 2px 8px; border-radius: var(--radius-sm); color: var(--fg-secondary);
 }
-.tool-group-head:hover, .tool-group-head:focus-visible { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); }
+/* hover 无底色(对齐工具行现行规范:胶囊底色已退役,仅提亮文字+chevron 显现) */
+.tool-group-head:hover, .tool-group-head:focus-visible { color: var(--fg); }
 .tool-group-label { font-size: 13px; animation: tool-count-pop var(--dur-basic) var(--ease-enter); transform-origin: left center; }
 @keyframes tool-count-pop { from { transform: scale(1.12); color: var(--fg); } }
 .tool-group-head .tool-chev { opacity: 1; }
 .tool-group-head.open .tool-chev { transform: rotate(90deg); }
-/* 成员展开壳:与 .tool-body 同配方(grid-rows 0fr→1fr + visibility 折叠尾切) */
-.tool-group-members { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }
-.tool-group-members.open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s; }
-.tool-group-members-inner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-/* ghost:完成后归入上方聚合行——挂载即播收合(1fr→0fr+上移淡出),到点卸载;不可交互 */
-.tool-ghost { display: grid; grid-template-rows: 1fr; pointer-events: none; animation: tool-merge-up 0.36s var(--ease-exit) forwards; }
+/* 成员展开壳:与 .tool-body 同配方(grid-rows 0fr→1fr + visibility 折叠尾切);
+   G14.216b 间距与工具行节奏归一:成员行间距=顶层紧排 6px(seg 16px gap+负 margin 的等效值,
+   组内以 6px gap 直给并中和全局 -10px margin),聚合头↔首成员/ghost 同 6px,收起态零占位 */
+.tool-group-members { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; margin-top: 0; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), margin-top var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }
+.tool-group-members.open { grid-template-rows: 1fr; opacity: 1; visibility: visible; margin-top: 6px; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), margin-top var(--dur-relaxed) var(--ease-enter), visibility 0s; }
+.tool-group-members-inner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
+.chat .tool-group-members-inner .entry-tool + .entry-tool { margin-top: 0; }
+/* ghost:完成后归入上方聚合行——挂载即播收合(1fr→0fr+上移淡出),到点卸载;不可交互;
+   6px 外距=原单行位置与聚合行的既有紧排间距 */
+.tool-ghost { display: grid; grid-template-rows: 1fr; margin-top: 6px; pointer-events: none; animation: tool-merge-up 0.36s var(--ease-exit) forwards; }
 @keyframes tool-merge-up { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
 .tool-ghost-clip { min-height: 0; overflow: hidden; }
-/* 聚合块与相邻单行保持工具行既有紧排节奏(seg gap 16px 由负 margin 归一,同 .entry-tool 链) */
-.chat .tool-group + .entry-tool, .chat .entry-tool + .tool-group { margin-top: -10px; }
+/* 聚合块邻接紧排与工具行完全同族(G14.216b):组↔单行/组↔思考行/组↔组一律 -10px,
+   与 .entry-tool 系既有配对规则(seg gap 16px 归一 6px)逐对对齐——思考行↔聚合头不再落回 16px */
+.chat .tool-group + .entry-tool, .chat .entry-tool + .tool-group,
+.chat .entry-thinking + .tool-group, .chat .tool-group + .entry-thinking,
+.chat .tool-group + .tool-group { margin-top: -10px; }
