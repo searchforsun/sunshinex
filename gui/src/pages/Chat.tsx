@@ -1,57 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import type { MutableRefObject, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ArrowDown, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
-import type { TaskBoardState } from '../projection';
-import { CommandPalette, filterCommands } from '../CommandPalette';
+import { CommandPalette } from '../CommandPalette';
 import { pathBasename } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
-import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, SnapshotResponse } from '../connection';
-import type { SessionEvent, TodoItem } from '../../../src/types';
 import { t } from '../i18n';
 
 /**
- * T4δ Chat 页(G3 对话面会话化迁移):App 暂留的 G3 单页对话面(reducer/md 渲染/输入分流/Stop/
- * 状态条/播种门语义)整体迁入本组件,改会话维——动作走 :id(sessionSubmit/sessionSteer/
- * sessionInterrupt),基线经 conn.sessionSnapshot(sessionId) 播种;本地态(reducer 投影/输入/
- * 播种门)随组件销毁,App 以 key={sessionId} 挂载保证两会话先后打开互不串扰(无跨会话残留,
- * 不断连重连——连接生命周期在 App 壳)。
- *
- * 事件面经 App 壳转投(连接回调在 createConnection 装配时固定,Chat 无法自接):App 的 onEvent
- * 三参按 sessionRef 过滤本会话后经 sinkRef 投 `sink.on(e, seq)`;onReset(首连/重连同路径)投
- * `sink.reset()` → 本会话重播种(既有播种门语义:基线在途输入禁用,防本地回显被种子整替)。
- *
- * 每会话种子竞态缓冲(T3 收口):连接层抬基线(sessionSnapshot 应答抬高 lastSeqBySession)只在
- * HTTP 应答落定之后——seed 在途窗内到达的本会话帧已过连接层 seq 门,若直投 reducer 会被随后的
- * 种子整替清掉(丢帧),先缓冲;种子落定后以 seq ≤ snapshot.lastSeq 过滤(≤ 切割序者种子已含,
- * 再投即双应用)再依序投 reducer。G3 T3 连接层的单会话 armed/pending 语义在页内复刻(连接层
- * 已无 armed,页面自缓冲;reseed 时清缓冲重来,unmount 随组件销毁)。
- *
- * G4 挂起卡片区(转录上方固定区):App 的 onApproval/onAsk 经 sessionRef 过滤本会话后经 sink
- * 投递——ApprovalCard(kind/subject/reason + Allow/Deny/Always)/AskCard(question + 选项单/多选
- * + customIndex 自由输入 + Submit/Dismiss);回执走 conn.replyApproval/replyAsk(pid 契约:寻址
- * 用帧顶层 pid,非 req.id);卡列表 pid 管理——回执成功移,失败(404 已决)也移(不悬挂)。
- * 连接级 reset(重连)卡保留(daemon 未决重发被连接层 pid 去重);会话 reset 帧(resetSession)
- * 清卡(daemon 已 deny/dismissed 回填全部挂起)+清投影重播种。
- * G5 增两面:①顶栏 Delete(confirm → conn.deleteSession(sessionId) → onBack 回首页——Home
- * 行 Delete 以 journal id 寻址恒 404 退役,daemon 会话 id 才是回收端点的有效寻址);②status
- * 转 idle 清卡(effect 观察投影状态:run 收束 = daemon 已对本 run 挂起 deny 回填,本地卡随之
- * 清;reseed 后快照 status=idle 亦触发);③onSeeded(快照落定回调,App 借此取 snapshot.team
- * 存 App 态——事件流无 teammate 面,Board 侧栏的唯一来源)。
- * G7 增三面:①reseed 挂起卡重建——snapshot.pending 逐项 addCard({pid,kind,req})(req 透传
- * 落地,刷新/重连后卡内容可恢复;连接层 pid 去重拦了 daemon 重发帧,快照是唯一来源);②reseed
- * 时 toolInputs 清(旧投影 callId 配对残留不污染新投影);③write 条目展开接 conn.fetchDiff
- * (old/new 双列;404/失败退单列现内容)。unmount cleanup 增 seedGenRef++(G6 终审首优先):
- * 在途快照应答经 gen 失配早退,防陈旧 onSeeded 污染 App 态。
- * G8d T5 交互清单:①输入面 textarea 自增高(rows 随换行数 1-6 派生;Enter 提交 preventDefault,
- * Shift+Enter 换行走默认);②流式条末挂 span.sx-stream-cursor(闪灭动画在 app.css 特批小段);
- * ③状态条 tokens/steps 改图标+数字组(sx-stat 组类名+lucide Coins/Footprints,样式面归 G8e)。
- * G9 B3b(spec docs/superpowers/specs/2026-10-08-codex-desktop-1to1-design.md §3):用户条目
- * UserEntryView(memo)右对齐胶囊+hover 浮现复制(剥 `> ` 前缀写剪贴板,失败 1.5s 示「未复制」);
- * 条目按日分组(groupEntriesByDay 纯投影)跨日插居中日期分隔——每日组顶部一条,与 Codex 实机同形。
+ * T4δ Chat 页(会话维对话面;叙事史与批序全录 docs/superpowers/plans/2026-10-17-chat-split-plan.md
+ * 附录——批F-7d 迁出,本注留现役口径):事件经 App 壳 sinkRef 转投,本地 reducer 投影随组件销毁
+ * (key={sessionId} 挂载隔离);播种竞态缓冲/挂起卡/队列/命令面板/文件面板/提交路径已分件
+ * (pages/chat/* 六渲染件七 hooks),本文件保编排+composer 键链(filePal UI 部第二十轮裁定留置)。
  */
 
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
@@ -65,12 +28,14 @@ import { useChatScroll } from './chat/use-chat-scroll';
 import { useChatTitle } from './chat/use-chat-title';
 import { useChatSessionInfo } from './chat/use-chat-session-info';
 import { useChatSubmit } from './chat/use-chat-submit';
+import { useChatComposerSide } from './chat/use-chat-composer-side';
+import { slashItemsFor } from './chat/use-command-palette';
 import { useChatFold } from './chat/use-chat-fold';
 import { MessageList } from './chat/MessageList';
 import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
-import { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
+import { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock } from './chat/md-render';
@@ -80,155 +45,9 @@ import { useWorkspaceFiles } from './chat/use-workspace-files';
 import { useQueue } from './chat/use-queue';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
-import type { TodoBatch } from './chat/ToolEntry';
-export interface ChatSink {
-  /** 本会话帧(已过 App 侧 sessionId 过滤;seq 供种子竞态窗过滤) */
-  on(e: SessionEvent, seq: number): void;
-  /** 连接重置(首连/重连):清投影 + 本会话重播种(卡保留——挂起仍在 daemon 未决) */
-  reset(): void;
-  /** G4 审批挂起帧(已过 App 侧 sessionId 过滤;pid = 回执寻址键) */
-  onApproval(pid: string, req: GuiApprovalReq): void;
-  /** G4 问询挂起帧(同上) */
-  onAsk(pid: string, req: GuiAskReq): void;
-  /** G4 会话 reset 通知帧(本会话):清卡(daemon 已 deny/dismissed 回填) + 清投影重播种 */
-  resetSession(): void;
-}
+export type { ChatSink, ChatProps, ToolCallInfo } from './chat/chat-types';
+import type { ChatProps, ToolCallInfo } from './chat/chat-types';
 
-export interface ChatProps {
-  conn: Connection;
-  /** 当前会话(:id 动作与播种的维) */
-  sessionId: string;
-  /** 连接状态机(App 壳单连接透传;composer 门:非 open 禁用) */
-  connState: ConnectionState;
-  /** 返回首页(App 路由回调;Chat 顶栏「返回首页」) */
-  onBack(): void;
-  /** App 持有的转投注册面(见 ChatSink) */
-  sinkRef: MutableRefObject<ChatSink | null>;
-  /** G5 快照落定回调(App 消费 snapshot.team 存态——Board 侧栏;可选防测试桩免配) */
-  onSeeded?: (snap: SnapshotResponse) => void;
-  /** G6 write 工具 path 按钮回调(App 切 Files tab 并带 initialPath;可选防测试桩免配)。G8d 起
-   *  降为回退通道:callId 在场的 write 条目优先走 onOpenDiff(开 diff 标签),callId 缺场(种子
-   *  条/无 callId 面)仍开文件标签预览 */
-  onOpenFile?: (path: string) => void;
-  /** G14.137 todo_write 清单上抛(App 存态喂任务标签会话待办区) */
-  onTodos?: (todos: TodoItem[]) => void;
-  /** G14.154 挂载即落的初始引用(文件选区「在辅助对话中提问」经 fork 参数携带) */
-  initialInsert?: string;
-  /** G8d write 条目 path 钮主通道:开 diff 标签(callId 寻址,App 接 openTabInSession('diff',
-   *  {callId,path}));可选防测试桩免配——缺场时全部回落 onOpenFile */
-  onOpenDiff?: (callId: string, path: string) => void;
-  /** G14.171 spawn 行子代理名=蓝色链接:点开对应 agent 只读标签页(App 接 openTabInSession('agent',{label,agentTitle})) */
-  onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
-  /** G14.176 create_task 行任务名=蓝色链接:点开任务板并定位高亮对应卡(App 接 openTabInSession('agents')+focus 定位) */
-  onOpenTask?: (taskRef: string) => void;
-  /** G14.177 顶栏动态计数按钮:打开对应页签(待办=tasks/任务板=agents/后台任务=bgtasks) */
-  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
-  /** G14.172 task_wait 行任务名解析材料(任务板投影;App 注入会话板) */
-  board?: TaskBoardState;
-  /** G14.174 待办批次上抛(每批 todo_write 一卡:时间/关联轮次输入/条目;App 经 services 供待办页签) */
-  onTodoBatches?: (batches: TodoBatch[]) => void;
-  /** G14.174 关联轮次用户输入上抛(最近一条 user 行;任务板卡片头共用) */
-  onTurnGoal?: (goal: string) => void;
-  /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
-  onRewind?: (turn: number) => void;
-  /** G10-C4 分叉新会话(从最近任务轮;/fork 底层);App 接 forkSession+openSession;可选 */
-  onFork?: () => void;
-  /** G10 欢迎页接力:播种完成后提交的 welcome 目标(setWelcomeGoal 写入;提交即回调清位) */
-  pendingGoal?: { root: string; goal: string };
-  onPendingGoalDone?: () => void;
-  /** 会话所属工作区 root(G10 项目条显示;default 会话='default') */
-  root?: string;
-  /** 标题落盘后上抛(G14.16:App bump recentVersion → 侧栏 RECENTS 即时同名) */
-  onRenamed?: () => void;
-  /** G14.28:右栏折叠时顶栏右侧示「展开侧栏」钮(折叠态不渲染 32px 细条) */
-  showExpandSidebar?: boolean;
-  onExpandSidebar?: () => void;
-  /** G14.29 输入 /btw /side 拦截:开辅助对话旁路标签(不动 daemon 提交面) */
-  onSideChat?: () => void;
-  /** G14.148 /memory(-rm) 拦截:开记忆标签(GUI 的删除面;daemon 命令通道不支持 TUI 交互多选) */
-  onOpenMemory?: () => void;
-  /** G14.31 辅助对话全新视图:种子历史不落屏(上下文只在模型侧),开播即空会话观感 */
-  freshView?: boolean;
-  /** G14.32 顶栏定名(辅助对话):压过会话名回落链,不露注册 id */
-  fixedTitle?: string;
-  /** G14.213 滚动位存档键:journal 档案 id(稳定跨重挂/重启)。sessionId 是活动会话别名
-   *  (每次重开经 newSession+attach 重新发号,s165→s167),按它存档永远失配;未配回落 sessionId */
-  journalId?: string;
-}
-
-
-/** G6 工具条目结构面:tool-call 帧 payload.input 的本地暂存（chat-reducer 的 ChatEntry 只存 md
- *  两行文本,diff 展开需 input 原文——本组件 sink.on 面旁路暂存,按 callId 寻址配对条目 key） */
-export interface ToolCallInfo {
-  /** 工具规范名（事件 text——batch-runner emit 首参,如 'write'/'read'） */
-  name: string;
-  /** 调用入参原对象（payload.input;write 形态 {path, content} 现场核 builtin.ts） */
-  input: Record<string, unknown>;
-  /** tool-result 全文(sink.on 旁路暂存;乱序双到达合并;种子条无槽回落 md 首行) */
-  result?: string;
-}
-
-/** G14.177 顶栏动态计数按钮(待办/任务/后台任务):转圈图标+数量;点击开对应页签。
- *  G14.213 原子化三改:①仅运行中显示(轮次收束即隐,待办是否完结无关);②侧栏展开不再隐藏
- *  (挂载点去掉 collapsed 门);③幽灵钮化——无底色、顶栏 hover 浮现,待办钮转圈绿色 */
-export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOpenTab }: {
-  todoActive: number;
-  taskActive: number;
-  running: boolean;
-  conn: Connection;
-  sessionId: string;
-  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
-}): JSX.Element | null {
-  const [bgRunning, setBgRunning] = useState(0);
-  useEffect(() => {
-    // 测试桩/旧连接可能未实现 sessionTasks——探活失败静默零计数(按钮全隐,不炸树)
-    if (typeof conn.sessionTasks !== 'function') return;
-    let alive = true;
-    const poll = (): void => {
-      Promise.resolve()
-        .then(() => conn.sessionTasks(sessionId))
-        .then(
-          (rows) => {
-            if (alive) setBgRunning(rows.filter((r) => r.status === 'running').length);
-          },
-          () => undefined,
-        )
-          // 轮询失败按计数保持降级(顶栏徽标非权威数据,下一拍重拉)
-        .catch(() => undefined);
-    };
-    poll();
-    const timer = window.setInterval(poll, 5000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [conn, sessionId]);
-  // G14.213 轮次收束即隐:running 熄灭按钮组整体不显(待办/任务是否完结无关)
-  if (!running || (todoActive === 0 && taskActive === 0 && bgRunning === 0)) return null;
-
-  return (
-    <div className="chat-dyn-buttons" role="group" aria-label="live counters">
-      {todoActive > 0 && (
-        <button type="button" className="chat-dyn-btn todo" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
-          <span className="run-spinner" aria-hidden="true" />
-          {t(`${todoActive} todos`, `${todoActive} 待办`)}
-        </button>
-      )}
-      {taskActive > 0 && (
-        <button type="button" className="chat-dyn-btn" data-tip={t('Open task board', '打开任务板')} onClick={() => onOpenTab?.('agents')}>
-          <span className="run-spinner" aria-hidden="true" />
-          {t(`${taskActive} tasks`, `${taskActive} 任务`)}
-        </button>
-      )}
-      {bgRunning > 0 && (
-        <button type="button" className="chat-dyn-btn" data-tip={t('Open background tasks', '打开后台任务')} onClick={() => onOpenTab?.('bgtasks')}>
-          <span className="run-spinner" aria-hidden="true" />
-          {t(`${bgRunning} background`, `${bgRunning} 后台任务`)}
-        </button>
-      )}
-    </div>
-  );
-}
 
 
 
@@ -359,25 +178,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setChat,
   );
   const { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds } = useCommandPalette(conn, sessionId);
-  /** G14.95 slash 面板令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能) */
-  const slashItemsFor = (token: { query: string; atStart: boolean } | null): CmdItem[] => {
-    if (token === null) return [];
-    const q = token.query.toLowerCase();
-    const cmds =
-      token.atStart && cmdData !== null
-        ? filterCommands(cmdData.commands, cmdData.descriptions, token.query, cmdData.supported)
-        : [];
-    const skills = skillCmds
-      .filter((s) => q === '' || s.id.toLowerCase().startsWith(q) || s.id.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((s) => {
-        const name = s.id;
-        const idx = name.toLowerCase().indexOf(q);
-        // G14.213 kind='skill':有参数已敲时 Enter 落纯文本发送,不走命令通道(daemon 已 400)
-        return { cmd: `/${s.id}`, name, desc: s.description, idx: idx < 0 ? name.length : idx, ok: true, kind: 'skill' as const };
-      });
-    return [...cmds, ...skills];
-  };
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
   const submitTextRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
@@ -517,63 +317,26 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
+  const { onInputClick } = useChatComposerSide({
+    pickRelRef,
+    inputRef,
+    setInput,
+    input,
+    resolveFileRef,
+    onOpenFile,
+  });
+
 
 
   /** G14.95 面板项(渲染期,光标位置):/ 令牌 → 面板项;空=面板不开(无匹配自动关) */
   const slashPanelItems: CmdItem[] | null = (() => {
     const caret = inputRef.current?.selectionStart ?? input.length;
-    const items = slashItemsFor(slashTokenAt(input, caret));
+    const items = slashItemsFor(cmdData, skillCmds, slashTokenAt(input, caret));
     return items.length > 0 ? items : null;
   })();
 
   /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版) */
   const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text);
-  /** G14.139 文件标签选区「添加到会话」:接收插入事件(文件图标+文件名(L30-L35) token 落输入框) */
-  useEffect(() => {
-    const onInsert = (ev: Event): void => {
-      const detail = (ev as CustomEvent<{ text?: string; rel?: string }>).detail;
-      if (detail === undefined || typeof detail.text !== 'string' || detail.text === '') return;
-      // G14.211 短写 token(@文件名:L):全相对路径入账本,发送期 expandFileRefs 据此展开
-      if (typeof detail.rel === 'string' && detail.rel !== '') {
-        const base = detail.rel.split(/[\\/]/).pop() ?? detail.rel;
-        pickRelRef.current.set(base, detail.rel);
-      }
-      setInput((prev) => (prev.trim() === '' ? `${detail.text} ` : `${prev.replace(/\s+$/, '')} ${detail.text} `));
-      inputRef.current?.focus();
-      // G14.211 光标钉尾:focus 恢复的是 textarea 旧光标位(此前离开输入框时留在原处),
-      // 渲染提交后一帧再设到末尾——否则光标落回旧位=token 中间(「不挨着文件」)
-      requestAnimationFrame(() => {
-        const ta = inputRef.current;
-        if (ta !== null) ta.setSelectionRange(ta.value.length, ta.value.length);
-      });
-    };
-    window.addEventListener('sunshinex:insert-ref', onInsert);
-    return () => window.removeEventListener('sunshinex:insert-ref', onInsert);
-  }, []);
-  /** G14.135 输入区点击 @文件 token → 解析并开侧栏 file 标签(click 后 caret 已落在 textarea,
-   *  按 token 区间命中判定;解析同发送期口径:记账/索引兜底/带目录直用) */
-  const onInputClick = (): void => {
-    const ta = inputRef.current;
-    if (ta === null) return;
-    const caret = ta.selectionStart ?? 0;
-    // G14.213 点击落在 token 中间 → 光标钉 token 尾(file token 命中开标签的行为在先,不变)
-    const span0 = tokenSpanAt(input, caret);
-    if (span0 !== null) ta.setSelectionRange(span0[1], span0[1]);
-    if (onOpenFile === undefined) return;
-    let pos = 0;
-    for (const tk of splitMentionTokens(input)) {
-      const s = pos;
-      const e = pos + tk.text.length;
-      pos = e;
-      if (tk.kind !== 'file' || caret <= s || caret > e) continue;
-      const token = tk.text.slice(1);
-      const anchor = /^(.*):(L\d+(?:-L\d+)?)$/.exec(token);
-      const name = anchor !== null ? anchor[1] : token;
-      const rel = resolveFileRef(pathBasename(name)) ?? (name.includes('/') ? name : undefined);
-      if (rel !== undefined) onOpenFile(rel);
-      return;
-    }
-  };
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
    *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位) */
@@ -798,7 +561,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           }
           // G14.95 / 面板:开头=命令+技能;中间=仅技能;无匹配(items 空)面板不开=自动关
           const slashToken = atMatch === null ? slashTokenAt(input, caret) : null;
-          const slashItems = slashItemsFor(slashToken);
+          const slashItems = slashItemsFor(cmdData, skillCmds, slashToken);
           if (slashToken !== null && slashItems.length > 0) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { filterCommands } from '../../CommandPalette';
+import type { CmdItem } from '../../CommandPalette';
 import type { Connection } from '../../connection';
 
 /** 「/」命令面板数据面（D32 批B 拆分自 Chat.tsx）：GET /commands 清单 + 会话维技能命令清单 +
@@ -33,4 +35,28 @@ export function useCommandPalette(
     conn.commands().then(setCmdData, () => setCmdData(null));
   }, [conn]);
   return { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds };
+}
+
+/** G14.95 slash 面板令牌清单(批F-7d 自宿主平移):开头=命令+技能,中间=仅技能,无匹配=空 */
+export function slashItemsFor(
+  data: { commands: string[]; descriptions: Record<string, string>; supported: string[] } | null,
+  skills: Array<{ id: string; description: string }>,
+  token: { query: string; atStart: boolean } | null,
+): CmdItem[] {
+  if (token === null) return [];
+  const query = token.query.toLowerCase();
+  const cmds =
+    token.atStart && data !== null
+      ? filterCommands(data.commands, data.descriptions, token.query, data.supported)
+      : [];
+  const skillItems = skills
+    .filter((s) => query === '' || s.id.toLowerCase().startsWith(query) || s.id.toLowerCase().includes(query))
+    .slice(0, 8)
+    .map((s) => {
+      const name = s.id;
+      const idx = name.toLowerCase().indexOf(query);
+      // G14.213 kind='skill':有参数已敲时 Enter 落纯文本发送,不走命令通道(daemon 已 400)
+      return { cmd: `/${s.id}`, name, desc: s.description, idx: idx < 0 ? name.length : idx, ok: true, kind: 'skill' as const };
+    });
+  return [...cmds, ...skillItems];
 }
