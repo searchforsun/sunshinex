@@ -140,8 +140,8 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
   };
 
   return (
-    <section className="sx-settings-form sx-settings-body" aria-label="settings pane 高级">
-      <h2>高级(原始编辑·仅全局)</h2>
+    <section className="sx-settings-form sx-settings-body" aria-label="settings pane raw">
+      <h2>{t('Advanced (raw editing · global only)', '高级(原始编辑·仅全局)')}</h2>
       {warnings.length > 0 && (
         <div className="sx-raw-warnings" role="alert">
           {warnings.map((w) => (
@@ -152,7 +152,7 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
       <div className="sx-card sx-raw-card">
         <div className="sx-raw-controls">
           <label>
-            文件
+            {t('File', '文件')}
             <Select
               ariaLabel="raw file"
               value={file}
@@ -164,7 +164,7 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
             />
           </label>
           <button type="button" onClick={read}>
-            重新读取
+            {t('Reload', '重新读取')}
           </button>
         </div>
         {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
@@ -176,7 +176,7 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
           onChange={(e) => setContent(e.target.value)}
           rows={20}
           spellCheck={false}
-          placeholder="读取后编辑;保存前服务端验证(JSONC 注释/未知键保真,畸形拒存)"
+          placeholder={t('Read then edit; server-side validation before save (JSONC comments / unknown keys preserved; malformed rejected)', '读取后编辑;保存前服务端验证(JSONC 注释/未知键保真,畸形拒存)')}
         />
         <div className="sx-save-bar">
           <button type="button" className="sx-settings-save" disabled={saving || !loaded} onClick={save}>

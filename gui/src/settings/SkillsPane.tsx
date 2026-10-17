@@ -109,7 +109,7 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
           type="text"
           className="sx-setting-input sx-skills-search"
           aria-label="skills search"
-          placeholder="搜索技能…"
+          placeholder={t('Search skills…', '搜索技能…')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />

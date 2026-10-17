@@ -61,12 +61,12 @@ export function PermissionsPane({ conn, root, title }: PermissionsPaneProps): JS
               <span className={`sx-perm-level sx-perm-level-${level}`}>{permLabel(level)}</span>
               <dl className="sx-perm-rows">
                 <dt>deny</dt>
-                {perms[level].deny.length === 0 ? <dd className="sx-perm-empty">(空)</dd> : perms[level].deny.map((x) => <dd key={x} className="sx-perm-deny">{x}</dd>)}
+                {perms[level].deny.length === 0 ? <dd className="sx-perm-empty">{t('(empty)', '(空)')}</dd> : perms[level].deny.map((x) => <dd key={x} className="sx-perm-deny">{x}</dd>)}
                 <dt>allow</dt>
-                {perms[level].allow.length === 0 ? <dd className="sx-perm-empty">(空)</dd> : perms[level].allow.map((x) => <dd key={x} className="sx-perm-allow">{x}</dd>)}
+                {perms[level].allow.length === 0 ? <dd className="sx-perm-empty">{t('(empty)', '(空)')}</dd> : perms[level].allow.map((x) => <dd key={x} className="sx-perm-allow">{x}</dd>)}
                 <dt>additionalDirs</dt>
                 {perms[level].additionalDirs.length === 0 ? (
-                  <dd className="sx-perm-empty">(空)</dd>
+                  <dd className="sx-perm-empty">{t('(empty)', '(空)')}</dd>
                 ) : (
                   perms[level].additionalDirs.map((x) => <dd key={x}>{x}</dd>)
                 )}

@@ -5,13 +5,14 @@
  * 提示)。类名 sx-src-{source} 供测试与样式定位。纯展示组件,零状态。
  */
 
+import { t } from '../i18n';
 export type SettingsSource = 'env' | 'project' | 'global' | 'default';
 
-/** 非默认三态的文案与说明(default 无徽标不载) */
-const BADGES: Record<Exclude<SettingsSource, 'default'>, { text: string; title: string }> = {
-  env: { text: 'env', title: '环境变量覆盖(优先级最高)' },
-  project: { text: '项目', title: '项目级配置(项目 settings 文件)' },
-  global: { text: '全局', title: '全局配置(用户级 settings 文件)' },
+/** 非默认三态的文案与说明(default 无徽标不载;双语对渲染期 t() 求值——G14.213 设置面 i18n) */
+const BADGES: Record<Exclude<SettingsSource, 'default'>, { en: string; zh: string; titleEn: string; titleZh: string }> = {
+  env: { en: 'env', zh: 'env', titleEn: 'Overridden by env (highest priority)', titleZh: '环境变量覆盖(优先级最高)' },
+  project: { en: 'Project', zh: '项目', titleEn: 'Project settings (project settings file)', titleZh: '项目级配置(项目 settings 文件)' },
+  global: { en: 'Global', zh: '全局', titleEn: 'Global settings (user settings file)', titleZh: '全局配置(用户级 settings 文件)' },
 };
 
 export interface SourceBadgeProps {
@@ -22,8 +23,8 @@ export function SourceBadge({ source }: SourceBadgeProps): JSX.Element {
   if (source === 'default') return <span className="sx-src-badge sx-src-default" />;
   const b = BADGES[source];
   return (
-    <span className={`sx-src-badge sx-src-${source}`} data-tip={b.title}>
-      {b.text}
+    <span className={`sx-src-badge sx-src-${source}`} data-tip={t(b.titleEn, b.titleZh)}>
+      {t(b.en, b.zh)}
     </span>
   );
 }

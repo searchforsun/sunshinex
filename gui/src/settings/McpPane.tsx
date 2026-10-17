@@ -199,7 +199,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
       <h2>{t('MCP servers', 'MCP 服务器')}</h2>
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
       {servers === null && loadError === '' && <p className="home-loading">加载 MCP 清单…</p>}
-      {servers !== null && servers.length === 0 && loadError === '' && <p className="home-loading">无 MCP 服务器。</p>}
+      {servers !== null && servers.length === 0 && loadError === '' && <p className="home-loading">{t('No MCP servers.', '无 MCP 服务器。')}</p>}
       {servers !== null && servers.length > 0 && (
         <ul className="sx-mcp-list">
           {servers.map((s) => {

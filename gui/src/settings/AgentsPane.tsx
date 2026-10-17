@@ -169,7 +169,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
       {data === null && loadError === '' && <p className="home-loading">加载智能体清单…</p>}
       {data !== null && (
         <>
-          <h3>内建角色(只读)</h3>
+          <h3>{t('Built-in roles (read-only)', '内建角色(只读)')}</h3>
           <ul className="sx-agent-builtins">
             {data.builtins.map((b) => (
               <li key={b.role} className="sx-agent-builtin">
@@ -181,7 +181,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
               </li>
             ))}
           </ul>
-          <h3>已注册(agents 目录)</h3>
+          <h3>{t('Registered (agents directory)', '已注册(agents 目录)')}</h3>
           {data.view.entries.length === 0 && <p className="home-loading">{t('No custom agents.', '无自定义智能体。')}</p>}
           <ul className="sx-agent-list">
             {data.view.entries.map((e) => (

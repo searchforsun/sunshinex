@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ProviderChoice } from '../connection';
 import { SettingsForm } from './SettingsForm';
+import { t } from '../i18n';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
 
 /**
@@ -89,7 +90,7 @@ export function ProvidersPane({ conn, root }: ProvidersPaneProps): JSX.Element {
     <div className="sx-settings-complex">
       <SettingsForm conn={conn} root={root} pane={PROVIDERS_PANE} />
       <section className="sx-providers" aria-label="providers">
-        <h3>提供方(只读)</h3>
+        <h3>{t('Providers (read-only)', '提供方(只读)')}</h3>
         {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
         {providers === null && loadError === '' && <p className="home-loading">加载提供方…</p>}
         {providers !== null && providers.choices.length === 0 && loadError === '' && <p className="home-loading">无已配置的模型选择。</p>}
