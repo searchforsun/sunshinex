@@ -725,10 +725,13 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       expect(screen.getByRole('button', { name: 'Approve t1' })).toBeDefined();
       expect(screen.getByRole('button', { name: 'Deny t1' })).toBeDefined();
 
-      // —— DAG 视图:svg 盒断言(data-task t1 在场,gated 类钩子)——
+      // —— DAG 视图(G14.213 mermaid 重构:旧 svg.board-dag 盒退役):流程图落定含 t1 节点文本
+      //    (label=状态符+标题;gated 类钩子随重构退役,⚠ 门已在 List 视图断过)——
       fireEvent.click(screen.getByRole('button', { name: 'DAG' }));
-      await waitFor(() => expect(container.querySelector('svg.board-dag [data-task="t1"]')).not.toBeNull(), { timeout: 5_000 });
-      expect(container.querySelector('svg.board-dag [data-task="t1"]')?.getAttribute('class')).toContain('gated');
+      await waitFor(() => expect(container.querySelector('.tb-dag-wrap')).not.toBeNull(), { timeout: 5_000 });
+      // 图面承载断言:mermaid svg 落定或 jsdom 无 SVG 布局 API(getBBox)回落原文档——两态同含
+      // t1 节点文本(label=状态符+标题);gated 类钩子随重构退役,⚠ 门已在 List 视图断过
+      await waitFor(() => expect(container.querySelector('.tb-dag-wrap')?.textContent ?? '').toContain('GateDemo'), { timeout: 10_000 });
 
       // —— 回 List → Approve 点击(经 UI:conn.boardReview(s1, t1, true))→ 事件流驱动板自更新 ——
       fireEvent.click(screen.getByRole('button', { name: 'List' }));
@@ -738,8 +741,9 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       // 板 UI 更新:门消失 + 状态流转 pending→claimed→…→in-review(fork 消化末位 done 牌后强制回写)
       await waitFor(() => expect(screen.getByRole('button', { name: 't1 [in-review] GateDemo' })).toBeDefined(), { timeout: 15_000 });
       expect(container.textContent).not.toContain('⚠');
-      // 派发面:fork 委派(task-t1)在板侧栏落位
-      await waitFor(() => expect(container.querySelector('.delegation-list')?.textContent).toContain('task-t1'), { timeout: 5_000 });
+      // 派发面(G14.213 任务板重构:旧板侧栏 .delegation-list 退役):fork 委派落 t1 行内
+      // 执行子代理徽标(agentOfTask 按 task-<id> 命中 → 🤖 徽标入行)
+      await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain('task-t1'), { timeout: 10_000 });
     } finally {
       conn.close();
       await env.stop();
