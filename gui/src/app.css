@@ -1275,6 +1275,13 @@
 .chat .entry-thinking + .entry-assistant,
 .chat .entry-tool + .entry-assistant,
 .chat .seg-collapse + .entry-assistant { margin-top: 0; }
+/* G14.216b 段后正文首元素收口:标题 md 首行自带 12px 顶 margin 叠加段距,思考/工具行→正文
+   视觉断裂(截图实测 ~24px)——首元素顶边距归零+段后 padding-top 收口,恢复 8px 行距意图;
+   用户气泡后的正文保持呼吸不动 */
+.chat .seg-collapse + .entry-assistant { padding-top: 0; }
+.chat .seg-collapse + .entry-assistant .entry-md-body > :first-child,
+.chat .entry-thinking + .entry-assistant .entry-md-body > :first-child,
+.chat .entry-tool + .entry-assistant .entry-md-body > :first-child { margin-top: 0; }
 /* Working 状态行下横分割线(状态与执行流分隔) */.entry-run.live, .entry-run.sealed { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
 
 /* ===== G14.13 exec 执行中态:波纹(外扩环+文字流光) ===== */.exec-running { color: var(--fg-secondary); }
