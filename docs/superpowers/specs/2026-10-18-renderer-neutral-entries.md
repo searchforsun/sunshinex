@@ -32,6 +32,9 @@
 
 ## 7. 三态标识(前/中/后,业界同构:pending → running → done)
 
+> status 为条目/事件流协议字段(快照与事件流可携);**journal v3 不落 status**——落档恒终态
+>(见 §3.2),挂起态只活在事件流与内核内存。
+
 现状三态靠渲染层各自推导(工具行看结果占位符 `…`、正文/思考行拿 openSeg 游标比对、GUI
 `executing = result === '…'` 残留)——渲染中立化后 md 退役,态必须进条目显式字段。
 
@@ -103,13 +106,22 @@ spawn(前台子代理)只是 running 时长长(工具结果=子代理结论行,�
   (meta.stopped 保留);KernelEntry 增可选 status 字段随快照/…序列化;
 - result 字段已是全量(text 全文+full 观测),首行截断是渲染职责——内核零改动。
 
-### 3.2 journal v2(src/session/v2log.ts)
+### 3.2 journal v3(用户裁定:零兼容,读侧零归一)
 
-- **写**:tool seg 行 `md:''`(字段随行既有:callId/name/input + seg-update result);user seg 行
-  裸文;
-- **读(reduceV2Rows,一次性归一)**:tool kind 忽略行面 md(字段权威,旧档记号 md 丢弃);
-  user kind 剥行面 `> ` 前缀(旧档归一)——读侧归一是迁移手段,写面单形态,无兼容层;
-- seg-update:不再重算 md(纯字段回填)。
+条目模型变更=档格式变更:**会话档升版 v2 → v3**——渲染中立形态(tool md=''、user 裸文、
+status 不落行)是 v3 的唯一世界,读侧**没有任何旧形态归一代码**(无兼容层;渲染层只接受
+标准化协议数据):
+
+- **写**:seg 行 tool `md:''`、user 裸文;seg-update 纯字段回填(不重算 md);**status 不落行**
+  (journal 落档恒终态:assistant/thinking 闭合才落行;tool 行落档于 call、seg-update 收 done;
+  挂起窗的行在档内即「无 result」);
+- **读**:v3 行直读,零变换;**悬空 tool 行(无 seg-update 对位)补 `result:{text:'(interrupted)', ok:false}`**
+  ——这是 v3 自身语义(渲染 ✗ 不永转),非兼容;
+- **版本守卫**:daemon attach 与 TUI restore 仅认 `v:3`;v2 及更早一律 INVALID_ARG + purge 指引
+  (dev 期旧档直接删除,session-kernel spec §5 既有裁定);`scripts/purge-legacy-sessions.mjs`
+  扫描口径同步 `v≠3`;
+- `src/session/v2log.ts` 正名 `seglog.ts`(`reduceV2Rows`→`reduceSegRows`、`V2RowLike`→`SegRowLike`)
+  ——名实相副,读的就是 v3。
 
 ### 3.3 TUI(src/tui)
 
@@ -131,20 +143,22 @@ spawn(前台子代理)只是 running 时长长(工具结果=子代理结论行,�
 GET snapshot 的 messages 即自描述 JSON:工具行无需任何渲染文档即可结构化呈现——本设计的验收
 锚点之一。
 
-## 4. 迁移与兼容
+## 4. 迁移与兼容(零兼容)
 
-- 开发期无兼容承诺(§5 session-kernel spec 既有裁定):写面单形态;旧 v2 档读侧归一
-  (tool 记号 md 丢弃/user `> ` 剥除)——字段在旧档中已全量(P2 起随档),零信息损失;
-- GUI 上一轮(P4.1/c0b30de)的 toolMd JSON 嵌入随本设计移除——存在时长一天,无外部消费。
+- **v3 取代 v2**:session-kernel spec §3.2 的「v2 单档」版本位由本 spec 升级——v2 档不迁移
+  不归一,dev 期直接删除(purge 脚本 v≠3 扫描 + attach/restore 版本守卫拒载),与 v2 淘汰
+  v1 同一裁定与同一脚本;
+- GUI 上一轮(P4.1/c0b30de)的 toolMd JSON 嵌入随本设计移除——存在时长一天,无外部消费;
+- 渲染层协议即 snapshot messages / 事件流的条目形态本身——标准化之外不存在第二条可读路径。
 
 ## 5. 测试
 
 - kernel.test:user 裸文断言(`> 一`→`一`);tool 五装配点 md==='' 断言(替换全部 `●/⎿` 断言);
   **三态组**:call→pending、执行起点二次 call(同 callId)幂等升 running 不建新条、result→done、
   ok=false 失败面、段开 running/封段 done、装载归一(悬空 tool 行 done+ok=false);
-- v2log.test:往返等价(live md=''/重放 md='';status 随档);旧档归一(记号 md+`> ` 前缀行装载;
-  悬空 tool 行归一断言);
-- TUI:restore 用例(user 条不再剥前缀也正确;tool 条字段渲染回归);live 面同 callId 二次到达
+- v2log.test:往返等价(live md=''/重放 md='';**status 不落行**断言);**v3 版本守卫**(v2 header
+  拒载 + purge 口径);悬空 tool 行 interrupted 归一;**零旧形态归一用例(零兼容红线)**;
+- TUI:restore 用例(v3 装载;v2 档拒载指引);tool 条字段渲染回归;live 面同 callId 二次到达
   幂等(不重行);
 - GUI:chat-reducer(user 裸文直映/字段+status 直映);Chat.test 种子条三态渲染(pending 灰/
   running spinner 数据源/ done 折叠,夹具改字段+status 形态);App.test 夹具同步;
