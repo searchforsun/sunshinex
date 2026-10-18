@@ -31,6 +31,8 @@ export interface ChatEntry {
   ts?: number;
   /** P4:tool 条 callId 直挂（fetchDiff 寻址;旧 key 编码退役） */
   callId?: string;
+  /** P11 三态直映（内核条目同语义）:pending/running 在场;undefined=done 终态（内核收段删字段） */
+  status?: 'pending' | 'running' | 'done';
   /** tool 条内核字段直映(P4.1 渲染对齐):name/input/result 随快照全量在场——种子/重放条旁路
    *  toolInputs 缺失时经此合成 ToolCallInfo(折叠行目标/展开体全文),不再退 md 首行 */
   name?: string;
@@ -77,6 +79,8 @@ export interface SnapshotTranscriptEntry {
   kind: ChatEntry['kind'];
   md: string;
   callId?: string;
+  /** P11 三态直映（快照=内核条目直序列化,字段同源） */
+  status?: 'pending' | 'running' | 'done';
   name?: string;
   input?: Record<string, unknown>;
   /** tool 条配对结果(内核条目直序列化;文本全量——展开体与折叠 stat 数据源) */
@@ -113,11 +117,9 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
       out.push(hit.view);
       continue;
     }
-    // P10 显示词汇归一:user 剥内核 `> ` 前缀(气泡样式 CSS 承担,与 TUI restore/live 同向);
-    // error 补 `Error: ` 前缀(内核 md=裸文本,前缀归渲染面——与 TUI live/restore 同形)
-    const md = e.kind === 'user'
-      ? (e.md.startsWith('> ') ? e.md.slice(2) : e.md)
-      : e.kind === 'error' ? `Error: ${e.md}` : e.md;
+    // P11 渲染中立条目:user md 内核写面恒裸文(v3),直透零归一(剥 `> ` 前缀分支退役——
+    // 与 TUI restore 同向);error 补 `Error: ` 前缀(前缀归渲染面——与 TUI live/restore 同形)
+    const md = e.kind === 'error' ? `Error: ${e.md}` : e.md;
     const view: ChatEntry = {
       key: `k${e.seq}`,
       kind: e.kind,
@@ -129,6 +131,7 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
       ...(e.name !== undefined ? { name: e.name } : {}),
       ...(e.input !== undefined ? { input: e.input } : {}),
       ...(e.result !== undefined ? { result: e.result } : {}),
+      ...(e.status !== undefined ? { status: e.status } : {}),
     };
     if (e.kind === 'run') {
       const m = e.meta;

@@ -281,7 +281,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
   it('五 kind 直映射 entries（md 原文、无 streaming），status 读游标(P10),tokens/steps 0 起步', () => {
     const s = seedChatFromSnapshot(
       [
-        { seq: 1, ts: 1, kind: 'user', md: '> goal' },
+        { seq: 1, ts: 1, kind: 'user', md: 'goal' },
         { seq: 2, ts: 2, kind: 'tool', md: '● read\n⎿ ok' },
         { seq: 3, ts: 3, kind: 'assistant', md: 'answer' },
         { seq: 4, ts: 4, kind: 'notice', md: '✻ dev started' },
@@ -329,7 +329,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     // openRun/openSeg 由 daemon 内核游标随快照携带,客户端零推导
     const seeded = seedChatFromSnapshot(
       [
-        { seq: 1, ts: 1, kind: 'user', md: '> goal' },
+        { seq: 1, ts: 1, kind: 'user', md: 'goal' },
         { seq: 2, ts: 2, kind: 'run', md: '' },
         { seq: 3, ts: 3, kind: 'assistant', md: '终稿' },
         { seq: 4, ts: 4, kind: 'notice', md: '✻ learned' },
@@ -370,6 +370,18 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     const s = applyChatEvent(seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], { openRun: -1, openSeg: -1 }), ev('model-start'));
     const s2 = applyChatEvent(s, ev('usage', undefined, { turnTotal: 10 }));
     expect(s2.tokens).toBe(10);  });
+
+  it('P11 user 裸文直映(无剥前缀)+ tool status 直映', () => {
+    const s = seedChatFromSnapshot(
+      [
+        { seq: 1, ts: 1, kind: 'user', md: 'goal' },
+        { seq: 2, ts: 2, kind: 'tool', md: '', callId: 'c1', name: 'read', input: { path: 'a.ts' }, status: 'running' },
+      ],
+      { openRun: -1, openSeg: -1 },
+    );
+    expect(s.entries[0]).toMatchObject({ kind: 'user', md: 'goal' });
+    expect(s.entries[1]).toMatchObject({ kind: 'tool', md: '', status: 'running' });
+  });
 });
 
 describe('纯函数性（immutable）', () => {
@@ -390,7 +402,7 @@ describe('条目时间戳(G9 B3a:日期分隔投影源)', () => {
     const e = ev('done', 'hi');
     const s = fold([e]);
     expect(s.entries[0]!.ts).toBe(e.ts);
-    const seeded = seedChatFromSnapshot([{ seq: 1, ts: 1728380001000, kind: 'user', md: '> yo' }], { openRun: -1, openSeg: -1 });
+    const seeded = seedChatFromSnapshot([{ seq: 1, ts: 1728380001000, kind: 'user', md: 'yo' }], { openRun: -1, openSeg: -1 });
     expect(seeded.entries[0]!.ts).toBe(1728380001000);
     const echoed = appendUserMessage(initialChatState(), 'yo', 999);
     expect(echoed.entries[0]!.ts).toBe(999);
