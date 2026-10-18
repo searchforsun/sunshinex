@@ -480,4 +480,4 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |
 | 窗口缩放后花屏 / 残影 | 微调窗口大小再触发一次整屏重绘 |
 | 想回看很久之前的内容 | 终端滚动缓冲保留全部输出；`Tab` / `Ctrl+O` 展开查看 |
-| 恢复旧会话报「journal 版本不受支持」 | 会话档已升级 v2 段级格式且不保旧档（开发期裁定）；删除数据目录 `sessions/` 下旧档即可（`node scripts/purge-legacy-sessions.mjs` 可列出/`--delete` 清理） |
+| 恢复旧会话报「journal 版本不受支持」 | 会话档已升级 v3 段级格式且不保旧档（开发期裁定，仅认 v:3）；删除数据目录 `sessions/` 下旧档即可（`node scripts/purge-legacy-sessions.mjs` 可列出/`--delete` 清理） |

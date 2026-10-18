@@ -521,22 +521,25 @@ git commit -m "refactor(gui): P11-T7 toolInputs 旁路退役——G6 双通道�
 
 **Files:** 无新改(回归门)
 
-- [ ] **Step 1: daemon 全量**
+- [x] **Step 1: daemon 全量**
 
 Run: `cd src && npx tsc && cd .. && node scripts/run-tests.js 2>&1 | tail -9`
 Expected: 0 fail(2 skip 既有)
+**实测(T8):tests 1850 / pass 1848 / fail 0 / skipped 2(既有 win32)——中期出现过 5 失败经重编译后未复现(陈旧 dist 产物)**
 
-- [ ] **Step 2: GUI 全量 + tsc 双端**
+- [x] **Step 2: GUI 全量 + tsc 双端**
 
 Run: `cd gui && npx tsc --noEmit && npx vitest run 2>&1 | tail -4`
 Expected: 0 fail
+**实测(T8):tsc 双端 0 error;GUI 22 files / 345 tests 全过(吸收 9 处陈旧 md 断言后)**
 
-- [ ] **Step 3: 构建产物(用户浏览器即时可见)**
+- [x] **Step 3: 构建产物(用户浏览器即时可见)**
 
 Run: `cd gui && npx vite build 2>&1 | tail -3`
 Expected: built
+**实测(T8):✓ built in 1m(chunk>500kB 提示为既有警告)**
 
-- [ ] **Step 4: plan 验收回填 + 提交**
+- [x] **Step 4: plan 验收回填 + 提交**
 
 `docs/superpowers/plans/2026-10-18-renderer-neutral-entries-p11.md` 验收节回填实测数字,连同遗留改动一并:
 
@@ -549,10 +552,17 @@ git commit -m "feat(session): P11 渲染中立化条目模型收官——内核/
 
 ## 验收清单(对照 spec)
 
-- [ ] `grep -rn "● \|⎿ \|'> " src/session/ src/serve/ src/tui/ --include=*.ts | grep -v test` 生产源码零渲染记号;
-- [ ] `KernelEntry.status` 三态接线;tool md 恒 '';user 裸文;悬空 tool 装载归一;
-- [ ] 事件序 pending→running→result;TUI/GUI live 二次 tool-call 幂等不重行;
-- [ ] GUI ToolEntry/derived 字段单源,toolInputs 旁路退役;
-- [ ] snapshot messages 纯 API 可识别(无渲染文档依赖)——spec §3.5 锚点;
-- [ ] 子代理同构(spec §8):spawn 零条目特判——普通 tool 三态贯通,delegation 另轨零转录;
-- [ ] 全量:daemon 0 fail / GUI 0 fail / tsc 双端 0 error。
+- [x] `grep -rn "● \|⎿ \|'> " src/session/ src/serve/ src/tui/ --include=*.ts | grep -v test` 生产源码零渲染记号;
+  **实测(T8):session/serve 非测试 0 命中;`'> ` 字面对 TS 泛型有误报(`'seq'> &`),代码级 `startsWith('> ')` 全仓三目录 0;tui 6 行命中全系 §3.3 明文「自绘处原地保留」的渲染面(●/⎿ 由字段现场构造:tail-rewrite/child-panel,chat-model 系注释),零 md 数据记号解析——记号不进数据面,红线达成。**
+- [x] `KernelEntry.status` 三态接线;tool md 恒 '';user 裸文;悬空 tool 装载归一;
+  **实测(T8):kernel.test ⓰⓱ 两用例 + seglog.test v3 用例全绿(含悬空补 `(interrupted)`;done=缺省)。**
+- [x] 事件序 pending→running→result;TUI/GUI live 二次 tool-call 幂等不重行;
+  **实测(T8):batch-runner.test 三帧序断言 + kernel.test 同 callId 二次 call 幂等(不建新条)全绿;T4 载入臂 archiveToolEntry 守卫 no-op 零重行。**
+- [x] GUI ToolEntry/derived 字段单源,toolInputs 旁路退役;
+  **实测(T8):gui/src `toolInputs`/`verbOf`/`resultOf`/`toolMdInfo`/`ToolCallInfo` 全 0 命中;taskTitleMap 任务 id 提取改读 result 回执文本(T8,md 恒空下-live 任务名不再落空)。**
+- [x] snapshot messages 纯 API 可识别(无渲染文档依赖)——spec §3.5 锚点;
+  **实测(T8):e2e G2 断言改字段形态(user md 裸文/tool md=''+name)后全绿——快照消费零渲染文档依赖。**
+- [x] 子代理同构(spec §8):spawn 零条目特判——普通 tool 三态贯通,delegation 另轨零转录;
+  **实测(T8):session/entry.ts 零 spawn 条目特判(grep 仅注释提及 PtyManager.spawn);chat-reducer payload.subagent 零主流条目用例绿。**
+- [x] 全量:daemon 0 fail / GUI 0 fail / tsc 双端 0 error。
+  **实测(T8):daemon 1850 例 1848 过 0 败 2 skip(既有 win32);GUI 345 例全过;`src` tsc / `gui` tsc --noEmit 均 0 error。**

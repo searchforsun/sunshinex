@@ -72,7 +72,7 @@
 | Diff 打不开（提示无快照） | 事件已被裁剪；在消息条目里直接查看写入内容 |
 | 终端是哪个 shell | Windows 下为 PowerShell |
 | 忘了窗口在哪 | 托盘图标双击，或 `Alt+Shift+S` |
-| Attach 旧会话报「unsupported journal version」 | 会话档已升级 v2 段级格式且不保旧档（开发期裁定）；删除该项目数据目录下 `sessions/` 旧档 |
+| Attach 旧会话报「unsupported journal version」 | 会话档已升级 v3 段级格式且不保旧档（开发期裁定，仅认 v:3）；删除该项目数据目录下 `sessions/` 旧档 |
 
 ## 开发者
 
