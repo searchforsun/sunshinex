@@ -99,6 +99,13 @@ export class BatchRunner {
     const runOne = (c: ToolCallSpec, args: Record<string, unknown> | null) =>
       args === null ? null : this.deps.registry.execute(c.name, args, this.deps.safety);
 
+    // P11 三态:执行起点补发 running(同 callId 二次 tool-call——内核按 pending 槽幂等回填升级,零新事件型);
+    // 超限重复/非法参调用跳执行、无执行起点,不发中态直落 result(Produced 契约:超限/非法参调用跳过 running)
+    const emitRunning = (i: number, c: ToolCallSpec): void => {
+      if (overDuplicated[i] || argsOf[i] === null) return;
+      this.deps.emit('tool-call', c.name, { input: argsOf[i] ?? {}, callId: callIds[i], status: 'running' });
+    };
+
     // 纯并行批（无状态类调用）整批并发；含状态类调用的批按出牌顺序串行——前一个完成后后者才开跑；同参超限调用跳过执行。
     // 结果事件回程即发（活动行实时清行——批内最长调用不再拖住其余调用的结果呈现）；
     // 链行仍按出牌顺序入链（role:tool 与调用行按位配对），事件流为瞬态呈现、链行为事实源
@@ -118,6 +125,7 @@ export class BatchRunner {
     if (sequential) {
       for (let i = 0; i < calls.length; i++) {
         if (overDuplicated[i]) { emitResult(i, calls[i], argsOf[i], null); continue; }
+        emitRunning(i, calls[i]);
         const r = await runOne(calls[i], argsOf[i]);
         results[i] = r;
         emitResult(i, calls[i], argsOf[i], r);
@@ -125,6 +133,7 @@ export class BatchRunner {
     } else {
       await Promise.all(calls.map(async (c, i) => {
         if (overDuplicated[i]) { emitResult(i, c, argsOf[i], null); return; }
+        emitRunning(i, c);
         const r = await runOne(c, argsOf[i]);
         results[i] = r;
         emitResult(i, c, argsOf[i], r);

@@ -154,6 +154,18 @@ test('fullObservation 免截：声明整读特性的工具观察行整读；未�
   assert.equal(f.rows[1], 'C'.repeat(2000) + '\n...(truncated)', '未声明工具：既有 2000 截断语义原样');
 });
 
+test('P11 三态事件序:串行批每调用 pending→running→result;执行起点才有 running', async () => {
+  const r = new ToolRegistry();
+  r.register(probe('probe_a', 'bash', async () => { await sleep(10); return 'a-ok'; }));
+  r.register(probe('probe_b', 'read', async () => 'b-ok'));
+  const f = makeFixture(r);
+  const mixed = [call('probe_a', {}), call('probe_b', {})];
+  await f.runner.runBatch({ calls: mixed, argsOf: parseArgs(mixed), step: 1, ledger: f.ledger });
+  const statuses = f.events.map((e) => e.payload.status);
+  // 批前 pending 先行上屏双帧（既有 TUI 实时性契约，超限路径同款）；执行起点补发 running——每调用仍恰 pending→running→result 三帧
+  assert.deepEqual(statuses, ['pending', 'pending', 'running', 'completed', 'running', 'completed'], '串行批两调用各三帧(执行起点才有 running;pending 批前先行上屏)');
+});
+
 test('归档恢复指针随身携带：超 2000 且尾带 [truncated · full output] 时截断不丢指针（旧实现切指针必红）', async () => {
   const out = 'D'.repeat(2600) + '\n[truncated · full output: C:/tmp/tool-outputs/1-read-abc.txt]';
   const r = new ToolRegistry();
