@@ -536,13 +536,13 @@ async function clickSessionRow(): Promise<void> {
 }
 
 describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
-  it('打开会话即播种:snapshotResp.messages 五 kind 直映射渲染(md 原文,user 引用块等 gfm 形)', async () => {
+  it('打开会话即播种:snapshotResp.messages 五 kind 直映射渲染(md 裸文直用,P11)', async () => {
     const { conn, unmount } = mount();
     conn.snapshotResp = snapshotOf({
       status: 'running',
       openRun: 1, // P10:status 读内核游标(快照 status 字段退役)
       messages: [
-        { seq: 1, ts: 1, kind: 'user', md: '> build the widget' },
+        { seq: 1, ts: 1, kind: 'user', md: 'build the widget' },
         { seq: 2, ts: 2, kind: 'tool', md: '', name: 'read', result: { text: 'ok', ok: true } },
         { seq: 3, ts: 3, kind: 'notice', md: '✻ dev started' },
         { seq: 4, ts: 4, kind: 'error', md: 'boom' },
@@ -553,7 +553,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    expect(screen.getAllByText('build the widget')[0]).toBeDefined(); // P10:内核 `> ` 前缀投影层剥除(气泡样式 CSS 承担)
+    expect(screen.getAllByText('build the widget')[0]).toBeDefined(); // P11:内核 user md 裸文,直渲染
     expect(document.querySelector('.tool-summary')?.textContent).toContain('read'); // 图标化行(●/⎿ 记号退役,G10-C3)
     expect(document.querySelector('.tool-summary')?.textContent).not.toContain('⎿'); // 结果行记号不回归
     expect(document.querySelector('.run-live-line')?.textContent).toContain('0 steps'); // G14.52:运行状态行常驻流区末行(原工具行尾参)
@@ -598,7 +598,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     const seedCallsBefore = conn.snapshotCalls.length;
     conn.snapshotResp = snapshotOf({
       messages: [
-        { seq: 1, ts: 1, kind: 'user', md: '> goal one' },
+        { seq: 1, ts: 1, kind: 'user', md: 'goal one' },
         { seq: 2, ts: 2, kind: 'assistant', md: '首轮答复' },
       ],
     });
@@ -702,7 +702,7 @@ describe('种子竞态缓冲(T3 收口):seed 在途帧缓冲→种子落定过�
     const { conn, unmount } = await enterChatHeld();
     conn.snapshotResp = snapshotOf({
       lastSeq: 5,
-      messages: [{ seq: 1, ts: 1, kind: 'user', md: '> 基线目标' }],
+      messages: [{ seq: 1, ts: 1, kind: 'user', md: '基线目标' }],
     });
     // —— seed 在途窗:本会话帧到达(补发/直播混合)——缓冲不投 ——
     fire(conn, ev('token', '旧帧'), 3); // ≤ lastSeq:种子已含(直播帧先于应答落定)

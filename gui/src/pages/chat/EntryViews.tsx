@@ -164,7 +164,7 @@ function RewindMenu({ onAnchors, onPick }: { onAnchors: () => Promise<Array<{ tu
 }
 
 /** 用户条目(Codex 形,G9 spec §3.1):右对齐胶囊(前景 5%/8% 底)+ 下方 hover 浮现复制钮;
- *  G11 §7 增编辑卡:hover 浮现 Edit 钮,点击气泡原位变 composer 同款浮卡(textarea 预填剥 `> `
+ *  G11 §7 增编辑卡:hover 浮现 Edit 钮,点击气泡原位变 composer 同款浮卡(textarea 预填原文——user md 裸文,P11
  *  原文+取消/发送),发送经 onSend(=Chat 的 submitText,与 composer 同一提交路径)发新消息,
  *  成功才关卡(失败保卡保草稿,spec §9),Esc 取消回气泡。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
  *  复制失败(权限等)钮 1.5s 示「未复制」tertiary 态,不弹错。memo 同 ChatEntryView——流式帧
@@ -243,7 +243,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
     [],
   );
   const copy = (): void => {
-    const text = entry.md.replace(/^> ?/gm, '');
+    const text = entry.md; // P11:user md 裸文(内核渲染中立)——正文合法以 > 开头者不再误剥
     navigator.clipboard?.writeText(text).then(
       () => setCopied('ok'),
       () => setCopied('fail'),
@@ -254,7 +254,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const openEdit = (): void => {
-    setDraft(entry.md.replace(/^> ?/gm, ''));
+    setDraft(entry.md);
     setEditing(true);
   };
   const sendEdit = (): void => {

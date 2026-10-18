@@ -79,7 +79,7 @@ async function withDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>):
 }
 
 /** 手工 journal 造档（SessionJournal 既有导出）：header 建档 + 给定事件逐条落盘，回档 id 与文件路径 */
-function makeJournal(root: string, events: JournalEvent[], version = 1): { id: string; file: string } {
+function makeJournal(root: string, events: JournalEvent[], version = 3): { id: string; file: string } {
   const dataDir = resolveDataDir(root);
   const j = new SessionJournal(dataDir);
   j.start(version);

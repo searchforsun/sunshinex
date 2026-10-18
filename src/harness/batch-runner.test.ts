@@ -58,6 +58,20 @@ function probe(name: string, category: 'read' | 'bash', body: () => Promise<stri
   return { name, description: `test-only ${category} probe`, category, executor: async () => ({ exitCode: 0, stdout: await body(), stderr: '', timedOut: false }) };
 }
 
+test('P11 三态钉:同参超限批跳执行即零 running 帧(pending 直落 failed)', async () => {
+  let n = 0;
+  const registry = new ToolRegistry();
+  registry.register(probe('probe_dup', 'read', async () => `dup-${++n}`));
+  const f = makeFixture(registry);
+  const same = [call('probe_dup', {}), call('probe_dup', {})];
+  await f.runner.runBatch({ calls: same, argsOf: parseArgs(same), step: 1, ledger: f.ledger });
+  await f.runner.runBatch({ calls: same, argsOf: parseArgs(same), step: 2, ledger: f.ledger });
+  f.events.length = 0; // 前两轮事件清空,只看超限轮
+  await f.runner.runBatch({ calls: same, argsOf: parseArgs(same), step: 3, ledger: f.ledger });
+  const statuses = f.events.map((e) => e.payload.status);
+  assert.deepEqual(statuses, ['pending', 'pending', 'failed', 'failed'], '超限批:全批 pending 先行(调用行先行上屏契约)直落 failed,零 running(跳执行无中态)');
+});
+
 test('签名去重命中：集合口径签名（与出牌顺序无关）第 3 次整批拒绝且跳过执行，换参即新签名照常执行', async () => {
   let execA = 0;
   let execB = 0;

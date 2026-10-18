@@ -90,7 +90,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
   });
 
   it('用户条目渲染右胶囊:entry-user 容器 + user-bubble 气泡 + 复制钮', async () => {
-    mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '> 你好' }]);
+    mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
     expect((await screen.findAllByText('你好'))[0]).toBeTruthy(); // 标题回落同文——取首个(气泡)
     const entry = document.querySelector('.entry-user')!;
     expect(entry).toBeTruthy();
@@ -147,7 +147,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     const onOpenFile = vi.fn();
     render(
       <Chat
-        conn={connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '> 再看一下 [steer-verify.txt](C:/Users/x/sunshinex-default/steer-verify.txt)' }])}
+        conn={connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '再看一下 [steer-verify.txt](C:/Users/x/sunshinex-default/steer-verify.txt)' }])}
         sessionId="s1"
         connState="open"
         onBack={() => {}}
@@ -179,7 +179,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
   });
 
   it('复制钮写入剪贴板(剥 > 前缀),成功示「已复制」', async () => {
-    mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '> 你好' }]);
+    mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
     fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('你好');
     await waitFor(() => expect(document.querySelector('.entry-user .user-actions .sx-tip')?.getAttribute('data-tip')).toBe('Copied'));
@@ -189,7 +189,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     const { unmount } = render(
       <Chat
         conn={connOf([
-          { seq: 1, ts: DAY1, kind: 'user', md: '> a' },
+          { seq: 1, ts: DAY1, kind: 'user', md: 'a' },
           { seq: 2, ts: DAY2, kind: 'assistant', md: 'b' },
         ])}
         sessionId="s1"
@@ -204,7 +204,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(seps.every((el) => el.classList.contains('chat-day-sep'))).toBe(true);
     unmount();
     mountChat([
-      { seq: 1, ts: DAY1, kind: 'user', md: '> a' },
+      { seq: 1, ts: DAY1, kind: 'user', md: 'a' },
       { seq: 2, ts: DAY1, kind: 'assistant', md: 'b' },
     ]);
     await screen.findByText('b');
@@ -250,7 +250,7 @@ describe('MermaidBlock(G11 §5.4)', () => {
 describe('composer pills 与排队 chips(G10-C4)', () => {
   it('权限 pill 三态菜单:切换 manual 调 setSessionMode(manual)', async () => {
     const setSessionMode = vi.fn(() => Promise.resolve());
-    const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '> a' }]);
+    const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: 'a' }]);
     (conn as unknown as Record<string, unknown>).setSessionMode = setSessionMode;
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     fireEvent.click(await screen.findByRole('button', { name: 'session mode' }));
@@ -487,7 +487,7 @@ describe('run 尾部操作条(G11 §6)', () => {
 describe('用户气泡编辑卡(G11 §7)', () => {
   it('编辑:预填原文;发送=新消息(sessionSubmit+新回显条);Esc 取消回气泡', async () => {
     const sessionSubmit = vi.fn(() => Promise.resolve());
-    const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '> 你好' }]);
+    const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
     (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await screen.findAllByText('你好'); // 标题回落同文——取首个
@@ -757,7 +757,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     render(
       <Chat
         conn={connOf([
-          { seq: 1, kind: 'user', md: '> 旧问题' },
+          { seq: 1, kind: 'user', md: '旧问题' },
           { seq: 2, kind: 'assistant', md: '旧回答' },
         ])}
         sessionId="s1"

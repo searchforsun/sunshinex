@@ -108,7 +108,7 @@ export class SessionController {
   /** 会话事件日志（规格 2026-09-17-session-persistence D4 + 2026-09-22 事件级即时落盘）：持久化事件随产生落盘（惰性建档，空会话零文件）；
    *  公开 = commands-session 谱系命令读 currentId/attach 续挂，建档写点仍收敛在 ensureJournal/rotate */
   journal?: SessionJournal;
-  /** 会话内核转录(P3,session-kernel spec §3.2):转录持久化面单点——事件经段级投影落 v2 seg 行,
+  /** 会话内核转录(P3,session-kernel spec §3.2):转录持久化面单点——事件经段级投影落 seg 行,
    *  msg/msg-update 行退役(渲染归档与转录归档分离:命令回显/卡即 ephemeral,对话面随档)。
    *  换新走 kernelSeedForRestore(/new 清空/resume 装载)。P8 起 onKernelEvent 双消费:
    *  持久化落档 + 视图归档(段闭合事件驱动静态区转录条,applyKernelEvent 单点) */
@@ -259,7 +259,7 @@ export class SessionController {
     if (seq >= 0) this.foldedThinkingSeq = seq;
   }
 
-  /** v2 落档单点:内核段级事件 → journal 行(kernelEventRows 共享映射,daemon 同形);惰性建档
+  /** v3 落档单点:内核段级事件 → journal 行(kernelEventRows 共享映射,daemon 同形);惰性建档
    *  对齐 daemon(P5 起 steer 行可先于自然语言提交到达——队列面板插入即落,无 run 也有档) */
   private persistKernelEvent(ev: import('../session/kernel').KernelEvent): void {
     const j = this.ensureJournal();
@@ -271,7 +271,7 @@ export class SessionController {
     }
   }
 
-  /** v2 档装载入核(resume/rewind 装载序,commands-session 消费):换新内核(旧档条目不串档)后 seed,
+  /** v3 档装载入核(resume/rewind 装载序,commands-session 消费):换新内核(旧档条目不串档)后 seed,
    *  seg 行 seq 原样沿用、后续 live 条目自 max+1 续接;不触发落档事件(装载零双写)。
    *  视图归档登记位随内核换新一并复位(旧内核的折叠/定格登记不跨档) */
   kernelSeedForRestore(entries: ReadonlyArray<KernelEntry>): void {

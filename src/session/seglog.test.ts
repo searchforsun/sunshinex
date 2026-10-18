@@ -196,6 +196,19 @@ test('渲染中立 v3(P11):tool md 恒空;悬空 tool 行补 interrupted result(
   assert.deepEqual(entries[2]!.result, { text: '(interrupted)', ok: false }, '悬空 tool 行(渲染 ✗ 不永转)');
 });
 
+test('P11 渲染中立钉:装载条不携 status 键(status 不落行,终态缺省);TUI restore v3 守卫源码钉', () => {
+  const entries = reduceSegRows([
+    { t: 'seg', kind: 'user', md: '裸', ts: 1, seq: 1 },
+    { t: 'seg', kind: 'tool', md: '', ts: 2, seq: 2, callId: 'c', name: 'read', input: { path: 'x' } },
+  ]);
+  for (const e of entries) assert.equal('status' in e, false, 'journal 装载条零 status 键(悬空 tool 走 interrupted result,非 status)');
+  // TUI restore 守卫源码钉(guards 先例):仅认 v:3(dist 回仓根取源)
+  let root = __dirname;
+  while (!require('fs').existsSync(require('path').join(root, 'package.json'))) root = require('path').dirname(root);
+  const src = require('fs').readFileSync(require('path').join(root, 'src', 'tui', 'commands-session.ts'), 'utf8');
+  assert.ok(src.includes('version !== 3'), 'TUI restore 仅认 v:3(守卫分支在场)');
+});
+
 test('steer 行读面(P5,spec §12):reduceSteerRows 取末行为准+字段净化;kernelEventRows 映射整列', () => {
   // 末条 steer 行覆盖前行(整列重写语义)
   assert.deepEqual(

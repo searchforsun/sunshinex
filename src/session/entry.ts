@@ -255,9 +255,10 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
               entries: replaceAt(sealed.entries, idx, {
                 ...cur,
                 name,
-                // P11 三态:call 回填即生命周期对齐——占位条(无 result)随载荷升 pending/running(执行起点
-                // 同 callId 二次 call 幂等回填);result 先行条已终态(result 在场即 done,status 不回填)
-                status: cur.result !== undefined ? undefined : e.payload?.status === 'running' ? 'running' : 'pending',
+                // P11 三态:call 回填即生命周期对齐(单调钳制:running 不回退)——占位条(无 result)随载荷升
+                // pending/running(执行起点同 callId 二次 call 幂等回填,乱序迟到 pending 帧不降级);
+                // result 先行条已终态(result 在场即 done,status 不回填)
+                status: cur.result !== undefined ? undefined : e.payload?.status === 'running' ? 'running' : (cur.status ?? 'pending'),
                 ...(input !== undefined && typeof input === 'object' ? { input: input as Record<string, unknown> } : {}),
               }),
               pending,
@@ -459,7 +460,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
   }
 }
 
-/** 历史播种(v2 档装载/attach 派生):入参 seq>0 原样沿用(v2 行 seq 与 live 同源——truncate 行
+/** 历史播种(v3 档装载/attach 派生):入参 seq>0 原样沿用(seg 行 seq 与 live 同源——truncate 行
  *  upToSeq 对位依赖),缺省/0 才续发(链派生等异源播种);nextSeq = max+1。播种条目一律视为已闭合
  *  (不动流式记账/配对池),不触发 kernel 事件(kernel 侧职责) */
 export function applySeed(state: KernelState, entries: ReadonlyArray<Omit<KernelEntry, 'seq'> & { seq?: number }>): KernelState {

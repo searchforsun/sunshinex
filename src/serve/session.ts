@@ -202,7 +202,7 @@ export class SessionRuntime {
     this.runtimeImpl = this.assemble();
   }
 
-  /** v2 落档单点(P2,spec §3.2):内核段级事件 → journal 行(kernelEventRows 共享映射,P3 起
+  /** v3 落档单点(P2 起,spec §3.2):内核段级事件 → journal 行(kernelEventRows 共享映射,P3 起
    *  daemon/TUI 同一写形)。journal 未挂载即丢弃;惰性建档对齐 chain 订阅(首条段级行落 header)。
    *  chain/compact 行走 onContextChange 既有订阅、runmeta 行走 submit() 收尾既有路径——三条写路
    *  同档不重叠。P5:steer 事件双消费——旁路广播 queue 帧(不经 pump,防主链投影误闭合)+整列落档 */
@@ -601,7 +601,7 @@ export class SessionRuntime {
     await this.disposeRuntime(old);
     this.board = emptyBoard();
     this.delegations = [];
-    // 转录清空(v2):truncate 行落档(upToSeq=0 全清——重放视界与 live 清空对齐)+ 内核换新
+    // 转录清空(v3):truncate 行落档(upToSeq=0 全清——重放视界与 live 清空对齐)+ 内核换新
     // (同一 onKernelEvent 挂点,后续段落新行;truncate 前落行——换新后旧条目不再可达)
     this.kernel.truncate(0);
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });

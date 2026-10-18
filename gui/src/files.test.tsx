@@ -308,7 +308,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     unmount(); // backHome 等价:Chat 卸毁,cleanup 里 seedGenRef.current++
     // 陈旧应答此刻落定:gen 已被 cleanup 抬走 → then 回调早退,onSeeded(污染面)不再被调
     await act(async () => {
-      releaseHeld({ ...emptySnap(), messages: [{ seq: 9, ts: 1, kind: 'user', md: '> 陈旧会话内容' }] });
+      releaseHeld({ ...emptySnap(), messages: [{ seq: 9, ts: 1, kind: 'user', md: '陈旧会话内容' }] });
       await Promise.resolve();
     });
     expect(onSeeded).toHaveBeenCalledTimes(1);

@@ -230,7 +230,7 @@ export class GuiDaemon {
   }
 
   /**
-   * attach 恢复（spec §4b v2 装载序,P2）：会话 root 的 dataDir 下定位 `<journalId>.jsonl`（未知 id
+   * attach 恢复（spec §4b 装载序 + 渲染中立 spec v3）：会话 root 的 dataDir 下定位 `<journalId>.jsonl`（未知 id
    * INVALID_ARG）→ parseJournalFile → 版本守卫（v3 段级词汇;v1/v2 旧档拒载,dev 用 purge 脚本清理）→
    * 装载双读面:reduceJournal(chain/compact → restoreSession 上下文;model/todos/view 参数面不动) +
    * reduceSegRows(seg/seg-update/run-open/runmeta/truncate → kernel.seed 转录投影,seq 原样沿用)→

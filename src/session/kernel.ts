@@ -23,7 +23,7 @@ export type KernelEvent =
  * SessionKernel:会话转录唯一投影 + 事件泵(spec 2026-10-17-session-kernel §3/§6)。
  * 事件经 pump 单点驱动纯 reducer(entry.ts);seq 由状态机自分配;replay 只读快照;
  * truncate 承载 rewind/compact/reset 的视图截断;onKernelEvent 为段级事件外抛面
- * (P2 daemon 持久化写者经它落 v2 行;seed 回种不触发——防双写)。
+ * (P2 daemon 持久化写者经它落 seg 行;seed 回种不触发——防双写)。
  * 收编进度:P1-P5 落地(daemon 唯一 v2 写者/TUI 持久化+恢复/GUI 投影/steer 队列);
  * P8 全量收编 TUI 静态归档面(tool 成对定格/thinking 折叠/notice/error 条目全由段级事件驱动,
  * 原始事件自建投影退役——TUI 静态区=内核投影的渲染形,见 plans/2026-10-18-session-kernel-p8)。
@@ -74,7 +74,7 @@ export class SessionKernel {
     }
   }
 
-  /** 历史播种(v2 档装载/attach 派生):seq>0 沿用(v2 行与 live 同源),缺省续发;不触发事件(防双写) */
+  /** 历史播种(v3 档装载/attach 派生):seq>0 沿用(seg 行与 live 同源),缺省续发;不触发事件(防双写) */
   seed(entries: ReadonlyArray<Omit<KernelEntry, 'seq'> & { seq?: number }>): void {
     this.state = applySeed(this.state, entries);
   }

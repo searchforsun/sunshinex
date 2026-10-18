@@ -74,7 +74,7 @@ export function resumeLatest(ctrl: SessionController): void {
   restoreFromSession(ctrl, meta);
 }
 
-/** 内核条目 → 静态区消息重建(P3,resume v2 装载面):形态与 live 入档对齐——user 剥引用块原文;
+/** 内核条目 → 静态区消息重建(P3,resume v3 装载面):形态与 live 入档对齐——user 裸文直用;
  *  assistant 终态 md 现渲 ANSI;thinking 折叠摘要行(closeLiveBlock 同形,detail 保全文);
  *  tool call+result 两件(toolCallLine(name,input)/结果全文,CC 配对同形);notice/error→system 行
  *  (error 带 `Error: ` 前缀与 live 同形;安静 notice 同 live 臂不渲染);run 跳过(状态栏承载)。seq 重建自 1。 */
