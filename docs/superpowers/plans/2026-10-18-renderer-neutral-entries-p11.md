@@ -195,131 +195,14 @@ test('渲染中立 v3(P11):tool md 恒空;悬空 tool 行补 interrupted result(
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require scripts/test-env.cjs --test dist/session/kernel.test.js 2>&1 | tail -8`
-Expected: FAIL(md 断言 `● create_task…`/`> 问` 与 status 断言 undefined 不符)
-
-- [ ] **Step 3: 实施内核改动**
-
-`src/session/entry.ts` 逐处:
-
-(a) KernelEntry 接口(`:47` meta 之前)插:
-
-```ts
-  /** 三态生命周期(渲染中立 spec §7):pending=已发射未执行/running=执行或流式中;done 以缺省
-   *  承载(终态行字段省略——journal 轻量,undefined 即 done)。失败不设第四态:result.ok 承载 ✗ */
-  status?: 'pending' | 'running' | 'done';
-```
-
-(b) 删除 `toolMd` 函数(:130-137 整块)与 `PendingTool.resultLine` 字段(:97-104 内 `resultLine: string;` 一行);
-
-(c) tool-call 正常装配(`:274-283`):
-
-```ts
-      const input = e.payload?.input;
-      const next = appendEntry(sealed, {
-        ts: e.ts,
-        kind: 'tool',
-        md: '',
-        status: e.payload?.status === 'running' ? 'running' : 'pending',
-        ...(callId !== undefined ? { callId } : {}),
-        name,
-        ...(input !== undefined && typeof input === 'object' ? { input: input as Record<string, unknown> } : {}),
-      });
-      return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, ...(callId !== undefined ? { callId } : {}), name }] };
-```
-
-(d) 乱序 call 回填(`:261-271`,result 先行条补 name/input——条已有 result 即 done,不回 status):
-
-```ts
-              entries: replaceAt(sealed.entries, idx, {
-                ...cur,
-                name,
-                ...(input !== undefined && typeof input === 'object' ? { input: input as Record<string, unknown> } : {}),
-              }),
-```
-
-(e) tool-result `fill`(`:295`)——收 done(删 status)+ result:
-
-```ts
-      const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, name, result, status: undefined });
-```
-
-(f) result 先行占位(`:310`)与孤儿 result(`:329`):`md: ''`(两处 toolMd 调用替换,无 status——即刻 done);
-
-(g) token 开段(`:232`)与 reasoning 开段(`:244`):条目字面加 `status: 'running'`;
-
-(h) sealSeg(`:173-182`):封段收 done:
-
-```ts
-  return { ...s, entries: replaceAt(s.entries, idx, { ...cur, status: undefined, ...(seconds !== undefined ? { seconds } : {}) }), openSeg: -1 };
-```
-
-(i) user 分支(`:333`):`return appendEntry(sealed, { ts: e.ts, kind: 'user', md: e.text ?? '' });`
-
-(j) model-start(`:359`):`appendEntry(sealed, { ts: e.ts, kind: 'run', md: '', status: 'running' })`;
-
-(k) done 分支:assistant 合并(`:406`)`{ ...seg, md: mergeFinal(seg.md, finalText), status: undefined }`;直答独立成条(`:408`)不加 status;run 收口(`:428`)`{ ...run, status: undefined, meta }`。
-
-- [ ] **Step 4: 同步 kernel.test 既断言**
-
-全文件替换(逐处核对,`grep -n "⎿\|> " src/session/kernel.test.ts` 清点):
-- `'> 把测试跑绿'` → `'把测试跑绿'`;`'> 一'`/`'> 三'`/`'> 问'` 等全部裸文化;
-- `'● create_task {"title":"A"}\n⎿ …'` → `''` 且补 `.status, 'pending'`;`'● create_task {"title":"A"}\n⎿ task t1 created'` → `''`(补 status undefined 断言);③ 的 `'● …\n⎿ file content here'`/`'● read {"path":"a.ts"}\n⎿ file content here'` → `''`(乱序条 status undefined);④⑤ 同理(`'● read\n⎿ first out'`→`''`、`'● bash {"command":"ls"}\n⎿ …'`→`''`+status pending)。
-
-- [ ] **Step 5: 跑测试确认通过**
-
-Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require scripts/test-env.cjs --test dist/session/kernel.test.js 2>&1 | tail -8`
-Expected: PASS(kernel.test 全绿)
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/session/entry.ts src/session/kernel.test.ts
-git commit -m "feat(session): P11-T1 内核条目渲染中立化——tool md 退役字段单源,user 裸文,status 三态接线"
-```
-
----
-
-### Task 2: journal v3——写面单形态 + 正名 seglog + 版本守卫(零兼容)
-
-**Files:**
-- Modify: `src/session/v2log.ts` → **Rename `src/session/seglog.ts`**(seg-update md 重算块 :167-179;reduceV2Rows→reduceSegRows 全文;悬空收口 :191-197)
-- Modify: `src/tui/session-journal.ts`(start/rotate 缺省 version 2→3)、`src/serve/daemon.ts`(attach 守卫 :272)、`src/tui/commands-session.ts`(restoreFromSession 守卫 :120-123)、`scripts/purge-legacy-sessions.mjs`(扫描口径 v≠3)、`src/tui/session.ts`(j.start(2) 三处 → 3)
-- Test: `src/session/v2log.test.ts`(随改名 seglog.test)、`src/serve/daemon.test.ts`(:1978-1993 夹具)、`src/serve/daemon.workspace.test.ts`(makeJournal(..., 2) → 3 逐处)、`src/tui/session-journal.test.ts`(v3 夹具)
-
-**Interfaces:**
-- Consumes: Task 1 的条目形态(tool md=''/user 裸文)。
-- Produces: `reduceSegRows`(改名后)——装载出的 tool 条 md='' 且无 result 者补 `result:{text:'(interrupted)', ok:false}`(v3 自身语义);user 条裸文直读(零变换);全仓仅认 v:3。
-
-- [ ] **Step 1: 写失败测试(归一 + 往返)**
-
-`src/session/v2log.test.ts` 追加:
-
-```ts
-test('渲染中立归一(P11):旧档 tool 记号 md 丢弃(字段权威)、user 剥 > 前缀、悬空 tool 行补 interrupted result', () => {
-  const entries = reduceV2Rows([
-    { t: 'seg', kind: 'user', md: '> 旧档目标', ts: 1, seq: 1 },
-    { t: 'seg', kind: 'tool', md: '● read {"path":"a.ts"}\n⎿ body', ts: 2, seq: 2, callId: 'c1', name: 'read', input: { path: 'a.ts' } },
-    { t: 'seg-update', seq: 2, ts: 3, result: { text: 'body', ok: true } },
-    { t: 'seg', kind: 'tool', md: '● bash {"command":"ls"}\n⎿ …', ts: 4, seq: 3, callId: 'c2', name: 'bash', input: { command: 'ls' } },
-  ]);
-  assert.equal(entries[0]!.md, '旧档目标', 'user 剥 > 前缀');
-  assert.equal(entries[1]!.md, '', 'tool md 恒空(行面记号 md 丢弃)');
-  assert.deepEqual(entries[1]!.result, { text: 'body', ok: true });
-  assert.deepEqual(entries[2]!.result, { text: '(interrupted)', ok: false }, '悬空 tool 行归一(渲染 ✗ 不永转)');
-});
-```
-
-- [ ] **Step 2: 跑测试确认失败**
-
-Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require scripts/test-env.cjs --test dist/session/seglog.test.js 2>&1 | tail -8`
+Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require ./scripts/test-env.cjs --test dist/session/seglog.test.js 2>&1 | tail -8`
 Expected: FAIL(悬空无 result;或先 RED 于改名编译错)
 
-- [ ] **Step 3: 实施归一**
+- [ ] **Step 3: 实施**
 
 `src/session/v2log.ts`(先 `git mv src/session/v2log.ts src/session/seglog.ts`,再全文 `reduceV2Rows`→`reduceSegRows`、`V2RowLike`→`SegRowLike`,import 点三处跟改:serve/session.ts、serve/daemon.ts、tui/commands-session.ts):
 
-(a) seg-update 分支(`:152-182`):删 md 重算块(`line` 推导与 `next.md = toolMd(...)` 两段),只留字段回填:
+(a) seg-update 分支:删 md 重算块(`line` 推导与 `next.md = toolMd(...)` 两段,含 T1 的 toolMdLegacy 桥),只留字段回填:
 
 ```ts
     if (row.t === 'seg-update') {
@@ -336,7 +219,7 @@ Expected: FAIL(悬空无 result;或先 RED 于改名编译错)
     }
 ```
 
-(b) seg 行(`:132-151`):**零变换直读**(v3 世界之外不存在——md 原样、user 不剥前缀):
+(b) seg 行:**零变换直读**(v3 世界之外不存在——md 原样、user 不剥前缀):
 
 ```ts
       entries.push({
@@ -351,31 +234,32 @@ Expected: FAIL(悬空无 result;或先 RED 于改名编译错)
       });
 ```
 
-(c) 悬空收口(`:191-197` 悬空 run 块之后)追加:
+(c) 悬空收口(悬空 run 块之后)追加(v3 自身语义):
 
 ```ts
-  // 悬空 tool 行归一(渲染中立 spec §7.4):result 永不到达=执行体已死——done+ok=false(渲染 ✗,不永转)
+  // 悬空 tool 行(渲染中立 spec §7.4):result 永不到达=执行体已死——done+ok=false(渲染 ✗,不永转)
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]!;
     if (e.kind === 'tool' && e.result === undefined) entries[i] = { ...e, result: { text: '(interrupted)', ok: false } };
   }
 ```
 
-(d) import 删 `toolMd`(保留 sanitizeChanges);
+(d) import 删 `toolMd`/`toolMdLegacy`(保留 sanitizeChanges);
 
-(e) 版本守卫三处:`src/tui/session-journal.ts` 的 `start(version = 2)`/`rotate(id, version = 2)` 缺省 → 3;`src/tui/session.ts` 三处 `j.start(2)` → `j.start(3)`;`src/serve/daemon.ts:272` 守卫 `replay.version !== 2` → `!== 3`(message 同形换 3);`src/tui/commands-session.ts:120-123` 守卫同改;`scripts/purge-legacy-sessions.mjs` 扫描判定 `v !== 2` → `v !== 3`。
+(e) 版本守卫:`src/tui/session-journal.ts` 的 `start(version = …)`/`rotate(id, version = …)` 缺省 → 3;`src/tui/session.ts` 全部 `j.start(2)` → `j.start(3)`;`src/serve/session.ts` 的 `j.start(2)` 同步;`src/serve/daemon.ts` attach 守卫 `!== 2` → `!== 3`(message 同形换 3);`src/tui/commands-session.ts` restore 守卫同改;`scripts/purge-legacy-sessions.mjs` 扫描判定 `v !== 2` → `v !== 3`。
 
-- [ ] **Step 4: 同步 v2log.test / daemon.test 既断言**
+- [ ] **Step 4: 同步测试与守卫夹具**
 
-- `v2log.test.ts`(随改名 seglog.test.ts):`'● read {"path":"a.ts"}\n⎿ file body'` → `''`;`'● read {"path":"b.ts"}\n⎿ file content'` → `''`;`'● read {"path":"a.ts"}\n⎿ body'` → `''`;`'● read\n⎿ early'` → `''`;kernelEventsToRows 测试镜像的 seg-update 分支删 md 组装(与实现同形)。
-- `daemon.test.ts:1978` 夹具 seg 行 `md: '● read\n⎿ …'` → `md: ''`;`:1993` 断言 → `assert.equal(es[1]!.md, '', 'seg-update 回填(md 恒空,字段回填)')`。
+- `v2log.test.ts`(随改名 seglog.test.ts):旧 md 形态断言全部 → `''`(四处:`\n` 前逐字见原列);kernelEventsToRows 测试镜像的 seg-update 分支删 md 组装(与实现同形);`assertSameShape` 剥 status(status 不落行)。
+- `daemon.test.ts` 夹具 seg 行 `md: '● read\n⎿ …'` → `md: ''`,回填断言 → `md: ''`。
 - `daemon.workspace.test.ts`:`makeJournal(` 各处末参 `2` → `3`(grep 清点);夹具 user/tool 行 md 照 v3 形态(裸文/空)。
 - `session-journal.test.ts`:v2 夹具/断言 → v3。
+- 版本守卫新用例:v:2 header journal → attach INVALID_ARG + purge 指引。
 
 - [ ] **Step 5: 跑测试确认通过**
 
-Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require scripts/test-env.cjs --test dist/session/seglog.test.js dist/serve/daemon.test.js dist/serve/daemon.workspace.test.js dist/tui/session-journal.test.js 2>&1 | tail -8`
-Expected: PASS
+Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require ./scripts/test-env.cjs --test dist/session/seglog.test.js dist/serve/daemon.test.js dist/serve/daemon.workspace.test.js dist/tui/session-journal.test.js 2>&1 | tail -8`
+Expected: PASS(T1 留下的 5 个旧形态红测随此转绿)
 
 - [ ] **Step 6: Commit**
 
