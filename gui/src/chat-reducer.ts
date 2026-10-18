@@ -33,8 +33,8 @@ export interface ChatEntry {
   callId?: string;
   /** P11 三态直映（内核条目同语义）:pending/running 在场;undefined=done 终态（内核收段删字段） */
   status?: 'pending' | 'running' | 'done';
-  /** tool 条内核字段直映(P4.1 渲染对齐):name/input/result 随快照全量在场——种子/重放条旁路
-   *  toolInputs 缺失时经此合成 ToolCallInfo(折叠行目标/展开体全文),不再退 md 首行 */
+  /** tool 条内核字段直映(P4.1 渲染对齐):name/input/result 随快照全量在场——折叠行目标/展开体
+   *  全文直读条目字段(P11 T7 旁路暂存退役后为唯一通道),不退 md 首行 */
   name?: string;
   input?: Record<string, unknown>;
   result?: { text: string; ok: boolean; full?: string };

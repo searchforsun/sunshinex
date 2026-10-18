@@ -27,10 +27,8 @@ const [title, setTitle] = useState<string | null>(null);
 const [titleLoaded, setTitleLoaded] = useState(false);
 const [titleEditing, setTitleEditing] = useState(false);
 const [titleDraft, setTitleDraft] = useState('');
-const firstUserText = (() => {
-  const md = entries.find((e) => e.kind === 'user')?.md ?? '';
-  return md.startsWith('> ') ? md.slice(2) : md;
-})();
+// P11 T7:内核 user md 恒裸文(v3 直透)——剥 `> ` 前缀的防御分支退役(摘要即原文)
+const firstUserText = entries.find((e) => e.kind === 'user')?.md ?? '';
 const displayTitle = fixedTitle ?? title ?? (firstUserText !== '' ? firstUserText : sessionId);
 /** onRenamed 同步镜像(applyTitle 闭包经 ref 读,免依赖数组抖动) */
 const onRenamedRef = useRef(onRenamed);

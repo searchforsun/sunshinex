@@ -4,8 +4,10 @@ import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { TaskBoardState } from '../../projection';
 import type { TodoBatch } from './ToolEntry';
 
-/** Chat 公开类型面(D32 第六批批F-7c 自 Chat.tsx 平移):ChatSink/ChatProps/ToolCallInfo——
- *  Chat.tsx 原路径再导出(App/测试消费零迁移),宿主 type-import 回引。 */
+/** Chat 公开类型面(D32 第六批批F-7c 自 Chat.tsx 平移):ChatSink/ChatProps——
+ *  Chat.tsx 原路径再导出(App/测试消费零迁移),宿主 type-import 回引。
+ *  P11 T7:工具调用旁路结构类型退役(G6 双通道归一字段单源)——工具条渲染全走内核
+ *  条目 name/input/result/status 直映,本文件不再持工具条结构类型。 */
 
 export interface ChatSink {
   /** 本会话帧(已过 App 侧 sessionId 过滤;seq 供种子竞态窗过滤) */
@@ -80,16 +82,4 @@ export interface ChatProps {
   /** G14.213 滚动位存档键:journal 档案 id(稳定跨重挂/重启)。sessionId 是活动会话别名
    *  (每次重开经 newSession+attach 重新发号,s165→s167),按它存档永远失配;未配回落 sessionId */
   journalId?: string;
-}
-
-
-/** G6 工具条目结构面:tool-call 帧 payload.input 的本地暂存（chat-reducer 的 ChatEntry 只存 md
- *  两行文本,diff 展开需 input 原文——本组件 sink.on 面旁路暂存,按 callId 寻址配对条目 key） */
-export interface ToolCallInfo {
-  /** 工具规范名（事件 text——batch-runner emit 首参,如 'write'/'read'） */
-  name: string;
-  /** 调用入参原对象（payload.input;write 形态 {path, content} 现场核 builtin.ts） */
-  input: Record<string, unknown>;
-  /** tool-result 全文(sink.on 旁路暂存;乱序双到达合并;种子条无槽回落 md 首行) */
-  result?: string;
 }

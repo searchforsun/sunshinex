@@ -36,7 +36,7 @@ function toolRow(text: string): HTMLButtonElement | null {
  * G6 预览+diff 组件测:Files 页（输入 Enter 加载/高亮 class/truncated 横幅/403 错误态/
  * initialPath 自动加载 + G7 请求序守卫）、DiffPanel 双列与单列形态、highlightCode 扩展映射、
  * Chat 工具条 write 展开（DiffPanel 内容 + path 按钮 → onOpenFile）与非 write 展开（result 摘要；
- * G7 起 write 展开接 conn.fetchDiff——双列/404 退单列/gen bump/toolInputs reseed 清）。
+ * G7 起 write 展开接 conn.fetchDiff——双列/404 退单列/gen bump/reseed 后仅 result 帧条目无 input 不配对）。
  * 连接面以对象桩钉 readFile/sessionSnapshot/fetchDiff 口径（Files/Chat 只消费这三个面）。
  */
 
@@ -314,8 +314,8 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     expect(onSeeded).toHaveBeenCalledTimes(1);
   });
 
-  it('G7 toolInputs reseed 清:reseed 后仅 result 帧补投的条目不配旧 input(展开退 result 摘要,无 DiffPanel)', async () => {
-    // 第一代:write c9 落暂存(toolInputs[c9]=write input)+配对条目;reseed 后暂存清
+  it('G7 reseed 清:reseed 后仅 result 帧补投的条目无 input 字段(展开退 result 摘要,无 DiffPanel)', async () => {
+    // 第一代:write c9 经内核 callId 配对成条(input 随条目字段);reseed 后投影整替清
     let calls = 0;
     const conn = chatConn({
       sessionSnapshot: vi.fn(() =>
@@ -329,17 +329,17 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     });
     expect(toolRow('write x.ts src/')).toBeDefined();
     act(() => {
-      sinkRef.current!.reset(); // reseed(第二快照 lastSeq 2):投影 + toolInputs 清
+      sinkRef.current!.reset(); // reseed(第二快照 lastSeq 2):投影清
     });
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    // 种子窗后:仅 tool-result(callId c9)补投(seq 5 > lastSeq 2)——result-first 条目(verb …);
-    // 若暂存未清,该条目会配上旧代 write input 而错误呈现 write DiffPanel
+    // 种子窗后:仅 tool-result(callId c9)补投(seq 5 > lastSeq 2)——result-first 条目(verb …,
+    // 无 name/input 字段),不呈现 write DiffPanel(P11 T7 起无旁路暂存可误配,字段缺面即单列)
     act(() => {
       sinkRef.current!.on(ev('tool-result', 'late result line', { tool: 'write', callId: 'c9', status: 'completed' }), 5);
     });
     fireEvent.click(document.querySelector('.tool-summary')!);
     expect(screen.getByText('late result line')).toBeDefined(); // 展开 result 摘要(非 write 面板)
-    expect(document.querySelector('.diff-panel')).toBeNull(); // 旧 input 未配对——无 DiffPanel
+    expect(document.querySelector('.diff-panel')).toBeNull(); // input 字段缺面——无 DiffPanel
     unmount();
   });
 });

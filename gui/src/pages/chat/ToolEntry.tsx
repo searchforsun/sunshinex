@@ -9,7 +9,7 @@ import { DiffLines } from '../../diff-lines';
 import { FileIcon } from '../../file-icon';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { keepUrl, mdComponentsPlain, type ToolCallInfo } from '../Chat';
+import { keepUrl, mdComponentsPlain } from '../Chat';
 import type { DiffResp } from '../../connection';
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);G14.168 taskboard 六工具专属图标(去扳手默认) */
@@ -131,12 +131,11 @@ export function writeStatOf(result: string): { added?: string; removed?: string 
  *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
  *  +加载标,404/失败退单列现内容——快照种子条/无 callId 面恒单列)+ path 文本按钮(G8d 起
  *  callId 在场优先 onOpenDiff 开 diff 标签,缺场回落 onOpenFile 文件标签预览);其他工具展开
- *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚)。P11 字段单源:
- *  name/input/result/status 直映(旁路 info 优先),md 解析全数退役。折叠壳 grid 化(0fr→1fr
- *  生长):展开面常挂 DOM,折叠仅 CSS 收起。 */
+ *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚)。P11 T7 字段单源:
+ *  name/input/result/status 直映 entry 字段(旁路 info prop 随工具 input 暂存退役——G6 双通道
+ *  归一),md 解析全数退役。折叠壳 grid 化(0fr→1fr 生长):展开面常挂 DOM,折叠仅 CSS 收起。 */
 export function ToolEntryView({
   entry,
-  info,
   conn,
   sessionId,
   callId,
@@ -147,7 +146,6 @@ export function ToolEntryView({
   taskNameOf,
 }: {
   entry: ChatEntry;
-  info?: ToolCallInfo;
   conn: Connection;
   sessionId: string;
   callId?: string;
@@ -164,11 +162,11 @@ export function ToolEntryView({
   /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
    *  对象=成功(diff2html 面板)。拉一次缓存——折叠再展开不重拉 */
   const [diff, setDiff] = useState<DiffResp | null | undefined>(undefined);
-  // P11 渲染中立:字段单源(entry.name/input/result/status 直映)——md 首行解析三函数退役,
-  // 渲染记号与截断全是本组件职责;旁路 info(实时配对暂存)优先,内核字段为缺面回退
-  const toolName = info?.name ?? entry.name ?? '';
-  const input: Record<string, unknown> = info?.input ?? entry.input ?? {};
-  const resultText = info?.result ?? entry.result?.text ?? '';
+  // P11 T7 渲染中立:字段单源(entry.name/input/result/status 直映)——md 首行解析与旁路 info
+  // 双通道全退役,渲染记号与截断全是本组件职责
+  const toolName = entry.name ?? '';
+  const input: Record<string, unknown> = entry.input ?? {};
+  const resultText = entry.result?.full ?? entry.result?.text ?? '';
   const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
   const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
   const target = toolTargetOf(toolName, input);
@@ -229,7 +227,7 @@ export function ToolEntryView({
     const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
     return t(pair[0], pair[1]);
   })();
-  /** 展开面全文=resultText(info.result 携 full 全量观测优先;种子条 result.text 直映——md 首行回落退役) */
+  /** 展开面全文=resultText(entry.result full 全量观测优先,text 兜底——旁路 info 通道退役) */
   const fullResult = resultText;
   /** G14.82 ask_question 结构化问答体:问题+选项(✓ 选中)+用户回答(选/自定义/跳过),替代原始 I/O */
   const askInput: { question: string; options: Array<{ label: string; description?: string }> } | null =

@@ -30,11 +30,32 @@ export interface AgentTranscriptTabProps {
 }
 
 /** 滑窗行 → 主对话 ChatEntry：token 连续合并 assistant；text=独立 assistant 段；
- *  thinking 独立行；tool 调用行 `● verb target`,✓/✗ 回执吸附为 `⎿ 完成/失败` */
+ *  thinking 独立行；tool 调用行 `● verb target`（name/input 字段直挂——P11 T7 渲染中立,
+ *  ToolEntryView 全走 entry 字段），✓/✗ 回执吸附为 `⎿ 完成/失败` */
 function toEntries(lines: AgentActivity['lines']): ChatEntry[] {
   const entries: ChatEntry[] = [];
   const push = (kind: ChatEntry['kind'], md: string): void => {
     entries.push({ key: `ag${entries.length}`, kind, md });
+  };
+  /** 动词条 → 字段化 tool 条:首词=动词,余文按动词键位入 input——折叠行 target 与主对话
+   *  toolTargetOf 同口径(read/write/glob→path,exec→command,grep/glob→pattern 兜底 path) */
+  const toolEntry = (head: string, md: string): ChatEntry => {
+    const sp = head.indexOf(' ');
+    const name = (sp > 0 ? head.slice(0, sp) : head).trim();
+    const rest = sp > 0 ? head.slice(sp + 1).trim() : '';
+    const input: Record<string, unknown> =
+      name === 'exec'
+        ? { command: rest }
+        : name === 'grep' || name === 'glob'
+          ? { pattern: rest }
+          : name === 'websearch'
+            ? { query: rest }
+            : name === 'webfetch'
+              ? { url: rest }
+              : name === 'skill'
+                ? { id: rest }
+                : { path: rest };
+    return { key: `ag${entries.length}`, kind: 'tool', md, name, input };
   };
   for (const l of lines) {
     if (l.kind === 'token') {
@@ -59,33 +80,12 @@ function toEntries(lines: AgentActivity['lines']): ChatEntry[] {
         last.md += `\n⎿ ${receipt}`;
         continue;
       }
-      push('tool', `● …\n⎿ ${receipt}`);
+      entries.push(toolEntry('…', `● …\n⎿ ${receipt}`));
       continue;
     }
-    push('tool', `● ${l.text}`);
+    entries.push(toolEntry(l.text, `● ${l.text}`));
   }
   return entries;
-}
-
-/** 活动行文本 → ToolEntryView 的 info(name+input):首词=动词,余文按动词键位入 input——
- *  折叠行 target 与主对话同口径(read/write/glob→path,exec→command,grep/glob→pattern 兜底 path) */
-function toolInfoOf(text: string): { name: string; input: Record<string, unknown> } {
-  const sp = text.indexOf(' ');
-  const name = (sp > 0 ? text.slice(0, sp) : text).trim();
-  const rest = sp > 0 ? text.slice(sp + 1).trim() : '';
-  const input: Record<string, unknown> =
-    name === 'exec'
-      ? { command: rest }
-      : name === 'grep' || name === 'glob'
-        ? { pattern: rest }
-        : name === 'websearch'
-          ? { query: rest }
-          : name === 'webfetch'
-            ? { url: rest }
-            : name === 'skill'
-              ? { id: rest }
-              : { path: rest };
-  return { name, input };
 }
 
 export function AgentTranscriptTab({ conn, sessionId, activities, task }: AgentTranscriptTabProps): JSX.Element {
@@ -134,8 +134,8 @@ export function AgentTranscriptTab({ conn, sessionId, activities, task }: AgentT
           entries.map((e) => {
             if (e.kind === 'thinking') return <ThinkingEntryView key={e.key} entry={e} />;
             if (e.kind === 'tool') {
-              const head = e.md.startsWith('● ') ? (e.md.slice(2).split('\n')[0] ?? '') : e.md;
-              return <ToolEntryView key={e.key} entry={e} info={toolInfoOf(head)} conn={conn} sessionId={sessionId} />;
+              // P11 T7:name/input 字段 toEntries 建条时直挂,渲染零解析(与主对话同一条目通道)
+              return <ToolEntryView key={e.key} entry={e} conn={conn} sessionId={sessionId} />;
             }
             return <ChatEntryView key={e.key} entry={e} />;
           })

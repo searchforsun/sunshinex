@@ -45,8 +45,8 @@ import { useWorkspaceFiles } from './chat/use-workspace-files';
 import { useQueue } from './chat/use-queue';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
-export type { ChatSink, ChatProps, ToolCallInfo } from './chat/chat-types';
-import type { ChatProps, ToolCallInfo } from './chat/chat-types';
+export type { ChatSink, ChatProps } from './chat/chat-types';
+import type { ChatProps } from './chat/chat-types';
 
 
 
@@ -182,8 +182,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
   const submitTextRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
   /** 会话事件 hook(D32 批C):播种门/种子窗缓冲/挂起卡/事件分流 sink 装配 + G5 idle 清卡——
-   *  投影态与队列/pill 设定器注入;行为零变化(Chat.test 为锚) */
-  const { toolInputs, cards, seeding, sendApproval, sendAsk } = useSessionEvents({
+   *  投影态与队列/pill 设定器注入(G6 工具 input 旁路暂存 P11 T7 退役);行为零变化(Chat.test 为锚) */
+  const { cards, seeding, sendApproval, sendAsk } = useSessionEvents({
     conn,
     sessionId,
     sinkRef,
@@ -203,10 +203,10 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     flushScrollMem,
   });
 
-  /** 派生投影面(批F-4):任务名/待办批次/关联轮次/动态计数——纯投影收敛 use-chat-derived */
+  /** 派生投影面(批F-4):任务名/待办批次/关联轮次/动态计数——纯投影收敛 use-chat-derived
+   *  (P11 T7 起字段单源:工具 input 暂存注入随旁路退役) */
   const { taskNameOf, todoActive, taskActive } = useChatDerived({
     chat,
-    toolInputs,
     board,
     onTodoBatches,
     onTurnGoal,
@@ -261,21 +261,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G14.74 回到底部钮:非贴底即显(滚动 handler 里置态,值不变时 React 自动跳过重渲染) */
   const [atBottom, setAtBottom] = useState(scrollRestoreRef.current === null); // G14.212 恢复中非贴底:跳底钮即显
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-
-  /** G6 工具条目 → input 暂存配对:P4 起 callId 直挂条目(内核条目 input 全量随档,旧 key 编码解码退役) */
-  const toolInfoOf = (entry: ChatEntry): ToolCallInfo | undefined => {
-    const cid = entry.callId;
-    const live = cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
-    if (live !== undefined) return live;
-    // 种子/重放条旁路缺失:内核字段合成(快照 name/input/result 全量随档)——折叠行目标与展开体
-    // 全文不落 md 首行;result 取 full(全量观测)优先;input 缺面(旧档裸行)仍 undefined 退 md
-    if (entry.input === undefined) return undefined;
-    return {
-      name: entry.name ?? '',
-      input: entry.input,
-      result: entry.result !== undefined ? (entry.result.full ?? entry.result.text) : '',
-    };
-  };
 
   /** G7 write 展开的 diff 寻址键:条目 callId 直取(无 callId 面 undefined——不拉 diff,恒单列现内容) */
   const callIdOf = (entry: ChatEntry): string | undefined => {
@@ -377,7 +362,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       <MessageList
         entries={chat.entries}
         hiddenKeys={hiddenKeys}
-        toolInfoOf={toolInfoOf}
         callIdOf={callIdOf}
         conn={conn}
         sessionId={sessionId}

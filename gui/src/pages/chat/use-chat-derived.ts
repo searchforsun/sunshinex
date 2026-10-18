@@ -2,36 +2,13 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { TaskBoardState } from '../../projection';
 import type { ChatEntry, ChatState } from '../../chat-reducer';
 import type { TodoBatch } from './ToolEntry';
-import type { ToolCallInfo } from '../Chat';
 
-/** 种子条工具信息还原:md 首行 `● [tool] name {json}` → {name, input}——P11 T6 起本体自 ToolEntry
- *  平移至此(转录面唯一残留 md 解析,Task 7 字段单源时退役);内核条目 md='' 直返 undefined */
-function toolMdInfo(md: string): { name: string; input: Record<string, unknown> } | undefined {
-  const nl = md.indexOf('\n');
-  let head = (nl > 0 ? md.slice(0, nl) : md).trim();
-  if (head.startsWith('● ')) head = head.slice(2).trim();
-  if (head.startsWith('[tool] ')) head = head.slice(7).trim();
-  const sp = head.indexOf(' ');
-  const name = sp > 0 ? head.slice(0, sp) : head;
-  if (name === '') return undefined;
-  if (sp <= 0) return { name, input: {} };
-  try {
-    const parsed = JSON.parse(head.slice(sp + 1)) as unknown;
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return { name, input: parsed as Record<string, unknown> };
-    }
-  } catch {
-    // 参数段非 JSON:只出工具名,不裸渲参数原文
-  }
-  return { name, input: {} };
-}
-
-/** 派生投影面(D32 第六批批F-4 自 Chat.tsx 平移,行为零变化):任务名映射(G14.172)/待办批次
+/** 派生投影面(D32 第六批批F-4 自 Chat.tsx 平移):任务名映射(G14.172)/待办批次
  *  (G14.174 重建+同清单合并)/关联轮次输入/顶栏动态计数/上抛去重 effects。全部纯投影,
- *  经 deps 注入 chat/toolInputs/board 与上抛回调。 */
+ *  经 deps 注入 chat/board 与上抛回调;P11 T7 字段单源——工具条 name/input 直读内核条目
+ *  (工具 input 旁路暂存与 md 首行解析双通道退役)。 */
 export interface ChatDerivedDeps {
   readonly chat: ChatState;
-  readonly toolInputs: Record<string, ToolCallInfo>;
   readonly board?: TaskBoardState;
   readonly onTodoBatches?: (batches: TodoBatch[]) => void;
   readonly onTurnGoal?: (goal: string) => void;
@@ -44,29 +21,16 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   todoActive: number;
   taskActive: number;
 } {
-  const { chat, toolInputs, board, onTodoBatches, onTurnGoal } = deps;
-  // G6 工具条目 → input 配对(P4:callId 直挂条目,旧 key 编码解码退役);旁路缺失时内核字段合成
-  // (快照 name/input/result 全量随档——种子/重放条两路解析 info 而非退 md,旧档 md 裸行同活)
-  const toolInfoOf = (entry: ChatEntry): ToolCallInfo | undefined => {
-    const cid = entry.callId;
-    const live = cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
-    if (live !== undefined) return live;
-    if (entry.input === undefined) return undefined;
-    return {
-      name: entry.name ?? '',
-      input: entry.input,
-      result: entry.result !== undefined ? (entry.result.full ?? entry.result.text) : '',
-    };
-  };
+  const { chat, board, onTodoBatches, onTurnGoal } = deps;
 /** G14.172 任务名映射(转录自建):create_task 行回执 `task tN created` → 标题——板投影是内存态
- *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表 */
+ *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表。
+ *  P11 T7:标题直读 entry.input(name/input 内核字段全量随档);任务 id 仍取 md 回执行 */
 const taskTitleMap = useMemo(() => {
   const m = new Map<string, string>();
   for (const e of chat.entries) {
-    if (e.kind !== 'tool') continue;
-    const info = toolMdInfo(e.md);
-    if (info === undefined || info.name !== 'create_task') continue;
-    const title = typeof info.input.title === 'string' ? info.input.title.trim() : '';
+    if (e.kind !== 'tool' || e.name !== 'create_task') continue;
+    const input = e.input ?? {};
+    const title = typeof input.title === 'string' ? input.title.trim() : '';
     const created = /task (\S+) created/.exec(e.md);
     if (title !== '' && created !== null) {
       m.set(created[1]!, title);
@@ -97,19 +61,17 @@ const taskNameOf = useCallback(
 );
 /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
  *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签。
- *  G14.213 块移至 toolInfoOf 之后:input 两路解析(info=live 配对暂存优先,md 兜底)——
- *  此前只解析 md,TUI 流式面 tool 行 md 不带 JSON 输入,待办批次恒空(顶栏无计数/
- *  待办页签「暂无待办」),而工具行本体走 info 路径照常渲染清单 */
+ *  P11 T7 字段单源:清单直读 entry.input.todos(内核条目 name/input 全量随档,旁路/md
+ *  两路解析退役——live 流式面待办批次与种子回放同源不再有缺平面) */
 const todoBatches = useMemo<TodoBatch[]>(() => {
   const out: TodoBatch[] = [];
   const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
   let lastGoal = '';
   for (const e of chat.entries) {
     if (e.kind === 'user') lastGoal = strip(e.md);
-    if (e.kind !== 'tool') continue;
-    const info = toolInfoOf(e) ?? toolMdInfo(e.md);
-    if (info === undefined || info.name !== 'todo_write') continue;
-    const arr = Array.isArray(info.input.todos) ? (info.input.todos as Array<Record<string, unknown>>) : [];
+    if (e.kind !== 'tool' || e.name !== 'todo_write') continue;
+    const input = e.input ?? {};
+    const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
     const items = arr
       .map((o) => ({
         text: String(o?.text ?? ''),
@@ -128,7 +90,7 @@ const todoBatches = useMemo<TodoBatch[]>(() => {
     if (prev === undefined || b.ts >= prev.ts) bySig.set(sig, b);
   }
   return [...bySig.values()].sort((a, b) => a.ts - b.ts);
-}, [chat.entries, toolInputs]);
+}, [chat.entries]);
 
 /** G14.177 顶栏动态计数:待办=末批(最新)未完成条目;任务板=pending+claimed 任务 */
 const todoActive = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.filter((x) => x.status !== 'completed').length : 0;

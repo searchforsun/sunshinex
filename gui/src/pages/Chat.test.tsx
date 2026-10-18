@@ -309,7 +309,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(editSteer).toHaveBeenCalledWith('s1', 0, '改后文本');
   });
 
-  it('P4.1 种子 tool 条:内核字段合成 info——折叠行带目标(读取+路径),旁路缺失不再退裸 md', async () => {
+  it('P4.1 种子 tool 条:entry 字段直映——折叠行带目标(读取+路径),不再退裸 md', async () => {
     const seed = {
       seq: 1, ts: DAY1, kind: 'tool', md: '',
       callId: 'c1', name: 'read', input: { path: 'docs/Arch-Plan.md' },
@@ -376,7 +376,7 @@ describe('run 状态行(G11 §1)', () => {
   });
 
 describe('工具行展开分型(G14:exec=$ 命令+输出,无 Input/Output 分节标)', () => {
-  it('exec 展开:$ 命令行(highlight)+输出全文(md 只含首行,旁路全文优先)', async () => {
+  it('exec 展开:$ 命令行(highlight)+输出全文(entry.result 全文直映)', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'c1', input: { command: 'ls -la' } } });
@@ -594,7 +594,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
 
   it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_task 标题;null=全部后台任务)', async () => {
     // 历史/重启场景板投影为空——任务名从转录里的 create_task 行回执重建(task tN created → 标题)
-    // P11:夹具字段化(md 暂留——use-chat-derived taskTitleMap 尚为 md 解析,Task 7 退役时同剥)
+    // P11 T7:标题直读 entry.input 字段(md 保留回执行 task tN created 行——任务 id 提取仍读 md)
     mountChat([
       { seq: 1, kind: 'tool', name: 'create_task', input: { title: '分析：TUI 交互面', spec: 'x', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"分析：TUI 交互面","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
       { seq: 2, kind: 'tool', name: 'create_task', input: { title: '分析：GUI 交互面', spec: 'y', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t3 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"分析：GUI 交互面","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t3 created; dispatch is automatic' },
@@ -618,7 +618,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
 
   it('G14.214 task_* 折叠行带任务名(review/gate/cancel/assign/set_dependency 经 taskNameOf;task_stop 完成态取回执 label;set_dependency 双名箭头)', async () => {
     mountChat([
-      // P11:夹具字段化(md 暂留——use-chat-derived taskTitleMap 尚为 md 解析,Task 7 退役时同剥)
+      // P11 T7:标题直读 entry.input 字段(md 保留回执行 task tN created 行——任务 id 提取仍读 md)
       { seq: 1, kind: 'tool', name: 'create_task', input: { title: '架构评审', spec: 'x', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t1 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"架构评审","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t1 created; dispatch is automatic' },
       { seq: 2, kind: 'tool', name: 'create_task', input: { title: '用例补齐', spec: 'y', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"用例补齐","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
     ] as never);

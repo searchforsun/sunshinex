@@ -5,7 +5,7 @@ import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '
 import type { ChatState } from '../../chat-reducer';
 import { applyChatEvent, initialChatState, seedChatFromSnapshot } from '../../chat-reducer';
 import type { SessionEvent, TodoItem } from '../../../../src/types';
-import type { ChatSink, ToolCallInfo } from '../Chat';
+import type { ChatSink } from '../Chat';
 
 /** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
 export type PendingCard =
@@ -13,8 +13,9 @@ export type PendingCard =
   | { kind: 'ask'; pid: string; req: GuiAskReq };
 
 /** 会话事件面 hook（D32 批C 拆分自 Chat.tsx）：播种门/种子窗帧缓冲/挂起卡列表/事件分流 sink
- *  装配（G6 工具 input 暂存、G14.137 todo 上抛、G14.89 done 刷队列）+ G5 idle 清卡。投影态
- *  （chat/setChat）仍归 Chat 声明，与队列/pill/滚动存档设定器一并注入；行为零变化
+ *  装配（G14.137 todo 上抛、G14.89 done 刷队列）+ G5 idle 清卡。投影态
+ *  （chat/setChat）仍归 Chat 声明，与队列/pill/滚动存档设定器一并注入；G6 工具 input 旁路
+ *  暂存已随 P11 T7 字段单源退役（工具条渲染全走内核条目字段）；行为零变化
  *  （Chat.test 播种/挂起卡/事件组为锚）。 */
 export function useSessionEvents(deps: {
   conn: Connection;
@@ -46,8 +47,6 @@ export function useSessionEvents(deps: {
   /** G14.212 滚动位存档落盘(unmount 兜底;滚动子系统留 Chat,函数注入) */
   flushScrollMem: () => void;
 }): {
-  /** G6 工具条 input 暂存(diff 展开数据源) */
-  toolInputs: Record<string, ToolCallInfo>;
   /** G4 挂起卡列表 */
   cards: PendingCard[];
   /** 播种在途门(基线快照落定前输入禁用) */
@@ -85,9 +84,6 @@ export function useSessionEvents(deps: {
   const seedGenRef = useRef(0);
   /** G5 idle 清卡:前次 status 记账(ref 免 effect 重复触发)——仅 running→idle 转换清卡 */
   const prevStatusRef = useRef<ChatState['status'] | null>(null);
-  /** G6 工具条 input 暂存(callId → {name, input}):diff 展开面的数据源——sink.on 旁路暂存
-   *  (reducer 的 md 两行不含 input 原文);播种窗内缓冲帧同样暂存(缓冲补投创建的条目可配对) */
-  const [toolInputs, setToolInputs] = useState<Record<string, ToolCallInfo>>({});
   /** G4 挂起卡列表(pid 维:回执落定即移;resetSession/idle 清空) */
   const [cards, setCards] = useState<PendingCard[]>([]);
   /** onSeeded 的同步镜像(reseed 闭包经 ref 读,装配期固定免依赖数组抖动) */
@@ -106,9 +102,8 @@ export function useSessionEvents(deps: {
     setCards((cs) => cs.filter((c) => c.pid !== pid));
   }, []);
 
-  /** 会话基线重建(挂载与 reset 同路径):清投影 + 缓冲 + G7 工具 input 暂存(旧投影的 callId 配对
-   *  残留会污染新投影——reseed 后 tool:#/种子条不该再配到旧 input)→ sessionSnapshot 播种 → 种子
-   *  落定后过滤缓冲(seq ≤ snapshot.lastSeq 丢)依序补投 + G7 挂起卡重建(snapshot.pending 逐项——
+  /** 会话基线重建(挂载与 reset 同路径):清投影 + 缓冲 → sessionSnapshot 播种 → 种子落定后
+   *  过滤缓冲(seq ≤ snapshot.lastSeq 丢)依序补投 + G7 挂起卡重建(snapshot.pending 逐项——
    *  连接层 pid 去重拦了 daemon 重发帧,快照是重连/刷新后卡内容的唯一来源;addCard pid 防重,实时
    *  挂起帧已挂的卡不重挂);失败倒 error 条不静默 */
   const reseed = useCallback((): void => {
@@ -119,7 +114,6 @@ export function useSessionEvents(deps: {
     // 重连时运行中挂起卡被瞬态清掉,而 daemon 重发被连接层 pid 去重拦下 → 卡永久丢(G4 不变式)
     prevStatusRef.current = null;
     setChat(initialChatState());
-    setToolInputs({});
     setSeeding(true);
     conn.sessionSnapshot(sessionId).then(
       (snap) => {
@@ -200,36 +194,22 @@ export function useSessionEvents(deps: {
     }
     const sink: ChatSink = {
       on: (e, seq) => {
-        // G6 工具条 input 暂存:tool-call 帧的 payload.input 旁路存留(先于播种门——缓冲窗内
-        // 到达的帧同样暂存,种子落定后补投创建的条目按 callId 可配对)
+        // G14.137 todo_write → 任务标签「会话待办」区上抛(清单全量替换语义)——G6 input 暂存
+        // 两分支已随 P11 T7 字段单源退役(条目 name/input/result 由内核 reducer 直挂),本臂只余 todo 上抛
         if (e.type === 'tool-call') {
           const cid = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
-          if (cid !== '') {
+          if (cid !== '' && (e.text ?? '') === 'todo_write' && onTodos !== undefined) {
             const raw = e.payload?.input;
             const input = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-            setToolInputs((m) => ({ ...m, [cid]: { name: e.text ?? '', input, result: m[cid]?.result } }));
-            // G14.137 todo_write → 任务标签「会话待办」区上抛(清单全量替换语义)
-            if ((e.text ?? '') === 'todo_write' && onTodos !== undefined) {
-              const arr = input.todos;
-              if (Array.isArray(arr)) {
-                const items = arr
-                  .filter((o) => o !== null && typeof o === 'object')
-                  .map((o) => o as { text?: unknown; status?: unknown })
-                  .filter((o) => typeof o.text === 'string' && typeof o.status === 'string')
-                  .map((o) => ({ text: o.text as string, status: o.status as TodoItem['status'] }));
-                onTodos(items);
-              }
+            const arr = input.todos;
+            if (Array.isArray(arr)) {
+              const items = arr
+                .filter((o) => o !== null && typeof o === 'object')
+                .map((o) => o as { text?: unknown; status?: unknown })
+                .filter((o) => typeof o.text === 'string' && typeof o.status === 'string')
+                .map((o) => ({ text: o.text as string, status: o.status as TodoItem['status'] }));
+              onTodos(items);
             }
-          }
-        }
-        if (e.type === 'tool-result') {
-          const cid = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
-          if (cid !== '') {
-            const tool = typeof e.payload?.tool === 'string' ? e.payload.tool : '';
-            setToolInputs((m) => ({
-              ...m,
-              [cid]: { name: m[cid]?.name ?? tool, input: m[cid]?.input ?? {}, result: e.text ?? '' },
-            }));
           }
         }
         if (e.type === 'queue') {
@@ -281,5 +261,5 @@ export function useSessionEvents(deps: {
     if (prev !== null && prev !== 'idle' && chat.status === 'idle') setCards([]);
   }, [chat.status]);
 
-  return { toolInputs, cards, seeding, sendApproval, sendAsk };
+  return { cards, seeding, sendApproval, sendAsk };
 }

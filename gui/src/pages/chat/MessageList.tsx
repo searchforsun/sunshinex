@@ -4,7 +4,6 @@ import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
 import { groupEntriesByDay } from '../../chat-groups';
 import type { ChatEntry } from '../../chat-reducer';
-import type { ToolCallInfo } from '../Chat';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
 }
@@ -14,11 +13,11 @@ import { ToolSegBlock } from './ToolGroups';
 
 /** 会话流列表(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):空态/按日分组/段折叠聚合
  *  (ToolSegBlock)/run·user·assistant 行派发/运行状态行。滚动容器 ref 与贴底旁路 ref 留宿主
- *  (归底 effects 消费),onScroll 存档逻辑留宿主经 props 注入。 */
+ *  (归底 effects 消费),onScroll 存档逻辑留宿主经 props 注入;P11 T7 起 tool 行全走 entry
+ *  字段(callIdOf 寻址注入保留,info 旁路注入退役)。 */
 export interface MessageListProps {
   readonly entries: ChatEntry[];
   readonly hiddenKeys: ReadonlySet<string>;
-  readonly toolInfoOf: (entry: ChatEntry) => ToolCallInfo | undefined;
   readonly callIdOf: (entry: ChatEntry) => string | undefined;
   readonly conn: Connection;
   readonly sessionId: string;
@@ -43,7 +42,7 @@ export interface MessageListProps {
 }
 
 export function MessageList(props: MessageListProps): JSX.Element {
-  const { entries, hiddenKeys, toolInfoOf, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens } = props;
+  const { entries, hiddenKeys, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens } = props;
   return (
     <main
       className="chat"
@@ -84,7 +83,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
                   <ToolEntryView
                     key={e2.key}
                     entry={e2}
-                    info={toolInfoOf(e2)}
                     conn={conn}
                     sessionId={sessionId}
                     callId={callIdOf(e2)}
