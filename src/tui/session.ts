@@ -28,7 +28,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, newSessionId, readSessionMeta, writeSessionMeta } from './session-journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
-import type { KernelEntry } from '../session/entry';
+import { isQuietNotice, type KernelEntry } from '../session/entry';
 import { kernelEventRows } from '../session/v2log';
 import { resolveDataDir } from '../config/data-dir';
 import { SLASH_COMMANDS } from './slash-commands';
@@ -183,7 +183,11 @@ export class SessionController {
         sealLiveReply(this); // 工具边界旁白封口:尾块先落静态区,工具行其后来(S2 起自原始面移此)
         return this.archiveToolOpen(e);
       }
-      if (e.kind === 'notice') return void this.pushMsg('system', e.md); // agent-message 同形(内核归 notice 条)
+      if (e.kind === 'notice') {
+        // P10 显示裁定单点(isQuietNotice):机制回执行不渲染——GUI 同源过滤,双端行数一致
+        if (isQuietNotice(e.md)) return;
+        return void this.pushMsg('system', e.md); // agent-message 同形(内核归 notice 条)
+      }
       if (e.kind === 'error') return void this.pushMsg('system', t(`Error: ${e.md}`, `错误：${e.md}`), { level: 'error' });
       return; // run(状态栏)/assistant·thinking(流式面)/user(submit 本地回显)不入投影
     }

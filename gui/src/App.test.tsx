@@ -540,6 +540,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     const { conn, unmount } = mount();
     conn.snapshotResp = snapshotOf({
       status: 'running',
+      openRun: 1, // P10:status 读内核游标(快照 status 字段退役)
       messages: [
         { seq: 1, ts: 1, kind: 'user', md: '> build the widget' },
         { seq: 2, ts: 2, kind: 'tool', md: '● read\n⎿ ok' },
@@ -552,13 +553,13 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    expect(screen.getAllByText('build the widget')[0]).toBeDefined(); // `> …` → blockquote
+    expect(screen.getAllByText('build the widget')[0]).toBeDefined(); // P10:内核 `> ` 前缀投影层剥除(气泡样式 CSS 承担)
     expect(document.querySelector('.tool-summary')?.textContent).toContain('read'); // 图标化行(●/⎿ 记号退役,G10-C3)
     expect(document.querySelector('.tool-summary')?.textContent).not.toContain('⎿'); // 结果行记号不回归
     expect(document.querySelector('.run-live-line')?.textContent).toContain('0 steps'); // G14.52:运行状态行常驻流区末行(原工具行尾参)
     expect(screen.getByText('✻ dev started')).toBeDefined();
-    expect(screen.getByText('boom')).toBeDefined();
-    expect(document.querySelector('.entry-user blockquote')).not.toBeNull();
+    expect(screen.getByText('Error: boom')).toBeDefined(); // P10:error 前缀归渲染面(与 TUI live/restore 同形)
+    expect(document.querySelector('.entry-user')?.textContent).toContain('build the widget');
     expect((document.querySelector('.chat-title') as HTMLElement).getAttribute('data-tip')).toContain('运行中');
     unmount();
   });
@@ -778,7 +779,7 @@ describe('底部输入区:Enter 分流与 Stop(会话维 :id)', () => {
     conn.submitReject = new Error('/session/s1/submit -> 409');
     type('will fail');
     pressEnter();
-    await waitFor(() => expect(screen.getByText('/session/s1/submit -> 409')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('Error: /session/s1/submit -> 409')).toBeDefined()); // P10:error 前缀归渲染面
     expect(document.querySelector('.entry-error')).not.toBeNull();
   });
 

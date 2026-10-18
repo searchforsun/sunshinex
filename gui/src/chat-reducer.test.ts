@@ -63,7 +63,7 @@ describe('流式 token 拼接与 done 收段', () => {
     expect(s.entries[0]!.kind).toBe('run');
     expect(s.entries[1]!.streaming).toBe(true); // 流式条保持在场,done 到达仍可合入终稿
     expect(s.entries[1]!.md).toBe('half');
-    expect(s.entries[2]).toMatchObject({ kind: 'error', md: 'boom' });
+    expect(s.entries[2]).toMatchObject({ kind: 'error', md: 'Error: boom' });
     expect(s.status).toBe('running');
     // 后续 done 照常收口:合并入同条,不裂两截
     const s2 = applyChatEvent(s, ev('done', 'half boom'));
@@ -138,7 +138,7 @@ describe('五 kind 与 notice 系映射', () => {
       appendUserMessage(initialChatState(), 'go'),
     );
     expect(s.entries.map((e) => `${e.kind}|${e.md}`)).toEqual([
-      'user|> go',
+      'user|go',
       'notice|hello',
       'notice|[boss → dev] hi',
     ]);
@@ -278,7 +278,7 @@ describe('status·tokens·steps 聚合', () => {
 });
 
 describe('seedChatFromSnapshot（onResync 基线）', () => {
-  it('五 kind 直映射 entries（md 原文、无 streaming），status 采参数，tokens/steps 0 起步', () => {
+  it('五 kind 直映射 entries（md 原文、无 streaming），status 读游标(P10),tokens/steps 0 起步', () => {
     const s = seedChatFromSnapshot(
       [
         { seq: 1, ts: 1, kind: 'user', md: '> goal' },
@@ -287,17 +287,16 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
         { seq: 4, ts: 4, kind: 'notice', md: '✻ dev started' },
         { seq: 5, ts: 5, kind: 'error', md: 'boom' },
       ],
-      'running',
       { openRun: -1, openSeg: -1 },
     );
     expect(s.entries.map((e) => ({ key: e.key, kind: e.kind, md: e.md, streaming: e.streaming }))).toEqual([
-      { key: 'k1', kind: 'user', md: '> goal', streaming: undefined },
+      { key: 'k1', kind: 'user', md: 'goal', streaming: undefined },
       { key: 'k2', kind: 'tool', md: '● read\n⎿ ok', streaming: undefined },
       { key: 'k3', kind: 'assistant', md: 'answer', streaming: undefined },
       { key: 'k4', kind: 'notice', md: '✻ dev started', streaming: undefined },
-      { key: 'k5', kind: 'error', md: 'boom', streaming: undefined },
+      { key: 'k5', kind: 'error', md: 'Error: boom', streaming: undefined }, // P10 前缀归渲染面
     ]);
-    expect(s.status).toBe('running');
+    expect(s.status).toBe('idle'); // P10:status 读游标(-1=idle)
     expect(s.tokens).toBe(0);
     expect(s.steps).toBe(0);
   });
@@ -312,7 +311,6 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
         { seq: 3, ts: 3, kind: 'assistant', md: '终稿' },
         { seq: 4, ts: 4, kind: 'notice', md: '✻ learned' },
       ],
-      'running',
       { openRun: 2, openSeg: 3 },
     );
     expect(seeded.k.openRun).toBe(2); // 游标直落内核态
@@ -337,7 +335,6 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
         { seq: 2, ts: 2, kind: 'assistant', md: '上一轮回答' },
         { seq: 3, ts: 3, kind: 'notice', md: '✻ between rounds' },
       ],
-      'running',
       { openRun: -1, openSeg: -1 },
     );
     const asst = seeded.entries.find((e) => e.kind === 'assistant');
@@ -347,7 +344,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
   });
 
   it('seed 后事件续推：usage 从 0 基线续（重连 token 显示接受归零裁定，事件面续推）', () => {
-    const s = applyChatEvent(seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'idle', { openRun: -1, openSeg: -1 }), ev('model-start'));
+    const s = applyChatEvent(seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], { openRun: -1, openSeg: -1 }), ev('model-start'));
     const s2 = applyChatEvent(s, ev('usage', undefined, { turnTotal: 10 }));
     expect(s2.tokens).toBe(10);  });
 });
@@ -370,7 +367,7 @@ describe('条目时间戳(G9 B3a:日期分隔投影源)', () => {
     const e = ev('done', 'hi');
     const s = fold([e]);
     expect(s.entries[0]!.ts).toBe(e.ts);
-    const seeded = seedChatFromSnapshot([{ seq: 1, ts: 1728380001000, kind: 'user', md: '> yo' }], 'idle', { openRun: -1, openSeg: -1 });
+    const seeded = seedChatFromSnapshot([{ seq: 1, ts: 1728380001000, kind: 'user', md: '> yo' }], { openRun: -1, openSeg: -1 });
     expect(seeded.entries[0]!.ts).toBe(1728380001000);
     const echoed = appendUserMessage(initialChatState(), 'yo', 999);
     expect(echoed.entries[0]!.ts).toBe(999);
@@ -417,7 +414,7 @@ describe('run 边界条目(G11 状态行:idle→running 插入,done/error 封段
   });
 
   it('seed 快照不产 run 条目(历史归档无 run 标)', () => {
-    const s = seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], 'running', { openRun: -1, openSeg: -1 });
+    const s = seedChatFromSnapshot([{ seq: 1, ts: 1, kind: 'assistant', md: 'old' }], { openRun: -1, openSeg: -1 });
     expect(s.entries.map((e) => e.kind)).toEqual(['assistant']);
   });
 });

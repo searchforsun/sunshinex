@@ -228,7 +228,7 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
 
       // —— 播种:journal 首条用户输入经 attach → sessionSnapshot 基线 → blockquote 渲染 ——
       await waitFor(
-        () => expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('历史第一句'),
+        () => expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('历史第一句'), // P10:前缀投影层剥除,气泡样式 CSS 承担
         { timeout: 5_000 },
       );
 
@@ -320,7 +320,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       expect(s1Row).toBeDefined();
       fireEvent.click(s1Row!);
       await waitFor(
-        () => expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('历史第一句'),
+        () => expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('历史第一句'), // P10:前缀投影层剥除,气泡样式 CSS 承担
         { timeout: 10_000 },
       );
       // 重开转录在场(journal msg 行播种);run 面是 chain 行——restore 入 history 不入转录(daemon
@@ -418,8 +418,8 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     expect(container.querySelector('.streaming')).toBeNull();
     expect(container.querySelector('.status-idle')).toBeDefined();
     expect(events.some((e) => e.type === 'done' && e.text === '终稿答复')).toBe(true);
-    // 接力目标本地回显('> 流式冒烟' 引用块;G14.51 daemon 不广播 user 事件,回显在提交侧补)
-    expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('流式冒烟');
+    // 接力目标本地回显(G14.51 daemon 不广播 user 事件,回显在提交侧补);P10 前缀投影层剥除
+    expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('流式冒烟');
   }, 30_000);
 });
 
@@ -600,7 +600,7 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       );
       expect(container.querySelector('.pending-cards')).toBeNull(); // 卡区整体退场
       expect(container.querySelector('.status-idle')).toBeDefined();
-      expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('manual 写一个文件');
+      expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('manual 写一个文件'); // P10 前缀剥除
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -925,7 +925,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       expect(title?.textContent).toContain(NAME);
       // reseed 落定:快照转录重播种(用户行在场)
       await waitFor(
-        () => expect(container.querySelector('.entry-user blockquote')?.textContent?.trim()).toBe('挂起重连目标'),
+        () => expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('挂起重连目标'), // P10 前缀剥除
         { timeout: 5_000 },
       );
 

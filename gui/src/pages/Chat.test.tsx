@@ -42,7 +42,8 @@ type Seed = { seq: number; ts?: number; kind: 'user' | 'assistant'; md: string }
 function connOf(messages: Seed[], status: 'idle' | 'running' = 'idle'): Connection {
   return {
     sessionSnapshot: () =>
-      Promise.resolve({ messages, status, board: { tasks: [] }, delegations: [], team: [], pending: [], lastSeq: 0 }),
+      // P10:status 读内核游标——running 快照带 openRun 指向首条(视图 status 派生自游标)
+      Promise.resolve({ messages, status, openRun: status === 'running' ? (messages[0]?.seq ?? 1) : -1, openSeg: -1, board: { tasks: [] }, delegations: [], team: [], pending: [], lastSeq: 0 }),
     sessionSubmit: () => Promise.resolve(),
     sessionSteer: () => Promise.resolve(),
     sessionInterrupt: () => Promise.resolve(),

@@ -127,7 +127,8 @@ export function useSessionEvents(deps: {
         setQueued(snap.queued ?? []);
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'dontAsk' | 'manual' | 'plan');
         setSessEffort(snap.effort);
-        let next = seedChatFromSnapshot(snap.messages, snap.status, {
+        // P10:status 读内核游标(seed 内派生),快照 status 字段不再入参
+        let next = seedChatFromSnapshot(snap.messages, {
           openRun: snap.openRun ?? -1,
           openSeg: snap.openSeg ?? -1,
         });

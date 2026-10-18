@@ -1,5 +1,5 @@
 import type { SessionEvent } from '../../src/types';
-import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState } from '../../src/session/entry';
+import { applyEvent, applySeed, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
 
 /**
  * G3 chat 投影 → P4 内核视图层(session-kernel spec §6 P4):事件→转录的投影逻辑全数退役,
@@ -91,17 +91,13 @@ export interface SnapshotTranscriptEntry {
  *  只换变动的末段条目,未变行引用身份保持(渲染面 memo 不破) */
 const viewCache = new WeakMap<KernelEntry, { sig: string; view: ChatEntry }>();
 
-/** G14.90/G14.106 显示过滤(内核忠实归档,渲染面裁定):ask 回执行/memory 索引漂移行不渲染 */
-function noticeHidden(md: string): boolean {
-  return /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
-}
-
+/** G14.90/G14.106 显示过滤:P10 起裁定单点在内核(isQuietNotice),TUI/GUI 同源——本模块只消费 */
 /** 内核态 → 视图条目(纯映射):key=`k<seq>`;streaming=openSeg/openRun 派生(§3.1b 派生态);
  *  run meta→view 字段(steps=runSteps 优先「本轮」口径)+open run 注入基线;delegation 已被内核滤除 */
 function mapEntries(k: KernelState, runBases: Record<number, { steps: number; tokens: number }>): ChatEntry[] {
   const out: ChatEntry[] = [];
   for (const e of k.entries) {
-    if (e.kind === 'notice' && noticeHidden(e.md)) continue;
+    if (e.kind === 'notice' && isQuietNotice(e.md)) continue;
     const open = e.kind === 'run' ? k.openRun === e.seq : k.openSeg === e.seq;
     const base = runBases[e.seq];
     const sig = `${open ? 'o' : '-'}|${e.kind === 'run' && base !== undefined ? 'b' : '-'}`;
@@ -110,10 +106,15 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
       out.push(hit.view);
       continue;
     }
+    // P10 显示词汇归一:user 剥内核 `> ` 前缀(气泡样式 CSS 承担,与 TUI restore/live 同向);
+    // error 补 `Error: ` 前缀(内核 md=裸文本,前缀归渲染面——与 TUI live/restore 同形)
+    const md = e.kind === 'user'
+      ? (e.md.startsWith('> ') ? e.md.slice(2) : e.md)
+      : e.kind === 'error' ? `Error: ${e.md}` : e.md;
     const view: ChatEntry = {
       key: `k${e.seq}`,
       kind: e.kind,
-      md: e.md,
+      md,
       ...(e.ts !== undefined && e.ts > 0 ? { ts: e.ts } : {}),
       streaming: open ? true : undefined, // 键恒在场(消费面 toMatchObject/条件渲染两相宜)
       ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
@@ -152,9 +153,10 @@ export function appendUserMessage(s: ChatState, text: string, ts?: number): Chat
  *  流式态由内核派生(非事后贴标),后续 token 并入部分段、done 合入同条不裂 */
 export function seedChatFromSnapshot(
   messages: readonly SnapshotTranscriptEntry[],
-  status: 'idle' | 'running',
   cursors: { openRun: number; openSeg: number },
 ): ChatState {
+  // P10:status 读内核游标(openRun>=0 即 running)——快照 status 参数退役
+  const status: ChatState['status'] = cursors.openRun >= 0 ? 'running' : 'idle';
   const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens: 0, steps: 0, cacheTokens: 0, runBases: {} };
   s.k = { ...s.k, openRun: cursors.openRun, openSeg: cursors.openSeg };
   // P9:计数器自 run meta 在 applySeed 内重建(零推导)——G14.18 回放会话累计不从零起
@@ -169,25 +171,12 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
   if (typeof e.payload?.subagent === 'string') return s; // 子代理事件另轨(Agents 标签,G8d):主流零条目零计数
   if (e.type === 'queue') return s; // P5 队列面事件(UseSessionEvents 截收 setQueued):不入转录投影(防御——default 分支会把当边界误闭合开启段)
   const k = applyEvent(s.k, e);
-  // P9 统计面:计数器唯一权威在内核 stats(kern state 随事件归约),此处直投影零记账——
-  // usage/step/done-steps 的本地累计实现退役(与 TUI 同源同一语义)
-  let next: ChatState = { ...s, k, tokens: k.stats.sessionTotalTokens, steps: k.stats.sessionSteps, cacheTokens: k.stats.sessionCacheTokens };
-  switch (e.type) {
-    case 'model-start': {
-      if (s.status === 'idle') {
-        // run-open 基线记账(G14.63「本轮」减数;openRun 即本轮新开 run 条)——基线取事件前累计
-        const bases = k.openRun >= 0 ? { ...s.runBases, [k.openRun]: { steps: s.steps, tokens: s.tokens } } : s.runBases;
-        next = { ...next, status: 'running', runBases: bases };
-      } else {
-        next = { ...next, status: 'running' }; // run 内续轮:不重插 run 条(内核同语义)
-      }
-      break;
-    }
-    case 'done':
-      next = { ...next, status: 'idle' };
-      break;
-    default:
-      break;
+  // P9 统计面:计数器唯一权威在内核 stats,此处直投影零记账;P10 status 亦读内核
+  // (openRun>=0 即 running——视图层 model-start/done 推导退役)
+  let next: ChatState = { ...s, k, status: k.openRun >= 0 ? 'running' : 'idle', tokens: k.stats.sessionTotalTokens, steps: k.stats.sessionSteps, cacheTokens: k.stats.sessionCacheTokens };
+  if (e.type === 'model-start' && s.status === 'idle' && k.openRun >= 0) {
+    // run-open 基线记账(G14.63「本轮」减数;openRun 即本轮新开 run 条)——基线取事件前累计
+    next = { ...next, runBases: { ...s.runBases, [k.openRun]: { steps: s.steps, tokens: s.tokens } } };
   }
   // 零变化透传(内核态与计数器均未动——route/ctx 等空边界事件免重渲染)
   if (

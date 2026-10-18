@@ -9,7 +9,7 @@ import { renderMd } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
 import type { ChatItem } from './chat-model';
 import { reduceSteerRows, reduceV2Rows } from '../session/v2log';
-import type { KernelEntry } from '../session/entry';
+import { isQuietNotice, type KernelEntry } from '../session/entry';
 import type { SessionController } from './session';
 
 // D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：会话谱系命令族（resume/rewind/fork/branchFlow 一族）迁出；
@@ -77,7 +77,7 @@ export function resumeLatest(ctrl: SessionController): void {
 /** 内核条目 → 静态区消息重建(P3,resume v2 装载面):形态与 live 入档对齐——user 剥引用块原文;
  *  assistant 终态 md 现渲 ANSI;thinking 折叠摘要行(closeLiveBlock 同形,detail 保全文);
  *  tool call+result 两件(toolCallLine(name,input)/结果全文,CC 配对同形);notice/error→system 行
- *  (error 带 `Error: ` 前缀与 live 同形);run 跳过(状态栏承载)。seq 重建自 1。 */
+ *  (error 带 `Error: ` 前缀与 live 同形;安静 notice 同 live 臂不渲染);run 跳过(状态栏承载)。seq 重建自 1。 */
 export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () => number): ChatItem[] {
   const items: ChatItem[] = [];
   for (const e of entries) {
@@ -104,10 +104,13 @@ export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () 
       continue;
     }
     if (e.kind === 'error') {
-      items.push({ role: 'system', level: 'error', text: `Error: ${e.md}`, ts: e.ts, seq });
+      // P10 前缀归渲染词汇且双语对齐 live 面(内核 md=裸文本)
+      items.push({ role: 'system', level: 'error', text: t(`Error: ${e.md}`, `错误：${e.md}`), ts: e.ts, seq });
       continue;
     }
     if (e.kind === 'notice') {
+      // P10 显示裁定单点(isQuietNotice):机制回执行恢复面同样不渲染——live 臂与 GUI 同源过滤,双端行数一致
+      if (isQuietNotice(e.md)) continue;
       items.push({ role: 'system', text: e.md, ts: e.ts, seq });
     }
     // run:跳过(轮统计由状态栏/旁车 meta 承载,静态区无 run 行形态)

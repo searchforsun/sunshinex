@@ -99,7 +99,7 @@ export function splitMentionTokens(text: string): MentionToken[] {
 }
 
 /** 用户气泡 markdown 的 token 视觉化:token 包行内 code(特殊样式),原文不变(复制走 entry.md);
- *  保留 \`> \` 引用前缀(气泡 blockquote 形态不变),仅对行内内容做 token 包装。
+ *  P10:内核 `> ` 前缀已在投影层剥除(chat-reducer mapEntries)——此处收裸文本,仅对行内内容做 token 包装。
  *  G14.116 file token 显形去 @ 前缀(图标+名称由 buildUserMdComponents 接管) */
 export function renderUserMd(md: string): string {
   const wrap = (line: string): string =>

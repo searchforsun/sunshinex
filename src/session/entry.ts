@@ -87,6 +87,13 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
   return exact ? incoming : Math.max(current, incoming);
 }
 
+/** 安静 notice 判定(P10 显示裁定单点):机制回执行(ask 回执/记忆索引漂移)对用户零信息量——
+ *  内核忠实归档(journal 审计面保留),但 TUI/GUI 渲染面统一不显示。原 GUI 私有实现上收:
+ *  两端同一裁定,防「同会话两端行数不同」分叉 */
+export function isQuietNotice(md: string): boolean {
+  return /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
+}
+
 /** 未配对 tool 旁挂记账(条目本体已在列,缺面由迟到者回填;同 collector PendingTool) */
 interface PendingTool {
   /** 条目 seq(回填按位寻址) */
