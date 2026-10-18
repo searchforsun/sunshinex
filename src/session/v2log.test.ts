@@ -81,7 +81,7 @@ test('v2 重放:seg 顺序直映 + tool 行按 seg-update 回填(result 后到)'
     [['user', 1], ['tool', 2], ['assistant', 3]],
   );
   const tool = entries[1]!;
-  assert.equal(tool.md, '● read\n⎿ file body', 'result 回填后 md 重算(首行)');
+  assert.equal(tool.md, '● read {"path":"a.ts"}\n⎿ file body', 'result 回填后 md 重算(首行;头部嵌行面 input)');
   assert.deepEqual(tool.result, { text: 'file body\nmore', ok: true });
   assert.deepEqual(tool.input, { path: 'a.ts' });
   assert.equal(tool.name, 'read');
@@ -94,7 +94,7 @@ test('v2 重放:乱序(result 行先行)→ seg-update 带 name 回填;thinking 
     { t: 'seg', kind: 'thinking', md: '想想', ts: 300, seq: 2, seconds: 7 },
   ]);
   const tool = entries[0]!;
-  assert.equal(tool.md, '● read\n⎿ file content');
+  assert.equal(tool.md, '● read {"path":"b.ts"}\n⎿ file content');
   assert.equal(tool.name, 'read');
   assert.deepEqual(tool.input, { path: 'b.ts' });
   assert.equal(entries[1]!.kind, 'thinking');
@@ -158,7 +158,7 @@ test('往返:token 流式段+思考秒+工具配对+run 统计,重放与 live �
   const think = replayed.find((e) => e.kind === 'thinking');
   assert.equal(think?.seconds, 1, '思考秒随档(300→900)');
   const tool = replayed.find((e) => e.kind === 'tool');
-  assert.equal(tool?.md, '● read\n⎿ body', 'tool 配对回填往返');
+  assert.equal(tool?.md, '● read {"path":"a.ts"}\n⎿ body', 'tool 配对回填往返(live 与重放 md 同嵌 input JSON)');
   assert.deepEqual(tool?.result, { text: 'body\nmore', ok: true });
   assert.equal(tool?.input && (tool.input as { path?: string }).path, 'a.ts', 'input 随档');
 });

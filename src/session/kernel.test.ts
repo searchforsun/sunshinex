@@ -87,12 +87,12 @@ test('② tool-call+tool-result 同 callId:单条配对(name/result/input 全量
   const k = new SessionKernel();
   k.pump(ev('tool-call', 'create_task', { callId: 'c1', input: { title: 'A' }, status: 'pending' }));
   assert.equal(k.replay().length, 1, 'call 先到:占位条先入');
-  assert.equal(k.replay()[0]!.md, '● create_task\n⎿ …');
+  assert.equal(k.replay()[0]!.md, '● create_task {"title":"A"}\n⎿ …');
   k.pump(ev('tool-result', 'task t1 created\nboard: t1 pending', { callId: 'c1', ok: true, tool: 'create_task', status: 'completed' }));
   const es = k.replay();
   assert.equal(es.length, 1, '同 callId 配对归并为单条(不新增条目)');
   assert.equal(es[0]!.kind, 'tool');
-  assert.equal(es[0]!.md, '● create_task\n⎿ task t1 created', 'result 只取首行');
+  assert.equal(es[0]!.md, '● create_task {"title":"A"}\n⎿ task t1 created', 'result 只取首行;头部嵌 input JSON(GUI 渲染层契约)');
   assert.equal(es[0]!.name, 'create_task');
   assert.deepEqual(es[0]!.input, { title: 'A' });
   assert.deepEqual(es[0]!.result, { text: 'task t1 created\nboard: t1 pending', ok: true });
@@ -108,7 +108,7 @@ test('③ 乱序:result 先到 call 后到 → 按 callId 归位同条(name 回�
   k.pump(ev('tool-call', 'read', { callId: 'x', input: { path: 'a.ts' }, status: 'pending' }, 200));
   const es = k.replay();
   assert.equal(es.length, 1, '后到 call 归位同条(不新增)');
-  assert.equal(es[0]!.md, '● read\n⎿ file content here');
+  assert.equal(es[0]!.md, '● read {"path":"a.ts"}\n⎿ file content here');
   assert.equal(es[0]!.name, 'read');
   assert.deepEqual(es[0]!.input, { path: 'a.ts' });
   assert.equal(es[0]!.seq, seqBefore, 'seq 保持 result 先行时刻');
@@ -130,7 +130,7 @@ test('⑤ call 未配对:占位条定格(result 永不到场不蒸发)', () => {
   const es = k.replay();
   assert.equal(es.length, 2);
   assert.equal(es[0]!.kind, 'tool');
-  assert.equal(es[0]!.md, '● bash\n⎿ …');
+  assert.equal(es[0]!.md, '● bash {"command":"ls"}\n⎿ …');
   assert.equal(es[1]!.md, '收尾');
   assert.ok(es[0]!.seq < es[1]!.seq);
 });

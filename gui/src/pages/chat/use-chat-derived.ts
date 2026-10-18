@@ -24,10 +24,18 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   taskActive: number;
 } {
   const { chat, toolInputs, board, onTodoBatches, onTurnGoal } = deps;
-  // G6 工具条目 → input 配对(P4:callId 直挂条目,内核 input 全量随档,旧 key 编码解码退役)
+  // G6 工具条目 → input 配对(P4:callId 直挂条目,旧 key 编码解码退役);旁路缺失时内核字段合成
+  // (快照 name/input/result 全量随档——种子/重放条两路解析 info 而非退 md,旧档 md 裸行同活)
   const toolInfoOf = (entry: ChatEntry): ToolCallInfo | undefined => {
     const cid = entry.callId;
-    return cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
+    const live = cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
+    if (live !== undefined) return live;
+    if (entry.input === undefined) return undefined;
+    return {
+      name: entry.name ?? '',
+      input: entry.input,
+      result: entry.result !== undefined ? (entry.result.full ?? entry.result.text) : '',
+    };
   };
 /** G14.172 任务名映射(转录自建):create_task 行回执 `task tN created` → 标题——板投影是内存态
  *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表 */

@@ -301,6 +301,29 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     expect(s.steps).toBe(0);
   });
 
+  it('P4.1 种子 tool 条内核字段直映(callId/name/input/result)——重放条经字段合成 info,折叠行目标/展开体全文不落 md', () => {
+    const s = seedChatFromSnapshot(
+      [
+        {
+          seq: 1, ts: 1, kind: 'tool',
+          md: '● read {"path":"src/cli/cli.test.ts"}\n⎿ {',
+          callId: 'c1', name: 'read', input: { path: 'src/cli/cli.test.ts' },
+          result: { text: '{\n  "a": 1\n}\n', ok: true },
+        },
+      ],
+      { openRun: -1, openSeg: -1 },
+    );
+    const tool = s.entries[0]!;
+    expect(tool).toMatchObject({
+      key: 'k1',
+      kind: 'tool',
+      callId: 'c1',
+      name: 'read',
+      input: { path: 'src/cli/cli.test.ts' },
+      result: { text: '{\n  "a": 1\n}\n', ok: true },
+    });
+  });
+
   it('G14.51 快照竞态:P4 起游标由快照直供(内核权威,不再从条目反推)——部分回复按流式态摄入,done 合入不裂条', () => {
     // 挂载播种与流式跑动竞态:快照捕获到在途轮的部分回复(journal 已落档的 token 前缀);
     // openRun/openSeg 由 daemon 内核游标随快照携带,客户端零推导

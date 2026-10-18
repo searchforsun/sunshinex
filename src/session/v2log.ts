@@ -176,7 +176,7 @@ export function reduceV2Rows(rows: ReadonlyArray<V2RowLike>): KernelEntry[] {
               const m = cur.md.indexOf('⎿ ');
               return m >= 0 ? cur.md.slice(m + 2) : '';
             })();
-      next.md = toolMd(next.name ?? '…', line.length > 0 ? line : '…');
+      next.md = toolMd(next.name ?? '…', line.length > 0 ? line : '…', next.input);
       entries[idx] = next;
       continue;
     }

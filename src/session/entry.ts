@@ -127,9 +127,13 @@ function firstLine(text: string | undefined): string {
   return line.length > 0 ? line : PLACEHOLDER;
 }
 
-/** tool 条 md 单点:`● <name>` + `⎿ <result 首行>` 两行;缺面 … 占位(v2 重放回填同用此形) */
-export function toolMd(name: string, resultLine: string): string {
-  return `● ${name}\n⎿ ${resultLine}`;
+/** tool 条 md 单点(渲染裁定:GUI 渲染层契约为准):头部 `● <name> <input-json>`——input JSON 内嵌
+ *  头部是 GUI toolMdInfo 种子/重放条还原折叠行目标字段(读取路径/查找模式)的唯一来源(无 input 或
+ *  空对象省略 JSON 段);尾行 `⎿ <result 首行>`;缺面 … 占位(v2 重放回填同用此形)。TUI 不消费 md
+ *  (restore 字段驱动 toolCallLine 重建),格式随 GUI 单源 */
+export function toolMd(name: string, resultLine: string, input?: Record<string, unknown>): string {
+  const head = input !== undefined && Object.keys(input).length > 0 ? `${name} ${JSON.stringify(input)}` : name;
+  return `● ${head}\n⎿ ${resultLine}`;
 }
 
 /** done 终稿合并(GUI 语义):互为前缀(重叠)取长;不重叠补入 */
@@ -263,7 +267,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
               entries: replaceAt(sealed.entries, idx, {
                 ...cur,
                 name,
-                md: toolMd(name, p.resultLine),
+                md: toolMd(name, p.resultLine, input !== undefined && typeof input === 'object' ? (input as Record<string, unknown>) : undefined),
                 ...(input !== undefined && typeof input === 'object' ? { input: input as Record<string, unknown> } : {}),
               }),
               pending,
@@ -275,7 +279,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       const next = appendEntry(sealed, {
         ts: e.ts,
         kind: 'tool',
-        md: toolMd(name, PLACEHOLDER),
+        md: toolMd(name, PLACEHOLDER, input !== undefined && typeof input === 'object' ? (input as Record<string, unknown>) : undefined),
         ...(callId !== undefined ? { callId } : {}),
         name,
         ...(input !== undefined && typeof input === 'object' ? { input: input as Record<string, unknown> } : {}),
@@ -292,7 +296,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
         // 全量观测随档(batch-runner payload.full):detail 展开与恢复面同一来源,live/restore 零推导
         ...(typeof e.payload?.full === 'string' ? { full: e.payload.full } : {}),
       };
-      const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, md: toolMd(name, resultLine), result });
+      const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, md: toolMd(name, resultLine, cur.input), result });
       if (callId !== undefined) {
         const pi = sealed.pending.findIndex((p) => p.callId === callId);
         if (pi >= 0) {

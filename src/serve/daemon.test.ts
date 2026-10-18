@@ -1990,7 +1990,7 @@ test('attach v2 装载:seg/seg-update 重放入核 + v1 旧档拒载', async () 
       ['user', 'tool', 'assistant'],
       'seg 面重放入核(转录不空窗)',
     );
-    assert.equal(es[1]!.md, '● read\n⎿ body', 'seg-update 回填往返(md 重算)');
+    assert.equal(es[1]!.md, '● read {"path":"a.ts"}\n⎿ body', 'seg-update 回填往返(md 重算,头部嵌 input JSON)');
     assert.equal(es[1]!.input !== undefined ? (es[1]!.input as { path?: string }).path : undefined, 'a.ts', 'input 全量随档');
     // v1 旧档拒载(no-compat)
     const sid2 = await ctx.newSession();

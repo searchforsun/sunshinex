@@ -265,7 +265,16 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G6 工具条目 → input 暂存配对:P4 起 callId 直挂条目(内核条目 input 全量随档,旧 key 编码解码退役) */
   const toolInfoOf = (entry: ChatEntry): ToolCallInfo | undefined => {
     const cid = entry.callId;
-    return cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
+    const live = cid !== undefined && cid.length > 0 ? toolInputs[cid] : undefined;
+    if (live !== undefined) return live;
+    // 种子/重放条旁路缺失:内核字段合成(快照 name/input/result 全量随档)——折叠行目标与展开体
+    // 全文不落 md 首行;result 取 full(全量观测)优先;input 缺面(旧档裸行)仍 undefined 退 md
+    if (entry.input === undefined) return undefined;
+    return {
+      name: entry.name ?? '',
+      input: entry.input,
+      result: entry.result !== undefined ? (entry.result.full ?? entry.result.text) : '',
+    };
   };
 
   /** G7 write 展开的 diff 寻址键:条目 callId 直取(无 callId 面 undefined——不拉 diff,恒单列现内容) */

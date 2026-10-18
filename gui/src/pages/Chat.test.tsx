@@ -308,6 +308,20 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(editSteer).toHaveBeenCalledWith('s1', 0, '改后文本');
   });
+
+  it('P4.1 种子 tool 条:内核字段合成 info——折叠行带目标(读取+路径),旁路缺失不再退裸 md', async () => {
+    const seed = {
+      seq: 1, ts: DAY1, kind: 'tool',
+      md: '● read {"path":"docs/Arch-Plan.md"}\n⎿ {',
+      callId: 'c1', name: 'read', input: { path: 'docs/Arch-Plan.md' },
+      result: { text: '{\n  "k": 1\n}\n', ok: true },
+    } as unknown as Seed;
+    mountChat([seed]);
+    await flushed();
+    const row = document.querySelector('.tool-summary')?.textContent ?? '';
+    expect(row).toContain('read'); // 折叠行动词(en 测试位;zh=读取)
+    expect(row).toContain('Arch-Plan.md'); // 目标路径(内核 input 字段合成,md 首行 `{` 不再入折叠行)
+  });
 });
 
 describe('run 状态行(G11 §1)', () => {

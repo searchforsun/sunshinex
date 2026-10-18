@@ -242,7 +242,7 @@ test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场
     const user = snap.messages.find((m) => m.kind === 'user');
     assert.equal(user?.md, '> 建个任务', 'user 条为 `> <goal>` 形');
     const tool = snap.messages.find((m) => m.kind === 'tool');
-    assert.ok(tool!.md.startsWith('● create_task\n'), 'tool 条 verb 行为 create_task');
+    assert.ok(tool!.md.startsWith('● create_task {'), 'tool 条 verb 行为 create_task(头部嵌 input JSON)');
     assert.ok(tool!.md.includes('task t1 created'), 'tool 条含 result 首行摘要');
     // 影子投影：pump 喂入的 task-created 经同源 boardEventFrom/applyBoardEvent 落位
     assert.notEqual(snap.board.tasks.t1, undefined, 'board 影子含 create_task 建出的 t1');

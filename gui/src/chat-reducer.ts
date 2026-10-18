@@ -31,6 +31,11 @@ export interface ChatEntry {
   ts?: number;
   /** P4:tool 条 callId 直挂（fetchDiff 寻址;旧 key 编码退役） */
   callId?: string;
+  /** tool 条内核字段直映(P4.1 渲染对齐):name/input/result 随快照全量在场——种子/重放条旁路
+   *  toolInputs 缺失时经此合成 ToolCallInfo(折叠行目标/展开体全文),不再退 md 首行 */
+  name?: string;
+  input?: Record<string, unknown>;
+  result?: { text: string; ok: boolean; full?: string };
   /** G14.63 run 专用:轮起点基线(会话累计 steps/tokens)——运行状态行「本轮」口径的减数 */
   stepsBase?: number;
   tokensBase?: number;
@@ -74,6 +79,8 @@ export interface SnapshotTranscriptEntry {
   callId?: string;
   name?: string;
   input?: Record<string, unknown>;
+  /** tool 条配对结果(内核条目直序列化;文本全量——展开体与折叠 stat 数据源) */
+  result?: { text: string; ok: boolean; full?: string };
   seconds?: number;
   meta?: {
     seconds?: number;
@@ -119,6 +126,9 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
       streaming: open ? true : undefined, // 键恒在场(消费面 toMatchObject/条件渲染两相宜)
       ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
       ...(e.callId !== undefined ? { callId: e.callId } : {}),
+      ...(e.name !== undefined ? { name: e.name } : {}),
+      ...(e.input !== undefined ? { input: e.input } : {}),
+      ...(e.result !== undefined ? { result: e.result } : {}),
     };
     if (e.kind === 'run') {
       const m = e.meta;
