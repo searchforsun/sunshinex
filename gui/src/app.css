@@ -1514,9 +1514,10 @@
 .board-todos-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .todo-item { display: flex; align-items: baseline; gap: 8px; font: 12.5px/1.6 var(--font-ui); }
 /* G14.169 统一圆圈三态(用户裁决,替代 ☑◐☐ 字符;Chat todo_write 展开体同款共用):
-   基底=同一实线圈;完成=蓝底白√;进行中=圈内→;等待=虚线圈 */
+   基底=同一实线圈;完成=绿底白√(G14.2xx 蓝→绿统一);进行中=圈内→;等待=虚线圈 */
 .todo-dot { flex: none; width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid var(--fg-tertiary); display: inline-flex; align-items: center; justify-content: center; align-self: center; color: var(--fg); box-sizing: border-box; padding: 0; }
-.todo-dot.completed { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* G14.2xx 用户裁定:完成对号统一绿(--ok,原蓝底√退役)——待办页/Chat 内联/Board 常驻区三处同源自动统一 */
+.todo-dot.completed { background: var(--ok); border-color: var(--ok); color: #fff; }
 .todo-dot.in_progress { border-color: var(--fg); }
 .todo-dot.pending { border-style: dashed; }
 .todo-text { color: var(--fg); overflow-wrap: anywhere; }
@@ -1652,11 +1653,13 @@
 /* ===== G14.177 顶栏动态计数按钮(待办/任务/后台任务):靠右聚拢,不挤压标题与展开钮 ===== */
 /* G14.213 幽灵钮化:无底色无边框,顶栏 hover 浮现;待办钮转圈绿色;侧栏展开不再隐藏(组件面) */
 .chat-dyn-buttons { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-.chat-dyn-btn { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 2px 6px; border: none; border-radius: 9999px; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; white-space: nowrap; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
-.chat-topbar:hover .chat-dyn-btn, .chat-dyn-btn:hover { opacity: 1; }
+/* G14.2xx 用户裁定:默认常显(旧「幽灵钮 hover 浮现」退役)——运行态计数是持续有用的状态面,
+   藏在 hover 后没有信息增益;hover 仅保留变色反馈 */
+.chat-dyn-btn { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 2px 6px; border: none; border-radius: 9999px; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .chat-dyn-btn:hover { color: var(--fg); }
 .chat-dyn-btn .run-spinner { width: 9px; height: 9px; border-width: 1.5px; }
-.chat-dyn-btn.todo .run-spinner { border-color: color-mix(in srgb, var(--ok) 30%, transparent); border-top-color: var(--ok); }
+/* 待办钮图标 = 待办页 completed 同款圆圈对号(绿);尺寸对齐原 run-spinner 位不撑高顶栏 */
+.chat-dyn-btn .todo-dot { width: 11px; height: 11px; border-width: 1.5px; }
 .chat-dyn-buttons + .chat-expand { margin-left: 0; } /* 按钮组在场时收掉展开钮的 auto——聚拢贴右,不摊开 */
 
 /* ===== G14.178 后台任务卡片流:状态点色 + 展开详情行 ===== */

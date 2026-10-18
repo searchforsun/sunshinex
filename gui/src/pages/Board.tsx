@@ -232,7 +232,7 @@ export function Board({ board, delegations, team, onReview, onBack, todos, onOpe
             <ul className="board-todos-list">
               {todos.map((td, i) => (
                 <li key={i} className={"todo-item todo-" + td.status}>
-                  {/* G14.169 统一圆圈三态(与 Chat todo_write 展开体同款):完成=蓝底√/进行=→/等待=虚线圈 */}
+                  {/* G14.169 统一圆圈三态(与 Chat todo_write 展开体同款):完成=绿底√/进行=→/等待=虚线圈 */}
                   <span className={`todo-dot ${td.status}`} aria-hidden="true">
                     {td.status === 'completed' && <Check size={9} strokeWidth={3} />}
                     {td.status === 'in_progress' && <ArrowRight size={9} strokeWidth={3} />}

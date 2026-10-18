@@ -469,7 +469,7 @@ export function ToolEntryView({
           const st = (o ?? {}).status === 'completed' ? 'completed' : (o ?? {}).status === 'in_progress' ? 'in_progress' : 'pending';
           return (
             <div key={i} className={`tool-todo tool-todo-${st}`}>
-              {/* G14.169 统一圆圈三态:完成=蓝底√/进行=→/等待=虚线圈(用户裁决,替代 ☑◐☐ 字符) */}
+              {/* G14.169 统一圆圈三态:完成=绿底√/进行=→/等待=虚线圈(用户裁决,替代 ☑◐☐ 字符) */}
               <span className={`todo-dot ${st}`} aria-hidden="true">
                 {st === 'completed' && <Check size={9} strokeWidth={3} />}
                 {st === 'in_progress' && <ArrowRight size={9} strokeWidth={3} />}
