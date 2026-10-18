@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { ChevronRight, FolderSearch, Hourglass, PenLine, SquareTerminal, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
-import { resultOf, toolMdInfo } from './ToolEntry';
 
 /** G14.215 工具聚合行（用户裁决）：同类型相邻已完成工具行 >1 折为一条聚合头（「查询了 N 次文件」形），
  *  点击展开=成员工具行平级铺开（成员即原生工具行，非嵌套壳——展开容器仅作高度动画用，零视觉盒子）；
@@ -25,16 +24,14 @@ const GROUP_META: Record<ToolGroupKind, { icon: LucideIcon; label: (n: number) =
   wait: { icon: Hourglass, label: (n) => [`Waited on tasks ×${n}`, `等待了 ${n} 次任务`] },
 };
 
-/** 执行中判定（与 ToolEntryView 折叠行同口径：结果占位/缺失=执行中） */
+/** 执行中判定(P11 与 ToolEntryView 折叠行同口径:三态 status 直读——md 占位判定退役) */
 function executingOf(entry: ChatEntry): boolean {
-  const r = resultOf(entry.md);
-  return r === '…' || r === '';
+  return entry.status === 'pending' || entry.status === 'running';
 }
 
 function groupKindOf(entry: ChatEntry): ToolGroupKind | undefined {
   if (executingOf(entry)) return undefined; // 运行中不进组（完成后的重建帧才可归组）
-  const info = toolMdInfo(entry.md);
-  return info === undefined ? undefined : GROUP_KIND_OF[info.name];
+  return entry.name === undefined ? undefined : GROUP_KIND_OF[entry.name];
 }
 
 /** 段内相邻折叠节点：entry=思考/隐正文（切断相邻性），tool=单行（执行中/非聚合面/计数 1），group=聚合 */

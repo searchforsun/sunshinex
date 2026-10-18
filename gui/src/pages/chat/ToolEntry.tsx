@@ -27,51 +27,11 @@ function ToolIcon({ verb }: { verb: string }): JSX.Element {
   return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
 
-
-
-/** 工具条 md(`● [tool] name {json}\n⎿ result`)的渲染侧只读拆解——reducer 组装为 `● ` + 事件原文
- *  (batch-runner 行为 `[tool] name {json}`),两层前缀都剥;旧 journal `● name {json}` 同兼容 */
-export function verbOf(md: string): string {
-  const nl = md.indexOf('\n');
-  let head = (nl > 0 ? md.slice(0, nl) : md).trim();
-  if (head.startsWith('● ')) head = head.slice(2).trim();
-  if (head.startsWith('[tool] ')) head = head.slice(7).trim();
-  const sp = head.indexOf(' ');
-  return sp > 0 ? head.slice(0, sp) : head;
-}
-
-export function resultOf(md: string): string {
-  const m = md.indexOf('⎿ ');
-  return m >= 0 ? md.slice(m + 2) : '';
-}
-
 export interface TodoBatch {
   key: string;
   ts: number;
   goal: string;
   items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
-}
-
-/** 种子条工具信息还原:md 首行 `● [tool] name {json}` → {name, input}——种子回放无旁路 info,
- *  折叠行不再裸渲 JSON(与实时帧 `write path · 结果` 同形);参数段缺失/非 JSON 只出工具名 */
-export function toolMdInfo(md: string): { name: string; input: Record<string, unknown> } | undefined {
-  const nl = md.indexOf('\n');
-  let head = (nl > 0 ? md.slice(0, nl) : md).trim();
-  if (head.startsWith('● ')) head = head.slice(2).trim();
-  if (head.startsWith('[tool] ')) head = head.slice(7).trim();
-  const sp = head.indexOf(' ');
-  const name = sp > 0 ? head.slice(0, sp) : head;
-  if (name === '') return undefined;
-  if (sp <= 0) return { name, input: {} };
-  try {
-    const parsed = JSON.parse(head.slice(sp + 1)) as unknown;
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return { name, input: parsed as Record<string, unknown> };
-    }
-  } catch {
-    // 参数段非 JSON:只出工具名,不裸渲参数原文
-  }
-  return { name, input: {} };
 }
 
 /** 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名)。
@@ -171,8 +131,9 @@ export function writeStatOf(result: string): { added?: string; removed?: string 
  *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
  *  +加载标,404/失败退单列现内容——快照种子条/无 callId 面恒单列)+ path 文本按钮(G8d 起
  *  callId 在场优先 onOpenDiff 开 diff 标签,缺场回落 onOpenFile 文件标签预览);其他工具展开
- *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚;result 旁路暂存,
- *  种子条回落 md 首行)。折叠壳 grid 化(0fr→1fr 生长):展开面常挂 DOM,折叠仅 CSS 收起。 */
+ *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚)。P11 字段单源:
+ *  name/input/result/status 直映(旁路 info 优先),md 解析全数退役。折叠壳 grid 化(0fr→1fr
+ *  生长):展开面常挂 DOM,折叠仅 CSS 收起。 */
 export function ToolEntryView({
   entry,
   info,
@@ -203,20 +164,19 @@ export function ToolEntryView({
   /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
    *  对象=成功(diff2html 面板)。拉一次缓存——折叠再展开不重拉 */
   const [diff, setDiff] = useState<DiffResp | null | undefined>(undefined);
-  const verb = verbOf(entry.md);
-  const result = resultOf(entry.md);
-  /** 折叠行动词/目标:旁路 info 优先,种子条回落 md 首行 JSON 还原——两路同形(`write path`) */
-  const mdInfo = info ?? toolMdInfo(entry.md);
-  const toolName = mdInfo !== undefined ? mdInfo.name : verb;
-  const input = mdInfo?.input ?? {};
+  // P11 渲染中立:字段单源(entry.name/input/result/status 直映)——md 首行解析三函数退役,
+  // 渲染记号与截断全是本组件职责;旁路 info(实时配对暂存)优先,内核字段为缺面回退
+  const toolName = info?.name ?? entry.name ?? '';
+  const input: Record<string, unknown> = info?.input ?? entry.input ?? {};
+  const resultText = info?.result ?? entry.result?.text ?? '';
   const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
   const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
-  const target = mdInfo !== undefined ? toolTargetOf(toolName, input) : undefined;
+  const target = toolTargetOf(toolName, input);
   /** write 分型(G14):折叠=文件名+相对路径+diff stat,展开=diff2html;read 分型:整行=打开文件标签 */
   const isWrite = toolName === 'write' && path !== undefined;
   const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
   const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
-  const stat = isWrite ? writeStatOf(result) : {};
+  const stat = isWrite ? writeStatOf(resultText) : {};
   /** G14.171 spawn 子代理名(label ?? agent_id)——运行态文案与折叠行链接共用 */
   const spawnAgentName =
     toolName === 'spawn'
@@ -246,7 +206,7 @@ export function ToolEntryView({
     // task_stop 完成态优先取回执 label（后台任务 id 不在 board/转录面，taskNameOf 只剩短 id 兜底——
     // 回执行 `task <id> stopped (<label>)` 携带真实名）；未完成/无 label 落 taskNameOf 链
     if (toolName === 'task_stop') {
-      const m = new RegExp(`task ${id} stopped \\((.*)\\)`).exec(result);
+      const m = new RegExp(`task ${id} stopped \\((.*)\\)`).exec(resultText);
       if (m !== null && m[1] !== '') return m[1]!;
     }
     return taskNameOf !== undefined ? taskNameOf(id) : id;
@@ -257,8 +217,9 @@ export function ToolEntryView({
     if (id === undefined) return undefined;
     return taskNameOf !== undefined ? taskNameOf(id) : id;
   })();
-  /** G14.13 全工具双态:结果未回(占位符 …)=执行中(波纹+「正在…」);结果已回=各型折叠行 */
-  const executing = result === '…' || result === '';
+  /** P11 全工具双态:executing 读三态 status(md 占位 `…` 判定退役)——pending/running=执行中
+   *  (流光+「正在…」),done(缺省终态)=各型折叠行 */
+  const executing = entry.status === 'pending' || entry.status === 'running';
   const runningLabel = (() => {
     // G14.166 spawn 运行态带子代理名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
@@ -268,8 +229,8 @@ export function ToolEntryView({
     const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
     return t(pair[0], pair[1]);
   })();
-  /** 展开面全文:旁路暂存优先,种子条 info 缺省回落 md 首行(skill 正文/长输出同源) */
-  const fullResult = info?.result ?? result;
+  /** 展开面全文=resultText(info.result 携 full 全量观测优先;种子条 result.text 直映——md 首行回落退役) */
+  const fullResult = resultText;
   /** G14.82 ask_question 结构化问答体:问题+选项(✓ 选中)+用户回答(选/自定义/跳过),替代原始 I/O */
   const askInput: { question: string; options: Array<{ label: string; description?: string }> } | null =
     toolName === 'ask_question'
@@ -386,7 +347,7 @@ export function ToolEntryView({
               data-tip={t('Open task board card', '在任务板中定位')}
               onClick={(e) => {
                 e.stopPropagation();
-                const created = /task (\S+) created/.exec(result);
+                const created = /task (\S+) created/.exec(resultText);
                 onOpenTask(created !== null ? created[1]! : (input.title as string));
               }}
             >

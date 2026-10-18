@@ -1,9 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { TaskBoardState } from '../../projection';
 import type { ChatEntry, ChatState } from '../../chat-reducer';
-import { toolMdInfo } from './ToolEntry';
 import type { TodoBatch } from './ToolEntry';
 import type { ToolCallInfo } from '../Chat';
+
+/** 种子条工具信息还原:md 首行 `● [tool] name {json}` → {name, input}——P11 T6 起本体自 ToolEntry
+ *  平移至此(转录面唯一残留 md 解析,Task 7 字段单源时退役);内核条目 md='' 直返 undefined */
+function toolMdInfo(md: string): { name: string; input: Record<string, unknown> } | undefined {
+  const nl = md.indexOf('\n');
+  let head = (nl > 0 ? md.slice(0, nl) : md).trim();
+  if (head.startsWith('● ')) head = head.slice(2).trim();
+  if (head.startsWith('[tool] ')) head = head.slice(7).trim();
+  const sp = head.indexOf(' ');
+  const name = sp > 0 ? head.slice(0, sp) : head;
+  if (name === '') return undefined;
+  if (sp <= 0) return { name, input: {} };
+  try {
+    const parsed = JSON.parse(head.slice(sp + 1)) as unknown;
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { name, input: parsed as Record<string, unknown> };
+    }
+  } catch {
+    // 参数段非 JSON:只出工具名,不裸渲参数原文
+  }
+  return { name, input: {} };
+}
 
 /** 派生投影面(D32 第六批批F-4 自 Chat.tsx 平移,行为零变化):任务名映射(G14.172)/待办批次
  *  (G14.174 重建+同清单合并)/关联轮次输入/顶栏动态计数/上抛去重 effects。全部纯投影,

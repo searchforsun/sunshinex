@@ -543,7 +543,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
       openRun: 1, // P10:status 读内核游标(快照 status 字段退役)
       messages: [
         { seq: 1, ts: 1, kind: 'user', md: '> build the widget' },
-        { seq: 2, ts: 2, kind: 'tool', md: '● read\n⎿ ok' },
+        { seq: 2, ts: 2, kind: 'tool', md: '', name: 'read', result: { text: 'ok', ok: true } },
         { seq: 3, ts: 3, kind: 'notice', md: '✻ dev started' },
         { seq: 4, ts: 4, kind: 'error', md: 'boom' },
       ],

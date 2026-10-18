@@ -311,8 +311,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
 
   it('P4.1 种子 tool 条:内核字段合成 info——折叠行带目标(读取+路径),旁路缺失不再退裸 md', async () => {
     const seed = {
-      seq: 1, ts: DAY1, kind: 'tool',
-      md: '● read {"path":"docs/Arch-Plan.md"}\n⎿ {',
+      seq: 1, ts: DAY1, kind: 'tool', md: '',
       callId: 'c1', name: 'read', input: { path: 'docs/Arch-Plan.md' },
       result: { text: '{\n  "k": 1\n}\n', ok: true },
     } as unknown as Seed;
@@ -320,7 +319,23 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     await flushed();
     const row = document.querySelector('.tool-summary')?.textContent ?? '';
     expect(row).toContain('read'); // 折叠行动词(en 测试位;zh=读取)
-    expect(row).toContain('Arch-Plan.md'); // 目标路径(内核 input 字段合成,md 首行 `{` 不再入折叠行)
+    expect(row).toContain('Arch-Plan.md'); // 目标路径(P11 字段单源:entry.input 直映,md 记号不回归)
+  });
+
+  it('P11 种子条三态渲染:running 显「正在读取文件」spinner 态,done 折叠行=动词+路径(字段单源)', async () => {
+    const base = { seq: 1, ts: DAY1, kind: 'tool', md: '', callId: 'c1', name: 'read', input: { path: 'docs/Arch-Plan.md' } };
+    const first = render(<Chat conn={connOf([{ ...base, status: 'running' } as unknown as Seed])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    expect(document.querySelector('.exec-running-text')?.textContent).toContain('Reading file');
+    first.unmount();
+    // done 终态(status 缺省=终态):折叠行=动词+路径——executing 读 status(非 md 占位判定),
+    // 字段单源(md 退役后旧占位判定恒执行中,此断言钉死直映)
+    mountChat([{ ...base, result: { text: 'ok', ok: true } } as unknown as Seed]);
+    await flushed();
+    const row = document.querySelector('.tool-summary')?.textContent ?? '';
+    expect(row).not.toContain('Reading file'); // 不再恒执行中
+    expect(row).toContain('read'); // 动词(entry.name 直映)
+    expect(row).toContain('Arch-Plan.md'); // 路径(entry.input 直映)
   });
 });
 
@@ -579,9 +594,10 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
 
   it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_task 标题;null=全部后台任务)', async () => {
     // 历史/重启场景板投影为空——任务名从转录里的 create_task 行回执重建(task tN created → 标题)
+    // P11:夹具字段化(md 暂留——use-chat-derived taskTitleMap 尚为 md 解析,Task 7 退役时同剥)
     mountChat([
-      { seq: 1, kind: 'tool', md: '● [tool] create_task {"title":"分析：TUI 交互面","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
-      { seq: 2, kind: 'tool', md: '● [tool] create_task {"title":"分析：GUI 交互面","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t3 created; dispatch is automatic' },
+      { seq: 1, kind: 'tool', name: 'create_task', input: { title: '分析：TUI 交互面', spec: 'x', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"分析：TUI 交互面","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
+      { seq: 2, kind: 'tool', name: 'create_task', input: { title: '分析：GUI 交互面', spec: 'y', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t3 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"分析：GUI 交互面","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t3 created; dispatch is automatic' },
     ] as never);
     await flushed();
     fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['t2', 't3'], timeoutSeconds: null } } });
@@ -602,8 +618,9 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
 
   it('G14.214 task_* 折叠行带任务名(review/gate/cancel/assign/set_dependency 经 taskNameOf;task_stop 完成态取回执 label;set_dependency 双名箭头)', async () => {
     mountChat([
-      { seq: 1, kind: 'tool', md: '● [tool] create_task {"title":"架构评审","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t1 created; dispatch is automatic' },
-      { seq: 2, kind: 'tool', md: '● [tool] create_task {"title":"用例补齐","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
+      // P11:夹具字段化(md 暂留——use-chat-derived taskTitleMap 尚为 md 解析,Task 7 退役时同剥)
+      { seq: 1, kind: 'tool', name: 'create_task', input: { title: '架构评审', spec: 'x', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t1 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"架构评审","spec":"x","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t1 created; dispatch is automatic' },
+      { seq: 2, kind: 'tool', name: 'create_task', input: { title: '用例补齐', spec: 'y', dependsOn: null, assignee: null, gated: null, executor: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '● [tool] create_task {"title":"用例补齐","spec":"y","dependsOn":null,"assignee":null,"gated":null,"executor":null}\n⎿ task t2 created; dispatch is automatic' },
     ] as never);
     await flushed();
     fire({ type: 'tool-call', text: 'review_task', ts: Date.now(), payload: { callId: 'r1', input: { taskId: 't1', approved: true, note: null } } });
@@ -773,7 +790,7 @@ describe('G14.177 顶栏动态计数按钮', () => {
   it('运行中+待办未完成>0 → 显「N 待办」按钮,点击 onOpenTab(tasks);全完成(0)不渲染;G14.213 轮次收束即隐(未完结也隐)', async () => {
     const onOpenTab = vi.fn();
     const seeds = [
-      { seq: 1, kind: 'tool', md: '● [tool] todo_write {"todos":[{"text":"已完成项","status":"completed"},{"text":"进行中项","status":"in_progress"},{"text":"等待项","status":"pending"}]}\n⎿ ok' },
+      { seq: 1, kind: 'tool', md: '', name: 'todo_write', input: { todos: [{ text: '已完成项', status: 'completed' }, { text: '进行中项', status: 'in_progress' }, { text: '等待项', status: 'pending' }] }, result: { text: 'ok', ok: true } },
     ] as never;
     const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
     await flushed();
@@ -784,7 +801,7 @@ describe('G14.177 顶栏动态计数按钮', () => {
     // 全完成:末批 0 未完成 → 按钮隐(不占位)
     first.unmount();
     const done = [
-      { seq: 1, kind: 'tool', md: '● [tool] todo_write {"todos":[{"text":"已完成项","status":"completed"}]}\n⎿ ok' },
+      { seq: 1, kind: 'tool', md: '', name: 'todo_write', input: { todos: [{ text: '已完成项', status: 'completed' }] }, result: { text: 'ok', ok: true } },
     ] as never;
     render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
     await flushed();
