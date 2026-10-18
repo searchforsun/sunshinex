@@ -1484,14 +1484,31 @@
 .tb-status-dot.task-status-in_review { background: transparent; border: 1.5px solid var(--accent); border-top-color: transparent; animation: sx-spin 1s linear infinite; }
 .tb-status-dot.task-status-done { background: var(--accent); }
 .tb-status-dot.task-status-failed { background: var(--err); }
-/* G14.213 DAG 预设高度滚动(mermaid/dagre 开源渲染);边=虚线流动动画 */
+/* G14.213 DAG 预设高度;G14.2xx 渲染换开源图组件 React Flow(@xyflow/react)+dagre 布局
+   (mermaid 拼源退役):平移/滚轮缩放/控制钮组件内置,外层壳不再滚动(防双滚动条) */
 .tb-dag-wrap { position: relative; }
-.tb-card .board-dag-scroll.tb-dag-scroll { height: 260px; }
-.tb-dag-scroll .mermaid-svg { width: max-content; min-width: 100%; }
-.tb-dag-scroll svg .flowchart-link .path,
-.tb-dag-scroll svg .edgePaths .path,
-.tb-dag-scroll svg path.flowchart-link { stroke-dasharray: 6 4; animation: tb-dash 0.9s linear infinite; }
-@keyframes tb-dash { to { stroke-dashoffset: -10; } }
+.tb-card .board-dag-scroll.tb-dag-scroll { height: clamp(320px, 52vh, 600px); overflow: hidden; }
+.tb-dag-flow { width: 100%; height: 100%; font: 12px var(--font-ui); }
+.tb-dag-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-tertiary); font-size: 12px; }
+/* 任务节点卡:状态点+任务名(+gated ⚠)+🤖执行子代理行——列表行同语言(task-status-* 钩子共用) */
+.tb-dag-node { width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.tb-dag-node.clickable { cursor: pointer; }
+.tb-dag-node.clickable:hover { border-color: var(--accent); }
+.tb-dag-node.gated { border-color: var(--warn); }
+.tb-dag-node.task-status-cancelled { opacity: 0.5; }
+.tb-dag-node-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tb-dag-node-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.tb-dag-node-agent { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* START/END 虚拟节点:弱化虚线胶囊(纯形态,aria-hidden) */
+.tb-dag-terminal { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: var(--surface-elevated); border: 1px dashed var(--border-strong); border-radius: 999px; color: var(--fg-tertiary); font-size: 11px; }
+/* React Flow 面换肤(组件令牌 → sx 令牌,light/dark 随 html[data-theme] 自动):连线随 fg、
+   控制钮随浮层、点名格随 border-strong;锚点小圆片隐藏(纯视觉降噪) */
+.react-flow.tb-dag-reactflow { --xy-edge-stroke: var(--fg-secondary); --xy-edge-stroke-selected: var(--accent); --xy-controls-button-background-color: var(--surface-elevated); --xy-controls-button-background-color-hover: var(--surface-soft); --xy-controls-button-color: var(--fg-secondary); --xy-controls-button-color-hover: var(--fg); --xy-controls-button-border-color: var(--border); --xy-attribution-background-color: transparent; }
+.tb-dag-reactflow .react-flow__background pattern circle { fill: var(--border-strong); }
+.tb-dag-reactflow .react-flow__handle { opacity: 0; pointer-events: none; }
+.tb-dag-reactflow .react-flow__controls { box-shadow: none; overflow: hidden; border-radius: var(--radius-sm); }
+.tb-dag-reactflow .react-flow__attribution { background: transparent; }
+.tb-dag-reactflow .react-flow__attribution a { color: var(--fg-tertiary); }
 .tb-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .tb-task-agent { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fg-tertiary); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-todos-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }

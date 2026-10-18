@@ -724,13 +724,12 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       expect(screen.getByRole('button', { name: 'Approve t1' })).toBeDefined();
       expect(screen.getByRole('button', { name: 'Deny t1' })).toBeDefined();
 
-      // —— DAG 视图(G14.213 mermaid 重构:旧 svg.board-dag 盒退役):流程图落定含 t1 节点文本
-      //    (label=状态符+标题;gated 类钩子随重构退役,⚠ 门已在 List 视图断过)——
+      // —— DAG 视图(G14.2xx 换开源 DAG 组件 React Flow+dagre 布局,mermaid 拼源渲染退役):
+      //    节点=状态+任务名(+🤖子代理名),aria-label `${id} [${status}] ${title}` 与 List 行同钩子
       fireEvent.click(screen.getByRole('button', { name: 'DAG' }));
       await waitFor(() => expect(container.querySelector('.tb-dag-wrap')).not.toBeNull(), { timeout: 5_000 });
-      // 图面承载断言:mermaid svg 落定或 jsdom 无 SVG 布局 API(getBBox)回落原文档——两态同含
-      // t1 节点文本(label=状态符+标题);gated 类钩子随重构退役,⚠ 门已在 List 视图断过
-      await waitFor(() => expect(container.querySelector('.tb-dag-wrap')?.textContent ?? '').toContain('GateDemo'), { timeout: 10_000 });
+      // 图面承载断言:lazy chunk 落定后 React Flow 节点 DOM 同步可查(布局=dagre 纯计算零异步)
+      await waitFor(() => expect(screen.getByLabelText('t1 [pending] GateDemo')).not.toBeNull(), { timeout: 10_000 });
 
       // —— 回 List → Approve 点击(经 UI:conn.boardReview(s1, t1, true))→ 事件流驱动板自更新 ——
       fireEvent.click(screen.getByRole('button', { name: 'List' }));

@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
-import { MermaidBlock } from '../pages/Chat';
+
+/** DAG 视图懒载面(React Flow@xyflow/react + dagre 布局,开源组件——mermaid 拼源退役):
+ *  节点=状态图标+任务名+🤖执行子代理名,平移/缩放/控制钮组件内置;不进主 bundle */
+const TaskDag = lazy(() => import('./TaskDag'));
 
 /**
  * G14.174 「任务板」页签体(原 Agents 页签重定位):卡片流——任务按创建批次分卡(≈每轮一卡,
@@ -13,10 +16,10 @@ import { MermaidBlock } from '../pages/Chat';
  * - 只显示任务:页内 DELEGATIONS 委派段去除(委派状态走右侧徽标面);行=状态图标+任务名+
  *   执行子代理名(仅执行/完成态显,等待态不显)→ 点击跳对应子 agent 页签(等待态不跳)
  * - 状态图标三态:运行(claimed/in_review)=转圈;完成=蓝点;等待(pending)=灰点;失败=红点
- * - DAG(G14.213 用户裁定「用开源组件」):mermaid flowchart(仓内既有依赖,布局=dagre 内核)——
- *   预设高度滚动 + MermaidBlock 自带 lightbox(放大/缩小/回位/拖动钳制/滚轮缩放全内置);
- *   START/END 虚拟节点补齐并行任务的起止形态;边走 CSS 虚线流动动画;
- *   节点=状态标记+任务名+🤖子代理名,点击跳对应子 agent(等待态无委派不跳)。
+ * - DAG(G14.2xx 用户裁定换开源 DAG 渲染组件):React Flow(@xyflow/react)+dagre 自动布局
+ *   (@dagrejs/dagre),替代 mermaid 拼源渲染——预设高度内组件自管平移/滚轮缩放/控制钮;
+ *   START/END 虚拟节点补齐并行任务的起止形态;边=内置虚线流动动画;
+ *   节点=状态图标+任务名+🤖子代理名,点击跳对应子 agent(等待态无委派不跳)。
  * 测试钩子沿用:行内 Approve/Deny 按钮、aria-label `${id} [${status}] ${title}`。
  */
 
@@ -58,39 +61,6 @@ function groupTasks(tasks: BoardTask[]): BoardTask[][] {
 }
 
 type CardView = 'list' | 'dag';
-
-/** G14.213 任务图 → mermaid flowchart 源(开源渲染,布局=dagre 内核):
- *  START/END 虚拟节点补齐并行任务起止;节点=状态标记+任务名(+🤖子代理名);
- *  classDef 按任务状态着色(转圈语义在列表行,DAG 节点用状态色) */
-function dagChartOf(group: BoardTask[], delegations: readonly Delegation[]): string {
-  const esc = (s: string): string =>
-    s.replace(/"/g, '#quot;').replace(/</g, '#lt;').replace(/>/g, '#gt;').replace(/[\r\n]+/g, ' ');
-  const lines: string[] = ['flowchart LR', '  START(["▶ 开始"]):::st'];
-  const inGroup = new Set(group.map((x) => x.id));
-  for (const t of group) {
-    const d = agentOfTask(t, delegations);
-    const mark = t.status === 'done' ? '✔ ' : t.status === 'failed' ? '✗ ' : t.status === 'pending' ? '○ ' : '▶ ';
-    const agent = d !== undefined ? `<br/>🤖 ${esc(d.label !== '' ? d.label : (d.title ?? ''))}` : '';
-    lines.push(`  n_${t.id}["${mark}${esc(t.title !== '' ? t.title : t.id)}${agent}"]:::${t.status}`);
-  }
-  lines.push('  END(["◼ 结束"]):::st');
-  for (const t of group) {
-    const deps = t.dependsOn.filter((x) => inGroup.has(x));
-    if (deps.length === 0) lines.push(`  START --> n_${t.id}`);
-    for (const d of deps) lines.push(`  n_${d} --> n_${t.id}`);
-    const hasDown = group.some((x) => x.dependsOn.includes(t.id));
-    if (!hasDown) lines.push(`  n_${t.id} --> END`);
-  }
-  lines.push(
-    '  classDef st fill:#181818,stroke:#3f3f3f,color:#8f8f8f',
-    '  classDef pending fill:#212121,stroke:#3f3f3f,color:#8f8f8f',
-    '  classDef claimed fill:#16233a,stroke:#58a6ff,color:#dfdfdf',
-    '  classDef in_review fill:#16233a,stroke:#58a6ff,color:#dfdfdf',
-    '  classDef done fill:#12261e,stroke:#2ea043,color:#dfdfdf',
-    '  classDef failed fill:#2d1517,stroke:#f85149,color:#f85149',
-  );
-  return lines.join('\n');
-}
 
 /** 单卡:头部=[列表|流程图(左)]+轮次输入(单行省略)+时间;体=列表|DAG 两型;DAG 可放大弹窗 */
 function TaskCard({
@@ -174,19 +144,27 @@ function TaskCard({
       ) : (
         <div className="tb-dag-wrap">
           <div className="board-dag-scroll tb-dag-scroll">
-            {/* G14.213 开源渲染(mermaid flowchart/dagre):节点点击 → 跳对应子 agent(等待态不跳) */}
-            <MermaidBlock
-              chart={dagChartOf(group, delegations)}
-              onNodeClick={(nodeId) => {
-                const tid = nodeId.replace(/^n_/, '');
-                const task = byId.get(tid) ?? board.tasks[tid];
-                if (task === undefined) return;
-                const d = agentOfTask(task, delegations);
-                if (d === undefined) return; // 等待态:无执行子代理,不跳转
-                const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText.slice(0, 2000));
-              }}
-            />
+            {/* G14.2xx 开源 DAG 组件(React Flow/dagre):节点=状态+任务名+🤖子代理名,
+                点击 → 跳对应子 agent(等待态无委派不可点);lazy 载入,chunk 拉起前显占位 */}
+            <Suspense fallback={<div className="tb-dag-loading">{t('Loading graph…', '流程图加载中…')}</div>}>
+              <TaskDag
+                tasks={group}
+                agentOf={(taskId) => {
+                  const task = byId.get(taskId) ?? board.tasks[taskId];
+                  if (task === undefined) return '';
+                  const d = agentOfTask(task, delegations);
+                  return d !== undefined ? (d.label !== '' ? d.label : (d.title ?? '')) : '';
+                }}
+                onTaskOpen={(taskId) => {
+                  const task = byId.get(taskId) ?? board.tasks[taskId];
+                  if (task === undefined) return;
+                  const d = agentOfTask(task, delegations);
+                  if (d === undefined) return; // 等待态:无执行子代理,不跳转
+                  const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
+                  onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText.slice(0, 2000));
+                }}
+              />
+            </Suspense>
           </div>
         </div>
       )}
