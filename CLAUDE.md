@@ -43,9 +43,9 @@ src/
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
-  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal/snapshots 会话持久化
+  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v2 段级行）/snapshots 会话持久化
   harness/
-    index.ts          # Harness 门面（含 SteeringChannel）
+    index.ts          # Harness 门面（单发执行缝 reactor 仅测试驱动用——生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
     sunshine-init.ts  # /init 目标构造器（纯函数产出 goal 文本，模型驱动生成/完善 SUNSHINE.md）
     reactor.ts        # 最小闭环引擎（observe→think→act）
@@ -72,7 +72,8 @@ src/
   model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
   taskboard/          # 任务板域模型与协调器（model 纯 reducer/board 协调/store 落盘/translate 事件翻译/teammate 长驻队友/inbox 消息收件/executors 执行体）
   delegation/         # 委派投影（projection 纯 reducer：spawn/后台任务/graph 节点统一生命周期，TUI/GUI 同源消费点）
-  serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 buildHarness 单点）
+  session/            # 会话内核（session-kernel spec）：kernel.ts SessionKernel（applyEvent 纯 reducer=转录/等待队列唯一投影，steer/seg 段级事件）、entry.ts 条目模型、v2log.ts v2 段级会话档行读写；runtime.ts KernelRuntime 装配单点（createKernelRuntime，TUI/GUI 共用）
+  serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v2 单档唯一写者链路 kernelEventRows）
   storage/            # 本地 JSON 存储底座；archive.ts（ArchiveStore 接口 + fs 实现，归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/NSIS+portable 打包；daemon 以子进程装配，壳与主仓零编译期耦合）

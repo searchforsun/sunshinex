@@ -21,6 +21,7 @@ graph LR
 src/
   cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index；裸命令进交互终端）
   tui/       # 交互式终端（ink + React，对标 Claude Code，v1.0 默认入口）
+  session/   # 会话内核（SessionKernel：转录/等待队列唯一投影 + v2 段级会话档读写）与 KernelRuntime 装配单点（CLI/TUI/GUI 共用）
   harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子代理、知识库
   loop/      # Loop 引擎（生成→校验→修正）
   graph/     # DAG 多角色协作编排
