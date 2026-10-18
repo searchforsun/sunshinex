@@ -295,10 +295,11 @@ test('P11 三态事件序:串行批每调用 pending→running→result;执行�
   const statuses = f.events.map((e) => e.payload.status);
   assert.deepEqual(statuses, ['pending', 'running', 'completed', 'pending', 'running', 'completed'], '串行批两调用各三帧(执行起点才有 running)');
 });
+```
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require scripts/test-env.cjs --test dist/harness/batch-runner.test.js 2>&1 | tail -8`
+Run: `cd src && npx tsc && cd .. && SUNSHINEX_LANGUAGE=en node --require ./scripts/test-env.cjs --test dist/harness/batch-runner.test.js 2>&1 | tail -8`
 Expected: FAIL(statuses 为 `['pending','completed',…]` 无 running)
 
 - [ ] **Step 3: 实施发射**
