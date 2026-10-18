@@ -102,8 +102,23 @@ function normalizeMd(src: string): string {
 }
 
 /** 主题覆盖（2026-09-30 用户裁决）：标题/表头不再用黄色（与系统警告 warn 撞色），与加粗正文同色系 */
-/** G14.125 正文 md 链接(文件引用等)渲染为青色文件名——markdansi link 槽位统一上色 */
+/** G14.125 正文 md 链接(文件引用等)渲染为青色文件名——markdansi link 槽位统一上色;无 OSC-8 终端的
+ *  `(url)` 回退括号由 stripLocalLinkParens 按本地/远程分裁定（青色文件名单独成形） */
 const RENDER_THEME: MdTheme = { heading: { bold: true }, tableHeader: { bold: true }, link: { color: 'cyan' } };
+
+/** 本地链接回退括号剥除（2026-10-18 真机裁决：`wire.ts (./src/model/wire.ts):42` 双重显示即噪音）：
+ *  markdansi link 槽位在无 OSC-8 超链接的终端回退 `label (url)` 暗色括号——文件引用型链接与青色
+ *  label 语义重复。本函数在 markdansi 输出后、折行前整段剥除「scheme 无涉（相对/绝对路径）或盘符
+ *  路径」的回退括号只留 label；http(s) 等真远程 scheme 保留（无超链接终端上可复制的最后通道）。
+ *  字节形态锚定 markdansi 0.3.4 实现（chalk dim=`ESC[2m..ESC[22m`，括号前导空格在片段内），仅匹配
+ *  着色形态——生产 TUI 恒 TTY 恒着色，无色回退（管道/测试）不产出该片段；url 含嵌套括号不匹配
+ *  （保留原样，宁缺勿错）。调用点必须在 softWrap 之前——折行后片段可能被拆，匹配失锚 */
+export function stripLocalLinkParens(rendered: string): string {
+  return rendered.replace(/\u001b\[2m \(([^()]*)\)\u001b\[22m/g, (frag, url: string) => {
+    const remote = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) && !/^[a-zA-Z]:[\\/]/.test(url);
+    return remote ? frag : '';
+  });
+}
 
 /** 正文行距档位（2026-10-01 用户裁决三连：「增加一定的行距」→「不同区域不同行距，整体协调」→
  *  「有序列表还是有多余的行距」终裁）：prose 逻辑行间插入的空行数——按区域分级施加：**列表项
@@ -136,13 +151,15 @@ function hangingIndentOf(line: string): number {
 /** ANSI 安全软折（2026-10-01 行距律配套）：markdansi wrap:false 出逻辑行后按真实列宽回折——
  *  SGR 序列零宽原子搬运（与 hardSlice 同扫描器，不切半截码）；断点=空白后或宽字符（CJK/全角/emoji）
  *  边界（拉丁词内不断、CJK 字间/中英之间可断）；无断点超宽词回退逐字硬切（爆栈护栏语义不变）。
- *  indent 为续行悬挂缩进（列表项续行对齐项文） */
+ *  indent 为续行悬挂缩进（列表项续行对齐项文）：**只垫续行，首行恒顶格**——marker 行吃满全宽、
+ *  续行缩进对齐，这才是悬挂形态（2026-10-18 真机回归：旧实现 pad 垫了首行，折行条目整条右缩、
+ *  未折行条目被 156 行早退掩护顶格——同列表首条突出错位的病根） */
 export function softWrapAnsi(line: string, width: number, indent = 0): string[] {
   if (width <= 0 || displayWidth(stripAnsi(line)) <= width) return [line];
   const pad = ' '.repeat(Math.max(0, indent));
   const lines: string[] = [];
-  let cur = pad;
-  let curW = Math.max(0, indent);
+  let cur = '';
+  let curW = 0;
   let breakAt = -1; // cur 内最近可断点（code unit 下标；其前入行、其后随续行）
   let i = 0;
   while (i < line.length) {
@@ -190,7 +207,7 @@ export function softWrapAnsi(line: string, width: number, indent = 0): string[] 
  *  `• ` 标记替换。产物不带尾换行——段间空行由 renderSource 拼接承担，主路径尾 \n 由 mdPushFragment
  *  归一补齐（子代理视图裸用产物，尾随空行即双行距病根），空段返回 ''（不出孤边距） */
 function renderProseSegment(src: string, width: number): string {
-  const rendered = mdRender(normalizeMd(src), { wrap: false, highlighter: mdHighlighter, theme: RENDER_THEME });
+  const rendered = stripLocalLinkParens(mdRender(normalizeMd(src), { wrap: false, highlighter: mdHighlighter, theme: RENDER_THEME }));
   const logicals = rendered.split('\n').filter((l) => stripAnsi(l).trim().length > 0);
   if (logicals.length === 0) return '';
   const sepSpaced = '\n'.repeat(1 + BODY_LINE_SPACING);

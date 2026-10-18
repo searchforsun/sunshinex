@@ -1,7 +1,7 @@
 // src/tui/md-ansi.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMd, wrapAnsiLines, ansiLineCount, normalizeCjkLine, isFenceLine, softWrapAnsi } from './md-ansi';
+import { renderMd, wrapAnsiLines, ansiLineCount, normalizeCjkLine, isFenceLine, softWrapAnsi, stripLocalLinkParens } from './md-ansi';
 
 const strip = (s: string): string => s.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
@@ -107,6 +107,25 @@ test('softWrapAnsi：ANSI 原子不切坏、拉丁词不断、续行悬挂缩进
   assert.ok(lines.every((l) => strip(l).length <= 30), '剥码后行宽恒 ≤ width');
 });
 
+test('softWrapAnsi：悬挂缩进只垫续行、首行恒顶格（2026-10-18 真机「折行条目整条缩进」回归）', () => {
+  // 旧实现 cur=pad 起步把 pad 垫给首行：折行条目整条右缩、未折行条目被早退掩护顶格——同列表首条错位
+  const line = '- GUI daemon 缺省免鉴权实证：daemon.ts:313-315 注释明示 undefined 即免鉴权档，显式传入才启用鉴权，broadcastFrame 向全部 ws 连接无差别广播';
+  const lines = softWrapAnsi(line, 40, 2);
+  assert.ok(lines.length > 1, '已折行');
+  assert.ok(strip(lines[0]!).startsWith('- '), '首行顶格（marker 在列 0）');
+  assert.ok(lines.slice(1).every((l) => l.startsWith('  ')), '续行悬挂 2 格对齐项文');
+  assert.ok(lines.every((l) => strip(l).length <= 40), '剥码后行宽恒 ≤ width');
+});
+
+test('renderMd：折行列表条目首行不缩进——同列表折行/未折行条目标记同列（真机 seq95 形态回归）', () => {
+  // 真实病根形态：引导行后无空行直跟列表，首条超宽折行、次条单行——旧渲染首条整条缩进、次条顶格
+  const src = '**域4 交互面** — 含最高优先级风险：\n- **GUI daemon 缺省免鉴权实证**：[daemon.ts:313-315](./src/serve/daemon.ts) 注释明示「undefined = 免鉴权档，显式传入才启用鉴权」，broadcastFrame（L303-307）向全部 ws 连接无差别广播。\n- token 落盘 `<dataDir>/serve-token`（0600）设计本身合理。';
+  const out = strip(renderMd(src, 60));
+  const markerLines = out.split('\n').filter((l) => /^\s*[•-] /.test(l));
+  assert.ok(markerLines.length >= 2, '两条列表条目成形');
+  assert.ok(markerLines.every((l) => /^[•-] /.test(l)), `列表标记恒在列 0：${JSON.stringify(markerLines)}`);
+});
+
 test('renderMd：围栏豁免行距——代码盒内容无空行插入、盒线完好', () => {
   const out = strip(renderMd('前言一句。\n\n```ts\nconst a = 1;\nconst b = 2;\n```\n\n尾段。', 80));
   assert.ok(!out.includes('const a = 1;\n\nconst b = 2;'), '代码行间无行距插入');
@@ -119,4 +138,18 @@ test('renderMd：分割线全宽盒线（markdansi HR_WIDTH=40 上限绕行，di
   assert.ok(!out.includes('—'), '不使用 markdansi 的 40 列 em-dash 线');
   assert.ok(out.includes('\x1b[2m'), 'dim 弱化呈现');
   assert.ok(strip(out).split('\n').every((l) => l.length <= 120), '行宽 ≤ width');
+});
+
+test('stripLocalLinkParens：本地文件引用回退括号剥除只留 label，远程 URL 保留（2026-10-18 真机裁决）', () => {
+  // 字节形态锚定 markdansi 0.3.4 link 回退（chalk：link 青色=36..39、dim=2..22、前导空格在片段内）
+  const local = '\x1b[36mwire.ts\x1b[39m\x1b[2m (./src/model/wire.ts)\x1b[22m:42、';
+  assert.equal(stripLocalLinkParens(local), '\x1b[36mwire.ts\x1b[39m:42、', '相对路径回退括号整段剥除，:42 行号留在片外');
+  const abs = '\x1b[36musage.ts\x1b[39m\x1b[2m (/abs/model/usage.ts:16-21)\x1b[22m';
+  assert.equal(stripLocalLinkParens(abs), '\x1b[36musage.ts\x1b[39m', '绝对路径同剥');
+  const drive = '\x1b[36mmain.ts\x1b[39m\x1b[2m (D:\\x\\main.ts)\x1b[22m';
+  assert.equal(stripLocalLinkParens(drive), '\x1b[36mmain.ts\x1b[39m', 'Windows 盘符路径同剥');
+  const remote = '\x1b[36mdocs\x1b[39m\x1b[2m (https://example.com/a)\x1b[22m';
+  assert.equal(stripLocalLinkParens(remote), remote, 'http(s) 保留回退括号（无超链接终端可复制的最后通道）');
+  const plain = '正文括注 (并非链接回退的普通暗色文本不误伤)';
+  assert.equal(stripLocalLinkParens(plain), plain, '非 link 回退产物零触碰');
 });
