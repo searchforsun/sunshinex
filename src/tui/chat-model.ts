@@ -228,11 +228,9 @@ export interface SessionOpts extends KernelRuntimeOpts {
 }
 
 /** ctx 水位消费策略：真实 usage 口径（exact）直接采信——压缩回落 / plan 新步骤最小化回落都是真实语义；
- *  估算口径只作向上预告，不得覆盖更准的真实水位（消除同轮内估算↔真实的往复抖动） */
-export function applyCtxWatermark(current: number, incoming: number, exact: boolean): number {
-  if (!(incoming > 0)) return current;
-  return exact ? incoming : Math.max(current, incoming);
-}
+ *  估算口径只作向上预告，不得覆盖更准的真实水位（消除同轮内估算↔真实的往复抖动）。
+ *  P9 上收内核 session/entry 单点（内核统计面同用此函数），此处 re-export 保持既有导入面 */
+export { applyCtxWatermark } from '../session/entry';
 
 /** 状态栏上下文分母解析单点（J6 双源收敛）：TuiState.modelWindow（/model 选择带窗口声明时）在场即取；
  *  缺省回退全局 env SUNSHINEX_CONTEXT_WINDOW（未配置/非法 = 0，状态栏该段不显示——缺省 0 语义与旧

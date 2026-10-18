@@ -149,14 +149,13 @@ describe('五 kind 与 notice 系映射', () => {
     expect(s.entries).toHaveLength(0);
   });
 
-  it('chat 面忽略事件：task-*/gate-*/route/ctx/model-end/approval-* 不产生条目(reasoning 已改为思考链聚合,见下组)', () => {
+  it('chat 面忽略事件：task-*/gate-*/route/model-end/approval-* 不产生条目(reasoning 已改为思考链聚合,见下组)', () => {
     const s0 = initialChatState();
     const s = fold(
       [
         ev('task-created', 't', { id: 't1' }),
         ev('gate-waiting'),
         ev('route', undefined, { tier: 'small' }),
-        ev('ctx', undefined, { used: 1 }),
         ev('model-end'),
         ev('approval-request', '?', { id: 'q' }),
       ],
@@ -164,6 +163,10 @@ describe('五 kind 与 notice 系映射', () => {
     );
     expect(s.entries).toEqual(s0.entries);
     expect(s).toBe(s0); // 全忽略时原状态引用透传（免无谓重渲染）
+    // P9:ctx 已升级统计面事件——不产条目但水位入 k.stats(状态对象变更是预期行为)
+    const withCtx = fold([ev('ctx', undefined, { used: 1 })], s0);
+    expect(withCtx.entries).toEqual(s0.entries);
+    expect(withCtx.k.stats.ctxUsed).toBe(1);
   });
 
   it('payload.subagent 事件不入主流(G8a:Agents 标签另聚;delegation 摘要行保留)', () => {

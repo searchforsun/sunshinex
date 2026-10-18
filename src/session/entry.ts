@@ -49,6 +49,44 @@ export interface KernelEntry {
   meta?: RunMeta;
 }
 
+/** 会话统计面(P9 内核化,spec「数据同源,上层只渲染」):计数器口径唯一权威——
+ *  usage.turnTotal 为 run 内单调累计(reactor per-request 全量值叠基线,跨帧覆盖幂等),
+ *  水位差值法为正确语义(原 GUI 实现);子代理 usage 为 per-child run 累计,per-child 水位增量并入;
+ *  step 计数排除 done 尾帧;ctx 水位 exact 采信/估算只上。TUI/GUI 只读渲染,不再各自累计 */
+export interface SessionStats {
+  /** 当前轮(最近 model-start)起点 ts;0=无在途轮 */
+  turnStartedAt: number;
+  turnTokens: number;
+  turnCacheTokens: number;
+  turnPromptTokens: number;
+  turnChildTokens: number;
+  sessionTotalTokens: number;
+  sessionCacheTokens: number;
+  sessionPromptTokens: number;
+  sessionChildTokens: number;
+  sessionSteps: number;
+  sessionTurns: number;
+  ctxUsed: number;
+  ctxExact: boolean;
+  /** 子代理 usage 水位(childId → 该 child 最近 turnTotal)——内部记账,渲染面勿消费 */
+  childWatermarks: Record<string, number>;
+}
+
+export function zeroSessionStats(): SessionStats {
+  return {
+    turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0,
+    sessionTotalTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionChildTokens: 0,
+    sessionSteps: 0, sessionTurns: 0, ctxUsed: 0, ctxExact: false, childWatermarks: {},
+  };
+}
+
+/** ctx 占用水位(原 TUI chat-model 单点上收):exact=true 端点真实 usage 直接采信(允许回落);
+ *  exact=false 装配面估算,只允许向上预告 */
+export function applyCtxWatermark(current: number, incoming: number, exact: boolean): number {
+  if (!(incoming > 0)) return current;
+  return exact ? incoming : Math.max(current, incoming);
+}
+
 /** 未配对 tool 旁挂记账(条目本体已在列,缺面由迟到者回填;同 collector PendingTool) */
 interface PendingTool {
   /** 条目 seq(回填按位寻址) */
@@ -59,17 +97,19 @@ interface PendingTool {
 }
 
 /** reducer 态:条目列 + 流式侧记账。openRun/openSeg = 开启中条目 seq(-1 无):run 跨 run 全程,
- *  正文/思考段轮内轮替——两游标独立,「开启中即流式中」的派生面 */
+ *  正文/思考段轮内轮替——两游标独立,「开启中即流式中」的派生面。stats=会话统计面(P9,
+ *  水位/计数唯一权威,变更经 kernel stats 事件外抛;seed 从 run meta 重建) */
 export interface KernelState {
   entries: KernelEntry[];
   nextSeq: number;
   openRun: number;
   openSeg: number;
   pending: PendingTool[];
+  stats: SessionStats;
 }
 
 export function initialKernelState(): KernelState {
-  return { entries: [], nextSeq: 1, openRun: -1, openSeg: -1, pending: [] };
+  return { entries: [], nextSeq: 1, openRun: -1, openSeg: -1, pending: [], stats: zeroSessionStats() };
 }
 
 const CAP = 2000; // 档面上限(collector T5δ 同纪律:丢最老环形)
@@ -152,7 +192,25 @@ export function sanitizeChanges(raw: unknown): ChangeFile[] | undefined {
  * (G8d 同口径);usage/step/ctx/route/model-end/approval 系/task 系/gate 系/delegation 系零条目。
  */
 export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
-  if (typeof e.payload?.subagent === 'string') return state;
+  const sub = e.payload?.subagent;
+  if (typeof sub === 'string' && sub.length > 0) {
+    // 子代理事件另轨:转录零条目(主链不可见,G8d);usage 例外入统计面(P9 child token per-child 水位)
+    if (e.type !== 'usage') return state;
+    const total = e.payload?.turnTotal;
+    if (typeof total !== 'number') return state;
+    const prev = state.stats.childWatermarks[sub] ?? 0;
+    const delta = Math.max(0, total - prev);
+    if (delta === 0 && total === prev) return state;
+    return {
+      ...state,
+      stats: {
+        ...state.stats,
+        turnChildTokens: state.stats.turnChildTokens + delta,
+        sessionChildTokens: state.stats.sessionChildTokens + delta,
+        childWatermarks: { ...state.stats.childWatermarks, [sub]: total },
+      },
+    };
+  }
   switch (e.type) {
     case 'token': {
       const text = e.text ?? '';
@@ -283,10 +341,48 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     }
     case 'model-start': {
       const sealed = sealSeg(state, e.ts);
-      if (sealed.openRun >= 0) return sealed; // run 内续轮:不重插 run 条
+      if (sealed.openRun >= 0) return sealed; // run 内续轮:不重插 run 条,轮窗计数器不清
       const next = appendEntry(sealed, { ts: e.ts, kind: 'run', md: '' });
-      return { ...next, openRun: next.nextSeq - 1 };
+      // 轮窗重置与开轮计数(P9):run 即「本轮」窗口——turn 面计数器清零,sessionTurns+1
+      return {
+        ...next,
+        openRun: next.nextSeq - 1,
+        stats: { ...next.stats, turnStartedAt: e.ts, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: next.stats.sessionTurns + 1 },
+      };
     }
+    case 'usage': {
+      // P9 统计面:水位差值法(reactor turnTotal=run 内单调累计,per-request 全量叠基线跨帧幂等)。
+      // 子代理 usage 已在前置守卫分流(per-child 水位),此处恒为主链
+      const p = e.payload ?? {};
+      if (typeof p.turnTotal !== 'number') return state;
+      const turnDelta = Math.max(0, p.turnTotal - state.stats.turnTokens);
+      const cacheTotal = typeof p.cacheHitTotal === 'number' ? p.cacheHitTotal : null;
+      const promptTotal = typeof p.promptTotal === 'number' ? p.promptTotal : null;
+      const cacheDelta = cacheTotal !== null ? Math.max(0, cacheTotal - state.stats.turnCacheTokens) : 0;
+      const promptDelta = promptTotal !== null ? Math.max(0, promptTotal - state.stats.turnPromptTokens) : 0;
+      if (turnDelta === 0 && cacheDelta === 0 && promptDelta === 0 && p.turnTotal === state.stats.turnTokens) return state;
+      return {
+        ...state,
+        stats: {
+          ...state.stats,
+          turnTokens: p.turnTotal,
+          sessionTotalTokens: state.stats.sessionTotalTokens + turnDelta,
+          ...(cacheTotal !== null ? { turnCacheTokens: cacheTotal, sessionCacheTokens: state.stats.sessionCacheTokens + cacheDelta } : {}),
+          ...(promptTotal !== null ? { turnPromptTokens: promptTotal, sessionPromptTokens: state.stats.sessionPromptTokens + promptDelta } : {}),
+        },
+      };
+    }
+    case 'ctx': {
+      // P9 统计面:ctx 水位(exact 采信/估算只上,applyCtxWatermark 单点)
+      const used = applyCtxWatermark(state.stats.ctxUsed, typeof e.payload?.used === 'number' ? e.payload.used : 0, e.payload?.exact === true);
+      const exact = e.payload?.exact === true;
+      if (used === state.stats.ctxUsed && exact === state.stats.ctxExact) return state;
+      return { ...state, stats: { ...state.stats, ctxUsed: used, ctxExact: exact } };
+    }
+    case 'step':
+      // P9 统计面:步数计账(model 动作步;done 收尾帧不计——与 TUI 旧口径一致)
+      if (e.text === 'done') return state;
+      return { ...state, stats: { ...state.stats, sessionSteps: state.stats.sessionSteps + 1 } };
     case 'done': {
       // ① 思考段先封(thinking 先行);开启 assistant 段合并终稿(同文不重复),无开启段且终稿非空才独立成条
       let st = state;
@@ -352,9 +448,10 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     }
     default: {
       // 非流内事件(route/approval 系/task 系/gate 系/delegation 系)一律先封流式段
-      // ——collector G14.213 同构:不产条目的事件也承担段边界职责;usage/step/ctx/model-end 流内
-      // 不封(model-end 每模型轮收尾即发——封段会把轮内正文与 done 终稿裂成重复两条,实测 TUI 往返抓出)
-      const inStream = e.type === 'usage' || e.type === 'step' || e.type === 'ctx' || e.type === 'model-end';
+      // ——collector G14.213 同构:不产条目的事件也承担段边界职责;model-end 流内
+      // 不封(每模型轮收尾即发——封段会把轮内正文与 done 终稿裂成重复两条,实测 TUI 往返抓出);
+      // usage/step/ctx 已升级显式统计面分支(P9),不再走流内免封清单
+      const inStream = e.type === 'model-end';
       return inStream ? state : sealSeg(state, e.ts);
     }
   }
@@ -375,6 +472,25 @@ export function applySeed(state: KernelState, entries: ReadonlyArray<Omit<Kernel
   while (st.entries.length > CAP) {
     const dropped = st.entries.shift();
     if (dropped !== undefined && dropped.kind === 'tool') st = { ...st, pending: st.pending.filter((p) => p.seq !== dropped.seq) };
+  }
+  // 统计面重建(P9):会话累计自历史 run meta 派生(G14.18 口径——回放会话累计不从零起);
+  // tokens/cache 逐 run 求和,steps 取末次覆盖值(载荷为累计口径),turns 数 run 条
+  let totalTokens = 0;
+  let totalCache = 0;
+  let steps = 0;
+  let turns = 0;
+  for (const e of st.entries) {
+    if (e.kind === 'run') {
+      turns += 1;
+      if (e.meta !== undefined) {
+        totalTokens += e.meta.tokens ?? 0;
+        totalCache += e.meta.cacheTokens ?? 0;
+        steps = Math.max(steps, e.meta.steps ?? 0);
+      }
+    }
+  }
+  if (totalTokens > 0 || totalCache > 0 || steps > 0 || turns > 0) {
+    st = { ...st, stats: { ...st.stats, sessionTotalTokens: totalTokens, sessionCacheTokens: totalCache, sessionSteps: steps, sessionTurns: turns } };
   }
   return { ...st, nextSeq: maxSeq + 1 };
 }

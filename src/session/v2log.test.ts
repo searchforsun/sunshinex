@@ -43,6 +43,7 @@ function kernelEventsToRows(events: KernelEvent[]): Record<string, unknown>[] {
       rows.push({ t: 'steer', items: e.items.map((x) => ({ ...x })) });
       continue;
     }
+    if (e.t === 'stats') continue; // 统计面零落档(P9)
     rows.push({ t: 'truncate', upToSeq: e.upToSeq });
   }
   return rows;

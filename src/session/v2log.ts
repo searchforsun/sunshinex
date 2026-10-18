@@ -18,6 +18,7 @@ import type { JournalEvent } from '../tui/session-journal';
 export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
   if (ev.t === 'truncate') return [{ t: 'truncate', upToSeq: ev.upToSeq }];
   if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front })) }];
+  if (ev.t === 'stats') return []; // 统计面不落档(P9):非转录,装载自 run meta 重建
   const e = ev.entry;
   if (ev.t === 'seg-open') {
     if (e.kind === 'run') return [{ t: 'run-open', ts: e.ts, seq: e.seq }];

@@ -56,16 +56,13 @@ export interface ChatState {
   steps: number;
   /** 会话累计 prompt 缓存命中 tokens（usage.cacheHitTotal 续推） */
   cacheTokens: number;
-  /** 内部记账（勿消费）：当前 run 的 usage.turnTotal 水位——run 边界重置；tokens 增量基线 */
-  turnTokensBase?: number;
-  /** 内部记账（勿消费）：当前 run 的 cacheHitTotal 水位——run 边界重置 */
-  turnCacheBase?: number;
-  /** 内部记账（勿消费）：run-open 基线（seq → 当时累计 steps/tokens）——open run 条「本轮」减数 */
+/** 内部记账（勿消费）：run-open 基线（seq → 当时累计 steps/tokens）——open run 条「本轮」减数。
+ *  P9:usage 水位记账已上收内核统计面(ChatState 不再持) */
   runBases: Record<number, { steps: number; tokens: number }>;
 }
 
 export function initialChatState(): ChatState {
-  return { k: initialKernelState(), entries: [], status: 'idle', tokens: 0, steps: 0, cacheTokens: 0, turnTokensBase: 0, turnCacheBase: 0, runBases: {} };
+  return { k: initialKernelState(), entries: [], status: 'idle', tokens: 0, steps: 0, cacheTokens: 0, runBases: {} };
 }
 
 /** snapshot.messages 载荷形态（gui 侧契约声明;P2 起即内核条目形,meta 对位 RunMeta） */
@@ -158,39 +155,11 @@ export function seedChatFromSnapshot(
   status: 'idle' | 'running',
   cursors: { openRun: number; openSeg: number },
 ): ChatState {
-  let tokens = 0;
-  let steps = 0;
-  let cacheTokens = 0;
-  for (const m of messages) {
-    if (m.kind !== 'run' || m.meta === undefined) continue;
-    tokens += m.meta.tokens ?? 0;
-    steps = Math.max(steps, m.meta.steps ?? 0); // steps=会话累计口径,取末次覆盖值
-    cacheTokens += m.meta.cacheTokens ?? 0;
-  }
-  const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens, steps, cacheTokens, turnTokensBase: 0, turnCacheBase: 0, runBases: {} };
+  const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens: 0, steps: 0, cacheTokens: 0, runBases: {} };
   s.k = { ...s.k, openRun: cursors.openRun, openSeg: cursors.openSeg };
-  return { ...s, entries: mapEntries(s.k, s.runBases) };
-}
-
-/** usage 会话累计：turnTotal 轮内增量并入（基线 model-start 重置）；无数值载荷不动。
- *  子代理用量（payload.subagent）不经此——内核入口已滤,计数器双保险再拦 */
-function onUsage(s: ChatState, e: SessionEvent): ChatState {
-  const turnTotal = e.payload?.turnTotal;
-  if (typeof turnTotal !== 'number') return s;
-  const base = s.turnTokensBase ?? 0;
-  const delta = Math.max(0, turnTotal - base);
-  // cacheHitTotal 与 turnTotal 同为 run 级单调累计——同基线法增量续推（端点无缓存回告恒 0）
-  const cacheTotal = e.payload?.cacheHitTotal;
-  const cacheBase = s.turnCacheBase ?? 0;
-  const cacheDelta = typeof cacheTotal === 'number' ? Math.max(0, cacheTotal - cacheBase) : 0;
-  if (delta === 0 && turnTotal === base && cacheDelta === 0 && cacheTotal === cacheBase) return s;
-  return {
-    ...s,
-    tokens: s.tokens + delta,
-    ...(cacheDelta > 0 ? { cacheTokens: s.cacheTokens + cacheDelta } : {}),
-    turnTokensBase: turnTotal,
-    ...(typeof cacheTotal === 'number' ? { turnCacheBase: cacheTotal } : {}),
-  };
+  // P9:计数器自 run meta 在 applySeed 内重建(零推导)——G14.18 回放会话累计不从零起
+  const seeded: ChatState = { ...s, tokens: s.k.stats.sessionTotalTokens, steps: s.k.stats.sessionSteps, cacheTokens: s.k.stats.sessionCacheTokens };
+  return { ...seeded, entries: mapEntries(seeded.k, seeded.runBases) };
 }
 
 /** 事件面单点：内核归约(转录投影)+ 计数器归约会话统计 → 物化视图重映射。
@@ -200,28 +169,22 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
   if (typeof e.payload?.subagent === 'string') return s; // 子代理事件另轨(Agents 标签,G8d):主流零条目零计数
   if (e.type === 'queue') return s; // P5 队列面事件(UseSessionEvents 截收 setQueued):不入转录投影(防御——default 分支会把当边界误闭合开启段)
   const k = applyEvent(s.k, e);
-  let next: ChatState = { ...s, k };
+  // P9 统计面:计数器唯一权威在内核 stats(kern state 随事件归约),此处直投影零记账——
+  // usage/step/done-steps 的本地累计实现退役(与 TUI 同源同一语义)
+  let next: ChatState = { ...s, k, tokens: k.stats.sessionTotalTokens, steps: k.stats.sessionSteps, cacheTokens: k.stats.sessionCacheTokens };
   switch (e.type) {
     case 'model-start': {
       if (s.status === 'idle') {
-        // run-open 基线记账(G14.63「本轮」减数;openRun 即本轮新开 run 条)
+        // run-open 基线记账(G14.63「本轮」减数;openRun 即本轮新开 run 条)——基线取事件前累计
         const bases = k.openRun >= 0 ? { ...s.runBases, [k.openRun]: { steps: s.steps, tokens: s.tokens } } : s.runBases;
-        next = { ...next, status: 'running', turnTokensBase: 0, turnCacheBase: 0, runBases: bases };
+        next = { ...next, status: 'running', runBases: bases };
       } else {
-        next = { ...next, status: 'running' }; // run 内续轮:不重插 run 条、不重置水位(内核同语义)
+        next = { ...next, status: 'running' }; // run 内续轮:不重插 run 条(内核同语义)
       }
       break;
     }
-    case 'done': {
-      // 步数口径(G14.20 统一):done 载荷 steps=reactor 会话累计步数,直接采用;载荷缺面回落原值
-      next = { ...next, status: 'idle', steps: typeof e.payload?.steps === 'number' ? e.payload.steps : s.steps };
-      break;
-    }
-    case 'step':
-      next = { ...next, steps: s.steps + 1 };
-      break;
-    case 'usage':
-      next = onUsage(next, e);
+    case 'done':
+      next = { ...next, status: 'idle' };
       break;
     default:
       break;
@@ -233,8 +196,6 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
     next.steps === s.steps &&
     next.tokens === s.tokens &&
     next.cacheTokens === s.cacheTokens &&
-    next.turnTokensBase === s.turnTokensBase &&
-    next.turnCacheBase === s.turnCacheBase &&
     next.runBases === s.runBases
   ) {
     return s;

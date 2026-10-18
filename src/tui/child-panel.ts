@@ -135,17 +135,10 @@ export function onChildEvent(ctrl: SessionController, e: SessionEvent, label: st
       }
       break;
     case 'usage':
-      // per-run turnTotal 为该子代理 run 的累计值（单一 run），直接采信
+      // per-run turnTotal 为该子代理 run 的累计值（单一 run），直接采信。
+      // P9 收编:会话级 child token 累计唯一权威在内核统计面（per-child 水位,stats 事件同步臂）——
+      // 本分支只剩面板自身的 child.tokens 显示态
       tokens = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : child.tokens;
-      // 子代理 token 两级累计（规格 2026-09-26-stats-enhancement §3.3）：per-run 累计值取对子代理前值的增量并入，
-      // 归档不清零、仅 /new 归零；状态栏 ↑tokens 合并项与任务收尾统计行差值基线的同一数据源
-      {
-        const cm = ctrl.state.metrics;
-        const delta = Math.max(0, tokens - child.tokens);
-        if (delta > 0) {
-          ctrl.state = { ...ctrl.state, metrics: { ...cm, turnChildTokens: cm.turnChildTokens + delta, sessionChildTokens: cm.sessionChildTokens + delta, sessionTotalTokens: cm.sessionTotalTokens + delta } };
-        }
-      }
       break;
     case 'done':
     case 'error': {

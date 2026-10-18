@@ -329,7 +329,7 @@ test('⑫ truncate:保留 seq<=upToSeq 前缀;序号不复用,后续条目续接
 test('⑬ 段级事件面(v2 写者契约):seg-open open 标志/seg-update 回填/段闭合落终态;token 拼接零事件', () => {
   const events: Array<{ t: string; seq?: number; open?: boolean; kind?: string }> = [];
   const k = new SessionKernel({
-    onKernelEvent: (e) => events.push(e.t === 'truncate' ? { t: e.t, seq: e.upToSeq } : e.t === 'steer' ? { t: e.t } : { t: e.t, seq: e.entry.seq, open: 'open' in e ? e.open : undefined, kind: e.entry.kind }),
+    onKernelEvent: (e) => events.push(e.t === 'truncate' ? { t: e.t, seq: e.upToSeq } : e.t === 'steer' ? { t: e.t } : e.t === 'stats' ? { t: e.t } : { t: e.t, seq: e.entry.seq, open: 'open' in e ? e.open : undefined, kind: e.entry.kind }),
   });
   pump(k, ev('user', '问'), ev('token', '答'));
   assert.deepEqual(
@@ -428,4 +428,64 @@ test('⓯c 队列与转录互不扰动:steer 事件不产条目;pump 段面不�
   assert.equal(k.openSeg(), es[1]!.seq, '开启段游标不受扰');
   pump(k, ev('done', '答', { stopReason: 'done' }));
   assert.equal(k.replay().length, 2, '后续 done 仍正常闭合合并');
+});
+
+// ---- P9 统计面:计数器唯一权威(水位差值法/run 轮窗/per-child 水位/ctx 水位/seed 重建) ----
+
+test('P9 统计面：usage 水位差值并入会话累计,轮窗=run(done 后新 model-start 重置 turn 面)', () => {
+  const k = new SessionKernel();
+  pump(k, ev('model-start', undefined, undefined, 1000));
+  assert.equal(k.stats().sessionTurns, 1, '开轮计数');
+  pump(k, ev('usage', undefined, { turnTotal: 100 }, 1100));
+  pump(k, ev('usage', undefined, { turnTotal: 250 }, 1200)); // 同 run 单调累计:增量 150,不重复计
+  let s = k.stats();
+  assert.equal(s.turnTokens, 250, 'turn 窗=run 累计值直读');
+  assert.equal(s.sessionTotalTokens, 250, '会话累计只吃增量');
+  pump(k, ev('done', '答', { steps: 2 }, 1300));
+  pump(k, ev('model-start', undefined, undefined, 2000)); // 新 run:turn 面重置
+  pump(k, ev('usage', undefined, { turnTotal: 50 }, 2100));
+  s = k.stats();
+  assert.equal(s.turnTokens, 50, 'turn 窗随新 run 重置');
+  assert.equal(s.sessionTotalTokens, 300, '会话累计跨 run 持续(250+50)');
+  assert.equal(s.sessionTurns, 2, '两轮');
+  assert.equal(s.turnStartedAt, 2000, '轮窗起点=最近 model-start');
+});
+
+test('P9 统计面：子代理 usage per-child 水位(增量并入 child 两级,零转录条目)', () => {
+  const k = new SessionKernel();
+  pump(k, ev('usage', undefined, { subagent: 'r1', turnTotal: 500 }));
+  pump(k, ev('usage', undefined, { subagent: 'r1', turnTotal: 1200 })); // 同 child 差值 700
+  pump(k, ev('usage', undefined, { subagent: 'r2', turnTotal: 80 })); // 另 child 独立水位
+  const s = k.stats();
+  assert.equal(s.turnChildTokens, 1280, 'child 面=r1 累计 1200 + r2 80');
+  assert.equal(s.sessionChildTokens, 1280, 'session child 同步');
+  assert.equal(k.replay().length, 0, '子代理事件零转录条目(G8d 不变)');
+  assert.deepEqual(s.childWatermarks, { r1: 1200, r2: 80 }, 'per-child 水位记账');
+});
+
+test('P9 统计面：step 计数排除 done 尾帧;ctx 水位 exact 采信/估算只上', () => {
+  const k = new SessionKernel();
+  pump(k, ev('step', '1'), ev('step', '2'), ev('step', 'done'));
+  assert.equal(k.stats().sessionSteps, 2, 'done 收尾帧不计步');
+  pump(k, ev('ctx', undefined, { used: 500, exact: false }));
+  assert.equal(k.stats().ctxUsed, 500, '估算向上预告');
+  pump(k, ev('ctx', undefined, { used: 300, exact: false }));
+  assert.equal(k.stats().ctxUsed, 500, '估算不得回落');
+  pump(k, ev('ctx', undefined, { used: 300, exact: true }));
+  assert.equal(k.stats().ctxUsed, 300, 'exact 真实值直接采信(允许回落)');
+  assert.equal(k.stats().ctxExact, true, 'exact 标志随行');
+});
+
+test('P9 统计面：seed 自 run meta 重建会话累计(G14.18 回放不从零起)', () => {
+  const k = new SessionKernel();
+  k.seed([
+    { ts: 1, kind: 'run', md: '', seq: 1, meta: { steps: 5, tokens: 100, cacheTokens: 40 } },
+    { ts: 2, kind: 'user', md: '> hi', seq: 2 },
+    { ts: 3, kind: 'run', md: '', seq: 3, meta: { steps: 9, tokens: 200, cacheTokens: 60 } },
+  ]);
+  const s = k.stats();
+  assert.equal(s.sessionTotalTokens, 300, 'tokens 逐 run 求和');
+  assert.equal(s.sessionCacheTokens, 100, 'cache 逐 run 求和');
+  assert.equal(s.sessionSteps, 9, 'steps 取末次覆盖值(载荷为累计口径)');
+  assert.equal(s.sessionTurns, 2, 'turns 数 run 条');
 });

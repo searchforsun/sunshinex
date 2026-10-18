@@ -1,5 +1,5 @@
 import type { SessionEvent } from '../types';
-import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState } from './entry';
+import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState, type SessionStats } from './entry';
 
 /** 等待队列条目(P5 内核化,spec §12):seq=位置下标(每次变更整列重排,端点寻址键);
  *  front=插入发送(reactor 步边界 drain 注入当前轮),false 仅排队等轮收束补跑。 */
@@ -16,7 +16,8 @@ export type KernelEvent =
   | { t: 'seg-close'; entry: KernelEntry } // 正文/思考段闭合(终态 md/seconds;done 终稿合并同发)
   | { t: 'seg-update'; entry: KernelEntry } // 工具条回填(name/input/result——重放按 seq upsert)
   | { t: 'truncate'; upToSeq: number } // rewind/compact/reset 视界截断(upToSeq=0 即全清)
-  | { t: 'steer'; items: SteerItem[] }; // 等待队列变更(整列重写快照;持久化整列落一行,广播走全量列表)
+  | { t: 'steer'; items: SteerItem[] } // 等待队列变更(整列重写快照;持久化整列落一行,广播走全量列表)
+  | { t: 'stats'; stats: SessionStats }; // 会话统计变更(P9,全量快照;不落档——seed 自 run meta 重建)
 
 /**
  * SessionKernel:会话转录唯一投影 + 事件泵(spec 2026-10-17-session-kernel §3/§6)。
@@ -26,6 +27,8 @@ export type KernelEvent =
  * 收编进度:P1-P5 落地(daemon 唯一 v2 写者/TUI 持久化+恢复/GUI 投影/steer 队列);
  * P8 全量收编 TUI 静态归档面(tool 成对定格/thinking 折叠/notice/error 条目全由段级事件驱动,
  * 原始事件自建投影退役——TUI 静态区=内核投影的渲染形,见 plans/2026-10-18-session-kernel-p8)。
+ * P9 统计面入核(KernelState.stats):计数器唯一权威,水位差值法;TUI/GUI 只读渲染
+ * (stats 事件全量快照外抛,零落档——seed 自 run meta 重建)。
  */
 export class SessionKernel {
   private state: KernelState = initialKernelState();
@@ -45,10 +48,12 @@ export class SessionKernel {
 
   /** 事件泵单点:apply 后差分前后态发段级事件——新条目 → seg-open;条目引用变且非开启段 →
    *  正文/思考段 seg-close(含 done 终稿合并)、工具条 seg-update;run 条 meta 填充(runmeta 侧行
-   *  面既有)不另发。差分 O(n)(prev seq→条目 Map),条目引用未变的零事件 */
+   *  面既有)不另发。差分 O(n)(prev seq→条目 Map),条目引用未变的零事件。
+   *  统计面(P9):stats 引用变即发全量快照(先于条目差分——计数器事件轻,视图先行合帧) */
   pump(e: SessionEvent): void {
     const prev = this.state;
     this.state = applyEvent(this.state, e);
+    if (prev.stats !== this.state.stats) this.emit({ t: 'stats', stats: this.state.stats });
     if (prev.entries === this.state.entries) return;
     const prevBySeq = new Map(prev.entries.map((x) => [x.seq, x]));
     for (const entry of this.state.entries) {
@@ -82,6 +87,11 @@ export class SessionKernel {
   /** 现有条目数(装载互斥判据与测试面) */
   count(): number {
     return this.state.entries.length;
+  }
+
+  /** 会话统计只读视图(P9):计数器唯一权威——视图层只读渲染,不再各自累计 */
+  stats(): SessionStats {
+    return this.state.stats;
   }
 
   /** 流式派生面(§3.1b):开启中 run / 正文·思考段的 seq(-1 无)——视图光标态由此推导 */

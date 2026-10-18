@@ -79,12 +79,15 @@
 - error 条目:seg-open(error) → pushMsg('system', level='error');原始 error 分支保留通道清理/
   flushPendingCalls/指标事务(与 1.2 同理,error 面消息行归内核事件)。
 
-### 1.4 统计面(独立前置调查,不在本 plan 实施)
+### 1.4 统计面 → P9 已落地(2026-10-18,口径内核化用户裁定)
 
-TUI(usageBase+turnTotal 求和)与 GUI(turnTokensBase 水位差值)对同一 `usage.turnTotal` 载荷
-采用**两种语义假设**(per-round 值 vs run 级单调累计)——至少一方口径有误。统一前需先钉 reactor
-发射语义(每模型轮重置 or run 内累计),再定共享纯件(src/session/session-stats 同 taskboard/model
-先例)。**未钉语义前不做统一**,防把错误口径扩散到两面。
+reactor 发射语义已钉(reactor.ts「usage 为 per-request 全量值:聚合用基线+本请求覆盖」)——
+**turnTotal = run 内单调累计,水位差值法为正确语义**。裁定升级:统计不在视图层共享纯件,
+直接**入内核 KernelState.stats**(applyEvent 归约:usage 水位/step 计数/ctx 水位/model-start
+轮窗/子代理 per-child 水位;seed 自 run meta 重建;变更经 `{t:'stats'}` 全量快照外抛,零落档)。
+TUI metrics 同步臂/usageBase/child-panel 记账、GUI onUsage/step/done-steps 全部退役——
+「上层只渲染」在统计面成立。轮窗语义定版:**turn 窗=run**(旧 TUI 任务窗退役,任务总量由
+任务统计行会话累计差值承载)。
 
 ## 2. 迁移序(每步全量 TUI 回归)
 

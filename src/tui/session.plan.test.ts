@@ -209,7 +209,7 @@ test('会话层：/plan 规划段经主链——探针证明不走 graph 角色�
   }
 });
 
-test('/plan：tokens 与命中率窗口整场累计——步骤间不重置（规划+各步共用一个窗口）', async () => {
+test('/plan：轮窗=run(P9 内核口径)——每步骤各自 turn 窗,会话累计跨步骤持续', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-planusage-'));
   try {
     const replies = [
@@ -235,10 +235,12 @@ test('/plan：tokens 与命中率窗口整场累计——步骤间不重置（�
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
     const m = ctrl.getState().metrics;
-    assert.equal(m.turnPromptTokens, 3000, '三次模型调用（规划+两步）prompt 本轮累计，步骤间不重置');
-    assert.equal(m.turnCacheTokens, 1500, '缓存命中同样本轮累计');
-    assert.equal(m.sessionPromptTokens, 3000, '会话累计分母与本轮同步（单任务会话）');
-    assert.equal(m.sessionCacheTokens, 1500, '会话累计分子与本轮同步（单任务会话）');
+    // P9 统计面口径:turn 窗=run(每步骤 done 后新开轮即重置),会话累计跨步骤持续——
+    // 任务整场总量由任务收尾统计行(会话累计差值基线)承载
+    assert.equal(m.turnPromptTokens, 1000, 'turn 窗=末个 run:最后一步的 prompt 轮窗(前步骤已随 done 收窗)');
+    assert.equal(m.turnCacheTokens, 500, '缓存命中同样末轮窗');
+    assert.equal(m.sessionPromptTokens, 3000, '会话累计跨步骤持续(三次调用求和)');
+    assert.equal(m.sessionCacheTokens, 1500, '会话缓存累计跨步骤持续');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

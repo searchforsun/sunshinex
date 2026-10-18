@@ -49,7 +49,6 @@ import { boardEventFrom } from '../taskboard/translate';
 export {
   pairChildResults,
   formatTaskStatsLine,
-  applyCtxWatermark,
   shouldPumpOnIdleBeat,
   PLAN_TASK_LABEL,
 } from './chat-model';
@@ -66,7 +65,7 @@ export type {
   TuiState,
   SessionOpts,
 } from './chat-model';
-import { PLAN_TASK_LABEL, applyCtxWatermark, formatTaskStatsLine, slashHelp, spawnBaseLabel, shouldPumpOnIdleBeat } from './chat-model';
+import { PLAN_TASK_LABEL, formatTaskStatsLine, slashHelp, spawnBaseLabel, shouldPumpOnIdleBeat } from './chat-model';
 import type { ChatItem, ChatRole, LiveBlock, TodoItem, TuiState } from './chat-model';
 import type { SessionOpts } from './chat-model';
 
@@ -91,8 +90,6 @@ export class SessionController {
     },
     mdWidth: () => this.mdWidth(),
   });
-  /** usage 整场基线：每个模型轮开始前同步为当前累计，事件按「基线 + 本轮 per-run 值」聚合（/plan 步骤间不重置窗口） */
-  private usageBase = { tokens: 0, cache: 0, prompt: 0 };
   /** 会话状态单点（公开 = 拆分件 commands 族、child-panel、approval 经 ctrl 协调读写——公开面新增不改语义；
    *  渲染层维持 getState()/onState 只读消费） */
   state: TuiState = {
@@ -125,6 +122,30 @@ export class SessionController {
     this.archiveKernelEventToView(ev);
   }
 
+  /** 统计同步单点(P9):内核 SessionStats → 视图 StatusMetrics。sessionTotalTokens 保持今日合并
+   *  口径(主链+子代理——内核 main/child 分离,状态栏合并项在本点合成);任务统计行的 main/child
+   *  分离差值在 taskStats 面另算(main 基线 = 合并值 - child)。runs 归账本(refreshMetrics),不经此 */
+  private syncMetricsFromKernel(s: import('../session/entry').SessionStats): void {
+    this.state = {
+      ...this.state,
+      metrics: {
+        ...this.state.metrics,
+        turnStartedAt: s.turnStartedAt,
+        turnTokens: s.turnTokens,
+        turnCacheTokens: s.turnCacheTokens,
+        turnPromptTokens: s.turnPromptTokens,
+        turnChildTokens: s.turnChildTokens,
+        sessionTotalTokens: s.sessionTotalTokens + s.sessionChildTokens,
+        sessionChildTokens: s.sessionChildTokens,
+        sessionCacheTokens: s.sessionCacheTokens,
+        sessionPromptTokens: s.sessionPromptTokens,
+        sessionTurns: s.sessionTurns,
+        sessionSteps: s.sessionSteps,
+        ctxUsed: s.ctxUsed,
+      },
+    };
+  }
+
   /** error 旁路的思考折叠登记位(G14.51 配套):内核遇 error 故意不封开启段(done 必发,收口让位),
    *  渲染面按旧行为就地折叠(foldOpenThinking)并登记条目 seq——随后 done 的 seg-close(thinking)
    *  凭登记跳过,双档案消除 */
@@ -138,6 +159,12 @@ export class SessionController {
    *  done 终稿对账的 pushedSource 基线即被清空→全文二次入档(真机实测);通道基准留给 done,
    *  工具边界冲刷在 seg-open(tool) 臂(先冲刷后挂起,尾块先于工具行落静态区) */
   private archiveKernelEventToView(ev: KernelEvent): void {
+    if (ev.t === 'stats') {
+      // P9 统计同步臂:计数器唯一权威在内核(statusbar 只渲染)
+      this.syncMetricsFromKernel(ev.stats);
+      this.notifyThrottled();
+      return;
+    }
     if (ev.t === 'seg-close') {
       const e = ev.entry;
       if (e.kind === 'thinking') {
@@ -248,6 +275,8 @@ export class SessionController {
     this.kernel.seed(entries);
     this.foldedThinkingSeq = -1;
     this.archivedToolSeqs = new Set();
+    // 统计面装载同步(P9):seed 自 run meta 重建会话累计——resume 后状态栏不从零起(G14.18 口径)
+    this.syncMetricsFromKernel(this.kernel.stats());
   }
 
   // ---- 等待队列面(P5 内核化,spec §12):态在内核,面板/键位/中断路径经此组读写——
@@ -335,9 +364,12 @@ export class SessionController {
   /** 中断抑制位：pushInterruptedNotice 单点置位——中断路径不产出收尾统计行；公开 = 拆分件 approval 置位消费 */
   taskStatsSuppressed = false;
 
-  /** 任务统计基线建立单点：任务流起点调用（同点 turnTokens 已归零，startTokens 即 0 起算主链增量） */
+  /** 任务统计基线建立单点：任务流起点调用。P9:基线取会话累计 main-only 口径
+   *  （sessionTotalTokens 为主链+子代理合并值,减去 child 即主链;turnTokens 现为 run 窗——
+   *  /plan 多步骤跨 run,任务统计必须锚会话累计差值） */
   private beginTaskStats(): void {
-    this.taskStats = { startedAt: Date.now(), startSteps: this.state.metrics.sessionSteps, startTokens: this.state.metrics.turnTokens, startChildTokens: this.state.metrics.sessionChildTokens };
+    const m = this.state.metrics;
+    this.taskStats = { startedAt: Date.now(), startSteps: m.sessionSteps, startTokens: m.sessionTotalTokens - m.sessionChildTokens, startChildTokens: m.sessionChildTokens };
     this.taskStatsSuppressed = false;
   }
 
@@ -532,9 +564,7 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
     };
-    this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.beginTaskStats();
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
@@ -601,12 +631,7 @@ export class SessionController {
     ctx.appendChain([{ action: 'note', observation: 'Plan discipline: each round completes only the last "Current instruction"; do not execute, anticipate, or reorder other tasks.' }]);
     for (let i = 0; i < items.length; i++) {
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
-      this.state = {
-        ...this.state,
-        metrics: { ...this.state.metrics, turnStartedAt: Date.now() },
-      };
-      this.usageBase = { tokens: this.state.metrics.turnTokens, cache: this.state.metrics.turnCacheTokens, prompt: this.state.metrics.turnPromptTokens };
-      this.notify();
+      this.notify(); // 轮窗起点/计数由内核 model-start 统计面承载(P9),此处只剩步骤行通知
       this.setTodos(this.state.todos.map((td) => (td.text === items[i] && td.status === 'pending' ? { ...td, status: 'in_progress' } : td)));
       ctx.appendInstructionLine(`Current instruction: ${items[i]}`);
       try {
@@ -753,7 +778,7 @@ export class SessionController {
     if (this.taskStats && !this.taskStatsSuppressed) {
       const ts = this.taskStats;
       const m = this.state.metrics;
-      const mainTokens = Math.max(0, m.turnTokens - ts.startTokens);
+      const mainTokens = Math.max(0, m.sessionTotalTokens - m.sessionChildTokens - ts.startTokens);
       const childTokens = Math.max(0, m.sessionChildTokens - ts.startChildTokens);
       this.pushMsg('system', formatTaskStatsLine(Math.round((Date.now() - ts.startedAt) / 1000), m.sessionSteps - ts.startSteps, mainTokens + childTokens, childTokens));
     }
@@ -799,10 +824,8 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
       live: undefined,
     };
-    this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.beginTaskStats();
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
@@ -853,10 +876,8 @@ export class SessionController {
     this.state = {
       ...this.state,
       status: 'running',
-      metrics: { ...this.state.metrics, turnStartedAt: Date.now(), turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0, sessionTurns: this.state.metrics.sessionTurns + 1 },
       live: undefined,
     };
-    this.usageBase = { tokens: 0, cache: 0, prompt: 0 };
     this.beginTaskStats();
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
@@ -1334,20 +1355,13 @@ export class SessionController {
       case 'reasoning':
         this.appendLive('thinking', e.text ?? '');
         return;
-      case 'ctx': {
-        // reactor 旁路水位：exact=true 为端点真实 usage.prompt_tokens（直接采信，允许回落）；
-        // exact=false 为装配面估算（只向上预告）。死代码分支「promptTokens 优先」自此真正接通
-        const m = this.state.metrics;
-        const incoming = typeof e.payload?.used === 'number' ? e.payload.used : 0;
-        const used = applyCtxWatermark(m.ctxUsed, incoming, e.payload?.exact === true);
-        if (used === m.ctxUsed) return;
-        this.state = { ...this.state, metrics: { ...m, ctxUsed: used } };
-        this.notify();
+      case 'ctx':
+        // P9 收编:ctx 水位唯一权威在内核统计面(stats 事件同步臂)——原始分支退役
         return;
-      }
       case 'usage': {
         if (typeof e.payload?.turnTotal !== 'number') return; // 无数值载荷不更新
         // 轮首 miss 提示（观测小件）：本轮首个 usage 事件且 cache=0 且 prompt≥50k → 提示一次（只提示不归因展开）
+        // P9:计数累计已收编内核统计面,本分支只剩显示面裁定
         if (!this.turnMissHinted) {
           this.turnMissHinted = true;
           const firstCache = typeof e.payload?.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : 0;
@@ -1356,26 +1370,6 @@ export class SessionController {
             this.pushMsg('system', t('Round-first prompt cache miss (0 cached): the endpoint cache may have expired (TTL); correctness is not affected', '轮首缓存未命中（cached=0）：端点缓存可能已过期（TTL），不影响正确性'), { level: 'warn' });
           }
         }
-        // per-run 值叠加任务级基线：/plan 逐步执行本轮持续累计（步骤切换不重置）
-        const turnTokensTotal = this.usageBase.tokens + e.payload.turnTotal;
-        const c = this.usageBase.cache + (typeof e.payload.cacheHitTotal === 'number' ? e.payload.cacheHitTotal : 0);
-        const p = this.usageBase.prompt + (typeof e.payload.promptTotal === 'number' ? e.payload.promptTotal : 0);
-        const m = this.state.metrics;
-        if (turnTokensTotal === m.turnTokens && c === m.turnCacheTokens && p === m.turnPromptTokens) return; // 数值未变的重复 usage 不触发重渲染
-        // 会话累计按本轮增量并入（Σcached/Σprompt：跨任务不清零、/new 归零）——轮首 miss 只稀释会话均值，不再把状态栏砸成 0%
-        this.state = {
-          ...this.state,
-          metrics: {
-            ...m,
-            turnTokens: turnTokensTotal,
-            turnCacheTokens: c,
-            turnPromptTokens: p,
-            sessionCacheTokens: m.sessionCacheTokens + Math.max(0, c - m.turnCacheTokens),
-            sessionPromptTokens: m.sessionPromptTokens + Math.max(0, p - m.turnPromptTokens),
-            sessionTotalTokens: m.sessionTotalTokens + Math.max(0, turnTokensTotal - m.turnTokens),
-          },
-        };
-        this.notify();
         return;
       }
       case 'tool-call':
@@ -1384,15 +1378,10 @@ export class SessionController {
         // (archiveToolOpen/archiveToolEntry);边界旁白封口在 seg-close(assistant) 臂(sealLiveReply)。
         // 落此仅当事件不经 pump(测试直呼面不存在)——防御性空分支
         return;
-      case 'step': {
-        // 步数计账：模型动作步（done 收尾帧不计、子代理事件已分流不达此处），会话累计、/new 归零（状态栏 turns/steps 段数据源）
-        // phase 叙述通道已退役（2026-09-30 用户裁决，单一权威源）：叙述只走 token→正文一条通道
-        //（流式 delta / 非流式单帧补发，reactor 发射点保证），本事件只承载步号计账不上屏
-        if (e.text !== 'done') {
-          this.state = { ...this.state, metrics: { ...this.state.metrics, sessionSteps: this.state.metrics.sessionSteps + 1 } };
-        }
+      case 'step':
+        // P9 收编:步数计账唯一权威在内核统计面(stats 事件同步臂)——原始分支退役。
+        // phase 叙述通道已退役（2026-09-30 用户裁决）：叙述只走 token→正文一条通道
         return;
-      }
       case 'done': {
         const draft = this.state.live?.kind === 'reply' ? this.state.live.text : '';
         const source = this.md.pushedSource; // 已推源在冲刷前取样（seal 随通道归零）
