@@ -75,6 +75,23 @@ tool 行 status='done' 且 result={text:'(interrupted)', ok:false}(与悬空 run
 | running | spinner +「正在…」 | 既有 RUNNING_LABELS/Spinner 复用,数据源改 status |
 | done | 折叠收口;✓/✗ 按 ok | 既有折叠分型复用 |
 
+## 8. 子代理同构(spawn 即普通工具,用户裁定)
+
+**spawn 条目=普通 tool 条目,零特判**——同一字段形态(name/input/result)、同一三态;同步
+spawn(前台子代理)只是 running 时长长(工具结果=子代理结论行,结果到达即 done)。子代理
+渲染与思考/工具/正文行**完全同构**:
+
+1. **条目模型零异构**:内核本就按普通 tool 装配 spawn(无 spawn 分支),delegation-*/子代理
+   事件流另轨零转录条目(G14.213 既有)——本设计固化此裁定:任何「子代理是特殊条目」的
+   形态都不进内核;
+2. **子代理自身转录同模型**:子事件流(payload.subagent 另轨)是同一条目模型+同一三态的
+   一次实例化——子代理的思考/工具/正文行与前/中/后,和主链行完全同构;
+3. **渲染层投影自由**:ChildPanel/Agents 卡/委派面板/SPAWN 展开转录,都是渲染层对另轨
+   事件流与档的自选投影视图——存在与否、长什么样,条目模型不感知;
+4. **渲染职责**:running 态=「分派子代理 xxx」长 spinner(委派面板可选叠加);done 折叠行
+   =结论行(result.text);展开体=子代理转录全文(渲染层经其投影或档取数,非条目字段)——
+   长输出走 result.full 既有观测通道。
+
 ## 3. 各层改动
 
 ### 3.1 内核(src/session/entry.ts)
