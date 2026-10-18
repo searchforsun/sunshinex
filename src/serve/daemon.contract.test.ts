@@ -159,14 +159,14 @@ test('① 全链跨会话：s1 轮 run 事件流至 done → 新建 s2 二轮续
         return ((await r.json()) as { messages: Array<{ md: string }> }).messages.map((m) => m.md).join('\n');
       };
       const m1 = await snapOf(ctx.sid);
-      assert.ok(m1.includes('> 第一轮 goal') && m1.includes('one'), 's1 快照含第一轮全转录');
+      assert.ok(m1.includes('第一轮 goal') && m1.includes('one'), 's1 快照含第一轮全转录(user 裸文,P11)');
       assert.ok(!m1.includes('第二轮'), 's1 快照不含 s2 轮事件（互不串流）');
       const m2 = await snapOf(s2);
-      assert.ok(m2.includes('> 第二轮 goal') && m2.includes('two'), 's2 快照含第二轮全转录');
+      assert.ok(m2.includes('第二轮 goal') && m2.includes('two'), 's2 快照含第二轮全转录');
       assert.ok(!m2.includes('第一轮'), 's2 快照不含 s1 轮事件');
       // 裸 /snapshot = 激活会话（s2）
       const bareSnap = (await (await fetch(`${ctx.http}/snapshot`, { headers: { authorization: 'Bearer test-token' } })).json()) as { messages: Array<{ md: string }> };
-      assert.ok(bareSnap.messages.map((m) => m.md).join('\n').includes('> 第二轮 goal'), '裸 snapshot 回激活会话（s2）');
+      assert.ok(bareSnap.messages.map((m) => m.md).join('\n').includes('第二轮 goal'), '裸 snapshot 回激活会话（s2）');
     } finally {
       ws.close();
     }
@@ -229,7 +229,7 @@ test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场
     const r = await fetch(`${ctx.http}/session/${ctx.sid}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
     assert.equal(r.status, 200);
     const snap = (await r.json()) as {
-      messages: Array<{ seq: number; ts: number; kind: string; md: string }>;
+      messages: Array<{ seq: number; ts: number; kind: string; md: string; name?: string; result?: { text: string; ok: boolean; full?: string } }>;
       board: { tasks: Record<string, { id: string; title: string }>; seq: number };
       delegations: unknown[];
       status: string;
@@ -240,10 +240,11 @@ test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场
     assert.ok(kinds.includes('assistant'), 'messages 含 assistant 条');
     assert.ok(kinds.includes('tool'), 'messages 含 tool 条');
     const user = snap.messages.find((m) => m.kind === 'user');
-    assert.equal(user?.md, '> 建个任务', 'user 条为 `> <goal>` 形');
+    assert.equal(user?.md, '建个任务', 'user 条为裸文(渲染中立,P11)');
     const tool = snap.messages.find((m) => m.kind === 'tool');
-    assert.ok(tool!.md.startsWith('● create_task {'), 'tool 条 verb 行为 create_task(头部嵌 input JSON)');
-    assert.ok(tool!.md.includes('task t1 created'), 'tool 条含 result 首行摘要');
+    assert.equal(tool!.md, '', 'tool 条 md 恒空(字段单源,P11 渲染中立)');
+    assert.equal(tool!.name, 'create_task', 'tool 条 name 字段为 create_task');
+    assert.ok(tool!.result?.ok === true && tool!.result.text.startsWith('task t1 created'), 'tool 条 result 字段含回执(字段权威)');
     // 影子投影：pump 喂入的 task-created 经同源 boardEventFrom/applyBoardEvent 落位
     assert.notEqual(snap.board.tasks.t1, undefined, 'board 影子含 create_task 建出的 t1');
     assert.equal(snap.board.tasks.t1!.title, 'A');

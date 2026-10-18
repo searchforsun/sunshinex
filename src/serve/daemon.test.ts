@@ -249,10 +249,10 @@ test('⑤ 双会话事件流互不串流：各 root 独立装配，转录/快照
     const snap2 = await snapOf(s2);
     const mds1 = snap1.messages.map((m) => m.md).join('\n');
     const mds2 = snap2.messages.map((m) => m.md).join('\n');
-    assert.ok(mds1.includes('> 问 A') && mds1.includes('alpha'), 's1 转录含自身提交与终答');
-    assert.ok(!mds1.includes('beta') && !mds1.includes('> 问 B'), 's1 不串入 s2 的事件流');
-    assert.ok(mds2.includes('> 问 B') && mds2.includes('beta'), 's2 转录含自身提交与终答');
-    assert.ok(!mds2.includes('alpha') && !mds2.includes('> 问 A'), 's2 不串入 s1 的事件流');
+    assert.ok(mds1.includes('问 A') && mds1.includes('alpha'), 's1 转录含自身提交与终答(user 裸文,P11)');
+    assert.ok(!mds1.includes('beta') && !mds1.includes('问 B'), 's1 不串入 s2 的事件流');
+    assert.ok(mds2.includes('问 B') && mds2.includes('beta'), 's2 转录含自身提交与终答');
+    assert.ok(!mds2.includes('alpha') && !mds2.includes('问 A'), 's2 不串入 s1 的事件流');
   });
 });
 
@@ -285,12 +285,12 @@ test('⑥ 裸端点激活别名：无 active 409 {no active session}；创建后
       const r = await fetch(`${base}/session/${sid}/snapshot`, { headers: AUTH });
       return ((await r.json()) as { messages: Array<{ md: string }> }).messages.map((m) => m.md).join('\n');
     };
-    assert.ok((await snapOf(s1)).includes('> 裸提交一'), 's1 收到激活期内的裸提交一');
+    assert.ok((await snapOf(s1)).includes('裸提交一'), 's1 收到激活期内的裸提交一(user 裸文,P11)');
     assert.ok(!(await snapOf(s1)).includes('裸提交二'), '激活前移后裸提交不入 s1');
-    assert.ok((await snapOf(s2)).includes('> 裸提交二'), '裸提交二入激活会话 s2');
+    assert.ok((await snapOf(s2)).includes('裸提交二'), '裸提交二入激活会话 s2');
     // 裸 /snapshot = 激活会话（s2）快照
     const bareSnap = (await (await fetch(`${base}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ md: string }> };
-    assert.ok(bareSnap.messages.map((m) => m.md).join('\n').includes('> 裸提交二'), '裸 snapshot 回激活会话的转录');
+    assert.ok(bareSnap.messages.map((m) => m.md).join('\n').includes('裸提交二'), '裸 snapshot 回激活会话的转录');
   });
 });
 
@@ -1964,25 +1964,25 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
 });
 
 
-/** P2 v2 装载(session-kernel spec §4b):seg 面重放入核——daemon 重启/会话重开后转录不空窗;
- *  v1 旧档拒载(no-compat,dev 清理走 scripts/purge-legacy-sessions.mjs) */
-test('attach v2 装载:seg/seg-update 重放入核 + v1 旧档拒载', async () => {
+/** P11-T2 v3 装载(session-kernel spec §4b):seg 面重放入核——daemon 重启/会话重开后转录不空窗;
+ *  v1/v2 旧档拒载(no-compat,dev 清理走 scripts/purge-legacy-sessions.mjs) */
+test('attach v3 装载:seg/seg-update 重放入核 + v1/v2 旧档拒载', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
     const sid = await ctx.newSession();
     const sessionsDir = path.join(ctx.tmp, 'data', 'sessions');
     fs.mkdirSync(sessionsDir, { recursive: true });
     const rows = [
-      { t: 'header', v: 2, id: 'att-j', createdAt: '2026-10-17T00:00:00.000Z' },
+      { t: 'header', v: 3, id: 'att-j', createdAt: '2026-10-17T00:00:00.000Z' },
       { t: 'chain', steps: [{ action: 'task', step: 1, observation: '上一轮目标' }] },
-      { t: 'seg', kind: 'user', md: '> 上一轮目标', ts: 100, seq: 1 },
-      { t: 'seg', kind: 'tool', md: '● read\n⎿ …', ts: 200, seq: 2, callId: 'c1', name: 'read', input: { path: 'a.ts' } },
+      { t: 'seg', kind: 'user', md: '上一轮目标', ts: 100, seq: 1 },
+      { t: 'seg', kind: 'tool', md: '', ts: 200, seq: 2, callId: 'c1', name: 'read', input: { path: 'a.ts' } },
       { t: 'seg-update', seq: 2, ts: 300, result: { text: 'body', ok: true } },
       { t: 'seg', kind: 'assistant', md: '终答', ts: 400, seq: 3 },
       { t: 'runmeta', seconds: 9, steps: 2, runSteps: 1, tokens: 777, endedTs: 500 },
     ];
     fs.writeFileSync(path.join(sessionsDir, 'att-j.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
     const r = ctx.daemon.attach(sid, 'att-j');
-    assert.ok(r.ok, 'attach v2 受理');
+    assert.ok(r.ok, 'attach v3 受理');
     const session = ctx.daemon.get(sid)!;
     const es = session.sessionKernel.replay();
     assert.deepEqual(
@@ -1990,12 +1990,29 @@ test('attach v2 装载:seg/seg-update 重放入核 + v1 旧档拒载', async () 
       ['user', 'tool', 'assistant'],
       'seg 面重放入核(转录不空窗)',
     );
-    assert.equal(es[1]!.md, '● read {"path":"a.ts"}\n⎿ body', 'seg-update 回填往返(md 重算,头部嵌 input JSON)');
+    assert.equal(es[1]!.md, '', 'seg-update 回填(md 恒空,字段回填)');
     assert.equal(es[1]!.input !== undefined ? (es[1]!.input as { path?: string }).path : undefined, 'a.ts', 'input 全量随档');
     // v1 旧档拒载(no-compat)
     const sid2 = await ctx.newSession();
     fs.writeFileSync(path.join(sessionsDir, 'v1-j.jsonl'), JSON.stringify({ t: 'header', v: 1, id: 'v1-j', createdAt: 'x' }) + '\n');
     const r2 = ctx.daemon.attach(sid2, 'v1-j');
     assert.equal(r2.ok, false, 'v1 旧档 INVALID_ARG');
+  });
+});
+
+/** P11-T2 版本守卫收紧(零兼容):全仓仅认 v:3——v2 旧档一并拒载,清理走 scripts/purge-legacy-sessions.mjs */
+test('attach 版本守卫:v2 档拒载(INVALID_ARG,message 含 v3 与 purge 指引)', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const sid = await ctx.newSession();
+    const sessionsDir = path.join(ctx.tmp, 'data', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(path.join(sessionsDir, 'v2-j.jsonl'), JSON.stringify({ t: 'header', v: 2, id: 'v2-j', createdAt: 'x' }) + '\n');
+    const r = ctx.daemon.attach(sid, 'v2-j');
+    assert.equal(r.ok, false, 'v2 旧档 INVALID_ARG(零兼容)');
+    if (!r.ok) {
+      assert.equal(r.error.code, 'INVALID_ARG');
+      assert.ok(r.error.message.includes('v3'), 'message 指明 v3 required');
+      assert.ok(r.error.message.includes('purge-legacy-sessions.mjs'), 'message 含 purge 指引');
+    }
   });
 });

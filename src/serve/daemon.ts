@@ -11,7 +11,7 @@ import type { Result } from '../result';
 import { SessionRuntime } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { SessionJournal, parseJournalFile, reduceJournal, sessionsDir } from "../tui/session-journal";
-import { reduceSteerRows, reduceV2Rows } from '../session/v2log';
+import { reduceSteerRows, reduceSegRows } from '../session/seglog';
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
@@ -231,9 +231,9 @@ export class GuiDaemon {
 
   /**
    * attach 恢复（spec §4b v2 装载序,P2）：会话 root 的 dataDir 下定位 `<journalId>.jsonl`（未知 id
-   * INVALID_ARG）→ parseJournalFile → 版本守卫（v2 段级词汇;v1 旧档拒载,dev 用 purge 脚本清理）→
+   * INVALID_ARG）→ parseJournalFile → 版本守卫（v3 段级词汇;v1/v2 旧档拒载,dev 用 purge 脚本清理）→
    * 装载双读面:reduceJournal(chain/compact → restoreSession 上下文;model/todos/view 参数面不动) +
-   * reduceV2Rows(seg/seg-update/run-open/runmeta/truncate → kernel.seed 转录投影,seq 原样沿用)→
+   * reduceSegRows(seg/seg-update/run-open/runmeta/truncate → kernel.seed 转录投影,seq 原样沿用)→
    * SessionJournal attach 续挂 + SessionRuntime.attachJournal 挂订阅（后续 run 的 chain 行与段级行
    * 续落同档,teardown seal）→ 置激活。双挂/运行中挂 INVALID_STATE（播种会击穿在飞 run 的链）。
    */
@@ -247,10 +247,10 @@ export class GuiDaemon {
     if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
     const replayEvents = parseJournalFile(file).events;
     const replay = reduceJournal(replayEvents);
-    if (replay.version !== 2) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v2 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
+    if (replay.version !== 3) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v3 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
     session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
     // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
-    session.kernelSeed(reduceV2Rows(replayEvents));
+    session.kernelSeed(reduceSegRows(replayEvents));
     // 等待队列装载(P5 spec §12):末条 steer 行整列回种(无行=空队列)
     session.steerSeed(reduceSteerRows(replayEvents));
     const journal = new SessionJournal(dataDir);

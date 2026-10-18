@@ -135,7 +135,7 @@ test('② 实跑平移面：submit 受理→running→done→idle；转录三类
     assert.ok(kinds.includes('tool'), '转录含 tool 条');
     assert.ok(kinds.includes('assistant'), '转录含 assistant 条');
     const user = ctx.session.sessionKernel.replay().find((m) => m.kind === 'user');
-    assert.equal(user?.md, '> 建个任务', 'user 条为 `> <goal>` 形');
+    assert.equal(user?.md, '建个任务', 'user 条为裸文(渲染中立,P11)');
     // 影子：实跑事件流泵入投影
     assert.equal(ctx.session.shadowBoard.tasks.t1?.title, 'A', '实跑后影子 board 含 t1');
     assert.ok(Array.isArray(ctx.session.shadowDelegations), 'delegations 影子恒数组');

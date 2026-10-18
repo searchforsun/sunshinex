@@ -29,7 +29,7 @@ import * as path from 'path';
 import { SessionJournal, newSessionId, readSessionMeta, writeSessionMeta } from './session-journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
 import { isQuietNotice, type KernelEntry } from '../session/entry';
-import { kernelEventRows } from '../session/v2log';
+import { kernelEventRows } from '../session/seglog';
 import { resolveDataDir } from '../config/data-dir';
 import { SLASH_COMMANDS } from './slash-commands';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
@@ -264,7 +264,7 @@ export class SessionController {
   private persistKernelEvent(ev: import('../session/kernel').KernelEvent): void {
     const j = this.ensureJournal();
     try {
-      if (j.currentId === undefined) j.start(2);
+      if (j.currentId === undefined) j.start(3);
       for (const row of kernelEventRows(ev)) j.log(row);
     } catch {
       // 尽力落档:写失败不影响运行面
@@ -462,9 +462,9 @@ export class SessionController {
   async submit(input: string): Promise<void> {
     const text = input.trim();
     if (!text) return;
-    // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于回显入志；v2 建档(P3 段级词汇)
+    // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于回显入志；v3 建档(P11-T2 零兼容)
     const j = this.ensureJournal();
-    j.start(2);
+    j.start(3);
     j.log({ t: 'user', text });
     // 用户输入回显上屏（含斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
     this.pushMsg('user', text);

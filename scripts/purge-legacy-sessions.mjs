@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * 旧会话档清理(session-kernel spec §5 无兼容策略;P2 起 attach 只认 v2):
- * 扫描指定目录(缺省常见 dataDir 位点)下 sessions/*.jsonl——首行 header v≠2 的 v1 旧档与
+ * 旧会话档清理(session-kernel spec §5 无兼容策略;P11-T2 起 attach 只认 v3):
+ * 扫描指定目录(缺省常见 dataDir 位点)下 sessions/*.jsonl——首行 header v≠3 的 v1/v2 旧档与
  * `<id>.transcript.jsonl`(G14.213b 第二档残迹)列为 legacy;--delete 才删,缺省 dry-run 列表。
  * 用法:node scripts/purge-legacy-sessions.mjs [dir ...] [--delete]
  * 常见位点:~/.sunshinex/sessions、各工作区 .sunshinex/sessions。
@@ -46,12 +46,12 @@ for (const dir of dirs) {
       continue;
     }
     const v = headerVersion(file);
-    if (v !== 2) targets.push({ file, why: `v1 旧档(header v=${v})` });
+    if (v !== 3) targets.push({ file, why: `旧档(header v=${v})` });
   }
 }
 
 if (targets.length === 0) {
-  console.log('purge: 无旧档(全 v2 或空)');
+  console.log('purge: 无旧档(全 v3 或空)');
   process.exit(0);
 }
 for (const { file, why } of targets) console.log(`${del ? 'DEL' : 'LEGACY'}  ${file}  (${why})`);

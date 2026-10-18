@@ -196,20 +196,20 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
       const root = path.join(tmp, 'root-att');
       fs.mkdirSync(root, { recursive: true });
       fs.writeFileSync(path.join(root, 'a.txt'), 'old', 'utf8');
-      // 手工 v2 journal：header + user + chain + seg 面（user/tool/assistant）+ msg 两行（v1 残留形态——装载忽略）
+      // 手工 v3 journal：header + user + chain + seg 面（user 裸文,写面单形态）+ msg 两行（v1 残留形态——装载忽略）
       const { id: jid, file } = makeJournal(
         root,
         [
           { t: 'user', text: '先前的任务' },
           { t: 'chain', steps: [{ step: 1, action: 'task', observation: '先前的任务' }] },
-          { t: 'seg', kind: 'user', md: '> 先前的任务', ts: 10, seq: 1 },
+          { t: 'seg', kind: 'user', md: '先前的任务', ts: 10, seq: 1 },
           { t: 'seg', kind: 'assistant', md: '先前的答复', ts: 20, seq: 2 },
           { t: 'msg', item: { role: 'user', text: '先前的任务', ts: 1, seq: 1 } },
           { t: 'msg', item: { role: 'assistant', text: '先前的答复', ts: 2, seq: 2 } },
           { t: 'steer', items: [{ seq: 0, text: '旧队列条目', front: false }] },
           { t: 'steer', items: [{ seq: 0, text: '装载条一', front: false }, { seq: 1, text: '装载条二', front: true }] },
         ],
-        2,
+        3,
       );
       const linesBefore = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.length > 0).length;
 
@@ -230,10 +230,10 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
       const again = await fetch(`${base}/session/${sid}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
       assert.equal(again.status, 409, '同会话二次 attach → 409');
 
-      // 转录装载：snapshot 的 messages = seg 面重放（user `> ` 引用块 + assistant 原文；msg 行不入转录面）
+      // 转录装载：snapshot 的 messages = seg 面重放（user 裸文直读 + assistant 原文；msg 行不入转录面）
       const snap = (await (await fetch(`${base}/session/${sid}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
       const mds = snap.messages.map((m) => m.md);
-      assert.ok(mds.includes('> 先前的任务'), 'user 装载条（seg 行,引用块形态）');
+      assert.ok(mds.includes('先前的任务'), 'user 装载条（seg 行,裸文直读）');
       assert.ok(mds.includes('先前的答复'), 'assistant 装载条（seg 行）');
       // 链播种：主链含既有 task 行
       const chainObs = daemon.get(sid)!.runtime.harness.context.chainView().map((s) => s.observation);
@@ -259,9 +259,9 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
       assert.ok(newSteps.some((s) => s.observation.includes('write')), 'write 调用行在档');
       assert.ok(newSteps.some((s) => s.action === 'reply' && s.observation === '第二轮完成'), 'reply 行在档');
       assert.equal(events.filter((e) => e.t === 'msg').length, 2, 'daemon 侧只落 chain+seg——msg 行不续写');
-      // v2 段面续落：本轮 seg 行在档（user 回显 + run-open + 终答闭合段）
+      // v3 段面续落：本轮 seg 行在档（user 裸文回显 + run-open + 终答闭合段）
       const segs = events.flatMap((e) => (e.t === 'seg' ? [e] : []));
-      assert.ok(segs.some((s) => s.kind === 'user' && s.md === '> 再跑一轮'), 'user 段行续落');
+      assert.ok(segs.some((s) => s.kind === 'user' && s.md === '再跑一轮'), 'user 段行续落');
       assert.ok(segs.some((s) => s.kind === 'assistant' && s.md === '第二轮完成'), '终答闭合段行续落');
       assert.ok(events.some((e) => e.t === 'run-open'), 'run-open 行在档');
 
@@ -276,7 +276,7 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
   );
 });
 
-test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文件）→ submit 一轮 sessions/ 出新档（chain 行、零 msg）；/sessions?root= 列出；第二会话不同 id；attach 重开 → 转录 chain 派生（user `> <goal>` + assistant reply）', { timeout: 30_000 }, async () => {
+test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文件）→ submit 一轮 sessions/ 出新档（chain 行、零 msg）；/sessions?root= 列出；第二会话不同 id；attach 重开 → 转录 seg 面重放（user 裸文 + assistant reply）', { timeout: 30_000 }, async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"首轮完成"}']), async (ctx) => {
     const { base, tmp, daemon } = ctx;
     const root = path.join(tmp, 'root-birth');
@@ -297,7 +297,7 @@ test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文�
     assert.ok(fs.existsSync(file), 'sessions/ 出现新档 jsonl');
     const events = parseJournalFile(file).events;
     assert.equal(events[0]?.t, 'header', '档首 header');
-    assert.equal((events[0] as { v?: number }).v, 2, 'daemon 出生档 header v=2（段级词汇）');
+    assert.equal((events[0] as { v?: number }).v, 3, 'daemon 出生档 header v=3（段级词汇,P11-T2 零兼容）');
     const chainSteps = events.flatMap((e) => (e.t === 'chain' ? e.steps : []));
     assert.ok(chainSteps.some((s) => s.action === 'task' && s.observation === '跑一轮'), 'task 行在档（observation=goal）');
     assert.ok(chainSteps.some((s) => s.action === 'reply' && s.observation === '首轮完成'), 'reply 行在档');
@@ -311,23 +311,23 @@ test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文�
     const s2 = await ctx.newSession(root);
     assert.notEqual(s2, s1, '第二会话 id 不同');
 
-    // attach 重开：s2 挂 s1 的档 → 转录 seg 面重放（v2 装载——首轮的 user/run-open/终答段行在档）
+    // attach 重开：s2 挂 s1 的档 → 转录 seg 面重放（v3 装载——首轮的 user/run-open/终答段行在档）
     const att = await fetch(`${base}/session/${s2}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
     assert.equal(att.status, 200, 'attach 重开 200（s2 出生 journal 惰性未建档——守卫不拦）');
     const snap = (await (await fetch(`${base}/session/${s2}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
     const mds = snap.messages.map((m) => m.md);
-    assert.ok(mds.includes('> 跑一轮'), 'seg 重放 user 条（`> <goal>` 引用块）');
+    assert.ok(mds.includes('跑一轮'), 'seg 重放 user 条（裸文直读）');
     assert.ok(mds.includes('首轮完成'), 'seg 重放 assistant 条（终答闭合段）');
     assert.ok(snap.messages.some((m) => m.kind === 'run'), 'run 条在档（run-open 行重放;runmeta 对位）');
   });
 });
 
-test('⑥ attach v2 装载面分离：msg 行不入转录（v1 遗留形态忽略）；转录只认 seg 面', async () => {
+test('⑥ attach v3 装载面分离：msg 行不入转录（v1 遗留形态忽略）；转录只认 seg 面', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
     const { base, tmp } = ctx;
     const root = path.join(tmp, 'root-dedup');
     fs.mkdirSync(root, { recursive: true });
-    // v2 档：msg 行（TUI 遗留形态）+ chain 行 + seg 面——装载只认 seg 面,msg/chain 不产转录条
+    // v3 档：msg 行（TUI 遗留形态）+ chain 行 + seg 面——装载只认 seg 面,msg/chain 不产转录条
     const { id: jid } = makeJournal(
       root,
       [
@@ -337,16 +337,16 @@ test('⑥ attach v2 装载面分离：msg 行不入转录（v1 遗留形态忽�
         ] },
         { t: 'msg', item: { role: 'user', text: '旧任务', ts: 1, seq: 1 } },
         { t: 'msg', item: { role: 'assistant', text: '旧答复', ts: 2, seq: 2 } },
-        { t: 'seg', kind: 'user', md: '> seg 任务', ts: 10, seq: 1 },
+        { t: 'seg', kind: 'user', md: 'seg 任务', ts: 10, seq: 1 },
       ],
-      2,
+      3,
     );
     const sid = await ctx.newSession(root);
     const att = await fetch(`${base}/session/${sid}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
     assert.equal(att.status, 200);
     const snap = (await (await fetch(`${base}/session/${sid}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
     assert.equal(snap.messages.length, 1, '转录恰 seg 面条数（msg 行零派生、chain 行零派生）');
-    assert.equal(snap.messages[0].md, '> seg 任务', 'seg 面条目在场');
+    assert.equal(snap.messages[0].md, 'seg 任务', 'seg 面条目在场(裸文直读)');
     assert.ok(!snap.messages.some((m) => m.md === '旧答复'), 'msg 行不入转录');
     assert.ok(!snap.messages.some((m) => m.md === '链内答复（不应派生）'), 'chain 行不入转录');
   });

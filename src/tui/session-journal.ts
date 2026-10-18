@@ -50,10 +50,11 @@ export type JournalEvent =
   /** G14.15 run 收尾元数据(GUI Worked 行/统计回放):daemon run 结束时落——秒数/步数/tokens/结束时刻。
    *  G14.100 changes=本轮 git 变动增量(路径/状态/±行数)——GUI 轮尾汇总条(展开逐文件/撤销) */
   | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number; stopped?: boolean; changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }> }
-  // ===== v2 段级行(session-kernel spec §3.2,daemon 会话 v:2 档专用;reduceJournal 忽略——TUI 重放不受扰) =====
-  /** 转录段行:即终态条目(user/notice/error/tool)与闭合段(assistant/thinking,seconds=思考秒);seq=live 序号原样随档(truncate 对位依赖) */
+  // ===== v3 段级行(session-kernel spec §3.2,journal v3 档专用;reduceJournal 忽略——TUI 重放不受扰) =====
+  /** 转录段行:即终态条目(user/notice/error/tool)与闭合段(assistant/thinking,seconds=思考秒);seq=live 序号原样随档(truncate 对位依赖)。
+   *  v3 写面单形态(P11-T2 渲染中立):user md=裸文、tool md 恒 ''(字段单源,读侧零归一) */
   | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number }
-  /** 工具条回填行(重放按 seq upsert:name/input/result 缺面回填,result 回填后 md 重算) */
+  /** 工具条回填行(重放按 seq upsert:name/input/result 缺面回填——纯字段回填,无 md 重算) */
   | { t: 'seg-update'; seq: number; ts: number; name?: string; input?: Record<string, unknown>; result?: { text: string; ok: boolean } }
   /** run 条开启行(md='' 条目;收尾统计由 runmeta 行对位,悬空 run-open 重放标 stopped) */
   | { t: 'run-open'; ts: number; seq: number }
@@ -414,14 +415,14 @@ export class SessionJournal {
   }
 
   /** 建档（首个持久化事件触发）：生成 id，header 立即写盘。version=档 schema 版本（v1=TUI 词汇;
-   *  v2=+段级行,session-kernel spec §3.2——daemon 会话传 2,TUI 面缺省 1 不受扰） */
-  start(version = 1): void {
+   *  v2=+段级行;v3=渲染中立单形态,P11-T2 零兼容——全仓仅认 v:3,缺省 3） */
+  start(version = 3): void {
     if (this.id) return;
     this.startId(newSessionId(), version);
   }
 
-  /** 轮转（/new）：换新 id，新 header 立即写盘（旧档已在盘零改动）；v2=段级词汇(P3 起 TUI 档 v2) */
-  rotate(id: string, version = 2): void {
+  /** 轮转（/new）：换新 id，新 header 立即写盘（旧档已在盘零改动）；v3=段级词汇单形态（P11-T2 起 TUI 档 v3） */
+  rotate(id: string, version = 3): void {
     this.startId(id, version);
   }
 
@@ -442,7 +443,7 @@ export class SessionJournal {
     this.log({ t: 'snapshots', files });
   }
 
-  private startId(id: string, version = 1): void {
+  private startId(id: string, version = 3): void {
     this.id = id;
     fs.mkdirSync(this.dir, { recursive: true });
     const header: JournalHeader = { t: 'header', v: version, id, createdAt: new Date().toISOString() };

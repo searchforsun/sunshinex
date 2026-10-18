@@ -136,15 +136,15 @@ test('斜杠会话即时建档（事件级）：/help 落 header+user，恢复�
   }
 });
 
-test('continueLast：手工 v2 档全词汇还原（seg 转录/链/待办/档位/模型选择/视图/输入历史），横幅上屏，UI 现场一次性取用', async () => {
+test('continueLast：手工 v3 档全词汇还原（seg 转录/链/待办/档位/模型选择/视图/输入历史），横幅上屏，UI 现场一次性取用', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   const dataDir = pinDataDir(tmp);
   try {
     const j = new SessionJournal(dataDir);
-    j.start(2);
+    j.start(3);
     j.log({ t: 'user', text: '历史输入一' });
-    j.log({ t: 'seg', kind: 'user', md: '> 历史输入一', ts: 1, seq: 1 });
+    j.log({ t: 'seg', kind: 'user', md: '历史输入一', ts: 1, seq: 1 });
     j.log({ t: 'seg', kind: 'assistant', md: '历史答复', ts: 2, seq: 2 });
     j.log({ t: 'chain', steps: [{ step: 1, action: 'task', observation: '指令行' }] });
     j.log({ t: 'todos', items: [{ text: '待办甲', status: 'pending' }] });
@@ -174,7 +174,7 @@ test('continueLast：手工 v2 档全词汇还原（seg 转录/链/待办/档位
 
     // 配置漂移：档内 modelId 已不在 providers 清单 → 告警上屏、保持当前（缺省内芯）不硬切
     const j2 = new SessionJournal(dataDir);
-    j2.start(2);
+    j2.start(3);
     j2.log({ t: 'user', text: '漂移档输入' });
     j2.log({ t: 'model', modelId: 'gone/model' });
     const sw2 = new ModelSwitcher({
@@ -204,9 +204,9 @@ test('日志尾行撕裂：恢复到最后一条完整事件并上屏提示', as
     const id = newSessionId();
     const file = path.join(sessionsDir(dataDir), id + '.jsonl');
     fs.writeFileSync(file, [
-      JSON.stringify({ t: 'header', v: 2, id, createdAt: 'x' }),
+      JSON.stringify({ t: 'header', v: 3, id, createdAt: 'x' }),
       JSON.stringify({ t: 'user', text: '完整输入' }),
-      JSON.stringify({ t: 'seg', kind: 'user', md: '> 完整输入', ts: 1, seq: 1 }),
+      JSON.stringify({ t: 'seg', kind: 'user', md: '完整输入', ts: 1, seq: 1 }),
       '{"t":"seg","kin',
     ].join('\n'), 'utf8');
     const events = parseJournalFile(file).events;

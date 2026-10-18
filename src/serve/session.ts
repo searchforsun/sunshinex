@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { SnapshotEntry } from '../tui/session-journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
-import { kernelEventRows } from '../session/v2log';
+import { kernelEventRows } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
@@ -160,9 +160,9 @@ export class SessionRuntime {
   private board: TaskBoardState = emptyBoard();
   private delegations: Delegation[] = [];
   /** 会话内核转录（session-kernel spec §3,P2 接入）：pump 同源喂入,snapshot 的 messages 字段
-   *  （reset 换新实例清空）。持久化 = v2 单档唯一写者：内核段级事件经 persistKernelEvent 落
+   *  （reset 换新实例清空）。持久化 = v3 单档唯一写者：内核段级事件经 persistKernelEvent 落
    *  journal 行（seg/seg-update/run-open/truncate;chain/compact/runmeta 行为既有路径）——
-   *  collector 与 G14.213b 第二 jsonl 退役,装载走 attach 位 reduceV2Rows */
+   *  collector 与 G14.213b 第二 jsonl 退役,装载走 attach 位 reduceSegRows */
   private kernel: SessionKernel;
   /** 挂起表（P6 §4 下沉,spec 裁定「挂起是会话事件,不随连接生灭」）：approval/ask 未决条目,
    *  pid=daemon 铸造票据（opts.mintPid）;resolve 后即删（重复回执 404 判据）。daemon 保留网络
@@ -211,7 +211,7 @@ export class SessionRuntime {
     const j = this.journal;
     if (j === undefined) return;
     try {
-      if (j.currentId === undefined) j.start(2); // 惰性建档(chain 订阅同构):首条段级行落 header——首 run 的 user/run-open 行不再丢档
+      if (j.currentId === undefined) j.start(3); // 惰性建档(chain 订阅同构):首条段级行落 header——首 run 的 user/run-open 行不再丢档
       for (const row of kernelEventRows(ev)) j.log(row);
     } catch {
       // 尽力落档:写失败不影响运行面
@@ -230,7 +230,7 @@ export class SessionRuntime {
     this.opts.broadcast(frame);
   }
 
-  /** v2 档装载入核(attach 序调用,daemon.ts 持 journalId 位):reduceV2Rows 重放条目 seed——
+  /** v3 档装载入核(attach 序调用,daemon.ts 持 journalId 位):reduceSegRows 重放条目 seed——
    *  seq 原样沿用(truncate 对位),不触发落档事件(防装载双写) */
   kernelSeed(entries: ReadonlyArray<KernelEntry>): void {
     this.kernel.seed(entries);
@@ -393,7 +393,7 @@ export class SessionRuntime {
   private hookJournalSink(): void {
     this.runtimeImpl.harness.context.onContextChange((c) => {
       if (c.kind === 'append') {
-        if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start(2); // v2 档:daemon 会话 header v=2(段级行词汇)
+        if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
         this.journal?.log({ t: 'chain', steps: c.steps });
       } else {
         this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });

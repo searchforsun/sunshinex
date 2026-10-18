@@ -3,16 +3,18 @@ import type { KernelEvent, SteerItem } from './kernel';
 import type { JournalEvent } from '../tui/session-journal';
 
 /**
- * v2 段级行重放(session-kernel spec §3.2 装载序):seg/run-open/seg-update/truncate/runmeta 行 →
- * KernelEntry 列(seq 原样保留,truncate 行 upToSeq 可对位)。chain/compact/model/todos/view 等
- * v1 行由 reduceJournal 另路(上下文/参数面);msg 面归 P3。纯件零 IO。
+ * v3 段级行重放(session-kernel spec §3.2 装载序;journal v3 零兼容,P11-T2 正名 seglog):
+ * seg/run-open/seg-update/truncate/runmeta 行 → KernelEntry 列(seq 原样保留,truncate 行 upToSeq 可对位)。
+ * chain/compact/model/todos/view 等 v1 行由 reduceJournal 另路(上下文/参数面);msg 面归 P3。纯件零 IO。
  *
- * 语义:seg 行直映射(tool 行 md 先按行面,seg-update 回填 result 后重算 `● name\n⎿ 首行`);
- * run-open 开 run 条;runmeta 行对位末个 run 条 meta 合入(changes 经 sanitize);
- * 末尾悬空 run(无 runmeta 对位——daemon 随重启已死)标 `meta.stopped=true`,回放显「已停止」。
+ * 语义(v3 读侧零归一——档即 v3 写面单形态,无旧形态可归):seg 行零变换直读(md 原样——user 裸文/tool
+ * 恒空,不剥前缀不重组);seg-update 只做字段回填(name/input/result);run-open 开 run 条;runmeta 行对位
+ * 末个 run 条 meta 合入(changes 经 sanitize);末尾悬空 run(无 runmeta 对位——daemon 随重启已死)标
+ * `meta.stopped=true` 回放显「已停止」;悬空 tool 行(result 永不到达=执行体已死)补 interrupted result
+ * ——v3 自身语义,非旧档归一。
  */
 
-/** 内核段级事件 → v2 行(write 映射单点,daemon(P2)/TUI(P3) 写者共用):
+/** 内核段级事件 → v3 行(write 映射单点,daemon(P2)/TUI(P3) 写者共用):
  *  seg-open 的 run→run-open 行、assistant/thinking 开启段不落(等 seg-close)、其余即终态落 seg 行
  *  (tool 带 result 时回填行随落);seg-close 落闭合段终态;seg-update 落回填行;truncate 落截断行。 */
 export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
@@ -64,8 +66,8 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
   ];
 }
 
-/** v2 段级行的载荷面(journal 行的松散形态——行解析自 JSON,字段不予信任;v1 行字段在列仅为透传类型面) */
-export interface V2RowLike {
+/** v3 段级行的载荷面(journal 行的松散形态——行解析自 JSON,字段不予信任;v1 行字段在列仅为透传类型面) */
+export interface SegRowLike {
   t?: unknown;
   kind?: unknown;
   md?: unknown;
@@ -96,7 +98,7 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' && Number
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
 /** runmeta 净化合入(行面字段不予信任;seconds 等数值面缺省即不覆盖) */
-function runMetaOf(row: V2RowLike, prev: RunMeta | undefined): RunMeta {
+function runMetaOf(row: SegRowLike, prev: RunMeta | undefined): RunMeta {
   const changes = sanitizeChanges(row.changes);
   return {
     ...(prev ?? {}),
@@ -118,15 +120,8 @@ function resultOf(raw: unknown): { text: string; ok: boolean } | undefined {
   return { text: typeof o.text === 'string' ? o.text : '', ok: o.ok !== false };
 }
 
-/** tool 条 md 重算(P11-T1 过渡脚手架):内核侧 toolMd 已退役(live 条 md 恒 '' 字段单源,P11-T1),
- *  本地留同形实现仅为 v2 旧档/在档行的 seg-update 重放不变形;P11-T2 journal v3 随 md 重算块一并删除 */
-function toolMdLegacy(name: string, resultLine: string, input?: Record<string, unknown>): string {
-  const head = input !== undefined && Object.keys(input).length > 0 ? `${name} ${JSON.stringify(input)}` : name;
-  return `● ${head}\n⎿ ${resultLine}`;
-}
-
 /** 行列 → 转录条目(未知行型忽略;坏行字段缺省回落——行级容错与 parseJournalFile 截断互补) */
-export function reduceV2Rows(rows: ReadonlyArray<V2RowLike>): KernelEntry[] {
+export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
   const entries: KernelEntry[] = [];
   let seq = 0;
   for (const row of rows) {
@@ -169,22 +164,7 @@ export function reduceV2Rows(rows: ReadonlyArray<V2RowLike>): KernelEntry[] {
       const name = str(row.name);
       const input = row.input !== undefined && typeof row.input === 'object' && row.input !== null ? (row.input as Record<string, unknown>) : undefined;
       const result = resultOf(row.result);
-      const next: KernelEntry = {
-        ...cur,
-        ...(name !== undefined ? { name } : {}),
-        ...(input !== undefined ? { input } : {}),
-        ...(result !== undefined ? { result } : {}),
-      };
-      // md 重算:result 回填取其首行;仅 name 回填则保留行面既有 ⎿ 结果行(live verb 回填同语义)
-      const line =
-        next.result !== undefined
-          ? next.result.text.split('\n')[0] ?? ''
-          : (() => {
-              const m = cur.md.indexOf('⎿ ');
-              return m >= 0 ? cur.md.slice(m + 2) : '';
-            })();
-      next.md = toolMdLegacy(next.name ?? '…', line.length > 0 ? line : '…', next.input);
-      entries[idx] = next;
+      entries[idx] = { ...cur, ...(name !== undefined ? { name } : {}), ...(input !== undefined ? { input } : {}), ...(result !== undefined ? { result } : {}) };
       continue;
     }
     if (row.t === 'runmeta') {
@@ -206,12 +186,18 @@ export function reduceV2Rows(rows: ReadonlyArray<V2RowLike>): KernelEntry[] {
     if (e.meta?.endedTs === undefined) entries[i] = { ...e, meta: { ...e.meta, stopped: true } };
     break; // 只看末个 run 条(在途只可能有一个)
   }
+  // 悬空 tool 行收口(渲染中立 spec §7.4;v3 自身语义,非旧档归一):result 永不到达=执行体已死——
+  // 补 interrupted result(渲染 ✗,不永转)。status 不落行:装载面条目恒终态,done 以缺省承载
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]!;
+    if (e.kind === 'tool' && e.result === undefined) entries[i] = { ...e, result: { text: '(interrupted)', ok: false } };
+  }
   return entries;
 }
 
 /** steer 行读面(P5,spec §12):扫全行取**末条** steer 行(整列重写语义=末行为准),字段净化回落
  *  (text 非串弃、front 严判 true、seq 非负夹取);无 steer 行回空列。 */
-export function reduceSteerRows(rows: ReadonlyArray<V2RowLike>): SteerItem[] {
+export function reduceSteerRows(rows: ReadonlyArray<SegRowLike>): SteerItem[] {
   let items: SteerItem[] = [];
   for (const row of rows) {
     if (row.t !== 'steer' || !Array.isArray(row.items)) continue;
