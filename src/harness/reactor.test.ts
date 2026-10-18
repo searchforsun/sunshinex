@@ -529,7 +529,8 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
   assert.ok(callRows.some((s) => s.observation.includes('[tool] grep')), '调用行带工具名');
   const callCount = events.filter((t) => t === 'tool-call').length;
   const resultCount = events.filter((t) => t === 'tool-result').length;
-  assert.equal(callCount, 2, 'tool-call 事件应逐工具发射');
+  // P11 三帧:每执行调用 pending+running 两帧 tool-call(并行两调用 × 2)
+  assert.equal(callCount, 4, 'tool-call 事件应逐工具发射(三帧:pending+running)');
   assert.equal(resultCount, 2, 'tool-result 事件应逐工具发射');
 });
 

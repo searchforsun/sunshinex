@@ -60,7 +60,9 @@ test('三态事件面：并行批 callId 逐项独立', async () => {
       '{"done":true,"reply":"ok"}',
     ]), (e) => events.push(e)).run({ goal: '并行读' }, { maxSteps: 3 });
     const callIds = events.filter((e) => e.type === 'tool-call').map((e) => e.payload?.callId);
-    assert.deepEqual(callIds, ['step:1-idx:0', 'step:1-idx:1']);
+    // P11 三帧:批前先行上屏双 pending,执行起点补发 running——每调用 pending+running 两次 tool-call(同 callId 幂等回填);
+    // 并发支 running 帧序确定:各回调首个 await 前的同步段按序跑完(r0 先于 r1)
+    assert.deepEqual(callIds, ['step:1-idx:0', 'step:1-idx:1', 'step:1-idx:0', 'step:1-idx:1']);
     const resultIds = events.filter((e) => e.type === 'tool-result').map((e) => e.payload?.callId);
     assert.deepEqual(resultIds, ['step:1-idx:0', 'step:1-idx:1'], '结果按调用序与 callId 成对');
   } finally {

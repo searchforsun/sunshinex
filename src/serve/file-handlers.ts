@@ -93,12 +93,14 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   }
   let entry: ReturnType<typeof session.runtime.harness.writeSnapshot.nthFor>;
   if (targetAbs !== undefined && targetSeq >= 0) {
-    /** 调用序位次：同路径（resolve 归一后等值）且先于目标的 write 调用数 + 1（sink 清单内的序） */
+    /** 调用序位次：同路径（resolve 归一后等值）且先于目标的 write 调用数 + 1（sink 清单内的序）；
+     *  P11 三帧:running 帧是同 callId 的二次 tool-call（幂等回填,非新调用）——位次按调用不按帧,跳过防双计 */
     let ordinal = 1;
     for (const f of frames) {
       if (f.seq >= targetSeq) break;
       const e = f.e;
       if (e.type !== 'tool-call' || e.text !== 'write') continue;
+      if ((e.payload as { status?: unknown } | undefined)?.status === 'running') continue;
       const inPath = (e.payload as { input?: unknown } | undefined)?.input;
       const p = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;
       if (typeof p?.path === 'string' && p.path.length > 0 && path.resolve(session.root, p.path) === targetAbs) ordinal += 1;

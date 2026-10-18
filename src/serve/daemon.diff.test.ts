@@ -249,10 +249,15 @@ test('④ 同路径多次写按调用序:第二次 write 的 oldContent=第一�
         await ctx.post('第二次写', sid);
         await waitFor(() => frames.filter((f) => f.e?.type === 'tool-call' && f.e?.text === 'write').length >= 2, 10_000);
         await waitIdle(ctx.http, ctx.H, sid);
-        const calls = frames
-          .filter((f) => f.e?.type === 'tool-call' && f.e?.text === 'write' && (f.e?.payload?.input as { path?: string } | undefined)?.path === 'seq.ts')
-          .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-          .map((f) => String(f.e!.payload!.callId));
+        // P11 三帧:同一次 write 的 pending/running 共享 callId(二次 tool-call 幂等)——按序去重后仍两次调用两个 callId
+        const calls = [
+          ...new Set(
+            frames
+              .filter((f) => f.e?.type === 'tool-call' && f.e?.text === 'write' && (f.e?.payload?.input as { path?: string } | undefined)?.path === 'seq.ts')
+              .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+              .map((f) => String(f.e!.payload!.callId)),
+          ),
+        ];
         assert.equal(calls.length, 2, '两次 write 调用帧在场');
         // 第一写:pre-image=原文件 v1;newContent=磁盘现文件(已被第二写覆盖为 v3——现文件语义)
         const r1 = await diffOf(ctx.http, ctx.H, sid, calls[0]!);

@@ -169,8 +169,9 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
     await rt.runTask('一直调工具', { maxSteps: 1 });
     assert.equal(
       events.filter((e) => e.type === 'tool-call').length,
-      1,
-      'maxSteps:1 必须透传到内层 Reactor：恰 1 次 tool-call（丢失下传则脚本回放至 200 步）',
+      // P11 三帧:每执行调用恰 pending+running 两帧 tool-call(1 步 × 2)——丢失下传则脚本回放至 200 步、事件数暴涨
+      2,
+      'maxSteps:1 必须透传到内层 Reactor：恰 1 步(2 帧 tool-call)',
     );
   } finally {
     fs.rmSync(tmp1, { recursive: true, force: true });
@@ -188,8 +189,9 @@ test('createRuntime：maxSteps 钉死下传——显式 1 步恰 1 次工具事�
     await rt.runTask('一直调工具');
     assert.equal(
       events2.filter((e) => e.type === 'tool-call').length,
-      400,
-      'maxSteps 缺省时应交给 Reactor 的 400（长任务终止参数线放宽 200→400；旧实现直连并硬填 12）',
+      // P11 三帧:400 步 × 每步 2 帧(pending+running)
+      800,
+      'maxSteps 缺省时应交给 Reactor 的 400 步（三帧协议 800 帧 tool-call；长任务终止参数线放宽 200→400；旧实现直连并硬填 12）',
     );
   } finally {
     fs.rmSync(tmp2, { recursive: true, force: true });
