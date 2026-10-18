@@ -1,4 +1,4 @@
-import { sanitizeChanges, toolMd, type KernelEntry, type RunMeta } from './entry';
+import { sanitizeChanges, type KernelEntry, type RunMeta } from './entry';
 import type { KernelEvent, SteerItem } from './kernel';
 import type { JournalEvent } from '../tui/session-journal';
 
@@ -118,6 +118,13 @@ function resultOf(raw: unknown): { text: string; ok: boolean } | undefined {
   return { text: typeof o.text === 'string' ? o.text : '', ok: o.ok !== false };
 }
 
+/** tool 条 md 重算(P11-T1 过渡脚手架):内核侧 toolMd 已退役(live 条 md 恒 '' 字段单源,P11-T1),
+ *  本地留同形实现仅为 v2 旧档/在档行的 seg-update 重放不变形;P11-T2 journal v3 随 md 重算块一并删除 */
+function toolMdLegacy(name: string, resultLine: string, input?: Record<string, unknown>): string {
+  const head = input !== undefined && Object.keys(input).length > 0 ? `${name} ${JSON.stringify(input)}` : name;
+  return `● ${head}\n⎿ ${resultLine}`;
+}
+
 /** 行列 → 转录条目(未知行型忽略;坏行字段缺省回落——行级容错与 parseJournalFile 截断互补) */
 export function reduceV2Rows(rows: ReadonlyArray<V2RowLike>): KernelEntry[] {
   const entries: KernelEntry[] = [];
@@ -176,7 +183,7 @@ export function reduceV2Rows(rows: ReadonlyArray<V2RowLike>): KernelEntry[] {
               const m = cur.md.indexOf('⎿ ');
               return m >= 0 ? cur.md.slice(m + 2) : '';
             })();
-      next.md = toolMd(next.name ?? '…', line.length > 0 ? line : '…', next.input);
+      next.md = toolMdLegacy(next.name ?? '…', line.length > 0 ? line : '…', next.input);
       entries[idx] = next;
       continue;
     }

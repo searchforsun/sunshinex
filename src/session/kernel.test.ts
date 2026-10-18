@@ -31,7 +31,7 @@ test('① user+流式段+done:段边界落 assistant(G14.213),末段与 done 同
   const es = k.replay();
   assert.equal(es.length, 3, '流式段与终答各自入档;usage/route 非归档面事件不产条目');
   assert.equal(es[0]!.kind, 'user');
-  assert.equal(es[0]!.md, '> 把测试跑绿');
+  assert.equal(es[0]!.md, '把测试跑绿');
   assert.equal(es[1]!.kind, 'assistant');
   assert.equal(es[1]!.md, '先跑');
   assert.equal(es[2]!.kind, 'assistant');
@@ -87,12 +87,14 @@ test('② tool-call+tool-result 同 callId:单条配对(name/result/input 全量
   const k = new SessionKernel();
   k.pump(ev('tool-call', 'create_task', { callId: 'c1', input: { title: 'A' }, status: 'pending' }));
   assert.equal(k.replay().length, 1, 'call 先到:占位条先入');
-  assert.equal(k.replay()[0]!.md, '● create_task {"title":"A"}\n⎿ …');
+  assert.equal(k.replay()[0]!.md, '', 'tool md 恒空(字段单源)');
+  assert.equal(k.replay()[0]!.status, 'pending', 'call 发射即前态');
   k.pump(ev('tool-result', 'task t1 created\nboard: t1 pending', { callId: 'c1', ok: true, tool: 'create_task', status: 'completed' }));
   const es = k.replay();
   assert.equal(es.length, 1, '同 callId 配对归并为单条(不新增条目)');
   assert.equal(es[0]!.kind, 'tool');
-  assert.equal(es[0]!.md, '● create_task {"title":"A"}\n⎿ task t1 created', 'result 只取首行;头部嵌 input JSON(GUI 渲染层契约)');
+  assert.equal(es[0]!.md, '', 'tool md 恒空(name/result/input 字段单源)');
+  assert.equal(es[0]!.status, undefined, 'result 收口即终态(字段省略)');
   assert.equal(es[0]!.name, 'create_task');
   assert.deepEqual(es[0]!.input, { title: 'A' });
   assert.deepEqual(es[0]!.result, { text: 'task t1 created\nboard: t1 pending', ok: true });
@@ -103,12 +105,13 @@ test('③ 乱序:result 先到 call 后到 → 按 callId 归位同条(name 回�
   const k = new SessionKernel();
   k.pump(ev('tool-result', 'file content here', { callId: 'x', ok: true, tool: 'read', status: 'completed' }, 100));
   assert.equal(k.replay().length, 1);
-  assert.equal(k.replay()[0]!.md, '● …\n⎿ file content here');
+  assert.equal(k.replay()[0]!.md, '', 'tool md 恒空(字段单源)');
   const seqBefore = k.replay()[0]!.seq;
   k.pump(ev('tool-call', 'read', { callId: 'x', input: { path: 'a.ts' }, status: 'pending' }, 200));
   const es = k.replay();
   assert.equal(es.length, 1, '后到 call 归位同条(不新增)');
-  assert.equal(es[0]!.md, '● read {"path":"a.ts"}\n⎿ file content here');
+  assert.equal(es[0]!.md, '', 'tool md 恒空(字段单源)');
+  assert.equal(es[0]!.status, undefined, 'result 先行条已终态(call 回填不复活 status)');
   assert.equal(es[0]!.name, 'read');
   assert.deepEqual(es[0]!.input, { path: 'a.ts' });
   assert.equal(es[0]!.seq, seqBefore, 'seq 保持 result 先行时刻');
@@ -120,8 +123,10 @@ test('④ 无 callId:FIFO 兜底——result 配最老未配对条,后来者保�
   pump(k, ev('tool-call', 'read', { status: 'pending' }), ev('tool-call', 'grep', { status: 'pending' }), ev('tool-result', 'first result', { ok: true, status: 'completed' }));
   const es = k.replay();
   assert.equal(es.length, 2, '无 callId 不并条,各自占位');
-  assert.equal(es[0]!.md, '● read\n⎿ first result', '无 callId result 归最老未配对条(FIFO)');
-  assert.equal(es[1]!.md, '● grep\n⎿ …', '后来条保持占位');
+  assert.equal(es[0]!.md, '', '无 callId result 归最老未配对条(FIFO);tool md 恒空');
+  assert.equal(es[0]!.status, undefined, 'FIFO 回填即终态(字段省略)');
+  assert.equal(es[1]!.md, '', '后来条保持占位;tool md 恒空');
+  assert.equal(es[1]!.status, 'pending', '后来条未回程仍前态');
 });
 
 test('⑤ call 未配对:占位条定格(result 永不到场不蒸发)', () => {
@@ -130,7 +135,8 @@ test('⑤ call 未配对:占位条定格(result 永不到场不蒸发)', () => {
   const es = k.replay();
   assert.equal(es.length, 2);
   assert.equal(es[0]!.kind, 'tool');
-  assert.equal(es[0]!.md, '● bash {"command":"ls"}\n⎿ …');
+  assert.equal(es[0]!.md, '', 'call 未配对:tool md 恒空(字段单源)');
+  assert.equal(es[0]!.status, 'pending', 'call 未配对定格前态(result 永不到场不蒸发)');
   assert.equal(es[1]!.md, '收尾');
   assert.ok(es[0]!.seq < es[1]!.seq);
 });
@@ -179,10 +185,10 @@ test('⑦ 上限 2000 丢最老(T5δ):压 2005 条 user/assistant 混合 → 恒
   assert.equal(es.length, 2000, '超限丢最老,档面恒 2000');
   const mds = new Set(es.map((e) => e.md));
   for (let i = 0; i < 5; i++) {
-    const oldestMd = i % 2 === 0 ? `> goal-${i}` : `reply-${i}`;
+    const oldestMd = i % 2 === 0 ? `goal-${i}` : `reply-${i}`;
     assert.ok(!mds.has(oldestMd), `最老第 ${i} 条(${oldestMd})应已出档`);
   }
-  assert.ok(mds.has('reply-5') && mds.has('> goal-6') && mds.has('reply-2003') && mds.has('> goal-2004'), '第 6 条起与最新条均在档');
+  assert.ok(mds.has('reply-5') && mds.has('goal-6') && mds.has('reply-2003') && mds.has('goal-2004'), '第 6 条起与最新条均在档');
   for (let i = 1; i < es.length; i++) assert.ok(es[i]!.seq > es[i - 1]!.seq, '裁后档内 seq 仍单调');
 });
 
@@ -191,18 +197,18 @@ test('⑧ seed 播种同裁:注入 2005 条超限 → 恒 2000;后续 pump 续�
   const k = new SessionKernel({ onKernelEvent: (e) => events.push(e.t) });
   const batch: Array<Omit<KernelEntry, 'seq'>> = [];
   for (let i = 0; i < 2005; i++)
-    batch.push({ ts: 100 + i, kind: i % 2 === 0 ? 'user' : 'assistant', md: i % 2 === 0 ? `> seed-goal-${i}` : `seed-reply-${i}` });
+    batch.push({ ts: 100 + i, kind: i % 2 === 0 ? 'user' : 'assistant', md: i % 2 === 0 ? `seed-goal-${i}` : `seed-reply-${i}` });
   k.seed(batch);
   let es = k.replay();
   assert.equal(es.length, 2000, '播种注入同样过 2000 上限');
   assert.equal(events.length, 0, 'seed 回种不触发内核事件(防装载双写)');
   assert.ok(es[0]!.seq >= 1 && es[es.length - 1]!.seq < 2006, 'seq 由内核续发(入参缺省形态)');
   const mds = new Set(es.map((e) => e.md));
-  assert.ok(!mds.has('> seed-goal-0') && mds.has('seed-reply-5') && mds.has('> seed-goal-6'), '最老 5 条出档,第 6 条起在档');
+  assert.ok(!mds.has('seed-goal-0') && mds.has('seed-reply-5') && mds.has('seed-goal-6'), '最老 5 条出档,第 6 条起在档');
   // seq 保留形态(v2 行与 live 同源):显式 seq 原样沿用,truncate 对位依赖
   const k2 = new SessionKernel();
   k2.seed([
-    { seq: 3, ts: 1, kind: 'user', md: '> 一' },
+    { seq: 3, ts: 1, kind: 'user', md: '一' },
     { seq: 7, ts: 2, kind: 'assistant', md: '答' },
   ]);
   k2.pump(ev('user', '二'));
@@ -220,7 +226,7 @@ test('⑧ seed 播种同裁:注入 2005 条超限 → 恒 2000;后续 pump 续�
   assert.equal(events[0], 'seg-open');
   const mds2 = new Set(es.map((e) => e.md));
   assert.ok(!mds2.has('seed-reply-5'), '再压一条又丢一条最老');
-  assert.ok(mds2.has('> seed-goal-6'), '次老条仍在档');
+  assert.ok(mds2.has('seed-goal-6'), '次老条仍在档');
 });
 
 test('⑨ gui·thinking 秒:reasoning 段聚合,边界封段计秒(首尾 ts 差取整)', () => {
@@ -317,7 +323,7 @@ test('⑫ truncate:保留 seq<=upToSeq 前缀;序号不复用,后续条目续接
   let es = k.replay();
   assert.deepEqual(
     es.map((e) => e.md),
-    ['> 一', '答一'],
+    ['一', '答一'],
     '截断保留前缀',
   );
   k.pump(ev('user', '三'));
@@ -480,7 +486,7 @@ test('P9 统计面：seed 自 run meta 重建会话累计(G14.18 回放不从零
   const k = new SessionKernel();
   k.seed([
     { ts: 1, kind: 'run', md: '', seq: 1, meta: { steps: 5, tokens: 100, cacheTokens: 40 } },
-    { ts: 2, kind: 'user', md: '> hi', seq: 2 },
+    { ts: 2, kind: 'user', md: 'hi', seq: 2 },
     { ts: 3, kind: 'run', md: '', seq: 3, meta: { steps: 9, tokens: 200, cacheTokens: 60 } },
   ]);
   const s = k.stats();
@@ -488,4 +494,41 @@ test('P9 统计面：seed 自 run meta 重建会话累计(G14.18 回放不从零
   assert.equal(s.sessionCacheTokens, 100, 'cache 逐 run 求和');
   assert.equal(s.sessionSteps, 9, 'steps 取末次覆盖值(载荷为累计口径)');
   assert.equal(s.sessionTurns, 2, 'turns 数 run 条');
+});
+
+test('⓰ 渲染中立条目模型:tool md 恒空+字段单源;user 裸文;三态 pending→running→done', () => {
+  const k = new SessionKernel();
+  pump(k, ev('tool-call', 'read', { callId: 'c1', input: { path: 'a.ts' }, status: 'pending' }));
+  let es = k.replay();
+  assert.equal(es[0]!.md, '', 'tool md 恒空(字段单源)');
+  assert.equal(es[0]!.status, 'pending', 'call 发射即前态');
+  pump(k, ev('tool-call', 'read', { callId: 'c1', input: { path: 'a.ts' }, status: 'running' }));
+  es = k.replay();
+  assert.equal(es.length, 1, '执行起点同 callId 二次 call 幂等回填(不建新条)');
+  assert.equal(es[0]!.status, 'running', 'running 升级');
+  pump(k, ev('tool-result', 'body', { callId: 'c1', ok: true }));
+  es = k.replay();
+  assert.equal(es[0]!.status, undefined, 'done 以缺省承载(字段省略)');
+  assert.deepEqual(es[0]!.result, { text: 'body', ok: true });
+  pump(k, ev('user', '问'));
+  assert.equal(k.replay()[1]!.md, '问', 'user 裸文(无 > 前缀)');
+  const k2 = new SessionKernel();
+  pump(k2, ev('model-start'));
+  assert.equal(k2.replay()[0]!.status, 'running', 'run 行开即 running');
+  pump(k2, ev('done', '答', { stopReason: 'done' }));
+  assert.equal(k2.replay()[0]!.status, undefined, 'run 收口 done 缺省');
+  assert.equal(k2.replay()[1]!.status, undefined, '正文封段 done 缺省');
+});
+
+test('⓱ 段开 running:token/reasoning 开启段显 running,封段删字段', () => {
+  const k = new SessionKernel();
+  pump(k, ev('reasoning', '想'));
+  assert.equal(k.replay()[0]!.kind, 'thinking');
+  assert.equal(k.replay()[0]!.status, 'running');
+  pump(k, ev('token', '答'));
+  assert.equal(k.replay()[1]!.kind, 'assistant');
+  assert.equal(k.replay()[1]!.status, 'running');
+  pump(k, ev('done', '答', { stopReason: 'done' }));
+  assert.equal(k.replay()[0]!.status, undefined);
+  assert.equal(k.replay()[1]!.status, undefined);
 });

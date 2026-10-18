@@ -45,6 +45,9 @@ export interface KernelEntry {
   result?: { text: string; ok: boolean; full?: string };
   /** thinking:段耗时秒(封段时首尾 ts 差取整) */
   seconds?: number;
+  /** 三态生命周期(渲染中立 spec §7):pending=已发射未执行/running=执行或流式中;done 以缺省
+   *  承载(终态行字段省略——journal 轻量,undefined 即 done)。失败不设第四态:result.ok 承载 ✗ */
+  status?: 'pending' | 'running' | 'done';
   /** run:收段统计(done 填基础面,runmeta 帧补全/覆盖) */
   meta?: RunMeta;
 }
@@ -100,7 +103,6 @@ interface PendingTool {
   seq: number;
   callId?: string;
   name: string;
-  resultLine: string;
 }
 
 /** reducer 态:条目列 + 流式侧记账。openRun/openSeg = 开启中条目 seq(-1 无):run 跨 run 全程,
@@ -121,20 +123,6 @@ export function initialKernelState(): KernelState {
 
 const CAP = 2000; // 档面上限(collector T5δ 同纪律:丢最老环形)
 const PLACEHOLDER = '…';
-
-function firstLine(text: string | undefined): string {
-  const line = (text ?? '').split('\n')[0] ?? '';
-  return line.length > 0 ? line : PLACEHOLDER;
-}
-
-/** tool 条 md 单点(渲染裁定:GUI 渲染层契约为准):头部 `● <name> <input-json>`——input JSON 内嵌
- *  头部是 GUI toolMdInfo 种子/重放条还原折叠行目标字段(读取路径/查找模式)的唯一来源(无 input 或
- *  空对象省略 JSON 段);尾行 `⎿ <result 首行>`;缺面 … 占位(v2 重放回填同用此形)。TUI 不消费 md
- *  (restore 字段驱动 toolCallLine 重建),格式随 GUI 单源 */
-export function toolMd(name: string, resultLine: string, input?: Record<string, unknown>): string {
-  const head = input !== undefined && Object.keys(input).length > 0 ? `${name} ${JSON.stringify(input)}` : name;
-  return `● ${head}\n⎿ ${resultLine}`;
-}
 
 /** done 终稿合并(GUI 语义):互为前缀(重叠)取长;不重叠补入 */
 function mergeFinal(acc: string, fin: string): string {
@@ -177,7 +165,7 @@ function sealSeg(s: KernelState, now: number): KernelState {
   const cur = s.entries[idx]!;
   if (cur.kind !== 'assistant' && cur.kind !== 'thinking') return { ...s, openSeg: -1 };
   const seconds = cur.kind === 'thinking' && now > cur.ts ? Math.round((now - cur.ts) / 1000) : undefined;
-  return { ...s, entries: replaceAt(s.entries, idx, { ...cur, ...(seconds !== undefined ? { seconds } : {}) }), openSeg: -1 };
+  return { ...s, entries: replaceAt(s.entries, idx, { ...cur, status: undefined, ...(seconds !== undefined ? { seconds } : {}) }), openSeg: -1 };
 }
 
 /** runmeta changes 载荷净化(外部 payload 不予信任:面缺省回落、空 path 丢弃;v2 runmeta 行重放同用) */
@@ -233,7 +221,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
           return { ...state, entries: replaceAt(state.entries, idx, { ...cur, md: cur.md + text }) };
         }
       }
-      return openSegEntry(state, e.ts, { ts: e.ts, kind: 'assistant', md: text }); // 思考先行:开启段是 thinking 则先封
+      return openSegEntry(state, e.ts, { ts: e.ts, kind: 'assistant', md: text, status: 'running' }); // 思考先行:开启段是 thinking 则先封
     }
     case 'reasoning': {
       const text = e.text ?? '';
@@ -245,7 +233,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
           return { ...state, entries: replaceAt(state.entries, idx, { ...cur, md: cur.md + text }) };
         }
       }
-      return openSegEntry(state, e.ts, { ts: e.ts, kind: 'thinking', md: text });
+      return openSegEntry(state, e.ts, { ts: e.ts, kind: 'thinking', md: text, status: 'running' });
     }
     case 'tool-call': {
       const sealed = sealSeg(state, e.ts);
@@ -267,7 +255,9 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
               entries: replaceAt(sealed.entries, idx, {
                 ...cur,
                 name,
-                md: toolMd(name, p.resultLine, input !== undefined && typeof input === 'object' ? (input as Record<string, unknown>) : undefined),
+                // P11 三态:call 回填即生命周期对齐——占位条(无 result)随载荷升 pending/running(执行起点
+                // 同 callId 二次 call 幂等回填);result 先行条已终态(result 在场即 done,status 不回填)
+                status: cur.result !== undefined ? undefined : e.payload?.status === 'running' ? 'running' : 'pending',
                 ...(input !== undefined && typeof input === 'object' ? { input: input as Record<string, unknown> } : {}),
               }),
               pending,
@@ -279,24 +269,25 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       const next = appendEntry(sealed, {
         ts: e.ts,
         kind: 'tool',
-        md: toolMd(name, PLACEHOLDER, input !== undefined && typeof input === 'object' ? (input as Record<string, unknown>) : undefined),
+        md: '',
+        status: e.payload?.status === 'running' ? 'running' : 'pending',
         ...(callId !== undefined ? { callId } : {}),
         name,
         ...(input !== undefined && typeof input === 'object' ? { input: input as Record<string, unknown> } : {}),
       });
-      return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, ...(callId !== undefined ? { callId } : {}), name, resultLine: PLACEHOLDER }] };
+      return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, ...(callId !== undefined ? { callId } : {}), name }] };
     }
     case 'tool-result': {
       const sealed = sealSeg(state, e.ts);
       const callId = typeof e.payload?.callId === 'string' && e.payload.callId !== '' ? e.payload.callId : undefined;
-      const resultLine = firstLine(e.text);
       const result = {
         text: e.text ?? '',
         ok: typeof e.payload?.ok === 'boolean' ? e.payload.ok : true,
         // 全量观测随档(batch-runner payload.full):detail 展开与恢复面同一来源,live/restore 零推导
         ...(typeof e.payload?.full === 'string' ? { full: e.payload.full } : {}),
       };
-      const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, md: toolMd(name, resultLine, cur.input), result });
+      // 收 done:status 删字段(终态行字段省略——undefined 即 done,✗ 面由 result.ok 承载)
+      const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, name, result, status: undefined });
       if (callId !== undefined) {
         const pi = sealed.pending.findIndex((p) => p.callId === callId);
         if (pi >= 0) {
@@ -310,9 +301,9 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
             };
           }
         }
-        // result 先到:占位条即刻入列(callId 留账,等 call 回填 name)
-        const next = appendEntry(sealed, { ts: e.ts, kind: 'tool', md: toolMd(PLACEHOLDER, resultLine), callId, result });
-        return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, callId, name: PLACEHOLDER, resultLine }] };
+        // result 先到:占位条即刻入列(callId 留账,等 call 回填 name)——有 result 即终态,无 status
+        const next = appendEntry(sealed, { ts: e.ts, kind: 'tool', md: '', callId, result });
+        return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, callId, name: PLACEHOLDER }] };
       }
       // 无 callId:FIFO 兜底配最老的无 callId 未配对条(pendingCalls 同口径)
       const pi = sealed.pending.findIndex((p) => p.callId === undefined);
@@ -327,14 +318,14 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
           };
         }
       }
-      // 孤儿 result:以 payload.tool 为动词独立成条(完备条,不进 pending)
+      // 孤儿 result:以 payload.tool 为动词独立成条(完备条,不进 pending)——即刻终态,无 status
       const tool = e.payload?.tool;
       const verb = typeof tool === 'string' && tool.length > 0 ? tool : PLACEHOLDER;
-      return appendEntry(sealed, { ts: e.ts, kind: 'tool', md: toolMd(verb, resultLine), name: verb, result });
+      return appendEntry(sealed, { ts: e.ts, kind: 'tool', md: '', name: verb, result });
     }
     case 'user': {
       const sealed = sealSeg(state, e.ts);
-      return appendEntry(sealed, { ts: e.ts, kind: 'user', md: `> ${e.text ?? ''}` });
+      return appendEntry(sealed, { ts: e.ts, kind: 'user', md: e.text ?? '' });
     }
     case 'notice': {
       const sealed = sealSeg(state, e.ts);
@@ -353,7 +344,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     case 'model-start': {
       const sealed = sealSeg(state, e.ts);
       if (sealed.openRun >= 0) return sealed; // run 内续轮:不重插 run 条,轮窗计数器不清
-      const next = appendEntry(sealed, { ts: e.ts, kind: 'run', md: '' });
+      const next = appendEntry(sealed, { ts: e.ts, kind: 'run', md: '', status: 'running' });
       // 轮窗重置与开轮计数(P9):run 即「本轮」窗口——turn 面计数器清零,sessionTurns+1
       return {
         ...next,
@@ -402,7 +393,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       if (seg !== undefined && seg.kind === 'thinking') st = sealSeg(st, e.ts);
       const finalText = e.text ?? '';
       if (seg !== undefined && seg.kind === 'assistant') {
-        st = { ...st, entries: replaceAt(st.entries, segIdx, { ...seg, md: mergeFinal(seg.md, finalText) }), openSeg: -1 };
+        st = { ...st, entries: replaceAt(st.entries, segIdx, { ...seg, md: mergeFinal(seg.md, finalText), status: undefined }), openSeg: -1 };
       } else if (finalText.trim() !== '') {
         st = appendEntry({ ...st, openSeg: -1 }, { ts: e.ts, kind: 'assistant', md: finalText });
       } else {
@@ -426,7 +417,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
             ...(stopped ? { stopped: true } : {}),
             endedTs: e.ts,
           };
-          st = { ...st, entries: replaceAt(st.entries, ridx, { ...run, meta }) };
+          st = { ...st, entries: replaceAt(st.entries, ridx, { ...run, status: undefined, meta }) };
         }
       }
       return { ...st, openRun: -1, openSeg: -1 };
