@@ -22,16 +22,17 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   taskActive: number;
 } {
   const { chat, board, onTodoBatches, onTurnGoal } = deps;
-/** G14.172 任务名映射(转录自建):create_task 行回执 `task tN created` → 标题——板投影是内存态
+/** G14.172 任务名映射(转录自建):create_task 回执 `task tN created` → 标题——板投影是内存态
  *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表。
- *  P11 T7:标题直读 entry.input(name/input 内核字段全量随档);任务 id 仍取 md 回执行 */
+ *  P11 T7:标题直读 entry.input(name/input 内核字段全量随档);P11 T8:任务 id 取 result
+ *  回执文本(text 优先,full 兜底)——tool md 恒空,回执不再落 md */
 const taskTitleMap = useMemo(() => {
   const m = new Map<string, string>();
   for (const e of chat.entries) {
     if (e.kind !== 'tool' || e.name !== 'create_task') continue;
     const input = e.input ?? {};
     const title = typeof input.title === 'string' ? input.title.trim() : '';
-    const created = /task (\S+) created/.exec(e.md);
+    const created = /task (\S+) created/.exec(e.result?.text ?? e.result?.full ?? '');
     if (title !== '' && created !== null) {
       m.set(created[1]!, title);
       m.set(`task-${created[1]!}`, title);

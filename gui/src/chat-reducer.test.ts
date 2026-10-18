@@ -72,17 +72,21 @@ describe('流式 token 拼接与 done 收段', () => {
   });
 });
 
-describe('工具 callId 配对（乱序回填，单条两行）', () => {
-  it('call 先到：verb 行即时、result 行占位 …，result 到达回填同条', () => {
+describe('工具 callId 配对（乱序回填，字段单源单条）', () => {
+  it('call 先到：条即时入列(pending),result 到达回填同条转终态(done 缺省)', () => {
+    const called = fold([ev('tool-call', 'read', { callId: 'c1' })]);
+    expect(called.entries).toHaveLength(1);
+    expect(called.entries[0]).toMatchObject({ kind: 'tool', md: '', name: 'read', status: 'pending' }); // P11:字段单源,md 恒空
     const s = fold([
       ev('tool-call', 'read', { callId: 'c1' }),
       ev('tool-result', '42 chars', { callId: 'c1' }),
     ]);
     expect(s.entries).toHaveLength(1);
-    expect(s.entries[0]).toMatchObject({ kind: 'tool', md: '● read\n⎿ 42 chars' });
+    expect(s.entries[0]).toMatchObject({ kind: 'tool', md: '', name: 'read', result: { text: '42 chars', ok: true } });
+    expect(s.entries[0]!.status).toBeUndefined(); // done 以缺省承载(终态行字段省略)
   });
 
-  it('result 先到（乱序）：verb 行占位入列，call 迟到回填同条（位置不变）', () => {
+  it('result 先到（乱序）：占位条即刻终态入列，call 迟到回填 name 同条（位置不变，status 不回填）', () => {
     const s = fold([
       ev('notice', 'n'),
       ev('tool-result', 'out', { callId: 'c9' }),
@@ -90,30 +94,36 @@ describe('工具 callId 配对（乱序回填，单条两行）', () => {
     ]);
     expect(s.entries).toHaveLength(2);
     expect(s.entries[0]).toMatchObject({ kind: 'notice', md: 'n' });
-    expect(s.entries[1]).toMatchObject({ kind: 'tool', md: '● bash\n⎿ out' });
+    expect(s.entries[1]).toMatchObject({ kind: 'tool', md: '', name: 'bash', callId: 'c9', result: { text: 'out', ok: true } });
+    expect(s.entries[1]!.status).toBeUndefined(); // result 先行条已终态——call 回填只补 name,不回 status
   });
 
-  it('不同 callId 各自成条不串扰；多行 result 只取首行', () => {
+  it('不同 callId 各自成条不串扰；多行 result 全文入 result.text（首行截断归渲染面）', () => {
     const s = fold([
       ev('tool-call', 'read', { callId: 'a' }),
       ev('tool-call', 'write', { callId: 'b' }),
       ev('tool-result', 'line1\nline2', { callId: 'b' }),
       ev('tool-result', 'ok', { callId: 'a' }),
     ]);
-    expect(s.entries.map((e) => e.md)).toEqual(['● read\n⎿ ok', '● write\n⎿ line1']);
+    expect(s.entries.map((e) => e.md)).toEqual(['', '']);
+    expect(s.entries.map((e) => e.result?.text)).toEqual(['ok', 'line1\nline2']);
+    expect(s.entries.every((e) => e.status === undefined)).toBe(true); // 配对完成即终态
   });
 
-  it('无 callId：FIFO 配最老未配对 call 条', () => {
+  it('无 callId：FIFO 配最老未配对 call 条（配对者转终态,落单者保持 pending）', () => {
     const s = fold([ev('tool-call', 'read'), ev('tool-call', 'grep'), ev('tool-result', 'first out')]);
     expect(s.entries).toHaveLength(2);
-    expect(s.entries[0]!.md).toBe('● read\n⎿ first out');
-    expect(s.entries[1]!.md).toBe('● grep\n⎿ …');
+    expect(s.entries[0]).toMatchObject({ kind: 'tool', md: '', name: 'read', result: { text: 'first out', ok: true } });
+    expect(s.entries[0]!.status).toBeUndefined();
+    expect(s.entries[1]).toMatchObject({ kind: 'tool', md: '', name: 'grep', status: 'pending' }); // 未配对:pending 在场
+    expect(s.entries[1]!.result).toBeUndefined();
   });
 
   it('无 callId 孤儿 result：以 payload.tool 为动词独立成条', () => {
     const s = fold([ev('tool-result', 'late', { tool: 'spawn' })]);
     expect(s.entries).toHaveLength(1);
-    expect(s.entries[0]!.md).toBe('● spawn\n⎿ late');
+    expect(s.entries[0]).toMatchObject({ kind: 'tool', md: '', name: 'spawn', result: { text: 'late', ok: true } });
+    expect(s.entries[0]!.status).toBeUndefined(); // 孤儿条即刻终态
   });
 
   it('streaming 条在 tool-call 时收段（流与工具不混条）', () => {
@@ -282,7 +292,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     const s = seedChatFromSnapshot(
       [
         { seq: 1, ts: 1, kind: 'user', md: 'goal' },
-        { seq: 2, ts: 2, kind: 'tool', md: '● read\n⎿ ok' },
+        { seq: 2, ts: 2, kind: 'tool', md: '', name: 'read', result: { text: 'ok', ok: true } },
         { seq: 3, ts: 3, kind: 'assistant', md: 'answer' },
         { seq: 4, ts: 4, kind: 'notice', md: '✻ dev started' },
         { seq: 5, ts: 5, kind: 'error', md: 'boom' },
@@ -291,7 +301,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
     );
     expect(s.entries.map((e) => ({ key: e.key, kind: e.kind, md: e.md, streaming: e.streaming }))).toEqual([
       { key: 'k1', kind: 'user', md: 'goal', streaming: undefined },
-      { key: 'k2', kind: 'tool', md: '● read\n⎿ ok', streaming: undefined },
+      { key: 'k2', kind: 'tool', md: '', streaming: undefined },
       { key: 'k3', kind: 'assistant', md: 'answer', streaming: undefined },
       { key: 'k4', kind: 'notice', md: '✻ dev started', streaming: undefined },
       { key: 'k5', kind: 'error', md: 'Error: boom', streaming: undefined }, // P10 前缀归渲染面
@@ -306,7 +316,7 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
       [
         {
           seq: 1, ts: 1, kind: 'tool',
-          md: '● read {"path":"src/cli/cli.test.ts"}\n⎿ {',
+          md: '',
           callId: 'c1', name: 'read', input: { path: 'src/cli/cli.test.ts' },
           result: { text: '{\n  "a": 1\n}\n', ok: true },
         },

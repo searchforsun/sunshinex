@@ -109,16 +109,16 @@ async function startDaemon(
   };
 }
 
-/** 工作区造场:workspace.json(root 反解档,Home 可 attach 判据)+ 历史 v2 journal(首条用户 seg 行——
- *  v2 装载只认 seg 面)——首页列表/attach 播种全链的盘面;回 journal id */
+/** 工作区造场:workspace.json(root 反解档,Home 可 attach 判据)+ 历史 v3 journal(首条用户 seg 行,
+ *  裸文——P11 v3 装载零归一;v2 档已被版本守卫拒载)——首页列表/attach 播种全链的盘面;回 journal id */
 function seedWorkspace(root: string, userText: string): string {
   const dataDir = resolveDataDir(root);
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root }) + '\n', 'utf8');
   const j = new SessionJournal(dataDir);
-  j.start(2);
+  j.start(3);
   const id = j.currentId!;
-  j.log({ t: 'seg', kind: 'user', md: `> ${userText}`, ts: Date.now(), seq: 1 });
+  j.log({ t: 'seg', kind: 'user', md: userText, ts: Date.now(), seq: 1 });
   return id;
 }
 
@@ -186,11 +186,12 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
     }
 
     // —— 转录(粗粒度三类):user 提交回显 / assistant 终答 / tool 配对条 ——
-    expect(snap1.messages.some((m) => m.kind === 'user' && m.md === '> run demo')).toBe(true);
+    expect(snap1.messages.some((m) => m.kind === 'user' && m.md === 'run demo')).toBe(true); // P11:user 裸文(v3 零前缀)
     expect(snap1.messages.some((m) => m.kind === 'assistant' && m.md === 'all done')).toBe(true);
     const tool = snap1.messages.find((m) => m.kind === 'tool');
     expect(tool).toBeDefined();
-    expect(tool!.md.startsWith('● create_task')).toBe(true);
+    expect(tool!.md).toBe(''); // P11:tool md 恒空(字段单源 name/input/result)
+    expect(tool!.name).toBe('create_task');
 
     // —— 板:t1 在场,fork 完成强制回写后未 review → in-review ——
     expect(snap1.board.tasks.t1?.title).toBe('Demo');
@@ -228,7 +229,7 @@ describe('G3.5 首页全链:Home 工作区/attach 播种/会话维提交(App 渲
 
       // —— 播种:journal 首条用户输入经 attach → sessionSnapshot 基线 → blockquote 渲染 ——
       await waitFor(
-        () => expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('历史第一句'), // P10:前缀投影层剥除,气泡样式 CSS 承担
+        () => expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('历史第一句'), // P11:v3 user 裸文直映(零剥前缀)
         { timeout: 5_000 },
       );
 
@@ -320,7 +321,7 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       expect(s1Row).toBeDefined();
       fireEvent.click(s1Row!);
       await waitFor(
-        () => expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('历史第一句'), // P10:前缀投影层剥除,气泡样式 CSS 承担
+        () => expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('历史第一句'), // P11:v3 user 裸文直映(零剥前缀)
         { timeout: 10_000 },
       );
       // 重开转录在场(journal msg 行播种);run 面是 chain 行——restore 入 history 不入转录(daemon
@@ -393,7 +394,7 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
     // —— 「+ 添加工作区」(G8a:DirPicker 流经左栏添加面,桌面壳 IPC 桩回路径)→ 欢迎页目标提交:
-    //    G10 接力单源——welcome goal 经 Chat 播种落定自动提交(本地回显 '> 流式冒烟'),
+    //    G10 接力单源——welcome goal 经 Chat 播种落定自动提交(本地回显裸文,v3 user 零前缀),
     //    不再另走会话输入二段提交(会撞 run 锁 409)——
         Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
     fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
@@ -476,7 +477,7 @@ describe('G3 冒烟③:断线重连恢复(daemon 真链路,onReset+全量重放)
 
     // —— 快照全量在场(上层重拉基线的载荷:首轮 user/assistant 全在)——
     const snap = await connB.sessionSnapshot(s1);
-    expect(snap.messages.some((m) => m.kind === 'user' && m.md === '> goal one')).toBe(true);
+    expect(snap.messages.some((m) => m.kind === 'user' && m.md === 'goal one')).toBe(true); // P11:user 裸文(v3 零前缀)
     expect(snap.messages.some((m) => m.kind === 'assistant' && m.md === '首轮答复')).toBe(true);
 
     // —— 重连后续提交(:id):第二张牌 → done 经恢复后的连接送达 ——
