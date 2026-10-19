@@ -58,7 +58,8 @@ export function useWorkspaceFiles(
     const cap = { n: 600 };
     const dcap = { n: 300 };
     const walk = async (p2: string, depth: number): Promise<string[]> => {
-      if (depth > 4 || cap.n <= 0) return [];
+      // 目录遍历只受自身 cap/深度约束:文件 cap 满额仅停记账不停走(与服务端 workspaceFiles 同口径)
+      if (depth > 4 || dcap.n <= 0) return [];
       let entries: Array<{ name: string; kind: 'dir' | 'file' }> = [];
       try {
         const r = await conn.tree(sessionId, p2 === '' ? undefined : p2);
@@ -69,9 +70,9 @@ export function useWorkspaceFiles(
       }
       const out: string[] = [];
       for (const e of entries) {
-        if (cap.n <= 0) break;
         const rel = p2 === '' ? e.name : `${p2}/${e.name}`;
         if (e.kind === 'file') {
+          if (cap.n <= 0) continue;
           out.push(rel);
           cap.n -= 1;
         } else if (!skip.has(e.name)) {

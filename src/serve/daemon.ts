@@ -253,6 +253,8 @@ export class GuiDaemon {
     session.kernelSeed(reduceSegRows(replayEvents));
     // 等待队列装载(P5 spec §12):末条 steer 行整列回种(无行=空队列)
     session.steerSeed(reduceSteerRows(replayEvents));
+    // 影子投影装载(G14.2xx 断线重连):board/delegation 事件行回种——重启后快照/补发不再空板空委派
+    session.seedShadow(replayEvents);
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);
@@ -575,11 +577,12 @@ export class GuiDaemon {
         if (root === '') return this.send(res, 400, { error: 'root query param required' });
         this.send(res, 200, await gitBranches(path.resolve(root)));
       } },
-    // G14.121 工作区文件索引(@ 文件面板;root 必传,文件按 mtime 倒序=最近改动优先)
+    // G14.121 工作区文件索引(@ 文件面板;root 必传,文件按 mtime 倒序=最近改动优先;dirs=尾斜杠目录清单,@面板滤目录用)
     { method: 'GET', path: '/workspace/files', auth: true, run: async (req, res) => {
         const root = urlOf(req).searchParams.get('root') ?? '';
         if (root === '') return this.send(res, 400, { error: 'root query param required' });
-        this.send(res, 200, { files: await workspaceFiles(path.resolve(root)) });
+        const idx = await workspaceFiles(path.resolve(root));
+        this.send(res, 200, { files: idx.files, dirs: idx.dirs });
       } },
     { method: 'POST', path: '/git/checkout', auth: true, run: async (req, res) => {
         const parsed = await this.readJson(req);

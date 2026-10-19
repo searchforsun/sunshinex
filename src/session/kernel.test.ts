@@ -335,7 +335,7 @@ test('⑫ truncate:保留 seq<=upToSeq 前缀;序号不复用,后续条目续接
 test('⑬ 段级事件面(v2 写者契约):seg-open open 标志/seg-update 回填/段闭合落终态;token 拼接零事件', () => {
   const events: Array<{ t: string; seq?: number; open?: boolean; kind?: string }> = [];
   const k = new SessionKernel({
-    onKernelEvent: (e) => events.push(e.t === 'truncate' ? { t: e.t, seq: e.upToSeq } : e.t === 'steer' ? { t: e.t } : e.t === 'stats' ? { t: e.t } : { t: e.t, seq: e.entry.seq, open: 'open' in e ? e.open : undefined, kind: e.entry.kind }),
+    onKernelEvent: (e) => events.push(e.t === 'truncate' ? { t: e.t, seq: e.upToSeq } : e.t === 'steer' ? { t: e.t } : e.t === 'stats' || e.t === 'shadow' ? { t: e.t } : { t: e.t, seq: e.entry.seq, open: 'open' in e ? e.open : undefined, kind: e.entry.kind }),
   });
   pump(k, ev('user', '问'), ev('token', '答'));
   assert.deepEqual(
@@ -531,4 +531,18 @@ test('⓱ 段开 running:token/reasoning 开启段显 running,封段删字段', 
   pump(k, ev('done', '答', { stopReason: 'done' }));
   assert.equal(k.replay()[0]!.status, undefined);
   assert.equal(k.replay()[1]!.status, undefined);
+});
+
+test('⑯ 面事件透传落档(G14.2xx 内核层落库):task-/gate-/delegation-/子代理流发 shadow 事件,转录面零扰动', () => {
+  const events: Array<{ t: string }> = [];
+  const k = new SessionKernel({ onKernelEvent: (e) => events.push({ t: e.t }) });
+  pump(
+    k,
+    ev('task-created', undefined, { taskId: 't1', title: 'x' }),
+    ev('gate-waiting', undefined, { taskId: 't1' }),
+    ev('delegation-started', undefined, { delegationId: 'd1' }),
+    ev('tool-call', undefined, { subagent: 'w1' }),
+    ev('user', '普通消息'), // user 走 seg 面,不发 shadow
+  );
+  assert.deepEqual(events.map((e) => e.t), ['shadow', 'shadow', 'shadow', 'shadow', 'seg-open'], '面事件各发一次 shadow,user 走 seg');
 });

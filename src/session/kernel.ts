@@ -17,7 +17,8 @@ export type KernelEvent =
   | { t: 'seg-update'; entry: KernelEntry } // 工具条回填(name/input/result——重放按 seq upsert)
   | { t: 'truncate'; upToSeq: number } // rewind/compact/reset 视界截断(upToSeq=0 即全清)
   | { t: 'steer'; items: SteerItem[] } // 等待队列变更(整列重写快照;持久化整列落一行,广播走全量列表)
-  | { t: 'stats'; stats: SessionStats }; // 会话统计变更(P9,全量快照;不落档——seed 自 run meta 重建)
+  | { t: 'stats'; stats: SessionStats } // 会话统计变更(P9,全量快照;不落档——seed 自 run meta 重建)
+  | { t: 'shadow'; e: SessionEvent }; // G14.2xx 面事件透传落档(board/delegation/子代理流)——凡界面可见皆落库,渲染层回溯共用;持久化映射见 seglog.kernelEventRows
 
 /**
  * SessionKernel:会话转录唯一投影 + 事件泵(spec 2026-10-17-session-kernel §3/§6)。
@@ -51,6 +52,12 @@ export class SessionKernel {
    *  面既有)不另发。差分 O(n)(prev seq→条目 Map),条目引用未变的零事件。
    *  统计面(P9):stats 引用变即发全量快照(先于条目差分——计数器事件轻,视图先行合帧) */
   pump(e: SessionEvent): void {
+    // G14.2xx 面事件落档(内核层单点):板面/委派/子代理流不经转录投影(applyEvent 忽略),但界面可见、
+    // 渲染层需回溯——shadow 事件透传给持久化面(seglog 映射 journal 行),TUI/GUI 两写面自动继承
+    const et = e.type;
+    if (et.startsWith('task-') || et.startsWith('gate-') || et.startsWith('delegation-') || (e.payload !== undefined && typeof (e.payload as { subagent?: unknown }).subagent === 'string')) {
+      this.emit({ t: 'shadow', e });
+    }
     const prev = this.state;
     this.state = applyEvent(this.state, e);
     if (prev.stats !== this.state.stats) this.emit({ t: 'stats', stats: this.state.stats });

@@ -45,6 +45,7 @@ function kernelEventsToRows(events: KernelEvent[]): Record<string, unknown>[] {
       continue;
     }
     if (e.t === 'stats') continue; // 统计面零落档(P9)
+    if (e.t === 'shadow') continue; // 面事件透传行(G14.2xx)归 shadow 映射,本帮助面不消费
     rows.push({ t: 'truncate', upToSeq: e.upToSeq });
   }
   return rows;
@@ -238,4 +239,13 @@ test('steer 行读面(P5,spec §12):reduceSteerRows 取末行为准+字段净化
   const k2 = new SessionKernel();
   k2.steerRestore(reduceSteerRows(rows));
   assert.deepEqual(k2.steerPendingItems(), k.steerPendingItems(), '装载往返等价');
+});
+
+test('G14.2xx shadow 行映射:task-/gate- → board 行、delegation- → delegation 行、子代理流 → subagent 行(原件直存)', () => {
+  const rows = kernelEventRows({ t: 'shadow', e: { type: 'task-created', ts: 1, payload: { taskId: 't1' } } });
+  assert.deepEqual(rows, [{ t: 'board', e: { type: 'task-created', ts: 1, payload: { taskId: 't1' } } }]);
+  const rows2 = kernelEventRows({ t: 'shadow', e: { type: 'delegation-started', ts: 2, payload: { delegationId: 'd1' } } });
+  assert.deepEqual(rows2, [{ t: 'delegation', e: { type: 'delegation-started', ts: 2, payload: { delegationId: 'd1' } } }]);
+  const rows3 = kernelEventRows({ t: 'shadow', e: { type: 'tool-call', ts: 3, payload: { subagent: 'w1' } } });
+  assert.deepEqual(rows3, [{ t: 'subagent', e: { type: 'tool-call', ts: 3, payload: { subagent: 'w1' } } }]);
 });

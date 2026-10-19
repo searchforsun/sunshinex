@@ -6,7 +6,7 @@
  *  读=逐行解析重放（尾行撕裂/中段损坏重放到上一条完整事件、未知版本由调用方拒载）。 */
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort } from '../types';
+import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
 import type { ChatItem, TodoItem } from './session';
 
 /** 分档血缘（规格 2026-09-20 rewind+fork §5.1）：upToLine=源档 1-based 行号，新档含源档第 1..upToLine 行 */
@@ -61,7 +61,15 @@ export type JournalEvent =
   /** 视界截断行(rewind/compact/reset;upToSeq=0 即全清;重放在流中位置即时生效) */
   | { t: 'truncate'; upToSeq: number }
   /** 等待队列行(P5 内核化 spec §12;整列重写——每次变更一行全量,重放取末行为准;reduceJournal 忽略) */
-  | { t: 'steer'; items: Array<{ seq: number; text: string; front: boolean }> };
+  | { t: 'steer'; items: Array<{ seq: number; text: string; front: boolean }> }
+  /** 板面影子投影行(G14.2xx 内核层落库):task-/gate- 面事件原件落档(内核 shadow 透传)——attach 回种
+   *  影子投影时经 boardEventFrom 翻译折叠,重启/重连/换渲染层后板面不再空;reduceJournal 忽略 */
+  | { t: 'board'; e: SessionEvent }
+  /** 委派影子投影行(同上):delegation 起止事件原件落档(applyDelegation 直接消费),attach 回种委派面 */
+  | { t: 'delegation'; e: SessionEvent }
+  /** 子代理流影子投影行(同上):payload.subagent 标签事件原件落档——attach 以帧重放给渲染层,
+   *  子代理活动面(agent 页签)跨重启/换渲染层可重建;reduceJournal 忽略 */
+  | { t: 'subagent'; e: SessionEvent };
 
 export interface SessionMeta extends SessionSidecarMeta {
   id: string;

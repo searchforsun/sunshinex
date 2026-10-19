@@ -47,6 +47,14 @@ export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   }
   const read = readFileBounded(abs);
   if (read === 'missing') {
+    // G14.2xx 目录路径:Files 页输入目录(如 ./src/harness)→ directory 标记回执(客户端移交目录页签
+    // 定位;原 EISDIR 归 404 不可辨识,用户面表现「相对路径打不开」)
+    let st: fs.Stats | undefined;
+    try { st = fs.statSync(abs); } catch { /* missing 即 404 面 */ }
+    if (st?.isDirectory() === true) {
+      io.send(res, 200, { path: abs, type: 'directory' });
+      return;
+    }
     io.send(res, 404, { error: 'not found' });
     return;
   }

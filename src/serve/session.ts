@@ -12,7 +12,7 @@ import type { TaskBoardState } from '../taskboard/model';
 import { applyDelegation } from '../delegation/projection';
 import type { Delegation } from '../delegation/projection';
 import { boardEventFrom } from '../tui/session';
-import type { SessionJournal } from '../tui/session-journal';
+import type { SessionJournal, JournalEvent } from '../tui/session-journal';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SnapshotEntry } from '../tui/session-journal';
@@ -218,10 +218,39 @@ export class SessionRuntime {
     }
   }
 
+  /** attach 回种(G14.2xx 内核层落库):journal 影子行折叠回影子投影——board/delegation 行经翻译
+   *  折叠(快照即恢复,重启/重连/换渲染层不再空板空委派);subagent 行以**帧重放**交还渲染层
+   *  (agent 页签的聚合面从帧重建,与实时流同一消费通道)。daemon.attach 序在 kernelSeed 后调用 */
+  seedShadow(events: ReadonlyArray<JournalEvent>): void {
+    for (const row of events) {
+      if (row.t === 'board') {
+        // 旧写面(serve 级短暂窗口)ev 键兼容:同义原始事件二取一;缺一跳过(坏行不得炸 attach)
+        const raw = (row as { e?: SessionEvent }).e ?? (row as { ev?: SessionEvent }).ev;
+        if (raw === undefined) continue;
+        const bev = boardEventFrom(raw);
+        if (bev !== undefined) this.board = applyBoardEvent(this.board, bev);
+      } else if (row.t === 'delegation') {
+        this.delegations = applyDelegation(this.delegations, row.e);
+      } else if (row.t === 'subagent') {
+        this.emitShadowFrame(row.e);
+      }
+    }
+  }
+
+  /** 子代理影子帧重放(emitQueueFrame 同形):journal 里的子代理事件按新 seq 回灌帧缓冲+广播,
+   *  GUI agent 页签的聚合面从帧重建(实时流同一消费通道) */
+  private emitShadowFrame(e: SessionEvent): void {
+    const seq = this.opts.nextSeq();
+    this.lastSeqNum = seq;
+    const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e };
+    this.frames.push(frame);
+    if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
+    this.opts.broadcast(frame);
+  }
+
   /** queue 事件旁路广播(P5,spec §12):队列变更不发 SessionEvent 主链(pump 会喂转录内核与影子
    *  投影,default 分支把 queue 当边界误闭合开启段)——单走 seq 分配+环形缓冲+广播;重连补发经
-   *  frames 环窗天然覆盖(新连接回放最后一条 queue 帧=最新队列) */
-  private emitQueueFrame(items: SteerItem[]): void {
+   *  frames 环窗天然覆盖(新连接回放最后一条 queue 帧=最新队列) */  private emitQueueFrame(items: SteerItem[]): void {
     const seq = this.opts.nextSeq();
     this.lastSeqNum = seq;
     const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e: { type: 'queue', payload: { items }, ts: Date.now() } };
@@ -444,7 +473,12 @@ export class SessionRuntime {
       // G14.56:runSteps=本轮自身步数(reactor seedLen 后去重计)——GUI run 尾部「本轮」口径
       this.runRunSteps = typeof e.payload.runSteps === 'number' ? e.payload.runSteps : undefined;
     }
-    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) this.board = applyBoardEvent(this.board, boardEventFrom(e));
+    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
+      // G14.2xx 板面/委派/子代理流落档已收归内核泵(shadow 事件,seglog 映射 journal 行)——
+      // 本面只留影子投影更新,daemon/TUI 两写面自动继承
+      const bev = boardEventFrom(e);
+      if (bev !== undefined) this.board = applyBoardEvent(this.board, bev);
+    }
     if (e.type.startsWith('delegation-')) this.delegations = applyDelegation(this.delegations, e);
     this.kernel.pump(e);
     this.opts.broadcast(frame);
@@ -463,6 +497,8 @@ export class SessionRuntime {
   submit(goal: string): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     const abort = new AbortController();
+    // G14.2xx 立即停止:run 信号装入沙箱——interrupt 时在途 exec 子进程即刻收割(不再等步边界)
+    this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
     const startedAt = Date.now();
     // G14.100 本轮改动基线(run 前 git 变动集):收尾差集=本轮增量(runmeta.changes 供 GUI 汇总条)
     let runBaseChanges: ChangeFile[] = [];
@@ -548,6 +584,8 @@ export class SessionRuntime {
       })
       .finally(() => {
         this.current = undefined;
+        // G14.2xx 立即停止:轮收束即摘 run 信号(在途 exec 收割只属本轮;下轮 submit 重装)
+        this.runtimeImpl.harness.sandbox.setRunSignal(undefined);
         // G14.89 轮收束自动发下一轮:队列非空即取队首续跑(排队语义=等当前轮完成自动发);
         // interrupted(用户主动停)不续——停止即停,队列留存由用户决定;余下条目保序回队
         // (P5:取走/回队均走内核——steer 行落档+queue 帧广播随发)
@@ -555,8 +593,20 @@ export class SessionRuntime {
           const pending = this.kernel.steerTakePending();
           if (pending.length > 0) {
             for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text);
-            // G14.89 user 回显帧:内部续发不经 HTTP 提交(GUI 无本地回显),pump 帧补气泡
-            this.pump({ type: 'user', text: pending[0]!.text, ts: Date.now() });
+            // G14.89 user 回显帧:GUI 运行中入队不本地回显,气泡靠此帧。回显必须走纯帧广播
+            // (emitQueueFrame 同形,不经 kernel.pump)——内部续发的 kernel.submit 自身会写 user 段,
+            // 泵路回显曾致转录双气泡+journal 双行(G14.2xx 实测)
+            const seq = this.opts.nextSeq();
+            this.lastSeqNum = seq;
+            const frame: EventFrame = {
+              kind: 'event',
+              sessionId: this.id,
+              seq,
+              e: { type: 'user', text: pending[0]!.text, ts: Date.now() },
+            };
+            this.frames.push(frame);
+            if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
+            this.opts.broadcast(frame);
             this.submit(pending[0]!.text);
           }
         }

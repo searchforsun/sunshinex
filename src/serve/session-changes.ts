@@ -214,17 +214,21 @@ async function gitIgnoredSet(root: string): Promise<Set<string>> {
 
 /** G14.121 工作区文件索引(@ 文件面板数据源,Chat 与欢迎页共用):BFS 限深限数、跳噪声目录与
  *  git 忽略文件(G14.124),stat mtime 倒序——最近改动优先;cap 600 控响应体。返回 posix 相对
- *  路径(展示/子序列匹配)。非目录/IO 异常静默空表(面板降级可用) */
+ *  路径(展示/子序列匹配)。非目录/IO 异常静默空表(面板降级可用)。
+ *  目录引用面(@面板可滤出文件夹/拖目录引用):dirs 独立数组带尾斜杠标记(与 mtime 文件序
+ *  分离,面板目录排前),cap 300;跳噪/忽略口径与文件同。 */
 const WS_INDEX_SKIP = new Set([
   'node_modules', '.git', 'dist', 'dist-gui', 'build', 'target', 'out', '.next',
   '.idea', '.vscode', '__pycache__', '.sunshinex',
   '.pnpm-store', '.cache', 'coverage', '.zcode', 'tmp', 'temp',
 ]);
-export async function workspaceFiles(root: string): Promise<Array<{ path: string; mtime: number }>> {
-  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) return [];
+export async function workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs: string[] }> {
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) return { files: [], dirs: [] };
   const ign = await gitIgnoredSet(root);
   const cap = { n: 600 };
+  const dcap = { n: 300 };
   const out: Array<{ path: string; mtime: number }> = [];
+  const dirs: string[] = [];
   /** rel 或其任一祖先目录命中忽略集 */
   const ignoredRel = (rel: string): boolean => {
     let acc = '';
@@ -235,7 +239,9 @@ export async function workspaceFiles(root: string): Promise<Array<{ path: string
     return false;
   };
   const walk = (rel: string, depth: number): void => {
-    if (depth > 4 || cap.n <= 0) return;
+    // 目录遍历只受自身 cap/深度约束:文件 cap 满额仅停记账不停走——否则大仓 DFS 前段文件
+    // 耗尽配额,后段目录(src/tui 等)整块缺席,@面板滤目录残缺
+    if (depth > 4 || dcap.n <= 0) return;
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(rel === '' ? root : path.join(root, rel), { withFileTypes: true });
@@ -243,13 +249,15 @@ export async function workspaceFiles(root: string): Promise<Array<{ path: string
       return;
     }
     for (const e of entries) {
-      if (cap.n <= 0) break;
       const rel2 = rel === '' ? e.name : `${rel}/${e.name}`;
       if (e.isDirectory()) {
-        if (!WS_INDEX_SKIP.has(e.name) && !ignoredRel(rel2)) walk(rel2, depth + 1);
+        if (WS_INDEX_SKIP.has(e.name) || ignoredRel(rel2) || dcap.n <= 0) continue;
+        dirs.push(`${rel2}/`);
+        dcap.n -= 1;
+        walk(rel2, depth + 1);
         continue;
       }
-      if (!e.isFile() || ignoredRel(rel2)) continue;
+      if (!e.isFile() || ignoredRel(rel2) || cap.n <= 0) continue;
       let mtime = 0;
       try {
         mtime = fs.statSync(path.join(root, rel2)).mtimeMs;
@@ -262,5 +270,5 @@ export async function workspaceFiles(root: string): Promise<Array<{ path: string
   };
   walk('', 0);
   out.sort((x, y) => y.mtime - x.mtime);
-  return out;
+  return { files: out, dirs };
 }

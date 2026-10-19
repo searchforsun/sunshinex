@@ -1,4 +1,4 @@
-import { execFile, spawn, spawnSync } from 'child_process';
+import { execFile, spawn, spawnSync, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
@@ -8,6 +8,40 @@ import { escapeRegExp } from '../../textmatch';
 /** process 执行后端：命令与文件 IO 的统一执行面；Docker/SSH 后端同接口预留，1D 不实现 */
 export class ProcessSandbox implements ToolBackend {
   readonly name = 'process';
+
+  /** 当前 run 的中止信号(G14.2xx 立即停止语义):submit 装入、轮收束/重置清空——前台 exec 在途
+   *  子进程随信号即刻收割(不再等步边界),被收割的命令落 EXEC_ABORTED(非 ok),转录如实显「已中止」。
+   *  会话单 run 锁 ⇒ 实例级单信号安全;转后台/后台任务不经此(后台任务按设计独立于 run 存活) */
+  private runSignal?: AbortSignal;
+  private readonly liveChildren = new Set<ChildProcess>();
+
+  setRunSignal(signal: AbortSignal | undefined): void {
+    this.runSignal = signal;
+  }
+
+  /** 中止收割:杀进程树(win32 taskkill /T /F;POSIX SIGKILL),打中止标记,摘出活表 */
+  private abortKill(child: ChildProcess): void {
+    this.liveChildren.delete(child);
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/PID', String(child.pid ?? 0), '/T', '/F'], { windowsHide: true });
+    } else {
+      try { child.kill('SIGKILL'); } catch { /* 已退出 */ }
+    }
+  }
+
+  /** 前台 exec 装配中止收割:run 信号在场即挂 abort 监听(已在途的信号立即收割) */
+  private armAbortKill(child: ChildProcess, markAborted: () => void): void {
+    this.liveChildren.add(child);
+    child.on('close', () => this.liveChildren.delete(child));
+    const signal = this.runSignal;
+    if (signal === undefined) return;
+    const killTree = (): void => {
+      markAborted();
+      this.abortKill(child);
+    };
+    if (signal.aborted) killTree();
+    else signal.addEventListener('abort', killTree, { once: true });
+  }
 
   async exec(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
     const timeoutMs = opts?.timeoutMs ?? 1_800_000;
@@ -19,11 +53,24 @@ export class ProcessSandbox implements ToolBackend {
     if (opts?.timeoutToBackground) {
       // 超时转后台形态（后台任务线规格 D5，对标 CC 超时自动转后台）：自管计时器——到点不杀进程，把存活子进程连同
       // 已缓冲输出交回调用方登记为后台任务；正常结束/真失败语义与 execFile 形态一致。
+      // G14.2xx 立即停止:转后台**之前**仍在同步窗口——run 信号中止即强制收割(同步调用必须中止);
+      // 已转后台则不追杀(后台任务独立于 run 存活,用户裁定)
       return new Promise((resolve) => {
         const child = spawn(file, args, { cwd: opts?.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
         let stdout = '';
         let stderr = '';
         let settled = false;
+        const onRunAbort = (): void => {
+          if (settled) return; // 已转后台:不追杀
+          settled = true;
+          clearTimeout(timer);
+          this.abortKill(child);
+          resolve(fail('EXEC_ABORTED', 'aborted by user'));
+        };
+        if (this.runSignal !== undefined) {
+          if (this.runSignal.aborted) { onRunAbort(); return; }
+          this.runSignal.addEventListener('abort', onRunAbort, { once: true });
+        }
         const timer = setTimeout(() => {
           if (settled) return;
           settled = true;
@@ -46,7 +93,13 @@ export class ProcessSandbox implements ToolBackend {
       });
     }
     return new Promise((resolve) => {
-      execFile(file, args, { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      let abortedBySignal = false;
+      const child = execFile(file, args, { cwd: opts?.cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+        if (abortedBySignal) {
+          // G14.2xx 立即停止:被 run 信号收割的在途命令落 EXEC_ABORTED(非 ok/超时)——转录如实显「已中止」
+          resolve(fail('EXEC_ABORTED', 'aborted by user'));
+          return;
+        }
         if (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code === 'ETIMEDOUT' || (err as { killed?: boolean }).killed) {
@@ -58,6 +111,7 @@ export class ProcessSandbox implements ToolBackend {
         }
         resolve(ok({ exitCode: 0, stdout, stderr, timedOut: false }));
       });
+      this.armAbortKill(child, () => { abortedBySignal = true; });
     });
   }
 

@@ -16,8 +16,16 @@ import type { JournalEvent } from '../tui/session-journal';
 
 /** 内核段级事件 → v3 行(write 映射单点,daemon(P2)/TUI(P3) 写者共用):
  *  seg-open 的 run→run-open 行、assistant/thinking 开启段不落(等 seg-close)、其余即终态落 seg 行
- *  (tool 带 result 时回填行随落);seg-close 落闭合段终态;seg-update 落回填行;truncate 落截断行。 */
+ *  (tool 带 result 时回填行随落);seg-close 落闭合段终态;seg-update 落回填行;truncate 落截断行。
+ *  G14.2xx shadow 行(面事件透传):task-/gate- → board 行(原始 SessionEvent,回种侧经 boardEventFrom
+ *  翻译折叠);delegation- → delegation 行;子代理流 → subagent 行——凡界面可见皆落库,渲染层回溯共用。 */
 export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
+  if (ev.t === 'shadow') {
+    const e = ev.e;
+    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) return [{ t: 'board', e }];
+    if (e.type.startsWith('delegation-')) return [{ t: 'delegation', e }];
+    return [{ t: 'subagent', e }];
+  }
   if (ev.t === 'truncate') return [{ t: 'truncate', upToSeq: ev.upToSeq }];
   if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front })) }];
   if (ev.t === 'stats') return []; // 统计面不落档(P9):非转录,装载自 run meta 重建
