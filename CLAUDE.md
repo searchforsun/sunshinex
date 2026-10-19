@@ -14,18 +14,40 @@
 
 ## 2. 常用命令
 
+### 构建与运行
+
 ```bash
+pnpm install    # 安装依赖（pnpm 版本由 packageManager 钉定、corepack 对齐；store 固定仓内 .pnpm-store）
 pnpm build      # 编译 TS 到 dist/（tsc -p tsconfig.json）
 pnpm start      # 运行入口（node dist/index.js）
-pnpm selfcheck  # 编译并运行骨架自检
-pnpm test      # 编译 + 全量单测（scripts/run-tests.js 启动，测试数据目录钉仓内 .data-test 防污染用户全局区）
-pnpm cli       # CLI 执行面（内置自动构建，自动装载 settings.json）
-pnpm gui:build # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
-pnpm shell:dist # 构建 Electron 桌面安装包 → shell/release/（shell/ 工作区包）
-pnpm install   # 安装依赖
+pnpm cli        # CLI 执行面（内置自动构建，自动装载 settings.json）
+pnpm selfcheck  # 编译并运行骨架自检（dist 可启动性；shell/isolation 决议上屏）
+pnpm gui:build  # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
 ```
 
-> 包管理器统一 pnpm：版本由 `packageManager` 字段钉定（corepack 启用后直接使用 `pnpm`）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，依赖安装与缓存随仓库走（部署口径见 `docs/PLATFORM.md`）。
+### 本地测试（按包分层）
+
+| 层 | 命令 | 内容 |
+|----|------|------|
+| 主仓单测 | `pnpm test` | 清空并编译 dist/ → `node --test` 跑全量 `*.test.js`；测试数据钉仓内 `.data-test`（按测试文件派生私有子目录、跑完自清，零污染用户全局区）；不含 GUI |
+| GUI 全量 | `pnpm --dir gui run test` | pretest 先 typecheck（`tsc --noEmit`）并编译主仓，vitest 全量＝单测 + e2e（起真 daemon，消费 `dist/serve/daemon` 发布形态）——gui 直接 import 主仓 TS 源保类型同源 |
+| GUI e2e 单跑 | `pnpm --dir gui run test:e2e` | pretest 先构建 dist-gui，只跑 e2e 文件（主仓 dist 须先在） |
+| 桌面壳 | `pnpm --filter sunshinex-shell run test`；冒烟 `pnpm shell:smoke` | 壳单测（vitest）；冒烟＝electron 真启动：起 → 页面加载完成 → 有序退，退出码判过 |
+
+联调辅助：`pnpm --dir gui run typecheck`（GUI TS 严格检查）；`pnpm --dir gui run dev`（vite 热迭代，`VITE_SERVE_URL=<daemon 地址>` 指向后端）；`pnpm cli serve` 起 GUI daemon → `http://127.0.0.1:7788/`（host 恒回环不对外；`--port=N` 覆盖 / `--port=0` 临时端口；缺省免鉴权，显式 `--token` 启用）。daemon 服务 dist-gui 静态产物——改完 GUI 源码须 `pnpm gui:build` 再刷新才生效（dev 热更免重建）。
+
+### 上线部署（发版链）
+
+总入口 `node scripts/release.mjs --bump patch`（`--dry-run` 只验证 + pack 不触网；`--no-gui` 跳过桌面包；同版本重发加 `--clobber`），按序三步：
+
+1. **全量验证**：`pnpm test` → `selfcheck` → GUI 全量 → 壳单测 → `shell:smoke`——上面四层全过。
+2. **TUI 产物**：`npm pack` 出 `sunshinex-agent-<ver>.tgz`，创建 GitHub Release 上传；用户侧 `npm install -g <tgz 链接>` 直装。
+3. **GUI 桌面包**（传 `--no-gui` 跳过——非 Windows 主机无 wine 出不了 win 安装包；跳过时 GUI 代码门禁仍照跑）：`pnpm shell:dist` 全链——version:sync 三包版本单源 → 主仓 build → gui build → 壳 esbuild → electron-builder，出 NSIS 单安装包 `sunshinex-<ver>-setup.exe` → `scripts/shell-dist-smoke.mjs` 静默安装 + 安装包冒烟。
+
+- 只出安装包不触网：`pnpm shell:dist`（产物落 `shell/release/`）。
+- CI 门禁 `.github/workflows/ci.yml`：ubuntu + windows × Node 22/24 矩阵（`fail-fast: false`），步骤 `pnpm install --frozen-lockfile` → `pnpm test` → GUI 全量 → `pnpm selfcheck`；真实模型探针不入库、仅开发机手动执行；macOS 与 Linux 同源，按性价比省略。
+- npm publish 路径经 `prepublishOnly` 钩子强制 `pnpm test` + `selfcheck`。
+- 平台兼容与部署条件细则见 `docs/PLATFORM.md`。
 
 ## 3. 目录结构
 
@@ -76,7 +98,7 @@ src/
   serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v2 单档唯一写者链路 kernelEventRows）
   storage/            # 本地 JSON 存储底座；archive.ts（ArchiveStore 接口 + fs 实现，归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
-shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/NSIS+portable 打包；daemon 以子进程装配，壳与主仓零编译期耦合）
+shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/NSIS 单安装包打包；daemon 以子进程装配，壳与主仓零编译期耦合）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
 agents/               # 用户子代理目录（{id}/agent.md，装配期一次性加载 fail-fast）
 SUNSHINE.md          # 项目业务配置
@@ -231,7 +253,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 终端 | @xterm/xterm + @xterm/addon-fit（前端）+ node-pty（宿主） | 已引入 | 内嵌终端：gui 渲染、daemon 经 node-pty 分配 PTY（原生模块，§5 台账） |
 | GUI 任务板 DAG | 仓内 layoutBoard（Kahn 分层）+ 自绘 svg | 已引入 | 任务依赖图布局与连线，收敛于 `gui/src/board-layout.ts`，零新依赖 |
 | GUI 桌面壳 | Electron | 已引入 | 桌面容器（托盘驻留/全局快捷键/原生外开），收敛于 `shell/` 工作区包 |
-| GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS+portable 打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
+| GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS 单安装包打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |
 | GUI 内嵌浏览器 | WebContentsView | 规划选型 | Electron ≥ 30 原生 API（现行 Web 标签为 iframe，禁内嵌站点走系统外开） |
 | GUI 可选增强 | dockerode + tree-kill | 可选增强 | Compute Use 容器执行/进程管理，按需引入 |
