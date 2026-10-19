@@ -39,10 +39,12 @@ export interface TaskBoardTabProps {
 /** 批次切分间隔:相邻创建时刻超过该值即视为新一轮任务的卡片(ms) */
 const BATCH_GAP_MS = 120_000;
 
-/** 任务 → 执行子代理:委派表按 delegationId/label 的 `task-<id>` 形态或 title 同文命中 */
+/** 任务 → 执行子代理:委派表按 delegationId/label 同文命中——委派标签=dispatchTag(板 id):
+ *  新方言(2026-10-19)板 id 自带 task- 类别段即本形,旧恢复档 tN 补 task- 前缀;title 同文兜底 */
 function agentOfTask(task: BoardTask, delegations: readonly Delegation[]): Delegation | undefined {
+  const tag = /^t\d+$/.test(task.id) ? `task-${task.id}` : task.id;
   return (
-    delegations.find((d) => d.id === `task-${task.id}` || d.label === `task-${task.id}`) ??
+    delegations.find((d) => d.id === tag || d.label === tag) ??
     delegations.find((d) => d.title !== undefined && d.title === task.title)
   );
 }
