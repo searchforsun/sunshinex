@@ -34,11 +34,13 @@ interface TuiLoopDeps {
 }
 
 /**
- * TUI 渲染循环：常态单实例常驻；resize 时「卸载 → 清屏 → 重挂」整屏重绘。
- * 根因：ink3 对 resize 只做原位重绘，其擦除按「上一帧行数」计数——终端 reflow 后行数失配，
- * 旧帧擦不净，思考流等多行动态区反复叠影；重挂让 Static 历史重放、动态区重建，残帧归零。
- * 时机：首个 resize 立即重绘（单击缩放/最大化一步到位），拖拽连发按防抖窗口收敛为一次。
- * 输入/视图现场经 retain 跨重挂保留（App 挂载读初值、变化实时回写）。
+ * TUI 渲染循环：常态单实例常驻；resize 走「冻结 → 重放」两拍（2026-10-19 改制，见 resize.ts）：
+ * 拖拽首事件卸载实例定格（屏幕静态区冻结、拖拽期零重渲染），安静后「卸载 → 清屏 → 重挂」
+ * 一次性整屏重放。根因：ink3 对 resize 只做原位重绘，其擦除按「上一帧行数」计数——终端 reflow
+ * 后行数失配，旧帧擦不净，思考流等多行动态区反复叠影；且拖拽中瞬时宽度的全量重放与 conpty
+ * 异步 resync 互相踩踏（真机重复渲染/布局混乱）。重放让 Static 历史重放、动态区重建，残帧归零。
+ * Tab 切换等非 resize 重绘走 requestRepaint 同一条卸载→清屏→重挂路径（若在冻结中，折入 settle
+ * 后的同一帧重放）。输入/视图现场经 retain 跨重挂保留（App 挂载读初值、变化实时回写）。
  */
 export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
   const retain: RetainedUiState = { ...initialRetained(), ...deps.initialRetain };
@@ -47,22 +49,49 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
   const writeRaw = deps.writeRaw ?? ((s: string): void => { process.stdout.write(s); });
   let repaintQueued: RepaintMode | undefined;
   let current: InkLikeInstance | undefined;
+  // 实例死活钉：冻结/排队重绘期实例已卸载，重复 unmount 不再下发（ink 卸载非幂等）
+  let unmounted = false;
+  // 冻结停靠：拖拽期循环停在本 promise 上，settle 回调唤醒后走 full 重放
+  let frozen = false;
+  let unfreeze: (() => void) | undefined;
+  const unmountCurrent = (): void => {
+    if (unmounted) return;
+    unmounted = true;
+    current?.unmount();
+  };
   // resize 与 Tab 模式切换共用同一条「卸载 → 清屏 → 重挂」路径：Static 历史按当前模式整屏重放
   // 重绘模式升级钉：已排队的 full 不被后续 tail 降级（full 语义覆盖面更广）
   const requestRepaint = (mode: RepaintMode = 'full'): void => {
     keyTrace(`repaint-queue ${mode}`);
     repaintQueued = repaintQueued === 'full' ? 'full' : mode;
-    current?.unmount();
+    unmountCurrent();
   };
   const gate = createResizeGate({
     source: deps.stdout,
     debounceMs: deps.debounceMs,
-    onRepaint: () => requestRepaint('full'),
+    onFreeze: () => {
+      keyTrace('repaint-freeze');
+      frozen = true;
+      unmountCurrent();
+    },
+    onRepaint: () => {
+      requestRepaint('full');
+      if (frozen) {
+        frozen = false;
+        const wake = unfreeze;
+        unfreeze = undefined;
+        wake?.();
+      }
+    },
   });
   deps.onRequestRepaint?.(requestRepaint);
   try {
     let first = true;
     do {
+      // 冻结停靠：settle 前零渲染（onRepaint 唤醒时 repaintQueued 已置 full）
+      while (frozen) {
+        await new Promise<void>((resolve) => { unfreeze = resolve; });
+      }
       const mode: RepaintMode | undefined = !first ? (repaintQueued ?? 'full') : undefined;
       first = false;
       repaintQueued = undefined;
@@ -76,22 +105,27 @@ export async function runTuiLoop(deps: TuiLoopDeps): Promise<void> {
         writeRaw(`\u001b[?2026h\u001b[${plan.suffixLines + frameH}A\u001b[J\u001b[?2026l`);
         retain.rewriteFrom = plan.from;
         current = deps.renderOnce(retain);
+        unmounted = false;
         retain.rewriteFrom = undefined;
       } else if (mode !== undefined) {
         retain.rewriteFrom = undefined;
         writeRaw('\u001b[?2026h');
         deps.clearScreen();
         current = deps.renderOnce(retain);
+        unmounted = false;
         writeRaw('\u001b[?2026l');
       } else {
         current = deps.renderOnce(retain);
+        unmounted = false;
       }
       if (mode !== undefined) keyTrace(`repaint-done ${mode}`);
       await current.waitUntilExit();
-    } while (repaintQueued !== undefined);
+      // 冻结在场也续循环:frozen 但 repaintQueued 空时,退出条件为假即「resize 即杀 TUI」——
+      // 续入循环体顶部的冻结停靠,等 settle 唤醒后走 full 重放
+    } while (repaintQueued !== undefined || frozen);
   } finally {
     gate.dispose();
-    current?.unmount();
+    unmountCurrent();
   }
 }
 

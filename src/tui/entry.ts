@@ -130,8 +130,10 @@ export async function runTui(args: CliArgs): Promise<void> {
     Object.defineProperty(shieldStdout, 'columns', { value: lastKnownCols, writable: true, configurable: true }); // writable:true 必须有:缺省只读 → SIGWINCH 内部 _refreshSize 强赋值即 TypeError 崩进程(2026-10-08 用户实测+pty 复现)
   }
   shieldStdout.on?.('resize', refreshCols);
-  // 渲染循环：resize 时卸载→清屏→重挂整屏重绘（ink3 对 resize 只做原位重绘，擦除按旧帧行数计数，
-  // 终端缩放 reflow 后行数失配、旧帧擦不净即残影叠字）；输入与展开模式现场跨重挂保留
+  // 渲染循环：resize 走「冻结 → 重放」两拍(2026-10-19)——拖拽首事件卸载实例定格(静态区冻结、
+  // 拖拽期零重渲染),安静后卸载→清屏→重挂一次性整屏重放(ink3 原位重绘按旧帧行数擦除,reflow 后
+  // 失配即残影叠字;拖拽中瞬时宽度全量重放与 conpty 异步 resync 互踩即重复渲染/布局混乱)。
+  // 输入与展开模式现场跨重挂保留
   let current: { unmount(): void } | undefined;
   // Tab 切换的展开模式：经宿主 onRequestRepaint 注入 tui-loop 的重绘出口（与 resize 共用卸载→清屏→重挂路径）
   let requestRepaint: ((mode?: RepaintMode) => void) | undefined;
