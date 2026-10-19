@@ -6,6 +6,7 @@
  * 依赖,投影面经 TabServices 注入(T5 组装)。
  */
 
+import { t } from '../i18n';
 import { Files } from '../pages/Files';
 import { TerminalTab } from './TerminalTab';
 import { DirectoryTab } from './DirectoryTab';
@@ -14,7 +15,7 @@ import { AgentTranscriptTab } from './AgentTranscriptTab';
 import { TodoCardsTab } from './TodoCardsTab';
 import { TaskBoardTab } from './TaskBoardTab';
 import { BgTasksTab, MemoryTab } from './InsightTabs';
-import { WebTab } from './WebTab';
+import { WebTab, normalizeWebUrl, webPageName } from './WebTab';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 import type { MutableRefObject } from 'react';
 
@@ -41,6 +42,8 @@ export interface TabServices {
   readonly turnGoal: string;
   /** G14.176 create_task 行点开的定位信号(App 注入;nonce 变更即滚动高亮) */
   readonly taskFocus: { ref: string; nonce: number } | null;
+  /** G14.2xx web 标签元数据回写(页内导航 url/页名 → 标签 params;App 落 patchTabMeta) */
+  readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }) => void;
 }
 
 export interface TabRenderProps {
@@ -100,6 +103,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         initialPath={p.params.path}
         root={p.root}
         onOpenFile={(path) => p.openTab('file', { path })}
+        onOpenDirectory={(rel) => p.openTab('directory', { path: rel })}
         onSideAsk={(text: string) => p.startSideChat?.(text)}
       />
     ),
@@ -120,7 +124,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => '目录',
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <DirectoryTab conn={p.conn} sessionId={p.sessionId} root={p.root} openTab={p.openTab} />,
+    render: (p) => <DirectoryTab conn={p.conn} sessionId={p.sessionId} root={p.root} openTab={p.openTab} locate={p.params.path} />,
   },
   {
     id: 'tasks',
@@ -207,12 +211,16 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'web',
     group: 'tools',
-    // title:url 优先(带参开档);裸开档 'Web'——标签条/标题行同源
-    title: (params) => params.url ?? 'Web',
-    // by url 多实例:同 url 重开=聚焦,异 url 并存;「+」菜单裸开 key='' 互判重(聚焦既有)
-    resolveKey: (params) => params.url ?? '',
+    // G14.2xx 浏览器原生标签形:title=页名(回写 pageTitle 优先,缺省 host;裸开档 '浏览器'——
+    // +菜单项同源 title({}));判重键归一化 url——页内导航经 onTabMeta 回写 params,标题/键随页
+    // 演进(多浏览器标签并存:同 url 重开=聚焦,异 url/裸开=新档)
+    title: (params) =>
+      params.pageTitle ?? (params.url !== undefined ? webPageName(normalizeWebUrl(params.url)) : t('Browser', '浏览器')),
+    resolveKey: (params) => (params.url !== undefined ? normalizeWebUrl(params.url) : ''),
     singleton: false,
-    render: (p) => <WebTab params={p.params} />,
+    render: (p) => (
+      <WebTab params={p.params} uid={p.uid} onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)} />
+    ),
   },
   {
     id: 'sidechat',
@@ -234,11 +242,15 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
             root={p.root}
             freshView
             fixedTitle=""
+            sideChat
             initialInsert={p.params.insert}
           />
         </div>
       ) : (
-        <></>
+        // G14.2xx:无 sideId 的裸档走不到(+菜单已特判走 startSideChat)——防御性提示面
+        <div className="sx-sidechat sx-sidechat-empty">
+          <p>{t('Side chats start from the chat topbar.', '辅助对话从会话顶栏的入口开始。')}</p>
+        </div>
       ),
     },
   ];

@@ -135,6 +135,8 @@ export interface DirPickerResp {
  *  truncated=true 表示原文超 512KB、content 为首 512KB 截断（预览语义非全文） */
 export interface FileResp {
   path: string;
+  /** G14.2xx 目录路径回执:path 为目录时 type=directory(content 缺省)——Files 页移交目录页签定位 */
+  type?: 'file' | 'directory';
   content: string;
   truncated?: boolean;
 }

@@ -79,6 +79,8 @@ export interface ChatProps {
   freshView?: boolean;
   /** G14.32 顶栏定名(辅助对话):压过会话名回落链,不露注册 id */
   fixedTitle?: string;
+  /** G14.2xx 辅助对话形态:空态文案/composer 占位用 side 变体(sidechat 页签注入) */
+  sideChat?: boolean;
   /** G14.213 滚动位存档键:journal 档案 id(稳定跨重挂/重启)。sessionId 是活动会话别名
    *  (每次重开经 newSession+attach 重新发号,s165→s167),按它存档永远失配;未配回落 sessionId */
   journalId?: string;

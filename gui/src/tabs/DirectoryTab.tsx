@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, RefreshCw, ChevronsDownUp, Search, X } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { Connection, TreeEntry } from '../connection';
@@ -9,9 +9,10 @@ import { t } from '../i18n';
 /**
  * G8b 目录标签体(T7):会话 root 的逐层惰拉树——G14.7 对齐 VSCode 资源管理器:
  * 头行(工作区名 + 刷新/全部折叠动作)+ 文件过滤框(VSCode「搜索文件」同位)+ 行树
- * (chevron/vscode-icons/缩进参考线,--depth 供参考线背景)。过滤非空:已加载层内按名
- * 包含匹配,命中文件自动可见(父层恒显)。目录行点击 = 惰拉单层(展开态缓存保留,错误层
- * 重拉重试,G8e-T2);文件行点击 = openTab('file', { path })。会话切换整体重置(G8b-T7 评审 #1)。
+ * (chevron/缩进参考线,--depth 供参考线背景;目录行免图标,文件行保 vscode-icons)。
+ * 过滤非空:已加载层内按名包含匹配,命中文件自动可见(父层恒显)。目录行点击 = 惰拉
+ * 单层(展开态缓存保留,错误层重拉重试,G8e-T2),拖拽 = @目录引用(同文件行私有类型);
+ * 文件行点击 = openTab('file', { path })。会话切换整体重置(G8b-T7 评审 #1)。
  */
 
 export interface DirectoryTabProps {
@@ -22,6 +23,8 @@ export interface DirectoryTabProps {
   readonly root?: string;
   /** 会话内开标签面(registry render props 直通 App openTabInSession——文件行跳转判重/聚焦) */
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
+  /** G14.2xx 定位(Files 页目录移交):相对目录路径变更即逐层展开定位;undefined = 无定位 */
+  readonly locate?: string;
 }
 
 /** 单层节点态:loading/error 行内瞬态;loaded = entries + truncated 标 */
@@ -43,11 +46,13 @@ const indent = (depth: number): CSSProperties =>
 /** 子层 path 拼合:root 直出名,深层 `${父}/${name}`(与 tree?path= 相对口径一致) */
 const childPath = (dirPath: string, name: string): string => (dirPath === '' ? name : `${dirPath}/${name}`);
 
-export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabProps): JSX.Element {
+export function DirectoryTab({ conn, sessionId, root, openTab, locate }: DirectoryTabProps): JSX.Element {
   const [nodes, setNodes] = useState<ReadonlyMap<string, NodeState>>(INITIAL_NODES);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => INITIAL_EXPANDED);
   /** G14.7 文件过滤(VSCode「搜索文件」同位):非空 = 已加载层内按名包含匹配 */
   const [filter, setFilter] = useState('');
+  /** G14.2xx 定位去重:同一路径只定位一次(重开同路径不重放) */
+  const locatedRef = useRef<string | undefined>(undefined);
 
   const setNode = useCallback((path: string, s: NodeState): void => {
     setNodes((m) => new Map(m).set(path, s));
@@ -81,6 +86,25 @@ export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabPro
   }, [conn, sessionId, setNode]);
 
   const collapseAll = useCallback((): void => setExpanded(new Set()), []);
+
+  /** G14.2xx 定位(Files 页目录移交):locate 相对目录变更 → 祖先链逐层展开+拉取(目标目录全可见) */
+  useEffect(() => {
+    if (locate === undefined || locate === '' || locatedRef.current === locate) return;
+    locatedRef.current = locate;
+    const rel = locate.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/^\/+/, '').replace(/\/+$/, '');
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length === 0) return;
+    const chain: string[] = [];
+    for (const seg of parts) chain.push(chain.length === 0 ? seg : chain[chain.length - 1] + '/' + seg);
+    setExpanded((s) => new Set([...s, ...chain]));
+    for (const dir of chain) {
+      setNode(dir, { status: 'loading' });
+      void conn.tree(sessionId, dir).then(
+        (r) => setNode(dir, { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
+        (err: unknown) => setNode(dir, { status: 'error', message: err instanceof Error ? err.message : String(err) }),
+      );
+    }
+  }, [locate, conn, sessionId, setNode]);
 
   /** G14.143 目录级 git 聚合:变更文件的祖先目录标记聚合状态(modified 压过 untracked)——
    *  目录行名着色 + 右缘圆点(VSCode 同位) */
@@ -171,13 +195,20 @@ export function DirectoryTab({ conn, sessionId, root, openTab }: DirectoryTabPro
                   style={indent(depth)}
                   aria-expanded={expanded.has(p)}
                   onClick={() => toggleDir(p)}
+                  draggable
+                  onDragStart={(e) => {
+                    // 拖目录名到输入框=@目录引用(与文件行同走 text/sunshinex-file;尾斜杠=内部标记,
+                    // composer 落点插 @短名 无斜杠,芯片/气泡经记账标记显黄目录)
+                    e.dataTransfer.setData('text/sunshinex-file', `${relNorm}/`);
+                    e.dataTransfer.setData('text/plain', `${relNorm}/`);
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
                 >
                   <ChevronRight
                     size={14}
                     strokeWidth={1.75}
                     className={`sx-tree-chevron${expanded.has(p) ? ' open' : ''}`}
                   />
-                  <FileIcon path={e.name} folder open={expanded.has(p)} />
                   <span className="sx-tree-name">{e.name}</span>
                   {/* G14.143 目录态=右缘圆点(VSCode 同位),不走字母徽标 */}
                   {dirGitSt !== undefined ? (

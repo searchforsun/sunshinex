@@ -36,13 +36,15 @@ export interface MessageListProps {
   readonly onEntryToggleClick: (e: ReactMouseEvent<HTMLDivElement>) => void;
   readonly chatScrollRef: MutableRefObject<HTMLElement | null>;
   readonly onScroll: (e: { currentTarget: HTMLElement }) => void;
+  /** G14.2xx 辅助对话空态文案(sidechat 页签) */
+  readonly sideChat?: boolean;
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
 }
 
 export function MessageList(props: MessageListProps): JSX.Element {
-  const { entries, hiddenKeys, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens } = props;
+  const { entries, hiddenKeys, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens, sideChat } = props;
   return (
     <main
       className="chat"
@@ -53,8 +55,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
     >
         {entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
-            <div className="chat-empty-title">{t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
-            <div className="chat-empty-hint">{t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
+            <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
+            <div className="chat-empty-hint">{sideChat === true ? t('Quick questions on the side; the main task stays untouched', '旁路快问,不打断主任务') : t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
           </div>
         )}
         {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染);

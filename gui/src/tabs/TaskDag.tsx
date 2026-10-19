@@ -161,12 +161,17 @@ function TerminalNode({ data }: NodeProps<Node<TerminalNodeData, 'terminal'>>): 
 
 const NODE_TYPES = { task: TaskNode, terminal: TerminalNode };
 
+/** 视图适配参数单点:装载 fitView 与复位钮(Controls)共用——G14.2xx 用户实测反馈「复位不可用」
+ *  的真凶:Controls 不传 fitViewOptions 时默认上限吃 ReactFlow maxZoom(1.75),小图点复位反而
+ *  放大;钉同一份 padding/maxZoom 后复位=回到装载态,duration 给出可见的动画回正反馈 */
+const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1, duration: 300 };
+
 function TaskDagInner({ tasks, agentOf, onTaskOpen }: TaskDagProps): JSX.Element {
   const { nodes, edges } = useMemo(() => layoutTaskDag(tasks, agentOf), [tasks, agentOf]);
   const { fitView } = useReactFlow();
-  // 任务增减即回正视图(新任务可能落画面外;duration 平滑不跳);节点拖拽后的位置交布局重算统一
+  // 任务增减即回正视图(新任务可能落画面外);节点拖拽后的位置交布局重算统一
   useEffect(() => {
-    const timer = setTimeout(() => void fitView({ padding: 0.12, maxZoom: 1, duration: 180 }), 30);
+    const timer = setTimeout(() => void fitView(FIT_VIEW_OPTIONS), 30);
     return () => clearTimeout(timer);
   }, [fitView, nodes.length]);
   const onNodeClick = useCallback<NonNullable<Parameters<typeof ReactFlow>[0]['onNodeClick']>>(
@@ -189,9 +194,12 @@ function TaskDagInner({ tasks, agentOf, onTaskOpen }: TaskDagProps): JSX.Element
       nodesConnectable={false}
       deleteKeyCode={null}
       defaultEdgeOptions={{ type: 'smoothstep', animated: true }}
+      // G14.2xx 用户裁定:右下角 React Flow 水印去除(桌面内部应用,proOptions 官方开关)
+      proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={14} size={1} />
-      <Controls showInteractive={false} />
+      {/* 控制钮(+/−/复位)钉右下角(G14.2xx 用户裁定,左下角退役) */}
+      <Controls position="bottom-right" showInteractive={false} fitViewOptions={FIT_VIEW_OPTIONS} />
     </ReactFlow>
   );
 }

@@ -98,6 +98,8 @@ async function startDaemon(
     port: s.port,
     root,
     out,
+    /** projects 注册表根(G14.2xx 重启+attach 回归用:第二 daemon 指回同一注册表) */
+    projects: path.join(tmp, 'projects'),
     stop: async () => {
       await s.close();
       if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
@@ -1632,4 +1634,65 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       vi.unstubAllGlobals();
     }
   }, 45_000);
+});
+
+/** G14.2xx 断线重连 resilience(真 daemon 全链):create_task run 落档(board/delegation 影子行随泵
+ *  入 journal)→ 停第一 daemon → journal 数据迁入新 projects 根(等价真实迁移)→ 新 daemon 同 root
+ *  起服 → newSession+attach 两步 → snapshot.board 含 t1 且委派在场——重启后板面/委派不再空。 */
+describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
+  it('run 收束落档 → 重启(数据迁移)→ attach → snapshot.board 含 t1、delegations 非空', async () => {
+    vi.stubGlobal('WebSocket', NodeWebSocket);
+    const mkPost = (base: string) => async (p: string, body: unknown): Promise<Record<string, unknown>> =>
+      (await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Record<string, unknown>;
+    // —— 第一 daemon:CARDS 全链(create_task → 板派发 fork → 收束)——
+    const fx = await startDaemon(new ScriptedAdapter(CARDS));
+    const base = `http://127.0.0.1:${fx.port}`;
+    const post = mkPost(base);
+    try {
+      const ns = (await post('/session/new', { root: fx.root })) as { sessionId: string };
+      await post(`/session/${ns.sessionId}/submit`, { goal: 'create demo task' });
+      // 收敛判据=快照 idle(同 G3 冒烟③口径;不以首个 done 牌为准)
+      await waitFor(
+        async () => {
+          const snap = (await (await fetch(`${base}/session/${ns.sessionId}/snapshot`)).json()) as { status?: string };
+          return snap.status === 'idle';
+        },
+        { timeout: 20_000 },
+      );
+      // journal id(重启前取;fx.stop 会清 tmp,数据先迁出)
+      const journals = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(fx.root)}`)).json()) as Array<{ id: string }>;
+      const journalId = journals[0]!.id;
+      const slug = fs.readdirSync(fx.projects).filter((n) => fs.existsSync(path.join(fx.projects, n, 'data')))[0]!;
+      const carried = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-g35-e2e2-'));
+      const projects2 = path.join(carried, 'projects');
+      fs.mkdirSync(projects2, { recursive: true });
+      fs.cpSync(path.join(fx.projects, slug), path.join(projects2, slug), { recursive: true });
+      await fx.stop();
+      // —— 第二 daemon:同 root、迁移后的注册表数据——
+      fs.mkdirSync(fx.root, { recursive: true }); // fx.stop 清了 tmp1:root 目录重建(同路径=同 slug,journal 可寻址)
+      const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+      process.env.SUNSHINEX_PROJECTS_DIR = projects2;
+      const daemon2 = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"attach 后答复"}']) });
+      const s2 = await daemon2.start({ port: 0 });
+      try {
+        const post2 = mkPost(`http://127.0.0.1:${s2.port}`);
+        const ns2 = (await post2('/session/new', { root: fx.root })) as { sessionId: string };
+        const at = await post2(`/session/${ns2.sessionId}/attach`, { journalId });
+        expect(at.error).toBeUndefined();
+        const snap = (await (await fetch(`http://127.0.0.1:${s2.port}/session/${ns2.sessionId}/snapshot`)).json()) as {
+          board?: { tasks?: Record<string, unknown> };
+          delegations?: unknown[];
+        };
+        expect(Object.keys(snap.board?.tasks ?? {})).toContain('t1'); // 板面回种(旧 daemon 此处恒空)
+        expect((snap.delegations ?? []).length).toBeGreaterThan(0); // 委派回种
+      } finally {
+        await s2.close();
+        if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+        else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+        fs.rmSync(carried, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }, 40_000);
 });

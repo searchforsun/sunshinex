@@ -6,7 +6,7 @@ import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Che
 import { t } from '../../i18n';
 import { pathBasename } from '../../ui-util';
 import type { ChatEntry } from '../../chat-reducer';
-import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd } from '../Chat';
+import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
@@ -232,7 +232,8 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
 }
 
 export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend, onOpenFile }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
-  const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile), [onOpenFile]);
+  const isDir = useDirResolver();
+  const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir), [onOpenFile, isDir]);
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [rewindOpen, setRewindOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -381,8 +382,10 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | nul
 export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void }): JSX.Element {
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
-  // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建)
-  const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined)), [onOpenFile]);
+  // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建);
+  // isDir=目录解析(目录链接显黄目录;context 缺省恒 false——代理转录等无会话索引面按文件)
+  const isDir = useDirResolver();
+  const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined), isDir), [onOpenFile, isDir]);
   return (
     <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
       <div className={`entry-md${icon !== null ? ' has-icon' : ''}`}>

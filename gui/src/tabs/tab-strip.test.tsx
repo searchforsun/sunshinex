@@ -51,9 +51,11 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web
     expect(web.group).toBe('tools');
     expect(web.singleton).toBe(false);
     expect(web.resolveKey({ url: 'https://a.dev' })).toBe('https://a.dev');
+    expect(web.resolveKey({ url: 'a.dev' })).toBe('https://a.dev'); // G14.2xx 判重键归一化(scheme 补全)
     expect(web.resolveKey({})).toBe('');
-    expect(web.title({ url: 'https://a.dev' })).toBe('https://a.dev');
-    expect(web.title({})).toBe('Web');
+    expect(web.title({ url: 'https://a.dev' })).toBe('a.dev'); // G14.2xx 页名=host(剥 www.)
+    expect(web.title({ url: 'https://a.dev', pageTitle: 'GitHub' })).toBe('GitHub'); // 回写页名优先
+    expect(web.title({})).toBe('Browser'); // G14.2xx 裸开档名=浏览器(i18n en)
   });
   it('registryProbe 与注册表同口径', () => {
     const p = registryProbe();

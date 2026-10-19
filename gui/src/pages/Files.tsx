@@ -5,7 +5,6 @@ import remarkGfm from 'remark-gfm';
 import { ChevronRight, CodeXml, Copy, Eye } from 'lucide-react';
 import type { Connection } from '../connection';
 import type { FileResp } from '../connection';
-import { FileIcon } from '../file-icon';
 import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { t } from '../i18n';
@@ -13,7 +12,7 @@ import { buildMdComponents, keepUrl } from './Chat';
 
 /**
  * G6 Files 页（会话内文件只读预览）——G14.5 起 VSCode 形态（用户裁定）：**顶部文件路径面包屑**
- * （逐级文件夹图标+分隔符，末级文件图标+名）+ **Monaco 只读源码视图**（原生行号/高亮/主题跟随）。
+ * （逐级段名+分隔符，免路径图标——图标只保留在气泡/正文引用面）+ **Monaco 只读源码视图**（原生行号/高亮/主题跟随）。
  * 无常驻输入行/加载钮（加载入口=目录树点击/工具行/Diff 跳转，均经 initialPath 自动加载）；
  * 裸开档（+菜单「文件」无路径）示空态引导+路径输入（Enter/加载钮，仅空态/错误态在场）。
  * G7 请求序守卫保持：requestIdRef 单调发号，慢旧应答不覆写。
@@ -33,6 +32,8 @@ export interface FilesProps {
   root?: string;
   /** md 预览内链点击（G14.125）：href 已解析为绝对路径，App 注入开 file 标签 */
   onOpenFile?: (path: string) => void;
+  /** G14.2xx 目录路径移交(输入目录 → 目录页签定位展开;undefined = 宿主不支持) */
+  onOpenDirectory?: (relPath: string) => void;
   /** G14.154 选区「在辅助对话中提问」：携带 @引用 文本,App 注入 fork+开辅助标签 */
   onSideAsk?: (insert: string) => void;
 }
@@ -45,6 +46,15 @@ interface LoadState {
 }
 
 const EMPTY_LOAD: LoadState = { file: null, error: null, loading: false };
+
+/** G14.2xx 相对路径归一:./a/b 与 /a/b 都按会话根相对(前导斜杠的绝对化曾逃出信任域落 404;
+ *  Windows 盘符绝对路径原样)。返回根相对形态供 /file 端点解析 */
+function normRel(p: string): string {
+  let t = p.trim().replace(/\\/g, '/');
+  while (t.startsWith('./')) t = t.slice(2);
+  if (t.startsWith('/') && !/^[a-zA-Z]:/.test(t)) t = t.replace(/^\/+/, '');
+  return t;
+}
 
 /** G14.119 面包屑分段：path 在工作区内 → [工作区目录名, ...相对段]；区外 → 绝对段（原样）。
  *  win/posix 双分隔归一后再比对（daemon 回路径分隔符随平台）。 */
@@ -73,7 +83,7 @@ function resolveHref(mdPath: string, href: string): string {
   return out.join('/');
 }
 
-export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAsk }: FilesProps): JSX.Element {
+export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDirectory, onSideAsk }: FilesProps): JSX.Element {
   const [pathInput, setPathInput] = useState(initialPath ?? '');
   const [load, setLoad] = useState<LoadState>(EMPTY_LOAD);
   /** G7 请求序守卫：发号单调节点——发请求 ++,应答落定时号不匹配即过期丢弃 */
@@ -102,13 +112,20 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
   /** 加载单点：trim 空 no-op；请求期间保留旧文（切换不闪空）,失败倒错误态不静默 */
   const fetchFile = useCallback(
     (p: string): void => {
-      const target = p.trim();
+      const target = normRel(p);
+      if (target === '') return;
       if (target === '') return;
       const rid = ++requestIdRef.current;
       setLoad((prev) => ({ file: prev.file, error: null, loading: true }));
       void conn.readFile(sessionId, target).then(
         (f) => {
           if (rid !== requestIdRef.current) return; // 过期应答:丢弃
+          if (f.type === 'directory') {
+            // G14.2xx 目录路径:移交目录页签定位展开(文件预览面对目录无意义)
+            onOpenDirectory?.(target);
+            setLoad((prev) => ({ file: prev.file, error: null, loading: false }));
+            return;
+          }
           setLoad({ file: f, error: null, loading: false });
         },
         (err: unknown) => {
@@ -117,7 +134,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
         },
       );
     },
-    [conn, sessionId],
+    [conn, sessionId, onOpenDirectory],
   );
 
   /** initialPath 到场自动加载（跳转面：依赖含 initialPath——已挂载时新跳转同样触发） */
@@ -163,7 +180,6 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
               {segments.map((seg, i) => (
                 <span key={`${seg}:${i}`} className="files-crumb">
                   {i > 0 && <ChevronRight size={12} strokeWidth={1.75} className="files-crumb-sep" aria-hidden="true" />}
-                  <FileIcon path={seg} folder={i < segments.length - 1} />
                   <span className={i === segments.length - 1 ? 'files-crumb-name' : 'files-crumb-seg'}>{seg}</span>
                 </span>
               ))}

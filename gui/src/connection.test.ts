@@ -115,6 +115,19 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     vi.useRealTimers();
   });
 
+  it('G14.2xx sessionTasks 白名单:只回 exec 类账本行(subagent/teammate 各有专面,后台任务面不再重复)', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788/', token: 'tok-1', onEvent: () => {}, onReset: () => {}, backoffBaseMs: 1 });
+    last().openNow();
+    fetchQueue.push(ok([
+      { id: 'b1', kind: 'exec', label: 'pnpm build', status: 'running', startedAt: 1 },
+      { id: 's1', kind: 'subagent', label: 'w1', status: 'running', startedAt: 2 },
+      { id: 't1', kind: 'teammate', label: 'domain-1', status: 'running', startedAt: 3 },
+    ]));
+    const rows = await conn.sessionTasks('s1');
+    expect(fetchLog.at(-1)!.url).toBe('http://127.0.0.1:7788/session/s1/tasks');
+    expect(rows.map((r) => r.kind)).toEqual(['exec']);
+  });
+
   it('① 首连:connecting → onReset(先) → open(后);补发帧按 sessionId 分发,同会话等值/旧 seq 丢、每会话基线独立', async () => {
     const trace: string[] = [];
     conn = createConnection({

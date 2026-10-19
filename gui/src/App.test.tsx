@@ -1385,11 +1385,11 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
 });
 
 describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重挂', () => {
-  /** +菜单开 web(tools 节 'Web' 直调 onOpenType;裸开无 url → 引导面) */
+  /** +菜单开 web(tools 节『浏览器』直调 onOpenType;裸开无 url → 引导面;G14.2xx 菜单项名随 title 改 Browser) */
   const openWeb = (): void => {
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Web' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Browser' }));
   };
 
   /** url 输入回车开档(active 面) */
@@ -1401,7 +1401,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
   it('+菜单开 web → url 输入 example.com 回车 → iframe 在场 title=https://example.com(无 scheme 补全)+ sandbox 四值', async () => {
     const { unmount } = await enterChat();
     openWeb();
-    expect(document.querySelector('.sx-tab[data-title="Web"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('.sx-tab[data-title="Browser"]')?.classList.contains('active')).toBe(true);
     expect(screen.getByLabelText('web tab')).toBeDefined();
     // 裸开无 active:VSCode Simple Browser 同形空态(地球+引导)、无 iframe
     expect(screen.getByText(/Paste or type a URL|粘贴或输入 URL/)).toBeDefined();
@@ -1416,19 +1416,21 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     unmount();
   });
 
-  it('同 url 再开判重:url 输入不铸新 params(uid 恒 web:)——+菜单再开仍一条标签且聚焦', async () => {
+  it('G14.2xx 页内导航回写页名/判重键:+菜单再开裸档新立(浏览器多标签语义),原页档并存', async () => {
     const { unmount } = await enterChat();
     openWeb();
     submitUrl('example.com');
     expect(document.querySelector('.sx-web-frame')).not.toBeNull();
-    // 切去任务页(web 失活)→ +菜单再开 web:判重聚焦既有(仍一条,不并立)
+    // 导航即回写 params:标签条标题 url→页名(host),判重键随 url 演进(uid 不再恒 web:)
+    expect(document.querySelector('.sx-tab[data-title="example.com"]')).not.toBeNull();
+    // 切去任务页(web 失活)→ +菜单再开 web:裸档 key='' ≠ 导航后键 → 新立裸档(浏览器「+ 新标签页」语义)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '待办' }));
-    expect(document.querySelector('.sx-tab[data-title="Web"]')?.classList.contains('active')).toBe(false);
     openWeb();
-    expect(document.querySelectorAll('.sx-tab[data-title="Web"]')).toHaveLength(1);
-    expect(document.querySelector('.sx-tab[data-title="Web"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelectorAll('.sx-tab[data-title="Browser"]')).toHaveLength(1);
+    expect(document.querySelector('.sx-tab[data-title="Browser"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('.sx-tab[data-title="example.com"]')).not.toBeNull(); // 原页档并存不丢
     unmount();
   });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Folder, PanelRight } from 'lucide-react';
+import { Folder, PanelRight } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 
@@ -7,11 +7,11 @@ import type { Connection } from '../../connection';
  *  + 动态计数钮(待办/任务板)+ 侧栏展开钮。标题编辑态与草稿留宿主。
  *  批F-7d:ChatDynButtons 自宿主整迁本文件(唯一消费方,值回引环消解)。 */
 
-/** G14.177 顶栏动态计数按钮(待办/任务/后台任务):图标+数量;点击开对应页签。
+/** G14.177 顶栏动态计数按钮(待办/任务/后台任务):转圈图标+数量;点击开对应页签。
  *  G14.213 原子化三改:①仅运行中显示(轮次收束即隐,待办是否完结无关);②侧栏展开不再隐藏
  *  (挂载点去掉 collapsed 门);③幽灵钮化——无底色。
- *  G14.2xx 用户裁定再改:常显(旧「顶栏 hover 浮现」退役);待办钮图标=待办页 completed 同款
- *  绿底对号(转圈退役——待办非运行语义,绿对号与待办页/Chat 内联三处统一) */
+ *  G14.2xx 用户裁定:常显(旧「顶栏 hover 浮现」退役);三钮图标统一灰色转圈(待办钮的绿对号
+ *  退役——对号读作「已完成数」与计数语义相反;todoActive 本就是 in_progress+pending 之和) */
 export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOpenTab }: {
   todoActive: number;
   taskActive: number;
@@ -51,9 +51,7 @@ export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionI
     <div className="chat-dyn-buttons" role="group" aria-label="live counters">
       {todoActive > 0 && (
         <button type="button" className="chat-dyn-btn todo" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
-          <span className="todo-dot completed" aria-hidden="true">
-            <Check size={9} strokeWidth={3} />
-          </span>
+          <span className="run-spinner" aria-hidden="true" />
           {t(`${todoActive} todos`, `${todoActive} 待办`)}
         </button>
       )}

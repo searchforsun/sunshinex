@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowDown, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { initialChatState } from '../chat-reducer';
@@ -39,6 +39,8 @@ import { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, 
 export { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock } from './chat/md-render';
+import { DirResolverContext } from './chat/md-render';
+export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
 import type { AskPick } from './chat/PendingCards';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
@@ -125,7 +127,7 @@ export const slashTokenAt = (text: string, caret: number): { query: string; from
   return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
 };
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab }: ChatProps): JSX.Element {
   const [chat, setChat] = useState<ChatState>(initialChatState);
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
@@ -166,7 +168,18 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
   const composingRef = useRef(false);
   /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
-  const { resolveFileRef, loadWorkspaceFiles } = useWorkspaceFiles(conn, sessionId, root, pickRelRef);
+  const { resolveFileRef, loadWorkspaceFiles, filesVer } = useWorkspaceFiles(conn, sessionId, root, pickRelRef);
+  /** 目录引用解析(md 链接面/输入框高亮层共用):记账表优先、索引兜底——值带尾斜杠=目录
+   *  (内部标记,显示/插入一律无斜杠)。依赖 filesVer:缓存落定即换新引用→context 值变化,
+   *  驱动 memo 封存条目(会话恢复先于异步索引渲染)重渲补上黄目录图标 */
+  const isDirRef = useCallback(
+    (p: string): boolean => {
+      const base = pathBasename(p.replace(/[\\/]+$/, ''));
+      const hit = pickRelRef.current.get(base) ?? resolveFileRef(base);
+      return hit !== undefined && /[\\/]$/.test(hit);
+    },
+    [resolveFileRef, filesVer],
+  );
   /** 队列面 hook(D32 批B):排队 chips 状态/折叠/refreshQueued/pauseAndSend——会话流可见化与 @ 展开
    *  依赖注入（resolveFileRef 此处已完成声明）；行为零变化（Chat.pause-send.test 为锚） */
   const { queued, setQueued, queueFolded, setQueueFolded, refreshQueued, pauseAndSend } = useQueue(
@@ -323,7 +336,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   })();
 
   /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版) */
-  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text);
+  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef);
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
    *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位) */
@@ -338,7 +351,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   };
 
   return (
-    <>
+    <DirResolverContext.Provider value={isDirRef}>
       <ChatTopbar
         fixedTitle={fixedTitle}
         titleEditing={titleEditing}
@@ -378,6 +391,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onEntryRestore={onEntryRestore}
         onFork={onFork}
         onEntryToggleClick={onEntryToggleClick}
+        sideChat={sideChat}
         chatScrollRef={chatScrollRef}
         onScroll={handleChatScroll}
         running={running}
@@ -432,7 +446,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           label="message input"
         value={input}
         rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
-        placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
+        placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : sideChat === true ? t('Ask something…', '问点什么…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
         disabled={connState !== 'open' || seeding}
         onChange={(v) => {
           setInput(v);
@@ -535,7 +549,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               e.preventDefault();
               const rel = items[Math.min(filePalActive, items.length - 1)];
               // G14.126 选中只插短写 @文件名(输入框显形=图标+文件名);相对路径记入账本,
-              // 发送期 expandFileRefs 据此展开为 md 绝对链接;按 @token 区间替换
+              // 发送期 expandFileRefs 据此展开为 md 绝对链接;按 @token 区间替换。
+              // 目录项(尾斜杠内部标记):插入文本不带斜杠,记账保标记——芯片/展开面判目录
               const base = pathBasename(rel);
               pickRelRef.current.set(base, rel);
               const atFrom = filePal?.from ?? caret - (atMatch?.[1]?.length ?? 0) - 1;
@@ -695,11 +710,14 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         highlight={renderHighlightSpans(input)}
         onInputClick={onInputClick}
         onDropFile={(rel) => {
-          // G14.144 拖入文件 → caret 处插 @文件名(短写,账本解析;G14.211 原 @全相对路径过长)
+          // G14.144 拖入文件 → caret 处插 @文件名(短写,账本解析;G14.211 原 @全相对路径过长)。
+          // 目录载荷(尾斜杠=内部标记):插入文本不带斜杠(用户裁定),记账存标记值供芯片/展开判目录
+          const bare = rel.replace(/[\\/]+$/, '');
+          const isDir = bare !== rel;
           const ta = inputRef.current;
           const pos = ta?.selectionStart ?? input.length;
-          const base = rel.split(/[\\/]/).pop() ?? rel;
-          pickRelRef.current.set(base, rel);
+          const base = bare.split(/[\\/]/).filter(Boolean).pop() ?? bare;
+          pickRelRef.current.set(base, isDir ? `${bare}/` : bare);
           setInput((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
           inputRef.current?.focus();
           // G14.211 光标钉在插入 token 之后(同 onPick:旧光标位恢复=token 中间)
@@ -748,6 +766,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         )
         }
       </div>
-    </>
+    </DirResolverContext.Provider>
   );
 }

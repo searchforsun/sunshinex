@@ -24,7 +24,8 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { setLanguage } from '../../src/i18n';
-import { Chat, expandFileRefs, tokenDeleteRange } from './Chat';
+import { Chat, expandFileRefs, renderMentionSpans, tokenDeleteRange } from './Chat';
+import type { ReactElement, ReactNode } from 'react';
 import { mermaidCacheClear } from '../Mermaid';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
@@ -120,6 +121,33 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
       '看 [a.ts L30-L35](./src/a.ts#L30-L35)',
     ); // G14.139 行锚:链接文本带行号,目标带 #L 锚
     expect(expandFileRefs('default @src/a.ts 保持', 'default')).toBe('default @src/a.ts 保持');
+  });
+
+  it('目录引用展开:@src/ 尾斜杠标记 → href 保尾斜杠(黄目录渲染/Files 目录移交);resolve 命中带尾斜杠目录项同效', () => {
+    // 全相对路径 + 尾斜杠(拖目录/面板选目录的直写形态)
+    expect(expandFileRefs('看 @gui/src/ 结构', 'D:/ws/demo')).toBe('看 [src](./gui/src/) 结构');
+    // 短写 @src/:经 resolve(选中记账/索引目录项)解析——解析不到原样保留(与文件短写同口径)
+    expect(expandFileRefs('看 @src/ 结构', 'D:/ws/demo', (n) => (n === 'src' ? 'gui/src/' : undefined))).toBe(
+      '看 [src](./gui/src/) 结构',
+    );
+    expect(expandFileRefs('看 @missing/ 保持', 'D:/ws/demo', () => undefined)).toBe('看 @missing/ 保持');
+    // 文件引用行为不变(回归锚:无尾斜杠即原样文件链接)
+    expect(expandFileRefs('看 @src/a.ts', 'D:/ws/demo')).toBe('看 [a.ts](./src/a.ts)');
+    // 手打无斜杠短写,resolve 命中带标记目录项(尾斜杠内部标记)——同样目录 href(显示/插入无斜杠)
+    expect(expandFileRefs('看 @src 结构', 'D:/ws/demo', (n) => (n === 'src' ? 'gui/src/' : undefined))).toBe(
+      '看 [src](./gui/src/) 结构',
+    );
+  });
+
+  it('高亮层目录芯片:@短写经 lookup 命中带标记目录项 → FileIcon folder=true(黄目录);未命中按文件', () => {
+    // 芯片结构:span.hn-file → children[0]=span.hn-file-ico → children=FileIcon 元素
+    const folderOf = (node: ReactNode): boolean | undefined => {
+      const hn = (node as ReactElement[]).find((el) => String(el?.props?.className ?? '').includes('hn-file')) as ReactElement;
+      const icoWrap = (hn.props.children as ReactElement[])[0] as ReactElement;
+      return ((icoWrap.props.children as ReactElement).props as { folder?: boolean }).folder;
+    };
+    expect(folderOf(renderMentionSpans('@src', (n) => (n === 'src' ? 'gui/src/' : undefined)))).toBe(true);
+    expect(folderOf(renderMentionSpans('@a.ts'))).toBeUndefined();
   });
 
   it('G14.124 md 原生超链接 → 文件引用渲染(icon+文件名),点击开侧栏;web 链接原样 <a>', async () => {

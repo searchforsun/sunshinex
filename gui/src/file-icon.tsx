@@ -37,11 +37,13 @@ export function FileIcon({
   /** G14.211 可选尺寸（文件标签页 16 与 lucide 同框;缺省 14 恒稳） */
   size?: number;
 }): JSX.Element {
+  // 目录判定:folder 显式传入,或路径带尾斜杠(@面板目录项/目录引用 token 统一尾斜杠标记)——
+  // 一律经典黄目录(default-folder),不做按名映射(用户裁定)
   const icon =
-    folder === true
+    folder === true || /[\\/]$/.test(path)
       ? open === true
         ? 'vscode-icons:default-folder-opened'
         : 'vscode-icons:default-folder'
-      : iconIdOf(path.split(/[\\/]+/).pop() ?? path);
+      : iconIdOf(path.split(/[\\/]+/).filter(Boolean).pop() ?? path);
   return <Icon icon={icon} width={size} height={size} aria-hidden="true" style={{ flex: 'none' }} />;
 }

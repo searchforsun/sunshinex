@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { GitCompare, MessageCircle, ListTodo } from 'lucide-react';
+import { GitCompare, MessageCircle, ListTodo, FolderTree } from 'lucide-react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
@@ -14,7 +14,7 @@ import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
 import type { TabServices } from './tabs/registry';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, emptyTabSession } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { applyAgentEvent } from './tabs/agent-activity';
 import type { AgentActivities } from './tabs/agent-activity';
@@ -51,8 +51,8 @@ import type { WelcomeGoal } from './welcome/WelcomeComposer';
  * G8a 标签态:tabStates 每会话独立留存(backHome 不清——重开同会话标签还原,spec §1「每会话
  * 独立」);G8d 起 Chat write 工具 path 钮主通道 onOpenDiff → openTabInSession('diff',
  * {callId,path})(by callId 判重多实例);onOpenFile 保留为无 callId 面(种子条)的回退(file
- * 标签仍可从目录/+菜单开);右栏 collapsed 只余折叠钮,拖宽边条 clamp 200..720(右栏在右,
- * 向左拖=变宽)。
+ * 标签仍可从目录/+菜单开);右栏 collapsed 只余折叠钮,拖宽边条只钳最小 440(G14.2xx 用户裁定:
+ * 三栏均不设最大宽,右栏在右,向左拖=变宽)。
  * token 门面(G3 平移):URL ?token= 优先(回写 localStorage 持久)→ localStorage。
  */
 
@@ -68,11 +68,43 @@ declare global {
 /** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
 const PROBE = registryProbe();
 
-/** G12 左栏宽度档:clamp 与持久化键(拖拽手柄在 .sx-menu-resizer;宽度经 --menu-w 落 .sx-menu) */
-const MENU_WIDTH_MIN = 220;
-const MENU_WIDTH_MAX = 420;
+/** G12 左栏宽度档:只钳最小(拖拽手柄在 .sx-menu-resizer;宽度经 --menu-w 落 .sx-menu);
+ *  G14.2xx 用户裁定:最大宽退役——三栏均只留最小宽钳制。MIN 与 .sx-menu CSS min-width 240
+ *  同值:状态与 CSS 下限分叉会让视口护栏少算渲染宽(曾漏 20px 越视口) */
+const MENU_WIDTH_MIN = 240;
 const MENU_WIDTH_DEFAULT = 260;
 const MENU_WIDTH_KEY = 'sunshinex.menuWidth';
+
+/** G14.2xx 主对话区限宽阶梯(用户裁定:分级的是最大宽度档位,不是最小宽度——880 是常态平台
+ *  档,窄端只由主区自身最小宽托底,不参与分级):区宽 ≤912 满宽(两侧 18px 等宽);至 1120
+ *  平台 880;1120→1200 坡到 960;至 1360 平台 960;1360→1520 坡到 1120 封顶。段间线性坡道,
+ *  两坡斜率同为 1,全程连续无跳变 */
+const THREAD_FILL_MAX = 912; // 满宽上界:区宽到此处列宽恰为 880,与第一档平台接续
+const THREAD_COL_BASE = 880; // 第一档最大宽度(常态档,旧定版值)
+const THREAD_STEP_1 = 960; // 第二档最大宽度
+const THREAD_COL_MAX = 1120; // 封顶档最大宽度
+const THREAD_RAMP_1_AT = 1120; // 第一坡道起点(区宽)
+const THREAD_RAMP_2_AT = 1360; // 第二坡道起点(区宽)
+const THREAD_RAMP_1 = 80; // 第一坡道区宽跨度(880→960,斜率 1)
+const THREAD_RAMP_2 = 160; // 第二坡道区宽跨度(960→1120 档距大,坡道等比拉宽保斜率 1)
+
+/** 主对话区最小宽(.sx-main min-width 同值)——三栏拖拽的公共约束:被拖栏可加宽的上界=
+ *  视口−另两栏−此值(中栏触底即停,任何栏不越视口;无固定最大宽,用户裁定) */
+const MAIN_MIN_WIDTH = 440;
+
+/** 区宽 → 流列最大宽度(--chat-max 落值;单一实现,档位/坡道见上常量注释) */
+const chatMaxFor = (w: number): number => {
+  if (w <= THREAD_FILL_MAX) return Math.max(0, w - 32);
+  if (w <= THREAD_RAMP_1_AT) return THREAD_COL_BASE;
+  if (w <= THREAD_RAMP_1_AT + THREAD_RAMP_1) {
+    return THREAD_COL_BASE + ((w - THREAD_RAMP_1_AT) / THREAD_RAMP_1) * (THREAD_STEP_1 - THREAD_COL_BASE);
+  }
+  if (w <= THREAD_RAMP_2_AT) return THREAD_STEP_1;
+  if (w <= THREAD_RAMP_2_AT + THREAD_RAMP_2) {
+    return THREAD_STEP_1 + ((w - THREAD_RAMP_2_AT) / THREAD_RAMP_2) * (THREAD_COL_MAX - THREAD_STEP_1);
+  }
+  return THREAD_COL_MAX;
+};
 
 export function App(): JSX.Element {
   // G10:token 填写逻辑退役——本地 serve 免鉴权档(恒绑回环),连接不再携带凭证
@@ -158,11 +190,11 @@ function AppShell(): JSX.Element {
    *  项目级行以此为写回锚) */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsRoot, setSettingsRoot] = useState('');
-  /** G12 左栏宽度可调:拖右缘边条改 --menu-w(clamp 220..420),localStorage 持久;SettingsShell
+  /** G12 左栏宽度可调:拖右缘边条改 --menu-w(只钳最小 220),localStorage 持久;SettingsShell
    *  的左栏同为 .sx-menu,随同一变量联动 */
   const [menuWidth, setMenuWidth] = useState<number>(() => {
     const raw = Number(localStorage.getItem(MENU_WIDTH_KEY));
-    return Number.isFinite(raw) && raw >= MENU_WIDTH_MIN && raw <= MENU_WIDTH_MAX ? raw : MENU_WIDTH_DEFAULT;
+    return Number.isFinite(raw) && raw >= MENU_WIDTH_MIN ? raw : MENU_WIDTH_DEFAULT;
   });
   /** 左栏拖宽在途清理句柄(mouseup 解绑;卸载兜底) */
   const menuResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -444,31 +476,43 @@ function AppShell(): JSX.Element {
 
   /** 标签体服务面(任务/Agents 标签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接)+
    *  G8d 子代理活动聚合(AgentsTab 只读) */
+  /** G14.2xx web 标签元数据回写:页内导航 url/页名 → patchTabMeta(标签条标题/判重键同源演进,
+   *  浏览器原生标签形);useCallback 零依赖稳定——services useMemo 不因回写重建 */
+  const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }): void => {
+    setTabStates((s) => patchTabMeta(s, sessionId, uid, patch));
+  }, []);
   const services = useMemo<TabServices>(
-    () => ({ board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, agentActivities, todos: [...projection.sessionTodos], todoBatches, turnGoal, taskFocus }),
-    [projection, reviewTask, agentActivities, todoBatches, turnGoal, taskFocus],
+    () => ({ board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, onTabMeta, agentActivities, todos: [...projection.sessionTodos], todoBatches, turnGoal, taskFocus }),
+    [projection, reviewTask, onTabMeta, agentActivities, todoBatches, turnGoal, taskFocus],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
   const tabState = tabStates[openSessionId] ?? emptyTabSession();
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
-  /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;clamp 200..720 在
-   *  tab-state.setWidth 单点),mouseup 解绑 + 移 active 类;每次 move 直接落态(React 批处理
-   *  兜底);sessionId 起拖时定格(拖拽中会话切换属病态,不追) */
+  /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
+   *  tab-state.setWidth 单点,拖拽上界=视口−菜单−440——无固定最大宽但不越视口,G14.2xx 用户
+   *  裁定),mouseup 解绑 + 移 active 类;每次 move 直接落态(React 批处理兜底);sessionId
+   *  起拖时定格(拖拽中会话切换属病态,不追)。G14.2xx 起拖基线取「当前渲染宽」:状态可能
+   *  滞留护栏外(先拖宽菜单再拖本边条),不取渲染宽则向窄拖先空走死区 */
   const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
     if (page !== 'chat' || openSessionId === '' || tabState.collapsed) return;
     e.preventDefault(); // 拖宽期间禁原生文本选择拖选(G8e 终审 B;.sx-resizer 另挂 user-select:none)
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    const startWidth = tabState.width;
+    const startWidth = Math.min(tabState.width, window.innerWidth - menuWidth - MAIN_MIN_WIDTH);
+    shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
     const onMove = (ev: MouseEvent): void => {
-      setTabStates((s) => setWidth(s, sessionId, startWidth + startX - ev.clientX));
+      // G14.2xx 用户裁定:无固定最大宽,但受中栏最小宽约束——中栏触底 440 即停,右栏不越视口
+      // (上界=视口−菜单−440;逐 move 实时取视口宽,min 440 由 setWidth 单点兜底)
+      const max = window.innerWidth - menuWidth - MAIN_MIN_WIDTH;
+      setTabStates((s) => setWidth(s, sessionId, Math.min(max, startWidth + startX - ev.clientX)));
     };
     const stop = (): void => {
       el.classList.remove('active');
+      shellRef.current?.classList.remove('sx-dragging');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', stop);
       resizeCleanupRef.current = null;
@@ -479,22 +523,33 @@ function AppShell(): JSX.Element {
   };
 
   const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabState.collapsed ? 32 : tabState.width) : 32;
+  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings 态)——落壳级 --sidebar-w 供 .sx-menu 的
+   *  视口护栏消费(G14.2xx 结构性禁止越视口:两拖拽护栏各消费对方栏宽,零布局反馈环) */
+  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? tabState.width : 0;
 
-  /** G12 左栏拖宽边条 mousedown:window mousemove 计算宽(左栏在左侧,向右拖=变宽;clamp
-   *  220..420 模块级常量单点),mouseup 解绑+持久化;settings 态不渲染手柄 */
+  /** G12 左栏拖宽边条 mousedown:window mousemove 计算宽(左栏在左侧,向右拖=变宽;min 240
+   *  模块级常量单点,拖拽上界=视口−右栏−440——无固定最大宽但不越视口,G14.2xx 用户裁定),
+   *  mouseup 解绑+持久化;settings 态不渲染手柄。起拖基线取当前渲染宽(同右栏,免死区)+挂
+   *  sx-dragging(iframe 指针事件让位) */
   const startMenuResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
     e.preventDefault();
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    const startWidth = menuWidth;
+    const startWidth = Math.min(menuWidth, window.innerWidth - sidebarOccupied - MAIN_MIN_WIDTH);
+    shellRef.current?.classList.add('sx-dragging');
     let next = startWidth;
     const onMove = (ev: MouseEvent): void => {
-      next = Math.min(MENU_WIDTH_MAX, Math.max(MENU_WIDTH_MIN, startWidth + ev.clientX - startX));
+      // 同右栏:菜单拖宽至中栏触底 440 即停(右栏实际占宽计入,未渲染=0),右栏不越视口
+      next = Math.max(
+        MENU_WIDTH_MIN,
+        Math.min(window.innerWidth - sidebarOccupied - MAIN_MIN_WIDTH, startWidth + ev.clientX - startX),
+      );
       setMenuWidth(next);
     };
     const stop = (): void => {
       el.classList.remove('active');
+      shellRef.current?.classList.remove('sx-dragging');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', stop);
       menuResizeCleanupRef.current = null;
@@ -505,8 +560,37 @@ function AppShell(): JSX.Element {
     window.addEventListener('mouseup', stop);
   };
 
+  /** G14.2xx 限宽动态化:--chat-max 不再钉 880px——ResizeObserver 分盯 .sx-main 与 .sx-sidebar,
+   *  各按自身实时内容宽经 chatMaxFor 阶梯落内联值(同一策略覆盖主对话、欢迎页、辅助对话、
+   *  子代理转录页;流列/输入卡随三栏拖拽、右栏折叠、视口缩放即时跟宽)。首次 observe 即回调,
+   *  首帧就位零闪;jsdom 桩回调宽 0,chatMaxFor 托底不落负。deps:两容器随设置态/页面/折叠/
+   *  切会话换挂,重挂后需重挂观察器 */
+  const mainRef = useRef<HTMLElement | null>(null);
+  const sidebarRef = useRef<HTMLElement | null>(null);
+  /** 三栏壳根(拖宽期挂 .sx-dragging:iframe 指针事件让位——web 标签内容会吞 window mousemove,
+   *  光标进入 iframe 即拖拽冻结) */
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const els = [mainRef.current, sidebarRef.current].filter((el): el is HTMLElement => el !== null);
+    if (els.length === 0) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        (entry.target as HTMLElement).style.setProperty(
+          '--chat-max',
+          `${Math.round(chatMaxFor(entry.contentRect.width))}px`,
+        );
+      }
+    });
+    els.forEach((el) => ro.observe(el));
+    return () => ro.disconnect();
+  }, [settingsOpen, page, tabState.collapsed, openSessionId]);
+
   return (
-    <div className="sx-shell" style={{ '--menu-w': `${menuWidth}px` } as CSSProperties}>
+    <div
+      className="sx-shell"
+      ref={shellRef}
+      style={{ '--menu-w': `${menuWidth}px`, '--sidebar-w': `${sidebarOccupied}px` } as CSSProperties}
+    >
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
            Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
@@ -548,7 +632,7 @@ function AppShell(): JSX.Element {
             onMouseDown={startMenuResize}
           />
           {/* 中栏:Chat 恒挂(无会话=欢迎空态) */}
-          <main className="sx-main">
+          <main className="sx-main" ref={mainRef}>
             {page === 'chat' && connInstance !== null ? (
               <Chat
                 key={openSessionId}
@@ -609,7 +693,7 @@ function AppShell(): JSX.Element {
           </main>
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
           {page === 'chat' && !tabState.collapsed && (
-          <aside className="sx-sidebar" style={{ width: sidebarWidth }}>
+          <aside className="sx-sidebar" ref={sidebarRef} style={{ width: sidebarWidth }}>
             <TabStrip
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}
@@ -618,7 +702,15 @@ function AppShell(): JSX.Element {
               onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
               onReorder={(from, to) => setTabStates((s) => reorderTab(s, openSessionId, from, to))}
               onClose={closeTabInSession}
-              onOpenType={(t) => openTabInSession(t, tabEntry(t).mintParams?.())}
+              onOpenType={(t) => {
+                // G14.2xx 辅助对话特判:sidechat 需先 fork 出 side 会话(拿 sideId)再开页——
+                // 直接 openTab 只会落无 sideId 的空壳档;startSideChat 完成装配+开页一条龙
+                if (t === 'sidechat') {
+                  startSideChat();
+                  return;
+                }
+                openTabInSession(t, tabEntry(t).mintParams?.());
+              }}
               onToggleCollapse={() =>
                 setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))
               }
@@ -651,12 +743,18 @@ function AppShell(): JSX.Element {
               </div>
             )}
             {page === 'chat' && !tabState.collapsed && activeTab === null && (
-              // G14.27 零标签空态=Codex 推荐项:标题+副题+三张常用页卡(点击即开,不再默认开任务页)
+              // G14.27 零标签空态=Codex 推荐项:标题+副题+常用页卡(点击即开,不再默认开任务页);
+              // 目录页签入常用卡(与 TabStrip 同款 FolderTree 图标)
               <div className="sx-tab-empty">
                 <div className="sx-tab-empty-title">{t('Open tabs', '打开标签页')}</div>
                 <div className="sx-tab-empty-sub">{t('Choose tabs to open in the side panel.', '选择要在侧边面板中打开的标签。')}</div>
                 <div className="sx-tab-empty-cards">
-                  {([['side', MessageCircle, t('Side chat', '辅助对话'), () => startSideChat()], ['tasks', ListTodo, t('Todos', '待办'), () => openTabInSession('tasks')], ['diff', GitCompare, t('Review', '审查'), () => openTabInSession('diff')]] as const).map(([key, Icon, label, onClick]) => (
+                  {([
+                    ['side', MessageCircle, t('Side chat', '辅助对话'), () => startSideChat()],
+                    ['tasks', ListTodo, t('Todos', '待办'), () => openTabInSession('tasks')],
+                    ['diff', GitCompare, t('Review', '审查'), () => openTabInSession('diff')],
+                    ['directory', FolderTree, t('Directory', '目录'), () => openTabInSession('directory')],
+                  ] as const).map(([key, Icon, label, onClick]) => (
                     <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>
                       <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
                       <span>{label}</span>

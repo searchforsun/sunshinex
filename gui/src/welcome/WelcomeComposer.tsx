@@ -50,8 +50,9 @@ export function WelcomeComposer({
       keys: Array<{ key: string; value: string | null }>;
       providers: { choices: Array<{ id: string; model: string; effort?: string }> };
     }>;
-    /** G14.121 工作区文件索引(@ 文件面板;posix 相对路径+mtime 倒序=最近改动优先) */
-    workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }> }>;
+    /** G14.121 工作区文件索引(@ 文件面板;posix 相对路径+mtime 倒序=最近改动优先);
+     *  dirs=尾斜杠目录清单(@面板滤出文件夹;旧 daemon 无此字段 → undefined) */
+    workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
     setSessionModel(id: string, model?: string): Promise<void>;
     setSessionEffort(id: string, effort?: string): Promise<void>;
     /** G14.113 分支清单/切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
@@ -159,12 +160,13 @@ export function WelcomeComposer({
     return () => document.removeEventListener('mousedown', onDown);
   }, [modeOpen]);
 
-  // G14.127 索引预热:选中工作区即拉清单(手打 @根目录文件 的发送期解析不依赖面板开过)
+  // G14.127 索引预热:选中工作区即拉清单(手打 @根目录文件 的发送期解析不依赖面板开过);
+  // 目录清单(尾斜杠)排前——@面板可滤出文件夹
   useEffect(() => {
     if (picked === '') return;
     void conn
       .workspaceFiles?.(picked)
-      ?.then((r) => setFilePalFiles(r.files.map((f) => f.path)), () => undefined);
+      ?.then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => undefined);
   }, [picked, conn]);
 
   /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换) */
@@ -453,7 +455,7 @@ export function WelcomeComposer({
         <ComposerCard
           label="welcome goal"
           inputRef={goalRef}
-          highlight={renderMentionSpans(goal)}
+          highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n))}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
           placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}
@@ -467,7 +469,9 @@ export function WelcomeComposer({
             if (m !== null) {
               setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
               if (picked !== '') {
-                void conn.workspaceFiles(picked).then((r) => setFilePalFiles(r.files.map((f) => f.path)), () => setFilePalFiles([]));
+                void conn
+                  .workspaceFiles(picked)
+                  .then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => setFilePalFiles([]));
               }
             } else if (filePal !== null) {
               setFilePal(null);
@@ -528,7 +532,9 @@ export function WelcomeComposer({
             if (atMatch !== null) {
               setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
               if (picked !== '') {
-                void conn.workspaceFiles(picked).then((r) => setFilePalFiles(r.files.map((f) => f.path)), () => setFilePalFiles([]));
+                void conn
+                  .workspaceFiles(picked)
+                  .then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => setFilePalFiles([]));
               }
             } else if (filePal !== null) {
               setFilePal(null);
@@ -548,7 +554,8 @@ export function WelcomeComposer({
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 const rel = items[Math.min(filePalActive, items.length - 1)];
-                // G14.126 选中只插短写 @文件名(显形=图标+文件名),相对路径记账供发送期展开
+                // G14.126 选中只插短写 @文件名(显形=图标+文件名),相对路径记账供发送期展开;
+                // 目录项(尾斜杠内部标记):插入文本不带斜杠,记账保标记——芯片/展开面判目录
                 const base = pathBasename(rel);
                 pickRelRef.current.set(base, rel);
                 const atFrom = filePal.from;

@@ -34,6 +34,8 @@ export interface TabParams {
   readonly agentTitle?: string;
   /** G14.175 子代理的用户输入(任务内容):spawn 行带 prompt、看板行带任务标题——无活动流时的正文兜底 */
   readonly task?: string;
+  /** G14.2xx web 页名回写(WebTab onLoad 取 document.title;标签条标题派生 title() 优先消费) */
+  readonly pageTitle?: string;
 }
 
 /** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较) */
@@ -43,7 +45,8 @@ export interface TabInstance {
   readonly params: TabParams;
 }
 
-/** 单会话标签态:tabs 行序即标签条渲染序;width 440..720(clamp 于 setWidth;G14.183 最小列宽=主对话/侧栏共用) */
+/** 单会话标签态:tabs 行序即标签条渲染序;width 只钳最小 440,无上限(clamp 于 setWidth;
+ * G14.183 最小列宽=主对话/侧栏共用;G14.2xx 用户裁定:最大宽限制退役——三栏均只留最小宽钳制) */
 export interface TabSessionState {
   readonly tabs: readonly TabInstance[];
   readonly activeUid: string | null;
@@ -57,9 +60,9 @@ export type TabStates = Readonly<Record<string, TabSessionState>>;
 /** 右栏缺省宽(双列 Diff 可读;spec §1) */
 export const DEFAULT_TAB_WIDTH = 520;
 
-/** 拖拽调宽边界(spec §1:200-720px clamp)——模块私有,setWidth 单点执行 */
+/** 拖拽调宽边界:只钳最小(spec §1 旧 200-720 上界退役;G14.2xx 用户裁定:三栏只留最小宽
+ *  钳制,右栏可任意拖宽)——模块私有,setWidth 单点执行 */
 const MIN_TAB_WIDTH = 440; // G14.183/G14.196:与主对话 .sx-main min-width 同值(共用最小列宽,用户裁定)
-const MAX_TAB_WIDTH = 720;
 
 /**
  * 判重/单例探针:T3 的 TAB_REGISTRY 装配真实现(registryProbe),测试桩同口径注入。
@@ -104,23 +107,34 @@ export function openTab(
   probe: SingletonProbe,
 ): TabStates {
   const cur = states[sessionId] ?? emptyTabSession();
-  const uid = tabUid(type, params, probe);
-  const byUid = cur.tabs.find((t) => t.uid === uid);
-  if (byUid !== undefined) {
-    // G14.100 命中既有标签 → 聚焦并更新 params(diff 标签 path 载荷联动:点对话文件行
+  // G14.2xx 判重改按「当前判重键」扫描(uid 是开档时定格的实例 id,params 演进后即陈旧):
+  // web 页内导航回写 url/页名后,同 url 开档仍聚焦、裸开档新立=浏览器多标签语义;file/diff/
+  // terminal 等键即 uid 尾段且 params 不演进,行为与原 uid 判重一致
+  const key = probe.resolveKey(type, params);
+  const byKey = cur.tabs.find((t) => t.type === type && probe.resolveKey(type, t.params) === key);
+  if (byKey !== undefined) {
+    // 命中既有标签 → 聚焦并更新 params(diff 标签 path 载荷联动:点对话文件行
     // 自动展开对应项——同 key(changes 视图)参数刷新,不重开新档)
     return {
       ...states,
       [sessionId]: {
         ...cur,
-        activeUid: byUid.uid,
-        tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)),
+        activeUid: byKey.uid,
+        tabs: cur.tabs.map((t) => (t.uid === byKey.uid ? { ...t, params } : t)),
       },
     };
   }
   if (probe.isSingleton(type)) {
     const byType = cur.tabs.find((t) => t.type === type);
     if (byType !== undefined) return { ...states, [sessionId]: { ...cur, activeUid: byType.uid } };
+  }
+  // uid minting 防撞:导航回写不 rekey(uid 恒稳=React key/pty 记账稳定),但同键开档被上方
+  // 判重收编后仍可能撞(如裸 web 档已导航,再裸开新档同得 'web:')——尾加序号保唯一
+  let uid = tabUid(type, params, probe);
+  if (cur.tabs.some((t) => t.uid === uid)) {
+    let i = 2;
+    while (cur.tabs.some((t) => t.uid === `${uid}~${i}`)) i++;
+    uid = `${uid}~${i}`;
   }
   const tab: TabInstance = { uid, type, params };
   return { ...states, [sessionId]: { ...cur, tabs: [...cur.tabs, tab], activeUid: uid } };
@@ -182,11 +196,28 @@ export function setCollapsed(states: TabStates, sessionId: string, collapsed: bo
   return { ...states, [sessionId]: { ...cur, collapsed } };
 }
 
-/** 调宽:clamp 200..720(拖拽边条越界钳回);钳后未变/会话缺席 → 原引用返回 */
+/** G14.2xx web 标签元数据回写(浏览器原生标签形):页内导航/取到页名后合并进 params——
+ *  标签条标题(title() 派生)与判重键(resolveKey=url)随页演进,同一标签换页不换 uid。
+ *  会话/标签缺席或 url+pageTitle 均未变 → 原引用返回 */
+export function patchTabMeta(
+  states: TabStates,
+  sessionId: string,
+  uid: string,
+  patch: { url?: string; pageTitle?: string },
+): TabStates {
+  const cur = states[sessionId];
+  const target = cur?.tabs.find((t) => t.uid === uid);
+  if (cur === undefined || target === undefined) return states;
+  const params: TabParams = { ...target.params, ...patch };
+  if (target.params.url === params.url && target.params.pageTitle === params.pageTitle) return states;
+  return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
+}
+
+/** 调宽:只钳最小 440(无最大宽——G14.2xx 用户裁定);钳后未变/会话缺席 → 原引用返回 */
 export function setWidth(states: TabStates, sessionId: string, width: number): TabStates {
   const cur = states[sessionId];
   if (cur === undefined) return states;
-  const clamped = Math.min(MAX_TAB_WIDTH, Math.max(MIN_TAB_WIDTH, width));
+  const clamped = Math.max(MIN_TAB_WIDTH, width);
   if (cur.width === clamped) return states;
   return { ...states, [sessionId]: { ...cur, width: clamped } };
 }

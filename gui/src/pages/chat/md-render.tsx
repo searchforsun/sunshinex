@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, Copy, Maximize2, Square, WrapText } from 'lucide-react';
 import { t } from '../../i18n';
@@ -24,9 +24,19 @@ function tokenDisplayName(p: string): string {
   return p.split(/[\\/]/).filter((s) => s.length > 0).pop() ?? p;
 }
 
+/** 目录判定上下文(Chat 注入会话级解析:记账表/工作区索引的尾斜杠内部标记):md 链接面据此把
+ *  目录 href 渲染成黄目录;缺省恒 false=文件口径(Files 预览/代理转录无会话索引,回落文件面) */
+export const DirResolverContext = createContext<(p: string) => boolean>(() => false);
+
+/** 目录判定便捷 hook(md 工厂消费面):取上下文解析器(引用恒稳,memo 不破) */
+export function useDirResolver(): (p: string) => boolean {
+  return useContext(DirResolverContext);
+}
+
 /** G14.125 用户气泡组件面:标准 md 链接文件化(a 覆写,onOpenFile 在场才可点;web 新窗)——
- *  非标引用(@token code/裸路径)不做文件渲染(G14.125 去兼容),保持通用 chip 原样 */
-export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
+ *  非标引用(@token code/裸路径)不做文件渲染(G14.125 去兼容),保持通用 chip 原样;
+ *  isDir=目录解析(目录引用链接显黄目录,undefined=全按文件) */
+export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined, isDir?: (p: string) => boolean): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
   return {
     ...mdComponentsPlain,
     // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点;web 链接新窗)
@@ -57,7 +67,7 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
             }
           }}
         >
-          <FileIcon path={href} />
+          <FileIcon path={href} folder={isDir?.(href)} />
           <span className="file-link-name">{tokenDisplayName(href)}</span>
         </span>
       );
@@ -68,8 +78,9 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
 /** G14.125 md 组件面工厂(导出——Files 页 md 预览复用,传各自 onOpenFile):pre 分流
  *  (mermaid 围栏→Mermaid 懒加载/失败回落,其余围栏→CodeBlock hljs+头部)+ table 横滚 +
  *  md 原生超链接文件化(G14.124:非 web href=文件路径 → icon+文件名 file-link,点击开侧栏;
- *  web 链接新窗 <a>;非标准 md 引用——裸路径/代码形态 token——不做文件渲染,G14.125 去兼容) */
-export function buildMdComponents(onOpenFile: (p: string) => void): Record<string, (props: { children?: ReactNode }) => JSX.Element> {
+ *  web 链接新窗 <a>;非标准 md 引用——裸路径/代码形态 token——不做文件渲染,G14.125 去兼容);
+ *  isDir=目录解析(目录 href 显黄目录,缺省全按文件) */
+export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: string) => boolean): Record<string, (props: { children?: ReactNode }) => JSX.Element> {
   return {
     pre(props: { children?: ReactNode }) {
       const child = Array.isArray(props.children) ? props.children[0] : props.children;
@@ -118,7 +129,7 @@ export function buildMdComponents(onOpenFile: (p: string) => void): Record<strin
             }
           }}
         >
-          <FileIcon path={href} />
+          <FileIcon path={href} folder={isDir?.(href)} />
           <span className="file-link-name">{tokenDisplayName(href)}</span>
         </span>
       );

@@ -43,9 +43,12 @@ export function FilePalette({
     <div className="file-palette" role="listbox" aria-label={t('Workspace files', '工作区文件')}>
       {items.length === 0 && <div className="file-palette-empty">{t('No matching files', '无匹配文件')}</div>}
       {items.map((f, i) => {
-        const si = f.lastIndexOf('/');
-        const base = si < 0 ? f : f.slice(si + 1);
-        const dir = si < 0 ? '' : f.slice(0, si + 1);
+        // 目录项(工作区索引 dirs,尾斜杠内部标记):黄目录图标(FileIcon 尾斜杠判)即区分,
+        // 名/父目录后缀按剥斜杠取,显示不再追加斜杠
+        const bare = f.replace(/[\\/]+$/, '');
+        const si = bare.lastIndexOf('/');
+        const base = si < 0 ? bare : bare.slice(si + 1);
+        const dir = si < 0 ? '' : bare.slice(0, si + 1);
         return (
           <button
             key={f}
@@ -190,17 +193,22 @@ export function tokenSpanAt(text: string, caret: number): [number, number] | nul
 }
 /** G14.132 输入框高亮层(导出共享——欢迎页 composer 同款):file token 渲染文件图标+显形文本。
  *  G14.211 显形=原始字形(tokenBody 原样,行锚 :L 段弱色)——显示宽度逐字形等于原文,
- *  光标恒贴芯片右沿;此前 basename/`(L..L)` 变换画宽>原文宽,光标后留缝 */
-export const renderMentionSpans = (text: string): ReactNode =>
+ *  光标恒贴芯片右沿;此前 basename/`(L..L)` 变换画宽>原文宽,光标后留缝。
+ *  lookup=目录解析(Chat/欢迎页注入记账+索引):命中值带尾斜杠=目录引用 → 黄目录图标
+ *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别) */
+export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined): ReactNode =>
   splitMentionTokens(text).map((tk, i) => {
     if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
     if (tk.kind === 'file') {
       const tokenBody = tk.text.slice(1);
       const anchor = /^(.*)(:L\d+(?:-L\d+)?)$/.exec(tokenBody);
+      const pathNoAnchor = tokenBody.replace(/:L\d+(?:-L\d+)?$/, '');
+      const bare = pathNoAnchor.replace(/[\\/]+$/, '');
+      const isDir = /[\\/]$/.test(pathNoAnchor) || /[\\/]$/.test(lookup?.(bare) ?? '');
       return (
         <span key={i} className="hn hn-file">
           <span className="hn-file-ico" aria-hidden="true">
-            <FileIcon path={tokenBody.replace(/:L\d+(?:-L\d+)?$/, '')} />
+            <FileIcon path={pathNoAnchor} folder={isDir || undefined} />
           </span>
           <span className="hn-file-at" aria-hidden="true">@</span>
           {anchor === null ? (
@@ -220,7 +228,9 @@ export const renderMentionSpans = (text: string): ReactNode =>
 /** G14.129/139 @ 引用发送期展开:输入框短写 `@文件名`(选中记账)或 `@相对路径` 或
  *  `@相对路径:L30-L35`(文件标签选区加引用) → md 原生超链接——行锚形态
  *  `[文件名 L30-L35](./相对路径#L30-L35)`,其余 `[文件名](./相对路径)`;标准 ./ 相对格式,
- *  daemon 相对会话根解析;纯文件名 token 经 resolve 解析(选中记账/最近索引兜底),解析不到原样保留 */
+ *  daemon 相对会话根解析;纯文件名 token 经 resolve 解析(选中记账/最近索引兜底),解析不到原样保留。
+ *  目录引用(token 尾斜杠 `@src/`,或 resolve 命中带尾斜杠的索引目录项):href 保尾斜杠——
+ *  气泡链接面(FileIcon 尾斜杠判目录)显黄目录,点击交 Files 目录移交;头名剥尾斜杠 */
 export function expandFileRefs(
   text: string,
   root: string | undefined,
@@ -231,10 +241,14 @@ export function expandFileRefs(
     const anchor = /^(.*):(L\d+(?:-L\d+)?)$/.exec(p);
     const pathPart = anchor !== null ? anchor[1] : p;
     const lines = anchor !== null ? anchor[2] : '';
-    const name = pathPart.split(/[\\/]/).pop() ?? pathPart;
-    const rel = pathPart.includes('/') ? pathPart : resolve?.(name);
+    const bare = pathPart.replace(/[\\/]+$/, '');
+    const isDirRef = /[\\/]$/.test(pathPart);
+    const name = bare.split(/[\\/]/).pop() ?? bare;
+    const rel = bare.includes('/') ? bare : resolve?.(name);
     if (rel === undefined || rel === '') return raw;
+    const dirHref = isDirRef || /[\\/]$/.test(rel);
+    const relBody = rel.replace(/^\.\//, '').replace(/[\\/]+$/, '');
     const head = anchor !== null ? `${name} ${lines}` : name;
-    return `[${head}](./${rel.replace(/^\.\//, '')}${lines !== '' ? `#${lines}` : ''})`;
+    return `[${head}](./${relBody}${dirHref ? '/' : ''}${lines !== '' ? `#${lines}` : ''})`;
   });
 }

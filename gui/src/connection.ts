@@ -77,8 +77,9 @@ export interface Connection {
   /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
   gitCheckout(root: string, branch: string): Promise<void>;
-  /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先 */
-  workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }> }>;
+  /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先;
+   *  dirs=尾斜杠目录清单(@面板滤出文件夹/目录引用面;旧 daemon 无此字段 → undefined) */
+  workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
   sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
   commitChanges(id: string, message: string): Promise<void>;
   pushChanges(id: string): Promise<void>;
@@ -86,7 +87,9 @@ export interface Connection {
   restoreChange(id: string, path: string): Promise<void>;
   /** GET /session/:id/context:上下文分段构成(G10-C6 面板) */
   sessionContext(id: string): Promise<{ parts: Array<{ id: string; tokens: number; count: number }>; chainByAction: Array<{ action: string; tokens: number }>; total: number; window: number; free: number }>;
-  /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板) */
+  /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板)。G14.2xx 用户裁定:本面只记录 exec 类
+   *  真后台执行——subagent/teammate 账本行退役(子代理/队友在任务板·agent 页签已有专面,双处
+   *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用) */
   sessionTasks(id: string): Promise<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number }>>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
   memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string; body: string }>>;
@@ -360,7 +363,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson('/session/' + encodeURIComponent(id) + '/context');
     },
     sessionTasks(id: string) {
-      return getJson('/session/' + encodeURIComponent(id) + '/tasks');
+      // 白名单:只留 exec 类真后台执行(subagent/teammate 各有专面)——见接口注
+      return getJson<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number }>>(
+        '/session/' + encodeURIComponent(id) + '/tasks',
+      ).then((rows) => rows.filter((r) => r.kind === 'exec'));
     },
     memoryList(root: string) {
       return getJson('/memory?root=' + encodeURIComponent(root));
