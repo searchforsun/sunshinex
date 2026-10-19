@@ -104,7 +104,13 @@ export function onChildEvent(ctrl: SessionController, e: SessionEvent, label: st
       flushBuf();
       closeThink();
       const callId = typeof e.payload?.callId === 'string' ? e.payload.callId : '';
-      transcript = [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input), ...(callId ? { callId } : {}) }];
+      // 同 callId 幂等(2026-10-19 真机「结果渲染到最后一个工具上」):执行起点补发 running(batch-runner
+      // 同 callId 二次 tool-call)在转录面不重复追加——主链内核按 pending 槽幂等回填,子面板转录同规;
+      // 双行入列时 pairChildResults 的 byId 后写覆盖前写,结果行挂到升级条、pending 条裸奔即错位病根
+      const duplicatedCall = callId !== '' && transcript.some((l) => l.kind === 'call' && l.callId === callId);
+      transcript = duplicatedCall
+        ? transcript
+        : [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input), ...(callId ? { callId } : {}) }];
       const calls = callId
         ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, target: toolCallLine(e.text ?? '', e.payload?.input), startedAt: Date.now() }]
         : child.calls;

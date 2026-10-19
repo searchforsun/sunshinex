@@ -391,3 +391,71 @@ test('Inspector 归档 meta 带委派词全文：⏺ 行及其续行整块丢弃
   assert.equal((all.match(/项目背景续行甲/g) ?? []).length, 1, '委派词续行恰呈现一次（随 ⏺ 行丢弃，不漏成正文）');
   one.unmount();
 });
+
+test('Inspector 输入带抑制:转录已含任务带时 spawn 框定词不再重播(2026-10-19 真机「用户字段重复渲染」)', () => {
+  // live:prompt(框定词)与任务带(Task 行+spec)同义重复——任务带=子代理实收输入,单点承载,输入带让位
+  const one = render(
+    <ChildInspector
+      child={live({
+        prompt: 'You are a READ-ONLY code analyst',
+        transcript: [
+          { kind: 'task', text: 'Task task-analysis-core-b1c2: 分析·核心架构\nYou are a READ-ONLY code analyst' },
+          { kind: 'text', text: '分析中…' },
+        ],
+      })}
+      columns={80}
+      rows={20}
+    />,
+  );
+  const all = one.allOutput();
+  assert.ok(all.includes('Task task-analysis-core-b1c2: 分析·核心架构'), '任务带在场(实收输入单点承载)');
+  assert.ok(!all.includes('委派提示词'), '委派提示词输入带不渲染(重复播报抑制)');
+  one.unmount();
+
+
+  // archived:meta 带 prompt 时,▶ 任务带块(含 4 空格缩进 spec 续行)整块吸收;⏺ 行照旧被输入带吸收
+  const two = render(
+    <ChildInspector
+      archived={{
+        label: 'w',
+        prompt: 'You are a READ-ONLY code analyst',
+        steps: 3,
+        durationMs: 4000,
+        lines: [
+          '⏺ 委派提示词：You are a READ-ONLY code analyst',
+          '▶ Task task-analysis-core-b1c2: 分析·核心架构',
+          '    You are a READ-ONLY code analyst',
+          '    第二段 spec 续行',
+          '结论正文一行',
+        ],
+      }}
+      columns={80}
+      rows={20}
+    />,
+  );
+  const all2 = two.allOutput();
+  assert.ok(all2.includes('You are a READ-ONLY code analyst'), '输入带承载委派词(单点,灰底纯文本)');
+  assert.ok(!all2.includes('▶ Task'), '▶ 任务带块整块吸收(不与输入带双显)');
+  assert.ok(!all2.includes('第二段 spec 续行'), '▶ 块 4 空格缩进续行随块吸收');
+  assert.ok(all2.includes('结论正文一行'), '正文不受影响');
+  two.unmount();
+
+  // 旧档兜底:meta 缺 prompt 时 ▶ 任务带块保留承载输入(回退不丢内容)
+  const three = render(
+    <ChildInspector
+      archived={{
+        label: 'w',
+        steps: 2,
+        durationMs: 3000,
+        lines: ['▶ Task legacy: 老档任务', '    老档 spec 行', '正文'],
+      }}
+      columns={80}
+      rows={20}
+    />,
+  );
+  const all3 = three.allOutput();
+  assert.ok(all3.includes('Task legacy: 老档任务'), '无输入带时 ▶ 块回退保留');
+  assert.ok(all3.includes('老档 spec 行'), '▶ 块续行回退保留');
+  three.unmount();
+
+});
