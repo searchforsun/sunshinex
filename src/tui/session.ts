@@ -320,6 +320,20 @@ export class SessionController {
   queueRestore(items: ReadonlyArray<SteerItem>): void {
     this.kernel.steerRestore(items);
   }
+
+  /** 队列暂停(2026-10-19「中断不丢弃队列」裁决):暂停态收口补跑跳过——队列条目待发不自动跑;
+   *  新提交空闲态直接发送、运行中照常入队。手动暂停与中断转暂停共用本单点 */
+  queuePause(): void {
+    this.state = { ...this.state, queuePaused: true };
+    this.notify();
+  }
+
+  /** 队列恢复:解除暂停并立即按序自动发送待发条目(idle 即刻补跑;running 由轮收束的 drainQueue 接力) */
+  queueResume(): void {
+    this.state = { ...this.state, queuePaused: undefined };
+    this.notify();
+    void this.drainQueue();
+  }
   /** 恢复携带的 UI 现场（--continue / /resume 重放产物；entry 经 takeRestoredUi 播种 retain，一次性取走）；
    *  公开 = commands-session 恢复三面注入点 */
   restoredUi?: { history: string[]; expandAll: boolean; latestFull: boolean };
@@ -458,30 +472,31 @@ export class SessionController {
     this.state = { ...this.state, live };
   }
 
-  /** 提交输入：斜杠命令即时处理；自然语言任务运行中提交进 FIFO 队列 */
+  /** 提交输入：斜杠命令即时处理；自然语言任务运行中提交静默入 FIFO 队列(P5 持久化,Ctrl+Q 底层取数) */
   async submit(input: string): Promise<void> {
     const text = input.trim();
     if (!text) return;
-    // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于回显入志；v3 建档(P11-T2 零兼容)
+    // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于分流入志；v3 建档(P11-T2 零兼容)
     const j = this.ensureJournal();
     j.start(3);
     j.log({ t: 'user', text });
-    // 用户输入回显上屏（含斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
-    this.pushMsg('user', text);
     if (text.startsWith('/')) {
+      // 用户输入回显上屏（斜杠命令）：消息流完整呈现对话轮次（/plan <目标> 此前整行蒸发）；内部 goal 提示词仍不上屏
+      this.pushMsg('user', text);
       await this.handleSlash(text);
       return;
     }
-    // 内核转录(P3):自然语言轮=对话 user 条(新轮与 steer 入队两支同源;slash 命令回显不入转录面)
-    this.kernel.submit(text);
-    this.md.clear();
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
-      // 运行中穿插（对标 CC queued messages，用户→运行时方向、非模型工具面）：入内核队列(P5)，
-      // reactor 步边界经 steerSource 取走置首行同轮消费；未被消费的行由收口兜底 drainQueue 补跑
+      // 运行中穿插（对标 CC queued messages，与 GUI 对齐）：**排队态零上屏**——队列权威在内核持久
+      // 队列(P5),Ctrl+Q 面板底层取数呈现;真正发送(drainQueue 收口补跑)才以 user 行入对话+内核转录
+      // (2026-10-19 用户裁决「队列只有真正发送的才显示到对话中」——排队即回显双行即刷屏病根)
       this.kernel.steerEnqueue(text);
-      this.pushMsg('system', t(`Queued: ${text}`, `已排队：${text}`));
       return;
     }
+    this.pushMsg('user', text);
+    // 内核转录(P3):自然语言轮=对话 user 条(新轮与 steer 补跑两支同源;slash 命令回显不入转录面)
+    this.kernel.submit(text);
+    this.md.clear();
     await this.runTaskFlow(text);
     await this.drainQueue();
   }
@@ -936,9 +951,14 @@ export class SessionController {
     return this.kernel.steerTakePending().map((x) => x.text);
   }
 
-  /** 运行中穿插收口兜底（对标 CC「turn 结束仍有排队→最旧者作下一轮」）：未被步边界消费的行按入队序补跑为新任务 */
+  /** 运行中穿插收口兜底（对标 CC「turn 结束仍有排队→最旧者作下一轮」）：未被步边界消费的行按入队序
+   *  补跑为新任务。此处即排队行的「真正发送」时刻：user 行此刻才入对话+内核转录(排队态零上屏的另一半——
+   *  2026-10-19 与 GUI 对齐裁决) */
   private async drainQueue(): Promise<void> {
+    if (this.state.queuePaused === true) return; // 暂停态不自动发送(队列保留待恢复)
     for (const it of this.kernel.steerTakePending()) {
+      this.pushMsg('user', it.text);
+      this.kernel.submit(it.text);
       await this.runTaskFlow(it.text);
     }
   }
@@ -1047,6 +1067,7 @@ export class SessionController {
       this.memoryOverride = undefined;
       setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
       this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
+      this.state = { ...this.state, queuePaused: undefined }; // 新会话起点：队列暂停态一并清除(队列条目随内核换新已清)
       this.md.clear();
       this.state = {
         messages: [],

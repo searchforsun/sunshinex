@@ -115,6 +115,9 @@ export function useQueueKeys({
       }
       if (items.length === 0) {
         if (input === 'i' || input === 'I') setDraftState('', undefined);
+        if (input === 'r' || input === 'R') controller.queueResume(); // 空列也可恢复(清暂停态)
+        if (input === 'p' || input === 'P') controller.queuePause();
+        if (input === 'r' || input === 'p' || input === 'R' || input === 'P') setTick((x) => x + 1);
         return true;
       }
       if (key.upArrow && !key.ctrl) {
@@ -157,6 +160,17 @@ export function useQueueKeys({
       }
       if (input === 'i' || input === 'I') {
         setDraftState('', undefined);
+        return true;
+      }
+      if (input === 'r' || input === 'R') {
+        // 恢复自动发送(2026-10-19「中断不丢弃队列」配套):解除暂停,idle 即刻按序补跑/running 轮收束接力
+        controller.queueResume();
+        setTick((x) => x + 1);
+        return true;
+      }
+      if (input === 'p' || input === 'P') {
+        controller.queuePause();
+        setTick((x) => x + 1);
         return true;
       }
       if (input === 'n' || input === 'N') {

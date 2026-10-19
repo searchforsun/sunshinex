@@ -42,7 +42,7 @@ test('会话控制器：自然语言任务 → token 拼接 assistant 消息 →
   }
 });
 
-test('会话控制器：运行中 submit 进入 FIFO 队列并依序执行', async () => {
+test('会话控制器：运行中 submit 静默入队,消费时才以 user 行上屏(排队态零上屏,与 GUI 对齐)', async () => {
   const tmp = tmpdir('sunshinex-sess2-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([
@@ -51,11 +51,17 @@ test('会话控制器：运行中 submit 进入 FIFO 队列并依序执行', asy
     ]) });
     const p1 = ctrl.submit('第一件事');
     const p2 = ctrl.submit('第二件事');
+    // 排队瞬间:零对话行(无 user 回显、无排队提示),队列权威在内核持久队列
+    for (let i = 0; i < 200 && ctrl.getState().status === 'idle'; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(ctrl.steeringPending(), 1, '队列在册(底层取数)');
+    assert.ok(!ctrl.getState().messages.some((m) => m.text.includes('第二件事')), '排队行零上屏');
     await Promise.all([p1, p2]);
     await ctrl.waitIdle();
     const s = ctrl.getState();
     assert.equal(s.status, 'idle');
-    assert.ok(s.messages.some((m) => m.role === 'system' && m.text.includes('Queued:')), '运行中提交应提示排队');
+    assert.equal(ctrl.steeringPending(), 0, '队列已消费清空');
+    const userRows = s.messages.filter((m) => m.role === 'user').map((m) => m.text);
+    assert.deepEqual(userRows.filter((x) => x === '第二件事').length, 1, '消费时刻恰一条 user 行(真正发送才显示)');
     const assistant = s.messages.filter((m) => m.role === 'assistant').map((m) => m.text).join('|');
     assert.ok(assistant.includes('第一件事完成') && assistant.includes('第二件事完成'), '两笔任务都应执行');
   } finally {

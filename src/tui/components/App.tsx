@@ -547,7 +547,7 @@ export function App({
       {(queueMode && !browseMode && !boardMode) ? (
         // 等待队列管理面板（Ctrl+Q，P5 spec §12.3）：内核队列直读快照、draft 行内联（编辑/插入），
         // 动态区每帧自绘；浏览/任务视图在场让位（键面已由判定序互斥，渲染守卫防双显）
-        <QueuePanel key="queue-panel" items={controller.queueItems()} cursor={queueCursor} draft={queueDraft} draftSeq={queueDraftSeq} />
+        <QueuePanel key="queue-panel" items={controller.queueItems()} cursor={queueCursor} draft={queueDraft} draftSeq={queueDraftSeq} paused={stateRef.current.queuePaused === true} />
       ) : null}
       {(runningChildren > 0 && !browseMode && !boardMode && !queueMode) ? (
         // 常态子代理面板（2026-09-28 统一口径）：只承载运行中（P1 收敛：门限与 ChildPanel 成员同源——

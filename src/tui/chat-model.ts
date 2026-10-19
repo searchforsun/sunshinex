@@ -207,6 +207,10 @@ export interface TuiState {
   /** 暂停确认卡（第一次 Ctrl+C 挂起；瞬态不进 journal）：status 保持 running、abort 不触发——任务与子代理
    *  继续跑，再按 Ctrl+C / 确认项才走 interrupt() 真正中断（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」） */
   pauseConfirm?: boolean;
+  /** 等待队列暂停态（2026-10-19 用户裁决「中断不丢弃队列」；瞬态不进 journal）：中断保留队列并转暂停——
+   *  暂停中不自动发送（收口补跑跳过），新提交空闲态直接发送/运行中继续排队；主动恢复（Ctrl+Q 面板 R）
+   *  后继续按序自动发送 */
+  queuePaused?: boolean;
 }
 
 export interface SessionOpts extends KernelRuntimeOpts {

@@ -14,12 +14,15 @@ export function QueuePanel({
   cursor,
   draft,
   draftSeq,
+  paused = false,
 }: {
   items: SteerItem[];
   cursor: number;
   /** 编辑/插入在途输入行（undefined=列表态）；draftSeq=编辑目标条 seq，undefined=插入新条 */
   draft?: string;
   draftSeq?: number;
+  /** 队列暂停态（2026-10-19「中断不丢弃队列」配套）：暂停中不自动发送,面板标示 + R 恢复 */
+  paused?: boolean;
 }): JSX.Element {
   const page = Math.floor(cursor / QUEUE_PAGE_ROWS);
   const start = page * QUEUE_PAGE_ROWS;
@@ -28,6 +31,7 @@ export function QueuePanel({
     <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
       <Text dimColor>
         {t('Queued messages', '等待队列')} · {items.length}
+        {paused ? <Text color={theme.warn}>{t(' · PAUSED (R to resume)', ' · 已暂停（R 恢复自动发送）')}</Text> : null}
       </Text>
       {items.length === 0 ? (
         <Text dimColor>{t('empty — press I to insert', '空 — 按 I 插入新条')}</Text>

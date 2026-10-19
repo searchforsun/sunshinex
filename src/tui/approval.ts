@@ -113,11 +113,16 @@ export function interrupt(ctrl: SessionController): boolean {
     ctrl.notify();
     return true;
   }
-  // 待投递穿插行随中断一并丢弃（用户意图是停，不是继续跑）；已消费穿插行已随步入链，不受影响
-  // （P5 内核态:走 ctrl 队列 API——steer 行落档随发）
-  if (ctrl.steeringPending() > 0) {
-    const dropped = ctrl.queueTakeAll().length;
-    ctrl.pushMsg('system', t(`Queued tasks dropped: ${dropped}`, `已丢弃排队任务：${dropped} 条`), { level: 'warn' });
+  // 排队穿插行随中断**保留并转暂停**（2026-10-19 用户裁决「中断不丢弃队列」，废止旧「中断即丢弃」）：
+  // 暂停态不自动发送（收口补跑跳过），新提交空闲态直接发送/运行中照常入队；主动恢复（Ctrl+Q 面板 R）
+  // 后继续按序自动发送。一次性模式变更回执上屏（非队列操作回显——用户须知道待发条目不会自跑）
+  const pendingSteer = ctrl.steeringPending();
+  if (pendingSteer > 0) {
+    ctrl.queuePause();
+    ctrl.pushMsg('system', t(
+      `Queue paused: ${pendingSteer} pending — press R in the queue panel (Ctrl+Q) to resume auto-send`,
+      `队列已暂停：${pendingSteer} 条待发——Ctrl+Q 队列面板按 R 恢复自动发送`,
+    ), { level: 'warn' });
   }
   ctrl.notify();
   return true;
