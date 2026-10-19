@@ -3,6 +3,7 @@ import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 import { reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { fail, ok, Result } from '../result';
+import { slugify } from '../slug';
 import {
   applyBoardEvent, BoardEvent, BoardTask, dispatchable, emptyBoard, hasCycle,
   recoverOnLoad, TaskBoardState, transitionLegal,
@@ -10,6 +11,12 @@ import {
 import type { TeamStore } from './store';
 import type { TeamRegistry } from './teammate';
 import type { ExternalExecutorLike } from './executors/external-cli';
+
+/** 派发登记/委派标签(台账方言单点):旧 tN 板 id(恢复档)补 task- 前缀保 resolveId 归一命中;
+ *  新方言 id(task-<业务段>-<随机码>)自带类别段,原样透传防 task-task- 叠加。delegationId 同用本形态 */
+export function dispatchTag(taskId: string): string {
+  return /^t\d+$/.test(taskId) ? `task-${taskId}` : taskId;
+}
 
 /** TaskBoard 协调器(spec §5/§7):操作面(创建/依赖/指派/裁决/门)+ 事件发射(task-* / gate-* 进
  *  SessionEvent 公共面)+ event sourcing 持久化 + 批量并行派发 drain。
@@ -139,7 +146,12 @@ export class TaskBoard {
     if (unknown.length > 0) return fail('INVALID_ARG', `unknown dependency: ${unknown.join(', ')}`);
     const open = Object.values(this.state.tasks).filter((t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled').length;
     if (open >= this.maxOpen) return fail('INVALID_ARG', `task board open-task limit reached (${this.maxOpen}); review or cancel existing tasks first`);
-    const taskId = `t${this.state.seq + 1}`;
+    // id 方言(2026-10-19 用户裁决「t1/t2 无意义」):task-<业务段>-<随机码> 对齐台账「业务段-时间/随机段」
+    // 三段式——业务段=slug(title,≤16),CJK 等非拉丁按方言折叠回退 'board';随机段 4 位 base36,板内唯一性
+    // 循环再生。旧 tN 形态随恢复档继续可读(resolveId/dispatchTag 归一兼容),seq 仅作事件序记账保留
+    const genId = (): string => `task-${slugify(input.title, { max: 16, fallback: 'board' })}-${Math.random().toString(36).slice(2, 6)}`;
+    let taskId = genId();
+    while (this.state.tasks[taskId] !== undefined) taskId = genId();
     const ev: BoardEvent = { t: 'task-created', taskId, title: input.title, spec: input.spec, dependsOn: deps, ts: this.now(), ...(input.executor !== undefined ? { executorHint: input.executor } : {}) };
     this.applyAndPersist(ev);
     if (input.assignee !== undefined && input.assignee.length > 0) {
@@ -369,7 +381,7 @@ export class TaskBoard {
     }
     this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now(), by: 'fork' });
     this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed', by: 'fork' });
-    const ledger = this.deps.registry.submit({ kind: 'subagent', label: `task-${task.id}` });
+    const ledger = this.deps.registry.submit({ kind: 'subagent', label: dispatchTag(task.id) });
     const abort = new AbortController();
     ledger.stop = () => abort.abort();
     this.deps.registry.append(ledger.id, `[taskboard] ${task.id}: ${task.title}\n`);
@@ -382,7 +394,7 @@ export class TaskBoard {
     try {
       const tokenCap = subagentTokenCapEnv();
       const r = await this.deps.runner.runSubagent(
-        { prompt: task.spec, label: `task-${task.id}` },
+        { prompt: task.spec, label: dispatchTag(task.id) },
         {
           taskLine: `Task ${task.id}: ${task.title}`,
           signal: abort.signal,
@@ -432,7 +444,7 @@ export class TaskBoard {
    *  UI 仅见起止(delegation-started/ended),board 不透传其内部细节 */
   private async executeExternal(task: BoardTask, executor: ExternalExecutorLike): Promise<void> {
     if (!this.markClaimed(task.id, 'external-cli')) return; // 非 pending(被取走/终态):静默放弃
-    const delegationId = `task-${task.id}`;
+    const delegationId = dispatchTag(task.id);
     this.emit('delegation-started', { delegationId, kind: 'external-cli', label: delegationId });
     const startedAt = this.now();
     let r: { ok: boolean; reply: string; tokens: number };

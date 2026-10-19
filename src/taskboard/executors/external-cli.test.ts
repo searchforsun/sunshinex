@@ -209,7 +209,7 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
     const externalExecutor = {
       run: async (task: { id: string; title: string; spec: string }, budget: { deadlineAt: number }) => {
         externals.push({ task, deadlineAt: budget.deadlineAt });
-        if (task.id === 't2') return { ok: false, reply: 'boom', tokens: 0 };
+        if (task.title === 'B') return { ok: false, reply: 'boom', tokens: 0 };
         return { ok: true, reply: 'external reply', tokens: 7 };
       },
     };
@@ -228,34 +228,39 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
       onEvent: (e) => events.push(e),
     });
     board.init();
-    assert.ok(board.create({ title: 'A', spec: 'a', executor: 'external-cli' }).ok);
+    const a = board.create({ title: 'A', spec: 'a', executor: 'external-cli' });
+    assert.ok(a.ok);
+    const aId = a.value.taskId;
     await drain();
     await drain();
     const s = board.snapshot();
-    assert.equal(s.tasks['t1']!.status, 'in-review', '强制回写 claimed→in-review');
-    assert.equal(s.tasks['t1']!.artifact?.conclusion, 'external reply');
-    assert.equal(s.tasks['t1']!.artifact?.tokens, 7);
+    assert.equal(s.tasks[aId]!.status, 'in-review', '强制回写 claimed→in-review');
+    assert.equal(s.tasks[aId]!.artifact?.conclusion, 'external reply');
+    assert.equal(s.tasks[aId]!.artifact?.tokens, 7);
     assert.deepEqual(internalCalls, [], 'internal runner 零调用(external 路由接管)');
-    assert.deepEqual(externals[0]!.task, { id: 't1', title: 'A', spec: 'a' }, '执行体收到自包含 task');
+    assert.deepEqual(externals[0]!.task, { id: aId, title: 'A', spec: 'a' }, '执行体收到自包含 task');
     assert.ok(externals[0]!.deadlineAt > Date.now(), '预算 deadline 未来(板超时换算)');
     const started = events.find((e) => e.type === 'delegation-started');
     assert.ok(started, 'delegation-started 已发');
-    assert.deepEqual(started!.payload, { delegationId: 'task-t1', kind: 'external-cli', label: 'task-t1' });
+    // 委派标签 = dispatchTag(板 id)(新方言=板 id 本形)
+    assert.deepEqual(started!.payload, { delegationId: aId, kind: 'external-cli', label: aId });
     const ended = events.find((e) => e.type === 'delegation-ended');
     assert.ok(ended, 'delegation-ended 已发');
-    assert.deepEqual(ended!.payload, { delegationId: 'task-t1', kind: 'external-cli', status: 'done', tokens: 7 });
+    assert.deepEqual(ended!.payload, { delegationId: aId, kind: 'external-cli', status: 'done', tokens: 7 });
     // 黑盒降级:stub 无翻译产出时 UI 仅见起止(无 token/tool-call 透传)
     assert.ok(!events.some((e) => e.type === 'token' || e.type === 'tool-call'), '公共面仅见起止');
     // 失败路径:EXTERNAL code 回写 + delegation-ended failed
-    assert.ok(board.create({ title: 'B', spec: 'b', executor: 'external-cli' }).ok);
+    const b = board.create({ title: 'B', spec: 'b', executor: 'external-cli' });
+    assert.ok(b.ok);
+    const bId = b.value.taskId;
     await drain();
     await drain();
-    assert.equal(board.snapshot().tasks['t2']!.status, 'failed');
+    assert.equal(board.snapshot().tasks[bId]!.status, 'failed');
     const note = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'failed');
     assert.ok(note, 'failed 状态事件已发');
     assert.ok(String((note!.payload as Record<string, unknown>).note).includes('execution failed: EXTERNAL: boom'), `note 带 EXTERNAL:boom,实际:${JSON.stringify(note!.payload)}`);
     const ended2 = events.filter((e) => e.type === 'delegation-ended');
-    assert.ok(ended2.some((e) => (e.payload as Record<string, unknown>)?.status === 'failed' && (e.payload as Record<string, unknown>)?.delegationId === 'task-t2'), 't2 delegation-ended failed');
+    assert.ok(ended2.some((e) => (e.payload as Record<string, unknown>)?.status === 'failed' && (e.payload as Record<string, unknown>)?.delegationId === bId), 'B delegation-ended failed');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -96,6 +96,33 @@ export class TaskRegistry {
     return this.tasks.get(taskId);
   }
 
+  /**
+   * id 归一单点(task_wait/task_stop 共用):模型按板 id/委派 id 调等待与停止是高频调用形态(真机
+   * t5,t6,t7,t8 全量报错)。台账 id=slug(label)+ts+rand,板任务 label=dispatchTag(板 id):
+   * - 旧 tN 恢复档:标签 task-tN → 台账 id 形如 task-tN-<ts>-<rand>,按 task-tN- 前缀命中;
+   * - 新方言(2026-10-19「t1/t2 无意义」裁决)task-<业务段>-<随机码>:标签=板 id,台账 id 再带
+   *   时间戳随机尾,且台账业务段截 16(slug 方言)——板 id 超长时按其 slug16 前缀唯一命中;
+   *   多命中取最近提交(重派发后旧条目让位);
+   * 直接命中优先;无前缀命中原样透传由调用面报 INVALID_ARG
+   */
+  resolveId(id: string): string {
+    if (this.tasks.has(id)) return id;
+    const legacy = /^(?:task-)?(t\d+)$/.exec(id);
+    const modern = /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/.exec(id);
+    let prefix: string | null = null;
+    if (legacy !== null) prefix = `task-${legacy[1]}-`;
+    else if (modern !== null) {
+      // 台账业务段截 16(slug 方言):板 id 超 16 时台账 id 以其 slug16 形态存在,前缀照 slug16 取
+      const short = slugify(id, { max: 16, fallback: '' });
+      prefix = `${short.length > 0 ? short : id}-`;
+    }
+    if (prefix !== null) {
+      const hits = this.list().filter((t) => t.id.startsWith(prefix));
+      if (hits.length > 0) return hits.reduce((a, b) => (b.startedAt > a.startedAt ? b : a)).id;
+    }
+    return id;
+  }
+
   /** ownerRun 收割（规格 D9）：终结该 owner 名下全部 running——触发 stop 句柄并落 [stopped] 终态行 */
   reap(ownerRun: string): BackgroundTask[] {
     const out: BackgroundTask[] = [];

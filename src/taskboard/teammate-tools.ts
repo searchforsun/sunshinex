@@ -35,7 +35,7 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
       additionalProperties: false,
       required: ['taskId'],
       properties: {
-        taskId: { type: 'string', description: 'Board task id (e.g. "t1").' },
+        taskId: { type: 'string', description: 'Board task id (e.g. "task-build-parser-k3f2").' },
       },
     },
     name: 'get_task',

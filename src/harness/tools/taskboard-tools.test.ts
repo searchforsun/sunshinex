@@ -19,6 +19,13 @@ function makeBoard(tmp: string): TaskBoard {
 
 const drain = () => new Promise((r) => setImmediate(r));
 
+/** 从 create_task observation 捕获真实板 id(id 方言(2026-10-19)随机段不可写字面量) */
+function createdId(stdout: string): string {
+  const m = /task (\S+) created;/.exec(stdout);
+  assert.ok(m, `observation 含新任务 id:${stdout}`);
+  return m![1]!;
+}
+
 test('六件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;cancel_task 工具面', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools-'));
   try {
@@ -29,18 +36,22 @@ test('六件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation
     const create = tools.find((t) => t.name === 'create_task')!;
     const r = await create.executor({ title: 'A', spec: 'do A', dependsOn: null, assignee: null });
     assert.equal(r.exitCode, 0);
-    assert.match(r.stdout, /t1/, 'observation 含新任务 id');
+    const idA = createdId(r.stdout);
+    assert.match(idA, /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/, `新方言形态:${idA}`);
+    assert.ok(r.stdout.includes(idA), 'observation 含新任务 id');
     await drain();
     // cancel_task(终审 Item 2):gated 建即 pending——经工具面取消 → cancelled + 板摘要透出
-    await create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, gated: true });
-    assert.equal(board.snapshot().tasks['t2']!.status, 'pending', 'gated 停 pending(可取消面)');
+    const rx = await create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, gated: true });
+    assert.equal(rx.exitCode, 0);
+    const idX = createdId(rx.stdout);
+    assert.equal(board.snapshot().tasks[idX]!.status, 'pending', 'gated 停 pending(可取消面)');
     const cancel = tools.find((t) => t.name === 'cancel_task')!;
-    const c = await cancel.executor({ taskId: 't2' });
+    const c = await cancel.executor({ taskId: idX });
     assert.equal(c.exitCode, 0);
     assert.match(c.stdout, /cancelled/, 'observation 确认取消');
-    assert.match(c.stdout, /t2 \[cancelled\]/, '板摘要含 cancelled 行(容量已回收)');
-    assert.equal(board.snapshot().tasks['t2']!.status, 'cancelled');
-    await assert.rejects(() => cancel.executor({ taskId: 't2' }), /cancel expects a pending task/, '终态取消经工具面透出 INVALID_ARG');
+    assert.match(c.stdout, new RegExp(`${idX} \\[cancelled\\]`), '板摘要含 cancelled 行(容量已回收)');
+    assert.equal(board.snapshot().tasks[idX]!.status, 'cancelled');
+    await assert.rejects(() => cancel.executor({ taskId: idX }), /cancel expects a pending task/, '终态取消经工具面透出 INVALID_ARG');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -53,10 +64,14 @@ test('create_task 依赖校验 + set_dependency 环拒绝经工具面透出', as
     const tools = makeTaskBoardTools(board);
     const create = tools.find((t) => t.name === 'create_task')!;
     const setDep = tools.find((t) => t.name === 'set_dependency')!;
-    await create.executor({ title: 'A', spec: 'a', dependsOn: null, assignee: null });
-    await create.executor({ title: 'B', spec: 'b', dependsOn: ['t1'], assignee: null });
+    const ra = await create.executor({ title: 'A', spec: 'a', dependsOn: null, assignee: null });
+    const idA = createdId(ra.stdout);
+    const rb = await create.executor({ title: 'B', spec: 'b', dependsOn: [idA], assignee: null });
+    assert.equal(rb.exitCode, 0);
+    const idB = createdId(rb.stdout);
     await drain();
-    await assert.rejects(() => setDep.executor({ taskId: 't1', dependsOn: 't2' }), /cycle/, '环拒绝透出 INVALID_ARG');
+    // A←B 加边即与既有 B→A 边成环:拒绝
+    await assert.rejects(() => setDep.executor({ taskId: idA, dependsOn: idB }), /cycle/, '环拒绝透出 INVALID_ARG');
     await assert.rejects(() => create.executor({ title: 'C', spec: 'c', dependsOn: ['tX'], assignee: null }), /unknown dependency/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

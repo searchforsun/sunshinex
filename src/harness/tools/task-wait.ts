@@ -43,7 +43,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
           type: ['array', 'null'],
           items: { type: 'string' },
           description:
-            'Background task ids to wait for (label-slug-UTCtimestamp-rand form, e.g. ["subagent-20261003T064522Z-a7f3"]); null waits for all currently running tasks. Already-finished ids return an idempotent receipt immediately.',
+            'Background task ids to wait for. Accepted forms: ledger ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids exactly as create_task/the board summary shows them (["task-build-parser-k3f2"]; legacy restored boards use the "t5" form — both resolve to the dispatched ledger entry); null waits for all currently running tasks. Already-finished ids return an idempotent receipt immediately.',
         },
         timeoutSeconds: {
           type: ['number', 'null'],
@@ -54,7 +54,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
     },
     name: 'task_wait',
     description:
-      'Block until background tasks reach a terminal state (background exec, timed-out-to-background exec, background subagent, or board tasks dispatched as task-tN — including the ones claimed by teammates) and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. taskIds=null waits for all currently running tasks EXCEPT long-lived teammates (they run until task_stop); on timeout the current status is returned so you can keep waiting or stop the task.',
+      'Block until background tasks reach a terminal state (background exec, timed-out-to-background exec, background subagent, or board tasks — including the ones claimed by teammates) and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. taskIds accepts board ids in their native form (["task-build-parser-k3f2"], exactly as create_task/the board summary shows them) as well as ledger ids; taskIds=null waits for all currently running tasks EXCEPT long-lived teammates (they run until task_stop); on timeout the current status is returned so you can keep waiting or stop the task.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -63,7 +63,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
       let ids: string[];
       if (raw.taskIds === null || raw.taskIds === undefined) {
         // 长驻 teammate 条目排除(2026-10-06 契约收敛):teammate 存活即 running,等它=等到 task_stop——
-        // task_wait(null) 的语义是「等在跑的活收口」,可收口面=exec/后台 spawn/板任务(task-tN)
+        // task_wait(null) 的语义是「等在跑的活收口」,可收口面=exec/后台 spawn/板任务(dispatchTag(板 id) 登记条目)
         ids = tasks.list().filter((t) => t.status === 'running' && t.kind !== 'teammate').map((t) => t.id);
         if (ids.length === 0) {
           return { exitCode: 0, stdout: 'no background tasks running', stderr: '', timedOut: false };
@@ -72,7 +72,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
         if (!Array.isArray(raw.taskIds) || raw.taskIds.length === 0) {
           throw new CodedToolError('INVALID_ARG', 'taskIds must be a non-empty array of task ids, or null to wait for all running tasks');
         }
-        ids = raw.taskIds.map(String);
+        ids = raw.taskIds.map((id) => tasks.resolveId(String(id)));
         const unknown = ids.filter((id) => tasks.get(id) === undefined);
         if (unknown.length > 0) {
           const all = tasks.list().map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`).join('; ');

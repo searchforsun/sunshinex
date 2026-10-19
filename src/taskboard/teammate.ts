@@ -14,7 +14,7 @@ import type { ToolRegistry } from '../harness/tools';
 import type { TaskRegistry } from '../harness/tasks';
 import type { StorageAdapter } from '../storage/adapter';
 import type { Inbox } from './inbox';
-import type { TaskBoard } from './board';
+import { dispatchTag, type TaskBoard } from './board';
 import type { BoardTask } from './model';
 
 /** 队伍缺省帽(2026-10-06 用户实机反馈「4 太少」提至 8):主链上下文带宽是共享资源,teammate 转录都进
@@ -29,7 +29,7 @@ export interface TeammateDeps {
   root: string;
   store: StorageAdapter;
   board: TaskBoard;
-  /** 任务账本(2026-10-06 契约收敛):每板任务登记 task-tN 条目——task_wait(taskIds=null) 才等得到
+  /** 任务账本(2026-10-06 契约收敛):每板任务登记 dispatchTag(板 id) 条目——task_wait(taskIds=null) 才等得到
    *  teammate 干的活(原缺口:fork 路径登记而 teammate 路径不登,lead 空等 600s);缺省无 = 零行为变化 */
   tasks?: TaskRegistry;
   onEvent?: (e: SessionEvent) => void;
@@ -204,16 +204,16 @@ export class Teammate {
   }
 
   /** 单任务执行(claim 循环与 runTask 共用):认领 → own chain 预置 → 逐任务 Reactor(fork) → 强制回写 */
-  /** 当前在跑任务的 abort 句柄(task_stop task-tN 精确停当前任务;teammate 级 stop 亦级联) */
+  /** 当前在跑任务的 abort 句柄(task_stop 按板 id 归一命中本条目;teammate 级 stop 亦级联) */
   private currentTaskAbort?: AbortController;
 
   private async execute(task: BoardTask): Promise<void> {
     if (!this.deps.board.markClaimed(task.id, this.name)) return; // 已被取走/非 pending:静默放弃(claim() 先行者已 claimed,幂等放行)
-    // 板任务台账登记(与 fork 路径同形 task-tN):task_wait(null) 的可等面;stop=精确中止本任务
+    // 板任务台账登记(与 fork 路径同形 dispatchTag(板 id)):task_wait(null) 的可等面;stop=精确中止本任务
     // (Reactor 收到 abort 即 !done→failed 回写;teammate 存活继续 claim 下一任务)
     const taskAbort = new AbortController();
     this.currentTaskAbort = taskAbort;
-    const ledger = this.deps.tasks?.submit({ kind: 'subagent', label: `task-${task.id}` });
+    const ledger = this.deps.tasks?.submit({ kind: 'subagent', label: dispatchTag(task.id) });
     if (ledger !== undefined) ledger.stop = () => taskAbort.abort();
     // own chain 预置:首任务前 role 行(角色框定),每任务前 task 行(自包含指令)——seed 经 Reactor 缺省取 own chain
     if (!this.framed) {
@@ -221,11 +221,11 @@ export class Teammate {
       this.ctx.appendChain([{ action: 'role', observation: this.framing }]);
     }
     this.ctx.appendChain([{ action: 'task', observation: `Task ${task.id}: ${task.title}\n${task.spec}` }]);
-    // delegation 生命周期事件(与 P1 executeOne 同形,delegationId 对齐台账口径 task-tN):直接走 deps.onEvent,
+    // delegation 生命周期事件(与 P1 executeOne 同形,delegationId 对齐台账口径 dispatchTag):直接走 deps.onEvent,
     // 不带转录标——生命周期归会话公共面,transcript 才按 teammate 归属
-    const delegationId = `task-${task.id}`;
+    const delegationId = dispatchTag(task.id);
     // label = teammate 名(2026-10-06 用户定版 UI 语义:Ctrl+B 行显执行者名字,面板明细按名 join 转录;
-    // delegationId 仍 task-tN 保投影唯一键与台账对齐)
+    // delegationId 用同形标签保投影唯一键与台账对齐)
     const emitDelegation = (type: 'delegation-started' | 'delegation-ended', status?: 'done' | 'failed', tokens?: number): void => {
       this.deps.onEvent?.({
         type,

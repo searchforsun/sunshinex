@@ -118,7 +118,7 @@ test('① pump 平移面：帧恒 {kind:"event",sessionId,seq,e}、seq 计数在
   });
 });
 
-test('② 实跑平移面：submit 受理→running→done→idle；转录三类在场、board 影子 t1、snapshotResponse 形态', async () => {
+test('② 实跑平移面：submit 受理→running→done→idle；转录三类在场、board 影子落位、snapshotResponse 形态', async () => {
   // 消费序（taskboard.e2e 实测口径，同 daemon.contract ③）：create_task 牌 → done 牌收束
   const model = new ScriptedAdapter([
     '{"tool":"create_task","input":{"title":"A","spec":"a","dependsOn":null,"assignee":null,"gated":null,"executor":null}}',
@@ -136,14 +136,16 @@ test('② 实跑平移面：submit 受理→running→done→idle；转录三类
     assert.ok(kinds.includes('assistant'), '转录含 assistant 条');
     const user = ctx.session.sessionKernel.replay().find((m) => m.kind === 'user');
     assert.equal(user?.md, '建个任务', 'user 条为裸文(渲染中立,P11)');
-    // 影子：实跑事件流泵入投影
-    assert.equal(ctx.session.shadowBoard.tasks.t1?.title, 'A', '实跑后影子 board 含 t1');
+    // 影子：实跑事件流泵入投影(板 id 不透明方言:单任务板取键)
+    const boardIds = Object.keys(ctx.session.shadowBoard.tasks);
+    assert.equal(boardIds.length, 1, '前置:恰一个板任务');
+    assert.equal(ctx.session.shadowBoard.tasks[boardIds[0]!]?.title, 'A', '实跑后影子 board 含该任务');
     assert.ok(Array.isArray(ctx.session.shadowDelegations), 'delegations 影子恒数组');
     // snapshotResponse 形态：五字段齐、lastSeq=本会话已泵最大 seq
     const snap = ctx.session.snapshotResponse();
     assert.equal(snap.status, 'idle');
     assert.ok(Array.isArray(snap.messages) && snap.messages.length > 0);
-    assert.notEqual(snap.board.tasks.t1, undefined);
+    assert.notEqual(snap.board.tasks[boardIds[0]!], undefined);
     assert.ok(Array.isArray(snap.delegations));
     assert.equal(snap.lastSeq, Math.max(...ctx.frames.filter((f) => f.kind === 'event').map((f) => f.seq)), 'lastSeq=已广播事件帧最大 seq');
     assert.equal(snap.openRun, -1, '完成后内核流式游标归位(-1)——快照客户端零反推');

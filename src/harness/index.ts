@@ -284,7 +284,8 @@ export class Harness {
         const registered = this.team.register(tm);
         if (!registered.ok) return registered;
         // kind 'teammate'(2026-10-06 契约收敛):长驻条目不随任务结束——task_wait(null) 排除本 kind,
-        // 否则 lead 建任务后等 teammate 存活条目=600s 空等(用户实机实锤);精确等待走板任务条目 task-tN
+        // 否则 lead 建任务后等 teammate 存活条目=600s 空等(用户实机实锤);精确等待走板任务条目
+        // (台账 label=dispatchTag(板 id):新方言 task-<业务段>-<随机码>,旧恢复档 tN 补 task- 前缀)
         const ledgerTask = this.tasks.submit({ kind: 'teammate', label: name });
         ledgerTask.stop = () => tm.stop();
         this.tasks.append(ledgerTask.id, `[teammate] ${name} started — claims unassigned board tasks (give it work with create_task); stop via task_stop ${ledgerTask.id}\n`);

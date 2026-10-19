@@ -210,7 +210,7 @@ test('② API 面收口：未知 GET 404+hint；无 token 401；运行中 submit
   });
 });
 
-test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场、board 影子 t1 落位、status idle；无 token 401', async () => {
+test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场、board 影子落位、status idle；无 token 401', async () => {
   // 消费序（taskboard.e2e 实测口径）：主链 create_task 牌 → 执行器内同步派发 fork（fork 消费下一张
   // done 牌）→ 主链再取（末位 done 牌重复供牌）→ run 收束。create_task 入参六件全给（T1 P2 形态）。
   const model = new ScriptedAdapter([
@@ -244,10 +244,13 @@ test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场
     const tool = snap.messages.find((m) => m.kind === 'tool');
     assert.equal(tool!.md, '', 'tool 条 md 恒空(字段单源,P11 渲染中立)');
     assert.equal(tool!.name, 'create_task', 'tool 条 name 字段为 create_task');
-    assert.ok(tool!.result?.ok === true && tool!.result.text.startsWith('task t1 created'), 'tool 条 result 字段含回执(字段权威)');
+    const boardIds = Object.keys(snap.board.tasks);
+    assert.equal(boardIds.length, 1, '前置:恰一个板任务');
+    const taskId = boardIds[0]!;
+    assert.ok(tool!.result?.ok === true && tool!.result.text.startsWith(`task ${taskId} created`), 'tool 条 result 字段含回执(字段权威)');
     // 影子投影：pump 喂入的 task-created 经同源 boardEventFrom/applyBoardEvent 落位
-    assert.notEqual(snap.board.tasks.t1, undefined, 'board 影子含 create_task 建出的 t1');
-    assert.equal(snap.board.tasks.t1!.title, 'A');
+    assert.notEqual(snap.board.tasks[taskId], undefined, 'board 影子含 create_task 建出的任务');
+    assert.equal(snap.board.tasks[taskId]!.title, 'A');
     assert.ok(Array.isArray(snap.delegations), 'delegations 影子恒数组');
     assert.equal(snap.status, 'idle', 'run 收束后 status=idle');
   });

@@ -61,6 +61,37 @@ test('task_stop 未命中 ID：报错列出现存任务 id+label（规格 D8 照
   }
 });
 
+test('task_stop 板任务原生 id 归一：tN → 派发台账条目(2026-10-19 真机「板 id 直停报错」回归)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-board-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    let stopped = false;
+    // 真实派发登记形态(teammate.ts execute):submit label='task-t5' → 台账 id=task-t5-<ts>-<rand>
+    const ledger = tasks.submit({ kind: 'subagent', label: 'task-t5' });
+    assert.match(ledger.id, /^task-t5-/, '前置:台账 id 为 task-tN 完整方言形态');
+    ledger.stop = () => {
+      stopped = true;
+      tasks.finish(ledger.id, 'stopped', { marker: '[stopped: task_stop]' });
+    };
+    const registry = makeRegistry(tasks);
+    const r = await registry.execute('task_stop', { taskId: 't5' }, stubSafety);
+    assert.ok(r.ok, `期望按板 id 命中，实际 ${r.ok ? '' : r.error.message}`);
+    assert.equal(stopped, true, 'stop 句柄已触发');
+    assert.match(r.value.stdout, /task-t5-/, '回执按台账 id 报告');
+    assert.equal(tasks.get(ledger.id)?.status, 'stopped');
+    // delegationId 形态 task-t5 同样命中
+    const ledger2 = tasks.submit({ kind: 'subagent', label: 'task-t6' });
+    ledger2.stop = () => tasks.finish(ledger2.id, 'stopped', { marker: '[stopped]' });
+    const r2 = await registry.execute('task_stop', { taskId: 'task-t6' }, stubSafety);
+    assert.ok(r2.ok, 'delegationId 形态 task-tN 同样归一命中');
+    // 真未知 id 仍报错
+    const r3 = await registry.execute('task_stop', { taskId: 't99' }, stubSafety);
+    assert.ok(!r3.ok, '无派发条目的板 id 仍 INVALID_ARG');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('task_stop 命中已终态任务：幂等回执当前终态，不重复触发 stop', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-done-'));
   try {

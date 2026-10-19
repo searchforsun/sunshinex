@@ -122,17 +122,22 @@ test('① gate 全链：create_task(gated:true) 入板悬置 → review approved
     try {
       await ctx.post('建个 gated 任务', ctx.sid);
       await waitFor(() => ctx.daemon.get(ctx.sid)!.status() === 'idle', 10_000);
+      // 板 id 为不透明方言(2026-10-19 起 task-<业务段>-<随机码>):单任务板直接取键,不再写 id 字面量
+      const snap0 = await snapOf(ctx, ctx.sid);
+      const taskIds = Object.keys(snap0.board.tasks);
+      assert.equal(taskIds.length, 1, '前置:恰一个 gated 任务');
+      const taskId = taskIds[0]!;
       // 悬置投影：入板即 gated（不派发），gate-waiting 事件已广播
       const snap1 = await snapOf(ctx, ctx.sid);
-      assert.equal(snap1.board.tasks.t1?.gated, true, 'gated 任务入板即 gated=true');
-      assert.equal(snap1.board.tasks.t1?.status, 'pending', 'gated 悬置不派发（pending）');
+      assert.equal(snap1.board.tasks[taskId]?.gated, true, 'gated 任务入板即 gated=true');
+      assert.equal(snap1.board.tasks[taskId]?.status, 'pending', 'gated 悬置不派发（pending）');
       assert.ok(frames.some((f) => f.e?.type === 'gate-waiting'), 'gate-waiting 事件经 pump 广播');
 
       // review：approved=true → 200 {ok:true}
       const r = await fetch(`${ctx.http}/session/${ctx.sid}/board/review`, {
         method: 'POST',
         headers: ctx.H,
-        body: JSON.stringify({ taskId: 't1', approved: true }),
+        body: JSON.stringify({ taskId, approved: true }),
       });
       assert.equal(r.status, 200, 'review approved 应 200');
       assert.deepEqual(await r.json(), { ok: true });
@@ -143,7 +148,7 @@ test('① gate 全链：create_task(gated:true) 入板悬置 → review approved
       let final: SnapshotBody | undefined;
       for (;;) {
         const s = await snapOf(ctx, ctx.sid);
-        const t = s.board.tasks.t1;
+        const t = s.board.tasks[taskId];
         if (t !== undefined && t.gated === false && t.status === 'in-review') {
           final = s;
           break;
@@ -151,8 +156,8 @@ test('① gate 全链：create_task(gated:true) 入板悬置 → review approved
         if (Date.now() > deadline) throw new Error('gate 派发未收敛 in-review');
         await new Promise((res) => setTimeout(res, 20));
       }
-      // fork 委派投影在场（delegationId 对齐台账口径 task-t1，kind subagent）
-      assert.ok(final.delegations.some((d) => d.id === 'task-t1' && d.kind === 'subagent'), 'fork delegation 投影在场');
+      // fork 委派投影在场（delegationId = dispatchTag(板 id),kind subagent）
+      assert.ok(final.delegations.some((d) => d.id === taskId && d.kind === 'subagent'), 'fork delegation 投影在场');
       assert.ok(frames.some((f) => f.e?.type === 'task-status-changed'), 'task-status-changed 事件经 pump 广播');
     } finally {
       ws.close();

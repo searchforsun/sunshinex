@@ -27,7 +27,7 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
       properties: {
         title: { type: ['string', 'null'], description: 'Short task title shown on the board.' },
         spec: { type: ['string', 'null'], description: 'Self-contained task description: the executing agent sees ONLY this (no main-chain context), so include everything needed.' },
-        dependsOn: { type: ['array', 'null'], items: { type: 'string' }, description: 'Task ids this task depends on (e.g. ["t1"]); null/empty = no dependencies. A task dispatches only after all dependencies are done.' },
+        dependsOn: { type: ['array', 'null'], items: { type: 'string' }, description: 'Task ids this task depends on (e.g. ["task-build-parser-k3f2"]); null/empty = no dependencies. A task dispatches only after all dependencies are done.' },
         assignee: { type: ['string', 'null'], description: 'Optional teammate name to route this task to (an active teammate picks it up directly; unset = any idle teammate may claim it).' },
         gated: { type: ['boolean', 'null'], description: 'Pass true to hold the task behind an approval gate from creation: dispatch skips it until review_task(approved=true).' },
         executor: { type: ['string', 'null'], enum: ['internal', 'external-cli', null], description: 'Execution routing hint: "internal" = subagent fork (default), "external-cli" = external CLI executor.' },
@@ -59,7 +59,7 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
       additionalProperties: false,
       required: ['taskId', 'dependsOn'],
       properties: {
-        taskId: { type: ['string', 'null'], description: 'Task id that gains a dependency (e.g. "t2").' },
+        taskId: { type: ['string', 'null'], description: 'Task id that gains a dependency (e.g. "task-build-parser-k3f2").' },
         dependsOn: { type: ['string', 'null'], description: 'Task id to depend on; rejected if it would create a cycle.' },
       },
     },

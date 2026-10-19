@@ -182,3 +182,30 @@ test('task_wait 子代理任务：回执 [conclusion] 结论全文', async () =>
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('task_wait 板任务原生 id 归一：tN/delegationId 形态命中派发台账条目(2026-10-19 真机「t5,t6,t7,t8 全量报错」回归)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-board-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    // 真实派发登记形态(teammate.ts execute):submit label='task-t5' → 台账 id=task-t5-<ts>-<rand>
+    const a = tasks.submit({ kind: 'subagent', label: 'task-t5' });
+    const b = tasks.submit({ kind: 'subagent', label: 'task-t6' });
+    tasks.append(a.id, '[conclusion] t5 done\n');
+    tasks.finish(a.id, 'done');
+    tasks.append(b.id, '[conclusion] t6 done\n');
+    tasks.finish(b.id, 'done');
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: ['t5', 'task-t6'], timeoutSeconds: null }, stubSafety);
+    assert.ok(r.ok, `板 id 归一命中，实际 ${r.ok ? '' : r.error?.message}`);
+    if (r.ok) {
+      assert.match(r.value.stdout, /task-t5-/, '回执含 t5 派发台账条目');
+      assert.match(r.value.stdout, /task-t6-/, '回执含 t6 派发台账条目');
+      assert.match(r.value.stdout, /all target tasks finished \(2\)/);
+    }
+    // 无派发条目的板 id 仍 INVALID_ARG 附现存清单
+    const bad = await makeRegistry(tasks).execute('task_wait', { taskIds: ['t7'], timeoutSeconds: 0 }, stubSafety);
+    assert.ok(!bad.ok, '未派发板 id 仍报错');
+    assert.match(bad.error.message, /Unknown task id: t7/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

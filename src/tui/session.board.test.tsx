@@ -69,19 +69,21 @@ test('/new 重播种板投影:任务从工作区真相源(harness 任务板快�
     // ScriptedAdapter 预置一张 done 牌:taskboard.create 自动派发的真实 fork 一次收口,drain 落定
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const r = ctrl.runtime.harness.taskboard.create({ title: 'A', spec: 'a' });
-    assert.ok(r.ok && r.value.taskId === 't1');
+    // id 方言钉(2026-10-19「t1/t2 无意义」裁决):task-<业务段>-<随机码>,单字符标题业务段折叠回退 'board'
+    assert.ok(r.ok && /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/.test(r.value.taskId), `板 id 新方言,实际 ${r.ok ? r.value.taskId : r.error.message}`);
+    const id = r.ok ? r.value.taskId : '';
     const settle = async (pred: () => boolean, ticks = 200): Promise<void> => {
       for (let i = 0; i < ticks && !pred(); i++) await new Promise((res) => setImmediate(res));
     };
-    await settle(() => ctrl.runtime.harness.taskboard.snapshot().tasks['t1']?.status === 'in-review');
+    await settle(() => ctrl.runtime.harness.taskboard.snapshot().tasks[id]?.status === 'in-review');
     const before = ctrl.getState().board;
-    assert.equal(before.tasks['t1']!.status, 'in-review', '事件投影已进板');
-    assert.equal(before.tasks['t1']!.spec, 'a', '投影携带真实 spec(task-created 事件带 spec)');
+    assert.equal(before.tasks[id]!.status, 'in-review', '事件投影已进板');
+    assert.equal(before.tasks[id]!.spec, 'a', '投影携带真实 spec(task-created 事件带 spec)');
     void ctrl.submit('/new');
     const after = ctrl.getState().board;
-    assert.ok(after.tasks['t1'] !== undefined, '/new 后板投影重播种自 harness 快照,任务仍在');
-    assert.equal(after.tasks['t1']!.status, 'in-review');
-    assert.equal(after.tasks['t1']!.spec, 'a');
+    assert.ok(after.tasks[id] !== undefined, '/new 后板投影重播种自 harness 快照,任务仍在');
+    assert.equal(after.tasks[id]!.status, 'in-review');
+    assert.equal(after.tasks[id]!.spec, 'a');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

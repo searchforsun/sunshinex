@@ -146,34 +146,38 @@ test('teammate 自主 claim:未指派任务串行消化至 in-review,fork 路径
     const w1 = rig.addTeammate('w1', model);
     assert.equal(rig.team.hasAlive(), true, '注册未停即活');
     assert.deepEqual(rig.team.aliveNames(), ['w1']);
-    rig.board.create({ title: 'A', spec: 'do A' });
-    rig.board.create({ title: 'B', spec: 'do B' });
+    const ra = rig.board.create({ title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const rb = rig.board.create({ title: 'B', spec: 'do B' });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
     await drain();
     assert.equal(rig.forkCalls.length, 0, '活 teammate 在场:未指派任务不得走 P1 fork');
-    assert.notEqual(rig.board.snapshot().tasks['t1']!.status, 'claimed', 'fork 路径不落 claimed');
+    assert.notEqual(rig.board.snapshot().tasks[idA]!.status, 'claimed', 'fork 路径不落 claimed');
     w1.kick(); // 显式踢点(派发路由已自动踢过,此处验证重入幂等)
     const done = await until(() => {
       const s = rig.board.snapshot();
-      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+      return s.tasks[idA]?.status === 'in-review' && s.tasks[idB]?.status === 'in-review';
     });
     assert.ok(done, '两任务均应回写 in-review');
     const s = rig.board.snapshot();
-    // 单飞串行顺序:t1 先消化(模型计数 1),t2 后消化(计数 2)
-    assert.equal(s.tasks['t1']!.artifact?.conclusion, 'done 1', 't1 先执行');
-    assert.equal(s.tasks['t2']!.artifact?.conclusion, 'done 2', 't2 后执行');
+    // 单飞串行顺序:先建者先消化(模型计数 1),后建者后消化(计数 2)
+    assert.equal(s.tasks[idA]!.artifact?.conclusion, 'done 1', '先建任务先执行');
+    assert.equal(s.tasks[idB]!.artifact?.conclusion, 'done 2', '后建任务后执行');
     assert.equal(rig.forkCalls.length, 0, '全过程零 fork 调用');
-    // delegation 生命周期事件:started/ended × 2,delegationId=task-tN,kind subagent
+    // delegation 生命周期事件:started/ended × 2,delegationId=dispatchTag(板 id,新方言原样透传),kind subagent
     const started = rig.events.filter((e) => e.type === 'delegation-started');
     const ended = rig.events.filter((e) => e.type === 'delegation-ended');
     assert.equal(started.length, 2, 'delegation-started × 2');
     assert.equal(ended.length, 2, 'delegation-ended × 2');
     // 任务带(「多轮对话,每轮一任务」,2026-10-06 用户定版):tagged step + taskBand,ChildInspector 灰底带渲染
-    const bands = rig.events.filter((e) => e.type === 'step' && typeof e.payload?.taskBand === 'string' && (e.payload.taskBand as string).startsWith('Task t1:'));
+    const bands = rig.events.filter((e) => e.type === 'step' && typeof e.payload?.taskBand === 'string' && (e.payload.taskBand as string).startsWith(`Task ${idA}:`));
     assert.equal(bands.length, 1, '每任务一条任务带');
     assert.equal(bands[0]!.payload?.subagent, 'w1', '任务带归属 teammate 转录');
     assert.ok((bands[0]!.payload?.taskBand as string).includes('do A'), '任务带含任务内容(spec)');
     const ids = [...started, ...ended].map((e) => e.payload?.delegationId).sort();
-    assert.deepEqual(ids, ['task-t1', 'task-t1', 'task-t2', 'task-t2']);
+    assert.deepEqual(ids, [idA, idA, idB, idB].sort());
     for (const e of [...started, ...ended]) {
       assert.equal(e.payload?.kind, 'subagent');
       assert.equal(e.payload?.label, 'w1', 'label = teammate 名(2026-10-06 用户定版:Ctrl+B 行显执行者名)');
@@ -195,8 +199,10 @@ test('派发路由:assignee 命中活 teammate → runTask;无 team 注入 → P
   const tmpA = tmpdir('sunshinex-tm-route-a-');
   try {
     const rigA = makeRig(tmpA, false);
-    rigA.board.create({ title: 'A', spec: 'a' });
-    const okA = await until(() => rigA.board.snapshot().tasks['t1']?.status === 'in-review');
+    const ra = rigA.board.create({ title: 'A', spec: 'a' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const okA = await until(() => rigA.board.snapshot().tasks[idA]?.status === 'in-review');
     assert.ok(okA, '无 team:P1 fork 路径原样回写');
     assert.equal(rigA.forkCalls.length, 1, 'fake runner 被调(P1 退化)');
   } finally {
@@ -207,13 +213,15 @@ test('派发路由:assignee 命中活 teammate → runTask;无 team 注入 → P
   try {
     const rigB = makeRig(tmpB, true);
     rigB.addTeammate('w1');
-    rigB.board.create({ title: 'B', spec: 'b', assignee: 'w1' });
-    const okB = await until(() => rigB.board.snapshot().tasks['t1']?.status === 'in-review');
+    const rb = rigB.board.create({ title: 'B', spec: 'b', assignee: 'w1' });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
+    const okB = await until(() => rigB.board.snapshot().tasks[idB]?.status === 'in-review');
     assert.ok(okB, '指派路由:teammate 消化回写 in-review');
     assert.equal(rigB.forkCalls.length, 0, '指派命中 teammate:零 fork 调用');
     const ended = rigB.events.filter((e) => e.type === 'delegation-ended');
     assert.equal(ended.length, 1);
-    assert.equal(ended[0]!.payload?.delegationId, 'task-t1');
+    assert.equal(ended[0]!.payload?.delegationId, idB, '新方言 id 自带类别段,dispatchTag 原样透传');
     assert.equal(ended[0]!.payload?.status, 'done');
   } finally {
     fs.rmSync(tmpB, { recursive: true, force: true });
@@ -241,8 +249,10 @@ test('帽与停:超帽注册拒(显式小帽钉死构造缺省);停后 hasAlive=
     assert.equal(rig.team.hasAlive(), false, '全停后无存活');
     assert.deepEqual(rig.team.aliveNames(), []);
     // 停后未指派任务回退 P1 fork 路径(fake runner 被调)
-    rig.board.create({ title: 'C', spec: 'c' });
-    const done = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
+    const rc = rig.board.create({ title: 'C', spec: 'c' });
+    assert.ok(rc.ok);
+    const idC = rc.value.taskId;
+    const done = await until(() => rig.board.snapshot().tasks[idC]?.status === 'in-review');
     assert.ok(done, '无活 teammate:回退 fork 路径完成回写');
     assert.equal(rig.forkCalls.length, 1, 'fake runner 被调(退化语义)');
   } finally {
@@ -250,52 +260,60 @@ test('帽与停:超帽注册拒(显式小帽钉死构造缺省);停后 hasAlive=
   }
 });
 
-test('指派下游不饿死:t1 未指派消化后,依赖它的 t2(assignee w1)解锁也被 w1 消化', async () => {
+test('指派下游不饿死:上游未指派消化后,依赖它的下游任务(assignee w1)解锁也被 w1 消化', async () => {
   const tmp = tmpdir('sunshinex-tm-down-');
   try {
     const rig = makeRig(tmp, true);
     rig.addTeammate('w1');
-    rig.board.create({ title: 'A', spec: 'do A' }); // t1 未指派
-    rig.board.create({ title: 'B', spec: 'do B', assignee: 'w1', dependsOn: ['t1'] }); // t2 指派下游
-    const t1Done = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
-    assert.ok(t1Done, 't1 消化至 in-review');
-    await rig.board.review('t1', { approved: true }); // 解锁 t2:回写/裁决链路须把它送到 w1
-    const t2Done = await until(() => rig.board.snapshot().tasks['t2']?.status === 'in-review');
-    assert.ok(t2Done, '指派下游 t2 不饿死,同样消化至 in-review');
+    const ra = rig.board.create({ title: 'A', spec: 'do A' }); // 未指派
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const rb = rig.board.create({ title: 'B', spec: 'do B', assignee: 'w1', dependsOn: [idA] }); // 指派下游
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
+    const t1Done = await until(() => rig.board.snapshot().tasks[idA]?.status === 'in-review');
+    assert.ok(t1Done, '上游消化至 in-review');
+    await rig.board.review(idA, { approved: true }); // 解锁下游:回写/裁决链路须把它送到 w1
+    const t2Done = await until(() => rig.board.snapshot().tasks[idB]?.status === 'in-review');
+    assert.ok(t2Done, '指派下游不饿死,同样消化至 in-review');
     assert.equal(rig.forkCalls.length, 0, '全程零 fork 调用');
     const ended = rig.events.filter((e) => e.type === 'delegation-ended');
-    assert.deepEqual(ended.map((e) => e.payload?.delegationId).sort(), ['task-t1', 'task-t2'], '两任务 delegation 成对收口');
+    assert.deepEqual(ended.map((e) => e.payload?.delegationId).sort(), [idA, idB].sort(), '两任务 delegation 成对收口');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('同批双指派串行:t1/t2 均 assignee w1 → 单 worker 串行消化,claimed→in-review 无交叉', async () => {
+test('同批双指派串行:两任务均 assignee w1 → 单 worker 串行消化,claimed→in-review 无交叉', async () => {
   const tmp = tmpdir('sunshinex-tm-serial-');
   try {
     const rig = makeRig(tmp, true);
     rig.addTeammate('w1', new CountingAdapter());
-    rig.board.create({ title: 'A', spec: 'a', assignee: 'w1' });
-    rig.board.create({ title: 'B', spec: 'b', assignee: 'w1' });
+    const ra = rig.board.create({ title: 'A', spec: 'a', assignee: 'w1' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const rb = rig.board.create({ title: 'B', spec: 'b', assignee: 'w1' });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
     const done = await until(() => {
       const s = rig.board.snapshot();
-      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+      return s.tasks[idA]?.status === 'in-review' && s.tasks[idB]?.status === 'in-review';
     });
     assert.ok(done, '两指派任务均消化');
     assert.equal(rig.forkCalls.length, 0, '零 fork 调用');
     const s = rig.board.snapshot();
-    // 串行序由共享计数模型钉死:并发共享 ctx 的旧形态无法保证 t1 先收口
-    assert.equal(s.tasks['t1']!.artifact?.conclusion, 'done 1', 't1 先执行(串行序 1)');
-    assert.equal(s.tasks['t2']!.artifact?.conclusion, 'done 2', 't2 后执行(串行序 2)');
-    // 事件序交替无交叉:t1 claimed→in-review 完整收口后 t2 才 claimed(并发旧形态会先双 claimed)
+    // 串行序由共享计数模型钉死:并发共享 ctx 的旧形态无法保证先建者先收口
+    assert.equal(s.tasks[idA]!.artifact?.conclusion, 'done 1', '先建者先执行(串行序 1)');
+    assert.equal(s.tasks[idB]!.artifact?.conclusion, 'done 2', '后建者后执行(串行序 2)');
+    // 事件序交替无交叉:首个任务 claimed→in-review 完整收口后次个才 claimed(并发旧形态会先双 claimed)
     const seq = rig.events
       .filter((e) => e.type === 'task-status-changed')
       .map((e) => {
         const p = e.payload as Record<string, unknown>;
         return `${p.taskId}:${p.status}`;
       })
-      .filter((x) => x === 't1:claimed' || x === 't1:in-review' || x === 't2:claimed' || x === 't2:in-review');
-    assert.deepEqual(seq, ['t1:claimed', 't1:in-review', 't2:claimed', 't2:in-review'], `串行无交叉,实际:${seq.join(',')}`);
+      .filter((x) => x === `${idA}:claimed` || x === `${idA}:in-review` || x === `${idB}:claimed` || x === `${idB}:in-review`);
+    assert.deepEqual(seq, [`${idA}:claimed`, `${idA}:in-review`, `${idB}:claimed`, `${idB}:in-review`], `串行无交叉,实际:${seq.join(',')}`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -310,12 +328,16 @@ test('回合边界注入(真 FileInbox):空闲期两条消息在首个任务轮�
     // kick 前注入:消息先落收件箱,再建任务(派发路由自动踢点,worker 首轮 execute 前 drain)
     await rig.inbox.send('w1', { from: 'lead', text: 'hi' });
     await rig.inbox.send('w1', { from: 'lead', text: 'second note' });
-    rig.board.create({ title: 'A', spec: 'do A' });
-    rig.board.create({ title: 'B', spec: 'do B' });
+    const ra = rig.board.create({ title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const rb = rig.board.create({ title: 'B', spec: 'do B' });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
     w1.kick(); // 幂等重踢:与派发路由共享在飞 worker
     const done = await until(() => {
       const s = rig.board.snapshot();
-      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+      return s.tasks[idA]?.status === 'in-review' && s.tasks[idB]?.status === 'in-review';
     });
     assert.ok(done, '两任务消化至 in-review');
     assert.ok(model.chats.length >= 2, '两任务各至少一轮 chat');
@@ -324,7 +346,7 @@ test('回合边界注入(真 FileInbox):空闲期两条消息在首个任务轮�
     assert.ok(first.includes('msg:m1 [message from lead] hi'), `首轮应含 m1 行,实际:${first}`);
     assert.ok(first.includes('msg:m2 [message from lead] second note'), '首轮应含 m2 行');
     // 回合边界语义:消息行在本任务 task 行之前(drain 先于 execute)
-    assert.ok(first.indexOf('msg:m1') < first.indexOf('Task t1:'), '消息行应先于 task 行');
+    assert.ok(first.indexOf('msg:m1') < first.indexOf(`Task ${idA}:`), '消息行应先于 task 行');
     // 幂等(cursor 位点):第二轮起链上消息行恰各一条,不因重 poll 双注入(计数恰 2)
     for (const c of model.chats) {
       assert.equal(countOccurrences(c, 'msg:m1 [message from lead] hi'), 1, 'm1 行恰一条');
@@ -348,11 +370,15 @@ test('msg-id 链前缀去重:poll 重复回放同消息(cursor 归零面)不双�
     };
     const model = new CountingAdapter();
     rig.addTeammate('w1', model, repeating);
-    rig.board.create({ title: 'A', spec: 'do A' });
-    rig.board.create({ title: 'B', spec: 'do B' });
+    const ra = rig.board.create({ title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const rb = rig.board.create({ title: 'B', spec: 'do B' });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
     const done = await until(() => {
       const s = rig.board.snapshot();
-      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+      return s.tasks[idA]?.status === 'in-review' && s.tasks[idB]?.status === 'in-review';
     });
     assert.ok(done, '两任务消化至 in-review');
     assert.ok(model.chats.length >= 2, '两轮 chat 在场');
@@ -370,12 +396,14 @@ test('未配 inbox 的 teammate 零变化:任务照常消化,消息面零 msg �
     const rig = makeRig(tmp, true);
     const model = new CountingAdapter();
     rig.addTeammate('w1', model); // deps 不注入 inbox(缺省形态)
-    rig.board.create({ title: 'A', spec: 'do A' });
-    const done = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
+    const ra = rig.board.create({ title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const done = await until(() => rig.board.snapshot().tasks[idA]?.status === 'in-review');
     assert.ok(done, '未配 inbox 不影响消化');
     assert.ok(model.chats.length >= 1, '至少一轮 chat');
     assert.ok(model.chats.every((c) => !c.includes('msg:')), '消息面零 msg 行(零行为变化)');
-    assert.equal(rig.board.snapshot().tasks['t1']!.artifact?.conclusion, 'done 1', '结论口径不变');
+    assert.equal(rig.board.snapshot().tasks[idA]!.artifact?.conclusion, 'done 1', '结论口径不变');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -395,19 +423,21 @@ test("'lead' 名注册拒:L2 收件身份唯一性(主会话专属收件名)", (
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
-test('板任务台账登记(2026-10-06 契约收敛):teammate 干的活提交 task-tN 条目并随收口 finish——task_wait(null) 的可等面', async () => {
+test('板任务台账登记(2026-10-06 契约收敛):teammate 干的活提交 dispatchTag(板 id) 条目并随收口 finish——task_wait(null) 的可等面', async () => {
   const tmp = tmpdir('sunshinex-tm-ledger-');
   try {
     const rig = makeRig(tmp, true);
     // teammate 先在场上,再建任务——create 的同步派发才走 teammate 认领路径(fork 探针零调用为证);
     // 反序则任务被 create 即时派给 fork(退化语义),用例就测不到 teammate 台账面了
     rig.addTeammate('w1').kick();
-    rig.board.create({ title: 'A', spec: 'do A' });
-    const settled = await until(() => rig.board.snapshot().tasks['t1']?.status === 'in-review');
+    const ra = rig.board.create({ title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const settled = await until(() => rig.board.snapshot().tasks[idA]?.status === 'in-review');
     assert.ok(settled, '任务收口');
     assert.deepEqual(rig.forkCalls, [], 'fork 探针零调用(确系 teammate 路径)');
-    assert.equal(rig.board.snapshot().tasks['t1']!.executedBy, 'w1', 'executedBy 落实际执行者(Ctrl+T 执行者列)');
-    assert.deepEqual(rig.ledgerSubmitted, ['task-t1'], 'submit 以 task-tN 标签登记');
+    assert.equal(rig.board.snapshot().tasks[idA]!.executedBy, 'w1', 'executedBy 落实际执行者(Ctrl+T 执行者列)');
+    assert.deepEqual(rig.ledgerSubmitted, [idA], 'submit 以 dispatchTag(板 id) 标签登记(新方言原样透传)');
     assert.equal(rig.ledgerFinished.length, 1);
     assert.equal(rig.ledgerFinished[0]![0], 'lg1');
     assert.equal(rig.ledgerFinished[0]![1], 'done');

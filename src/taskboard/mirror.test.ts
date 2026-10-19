@@ -55,25 +55,34 @@ test('镜像属性:发射↔翻译↔归约的投影终态与真相板一致(代
     });
     board.init();
 
-    // 代表性变更脚本(经公共操作面,每次状态变更都有对应 SessionEvent):
-    // t1 无依赖 / t2 依赖 t1 / t3 无依赖 → 同批派发回写 in-review;
-    // t4 依赖 t3 → gate 挂起;裁决 t3 拒(关单 failed)→ t4 收 task-blocked(§4.1 不自动 skip);
-    // 裁决 t1 过 → t2 解锁派发回写;裁决 t2 过;审批 t4 → gate 解锁(依赖失败仍 pending)。
-    assert.ok(board.create({ title: 'A', spec: 'do A' }).ok);                    // t1
-    assert.ok(board.create({ title: 'B', spec: 'do B', dependsOn: ['t1'] }).ok); // t2
-    assert.ok(board.create({ title: 'C', spec: 'do C' }).ok);                    // t3
-    await drain(); // t1/t3 → claimed → in-review;t2 等 t1 保持 pending
-    assert.ok(board.create({ title: 'D', spec: 'do D', dependsOn: ['t3'] }).ok); // t4(pending,t3 未终态)
-    assert.ok(board.gate('t4', 'need human check').ok);
+    // 代表性变更脚本(经公共操作面,每次状态变更都有对应 SessionEvent;板 id 经 create 返回值捕获,
+    // id 方言(2026-10-19)随机段不可写字面量):
+    // 任务A 无依赖 / 任务B 依赖 A / 任务C 无依赖 → 同批派发回写 in-review;
+    // 任务D 依赖 C → gate 挂起;裁决 C 拒(关单 failed)→ D 收 task-blocked(§4.1 不自动 skip);
+    // 裁决 A 过 → B 解锁派发回写;裁决 B 过;审批 D → gate 解锁(依赖失败仍 pending)。
+    const ra = board.create({ title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const rb = board.create({ title: 'B', spec: 'do B', dependsOn: [idA] });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
+    const rc = board.create({ title: 'C', spec: 'do C' });
+    assert.ok(rc.ok);
+    const idC = rc.value.taskId;
+    await drain(); // A/C → claimed → in-review;B 等 A 保持 pending
+    const rd = board.create({ title: 'D', spec: 'do D', dependsOn: [idC] });
+    assert.ok(rd.ok);
+    const idD = rd.value.taskId; // pending,C 未终态
+    assert.ok(board.gate(idD, 'need human check').ok);
     await drain();
-    assert.ok((await board.review('t3', { approved: false })).ok); // t3 failed + t4 task-blocked
-    assert.ok((await board.review('t1', { approved: true })).ok);  // t1 done → t2 派发 → in-review
+    assert.ok((await board.review(idC, { approved: false })).ok); // C failed + D task-blocked
+    assert.ok((await board.review(idA, { approved: true })).ok);  // A done → B 派发 → in-review
     await drain();
-    assert.ok((await board.review('t2', { approved: true })).ok);  // t2 done
-    assert.ok((await board.review('t4', { approved: true })).ok);  // gate 解锁;依赖 t3 failed → 仍 pending
+    assert.ok((await board.review(idB, { approved: true })).ok);  // B done
+    assert.ok((await board.review(idD, { approved: true })).ok);  // gate 解锁;依赖 C failed → 仍 pending
     // P2 补齐:set_dependency/assign 亦发事件(task-dep-added/task-assigned),进镜像覆盖
-    assert.ok(board.setDependency('t4', 't1').ok); // t1 已 done,加边合法无环
-    assert.ok(board.assign('t4', 'ext-lead').ok);
+    assert.ok(board.setDependency(idD, idA).ok); // A 已 done,加边合法无环
+    assert.ok(board.assign(idD, 'ext-lead').ok);
 
     // 脚本覆盖面守卫:八类板事件全出现(防脚本退化成空转,属性静默变弱)
     const relevant = events.filter((e) => e.type.startsWith('task-') || e.type.startsWith('gate-'));
@@ -85,10 +94,10 @@ test('镜像属性:发射↔翻译↔归约的投影终态与真相板一致(代
     let mirror = emptyBoard();
     for (const e of relevant) mirror = applyBoardEvent(mirror, boardEventFrom(e));
     const real = board.snapshot();
-    assert.equal(real.tasks['t1']!.status, 'done');
-    assert.equal(real.tasks['t2']!.status, 'done');
-    assert.equal(real.tasks['t3']!.status, 'failed');
-    assert.equal(real.tasks['t4']!.status, 'pending');
+    assert.equal(real.tasks[idA]!.status, 'done');
+    assert.equal(real.tasks[idB]!.status, 'done');
+    assert.equal(real.tasks[idC]!.status, 'failed');
+    assert.equal(real.tasks[idD]!.status, 'pending');
     assert.deepEqual(project(mirror), project(real), '投影镜像终态应与真相板结构相等');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

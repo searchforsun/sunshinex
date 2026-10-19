@@ -41,11 +41,20 @@ test('kill -9 于 claimed 时刻:重启恢复,任务回池、事件完整、可�
     const board = new TaskBoard({ store: new TeamStore(path.join(tmp, 'data', 'teams', 'main')), runner, registry });
     board.init();
     const s = board.snapshot();
-    assert.equal(s.tasks['t1']!.status, 'pending', 'claimed 回池(§7.4)');
-    assert.ok(s.tasks['t1']!.artifact?.conclusion === undefined, '无半成品 artifact');
-    assert.equal(s.tasks['t2']!.status, 'pending', '依赖任务原样');
+    // id 方言(2026-10-19):板 id 为 task-<业务段>-<随机码>,fixture 子进程不向父进程回传 create 返回值——
+    // 按标题从恢复板取真实 id 再断言(模型层 id 不透明)
+    const byTitle = (title: string): string => {
+      const t = Object.values(s.tasks).find((x) => x.title === title);
+      assert.ok(t !== undefined, `恢复板应含标题「${title}」的任务`);
+      return t!.id;
+    };
+    const idA = byTitle('A');
+    const idB = byTitle('B');
+    assert.equal(s.tasks[idA]!.status, 'pending', 'claimed 回池(§7.4)');
+    assert.ok(s.tasks[idA]!.artifact?.conclusion === undefined, '无半成品 artifact');
+    assert.equal(s.tasks[idB]!.status, 'pending', '依赖任务原样');
     // 恢复后可继续:create 成功且事件流追加畅通
-    const r = board.create({ title: 'C', spec: 'c', dependsOn: ['t1'] });
+    const r = board.create({ title: 'C', spec: 'c', dependsOn: [idA] });
     assert.ok(r.ok);
     await new Promise((r2) => setImmediate(r2));
     // events.jsonl 无撕裂行:全部可解析

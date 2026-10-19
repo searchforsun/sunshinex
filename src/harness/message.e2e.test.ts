@@ -67,7 +67,7 @@ const cleanup = (h: Harness | undefined, tmp: string, restore: () => void): void
   fs.rmSync(tmp, { recursive: true, force: true });
 };
 
-test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered + inbox 落档;w1 首轮消息面含消息行且先于 Task t1 行', async () => {
+test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered + inbox 落档;w1 首轮消息面含消息行且先于 Task 行', async () => {
   const tmp = tmpdir('sunshinex-msg-e2e-1-');
   const restore = pinEnv(tmp);
   let h: Harness | undefined;
@@ -87,16 +87,17 @@ test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered +
     // 建任务(消息先于任务投递)→ w1 消化:轮询快照至 in-review(派发路由自动踢点,worker 首轮 execute 前 drain)
     const created = h.taskboard.create({ title: 'M1', spec: 'do M1' });
     assert.ok(created.ok, `create 应成功:${JSON.stringify(created)}`);
-    const digested = await until(() => h!.taskboard.snapshot().tasks['t1']?.status === 'in-review');
-    assert.ok(digested, 't1 应由 w1 消化至 in-review');
-    // 回合边界注入可见(T3 语义 e2e 复证):w1 首轮 chat 消息面含 m1 消息行,且先于本任务 Task t1 行
+    const taskId = created.value.taskId;
+    const digested = await until(() => h!.taskboard.snapshot().tasks[taskId]?.status === 'in-review');
+    assert.ok(digested, '板任务应由 w1 消化至 in-review');
+    // 回合边界注入可见(T3 语义 e2e 复证):w1 首轮 chat 消息面含 m1 消息行,且先于本任务 Task 行
     assert.ok(model.chats.length >= 1, 'w1 至少一轮 chat');
     const first = model.chats[0]!;
     assert.ok(first.includes('msg:m1 [message from lead] prioritize tests'), `首轮消息面应含 m1 消息行,实际:${first.slice(0, 300)}`);
-    assert.ok(first.includes('Task t1:'), '首轮消息面应含 Task t1 行(seed 经缺省 chainView 取 own chain)');
+    assert.ok(first.includes(`Task ${taskId}:`), `首轮消息面应含 Task ${taskId} 行(seed 经缺省 chainView 取 own chain)`);
     assert.ok(
-      first.indexOf('msg:m1 [message from lead] prioritize tests') < first.indexOf('Task t1:'),
-      '消息行应先于 Task t1 行(drain 先于 execute)',
+      first.indexOf('msg:m1 [message from lead] prioritize tests') < first.indexOf(`Task ${taskId}:`),
+      '消息行应先于 Task 行(drain 先于 execute)',
     );
   } finally {
     cleanup(h, tmp, restore);

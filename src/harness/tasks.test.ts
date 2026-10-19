@@ -89,3 +89,32 @@ test('TaskRegistry：list 全量快照、get 未命中返回 undefined', () => {
   assert.equal(reg.get('b9'), undefined);
   assert.equal(reg.list()[0].ownerRun, 'main');
 });
+
+test('TaskRegistry.resolveId：板 id 归一单点——直接命中优先,旧 tN/新方言按前缀命中派发条目,多命中取最近', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-registry-resolve-'));
+  try {
+    const reg = new TaskRegistry(path.join(root, 'data'));
+    // 旧恢复档派发形态:label 'task-t5'(dispatchTag 对 tN 补前缀)→ 台账 id task-t5-<ts>-<rand>
+    const legacy = reg.submit({ kind: 'subagent', label: 'task-t5' });
+    assert.match(legacy.id, /^task-t5-/);
+    // 新方言派发形态:label=板 id 'task-build-parser-k3f2' → 台账 id 再带时间戳随机尾
+    const modern = reg.submit({ kind: 'subagent', label: 'task-build-parser-k3f2' });
+    assert.match(modern.id, /^task-build-parse-/, '台账业务段截 16(slug 方言)');
+    // 直接命中优先
+    assert.equal(reg.resolveId(modern.id), modern.id);
+    // 旧 tN 板 id 与 delegationId 形态 → 前缀命中旧条目
+    assert.equal(reg.resolveId('t5'), legacy.id);
+    assert.equal(reg.resolveId('task-t5'), legacy.id);
+    // 新方言板 id → 前缀命中新条目(台账 id 带 ts/rand 尾)
+    assert.equal(reg.resolveId('task-build-parser-k3f2'), modern.id);
+    // 多命中取最近提交:同板 id 重派发后旧条目让位新条目
+    const legacy2 = reg.submit({ kind: 'subagent', label: 'task-t5' });
+    assert.equal(reg.resolveId('t5'), legacy2.id);
+    assert.ok(legacy2.startedAt >= legacy.startedAt);
+    // 真未知 id 原样透传(调用面报 INVALID_ARG)
+    assert.equal(reg.resolveId('t99'), 't99');
+    assert.equal(reg.resolveId('exec-20261003T064522Z-a7f3'), 'exec-20261003T064522Z-a7f3');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

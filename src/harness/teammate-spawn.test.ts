@@ -48,10 +48,11 @@ test('spawn mode:team:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     // 只读板工具回执:gated 任务不派发,直接消费执行体验证摘要口径
     const created = h.taskboard.create({ title: 'A', spec: 'do A stuff', gated: true });
     assert.ok(created.ok);
+    const aId = created.value.taskId;
     const boardOut = (await face.get('get_board')!.executor({})) as { stdout: string };
-    assert.match(boardOut.stdout, /t1 \[pending\] \[gated\] A/, 'get_board 应回板摘要行');
-    const taskOut = (await face.get('get_task')!.executor({ taskId: 't1' })) as { stdout: string };
-    assert.match(taskOut.stdout, /id: t1/);
+    assert.ok(boardOut.stdout.includes(`${aId} [pending] [gated] A`), 'get_board 应回板摘要行');
+    const taskOut = (await face.get('get_task')!.executor({ taskId: aId })) as { stdout: string };
+    assert.ok(taskOut.stdout.includes(`id: ${aId}`));
     assert.match(taskOut.stdout, /status: pending/);
     assert.match(taskOut.stdout, /spec: do A stuff/);
     await assert.rejects(

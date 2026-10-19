@@ -141,11 +141,14 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/rev
       assert.ok(r.value.stdout.includes(`teammate ${w} started`), `spawn 回执应含 teammate ${w} started`);
     }
     assert.deepEqual([...h.team.aliveNames()].sort(), ['w1', 'w2', 'w3'], '三 teammate 全活');
-    // 7 任务:t2/t3 依赖 t1,其余独立;t7 不设 executorHint(内部一致)
+    // 7 任务:T2/T3 依赖 T1(板 id 不透明方言:T1 先建取 id,再装配依赖;捕获 id 供后续断言)
+    const idByTitle = new Map<string, string>();
+    const first = h.taskboard.create({ title: 'T1', spec: 'do 1' });
+    assert.ok(first.ok, 'create T1 应成功');
+    idByTitle.set('T1', first.value.taskId);
     const specs: { title: string; spec: string; dependsOn?: string[] }[] = [
-      { title: 'T1', spec: 'do 1' },
-      { title: 'T2', spec: 'do 2', dependsOn: ['t1'] },
-      { title: 'T3', spec: 'do 3', dependsOn: ['t1'] },
+      { title: 'T2', spec: 'do 2', dependsOn: [idByTitle.get('T1')!] },
+      { title: 'T3', spec: 'do 3', dependsOn: [idByTitle.get('T1')!] },
       { title: 'T4', spec: 'do 4' },
       { title: 'T5', spec: 'do 5' },
       { title: 'T6', spec: 'do 6' },
@@ -154,6 +157,7 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/rev
     for (const s of specs) {
       const r = h.taskboard.create(s);
       assert.ok(r.ok, `create ${s.title} 应成功`);
+      idByTitle.set(s.title, r.value.taskId);
     }
     // 快照轮询驱动(裁定):至 in-review 即 review(approved)——t1 关单 done 后 t2/t3 才解锁派发
     const deadline = Date.now() + 60_000;
@@ -176,11 +180,11 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/rev
     }
     assert.equal(reviewed.size, 7, '恰 review×7(approved)');
     const final = h.taskboard.snapshot().tasks;
-    for (let i = 1; i <= 7; i++) assert.equal(final[`t${i}`]!.status, 'done', `t${i} 应 done`);
-    // delegation-started ×7:delegationId 集恰 task-t1..t7;label = teammate 名(UI 执行体视角行名)
+    for (const s of specs) assert.equal(final[idByTitle.get(s.title)!]!.status, 'done', `${s.title} 应 done`);
+    // delegation-started ×7:delegationId 集 = dispatchTag(板 id) 集(新方言=板 id 本形);label = teammate 名(UI 执行体视角行名)
     const started = events.filter((e) => e.type === 'delegation-started' && p(e).kind === 'subagent');
     assert.equal(started.length, 7, 'delegation-started 恰 7 条');
-    assert.deepEqual([...new Set(started.map((e) => p(e).delegationId))].sort(), ['task-t1', 'task-t2', 'task-t3', 'task-t4', 'task-t5', 'task-t6', 'task-t7']);
+    assert.deepEqual([...new Set(started.map((e) => p(e).delegationId))].sort(), [...idByTitle.values()].sort());
     assert.deepEqual([...new Set(started.map((e) => p(e).label))].sort(), ['w1', 'w2', 'w3'], 'label 集 = 三 teammate 名');
     // 每条委派带当前任务标题(Ctrl+B/面板「名 · 任务」后缀数据源)
     assert.ok(started.every((e) => typeof p(e).title === 'string' && (p(e).title as string).length > 0), 'delegation-started 带 title');
@@ -200,19 +204,20 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/rev
       }
     }
     assert.equal(ownerOf.size, 7, '7 任务全部归属到执行 teammate');
+    const boardIds = new Set(idByTitle.values());
     for (const w of ['w1', 'w2', 'w3']) {
       const owned = [...ownerOf.entries()].filter(([, name]) => name === w).map(([id]) => id);
       assert.ok(owned.length >= 1, `${w} 应分担至少 1 任务(实际归属:${JSON.stringify([...ownerOf])})`);
-      assert.ok(owned.every((id) => /^task-t[1-7]$/.test(id)), `${w} 名下应只有板上任务`);
+      assert.ok(owned.every((id) => boardIds.has(id)), `${w} 名下应只有板上任务`);
     }
     assert.ok([...ownerOf.values()].every((name) => name === 'w1' || name === 'w2' || name === 'w3'), '归属者必为三 teammate');
-    // 依赖序:t2/t3 的 delegation-started 晚于 t1 的 delegation-ended(t1 须先经 review 关单 done 才解锁)
+    // 依赖序:T2/T3 的 delegation-started 晚于 T1 的 delegation-ended(T1 须先经 review 关单 done 才解锁)
     const idxOf = (pred: (e: SessionEvent) => boolean): number => events.findIndex(pred);
-    const t1Ended = idxOf((e) => e.type === 'delegation-ended' && p(e).delegationId === 'task-t1');
-    const t2Started = idxOf((e) => e.type === 'delegation-started' && p(e).delegationId === 'task-t2');
-    const t3Started = idxOf((e) => e.type === 'delegation-started' && p(e).delegationId === 'task-t3');
-    assert.ok(t1Ended >= 0, 't1 应有 delegation-ended');
-    assert.ok(t2Started > t1Ended && t3Started > t1Ended, `t2/t3 派发晚于 t1 终态(${t1Ended} < ${t2Started}/${t3Started})`);
+    const t1Ended = idxOf((e) => e.type === 'delegation-ended' && p(e).delegationId === idByTitle.get('T1'));
+    const t2Started = idxOf((e) => e.type === 'delegation-started' && p(e).delegationId === idByTitle.get('T2'));
+    const t3Started = idxOf((e) => e.type === 'delegation-started' && p(e).delegationId === idByTitle.get('T3'));
+    assert.ok(t1Ended >= 0, 'T1 应有 delegation-ended');
+    assert.ok(t2Started > t1Ended && t3Started > t1Ended, `T2/T3 派发晚于 T1 终态(${t1Ended} < ${t2Started}/${t3Started})`);
     // 委派收口:7 条 delegation-ended 全 done
     const ended = events.filter((e) => e.type === 'delegation-ended' && p(e).kind === 'subagent');
     assert.equal(ended.length, 7);
@@ -229,19 +234,25 @@ test('e2e team 帽排队复证:cap 15 × 每任务 10 tokens——恰 2 执行 1
   let rig: BoardRig | undefined;
   try {
     rig = makeBoardRig(tmp, { teamTokenCap: 15 });
-    // fake runner 每任务 tokens 10,帽 15:t1(10<15)→ t2(20≥15)执行,t3 留 pending(T4 语义复证)
-    assert.ok(rig.board.create({ title: 'A', spec: 'a' }).ok);
-    const a1 = await until(() => rig!.board.snapshot().tasks['t1']?.status === 'in-review', 5_000, 50);
-    assert.ok(a1, 't1 应执行回写 in-review');
+    // fake runner 每任务 tokens 10,帽 15:A(10<15)→ B(20≥15)执行,C 留 pending(T4 语义复证)
+    const capA = rig.board.create({ title: 'A', spec: 'a' });
+    assert.ok(capA.ok);
+    const idA = capA.value.taskId;
+    const a1 = await until(() => rig!.board.snapshot().tasks[idA]?.status === 'in-review', 5_000, 50);
+    assert.ok(a1, 'A 应执行回写 in-review');
     assert.ok(rig.board.summaryLines().includes('team budget 10/15 tokens'), `未达帽透出用量:${JSON.stringify(rig.board.summaryLines())}`);
-    assert.ok(rig.board.create({ title: 'B', spec: 'b' }).ok);
-    const a2 = await until(() => rig!.board.snapshot().tasks['t2']?.status === 'in-review', 5_000, 50);
-    assert.ok(a2, 't2 应执行回写 in-review');
-    assert.ok(rig.board.create({ title: 'C', spec: 'c' }).ok); // used 20 ≥ 15 → 不派发
+    const capB = rig.board.create({ title: 'B', spec: 'b' });
+    assert.ok(capB.ok);
+    const idB = capB.value.taskId;
+    const a2 = await until(() => rig!.board.snapshot().tasks[idB]?.status === 'in-review', 5_000, 50);
+    assert.ok(a2, 'B 应执行回写 in-review');
+    const capC = rig.board.create({ title: 'C', spec: 'c' }); // used 20 ≥ 15 → 不派发
+    assert.ok(capC.ok);
+    const idC = capC.value.taskId;
     await drain();
     const s = rig.board.snapshot();
-    assert.equal(s.tasks['t3']!.status, 'pending', '超帽留 pending 不失败(spec §5.6)');
-    assert.deepEqual(rig.forkCalls, ['Task t1: A', 'Task t2: B'], '恰两任务执行');
+    assert.equal(s.tasks[idC]!.status, 'pending', '超帽留 pending 不失败(spec §5.6)');
+    assert.deepEqual(rig.forkCalls, [`Task ${idA}: A`, `Task ${idB}: B`], '恰两任务执行');
     assert.ok(rig.board.summaryLines().includes('team budget exhausted (20/15) tokens'), `达帽尾行:${JSON.stringify(rig.board.summaryLines())}`);
     assert.ok(!rig.events.some((e) => e.type === 'task-blocked'), '超帽不是失败:不发 task-blocked');
     // 真 Teammate 注入(同一 team 注册表):kick 起 claim 循环——claim 前置(20≥15)空手而归,t3 不被抢
@@ -253,12 +264,12 @@ test('e2e team 帽排队复证:cap 15 × 每任务 10 tokens——恰 2 执行 1
     await drain();
     assert.equal(tm.isBusy(), false, 'claim 空手而归:不进执行');
     const s2 = rig.board.snapshot();
-    assert.equal(s2.tasks['t3']!.status, 'pending', 'teammate 在场也不抢:claim 前置拦下');
+    assert.equal(s2.tasks[idC]!.status, 'pending', 'teammate 在场也不抢:claim 前置拦下');
     assert.ok(
-      !rig.events.some((e) => e.type === 'task-status-changed' && p(e).taskId === 't3' && p(e).status === 'claimed'),
-      't3 无 claimed 事件',
+      !rig.events.some((e) => e.type === 'task-status-changed' && p(e).taskId === idC && p(e).status === 'claimed'),
+      'C 无 claimed 事件',
     );
-    assert.deepEqual(rig.forkCalls, ['Task t1: A', 'Task t2: B'], '执行数不变(帽前两批)');
+    assert.deepEqual(rig.forkCalls, [`Task ${idA}: A`, `Task ${idB}: B`], '执行数不变(帽前两批)');
     assert.ok(rig.board.summaryLines().includes('team budget exhausted (20/15) tokens'), '帽持续透出');
   } finally {
     rig?.team.stopAll();
@@ -286,32 +297,34 @@ test('e2e 外部同现:external-cli 任务与 teammate 任务并行——kind ex
     const e1 = rig.board.create({ title: 'EXT', spec: 'external work via cli', executor: 'external-cli' });
     const i1 = rig.board.create({ title: 'INT', spec: 'internal work via teammate' });
     assert.ok(e1.ok && i1.ok, '两任务创建应成功');
+    const extId = e1.value.taskId;
+    const intId = i1.value.taskId;
     const done = await until(() => {
       const s = rig!.board.snapshot();
-      return s.tasks['t1']?.status === 'in-review' && s.tasks['t2']?.status === 'in-review';
+      return s.tasks[extId]?.status === 'in-review' && s.tasks[intId]?.status === 'in-review';
     }, 5_000, 50);
     assert.ok(done, '两任务均达 in-review');
     // external 执行体恰被 external 任务触达(executorHint 路由接管,teammate/fork 不碰)
-    assert.deepEqual(externalCalls, ['t1'], 'external executor 恰执行 t1');
+    assert.deepEqual(externalCalls, [extId], 'external executor 恰执行 EXT');
     assert.deepEqual(rig.forkCalls, [], 'fork 路径零调用(有活 teammate)')
     // delegation 口径:external 任务 kind 'external-cli',teammate 任务 kind 'subagent',共存一 events 收集器
-    const extStarted = rig.events.find((e) => e.type === 'delegation-started' && p(e).delegationId === 'task-t1');
-    const intStarted = rig.events.find((e) => e.type === 'delegation-started' && p(e).delegationId === 'task-t2');
+    const extStarted = rig.events.find((e) => e.type === 'delegation-started' && p(e).delegationId === extId);
+    const intStarted = rig.events.find((e) => e.type === 'delegation-started' && p(e).delegationId === intId);
     assert.ok(extStarted && intStarted, '两条 delegation-started 共存一收集器');
     assert.equal(p(extStarted!).kind, 'external-cli');
-    assert.equal(p(extStarted!).label, 'task-t1');
+    assert.equal(p(extStarted!).label, extId);
     assert.equal(p(intStarted!).kind, 'subagent');
     assert.equal(p(intStarted!).label, 'w-ext', 'teammate 委派 label = 名字(Ctrl+B 执行体视角)');
     assert.equal(p(intStarted!).title, 'INT', '委派带当前任务标题(「名 · 任务」后缀数据源)');
-    const extEnded = rig.events.find((e) => e.type === 'delegation-ended' && p(e).delegationId === 'task-t1');
+    const extEnded = rig.events.find((e) => e.type === 'delegation-ended' && p(e).delegationId === extId);
     assert.ok(extEnded, 'external delegation-ended 在场');
     assert.equal(p(extEnded!).kind, 'external-cli');
     assert.equal(p(extEnded!).status, 'done');
     // 终态:external 任务 in-review(结论经 finishExecution 强制回写),teammate 任务同归 in-review
     const s = rig.board.snapshot();
-    assert.equal(s.tasks['t1']!.status, 'in-review');
-    assert.equal(s.tasks['t2']!.status, 'in-review');
-    assert.equal(s.tasks['t1']!.artifact?.conclusion, 'external t1 conclusion', 'external 结论经强制回写并入 artifact');
+    assert.equal(s.tasks[extId]!.status, 'in-review');
+    assert.equal(s.tasks[intId]!.status, 'in-review');
+    assert.equal(s.tasks[extId]!.artifact?.conclusion, `external ${extId} conclusion`, 'external 结论经强制回写并入 artifact');
     // teammate 转录事件打标(payload.subagent)与 external 生命周期事件同流共存
     assert.ok(rig.events.some((e) => typeof p(e).subagent === 'string' && p(e).subagent === 'w-ext'), 'teammate 转录标在场');
   } finally {

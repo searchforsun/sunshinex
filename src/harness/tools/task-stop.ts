@@ -11,15 +11,15 @@ export function makeTaskStopTool(tasks: TaskRegistry): RegisteredTool {
       additionalProperties: false,
       required: ['taskId'],
       properties: {
-        taskId: { type: 'string', description: 'Background task id to stop (label-slug-UTCtimestamp-rand, e.g. exec-20261003T064522Z-a7f3; unknown ids return the current task list in the error)' },
+        taskId: { type: 'string', description: 'Background task id to stop. Accepted forms: ledger id (label-slug-UTCtimestamp-rand, e.g. exec-20261003T064522Z-a7f3) or board task id as create_task/the board summary shows it (e.g. "task-build-parser-k3f2"; legacy restored boards use the "t5" form — both resolve to the dispatched ledger entry); unknown ids return the current task list in the error' },
       },
     },
     name: 'task_stop',
     description:
-      'Stop a running background task by id (background exec, timed-out-to-background exec, or background subagent). Already-finished tasks return an idempotent receipt of their terminal status. Unknown ids fail with the current task list attached.',
+      'Stop a running background task by id (background exec, timed-out-to-background exec, background subagent, or a board task currently executing on a teammate). Already-finished tasks return an idempotent receipt of their terminal status. Unknown ids fail with the current task list attached.',
     category: 'task',
     executor: async (input) => {
-      const taskId = String(input.taskId ?? '').trim();
+      const taskId = tasks.resolveId(String(input.taskId ?? '').trim());
       if (taskId === '') throw new CodedToolError('INVALID_ARG', 'taskId is required');
       const task = tasks.get(taskId);
       if (task === undefined) {
