@@ -10,7 +10,7 @@ import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
-import { SessionJournal, parseJournalFile, reduceJournal, sessionsDir } from "../tui/session-journal";
+import { SessionJournal, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir } from "../tui/session-journal";
 import { reduceSteerRows, reduceSegRows } from '../session/seglog';
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
@@ -255,6 +255,12 @@ export class GuiDaemon {
     session.steerSeed(reduceSteerRows(replayEvents));
     // 影子投影装载(G14.2xx 断线重连):board/delegation 事件行回种——重启后快照/补发不再空板空委派
     session.seedShadow(replayEvents);
+    // 会话选择面回放(G14.2xx 公共持久化归位):model/effort/mode 运行中切换即落 meta 旁车,
+    // attach 按档归位——重启/重开不再回落装配缺省(CLAUDE.md §13 持久化分层口径)
+    const selMeta = readSessionMeta(dataDir, journalId);
+    if (selMeta.effort !== undefined) session.setEffort(selMeta.effort);
+    if (selMeta.model !== undefined) session.setModel(selMeta.model);
+    if (selMeta.mode === 'dontAsk' || selMeta.mode === 'manual' || selMeta.mode === 'plan') session.setMode(selMeta.mode);
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);
@@ -524,6 +530,12 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/tier', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'tier') },
     { method: 'POST', path: '/session/:id/effort', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'effort') },
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
+    // G14.2xx GUI 面私有态存取(标签页等;CLAUDE.md §13 持久化分层——<slug>/gui/sessions/<id>.json)
+    { method: 'GET', path: '/session/:id/gui-state', auth: true, run: async (_req, res, p) => sessionHandlers.handleGuiStateGet(this.sessionIo, res, p.id) },
+    { method: 'PUT', path: '/session/:id/gui-state', auth: true, run: async (req, res, p) => sessionHandlers.handleGuiStatePut(this.sessionIo, req, res, p.id) },
+    // G14.2xx 应用级指针档(恢复现场入口:刷新后据此重放 lastRoot/lastJournalId 打开链)
+    { method: 'GET', path: '/app/gui-state', auth: true, run: async (_req, res) => sessionHandlers.handleAppGuiStateGet(this.sessionIo, res) },
+    { method: 'PUT', path: '/app/gui-state', auth: true, run: async (req, res) => sessionHandlers.handleAppGuiStatePut(this.sessionIo, req, res) },
     // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——落盘走 rename(G14.16)
     { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
     // G14.16 标题统一流：rename 落旁车 <id>.meta.json(侧栏/TUI 列表同源)；GET 回读(重开回显)

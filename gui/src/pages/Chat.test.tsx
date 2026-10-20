@@ -24,7 +24,7 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { setLanguage } from '../../src/i18n';
-import { Chat, expandFileRefs, renderMentionSpans, tokenDeleteRange } from './Chat';
+import { Chat, expandFileRefs, rankFileHits, renderMentionSpans, tokenDeleteRange } from './Chat';
 import type { ReactElement, ReactNode } from 'react';
 import { mermaidCacheClear } from '../Mermaid';
 import type { ChatSink } from './Chat';
@@ -150,6 +150,23 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(folderOf(renderMentionSpans('@a.ts'))).toBeUndefined();
   });
 
+  it('G14.2xx rankFileHits:精确 basename 置顶 > 前缀 > 包含 > 子序列,同级保原序;cap 排序后再截', () => {
+    // 用户实测回归锚:输 @harness 时 src/harness/ 必须置顶(回车即中),不得被
+    // src/harness/tools/ 等远缘子序列命中挤出首屏
+    const files = ['src/harness/context/x.ts', 'src/harness/tools/', 'src/harness/', 'src/tharness.ts', 'src/harness.ts'];
+    expect(rankFileHits(files, 'harness')).toEqual([
+      'src/harness/', // 精确 basename(目录尾斜杠剥后判)
+      'src/harness.ts', // 前缀
+      'src/tharness.ts', // basename 包含
+      'src/harness/context/x.ts', // 子序列,同级保原序
+      'src/harness/tools/',
+    ]);
+    // cap 在排序后截断:精确项不会被先到的远缘命中挤出面板
+    expect(rankFileHits(['aaa/', 'aaa/b1', 'aaa/b2', 'zzz', 'zzz2'], 'aaa').slice(0, 2)).toEqual(['aaa/', 'aaa/b1']);
+    // 空查询:原序前 cap
+    expect(rankFileHits(['b', 'a'], '')).toEqual(['b', 'a']);
+  });
+
   it('G14.124 md 原生超链接 → 文件引用渲染(icon+文件名),点击开侧栏;web 链接原样 <a>', async () => {
     const onOpenFile = vi.fn();
     render(
@@ -259,6 +276,7 @@ describe('MermaidBlock(G11 §5.4)', () => {
 
   it('容器带放大/复制钮;放大开 lightbox,Esc 关闭;G14.117 +−之间百分比显形联动,方框钮复位;G14.122 浮层=克隆 SVG', async () => {    mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: ['图:', '', '```mermaid', 'graph TD; A-->B', '```'].join('\n') }]);
     await screen.findByText(/graph TD; A-->/, {}, { timeout: 5_000 });
+    await waitFor(() => expect(document.querySelector('.mermaid-svg svg')).not.toBeNull()); // G14.2xx 防抖后等渲染落地
     await waitFor(() => expect(screen.getByRole('button', { name: 'zoom mermaid' })).toBeDefined()); // 渲染成功才在场
     fireEvent.click(screen.getByRole('button', { name: 'zoom mermaid' }));
     expect(document.querySelector('.mermaid-lightbox')).not.toBeNull();

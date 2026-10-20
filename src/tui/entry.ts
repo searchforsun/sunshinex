@@ -4,6 +4,8 @@ import * as path from 'path';
 import { render } from 'ink';
 import { App } from './components/App';
 import { runTuiLoop, installSyncUpdateWrap, RepaintMode } from './tui-loop';
+import { loadTuiDiskState, saveTuiDiskState } from './ui-state-disk';
+import type { RetainedUiState } from './ui-state';
 import { RenderBoundary } from './components/RenderBoundary';
 import { installInkOutputGuard } from './ink-output-guard';
 import { installFrameSniffer } from './frame-sniffer';
@@ -101,6 +103,15 @@ export async function runTui(args: CliArgs): Promise<void> {
   process.once('exit', () => ctrl.runtime.harness.tasks.stopAll());
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
+  // G14.2xx TUI 面私有态落盘（CLAUDE.md §13 持久化分层）：<slug>/tui/ui-state.json——
+  // 详情深度偏好 + 输入历史跨进程续命（盘为真相源，内存 retain 只作缓存）；expandAll/todoExpanded
+  // 不入档（2026-09-30/10-01 裁定：Tab opt-in 瞬态）。播种优先级：恢复现场 > 盘档 > 缺省
+  const diskUi = loadTuiDiskState(launchRoot);
+  const initialRetain: Partial<RetainedUiState> = {
+    ...(restored !== undefined ? { latestFull: restored.latestFull, history: restored.history } : {}),
+    ...(diskUi.latestFull !== undefined && restored === undefined ? { latestFull: diskUi.latestFull } : {}),
+    ...(diskUi.history !== undefined && !restored ? { history: diskUi.history } : {}),
+  };
   const banner = buildBannerInfo({ version: readPackageVersion(), root: launchRoot, model: model.label ?? model.provider });
   // 进入 TUI 先清屏（含滚动缓冲）并归位光标，主横幅自首行起渲染
   // 全帧逐写原子化（2026-09-28 用户裁决扩展）：流式/全屏期 ink 逐帧擦写经 DEC 2026 同步更新包裹，
@@ -137,8 +148,21 @@ export async function runTui(args: CliArgs): Promise<void> {
   let current: { unmount(): void } | undefined;
   // Tab 切换的展开模式：经宿主 onRequestRepaint 注入 tui-loop 的重绘出口（与 resize 共用卸载→清屏→重挂路径）
   let requestRepaint: ((mode?: RepaintMode) => void) | undefined;
+  // G14.2xx 面私有态写透：renderOnce 挂载期签名比对（挂载只发生在 resize/Tab 重绘，零频次）
+  // + 退出兜底——历史/偏好变更最终落 <slug>/tui/ui-state.json，内存 retain 仅缓存
+  let lastRetain: RetainedUiState | undefined;
+  let lastUiSig = '';
+  const persistTuiUi = (retain: RetainedUiState): void => {
+    const sig = JSON.stringify([retain.latestFull === true, retain.history]);
+    if (sig === lastUiSig) return;
+    lastUiSig = sig;
+    try {
+      saveTuiDiskState(launchRoot, { latestFull: retain.latestFull === true || undefined, history: retain.history });
+    } catch { /* 落盘失败静默：输入历史属便利面，不因只读盘打断交互 */ }
+  };
   // 优雅退出单点：SIGINT 与空闲态 Ctrl+C（App onExit）共用——清定时器→卸载渲染→退出
   const quit = (): void => {
+    if (lastRetain !== undefined) persistTuiUi(lastRetain);
     ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）
     current?.unmount();
     process.exit(0);
@@ -154,6 +178,8 @@ export async function runTui(args: CliArgs): Promise<void> {
         requestRepaint = req;
       },
       renderOnce: (retain) => {
+        lastRetain = retain; // G14.2xx 面私有态写透源（quit 兜底消费）
+        persistTuiUi(retain);
         sniffer.reset(); // 新挂载帧高重新学习，防上一挂载串台（首帧不置信=tail 暂回落全量，安全）
         // exitOnCtrlC 关闭：Ctrl+C 不再被 ink 托管退出，改由 App 分流（运行中=中断任务，空闲=经 onExit 退出）
                 // RenderBoundary 兜底：渲染/提交期异常降级为错误行（崩溃诊断落 %TEMP%/sunshinex-render-crash.log），不再杀进程
@@ -162,8 +188,9 @@ export async function runTui(args: CliArgs): Promise<void> {
         return inst;
       },
       // expandAll 不还原（2026-09-30）：折叠已改 Tab opt-in 瞬态，旧档记录的 false 是旧缺省下的记录噪声
-      // （按过 Ctrl+O 即连带记录 false）——还原则新代码也带自动折叠上线；latestFull（详情深度偏好）照旧还原
-      initialRetain: restored ? { history: restored.history, latestFull: restored.latestFull } : undefined,
+      // （按过 Ctrl+O 即连带记录 false）——还原则新代码也带自动折叠上线；latestFull（详情深度偏好）照旧还原。
+      // G14.2xx:initialRetain 已并入盘档播种（视图偏好+输入历史,声明见 takeRestoredUi 侧）
+      initialRetain: Object.keys(initialRetain).length > 0 ? initialRetain : undefined,
     });
   } finally {
     ctrl.dispose(); // 清空闲兜底节拍定时器（规格 §3.5）：循环退出即释放

@@ -687,11 +687,13 @@ export class SessionRuntime {
     const v = parseEffort(effort);
     if (v === undefined) return false;
     this.effort = v;
+    this.persistSelection({ effort: v }); // G14.2xx 选择即刻落 meta(attach 回放,重启不回落缺省)
     return true;
   }
 
   clearEffort(): void {
     this.effort = undefined;
+    this.persistSelection({ effort: undefined });
   }
 
   /** 模型切换器外窥（G10-C1b;undefined = daemon 装配为单模型,不可切） */
@@ -702,7 +704,9 @@ export class SessionRuntime {
   /** 运行中模型切换（G10-C1b）：switchTo 单点;unknown id 幂等 false 不动现状。切换 daemon 级生效 */
   setModel(id: string | undefined): boolean {
     const sw = this.modelSwitcher;
-    return sw === null ? false : sw.switchTo(id);
+    const okSwitch = sw === null ? false : sw.switchTo(id);
+    if (okSwitch && id !== undefined) this.persistSelection({ model: id });
+    return okSwitch;
   }
 
   /** 权限模式切换（G10-C1b）：idle-only（运行中 409 面归 daemon handler）;重建 runtime 与 reset 同路径,
@@ -713,7 +717,16 @@ export class SessionRuntime {
     this.currentMode = mode;
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) this.hookJournalSink();
+    this.persistSelection({ mode }); // G14.2xx 模式切换即刻落 meta(attach 回放)
     return 'ok';
+  }
+
+  /** G14.2xx 会话选择面持久化单点(model/effort/mode):即改即写 meta 旁车——公共持久化口径
+   *  (CLAUDE.md §13),重启/重开 attach 时回放,不再回落装配缺省;journal 未附(无 id)跳过 */
+  private persistSelection(patch: { model?: string; effort?: string; mode?: SessionMode }): void {
+    const journalId = this.journal?.currentId;
+    if (journalId === undefined) return;
+    writeSessionMeta(resolveDataDir(this.root), journalId, patch);
   }
 
   /** G14.83 队列重排:from → to(拖拽排序);置首=插入发送(下一轮立即注入)——P5 走内核态 */

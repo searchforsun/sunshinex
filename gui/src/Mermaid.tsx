@@ -87,6 +87,10 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
   /** G14.94 渲染失败态:错误消息(红)+源代码同框——修复有据 */
   const [failed, setFailed] = useState<string | null>(null);
   const idRef = useRef(`mmd-${Math.random().toString(36).slice(2)}`);
+  /** G14.2xx 流式静默:上一版成功图形(失败时不 clear,保图形在屏);稳定重试仍败才落错误态 */
+  const lastGoodRef = useRef<{ chart: string; svg: string } | null>(null);
+  /** 稳定判定窗:chart 停止变化达该时长后仍失败才示错(流式期间静默) */
+  const STABLE_MS = 1200;
   /** 主题切换触发器:data-theme 属性变化即重渲(否则图停留在旧配色直到 chart 变更) */
   const [themeTick, setThemeTick] = useState(0);
 
@@ -105,6 +109,7 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
 
   useEffect(() => {
     let alive = true;
+    let abortedByStale = false; // G14.2xx 流式静默:chart 未稳定期间的失败不示错(静默重试,稳定后仍败才示错)
     const key = cacheKey(currentTheme(), chart);
     const cached = svgCache.get(key);
     if (cached !== undefined) {
@@ -115,35 +120,70 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
         alive = false;
       };
     }
-    (async () => {
-      try {
-        const mod = await mermaidReady;
-        if (mod === undefined) throw new Error('mermaid unavailable');
-        const mermaid = mod.default;
-        // look 钉 classic:v12 默认 neo 给节点画挤出式重影边(用户视为边框 bug)
-        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
-        const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
-        const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
-        if (alive) {
-          if (svgCache.size >= 200) svgCache.clear();
-          svgCache.set(key, r.svg);
-          setSvg(r.svg);
-          setFailed(null);
-          onStatus?.(true); // G14.122 渲染成败上抛(消费方按态收放放大钮)
-        }
-      } catch (e) {
-        if (alive) {
-          setSvg(null);
-          // mermaid 的错误对象常带整页 HTML——剥标签取首行文本,信息够定位即可
-          const raw = e instanceof Error ? e.message : String(e);
-          const msg = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed';
-          setFailed(msg);
+    // G14.2xx 去抖:流式期间 chart 每帧都在长,逐 token 重渲渲染成本高——静默期后统一尝试
+    const debounce = window.setTimeout(run, 250);
+    function run(): void {
+      if (!alive) return;
+      (async () => {
+        try {
+          const mod = await mermaidReady;
+          if (mod === undefined) throw new Error('mermaid unavailable');
+          const mermaid = mod.default;
+          // look 钉 classic:v12 默认 neo 给节点画挤出式重影边(用户视为边框 bug)
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
+          const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
+          const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
+          if (alive) {
+            if (svgCache.size >= 200) svgCache.clear();
+            svgCache.set(key, r.svg);
+            lastGoodRef.current = { chart, svg: r.svg };
+            setSvg(r.svg);
+            setFailed(null);
+            onStatus?.(true); // G14.122 渲染成败上抛(消费方按态收放放大钮)
+          }
+        } catch (e) {
+          if (!alive) return;
           onStatus?.(false);
+          // G14.2xx 流式静默:不稳定期间的失败不示错、不清图形——上一版图保留在屏,源码静默兜底;
+          // 稳定(STABLE_MS 内 chart 未再变)后重试一次,仍败才落错误态(真非法图才示错)
+          if (lastGoodRef.current !== null) {
+            setSvg(lastGoodRef.current.svg); // 保留上一版图形在屏
+            return;
+          }
+          setSvg(null);
+          window.setTimeout(() => {
+            if (!alive || abortedByStale) return;
+            abortedByStale = true;
+            void (async () => {
+              try {
+                const mod = await mermaidReady;
+                if (mod === undefined) throw new Error('mermaid unavailable');
+                const mermaid = mod.default;
+                mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
+                const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
+                const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
+                if (alive) {
+                  svgCache.set(key, r.svg);
+                  setSvg(r.svg);
+                  lastGoodRef.current = { chart, svg: r.svg };
+                  setFailed(null);
+                  onStatus?.(true);
+                }
+              } catch (e2) {
+                if (alive) {
+                  const raw = e2 instanceof Error ? e2.message : String(e2);
+                  setFailed(raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed');
+                  onStatus?.(false);
+                }
+              }
+            })();
+          }, STABLE_MS);
         }
-      }
-    })();
+      })();
+    }
     return () => {
       alive = false;
+      window.clearTimeout(debounce);
     };
   }, [chart, themeTick, onStatus]);
 

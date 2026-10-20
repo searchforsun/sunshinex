@@ -14,7 +14,7 @@ import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
 import type { TabServices } from './tabs/registry';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession, reopenClosed, parseTabSession } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { applyAgentEvent } from './tabs/agent-activity';
 import type { AgentActivities } from './tabs/agent-activity';
@@ -139,8 +139,14 @@ function AppShell(): JSX.Element {
   const [recentVersion, setRecentVersion] = useState(0);
   /** G14.52 活动会话运行态(GUI 本地权威):model-start 置位,done/error 复位——侧栏运行圆点消费 */
   const [runActive, setRunActive] = useState(false);
-  /** G8a 标签态总表:每会话独立(backHome 保留——重开同会话标签还原,spec §1) */
+  /** G8a 标签态总表:每会话独立(backHome 保留——重开同会话标签还原,spec §1)。
+   *  G14.2xx 持久化:盘为真相源(<slug>/gui/sessions/<会话id>.json)——附接即拉档回填,
+   *  变更防抖写透;内存仅缓存/加速(CLAUDE.md §13 持久化分层) */
   const [tabStates, setTabStates] = useState<TabStates>({});
+  /** 已水合会话集:拉档完成前禁写透(空态初值不得抢在回档前覆盘);同时防重复拉档 */
+  const hydratedRef = useRef<Set<string>>(new Set());
+  /** 写透防抖句柄(每会话一把):变更串内只落最后一笔 */
+  const saveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [connState, setConnState] = useState<ConnectionState>('connecting');
   const [projection, setProjection] = useState<SessionProjection>(EMPTY_PROJECTION);
   /** Chat onTodos 适配(todo_write 批整替进投影;useCallback 恒稳,消费面 JSX 不变) */
@@ -346,7 +352,35 @@ function AppShell(): JSX.Element {
         setTurnGoal('');
     setAgentActivities({}); // G8d:会话切换串态防线(板/team 同款——聚合只挂当前会话帧)
     setPage('chat');
+    // G14.2xx 恢复现场指针:打开即记应用级档(lastRoot+journal;新会话无 journal 记空——
+    // 重启后只回落工作区,不凭空造会话);刷新/重开浏览器据此重放打开链
+    void connRef.current
+      ?.saveAppGuiState({ v: 1, lastRoot: root, ...(journalId !== undefined && journalId !== '' ? { lastJournalId: journalId } : {}) })
+      .catch(() => undefined);
   };
+
+  /** G14.2xx 恢复现场(浏览器刷新后重放打开链):应用级指针档(lastRoot+lastJournalId)——
+   *  启动一次 newSession(root) 装配壳 → attach(journal) 播种 → openSession 三连;指针不可用
+   *  (档删/目录迁移/首启)静默落欢迎页。restoredRef 单次闸(StrictMode 双跑防重放) */
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || connInstance === null || connState !== 'open') return;
+    restoredRef.current = true;
+    void Promise.resolve()
+      .then(() => connInstance.appGuiState())
+      .then(({ state }) => {
+        const o = (state ?? {}) as { lastRoot?: unknown; lastJournalId?: unknown };
+        if (typeof o.lastRoot !== 'string' || o.lastRoot === '' || typeof o.lastJournalId !== 'string' || o.lastJournalId === '') return;
+        const lastRoot: string = o.lastRoot;
+        const lastJournalId: string = o.lastJournalId;
+        return connInstance
+          .newSession(lastRoot)
+          .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then(() => ({ sessionId, root: lastRoot, journalId: lastJournalId })))
+          .then(({ sessionId, root, journalId }) => openSession(sessionId, root, journalId));
+      })
+      .catch(() => undefined);
+    // eslint 不入依赖(openSession/connRef 恒稳,恢复链仅启动一次)
+  }, [connInstance, connState]);
 
   /** 返回欢迎态:会话关窗(Chat 卸毁本地态;连接保持,再开经左栏重播种)+ 板投影/team 清零
    *  (无会话期无帧消费,残留即陈旧)+ 播种窗缓冲清(再开重开窗);tabStates 保留(每会话
@@ -487,6 +521,57 @@ function AppShell(): JSX.Element {
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
+  // G14.2xx 附接水合:切会话即拉盘档回填(仅在本地无此会话态或空态时落——不覆写在途编辑);
+  // 拉到(含空档)即记水合,写透闸门随之放开
+  useEffect(() => {
+    if (connInstance === null || connState !== 'open' || openSessionId === '') return;
+    if (hydratedRef.current.has(openSessionId)) return;
+    let dead = false;
+    const done = (): void => {
+      // 水合标记在 GET 落定后才放行写透——在途期间空态初值不得抢先覆盘
+      hydratedRef.current.add(openSessionId);
+    };
+    // 异步面调用(daemon 未附会话等 404 → 拒绝走容错,不炸渲染)
+    void Promise.resolve().then(() => connInstance.guiState(openSessionId)).then(
+      ({ state }) => {
+        if (dead) return;
+        done();
+        const parsed = parseTabSession(state);
+        if (parsed === null) return;
+        setTabStates((s) => {
+          const cur = s[openSessionId];
+          // 本地已有在途标签(非空)以内存为准;空态/缺席才落盘档
+          if (cur !== undefined && (cur.tabs.length > 0 || cur.recentClosed.length > 0)) return s;
+          return { ...s, [openSessionId]: parsed };
+        });
+      },
+      () => {
+        if (dead) return;
+        done(); // 拉档失败:内存态继续用,写透闸门放开(下次变更仍会写透)
+      },
+    );
+    return () => {
+      dead = true;
+    };
+  }, [connInstance, connState, openSessionId]);
+
+  // G14.2xx 变更写透(500ms 防抖,每会话一把):标签任何变化最终落 <slug>/gui/sessions/<id>.json;
+  // 水合前不写(防空态初值覆盘)
+  useEffect(() => {
+    if (openSessionId === '' || connState !== 'open' || connInstance === null) return;
+    if (!hydratedRef.current.has(openSessionId)) return;
+    const timers = saveTimersRef.current;
+    const prev = timers.get(openSessionId);
+    if (prev !== undefined) clearTimeout(prev);
+    timers.set(
+      openSessionId,
+      setTimeout(() => {
+        timers.delete(openSessionId);
+        void connInstance.saveGuiState(openSessionId, { v: 1, ...tabStates[openSessionId] });
+      }, 500),
+    );
+  }, [tabStates, openSessionId, connState, connInstance]);
+
   const tabState = tabStates[openSessionId] ?? emptyTabSession();
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
@@ -715,6 +800,8 @@ function AppShell(): JSX.Element {
                 setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))
               }
               onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
+              recentClosed={tabState.recentClosed}
+              onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, openSessionId, i, PROBE))}
               onCloseActive={() => {
                 const uid = tabState.activeUid;
                 if (uid !== null) closeTabInSession(uid);
@@ -734,6 +821,8 @@ function AppShell(): JSX.Element {
                   uid: activeTab.uid,
                   // G8b T7:标签体自治跳转面(DirectoryTab 文件行 → file 标签;Chat onOpenFile 同源)
                   openTab: openTabInSession,
+                  // G14.2xx 标签自关面(file 页签探测到目录:移交 directory 页签后自关)
+                  closeTab: closeTabInSession,
                   startSideChat,
                   ptyIdFor,
                   onPtyAllocated: handlePtyAllocated,

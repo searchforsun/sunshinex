@@ -110,16 +110,18 @@ export interface SessionSidecarMeta {
   model?: string;
   /** 末次思考强度 */
   effort?: string;
+  /** 权限模式(G14.2xx 运行中切换即刻落,attach 回放——重启不再回落缺省;值域 dontAsk/manual/plan) */
+  mode?: string;
   /** 辅助会话标记(G14.29 /btw /side 旁路档)——listSessions 全列表滤除,不进 RECENTS 与 /resume */
   side?: boolean;
 }
 
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds',
-  'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'side',
+  'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流） */
-const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort']);
+const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode']);
 /** 布尔值键（G14.29 side 辅助会话标记） */
 const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side']);
 

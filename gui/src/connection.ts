@@ -80,6 +80,12 @@ export interface Connection {
   /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先;
    *  dirs=尾斜杠目录清单(@面板滤出文件夹/目录引用面;旧 daemon 无此字段 → undefined) */
   workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
+  /** G14.2xx GUI 面私有态存取(标签页等,按会话键;daemon 落 <slug>/gui/sessions/<id>.json) */
+  guiState(id: string): Promise<{ state: unknown }>;
+  saveGuiState(id: string, state: object): Promise<void>;
+  /** G14.2xx 应用级指针档(恢复现场入口;<projectsRoot>/gui/ui-state.json:lastRoot/lastJournalId) */
+  appGuiState(): Promise<{ state: unknown }>;
+  saveAppGuiState(state: object): Promise<void>;
   sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
   commitChanges(id: string, message: string): Promise<void>;
   pushChanges(id: string): Promise<void>;
@@ -346,6 +352,18 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async gitCheckout(root: string, branch: string) {
       await post('/git/checkout', { root, branch });
+    },
+    guiState(id: string) {
+      return getJson<{ state: unknown }>(`/session/${encodeURIComponent(id)}/gui-state`);
+    },
+    async saveGuiState(id: string, state: object) {
+      await put(`/session/${encodeURIComponent(id)}/gui-state`, { state });
+    },
+    appGuiState() {
+      return getJson<{ state: unknown }>('/app/gui-state');
+    },
+    async saveAppGuiState(state: object) {
+      await put('/app/gui-state', { state });
     },
     sessionChangeContent(id: string, path: string) {
       return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}`);

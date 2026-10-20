@@ -21,6 +21,34 @@ export function fileHit(file: string, query: string): boolean {
   return true;
 }
 
+/** G14.2xx 命中排序:精确 basename > 前缀 > 包含 > 路径包含 > 子序列,同级保原序(目录清单在前)。
+ *  子序列命中无定位语义——@query 精中某文件/目录时它必须置顶(回车即中),否则目标可能沉底,
+ *  残留 active 位上 Enter 选中邻项(用户实测:输 @harness 回车选中 src/harness/tools/)。
+ *  cap=面板可视上限,排序后再截——避免子序列远缘命中挤掉精确项 */
+export function rankFileHits(files: string[], query: string, cap = 12): string[] {
+  const hits = files.filter((f) => fileHit(f, query));
+  const q = query.trim().toLowerCase();
+  if (q === '') return hits.slice(0, cap);
+  const baseOf = (f: string): string => {
+    const b = f.replace(/[\\/]+$/, '');
+    const i = b.lastIndexOf('/');
+    return (i < 0 ? b : b.slice(i + 1)).toLowerCase();
+  };
+  const rank = (f: string): number => {
+    const b = baseOf(f);
+    if (b === q) return 0;
+    if (b.startsWith(q)) return 1;
+    if (b.includes(q)) return 2;
+    if (f.toLowerCase().includes(q)) return 3;
+    return 4;
+  };
+  return hits
+    .map((f, i) => ({ f, i, r: rank(f) }))
+    .sort((x, y) => (x.r !== y.r ? x.r - y.r : x.i - y.i))
+    .slice(0, cap)
+    .map((x) => x.f);
+}
+
 /** G14.85 @ 文件面板:工作区文件清单(G14.134 行=文件名+紧跟的相对目录后缀;
  *  G14.121 导出共享——欢迎页复用;G14.135 通栏定位不随 @ 移动) */
 export function FilePalette({

@@ -81,8 +81,8 @@ export function RunChangesBar({
             {t(`${visible.length} files changed`, `${visible.length} 个文件已更改`)}
           </span>
           <span className="run-changes-stat">
-            <span className="sx-change-add">{`+${add}`}</span>
-            <span className="sx-change-del">{`-${del}`}</span>
+            {add > 0 && <span className="sx-change-add">{`+${add}`}</span>}
+            {del > 0 && <span className="sx-change-del">{`-${del}`}</span>}
           </span>
         </button>
         <button
@@ -108,14 +108,9 @@ export function RunChangesBar({
                 </button>
                 <span className="run-changes-dir">{dir}</span>
                 <span className="run-changes-stat">
-                  {c.added === null ? (
-                    <span className="sx-change-new">{t('new', '新建')}</span>
-                  ) : (
-                    <>
-                      <span className="sx-change-add">{`+${c.added}`}</span>
-                      <span className="sx-change-del">{`-${c.deleted}`}</span>
-                    </>
-                  )}
+                  {c.added !== null && c.added > 0 && <span className="sx-change-add">{`+${c.added}`}</span>}
+                  {c.deleted !== null && c.deleted > 0 && <span className="sx-change-del">{`-${c.deleted}`}</span>}
+                  {c.added === null && c.newLines !== undefined && c.newLines > 0 && <span className="sx-change-add">{`+${c.newLines}`}</span>}
                 </span>
                 <button type="button" className="run-changes-undo-row" data-tip={t('Revert this file', '撤销此文件')} onClick={() => restore(c.path)}>
                   {t('Undo', '撤销')}

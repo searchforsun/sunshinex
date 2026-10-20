@@ -289,6 +289,102 @@ export async function handleSessionTierEffort(io: SessionHandlerIo, req: http.In
 
 
 /** GET /session/:id/model(G10-C4 模型 pill 数据源):当前选择 + 可选清单(choices 空=不可切) */
+/** G14.2xx 应用级 GUI 指针档(<projects 根>/gui/ui-state.json):lastRoot/lastJournalId——
+ *  浏览器刷新后的「恢复现场」入口(指针在应用级,slug 目录内的会话/工作区细节各归其位) */
+function appGuiStateFile(): string {
+  return path.join(projectsRoot(), 'gui', 'ui-state.json');
+}
+
+/** 应用级指针档读:缺档/坏档回 {state:null}(首启无现场,客户端落欢迎页) */
+export async function handleAppGuiStateGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
+  try {
+    io.send(res, 200, { state: JSON.parse(fs.readFileSync(appGuiStateFile(), 'utf8')) });
+  } catch {
+    io.send(res, 200, { state: null });
+  }
+}
+
+/** 应用级指针档写(原子写):body.state 须对象 */
+export async function handleAppGuiStatePut(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const state = (parsed.body as { state?: unknown } | null)?.state;
+  if (state === null || typeof state !== 'object' || Array.isArray(state)) {
+    io.send(res, 400, { error: 'state object required' });
+    return;
+  }
+  const file = appGuiStateFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
+  fs.renameSync(tmp, file);
+  io.send(res, 200, { ok: true });
+}
+
+/** G14.2xx GUI 面私有态文件(<projects 根>/<工作区 slug>/gui/sessions/<journalId>.json——
+ *  CLAUDE.md §13 持久化分层:与 data/ 共享域平级的面私有子目录。档键=attachedJournalId:
+ *  跨 daemon 重启稳定的会话身份——会话 id 每次重启重新发号,按 id 存档刷新后必空(实测病根);
+ *  journalId 形同会话面,防文件名逃逸) */
+function guiStateFile(session: SessionRuntime): string {
+  const dataDir = resolveDataDir(session.root);
+  const key = session.attachedJournalId;
+  return path.join(path.dirname(dataDir), 'gui', 'sessions', `${key}.json`);
+}
+
+/** GUI 面私有态读(标签页/面板偏好等,按 journalId 键):未附 journal 或无档回 {state:null}——
+ *  客户端回落内存缺省(纯新会话本就无可恢复语义) */
+export async function handleGuiStateGet(io: SessionHandlerIo, res: http.ServerResponse, id: string | undefined): Promise<void> {
+  if (id === undefined || !validSessionId(id)) {
+    io.send(res, 400, { error: 'invalid session id' });
+    return;
+  }
+  const session = io.sessionFor(res, id);
+  if (session === undefined) return;
+  if (session.attachedJournalId === undefined) {
+    io.send(res, 200, { state: null });
+    return;
+  }
+  try {
+    io.send(res, 200, { state: JSON.parse(fs.readFileSync(guiStateFile(session), 'utf8')) });
+  } catch {
+    io.send(res, 200, { state: null });
+  }
+}
+
+/** GUI 面私有态写(写透;临时文件+rename 原子落——半写档不得成为下次启动的真相)。
+ *  未附 journal(纯新会话,重启即逝)→ 200 no-op 不落盘:防孤儿档按发号 id 堆积 */
+export async function handleGuiStatePut(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
+  if (id === undefined || !validSessionId(id)) {
+    io.send(res, 400, { error: 'invalid session id' });
+    return;
+  }
+  const session = io.sessionFor(res, id);
+  if (session === undefined) return;
+  if (session.attachedJournalId === undefined) {
+    io.send(res, 200, { ok: true, persisted: false });
+    return;
+  }
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const state = (parsed.body as { state?: unknown } | null)?.state;
+  if (state === null || typeof state !== 'object' || Array.isArray(state)) {
+    io.send(res, 400, { error: 'state object required' });
+    return;
+  }
+  const file = guiStateFile(session);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
+  fs.renameSync(tmp, file);
+  io.send(res, 200, { ok: true });
+}
+
 export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });

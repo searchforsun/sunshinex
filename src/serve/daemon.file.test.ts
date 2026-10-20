@@ -70,12 +70,13 @@ test('GET /session/:id/file:判界/404/415/截断/400 全分支', async () => {
     resp = await file('../outside.txt');
     assert.equal(resp.status, 403, '逃逸到真实文件同样 403');
 
-    // —— 不存在 / 目录 → 404 ——
+    // —— 不存在 → 404;目录 → 200 {type:'directory'}(G14.2xx 目录移交:客户端转目录页签定位) ——
     resp = await file('nope.ts');
     assert.equal(resp.status, 404);
     assert.deepEqual(await resp.json(), { error: 'not found' });
     resp = await file('sub');
-    assert.equal(resp.status, 404, '目录 404(非文件)');
+    assert.equal(resp.status, 200, '目录回执 200(G14.2xx 目录移交)');
+    assert.deepEqual(await resp.json(), { path: path.resolve(root, 'sub'), type: 'directory' });
 
     // —— 二进制:首 8KB 含 \0 → 415(不回内容) ——
     const bin = Buffer.concat([Buffer.from('text\0binary'), Buffer.alloc(64, 1)]);

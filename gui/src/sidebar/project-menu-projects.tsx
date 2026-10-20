@@ -18,6 +18,9 @@ export interface ProjectsSectionProps {
   readonly listError: string;
   readonly openSlug: string | null;
   readonly sessions: SessionRow[] | null;
+  /** G14.2xx 组内会话默认收窄:24h 内活跃全显(上限 10),显示更多放全量,收起复位 */
+  readonly groupShowAll: boolean;
+  readonly onGroupShowMore: () => void;
   readonly sessionsError: string;
   readonly activeRoot: string;
   readonly activeSessionId: string;
@@ -30,7 +33,7 @@ export interface ProjectsSectionProps {
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runActive, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runActive, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, groupShowAll, onGroupShowMore } = props;
   return (
     <>
         <div
@@ -84,6 +87,20 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
             )}
             {visibleWorkspaces(rows ?? []).map((row) => {
               const root = row.root; // const 捕获:root 收窄可入回调
+              // G14.2xx 组内会话默认收窄:默认显 24h 内活跃(最多 10;活跃不足 10 有几条显几条),
+              // 「显示更多」放全量、「收起」复位;当前打开的会话恒显(避免点开后从列表消失)
+              const now24 = Date.now() - 24 * 60 * 60 * 1000;
+              const sorted24 = (sessions ?? []).slice().sort((a, b) => b.updatedAt - a.updatedAt);
+              const activeN = sorted24.filter((sr) => sr.updatedAt >= now24).length;
+              const defN = Math.min(10, Math.max(activeN, 1));
+              const showAll = groupShowAll;
+              const isActiveRow = (sr: SessionRow) =>
+                activeSessionId !== '' && (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
+              const headRows = showAll ? sorted24 : sorted24.slice(0, defN);
+              const tailRows = showAll ? [] : sorted24.slice(defN).filter((sr: SessionRow) => isActiveRow(sr));
+              const visible = [...headRows, ...tailRows];
+              const hidden = sorted24.length - visible.length;
+              const groupShowMore = () => onGroupShowMore();
               return (
                 <li
                   key={row.slug}
@@ -127,7 +144,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                         {sessions !== null && sessions.length === 0 && (
                           <li className="no-sessions">{t('No sessions', '暂无会话')}</li>
                         )}
-                        {sessions?.map((sr) => {
+                        {visible.map((sr) => {
                           // G14.52:活动会话圆点以 runActive 为准;他会话看 daemon 标注
                           const active =
                             activeSessionId !== '' &&
@@ -164,6 +181,12 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                             </li>
                               );
                             })}
+                        {hidden > 0 && (
+                          <li key="more" className="session-more" role="button" tabIndex={0} onClick={groupShowMore}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); groupShowMore(); } }}>
+                            {t('Show more', '显示更多')}
+                          </li>
+                        )}
                       </ul>
                     </div>
                   )}

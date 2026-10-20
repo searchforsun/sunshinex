@@ -259,6 +259,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 可选增强 | dockerode + tree-kill | 可选增强 | Compute Use 容器执行/进程管理，按需引入 |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
+- **持久化分层（TUI/GUI 双面口径，2026-10-19 用户裁定）**：两会话面**共有**的持久化数据一律同一底层实现、同一落盘位置，由共享模块单点读写——会话级数据落 `<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`（**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放）；工作区级共享数据（记忆/学习技能/任务板/KB/workspace.json）落 `data/` 其余子目录、跨会话共用（语义即共享，非缺陷）。以上收敛在 `src/session/`、`src/tui/session-journal.ts`、`src/taskboard/` 等共享层，TUI 与 GUI 只是同一份数据的不同投影，任一面写入、另一面 attach/重开即见；**禁止各面自建私有副本或平行的写面**。交互面**独有**的 UI 态（GUI 标签页开闭/激活/宽度/折叠与最近关闭等标签数据、面板偏好；TUI 的渲染态等）落**同一 slug 目录下与 `data/` 平级的面私有子目录** `gui/`、`tui/`，且**镜像共享层的粒度**——按会话键的数据（GUI 标签态=Record<sessionId,…>）落 `gui/sessions/<journalId>.json`——**档键=journal id（跨 daemon 重启稳定的会话身份；会话 id `s<n>` 每次重启重新发号，按 id 存档刷新后必空）**，与 `data/sessions/<journalId>.jsonl` 同键同粒度；工作区级 UI 偏好落 `gui/ui-state.json`，应用级指针档（lastRoot/lastJournalId 恢复现场入口）落 `<projects 根>/gui/ui-state.json`；TUI 同构 `tui/`。`data/` 整树保持纯会话共享域，删/迁任一面 UI 态不触及会话档；**不得写入共享会话档、不得污染共享数据结构**。判断口径：换一个交互面打开同一会话，数据仍在=共享面（进 `data/`）；消失=面私有面（进 `gui/`、`tui/`；现行 GUI 标签态仅驻内存，落盘时按此位）。
 - **体验基线**：交互细节向对标产品看齐——快捷键符合终端惯例、输出有渲染降级（窄终端/无色彩环境不花屏）、状态与错误信息用户可读；体验取舍拿不准时以「明星产品怎么做」为参照。
 - **引入流程**：新依赖登记 `package.json`，在 README/Arch-Plan 标注用途，`pnpm build` + `pnpm test` 全量验证后方可交付；规划选型转正时同步更新本表状态。
 

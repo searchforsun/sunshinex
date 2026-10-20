@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, GitBranch, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { pathBasename, pickWorkspaceFolder } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
-import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
+import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
 import { CommandPalette, filterCommands } from '../CommandPalette';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
@@ -468,6 +468,7 @@ export function WelcomeComposer({
             const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
             if (m !== null) {
               setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
+              setFilePalActive(0); // G14.2xx 查询变更即重置 active(残留箭头位回车选中邻项)
               if (picked !== '') {
                 void conn
                   .workspaceFiles(picked)
@@ -539,7 +540,7 @@ export function WelcomeComposer({
             } else if (filePal !== null) {
               setFilePal(null);
             }
-            const items = picked === '' ? [] : filePalFiles.filter((f) => fileHit(f, filePal?.query ?? '')).slice(0, 12);
+            const items = picked === '' ? [] : rankFileHits(filePalFiles, filePal?.query ?? '');
             if (filePal !== null && items.length > 0) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
@@ -669,7 +670,7 @@ export function WelcomeComposer({
             // G14.211 锚点校验:@ 被删后面板残留在此拦下(同 Chat 渲染面)
             filePal !== null && picked !== '' && goal[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
               <FilePalette
-                items={filePalFiles.filter((f) => fileHit(f, filePal.query)).slice(0, 12)}
+                items={rankFileHits(filePalFiles, filePal.query)}
                 active={Math.min(filePalActive, 11)}
                 onHover={setFilePalActive}
                 onPick={(p) => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
@@ -97,6 +97,29 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
   /** 分区折叠(G10-C18):PROJECTS/RECENTS 分区头可折叠(平滑过渡) */
   const [projectsOpen, setProjectsOpen] = useState(true);
+  // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
+  // 无依赖面每次渲染重测(数据/计数变化即新节点),RO 盯滚动容器(拖栏宽度变化即重测)
+  const sideScrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const mark = (): void => {
+      const root = sideScrollRef.current;
+      if (root === null) return;
+      for (const el of root.querySelectorAll<HTMLElement>('.sx-ws-name, .session-summary')) {
+        if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
+        else el.removeAttribute('data-cut');
+      }
+    };
+    mark();
+    const el = sideScrollRef.current;
+    if (el === null) return;
+    const ro = new ResizeObserver(mark);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+  // G14.2xx 组内会话默认收窄:默认显 24h 内活跃(最多 10),「显示更多」放全量,「收起」复位;切组复位
+  const [groupShowAll, setGroupShowAll] = useState(false);
+  const groupShowAllRef = useRef(false);
+  groupShowAllRef.current = groupShowAll;
   /** 查找面板(G10-C13):项目 + 会话历史搜索 */
   const [searchOpen, setSearchOpen] = useState(false);
   /** G14.75 聚合搜索:全部工作区的会话扁平集(打开搜索时聚合一次,rows 变化重拉) */
@@ -162,6 +185,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       if (row.root === undefined) return;
       openSlugRef.current = row.slug;
       setOpenSlug(row.slug);
+    setGroupShowAll(false);
       setSessions(null);
       setSessionsError('');
       loadSessions(row.root, row.slug);
@@ -174,6 +198,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     if (openSlug === row.slug) {
       openSlugRef.current = null;
       setOpenSlug(null);
+    setGroupShowAll(false);
       return;
     }
     expandGroup(row);
@@ -333,7 +358,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         />
       )}
             {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
-      <div className="sx-side-scroll">
+      <div className="sx-side-scroll" ref={sideScrollRef}>
         <ProjectsSection
           projectsOpen={projectsOpen}
           onToggleProjects={() => setProjectsOpen((v) => !v)}
@@ -347,6 +372,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           rows={rows}
           listError={listError}
           openSlug={openSlug}
+          groupShowAll={groupShowAll}
+          onGroupShowMore={() => setGroupShowAll(true)}
           sessions={sessions}
           sessionsError={sessionsError}
           activeRoot={activeRoot}

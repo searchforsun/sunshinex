@@ -5,11 +5,13 @@
  * 样式全用 app.css 既有 sx- 类;唯一内联样式为 disabled 整条 opacity .5(简报明文允许)。
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { X, Plus, PanelLeft, PanelRight, FileText, FolderTree, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { X, Plus, PanelLeft, PanelRight, FileText, ChevronsDown } from 'lucide-react';
+import { t } from '../i18n';
 import { FileIcon, hasFileTypeIcon } from '../file-icon';
-import { TAB_REGISTRY, tabEntry } from './registry';
-import type { TabTypeId } from './tab-state';
+import { TAB_REGISTRY, TAB_ICONS, tabEntry } from './registry';
+import { disambiguateTabTitles, type ClosedTab } from './tab-state';
+import { TabSearchPop } from './TabSearchPop';
 
 export interface TabStripProps {
   readonly tabs: readonly import('./tab-state').TabInstance[];
@@ -24,22 +26,10 @@ export interface TabStripProps {
   readonly onToggleCollapse: () => void;
   readonly onCycle: (dir: 1 | -1) => void;
   readonly onCloseActive: () => void;
+  /** G14.2xx 标签搜索弹窗:最近关闭历史(App 持有)+按索引重开;缺场=弹窗无「最近关闭」节 */
+  readonly recentClosed?: readonly ClosedTab[];
+  readonly onReopenClosed?: (index: number) => void;
 }
-
-/** 类型图标(pill/菜单共用;G8b-d 增类在此补图标) */
-const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
-  sidechat: MessageCircle,
-  file: FileText,
-  diff: GitCompare, // G14.180 审查(改动对比)——与欢迎页快捷卡同图标
-  directory: FolderTree,
-  tasks: ListTodo, // G14.180 待办——与欢迎页快捷卡同图标
-  agents: Bot, // G8d 子代理活动聚合卡
-  agent: Bot, // G14.175 子代理只读转录页(机器人图标,用户裁决)
-  bgtasks: Hourglass, // G14.180 后台任务(等待执行)
-  memory: Brain, // G14.180 持久记忆
-  terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
-  web: Globe, // G8d 内嵌网页标签
-};
 
 /** 「+」菜单分节序:content → session → tools */
 const GROUP_ORDER: readonly ('content' | 'session' | 'tools')[] = ['content', 'session', 'tools'];
@@ -59,23 +49,54 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     onToggleCollapse,
     onCycle,
     onCloseActive,
+    recentClosed,
+    onReopenClosed,
   } = props;
   const [menuOpen, setMenuOpen] = useState(false);
+  // G14.2xx 标签搜索弹窗(最左触发,纵向列打开的/最近关闭的标签页)
+  const [searchOpen, setSearchOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  /** G14.2xx 弹层锚容器(外点关闭的判定边界=各自触发钮容器,非整条——点条内标签/另一钮同样收) */
+  const searchAnchorRef = useRef<HTMLDivElement>(null);
+  const menuAnchorRef = useRef<HTMLDivElement>(null);
   // G14.111 拖拽重排:draggable 标签 dragstart 记 uid,dragover 命中目标即回调重排(App 落数组)
   const dragUidRef = useRef<string | null>(null);
+  // G14.2xx 同名消歧:file 标签撞名时显示最小区分相对路径(chrome 同位);引用随 tabs 变
+  const titles = useMemo(() => disambiguateTabTitles(tabs), [tabs]);
+  /** G14.2xx 标题截断隐现(chrome 同形:无省略号,溢出即右缘渐隐)——逐标题量溢出打 data-cut */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const titleRefs = useRef(new Map<string, HTMLSpanElement>());
+  useLayoutEffect(() => {
+    const mark = (): void => {
+      for (const [, el] of titleRefs.current) {
+        if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
+        else el.removeAttribute('data-cut');
+      }
+    };
+    mark();
+    const el = scrollRef.current;
+    if (el === null) return;
+    const ro = new ResizeObserver(mark); // 拖栏/标签增删改变 pill 宽 → 重量截断
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [titles, tabs]);
 
-  // 菜单外点关闭:menuOpen 在席时挂 document mousedown,落点在本条外即收(点 + 自身走 click 切换)
+  // 弹窗外点关闭:判定边界=各自锚容器(V 触发钮容器/「+」触发钮容器)——点条内其他元素(标签/
+  // 折叠钮等)同属「其他地方」一律收;点弹层自身/触发钮不收(触发钮走 click 切换)
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !searchOpen) return;
     const onDown = (e: MouseEvent): void => {
-      if (rootRef.current !== null && e.target instanceof Node && !rootRef.current.contains(e.target)) {
+      if (!(e.target instanceof Node)) return;
+      if (searchOpen && searchAnchorRef.current !== null && !searchAnchorRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+      if (menuOpen && menuAnchorRef.current !== null && !menuAnchorRef.current.contains(e.target)) {
         setMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [menuOpen]);
+  }, [menuOpen, searchOpen]);
 
   // 快捷键(window keydown,卸载解绑):Alt+W 关活动;Ctrl+Alt+→/← 环回切换;disabled 不响应
   useEffect(() => {
@@ -124,11 +145,35 @@ export function TabStrip(props: TabStripProps): JSX.Element {
 
   return (
     <div className="sx-tabstrip" ref={rootRef} style={stripStyle} data-tip={stripTitle}>
+      {/* G14.2xx 标签搜索弹窗触发钮(最左;纵向列打开的/最近关闭的标签页) */}
+      <div style={{ position: 'relative', display: 'inline-flex', flex: 'none' }} ref={searchAnchorRef}>
+        <button
+          type="button"
+          aria-label={t('Search tabs', '搜索标签页')}
+          className="sx-iconbtn"
+          disabled={disabled}
+          onClick={() => setSearchOpen((o) => !o)}
+        >
+          <ChevronsDown size={15} strokeWidth={1.75} />
+        </button>
+        {searchOpen && (
+          <TabSearchPop
+            tabs={tabs}
+            activeUid={activeUid}
+            recentClosed={recentClosed ?? []}
+            onSelect={onSelect}
+            onCloseTab={onClose}
+            onReopen={(i) => onReopenClosed?.(i)}
+            onDone={() => setSearchOpen(false)}
+          />
+        )}
+      </div>
       {/* G14.39:标签滚动区独立(overflow-x auto 只裁标签);+/弹窗在滚动区外,弹窗不被条裁切 */}
-      <div className="sx-tabstrip-scroll">
+      <div className="sx-tabstrip-scroll" ref={scrollRef}>
       {tabs.map((t) => {
         const entry = tabEntry(t.type);
-        const title = entry.title(t.params);
+        // G14.2xx file 标签撞名 → 最小区分相对路径;其余回落 registry 原题
+        const title = titles.get(t.uid) ?? entry.title(t.params);
         const Icon = TAB_ICONS[t.type] ?? FileText;
         // G14.211 文件标签显对应文件类型图标(vscode-icons 集内);未命中回落通用文档图标
         const filePath = t.type === 'file' ? t.params.path : undefined;
@@ -139,6 +184,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
             type="button"
             className={`sx-tab${t.uid === activeUid ? ' active' : ''}`}
             data-title={title}
+            data-tip={title}
             disabled={disabled}
             draggable={!disabled}
             onDragStart={(e) => {
@@ -162,7 +208,15 @@ export function TabStrip(props: TabStripProps): JSX.Element {
             ) : (
               <Icon size={16} strokeWidth={1.75} />
             )}
-            <span>{title}</span>
+            <span
+              className="sx-tab-title"
+              ref={(el) => {
+                if (el === null) titleRefs.current.delete(t.uid);
+                else titleRefs.current.set(t.uid, el);
+              }}
+            >
+              {title}
+            </span>
             <span
               role="button"
               aria-label={`close tab ${title}`}
@@ -179,7 +233,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
       })}
       </div>
       {/* G14.39:「+」弹窗跟随按钮、开在其下(相对锚容器;原 absolute right:8px 钉右缘) */}
-      <div className="sx-strip-newtab" style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
+      <div className="sx-strip-newtab" style={{ position: 'relative', display: 'inline-flex', flex: 'none' }} ref={menuAnchorRef}>
       <button
         type="button"
         aria-label="new tab"

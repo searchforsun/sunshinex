@@ -35,8 +35,8 @@ import { MessageList } from './chat/MessageList';
 import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
-import { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
-export { atomicRange, expandFileRefs, fileHit, FilePalette, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
+import { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
+export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock } from './chat/md-render';
 import { DirResolverContext } from './chat/md-render';
@@ -455,6 +455,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
           if (m !== null) {
             setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
+            // G14.2xx 查询变更即重置 active:残留箭头位在新命中集上会指向邻项(回车选中非目标)
+            setFilePalActive(0);
             void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
           } else if (filePal !== null) {
             setFilePal(null);
@@ -531,7 +533,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             setFilePal(null);
           }
           if (atMatch !== null || (filePal !== null && input[filePal.from] === '@')) {
-            const items = filePalFiles.filter((f) => fileHit(f, filePal?.query ?? '')).slice(0, 12);
+            const items = rankFileHits(filePalFiles, filePal?.query ?? '');
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault();
               if (items.length > 0) {
@@ -658,7 +660,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           // G14.211 锚点校验:@ 已被整删/程序化改写后 filePal 残留,锚位不再是 '@' 即不渲染
           filePal !== null && input[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
             <FilePalette
-              items={filePalFiles.filter((f) => fileHit(f, filePal.query)).slice(0, 12)}
+              items={rankFileHits(filePalFiles, filePal.query)}
               active={Math.min(filePalActive, 11)}
               onHover={setFilePalActive}
               onPick={(p) => {

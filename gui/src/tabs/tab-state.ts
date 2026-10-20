@@ -38,20 +38,33 @@ export interface TabParams {
   readonly pageTitle?: string;
 }
 
-/** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较) */
+/** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较)。
+ *  createdAt=G14.2xx 标签搜索弹窗相对时间面(开档时刻;无兼容旧档——盘档缺值落 0,时间面留空) */
 export interface TabInstance {
   readonly uid: string;
   readonly type: TabTypeId;
   readonly params: TabParams;
+  readonly createdAt: number;
+}
+
+/** G14.2xx 最近关闭记录(标签搜索弹窗「最近关闭的标签页」数据源):type/params 供重开,
+ *  closedAt 供相对时间,createdAt 沿带(重开后时间面连续) */
+export interface ClosedTab {
+  readonly type: TabTypeId;
+  readonly params: TabParams;
+  readonly closedAt: number;
+  readonly createdAt: number;
 }
 
 /** 单会话标签态:tabs 行序即标签条渲染序;width 只钳最小 440,无上限(clamp 于 setWidth;
- * G14.183 最小列宽=主对话/侧栏共用;G14.2xx 用户裁定:最大宽限制退役——三栏均只留最小宽钳制) */
+ * G14.183 最小列宽=主对话/侧栏共用;G14.2xx 用户裁定:最大宽限制退役——三栏均只留最小宽钳制)。
+ * recentClosed=最近关闭历史(新者在前,cap 10——closeTab 单点维护,reopenLastClosed 消费) */
 export interface TabSessionState {
   readonly tabs: readonly TabInstance[];
   readonly activeUid: string | null;
   readonly collapsed: boolean;
   readonly width: number;
+  readonly recentClosed: readonly ClosedTab[];
 }
 
 /** 多会话标签态总表:key = sessionId;会话间互不可见(切会话各持各的) */
@@ -74,9 +87,9 @@ export interface SingletonProbe {
   resolveKey(type: TabTypeId, params: TabParams): string;
 }
 
-/** 空会话缺省面:无标签、无活动、不折叠、缺省宽 */
+/** 空会话缺省面:无标签、无活动、不折叠、缺省宽、关闭历史空 */
 export function emptyTabSession(): TabSessionState {
-  return { tabs: [], activeUid: null, collapsed: true, width: DEFAULT_TAB_WIDTH };
+  return { tabs: [], activeUid: null, collapsed: true, width: DEFAULT_TAB_WIDTH, recentClosed: [] };
 }
 
 /** uid 规约单点:type + ':' + resolveKey(无参 key='' → 'tasks:') */
@@ -136,28 +149,34 @@ export function openTab(
     while (cur.tabs.some((t) => t.uid === `${uid}~${i}`)) i++;
     uid = `${uid}~${i}`;
   }
-  const tab: TabInstance = { uid, type, params };
+  const tab: TabInstance = { uid, type, params, createdAt: Date.now() };
   return { ...states, [sessionId]: { ...cur, tabs: [...cur.tabs, tab], activeUid: uid } };
 }
+
+/** 最近关闭历史深度(新者在前;超出截尾——chrome 同量级) */
+const RECENT_CLOSED_CAP = 10;
 
 /**
  * 关标签:关活动 → 承继位取删后 min(关闭索引, tabs.length-1)(=右邻优先、无右取左;
  * 清空 → null);关非活动 → 活动不变。uid 不在席/会话缺席 → 原引用返回(未动)。
+ * G14.2xx:被关标签压入 recentClosed 头部(最近关闭弹窗数据源;cap 截尾)。
  */
 export function closeTab(states: TabStates, sessionId: string, uid: string): TabStates {
   const cur = states[sessionId];
   if (cur === undefined) return states;
   const idx = cur.tabs.findIndex((t) => t.uid === uid);
   if (idx < 0) return states;
+  const victim = cur.tabs[idx]!;
   const tabs = cur.tabs.filter((_, i) => i !== idx);
   const activeUid =
     cur.activeUid === uid ? (tabs.length === 0 ? null : tabs[Math.min(idx, tabs.length - 1)].uid) : cur.activeUid;
-  return { ...states, [sessionId]: { ...cur, tabs, activeUid } };
+  const closed: ClosedTab = { type: victim.type, params: victim.params, closedAt: Date.now(), createdAt: victim.createdAt };
+  const recentClosed = [closed, ...cur.recentClosed].slice(0, RECENT_CLOSED_CAP);
+  return { ...states, [sessionId]: { ...cur, tabs, activeUid, recentClosed } };
 }
 
 /** G14.111 拖拽重排:fromUid 标签移到 toUid 所在位(数组 splice 对调,活动位不变——
- *  拖拽重排不改活动标签;uid 缺席/相同/会话缺席 → 原引用返回) */
-export function reorderTab(states: TabStates, sessionId: string, fromUid: string, toUid: string): TabStates {
+ *  拖拽重排不改活动标签;uid 缺席/相同/会话缺席 → 原引用返回) */export function reorderTab(states: TabStates, sessionId: string, fromUid: string, toUid: string): TabStates {
   const cur = states[sessionId];
   if (cur === undefined) return states;
   const from = cur.tabs.findIndex((t) => t.uid === fromUid);
@@ -220,4 +239,98 @@ export function setWidth(states: TabStates, sessionId: string, width: number): T
   const clamped = Math.max(MIN_TAB_WIDTH, width);
   if (cur.width === clamped) return states;
   return { ...states, [sessionId]: { ...cur, width: clamped } };
+}
+
+/** G14.2xx 同名标签消歧(用户裁定):file 标签按末段名分组,组内撞名时逐级上溯路径段构成
+ *  **最小区分相对路径**(chrome 同位)——`src/a/util.ts` 与 `src/b/util.ts` 显 `a/util.ts`/`b/util.ts`;
+ *  无撞名保持原题。返回 uid → 显示题(非 file 标签不在表中,消费面回落 registry 原题) */
+export function disambiguateTabTitles(tabs: readonly TabInstance[]): Map<string, string> {
+  const baseTitle = (p: string): string => p.split(/[\/]+/).filter(Boolean).pop() ?? p;
+  const out = new Map<string, string>();
+  const groups = new Map<string, TabInstance[]>();
+  for (const t of tabs) {
+    if (t.type !== 'file' || t.params.path === undefined) continue;
+    const base = baseTitle(t.params.path);
+    out.set(t.uid, base);
+    const g = groups.get(base);
+    if (g === undefined) groups.set(base, [t]);
+    else g.push(t);
+  }
+  for (const [base, g] of groups) {
+    if (g.length <= 1) continue;
+    const segLists = g.map((t) => ({ t, segs: (t.params.path ?? '').split(/[\/]+/).filter(Boolean) }));
+    const maxDepth = Math.max(...segLists.map((s) => s.segs.length));
+    const labels = new Map<string, string>();
+    for (let depth = 1; depth <= maxDepth; depth += 1) {
+      const counts = new Map<string, number>();
+      for (const s of segLists) {
+        if (labels.has(s.t.uid)) continue; // 已在浅层唯一:不再上溯
+        const label = s.segs.slice(-depth).join('/');
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+      }
+      if (counts.size === 0) break;
+      for (const [label, n] of counts) {
+        if (n !== 1) continue;
+        const hit = segLists.find((s) => !labels.has(s.t.uid) && s.segs.slice(-depth).join('/') === label);
+        if (hit !== undefined) labels.set(hit.t.uid, label);
+      }
+      if (labels.size === g.length) break;
+    }
+    for (const s of segLists) out.set(s.t.uid, labels.get(s.t.uid) ?? base);
+  }
+  return out;
+}
+
+/** G14.2xx 重开最近关闭(标签搜索弹窗「最近关闭」行点击,按行索引):弹出该记录按常规
+ *  openTab 重开(判重/单例同口径——重开同文件=聚焦既有),记录随弹随消;索引越界/会话
+ *  缺席 → 原引用返回 */
+export function reopenClosed(states: TabStates, sessionId: string, index: number, probe: SingletonProbe): TabStates {
+  const cur = states[sessionId];
+  const top = cur?.recentClosed[index];
+  if (cur === undefined || top === undefined) return states;
+  const recentClosed = cur.recentClosed.filter((_, i) => i !== index);
+  return openTab({ ...states, [sessionId]: { ...cur, recentClosed } }, sessionId, top.type, top.params, probe);
+}
+
+const TAB_TYPES: ReadonlySet<string> = new Set<string>([
+  'file', 'diff', 'tasks', 'agents', 'agent', 'directory', 'terminal', 'web', 'context', 'bgtasks', 'memory', 'sidechat',
+]);
+
+/** G14.2xx 盘档消毒(gui/sessions/<会话id>.json → TabSessionState):盘为真相源,但坏键/越型
+ *  一律弃——未知 type 的标签、非串 uid、activeUid 不在 tabs 全部滤除;字段缺省回落
+ *  emptyTabSession 口径(折叠缺省 true=G14.38,宽缺省 DEFAULT_TAB_WIDTH)。非对象/null → null */
+export function parseTabSession(raw: unknown): TabSessionState | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const tabs: TabInstance[] = [];
+  if (Array.isArray(o.tabs)) {
+    for (const t of o.tabs) {
+      if (t === null || typeof t !== 'object') continue;
+      const e = t as Record<string, unknown>;
+      if (typeof e.uid !== 'string' || e.uid === '') continue;
+      if (typeof e.type !== 'string' || !TAB_TYPES.has(e.type)) continue;
+      const params = (typeof e.params === 'object' && e.params !== null && !Array.isArray(e.params) ? e.params : {}) as TabParams;
+      tabs.push({ uid: e.uid, type: e.type as TabTypeId, params, createdAt: typeof e.createdAt === 'number' ? e.createdAt : 0 });
+    }
+  }
+  const recentClosed: ClosedTab[] = [];
+  if (Array.isArray(o.recentClosed)) {
+    for (const c of o.recentClosed) {
+      if (c === null || typeof c !== 'object') continue;
+      const e = c as Record<string, unknown>;
+      if (typeof e.type !== 'string' || !TAB_TYPES.has(e.type)) continue;
+      const params = (typeof e.params === 'object' && e.params !== null && !Array.isArray(e.params) ? e.params : {}) as TabParams;
+      recentClosed.push({
+        type: e.type as TabTypeId,
+        params,
+        closedAt: typeof e.closedAt === 'number' ? e.closedAt : 0, // 0=未知时刻(时间面留空)
+        createdAt: typeof e.createdAt === 'number' ? e.createdAt : 0,
+      });
+    }
+  }
+  const activeUid = typeof o.activeUid === 'string' && tabs.some((t) => t.uid === o.activeUid)
+    ? o.activeUid
+    : tabs[0]?.uid ?? null;
+  const width = typeof o.width === 'number' && o.width >= MIN_TAB_WIDTH ? o.width : DEFAULT_TAB_WIDTH;
+  return { tabs, activeUid, collapsed: o.collapsed === true, width, recentClosed };
 }

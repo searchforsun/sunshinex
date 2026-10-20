@@ -7,6 +7,7 @@
  */
 
 import { t } from '../i18n';
+import { FileText, FolderTree, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
 import { Files } from '../pages/Files';
 import { TerminalTab } from './TerminalTab';
 import { DirectoryTab } from './DirectoryTab';
@@ -61,6 +62,8 @@ export interface TabRenderProps {
   /** G8b T7 会话内开标签面(标签体自治跳转——DirectoryTab 文件行 → openTab('file',{path});
    *  App 注入 openTabInSession,判重/单例经 tab-state 共口径;file/tasks 忽略) */
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
+  /** G14.2xx 关自身页签(file 页签探测到目录:移交 directory 页签后自关——文件夹不作标签) */
+  readonly closeTab: (uid: string) => void;
   /** G14.154 辅助对话带问启动(fork+开辅助标签;文件选区「在辅助对话中提问」通道) */
   readonly startSideChat?: (insert?: string) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
@@ -68,6 +71,21 @@ export interface TabRenderProps {
   /** G14.29 辅助对话(App 按 sideId 注入旁路聊天 sink——App onEvent 同键路由帧;他型忽略) */
   readonly chatSinkRef?: MutableRefObject<import('../pages/Chat').ChatSink | null>;
 }
+
+/** G14.2xx 类型图标(标签条/标签搜索弹窗共用;G8b-d 增类在此补图标) */
+export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
+  sidechat: MessageCircle,
+  file: FileText,
+  diff: GitCompare, // G14.180 审查(改动对比)——与欢迎页快捷卡同图标
+  directory: FolderTree,
+  tasks: ListTodo, // G14.180 待办——与欢迎页快捷卡同图标
+  agents: Bot, // G8d 子代理活动聚合卡
+  agent: Bot, // G14.175 子代理只读转录页(机器人图标,用户裁决)
+  bgtasks: Hourglass, // G14.180 后台任务(等待执行)
+  memory: Brain, // G14.180 持久记忆
+  terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
+  web: Globe, // G8d 内嵌网页标签
+};
 
 export interface TabTypeEntry {
   readonly id: import('./tab-state').TabTypeId;
@@ -103,7 +121,12 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         initialPath={p.params.path}
         root={p.root}
         onOpenFile={(path) => p.openTab('file', { path })}
-        onOpenDirectory={(rel) => p.openTab('directory', { path: rel })}
+        onOpenDirectory={(rel) => {
+          // 目录不作标签(用户裁定):移交 directory 页签(单例聚焦+树内逐层定位展开)后关掉
+          // 承接点击的 file 页签——否则中间页签残留
+          p.openTab('directory', { path: rel });
+          p.closeTab(p.uid);
+        }}
         onSideAsk={(text: string) => p.startSideChat?.(text)}
       />
     ),

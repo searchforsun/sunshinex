@@ -328,6 +328,14 @@ const h = vi.hoisted(() => {
       this.putSettingsRawCalls.push([scope, root ?? '', file, content]);
       return Promise.resolve();
     }
+    guiState(_id: string): Promise<{ state: unknown }> {
+      return Promise.resolve({ state: null }); // G14.2xx 面私有态:测试缺省无盘档
+    }
+    async saveGuiState(_id: string, _state: object): Promise<void> {}
+    appGuiState(): Promise<{ state: unknown }> {
+      return Promise.resolve({ state: null }); // 应用级指针档:测试缺省无现场
+    }
+    async saveAppGuiState(_state: object): Promise<void> {}
     close(): void {
       this.closed = true;
     }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   emptyTabSession, ensureSession, openTab, closeTab, cycleTab,
-  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, type SingletonProbe,
+  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, disambiguateTabTitles, reopenClosed, type SingletonProbe,
 } from './tab-state';
 
 /** 判重/单例探针(T3 registry 提供真实现;此处 stub 同口径:file 按 path,tasks 单例) */
@@ -84,5 +84,53 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     expect(e.activeUid).toBeNull();
     expect(e.collapsed).toBe(true); // G14.38:零标签新会话缺省折叠(右栏不自动打开)
     expect(e.width).toBe(DEFAULT_TAB_WIDTH);
+  });
+
+  it('disambiguateTabTitles:同名 file 标签显最小区分相对路径,无撞名保原题,非 file 不入表', () => {
+    // 用户回归锚:两个 util.ts → a/util.ts、b/util.ts(chrome 同位逐级上溯)
+    const s1 = openTab(openTab(ensureSession({}, 's1', probe), 's1', 'file', { path: 'src/a/util.ts' }, probe), 's1', 'file', { path: 'src/b/util.ts' }, probe);
+    expect(disambiguateTabTitles(s1.s1.tabs).get(s1.s1.tabs[0]!.uid)).toBe('a/util.ts');
+    expect(disambiguateTabTitles(s1.s1.tabs).get(s1.s1.tabs[1]!.uid)).toBe('b/util.ts');
+    // 中间层也撞名:再上溯一层才区分(p/g.ts 撞 → x/p/g.ts、y/p/g.ts;q/g.ts 第二层即唯一)
+    const paths = ['x/p/g.ts', 'y/p/g.ts', 'x/q/g.ts'];
+    let s2 = ensureSession({}, 's2', probe);
+    for (const p of paths) s2 = openTab(s2, 's2', 'file', { path: p }, probe);
+    const labels = disambiguateTabTitles(s2.s2.tabs);
+    expect(labels.get(s2.s2.tabs[0]!.uid)).toBe('x/p/g.ts');
+    expect(labels.get(s2.s2.tabs[1]!.uid)).toBe('y/p/g.ts');
+    expect(labels.get(s2.s2.tabs[2]!.uid)).toBe('q/g.ts');
+    // 无撞名保原题;非 file 标签(tasks 单例)不进表
+    let s3 = ensureSession({}, 's3', probe);
+    s3 = openTab(openTab(s3, 's3', 'file', { path: 'README.md' }, probe), 's3', 'tasks', {}, probe);
+    const labels3 = disambiguateTabTitles(s3.s3.tabs);
+    expect(labels3.get(s3.s3.tabs[0]!.uid)).toBe('README.md');
+    expect(labels3.has(s3.s3.tabs[1]!.uid)).toBe(false);
+  });
+
+  it('G14.2xx 标签搜索数据面:openTab 落 createdAt;closeTab 压 recentClosed 头部(cap 10);reopenClosed 按索引重开随弹随消', () => {
+    let s = ensureSession({}, 's1', probe);
+    s = openTab(s, 's1', 'file', { path: 'a.ts' }, probe);
+    expect(typeof s.s1.tabs[0]!.createdAt).toBe('number'); // 弹窗相对时间面
+    s = openTab(s, 's1', 'file', { path: 'b.ts' }, probe);
+    const uidB = s.s1.tabs[1]!.uid;
+    s = closeTab(s, 's1', uidB);
+    expect(s.s1.tabs).toHaveLength(1);
+    expect(s.s1.recentClosed).toHaveLength(1); // 关闭即入历史(新者在前)
+    expect(s.s1.recentClosed[0]!.params.path).toBe('b.ts');
+    expect(typeof s.s1.recentClosed[0]!.closedAt).toBe('number');
+    // 重开同文件 = 判重聚焦既有 a.ts?否——path 不同新开;记录随弹随消
+    s = reopenClosed(s, 's1', 0, probe);
+    expect(s.s1.recentClosed).toHaveLength(0);
+    expect(s.s1.tabs.map((t) => t.params.path)).toContain('b.ts');
+    // 索引越界 → 原引用返回
+    expect(reopenClosed(s, 's1', 5, probe)).toBe(s);
+    // cap 10:关 12 个只留最近 10 条
+    let c = ensureSession({}, 'c', probe);
+    for (let i = 0; i < 12; i += 1) {
+      c = openTab(c, 'c', 'file', { path: `f${i}.ts` }, probe);
+      c = closeTab(c, 'c', c.c.tabs[c.c.tabs.length - 1]!.uid);
+    }
+    expect(c.c.recentClosed).toHaveLength(10);
+    expect(c.c.recentClosed[0]!.params.path).toBe('f11.ts'); // 新者在前
   });
 });
