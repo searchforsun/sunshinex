@@ -1250,6 +1250,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   margin: 4px 0 2px; padding: 8px 12px;
   background: var(--surface-code); border-radius: var(--radius-md);
   font-size: 12px; line-height: 1.65;
+  max-height: 280px; overflow-y: auto; /* G14.2xx 定高内滚:技能正文长则面板内滚动,不无限撑高流区 */
 }.tool-md p { margin: 0 0 6px; }.tool-md > :last-child { margin-bottom: 0; }.tool-md pre { margin: 4px 0; padding: 6px 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); font: 11px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }.tool-md code { font-family: var(--font-mono); }
 /* G14.5 Monaco diff(VSCode 原生 DiffEditor):圆角井容器+右上角标钮(diff 标签入口) */.diff-panel {
   position: relative;

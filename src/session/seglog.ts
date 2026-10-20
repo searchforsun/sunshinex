@@ -121,11 +121,14 @@ function runMetaOf(row: SegRowLike, prev: RunMeta | undefined): RunMeta {
   };
 }
 
-/** 结果回填面净化(result 载荷不予信任:text 字符串/ok 布尔缺省回落) */
-function resultOf(raw: unknown): { text: string; ok: boolean } | undefined {
+/** 结果回填面净化(result 载荷不予信任:text 字符串/ok 布尔/full 全文可选,缺省回落)。
+ *  G14.2xx 修复:full(完整 observation)必须保留——text 恒 200 字符截断回执,丢了 full 回放后
+ *  工具展开体只剩一两行回执(skill 正文/write diff 等全量消费面全残) */
+function resultOf(raw: unknown): { text: string; ok: boolean; full?: string } | undefined {
   if (raw === undefined || raw === null || typeof raw !== 'object') return undefined;
-  const o = raw as { text?: unknown; ok?: unknown };
-  return { text: typeof o.text === 'string' ? o.text : '', ok: o.ok !== false };
+  const o = raw as { text?: unknown; ok?: unknown; full?: unknown };
+  const full = typeof o.full === 'string' && o.full !== '' ? o.full : undefined;
+  return { text: typeof o.text === 'string' ? o.text : '', ok: o.ok !== false, ...(full !== undefined ? { full } : {}) };
 }
 
 /** 行列 → 转录条目(未知行型忽略;坏行字段缺省回落——行级容错与 parseJournalFile 截断互补) */

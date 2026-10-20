@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronRight, CodeXml, Copy, Eye } from 'lucide-react';
+import { ChevronRight, CodeXml, Copy, Eye, WrapText } from 'lucide-react';
 import type { Connection } from '../connection';
 import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
@@ -92,6 +92,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   /** G14.121 md 格式化预览态（换路径/换文件即回源码） */
   const [preview, setPreview] = useState(false);
   const [copied, setCopied] = useState(false);
+  /** G14.2xx 自动换行(正文代码块同款交互):源码视图默认横向滚动,开启后 wordWrap 纵向排布(无横向滚动条) */
+  const [wrap, setWrap] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (copiedTimer.current !== null) clearTimeout(copiedTimer.current); }, []);
 
@@ -235,6 +237,18 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                   {preview ? <CodeXml size={13} strokeWidth={1.75} /> : <Eye size={13} strokeWidth={1.75} />}
                 </button>
               )}
+              {!isMd && (
+                /* G14.2xx 自动换行钮(正文代码块同款):仅源码视图在场——md 预览本就纵向排布 */
+                <button
+                  type="button"
+                  className="files-act"
+                  aria-label={wrap ? 'overflow scroll' : 'toggle word wrap'}
+                  data-tip={wrap ? t('Overflow scroll', '横向滚动') : t('Wrap long lines', '自动换行')}
+                  onClick={() => setWrap((v) => !v)}
+                >
+                  <WrapText size={13} strokeWidth={1.75} className={wrap ? 'code-wrap-on' : undefined} />
+                </button>
+              )}
               <button
                 type="button"
                 className="files-act"
@@ -327,6 +341,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     lineNumbersMinChars: 3,
                     fontSize: 12,
                     lineHeight: 19,
+                    wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
                     fontFamily: 'ui-monospace, SFMono-Regular, consolas, monospace',
                     automaticLayout: true,
                     renderLineHighlight: 'none',

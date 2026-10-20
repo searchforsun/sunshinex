@@ -90,6 +90,18 @@ test('v3 重放:seg 顺序零变换直映 + tool 行按 seg-update 字段回填(
   assert.equal(tool.name, 'read');
 });
 
+test('v3 重放:seg-update result.full 全文保留(G14.2xx——text 恒 200 截断回执,丢 full 则回放后工具展开体只剩回执行)', () => {
+  const full = `[Skill] demo (id=demo v=0.1.0)\nDirectory: C:/sk/demo\n\n# Demo\n${'正文行\n'.repeat(50)}`;
+  const entries = reduceSegRows([
+    { t: 'seg', kind: 'tool', md: '', ts: 100, seq: 1, callId: 'c1', name: 'skill', input: { id: 'demo' } },
+    { t: 'seg-update', seq: 1, ts: 200, result: { text: full.slice(0, 200), ok: true, full } },
+  ]);
+  const tool = entries[0]!;
+  assert.equal(tool.result?.full, full, 'full 全文原样回放');
+  assert.equal(tool.result?.text, full.slice(0, 200));
+  assert.equal(tool.result?.ok, true);
+});
+
 test('v3 重放:乱序(result 行先行)→ seg-update 带 name 字段回填;thinking 行 seconds 随档', () => {
   const entries = reduceSegRows([
     { t: 'seg', kind: 'tool', md: '', ts: 100, seq: 1, callId: 'x' },
