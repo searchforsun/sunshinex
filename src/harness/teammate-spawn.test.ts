@@ -1,4 +1,4 @@
-/** T3(spawn 双通道 + teammate 工具面):mode:'team' / frontmatter executor:internal-team → TeamRegistry
+/** T3(create_teammate + teammate 工具面):独立动词建长驻执行体 → TeamRegistry
  *  长驻 teammate(非 fork);teammate 派生面 get_board/get_task 只读注入、主链面零污染;task_stop 可停。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,9 +10,9 @@ import { CodedToolError } from './tools';
 import { ScriptedAdapter } from '../model/adapter';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
 
-const TEAM_ENVELOPE = JSON.stringify({ tool: 'spawn', input: { prompt: 'review stuff', label: 'w1', mode: 'team' } });
+const TEAM_ENVELOPE = JSON.stringify({ tool: 'create_teammate', input: { name: 'w1', prompt: 'review stuff' } });
 
-test('spawn mode:team:teammate 建成(aliveNames 含 w1),回执 teammate w1 started,主链面零污染、teammate 面含 get_board/get_task,task_stop 可停', async () => {
+test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 started,主链面零污染、teammate 面含 get_board/get_task,task_stop 按名可停', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-1-'));
   let h: Harness | undefined;
   try {
@@ -66,7 +66,7 @@ test('spawn mode:team:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
   }
 });
 
-test('frontmatter executor:internal-team:spawn 无 mode 也建 teammate(name=agent_id)', async () => {
+test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队友框定(name=agent_id)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-2-'));
   let h: Harness | undefined;
   try {
@@ -77,14 +77,14 @@ test('frontmatter executor:internal-team:spawn 无 mode 也建 teammate(name=age
       'utf8',
     );
     const model = new ScriptedAdapter([
-      JSON.stringify({ tool: 'spawn', input: { agent_id: 'ee', prompt: 'go' } }),
+      JSON.stringify({ tool: 'create_teammate', input: { name: 'ee', agent_id: 'ee' } }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
     h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true);
     const obs = r.steps.map((s) => s.observation).join('\n');
-    assert.ok(obs.includes('teammate ee started'), `frontmatter 通道应建 teammate ee,实际:${obs}`);
+    assert.ok(obs.includes('teammate ee started'), `create_teammate 应建 teammate ee,实际:${obs}`);
     assert.ok(h.team.aliveNames().includes('ee'));
   } finally {
     h?.team.stopAll();

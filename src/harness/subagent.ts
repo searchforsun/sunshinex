@@ -202,7 +202,6 @@ export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInp
     label: input.label !== undefined && lit(input.label) ? undefined : input.label,
     tools: Array.isArray(input.tools) ? input.tools.filter((t) => !lit(t)) : input.tools,
     isolation: input.isolation !== undefined && lit(input.isolation) ? undefined : input.isolation,
-    mode: input.mode !== undefined && lit(input.mode) ? undefined : input.mode,
   };
 }
 
@@ -593,6 +592,8 @@ export class SubagentRunner {
 
 /** teammate 创建接缝（P2 spec §5，裁定：回调形态避免本文件反向值 import Teammate——taskboard 侧类型环）：
  *  spawn 分流命中时经此建长驻 teammate；回执 name 供观察行组装 */
+/** teammate 创建接缝(create_teammate 工具消费):长驻执行体的登记动作——与 spawn 分立的两个动词,
+ *  各自一份契约(2026-10-20 定位定版:重量级通道不再作为 spawn 的隐藏参数) */
 export interface TeamSpawnSeam {
   spawn(input: SubagentSpawnInput): Result<{ name: string }>;
 }
@@ -600,40 +601,32 @@ export interface TeamSpawnSeam {
 /** spawn 工具工厂：同步阻塞形态，子代理最终报告作为该轮工具观察回传；
  * 同轮 tools 数组批量并行由 reactor 并行闸门放行（subagent 类非 bash）；本身无直接 IO 副作用
  * （guard manual 分支免审批），子代理内部每个工具调用独立过安全链。
- * team 接缝在场时双通道分流（P2）：mode:'team' 或 agent_id 角色声明 executor:'internal-team' →
- * 建 TeamRegistry 长驻 teammate（不 fork、无并发位、claim 未指派任务、task_stop 可停）；
- * 内联 prompt（agent_id 缺席）只有 mode 通道——不解析角色 */
-export function makeSpawnTool(runner: SubagentRunner, team?: TeamSpawnSeam): RegisteredTool {
+ * 单一职责(2026-10-20 定位定版):spawn 只产一次性 fork 子代理——长驻 teammate 经独立的
+ * create_teammate 动词创建(两个动词两份契约,防重量级通道被顺手误选) */
+export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
   return {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation', 'mode'],
+      required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation'],
       properties: {
         prompt: { type: ['string', 'null'], description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent cannot see this conversation)' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null spawns an inline subagent' },
         label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
         tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
-        background: { type: ['boolean', 'null'], description: 'true = two-phase spawn: returns a task id immediately, the subagent runs in the background and its conclusion lands in the task log; block on it with the task_wait tool (or inspect via read)' },
+        background: { type: ['boolean', 'null'], description: 'true = two-phase spawn: returns a task id immediately, the subagent runs in the background and its conclusion lands in the task log; block on it with the task_wait tool (or inspect via read). Parallel dispatch of N independent one-shot tasks = N background spawns in one round + task_wait' },
         isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
-        mode: { type: ['string', 'null'], enum: ['team', null], description: 'Execution channel; null (default) = ordinary one-shot subagent — use for independent one-shot tasks and parallel dispatch of them (several spawns in one round, wait with task_wait). "team" = long-lived teammate for complex multi-role work where tasks depend on and affect each other (dependency ordering, approval gates, per-role assignment on the shared board); runs until task_stop' },
       },
     },
     name: SPAWN_TOOL_NAME,
     description:
-      `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. Positioning: a one-shot fork executes one self-contained task and finishes — the default for ordinary subtasks. N independent one-shot tasks (including read-only analysis) = N background fork spawns issued in one round, collected with task_wait. mode "team" is for COMPLEX multi-task work where multiple roles interact and depend on each other — dependency-ordered tasks, approval gates, per-role assignment on the shared board — run by persistent teammates (long-lived child sessions, alive until task_stop) that claim their board tasks created with create_task; a teammate without board tasks stays idle.`,
+      `Spawn one or more subagents — prefer one round with several spawn calls over several rounds with one each whenever subtasks are independent and do not need this conversation; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}, background=true removes the cap via two-phase spawn). Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. Positioning: a one-shot fork executes one self-contained task and finishes — the default for ordinary subtasks. N independent one-shot tasks (including read-only analysis) = N background fork spawns issued in one round, collected with task_wait.`,
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
       const spec = normalizeSpawnInput(input as SubagentSpawnInput);
       runner.validateSpawnInput(spec);
-      // P2 teammate 通道：mode 显式声明或角色 frontmatter executor:internal-team → 长驻 teammate;
-      // 失败与 fork 路径同口径(exitCode 1 + 错误行),不炸父任务
-      if (team !== undefined && (spec.mode === 'team' || runner.agentExecutor(spec.agent_id) === 'internal-team')) {
-        const r = team.spawn(spec);
-        if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
-        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks (give it work with create_task; task_wait waits on board tasks, not on teammates); stop via task_stop`, stderr: '', timedOut: false };
-      }
+      // 长驻 teammate 不在本工具面:create_teammate 动词独立承载(两动词两契约,见工厂注释)
       if (spec.background === true) {
         const started = runner.spawnBackground(spec);
         return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})`, stderr: '', timedOut: false };

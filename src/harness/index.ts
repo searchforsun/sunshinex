@@ -1,7 +1,7 @@
 import type { AskUserSeam, OutputStyle, SubagentSpawnInput, TodoItem } from '../types';
 import * as path from 'path';
 import { PerceptionEngine } from './perception';
-import { ToolRegistry } from './tools';
+import { CodedToolError, ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { makeWriteSnapshotSink } from './tools/write-snapshot';
 import { createToolOutputArchive } from './tools/output-archive';
@@ -293,7 +293,7 @@ export class Harness {
     // spawn 注册附带呈现元数据（D26/J1）：调用行动词迁自 tui/tool-verbs 旧 VERBS 表；display 为纯
     // 呈现数据（模型面 schema 只取 name/description/parameters，零影响）。工厂文件（subagent.ts 等）
     // 不在 J1 改动清单，故在注册点附加
-    this.tools.register({ ...makeSpawnTool(this.runner, teamAdapter), display: { verb: 'SPAWN' } });
+    this.tools.register({ ...makeSpawnTool(this.runner), display: { verb: 'SPAWN' } });
     // task_stop：后台任务停止工具（规格 D8），账本在场恒装配；呈现动词同上注册点附加
     this.tools.register({ ...makeTaskStopTool(this.tasks, this.team), display: { verb: 'TASK_STOP' } });
     // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
@@ -318,6 +318,37 @@ export class Harness {
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配;
     // 板引用后置注册(2026-10-19 未派发板任务可等——板态轮询,注册须在 taskboard 装配之后)
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard), display: { verb: 'TASK_WAIT' } });
+    // create_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
+    // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
+    this.tools.register({
+      name: 'create_teammate',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name'],
+        properties: {
+          name: { type: 'string', description: 'Teammate name (unique among live teammates; stop via task_stop <name>)' },
+          prompt: { type: ['string', 'null'], description: 'Role framing for the teammate (its standing duties); null requires agent_id' },
+          agent_id: { type: ['string', 'null'], description: 'Registered agent id — its frontmatter role becomes the framing; null uses prompt' },
+        },
+      },
+      description:
+        'Register a long-lived teammate on the shared task board — the heavyweight form for complex multi-role work where tasks depend on and affect each other (dependency ordering, approval gates, per-role assignment; create its work with create_task). A teammate is a persistent child session that stays alive until task_stop and continuously claims its board tasks; a teammate without board tasks stays idle. For ordinary or one-shot subtasks, use spawn instead.',
+      category: 'subagent',
+      fullObservation: true,
+      executor: async (input) => {
+        const raw = input as { name?: unknown; prompt?: unknown; agent_id?: unknown };
+        const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+        const prompt = typeof raw.prompt === 'string' ? raw.prompt : undefined;
+        const agentId = typeof raw.agent_id === 'string' ? raw.agent_id : undefined;
+        if (name === '') throw new CodedToolError('INVALID_ARG', 'name is required');
+        if (!prompt && !agentId) throw new CodedToolError('INVALID_ARG', 'prompt or agent_id is required (the teammate needs a role framing)');
+        const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name });
+        if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks (give it work with create_task; task_wait waits on board tasks, not on teammates); stop via task_stop ${name}`, stderr: '', timedOut: false };
+      },
+      display: { verb: 'TEAM' },
+    });
     for (const t of makeTaskBoardTools(this.taskboard)) this.tools.register(t);
     // send_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
     // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
