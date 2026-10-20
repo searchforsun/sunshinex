@@ -29,9 +29,13 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     // 不进任务账本(账本只承载有生命周期的工作单元);停止=task_stop 按名寻址
     assert.ok(h.team.aliveNames().includes('w1'), 'w1 应为活 teammate');
     assert.ok(!h.tasks.list().some((t) => t.label === 'w1'), 'teammate 不进任务账本(无生命周期不入工作单元账)');
-    const stopOut = (await h.tools.execute('task_stop', { taskId: 'w1' }, h.safety)) as { ok: boolean; value?: { stdout: string } };
-    assert.ok(stopOut.ok, `task_stop 按名停 teammate 应成功`);
-    assert.equal(h.team.get('w1')!.stopped, true, 'task_stop 按名停 teammate');
+    // task_stop 按名=打断当前任务,成员存活(上下文承载体无停止概念;任务才有生命周期)
+    const stopOut = (await h.tools.execute('task_stop', { taskId: 'w1' }, h.safety)) as
+      | { ok: true; value: { stdout: string } }
+      | { ok: false; error: { message: string } };
+    assert.ok(stopOut.ok, `task_stop 按名打断应成功`);
+    if (stopOut.ok) assert.match(stopOut.value.stdout, /idle|interrupted/, '回执按在跑与否分流');
+    assert.equal(h.team.get('w1')!.stopped, false, '成员存活(不消亡)');
     // 面隔离:主链面无 get_board/get_task;teammate 派生面有,且剔除 spawn/taskboard 五件套
     assert.equal(h.tools.get('get_board'), undefined, '主链面不得有 get_board');
     assert.equal(h.tools.get('get_task'), undefined, '主链面不得有 get_task');

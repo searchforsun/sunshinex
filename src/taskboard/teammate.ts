@@ -186,12 +186,23 @@ export class Teammate {
     return injected;
   }
 
-  /** 停(AbortController.abort + 置 stopped):busy 任务跑完(在途步边界即刻中止)回写收口后不续取;
-   *  幂等——重复 abort 无副作用,kick/worker 对 stopped 短路;队列余项放弃(pending 留板,恢复回池兜底) */
+  /** 进程收口(仅退出链/资源释放使用,非用户面操作):stoppedFlag 短路 claim/worker + 在跑任务随停;
+   *  用户面的「打断当前任务」走 interruptCurrent(成员存活)——成员本身无停止概念(上下文承载体) */
   stop(): void {
     this.stoppedFlag = true;
     this.abort.abort();
     this.currentTaskAbort?.abort(); // 在跑任务随停(否则 task_stop teammate 后 Reactor 还要跑到回合尾)
+  }
+
+  /** 打断当前在跑任务(2026-10-20 定位定版:成员=上下文承载体无生命周期,任务才有生命周期)——
+   *  仅 abort 在跑任务(回写 failed + 台账收口),成员存活继续 claim 后续任务;与 stop(进程收口,
+   *  仅退出链使用)分立。无在跑任务返回 false */
+  interruptCurrent(): boolean {
+    const abort = this.currentTaskAbort;
+    if (abort === undefined) return false;
+    abort.abort();
+    this.currentTaskAbort = undefined;
+    return true;
   }
 
   /** board 指派路径入口(executeOne 派发路由经 void 调用,不 await 整批):入指派队列 + 踢点——

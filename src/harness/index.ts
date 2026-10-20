@@ -333,7 +333,7 @@ export class Harness {
         },
       },
       description:
-        'Register a long-lived teammate on the shared task board (创建智能体团队成员,组成智能体团队) — the heavyweight form for complex multi-role work where tasks depend on and affect each other (dependency ordering, approval gates, per-role assignment; create its work with create_task). A teammate is a persistent child session that stays alive until task_stop and continuously claims its board tasks; a teammate without board tasks stays idle. For ordinary or one-shot subtasks, use spawn instead.',
+        'Register a long-lived teammate on the shared task board (创建智能体团队成员,组成智能体团队) — the heavyweight form for complex multi-role work where tasks depend on and affect each other (dependency ordering, approval gates, per-role assignment; create its work with create_task). A teammate is a persistent context carrier — its own child session with accumulated conversation memory; it claims and executes board tasks, and tasks (not the teammate) carry the lifecycle: idle when no tasks match, interruptible per task via task_stop. For ordinary or one-shot subtasks, use spawn instead.',
       category: 'subagent',
       fullObservation: true,
       executor: async (input) => {
@@ -345,7 +345,7 @@ export class Harness {
         if (!prompt && !agentId) throw new CodedToolError('INVALID_ARG', 'prompt or agent_id is required (the teammate needs a role framing)');
         const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name });
         if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
-        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks (give it work with create_task; task_wait waits on board tasks, not on teammates); stop via task_stop ${name}`, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks (give it work with create_task); tasks carry the lifecycle: interrupt one via task_stop <board task id>`, stderr: '', timedOut: false };
       },
       display: { verb: 'TEAM' },
     });

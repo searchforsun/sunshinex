@@ -24,17 +24,25 @@ export function makeTaskStopTool(tasks: TaskRegistry, team?: TeamRegistry): Regi
       if (taskId === '') throw new CodedToolError('INVALID_ARG', 'taskId is required');
       const task = tasks.get(taskId);
       if (task === undefined) {
-        // 控制面(与等待面分立):teammate 长驻执行体按名寻址停止(它们不是任务,但可停)
+        // 控制面(与等待面分立):teammate 按名打断其当前任务——成员=上下文承载体(无生命周期,不消亡),
+        // 任务才有生命周期;打断后成员存活继续 claim 后续板任务
         const tm = team?.get(taskId);
         if (tm !== undefined) {
-          tm.stop();
-          return { exitCode: 0, stdout: `teammate ${taskId} stopped`, stderr: '', timedOut: false };
+          const interrupted = tm.interruptCurrent();
+          return {
+            exitCode: 0,
+            stdout: interrupted
+              ? `teammate ${taskId} current task interrupted (teammate persists and keeps claiming board tasks)`
+              : `teammate ${taskId} is idle — no running task to interrupt`,
+            stderr: '',
+            timedOut: false,
+          };
         }
         const ledger = tasks
           .list()
           .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`)
           .join('; ');
-        const mates = team?.aliveNames().map((n) => `${n} (teammate)`) ?? [];
+        const mates = team?.aliveNames().map((n) => `${n} (teammate, interrupt by name)`) ?? [];
         const surface = [...mates, ledger].filter((x) => x !== '').join('; ');
         throw new CodedToolError('INVALID_ARG', `Unknown task id: ${taskId}. Stoppable now: ${surface === '' ? '(none)' : surface}`);
       }
