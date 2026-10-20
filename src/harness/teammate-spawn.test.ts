@@ -36,8 +36,9 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     assert.ok(stopOut.ok, `task_stop 按名打断应成功`);
     if (stopOut.ok) assert.match(stopOut.value.stdout, /idle|interrupted/, '回执按在跑与否分流');
     assert.equal(h.team.get('w1')!.stopped, false, '成员存活(不消亡)');
-    // 面隔离:主链面无 get_board/get_task;teammate 派生面有,且剔除 spawn/taskboard 五件套
-    assert.equal(h.tools.get('get_board'), undefined, '主链面不得有 get_board');
+    // 面隔离(2026-10-20 收束后):get_board 读权收编进主链面;teammate 派生面剔除写板四件套、
+    // 注入只读对(get_board/get_task)
+    assert.ok(h.tools.get('get_board') !== undefined, '主链面含 get_board(板读取权在 lead)');
     assert.equal(h.tools.get('get_task'), undefined, '主链面不得有 get_task');
     const face = deriveTeammateRegistry(h.tools, h.taskboard);
     assert.ok(face.get('get_board') !== undefined, 'teammate 面应含 get_board');

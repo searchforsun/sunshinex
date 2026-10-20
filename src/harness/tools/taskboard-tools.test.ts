@@ -26,7 +26,7 @@ function createdId(stdout: string): string {
   return m![1]!;
 }
 
-test('六件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;cancel_task 工具面', async () => {
+test('四件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;update_task cancel 动作', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools-'));
   try {
     const board = makeBoard(tmp);
@@ -40,30 +40,30 @@ test('六件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation
     assert.match(idA, /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/, `新方言形态:${idA}`);
     assert.ok(r.stdout.includes(idA), 'observation 含新任务 id');
     await drain();
-    // cancel_task(终审 Item 2):gated 建即 pending——经工具面取消 → cancelled + 板摘要透出
+    // update_task cancel 动作(旧 cancel_task 薄工具收束):gated 建即 pending——取消 → cancelled + 板摘要透出
     const rx = await create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, gated: true });
     assert.equal(rx.exitCode, 0);
     const idX = createdId(rx.stdout);
     assert.equal(board.snapshot().tasks[idX]!.status, 'pending', 'gated 停 pending(可取消面)');
-    const cancel = tools.find((t) => t.name === 'cancel_task')!;
-    const c = await cancel.executor({ taskId: idX });
+    const update = tools.find((t) => t.name === 'update_task')!;
+    const c = await update.executor({ taskId: idX, action: 'cancel' });
     assert.equal(c.exitCode, 0);
     assert.match(c.stdout, /cancelled/, 'observation 确认取消');
     assert.match(c.stdout, new RegExp(`${idX} \\[cancelled\\]`), '板摘要含 cancelled 行(容量已回收)');
     assert.equal(board.snapshot().tasks[idX]!.status, 'cancelled');
-    await assert.rejects(() => cancel.executor({ taskId: idX }), /cancel expects a pending task/, '终态取消经工具面透出 INVALID_ARG');
+    await assert.rejects(() => update.executor({ taskId: idX, action: 'cancel' }), /cancel expects a pending task/, '终态取消经工具面透出 INVALID_ARG');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('create_task 依赖校验 + set_dependency 环拒绝经工具面透出', async () => {
+test('create_task 依赖校验 + update_task depend 环拒绝经工具面透出', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools2-'));
   try {
     const board = makeBoard(tmp);
     const tools = makeTaskBoardTools(board);
     const create = tools.find((t) => t.name === 'create_task')!;
-    const setDep = tools.find((t) => t.name === 'set_dependency')!;
+    const update = tools.find((t) => t.name === 'update_task')!;
     const ra = await create.executor({ title: 'A', spec: 'a', dependsOn: null, assignee: null });
     const idA = createdId(ra.stdout);
     const rb = await create.executor({ title: 'B', spec: 'b', dependsOn: [idA], assignee: null });
@@ -71,8 +71,27 @@ test('create_task 依赖校验 + set_dependency 环拒绝经工具面透出', as
     const idB = createdId(rb.stdout);
     await drain();
     // A←B 加边即与既有 B→A 边成环:拒绝
-    await assert.rejects(() => setDep.executor({ taskId: idA, dependsOn: idB }), /cycle/, '环拒绝透出 INVALID_ARG');
+    await assert.rejects(() => update.executor({ taskId: idA, action: 'depend', dependsOn: idB }), /cycle/, '环拒绝透出 INVALID_ARG');
     await assert.rejects(() => create.executor({ title: 'C', spec: 'c', dependsOn: ['tX'], assignee: null }), /unknown dependency/);
+    // 未知 action:INVALID_ARG(动作枚举面)
+    await assert.rejects(() => update.executor({ taskId: idA, action: 'nope' }), /unknown action/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('get_board 收编进 lead 面:摘要行+门标记+预算行(2026-10-20 缺口补齐回归)', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools3-'));
+  try {
+    const board = makeBoard(tmp);
+    const tools = makeTaskBoardTools(board);
+    const create = tools.find((t) => t.name === 'create_task')!;
+    const getBoard = tools.find((t) => t.name === 'get_board')!;
+    const r = await create.executor({ title: 'GateDemo', spec: 'g', dependsOn: null, assignee: null, gated: true });
+    const id = createdId(r.stdout);
+    const out = (await getBoard.executor({})) as { stdout: string };
+    assert.match(out.stdout, new RegExp(`${id} \\[pending\\] \\[gated\\] GateDemo`), '板摘要行含 id/状态/门标记/标题');
+    assert.ok(!out.stdout.includes('team budget'), '未设预算帽不透出预算行');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
