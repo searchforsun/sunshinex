@@ -138,7 +138,9 @@ function AppShell(): JSX.Element {
   /** G14.16 标题统一流联动:rename 落盘后 bump → ProjectMenu 重拉 recentSessions(侧栏即时同名) */
   const [recentVersion, setRecentVersion] = useState(0);
   /** G14.52 活动会话运行态(GUI 本地权威):model-start 置位,done/error 复位——侧栏运行圆点消费 */
-  const [runActive, setRunActive] = useState(false);
+  /** G14.2xx 运行态按会话记(原全局布尔 cross 会话切换/刷新恢复即卡转圈——A 起跑点亮、
+   *  切到 B 后 A 的 done 因会话不匹配被忽略,布尔永不熄):id=在跑的会话 */
+  const [runningId, setRunningId] = useState('');
   /** G8a 标签态总表:每会话独立(backHome 保留——重开同会话标签还原,spec §1)。
    *  G14.2xx 持久化:盘为真相源(<slug>/gui/sessions/<会话id>.json)——附接即拉档回填,
    *  变更防抖写透;内存仅缓存/加速(CLAUDE.md §13 持久化分层) */
@@ -217,9 +219,9 @@ function AppShell(): JSX.Element {
       baseUrl: import.meta.env.VITE_SERVE_URL ?? location.origin,
       onEvent: (sessionId, e: SessionEvent, seq: number) => {
         if (e.type === 'model-start' || e.type === 'done') setRecentVersion((v) => v + 1); // G14.52:run 起跑/收束都刷侧栏(运行圆点亮起与熄灭跟手)
-        if (sessionId === sessionRef.current && (e.type === 'model-start' || e.type === 'done' || e.type === 'error')) {
-          setRunActive(e.type === 'model-start'); // G14.52:活动会话运行态本地权威(daemon 标注有清锁竞态,收束圆点以此熄灭)
-        }
+        // G14.2xx 运行态按会话记:任一会话起跑点亮其行;收束只熄自己(跨会话切换/恢复不误熄不卡转圈)
+        if (e.type === 'model-start') setRunningId(sessionId);
+        else if (e.type === 'done' || e.type === 'error') setRunningId((cur) => (cur === sessionId ? '' : cur));
         if (sessionId !== sessionRef.current) {
           // G14.29 辅助会话帧:只投旁路聊天流(板/委派/子代理投影不涉旁路,丢弃)
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
@@ -375,7 +377,7 @@ function AppShell(): JSX.Element {
         const lastJournalId: string = o.lastJournalId;
         return connInstance
           .newSession(lastRoot)
-          .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then(() => ({ sessionId, root: lastRoot, journalId: lastJournalId })))
+          .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then((r) => ({ sessionId: r.sessionId, root: lastRoot, journalId: lastJournalId }))) // 收编以返回 id 为准
           .then(({ sessionId, root, journalId }) => openSession(sessionId, root, journalId));
       })
       .catch(() => undefined);
@@ -445,7 +447,10 @@ function AppShell(): JSX.Element {
    *  (仅 ref)保稳定:TerminalTab 装配 effect 以此为依赖,inline 箭头会令其随 App 重渲染重跑 */
   const handlePtyAllocated = useCallback((uid: string, ptyId: string): void => {
     ptyIdsRef.current.set(uid, ptyId);
-  }, []);
+    // G14.2xx ptyId 落标签参数(gui-state 落盘):刷新后凭档直连旧 pty(replay 重建屏幕),
+    // 不再换新壳丢历史
+    setTabStates((s) => patchTabMeta(s, openSessionId, uid, { ptyId }));
+  }, [openSessionId]);
 
   /** G8b pty 记账读取面(TerminalTab 重挂重连判据):命中 = 该标签 pty 存活未 kill——重挂
    *  跳过 openPty 直连同 ptyId(replay 恢复屏幕);同上 useCallback 稳定注入 */
@@ -492,6 +497,9 @@ function AppShell(): JSX.Element {
     const replay = boardPendingRef.current.filter((f) => f.seq > lastSeq);
     boardPendingRef.current = [];
     boardSeedingRef.current = false;
+    // G14.2xx 运行态对表(零额外请求,复用 reseed 快照的 status 权威):attach 收编运行中/
+    // 重启重开均归位;非运行清同会话残留(修「已完成仍在转圈」的跨会话布尔卡滞)
+    setRunningId((cur) => (snap.status === 'running' ? sessionRef.current : cur === sessionRef.current ? '' : cur));
     let nextBoard = snap.board;
     let nextDelegations = snap.delegations;
     for (const f of replay) {
@@ -690,7 +698,7 @@ function AppShell(): JSX.Element {
               activeSessionId={openSessionId}
               activeRoot={openRoot}
               recentVersion={recentVersion}
-              runActive={runActive}
+              runningId={runningId}
               onOpenSession={openSession}
               onOpenSettings={openSettings}
               onNewChat={() => {

@@ -238,6 +238,17 @@ export class GuiDaemon {
    * 续落同档,teardown seal）→ 置激活。双挂/运行中挂 INVALID_STATE（播种会击穿在飞 run 的链）。
    */
   attach(id: string, journalId: string): Result<{ sessionId: string }> {
+    // G14.2xx 运行中刷新恢复:同 journal 已在座且**运行中**(内核循环与在飞 run 都在旧对象身上)→
+    // **收编复用**并丢弃 newSession 造的空壳——空壳挂同档=会话 id 换号,直播帧按会话过滤全丢,
+    // GUI 种子态冻结成假「已停止」而侧栏仍在跑(实测病根)。idle 在座不收编:走经典重播种
+    // (确定性等价,排队经 steer 行回放;双挂 409 面由下方既有守卫承继)
+    for (const [sid, s] of this.sessions) {
+      if (s.attachedJournalId === journalId && s.status() === 'running') {
+        if (sid !== id) this.sessions.delete(id);
+        this.active = sid;
+        return ok({ sessionId: sid });
+      }
+    }
     const session = this.sessions.get(id);
     if (session === undefined) return fail('INVALID_ARG', `unknown session: ${id}`);
     if (session.attachedJournalId !== undefined) return fail('INVALID_STATE', 'session already has an attached journal');

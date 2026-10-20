@@ -24,7 +24,7 @@ export interface ProjectsSectionProps {
   readonly sessionsError: string;
   readonly activeRoot: string;
   readonly activeSessionId: string;
-  readonly runActive: boolean;
+  readonly runningId: string;
   readonly journalOfSession: ReadonlyMap<string, string>;
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly onToggleGroup: (row: WorkspaceRow) => void;
@@ -33,7 +33,7 @@ export interface ProjectsSectionProps {
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runActive, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, groupShowAll, onGroupShowMore } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningId, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, groupShowAll, onGroupShowMore } = props;
   return (
     <>
         <div
@@ -145,12 +145,12 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                           <li className="no-sessions">{t('No sessions', '暂无会话')}</li>
                         )}
                         {visible.map((sr) => {
-                          // G14.52:活动会话圆点以 runActive 为准;他会话看 daemon 标注
+                          // G14.2xx running 身份按会话记(runningId===本行映射会话);他会话看 daemon 标注
                           const active =
                             activeSessionId !== '' &&
                             (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
                           const running = active
-                            ? runActive
+                            ? runningId === activeSessionId
                             : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
                           const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
                           // G14.188 项目组会话行同样 hover 出会话信息(与最近会话行同款;贴主对话缘)

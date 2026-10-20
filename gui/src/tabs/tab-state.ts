@@ -36,6 +36,9 @@ export interface TabParams {
   readonly task?: string;
   /** G14.2xx web 页名回写(WebTab onLoad 取 document.title;标签条标题派生 title() 优先消费) */
   readonly pageTitle?: string;
+  /** G14.2xx 终端 pty 定址(分配即落参数,随 gui-state 落盘)——刷新后凭此直连旧 pty
+   *  (replay 环缓冲重建屏幕);pty 已死(daemon 重启/超时)由 TerminalTab 一次性回退新开 */
+  readonly ptyId?: string;
 }
 
 /** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较)。
@@ -222,13 +225,13 @@ export function patchTabMeta(
   states: TabStates,
   sessionId: string,
   uid: string,
-  patch: { url?: string; pageTitle?: string },
+  patch: { url?: string; pageTitle?: string; ptyId?: string },
 ): TabStates {
   const cur = states[sessionId];
   const target = cur?.tabs.find((t) => t.uid === uid);
   if (cur === undefined || target === undefined) return states;
   const params: TabParams = { ...target.params, ...patch };
-  if (target.params.url === params.url && target.params.pageTitle === params.pageTitle) return states;
+  if (target.params.url === params.url && target.params.pageTitle === params.pageTitle && target.params.ptyId === params.ptyId) return states;
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
 

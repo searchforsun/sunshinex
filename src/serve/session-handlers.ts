@@ -19,6 +19,7 @@ import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { projectsRoot, resolveDataDir } from '../config/data-dir';
+import { userConfigDir } from '../config/env';
 
 /** 会话控制面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：submit/interrupt/steer 族/reset/snapshot/
  *  anchors/tier/effort/model/mode/command/tasks/context/board-review/rename/title/attach——类状态
@@ -289,10 +290,12 @@ export async function handleSessionTierEffort(io: SessionHandlerIo, req: http.In
 
 
 /** GET /session/:id/model(G10-C4 模型 pill 数据源):当前选择 + 可选清单(choices 空=不可切) */
-/** G14.2xx 应用级 GUI 指针档(<projects 根>/gui/ui-state.json):lastRoot/lastJournalId——
- *  浏览器刷新后的「恢复现场」入口(指针在应用级,slug 目录内的会话/工作区细节各归其位) */
+/** G14.2xx 应用级 GUI 指针档(~/sunshinex 等价 userConfigDir()/gui/ui-state.json):
+ *  lastRoot/lastJournalId——浏览器刷新后的「恢复现场」入口。指针是**机器级**场景状态
+ *  (不属于任何 projects 根/工作区):放 userConfigDir 使 projects 根保持纯 slug 工作区位
+ *  (与面私有分层口径一致——工作区私有归 <slug>/gui|tui,应用级归 userConfigDir/gui) */
 function appGuiStateFile(): string {
-  return path.join(projectsRoot(), 'gui', 'ui-state.json');
+  return path.join(userConfigDir(), 'gui', 'ui-state.json');
 }
 
 /** 应用级指针档读:缺档/坏档回 {state:null}(首启无现场,客户端落欢迎页) */

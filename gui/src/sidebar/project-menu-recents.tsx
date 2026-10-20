@@ -17,7 +17,7 @@ export interface RecentsSectionProps {
   readonly onShowMore: () => void;
   readonly onCollapse: () => void;
   readonly activeSessionId: string;
-  readonly runActive: boolean;
+  readonly runningId: string;
   readonly journalOfSession: ReadonlyMap<string, string>;
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly busy: boolean;
@@ -25,7 +25,7 @@ export interface RecentsSectionProps {
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runActive, journalOfSession, isUnseen, busy, onAttach } = props;
+  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningId, journalOfSession, isUnseen, busy, onAttach } = props;
   return (
     <>
         {/* RECENTS 在 PROJECTS 下侧(用户裁定);空态「暂无最近会话」占位 */}
@@ -69,12 +69,12 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
         <ul className="recent-list" aria-label="recent sessions">
           {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
           {(recents ?? []).slice(0, recentLimit).map((r) => {
-            // G14.52:活动会话圆点以 runActive 为准;他会话看 daemon 标注
+            // G14.2xx running 身份按会话记(runningId===本行映射会话);他会话看 daemon 标注
             const active =
               activeSessionId !== '' &&
               (r.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === r.id);
             const running = active
-              ? runActive
+              ? runningId === activeSessionId
               : r.liveSessionId !== undefined && r.liveSessionId !== activeSessionId;
             const label = r.title ?? r.firstUser ?? t('New session', '新会话');
             const metaLine = sessionMetaLine(r);

@@ -54,7 +54,7 @@ const XTERM_THEME = {
   selectionBackground: 'rgba(34, 211, 238, 0.25)',
 } as const;
 
-export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: TerminalTabProps): JSX.Element {
+export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   /** jsdom 守卫落定面:无布局 → 降级(降级时 pty 已分配记账,关标签链照常 kill) */
   const [fallback, setFallback] = useState(false);
@@ -92,52 +92,91 @@ export function TerminalTab({ conn, sessionId, uid, ptyIdFor, onPtyAllocated }: 
     void (async (): Promise<void> => {
       try {
         // ① pty 定址:记账命中 → 重挂重连既有 pty(close≠kill 存活,replay 恢复屏幕——切标签
-        //    往返/重进会话不换壳);未命中 → 首挂分配(缺省 80×24 起步,fit 落位后即刻校正)+ 记账
-        let ptyId = ptyIdFor(uid);
-        if (ptyId === undefined) {
-          const allocated = await conn.openPty(sessionId, 80, 24);
+        //    往返/重进会话不换壳);未命中 → 盘档 params.ptyId(G14.2xx 分配即落参数,随 gui-state
+        //    持久化)——浏览器刷新后凭档直连旧 pty,replay 重建屏幕;皆无 → 首挂分配+记账。
+        //    盘档 ptyId 已死(daemon 重启/超时收尸)→ error 帧+close 且零数据帧 → 一次性回退新开
+        let ptyId = ptyIdFor(uid) ?? params.ptyId;
+        let reused = ptyId !== undefined; // 盘档/记账直连面:死档需回退
+        for (;;) {
           if (cancelled) return;
-          ptyId = allocated.ptyId;
-          onPtyAllocated(uid, ptyId);
+          if (ptyId === undefined) {
+            const allocated = await conn.openPty(sessionId, 80, 24);
+            if (cancelled) return;
+            ptyId = allocated.ptyId;
+            onPtyAllocated(uid, ptyId);
+            reused = false;
+          }
+          // ② jsdom 守卫:降级面(App.test 断言面;真浏览器 clientWidth>0 走 xterm)
+          const container = containerRef.current;
+          if (container === null || container.clientWidth === 0 || container.clientHeight === 0) {
+            setFallback(true);
+            return;
+          }
+          // ③ xterm + FitAddon + pty WS 装配
+          term = new Terminal({ theme: XTERM_THEME });
+          fit = new FitAddon();
+          term.loadAddon(fit);
+          term.open(container);
+          let sawFrame = false; // replay/data 任一到达 = pty 活着(回退判据)
+          let dead = false; // error 帧+closed = 档键已死(回退触发)
+          socket = new PtySocket({
+            url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`,
+            token: localStorage.getItem('sunshinex.token') ?? '',
+            onFrame: (f: PtyFrame): void => {
+              if (f.t === 'replay' || f.t === 'data') {
+                sawFrame = true;
+                term?.write(b64ToUtf8(f.b));
+              } else if (f.t === 'exit') {
+                sawFrame = true;
+                exited = true; // 后续 close(1000) 属退出收尾,非断连——横幅抑制
+                term?.write(`\r\n[进程已退出 code ${f.code}]`);
+                setExitCode(f.code);
+              } else if (f.t === 'error') {
+                if (reused) dead = true; // 盘档 ptyId 已死:回退信号(reused 直连面才有回退语义)
+                setSocketError(f.message);
+              }
+            },
+            // 状态面(G8e-T2 断连提示):server 侧关(error 后 close(1008)/掉线)且非卸载 dispose
+            //  致关 → term 写一行灰色提示,一次性(disconnectShown 防重复)。cancelled 兼卸载判据:
+            //  cleanup 先置位再 dispose,卸载致关的 closed 回放静默。exited:exit 后 close(1000) 属
+            //  正常退出收尾,横幅词不实(重连也必 404)——跳过。重连语义既有——切标签往返即重挂
+            //  重连(replay 恢复屏幕),提示语引导。jsdom 降级守卫互斥(xterm 路径无 jsdom 测试面),
+            //  本分支归 e2e/人审盖
+            onState: (s) => {
+              if (s !== 'closed' || cancelled || exited) {
+                if (reused && s === 'closed' && !cancelled) dead = true; // 复用面 close 即死档信号
+                return;
+              }
+              if (disconnectShown || term === null) return;
+              disconnectShown = true;
+              term.write('\r\n\x1b[90m[连接已断开——重连将恢复]\x1b[0m');
+            },
+          });
+          term.onData((d) => socket?.sendInput(d));
+          syncSize();
+          observer = new ResizeObserver(syncSize);
+          observer.observe(container);
+          if (!reused) return; // 首挂/记账重连:既有语义(断连提示一行,无回退面)
+          // G14.2xx 复用面回退等待:死档(error/close 且零数据帧)→ 弃旧换新再来一轮;
+          // 活档(replay 到达)或卸载 → 原地常驻。100ms 片轮询,卸载即出
+          await new Promise<void>((r) => {
+            const t = setInterval(() => {
+              if (cancelled || dead || sawFrame || exited) {
+                clearInterval(t);
+                r();
+              }
+            }, 100);
+          });
+          if (cancelled || !dead || sawFrame || exited) return;
+          observer?.disconnect();
+          socket?.dispose();
+          term?.dispose();
+          socket = null;
+          term = null;
+          observer = null;
+          ptyId = undefined;
+          // loop 继续:ptyId undefined → 走首挂分配(上轮) + onPtyAllocated 记账
         }
-        // ② jsdom 守卫:降级面(App.test 断言面;真浏览器 clientWidth>0 走 xterm)
-        const container = containerRef.current;
-        if (container === null || container.clientWidth === 0 || container.clientHeight === 0) {
-          setFallback(true);
-          return;
-        }
-        // ③ xterm + FitAddon + pty WS 装配
-        term = new Terminal({ theme: XTERM_THEME });
-        fit = new FitAddon();
-        term.loadAddon(fit);
-        term.open(container);
-        socket = new PtySocket({
-          url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`,
-          token: localStorage.getItem('sunshinex.token') ?? '',
-          onFrame: (f: PtyFrame): void => {
-            if (f.t === 'replay' || f.t === 'data') term?.write(b64ToUtf8(f.b));
-            else if (f.t === 'exit') {
-              term?.write(`\r\n[进程已退出 code ${f.code}]`);
-              exited = true; // 后续 close(1000) 属退出收尾,非断连——横幅抑制
-              setExitCode(f.code);
-            } else if (f.t === 'error') setSocketError(f.message);
-          },
-          // 状态面(G8e-T2 断连提示):server 侧关(error 后 close(1008)/掉线)且非卸载 dispose
-          //  致关 → term 写一行灰色提示,一次性(disconnectShown 防重复)。cancelled 兼卸载判据:
-          //  cleanup 先置位再 dispose,卸载致关的 closed 回放静默。exited:exit 后 close(1000) 属
-          //  正常退出收尾,横幅词不实(重连也必 404)——跳过。重连语义既有——切标签往返即重挂
-          //  重连(replay 恢复屏幕),提示语引导。jsdom 降级守卫互斥(xterm 路径无 jsdom 测试面),
-          //  本分支归 e2e/人审盖
-          onState: (s) => {
-            if (s !== 'closed' || cancelled || disconnectShown || term === null || exited) return;
-            disconnectShown = true;
-            term.write('\r\n\x1b[90m[连接已断开——重连将恢复]\x1b[0m');
-          },
-        });
-        term.onData((d) => socket?.sendInput(d));
-        syncSize();
-        observer = new ResizeObserver(syncSize);
-        observer.observe(container);
       } catch (err) {
         if (!cancelled) setSocketError(err instanceof Error ? err.message : String(err));
       }

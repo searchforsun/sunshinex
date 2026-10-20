@@ -36,7 +36,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
       root: body.path ?? `D:/MyWorkStation/sunshinex/${body.name ?? 'project'}`,
       slug: `p-${body.name ?? 'ext'}`,
     })),
-    attach: async () => undefined,
+    attach: async (sessionId: string) => ({ sessionId }), // 无收编形态:原样回 id(收编面在 daemon 钉测)
     locateWorkspace: async () => ({ path: null }),
   };
   return conn;

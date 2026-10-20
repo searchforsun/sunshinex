@@ -1,5 +1,5 @@
 import type { SessionEvent } from '../../src/types';
-import { applyEvent, applySeed, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
+import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
 
 /**
  * G3 chat 投影 → P4 内核视图层(session-kernel spec §6 P4):事件→转录的投影逻辑全数退役,
@@ -183,7 +183,14 @@ export function seedChatFromSnapshot(
 export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
   if (typeof e.payload?.subagent === 'string') return s; // 子代理事件另轨(Agents 标签,G8d):主流零条目零计数
   if (e.type === 'queue') return s; // P5 队列面事件(UseSessionEvents 截收 setQueued):不入转录投影(防御——default 分支会把当边界误闭合开启段)
-  const k = applyEvent(s.k, e);
+  return applySubagentChatEvent(s, e);
+}
+
+/** G14.2xx 子代理流同源归约(无 subagent 排除门/无 queue 截收):与主流 applyChatEvent 走
+ *  同一内核投影 applyEvent——子代理转录(agents 页签)由此获得与主对话逐字段同构的条目
+ *  (tool 行 name/input/result 全量),替代旧有损文本滑窗反解析(空名帧退化「…」行病根) */
+export function applySubagentChatEvent(s: ChatState, e: SessionEvent): ChatState {
+  const k = applySubagentEvent(s.k, e); // 剥 subagent 标签走同一内核归约(子代理转录与主对话同构)
   // P9 统计面:计数器唯一权威在内核 stats,此处直投影零记账;P10 status 亦读内核
   // (openRun>=0 即 running——视图层 model-start/done 推导退役)
   let next: ChatState = { ...s, k, status: k.openRun >= 0 ? 'running' : 'idle', tokens: k.stats.sessionTotalTokens, steps: k.stats.sessionSteps, cacheTokens: k.stats.sessionCacheTokens };

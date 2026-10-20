@@ -1,4 +1,5 @@
 import type { SessionEvent } from '../../../src/types';
+import { applySubagentChatEvent, initialChatState, type ChatState } from '../chat-reducer';
 
 /**
  * G8d Agents 标签聚合 reducer（纯函数，task-3）：payload.subagent 标签流 → 按 label 聚卡。
@@ -28,9 +29,13 @@ export interface AgentActivity {
   taskBand?: string;
   /**
    * 转录滑窗（G14.175 kind 扩 'thinking'：reasoning 事件流按相邻合并为一条思考行——
-   * 渲染面映射为主对话三态：thinking→思考行 / token→assistant 正文 / tool→工具行）
+   * 渲染面映射为主对话三态：thinking→思考行 / token→assistant 正文 / tool→工具行）。
+   * 卡面（Agents 页迷你转录）消费；整段转录页走 chat 全量。
    */
   lines: Array<{ kind: 'tool' | 'text' | 'token' | 'thinking'; text: string }>;
+  /** G14.2xx 全量同源转录（chat-reducer 内核投影,与主对话逐字段同构:tool 行 name/input/
+   *  result 全量)——子代理转录页直渲此流,替代旧有损文本滑窗反解析(空名帧退化「…」行病根) */
+  chat: ChatState;
 }
 
 /** 聚合态：key = payload.subagent 标签 */
@@ -91,7 +96,10 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
     if (s[lbl]!.status === status) return s;
     return { ...s, [lbl]: { ...s[lbl]!, status } };
   }
-  const card: AgentActivity = s[label] ?? { label, status: 'running', tokens: 0, lines: [] };
+  const card: AgentActivity = s[label] ?? { label, status: 'running', tokens: 0, lines: [], chat: initialChatState() };
+  // G14.2xx 同源归约:凡动卡的子代理事件都过一遍 chat-reducer 内核投影(与主对话唯一实现
+  // 同源),产全量字段条目;未动卡的事件原引用返回(投影亦幂等,省一次)
+  const withChat = (next: AgentActivity): AgentActivities => ({ ...s, [label]: { ...next, chat: applySubagentChatEvent(next.chat, e) } });
   switch (e.type) {
     case 'tool-call': {
       const tool = e.text ?? '';
@@ -101,7 +109,7 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
         ...(tool.length > 0 ? { currentTool: tool } : {}),
         lines: pushLine(card.lines, { kind: 'tool', text: clip(`${tool}${summary.length > 0 ? ` ${summary}` : ''}`, TOOL_LINE_MAX) }),
       };
-      return { ...s, [label]: next };
+      return withChat(next);
     }
     case 'tool-result': {
       const tool = typeof p?.tool === 'string' ? p.tool : '';
@@ -109,7 +117,7 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
         ...card,
         lines: pushLine(card.lines, { kind: 'tool', text: `${p?.ok === false ? '✗' : '✓'}${tool.length > 0 ? ` ${tool}` : ''}` }),
       };
-      return { ...s, [label]: next };
+      return withChat(next);
     }
     case 'reasoning': {
       // G14.175 思考流:reasoning 增量按相邻合并为一条思考行(渲染面=主对话思考行;截 2000 防单轮刷爆滑窗)
@@ -127,20 +135,20 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
       let next = bumpTokens(card, p); // 防御面：token 帧随行携带 turnTotal 则按水位累计（常态无）
       if (text.length > 0) next = { ...next, lines: pushLine(next.lines, { kind: 'token', text: clip(text, TOKEN_LINE_MAX) }) };
       if (next === card) return s; // 空文本且无 turnTotal：原引用
-      return { ...s, [label]: next };
+      return withChat(next);
     }
     case 'usage': {
       const next = bumpTokens(card, p);
       if (next === card) return s; // 无 turnTotal/不增：原引用
-      return { ...s, [label]: next };
+      return withChat(next);
     }
     case 'error': {
       if (card.status === 'error') return s; // error 幂等（粘滞）
-      return { ...s, [label]: { ...card, status: 'error' } };
+      return withChat({ ...card, status: 'error' });
     }
     case 'done': {
       if (card.status !== 'running') return s; // error 粘滞/已 done：不动
-      return { ...s, [label]: { ...card, status: 'done' } };
+      return withChat({ ...card, status: 'done' });
     }
     default: {
       // G14.175 任务带(teammate 派发的任务内容=子代理的用户输入):step.taskBand 捕获上浮

@@ -15,8 +15,8 @@ import type { ChatEntry } from '../chat-reducer';
  * thinking→ThinkingEntryView / tool→ToolEntryView（动词两字化、图标、折叠壳与主对话同一套），
  * 废弃页内自绘的 ToolRow/ReactMarkdown 直渲（此前 token/text 两路样式分裂、思考行自绘 💭）。
  * - 用户输入 = 任务内容（活动流 taskBand 优先，缺省回落开档参数 task——spawn 行带 prompt/看板行带任务标题）
- * - 滑窗行 → ChatEntry：token 连续合并为 assistant；text 行=独立 assistant 段；thinking→思考行；
- *   tool→工具行（✓/✗ 回执吸附为 ⎿ 行）
+ * - G14.2xx 转录=同源内核投影条目直渲（applySubagentChatEvent 与主对话 applyChatEvent 走同一
+ *   applyEvent 实现,tool 行 name/input/result 全量在场)——旧有损文本滑窗反解析退役
  * - G14.2xx 用户裁定四项对齐主对话：①头部=主对话同款运行态行（委派在场即示：running=「运行中」
  *   秒针 live 行/结束=「已运行 Xs」sealed 行）+ 分割线；②工具/思考段走 ToolSegBlock——同类型相邻
  *   已完成工具行聚合（「查询了 N 次文件」形，点击平级展开），与主对话同一聚合件；③流区底部加边距；
@@ -35,77 +35,23 @@ export interface AgentTranscriptTabProps {
   readonly task?: string;
 }
 
-/** 滑窗行 → 主对话 ChatEntry：token 连续合并 assistant；text=独立 assistant 段；
- *  thinking 独立行；tool 调用行 `● verb target`（name/input 字段直挂——P11 T7 渲染中立,
- *  ToolEntryView 全走 entry 字段），✓/✗ 回执吸附为 `⎿ 完成/失败` */
-function toEntries(lines: AgentActivity['lines']): ChatEntry[] {
-  const entries: ChatEntry[] = [];
-  const push = (kind: ChatEntry['kind'], md: string): void => {
-    entries.push({ key: `ag${entries.length}`, kind, md });
-  };
-  /** 动词条 → 字段化 tool 条:首词=动词,余文按动词键位入 input——折叠行 target 与主对话
-   *  toolTargetOf 同口径(read/write/glob→path,exec→command,grep/glob→pattern 兜底 path) */
-  const toolEntry = (head: string, md: string): ChatEntry => {
-    const sp = head.indexOf(' ');
-    const name = (sp > 0 ? head.slice(0, sp) : head).trim();
-    const rest = sp > 0 ? head.slice(sp + 1).trim() : '';
-    const input: Record<string, unknown> =
-      name === 'exec'
-        ? { command: rest }
-        : name === 'grep' || name === 'glob'
-          ? { pattern: rest }
-          : name === 'websearch'
-            ? { query: rest }
-            : name === 'webfetch'
-              ? { url: rest }
-              : name === 'skill'
-                ? { id: rest }
-                : { path: rest };
-    return { key: `ag${entries.length}`, kind: 'tool', md, name, input };
-  };
-  for (const l of lines) {
-    if (l.kind === 'token') {
-      const last = entries[entries.length - 1];
-      if (last !== undefined && last.kind === 'assistant') last.md += l.text;
-      else push('assistant', l.text);
-      continue;
-    }
-    if (l.kind === 'text') {
-      push('assistant', l.text);
-      continue;
-    }
-    if (l.kind === 'thinking') {
-      push('thinking', l.text);
-      continue;
-    }
-    // tool 行:✓/✗ 前缀=回执,吸附前一条未收执 tool 的 ⎿ 行;否则孤儿回执独立成条
-    if (l.text.startsWith('✓') || l.text.startsWith('✗')) {
-      const last = entries[entries.length - 1];
-      const receipt = l.text.startsWith('✓') ? '完成' : '失败';
-      if (last !== undefined && last.kind === 'tool' && !last.md.includes('\n⎿ ')) {
-        last.md += `\n⎿ ${receipt}`;
-        continue;
-      }
-      entries.push(toolEntry('…', `● …\n⎿ ${receipt}`));
-      continue;
-    }
-    entries.push(toolEntry(l.text, `● ${l.text}`));
-  }
-  return entries;
-}
+/** G14.2xx 转录=同源内核投影条目直渲（agent-activity 卡挂 chat: ChatState,applySubagentChatEvent
+ *  与主对话 applyChatEvent 走同一 applyEvent 实现）——tool 行 name/input/result 全量在场,与主对话
+ *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
 
 export function AgentTranscriptTab({ label, conn, sessionId, activities, delegations, task }: AgentTranscriptTabProps): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
   /** G14.2xx 回到底部钮:非贴底即显(同主对话 G14.74 口径;80px 阈值同贴底判定) */
   const [atBottom, setAtBottom] = useState(true);
-  const lines = activities?.lines ?? [];
-  const entries = toEntries(lines);
+  // G14.2xx 对齐主对话:直渲同源内核投影条目(chat-reducer 全量字段——tool 行 name/input/
+  // result 与主对话逐字节同构),废旧有损文本滑窗反解析(空名帧退化「…」行病根)
+  const entries = activities?.chat.entries ?? [];
   // 追行吸底:转录更新即滚到最底(只读面恒跟最新)
   useEffect(() => {
     const el = bodyRef.current;
     if (el !== null) el.scrollTop = el.scrollHeight;
-  }, [lines.length, activities?.currentTool]);
+  }, [entries.length, activities?.currentTool]);
   const onScroll = (): void => {
     const el = bodyRef.current;
     if (el !== null) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
@@ -187,7 +133,7 @@ export function AgentTranscriptTab({ label, conn, sessionId, activities, delegat
             <div className="agent-thread-sep" role="separator" />
           </>
         )}
-        {activities === undefined || lines.length === 0 ? (
+        {activities === undefined || entries.length === 0 ? (
           userText === '' ? (
             <div className="board-empty-state" role="status">
               <p className="board-empty-title">无活动记录</p>

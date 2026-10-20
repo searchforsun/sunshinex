@@ -105,7 +105,8 @@ export interface Connection {
    *  ('manual' 审批问询挂起 / 'dontAsk' 缺省)——缺省不发 body 字段(旧 daemon 兼容) */
   newSession(root: string, mode?: 'dontAsk' | 'manual'): Promise<{ sessionId: string }>;
   /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
-  attach(sessionId: string, journalId: string): Promise<void>;
+  /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId(可能异于入参) */
+  attach(sessionId: string, journalId: string): Promise<{ sessionId: string }>;
   /** POST /session/:id/submit {goal}：会话提交（202 受理；409 拒二次提交） */
   sessionSubmit(id: string, goal: string): Promise<void>;
   /** POST /session/:id/steer {text}：运行中插话（排队语义）；HTTP 失败抛错（消息含 status） */
@@ -401,8 +402,8 @@ export function createConnection(opts: ConnectionOpts): Connection {
       if (!res.ok) throw new Error(`/session/new -> ${res.status}`);
       return (await res.json()) as { sessionId: string };
     },
-    attach(sessionId: string, journalId: string): Promise<void> {
-      return post(`/session/${encodeURIComponent(sessionId)}/attach`, { journalId });
+    async attach(sessionId: string, journalId: string): Promise<{ sessionId: string }> {
+      return postJson<{ sessionId: string }>(`/session/${encodeURIComponent(sessionId)}/attach`, { journalId });
     },
     sessionSubmit(id: string, goal: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/submit`, { goal });

@@ -200,9 +200,9 @@ const h = vi.hoisted(() => {
       this.newSessionCalls.push(root);
       return Promise.resolve({ sessionId: this.nextSessionId });
     }
-    attach(sessionId: string, journalId: string): Promise<void> {
+    attach(sessionId: string, journalId: string): Promise<{ sessionId: string }> {
       this.attachCalls.push([sessionId, journalId]);
-      return Promise.resolve();
+      return Promise.resolve({ sessionId }); // 缺省无收编(收编面在 daemon 钉测)
     }
     sessionSubmit(id: string, goal: string): Promise<void> {
       if (this.submitReject !== null) return Promise.reject(this.submitReject);

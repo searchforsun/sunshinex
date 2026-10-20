@@ -190,6 +190,15 @@ export function sanitizeChanges(raw: unknown): ChangeFile[] | undefined {
  * 事件 → 转录条目纯归约(state 进出零副作用)。子代理事件(payload.subagent)另轨——主流零条目
  * (G8d 同口径);usage/step/ctx/route/model-end/approval 系/task 系/gate 系/delegation 系零条目。
  */
+/** G14.2xx 子代理转录投影入口(agents 页签对齐主对话):剥 payload.subagent 标签后走同一
+ *  内核归约——tool/token/reasoning 各事件与主对话逐字段同构(主对话排除门不受扰,两投影并存) */
+export function applySubagentEvent(state: KernelState, e: SessionEvent): KernelState {
+  if (typeof e.payload?.subagent !== 'string') return applyEvent(state, e);
+  const payload = { ...(e.payload as Record<string, unknown>) };
+  delete payload.subagent;
+  return applyEvent(state, { ...e, payload });
+}
+
 export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
   const sub = e.payload?.subagent;
   if (typeof sub === 'string' && sub.length > 0) {
