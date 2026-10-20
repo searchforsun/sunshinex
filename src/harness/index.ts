@@ -283,12 +283,9 @@ export class Harness {
         });
         const registered = this.team.register(tm);
         if (!registered.ok) return registered;
-        // kind 'teammate'(2026-10-06 契约收敛):长驻条目不随任务结束——task_wait(null) 排除本 kind,
-        // 否则 lead 建任务后等 teammate 存活条目=600s 空等(用户实机实锤);精确等待走板任务条目
-        // (台账 label=dispatchTag(板 id):新方言 task-<业务段>-<随机码>,旧恢复档 tN 补 task- 前缀)
-        const ledgerTask = this.tasks.submit({ kind: 'teammate', label: name });
-        ledgerTask.stop = () => tm.stop();
-        this.tasks.append(ledgerTask.id, `[teammate] ${name} started — claims unassigned board tasks (give it work with create_task); stop via task_stop ${ledgerTask.id}\n`);
+        // teammate 定位(2026-10-20 用户裁决):长驻执行体是「声明」不是任务——无生命周期、不进任务
+        // 账本(账本只承载有生命周期的工作单元,假 running 态即语义污染,task_wait 等待面随之纯净);
+        // 存活面=TeamRegistry(退出链 team.stopAll() 收口),停止走 task_stop 按名寻址
         tm.kick(); // 建即起 claim 循环(「claims unassigned tasks」承诺即时生效;空板自然收兵零开销)
         return ok({ name });
       },
@@ -298,7 +295,7 @@ export class Harness {
     // 不在 J1 改动清单，故在注册点附加
     this.tools.register({ ...makeSpawnTool(this.runner, teamAdapter), display: { verb: 'SPAWN' } });
     // task_stop：后台任务停止工具（规格 D8），账本在场恒装配；呈现动词同上注册点附加
-    this.tools.register({ ...makeTaskStopTool(this.tasks), display: { verb: 'TASK_STOP' } });
+    this.tools.register({ ...makeTaskStopTool(this.tasks, this.team), display: { verb: 'TASK_STOP' } });
     // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
     // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔);
     // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast;

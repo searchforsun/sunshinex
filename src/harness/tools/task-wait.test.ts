@@ -82,8 +82,6 @@ test('task_wait taskIds=null：等全部 running；无 running 立即空回执',
     assert.match(empty.value.stdout, /no background tasks running/);
     const a = tasks.submit({ kind: 'exec', label: 'a' });
     const b = tasks.submit({ kind: 'subagent', label: 'b' });
-    // 长驻 teammate 条目:taskIds=null 排除(存活即 running,等它=等到 task_stop;2026-10-06 契约收敛)
-    const tm = tasks.submit({ kind: 'teammate', label: 'w1' });
     setTimeout(() => {
       tasks.append(a.id, 'out-a\n');
       tasks.finish(a.id, 'done', { exitCode: 2 });
@@ -93,11 +91,6 @@ test('task_wait taskIds=null：等全部 running；无 running 立即空回执',
     assert.ok(r.ok);
     assert.match(r.value.stdout, new RegExp(`${a.id} \\(exec\\) done, exit 2`));
     assert.match(r.value.stdout, new RegExp(`${b.id} \\(subagent\\) stopped`));
-    assert.doesNotMatch(r.value.stdout, new RegExp(tm.id), 'teammate 条目不在 null 等待面');
-    // 显式点名 teammate 仍可等/查状态(null 排除 ≠ 不可见;kind 字面在回执头)
-    const r2 = await registry.execute('task_wait', { taskIds: [tm.id], timeoutSeconds: 0 }, stubSafety);
-    assert.ok(r2.ok);
-    assert.match(r2.value.stdout, /teammate\) running/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -244,15 +237,12 @@ test('task_wait 未派发板任务可等:板上在册即合法目标,轮询至�
       assert.match(settled.value.stdout, /all target tasks finished \(1\)/, '板任务工作完成即收口');
       assert.match(settled.value.stdout, /\(board\) in-review — GateDemo/, '回执 in-review(等复核)');
     }
-    // 真未知 id 仍 INVALID_ARG(板上无、台账无);错误清单语义:teammate 长驻条目归拢标注(非等待目标),
-    // 板 id 形态的未知附「板 id 可等(含未派发)」引导——模型不再被「等 teammates」死路诱导
-    tasks.submit({ kind: 'teammate', label: 'w1' });
+    // 真未知 id 仍 INVALID_ARG(板上无、台账无);错误清单=等待面投影(工作单元+板任务,数据自解释)
     const bad = await registry.execute('task_wait', { taskIds: ['task-not-on-board-x9z9'], timeoutSeconds: 0 }, stubSafety);
     assert.ok(!bad.ok, '板/台账皆无仍报错');
     if (!bad.ok) {
-      assert.match(bad.error.message, /long-lived teammate\(s\) \(w1\) run until task_stop and are not wait targets/, 'teammate 归拢标注(非等待目标)');
-      assert.match(bad.error.message, /Board task ids are accepted/, '板 id 可等引导');
-      assert.doesNotMatch(bad.error.message, /w1 \(teammate, running\)/, 'teammate 不再以普通任务形态混列');
+      assert.match(bad.error.message, /Waitable now — tasks:/, '错误清单=等待面投影');
+      assert.match(bad.error.message, /board: .*GateDemo/, '板任务在册即列(数据自解释,无补丁文案)');
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

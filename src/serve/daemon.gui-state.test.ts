@@ -6,6 +6,19 @@ import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
+
+/** 挂起适配器(同 daemon.workspace.test.ts 惯例):模型调用永挂直至 signal 中止——运行中刷新
+ *  场景的在飞 run 模拟 */
+class HangingAdapter implements ModelAdapter {
+  readonly provider = 'hanging';
+  async chat(req: { signal?: AbortSignal }): Promise<never> {
+    return new Promise((_, reject) => {
+      const signal = req.signal;
+      if (signal?.aborted) return reject(new Error('Task interrupted'));
+      signal?.addEventListener('abort', () => reject(new Error('Task interrupted')), { once: true });
+    });
+  }
+}
 import { listSessions } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
 import { validSessionId } from './session-handlers';
@@ -80,8 +93,54 @@ test('gui-state:档键=journalId(跨重启稳定);未附 journal 写透 no-op;�
   });
 });
 
-test('/app/gui-state:应用级指针档往返(恢复现场入口),落 <projectsRoot>/gui/ui-state.json', async () => {
-  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base }) => {
+test('attach 收编:同 journal 在座(含运行中)→ 返回原会话 id 并丢弃空壳——运行中刷新不再假「已停止」', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-gs3-'));
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+  delete process.env.SUNSHINEX_DATA_DIR;
+  try {
+    const root = path.join(tmp, 'root');
+    fs.mkdirSync(root, { recursive: true });
+    const daemon = new GuiDaemon({ model: new HangingAdapter() });
+    const handle = await daemon.start({ port: 0, token: 'test-token' });
+    const base = `http://127.0.0.1:${handle.port}`;
+    try {
+      // 会话 s1 跑挂起 run(journal 在档且 attached,运行中)
+      let resp = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root }) });
+      const { sessionId } = (await resp.json()) as { sessionId: string };
+      resp = await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: 'hang' }) });
+      assert.equal(resp.status, 202);
+      await waitFor(() => daemon.get(sessionId)!.status() === 'running', 20_000);
+      const journalId = daemon.get(sessionId)!.attachedJournalId!;
+
+      // 运行中刷新:浏览器链 newSession 造空壳 s2 → attach(s2, journal) → **收编**回 s1
+      resp = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root }) });
+      const { sessionId: shellId } = (await resp.json()) as { sessionId: string };
+      assert.notEqual(shellId, sessionId, '前置:壳是新 id');
+      resp = await fetch(`${base}/session/${shellId}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId }) });
+      assert.equal(resp.status, 200);
+      assert.equal(((await resp.json()) as { sessionId: string }).sessionId, sessionId, '返回收编后的原会话 id');
+      assert.equal(daemon.get(shellId), undefined, '空壳已丢弃');
+      assert.equal(daemon.get(sessionId)!.status(), 'running', '在飞 run 原对象未受扰');
+      assert.equal(daemon.activeId(), sessionId, '激活切回收编会话');
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+    else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/app/gui-state:应用级指针档往返(恢复现场入口),落 <userConfigDir>/gui/ui-state.json', async () => {
+  // userConfigDir 钉定(隔离):指针档落 <userConfigDir>/gui/ui-state.json——断言「首启无现场」打在
+  // 真实盘上,本机 GUI 在跑即恒有指针档,环境敏感假失败;HOME 重定向即整目录隔离
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-gs-pointer-'));
+  const prevHome = process.env.HOME;
+  process.env.HOME = tmp;
+  try {
+    await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base }) => {
     const auth = { authorization: 'Bearer test-token' };
     let resp = await fetch(`${base}/app/gui-state`, { headers: auth });
     assert.equal(resp.status, 200);
@@ -93,7 +152,12 @@ test('/app/gui-state:应用级指针档往返(恢复现场入口),落 <projectsR
     assert.deepEqual(await resp.json(), { state }, '指针档原样回读');
     resp = await fetch(`${base}/app/gui-state`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ state: 'nope' }) });
     assert.equal(resp.status, 400, '非对象 state 拒');
-  });
+    });
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('attach 回放选择面:运行中 setMode/setEffort 落 meta,新 daemon 重建会话 attach 归位', async () => {

@@ -830,6 +830,7 @@ export class SessionRuntime {
 
   /** 内脏收口单点（reset 的旧运行时换新后同序收口） */
   private async disposeRuntime(rt: KernelRuntime): Promise<void> {
+    rt.harness.team?.stopAll();
     rt.harness.tasks.stopAll();
     await rt.harness.pipeline.drain();
     await rt.harness.mcpClose();

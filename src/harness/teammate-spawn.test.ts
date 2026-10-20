@@ -25,14 +25,13 @@ test('spawn mode:team:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     assert.equal(r.done, true, '主链应正常收束');
     const obs = r.steps.map((s) => s.observation).join('\n');
     assert.ok(obs.includes('teammate w1 started'), `spawn 观察应含 teammate w1 started,实际:${obs}`);
-    // 长驻体登记:TeamRegistry 活名 + 台账 subagent 任务(task_stop 目标,stop 句柄已接)
+    // 长驻体定位(2026-10-20 用户裁决「teammate 是声明不是任务」):存活面=TeamRegistry 活名,
+    // 不进任务账本(账本只承载有生命周期的工作单元);停止=task_stop 按名寻址
     assert.ok(h.team.aliveNames().includes('w1'), 'w1 应为活 teammate');
-    const ledgerTask = h.tasks.list().find((t) => t.label === 'w1' && t.kind === 'teammate');
-    assert.ok(ledgerTask, 'teammate 应登记进任务账本(task_stop 目标)');
-    assert.equal(ledgerTask!.status, 'running');
-    assert.equal(typeof ledgerTask!.stop, 'function', 'stop 句柄应已接线');
-    ledgerTask!.stop!();
-    assert.equal(h.team.get('w1')!.stopped, true, '台账 stop 应停 teammate');
+    assert.ok(!h.tasks.list().some((t) => t.label === 'w1'), 'teammate 不进任务账本(无生命周期不入工作单元账)');
+    const stopOut = (await h.tools.execute('task_stop', { taskId: 'w1' }, h.safety)) as { ok: boolean; value?: { stdout: string } };
+    assert.ok(stopOut.ok, `task_stop 按名停 teammate 应成功`);
+    assert.equal(h.team.get('w1')!.stopped, true, 'task_stop 按名停 teammate');
     // 面隔离:主链面无 get_board/get_task;teammate 派生面有,且剔除 spawn/taskboard 五件套
     assert.equal(h.tools.get('get_board'), undefined, '主链面不得有 get_board');
     assert.equal(h.tools.get('get_task'), undefined, '主链面不得有 get_task');

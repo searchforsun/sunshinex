@@ -17,7 +17,15 @@ import type { SessionController } from './session';
 export function stopChild(ctrl: SessionController, label: string): boolean {
   const child = ctrl.state.children.find((c) => c.label === label && !c.done);
   const taskId = child?.taskId;
-  if (child === undefined || taskId === undefined) return false;
+  if (child === undefined) return false;
+  if (taskId === undefined) {
+    // teammate 子会话(长驻执行体,无账本任务):按名经 TeamRegistry 停(执行体停止,非任务终态)
+    const tm = ctrl.runtime.harness.team?.get(label);
+    if (tm === undefined) return false;
+    tm.stop();
+    markChildStopped(ctrl, label);
+    return true;
+  }
   const tasks = ctrl.runtime.harness.tasks;
   const task = tasks.get(taskId);
   if (task === undefined || task.status !== 'running') {

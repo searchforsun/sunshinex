@@ -3,8 +3,9 @@
 // id+label（照 CC TaskStop 报错形态）；命中已终态任务幂等回执当前终态、不重复触发 stop。
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { TaskRegistry } from '../tasks';
+import type { TeamRegistry } from '../../taskboard/teammate';
 
-export function makeTaskStopTool(tasks: TaskRegistry): RegisteredTool {
+export function makeTaskStopTool(tasks: TaskRegistry, team?: TeamRegistry): RegisteredTool {
   return {
     parameters: {
       type: 'object',
@@ -23,11 +24,19 @@ export function makeTaskStopTool(tasks: TaskRegistry): RegisteredTool {
       if (taskId === '') throw new CodedToolError('INVALID_ARG', 'taskId is required');
       const task = tasks.get(taskId);
       if (task === undefined) {
-        const all = tasks
+        // 控制面(与等待面分立):teammate 长驻执行体按名寻址停止(它们不是任务,但可停)
+        const tm = team?.get(taskId);
+        if (tm !== undefined) {
+          tm.stop();
+          return { exitCode: 0, stdout: `teammate ${taskId} stopped`, stderr: '', timedOut: false };
+        }
+        const ledger = tasks
           .list()
           .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`)
           .join('; ');
-        throw new CodedToolError('INVALID_ARG', `Unknown task id: ${taskId}. Current tasks: ${all === '' ? '(none)' : all}`);
+        const mates = team?.aliveNames().map((n) => `${n} (teammate)`) ?? [];
+        const surface = [...mates, ledger].filter((x) => x !== '').join('; ');
+        throw new CodedToolError('INVALID_ARG', `Unknown task id: ${taskId}. Stoppable now: ${surface === '' ? '(none)' : surface}`);
       }
       if (task.status === 'running') {
         task.stop?.();

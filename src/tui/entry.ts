@@ -100,7 +100,12 @@ export async function runTui(args: CliArgs): Promise<void> {
   // 后台任务退出收口（D24，规格 D9 任务属进程）：stopAll 全同步（stop 句柄 kill + 终态行 appendFileSync）
   // 满足 'exit' 回调同步约束（76db4c4 use-input 的 'exit' 单点同先例）；quit()/SIGINT/自然退出全路径通杀
   // ——quit() 的 process.exit 不给清理链机会，只能靠本钩子兜底；finish 幂等，与会话内 task_stop/reap 不双终态
-  process.once('exit', () => ctrl.runtime.harness.tasks.stopAll());
+  process.once('exit', () => {
+    // 退出收口:teammate 长驻执行体(团队注册表)与后台工作单元两线全停——teammate 已不进任务账本,
+    // 停止责任随定位迁移至 TeamRegistry
+    ctrl.runtime.harness.team?.stopAll();
+    ctrl.runtime.harness.tasks.stopAll();
+  });
   // 恢复携带的 UI 现场（输入历史 + 视图两态）经 initialRetain 播种 retain（一次性取走）
   const restored = ctrl.takeRestoredUi();
   // G14.2xx TUI 面私有态落盘（CLAUDE.md §13 持久化分层）：<slug>/tui/ui-state.json——

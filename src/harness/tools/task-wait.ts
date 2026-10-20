@@ -1,8 +1,9 @@
-// 后台任务线 T4：task_wait 内置工具——阻塞等待后台任务到终态并内联回执（对标 CC TaskOutput）。
-// 语义：taskIds=null 等当前全部 running 任务（调用时快照）；指定列表只等这些任务，已终态幂等即回；
-// timeoutSeconds=0 非阻塞状态快照（peek，即时回执不等待）；回执逐任务 id/kind/status/exitCode，
-// exec 附任务日志末 200 行、subagent 附 [conclusion] 结论全文；
-// 超时回执当前状态与续等指引，续等/先做别的/task_stop 由模型自判；未知 id INVALID_ARG 附现存清单（照 task_stop 形态）。
+// 后台任务线 T4：task_wait 内置工具——阻塞等待工作到终态并内联回执（对标 CC TaskOutput）。
+// 等待面语义（2026-10-20 定位定版）：等待目标=有生命周期的工作单元（exec/后台 fork/板任务），板任务
+// 是任务生命周期权威（未派发也可等，轮询板态至 in-review/done/failed）；teammate 长驻执行体是声明
+// 不是任务，不进账本、不在等待面（停止走 task_stop 按名）。taskIds=null 等当前全部 running；
+// 指定列表只等这些任务，已终态幂等即回；timeoutSeconds=0 非阻塞 peek；未知 id INVALID_ARG 附
+// 等待面投影（账本工作单元+板任务清单，数据自解释）。
 import * as fs from 'fs';
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
@@ -44,7 +45,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
           type: ['array', 'null'],
           items: { type: 'string' },
           description:
-            'Background task ids to wait for. Accepted forms: ledger ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids exactly as create_task/the board summary shows them (["task-build-parser-k3f2"]; legacy restored boards use the "t5" form — both resolve). Pre-dispatch board tasks (pending/gated/not yet claimed) are valid targets too: the call blocks until their work finishes (in-review/done/failed). null waits for all currently running tasks. Already-finished ids return an idempotent receipt immediately.',
+            'Task ids to wait for: background work ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids as create_task/the board summary shows them (["task-build-parser-k3f2"]; older journals use short "t5" ids — accepted too). Board tasks are the task lifecycle authority: pre-dispatch ones (pending/gated/not yet claimed) are valid targets — the call blocks until their work finishes (in-review/done/failed). null waits for all currently running work. Already-finished ids return an idempotent receipt immediately.',
         },
         timeoutSeconds: {
           type: ['number', 'null'],
@@ -55,7 +56,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
     },
     name: 'task_wait',
     description:
-      'Block until background tasks reach a terminal state (background exec, timed-out-to-background exec, background subagent, or board tasks — including the ones claimed by teammates) and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. taskIds accepts board ids in their native form (["task-build-parser-k3f2"], exactly as create_task/the board summary shows them) as well as ledger ids; taskIds=null waits for all currently running tasks EXCEPT long-lived teammates (they run until task_stop); on timeout the current status is returned so you can keep waiting or stop the task.',
+      'Block until work reaches a terminal state and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. Wait targets are background work (exec, subagent forks) and board tasks — board tasks are the task lifecycle authority, even before dispatch; long-lived teammates are executors, not tasks, and are never wait targets (wait their board task ids). taskIds=null waits all currently running work; on timeout the current status is returned so you can keep waiting or stop the task.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -66,7 +67,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
       if (raw.taskIds === null || raw.taskIds === undefined) {
         // 长驻 teammate 条目排除(2026-10-06 契约收敛):teammate 存活即 running,等它=等到 task_stop——
         // task_wait(null) 的语义是「等在跑的活收口」,可收口面=exec/后台 spawn/板任务(dispatchTag(板 id) 登记条目)
-        ids = tasks.list().filter((t) => t.status === 'running' && t.kind !== 'teammate').map((t) => t.id);
+        ids = tasks.list().filter((t) => t.status === 'running').map((t) => t.id);
         if (ids.length === 0) {
           return { exitCode: 0, stdout: 'no background tasks running', stderr: '', timedOut: false };
         }
@@ -100,25 +101,17 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
           unknown.push(rawId);
         }
         if (unknown.length > 0) {
-          // 错误清单语义纠偏(2026-10-20 用户裁决「有生命周期的是任务,子代理只是声明」):teammate
-          // 长驻条目归拢标注(它们永远 running,混列即诱导「等 teammates」死路),等待目标指向板任务
-          const all = tasks.list();
-          const runnable = all
-            .filter((t) => t.kind !== 'teammate')
+          // 错误清单=等待面投影(账本工作单元+板任务),数据自解释;面内不写补丁式解释文案
+          const waitable = tasks
+            .list()
             .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`)
             .join('; ');
-          const mates = all.filter((t) => t.kind === 'teammate');
-          const mateNote =
-            mates.length > 0
-              ? `; ${mates.length} long-lived teammate(s) (${mates.map((m) => m.label).join(', ')}) run until task_stop and are not wait targets — wait their board task ids instead`
-              : '';
-          const boardNote =
-            board !== undefined && boardWaitIds.length === 0 && unknown.some((u) => /^task-/.test(u))
-              ? '. Board task ids are accepted and wait on board state, including tasks not yet dispatched'
-              : '';
+          const boardList = Object.values(boardTasks)
+            .map((t) => `${t.id} (board, ${t.status}) ${t.title}`)
+            .join('; ');
           throw new CodedToolError(
             'INVALID_ARG',
-            `Unknown task id: ${unknown.join(', ')}. Current tasks: ${runnable === '' ? '(none)' : runnable}${mateNote}${boardNote}`,
+            `Unknown task id: ${unknown.join(', ')}. Waitable now — tasks: ${waitable === '' ? '(none)' : waitable}${boardList !== '' ? `; board: ${boardList}` : ''}`,
           );
         }
       }
