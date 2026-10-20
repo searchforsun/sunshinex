@@ -100,8 +100,26 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
           unknown.push(rawId);
         }
         if (unknown.length > 0) {
-          const all = tasks.list().map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`).join('; ');
-          throw new CodedToolError('INVALID_ARG', `Unknown task id: ${unknown.join(', ')}. Current tasks: ${all === '' ? '(none)' : all}`);
+          // 错误清单语义纠偏(2026-10-20 用户裁决「有生命周期的是任务,子代理只是声明」):teammate
+          // 长驻条目归拢标注(它们永远 running,混列即诱导「等 teammates」死路),等待目标指向板任务
+          const all = tasks.list();
+          const runnable = all
+            .filter((t) => t.kind !== 'teammate')
+            .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`)
+            .join('; ');
+          const mates = all.filter((t) => t.kind === 'teammate');
+          const mateNote =
+            mates.length > 0
+              ? `; ${mates.length} long-lived teammate(s) (${mates.map((m) => m.label).join(', ')}) run until task_stop and are not wait targets — wait their board task ids instead`
+              : '';
+          const boardNote =
+            board !== undefined && boardWaitIds.length === 0 && unknown.some((u) => /^task-/.test(u))
+              ? '. Board task ids are accepted and wait on board state, including tasks not yet dispatched'
+              : '';
+          throw new CodedToolError(
+            'INVALID_ARG',
+            `Unknown task id: ${unknown.join(', ')}. Current tasks: ${runnable === '' ? '(none)' : runnable}${mateNote}${boardNote}`,
+          );
         }
       }
       const timeoutSeconds = rawTimeout === null ? DEFAULT_TIMEOUT_SECONDS : rawTimeout;

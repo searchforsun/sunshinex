@@ -244,9 +244,16 @@ test('task_wait 未派发板任务可等:板上在册即合法目标,轮询至�
       assert.match(settled.value.stdout, /all target tasks finished \(1\)/, '板任务工作完成即收口');
       assert.match(settled.value.stdout, /\(board\) in-review — GateDemo/, '回执 in-review(等复核)');
     }
-    // 真未知 id 仍 INVALID_ARG(板上无、台账无)
+    // 真未知 id 仍 INVALID_ARG(板上无、台账无);错误清单语义:teammate 长驻条目归拢标注(非等待目标),
+    // 板 id 形态的未知附「板 id 可等(含未派发)」引导——模型不再被「等 teammates」死路诱导
+    tasks.submit({ kind: 'teammate', label: 'w1' });
     const bad = await registry.execute('task_wait', { taskIds: ['task-not-on-board-x9z9'], timeoutSeconds: 0 }, stubSafety);
     assert.ok(!bad.ok, '板/台账皆无仍报错');
+    if (!bad.ok) {
+      assert.match(bad.error.message, /long-lived teammate\(s\) \(w1\) run until task_stop and are not wait targets/, 'teammate 归拢标注(非等待目标)');
+      assert.match(bad.error.message, /Board task ids are accepted/, '板 id 可等引导');
+      assert.doesNotMatch(bad.error.message, /w1 \(teammate, running\)/, 'teammate 不再以普通任务形态混列');
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
