@@ -35,7 +35,7 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
     },
     name: 'create_task',
     description:
-      'Create a task on the shared task board — the coordination surface for multi-role interdependent work (dependency ordering, approval gates, per-role assignment, review closes). Unblocked tasks (no unfinished dependencies, not gated) are dispatched automatically — to a subagent fork, or claimed by a registered teammate (assigned tasks go to that teammate). Block on completion with task_wait (taskIds=null waits on dispatched board tasks). The board persists across sessions. Pass gated=true to hold the task behind an approval gate from creation (dispatch skips it until review_task approves). Pass executor ("internal" or "external-cli") as the execution routing hint. For a single independent one-shot task, a plain background spawn is lighter than a board task.',
+      'Create a task on the shared task board (任务板=智能体团队的协作面) — the coordination surface for multi-role interdependent work (dependency ordering, approval gates, per-role assignment, review closes). Unblocked tasks (no unfinished dependencies, not gated) are dispatched automatically — to a subagent fork, or claimed by a registered teammate (assigned tasks go to that teammate). Block on completion with task_wait (taskIds=null waits on dispatched board tasks). The board persists across sessions. Pass gated=true to hold the task behind an approval gate from creation (dispatch skips it until review_task approves). Pass executor ("internal" or "external-cli") as the execution routing hint. For a single independent one-shot task, a plain background spawn is lighter than a board task.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {

@@ -333,7 +333,7 @@ export class Harness {
         },
       },
       description:
-        'Register a long-lived teammate on the shared task board — the heavyweight form for complex multi-role work where tasks depend on and affect each other (dependency ordering, approval gates, per-role assignment; create its work with create_task). A teammate is a persistent child session that stays alive until task_stop and continuously claims its board tasks; a teammate without board tasks stays idle. For ordinary or one-shot subtasks, use spawn instead.',
+        'Register a long-lived teammate on the shared task board (创建智能体团队成员,组成智能体团队) — the heavyweight form for complex multi-role work where tasks depend on and affect each other (dependency ordering, approval gates, per-role assignment; create its work with create_task). A teammate is a persistent child session that stays alive until task_stop and continuously claims its board tasks; a teammate without board tasks stays idle. For ordinary or one-shot subtasks, use spawn instead.',
       category: 'subagent',
       fullObservation: true,
       executor: async (input) => {

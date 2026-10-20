@@ -305,7 +305,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
 - 预算护栏：子代理不设 token 硬顶（护栏交给步数与墙钟），需要限时配 `subagentTokenCap`（独享值，不继承主链剩余）；步数上限与主链同源（`maxSteps`）。
 - 自定义角色：放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。
-- 团队形态：spawn 入参 `mode: 'team'` 或 frontmatter `executor: internal-team` 派生长驻 teammate（自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
+- 团队形态：`create_teammate` 工具创建智能体团队成员（长驻，自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
 
 ### 5.4 会话回退与分叉（/rewind · /fork）
 
@@ -358,11 +358,11 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 行示例：`task-build-parser-k3f2 ○ ⚠ 标题 ← task-run-tests-a8c1 @w1`——状态用全 TUI 统一符号：○ 待派 · ▸ 执行中 · ◆ 待复核 · ✓ 完成 · ✗ 失败 · ⊘ 取消；`@名字` 为执行者（已执行显实际执行者，未执行显指派）。
 
-**teammate**（长驻分工用；小探查用 5.3 spawn；缺省上限 8，环境变量 `SUNSHINEX_MAX_TEAMMATES=<n>` 可调）：
+**智能体团队成员（teammate）**（智能体团队 = 多成员共享任务板协作的形态，长驻分工用；小探查用 5.3 spawn 一次性子代理即可；缺省上限 8，环境变量 `SUNSHINEX_MAX_TEAMMATES=<n>` 可调）：
 
 | 操作 | 方法 |
 | --- | --- |
-| 开 | 「派一个 reviewer teammate」；或 `agents/{id}/agent.md` 写 `executor: internal-team` |
+| 开 | 「创建智能体团队成员 reviewer」（模型走 create_teammate）；或指定 `agents/{id}/agent.md` 注册角色作框定 |
 | 看 | `Ctrl+B` → `Enter` 转录（行 = `名字 · 当前任务`；转录内每轮任务为灰底内容带，`✉` 行为 agent 间交流） |
 | 停 | 转录页两次 `Ctrl+C`（只停这一个） |
 | 消息 | teammate 间可互发，转录可见 |
