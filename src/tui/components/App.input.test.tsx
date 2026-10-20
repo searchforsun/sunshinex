@@ -9,6 +9,10 @@ import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
 import { initialRetained } from '../ui-state';
 
+// 技能池钉定(隔离):斜杠补全池=内置命令+技能目录——不钉即混入本机全局技能(brainstorming 等),
+// 循环邻位随机器技能增减漂移(真机:「池末位回环 /help」断言假红)。空目录=纯内置池,断言确定性
+process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inp-skills-'));
+
 test('App：Tab 斜杠补全为完整命令 + 空格，再次 Tab 循环到下一命令', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inp1-'));
   try {

@@ -122,7 +122,15 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
   };
 
   // get_board 收编进 lead 面(2026-10-20:此前只在成员面——lead 无板读取工具的缺口补齐)
-  const getBoard: RegisteredTool = {
+  const getBoard = makeGetBoardTool(board);
+
+  return [createTask, updateTask, reviewTask, getBoard];
+}
+
+/** get_board 工具工厂(lead 面与成员面共享单点,消双实现):executor 同源 board.summaryLines;
+ *  description 按面注入(lead 面带规划定位,成员面带 get_task 指引) */
+export function makeGetBoardTool(board: TaskBoard, description?: string): RegisteredTool {
+  return {
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -131,6 +139,7 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
     },
     name: 'get_board',
     description:
+      description ??
       'Read the shared task board: one summary line per task (id, status symbol, gated ⚠ marker, title, dependencies, assignee/executedBy) plus the team budget line. The task lifecycle authority for planning and task_wait targeting.',
     category: 'task',
     fullObservation: true,
@@ -139,6 +148,4 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
       return { exitCode: 0, stdout: lines.length === 0 ? '(task board empty)' : lines.join('\n'), stderr: '', timedOut: false };
     },
   };
-
-  return [createTask, updateTask, reviewTask, getBoard];
 }

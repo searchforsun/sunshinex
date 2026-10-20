@@ -3,32 +3,19 @@
 // 文案恒英文单语(工具 description 直接进模型面)。
 import { CodedToolError, RegisteredTool, ToolRegistry } from '../harness/tools';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
-import { TASKBOARD_TOOL_NAMES } from '../harness/tools/taskboard-tools';
+import { makeGetBoardTool, TASKBOARD_TOOL_NAMES } from '../harness/tools/taskboard-tools';
 import type { TaskBoard } from './board';
 
 /** todo_write 工具名(harness/subagent.ts 同名私有常量的字面量对写——彼处不导出,导出面不值得
  *  为一个字面量扩 API;drift 由本文件与 deriveChildRegistry 两队剔除断言钉住) */
 const TODO_TOOL_NAME = 'todo_write';
 
-/** teammate 只读板工具对:get_board(无参,板摘要行)+ get_task({taskId},单任务全量) */
+/** teammate 只读板工具对:get_board(共享工厂,成员面描述)+ get_task({taskId},单任务全量) */
 export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
-  const getBoard: RegisteredTool = {
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: [],
-      properties: {},
-    },
-    name: 'get_board',
-    description:
-      'Read the shared task board summary: one line per task in id order — id [status] [gated] title (needs deps). Read-only; use get_task for one task\'s full spec, assignee and execution artifact.',
-    category: 'read',
-    fullObservation: true,
-    executor: async () => {
-      const lines = board.summaryLines();
-      return { exitCode: 0, stdout: lines.length === 0 ? '(task board empty)' : lines.join('\n'), stderr: '', timedOut: false };
-    },
-  };
+  const getBoard = makeGetBoardTool(
+    board,
+    "Read the shared task board summary: one line per task in id order — id [status] [gated] title (needs deps). Read-only; use get_task for one task's full spec, assignee and execution artifact.",
+  );
   const getTask: RegisteredTool = {
     parameters: {
       type: 'object',
