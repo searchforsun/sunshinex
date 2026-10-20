@@ -98,7 +98,7 @@ export class Harness {
   readonly tasks: TaskRegistry;
   /** 任务板协调器（spec 2026-10-04 §13 P1）：工作区单隐式 team main 的板面操作权威（测试/后续阶段消费） */
   readonly taskboard: TaskBoard;
-  /** teammate 注册表（P2 spec §5 T3）：spawn mode:'team' / frontmatter executor:internal-team 双通道
+  /** teammate 注册表（P2 spec §5 T3;2026-10-20 起 create_teammate 独立动词创建）
    *  建出的长驻执行体登记处；注入 TaskBoard 派发路由（assignee 命中/留 claim）与 spawn 分流接缝 */
   readonly team: TeamRegistry;
   /** agent 间消息收件箱（P2 agent-message,T2）:<dataDir>/teams/main/inbox/<agent>.jsonl append-only 落档;
@@ -327,7 +327,7 @@ export class Harness {
         additionalProperties: false,
         required: ['name'],
         properties: {
-          name: { type: 'string', description: 'Teammate name (unique among live teammates; stop via task_stop <name>)' },
+          name: { type: 'string', description: 'Teammate name (unique among live teammates)' },
           prompt: { type: ['string', 'null'], description: 'Role framing for the teammate (its standing duties); null requires agent_id' },
           agent_id: { type: ['string', 'null'], description: 'Registered agent id — its frontmatter role becomes the framing; null uses prompt' },
         },

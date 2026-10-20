@@ -136,7 +136,7 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/rev
     h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false, onEvent: (e) => events.push(e) });
     // spawn×3(mode 'team',label w1/w2/w3)——经真 spawn 工具执行面(与模型出牌同一条链)
     for (const w of ['w1', 'w2', 'w3']) {
-      const r = await h.tools.execute('spawn', { prompt: `worker ${w}: claim board tasks and finish each`, label: w, mode: 'team' }, h.safety);
+      const r = await h.tools.execute('create_teammate', { name: w, prompt: `worker ${w}: claim board tasks and finish each` }, h.safety);
       assert.ok(r.ok && r.value.exitCode === 0, `spawn ${w} 应成功:${JSON.stringify(r)}`);
       assert.ok(r.value.stdout.includes(`teammate ${w} started`), `spawn 回执应含 teammate ${w} started`);
     }

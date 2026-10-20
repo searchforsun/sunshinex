@@ -175,7 +175,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
           : undefined;
       // 「spawn 只在主链工具面」全局不变量收口 + fork 面剔除族闭合(L2 终审 Important):fork 私有面派生
       // 剔 spawn 且不携 runner(无嵌套挂载),并同源剔 FORK_EXCLUDED_TOOLS(send_message 消息身份 +
-      // 六件套 lead-only 板工具——防 lead 冒充,与 subagent deriveChildRegistry/graph makeLoopNode 同一常量)
+      // lead-only 板四件套——防 lead 冒充,与 subagent deriveChildRegistry/graph makeLoopNode 同一常量)
       const childDeps: LoopDeps =
         scope === 'fork'
           ? { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...FORK_EXCLUDED_TOOLS] }) }

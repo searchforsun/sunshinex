@@ -322,9 +322,9 @@ export class SubagentRunner {
    * 缺省 = 父全量 − 这些件；显式 tools = 按名取交集再恒剔除。剔除依据：todo_write 归属主任务单一事实源（D9）；
    * spawn 防子代再生子代（派生树受控）；ask_question 是面向用户的 HITL 通道，fork 执行不中途发问（结论回写即应答）；
    * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子代理不得改动主会话工作环境；
-   * taskboard 六件套 lead-only(2026-10-05 P1)——板面操作权归主链 lead，子代理不碰板；
+   * taskboard 四件套 lead-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 lead，子代理不碰板；
    * send_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 lead+具名 teammate,fork 子面不发；
-   * send_message+六件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引,终审 Important 闭合) */
+   * send_message+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引,终审 Important 闭合) */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
     if (input?.tools && input.tools.length > 0) {
       const child = this.deps.registry.derive({ only: input.tools });

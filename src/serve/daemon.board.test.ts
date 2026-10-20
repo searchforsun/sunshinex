@@ -200,9 +200,9 @@ test('② review 校验面：未知 taskId 400（错误文案）/ 未知会话 4
   });
 });
 
-test('③ snapshot.team：spawn mode:"team" label w1 → team 段含 {name:"w1", busy:boolean}', { timeout: 30_000 }, async () => {
+test('③ snapshot.team：create_teammate 建队友 w1 → team 段含 {name:"w1", busy:boolean}', { timeout: 30_000 }, async () => {
   const model = new ScriptedAdapter([
-    '{"tool":"spawn","input":{"prompt":"worker w1 framing","agent_id":null,"label":"w1","tools":null,"background":null,"isolation":null,"mode":"team"}}',
+    '{"tool":"create_teammate","input":{"name":"w1","prompt":"worker w1 framing"}}',
     '{"done":true,"reply":"teammate spawned"}',
   ]);
   await withBoardDaemon(model, async (ctx) => {

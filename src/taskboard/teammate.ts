@@ -284,18 +284,19 @@ ${task.spec}` },
     } catch (e) {
       // 异常收口:delegation failed + THROWN 回写(不向上抛——claim 循环/runTask 不因单任务炸停)
       const message = e instanceof Error ? e.message : String(e);
-      emitDelegation('delegation-ended', 'failed', 0);
       this.deps.board.finishExecution(task.id, {
         ok: false,
         by: this.name,
         durationMs: Date.now() - startedAt,
         error: { code: 'THROWN', message },
       }, ledger?.id);
+      emitDelegation('delegation-ended', 'failed', 0);
       this.currentTaskAbort = undefined;
       return;
     }
-    emitDelegation('delegation-ended', r.done ? 'done' : 'failed', r.tokensUsed ?? 0);
-    // harness 强制回写单点(P1 finishExecution):claimed→in-review/failed,不依赖模型自觉
+    // harness 强制回写单点(P1 finishExecution):claimed→in-review/failed,不依赖模型自觉;
+    // delegation-ended 后置(2026-10-20 业务测试异常修复):终态宣告必须晚于回写——先宣告后回写时,
+    // 消费方收到「已结束(done)」而任务还是 claimed,事件序与事实序相悖
     this.deps.board.finishExecution(task.id, {
       ok: r.done,
       by: this.name,
@@ -304,6 +305,7 @@ ${task.spec}` },
       durationMs: Date.now() - startedAt,
       ...(r.done ? {} : { error: { code: 'INCOMPLETE', message: r.stopReason ?? 'did not finish' } }),
     }, ledger?.id);
+    emitDelegation('delegation-ended', r.done ? 'done' : 'failed', r.tokensUsed ?? 0);
     this.currentTaskAbort = undefined;
   }
 }

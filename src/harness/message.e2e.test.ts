@@ -75,7 +75,7 @@ test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered +
     const model = new CountingAdapter();
     h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
     // spawn w1(mode 'team')——经真 spawn 工具执行面(与模型出牌同一条链;team.e2e 同款)
-    const sp = await h.tools.execute('spawn', { prompt: 'worker w1: claim board tasks and finish each', label: 'w1', mode: 'team' }, h.safety);
+    const sp = await h.tools.execute('create_teammate', { name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
     assert.ok(sp.value.stdout.includes('teammate w1 started'), `spawn 回执应含 teammate w1 started:${sp.value.stdout}`);
     assert.deepEqual(h.team.aliveNames(), ['w1'], 'w1 活名在场(主链面 send_message 白名单数据源)');
@@ -111,7 +111,7 @@ test('e2e teammate→lead:派生面直测 send_message → lead.jsonl 落档(fro
   try {
     const events: SessionEvent[] = [];
     h = new Harness({ root: tmp, mode: 'dontAsk', model: new CountingAdapter(), learnSkills: false, onEvent: (e) => events.push(e) });
-    const sp = await h.tools.execute('spawn', { prompt: 'worker w1', label: 'w1', mode: 'team' }, h.safety);
+    const sp = await h.tools.execute('create_teammate', { name: 'w1', prompt: 'worker w1' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
     // 裁定(T4 计划):teammate 面工具执行不经 fake model 驱动,直测工具——deriveTeammateRegistry 同
     // harness/index.ts registryFactory 装配点同构(仅 w1 活名时排己白名单恰 ['lead']);onEvent 透传
