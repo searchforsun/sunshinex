@@ -8,6 +8,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TaskRegistry } from '../tasks';
+import { TaskBoard } from '../../taskboard/board';
+import { TeamStore } from '../../taskboard/store';
 import { makeTaskWaitTool } from './task-wait';
 import { ToolRegistry } from '../tools';
 
@@ -205,6 +207,46 @@ test('task_wait 板任务原生 id 归一：tN/delegationId 形态命中派发�
     const bad = await makeRegistry(tasks).execute('task_wait', { taskIds: ['t7'], timeoutSeconds: 0 }, stubSafety);
     assert.ok(!bad.ok, '未派发板 id 仍报错');
     assert.match(bad.error.message, /Unknown task id: t7/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_wait 未派发板任务可等:板上在册即合法目标,轮询至工作终态(GUI 首呼 INVALID_ARG 回归)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-boardpre-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(root, 'teams', 'main')),
+      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as never,
+      registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
+      onEvent: () => {},
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    const created = board.create({ title: 'GateDemo', spec: 'gated demo', gated: true }); // gated=永不派发,台账恒无条目
+    assert.ok(created.ok);
+    const boardId = created.value.taskId;
+    const registry = new ToolRegistry();
+    registry.register(makeTaskWaitTool(tasks, board));
+    // timeoutSeconds=0 peek:gated 任务在板,合法目标(不再 INVALID_ARG),回执板态 pending
+    const peek = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 0 }, stubSafety);
+    assert.ok(peek.ok, `板任务应合法,实际 ${peek.ok ? '' : peek.error?.message}`);
+    if (peek.ok) {
+      assert.match(peek.value.stdout, /\(board\) pending — GateDemo/, '回执含板态与标题');
+      assert.match(peek.value.stdout, /status peek/, 'peek 非阻塞');
+    }
+    // review 放行 → fork 消化至 in-review → 工作完成即收口 settled
+    assert.ok(board.review(boardId, { approved: true }).ok);
+    const settled = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 10 }, stubSafety);
+    assert.ok(settled.ok);
+    if (settled.ok) {
+      assert.match(settled.value.stdout, /all target tasks finished \(1\)/, '板任务工作完成即收口');
+      assert.match(settled.value.stdout, /\(board\) in-review — GateDemo/, '回执 in-review(等复核)');
+    }
+    // 真未知 id 仍 INVALID_ARG(板上无、台账无)
+    const bad = await registry.execute('task_wait', { taskIds: ['task-not-on-board-x9z9'], timeoutSeconds: 0 }, stubSafety);
+    assert.ok(!bad.ok, '板/台账皆无仍报错');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -299,8 +299,6 @@ export class Harness {
     this.tools.register({ ...makeSpawnTool(this.runner, teamAdapter), display: { verb: 'SPAWN' } });
     // task_stop：后台任务停止工具（规格 D8），账本在场恒装配；呈现动词同上注册点附加
     this.tools.register({ ...makeTaskStopTool(this.tasks), display: { verb: 'TASK_STOP' } });
-    // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配
-    this.tools.register({ ...makeTaskWaitTool(this.tasks), display: { verb: 'TASK_WAIT' } });
     // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
     // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔);
     // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast;
@@ -320,6 +318,9 @@ export class Harness {
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     });
     this.taskboard.init();
+    // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配;
+    // 板引用后置注册(2026-10-19 未派发板任务可等——板态轮询,注册须在 taskboard 装配之后)
+    this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard), display: { verb: 'TASK_WAIT' } });
     for (const t of makeTaskBoardTools(this.taskboard)) this.tools.register(t);
     // send_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
     // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;

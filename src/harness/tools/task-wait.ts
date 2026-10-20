@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
+import type { TaskBoard } from '../../taskboard/board';
 
 const DEFAULT_TIMEOUT_SECONDS = 1800;
 const RECEIPT_TAIL_LINES = 200;
@@ -32,7 +33,7 @@ function receiptBody(t: BackgroundTask): string {
   return `${head}\n${readTail(t.outputFilePath, RECEIPT_TAIL_LINES)}`;
 }
 
-export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
+export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): RegisteredTool {
   return {
     parameters: {
       type: 'object',
@@ -43,7 +44,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
           type: ['array', 'null'],
           items: { type: 'string' },
           description:
-            'Background task ids to wait for. Accepted forms: ledger ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids exactly as create_task/the board summary shows them (["task-build-parser-k3f2"]; legacy restored boards use the "t5" form — both resolve to the dispatched ledger entry); null waits for all currently running tasks. Already-finished ids return an idempotent receipt immediately.',
+            'Background task ids to wait for. Accepted forms: ledger ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids exactly as create_task/the board summary shows them (["task-build-parser-k3f2"]; legacy restored boards use the "t5" form — both resolve). Pre-dispatch board tasks (pending/gated/not yet claimed) are valid targets too: the call blocks until their work finishes (in-review/done/failed). null waits for all currently running tasks. Already-finished ids return an idempotent receipt immediately.',
         },
         timeoutSeconds: {
           type: ['number', 'null'],
@@ -61,6 +62,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
       const raw = input as { taskIds?: string[] | null; timeoutSeconds?: number | null };
       const rawTimeout = raw.timeoutSeconds ?? null;
       let ids: string[];
+      let boardWaitIds: string[] = [];
       if (raw.taskIds === null || raw.taskIds === undefined) {
         // 长驻 teammate 条目排除(2026-10-06 契约收敛):teammate 存活即 running,等它=等到 task_stop——
         // task_wait(null) 的语义是「等在跑的活收口」,可收口面=exec/后台 spawn/板任务(dispatchTag(板 id) 登记条目)
@@ -72,8 +74,31 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
         if (!Array.isArray(raw.taskIds) || raw.taskIds.length === 0) {
           throw new CodedToolError('INVALID_ARG', 'taskIds must be a non-empty array of task ids, or null to wait for all running tasks');
         }
-        ids = raw.taskIds.map((id) => tasks.resolveId(String(id)));
-        const unknown = ids.filter((id) => tasks.get(id) === undefined);
+        // id 分类(2026-10-19「未派发板任务等不到」真机修复):台账可解析(直接/resolveId 前缀)走台账等待;
+        // 板上在册但台账无条目(pending/gated/未 claim——派发登记发生在 claim 时刻)为合法等待对象,
+        // 走板态轮询至 in-review/done/failed/cancelled(工作完成,claim 后其台账条目自动接力);
+        // 两者皆非才 INVALID_ARG(真机 GUI 首呼:teammates 刚 spawn 未 claim,板 id 全量报错即此缺口)
+        ids = [];
+        const boardTasks = board?.snapshot().tasks ?? {};
+        const boardKeyOf = (rawId: string): string | undefined => {
+          if (boardTasks[rawId] !== undefined) return rawId;
+          const m = /^task-(t\d+)$/.exec(rawId); // 旧档委派形态 task-tN → 板键 tN
+          return m !== null && boardTasks[m[1]] !== undefined ? m[1] : undefined;
+        };
+        const unknown: string[] = [];
+        for (const rawId of raw.taskIds.map(String)) {
+          const rid = tasks.resolveId(rawId);
+          if (tasks.get(rid) !== undefined) {
+            ids.push(rid);
+            continue;
+          }
+          const bKey = boardKeyOf(rawId);
+          if (bKey !== undefined) {
+            boardWaitIds.push(bKey);
+            continue;
+          }
+          unknown.push(rawId);
+        }
         if (unknown.length > 0) {
           const all = tasks.list().map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`).join('; ');
           throw new CodedToolError('INVALID_ARG', `Unknown task id: ${unknown.join(', ')}. Current tasks: ${all === '' ? '(none)' : all}`);
@@ -83,10 +108,37 @@ export function makeTaskWaitTool(tasks: TaskRegistry): RegisteredTool {
       if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
         throw new CodedToolError('INVALID_ARG', `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`);
       }
-      const result = await tasks.waitUntilSettled(ids, timeoutSeconds * 1000);
+      // 混合等待:纯台账走事件唤醒 waitUntilSettled(既有精度);含板任务则统一轮询——台账 running/
+      // 板任务未达工作终态(in-review/done/failed/cancelled)即未收口;claim 后板任务转台账口径续等
+      const boardStatus = (id: string): string | undefined => board?.snapshot().tasks[id]?.status;
+      const boardPending = (): string[] =>
+        boardWaitIds.filter((id) => !['in-review', 'done', 'failed', 'cancelled'].includes(boardStatus(id) ?? ''));
+      let result: Awaited<ReturnType<TaskRegistry['waitUntilSettled']>>;
+      if (boardWaitIds.length === 0) {
+        result = await tasks.waitUntilSettled(ids, timeoutSeconds * 1000);
+      } else {
+        const deadline = Date.now() + timeoutSeconds * 1000;
+        for (;;) {
+          const ledgerRunning = ids.filter((id) => tasks.get(id)?.status === 'running');
+          if (ledgerRunning.length === 0 && boardPending().length === 0) {
+            result = { settled: true, tasks: ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined) };
+            break;
+          }
+          if (Date.now() >= deadline) {
+            result = { settled: false, tasks: ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined) };
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
       const lines = result.tasks.map(receiptBody);
+      for (const id of boardWaitIds) {
+        const bt = board?.snapshot().tasks[id];
+        if (bt === undefined) continue;
+        lines.push(`${id} (board) ${bt.status} — ${bt.title}${bt.status === 'in-review' ? ' (work finished, awaiting review)' : ''}`);
+      }
       const head = result.settled
-        ? `all target tasks finished (${ids.length})`
+        ? `all target tasks finished (${ids.length + boardWaitIds.length})`
         : timeoutSeconds === 0
           ? 'status peek (timeoutSeconds=0, non-blocking); tasks still running are marked below'
           : `timeout after ${timeoutSeconds}s; tasks still running are marked below`;
