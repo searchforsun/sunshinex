@@ -43,7 +43,7 @@ export interface TabServices {
   readonly turnGoal: string;
   /** G14.176 create_task 行点开的定位信号(App 注入;nonce 变更即滚动高亮) */
   readonly taskFocus: { ref: string; nonce: number } | null;
-  /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openAgentsTab+setTaskFocus;
+  /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
    *  子代理转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名 → 标签 params;App 落 patchTabMeta) */
@@ -182,14 +182,13 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'agent',
     group: 'session',
-    // G14.164 子代理只读转录页:title=开档时定格的显示名(AgentsTab 传 agentTitle;raw label 在页头)
+    // G14.164 子代理只读转录页:title=开档时定格的显示名(开档面传入;raw label 不上屏——页头 G14.202 去除)
     title: (params) => params.agentTitle ?? params.label ?? 'agent',
     // by label 多实例:同 agent 重开=聚焦,异 agent 并存;被动入口(菜单不列)
     resolveKey: (params) => params.label ?? '',
     singleton: false,
     render: (p) => (
       <AgentTranscriptTab
-        label={p.params.label ?? ''}
         conn={p.conn}
         sessionId={p.sessionId}
         activities={p.services.agentActivities[p.params.label ?? '']}

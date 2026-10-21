@@ -35,7 +35,6 @@ import type { ChatEntry } from '../chat-reducer';
  */
 
 export interface AgentTranscriptTabProps {
-  readonly label: string;
   readonly conn: Connection;
   readonly sessionId: string;
   readonly activities: AgentActivity | undefined;
@@ -186,8 +185,8 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
         {activities === undefined || entries.length === 0 ? (
           userText === '' ? (
             <div className="board-empty-state" role="status">
-              <p className="board-empty-title">无活动记录</p>
-              <p className="board-empty-hint">该子 agent 的活动流在本会话内未产生（或页面刷新后已重置）。</p>
+              <p className="board-empty-title">{t('No agent activity', '无活动记录')}</p>
+              <p className="board-empty-hint">{t('This agent produced no activity in the session (or the stream was reset after a refresh).', '该子智能体的活动流在本会话内未产生（或页面刷新后已重置）。')}</p>
             </div>
           ) : null
         ) : (

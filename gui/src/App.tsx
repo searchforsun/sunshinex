@@ -530,7 +530,8 @@ function AppShell(): JSX.Element {
   const openFileTab = useCallback((p: string): void => { openTabInSession('file', { path: p }); }, [openTabInSession]);
   const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('diff', { callId, path }); }, [openTabInSession]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string): void => { openTabInSession('agent', { label, agentTitle, task }); }, [openTabInSession]);
-  const openAgentsTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
+  /** G14.174 重定位:agents 页签 id=任务板页签(卡片流;tab 持久化档兼容保留旧 id) */
+  const openBoardTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
   const openTabType = useCallback((type: TabTypeId): void => { openTabInSession(type, {}); }, [openTabInSession]);
   const openMemoryTab = useCallback((): void => { openTabInSession('memory'); }, [openTabInSession]);
   /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */
@@ -624,8 +625,8 @@ function AppShell(): JSX.Element {
     setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [] }));
   };
 
-  /** 标签体服务面(任务/Agents 标签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接)+
-   *  G8d 子代理活动聚合(AgentsTab 只读) */
+  /** 标签体服务面(任务板/agent 转录页签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接)+
+   *  G8d 子代理活动聚合(agent 只读转录页只读) */
   /** G14.2xx web 标签元数据回写:页内导航 url/页名 → patchTabMeta(标签条标题/判重键同源演进,
    *  浏览器原生标签形);useCallback 零依赖稳定——services useMemo 不因回写重建 */
   const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }): void => {
@@ -634,9 +635,9 @@ function AppShell(): JSX.Element {
   /** G14.2xx b create_task 行任务名定位(子代理转录页与 Chat onOpenTask 同一口径):开任务板页签
    *  +focus 信号(nonce 变更即滚动高亮);useCallback 零依赖稳定 */
   const openTaskFocus = useCallback((ref: string): void => {
-    openAgentsTab();
+    openBoardTab();
     setTaskFocus({ ref, nonce: Date.now() });
-  }, [openAgentsTab]);
+  }, [openBoardTab]);
   const services = useMemo<TabServices>(
     () => ({ board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, onTabMeta, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos], todoBatches, turnGoal, taskFocus, onOpenTask: openTaskFocus }),
     [projection, reviewTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, turnGoal, taskFocus, openTaskFocus],
@@ -864,7 +865,7 @@ function AppShell(): JSX.Element {
                 onOpenDiff={openDiffTab}
                 onOpenAgent={openAgentTab}
                 onOpenTask={(ref) => {
-                  openAgentsTab();
+                  openBoardTab();
                   setTaskFocus({ ref, nonce: Date.now() });
                 }}
                 onOpenTab={openTabType}

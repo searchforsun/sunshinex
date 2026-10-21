@@ -37,7 +37,7 @@ function runningActivities(): AgentActivities {
 describe('AgentTranscriptTab 对标主对话', () => {
   it('run 条走 RunEntryView(运行态行在场)、无 agent-thread-sep、容器挂 .chat 类', () => {
     const { container } = render(
-      <AgentTranscriptTab label="an" conn={connStub} sessionId="s1" activities={runningActivities().an} board={boardStub} task="分析任务" />,
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={runningActivities().an} board={boardStub} task="分析任务" />,
     );
     expect(container.querySelector('.agent-thread-sep')).toBeNull(); // 双分割线退役
     expect(container.querySelector('.sx-agent-thread.chat')).not.toBeNull(); // 间距系统同源
@@ -51,7 +51,6 @@ describe('AgentTranscriptTab 对标主对话', () => {
     const onOpenFile = vi.fn();
     const { container } = render(
       <AgentTranscriptTab
-        label="an"
         conn={connStub}
         sessionId="s1"
         activities={runningActivities().an}
@@ -70,7 +69,7 @@ describe('AgentTranscriptTab 对标主对话', () => {
     let s = runningActivities();
     s = applyAgentEvent(s, sub('done', 'an', '正文'));
     const { container } = render(
-      <AgentTranscriptTab label="an" conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
     );
     expect(container.querySelector('.run-live-line')).toBeNull();
     expect(container.querySelector('.entry-run.sealed')).not.toBeNull();
@@ -82,7 +81,7 @@ describe('AgentTranscriptTab 对标主对话', () => {
     s = applyAgentEvent(s, sub('token', 'an', '结论全文'));
     s = applyAgentEvent(s, sub('done', 'an', '结论全文', { steps: 5, runSteps: 3, tokensUsed: 1234, stopReason: 'done' }));
     const { container } = render(
-      <AgentTranscriptTab label="an" conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
     );
     const footers = container.querySelectorAll('.run-footer');
     expect(footers.length).toBeGreaterThan(0);
@@ -98,7 +97,7 @@ describe('AgentTranscriptTab 对标主对话', () => {
     s = applyAgentEvent(s, sub('token', 'an', '最终结论'));
     s = applyAgentEvent(s, sub('done', 'an', '最终结论', { steps: 8, runSteps: 4, tokensUsed: 4200, stopReason: 'done' }));
     const { container } = render(
-      <AgentTranscriptTab label="an" conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
     );
     const footer = container.querySelector('.entry-assistant .run-footer');
     expect(footer).not.toBeNull();
@@ -113,7 +112,7 @@ describe('AgentTranscriptTab 对标主对话', () => {
     s = applyAgentEvent(s, sub('model-start', 'an')); // 轮2 开启
     s = applyAgentEvent(s, sub('token', 'an', '第二轮写一半'));
     const { container } = render(
-      <AgentTranscriptTab label="an" conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
     );
     const sealedAssistant = [...container.querySelectorAll('.entry-assistant')].find((el) => el.textContent?.startsWith('第一轮结论'));
     expect(sealedAssistant).toBeDefined();
@@ -132,7 +131,7 @@ describe('AgentTranscriptTab 对标主对话', () => {
     s = applyAgentEvent(s, sub('token', 'an', '结论'));
     s = applyAgentEvent(s, sub('done', 'an', '结论', { steps: 2, tokensUsed: 50 }));
     const { container } = render(
-      <AgentTranscriptTab label="an" conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="分析任务" />,
     );
     const runRow = container.querySelector<HTMLElement>('.entry-run.sealed');
     expect(runRow).not.toBeNull();

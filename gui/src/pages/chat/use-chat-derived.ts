@@ -56,6 +56,9 @@ export interface ChatDerivedDeps {
   readonly onTurnGoal?: (goal: string) => void;
 }
 
+/** 用户气泡 md → 单行纯文本:剥引用前缀与链接标记(待办批次 goal 与关联轮次 turnGoal 共用单点) */
+const stripGoal = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
+
 export function useChatDerived(deps: ChatDerivedDeps): {
   taskNameOf: (id: string) => string;
   todoBatches: TodoBatch[];
@@ -71,10 +74,9 @@ export function useChatDerived(deps: ChatDerivedDeps): {
    *  两路解析退役——live 流式面待办批次与种子回放同源不再有缺平面) */
   const todoBatches = useMemo<TodoBatch[]>(() => {
     const out: TodoBatch[] = [];
-    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
     let lastGoal = '';
     for (const e of chat.entries) {
-      if (e.kind === 'user') lastGoal = strip(e.md);
+      if (e.kind === 'user') lastGoal = stripGoal(e.md);
       if (e.kind !== 'tool' || e.name !== 'todo_write') continue;
       const input = e.input ?? {};
       const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
@@ -103,10 +105,9 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   const taskActive = board !== undefined ? Object.values(board.tasks).filter((x) => x.status === 'pending' || x.status === 'claimed').length : 0;
   /** G14.174 关联轮次用户输入(最近一条 user 行;md 链接折叠为标签文本——goal 供单行省略头) */
   const turnGoal = useMemo(() => {
-    const strip = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
     for (let i = chat.entries.length - 1; i >= 0; i -= 1) {
       const e = chat.entries[i]!;
-      if (e.kind === 'user') return strip(e.md);
+      if (e.kind === 'user') return stripGoal(e.md);
     }
     return '';
   }, [chat.entries]);

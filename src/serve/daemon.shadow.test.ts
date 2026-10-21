@@ -82,7 +82,7 @@ test('journal shadow 行全量读面:环窗溢出后端点仍返回全量 subage
 });
 
 test('WS 回放面跳过 shadow 帧:新连接补发窗只含主链帧(恢复唯一入口=HTTP 水合,防双应用)', async () => {
-  await withShadowDaemon(async ({ http, sid, runtime, H }) => {
+  await withShadowDaemon(async ({ http, runtime, H }) => {
     for (let i = 0; i < 20; i++) runtime.pump(subToken('an', `t${i}`));
     runtime.pump({ type: 'token', text: 'main-line', ts: Date.now() });
 
@@ -106,7 +106,6 @@ test('WS 回放面跳过 shadow 帧:新连接补发窗只含主链帧(恢复唯�
         'undefined',
         '回放面零 shadow 帧——子代理恢复唯一入口=HTTP 水合(双应用防线)',
       );
-      void sid;
     }
     assert.ok(eventFrames.some((f) => f.e?.type === 'token'), '主链帧照常补发');
   });

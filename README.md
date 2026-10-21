@@ -99,13 +99,13 @@ pnpm test && pnpm selfcheck    # 全量单测 / 骨架自检
 
 ```bash
 # ① GitHub Release 链接直装（推荐，无需 npm 账号）
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.4.0/sunshinex-agent-0.4.0.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.0/sunshinex-agent-0.5.0.tgz
 
 # ② npm registry（正式发布后可用）
 npm install -g sunshinex-agent
 
 # ③ 本地打包安装
-npm pack && npm install -g ./sunshinex-agent-0.4.0.tgz
+npm pack && npm install -g ./sunshinex-agent-0.5.0.tgz
 ```
 
 > npm ≥ 12 走 ① 报 `EALLOWREMOTE`（`allow-remote` 缺省禁止从 URL 取包）：加 `--allow-remote=all`，或先 `curl -LO` 下载 tarball 再按 ③ 本地安装（不受该限制）。
@@ -117,9 +117,9 @@ npm pack && npm install -g ./sunshinex-agent-0.4.0.tgz
 ```bash
 scripts/release.mjs                            # 按 package.json 当前版本发版
 scripts/release.mjs --bump patch|minor|major   # 递增版本号，随发版提交推送
-scripts/release.mjs --version 0.4.0            # 指定版本发版（写回 package.json）
+scripts/release.mjs --version 0.5.0            # 指定版本发版（写回 package.json）
 scripts/release.mjs --dry-run                  # 只验证 + 打包预览，不触网不落库
-scripts/release.mjs --version 0.4.0 --clobber  # 同版本重发（覆盖附件，须显式授权）
+scripts/release.mjs --version 0.5.0 --clobber  # 同版本重发（覆盖附件，须显式授权）
 scripts/release.mjs --no-gui                 # 只发 TUI tgz（跳过 GUI 安装包构建上传）
 
 一次发版 = 同一 Release 同一 tag 上传两类安装包：TUI tgz（sunshinex-agent-<ver>.tgz）+ GUI 单安装包（sunshinex-<ver>-setup.exe，NSIS，业界 kebab 命名；版本随根 package.json 单源同步；验证链含 GUI/e2e/壳冒烟与安装包静默装冒烟；本机网络受限带双镜像 env，见 MANUAL-GUI 开发者节）

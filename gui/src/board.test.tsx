@@ -226,9 +226,9 @@ describe('Board:teammate 侧栏与 delegations 简列', () => {
     expect(sidebar.querySelectorAll('.team-dot.busy')).toHaveLength(1); // busy 点色钩子
     const dels = screen.getByLabelText('delegations');
     expect(dels.textContent).toContain('dev worker'); // title 缺省回 label
-    expect(dels.textContent).toContain('运行中'); // G14.164 徽标本地化
+    expect(dels.textContent).toMatch(/Running|运行中/); // 徽标走 t() 双语(测试环境缺省 en,D37 双语容忍正解)
     expect(dels.textContent).toContain('probe');
-    expect(dels.textContent).toContain('完成');
+    expect(dels.textContent).toMatch(/Done|完成/);
     expect(dels.textContent).toContain('架构分析'); // 委派带 title 直显任务名
     // G14.164 行点击开子代理只读页:(label, 显示名) 上抛
     fireEvent.click(screen.getByRole('button', { name: 'open agent l1' }));

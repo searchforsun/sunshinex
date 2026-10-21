@@ -4,7 +4,19 @@ import { layoutBoard } from '../board-layout';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
 import type { TodoItem } from '../../../src/types';
-import { DELEGATION_STATUS_TEXT } from '../tabs/AgentsTab';
+
+/** delegation 状态 → 徽标文案双语对（t() 渲染期求值——T5：模块常量不冻结语言）；未登记状态原样透出 */
+const DELEGATION_STATUS_PAIRS: Record<string, [string, string]> = {
+  running: ['Running', '运行中'],
+  done: ['Done', '完成'],
+  failed: ['Failed', '失败'],
+  skipped: ['Skipped', '跳过'],
+  paused: ['Paused', '已暂停'],
+};
+function delegationStatusText(status: string): string {
+  const pair = DELEGATION_STATUS_PAIRS[status];
+  return pair !== undefined ? t(pair[0], pair[1]) : status;
+}
 
 /**
  * G5 看板页(编排 spec §10.3 的 GUI 版 / §13 P3):Board 从 props 纯消费——board/delegations
@@ -296,7 +308,7 @@ export function Board({ board, delegations, team, onReview, onBack, todos, onOpe
                           onClick={() => onOpenAgent?.(d.label, title)}
                         >
                           <span className="delegation-title">{title}</span>
-                          <span className={`sx-subagent-status delegation-${d.status}`}>{DELEGATION_STATUS_TEXT[d.status] ?? d.status}</span>
+                          <span className={`sx-subagent-status delegation-${d.status}`}>{delegationStatusText(d.status)}</span>
                         </button>
                         {d.label !== title && <span className="delegation-id">{d.label}</span>}
                       </li>

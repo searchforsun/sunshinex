@@ -3,9 +3,9 @@ import type { SessionEvent } from '../../../src/types';
 import { applyAgentEvent } from './agent-activity';
 
 /**
- * G8d Agents 标签聚合 reducer 纯测(task-3):payload.subagent 标签事件按 label 聚卡——
- * 建卡(首见即 running)/工具行(名+入参摘要 path 优先截 80)/滑窗 20/token 累计(turnTotal
- * 水位)/status 流转(running→done·error,error 粘滞;delegation-ended failed→error)/
+ * G8d 子代理活动聚合 reducer 纯测(task-3):payload.subagent 标签事件按 label 聚卡——
+ * 建卡(首见即 running)/currentTool 锚/token 累计(turnTotal 水位)/status 流转(running→
+ * done·error,error 粘滞;delegation-ended failed→error)/chat 内核投影(转录页条目单源)/
  * 原引用守卫(无标签·不变事件同引用返回——StrictMode 安全)。
  * 聚合口径对齐 TUI ChildPanel(子代理面板;gui 侧零 import 独立实现)。
  */
@@ -63,41 +63,20 @@ describe('建卡与原引用守卫', () => {
   });
 });
 
-describe('工具行与滑窗', () => {
-  it('tool-call:currentTool=工具名 + lines push {kind:tool,名+入参摘要(path 优先,截 80)}', () => {
+describe('currentTool 锚', () => {
+  it('tool-call 置 currentTool;tool-result 保留最后工具名(完成态「正在做」锚由 status 承担)', () => {
     let s = applyAgentEvent({}, sub('tool-call', 'dev', 'write', { input: { path: 'src/a.ts', content: 'x' }, callId: 'c1' }));
     expect(s.dev!.currentTool).toBe('write');
-    expect(s.dev!.lines).toEqual([{ kind: 'tool', text: 'write src/a.ts' }]);
-    // 无 path 入参:JSON 摘要;长摘要截 80
     s = applyAgentEvent(s, sub('tool-call', 'dev', 'bash', { input: { command: 'x'.repeat(200) }, callId: 'c2' }));
-    const line2 = s.dev!.lines[1]!;
-    expect(line2.kind).toBe('tool');
-    expect(line2.text.startsWith('bash {"command":"xxxx')).toBe(true);
-    expect(line2.text.length).toBe(80);
     expect(s.dev!.currentTool).toBe('bash');
+    s = applyAgentEvent(s, sub('tool-result', 'dev', 'ok', { tool: 'bash', ok: true, callId: 'c2' }));
+    expect(s.dev!.currentTool).toBe('bash'); // 不清空
   });
 
-  it('tool-result:lines push ✓/✗ + 工具名(ok=false → ✗)', () => {
-    let s = applyAgentEvent({}, sub('tool-result', 'dev', 'written', { tool: 'write', ok: true, callId: 'c1' }));
-    expect(s.dev!.lines).toEqual([{ kind: 'tool', text: '✓ write' }]);
-    s = applyAgentEvent(s, sub('tool-result', 'dev', 'boom', { tool: 'read', ok: false, callId: 'c2' }));
-    expect(s.dev!.lines[1]).toEqual({ kind: 'tool', text: '✗ read' });
-  });
-
-  it('lines 滑窗:每卡尾部 240 行(G14.164 只读页整段转录;第 241 行起最旧行滚出)', () => {
-    let s = applyAgentEvent({}, sub('token', 'dev', 'l0'));
-    for (let i = 1; i <= 245; i += 1) s = applyAgentEvent(s, sub('token', 'dev', `l${i}`));
-    expect(s.dev!.lines).toHaveLength(240);
-    expect(s.dev!.lines[0]).toEqual({ kind: 'token', text: 'l6' }); // l0..l5 滚出
-    expect(s.dev!.lines.at(-1)).toEqual({ kind: 'token', text: 'l245' });
-    // 滑窗按卡独立:第二卡从零起算
-    s = applyAgentEvent(s, sub('token', 'other', 'x'));
-    expect(s.other!.lines).toHaveLength(1);
-  });
-
-  it('token 行截 120(超长增量只留前 120 字)', () => {
-    const s = applyAgentEvent({}, sub('token', 'dev', 'y'.repeat(300)));
-    expect(s.dev!.lines).toEqual([{ kind: 'token', text: 'y'.repeat(120) }]);
+  it('空工具名 tool-call 不动 currentTool', () => {
+    let s = applyAgentEvent({}, sub('tool-call', 'dev', 'read', { callId: 'c1' }));
+    s = applyAgentEvent(s, sub('tool-call', 'dev', '', { callId: 'c2' }));
+    expect(s.dev!.currentTool).toBe('read');
   });
 });
 

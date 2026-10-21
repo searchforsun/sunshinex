@@ -1380,7 +1380,7 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     fireResetSession(conn, 's9');
     expect(document.querySelector('.sx-agent-page')).not.toBeNull(); // 他会话 reset:聚合不清,页在(名称归页签,G14.202)
     fireResetSession(conn, 's1');
-    await waitFor(() => expect(document.querySelector('.sx-agent-page')?.textContent).toContain('无活动记录'));
+    await waitFor(() => expect(document.querySelector('.sx-agent-page')?.textContent).toMatch(/No agent activity|无活动记录/)); // 空态走 t() 双语(测试环境缺省 en,D37 双语容忍正解)
     unmount();
   });
 

@@ -1553,7 +1553,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
         { timeout: 15_000 },
       );
 
-      // —— +菜单开 Agents 标签(session 节,每会话单例):开且活动,标签体渲染 AgentsTab ——
+      // —— +菜单开任务板标签(agents 页签 id,G14.174 重定位;session 节,每会话单例):开且活动 ——
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });

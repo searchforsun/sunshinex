@@ -21,10 +21,10 @@ pnpm test              # 全量单测
 **正式安装（npm 全局）**
 
 ```bash
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.4.0/sunshinex-agent-0.4.0.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.0/sunshinex-agent-0.5.0.tgz
 # npm ≥ 12 报 EALLOWREMOTE（allow-remote 缺省 none）时二选一：
 #   加开关：npm install -g --allow-remote=all <上面的链接>
-#   或先下载再本地装（allow-file 缺省 all，不受此限）：curl -LO <链接> && npm install -g ./sunshinex-agent-0.4.0.tgz
+#   或先下载再本地装（allow-file 缺省 all，不受此限）：curl -LO <链接> && npm install -g ./sunshinex-agent-0.5.0.tgz
 ```
 
 **命令总表**

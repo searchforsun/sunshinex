@@ -1,6 +1,19 @@
 import type { SessionEvent } from '../types';
 import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState, type SessionStats } from './entry';
 
+/** 影子事件判定(单点):板面(task-)/审批门(gate-)/委派(delegation-)与带 subagent 标签的子代理流。
+ *  两面共用此谓词:①内核 pump 透传落档(seglog 映射 journal 行);②serve WS 回放面据此把这类帧从
+ *  512 环窗改道 journal 全量重发(环窗对长会话子代理流必溢出)。新增影子事件族只改本谓词,
+ *  落档与回放改道自动同频——分叉即「落了档回放面却不知情」的环窗溢出病根回流。 */
+export function isShadowEvent(e: SessionEvent): boolean {
+  return (
+    e.type.startsWith('task-') ||
+    e.type.startsWith('gate-') ||
+    e.type.startsWith('delegation-') ||
+    (e.payload !== undefined && typeof (e.payload as { subagent?: unknown }).subagent === 'string')
+  );
+}
+
 /** 等待队列条目(P5 内核化,spec §12):seq=位置下标(每次变更整列重排,端点寻址键);
  *  front=插入发送(reactor 步边界 drain 注入当前轮),false 仅排队等轮收束补跑。 */
 export interface SteerItem {
@@ -54,8 +67,7 @@ export class SessionKernel {
   pump(e: SessionEvent): void {
     // G14.2xx 面事件落档(内核层单点):板面/委派/子代理流不经转录投影(applyEvent 忽略),但界面可见、
     // 渲染层需回溯——shadow 事件透传给持久化面(seglog 映射 journal 行),TUI/GUI 两写面自动继承
-    const et = e.type;
-    if (et.startsWith('task-') || et.startsWith('gate-') || et.startsWith('delegation-') || (e.payload !== undefined && typeof (e.payload as { subagent?: unknown }).subagent === 'string')) {
+    if (isShadowEvent(e)) {
       this.emit({ t: 'shadow', e });
     }
     const prev = this.state;

@@ -16,7 +16,7 @@ import type { SessionJournal, JournalEvent } from '../tui/session-journal';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SnapshotEntry } from '../tui/session-journal';
-import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
+import { SessionKernel, isShadowEvent, type KernelEvent, type SteerItem } from '../session/kernel';
 import { kernelEventRows } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile } from '../tui/session-journal';
@@ -28,17 +28,10 @@ import type { ApprovalFrame, AskFrame, DaemonFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
 
-/** 影子事件判定(与内核 shadow 透传面 kernel.pump 同一口径单点):板面/委派/子代理流——WS 回放
- *  面据此把这类帧从 512 环窗改道 journal 全量重发(环窗对长会话子代理流必溢出,刷新后投影恢复
- *  不可依赖环窗;journal 落档先于广播,行集恒为全量真源) */
-export function isShadowEvent(e: SessionEvent): boolean {
-  return (
-    e.type.startsWith('task-') ||
-    e.type.startsWith('gate-') ||
-    e.type.startsWith('delegation-') ||
-    (e.payload !== undefined && typeof (e.payload as { subagent?: unknown }).subagent === 'string')
-  );
-}
+/** 影子事件判定单点在内核层(src/session/kernel,内核落档透传与本面回放改道共用)——此处原路径
+ *  转口供 daemon 回放面与测试消费。WS 回放面据此把这类帧从 512 环窗改道 journal 全量重发
+ *  (环窗对长会话子代理流必溢出,刷新后投影恢复不可依赖环窗;journal 落档先于广播,行集恒为全量真源) */
+export { isShadowEvent } from '../session/kernel';
 
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
