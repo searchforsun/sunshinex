@@ -2032,5 +2032,6 @@ input.sx-setting-input { width: 100%; }
 .sx-archived-slug { font-size: 11px; color: var(--fg-tertiary); }
 .sx-archived-actions { flex: none; display: none; align-items: center; gap: 2px; }
 .sx-archived-row:hover .sx-archived-actions, .sx-archived-row:focus-within .sx-archived-actions { display: inline-flex; }
+.sx-archived-error { margin: 0; font-size: 12px; color: var(--err); }
 .session-row-actions { flex: none; display: none; align-items: center; }
-.sx-session-row:hover .session-row-actions { display: inline-flex; }
+.sx-session-row:hover .session-row-actions, .sx-session-row:focus-within .session-row-actions { display: inline-flex; }

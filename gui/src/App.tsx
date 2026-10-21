@@ -908,6 +908,7 @@ function AppShell(): JSX.Element {
                 onSideChat={startSideChat}
                 onOpenMemory={openMemoryTab}
                 onFork={onForkStable}
+                onOpError={showOpError}
                 onRewind={(turn) => {
                   void connInstance
                     .rewindSession(openSessionId, turn)

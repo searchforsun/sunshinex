@@ -126,6 +126,31 @@ test('delete 门禁:未归档 409;归档态 200 且 journal/meta/gui 私有档�
   });
 });
 
+test('delete journalId 寻址:在座 idle 会话升格运行时回收(终审 F1)——档真清+注册表移出,复活通道关闭', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    // 现场=归档页删除实况:会话开着(idle 在座)→ 顶栏归档 → 归档页按 journalId 删
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    await waitStatus(base, sessionId, 'idle');
+    const jid = fs.readdirSync(path.join(resolveDataDir(tmp), 'sessions')).filter((f) => f.endsWith('.jsonl'))[0]!.replace(/\.jsonl$/, '');
+    const arch = await fetch(`${base}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(arch.status, 200);
+
+    // DELETE 打 journalId URL(归档页行寻址形态)
+    const del = await fetch(`${base}/session/${jid}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(del.status, 200);
+    const sessionsDir = path.join(resolveDataDir(tmp), 'sessions');
+    assert.equal(fs.readdirSync(sessionsDir).filter((f) => f.startsWith(`${jid}.`)).length, 0, '会话档全家清');
+    // F1 核心:在座 idle 会话已同链回收(teardown→注册表移出),原 sessionId 快照 404——
+    // 无残壳 runtime 即无 append 复活已清档的通道
+    const gone = await fetch(`${base}/session/${sessionId}/snapshot`, { headers: AUTH });
+    assert.equal(gone.status, 404, '在座会话出注册表(F1 回收)');
+    const sessions = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(tmp)}`, { headers: AUTH })).json()) as Array<{ id: string }>;
+    assert.equal(sessions.some((r) => r.id === jid), false, '主列表无残留');
+  });
+});
+
 test('列表滤除:archived 会话退出 /sessions 与 /sessions/recent;GET /sessions/archived 跨工作区聚合', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
     // 默认锚点工作区(RECENTS 只收默认锚点命名——root 取 sunshinex-default,滤除断言才非空转)
@@ -147,8 +172,9 @@ test('列表滤除:archived 会话退出 /sessions 与 /sessions/recent;GET /ses
     assert.equal(sessions.some((r) => r.id === jid), false, '主列表滤除归档');
     const recent = (await (await fetch(`${base}/sessions/recent`, { headers: AUTH })).json()) as Array<{ id: string }>;
     assert.equal(recent.some((r) => r.id === jid), false, 'RECENTS 滤除归档');
-    const archived = (await (await fetch(`${base}/sessions/archived`, { headers: AUTH })).json()) as Array<{ id: string; slug: string; archivedAt: number }>;
+    const archived = (await (await fetch(`${base}/sessions/archived`, { headers: AUTH })).json()) as Array<{ id: string; slug: string; root: string; archivedAt: number }>;
     assert.equal(archived.some((r) => r.id === jid), true, '归档列表在');
     assert.equal(archived[0]!.slug.length > 0, true, '来源 slug 标注');
+    assert.equal(archived.find((r) => r.id === jid)!.root, root, '归档行 root=来源工作区(归档页行打开寻址数据面)');
   });
 });

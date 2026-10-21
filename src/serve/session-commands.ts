@@ -123,9 +123,11 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
       notice(t('Archive first (/archive), then /delete', '先归档（/archive）再删除'));
       return 'ok';
     }
-    purgeSession(dataDir, jid);
+    // 序即正确性(终审 F2):notice 趁运行时在座广播(teardown 后 pump 只入快照不再外发)→ await
+    // teardown(seal 落最后一笔)→ purgeSession——旧序 purge 在前,异步 teardown 的 seal 复活已清档
     notice(t('Session deleted', '已删除'));
-    void s.teardown(); // 档已清,运行时同步收口防 append 复活(注册表残壳至重启,幂等无害)
+    await s.teardown();
+    purgeSession(dataDir, jid);
     return 'ok';
   }
 

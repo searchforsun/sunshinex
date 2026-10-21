@@ -15,7 +15,7 @@ test('listCommands 与 TUI SLASH_COMMANDS 逐字同源(防漂移钉子)', () => 
   }
 });
 
-test('清单完整下发(25 条;置灰判定归 gui,不在此裁剪)', () => {
+test('清单完整下发(全量对齐 SLASH_COMMANDS,条数随面扩不钉死;置灰判定归 gui,不在此裁剪)', () => {
   const { commands } = listCommands();
   assert.equal(commands.length, SLASH_COMMANDS.length);
   assert.ok(commands.includes('/terminal-setup'));

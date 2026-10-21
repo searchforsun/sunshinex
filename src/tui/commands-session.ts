@@ -19,8 +19,9 @@ import type { SessionController } from './session';
 export async function resumeFlow(ctrl: SessionController): Promise<void> {
   const dataDir = resolveDataDir(ctrl.root);
   // /resume 候选排除当前在飞会话（事件级落盘：命令输入自身即时建档，不排除会把本次命令的自建档选为最新恢复目标）
+  // + 滤除归档会话（2026-10-21 归档 spec §2：与主列表同口径——归档面只有 GUI 归档页，/resume 不再回捞）
   const currentId = ctrl.journal?.currentId;
-  const sessions = listSessions(dataDir).filter((s) => s.id !== currentId);
+  const sessions = listSessions(dataDir).filter((s) => s.id !== currentId && s.archived !== true);
   if (sessions.length === 0) {
     ctrl.pushMsg('system', t('No saved sessions yet', '暂无已保存会话'), { level: 'warn' });
     return;
@@ -63,10 +64,11 @@ export async function resumeFlow(ctrl: SessionController): Promise<void> {
   await restoreOrFork(ctrl, pick);
 }
 
-/** --continue（规格 D1/D3）：续接最近会话（listSessions mtime 降序首项，对标 CC -c）；无档提示后按新会话继续（不静默吞） */
+/** --continue（规格 D1/D3）：续接最近会话（listSessions mtime 降序首项，对标 CC -c）；无档提示后按新会话继续（不静默吞）。
+ *  归档会话滤除（2026-10-21 spec §2：与 /resume 主列表同口径——首项在归档面时跳过取下一非归档档） */
 export function resumeLatest(ctrl: SessionController): void {
   const dataDir = resolveDataDir(ctrl.root);
-  const meta = listSessions(dataDir)[0];
+  const meta = listSessions(dataDir).filter((s) => s.archived !== true)[0];
   if (!meta) {
     ctrl.pushMsg('system', t('No saved session to continue; started a fresh one', '没有可续接的已保存会话，已开启新会话'), { level: 'warn' });
     return;

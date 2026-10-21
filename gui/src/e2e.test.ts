@@ -613,8 +613,8 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
   }, 45_000);
 });
 
-describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 归档态删除→真清文件', () => {
-  it('两会话 idle → s2 先归档(未归档删除 409 门禁)→ Delete(confirm 桩)→ 200 → 回 home;daemon 会话 404/s2 档真清 s1 保留', async () => {
+describe('2026-10-21 受控删除:归档态 journalId 直调 daemon API → 真清文件', () => {
+  it('两会话 idle → s2 先归档(未归档删除 409 门禁)→ 直调 daemon 删除 API→ 200 → 回 home;daemon 会话 404/s2 档真清 s1 保留', async () => {
     const env = await startDaemon(
       new ScriptedAdapter(['{"done":true,"reply":"第一会话完成"}', '{"done":true,"reply":"第二会话完成"}']),
     );

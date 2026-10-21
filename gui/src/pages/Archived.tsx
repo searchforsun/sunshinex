@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArchiveRestore, ArrowLeft, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 import type { Connection } from '../connection';
 
 type ArchivedRow = { id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number };
@@ -12,6 +13,9 @@ export function ArchivedPage({ conn, onOpen, onClose }: {
 }): JSX.Element {
   const [rows, setRows] = useState<ArchivedRow[] | null>(null);
   const [confirmingId, setConfirmingId] = useState('');
+  // 行级操作失败最小可见面(2026-10-21 终审 F4):最后一笔错误上屏(单行,下一笔成功操作不清——
+  // 列表重拉刷新面),行保持原位即操作未生效的双信号
+  const [opError, setOpError] = useState('');
   useEffect(() => {
     let alive = true;
     conn.archivedSessions().then(
@@ -21,10 +25,16 @@ export function ArchivedPage({ conn, onOpen, onClose }: {
     return () => { alive = false; };
   }, [conn]);
   const unarchive = useCallback((id: string) => {
-    void conn.archiveSession(id, false).then(() => setRows((cur) => (cur ?? []).filter((r) => r.id !== id)), () => undefined);
+    void conn.archiveSession(id, false).then(
+      () => setRows((cur) => (cur ?? []).filter((r) => r.id !== id)),
+      (err: unknown) => setOpError(errText(err)),
+    );
   }, [conn]);
   const remove = useCallback((id: string) => {
-    void conn.deleteSession(id).then(() => setRows((cur) => (cur ?? []).filter((r) => r.id !== id)), () => undefined);
+    void conn.deleteSession(id).then(
+      () => setRows((cur) => (cur ?? []).filter((r) => r.id !== id)),
+      (err: unknown) => setOpError(errText(err)),
+    );
   }, [conn]);
   return (
     <div className="sx-archived-page" role="region" aria-label={t('Archived sessions', '归档会话')}>
@@ -34,6 +44,7 @@ export function ArchivedPage({ conn, onOpen, onClose }: {
         </button>
         <h2>{t('Archived sessions', '归档会话')}</h2>
       </div>
+      {opError !== '' && <p className="sx-archived-error">{t(`Operation failed: ${opError}`, `操作失败：${opError}`)}</p>}
       {rows === null ? (
         <p className="insight-empty">{t('Loading…', '加载中…')}</p>
       ) : rows.length === 0 ? (

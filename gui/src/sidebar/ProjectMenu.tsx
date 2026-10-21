@@ -294,14 +294,14 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
   /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
    *  组列表计数 + Recents(loadWorkspaces)与展开组会话行(loadSessions,归档行由服务端列表
-   *  滤除,T2c)。失败静默(行内面无错误条;下次 30s/聚焦刷新自愈) */
+   *  滤除,T2c)。失败经既有 actionError 通道上屏(终审 F4:不再静默,下次 30s/聚焦刷新自愈) */
   const archiveRow = useCallback(
     (id: string, archived: boolean): void => {
       conn.archiveSession(id, archived).then(() => {
         loadWorkspaces();
         const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
         if (row?.root !== undefined) loadSessions(row.root, row.slug);
-      }, () => undefined);
+      }, (err: unknown) => setActionError(errText(err)));
     },
     [conn, loadWorkspaces, loadSessions, rows],
   );

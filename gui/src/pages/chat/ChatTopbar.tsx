@@ -145,12 +145,16 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           </>
         ) : confirming ? (
           <button type="button" className="sx-archive-confirm" aria-label={t('Confirm archive', '确认归档')}
+            disabled={running}
             onClick={() => { setConfirming(false); onArchive(true); }}>
             {t('Confirm', '确认')}
           </button>
         ) : (
-          <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
-            aria-label={t('Archive', '归档')} onClick={() => setConfirming(true)}>
+          // 归档门禁(spec §8 running 矩阵):运行中钮禁用+提示文案——daemon 409 之前的 UI 侧门禁
+          <button type="button" className="sx-iconbtn"
+            data-tip={running ? t('Stop the run before archiving', '先停止运行再归档') : t('Archive', '归档')}
+            aria-label={running ? t('Stop the run before archiving', '先停止运行再归档') : t('Archive', '归档')}
+            disabled={running} onClick={() => setConfirming(true)}>
             <Archive size={14} strokeWidth={1.75} />
           </button>
         )}

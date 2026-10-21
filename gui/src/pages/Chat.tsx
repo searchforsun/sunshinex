@@ -127,7 +127,7 @@ export const slashTokenAt = (text: string, caret: number): { query: string; from
   return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
 };
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, showExpandSidebar, onExpandSidebar, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -309,11 +309,15 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [pillOpen]);
 
   /** 归档/撤销归档(2026-10-21 T5):conn.archiveSession 落 daemon + 本地 archived 即时换面;
-   *  失败回摆(409 running 等不静默驻留假态),下次 reseed 快照再权威对齐 */
+   *  失败回摆(409 running 等不静默驻留假态),下次 reseed 快照再权威对齐;错误经 onOpError
+   *  (App showOpError 通道,与 fork/rewind 同一错误条)上屏——静默失败病根修复(终审 F4) */
   const onArchive = useCallback((v: boolean): void => {
     setArchived(v);
-    conn.archiveSession(sessionId, v).catch(() => setArchived(!v));
-  }, [conn, sessionId]);
+    conn.archiveSession(sessionId, v).catch((err: unknown) => {
+      setArchived(!v);
+      onOpError?.(err);
+    });
+  }, [conn, sessionId, onOpError]);
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
   const { submitText, send, interrupt } = useChatSubmit({
