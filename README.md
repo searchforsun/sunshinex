@@ -22,7 +22,7 @@ src/
   cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index；裸命令进交互终端）
   tui/       # 交互式终端（ink + React，对标 Claude Code，v1.0 默认入口）
   session/   # 会话内核（SessionKernel：转录/等待队列唯一投影 + v3 段级会话档读写）与 KernelRuntime 装配单点（CLI/TUI/GUI 共用）
-  harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子代理、知识库
+  harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子智能体、知识库
   loop/      # Loop 引擎（生成→校验→修正）
   graph/     # DAG 多角色协作编排
   model/     # 模型适配 + 三档算力路由
@@ -50,7 +50,7 @@ shell/       # Electron 桌面壳工作区包（托盘驻留、全局快捷键�
 - **三面入口（均已交付）**：CLI 基础执行面 + 交互式 TUI（对标 Claude Code，ink + React 构建，v1.0 默认入口）+ GUI 桌面端/浏览器双形态（对标 Codex 工作台，Electron 壳 + React 前端）。TUI 内 `/goal <目标>` 触发标准验收修正环，目标支持自然语言条件。
 - **云本地分工**：任意 OpenAI 协议兼容供应商（`settings.json` 配置）负责推理，本地负责编排、执行、安全、记忆，数据可控。
 - **三层能力全落地**：Harness 底座 + Loop 自主迭代（生成→校验→修正→终止）+ Graph 多角色协作编排。
-- **生产级特性**：分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子代理并行派发；**多 Agent 编排**——持久任务板（依赖/审批门/裁决）+ 长驻 teammate + 外部 CLI 执行体（claude code）+ 定向消息，崩溃可恢复（kill -9 验收）。
+- **生产级特性**：分级沙箱、三级持久记忆（技能/项目/用户）、MCP 协议兼容、审计回滚、子智能体并行派发；**多 Agent 编排**——持久任务板（依赖/审批门/裁决）+ 长驻 teammate + 外部 CLI 执行体（claude code）+ 定向消息，崩溃可恢复（kill -9 验收）。
 
 ## 快速开始
 
@@ -89,7 +89,7 @@ sunshinex ../my-project        # 指定项目目录启动（路径形态位置�
 sunshinex --mode=manual|dontAsk|plan   # 权限模式
 sunshinex --language=zh        # 界面语言（缺省 en；提示词恒英文单语不受影响）
 sunshinex <目录> --worktree[=<name>]  # 在隔离 git worktree 内启动（裸旗标自动命名；干净树随会话自动清理，脏树保留待处置）
-                               # 会话内亦可经 worktree 工具 create/exit/list 管理隔离树；子代理经 agent.md `isolation: worktree` 声明获得独立树
+                               # 会话内亦可经 worktree 工具 create/exit/list 管理隔离树；子智能体经 agent.md `isolation: worktree` 声明获得独立树
 pnpm test && pnpm selfcheck    # 全量单测 / 骨架自检
 ```
 
@@ -133,7 +133,7 @@ scripts/release.mjs --no-gui                   # 只发 TUI tgz（跳过 GUI 安
 ## 扩展机制
 
 - **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
-- **子代理**：`agents/{id}/agent.md` 注册制（frontmatter 可声明 `isolation: worktree` 隔离、`executor: internal-team` 长驻 teammate / `external-cli` 外部执行体）；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
+- **子智能体**：`agents/{id}/agent.md` 注册制（frontmatter 可声明 `isolation: worktree` 隔离、`executor: internal-team` 长驻 teammate / `external-cli` 外部执行体）；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
 - **问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。
 
 ## 文档导航

@@ -27,7 +27,7 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：云端大模型负�
 [技能清单]    name+description 索引（按名排序冻结）                  ← 模型经 skill 工具按需加载正文
 [压缩块]      会话链前缀折叠摘要（模型驱动六要素 + 确定性回退）      ← 唯一合法重写产物
 [会话链]      任务指令行 + 全量执行轨迹                              ← append-only，只在尾部变
-[fork 尾追]   角色行 + 节点任务行 + 私有步骤                          ← 仅 graph 节点 / 子代理
+[fork 尾追]   角色行 + 节点任务行 + 私有步骤                          ← 仅 graph 节点 / 子智能体
 [技能块]      一次性注入置尾（loop 内部面）
 ```
 
@@ -36,12 +36,12 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：云端大模型负�
 ### 2.3 Harness 运行时层（src/harness/）
 
 - **项目感知**（perception.ts）：目录/依赖/SUNSHINE.md/Git 扫描
-- **Reactor 最小闭环**（reactor.ts）：observe→think→act，缺省 400 步宽预算（`SUNSHINEX_MAX_STEPS` 可调）；token 硬顶缺省不设（`SUNSHINEX_MAX_TOKENS` 显式注入才生效——预算是兜底不是限制，子代理同口径走 `SUNSHINEX_SUBAGENT_TOKEN_CAP` 独享值、不继承主链剩余）
+- **Reactor 最小闭环**（reactor.ts）：observe→think→act，缺省 400 步宽预算（`SUNSHINEX_MAX_STEPS` 可调）；token 硬顶缺省不设（`SUNSHINEX_MAX_TOKENS` 显式注入才生效——预算是兜底不是限制，子智能体同口径走 `SUNSHINEX_SUBAGENT_TOKEN_CAP` 独享值、不继承主链剩余）
 - **统一工具面**（tools.ts / tools/）：read、write、grep、glob、exec、webfetch、websearch、kb_search、skill、memory_write、ask_question、worktree、todo_write + 任务板/团队工具族（create_task 族、create_teammate、send_message），统一注册表 + 安全链；工具参数一律 JSON Schema 声明化（全量清单唯一登记于 `CLAUDE.md §5`）
 - **安全管控**（security/）：权限三态（deny/ask/allow）、SafetyChain、ProcessSandbox 子进程单点（exec shell 由 `resolveShell()` 跨平台解析）、凭据脱敏
 - **记忆双轨**（memory/ + skills/）：程序性记忆 LearnedSkillStore（任务收口沉淀可复用技能，FIFO 上限）+ 陈述性记忆 auto memory（MEMORY.md 索引 + 记录文件，提取挂 settle 单点、后台管线空闲消化、/memory 命令族管理）
 - **技能体系**（skills.ts）：三级根装载（项目级 `.sunshinex` > 全局级 `~/.sunshinex` > 学习级 `data/skills`），标准形态 `{id}/SKILL.md`，清单冻结注入 + skill 工具按需加载正文
-- **子代理**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算源挂载/并发护栏；spawn 工具 + `agents/{id}/agent.md` 目录注册制；同层并发上限 8（`SUBAGENT_CONCURRENCY_LIMIT`）
+- **子智能体**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算源挂载/并发护栏；spawn 工具 + `agents/{id}/agent.md` 目录注册制；同层并发上限 8（`SUBAGENT_CONCURRENCY_LIMIT`）
 - **会话持久化**（tui/session-journal.ts）：journal 逐事件落盘，崩溃丢失窗口收敛至在飞一个工具步；/resume、CLI `--continue` 恢复、/rewind 代码回退（write 影子快照）、/fork 不可变分档
 - **MCP 客户端**（mcp/）：官方 SDK 接缝，stdio/http/sse 三传输，装配期 fail-fast 注册
 - **知识库**（knowledge/）：本地向量知识库，local-json 与 sqlite-vec 可插拔双后端
@@ -61,7 +61,7 @@ OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路）�
 ### 2.7 交互面
 
 - **CLI**（src/cli/）：selfcheck / run / pipeline / serve / skills install / kb-index 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计已落地（设计规格 `specs/2026-09-21-cli-tui-interaction-redesign.md`；fe12d6a / 17f7712）
-- **TUI**（src/tui/，已交付）：会话 REPL、Static 化历史 + 动态帧流式渲染、Markdown 全框线表格（对标 Claude Code）、plan/goal/子代理面板、审批卡与统一选择器、斜杠命令族、状态栏（cache/ctx/turns/steps/tier/effort）、运行中中断与 steering 穿插提示词、worktree 隔离入口
+- **TUI**（src/tui/，已交付）：会话 REPL、Static 化历史 + 动态帧流式渲染、Markdown 全框线表格（对标 Claude Code）、plan/goal/子智能体面板、审批卡与统一选择器、斜杠命令族、状态栏（cache/ctx/turns/steps/tier/effort）、运行中中断与 steering 穿插提示词、worktree 隔离入口
 - **GUI**（已交付）：React 前端（gui/ 工作区包，浏览器模式经 `serve` daemon）+ Electron 桌面壳（shell/ 工作区包，托盘/全局快捷键/安装包），组件选型唯一登记于 `CLAUDE.md §13`
 
 ## 三、技术栈
@@ -85,7 +85,7 @@ OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路）�
 |------|------|
 | 统一运行时主链 | 2026-09-04-harness-unified-spine-design.md |
 | 上下文单一基座 + fork | 2026-09-14-context-fork-design.md |
-| 子代理 | 2026-09-14-subagent-design.md |
+| 子智能体 | 2026-09-14-subagent-design.md |
 | /goal 对齐 Claude Code | 2026-09-16-goal-claude-code-alignment-design.md |
 | 模型驱动压缩 | 2026-09-16-model-compaction-design.md |
 | auto memory / 记忆管线 | 2026-09-18-auto-memory-design.md、2026-09-19-memory-pipeline-learned-extraction-design.md |

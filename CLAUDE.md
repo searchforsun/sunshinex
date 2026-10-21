@@ -83,7 +83,7 @@ src/
     tools/task-wait.ts # task_wait 工具（阻塞等待后台任务到终态；装配期与 task_stop 一并注册进主链）
     tasks.ts          # 统一后台任务账本（exec/spawn 后台与超时转后台的 ID/生命周期/状态单点）
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输）
-    subagent.ts       # 子代理执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）
+    subagent.ts       # 子智能体执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）
     worktree.ts       # git worktree 单点模块（create/remove/list/isDirty/subagentTreeName）
     prompts/          # 提示词模板单点（shared 稳定段共享行；judge/summarizer/memory/learned 一次性调用模板）
     knowledge/        # 本地向量知识库（chunk/store/embed/KnowledgeBase）
@@ -100,7 +100,7 @@ src/
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/NSIS 单安装包打包；daemon 以子进程装配，壳与主仓零编译期耦合）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
-agents/               # 用户子代理目录（{id}/agent.md，装配期一次性加载 fail-fast）
+agents/               # 用户子智能体目录（{id}/agent.md，装配期一次性加载 fail-fast）
 SUNSHINE.md          # 项目业务配置
 ```
 
@@ -108,7 +108,7 @@ SUNSHINE.md          # 项目业务配置
 
 - 分层依赖方向：graph → loop → harness → model / storage
 - Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上
-- 技能与子代理通过「目录约定」加载，第三方工具经 MCP 接入（服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`，项目级撞名遮蔽全局）
+- 技能与子智能体通过「目录约定」加载，第三方工具经 MCP 接入（服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`，项目级撞名遮蔽全局）
 - 错误通道分域：工具与安全域返回 `Result`（可预期失败显式化）；引擎（Reactor/Loop/Graph）在节点边界 `catch` 后转为节点状态与 `reply` 字段（不可预期失败集中化），两条通道不得跨域混用
 - 运行时装配收敛于 `src/runtime.ts`（`buildHarness` 为 Harness 构造单点、`buildDeps` 为其上 CLI 专用整形层），交互面（CLI/TUI/GUI）只做参数解析与呈现，新增交互面复用同一装配根
 
@@ -122,9 +122,9 @@ SUNSHINE.md          # 项目业务配置
 - 新增共享类型需在 `src/types.ts` 登记
 - **主链工具面（装配期一次性登记，selfcheck `tools :` 行同源）**：
   - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `write` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
-  - 另册：`spawn`（`subagent.ts` 工厂，子代理派生）/ `task_stop`（`tools/task-stop.ts`，按 id 停止后台 exec/超时转后台/后台子代理）/ `task_wait`（`tools/task-wait.ts`，阻塞等待后台任务到终态并内联回执 exec 日志尾部/子代理结论）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
+  - 另册：`spawn`（`subagent.ts` 工厂，子智能体派生）/ `task_stop`（`tools/task-stop.ts`，按 id 停止后台 exec/超时转后台/后台子智能体）/ `task_wait`（`tools/task-wait.ts`，阻塞等待后台任务到终态并内联回执 exec 日志尾部/子智能体结论）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
   - 任务板与团队（`taskboard-tools.ts` + `teammate-tools.ts` 工厂，`harness/index.ts` 装配）：`create_teammate`（长驻成员创建，与 spawn 分立动词）/ `create_task` / `update_task` / `review_task` / `get_board` / `send_message`（主链面）；teammate 成员面派生时剔板面写件、换注 `get_board`/`get_task` 读取
-- **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀、子代理派生、后台任务停止等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制。**工具参数声明化**：每个工具必须以 JSON Schema 声明 `parameters`（function calling strict 兼容口径——`additionalProperties` 显式闭合、可选项以 null 联合进 `required`；自由入参属例外，须显式登记 `additionalProperties: true` 宽松点），新工具不带 schema 不得入清单
+- **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀、子智能体派生、后台任务停止等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制。**工具参数声明化**：每个工具必须以 JSON Schema 声明 `parameters`（function calling strict 兼容口径——`additionalProperties` 显式闭合、可选项以 null 联合进 `required`；自由入参属例外，须显式登记 `additionalProperties: true` 宽松点），新工具不带 schema 不得入清单
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
 - **核心契约零兼容**：模型核心契约（原生 function calling 等 API 层强制的能力）不支持即换模型/换端点，禁止在提示词层做兼容适配——靠提示词约束模型输出分布的兼容是开集，补丁修不完。允许保留的容错仅限两类：①wire 层差异（输入形态闭集 + 每种形态有确定归一规则 + 未知形态可判定并安全回退，如流式 tool_calls 分片重组、finish_reason 归一）；②运行时自愈与可选增强降级（上下文超限反应式压缩、reasoning_effort 探测降级——缺了只损增强不损核心契约）。新增任何兼容/兜底须先过此判据：需要预测「模型下一步会输出什么」的补丁一律不做
 - **依赖台账**：已引入依赖的用途/收敛边界/回退预案按下表登记（候选调研与评审记录见 `docs/Arch-Plan.md` §三 技术栈选型），引入时仍按上方原则更新本表与 `package.json`：
@@ -135,7 +135,7 @@ SUNSHINE.md          # 项目业务配置
 | ink + react | TUI 组件化渲染层（仅组件/入口，运行时零接触），收敛于 `src/tui/` | Renderer 接缝退原生 ANSI 最小面 |
 | sqlite-vec | KB 向量后端（`SUNSHINEX_KB_BACKEND=sqlite-vec`），收敛于 store 接缝 | local-json（缺省即回退，禁静默切换） |
 | markdown-it | Markdown 解析为 IR（唯一消费面=markdansi 表格网格回路的块级解析与对齐），收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
-| markdansi | 正文/子代理转录/step 行/旧档回放 Markdown→ANSI 渲染（session 块缓冲按块放行 + render 单点出口 + MessageRow 渲染层烘焙），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 markdown.ts 表格网格回路（renderGridTable 的 IR 解析） | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
+| markdansi | 正文/子智能体转录/step 行/旧档回放 Markdown→ANSI 渲染（session 块缓冲按块放行 + render 单点出口 + MessageRow 渲染层烘焙），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 markdown.ts 表格网格回路（renderGridTable 的 IR 解析） | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
 | cli-table3 | Markdown 表格框线渲染，收敛于 `src/tui/markdown.ts` 表格层 | 表格降级为原文行 |
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
 | mermaid（GUI） | 会话流 mermaid 围栏图渲染（懒加载/失败回落原文），收敛于 `gui/src/Mermaid.tsx` | 回落原文代码块，零会话流依赖 |
@@ -200,11 +200,11 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 [技能清单]   name+description 索引（同刷新点冻结、按名排序）       ← 会话级常量，模型据此按需加载
 [压缩块]     会话链前缀折叠摘要                                   ← 唯一合法重写产物
 [会话链]     任务指令行+全量执行轨迹+结论/节点结论/补丁行           ← 主链 append-only，只在尾部变
-[fork 尾追]  角色行+节点任务行+私有步骤                            ← 仅 graph 节点/子 agent
+[fork 尾追]  角色行+节点任务行+私有步骤                            ← 仅 graph 节点/子智能体
 [技能块]     一次性注入置尾（loop skillRef 内部面）                ← 出现/消失击穿面≈0
 ```
 
-主任务、plan 步骤、loop 修正轮都是主链追加；graph 节点与子 agent 是主链 fork（私有步骤不回主链，只回写结论/补丁行）。任何相邻帧、跨任务帧、主链↔fork 首帧的差异只允许出现在尾部。
+主任务、plan 步骤、loop 修正轮都是主链追加；graph 节点与子智能体是主链 fork（私有步骤不回主链，只回写结论/补丁行）。任何相邻帧、跨任务帧、主链↔fork 首帧的差异只允许出现在尾部。
 
 核心不变量（违反即回归；任何新能力先回答「落在提示词哪个位置、击穿多长前缀」）：
 
@@ -228,7 +228,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 
 本项目对标 Claude Code / Codex 等明星 agent 产品的**长任务能力**：任务由完成判定（验收标准、修正环收敛）驱动，而非由保守的步数/超时中断驱动。对标基线：明星产品代理轮次无人工步数上限、命令可后台长跑、以完成与预算为界——本项目缺省值按同量级取值，上限仅为安全网。
 
-- **缺省放宽原则**：超时、轮次、步数、预算的缺省值按「真实长任务」量级取值——模型调用超时 600s（深度推理 + 长生成）、命令执行超时 1800s（install/build/test 套件）、命令输出缓冲 32MB、Reactor 400 步（对标「无步数上限、完成驱动」，`SUNSHINEX_MAX_STEPS` 可调）、修正环 200 轮 / 12 小时（`SUNSHINEX_MAX_LOOP_ITERATIONS` 可调轮数）、全链路 1000 节点步 / 2M tokens / 24 小时（`SUNSHINEX_MAX_GRAPH_NODES` 可调节点数）；主链与子代理的 token 硬顶缺省**不设**（预算是兜底不是限制——护栏交给步数与墙钟，`SUNSHINEX_MAX_TOKENS` / `SUNSHINEX_SUBAGENT_TOKEN_CAP` 显式注入才生效；子代理硬顶与父级剩余解耦、不继承）；墙钟时长为失控保底、不进 settings 常规配置面。宁可放宽缺省，不靠保守中断制造假失败。
+- **缺省放宽原则**：超时、轮次、步数、预算的缺省值按「真实长任务」量级取值——模型调用超时 600s（深度推理 + 长生成）、命令执行超时 1800s（install/build/test 套件）、命令输出缓冲 32MB、Reactor 400 步（对标「无步数上限、完成驱动」，`SUNSHINEX_MAX_STEPS` 可调）、修正环 200 轮 / 12 小时（`SUNSHINEX_MAX_LOOP_ITERATIONS` 可调轮数）、全链路 1000 节点步 / 2M tokens / 24 小时（`SUNSHINEX_MAX_GRAPH_NODES` 可调节点数）；主链与子智能体的 token 硬顶缺省**不设**（预算是兜底不是限制——护栏交给步数与墙钟，`SUNSHINEX_MAX_TOKENS` / `SUNSHINEX_SUBAGENT_TOKEN_CAP` 显式注入才生效；子智能体硬顶与父级剩余解耦、不继承）；墙钟时长为失控保底、不进 settings 常规配置面。宁可放宽缺省，不靠保守中断制造假失败。
 - **放宽不等于无界**：预算记账、错误局部化、fail-bounded 语义全部保留——上限是安全网而非期望路径；长任务的正确形态是「宽预算 + 验收收敛」，而非「频繁触界中断」。
 - **新增参数时**：缺省值须按长任务场景论证并对齐上述量级；测试与探针可用显式小值构造边界用例，但不得因测试便利反推缩水产品缺省值；**各层缺省须同量级一致——单层缩水即整链瓶颈**（入口/模板层的显式覆盖值视同产品缺省，须同等论证）。
 - 已知长任务敏感点：模型慢响应（adapter timeoutMs）、长命令执行（sandbox exec 超时与 maxBuffer）、复杂多文件任务（Reactor maxSteps、Loop 修正环轮数、Graph 全链路终止参数）、批内长阻塞等待（task_wait 阻塞到终态或超时，缺省 1800s，占据一个工具执行槽——批内其他调用照常完成，整批回合时延以最慢等待为准）、各 CLI 命令与模板内嵌节点的显式覆盖值。调整任一处须同步评估其余层级的一致性。
@@ -243,12 +243,12 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 |------|--------|------|----------------|
 | TUI 渲染 | ink + React | 已引入 | 组件化终端渲染，收敛于 `src/tui/`（仅渲染层，运行时零接触） |
 | TUI Markdown | markdown-it | 已引入 | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` |
-| TUI Markdown 流式渲染 | markdansi | 已引入 | 正文/子代理转录/step 行/旧档回放 Markdown→ANSI 渲染（完成行紧排缓冲、块边界整块渲染，表格/围栏整块收口），收敛于 `src/tui/md-ansi.ts` 单点出口 |
+| TUI Markdown 流式渲染 | markdansi | 已引入 | 正文/子智能体转录/step 行/旧档回放 Markdown→ANSI 渲染（完成行紧排缓冲、块边界整块渲染，表格/围栏整块收口），收敛于 `src/tui/md-ansi.ts` 单点出口 |
 | TUI 高亮 | highlight.js | 已引入 | 代码块语法高亮，收敛于 `src/tui/highlight.ts` |
 | TUI 宽度 | string-width | 已引入 | 中英混排/全角字符宽度测量 |
 | GUI 框架 | React 18 + Vite | 已引入 | 界面构建与前端工具链，收敛于 `gui/` 工作区包（构建产物 dist-gui/） |
 | GUI 状态管理 | React hooks/useReducer | 已引入 | 会话状态归 Chat reducer 与 App 级 hook，无外部状态库 |
-| GUI Markdown | react-markdown + remark-gfm | 已引入 | 会话流正文渲染（对话页/文件预览/子代理转录，代码高亮走 highlight.js） |
+| GUI Markdown | react-markdown + remark-gfm | 已引入 | 会话流正文渲染（对话页/文件预览/子智能体转录，代码高亮走 highlight.js） |
 | GUI 编辑器 | Monaco Editor（@monaco-editor/react，含 DiffEditor） | 已引入 | 文件预览语法高亮与 diff 双列对比，收敛于 `gui/src/monaco-setup.ts` + `gui/src/diff-panel.tsx` |
 | GUI 图渲染 | mermaid | 已引入 | 会话流 mermaid 围栏渲染（懒加载/主题随 data-theme/失败回落），收敛于 `gui/src/Mermaid.tsx` |
 | GUI 图标 | lucide-react + @iconify/react（vscode-icons 集） | 已引入 | 界面图标与文件树文件图标 |
@@ -293,7 +293,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 两条线各自独立、不得混用：**外观**走 i18n 双语，**提示词**恒英文单语。
 
 - **外观（双语，可配置）**：仅指用户直接看到的界面呈现——TUI chrome 文案、审批卡、系统消息、命令帮助、CLI 用法与自检输出。语言由 `--language=en|zh` 配置（缺省 `en`），经 `src/i18n.ts` 的 `setLanguage()` 在任何输出与装配之前一次性设定、会话内恒定；一律用 `t(en, zh)` 调用时求值，禁止模块级常量冻结。
-- **提示词（恒英文单语，不可配置）**：凡进入模型上下文的一切文案——系统提示词、工具名与工具描述、观察与错误文案、压缩摘要提示词、子代理角色框定、生成类任务 goal（如 `/init`）、判据与链行——**一律英文单语**，不随 `--language` 切换、不写成双语对。理由：提示词是产品行为契约而非外观，单语形态可机械校验。
+- **提示词（恒英文单语，不可配置）**：凡进入模型上下文的一切文案——系统提示词、工具名与工具描述、观察与错误文案、压缩摘要提示词、子智能体角色框定、生成类任务 goal（如 `/init`）、判据与链行——**一律英文单语**，不随 `--language` 切换、不写成双语对。理由：提示词是产品行为契约而非外观，单语形态可机械校验。
 - **消费方定归属，判据是「有无写链」**：只看这个串有没有被写进链或观察（`appendChain` / `observation` / `steps`）——写链的 → 进模型上下文 → 英文单语；写死字面量且零写链、只上屏 → 属外观 → `t()` 双语。同一文件两种形态可并存（`graph/nodes.ts` loop 结论行英文、同文件 gate 回执 `t()`），不得按目录一刀切。
 - **模型产出不译**：写链行里我们自写的前缀与兜底文案用英文；链行承载的模型产出正文（如 `${id}: ${r.reply}` 的 `r.reply`）照原样保留。
 - **机械校验**：判据为「**非 `t()` 包裹的中文字面量零出现**」于提示词与链的产出面（`prompts/` 模板与 `stableSegmentOf`、工具 description、观察与链行写入点、生成类 goal）；`t()` 包裹的中文允许存在于任何层（含 `graph/` / `loop/` 的写死回执），审计按「是否被 `t()` 包裹」区分，不按目录一刀切。豁免：项目专名（`SUNSHINE.md`）与功能性非 ASCII（分句标点、框线/字形符）。
