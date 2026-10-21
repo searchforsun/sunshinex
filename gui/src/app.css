@@ -46,7 +46,7 @@
   --dur-basic: 0.15s;
   --dur-relaxed: 0.3s;
   /* 尺度(G12 协调:流区与输入卡同宽令,正文升 14px 档)——--chat-max 在主对话区/右栏内联覆写:
-     App ResizeObserver 按各区实时宽度落值(G14.2xx 限宽阶梯,主对话/欢迎页/辅助对话/子代理
+     App ResizeObserver 按各区实时宽度落值(G14.2xx 限宽阶梯,主对话/欢迎页/辅助对话/子智能体
      同一策略),此处 880px 只作 JS 落值前的首帧回退 */
   --chat-max: 880px;
   --thread-gutter: 16px;
@@ -202,10 +202,7 @@
   gap: 6px; color: var(--fg-tertiary);
 }.sx-web-empty-title { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--fg-secondary); }.sx-web-empty-hint { margin: 0; font-size: 12px; }
 
-/* 子智能体状态徽标(G8d;Board 委派行 delegation-* 消费):t() 双语文案壳。呼吸灯 keyframes
-   供 DAG dag-dot 转圈复用 */
-@keyframes sx-subagent-breathe { 50% { opacity: 0.25; } }.sx-subagent-status { flex: none; font-size: 11px; border: 1px solid var(--border); border-radius: 9999px; padding: 0 8px; color: var(--fg-secondary); }.sx-subagent-status.delegation-running { color: var(--accent); border-color: var(--accent); }.sx-subagent-status.delegation-done { color: var(--ok); border-color: var(--ok); }.sx-subagent-status.delegation-failed { color: var(--err); border-color: var(--err); }.sx-subagent-status.delegation-skipped { color: var(--fg-tertiary); border-color: var(--border); }.sx-subagent-status.delegation-paused { color: var(--warn); border-color: var(--warn); }
-/* G14.164 子代理只读转录页(agent 标签体):页体=转录流容器(页头 G14.202 去除,v1 自绘转录行
+/* G14.164 子智能体只读转录页(agent 标签体):页体=转录流容器(页头 G14.202 去除,v1 自绘转录行
    G14.213 换正主对话渲染件后退役——本块只留页壳三件) */
 .sx-agent-page { height: 100%; display: flex; flex-direction: column; min-height: 0; }.sx-agent-page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
 
@@ -217,10 +214,10 @@
 .sx-shell.sx-dragging iframe { pointer-events: none; }
 html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动条整体去除(滚动都在面板内) */::-webkit-scrollbar { width: 8px; height: 8px; }::-webkit-scrollbar-track { background: transparent; }:::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--fg) 30%, transparent); border-radius: 4px; }::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
-/* === Chat 页(sx-main flex 列消费:顶栏/挂起卡区/消息流/输入条四段贴均分) === */.chat-topbar { display: flex; align-items: center; gap: 8px; flex: none; height: var(--toolbar-h); padding: 0 12px; background: transparent; }.chat-topbar .back, .board-topbar .back { flex: none; padding: 2px 8px; border: none; border-radius: var(--radius-sm); color: var(--fg-secondary); }.chat-topbar .back:hover:not(:disabled), .board-topbar .back:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.session-chip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--font-mono); color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-sm); padding: 1px 8px; }.status-text { font-size: 12px; color: var(--fg-secondary); white-space: nowrap; }.status-text.status-running { color: var(--accent); }.chat-topbar .delete { margin-left: auto; flex: none; padding: 2px 8px; border: none; border-radius: var(--radius-sm); color: var(--fg-secondary); }.chat-topbar .delete:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
+/* === Chat 页(sx-main flex 列消费:顶栏/挂起卡区/消息流/输入条四段贴均分) === */.chat-topbar { display: flex; align-items: center; gap: 8px; flex: none; height: var(--toolbar-h); padding: 0 12px; background: transparent; }.chat-topbar .back { flex: none; padding: 2px 8px; border: none; border-radius: var(--radius-sm); color: var(--fg-secondary); }.chat-topbar .back:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.session-chip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--font-mono); color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-sm); padding: 1px 8px; }.status-text { font-size: 12px; color: var(--fg-secondary); white-space: nowrap; }.status-text.status-running { color: var(--accent); }.chat-topbar .delete { margin-left: auto; flex: none; padding: 2px 8px; border: none; border-radius: var(--radius-sm); color: var(--fg-secondary); }.chat-topbar .delete:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
 
 /* 挂起卡区(G14.88 卡片入 dock:approval/ask 同 pending-card 缺省边——warn/accent 彩边与三色钮退役;
- * gate-actions 彩钮仍服务 Board 门禁行) */.pending-card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }.ask-card { border-color: var(--accent); }.card-title { font-size: 13px; font-weight: 600; color: var(--fg); }.card-reason { color: var(--fg-secondary); font-size: 12px; }.card-options { display: flex; flex-direction: column; gap: 4px; }.card-option { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); }.card-option input, .mode-option input { accent-color: var(--accent); }.card-custom { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: inherit; }.pending-card .card-actions { display: flex; gap: 8px; }.gate-actions .approve { padding: 2px 10px; border: 1px solid var(--ok); border-radius: var(--radius-md); color: var(--ok); }.gate-actions .deny { padding: 2px 10px; border: 1px solid var(--err); border-radius: var(--radius-md); color: var(--err); }.pending-card .primary, .dirpicker-foot .primary { padding: 2px 12px; border: 1px solid var(--accent); border-radius: var(--radius-md); color: var(--accent); }.gate-actions .approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ok) 15%, transparent); }.gate-actions .deny:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 15%, transparent); }.pending-card .primary:hover:not(:disabled), .dirpicker-foot .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+ * gate-actions 彩钮服务任务行门禁钮) */.pending-card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }.ask-card { border-color: var(--accent); }.card-title { font-size: 13px; font-weight: 600; color: var(--fg); }.card-reason { color: var(--fg-secondary); font-size: 12px; }.card-options { display: flex; flex-direction: column; gap: 4px; }.card-option { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); }.card-option input, .mode-option input { accent-color: var(--accent); }.card-custom { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: inherit; }.pending-card .card-actions { display: flex; gap: 8px; }.gate-actions .approve { padding: 2px 10px; border: 1px solid var(--ok); border-radius: var(--radius-md); color: var(--ok); }.gate-actions .deny { padding: 2px 10px; border: 1px solid var(--err); border-radius: var(--radius-md); color: var(--err); }.pending-card .primary, .dirpicker-foot .primary { padding: 2px 12px; border: 1px solid var(--accent); border-radius: var(--radius-md); color: var(--accent); }.gate-actions .approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ok) 15%, transparent); }.gate-actions .deny:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 15%, transparent); }.pending-card .primary:hover:not(:disabled), .dirpicker-foot .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 
 /* 消息流:chat 满高滚动列+行距;entry 条目卡 bg-1+10px 圆+hover 微浮(阴影+边提亮,零布局移);
    user=accent 左边(裁定:与 session-row.active 竖条同语言);notice=虚线轻条;error=err 着色 */.chat { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; }.entry { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; overflow-wrap: anywhere; }.entry:hover { border-color: var(--fg-secondary); }.entry-user { border-left: 3px solid var(--accent); }.entry-user:hover { border-left-color: var(--accent); }.entry-notice { background: transparent; border-style: dashed; color: var(--fg-secondary); font-size: 12px; }.entry-error { border-color: var(--err); background: color-mix(in srgb, var(--err) 8%, transparent); color: var(--err); }
@@ -231,11 +228,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* 输入面贴底(G12 起 composer 卡面样式单源在 .sx-composer 段,旧 flex 席位规则退役) */
 
-/* === Board 页(tasks 标签体:滚动落 sx-tabbody,顶栏 sticky 常驻;行卡/needs 文字列/gate 左条/DAG svg) === */.board-topbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; height: var(--toolbar-h); padding: 0 12px; background: var(--surface); }.view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }.view-toggle button { padding: 2px 12px; border-radius: var(--radius-xs); font-size: 12px; color: var(--fg-secondary); }.view-toggle button:hover { color: var(--fg); }.view-toggle button.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.board-body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 10px 12px; }.board-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }.board-empty { margin: 8px 0; color: var(--fg-secondary); }.board-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.board-row { display: flex; flex-direction: column; gap: 2px; }.task-row { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); overflow-wrap: anywhere; }.task-row:hover { border-color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+/* === 任务板页签(滚动落 sx-tabbody;列表行卡/needs 文字列/gate 左条) === */.view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }.view-toggle button { padding: 2px 12px; border-radius: var(--radius-xs); font-size: 12px; color: var(--fg-secondary); }.view-toggle button:hover { color: var(--fg); }.view-toggle button.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.task-row { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); overflow-wrap: anywhere; }.task-row:hover { border-color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* gated=warn 左条(inset 竖条零布局移,hover 不夺条);needs 箭头列随行文本,状态六态着色 */.task-row.gated { box-shadow: inset 2px 0 0 var(--warn); }.task-status-pending { color: var(--fg-secondary); }.task-status-claimed { color: var(--accent); }.task-status-in-review { color: var(--warn); }.task-status-done { color: var(--ok); }.task-status-failed { color: var(--err); }.task-status-cancelled { color: var(--fg-secondary); text-decoration: line-through; }.gate-actions { display: inline-flex; gap: 6px; margin-left: 12px; }.gate-actions .approve, .gate-actions .deny { padding: 1px 8px; font-size: 12px; }
-/* DAG svg:bg-1 卡面;盒=bg-2 描边卡,gated=warn 边/selected=accent 边/done 降透明度;
-   线尾即箭头语义(自左向右依赖向);盒 id 文本着色随状态六态 */.board-dag-scroll { overflow: auto; min-height: 0; }.board-dag { display: block; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px; }.board-dag .dag-edge { stroke: var(--fg-secondary); stroke-width: 1; opacity: 0.6; }.board-dag .task-box { cursor: pointer; }.board-dag .task-box rect { fill: var(--surface-soft); stroke: var(--border); }.board-dag .task-box:hover rect { stroke: var(--fg-secondary); }.board-dag .task-box.gated rect { stroke: var(--warn); }.board-dag .task-box.selected rect { stroke: var(--accent); stroke-width: 1.5; }.board-dag .task-box.done { opacity: 0.55; }.board-dag .box-id { fill: var(--fg); font: 12px var(--font-mono); }.board-dag .box-title { fill: var(--fg-secondary); font: 11px var(--font-ui); }.board-dag .task-status-pending .box-id { fill: var(--fg-secondary); }.board-dag .task-status-claimed .box-id { fill: var(--accent); }.board-dag .task-status-in-review .box-id { fill: var(--warn); }.board-dag .task-status-done .box-id { fill: var(--ok); }.board-dag .task-status-failed .box-id { fill: var(--err); }.board-detail { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }.detail-head { font: 12px var(--font-mono); color: var(--fg); overflow-wrap: anywhere; }.detail-spec { margin: 0; color: var(--fg-secondary); font-size: 12px; white-space: pre-wrap; }.detail-meta { margin: 0; color: var(--fg-secondary); font: 11px var(--font-mono); overflow-wrap: anywhere; }
-/* teammate 侧栏(team-sidebar):busy 点=accent 实心/空闲=灰空心;delegation 行状态着色 */.team-sidebar { flex: none; width: 230px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }.team-sidebar h3 { margin: 0 0 4px; font-size: 12px; color: var(--fg-secondary); }.team-empty, .delegations-empty { margin: 0; color: var(--fg-secondary); font-size: 12px; }.team-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.teammate { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg); font-size: 12px; }.teammate:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.team-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1px solid var(--fg-secondary); }.team-dot.busy { border-color: var(--accent); background: var(--accent); }.delegations { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }.delegation-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.delegation { display: flex; flex-direction: column; gap: 1px; padding: 3px 6px; border-radius: var(--radius-sm); overflow-wrap: anywhere; }.delegation:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }.delegation-main { display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; }.delegation-main:hover .delegation-title { color: var(--accent); }.delegation-title { flex: 1; min-width: 0; font-size: 12px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.delegation-id { font: 10px var(--font-mono); color: var(--fg-tertiary); }.delegation-running { color: var(--accent); }.delegation-done { color: var(--ok); }.delegation-failed { color: var(--err); }.delegation-skipped { color: var(--fg-tertiary); }.delegation-paused { color: var(--warn); }
+/* DAG 滚动壳(列表/流程图双卡共用的滚动容器) */.board-dag-scroll { overflow: auto; min-height: 0; }
 
 /* === Files 页(G14.5 vscode 形态:顶部路径面包屑+Monaco 只读源码面;输入行仅空/错误态) === */.files { display: flex; flex-direction: column; height: 100%; }
 /* 顶部路径面包屑:逐级文件夹+分隔符,末级文件图标+名(VSCode breadcrumb 同形) */.files-breadcrumb {
@@ -890,14 +885,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== G10-C6 右栏看板(Codex 对标:分段控件/卡片去描边,小标题并入分区头语言) ===== */.view-toggle { border: none; }.team-sidebar { border: none; }.team-sidebar h3, .delegations h3 {
-  margin: 0 0 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: var(--fg-tertiary);
-}
+/* ===== G10-C6 右栏看板(分段控件去描边) ===== */.view-toggle { border: none; }
 
 /* G10-C6 续:会话操作菜单锚定 topbar(原绝对定位落到视口右上,盖住右栏) */.chat-topbar { position: relative; }.chat-topbar .chat-more-pop { top: calc(100% + 4px); right: 8px; }
 
@@ -1479,8 +1467,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.51:⇄ 开标签钮钉自绘 diff 面板右上角 */.tool-diffwrap { position: relative; }.tool-diffwrap > .tool-path { position: absolute; top: 6px; right: 8px; z-index: 2; }
 
 /* G14.137 任务标签「会话待办」区(todo_write 清单):独立于任务板任务的常驻区 */
-.board-todos { flex: 1 1 100%; margin: 0 0 2px; padding: 10px 12px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
-.board-todos-head { margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--fg); }
 /* G14.174 待办/任务板卡片流(两页签共用卡语言):卡=表面浮层 md 圆角;头=轮次输入省略+进度+时间 */
 .todo-cards, .taskboard-cards { height: 100%; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
 .todo-card, .tb-card { flex: none; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -1660,26 +1646,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-web-scaler.device { outline: 1px solid var(--border-strong); background: var(--surface); box-shadow: var(--elev-card); }
 .sx-web-nav.active { color: var(--accent); }
 
-/* ===== G14.174 任务板流程图(tb 卡二):曲线依赖连线+箭头/节点状态点/agent 行(覆盖旧直线上方) ===== */
-.board-dag .dag-edge { fill: none; stroke: var(--fg-secondary); stroke-width: 1.2; opacity: 0.55; }
-.board-dag .dag-edge.done { opacity: 0.3; }
-.board-dag .dag-arrow { fill: var(--fg-secondary); opacity: 0.7; }
-.board-dag .dag-dot { fill: var(--fg-tertiary); }
-/* G14.213 DAG 节点状态点:运行=accent 呼吸;完成=ok 绿(节点文案绿系)……用户三态以列表为准,DAG 同步 */
-.board-dag .task-status-claimed .dag-dot { fill: var(--accent); animation: sx-subagent-breathe 1.6s ease-in-out infinite; }
-.board-dag .task-status-in_review .dag-dot { fill: var(--accent); animation: sx-subagent-breathe 1.6s ease-in-out infinite; }
-.board-dag .task-status-done .dag-dot { fill: var(--ok); }
-.board-dag .task-status-failed .dag-dot { fill: var(--err); }
-.board-dag .box-agent { fill: var(--fg-tertiary); font: 10.5px var(--font-ui); }
-.board-dag .box-title { fill: var(--fg); font: 11.5px var(--font-ui); }
-.board-dag .task-box rect { fill: var(--surface); }
-.board-dag .task-box:hover rect { stroke: var(--accent); }
-
-/* ===== G14.175 子代理转录页 v2:主对话式渲染(用户气泡/思考行/assistant md/工具行,无输入框) =====
+/* ===== G14.175 子智能体转录页 v2:主对话式渲染(用户气泡/思考行/assistant md/工具行,无输入框) =====
    G14.213 渲染组件换正(ChatEntryView/ThinkingEntryView/ToolEntryView 同一套),页内 md 字号/
    p 边距覆盖与自绘 tool-row 样式退役——视觉即主对话 */
 .sx-agent-thread { display: flex; flex-direction: column; padding: 12px 16px 28px; /* G14.2xx 宽度策略与主对话同源:对称 padding 承担限宽(--chat-max 由 RO 按右栏宽落值),窄面板 16px 护栏沿用本页原 gutter */ padding-left: max(16px, calc((100% - var(--chat-max) - 2 * var(--thread-gutter)) / 2 + 16px)); padding-right: max(16px, calc((100% - var(--chat-max) - 2 * var(--thread-gutter)) / 2 + 16px)); } /* G14.2xx 底部边距加足(末行工具/回复不贴底);G14.2xx b gap 声明退役——容器挂 .chat 类,条目间距(gap 8px/user·assistant margin-top/工具行相邻收紧)与主对话完全同源 */
-/* G14.2xx 子代理页对齐主对话:页体作跳底钮定位锚;jump-down 本页无输入框改钉右下角;
+/* G14.2xx 子智能体页对齐主对话:页体作跳底钮定位锚;jump-down 本页无输入框改钉右下角;
    分割线归内容区 run 条自带 border-bottom(G14.2xx b 合成头部行+agent-thread-sep 双线退役) */
 .sx-agent-page { position: relative; }
 .sx-agent-page .jump-down { top: auto; bottom: 16px; }
@@ -1718,7 +1689,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.179 待办卡头进度:朴素文本(用户输入之前),不用彩色药丸 */
 .todo-card-count { flex: none; font: 11px var(--font-mono); color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 
-/* ===== G14.181 用户气泡限高折叠(主对话/子代理页共用):默认 168px,底部居中悬浮展开钮 ===== */
+/* ===== G14.181 用户气泡限高折叠(主对话/子智能体页共用):默认 168px,底部居中悬浮展开钮 ===== */
 .user-bubble-wrap { position: relative; max-width: 85%; margin-left: auto; min-width: 0; }
 .user-bubble-wrap .user-bubble { max-width: none; }
 .user-bubble-clamped { max-height: 168px; overflow: hidden; padding-bottom: 22px; }
@@ -1982,7 +1953,7 @@ input.sx-setting-input { width: 100%; }
 *, ::before, ::after { corner-shape: superellipse(1.5); }
 
 /* G14.207 状态圆点恢复正圆(全局超椭园规则波及小圆点会变椭圆——用户裁定圆点用圆形) */
-.todo-dot, .sx-session-dot, .team-dot, .sx-status-dot { corner-shape: round; }
+.todo-dot, .sx-session-dot, .sx-status-dot { corner-shape: round; }
 
 /* G14.208b 折叠态浮钮:绝对定位贴气泡内底部渐隐区(此前规则被后段覆盖丢失导致跑外侧) */
 .user-bubble-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 8px; margin-top: 0; pointer-events: none; }

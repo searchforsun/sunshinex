@@ -13,7 +13,7 @@ import '@xyflow/react/dist/style.css';
  * 缩放/控制钮)组件内置,mermaid 时代的拼源/容错/lightbox 全部不再需要。
  * 节点点击语义沿 G14.213:仅「有执行子代理」的任务可点 → 上抛 onTaskOpen 跳对应子 agent 页签
  * (等待态无委派不可点);START/END 虚拟节点保留并行任务的起止形态。布局为纯函数(layoutTaskDag)
- * 可独立桩测:未知依赖边忽略(会话间补发交错防御,board-layout 同款)、环交 dagre 自身割环兜底。
+ * 可独立桩测:未知依赖边忽略(会话间补发交错防御,与 projection 侧同款纪律)、环交 dagre 自身割环兜底。
  */
 
 /** 任务节点盒尺寸(dagre 布局步进 + React Flow 免实测尺寸的既定值;CSS 同值配套) */
@@ -69,7 +69,7 @@ export function layoutTaskDag(
     edges.push({ id: `e-${from}-${to}`, source: from, target: to });
   };
   for (const task of sorted) {
-    // 缺依赖(引用集合外任务)的边忽略——跨会话补发流交错的既定防御(board-layout 同款)
+    // 缺依赖(引用集合外任务)的边忽略——跨会话补发流交错的既定防御(与 projection 侧同款纪律)
     const deps = task.dependsOn.filter((d) => inSet.has(d));
     if (deps.length === 0) link(START_ID, task.id);
     for (const d of deps) link(d, task.id);

@@ -1555,7 +1555,6 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined();
     fireResetSession(conn, 's1'); // 本会话:board/delegations 清(reset 语义 = swap 新 Harness,旧板作废;
     // 重播种快照板再经 onSeeded 回填——默认空快照,空态维持)
-    await waitFor(() => expect(document.querySelector('.board-main')).toBeNull());
     expect(document.querySelector('.tb-task-list')).toBeNull(); // 清空后任务列表不渲染
     unmount();
   });
