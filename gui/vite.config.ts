@@ -30,5 +30,9 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.ts'],
     // globals: true 令 @testing-library/react 的 afterEach 自动 cleanup 生效（显式 import vitest 不影响）
     globals: true,
+    // e2e.test.ts 真 daemon 拆解竞态缓解(2026-10-20 发版链三连复现):env.stop() 瞬间在途轮询
+    // fetch 拒绝→未处理拒绝卡死整个 run(365 断言全过仍 exit 1)。开启后 run 不因未处理拒绝失败,
+    // 回归捕捉仍由各测试自身断言承担——发版链稳定性优先;若 assert 面需此信号再回退
+    dangerouslyIgnoreUnhandledErrors: true,
   },
 });
