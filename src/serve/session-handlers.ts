@@ -14,7 +14,7 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, listAnchors, listSessions, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta, type SessionSidecarMeta } from '../tui/session-journal';
+import { branchFrom, listAnchors, listSessions, markSessionArchived, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta, type SessionSidecarMeta } from '../tui/session-journal';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
@@ -676,6 +676,7 @@ export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerRespo
       return base === 'default' || base.startsWith('sunshinex-default');
     };
     for (const r of listSessions(dataDir)) {
+      if (r.archived === true) continue; // 2026-10-21 归档滤除:归档会话退出 RECENTS
       if (!isDefaultWs(root)) continue; // G14.35:RECENTS 只收默认锚点工作区(非项目会话的家;项目会话归各组)
       out.push({
         id: r.id,
@@ -714,7 +715,7 @@ export function handleSessions(io: SessionHandlerIo, req: http.IncomingMessage, 
   // G14.52:行附 liveSessionId(journal ↔ 活跃会话反查)——GUI 侧栏行运行圆点直比会话 id,
   // 不再依赖 attach 时的本地映射(新建会话首条 append 前无 journal id,映射缺位圆点不亮)
   const liveByJournal = liveSessionByJournal(io.sessions);
-  const rows = listSessions(resolveDataDir(root)).map((r) => {
+  const rows = listSessions(resolveDataDir(root)).filter((r) => r.archived !== true).map((r) => {
     const live = liveByJournal.get(r.id);
     return live !== undefined ? { ...r, liveSessionId: live } : r;
   });
@@ -729,4 +730,77 @@ export function liveSessionByJournal(sessions: Map<string, SessionRuntime>): Map
     if (jid !== undefined) m.set(jid, s.id);
   }
   return m;
+}
+
+/** journalId → {dataDir, slug}(跨工作区扫描;archive/delete 的 journal 寻址与归档列表共用) */
+export function findJournalOwner(root: string, jid: string): { dataDir: string; slug: string } | undefined {
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dataDir = path.join(root, ent.name, 'data');
+    if (fs.existsSync(path.join(sessionsDir(dataDir), `${jid}.jsonl`))) return { dataDir, slug: ent.name };
+  }
+  return undefined;
+}
+
+/** POST /session/:id/archive {archived?}(2026-10-21 归档):双寻址——:id 命中 daemon 会话表走运行时
+ *  路径(缺 journal 404),否则视作 journalId 走磁盘路径;running 一律 409(先停再归档,与 delete 同门禁) */
+export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerResponse, id: string, body: { archived?: unknown }): void {
+  const archived = body.archived !== false;
+  const liveByJournal = liveSessionByJournal(io.sessions);
+  let dataDir: string;
+  let jid: string;
+  const session = io.sessions.get(id);
+  if (session !== undefined) {
+    if (session.status() === 'running') return io.send(res, 409, { error: 'cannot archive while a run is in progress' });
+    const attached = session.attachedJournalId;
+    if (attached === undefined) return io.send(res, 404, { error: 'session has no journal' });
+    jid = attached;
+    dataDir = resolveDataDir(session.root);
+  } else {
+    if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
+    const owner = findJournalOwner(projectsRoot(), id);
+    if (owner === undefined) return io.send(res, 404, { error: 'unknown session' });
+    jid = id;
+    dataDir = owner.dataDir;
+  }
+  if (liveByJournal.get(jid) !== undefined) return io.send(res, 409, { error: 'cannot archive while a run is in progress' });
+  markSessionArchived(dataDir, jid, archived);
+  io.send(res, 200, { ok: true, archived });
+}
+
+/** GET /sessions/archived(归档页数据源):跨工作区扫描各 slug 的 archived 档,archivedAt 降序;
+ *  行带 slug+root(来源项目标注)——不设 isDefaultWs 过滤(项目会话同样可归档) */
+export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerResponse): void {
+  type ArchivedRow = { id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number };
+  const out: ArchivedRow[] = [];
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
+  } catch {
+    io.send(res, 200, out);
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dataDir = path.join(projectsRoot(), ent.name, 'data');
+    let root = '';
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
+      if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
+    } catch {
+      root = '';
+    }
+    for (const r of listSessions(dataDir)) {
+      if (r.archived !== true || r.archivedAt === undefined) continue;
+      out.push({ id: r.id, slug: ent.name, root, ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.archivedAt });
+    }
+  }
+  out.sort((a, b) => b.archivedAt - a.archivedAt);
+  io.send(res, 200, out);
 }

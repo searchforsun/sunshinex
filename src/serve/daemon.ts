@@ -592,6 +592,13 @@ export class GuiDaemon {
     // G5 看板服务面：lead 审批映射（gated 审批解锁 / in-review 关单——GUI Board 页消费）
     { method: 'POST', path: '/session/:id/board/review', auth: true, run: (req, res, p) => this.handleBoardReview(req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
+    // 2026-10-21 归档面:双寻址(daemon 会话 id 或 journalId)+ 跨工作区归档列表(归档页消费)
+    { method: 'POST', path: '/session/:id/archive', auth: true, run: async (req, res, p) => {
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        sessionHandlers.handleSessionArchive(this.sessionIo, res, p.id, parsed.body as { archived?: unknown });
+      } },
+    { method: 'GET', path: '/sessions/archived', auth: true, run: async (_req, res) => sessionHandlers.handleSessionsArchived(this.sessionIo, res) },
     // T2 会话回收：running 409（先收 run 再删）；journal 文件保留（磁盘档案非 daemon 生命周期资产）
     { method: 'POST', path: '/session/:id/delete', auth: true, run: async (_req, res, p) => this.handleDelete(res, p.id) },
     // G8b T3 pty 面：分配（shell 探测 daemon 内定，cols/rows 缺省 80/24）+ kill（幂等）
