@@ -27,6 +27,11 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
   const cmd = line.split(/\s/)[0] ?? '';
   if (!isCommandSupported(line)) return 'unsupported';
   if (IDLE_ONLY.has(cmd) && s.status() !== 'idle') return 'busy';
+  // 命令气泡入档+回显(2026-10-21 用户裁决,对齐 TUI submit 先例 j.log({t:'user'})+pushMsg 回显):
+  // unsupported/busy 先行拦截——只有真执行的命令落 user 行,回放(刷新/回溯)才可见「执行过什么命令」
+  // 的气泡而不仅结果回执;user 事件走 pump 单点(kernel 归约→journal 行+WS 广播),不进模型上下文
+  // (命令不调 appendInstructionLine,模型链零影响)
+  s.pump({ type: 'user', text: line, ts: Date.now() });
   // G14.95 notice 走 pump 单点(pump 已含 transcript 入列+WS 广播)——原只入快照不广播,
   // GUI 实时面看不到命令回执(压缩/状态等)
   const notice = (text: string): void => s.pump({ type: 'notice', text, ts: Date.now() });

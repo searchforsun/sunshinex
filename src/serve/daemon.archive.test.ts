@@ -7,6 +7,8 @@ import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { resolveDataDir } from '../config/data-dir';
+import { parseJournalFile } from '../tui/session-journal';
+import { reduceSegRows } from '../session/seglog';
 
 /** 挂起适配器(同 daemon.gui-state.test.ts 惯例):模型调用永挂直至 signal 中止——running 409
  *  门禁的在飞 run 模拟 */
@@ -176,5 +178,31 @@ test('列表滤除:archived 会话退出 /sessions 与 /sessions/recent;GET /ses
     assert.equal(archived.some((r) => r.id === jid), true, '归档列表在');
     assert.equal(archived[0]!.slug.length > 0, true, '来源 slug 标注');
     assert.equal(archived.find((r) => r.id === jid)!.root, root, '归档行 root=来源工作区(归档页行打开寻址数据面)');
+  });
+});
+
+test('command 气泡入档:POST /command 后 journal 有命令 user 行+结果 notice 行(刷新回放双向可见)', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    // 真跑一轮先建档(journal 随首 run 创建;/command 在无档会话上零落档为既有口径,不在本钉范围)
+    await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    await waitStatus(base, sessionId, 'idle');
+    const dir = path.join(resolveDataDir(tmp), 'sessions');
+    const jid = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'))[0]!.replace(/\.jsonl$/, '');
+
+    // 前置阴性:unsupported 命令 400 且零命令行入档(证明 user 行确由执行路径写入)
+    const bad = await fetch(`${base}/session/${sessionId}/command`, { method: 'POST', headers: AUTH, body: JSON.stringify({ line: '/nope' }) });
+    assert.equal(bad.status, 400);
+    const replayEntriesBefore = reduceSegRows(parseJournalFile(path.join(dir, `${jid}.jsonl`)).events);
+    assert.equal(replayEntriesBefore.some((e) => e.kind === 'user' && e.md === '/nope'), false, '前置：未执行命令零命令行入档');
+
+    const r = await fetch(`${base}/session/${sessionId}/command`, { method: 'POST', headers: AUTH, body: JSON.stringify({ line: '/status' }) });
+    assert.equal(r.status, 200);
+
+    // 回放可见面双行钉:命令气泡(user)+结果回执(notice)——刷新/回溯时「执行过什么命令」可见
+    const replay = reduceSegRows(parseJournalFile(path.join(dir, `${jid}.jsonl`)).events);
+    assert.ok(replay.some((e) => e.kind === 'user' && e.md === '/status'), '命令行 user 气泡入档(回放可见)');
+    assert.ok(replay.some((e) => e.kind === 'notice' && e.md.length > 0), '结果回执 notice 行入档');
   });
 });
