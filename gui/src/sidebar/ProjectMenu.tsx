@@ -47,6 +47,8 @@ export interface ProjectMenuConn {
   locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId */
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string }>;
+  /** T6 归档/撤销(Connection 结构化子集):侧栏行归档钮落库面(归档行由服务端列表滤除) */
+  archiveSession(id: string, archived: boolean): Promise<void>;
 }
 
 export interface ProjectMenuProps {
@@ -61,6 +63,8 @@ export interface ProjectMenuProps {
   readonly onOpenSession: (sessionId: string, root: string, journalId?: string) => void;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
+  /** T6 归档页入口(项目组头归档箱钮;可选——未配时钮不渲染,同 onOpenSettings 装配裁定) */
+  readonly onOpenArchived?: () => void;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
   readonly onNewChat: () => void;
   /** 项目行「+」:回欢迎页并预选该项目与审批模式(G10-C16) */
@@ -70,7 +74,7 @@ export interface ProjectMenuProps {
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onOpenArchived, onNewChat, onComposeIn } = props;
   const recentVersion = props.recentVersion ?? 0;
   const runningIds = props.runningIds ?? new Set<string>();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
@@ -277,6 +281,20 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
 
 
+  /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
+   *  组列表计数 + Recents(loadWorkspaces)与展开组会话行(loadSessions,归档行由服务端列表
+   *  滤除,T2c)。失败静默(行内面无错误条;下次 30s/聚焦刷新自愈) */
+  const archiveRow = useCallback(
+    (id: string, archived: boolean): void => {
+      conn.archiveSession(id, archived).then(() => {
+        loadWorkspaces();
+        const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
+        if (row?.root !== undefined) loadSessions(row.root, row.slug);
+      }, () => undefined);
+    },
+    [conn, loadWorkspaces, loadSessions, rows],
+  );
+
   /** 「+ 添加工作区」(G10-C11 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
    *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
    *  目录(旧按 name 在 projectsRoot 下 mkdir 的行为废除)。登记后回欢迎页预选该项目。 */
@@ -385,6 +403,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onToggleGroup={toggleGroup}
           onComposeIn={onComposeIn}
           onAttach={attachJournal}
+          onArchiveRow={archiveRow}
+          onOpenArchived={onOpenArchived}
         />
         <RecentsSection
           recentsOpen={recentsOpen}
@@ -404,6 +424,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           isUnseen={isUnseen}
           busy={busy}
           onAttach={attachJournal}
+          onArchiveRow={archiveRow}
         />
         {dirOpen && (
           <div className="modal-overlay" onClick={() => setDirOpen(false)}>

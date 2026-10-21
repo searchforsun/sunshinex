@@ -16,11 +16,11 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
   const sessionsOfRoots: string[] = [];
   const conn: ProjectMenuConn & { roots: string[] } = {
     roots: sessionsOfRoots,
-    workspaces: async () => [
+    workspaces: vi.fn(async () => [
       { slug: 'p1', root: 'D:/w/p1', sessionCount: 1, mtime: Date.now() },
       { slug: 'p2', root: undefined, sessionCount: 1, mtime: Date.now() },
       { slug: 'p3-junk', root: 'C:/Temp/sunshinex/harness-x', sessionCount: 0, mtime: Date.now() },
-    ] as never,
+    ] as never),
     sessionsOf: async (root: string) => {
       sessionsOfRoots.push(root);
       // 时间戳钉常量:点击后的 loadWorkspaces 重拉会再次取 updatedAt——取 Date.now() 时重拉值
@@ -37,6 +37,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
       slug: `p-${body.name ?? 'ext'}`,
     })),
     attach: async (sessionId: string) => ({ sessionId }), // 无收编形态:原样回 id(收编面在 daemon 钉测)
+    archiveSession: vi.fn(async () => undefined), // T6 行内归档落库面(重拉断言消费 workspaces spy)
     locateWorkspace: async () => ({ path: null }),
   };
   return conn;
@@ -181,5 +182,36 @@ describe('ProjectMenu G14.115 RECENTS 分页显形(默认 10 条,步进 10,收�
     expect(screen.getByText('few 9')).toBeDefined(); // 全量在场
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull();
+  });
+});
+
+describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', () => {
+  it('RECENTS 行 hover 归档钮:点击 morph 行内「确认」且 stopPropagation 不触发行 attach;确认→archiveSession(j1,true)+列表重拉(计数/Recents)', async () => {
+    const conn = makeConn();
+    renderMenu(conn);
+    await screen.findByText('demo goal');
+    const opensBefore = open.mock.calls.length;
+    // 归档钮点击:morph 为「确认」,不触发 attach 两步(stopPropagation)
+    fireEvent.click(screen.getByRole('button', { name: 'Archive j1' }));
+    expect(screen.queryByRole('button', { name: 'Archive j1' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Confirm archive j1' })).toBeDefined();
+    expect(open.mock.calls.length).toBe(opensBefore);
+    expect(conn.roots).toEqual([]); // 无 sessionsOf 拉(未展开组;attach 未发生)
+    // 确认点击:落库 archived=true + 重拉(workspaces=计数/Recents;组未展开故无 sessionsOf)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm archive j1' }));
+    await waitFor(() => expect(conn.archiveSession).toHaveBeenCalledWith('j1', true));
+    await waitFor(() => expect(conn.workspaces).toHaveBeenCalledTimes(2)); // 挂载 1 次 + 落库后重拉
+    expect(conn.roots).toEqual([]);
+    expect(open.mock.calls.length).toBe(opensBefore);
+  });
+
+  it('组头归档入口:onOpenArchived 配置时「archived sessions」钮在场且点击回调;未配不渲染(同 onOpenSettings 装配裁定)', async () => {
+    const onOpenArchived = vi.fn();
+    const { unmount } = renderMenu(makeConn(), { onOpenArchived });
+    fireEvent.click(screen.getByRole('button', { name: 'archived sessions' }));
+    expect(onOpenArchived).toHaveBeenCalledTimes(1);
+    unmount();
+    renderMenu(makeConn());
+    expect(screen.queryByRole('button', { name: 'archived sessions' })).toBeNull();
   });
 });

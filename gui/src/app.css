@@ -2017,3 +2017,20 @@ input.sx-setting-input { width: 100%; }
 /* ===== G14.2xx 左栏名称截断隐现(chrome 同形,同标签条):无省略号,溢出右缘渐隐(data-cut 由 ProjectMenu 量溢出打点) ===== */
 .sx-ws-name, .sx-session-row .session-summary { text-overflow: clip; }
 .sx-ws-name[data-cut], .sx-session-row .session-summary[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); }
+
+/* 2026-10-21 归档面:徽标/确认钮/归档页(两行式行+hover 动作) */
+.sx-archived-badge { flex: none; font-size: 11px; color: var(--fg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 0 6px; }
+.sx-archive-confirm { flex: none; border: none; border-radius: var(--radius-sm); background: var(--err); color: #fff; font-size: 12px; padding: 2px 10px; cursor: pointer; }
+.sx-iconbtn.sx-danger:hover { color: var(--err); }
+.sx-archived-page { display: flex; flex-direction: column; gap: 10px; height: 100%; padding: 14px 18px; overflow: auto; }
+.sx-archived-head { display: flex; align-items: center; gap: 8px; } .sx-archived-head h2 { margin: 0; font-size: 14px; color: var(--fg); }
+.sx-archived-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sx-archived-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-md); cursor: pointer; }
+.sx-archived-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.sx-archived-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sx-archived-title { font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-archived-slug { font-size: 11px; color: var(--fg-tertiary); }
+.sx-archived-actions { flex: none; display: none; align-items: center; gap: 2px; }
+.sx-archived-row:hover .sx-archived-actions, .sx-archived-row:focus-within .sx-archived-actions { display: inline-flex; }
+.session-row-actions { flex: none; display: none; align-items: center; }
+.sx-session-row:hover .session-row-actions { display: inline-flex; }

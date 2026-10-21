@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { ChevronRight, Folder, FolderOpen, SquarePen } from 'lucide-react';
+import { Archive, ChevronRight, Folder, FolderOpen, SquarePen } from 'lucide-react';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
@@ -30,10 +31,16 @@ export interface ProjectsSectionProps {
   readonly onToggleGroup: (row: WorkspaceRow) => void;
   readonly onComposeIn: (root: string, mode?: 'auto' | 'manual') => void;
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
+  /** T6 行内归档(落库 + 宿主重拉;确认 morph 由本组件行级 confirmId 承载) */
+  readonly onArchiveRow: (id: string, archived: boolean) => void;
+  /** T6 归档页入口(组头归档箱钮;可选——未配时钮不渲染) */
+  readonly onOpenArchived?: () => void;
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, groupShowAll, onGroupShowMore } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, groupShowAll, onGroupShowMore } = props;
+  /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
+  const [confirmId, setConfirmId] = useState('');
   return (
     <>
         <div
@@ -66,6 +73,13 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
           >
             <FolderAddIcon size={14} />
           </button>
+          {onOpenArchived !== undefined && (
+            <button type="button" className="sx-iconbtn" data-tip={t('Archived sessions', '归档会话')}
+              aria-label="archived sessions"
+              onClick={(e) => { e.stopPropagation(); onOpenArchived(); }}>
+              <Archive size={14} strokeWidth={1.75} />
+            </button>
+          )}
         </div>
         <div className={`sx-collapse${projectsOpen ? ' open' : ''}`}>
           <ul className="workspace-list sx-groups" aria-label="workspace groups">
@@ -178,6 +192,20 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                               ) : null}
                               <span className="session-summary" data-id={sr.id}>{label}</span>
                               <span className="session-meta">{relTime(sr.updatedAt)}</span>
+                              <span className="session-row-actions">
+                                {confirmId === sr.id ? (
+                                  <button type="button" className="sx-archive-confirm" aria-label={`${t('Confirm archive', '确认归档')} ${sr.id}`}
+                                    onClick={(e) => { e.stopPropagation(); setConfirmId(''); onArchiveRow(sr.id, true); }}>
+                                    {t('Confirm', '确认')}
+                                  </button>
+                                ) : (
+                                  <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
+                                    aria-label={`${t('Archive', '归档')} ${sr.id}`}
+                                    onClick={(e) => { e.stopPropagation(); setConfirmId(sr.id); }}>
+                                    <Archive size={12} strokeWidth={1.75} />
+                                  </button>
+                                )}
+                              </span>
                             </li>
                               );
                             })}

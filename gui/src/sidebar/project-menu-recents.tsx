@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import type { SessionRow } from '../connection';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { ChevronRight, SquarePen } from 'lucide-react';
+import { Archive, ChevronRight, SquarePen } from 'lucide-react';
 import { RECENT_VISIBLE_DEFAULT, sessionMetaLine } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
@@ -22,10 +23,14 @@ export interface RecentsSectionProps {
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly busy: boolean;
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
+  /** T6 行内归档(落库 + 宿主重拉;确认 morph 由本组件行级 confirmId 承载) */
+  readonly onArchiveRow: (id: string, archived: boolean) => void;
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach } = props;
+  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow } = props;
+  /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
+  const [confirmId, setConfirmId] = useState('');
   return (
     <>
         {/* RECENTS 在 PROJECTS 下侧(用户裁定);空态「暂无最近会话」占位 */}
@@ -95,6 +100,20 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                 ) : null}
                 <span className="session-summary" data-tip={`${label}${metaLine !== '' ? `\n${metaLine}` : ''}`} data-tip-pos="right">{label}</span>
                 <span className="session-meta">{relTime(r.updatedAt)}</span>
+                <span className="session-row-actions">
+                  {confirmId === r.id ? (
+                    <button type="button" className="sx-archive-confirm" aria-label={`${t('Confirm archive', '确认归档')} ${r.id}`}
+                      onClick={(e) => { e.stopPropagation(); setConfirmId(''); onArchiveRow(r.id, true); }}>
+                      {t('Confirm', '确认')}
+                    </button>
+                  ) : (
+                    <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
+                      aria-label={`${t('Archive', '归档')} ${r.id}`}
+                      onClick={(e) => { e.stopPropagation(); setConfirmId(r.id); }}>
+                      <Archive size={12} strokeWidth={1.75} />
+                    </button>
+                  )}
+                </span>
               </li>
             );
           })}
