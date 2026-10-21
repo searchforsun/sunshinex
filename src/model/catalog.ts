@@ -1,6 +1,6 @@
 /**
  * 可切换适配器（/model 多源多模型单点）：实现 ModelAdapter 的转发外壳——持有者
- * （reactor / 子代理 runner / 压缩 / 沉淀管线 / banner）引用不变，switchTo 换内芯即时全局生效，
+ * （reactor / 子智能体 runner / 压缩 / 沉淀管线 / banner）引用不变，switchTo 换内芯即时全局生效，
  * 免整 runtime 重建（会话链、账本、MCP 连接现场全保留）。
  * 换模型与换档位同口径（CLAUDE.md §11）：用户级会话参数、整场恒定（对后续任务生效）、
  * 不进提示词、系统侧零自动切换——用户显式触发的跨模型重算事件。

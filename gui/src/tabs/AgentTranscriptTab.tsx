@@ -13,8 +13,8 @@ import { collapsedHiddenKeys } from '../pages/chat/use-chat-fold';
 import type { ChatEntry } from '../chat-reducer';
 
 /**
- * G14.175 子代理只读转录标签页（agent 类型标签体）——**完全继承主对话渲染方式，只去掉输入框**
- * （用户裁决；TUI 子代理面板同款实现）。G14.213 渲染组件整体换正：assistant→ChatEntryView /
+ * G14.175 子智能体只读转录标签页（agent 类型标签体）——**完全继承主对话渲染方式，只去掉输入框**
+ * （用户裁决；TUI 子智能体面板同款实现）。G14.213 渲染组件整体换正：assistant→ChatEntryView /
  * thinking→ThinkingEntryView / tool→ToolEntryView（动词两字化、图标、折叠壳与主对话同一套），
  * 废弃页内自绘的 ToolRow/ReactMarkdown 直渲（此前 token/text 两路样式分裂、思考行自绘 💭）。
  * - 用户输入 = 任务内容（活动流 taskBand 优先，缺省回落开档参数 task——spawn 行带 prompt/看板行带任务标题）

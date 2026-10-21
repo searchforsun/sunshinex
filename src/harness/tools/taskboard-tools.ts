@@ -3,7 +3,7 @@
 // 枚举单点);get_board 自成员面收编进 lead 面(补 lead 无板读取工具的缺口)。观察尾附板摘要
 // (summaryLines)供模型一眼看板;create_task 即触发派发(drain 异步),等待经既有 task_wait。
 // lead-only 不变量:四件套随 deriveChildRegistry/deriveTeammateRegistry 扩剔(TASKBOARD_TOOL_NAMES
-// ——两处 spread 自动随动,增名即扩剔),子代理工具面不可见。
+// ——两处 spread 自动随动,增名即扩剔),子智能体工具面不可见。
 import { CodedToolError, RegisteredTool } from '../tools';
 import { fail } from '../../result';
 import type { TaskBoard } from '../../taskboard/board';

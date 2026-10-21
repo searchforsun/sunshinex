@@ -482,13 +482,13 @@ test('/new 清空会话链与压缩块', async () => {
   }
 });
 
-/* ---------- 子代理显示数据面（payload.subagent 分流 + spawn 归档） ---------- */
+/* ---------- 子智能体显示数据面（payload.subagent 分流 + spawn 归档） ---------- */
 
-test('子代理事件分流：payload.subagent 存在 → 进 children，主链 messages/live 零污染', () => {
+test('子智能体事件分流：payload.subagent 存在 → 进 children，主链 messages/live 零污染', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child1-'));
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
-    ctrl.onEventForTest({ type: 'token', text: '子代理', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'token', text: '子智能体', payload: { subagent: 'w' } } as never);
     ctrl.onEventForTest({ type: 'tool-call', text: 'read', payload: { input: { path: 'a.ts' }, subagent: 'w' } } as never);
     const s = ctrl.getState();
     assert.equal(s.children.length, 1);
@@ -504,8 +504,8 @@ test('子代理事件分流：payload.subagent 存在 → 进 children，主链 
 test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好一次）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child2-'));
   try {
-    // gate 挂起子代理模型轮（scripted 适配器无真实异步，不挂起则整链先于断言跑完）：
-    // calls 1 = 主链 spawn 载荷，calls 2 = 子代理轮（挂起，留出真实时序窗口喂事件），calls 3 = 主链 done
+    // gate 挂起子智能体模型轮（scripted 适配器无真实异步，不挂起则整链先于断言跑完）：
+    // calls 1 = 主链 spawn 载荷，calls 2 = 子智能体轮（挂起，留出真实时序窗口喂事件），calls 3 = 主链 done
     let gateResolve!: () => void;
     const gate = new Promise<void>((res) => {
       gateResolve = res;
@@ -527,7 +527,7 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
     const p = ctrl.submit('主任务');
     // CC 模式延迟入档：运行中调用行挂 pendingCalls 不入历史区，运行态唯一显示面是底部活动行
     await waitFor(() => ctrl.getState().task.activeCalls.length > 0);
-    // 子代理挂起窗口：喂合成 token（真实子代理事件经 Harness 装配 onEvent 同通道自动到达）
+    // 子智能体挂起窗口：喂合成 token（真实子智能体事件经 Harness 装配 onEvent 同通道自动到达）
     ctrl.onEventForTest({ type: 'token', text: '分析中…\n', payload: { subagent: 'w' } } as never);
     assert.equal(ctrl.getState().children.length, 1, '运行中面板应在场（规格 G2）');
     gateResolve();
@@ -545,7 +545,7 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
   }
 });
 
-test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9④；归档锚定 done，result 后紧跟 done 同真实时序）', () => {
+test('同名并发归档：前缀匹配 #N 子智能体各归档一次（规格 §9④；归档锚定 done，result 后紧跟 done 同真实时序）', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-child3-'));
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
@@ -559,10 +559,10 @@ test('同名并发归档：前缀匹配 #N 子代理各归档一次（规格 §9
     ctrl.onEventForTest({ type: 'tool-result', text: '子完成', payload: { tool: 'spawn', ok: true } } as never);
     ctrl.onEventForTest({ type: 'done', text: 'B 结论', payload: { subagent: 'w#2' } } as never);
     const s = ctrl.getState();
-    assert.equal(s.children.length, 0, '两条同名子代理应恰好各归档一次');
+    assert.equal(s.children.length, 0, '两条同名子智能体应恰好各归档一次');
     const details = s.messages.filter((m) => m.kind === 'call').map((m) => m.detail ?? '');
     assert.equal(details.filter((d) => d.includes('p1')).length, 1, 'A 线（p1）恰归档一次（精简 detail：配对经委派 prompt 锚定）');
-    assert.equal(details.filter((d) => d.includes('p2')).length, 1, '#2 子代理按前缀匹配归档一次');
+    assert.equal(details.filter((d) => d.includes('p2')).length, 1, '#2 子智能体按前缀匹配归档一次');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

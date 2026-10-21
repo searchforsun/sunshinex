@@ -51,14 +51,14 @@ test('spawn 免审批：manual 模式不弹审批卡照常派生（asker 零调�
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true, 'manual 下 spawn 免审批应照常完成');
     assert.equal(asks, 0, 'asker 不得被调用（spawn 无直接 IO 副作用）');
-    // 子代理工具面收口：Runner 子面恒无 spawn（Task 3 deriveChildRegistry 已测）；此处验证主链面 spawn 存在
+    // 子智能体工具面收口：Runner 子面恒无 spawn（Task 3 deriveChildRegistry 已测）；此处验证主链面 spawn 存在
     assert.ok(h.tools.has('spawn'), '主链工具面持有 spawn');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('plan 模式：spawn 被只读闸门拦截（子代理可产生写副作用，不属于只读面）', async () => {
+test('plan 模式：spawn 被只读闸门拦截（子智能体可产生写副作用，不属于只读面）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-plan-'));
   try {
     const h = new Harness({ root: tmp, mode: 'plan', model: new ScriptedAdapter([]), learnSkills: false });
@@ -118,13 +118,13 @@ test('同轮 8 个 spawn 并行：批上限与并发上限同量级对齐，8 �
     } as ModelAdapter;
     const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
     const runP = h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
-    // 确定性等待：等主链 1 帧 + 8 个子代理全部进入挂起（calls>=9）再放闸，替代固定 50ms 在高并发下的竞态窗口
+    // 确定性等待：等主链 1 帧 + 8 个子智能体全部进入挂起（calls>=9）再放闸，替代固定 50ms 在高并发下的竞态窗口
     for (let i = 0; i < 200 && calls < 9; i++) await new Promise((res) => setTimeout(res, 10));
     gateResolve();
     const r = await runP;
     const obs = r.steps.map((s) => s.observation).join('\n');
     assert.ok(r.steps.some((s) => (s.action ?? '').includes('spawn') || s.observation.includes('spawn')), '并行 spawn 步应存在');
-    assert.equal((obs.match(/子完成/g) ?? []).length, 8, '8 个并发子代理应全部正常完成（上限提升后批内不触顶）');
+    assert.equal((obs.match(/子完成/g) ?? []).length, 8, '8 个并发子智能体应全部正常完成（上限提升后批内不触顶）');
     assert.ok(!/limit reached|已达上限/.test(obs), '批上限 8 = 并发上限 8，同量级下护栏不误伤');
     // 第 9 个并发的拒绝路径由 runner 缝专项用例锁定（subagent.test.ts 并发护栏），reactor 单批无法超过批上限 8
   } finally {

@@ -158,7 +158,7 @@ export class BatchRunner {
 
 /** 执行结果→观察行：stdout/stderr 兜底 ok、超 2000 截断且随身携带归档恢复指针（fitOut 的指针排在
  *  预览之后，截断时必须保留——模型据此 read 回全文，指针被切=归档机制对模型不可见）；fullObservation
- *  工具（skill 全文/子代理结论/回执）免截——语义面模型必须整读，超限走反应式压缩（§12）；
+ *  工具（skill 全文/子智能体结论/回执）免截——语义面模型必须整读，超限走反应式压缩（§12）；
  *  失败行 code 前缀去重（仅批次面消费，随抽件搬移） */
 function describe(r: Result<ExecResult>, fullObservation: boolean): string {
   if (r.ok) {

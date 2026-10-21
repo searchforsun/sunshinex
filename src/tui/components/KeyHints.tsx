@@ -34,7 +34,7 @@ export function keyHintsFor(s: {
   /** 等待队列管理面板（Ctrl+Q，P5 spec §12.3）接管——轻模态，与 browse/board 判定序互斥 */
   queue?: boolean;
   inspect?: boolean;
-  /** live 全屏（正在跑的子代理）——Ctrl+C 作用域=停此子代理；archived 回看只读无此键（2026-10-02） */
+  /** live 全屏（正在跑的子智能体）——Ctrl+C 作用域=停此子智能体；archived 回看只读无此键（2026-10-02） */
   inspectLive?: boolean;
   menuVisible?: boolean;
   hasChildren?: boolean;
@@ -43,7 +43,7 @@ export function keyHintsFor(s: {
   if (s.approval !== undefined && s.approval !== null) return undefined;
   if (s.question !== undefined && s.question !== null) return undefined;
   if (s.status === 'awaiting-approval' || s.status === 'awaiting-plan' || s.status === 'awaiting-question') return undefined;
-  // 暂停确认（两次 Ctrl+C 第一段）：live 全屏挂卡的确认动作=停此子代理（非主任务中断）——与 App 分发层作用域一致
+  // 暂停确认（两次 Ctrl+C 第一段）：live 全屏挂卡的确认动作=停此子智能体（非主任务中断）——与 App 分发层作用域一致
   if (s.pauseConfirm) {
     if (s.inspectLive) {
       return {
@@ -60,7 +60,7 @@ export function keyHintsFor(s: {
       ],
     };
   }
-  // 子代理浏览接管
+  // 子智能体浏览接管
   if (s.browse) {
     return {
       items: [
@@ -95,7 +95,7 @@ export function keyHintsFor(s: {
       ],
     };
   }
-  // 子代理全屏视图：head 只留元数据，键提示由本条承载；live 的 Ctrl+C=两次确认停此子代理，归档回看只读无此键
+  // 子智能体全屏视图：head 只留元数据，键提示由本条承载；live 的 Ctrl+C=两次确认停此子智能体，归档回看只读无此键
   if (s.inspect) {
     return s.inspectLive
       ? {
@@ -112,7 +112,7 @@ export function keyHintsFor(s: {
           ],
         };
   }
-  // 运行中：暂停（两次 Ctrl+C）· 待办展开 · 最近轮详情（子代理在场追加浏览；任务视图常驻可进——
+  // 运行中：暂停（两次 Ctrl+C）· 待办展开 · 最近轮详情（子智能体在场追加浏览；任务视图常驻可进——
   // 板投影运行期经 task-*/gate-* 事件持续更新）
   if (s.status === 'running') {
     const items: KeyHintItem[] = [

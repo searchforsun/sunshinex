@@ -15,7 +15,7 @@ test('delegation 事件进投影:state.delegations 维护、终态对 children �
   const tmp = tmpdir('sunshinex-sess-del-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
-    // 合成子代理流(既有测试路径,无 Runner):children 建条
+    // 合成子智能体流(既有测试路径,无 Runner):children 建条
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: '审查', label: 'rv' } } } as never);
     ctrl.onEventForTest({ type: 'token', text: '审查中\n', payload: { subagent: 'rv' } } as never);
     // 投影流:另一委派 graph-node 启动
@@ -23,7 +23,7 @@ test('delegation 事件进投影:state.delegations 维护、终态对 children �
     let st = ctrl.getState();
     assert.equal(st.delegations.length, 1);
     assert.equal(st.delegations[0]!.id, 'planner');
-    // P1 协议补齐(投影单源):合成子代理流无 Runner,rv 的运行行须由 delegation 事件入投影——
+    // P1 协议补齐(投影单源):合成子智能体流无 Runner,rv 的运行行须由 delegation 事件入投影——
     // children 只承载转录明细,不再是 runningDelegations 数据源(与受保护 App 测试同一补齐规则)
     ctrl.onEventForTest({ type: 'delegation-started', ts: 150, payload: { delegationId: 'rv', kind: 'subagent', label: 'rv' } } as never);
     st = ctrl.getState();

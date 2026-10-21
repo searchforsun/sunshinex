@@ -205,7 +205,7 @@ export function softWrapAnsi(line: string, width: number, indent = 0): string[] 
  *  同类枚举聚拢成组）、其余相邻逻辑行之间 BODY_LINE_SPACING 档空行（段落/标题/引用呼吸）→
  *  softWrapAnsi 按真实列宽回折（续行归属同逻辑组，折行不进行距节奏；列表项续行悬挂对齐项文）→
  *  `• ` 标记替换。产物不带尾换行——段间空行由 renderSource 拼接承担，主路径尾 \n 由 mdPushFragment
- *  归一补齐（子代理视图裸用产物，尾随空行即双行距病根），空段返回 ''（不出孤边距） */
+ *  归一补齐（子智能体视图裸用产物，尾随空行即双行距病根），空段返回 ''（不出孤边距） */
 function renderProseSegment(src: string, width: number): string {
   const rendered = stripLocalLinkParens(mdRender(normalizeMd(src), { wrap: false, highlighter: mdHighlighter, theme: RENDER_THEME }));
   const logicals = rendered.split('\n').filter((l) => stripAnsi(l).trim().length > 0);
@@ -232,7 +232,7 @@ function renderMdRun(src: string, width: number): string {
 }
 
 /** 表格区网格渲染（2026-09-30 用户裁决「不只是表头有横线」）：markdansi 表格只有表头分隔线，
- *  且截断/换行二选一——表格区回路由旧 alignTable（全网格 + 单元格换行，子代理视图验证过的形态） */
+ *  且截断/换行二选一——表格区回路由旧 alignTable（全网格 + 单元格换行，子智能体视图验证过的形态） */
 function renderGridTable(src: string, width: number): string {
   const blocks = parseMarkdown(normalizeMd(src));
   const t = blocks.find((b) => b.type === 'table');
@@ -295,7 +295,7 @@ function renderSource(src: string, width: number): string {
     return renderProseSegment(normalized.join('\n'), width);
   });
   // 段间以单空行拼（段内行距律不受影响）；出参不带尾换行——主路径由 mdPushFragment 归一补齐，
-  // 子代理视图（ChildTranscript/ChildInspector）裸用产物，尾随空行即双行距病根（2026-10-01）
+  // 子智能体视图（ChildTranscript/ChildInspector）裸用产物，尾随空行即双行距病根（2026-10-01）
   return parts
     .filter((p) => p.length > 0)
     .join('\n\n')

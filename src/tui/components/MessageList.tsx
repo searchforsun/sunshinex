@@ -70,7 +70,7 @@ export function MessageList({
   const prevLenRef = React.useRef(0);
   if (messages.length < prevLenRef.current) epochRef.current += 1;
   prevLenRef.current = messages.length;
-  // 时间线撤 SPAWN 行（2026-09-28 用户裁决：子代理统一由动态区承载，历史区不再出现 spawn 调用/结果行）：
+  // 时间线撤 SPAWN 行（2026-09-28 用户裁决：子智能体统一由动态区承载，历史区不再出现 spawn 调用/结果行）：
   // 归档 SPAWN call 行（subagentMeta 在位）与其配对 result 行渲染层整对剔除；journal/回看数据不动，
   // ChildInspector 回看、Ctrl+B 浏览器数据源照旧。配对口径：result.callId → spawn call 行 seq（延迟入档成对语义下单点）；
   // 旧档 callId 缺省时退化为保留（只按 subagentMeta 剔除调用行，不误伤普通工具结果）

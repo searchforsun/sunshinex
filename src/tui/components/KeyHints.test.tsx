@@ -3,20 +3,20 @@ import assert from 'node:assert/strict';
 import { render } from '../test-ink';
 import { KeyHints, keyHintsFor, fitHints } from './KeyHints';
 
-test('keyHintsFor 矩阵：运行中=暂停/换行/待办/详情/任务/队列，子代理在场追加 Ctrl+B', () => {
+test('keyHintsFor 矩阵：运行中=暂停/换行/待办/详情/任务/队列，子智能体在场追加 Ctrl+B', () => {
   const base = keyHintsFor({ status: 'running' })!;
   assert.deepEqual(base.items.map((i) => i.key), ['Ctrl+C', 'Shift+Enter', 'Tab', 'Ctrl+O', 'Ctrl+T', 'Ctrl+Q']);
   const withChildren = keyHintsFor({ status: 'running', hasChildren: true })!;
-  assert.deepEqual(withChildren.items.map((i) => i.key), ['Ctrl+C', 'Shift+Enter', 'Tab', 'Ctrl+O', 'Ctrl+B', 'Ctrl+T', 'Ctrl+Q'], '子代理在场追加浏览键，任务视图/队列常驻');
+  assert.deepEqual(withChildren.items.map((i) => i.key), ['Ctrl+C', 'Shift+Enter', 'Tab', 'Ctrl+O', 'Ctrl+B', 'Ctrl+T', 'Ctrl+Q'], '子智能体在场追加浏览键，任务视图/队列常驻');
 });
 
 test('keyHintsFor 矩阵：空闲两态与 inspect/browse/board/pauseConfirm（/help 不进条——占位符已承载，冗余裁决）', () => {
   const idle = keyHintsFor({ status: 'idle' })!;
-  assert.deepEqual(idle.items.map((i) => i.key), ['Shift+Enter', '↑', 'Ctrl+B', 'Ctrl+T', 'Ctrl+Q'], '缺省条=换行/历史/子代理/任务/队列（Tab 补全只在菜单态——空闲无 / 前缀 Tab 实为折叠视图，不误导）');
+  assert.deepEqual(idle.items.map((i) => i.key), ['Shift+Enter', '↑', 'Ctrl+B', 'Ctrl+T', 'Ctrl+Q'], '缺省条=换行/历史/子智能体/任务/队列（Tab 补全只在菜单态——空闲无 / 前缀 Tab 实为折叠视图，不误导）');
   const menu = keyHintsFor({ status: 'idle', menuVisible: true })!;
   assert.deepEqual(menu.items.map((i) => i.key), ['↑↓', 'Tab'], '斜杠菜单在场换面板键（Enter 由占位符承载）');
   const inspectLive = keyHintsFor({ status: 'running', inspect: true, inspectLive: true })!;
-  assert.deepEqual(inspectLive.items.map((i) => i.key), ['Tab', 'Ctrl+C', 'Esc'], 'live 全屏键（Ctrl+C=两次确认停此子代理，2026-10-02 作用域裁决）');
+  assert.deepEqual(inspectLive.items.map((i) => i.key), ['Tab', 'Ctrl+C', 'Esc'], 'live 全屏键（Ctrl+C=两次确认停此子智能体，2026-10-02 作用域裁决）');
   const inspectArchived = keyHintsFor({ status: 'running', inspect: true })!;
   assert.deepEqual(inspectArchived.items.map((i) => i.key), ['Tab', 'Esc'], '归档回看只读：无在跑目标，Ctrl+C 不进条');
   const browse = keyHintsFor({ status: 'idle', browse: true })!;
@@ -29,7 +29,7 @@ test('keyHintsFor 矩阵：空闲两态与 inspect/browse/board/pauseConfirm（/
   assert.equal(pause.items[0]!.key.includes('Ctrl+C') || pause.items[0]!.key.includes('ctrl+c'), true, '首键=再按 Ctrl+C');
   assert.equal(pause.items[1]!.key, 'Esc');
   const pauseChild = keyHintsFor({ status: 'running', pauseConfirm: true, inspect: true, inspectLive: true })!;
-  assert.ok(['stop this subagent', '停止此子代理'].includes(pauseChild.items[0]!.action), 'live 全屏挂卡的确认动作=停此子代理（非主任务暂停）');
+  assert.ok(['stop this subagent', '停止此子智能体'].includes(pauseChild.items[0]!.action), 'live 全屏挂卡的确认动作=停此子智能体（非主任务暂停）');
 });
 
 test('keyHintsFor 矩阵：模态卡在场条退场（undefined）', () => {

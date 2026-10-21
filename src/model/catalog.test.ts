@@ -98,7 +98,7 @@ test('切换后调用走新内芯（持有者引用不变即生效——外壳�
     }
   }
   const sw = new FakeSwitcher({ choices: CHOICES, default: new ScriptedAdapter(['{"done":true,"reply":"via-default"}']) });
-  const holderRef = sw; // 持有者（reactor/子代理/压缩）拿到的就是外壳引用，切换后不换引用
+  const holderRef = sw; // 持有者（reactor/子智能体/压缩）拿到的就是外壳引用，切换后不换引用
   assert.equal((await holderRef.chat({ messages: [] })).content, 'via-default');
   assert.equal(sw.switchTo('bigmodel/glm-4.7'), true);
   assert.equal((await holderRef.chat({ messages: [] })).content, 'via-bigmodel/glm-4.7', '同一引用换内芯即换答复');

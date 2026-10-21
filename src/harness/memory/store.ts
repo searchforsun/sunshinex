@@ -145,7 +145,7 @@ export class MemoryStore {
 
   constructor(root: string, opts?: { subdir?: string }) {
     const base = memoryDir(root);
-    // 子目录形态（规格 §5）：子代理自有记忆 memory/agents/<id>，与主目录互不干扰
+    // 子目录形态（规格 §5）：子智能体自有记忆 memory/agents/<id>，与主目录互不干扰
     this.dirPath = opts?.subdir === undefined ? base : path.join(base, opts.subdir);
     fs.mkdirSync(this.dirPath, { recursive: true });
   }

@@ -7,8 +7,8 @@ import type { BoardTask } from '../projection';
  * 任务卡 DAG 组件测(React Flow/dagre 开源渲染,G14.2xx):
  * - layoutTaskDag 纯函数:LR 分层序(依赖在左)、START/END 起止边、缺依赖边忽略、环不炸、
  *   agent 有无的节点高差(布局步进)
- * - 组件面:节点=状态 aria-label `${id} [${status}] ${title}`(列表行同钩子)+🤖子代理名;
- *   点击仅「有执行子代理」的节点上抛 onTaskOpen(等待态不跳),START/END 无动作
+ * - 组件面:节点=状态 aria-label `${id} [${status}] ${title}`(列表行同钩子)+🤖子智能体名;
+ *   点击仅「有执行子智能体」的节点上抛 onTaskOpen(等待态不跳),START/END 无动作
  */
 
 const task = (id: string, over: Partial<BoardTask> = {}): BoardTask => ({
@@ -75,16 +75,16 @@ describe('TaskDag 组件面', () => {
     task('t3', { title: '评审', status: 'done', dependsOn: ['t2'] }),
   ];
 
-  it('节点渲染:aria-label `${id} [${status}] ${title}` + 🤖执行子代理名,gated ⚠ 在场', () => {
+  it('节点渲染:aria-label `${id} [${status}] ${title}` + 🤖执行子智能体名,gated ⚠ 在场', () => {
     render(<TaskDag tasks={tasks} agentOf={(id) => (id === 't1' ? 'w1' : '')} />);
     expect(screen.getByLabelText('t1 [claimed] 设计规格')).not.toBeNull();
     expect(screen.getByLabelText('t2 [pending] 实现')).not.toBeNull();
     expect(screen.getByLabelText('t3 [done] 评审')).not.toBeNull();
-    expect(screen.getByText('w1')).not.toBeNull(); // 执行子代理名上节点
+    expect(screen.getByText('w1')).not.toBeNull(); // 执行子智能体名上节点
     expect(screen.getAllByRole('img', { name: 'gate waiting' }).length).toBeGreaterThan(0); // gated ⚠
   });
 
-  it('点击:有子代理的节点上抛 onTaskOpen;等待态(无代理)与 START/END 不上抛', () => {
+  it('点击:有子智能体的节点上抛 onTaskOpen;等待态(无代理)与 START/END 不上抛', () => {
     const onTaskOpen = vi.fn();
     const { container } = render(
       <TaskDag tasks={tasks} agentOf={(id) => (id === 't1' ? 'w1' : '')} onTaskOpen={onTaskOpen} />,

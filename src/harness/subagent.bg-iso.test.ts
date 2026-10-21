@@ -18,7 +18,7 @@ import { FileStore } from '../storage/adapter';
 import { TaskRegistry } from './tasks';
 
 /**
- * 回归（2026-09-25 用户后台子代理会话日志）：
+ * 回归（2026-09-25 用户后台子智能体会话日志）：
  * ① 后台结论落盘只写 firstLine(reply)，多行报告丢弃 → 模型读日志只见结论首行，被迫全部前台重跑；
  * ② spawn 入参 isolation 传字符串 "null"（模型照 schema ['string','null'] 字面形态）时，
  *    工具 executor 入口的 validateSpawnInput 先于 runSubagent 内部的 normalizeSpawnInput 执行，
@@ -63,7 +63,7 @@ test('后台 spawn 入参 isolation="null" 字面量归一（不再 Unknown isol
     }
   }));
 
-test('后台子代理结论全文落任务日志（多行报告不再只留首行）', async () =>
+test('后台子智能体结论全文落任务日志（多行报告不再只留首行）', async () =>
   withIso(async (dataDir) => {
     const root = makeRepo();
     try {

@@ -55,7 +55,7 @@ test('resume 回放 SPAWN 行=v2 seg 重建(P3):调用行随档(name/input),deta
   fs.mkdirSync(dataDir, { recursive: true });
   process.env.SUNSHINEX_DATA_DIR = dataDir;
   try {
-    // 会话一：两个子代理归档(内存富化 detail/subagentMeta;持久化面=内核 seg 行,无 msg/msg-update)
+    // 会话一：两个子智能体归档(内存富化 detail/subagentMeta;持久化面=内核 seg 行,无 msg/msg-update)
     const ctrl1 = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     await ctrl1.submit('跑两个');
     await ctrl1.waitIdle();

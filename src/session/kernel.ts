@@ -1,9 +1,9 @@
 import type { SessionEvent } from '../types';
 import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState, type SessionStats } from './entry';
 
-/** 影子事件判定(单点):板面(task-)/审批门(gate-)/委派(delegation-)与带 subagent 标签的子代理流。
+/** 影子事件判定(单点):板面(task-)/审批门(gate-)/委派(delegation-)与带 subagent 标签的子智能体流。
  *  两面共用此谓词:①内核 pump 透传落档(seglog 映射 journal 行);②serve WS 回放面据此把这类帧从
- *  512 环窗改道 journal 全量重发(环窗对长会话子代理流必溢出)。新增影子事件族只改本谓词,
+ *  512 环窗改道 journal 全量重发(环窗对长会话子智能体流必溢出)。新增影子事件族只改本谓词,
  *  落档与回放改道自动同频——分叉即「落了档回放面却不知情」的环窗溢出病根回流。 */
 export function isShadowEvent(e: SessionEvent): boolean {
   return (
@@ -31,7 +31,7 @@ export type KernelEvent =
   | { t: 'truncate'; upToSeq: number } // rewind/compact/reset 视界截断(upToSeq=0 即全清)
   | { t: 'steer'; items: SteerItem[] } // 等待队列变更(整列重写快照;持久化整列落一行,广播走全量列表)
   | { t: 'stats'; stats: SessionStats } // 会话统计变更(P9,全量快照;不落档——seed 自 run meta 重建)
-  | { t: 'shadow'; e: SessionEvent }; // G14.2xx 面事件透传落档(board/delegation/子代理流)——凡界面可见皆落库,渲染层回溯共用;持久化映射见 seglog.kernelEventRows
+  | { t: 'shadow'; e: SessionEvent }; // G14.2xx 面事件透传落档(board/delegation/子智能体流)——凡界面可见皆落库,渲染层回溯共用;持久化映射见 seglog.kernelEventRows
 
 /**
  * SessionKernel:会话转录唯一投影 + 事件泵(spec 2026-10-17-session-kernel §3/§6)。
@@ -65,7 +65,7 @@ export class SessionKernel {
    *  面既有)不另发。差分 O(n)(prev seq→条目 Map),条目引用未变的零事件。
    *  统计面(P9):stats 引用变即发全量快照(先于条目差分——计数器事件轻,视图先行合帧) */
   pump(e: SessionEvent): void {
-    // G14.2xx 面事件落档(内核层单点):板面/委派/子代理流不经转录投影(applyEvent 忽略),但界面可见、
+    // G14.2xx 面事件落档(内核层单点):板面/委派/子智能体流不经转录投影(applyEvent 忽略),但界面可见、
     // 渲染层需回溯——shadow 事件透传给持久化面(seglog 映射 journal 行),TUI/GUI 两写面自动继承
     if (isShadowEvent(e)) {
       this.emit({ t: 'shadow', e });

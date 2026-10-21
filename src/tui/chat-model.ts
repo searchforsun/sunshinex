@@ -30,8 +30,8 @@ export interface ChatItem {
   level?: 'info' | 'warn' | 'error';
   /** 可展开原文：thinking 折叠行的思考全文 / tool 结果行的完整 observation（入档后折叠打印，供后续 transcript 视图） */
   detail?: string;
-  /** 子代理归档摘要（SPAWN call 行专属）：steps=子代理步数、durationMs=归档时刻-startedAt、tokens=子代理 token 消耗、
-   *  delegatedAt=委派时刻（spawnCalls 入栈时刻，动态区子代理列表按委派时间排序的单点数据源）；零子事件即败时缺省 */
+  /** 子智能体归档摘要（SPAWN call 行专属）：steps=子智能体步数、durationMs=归档时刻-startedAt、tokens=子智能体 token 消耗、
+   *  delegatedAt=委派时刻（spawnCalls 入栈时刻，动态区子智能体列表按委派时间排序的单点数据源）；零子事件即败时缺省 */
   subagentMeta?: { steps: number; durationMs: number; tokens: number; delegatedAt?: number; prompt?: string };
   /** markdansi 渲染结果条目（2026-09-30 替换批次）：text 承载 ANSI（非 markdown 源），渲染层直嵌 <Text>；
    *  journal 按原样序列化，resume 回放照显 */
@@ -59,11 +59,11 @@ export interface StatusMetrics {
   sessionTurns: number;
   /** 会话累计模型动作步数（step 事件计步、done 收尾帧不计；状态栏 steps 段） */
   sessionSteps: number;
-  /** 本轮子代理 tokens（payload.subagent usage 增量聚合；随任务流起点与 turnTokens 同步归零；状态栏 ↑tokens 合并项） */
+  /** 本轮子智能体 tokens（payload.subagent usage 增量聚合；随任务流起点与 turnTokens 同步归零；状态栏 ↑tokens 合并项） */
   turnChildTokens: number;
-  /** 会话累计子代理 tokens（跨任务不清零、仅 /new 归零；任务收尾统计行的子代理差值基线） */
+  /** 会话累计子智能体 tokens（跨任务不清零、仅 /new 归零；任务收尾统计行的子智能体差值基线） */
   sessionChildTokens: number;
-  /** 会话累计总 tokens（主链+子代理；跨任务不清零、仅 /new 归零；状态栏 ↑tokens 数据源） */
+  /** 会话累计总 tokens（主链+子智能体；跨任务不清零、仅 /new 归零；状态栏 ↑tokens 数据源） */
   sessionTotalTokens: number;
   runs: number;
   /** 当前上下文占用水位估算 tokens（最新模型轮装配面估算；分母为 SUNSHINEX_CONTEXT_WINDOW 配置窗口） */
@@ -80,7 +80,7 @@ export interface LiveBlock {
   tailStart?: number;
 }
 
-/** 子代理转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源。
+/** 子智能体转录结构行（规格 §4.1）：归档 detail 与全屏查看视图共用同源。
  *  thinking 行对标主 agent ThinkingRow：text=收束摘要（Thought for Ns）、detail=思考全文（Tab 展开呈现）。 */
 export interface ChildLine {
   kind: 'call' | 'result' | 'text' | 'thinking' | 'task' | 'message';
@@ -125,10 +125,10 @@ export function pairChildResults(items: ChildLine[]): ChildLine[] {
   return out;
 }
 
-/** 子代理运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
+/** 子智能体运行中面板态（规格 §4.2）：带 payload.subagent 标签的事件路由至此，主链零污染 */
 export interface ChildLiveState {
   label: string;
-  /** 后台账本任务 id（b1…，payload.subagentTaskId 随事件携带）：UI 停单个子代理（stopChild）的定位锚；
+  /** 后台账本任务 id（b1…，payload.subagentTaskId 随事件携带）：UI 停单个子智能体（stopChild）的定位锚；
    *  前台 spawn 无（随主链信号，不可单点停） */
   taskId?: string;
   startedAt: number;
@@ -165,7 +165,7 @@ export function serializeMultiline(text: string): string {
   return text.split('\n').join('\n    ');
 }
 
-/** 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径尾追入档；无子代理消耗省略子代理段 */
+/** 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径尾追入档；无子智能体消耗省略子智能体段 */
 export function formatTaskStatsLine(durationS: number, steps: number, totalTokens: number, childTokens: number): string {
   const base = `${formatDuration(Math.max(0, durationS))} · ${Math.max(0, steps)} steps · ↑${formatTokens(Math.max(0, totalTokens))} tokens`;
   return childTokens > 0
@@ -180,7 +180,7 @@ export interface TuiState {
   status: SessionStatus;
   metrics: StatusMetrics;
   live?: LiveBlock;
-  /** 运行中子代理面板态（规格 §4）：首事件创建、spawn 结果归档移除、回合边界清空 */
+  /** 运行中子智能体面板态（规格 §4）：首事件创建、spawn 结果归档移除、回合边界清空 */
   children: ChildLiveState[];
   /** 委派投影(spec §4.5,P0):delegation-* 事件经 applyDelegation 纯函数推导;瞬态不进 journal
    *  (与 task 同口径)——归档回看面仍是消息区 SPAWN 行,投影只承担运行期生命周期 */
@@ -204,7 +204,7 @@ export interface TuiState {
   question?: AskUserRequest;
   /** 输入框回填文本（/rewind //fork 锚点轮输入；瞬态不进 journal，App 取走即消费） */
   backfill?: string;
-  /** 暂停确认卡（第一次 Ctrl+C 挂起；瞬态不进 journal）：status 保持 running、abort 不触发——任务与子代理
+  /** 暂停确认卡（第一次 Ctrl+C 挂起；瞬态不进 journal）：status 保持 running、abort 不触发——任务与子智能体
    *  继续跑，再按 Ctrl+C / 确认项才走 interrupt() 真正中断（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」） */
   pauseConfirm?: boolean;
   /** 等待队列暂停态（2026-10-19 用户裁决「中断不丢弃队列」；瞬态不进 journal）：中断保留队列并转暂停——

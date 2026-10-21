@@ -63,8 +63,8 @@ test('活跃调用行超宽 verb：按列宽自然省略，宽列完整呈现', 
   wide.unmount();
 });
 
-test('运行态单一化：spawn 类调用不出主链活动行（子代理运行态由 ChildPanel 边框单点承载）', () => {
-  // 2026-09-27 真机症状：派发期同一子代理双份运行态（主链 [SPAWN …] 行 + 面板行）、计时不同步
+test('运行态单一化：spawn 类调用不出主链活动行（子智能体运行态由 ChildPanel 边框单点承载）', () => {
+  // 2026-09-27 真机症状：派发期同一子智能体双份运行态（主链 [SPAWN …] 行 + 面板行）、计时不同步
   const one = render(
     <Spinner startedAt={Date.now()} tokens={0} phase="tool-pending" columns={80}
       calls={[

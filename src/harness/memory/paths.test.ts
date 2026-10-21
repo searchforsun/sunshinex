@@ -8,7 +8,7 @@ import { isMemoryPath } from './paths';
 /**
  * 记忆路径分类器（规格 §4.1）纯判定用例：零 IO、零副作用。
  * 入参契约同 chain.resolveSafe：absPath 须为 realpath 归一后的绝对路径，此处只做前缀归类。
- * 断言面五组：主目录直属文件 / 非记忆路径（同前缀不同目录、目录本身、工作区路径）/ 子代理目录与 scope 收窄 /
+ * 断言面五组：主目录直属文件 / 非记忆路径（同前缀不同目录、目录本身、工作区路径）/ 子智能体目录与 scope 收窄 /
  * 目录形态边界（memory/、agents/、agents/<id>/ 均非记录）/ dataDir 传参形态抖动。
  * 路径一律 path.join 构造（win32 兼容），不手拼分隔符。
  */
@@ -28,7 +28,7 @@ test('非记忆路径 → null（数据目录其它子树与工作区）', () =>
   assert.equal(isMemoryPath(dataDir, path.join(path.sep, 'work', 'a.md')), null, '工作区路径不算');
 });
 
-test('子代理目录 → agents/<id>；scope 收窄后只放行自身', () => {
+test('子智能体目录 → agents/<id>；scope 收窄后只放行自身', () => {
   const p = path.join(dataDir, 'memory', 'agents', 'reviewer', 'a.md');
   assert.equal(isMemoryPath(dataDir, p), 'agents/reviewer');
   assert.equal(isMemoryPath(dataDir, p, 'agents/reviewer'), 'agents/reviewer');
@@ -37,7 +37,7 @@ test('子代理目录 → agents/<id>；scope 收窄后只放行自身', () => {
   assert.equal(
     isMemoryPath(dataDir, path.join(dataDir, 'memory', 'agents', 'other', 'a.md'), 'agents/reviewer'),
     null,
-    'scope 收窄时其它子代理被拒',
+    'scope 收窄时其它子智能体被拒',
   );
   assert.equal(
     isMemoryPath(dataDir, path.join(dataDir, 'memory', 'agents', 'other', 'a.md')),
@@ -47,7 +47,7 @@ test('子代理目录 → agents/<id>；scope 收窄后只放行自身', () => {
   assert.equal(
     isMemoryPath(dataDir, path.join(dataDir, 'memory', 'agents', 'reviewer', 'nested', 'a.md')),
     'agents/reviewer',
-    '子代理子树内嵌套仍归自身',
+    '子智能体子树内嵌套仍归自身',
   );
 });
 
@@ -89,7 +89,7 @@ test('两侧同归一：相对 dataDir 也命中（不再静默全拒）', () =>
     assert.equal(
       isMemoryPath('.', path.join('.', 'memory', 'agents', 'reviewer', 'a.md')),
       'agents/reviewer',
-      '相对形态下子代理归类不变',
+      '相对形态下子智能体归类不变',
     );
     assert.equal(isMemoryPath('.', path.join('.', 'memory', 'a.md'), 'agents/reviewer'), null, 'scope 收窄在相对形态下同样生效');
     assert.equal(isMemoryPath('.', path.join('memory', 'a.md')), 'main', '另一侧相对形态（无 ./ 前缀）同样归一');

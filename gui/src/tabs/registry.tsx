@@ -33,7 +33,7 @@ export interface TabServices {
   readonly delegations: readonly import('../projection').Delegation[];
   readonly team: readonly { name: string; busy: boolean }[];
   readonly onReview: (taskId: string, approved: boolean) => void;
-  /** G8d 子代理活动聚合(App 态 applyAgentEvent 归约;Agents 标签只读消费) */
+  /** G8d 子智能体活动聚合(App 态 applyAgentEvent 归约;Agents 标签只读消费) */
   readonly agentActivities: import('./agent-activity').AgentActivities;
   /** G14.137 会话待办(todo_write 上抛):任务标签「会话待办」区数据源 */
   readonly todos: import('../../../src/types').TodoItem[];
@@ -44,7 +44,7 @@ export interface TabServices {
   /** G14.176 create_task 行点开的定位信号(App 注入;nonce 变更即滚动高亮) */
   readonly taskFocus: { ref: string; nonce: number } | null;
   /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
-   *  子代理转录页与主对话 Chat 同构消费) */
+   *  子智能体转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名 → 标签 params;App 落 patchTabMeta) */
   readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }) => void;
@@ -82,8 +82,8 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   diff: GitCompare, // G14.180 审查(改动对比)——与欢迎页快捷卡同图标
   directory: FolderTree,
   tasks: ListTodo, // G14.180 待办——与欢迎页快捷卡同图标
-  agents: Bot, // G8d 子代理活动聚合卡
-  agent: Bot, // G14.175 子代理只读转录页(机器人图标,用户裁决)
+  agents: Bot, // G8d 子智能体活动聚合卡
+  agent: Bot, // G14.175 子智能体只读转录页(机器人图标,用户裁决)
   bgtasks: Hourglass, // G14.180 后台任务(等待执行)
   memory: Brain, // G14.180 持久记忆
   terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
@@ -104,7 +104,7 @@ export interface TabTypeEntry {
 
 /** G8a 两类 + G8b terminal/directory + G8d diff/agents/web:file(按 path 判重多实例)+ diff(write 调用
  * 按 callId 判重多实例——Chat write 条目 path 钮开档,渲染面 fetchDiff 双列/404 降级)+ 目录(每
- * 会话单例,惰拉树文件行跳 file)+ tasks(每会话单例)+ agents(每会话单例——子代理活动聚合卡,
+ * 会话单例,惰拉树文件行跳 file)+ tasks(每会话单例)+ agents(每会话单例——子智能体活动聚合卡,
  * G8d:payload.subagent 事件流经 App applyAgentEvent 归约,services.agentActivities 注入)+
  * 终端(nonce 多实例)+ web(by url 判重多实例——裸开档 key='' 聚焦既有,标签体内输入开档) */
 import { Chat } from '../pages/Chat';
@@ -182,7 +182,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'agent',
     group: 'session',
-    // G14.164 子代理只读转录页:title=开档时定格的显示名(开档面传入;raw label 不上屏——页头 G14.202 去除)
+    // G14.164 子智能体只读转录页:title=开档时定格的显示名(开档面传入;raw label 不上屏——页头 G14.202 去除)
     title: (params) => params.agentTitle ?? params.label ?? 'agent',
     // by label 多实例:同 agent 重开=聚焦,异 agent 并存;被动入口(菜单不列)
     resolveKey: (params) => params.label ?? '',

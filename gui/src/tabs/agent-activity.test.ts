@@ -3,11 +3,11 @@ import type { SessionEvent } from '../../../src/types';
 import { applyAgentEvent } from './agent-activity';
 
 /**
- * G8d 子代理活动聚合 reducer 纯测(task-3):payload.subagent 标签事件按 label 聚卡——
+ * G8d 子智能体活动聚合 reducer 纯测(task-3):payload.subagent 标签事件按 label 聚卡——
  * 建卡(首见即 running)/currentTool 锚/token 累计(turnTotal 水位)/status 流转(running→
  * done·error,error 粘滞;delegation-ended failed→error)/chat 内核投影(转录页条目单源)/
  * 原引用守卫(无标签·不变事件同引用返回——StrictMode 安全)。
- * 聚合口径对齐 TUI ChildPanel(子代理面板;gui 侧零 import 独立实现)。
+ * 聚合口径对齐 TUI ChildPanel(子智能体面板;gui 侧零 import 独立实现)。
  */
 
 let ts = 0;
@@ -16,16 +16,16 @@ function ev(type: SessionEvent['type'], text?: string, payload?: Record<string, 
   return { type, text, payload, ts: ++ts };
 }
 
-/** 子代理事件构造糖:payload 合入 subagent 标签 */
+/** 子智能体事件构造糖:payload 合入 subagent 标签 */
 const sub = (type: SessionEvent['type'], label: string, text?: string, payload: Record<string, unknown> = {}): SessionEvent =>
   ev(type, text, { ...payload, subagent: label });
 
 describe('建卡与原引用守卫', () => {
-  it('子代理事件首见 label 即建 running 卡(零先见 delegation 也行);delegation 无标签不建卡', () => {
+  it('子智能体事件首见 label 即建 running 卡(零先见 delegation 也行);delegation 无标签不建卡', () => {
     let s = applyAgentEvent({}, sub('tool-call', 'searcher', 'read', { input: { path: 'src/a.ts' }, callId: 'c1' }));
     expect(Object.keys(s)).toEqual(['searcher']);
     expect(s.searcher).toMatchObject({ label: 'searcher', status: 'running', tokens: 0, currentTool: 'read' });
-    // delegation 事件无 subagent 标签:未建卡(建卡只靠子代理事件首见)——原引用返回
+    // delegation 事件无 subagent 标签:未建卡(建卡只靠子智能体事件首见)——原引用返回
     const before = s;
     s = applyAgentEvent(s, ev('delegation-started', undefined, { label: 'ghost', delegationId: 'ghost', kind: 'subagent' }));
     expect(s).toBe(before);

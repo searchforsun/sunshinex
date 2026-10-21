@@ -217,7 +217,7 @@ export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClic
   // G14.107 lightbox 视图态:缩放(s)/平移(x,y);滚轮缩放+拖动平移+按钮组(+ % − [] X)
   const [view, setView] = useState({ x: 0, y: 0, s: 1 });
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
-  /** G14.213 节点点击绑定(消费方语义,如任务 DAG 跳子代理):内联渲染落定与 lightbox 克隆后各绑一次 */
+  /** G14.213 节点点击绑定(消费方语义,如任务 DAG 跳子智能体):内联渲染落定与 lightbox 克隆后各绑一次 */
   const bindNodes = (root: HTMLElement | null): void => {
     if (root === null || onNodeClick === undefined) return;
     for (const g of Array.from(root.querySelectorAll('g.node'))) {

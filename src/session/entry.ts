@@ -54,7 +54,7 @@ export interface KernelEntry {
 
 /** 会话统计面(P9 内核化,spec「数据同源,上层只渲染」):计数器口径唯一权威——
  *  usage.turnTotal 为 run 内单调累计(reactor per-request 全量值叠基线,跨帧覆盖幂等),
- *  水位差值法为正确语义(原 GUI 实现);子代理 usage 为 per-child run 累计,per-child 水位增量并入;
+ *  水位差值法为正确语义(原 GUI 实现);子智能体 usage 为 per-child run 累计,per-child 水位增量并入;
  *  step 计数排除 done 尾帧;ctx 水位 exact 采信/估算只上。TUI/GUI 只读渲染,不再各自累计 */
 export interface SessionStats {
   /** 当前轮(最近 model-start)起点 ts;0=无在途轮 */
@@ -71,7 +71,7 @@ export interface SessionStats {
   sessionTurns: number;
   ctxUsed: number;
   ctxExact: boolean;
-  /** 子代理 usage 水位(childId → 该 child 最近 turnTotal)——内部记账,渲染面勿消费 */
+  /** 子智能体 usage 水位(childId → 该 child 最近 turnTotal)——内部记账,渲染面勿消费 */
   childWatermarks: Record<string, number>;
 }
 
@@ -187,10 +187,10 @@ export function sanitizeChanges(raw: unknown): ChangeFile[] | undefined {
 }
 
 /**
- * 事件 → 转录条目纯归约(state 进出零副作用)。子代理事件(payload.subagent)另轨——主流零条目
+ * 事件 → 转录条目纯归约(state 进出零副作用)。子智能体事件(payload.subagent)另轨——主流零条目
  * (G8d 同口径);usage/step/ctx/route/model-end/approval 系/task 系/gate 系/delegation 系零条目。
  */
-/** G14.2xx 子代理转录投影入口(agents 页签对齐主对话):剥 payload.subagent 标签后走同一
+/** G14.2xx 子智能体转录投影入口(agents 页签对齐主对话):剥 payload.subagent 标签后走同一
  *  内核归约——tool/token/reasoning 各事件与主对话逐字段同构(主对话排除门不受扰,两投影并存) */
 export function applySubagentEvent(state: KernelState, e: SessionEvent): KernelState {
   if (typeof e.payload?.subagent !== 'string') return applyEvent(state, e);
@@ -202,7 +202,7 @@ export function applySubagentEvent(state: KernelState, e: SessionEvent): KernelS
 export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
   const sub = e.payload?.subagent;
   if (typeof sub === 'string' && sub.length > 0) {
-    // 子代理事件另轨:转录零条目(主链不可见,G8d);usage 例外入统计面(P9 child token per-child 水位)
+    // 子智能体事件另轨:转录零条目(主链不可见,G8d);usage 例外入统计面(P9 child token per-child 水位)
     if (e.type !== 'usage') return state;
     const total = e.payload?.turnTotal;
     if (typeof total !== 'number') return state;
@@ -364,7 +364,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     }
     case 'usage': {
       // P9 统计面:水位差值法(reactor turnTotal=run 内单调累计,per-request 全量叠基线跨帧幂等)。
-      // 子代理 usage 已在前置守卫分流(per-child 水位),此处恒为主链
+      // 子智能体 usage 已在前置守卫分流(per-child 水位),此处恒为主链
       const p = e.payload ?? {};
       if (typeof p.turnTotal !== 'number') return state;
       const turnDelta = Math.max(0, p.turnTotal - state.stats.turnTokens);

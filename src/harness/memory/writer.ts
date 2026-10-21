@@ -21,7 +21,7 @@ export interface MemoryWriteRequest {
   absPath: string;
   content: string;
   /**
-   * 记忆写 scope：只接 `safety.memoryScope`——`undefined`（主链，可写 memory/** 整子树）或 `agents/<id>`（子代理收窄）。
+   * 记忆写 scope：只接 `safety.memoryScope`——`undefined`（主链，可写 memory/** 整子树）或 `agents/<id>`（子智能体收窄）。
    * **类型上排除 `'main'`**：`'main'` 在 `isMemoryPath` 下等价全拒 → 接缝判类返回 `null` → `'pass'` → 裸写绕过六道闸门
    * （失效方向 fail-open），故把契约从注释升为编译期约束，不靠 `as` 掩盖。
    */

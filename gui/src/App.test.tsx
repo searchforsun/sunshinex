@@ -336,7 +336,7 @@ const h = vi.hoisted(() => {
       return Promise.resolve({ state: null }); // 应用级指针档:测试缺省无现场
     }
     async saveAppGuiState(_state: object): Promise<void> {}
-    /** G14.2xx b 影子水合面:测试缺省空行集(子代理投影恢复无档);可编程面留 shadowResp */
+    /** G14.2xx b 影子水合面:测试缺省空行集(子智能体投影恢复无档);可编程面留 shadowResp */
     shadowResp: { events: import('../../src/types').SessionEvent[]; cut: number } = { events: [], cut: 0 };
     shadowEvents(_id: string): Promise<{ events: import('../../src/types').SessionEvent[]; cut: number }> {
       return Promise.resolve(this.shadowResp);
@@ -1316,7 +1316,7 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     unmount();
   });
 });
-describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转录页(G14.174 重定位)', () => {
+describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读转录页(G14.174 重定位)', () => {
   it('payload.subagent 事件进聚合不进 Chat 流;任务板委派行(状态徽标)点开 agent 只读页(转录/状态/tokens)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
@@ -1326,17 +1326,17 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     fire(conn, ev('usage', undefined, { subagent: 'searcher', turnTotal: 1200 }));
     fire(conn, ev('task-created', undefined, { taskId: 't1', title: 'searcher 分析', spec: 's', dependsOn: [] }));
     fire(conn, ev('delegation-started', undefined, { delegationId: 'searcher', kind: 'subagent', label: 'searcher', title: 'searcher 分析' }));
-    // Chat 主流零污染:子代理事件另一轨(无工具条/无流式条)
+    // Chat 主流零污染:子智能体事件另一轨(无工具条/无流式条)
     expect(document.querySelector('.entry-tool')).toBeNull();
     expect(document.querySelector('.entry-assistant')).toBeNull();
-    // 「+」菜单开任务板页签(G14.174:Agents → 任务板):任务行在场(状态点+任务名+子代理名)
+    // 「+」菜单开任务板页签(G14.174:Agents → 任务板):任务行在场(状态点+任务名+子智能体名)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
     expect(document.querySelector('.sx-tab[data-title="任务板"]')?.classList.contains('active')).toBe(true);
     expect(screen.getByLabelText('task board')).toBeDefined();
     const row = screen.getByRole('button', { name: 't1 [pending] searcher 分析' });
-    expect(row.textContent).toContain('searcher'); // 执行子代理名(委派 label)
+    expect(row.textContent).toContain('searcher'); // 执行子智能体名(委派 label)
     expect(row.closest('.tb-task-row')?.className).toContain('task-status-pending'); // 状态点=灰(等待)
     // G14.164 点行开只读转录页:agent 标签(title=显示名定格;页内无输入框),转录=工具行+token 行
     expect(document.querySelector('.sx-agent-page')).toBeNull(); // 未点行无 agent 页
@@ -1355,7 +1355,7 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     unmount();
   });
 
-  it('status 流转与清板:delegation-ended failed → 行带失败子代理名;onResetSession 清聚合回空态', async () => {
+  it('status 流转与清板:delegation-ended failed → 行带失败子智能体名;onResetSession 清聚合回空态', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     fire(conn, ev('task-created', undefined, { taskId: 't2', title: 'reviewer 审阅', spec: 's', dependsOn: [] }));
@@ -1366,7 +1366,7 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
     const row = screen.getByRole('button', { name: 't2 [pending] reviewer 审阅' });
-    expect(row.textContent).toContain('reviewer'); // 执行子代理名(已执行态显)
+    expect(row.textContent).toContain('reviewer'); // 执行子智能体名(已执行态显)
     fireEvent.click(row);
     await waitFor(
       () =>
@@ -1384,10 +1384,10 @@ describe('G8d 任务板页签:子代理事件分流 + 委派行点开只读转�
     unmount();
   });
 
-  it('他会话子代理帧不进聚合(sessionRef 过滤在聚合面前)', async () => {
+  it('他会话子智能体帧不进聚合(sessionRef 过滤在聚合面前)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
-    fireOther(conn, ev('token', '他会话子代理', { subagent: 'ghost' }));
+    fireOther(conn, ev('token', '他会话子智能体', { subagent: 'ghost' }));
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '任务板' }));
@@ -1550,7 +1550,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fire(conn, taskCreated('t1', 'Demo'));
     fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev', title: 'Demo' }));
     const devRow = screen.getByRole('button', { name: 't1 [pending] Demo' });
-    expect(devRow.textContent).toContain('dev'); // 执行子代理名(委派 label)在任务行
+    expect(devRow.textContent).toContain('dev'); // 执行子智能体名(委派 label)在任务行
     fireResetSession(conn, 's9'); // 他会话:板投影不动
     expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined();
     fireResetSession(conn, 's1'); // 本会话:board/delegations 清(reset 语义 = swap 新 Harness,旧板作废;
@@ -1630,7 +1630,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     // 整替+过滤重放:t1 带 @w1 且无 ⚠(seq 8 重放——丢帧根修判据;seq 3 丢——若重放则门被重新挂上 ⚠,
     // reducer 对 created 幂等故以 gate-set 重挂为 ≤ 过滤的可观测判据);seq 9 委派重放(行在场)
     expect(screen.getByRole('button', { name: 't1 [pending] Base' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 't1 [pending] Base' }).textContent).toContain('dev'); // 委派重放:行带子代理名
+    expect(screen.getByRole('button', { name: 't1 [pending] Base' }).textContent).toContain('dev'); // 委派重放:行带子智能体名
     // 窗后帧直投(不再缓冲)
     fire(conn, taskEv('t2', 'Live'), 10);
     expect(screen.getByRole('button', { name: 't2 [pending] Live' })).toBeDefined();
@@ -1647,15 +1647,15 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     unmount();
   });
 
-  it('G8e-T2 播种窗内 delegation 帧补投聚合:buffered delegation-ended(failed) → onSeeded 重放后行带子代理名', async () => {
+  it('G8e-T2 播种窗内 delegation 帧补投聚合:buffered delegation-ended(failed) → onSeeded 重放后行带子智能体名', async () => {
     const { conn, unmount } = await enterChatHeldBoard();
-    // 窗内:任务+子代理帧直投聚合建卡(running);delegation-ended(failed) 入 boardPending 缓冲(不直投)
+    // 窗内:任务+子智能体帧直投聚合建卡(running);delegation-ended(failed) 入 boardPending 缓冲(不直投)
     fire(conn, ev('task-created', undefined, { taskId: 't1', title: 'reviewer', spec: 's', dependsOn: [] }), 1);
     fire(conn, ev('token', 'x', { subagent: 'reviewer' }), 2);
     fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }), 3);
     conn.releaseSnapshot(); // 种子 lastSeq 0:seq 1/2/3 > 0 → 重放面
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    // 任务板:任务行绑定委派(label=任务名同文)→ 行显子代理名(重放循环补投聚合生效;
+    // 任务板:任务行绑定委派(label=任务名同文)→ 行显子智能体名(重放循环补投聚合生效;
     // 失败终态现存委派投影,行内不再出「失败」徽标——G14.213 只显示任务)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));

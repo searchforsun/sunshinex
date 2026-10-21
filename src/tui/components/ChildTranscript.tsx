@@ -5,7 +5,7 @@ import { TOOL_VERBS } from '../tool-verbs';
 import { theme } from '../theme';
 
 /**
- * 子代理转录/detail 共享渲染器（2026-09-28 用户裁决「展开与全屏同构」）：
+ * 子智能体转录/detail 共享渲染器（2026-09-28 用户裁决「展开与全屏同构」）：
  * 历史区 SPAWN 行展开（ToolRow）与全屏查看视图（ChildInspector）同一分段器同一渲染形态——
  * 连续正文段合并走 renderMd（markdansi 出口，与主 agent 正文同一渲染器，框线表格/围栏统一形态），
  * 动词行还原 call 形态（● [VERB] target）、⎿ 行还原 result、⏺ 委派行与统计行 dim 呈现。
@@ -55,8 +55,8 @@ export function segmentizeLines(lines: string[]): TranscriptSeg[] {
   return segs;
 }
 
-/** 结果行折叠态单点（主链 ToolRow 与子代理 ChildInspector.ResultRow 共用——两处手写已实际漂移过：
- *  真机「主 agent 工具组三行（调用行/结果行/省略号行）、子代理少省略号行」病根）：⎿ ✓/✗ + 首行
+/** 结果行折叠态单点（主链 ToolRow 与子智能体 ChildInspector.ResultRow 共用——两处手写已实际漂移过：
+ *  真机「主 agent 工具组三行（调用行/结果行/省略号行）、子智能体少省略号行」病根）：⎿ ✓/✗ + 首行
  *  bandLine 块 + 尾追 …。bandLine 块首尾补空格恒吃满预算宽，… 恒越过终端右缘由终端折到下一行
  *  行首——即真机定形的三行工具组第三行；与主链形态逐字节同源 */
 export function ResultCollapsed({ text, ok, columns }: { text: string; ok: boolean; columns: number }): JSX.Element {

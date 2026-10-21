@@ -29,7 +29,7 @@ import { ApprovalDecision, ApprovalRequest } from '../../types';
  * ④安全链同族：canonical `Write`——manual 走审批（无 asker 拒绝 / deny 拒绝 / allow 放行）、dontAsk 放行、plan 拒绝
  * ⑤观察行单行契约（reactor 渲染 `${step}: ${action} -> ${observation}`）：近满提醒以 ` | ` 拼接，不得换行
  * ⑥审批 subject 可读且恒非空（`type:description` 兜底）：会话放行按内容分键，不跨内容、不跨工具族
- * ⑦记忆 scope（子代理隔离）：接缝承载链侧 scope → 落盘走 `agents/<id>` 子目录，主记忆目录零污染
+ * ⑦记忆 scope（子智能体隔离）：接缝承载链侧 scope → 落盘走 `agents/<id>` 子目录，主记忆目录零污染
  * 范式（对齐 tools/builtin.memorywrite.test.ts / memory/writer.test.ts）：tmpdir 作 root + SUNSHINEX_DATA_DIR 重定向 + finally 还原清理。
  */
 
@@ -53,7 +53,7 @@ async function withRoot(fn: (ctx: { root: string; dataDir: string }) => Promise<
 }
 
 /** 第 8 参装配（与生产接线同形态）：工具入口 ↔ 落盘单点 writeMemoryFact；memoryScope 给出即以带 scope 的链装配
- *  （对齐子代理 fork 形态：接缝的 scope 只在装配期链上取，见 builtin 第 8 参注释） */
+ *  （对齐子智能体 fork 形态：接缝的 scope 只在装配期链上取，见 builtin 第 8 参注释） */
 function registryFor(opts: {
   root: string;
   mode: PermissionMode;
@@ -355,12 +355,12 @@ test('memory_write：审批 subject 取 type:description（卡片可读、恒非
   });
 });
 
-test('memory_write：scope 收窄落盘子代理自有目录（接缝承载链侧 scope，主记忆目录零污染）', async () => {
+test('memory_write：scope 收窄落盘子智能体自有目录（接缝承载链侧 scope，主记忆目录零污染）', async () => {
   await withRoot(async ({ root, dataDir }) => {
     const ownDir = path.join(dataDir, 'memory', 'agents', 'reviewer');
     const scoped = registryFor({ root, mode: 'dontAsk', memoryScope: 'agents/reviewer' });
     const r = await scoped.registry.execute('memory_write', { ...FACT }, scoped.safety);
-    assert.equal(r.ok, true, `子代理链应写入自有目录：${r.ok ? '' : r.error.message}`);
+    assert.equal(r.ok, true, `子智能体链应写入自有目录：${r.ok ? '' : r.error.message}`);
     assert.deepEqual(mdFilesIn(ownDir), [`${FACT_SLUG}.md`], '落盘在 agents/<id> 子目录（与 subagent.agentMemory 同目录形态）');
     assert.deepEqual(recordFiles(dataDir), [], '主记忆目录零记录（记忆隔离成立）');
 
@@ -383,7 +383,7 @@ test('memory_write：scope 收窄落盘子代理自有目录（接缝承载链�
     );
     assert.equal(m.ok, true);
     assert.deepEqual(recordFiles(dataDir), ['main-chain-fact.md'], '主链落主目录');
-    assert.deepEqual(mdFilesIn(ownDir).sort(), [`${FACT_SLUG}.md`, 'Prefers-short-answers.md'].sort(), '子代理目录不受主链写入影响');
+    assert.deepEqual(mdFilesIn(ownDir).sort(), [`${FACT_SLUG}.md`, 'Prefers-short-answers.md'].sort(), '子智能体目录不受主链写入影响');
   });
 });
 

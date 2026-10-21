@@ -7,7 +7,7 @@ import type { Connection } from '../connection';
 import type { TaskBoardState } from '../projection';
 
 /**
- * G14.2xx b 子代理转录页六项对标主对话的渲染锚:
+ * G14.2xx b 子智能体转录页六项对标主对话的渲染锚:
  * - run 条分派 RunEntryView(streaming=运行态行;自带分割线,agent-thread-sep 双线退役)
  * - 底部 run-live-line(spinner+steps+tokens)running 时在场
  * - thinking 行渲染(reasoning 入投影后转录可见)

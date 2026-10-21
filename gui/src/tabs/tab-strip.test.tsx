@@ -13,7 +13,7 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web
   it('注册 file/diff/directory/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,directory/tasks/agents 单例,web 按 url 判重多实例', () => {
     expect(TAB_REGISTRY.map((e) => e.id)).toEqual([
       'file', 'diff', 'directory', 'tasks', 'agents', 'agent', 'bgtasks', 'memory', 'terminal', 'web', 'sidechat',
-    ]); // G14.29:+ sidechat(尾插保位置型断言);G14.164:+ agent(子代理只读页,菜单不列)
+    ]); // G14.29:+ sidechat(尾插保位置型断言);G14.164:+ agent(子智能体只读页,菜单不列)
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');

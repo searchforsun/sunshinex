@@ -44,7 +44,7 @@ import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import { boardEventFrom } from '../taskboard/translate';
 
 // D17 拆分件（docs/TECH-DEBT-SURVEY.md H1 五步边界）：纯模型层迁 chat-model.ts、流式 md 通道迁 md-stream.ts、
-// 命令族迁 commands-*.ts、子代理面板迁 child-panel.ts、挂起协调迁 approval.ts；session.ts 转发导出
+// 命令族迁 commands-*.ts、子智能体面板迁 child-panel.ts、挂起协调迁 approval.ts；session.ts 转发导出
 // 保持既有导入面（组件与既有测试零改动是硬约束）
 export {
   pairChildResults,
@@ -76,7 +76,7 @@ export { boardEventFrom } from '../taskboard/translate';
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
   readonly runtime: KernelRuntime;
-  /** 项目根（公开 = 命令族/子代理拆分件消费：memory/kb-index 的库基准、归档统计等；与 runtime 装配同源） */
+  /** 项目根（公开 = 命令族/子智能体拆分件消费：memory/kb-index 的库基准、归档统计等；与 runtime 装配同源） */
   readonly root: string;
   /** 流式 md 通道（D17 拆分件 md-stream，持有者 trait）：块缓冲/围栏/已推源/水位/规划轮归档抑制
    *  全部随通道实例走，控制器经协调函数（appendLive/closeLive/sealReply）与 this.md.* 消费；
@@ -123,7 +123,7 @@ export class SessionController {
   }
 
   /** 统计同步单点(P9):内核 SessionStats → 视图 StatusMetrics。sessionTotalTokens 保持今日合并
-   *  口径(主链+子代理——内核 main/child 分离,状态栏合并项在本点合成);任务统计行的 main/child
+   *  口径(主链+子智能体——内核 main/child 分离,状态栏合并项在本点合成);任务统计行的 main/child
    *  分离差值在 taskStats 面另算(main 基线 = 合并值 - child)。runs 归账本(refreshMetrics),不经此 */
   private syncMetricsFromKernel(s: import('../session/entry').SessionStats): void {
     this.state = {
@@ -337,14 +337,14 @@ export class SessionController {
   /** 恢复携带的 UI 现场（--continue / /resume 重放产物；entry 经 takeRestoredUi 播种 retain，一次性取走）；
    *  公开 = commands-session 恢复三面注入点 */
   restoredUi?: { history: string[]; expandAll: boolean; latestFull: boolean };
-  /** 子代理半行缓冲（label → 未成行）：token/reasoning 增量拼接、遇换行成行入 transcript；
+  /** 子智能体半行缓冲（label → 未成行）：token/reasoning 增量拼接、遇换行成行入 transcript；
    *  公开 = child-panel 拆分件消费（Map 实例不重绑，仅方法变更） */
   readonly childBufs = new Map<string, string>();
-  /** 子代理委派提示词暂存（spawn tool-call 捕获 → 面板态创建时挂载 → 归档清理；规格 §4.2）；
+  /** 子智能体委派提示词暂存（spawn tool-call 捕获 → 面板态创建时挂载 → 归档清理；规格 §4.2）；
    *  公开 = child-panel 拆分件消费 */
   readonly childPrompts = new Map<string, string>();
   /** spawn 调用关联栈（FIFO）：主链 spawn tool-call 压栈（行 seq + 关联基名）、tool-result 弹出归档（规格 §4.4 配对语义）；
-   *  后台两段式结果先行 → wait 标记延迟归档（子代理 done 触发），wait 条目不阻塞后续前台配对；
+   *  后台两段式结果先行 → wait 标记延迟归档（子智能体 done 触发），wait 条目不阻塞后续前台配对；
    *  公开 = child-panel 拆分件消费（/new 整栈清空在本体重置） */
   spawnCalls: { seq: number; base: string; wait?: boolean; delegatedAt: number }[] = [];
   /** 运行中挂起的调用行（CC 模式延迟入档）：tool-call 挂起不进历史区（底部活动行唯一承载运行态），
@@ -383,7 +383,7 @@ export class SessionController {
   taskStatsSuppressed = false;
 
   /** 任务统计基线建立单点：任务流起点调用。P9:基线取会话累计 main-only 口径
-   *  （sessionTotalTokens 为主链+子代理合并值,减去 child 即主链;turnTokens 现为 run 窗——
+   *  （sessionTotalTokens 为主链+子智能体合并值,减去 child 即主链;turnTokens 现为 run 窗——
    *  /plan 多步骤跨 run,任务统计必须锚会话累计差值） */
   private beginTaskStats(): void {
     const m = this.state.metrics;
@@ -398,7 +398,7 @@ export class SessionController {
     this.root = opts.root;
     this.modelSwitcher = opts.models;
     this.mdColumns = opts.mdColumns; // J6 双源收敛：流式 md 宽度源注入（缺省回退 process.stdout.columns，既有口径）
-    // 主模型装配单点：切换器在场即以其为主模型（/model 换内芯即时贯通 reactor/子代理/压缩）；
+    // 主模型装配单点：切换器在场即以其为主模型（/model 换内芯即时贯通 reactor/子智能体/压缩）；
     // 否则回落单模型适配器（无 providers 配置的既有形态）
     const mainModel = opts.models ?? opts.model;
     this.runtime = opts.runtime ?? createKernelRuntime({
@@ -527,13 +527,13 @@ export class SessionController {
     cancelPauseOn(this);
   }
 
-  /** 子代理全屏视图挂卡（UI 面；薄委托拆分件 approval）：无 running 门槛——后台子代理跨回合存续，
+  /** 子智能体全屏视图挂卡（UI 面；薄委托拆分件 approval）：无 running 门槛——后台子智能体跨回合存续，
    *  与 requestPause 同一张卡两种入口（App 分发层按按键所在视图分流） */
   hangPauseCard(): void {
     hangPauseCardOn(this);
   }
 
-  /** 停单个子代理（UI 面；薄委托拆分件 child-panel，保持公开 API 不变——单停不连带中断主链，细节见拆分件） */
+  /** 停单个子智能体（UI 面；薄委托拆分件 child-panel，保持公开 API 不变——单停不连带中断主链，细节见拆分件） */
   stopChild(label: string): boolean {
     return stopChildPanel(this, label);
   }
@@ -694,7 +694,7 @@ export class SessionController {
   }
 
   /** 会话级旁车 meta 写入（G14.17，closeTask 收尾单点）：任务轮数/本轮 tokens/缓存/prompt/
-   *  子代理与任务步数/秒数逐 run 累加、ctxUsed 快照末值——列表与 /resume 回溯面零重放直读。
+   *  子智能体与任务步数/秒数逐 run 累加、ctxUsed 快照末值——列表与 /resume 回溯面零重放直读。
    *  未建档静默跳过（空会话零落盘不变式）；累计加法在调用面读旧值自算（单 run 串行无并发写面） */
   private writeSidecarMeta(closingStats: { startedAt: number; startSteps: number } | undefined): void {
     const id = this.journal?.currentId;
@@ -792,7 +792,7 @@ export class SessionController {
     if (this.state.status !== 'running' && this.state.status !== 'awaiting-plan') return;
     this.flushPendingCalls();
     this.taskAbort = undefined;
-    // 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径产出（基线差值，含子代理合并口径）；中断经抑制位跳过；error 态不走 closeTask
+    // 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径产出（基线差值，含子智能体合并口径）；中断经抑制位跳过；error 态不走 closeTask
     const closingStats = this.taskStats;
     if (this.taskStats && !this.taskStatsSuppressed) {
       const ts = this.taskStats;
@@ -810,7 +810,7 @@ export class SessionController {
       // 暂停确认卡随状态出口清除（2026-10-02 状态卫生）：挂卡期任务自然收尾不清即残留——空闲态
       // Ctrl+C 被 App「第二次确认」分支吞掉成死键（interrupt() 非 active 不清卡即 return）
       pauseConfirm: undefined,
-      // 生命周期清理（规格 §4.4）：已归档者本已离场；运行中子代理（后台两段式）跨回合保留，done 归档收口
+      // 生命周期清理（规格 §4.4）：已归档者本已离场；运行中子智能体（后台两段式）跨回合保留，done 归档收口
       children: this.state.children.filter((c) => !c.done),
     };
     this.childBufs.clear();
@@ -1383,7 +1383,7 @@ export class SessionController {
 
   private onEvent(e: SessionEvent): void {
     // 内核转录泵(P3,session-kernel spec):转录持久化+视图归档单分发(applyKernelEvent)——静态区
-    // 转录条出自段级事件,原始分支只做通道/动态区/指标事务;子代理事件内核自守卫零条目
+    // 转录条出自段级事件,原始分支只做通道/动态区/指标事务;子智能体事件内核自守卫零条目
     this.kernel.pump(e);
     // 委派/板事件分流(P1 收敛,spec §11):类型前缀判定前置——即便上游误打 subagent 标签也不误吞(终审裁定);
     // delegation-* 进委派投影,task-*/gate-* 进板投影,两者都不触达主链消息分支
@@ -1403,8 +1403,8 @@ export class SessionController {
     // agent-message 即时呈现(P2/Ruling 3)已收编内核:seg-open(notice) 视图臂出显示行(md 同形),
     // 原始分支退役(P8);FileInbox 落档轨不受影响(harness 侧自有写入)
 
-    // 子代理事件分流(规格 §4.1):带 payload.subagent 标签的事件路由至面板态,不触达主链任何分支
-    // (内核对 subagent 事件零条目——面板态是子代理唯一显示面)
+    // 子智能体事件分流(规格 §4.1):带 payload.subagent 标签的事件路由至面板态,不触达主链任何分支
+    // (内核对 subagent 事件零条目——面板态是子智能体唯一显示面)
     const sub = e.payload?.subagent;
     if (typeof sub === 'string' && sub.length > 0) {
       onChildEvent(this, e, sub);

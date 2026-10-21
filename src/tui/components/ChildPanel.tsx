@@ -12,7 +12,7 @@ export interface ChildRow {
   title?: string;
 }
 
-/** 子代理并行面板（动态区，输入框下侧，CC 式）：每个运行中子 agent 一行（规格 §3.1）——运行态信息由单行承载，
+/** 子智能体并行面板（动态区，输入框下侧，CC 式）：每个运行中子智能体 一行（规格 §3.1）——运行态信息由单行承载，
  *  完整转录经全屏查看视图（ChildInspector）查看；外层特殊边框（圆角主题主色，2026-09-27 用户裁决对标 CC）：
  *  与主链活动行视觉分域，派发批一眼可辨。完成态不进面板（2026-09-28 用户裁决：动态区只显运行中、无两页/计数行），
  *  归档即从面板离场折进历史区 SPAWN 行 detail，Ctrl+B 浏览器直接浏览全部已完成。空态渲染零占位帧 */
@@ -66,7 +66,7 @@ export function ChildPanel({ childrenState, columns, rows }: { childrenState: Ch
               </Text>
             </Text>
           ) : (
-            // Spinner 分支（思考中子代理）
+            // Spinner 分支（思考中子智能体）
             <Spinner startedAt={startedAt} tokens={tokens} label={label} steps={steps} columns={columns} />
           )}
         </Box>

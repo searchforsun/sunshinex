@@ -371,14 +371,14 @@ test('⑭ reducer 纯件:applyEvent 零副作用(入参态不变)', () => {
   assert.equal(s2.pending.length, 1);
 });
 
-test('⑮ 子代理事件另轨:payload.subagent 零条目(G8d 入口过滤单点)', () => {
+test('⑮ 子智能体事件另轨:payload.subagent 零条目(G8d 入口过滤单点)', () => {
   const k = new SessionKernel();
-  pump(k, ev('token', '子代理正文', { subagent: 'w1' }), ev('tool-call', 'read', { callId: 's1', subagent: 'w1' }), ev('user', '主流'));
+  pump(k, ev('token', '子智能体正文', { subagent: 'w1' }), ev('tool-call', 'read', { callId: 's1', subagent: 'w1' }), ev('user', '主流'));
   const es = k.replay();
   assert.deepEqual(
     es.map((e) => e.kind),
     ['user'],
-    '子代理事件不进主流转录',
+    '子智能体事件不进主流转录',
   );
 });
 
@@ -457,7 +457,7 @@ test('P9 统计面：usage 水位差值并入会话累计,轮窗=run(done 后新
   assert.equal(s.turnStartedAt, 2000, '轮窗起点=最近 model-start');
 });
 
-test('P9 统计面：子代理 usage per-child 水位(增量并入 child 两级,零转录条目)', () => {
+test('P9 统计面：子智能体 usage per-child 水位(增量并入 child 两级,零转录条目)', () => {
   const k = new SessionKernel();
   pump(k, ev('usage', undefined, { subagent: 'r1', turnTotal: 500 }));
   pump(k, ev('usage', undefined, { subagent: 'r1', turnTotal: 1200 })); // 同 child 差值 700
@@ -465,7 +465,7 @@ test('P9 统计面：子代理 usage per-child 水位(增量并入 child 两级,
   const s = k.stats();
   assert.equal(s.turnChildTokens, 1280, 'child 面=r1 累计 1200 + r2 80');
   assert.equal(s.sessionChildTokens, 1280, 'session child 同步');
-  assert.equal(k.replay().length, 0, '子代理事件零转录条目(G8d 不变)');
+  assert.equal(k.replay().length, 0, '子智能体事件零转录条目(G8d 不变)');
   assert.deepEqual(s.childWatermarks, { r1: 1200, r2: 80 }, 'per-child 水位记账');
 });
 
@@ -533,7 +533,7 @@ test('⓱ 段开 running:token/reasoning 开启段显 running,封段删字段', 
   assert.equal(k.replay()[1]!.status, undefined);
 });
 
-test('⑯ 面事件透传落档(G14.2xx 内核层落库):task-/gate-/delegation-/子代理流发 shadow 事件,转录面零扰动', () => {
+test('⑯ 面事件透传落档(G14.2xx 内核层落库):task-/gate-/delegation-/子智能体流发 shadow 事件,转录面零扰动', () => {
   const events: Array<{ t: string }> = [];
   const k = new SessionKernel({ onKernelEvent: (e) => events.push({ t: e.t }) });
   pump(

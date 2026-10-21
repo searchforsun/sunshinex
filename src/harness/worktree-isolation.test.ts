@@ -20,7 +20,7 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 
 /**
- * 子代理 worktree 隔离（规格 2026-09-23-subagent-worktree-isolation，对标 Claude Code）：
+ * 子智能体 worktree 隔离（规格 2026-09-23-subagent-worktree-isolation，对标 Claude Code）：
  * 程序化建树/收口（D1/D4）、双通道声明（D2）、无 Git 静默兜底（D3）、HEAD 分叉（D5）、执行面判界（D6）。
  * 树名 `subagent-<slug>-<4位随机>`，分支 `worktree-<name>`；fork 子 Reactor 工作目录事实=专属树；
  * 干净树自动删（零链行）、脏树保留 + 补丁行附路径；非仓/缺根静默降级主工作区执行；建树失败 fail-bounded。
@@ -133,7 +133,7 @@ test('T5-2 入参通道：普通 agent + spawn 入参 isolation=worktree 同样�
     });
   }));
 
-test('T5-3 收口：子代理有改动 → 树保留 + keptReason=dirty + 补丁行附树路径', () =>
+test('T5-3 收口：子智能体有改动 → 树保留 + keptReason=dirty + 补丁行附树路径', () =>
   withIso((tmp) => {
     const repo = makeRepo();
     const prompts: string[] = [];
@@ -153,8 +153,8 @@ test('T5-3 收口：子代理有改动 → 树保留 + keptReason=dirty + 补丁
     return h.reactor.run({ goal: 'g' }, { maxSteps: 8 }).then((r) => {
       assert.equal(r.done, true, `run 应完成：${String(r.stopReason ?? '')}`);
       const childCwd = cwdOf(prompts[1]!);
-      assert.ok(fs.existsSync(path.join(childCwd, 'work.txt')), '子代理写应落在专属树内');
-      assert.ok(!fs.existsSync(path.join(repo, 'work.txt')), '子代理写不得落主根');
+      assert.ok(fs.existsSync(path.join(childCwd, 'work.txt')), '子智能体写应落在专属树内');
+      assert.ok(!fs.existsSync(path.join(repo, 'work.txt')), '子智能体写不得落主根');
       const reg = readRegistry(tmp);
       const kept = reg.find((e) => e.name === path.basename(childCwd));
       assert.ok(kept, `脏树应保留登记：${JSON.stringify(reg)}`);
@@ -185,11 +185,11 @@ test('T5-4 非 git 仓 → 静默兜底：不建树、零 note、主工作区正
       return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
         assert.equal(r.done, true, '父任务正常完成');
         const childCwd = cwdOf(prompts[1]!);
-        assert.equal(childCwd, plain, '静默兜底：子代理在主工作区执行');
+        assert.equal(childCwd, plain, '静默兜底：子智能体在主工作区执行');
         const chain = h.context.chainView();
         assert.equal(chain.some((s) => s.observation.includes('kept for inspection') || s.observation.includes('isolation failed')), false, '零隔离副作用链行（静默）');
         assert.equal(readRegistry(tmp).length, 0, '零树登记');
-        assert.ok(chain.some((s) => s.observation.startsWith('[slw] ')), '子代理结论行正常回链');
+        assert.ok(chain.some((s) => s.observation.startsWith('[slw] ')), '子智能体结论行正常回链');
       });
     } finally {
       fs.rmSync(plain, { recursive: true, force: true });
@@ -236,7 +236,7 @@ test('T5-5b 是仓但 unborn HEAD → 建树失败 fail-bounded：补丁行回�
     });
   }));
 
-test('T5-6 隔离子代理 exec 锚树：cwd=树、树内 git 放行、越树命令被拒且子代理可继续', () =>
+test('T5-6 隔离子智能体 exec 锚树：cwd=树、树内 git 放行、越树命令被拒且子智能体可继续', () =>
   withIso((_tmp) => {
     const repo = makeRepo();
     const prompts: string[] = [];
@@ -261,11 +261,11 @@ test('T5-6 隔离子代理 exec 锚树：cwd=树、树内 git 放行、越树命
       assert.match(base, /^subagent-exw-[a-z0-9]{4}$/);
       assert.equal(prompts.length, 5, `帧序 父/子×3/父=5：${prompts.length}`);
       assert.ok(prompts[2]!.includes(base), '树内 git rev-parse --show-toplevel 输出锚树');
-      assert.ok(prompts[3]!.includes('command rejected'), '越树 cd 被拒且原因回喂子代理');
+      assert.ok(prompts[3]!.includes('command rejected'), '越树 cd 被拒且原因回喂子智能体');
       const chain = h.context.chainView();
       assert.ok(
         chain.some((s) => s.action === 'node' && s.observation.startsWith('[exw] ') && s.observation.includes('iso exec done')),
-        '拒绝后子代理继续并以结论行收束',
+        '拒绝后子智能体继续并以结论行收束',
       );
     });
   }));
@@ -287,7 +287,7 @@ test('T5-7 回归锚：未声明 isolation 的 spawn 行为零变化', () =>
     const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
       assert.equal(r.done, true);
-      assert.equal(cwdOf(prompts[1]!), repo, '无声明：子代理 cwd=主根');
+      assert.equal(cwdOf(prompts[1]!), repo, '无声明：子智能体 cwd=主根');
       assert.equal(readRegistry(tmp).length, 0, '无树登记');
       const chain = h.context.chainView();
       assert.equal(chain.some((s) => s.observation.includes('kept for inspection') || s.observation.includes('isolation')), false, '零隔离链行');

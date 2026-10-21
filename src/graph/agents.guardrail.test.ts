@@ -62,18 +62,18 @@ test('makeRoleAgent：env 未设不设 token 硬顶——graph 剩余不再贯�
       termination: { maxNodes: 10, maxTokens: 0, timeoutMs: 60_000 },
     };
     const out = await node.run(ctx, deps, {});
-    assert.equal(out.status, 'pass', `graph 剩余不得再充当子代理硬顶：${JSON.stringify(out)}`);
-    assert.equal(rec.calls, 1, '无硬顶 → 子代理正常完成');
+    assert.equal(out.status, 'pass', `graph 剩余不得再充当子智能体硬顶：${JSON.stringify(out)}`);
+    assert.equal(rec.calls, 1, '无硬顶 → 子智能体正常完成');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('makeRoleAgent：SUNSHINEX_SUBAGENT_TOKEN_CAP 注入 → 子代理按独享硬顶收敛', async () => {
+test('makeRoleAgent：SUNSHINEX_SUBAGENT_TOKEN_CAP 注入 → 子智能体按独享硬顶收敛', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ag4-'));
   process.env.SUNSHINEX_SUBAGENT_TOKEN_CAP = '1';
   try {
-    // 每步回传 5 token 且永不 done：cap=1 时子代理在第 2 步边界按预算收敛（累计 5 ≥ 1）
+    // 每步回传 5 token 且永不 done：cap=1 时子智能体在第 2 步边界按预算收敛（累计 5 ≥ 1）
     const model = new UsageAdapter(new ScriptedAdapter(['{"done":false}']), 5);
     const deps = makeDeps(tmp, model);
     const node = makeRoleAgent('planner', deps);

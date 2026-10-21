@@ -11,8 +11,8 @@ import type { ModelAdapter } from '../model/adapter';
 import type { SessionEvent } from '../types';
 
 /** G14.2xx b 影子投影水合面测试:journal subagent 行全量读端点(shadow-events)+ WS 回放面跳过
- *  shadow 帧。病根背景:WS 环窗(512)对长会话子代理流必溢出且 GUI 刷新时连接建立常先于会话
- *  attach——刷新后子代理转录「无活动记录」;恢复唯一可靠入口=journal 全量(落档先于广播)。 */
+ *  shadow 帧。病根背景:WS 环窗(512)对长会话子智能体流必溢出且 GUI 刷新时连接建立常先于会话
+ *  attach——刷新后子智能体转录「无活动记录」;恢复唯一可靠入口=journal 全量(落档先于广播)。 */
 
 const noopModel: ModelAdapter = (async () => {
   throw new Error('model not used in this suite');
@@ -57,7 +57,7 @@ async function withShadowDaemon(fn: (ctx: Ctx) => Promise<void>): Promise<void> 
   }
 }
 
-/** 子代理 token 帧构造糖 */
+/** 子智能体 token 帧构造糖 */
 const subToken = (label: string, text: string): SessionEvent => ({ type: 'token', text, payload: { subagent: label }, ts: Date.now() });
 
 test('journal shadow 行全量读面:环窗溢出后端点仍返回全量 subagent 事件 + cut 水位', async () => {
@@ -72,7 +72,7 @@ test('journal shadow 行全量读面:环窗溢出后端点仍返回全量 subage
     assert.equal(body.events.length, 600, 'journal 全量:600 帧 subagent 事件一张不少(环窗溢出不影响)');
     for (const e of body.events) {
       assert.equal(e.type, 'token');
-      assert.equal(typeof (e.payload as { subagent?: unknown }).subagent, 'string', '行集恒为子代理事件');
+      assert.equal(typeof (e.payload as { subagent?: unknown }).subagent, 'string', '行集恒为子智能体事件');
     }
     assert.ok(body.cut >= 601, 'cut=读档时刻泵水位(≥ 全部已泵帧)');
     // 全量行集可重建聚合面(GUI applyAgentEvent 同构消费):首帧建卡、token 全量在卡
@@ -104,14 +104,14 @@ test('WS 回放面跳过 shadow 帧:新连接补发窗只含主链帧(恢复唯�
       assert.equal(
         typeof f.e?.payload?.subagent,
         'undefined',
-        '回放面零 shadow 帧——子代理恢复唯一入口=HTTP 水合(双应用防线)',
+        '回放面零 shadow 帧——子智能体恢复唯一入口=HTTP 水合(双应用防线)',
       );
     }
     assert.ok(eventFrames.some((f) => f.e?.type === 'token'), '主链帧照常补发');
   });
 });
 
-test('isShadowEvent 判定单点:板面/委派/子代理三族命中,主链流内事件不命中', () => {
+test('isShadowEvent 判定单点:板面/委派/子智能体三族命中,主链流内事件不命中', () => {
   for (const type of ['task-created', 'gate-requested', 'delegation-started']) {
     assert.equal(isShadowEvent({ type, ts: 0 } as SessionEvent), true, `${type} 命中`);
   }

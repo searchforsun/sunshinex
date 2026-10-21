@@ -68,8 +68,8 @@ function randomTail4(): string {
   return tail;
 }
 
-/** 子代理专属树名（规格 2026-09-23-subagent-worktree-isolation §3）：`subagent-<净化label>-<4位随机>`；
- * slug 走 slugifyLabel 单点（空折叠回 's' 兜底），并行批多个隔离子代理互不撞名 */
+/** 子智能体专属树名（规格 2026-09-23-subagent-worktree-isolation §3）：`subagent-<净化label>-<4位随机>`；
+ * slug 走 slugifyLabel 单点（空折叠回 's' 兜底），并行批多个隔离子智能体互不撞名 */
 export function subagentTreeName(label: string): string {
   const slug = slugifyLabel(label) || 's';
   return `subagent-${slug}-${randomTail4()}`;

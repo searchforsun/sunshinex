@@ -1,6 +1,6 @@
 import type { Result } from './result';
 
-/** 多角色子 Agent 角色枚举 */
+/** 多角色子智能体 角色枚举 */
 export type AgentRole = 'planner' | 'developer' | 'tester' | 'reviewer';
 
 /** 极简 JSON Schema 形态（工具 parameters 与后续消息面共用；不覆盖全量规范，只登记声明面用到的关键字段） */
@@ -206,7 +206,7 @@ export interface TodoItem {
   status: TodoStatus;
 }
 
-/** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子代理派生） */
+/** 工具类别（阶段四扩容：network=webfetch 等网络工具，external=MCP 服务器工具，subagent=spawn 子智能体派生） */
 export type ToolCategory = 'read' | 'write' | 'bash' | 'network' | 'external' | 'subagent' | 'ask' | 'worktree' | 'todo' | 'task';
 
 /** AskQuestion 问询请求（ask_question 工具入参钳制后的装配面；customIndex=「Other…」末项下标，allowCustom 时存在） */
@@ -231,13 +231,13 @@ export type AskUserAnswer =
 export type AskUserSeam = (req: AskUserRequest) => Promise<AskUserAnswer>;
 
 
-/** 子代理 spawn 入参（三形态：agent_id=注册/预设引用；prompt=内联临时；可同传=框定+任务） */
+/** 子智能体 spawn 入参（三形态：agent_id=注册/预设引用；prompt=内联临时；可同传=框定+任务） */
 export interface SubagentSpawnInput {
   agent_id?: string;
   prompt?: string;
   /** 时间线卡片短标题（缺省 agent_id ?? 'subagent'） */
   label?: string;
-  /** 子代理工具名子集（缺省 = 父全量 − spawn）；未知名由 spawn 输入面校验 fail-fast */
+  /** 子智能体工具名子集（缺省 = 父全量 − spawn）；未知名由 spawn 输入面校验 fail-fast */
   tools?: string[];
   /** 隔离声明（规格 2026-09-23-subagent-worktree-isolation D2）：'worktree' = fork 前程序建专属树并在树内执行，收口随树生命周期；
    * 入参优先于 agent.md frontmatter；工作区非 git 仓时静默降级为主工作区执行（D3） */
@@ -445,7 +445,7 @@ export type ChainAction =
   | 'tool-call' /* 工具调用行（reactor，messages.ts TOOL_CALL_ACTION） */
   | 'tool-result' /* 工具观察行（reactor，messages.ts TOOL_RESULT_ACTION） */
   | 'deficit' /* 修正环验收缺口（loop check） */
-  | 'node' /* graph/子代理节点结论行（graph nodes/subagent） */
+  | 'node' /* graph/子智能体节点结论行（graph nodes/subagent） */
   | 'memory' /* 记忆注入行（subagent fork 前缀） */
   | 'role' /* 角色框定行（subagent fork 前缀） */
   | 'skill'; /* 技能注入行（tui session） */

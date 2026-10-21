@@ -3,7 +3,7 @@
  * 放在 memory/ 而非 security/——避免安全层反向依赖业务模块。
  * 入参 absPath 须为 realpath 归一后的真实路径（chain.resolveSafe 已保证），故此处不再处理 `..`/符号链接。
  * dataDir 与 absPath **两侧同归一**（审查裁决 2026-09-18）：只归一 absPath 时相对 dataDir 会静默全拒（前缀比对恒失配），非对称口径即缺陷。
- * scope 给出即收窄（子代理 fork 只可写自身 agents/<id>/）；未给出则按路径自身归属分类。
+ * scope 给出即收窄（子智能体 fork 只可写自身 agents/<id>/）；未给出则按路径自身归属分类。
  */
 import * as path from 'path';
 import { isWithin } from '../../paths';
@@ -28,6 +28,6 @@ export function isMemoryPath(
     const kind = `agents/${id}` as const;
     return scope === undefined || scope === kind ? kind : null;
   }
-  // 主记忆目录直属文件：scope 收窄（子代理 fork）时拒绝
+  // 主记忆目录直属文件：scope 收窄（子智能体 fork）时拒绝
   return scope === undefined ? 'main' : null;
 }

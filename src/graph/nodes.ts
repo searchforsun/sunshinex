@@ -54,7 +54,7 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
         },
       );
       const r = await tpl.engine.run(taskText, { state: { seedHistory } });
-      // 子代理返回制：私有步骤不回主链，终态仅回写一行结论/补丁（下游 fork 经主链快照天然可见）
+      // 子智能体返回制：私有步骤不回主链，终态仅回写一行结论/补丁（下游 fork 经主链快照天然可见）
       if (r.status === 'done' && r.reply) {
         deps.context.appendChain([{ action: 'node', observation: `${id}: ${r.reply}` }]);
       } else {

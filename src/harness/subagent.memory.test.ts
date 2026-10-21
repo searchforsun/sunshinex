@@ -19,8 +19,8 @@ import { guardMemoryWrite } from './memory/writer';
 import { resolveDataDir } from '../config/data-dir';
 
 /**
- * 子代理自有记忆（规格 §8）：agent.md frontmatter `memory: true` 声明独立目录 <dataDir>/memory/agents/<id>/，
- * 索引以 fork 私有尾块注入（role 行与 task 行之间），主链零污染；子代理写面经 withMemoryScope 收窄到自身目录。
+ * 子智能体自有记忆（规格 §8）：agent.md frontmatter `memory: true` 声明独立目录 <dataDir>/memory/agents/<id>/，
+ * 索引以 fork 私有尾块注入（role 行与 task 行之间），主链零污染；子智能体写面经 withMemoryScope 收窄到自身目录。
  * 范式对齐 subagent.test.ts / chain.memorywrite.test.ts：tmpdir 作 root、SUNSHINEX_DATA_DIR 重定向、finally 还原清理。
  */
 
@@ -178,7 +178,7 @@ test('未声明 memory 的 agent → 无记忆行、无自有目录（目录注�
   });
 });
 
-test('子代理写入 scope 收窄：只可写自身 agents/<id>，主记忆目录被拒', async () => {
+test('子智能体写入 scope 收窄：只可写自身 agents/<id>，主记忆目录被拒', async () => {
   await withEnv(undefined, async (tmp) => {
     const h = (() => {
       const root = path.join(tmp, 'root');

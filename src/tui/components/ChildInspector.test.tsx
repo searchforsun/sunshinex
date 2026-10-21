@@ -144,7 +144,7 @@ test('Inspector 不压缩：完成态完整时间线入滚动缓冲（Static 打
 });
 
 test('Inspector 思考期帧高实账：正文尾窗+思考尾窗+状态行 ≤ rows-1（恰触 rows 即每帧 clearTerminal 整屏重写洪流，WT 视觉冻结病根）', () => {
-  // 长 bufText 撑满正文预览预算 + bufThink 在场：正是真机子代理「思考+正文双流式」的帧形态
+  // 长 bufText 撑满正文预览预算 + bufThink 在场：正是真机子智能体「思考+正文双流式」的帧形态
   const longTail = Array.from({ length: 60 }, (_, i) => `正文第 ${i} 行，补足宽度让 renderMd 折行收敛到列宽以内再折出多行来。`).join('\n');
   const one = render(<ChildInspector child={live({ bufText: longTail, bufThink: '思考流第一行\n思考流第二行' })} columns={80} rows={16} />);
   const f = one.lastFrame() ?? '';
@@ -234,7 +234,7 @@ test('Inspector 折叠结果行单行省略、Tab 展开全文（对标主 agent
   exp.unmount();
 });
 
-test('Inspector 结果行折叠三行同形：⎿ ✓ 首行带块 + … 独立省略号行（与主链 ToolRow 共用 ResultCollapsed 单点——真机「子代理少省略号一行」病根）+ CR 剥除', () => {
+test('Inspector 结果行折叠三行同形：⎿ ✓ 首行带块 + … 独立省略号行（与主链 ToolRow 共用 ResultCollapsed 单点——真机「子智能体少省略号一行」病根）+ CR 剥除', () => {
   // render 第二参=终端宽度实参：… 行来自终端宽（80）下的 yoga 折行，缺省宽更宽即不折行（unmount 全入 finally——
   // 断言失败跳过卸载即自持 interval 吊死整个测试批次）
   let one: TestRenderResult | undefined;
@@ -268,7 +268,7 @@ test('Inspector 结果行折叠三行同形：⎿ ✓ 首行带块 + … 独立�
   } finally {
     one?.unmount();
   }
-  // 同形铁钉：同一结果内容经主链 ToolRow 与子代理视图渲染逐行一致（共用单点的漂移保险）
+  // 同形铁钉：同一结果内容经主链 ToolRow 与子智能体视图渲染逐行一致（共用单点的漂移保险）
   let two: TestRenderResult | undefined;
   try {
     two = render(
@@ -393,7 +393,7 @@ test('Inspector 归档 meta 带委派词全文：⏺ 行及其续行整块丢弃
 });
 
 test('Inspector 输入带抑制:转录已含任务带时 spawn 框定词不再重播(2026-10-19 真机「用户字段重复渲染」)', () => {
-  // live:prompt(框定词)与任务带(Task 行+spec)同义重复——任务带=子代理实收输入,单点承载,输入带让位
+  // live:prompt(框定词)与任务带(Task 行+spec)同义重复——任务带=子智能体实收输入,单点承载,输入带让位
   const one = render(
     <ChildInspector
       child={live({

@@ -34,7 +34,7 @@ export interface RegisteredTool extends ToolSpec {
    *  fallback 语义——纯名字工具零声明即正确呈现） */
   readonly display?: ToolDisplayMeta;
   /** 结果整读特性（可选）：声明后批次执行面的观察行对该工具免 2000 字符截断——语义面为「模型必须整读」
-   *  的输出（skill 策划全文、子代理结论、task_wait 回执）；上下文超限由反应式压缩兜底（CLAUDE.md §12），
+   *  的输出（skill 策划全文、子智能体结论、task_wait 回执）；上下文超限由反应式压缩兜底（CLAUDE.md §12），
    *  不是截断口的职责 */
   readonly fullObservation?: boolean;
 }

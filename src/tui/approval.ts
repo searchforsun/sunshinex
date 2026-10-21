@@ -58,7 +58,7 @@ export function resolveAskAnswer(ctrl: SessionController, a: AskUserAnswer): voi
   ctrl.pendingQuestion?.resolve(a);
 }
 
-/** 第一次 Ctrl+C（运行中）：挂起暂停确认卡——status 保持 running、abort 不触发，任务与子代理继续跑。
+/** 第一次 Ctrl+C（运行中）：挂起暂停确认卡——status 保持 running、abort 不触发，任务与子智能体继续跑。
  *  已挂卡或非运行态返回 false（App 层据此回落既有分流） */
 export function requestPause(ctrl: SessionController): boolean {
   if (ctrl.state.status !== 'running' || ctrl.state.pauseConfirm) return false;
@@ -74,7 +74,7 @@ export function cancelPause(ctrl: SessionController): void {
   ctrl.notify();
 }
 
-/** 子代理全屏视图挂卡（UI 面）：无 running 门槛——后台子代理跨回合存续，主链 idle 时单停子代理仍可达；
+/** 子智能体全屏视图挂卡（UI 面）：无 running 门槛——后台子智能体跨回合存续，主链 idle 时单停子智能体仍可达；
  *  与 requestPause（主视图、running 门槛）同一张卡两种入口，确认动作随按键所在视图分流（App 分发层） */
 export function hangPauseCard(ctrl: SessionController): void {
   if (ctrl.state.pauseConfirm) return;

@@ -22,7 +22,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 test('生产编排：browse-Enter 进归档视图——转录单次倾泻（旧实例不写注定废弃的巨帧）+ inspect 态跨重挂保留', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-archrepro-'));
   try {
-    // 已归档 spawn 行：子代理事件流建 ChildLiveState（转录带独占标记串）→ spawn 调用/结果配对归档
+    // 已归档 spawn 行：子智能体事件流建 ChildLiveState（转录带独占标记串）→ spawn 调用/结果配对归档
     // （detail=subagentMeta+transcript 折入调用行，browseRows archived 过滤条件）
     const DETAIL_MARK = 'ARCHIVED-TRANSCRIPT-MARK';
     const ctrl = new SessionController({ root: tmp });

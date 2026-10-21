@@ -24,7 +24,7 @@ test('task-* 事件进板投影;delegation 带标签不再误吞(分流防御)',
     ctrl.onEventForTest({ type: 'delegation-started', ts: 102, payload: { delegationId: 'task-t1', kind: 'subagent', label: 'task-t1', subagent: 'task-t1' } } as never);
     st = ctrl.getState();
     assert.equal(st.delegations.length, 1, '带标签的 delegation 事件仍进投影');
-    assert.equal(st.children.length, 0, '不误入子代理面板分支');
+    assert.equal(st.children.length, 0, '不误入子智能体面板分支');
     // 单源收敛:children 不再是 runningDelegations 数据源
     ctrl.onEventForTest({ type: 'token', text: 'x\n', payload: { subagent: 'orphan' } } as never);
     assert.deepEqual(runningDelegations(ctrl.getState()).map((r) => r.label), ['task-t1'], '无 delegation 事件的 children 行不再显示');

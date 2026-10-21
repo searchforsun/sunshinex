@@ -5,7 +5,7 @@ import { Box, Text, useStdout } from 'ink';
 import useInput, { RawKey, keyTrace } from './use-input';
 import { SessionController, TuiState } from '../session';
 // J6 双源收敛：状态栏上下文分母经模型层单点解析（modelWindow ?? env ?? 0），渲染层不直读 env；
-// runningDelegations = 委派投影单源（P1 收敛）：子代理面板成员资格/高度实账单点（children 只是转录明细）
+// runningDelegations = 委派投影单源（P1 收敛）：子智能体面板成员资格/高度实账单点（children 只是转录明细）
 import { resolveContextWindow, runningDelegations } from '../chat-model';
 import { SLASH_COMMANDS, slashCommandDescriptions } from '../slash-commands';
 import { SlashMenu, SlashMenuEntry, SLASH_MENU_MAX_ROWS } from './SlashMenu';
@@ -108,7 +108,7 @@ export function computePreviewCap(rows: number, chromeRows: number): number {
 /** Ink 渲染层（纯渲染 + useInput 垫片键盘分发：垫片保留原始字节，退格/⌦ 经 key.raw 精确分流）：状态全量来自 controller 订阅；
  *  retain 为跨重挂现场（resize/Tab 重挂时输入现场与展开模式不丢）：挂载读初值，每次渲染后实时回写。
  *  键盘分发按模态判定序拆为五个 hook（D17-H2 技术债镜像重构，行为零变化）：use-inspect-keys（全屏查看）、
- *  use-browse-keys（子代理浏览）、use-question-keys（问询卡）、use-approval-keys（审批/plan 卡）、
+ *  use-browse-keys（子智能体浏览）、use-question-keys（问询卡）、use-approval-keys（审批/plan 卡）、
  *  use-line-edit（输入行编辑与提交）——各 hook 收编专属状态与分支、handleKey 返回 true=已消费短路；
  *  共享状态（buffer/cursor/菜单条目等）由本组件持有并经参数注入；判定序全契约见下方 useInput 前置注释 */
 export function App({
@@ -171,7 +171,7 @@ export function App({
   stateRef.current = state;
   // 全屏查看模式（规格 §3.3）：状态与按键分支收编于 useInspectKeys（D17-H2 模态拆件，行为零变化）
   const { inspect, inspectExpanded, inspectRef, setInspectRetained, handleKey: handleInspectKey } = useInspectKeys({ controller, stateRef, store, onRequestRepaint });
-  // 子代理浏览模式（Ctrl+B）：状态与按键分支（含 Ctrl+B 进入）收编于 useBrowseKeys（D17-H2 模态拆件，行为零变化）
+  // 子智能体浏览模式（Ctrl+B）：状态与按键分支（含 Ctrl+B 进入）收编于 useBrowseKeys（D17-H2 模态拆件，行为零变化）
   const { browseMode, browseCursor, browseModeRef, handleKey: handleBrowseKey } = useBrowseKeys({ controller, stateRef, store, enterInspect: setInspectRetained });
   // 任务视图模式（Ctrl+T，P2 spec §10.3）：状态与按键分支（含 gate 行内审批）收编 useBoardKeys——
   // 行序派生 boardRows 单点、每页 8 行滑窗、gated ⚠ 高亮；局部瞬态不入 retain（检视面非操作现场）；
@@ -292,13 +292,13 @@ export function App({
   const menuMaxRows = Math.max(3, Math.min(SLASH_MENU_MAX_ROWS, rows - inputRows - todoRows - 3));
   // 动态帧总高实账（2026-09-30 用户裁决「贴地不再上提」）：ink3 在 outputHeight >= rows 时 clearTerminal
   // 整屏重放（node_modules/ink/build/ink.js onRender），历史短于视口时输入框被「提」离贴地位、长历史则整屏闪烁——
-  // 预览行数上限按 chrome 实账收缩（活动行/输入框/待办/子代理面板/状态栏 + 预览 marginBottom 与 … 行预算），
+  // 预览行数上限按 chrome 实账收缩（活动行/输入框/待办/子智能体面板/状态栏 + 预览 marginBottom 与 … 行预算），
   // 帧高恒 ≤ rows-1，clearTerminal 路径结构性不可达
   const spinnerRows = state.status === 'running' ? 1 : 0;
   const runningChildren = runningDelegations(state).length;
   const childPanelRows = runningChildren > 0 && !browseMode && !boardMode && !queueMode ? runningChildren + 2 : 0; // ChildPanel round 边框上下各 1（浏览/任务视图/队列面板在场让位）
   // 恒驻键提示条（2026-10-02）：所有交互处的快捷键单点承载——矩阵见 keyHintsFor；恒 1 行计入
-  // previewCap chrome 实账（不实账即帧高触顶 clearTerminal，子代理视图冻结同病根）；模态卡在场
+  // previewCap chrome 实账（不实账即帧高触顶 clearTerminal，子智能体视图冻结同病根）；模态卡在场
   // hints=undefined 条退场（卡 hint 承载，零行）
   const hints = keyHintsFor({
     status: state.status,
@@ -319,10 +319,10 @@ export function App({
   React.useEffect(() => {
     if (inspectRef.current && (state.approval || state.question || state.status === 'awaiting-plan')) setInspectRetained(undefined);
   });
-  // live→archived 换挡（真机「查看中子代理完成：任务名/步数/耗时全消失、仍显运行态 ✻ []」）：被查看的
-  // live 子代理完成即经 archiveInto 从 children 离场、转录折进 SPAWN 调用行——inspect 滞留 live 形态则
+  // live→archived 换挡（真机「查看中子智能体完成：任务名/步数/耗时全消失、仍显运行态 ✻ []」）：被查看的
+  // live 子智能体完成即经 archiveInto 从 children 离场、转录折进 SPAWN 调用行——inspect 滞留 live 形态则
   // 下一帧 child/archived 双空。此处按基名回查 SPAWN 归档行并切换 inspect 至 archived 形态。配对口径与
-  // browseRows 同源：调用行文本 `SPAWN <基名>` 精确等值（#N 并发消歧后缀只在子代理事件侧，调用行恒基名，
+  // browseRows 同源：调用行文本 `SPAWN <基名>` 精确等值（#N 并发消歧后缀只在子智能体事件侧，调用行恒基名，
   // 剥除后匹配；同名并发批无法精确到 seq，取最后归档一条）。必须走 setInspectRetained 生产 repaint 整屏
   // 重放：Static append-only，原地换数据源只会把归档时间线整段重复追加进滚动缓冲（Static 状态切换必须
   // 整屏重放的既定裁决）；换挡出 setTimeout 0——unmount 不能在 React effect 冲刷期同步执行
@@ -346,7 +346,7 @@ export function App({
 
   /* ── 键盘模态判定序契约（D17-H2 显式化：原九层 if 单闭包的隐式截获序，拆 hook 后必须保持不变；
    * P2 任务视图插入 browse 之后）──
-   * 1. inspect 全屏查看（use-inspect-keys，在场恒吞键）：Ctrl+C=live 两段停【此子代理】/archived 撤暂停卡；
+   * 1. inspect 全屏查看（use-inspect-keys，在场恒吞键）：Ctrl+C=live 两段停【此子智能体】/archived 撤暂停卡；
    *     Esc=暂停卡在场先撤卡、无卡才退视图；Tab=时间线折叠↔完整两态；其余键吞掉
    * 2. browse 浏览态（use-browse-keys，在场恒吞键）：列表空自退；Esc 退浏览；↑↓ moveCursor 回环；
    *     Enter=running 行进 live 全屏/archived 行进回看，随后退浏览；Ctrl+C=退浏览+两次确认暂停
@@ -383,7 +383,7 @@ export function App({
     // 判定序第 1 位：全屏查看模式（规格 §3.3）——最前置接管，在场恒吞键（分支与状态收编 use-inspect-keys）
     if (handleInspectKey(input, key)) return;
 
-    // 判定序第 2/3 位：子代理浏览模式（browse 在场短接管 ↑/↓/Enter/Esc 恒吞键）与 Ctrl+B 进入
+    // 判定序第 2/3 位：子智能体浏览模式（browse 在场短接管 ↑/↓/Enter/Esc 恒吞键）与 Ctrl+B 进入
     //（分支与状态收编 use-browse-keys；进入分支须在问询卡之前——既有判定序原样）；
     // board 任务视图在场时 browse hook 整体让位（互斥：board 恒吞键，Ctrl+B 不得经此误进浏览）
     if (!boardModeRef.current && handleBrowseKey(input, key)) return;
@@ -404,7 +404,7 @@ export function App({
       return;
     }
     // 判定序第 7 位：Ctrl+C 分流（2026-10-02 用户裁决「两次 Ctrl+C 确认暂停」，简化版=一行提示非模态卡）：
-    // 运行中第一次挂提示（任务不停），已挂提示再按=真正中断（主链连带子代理）；
+    // 运行中第一次挂提示（任务不停），已挂提示再按=真正中断（主链连带子智能体）；
     // 其余等待态=中断；空闲且输入非空=清空输入；空闲且输入空=请求退出
     if (key.ctrl && input === 'c') {
       if (stateRef.current.pauseConfirm) { keyTrace('main pause-interrupt'); controller.interrupt(); return; }
@@ -533,7 +533,7 @@ export function App({
         <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens + state.metrics.turnChildTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
       ) : null}
       {browseMode && !boardMode ? (
-        // 子代理统一列表（2026-09-28 用户裁决）：历史与运行中全部由动态区承载——合并序列单点口径
+        // 子智能体统一列表（2026-09-28 用户裁决）：历史与运行中全部由动态区承载——合并序列单点口径
         // （运行中在前 + 已完成委派时间升序）、每页 8 行窗口、光标行反色，动态区每帧自绘 ↑↓ 可见移动零重挂；
         // 任务视图在场让位（互斥：键面已由判定序互斥，此处渲染守卫防双显）
         <BrowseList key="browse-list" rows={browseRows(state)} cursor={browseCursor} />
@@ -550,9 +550,9 @@ export function App({
         <QueuePanel key="queue-panel" items={controller.queueItems()} cursor={queueCursor} draft={queueDraft} draftSeq={queueDraftSeq} paused={stateRef.current.queuePaused === true} />
       ) : null}
       {(runningChildren > 0 && !browseMode && !boardMode && !queueMode) ? (
-        // 常态子代理面板（2026-09-28 统一口径）：只承载运行中（P1 收敛：门限与 ChildPanel 成员同源——
+        // 常态子智能体面板（2026-09-28 统一口径）：只承载运行中（P1 收敛：门限与 ChildPanel 成员同源——
         // runningDelegations 投影单源，rows 非空才渲染面板）；浏览态时运行中行由统一列表承载——
-        // 同一子代理面板行与列表行双显属重复呈现（2026-09-28 真机双显 bug），浏览态面板整块让位
+        // 同一子智能体面板行与列表行双显属重复呈现（2026-09-28 真机双显 bug），浏览态面板整块让位
         <ChildPanel
           childrenState={state.children}
           columns={columns}

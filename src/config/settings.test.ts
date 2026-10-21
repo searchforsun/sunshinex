@@ -116,7 +116,7 @@ test('flattenSettings：语义键→SUNSHINEX_* 槽映射正确（六键抽查�
   assert.equal(slots['SUNSHINEX_LANGUAGE'], 'zh', 'language 新槽（D9）');
   assert.equal(slots['SUNSHINEX_CONTEXT_WINDOW'], '1000000');
   assert.equal(slots['SUNSHINEX_MAX_TOKENS'], '2000000', '主链 token 硬顶槽（缺省不设，语义键显式注入）');
-  assert.equal(slots['SUNSHINEX_SUBAGENT_TOKEN_CAP'], '500000', '子代理 token 硬顶槽（独享值）');
+  assert.equal(slots['SUNSHINEX_SUBAGENT_TOKEN_CAP'], '500000', '子智能体 token 硬顶槽（独享值）');
 });
 
 test('flattenSettings：同槽语义键 > env 块（D3 语义键是正名，env 块兜底）', () => {
@@ -303,7 +303,7 @@ test('SEMANTIC_KEYS 全表钉子：35 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['maxLoopIterations'], 'SUNSHINEX_MAX_LOOP_ITERATIONS', '长任务终止：Loop 修正环轮数上限');
   assert.equal(SEMANTIC_KEYS['maxGraphNodes'], 'SUNSHINEX_MAX_GRAPH_NODES', '长任务终止：Graph 节点步上限');
   assert.equal(SEMANTIC_KEYS['maxTokens'], 'SUNSHINEX_MAX_TOKENS', '长任务终止：主链 token 硬顶（缺省不设，预算是兜底不是限制）');
-  assert.equal(SEMANTIC_KEYS['subagentTokenCap'], 'SUNSHINEX_SUBAGENT_TOKEN_CAP', '长任务终止：子代理 token 硬顶（独享值，不继承主链剩余）');
+  assert.equal(SEMANTIC_KEYS['subagentTokenCap'], 'SUNSHINEX_SUBAGENT_TOKEN_CAP', '长任务终止：子智能体 token 硬顶（独享值，不继承主链剩余）');
   assert.equal(SEMANTIC_KEYS['teamTokenCap'], 'SUNSHINEX_TEAM_TOKEN_CAP', '长任务终止：团队 token 硬顶（G8c 终审 C——曾 env-only 致 GET /settings 不报行、面板静默省略，收编进语义键面）');
   assert.equal(SEMANTIC_KEYS['reasoningEffort'], 'SUNSHINEX_REASONING_EFFORT', '思考强度语义键（--effort/--model effort 会话参数链）');
   assert.equal(SEMANTIC_KEYS['dataDir'], undefined, 'dataDir 不存在：不隔离的整目录直指口不进用户配置面（只留环境变量给开发与测试）');

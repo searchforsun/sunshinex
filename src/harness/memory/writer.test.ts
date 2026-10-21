@@ -13,7 +13,7 @@ import { resolveDataDir } from '../../config/data-dir';
  * ②六个拒绝分支各一用例（非 .md / 索引名 MEMORY.md / 非法 slug / 写时扫描命中 / 缺 frontmatter / 缺 description），
  *   另补 type 非法、正文为空、跨记录去重；每例均断言「零落盘」（校验先于写入）
  * ③两级容量：超限（落盘成功 + 勒令精简错误文本）与近满（回执追加 capacityNotice 提醒）
- * ④非记忆路径 → pass 零副作用；同 slug 二次写入＝更新（不产 -2 副本）；子代理 scope 落自身子目录
+ * ④非记忆路径 → pass 零副作用；同 slug 二次写入＝更新（不产 -2 副本）；子智能体 scope 落自身子目录
  * ⑤数据目录经符号链接段传入时两侧同归一（合法写入不被误判成 pass 而绕过校验）
  * 范式：tmpdir 作 root + SUNSHINEX_DATA_DIR 重定向 + finally 还原与清理；断言一律走 resolveDataDir(root)，绝不触碰真实家目录。
  */
@@ -304,21 +304,21 @@ test('同 slug 二次写入＝更新（不产 -2 副本）：created 保留、mo
   });
 });
 
-test('子代理 scope：kind=agents/<id> 落自身子目录并重建子索引；scope 收窄时主目录不属记忆面（pass）', () => {
+test('子智能体 scope：kind=agents/<id> 落自身子目录并重建子索引；scope 收窄时主目录不属记忆面（pass）', () => {
   withRoot((root, dataDir) => {
     const absPath = path.join(dataDir, 'memory', 'agents', 'reviewer', 'prefers-pnpm.md');
     const r = guardMemoryWrite(req(root, dataDir, { absPath, scope: 'agents/reviewer' }));
-    assert.equal(r.ok, true, `子代理自身目录应写入成功：${r.ok ? '' : r.error.message}`);
+    assert.equal(r.ok, true, `子智能体自身目录应写入成功：${r.ok ? '' : r.error.message}`);
     if (!r.ok || r.value === 'pass') return assert.fail('expected outcome');
     assert.equal(r.value.kind, 'agents/reviewer');
     assert.equal(r.value.slug, 'prefers-pnpm');
-    assert.ok(fs.existsSync(absPath), '记录落在子代理子目录');
+    assert.ok(fs.existsSync(absPath), '记录落在子智能体子目录');
     assert.equal(
       fs.readFileSync(path.join(dataDir, 'memory', 'agents', 'reviewer', 'MEMORY.md'), 'utf8'),
       '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm only\n',
       '子索引由该子目录的记录重建',
     );
-    assert.equal(fs.existsSync(path.join(dataDir, 'memory', 'MEMORY.md')), false, '主索引不被子代理写入触发');
+    assert.equal(fs.existsSync(path.join(dataDir, 'memory', 'MEMORY.md')), false, '主索引不被子智能体写入触发');
 
     // scope 收窄下主目录/他人目录不归本代理记忆面 → pass（生产链侧已拒，接缝不重复复核）
     const narrowed = guardMemoryWrite(req(root, dataDir, { scope: 'agents/reviewer' }));

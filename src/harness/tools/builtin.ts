@@ -48,7 +48,7 @@ function isSunshineMdTarget(safety: SafetyChain, file: string): boolean {
 
 /** memory_write 工具的执行接缝（规格 §3.7）：装配层注入 `writeMemoryFact` 绑定 root 后的形态。
  *  工具只做入参整形/错误转译，闸门、三级去重、落盘与容量回执全在记忆侧单点（builtin 不复制任何记忆语义）。
- *  入参 `scope`（规格 §4.2 记忆隔离）由**执行期从安全链取**（`safety.memoryScope`，子代理链为 `agents/<id>`），
+ *  入参 `scope`（规格 §4.2 记忆隔离）由**执行期从安全链取**（`safety.memoryScope`，子智能体链为 `agents/<id>`），
  *  模型输入面不暴露该字段——模型自选的 scope 一律忽略，防越权改记忆落点。 */
 type MemoryWriteTool = (input: { type: string; content: string; description?: string; action?: 'save' | 'update' | 'delete'; slug?: string; scope?: MemoryScope }) => Result<{
   slug: string;
@@ -62,7 +62,7 @@ type MemoryWriteTool = (input: { type: string; content: string; description?: st
  *  - archive：工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；
  *  - skills：skill 工具门面接缝，缺省不注入时 skill 工具报 skill_not_configured；
  *  - memory：记忆写入接缝（原第 7 可选参，缺省不注入＝旧行为逐字节不变，工具清单零变化）；
- *  - memoryWrite：memory_write 工具接缝（原第 8 可选参，缺省不注入＝工具清单与 memory 接缝引入前逐字节一致，注入才注册 memory_write；执行期以本字段捕获的安全链 `memoryScope` 透传记忆写入 scope——**子代理隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链）；
+ *  - memoryWrite：memory_write 工具接缝（原第 8 可选参，缺省不注入＝工具清单与 memory 接缝引入前逐字节一致，注入才注册 memory_write；执行期以本字段捕获的安全链 `memoryScope` 透传记忆写入 scope——**子智能体隔离要求装配面带 scope 的链**：`derive()` 共享 executor 闭包，闭包持有的是装配期那条链）；
  *  - ask：ask_question 问询接缝（原第 9 可选参）；writeSnapshot：write 影子快照接缝；activeRoot：活动根取值接缝（glob/worktree 锚点）；todos：todo_write 接缝；tasks：后台任务账本接缝。 */
 export function builtinTools(
   safety: SafetyChain,
@@ -450,8 +450,8 @@ export function builtinTools(
   });
   // memoryWrite 接缝（规格 §3.7 memory_write，原第 8 可选参）：缺省不注入＝清单与 memory 接缝引入前逐字节一致（对齐既有「可选接缝两态不变」不变式）；
   // 注入才注册——接缝必在（无「未配置」分支），错误一律经 CodedToolError 走 Result 错误通道，永不炸任务
-  // 记忆 scope 透传要求（Task 6 接线）：executor 闭包持有的是**装配期**那条链的 memoryScope，而子代理 fork 的收窄链
-  // 只在执行期经 registry.execute(safety) 注入（executor 不接收运行期链）——故子代理隔离须以带 scope 的链装配子注册表
+  // 记忆 scope 透传要求（Task 6 接线）：executor 闭包持有的是**装配期**那条链的 memoryScope，而子智能体 fork 的收窄链
+  // 只在执行期经 registry.execute(safety) 注入（executor 不接收运行期链）——故子智能体隔离须以带 scope 的链装配子注册表
   // （与 memory-write.test.ts 的 scoped 用例同形态），或另行为 executor 打开运行期链通道；derive() 共享 executor 不够。
   if (memoryWrite !== undefined) {
     const memoryWriter: MemoryWriteTool = memoryWrite; // 窄化取别名（历史形态保留）：opts 解构为 const 后 TS 已能跨回调保留窄化，别名仅为最小扰动保留
@@ -487,7 +487,7 @@ export function builtinTools(
         if (action !== 'delete' && content === '') throw new CodedToolError('INVALID_ARG', 'content must not be empty');
         const rawDescription = input.description;
         const description = rawDescription === undefined ? undefined : String(rawDescription);
-        // scope 只从安全链取（模型输入面的 scope 一律忽略）：子代理链 = agents/<id>，主链 = 主记忆目录
+        // scope 只从安全链取（模型输入面的 scope 一律忽略）：子智能体链 = agents/<id>，主链 = 主记忆目录
         const scope = safety.memoryScope;
         const payload = {
           type,

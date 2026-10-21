@@ -3,7 +3,7 @@ import { t } from '../../i18n';
 import { theme } from '../theme';
 import { formatDuration } from '../format';
 
-/** 浏览列表行：live（运行中子代理，childLabel 锚定全屏实时视图）与 archived（已完成 spawn 归档行，seq 锚定 detail 回看）两类统一投影 */
+/** 浏览列表行：live（运行中子智能体，childLabel 锚定全屏实时视图）与 archived（已完成 spawn 归档行，seq 锚定 detail 回看）两类统一投影 */
 export interface BrowseRow {
   id: string;
   /** 展示标签（live 行 = `名 · 任务` 拼接形态） */
@@ -11,7 +11,7 @@ export interface BrowseRow {
   /** live 行 child join 键（ChildLiveState.label 原名，children 精确查找锚点）：委派行展示带 ` · 任务`
    *  后缀（2026-10-06 用户定版），全屏视图按原名 join 转录——缺省回落 label（fork 行原名即展示名） */
   childLabel?: string;
-  /** 运行中子代理行（Enter → 全屏实时视图）；缺省为已完成 spawn 归档行（Enter → detail 回看） */
+  /** 运行中子智能体行（Enter → 全屏实时视图）；缺省为已完成 spawn 归档行（Enter → detail 回看） */
   running?: boolean;
   /** 归档 spawn 调用行 seq（archived 行回看锚点；live 行缺省） */
   seq?: number;
@@ -21,7 +21,7 @@ export interface BrowseRow {
 /** 每页窗口行数（2026-09-28 用户裁决：每页 8 个窗口，不是上限 8——超出即翻页） */
 export const BROWSE_PAGE_ROWS = 8;
 
-/** 子代理统一列表（Ctrl+B 浏览态，动态区承载）：行序由调用方单点口径给定（运行中在前 + 已完成委派时间升序），
+/** 子智能体统一列表（Ctrl+B 浏览态，动态区承载）：行序由调用方单点口径给定（运行中在前 + 已完成委派时间升序），
  *  每页 8 行窗口、光标行反色——动态区每帧自绘，↑↓ 可见移动零重挂（历史区 Static 打印一次不重绘）；空态零占位 */
 export function BrowseList({ rows, cursor }: { rows: BrowseRow[]; cursor: number }): JSX.Element {
   if (rows.length === 0) return <Box />;

@@ -19,7 +19,7 @@ import { resolveDataDir } from '../../config/data-dir';
  * ③未注入接缝 → 旧行为逐字节不变（观察行 written、内容不规范化）
  * ④接缝拒绝 → 工具侧带码错误且零落盘
  * ⑤不含 memory 依赖的既有工具行为不变（write 非记忆路径 / read / grep）
- * ⑥scope 透传：子代理链（withMemoryScope）写入落自身 agents/<id>，主目录仍拒
+ * ⑥scope 透传：子智能体链（withMemoryScope）写入落自身 agents/<id>，主目录仍拒
  * 范式：tmpdir 作 root + SUNSHINEX_DATA_DIR 重定向 + finally 还原清理；断言一律走 resolveDataDir(root)。
  */
 
@@ -141,18 +141,18 @@ test('注入接缝但不含 memory 依赖的既有工具行为不变（write 非
   }, guardMemoryWrite);
 });
 
-test('scope 透传：子代理链写自身 agents/<id> 走接缝（kind=agents/<id>），主目录仍被链拒', async () => {
+test('scope 透传：子智能体链写自身 agents/<id> 走接缝（kind=agents/<id>），主目录仍被链拒', async () => {
   await withRegistry(async ({ registry, safety, dataDir }) => {
     const child = safety.withMemoryScope('agents/reviewer');
     const own = path.join(dataDir, 'memory', 'agents', 'reviewer', 'prefers-pnpm.md');
     const r = await registry.execute('write', { path: own, content: RAW }, child);
-    assert.equal(r.ok, true, `子代理自身目录应可写：${r.ok ? '' : r.error.message}`);
+    assert.equal(r.ok, true, `子智能体自身目录应可写：${r.ok ? '' : r.error.message}`);
     if (r.ok) assert.match(r.value.stdout, /^Saved memory: prefers-pnpm \[project\]/);
     assert.match(fs.readFileSync(own, 'utf8'), /^---\ntype: project\ncreated: /);
     assert.equal(
       fs.readFileSync(path.join(dataDir, 'memory', 'agents', 'reviewer', 'MEMORY.md'), 'utf8'),
       '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm only\n',
-      '子代理子索引重建（scope 经 safety.memoryScope 透传到接缝）',
+      '子智能体子索引重建（scope 经 safety.memoryScope 透传到接缝）',
     );
 
     const main = await registry.execute('write', { path: path.join(dataDir, 'memory', 'other.md'), content: RAW }, child);

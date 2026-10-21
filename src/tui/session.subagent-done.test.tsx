@@ -13,9 +13,9 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-/* ---------- Phase 1 红灯：并行子代理先结束者应显完成态，不等兄弟全部归档 ---------- */
+/* ---------- Phase 1 红灯：并行子智能体先结束者应显完成态，不等兄弟全部归档 ---------- */
 
-test('子代理 done 事件 → 面板置完成态（不随 done 丢弃）', () => {
+test('子智能体 done 事件 → 面板置完成态（不随 done 丢弃）', () => {
   const tmp = tmpdir('sunshinex-sess-child-done1-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
@@ -50,7 +50,7 @@ test('并行 spawn 归档精准配对：完成序 b 先于 a，各归各行（�
   const tmp = tmpdir('sunshinex-sess-child-done2-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
-    // 两条异名并行子代理（同批并发：完成序 = 结果到达序，与调用序无关）
+    // 两条异名并行子智能体（同批并发：完成序 = 结果到达序，与调用序无关）
     ctrl.onEventForTest({ type: 'token', text: 'A 线\n', payload: { subagent: 'a' } } as never);
     ctrl.onEventForTest({ type: 'token', text: 'B 线\n', payload: { subagent: 'b' } } as never);
     // 完成序 b 先于 a（并行批真实时序）：结果先行转 wait，done 收口归档（真实运行时 result 后紧跟 done）

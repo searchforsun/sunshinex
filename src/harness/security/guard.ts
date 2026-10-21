@@ -74,7 +74,7 @@ export class SecurityGuard {
     // 行为变更①（spec 5.1 写分支）：path 形态的 Write 直放——manual 审批下放安全链（链持归一路径与目录粒度会话放行）。
     // 仅限带 path 的路径写工具；无 path 的结构化入参（memory_write 同族形态）保留 guard 层 ask（同族非别名，逐字任务口径）
     if (tool === 'Write' && this.hasPathInput(input)) return { allowed: true };
-    // spawn 无直接 IO 副作用（派生即编排；子代理内部每个工具调用独立过安全链），manual 下免审批放行
+    // spawn 无直接 IO 副作用（派生即编排；子智能体内部每个工具调用独立过安全链），manual 下免审批放行
     if (tool === 'spawn') return { allowed: true };
     // task_stop：后台账本状态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），manual 下免审批对齐 spawn 先例
     if (tool === 'task_stop') return { allowed: true };

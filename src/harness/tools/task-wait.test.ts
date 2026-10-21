@@ -1,7 +1,7 @@
 // 后台任务线 T4：task_wait 工具行为测试——阻塞等待后台任务到终态并内联回执（对标 CC TaskOutput）：
 // 已终态幂等即回；运行中等到终态回执带 exitCode 与日志尾部；超时回执 running；
 // taskIds=null 等全部 running、无 running 立即空回执；未知 id INVALID_ARG 附现存清单；
-// 子代理任务回执 [conclusion] 结论全文；空数组 INVALID_ARG。
+// 子智能体任务回执 [conclusion] 结论全文；空数组 INVALID_ARG。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -163,7 +163,7 @@ test('task_wait timeoutSeconds=0：非阻塞 peek，即时回执当前状态快�
   }
 });
 
-test('task_wait 子代理任务：回执 [conclusion] 结论全文', async () => {
+test('task_wait 子智能体任务：回执 [conclusion] 结论全文', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-tool-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));

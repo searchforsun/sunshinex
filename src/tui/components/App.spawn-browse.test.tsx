@@ -22,12 +22,12 @@ async function settledCtrl(tmp: string): Promise<SessionController> {
       '{"done":true,"reply":"ok"}',
     ]),
   });
-  // 子代理事件流经测试接缝注入（先于主链 tool-result 归档锚点），确保归档命中并携带 detail
+  // 子智能体事件流经测试接缝注入（先于主链 tool-result 归档锚点），确保归档命中并携带 detail
   ctrl.onEventForTest({ type: 'token', text: 'rv 线\n', payload: { subagent: 'rv' } } as never);
   ctrl.onEventForTest({ type: 'done', text: 'rv 结论', payload: { subagent: 'rv' } } as never);
   ctrl.onEventForTest({ type: 'token', text: 'wr 线\n', payload: { subagent: 'wr' } } as never);
   ctrl.onEventForTest({ type: 'done', text: 'wr 结论', payload: { subagent: 'wr' } } as never);
-  const p = ctrl.submit('跑两个子代理');
+  const p = ctrl.submit('跑两个子智能体');
   await p;
   await ctrl.waitIdle();
   return ctrl;
@@ -48,7 +48,7 @@ test('App：全屏态段锚点自动重绘跳过（2026-09-28 用户裁决：持
     });
     ctrl.onEventForTest({ type: 'token', text: 'rv 线\n', payload: { subagent: 'rv' } } as never);
     ctrl.onEventForTest({ type: 'done', text: 'rv 结论', payload: { subagent: 'rv' } } as never);
-    const p = ctrl.submit('跑一个子代理');
+    const p = ctrl.submit('跑一个子智能体');
     await p;
     await ctrl.waitIdle();
     const repaints: number[] = [];
@@ -131,7 +131,7 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /] subagent/, '全屏查看视图接管整页');
-    // 归档 detail 精简形态（2026-09-28 用户裁决：输入+结论+统计）；结论取子代理真实终稿（注入事件先于真实 done 到达被覆盖），
+    // 归档 detail 精简形态（2026-09-28 用户裁决：输入+结论+统计）；结论取子智能体真实终稿（注入事件先于真实 done 到达被覆盖），
     // 2026-09-29 Static 时间线化：统计行随 detail 进滚动缓冲（allOutput 口径），动态帧只余状态行
     // 状态行标签锚定不钉字形：头行 glyph 自 3441fb8 起为 useSpinFrame 帧动画（✻✽✶✱✢ 轮转），断言时刻落在哪一帧不 确定
     assert.match(lastFrame() ?? '', /\[wr\] subagent/, '最近归档行全屏视图（状态行标签锚定）');
@@ -183,7 +183,7 @@ test('App：浏览模式经整屏重绘（卸载→同 retain 重挂，生产 re
   }
 });
 
-test('App：运行中无子代理且无归档时 Ctrl+B 不进入浏览模式', async () => {
+test('App：运行中无子智能体且无归档时 Ctrl+B 不进入浏览模式', async () => {
   const tmp = tmpdir('sunshinex-app-browse2-');
   try {
     const ctrl = new SessionController({
@@ -214,7 +214,7 @@ test('App：运行中无子代理且无归档时 Ctrl+B 不进入浏览模式', 
   }
 });
 
-// 回归（2026-09-26 真机症状）：Enter 选中运行中子代理进全屏后闪一下屏回主界面——
+// 回归（2026-09-26 真机症状）：Enter 选中运行中子智能体进全屏后闪一下屏回主界面——
 // inspect 是本地 state 不在 retain 现场，Enter 同时 setBrowse(false) 触发整屏重挂，重挂即丢 inspect。
 // 生产同构：onRequestRepaint（=tui-loop 卸载）→ 同 retain renderOnce 重挂，全屏态须跨重挂保留
 test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重挂）后保留', async () => {
@@ -266,7 +266,7 @@ test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重�
   }
 });
 
-test('App：浏览态子代理单点承载——运行中行只在统一列表，ChildPanel 隐藏（2026-09-28 双显修复）', async () => {
+test('App：浏览态子智能体单点承载——运行中行只在统一列表，ChildPanel 隐藏（2026-09-28 双显修复）', async () => {
   const tmp = tmpdir('sunshinex-sess-dual-');
   let term: TestRenderResult | undefined;
   try {
@@ -274,7 +274,7 @@ test('App：浏览态子代理单点承载——运行中行只在统一列表�
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
     });
-    // 单个运行中子代理（token 在途无 done）：面板态在场，无归档行——合并序列只含运行中项
+    // 单个运行中子智能体（token 在途无 done）：面板态在场，无归档行——合并序列只含运行中项
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { prompt: 'a', label: 'rv' } } } as never);
     ctrl.onEventForTest({ type: 'tool-result', text: 'started', payload: { tool: 'spawn', ok: true } } as never);
     // 协议补齐（P1 投影单源）：合成流无 Runner，运行行由 delegation 事件入投影（生产同源：subagent Runner 发射）
@@ -289,7 +289,7 @@ test('App：浏览态子代理单点承载——运行中行只在统一列表�
     await new Promise((r) => setTimeout(r, 150));
     const browse = one.lastFrame() ?? '';
     assert.match(browse, /\[rv\] running/, '浏览列表统一呈现运行中行（en 缺省语言）');
-    assert.doesNotMatch(browse, /[✻✽✶✱✢] \[/, '浏览态 ChildPanel 隐藏——同一子代理不再两处承载（双显修复；五帧全集锚定）');
+    assert.doesNotMatch(browse, /[✻✽✶✱✢] \[/, '浏览态 ChildPanel 隐藏——同一子智能体不再两处承载（双显修复；五帧全集锚定）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });

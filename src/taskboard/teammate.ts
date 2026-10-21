@@ -245,7 +245,7 @@ export class Teammate {
       });
     };
     emitDelegation('delegation-started');
-    // 任务带(2026-10-06 用户定版:子代理转录内「每轮任务内容」像主 agent 用户内容一样分带呈现)——
+    // 任务带(2026-10-06 用户定版:子智能体转录内「每轮任务内容」像主 agent 用户内容一样分带呈现)——
     // tagged step + taskBand 载荷,onChildEvent 落 ChildLine{kind:'task'},ChildInspector 灰底带渲染;
     // 与 send_message 交流行(kind:'message',✉)视觉区分
     this.deps.onEvent?.({

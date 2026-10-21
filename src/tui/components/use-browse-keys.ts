@@ -14,7 +14,7 @@ export function browseRows(st: TuiState): BrowseRow[] {
     id: `live:${r.label}`,
     label: r.title !== undefined ? `${r.label} · ${r.title}` : r.label,
     // child join 键=委派原名（ChildLiveState.label）：展示带任务后缀、查找按原名——
-    // Enter 用展示串当锚点则 children.find 落空（真机「team 子代理视图整页空白」病根）
+    // Enter 用展示串当锚点则 children.find 落空（真机「team 子智能体视图整页空白」病根）
     childLabel: r.label,
     running: true as const,
   }));
@@ -36,7 +36,7 @@ export function browseRows(st: TuiState): BrowseRow[] {
 }
 
 /** browse 模态键分发 hook（D17-H2 拆自 App useInput 第 2/3 层，行为零变化）：
- *  收编子代理浏览态的整段按键分支、Ctrl+B 进入分支及其专属状态（browseMode / browseCursor / setBrowse）。
+ *  收编子智能体浏览态的整段按键分支、Ctrl+B 进入分支及其专属状态（browseMode / browseCursor / setBrowse）。
  *  浏览在场恒吞键；进入 inspect 经 enterInspect 注入（inspect hook 的 setInspectRetained），不复制其状态 */
 export function useBrowseKeys({
   controller,
@@ -57,7 +57,7 @@ export function useBrowseKeys({
   /** 模态接管（判定序第 2 位=browse 在场吞键、第 3 位=Ctrl+B 进入）：任一命中恒 true，否则 false 交下一位 */
   handleKey: (input: string, key: RawKey) => boolean;
 } {
-  // 子代理浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；
+  // 子智能体浏览模式（Ctrl+B）：本地态 + ref 真值（useInput 处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；
   // 两态经 retain 跨重挂保留——repaint effect 依赖含 browseMode（行高亮须 Static 整屏重放），不在 retain 则
   // 一按 Ctrl+B 即卸载重挂、浏览态丢失（真机「按 Ctrl+B 挂死」观感）；旧 retain 快照缺字段回落关闭态
   const [browseMode, setBrowseMode] = React.useState(store.browseMode ?? false);
@@ -75,12 +75,12 @@ export function useBrowseKeys({
     setBrowseMode(mode);
     setBrowseCursor(cursor);
   };
-  // 子代理浏览模式（Ctrl+B 进入）：短接管 ↑/↓/Enter/Esc；其余按键一律吞掉不落输入缓冲。
+  // 子智能体浏览模式（Ctrl+B 进入）：短接管 ↑/↓/Enter/Esc；其余按键一律吞掉不落输入缓冲。
   // 光标与模式取 ref 真值（处理器经 effect 重挂存在闭包滞后，对标 qCursor 先例）；仅 idle/error 可进入
   const handleKey = (input: string, key: RawKey): boolean => {
     if (browseModeRef.current) {
-      // 统一子代理浏览器（2026-09-28 用户裁决：历史与运行中全部由动态区承载）：合并序列单点口径——
-      // 运行中子代理在前 + 已完成 spawn 委派时间升序在后；常态 ChildPanel 只显运行中，浏览列表两类行统一呈现
+      // 统一子智能体浏览器（2026-09-28 用户裁决：历史与运行中全部由动态区承载）：合并序列单点口径——
+      // 运行中子智能体在前 + 已完成 spawn 委派时间升序在后；常态 ChildPanel 只显运行中，浏览列表两类行统一呈现
       const st = stateRef.current;
       const rows = browseRows(st);
       if (rows.length === 0) { setBrowse(false); return true; }
@@ -114,7 +114,7 @@ export function useBrowseKeys({
       }
       return true;
     }
-    // Ctrl+B 进入统一子代理浏览器：运行中子代理或已完成 spawn 任一在场即可；state 读 ref 真值
+    // Ctrl+B 进入统一子智能体浏览器：运行中子智能体或已完成 spawn 任一在场即可；state 读 ref 真值
     if (key.ctrl && input === 'b') {
       const st = stateRef.current;
       const rows = browseRows(st);

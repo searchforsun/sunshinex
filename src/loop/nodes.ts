@@ -168,7 +168,7 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
       }
       // token 硬顶只在 termination.maxTokens 显式在场时下传（缺省不设——预算是兜底不是限制，
       // 护栏交给 maxSteps/墙钟）；窗口 budget 不再随硬顶换算——压缩水位回归 reactor 内建上下文窗口
-      // 基准（与子代理/裸 Reactor 同一口径），两量纲解耦：调硬顶不再悄悄放大/收紧压缩水位
+      // 基准（与子智能体/裸 Reactor 同一口径），两量纲解耦：调硬顶不再悄悄放大/收紧压缩水位
       const remaining =
         ctx.termination.maxTokens !== undefined
           ? Math.max(0, ctx.termination.maxTokens - ctx.tokensUsed)

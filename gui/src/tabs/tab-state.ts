@@ -28,11 +28,11 @@ export interface TabParams {
   readonly sideId?: string;
   /** G14.154 辅助对话首问(文件选区「在辅助对话中提问」携带,挂载即落输入框) */
   readonly insert?: string;
-  /** G14.164 子代理只读标签:payload.subagent 标签(委派行/工具行点开;同 agent 重开=聚焦) */
+  /** G14.164 子智能体只读标签:payload.subagent 标签(委派行/工具行点开;同 agent 重开=聚焦) */
   readonly label?: string;
   /** G14.164 开档时定格的 agent 显示名(开档面解析齐备即带——任务板 assignee/title 命中或原始 label;标签条标题用) */
   readonly agentTitle?: string;
-  /** G14.175 子代理的用户输入(任务内容):spawn 行带 prompt、看板行带任务标题——无活动流时的正文兜底 */
+  /** G14.175 子智能体的用户输入(任务内容):spawn 行带 prompt、看板行带任务标题——无活动流时的正文兜底 */
   readonly task?: string;
   /** G14.2xx web 页名回写(WebTab onLoad 取 document.title;标签条标题派生 title() 优先消费) */
   readonly pageTitle?: string;

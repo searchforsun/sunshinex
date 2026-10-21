@@ -1951,7 +1951,7 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       const noRoot = await fetch(`${base}/settings/memory-stats`, { headers: AUTH });
       assert.deepEqual(await noRoot.json(), { entries: 0, lastWriteAt: null }, '无 root=零值(无项目上下文无记忆面)');
 
-      // 造 2 条主域记录+干扰项:MEMORY.md 派生索引、agents/ 子代理子树(均不计主域)
+      // 造 2 条主域记录+干扰项:MEMORY.md 派生索引、agents/ 子智能体子树(均不计主域)
       const memDir = path.join(tmp, 'data', 'memory');
       fs.mkdirSync(path.join(memDir, 'agents', 'sub-1'), { recursive: true });
       fs.writeFileSync(path.join(memDir, 'memo-a.md'), '---\ntype: project\ncreated: 2026-10-01\nmodified: 2026-10-01T00:00:00Z\ndescription: a\n---\nbody a\n', 'utf8');

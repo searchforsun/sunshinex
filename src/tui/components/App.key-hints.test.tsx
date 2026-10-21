@@ -34,7 +34,7 @@ class HangingAdapter implements ModelAdapter {
   }
 }
 
-test('App 键提示条：空闲态常驻（补全/历史/子代理/help），banner 快捷键行退役不双显', async () => {
+test('App 键提示条：空闲态常驻（补全/历史/子智能体/help），banner 快捷键行退役不双显', async () => {
   const tmp = tmpDir('sunshinex-keyhints1-');
   let term: ReturnType<typeof render> | undefined;
   try {
@@ -42,7 +42,7 @@ test('App 键提示条：空闲态常驻（补全/历史/子代理/help），ban
     term = render(<App controller={ctrl} />);
     await waitFor(() => (term?.lastFrame() ?? '').includes('Ctrl+B'), 3000);
     const f = term?.lastFrame() ?? '';
-    assert.ok(f.includes('Ctrl+B'), '空闲态含子代理浏览键（此前无任何可见提示）');
+    assert.ok(f.includes('Ctrl+B'), '空闲态含子智能体浏览键（此前无任何可见提示）');
     assert.equal(f.split('/help').length - 1, 1, '/help 全帧恰一次（占位符承载，条不双显）');
     assert.ok(!f.includes('⌨'), '无 icon 前缀');
     assert.ok(!(term?.allOutput() ?? '').includes('plan-then-execute'), 'banner 旧快捷键行退役');

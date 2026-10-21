@@ -164,7 +164,7 @@ test('fullObservation 免截：声明整读特性的工具观察行整读；未�
   const f = makeFixture(r);
   const calls = [call('report_full', {}), call('plain_long', {})];
   await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: f.ledger });
-  assert.equal(f.rows[0], long, '声明工具：6000 字符结论逐字节整读进链行（skill/子代理结论语义面）');
+  assert.equal(f.rows[0], long, '声明工具：6000 字符结论逐字节整读进链行（skill/子智能体结论语义面）');
   assert.equal(f.rows[1], 'C'.repeat(2000) + '\n...(truncated)', '未声明工具：既有 2000 截断语义原样');
 });
 

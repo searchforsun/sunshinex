@@ -82,7 +82,7 @@ test('ROLE_PRESETS 框定不变（透传不改变角色语义；英文单语）'
   assert.ok(ROLE_PRESETS.developer.framing.length > 0 && !/[一-鿿]/.test(ROLE_PRESETS.developer.framing));
 });
 
-test('role agent 收敛 Runner：子代理事件带 subagent 标识透传（单一拼装权威）', async () => {
+test('role agent 收敛 Runner：子智能体事件带 subagent 标识透传（单一拼装权威）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-graphev3-'));
   try {
     const store = new FileStore(path.join(tmp, '.data'));
@@ -109,7 +109,7 @@ test('role agent 收敛 Runner：子代理事件带 subagent 标识透传（单�
     assert.equal(out.status, 'pass');
     const doneEvt = events.find((e) => e.type === 'done');
     assert.ok(doneEvt, 'done 事件应透传');
-    assert.equal(doneEvt.payload?.subagent, 'Tester', 'Runner 事件透传应带子代理标识（label）');
+    assert.equal(doneEvt.payload?.subagent, 'Tester', 'Runner 事件透传应带子智能体标识（label）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

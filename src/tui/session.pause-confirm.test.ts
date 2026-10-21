@@ -44,7 +44,7 @@ test('暂停确认：运行中 requestPause 挂卡——任务不停（signal �
     const s = ctrl.getState();
     assert.equal(s.pauseConfirm, true, '确认卡挂起');
     assert.equal(s.status, 'running', 'status 不变——任务继续跑');
-    assert.equal(model.lastSignal!.aborted, false, '第一次 Ctrl+C 不触发 abort（子代理不受影响）');
+    assert.equal(model.lastSignal!.aborted, false, '第一次 Ctrl+C 不触发 abort（子智能体不受影响）');
     ctrl.interrupt(); // 收尾：解除挂起适配器，不留悬空任务
     await pending;
   } finally {

@@ -11,7 +11,7 @@ import { resolveDataDir } from '../../config/data-dir';
 
 /**
  * 记忆写窄口（规格 §4.2）：Write 只在 <dataDir>/memory/** 放行（总开关 resolveMemoryConfig().autoMemory 联动），
- * Read/Grep 的 D6 只读放行不受开关影响；withMemoryScope 派生链把写面收窄到子代理自身 agents/<id>/。
+ * Read/Grep 的 D6 只读放行不受开关影响；withMemoryScope 派生链把写面收窄到子智能体自身 agents/<id>/。
  * 范式对齐 chain.datadir.test.ts：tmpdir 作 root、SUNSHINEX_DATA_DIR 重定向、finally 还原 + 清理。
  * 本文件只做判界（不落盘），路径构造一律 path.join（win32 兼容）。
  */
@@ -50,7 +50,7 @@ test('write 落在 <dataDir>/memory/** → 放行（总开关开，主链可写�
 
     const agentFile = path.join(dataDir, 'memory', 'agents', 'reviewer', 'a.md');
     const d2 = chain.evaluate('Write', { path: agentFile });
-    assert.equal(d2.allowed, true, `主链可写记忆整子树（含子代理目录）：${d2.allowed ? '' : d2.reason}`);
+    assert.equal(d2.allowed, true, `主链可写记忆整子树（含子智能体目录）：${d2.allowed ? '' : d2.reason}`);
   });
 });
 
@@ -102,7 +102,7 @@ test('总开关 off → read 记忆路径仍放行（只读与开关无关）', 
   );
 });
 
-test('withMemoryScope 收窄：子代理链只放行自身 agents/<id>，原实例零突变', () => {
+test('withMemoryScope 收窄：子智能体链只放行自身 agents/<id>，原实例零突变', () => {
   withChain((chain, _root, dataDir) => {
     const own = path.join(dataDir, 'memory', 'agents', 'reviewer', 'a.md');
     const nestedOwn = path.join(dataDir, 'memory', 'agents', 'reviewer', 'nested', 'b.md');
@@ -115,10 +115,10 @@ test('withMemoryScope 收窄：子代理链只放行自身 agents/<id>，原实�
     assert.equal(chain.memoryScope, undefined, '原实例 scope 零突变');
     assert.equal(child.backend, chain.backend, '其余依赖引用共享');
 
-    assert.equal(child.evaluate('Write', { path: own }).allowed, true, '子代理可写自身目录');
+    assert.equal(child.evaluate('Write', { path: own }).allowed, true, '子智能体可写自身目录');
     assert.equal(child.evaluate('Write', { path: nestedOwn }).allowed, true, '自身子树内嵌套同样放行');
-    assert.equal(child.evaluate('Write', { path: mainFile }).allowed, false, '子代理不得写主记忆目录');
-    assert.equal(child.evaluate('Write', { path: other }).allowed, false, '子代理不得写其它子代理目录');
+    assert.equal(child.evaluate('Write', { path: mainFile }).allowed, false, '子智能体不得写主记忆目录');
+    assert.equal(child.evaluate('Write', { path: other }).allowed, false, '子智能体不得写其它子智能体目录');
     assert.equal(child.evaluate('Read', { path: mainFile }).allowed, true, '收窄只针对写面，只读放行不变');
 
     // 原链未受影响：主链全量放行记忆整子树

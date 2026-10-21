@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
 
 /** DAG 视图懒载面(React Flow@xyflow/react + dagre 布局,开源组件——mermaid 拼源退役):
- *  节点=状态图标+任务名+🤖执行子代理名,平移/缩放/控制钮组件内置;不进主 bundle */
+ *  节点=状态图标+任务名+🤖执行子智能体名,平移/缩放/控制钮组件内置;不进主 bundle */
 const TaskDag = lazy(() => import('./TaskDag'));
 
 /**
@@ -14,12 +14,12 @@ const TaskDag = lazy(() => import('./TaskDag'));
  * G14.213 按用户设计重构:
  * - 卡头 = [列表|流程图 切换(左)] + 轮次用户输入(单行省略) + 时间(右)
  * - 只显示任务:页内 DELEGATIONS 委派段去除(委派状态走右侧徽标面);行=状态图标+任务名+
- *   执行子代理名(仅执行/完成态显,等待态不显)→ 点击跳对应子 agent 页签(等待态不跳)
+ *   执行子智能体名(仅执行/完成态显,等待态不显)→ 点击跳对应子智能体 页签(等待态不跳)
  * - 状态图标三态:运行(claimed/in_review)=转圈;完成=蓝点;等待(pending)=灰点;失败=红点
  * - DAG(G14.2xx 用户裁定换开源 DAG 渲染组件):React Flow(@xyflow/react)+dagre 自动布局
  *   (@dagrejs/dagre),替代 mermaid 拼源渲染——预设高度内组件自管平移/滚轮缩放/控制钮;
  *   START/END 虚拟节点补齐并行任务的起止形态;边=内置虚线流动动画;
- *   节点=状态图标+任务名+🤖子代理名,点击跳对应子 agent(等待态无委派不跳)。
+ *   节点=状态图标+任务名+🤖子智能体名,点击跳对应子智能体(等待态无委派不跳)。
  * 测试钩子沿用:行内 Approve/Deny 按钮、aria-label `${id} [${status}] ${title}`。
  */
 
@@ -28,7 +28,7 @@ export interface TaskBoardTabProps {
   readonly delegations: readonly Delegation[];
   /** 关联轮次用户输入(Chat 上抛最近一条 user 行) */
   readonly turnGoal: string;
-  /** 点击任务/节点跳对应子代理只读页签(App 注入 openTabInSession('agent',…)) */
+  /** 点击任务/节点跳对应子智能体只读页签(App 注入 openTabInSession('agent',…)) */
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** gate 行内审批(App 注入 conn.boardReview) */
   readonly onReview?: (taskId: string, approved: boolean) => void;
@@ -39,7 +39,7 @@ export interface TaskBoardTabProps {
 /** 批次切分间隔:相邻创建时刻超过该值即视为新一轮任务的卡片(ms) */
 const BATCH_GAP_MS = 120_000;
 
-/** 任务 → 执行子代理:委派表按 delegationId/label 同文命中——委派标签=dispatchTag(板 id):
+/** 任务 → 执行子智能体:委派表按 delegationId/label 同文命中——委派标签=dispatchTag(板 id):
  *  新方言(2026-10-19)板 id 自带 task- 类别段即本形,旧恢复档 tN 补 task- 前缀;title 同文兜底 */
 function agentOfTask(task: BoardTask, delegations: readonly Delegation[]): Delegation | undefined {
   const tag = /^t\d+$/.test(task.id) ? `task-${task.id}` : task.id;
@@ -101,7 +101,7 @@ function TaskCard({
         <ul className="tb-task-list" aria-label="task list">
           {group.map((task) => {
             const d = agentOfTask(task, delegations);
-            // G14.213 子代理名仅执行/完成态显(等待态无委派不显);点击仅委派在场可跳
+            // G14.213 子智能体名仅执行/完成态显(等待态无委派不显);点击仅委派在场可跳
             const agentName = d !== undefined ? (d.label !== '' ? d.label : (d.title ?? '')) : '';
             return (
               <li key={task.id} className={`tb-task-row task-status-${task.status}${task.gated === true ? ' gated' : ''}`}>
@@ -111,7 +111,7 @@ function TaskCard({
                   aria-label={`${task.id} [${task.status}] ${task.title}`}
                   data-tip={agentName !== '' ? t('View subagent', '查看子智能体') : undefined}
                   onClick={() => {
-                    if (d === undefined) return; // 等待态:无执行子代理,不跳转
+                    if (d === undefined) return; // 等待态:无执行子智能体,不跳转
                     const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
                     onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText.slice(0, 2000));
                   }}
@@ -123,7 +123,7 @@ function TaskCard({
                   </span>
                   {agentName !== '' && (
                     <span className="tb-task-agent">
-                      {/* G14.213 执行子代理=机器人头标识(与 DAG 节点 🤖 同语言) */}
+                      {/* G14.213 执行子智能体=机器人头标识(与 DAG 节点 🤖 同语言) */}
                       <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
                       {agentName}
                     </span>
@@ -146,8 +146,8 @@ function TaskCard({
       ) : (
         <div className="tb-dag-wrap">
           <div className="board-dag-scroll tb-dag-scroll">
-            {/* G14.2xx 开源 DAG 组件(React Flow/dagre):节点=状态+任务名+🤖子代理名,
-                点击 → 跳对应子 agent(等待态无委派不可点);lazy 载入,chunk 拉起前显占位 */}
+            {/* G14.2xx 开源 DAG 组件(React Flow/dagre):节点=状态+任务名+🤖子智能体名,
+                点击 → 跳对应子智能体(等待态无委派不可点);lazy 载入,chunk 拉起前显占位 */}
             <Suspense fallback={<div className="tb-dag-loading">{t('Loading graph…', '流程图加载中…')}</div>}>
               <TaskDag
                 tasks={group}
@@ -161,7 +161,7 @@ function TaskCard({
                   const task = byId.get(taskId) ?? board.tasks[taskId];
                   if (task === undefined) return;
                   const d = agentOfTask(task, delegations);
-                  if (d === undefined) return; // 等待态:无执行子代理,不跳转
+                  if (d === undefined) return; // 等待态:无执行子智能体,不跳转
                   const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
                   onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText.slice(0, 2000));
                 }}

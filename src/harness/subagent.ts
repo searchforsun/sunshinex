@@ -1,4 +1,4 @@
-/** 子代理执行单元（单一权威）：定义解析（目录注册制 agents/{id}/agent.md + 预设四角色 + 内联临时）→
+/** 子智能体执行单元（单一权威）：定义解析（目录注册制 agents/{id}/agent.md + 预设四角色 + 内联临时）→
  * fork 组装（seedHistory = 主链快照 + 角色行/任务行，行号与 action 词汇对齐 graph 先例）→ 执行 → 终态一行回写。
  * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案恒英文单语（角色行/工具 description 直接进模型） */
 import * as fs from 'fs';
@@ -21,7 +21,7 @@ import { FORK_EXCLUDED_TOOLS } from './tools/taskboard-tools';
 import { parseFrontmatterKV } from './skills';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
-/** 四角色任务框定（多角色子 Agent 预设：只做框定与档位建议，不新增模型通道）；label/framing 恒英文单语（角色行直接进 fork 提示词） */
+/** 四角色任务框定（多角色子智能体 预设：只做框定与档位建议，不新增模型通道）；label/framing 恒英文单语（角色行直接进 fork 提示词） */
 export const ROLE_PRESETS: Record<AgentRole, { label: string; framing: string }> = {
   planner: { label: 'Planner', framing: 'requirement breakdown, solution and plan' },
   developer: { label: 'Developer', framing: 'code implementation, refactoring' },
@@ -43,7 +43,7 @@ export function builtinAgentRoles(): Array<{ role: AgentRole; name: string; fram
   }));
 }
 
-/** 注册制子代理定义（目录注册制解析产物 / 预设角色统一形态） */
+/** 注册制子智能体定义（目录注册制解析产物 / 预设角色统一形态） */
 interface AgentDef {
   id: string;
   name: string;
@@ -233,7 +233,7 @@ export function resolveSpawnSpec(
 /** spawn 工具名（父级清单唯一持有者；任何 fork 子面一律派生剔除——「spawn 只在主链工具面」全局不变量） */
 export const SPAWN_TOOL_NAME = 'spawn';
 
-/** todo_write 工具名（规格 D9：fork 子面恒剔除——子代理私有步骤零主链状态污染，进度经既有结论行回写） */
+/** todo_write 工具名（规格 D9：fork 子面恒剔除——子智能体私有步骤零主链状态污染，进度经既有结论行回写） */
 const TODO_TOOL_NAME = 'todo_write';
 
 /** 同层并发 fork 上限：超限该次 spawn 显式拒绝（预算护栏，不静默排队）。对齐关系真实口径：reactor 单批工具
@@ -241,7 +241,7 @@ const TODO_TOOL_NAME = 'todo_write';
  *  再开完整工具批，半量级收紧防嵌套扇出失控（旧注「与 reactor 并行批上限 8 同量级」把 16 误写为 8，R9 更正） */
 const SUBAGENT_CONCURRENCY_LIMIT = 8;
 
-/** 子代理预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 不设 token 硬顶，与父级剩余解耦，
+/** 子智能体预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 不设 token 硬顶，与父级剩余解耦，
  *  只认 SUNSHINEX_SUBAGENT_TOKEN_CAP 显式注入，以 maxSteps/deadline 为护栏） */
 export interface SubagentBudget {
   maxSteps: number;
@@ -269,11 +269,11 @@ interface SubagentRunnerDeps {
   onEvent?: (e: SessionEvent) => void;
   /** 后台任务账本（T2 两段式接缝）：spawn background:true 时立即登记任务并异步执行，结论行落任务日志（规格 D6） */
   tasks?: TaskRegistry;
-  /** 输出样式分叉（交互面级，进稳定段）：随装配透传 fork 子 Reactor，子代理与主链同面 */
+  /** 输出样式分叉（交互面级，进稳定段）：随装配透传 fork 子 Reactor，子智能体与主链同面 */
   outputStyle?: OutputStyle;
 }
 
-/** 子代理生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
+/** 子智能体生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
  * fork 组装严格随 graph 先例（显式 step 递进、'role'/'task' 行、终态 appendChain 一行 'node'/'note'） */
 export class SubagentRunner {
   private getBudget: (() => SubagentBudget) | null = null;
@@ -293,7 +293,7 @@ export class SubagentRunner {
 
   /** spawn 通道预算源：reactor run 起止挂/摘（graph 通道经 opts.budget 显式传入，不走此源）。
    *  同点挂父中断信号（Esc/Ctrl+C）：前台 spawn 默认级联到子 Reactor、后台 spawn 级联到任务 abort——
-   *  「主任务暂停，子代理一并停」（2026-10-02 用户裁决） */
+   *  「主任务暂停，子智能体一并停」（2026-10-02 用户裁决） */
   attachParent(getBudget: () => SubagentBudget, signal?: AbortSignal): void {
     this.getBudget = getBudget;
     this.parentSignal = signal;
@@ -318,11 +318,11 @@ export class SubagentRunner {
     return `worktree kept for inspection: ${iso.tree}`;
   }
 
-  /** 子代理工具面派生（「spawn 只在主链工具面」不变量的单一实现点；收窄 spawn+todo_write+ask_question+worktree）：
+  /** 子智能体工具面派生（「spawn 只在主链工具面」不变量的单一实现点；收窄 spawn+todo_write+ask_question+worktree）：
    * 缺省 = 父全量 − 这些件；显式 tools = 按名取交集再恒剔除。剔除依据：todo_write 归属主任务单一事实源（D9）；
    * spawn 防子代再生子代（派生树受控）；ask_question 是面向用户的 HITL 通道，fork 执行不中途发问（结论回写即应答）；
-   * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子代理不得改动主会话工作环境；
-   * taskboard 四件套 lead-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 lead，子代理不碰板；
+   * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子智能体不得改动主会话工作环境；
+   * taskboard 四件套 lead-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 lead，子智能体不碰板；
    * send_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 lead+具名 teammate,fork 子面不发；
    * send_message+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引,终审 Important 闭合) */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
@@ -367,7 +367,7 @@ export class SubagentRunner {
     }
   }
 
-  /** 子代理自有记忆（规格 §8）：agent.md 声明 memory:true 且总开关开时给出 { scope, line }——
+  /** 子智能体自有记忆（规格 §8）：agent.md 声明 memory:true 且总开关开时给出 { scope, line }——
    * 自有目录 <dataDir>/memory/agents/<id>/，索引行作 fork 私有尾块（role/task 行之间，主链零污染）；
    * 未声明 / 无 root / 总开关关 → undefined（不建目录、不注入）。文案恒英文单语（写链面，CLAUDE.md §15） */
   private agentMemory(agentId: string | undefined): { scope: MemoryScope; line: string } | undefined {
@@ -392,7 +392,7 @@ export class SubagentRunner {
   }
 
   /** spawn 两段式入口（规格 D6，对标 CC Task run_in_background）：立即登记 subagent 任务并同步返回回执，
-   * 子代理转场外异步执行——结论行只落任务日志（模型以 read 查看终态行），主链零追加；stop 触发协作式取消 */
+   * 子智能体转场外异步执行——结论行只落任务日志（模型以 read 查看终态行），主链零追加；stop 触发协作式取消 */
   spawnBackground(rawInput: SubagentSpawnInput): { taskId: string; outputFilePath: string } {
     const input = normalizeSpawnInput(rawInput);
     const ledger = this.deps.tasks;
@@ -406,7 +406,7 @@ export class SubagentRunner {
     const budget = this.getBudget?.();
     const abort = new AbortController();
     task.stop = () => abort.abort();
-    // 主任务暂停级联（2026-10-02 用户裁决）：父中断信号 abort 即连带停本后台子代理——主任务暂停/中断时
+    // 主任务暂停级联（2026-10-02 用户裁决）：父中断信号 abort 即连带停本后台子智能体——主任务暂停/中断时
     // 不留孤儿在跑；父 run 收束后信号终态（aborted 或无监听必要），一次性监听零泄漏
     const parent = this.parentSignal;
     if (parent?.aborted) abort.abort();
@@ -537,7 +537,7 @@ export class SubagentRunner {
           : {}),
       });
       try {
-        // fork 收割作用域（规格 D9）：子代理执行期内发起/转后台的任务缺省归属本 fork owner，收口统一收割防泄漏
+        // fork 收割作用域（规格 D9）：子智能体执行期内发起/转后台的任务缺省归属本 fork owner，收口统一收割防泄漏
         const ledger = this.deps.tasks;
         const forkOwner = `fork:${finalLabel}`;
         const runInScope = <T>(fn: () => Promise<T>): Promise<T> =>
@@ -556,7 +556,7 @@ export class SubagentRunner {
           ),
         );
         if (result.done && result.reply) {
-          // 子代理返回制：私有步骤零主链污染；隔离树收口先行——脏树保留时补丁行附路径，再落结论行
+          // 子智能体返回制：私有步骤零主链污染；隔离树收口先行——脏树保留时补丁行附路径，再落结论行
           const keptNote = this.settleSubagentTree(iso);
           if (keptNote !== undefined) this.deps.context.appendChain([{ action: 'note', observation: `[${finalLabel}] ${keptNote}` }]);
           this.deps.context.appendChain([{ action: 'node', observation: `[${finalLabel}] ${firstLine(result.reply)}` }]);
@@ -582,7 +582,7 @@ export class SubagentRunner {
       const left = (this.inFlightLabels.get(label) ?? 1) - 1;
       if (left <= 0) this.inFlightLabels.delete(label);
       else this.inFlightLabels.set(label, left);
-      // fork 收割（规格 D9）：子代理收口终结其名下全部 running 后台任务，零泄漏
+      // fork 收割（规格 D9）：子智能体收口终结其名下全部 running 后台任务，零泄漏
       this.deps.tasks?.reap(`fork:${finalLabel}`);
     }
   }
@@ -598,10 +598,10 @@ export interface TeamSpawnSeam {
   spawn(input: SubagentSpawnInput): Result<{ name: string }>;
 }
 
-/** spawn 工具工厂：同步阻塞形态，子代理最终报告作为该轮工具观察回传；
+/** spawn 工具工厂：同步阻塞形态，子智能体最终报告作为该轮工具观察回传；
  * 同轮 tools 数组批量并行由 reactor 并行闸门放行（subagent 类非 bash）；本身无直接 IO 副作用
- * （guard manual 分支免审批），子代理内部每个工具调用独立过安全链。
- * 单一职责(2026-10-20 定位定版):spawn 只产一次性 fork 子代理——长驻 teammate 经独立的
+ * （guard manual 分支免审批），子智能体内部每个工具调用独立过安全链。
+ * 单一职责(2026-10-20 定位定版):spawn 只产一次性 fork 子智能体——长驻 teammate 经独立的
  * create_teammate 动词创建(两个动词两份契约,防重量级通道被顺手误选) */
 export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
   return {

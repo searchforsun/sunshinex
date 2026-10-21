@@ -55,7 +55,7 @@ export function mainTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | 
   return positiveIntOrUndefined(env, 'SUNSHINEX_MAX_TOKENS');
 }
 
-/** 子代理 token 硬上限（缺省不设，与父级剩余解耦——spawn/graph 两通道同口径；见 src/harness/reactor.ts spawn 预算源） */
+/** 子智能体 token 硬上限（缺省不设，与父级剩余解耦——spawn/graph 两通道同口径；见 src/harness/reactor.ts spawn 预算源） */
 export function subagentTokenCapEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
   return positiveIntOrUndefined(env, 'SUNSHINEX_SUBAGENT_TOKEN_CAP');
 }

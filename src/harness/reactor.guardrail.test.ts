@@ -134,17 +134,17 @@ function fakeRunner() {
   };
 }
 
-test('Reactor spawn 预算源：子代理 token 硬顶与父级剩余解耦——env 未设不下发，env 设置下发独享值', async () => {
+test('Reactor spawn 预算源：子智能体 token 硬顶与父级剩余解耦——env 未设不下发，env 设置下发独享值', async () => {
   await withTmp(async (tmp) => {
     delete process.env.SUNSHINEX_SUBAGENT_TOKEN_CAP;
     const a = fakeRunner();
-    // 父级自身 tokenCap=5 在场：旧形态把剩余快照下发给子代理，新形态必须原样不下发
+    // 父级自身 tokenCap=5 在场：旧形态把剩余快照下发给子智能体，新形态必须原样不下发
     const ra = await new Reactor({ ...makeDeps(tmp, new ScriptedAdapter([DONE])), runner: a.runner }).run(
       { goal: 'env 未设' },
       { tokenCap: 5 },
     );
     assert.equal(ra.done, true);
-    assert.equal(a.budget().tokenCap, undefined, 'env 未设 → 子代理无 token 硬顶（父级剩余不贯通）');
+    assert.equal(a.budget().tokenCap, undefined, 'env 未设 → 子智能体无 token 硬顶（父级剩余不贯通）');
 
     process.env.SUNSHINEX_SUBAGENT_TOKEN_CAP = '777';
     try {
@@ -154,7 +154,7 @@ test('Reactor spawn 预算源：子代理 token 硬顶与父级剩余解耦—�
         { tokenCap: 5 },
       );
       assert.equal(rb.done, true);
-      assert.equal(b.budget().tokenCap, 777, 'env 设置 → 子代理拿独享硬顶（非父级剩余换算）');
+      assert.equal(b.budget().tokenCap, 777, 'env 设置 → 子智能体拿独享硬顶（非父级剩余换算）');
     } finally {
       delete process.env.SUNSHINEX_SUBAGENT_TOKEN_CAP;
     }

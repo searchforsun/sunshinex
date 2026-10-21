@@ -30,7 +30,7 @@ function ensureRunner(deps: GraphDeps): SubagentRunner {
   );
 }
 
-/** 多角色子 Agent：薄入口收敛（Runner 单一权威——fork 组装/终态回写/护栏全在 Runner 单点，防两处拼装漂移）；
+/** 多角色子智能体：薄入口收敛（Runner 单一权威——fork 组装/终态回写/护栏全在 Runner 单点，防两处拼装漂移）；
  * agent_id 直取预设角色、任务行 = 当前指令行（与 spawn 通道同模板）、token 硬顶只认 SUNSHINEX_SUBAGENT_TOKEN_CAP
  * （与 spawn 通道同口径，缺省不设——预算是兜底不是限制）、done→pass，未完成→failed 交错误局部化接管（补丁行由 Runner 回写） */
 export function makeRoleAgent(role: AgentRole, deps: GraphDeps, opts: RoleAgentOpts = {}): GraphNode {

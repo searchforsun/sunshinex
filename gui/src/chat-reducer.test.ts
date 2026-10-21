@@ -183,7 +183,7 @@ describe('五 kind 与 notice 系映射', () => {
     let s = initialChatState();
     s = applyChatEvent(s, { type: 'tool-call', ts: 1, payload: { tool: 'read', subagent: 'ap-1' } } as never);
     s = applyChatEvent(s, { type: 'tool-result', ts: 2, payload: { tool: 'read', ok: true, subagent: 'ap-1' } } as never);
-    s = applyChatEvent(s, { type: 'token', ts: 3, text: '子代理流字', payload: { subagent: 'ap-1' } } as never);
+    s = applyChatEvent(s, { type: 'token', ts: 3, text: '子智能体流字', payload: { subagent: 'ap-1' } } as never);
     expect(s.entries).toHaveLength(0);
     s = applyChatEvent(s, { type: 'delegation-started', ts: 4, payload: { label: '搜库', delegationId: 'd1' } } as never);
     expect(s.entries).toHaveLength(0); // 委派状态行零条目(G14.213)
@@ -271,7 +271,7 @@ describe('status·tokens·steps 聚合', () => {
     expect(s.tokens).toBe(180);
   });
 
-  it('子代理 usage（payload.subagent）不进主链会话累计；无数值载荷不更新', () => {
+  it('子智能体 usage（payload.subagent）不进主链会话累计；无数值载荷不更新', () => {
     const s = fold([
       ev('model-start'),
       ev('usage', undefined, { turnTotal: 100 }),

@@ -253,7 +253,7 @@ test('steer 行读面(P5,spec §12):reduceSteerRows 取末行为准+字段净化
   assert.deepEqual(k2.steerPendingItems(), k.steerPendingItems(), '装载往返等价');
 });
 
-test('G14.2xx shadow 行映射:task-/gate- → board 行、delegation- → delegation 行、子代理流 → subagent 行(原件直存)', () => {
+test('G14.2xx shadow 行映射:task-/gate- → board 行、delegation- → delegation 行、子智能体流 → subagent 行(原件直存)', () => {
   const rows = kernelEventRows({ t: 'shadow', e: { type: 'task-created', ts: 1, payload: { taskId: 't1' } } });
   assert.deepEqual(rows, [{ t: 'board', e: { type: 'task-created', ts: 1, payload: { taskId: 't1' } } }]);
   const rows2 = kernelEventRows({ t: 'shadow', e: { type: 'delegation-started', ts: 2, payload: { delegationId: 'd1' } } });

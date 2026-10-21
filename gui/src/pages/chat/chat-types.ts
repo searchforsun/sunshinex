@@ -45,7 +45,7 @@ export interface ChatProps {
   /** G8d write 条目 path 钮主通道:开 diff 标签(callId 寻址,App 接 openTabInSession('diff',
    *  {callId,path}));可选防测试桩免配——缺场时全部回落 onOpenFile */
   onOpenDiff?: (callId: string, path: string) => void;
-  /** G14.171 spawn 行子代理名=蓝色链接:点开对应 agent 只读标签页(App 接 openTabInSession('agent',{label,agentTitle})) */
+  /** G14.171 spawn 行子智能体名=蓝色链接:点开对应 agent 只读标签页(App 接 openTabInSession('agent',{label,agentTitle})) */
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** G14.176 create_task 行任务名=蓝色链接:点开任务板并定位高亮对应卡(App 接 openTabInSession('agents')+focus 定位) */
   onOpenTask?: (taskRef: string) => void;

@@ -746,7 +746,7 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       expect(screen.getByRole('button', { name: `Deny ${taskId}` })).toBeDefined();
 
       // —— DAG 视图(G14.2xx 换开源 DAG 组件 React Flow+dagre 布局,mermaid 拼源渲染退役):
-      //    节点=状态+任务名(+🤖子代理名),aria-label `${id} [${status}] ${title}` 与 List 行同钩子
+      //    节点=状态+任务名(+🤖子智能体名),aria-label `${id} [${status}] ${title}` 与 List 行同钩子
       fireEvent.click(screen.getByRole('button', { name: 'DAG' }));
       await waitFor(() => expect(container.querySelector('.tb-dag-wrap')).not.toBeNull(), { timeout: 5_000 });
       // 图面承载断言:lazy chunk 落定后 React Flow 节点 DOM 同步可查(布局=dagre 纯计算零异步)
@@ -761,7 +761,7 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
       await waitFor(() => expect(screen.getByRole('button', { name: `${taskId} [in-review] GateDemo` })).toBeDefined(), { timeout: 15_000 });
       expect(container.textContent).not.toContain('⚠');
       // 派发面(G14.213 任务板重构:旧板侧栏 .delegation-list 退役):fork 委派落 t1 行内
-      // 执行子代理徽标(agentOfTask 按 task-<id> 命中 → 🤖 徽标入行)
+      // 执行子智能体徽标(agentOfTask 按 task-<id> 命中 → 🤖 徽标入行)
       await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
     } finally {
       conn.close();
@@ -1143,7 +1143,7 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       const taskId = (demoRow.getAttribute('aria-label') ?? demoRow.textContent ?? '').split(' ')[0]!;
       expect(tabsByTitle(container, '任务板')[0]!.className).toContain('active');
       // 委派面(G14.213 任务板重构:旧 .delegation-list 侧栏退役):fork 委派落任务行内执行
-      // 子代理徽标(agentOfTask 按委派标签命中 → 🤖 徽标入行);状态面已在行名 [in-review] 断过
+      // 子智能体徽标(agentOfTask 按委派标签命中 → 🤖 徽标入行);状态面已在行名 [in-review] 断过
       await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
     } finally {
       await env.stop();
@@ -1542,7 +1542,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
  * bump 入 iframe key 强制重挂(新 DOM 节点)。
  * ============================================================ */
 
-describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事件聚合 → 开标签 → 卡在场 + mini 转录展开', () => {
+describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体事件聚合 → 开标签 → 卡在场 + mini 转录展开', () => {
   it('提交 CARDS → done 收束 → +菜单开 Agents 标签 → 任务卡(label/完成)+ 点卡转录行在场 → 再点收起', async () => {
     const env = await startDaemon(new ScriptedAdapter(CARDS));
     try {
@@ -1579,7 +1579,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子代理事�
       expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(); // 任务板页签体挂载(G14.174)
 
       // —— 委派投影(G14.213 任务板重构:旧板 .delegation-main 行退役):fork 委派落任务行内
-      //    执行子代理徽标(agentOfTask 按委派标签命中)——板 id 不透明方言,行名正则定位+id 捕获
+      //    执行子智能体徽标(agentOfTask 按委派标签命中)——板 id 不透明方言,行名正则定位+id 捕获
       await waitFor(() => expect(screen.getByRole('button', { name: /\[in-review\] Demo$/ })).toBeDefined(), { timeout: 10_000 });
       const demoRow = screen.getByRole('button', { name: /\[in-review\] Demo$/ });
       const taskId = (demoRow.getAttribute('aria-label') ?? demoRow.textContent ?? '').split(' ')[0]!;

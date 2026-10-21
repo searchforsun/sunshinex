@@ -12,7 +12,7 @@ import type { TodoBatch } from './ToolEntry';
  *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表。
  *  P11 T7:标题直读 entry.input(name/input 内核字段全量随档);P11 T8:任务 id 取 result
  *  回执文本(text 优先,full 兜底)——tool md 恒空,回执不再落 md。
- *  G14.2xx b:抽纯函数单点——主对话 hook 与子代理转录页(activities.chat.entries)同源消费 */
+ *  G14.2xx b:抽纯函数单点——主对话 hook 与子智能体转录页(activities.chat.entries)同源消费 */
 function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
   const m = new Map<string, string>();
   for (const e of entries) {
@@ -30,7 +30,7 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
 
 /** G14.172 任务 id → 展示名单点:board 直查 → 转录映射(剥台账时间戳尾/剥 task- 前缀两级) → 短 id 兜底
  *  ——用户裁决「等待任务显示任务名称,不要用 id」。
- *  G14.2xx b:纯函数单点(依赖入参 entries+board),主对话 hook 与子代理转录页同源 */
+ *  G14.2xx b:纯函数单点(依赖入参 entries+board),主对话 hook 与子智能体转录页同源 */
 export function taskNameResolverOf(entries: readonly ChatEntry[], board: TaskBoardState | undefined): (id: string) => string {
   const taskTitleMap = taskTitleMapOf(entries);
   return (id: string): string => {

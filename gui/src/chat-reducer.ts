@@ -7,7 +7,7 @@ import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type 
  * 喂 WS 原始帧(零 wire 改动);快照装载=内核 seed(snapshot.messages 已是内核条目,P2)。
  *
  * 内核承载:token 流式段聚合、reasoning 思考段计秒、tool call/result 双向配对(乱序 FIFO)、
- * done 终稿合并、run 条与 runmeta 对位、子代理零条目——formerly chat-reducer 自建三件套。
+ * done 终稿合并、run 条与 runmeta 对位、子智能体零条目——formerly chat-reducer 自建三件套。
  * 视图层保留:status-bar 计数器(tokens/steps/cache 轮水位,会话统计非转录)、run 起点基线
  * (G14.63「本轮」口径减数)、notice 显示过滤(G14.90/G14.106——内核忠实归档,渲染面裁定)、
  * partial-seed 流式派生(G14.51 快照竞态收口)。
@@ -181,16 +181,16 @@ export function seedChatFromSnapshot(
  *  status: model-start 置 running(水位重置仅在 run 边界——model-start 每模型轮一次,run 内续轮
  *  不重置,否则多轮 run tokens 虚增)、done 回 idle;error 不动(G14.51:done 必发,收口让位) */
 export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
-  if (typeof e.payload?.subagent === 'string') return s; // 子代理事件另轨(Agents 标签,G8d):主流零条目零计数
+  if (typeof e.payload?.subagent === 'string') return s; // 子智能体事件另轨(Agents 标签,G8d):主流零条目零计数
   if (e.type === 'queue') return s; // P5 队列面事件(UseSessionEvents 截收 setQueued):不入转录投影(防御——default 分支会把当边界误闭合开启段)
   return applySubagentChatEvent(s, e);
 }
 
-/** G14.2xx 子代理流同源归约(无 subagent 排除门/无 queue 截收):与主流 applyChatEvent 走
- *  同一内核投影 applyEvent——子代理转录(agents 页签)由此获得与主对话逐字段同构的条目
+/** G14.2xx 子智能体流同源归约(无 subagent 排除门/无 queue 截收):与主流 applyChatEvent 走
+ *  同一内核投影 applyEvent——子智能体转录(agents 页签)由此获得与主对话逐字段同构的条目
  *  (tool 行 name/input/result 全量),替代旧有损文本滑窗反解析(空名帧退化「…」行病根) */
 export function applySubagentChatEvent(s: ChatState, e: SessionEvent): ChatState {
-  const k = applySubagentEvent(s.k, e); // 剥 subagent 标签走同一内核归约(子代理转录与主对话同构)
+  const k = applySubagentEvent(s.k, e); // 剥 subagent 标签走同一内核归约(子智能体转录与主对话同构)
   // P9 统计面:计数器唯一权威在内核 stats,此处直投影零记账;P10 status 亦读内核
   // (openRun>=0 即 running——视图层 model-start/done 推导退役)
   let next: ChatState = { ...s, k, status: k.openRun >= 0 ? 'running' : 'idle', tokens: k.stats.sessionTotalTokens, steps: k.stats.sessionSteps, cacheTokens: k.stats.sessionCacheTokens };

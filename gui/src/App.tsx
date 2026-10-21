@@ -123,7 +123,7 @@ interface SessionProjection {
 }
 const EMPTY_PROJECTION = (): SessionProjection => ({ board: emptyBoard(), sessionTodos: [], delegations: [], team: [] });
 
-/** 内存缓存上限(G14.2xx b 全局缓存治理):子代理聚合桶 8 会话、转录投影 4 会话——LRU 触碰,
+/** 内存缓存上限(G14.2xx b 全局缓存治理):子智能体聚合桶 8 会话、转录投影 4 会话——LRU 触碰,
  *  超限淘汰最旧;当前会话恒在 LRU 尾(每次事件/挂载触碰),活跃面永不被挤 */
 const ACTS_LRU_MAX = 8;
 const CHAT_MEM_LRU_MAX = 4;
@@ -171,14 +171,14 @@ function AppShell(): JSX.Element {
     if (opErrorTimer.current !== null) clearTimeout(opErrorTimer.current);
     opErrorTimer.current = setTimeout(() => setOpError(''), 3_000);
   };
-  /** G8d 子代理活动聚合(App 态):payload.subagent 标签流经 applyAgentEvent 归约——Agents 标签
+  /** G8d 子智能体活动聚合(App 态):payload.subagent 标签流经 applyAgentEvent 归约——Agents 标签
    *  只读消费(services.agentActivities);delegation 起止 label 命中既有卡时改状态(权威终语)。
    *  G14.2xx b 按会话分桶(外层键=sessionId):切会话不清零——内存缓存直接命中(切回零拉取零
    *  重建,标签撞名也不串态);刷新/重连后由影子水合从 journal 重建 */
   const [agentActivitiesBySession, setAgentActivitiesBySession] = useState<Record<string, AgentActivities>>({});
-  /** 子代理桶 LRU 触碰序(上限 ACTS_LRU_MAX=8):最近使用的会话桶保留,久不用的淘汰——内存有界 */
+  /** 子智能体桶 LRU 触碰序(上限 ACTS_LRU_MAX=8):最近使用的会话桶保留,久不用的淘汰——内存有界 */
   const actsLRURef = useRef<string[]>([]);
-  /** 子代理桶统一写入口:LRU 触碰 + 淘汰超限桶(非当前会话);fold=对桶的纯归约 */
+  /** 子智能体桶统一写入口:LRU 触碰 + 淘汰超限桶(非当前会话);fold=对桶的纯归约 */
   const bumpActs = useCallback((sessionId: string, fold: (a: AgentActivities) => AgentActivities): void => {
     const lru = actsLRURef.current.filter((k) => k !== sessionId);
     lru.push(sessionId);
@@ -214,8 +214,8 @@ function AppShell(): JSX.Element {
     }
     chatMemLRURef.current = lru;
   }, []);
-  /** G14.2xx b 影子水合(子代理投影恢复):journal subagent 行全量拉取清零重放——WS 环窗(512)
-   *  对长会话子代理流必溢出且连接建立常先于会话 attach,刷新/重连后「无活动记录」的病根。
+  /** G14.2xx b 影子水合(子智能体投影恢复):journal subagent 行全量拉取清零重放——WS 环窗(512)
+   *  对长会话子智能体流必溢出且连接建立常先于会话 attach,刷新/重连后「无活动记录」的病根。
    *  在途 subagent 帧按 seq 缓冲截流,落定后重放 seq>cut(服务端读档时刻泵水位)——cut 前已含
    *  于行集,cut 后只在缓冲,零丢帧零重复。board/delegation 不走此路(快照携带+attach seedShadow
    *  既有可靠链),避免与播种窗交叉 */
@@ -223,7 +223,7 @@ function AppShell(): JSX.Element {
   const shadowHydratedRef = useRef<Set<string>>(new Set());
   /** 在途缓冲按会话分桶(并发水合互踩防线——A 在途时切 B,B 的清桶不得冲掉 A 的在途帧) */
   const shadowBufRef = useRef<Map<string, Array<{ e: SessionEvent; seq: number }>>>(new Map());
-  /** 影子子代理帧判定(与内核 shadow 透传同口径的子代理子集) */
+  /** 影子子智能体帧判定(与内核 shadow 透传同口径的子智能体子集) */
   const shadowHydrateRef = useRef<((sessionId: string) => void) | null>(null);
   /** G14.174 待办批次/关联轮次输入(Chat 从转录重建上抛)——待办/任务板页签数据面 */
   const [todoBatches, setTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
@@ -238,7 +238,7 @@ function AppShell(): JSX.Element {
   sessionRef.current = openSessionId;
   /** Chat 事件转投面:Chat 装配期注册(卸载注销)——onEvent/onReset 经此投递 */
   const chatSinkRef = useRef<ChatSink | null>(null);
-  /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子代理不聚) */
+  /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
   const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
   /** G6 板投影 seq 门:播种窗(快照在途)内 board/delegation 帧缓冲(与 Chat pendingRef 同构
    *  {seq, e}[])——onSeeded 整替快照板后过滤重放;窗由 Chat reseed 生命周期驱动 */
@@ -312,7 +312,7 @@ function AppShell(): JSX.Element {
         if (e.type === 'model-start') setRunningIds((s) => (s.has(sessionId) ? s : new Set([...s, sessionId])));
         else if (e.type === 'done' || e.type === 'error') setRunningIds((s) => (s.has(sessionId) ? new Set([...s].filter((x) => x !== sessionId)) : s));
         if (sessionId !== sessionRef.current) {
-          // G14.29 辅助会话帧:只投旁路聊天流(板/委派/子代理投影不涉旁路,丢弃)
+          // G14.29 辅助会话帧:只投旁路聊天流(板/委派/子智能体投影不涉旁路,丢弃)
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
           return;
         }
@@ -338,7 +338,7 @@ function AppShell(): JSX.Element {
             buf.push({ e, seq });
             return;
           }
-          // G8d 子代理事件另轨(Agents 标签聚合):不投 chat——chat reducer 入口另有同判过滤兜底
+          // G8d 子智能体事件另轨(Agents 标签聚合):不投 chat——chat reducer 入口另有同判过滤兜底
           // (种子重放等路径仍过 reducer,零害保留);建卡/行化/水位在此单点归约
           bumpActs(sessionId, (a) => applyAgentEvent(a, e));
           return;
@@ -453,7 +453,7 @@ function AppShell(): JSX.Element {
     setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-    // G14.2xx b 子代理聚合不清零(按会话分桶,切回直接内存命中——零拉取零重建;刷新/重连才走影子水合)
+    // G14.2xx b 子智能体聚合不清零(按会话分桶,切回直接内存命中——零拉取零重建;刷新/重连才走影子水合)
     // 影子水合前置触发:sessionRef 已同步更新、hydrating 标记在此即刻落位——effect 渲染周期前的
     // 实时帧也会被截流缓冲,水合落定按 seq>cut 合并零丢帧(del 标记=每次进入重水合取最新)
     shadowHydratedRef.current.delete(sessionId);
@@ -501,7 +501,7 @@ function AppShell(): JSX.Element {
     setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-    // G14.2xx b 子代理聚合不清(按会话分桶=内存缓存,重开同会话直接命中)
+    // G14.2xx b 子智能体聚合不清(按会话分桶=内存缓存,重开同会话直接命中)
     setPage('welcome');
   };
 
@@ -616,7 +616,7 @@ function AppShell(): JSX.Element {
         nextBoard = applyBoardEvent(nextBoard, boardEventFrom(f.e));
       } else if (f.e.type.startsWith('delegation-')) {
         nextDelegations = applyDelegation(nextDelegations, f.e);
-        // G8e-T2:delegation 帧补投子代理聚合(与 board/delegation 同窗)——窗外路径本就投
+        // G8e-T2:delegation 帧补投子智能体聚合(与 board/delegation 同窗)——窗外路径本就投
         // applyAgentEvent(权威终语:ended failed→error/done→done;label 命中既有卡才动),
         // 窗内缓冲帧此前只重放板/委派不投聚合,delegation 终语在播种窗内被吞(卡滞 running)
         if (sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
@@ -626,13 +626,13 @@ function AppShell(): JSX.Element {
   };
 
   /** 标签体服务面(任务板/agent 转录页签消费):板投影 + 浅拷贝数组(既有 Board 收可变数组,T3 桥接)+
-   *  G8d 子代理活动聚合(agent 只读转录页只读) */
+   *  G8d 子智能体活动聚合(agent 只读转录页只读) */
   /** G14.2xx web 标签元数据回写:页内导航 url/页名 → patchTabMeta(标签条标题/判重键同源演进,
    *  浏览器原生标签形);useCallback 零依赖稳定——services useMemo 不因回写重建 */
   const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }): void => {
     setTabStates((s) => patchTabMeta(s, sessionId, uid, patch));
   }, []);
-  /** G14.2xx b create_task 行任务名定位(子代理转录页与 Chat onOpenTask 同一口径):开任务板页签
+  /** G14.2xx b create_task 行任务名定位(子智能体转录页与 Chat onOpenTask 同一口径):开任务板页签
    *  +focus 信号(nonce 变更即滚动高亮);useCallback 零依赖稳定 */
   const openTaskFocus = useCallback((ref: string): void => {
     openBoardTab();
@@ -644,7 +644,7 @@ function AppShell(): JSX.Element {
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
-  // G14.2xx b 影子水合触发:会话打开即拉 journal subagent 行重建子代理投影(每会话一次;
+  // G14.2xx b 影子水合触发:会话打开即拉 journal subagent 行重建子智能体投影(每会话一次;
   // 重连场景由 onReset 清标记重触发)。activities 内存尚在(切走再回)即跳过——不重复水合
   useEffect(() => {
     if (connInstance === null || connState !== 'open' || openSessionId === '') return;
@@ -779,7 +779,7 @@ function AppShell(): JSX.Element {
 
   /** G14.2xx 限宽动态化:--chat-max 不再钉 880px——ResizeObserver 分盯 .sx-main 与 .sx-sidebar,
    *  各按自身实时内容宽经 chatMaxFor 阶梯落内联值(同一策略覆盖主对话、欢迎页、辅助对话、
-   *  子代理转录页;流列/输入卡随三栏拖拽、右栏折叠、视口缩放即时跟宽)。首次 observe 即回调,
+   *  子智能体转录页;流列/输入卡随三栏拖拽、右栏折叠、视口缩放即时跟宽)。首次 observe 即回调,
    *  首帧就位零闪;jsdom 桩回调宽 0,chatMaxFor 托底不落负。deps:两容器随设置态/页面/折叠/
    *  切会话换挂,重挂后需重挂观察器 */
   const mainRef = useRef<HTMLElement | null>(null);

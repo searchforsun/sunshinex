@@ -298,7 +298,7 @@ test('Runner 工具面收窄：todo_write 恒不在子面（规格 D9）', () =>
     const deft = runner.deriveChildRegistry();
     assert.ok(!deft.has('todo_write'), '缺省派生子面恒无 todo_write');
     assert.ok(!deft.has('ask_question'), '子面无 ask_question：HITL 归主链，fork 内不向用户发问');
-    assert.ok(!deft.has('worktree'), '子面无 worktree：活动根是父子共享状态，子代理不得切换');
+    assert.ok(!deft.has('worktree'), '子面无 worktree：活动根是父子共享状态，子智能体不得切换');
     assert.ok(!deft.has('spawn'), '缺省派生子面恒无 spawn');
     const explicit = runner.deriveChildRegistry({ prompt: 'w', tools: ['todo_write', 'read', 'ask_question', 'worktree'] });
     assert.ok(explicit.has('read'), '显式清单保留 read');
@@ -458,7 +458,7 @@ test('Runner 预算源缺失：未 attachParent 时显式 INVALID_STATE（禁静
   }
 });
 
-test('Runner 事件透传：子代理事件经 onEvent 流出并带 subagent 标识', async () => {
+test('Runner 事件透传：子智能体事件经 onEvent 流出并带 subagent 标识', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-runner-event-'));
   try {
     const { model } = captureModel(new ScriptedAdapter([JSON.stringify({ done: true, reply: '事件任务完成' })]));
@@ -469,7 +469,7 @@ test('Runner 事件透传：子代理事件经 onEvent 流出并带 subagent 标
     assert.ok(r.ok);
     assert.ok(events.some((e) => e.type === 'done'), 'done 事件应透传');
     const doneEvt = events.find((e) => e.type === 'done')!;
-    assert.equal(doneEvt.payload?.subagent, 'evt', '透传事件带子代理标识');
+    assert.equal(doneEvt.payload?.subagent, 'evt', '透传事件带子智能体标识');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -509,7 +509,7 @@ test('同名并发消歧：后到者 label #N 后缀，事件与结论行一致�
     assert.deepEqual(
       [...tags].sort(),
       ['w', 'w#2'],
-      `两个在飞同名子代理事件标识应互异，实际 ${JSON.stringify(tags)}`,
+      `两个在飞同名子智能体事件标识应互异，实际 ${JSON.stringify(tags)}`,
     );
     const chain = h.context.chainView();
     const nodeLines = chain.filter((s) => s.action === 'node').map((s) => s.observation);

@@ -92,7 +92,7 @@ export class Harness {
   readonly skills: SkillsFacade;
   /** write 影子快照单点（rewind/fork 规格 §6.1）：write 工具落盘前捕获 pre-image，任务收口随 user 事件落盘 */
   readonly writeSnapshot: ReturnType<typeof makeWriteSnapshotSink>;
-  /** 子代理执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
+  /** 子智能体执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
   readonly runner: SubagentRunner;
   /** 统一后台任务账本（后台任务线规格 D1）：exec/spawn 后台任务的 ID 空间/生命周期/状态单点 */
   readonly tasks: TaskRegistry;
@@ -203,7 +203,7 @@ export class Harness {
       settle: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'learned', ...r }),
       settleMemory: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'memory', ...r }),
     };
-    // 子代理执行单元：注册表/安全链/上下文/模型同源装配；agents 两级目录（全局 userConfigDir() + 项目 root）
+    // 子智能体执行单元：注册表/安全链/上下文/模型同源装配；agents 两级目录（全局 userConfigDir() + 项目 root）
     // 装配期一次性加载 fail-fast（项目遮蔽全局；运行期零增删）
     const agents = new AgentRegistry();
     agents.registerBuiltins();

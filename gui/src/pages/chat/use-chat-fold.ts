@@ -13,7 +13,7 @@ import type { ChatEntry, ChatState } from '../../chat-reducer';
  *  seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
  *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
  *  (phase 叙述/中间解释默认不露),展开轮时照常可见。
- *  G14.2xx b:投影抽纯函数单点——主对话 hook 与子代理转录页(本地折叠态)同源消费 */
+ *  G14.2xx b:投影抽纯函数单点——主对话 hook 与子智能体转录页(本地折叠态)同源消费 */
 export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns: ReadonlySet<string>): ReadonlySet<string> {
   const s = new Set<string>();
   let hide = false;

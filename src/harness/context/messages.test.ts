@@ -231,7 +231,7 @@ test('思考回传·旧任务轮剥离：末 task 行之前的轮思考不透出
   assert.equal(assistants[1].reasoning, 'fresh CoT', '当前任务轮思考透出');
 });
 
-test('思考回传·无 task 行（fork 种子/子代理私有链）：全链视为当轮，思考透出', () => {
+test('思考回传·无 task 行（fork 种子/子智能体私有链）：全链视为当轮，思考透出', () => {
   const msgs = buildMessages({
     stableSegment: STABLE,
     snapshot: [],

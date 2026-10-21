@@ -74,7 +74,7 @@ export async function runTui(args: CliArgs): Promise<void> {
   const modeFlag = typeof args.flags.mode === 'string' ? args.flags.mode : undefined;
   const mode = modeFlag === 'dontAsk' || modeFlag === 'plan' ? modeFlag : 'manual';
   // 多源多模型装配（settings providers 键 → /model 选择卡数据面）：切换器在场即为主模型适配器，
-  // /model 换内芯即时贯通 reactor/子代理/压缩；warnings 经 stderr 双语透出（外观通道，库内零打印）
+  // /model 换内芯即时贯通 reactor/子智能体/压缩；warnings 经 stderr 双语透出（外观通道，库内零打印）
   const providers = loadProviders(launchRoot);
   for (const w of providers.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
   // 模型档位（用户级会话参数，对标 Claude Code 的模型选择）：--tier 优先，SUNSHINEX_TIER 兜底；/model-tier 可会话内切换

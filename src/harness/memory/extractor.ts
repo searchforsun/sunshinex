@@ -231,10 +231,10 @@ function findExistingDuplicate(store: MemoryStore, input: { description: string;
  * 语义：off 或 scope/类型非法/正文空 → 带码失败且零副作用（off 判门先于 store 构造，连记忆目录都不建）；
  * 重复写幂等返回既有 slug（`existed: true`）；成功附容量近满提醒（超限仍由 `store.add` 报 MEMORY_INDEX_OVER_LIMIT 浮出）。
  *
- * `scope`（规格 §4.2 记忆隔离）：缺省/`'main'` = 主记忆目录；`agents/<id>` = 该子代理自有目录（落盘走
+ * `scope`（规格 §4.2 记忆隔离）：缺省/`'main'` = 主记忆目录；`agents/<id>` = 该子智能体自有目录（落盘走
  * `new MemoryStore(root, { subdir })`，与 `subagent.agentMemory` 同一目录形态）。**链侧收窄对 memory_write 不生效**
  * （canonical 同族 Write、入参无 path → `PATH_TOOLS` 归一为 root，`isMemoryPath` 恒不命中），故 scope 只能由本接缝承载：
- * 装配层把安全链的 `memoryScope` 透传进来（builtin 第 8 参执行期注入），子代理链的 `agents/<id>` 才真正落到自有目录。
+ * 装配层把安全链的 `memoryScope` 透传进来（builtin 第 8 参执行期注入），子智能体链的 `agents/<id>` 才真正落到自有目录。
  */
 export function writeMemoryFact(opts: {
   root: string;
@@ -288,7 +288,7 @@ export function writeMemoryFact(opts: {
 }
 
 /**
- * 记忆 scope → `MemoryStore` 子目录（规格 §4.2）：`undefined`/`'main'` 为主记忆目录，`agents/<id>` 为子代理自有子目录。
+ * 记忆 scope → `MemoryStore` 子目录（规格 §4.2）：`undefined`/`'main'` 为主记忆目录，`agents/<id>` 为子智能体自有子目录。
  * 子目录字符串直接拼进落盘路径，故此处 fail-closed 校验形态：只接受单段合法 `agents/<id>`（拒 `/`、`\`、`.`、`..`），
  * 越界 scope 宁可带码失败也不落盘（不把分支判断留给 MemoryStore 的路径拼接）。
  */

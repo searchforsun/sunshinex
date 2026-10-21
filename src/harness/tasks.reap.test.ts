@@ -1,4 +1,4 @@
-// 后台任务线 T4a：fork 收割（规格 D9）——前台子代理名下发起的后台任务（ownerRun=子代理 run），在子代理收口时
+// 后台任务线 T4a：fork 收割（规格 D9）——前台子智能体名下发起的后台任务（ownerRun=子智能体 run），在子智能体收口时
 // 由 runSubagent finally 段统一 reap：触发 stop 句柄、落 [stopped] 终态行。断言面：任务终态、零泄漏。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

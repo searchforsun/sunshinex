@@ -11,10 +11,10 @@ import { theme } from '../theme';
 const FRAMES = ['✻', '✽', '✶', '✱', '✢'];
 const VERBS = ['Pondering', 'Brewing', 'Weaving', 'Distilling'];
 
-/** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识）；label 可选（子代理面板头部携带 [label] 标识，缺省零变化）。
+/** 运行态活动行：帧动画 + 动词轮换 + 耗时 + 本轮 tokens（英文标识）；label 可选（子智能体面板头部携带 [label] 标识，缺省零变化）。
  *  phase/calls 可选（缺省 'thinking'/[]，规格 §5）：既有调用方零破坏；tool-pending/tool-awaiting 按活跃调用数逐行渲染。 */
 
-/** 帧动画 glyph（子代理全屏状态行等同款旋转动画消费）：240ms 步进与 Spinner 主动画同节奏 */
+/** 帧动画 glyph（子智能体全屏状态行等同款旋转动画消费）：240ms 步进与 Spinner 主动画同节奏 */
 export function useSpinFrame(): string {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -28,7 +28,7 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
   startedAt: number;
   tokens: number;
   label?: string;
-  /** 子代理面板头部步骤计数（可选，缺省不显示——主链活动行无此语义） */
+  /** 子智能体面板头部步骤计数（可选，缺省不显示——主链活动行无此语义） */
   steps?: number;
   /** 活任务阶段（缺省 thinking = 既有调用方零破坏） */
   phase?: LiveTaskPhase;
@@ -47,7 +47,7 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
   const verb = VERBS[Math.floor(frame / 17) % VERBS.length];
   const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
   if (phase === 'tool-pending' || phase === 'tool-awaiting') {
-    // 运行态单一化（2026-09-27 用户裁决）：subagent 类调用不在此重复出活动行——派发期子代理运行态
+    // 运行态单一化（2026-09-27 用户裁决）：subagent 类调用不在此重复出活动行——派发期子智能体运行态
     // 由 ChildPanel 边框面板单点承载（信息量更大：当前调用 · step · tokens），主链活动行只呈现本链调用
     const own = calls.filter((c) => c.verb !== 'spawn');
     if (own.length === 0) return <Box />;

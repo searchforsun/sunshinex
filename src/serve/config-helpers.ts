@@ -291,7 +291,7 @@ export function effectiveKeyRow(
 // ---------- G8c T6：/settings/skills + /settings/memory-stats 面模块级助手 ----------
 
 /** GET /settings/memory-stats 统计（G8c T6）：主域记忆目录（memoryDir 单点）只读扫描。
- *  记录文件口径 = 主目录直属 .md 且非派生索引 MEMORY.md（agents/ 子代理子树与 .bak-* 快照目录
+ *  记录文件口径 = 主目录直属 .md 且非派生索引 MEMORY.md（agents/ 子智能体子树与 .bak-* 快照目录
  *  不是主域记录，isFile 天然排除）；entries=记录文件数，lastWriteAt=最大 mtimeMs（无记录 →
  *  {entries:0, lastWriteAt:null}）。
  *  只读面不走 MemoryStore 构造（其 mkdirSync 副作用会让 GET 建目录）——与 list() 的口径差异：

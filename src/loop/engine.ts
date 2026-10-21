@@ -57,7 +57,7 @@ export interface LoopDeps {
   steer?: () => string[];
   /** 作用域：session=主链追加（缺省）；fork=私有执行（零主链回写，graph loop 节点用） */
   scope?: 'session' | 'fork';
-  /** 子代理执行单元（harness 装配注入，内联 import 规避模块环）：贯通到循环内构造的 Reactor（spawn 预算源挂载） */
+  /** 子智能体执行单元（harness 装配注入，内联 import 规避模块环）：贯通到循环内构造的 Reactor（spawn 预算源挂载） */
   runner?: import('../harness/subagent').SubagentRunner;
   /** 后台沉淀管线（装配层注入；CLI 收尾 await drain 用）：纯类型依赖，内联 import 规避模块环 */
   pipeline?: import('../harness/memory/pipeline').MemoryPipeline;

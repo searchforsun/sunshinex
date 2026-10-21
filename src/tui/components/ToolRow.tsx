@@ -11,7 +11,7 @@ import { ResultCollapsed, TranscriptLines } from './ChildTranscript';
  * 默认折叠为单行摘要（首行截断）——执行细节不刷屏，全文经 Tab 切换历史展开查看；
  * Tab 切换历史展开（清屏重挂整屏重放）时以全展开形态渲染完整 observation。
  * detail 缺失时 text 即全部内容（≤200 字摘要），无折叠必要、直接展示。
- * SPAWN 调用行两态（子代理显示规格 §3.2）：折叠=● 单行 + subagentMeta 摘要尾注（steps/耗时），
+ * SPAWN 调用行两态（子智能体显示规格 §3.2）：折叠=● 单行 + subagentMeta 摘要尾注（steps/耗时），
  * 逐行展开（spawnExpanded，Ctrl+B 浏览模式 Enter 切换）= ▾ 头行 + 转录 4 空格缩进重放；
  * Tab 全场展开（!collapsed）与逐行展开任一命中即重放转录，两机制正交。
  */
@@ -62,11 +62,11 @@ export function ToolRow({ item, columns, collapsed }: {
       </Box>
     );
   }
-  // CR 剥除（与子代理视图同源）：Windows 子进程输出 CRLF，残留 CR 渲染即光标回卷幻影高度/错位碎片
+  // CR 剥除（与子智能体视图同源）：Windows 子进程输出 CRLF，残留 CR 渲染即光标回卷幻影高度/错位碎片
   const body = (item.detail ?? item.text).replace(/\r/g, '');
   const lines = body.split('\n');
   if (collapsed && item.detail) {
-    // 折叠摘要与子代理视图共用单点（ResultCollapsed）——形态漂移即真机「主/子 agent 工具行不同形」
+    // 折叠摘要与子智能体视图共用单点（ResultCollapsed）——形态漂移即真机「主/子智能体 工具行不同形」
     return <ResultCollapsed text={body} ok={!!item.ok} columns={columns} />;
   }
   return (

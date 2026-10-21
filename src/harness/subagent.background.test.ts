@@ -21,7 +21,7 @@ test('spawn 两段式：立即返回任务记录，结论行落任务日志、�
     mode: 'dontAsk',
     model: new ScriptedAdapter([
       JSON.stringify({ tool: 'spawn', input: { prompt: '背景调研：统计 dist 目录', background: true } }),
-      JSON.stringify({ done: true, reply: '已提交后台子代理' }),
+      JSON.stringify({ done: true, reply: '已提交后台子智能体' }),
     ]),
   });
   try {
@@ -29,7 +29,7 @@ test('spawn 两段式：立即返回任务记录，结论行落任务日志、�
     assert.equal(r.done, true, '主链正常收口');
     const tasks = ledgerOf(h);
     const task = tasks.list().find((t) => t.kind === 'subagent');
-    assert.ok(task, '后台子代理任务已登记');
+    assert.ok(task, '后台子智能体任务已登记');
     assert.equal(task!.kind, 'subagent');
     assert.ok(['running', 'done', 'failed', 'stopped'].includes(task!.status), `任务状态合法：${task!.status}`);
     const log = fs.readFileSync(task!.outputFilePath, 'utf8');

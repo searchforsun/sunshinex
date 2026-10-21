@@ -19,7 +19,7 @@ export interface BoardTask {
   executedBy?: string;
   /** gate 挂起(spec Ruling 3):派发跳过,review_task(approved) 解锁 */
   gated?: boolean;
-  /** 执行体路由提示(P2):internal=子代理 fork(缺省)/external-cli=外部 CLI 执行体;提示不改派发语义,消费面为 P2 派发路由 */
+  /** 执行体路由提示(P2):internal=子智能体 fork(缺省)/external-cli=外部 CLI 执行体;提示不改派发语义,消费面为 P2 派发路由 */
   executorHint?: 'internal' | 'external-cli';
   createdAt: number;
   updatedAt: number;

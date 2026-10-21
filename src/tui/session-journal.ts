@@ -67,8 +67,8 @@ export type JournalEvent =
   | { t: 'board'; e: SessionEvent }
   /** 委派影子投影行(同上):delegation 起止事件原件落档(applyDelegation 直接消费),attach 回种委派面 */
   | { t: 'delegation'; e: SessionEvent }
-  /** 子代理流影子投影行(同上):payload.subagent 标签事件原件落档——attach 以帧重放给渲染层,
-   *  子代理活动面(agent 页签)跨重启/换渲染层可重建;reduceJournal 忽略 */
+  /** 子智能体流影子投影行(同上):payload.subagent 标签事件原件落档——attach 以帧重放给渲染层,
+   *  子智能体活动面(agent 页签)跨重启/换渲染层可重建;reduceJournal 忽略 */
   | { t: 'subagent'; e: SessionEvent };
 
 export interface SessionMeta extends SessionSidecarMeta {
@@ -92,7 +92,7 @@ export interface SessionSidecarMeta {
   runs?: number;
   /** 累计链步数 */
   steps?: number;
-  /** 累计 tokens（主链口径；TUI 另记子代理 childTokens） */
+  /** 累计 tokens（主链口径；TUI 另记子智能体 childTokens） */
   tokens?: number;
   /** 累计运行秒数 */
   seconds?: number;
@@ -100,7 +100,7 @@ export interface SessionSidecarMeta {
   cacheTokens?: number;
   /** 累计 prompt tokens（真实上下文逐请求消耗） */
   promptTokens?: number;
-  /** 累计子代理 tokens（TUI 口径；serve 暂缺子代理聚合不写） */
+  /** 累计子智能体 tokens（TUI 口径；serve 暂缺子智能体聚合不写） */
   childTokens?: number;
   /** 末次上文占用（ctx 事件 exact 权威值；快照语义非累计） */
   ctxUsed?: number;

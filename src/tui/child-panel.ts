@@ -6,11 +6,11 @@ import { serializeMultiline, pairChildResults } from './chat-model';
 import type { ChildLiveState } from './chat-model';
 import type { SessionController } from './session';
 
-// D17 拆分件步4（docs/TECH-DEBT-SURVEY.md H1）：子代理面板态——onChildEvent/commitChild/archiveChild/
+// D17 拆分件步4（docs/TECH-DEBT-SURVEY.md H1）：子智能体面板态——onChildEvent/commitChild/archiveChild/
 // archiveDeferred/archiveInto/markChildStopped/stopChild 迁出；pairChildResults 等纯件已随步1 在 chat-model。
 // 面板态经 ctrl.state.children 与 childBufs/childPrompts/spawnCalls 单点读写，不为迁出复制状态。
 
-/** 停单个子代理（UI 面，2026-10-02 用户裁决「子agent暂停不应连带中断主agent」）：按 label 定位在跑
+/** 停单个子智能体（UI 面，2026-10-02 用户裁决「子智能体暂停不应连带中断主agent」）：按 label 定位在跑
  *  child 的账本任务 → task_stop 工具同款单点（stop 句柄中止其模型调用 + finish('stopped')）；主链
  *  零影响——TASK_WAIT 收到 stopped 终态行自判续跑。面板即时置终态并走延迟归档（abort 级联不保证
  *  还有 done/error 事件，UI 真相兜底）；返回是否实际停止了在跑任务 */
@@ -48,7 +48,7 @@ function markChildStopped(ctrl: SessionController, label: string): void {
   archiveDeferred(ctrl, label);
 }
 
-/** 子代理事件处理（规格 §4.3）：首事件创建面板态；增量行化、结构事件即时行化；不触达主链任何分支。
+/** 子智能体事件处理（规格 §4.3）：首事件创建面板态；增量行化、结构事件即时行化；不触达主链任何分支。
  *  流式双缓冲（2026-09-29 对标主 agent session 态）：reasoning 独立累积（bufThink，视图 6 行滚动窗实时预览）、
  *  非 reasoning 事件到达即收束为 ✻ 摘要行（对标 closeLive「Thought for Ns」+ detail 全文）；
  *  正文 token 半行遇结构边界冲刷保序（2026-09-30，见 flushBuf），空行保留（段落边界——视图增量入 Static 的稳态切割点）。 */
@@ -149,7 +149,7 @@ export function onChildEvent(ctrl: SessionController, e: SessionEvent, label: st
       }
       break;
     case 'usage':
-      // per-run turnTotal 为该子代理 run 的累计值（单一 run），直接采信。
+      // per-run turnTotal 为该子智能体 run 的累计值（单一 run），直接采信。
       // P9 收编:会话级 child token 累计唯一权威在内核统计面（per-child 水位,stats 事件同步臂）——
       // 本分支只剩面板自身的 child.tokens 显示态
       tokens = typeof e.payload?.turnTotal === 'number' ? e.payload.turnTotal : child.tokens;
@@ -191,7 +191,7 @@ function commitChild(ctrl: SessionController, list: ChildLiveState[], idx: numbe
 /** spawn 结果归档（规格 §4.4）：每条 spawn 结果经 pending.input 拿到**自己的**基名（权威关联——结果序≠
  *  完成序的并行批下栈序≠基名序），child 已完成即归档，未完成/未创建一律转 wait 延迟归档（done 的
  *  archiveDeferred 按基名收口）。旧形态两处病根（真机「5 个只显示 1 个」）：① FIFO 兜底 idx=0 把
- *  面板里**别人的**子代理归进本行——链条一错全错，错配行永远等不到自己的 meta（Ctrl+B 只剩 1）；
+ *  面板里**别人的**子智能体归进本行——链条一错全错，错配行永远等不到自己的 meta（Ctrl+B 只剩 1）；
  *  ② child 在跑即中途归档——面板条目被抽走、半份转录冻结进 detail，终态永不回填 */
 export function archiveChild(ctrl: SessionController): void {
   const pending = ctrl.spawnCalls.shift();
@@ -230,7 +230,7 @@ function archiveInto(ctrl: SessionController, pending: { seq: number; base: stri
   const transcriptText = child.transcript.filter((l) => l.kind === 'text').map((l) => l.text).join('\n');
   const detail = [
     ...(prompt ? [`⏺ ${t('delegated prompt', '委派提示词')}：${serializeMultiline(prompt)}`] : []),
-    // 完整时间线随 detail 折入（2026-09-28 用户裁决：归档子代理与运行中/主 agent 同构，Tab 展开时间线）——
+    // 完整时间线随 detail 折入（2026-09-28 用户裁决：归档子智能体与运行中/主 agent 同构，Tab 展开时间线）——
     // 结构行序列化与 ChildInspector archived 分流互为镜像：result 行 ⎿ ✓/✗（多行输出续行缩进折入）、
     // call 行原样（首词动词分流还原）、text 行原样、thinking 行 ✻ 摘要 + 4 空格缩进 detail 续行
     // （与 MessageList ThinkingRow 呈现缩进同口径）；序列化前并行结果归位（pairChildResults 单点）：

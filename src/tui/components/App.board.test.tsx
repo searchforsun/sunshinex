@@ -149,7 +149,7 @@ test('browseRows：闲置 teammate 行(跑完后 Ctrl+B 仍可浏览,2026-10-06 
   assert.deepEqual(rows.map((r) => r.childLabel), ['w1', 'w2'], 'child join 键=委派原名(全屏视图按名 join 转录,2026-10-09 修空白病根)');
 });
 
-test('App：Ctrl+B → Enter 进 team 子代理全屏视图——委派行展示带任务后缀、child 按原名 join（2026-10-09 修「team 子代理视图整页空白」）', async () => {
+test('App：Ctrl+B → Enter 进 team 子智能体全屏视图——委派行展示带任务后缀、child 按原名 join（2026-10-09 修「team 子智能体视图整页空白」）', async () => {
   const tmp = tmpdir('sunshinex-app-browse-team-inspect-');
   let term: TestRenderResult | undefined;
   try {

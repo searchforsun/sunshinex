@@ -13,8 +13,8 @@ function tmpdir(prefix: string): string {
 /**
  * 后台 spawn 两段式语义（对标 CC Task run_in_background）：
  * ①tool-result 立即返回 → 调用行不归档、留待子事件到位后延迟归档；
- * ②主链回合结束进 idle 时未完成子代理面板保留（跨回合可见运行态）；
- * ③子代理 done 后归档命中，转录折入原调用行 detail（Ctrl+B 可展开）。
+ * ②主链回合结束进 idle 时未完成子智能体面板保留（跨回合可见运行态）；
+ * ③子智能体 done 后归档命中，转录折入原调用行 detail（Ctrl+B 可展开）。
  */
 test('后台 spawn：结果先行不即归档、面板跨回合保留、done 后延迟归档', () => {
   const tmp = tmpdir('sunshinex-sess-spawnbg-');
@@ -29,11 +29,11 @@ test('后台 spawn：结果先行不即归档、面板跨回合保留、done 后
     // 子事件先到（面板建立、进入运行态）
     ctrl.onEventForTest({ type: 'token', text: '调查中\n', payload: { subagent: 'bg' } } as never);
     ctrl.onEventForTest({ type: 'step', text: '', payload: { subagent: 'bg' } } as never);
-    // 主链回合结束进 idle：未完成子代理面板保留
-    assert.equal(ctrl.getState().children.length, 1, 'idle 后运行中子代理面板保留');
+    // 主链回合结束进 idle：未完成子智能体面板保留
+    assert.equal(ctrl.getState().children.length, 1, 'idle 后运行中子智能体面板保留');
     assert.equal(ctrl.getState().children[0]!.label, 'bg');
     assert.equal(call!.detail, undefined, '未完成不归档');
-    // 子代理完成：延迟归档命中，转录折入原调用行
+    // 子智能体完成：延迟归档命中，转录折入原调用行
     ctrl.onEventForTest({ type: 'done', text: '后台结论', payload: { subagent: 'bg' } } as never);
     call = ctrl.getState().messages.find((m) => m.kind === 'call' && m.text.startsWith('SPAWN'));
     assert.ok(call!.detail?.includes('后台结论'), 'done 后延迟归档，转录折入原调用行');
@@ -65,7 +65,7 @@ test('归档统计摘要：subagentMeta.tokens 在位、detail 尾行为步数�
   }
 });
 
-test('子代理 token 累计器：usage 增量并入 turn/session 两级（per-run 累计值取差值，不重复计）', () => {
+test('子智能体 token 累计器：usage 增量并入 turn/session 两级（per-run 累计值取差值，不重复计）', () => {
   const tmp = tmpdir('sunshinex-sess-childtok-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
@@ -82,7 +82,7 @@ test('子代理 token 累计器：usage 增量并入 turn/session 两级（per-r
   }
 });
 
-test('stopChild：UI 停单个子代理——账本 stopped + 面板终态 + 停止标记行；主链状态不动（2026-10-02「子agent暂停不连带主agent」裁决）', () => {
+test('stopChild：UI 停单个子智能体——账本 stopped + 面板终态 + 停止标记行；主链状态不动（2026-10-02「子智能体暂停不连带主agent」裁决）', () => {
   const tmp = tmpdir('sunshinex-sess-stopchild-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });

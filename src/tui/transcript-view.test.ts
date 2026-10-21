@@ -121,10 +121,10 @@ test('单段简单任务：全程全显，Ctrl+O 全文', () => {
   assert.ok(d[1].full && d[2].full, 'Ctrl+O 全文');
 });
 
-test('spawn 调用行（子代理转录归档 detail）：随所在段 latestFull 放行全文（规格 §6 展开验收）', () => {
+test('spawn 调用行（子智能体转录归档 detail）：随所在段 latestFull 放行全文（规格 §6 展开验收）', () => {
   const messages = [
-    item('user', '跑审查子代理'),
-    item('tool', 'SPAWN reviewer', { kind: 'call', detail: '子代理转录首行\n子代理转录尾行' }),
+    item('user', '跑审查子智能体'),
+    item('tool', 'SPAWN reviewer', { kind: 'call', detail: '子智能体转录首行\n子智能体转录尾行' }),
     item('tool', '子任务报告', { kind: 'result', ok: true }),
     item('assistant', '主任务完成'),
   ];

@@ -38,7 +38,7 @@ export interface TodoBatch {
  *  G14.216 命名口径(用户裁定,替代 G14.213「两字优先」):自然两字且项目既定的保留不动——
  *  读取/写入/执行/查阅/查找/搜索/抓取/停止/取消/分派/复审/门审/提问(工作树为项目自然词);
  *  凑两字而失读性的展开为目标域词,与运行态标签(RUNNING_LABELS)同口径——加载技能、保存记忆、
- *  更新待办、等待任务、检索知识库、创建任务、设置依赖、分派子代理 */
+ *  更新待办、等待任务、检索知识库、创建任务、设置依赖、分派子智能体 */
 const TOOL_VERB_ZH: Record<string, string> = {
   read: '读取', write: '写入', exec: '执行', grep: '查阅', glob: '查找',
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
@@ -151,7 +151,7 @@ export function ToolEntryView({
   callId?: string;
   onOpenFile?: (path: string) => void;
   onOpenDiff?: (callId: string, path: string) => void;
-  /** G14.171 spawn 行子代理名=蓝色链接,点开对应 agent 只读标签页(App 注入 openTabInSession) */
+  /** G14.171 spawn 行子智能体名=蓝色链接,点开对应 agent 只读标签页(App 注入 openTabInSession) */
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** G14.176 create_task 行任务名=蓝色链接,点开任务板定位高亮对应卡(App 注入) */
   onOpenTask?: (taskRef: string) => void;
@@ -175,7 +175,7 @@ export function ToolEntryView({
   const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
   const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
   const stat = isWrite ? writeStatOf(resultText) : {};
-  /** G14.171 spawn 子代理名(label ?? agent_id)——运行态文案与折叠行链接共用 */
+  /** G14.171 spawn 子智能体名(label ?? agent_id)——运行态文案与折叠行链接共用 */
   const spawnAgentName =
     toolName === 'spawn'
       ? typeof input.label === 'string' && input.label !== ''
@@ -219,7 +219,7 @@ export function ToolEntryView({
    *  (流光+「正在…」),done(缺省终态)=各型折叠行 */
   const executing = entry.status === 'pending' || entry.status === 'running';
   const runningLabel = (() => {
-    // G14.166 spawn 运行态带子代理名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
+    // G14.166 spawn 运行态带子智能体名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
     // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
     if (toolName === 'skill' && target !== undefined) return t(`Loading skill ${target}`, `正在加载技能 ${target}`);
@@ -360,7 +360,7 @@ export function ToolEntryView({
           )}
         </>
       ) : toolName === 'spawn' ? (
-        /* G14.166 折叠行带子代理名(G14.171:蓝色链接,点开对应 agent 只读标签页) */
+        /* G14.166 折叠行带子智能体名(G14.171:蓝色链接,点开对应 agent 只读标签页) */
         <>
           <span className="tool-verb">{t('spawn', '分派子智能体')}</span>
           {spawnAgentName !== '' && onOpenAgent !== undefined ? (

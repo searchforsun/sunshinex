@@ -79,9 +79,9 @@ export function ChildInspector(props: {
     }
     if (done) flushRun();
     else openTail = run;
-    // 输入带抑制(2026-10-19 真机「用户字段重复渲染」):转录已含任务带(播种输入=子代理实收内容,
+    // 输入带抑制(2026-10-19 真机「用户字段重复渲染」):转录已含任务带(播种输入=子智能体实收内容,
     // 带 Task 头+全文)时,spawn 框定词输入带即重复播报——委派词单点承载原则的对称应用(转录带在场,
-    // 带让位);无任务带的子代理(异常/极旧)回退输入带兜底
+    // 带让位);无任务带的子智能体(异常/极旧)回退输入带兜底
     if (items.some((i) => i.kind === 'taskBand')) prompt = undefined;
   } else if (archived) {
     // ⏺ 委派行恒过滤（2026-09-30 真机重复项修复）：archiveInto 同一委派词写两份（subagentMeta.prompt 驱动输入带
@@ -305,6 +305,6 @@ function ResultRow({ text, ok, columns, expanded }: { text: string; ok: boolean;
     );
   }
   // 折叠态与主链 ToolRow 共用单点（ResultCollapsed）：⎿ ✓/✗ + 首行带块 + … 溢出折行——三行工具组
-  // （调用行/结果行/省略号行）与主 agent 逐字节同形（真机「子代理少省略号一行」病根），CR 剥除在单点内
+  // （调用行/结果行/省略号行）与主 agent 逐字节同形（真机「子智能体少省略号一行」病根），CR 剥除在单点内
   return <ResultCollapsed text={text} ok={ok} columns={columns} />;
 }

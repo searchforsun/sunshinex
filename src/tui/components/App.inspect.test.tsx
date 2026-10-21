@@ -14,7 +14,7 @@ process.env.SUNSHINEX_ESC_JOIN_MS = '1';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // App inspect 全屏接管（规格 §3.3）：键位全序列经 test-ink write 直驱——Ctrl+B 进入浏览 → Enter 进入全屏 → Esc 退出。
-// 运行中子代理经子面板事件构造（SessionController.onEventForTest 与生产 onEvent 同通道）
+// 运行中子智能体经子面板事件构造（SessionController.onEventForTest 与生产 onEvent 同通道）
 test('App inspect：Tab 切换折叠/完整时间线（经生产 repaint 整屏重放，2026-09-30 用户裁决回归）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-tab-'));
   try {
@@ -99,7 +99,7 @@ test('App inspect：browse→Enter 进全屏后浏览态不残留（store 同步
   }
 });
 
-test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面（ChildPanel 行回到帧内）', async () => {
+test('App inspect：运行中子智能体整页接管，Esc 退出恢复主界面（ChildPanel 行回到帧内）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-'));
   try {
     const ctrl = new SessionController({ root: tmp });
@@ -108,16 +108,16 @@ test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面�
     ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'w', kind: 'subagent', label: 'w' } } as never);
     ctrl.onEventForTest({ type: 'token', text: '分析中…\n', payload: { subagent: 'w' } } as never);
     for (let i = 0; i < 40 && !(term.lastFrame() ?? '').includes('[w]'); i++) await sleep(25);
-    assert.ok(!(term.lastFrame() ?? '').includes('子代理视图'), '未进入前全屏视图不在场');
+    assert.ok(!(term.lastFrame() ?? '').includes('子智能体视图'), '未进入前全屏视图不在场');
     term.write('\u0002'); // Ctrl+B：浏览模式（运行中行在场即允许）
     await sleep(50);
-    term.write('\r'); // Enter：选中运行中子代理 → 全屏接管
+    term.write('\r'); // Enter：选中运行中子智能体 → 全屏接管
     await sleep(50);
     assert.match(term.lastFrame() ?? '', /] 子智能体|] subagent/, '全屏视图接管整页');
-    assert.match(term.lastFrame() ?? '', /分析中…/, '子代理转录实时呈现');
+    assert.match(term.lastFrame() ?? '', /分析中…/, '子智能体转录实时呈现');
     term.write('\u001B'); // Esc：退出
     await sleep(50);
-    assert.ok(!(term.lastFrame() ?? '').includes('子代理视图'), '退出后全屏视图消失');
+    assert.ok(!(term.lastFrame() ?? '').includes('子智能体视图'), '退出后全屏视图消失');
     assert.match(term.lastFrame() ?? '', /\[w\]/, '回到主界面（ChildPanel 行在场）');
     term.unmount();
   } finally {
@@ -125,18 +125,18 @@ test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面�
   }
 });
 
-test('App inspect：查看中子代理完成归档——live 离场自动换挡 SPAWN 归档行，任务名/步数/耗时不断档（真机「✻ [] 仍显运行态」病根）', async () => {
+test('App inspect：查看中子智能体完成归档——live 离场自动换挡 SPAWN 归档行，任务名/步数/耗时不断档（真机「✻ [] 仍显运行态」病根）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-inspect-arch-'));
   let current: TestRenderResult | undefined;
   try {
     const ctrl = new SessionController({ root: tmp });
     const retain = { ...initialRetained() };
     const props = { controller: ctrl, banner: { version: '1.0.0', model: 'm', root: tmp }, retain, onRequestRepaint: () => current?.unmount() };
-    // 委派（基名 w + 委派词登记）→ 子代理事件建面板态（生产同通道：结果先行、done 收口归档）
+    // 委派（基名 w + 委派词登记）→ 子智能体事件建面板态（生产同通道：结果先行、done 收口归档）
     ctrl.onEventForTest({ type: 'tool-call', text: 'spawn', payload: { input: { label: 'w', prompt: '委派任务甲' }, callId: 'c1' } } as never);
     // 协议补齐（P1 投影单源）：合成流无 Runner，运行行由 delegation 事件入投影；done 归档处补 ended（面板离场同源）
     ctrl.onEventForTest({ type: 'delegation-started', ts: Date.now(), payload: { delegationId: 'w', kind: 'subagent', label: 'w' } } as never);
-    ctrl.onEventForTest({ type: 'token', text: '子代理正文\n', payload: { subagent: 'w' } } as never);
+    ctrl.onEventForTest({ type: 'token', text: '子智能体正文\n', payload: { subagent: 'w' } } as never);
     const one = render(<App {...props} />);
     current = one;
     for (let i = 0; i < 40 && !(one.lastFrame() ?? '').includes('[w]'); i++) await sleep(25);
@@ -147,7 +147,7 @@ test('App inspect：查看中子代理完成归档——live 离场自动换挡 
     const two = render(<App {...props} />);
     current = two;
     await sleep(80);
-    assert.match(two.lastFrame() ?? '', /] 子智能体|] subagent/, '前置：全屏查看 live 子代理在场');
+    assert.match(two.lastFrame() ?? '', /] 子智能体|] subagent/, '前置：全屏查看 live 子智能体在场');
     assert.match(two.lastFrame() ?? '', /\[w\]/, '前置：live 态任务名在档');
     // 结果先行入档（child 未 done → wait）→ done 收口：archiveDeferred 归档——child 从 children 离场、
     // 转录折进 SPAWN 调用行；查看视图必须自动换挡到 archived 形态而非退化「✻ []」
@@ -169,7 +169,7 @@ test('App inspect：查看中子代理完成归档——live 离场自动换挡 
     assert.match(frame, /完成|done/, '完成态在档');
     assert.ok(!frame.includes('[]'), '状态行不再空 []（live/archived 双空的退化形态）');
     assert.ok(!frame.includes('✻'), '完成态不显运行态转圈（✓ 定格字形）');
-    assert.match(three.allOutput(), /子代理正文/, '转录随归档 detail 折入，时间线完整回放');
+    assert.match(three.allOutput(), /子智能体正文/, '转录随归档 detail 折入，时间线完整回放');
     three.unmount();
     current = undefined;
   } finally {

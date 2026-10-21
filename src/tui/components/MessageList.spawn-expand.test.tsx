@@ -12,14 +12,14 @@ const msgs: ChatItem[] = [
   { role: 'tool', text: 'SPAWN writer', ts: 0, seq: 8, kind: 'call', detail: 'WRITE b.ts\n结论行B', subagentMeta: { steps: 1, durationMs: 500, tokens: 300 } },
 ];
 
-test('历史区不再渲染归档 SPAWN 行与配对结果行（2026-09-28 统一口径：子代理由动态区承载）', () => {
+test('历史区不再渲染归档 SPAWN 行与配对结果行（2026-09-28 统一口径：子智能体由动态区承载）', () => {
   // Static 区内容打印一次后不进动态帧：历史断言一律走 allOutput()（test-ink 口径）
   const f = render(
     <MessageList messages={msgs} columns={80} banner={banner} expandAll={false} latestFull={false} />,
   ).allOutput();
   assert.doesNotMatch(f, /SPAWN reviewer/, '归档 SPAWN 调用行不进时间线');
   assert.doesNotMatch(f, /SPAWN writer/, '归档 SPAWN 调用行不进时间线');
-  assert.doesNotMatch(f, /结论行/, '子代理转录不再折入时间线（回看走 Ctrl+B → 全屏）');
+  assert.doesNotMatch(f, /结论行/, '子智能体转录不再折入时间线（回看走 Ctrl+B → 全屏）');
 });
 
 test('spawn 配对结果行整对剔除（2026-09-28 真机残留修复）：result.callId → call 行 seq 配对命中', () => {

@@ -73,7 +73,7 @@ export interface ReactorDeps {
   ledger?: RunLedger;
   /** 事件流旁路（TUI/GUI 公共地基）：发射即旁路，不注入零副作用；主链/账本语义不受影响 */
   onEvent?: (e: SessionEvent) => void;
-  /** 子代理执行单元（harness/装配根注入）：run 起止挂/摘 spawn 预算源；缺省无 spawn 能力 */
+  /** 子智能体执行单元（harness/装配根注入）：run 起止挂/摘 spawn 预算源；缺省无 spawn 能力 */
   runner?: SubagentRunner;
   /** 用户中断信号（Esc/Ctrl+C）：步边界最先检查，在途模型调用经 adapter 即刻中止；中止态转 interrupted 终态 */
   signal?: AbortSignal;
@@ -184,7 +184,7 @@ export class Reactor {
     let promptBase = 0;
     const startedAt = Date.now();
 
-    // spawn 预算源挂载（仅装配注入 runner 的 reactor）：子代理 token 硬顶与父级剩余解耦——只认
+    // spawn 预算源挂载（仅装配注入 runner 的 reactor）：子智能体 token 硬顶与父级剩余解耦——只认
     // SUNSHINEX_SUBAGENT_TOKEN_CAP（run 级解析一次，缺省不设；预算是兜底不是限制，护栏交给
     // maxSteps/deadline）；run 为单一出口（循环 break 后直达收尾 return），收尾处统一摘除；
     // 即使异常路径遗留挂载，无活动 run 期间 spawn 不可达、下一次 attach 即覆盖，陈旧闭包无害

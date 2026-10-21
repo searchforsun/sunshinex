@@ -9,6 +9,6 @@ test('computePreviewCap：总帧高 = chrome 实账 + cap ≤ rows-1（ink3 outp
   assert.equal(computePreviewCap(60, 7), 28);
   // 矮视口保底 4：预算为负也不出 0/负数（此时帧高可能仍触顶，clearTerminal 为最后兜底）
   assert.equal(computePreviewCap(10, 12), 4);
-  // 子代理面板在场（运行 3 子代理 = 3+2 边框）：chrome 增大 cap 同步收缩
+  // 子智能体面板在场（运行 3 子智能体 = 3+2 边框）：chrome 增大 cap 同步收缩
   assert.equal(computePreviewCap(30, 12), 17);
 });

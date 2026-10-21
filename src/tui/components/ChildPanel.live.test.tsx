@@ -13,7 +13,7 @@ const child = (over: Partial<ChildLiveState> = {}): ChildLiveState => ({
   ...over,
 });
 
-test('ChildPanel：运行中头行携带 step N 计数（子代理执行进度可见）', () => {
+test('ChildPanel：运行中头行携带 step N 计数（子智能体执行进度可见）', () => {
   const one = render(<ChildPanel childrenState={[child({ steps: 7 })]} columns={80} />);
   const f = one.lastFrame() ?? '';
   assert.match(f, /step 7/, '运行中面板头行应含 step 计数（ChildLiveState.steps 已采集，呈现零成本）');

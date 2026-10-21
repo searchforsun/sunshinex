@@ -134,7 +134,7 @@ test('前台 exec（D19-a）：隔离子链经 gateView.run 取链侧 landlock �
     const tree = path.join(tmp, 'subagent-tree');
     fs.mkdirSync(tree);
     fs.writeFileSync(path.join(tree, 't.txt'), 'x\n');
-    // 闭包链锚主根（builtinTools 装配形态），fork 子链 withRoot 换根克隆（隔离子代理同款）
+    // 闭包链锚主根（builtinTools 装配形态），fork 子链 withRoot 换根克隆（隔离子智能体同款）
     const safety = new SafetyChain(new SecurityGuard(), spyBackend, tmp);
     const execTool = builtinTools(safety, tmp).find((t) => t.name === 'exec');
     assert.ok(execTool, 'builtin exec 工具已注册');

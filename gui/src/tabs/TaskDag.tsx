@@ -9,9 +9,9 @@ import '@xyflow/react/dist/style.css';
 
 /**
  * 任务卡 DAG 视图(G14.2xx:mermaid 拼源渲染退役,改开源图组件 React Flow(@xyflow/react,MIT)+
- * dagre 自动布局(@dagrejs/dagre,MIT)——节点=任务状态图标+任务名+执行子代理名,交互面(平移/滚轮
+ * dagre 自动布局(@dagrejs/dagre,MIT)——节点=任务状态图标+任务名+执行子智能体名,交互面(平移/滚轮
  * 缩放/控制钮)组件内置,mermaid 时代的拼源/容错/lightbox 全部不再需要。
- * 节点点击语义沿 G14.213:仅「有执行子代理」的任务可点 → 上抛 onTaskOpen 跳对应子 agent 页签
+ * 节点点击语义沿 G14.213:仅「有执行子智能体」的任务可点 → 上抛 onTaskOpen 跳对应子智能体 页签
  * (等待态无委派不可点);START/END 虚拟节点保留并行任务的起止形态。布局为纯函数(layoutTaskDag)
  * 可独立桩测:未知依赖边忽略(会话间补发交错防御,与 projection 侧同款纪律)、环交 dagre 自身割环兜底。
  */
@@ -31,7 +31,7 @@ export interface TaskNodeData extends Record<string, unknown> {
   title: string;
   status: BoardTask['status'];
   gated: boolean;
-  /** 执行子代理显示名(空串=未派发:不显行、不可点) */
+  /** 执行子智能体显示名(空串=未派发:不显行、不可点) */
   agent: string;
   clickable: boolean;
 }
@@ -42,7 +42,7 @@ interface TerminalNodeData extends Record<string, unknown> {
 
 export interface TaskDagProps {
   readonly tasks: readonly BoardTask[];
-  /** taskId → 执行子代理显示名(未派发回空串);布局(有无代理行)与可点判定共用同一单点 */
+  /** taskId → 执行子智能体显示名(未派发回空串);布局(有无代理行)与可点判定共用同一单点 */
   readonly agentOf: (taskId: string) => string;
   /** 任务节点点击上抛(仅 agentOf 命中的节点会触发) */
   readonly onTaskOpen?: (taskId: string) => void;
@@ -120,7 +120,7 @@ export function layoutTaskDag(
   };
 }
 
-/** 任务节点:状态图标(列表行同款 tb-status-dot)+任务名(+gated ⚠)+执行子代理行(🤖)。
+/** 任务节点:状态图标(列表行同款 tb-status-dot)+任务名(+gated ⚠)+执行子智能体行(🤖)。
  *  节点名恒单行截断——hover 显全名走全局 data-tip 单例(§13.1 规则 2 禁原生 title、规则 4 截断文本场景) */
 function TaskNode({ data }: NodeProps<Node<TaskNodeData, 'task'>>): JSX.Element {
   return (
