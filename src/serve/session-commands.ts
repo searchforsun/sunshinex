@@ -1,6 +1,8 @@
 import { chainToHistoryItems, runCompaction, contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
+import { resolveDataDir } from '../config/data-dir';
+import { markSessionArchived, purgeSession, readSessionMeta } from '../tui/session-journal';
 import { t } from '../i18n';
 import type { SessionRuntime } from './session';
 
@@ -11,11 +13,11 @@ import type { SessionRuntime } from './session';
  *  planFlow 等共享化逐批入列,GET /commands 消费面置灰判定同步。 */
 
 /** 当前通道支持集(gui 命令面板置灰判定源;随分支移植批扩) */
-export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off'] as const;
+export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/delete'] as const;
 
 export type CommandRunResult = 'ok' | 'unsupported' | 'busy';
 
-const IDLE_ONLY = new Set(['/compact']);
+const IDLE_ONLY = new Set(['/compact', '/archive', '/delete']);
 
 export function isCommandSupported(line: string): boolean {
   return (COMMAND_SUPPORT as readonly string[]).includes(line.split(/\s/)[0] ?? '');
@@ -97,6 +99,33 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
         `本会话持久记忆已${on ? '开启' : '关闭'}`,
       ),
     );
+    return 'ok';
+  }
+
+  if (cmd === '/archive') {
+    const jid = s.attachedJournalId;
+    if (jid === undefined) {
+      notice(t('Nothing to archive yet', '暂无可归档的会话档'));
+      return 'ok';
+    }
+    markSessionArchived(resolveDataDir(s.root), jid, true);
+    notice(t('Session archived', '已归档'));
+    return 'ok';
+  }
+  if (cmd === '/delete') {
+    const jid = s.attachedJournalId;
+    if (jid === undefined) {
+      notice(t('Nothing to delete yet', '暂无可删除的会话档'));
+      return 'ok';
+    }
+    const dataDir = resolveDataDir(s.root);
+    if (readSessionMeta(dataDir, jid).archived !== true) {
+      notice(t('Archive first (/archive), then /delete', '先归档（/archive）再删除'));
+      return 'ok';
+    }
+    purgeSession(dataDir, jid);
+    notice(t('Session deleted', '已删除'));
+    void s.teardown(); // 档已清,运行时同步收口防 append 复活(注册表残壳至重启,幂等无害)
     return 'ok';
   }
 

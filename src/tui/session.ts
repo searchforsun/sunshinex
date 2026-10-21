@@ -26,7 +26,7 @@ import { sunshineInitGoal } from '../harness/sunshine-init';
 import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SessionJournal, newSessionId, readSessionMeta, writeSessionMeta } from './session-journal';
+import { SessionJournal, newSessionId, markSessionArchived, purgeSession, readSessionMeta, writeSessionMeta } from './session-journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
 import { isQuietNotice, type KernelEntry } from '../session/entry';
 import { kernelEventRows } from '../session/seglog';
@@ -963,6 +963,52 @@ export class SessionController {
     }
   }
 
+  /** 会话软重置单点（/new·/delete 共用）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回 */
+  private softResetToNewSession(): void {
+    this.journal?.rotate(newSessionId());
+    this.kernelSeedForRestore([]); // 内核换新(空转录)——旧会话段行随旧档,新档从零起
+    this.runtime.harness.security.clearSessionAllows();
+    this.memoryOverride = undefined;
+    setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
+    this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
+    this.state = { ...this.state, queuePaused: undefined }; // 新会话起点：队列暂停态一并清除(队列条目随内核换新已清)
+    this.md.clear();
+    this.state = {
+      messages: [],
+      todos: [],
+      status: 'idle',
+      metrics: {
+        turnStartedAt: 0,
+        turnTokens: 0,
+        turnCacheTokens: 0,
+        turnPromptTokens: 0,
+        ctxUsed: 0,
+        runs: this.state.metrics.runs,
+        sessionCacheTokens: 0,
+        sessionPromptTokens: 0,
+        sessionTurns: 0,
+        sessionSteps: 0,
+        turnChildTokens: 0,
+        sessionChildTokens: 0,
+        sessionTotalTokens: 0,
+      },
+      children: [],
+      delegations: [],
+      // 板投影重播种自工作区真相源(harness 任务板快照):任务板是工作区级状态,不随会话轮转化清空
+      board: this.runtime.harness.taskboard.snapshot(),
+      task: initialTaskState(),
+      ...(this.state.tier ? { tier: this.state.tier } : {}),
+      ...(this.state.modelId !== undefined ? { modelId: this.state.modelId, modelLabel: this.state.modelLabel, modelWindow: this.state.modelWindow } : {}),
+      live: undefined,
+    };
+    this.childBufs.clear();
+    this.childPrompts.clear();
+    this.spawnCalls = [];
+    this.pendingCalls = [];
+    this.runtime.harness.context.resetSession();
+    this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
+  }
+
   /** 斜杠命令分发面：命令只认裸形式（规格 D2），选择卡经 askUser 挂起回填 */
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
@@ -1059,50 +1105,43 @@ export class SessionController {
       await this.skillFlow();
       return;
     }
+    if (cmd === '/archive') {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /archive unavailable now', '当前有任务进行中，暂不能执行 /archive'), { level: 'warn' });
+        return;
+      }
+      const jid = this.journal?.currentId;
+      if (jid === undefined) {
+        this.pushMsg('system', t('Nothing to archive yet', '暂无可归档的会话档'), { level: 'warn' });
+        return;
+      }
+      markSessionArchived(resolveDataDir(this.root), jid, true);
+      this.pushMsg('system', t('Session archived', '已归档'));
+      return;
+    }
+    if (cmd === '/delete') {
+      if (this.state.status !== 'idle') {
+        this.pushMsg('system', t('A task is running; /delete unavailable now', '当前有任务进行中，暂不能执行 /delete'), { level: 'warn' });
+        return;
+      }
+      const jid = this.journal?.currentId;
+      if (jid === undefined) {
+        this.pushMsg('system', t('Nothing to delete yet', '暂无可删除的会话档'), { level: 'warn' });
+        return;
+      }
+      const dataDir = resolveDataDir(this.root);
+      if (readSessionMeta(dataDir, jid).archived !== true) {
+        this.pushMsg('system', t('Archive first (/archive), then /delete', '先归档（/archive）再删除'), { level: 'warn' });
+        return;
+      }
+      purgeSession(dataDir, jid);
+      this.softResetToNewSession();
+      this.pushMsg('system', t('Session deleted; started a new session', '已删除，已开新会话'));
+      return;
+    }
     if (cmd === '/new') {
-      // /new 轮转化（规格 D2）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回
-      this.journal?.rotate(newSessionId());
-      this.kernelSeedForRestore([]); // 内核换新(空转录)——旧会话段行随旧档,新档从零起
-      this.runtime.harness.security.clearSessionAllows();
-      this.memoryOverride = undefined;
-      setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
-      this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
-      this.state = { ...this.state, queuePaused: undefined }; // 新会话起点：队列暂停态一并清除(队列条目随内核换新已清)
-      this.md.clear();
-      this.state = {
-        messages: [],
-        todos: [],
-        status: 'idle',
-        metrics: {
-          turnStartedAt: 0,
-          turnTokens: 0,
-          turnCacheTokens: 0,
-          turnPromptTokens: 0,
-          ctxUsed: 0,
-          runs: this.state.metrics.runs,
-          sessionCacheTokens: 0,
-          sessionPromptTokens: 0,
-          sessionTurns: 0,
-          sessionSteps: 0,
-          turnChildTokens: 0,
-          sessionChildTokens: 0,
-          sessionTotalTokens: 0,
-        },
-        children: [],
-        delegations: [],
-        // 板投影重播种自工作区真相源(harness 任务板快照):任务板是工作区级状态,不随会话轮转化清空
-        board: this.runtime.harness.taskboard.snapshot(),
-        task: initialTaskState(),
-        ...(this.state.tier ? { tier: this.state.tier } : {}),
-        ...(this.state.modelId !== undefined ? { modelId: this.state.modelId, modelLabel: this.state.modelLabel, modelWindow: this.state.modelWindow } : {}),
-        live: undefined,
-      };
-      this.childBufs.clear();
-      this.childPrompts.clear();
-      this.spawnCalls = [];
-      this.pendingCalls = [];
-      this.runtime.harness.context.resetSession();
-      this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
+      // /new 轮转化（规格 D2）：软重置单点（rotate + 内核换新 + 会话级状态清零）；旧档 /resume 可找回
+      this.softResetToNewSession();
       return;
     }
     if (cmd === '/model') {

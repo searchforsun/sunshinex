@@ -270,6 +270,8 @@ export function slashHelp(): string[] {
     t('  /fork          fork a parallel session from any past turn', '  /fork          从任意历史轮分叉出平行会话'),
     t('  /btw <question>  side Q&A on a fork (stays off the main chain)', '  /btw <问题>    辅助问答（fork 旁路，不进主链）'),
     t('  /side <question>  alias of /btw', '  /side <问题>   辅助问答（/btw 别名）'),
+    t('  /archive        archive this session (move out of main lists)', '  /archive        归档当前会话（移出主列表）'),
+    t('  /delete         delete this session (must be archived first)', '  /delete         删除当前会话（须先归档）'),
     t('  /compact       compress context: /compact [focus]', '  /compact       压缩上下文：/compact [关注点]'),
     t('  /context       context usage breakdown (parts, size, share)', '  /context       上下文构成（各段大小与占比）'),
     t('  /model         switch model (provider list from settings.json)', '  /model         切换模型（settings.json 多源清单选择卡）'),
