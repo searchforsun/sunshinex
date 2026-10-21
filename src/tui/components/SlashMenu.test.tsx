@@ -6,6 +6,7 @@ import * as path from 'path';
 import { render } from '../test-ink';
 import { App, buildSlashMenu } from './App';
 import { SlashMenu, SlashMenuEntry, slashMenuWindow, SLASH_MENU_MAX_ROWS } from './SlashMenu';
+import { SLASH_COMMANDS } from '../slash-commands';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
 import { readSkillUsage, recordSkillUsage } from '../skill-usage';
@@ -101,10 +102,15 @@ test('App：输入 / 出纵向命令面板（一行一命令+描述），逐键�
     const f1 = term.lastFrame() ?? '';
     assert.ok(f1.includes('❯ /help'), '菜单首行选中 /help');
     assert.ok(f1.includes('/init'), '内置命令纵向逐行呈现');
-    assert.ok(f1.includes('/model-tier'), '深位命令在窗口内（G14.29 补登 /btw /side 后 27 条清单 26 行终端滑窗 18 行，/model-tier 恰居窗内末位）');
+    // 深位断言从 SLASH_COMMANDS 单源推导（D39 根因：手数清单口径已两度随清单扩容破裂——
+    // G14.29 补登 /btw /side、归档特性补登 /archive /delete 各一次）；窗内末位=第 18 项
+    // （menuMaxRows=18 由 App 视口推得），首条窗外=第 19 项，溢出计数=清单长-窗行
+    const winEnd = SLASH_COMMANDS[17]!;
+    const firstOutside = SLASH_COMMANDS[18]!;
+    assert.ok(f1.includes(winEnd), `深位命令在窗口内（窗内末位=${winEnd}，清单 ${SLASH_COMMANDS.length} 条随单源演进自动同频）`);
     assert.ok(/more|还有/.test(f1), '窗口溢出计数行在场（清单超出滑窗时提示剩余条数）');
-    assert.ok(!f1.includes('/memory'), '窗口外长尾不渲染（/memory 顺延至窗下，经过滤可达，下滑窗口径）');
-    assert.ok(!f1.includes('/memory-add'), '窗口外长尾不渲染（经过滤可达，下滑窗口径）');
+    assert.ok(!f1.includes(firstOutside), `窗口外长尾不渲染（${firstOutside} 顺延至窗下，经过滤可达，下滑窗口径）`);
+    assert.ok(!f1.includes(SLASH_COMMANDS[19]!), '窗口外长尾不渲染（第二项同样窗外）');
     assert.ok(!/\/help {2}\/init/.test(f1), '不再横向单行拼接');
     term.write('mem');
     await settle();
@@ -159,7 +165,7 @@ test('App：技能命令入面板（描述上屏），最近使用排前', async
   const tmp = tmpDir('sunshinex-slashmenu3-');
   let term: ReturnType<typeof render> | undefined;
   try {
-    // id 共享 '/tool' 前缀：两技能同屏可比序（内置 22 条占满首屏窗口，无共同前缀则技能在窗口外）
+    // id 共享 '/tool' 前缀：两技能同屏可比序（内置清单占满首屏窗口，无共同前缀则技能在窗口外）
     for (const [id, desc] of [['tool-alpha', 'Alpha tool skill'], ['tool-zeta', 'Zeta tool skill']] as const) {
       const dir = path.join(tmp, '.sunshinex', 'skills', id);
       fs.mkdirSync(dir, { recursive: true });
