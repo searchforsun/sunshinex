@@ -54,7 +54,7 @@ pnpm gui:build  # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
 ```text
 src/
   index.ts            # npm/pnpm start 入口（装载 settings.json 配置链）
-  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / skills install；worktree-launch --worktree 装配前解析）
+  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index；worktree-launch --worktree 装配前解析）
   types.ts            # 全局共享类型（新增共享类型一律在此登记）
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildHarness 单点 + buildDeps CLI 整形：CLI/TUI/GUI 三面共用）
@@ -65,7 +65,7 @@ src/
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
-  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v2 段级行）/snapshots 会话持久化
+  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/snapshots 会话持久化
   harness/
     index.ts          # Harness 门面（单发执行缝 reactor 仅测试驱动用——生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
@@ -94,8 +94,8 @@ src/
   model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
   taskboard/          # 任务板域模型与协调器（model 纯 reducer/board 协调/store 落盘/translate 事件翻译/teammate 长驻队友/inbox 消息收件/executors 执行体）
   delegation/         # 委派投影（projection 纯 reducer：spawn/后台任务/graph 节点统一生命周期，TUI/GUI 同源消费点）
-  session/            # 会话内核（session-kernel spec）：kernel.ts SessionKernel（applyEvent 纯 reducer=转录/等待队列唯一投影，steer/seg 段级事件）、entry.ts 条目模型、v2log.ts v2 段级会话档行读写；runtime.ts KernelRuntime 装配单点（createKernelRuntime，TUI/GUI 共用）
-  serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v2 单档唯一写者链路 kernelEventRows）
+  session/            # 会话内核（session-kernel spec）：kernel.ts SessionKernel（applyEvent 纯 reducer=转录/等待队列唯一投影，steer/seg 段级事件与 shadow 透传）、entry.ts 条目模型、seglog.ts kernel 事件→journal v3 行映射（kernelEventRows）；runtime.ts KernelRuntime 装配单点（createKernelRuntime，TUI/GUI 共用）
+  serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v3 单档唯一写者链路 kernelEventRows）
   storage/            # 本地 JSON 存储底座；archive.ts（ArchiveStore 接口 + fs 实现，归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/NSIS 单安装包打包；daemon 以子进程装配，壳与主仓零编译期耦合）
@@ -123,6 +123,7 @@ SUNSHINE.md          # 项目业务配置
 - **主链工具面（装配期一次性登记，selfcheck `tools :` 行同源）**：
   - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `write` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
   - 另册：`spawn`（`subagent.ts` 工厂，子代理派生）/ `task_stop`（`tools/task-stop.ts`，按 id 停止后台 exec/超时转后台/后台子代理）/ `task_wait`（`tools/task-wait.ts`，阻塞等待后台任务到终态并内联回执 exec 日志尾部/子代理结论）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
+  - 任务板与团队（`taskboard-tools.ts` + `teammate-tools.ts` 工厂，`harness/index.ts` 装配）：`create_teammate`（长驻成员创建，与 spawn 分立动词）/ `create_task` / `update_task` / `review_task` / `get_board` / `send_message`（主链面）；teammate 成员面派生时剔板面写件、换注 `get_board`/`get_task` 读取
 - **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀、子代理派生、后台任务停止等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制。**工具参数声明化**：每个工具必须以 JSON Schema 声明 `parameters`（function calling strict 兼容口径——`additionalProperties` 显式闭合、可选项以 null 联合进 `required`；自由入参属例外，须显式登记 `additionalProperties: true` 宽松点），新工具不带 schema 不得入清单
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
 - **核心契约零兼容**：模型核心契约（原生 function calling 等 API 层强制的能力）不支持即换模型/换端点，禁止在提示词层做兼容适配——靠提示词约束模型输出分布的兼容是开集，补丁修不完。允许保留的容错仅限两类：①wire 层差异（输入形态闭集 + 每种形态有确定归一规则 + 未知形态可判定并安全回退，如流式 tool_calls 分片重组、finish_reason 归一）；②运行时自愈与可选增强降级（上下文超限反应式压缩、reasoning_effort 探测降级——缺了只损增强不损核心契约）。新增任何兼容/兜底须先过此判据：需要预测「模型下一步会输出什么」的补丁一律不做
@@ -141,6 +142,7 @@ SUNSHINE.md          # 项目业务配置
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |
 | ws | GUI daemon WebSocket 服务面（会话事件流 / PTY 帧下行），收敛于 `src/serve/daemon.ts` 接缝 | 事件面退 HTTP 快照轮询（GET 快照路径已在） |
 | node-pty | GUI 终端标签伪终端宿主（PTY 分配与 I/O 中继），收敛于 `src/serve/pty.ts` 接缝（原生模块，安装期编译） | 终端标签降级不可用提示，daemon 其余面不受影响 |
+| @xyflow/react + @dagrejs/dagre | GUI 任务板依赖图（React Flow 图面渲染 + dagre 自动分层布局），收敛于 `gui/src/tabs/TaskDag.tsx` | 降级为列表视图（列表/流程图双卡切换已在）；布局算法接缝在 `layoutTaskDag` 纯函数 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
 
@@ -251,7 +253,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 图渲染 | mermaid | 已引入 | 会话流 mermaid 围栏渲染（懒加载/主题随 data-theme/失败回落），收敛于 `gui/src/Mermaid.tsx` |
 | GUI 图标 | lucide-react + @iconify/react（vscode-icons 集） | 已引入 | 界面图标与文件树文件图标 |
 | GUI 终端 | @xterm/xterm + @xterm/addon-fit（前端）+ node-pty（宿主） | 已引入 | 内嵌终端：gui 渲染、daemon 经 node-pty 分配 PTY（原生模块，§5 台账） |
-| GUI 任务板 DAG | 仓内 layoutBoard（Kahn 分层）+ 自绘 svg | 已引入 | 任务依赖图布局与连线，收敛于 `gui/src/board-layout.ts`，零新依赖 |
+| GUI 任务板 DAG | @xyflow/react + @dagrejs/dagre | 已引入 | 任务依赖图渲染与自动布局（React Flow 图面：平移/缩放/控制钮内置；dagre 分层），收敛于 `gui/src/tabs/TaskDag.tsx`（§5 台账同行） |
 | GUI 桌面壳 | Electron | 已引入 | 桌面容器（托盘驻留/全局快捷键/原生外开），收敛于 `shell/` 工作区包 |
 | GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS 单安装包打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |

@@ -6,7 +6,7 @@
 
 ## 一句话定位
 
-SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长任务为北极星场景，TUI + GUI 双交互面，凭 MCP / 技能·子代理 / 插件三层生态保持开放扩展，以「宽预算 + 验收收敛 + 基准集量化」保证长任务稳定可靠执行。
+SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长任务为北极星场景，TUI + GUI 双交互面，凭 MCP / 技能·子代理生态保持开放扩展，以「宽预算 + 验收收敛 + 基准集量化」保证长任务稳定可靠执行。
 
 ## 北极星场景
 
@@ -21,7 +21,7 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 |--------|------|------|
 | CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / serve / skills install / kb-index / tui） |
 | TUI | Claude Code | 第一入口，v1.0 默认交互面，持续打磨 |
-| GUI | Codex 工作台 | 已交付：对话交互 + 代码预览 / diff + 任务看板 + 终端 / Web / Agents 标签 + 设置管理面（Electron 桌面壳与浏览器双形态） |
+| GUI | Codex 工作台 | 已交付：对话交互 + 代码预览 / diff + 任务板（列表 / 流程图）+ 终端 / Web 标签 + 设置管理面（Electron 桌面壳与浏览器双形态） |
 
 三面共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；最外层一律开源组件优先（CLAUDE.md §13）。
 

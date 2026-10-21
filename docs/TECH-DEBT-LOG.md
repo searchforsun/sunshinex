@@ -65,7 +65,7 @@
 
 > 未偿债项在此逐条登记（编号/账本/状态/描述/证据/偿还动作/登记来源）；偿还后在同轮提交中翻转状态并补「关联提交」。本区与上方清理记录互不掺杂。
 
-> 当前未偿债项：无——D32 全清（第六批 F-1..F-7 落库,Chat.tsx 1737→768 过 ≤800 验收线）。D30–D31、D33–D37 已闭。历史 D1–D4、D6–D16 已归档，D5 转长期挂起不属活动待办。新增债项按下表格式登记。
+> 当前未偿债项：D38（Board.tsx 死组件簇，代码债 G·轻，登记待独立批次）。D30–D37 已闭。历史 D1–D4、D6–D16 已归档，D5 转长期挂起不属活动待办。新增债项按下表格式登记。
 
 | 编号 | 账本 | 状态 | 描述 | 证据 | 偿还动作 | 登记来源 |
 |---|---|---|---|---|---|---|
@@ -76,6 +76,8 @@
 | D35 | 代码债 G | closed（三仓 flag 门禁全开，导出面存量清零） | 导出面收敛与 noUnused 常态化。**已清（34c6dca 后续批）**：主仓扫描 13 处清零（产品码 5=ModelAdapter/path/restoreChange/AskUserSeam 死 import+deriveTeammateRegistry 死 team 参连 harness/index 与两测试调用点同步；测试码 8=死局部/死绑定，有副作用调用保留调用摘绑定）、主仓与 shell tsconfig 开 noUnusedLocals/noUnusedParameters（门禁生效）；gui 未占用文件 9 处清零（context-ring/diff-panel/ProjectMenu/DiffTab/tab-state.test 死 import、AgentTranscriptTab 死 DelegationBadge 组件+import+props 解构收窄、ensureSession registry→_registry 预留接缝注记）。**余项已清（本批 afc0f4a）**：gui 26 处（WIP 落库后复扫，含其在途增量）清零——死 import 9/死解构 6（App.test 七处未用 conn 摘除、RunEntryView/Chat 解构收窄、presetMode/langTick/CSSProperties/HelpCircle/Terminal/SquareTerminal/splitMentionTokens/ReactNode/connection 三类型）/死局部与回调 8（skillId/askChosen/renderHighlightSpans 组件/有名死常量）/RawPane 死 t 导入；gui tsconfig 开 noUnusedLocals/noUnusedParameters——三仓 flag 门禁全开 | tsc --noUnusedLocals --noUnusedParameters 全仓扫描 | gui 落库后清 22 处+开 flag | 2026-10-17 清理轮普查 |
 | D36 | 流程 | closed（纪律生效，第二十二轮收账） | WIP 债登记纪律：a69d300 提交信息「e2e 同步(WIP:4 用例待迁)」从未入账，清单只存 commit message（经查已随 3d8378b 迁毕无损失，但飞行态不可考）。**关账依据**：T12 教训登记后纪律即入规——第十四轮起所有批次在途债均登台账待办区（批B 余件/批C 余件/filePal UI 部裁定/e2e 立案均随轮入账），提交信息只留轮次与编号指针；连续八轮合规无违例 | git log -S 待迁 | — | 2026-10-17 清理轮普查 |
 | D37 | 代码债 K | closed（全清；动词条余件随并行 G14.216 落库,第二十五轮勘误收账） | GUI 外观双语漏面：中文字面量直上屏未走 `t()`。**已清**：Board.tsx 6 处+board.test 断言同批转 en、DirPicker.tsx 3 处；Board 空态标题/RawPane/SettingsForm toast 三钉随第十一轮双语容忍正解清偿；Chat.tsx 工具动词条 6 行外的 Files.tsx 2 处/App.tsx 1 处已清（3611e95，无测试钉直转）；SettingsForm 键描述双语表为 {en,zh} 数据形态非漏面（审计勘误）。**余件①已清（6f42eba G14.216 用户裁定收口,第二十五轮核账）**：动词条收敛 chat/ToolEntry.tsx TOOL_VERB_ZH 单点双语表（zhToolName 走 t(),未登记工具回退原名）,「建单→创建任务」等八展开词与运行态标签同口径并带测试钉;grep「建单」零残留。**余面②**e2e 五场景语言钉盘点**已清（第二十三轮）**——G8c① toast 钉双语容忍（703cabf）/G4→G5 journal 断言排除 G14.213b 同目录转录档（bd4909d）/G6·G8a·G8d 断言面随 G14.213 任务板重构适配（290444c/9b3d4b7/005b95d），e2e.test.ts 19/19 全绿，「transcript 既有家族」实为重构后旧选择器过时非产品缺陷。**关账依据**：两余件分别随 6f42eba（并行落库）与第二十三轮清偿,本行勘误即闭 | CJK 扫描 + gui 归因运行（stash 对照） | 随批清偿 | 2026-10-17 D30 轮发现、本批修复、第二十五轮收账 |
+
+| D38 | 代码债 G | open | gui/pages/Board.tsx 死组件簇：G5 看板页（Board.tsx 325 行，layoutBoard 分层+自绘 svg DAG 与委派/team 侧栏）在 G14.213 任务板重构（'agents' 页签 id 渲染 TaskBoardTab=列表/TaskDag(@xyflow/react+@dagrejs/dagre) 双卡）后零渲染消费，唯一引用=其测试 board.test.tsx（305 行）；board-layout.ts（82 行，layoutBoard/layoutTaskDag）随组件成死链。delegationStatusText 双语对现居 Board.tsx，退役时随委派呈现面（TaskBoardTab agentOfTask 域）迁位 | grep `<Board`/`pages/Board` 全仓仅 board.test 命中（2026-10-21 文档轮核证） | 组件+布局+测试三件整体删除（删除即无痕）；delegationStatusText 迁消费域；CLAUDE §5 台账 xyflow 行回退预案句同步复核 | 2026-10-21 冗长/过时文档轮发现 |
 
 ### 归档（D1–D29；D5 长期挂起）
 

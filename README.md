@@ -21,7 +21,7 @@ graph LR
 src/
   cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index；裸命令进交互终端）
   tui/       # 交互式终端（ink + React，对标 Claude Code，v1.0 默认入口）
-  session/   # 会话内核（SessionKernel：转录/等待队列唯一投影 + v2 段级会话档读写）与 KernelRuntime 装配单点（CLI/TUI/GUI 共用）
+  session/   # 会话内核（SessionKernel：转录/等待队列唯一投影 + v3 段级会话档读写）与 KernelRuntime 装配单点（CLI/TUI/GUI 共用）
   harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子代理、知识库
   loop/      # Loop 引擎（生成→校验→修正）
   graph/     # DAG 多角色协作编排
@@ -120,7 +120,7 @@ scripts/release.mjs --bump patch|minor|major   # 递增版本号，随发版提�
 scripts/release.mjs --version 0.5.0            # 指定版本发版（写回 package.json）
 scripts/release.mjs --dry-run                  # 只验证 + 打包预览，不触网不落库
 scripts/release.mjs --version 0.5.0 --clobber  # 同版本重发（覆盖附件，须显式授权）
-scripts/release.mjs --no-gui                 # 只发 TUI tgz（跳过 GUI 安装包构建上传）
+scripts/release.mjs --no-gui                   # 只发 TUI tgz（跳过 GUI 安装包构建上传）
 
 一次发版 = 同一 Release 同一 tag 上传两类安装包：TUI tgz（sunshinex-agent-<ver>.tgz）+ GUI 单安装包（sunshinex-<ver>-setup.exe，NSIS，业界 kebab 命名；版本随根 package.json 单源同步；验证链含 GUI/e2e/壳冒烟与安装包静默装冒烟；本机网络受限带双镜像 env，见 MANUAL-GUI 开发者节）
 ```
@@ -134,7 +134,7 @@ scripts/release.mjs --no-gui                 # 只发 TUI tgz（跳过 GUI 安�
 
 - **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
 - **子代理**：`agents/{id}/agent.md` 注册制（frontmatter 可声明 `isolation: worktree` 隔离、`executor: internal-team` 长驻 teammate / `external-cli` 外部执行体）；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
-**问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。
+- **问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。
 
 ## 文档导航
 

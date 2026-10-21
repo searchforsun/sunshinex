@@ -74,7 +74,7 @@ flowchart TB
 
 - [x] DAG 工作流核心引擎：节点调度、依赖解析、并发控制（环检测携带环路径）
 - [x] 四种流程模式：串行、并行、分支、汇合
-- [x] 多角色子 Agent（SubagentRunner fork 单点 + agents/ 目录注册制 + 并发上限 4 + 预算换算）
+- [x] 多角色子 Agent（SubagentRunner fork 单点 + agents/ 目录注册制 + 并发上限 8 + 预算换算）
 - [x] 软件工程全链路流水线模板（五节点）
 - [x] CI/CD 集成节点（工作流内编排执行）
 - [x] 人工审批节点与错误局部化（gate 审批、节点私有 fork、终态一行结论回写）
@@ -129,7 +129,7 @@ flowchart TB
 
 **目标**：全量测试、性能优化、打包发布。
 
-- [x] 全量测试体系（node:test 全量 1100+ 用例，tsc strict 零报错 + pnpm selfcheck 双门禁，CI 双平台矩阵）
+- [x] 全量测试体系（node:test 全量 1800+ 用例，tsc strict 零报错 + pnpm selfcheck 双门禁，CI 双平台矩阵）
 - [ ] 长任务基准集（目标形态可靠性口径）：固定任务库量化完成率与人工干预次数，可自动判定走脚本化、需人工判定走观察台账，不入提交门禁（防端点抖动污染 CI）
 - [ ] 性能优化：缓存命中率观测（探针口径已建）、响应速度、内存占用
 - [ ] 跨平台打包：CLI 全局包 + GitHub Release 发版链已交付（release.mjs），GUI 桌面端三平台安装包随 5B
@@ -149,7 +149,7 @@ flowchart TB
 - [x] 模型 SDK 接入 OpenAI 协议兼容供应商（settings.json 配置，模型侧原生 function calling）
 - [x] 阶段五 5A 主体（会话 REPL、流式渲染、plan、审批与选择器、会话持久化 + resume + rewind/fork、中断与 steering、记忆/技能命令族、effort、上下文压缩模型驱动六要素、后台任务账本与 task 工具族、worktree 隔离）
 
-当前基线（2026-10-07 实测）：tsc strict 零报错、全量 1738 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 无头 e2e 11 例全绿。实施记录见各 plan 执行回写与 reports/。
+当前基线（2026-10-21 实测）：tsc strict 零报错、全量 1882 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 全量 363 例全绿（含真 daemon e2e）。实施记录见各 plan 执行回写与 reports/。
 
 下一步（目标形态排期，见 docs/GOAL.md）：长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子代理生态沉淀分享）。
 
