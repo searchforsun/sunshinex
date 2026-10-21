@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Folder, PanelRight } from 'lucide-react';
+import { Archive, ArchiveRestore, Folder, PanelRight } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 
@@ -86,12 +86,18 @@ export interface ChatTopbarProps {
   readonly taskActive: number;
   readonly conn: Connection;
   readonly onOpenTab?: ((type: 'tasks' | 'agents' | 'bgtasks') => void);
+  /** 归档态(2026-10-21):快照播种对齐——true 显徽标+撤销钮,false 显归档钮(确认 morph) */
+  readonly archived: boolean;
+  /** 归档/撤销归档上抛(落 conn.archiveSession;本地 archived 同步归宿主 Chat) */
+  readonly onArchive: (archived: boolean) => void;
   readonly showExpandSidebar: boolean | undefined;
   readonly onExpandSidebar: (() => void) | undefined;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, showExpandSidebar, onExpandSidebar } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, showExpandSidebar, onExpandSidebar } = props;
+  // 归档确认 morph(2026-10-21):首击显「确认」,再击才落归档——防误触;收起由确认完成(点外不复位可后续打磨)
+  const [confirming, setConfirming] = useState(false);
   return (
     <header className="chat-topbar">
         {fixedTitle === '' ? (
@@ -129,6 +135,25 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           </span>
         )}
         <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
+        {archived ? (
+          <>
+            <span className="sx-archived-badge">{t('Archived', '已归档')}</span>
+            <button type="button" className="sx-iconbtn" data-tip={t('Unarchive', '撤销归档')}
+              aria-label={t('Unarchive', '撤销归档')} onClick={() => onArchive(false)}>
+              <ArchiveRestore size={14} strokeWidth={1.75} />
+            </button>
+          </>
+        ) : confirming ? (
+          <button type="button" className="sx-archive-confirm" aria-label={t('Confirm archive', '确认归档')}
+            onClick={() => { setConfirming(false); onArchive(true); }}>
+            {t('Confirm', '确认')}
+          </button>
+        ) : (
+          <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
+            aria-label={t('Archive', '归档')} onClick={() => setConfirming(true)}>
+            <Archive size={14} strokeWidth={1.75} />
+          </button>
+        )}
         {showExpandSidebar && (
           <button
             type="button"

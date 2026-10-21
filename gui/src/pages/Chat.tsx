@@ -145,6 +145,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新) */
   const [sessMode, setSessMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
+  /** 归档态(2026-10-21):快照播种对齐(sessMode 同链,use-session-events reseed 回填)——顶栏归档钮/徽标三态 */
+  const [archived, setArchived] = useState(false);
   /** pill 开合('plus' = + 附加面板) */
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
   /** textarea 引用(+ 面板插入收口后焦点回输入框) */
@@ -220,6 +222,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setQueued,
     setSessMode,
     setSessEffort,
+    setArchived,
     submitTextRef,
     flushScrollMem,
   });
@@ -305,8 +308,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     return () => document.removeEventListener('mousedown', onDown);
   }, [pillOpen]);
 
-  /** G5 会话回收(daemon 会话 id 寻址):confirm → deleteSession → onBack 回首页;
-   *  失败留在会话示错条(HTTP 409 running 等不静默) */
+  /** 归档/撤销归档(2026-10-21 T5):conn.archiveSession 落 daemon + 本地 archived 即时换面;
+   *  失败回摆(409 running 等不静默驻留假态),下次 reseed 快照再权威对齐 */
+  const onArchive = useCallback((v: boolean): void => {
+    setArchived(v);
+    conn.archiveSession(sessionId, v).catch(() => setArchived(!v));
+  }, [conn, sessionId]);
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
   const { submitText, send, interrupt } = useChatSubmit({
@@ -376,6 +383,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         taskActive={taskActive}
         conn={conn}
         onOpenTab={onOpenTab}
+        archived={archived}
+        onArchive={onArchive}
         showExpandSidebar={showExpandSidebar}
         onExpandSidebar={onExpandSidebar}
       />

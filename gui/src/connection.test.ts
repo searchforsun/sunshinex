@@ -679,4 +679,38 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     // root 在场落 body(JSON 逐字)
     expect(fetchLog.every((f) => f.init?.body === JSON.stringify({ root: '/w', name: 'fs' }))).toBe(true);
   });
+
+  it('⑬ 2026-10-21 归档连接面:archiveSession/archivedSessions:POST archive 与 GET sessions/archived 的路径与载荷;非 2xx 抛错含 status', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    const rows = [
+      { id: 'j1', slug: 'demo', root: '/w1', title: '自定义名', updatedAt: 10, archivedAt: 20 },
+      { id: 'j2', slug: 'other', root: '/w2', updatedAt: 5, archivedAt: 7 },
+    ];
+    fetchQueue.push(
+      ok(), // archiveSession('s 1', true)
+      ok(), // archiveSession('s1', false)
+      ok(rows), // archivedSessions → 行数组透传
+    );
+    await conn.archiveSession('s 1', true);
+    await conn.archiveSession('s1', false);
+    await expect(conn.archivedSessions()).resolves.toEqual(rows);
+    // 路径面:id 编码(deleteSession 同款);归档列表跨工作区扁平
+    expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/session/s%201/archive',
+      'http://127.0.0.1:7788/session/s1/archive',
+      'http://127.0.0.1:7788/sessions/archived',
+    ]);
+    // 载荷面:POST {archived};列表读面 GET 缺省(无 method 无 body)
+    expect(fetchLog[0]?.init?.method).toBe('POST');
+    expect(fetchLog[1]?.init?.method).toBe('POST');
+    expect(fetchLog[0]?.init?.body).toBe(JSON.stringify({ archived: true }));
+    expect(fetchLog[1]?.init?.body).toBe(JSON.stringify({ archived: false }));
+    expect(fetchLog[2]?.init?.method).toBeUndefined();
+    expect(fetchLog[2]?.init?.body).toBeUndefined();
+    // Bearer + json 头(POST 面)
+    expect(fetchLog[0]?.init?.headers).toEqual({ authorization: 'Bearer tok', 'content-type': 'application/json' });
+    // 非 2xx 透传既有惯例:running 归档 409 → 错误消息含路径与 status
+    fetchQueue.push(errResp(409));
+    await expect(conn.archiveSession('s1', true)).rejects.toThrow('/session/s1/archive -> 409');
+  });
 });

@@ -42,6 +42,8 @@ export function useSessionEvents(deps: {
   /** 会话 pill(snapshot 回显面) */
   setSessMode: Dispatch<SetStateAction<'dontAsk' | 'manual' | 'plan'>>;
   setSessEffort: Dispatch<SetStateAction<string | undefined>>;
+  /** 归档态播种(2026-10-21:snapshot.archived 回填——顶栏归档钮/徽标三态;旧 daemon 无字段=未归档面) */
+  setArchived: Dispatch<SetStateAction<boolean>>;
   /** G14.213 欢迎页接力取用(ref 跳板,声明在 Chat、赋值随 submitText 定义) */
   submitTextRef: MutableRefObject<(text: string) => Promise<void>>;
   /** G14.212 滚动位存档落盘(unmount 兜底;滚动子系统留 Chat,函数注入) */
@@ -70,6 +72,7 @@ export function useSessionEvents(deps: {
     setQueued,
     setSessMode,
     setSessEffort,
+    setArchived,
     submitTextRef,
     flushScrollMem,
   } = deps;
@@ -121,6 +124,7 @@ export function useSessionEvents(deps: {
         setQueued(snap.queued ?? []);
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'dontAsk' | 'manual' | 'plan');
         setSessEffort(snap.effort);
+        setArchived(snap.archived === true); // 2026-10-21 归档态播种(sessMode 同链;缺字段=未归档面)
         // P10:status 读内核游标(seed 内派生),快照 status 字段不再入参
         let next = seedChatFromSnapshot(snap.messages, {
           openRun: snap.openRun ?? -1,

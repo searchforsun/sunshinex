@@ -150,6 +150,7 @@ test('② 实跑平移面：submit 受理→running→done→idle；转录三类
     assert.equal(snap.lastSeq, Math.max(...ctx.frames.filter((f) => f.kind === 'event').map((f) => f.seq)), 'lastSeq=已广播事件帧最大 seq');
     assert.equal(snap.openRun, -1, '完成后内核流式游标归位(-1)——快照客户端零反推');
     assert.equal(snap.openSeg, -1);
+    assert.equal(snap.archived, false, '归档态字段恒在场:未附 journal=false(2026-10-21 快照归档态契约钉)');
     assert.ok(ctx.frames.length > 0 && ctx.frames.every((f) => f.sessionId === 's1'), '实跑帧恒挂 sessionId');
   });
 });

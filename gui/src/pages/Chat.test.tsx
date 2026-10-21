@@ -625,7 +625,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelector('.seg-collapse:not(.open)')).toBeNull();
   });
 
-  it('G14.166 spawn 折叠行带子代理名(label 优先,回退 agent_id;无名只出动词)', async () => {
+  it('G14.166 spawn 折叠行带子智能体名(label 优先,回退 agent_id;无名只出动词)', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 's1', input: { prompt: 'x', label: '架构分析' } } });
@@ -779,7 +779,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     }
   });
 
-  it('G14.171 spawn 行子代理名=蓝色链接,点击上抛 onOpenAgent(label, title)', async () => {
+  it('G14.171 spawn 行子智能体名=蓝色链接,点击上抛 onOpenAgent(label, title)', async () => {
     const onOpenAgent = vi.fn();
     const first = render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
     await flushed();
@@ -886,5 +886,45 @@ describe('G14.181 用户气泡限高折叠', () => {
     await flushed();
     expect(document.querySelector('.user-bubble-clamped')).toBeNull();
     expect(document.querySelector('.user-bubble-toggle')).toBeNull();
+  });
+});
+
+describe('顶栏归档三态(2026-10-21 T5)', () => {
+  it('顶栏归档:未归档显 Archive 钮→点击变确认→确认调 archiveSession(true);已归档显徽标+撤销钮', async () => {
+    const archiveSession = vi.fn(() => Promise.resolve());
+    const snapOf = (archived: boolean): unknown => ({
+      messages: [],
+      status: 'idle',
+      openRun: -1,
+      openSeg: -1,
+      board: { tasks: [] },
+      delegations: [],
+      team: [],
+      pending: [],
+      lastSeq: 0,
+      archived,
+    });
+    // —— 未归档(快照 archived:false):Archive 钮在场 → 点击变「确认」→ 确认调 archiveSession(id,true) 且本地换徽标面 ——
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).archiveSession = archiveSession;
+    (conn as unknown as Record<string, unknown>).sessionSnapshot = () => Promise.resolve(snapOf(false));
+    const first = render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed(); // 播种落定(archived 播种已应用,确认击不发播种竞态)
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm archive' }));
+    expect(archiveSession).toHaveBeenCalledWith('s1', true);
+    expect(await screen.findByText('Archived')).toBeTruthy(); // 本地 archived 同步 → 徽标即刻换面
+    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull(); // 确认 morph 后归档钮退役
+    first.unmount();
+    // —— 已归档(快照 archived:true):徽标 + 撤销钮;撤销调 archiveSession(id,false) 且徽标即撤 ——
+    const conn2 = connOf([]);
+    (conn2 as unknown as Record<string, unknown>).archiveSession = archiveSession;
+    (conn2 as unknown as Record<string, unknown>).sessionSnapshot = () => Promise.resolve(snapOf(true));
+    render(<Chat conn={conn2} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    expect(await screen.findByText('Archived')).toBeTruthy();
+    expect(document.querySelector('.sx-archived-badge')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Unarchive' }));
+    expect(archiveSession).toHaveBeenCalledWith('s1', false);
+    expect(screen.queryByText('Archived')).toBeNull(); // 撤销即回未归档面(Archive 钮回归)
   });
 });

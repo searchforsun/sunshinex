@@ -95,11 +95,11 @@ export interface Connection {
   /** GET /session/:id/context:上下文分段构成(G10-C6 面板) */
   sessionContext(id: string): Promise<{ parts: Array<{ id: string; tokens: number; count: number }>; chainByAction: Array<{ action: string; tokens: number }>; total: number; window: number; free: number }>;
   /** GET /session/:id/shadow-events:journal 影子事件全量(board/delegation/subagent)+ cut 水位
-   *  (G14.2xx b 影子投影水合——刷新/重连后会话打开时拉取清零重放;WS 环窗 512 对长会话子代理流
+   *  (G14.2xx b 影子投影水合——刷新/重连后会话打开时拉取清零重放;WS 环窗 512 对长会话子智能体流
    *  必溢出,恢复唯一可靠入口)。cut=服务端读档时刻泵水位:在途缓冲帧按 seq>cut 重放,零丢帧零重复 */
   shadowEvents(id: string): Promise<{ events: SessionEvent[]; cut: number }>;
   /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板)。G14.2xx 用户裁定:本面只记录 exec 类
-   *  真后台执行——subagent/teammate 账本行退役(子代理/队友在任务板·agent 页签已有专面,双处
+   *  真后台执行——subagent/teammate 账本行退役(子智能体/队友在任务板·agent 页签已有专面,双处
    *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用) */
   sessionTasks(id: string): Promise<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number }>>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
@@ -137,6 +137,10 @@ export interface Connection {
   fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp>;
   /** POST /session/:id/delete(2026-10-21 受控删除):须先归档(未归档 409);真清会话档全家 */
   deleteSession(id: string): Promise<void>;
+  /** POST /session/:id/archive {archived}:归档/撤销;running 409 */
+  archiveSession(id: string, archived: boolean): Promise<void>;
+  /** GET /sessions/archived:跨工作区归档列表(归档页数据源) */
+  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }>>;
   /** POST /session/:id/pty {cols?,rows?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
    *  （daemon 缺省 80×24）；Terminal 页（T6）持 ptyId 开专用 WS /session/:id/pty/:ptyId */
   openPty(sessionId: string, cols?: number, rows?: number): Promise<{ ptyId: string }>;
@@ -444,6 +448,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     deleteSession(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/delete`);
+    },
+    archiveSession(id: string, archived: boolean): Promise<void> {
+      return postJson(`/session/${encodeURIComponent(id)}/archive`, { archived });
+    },
+    archivedSessions() {
+      return getJson('/sessions/archived');
     },
     async openPty(sessionId: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
       const path = `/session/${encodeURIComponent(sessionId)}/pty`;

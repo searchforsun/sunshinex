@@ -30,7 +30,7 @@ export type { RunMeta } from '../session/entry';
 
 /** 影子事件判定单点在内核层(src/session/kernel,内核落档透传与本面回放改道共用)——此处原路径
  *  转口供 daemon 回放面与测试消费。WS 回放面据此把这类帧从 512 环窗改道 journal 全量重发
- *  (环窗对长会话子代理流必溢出,刷新后投影恢复不可依赖环窗;journal 落档先于广播,行集恒为全量真源) */
+ *  (环窗对长会话子智能体流必溢出,刷新后投影恢复不可依赖环窗;journal 落档先于广播,行集恒为全量真源) */
 export { isShadowEvent } from '../session/kernel';
 
 /**
@@ -72,6 +72,8 @@ export interface SessionSnapshot {
   effort?: ReasoningEffort;
   /** G10-C1d 排队插话段(steering FIFO 快照;seq=队列下标,cancel 寻址键) */
   queued: Array<{ seq: number; text: string }>;
+  /** 归档态(2026-10-21):旁车 meta archived 回读——GUI 顶栏归档钮/徽标三态播种;未附 journal 恒 false */
+  archived: boolean;
 }
 
 /** snapshot 挂起段行（G5）：kind 判别与 daemon 挂起表同源（approval/ask）；pid 为 daemon 级铸造
@@ -242,7 +244,7 @@ export class SessionRuntime {
     }
   }
 
-  /** 子代理影子帧重放(emitQueueFrame 同形):journal 里的子代理事件按新 seq 回灌帧缓冲+广播,
+  /** 子智能体影子帧重放(emitQueueFrame 同形):journal 里的子智能体事件按新 seq 回灌帧缓冲+广播,
    *  GUI agent 页签的聚合面从帧重建(实时流同一消费通道) */
   private emitShadowFrame(e: SessionEvent): void {
     const seq = this.opts.nextSeq();
@@ -450,7 +452,7 @@ export class SessionRuntime {
   }
 
   /** G14.2xx b 影子事件全量读面（HTTP 水合端点用）：journal shadow 行（board/delegation/subagent）
-   *  原始事件按序返回,cut=读档时刻的泵水位。环窗（EVENT_BUFFER_CAP=512）对长会话子代理流必溢出,
+   *  原始事件按序返回,cut=读档时刻的泵水位。环窗（EVENT_BUFFER_CAP=512）对长会话子智能体流必溢出,
    *  且 GUI 刷新时 WS 连接建立先于会话 attach——「连接时刻回放」对影子投影天生够不着;journal 是
    *  唯一全量源(落档先于广播)。客户端契约:水合在途的实时 shadow 帧按 seq 缓冲,落定后清零重放
    *  本列、再重放缓冲中 seq > cut 的帧——cut 前的帧已含于行集(读档先于其广播),cut 后的帧只在
@@ -508,7 +510,7 @@ export class SessionRuntime {
       this.runRunSteps = typeof e.payload.runSteps === 'number' ? e.payload.runSteps : undefined;
     }
     if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
-      // G14.2xx 板面/委派/子代理流落档已收归内核泵(shadow 事件,seglog 映射 journal 行)——
+      // G14.2xx 板面/委派/子智能体流落档已收归内核泵(shadow 事件,seglog 映射 journal 行)——
       // 本面只留影子投影更新,daemon/TUI 两写面自动继承
       const bev = boardEventFrom(e);
       if (bev !== undefined) this.board = applyBoardEvent(this.board, bev);
@@ -812,6 +814,9 @@ export class SessionRuntime {
       ...(this.tier ? { tier: this.tier } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
       queued: this.queuedSteer(),
+      archived: this.attachedJournalId !== undefined
+        ? readSessionMeta(resolveDataDir(this.root), this.attachedJournalId).archived === true
+        : false,
       team: this.runtimeImpl.harness.team.aliveNames().map((name) => ({
         name,
         busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,

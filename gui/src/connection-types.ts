@@ -88,6 +88,8 @@ export interface SnapshotResponse {
   queued?: Array<{ seq: number; text: string }>;
   team?: Array<{ name: string; busy: boolean }>;
   pending?: Array<{ pid: string; kind: 'approval' | 'ask'; req?: unknown }>;
+  /** 2026-10-21 归档态:旁车 meta archived 回读(顶栏归档钮/徽标三态播种);可选防旧 daemon(无此字段=未归档面) */
+  archived?: boolean;
 }
 
 /** GET /workspaces 行（T2 工作区注册表，对齐主仓 daemon.ts WorkspaceRow）：root 经 workspace.json
