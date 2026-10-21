@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
@@ -51,6 +52,10 @@ export interface ProjectMenuConn {
   archiveSession(id: string, archived: boolean): Promise<void>;
 }
 
+/** T6 侧栏行打开链(attach 两步)共享句柄:归档页行打开经同一函数——markSeen/markJournal/
+ *  busy 防双发/打开即刷列表簿记两路同享(ref 注册式,见 attachJournalRef) */
+export type AttachJournal = (root: string, journalId: string, journalUpdatedAt?: number) => void;
+
 export interface ProjectMenuProps {
   readonly conn: ProjectMenuConn;
   readonly connState: string; // 'connecting'|'online'|'offline'|'reconnecting'(显示态)
@@ -65,6 +70,9 @@ export interface ProjectMenuProps {
   readonly onOpenSettings?: () => void;
   /** T6 归档页入口(项目组头归档箱钮;可选——未配时钮不渲染,同 onOpenSettings 装配裁定) */
   readonly onOpenArchived?: () => void;
+  /** T6 归档页行打开共享链句柄(App 注入 ref,渲染期注册最新 attachJournal——归档页行点击与
+   *  侧栏行同链同簿记;未配时 App 侧句柄恒 null,归档页行点击静默) */
+  readonly attachJournalRef?: MutableRefObject<AttachJournal | null>;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
   readonly onNewChat: () => void;
   /** 项目行「+」:回欢迎页并预选该项目与审批模式(G10-C16) */
@@ -276,6 +284,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         },
       );
   };
+  /** T6 归档页共享注册:每渲染重赋(App shadowHydrateRef/forkLatestRef 同 idiom——闭包恒新;
+   *  归档页行打开消费面只认 ref,簿记零复制) */
+  if (props.attachJournalRef !== undefined) props.attachJournalRef.current = attachJournal;
 
 
 

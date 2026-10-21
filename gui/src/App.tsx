@@ -10,6 +10,7 @@ import type { TaskBoardState, Delegation } from './projection';
 import { Chat } from './pages/Chat';
 import type { ChatSink } from './pages/Chat';
 import { ProjectMenu } from './sidebar/ProjectMenu';
+import type { AttachJournal } from './sidebar/ProjectMenu';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
@@ -522,24 +523,17 @@ function AppShell(): JSX.Element {
     setSettingsOpen(false);
   }, []);
 
-  /** T6 归档页行打开:与侧栏行同一条 attach-by-journal 链(newSession 装配壳 → attach 播种 →
-   *  openSession;daemon 收编以返回 sessionId 为准,同 ProjectMenu.attachJournal/恢复重放链);
-   *  recentVersion bump 刷侧栏(撤销归档的会话即刻回列表,同 attachJournal 打开即刷新语义)。
-   *  失败静默(T5 carry-over:归档页无错误条面) */
+  /** T6 归档页共享 attach 链句柄:ProjectMenu 渲染期注册其 attachJournal——归档页行打开与侧栏
+   *  行同一条链(newSession 装配壳 → attach 播种 → openSession),markSeen/markJournal/busy
+   *  防双发/打开即刷列表簿记两路同享(评审 Important 项修:不再自复制链) */
+  const attachJournalRef = useRef<AttachJournal | null>(null);
+  /** T6 归档页行打开:经共享句柄调 attachJournal(句柄未注册面=装配中,静默;busy 在途时
+   *  attachJournal 自静默拒双发);先关 overlay 再 attach(Chat 卸毁重挂语义与 settings 同) */
   const openArchivedSession = (root: string, journalId: string): void => {
     setArchivedOpen(false);
-    const conn = connRef.current;
-    if (conn === null) return;
-    conn
-      .newSession(root)
-      .then(({ sessionId }) => conn.attach(sessionId, journalId).then((r) => r.sessionId))
-      .then(
-        (sessionId) => {
-          openSession(sessionId, root, journalId);
-          setRecentVersion((v) => v + 1); // 侧栏即时刷新(组计数/最近区见解档会话)
-        },
-        () => undefined,
-      );
+    const attachJournal = attachJournalRef.current;
+    if (attachJournal === null) return;
+    attachJournal(root, journalId);
   };
 
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
@@ -850,6 +844,7 @@ function AppShell(): JSX.Element {
               onOpenSession={openSession}
               onOpenSettings={openSettings}
               onOpenArchived={() => setArchivedOpen(true)}
+              attachJournalRef={attachJournalRef}
               onNewChat={() => {
                 setComposePresetRoot(null);
                 setPage('welcome');

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import type { MutableRefObject } from 'react';
 import { ProjectMenu } from './ProjectMenu';
-import type { ProjectMenuConn } from './ProjectMenu';
+import type { AttachJournal, ProjectMenuConn } from './ProjectMenu';
 
 /**
  * G14.9 launcher IA:会话只在 RECENTS 列(顶部主列表,空态「暂无最近会话」占位);
@@ -213,5 +214,17 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     unmount();
     renderMenu(makeConn());
     expect(screen.queryByRole('button', { name: 'archived sessions' })).toBeNull();
+  });
+
+  it('attachJournalRef 注册共享 attachJournal(T6 评审修:归档页行打开同链同簿记):渲染期注册,句柄调用即走 attach 两步→onOpenSession', async () => {
+    const conn = makeConn();
+    const attachJournalRef: MutableRefObject<AttachJournal | null> = { current: null };
+    renderMenu(conn, { attachJournalRef });
+    expect(typeof attachJournalRef.current).toBe('function'); // 渲染期注册(归档页行打开消费面)
+    const opensBefore = open.mock.calls.length;
+    attachJournalRef.current!('D:/w/p1', 'j1', FIXED_TS);
+    // 同侧栏行一链:收编以返回 id 为准(桩无收编形态),journalId 随行(G14.213)
+    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'j1'));
+    expect(open.mock.calls.length).toBe(opensBefore + 1);
   });
 });
