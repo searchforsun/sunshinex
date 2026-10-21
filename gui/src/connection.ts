@@ -135,7 +135,7 @@ export interface Connection {
   /** GET /session/:id/diff?callId=（G7 diff 面）：write 调用双内容（见 DiffResp）；404（无快照/
    *  callId 无帧/会话）以 HTTP 失败抛错——Chat write 展开退单列现内容的判据 */
   fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp>;
-  /** POST /session/:id/delete（T2 会话回收，Home 消费）：running 409；journal 文件保留 */
+  /** POST /session/:id/delete(2026-10-21 受控删除):须先归档(未归档 409);真清会话档全家 */
   deleteSession(id: string): Promise<void>;
   /** POST /session/:id/pty {cols?,rows?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
    *  （daemon 缺省 80×24）；Terminal 页（T6）持 ptyId 开专用 WS /session/:id/pty/:ptyId */

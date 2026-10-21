@@ -613,8 +613,8 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
   }, 45_000);
 });
 
-describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真实回收全链', () => {
-  it('两会话 idle → s2 会话页顶栏 Delete(confirm 桩)→ 200 → 回 home;daemon 会话 404/journal 保留', async () => {
+describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 归档态删除→真清文件', () => {
+  it('两会话 idle → s2 先归档(未归档删除 409 门禁)→ Delete(confirm 桩)→ 200 → 回 home;daemon 会话 404/s2 档真清 s1 保留', async () => {
     const env = await startDaemon(
       new ScriptedAdapter(['{"done":true,"reply":"第一会话完成"}', '{"done":true,"reply":"第二会话完成"}']),
     );
@@ -650,18 +650,34 @@ describe('G4→G5 delete 流迁移:Chat 顶栏 Delete(daemon 会话 id)→ 真�
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第二会话目标', '第二会话完成');
 
+      // —— 2026-10-21 受控删除门禁:未归档拒删(409)→ 先归档 s2;归档列表反查 s2 journalId(删除
+      //    后主列表已滤除,此处主列表尚含两档但归档面单行——确定性键)——
+      const denied = await fetch(`http://127.0.0.1:${env.port}/session/s2/delete`, { method: 'POST' });
+      expect(denied.status).toBe(409); // 未归档拒删:'archive the session before deleting'
+      const arch = await fetch(`http://127.0.0.1:${env.port}/session/s2/archive`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      expect(arch.status).toBe(200);
+      const archived = (await (await fetch(`http://127.0.0.1:${env.port}/sessions/archived`)).json()) as Array<{ id: string }>;
+      expect(archived.length).toBe(1);
+      const s2Jid = archived[0]!.id;
+
       // —— G14.28:顶栏 ⋯ 菜单退役,删除改直调 daemon API(回收断言面保留)——
       const del = await fetch(`http://127.0.0.1:${env.port}/session/s2/delete`, { method: 'POST' });
       expect(del.status).toBe(200);
 
-      // —— daemon 侧真实回收:s2 移出注册表(:id 访问 404);journal 文件保留(磁盘档案)——
+      // —— daemon 侧受控删除:s2 移出注册表(:id 访问 404);归档态 purgeSession 真清全家——
+      //    sessions 目录 s2 前缀伴生档(journal/meta/transcript)清零,未删的 s1 journal 保留 ——
       const gone = await fetch(`http://127.0.0.1:${env.port}/session/s2/snapshot`, { headers: H });
       expect(gone.status).toBe(404);
-      const journals = fs
-        .readdirSync(path.join(resolveDataDir(env.root), 'sessions'))
-        .filter((f) => f.endsWith('.jsonl'));
-      // G14.213b 起同目录并存 <id>.transcript.jsonl(转录持久化)——journal 断言面只认会话档
-      expect(journals.filter((f) => !f.endsWith('.transcript.jsonl')).length).toBe(2); // journal 保留(T2 裁定:磁盘档案非 daemon 生命周期资产)
+      const sessionsDir = path.join(resolveDataDir(env.root), 'sessions');
+      expect(fs.readdirSync(sessionsDir).filter((f) => f.startsWith(`${s2Jid}.`)).length).toBe(0); // s2 档全家真清(purgeSession)
+      const keptJournals = fs
+        .readdirSync(sessionsDir)
+        .filter((f) => f.endsWith('.jsonl') && !f.endsWith('.transcript.jsonl'));
+      expect(keptJournals.length).toBe(1); // s1 journal 保留(未删会话磁盘档案不动)
     } finally {
       await env.stop();
       vi.unstubAllEnvs();

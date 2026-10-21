@@ -10,13 +10,13 @@ import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime, isShadowEvent } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
-import { SessionJournal, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir } from "../tui/session-journal";
+import { SessionJournal, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir } from "../tui/session-journal";
 import { reduceSteerRows, reduceSegRows } from '../session/seglog';
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
-import { resolveDataDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -27,6 +27,7 @@ import {
 import { PtyManager } from './pty';
 import * as configHandlers from './config-handlers';
 import type { ConfigHandlerIo } from './config-handlers';
+import { findJournalOwner, liveSessionByJournal, validSessionId } from './session-handlers';
 import * as sessionHandlers from './session-handlers';
 import type { SessionHandlerIo } from './session-handlers';
 import * as fileHandlers from './file-handlers';
@@ -599,7 +600,7 @@ export class GuiDaemon {
         sessionHandlers.handleSessionArchive(this.sessionIo, res, p.id, parsed.body as { archived?: unknown });
       } },
     { method: 'GET', path: '/sessions/archived', auth: true, run: async (_req, res) => sessionHandlers.handleSessionsArchived(this.sessionIo, res) },
-    // T2 会话回收：running 409（先收 run 再删）；journal 文件保留（磁盘档案非 daemon 生命周期资产）
+    // 受控删除(2026-10-21 门禁升级):双寻址同 archive;未归档 409;归档态 purgeSession 真清全家
     { method: 'POST', path: '/session/:id/delete', auth: true, run: async (_req, res, p) => this.handleDelete(res, p.id) },
     // G8b T3 pty 面：分配（shell 探测 daemon 内定，cols/rows 缺省 80/24）+ kill（幂等）
     { method: 'POST', path: '/session/:id/pty', auth: true, run: (req, res, p) => this.handlePtyAlloc(req, res, p.id) },
@@ -947,29 +948,62 @@ export class GuiDaemon {
   /** POST /session/:id/attach {journalId}（T2）：journalId 非空 string 校验 → 未知 :id 404 →
    *  attach 单点（INVALID_ARG→400 / INVALID_STATE→409）→ 200 {ok,sessionId}（并置激活） */
 
-  /** POST /session/:id/delete（T2 会话回收，GUI Home 消费）：未知 :id 404；running 409（回收前必须
-   *  先收 run——teardown 会中止在跑 run，静默中止比显式 409 更糟）；idle → 有界 teardown（该会话
-   *  挂起回填 deny/dismissed（同 interrupt 裁定 3，防僵尸 asker）+ abortAndSettle + dispose（含
-   *  journal seal））→ 注册表移出（后续 :id 访问 404、WS 补发不再含该会话）；active 指向该会话即清
-   *  undefined（裸端点回 409 面）；journal 文件保留——磁盘档案非 daemon 生命周期资产，/sessions 列档
-   *  与后续 attach 重开仍可消费 */
+  /** POST /session/:id/delete（2026-10-21 受控删除，GUI Home 消费）：双寻址同 archive——:id 命中
+   *  注册表走运行时路径（缺 journal 404），否则视作 journalId 走磁盘路径（findJournalOwner 跨工作区
+   *  定位，未知 404）；running 一律 409（journalId 路径经 liveSessionByJournal 查在座在跑者）。归档
+   *  门禁：未归档 409 'archive the session before deleting'——「下架但留档」职责已由归档态接管，删除
+   *  即真清。放行后仅运行时路径做有界回收（deny/dismissed 挂起回填（同 interrupt 裁定 3，防僵尸
+   *  asker）+ teardown + 注册表移出 + pty 连带清杀 + active 指向清 undefined），两路径同收
+   *  purgeSession 真清会话档全家（sessions 目录 <jid>. 前缀伴生档 + gui/tui 面私有档） */
   private async handleDelete(res: http.ServerResponse, id: string): Promise<void> {
     const session = this.sessions.get(id);
-    if (session === undefined) {
-      this.send(res, 404, { error: 'unknown session' });
+    let dataDir: string;
+    let jid: string;
+    if (session !== undefined) {
+      if (session.status() === 'running') {
+        this.send(res, 409, { error: 'cannot delete while a run is in progress' });
+        return;
+      }
+      const attached = session.attachedJournalId;
+      if (attached === undefined) {
+        this.send(res, 404, { error: 'session has no journal' });
+        return;
+      }
+      jid = attached;
+      dataDir = resolveDataDir(session.root);
+    } else {
+      if (!validSessionId(id)) {
+        this.send(res, 400, { error: 'invalid session id' });
+        return;
+      }
+      const owner = findJournalOwner(projectsRoot(), id);
+      if (owner === undefined) {
+        this.send(res, 404, { error: 'unknown session' });
+        return;
+      }
+      jid = id;
+      dataDir = owner.dataDir;
+      const live = liveSessionByJournal(this.sessions).get(jid);
+      if (live !== undefined) {
+        this.send(res, 409, { error: 'cannot delete while a run is in progress' });
+        return;
+      }
+    }
+    // 归档门禁(2026-10-21):未归档拒删——「下架但留档」职责已由归档态接管,删除即真清
+    if (readSessionMeta(dataDir, jid).archived !== true) {
+      this.send(res, 409, { error: 'archive the session before deleting' });
       return;
     }
-    if (session.status() === 'running') {
-      this.send(res, 409, { error: 'cannot delete while a run is in progress' });
-      return;
+    if (session !== undefined) {
+      this.denyPendingFor(id);
+      await session.teardown();
+      this.sessions.delete(id);
+      // G8b T3 插杀（单会话回收处）：会话回收连带清杀其全部 pty（daemon 持 manager——serve 分层，
+      // session.ts 不引 pty）；kill 同步注销 → 该会话 pty 的后续 WS 连入收 error 'pty not found'
+      this.ptyManager.killAllFor(id);
+      if (this.active === id) this.active = undefined;
     }
-    this.denyPendingFor(id);
-    await session.teardown();
-    this.sessions.delete(id);
-    // G8b T3 插杀（单会话回收处）：会话回收连带清杀其全部 pty（daemon 持 manager——serve 分层，
-    // session.ts 不引 pty）；kill 同步注销 → 该会话 pty 的后续 WS 连入收 error 'pty not found'
-    this.ptyManager.killAllFor(id);
-    if (this.active === id) this.active = undefined;
+    purgeSession(dataDir, jid);
     this.send(res, 200, { ok: true });
   }
 

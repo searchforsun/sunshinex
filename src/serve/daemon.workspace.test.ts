@@ -12,7 +12,8 @@ import { resolveDataDir, projectsRoot } from '../config/data-dir';
 /** T2 工作区注册表 + attach 恢复 + dirpicker：/workspaces 扫描（workspace.json 反解 root）、
  *  /sessions?root= 列档、/dirpicker 目录选择、/session/:id/attach 播种链与转录并续写 journal；
  *  T2 扩：createSession 出生 journal（惰性建档→首 run 链持久）、chain 派生转录播种（msg 缺席兜底，
- *  Ruling 5 零重复）、POST /session/:id/delete 会话回收（running 409/journal 保留） */
+ *  Ruling 5 零重复）、POST /session/:id/delete 受控删除（2026-10-21 门禁:running 409/未归档 409/
+ *  归档态 purgeSession 真清） */
 
 /** 挂起适配器（同 session.test.ts 惯例）：模型调用永挂直至 signal 中止——delete「running 409」面的
  *  运行中锁中正模拟 */
@@ -352,28 +353,23 @@ test('⑥ attach v3 装载面分离：msg 行不入转录（v1 遗留形态忽�
   });
 });
 
-test('⑦ POST /session/:id/delete：idle 删 → 200 + 注册表移出 + active 清 + 再访 404 + journal 文件保留；running 409；未知 :id 404', { timeout: 30_000 }, async () => {
+test('⑦ POST /session/:id/delete：未跑(无 journal) 404；running 409；未归档 409；归档态删 → 200 + 注册表移出 + active 清 + 再访 404 + journal 真清；未知 :id 404', { timeout: 30_000 }, async () => {
   await withDaemon(new HangingAdapter(), async (ctx) => {
     const { base, tmp, daemon } = ctx;
     const root = path.join(tmp, 'root-del');
     fs.mkdirSync(root, { recursive: true });
 
-    // 未知 :id → 404
+    // 未知 :id → 404（注册表未命中 → journalId 分支磁盘扫描仍未命中）
     const unknown = await fetch(`${base}/session/s999/delete`, { method: 'POST', headers: AUTH });
     assert.equal(unknown.status, 404, '未知 :id → 404');
 
-    // idle 会话删除（该会话为 active → 删后清 undefined）
+    // 未跑会话（出生 journal 惰性建档——零文件零 id）delete → 404 'session has no journal'
     const s1 = await ctx.newSession(root);
     assert.equal(daemon.activeId(), s1, '新建即激活');
-    const d1 = await fetch(`${base}/session/${s1}/delete`, { method: 'POST', headers: AUTH });
-    assert.equal(d1.status, 200);
-    assert.deepEqual(await d1.json(), { ok: true });
-    assert.equal(daemon.get(s1), undefined, '注册表已移出');
-    assert.equal(daemon.activeId(), undefined, 'active 指向被删会话 → 清 undefined');
-    const gone = await fetch(`${base}/session/${s1}/snapshot`, { headers: AUTH });
-    assert.equal(gone.status, 404, '删后 :id 访问 404');
+    const noJournal = await fetch(`${base}/session/${s1}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(noJournal.status, 404, '无 journal 会话 delete → 404');
 
-    // running 会话删除 → 409；收 run 后删 → 200 且 journal 文件保留
+    // running 会话删除 → 409（先收 run 再删，与归档同门禁）
     const s2 = await ctx.newSession(root);
     assert.equal(daemon.activeId(), s2);
     const r = await fetch(`${base}/session/${s2}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '长任务' }) });
@@ -386,15 +382,24 @@ test('⑦ POST /session/:id/delete：idle 删 → 200 + 注册表移出 + active
     assert.equal(it.status, 200);
     await waitFor(() => daemon.get(s2)!.status() === 'idle', 5000);
     const jid = daemon.get(s2)!.attachedJournalId;
-    assert.ok(jid, '出生 journal 已建档（可断言文件保留）');
-    const jfile = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+    assert.ok(jid, '出生 journal 已建档（可断言真清）');
+
+    // 归档门禁（2026-10-21）：未归档拒删——「下架但留档」职责已由归档态接管，删除即真清
+    const denied = await fetch(`${base}/session/${s2}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(denied.status, 409, '未归档 delete → 409');
+
+    // 归档 → delete → 200：注册表移出 + active 清 + 再访 404 + 会话档真清（purgeSession）
+    const arch = await fetch(`${base}/session/${s2}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(arch.status, 200);
     const d2 = await fetch(`${base}/session/${s2}/delete`, { method: 'POST', headers: AUTH });
     assert.equal(d2.status, 200);
+    assert.deepEqual(await d2.json(), { ok: true });
     assert.equal(daemon.get(s2), undefined, 's2 移出注册表');
     assert.equal(daemon.activeId(), undefined, 'active 同步清');
-    assert.ok(fs.existsSync(jfile), 'journal 文件保留（磁盘档案非 daemon 生命周期资产）');
+    const jfile = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+    assert.ok(!fs.existsSync(jfile), '归档态 delete → journal 真清（purgeSession 清全家）');
     const list = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(root)}`, { headers: AUTH })).json()) as SessionMeta[];
-    assert.ok(list.some((m) => m.id === jid), '保留的 journal 仍可被 /sessions 列出（后续 attach 重开可消费）');
+    assert.ok(!list.some((m) => m.id === jid), '真清后 /sessions 不再列出该档');
   });
 });
 

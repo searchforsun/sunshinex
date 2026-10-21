@@ -98,6 +98,34 @@ test('archive:running 会话 409(先停再归档,与 delete 同门禁);journalId
   });
 });
 
+test('delete 门禁:未归档 409;归档态 200 且 journal/meta/gui 私有档全消', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    await waitStatus(base, sessionId, 'idle');
+    const jid = fs.readdirSync(path.join(resolveDataDir(tmp), 'sessions')).filter((f) => f.endsWith('.jsonl'))[0]!.replace(/\.jsonl$/, '');
+    // gui 私有档 precondition 造场(PUT gui-state 落 <slug>/gui/sessions/<jid>.json)——使「清」断言非空转
+    // (brief 原案按存在性分支;此处先造档,分支恒走真断言。路径实况:slugDir=dirname(resolveDataDir))
+    const guiSession = path.join(resolveDataDir(tmp), '..', 'gui', 'sessions', `${jid}.json`);
+    const put = await fetch(`${base}/session/${sessionId}/gui-state`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ state: { tabs: ['chat'] } }) });
+    assert.equal(put.status, 200);
+    assert.equal(fs.existsSync(guiSession), true, '前置:gui 私有档在场');
+
+    const denied = await fetch(`${base}/session/${sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(denied.status, 409, '未归档拒删');
+
+    await fetch(`${base}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const ok = await fetch(`${base}/session/${sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(ok.status, 200);
+    const sessionsDir = path.join(resolveDataDir(tmp), 'sessions');
+    assert.equal(fs.readdirSync(sessionsDir).filter((f) => f.startsWith(`${jid}.`)).length, 0, '会话档全家清');
+    assert.equal(fs.existsSync(guiSession), false, 'gui 私有档清');
+    const gone = await fetch(`${base}/session/${sessionId}/snapshot`, { headers: AUTH });
+    assert.equal(gone.status, 404, 'daemon 会话出注册表');
+  });
+});
+
 test('列表滤除:archived 会话退出 /sessions 与 /sessions/recent;GET /sessions/archived 跨工作区聚合', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
     // 默认锚点工作区(RECENTS 只收默认锚点命名——root 取 sunshinex-default,滤除断言才非空转)

@@ -474,7 +474,7 @@ function ptyDecode(f: PtyFrame): string {
 
 test('⑩ pty 全链：分配→WS 回环→断线重连重放→DELETE kill(幂等)→会话 delete 全杀', { timeout: 90_000 }, async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
-    const { base } = ctx;
+    const { base, daemon } = ctx;
     const wsBase = base.replace(/^http/, 'ws');
     const sid = await ctx.newSession();
 
@@ -528,6 +528,14 @@ test('⑩ pty 全链：分配→WS 回环→断线重连重放→DELETE kill(幂
     assert.equal(alloc2.status, 200, 'body 全缺省(cols/rows 80/24)分配应 200');
     const { ptyId: ptyId2 } = (await alloc2.json()) as { ptyId: string };
     assert.notEqual(ptyId2, ptyId, '第二台 id 相异（pty-<n> 单调不复用）');
+    // 2026-10-21 删除门禁:删除须先归档,而出生 journal 惰性建档——先跑一轮令其落档(适配器唯
+    //  一 done 牌正为此备),再归档;归档态删除走运行时回收路径(本步验的正是 killAllFor 连带)
+    const run = await fetch(`${base}/session/${sid}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '建档跑一轮' }) });
+    assert.equal(run.status, 202, '提交建档 run 应 202');
+    await waitFor(() => daemon.get(sid)!.attachedJournalId !== undefined, 10_000); // 首条 chain append 建档
+    await waitFor(() => daemon.get(sid)!.status() === 'idle', 10_000); // 收束后再归档(在跑 409)
+    const arch = await fetch(`${base}/session/${sid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(arch.status, 200, '删除前归档应 200');
     const d = await openPty(`${wsBase}/session/${sid}/pty/${ptyId2}`);
     try {
       const del = await fetch(`${base}/session/${sid}/delete`, { method: 'POST', headers: AUTH });
