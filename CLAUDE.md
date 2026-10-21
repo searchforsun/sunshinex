@@ -65,7 +65,7 @@ src/
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
-  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/snapshots 会话持久化
+  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）
   harness/
     index.ts          # Harness 门面（单发执行缝 reactor 仅测试驱动用——生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
@@ -88,7 +88,7 @@ src/
     prompts/          # 提示词模板单点（shared 稳定段共享行；judge/summarizer/memory/learned 一次性调用模板）
     knowledge/        # 本地向量知识库（chunk/store/embed/KnowledgeBase）
     security/         # guard/policy/rules/modes/sandbox/chain + landlock（Linux exec 写围栏）/websearch-endpoint
-    context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/breakdown（/context 数据面）/window/session/summarizer（压缩摘要）/drift-detector（会话常量漂移探测四基线）/chain-ledger（会话链 append-only 账本）/compaction（压缩协调 apply+runCompaction 归档）/index.ts 门面转发
+    context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/breakdown（/context 数据面）/window/summarizer（压缩摘要）/drift-detector（会话常量漂移探测四基线）/chain-ledger（会话链 append-only 账本）/compaction（压缩协调 apply+runCompaction 归档）/index.ts 门面转发（快照装载/恢复/技能槽）
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
   model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
@@ -134,8 +134,8 @@ SUNSHINE.md          # 项目业务配置
 | @modelcontextprotocol/sdk | MCP 官方客户端（stdio/http/sse 三传输），收敛于 `src/harness/mcp/client.ts` 接缝（替换实现不动主链） | 自研最小 stdio JSON-RPC 客户端同接口 |
 | ink + react | TUI 组件化渲染层（仅组件/入口，运行时零接触），收敛于 `src/tui/` | Renderer 接缝退原生 ANSI 最小面 |
 | sqlite-vec | KB 向量后端（`SUNSHINEX_KB_BACKEND=sqlite-vec`），收敛于 store 接缝 | local-json（缺省即回退，禁静默切换） |
-| markdown-it | Markdown 解析为 IR（唯一消费面=markdansi 表格网格回路的块级解析与对齐，2026-10-04 D29 并轨后回看链 IR 渲染退役），收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
-| markdansi | 正文/子代理转录/step 行/旧档回放 Markdown→ANSI 渲染（session 块缓冲按块放行 + render 单点出口 + D29 并轨后 MessageRow 渲染层烘焙），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 markdown.ts 表格网格回路（renderGridTable 的 IR 解析） | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
+| markdown-it | Markdown 解析为 IR（唯一消费面=markdansi 表格网格回路的块级解析与对齐），收敛于 `src/tui/markdown.ts` 解析层 | IR 稳定，替换解析实现（含自研）不动渲染层 |
+| markdansi | 正文/子代理转录/step 行/旧档回放 Markdown→ANSI 渲染（session 块缓冲按块放行 + render 单点出口 + MessageRow 渲染层烘焙），收敛于 `src/tui/md-ansi.ts`（spec docs/superpowers/specs/2026-09-30-markdansi-body-rendering-design.md）；markdown-it 保留于 markdown.ts 表格网格回路（renderGridTable 的 IR 解析） | renderMd 接缝稳定，替换实现不动 session/渲染分流 |
 | cli-table3 | Markdown 表格框线渲染，收敛于 `src/tui/markdown.ts` 表格层 | 表格降级为原文行 |
 | highlight.js | 围栏代码块语法高亮，收敛于 `src/tui/highlight.ts` | `HiSpan` 接口稳定，替换实现不动渲染层 |
 | mermaid（GUI） | 会话流 mermaid 围栏图渲染（懒加载/失败回落原文），收敛于 `gui/src/Mermaid.tsx` | 回落原文代码块，零会话流依赖 |
@@ -192,10 +192,10 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 
 推理成本与响应时延是 agent 产品的核心竞争指标，前缀缓存（供应商侧自动 prefix cache，自开头逐字节匹配）是最有效的杠杆——不管产品什么形态（CLI/TUI/GUI、直执行/plan/工作流），能力建设都必须建立在「相邻请求 token 前缀命中率最大化」之上。对标基线：Claude Code——系统提示词与工具清单整场冻结、对话只尾部追加、历史仅在压缩点重写。
 
-**上下文模型：单一基座 + fork**（2026-09-14 定稿，详见 `docs/superpowers/specs/2026-09-14-context-fork-design.md`）：
+**上下文模型：单一基座 + fork**（详见 `docs/superpowers/specs/2026-09-14-context-fork-design.md`）：
 
 ```text
-[稳定段]     身份/输出约定/工具清单/JSON 协议/工作目录/执行协议行  ← 全层共享，逐字节冻结
+[稳定段]     身份/输出约定/工具政策等共享行/工作目录（stableSegmentOf 单点）      ← 全层共享，逐字节冻结
 [SUNSHINE.md]  全局 ~/.sunshinex/SUNSHINE.md → 项目 SUNSHINE.md  ← 会话级常量（两层冻结快照）
 [技能清单]   name+description 索引（同刷新点冻结、按名排序）       ← 会话级常量，模型据此按需加载
 [压缩块]     会话链前缀折叠摘要                                   ← 唯一合法重写产物
@@ -208,13 +208,13 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 
 核心不变量（违反即回归；任何新能力先回答「落在提示词哪个位置、击穿多长前缀」）：
 
-- **提示词单一来源**：任务执行轮提示词只由 `Reactor.buildPrompt()` 产出；loop/graph 角色框定与任务文本复用该主链（判据仲裁等独立一次性调用除外，其内部拼装同样禁时变字段）；各层禁止绕开主链自行拼提示词。
+- **消息视图单一来源**：任务执行轮的模型上下文只由 `buildMessages` 派生（`context/messages.ts`：稳定段+快照+压缩块+链+技能块 → ChatMessage 序列）；稳定段文本单点 `stableSegmentOf`（`prompts/shared.ts`，Reactor/Harness 观测面同源零第二拼装）；loop/graph 角色框定与任务文本复用该主链（判据仲裁等独立一次性调用除外——模板收在 `prompts/`，其内部拼装同样禁时变字段）；各层禁止绕开单点自行拼提示词。
 - **前置段字节冻结**：压缩块之前的所有内容逐字节稳定——禁时间戳/随机值/时变字段（git 状态、计数器等）；工具清单按名排序；工作目录等环境事实为会话级常量；观察与事件一律尾部追加，禁止写回任何前置段——链即记忆。
 - **只增不改**：会话链 append-only，过期信息以补丁行追加修正、不就地改写；压缩是唯一合法重写点（预算驱动、带滞回节流）；任务边界不重置上下文——新任务/新步骤以「当前指令行」尾追进链。
-- **消息形态不变量**：模型上下文以消息视图为源（`buildMessages` 派生单点，链/快照/压缩块/技能块 → ChatMessage 序列）；tools 清单为请求级字段（`tools`），不进提示词文本、前缀零占用；system 双消息（稳定段 + 会话冻结段）逐字节冻结语义同前置段
+- **消息形态不变量**：tools 清单为请求级字段（`tools`），不进提示词文本、前缀零占用；system 双消息（稳定段 + 会话冻结段）逐字节冻结语义同前置段
 - **重算事件少且收敛**：压缩是唯一的整体重写；模型档位是用户级会话参数（`--tier` / TUI `/model-tier` / `SUNSHINEX_TIER`），整场恒定、不进提示词、模型无自调通道、系统不自动换档；模型选择（TUI `/model`，settings `providers` 多源清单，`源/模型` id 随 journal modelId 字段还原）与思考强度（`--effort` / TUI `/model-effort` / `SUNSHINEX_REASONING_EFFORT`）同属用户级会话参数——不进提示词、只对后续任务生效（经 `ModelSwitcher` 外壳换内芯，持有者引用不变）、端点不支持 effort 时按七档阶梯降级、全不支持省略参数用模型默认，前缀缓存零影响。
-- **动态改动一律尾追——第一要义的完整形态（2026-09-18 定稿）**：第一要义不是「前缀冻结、一成不变」，而是**以尾追承载一切动态**：会话开始装载（SUNSHINE.md 两层 / 技能清单 / 记忆索引进冻结快照）→ 运行中任何变更只尾追说明行（含模型经 `write` 改写 SUNSHINE.md 的路径）→ 轮次边界与跨天 resume 启动时主动探测，读盘比对 SUNSHINE.md、技能 id 集、记忆索引与刷新点基线，差异一律尾追说明行进链——恢复后下一帧与存档时前缀严格连续，差异只允许出现在尾部。快照重写只发生在既有刷新点（构造 / `/init` / `/new` / 压缩成功），其余任何时刻不改写前缀、不提前重建快照；新内容一律以「后到者优先」由尾部承载。
-  - **注入面盘点**：SUNSHINE.md 两层独立基线、同语义（全局 `~/.sunshinex/SUNSHINE.md` 由 `SUNSHINEX_GLOBAL_SUNSHINE` 覆盖，对标 `~/.claude/CLAUDE.md`；全局层缺失为合法确定态、消失同样尾追告知；全局文件在模型可写边界外，仅用户手工维护）；技能清单新增/变更尾追一行增量告知，正文经 `skill` 工具实时读盘置尾注入；记忆索引变更（新写/整理/他处改盘）尾追正文级块——新索引全文 + supersession 声明 + slug 失联警告，对齐 SUNSHINE.md 漂移全文块形态（链尾即真相，2026-10-02 用户裁决「上下文绝对正确」），索引快照不动、记录文件用 `read` 直接读（恒 live）；外部编辑、他处变更与已读文件变动一律尾追提示行。
+- **动态改动一律尾追——第一要义的完整形态**：第一要义不是「前缀冻结、一成不变」，而是**以尾追承载一切动态**：会话开始装载（SUNSHINE.md 两层 / 技能清单 / 记忆索引进冻结快照）→ 运行中任何变更只尾追说明行（含模型经 `write` 改写 SUNSHINE.md 的路径）→ 轮次边界与跨天 resume 启动时主动探测，读盘比对 SUNSHINE.md、技能 id 集、记忆索引与刷新点基线，差异一律尾追说明行进链——恢复后下一帧与存档时前缀严格连续，差异只允许出现在尾部。快照重写只发生在既有刷新点（构造 / `/init` / `/new` / 压缩成功），其余任何时刻不改写前缀、不提前重建快照；新内容一律以「后到者优先」由尾部承载。
+  - **注入面盘点**：SUNSHINE.md 两层独立基线、同语义（全局 `~/.sunshinex/SUNSHINE.md` 由 `SUNSHINEX_GLOBAL_SUNSHINE` 覆盖，对标 `~/.claude/CLAUDE.md`；全局层缺失为合法确定态、消失同样尾追告知；全局文件在模型可写边界外，仅用户手工维护）；技能清单新增/变更尾追一行增量告知，正文经 `skill` 工具实时读盘置尾注入；记忆索引变更（新写/整理/他处改盘）尾追正文级块——新索引全文 + supersession 声明 + slug 失联警告，对齐 SUNSHINE.md 漂移全文块形态（链尾即真相），索引快照不动、记录文件用 `read` 直接读（恒 live）；外部编辑、他处变更与已读文件变动一律尾追提示行。
   - **过期与冲突（对标 CC 补丁行语义）**：运行中出现的新确认项、新状态与链中已有条目过期或冲突时，不删不改旧条目，只尾追一条「过期/冲突说明行」声明以最新为准；读者按「后到者优先」取尾行，历史行保留作审计轨迹。禁止用「改写旧行」表达状态变化。
   - 反面即回归：把新内容插回前置段、就地改写历史行、为「让改动生效」提前重建快照——任一条都会击穿其后全部前缀。
 
@@ -243,7 +243,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 |------|--------|------|----------------|
 | TUI 渲染 | ink + React | 已引入 | 组件化终端渲染，收敛于 `src/tui/`（仅渲染层，运行时零接触） |
 | TUI Markdown | markdown-it | 已引入 | 正文 Markdown 解析为 IR，收敛于 `src/tui/markdown.ts` |
-| TUI Markdown 流式渲染 | markdansi | 已引入 | 正文/子代理转录流式切块与 ANSI 渲染（完成行紧排缓冲、块边界整块渲染，表格/围栏整块收口），收敛于 `src/tui/md-ansi.ts` 单点出口 |
+| TUI Markdown 流式渲染 | markdansi | 已引入 | 正文/子代理转录/step 行/旧档回放 Markdown→ANSI 渲染（完成行紧排缓冲、块边界整块渲染，表格/围栏整块收口），收敛于 `src/tui/md-ansi.ts` 单点出口 |
 | TUI 高亮 | highlight.js | 已引入 | 代码块语法高亮，收敛于 `src/tui/highlight.ts` |
 | TUI 宽度 | string-width | 已引入 | 中英混排/全角字符宽度测量 |
 | GUI 框架 | React 18 + Vite | 已引入 | 界面构建与前端工具链，收敛于 `gui/` 工作区包（构建产物 dist-gui/） |
@@ -261,7 +261,11 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 可选增强 | dockerode + tree-kill | 可选增强 | Compute Use 容器执行/进程管理，按需引入 |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
-- **持久化分层（TUI/GUI 双面口径，2026-10-19 用户裁定）**：两会话面**共有**的持久化数据一律同一底层实现、同一落盘位置，由共享模块单点读写——会话级数据落 `<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`（**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放）；工作区级共享数据（记忆/学习技能/任务板/KB/workspace.json）落 `data/` 其余子目录、跨会话共用（语义即共享，非缺陷）。以上收敛在 `src/session/`、`src/tui/session-journal.ts`、`src/taskboard/` 等共享层，TUI 与 GUI 只是同一份数据的不同投影，任一面写入、另一面 attach/重开即见；**禁止各面自建私有副本或平行的写面**。交互面**独有**的 UI 态（GUI 标签页开闭/激活/宽度/折叠与最近关闭等标签数据、面板偏好；TUI 的渲染态等）落**同一 slug 目录下与 `data/` 平级的面私有子目录** `gui/`、`tui/`，且**镜像共享层的粒度**——按会话键的数据（GUI 标签态=Record<sessionId,…>）落 `gui/sessions/<journalId>.json`——**档键=journal id（跨 daemon 重启稳定的会话身份；会话 id `s<n>` 每次重启重新发号，按 id 存档刷新后必空）**，与 `data/sessions/<journalId>.jsonl` 同键同粒度；工作区级 UI 偏好落 `gui/ui-state.json`；应用级指针档（lastRoot/lastJournalId 恢复现场入口）是**机器级**状态，落 `userConfigDir()/gui/ui-state.json`（`~/.sunshinex/gui/`，projects 根保持纯 slug 工作区位）；TUI 同构 `tui/`。`data/` 整树保持纯会话共享域，删/迁任一面 UI 态不触及会话档；**不得写入共享会话档、不得污染共享数据结构**。判断口径：换一个交互面打开同一会话，数据仍在=共享面（进 `data/`）；消失=面私有面（进 `gui/`、`tui/`；现行 GUI 标签态仅驻内存，落盘时按此位）。
+- **持久化分层（TUI/GUI 双面口径，2026-10-19 用户裁定）**：两会话面**共有**的持久化数据一律同一底层实现、同一落盘位置，由共享模块单点读写（收敛在 `src/session/`、`src/tui/session-journal.ts`、`src/taskboard/` 等共享层）——TUI 与 GUI 只是同一份数据的不同投影，任一面写入、另一面 attach/重开即见；**禁止各面自建私有副本或平行的写面**。落位分三档：
+  - **会话级共享**：`<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`——**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放。
+  - **工作区级共享**（记忆/学习技能/任务板/KB/workspace.json）：`data/` 其余子目录，跨会话共用（语义即共享，非缺陷）。
+  - **面私有 UI 态**（GUI 标签页开闭/激活/宽度/折叠与最近关闭、面板偏好；TUI 渲染态等）：落**同一 slug 目录下与 `data/` 平级的面私有子目录** `gui/`、`tui/`，粒度镜像共享层——按会话键的（GUI 标签态=Record<sessionId,…>，盘为真相源、变更防抖写透）落 `gui/sessions/<journalId>.json`，**档键=journal id**（跨 daemon 重启稳定的会话身份；会话 id `s<n>` 每次重启重新发号，按会话 id 存档刷新后必空），与 `data/sessions/<journalId>.jsonl` 同键同粒度；工作区级 UI 偏好落 `gui/ui-state.json`；应用级指针档（lastRoot/lastJournalId 恢复现场入口）是**机器级**状态，落 `userConfigDir()/gui/ui-state.json`（`~/.sunshinex/gui/`，projects 根保持纯 slug 工作区位）；TUI 同构 `tui/`。`data/` 整树保持纯会话共享域，删/迁任一面 UI 态不触及会话档；**不得写入共享会话档、不得污染共享数据结构**。
+  - **判断口径**：换一个交互面打开同一会话，数据仍在=共享面（进 `data/`）；消失=面私有面（进 `gui/`、`tui/`）。
 - **体验基线**：交互细节向对标产品看齐——快捷键符合终端惯例、输出有渲染降级（窄终端/无色彩环境不花屏）、状态与错误信息用户可读；体验取舍拿不准时以「明星产品怎么做」为参照。
 - **引入流程**：新依赖登记 `package.json`，在 README/Arch-Plan 标注用途，`pnpm build` + `pnpm test` 全量验证后方可交付；规划选型转正时同步更新本表状态。
 
@@ -292,6 +296,6 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - **提示词（恒英文单语，不可配置）**：凡进入模型上下文的一切文案——系统提示词、工具名与工具描述、观察与错误文案、压缩摘要提示词、子代理角色框定、生成类任务 goal（如 `/init`）、判据与链行——**一律英文单语**，不随 `--language` 切换、不写成双语对。理由：提示词是产品行为契约而非外观，单语形态可机械校验。
 - **消费方定归属，判据是「有无写链」**：只看这个串有没有被写进链或观察（`appendChain` / `observation` / `steps`）——写链的 → 进模型上下文 → 英文单语；写死字面量且零写链、只上屏 → 属外观 → `t()` 双语。同一文件两种形态可并存（`graph/nodes.ts` loop 结论行英文、同文件 gate 回执 `t()`），不得按目录一刀切。
 - **模型产出不译**：写链行里我们自写的前缀与兜底文案用英文；链行承载的模型产出正文（如 `${id}: ${r.reply}` 的 `r.reply`）照原样保留。
-- **机械校验**：判据为「**非 `t()` 包裹的中文字面量零出现**」于提示词与链的产出面（`buildPrompt`、工具 description、观察与链行写入点、生成类 goal）；`t()` 包裹的中文允许存在于任何层（含 `graph/` / `loop/` 的写死回执），审计按「是否被 `t()` 包裹」区分，不按目录一刀切。豁免：项目专名（`SUNSHINE.md`）与功能性非 ASCII（分句标点、框线/字形符）。
+- **机械校验**：判据为「**非 `t()` 包裹的中文字面量零出现**」于提示词与链的产出面（`prompts/` 模板与 `stableSegmentOf`、工具 description、观察与链行写入点、生成类 goal）；`t()` 包裹的中文允许存在于任何层（含 `graph/` / `loop/` 的写死回执），审计按「是否被 `t()` 包裹」区分，不按目录一刀切。豁免：项目专名（`SUNSHINE.md`）与功能性非 ASCII（分句标点、框线/字形符）。
 - **产出语言（模型自判，不配置、不写死）**：产品产出物——生成的文档（如 `/init` 写出的 `SUNSHINE.md`）、答复正文的叙述语言、代码注释与提交说明——由模型按**当前项目**的既有文档风格自行判断：中文项目写中文、英文项目写英文。产品侧不设配置项、开关或参数，提示词中也不写死语言约束。
 - **机器消费区**：精确标题与字面按既有约定照写，不随外观语言漂移（如 `## Compact Instructions` / `## 压缩指令`）。
