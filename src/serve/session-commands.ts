@@ -13,11 +13,11 @@ import type { SessionRuntime } from './session';
  *  planFlow 等共享化逐批入列,GET /commands 消费面置灰判定同步。 */
 
 /** 当前通道支持集(gui 命令面板置灰判定源;随分支移植批扩) */
-export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/delete'] as const;
+export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete'] as const;
 
 export type CommandRunResult = 'ok' | 'unsupported' | 'busy';
 
-const IDLE_ONLY = new Set(['/compact', '/archive', '/delete']);
+const IDLE_ONLY = new Set(['/compact', '/archive', '/unarchive', '/delete']);
 
 export function isCommandSupported(line: string): boolean {
   return (COMMAND_SUPPORT as readonly string[]).includes(line.split(/\s/)[0] ?? '');
@@ -110,6 +110,23 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
     }
     markSessionArchived(resolveDataDir(s.root), jid, true);
     notice(t('Session archived', '已归档'));
+    return 'ok';
+  }
+  if (cmd === '/unarchive') {
+    // D40 裁决（2026-10-21）：/unarchive 底层命令，gui 命令通道同名支持——作用于当前附接会话；
+    // 跨会话撤销走归档会话页（撤销钮同 markSessionArchived false 原语）
+    const jid = s.attachedJournalId;
+    if (jid === undefined) {
+      notice(t('Nothing to unarchive yet', '暂无可撤销归档的会话档'));
+      return 'ok';
+    }
+    const dataDir = resolveDataDir(s.root);
+    if (readSessionMeta(dataDir, jid).archived !== true) {
+      notice(t('Session is not archived', '该会话未在归档中'));
+      return 'ok';
+    }
+    markSessionArchived(dataDir, jid, false);
+    notice(t('Session unarchived', '已撤销归档'));
     return 'ok';
   }
   if (cmd === '/delete') {

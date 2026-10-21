@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { t } from '../i18n';
 import { resolveDataDir } from '../config/data-dir';
-import { listSessions, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
+import { listSessions, markSessionArchived, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
 import { createKernelRuntime } from '../session/runtime';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { renderMd } from './md-ansi';
@@ -62,6 +62,36 @@ export async function resumeFlow(ctrl: SessionController): Promise<void> {
     return;
   }
   await restoreOrFork(ctrl, pick);
+}
+
+/** /unarchive（2026-10-21 D40 裁决：TUI 撤销归档通道）：已归档会话选择卡（archivedAt 降序，
+ *  输入即筛选）→ 选中即撤销归档——只翻 meta 标记不切会话，回执提示 /resume 可找回。
+ *  与 GUI 归档页撤销钮同原语（markSessionArchived false）；当前会话在归档中亦入卡。 */
+export async function unarchiveFlow(ctrl: SessionController): Promise<void> {
+  const dataDir = resolveDataDir(ctrl.root);
+  const sessions = listSessions(dataDir)
+    .filter((s) => s.archived === true)
+    .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
+  if (sessions.length === 0) {
+    ctrl.pushMsg('system', t('No archived sessions', '暂无归档会话'), { level: 'warn' });
+    return;
+  }
+  const answer = await ctrl.askUser({
+    question: t('Unarchive which session? (type to filter)', '撤销哪个会话的归档？（输入即筛选）'),
+    options: sessions.map((s) => ({ label: s.id, description: (s.title ?? s.firstUser) ? (s.title ?? s.firstUser)!.slice(0, 60) : t('(no user input)', '（无用户输入）') })),
+    filterable: true,
+  });
+  if (answer.type !== 'selected') {
+    ctrl.pushMsg('system', t('Unarchive cancelled', '已取消撤销归档'));
+    return;
+  }
+  const pick = sessions.find((s) => s.id === answer.labels[0]);
+  if (!pick) {
+    ctrl.pushMsg('system', t('No such session: ' + (answer.labels[0] ?? ''), '没有这个会话：' + (answer.labels[0] ?? '')), { level: 'warn' });
+    return;
+  }
+  markSessionArchived(dataDir, pick.id, false);
+  ctrl.pushMsg('system', t(`Session ${pick.id} unarchived; /resume to switch to it`, `已撤销 ${pick.id} 的归档；/resume 可切换过去`));
 }
 
 /** --continue（规格 D1/D3）：续接最近会话（listSessions mtime 降序首项，对标 CC -c）；无档提示后按新会话继续（不静默吞）。

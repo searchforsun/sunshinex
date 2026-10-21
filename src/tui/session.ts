@@ -38,7 +38,7 @@ import { readSkillUsage, recordSkillUsage } from './skill-usage';
 import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup';
 import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-memory';
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';
-import { resumeFlow, btwFlow, branchFlow, resumeLatest as resumeLatestFrom } from './commands-session';
+import { resumeFlow, btwFlow, branchFlow, unarchiveFlow, resumeLatest as resumeLatestFrom } from './commands-session';
 import { applyDelegation } from '../delegation/projection';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import { boardEventFrom } from '../taskboard/translate';
@@ -1117,6 +1117,12 @@ export class SessionController {
       }
       markSessionArchived(resolveDataDir(this.root), jid, true);
       this.pushMsg('system', t('Session archived', '已归档'));
+      return;
+    }
+    if (cmd === '/unarchive') {
+      // D40 裁决（2026-10-21）：TUI 撤销归档通道=已归档会话选择卡（当前会话在归档中亦入卡）；
+      // 撤销只翻 meta 标记不切会话——跨会话找回走 /resume（滤归档后撤销即可见于列表）
+      await unarchiveFlow(this);
       return;
     }
     if (cmd === '/delete') {
