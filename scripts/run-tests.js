@@ -29,7 +29,12 @@ if (files.length === 0) {
   console.error('run-tests: dist 下未发现 *.test.js（先跑 tsc 构建）');
   process.exit(1);
 }
-const r = spawnSync(process.execPath, ['--require', path.join(__dirname, 'test-env.cjs'), '--test', ...files], {
+// 并发度旋钮(2026-10-21 发版链负载抖动教训):ink 渲染类测试在满核并发+机热时计时抖动
+// (KeyHints/skill-filter/sandbox.abort 三轮各中一不同文件,孤测全绿)——发版链等稳定性敏感
+// 场景设 SUNSHINEX_TEST_CONCURRENCY=2 降并发换稳定;缺省不变(满核,日常反馈速度优先)
+const conc = process.env.SUNSHINEX_TEST_CONCURRENCY;
+const testArgs = conc !== undefined && conc !== '' ? ['--test', `--test-concurrency=${conc}`, ...files] : ['--test', ...files];
+const r = spawnSync(process.execPath, ['--require', path.join(__dirname, 'test-env.cjs'), ...testArgs], {
   stdio: 'inherit',
   env: { ...process.env, SUNSHINEX_DATA_DIR: dataDir, SUNSHINEX_USER_SKILLS_DIR: path.join(dataDir, 'user-skills'), SUNSHINEX_GLOBAL_SUNSHINE: path.join(dataDir, 'global-SUNSHINE.md') },
 });
