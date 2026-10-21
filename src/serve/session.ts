@@ -19,7 +19,7 @@ import type { SnapshotEntry } from '../tui/session-journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
 import { kernelEventRows } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
-import { readSessionMeta, writeSessionMeta } from '../tui/session-journal';
+import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
 import { SLASH_COMMANDS } from '../tui/slash-commands';
 import { listChanges, diffChangeSets } from './session-changes';
@@ -27,6 +27,18 @@ import type { ChangeFile } from '../types';
 import type { ApprovalFrame, AskFrame, DaemonFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
+
+/** 影子事件判定(与内核 shadow 透传面 kernel.pump 同一口径单点):板面/委派/子代理流——WS 回放
+ *  面据此把这类帧从 512 环窗改道 journal 全量重发(环窗对长会话子代理流必溢出,刷新后投影恢复
+ *  不可依赖环窗;journal 落档先于广播,行集恒为全量真源) */
+export function isShadowEvent(e: SessionEvent): boolean {
+  return (
+    e.type.startsWith('task-') ||
+    e.type.startsWith('gate-') ||
+    e.type.startsWith('delegation-') ||
+    (e.payload !== undefined && typeof (e.payload as { subagent?: unknown }).subagent === 'string')
+  );
+}
 
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
@@ -442,6 +454,35 @@ export class SessionRuntime {
   /** 补发窗口只读外窥：daemon 连接建立时逐会话全量补发（会话序 s1..sN，各内缓冲序） */
   bufferedFrames(): readonly EventFrame[] {
     return this.frames;
+  }
+
+  /** G14.2xx b 影子事件全量读面（HTTP 水合端点用）：journal shadow 行（board/delegation/subagent）
+   *  原始事件按序返回,cut=读档时刻的泵水位。环窗（EVENT_BUFFER_CAP=512）对长会话子代理流必溢出,
+   *  且 GUI 刷新时 WS 连接建立先于会话 attach——「连接时刻回放」对影子投影天生够不着;journal 是
+   *  唯一全量源(落档先于广播)。客户端契约:水合在途的实时 shadow 帧按 seq 缓冲,落定后清零重放
+   *  本列、再重放缓冲中 seq > cut 的帧——cut 前的帧已含于行集(读档先于其广播),cut 后的帧只在
+   *  缓冲,零丢帧零重复。无档/读档失败回空列(尽力恢复,不炸调用面)。 */
+  shadowJournalEvents(): { events: SessionEvent[]; cut: number } {
+    const jid = this.attachedJournalId;
+    if (jid === undefined) return { events: [], cut: this.lastSeqNum };
+    try {
+      const file = path.join(sessionsDir(resolveDataDir(this.root)), `${jid}.jsonl`);
+      if (!fs.existsSync(file)) return { events: [], cut: this.lastSeqNum };
+      const events: SessionEvent[] = [];
+      for (const row of parseJournalFile(file).events) {
+        // 旧写面兼容(seedShadow 同款):board 行 ev/e 二取一,缺一跳过(坏行不得炸水合)
+        const e =
+          row.t === 'board'
+            ? ((row as { e?: SessionEvent }).e ?? (row as { ev?: SessionEvent }).ev)
+            : row.t === 'delegation' || row.t === 'subagent'
+              ? row.e
+              : undefined;
+        if (e !== undefined && isShadowEvent(e)) events.push(e);
+      }
+      return { events, cut: this.lastSeqNum };
+    } catch {
+      return { events: [], cut: this.lastSeqNum };
+    }
   }
 
   /** 事件泵（每会话一个，spec §7）：seq 分配（daemon 级全局单调，在先）→ 环形缓冲写入（满 512 丢最老）

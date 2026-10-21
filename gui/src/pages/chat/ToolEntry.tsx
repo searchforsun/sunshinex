@@ -42,7 +42,7 @@ export interface TodoBatch {
 const TOOL_VERB_ZH: Record<string, string> = {
   read: '读取', write: '写入', exec: '执行', grep: '查阅', glob: '查找',
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
-  todo_write: '更新待办', worktree: '工作树', spawn: '分派子代理', task_stop: '停止',
+  todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
   create_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
   review_task: '复审', gate_task: '门审', cancel_task: '取消',
@@ -84,7 +84,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   webfetch: ['Fetching page', '正在抓取网页'],
   websearch: ['Searching the web', '正在搜索网页'],
   memory_write: ['Saving memory', '正在保存记忆'],
-  spawn: ['Dispatching subagent', '正在分派子代理'],
+  spawn: ['Dispatching subagent', '正在分派子智能体'],
   task_wait: ['Waiting for tasks', '正在等待任务'],
   task_stop: ['Stopping task', '正在停止任务'],
   todo_write: ['Updating todos', '正在更新待办'],
@@ -362,13 +362,13 @@ export function ToolEntryView({
       ) : toolName === 'spawn' ? (
         /* G14.166 折叠行带子代理名(G14.171:蓝色链接,点开对应 agent 只读标签页) */
         <>
-          <span className="tool-verb">{t('spawn', '分派子代理')}</span>
+          <span className="tool-verb">{t('spawn', '分派子智能体')}</span>
           {spawnAgentName !== '' && onOpenAgent !== undefined ? (
             <span
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-agent-link"
-              data-tip={t('Open subagent transcript', '打开子代理转录')}
+              data-tip={t('View subagent', '查看子智能体')}
               onClick={(e) => {
                 e.stopPropagation(); // 不触发行展开
                 onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : undefined);

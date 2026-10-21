@@ -109,7 +109,7 @@ function TaskCard({
                   type="button"
                   className="tb-task-main" data-task-id={task.id} data-task-title={task.title}
                   aria-label={`${task.id} [${task.status}] ${task.title}`}
-                  data-tip={agentName !== '' ? t('Open subagent transcript', '打开子代理转录') : undefined}
+                  data-tip={agentName !== '' ? t('View subagent', '查看子智能体') : undefined}
                   onClick={() => {
                     if (d === undefined) return; // 等待态:无执行子代理,不跳转
                     const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;

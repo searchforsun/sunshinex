@@ -154,7 +154,7 @@ export function ChildInspector(props: {
   // 帧高实账（ink3 纪律 outputHeight ≥ rows 即 clearTerminal 整屏重写）：思考期动态区 = 正文尾窗 textCap
   // + 思考尾窗 THINK_TAIL_LINES + head 行 + marginBottom 1 + App 层键提示条 1 行（2026-10-02 恒驻条，
   // Tab/Esc 提示从 head 退役、由键提示条承载）——预算必须给满 4 行 chrome，恰等于 rows 即每帧触发
-  // clearTerminal 整屏重写洪流（WT 视觉冻结至某次大输出 resync，真机「进子代理视图后 Esc/Tab 须先按
+  // clearTerminal 整屏重写洪流（WT 视觉冻结至某次大输出 resync，真机「进子智能体视图后 Esc/Tab 须先按
   // Enter」的病灶——键位日志已证派发正常，冻结在渲染层）
   // 尾段预览（2026-09-30 markdansi 统一批次）：尾段原文一次性 renderMd（宽度即 width 参数自带收敛，
   // 旧 tailReplyPreview 源级折行预算退役）——超预览行预算时对 ANSI 输出按行 slice 自尾保留
@@ -171,7 +171,7 @@ export function ChildInspector(props: {
   // 完成态停转（真机「归档后仍显运行态」）：帧动画是「活着」信号，done 即定格 ✓——运行中才转圈
   const glyph = done ? '✓' : spin;
   const head =
-    `${glyph} [${label}] ${t('subagent view', '子代理视图')}` +
+    `${glyph} [${label}] ${t('subagent', '子智能体')}` +
     `${typeof steps === 'number' ? ` · step ${steps}` : ''}` +
     `${tokens !== undefined ? ` · ↑${formatTokens(tokens)} tokens` : ''}` +
     `${secs !== undefined ? ` · ${formatDuration(secs)}` : ''}` +

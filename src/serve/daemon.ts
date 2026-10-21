@@ -8,7 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { ModelAdapter } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
-import { SessionRuntime } from './session';
+import { SessionRuntime, isShadowEvent } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { SessionJournal, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir } from "../tui/session-journal";
 import { reduceSteerRows, reduceSegRows } from '../session/seglog';
@@ -384,7 +384,10 @@ export class GuiDaemon {
    *  close 清理。补发在 upgrade 回调内同步完成，与后续实时帧（pump 单点）天然无交错——逐会话帧序=缓冲
    *  序接事件序；T1 裁定：全部会话（s1..sN 会话序，各内缓冲序），客户端按帧面 sessionId 过滤（T3
    *  onSessionEvent）——不收 `{"kind":"listen"}` 订阅消息（帧全带 sessionId 客户端自滤）。
-   *  挂起重发无 seq：同 pid 帧可能重复到达（首播+重连），客户端以 pid 去重幂等（G4） */
+   *  挂起重发无 seq：同 pid 帧可能重复到达（首播+重连），客户端以 pid 去重幂等（G4）。
+   *  G14.2xx b shadow 帧不走红窗：板面/委派/子代理帧（512 环窗对长会话子代理流必溢出,且 GUI 刷新
+   *  时本连接建立常先于会话 attach——回放面够不着）改由 HTTP /session/:id/shadow-events 水合恢复
+   *  （会话打开/重连时 GUI 拉取 journal 全量）,本面只放实时与主链补发窗。 */
   private onWsConnection(ws: WebSocket): void {
     this.wsClients.add(ws);
     this.wsLastPong.set(ws, Date.now());
@@ -393,7 +396,13 @@ export class GuiDaemon {
     ws.on('error', () => {});
     ws.on('close', () => this.wsClients.delete(ws));
     for (const session of this.sessions.values()) {
-      for (const f of session.bufferedFrames()) ws.send(JSON.stringify(f));
+      // G14.2xx b shadow 帧不走红窗补发(512 环窗对长会话子代理流必溢出,且 GUI 刷新时本连接
+      // 建立常先于会话 attach——回放面够不着):恢复唯一入口=HTTP /session/:id/shadow-events
+      // 水合(会话打开/重连时 GUI 拉取),本面只放实时与主链补发窗
+      for (const f of session.bufferedFrames()) {
+        if (isShadowEvent(f.e)) continue;
+        ws.send(JSON.stringify(f));
+      }
       for (const frame of session.pendingFrames()) ws.send(JSON.stringify(frame)); // 挂起重发(P6 §4:表在会话)
     }
   }
@@ -571,6 +580,9 @@ export class GuiDaemon {
     { method: 'GET', path: '/memory', auth: true, run: async (req, res) => this.handleMemoryList(req, res) },
     { method: 'GET', path: '/session/:id/tasks', auth: true, run: async (_req, res, p) => this.handleSessionTasks(res, p.id) },
     { method: 'GET', path: '/session/:id/context', auth: true, run: async (_req, res, p) => this.handleSessionContext(res, p.id) },
+    // G14.2xx b 影子投影水合面:journal shadow 行全量(board/delegation/subagent)+ cut 水位——
+    // GUI 刷新/重连后会话打开时拉取清零重放(WS 环窗对长会话子代理流必溢出,恢复唯一可靠入口)
+    { method: 'GET', path: '/session/:id/shadow-events', auth: true, run: async (_req, res, p) => this.handleShadowEvents(res, p.id) },
     // G6 文件预览面：会话 root 内只读文本预览（Files 页消费；判界/二进制/512KB 截断语义见 handleFile）
     { method: 'GET', path: '/session/:id/file', auth: true, run: async (req, res, p) => this.handleFile(req, res, p.id) },
     // G7 diff 面：write 调用 pre-image ↔ 磁盘现文件双内容（Chat write 展开消费；查询面见 handleDiff）
@@ -1186,6 +1198,10 @@ export class GuiDaemon {
 
   private handleSessionContext(res: http.ServerResponse, id: string): void {
     sessionHandlers.handleSessionContext(this.sessionIo, res, id);
+  }
+
+  private handleShadowEvents(res: http.ServerResponse, id: string): void {
+    sessionHandlers.handleShadowEvents(this.sessionIo, res, id);
   }
 
   private handleAnchors(res: http.ServerResponse, id: string): void {

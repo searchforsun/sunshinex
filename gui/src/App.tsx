@@ -17,6 +17,7 @@ import type { TabServices } from './tabs/registry';
 import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession, reopenClosed, parseTabSession } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { applyAgentEvent } from './tabs/agent-activity';
+import type { ChatState } from './chat-reducer';
 import type { AgentActivities } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -122,6 +123,11 @@ interface SessionProjection {
 }
 const EMPTY_PROJECTION = (): SessionProjection => ({ board: emptyBoard(), sessionTodos: [], delegations: [], team: [] });
 
+/** 内存缓存上限(G14.2xx b 全局缓存治理):子代理聚合桶 8 会话、转录投影 4 会话——LRU 触碰,
+ *  超限淘汰最旧;当前会话恒在 LRU 尾(每次事件/挂载触碰),活跃面永不被挤 */
+const ACTS_LRU_MAX = 8;
+const CHAT_MEM_LRU_MAX = 4;
+
 /** 应用壳:单连接装配 + 三栏路由(左 ProjectMenu|中 Chat 恒挂|右标签栏);welcome = 无会话空态 */
 function AppShell(): JSX.Element {
   /** 欢迎页 goal 接力(G10):welcome 提交建会话后,Chat 播种完成即提交该目标 */
@@ -139,8 +145,9 @@ function AppShell(): JSX.Element {
   const [recentVersion, setRecentVersion] = useState(0);
   /** G14.52 活动会话运行态(GUI 本地权威):model-start 置位,done/error 复位——侧栏运行圆点消费 */
   /** G14.2xx 运行态按会话记(原全局布尔 cross 会话切换/刷新恢复即卡转圈——A 起跑点亮、
-   *  切到 B 后 A 的 done 因会话不匹配被忽略,布尔永不熄):id=在跑的会话 */
-  const [runningId, setRunningId] = useState('');
+   *  切到 B 后 A 的 done 因会话不匹配被忽略,布尔永不熄)。
+   *  G14.2xx b 集合化:多会话并行运行各自点亮(单值时 A 跑着切 B 再回,A 明明在跑却熄) */
+  const [runningIds, setRunningIds] = useState<ReadonlySet<string>>(() => new Set());
   /** G8a 标签态总表:每会话独立(backHome 保留——重开同会话标签还原,spec §1)。
    *  G14.2xx 持久化:盘为真相源(<slug>/gui/sessions/<会话id>.json)——附接即拉档回填,
    *  变更防抖写透;内存仅缓存/加速(CLAUDE.md §13 持久化分层) */
@@ -165,8 +172,59 @@ function AppShell(): JSX.Element {
     opErrorTimer.current = setTimeout(() => setOpError(''), 3_000);
   };
   /** G8d 子代理活动聚合(App 态):payload.subagent 标签流经 applyAgentEvent 归约——Agents 标签
-   *  只读消费(services.agentActivities);delegation 起止 label 命中既有卡时改状态(权威终语) */
-  const [agentActivities, setAgentActivities] = useState<AgentActivities>({});
+   *  只读消费(services.agentActivities);delegation 起止 label 命中既有卡时改状态(权威终语)。
+   *  G14.2xx b 按会话分桶(外层键=sessionId):切会话不清零——内存缓存直接命中(切回零拉取零
+   *  重建,标签撞名也不串态);刷新/重连后由影子水合从 journal 重建 */
+  const [agentActivitiesBySession, setAgentActivitiesBySession] = useState<Record<string, AgentActivities>>({});
+  /** 子代理桶 LRU 触碰序(上限 ACTS_LRU_MAX=8):最近使用的会话桶保留,久不用的淘汰——内存有界 */
+  const actsLRURef = useRef<string[]>([]);
+  /** 子代理桶统一写入口:LRU 触碰 + 淘汰超限桶(非当前会话);fold=对桶的纯归约 */
+  const bumpActs = useCallback((sessionId: string, fold: (a: AgentActivities) => AgentActivities): void => {
+    const lru = actsLRURef.current.filter((k) => k !== sessionId);
+    lru.push(sessionId);
+    actsLRURef.current = lru;
+    setAgentActivitiesBySession((m) => {
+      const next: Record<string, AgentActivities> = {};
+      for (const k of lru) {
+        if (lru.length > ACTS_LRU_MAX && k === lru[0]) continue; // 最旧且超限:淘汰
+        next[k] = m[k] ?? {};
+      }
+      next[sessionId] = fold(m[sessionId] ?? {});
+      return next;
+    });
+  }, []);
+  /** G14.2xx b 转录内存缓存(LRU 4 会话):Chat 卸载时写回最新投影,重挂载即以缓存态直渲
+   *  (stale-while-revalidate——先见缓存转录,快照播种落定无缝整替校准),切会话回来不再白屏等
+   *  快照往返。键=journalId(跨重启稳定)。内核条目引用跨快照共享,单会话转录条目 ≤2000 条,
+   *  4 会话上限内存有界;同会话反复进出只触碰 LRU 不复制 */
+  const chatMemRef = useRef<Map<string, ChatState>>(new Map());
+  const chatMemLRURef = useRef<string[]>([]);
+  const chatMemGet = useCallback((key: string): ChatState | undefined => {
+    const hit = chatMemRef.current.get(key);
+    if (hit !== undefined) chatMemLRURef.current = [...chatMemLRURef.current.filter((k) => k !== key), key];
+    return hit;
+  }, []);
+  const chatMemPut = useCallback((key: string, state: ChatState): void => {
+    chatMemRef.current.set(key, state);
+    const lru = chatMemLRURef.current.filter((k) => k !== key);
+    lru.push(key);
+    while (lru.length > CHAT_MEM_LRU_MAX) {
+      const evict = lru.shift();
+      if (evict !== undefined) chatMemRef.current.delete(evict);
+    }
+    chatMemLRURef.current = lru;
+  }, []);
+  /** G14.2xx b 影子水合(子代理投影恢复):journal subagent 行全量拉取清零重放——WS 环窗(512)
+   *  对长会话子代理流必溢出且连接建立常先于会话 attach,刷新/重连后「无活动记录」的病根。
+   *  在途 subagent 帧按 seq 缓冲截流,落定后重放 seq>cut(服务端读档时刻泵水位)——cut 前已含
+   *  于行集,cut 后只在缓冲,零丢帧零重复。board/delegation 不走此路(快照携带+attach seedShadow
+   *  既有可靠链),避免与播种窗交叉 */
+  const shadowHydratingRef = useRef<Set<string>>(new Set());
+  const shadowHydratedRef = useRef<Set<string>>(new Set());
+  /** 在途缓冲按会话分桶(并发水合互踩防线——A 在途时切 B,B 的清桶不得冲掉 A 的在途帧) */
+  const shadowBufRef = useRef<Map<string, Array<{ e: SessionEvent; seq: number }>>>(new Map());
+  /** 影子子代理帧判定(与内核 shadow 透传同口径的子代理子集) */
+  const shadowHydrateRef = useRef<((sessionId: string) => void) | null>(null);
   /** G14.174 待办批次/关联轮次输入(Chat 从转录重建上抛)——待办/任务板页签数据面 */
   const [todoBatches, setTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
   const [turnGoal, setTurnGoal] = useState('');
@@ -213,6 +271,37 @@ function AppShell(): JSX.Element {
     boardPendingRef.current = [];
     boardSeedingRef.current = true;
   };
+  /** G14.2xx b 影子水合单点:journal subagent 行全量清零重放 + 在途缓冲 seq>cut 重放(每渲染
+   *  重赋 ref——闭包恒取最新 connInstance;onReset/会话打开 effect 经 ref 触发) */
+  shadowHydrateRef.current = (sessionId: string): void => {
+    if (connInstance === null) return;
+    if (shadowHydratingRef.current.has(sessionId)) return; // 在途幂等
+    shadowHydratingRef.current.add(sessionId);
+    shadowBufRef.current.set(sessionId, []);
+    const buf = (): Array<{ e: SessionEvent; seq: number }> => shadowBufRef.current.get(sessionId) ?? [];
+    const fold = (acts: AgentActivities, e: SessionEvent): AgentActivities =>
+      // delegation 行一并入折(journal 有档——delegation-ended 终语对卡状态的影响随重建保留)
+      typeof e.payload?.subagent === 'string' || e.type.startsWith('delegation-') ? applyAgentEvent(acts, e) : acts;
+    void connInstance.shadowEvents(sessionId).then(
+      ({ events, cut }) => {
+        let acts: AgentActivities = {};
+        for (const e of events) acts = fold(acts, e); // journal 全量(到读档时刻)
+        for (const { e, seq } of buf()) {
+          if (seq > cut) acts = fold(acts, e); // 读档后到达的帧只在缓冲
+        }
+        shadowBufRef.current.delete(sessionId);
+        shadowHydratingRef.current.delete(sessionId);
+        // 按会话桶整替(只覆本会话,他桶内存缓存不动)
+        bumpActs(sessionId, () => acts);
+      },
+      () => {
+        // 拉取失败(daemon 未附/旧版无端点):摘标记放行实时帧直投并允许下次触发点重试
+        shadowBufRef.current.delete(sessionId);
+        shadowHydratingRef.current.delete(sessionId);
+        shadowHydratedRef.current.delete(sessionId);
+      },
+    );
+  };
 
   useEffect(() => {
     const conn = createConnection({
@@ -220,8 +309,8 @@ function AppShell(): JSX.Element {
       onEvent: (sessionId, e: SessionEvent, seq: number) => {
         if (e.type === 'model-start' || e.type === 'done') setRecentVersion((v) => v + 1); // G14.52:run 起跑/收束都刷侧栏(运行圆点亮起与熄灭跟手)
         // G14.2xx 运行态按会话记:任一会话起跑点亮其行;收束只熄自己(跨会话切换/恢复不误熄不卡转圈)
-        if (e.type === 'model-start') setRunningId(sessionId);
-        else if (e.type === 'done' || e.type === 'error') setRunningId((cur) => (cur === sessionId ? '' : cur));
+        if (e.type === 'model-start') setRunningIds((s) => (s.has(sessionId) ? s : new Set([...s, sessionId])));
+        else if (e.type === 'done' || e.type === 'error') setRunningIds((s) => (s.has(sessionId) ? new Set([...s].filter((x) => x !== sessionId)) : s));
         if (sessionId !== sessionRef.current) {
           // G14.29 辅助会话帧:只投旁路聊天流(板/委派/子代理投影不涉旁路,丢弃)
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
@@ -239,13 +328,19 @@ function AppShell(): JSX.Element {
             setProjection((p) => ({ ...p, delegations: applyDelegation(p.delegations, e) }));
             // G8d:delegation 起止无 subagent 标签——payload.label 命中既有卡才改状态(Runner 权威
             // 终语:ended failed → error·done → done;未建卡原引用返回,React 同引用即免重渲染)
-            setAgentActivities((a) => applyAgentEvent(a, e));
+            bumpActs(sessionId, (a) => applyAgentEvent(a, e));
           }
         }
         if (typeof e.payload?.subagent === 'string') {
+          // G14.2xx b 影子水合在途:subagent 帧截流缓冲(落定按 seq>cut 重放)——防清零重放丢在途帧
+          const buf = shadowBufRef.current.get(sessionId);
+          if (shadowHydratingRef.current.has(sessionId) && buf !== undefined) {
+            buf.push({ e, seq });
+            return;
+          }
           // G8d 子代理事件另轨(Agents 标签聚合):不投 chat——chat reducer 入口另有同判过滤兜底
           // (种子重放等路径仍过 reducer,零害保留);建卡/行化/水位在此单点归约
-          setAgentActivities((a) => applyAgentEvent(a, e));
+          bumpActs(sessionId, (a) => applyAgentEvent(a, e));
           return;
         }
         chatSinkRef.current?.on(e, seq);
@@ -257,8 +352,14 @@ function AppShell(): JSX.Element {
         setProjection(EMPTY_PROJECTION()); // D34 串态收口:board/todos/delegations/team 一处整替
         setTodoBatches([]);
         setTurnGoal('');
-        setAgentActivities({}); // G8d:子代理聚合清零(重连补发帧重建——连接层 seq 过滤防双应用)
+        if (sessionRef.current !== '') bumpActs(sessionRef.current, () => ({})); // G8d:仅当前会话桶清零(重连影子水合重建;他会话缓存不动)
         chatSinkRef.current?.reset();
+        // G14.2xx b 重连影子重水合:WS 回放已不含 shadow 帧(环窗溢出+回放面跳过,恢复唯一入口=
+        // journal 水合),清零后对在座会话即刻拉取重建(在座会话切走再回/重连同路径)
+        if (sessionRef.current !== '') {
+          shadowHydratedRef.current.delete(sessionRef.current);
+          shadowHydrateRef.current?.(sessionRef.current);
+        }
       },
       // G4 挂起面装配:连接层回调闭包固定,经 sessionRef 过滤本会话后转投 Chat sink(卡片区);
       //  他会话挂起卡不显(本会话外无渲染面),他会话 reset 不触发重播种
@@ -287,7 +388,7 @@ function AppShell(): JSX.Element {
         setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之一随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-        setAgentActivities({}); // G8d:会话维 reset 子代理聚合同清(swap 新 Harness,旧卡作废)
+        if (sessionRef.current !== '') bumpActs(sessionRef.current, () => ({})); // G8d:会话维 reset 清当前桶(swap 新 Harness,旧卡作废)
         chatSinkRef.current?.resetSession();
       },
       onStateChange: setConnState,
@@ -352,7 +453,11 @@ function AppShell(): JSX.Element {
     setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-    setAgentActivities({}); // G8d:会话切换串态防线(板/team 同款——聚合只挂当前会话帧)
+    // G14.2xx b 子代理聚合不清零(按会话分桶,切回直接内存命中——零拉取零重建;刷新/重连才走影子水合)
+    // 影子水合前置触发:sessionRef 已同步更新、hydrating 标记在此即刻落位——effect 渲染周期前的
+    // 实时帧也会被截流缓冲,水合落定按 seq>cut 合并零丢帧(del 标记=每次进入重水合取最新)
+    shadowHydratedRef.current.delete(sessionId);
+    shadowHydrateRef.current?.(sessionId);
     setPage('chat');
     // G14.2xx 恢复现场指针:打开即记应用级档(lastRoot+journal;新会话无 journal 记空——
     // 重启后只回落工作区,不凭空造会话);刷新/重开浏览器据此重放打开链
@@ -396,7 +501,7 @@ function AppShell(): JSX.Element {
     setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
         setTurnGoal('');
-    setAgentActivities({}); // G8d:无会话期无帧消费,残留即陈旧
+    // G14.2xx b 子代理聚合不清(按会话分桶=内存缓存,重开同会话直接命中)
     setPage('welcome');
   };
 
@@ -499,7 +604,10 @@ function AppShell(): JSX.Element {
     boardSeedingRef.current = false;
     // G14.2xx 运行态对表(零额外请求,复用 reseed 快照的 status 权威):attach 收编运行中/
     // 重启重开均归位;非运行清同会话残留(修「已完成仍在转圈」的跨会话布尔卡滞)
-    setRunningId((cur) => (snap.status === 'running' ? sessionRef.current : cur === sessionRef.current ? '' : cur));
+    setRunningIds((s) => {
+      const without = new Set([...s].filter((x) => x !== sessionRef.current));
+      return snap.status === 'running' && sessionRef.current !== '' ? new Set([...without, sessionRef.current]) : without;
+    });
     let nextBoard = snap.board;
     let nextDelegations = snap.delegations;
     for (const f of replay) {
@@ -510,7 +618,7 @@ function AppShell(): JSX.Element {
         // G8e-T2:delegation 帧补投子代理聚合(与 board/delegation 同窗)——窗外路径本就投
         // applyAgentEvent(权威终语:ended failed→error/done→done;label 命中既有卡才动),
         // 窗内缓冲帧此前只重放板/委派不投聚合,delegation 终语在播种窗内被吞(卡滞 running)
-        setAgentActivities((a) => applyAgentEvent(a, f.e));
+        if (sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
       }
     }
     setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [] }));
@@ -523,12 +631,27 @@ function AppShell(): JSX.Element {
   const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }): void => {
     setTabStates((s) => patchTabMeta(s, sessionId, uid, patch));
   }, []);
+  /** G14.2xx b create_task 行任务名定位(子代理转录页与 Chat onOpenTask 同一口径):开任务板页签
+   *  +focus 信号(nonce 变更即滚动高亮);useCallback 零依赖稳定 */
+  const openTaskFocus = useCallback((ref: string): void => {
+    openAgentsTab();
+    setTaskFocus({ ref, nonce: Date.now() });
+  }, [openAgentsTab]);
   const services = useMemo<TabServices>(
-    () => ({ board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, onTabMeta, agentActivities, todos: [...projection.sessionTodos], todoBatches, turnGoal, taskFocus }),
-    [projection, reviewTask, onTabMeta, agentActivities, todoBatches, turnGoal, taskFocus],
+    () => ({ board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, onTabMeta, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos], todoBatches, turnGoal, taskFocus, onOpenTask: openTaskFocus }),
+    [projection, reviewTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, turnGoal, taskFocus, openTaskFocus],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
+  // G14.2xx b 影子水合触发:会话打开即拉 journal subagent 行重建子代理投影(每会话一次;
+  // 重连场景由 onReset 清标记重触发)。activities 内存尚在(切走再回)即跳过——不重复水合
+  useEffect(() => {
+    if (connInstance === null || connState !== 'open' || openSessionId === '') return;
+    if (shadowHydratedRef.current.has(openSessionId)) return;
+    shadowHydratedRef.current.add(openSessionId);
+    shadowHydrateRef.current?.(openSessionId);
+  }, [connInstance, connState, openSessionId]);
+
   // G14.2xx 附接水合:切会话即拉盘档回填(仅在本地无此会话态或空态时落——不覆写在途编辑);
   // 拉到(含空档)即记水合,写透闸门随之放开
   useEffect(() => {
@@ -698,7 +821,7 @@ function AppShell(): JSX.Element {
               activeSessionId={openSessionId}
               activeRoot={openRoot}
               recentVersion={recentVersion}
-              runningId={runningId}
+              runningIds={runningIds}
               onOpenSession={openSession}
               onOpenSettings={openSettings}
               onNewChat={() => {
@@ -732,6 +855,7 @@ function AppShell(): JSX.Element {
                 conn={connInstance}
                 sessionId={openSessionId}
                 journalId={openJournalId}
+                chatMem={{ get: chatMemGet, put: chatMemPut }}
                 connState={connState}
                 onBack={backHome}
                 sinkRef={chatSinkRef}

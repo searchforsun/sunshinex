@@ -336,6 +336,11 @@ const h = vi.hoisted(() => {
       return Promise.resolve({ state: null }); // 应用级指针档:测试缺省无现场
     }
     async saveAppGuiState(_state: object): Promise<void> {}
+    /** G14.2xx b 影子水合面:测试缺省空行集(子代理投影恢复无档);可编程面留 shadowResp */
+    shadowResp: { events: import('../../src/types').SessionEvent[]; cut: number } = { events: [], cut: 0 };
+    shadowEvents(_id: string): Promise<{ events: import('../../src/types').SessionEvent[]; cut: number }> {
+      return Promise.resolve(this.shadowResp);
+    }
     close(): void {
       this.closed = true;
     }

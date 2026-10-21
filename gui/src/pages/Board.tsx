@@ -292,7 +292,7 @@ export function Board({ board, delegations, team, onReview, onBack, todos, onOpe
                           type="button"
                           className="delegation-main"
                           aria-label={`open agent ${d.label}`}
-                          data-tip={t('Open agent transcript', '打开子代理只读转录')}
+                          data-tip={t('View agent', '查看子智能体')}
                           onClick={() => onOpenAgent?.(d.label, title)}
                         >
                           <span className="delegation-title">{title}</span>

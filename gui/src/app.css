@@ -1494,12 +1494,22 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tb-task-row { display: flex; flex-direction: column; gap: 2px; }
 .tb-task-main { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; border: none; background: transparent; padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; color: var(--fg); font-size: 12.5px; }
 .tb-task-main:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-/* G14.213 状态图标三态:运行(claimed/in_review)=转圈;完成=蓝点;等待(pending)=灰点;失败=红点 */
-.tb-status-dot { flex: none; box-sizing: border-box; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-tertiary); }
+/* G14.213 状态图标三态:运行(claimed/in_review)=灰转圈;完成=蓝点;等待(pending)=灰点;失败=红点。
+   2026-10-19 用户裁定两连:①蓝转圈退役对齐全局灰环语言(顶栏 run-spinner/侧栏会话行同款);
+   ②小圆点在根 zoom+flex 交叉轴小数取整下会被拉椭(border-radius:50% 依赖盒纵横比,实测
+   zoom≥1.1 档即现椭圆)——实心点/转圈环全改几何圆构造:radial-gradient(circle Rpx) 半径两轴
+   同值,盒取整不变形;转圈=conic 亮弧+同款 circle mask 挖环,sx-spin 旋转照旧(mask 兜底
+   -webkit- 前缀;不支持时退化为实心双色的旋转盘,不丢「运行中」语义) */
+.tb-status-dot { flex: none; box-sizing: border-box; width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle 3.5px at 50% 50%, var(--fg-tertiary) 3px, transparent 3.5px); }
 .tb-status-dot.task-status-claimed,
-.tb-status-dot.task-status-in_review { background: transparent; border: 1.5px solid var(--accent); border-top-color: transparent; animation: sx-spin 1s linear infinite; }
-.tb-status-dot.task-status-done { background: var(--accent); }
-.tb-status-dot.task-status-failed { background: var(--err); }
+.tb-status-dot.task-status-in_review {
+  background: conic-gradient(from 0deg, var(--fg) 0 25%, var(--fg-tertiary) 0);
+  -webkit-mask-image: radial-gradient(circle 3.5px at 50% 50%, transparent 1.4px, #000 1.9px 3.2px, transparent 3.6px);
+  mask-image: radial-gradient(circle 3.5px at 50% 50%, transparent 1.4px, #000 1.9px 3.2px, transparent 3.6px);
+  animation: sx-spin 1s linear infinite;
+}
+.tb-status-dot.task-status-done { background: radial-gradient(circle 3.5px at 50% 50%, var(--accent) 3px, transparent 3.5px); }
+.tb-status-dot.task-status-failed { background: radial-gradient(circle 3.5px at 50% 50%, var(--err) 3px, transparent 3.5px); }
 /* G14.213 DAG 预设高度;G14.2xx 渲染换开源图组件 React Flow(@xyflow/react)+dagre 布局
    (mermaid 拼源退役):平移/滚轮缩放/控制钮组件内置,外层壳不再滚动(防双滚动条) */
 .tb-dag-wrap { position: relative; }
@@ -1668,12 +1678,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* ===== G14.175 子代理转录页 v2:主对话式渲染(用户气泡/思考行/assistant md/工具行,无输入框) =====
    G14.213 渲染组件换正(ChatEntryView/ThinkingEntryView/ToolEntryView 同一套),页内 md 字号/
    p 边距覆盖与自绘 tool-row 样式退役——视觉即主对话 */
-.sx-agent-thread { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px 28px; /* G14.2xx 宽度策略与主对话同源:对称 padding 承担限宽(--chat-max 由 RO 按右栏宽落值),窄面板 16px 护栏沿用本页原 gutter */ padding-left: max(16px, calc((100% - var(--chat-max) - 2 * var(--thread-gutter)) / 2 + 16px)); padding-right: max(16px, calc((100% - var(--chat-max) - 2 * var(--thread-gutter)) / 2 + 16px)); } /* G14.2xx 底部边距加足(末行工具/回复不贴底) */
-/* G14.2xx 子代理页四项对齐主对话:页体作跳底钮定位锚;jump-down 本页无输入框改钉右下角;
-   头部运行态行下分割线(主对话 run 行与流区同款分隔语义) */
+.sx-agent-thread { display: flex; flex-direction: column; padding: 12px 16px 28px; /* G14.2xx 宽度策略与主对话同源:对称 padding 承担限宽(--chat-max 由 RO 按右栏宽落值),窄面板 16px 护栏沿用本页原 gutter */ padding-left: max(16px, calc((100% - var(--chat-max) - 2 * var(--thread-gutter)) / 2 + 16px)); padding-right: max(16px, calc((100% - var(--chat-max) - 2 * var(--thread-gutter)) / 2 + 16px)); } /* G14.2xx 底部边距加足(末行工具/回复不贴底);G14.2xx b gap 声明退役——容器挂 .chat 类,条目间距(gap 8px/user·assistant margin-top/工具行相邻收紧)与主对话完全同源 */
+/* G14.2xx 子代理页对齐主对话:页体作跳底钮定位锚;jump-down 本页无输入框改钉右下角;
+   分割线归内容区 run 条自带 border-bottom(G14.2xx b 合成头部行+agent-thread-sep 双线退役) */
 .sx-agent-page { position: relative; }
 .sx-agent-page .jump-down { top: auto; bottom: 16px; }
-.agent-thread-sep { flex: none; border-top: 1px solid var(--border); margin: 0 0 2px; }
 .sx-agent-thread .user-bubble { max-width: 85%; margin-left: auto; }
 .sx-agent-thread .child-tool-mark.ok { color: var(--ok); }
 .sx-agent-thread .child-tool-mark.fail { color: var(--err); }

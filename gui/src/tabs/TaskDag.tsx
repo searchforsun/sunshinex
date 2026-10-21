@@ -120,12 +120,14 @@ export function layoutTaskDag(
   };
 }
 
-/** 任务节点:状态图标(列表行同款 tb-status-dot)+任务名(+gated ⚠)+执行子代理行(🤖) */
+/** 任务节点:状态图标(列表行同款 tb-status-dot)+任务名(+gated ⚠)+执行子代理行(🤖)。
+ *  节点名恒单行截断——hover 显全名走全局 data-tip 单例(§13.1 规则 2 禁原生 title、规则 4 截断文本场景) */
 function TaskNode({ data }: NodeProps<Node<TaskNodeData, 'task'>>): JSX.Element {
   return (
     <div
       className={`tb-dag-node task-status-${data.status}${data.clickable ? ' clickable' : ''}${data.gated ? ' gated' : ''}`}
       aria-label={`${data.id} [${data.status}] ${data.title}`}
+      data-tip={data.title}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <div className="tb-dag-node-head">

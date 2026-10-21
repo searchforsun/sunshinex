@@ -43,6 +43,9 @@ export interface TabServices {
   readonly turnGoal: string;
   /** G14.176 create_task 行点开的定位信号(App 注入;nonce 变更即滚动高亮) */
   readonly taskFocus: { ref: string; nonce: number } | null;
+  /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openAgentsTab+setTaskFocus;
+   *  子代理转录页与主对话 Chat 同构消费) */
+  readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名 → 标签 params;App 落 patchTabMeta) */
   readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }) => void;
 }
@@ -190,9 +193,14 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         conn={p.conn}
         sessionId={p.sessionId}
         activities={p.services.agentActivities[p.params.label ?? '']}
-        delegations={p.services.delegations}
         board={p.services.board}
         task={p.params.task}
+        // G14.2xx b 工具行/正文回调链与主对话同构(App openTabInSession 同一开签口径——
+        // read 行点击开文件标签/write ⇄ 开 diff/spawn 名开转录/create_task 名定位任务板)
+        onOpenFile={(path) => p.openTab('file', { path })}
+        onOpenDiff={(callId, path) => p.openTab('diff', { callId, path })}
+        onOpenAgent={(label2, agentTitle, task2) => p.openTab('agent', { label: label2, agentTitle, task: task2 })}
+        onOpenTask={p.services.onOpenTask}
       />
     ),
   },

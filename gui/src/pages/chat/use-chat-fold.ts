@@ -4,10 +4,45 @@ import { t } from '../../i18n';
 import { zoomScale } from '../../ui-zoom';
 import type { Connection } from '../../connection';
 import { applyChatEvent } from '../../chat-reducer';
-import type { ChatState } from '../../chat-reducer';
+import type { ChatEntry, ChatState } from '../../chat-reducer';
 
 /** 轮次折叠簇(D32 第六批批F-5 自 Chat.tsx 平移,行为零变化):collapsedRuns/G14.136 段内中间
  *  正文折叠 hiddenKeys/G14.48 展开折叠防闪动校正/entry 面回调稳定化(G14.211)。 */
+/** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;hiddenKeys=折叠区间内的
+ *  工具/思考行 key(用户气泡/回复/旁白保留)。G14.73:隐藏条目保持挂载,渲染层包进
+ *  seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
+ *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
+ *  (phase 叙述/中间解释默认不露),展开轮时照常可见。
+ *  G14.2xx b:投影抽纯函数单点——主对话 hook 与子代理转录页(本地折叠态)同源消费 */
+export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns: ReadonlySet<string>): ReadonlySet<string> {
+  const s = new Set<string>();
+  let hide = false;
+  /** 段内 sealed assistant 收集:段收口(run 再启/流尽)时除末条外入 hidden */
+  let segAssistants: string[] = [];
+  const closeSeg = (): void => {
+    if (hide) for (let i = 0; i < segAssistants.length - 1; i += 1) s.add(segAssistants[i]!);
+    segAssistants = [];
+  };
+  for (const e of entries) {
+    if (e.kind === 'run') {
+      closeSeg();
+      hide = collapsedRuns.has(e.key);
+      continue;
+    }
+    if (e.kind === 'assistant') {
+      if (e.streaming !== true) segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
+      continue;
+    }
+    if (e.kind === 'user') {
+      closeSeg();
+      continue;
+    }
+    if (hide && (e.kind === 'tool' || e.kind === 'thinking')) s.add(e.key);
+  }
+  closeSeg();
+  return s;
+}
+
 export function useChatFold(deps: {
   readonly chat: ChatState;
   readonly setChat: Dispatch<SetStateAction<ChatState>>;

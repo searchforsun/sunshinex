@@ -21,6 +21,7 @@ import type {
   TreeResp,
   WorkspaceRow,
 } from './connection-types';
+import type { SessionEvent } from '../../src/types';
 
 
 export interface Connection {
@@ -93,6 +94,10 @@ export interface Connection {
   restoreChange(id: string, path: string): Promise<void>;
   /** GET /session/:id/context:上下文分段构成(G10-C6 面板) */
   sessionContext(id: string): Promise<{ parts: Array<{ id: string; tokens: number; count: number }>; chainByAction: Array<{ action: string; tokens: number }>; total: number; window: number; free: number }>;
+  /** GET /session/:id/shadow-events:journal 影子事件全量(board/delegation/subagent)+ cut 水位
+   *  (G14.2xx b 影子投影水合——刷新/重连后会话打开时拉取清零重放;WS 环窗 512 对长会话子代理流
+   *  必溢出,恢复唯一可靠入口)。cut=服务端读档时刻泵水位:在途缓冲帧按 seq>cut 重放,零丢帧零重复 */
+  shadowEvents(id: string): Promise<{ events: SessionEvent[]; cut: number }>;
   /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板)。G14.2xx 用户裁定:本面只记录 exec 类
    *  真后台执行——subagent/teammate 账本行退役(子代理/队友在任务板·agent 页签已有专面,双处
    *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用) */
@@ -380,6 +385,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionContext(id: string) {
       return getJson('/session/' + encodeURIComponent(id) + '/context');
+    },
+    shadowEvents(id: string) {
+      return getJson<{ events: SessionEvent[]; cut: number }>('/session/' + encodeURIComponent(id) + '/shadow-events');
     },
     sessionTasks(id: string) {
       // 白名单:只留 exec 类真后台执行(subagent/teammate 各有专面)——见接口注

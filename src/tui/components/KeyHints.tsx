@@ -48,7 +48,7 @@ export function keyHintsFor(s: {
     if (s.inspectLive) {
       return {
         items: [
-          { key: t('ctrl+c again', '再按 Ctrl+C'), action: t('stop this subagent', '停止此子代理') },
+          { key: t('ctrl+c again', '再按 Ctrl+C'), action: t('stop this subagent', '停止此子智能体') },
           { key: 'Esc', action: t('keep running', '继续运行') },
         ],
       };
@@ -121,7 +121,7 @@ export function keyHintsFor(s: {
       { key: 'Tab', action: t('todo', '待办') },
       { key: 'Ctrl+O', action: t('detail', '详情') },
     ];
-    if (s.hasChildren) items.push({ key: 'Ctrl+B', action: t('subagents', '子代理') });
+    if (s.hasChildren) items.push({ key: 'Ctrl+B', action: t('subagents', '子智能体') });
     items.push({ key: 'Ctrl+T', action: t('tasks', '任务') });
     items.push({ key: 'Ctrl+Q', action: t('queued', '队列') });
     return { items };
@@ -141,7 +141,7 @@ export function keyHintsFor(s: {
     items: [
       { key: 'Shift+Enter', action: t('newline', '换行') },
       { key: '↑', action: t('history', '历史') },
-      { key: 'Ctrl+B', action: t('subagents', '子代理') },
+      { key: 'Ctrl+B', action: t('subagents', '子智能体') },
       { key: 'Ctrl+T', action: t('tasks', '任务') },
       { key: 'Ctrl+Q', action: t('queued', '队列') },
     ],

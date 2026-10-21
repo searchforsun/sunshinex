@@ -84,4 +84,7 @@ export interface ChatProps {
   /** G14.213 滚动位存档键:journal 档案 id(稳定跨重挂/重启)。sessionId 是活动会话别名
    *  (每次重开经 newSession+attach 重新发号,s165→s167),按它存档永远失配;未配回落 sessionId */
   journalId?: string;
+  /** G14.2xx b 转录内存缓存(App LRU 面):挂载命中即以缓存态直渲(快照播种落定无缝整替),
+   *  卸载写回最新投影——切会话回来不再白屏等快照往返。缺省(测试桩/旁路面)不缓存 */
+  chatMem?: { get(key: string): import('../../chat-reducer').ChatState | undefined; put(key: string, state: import('../../chat-reducer').ChatState): void };
 }

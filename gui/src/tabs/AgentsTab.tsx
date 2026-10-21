@@ -82,7 +82,7 @@ export function AgentsTab({ activities, delegations, board, onOpenAgent }: Agent
                 className="sx-subagent-row"
                 aria-label={`open agent ${name}`}
                 onClick={() => onOpenAgent(a.label, name)}
-                data-tip="打开只读转录"
+                data-tip="查看子智能体"
               >
                 <span className="sx-subagent-main">
                   <span className="sx-subagent-headline">

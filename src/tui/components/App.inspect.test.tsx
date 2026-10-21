@@ -40,7 +40,7 @@ test('App inspect：Tab 切换折叠/完整时间线（经生产 repaint 整屏�
     const two = render(<App {...props} />);
     current = two;
     await sleep(80);
-    assert.match(two.lastFrame() ?? '', /子代理视图|subagent view/, '全屏视图接管');
+    assert.match(two.lastFrame() ?? '', /] 子智能体|] subagent/, '全屏视图接管');
     assert.match(two.allOutput(), /Thought for/, '思考收束摘要行在档');
     assert.ok(!two.allOutput().includes('思考全文行甲'), '折叠态思考全文不呈现');
     two.write('\t'); // Tab → 展开时间线（卸载）
@@ -113,7 +113,7 @@ test('App inspect：运行中子代理整页接管，Esc 退出恢复主界面�
     await sleep(50);
     term.write('\r'); // Enter：选中运行中子代理 → 全屏接管
     await sleep(50);
-    assert.match(term.lastFrame() ?? '', /子代理视图|subagent view/, '全屏视图接管整页');
+    assert.match(term.lastFrame() ?? '', /] 子智能体|] subagent/, '全屏视图接管整页');
     assert.match(term.lastFrame() ?? '', /分析中…/, '子代理转录实时呈现');
     term.write('\u001B'); // Esc：退出
     await sleep(50);
@@ -147,7 +147,7 @@ test('App inspect：查看中子代理完成归档——live 离场自动换挡 
     const two = render(<App {...props} />);
     current = two;
     await sleep(80);
-    assert.match(two.lastFrame() ?? '', /子代理视图|subagent view/, '前置：全屏查看 live 子代理在场');
+    assert.match(two.lastFrame() ?? '', /] 子智能体|] subagent/, '前置：全屏查看 live 子代理在场');
     assert.match(two.lastFrame() ?? '', /\[w\]/, '前置：live 态任务名在档');
     // 结果先行入档（child 未 done → wait）→ done 收口：archiveDeferred 归档——child 从 children 离场、
     // 转录折进 SPAWN 调用行；查看视图必须自动换挡到 archived 形态而非退化「✻ []」

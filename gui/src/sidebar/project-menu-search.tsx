@@ -14,7 +14,7 @@ export interface ProjectSearchProps {
   readonly onQuery: (q: string) => void;
   readonly onClose: () => void;
   readonly activeSessionId: string;
-  readonly runningId: string;
+  readonly runningIds: ReadonlySet<string>;
   readonly journalOfSession: ReadonlyMap<string, string>;
   readonly busy: boolean;
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
@@ -23,7 +23,7 @@ export interface ProjectSearchProps {
 }
 
 export function ProjectSearch(props: ProjectSearchProps): JSX.Element {
-  const { rows, allSessions, query, onQuery, onClose, activeSessionId, runningId, journalOfSession, busy, isUnseen, onAttach, onComposeIn } = props;
+  const { rows, allSessions, query, onQuery, onClose, activeSessionId, runningIds, journalOfSession, busy, isUnseen, onAttach, onComposeIn } = props;
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
@@ -68,9 +68,9 @@ export function ProjectSearch(props: ProjectSearchProps): JSX.Element {
             .sort((a, b) => b.updatedAt - a.updatedAt)
             .slice(0, 20)
             .map((r) => {
-              // G14.2xx running 身份按会话记(runningId===本行映射会话);他会话看 daemon 标注
+              // G14.2xx running 身份按会话记(runningIds 含本行映射会话);他会话看 daemon 标注
               const isMapped = r.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === r.id;
-              const running = isMapped ? runningId === activeSessionId : r.liveSessionId !== undefined;
+              const running = isMapped ? runningIds.has(activeSessionId) : r.liveSessionId !== undefined;
               const label = r.title ?? r.firstUser ?? t('New session', '新会话');
               const metaLine = sessionMetaLine(r);
               return (

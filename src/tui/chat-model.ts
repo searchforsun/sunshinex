@@ -169,7 +169,7 @@ export function serializeMultiline(text: string): string {
 export function formatTaskStatsLine(durationS: number, steps: number, totalTokens: number, childTokens: number): string {
   const base = `${formatDuration(Math.max(0, durationS))} · ${Math.max(0, steps)} steps · ↑${formatTokens(Math.max(0, totalTokens))} tokens`;
   return childTokens > 0
-    ? t(`${base} (subagents ${formatTokens(childTokens)})`, `${base}（含子代理 ${formatTokens(childTokens)}）`)
+    ? t(`${base} (subagents ${formatTokens(childTokens)})`, `${base}（含子智能体 ${formatTokens(childTokens)}）`)
     : t(base, base);
 }
 

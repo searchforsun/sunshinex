@@ -80,7 +80,7 @@ test('App：全屏态段锚点自动重绘跳过（2026-09-28 用户裁决：持
     const two = mount();
     term = two;
     await new Promise((r) => setTimeout(r, 200));
-    assert.match(two.lastFrame() ?? '', /subagent view/, '前置：全屏视图在场');
+    assert.match(two.lastFrame() ?? '', /] subagent/, '前置：全屏视图在场');
     assert.equal(repaints.length, 1, '前置：进入全屏恰一次重绘');
     // 全屏期间主链再跑一轮带工具行的回合：段锚点落定不得触发整屏重绘（拆挂即闪屏 + 吞 Esc 空窗）
     void ctrl.submit('追问');
@@ -94,7 +94,7 @@ test('App：全屏态段锚点自动重绘跳过（2026-09-28 用户裁决：持
     const back = mount();
     term = back;
     await new Promise((r) => setTimeout(r, 200));
-    assert.doesNotMatch(back.lastFrame() ?? '', /subagent view/, '重挂后全屏视图退出（retain.inspect 已清）');
+    assert.doesNotMatch(back.lastFrame() ?? '', /] subagent/, '重挂后全屏视图退出（retain.inspect 已清）');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -130,15 +130,15 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     assert.match(lastFrame() ?? '', /❯ \[wr\]/, '↑ 从首行回环回末行（回环对称）');
     write('\r'); // Enter 全屏回看（光标缺省落最近一条归档行，规格 §3.2 替代原行内展开）
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /subagent view/, '全屏查看视图接管整页');
+    assert.match(lastFrame() ?? '', /] subagent/, '全屏查看视图接管整页');
     // 归档 detail 精简形态（2026-09-28 用户裁决：输入+结论+统计）；结论取子代理真实终稿（注入事件先于真实 done 到达被覆盖），
     // 2026-09-29 Static 时间线化：统计行随 detail 进滚动缓冲（allOutput 口径），动态帧只余状态行
     // 状态行标签锚定不钉字形：头行 glyph 自 3441fb8 起为 useSpinFrame 帧动画（✻✽✶✱✢ 轮转），断言时刻落在哪一帧不 确定
-    assert.match(lastFrame() ?? '', /\[wr\] subagent view/, '最近归档行全屏视图（状态行标签锚定）');
+    assert.match(lastFrame() ?? '', /\[wr\] subagent/, '最近归档行全屏视图（状态行标签锚定）');
     assert.match(allOutput(), /steps · /, '精简 detail 统计行在位（Static 滚动缓冲）');
     write('\u001b'); // Esc 退出全屏回主界面
     await new Promise((r) => setTimeout(r, 150));
-    assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
+    assert.doesNotMatch(lastFrame() ?? '', /] subagent/, '退出后全屏视图消失');
 
     write('\u0002'); // 再进浏览
     await new Promise((r) => setTimeout(r, 300));
@@ -147,10 +147,10 @@ test('App：Ctrl+B 浏览模式（进入/Enter 全屏回看/Esc 退出，规格 
     assert.match(lastFrame() ?? '', /❯ \[rv\]/, '↑ 后光标切到上一条已完成项（委派时间序）');
     write('\r'); // Enter 回看上一条
     await new Promise((r) => setTimeout(r, 300));
-    assert.match(lastFrame() ?? '', /\[rv\] subagent view/, '上一条归档行全屏视图（标签锚定，不钉动画帧字形）');
+    assert.match(lastFrame() ?? '', /\[rv\] subagent/, '上一条归档行全屏视图（标签锚定，不钉动画帧字形）');
     write('\u001b'); // Esc 退出
     await new Promise((r) => setTimeout(r, 150));
-    assert.doesNotMatch(lastFrame() ?? '', /subagent view/, '退出后全屏视图消失');
+    assert.doesNotMatch(lastFrame() ?? '', /] subagent/, '退出后全屏视图消失');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -251,13 +251,13 @@ test('App：全屏查看（inspect）经整屏重绘（卸载→同 retain 重�
     const three = render(<App {...props} banner={props.banner} />);
     current = three;
     await new Promise((r) => setTimeout(r, 200));
-    assert.match(three.lastFrame() ?? '', /subagent view/, '重挂后全屏态保留（retain 现场）');
+    assert.match(three.lastFrame() ?? '', /] subagent/, '重挂后全屏态保留（retain 现场）');
     three.write('\u001b'); // Esc 退出（生产路径：store 先写 + 请求重绘，帧面状态经重挂生效）
     await new Promise((r) => setTimeout(r, 150));
     const four = render(<App {...props} banner={props.banner} />);
     current = four;
     await new Promise((r) => setTimeout(r, 200));
-    assert.doesNotMatch(four.lastFrame() ?? '', /subagent view/, '重挂后 Esc 退出（retain.inspect 已清）');
+    assert.doesNotMatch(four.lastFrame() ?? '', /] subagent/, '重挂后 Esc 退出（retain.inspect 已清）');
     four.unmount();
     current = undefined;
   } finally {

@@ -97,9 +97,16 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
     return { ...s, [lbl]: { ...s[lbl]!, status } };
   }
   const card: AgentActivity = s[label] ?? { label, status: 'running', tokens: 0, lines: [], chat: initialChatState() };
+  if (e.type === 'queue') return s; // 队列面事件不入转录投影(主对话 applyChatEvent 同款防御——防误闭合开启段)
   // G14.2xx 同源归约:凡动卡的子代理事件都过一遍 chat-reducer 内核投影(与主对话唯一实现
-  // 同源),产全量字段条目;未动卡的事件原引用返回(投影亦幂等,省一次)
-  const withChat = (next: AgentActivity): AgentActivities => ({ ...s, [label]: { ...next, chat: applySubagentChatEvent(next.chat, e) } });
+  // 同源),产全量字段条目;未动卡的事件原引用返回(投影亦幂等,省一次)。
+  // G14.2xx b:零变化透传下沉到 withChat——lines 未动且投影零变化(applySubagentChatEvent
+  // 原引用口径)即原 s 返回,StrictMode/未知事件(route 等)恒幂等
+  const withChat = (next: AgentActivity): AgentActivities => {
+    const chat = applySubagentChatEvent(next.chat, e);
+    if (chat === next.chat && next === card) return s;
+    return { ...s, [label]: { ...next, chat } };
+  };
   switch (e.type) {
     case 'tool-call': {
       const tool = e.text ?? '';
@@ -120,42 +127,47 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
       return withChat(next);
     }
     case 'reasoning': {
-      // G14.175 思考流:reasoning 增量按相邻合并为一条思考行(渲染面=主对话思考行;截 2000 防单轮刷爆滑窗)
+      // G14.175 思考流:reasoning 增量按相邻合并为一条思考行(渲染面=主对话思考行;截 2000 防单轮刷爆滑窗)。
+      // G14.2xx b:同时过 chat 投影(此前滑窗单轨——转录页 thinking 条目缺失的病根)
       const text = e.text ?? '';
       if (text === '') return s;
       const last = card.lines[card.lines.length - 1];
-      if (last !== undefined && last.kind === 'thinking') {
-        const merged = clip(last.text + text, 2000);
-        return { ...s, [label]: { ...card, lines: [...card.lines.slice(0, -1), { kind: 'thinking', text: merged }] } };
-      }
-      return { ...s, [label]: { ...card, lines: pushLine(card.lines, { kind: 'thinking', text: clip(text, 2000) }) } };
+      const merged = last !== undefined && last.kind === 'thinking' ? clip(last.text + text, 2000) : clip(text, 2000);
+      const lines =
+        last !== undefined && last.kind === 'thinking'
+          ? [...card.lines.slice(0, -1), { kind: 'thinking' as const, text: merged }]
+          : pushLine(card.lines, { kind: 'thinking', text: merged });
+      return withChat({ ...card, lines });
     }
     case 'token': {
       const text = e.text ?? '';
       let next = bumpTokens(card, p); // 防御面：token 帧随行携带 turnTotal 则按水位累计（常态无）
       if (text.length > 0) next = { ...next, lines: pushLine(next.lines, { kind: 'token', text: clip(text, TOKEN_LINE_MAX) }) };
-      if (next === card) return s; // 空文本且无 turnTotal：原引用
-      return withChat(next);
+      return withChat(next); // 空文本且无 turnTotal:withChat 零变化透传原 s
     }
     case 'usage': {
       const next = bumpTokens(card, p);
-      if (next === card) return s; // 无 turnTotal/不增：原引用
-      return withChat(next);
+      return withChat(next); // 无 turnTotal/不增:零变化透传原 s
     }
     case 'error': {
-      if (card.status === 'error') return s; // error 幂等（粘滞）
+      if (card.status === 'error') return s; // error 幂等（粘滞;内核 error 条目无幂等,重复帧不重复入转录）
       return withChat({ ...card, status: 'error' });
     }
     case 'done': {
-      if (card.status !== 'running') return s; // error 粘滞/已 done：不动
-      return withChat({ ...card, status: 'done' });
+      if (card.status === 'done') return s; // 已 done：幂等
+      // error 粘滞时卡状态保持 error(done 不覆写),但 done 权威终语必过 chat 投影——
+      // 封 run/合并终稿,防投影 openRun 悬空(运行态行永转)
+      return withChat(card.status === 'running' ? { ...card, status: 'done' } : card);
     }
     default: {
       // G14.175 任务带(teammate 派发的任务内容=子代理的用户输入):step.taskBand 捕获上浮
       if (e.type === 'step' && typeof p?.taskBand === 'string' && p.taskBand !== '' && card.taskBand !== p.taskBand) {
-        return { ...s, [label]: { ...card, taskBand: p.taskBand } };
+        return withChat({ ...card, taskBand: p.taskBand });
       }
-      return s; // model-start/step/route… 不动卡（原引用）
+      // G14.2xx b:model-start/step 等流内事件过 chat 投影(run 条开启=运行态/steps 计数——
+      // 此前 default 原引用返回,转录页 status 恒 idle、steps 恒 0、run-live 行无数据的病根);
+      // 不动卡(零变化透传兜底幂等)
+      return withChat(card);
     }
   }
 }

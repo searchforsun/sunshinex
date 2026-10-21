@@ -171,8 +171,8 @@ test('App：Ctrl+B → Enter 进 team 子代理全屏视图——委派行展示
     write('\r'); // Enter → 全屏实时视图（child join 键须为原名 w1）
     await new Promise((r) => setTimeout(r, 150));
     const frame = lastFrame() ?? '';
-    assert.match(frame, /\[w1\] subagent view/, '头部 label=原名 w1（病根形态是 `[] subagent view` 空白整页）');
-    assert.doesNotMatch(frame, /\[\] subagent view/, '不再出现空 label 全屏视图');
+    assert.match(frame, /\[w1\] subagent/, '头部 label=原名 w1（病根形态是 `[] subagent view` 空白整页）');
+    assert.doesNotMatch(frame, /\[\] subagent/, '不再出现空 label 全屏视图');
     assert.match(allOutput(), /\[READ\] a\.md/, '转录按原名 join 呈现（Static 时间线入滚动缓冲,allOutput 断言）');
   } finally {
     term?.unmount();

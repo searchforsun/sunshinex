@@ -66,7 +66,7 @@ test('生产编排：browse-Enter 进归档视图——转录单次倾泻（旧�
     // 重挂后 inspect 保留：屏上是归档全屏视图
     const cur = terms[terms.length - 1]!;
     const f1 = cur.lastFrame() ?? '';
-    assert.ok(f1.includes('子代理视图') || f1.includes('subagent view'), '重挂后屏上是归档全屏视图');
+    assert.ok(f1.includes('] 子智能体') || f1.includes('] subagent'), '重挂后屏上是归档全屏视图');
     // 双重倾泻钉：进入前实例（含同步废弃渲染窗口）的 stdout 不得含转录标记——只允许重挂后新实例写一次
     for (let i = 0; i < before; i++) {
       assert.ok(!terms[i]!.allOutput().includes(DETAIL_MARK), `旧实例 #${i} 不得写归档转录（注定废弃的 setState 巨帧）`);
@@ -76,7 +76,7 @@ test('生产编排：browse-Enter 进归档视图——转录单次倾泻（旧�
     cur.write('\u001B');
     await sleep(120);
     const f2 = terms[terms.length - 1]!.lastFrame() ?? '';
-    assert.ok(!(f2.includes('子代理视图') || f2.includes('subagent view')), 'Esc 从归档视图退出（inspect 分支在接管）');
+    assert.ok(!(f2.includes('] 子智能体') || f2.includes('] subagent')), 'Esc 从归档视图退出（inspect 分支在接管）');
     terms[terms.length - 1]!.unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

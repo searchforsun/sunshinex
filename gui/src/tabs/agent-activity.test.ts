@@ -139,3 +139,69 @@ describe('token 累计与 status 流转', () => {
     expect(s.a!.status).toBe('done');
   });
 });
+
+describe('G14.2xx b chat 投影对标主对话(reasoning/run/steps 入核)', () => {
+  it('reasoning 走 withChat:转录 chat 出现 thinking 条目(此前滑窗单轨缺失的病根)', () => {
+    let s = applyAgentEvent({}, sub('reasoning', 'th', '先看目录'));
+    s = applyAgentEvent(s, sub('reasoning', 'th', ',再读入口文件'));
+    const think = s.th!.chat.entries.filter((e) => e.kind === 'thinking');
+    expect(think).toHaveLength(1);
+    expect(think[0]!.md).toBe('先看目录,再读入口文件');
+    expect(think[0]!.streaming).toBe(true); // 开启段流式(封段随边界事件)
+  });
+
+  it('model-start/step 入投影:run 条开启(openRun/status=running)、steps 计数;done 封 run 回 idle', () => {
+    let s = applyAgentEvent({}, sub('model-start', 'rn'));
+    expect(s.rn!.chat.k.openRun).toBeGreaterThanOrEqual(0); // run 条开启
+    expect(s.rn!.chat.status).toBe('running');
+    const runEntry = s.rn!.chat.entries.find((e) => e.kind === 'run');
+    expect(runEntry).toBeDefined();
+    expect(runEntry!.streaming).toBe(true);
+    s = applyAgentEvent(s, sub('step', 'rn', 'model'));
+    s = applyAgentEvent(s, sub('step', 'rn', 'model'));
+    expect(s.rn!.chat.steps).toBe(2); // 此前 default 分支原引用返回,steps 恒 0
+    s = applyAgentEvent(s, sub('usage', 'rn', undefined, { turnTotal: 77 }));
+    expect(s.rn!.chat.tokens).toBe(77);
+    s = applyAgentEvent(s, sub('done', 'rn', '结论'));
+    expect(s.rn!.chat.status).toBe('idle'); // 封 run 回 idle(run-live 行随之熄灭)
+    const sealedRun = s.rn!.chat.entries.find((e) => e.kind === 'run');
+    expect(sealedRun!.streaming).toBeUndefined();
+  });
+
+  it('model-start 首见也建卡(此前 default 不建卡——run 条丢失的连生根)', () => {
+    const s = applyAgentEvent({}, sub('model-start', 'first'));
+    expect(s.first).toBeDefined();
+    expect(s.first!.chat.entries.some((e) => e.kind === 'run')).toBe(true);
+  });
+
+  it('error 粘滞但 done 权威终语仍封 chat 投影(openRun 不悬空——运行态行不永转)', () => {
+    let s = applyAgentEvent({}, sub('model-start', 'er'));
+    s = applyAgentEvent(s, sub('error', 'er', 'boom'));
+    expect(s.er!.status).toBe('error');
+    expect(s.er!.chat.status).toBe('running'); // error 不封段(G14.51 同口径)
+    s = applyAgentEvent(s, sub('done', 'er', '收尾'));
+    expect(s.er!.status).toBe('error'); // 卡状态粘滞(done 不覆写)
+    expect(s.er!.chat.status).toBe('idle'); // 投影已封 run——run-live 熄灭
+  });
+
+  it('零变化事件原引用返回:等值 usage 不动投影(StrictMode 纪律);route 封开启段但不产 run 条', () => {
+    const before = applyAgentEvent({}, sub('usage', 'q', undefined, { turnTotal: 500 }));
+    const after = applyAgentEvent(before, sub('usage', 'q', undefined, { turnTotal: 500 }));
+    expect(after).toBe(before); // 等值 usage:投影零变化原引用
+    // route 是段边界(封开启段,主对话 applyEvent default 同款)——封段但零 run 条
+    const s = applyAgentEvent(before, sub('token', 'q', '正文'));
+    expect(s.q!.chat.entries.find((e) => e.kind === 'assistant')!.streaming).toBe(true);
+    const s2 = applyAgentEvent(s, sub('route', 'q', undefined, { to: 'm1' }));
+    expect(s2.q!.chat.entries.find((e) => e.kind === 'assistant')!.streaming).toBeUndefined();
+    expect(s2.q!.chat.entries.some((e) => e.kind === 'run')).toBe(false);
+  });
+
+  it('工具三态投影:call pending→running→result done 逐帧直映(数据面对标主对话)', () => {
+    let s = applyAgentEvent({}, sub('tool-call', 'tri', 'read', { input: { path: 'a.ts' }, callId: 'c1', status: 'pending' }));
+    expect(s.tri!.chat.entries.map((e) => e.status)).toContain('pending');
+    s = applyAgentEvent(s, sub('tool-call', 'tri', 'read', { input: { path: 'a.ts' }, callId: 'c1', status: 'running' }));
+    expect(s.tri!.chat.entries.map((e) => e.status)).toContain('running');
+    s = applyAgentEvent(s, sub('tool-result', 'tri', 'ok', { callId: 'c1', ok: true, tool: 'read' }));
+    for (const e of s.tri!.chat.entries) expect(e.status).toBeUndefined(); // 终态以缺省承载
+  });
+});

@@ -57,7 +57,7 @@ export interface ProjectMenuProps {
   /** G14.16 标题统一流联动:rename 落盘后 App bump——变化即重拉 recentSessions(侧栏即时同名) */
   readonly recentVersion?: number;
   /** G14.52 活动会话运行态(App 本地权威,model-start 置位/done·error 复位):圆点亮熄以此为准 */
-  readonly runningId?: string;
+  readonly runningIds?: ReadonlySet<string>;
   readonly onOpenSession: (sessionId: string, root: string, journalId?: string) => void;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
@@ -72,7 +72,7 @@ export interface ProjectMenuProps {
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn } = props;
   const recentVersion = props.recentVersion ?? 0;
-  const runningId = props.runningId ?? '';
+  const runningIds = props.runningIds ?? new Set<string>();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
   const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
@@ -350,7 +350,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onQuery={setQuery}
           onClose={() => setSearchOpen(false)}
           activeSessionId={activeSessionId}
-          runningId={runningId}
+          runningIds={runningIds}
           journalOfSession={journalOfSession}
           busy={busy}
           isUnseen={isUnseen}
@@ -379,7 +379,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           sessionsError={sessionsError}
           activeRoot={activeRoot}
           activeSessionId={activeSessionId}
-          runningId={runningId}
+          runningIds={runningIds}
           journalOfSession={journalOfSession}
           isUnseen={isUnseen}
           onToggleGroup={toggleGroup}
@@ -399,7 +399,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onShowMore={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v))}
           onCollapse={() => setRecentLimit(RECENT_VISIBLE_DEFAULT)}
           activeSessionId={activeSessionId}
-          runningId={runningId}
+          runningIds={runningIds}
           journalOfSession={journalOfSession}
           isUnseen={isUnseen}
           busy={busy}

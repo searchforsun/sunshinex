@@ -205,6 +205,16 @@ export function handleSessionContext(io: SessionHandlerIo, res: http.ServerRespo
   io.send(res, 200, b);
 }
 
+/** GET /session/:id/shadow-events(G14.2xx b 影子投影水合面):journal shadow 行(board/delegation/
+ *  subagent)原始事件全量按序 + cut=读档时刻泵水位。GUI 刷新/重连后会话打开时拉取清零重放——
+ *  WS 环窗(512)对长会话子代理流必溢出且连接建立常先于会话 attach,影子投影恢复的唯一可靠入口。
+ *  客户端在途缓冲帧按 seq>cut 重放补齐(零丢帧零重复,见 SessionRuntime.shadowJournalEvents)。 */
+export function handleShadowEvents(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  io.send(res, 200, session.shadowJournalEvents());
+}
+
 
 /** GET /session/:id/anchors(G10-C1d):任务轮锚点列表(rewind/fork 的 turn 寻址面,1-based) */
 export function handleAnchors(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
