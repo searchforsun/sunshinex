@@ -6,8 +6,10 @@ import * as path from 'path';
 import {
   SessionJournal,
   listSessions,
+  markSessionArchived,
   newSessionId,
   parseJournalFile,
+  purgeSession,
   readSessionMeta,
   reduceJournal,
   sessionsDir,
@@ -309,4 +311,45 @@ test('todos 旧载荷布尔形态重放归一为三态（todo_write 规格 D8）
     { text: '中项', status: 'pending' },
     { text: '新项', status: 'in_progress' },
   ]);
+});
+
+const JID = '20261021T000000Z-test';
+
+function tmpDataDir(): string {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-arch-'));
+  return path.join(tmp, 'ws-slug', 'data');
+}
+
+test('archive 标记:markSessionArchived(true) 落 archived+archivedAt;false 撤销两键同删', () => {
+  const dataDir = tmpDataDir();
+  writeSessionMeta(dataDir, JID, { title: 't' });
+  markSessionArchived(dataDir, JID, true);
+  const on = readSessionMeta(dataDir, JID);
+  assert.equal(on.archived, true);
+  assert.equal(typeof on.archivedAt, 'number');
+  markSessionArchived(dataDir, JID, false);
+  const off = readSessionMeta(dataDir, JID);
+  assert.equal(off.archived, undefined);
+  assert.equal(off.archivedAt, undefined);
+  assert.equal(off.title, 't', '其余键合并不丢');
+});
+
+test('purgeSession:会话档全家清(journal/meta/transcript 前缀匹配)+ gui 面私有档;幂等;不触他档', () => {
+  const dataDir = tmpDataDir();
+  const dir = path.join(dataDir, 'sessions');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${JID}.jsonl`), '{}', 'utf8');
+  fs.writeFileSync(path.join(dir, `${JID}.meta.json`), '{}', 'utf8');
+  fs.writeFileSync(path.join(dir, `${JID}.transcript.jsonl`), '{}', 'utf8');
+  fs.writeFileSync(path.join(dir, 'other.jsonl'), '{}', 'utf8');
+  const guiSession = path.join(path.dirname(dataDir), 'gui', 'sessions', `${JID}.json`);
+  fs.mkdirSync(path.dirname(guiSession), { recursive: true });
+  fs.writeFileSync(guiSession, '{}', 'utf8');
+  purgeSession(dataDir, JID);
+  assert.equal(fs.existsSync(path.join(dir, `${JID}.jsonl`)), false);
+  assert.equal(fs.existsSync(path.join(dir, `${JID}.meta.json`)), false);
+  assert.equal(fs.existsSync(path.join(dir, `${JID}.transcript.jsonl`)), false);
+  assert.equal(fs.existsSync(path.join(dir, 'other.jsonl')), true, '他档不触');
+  assert.equal(fs.existsSync(guiSession), false, 'gui 面私有档清');
+  assert.doesNotThrow(() => purgeSession(dataDir, JID), '幂等:重复 purge 不炸');
 });

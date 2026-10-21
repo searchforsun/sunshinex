@@ -114,16 +114,21 @@ export interface SessionSidecarMeta {
   mode?: string;
   /** 辅助会话标记(G14.29 /btw /side 旁路档)——listSessions 全列表滤除,不进 RECENTS 与 /resume */
   side?: boolean;
+  /** 归档标记(2026-10-21):纯标记态——主列表/RECENTS/TUI /resume 滤除,会话本体零行为差异 */
+  archived?: boolean;
+  /** 归档时刻 epoch ms(归档页排序;撤销即删键) */
+  archivedAt?: number;
 }
 
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
+  'archived', 'archivedAt',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流） */
 const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode']);
-/** 布尔值键（G14.29 side 辅助会话标记） */
-const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side']);
+/** 布尔值键（G14.29 side 辅助会话标记 / archived 归档标记） */
+const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side', 'archived']);
 
 /** 读会话旁车元数据：缺失/坏 JSON/未知键一律容错（未知键丢弃防脏数据回流），值类型不合法即弃该键 */
 export function readSessionMeta(dataDir: string, id: string): SessionSidecarMeta {
@@ -156,6 +161,50 @@ export function writeSessionMeta(dataDir: string, id: string, patch: SessionSide
   }
   fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
   fs.writeFileSync(path.join(sessionsDir(dataDir), id + '.meta.json'), JSON.stringify(merged), 'utf8');
+}
+
+/** 归档打标/撤销(读改写+原子语义同 writeSessionMeta):archived=true 落 archived+archivedAt;
+ *  false 两键同删(撤销)——writeSessionMeta 无删键路径,此处自管合并体 */
+export function markSessionArchived(dataDir: string, id: string, archived: boolean): void {
+  const merged = { ...readSessionMeta(dataDir, id) } as Record<string, unknown>;
+  if (archived) {
+    merged.archived = true;
+    merged.archivedAt = Date.now();
+  } else {
+    delete merged.archived;
+    delete merged.archivedAt;
+  }
+  fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
+  fs.writeFileSync(path.join(sessionsDir(dataDir), id + '.meta.json'), JSON.stringify(merged), 'utf8');
+}
+
+/** 会话真清(purge,受控删除唯一落点):sessions 目录内 `<id>.` 前缀全家(journal/meta/transcript 等
+ *  伴生档)+ 两面会话私有档(gui/sessions/<id>.json、tui/sessions/<id>.json——后者现状无档,条件清理)。
+ *  工作区级档(tui/ui-state.json 等)不触;缺文件静默跳过(幂等) */
+export function purgeSession(dataDir: string, id: string): void {
+  const dir = sessionsDir(dataDir);
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    names = [];
+  }
+  for (const f of names) {
+    if (!f.startsWith(`${id}.`)) continue;
+    try {
+      fs.rmSync(path.join(dir, f), { force: true, recursive: true });
+    } catch {
+      /* 单文件失败不阻断全家清理(幂等重试可达) */
+    }
+  }
+  const slugDir = path.dirname(dataDir);
+  for (const p of [path.join(slugDir, 'gui', 'sessions', `${id}.json`), path.join(slugDir, 'tui', 'sessions', `${id}.json`)]) {
+    try {
+      fs.rmSync(p, { force: true });
+    } catch {
+      /* 幂等 */
+    }
+  }
 }
 
 interface ParsedJournal {
