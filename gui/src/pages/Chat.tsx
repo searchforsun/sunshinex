@@ -7,6 +7,7 @@ import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
 import { loadStoredMap, pathBasename, persistCappedMap } from '../ui-util';
+import { stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
 
@@ -308,6 +309,16 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       },
     );
   }, [conn, sessionId, onOpError, onSessionsMutated]);
+
+  /** 运行收束即压已读(2026-10-23 用户裁定):打开中的会话跑完,流式内容已尽收眼底,不再重亮未读;
+   *  后台会话完成仍按 journal 更新时刻亮真未读(语义保留)。落库后再联动,侧栏重拉读到的才是新档 */
+  const prevRunningRef = useRef(running);
+  useEffect(() => {
+    const was = prevRunningRef.current;
+    prevRunningRef.current = running;
+    if (!was || running || journalId === undefined || journalId === '') return;
+    void stampSeen(conn, journalId, Date.now()).then(onSessionsMutated, onSessionsMutated);
+  }, [running, journalId, conn, onSessionsMutated]);
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
   const { submitText, send, interrupt } = useChatSubmit({

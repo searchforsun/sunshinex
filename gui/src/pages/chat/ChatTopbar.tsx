@@ -3,7 +3,7 @@ import { Folder, MoreHorizontal, PanelRight } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
-import { loadSeenMap, persistSeenMap } from '../../sidebar/project-menu-util';
+import { loadSeenMap, persistSeenMap, stampSeen } from '../../sidebar/project-menu-util';
 
 /** 会话顶栏(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):标题(空/改/显三态,点击重命名)
  *  + 动态计数钮(待办/任务板)+ 侧栏展开钮。标题编辑态与草稿留宿主。
@@ -116,15 +116,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       () => undefined,
     );
   };
-  /** 已读面压制到 at(localStorage 即时 + 服务端落库,断链静默)——置顶时与钉档时间戳对齐用 */
-  const touchSeen = (at: number): Promise<void> => {
-    if (journalId === undefined) return Promise.resolve();
-    const seen = loadSeenMap();
-    seen[journalId] = at;
-    persistSeenMap(seen);
-    if (typeof conn.saveAppSeen !== 'function') return Promise.resolve();
-    return conn.saveAppSeen(seen).then(() => undefined, () => undefined);
-  };
+  /** 已读面压制到 at(stampSeen 单点:localStorage 即时+服务端双写)——置顶时与钉档时间戳对齐用 */
+  const touchSeen = (at: number): Promise<void> =>
+    journalId === undefined ? Promise.resolve() : stampSeen(conn, journalId, at);
   const togglePin = (): void => {
     if (journalId === undefined) return;
     conn.appPins().then(
@@ -153,13 +147,12 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     if (journalId === undefined) return;
     const seen = loadSeenMap();
     delete seen[journalId];
-    persistSeenMap(seen);
-    // 落底层(2026-10-23)+落库后再联动——同步联动会让侧栏 GET 到 PUT 落库前的旧档(竞态同 pin)
+    persistSeenMap(seen); // 本地标记已即时生效——联动成败都上抛(旧 daemon PUT 404 不吞联动)
     if (typeof conn.saveAppSeen !== 'function') {
       onSessionsMutated?.();
       return;
     }
-    void conn.saveAppSeen(seen).then(onSessionsMutated, () => undefined);
+    void conn.saveAppSeen(seen).then(onSessionsMutated, onSessionsMutated);
   };
   const menuItems = [
     {

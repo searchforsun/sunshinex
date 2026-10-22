@@ -287,10 +287,23 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     ).then((groups) => setAllSessions(groups.flat()));
   }, [searchOpen, rows, conn]);
 
-  // 30s 定时自动刷新(G10-C13)+ 窗口聚焦刷新(G14.9:回窗即见最新会话列表)
+  // 30s 定时自动刷新(G10-C13)+ 窗口聚焦刷新(G14.9:回窗即见最新会话列表)。
+  // 2026-10-23:展开组会话行同拍重拉——后台会话收束后 liveSessionId 卡旧列表即「已完成仍在转圈」
+  // (workspaces 只刷计数/recents,组行本不在此列;他端/他页起落的运行态 30s/聚焦自愈)
+  const refreshExpandedGroupRef = useRef<() => void>(() => undefined);
+  refreshExpandedGroupRef.current = () => {
+    const slug = openSlugRef.current;
+    if (slug === null) return;
+    const row = (rows ?? []).find((r) => r.slug === slug);
+    if (row?.root !== undefined) loadSessions(row.root, slug);
+  };
   useEffect(() => {
-    const timer = setInterval(() => loadWorkspaces(), 30_000);
-    const onFocus = (): void => loadWorkspaces();
+    const tick = (): void => {
+      loadWorkspaces();
+      refreshExpandedGroupRef.current();
+    };
+    const timer = setInterval(tick, 30_000);
+    const onFocus = (): void => tick();
     window.addEventListener('focus', onFocus);
     return () => {
       clearInterval(timer);

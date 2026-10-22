@@ -54,6 +54,21 @@ export function persistSeenMap(m: SeenMap): void {
   persistCappedMap(SEEN_KEY, m, 200, (v) => v);
 }
 
+/** 已读戳单点(2026-10-23 落底层):localStorage 即时 + /app/seen 服务端双写(断链/旧 daemon 静默)。
+ *  返回落库 promise——联动上抛须待其落定,否则侧栏重拉读到旧档(竞态同 pin)。
+ *  conn 取结构性子集(测试桩/旧连接缺 saveAppSeen 即跳过远端,探活口径同 sessionTasks) */
+export function stampSeen(
+  conn: { saveAppSeen?: (m: Record<string, number>) => Promise<void> },
+  journalId: string,
+  at: number,
+): Promise<void> {
+  const seen = loadSeenMap();
+  seen[journalId] = at;
+  persistSeenMap(seen);
+  if (typeof conn.saveAppSeen !== 'function') return Promise.resolve();
+  return conn.saveAppSeen(seen).then(() => undefined, () => undefined);
+}
+
 /** 遗留档(无 root)显示名:去尾部 hash、dash→空格——slug 是给机器的,人读的是路径词 */
 function legacyName(slug: string): string {
   return slug.replace(/-[0-9a-f]{8}$/i, '').replace(/-/g, ' ');
