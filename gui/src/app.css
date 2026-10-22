@@ -1734,8 +1734,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }
 /* 项目行同宽:hover+ 钮改悬浮覆盖行缘(不再压缩组头行宽;悬停显隐照旧) */
 .workspace-row { position: relative; }
-.workspace-row > .workspace-toggle.sx-group-head { width: 100%; flex: none; padding-right: 26px; }
-.workspace-row > .sx-iconbtn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); } /* G14.190 右缘对齐锚点(项目头 + 图标) */
+.workspace-row > .workspace-toggle.sx-group-head { width: auto; flex: 1; min-width: 0; padding-right: 8px; } /* 2026-10-23 双钮 flex 形态:组头收缩让行内两钮(⋯移除+新会话)靠右成列——flex:none+width:100% 会把钮顶出行外(重叠/裁切,用户实测病) */
+.workspace-row > .sx-iconbtn + .sx-iconbtn { margin-left: 2px; } /* 2026-10-23 双钮(⋯移除+新会话)flex 排布——G14.190 单钮 absolute 右锚退役(双钮同锚即重叠,用户实测病;组头 flex:1 已顶钮靠右) */
 
 /* ===== 设置页重构轮(本轮):顶部项目选择器/外观行移除——分组卡片制/自绘弹层控件/逐项来源
    徽标+写回/save 分桶计数。追加段覆盖前置同名规则(同特异性后者胜);旧 .sx-settings-project/
@@ -2090,3 +2090,7 @@ input.sx-setting-input { width: 100%; }
 .sx-menu-divider { height: 1px; margin: 4px 8px; background: var(--border); }
 .sx-menuitem:disabled { color: var(--fg-tertiary); cursor: default; }
 .sx-menuitem:disabled:hover { background: transparent; }
+
+/* ===== D48 会话流尾部窗口:更早条目折叠为头部「显示更早」行(渐进回放) ===== */
+.chat-earlier { display: block; width: 100%; border: none; background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg-tertiary); font-size: 12px; padding: 8px 0; cursor: pointer; text-align: center; }
+.chat-earlier:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
