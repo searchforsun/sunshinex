@@ -141,7 +141,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     );
   };
   const copyText = (text: string): void => {
-    void navigator.clipboard.writeText(text).then(() => undefined, () => undefined);
+    void navigator.clipboard?.writeText(text).then(() => undefined, () => undefined);
   };
   const markUnread = (): void => {
     if (journalId === undefined) return;
@@ -245,10 +245,12 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         {fixedTitle !== '' && (
           <button type="button" className="sx-iconbtn" data-tip={t('Session actions', '会话操作')}
             aria-label={t('Session actions', '会话操作')}
+            onMouseDown={(e) => e.stopPropagation()} // 锚钮自身不触发 document 外点收(toggle 不被击穿)
             onClick={(e) => {
               e.stopPropagation();
               setAskArchive(null); // 重开菜单时收掉残留确认弹窗
               loadPinned();
+              if (menu !== null) { setMenu(null); return; } // toggle:再点 ⋯ 收起
               const r = e.currentTarget.getBoundingClientRect();
               setMenu({ x: Math.round(r.right), y: Math.round(r.bottom) });
             }}

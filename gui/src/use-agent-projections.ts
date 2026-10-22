@@ -97,12 +97,7 @@ export function useShadowHydrationRefs(): {
 /** 影子水合单点绑定(每渲染调用——重赋 hydrate ref,闭包恒取最新 connInstance;onReset/
  *  会话打开 effect 经 ref 触发):journal subagent 行全量清零重放 + 在途缓冲 seq>cut 重放 */
 export function bindShadowHydration(
-  refs: {
-    shadowHydrateRef: MutableRefObject<((sessionId: string) => void) | null>;
-    shadowHydratedRef: MutableRefObject<Set<string>>;
-    shadowHydratingRef: MutableRefObject<Set<string>>;
-    shadowBufRef: MutableRefObject<Map<string, Array<{ e: SessionEvent; seq: number }>>>;
-  },
+  refs: ReturnType<typeof useShadowHydrationRefs>,
   bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void,
   connInstance: Connection | null,
 ): void {

@@ -28,6 +28,25 @@ function appPinsFile(): string {
   return path.join(userConfigDir(), 'gui', 'pins.json');
 }
 
+/** 工作区隐藏联动(2026-10-23):把指定 root 的钉从 pins.json 摘除——隐藏工作区的钉若仍显示,
+ *  点开会重写 lastRoot 令「移除后刷新复活」的指针清理被旁路。返回是否有摘除(供测试钉) */
+export function removePinsByRoot(root: string): boolean {
+  let pins: Array<Record<string, unknown>>;
+  try {
+    const raw = JSON.parse(fs.readFileSync(appPinsFile(), 'utf8')) as unknown;
+    if (!Array.isArray(raw)) return false;
+    pins = raw as Array<Record<string, unknown>>;
+  } catch {
+    return false; // 缺档/坏档:无可摘
+  }
+  const kept = pins.filter((p) => p?.root !== root);
+  if (kept.length === pins.length) return false;
+  const tmp = `${appPinsFile()}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(kept), 'utf8');
+  fs.renameSync(tmp, appPinsFile());
+  return true;
+}
+
 /** 已读档(2026-10-23,GUI 已读/未读态落底层——用户裁定「刷新不再全员未读」):userConfigDir/
  *  gui/seen.json——机器级 id → 最近已读 updatedAt(行新于已读时刻即未读);与 pins 同目录
  *  同分层口径,浏览器/壳跨端共用。GET 缺档/坏档回 {seen:{}} */

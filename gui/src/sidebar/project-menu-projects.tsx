@@ -179,6 +179,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                       aria-label={`workspace actions ${row.slug}`}
                       className="sx-iconbtn"
                       data-tip={t('Workspace actions', '工作区操作')}
+                      onMouseDown={(e) => e.stopPropagation()} // 锚钮自身不触发 document 外点收(toggle 不被击穿)
                       onClick={(e) => {
                         e.stopPropagation();
                         const r = e.currentTarget.getBoundingClientRect();

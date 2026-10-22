@@ -179,7 +179,6 @@ function AppShell(): JSX.Element {
   bindShadowHydration({ shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef }, bumpActs, connInstance);
 
 
-  /** 拖宽在途兜底解绑(会话切走/壳卸毁时 window 监听不泄漏) */
   /** G14.104 语言切换重渲染触发(t 为模块级非响应式) */
   const [, setLangTick] = useState(0); // G14.104 语言切换重渲染(t 非响应式,tick 驱动)
   /** GUI chrome 双语(G10-C3c):语言源 = daemon settings language 键,连接装配即同步 */

@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 
 /** 会话行快捷菜单(⋯ 弹出,2026-10-22 用户裁定:行尾 ⋯ 收敛直连动作钮):fixed 定位随锚点
  *  坐标(锚=行尾 ⋯ 钮右缘/下缘),右对齐下开——fixed 免侧栏滚动容器裁切;外部 mousedown/
- *  Esc/滚动/resize 即关。纯展示件:items 注入,选择即回调+关。 */
+ *  Esc/滚动/resize 即关(锚钮自身 mousedown 由调用方 stopPropagation——toggle 语义不被
+ *  document 先收击穿)。纯展示件:items 注入,选择即回调+关。 */
 export interface SessionRowMenuItem {
   id: string;
   label: string;

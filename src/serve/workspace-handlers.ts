@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { urlOf } from './daemon-wire';
 import { projectsRoot, projectSlug } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
-import { clearAppGuiStatePointer } from './app-state-handlers';
+import { clearAppGuiStatePointer, removePinsByRoot } from './app-state-handlers';
 import { listSessions } from '../tui/session-journal';
 import type { WorkspaceRow } from './daemon';
 
@@ -152,9 +152,13 @@ export async function handleWorkspaceHide(io: WorkspaceHandlerIo, req: http.Inco
   writeHiddenSlugs(slugs);
   try {
     const raw = JSON.parse(fs.readFileSync(path.join(projectsRoot(), slug, 'data', 'workspace.json'), 'utf8')) as { root?: unknown };
-    if (typeof raw?.root === 'string' && raw.root.length > 0) clearAppGuiStatePointer(raw.root);
+    if (typeof raw?.root === 'string' && raw.root.length > 0) {
+      clearAppGuiStatePointer(raw.root);
+      // 钉随隐藏工作区一并摘除：钉仍显示可点开,开钉即重写 lastRoot 令指针清理被旁路(复活病根走钉路径回流)
+      removePinsByRoot(raw.root);
+    }
   } catch {
-    // 无档:无指针可清
+    // 无档:无指针/钉可清
   }
   io.send(res, 200, { ok: true, slug });
 }
