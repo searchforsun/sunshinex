@@ -122,13 +122,13 @@ export function fileLabelOf(path: string): { base: string; dir: string } {
   return { base, dir }; // 根目录文件 dir = ''(名称即相对路径,不重复显示)
 }
 
-/** 写族结果首行 `written/edited +3 -1` → diff stat 拆分(G14 底层同源;前缀无关,认 +N -M 形);无 stat 回空 */
+/** write/edit 结果首行 `written/edited +3 -1` → diff stat 拆分(G14 底层同源;前缀无关,认 +N -M 形);无 stat 回空 */
 export function writeStatOf(result: string): { added?: string; removed?: string } {
   const m = /\+(\d+) -(\d+)/.exec(result);
   return m === null ? {} : { added: `+${m[1]}`, removed: `-${m[2]}` };
 }
 
-/** G6 工具条目(折叠态一行/点击展开):写族工具(write/edit,call 名判定——事件 text 即
+/** G6 工具条目(折叠态一行/点击展开):write/edit 两件(call 名判定——事件 text 即
  *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
  *  +加载标,404/失败退 input 侧兜底——write=newContent/edit=oldString→newString 替换对;
  *  快照种子条/无 callId 面恒兜底列)+ path 文本按钮(G8d 起
@@ -172,7 +172,7 @@ export function ToolEntryView({
   const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
   const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
   const target = toolTargetOf(toolName, input);
-  /** 写族分型(G14):折叠=文件名+相对路径+diff stat,展开=diff 面板;read 分型:整行=打开文件标签 */
+  /** 文件写入/编辑分型(G14):折叠=文件名+相对路径+diff stat,展开=diff 面板;read 分型:整行=打开文件标签 */
   const isWrite = (toolName === 'write' || toolName === 'edit') && path !== undefined;
   const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
   const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
@@ -420,7 +420,7 @@ export function ToolEntryView({
     </>
   );
 
-  /** 展开面主体(G14 分型):写族=行级 diff 面板;skill=md 正文;exec=$ 命令高亮+输出;
+  /** 展开面主体(G14 分型):write/edit=行级 diff 面板;skill=md 正文;exec=$ 命令高亮+输出;
    *  todo_write=本地化清单(G14.138,daemon 英文结果不进展开面);其余=输出原文 */
   let body: JSX.Element;
   if (toolName === 'todo_write') {

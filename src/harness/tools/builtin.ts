@@ -227,7 +227,7 @@ export function builtinTools(
       },
       name: 'write',
       description:
-        "Write a file's full content — the file is replaced entirely, so pass the complete final content (not a diff or partial edit); read the file first when preserving unchanged regions matters; relative paths are anchored at the project root; writes outside the trusted roots go through permission checks (approval or rejection)",
+        "Write a file's full content — the file is replaced entirely, so pass the complete final content (not a diff or partial change); targeted modification of an existing file belongs to edit; read the file first when preserving unchanged regions matters; relative paths are anchored at the project root; writes outside the trusted roots go through permission checks (approval or rejection)",
       category: 'write',
       display: { verb: 'WRITE', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
@@ -279,7 +279,7 @@ export function builtinTools(
       },
       name: 'edit',
       description:
-        'Targeted text replacement in an existing file (preferred over write when changing a small region of a large file — cost scales with the change, not the file size); old_string is matched literally and must be unique in the file unless replaceAll is true; read the file first when unsure of the exact current text; to create a new file or replace its entire content, use write; edits outside the trusted roots go through permission checks (approval or rejection)',
+        'Edit an existing file by exact string replacement — modify file content in place (token cost scales with the change, not the file size); old_string is matched literally and must appear exactly once in the file unless replaceAll is true; new_string is the replacement text (empty string deletes the match); read the file first when unsure of the exact current text; file creation and whole-content replacement belong to write; edits outside the trusted roots go through permission checks (approval or rejection)',
       category: 'write',
       display: { verb: 'EDIT', targetFields: ['path'] },
       executor: async (input: ToolInput) => {

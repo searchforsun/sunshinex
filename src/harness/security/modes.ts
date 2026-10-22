@@ -7,8 +7,9 @@
 export type PermissionMode = 'manual' | 'plan' | 'dontAsk';
 
 /** 安全链规范名族（tools.ts CANONICAL_TOOL_NAMES 映射后的形态，guard/chain 共用单一权威）：
- *  PATH=需路径边界判界的文件工具；WRITE=写族——settings/.git/记忆窄口/worktree 主根四道硬底线、
- *  链侧写审批 kind 与 guard 路径形直放按族判定（edit 与 write 同族同保护，防「换名绕过硬底线」） */
+ *  PATH=需路径边界判界的文件工具；WRITE=文件写入/编辑两件(write/edit)——settings/.git/记忆窄口/worktree 主根四道硬底线、
+ *  链侧写审批 kind 与 guard 路径形直放按同套安全语义判定（防「换名绕过硬底线」；工具身份各自独立——
+ *  write=写入整稿,edit=编辑定点替换,共享的只是文件改写的安全不变量） */
 export const PATH_TOOL_NAMES = new Set(['Read', 'Write', 'Edit', 'Grep']);
 export const WRITE_TOOL_NAMES = new Set(['Write', 'Edit']);
 
