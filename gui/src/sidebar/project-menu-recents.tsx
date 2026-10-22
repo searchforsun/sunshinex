@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import type { SessionRow } from '../connection';
-import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { ChevronRight, Pin, SquarePen } from 'lucide-react';
-import { ArchiveConfirmButton, RECENT_VISIBLE_DEFAULT, sessionMetaLine, useConfirmOutsideCancel } from './project-menu-util';
+import { ChevronRight, SquarePen } from 'lucide-react';
+import { RECENT_VISIBLE_DEFAULT, sessionMetaLine, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
  *  + 最近会话行(G14.52 运行圆点/未读点)+ G14.115 尾行分页(显示更多/收起)。纯渲染件,
@@ -88,41 +87,22 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
             const label = r.title ?? r.firstUser ?? t('New session', '新会话');
             const metaLine = sessionMetaLine(r);
             return (
-              <li
+              <SessionRowView
                 key={`${r.root}/${r.id}`}
-                data-row-id={r.id}
-                className={`session-row sx-session-row${active ? ' active' : ''}`}
-                data-session-row="1"
-                onClick={() => {
-                  if (busy) return;
-                  onAttach(r.root, r.id);
-                }}
-              >
-                <button type="button" className="sx-pin-btn" data-tip={t('Pin', '置顶')}
-                  aria-label={`${t('Pin', '置顶')} ${r.id}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPinRow({ id: r.id, root: r.root, title: r.title ?? r.firstUser ?? '', updatedAt: r.updatedAt });
-                  }}
-                >
-                  <Pin size={16} strokeWidth={1.75} />
-                </button>
-                {running ? (
-                  <span className="sx-session-dot running" />
-                ) : isUnseen(r.id, r.updatedAt) ? (
-                  <span className="sx-session-dot unseen" />
-                ) : null}
-                <span className="session-summary" data-tip={`${label}${metaLine !== '' ? `\n${metaLine}` : ''}`} data-tip-pos="right">{label}</span>
-                <span className="session-meta">{relTime(r.updatedAt)}</span>
-                <span className="session-row-actions">
-                  <ArchiveConfirmButton
-                    active={confirmId === r.id}
-                    rowId={r.id}
-                    onArm={() => setConfirmId(r.id)}
-                    onConfirm={() => { setConfirmId(''); onArchiveRow(r.id, true); }}
-                  />
-                </span>
-              </li>
+                rowId={r.id}
+                label={label}
+                meta={metaLine}
+                updatedAt={r.updatedAt}
+                active={active}
+                running={running}
+                unseen={isUnseen(r.id, r.updatedAt)}
+                busy={busy}
+                onOpen={() => onAttach(r.root, r.id)}
+                pin={{ onPin: () => onPinRow({ id: r.id, root: r.root, title: r.title ?? r.firstUser ?? '', updatedAt: r.updatedAt }) }}
+                confirmId={confirmId}
+                onArm={() => setConfirmId(r.id)}
+                onConfirm={() => { setConfirmId(''); onArchiveRow(r.id, true); }}
+              />
             );
           })}
           {/* G14.115 尾行分页控件:有藏 >「显示更多」(步进 10);已全放且曾展开 >「收起」复位 */}

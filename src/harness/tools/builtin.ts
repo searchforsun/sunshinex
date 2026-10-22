@@ -88,6 +88,37 @@ export function builtinTools(
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
   const backend = safety.backend;
 
+  /** 写族落盘共用尾段（D41 留座清偿：write/edit 两执行器同构序列收敛）：记忆闸门 → 影子快照
+   *  捕获 → 落盘 → diff 统计 → 快照过期回执。oldContent=调用方已持有的 pre-image（edit 读原文
+   *  做替换后直传）；缺省=现场试读（write 面无先读，读失败按无 pre-image 计全增）。verb=回执动词 */
+  const commitFileWrite = (absPath: string, finalContent: string, oldContent: string | undefined, verb: 'written' | 'edited'): ExecResult => {
+    if (memory) {
+      // 记忆写入接缝（规格 §4.4）：命中记忆路径走接缝（校验/规范化/索引/容量回执）；scope 只接
+      // safety.memoryScope（undefined | agents/<id>），显式 'main' 由调用面收窄（生产链写窄口先拒）
+      const scope = safety.memoryScope;
+      const r = memory({ root, absPath, content: finalContent, ...(scope !== undefined && scope !== 'main' ? { scope } : {}) });
+      if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
+      if (r.value !== 'pass') return execOut(r.value.observation);
+    }
+    const target = resolveProjectPath(root, absPath);
+    // write 影子快照（rewind/fork 规格 §6.1）：落盘前捕获 pre-image；记忆接缝路径不经过此处（上文已 return）
+    writeSnapshot?.capture(target);
+    let pre = oldContent;
+    if (pre === undefined) {
+      try {
+        pre = backend.readFile(target);
+      } catch {
+        pre = undefined;
+      }
+    }
+    backend.writeFile(target, finalContent);
+    // diff stat（G14 工具行改版）：统计随结果串同源下发——GUI 折叠行与 TUI ⎿ 行同一 `+A -D`，无 second fetch
+    const stat = writeDiffStat(pre, finalContent);
+    const receipt = stat !== undefined ? `${verb} ${stat}` : verb;
+    // §9.3 快照过期回执：写项目根 SUNSHINE.md 时观察行补一句（快照仍冻结到下一刷新点，§9.2 漂移检测下轮起点统一尾追全文）
+    return execOut(isSunshineMdTarget(safety, absPath) ? `${receipt}\n${SUNSHINE_STALE_NOTICE}` : receipt);
+  };
+
   const tools: RegisteredTool[] = [
     {
       parameters: {
@@ -233,36 +264,7 @@ export function builtinTools(
       executor: async (input: ToolInput) => {
         const p = String(input.path);
         const content = String(input.content ?? '');
-        // 记忆写入接缝（规格 §4.4）：命中记忆路径走接缝（校验/规范化/索引/容量回执）；未注入接缝＝旧行为
-        if (memory) {
-          // scope 只接 safety.memoryScope（undefined | agents/<id>）：显式 'main' 在判类下等价全拒，接缝会判 'pass' 而让闸门静默消失，
-          // 故在此显式收窄（不用 as 掩盖）；生产链侧该取值组合的写早已被写窄口拒绝，此处只把契约固定下来。
-          const scope = safety.memoryScope;
-          const r = memory({
-            root,
-            absPath: p,
-            content,
-            ...(scope !== undefined && scope !== 'main' ? { scope } : {}),
-          });
-          if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
-          if (r.value !== 'pass') return execOut(r.value.observation);
-        }
-        // write 影子快照（rewind/fork 规格 §6.1）：落盘前捕获 pre-image；记忆接缝路径不经过此处（上文已 return）
-        const target = resolveProjectPath(root, p);
-        writeSnapshot?.capture(target);
-        // diff stat（G14 工具行改版）：落盘前试读 pre-image（新文件 undefined → 全行计增），统计随结果串
-        // 同源下发——GUI 折叠行与 TUI ⎿ 行同一 `written +A -D`，无 second fetch
-        let oldContent: string | undefined;
-        try {
-          oldContent = backend.readFile(target);
-        } catch {
-          oldContent = undefined;
-        }
-        backend.writeFile(target, content);
-        const stat = writeDiffStat(oldContent, content);
-        const written = stat !== undefined ? `written ${stat}` : 'written';
-        // §9.3 快照过期回执：写项目根 SUNSHINE.md 时观察行补一句（快照仍冻结到下一刷新点，§9.2 漂移检测下轮起点统一尾追全文）
-        return execOut(isSunshineMdTarget(safety, p) ? `${written}\n${SUNSHINE_STALE_NOTICE}` : written);
+        return commitFileWrite(p, content, undefined, 'written');
       },
     },
     {
@@ -303,19 +305,8 @@ export function builtinTools(
         if (count > 1 && !replaceAll) throw new CodedToolError('INVALID_ARG', `old_string matches ${count} locations in ${target} — include more surrounding context to make it unique, or pass replaceAll=true`);
         // 字面替换单点（split/join 规避 String.replace 的 $ 模式语义）；replaceAll 只放宽唯一性要求，替换实现同一份
         const newContent = content.split(oldString).join(newString);
-        // 记忆写入接缝同 write：edit 落在记忆路径时按整稿内容走同一闸门（校验/索引/容量回执），非记忆路径 pass
-        if (memory) {
-          const scope = safety.memoryScope;
-          const r = memory({ root, absPath: p, content: newContent, ...(scope !== undefined && scope !== 'main' ? { scope } : {}) });
-          if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
-          if (r.value !== 'pass') return execOut(r.value.observation);
-        }
-        // 影子快照与 diff 统计同 write 一份实现（rewind/fork 规格 §6.1 + G14 工具行）
-        writeSnapshot?.capture(target);
-        backend.writeFile(target, newContent);
-        const stat = writeDiffStat(content, newContent);
-        const edited = stat !== undefined ? `edited ${stat}` : 'edited';
-        return execOut(isSunshineMdTarget(safety, p) ? `${edited}\n${SUNSHINE_STALE_NOTICE}` : edited);
+        // 记忆写入接缝/影子快照/diff 统计同 write 一份实现（commitFileWrite 单点；edit 已读原文直传 pre-image）
+        return commitFileWrite(p, newContent, content, 'edited');
       },
     },
     {

@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
-import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { Archive, ChevronRight, Folder, FolderOpen, Pin, SquarePen, X } from 'lucide-react';
-import { ArchiveConfirmButton, sessionMetaLine, useConfirmOutsideCancel } from './project-menu-util';
+import { Archive, ChevronRight, Folder, FolderOpen, SquarePen, X } from 'lucide-react';
+import { sessionMetaLine, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
@@ -199,50 +198,31 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                             : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
                           const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
                           // G14.188 项目组会话行同样 hover 出会话信息(与最近会话行同款;贴主对话缘;
-                          // 统计行经 sessionMetaLine 单点——本地时区+单复数口径,原 UTC 切片分叉已收编)
-                          const srMeta = sessionMetaLine(sr);
+                          // 统计行经 sessionMetaLine 单点——本地时区+单复数口径,原 UTC 切片分叉已收编);
+                          // 行本体 SessionRow 共用单点(G41 G6b,DOM 以 RECENTS 形为准)
                           return (
-                            <li
+                            <SessionRowView
                               key={sr.id}
-                              data-row-id={sr.id}
-                              className={`session-row sx-session-row${active ? ' active' : ''}`}
-                              data-session-row="1"
-                              data-tip={`${label}${srMeta !== '' ? `\n${srMeta}` : ''}`}
-                              data-tip-pos="right"
-                              onClick={() => {
-                                if (busy || root === undefined) return;
+                              rowId={sr.id}
+                              label={label}
+                              meta={sessionMetaLine(sr)}
+                              updatedAt={sr.updatedAt}
+                              active={active}
+                              running={running}
+                              unseen={isUnseen(sr.id, sr.updatedAt)}
+                              busy={busy}
+                              onOpen={() => {
+                                if (root === undefined) return;
                                 onAttach(root, sr.id, sr.updatedAt);
                               }}
-                            >
-                              {/* 置顶钮:行 hover 显于状态点位(2026-10-21);钉后离组上浮置顶分组 */}
-                              {root !== undefined && (
-                                <button type="button" className="sx-pin-btn" data-tip={t('Pin', '置顶')}
-                                  aria-label={`${t('Pin', '置顶')} ${sr.id}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt });
-                                  }}
-                                >
-                                  <Pin size={16} strokeWidth={1.75} />
-                                </button>
-                              )}
-                              {running ? (
-                                <span className="sx-session-dot running" />
-                              ) : isUnseen(sr.id, sr.updatedAt) ? (
-                                <span className="sx-session-dot unseen" />
-                              ) : null}
-                              <span className="session-summary" data-id={sr.id}>{label}</span>
-                              <span className="session-meta">{relTime(sr.updatedAt)}</span>
-                              <span className="session-row-actions">
-                                <ArchiveConfirmButton
-                                  active={confirmId === sr.id}
-                                  rowId={sr.id}
-                                  onArm={() => setConfirmId(sr.id)}
-                                  onConfirm={() => { setConfirmId(''); onArchiveRow(sr.id, true); }}
-                                />
-                              </span>
-                            </li>
-                              );
+                              pin={root !== undefined ? {
+                                onPin: () => onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt }),
+                              } : undefined}
+                              confirmId={confirmId}
+                              onArm={() => setConfirmId(sr.id)}
+                              onConfirm={() => { setConfirmId(''); onArchiveRow(sr.id, true); }}
+                            />
+                          );
                             })}
                         {hidden > 0 && (
                           <li key="more" className="session-more" role="button" tabIndex={0} onClick={groupShowMore}

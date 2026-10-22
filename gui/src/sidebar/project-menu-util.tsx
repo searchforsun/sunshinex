@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import type { WorkspaceRow } from '../connection';
-import { loadStoredMap, pathBasename, persistCappedMap, shortLocalTime } from '../ui-util';
+import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
-import { Archive } from 'lucide-react';
+import { Archive, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -35,9 +35,9 @@ export function FolderAddIcon({ size = 16, strokeWidth = 1.75 }: { size?: number
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M22 10.5V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.89L10.25 5.5a2 2 0 0 0 1.66.9H15.5" />
-      <path d="M18.75 3v7" />
-      <path d="M15.25 6.5h7" />
+      <path d="M22 10.5V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.89L10.25 5.5a2 2 0 0 0 1.66.9H13" />
+      <path d="M18.75 1.5v5.5" />
+      <path d="M15.5 4.25h6.5" />
     </svg>
   );
 }
@@ -111,6 +111,71 @@ export function ArchiveConfirmButton(props: {
     >
       <Archive size={13} strokeWidth={1.75} />
     </button>
+  );
+}
+
+/** 会话行（项目组行/最近会话行两组共用，D41 G6b 收敛；DOM 以 RECENTS 形为准——projects 行
+ *  注释自称「与最近会话行同款」而 tooltip 落点漂在整行，归一到标题 span）：置顶钮（pin 未传
+ *  =不渲染）+运行/未读状态点+标题（统计 tooltip 贴标题）+相对时间+归档确认 morph。open 已在
+ *  调用方闭包好各自寻址形（组行 3 参/recents 2 参）与 root 缺省守卫 */
+export function SessionRow(props: {
+  readonly rowId: string;
+  readonly label: string;
+  readonly meta: string;
+  readonly updatedAt: number;
+  readonly active: boolean;
+  readonly running: boolean;
+  readonly unseen: boolean;
+  readonly busy: boolean;
+  readonly onOpen: () => void;
+  readonly pin?: { onPin: () => void };
+  readonly confirmId: string;
+  readonly onArm: () => void;
+  readonly onConfirm: () => void;
+}): JSX.Element {
+  const dot =
+    props.running ? (
+      <span className="sx-session-dot running" />
+    ) : props.unseen ? (
+      <span className="sx-session-dot unseen" />
+    ) : null;
+  return (
+    <li
+      data-row-id={props.rowId}
+      className={`session-row sx-session-row${props.active ? ' active' : ''}`}
+      data-session-row="1"
+      onClick={() => {
+        if (props.busy) return;
+        props.onOpen();
+      }}
+    >
+      {props.pin !== undefined && (
+        <button type="button" className="sx-pin-btn" data-tip={t('Pin', '置顶')}
+          aria-label={`${t('Pin', '置顶')} ${props.rowId}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.pin?.onPin();
+          }}
+        >
+          <Pin size={16} strokeWidth={1.75} />
+        </button>
+      )}
+      {dot}
+      <span className="session-summary" data-id={props.rowId}
+        data-tip={`${props.label}${props.meta !== '' ? `\n${props.meta}` : ''}`} data-tip-pos="right"
+      >
+        {props.label}
+      </span>
+      <span className="session-meta">{relTime(props.updatedAt)}</span>
+      <span className="session-row-actions">
+        <ArchiveConfirmButton
+          active={props.confirmId === props.rowId}
+          rowId={props.rowId}
+          onArm={props.onArm}
+          onConfirm={props.onConfirm}
+        />
+      </span>
+    </li>
   );
 }
 
