@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
 import { ChevronRight, SquarePen } from 'lucide-react';
-import { RECENT_VISIBLE_DEFAULT, sessionMetaLine, SessionRow as SessionRowView } from './project-menu-util';
+import { RECENT_VISIBLE_DEFAULT, sessionMetaLine, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
  *  + 最近会话行(G14.52 运行圆点/未读点)+ G14.115 尾行分页(显示更多/收起)。纯渲染件,
@@ -26,13 +27,13 @@ export interface RecentsSectionProps {
   /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮 */
   readonly pinnedIds: ReadonlySet<string>;
   readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number }) => void;
-  /** 置顶会话的取消置顶(⋯ 菜单消费) */
-  readonly onUnpinRow: (id: string) => void;
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow, onUnpinRow } = props;
+  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
+  const [confirmId, setConfirmId] = useState('');
+  useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
   return (
     <>
         {/* RECENTS 在 PROJECTS 下侧(用户裁定);空态「暂无最近会话」占位 */}
@@ -97,15 +98,10 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                 unseen={isUnseen(r.id, r.updatedAt)}
                 busy={busy}
                 onOpen={() => onAttach(r.root, r.id)}
-                menu={{
-                  items: () => [
-                    { id: 'open', label: t('Open session', '打开会话'), onSelect: () => onAttach(r.root, r.id) },
-                    ...(pinnedIds.has(r.id)
-                      ? [{ id: 'unpin', label: t('Unpin session', '取消置顶'), onSelect: () => onUnpinRow(r.id) }]
-                      : [{ id: 'pin', label: t('Pin session', '置顶会话'), onSelect: () => onPinRow({ id: r.id, root: r.root, title: r.title ?? r.firstUser ?? '', updatedAt: r.updatedAt }) }]),
-                    { id: 'archive', label: t('Archive session', '归档会话'), onSelect: () => onArchiveRow(r.id, true) },
-                  ],
-                }}
+                pin={{ onPin: () => onPinRow({ id: r.id, root: r.root, title: r.title ?? r.firstUser ?? '', updatedAt: r.updatedAt }) }}
+                confirmId={confirmId}
+                onArm={() => setConfirmId(r.id)}
+                onConfirm={() => { setConfirmId(''); onArchiveRow(r.id, true); }}
               />
             );
           })}

@@ -1180,7 +1180,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   color: var(--fg-tertiary);
   opacity: 0;
   transition: transform var(--dur-basic) var(--ease-enter), opacity var(--dur-basic) var(--ease-enter);
-}.sx-side-head-btn:hover .sx-side-chev { opacity: 1; }.sx-side-chev.open { transform: rotate(90deg); }.sx-side-head-btn .sx-iconbtn { margin-left: 0; }.sx-group-head { margin-block: 1px; }.sx-session-row { margin-block: 1px; }.workspace-item:has(> .workspace-row .sx-group-head.active) > .workspace-row { background: transparent; }.sx-group-head.active { background: transparent; }
+}.sx-side-head-btn:hover .sx-side-chev { opacity: 1; }.sx-side-chev.open { transform: rotate(90deg); }.sx-side-head-btn .sx-iconbtn { margin-left: 0; }.sx-group-head { margin-block: 1px; }.sx-session-row { margin-block: 1px; }.workspace-item { margin-block: 1px; } /* 2026-10-22 用户裁定:所有 hover 行间隔 1px,工作区行不与相邻行贴边 */.workspace-item:has(> .workspace-row .sx-group-head.active) > .workspace-row { background: transparent; }.sx-group-head.active { background: transparent; }
 
 
 /* G10-C19 分区头动作钮:hover 显示(PROJECTS 头的 + ;RECENTS 头的 New chat 常显) */.sx-side-head-btn .sx-iconbtn { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
@@ -2062,14 +2062,21 @@ input.sx-setting-input { width: 100%; }
 .sx-pin-archive { display: none; margin-right: -8px; } /* -8:归档钮右缘 248=新会话钮右缘,中心线同会话归档(2026-10-22 实测校准) */
 .sx-pin-item:hover .sx-pin-archive { display: inline-flex; }
 .sx-pin-item .session-row-actions { display: inline-flex; margin-left: auto; }
+.sx-pin-item:hover .sx-pin-btn, .sx-pin-item:focus-within .sx-pin-btn { opacity: 1; }
+.sx-pin-item:hover .sx-session-dot { opacity: 0; }
 
 /* 2026-10-22 用户裁定:「暂无…」空态与「显示更多」对齐(同缩进 x=34/字号 12px/灰度 fg-tertiary) */
 .no-sessions { padding: 4px 12px 4px 34px; color: var(--fg-tertiary); font-size: 12px; }
 /* 置顶行取消置顶钮:hover 显于状态点位(2026-10-22 用户裁定:取消置顶非常驻,且需显示会话状态) */
-.sx-pin-item:hover .sx-pin-btn, .sx-pin-item:focus-within .sx-pin-btn { opacity: 1; }
-.sx-pin-item:hover .sx-session-dot { opacity: 0; }
 
 /* 2026-10-22 用户裁定:空态「暂无…」与所在组会话标题列对齐(两组标题列起点不同:
    项目组 x=38、最近会话组 x=34、归档层 x=38) */
 .recent-list .no-sessions { padding-left: 30px; } /* 最近会话组:4+30=34=标题列 */
 .sx-archive-list .no-sessions { padding-left: 34px; } /* 归档层:4+34=38=归档行标题列 */
+
+/* 2026-10-22 用户裁定:分区头动作钮(项目组头归档/新增等)与工作区计数徽标 hover 显形——
+   常态隐藏减常驻 chrome,悬停对应行/钮即显(键盘 focus-within 同显) */
+.sx-side-head-btn .sx-iconbtn { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.sx-side-head-btn:hover .sx-iconbtn, .sx-side-head-btn:focus-within .sx-iconbtn { opacity: 1; }
+.workspace-item .sx-count { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.workspace-item:hover .sx-count, .workspace-toggle:focus-within .sx-count { opacity: 1; }

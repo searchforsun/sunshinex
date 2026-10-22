@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { Archive, PinOff } from 'lucide-react';
 import { t } from '../i18n';
 import { relTime } from '../ui-util';
-import { SessionRowMenu } from './session-row-menu';
+import { useConfirmOutsideCancel } from './project-menu-util';
 import type { PinEntry } from './pin-store';
 
 /** 置顶会话分组(2026-10-21 用户裁定):「项目」上方常驻层,不支持折叠;无置顶会话不渲染
- *  (宿主判空)。行=会话行同构:状态点(运行/未读,常显)+标题+末次活动时间+行尾 ⋯ 钮
- *  (2026-10-22 用户裁定:直连取消置顶/归档钮收敛为 ⋯ 弹窗——取消置顶/归档会话);点击行
- *  经宿主 attachJournal 链正常打开。归档联动:置顶组恒显所有钉,不因归档离组。纯渲染件。 */
+ *  (宿主判空)。行=会话行同构:状态点(运行/未读)+标题+右槽[时间⇄归档](默认显时间,hover
+ *  状态点位换取消置顶、右槽换归档钮;确认 morph 点外部取消);点击行经宿主 attachJournal 链
+ *  正常打开。归档联动(2026-10-22 追裁定「点击归档不覆盖置顶分组」):置顶组恒显所有钉。
+ *  右缘锚=工作区「新会话」钮:时间/归档右缘对齐(margin -8 对齐中心线)。纯渲染件。 */
 export interface PinnedSectionProps {
   readonly pins: PinEntry[];
   /** 归档中(in-flight 禁双发/禁打开) */
@@ -20,14 +21,15 @@ export interface PinnedSectionProps {
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly onOpenSession: (root: string, journalId: string, updatedAt?: number) => void;
   readonly onUnpin: (id: string) => void;
-  /** 行尾归档(落库+宿主重拉;⋯ 菜单归档项消费) */
+  /** 行尾归档(落库+宿主重拉;hover 槽确认 morph,点外部取消) */
   readonly onArchiveRow: (id: string, archived: boolean) => void;
 }
 
 export function PinnedSection(props: PinnedSectionProps): JSX.Element {
   const { pins, busy, activeSessionId, runningIds, journalOfSession, isUnseen, onOpenSession, onUnpin, onArchiveRow } = props;
-  /** ⋯ 菜单开态:锚行 id + 钮坐标(fixed 定位随锚点) */
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  /** 行内归档确认 morph:存确认中的行 id('' = 无) */
+  const [confirmId, setConfirmId] = useState('');
+  useConfirmOutsideCancel(confirmId, () => setConfirmId(''));
   if (pins.length === 0) return <></>;
   return (
     <>
@@ -47,38 +49,56 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
                 if (!busy) onOpenSession(p.root, p.id, p.updatedAt);
               }}
             >
+              {/* hover:取消置顶显于状态点位(与普通行置顶钮同款钮座,字形对齐 PinOff) */}
+              <button
+                type="button"
+                className="sx-pin-btn"
+                data-tip={t('Unpin', '取消置顶')}
+                aria-label={`${t('Unpin', '取消置顶')} ${p.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUnpin(p.id);
+                }}
+              >
+                <PinOff size={16} strokeWidth={1.75} />
+              </button>
               {running ? (
                 <span className="sx-session-dot running" />
               ) : isUnseen(p.id, p.updatedAt) ? (
                 <span className="sx-session-dot unseen" />
               ) : null}
               <span className="sx-pin-title">{p.title}</span>
-              <span className="sx-pin-time">{relTime(p.updatedAt)}</span>
-              <span className="session-row-actions">
+              {confirmId === p.id ? (
                 <button
                   type="button"
-                  className="sx-iconbtn"
-                  data-tip={t('More actions', '更多操作')}
-                  aria-label={`${t('More actions', '更多操作')} ${p.id}`}
+                  className="sx-archive-confirm"
+                  aria-label={`${t('Confirm archive', '确认归档')} ${p.id}`}
+                  data-tip={t('Confirm archive', '确认归档')}
                   onClick={(e) => {
                     e.stopPropagation();
-                    const r = e.currentTarget.getBoundingClientRect();
-                    setMenu({ id: p.id, x: Math.round(r.right), y: Math.round(r.bottom) });
+                    setConfirmId('');
+                    onArchiveRow(p.id, true);
                   }}
                 >
-                  <MoreHorizontal size={13} strokeWidth={1.75} />
+                  {t('Confirm', '确认')}
                 </button>
-              </span>
-              {menu !== null && menu.id === p.id && (
-                <SessionRowMenu
-                  x={menu.x}
-                  y={menu.y}
-                  onClose={() => setMenu(null)}
-                  items={[
-                    { id: 'unpin', label: t('Unpin session', '取消置顶'), onSelect: () => onUnpin(p.id) },
-                    { id: 'archive', label: t('Archive session', '归档会话'), onSelect: () => onArchiveRow(p.id, true) },
-                  ]}
-                />
+              ) : (
+                <>
+                  {/* 右槽:默认时间,hover 换归档钮(同槽切换);margin -8 对齐新会话钮中心线 */}
+                  <span className="sx-pin-time">{relTime(p.updatedAt)}</span>
+                  <button
+                    type="button"
+                    className="sx-iconbtn sx-pin-archive"
+                    data-tip={t('Archive', '归档')}
+                    aria-label={`${t('Archive', '归档')} ${p.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmId(p.id);
+                    }}
+                  >
+                    <Archive size={13} strokeWidth={1.75} />
+                  </button>
+                </>
               )}
             </li>
           );

@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { WorkspaceRow } from '../connection';
 import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
-import { Archive, MoreHorizontal } from 'lucide-react';
-import { SessionRowMenu, type SessionRowMenuItem } from './session-row-menu';
+import { Archive, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -129,11 +128,11 @@ export function SessionRow(props: {
   readonly unseen: boolean;
   readonly busy: boolean;
   readonly onOpen: () => void;
-  /** ⋯ 快捷菜单槽(2026-10-22 用户裁定:直连钉/归档钮收敛为 ⋯ 弹窗——打开/置顶⇄取消置顶/
-   *  归档会话;undefined=不示钮)。items 工厂每次开菜单现取,回调闭包恒新 */
-  readonly menu?: { items: () => SessionRowMenuItem[] };
+  readonly pin?: { onPin: () => void };
+  readonly confirmId: string;
+  readonly onArm: () => void;
+  readonly onConfirm: () => void;
 }): JSX.Element {
-  const [menuRect, setMenuRect] = useState<{ x: number; y: number } | null>(null);
   const dot =
     props.running ? (
       <span className="sx-session-dot running" />
@@ -150,36 +149,32 @@ export function SessionRow(props: {
         props.onOpen();
       }}
     >
+      {props.pin !== undefined && (
+        <button type="button" className="sx-pin-btn" data-tip={t('Pin', '置顶')}
+          aria-label={`${t('Pin', '置顶')} ${props.rowId}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.pin?.onPin();
+          }}
+        >
+          <Pin size={16} strokeWidth={1.75} />
+        </button>
+      )}
       {dot}
       <span className="session-summary" data-id={props.rowId}
-        data-tip={`${props.label}${props.meta !== '' ? `
-${props.meta}` : ''}`} data-tip-pos="right"
+        data-tip={`${props.label}${props.meta !== '' ? `\n${props.meta}` : ''}`} data-tip-pos="right"
       >
         {props.label}
       </span>
       <span className="session-meta">{relTime(props.updatedAt)}</span>
       <span className="session-row-actions">
-        {props.menu !== undefined && (
-          <button type="button" className="sx-iconbtn" data-tip={t('More actions', '更多操作')}
-            aria-label={`${t('More actions', '更多操作')} ${props.rowId}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenuRect({ x: Math.round(r.right), y: Math.round(r.bottom) });
-            }}
-          >
-            <MoreHorizontal size={13} strokeWidth={1.75} />
-          </button>
-        )}
-      </span>
-      {menuRect !== null && props.menu !== undefined && (
-        <SessionRowMenu
-          x={menuRect.x}
-          y={menuRect.y}
-          items={props.menu.items()}
-          onClose={() => setMenuRect(null)}
+        <ArchiveConfirmButton
+          active={props.confirmId === props.rowId}
+          rowId={props.rowId}
+          onArm={props.onArm}
+          onConfirm={props.onConfirm}
         />
-      )}
+      </span>
     </li>
   );
 }
