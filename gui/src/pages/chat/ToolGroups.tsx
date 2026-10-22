@@ -1,27 +1,27 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronRight, FolderSearch, Hourglass, PenLine, SquareTerminal, type LucideIcon } from 'lucide-react';
+import { ChevronRight, FolderSearch, Hourglass, SquareTerminal, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
 
 /** G14.215 工具聚合行（用户裁决；2026-10-22 再裁定「运行中直进组、计数实时增、成员在跑头显
- *  流光」——取消「执行行→完成后 ghost 归并」的展开再进入动作）：同类型相邻工具行折为一条聚合头
- *  （「查询了 N 次文件」形），运行中段 1 条即成组（头显流光、计数随出牌实时递增）；完成段 >1 折
- *  为组（单行保持原生行）。点击展开=成员工具行平级铺开（成员即原生工具行，非嵌套壳——展开容
- *  器仅作高度动画用，零视觉盒子）；禁止重排——分组只在相邻段内做、成员保持出牌顺序，非同类行/
- *  思考行天然切断分组 */
-export type ToolGroupKind = 'query' | 'edit' | 'exec' | 'wait';
+ *  流光」与「编辑/写入行不聚合」——取消「执行行→完成后 ghost 归并」的展开再进入动作）：同类型
+ *  相邻工具行折为一条聚合头（「查询了 N 次文件」形），运行中段 1 条即成组（头显流光、计数随出
+ *  牌实时递增）；完成段 >1 折为组（单行保持原生行）。点击展开=成员工具行平级铺开（成员即原生
+ *  工具行，非嵌套壳——展开容器仅作高度动画用，零视觉盒子）；禁止重排——分组只在相邻段内做、
+ *  成员保持出牌顺序，非同类行/思考行天然切断分组；编辑/写入行携 diff 统计与文件身份，恒独立
+ *  不聚合（2026-10-22 用户裁定） */
+export type ToolGroupKind = 'query' | 'exec' | 'wait';
 
-/** 聚合面工具清单（四类高频噪声行；spawn、task 系、ask 等语义行保持独立不聚合） */
+/** 聚合面工具清单（三类高频噪声行；spawn、task 系、ask 等语义行与编辑/写入行（携 diff 统计）
+ *  保持独立不聚合） */
 const GROUP_KIND_OF: Record<string, ToolGroupKind> = {
   read: 'query', grep: 'query', glob: 'query',
-  write: 'edit',
   exec: 'exec',
   task_wait: 'wait',
 };
 
 const GROUP_META: Record<ToolGroupKind, { icon: LucideIcon; label: (n: number) => [string, string] }> = {
   query: { icon: FolderSearch, label: (n) => [`Queried files ×${n}`, `查询了 ${n} 次文件`] },
-  edit: { icon: PenLine, label: (n) => [`Edited files ×${n}`, `编辑了 ${n} 次文件`] },
   exec: { icon: SquareTerminal, label: (n) => [`Ran commands ×${n}`, `执行了 ${n} 次命令`] },
   wait: { icon: Hourglass, label: (n) => [`Waited on tasks ×${n}`, `等待了 ${n} 次任务`] },
 };
