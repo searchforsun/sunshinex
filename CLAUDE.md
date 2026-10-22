@@ -156,6 +156,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - 涉及加载/解析逻辑时，补充示例物料并确保 `selfcheck` 输出正确
 - `.pnpm-store/`、`.npm-cache/`、`.data/`、`.longtask/`、`node_modules/`、`dist/` 不入库
 - 运行时数据（账本/记忆/学习技能/KB）统一落盘 `~/.sunshinex/projects/<工作区>/data`（`SUNSHINEX_PROJECTS_DIR` 可把 projects 根指到任意盘），工作区保持干净。`SUNSHINEX_DATA_DIR`（整目录直指、**不按工作区隔离**）是开发与测试专用重定向口（测试钉数据目录、CI 隔离运行时数据），留在环境变量面，不进 settings.json 语义键表
+- **SUNSHINEX_* 环境槽是语义键的运行时载体**（`SEMANTIC_KEYS` 映射为全仓唯一权威；settings 装载链按「显式 env > 语义键落槽」优先级写槽，`config/settings.ts`）：运行面构造缺省读槽（如 model adapter 的端点/凭据/档位回退链）属契约消费，与「环境变量不是配置的替代形态」不矛盾——槽是装载链的输出端，不是第二配置面
 
 ## 8. 边界与约束
 
@@ -271,7 +272,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持。机制细节、shell 候选序、WSL 排除与部署条件统一登记于 `docs/PLATFORM.md`，本节只留编码时强制的工程约束。
 
 - **版本下限**：Node.js ≥ 22.9（`package.json` `engines` 为准；脚本统一 `node --test` 与 `node:` 内置模块），实测基线 22 LTS 与 24.x。
-- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；**路径子树包含判定一律走 `isWithin`（`src/paths.ts`，叶子模块避免模块环）**；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔（`listFiles` 先归一化再匹配）。
+- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；**路径子树包含判定一律走 `isWithin`（`src/paths.ts`，叶子模块避免模块环）**；工具命令执行收敛在 `ProcessSandbox` 单点，命令执行的平台分支只允许出现在该文件——登记的既有收敛单点例外：工具型 git 直调（`skills-install` 浅克隆 / `worktree.execGit` / `serve/session-changes`，均参数数组零 shell）与 GUI 终端 pty 接缝（`src/serve/pty.ts`，§5 台账在册——PTY 是终端仿真非沙箱命令，收敛面登记见 `docs/PLATFORM.md`）；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔（`listFiles` 先归一化再匹配）。
 - **契约的机器强制**：① CI 矩阵 ubuntu + windows × Node 22/24（`fail-fast: false`）；② `.gitattributes` + `.editorconfig` 双管入库/检出与编辑器落盘字节（LF 契约）；③ 脚本层子进程启动统一 `spawn(ComSpec, ['/c', cmd, ...args])`，不用 `shell: true` 与 `args` 并用（DEP0190）。
 - **Landlock exec 写围栏**：Linux-only（内核 ABI 功能探测），macOS/Windows 为 host 口径（manual 档审批流兜底）；隔离口径三态 `landlock | container | host`，auto 探测、selfcheck 上屏；`SUNSHINEX_SANDBOX=off` 一键关。
 - **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 `docs/PLATFORM.md`。
