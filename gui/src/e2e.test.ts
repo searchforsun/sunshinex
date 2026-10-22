@@ -116,6 +116,10 @@ async function startDaemon(
   fs.mkdirSync(out, { recursive: true });
   const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+  // 语言钉 en(2026-10-22 用户档语言泄漏观察项落地):开发者 ~/.sunshinex/settings.json 的
+  // language 键经 daemon settings 下发 App 会翻转渲染语言,断言面机器相关——显式钉 en 去机器相关
+  const prevLanguage = process.env.SUNSHINEX_LANGUAGE;
+  process.env.SUNSHINEX_LANGUAGE = 'en';
   const m = typeof model === 'function' ? model(out) : model;
   const daemon = new GuiDaemon({ model: m, ...(staticRoot !== undefined ? { staticRoot } : {}) });
   const s = await daemon.start({ port: 0 });
@@ -129,6 +133,8 @@ async function startDaemon(
       await s.close();
       if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
       else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+      if (prevLanguage === undefined) delete process.env.SUNSHINEX_LANGUAGE;
+      else process.env.SUNSHINEX_LANGUAGE = prevLanguage;
       // Windows cwd 锁迟滞兜底(G8b pty 场景引入,daemon.test rmTmp 同款):pty shell 以 tmp 为
       // cwd,teardown killAllFor 后句柄释放可迟于本拍(EPERM)——maxRetries/retryDelay 走 fs 内建重试
       fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
