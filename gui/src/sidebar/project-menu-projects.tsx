@@ -2,8 +2,9 @@ import { useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
-import { Archive, ChevronRight, Folder, FolderOpen, SquarePen, X } from 'lucide-react';
+import { Archive, ChevronRight, Folder, FolderOpen, MoreHorizontal, SquarePen, X } from 'lucide-react';
 import { sessionMetaLine, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
+import { SessionRowMenu } from './session-row-menu';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
@@ -22,6 +23,8 @@ export interface ProjectsSectionProps {
   /** G14.2xx 组内会话默认收窄:24h 内活跃全显(上限 10),显示更多放全量,收起复位 */
   readonly groupShowAll: boolean;
   readonly onGroupShowMore: () => void;
+  /** 移除工作区(2026-10-23 用户裁定):组头 ⋯→移除——仅摘出侧栏,数据保留;重新添加即原地加回 */
+  readonly onRemoveWorkspace: (slug: string) => void;
   readonly sessionsError: string;
   readonly activeRoot: string;
   readonly activeSessionId: string;
@@ -44,10 +47,12 @@ export interface ProjectsSectionProps {
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
+  /** 组头 ⋯ 移除弹层(2026-10-23):存锚点坐标+slug,弹层随组头右缘下开 */
+  const [removeAsk, setRemoveAsk] = useState<{ slug: string; x: number; y: number } | null>(null);
   if (archiveMode === true) {
     /* 归档层(2026-10-21 用户裁定):组头=「归档会话」+X 退出(无折叠无归档/新增钮);列表体=归档行 */
     return (
@@ -179,6 +184,20 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                         <SquarePen size={14} strokeWidth={1.75} />
                       </button>
                     )}
+                    {/* 组头 ⋯ 移除钮(2026-10-23 用户裁定:hover 显形 sx-iconbtn 同款;点击弹「移除」) */}
+                    <button
+                      type="button"
+                      aria-label={`workspace actions ${row.slug}`}
+                      className="sx-iconbtn"
+                      data-tip={t('Workspace actions', '工作区操作')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setRemoveAsk((v) => (v?.slug === row.slug ? null : { slug: row.slug, x: Math.round(r.right), y: Math.round(r.bottom) }));
+                      }}
+                    >
+                      <MoreHorizontal size={14} strokeWidth={1.75} />
+                    </button>
                   </div>
                   {root !== undefined && (
                     <div className={`sx-collapse${openSlug === row.slug ? ' open' : ''}`}>
@@ -238,6 +257,19 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
             })}
           </ul>
         </div>
+        {removeAsk !== null && (
+          <SessionRowMenu
+            x={removeAsk.x}
+            y={removeAsk.y}
+            onClose={() => setRemoveAsk(null)}
+            items={[{
+              id: 'remove',
+              label: t('Remove workspace', '移除工作区'),
+              icon: <X size={14} strokeWidth={1.75} aria-hidden="true" />,
+              onSelect: () => onRemoveWorkspace(removeAsk.slug),
+            }]}
+          />
+        )}
     </>
   );
 }

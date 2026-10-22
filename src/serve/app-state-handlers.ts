@@ -143,6 +143,25 @@ export async function handleAppGuiStatePut(io: SessionHandlerIo, req: http.Incom
   io.send(res, 200, { ok: true });
 }
 
+/** 清「上次打开」指针(2026-10-23 移除工作区线):lastRoot 指向被移除工作区即连 lastJournalId
+ *  一并摘除——恢复现场不再按死指针重建目录(「手动删除后刷新复活」病根)。缺档/坏档/指针
+ *  不指向该工作区:无操作。原子写。 */
+export function clearAppGuiStatePointer(root: string): void {
+  try {
+    const raw = JSON.parse(fs.readFileSync(appGuiStateFile(), 'utf8')) as { lastRoot?: unknown; lastJournalId?: unknown };
+    if (raw?.lastRoot !== root) return;
+    delete raw.lastRoot;
+    delete raw.lastJournalId;
+    const file = appGuiStateFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(raw), 'utf8');
+    fs.renameSync(tmp, file);
+  } catch {
+    // 缺档/坏档:无指针可清(首启本就无现场)
+  }
+}
+
 /** G14.2xx GUI 面私有态文件(<projects 根>/<工作区 slug>/gui/sessions/<journalId>.json——
  *  CLAUDE.md §13 持久化分层:与 data/ 共享域平级的面私有子目录。档键=attachedJournalId:
  *  跨 daemon 重启稳定的会话身份——会话 id 每次重启重新发号,按 id 存档刷新后必空(实测病根);

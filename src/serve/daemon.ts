@@ -582,6 +582,8 @@ export class GuiDaemon {
     // G10-C11 建项目面：原生文件选择器选完自动建项目——name=浏览器态(projectsRoot 下建目录+初始化)、
     // path=桌面壳态(系统对话框回全路径,直接注册外部根);同名幂等返回既有行
     { method: 'POST', path: '/workspace/create', auth: true, run: (req, res) => this.handleWorkspaceCreate(req, res) },
+    // 移除工作区(2026-10-23):slug 入隐藏档,仅摘出侧栏;数据保留,重新 create 即原地加回
+    { method: 'POST', path: '/workspace/hide', auth: true, run: (req, res) => this.handleWorkspaceHide(req, res) },
     // G14.69 原生选择定位:浏览器态 showDirectoryPicker 拿不到绝对路径——GUI 在所选目录落标记
     // 文件,daemon 全盘 BFS 找标记即得绝对路径(限时/噪声目录跳过/roots 可覆写供测试)
     { method: 'POST', path: '/workspace/locate', auth: true, run: (req, res) => this.handleWorkspaceLocate(req, res) },
@@ -1181,6 +1183,10 @@ export class GuiDaemon {
 
   private async handleWorkspaceCreate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     await workspaceHandlers.handleWorkspaceCreate(this.workspaceIo, req, res);
+  }
+
+  private async handleWorkspaceHide(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await workspaceHandlers.handleWorkspaceHide(this.workspaceIo, req, res);
   }
 
   private handleWorkspaces(res: http.ServerResponse): void {

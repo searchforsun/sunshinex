@@ -4,6 +4,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { urlOf } from './daemon-wire';
 import { projectsRoot, projectSlug } from '../config/data-dir';
+import { userConfigDir } from '../config/env';
+import { clearAppGuiStatePointer } from './app-state-handlers';
 import { listSessions } from '../tui/session-journal';
 import type { WorkspaceRow } from './daemon';
 
@@ -97,6 +99,9 @@ export async function handleWorkspaceCreate(io: WorkspaceHandlerIo, req: http.In
   }
   const dataDir = path.join(projectsRoot(), projectSlug(root), 'data');
   const wsFile = path.join(dataDir, 'workspace.json');
+  // 重新添加即原地加回(2026-10-23):注册命中即从隐藏档摘除——含既有档幂等早退路径,故置于此
+  const hidden = readHiddenSlugs();
+  if (hidden.delete(projectSlug(root))) writeHiddenSlugs(hidden);
   if (fs.existsSync(wsFile)) {
     try {
       const raw = JSON.parse(fs.readFileSync(wsFile, 'utf8')) as { root?: unknown };
@@ -108,6 +113,49 @@ export async function handleWorkspaceCreate(io: WorkspaceHandlerIo, req: http.In
   fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
   fs.writeFileSync(wsFile, JSON.stringify({ root }, null, 2));
   io.send(res, 200, { ok: true, root, slug: projectSlug(root) });
+}
+
+/** 移除工作区隐藏档(2026-10-23 用户裁定:组头 ⋯→移除——仅摘出侧栏,数据/目录不动;
+ *  重新「添加工作区」即原地加回,历史会话原样回来):userConfigDir/gui/workspace-hidden.json
+ *  (slug 数组;机器级,与 pins/seen 同目录同分层口径) */
+function workspaceHiddenFile(): string {
+  return path.join(userConfigDir(), 'gui', 'workspace-hidden.json');
+}
+
+export function readHiddenSlugs(): Set<string> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(workspaceHiddenFile(), 'utf8')) as unknown;
+    return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeHiddenSlugs(slugs: Set<string>): void {
+  const file = workspaceHiddenFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify([...slugs]), 'utf8');
+  fs.renameSync(tmp, file);
+}
+
+/** 移除工作区:slug 入隐藏档(扫描过滤,盘上数据/目录不动)+ 清指向它的「上次打开」指针
+ *  (治「手动删除/移除后刷新复活」——恢复现场不再按死指针重建目录) */
+export async function handleWorkspaceHide(io: WorkspaceHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const slug = (parsed.body as { slug?: unknown } | null)?.slug;
+  if (typeof slug !== 'string' || slug === '' || /[\\/]/.test(slug)) return io.send(res, 400, { error: 'invalid slug' });
+  const slugs = readHiddenSlugs();
+  slugs.add(slug);
+  writeHiddenSlugs(slugs);
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(projectsRoot(), slug, 'data', 'workspace.json'), 'utf8')) as { root?: unknown };
+    if (typeof raw?.root === 'string' && raw.root.length > 0) clearAppGuiStatePointer(raw.root);
+  } catch {
+    // 无档:无指针可清
+  }
+  io.send(res, 200, { ok: true, slug });
 }
 
 export function handleWorkspaces(io: WorkspaceHandlerIo, res: http.ServerResponse): void {
@@ -122,6 +170,7 @@ export function handleWorkspaces(io: WorkspaceHandlerIo, res: http.ServerRespons
   }
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
+    if (readHiddenSlugs().has(ent.name)) continue; // 2026-10-23 移除工作区:隐藏档命中即不出列(数据保留,重新添加即回)
     const dataDir = path.join(projectsRoot(), ent.name, 'data');
     let st: fs.Stats;
     try {

@@ -44,6 +44,8 @@ export interface Connection {
   /** 建项目(G10-C11):原生文件选择器确认后注册/创建工作区。name=浏览器态(projectsRoot 下建)
    *  / path=桌面壳态(注册既有目录);同名幂等返回既有行 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
+  /** 移除工作区(2026-10-23):slug 入隐藏档——仅摘出侧栏,数据保留;重新 create 即原地加回 */
+  hideWorkspace(slug: string): Promise<void>;
   /** G14.69 原生选择定位:按标记文件全盘找所选目录绝对路径(超时/未找到 path:null) */
   locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
   /** POST /session/:id/model|tier|effort|mode:运行中切换(下一轮生效;G10-C1b/C2b) */
@@ -293,6 +295,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     createWorkspace(body: { name?: string; path?: string }) {
       return postJson<{ ok: true; root: string; slug: string }>('/workspace/create', body);
+    },
+    /** 移除工作区(2026-10-23):slug 入隐藏档——仅摘出侧栏,数据保留;重新 create 即原地加回 */
+    async hideWorkspace(slug: string) {
+      await postJson<{ ok: true }>('/workspace/hide', { slug });
     },
     locateWorkspace(body: { token: string; roots?: string[] }) {
       return postJson<{ path: string | null }>('/workspace/locate', body);

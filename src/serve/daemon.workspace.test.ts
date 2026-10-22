@@ -425,3 +425,45 @@ test('⑧ /session/new mode 白名单：白名单外值 400 {error:"invalid mode
     }
   });
 });
+
+test('⑨ POST /workspace/hide：slug 入隐藏档→/workspaces 不出列（盘上数据不动）；指向它的 lastRoot 指针连 lastJournalId 一并清；重新 create 原地加回；坏 slug 400', async () => {
+  // HOME 钉定（隐藏档落 userConfigDir/gui/workspace-hidden.json——隔离真实用户配置，同 gui-state 测试针法）
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ws-hidden-'));
+  const prevHome = process.env.HOME;
+  process.env.HOME = tmpHome;
+  try {
+    await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, newSession, tmp }) => {
+      const root = path.join(tmp, 'root');
+      fs.mkdirSync(root, { recursive: true });
+      await newSession(root); // 注册工作区
+      const H = { authorization: 'Bearer test-token' } as Record<string, string>;
+      const slug = ((await (await fetch(`${base}/workspaces`, { headers: H })).json()) as Array<{ slug: string }>)[0]!.slug;
+
+      // hide → 不出列；盘上数据/目录不动
+      const hide = await fetch(`${base}/workspace/hide`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ slug }) });
+      assert.equal(hide.status, 200);
+      const rows = (await (await fetch(`${base}/workspaces`, { headers: H })).json()) as Array<{ slug: string }>;
+      assert.equal(rows.some((r) => r.slug === slug), false, '隐藏后不出列');
+      assert.ok(fs.existsSync(path.join(projectsRoot(), slug, 'data', 'workspace.json')), '移除仅摘列表——数据/目录不动');
+
+      // 指针清理：lastRoot 指向该工作区时 hide 即连 lastJournalId 摘除（刷新复活病根）
+      await fetch(`${base}/app/gui-state`, { method: 'PUT', headers: { ...AUTH }, body: JSON.stringify({ state: { lastRoot: root, lastJournalId: 'j1' } }) });
+      await fetch(`${base}/workspace/hide`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ slug }) });
+      const state = ((await (await fetch(`${base}/app/gui-state`, { headers: H })).json()) as { state?: { lastRoot?: string } }).state;
+      assert.equal(state?.lastRoot, undefined, '指向被移除工作区的指针已清');
+
+      // 重新 create → 原地加回（出列恢复）
+      await fetch(`${base}/workspace/create`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ path: root }) });
+      const rows2 = (await (await fetch(`${base}/workspaces`, { headers: H })).json()) as Array<{ slug: string }>;
+      assert.equal(rows2.some((r) => r.slug === slug), true, '重新 create 即原地加回');
+
+      // 形收紧：分隔符 slug 400
+      const bad = await fetch(`${base}/workspace/hide`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ slug: 'a/b' }) });
+      assert.equal(bad.status, 400, '分隔符 slug 拒');
+    });
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});

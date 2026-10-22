@@ -46,6 +46,8 @@ export interface ProjectMenuConn {
   newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
   /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
+  /** 移除工作区(2026-10-23):仅摘出侧栏,数据保留;重新 create 即原地加回 */
+  hideWorkspace(slug: string): Promise<void>;
   /** G14.69 原生选择定位:按标记文件找所选目录绝对路径 */
   locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId */
@@ -213,6 +215,22 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     loadArchived(); // 2026-10-23 置顶组滤除已归档钉:归档集与钉档同拍重拉
     loadSeen(); // 2026-10-23 已读/未读态落底层:与钉档同拍重拉(顶栏标记为未读经 recentVersion bump 驱动)
   }, [loadWorkspaces, loadPins, loadArchived, loadSeen, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
+
+  /** 移除工作区(2026-10-23):conn.hideWorkspace 落库后刷新清单;展开组若是它即收起。
+   *  数据保留——重新「添加工作区」即原地加回 */
+  const removeWorkspace = useCallback((slug: string): void => {
+    conn.hideWorkspace(slug).then(
+      () => {
+        if (openSlugRef.current === slug) {
+          openSlugRef.current = null;
+          setOpenSlug(null);
+          setSessions(null);
+        }
+        loadWorkspaces();
+      },
+      () => undefined,
+    );
+  }, [conn, loadWorkspaces]);
 
   /** 拉展开组的会话列表(slug 守卫):应答到达时已切组/收起则丢弃(慢应答竞态收口) */
   const loadSessions = useCallback(
@@ -501,6 +519,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <ProjectsSection
           projectsOpen={projectsOpen}
           onToggleProjects={() => setProjectsOpen((v) => !v)}
+          onRemoveWorkspace={removeWorkspace}
           busy={busy}
           archiveMode={archiveOpen}
           onExitArchive={() => setArchiveOpen(false)}

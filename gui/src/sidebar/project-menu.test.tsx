@@ -42,6 +42,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     saveAppPins: vi.fn(async () => undefined),
     appSeen: vi.fn(async () => ({ seen: {} })), // 已读档(2026-10-23 落底层)
     saveAppSeen: vi.fn(async () => undefined),
+    hideWorkspace: vi.fn(async () => undefined), // 移除工作区(2026-10-23)
     archivedSessions: vi.fn(async () => [
       // 归档区(2026-10-21 侧栏 ArchiveSection)数据面:跨工作区聚合行
       { id: 'a1', slug: 'p1', root: 'D:/w/p1', title: '已归档会话', updatedAt: FIXED_TS, archivedAt: FIXED_TS },
@@ -217,6 +218,17 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     await waitFor(() => expect(conn.workspaces).toHaveBeenCalledTimes(2)); // 挂载 1 次 + 落库后重拉
     expect(conn.roots).toEqual([]);
     expect(open.mock.calls.length).toBe(opensBefore);
+  });
+
+  it('组头 ⋯→移除工作区(2026-10-23 用户裁定):弹层项调 hideWorkspace(slug) 且清单重拉', async () => {
+    const conn = makeConn();
+    renderMenu(conn);
+    await screen.findByText('demo goal');
+    // slug-only 历史行同样可移除(⋯ 不设 root 门槛)
+    fireEvent.click(screen.getByRole('button', { name: 'workspace actions p2' }));
+    fireEvent.click(screen.getByText('Remove workspace'));
+    await waitFor(() => expect(conn.hideWorkspace).toHaveBeenCalledWith('p2'));
+    await waitFor(() => expect(conn.workspaces).toHaveBeenCalledTimes(2)); // 挂载 1 + 移除后重拉
   });
 
   it('归档层入口:点组头归档钮→下侧整替为归档列表(覆盖项目/最近会话,组头换「归档会话」+X);点 X 退出还原', async () => {
