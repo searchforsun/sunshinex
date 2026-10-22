@@ -368,11 +368,16 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(row).toContain('Arch-Plan.md'); // 目标路径(P11 字段单源:entry.input 直映,md 记号不回归)
   });
 
-  it('P11 种子条三态渲染:running 显「正在读取文件」spinner 态,done 折叠行=动词+路径(字段单源)', async () => {
+  it('P11 种子条三态渲染:running 单条即成组(头流光计数+成员行路径同行),done 折叠行=动词+路径(字段单源)', async () => {
     const base = { seq: 1, ts: DAY1, kind: 'tool', md: '', callId: 'c1', name: 'read', input: { path: 'docs/Arch-Plan.md' } };
     const first = render(<Chat conn={connOf([{ ...base, status: 'running' } as unknown as Seed])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed();
-    expect(document.querySelector('.exec-running-text')?.textContent).toContain('Reading file');
+    // 运行中 1 条即成组(2026-10-22 裁定):头=流光计数,成员行=流光标签+路径同行
+    const head = document.querySelector('.tool-group-head')!;
+    expect(head.querySelector('.exec-running-text')?.textContent).toContain('Queried files ×1');
+    const member = document.querySelector('.tool-group-members .tool-summary')!;
+    expect(member.textContent).toContain('Reading file');
+    expect(member.textContent).toContain('Arch-Plan.md');
     first.unmount();
     // done 终态(status 缺省=终态):折叠行=动词+路径——executing 读 status(非 md 占位判定),
     // 字段单源(md 退役后旧占位判定恒执行中,此断言钉死直映)
@@ -408,14 +413,14 @@ describe('run 状态行(G11 §1)', () => {
 });
 
 
-  it('read 执行中:波纹+「正在读取」,不含路径;结果回后回落 名称+目录', async () => {
+  it('read 执行中:流光「正在读取」+路径同行(用户裁定);结果回后回落 名称+目录', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: 'cr', input: { path: 'src/a.ts' } } });
     let row = document.querySelector('.tool-summary')!;
     expect(row.textContent).toMatch(/Reading file|正在读取/);
     expect(row.querySelector('.exec-ripple-icon')).toBeNull(); // G14.88 纯流光文字(图标+波纹退役)
-    expect(row.textContent).not.toContain('src/');
+    expect(row.textContent).toContain('src/'); // 路径同行可见(2026-10-22 用户裁定)
     fire({ type: 'tool-result', text: 'content', ts: Date.now(), payload: { callId: 'cr' } });
     row = document.querySelector('.tool-summary')!;
     expect(row.textContent).toContain('a.ts src/'); // 完成后回落 名称+目录
@@ -552,14 +557,14 @@ describe('用户气泡编辑卡(G11 §7)', () => {
 });
 
 describe('exec 执行中/完成双态(G14.13)', () => {
-  it('执行中(result 未回):流光文字「正在执行」(G14.88 无图标),不含命令', async () => {
+  it('执行中(result 未回):流光文字「正在执行」+命令同行(2026-10-22 用户裁定)', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'cx', input: { command: 'npm test' } } });
     const row = document.querySelector('.tool-summary')!;
     expect(row.textContent).toMatch(/Running|正在执行/); // 双语(测试默认 en)
     expect(row.querySelector('.exec-ripple-icon')).toBeNull(); // G14.88 图标+波纹退役
-    expect(row.textContent).not.toContain('npm test'); // 命令在完成后才示出
+    expect(row.textContent).toContain('npm test'); // 命令同行可见(用户裁定)
   });
 
   it('完成后:exec+完整命令(可点展开 $ 命令+输出)', async () => {
@@ -710,7 +715,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     await ghostsSettled();
   });
 
-  it('G14.215 运行中不进组;完成后归入上方聚合行(计数增长+ghost 渐收行到点卸载)', async () => {
+  it('G14.215 运行中直进组(计数实时增+头流光;2026-10-22 裁定取消「执行行→归并」动作);ghost 只承载完成单行归并', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e1', input: { command: 'ls' } } });
@@ -718,18 +723,21 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e2', input: { command: 'pwd' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e2' } });
     expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×2|执行了 2 次命令/);
+    await ghostsSettled(); // 成组归并 ghost(e1 standalone→member)到点卸载
+    expect(document.querySelector('.tool-ghost')).toBeNull();
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e3', input: { command: 'echo hi' } } });
-    // 运行中:独立行在组外,不进成员
-    expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(2);
-    expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(1);
-    fire({ type: 'tool-result', text: 'hi', ts: Date.now(), payload: { callId: 'e3' } });
-    // 完成:归组(计数 ×3)+ghost 在动画窗内在场
+    // 运行中直进组:计数 ×3 实时增+头流光,无独立行无 ghost(成员行流光标签+命令同行)
     expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×3|执行了 3 次命令/);
+    expect(document.querySelector('.tool-group-head')!.querySelector('.exec-running-text')).not.toBeNull();
     expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(3);
-    expect(document.querySelector('.tool-ghost')).not.toBeNull();
-    await ghostsSettled();
-    expect(document.querySelector('.tool-ghost')).toBeNull(); // 动画到点卸载
-    expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0); // 独立行已归位
+    expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0);
+    expect(document.querySelector('.tool-ghost')).toBeNull(); // 直进组不经归并动画
+    fire({ type: 'tool-result', text: 'hi', ts: Date.now(), payload: { callId: 'e3' } });
+    // 完成:计数 ×3 恒定,流光退场
+    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×3|执行了 3 次命令/);
+    expect(document.querySelector('.tool-group-head')!.querySelector('.exec-running-text')).toBeNull();
+    expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(3);
+    expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0);
   });
 
   it('G14.215 禁止重排:非同类行切断分组,组只吃相邻同类(布局顺序=出牌顺序)', async () => {

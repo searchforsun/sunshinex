@@ -281,18 +281,31 @@ export function ToolEntryView({
     };
   }, [expanded, isWrite, callId, diff, conn, sessionId]);
 
-  /** 折叠行主体(G14 分型):文件工具=文件名+相对路径(+stat);exec=完整命令;skill=名;其余=动词+目标 */
+  /** 折叠行主体(G14 分型;2026-10-22 用户裁定:运行态=流光动词标签+目标内容同行——spawn/skill/
+ *  taskOp 的流光标签已含目标名故不重示):文件工具=文件名+相对路径(+stat);exec=完整命令;其余=动词+目标 */
+  const hideTargetWhileRunning = executing && (toolName === 'spawn' || toolName === 'skill' || taskOpName !== undefined);
+  const verbSpan = executing ? (
+    // G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定)
+    <span className="tool-verb exec-running">
+      <span className="exec-running-text">{runningLabel}</span>
+    </span>
+  ) : toolName === 'ask_question' ? (
+    <span className="tool-verb">{t('ask', '提问')}</span>
+  ) : toolName === 'todo_write' ? (
+    <span className="tool-verb">{t('todo', '待办')}</span>
+  ) : toolName === 'spawn' ? (
+    <span className="tool-verb">{t('spawn', '分派子智能体')}</span>
+  ) : toolName === 'task_wait' ? (
+    <span className="tool-verb">{t('task_wait', '等待任务')}</span>
+  ) : (
+    <span className="tool-verb">{zhToolName(toolName)}</span>
+  );
   const collapsed = (
     <>
-      {executing ? (
-        <span className="tool-verb exec-running">
-          {/* G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定) */}
-          <span className="exec-running-text">{runningLabel}</span>
-        </span>
-      ) : path !== undefined && (isWrite || toolName === 'read') ? (
+      {verbSpan}
+      {path !== undefined && (isWrite || toolName === 'read') ? (
         <>
-          {/* G14.4 行序:工具图标(前置)+工具名+文件图标+文件名+相对路径(+stat);结果不进折叠行 */}
-          <span className="tool-verb">{zhToolName(toolName)}</span>
+          {/* G14.4 行序:动词+文件图标+文件名+相对路径(+stat);结果不进折叠行 */}
           {' '}
           <FileIcon path={path} />
           {' '}
@@ -319,104 +332,78 @@ export function ToolEntryView({
           {isWrite && stat.added !== undefined && <span className="tool-stat tool-stat-add">{' '}{stat.added}</span>}
           {isWrite && stat.removed !== undefined && <span className="tool-stat tool-stat-del">{' '}{stat.removed}</span>}
         </>
-      ) : toolName === 'ask_question' ? (
+      ) : !hideTargetWhileRunning && toolName === 'ask_question' ? (
         /* G14.82:折叠行直接示问题文本(问询即内容,非动词+目标) */
-        <>
-          <span className="tool-verb">{t('ask', '提问')}</span>
-          <span className="tool-file-base tool-cmd">{' '}{typeof input.question === 'string' ? input.question : ''}</span>
-        </>
-      ) : toolName === 'todo_write' ? (
+        <span className="tool-file-base tool-cmd">{' '}{typeof input.question === 'string' ? input.question : ''}</span>
+      ) : !hideTargetWhileRunning && toolName === 'todo_write' ? (
         /* G14.138 折叠行本地化;G14.199 格式「待办 {完成}/{总数}」(对号去除,用户裁定) */
         (() => {
           const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
           const done = arr.filter((o) => (o ?? {}).status === 'completed').length;
-          return (
-            <>
-              <span className="tool-verb">{t('todo', '待办')}</span>
-              <span className="tool-file-base tool-cmd">{` ${done}/${arr.length}`}</span>
-            </>
-          );
+          return <span className="tool-file-base tool-cmd">{' '}{done}/{arr.length}</span>;
         })()
-      ) : toolName === 'create_task' ? (
+      ) : !hideTargetWhileRunning && toolName === 'create_task' ? (
         /* G14.168 折叠行带任务名;G14.176 任务名=蓝色链接,点开任务板定位高亮对应卡 */
-        <>
-          <span className="tool-verb">{zhToolName('create_task')}</span>
-          {onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
-            <span
-              role="button"
-              tabIndex={-1}
-              className="tool-file-base tool-agent-link"
-              data-tip={t('Open task board card', '在任务板中定位')}
-              onClick={(e) => {
-                e.stopPropagation();
-                const created = /task (\S+) created/.exec(resultText);
-                onOpenTask(created !== null ? created[1]! : (input.title as string));
-              }}
-            >
-              {' '}{input.title}
-            </span>
-          ) : (
-            <span className="tool-file-base tool-cmd">
-              {typeof input.title === 'string' ? ` ${input.title}` : ''}
-            </span>
-          )}
-        </>
-      ) : toolName === 'spawn' ? (
+        onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('Open task board card', '在任务板中定位')}
+            onClick={(e) => {
+              e.stopPropagation();
+              const created = /task (\S+) created/.exec(resultText);
+              onOpenTask(created !== null ? created[1]! : (input.title as string));
+            }}
+          >
+            {' '}{input.title}
+          </span>
+        ) : (
+          <span className="tool-file-base tool-cmd">
+            {typeof input.title === 'string' ? ` ${input.title}` : ''}
+          </span>
+        )
+      ) : !hideTargetWhileRunning && toolName === 'spawn' ? (
         /* G14.166 折叠行带子智能体名(G14.171:蓝色链接,点开对应 agent 只读标签页) */
-        <>
-          <span className="tool-verb">{t('spawn', '分派子智能体')}</span>
-          {spawnAgentName !== '' && onOpenAgent !== undefined ? (
-            <span
-              role="button"
-              tabIndex={-1}
-              className="tool-file-base tool-agent-link"
-              data-tip={t('View subagent', '查看子智能体')}
-              onClick={(e) => {
-                e.stopPropagation(); // 不触发行展开
-                onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : undefined);
-              }}
-            >
-              {' '}{spawnAgentName}
-            </span>
-          ) : (
-            <span className="tool-file-base tool-cmd">{spawnAgentName !== '' ? ` ${spawnAgentName}` : ''}</span>
-          )}
-        </>
-      ) : toolName === 'task_wait' ? (
+        spawnAgentName !== '' && onOpenAgent !== undefined ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('View subagent', '查看子智能体')}
+            onClick={(e) => {
+              e.stopPropagation(); // 不触发行展开
+              onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : undefined);
+            }}
+          >
+            {' '}{spawnAgentName}
+          </span>
+        ) : (
+          <span className="tool-file-base tool-cmd">{spawnAgentName !== '' ? ` ${spawnAgentName}` : ''}</span>
+        )
+      ) : !hideTargetWhileRunning && toolName === 'task_wait' ? (
         /* G14.167 折叠行带等待任务名(G14.172:任务板解析为任务名,不用 id;null=等全部在跑) */
-        <>
-          <span className="tool-verb">{t('task_wait', '等待任务')}</span>
-          <span className="tool-file-base tool-cmd">
-            {' '}
-            {waitTaskNames.length > 0
-              ? waitTaskNames.join(', ')
-              : Array.isArray(input.taskIds)
-                ? ''
-                : t('all background tasks', '全部后台任务')}
-          </span>
-        </>
-      ) : taskOpName !== undefined ? (
-        /* G14.214 task_* 折叠行带任务名(复审/停止/门审/取消/分派;set_dependency 双名「任务 ← 依赖目标」) */
-        <>
-          <span className="tool-verb">{zhToolName(toolName)}</span>
-          <span className="tool-file-base tool-cmd">
-            {' '}{taskOpName}
-            {taskOpDepName !== undefined && ` ← ${taskOpDepName}`}
-          </span>
-        </>
-      ) : command !== undefined ? (
-        <>
-          <span className="tool-verb">{t('exec', '执行')}</span>
-          {/* G14.50:展开态不重复命令文本(下方 $ 行已完整示出) */}
-          {!expanded && <span className="tool-file-base tool-cmd">{' '}{command}</span>}
-        </>
-      ) : (
-        /* G14.168 动词中文展示单点(MCP 等未登记工具回退原名)+目标字段 */
-        <span className="tool-verb">
-          {zhToolName(toolName)}
-          {target !== undefined ? ` ${target}` : ''}
+        <span className="tool-file-base tool-cmd">
+          {' '}
+          {waitTaskNames.length > 0
+            ? waitTaskNames.join(', ')
+            : Array.isArray(input.taskIds)
+              ? ''
+              : t('all background tasks', '全部后台任务')}
         </span>
-      )}
+      ) : !hideTargetWhileRunning && taskOpName !== undefined ? (
+        /* G14.214 task_* 折叠行带任务名(复审/停止/门审/取消/分派;set_dependency 双名「任务 ← 依赖目标」) */
+        <span className="tool-file-base tool-cmd">
+          {' '}{taskOpName}
+          {taskOpDepName !== undefined && ` ← ${taskOpDepName}`}
+        </span>
+      ) : command !== undefined ? (
+        /* G14.50:展开态不重复命令文本(下方 $ 行已完整示出) */
+        <span className="tool-file-base tool-cmd">{' '}{command}</span>
+      ) : !hideTargetWhileRunning && target !== undefined ? (
+        /* G14.168 目标字段(MCP 等未登记工具回退原名+目标) */
+        <span className="tool-file-base tool-cmd">{' '}{target}</span>
+      ) : null}
     </>
   );
 

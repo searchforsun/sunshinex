@@ -111,11 +111,14 @@ export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { en
       <button type="button" className="thinking-summary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Brain size={12} strokeWidth={1.75} aria-hidden="true" />
         <span className="thinking-label">
-          {streaming
-            ? t(`Thinking ${elapsed ?? 0}s`, `思考中 ${elapsed ?? 0}秒`)
-            : entry.seconds !== undefined
-              ? t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}秒`)
-              : t('Thought', '思考')}
+          {streaming ? (
+            /* 流光文字(2026-10-22 用户裁定:思考行与执行行同语言) */
+            <span className="exec-running-text">{t(`Thinking ${elapsed ?? 0}s`, `思考中 ${elapsed ?? 0}秒`)}</span>
+          ) : entry.seconds !== undefined ? (
+            t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}秒`)
+          ) : (
+            t('Thought', '思考')
+          )}
         </span>
         {streaming && !open && flow !== '' && (
           <span className="thinking-flow" aria-hidden="true">

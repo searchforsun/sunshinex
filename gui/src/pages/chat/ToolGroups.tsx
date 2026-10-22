@@ -3,10 +3,12 @@ import { ChevronRight, FolderSearch, Hourglass, PenLine, SquareTerminal, type Lu
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
 
-/** G14.215 工具聚合行（用户裁决）：同类型相邻已完成工具行 >1 折为一条聚合头（「查询了 N 次文件」形），
- *  点击展开=成员工具行平级铺开（成员即原生工具行，非嵌套壳——展开容器仅作高度动画用，零视觉盒子）；
- *  运行中不进组——执行完成后才归入上方同类聚合行（ghost 渐收动画，到点卸载）；禁止重排——
- *  分组只在相邻段内做、成员保持出牌顺序，非同类行/思考行天然切断分组 */
+/** G14.215 工具聚合行（用户裁决；2026-10-22 再裁定「运行中直进组、计数实时增、成员在跑头显
+ *  流光」——取消「执行行→完成后 ghost 归并」的展开再进入动作）：同类型相邻工具行折为一条聚合头
+ *  （「查询了 N 次文件」形），运行中段 1 条即成组（头显流光、计数随出牌实时递增）；完成段 >1 折
+ *  为组（单行保持原生行）。点击展开=成员工具行平级铺开（成员即原生工具行，非嵌套壳——展开容
+ *  器仅作高度动画用，零视觉盒子）；禁止重排——分组只在相邻段内做、成员保持出牌顺序，非同类行/
+ *  思考行天然切断分组 */
 export type ToolGroupKind = 'query' | 'edit' | 'exec' | 'wait';
 
 /** 聚合面工具清单（四类高频噪声行；spawn、task 系、ask 等语义行保持独立不聚合） */
@@ -30,11 +32,10 @@ function executingOf(entry: ChatEntry): boolean {
 }
 
 function groupKindOf(entry: ChatEntry): ToolGroupKind | undefined {
-  if (executingOf(entry)) return undefined; // 运行中不进组（完成后的重建帧才可归组）
   return entry.name === undefined ? undefined : GROUP_KIND_OF[entry.name];
 }
 
-/** 段内相邻折叠节点：entry=思考/隐正文（切断相邻性），tool=单行（执行中/非聚合面/计数 1），group=聚合 */
+/** 段内相邻折叠节点：entry=思考/隐正文（切断相邻性），tool=单行（非聚合面/完成段计数 1），group=聚合 */
 type SegNode =
   | { type: 'entry'; entry: ChatEntry }
   | { type: 'tool'; entry: ChatEntry }
@@ -46,7 +47,9 @@ export function buildSegNodes(seg: ChatEntry[]): SegNode[] {
   let open: { kind: ToolGroupKind; entries: ChatEntry[] } | null = null;
   const flush = (): void => {
     if (open === null) return;
-    if (open.entries.length > 1) {
+    // 运行中段 1 条即成组（头显流光、计数实时递增——用户裁定取消「执行行→归并」动作）；
+    // 完成段 >1 才成组，单行保持原生行
+    if (open.entries.length > 1 || open.entries.some(executingOf)) {
       nodes.push({ type: 'group', kind: open.kind, gkey: `group:${open.kind}:${open.entries[0]!.key}`, entries: open.entries });
     } else {
       nodes.push({ type: 'tool', entry: open.entries[0]! });
@@ -179,8 +182,10 @@ export function ToolSegBlock({
           const meta = GROUP_META[n.kind];
           const Icon = meta.icon;
           const [en, zh] = meta.label(n.entries.length);
+          // 任一成员在跑 = 组头流光（用户裁定:有一个文件显示运行中,折叠行即显流光状态）
+          const executing = n.entries.some((e) => executingOf(e));
           return (
-            <div key={n.gkey} className="tool-group">
+            <div key={n.gkey} className={`tool-group${executing ? ' executing' : ''}`}>
               <button
                 type="button"
                 className={`tool-group-head${isOpen ? ' open' : ''}`}
@@ -188,8 +193,10 @@ export function ToolSegBlock({
                 onClick={(e) => toggleGroup(n.gkey, e.currentTarget)}
               >
                 <Icon size={12} strokeWidth={1.75} aria-hidden="true" />
-                {/* key=计数：计数增长即重挂重播 pop 动画（语言切换不换 key 不重播） */}
-                <span className="tool-group-label" key={n.entries.length}>{t(en, zh)}</span>
+                {/* key=计数：计数增长即重挂重播 pop 动画（语言切换不换 key 不重播）;运行中=流光文字 */}
+                <span className="tool-group-label" key={n.entries.length}>
+                  <span className={executing ? 'exec-running-text' : undefined}>{t(en, zh)}</span>
+                </span>
                 <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {/* 成员平级铺开：透明网格容器仅作 0fr→1fr 高度动画（与 tool-body 同配方），零视觉嵌套 */}
