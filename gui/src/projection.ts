@@ -9,3 +9,16 @@ export { boardEventFrom } from '../../src/taskboard/translate';
 export { applyDelegation } from '../../src/delegation/projection';
 export type { TaskBoardState, BoardTask, TaskStatus } from '../../src/taskboard/model';
 export type { Delegation } from '../../src/delegation/projection';
+import type { TodoItem } from '../../src/types';
+import type { TaskBoardState } from '../../src/taskboard/model';
+import type { Delegation } from '../../src/delegation/projection';
+
+/** G5/G14.137 会话维投影总容器(D34 串态收口,第二十五轮;D42 自 App.tsx 迁入共享——连接装配
+ *  回调与壳路由同消费):board/会话待办/委派/team 四件一容器——清零点(onReset/onResetSession/
+ *  openSession/backHome)整替一处,人工枚举漏项的开集弱点根除 */
+export interface SessionProjection {
+  board: TaskBoardState;
+  sessionTodos: TodoItem[];
+  delegations: Delegation[];
+  team: Array<{ name: string; busy: boolean }>;
+}

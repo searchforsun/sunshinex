@@ -73,15 +73,13 @@ export function useChatMemory(): {
   return { chatMemGet, chatMemPut };
 }
 
-/** G14.2xx b 影子水合(子智能体投影恢复):journal subagent 行全量拉取清零重放——WS 环窗(512)
- *  对长会话子智能体流必溢出且连接建立常先于会话 attach,刷新/重连后「无活动记录」的病根。
- *  在途 subagent 帧按 seq 缓冲截流,落定后重放 seq>cut(服务端读档时刻泵水位)——cut 前已含
- *  于行集,cut 后只在缓冲,零丢帧零重复。board/delegation 不走此路(快照携带+attach seedShadow
- *  既有可靠链),避免与播种窗交叉。connInstance 参随渲染进新闭包——水合单点每渲染重赋 ref。 */
-export function useShadowHydration(
-  bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void,
-  connInstance: Connection | null,
-): {
+/** G14.2xx b 影子水合四 ref 工厂(journal subagent 行全量拉取清零重放——WS 环窗(512)对长会话
+ *  子智能体流必溢出且连接建立常先于会话 attach,刷新/重连后「无活动记录」的病根。在途 subagent
+ *  帧按 seq 缓冲截流,落定后重放 seq>cut——cut 前已含于行集,cut 后只在缓冲,零丢帧零重复。
+ *  board/delegation 不走此路(快照携带+attach seedShadow 既有可靠链),避免与播种窗交叉。
+ *  refs 先声明、水合单点经 bindShadowHydration 后置绑定——解「水合需连接实例、装配需截流
+ *  refs」的环(原 AppShell refs 前置+impl 后置同构) */
+export function useShadowHydrationRefs(): {
   shadowHydrateRef: MutableRefObject<((sessionId: string) => void) | null>;
   shadowHydratedRef: MutableRefObject<Set<string>>;
   shadowHydratingRef: MutableRefObject<Set<string>>;
@@ -93,8 +91,22 @@ export function useShadowHydration(
   const shadowBufRef = useRef<Map<string, Array<{ e: SessionEvent; seq: number }>>>(new Map());
   /** 影子子智能体帧判定(与内核 shadow 透传同口径的子智能体子集) */
   const shadowHydrateRef = useRef<((sessionId: string) => void) | null>(null);
-  /** G14.2xx b 影子水合单点:journal subagent 行全量清零重放 + 在途缓冲 seq>cut 重放(每渲染
-   *  重赋 ref——闭包恒取最新 connInstance;onReset/会话打开 effect 经 ref 触发) */
+  return { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef };
+}
+
+/** 影子水合单点绑定(每渲染调用——重赋 hydrate ref,闭包恒取最新 connInstance;onReset/
+ *  会话打开 effect 经 ref 触发):journal subagent 行全量清零重放 + 在途缓冲 seq>cut 重放 */
+export function bindShadowHydration(
+  refs: {
+    shadowHydrateRef: MutableRefObject<((sessionId: string) => void) | null>;
+    shadowHydratedRef: MutableRefObject<Set<string>>;
+    shadowHydratingRef: MutableRefObject<Set<string>>;
+    shadowBufRef: MutableRefObject<Map<string, Array<{ e: SessionEvent; seq: number }>>>;
+  },
+  bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void,
+  connInstance: Connection | null,
+): void {
+  const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef } = refs;
   shadowHydrateRef.current = (sessionId: string): void => {
     if (connInstance === null) return;
     if (shadowHydratingRef.current.has(sessionId)) return; // 在途幂等
@@ -124,5 +136,4 @@ export function useShadowHydration(
       },
     );
   };
-  return { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef };
 }
