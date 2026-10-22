@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X } from 'lucide-react';
 import { t } from '../../i18n';
@@ -370,6 +370,19 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | nul
  *  而非元素)——调用面传 `runFooterByEntry.get(entry.key)`(undefined 恒稳定,reducer 保条目引用,浅
  *  比较恢复命中),组件内在场时自渲染 RunFooter;终审前传 ReactNode 每帧新建元素击穿 memo,长会话
  *  每 token 触发历史末条全文重解析 */
+/** 流式分域渲染(对齐 TUI 块缓冲口径,2026-10-22 用户报障「正文流式期间状态行向下抖动」):
+ *  已完成块=整块 markdown(memo——头串稳定即跳过重解析),在途尾块=纯文本直出(块边界整块晋升)
+ *  ——半截结构(未闭合围栏/半张表/断词换行)不进解析器,流式高度单调增,贴底/状态行无抖动;
+ *  done 后整段 markdown 终渲染 */
+const MarkdownHead = memo(function MarkdownHead({ md, components }: { md: string; components: Components }): JSX.Element {
+  if (md === '') return <></>;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={components}>
+      {md}
+    </ReactMarkdown>
+  );
+});
+
 export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void }): JSX.Element {
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
@@ -377,12 +390,36 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   // isDir=目录解析(目录链接显黄目录;context 缺省恒 false——代理转录等无会话索引面按文件)
   const isDir = useDirResolver();
   const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined), isDir), [onOpenFile, isDir]);
+  const streaming = entry.streaming === true;
+  // 块缓冲切分:最后一个空行为界——前段=已完成块(整块 md),尾段=在途块(纯文本,剥首部换行防双空隙)
+  let headMd = '';
+  let tailMd = '';
+  if (streaming && accent === null) {
+    const cut = entry.md.lastIndexOf('\n\n');
+    if (cut >= 0) {
+      headMd = entry.md.slice(0, cut);
+      tailMd = entry.md.slice(cut).replace(/^\n+/, '');
+    } else {
+      tailMd = entry.md;
+    }
+  }
   return (
-    <div className={`entry entry-${entry.kind}${entry.streaming === true ? ' streaming' : ''}`}>
+    <div className={`entry entry-${entry.kind}${streaming ? ' streaming' : ''}`}>
       <div className={`entry-md${icon !== null ? ' has-icon' : ''}`}>
         {icon !== null && <span className={`entry-icon${accent !== null ? ' accent' : ''}`}>{icon}</span>}
         <div className="entry-md-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
+          {streaming ? (
+            <>
+              <MarkdownHead md={headMd} components={mdc} />
+              {tailMd !== '' && (
+                <pre className="entry-stream-tail" style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+                  {tailMd}
+                </pre>
+              )}
+            </>
+          ) : (
+            <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
+          )}
         </div>
       </div>
       {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={onFork} />}
