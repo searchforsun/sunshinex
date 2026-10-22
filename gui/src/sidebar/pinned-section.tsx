@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Archive, PinOff } from 'lucide-react';
+import { Archive, ArchiveRestore, PinOff } from 'lucide-react';
 import { t } from '../i18n';
 import { relTime } from '../ui-util';
 import { useConfirmOutsideCancel } from './project-menu-util';
@@ -23,10 +23,13 @@ export interface PinnedSectionProps {
   readonly onUnpin: (id: string) => void;
   /** 行尾归档(落库+宿主重拉;hover 槽确认 morph,点外部取消) */
   readonly onArchiveRow: (id: string, archived: boolean) => void;
+  /** 已归档钉 id 集(2026-10-22 用户裁定:已归档冻结置顶态——取消置顶禁用,行尾换取消归档;
+   *  取消归档是唯一解冻出口) */
+  readonly archivedIds?: ReadonlySet<string>;
 }
 
 export function PinnedSection(props: PinnedSectionProps): JSX.Element {
-  const { pins, busy, activeSessionId, runningIds, journalOfSession, isUnseen, onOpenSession, onUnpin, onArchiveRow } = props;
+  const { pins, busy, activeSessionId, runningIds, journalOfSession, isUnseen, onOpenSession, onUnpin, onArchiveRow, archivedIds } = props;
   /** 行内归档确认 morph:存确认中的行 id('' = 无) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId(''));
@@ -40,6 +43,8 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
         {pins.map((p) => {
           const active = activeSessionId !== '' && journalOfSession.get(activeSessionId) === p.id;
           const running = active && runningIds.has(activeSessionId);
+          // 已归档冻结置顶态(2026-10-22 用户裁定):取消置顶禁用;行尾由归档确认 morph 换取消归档直连
+          const archived = archivedIds?.has(p.id) === true;
           return (
             <li
               key={p.id}
@@ -49,12 +54,13 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
                 if (!busy) onOpenSession(p.root, p.id, p.updatedAt);
               }}
             >
-              {/* hover:取消置顶显于状态点位(与普通行置顶钮同款钮座,字形对齐 PinOff) */}
+              {/* hover:取消置顶显于状态点位(与普通行置顶钮同款钮座,字形对齐 PinOff);已归档禁用 */}
               <button
                 type="button"
                 className="sx-pin-btn"
-                data-tip={t('Unpin', '取消置顶')}
-                aria-label={`${t('Unpin', '取消置顶')} ${p.id}`}
+                disabled={archived}
+                data-tip={archived ? t('Archived — unarchive to adjust pin', '已归档——取消归档后可调节') : t('Unpin', '取消置顶')}
+                aria-label={`${archived ? t('Archived', '已归档') : t('Unpin', '取消置顶')} ${p.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onUnpin(p.id);
@@ -68,7 +74,24 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
                 <span className="sx-session-dot unseen" />
               ) : null}
               <span className="sx-pin-title">{p.title}</span>
-              {confirmId === p.id ? (
+              {archived ? (
+                <>
+                  {/* 已归档钉:行尾恒「取消归档」直连(冻结规则唯一出口;归档确认 morph 不适用) */}
+                  <span className="sx-pin-time">{relTime(p.updatedAt)}</span>
+                  <button
+                    type="button"
+                    className="sx-iconbtn sx-pin-archive"
+                    data-tip={t('Unarchive', '取消归档')}
+                    aria-label={`${t('Unarchive', '取消归档')} ${p.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onArchiveRow(p.id, false);
+                    }}
+                  >
+                    <ArchiveRestore size={13} strokeWidth={1.75} />
+                  </button>
+                </>
+              ) : confirmId === p.id ? (
                 <button
                   type="button"
                   className="sx-archive-confirm"

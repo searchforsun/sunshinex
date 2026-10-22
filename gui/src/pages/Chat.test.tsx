@@ -915,6 +915,7 @@ describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
     const first = render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed(); // 播种落定(archived 播种已应用,确认击不发播种竞态)
     fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
+    expect((screen.getByRole('menuitem', { name: 'Pin session' }) as HTMLButtonElement).disabled).toBe(false); // 未归档:置顶可调节
     fireEvent.click(screen.getByText('Archive session'));
     expect(archiveSession).toHaveBeenCalledWith('s1', true);
     expect(await screen.findByText('Archived')).toBeTruthy(); // 本地 archived 同步 → 徽标即刻换面
@@ -929,6 +930,8 @@ describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
     expect(await screen.findByText('Archived')).toBeTruthy();
     expect(document.querySelector('.sx-archived-badge')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
+    // 已归档冻结置顶态(2026-10-22 用户裁定):Pin session 项禁用,取消归档后才可调节
+    expect((screen.getByRole('menuitem', { name: 'Pin session' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText('Unarchive session'));
     expect(archiveSession).toHaveBeenCalledWith('s1', false);
   });

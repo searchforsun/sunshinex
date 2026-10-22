@@ -170,6 +170,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     conn.recentSessions().then(setRecents, () => setRecents([])); // Recents 静默降级:空列表即可用
   }, [conn]);
 
+  /** 归档会话区(2026-10-21 用户裁定:归档视图在左侧菜单栏,非右侧主对话页):跨工作区聚合行
+   *  (GET /sessions/archived),分区头折叠同 RECENTS;行动作失败经 actionError 通道。
+   *  2026-10-22 声明上移至 loadPins 旁:recentVersion effect 同拍重拉(置顶组归档冻结需要归档集) */
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archivedRows, setArchivedRows] = useState<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }> | null>(null);
+  const loadArchived = useCallback((): void => {
+    conn.archivedSessions().then(setArchivedRows, () => setArchivedRows([]));
+  }, [conn]);
+
   const loadPins = useCallback((): void => {
     conn.appPins().then((r) => setPins(normalizePins(r.pins)), () => setPins([]));
   }, [conn]);
@@ -177,8 +186,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   useEffect(() => {
     loadWorkspaces();
     loadPins();
+    loadArchived(); // 2026-10-22 置顶组归档冻结:归档集与钉档同拍重拉(已归档钉禁调节)
     setSeenMap(loadSeenMap()); // 2026-10-22 联动:顶栏 ⋯ 标记为未读经 App recentVersion bump 重拉未读表
-  }, [loadWorkspaces, loadPins, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
+  }, [loadWorkspaces, loadPins, loadArchived, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
 
   /** 拉展开组的会话列表(slug 守卫):应答到达时已切组/收起则丢弃(慢应答竞态收口) */
   const loadSessions = useCallback(
@@ -289,14 +299,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         },
       );
   };
-  /** 归档会话区(2026-10-21 用户裁定:归档视图在左侧菜单栏,非右侧主对话页):跨工作区聚合行
-   *  (GET /sessions/archived),分区头折叠同 RECENTS;行动作失败经 actionError 通道 */
-  const [archiveOpen, setArchiveOpen] = useState(false);
-  const [archivedRows, setArchivedRows] = useState<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }> | null>(null);
-  const loadArchived = useCallback((): void => {
-    conn.archivedSessions().then(setArchivedRows, () => setArchivedRows([]));
-  }, [conn]);
-
   /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
    *  组列表计数 + Recents(loadWorkspaces)、归档层列表(loadArchived,置顶行归档时归档层若
    *  开着需即时回显)与展开组会话行(loadSessions,归档行由服务端列表滤除,T2c)。失败经既有
@@ -457,6 +459,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onOpenSession={attachJournal}
           onUnpin={unpinRow}
           onArchiveRow={archiveRow}
+          archivedIds={new Set((archivedRows ?? []).map((r) => r.id))}
         />
         <ProjectsSection
           projectsOpen={projectsOpen}

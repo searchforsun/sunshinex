@@ -141,7 +141,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'pin',
       label: pinned ? t('Unpin session', '取消置顶会话') : t('Pin session', '置顶会话'),
-      disabled: running,
+      // 已归档冻结置顶态(2026-10-22 用户裁定):取消归档后才可调节
+      disabled: running || archived,
       onSelect: () => {
         // 只调 togglePin——它按服务端现态取反且落库后才上抛联动;此处再 loadPinned()
         // 会 GET 到 PUT 落库前的旧档,把刚置的状态打回去(「第一次无效、后续反向」元凶)
@@ -237,12 +238,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         </button>
         {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
         {menu !== null && (
-          <SessionRowMenu
-            x={menu.x}
-            y={menu.y}
-            onClose={() => setMenu(null)}
-            items={menuItems.map((it) => ({ ...it, disabled: it.disabled && running }))}
-          />
+          <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />
         )}
         {showExpandSidebar && (
           <button
