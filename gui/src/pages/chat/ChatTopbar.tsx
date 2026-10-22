@@ -3,6 +3,7 @@ import { Folder, MoreHorizontal, PanelRight } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
+import { loadSeenMap, persistSeenMap } from '../../sidebar/project-menu-util';
 
 /** 会话顶栏(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):标题(空/改/显三态,点击重命名)
  *  + 动态计数钮(待办/任务板)+ 侧栏展开钮。标题编辑态与草稿留宿主。
@@ -97,10 +98,12 @@ export interface ChatTopbarProps {
   readonly journalId?: string;
   /** 会话工作区根(置顶条目快照字段) */
   readonly root?: string;
+  /** 会话数据变更上抛(置顶/归档/标记未读后,宿主 bump 侧栏联动刷新) */
+  readonly onSessionsMutated?: () => void;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, showExpandSidebar, onExpandSidebar } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, showExpandSidebar, onExpandSidebar } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [pinned, setPinned] = useState(false);
@@ -115,13 +118,23 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     if (journalId === undefined) return;
     conn.appPins().then(
       (r) => {
-        const rest = r.pins.filter((p) => p.id !== journalId);
-        const next = pinned ? rest : [...rest, { id: journalId, root: root ?? '', title: displayTitle, updatedAt: Date.now() }];
-        setPinned(!pinned);
+        // 以服务端现态为准取反(组件态可能过期——过期态定向翻转即「反了」)
+        const isPinned = r.pins.some((p) => p.id === journalId);
+        const next = isPinned ? r.pins.filter((p) => p.id !== journalId) : [...r.pins, { id: journalId, root: root ?? '', title: displayTitle, updatedAt: Date.now() }];
+        setPinned(!isPinned);
         void conn.saveAppPins(next).then(() => undefined, () => undefined);
       },
       () => undefined,
     );
+  };
+  const copyText = (text: string): void => {
+    void navigator.clipboard.writeText(text).then(() => undefined, () => undefined);
+  };
+  const markUnread = (): void => {
+    if (journalId === undefined) return;
+    const seen = loadSeenMap();
+    delete seen[journalId];
+    persistSeenMap(seen);
   };
   const menuItems = [
     {
@@ -131,6 +144,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       onSelect: () => {
         togglePin();
         loadPinned();
+        onSessionsMutated?.();
       },
     },
     {
@@ -141,7 +155,36 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         if (archived) onArchive(false);
         else onArchive(true);
         loadPinned();
+        onSessionsMutated?.();
       },
+    },
+    { id: 'divider-1', divider: true, label: '', onSelect: () => undefined },
+    {
+      id: 'rename',
+      label: t('Rename session', '重命名会话'),
+      onSelect: () => {
+        setTitleDraft(displayTitle);
+        setTitleEditing(true);
+      },
+    },
+    {
+      id: 'mark-unread',
+      label: t('Mark as unread', '标记为未读'),
+      onSelect: () => {
+        markUnread();
+        onSessionsMutated?.();
+      },
+    },
+    { id: 'divider-2', divider: true, label: '', onSelect: () => undefined },
+    {
+      id: 'copy-id',
+      label: t('Copy session ID', '复制会话 ID'),
+      onSelect: () => copyText(sessionId),
+    },
+    {
+      id: 'copy-path',
+      label: t('Copy path', '复制路径'),
+      onSelect: () => copyText(root ?? ''),
     },
   ];
   return (

@@ -71,6 +71,8 @@ export interface ChatProps {
   root?: string;
   /** 标题落盘后上抛(G14.16:App bump recentVersion → 侧栏 RECENTS 即时同名) */
   onRenamed?: () => void;
+  /** 会话数据变更上抛(2026-10-22:顶栏 ⋯ 菜单置顶/归档/标记未读后,App bump recentVersion → 侧栏联动刷新) */
+  onSessionsMutated?: () => void;
   /** G14.28:右栏折叠时顶栏右侧示「展开侧栏」钮(折叠态不渲染 32px 细条) */
   showExpandSidebar?: boolean;
   onExpandSidebar?: () => void;

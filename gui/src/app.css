@@ -2080,3 +2080,8 @@ input.sx-setting-input { width: 100%; }
 .sx-side-head-btn:hover .sx-iconbtn, .sx-side-head-btn:focus-within .sx-iconbtn { opacity: 1; }
 .workspace-item .sx-count { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
 .workspace-item:hover .sx-count, .workspace-toggle:focus-within .sx-count { opacity: 1; }
+
+/* ⋯ 菜单分隔线(2026-10-22:动作组/工具组分段,参考通用菜单形态、样式随 sx-menu-pop) */
+.sx-menu-divider { height: 1px; margin: 4px 8px; background: var(--border); }
+.sx-menuitem:disabled { color: var(--fg-tertiary); cursor: default; }
+.sx-menuitem:disabled:hover { background: transparent; }

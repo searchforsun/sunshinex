@@ -170,9 +170,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     conn.recentSessions().then(setRecents, () => setRecents([])); // Recents 静默降级:空列表即可用
   }, [conn]);
 
+  const loadPins = useCallback((): void => {
+    conn.appPins().then((r) => setPins(normalizePins(r.pins)), () => setPins([]));
+  }, [conn]);
+
   useEffect(() => {
     loadWorkspaces();
-  }, [loadWorkspaces, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
+    loadPins();
+    setSeenMap(loadSeenMap()); // 2026-10-22 联动:顶栏 ⋯ 标记为未读经 App recentVersion bump 重拉未读表
+  }, [loadWorkspaces, loadPins, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
 
   /** 拉展开组的会话列表(slug 守卫):应答到达时已切组/收起则丢弃(慢应答竞态收口) */
   const loadSessions = useCallback(
@@ -324,9 +330,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  不支持折叠;无钉不渲染。归档联动(2026-10-21 用户裁定「点击归档不覆盖置顶分组」):置顶组
    *  显示所有钉,不因归档离组;归档层真删时随删防悬挂 */
   const [pins, setPins] = useState<PinEntry[]>([]);
-  const loadPins = useCallback((): void => {
-    conn.appPins().then((r) => setPins(normalizePins(r.pins)), () => setPins([]));
-  }, [conn]);
   useEffect(() => {
     loadPins(); // 挂载拉钉档(userConfigDir/gui/pins.json;2026-10-21 用户裁定「也要持久化」)
   }, [loadPins]);

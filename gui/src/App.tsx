@@ -618,6 +618,7 @@ function AppShell(): JSX.Element {
                 root={openRoot}
                 onTodos={setSessionTodos}
                 onRenamed={() => setRecentVersion((v) => v + 1)}
+                onSessionsMutated={() => setRecentVersion((v) => v + 1)}
                 showExpandSidebar={tabState.collapsed}
                 onExpandSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, false))}
                 onSideChat={startSideChat}

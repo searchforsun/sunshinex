@@ -7,6 +7,10 @@ export interface SessionRowMenuItem {
   id: string;
   label: string;
   icon?: JSX.Element;
+  /** 禁用项(灰显不可点,如运行中的归档) */
+  disabled?: boolean;
+  /** 分隔线项( label/图标忽略,渲染为分隔线) */
+  divider?: boolean;
   onSelect: () => void;
 }
 
@@ -42,24 +46,29 @@ export function SessionRowMenu({ x, y, items, onClose }: {
       ref={ref}
       className="sx-menu-pop sx-session-row-pop"
       role="menu"
-      style={{ position: 'fixed', left: x, top: y + 2, transform: 'translateX(-100%)' }}
+      style={{ position: 'fixed', left: x, top: y + 2, right: 'auto', transform: 'translateX(-100%)', zIndex: 200 }}
       onClick={(e) => e.stopPropagation()}
     >
-      {items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          role="menuitem"
-          className="sx-menuitem"
-          onClick={() => {
-            it.onSelect();
-            onClose();
-          }}
-        >
-          {it.icon}
-          <span>{it.label}</span>
-        </button>
-      ))}
+      {items.map((it) =>
+        it.divider ? (
+          <div key={it.id} className="sx-menu-divider" role="separator" />
+        ) : (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            className="sx-menuitem"
+            disabled={it.disabled}
+            onClick={() => {
+              it.onSelect();
+              onClose();
+            }}
+          >
+            {it.icon}
+            <span>{it.label}</span>
+          </button>
+        ),
+      )}
     </div>
   );
 }
