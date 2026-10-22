@@ -259,8 +259,13 @@ function AppShell(): JSX.Element {
   /** G12 左栏宽度可调:拖右缘边条改 --menu-w(只钳最小 220),localStorage 持久;SettingsShell
    *  的左栏同为 .sx-menu,随同一变量联动 */
   const [menuWidth, setMenuWidth] = useState<number>(() => {
-    const raw = Number(localStorage.getItem(MENU_WIDTH_KEY));
-    return Number.isFinite(raw) && raw >= MENU_WIDTH_MIN ? raw : MENU_WIDTH_DEFAULT;
+    // 隐私模式/存储禁用下 localStorage 抛 SecurityError——theme/ui-zoom 同款守卫口径,缺省宽兜底
+    try {
+      const raw = Number(localStorage.getItem(MENU_WIDTH_KEY));
+      return Number.isFinite(raw) && raw >= MENU_WIDTH_MIN ? raw : MENU_WIDTH_DEFAULT;
+    } catch {
+      return MENU_WIDTH_DEFAULT;
+    }
   });
   /** 左栏拖宽在途清理句柄(mouseup 解绑;卸载兜底) */
   const menuResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -518,9 +523,6 @@ function AppShell(): JSX.Element {
     setSettingsOpen(false);
   }, []);
 
-  /** (T6 归档页退役:2026-10-21 用户裁定归档视图在左侧菜单栏 ArchiveSection——attachJournalRef/
-   *  openArchivedSession/archivedOpen 主区 overlay 面整体拆除,归档行打开直驻 ProjectMenu) */
-
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
    *  tab-state(同目标重开=聚焦既有,单例类型单份)。G14.211 useCallback+sessionRef 零依赖
    *  稳定:内联闭包随 App 渲染换新,击穿 ChatEntryView memo——点一次文件=全列表重渲染闪帧
@@ -773,7 +775,10 @@ function AppShell(): JSX.Element {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', stop);
       menuResizeCleanupRef.current = null;
-      localStorage.setItem(MENU_WIDTH_KEY, String(next));
+      // 持久化失败(隐私模式)仅内存态生效,拖宽不受阻
+      try {
+        localStorage.setItem(MENU_WIDTH_KEY, String(next));
+      } catch { /* 降级静默 */ }
     };
     menuResizeCleanupRef.current = stop;
     window.addEventListener('mousemove', onMove);
@@ -848,7 +853,7 @@ function AppShell(): JSX.Element {
             role="separator"
             aria-orientation="vertical"
             aria-label={t('Resize sidebar', '调整侧栏宽度')}
-            title={t('Drag to resize', '拖动调整宽度')}
+            data-tip={t('Drag to resize', '拖动调整宽度')}
             onMouseDown={startMenuResize}
           />
           {/* 中栏:Chat 恒挂(无会话=欢迎空态);归档视图已内驻左栏 ArchiveSection(2026-10-21 裁定) */}

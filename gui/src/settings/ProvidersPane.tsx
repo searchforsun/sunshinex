@@ -10,7 +10,7 @@ import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
  * tier/reasoningEffort 闭集下拉 + baseUrl 文本——键名与 daemon SEMANTIC_KEYS 逐字对齐;引擎
  * 自带来源徽标/env 禁编/逐项写回/保存 toast 面);
  * 下=providers 只读卡列表(conn.settings(root) 的 providers.choices 逐卡:名称/模型行/
- * apiKeyPresent 圆点——绿=env 槽在场/灰=缺,title=apiKeyEnv 槽名)+warnings 告警行。
+ * apiKeyPresent 圆点——绿=env 槽在场/灰=缺,data-tip=apiKeyEnv 槽名)+warnings 告警行。
  * providers 是只读呈现面(密钥只走 env 面,GUI 不编辑);本组件对 settings 发两笔请求
  * (表单引擎一笔 + providers 卡一笔——视图分面,各自独立加载态)。
  */
@@ -104,7 +104,7 @@ export function ProvidersPane({ conn, root }: ProvidersPaneProps): JSX.Element {
                   <div className="sx-provider-head">
                     <span className="sx-provider-name">{c.id}</span>
                     <span className="sx-provider-vendor">{c.provider}</span>
-                    <span className={`sx-api-dot${present ? ' present' : ' missing'}`} title={c.apiKeyEnv} aria-label={`api key ${c.id}`} />
+                    <span className={`sx-api-dot${present ? ' present' : ' missing'}`} data-tip={c.apiKeyEnv} aria-label={`api key ${c.id}`} />
                   </div>
                   <div className="sx-provider-model">{c.model}</div>
                 </li>

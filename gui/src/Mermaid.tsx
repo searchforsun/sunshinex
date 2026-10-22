@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { currentTheme, watchThemeChange } from './theme';
 
 /**
  * Mermaid 图渲染(G10-C3c):代码分包(不进主 bundle;G14.2xx 起模块加载即预取 chunk——
@@ -54,10 +55,6 @@ const MERMAID_VARS = {
   },
 } as const;
 
-function currentTheme(): keyof typeof MERMAID_VARS {
-  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-}
-
 /** 模块预取:本模块随 Chat/Files 静态链加载,chunk 即刻在后台拉起(测试 mock 同经此路径);
  *  失败归一 undefined,由渲染处按错误回落 */
 const mermaidReady: Promise<typeof import('mermaid') | undefined> = import('mermaid').catch(() => undefined);
@@ -95,9 +92,7 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
   const [themeTick, setThemeTick] = useState(0);
 
   useEffect(() => {
-    const obs = new MutationObserver(() => setThemeTick((v) => v + 1));
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => obs.disconnect();
+    return watchThemeChange(() => setThemeTick((v) => v + 1));
   }, []);
 
   /** G14.2xx 落定广播:svg/回落提交后发全局事件——撑高发生在组件内 state,不触发父流区

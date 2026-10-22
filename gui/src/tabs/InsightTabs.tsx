@@ -231,7 +231,7 @@ export function MemoryTab({ conn, root }: { conn: Connection; root: string }): J
                   className="mem-body"
                   role="button"
                   tabIndex={0}
-                  title={m.description}
+                  data-tip={m.description}
                   onClick={() => setExpandedSlug((s) => (s === m.slug ? null : m.slug))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') setExpandedSlug((s) => (s === m.slug ? null : m.slug));

@@ -728,7 +728,7 @@ export function WelcomeComposer({
                 className="composer-pill composer-plus-btn"
                 aria-label="add attachment"
                 aria-expanded={plusOpen}
-                title={t('Add skills, commands or files', '添加技能、命令或文件')}
+                data-tip={t('Add skills, commands or files', '添加技能、命令或文件')}
                 onClick={() => setPlusOpen((v) => !v)}
               >
                 +
@@ -740,7 +740,7 @@ export function WelcomeComposer({
                   className="composer-pill"
                   aria-label="approval mode"
                   aria-expanded={modeOpen}
-                  title={t('Approval mode for this session', '本会话的审批模式')}
+                  data-tip={t('Approval mode for this session', '本会话的审批模式')}
                   onClick={() => setModeOpen((v) => !v)}
                 >
                   {/* G14.133 分档图标与菜单同源(ModeIcon)——静态 Hand 两套渲染退役 */}
@@ -789,7 +789,7 @@ export function WelcomeComposer({
                 className="composer-pill"
                 aria-label="model"
                 aria-expanded={modelOpen}
-                title={selModel ?? defaultModel ?? undefined}
+                data-tip={selModel ?? defaultModel ?? undefined}
                 onClick={() => setModelOpen((v) => !v)}
               >
                 {baseModelName(selModel ?? defaultModel)}
@@ -804,7 +804,7 @@ export function WelcomeComposer({
                       type="button"
                       role="menuitem"
                       className={`sx-menuitem${(selModel ?? defaultModel) !== undefined && c.id === (selModel ?? defaultModel) ? ' active' : ''}`}
-                      title={c.id}
+                      data-tip={c.id}
                       onClick={() => {
                         setSelModel(c.id);
                         if (c.effort !== undefined) setSelEffort(c.effort);
@@ -822,7 +822,7 @@ export function WelcomeComposer({
                 type="button"
                 className="send"
                 aria-label="send"
-                title={t('Send', '发送')}
+                data-tip={t('Send', '发送')}
                 disabled={busy || goal.trim() === '' || picked === ''}
                 onClick={send}
               >

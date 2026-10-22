@@ -142,7 +142,7 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
             <div key={s.id} className="sx-card sx-skill-card">
               <div className="sx-skill-head">
                 <span className="sx-skill-id">{s.id}</span>
-                <span className={`sx-skill-src sx-skill-src-${s.source}`} title={s.project !== undefined ? t(`Belongs to project: ${s.project}`, `归属项目:${s.project}`) : t('Global skill', '全局技能')}>
+                <span className={`sx-skill-src sx-skill-src-${s.source}`} data-tip={s.project !== undefined ? t(`Belongs to project: ${s.project}`, `归属项目:${s.project}`) : t('Global skill', '全局技能')}>
                   {s.project !== undefined ? s.project : t('Global', '全局')}
                 </span>
               </div>

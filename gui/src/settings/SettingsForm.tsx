@@ -441,7 +441,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
         value={value}
         placeholder={fd.placeholder}
         disabled={disabled}
-        title={title}
+        data-tip={title}
         onChange={(e) => setValues((vals) => ({ ...vals, [fd.key]: e.target.value }))}
         onBlur={(e) => persistField(fd, e.target.value)} // 失焦即存(自动生效轮)
         onKeyDown={(e) => {

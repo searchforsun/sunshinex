@@ -443,7 +443,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             type="button"
             className="jump-down"
             aria-label="scroll to bottom"
-            title={t('Scroll to bottom', '回到底部')}
+            data-tip={t('Scroll to bottom', '回到底部')}
             onClick={() => {
               const el = chatScrollRef.current;
               if (el !== null) el.scrollTo({ top: el.scrollHeight }); // G14.74:直接跳底(用户裁定)

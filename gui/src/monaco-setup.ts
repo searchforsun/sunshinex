@@ -1,6 +1,7 @@
 import { loader } from '@monaco-editor/react';
 import { useEffect, useState } from 'react';
 import * as monaco from 'monaco-editor';
+import { currentTheme, watchThemeChange } from './theme';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
 
 /**
@@ -56,22 +57,18 @@ export function ensureMonaco(): void {
   themesDefined = true;
 }
 
-const light = (): boolean => document.documentElement.dataset.theme === 'light';
-
-/** 主题跟随 hook：mount 即定义主题并对齐 data-theme；切换经 MutationObserver 实时重渲 */
+/** 主题跟随 hook：mount 即定义主题并对齐 data-theme；切换经 watchThemeChange 单点实时重渲 */
 export function useSxTheme(): 'sx-dark' | 'sx-light' {
-  const [theme, setTheme] = useState<'sx-dark' | 'sx-light'>(light() ? 'sx-light' : 'sx-dark');
+  const [theme, setTheme] = useState<'sx-dark' | 'sx-light'>(currentTheme() === 'light' ? 'sx-light' : 'sx-dark');
   useEffect(() => {
     ensureMonaco();
     const apply = (): void => {
-      const next = light() ? 'sx-light' : 'sx-dark';
+      const next = currentTheme() === 'light' ? 'sx-light' : 'sx-dark';
       setTheme(next);
       monaco.editor.setTheme(next);
     };
     apply();
-    const obs = new MutationObserver(apply);
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => obs.disconnect();
+    return watchThemeChange(apply);
   }, []);
   return theme;
 }

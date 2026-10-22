@@ -181,7 +181,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     );
     const link = await screen.findByRole('button', { name: 'DiffTab.tsx' });
     expect(link.className).toContain('file-link');
-    expect(link.getAttribute('title')).toBe('gui/src/tabs/DiffTab.tsx');
+    expect(link.getAttribute('data-tip')).toBe('gui/src/tabs/DiffTab.tsx');
     fireEvent.click(link);
     expect(onOpenFile).toHaveBeenCalledWith('gui/src/tabs/DiffTab.tsx');
     const web = screen.getByText('官网').closest('a');
@@ -202,7 +202,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     );
     const link = await screen.findByRole('button', { name: 'steer-verify.txt' });
     expect(link.className).toContain('file-link');
-    expect(link.getAttribute('title')).toBe('C:/Users/x/sunshinex-default/steer-verify.txt');
+    expect(link.getAttribute('data-tip')).toBe('C:/Users/x/sunshinex-default/steer-verify.txt');
   });
 
   it('G14.125 气泡非标引用不做文件渲染:@token 退通用 code chip,只认标准 md 链接(G14.124)', async () => {

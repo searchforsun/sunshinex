@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, GitFork } from 'lucide-react';
 import { t } from '../../i18n';
 import { fmtTokens, pathBasename } from '../../ui-util';
 import { shortClockMs } from '../../ui-util';
+import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import { FileIcon } from '../../file-icon';
 
@@ -14,30 +15,15 @@ import { FileIcon } from '../../file-icon';
 /** run 尾部操作条(G11 §6,对标 Codex 回复工具行):复制该条 md/fork 新会话 + 封段统计
  *  (steps·tokens·HH:mm,数据缺省逐项省略)。常显淡灰(截图裁定),钮 hover 提亮 */
 export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undefined; onFork?: () => void }): JSX.Element {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (timer.current !== null) clearTimeout(timer.current);
-    },
-    [],
-  );
-  const copy = (): void => {
-    navigator.clipboard?.writeText(text).then(
-      () => setCopied(true),
-      () => undefined,
-    );
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1500);
-  };
+  const { status, copy } = useCopyFeedback();
   const time = run?.endedTs !== undefined ? shortClockMs(run.endedTs) : undefined;
   return (
     <div className="run-footer">
       <TipButton
-        tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+        tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
         label="copy reply"
-        icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
-        onClick={copy}
+        icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+        onClick={() => copy(text)}
       />
       {onFork !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={onFork} />}
       {(run?.steps !== undefined || run?.tokens !== undefined) && (

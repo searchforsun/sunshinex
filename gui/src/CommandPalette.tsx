@@ -61,7 +61,7 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element {
           role="option"
           aria-selected={i === active}
           className={`cmd-item${i === active ? ' active' : ''}${item.ok ? '' : ' disabled'}`}
-          title={item.ok ? item.desc : t('Not available in this GUI', '此处不可用(GUI 原生面/TUI 专属/未移植)')}
+          data-tip={item.ok ? item.desc : t('Not available in this GUI', '此处不可用(GUI 原生面/TUI 专属/未移植)')}
           onMouseEnter={() => onHover(i)}
           onClick={() => {
             if (!item.ok) return; // 置灰项不可跑(TUI 专属/GUI 原生/未移植)——禁假入口

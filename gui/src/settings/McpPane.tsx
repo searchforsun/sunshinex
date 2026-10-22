@@ -244,7 +244,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                     type="button"
                     aria-label={`${t('Edit', '编辑')} ${s.name}(${scopeTag(s)})`}
                     disabled={s.source !== 'project' || root === ''}
-                    title={s.source !== 'project' ? t('Global-level — edit via Advanced raw', '全局级经高级 raw 编辑') : undefined}
+                    data-tip={s.source !== 'project' ? t('Global-level — edit via Advanced raw', '全局级经高级 raw 编辑') : undefined}
                     onClick={() => {
                       setForm({
                         editing: true,
@@ -268,7 +268,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                     type="button"
                     aria-label={`${t('Delete', '删除')} ${s.name}(${scopeTag(s)})`}
                     disabled={s.source !== 'project' || root === ''}
-                    title={s.source !== 'project' ? t('Global card not in project file (edit globally via Advanced)', '全局卡不在项目文件内(全局编辑走「高级」)') : undefined}
+                    data-tip={s.source !== 'project' ? t('Global card not in project file (edit globally via Advanced)', '全局卡不在项目文件内(全局编辑走「高级」)') : undefined}
                     onClick={() => remove(s.name)}
                   >
                     {t('Delete', '删除')}

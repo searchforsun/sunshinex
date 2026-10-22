@@ -1785,7 +1785,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(document.querySelector('.sx-src-default')).not.toBeNull();
     // envOverride 行禁编 + title 说明
     expect((screen.getByLabelText('shell') as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByLabelText('shell').title).toBe('Overridden by env — read-only');
+    expect(screen.getByLabelText('shell').getAttribute('data-tip')).toBe('Overridden by env — read-only');
     // 自动生效轮:无保存钮(键值行失焦/换项即存;「添加类」表单才保留显式保存)
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     // text 失焦自动保存(global 桶:projectsDir source=global)
@@ -1909,7 +1909,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     await waitFor(() => expect(screen.getByText('gpt-5')).toBeDefined());
     expect(screen.getByText('claude-x')).toBeDefined();
     expect(document.querySelector('.sx-api-dot.present')).not.toBeNull();
-    expect((document.querySelector('.sx-api-dot.missing') as HTMLElement | null)?.title).toBe('ANTHROPIC_API_KEY');
+    expect((document.querySelector('.sx-api-dot.missing') as HTMLElement | null)?.getAttribute('data-tip')).toBe('ANTHROPIC_API_KEY');
     expect(screen.getByText('anthropic: api key missing')).toBeDefined();
     unmount();
   });
@@ -2059,7 +2059,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     for (const label of ['Edit fs(Global)', 'Edit web(Global)']) {
       const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
       expect(btn.disabled).toBe(true);
-      expect(btn.title).toBe('Global-level — edit via Advanced raw');
+      expect(btn.getAttribute('data-tip')).toBe('Global-level — edit via Advanced raw');
     }
     // 项目卡编辑钮不受染(可用)
     expect((screen.getByRole('button', { name: 'Edit fs(Project)' }) as HTMLButtonElement).disabled).toBe(false);

@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X } from 'lucide-react';
 import { t } from '../../i18n';
 import { pathBasename } from '../../ui-util';
+import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
@@ -234,23 +235,10 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
 export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend, onOpenFile }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
   const isDir = useDirResolver();
   const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir), [onOpenFile, isDir]);
-  const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const { status: copied, copy: copyText } = useCopyFeedback();
   const [rewindOpen, setRewindOpen] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (timer.current !== null) clearTimeout(timer.current);
-    },
-    [],
-  );
   const copy = (): void => {
-    const text = entry.md; // P11:user md 裸文(内核渲染中立)——正文合法以 > 开头者不再误剥
-    navigator.clipboard?.writeText(text).then(
-      () => setCopied('ok'),
-      () => setCopied('fail'),
-    );
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied('idle'), 1500);
+    copyText(entry.md); // P11:user md 裸文(内核渲染中立)——正文合法以 > 开头者不再误剥
   };
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');

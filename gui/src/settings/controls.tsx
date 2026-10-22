@@ -20,7 +20,7 @@ export function Select(props: {
   readonly value: string;
   readonly options: readonly SelectOption[];
   readonly disabled?: boolean;
-  /** env 覆盖禁编提示（title 面） */
+  /** env 覆盖禁编提示（data-tip 全局单例气泡面，§13.1 规则 2） */
   readonly title?: string;
   readonly ariaLabel: string;
   readonly placeholder?: string;
@@ -99,7 +99,7 @@ export function Select(props: {
         aria-expanded={open}
         aria-controls={listId}
         disabled={disabled}
-        title={title}
+        data-tip={title}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onTriggerKey}
       >
@@ -170,7 +170,7 @@ export function Combo(props: {
         value={value}
         placeholder={placeholder}
         disabled={disabled}
-        title={title}
+        data-tip={title}
         autoComplete="off"
         onFocus={() => setOpen(true)}
         onBlur={() => {

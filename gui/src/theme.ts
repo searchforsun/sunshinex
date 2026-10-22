@@ -41,3 +41,15 @@ export function watchSystemTheme(pref: ThemePref, onChange?: (pref: ThemePref) =
   mq.addEventListener('change', fn);
   return () => mq.removeEventListener('change', fn);
 }
+
+/** 当前生效主题读取单点:dataset.theme !== 'light' 即 dark(缺省暗色,与 applyTheme 落值同口径) */
+export function currentTheme(): 'dark' | 'light' {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
+
+/** data-theme 变更订阅单点(Mermaid 重渲/monaco defineTheme 对齐共此一观察口径):返回退订函数 */
+export function watchThemeChange(onChange: () => void): () => void {
+  const obs = new MutationObserver(onChange);
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  return () => obs.disconnect();
+}

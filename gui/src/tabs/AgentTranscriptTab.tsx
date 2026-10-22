@@ -8,6 +8,7 @@ import type { Connection } from '../connection';
 import { ChatEntryView, CollapsibleBubble, ThinkingEntryView, ToolEntryView } from '../pages/Chat';
 import { RunEntryView } from '../pages/chat/EntryViews';
 import { ToolSegBlock } from '../pages/chat/ToolGroups';
+import { useCopyFeedback } from '../use-copy-feedback';
 import { runFooterMapOf, taskNameResolverOf } from '../pages/chat/use-chat-derived';
 import { collapsedHiddenKeys } from '../pages/chat/use-chat-fold';
 import type { ChatEntry } from '../chat-reducer';
@@ -54,7 +55,6 @@ export interface AgentTranscriptTabProps {
 
 export function AgentTranscriptTab({ conn, sessionId, activities, board, task, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask }: AgentTranscriptTabProps): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [copied, setCopied] = useState(false);
   /** G14.2xx 回到底部钮:非贴底即显(同主对话 G14.74 口径;80px 阈值同贴底判定) */
   const [atBottom, setAtBottom] = useState(true);
   // G14.2xx 对齐主对话:直渲同源内核投影条目(chat-reducer 全量字段——tool 行 name/input/
@@ -107,16 +107,8 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
     lastLiveRun?.tokensBase !== undefined && chat !== undefined ? Math.max(0, chat.tokens - lastLiveRun.tokensBase) : (chat?.tokens ?? 0);
 
   const userText = activities?.taskBand ?? task ?? '';
-  // G14.202 复制钮:右下角,hover 行时显示(参考主对话复制钮方位);点击回显已复制
-  const copyText = (): void => {
-    navigator.clipboard?.writeText(userText).then(
-      () => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
-      },
-      () => undefined,
-    );
-  };
+  // G14.202 复制钮:右下角,hover 行时显示(参考主对话复制钮方位);点击回显已复制(useCopyFeedback 单点)
+  const { status: copied, copy: copyText } = useCopyFeedback();
   /** G14.2xx 工具/思考段 = 主对话 ToolSegBlock 同件:同类型相邻已完成工具行聚合并可平级展开
    *  (buildSegNodes 单点),非同类行/思考行天然切断;closed=轮折叠态(主对话 G14.31 同款,
    *  hiddenKeys 折叠区间内的工具/思考行进 seg-collapse 平滑容器) */
@@ -177,8 +169,8 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
           <div className="entry entry-user child-user-entry">
             <CollapsibleBubble text={userText} render={(md) => <div className="child-user-text">{md}</div>} />
             {/* G14.202b 复制钮:气泡外右下,hover 行时显示(主对话 user-actions 同款方位) */}
-            <button type="button" className="child-copy" aria-label={copied ? t('Copied', '已复制') : t('Copy', '复制')} data-tip={copied ? t('Copied', '已复制') : t('Copy', '复制')} onClick={copyText}>
-              {copied ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            <button type="button" className="child-copy" aria-label={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={() => copyText(userText)}>
+              {copied === 'ok' ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
             </button>
           </div>
         )}
@@ -207,7 +199,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
           type="button"
           className="jump-down sx-agent-jump"
           aria-label="scroll to bottom"
-          title={t('Scroll to bottom', '回到底部')}
+          data-tip={t('Scroll to bottom', '回到底部')}
           onClick={() => {
             const el = bodyRef.current;
             if (el !== null) el.scrollTo({ top: el.scrollHeight });

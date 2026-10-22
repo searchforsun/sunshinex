@@ -8,6 +8,7 @@ import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { t } from '../i18n';
+import { useCopyFeedback } from '../use-copy-feedback';
 import { buildMdComponents, keepUrl } from './Chat';
 
 /**
@@ -91,11 +92,9 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   const theme = useSxTheme();
   /** G14.121 md 格式化预览态（换路径/换文件即回源码） */
   const [preview, setPreview] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { status: copied, copy: writeCopy } = useCopyFeedback();
   /** G14.2xx 自动换行(正文代码块同款交互):源码视图默认横向滚动,开启后 wordWrap 纵向排布(无横向滚动条) */
   const [wrap, setWrap] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (copiedTimer.current !== null) clearTimeout(copiedTimer.current); }, []);
 
   /** G14.139 选区加引用:Monaco 实例/当前文件/选区信息 ref(回调闭包免陈旧)+悬浮钮显隐 */
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
@@ -162,14 +161,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   );
   const copyContent = (): void => {
     if (load.file === null) return;
-    navigator.clipboard?.writeText(load.file.content).then(
-      () => {
-        setCopied(true);
-        if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
-        copiedTimer.current = setTimeout(() => setCopied(false), 1500);
-      },
-      () => undefined,
-    );
+    writeCopy(load.file.content);
   };
 
   return (
@@ -252,8 +244,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
               <button
                 type="button"
                 className="files-act"
-                aria-label={copied ? 'copied' : 'copy content'}
-                data-tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+                aria-label={copied === 'ok' ? 'copied' : 'copy content'}
+                data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
                 onClick={copyContent}
               >
                 <Copy size={13} strokeWidth={1.75} />

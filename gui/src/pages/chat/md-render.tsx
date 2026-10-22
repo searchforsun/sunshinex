@@ -6,6 +6,7 @@ import { highlightByLang } from '../../highlight';
 import { zoomScale } from '../../ui-zoom';
 import { Mermaid } from '../../Mermaid';
 import { FileIcon } from '../../file-icon';
+import { useCopyFeedback } from '../../use-copy-feedback';
 import { TipButton } from './RunFooter';
 
 /** md 渲染域（D32 批C-5 拆分自 Chat.tsx）：链接放行/无链接组件面单例/文件 token 显形名/
@@ -55,7 +56,7 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
           role="button"
           tabIndex={0}
           className="file-link"
-          title={href}
+          data-tip={href}
           onClick={(e) => {
             e.stopPropagation();
             onOpenFile(href);
@@ -117,7 +118,7 @@ export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: s
           role="button"
           tabIndex={0}
           className="file-link"
-          title={href}
+          data-tip={href}
           onClick={(e) => {
             e.stopPropagation();
             onOpenFile(href);
@@ -321,10 +322,10 @@ export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClic
         )}
         <TipButton
           className="sx-tip-right"
-          tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+          tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
           label="copy mermaid"
-          icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
-          onClick={copyChart}
+          icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+          onClick={() => copyChart(chart)}
         />
       </div>
       {zoom && (
