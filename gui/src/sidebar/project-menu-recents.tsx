@@ -105,7 +105,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                     onPinRow({ id: r.id, root: r.root, title: r.title ?? r.firstUser ?? '', updatedAt: r.updatedAt });
                   }}
                 >
-                  <Pin size={12} strokeWidth={1.75} />
+                  <Pin size={16} strokeWidth={1.75} />
                 </button>
                 {running ? (
                   <span className="sx-session-dot running" />
@@ -124,7 +124,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                     <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
                       aria-label={`${t('Archive', '归档')} ${r.id}`}
                       onClick={(e) => { e.stopPropagation(); setConfirmId(r.id); }}>
-                      <Archive size={12} strokeWidth={1.75} />
+                      <Archive size={13} strokeWidth={1.75} />
                     </button>
                   )}
                 </span>

@@ -20,6 +20,10 @@ function renderSection(over: Partial<Parameters<typeof PinnedSection>[0]> = {}) 
     <PinnedSection
       pins={pins}
       busy={false}
+      activeSessionId=""
+      runningIds={new Set()}
+      journalOfSession={new Map()}
+      isUnseen={() => false}
       onOpenSession={() => {}}
       onUnpin={() => {}}
       onArchiveRow={() => {}}
@@ -61,7 +65,7 @@ describe('PinnedSection 置顶分组(GUI 专属)', () => {
   });
 
   it('空钉不渲染分组(宿主判空口径一致)', () => {
-    const { container } = render(<PinnedSection pins={[]} busy={false} onOpenSession={() => {}} onUnpin={() => {}} onArchiveRow={() => {}} />);
+    const { container } = render(<PinnedSection pins={[]} busy={false} activeSessionId="" runningIds={new Set()} journalOfSession={new Map()} isUnseen={() => false} onOpenSession={() => {}} onUnpin={() => {}} onArchiveRow={() => {}} />);
     expect(container.querySelector('.sx-pin-list')).toBeNull();
   });
 });

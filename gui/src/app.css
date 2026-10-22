@@ -1606,7 +1606,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* G14.152 运行/未读圆点随文字列右移(文字 x=34,圆点右缘 28 留 6px 间隙,不再贴左缘)。
    G14.213 运行环与圆点同位——此前 running 单独 left 26 右缘恰贴正文 x=34(「太贴」) */
-.sx-side-scroll .sx-session-dot { left: 20px; }
+.sx-side-scroll .sx-session-dot { left: 14px; } /* 2026-10-22 用户裁定:与工作区文件夹图标中心线对齐 */
 .sx-side-scroll .sx-session-dot.running { left: 20px; }
 
 
@@ -2025,9 +2025,11 @@ input.sx-setting-input { width: 100%; }
 .sx-iconbtn.sx-danger:hover { color: var(--err); }
 .sx-archived-error { margin: 0; font-size: 12px; color: var(--err); }
 .session-row-actions { flex: none; display: none; align-items: center; }
+.sx-session-row .session-row-actions { margin-right: -8px; } /* -8:归档钮中心线对齐上方新会话(编辑)钮(2026-10-22) */
+
 .sx-session-row:hover .session-row-actions, .sx-session-row:focus-within .session-row-actions { display: inline-flex; }
 /* 侧栏归档区行:两行式(标题+来源 slug),窄栏适配;动作钮 hover/聚焦显形(会话行同语言) */
-.sx-archive-item { display: flex; align-items: center; gap: 6px; margin-block: 1px; padding: 4px 10px 4px 34px; border-radius: var(--radius-sm); cursor: pointer; }
+.sx-archive-item { display: flex; align-items: center; gap: 6px; margin-block: 1px; padding: 4px 4px 4px 34px; border-radius: var(--radius-sm); cursor: pointer; }
 .sx-archive-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-archive-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .sx-archive-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -2046,17 +2048,25 @@ input.sx-setting-input { width: 100%; }
 
 /* 2026-10-21 置顶(GUI 专属):行 hover 置顶钮显于状态点位(遮点);置顶组行=行首取消置顶(常驻)+
    标题/时间+行尾归档;组头不可折叠(无 chevron 无 role=button) */
-.sx-pin-btn { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: none; background: color-mix(in srgb, var(--surface-elevated) 82%, var(--fg) 18%); border-radius: var(--radius-sm); color: var(--fg-secondary); cursor: pointer; opacity: 0; }
-.sx-session-row:hover .sx-pin-btn, .sx-session-row:focus-within .sx-pin-btn { opacity: 1; }
-.sx-session-row:hover .sx-session-dot { opacity: 0; } /* 悬停钉位取代状态点 */
+/* 置顶钮(会话行 hover 状态点位/置顶行同款钮座):24×24 对齐 sx-iconbtn,钉形 16 视觉量对标归档 13 */
+.sx-pin-btn { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: transparent; border-radius: var(--radius-sm); color: var(--fg-secondary); cursor: pointer; opacity: 0; }
+.sx-pin-btn:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+.sx-session-row:hover .sx-pin-btn, .sx-session-row:focus-within .sx-pin-btn, .sx-pin-item:hover .sx-pin-btn, .sx-pin-item:focus-within .sx-pin-btn { opacity: 1; }
+.sx-pin-item:hover .sx-session-dot, .sx-session-row:hover .sx-session-dot { opacity: 0; } /* 悬停钉位取代状态点 */
 .sx-pin-list { list-style: none; margin: 0; padding: 0 4px 4px; }
-.sx-pin-item { display: flex; align-items: center; gap: 6px; margin-block: 1px; padding: 4px 10px 4px 10px; border-radius: var(--radius-sm); cursor: pointer; }
+/* 置顶行:固定行高 28(hover 右槽时间⇄归档钮切换不跳高),左缩进/右缘=会话行同列 */
+.sx-pin-item { position: relative; display: flex; align-items: center; gap: 6px; height: 28px; margin-block: 1px; padding: 0 16px 0 34px; border-radius: var(--radius-sm); cursor: pointer; }
 .sx-pin-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.sx-pin-unpin { flex: none; color: var(--fg-secondary); }
-.sx-pin-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.sx-pin-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sx-pin-title { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-pin-time { flex: none; font-size: 11px; color: var(--fg-tertiary); }
+.sx-pin-item:hover .sx-pin-time { visibility: hidden; } /* hover 右槽换归档钮:时间隐形占位,行高恒定 */
+.sx-pin-archive { display: none; margin-right: -8px; } /* -8:归档钮右缘 248=新会话钮右缘,中心线同会话归档(2026-10-22 实测校准) */
+.sx-pin-item:hover .sx-pin-archive { display: inline-flex; }
 .sx-pin-title { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-pin-item .session-row-actions { display: inline-flex; margin-left: auto; }
 
 /* 2026-10-22 用户裁定:「暂无…」空态与「显示更多」对齐(同缩进 x=34/字号 12px/灰度 fg-tertiary) */
 .no-sessions { padding: 4px 12px 4px 34px; color: var(--fg-tertiary); font-size: 12px; }
+/* 置顶行取消置顶钮:hover 显于状态点位(2026-10-22 用户裁定:取消置顶非常驻,且需显示会话状态) */
+.sx-pin-item:hover .sx-pin-btn, .sx-pin-item:focus-within .sx-pin-btn { opacity: 1; }
+.sx-pin-item:hover .sx-session-dot { opacity: 0; }

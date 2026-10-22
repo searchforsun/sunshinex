@@ -453,6 +453,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <PinnedSection
           pins={pins}
           busy={busy}
+          activeSessionId={activeSessionId}
+          runningIds={runningIds}
+          journalOfSession={journalOfSession}
+          isUnseen={isUnseen}
           onOpenSession={attachJournal}
           onUnpin={unpinRow}
           onArchiveRow={archiveRow}

@@ -226,7 +226,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                                     onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt });
                                   }}
                                 >
-                                  <Pin size={12} strokeWidth={1.75} />
+                                  <Pin size={16} strokeWidth={1.75} />
                                 </button>
                               )}
                               {running ? (
@@ -246,7 +246,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                                   <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
                                     aria-label={`${t('Archive', '归档')} ${sr.id}`}
                                     onClick={(e) => { e.stopPropagation(); setConfirmId(sr.id); }}>
-                                    <Archive size={12} strokeWidth={1.75} />
+                                    <Archive size={13} strokeWidth={1.75} />
                                   </button>
                                 )}
                               </span>
