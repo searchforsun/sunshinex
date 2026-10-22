@@ -447,10 +447,12 @@ test('⑨ POST /workspace/hide：slug 入隐藏档→/workspaces 不出列（盘
       assert.ok(fs.existsSync(path.join(projectsRoot(), slug, 'data', 'workspace.json')), '移除仅摘列表——数据/目录不动');
 
       // 指针清理：lastRoot 指向该工作区时 hide 即连 lastJournalId 摘除（刷新复活病根）
-      await fetch(`${base}/app/gui-state`, { method: 'PUT', headers: { ...AUTH }, body: JSON.stringify({ state: { lastRoot: root, lastJournalId: 'j1' } }) });
+      const putPointer = await fetch(`${base}/app/gui-state`, { method: 'PUT', headers: { ...AUTH }, body: JSON.stringify({ state: { lastRoot: root, lastJournalId: 'j1' } }) });
+      assert.equal(putPointer.status, 200, '指针档写入成功(拒写则后续恒真)');
       await fetch(`${base}/workspace/hide`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ slug }) });
-      const state = ((await (await fetch(`${base}/app/gui-state`, { headers: H })).json()) as { state?: { lastRoot?: string } }).state;
+      const state = ((await (await fetch(`${base}/app/gui-state`, { headers: H })).json()) as { state?: { lastRoot?: string; lastJournalId?: string } }).state;
       assert.equal(state?.lastRoot, undefined, '指向被移除工作区的指针已清');
+      assert.equal(state?.lastJournalId, undefined, 'lastJournalId 一并摘除(恢复现场按死指针重建病根的另一半)');
 
       // 重新 create → 原地加回（出列恢复）
       await fetch(`${base}/workspace/create`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ path: root }) });
@@ -460,6 +462,9 @@ test('⑨ POST /workspace/hide：slug 入隐藏档→/workspaces 不出列（盘
       // 形收紧：分隔符 slug 400
       const bad = await fetch(`${base}/workspace/hide`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ slug: 'a/b' }) });
       assert.equal(bad.status, 400, '分隔符 slug 拒');
+      // 越根加固：'..' 无分隔符可过形校验,但可拼出根外路径——显式拒
+      const dotdot = await fetch(`${base}/workspace/hide`, { method: 'POST', headers: { ...AUTH }, body: JSON.stringify({ slug: '..' }) });
+      assert.equal(dotdot.status, 400, '越根 slug 拒');
     });
   } finally {
     if (prevHome === undefined) delete process.env.HOME;

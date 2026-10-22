@@ -228,7 +228,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         }
         loadWorkspaces();
       },
-      () => undefined,
+      (err: unknown) => setActionError(errText(err)),
     );
   }, [conn, loadWorkspaces]);
 

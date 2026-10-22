@@ -122,7 +122,8 @@ function workspaceHiddenFile(): string {
   return path.join(userConfigDir(), 'gui', 'workspace-hidden.json');
 }
 
-export function readHiddenSlugs(): Set<string> {
+/** 隐藏 slug 清单读：缺档/坏档回空集（与 pins/seen 同语义——机器级视图偏好，坏档不作致命） */
+function readHiddenSlugs(): Set<string> {
   try {
     const raw = JSON.parse(fs.readFileSync(workspaceHiddenFile(), 'utf8')) as unknown;
     return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []);
@@ -145,7 +146,7 @@ export async function handleWorkspaceHide(io: WorkspaceHandlerIo, req: http.Inco
   const parsed = await io.readJson(req);
   if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
   const slug = (parsed.body as { slug?: unknown } | null)?.slug;
-  if (typeof slug !== 'string' || slug === '' || /[\\/]/.test(slug)) return io.send(res, 400, { error: 'invalid slug' });
+  if (typeof slug !== 'string' || slug === '' || slug === '..' || /[\\/]/.test(slug)) return io.send(res, 400, { error: 'invalid slug' });
   const slugs = readHiddenSlugs();
   slugs.add(slug);
   writeHiddenSlugs(slugs);
@@ -168,9 +169,10 @@ export function handleWorkspaces(io: WorkspaceHandlerIo, res: http.ServerRespons
     io.send(res, 200, rows);
     return;
   }
+  const hidden = readHiddenSlugs(); // 循环外读一次（隐藏档不随枚举变更，N 工作区 N 次重读盘纯浪费）
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
-    if (readHiddenSlugs().has(ent.name)) continue; // 2026-10-23 移除工作区:隐藏档命中即不出列(数据保留,重新添加即回)
+    if (hidden.has(ent.name)) continue; // 2026-10-23 移除工作区:隐藏档命中即不出列(数据保留,重新添加即回)
     const dataDir = path.join(projectsRoot(), ent.name, 'data');
     let st: fs.Stats;
     try {
