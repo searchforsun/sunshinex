@@ -38,16 +38,7 @@ pnpm gui:build  # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
 
 ### 上线部署（发版链）
 
-总入口 `node scripts/release.mjs --bump patch`（`--dry-run` 只验证 + pack 不触网；`--no-gui` 跳过桌面包；同版本重发加 `--clobber`），按序三步：
-
-1. **全量验证**：`pnpm test` → `selfcheck` → GUI 全量 → 壳单测 → `shell:smoke`——上面四层全过。
-2. **TUI 产物**：`npm pack` 出 `sunshinex-agent-<ver>.tgz`，创建 GitHub Release 上传；用户侧 `npm install -g <tgz 链接>` 直装。
-3. **GUI 桌面包**（传 `--no-gui` 跳过——非 Windows 主机无 wine 出不了 win 安装包；跳过时 GUI 代码门禁仍照跑）：`pnpm shell:dist` 全链——version:sync 三包版本单源 → 主仓 build → gui build → 壳 esbuild → electron-builder，出 NSIS 单安装包 `sunshinex-<ver>-setup.exe` → `scripts/shell-dist-smoke.mjs` 静默安装 + 安装包冒烟。
-
-- 只出安装包不触网：`pnpm shell:dist`（产物落 `shell/release/`）。
-- CI 门禁 `.github/workflows/ci.yml`：ubuntu + windows × Node 22/24 矩阵（`fail-fast: false`），步骤 `pnpm install --frozen-lockfile` → `pnpm test` → GUI 全量 → `pnpm selfcheck`；真实模型探针不入库、仅开发机手动执行；macOS 与 Linux 同源，按性价比省略。
-- npm publish 路径经 `prepublishOnly` 钩子强制 `pnpm test` + `selfcheck`。
-- 平台兼容与部署条件细则见 `docs/PLATFORM.md`。
+总入口 `node scripts/release.mjs --bump patch`（`--dry-run` 只验证不触网；`--no-gui` 跳过桌面包；同版本重发加 `--clobber`）：先过全量门禁（主仓全量 → selfcheck → GUI 全量 → 壳单测 → `shell:smoke`），再出两类产物——TUI tgz（npm pack + GitHub Release）与 GUI 桌面包（`pnpm shell:dist`：三包版本单源 → 三端 build → esbuild → electron-builder 出 NSIS 安装包 → 静默安装冒烟；非 Windows 主机无 wine 出不了 win 包，`--no-gui` 跳过时 GUI 门禁仍照跑）。发版参数、上传通道与凭据细节见 README「发版（维护者）」；CI 门禁与平台矩阵见 §14 与 `docs/PLATFORM.md`；npm publish 经 `prepublishOnly` 钩子强制 `pnpm test` + `selfcheck`。
 
 ## 3. 目录结构
 
@@ -162,7 +153,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 ## 7. 提交与验证
 
 - 提交前必须通过 `pnpm build`（tsc 严格模式零报错）
-- 涉及加载/解析逻辑时，补充示例物料并确保 `--selfcheck` 输出正确
+- 涉及加载/解析逻辑时，补充示例物料并确保 `selfcheck` 输出正确
 - `.pnpm-store/`、`.npm-cache/`、`.data/`、`.longtask/`、`node_modules/`、`dist/` 不入库
 - 运行时数据（账本/记忆/学习技能/KB）统一落盘 `~/.sunshinex/projects/<工作区>/data`（`SUNSHINEX_PROJECTS_DIR` 可把 projects 根指到任意盘），工作区保持干净。`SUNSHINEX_DATA_DIR`（整目录直指、**不按工作区隔离**）是开发与测试专用重定向口（测试钉数据目录、CI 隔离运行时数据），留在环境变量面，不进 settings.json 语义键表
 
@@ -186,7 +177,6 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - 无残渣：清理死代码、未用 import/字段、注释掉的代码；上新删旧，不留悬空引用。
 - **删除即无痕**：删除一个概念，即把概念、代码与处理逻辑一并清出全部引用面（文档正文、代码、注释、配置与处理分支）；正文零存在史——不复述「已删除 / 已退役 / 已废止 / 不再支持」，删除的完整证据只保留在提交历史与规格存档。
 - **正向表述**：规则主体以正向限定承载（现行是什么、做什么、以什么为准），反向限定词仅作边界的短促标注，不以「不要做什么」的罗列替代正面定义。
-- 部署一致性：本地与服务器代码一致，交付前校验；改动后按本项目约定验证（`pnpm build` + `pnpm selfcheck`）。
 
 ## 11. 前缀缓存：产品第一要义（Prompt Caching）
 
@@ -267,7 +257,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
   - **面私有 UI 态**（GUI 标签页开闭/激活/宽度/折叠与最近关闭、面板偏好；TUI 渲染态等）：落**同一 slug 目录下与 `data/` 平级的面私有子目录** `gui/`、`tui/`，粒度镜像共享层——按会话键的（GUI 标签态=Record<sessionId,…>，盘为真相源、变更防抖写透）落 `gui/sessions/<journalId>.json`，**档键=journal id**（跨 daemon 重启稳定的会话身份；会话 id `s<n>` 每次重启重新发号，按会话 id 存档刷新后必空），与 `data/sessions/<journalId>.jsonl` 同键同粒度；工作区级 UI 偏好落 `gui/ui-state.json`；应用级指针档（lastRoot/lastJournalId 恢复现场入口）是**机器级**状态，落 `userConfigDir()/gui/ui-state.json`（`~/.sunshinex/gui/`，projects 根保持纯 slug 工作区位）；TUI 同构 `tui/`。`data/` 整树保持纯会话共享域，删/迁任一面 UI 态不触及会话档；**不得写入共享会话档、不得污染共享数据结构**。
   - **判断口径**：换一个交互面打开同一会话，数据仍在=共享面（进 `data/`）；消失=面私有面（进 `gui/`、`tui/`）。
 - **体验基线**：交互细节向对标产品看齐——快捷键符合终端惯例、输出有渲染降级（窄终端/无色彩环境不花屏）、状态与错误信息用户可读；体验取舍拿不准时以「明星产品怎么做」为参照。
-- **引入流程**：新依赖登记 `package.json`，在 README/Arch-Plan 标注用途，`pnpm build` + `pnpm test` 全量验证后方可交付；规划选型转正时同步更新本表状态。
+- **引入流程**：按 §5 依赖引入原则登记与验证（`package.json` + README/Arch-Plan 标注用途 + 全量 build/test），规划选型转正时同步更新本表状态。
 
 ### GUI 风格铁律（§13.1）
 
@@ -278,14 +268,13 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 
 ## 14. 平台兼容性目标
 
-以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持（`resolveShell()` 自动探测；无 Git Bash 时回落 PowerShell，末位 `ComSpec` 兜底）。
+以「一份代码、三平台可部署」为目标：Windows / macOS / Linux（Node.js ≥ 22.9）均可完成安装、构建、自检与 CLI 基础使用；工具命令执行面以 POSIX sh 为基线，Windows 经 Git Bash 原生支持。机制细节、shell 候选序、WSL 排除与部署条件统一登记于 `docs/PLATFORM.md`，本节只留编码时强制的工程约束。
 
-- **版本下限**：Node.js ≥ 22.9（以 `package.json` 的 `engines` 为准；脚本统一 `node --test` 与 `node:` 内置模块），实测基线 22 LTS 与 24.x。
-- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；**路径子树包含判定一律走 `isWithin`（`src/paths.ts`，叶子模块避免模块环）**，路径判界统一单点；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件（脚本层 `.cmd` 分派见 `docs/PLATFORM.md`）；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔——`listFiles` 对 `path.relative` 结果先归一化再匹配（Windows 反斜杠转 `/`，POSIX 为 no-op）。
-- **契约的机器强制（声明即须可执行）**：三平台可部署与 LF 文本两条契约配置机器闸门，声明与事实对齐——① CI 矩阵 `.github/workflows/ci.yml`（ubuntu + windows × Node 22/24，`fail-fast: false`；流水线内注明未覆盖项：探针不入库仅开发机手动执行、macOS 同源按性价比省略）；② `.gitattributes` + `.editorconfig` 双管入库/检出与编辑器落盘字节（Git for Windows 缺省 `core.autocrlf=true`，缺此二件 Windows 侧一次提交即可引入整文件 CRLF 重写）；③ 脚本层子进程启动形态统一 `spawn(ComSpec, ['/c', cmd, ...args])`，不用 `shell: true` 与 `args` 并用（Node ≥ 22.15 弃用，DEP0190）。细节见 `docs/PLATFORM.md`。
-- **平台差异登记**：`exec` shell 由 `resolveShell()` 按序解析——`SUNSHINEX_SHELL` 显式覆盖（POSIX 兼容、配 `-c` 调用）→ Windows 探测 Git Bash → PowerShell（pwsh 各候选整体先于 powershell.exe，`-NoProfile -Command`，对齐 Claude Code native Windows 口径）→ 末位 `ComSpec` → POSIX `/bin/sh`；决议产物带来源标签（`override`/`git-bash`/`powershell`/`comspec`/`posix`），`selfcheck` 的 `shell :` 行显式上屏。候选序、WSL 启动器排除等机制细节见 `docs/PLATFORM.md`。仓库文本为 LF（由机器强制承载）。
-- **Landlock exec 写围栏（2026-09-24）**：Linux-only（launcher 功能探测内核 landlock ABI），macOS/Windows 为 host 口径（manual 档审批流兜底）；隔离口径三态 `landlock | container | host`，经 `SUNSHINEX_ISOLATION` 显式声明或缺省 auto 探测，selfcheck `isolation :` 行上屏；`SUNSHINEX_SANDBOX=off` 一键关；容器部署时边界层由 Skills Docker 承担
-- **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 docs/PLATFORM.md 平台支持矩阵与部署指引。
+- **版本下限**：Node.js ≥ 22.9（`package.json` `engines` 为准；脚本统一 `node --test` 与 `node:` 内置模块），实测基线 22 LTS 与 24.x。
+- **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；**路径子树包含判定一律走 `isWithin`（`src/paths.ts`，叶子模块避免模块环）**；子进程执行收敛在 `ProcessSandbox` 单点，平台分支只允许出现在该文件；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔（`listFiles` 先归一化再匹配）。
+- **契约的机器强制**：① CI 矩阵 ubuntu + windows × Node 22/24（`fail-fast: false`）；② `.gitattributes` + `.editorconfig` 双管入库/检出与编辑器落盘字节（LF 契约）；③ 脚本层子进程启动统一 `spawn(ComSpec, ['/c', cmd, ...args])`，不用 `shell: true` 与 `args` 并用（DEP0190）。
+- **Landlock exec 写围栏**：Linux-only（内核 ABI 功能探测），macOS/Windows 为 host 口径（manual 档审批流兜底）；隔离口径三态 `landlock | container | host`，auto 探测、selfcheck 上屏；`SUNSHINEX_SANDBOX=off` 一键关。
+- **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 `docs/PLATFORM.md`。
 - **测试命令形态对 shell 中立**：断言前提一律以脚本文件（`node script.js`）或跨 shell 命令承载；shell 语义用例集中在 `security/sandbox.test.ts`（平台分支唯一落点），其余测试只断言工具链行为。
 
 ## 15. 语言规范：外观双语、提示词恒英文
