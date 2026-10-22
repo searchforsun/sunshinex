@@ -1,4 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -7,6 +8,12 @@ import type { ChatEntry } from '../../chat-reducer';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
 }
+
+/** D48 尾部窗口:会话流只全量渲染尾部窗口条目,更早条目折叠为头部「显示更早」行渐进回放
+ *  (对齐主仓 TUI tail-rewrite 上限口径;立项与切点回退设计见 docs/superpowers/plans/
+ *  2026-10-23-messagelist-tail-window.md) */
+const RENDER_WINDOW_DEFAULT = 300;
+const RENDER_WINDOW_STEP = 300;
 import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
@@ -45,6 +52,31 @@ export interface MessageListProps {
 
 export function MessageList(props: MessageListProps): JSX.Element {
   const { entries, hiddenKeys, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens, sideChat } = props;
+  /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
+  const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
+  /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
+  const expandAnchorRef = useRef<{ h: number } | null>(null);
+  useLayoutEffect(() => {
+    const saved = expandAnchorRef.current;
+    if (saved === null) return;
+    expandAnchorRef.current = null;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    el.scrollTop += el.scrollHeight - saved.h;
+  }, [visibleCount, chatScrollRef]);
+  /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,
+   *  折叠组随头完整保留 */
+  let cut = entries.length - visibleCount;
+  if (cut > 0) {
+    while (cut > 0 && hiddenKeys.has(entries[cut]!.key)) cut -= 1;
+  }
+  const visible = cut > 0 ? entries.slice(cut) : entries;
+  const hiddenCount = entries.length - visible.length;
+  const showEarlier = (): void => {
+    const el = chatScrollRef.current;
+    expandAnchorRef.current = { h: el?.scrollHeight ?? 0 };
+    setVisibleCount((v) => v + RENDER_WINDOW_STEP);
+  };
   return (
     <main
       className="chat"
@@ -59,9 +91,14 @@ export function MessageList(props: MessageListProps): JSX.Element {
             <div className="chat-empty-hint">{sideChat === true ? t('Quick questions on the side; the main task stays untouched', '旁路快问,不打断主任务') : t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
           </div>
         )}
+        {hiddenCount > 0 && (
+          <button type="button" className="chat-earlier" onClick={showEarlier}>
+            {t(`Show ${hiddenCount} earlier entries`, `显示更早的 ${hiddenCount} 条`)}
+          </button>
+        )}
         {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染);
             G14.31 折叠轮:sealed run 头点击 → 其后工具/思考行隐藏(用户/回复/旁白保留) */}
-        {groupEntriesByDay(entries).flatMap((g) => {
+        {groupEntriesByDay(visible).flatMap((g) => {
           const nodes: ReactNode[] = [];
           if (g.label !== '') {
             nodes.push(

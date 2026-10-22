@@ -589,19 +589,20 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     unmount();
   });
 
-  it('token 流式 → streaming 光标钩子;done 收段去光标', async () => {
+  it('token 流式:在途尾块纯文本直出(分域渲染);done 收段整段 markdown 终渲染', async () => {
     const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('model-start'));
     fire(conn, ev('token', 'widget '));
     fire(conn, ev('token', '**done**'));
     const entry = document.querySelector('.entry-assistant');
-    expect(entry?.textContent).toBe('widget done'); // `**done**` → <strong>(gfm 生效)
-    expect(entry?.querySelector('strong')?.textContent).toBe('done');
+    expect(entry?.textContent).toBe('widget **done**'); // 在途尾块纯文本直出(半截块不进解析器,分域渲染)
+    expect(entry?.querySelector('strong')).toBeNull();
     expect(document.querySelector('.entry-assistant.streaming')).not.toBeNull();
     fire(conn, ev('done', 'widget **done**')); // 终稿=已累积(流即原文 md)
     expect(document.querySelector('.entry-assistant.streaming')).toBeNull();
-    expect(document.querySelector('.entry-assistant')?.textContent).toBe('widget done');
+    expect(document.querySelector('.entry-assistant')?.textContent).toBe('widget done'); // done 整段 markdown 终渲染
+    expect(document.querySelector('.entry-assistant strong')?.textContent).toBe('done');
   });
 
   it('帧按会话分发:他会话帧(sessionId 不符)丢弃,当前会话帧照投', async () => {
@@ -643,17 +644,17 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     expect(screen.getByLabelText('welcome')).toBeDefined();
   });
 
-  it('条目 React.memo:流式 token 帧只重渲染流式条(稳定条 md 渲染计数不涨)', async () => {
+  it('条目 React.memo:流式 token 帧零 md 重解析(分域渲染:稳定条不涨,在途尾块纯文本也不进解析器)', async () => {
     const { conn } = await enterChat();
     openConn(conn);
     type('stable');
     pressEnter(); // user 条 → 1 次 md 渲染
     fire(conn, ev('model-start'));
-    fire(conn, ev('token', 'a')); // 流式条开条 → +1
+    fire(conn, ev('token', 'a')); // 流式条开条 → 在途尾块纯文本直出,零 md 渲染
     const before = md.renders;
-    fire(conn, ev('token', 'b')); // 流式增量:仅流式条重渲染(memo 跳过 user 条)
+    fire(conn, ev('token', 'b')); // 流式增量:稳定条 memo 跳过,尾块不进解析器(2026-10-22 分域架构)
     fire(conn, ev('token', 'c'));
-    expect(md.renders).toBe(before + 2);
+    expect(md.renders).toBe(before);
     expect(document.querySelector('.entry-assistant')?.textContent).toBe('abc');
     expect(document.querySelector('.entry-user')?.textContent).toContain('stable');
   });
@@ -1292,11 +1293,10 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     await waitFor(() => expect(conn.diffCalls).toHaveLength(1)); // Chat 展开面一笔
     fireEvent.click(document.querySelector<HTMLButtonElement>('.tool-path')!);
     expect(document.querySelectorAll('.sx-tab[data-title=\'a.ts\']')).toHaveLength(1);
-    // 异 callId:多实例并存(by callId 判键——ChangesView 渲染统一,标签粒度保留)
+    // 异 callId:多实例并存(by callId 判键——ChangesView 渲染统一,标签粒度保留);
+    // 2026-10-22 用户裁定:编辑/写入行不聚合——c2 为独立行,diff 钮直达(无聚合头展开步)
     conn.diffResp = { path: 'src/b.ts', newContent: 'new b\n' };
     fireWrite(conn, 'c2', 'src/b.ts', 'new b\n');
-    // G14.215:相邻同类已完成 write 折为聚合行——成员行收起态不可达,先展开聚合头再操作成员
-    fireEvent.click(document.querySelector('.tool-group-head')!);
     fireEvent.click(toolRow('b.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
     expect(document.querySelectorAll('.sx-tab[data-title=\'a.ts\']')).toHaveLength(1);
