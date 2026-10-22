@@ -1,10 +1,9 @@
 import * as http from 'node:http';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { SessionRuntime } from './session';
 import type { Result } from '../result';
-import { parseAskAnswer, urlOf, type DaemonFrame } from './daemon-wire';
+import { parseAskAnswer, type DaemonFrame } from './daemon-wire';
 import type { AskUserAnswer } from '../types';
 import type { ModelAdapter } from '../model/adapter';
 import { createKernelRuntime } from '../session/runtime';
@@ -14,12 +13,12 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, listAnchors, listSessions, markSessionArchived, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta, type SessionSidecarMeta } from '../tui/session-journal';
+import { branchFrom, listAnchors, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
-import { projectsRoot, resolveDataDir } from '../config/data-dir';
-import { userConfigDir } from '../config/env';
+import { resolveDataDir } from '../config/data-dir';
+import { validSessionId } from './session-id';
 
 /** 会话控制面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：submit/interrupt/steer 族/reset/snapshot/
  *  anchors/tier/effort/model/mode/command/tasks/context/board-review/rename/title/attach——类状态
@@ -27,11 +26,8 @@ import { userConfigDir } from '../config/env';
  *  pending 挂起面 + model 标题摘要 + attach 挂载）；路由表零改动，行为零变化（daemon.test 为锚）。
  */
 
-/** 会话 id 安全面（单点）：id 寻址会话注册表与 journal 文件名——形态收紧为
- *  [A-Za-z0-9_-]{1,128}（session-handlers 与 daemon 装配点共用） */
-export function validSessionId(id: string): boolean {
-  return /^[A-Za-z0-9_-]{1,128}$/.test(id);
-}
+/** 会话 id 安全面:叶子 session-id.ts 单点(serve 域拆分后防 require 环),原路径再导出 */
+export { validSessionId } from './session-id';
 
 export interface SessionHandlerIo {
   send(res: http.ServerResponse, status: number, body: object): void;
@@ -300,150 +296,13 @@ export async function handleSessionTierEffort(io: SessionHandlerIo, req: http.In
 
 
 /** GET /session/:id/model(G10-C4 模型 pill 数据源):当前选择 + 可选清单(choices 空=不可切) */
-/** G14.2xx 应用级 GUI 指针档(~/sunshinex 等价 userConfigDir()/gui/ui-state.json):
- *  lastRoot/lastJournalId——浏览器刷新后的「恢复现场」入口。指针是**机器级**场景状态
- *  (不属于任何 projects 根/工作区):放 userConfigDir 使 projects 根保持纯 slug 工作区位
- *  (与面私有分层口径一致——工作区私有归 <slug>/gui|tui,应用级归 userConfigDir/gui) */
-function appGuiStateFile(): string {
-  return path.join(userConfigDir(), 'gui', 'ui-state.json');
-}
+/** 应用级指针档/置顶档/GUI 面私有态三族:D42 端点族拆分至 app-state-handlers.ts(行搬运零变化)——
+ *  原路径再导出,daemon 路由与消费面零迁移 */
+export { handleAppPinsGet, handleAppPinsPut, handleAppGuiStateGet, handleAppGuiStatePut, handleGuiStateGet, handleGuiStatePut } from './app-state-handlers';
 
-/** 置顶档(2026-10-21,GUI 专属会话置顶):userConfigDir/gui/pins.json——机器级跨工作区
- *  视图偏好(置顶组跨工作区聚合),与指针档同目录同分层口径;GET 缺档/坏档回 {pins:[]} */
-function appPinsFile(): string {
-  return path.join(userConfigDir(), 'gui', 'pins.json');
-}
-
-export async function handleAppPinsGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
-  try {
-    const raw = JSON.parse(fs.readFileSync(appPinsFile(), 'utf8')) as unknown;
-    io.send(res, 200, { pins: Array.isArray(raw) ? raw : [] });
-  } catch {
-    io.send(res, 200, { pins: [] });
-  }
-}
-
-/** 置顶档写(原子写):body.pins 须数组,逐条校验(id/root 非空串,title 可缺,updatedAt 数目)——
- *  坏条目弃置不拒整单(容错口径同 SIDECAR) */
-export async function handleAppPinsPut(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const parsed = await io.readJson(req);
-  if (!parsed.ok) {
-    io.send(res, parsed.status, { error: parsed.error });
-    return;
-  }
-  const rawPins = (parsed.body as { pins?: unknown } | null)?.pins;
-  if (!Array.isArray(rawPins)) {
-    io.send(res, 400, { error: 'pins array required' });
-    return;
-  }
-  const pins = rawPins.flatMap((p) => {
-    const e = p as { id?: unknown; root?: unknown; title?: unknown; updatedAt?: unknown };
-    if (typeof e?.id !== 'string' || e.id === '' || typeof e?.root !== 'string' || e.root === '') return [];
-    return [{
-      id: e.id,
-      root: e.root,
-      ...(typeof e.title === 'string' && e.title !== '' ? { title: e.title } : {}),
-      ...(typeof e.updatedAt === 'number' && Number.isFinite(e.updatedAt) ? { updatedAt: e.updatedAt } : {}),
-    }];
-  });
-  const file = appPinsFile();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(pins), 'utf8');
-  fs.renameSync(tmp, file);
-  io.send(res, 200, { ok: true, pins });
-}
-
-/** 应用级指针档读:缺档/坏档回 {state:null}(首启无现场,客户端落欢迎页) */
-export async function handleAppGuiStateGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
-  try {
-    io.send(res, 200, { state: JSON.parse(fs.readFileSync(appGuiStateFile(), 'utf8')) });
-  } catch {
-    io.send(res, 200, { state: null });
-  }
-}
-
-/** 应用级指针档写(原子写):body.state 须对象 */
-export async function handleAppGuiStatePut(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const parsed = await io.readJson(req);
-  if (!parsed.ok) {
-    io.send(res, parsed.status, { error: parsed.error });
-    return;
-  }
-  const state = (parsed.body as { state?: unknown } | null)?.state;
-  if (state === null || typeof state !== 'object' || Array.isArray(state)) {
-    io.send(res, 400, { error: 'state object required' });
-    return;
-  }
-  const file = appGuiStateFile();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
-  fs.renameSync(tmp, file);
-  io.send(res, 200, { ok: true });
-}
-
-/** G14.2xx GUI 面私有态文件(<projects 根>/<工作区 slug>/gui/sessions/<journalId>.json——
- *  CLAUDE.md §13 持久化分层:与 data/ 共享域平级的面私有子目录。档键=attachedJournalId:
- *  跨 daemon 重启稳定的会话身份——会话 id 每次重启重新发号,按 id 存档刷新后必空(实测病根);
- *  journalId 形同会话面,防文件名逃逸) */
-function guiStateFile(session: SessionRuntime): string {
-  const dataDir = resolveDataDir(session.root);
-  const key = session.attachedJournalId;
-  return path.join(path.dirname(dataDir), 'gui', 'sessions', `${key}.json`);
-}
-
-/** GUI 面私有态读(标签页/面板偏好等,按 journalId 键):未附 journal 或无档回 {state:null}——
- *  客户端回落内存缺省(纯新会话本就无可恢复语义) */
-export async function handleGuiStateGet(io: SessionHandlerIo, res: http.ServerResponse, id: string | undefined): Promise<void> {
-  if (id === undefined || !validSessionId(id)) {
-    io.send(res, 400, { error: 'invalid session id' });
-    return;
-  }
-  const session = io.sessionFor(res, id);
-  if (session === undefined) return;
-  if (session.attachedJournalId === undefined) {
-    io.send(res, 200, { state: null });
-    return;
-  }
-  try {
-    io.send(res, 200, { state: JSON.parse(fs.readFileSync(guiStateFile(session), 'utf8')) });
-  } catch {
-    io.send(res, 200, { state: null });
-  }
-}
-
-/** GUI 面私有态写(写透;临时文件+rename 原子落——半写档不得成为下次启动的真相)。
- *  未附 journal(纯新会话,重启即逝)→ 200 no-op 不落盘:防孤儿档按发号 id 堆积 */
-export async function handleGuiStatePut(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
-  if (id === undefined || !validSessionId(id)) {
-    io.send(res, 400, { error: 'invalid session id' });
-    return;
-  }
-  const session = io.sessionFor(res, id);
-  if (session === undefined) return;
-  if (session.attachedJournalId === undefined) {
-    io.send(res, 200, { ok: true, persisted: false });
-    return;
-  }
-  const parsed = await io.readJson(req);
-  if (!parsed.ok) {
-    io.send(res, parsed.status, { error: parsed.error });
-    return;
-  }
-  const state = (parsed.body as { state?: unknown } | null)?.state;
-  if (state === null || typeof state !== 'object' || Array.isArray(state)) {
-    io.send(res, 400, { error: 'state object required' });
-    return;
-  }
-  const file = guiStateFile(session);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
-  fs.renameSync(tmp, file);
-  io.send(res, 200, { ok: true });
-}
-
+/** 会话列表面+归档族:D42 端点族拆分至 sessions-list-handlers.ts(行搬运零变化)——
+ *  原路径再导出,daemon 路由与 daemon.gui-state.test 消费零迁移 */
+export { handleSessionsRecent, handleSessions, liveSessionByJournal, findJournalOwner, handleSessionArchive, handleSessionsArchived } from './sessions-list-handlers';
 export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
@@ -685,168 +544,4 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
   const rr = io.attach(id, newId);
   if (!rr.ok) return io.send(res, 500, { error: rr.error.message });
   io.send(res, 200, { ok: true, sessionId: id, turn });
-}
-
-export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerResponse): void {
-  type RecentRow = {
-    id: string; updatedAt: number; firstUser?: string; root: string; slug: string;
-  } & Partial<Pick<SessionSidecarMeta, 'title' | 'runs' | 'steps' | 'tokens' | 'seconds' | 'cacheTokens' | 'promptTokens' | 'childTokens' | 'ctxUsed' | 'ctxWindow' | 'model' | 'effort'>> & { createdAt?: string; liveSessionId?: string };
-  const out: RecentRow[] = [];
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
-  } catch {
-    io.send(res, 200, out);
-    return;
-  }
-  const liveByJournal = liveSessionByJournal(io.sessions); // G14.52:行附活跃会话 id(运行圆点直比)
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    const dataDir = path.join(projectsRoot(), ent.name, 'data');
-    let root: string | undefined;
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
-      if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
-    } catch {
-      root = undefined;
-    }
-    if (root === undefined) {
-      // G14.96 历史档降级:workspace.json 缺失(TUI 时代档/落档失败)但 slug 含默认锚点名
-      // → 视为默认工作区(root 回锚定路径,attach 可用),不再被过滤出 RECENTS;
-      // 非默认命名维持跳过(项目会话归 PROJECTS 各组,组列表由 /workspaces 承载)
-      if (!ent.name.includes('sunshinex-default')) continue;
-      root = path.join(os.tmpdir(), 'sunshinex-default');
-    }
-    const isDefaultWs = (root: string): boolean => {
-      const base = root.split(/[\\/]+/).filter(Boolean).pop() ?? '';
-      return base === 'default' || base.startsWith('sunshinex-default');
-    };
-    for (const r of listSessions(dataDir)) {
-      if (r.archived === true) continue; // 2026-10-21 归档滤除:归档会话退出 RECENTS
-      if (!isDefaultWs(root)) continue; // G14.35:RECENTS 只收默认锚点工作区(非项目会话的家;项目会话归各组)
-      out.push({
-        id: r.id,
-        updatedAt: r.updatedAt,
-        ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
-        ...(r.title !== undefined ? { title: r.title } : {}),
-        ...(r.runs !== undefined ? { runs: r.runs } : {}),
-        ...(r.steps !== undefined ? { steps: r.steps } : {}),
-        ...(r.tokens !== undefined ? { tokens: r.tokens } : {}),
-        ...(r.seconds !== undefined ? { seconds: r.seconds } : {}),
-        ...(r.cacheTokens !== undefined ? { cacheTokens: r.cacheTokens } : {}),
-        ...(r.promptTokens !== undefined ? { promptTokens: r.promptTokens } : {}),
-        ...(r.childTokens !== undefined ? { childTokens: r.childTokens } : {}),
-        ...(r.ctxUsed !== undefined ? { ctxUsed: r.ctxUsed } : {}),
-        ...(r.ctxWindow !== undefined ? { ctxWindow: r.ctxWindow } : {}),
-        ...(r.model !== undefined ? { model: r.model } : {}),
-        ...(r.effort !== undefined ? { effort: r.effort } : {}),
-        ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),
-        root,
-        slug: ent.name,
-        ...(liveByJournal.get(r.id) !== undefined ? { liveSessionId: liveByJournal.get(r.id) } : {}),
-      });
-    }
-  }
-  out.sort((a, b) => b.updatedAt - a.updatedAt);
-  io.send(res, 200, out.slice(0, 20));
-}
-
-export function handleSessions(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
-  const url = urlOf(req);
-  const root = url.searchParams.get('root');
-  if (root === null || root.length === 0) {
-    io.send(res, 400, { error: 'root query param required' });
-    return;
-  }
-  // G14.52:行附 liveSessionId(journal ↔ 活跃会话反查)——GUI 侧栏行运行圆点直比会话 id,
-  // 不再依赖 attach 时的本地映射(新建会话首条 append 前无 journal id,映射缺位圆点不亮)
-  const liveByJournal = liveSessionByJournal(io.sessions);
-  const rows = listSessions(resolveDataDir(root)).filter((r) => r.archived !== true).map((r) => {
-    const live = liveByJournal.get(r.id);
-    return live !== undefined ? { ...r, liveSessionId: live } : r;
-  });
-  io.send(res, 200, rows);
-}
-
-export function liveSessionByJournal(sessions: Map<string, SessionRuntime>): Map<string, string> {
-  const m = new Map<string, string>();
-  for (const s of sessions.values()) {
-    if (s.status() !== 'running') continue;
-    const jid = s.attachedJournalId;
-    if (jid !== undefined) m.set(jid, s.id);
-  }
-  return m;
-}
-
-/** journalId → {dataDir, slug}(跨工作区扫描;archive/delete 的 journal 寻址与归档列表共用) */
-export function findJournalOwner(root: string, jid: string): { dataDir: string; slug: string } | undefined {
-  let entries: fs.Dirent[] = [];
-  try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    return undefined;
-  }
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    const dataDir = path.join(root, ent.name, 'data');
-    if (fs.existsSync(path.join(sessionsDir(dataDir), `${jid}.jsonl`))) return { dataDir, slug: ent.name };
-  }
-  return undefined;
-}
-
-/** POST /session/:id/archive {archived?}(2026-10-21 归档):双寻址——:id 命中 daemon 会话表走运行时
- *  路径(缺 journal 404),否则视作 journalId 走磁盘路径;running 一律 409(先停再归档,与 delete 同门禁) */
-export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerResponse, id: string, body: { archived?: unknown }): void {
-  const archived = body.archived !== false;
-  const liveByJournal = liveSessionByJournal(io.sessions);
-  let dataDir: string;
-  let jid: string;
-  const session = io.sessions.get(id);
-  if (session !== undefined) {
-    if (session.status() === 'running') return io.send(res, 409, { error: 'cannot archive while a run is in progress' });
-    const attached = session.attachedJournalId;
-    if (attached === undefined) return io.send(res, 404, { error: 'session has no journal' });
-    jid = attached;
-    dataDir = resolveDataDir(session.root);
-  } else {
-    if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
-    const owner = findJournalOwner(projectsRoot(), id);
-    if (owner === undefined) return io.send(res, 404, { error: 'unknown session' });
-    jid = id;
-    dataDir = owner.dataDir;
-  }
-  if (liveByJournal.get(jid) !== undefined) return io.send(res, 409, { error: 'cannot archive while a run is in progress' });
-  markSessionArchived(dataDir, jid, archived);
-  io.send(res, 200, { ok: true, archived });
-}
-
-/** GET /sessions/archived(归档页数据源):跨工作区扫描各 slug 的 archived 档,archivedAt 降序;
- *  行带 slug+root(来源项目标注)——不设 isDefaultWs 过滤(项目会话同样可归档) */
-export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerResponse): void {
-  type ArchivedRow = { id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number };
-  const out: ArchivedRow[] = [];
-  let entries: fs.Dirent[] = [];
-  try {
-    entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
-  } catch {
-    io.send(res, 200, out);
-    return;
-  }
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    const dataDir = path.join(projectsRoot(), ent.name, 'data');
-    let root = '';
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
-      if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
-    } catch {
-      root = '';
-    }
-    for (const r of listSessions(dataDir)) {
-      if (r.archived !== true || r.archivedAt === undefined) continue;
-      out.push({ id: r.id, slug: ent.name, root, ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.archivedAt });
-    }
-  }
-  out.sort((a, b) => b.archivedAt - a.archivedAt);
-  io.send(res, 200, out);
 }
