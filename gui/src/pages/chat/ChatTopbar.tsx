@@ -106,6 +106,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, showExpandSidebar, onExpandSidebar } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
+  const [askArchive, setAskArchive] = useState<{ x: number; y: number } | null>(null);
   const [pinned, setPinned] = useState(false);
   const loadPinned = (): void => {
     if (journalId === undefined) return;
@@ -155,7 +157,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       disabled: running,
       onSelect: () => {
         if (archived) onArchive(false);
-        else onArchive(true);
+        else setAskArchive(menu); // 二次确认弹窗(坐标沿用菜单锚点;菜单项回调里 menu 必非空)
       },
     },
     { id: 'divider-1', divider: true, label: '', onSelect: () => undefined },
@@ -229,6 +231,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           aria-label={t('Session actions', '会话操作')}
           onClick={(e) => {
             e.stopPropagation();
+            setAskArchive(null); // 重开菜单时收掉残留确认弹窗
             loadPinned();
             const r = e.currentTarget.getBoundingClientRect();
             setMenu({ x: Math.round(r.right), y: Math.round(r.bottom) });
@@ -239,6 +242,18 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
         {menu !== null && (
           <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />
+        )}
+        {askArchive !== null && (
+          // 归档二次确认弹窗(同款弹层件;外点/Esc 即取消)
+          <SessionRowMenu
+            x={askArchive.x}
+            y={askArchive.y}
+            onClose={() => setAskArchive(null)}
+            items={[
+              { id: 'confirm', label: t('Confirm archive', '确认归档'), onSelect: () => onArchive(true) },
+              { id: 'cancel', label: t('Cancel', '取消'), onSelect: () => undefined },
+            ]}
+          />
         )}
         {showExpandSidebar && (
           <button

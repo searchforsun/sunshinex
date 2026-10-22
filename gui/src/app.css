@@ -2050,7 +2050,6 @@ input.sx-setting-input { width: 100%; }
 /* 置顶钮(会话行 hover 状态点位/置顶行同款钮座):24×24 对齐 sx-iconbtn,钉形 16 视觉量对标归档 13 */
 .sx-pin-btn { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: transparent; border-radius: var(--radius-sm); color: var(--fg-secondary); cursor: pointer; opacity: 0; }
 .sx-pin-btn:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
-.sx-pin-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; } /* 2026-10-22 归档冻结:已归档钉取消置顶禁用 */
 .sx-session-row:hover .sx-pin-btn, .sx-session-row:focus-within .sx-pin-btn, .sx-pin-item:hover .sx-pin-btn, .sx-pin-item:focus-within .sx-pin-btn { opacity: 1; }
 .sx-pin-item:hover .sx-session-dot, .sx-session-row:hover .sx-session-dot { opacity: 0; } /* 悬停钉位取代状态点 */
 .sx-pin-list { list-style: none; margin: 0; padding: 0 4px 4px; }

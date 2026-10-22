@@ -69,16 +69,13 @@ describe('PinnedSection 置顶分组(GUI 专属)', () => {
     expect(container.querySelector('.sx-pin-list')).toBeNull();
   });
 
-  it('已归档钉冻结(2026-10-22 用户裁定):取消置顶禁用,行尾换「取消归档」直连', () => {
-    const onUnpin = vi.fn();
-    const onArchiveRow = vi.fn();
-    renderSection({ onUnpin, onArchiveRow, archivedIds: new Set(['j1']) });
-    const unpin = screen.getByRole('button', { name: '已归档 j1' }) as HTMLButtonElement;
-    expect(unpin.disabled).toBe(true); // 置顶冻结:已归档不可调节
-    fireEvent.click(unpin);
-    expect(onUnpin).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: '归档 j1' })).toBeNull(); // 归档确认 morph 不适用
-    fireEvent.click(screen.getByRole('button', { name: '取消归档 j1' }));
-    expect(onArchiveRow).toHaveBeenCalledWith('j1', false); // 唯一解冻出口
+  it('已归档钉滤除(2026-10-23 用户裁定):命中行不渲染;全滤除整组不渲染', () => {
+    const first = renderSection({ archivedIds: new Set(['j1']) });
+    expect(screen.queryByText('置顶会话')).toBeNull(); // j1 已归档 → 整行滤除
+    expect(screen.getByText('j2')).toBeDefined(); // 未归档钉照常
+    expect(screen.getByRole('button', { name: '取消置顶 j2' })).toBeDefined();
+    first.unmount();
+    const second = renderSection({ archivedIds: new Set(['j1', 'j2']) });
+    expect(second.container.querySelector('.sx-pin-list')).toBeNull(); // 全滤除 → 整组不渲染
   });
 });

@@ -223,7 +223,7 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     await screen.findByText('demo goal');
     expect(screen.queryByRole('button', { name: 'exit archive' })).toBeNull(); // 非归档层无 X
     fireEvent.click(screen.getByRole('button', { name: 'archived sessions' }));
-    await waitFor(() => expect(conn.archivedSessions).toHaveBeenCalledTimes(2)); // 挂载预取 1(置顶组归档冻结需归档集)+ 开层重拉 1
+    await waitFor(() => expect(conn.archivedSessions).toHaveBeenCalledTimes(2)); // 挂载预取 1(置顶组滤除已归档钉需归档集)+ 开层重拉 1
     // 整替面:归档行在场;项目组行与最近会话区消失;组头 X 在场
     const list = screen.getByRole('list', { name: 'archived sessions' });
     expect(within(list).getByText('已归档会话')).toBeDefined(); // 行标题(无题回落 id)

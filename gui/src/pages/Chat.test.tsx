@@ -917,6 +917,7 @@ describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
     expect((screen.getByRole('menuitem', { name: 'Pin session' }) as HTMLButtonElement).disabled).toBe(false); // 未归档:置顶可调节
     fireEvent.click(screen.getByText('Archive session'));
+    fireEvent.click(screen.getByText('Confirm archive')); // 二次弹窗确认(2026-10-23 用户裁定)
     expect(archiveSession).toHaveBeenCalledWith('s1', true);
     expect(await screen.findByText('Archived')).toBeTruthy(); // 本地 archived 同步 → 徽标即刻换面
     first.unmount();
