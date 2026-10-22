@@ -300,11 +300,14 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
    *  (App showOpError 通道,与 fork/rewind 同一错误条)上屏——静默失败病根修复(终审 F4) */
   const onArchive = useCallback((v: boolean): void => {
     setArchived(v);
-    conn.archiveSession(sessionId, v).catch((err: unknown) => {
-      setArchived(!v);
-      onOpError?.(err);
-    });
-  }, [conn, sessionId, onOpError]);
+    conn.archiveSession(sessionId, v).then(
+      () => onSessionsMutated?.(), // 落库后再上抛联动——落库前上抛,侧栏归档聚合读到旧档
+      (err: unknown) => {
+        setArchived(!v);
+        onOpError?.(err);
+      },
+    );
+  }, [conn, sessionId, onOpError, onSessionsMutated]);
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
   const { submitText, send, interrupt } = useChatSubmit({

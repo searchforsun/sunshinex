@@ -122,7 +122,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         const isPinned = r.pins.some((p) => p.id === journalId);
         const next = isPinned ? r.pins.filter((p) => p.id !== journalId) : [...r.pins, { id: journalId, root: root ?? '', title: displayTitle, updatedAt: Date.now() }];
         setPinned(!isPinned);
-        void conn.saveAppPins(next).then(() => undefined, () => undefined);
+        // 联动上抛须等 PUT 落库——落库前上抛,侧栏与本组件重拉到的都是旧钉档
+        void conn.saveAppPins(next).then(onSessionsMutated, () => undefined);
       },
       () => undefined,
     );
@@ -142,9 +143,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       label: pinned ? t('Unpin session', '取消置顶会话') : t('Pin session', '置顶会话'),
       disabled: running,
       onSelect: () => {
+        // 只调 togglePin——它按服务端现态取反且落库后才上抛联动;此处再 loadPinned()
+        // 会 GET 到 PUT 落库前的旧档,把刚置的状态打回去(「第一次无效、后续反向」元凶)
         togglePin();
-        loadPinned();
-        onSessionsMutated?.();
       },
     },
     {
@@ -154,8 +155,6 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       onSelect: () => {
         if (archived) onArchive(false);
         else onArchive(true);
-        loadPinned();
-        onSessionsMutated?.();
       },
     },
     { id: 'divider-1', divider: true, label: '', onSelect: () => undefined },
