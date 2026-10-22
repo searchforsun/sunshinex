@@ -94,6 +94,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         setMenuOpen(false);
       }
     };
+    // 外点收语义(各弹层各表其面,见 D49):本件=容器外 mousedown 即收(标签条无 Esc 面且不随滚动收——fixed 侧栏贴边)
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [menuOpen, searchOpen]);

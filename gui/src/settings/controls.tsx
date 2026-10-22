@@ -35,6 +35,9 @@ export function Select(props: {
   /** 外点收：mousedown 在包裹外即收（trigger 点击自身由 toggle 先行，不双触发） */
   useEffect(() => {
     if (!open) return;
+          // 外点收语义(与 SessionRowMenu 弹层/归档 morph 各表其面):本件=容器外 mousedown 即收,
+          // 不监听滚动/resize(下拉锚定文档流内,无 fixed 裁切面)
+
     const onDown = (e: MouseEvent): void => {
       if (wrapRef.current !== null && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };

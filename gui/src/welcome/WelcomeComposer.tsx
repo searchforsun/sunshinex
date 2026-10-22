@@ -62,6 +62,9 @@ export function WelcomeComposer({
   const [filePalActive, setFilePalActive] = useState(0);
   // G14.211 @ 面板点外即收(与会话内 Chat 同构):焦点离开输入框后 Esc 不可达,点外须收口
   useEffect(() => {
+    // 外点收语义声明(D49,各弹层各表其面):本组四个弹层(项目/分支/模型/plus)同为「容器外
+    // pointerdown 即收」,不监听滚动/resize——锚定文档流内(flex 卡内嵌),无 fixed 裁切面;
+    // 与 SessionRowMenu(fixed 定位需滚动即收)语义不同属有意设计
     const onDocPointerDown = (e: PointerEvent): void => {
       if (e.target instanceof Element && !e.target.closest('.sx-composer')) setFilePal(null);
     };
