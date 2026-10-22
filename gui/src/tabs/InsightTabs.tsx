@@ -64,7 +64,7 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
       {data !== null && (
         <>
           <p className="insight-summary">
-            {data.total} / {data.window} tokens · 余量 {data.free}
+            {data.total} / {data.window} tokens · {t('free', '余量')} {data.free}
           </p>
           <ul className="ctx-parts">
             {data.parts.map((p) => (
@@ -211,8 +211,8 @@ export function MemoryTab({ conn, root }: { conn: Connection; root: string }): J
         )}
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
-      {root === '' && <p className="insight-empty">选择项目后可查看记忆</p>}
-      {root !== '' && data !== null && data.length === 0 && <p className="insight-empty">暂无持久记忆</p>}
+      {root === '' && <p className="insight-empty">{t('Select a project to view memory', '选择项目后可查看记忆')}</p>}
+      {root !== '' && data !== null && data.length === 0 && <p className="insight-empty">{t('No persistent memory yet', '暂无持久记忆')}</p>}
       {root !== '' && data !== null && data.length > 0 && (
         <ul className="mem-list">
           {data.map((m) => (

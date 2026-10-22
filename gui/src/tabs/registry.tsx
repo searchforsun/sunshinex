@@ -114,7 +114,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     id: 'file',
     group: 'content',
     // G14.114 文件类标签只显文件名(全路径在标签体内已有:file 面包屑/diff 头)——win/posix 双分隔
-    title: (params) => (params.path !== undefined ? baseName(params.path) : '文件'),
+    title: (params) => (params.path !== undefined ? baseName(params.path) : t('File', '文件')),
     resolveKey: (params) => params.path ?? '',
     singleton: false,
     render: (p) => (
@@ -138,7 +138,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     id: 'diff',
     group: 'content',
     // title:文件名可读优先(callId 兜底;裸开档 'Diff')——标签条/标题行同源
-    title: (params) => (params.path !== undefined ? baseName(params.path) : params.callId ?? '审查'),
+    title: (params) => (params.path !== undefined ? baseName(params.path) : params.callId ?? t('Review', '审查')),
     // by callId 多实例:同 write 调用重开=聚焦,异 callId 并存
     resolveKey: (params) => params.callId ?? '',
     singleton: false,
@@ -147,7 +147,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'directory',
     group: 'content',
-    title: () => '目录',
+    title: () => t('Directory', '目录'),
     resolveKey: () => '',
     singleton: true,
     render: (p) => <DirectoryTab conn={p.conn} sessionId={p.sessionId} root={p.root} openTab={p.openTab} locate={p.params.path} />,
@@ -156,7 +156,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     id: 'tasks',
     group: 'session',
     // G14.174 重定位:任务页签 → 待办(每批 todo_write 一卡的卡片流;原看板迁任务板页签)
-    title: () => '待办',
+    title: () => t('Todos', '待办'),
     resolveKey: () => '',
     singleton: true,
     render: (p) => <TodoCardsTab batches={p.services.todoBatches} />,
@@ -165,7 +165,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     id: 'agents',
     group: 'session',
     // G14.174 重定位:Agents 页签 → 任务板(卡片流双卡型:任务列表|流程图,逐卡切换)
-    title: () => '任务板',
+    title: () => t('Task board', '任务板'),
     resolveKey: () => '',
     singleton: true,
     render: (p) => (
@@ -206,7 +206,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'bgtasks',
     group: 'session',
-    title: () => '后台任务',
+    title: () => t('Background tasks', '后台任务'),
     resolveKey: () => '',
     singleton: true,
     render: (p) => <BgTasksTab conn={p.conn} sessionId={p.sessionId} turnGoal={p.services.turnGoal} />,
@@ -214,7 +214,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'memory',
     group: 'session',
-    title: () => '记忆',
+    title: () => t('Memory', '记忆'),
     resolveKey: () => '',
     singleton: true,
     render: (p) => <MemoryTab conn={p.conn} root={p.root} />,
@@ -222,7 +222,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'terminal',
     group: 'tools',
-    title: () => '终端',
+    title: () => t('Terminal', '终端'),
     // nonce 即判重键:mintParams 铸唯一 → 多实例并存;无 nonce 开档 key='' 互判重(聚焦既有)
     resolveKey: (params) => params.nonce ?? '',
     singleton: false,
@@ -256,7 +256,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     id: 'sidechat',
     group: 'session',
     // G14.29 辅助对话:fork 旁路会话绑定的完整 Chat(sideId 寻址;帧路由经 App chatSinkRef)
-    title: (params) => (params.sideId !== undefined ? '辅助对话' : '辅助对话'),
+    title: () => t('Side chat', '辅助对话'),
     resolveKey: (params) => params.sideId ?? '',
     singleton: false,
     render: (p) =>

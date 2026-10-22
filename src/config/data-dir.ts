@@ -47,6 +47,7 @@ export function resolveDataDir(root: string): string {
     fs.mkdirSync(base, { recursive: true });
     return path.join(base, projectSlug(root), 'data');
   } catch {
+    // projects 根建目失败（盘缺席/权限）：降级仓内 .data 保数据可写；显式 override 走前置权威分支不降级
     return path.join(root, '.data');
   }
 }

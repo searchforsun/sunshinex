@@ -46,7 +46,7 @@ export function useWorkspaceFiles(
         const r = await conn.workspaceFiles(root);
         files = [...(r.dirs ?? []), ...r.files.map((f) => f.path)];
       } catch {
-        files = [];
+        files = []; // 索引拉取失败=空索引(@面板无候选;键入路径仍可走发送期解析兜底),面板照常开
       }
       filesCacheRef.current = { key: root, files };
       setFilesVer((v) => v + 1);
@@ -66,7 +66,7 @@ export function useWorkspaceFiles(
         entries = r.entries;
         if (r.truncated === true) cap.n -= 200;
       } catch {
-        return [];
+        return []; // 单节点 tree 失败=该枝作空(子层重新展开可重试),整树遍历不中断
       }
       const out: string[] = [];
       for (const e of entries) {

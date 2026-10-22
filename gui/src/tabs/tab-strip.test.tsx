@@ -25,17 +25,17 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web
     expect(diff.resolveKey({})).toBe('');
     expect(diff.title({ path: 'src/a.ts', callId: 'c1' })).toBe('a.ts'); // path 可读优先,只显文件名
     expect(diff.title({ callId: 'c1' })).toBe('c1');
-    expect(diff.title({})).toBe('审查'); // G14.180 Diff 改审查(中文页签面)
+    expect(diff.title({})).toBe('Review'); // G14.180 Diff 改审查(title t() 化;测试环境钉 en,zh 面=「审查」)
     const directory = TAB_REGISTRY[2]!;
     expect(directory.singleton).toBe(true);
-    expect(directory.title({})).toBe('目录');
+    expect(directory.title({})).toBe('Directory');
     const tasks = TAB_REGISTRY[3]!;
     expect(tasks.singleton).toBe(true);
-    expect(tasks.title({})).toBe('待办'); // G14.174 重定位:任务页签 → 待办
+    expect(tasks.title({})).toBe('Todos'); // G14.174 重定位:任务页签 → 待办
     const agents = TAB_REGISTRY[4]!;
     expect(agents.singleton).toBe(true);
     expect(agents.group).toBe('session');
-    expect(agents.title({})).toBe('任务板'); // G14.174 重定位:Agents 页签 → 任务板
+    expect(agents.title({})).toBe('Task board'); // G14.174 重定位:Agents 页签 → 任务板
     expect(agents.resolveKey({})).toBe('');
     const agent = TAB_REGISTRY.find((e) => e.id === 'agent')!;
     expect(agent.singleton).toBe(false); // G14.164 by label 多实例:同 agent 重开=聚焦
@@ -46,7 +46,7 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web
     expect(terminal.singleton).toBe(false);
     expect(terminal.resolveKey({ nonce: 't1' })).toBe('t1');
     expect(terminal.resolveKey({})).toBe('');
-    expect(terminal.title({})).toBe('终端');
+    expect(terminal.title({})).toBe('Terminal');
     const web = TAB_REGISTRY.find((e) => e.id === 'web')!;
     expect(web.group).toBe('tools');
     expect(web.singleton).toBe(false);
@@ -82,7 +82,7 @@ describe('TabStrip(spec §1 标签条)', () => {
     const handlers = { ...base };
     render(<TabStrip {...handlers} tabs={[]} activeUid={null} collapsed={false} />);
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getAllByRole('menuitem', { name: /待办/ })[0]);
+    fireEvent.click(screen.getAllByRole('menuitem', { name: /Todos|待办/ })[0]);
     expect(handlers.onOpenType).toHaveBeenCalledWith('tasks');
     fireEvent.click(screen.getByRole('button', { name: 'collapse sidebar' }));
     expect(handlers.onToggleCollapse).toHaveBeenCalled();

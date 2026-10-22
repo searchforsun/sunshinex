@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
-import { appUrl } from './lib/app-url';
+import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
 import { resolveUiLang, shouldHideOnClose, trayMenu, type UiLang } from './lib/lifecycle';
 import { TRAY_ICON_DATA_URL } from './lib/tray-icon';
@@ -95,7 +95,7 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     // 入口提示一行（沿 serve 惯例：port + token；回环字面量就地维护，见 lib/app-url.ts 头注）
-    console.log(`[shell] daemon listening at http://127.0.0.1:${daemon.port} (token: ${daemon.token})`);
+    console.log(`[shell] daemon listening at http://${LOOPBACK}:${daemon.port} (token: ${daemon.token})`);
 
     const win = new BrowserWindow({ width: 1200, height: 800, minWidth: 960, minHeight: 600 });
     mainWindow = win;

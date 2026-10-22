@@ -170,6 +170,7 @@ export function seedChatFromSnapshot(
 ): ChatState {
   // P10:status 读内核游标(openRun>=0 即 running)——快照 status 参数退役
   const status: ChatState['status'] = cursors.openRun >= 0 ? 'running' : 'idle';
+  // cast 依据:快照转录档即内核条目的盘面直录(v3 seg 行=kernelEventRows 单点映射),形状契约由装载侧背书
   const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens: 0, steps: 0, cacheTokens: 0, runBases: {} };
   s.k = { ...s.k, openRun: cursors.openRun, openSeg: cursors.openSeg };
   // P9:计数器自 run meta 在 applySeed 内重建(零推导)——G14.18 回放会话累计不从零起

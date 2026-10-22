@@ -67,7 +67,7 @@ export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirP
   return (
     <div className="dirpicker" role="dialog" aria-label="choose directory">
       <header className="dirpicker-head">
-        <span>选择工作区目录</span>
+        <span>{t('Choose a workspace directory', '选择工作区目录')}</span>
         <button type="button" aria-label="close picker" onClick={onCancel}>
           ✕
         </button>
@@ -84,7 +84,7 @@ export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirP
         {current !== null && (
           <li>
             <button type="button" className="dir-parent" disabled={atRoot} onClick={() => load(current.parent)}>
-              ↑ 上级
+              {t('↑ Up', '↑ 上级')}
             </button>
           </li>
         )}
@@ -117,7 +117,7 @@ export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirP
             if (typed !== '') load(typed);
           }}
         >
-          前往
+          {t('Go', '前往')}
         </button>
       </div>
       {showManual && (
@@ -130,15 +130,15 @@ export function DirPicker({ conn, onConfirm, onCancel, showManual = true }: DirP
             />
             <span>{t('Manual approvals', '手动审批')}</span>
           </label>
-          <p className="mode-hint">勾选后审批/问询挂起等待人工裁决(manual 会话)</p>
+          <p className="mode-hint">{t('When checked, approvals/questions wait for a human decision (manual session)', '勾选后审批/问询挂起等待人工裁决(manual 会话)')}</p>
         </div>
       )}
       <footer className="dirpicker-foot">
         <button type="button" onClick={onCancel}>
-          取消
+          {t('Cancel', '取消')}
         </button>
         <button type="button" className="primary" disabled={!canConfirm} onClick={confirm}>
-          选择此目录
+          {t('Choose this directory', '选择此目录')}
         </button>
       </footer>
     </div>

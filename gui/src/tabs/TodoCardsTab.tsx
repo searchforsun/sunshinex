@@ -38,8 +38,8 @@ export function TodoCardsTab({ batches }: TodoCardsTabProps): JSX.Element {
     return (
       <div className="todo-cards" aria-label="todo cards">
         <div className="board-empty-state" role="status">
-          <p className="board-empty-title">暂无待办</p>
-          <p className="board-empty-hint">智能体记录待办清单(todo)后会按批次显示在这里。</p>
+          <p className="board-empty-title">{t('No todos yet', '暂无待办')}</p>
+          <p className="board-empty-hint">{t('Todo batches recorded by the agent will appear here.', '智能体记录待办清单(todo)后会按批次显示在这里。')}</p>
         </div>
       </div>
     );

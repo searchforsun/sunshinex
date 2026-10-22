@@ -53,6 +53,7 @@ export function highlightLine(lang: string, line: string): HiSpan[] {
   if (!l || !hljs.getLanguage(l)) return [{ text: line, kind: 'plain' }];
   try {
     const result = hljs.highlight(line, { language: l, ignoreIllegals: true });
+    // hljs 公开面无 token 树出口——_emitter 私有形是唯一读取缝；结构变动由 flatten 抛错/空 spans 双层回退整行 plain 兜底
     const emitter = result._emitter as unknown as { root: HiNode };
     const spans: HiSpan[] = [];
     flatten(emitter.root, 'plain', spans);

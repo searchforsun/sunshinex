@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CodedToolError } from './tools';
 import { slugify } from '../slug';
+import { utcCompactStamp } from '../idstamp';
 
 /** 后台任务记录（后台任务线规格 D2/D3）：账本进程内承载，不落盘不跨会话；输出流式追加 <dataDir>/tasks/<id>.log */
 export interface BackgroundTask {
@@ -42,12 +43,8 @@ export class TaskRegistry {
   }
 
   submit(input: { kind: 'exec' | 'subagent'; label: string; ownerRun?: string }): BackgroundTask {
-    const p = (n: number): string => String(n).padStart(2, '0');
-    const gen = (): string => {
-      const now = new Date();
-      const ts = `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}T${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}Z`;
-      return `${slugify(input.label, { max: 16, fallback: input.kind })}-${ts}-${Math.random().toString(36).slice(2, 6)}`;
-    };
+    const gen = (): string =>
+      `${slugify(input.label, { max: 16, fallback: input.kind })}-${utcCompactStamp()}-${Math.random().toString(36).slice(2, 6)}`;
     let id = gen();
     while (this.tasks.has(id) || fs.existsSync(path.join(this.tasksDir, 'tasks', `${id}.log`))) id = gen();
     const outputFilePath = path.join(this.tasksDir, 'tasks', `${id}.log`);

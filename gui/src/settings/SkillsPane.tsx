@@ -130,7 +130,7 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
           />
         </div>
       </div>
-      {filtered === null && loadError === '' && <p className="home-loading">加载技能清单…</p>}
+      {filtered === null && loadError === '' && <p className="home-loading">{t('Loading skills…', '加载技能清单…')}</p>}
       {filtered !== null && filtered.length === 0 && (
         <p className="home-loading">
           {query.trim() === '' && sourceFilter === 'all' && projectFilter === 'all' ? t('No skills loaded.', '无已装载技能。') : t('No matching skills.', '无匹配技能。')}

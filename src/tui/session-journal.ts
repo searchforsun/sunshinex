@@ -7,6 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
+import { utcCompactStamp } from '../idstamp';
 import type { ChatItem, TodoItem } from './session';
 
 /** 分档血缘（规格 2026-09-20 rewind+fork §5.1）：upToLine=源档 1-based 行号，新档含源档第 1..upToLine 行 */
@@ -232,9 +233,7 @@ interface JournalReplay {
 
 /** 会话 id：UTC 紧凑时间戳 + 4 位随机尾（文件名安全、可排序） */
 export function newSessionId(now = new Date()): string {
-  const p = (n: number): string => String(n).padStart(2, '0');
-  const ts = `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}T${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}Z`;
-  return `${ts}-${Math.random().toString(36).slice(2, 6)}`;
+  return `${utcCompactStamp(now)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** 会话日志目录：<dataDir>/sessions */

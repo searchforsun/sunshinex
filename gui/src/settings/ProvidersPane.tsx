@@ -92,8 +92,8 @@ export function ProvidersPane({ conn, root }: ProvidersPaneProps): JSX.Element {
       <section className="sx-providers" aria-label="providers">
         <h3>{t('Providers (read-only)', '提供方(只读)')}</h3>
         {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
-        {providers === null && loadError === '' && <p className="home-loading">加载提供方…</p>}
-        {providers !== null && providers.choices.length === 0 && loadError === '' && <p className="home-loading">无已配置的模型选择。</p>}
+        {providers === null && loadError === '' && <p className="home-loading">{t('Loading providers…', '加载提供方…')}</p>}
+        {providers !== null && providers.choices.length === 0 && loadError === '' && <p className="home-loading">{t('No models configured.', '无已配置的模型选择。')}</p>}
         {providers !== null && providers.choices.length > 0 && (
           <ul className="sx-provider-list">
             {providers.choices.map((c) => {

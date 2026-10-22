@@ -154,7 +154,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
       },
       (err: unknown) => {
         // 晚到的装载失败不覆盖其后已示出的保存面错误(截断守卫/服务端 400)——仅空错误位时落
-        const msg = `正文全文装载失败,已回退预览:${errText(err)}`;
+        const msg = t(`Failed to load full body; fell back to preview: ${errText(err)}`, `正文全文装载失败,已回退预览:${errText(err)}`);
         setFormError((prev) => (prev === '' ? msg : prev));
       },
     );
@@ -166,7 +166,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
     <section className="sx-settings-form" aria-label="settings pane agents">
       <h2>{t('Agents', '智能体')}</h2>
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
-      {data === null && loadError === '' && <p className="home-loading">加载智能体清单…</p>}
+      {data === null && loadError === '' && <p className="home-loading">{t('Loading agents…', '加载智能体清单…')}</p>}
       {data !== null && (
         <>
           <h3>{t('Built-in roles (read-only)', '内建角色(只读)')}</h3>
@@ -190,7 +190,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
                   <span className="sx-agent-id">{e.id}</span>
                   <span className="sx-agent-name">{e.name}</span>
                   <SourceBadge source={e.source} />
-                  {e.shadowed && <span className="sx-shadow-tag">被项目遮蔽</span>}
+                  {e.shadowed && <span className="sx-shadow-tag">{t('Shadowed by project', '被项目遮蔽')}</span>}
                 </div>
                 {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
                 <div className="sx-agent-chips">
@@ -199,7 +199,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
                   {e.executor !== undefined && <span className="sx-chip">{`executor:${e.executor}`}</span>}
                 </div>
                 <details className="sx-agent-body">
-                  <summary>正文</summary>
+                  <summary>{t('Body', '正文')}</summary>
                   <pre>{e.bodyPreview}</pre>
                 </details>
                 <div className="sx-card-actions">
@@ -251,7 +251,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
         >
           <h3>{form.editing ? t(`Edit ${form.id}`, `编辑 ${form.id}`) : t('New agent', '新增智能体')}</h3>
           <label>
-            层级
+            {t('Scope', '层级')}
             <select aria-label="agent scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as AgentFormState['scope'] })}>
               <option value="project" disabled={root === ''}>
                 {t('Project', '项目')}{root === '' ? t(' (needs project context)', '(需项目上下文)') : ''}
@@ -273,7 +273,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
           </label>
           <label className="sx-check-row">
             <input type="checkbox" aria-label="agent memory" checked={form.memory} onChange={(e) => setForm({ ...form, memory: e.target.checked })} />
-            memory(自有记忆)
+            {t('memory (own memory)', 'memory(自有记忆)')}
           </label>
           <label>
             isolation
@@ -284,7 +284,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
             <input aria-label="agent executor" value={form.executor} onChange={(e) => setForm({ ...form, executor: e.target.value })} />
           </label>
           <label>
-            正文(agent.md body)
+            {t('Body (agent.md body)', '正文(agent.md body)')}
             <textarea aria-label="agent body" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={4} />
           </label>
           {formError !== '' && <p className="home-error" role="alert">{formError}</p>}
@@ -299,7 +299,7 @@ export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {
                 setFormError('');
               }}
             >
-              取消
+              {t('Cancel', '取消')}
             </button>
           </div>
         </form>

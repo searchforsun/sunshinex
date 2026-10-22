@@ -136,13 +136,13 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     if (args.length > 0) out.args = args;
     const env: Record<string, string> = {};
     for (const line of f.env.split('\n')) {
-      const t = line.trim();
-      if (t === '') continue;
-      const eq = t.indexOf('=');
-      if (eq <= 0) return `env 行格式应为 KEY=VALUE: ${t}`;
-      const v = t.slice(eq + 1).trim();
+      const ln = line.trim();
+      if (ln === '') continue;
+      const eq = ln.indexOf('=');
+      if (eq <= 0) return t(`env line must be KEY=VALUE: ${ln}`, `env 行格式应为 KEY=VALUE: ${ln}`);
+      const v = ln.slice(eq + 1).trim();
       if (v === '') continue; // KEY= 或 KEY=空白:编辑预填的未重填提示行——空值条目跳过(daemon 原样写盘,{"KEY":""} 是坏文件)
-      env[t.slice(0, eq).trim()] = v;
+      env[ln.slice(0, eq).trim()] = v;
     }
     if (Object.keys(env).length > 0) out.env = env; // 全部空 → env 键整体省略
     return out;
@@ -198,7 +198,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     <section className="sx-settings-form" aria-label="settings pane MCP">
       <h2>{t('MCP servers', 'MCP 服务器')}</h2>
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
-      {servers === null && loadError === '' && <p className="home-loading">加载 MCP 清单…</p>}
+      {servers === null && loadError === '' && <p className="home-loading">{t('Loading MCP servers…', '加载 MCP 清单…')}</p>}
       {servers !== null && servers.length === 0 && loadError === '' && <p className="home-loading">{t('No MCP servers.', '无 MCP 服务器。')}</p>}
       {servers !== null && servers.length > 0 && (
         <ul className="sx-mcp-list">
@@ -212,11 +212,11 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                   {s.shadowed && <span className="sx-shadow-tag">{t('Shadowed by project', '被项目遮蔽')}</span>}
                 </div>
                 <dl className="sx-mcp-meta">
-                  <dt>传输</dt>
+                  <dt>{t('Transport', '传输')}</dt>
                   <dd>{s.transport}</dd>
                   {s.command !== undefined && (
                     <>
-                      <dt>命令</dt>
+                      <dt>{t('Command', '命令')}</dt>
                       <dd>
                         {s.command}
                         {s.args !== undefined && s.args.length > 0 ? ` ${s.args.join(' ')}` : ''}
@@ -231,7 +231,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                   )}
                   {s.envKeys.length > 0 && (
                     <>
-                      <dt>环境键</dt>
+                      <dt>{t('Env keys', '环境键')}</dt>
                       <dd>{s.envKeys.join(', ')}</dd>
                     </>
                   )}
@@ -262,7 +262,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                       setFormError('');
                     }}
                   >
-                    编辑
+                    {t('Edit', '编辑')}
                   </button>
                   <button
                     type="button"
@@ -271,13 +271,13 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                     title={s.source !== 'project' ? t('Global card not in project file (edit globally via Advanced)', '全局卡不在项目文件内(全局编辑走「高级」)') : undefined}
                     onClick={() => remove(s.name)}
                   >
-                    删除
+                    {t('Delete', '删除')}
                   </button>
                 </div>
                 {res !== undefined &&
                   (res.ok ? (
                     <details className="sx-mcp-probe">
-                      <summary>{`连接正常 · 工具 ×${res.tools.length}`}</summary>
+                      <summary>{t(`Connected · ${res.tools.length} tools`, `连接正常 · 工具 ×${res.tools.length}`)}</summary>
                       <ul>
                         {res.tools.map((t) => (
                           <li key={t.name}>{t.name}</li>
@@ -302,11 +302,11 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
         >
           <h3>{form.editing ? t(`Edit ${form.name}`, `编辑 ${form.name}`) : t('Add server (project)', '添加服务器(项目级)')}</h3>
           <label>
-            名称
+            {t('Name', '名称')}
             <input aria-label="mcp name" value={form.name} readOnly={form.editing} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </label>
           <label>
-            传输
+            {t('Transport', '传输')}
             <select aria-label="mcp transport" value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value as McpFormState['transport'] })}>
               <option value="stdio">stdio</option>
               <option value="http">http</option>
@@ -318,7 +318,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
             <input aria-label="mcp command" value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} placeholder="npx" />
           </label>
           <label>
-            args(逗号分隔)
+            {t('args (comma-separated)', 'args(逗号分隔)')}
             <input aria-label="mcp args" value={form.args} onChange={(e) => setForm({ ...form, args: e.target.value })} placeholder="-y, mcp-server" />
           </label>
           <label>
@@ -326,7 +326,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
             <input aria-label="mcp url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
           </label>
           <label>
-            env(逐行 KEY=VALUE)
+            {t('env (one KEY=VALUE per line)', 'env(逐行 KEY=VALUE)')}
             <textarea aria-label="mcp env" value={form.env} onChange={(e) => setForm({ ...form, env: e.target.value })} rows={3} spellCheck={false} />
           </label>
           {form.editing && form.origEnvKeys.length > 0 && lostEnvKeys.length > 0 && (
@@ -352,7 +352,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                 setFormError('');
               }}
             >
-              取消
+              {t('Cancel', '取消')}
             </button>
           </div>
         </form>

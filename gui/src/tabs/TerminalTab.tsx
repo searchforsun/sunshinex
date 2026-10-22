@@ -7,6 +7,7 @@ import { b64ToUtf8 } from './pty-codec';
 import type { PtyFrame } from './pty-codec';
 import { toWsUrl } from '../connection';
 import type { Connection } from '../connection';
+import { t } from '../i18n';
 import type { TabParams } from './tab-state';
 
 /**
@@ -129,7 +130,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
               } else if (f.t === 'exit') {
                 sawFrame = true;
                 exited = true; // 后续 close(1000) 属退出收尾,非断连——横幅抑制
-                term?.write(`\r\n[进程已退出 code ${f.code}]`);
+                term?.write(`\r\n[${t(`Process exited with code ${f.code}`, `进程已退出 code ${f.code}`)}]`);
                 setExitCode(f.code);
               } else if (f.t === 'error') {
                 if (reused) dead = true; // 盘档 ptyId 已死:回退信号(reused 直连面才有回退语义)
@@ -149,7 +150,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
               }
               if (disconnectShown || term === null) return;
               disconnectShown = true;
-              term.write('\r\n\x1b[90m[连接已断开——重连将恢复]\x1b[0m');
+              term.write(`\r\n\x1b[90m[${t('Disconnected — reconnect to restore', '连接已断开——重连将恢复')}]\x1b[0m`);
             },
           });
           term.onData((d) => socket?.sendInput(d));
@@ -191,11 +192,11 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
     // ptyIdFor/onPtyAllocated 由 App useCallback 稳定注入(inline 箭头会令本 effect 随 App 重渲染重跑)
   }, [conn, sessionId, uid, ptyIdFor, onPtyAllocated]);
 
-  if (fallback) return <div className="sx-pty-fallback">终端渲染需要真浏览器窗口</div>;
+  if (fallback) return <div className="sx-pty-fallback">{t('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口')}</div>;
   return (
     <div className="sx-pty" style={{ height: '100%' }}>
       {socketError !== null && <div className="sx-pty-error">{socketError}</div>}
-      {exitCode !== null && <div className="sx-pty-exited">进程已退出(code {exitCode})</div>}
+      {exitCode !== null && <div className="sx-pty-exited">{t(`Process exited (code ${exitCode})`, `进程已退出(code ${exitCode})`)}</div>}
       {/* 高度链:.sx-tabbody(flex 定高)→ .sx-pty → 容器——sx-pty-* 样式归 G8b-e(app.css 冻结),
           FitAddon 量的是容器盒,须满高才可 fit */}
       <div ref={containerRef} className="sx-pty-term" style={{ height: '100%' }} />

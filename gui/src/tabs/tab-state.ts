@@ -11,6 +11,8 @@
  * 切换 cycleTab 活动位 ±1 环回(计划作者裁定口径,测试 #6 为链式断言)。
  */
 
+import { pathBasename, pathSegments } from '../ui-util';
+
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
 export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'agent' | 'directory' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'sidechat';
 
@@ -248,12 +250,12 @@ export function setWidth(states: TabStates, sessionId: string, width: number): T
  *  **最小区分相对路径**(chrome 同位)——`src/a/util.ts` 与 `src/b/util.ts` 显 `a/util.ts`/`b/util.ts`;
  *  无撞名保持原题。返回 uid → 显示题(非 file 标签不在表中,消费面回落 registry 原题) */
 export function disambiguateTabTitles(tabs: readonly TabInstance[]): Map<string, string> {
-  const baseTitle = (p: string): string => p.split(/[\/]+/).filter(Boolean).pop() ?? p;
+  // 末段名与 registry.title 同源(pathBasename 双分隔符口径——模型写入路径可能带 win32 盘符,POSIX-only 切分会整径当末段)
   const out = new Map<string, string>();
   const groups = new Map<string, TabInstance[]>();
   for (const t of tabs) {
     if (t.type !== 'file' || t.params.path === undefined) continue;
-    const base = baseTitle(t.params.path);
+    const base = pathBasename(t.params.path);
     out.set(t.uid, base);
     const g = groups.get(base);
     if (g === undefined) groups.set(base, [t]);
@@ -261,7 +263,7 @@ export function disambiguateTabTitles(tabs: readonly TabInstance[]): Map<string,
   }
   for (const [base, g] of groups) {
     if (g.length <= 1) continue;
-    const segLists = g.map((t) => ({ t, segs: (t.params.path ?? '').split(/[\/]+/).filter(Boolean) }));
+    const segLists = g.map((t) => ({ t, segs: pathSegments(t.params.path ?? '') }));
     const maxDepth = Math.max(...segLists.map((s) => s.segs.length));
     const labels = new Map<string, string>();
     for (let depth = 1; depth <= maxDepth; depth += 1) {

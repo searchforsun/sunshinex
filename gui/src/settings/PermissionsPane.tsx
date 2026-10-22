@@ -53,7 +53,7 @@ export function PermissionsPane({ conn, root, title }: PermissionsPaneProps): JS
     <section className="sx-settings-form sx-settings-body" aria-label={`settings pane ${title}`}>
       <h2>{title}</h2>
       {permsError !== '' && <p className="home-error" role="alert">{permsError}</p>}
-      {perms === null && permsError === '' && <p className="home-loading">加载权限…</p>}
+      {perms === null && permsError === '' && <p className="home-loading">{t('Loading permissions…', '加载权限…')}</p>}
       {perms !== null && (
         <div className="sx-perms-cols">
           {PERM_LEVELS.map((level) => (

@@ -11,6 +11,10 @@ import { DirPicker } from './pages/DirPicker';
  */
 
 describe('DirPicker 组件(独立 props)', () => {
+  /** 双语容忍正解(D37 家族):产品面 t() 化后,测试环境钉 en,单语 zh 钉必脆——双语 regex(元字符转义) */
+  const bi = (en: string, zh: string): RegExp =>
+    new RegExp(`^(?:${[en, zh].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`);
+
   const dirConn = (dirs: DirPickerResp[]) => {
     const calls: Array<string | undefined> = [];
     const conn = {
@@ -43,7 +47,7 @@ describe('DirPicker 组件(独立 props)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'dev' }));
     expect(await screen.findByText('/home/dev')).toBeDefined();
     expect(calls[1]).toBe('/home/dev');
-    fireEvent.click(screen.getByRole('button', { name: '↑ 上级' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('↑ Up', '↑ 上级') }));
     await waitFor(() => expect(calls[2]).toBe('/home'));
   });
 
@@ -51,7 +55,7 @@ describe('DirPicker 组件(独立 props)', () => {
     const { conn: rootConn } = dirConn([{ path: '/', parent: '/', dirs: [] }]);
     render(<DirPicker conn={rootConn} onConfirm={() => {}} onCancel={() => {}} />);
     await screen.findByText('/');
-    expect((screen.getByRole('button', { name: '↑ 上级' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: bi('↑ Up', '↑ 上级') }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('确认取值:自定义输入非空优先(不经服务端);输入空取当前浏览路径', async () => {
@@ -59,10 +63,10 @@ describe('DirPicker 组件(独立 props)', () => {
     const confirmed: string[] = [];
     render(<DirPicker conn={conn} onConfirm={(p) => confirmed.push(p)} onCancel={() => {}} />);
     await screen.findByText('/home/dev');
-    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Choose this directory', '选择此目录') }));
     expect(confirmed).toEqual(['/home/dev']);
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: 'D:/elsewhere' } });
-    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Choose this directory', '选择此目录') }));
     expect(confirmed).toEqual(['/home/dev', 'D:/elsewhere']);
   });
 
@@ -73,11 +77,11 @@ describe('DirPicker 组件(独立 props)', () => {
     await screen.findByText('/home/dev');
     const box = screen.getByLabelText('Manual approvals') as HTMLInputElement;
     expect(box.checked).toBe(false); // 缺省不勾
-    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Choose this directory', '选择此目录') }));
     expect(confirmed).toEqual([['/home/dev', false]]);
     fireEvent.click(box); // 勾选
     expect(box.checked).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: '选择此目录' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Choose this directory', '选择此目录') }));
     expect(confirmed).toEqual([
       ['/home/dev', false],
       ['/home/dev', true],
@@ -92,7 +96,7 @@ describe('DirPicker 组件(独立 props)', () => {
     render(<DirPicker conn={conn} onConfirm={() => {}} onCancel={() => {}} />);
     await screen.findByText('/home');
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: 'D:/work' } });
-    fireEvent.click(screen.getByRole('button', { name: '前往' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Go', '前往') }));
     expect(await screen.findByText('D:/work')).toBeDefined();
     expect(calls[1]).toBe('D:/work');
     expect(screen.getByRole('button', { name: 'proj' })).toBeDefined();
@@ -103,7 +107,7 @@ describe('DirPicker 组件(独立 props)', () => {
     let cancelled = 0;
     render(<DirPicker conn={conn} onConfirm={() => {}} onCancel={() => (cancelled += 1)} />);
     await screen.findByText('/home');
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Cancel', '取消') }));
     expect(cancelled).toBe(1);
   });
 
@@ -120,7 +124,7 @@ describe('DirPicker 组件(独立 props)', () => {
     render(<DirPicker conn={conn} onConfirm={() => {}} onCancel={() => {}} />);
     await screen.findByText('/home');
     fireEvent.change(screen.getByLabelText('custom path'), { target: { value: '/nope' } });
-    fireEvent.click(screen.getByRole('button', { name: '前往' }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Go', '前往') }));
     expect(await screen.findByText('/dirpicker?path=%2Fnope -> 400')).toBeDefined();
     expect(screen.getByText('/home')).toBeDefined(); // 停留原列表
   });

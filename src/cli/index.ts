@@ -20,6 +20,7 @@ function cliVersion(): string {
     const pkg = JSON.parse(readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')) as { version?: string };
     return pkg.version ?? 'unknown';
   } catch {
+    // package.json 经 dist 相对定位，非常规布局（全局链接/单文件搬运）可能缺席——版本展示失败不阻断 CLI
     return 'unknown';
   }
 }

@@ -610,6 +610,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               if (item !== undefined && item.kind === 'cmd' && input.includes(' ') && item.ok && slashToken.atStart) {
                 e.preventDefault();
                 setInput('');
+                // 命令回执/错误经 WS notice 帧可见化(命令气泡已入档);catch 只兜 HTTP 层——网络失败=命令未执行零回执,输入已清空的轻损失(D30 口径:可见化由主提交路径承担)
                 conn.runCommand(sessionId, input).catch(() => {});
                 return;
               }

@@ -155,6 +155,7 @@ export function loadCrossProjectSkillGroups(root?: string): SkillsGroup[] {
   try {
     domains = fs.readdirSync(base).filter((s) => fs.existsSync(path.join(base, s, 'data')));
   } catch {
+    // projects 根不存在/不可读 = 无学习级技能组——空组是合法确定态（学习沉淀未启用），非错误
     return [];
   }
   const out: SkillsGroup[] = [];

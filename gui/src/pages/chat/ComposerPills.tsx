@@ -65,6 +65,7 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
                         onClick={() => {
                           setPillOpen(null);
                           setSessMode(row.m);
+                          // 乐观置选;失败不回滚——模式属会话级低危偏好,权威态经下次会话快照/事件回填自纠
                           conn.setSessionMode(sessionId, row.m).catch(() => {});
                         }}
                       >
@@ -150,6 +151,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                         setModelInfo((m) => (m === null ? m : { ...m, current: c.id }));
                         // 源自带档位强度(G13 反馈轮):切换即随名展示(快照回显前先乐观落)
                         if (c.effort !== undefined) setSessEffort(c.effort);
+                        // 乐观置选;失败不回滚——模型/强度属会话级低危偏好,权威态经下次会话快照/事件回填自纠
                         conn.setSessionModel(sessionId, c.id).catch(() => {});
                       }}
                     >
@@ -161,6 +163,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                     value={sessEffort ?? 'medium'}
                     onChange={(ev) => {
                       setSessEffort(ev);
+                      // 乐观置选;失败不回滚(同 model 口径)
                       conn.setSessionEffort(sessionId, ev).catch(() => {});
                     }}
                   />

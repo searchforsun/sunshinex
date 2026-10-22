@@ -155,7 +155,7 @@ export function WebTab({ params, uid, onMeta }: WebTabProps): JSX.Element {
         <button
           type="button"
           className="sx-web-nav"
-          aria-label="后退"
+          aria-label={t('Back', '后退')}
           data-tip={t('Back', '后退')}
           disabled={nav.index <= 0}
           onClick={back}
@@ -165,7 +165,7 @@ export function WebTab({ params, uid, onMeta }: WebTabProps): JSX.Element {
         <button
           type="button"
           className="sx-web-nav"
-          aria-label="前进"
+          aria-label={t('Forward', '前进')}
           data-tip={t('Forward', '前进')}
           disabled={nav.index >= nav.urls.length - 1}
           onClick={forward}
@@ -175,7 +175,7 @@ export function WebTab({ params, uid, onMeta }: WebTabProps): JSX.Element {
         <button
           type="button"
           className="sx-web-nav"
-          aria-label="刷新"
+          aria-label={t('Reload', '刷新')}
           data-tip={t('Reload', '刷新')}
           disabled={active === null}
           onClick={reload}
@@ -198,7 +198,7 @@ export function WebTab({ params, uid, onMeta }: WebTabProps): JSX.Element {
         <button
           type="button"
           className="sx-web-nav"
-          aria-label="外开"
+          aria-label={t('Open in system browser', '在系统浏览器打开')}
           data-tip={t('Open in system browser', '在系统浏览器打开')}
           disabled={active === null}
           onClick={openExternal}

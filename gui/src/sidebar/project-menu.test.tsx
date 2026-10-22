@@ -96,7 +96,7 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
     // DirPicker 弹层在场(缺省 home 起;桩回 D:/w)——确认取当前浏览路径
     await screen.findByRole('dialog', { name: 'choose directory' });
-    fireEvent.click(await screen.findByRole('button', { name: '选择此目录' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^(?:Choose this directory|选择此目录)$/ }));
     // {path} 分支=登记既有目录;旧 {name} 建目录分支不再被 GUI 触达
     await waitFor(() => expect(conn.createWorkspace).toHaveBeenCalledWith({ path: 'D:/w' }));
   });
