@@ -22,6 +22,8 @@ import type { AgentActivities } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
+import { chatMaxFor, MAIN_MIN_WIDTH } from './thread-width';
+import { useMenuResize } from './use-menu-resize';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -68,44 +70,6 @@ declare global {
 
 /** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
 const PROBE = registryProbe();
-
-/** G12 左栏宽度档:只钳最小(拖拽手柄在 .sx-menu-resizer;宽度经 --menu-w 落 .sx-menu);
- *  G14.2xx 用户裁定:最大宽退役——三栏均只留最小宽钳制。MIN 与 .sx-menu CSS min-width 240
- *  同值:状态与 CSS 下限分叉会让视口护栏少算渲染宽(曾漏 20px 越视口) */
-const MENU_WIDTH_MIN = 240;
-const MENU_WIDTH_DEFAULT = 260;
-const MENU_WIDTH_KEY = 'sunshinex.menuWidth';
-
-/** G14.2xx 主对话区限宽阶梯(用户裁定:分级的是最大宽度档位,不是最小宽度——880 是常态平台
- *  档,窄端只由主区自身最小宽托底,不参与分级):区宽 ≤912 满宽(两侧 18px 等宽);至 1120
- *  平台 880;1120→1200 坡到 960;至 1360 平台 960;1360→1520 坡到 1120 封顶。段间线性坡道,
- *  两坡斜率同为 1,全程连续无跳变 */
-const THREAD_FILL_MAX = 912; // 满宽上界:区宽到此处列宽恰为 880,与第一档平台接续
-const THREAD_COL_BASE = 880; // 第一档最大宽度(常态档,旧定版值)
-const THREAD_STEP_1 = 960; // 第二档最大宽度
-const THREAD_COL_MAX = 1120; // 封顶档最大宽度
-const THREAD_RAMP_1_AT = 1120; // 第一坡道起点(区宽)
-const THREAD_RAMP_2_AT = 1360; // 第二坡道起点(区宽)
-const THREAD_RAMP_1 = 80; // 第一坡道区宽跨度(880→960,斜率 1)
-const THREAD_RAMP_2 = 160; // 第二坡道区宽跨度(960→1120 档距大,坡道等比拉宽保斜率 1)
-
-/** 主对话区最小宽(.sx-main min-width 同值)——三栏拖拽的公共约束:被拖栏可加宽的上界=
- *  视口−另两栏−此值(中栏触底即停,任何栏不越视口;无固定最大宽,用户裁定) */
-const MAIN_MIN_WIDTH = 440;
-
-/** 区宽 → 流列最大宽度(--chat-max 落值;单一实现,档位/坡道见上常量注释) */
-const chatMaxFor = (w: number): number => {
-  if (w <= THREAD_FILL_MAX) return Math.max(0, w - 32);
-  if (w <= THREAD_RAMP_1_AT) return THREAD_COL_BASE;
-  if (w <= THREAD_RAMP_1_AT + THREAD_RAMP_1) {
-    return THREAD_COL_BASE + ((w - THREAD_RAMP_1_AT) / THREAD_RAMP_1) * (THREAD_STEP_1 - THREAD_COL_BASE);
-  }
-  if (w <= THREAD_RAMP_2_AT) return THREAD_STEP_1;
-  if (w <= THREAD_RAMP_2_AT + THREAD_RAMP_2) {
-    return THREAD_STEP_1 + ((w - THREAD_RAMP_2_AT) / THREAD_RAMP_2) * (THREAD_COL_MAX - THREAD_STEP_1);
-  }
-  return THREAD_COL_MAX;
-};
 
 export function App(): JSX.Element {
   // G10:token 填写逻辑退役——本地 serve 免鉴权档(恒绑回环),连接不再携带凭证
@@ -256,19 +220,9 @@ function AppShell(): JSX.Element {
    *  项目级行以此为写回锚) */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsRoot, setSettingsRoot] = useState('');
-  /** G12 左栏宽度可调:拖右缘边条改 --menu-w(只钳最小 220),localStorage 持久;SettingsShell
-   *  的左栏同为 .sx-menu,随同一变量联动 */
-  const [menuWidth, setMenuWidth] = useState<number>(() => {
-    // 隐私模式/存储禁用下 localStorage 抛 SecurityError——theme/ui-zoom 同款守卫口径,缺省宽兜底
-    try {
-      const raw = Number(localStorage.getItem(MENU_WIDTH_KEY));
-      return Number.isFinite(raw) && raw >= MENU_WIDTH_MIN ? raw : MENU_WIDTH_DEFAULT;
-    } catch {
-      return MENU_WIDTH_DEFAULT;
-    }
-  });
-  /** 左栏拖宽在途清理句柄(mouseup 解绑;卸载兜底) */
-  const menuResizeCleanupRef = useRef<(() => void) | null>(null);
+  /** 三栏壳根(拖宽期挂 .sx-dragging:iframe 指针事件让位——web 标签内容会吞 window mousemove,
+   *  光标进入 iframe 即拖拽冻结) */
+  const shellRef = useRef<HTMLDivElement | null>(null);
 
   /** 播种窗重开(清缓冲):openSession/onReset/onResetSession 三处——均伴随 Chat reseed,
    *  窗内残留帧属旧基线/旧板,弃 */
@@ -424,8 +378,6 @@ function AppShell(): JSX.Element {
   }, [connInstance]);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
-  /** 左栏拖宽在途兜底解绑(壳卸毁时 window 监听不泄漏) */
-  useEffect(() => () => menuResizeCleanupRef.current?.(), []);
 
   /** 左栏选中会话(attach/新建完成):切路由(Chat 装配期自播种基线)+ ensureSession 建席
    *  (缺省「任务」页)+ 板投影/team 清零(会话切换串态防线——快照落定后经 onSeeded 重建
@@ -710,6 +662,11 @@ function AppShell(): JSX.Element {
   }, [tabStates, openSessionId, connState, connInstance]);
 
   const tabState = tabStates[openSessionId] ?? emptyTabSession();
+  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings 态)——落壳级 --sidebar-w 供 .sx-menu 的
+   *  视口护栏消费(G14.2xx 结构性禁止越视口:两拖拽护栏各消费对方栏宽,零布局反馈环) */
+  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? tabState.width : 0;
+  /** G12 左栏宽度可调(use-menu-resize 单点):菜单宽与拖宽手柄逻辑见钩子 */
+  const { menuWidth, startMenuResize } = useMenuResize(shellRef, () => sidebarOccupied);
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
@@ -745,45 +702,6 @@ function AppShell(): JSX.Element {
   };
 
   const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabState.collapsed ? 32 : tabState.width) : 32;
-  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings 态)——落壳级 --sidebar-w 供 .sx-menu 的
-   *  视口护栏消费(G14.2xx 结构性禁止越视口:两拖拽护栏各消费对方栏宽,零布局反馈环) */
-  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? tabState.width : 0;
-
-  /** G12 左栏拖宽边条 mousedown:window mousemove 计算宽(左栏在左侧,向右拖=变宽;min 240
-   *  模块级常量单点,拖拽上界=视口−右栏−440——无固定最大宽但不越视口,G14.2xx 用户裁定),
-   *  mouseup 解绑+持久化;settings 态不渲染手柄。起拖基线取当前渲染宽(同右栏,免死区)+挂
-   *  sx-dragging(iframe 指针事件让位) */
-  const startMenuResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
-    e.preventDefault();
-    const el = e.currentTarget;
-    el.classList.add('active');
-    const startX = e.clientX;
-    const startWidth = Math.min(menuWidth, window.innerWidth - sidebarOccupied - MAIN_MIN_WIDTH);
-    shellRef.current?.classList.add('sx-dragging');
-    let next = startWidth;
-    const onMove = (ev: MouseEvent): void => {
-      // 同右栏:菜单拖宽至中栏触底 440 即停(右栏实际占宽计入,未渲染=0),右栏不越视口
-      next = Math.max(
-        MENU_WIDTH_MIN,
-        Math.min(window.innerWidth - sidebarOccupied - MAIN_MIN_WIDTH, startWidth + ev.clientX - startX),
-      );
-      setMenuWidth(next);
-    };
-    const stop = (): void => {
-      el.classList.remove('active');
-      shellRef.current?.classList.remove('sx-dragging');
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', stop);
-      menuResizeCleanupRef.current = null;
-      // 持久化失败(隐私模式)仅内存态生效,拖宽不受阻
-      try {
-        localStorage.setItem(MENU_WIDTH_KEY, String(next));
-      } catch { /* 降级静默 */ }
-    };
-    menuResizeCleanupRef.current = stop;
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', stop);
-  };
 
   /** G14.2xx 限宽动态化:--chat-max 不再钉 880px——ResizeObserver 分盯 .sx-main 与 .sx-sidebar,
    *  各按自身实时内容宽经 chatMaxFor 阶梯落内联值(同一策略覆盖主对话、欢迎页、辅助对话、
@@ -792,9 +710,6 @@ function AppShell(): JSX.Element {
    *  切会话换挂,重挂后需重挂观察器 */
   const mainRef = useRef<HTMLElement | null>(null);
   const sidebarRef = useRef<HTMLElement | null>(null);
-  /** 三栏壳根(拖宽期挂 .sx-dragging:iframe 指针事件让位——web 标签内容会吞 window mousemove,
-   *  光标进入 iframe 即拖拽冻结) */
-  const shellRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const els = [mainRef.current, sidebarRef.current].filter((el): el is HTMLElement => el !== null);
     if (els.length === 0) return;
