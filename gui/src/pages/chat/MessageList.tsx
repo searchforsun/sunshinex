@@ -77,13 +77,23 @@ export function MessageList(props: MessageListProps): JSX.Element {
     expandAnchorRef.current = { h: el?.scrollHeight ?? 0 };
     setVisibleCount((v) => v + RENDER_WINDOW_STEP);
   };
+  /** 批2 滚动到顶自动回放:硬顶(scrollTop≤0)即触发步进回放——锚定回钉使展开后 scrollTop=Δ>0,
+   *  不再贴顶即天然防循环;继续上滚到顶加载下一批。chat-earlier 按钮保留作显式入口 */
+  const maybeReplayEarlier = (): void => {
+    if (hiddenCount <= 0) return;
+    const el = chatScrollRef.current;
+    if (el !== null && el.scrollTop <= 0) showEarlier();
+  };
   return (
     <main
       className="chat"
       aria-label="chat"
       ref={chatScrollRef}
       onClickCapture={onEntryToggleClick}
-      onScroll={onScroll}
+      onScroll={(e) => {
+        onScroll(e);
+        maybeReplayEarlier();
+      }}
     >
         {entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">

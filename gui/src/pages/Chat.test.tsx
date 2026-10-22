@@ -622,6 +622,8 @@ describe('会话流尾部窗口(D48)', () => {
   });
 });
 
+
+
 describe('G14.31 轮折叠与辅助对话全新视图', () => {
   it('Worked 行点击折叠/展开该轮工具行;chevron 元素恒在', async () => {
     mountChat([]);
@@ -753,6 +755,16 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelector('.tool-group-head')!.querySelector('.exec-running-text')).toBeNull();
     expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(3);
     expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0);
+  });
+  it('滚动到顶自动回放(批2):scroll 事件硬顶触发步进,无需点击', async () => {
+    const many = Array.from({ length: 320 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `auto${i + 1}` }));
+    mountChat(many as unknown as Seed[]);
+    await flushed();
+    expect(document.querySelectorAll('.entry-user')).toHaveLength(300);
+    fireEvent.scroll(document.querySelector('.chat')!); // 硬顶 scrollTop=0 触发
+    await flushed();
+    expect(document.querySelectorAll('.entry-user')).toHaveLength(320);
+    expect(document.querySelector('.chat-earlier')).toBeNull();
   });
 
   it('G14.215 禁止重排:非同类行切断分组,组只吃相邻同类(布局顺序=出牌顺序)', async () => {
