@@ -1,5 +1,3 @@
-import type { ArchivedRow } from './archive-group';
-
 /** GUI 专属会话置顶(2026-10-21):纯 GUI 视图偏好——TUI 无此概念,不进共享会话档;
  *  持久化落 userConfigDir/gui/pins.json(GET/PUT /app/pins;2026-10-21 用户裁定「也要持久化」
  *  ——桌面壳与浏览器同 daemon 同享,非浏览器 localStorage)。键全局单份(置顶组跨工作区聚合,
@@ -17,7 +15,8 @@ export interface PinEntry {
   updatedAt: number;
 }
 
-/** 归一/消毒(服务端 PUT 同规):id/root 非空串,title 可缺,updatedAt 数目;坏条目弃置 */
+/** 归一/消毒(客户端宽松口径,服务端 PUT 更严:逐条查 title/updatedAt 形态):id/root 非空串即收,
+ *  坏条目弃置;title 缺省/updatedAt 非数由渲染面兜底(title 回落 id,行时间列容错) */
 export function normalizePins(raw: unknown): PinEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
@@ -32,6 +31,3 @@ export function normalizePins(raw: unknown): PinEntry[] {
 export function pinFromRow(row: { id: string; root: string; title?: string; updatedAt: number }): PinEntry {
   return { id: row.id, root: row.root, title: row.title ?? row.id, updatedAt: row.updatedAt };
 }
-
-/** 归档行形兼容(归档层行也带钉口时复用) */
-export type PinSourceRow = Pick<ArchivedRow, 'id' | 'root' | 'title' | 'updatedAt'>;

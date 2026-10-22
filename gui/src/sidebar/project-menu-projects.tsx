@@ -4,7 +4,7 @@ import type { SessionRow, WorkspaceRow } from '../connection';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
 import { Archive, ChevronRight, Folder, FolderOpen, Pin, SquarePen, X } from 'lucide-react';
-import { useConfirmOutsideCancel } from './project-menu-util';
+import { ArchiveConfirmButton, sessionMetaLine, useConfirmOutsideCancel } from './project-menu-util';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
@@ -198,12 +198,9 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                             ? runningIds.has(activeSessionId)
                             : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
                           const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
-                          // G14.188 项目组会话行同样 hover 出会话信息(与最近会话行同款;贴主对话缘)
-                          const srMeta = [
-                            sr.runs !== undefined ? t(`${sr.runs} rounds`, `${sr.runs} 轮`) : '',
-                            sr.steps !== undefined ? t(`${sr.steps} steps`, `${sr.steps} 步`) : '',
-                            sr.createdAt !== undefined ? `${t('Created', '创建于')} ${sr.createdAt.slice(5, 16).replace('T', ' ')}` : '',
-                          ].filter((x) => x !== '').join(' · ');
+                          // G14.188 项目组会话行同样 hover 出会话信息(与最近会话行同款;贴主对话缘;
+                          // 统计行经 sessionMetaLine 单点——本地时区+单复数口径,原 UTC 切片分叉已收编)
+                          const srMeta = sessionMetaLine(sr);
                           return (
                             <li
                               key={sr.id}
@@ -237,18 +234,12 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                               <span className="session-summary" data-id={sr.id}>{label}</span>
                               <span className="session-meta">{relTime(sr.updatedAt)}</span>
                               <span className="session-row-actions">
-                                {confirmId === sr.id ? (
-                                  <button type="button" className="sx-archive-confirm" aria-label={`${t('Confirm archive', '确认归档')} ${sr.id}`}
-                                    onClick={(e) => { e.stopPropagation(); setConfirmId(''); onArchiveRow(sr.id, true); }}>
-                                    {t('Confirm', '确认')}
-                                  </button>
-                                ) : (
-                                  <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
-                                    aria-label={`${t('Archive', '归档')} ${sr.id}`}
-                                    onClick={(e) => { e.stopPropagation(); setConfirmId(sr.id); }}>
-                                    <Archive size={13} strokeWidth={1.75} />
-                                  </button>
-                                )}
+                                <ArchiveConfirmButton
+                                  active={confirmId === sr.id}
+                                  rowId={sr.id}
+                                  onArm={() => setConfirmId(sr.id)}
+                                  onConfirm={() => { setConfirmId(''); onArchiveRow(sr.id, true); }}
+                                />
                               </span>
                             </li>
                               );

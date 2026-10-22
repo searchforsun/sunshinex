@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { SessionRow } from '../connection';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { Archive, ChevronRight, Pin, SquarePen } from 'lucide-react';
-import { RECENT_VISIBLE_DEFAULT, sessionMetaLine, useConfirmOutsideCancel } from './project-menu-util';
+import { ChevronRight, Pin, SquarePen } from 'lucide-react';
+import { ArchiveConfirmButton, RECENT_VISIBLE_DEFAULT, sessionMetaLine, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
  *  + 最近会话行(G14.52 运行圆点/未读点)+ G14.115 尾行分页(显示更多/收起)。纯渲染件,
@@ -115,18 +115,12 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                 <span className="session-summary" data-tip={`${label}${metaLine !== '' ? `\n${metaLine}` : ''}`} data-tip-pos="right">{label}</span>
                 <span className="session-meta">{relTime(r.updatedAt)}</span>
                 <span className="session-row-actions">
-                  {confirmId === r.id ? (
-                    <button type="button" className="sx-archive-confirm" aria-label={`${t('Confirm archive', '确认归档')} ${r.id}`}
-                      onClick={(e) => { e.stopPropagation(); setConfirmId(''); onArchiveRow(r.id, true); }}>
-                      {t('Confirm', '确认')}
-                    </button>
-                  ) : (
-                    <button type="button" className="sx-iconbtn" data-tip={t('Archive', '归档')}
-                      aria-label={`${t('Archive', '归档')} ${r.id}`}
-                      onClick={(e) => { e.stopPropagation(); setConfirmId(r.id); }}>
-                      <Archive size={13} strokeWidth={1.75} />
-                    </button>
-                  )}
+                  <ArchiveConfirmButton
+                    active={confirmId === r.id}
+                    rowId={r.id}
+                    onArm={() => setConfirmId(r.id)}
+                    onConfirm={() => { setConfirmId(''); onArchiveRow(r.id, true); }}
+                  />
                 </span>
               </li>
             );

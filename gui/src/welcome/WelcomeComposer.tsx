@@ -149,15 +149,14 @@ export function WelcomeComposer({
         // default 工作区(用户裁定):置顶缺省——非文件类任务与对话的落点
         // G14.10 B 方案:default 锚定专用临时目录(daemon 侧 <tmp>/sunshinex-default),按 basename
         // 识别('sunshinex-default' 为新锚,'default' 兼容旧仓库内工作区);无注册行时回落字面
-        // 'default'(daemon createSession 同规则解析)。default 行置顶。
-        const baseOf = (root: string): string => root.split(/[\\/]+/).filter(Boolean).pop() ?? '';
+        // 'default'(daemon createSession 同规则解析)。default 行置顶。basename 取 pathBasename 单点。
         // G14.34 去重:default 与 sunshinex-default*(含旧临时锚点的带尾哈希变体)同义——
         // 全部坍缩为唯一「默认工作区」项(root 取现存锚点行;全无则回落字面 'default')
         const isDefaultNm = (nm: string): boolean => nm === 'default' || nm.startsWith('sunshinex-default');
         const anchorRow =
-          usable.find((r) => r.root !== undefined && baseOf(r.root) === 'sunshinex-default') ??
-          usable.find((r) => isDefaultNm(baseOf(r.root ?? r.slug)));
-        const deduped = usable.filter((r) => !isDefaultNm(baseOf(r.root ?? r.slug)));
+          usable.find((r) => r.root !== undefined && pathBasename(r.root) === 'sunshinex-default') ??
+          usable.find((r) => isDefaultNm(pathBasename(r.root ?? r.slug)));
+        const deduped = usable.filter((r) => !isDefaultNm(pathBasename(r.root ?? r.slug)));
         const withDefault = anchorRow !== undefined
           ? [anchorRow, ...deduped]
           : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...deduped];

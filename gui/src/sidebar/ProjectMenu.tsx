@@ -283,27 +283,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         },
       );
   };
-  /** (共享句柄退役:归档视图已内驻侧栏 ArchiveSection,行打开直用 attachJournal——原 App 级
-   *  归档页 ref 注册面随主区归档页一起退役,2026-10-21 用户裁定归档在左侧菜单栏) */
-
-
-
-
-
-  /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
-   *  组列表计数 + Recents(loadWorkspaces)与展开组会话行(loadSessions,归档行由服务端列表
-   *  滤除,T2c)。失败经既有 actionError 通道上屏(终审 F4:不再静默,下次 30s/聚焦刷新自愈) */
-  const archiveRow = useCallback(
-    (id: string, archived: boolean): void => {
-      conn.archiveSession(id, archived).then(() => {
-        loadWorkspaces();
-        const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
-        if (row?.root !== undefined) loadSessions(row.root, row.slug);
-      }, (err: unknown) => setActionError(errText(err)));
-    },
-    [conn, loadWorkspaces, loadSessions, rows],
-  );
-
   /** 归档会话区(2026-10-21 用户裁定:归档视图在左侧菜单栏,非右侧主对话页):跨工作区聚合行
    *  (GET /sessions/archived),分区头折叠同 RECENTS;行动作失败经 actionError 通道 */
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -311,6 +290,23 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const loadArchived = useCallback((): void => {
     conn.archivedSessions().then(setArchivedRows, () => setArchivedRows([]));
   }, [conn]);
+
+  /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
+   *  组列表计数 + Recents(loadWorkspaces)、归档层列表(loadArchived,置顶行归档时归档层若
+   *  开着需即时回显)与展开组会话行(loadSessions,归档行由服务端列表滤除,T2c)。失败经既有
+   *  actionError 通道上屏(终审 F4:不再静默,下次 30s/聚焦刷新自愈) */
+  const archiveRow = useCallback(
+    (id: string, archived: boolean): void => {
+      conn.archiveSession(id, archived).then(() => {
+        loadWorkspaces();
+        loadArchived();
+        const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
+        if (row?.root !== undefined) loadSessions(row.root, row.slug);
+      }, (err: unknown) => setActionError(errText(err)));
+    },
+    [conn, loadWorkspaces, loadArchived, loadSessions, rows],
+  );
+
   const unarchiveArchivedRow = useCallback(
     (id: string): void => {
       conn.archiveSession(id, false).then(() => {
@@ -322,25 +318,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     },
     [conn, loadArchived, loadWorkspaces, loadSessions, rows],
   );
-  const deleteArchivedRow = useCallback(
-    (id: string): void => {
-      conn.deleteSession(id).then(() => {
-        loadArchived();
-        loadWorkspaces();
-        setPins((cur) => {
-          const next = cur.filter((p) => p.id !== id); // 真删防悬挂钉(钉档随会话档清除)
-          void conn.saveAppPins(next).then(() => undefined, () => undefined);
-          return next;
-        });
-      }, (err: unknown) => setActionError(errText(err)));
-    },
-    [conn, loadArchived, loadWorkspaces],
-  );
 
-  /** 置顶会话(2026-10-21 用户裁定,GUI 专属):钉存 GUI 本地(localStorage,theme/ui-zoom
-   *  同款先例;TUI 无此概念不进共享档)。钉组跨工作区聚合于「项目」上方,不支持折叠;无钉
-   *  不渲染。归档联动(2026-10-21 用户裁定「点击归档不覆盖置顶分组」):置顶组显示所有钉,
-   *  不因归档离组;归档层真删时随删防悬挂 */
+  /** 置顶会话(2026-10-21 用户裁定,GUI 专属):钉存 userConfigDir/gui/pins.json(GET/PUT /app/pins,
+   *  桌面壳与浏览器同 daemon 同享;TUI 无此概念不进共享会话档)。钉组跨工作区聚合于「项目」上方,
+   *  不支持折叠;无钉不渲染。归档联动(2026-10-21 用户裁定「点击归档不覆盖置顶分组」):置顶组
+   *  显示所有钉,不因归档离组;归档层真删时随删防悬挂 */
   const [pins, setPins] = useState<PinEntry[]>([]);
   const loadPins = useCallback((): void => {
     conn.appPins().then((r) => setPins(normalizePins(r.pins)), () => setPins([]));
@@ -364,6 +346,18 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const unpinRow = useCallback((id: string): void => {
     persistPins(pins.filter((p) => p.id !== id));
   }, [pins, persistPins]);
+  /** 归档层红删除(二次确认 morph 后):受控删除会话档全家后重拉归档层/组计数/Recents;
+   *  真删时随删钉防悬挂钉,保存失败经 actionError 可见化(与 persistPins 同口径) */
+  const deleteArchivedRow = useCallback(
+    (id: string): void => {
+      conn.deleteSession(id).then(() => {
+        loadArchived();
+        loadWorkspaces();
+        persistPins(pins.filter((p) => p.id !== id)); // 真删防悬挂钉(钉档随会话档清除)
+      }, (err: unknown) => setActionError(errText(err)));
+    },
+    [conn, loadArchived, loadWorkspaces, persistPins, pins],
+  );
   const pinnedIds = useMemo(() => new Set(pins.map((p) => p.id)), [pins]);
 
   /** 「+ 添加工作区」(G10-C11 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
@@ -545,7 +539,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             type="button"
             aria-label="open settings"
             className="sx-iconbtn"
-            data-tip="设置"
+            data-tip={t('Settings', '设置')}
             onClick={onOpenSettings}
           >
             <Settings size={18} strokeWidth={1.75} />

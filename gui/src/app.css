@@ -285,7 +285,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   pointer-events: none;
 }.sx-tree-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); }.sx-tree-dir { color: var(--fg); }.sx-tree-chevron { flex: none; color: var(--fg-secondary); transition: transform 0.15s ease; }.sx-tree-chevron.open { transform: rotate(90deg); }.sx-tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-tree-status, .sx-tree-truncated { color: var(--fg-secondary); font-size: 11px; }.sx-tree-error { color: var(--err); font-size: 11px; }
 /* 高级 raw 编辑告警条(warn 边) */.sx-raw-warnings { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border: 1px solid var(--warn); border-radius: var(--radius-md); color: var(--warn); font-size: 12px; }.sx-raw-warnings p { margin: 0; }
-/* 退役 Home 遗留行(ProjectMenu 组列表/装配占位/模态内错误行暗色化) */.home-loading, .home-empty, .sessions-loading, .no-sessions { list-style: none; padding: 4px 12px; color: var(--fg-secondary); font-size: 12px; }.home-error { list-style: none; padding: 4px 12px; color: var(--err); font-size: 12px; }.modal-body .home-error { padding: 0; margin: 8px 0 0; }
+/* 退役 Home 遗留行(ProjectMenu 组列表/装配占位/模态内错误行暗色化);.no-sessions 单一定义
+   在侧栏归档区段(2026-10-22 裁定缩进 x=34 与「显示更多」对齐) */.home-loading, .home-empty, .sessions-loading { list-style: none; padding: 4px 12px; color: var(--fg-secondary); font-size: 12px; }.home-error { list-style: none; padding: 4px 12px; color: var(--err); font-size: 12px; }.modal-body .home-error { padding: 0; margin: 8px 0 0; }
 
 /* ===== G8f 可读性与层次(用户对标第二轮):命名/侧栏排版/欢迎态/设置卡式化 ===== */
 
@@ -2018,12 +2019,10 @@ input.sx-setting-input { width: 100%; }
 .sx-ws-name, .sx-session-row .session-summary { text-overflow: clip; }
 .sx-ws-name[data-cut], .sx-session-row .session-summary[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); }
 
-/* 2026-10-21 归档面:徽标/确认钮/侧栏归档区(两行式行+hover 动作;主区归档页已退役——
-   用户裁定归档视图在左侧菜单栏,.sx-archived-page 系列随之拆除) */
+/* 2026-10-21 归档面:徽标/确认钮/侧栏归档区(两行式行+hover 动作) */
 .sx-archived-badge { flex: none; font-size: 11px; color: var(--fg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 0 6px; }
 .sx-archive-confirm { flex: none; border: none; border-radius: var(--radius-sm); background: var(--err); color: #fff; font-size: 12px; padding: 2px 10px; cursor: pointer; }
 .sx-iconbtn.sx-danger:hover { color: var(--err); }
-.sx-archived-error { margin: 0; font-size: 12px; color: var(--err); }
 .session-row-actions { flex: none; display: none; align-items: center; }
 .sx-session-row .session-row-actions { margin-right: -8px; } /* -8:归档钮中心线对齐上方新会话(编辑)钮(2026-10-22) */
 
@@ -2062,7 +2061,6 @@ input.sx-setting-input { width: 100%; }
 .sx-pin-item:hover .sx-pin-time { visibility: hidden; } /* hover 右槽换归档钮:时间隐形占位,行高恒定 */
 .sx-pin-archive { display: none; margin-right: -8px; } /* -8:归档钮右缘 248=新会话钮右缘,中心线同会话归档(2026-10-22 实测校准) */
 .sx-pin-item:hover .sx-pin-archive { display: inline-flex; }
-.sx-pin-title { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-pin-item .session-row-actions { display: inline-flex; margin-left: auto; }
 
 /* 2026-10-22 用户裁定:「暂无…」空态与「显示更多」对齐(同缩进 x=34/字号 12px/灰度 fg-tertiary) */
@@ -2070,3 +2068,8 @@ input.sx-setting-input { width: 100%; }
 /* 置顶行取消置顶钮:hover 显于状态点位(2026-10-22 用户裁定:取消置顶非常驻,且需显示会话状态) */
 .sx-pin-item:hover .sx-pin-btn, .sx-pin-item:focus-within .sx-pin-btn { opacity: 1; }
 .sx-pin-item:hover .sx-session-dot { opacity: 0; }
+
+/* 2026-10-22 用户裁定:空态「暂无…」与所在组会话标题列对齐(两组标题列起点不同:
+   项目组 x=38、最近会话组 x=34、归档层 x=38) */
+.recent-list .no-sessions { padding-left: 30px; } /* 最近会话组:4+30=34=标题列 */
+.sx-archive-list .no-sessions { padding-left: 34px; } /* 归档层:4+34=38=归档行标题列 */

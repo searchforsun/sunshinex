@@ -39,7 +39,7 @@ describe('PinnedSection 置顶分组(GUI 专属)', () => {
     expect(screen.getByText('置顶会话')).toBeDefined();
     expect(screen.getByRole('button', { name: '取消置顶 j1' })).toBeDefined(); // 行首常驻
     expect(screen.getByRole('button', { name: '归档 j1' })).toBeDefined(); // 行尾
-    container.querySelectorAll('.sx-side-chev').length === 0; // 无折叠 chevron(不支持折叠)
+    expect(container.querySelectorAll('.sx-side-chev').length).toBe(0); // 无折叠 chevron(不支持折叠;换回可折叠实现即红)
   });
 
   it('行点击上抛 onOpenSession;取消置顶 stopPropagation 即时上抛', () => {

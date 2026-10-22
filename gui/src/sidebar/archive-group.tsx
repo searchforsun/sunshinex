@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArchiveRestore, Folder, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
-import { relTime } from '../ui-util';
+import { pathBasename, relTime } from '../ui-util';
 import { RECENT_VISIBLE_DEFAULT, RECENT_VISIBLE_STEP, useConfirmOutsideCancel } from './project-menu-util';
 
 /** 归档会话层(2026-10-21 用户裁定:点项目组头归档钮后,侧栏下侧整层替换为归档列表——
@@ -28,8 +28,7 @@ export interface ArchiveSectionProps {
   readonly onDelete: (id: string) => void;
 }
 
-/** 来源项目目录名(用户裁定「项目使用文件名」):root 末段(slash 归一),slug 折叠名太长不可读 */
-const rootBaseName = (root: string): string => root.split(/[\\/]+/).filter(Boolean).pop() ?? root;
+/** 来源项目目录名(用户裁定「项目使用文件名」):pathBasename 单点(D34 口径),slug 折叠名太长不可读 */
 
 export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
   const { rows, busy, onOpenSession, onUnarchive, onDelete } = props;
@@ -60,7 +59,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
             </span>
             <span className="sx-archive-slug-row">
               <Folder size={11} strokeWidth={1.75} aria-hidden="true" />
-              <span className="sx-archive-slug">{rootBaseName(r.root)}</span>
+              <span className="sx-archive-slug">{pathBasename(r.root)}</span>
               {/* 动作钮常驻第二行右缘(2026-10-21 用户裁定:非 hover 显隐) */}
               <span className="session-row-actions">
                 {confirmId === r.id ? (

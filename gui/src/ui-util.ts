@@ -37,6 +37,29 @@ export function pathBasename(p: string): string {
   return pathSegments(p).pop() ?? p;
 }
 
+/** 封顶 JSON map localStorage 持久化单点（D46 收敛：Chat scrollMem/侧栏 seenMap 同构两份）：
+ *  读=缺档/坏档/隐私模式回空对象；写=按 recencyOf 降序截 cap 条落盘，存储满/禁用静默 */
+export function loadStoredMap<T>(key: string): Record<string, T> {
+  try {
+    const raw = localStorage.getItem(key);
+    const obj = raw === null ? null : (JSON.parse(raw) as Record<string, T>);
+    return obj !== null && typeof obj === 'object' ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+export function persistCappedMap<T>(key: string, map: Record<string, T>, cap: number, recencyOf: (v: T) => number): void {
+  try {
+    const entries = Object.entries(map)
+      .sort((a, b) => recencyOf(b[1]) - recencyOf(a[1]))
+      .slice(0, cap);
+    localStorage.setItem(key, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    /* 存储满/禁用:静默 */
+  }
+}
+
 /** ISO 时刻 → 本地短时刻(创建时间回溯面):'2026-10-11T05:24:29.123Z' → '10-11 13:24' */
 export function shortLocalTime(iso: string): string {
   const d = new Date(iso);

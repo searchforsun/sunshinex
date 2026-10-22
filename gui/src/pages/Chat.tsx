@@ -6,7 +6,7 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
-import { pathBasename } from '../ui-util';
+import { loadStoredMap, pathBasename, persistCappedMap } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
 
@@ -79,13 +79,7 @@ let scrollFlushAt = 0;
 let scrollFlushTimer: ReturnType<typeof setTimeout> | null = null;
 function scrollMemMap(): ScrollMem {
   if (scrollMem !== null) return scrollMem;
-  try {
-    const raw = localStorage.getItem(SCROLL_KEY);
-    const obj = raw === null ? null : (JSON.parse(raw) as ScrollMem);
-    scrollMem = obj !== null && typeof obj === 'object' ? obj : {};
-  } catch {
-    scrollMem = {};
-  }
+  scrollMem = loadStoredMap<{ d: number; t: number }>(SCROLL_KEY);
   return scrollMem;
 }
 function flushScrollMem(): void {
@@ -95,14 +89,7 @@ function flushScrollMem(): void {
   }
   scrollFlushAt = Date.now();
   if (scrollMem === null) return;
-  try {
-    const entries = Object.entries(scrollMem)
-      .sort((a, b) => b[1].t - a[1].t)
-      .slice(0, 100);
-    localStorage.setItem(SCROLL_KEY, JSON.stringify(Object.fromEntries(entries)));
-  } catch {
-    /* 存储满/禁用:静默 */
-  }
+  persistCappedMap(SCROLL_KEY, scrollMem, 100, (v) => v.t);
 }
 function saveScrollPos(id: string, dist: number): void {
   const m = scrollMemMap();
