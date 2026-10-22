@@ -1551,7 +1551,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       expect(container.querySelector('.sx-agent-list')?.textContent).toContain('E2E'); // name 面同卡在场
 
       // —— 删除(op:delete)→ 清单空(「无自定义智能体。」空态回归)——
-      fireEvent.click(screen.getByRole('button', { name: /^(?:Delete|删除) e2e-agent\(项目\)$/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^(?:Delete|删除) e2e-agent\((?:Project|项目)\)$/ }));
       await waitFor(
         () => {
           expect(screen.getByText(bi('No custom agents.', '无自定义智能体。'))).toBeDefined();
@@ -1663,8 +1663,8 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Browser', '浏览器') }));
-      await waitFor(() => expect(tabsByTitle(container, '浏览器').length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, '浏览器')[0]!.className).toContain('active');
+      await waitFor(() => expect(tabsByTitle(container, bi('Browser', '浏览器')).length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, bi('Browser', '浏览器'))[0]!.className).toContain('active');
 
       // —— 裸开档空态:引导文案 + url 输入在场(占位符锚)——
       expect(container.querySelector('.sx-web-empty')).not.toBeNull();
