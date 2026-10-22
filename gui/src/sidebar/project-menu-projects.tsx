@@ -173,18 +173,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                         {row.sessionCount}
                       </span>
                     </button>
-                    {root !== undefined && (
-                      <button
-                        type="button"
-                        aria-label={`new session in ${row.slug}`}
-                        className="sx-iconbtn"
-                        data-tip={t('New chat in this project', '在此项目中新对话')}
-                        onClick={() => onComposeIn(root)}
-                      >
-                        <SquarePen size={14} strokeWidth={1.75} />
-                      </button>
-                    )}
-                    {/* 组头 ⋯ 移除钮(2026-10-23 用户裁定:hover 显形 sx-iconbtn 同款;点击弹「移除」) */}
+                    {/* 组头 ⋯ 移除钮(2026-10-23 用户裁定:hover 显形 sx-iconbtn 同款,居新会话钮左侧;点击弹「移除」) */}
                     <button
                       type="button"
                       aria-label={`workspace actions ${row.slug}`}
@@ -198,6 +187,17 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                     >
                       <MoreHorizontal size={14} strokeWidth={1.75} />
                     </button>
+                    {root !== undefined && (
+                      <button
+                        type="button"
+                        aria-label={`new session in ${row.slug}`}
+                        className="sx-iconbtn"
+                        data-tip={t('New chat in this project', '在此项目中新对话')}
+                        onClick={() => onComposeIn(root)}
+                      >
+                        <SquarePen size={14} strokeWidth={1.75} />
+                      </button>
+                    )}
                   </div>
                   {root !== undefined && (
                     <div className={`sx-collapse${openSlug === row.slug ? ' open' : ''}`}>
