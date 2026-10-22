@@ -87,6 +87,9 @@ export interface Connection {
   /** G14.2xx 应用级指针档(恢复现场入口;<projectsRoot>/gui/ui-state.json:lastRoot/lastJournalId) */
   appGuiState(): Promise<{ state: unknown }>;
   saveAppGuiState(state: object): Promise<void>;
+  /** 置顶档(GET/PUT /app/pins;2026-10-21 GUI 专属会话置顶,机器级跨工作区) */
+  appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }> }>;
+  saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }>): Promise<void>;
   sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
   commitChanges(id: string, message: string): Promise<void>;
   pushChanges(id: string): Promise<void>;
@@ -374,6 +377,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async saveAppGuiState(state: object) {
       await put('/app/gui-state', { state });
+    },
+    appPins() {
+      return getJson('/app/pins');
+    },
+    async saveAppPins(pins) {
+      await put('/app/pins', { pins });
     },
     sessionChangeContent(id: string, path: string) {
       return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}`);

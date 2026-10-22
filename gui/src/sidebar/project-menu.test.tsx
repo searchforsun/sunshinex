@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { MutableRefObject } from 'react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { ProjectMenu } from './ProjectMenu';
-import type { AttachJournal, ProjectMenuConn } from './ProjectMenu';
+import type { ProjectMenuConn } from './ProjectMenu';
 
 /**
  * G14.9 launcher IA:会话只在 RECENTS 列(顶部主列表,空态「暂无最近会话」占位);
@@ -39,6 +38,13 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     })),
     attach: async (sessionId: string) => ({ sessionId }), // 无收编形态:原样回 id(收编面在 daemon 钉测)
     archiveSession: vi.fn(async () => undefined), // T6 行内归档落库面(重拉断言消费 workspaces spy)
+    appPins: vi.fn(async () => ({ pins: [] })), // 置顶档(归档区/置顶组测试消费)
+    saveAppPins: vi.fn(async () => undefined),
+    archivedSessions: vi.fn(async () => [
+      // 归档区(2026-10-21 侧栏 ArchiveSection)数据面:跨工作区聚合行
+      { id: 'a1', slug: 'p1', root: 'D:/w/p1', title: '已归档会话', updatedAt: FIXED_TS, archivedAt: FIXED_TS },
+    ]) as never,
+    deleteSession: vi.fn(async () => undefined), // 受控删除(归档区红删除确认面)
     locateWorkspace: async () => ({ path: null }),
   };
   return conn;
@@ -196,6 +202,11 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     fireEvent.click(screen.getByRole('button', { name: 'Archive j1' }));
     expect(screen.queryByRole('button', { name: 'Archive j1' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Confirm archive j1' })).toBeDefined();
+    fireEvent.mouseDown(document.body); // 行外点击:取消确认(用户裁定),还原归档钮
+    expect(screen.getByRole('button', { name: 'Archive j1' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Confirm archive j1' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Archive j1' }));
+    expect(screen.getByRole('button', { name: 'Confirm archive j1' })).toBeDefined();
     expect(open.mock.calls.length).toBe(opensBefore);
     expect(conn.roots).toEqual([]); // 无 sessionsOf 拉(未展开组;attach 未发生)
     // 确认点击:落库 archived=true + 重拉(workspaces=计数/Recents;组未展开故无 sessionsOf)
@@ -206,25 +217,38 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     expect(open.mock.calls.length).toBe(opensBefore);
   });
 
-  it('组头归档入口:onOpenArchived 配置时「archived sessions」钮在场且点击回调;未配不渲染(同 onOpenSettings 装配裁定)', async () => {
-    const onOpenArchived = vi.fn();
-    const { unmount } = renderMenu(makeConn(), { onOpenArchived });
+  it('归档层入口:点组头归档钮→下侧整替为归档列表(覆盖项目/最近会话,组头换「归档会话」+X);点 X 退出还原', async () => {
+    const conn = makeConn();
+    renderMenu(conn);
+    await screen.findByText('demo goal');
+    expect(screen.queryByRole('button', { name: 'exit archive' })).toBeNull(); // 非归档层无 X
     fireEvent.click(screen.getByRole('button', { name: 'archived sessions' }));
-    expect(onOpenArchived).toHaveBeenCalledTimes(1);
-    unmount();
-    renderMenu(makeConn());
-    expect(screen.queryByRole('button', { name: 'archived sessions' })).toBeNull();
+    await waitFor(() => expect(conn.archivedSessions).toHaveBeenCalledTimes(1));
+    // 整替面:归档行在场;项目组行与最近会话区消失;组头 X 在场
+    const list = screen.getByRole('list', { name: 'archived sessions' });
+    expect(within(list).getByText('已归档会话')).toBeDefined(); // 行标题(无题回落 id)
+    expect(within(list).getAllByText('p1').length).toBeGreaterThan(0); // 来源项目 slug 标注
+    expect(screen.queryByText('demo goal')).toBeNull(); // 项目组行被覆盖
+    expect(screen.queryByText('暂无最近会话')).toBeNull(); // Recents 区被覆盖
+    expect(screen.getByRole('button', { name: 'exit archive' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'archived sessions' })).toBeNull(); // 归档/新增图标退役
+    expect(screen.queryByRole('button', { name: 'add workspace' })).toBeNull();
+    // X 退出:恢复项目/最近会话显示
+    fireEvent.click(screen.getByRole('button', { name: 'exit archive' }));
+    await screen.findByText('demo goal');
+    expect(screen.queryByRole('list', { name: 'archived sessions' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'archived sessions' })).toBeDefined();
   });
 
-  it('attachJournalRef 注册共享 attachJournal(T6 评审修:归档页行打开同链同簿记):渲染期注册,句柄调用即走 attach 两步→onOpenSession', async () => {
+  it('归档层行点击:经 attachJournal 同链打开(onOpenSession 收 new-<root> + journalId 随行)', async () => {
     const conn = makeConn();
-    const attachJournalRef: MutableRefObject<AttachJournal | null> = { current: null };
-    renderMenu(conn, { attachJournalRef });
-    expect(typeof attachJournalRef.current).toBe('function'); // 渲染期注册(归档页行打开消费面)
+    renderMenu(conn);
+    await screen.findByText('demo goal');
+    fireEvent.click(screen.getByRole('button', { name: 'archived sessions' }));
     const opensBefore = open.mock.calls.length;
-    attachJournalRef.current!('D:/w/p1', 'j1', FIXED_TS);
-    // 同侧栏行一链:收编以返回 id 为准(桩无收编形态),journalId 随行(G14.213)
-    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'j1'));
+    const list = await screen.findByRole('list', { name: 'archived sessions' });
+    fireEvent.click(within(list).getByText('已归档会话'));
+    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'a1'));
     expect(open.mock.calls.length).toBe(opensBefore + 1);
   });
 });

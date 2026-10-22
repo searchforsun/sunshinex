@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { MutableRefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
@@ -16,6 +15,9 @@ import type { SeenMap } from './project-menu-util';
 import { ProjectSearch } from './project-menu-search';
 import { ProjectsSection } from './project-menu-projects';
 import { RecentsSection } from './project-menu-recents';
+import { ArchiveSection } from './archive-group';
+import { PinnedSection } from './pinned-section';
+import { normalizePins, pinFromRow, type PinEntry } from './pin-store';
 
 // FolderAddIcon 消费方(App.tsx)零迁移:原路径再导出
 export { FolderAddIcon } from './project-menu-util';
@@ -50,11 +52,13 @@ export interface ProjectMenuConn {
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string }>;
   /** T6 归档/撤销(Connection 结构化子集):侧栏行归档钮落库面(归档行由服务端列表滤除) */
   archiveSession(id: string, archived: boolean): Promise<void>;
+  /** 置顶档(2026-10-21 GUI 专属,GET/PUT /app/pins;userConfigDir/gui/pins.json) */
+  appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }> }>;
+  saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }>): Promise<void>;
+  /** 归档区数据面(跨工作区聚合行;GET /sessions/archived)+ 受控删除(已归档态) */
+  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }>>;
+  deleteSession(id: string): Promise<void>;
 }
-
-/** T6 侧栏行打开链(attach 两步)共享句柄:归档页行打开经同一函数——markSeen/markJournal/
- *  busy 防双发/打开即刷列表簿记两路同享(ref 注册式,见 attachJournalRef) */
-export type AttachJournal = (root: string, journalId: string, journalUpdatedAt?: number) => void;
 
 export interface ProjectMenuProps {
   readonly conn: ProjectMenuConn;
@@ -68,11 +72,6 @@ export interface ProjectMenuProps {
   readonly onOpenSession: (sessionId: string, root: string, journalId?: string) => void;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
-  /** T6 归档页入口(项目组头归档箱钮;可选——未配时钮不渲染,同 onOpenSettings 装配裁定) */
-  readonly onOpenArchived?: () => void;
-  /** T6 归档页行打开共享链句柄(App 注入 ref,渲染期注册最新 attachJournal——归档页行点击与
-   *  侧栏行同链同簿记;未配时 App 侧句柄恒 null,归档页行点击静默) */
-  readonly attachJournalRef?: MutableRefObject<AttachJournal | null>;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
   readonly onNewChat: () => void;
   /** 项目行「+」:回欢迎页并预选该项目与审批模式(G10-C16) */
@@ -82,7 +81,7 @@ export interface ProjectMenuProps {
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onOpenArchived, onNewChat, onComposeIn } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn } = props;
   const recentVersion = props.recentVersion ?? 0;
   const runningIds = props.runningIds ?? new Set<string>();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
@@ -284,9 +283,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         },
       );
   };
-  /** T6 归档页共享注册:每渲染重赋(App shadowHydrateRef/forkLatestRef 同 idiom——闭包恒新;
-   *  归档页行打开消费面只认 ref,簿记零复制) */
-  if (props.attachJournalRef !== undefined) props.attachJournalRef.current = attachJournal;
+  /** (共享句柄退役:归档视图已内驻侧栏 ArchiveSection,行打开直用 attachJournal——原 App 级
+   *  归档页 ref 注册面随主区归档页一起退役,2026-10-21 用户裁定归档在左侧菜单栏) */
 
 
 
@@ -305,6 +303,68 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     },
     [conn, loadWorkspaces, loadSessions, rows],
   );
+
+  /** 归档会话区(2026-10-21 用户裁定:归档视图在左侧菜单栏,非右侧主对话页):跨工作区聚合行
+   *  (GET /sessions/archived),分区头折叠同 RECENTS;行动作失败经 actionError 通道 */
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archivedRows, setArchivedRows] = useState<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }> | null>(null);
+  const loadArchived = useCallback((): void => {
+    conn.archivedSessions().then(setArchivedRows, () => setArchivedRows([]));
+  }, [conn]);
+  const unarchiveArchivedRow = useCallback(
+    (id: string): void => {
+      conn.archiveSession(id, false).then(() => {
+        loadArchived();
+        loadWorkspaces(); // 撤销即回主列表:组计数/Recents 即时归位
+        const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
+        if (row?.root !== undefined) loadSessions(row.root, row.slug); // 展开组会话行即时回行(与 archiveRow 对称)
+      }, (err: unknown) => setActionError(errText(err)));
+    },
+    [conn, loadArchived, loadWorkspaces, loadSessions, rows],
+  );
+  const deleteArchivedRow = useCallback(
+    (id: string): void => {
+      conn.deleteSession(id).then(() => {
+        loadArchived();
+        loadWorkspaces();
+        setPins((cur) => {
+          const next = cur.filter((p) => p.id !== id); // 真删防悬挂钉(钉档随会话档清除)
+          void conn.saveAppPins(next).then(() => undefined, () => undefined);
+          return next;
+        });
+      }, (err: unknown) => setActionError(errText(err)));
+    },
+    [conn, loadArchived, loadWorkspaces],
+  );
+
+  /** 置顶会话(2026-10-21 用户裁定,GUI 专属):钉存 GUI 本地(localStorage,theme/ui-zoom
+   *  同款先例;TUI 无此概念不进共享档)。钉组跨工作区聚合于「项目」上方,不支持折叠;无钉
+   *  不渲染。归档联动(2026-10-21 用户裁定「点击归档不覆盖置顶分组」):置顶组显示所有钉,
+   *  不因归档离组;归档层真删时随删防悬挂 */
+  const [pins, setPins] = useState<PinEntry[]>([]);
+  const loadPins = useCallback((): void => {
+    conn.appPins().then((r) => setPins(normalizePins(r.pins)), () => setPins([]));
+  }, [conn]);
+  useEffect(() => {
+    loadPins(); // 挂载拉钉档(userConfigDir/gui/pins.json;2026-10-21 用户裁定「也要持久化」)
+  }, [loadPins]);
+  const persistPins = useCallback((next: PinEntry[]): void => {
+    setPins(next);
+    void conn.saveAppPins(next).then(() => undefined, (err: unknown) => setActionError(errText(err)));
+  }, [conn]);
+  const pinRow = useCallback((row: PinEntry): void => {
+    if (pins.some((p) => p.id === row.id)) return;
+    persistPins([row, ...pins]); // 新钉居前
+  }, [pins, persistPins]);
+  /** 会话行置顶钮消费面:行快照 → 钉条目入列(Projects/Recents 两组行共用) */
+  const pinSessionRow = useCallback(
+    (row: { id: string; root: string; title?: string; updatedAt: number }): void => pinRow(pinFromRow(row)),
+    [pinRow],
+  );
+  const unpinRow = useCallback((id: string): void => {
+    persistPins(pins.filter((p) => p.id !== id));
+  }, [pins, persistPins]);
+  const pinnedIds = useMemo(() => new Set(pins.map((p) => p.id)), [pins]);
 
   /** 「+ 添加工作区」(G10-C11 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
    *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
@@ -389,10 +449,20 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       )}
             {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
       <div className="sx-side-scroll" ref={sideScrollRef}>
+        {/* 置顶组(2026-10-21 用户裁定):「项目」上方,不支持折叠;无钉不渲染(PinnedSection 判空) */}
+        <PinnedSection
+          pins={pins}
+          busy={busy}
+          onOpenSession={attachJournal}
+          onUnpin={unpinRow}
+          onArchiveRow={archiveRow}
+        />
         <ProjectsSection
           projectsOpen={projectsOpen}
           onToggleProjects={() => setProjectsOpen((v) => !v)}
           busy={busy}
+          archiveMode={archiveOpen}
+          onExitArchive={() => setArchiveOpen(false)}
           onAddWorkspace={(e) => {
             e.stopPropagation();
             setActionError('');
@@ -415,28 +485,48 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onComposeIn={onComposeIn}
           onAttach={attachJournal}
           onArchiveRow={archiveRow}
-          onOpenArchived={onOpenArchived}
-        />
-        <RecentsSection
-          recentsOpen={recentsOpen}
-          onToggleRecents={() => {
-            setRecentsOpen((v) => !v);
-            setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
+          onOpenArchived={() => {
+            setArchiveOpen(true);
+            loadArchived();
           }}
-          defaultAnchorRoot={defaultAnchorRoot}
-          onComposeIn={onComposeIn}
-          recents={recents}
-          recentLimit={recentLimit}
-          onShowMore={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v))}
-          onCollapse={() => setRecentLimit(RECENT_VISIBLE_DEFAULT)}
-          activeSessionId={activeSessionId}
-          runningIds={runningIds}
-          journalOfSession={journalOfSession}
-          isUnseen={isUnseen}
-          busy={busy}
-          onAttach={attachJournal}
-          onArchiveRow={archiveRow}
+          pinnedIds={pinnedIds}
+          onPinRow={pinSessionRow}
         />
+        {/* 归档层(2026-10-21 用户裁定):整替 Projects 列表体+Recents——无独立分组,组头 X 退出 */}
+        {archiveOpen ? (
+          <ArchiveSection
+            rows={archivedRows}
+            busy={busy}
+            onOpenSession={attachJournal}
+            onUnarchive={unarchiveArchivedRow}
+            onDelete={deleteArchivedRow}
+          />
+        ) : (
+          <>
+            <RecentsSection
+              recentsOpen={recentsOpen}
+              onToggleRecents={() => {
+                setRecentsOpen((v) => !v);
+                setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
+              }}
+              defaultAnchorRoot={defaultAnchorRoot}
+              onComposeIn={onComposeIn}
+              recents={recents}
+              recentLimit={recentLimit}
+              onShowMore={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v))}
+              onCollapse={() => setRecentLimit(RECENT_VISIBLE_DEFAULT)}
+              activeSessionId={activeSessionId}
+              runningIds={runningIds}
+              journalOfSession={journalOfSession}
+              isUnseen={isUnseen}
+              busy={busy}
+              onAttach={attachJournal}
+              onArchiveRow={archiveRow}
+              pinnedIds={pinnedIds}
+              onPinRow={pinSessionRow}
+            />
+          </>
+        )}
         {dirOpen && (
           <div className="modal-overlay" onClick={() => setDirOpen(false)}>
             <div className="modal-body" onClick={(e) => e.stopPropagation()}>

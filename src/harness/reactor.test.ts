@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactor } from './reactor';
 import { ModelRouter, ScriptedAdapter, parseScriptStep } from '../model/adapter';
-import type { ChatRequest } from '../types';
+import type { ChatRequest, SessionEvent } from '../types';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -26,13 +26,14 @@ function makeReactor(
   tmp: string,
   adapter: ModelAdapter,
   router?: ModelRouter,
+  onEvent?: (e: SessionEvent) => void,
 ): Reactor {
   const store = new FileStore(tmp);
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
-  return new Reactor({ registry, safety, context, model: adapter, ...(router ? { router } : {}) });
+  return new Reactor({ registry, safety, context, model: adapter, ...(router ? { router } : {}), ...(onEvent ? { onEvent } : {}) });
 }
 
 test('Reactor 用 ScriptedAdapter 跑通端到端闭环', async () => {
@@ -68,14 +69,18 @@ test('模型输出非 JSON 时不误判完成，而是记录观察并重试', as
   assert.ok(r.steps.every((s) => s.observation.includes('No tool calls were returned')));
 });
 
-test('模型调用异常时 done=false 并保留错误信息', async () => {
+test('模型调用异常时 done=false,错误仅走 error 事件不进 reply(2026-10-22 裁定:不与错误行双显)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor4-'));
+  const errors: string[] = [];
   const adapter = { provider: 'boom', chat: textReplyToChatFace(async () => { throw new Error('网络错误'); }) };
-  const reactor = makeReactor(tmp, adapter);
+  const reactor = makeReactor(tmp, adapter, undefined, (e: SessionEvent) => {
+    if (e.type === 'error') errors.push(e.text ?? '');
+  });
 
   const r = await reactor.run({ goal: 'x' });
   assert.equal(r.done, false);
-  assert.ok(r.reply && r.reply.includes('网络错误'));
+  assert.equal(r.reply, undefined);
+  assert.ok(errors.includes('网络错误'), '错误文案经 error 事件行承载');
 });
 
 test('Reactor prompt 经 Context.assemble 串起 SUNSHINE.md 指令', async () => {

@@ -308,6 +308,52 @@ function appGuiStateFile(): string {
   return path.join(userConfigDir(), 'gui', 'ui-state.json');
 }
 
+/** 置顶档(2026-10-21,GUI 专属会话置顶):userConfigDir/gui/pins.json——机器级跨工作区
+ *  视图偏好(置顶组跨工作区聚合),与指针档同目录同分层口径;GET 缺档/坏档回 {pins:[]} */
+function appPinsFile(): string {
+  return path.join(userConfigDir(), 'gui', 'pins.json');
+}
+
+export async function handleAppPinsGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(appPinsFile(), 'utf8')) as unknown;
+    io.send(res, 200, { pins: Array.isArray(raw) ? raw : [] });
+  } catch {
+    io.send(res, 200, { pins: [] });
+  }
+}
+
+/** 置顶档写(原子写):body.pins 须数组,逐条校验(id/root 非空串,title 可缺,updatedAt 数目)——
+ *  坏条目弃置不拒整单(容错口径同 SIDECAR) */
+export async function handleAppPinsPut(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const rawPins = (parsed.body as { pins?: unknown } | null)?.pins;
+  if (!Array.isArray(rawPins)) {
+    io.send(res, 400, { error: 'pins array required' });
+    return;
+  }
+  const pins = rawPins.flatMap((p) => {
+    const e = p as { id?: unknown; root?: unknown; title?: unknown; updatedAt?: unknown };
+    if (typeof e?.id !== 'string' || e.id === '' || typeof e?.root !== 'string' || e.root === '') return [];
+    return [{
+      id: e.id,
+      root: e.root,
+      ...(typeof e.title === 'string' && e.title !== '' ? { title: e.title } : {}),
+      ...(typeof e.updatedAt === 'number' && Number.isFinite(e.updatedAt) ? { updatedAt: e.updatedAt } : {}),
+    }];
+  });
+  const file = appPinsFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(pins), 'utf8');
+  fs.renameSync(tmp, file);
+  io.send(res, 200, { ok: true, pins });
+}
+
 /** 应用级指针档读:缺档/坏档回 {state:null}(首启无现场,客户端落欢迎页) */
 export async function handleAppGuiStateGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
   try {

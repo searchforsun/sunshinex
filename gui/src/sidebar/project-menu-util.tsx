@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
@@ -18,7 +19,9 @@ export function fuzzyHit(text: string, query: string): boolean {
   return true;
 }
 
-/** G14.68 添加工作区图标:文件夹 + 右上角加号(lucide FolderPlus 加号居中,不符用户裁定) */
+/** 添加工作区图标(2026-10-22 用户裁定:参考 deepseek-ai/deepseek-harness 的新增项目实现——
+ *  纯加号语言,packages/client/ui-primitives IconPlusOutlineRegular 16 盒 M8 2V14/M2 8H14;
+ *  此处 24 盒同构对齐本仓 lucide stroke 体系,文件夹形退役) */
 export function FolderAddIcon({ size = 16, strokeWidth = 1.75 }: { size?: number; strokeWidth?: number }): JSX.Element {
   return (
     <svg
@@ -32,12 +35,8 @@ export function FolderAddIcon({ size = 16, strokeWidth = 1.75 }: { size?: number
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      {/* 文件夹整体下移,右上角留白给加号(G14.68:加号在右上角,非居中) */}
-      <g transform="translate(0 2)">
-        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-      </g>
-      <path d="M18 .8v5" />
-      <path d="M15.5 3.3h5" />
+      <path d="M12 4v16" />
+      <path d="M4 12h16" />
     </svg>
   );
 }
@@ -111,4 +110,21 @@ export function wsName(row: { root?: string; slug: string }): string {
     if (base !== undefined && base !== '') return base;
   }
   return legacyName(row.slug);
+}
+
+/** 行内「确认」morph 点外部取消(2026-10-21 用户裁定:归档/删除二次确认,点击其他地方即取消):
+ *  confirmId 非空时挂 document mousedown——点击落在确认行(data-row-id=confirmId)外即清;
+   mousedown 先于 click,点他行「归档/删除」时先取消旧再入列新,时序自洽。三面共用
+   (归档层删除/项目组行归档/最近会话行归档) */
+export function useConfirmOutsideCancel(confirmId: string, cancel: () => void): void {
+  useEffect(() => {
+    if (confirmId === '') return;
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target instanceof Element ? e.target.closest(`[data-row-id="${confirmId}"]`) : null;
+      if (target !== null) return; // 确认行内点击(含「确认」钮本体)不取消
+      cancel();
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [confirmId, cancel]);
 }

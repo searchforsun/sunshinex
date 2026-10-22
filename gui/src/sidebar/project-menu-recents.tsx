@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { SessionRow } from '../connection';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { Archive, ChevronRight, SquarePen } from 'lucide-react';
-import { RECENT_VISIBLE_DEFAULT, sessionMetaLine } from './project-menu-util';
+import { Archive, ChevronRight, Pin, SquarePen } from 'lucide-react';
+import { RECENT_VISIBLE_DEFAULT, sessionMetaLine, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
  *  + 最近会话行(G14.52 运行圆点/未读点)+ G14.115 尾行分页(显示更多/收起)。纯渲染件,
@@ -25,12 +25,16 @@ export interface RecentsSectionProps {
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
   /** T6 行内归档(落库 + 宿主重拉;确认 morph 由本组件行级 confirmId 承载) */
   readonly onArchiveRow: (id: string, archived: boolean) => void;
+  /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮 */
+  readonly pinnedIds: ReadonlySet<string>;
+  readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number }) => void;
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow } = props;
+  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
+  useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
   return (
     <>
         {/* RECENTS 在 PROJECTS 下侧(用户裁定);空态「暂无最近会话」占位 */}
@@ -73,7 +77,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
         <div className={`sx-collapse sx-collapse-recents${recentsOpen ? ' open' : ''}`}>
         <ul className="recent-list" aria-label="recent sessions">
           {recents !== null && recents.length === 0 && <li className="no-sessions">{t('No recent sessions', '暂无最近会话')}</li>}
-          {(recents ?? []).slice(0, recentLimit).map((r) => {
+          {(recents ?? []).filter((r) => !pinnedIds.has(r.id)).slice(0, recentLimit).map((r) => {
             // G14.2xx running 身份按会话记(runningIds 含本行映射会话);他会话看 daemon 标注
             const active =
               activeSessionId !== '' &&
@@ -86,6 +90,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
             return (
               <li
                 key={`${r.root}/${r.id}`}
+                data-row-id={r.id}
                 className={`session-row sx-session-row${active ? ' active' : ''}`}
                 data-session-row="1"
                 onClick={() => {
@@ -93,6 +98,15 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                   onAttach(r.root, r.id);
                 }}
               >
+                <button type="button" className="sx-pin-btn" data-tip={t('Pin', '置顶')}
+                  aria-label={`${t('Pin', '置顶')} ${r.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPinRow({ id: r.id, root: r.root, title: r.title ?? r.firstUser ?? '', updatedAt: r.updatedAt });
+                  }}
+                >
+                  <Pin size={12} strokeWidth={1.75} />
+                </button>
                 {running ? (
                   <span className="sx-session-dot running" />
                 ) : isUnseen(r.id, r.updatedAt) ? (

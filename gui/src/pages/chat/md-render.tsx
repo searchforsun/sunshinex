@@ -141,25 +141,10 @@ export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: s
  *  代码禁折行(white-space:pre+横滚)——排版错乱主因即旧版强折行。memo 按 code+lang,
  *  流式增量帧仅末块重算 */
 const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?: string }): JSX.Element {
-  const [copied, setCopied] = useState(false);
   // G14.205 自动换行切换:默认横向滚动,开启后 pre-wrap 纵向排布(无横向滚动条)
   const [wrap, setWrap] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (timer.current !== null) clearTimeout(timer.current);
-    },
-    [],
-  );
+  const { status, copy } = useCopyFeedback();
   const html = useMemo(() => highlightByLang(code, lang), [code, lang]);
-  const copy = (): void => {
-    navigator.clipboard?.writeText(code).then(
-      () => setCopied(true),
-      () => undefined,
-    );
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1500);
-  };
   return (
     <div className="code-block">
       <div className="code-head">
@@ -174,10 +159,10 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
           />
           <TipButton
             className="sx-tip-right"
-            tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+            tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
             label="copy code"
-            icon={copied ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
-            onClick={copy}
+            icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            onClick={() => copy(code)}
           />
         </span>
       </div>
@@ -197,23 +182,8 @@ export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClic
   const [zoom, setZoom] = useState(false);
   /** 渲染成败(null=在途):false 即收放大钮 */
   const [renderOk, setRenderOk] = useState<boolean | null>(null);
-  /** G14.2xx 复制回显:与 CodeBlock 同款——图标换 ✓ 1.5s + tooltip 变「已复制」 */
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (copyTimer.current !== null) clearTimeout(copyTimer.current);
-    },
-    [],
-  );
-  const copyChart = (): void => {
-    navigator.clipboard?.writeText(chart).then(
-      () => setCopied(true),
-      () => undefined,
-    );
-    if (copyTimer.current !== null) clearTimeout(copyTimer.current);
-    copyTimer.current = setTimeout(() => setCopied(false), 1500);
-  };
+  /** G14.2xx 复制回显:useCopyFeedback 单点——图标换 ✓ + tooltip 变「已复制」,1.5s 自回 */
+  const { status, copy: copyChart } = useCopyFeedback();
   // G14.107 lightbox 视图态:缩放(s)/平移(x,y);滚轮缩放+拖动平移+按钮组(+ % − [] X)
   const [view, setView] = useState({ x: 0, y: 0, s: 1 });
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);

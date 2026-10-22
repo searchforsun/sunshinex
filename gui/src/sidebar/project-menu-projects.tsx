@@ -3,7 +3,8 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { Archive, ChevronRight, Folder, FolderOpen, SquarePen } from 'lucide-react';
+import { Archive, ChevronRight, Folder, FolderOpen, Pin, SquarePen, X } from 'lucide-react';
+import { useConfirmOutsideCancel } from './project-menu-util';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
@@ -35,12 +36,37 @@ export interface ProjectsSectionProps {
   readonly onArchiveRow: (id: string, archived: boolean) => void;
   /** T6 归档页入口(组头归档箱钮;可选——未配时钮不渲染) */
   readonly onOpenArchived?: () => void;
+  /** 2026-10-21 用户裁定:归档层模式——组头改题「归档会话」+X 退出,列表体整替为归档行 */
+  readonly archiveMode?: boolean;
+  readonly onExitArchive?: () => void;
+  /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮 */
+  readonly pinnedIds: ReadonlySet<string>;
+  readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number }) => void;
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, groupShowAll, onGroupShowMore } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
+  useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
+  if (archiveMode === true) {
+    /* 归档层(2026-10-21 用户裁定):组头=「归档会话」+X 退出(无折叠无归档/新增钮);列表体=归档行 */
+    return (
+      <>
+        <div className="sx-side-head sx-side-head-row sx-side-head-btn">
+          <span>{t('Archived sessions', '归档会话')}</span>
+          <span className="sx-side-head-actions">
+            <button type="button" className="sx-iconbtn sx-archive-exit" data-tip={t('Exit archive', '退出归档')}
+              aria-label="exit archive"
+              onClick={(e) => { e.stopPropagation(); onExitArchive?.(); }}>
+              <X size={14} strokeWidth={1.75} />
+            </button>
+          </span>
+        </div>
+        {actionError !== '' && <p className="home-error">{actionError}</p>}
+      </>
+    );
+  }
   return (
     <>
         <div
@@ -63,23 +89,26 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
             aria-hidden="true"
             className={`sx-side-chev${projectsOpen ? ' open' : ''}`}
           />
-          <button
-            type="button"
-            className="sx-iconbtn"
-            aria-label="add workspace"
-            data-tip={t('Open a folder as workspace', '打开文件夹作为工作区')}
-            disabled={busy}
-            onClick={onAddWorkspace}
-          >
-            <FolderAddIcon size={14} />
-          </button>
-          {onOpenArchived !== undefined && (
-            <button type="button" className="sx-iconbtn" data-tip={t('Archived sessions', '归档会话')}
-              aria-label="archived sessions"
-              onClick={(e) => { e.stopPropagation(); onOpenArchived(); }}>
-              <Archive size={14} strokeWidth={1.75} />
+          {/* 2026-10-21 用户裁定:归档钮挨着新项目钮右侧成簇贴右——组头 space-between 会把裸子元素撑散,包右贴容器 */}
+          <span className="sx-side-head-actions">
+            {onOpenArchived !== undefined && (
+              <button type="button" className="sx-iconbtn" data-tip={t('Archived sessions', '归档会话')}
+                aria-label="archived sessions"
+                onClick={(e) => { e.stopPropagation(); onOpenArchived(); }}>
+                <Archive size={14} strokeWidth={1.75} />
+              </button>
+            )}
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="add workspace"
+              data-tip={t('Open a folder as workspace', '打开文件夹作为工作区')}
+              disabled={busy}
+              onClick={onAddWorkspace}
+            >
+              <FolderAddIcon size={14} />
             </button>
-          )}
+          </span>
         </div>
         <div className={`sx-collapse${projectsOpen ? ' open' : ''}`}>
           <ul className="workspace-list sx-groups" aria-label="workspace groups">
@@ -110,10 +139,12 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
               const showAll = groupShowAll;
               const isActiveRow = (sr: SessionRow) =>
                 activeSessionId !== '' && (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
-              const headRows = showAll ? sorted24 : sorted24.slice(0, defN);
-              const tailRows = showAll ? [] : sorted24.slice(defN).filter((sr: SessionRow) => isActiveRow(sr));
+              // 置顶滤除先行(2026-10-22 用户裁定:分页只数实际可显示行——钉/归档过滤不计为隐藏内容)
+              const listable = sorted24.filter((sr: SessionRow) => !pinnedIds.has(sr.id));
+              const headRows = showAll ? listable : listable.slice(0, defN);
+              const tailRows = showAll ? [] : listable.slice(defN).filter((sr: SessionRow) => isActiveRow(sr));
               const visible = [...headRows, ...tailRows];
-              const hidden = sorted24.length - visible.length;
+              const hidden = listable.length - visible.length;
               const groupShowMore = () => onGroupShowMore();
               return (
                 <li
@@ -176,6 +207,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                           return (
                             <li
                               key={sr.id}
+                              data-row-id={sr.id}
                               className={`session-row sx-session-row${active ? ' active' : ''}`}
                               data-session-row="1"
                               data-tip={`${label}${srMeta !== '' ? `\n${srMeta}` : ''}`}
@@ -185,6 +217,18 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                                 onAttach(root, sr.id, sr.updatedAt);
                               }}
                             >
+                              {/* 置顶钮:行 hover 显于状态点位(2026-10-21);钉后离组上浮置顶分组 */}
+                              {root !== undefined && (
+                                <button type="button" className="sx-pin-btn" data-tip={t('Pin', '置顶')}
+                                  aria-label={`${t('Pin', '置顶')} ${sr.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt });
+                                  }}
+                                >
+                                  <Pin size={12} strokeWidth={1.75} />
+                                </button>
+                              )}
                               {running ? (
                                 <span className="sx-session-dot running" />
                               ) : isUnseen(sr.id, sr.updatedAt) ? (

@@ -10,7 +10,6 @@ import type { TaskBoardState, Delegation } from './projection';
 import { Chat } from './pages/Chat';
 import type { ChatSink } from './pages/Chat';
 import { ProjectMenu } from './sidebar/ProjectMenu';
-import type { AttachJournal } from './sidebar/ProjectMenu';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
@@ -23,7 +22,6 @@ import type { AgentActivities } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
-import { ArchivedPage } from './pages/Archived';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -135,9 +133,6 @@ function AppShell(): JSX.Element {
   /** 欢迎页 goal 接力(G10):welcome 提交建会话后,Chat 播种完成即提交该目标 */
   const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
-  /** T6 归档页开态(主区域 overlay,模式同 settingsOpen——内容整替、左栏保持):行点击走
-   *  attach-by-journal 链开会话后自关 */
-  const [archivedOpen, setArchivedOpen] = useState(false);
   /** 欢迎页预选工作区(G10-C16):New chat=空(自选);项目行「+」=该项目(快捷预选) */
   const [composePresetRoot, setComposePresetRoot] = useState<string | null>(null);
   const [openSessionId, setOpenSessionId] = useState<string>('');
@@ -523,18 +518,8 @@ function AppShell(): JSX.Element {
     setSettingsOpen(false);
   }, []);
 
-  /** T6 归档页共享 attach 链句柄:ProjectMenu 渲染期注册其 attachJournal——归档页行打开与侧栏
-   *  行同一条链(newSession 装配壳 → attach 播种 → openSession),markSeen/markJournal/busy
-   *  防双发/打开即刷列表簿记两路同享(评审 Important 项修:不再自复制链) */
-  const attachJournalRef = useRef<AttachJournal | null>(null);
-  /** T6 归档页行打开:经共享句柄调 attachJournal(句柄未注册面=装配中,静默;busy 在途时
-   *  attachJournal 自静默拒双发);先关 overlay 再 attach(Chat 卸毁重挂语义与 settings 同) */
-  const openArchivedSession = (root: string, journalId: string): void => {
-    setArchivedOpen(false);
-    const attachJournal = attachJournalRef.current;
-    if (attachJournal === null) return;
-    attachJournal(root, journalId);
-  };
+  /** (T6 归档页退役:2026-10-21 用户裁定归档视图在左侧菜单栏 ArchiveSection——attachJournalRef/
+   *  openArchivedSession/archivedOpen 主区 overlay 面整体拆除,归档行打开直驻 ProjectMenu) */
 
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
    *  tab-state(同目标重开=聚焦既有,单例类型单份)。G14.211 useCallback+sessionRef 零依赖
@@ -843,8 +828,6 @@ function AppShell(): JSX.Element {
               runningIds={runningIds}
               onOpenSession={openSession}
               onOpenSettings={openSettings}
-              onOpenArchived={() => setArchivedOpen(true)}
-              attachJournalRef={attachJournalRef}
               onNewChat={() => {
                 setComposePresetRoot(null);
                 setPage('welcome');
@@ -868,15 +851,9 @@ function AppShell(): JSX.Element {
             title={t('Drag to resize', '拖动调整宽度')}
             onMouseDown={startMenuResize}
           />
-          {/* 中栏:Chat 恒挂(无会话=欢迎空态);T6 归档页 overlay(模式同 settingsOpen)整替其内容 */}
+          {/* 中栏:Chat 恒挂(无会话=欢迎空态);归档视图已内驻左栏 ArchiveSection(2026-10-21 裁定) */}
           <main className="sx-main" ref={mainRef}>
-            {archivedOpen && connInstance !== null ? (
-              <ArchivedPage
-                conn={connInstance}
-                onOpen={openArchivedSession}
-                onClose={() => setArchivedOpen(false)}
-              />
-            ) : page === 'chat' && connInstance !== null ? (
+            {page === 'chat' && connInstance !== null ? (
               <Chat
                 key={openSessionId}
                 conn={connInstance}

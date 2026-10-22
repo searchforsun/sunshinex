@@ -2018,20 +2018,45 @@ input.sx-setting-input { width: 100%; }
 .sx-ws-name, .sx-session-row .session-summary { text-overflow: clip; }
 .sx-ws-name[data-cut], .sx-session-row .session-summary[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); }
 
-/* 2026-10-21 归档面:徽标/确认钮/归档页(两行式行+hover 动作) */
+/* 2026-10-21 归档面:徽标/确认钮/侧栏归档区(两行式行+hover 动作;主区归档页已退役——
+   用户裁定归档视图在左侧菜单栏,.sx-archived-page 系列随之拆除) */
 .sx-archived-badge { flex: none; font-size: 11px; color: var(--fg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 0 6px; }
 .sx-archive-confirm { flex: none; border: none; border-radius: var(--radius-sm); background: var(--err); color: #fff; font-size: 12px; padding: 2px 10px; cursor: pointer; }
 .sx-iconbtn.sx-danger:hover { color: var(--err); }
-.sx-archived-page { display: flex; flex-direction: column; gap: 10px; height: 100%; padding: 14px 18px; overflow: auto; }
-.sx-archived-head { display: flex; align-items: center; gap: 8px; } .sx-archived-head h2 { margin: 0; font-size: 14px; color: var(--fg); }
-.sx-archived-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.sx-archived-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-md); cursor: pointer; }
-.sx-archived-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-.sx-archived-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.sx-archived-title { font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sx-archived-slug { font-size: 11px; color: var(--fg-tertiary); }
-.sx-archived-actions { flex: none; display: none; align-items: center; gap: 2px; }
-.sx-archived-row:hover .sx-archived-actions, .sx-archived-row:focus-within .sx-archived-actions { display: inline-flex; }
 .sx-archived-error { margin: 0; font-size: 12px; color: var(--err); }
 .session-row-actions { flex: none; display: none; align-items: center; }
 .sx-session-row:hover .session-row-actions, .sx-session-row:focus-within .session-row-actions { display: inline-flex; }
+/* 侧栏归档区行:两行式(标题+来源 slug),窄栏适配;动作钮 hover/聚焦显形(会话行同语言) */
+.sx-archive-item { display: flex; align-items: center; gap: 6px; margin-block: 1px; padding: 4px 10px 4px 34px; border-radius: var(--radius-sm); cursor: pointer; }
+.sx-archive-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-archive-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sx-archive-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sx-archive-title { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-archive-time { flex: none; font-size: 11px; color: var(--fg-tertiary); }
+.sx-archive-slug-row { display: flex; align-items: center; gap: 3px; min-width: 0; color: var(--fg-tertiary); }
+.sx-archive-slug { min-width: 0; font-size: 10.5px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 归档行动作钮常驻第二行右缘(2026-10-21 用户裁定:非 hover 显隐,贴行右缘);会话行 hover 面不受影响 */
+.sx-archive-item .session-row-actions { display: inline-flex; margin-left: auto; flex: none; }
+
+/* 2026-10-21 项目组头动作簇:归档+新项目两钮右贴成对(sx-side-head-row space-between 会撑散裸子元素);
+   margin-left:auto 压住簇位,hover 显隐仍走 .sx-side-head-btn:hover .sx-iconbtn */
+.sx-side-head-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; flex: none; }
+/* 归档层退出钮常显(X 是归档模式唯一出口,hover 显隐会藏住出口;2026-10-21 用户裁定形态) */
+.sx-side-head-btn .sx-iconbtn.sx-archive-exit { opacity: 1; }
+
+/* 2026-10-21 置顶(GUI 专属):行 hover 置顶钮显于状态点位(遮点);置顶组行=行首取消置顶(常驻)+
+   标题/时间+行尾归档;组头不可折叠(无 chevron 无 role=button) */
+.sx-pin-btn { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: none; background: color-mix(in srgb, var(--surface-elevated) 82%, var(--fg) 18%); border-radius: var(--radius-sm); color: var(--fg-secondary); cursor: pointer; opacity: 0; }
+.sx-session-row:hover .sx-pin-btn, .sx-session-row:focus-within .sx-pin-btn { opacity: 1; }
+.sx-session-row:hover .sx-session-dot { opacity: 0; } /* 悬停钉位取代状态点 */
+.sx-pin-list { list-style: none; margin: 0; padding: 0 4px 4px; }
+.sx-pin-item { display: flex; align-items: center; gap: 6px; margin-block: 1px; padding: 4px 10px 4px 10px; border-radius: var(--radius-sm); cursor: pointer; }
+.sx-pin-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-pin-unpin { flex: none; color: var(--fg-secondary); }
+.sx-pin-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sx-pin-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sx-pin-title { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-pin-item .session-row-actions { display: inline-flex; margin-left: auto; }
+
+/* 2026-10-22 用户裁定:「暂无…」空态与「显示更多」对齐(同缩进 x=34/字号 12px/灰度 fg-tertiary) */
+.no-sessions { padding: 4px 12px 4px 34px; color: var(--fg-tertiary); font-size: 12px; }

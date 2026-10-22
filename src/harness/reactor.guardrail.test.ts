@@ -112,7 +112,8 @@ test('Reactor：模型抛错 → stopReason=model-error 且不抛给调用方', 
     const r = await new Reactor(makeDeps(tmp, boom)).run({ goal: '触发模型失败' }, { maxSteps: 3 });
     assert.equal(r.done, false);
     assert.equal(r.stopReason, 'model-error');
-    assert.equal(r.reply, '模型挂了');
+    // 2026-10-22 用户裁定:模型失败只走 error 事件行,错误文案不再当 reply 双显正文
+    assert.equal(r.reply, undefined);
   });
 });
 

@@ -318,8 +318,9 @@ export class Reactor {
           if (steps.length > 0) steps.pop();
           continue;
         }
-        reply = e instanceof Error ? e.message : 'Model call failed';
-        this.emit('error', reply);
+        // 2026-10-22 用户裁定:模型失败只走 error 事件行——错误文案不再赋给 reply(经 settle
+        // 归一空串,收口契约本支持「无最终答复」),否则 done 事件携错误文案关流,错误行+正文两处同文双显
+        this.emit('error', errMsg);
         stopReason = 'model-error';
         break;
       }

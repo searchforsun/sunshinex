@@ -99,7 +99,7 @@ test('全终态触发：maxSteps 耗竭 → stopped、模型失败 → failed，
     assert.equal(r2.stopReason, 'model-error');
     assert.equal(failed.length, 1, '模型失败路径同样入队一次（D4 全终态）');
     assert.equal(failed[0].outcome, 'failed');
-    assert.equal(failed[0].reply, 'boom');
+    assert.equal(failed[0].reply, '', '模型失败无最终答复:reply 归一空串(错误文案走 error 事件行)');
     assert.equal(failed[0].digest, '', '零步可摘要：首调即失败、无观察行（digest 空≠未触发）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
