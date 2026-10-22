@@ -560,6 +560,9 @@ export class GuiDaemon {
     // 置顶档(2026-10-21 GUI 专属):userConfigDir/gui/pins.json,机器级跨工作区视图偏好
     { method: 'GET', path: '/app/pins', auth: true, run: async (_req, res) => sessionHandlers.handleAppPinsGet(this.sessionIo, res) },
     { method: 'PUT', path: '/app/pins', auth: true, run: async (req, res) => sessionHandlers.handleAppPinsPut(this.sessionIo, req, res) },
+    // 已读档(2026-10-23):userConfigDir/gui/seen.json,机器级 id→最近已读 updatedAt(已读/未读态落底层)
+    { method: 'GET', path: '/app/seen', auth: true, run: async (_req, res) => sessionHandlers.handleAppSeenGet(this.sessionIo, res) },
+    { method: 'PUT', path: '/app/seen', auth: true, run: async (req, res) => sessionHandlers.handleAppSeenPut(this.sessionIo, req, res) },
     // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——落盘走 rename(G14.16)
     { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
     // G14.16 标题统一流：rename 落旁车 <id>.meta.json(侧栏/TUI 列表同源)；GET 回读(重开回显)

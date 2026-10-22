@@ -298,7 +298,7 @@ export async function handleSessionTierEffort(io: SessionHandlerIo, req: http.In
 /** GET /session/:id/model(G10-C4 模型 pill 数据源):当前选择 + 可选清单(choices 空=不可切) */
 /** 应用级指针档/置顶档/GUI 面私有态三族:D42 端点族拆分至 app-state-handlers.ts(行搬运零变化)——
  *  原路径再导出,daemon 路由与消费面零迁移 */
-export { handleAppPinsGet, handleAppPinsPut, handleAppGuiStateGet, handleAppGuiStatePut, handleGuiStateGet, handleGuiStatePut } from './app-state-handlers';
+export { handleAppPinsGet, handleAppPinsPut, handleAppSeenGet, handleAppSeenPut, handleAppGuiStateGet, handleAppGuiStatePut, handleGuiStateGet, handleGuiStatePut } from './app-state-handlers';
 
 /** 会话列表面+归档族:D42 端点族拆分至 sessions-list-handlers.ts(行搬运零变化)——
  *  原路径再导出,daemon 路由与 daemon.gui-state.test 消费零迁移 */

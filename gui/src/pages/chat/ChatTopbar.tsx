@@ -138,6 +138,12 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     const seen = loadSeenMap();
     delete seen[journalId];
     persistSeenMap(seen);
+    // 落底层(2026-10-23)+落库后再联动——同步联动会让侧栏 GET 到 PUT 落库前的旧档(竞态同 pin)
+    if (typeof conn.saveAppSeen !== 'function') {
+      onSessionsMutated?.();
+      return;
+    }
+    void conn.saveAppSeen(seen).then(onSessionsMutated, () => undefined);
   };
   const menuItems = [
     {
@@ -173,8 +179,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       id: 'mark-unread',
       label: t('Mark as unread', '标记为未读'),
       onSelect: () => {
-        markUnread();
-        onSessionsMutated?.();
+        markUnread(); // 联动已内含(落库后上抛)
       },
     },
     { id: 'divider-2', divider: true, label: '', onSelect: () => undefined },

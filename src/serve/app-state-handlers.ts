@@ -28,6 +28,52 @@ function appPinsFile(): string {
   return path.join(userConfigDir(), 'gui', 'pins.json');
 }
 
+/** 已读档(2026-10-23,GUI 已读/未读态落底层——用户裁定「刷新不再全员未读」):userConfigDir/
+ *  gui/seen.json——机器级 id → 最近已读 updatedAt(行新于已读时刻即未读);与 pins 同目录
+ *  同分层口径,浏览器/壳跨端共用。GET 缺档/坏档回 {seen:{}} */
+function appSeenFile(): string {
+  return path.join(userConfigDir(), 'gui', 'seen.json');
+}
+
+export async function handleAppSeenGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(appSeenFile(), 'utf8')) as unknown;
+    io.send(res, 200, { seen: raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {} });
+  } catch {
+    io.send(res, 200, { seen: {} });
+  }
+}
+
+/** 已读档写(原子写):body.seen 须对象;逐条消毒(键非空串 → 有限数,坏条目弃置不拒整单);
+ *  容量封顶 200 按时间戳丢最旧(与客户端 localStorage 封顶口径一致) */
+export async function handleAppSeenPut(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const rawSeen = (parsed.body as { seen?: unknown } | null)?.seen;
+  if (rawSeen === null || typeof rawSeen !== 'object' || Array.isArray(rawSeen)) {
+    io.send(res, 400, { error: 'seen object required' });
+    return;
+  }
+  const seen = Object.fromEntries(
+    Object.entries(rawSeen as Record<string, unknown>)
+      .flatMap((kv) => {
+        const [id, v] = kv as [string, unknown];
+        return id !== '' && typeof v === 'number' && Number.isFinite(v) ? [[id, v] as const] : [];
+      })
+      .sort((a, b) => a[1] - b[1])
+      .slice(-200),
+  );
+  const file = appSeenFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(seen), 'utf8');
+  fs.renameSync(tmp, file);
+  io.send(res, 200, { ok: true, seen });
+}
+
 export async function handleAppPinsGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
   try {
     const raw = JSON.parse(fs.readFileSync(appPinsFile(), 'utf8')) as unknown;

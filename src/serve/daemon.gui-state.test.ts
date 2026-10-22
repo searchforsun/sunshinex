@@ -160,6 +160,36 @@ test('/app/gui-state:应用级指针档往返(恢复现场入口),落 <userConfi
   }
 });
 
+test('/app/seen:已读档往返(已读/未读态落底层),落 <userConfigDir>/gui/seen.json;坏条目消毒', async () => {
+  // userConfigDir 钉定同 /app/gui-state 测试:HOME 重定向即整目录隔离(本机 GUI 在跑不环境敏感)
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-gs-seen-'));
+  const prevHome = process.env.HOME;
+  process.env.HOME = tmp;
+  try {
+    await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base }) => {
+      const auth = { authorization: 'Bearer test-token' };
+      let resp = await fetch(`${base}/app/seen`, { headers: auth });
+      assert.equal(resp.status, 200);
+      assert.deepEqual(await resp.json(), { seen: {} }, '首启无档');
+      const seen = { '20261022T115634Z-sy8d': 1700000000000, j2: 1700000001000 };
+      resp = await fetch(`${base}/app/seen`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ seen }) });
+      assert.equal(resp.status, 200);
+      resp = await fetch(`${base}/app/seen`, { headers: auth });
+      assert.deepEqual(await resp.json(), { seen }, '原样回读(跨端权威)');
+      resp = await fetch(`${base}/app/seen`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ seen: { good: 5, bad: 'x', '': 6, neg: Number.NaN } }) });
+      assert.equal(resp.status, 200);
+      resp = await fetch(`${base}/app/seen`, { headers: auth });
+      assert.deepEqual(await resp.json(), { seen: { good: 5 } }, '坏条目弃置不拒整单(容错口径同 pins)');
+      resp = await fetch(`${base}/app/seen`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ seen: 'nope' }) });
+      assert.equal(resp.status, 400, '非对象 seen 拒');
+    });
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('attach 回放选择面:运行中 setMode/setEffort 落 meta,新 daemon 重建会话 attach 归位', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-gs2-'));
   const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;

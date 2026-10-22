@@ -90,6 +90,9 @@ export interface Connection {
   /** 置顶档(GET/PUT /app/pins;2026-10-21 GUI 专属会话置顶,机器级跨工作区) */
   appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }> }>;
   saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }>): Promise<void>;
+  /** 已读档(GET/PUT /app/seen;2026-10-23 已读/未读态落底层,机器级 id→最近已读 updatedAt) */
+  appSeen(): Promise<{ seen: Record<string, number> }>;
+  saveAppSeen(seen: Record<string, number>): Promise<void>;
   sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
   commitChanges(id: string, message: string): Promise<void>;
   pushChanges(id: string): Promise<void>;
@@ -383,6 +386,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async saveAppPins(pins) {
       await put('/app/pins', { pins });
+    },
+    appSeen() {
+      return getJson('/app/seen');
+    },
+    async saveAppSeen(seen) {
+      await put('/app/seen', { seen });
     },
     sessionChangeContent(id: string, path: string) {
       return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}`);

@@ -40,6 +40,8 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     archiveSession: vi.fn(async () => undefined), // T6 行内归档落库面(重拉断言消费 workspaces spy)
     appPins: vi.fn(async () => ({ pins: [] })), // 置顶档(归档区/置顶组测试消费)
     saveAppPins: vi.fn(async () => undefined),
+    appSeen: vi.fn(async () => ({ seen: {} })), // 已读档(2026-10-23 落底层)
+    saveAppSeen: vi.fn(async () => undefined),
     archivedSessions: vi.fn(async () => [
       // 归档区(2026-10-21 侧栏 ArchiveSection)数据面:跨工作区聚合行
       { id: 'a1', slug: 'p1', root: 'D:/w/p1', title: '已归档会话', updatedAt: FIXED_TS, archivedAt: FIXED_TS },

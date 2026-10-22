@@ -55,6 +55,9 @@ export interface ProjectMenuConn {
   /** 置顶档(2026-10-21 GUI 专属,GET/PUT /app/pins;userConfigDir/gui/pins.json) */
   appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }> }>;
   saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }>): Promise<void>;
+  /** 已读档(2026-10-23,GET/PUT /app/seen;userConfigDir/gui/seen.json,已读/未读态落底层) */
+  appSeen(): Promise<{ seen: Record<string, number> }>;
+  saveAppSeen(seen: Record<string, number>): Promise<void>;
   /** 归档区数据面(跨工作区聚合行;GET /sessions/archived)+ 受控删除(已归档态) */
   archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }>>;
   deleteSession(id: string): Promise<void>;
@@ -137,17 +140,38 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** G14.75 聚合搜索:全部工作区的会话扁平集(打开搜索时聚合一次,rows 变化重拉) */
   const [allSessions, setAllSessions] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [query, setQuery] = useState('');
-  /** 已读会话映射(localStorage 持久化):id → 最近已读 updatedAt;刷新不清空 */
+  /** 已读会话映射(2026-10-23 落底层——用户裁定:刷新/跨端不再全员未读):localStorage 即时面
+   *  + /app/seen 服务端权威双写收敛;id → 最近已读 updatedAt */
   const [seenMap, setSeenMap] = useState<SeenMap>(() => loadSeenMap());
   /** 未读判定:行 updatedAt 新于已读时刻即未读 */
   const isUnseen = (id: string, updatedAt: number): boolean => (seenMap[id] ?? -1) < updatedAt;
+  /** 已读档远端写(fire-and-forget):旧 daemon/测试桩未实现即静默跳过(探活口径同 sessionTasks) */
+  const saveSeenRemote = (m: SeenMap): void => {
+    if (typeof conn.saveAppSeen !== 'function') return;
+    void conn.saveAppSeen(m).then(() => undefined, () => undefined);
+  };
   const markSeen = (id: string, updatedAt: number): void =>
     setSeenMap((prev) => {
       if ((prev[id] ?? -1) >= updatedAt) return prev;
       const next = { ...prev, [id]: updatedAt };
       persistSeenMap(next);
+      saveSeenRemote(next); // 落底层(服务端权威+跨端共用;断链静默保持本地面)
       return next;
     });
+  /** 已读档装载:localStorage 即时面先行,服务端应答落定即接管并回写本地镜像(跨端权威收敛;
+   *  断链/旧 daemon 保持本地不回退)。挂载与 recentVersion bump 各拉一次(bump 后服务端已
+   *  收到标记为未读的 PUT,联动重拉读到的就是新档) */
+  const loadSeen = useCallback((): void => {
+    setSeenMap(loadSeenMap());
+    if (typeof conn.appSeen !== 'function') return;
+    conn.appSeen().then(
+      (r) => {
+        setSeenMap(r.seen);
+        persistSeenMap(r.seen);
+      },
+      () => undefined,
+    );
+  }, [conn]);
   /** 会话 id → journal 行 id 映射(attach 时记下):行 active 只亮当前打开会话对应的 journal 行,
    *  不再用 root 兜底(兜底会把同组所有行全点亮,看起来像误 hover) */
   const [journalOfSession, setJournalOfSession] = useState<ReadonlyMap<string, string>>(() => new Map());
@@ -186,9 +210,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   useEffect(() => {
     loadWorkspaces();
     loadPins();
-    loadArchived(); // 2026-10-22 置顶组归档冻结:归档集与钉档同拍重拉(已归档钉禁调节)
-    setSeenMap(loadSeenMap()); // 2026-10-22 联动:顶栏 ⋯ 标记为未读经 App recentVersion bump 重拉未读表
-  }, [loadWorkspaces, loadPins, loadArchived, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
+    loadArchived(); // 2026-10-23 置顶组滤除已归档钉:归档集与钉档同拍重拉
+    loadSeen(); // 2026-10-23 已读/未读态落底层:与钉档同拍重拉(顶栏标记为未读经 recentVersion bump 驱动)
+  }, [loadWorkspaces, loadPins, loadArchived, loadSeen, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
 
   /** 拉展开组的会话列表(slug 守卫):应答到达时已切组/收起则丢弃(慢应答竞态收口) */
   const loadSessions = useCallback(
