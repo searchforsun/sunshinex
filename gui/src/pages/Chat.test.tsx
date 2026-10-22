@@ -936,4 +936,21 @@ describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
     fireEvent.click(screen.getByText('Unarchive session'));
     expect(archiveSession).toHaveBeenCalledWith('s1', false);
   });
+
+  it('置顶即已读(2026-10-23 用户裁定):已读戳与钉档同刻写入,钉组不再亮未读', async () => {
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).appPins = vi.fn(async () => ({ pins: [] }));
+    (conn as unknown as Record<string, unknown>).saveAppPins = vi.fn(async () => undefined);
+    const saveAppSeen = vi.fn(async () => undefined);
+    (conn as unknown as Record<string, unknown>).saveAppSeen = saveAppSeen;
+    render(<Chat conn={conn} sessionId="s1" journalId="j1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
+    fireEvent.click(screen.getByText('Pin session'));
+    await flushed();
+    await flushed(); // 置顶链多代微任务(pins PUT → seen PUT)
+    const seen = JSON.parse(window.localStorage.getItem('sunshinex.seen-sessions') ?? '{}') as Record<string, number>;
+    expect(typeof seen.j1).toBe('number'); // 已读戳已压到钉档时刻
+    expect(saveAppSeen).toHaveBeenCalledTimes(1); // 落底层双写
+  });
 });

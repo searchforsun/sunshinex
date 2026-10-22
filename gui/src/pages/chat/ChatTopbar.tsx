@@ -116,16 +116,32 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       () => undefined,
     );
   };
+  /** 已读面压制到 at(localStorage 即时 + 服务端落库,断链静默)——置顶时与钉档时间戳对齐用 */
+  const touchSeen = (at: number): Promise<void> => {
+    if (journalId === undefined) return Promise.resolve();
+    const seen = loadSeenMap();
+    seen[journalId] = at;
+    persistSeenMap(seen);
+    if (typeof conn.saveAppSeen !== 'function') return Promise.resolve();
+    return conn.saveAppSeen(seen).then(() => undefined, () => undefined);
+  };
   const togglePin = (): void => {
     if (journalId === undefined) return;
     conn.appPins().then(
       (r) => {
         // 以服务端现态为准取反(组件态可能过期——过期态定向翻转即「反了」)
         const isPinned = r.pins.some((p) => p.id === journalId);
-        const next = isPinned ? r.pins.filter((p) => p.id !== journalId) : [...r.pins, { id: journalId, root: root ?? '', title: displayTitle, updatedAt: Date.now() }];
+        const now = Date.now();
+        const rest = r.pins.filter((p) => p.id !== journalId);
+        const next = isPinned ? rest : [...rest, { id: journalId, root: root ?? '', title: displayTitle, updatedAt: now }];
         setPinned(!isPinned);
-        // 联动上抛须等 PUT 落库——落库前上抛,侧栏与本组件重拉到的都是旧钉档
-        void conn.saveAppPins(next).then(onSessionsMutated, () => undefined);
+        const settle = (): void => {
+          // 置顶即正在看:已读戳压到与钉档同一时刻——钉组按钉档时刻判未读,不同刻恒亮蓝点(用户实测病);
+          // 双写都落库后再联动,联动 GET 读到的才是新档
+          const chain = isPinned ? Promise.resolve() : touchSeen(now);
+          void chain.then(onSessionsMutated, onSessionsMutated);
+        };
+        void conn.saveAppPins(next).then(settle, settle);
       },
       () => undefined,
     );

@@ -50,6 +50,31 @@ import { createConnection } from './connection';
 import type { Connection, ConnectionState } from './connection';
 import { App } from './App';
 
+/** daemon 注册表内活跃会话 id 反查(2026-10-23 id 新方言 sun-{项目摘要}-{随机} 后不再可字面
+ *  s1/s2——UI 建会话的用例经 /workspaces 扫描逐工作区 /sessions 行 liveSessionId 拿真 id;
+ *  root 无关:默认锚点(sunshinex-default)与显式项目两条建会话路径都覆盖) */
+async function liveSessionIds(port: number): Promise<string[]> {
+  const ws = (await (await fetch(`http://127.0.0.1:${port}/workspaces`)).json()) as Array<{ root?: string }>;
+  const out: string[] = [];
+  for (const w of ws) {
+    if (w.root === undefined) continue;
+    const rows = (await (
+      await fetch(`http://127.0.0.1:${port}/sessions?root=${encodeURIComponent(w.root)}`)
+    ).json()) as Array<{ liveSessionId?: string }>;
+    for (const r of rows) if (r.liveSessionId !== undefined) out.push(r.liveSessionId);
+  }
+  return out;
+}
+
+/** 当前打开会话的 daemon id:顶栏 title data-tip 前缀即 sessionId(如 «<id> · 123 tokens ·…»);
+ *  idle 会话不走 liveSessionId 面(liveSessionByJournal 只收 running),DOM 反查 running/idle 通吃 */
+function openSessionId(): string {
+  const tip = document.querySelector('.chat-title')?.getAttribute('data-tip') ?? '';
+  const id = tip.slice(0, tip.indexOf(' ·'));
+  if (!/^sun-[0-9a-f]{12}-[0-9a-f]{8}$/.test(id)) throw new Error(`title tip 无会话 id: ${tip}`);
+  return id;
+}
+
 /** G10-C3 工具行图标化定位器(正则匹配 textContent) */
 function toolRowRe(re: RegExp | string): HTMLButtonElement | null {
   const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('.tool-summary'));
@@ -159,7 +184,7 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
   it('全链:newSession → 初始空 snapshot → sessionSubmit → 事件流至 done(idle 收敛)→ 转录/板/委派落位;帧全挂 sessionId', async () => {
     // —— 建会话(T2:无 root 预选,daemon 空注册表起步——首会话经 POST /session/new)——
     const { sessionId: s1 } = await conn.newSession(env.root);
-    expect(s1).toBe('s1');
+    expect(s1).toMatch(/^sun-[0-9a-f]{12}-[0-9a-f]{8}$/); // 2026-10-23 id 新方言:sun-项目摘要-随机段
 
     // —— 初始 snapshot:空板空转录 idle(连接装配的冷启动面)——
     const snap0 = await conn.sessionSnapshot(s1);
@@ -410,11 +435,12 @@ describe('G3 冒烟①②:首页 New session(DirPicker)→ 提交流式渲染 �
     // —— 流式中间态:接力提交 → token 增量分帧到场(连接层事件 + DOM streaming 条),run 确在进行中 ——
     await waitFor(() => expect(container.querySelector('.entry-assistant.streaming')?.textContent).toContain('终稿'), { timeout: 10_000 });
     expect(events.some((e) => e.type === 'token' && e.text === '终稿')).toBe(true);
-    expect((await conn.sessionSnapshot('s1')).status).toBe('running');
+    const [g3Sid] = await liveSessionIds(env.port);
+    expect((await conn.sessionSnapshot(g3Sid!)).status).toBe('running');
     expect(container.querySelector('.status-running')).toBeDefined();
 
     // —— steer 运行中(hanging 模型轮内):经 conn.sessionSteer POST /session/:id/steer,200 不炸 ——
-    await conn.sessionSteer('s1', '运行中插话');
+    await conn.sessionSteer(g3Sid!, '运行中插话');
 
     // —— release → 模型轮收束 → done 事件 → streaming 收段:md 终稿全文在场、无流式残留、idle ——
     model.release();
@@ -640,7 +666,7 @@ describe('2026-10-21 受控删除:归档态 journalId 直调 daemon API → 真�
         await waitFor(() => expect(container.querySelector('.entry-assistant')?.textContent).toContain(reply), { timeout: 10_000 });
       };
 
-      // —— 两会话先后建+跑+idle(s2 留在会话页——顶栏 Delete 的现场)——
+      // —— 两会话先后建+跑+idle(s2 留在会话页——顶栏 Delete 的现场);id 新方言后经 /sessions 反查 ——
       await openByPicker();
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第一会话目标', '第一会话完成');
@@ -649,12 +675,13 @@ describe('2026-10-21 受控删除:归档态 journalId 直调 daemon API → 真�
       await openByPicker();
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       await runOnce('第二会话目标', '第二会话完成');
+      const delSid2 = openSessionId(); // 当前打开=第二会话(顶栏 title tip 反查;idle 会话不走 liveSessionId 面)
 
       // —— 2026-10-21 受控删除门禁:未归档拒删(409)→ 先归档 s2;归档列表反查 s2 journalId(删除
       //    后主列表已滤除,此处主列表尚含两档但归档面单行——确定性键)——
-      const denied = await fetch(`http://127.0.0.1:${env.port}/session/s2/delete`, { method: 'POST' });
+      const denied = await fetch(`http://127.0.0.1:${env.port}/session/${delSid2}/delete`, { method: 'POST' });
       expect(denied.status).toBe(409); // 未归档拒删:'archive the session before deleting'
-      const arch = await fetch(`http://127.0.0.1:${env.port}/session/s2/archive`, {
+      const arch = await fetch(`http://127.0.0.1:${env.port}/session/${delSid2}/archive`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: '{}',
@@ -665,12 +692,12 @@ describe('2026-10-21 受控删除:归档态 journalId 直调 daemon API → 真�
       const s2Jid = archived[0]!.id;
 
       // —— G14.28:顶栏 ⋯ 菜单退役,删除改直调 daemon API(回收断言面保留)——
-      const del = await fetch(`http://127.0.0.1:${env.port}/session/s2/delete`, { method: 'POST' });
+      const del = await fetch(`http://127.0.0.1:${env.port}/session/${delSid2}/delete`, { method: 'POST' });
       expect(del.status).toBe(200);
 
       // —— daemon 侧受控删除:s2 移出注册表(:id 访问 404);归档态 purgeSession 真清全家——
       //    sessions 目录 s2 前缀伴生档(journal/meta/transcript)清零,未删的 s1 journal 保留 ——
-      const gone = await fetch(`http://127.0.0.1:${env.port}/session/s2/snapshot`, { headers: H });
+      const gone = await fetch(`http://127.0.0.1:${env.port}/session/${delSid2}/snapshot`, { headers: H });
       expect(gone.status).toBe(404);
       const sessionsDir = path.join(resolveDataDir(env.root), 'sessions');
       expect(fs.readdirSync(sessionsDir).filter((f) => f.startsWith(`${s2Jid}.`)).length).toBe(0); // s2 档全家真清(purgeSession)
@@ -921,9 +948,10 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       // —— 放行:write envelope 越域 → manual 挂起 → approval 广播零客户端 ——
       gated!.release();
       const H = {} as Record<string, string>;
+      const [reconnectSid] = await liveSessionIds(env.port);
       const deadline = Date.now() + 10_000;
       let snap = (await (
-        await fetch(`http://127.0.0.1:${env.port}/session/s1/snapshot`, { headers: H })
+        await fetch(`http://127.0.0.1:${env.port}/session/${reconnectSid}/snapshot`, { headers: H })
       ).json()) as {
         status: string;
         pending: Array<{ pid: string; kind: string; req: { kind?: string; subject?: string } }>;
@@ -931,7 +959,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       while (snap.pending.length === 0) {
         if (Date.now() > deadline) throw new Error(`挂起未落定: ${JSON.stringify(snap)}`);
         await new Promise((r) => setTimeout(r, 50));
-        snap = (await (await fetch(`http://127.0.0.1:${env.port}/session/s1/snapshot`, { headers: H })).json()) as typeof snap;
+        snap = (await (await fetch(`http://127.0.0.1:${env.port}/session/${reconnectSid}/snapshot`, { headers: H })).json()) as typeof snap;
       }
       expect(snap.status).toBe('running'); // 挂起中(run 停在 asker)
       expect(snap.pending[0]!.kind).toBe('approval');
@@ -1296,10 +1324,11 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       // 降级面:openPty 落定后守卫触发(分配先行,降级不吞分配——关标签 kill 链照常可寻址)
       await waitFor(() => expect(screen.getByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口'))).toBeDefined(), { timeout: 15_000 });
 
-      // —— 裸链 1) 分配:POST /session/s1/pty {cols,rows} → 200 {ptyId}(pty-<n> 方言)——
+      // —— 裸链 1) 分配:POST /session/:id/pty {cols,rows} → 200 {ptyId}(pty-<n> 方言)——
       const base = `http://127.0.0.1:${env.port}`;
       const wsBase = `ws://127.0.0.1:${env.port}`;
-      const alloc = await fetch(`${base}/session/s1/pty`, {
+      const ptySid = openSessionId(); // 终端所在会话=当前打开会话(顶栏 tip 反查)
+      const alloc = await fetch(`${base}/session/${ptySid}/pty`, {
         method: 'POST',
         headers: H,
         body: JSON.stringify({ cols: 80, rows: 24 }),
@@ -1310,7 +1339,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
 
       // —— 2) 连入:首帧恒 replay(新分配可空)→ in 帧下发标记命令(win32 powershell 可执行形态)
       //    → data 帧流 base64 解码含标记(shell 回环真链路)——
-      const a = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`);
+      const a = await openPtyWs(`${wsBase}/session/${ptySid}/pty/${ptyId}`);
       try {
         await waitUntil(() => a.frames.length > 0, 10_000, '连入首帧 replay');
         expect(a.frames[0]!.t).toBe('replay');
@@ -1323,7 +1352,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       await waitUntil(() => a.ws.readyState === NodeWebSocket.CLOSED, 5_000, '首连 ws 关闭');
 
       // —— 3) 断线重连(close≠kill 进程保活):新 ws 连入 → 首帧 replay 解码含标记(环形缓冲重放)——
-      const b = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`);
+      const b = await openPtyWs(`${wsBase}/session/${ptySid}/pty/${ptyId}`);
       try {
         await waitUntil(() => b.frames.length > 0, 10_000, '重连首帧 replay');
         expect(b.frames[0]!.t).toBe('replay');
@@ -1334,10 +1363,10 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
 
       // —— 4) DELETE kill(kill 同步注销:has→false 立即)→ 新 ws 连入收 error 'pty not found'
       //    后 close(1008)(daemon.test ⑩ 的 Bearer 头 kill 面在此以子协议形态复验)——
-      const kill = await fetch(`${base}/session/s1/pty/${ptyId}`, { method: 'DELETE', headers: H });
+      const kill = await fetch(`${base}/session/${ptySid}/pty/${ptyId}`, { method: 'DELETE', headers: H });
       expect(kill.status).toBe(200);
       expect(await kill.json()).toEqual({ ok: true });
-      const c = await openPtyWs(`${wsBase}/session/s1/pty/${ptyId}`);
+      const c = await openPtyWs(`${wsBase}/session/${ptySid}/pty/${ptyId}`);
       try {
         await waitUntil(() => c.frames.length > 0, 10_000, 'kill 后连入帧');
         expect(c.frames[0]!.t).toBe('error');
