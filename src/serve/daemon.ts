@@ -1,5 +1,6 @@
 // 警告过滤必须首个 import（node:sqlite 实验横幅在 import 链内即发射）
 import '../warning-filter';
+import * as crypto from 'node:crypto';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -16,7 +17,7 @@ import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
-import { projectsRoot, resolveDataDir } from '../config/data-dir';
+import { projectSlug, projectsRoot, resolveDataDir } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -127,8 +128,6 @@ interface Route {
 export class GuiDaemon {
   private readonly model: ModelAdapter;
   private readonly sessions = new Map<string, SessionRuntime>();
-  /** 会话 id 方言 s<n>：进程内单调计数（spec §7） */
-  private sessionSeq = 0;
   /** seq 泵计数（G3 seq 协议 + T1 全局裁定）：计数在先帧在后（首帧 seq=1），跨会话全局单调不重置——
    *  各会话 snapshot.lastSeq 同一计数器分配故各自单调 */
   private seqCounter = 0;
@@ -187,6 +186,17 @@ export class GuiDaemon {
     return dir;
   }
 
+  /** 会话 id（2026-10-23 用户裁定）：sun-{项目摘要12}-{随机8hex}——项目段确定性（会话 id 即可见
+   *  项目归属），随机段 4 字节 hex 单进程防撞，撞库重掷（注册表查重）。形态为 validSessionId
+   *  （[A-Za-z0-9_-]）子集；退役 s<n> 单调草档（重启即重号、跨项目不可归因） */
+  private mintSessionId(root: string): string {
+    const project = projectSlug(root).slice(-12);
+    for (;;) {
+      const id = `sun-${project}-${crypto.randomBytes(4).toString('hex')}`;
+      if (!this.sessions.has(id)) return id;
+    }
+  }
+
   createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }> {
     const abs = root === 'default' ? this.defaultScratchRoot() : path.resolve(root);
     let st: fs.Stats;
@@ -203,8 +213,9 @@ export class GuiDaemon {
     } catch {
       // 落档尽力：写失败只让 /workspaces 降级 slug-only，不影响会话装配
     }
-    this.sessionSeq += 1;
-    const id = `s${this.sessionSeq}`;
+    // 会话 id(2026-10-23 用户裁定):sun-{项目摘要12}-{随机8}——退役 s<n> 单调草档(重启即重号、
+    // 跨项目不可归因);项目段=工作区 slug 摘要尾(确定性,会话 id 即可见归属),随机段单进程防撞
+    const id = this.mintSessionId(abs);
     // P6 §4 挂起表下沉会话:daemon 只注入网络寻址两接缝(mintPid/broadcast)——注册/守卫(ghost 硬化
     // isAborted/manual 档位判定)/组帧/回执全部在 SessionRuntime 挂起面(suspendApproval/suspendAsk)
     const session = new SessionRuntime({

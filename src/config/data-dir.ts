@@ -15,7 +15,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { userConfigDir } from './env';
 
-/** 工作区 slug：绝对路径确定性折叠（非安全字符 → '-'，截长 60）+ 8 位摘要尾巴防撞名与超长 */
+/** 工作区 slug：绝对路径确定性折叠（非安全字符 → '-'，截长 60）+ 12 位摘要尾巴防撞名与超长。
+ *  2026-10-23 用户裁定：项目 id 不做旧档兼容（8→12 位，老工作区目录整删重注册即可） */
 export function projectSlug(root: string): string {
   const abs = path.resolve(root);
   const base = abs
@@ -23,7 +24,7 @@ export function projectSlug(root: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
     .replace(/-+$/g, '');
-  const digest = crypto.createHash('sha1').update(abs).digest('hex').slice(0, 8);
+  const digest = crypto.createHash('sha1').update(abs).digest('hex').slice(0, 12);
   return `${base.length > 0 ? base : 'project'}-${digest}`;
 }
 

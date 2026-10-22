@@ -142,13 +142,16 @@ test('② POST /session/new：合法 root 200 回 sessionId=s1 且置激活；�
     const notDir = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: fileRoot }) });
     assert.equal(notDir.status, 400, 'root 非目录 → 400');
 
-    // 合法创建：s1、单调方言、置激活、daemon.get 可达
+    // 合法创建：sun-{项目摘要12}-{随机8} 形态、置激活、daemon.get 可达（s<n> 单调草档已退役）
     const sid = await ctx.newSession();
-    assert.equal(sid, 's1', '首会话 s1（s<n> 进程内单调）');
-    assert.equal(daemon.activeId(), 's1', '创建即置激活');
-    assert.equal(daemon.get('s1')?.root, path.resolve(tmp), 'get() 回会话且 root 为解析后绝对路径');
-    assert.deepEqual(await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) })).json(), { ok: true, sessionId: 's2' }, '同 root 多会话允许——第二会话 s2 且激活前移');
-    assert.equal(daemon.activeId(), 's2', '最近创建者激活');
+    assert.match(sid, /^sun-[0-9a-f]{12}-[0-9a-f]{8}$/, '会话 id 形态：sun-项目摘要-随机段（2026-10-23 用户裁定）');
+    assert.equal(daemon.activeId(), sid, '创建即置激活');
+    assert.equal(daemon.get(sid)?.root, path.resolve(tmp), 'get() 回会话且 root 为解析后绝对路径');
+    const second = (await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) })).json()) as { ok: boolean; sessionId: string };
+    assert.equal(second.ok, true, '同 root 多会话允许');
+    assert.match(second.sessionId, /^sun-[0-9a-f]{12}-[0-9a-f]{8}$/, '第二会话同形态');
+    assert.notEqual(second.sessionId, sid, '随机段两会话不同号');
+    assert.equal(daemon.activeId(), second.sessionId, '最近创建者激活');
 
     // 未知 :id：五端点统一 404
     for (const [m, p] of [['POST', '/session/sX/submit'], ['POST', '/session/sX/steer'], ['POST', '/session/sX/interrupt'], ['POST', '/session/sX/reset'], ['GET', '/session/sX/snapshot']] as const) {

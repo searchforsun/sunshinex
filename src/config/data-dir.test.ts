@@ -15,7 +15,7 @@ test('projectSlug：绝对路径确定性折叠 + 摘要尾巴；同 root 稳定
   try {
     assert.equal(projectSlug(a), projectSlug(a), '同 root slug 稳定');
     assert.notEqual(projectSlug(a), projectSlug(b), '不同 root slug 不同');
-    assert.match(projectSlug(a), /-[0-9a-f]{8}$/, '带 8 位摘要尾巴（防撞名/超长）');
+    assert.match(projectSlug(a), /-[0-9a-f]{12}$/, '带 12 位摘要尾巴（防撞名/超长；2026-10-23 用户裁定 8→12 不做旧档兼容）');
     assert.equal(projectSlug('相对路径'), projectSlug(path.resolve('相对路径')), '内部先收敛绝对路径');
   } finally {
     fs.rmSync(a, { recursive: true, force: true });
