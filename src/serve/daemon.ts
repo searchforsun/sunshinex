@@ -918,18 +918,19 @@ export class GuiDaemon {
    *  outside trusted roots} → readFileBounded（G7 抽取共用：missing 404 / binary 415 / >512KB
    *  截断 truncated:true）→ 200 {path, content, truncated?}。仅 GET（路由表 method 精确匹配） */
 
-  /** GET /session/:id/diff?callId=（G7 收口交接，Chat write 展开/Files 消费）：write 调用的
-   *  pre-image ↔ 磁盘现文件双内容。查询面现场核结论——daemon 会话的 write 影子快照 drain 仅在
+  /** GET /session/:id/diff?callId=（G7 收口交接，Chat write/edit 展开/Files 消费）：快照族（write/edit）
+   *  调用的 pre-image ↔ 磁盘现文件双内容。查询面现场核结论——daemon 会话的影子快照 drain 仅在
    *  dispose/reset（清单随 seal 落 journal），会话存续期内 sink 内存清单常驻：**run 中与 run 后
    *  均查内存实时可得**（blob 落盘 <dataDir>/sessions/_blobs/<sha256> 即时可见）。callId → 调用
-   *  对位：帧缓冲（512 环）内按序扫 tool-call 帧——首枚命中 callId 的帧即目标（text=注册名须
-   *  'write'，payload.input.path 解析绝对路径）；同路径此前 write 调用的位次=该次 pre-image 在
-   *  sink 清单的序（nthFor 按调用序对位，同路径多次写各自取写前态）。响应
+   *  对位：帧缓冲（512 环）内按序扫 tool-call 帧——首枚命中 callId 的帧即目标（text=注册名须在
+   *  快照族 write/edit，payload.input.path 解析绝对路径）；同路径此前快照族调用的位次=该次
+   *  pre-image 在 sink 清单的序（nthFor 按调用序对位，同路径多次写各自取写前态）。响应
    *  200 {path, oldContent?, newContent, truncated?}：oldContent=sink pre-image blob（512KB 截断；
    *  新建写无 blob 缺场）；newContent=磁盘现文件（readFileBounded——判界/截断/二进制同 /file）；
-   *  truncated=任一侧截断。404 面：未知会话 / callId 无帧（含缓冲环已裁）/ 非 write / 无快照
+   *  truncated=任一侧截断。404 面：未知会话 / callId 无帧（含缓冲环已裁）/ 非快照族 / 无快照
    *  （root 外写不入清单）→ {error:'no snapshot'}；400：缺 callId。帧环裁剪的退化：目标帧若已被
-   *  环裁（>512 事件）即 404——GUI 退单列现内容（调用方回执 input.content），记档报告 */
+   *  环裁（>512 事件）即 404——GUI 退单列现内容（write 回执 input.content / edit 回执 old→new 串），
+   *  记档报告 */
 
   /** GET /session/:id/tree?path=<rel>（G8b T4 目录树面，Files 页消费）：path 缺省 ''=会话 root →
    *  判界样板同 /file（realPathOf 归一 ?? 字面兜底 → insideTrustedRoots，越界 403 恒定文案）→

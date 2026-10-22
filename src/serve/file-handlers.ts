@@ -76,6 +76,8 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   if (session === undefined) return;
   // 帧 copy 一致性：扫描与位次计数同一快照（bufferedFrames 每调用新数组，两遍扫同一引用）
   const frames = session.bufferedFrames();
+  /** 影子快照族（注册名口径）：write 与 edit 同走 writeSnapshot 缝捕获 pre-image，diff 面同权 */
+  const SNAPSHOT_TOOLS = new Set(['write', 'edit']);
   /** 目标帧定位：首枚 callId 命中的 tool-call（text=注册名，payload.input 形态现场核 batch-runner：
    *  emit('tool-call', name, {input, callId, status})） */
   let targetSeq = -1;
@@ -85,8 +87,8 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
     if (e.type !== 'tool-call') continue;
     const p = e.payload as { callId?: unknown } | undefined;
     if (p?.callId !== callId) continue;
-    if (e.text !== 'write') {
-      io.send(res, 404, { error: 'no snapshot' }); // 命中 callId 但非 write——无 pre-image 面
+    if (!SNAPSHOT_TOOLS.has(e.text ?? '')) {
+      io.send(res, 404, { error: 'no snapshot' }); // 命中 callId 但非快照族——无 pre-image 面
       return;
     }
     const inPath = (e.payload as { input?: unknown } | undefined)?.input;
@@ -101,13 +103,14 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   }
   let entry: ReturnType<typeof session.runtime.harness.writeSnapshot.nthFor>;
   if (targetAbs !== undefined && targetSeq >= 0) {
-    /** 调用序位次：同路径（resolve 归一后等值）且先于目标的 write 调用数 + 1（sink 清单内的序）；
+    /** 调用序位次：同路径（resolve 归一后等值）且先于目标的快照族调用数 + 1（sink 清单内的序——
+     *  write/edit 同一 sink 清单，混合序列按调用序统一对位）；
      *  P11 三帧:running 帧是同 callId 的二次 tool-call（幂等回填,非新调用）——位次按调用不按帧,跳过防双计 */
     let ordinal = 1;
     for (const f of frames) {
       if (f.seq >= targetSeq) break;
       const e = f.e;
-      if (e.type !== 'tool-call' || e.text !== 'write') continue;
+      if (e.type !== 'tool-call' || !SNAPSHOT_TOOLS.has(e.text ?? '')) continue;
       if ((e.payload as { status?: unknown } | undefined)?.status === 'running') continue;
       const inPath = (e.payload as { input?: unknown } | undefined)?.input;
       const p = inPath !== null && typeof inPath === 'object' ? (inPath as { path?: unknown }) : undefined;

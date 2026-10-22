@@ -56,7 +56,7 @@ type MemoryWriteTool = (input: { type: string; content: string; description?: st
   notice: string | null;
 }>;
 
-/** 内置工具集：read/write/grep/glob/exec/webfetch/websearch/kb_search；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准。装配接缝收敛为单一 opts 具名对象（D25/H6：原 13 位置参形态下相邻同类型接缝（如 kb/webSearch）位置错位编译期不报错，具名后错位即失配）：
+/** 内置工具集：read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/todo_write/memory_write/ask_question/worktree；文件路径为安全链注入的 safePath（绝对路径），仅 exec 的 shell 工作目录以 root 为基准。装配接缝收敛为单一 opts 具名对象（D25/H6：原 13 位置参形态下相邻同类型接缝（如 kb/webSearch）位置错位编译期不报错，具名后错位即失配）：
  *  - kb：kb_search 知识库接缝（D18 接线），缺省不注入时 kb_search 按既有契约降级 kb_not_configured；
  *  - webSearch：websearch 桩 Provider 接缝，供测试注入，缺省按环境解析（DDG/Bing）；
  *  - archive：工具出口预算接缝（超限截断+全文落盘留 read 恢复路径），缺省不设预算（旧测试桩行为不变）；
@@ -263,6 +263,57 @@ export function builtinTools(
         const written = stat !== undefined ? `written ${stat}` : 'written';
         // §9.3 快照过期回执：写项目根 SUNSHINE.md 时观察行补一句（快照仍冻结到下一刷新点，§9.2 漂移检测下轮起点统一尾追全文）
         return execOut(isSunshineMdTarget(safety, p) ? `${written}\n${SUNSHINE_STALE_NOTICE}` : written);
+      },
+    },
+    {
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['path', 'oldString', 'newString', 'replaceAll'],
+        properties: {
+          path: { type: 'string', description: 'File path (relative to the project root or absolute)' },
+          oldString: { type: 'string', description: 'Exact current text to replace, matched literally (no regex, no fuzzy matching); it must appear exactly once in the file unless replaceAll is true' },
+          newString: { type: 'string', description: 'Exact replacement text; empty string deletes the matched text' },
+          replaceAll: { type: ['boolean', 'null'], description: 'Replace every occurrence instead of requiring a unique match' },
+        },
+      },
+      name: 'edit',
+      description:
+        'Targeted text replacement in an existing file (preferred over write when changing a small region of a large file — cost scales with the change, not the file size); old_string is matched literally and must be unique in the file unless replaceAll is true; read the file first when unsure of the exact current text; to create a new file or replace its entire content, use write; edits outside the trusted roots go through permission checks (approval or rejection)',
+      category: 'write',
+      display: { verb: 'EDIT', targetFields: ['path'] },
+      executor: async (input: ToolInput) => {
+        const p = String(input.path);
+        const oldString = String(input.oldString ?? '');
+        const newString = String(input.newString ?? '');
+        const replaceAll = input.replaceAll === true;
+        if (oldString.length === 0) throw new CodedToolError('INVALID_ARG', 'old_string is empty — pass the exact current text to replace');
+        if (oldString === newString) throw new CodedToolError('INVALID_ARG', 'old_string and new_string are identical — nothing to change');
+        const target = resolveProjectPath(root, p);
+        let content: string;
+        try {
+          content = backend.readFile(target);
+        } catch {
+          throw new CodedToolError('INVALID_ARG', `file not found: ${target} — edit modifies an existing file; use write to create one`);
+        }
+        const count = content.split(oldString).length - 1;
+        if (count === 0) throw new CodedToolError('INVALID_ARG', `old_string not found in ${target} — pass the exact current text (read the file first if unsure)`);
+        if (count > 1 && !replaceAll) throw new CodedToolError('INVALID_ARG', `old_string matches ${count} locations in ${target} — include more surrounding context to make it unique, or pass replaceAll=true`);
+        // 字面替换单点（split/join 规避 String.replace 的 $ 模式语义）；replaceAll 只放宽唯一性要求，替换实现同一份
+        const newContent = content.split(oldString).join(newString);
+        // 记忆写入接缝同 write：edit 落在记忆路径时按整稿内容走同一闸门（校验/索引/容量回执），非记忆路径 pass
+        if (memory) {
+          const scope = safety.memoryScope;
+          const r = memory({ root, absPath: p, content: newContent, ...(scope !== undefined && scope !== 'main' ? { scope } : {}) });
+          if (!r.ok) throw new CodedToolError(r.error.code, r.error.message);
+          if (r.value !== 'pass') return execOut(r.value.observation);
+        }
+        // 影子快照与 diff 统计同 write 一份实现（rewind/fork 规格 §6.1 + G14 工具行）
+        writeSnapshot?.capture(target);
+        backend.writeFile(target, newContent);
+        const stat = writeDiffStat(content, newContent);
+        const edited = stat !== undefined ? `edited ${stat}` : 'edited';
+        return execOut(isSunshineMdTarget(safety, p) ? `${edited}\n${SUNSHINE_STALE_NOTICE}` : edited);
       },
     },
     {

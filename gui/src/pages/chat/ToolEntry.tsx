@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCode } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -14,7 +14,7 @@ import type { DiffResp } from '../../connection';
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);G14.168 taskboard 六工具专属图标(去扳手默认) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
-  read: FileText, write: PenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
+  read: FileText, write: PenLine, edit: FilePenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
   worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
@@ -40,7 +40,7 @@ export interface TodoBatch {
  *  凑两字而失读性的展开为目标域词,与运行态标签(RUNNING_LABELS)同口径——加载技能、保存记忆、
  *  更新待办、等待任务、检索知识库、创建任务、设置依赖、分派子智能体 */
 const TOOL_VERB_ZH: Record<string, string> = {
-  read: '读取', write: '写入', exec: '执行', grep: '查阅', glob: '查找',
+  read: '读取', write: '写入', edit: '编辑', exec: '执行', grep: '查阅', glob: '查找',
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
@@ -77,6 +77,7 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
 const RUNNING_LABELS: Record<string, [string, string]> = {
   read: ['Reading file', '正在读取文件'],
   write: ['Writing file', '正在写入'],
+  edit: ['Editing file', '正在编辑'],
   exec: ['Running command', '正在执行'],
   glob: ['Searching files', '正在搜索文件'],
   grep: ['Searching', '正在搜索'],
@@ -121,15 +122,16 @@ export function fileLabelOf(path: string): { base: string; dir: string } {
   return { base, dir }; // 根目录文件 dir = ''(名称即相对路径,不重复显示)
 }
 
-/** write 结果首行 `written +3 -1` → diff stat 拆分(G14 底层同源);无 stat 回空 */
+/** 写族结果首行 `written/edited +3 -1` → diff stat 拆分(G14 底层同源;前缀无关,认 +N -M 形);无 stat 回空 */
 export function writeStatOf(result: string): { added?: string; removed?: string } {
   const m = /\+(\d+) -(\d+)/.exec(result);
   return m === null ? {} : { added: `+${m[1]}`, removed: `-${m[2]}` };
 }
 
-/** G6 工具条目(折叠态一行/点击展开):write 工具(name==='write',call 名判定——事件 text 即
+/** G6 工具条目(折叠态一行/点击展开):写族工具(write/edit,call 名判定——事件 text 即
  *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
- *  +加载标,404/失败退单列现内容——快照种子条/无 callId 面恒单列)+ path 文本按钮(G8d 起
+ *  +加载标,404/失败退 input 侧兜底——write=newContent/edit=oldString→newString 替换对;
+ *  快照种子条/无 callId 面恒兜底列)+ path 文本按钮(G8d 起
  *  callId 在场优先 onOpenDiff 开 diff 标签,缺场回落 onOpenFile 文件标签预览);其他工具展开
  *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚)。P11 T7 字段单源:
  *  name/input/result/status 直映 entry 字段(旁路 info prop 随工具 input 暂存退役——G6 双通道
@@ -170,8 +172,8 @@ export function ToolEntryView({
   const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
   const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
   const target = toolTargetOf(toolName, input);
-  /** write 分型(G14):折叠=文件名+相对路径+diff stat,展开=diff2html;read 分型:整行=打开文件标签 */
-  const isWrite = toolName === 'write' && path !== undefined;
+  /** 写族分型(G14):折叠=文件名+相对路径+diff stat,展开=diff 面板;read 分型:整行=打开文件标签 */
+  const isWrite = (toolName === 'write' || toolName === 'edit') && path !== undefined;
   const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
   const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
   const stat = isWrite ? writeStatOf(resultText) : {};
@@ -418,7 +420,7 @@ export function ToolEntryView({
     </>
   );
 
-  /** 展开面主体(G14 分型):write=diff2html;skill=md 正文;exec=$ 命令高亮+输出;
+  /** 展开面主体(G14 分型):写族=行级 diff 面板;skill=md 正文;exec=$ 命令高亮+输出;
    *  todo_write=本地化清单(G14.138,daemon 英文结果不进展开面);其余=输出原文 */
   let body: JSX.Element;
   if (toolName === 'todo_write') {
@@ -442,7 +444,16 @@ export function ToolEntryView({
       </div>
     );
   } else if (isWrite) {
-    const fallbackNew = typeof input.content === 'string' ? input.content : '';
+    // 快照兜底列(404/失败/加载期):write=整稿新内容(input.content);edit=本次替换对(oldString→newString)
+    const fallbackOld = toolName === 'edit' && typeof input.oldString === 'string' ? input.oldString : undefined;
+    const fallbackNew =
+      toolName === 'edit'
+        ? typeof input.newString === 'string'
+          ? input.newString
+          : ''
+        : typeof input.content === 'string'
+          ? input.content
+          : '';
     const openDiff =
       onOpenDiff !== undefined && callId !== undefined && path !== undefined
         ? (): void => {
@@ -459,7 +470,7 @@ export function ToolEntryView({
       <div className="tool-detail">
         {/* G14.51:自绘行级 diff;⇄ 开 diff 标签钮迁入(原 DiffPanel 角标钮,可及名=路径) */}
         <div className="tool-diffwrap">
-          <DiffLines oldStr={diff?.oldContent} newStr={diff !== null && diff !== undefined ? diff.newContent : fallbackNew} path={path} maxHeight={280} />
+          <DiffLines oldStr={diff?.oldContent ?? fallbackOld} newStr={diff !== null && diff !== undefined ? diff.newContent : fallbackNew} path={path} maxHeight={280} />
           {openDiff !== undefined && (
             <button
               type="button"

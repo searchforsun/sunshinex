@@ -74,7 +74,7 @@ function walkStrict(node: JsonSchema, pathKey: string, loose: ReadonlySet<string
 test('内建工具全量声明 parameters 且对象节点显式闭合（裸装配与全接缝装配两态一致）', () => {
   withRegistries(({ bare, full }) => {
     const bareNames = bare.list().map((t) => t.name).sort();
-    assert.deepEqual(bareNames, ['exec', 'glob', 'grep', 'kb_search', 'read', 'skill', 'todo_write', 'webfetch', 'websearch', 'worktree', 'write']);
+    assert.deepEqual(bareNames, ['edit', 'exec', 'glob', 'grep', 'kb_search', 'read', 'skill', 'todo_write', 'webfetch', 'websearch', 'worktree', 'write']);
     const fullNames = full.list().map((t) => t.name).sort();
     assert.deepEqual(fullNames, [...bareNames, 'ask_question', 'memory_write', SPAWN_TOOL_NAME].sort());
     for (const registry of [bare, full]) {
@@ -90,6 +90,7 @@ test('逐工具 required/properties 与执行器真实入参一一对应', () =>
       read: ['path', 'range'],
       skill: ['id', 'params'],
       write: ['path', 'content'],
+      edit: ['path', 'oldString', 'newString', 'replaceAll'],
       grep: ['pattern', 'glob', 'path'],
       glob: ['pattern'],
       webfetch: ['url'],
@@ -240,7 +241,7 @@ test('displayMeta 特征化钉（D26/J1）：旧 VERBS/TARGET_FIELD 双表值逐
     registry.register({ ...makeTaskWaitTool({} as unknown as TaskRegistry), display: { verb: 'TASK_WAIT' } });
 
     const meta = registry.displayMeta();
-    assert.equal(Object.keys(meta).length, 16, '13 内置（含条件注册的 memory_write/ask_question）+ spawn/task_stop/task_wait');
+    assert.equal(Object.keys(meta).length, 17, '14 内置（含条件注册的 memory_write/ask_question）+ spawn/task_stop/task_wait');
     // 旧 VERBS 表（tui/tool-verbs.ts 迁移前）逐一对应；skill/memory_write 无旧表条目，走名大写派生
     //（= 迁移前 TUI fallback 呈现 SKILL/MEMORY_WRITE，行为零变化）
     const verbs = Object.fromEntries(Object.entries(meta).map(([name, m]) => [name, m.verb]));
@@ -249,6 +250,7 @@ test('displayMeta 特征化钉（D26/J1）：旧 VERBS/TARGET_FIELD 双表值逐
       exec: 'EXEC',
       read: 'READ',
       write: 'WRITE',
+      edit: 'EDIT',
       grep: 'GREP',
       glob: 'GLOB',
       webfetch: 'FETCH',
@@ -273,6 +275,7 @@ test('displayMeta 特征化钉（D26/J1）：旧 VERBS/TARGET_FIELD 双表值逐
       exec: ['command'],
       read: ['path'],
       write: ['path'],
+      edit: ['path'],
       grep: ['pattern'],
       glob: ['pattern'],
       webfetch: ['url'],

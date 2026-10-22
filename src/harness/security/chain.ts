@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
+import { PATH_TOOL_NAMES, WRITE_TOOL_NAMES } from './modes';
 import { matchAnyRule } from '../../config/permissions';
 import type { PermissionsConfig } from '../../config/permissions';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
@@ -14,8 +15,8 @@ import { isWithin } from '../../paths';
 import { Result, fail } from '../../result';
 import { landlockWrap } from './landlock';
 
-/** 需要路径边界校验的工具（安全链规范名） */
-const PATH_TOOLS = new Set(['Read', 'Write', 'Grep']);
+/** 需要路径边界校验的工具（安全链规范名；单一权威在 modes.ts，与 guard 共用防漂移） */
+const PATH_TOOLS = PATH_TOOL_NAMES;
 
 /** .git 内部路径判据（spec D6）：路径任一段为 .git 即命中（仓库 .git 目录与 worktree 指针文件同护） */
 function isGitInternalPath(real: string): boolean {
@@ -87,7 +88,7 @@ export class SafetyChain {
     // 链侧 ask 路由（spec 5.1 写/读分支）：'always' 目录登记，会话内同目录后续读写免批
     const askDecision = await this.guard.resolveAsk({
       id: this.guard.nextApprovalId(),
-      kind: tool === 'Write' ? 'write' : 'read',
+      kind: WRITE_TOOL_NAMES.has(tool) ? 'write' : 'read',
       subject: this.rawPath(input),
       reason: resolved.reason,
     });
@@ -156,13 +157,13 @@ export class SafetyChain {
       while (!fs.existsSync(anchor)) anchor = path.dirname(anchor);
       const real = fs.realpathSync(anchor) + abs.slice(anchor.length);
 
-      // ── 产品硬底线（spec 5.1：先于用户规则；规则只可收窄不可放宽）──
+      // ── 产品硬底线（spec 5.1：先于用户规则；规则只可收窄不可放宽；写族按 WRITE_TOOL_NAMES 判定——edit 与 write 同保护）──
       // ① settings.json 两级写保护（用户裁决：配置正名不可被模型改写；拒绝文案英文单语（入链），两级路径各归一一次）
-      if (tool === 'Write' && this.isProtectedSettingsPath(real)) {
+      if (WRITE_TOOL_NAMES.has(tool) && this.isProtectedSettingsPath(real)) {
         return { allowed: false, reason: `COMMAND_DENIED: settings.json is protected (edit it manually): ${real}` };
       }
       // ② .git/** 写保护（D6）
-      if (tool === 'Write' && isGitInternalPath(real)) {
+      if (WRITE_TOOL_NAMES.has(tool) && isGitInternalPath(real)) {
         return { allowed: false, reason: `COMMAND_DENIED: .git is protected (git state changes go through exec git): ${real}` };
       }
       // ③ 记忆写窄口（既有；先于信任域放行，不绕记忆总开关与 scope）。
@@ -171,7 +172,7 @@ export class SafetyChain {
       // 字面形态先查保证「链接形式上是记忆路径」一律进窄口定论，real 形态维持既有判定（链接目标真实落位）
       const dataDirLiteral = resolveDataDir(this.root);
       if (
-        tool === 'Write' &&
+        WRITE_TOOL_NAMES.has(tool) &&
         (isMemoryPath(dataDirReal(this.root), real) !== null || isMemoryPath(dataDirReal(this.root), abs) !== null ||
           isMemoryPath(dataDirLiteral, real) !== null || isMemoryPath(dataDirLiteral, abs) !== null)
       ) {
@@ -181,7 +182,7 @@ export class SafetyChain {
           : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
       }
       // ⑤ worktree 主根拒写（既有硬底线；主根读类恒开放）
-      if (this.activeRootReal !== null && tool === 'Write' && (real === this.rootReal || isWithin(this.rootReal, real))) {
+      if (this.activeRootReal !== null && WRITE_TOOL_NAMES.has(tool) && (real === this.rootReal || isWithin(this.rootReal, real))) {
         return { allowed: false, reason: `COMMAND_DENIED: path escapes active worktree root (write outside worktree session): ${real}` };
       }
 
@@ -203,7 +204,8 @@ export class SafetyChain {
       const inAdditional = this.additionalDirs.some((d) => real === d || isWithin(d, real));
 
       // 读分支（D1）：信任域内直放；域外全盘放行，fence 开启时收窄（manual=ask、其余档=拒）
-      if (tool !== 'Write') {
+      // （写族走下方写分支——edit 与 write 同审批/同档位语义，不得借读分支域外直放）
+      if (!WRITE_TOOL_NAMES.has(tool)) {
         if (inUserConfig || inActiveRoot || inAdditional || inMainRoot) return { allowed: true, safePath: real };
         if (this.underDataDir(real)) return { allowed: true, safePath: real };
         if (this.readFenceEnabled()) return this.readFenceDecision(real);

@@ -69,7 +69,7 @@ src/
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question/worktree/todo_write）
+    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question/worktree/todo_write）
     tools/task-stop.ts # task_stop 工具（按 id 停止后台任务；装配期与 spawn 一并注册进主链）
     tools/task-wait.ts # task_wait 工具（阻塞等待后台任务到终态；装配期与 task_stop 一并注册进主链）
     tasks.ts          # 统一后台任务账本（exec/spawn 后台与超时转后台的 ID/生命周期/状态单点）
@@ -112,7 +112,7 @@ SUNSHINE.md          # 项目业务配置
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
 - **主链工具面（装配期一次性登记，selfcheck `tools :` 行同源）**：
-  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `write` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
+  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
   - 另册：`spawn`（`subagent.ts` 工厂，子智能体派生）/ `task_stop`（`tools/task-stop.ts`，按 id 停止后台 exec/超时转后台/后台子智能体）/ `task_wait`（`tools/task-wait.ts`，阻塞等待后台任务到终态并内联回执 exec 日志尾部/子智能体结论）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
   - 任务板与团队（`taskboard-tools.ts` + `teammate-tools.ts` 工厂，`harness/index.ts` 装配）：`create_teammate`（长驻成员创建，与 spawn 分立动词）/ `create_task` / `update_task` / `review_task` / `get_board` / `send_message`（主链面）；teammate 成员面派生时剔板面写件、换注 `get_board`/`get_task` 读取
 - **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀、子智能体派生、后台任务停止等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制。**工具参数声明化**：每个工具必须以 JSON Schema 声明 `parameters`（function calling strict 兼容口径——`additionalProperties` 显式闭合、可选项以 null 联合进 `required`；自由入参属例外，须显式登记 `additionalProperties: true` 宽松点），新工具不带 schema 不得入清单

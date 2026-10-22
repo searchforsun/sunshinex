@@ -7,6 +7,7 @@ const CANONICAL_TOOL_NAMES: Record<string, string> = {
   exec: 'Bash',
   read: 'Read',
   write: 'Write',
+  edit: 'Edit',
   grep: 'Grep',
   glob: 'Glob',
   webfetch: 'WebFetch',
