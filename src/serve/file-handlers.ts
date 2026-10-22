@@ -22,6 +22,10 @@ const IGNORED = new Set(['.git', 'node_modules', 'dist', 'dist-gui']);
 /** tree 单层上限（G8b T4）：500 条；超限截断 + truncated:true（GUI 呈现「已截断」而非无界载荷） */
 const TREE_MAX_ENTRIES = 500;
 
+/** 影子快照族（注册名小写口径）：write 与 edit 同走 writeSnapshot 缝捕获 pre-image——与
+ *  modes.ts WRITE_TOOL_NAMES（规范名大写）是两个名域各表其面，第三支快照族工具两处同频 */
+const SNAPSHOT_TOOLS = new Set(['write', 'edit']);
+
 export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
   const url = urlOf(req);
   const q = url.searchParams.get('path');
@@ -76,8 +80,6 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   if (session === undefined) return;
   // 帧 copy 一致性：扫描与位次计数同一快照（bufferedFrames 每调用新数组，两遍扫同一引用）
   const frames = session.bufferedFrames();
-  /** 影子快照族（注册名口径）：write 与 edit 同走 writeSnapshot 缝捕获 pre-image，diff 面同权 */
-  const SNAPSHOT_TOOLS = new Set(['write', 'edit']);
   /** 目标帧定位：首枚 callId 命中的 tool-call（text=注册名，payload.input 形态现场核 batch-runner：
    *  emit('tool-call', name, {input, callId, status})） */
   let targetSeq = -1;

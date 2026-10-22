@@ -293,7 +293,9 @@ export function builtinTools(
         let content: string;
         try {
           content = backend.readFile(target);
-        } catch {
+        } catch (err) {
+          // 仅缺失(ENOENT)引导去 write;权限/目录等如实上抛——误报 file not found 会把模型引去覆写真实存在的目标
+          if ((err as NodeJS.ErrnoException | null)?.code !== 'ENOENT') throw err;
           throw new CodedToolError('INVALID_ARG', `file not found: ${target} — edit modifies an existing file; use write to create one`);
         }
         const count = content.split(oldString).length - 1;
