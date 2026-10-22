@@ -240,24 +240,27 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           </span>
         )}
         <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
-        {/* ⋯ 会话操作钮(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用) */}
-        <button type="button" className="sx-iconbtn" data-tip={t('Session actions', '会话操作')}
-          aria-label={t('Session actions', '会话操作')}
-          onClick={(e) => {
-            e.stopPropagation();
-            setAskArchive(null); // 重开菜单时收掉残留确认弹窗
-            loadPinned();
-            const r = e.currentTarget.getBoundingClientRect();
-            setMenu({ x: Math.round(r.right), y: Math.round(r.bottom) });
-          }}
-        >
-          <MoreHorizontal size={16} strokeWidth={1.75} />
-        </button>
+        {/* ⋯ 会话操作钮(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)。
+            辅助对话不渲染(2026-10-23 用户裁定:fixedTitle==='' 即辅助会话,无会话级操作面) */}
+        {fixedTitle !== '' && (
+          <button type="button" className="sx-iconbtn" data-tip={t('Session actions', '会话操作')}
+            aria-label={t('Session actions', '会话操作')}
+            onClick={(e) => {
+              e.stopPropagation();
+              setAskArchive(null); // 重开菜单时收掉残留确认弹窗
+              loadPinned();
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu({ x: Math.round(r.right), y: Math.round(r.bottom) });
+            }}
+          >
+            <MoreHorizontal size={16} strokeWidth={1.75} />
+          </button>
+        )}
         {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
-        {menu !== null && (
+        {menu !== null && fixedTitle !== '' && (
           <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />
         )}
-        {askArchive !== null && (
+        {askArchive !== null && fixedTitle !== '' && (
           // 归档二次确认弹窗(同款弹层件;外点/Esc 即取消)
           <SessionRowMenu
             x={askArchive.x}
