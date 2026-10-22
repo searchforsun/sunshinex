@@ -75,6 +75,11 @@ export function buildSegNodes(seg: ChatEntry[]): SegNode[] {
 /** ghost 渐收时长（CSS tool-merge-up 0.36s + 卸载余量） */
 const GHOST_MS = 420;
 
+/** 聚合头锚定窗口（ms，覆盖 grid 0fr→1fr 高度过渡 --dur-relaxed=0.3s + 余量）：窗口内贴底跟随
+ *  挂起（滚动容器 dataset.groupAnchor 旗，use-chat-scroll 贴底 effect 读），聚合头逐帧回钉视口位
+ *  ——折叠/展开只动头下内容，头部视口位恒定（用户裁定：上侧不动、下侧工具行向上吸附） */
+const ANCHOR_MS = 420;
+
 /** 会话折叠段块（Chat flushSeg 抽件，G14.73 seg-collapse 壳不变）：段内条目经 buildSegNodes 聚合——
  *  聚合头（图标+计数文案+chevron）点击展开/收起；归并动画=上一帧单行/执行中、本帧成组员的条目
  *  在组尾渲染渐收 ghost（挂载即播收合动画，到点卸载；首帧/种子回放批量落位不动画） */
@@ -99,6 +104,36 @@ export function ToolSegBlock({
   const ghostTimers = useRef<number[]>([]);
   /** 上一帧条目态快照（key → 执行中/单行/组员）：null=首帧不动画 */
   const prevStates = useRef<Map<string, 'executing' | 'standalone' | 'member'> | null>(null);
+  /** 聚合头锚定 rAF 句柄（卸载清理；窗口自终止） */
+  const anchorRafs = useRef<number[]>([]);
+
+  /** 聚合头锚定 toggle（用户裁定「上侧不动、下侧向上吸附」）：记点击时头钮视口位，展开/收合后
+   *  逐帧把头钮差值回钉到滚动容器——头在动画区上方，布局本身不动它，动的只有贴底跟随的
+   *  scrollTop 写入（同渲染的贴底 effect）与原生滚动锚定；窗口内挂起贴底（dataset 旗）+逐帧
+   *  回钉即稳。窗口后旗自摘，贴底语义交还 onScroll 距底判定（锚定后不再贴底=放手，正解） */
+  const toggleGroup = (gkey: string, headEl: HTMLButtonElement): void => {
+    const container = headEl.closest<HTMLElement>('.chat');
+    const before = headEl.getBoundingClientRect().top;
+    setExpanded((s) => {
+      const next = new Set(s);
+      if (next.has(gkey)) next.delete(gkey);
+      else next.add(gkey);
+      return next;
+    });
+    if (container === null) return;
+    container.dataset.groupAnchor = '1';
+    const t0 = Date.now();
+    const step = (): void => {
+      const delta = headEl.getBoundingClientRect().top - before;
+      if (delta !== 0) container.scrollTop += delta;
+      if (Date.now() - t0 < ANCHOR_MS) {
+        anchorRafs.current.push(requestAnimationFrame(step));
+      } else {
+        delete container.dataset.groupAnchor;
+      }
+    };
+    anchorRafs.current.push(requestAnimationFrame(step));
+  };
 
   useLayoutEffect(() => {
     const cur = new Map<string, 'executing' | 'standalone' | 'member'>();
@@ -124,7 +159,10 @@ export function ToolSegBlock({
     }
     // 无依赖：每帧 diff（nodes 随渲染重建，无稳定引用可依赖）
   });
-  useEffect(() => () => { for (const id of ghostTimers.current) clearTimeout(id); }, []);
+  useEffect(() => () => {
+    for (const id of ghostTimers.current) clearTimeout(id);
+    for (const id of anchorRafs.current) cancelAnimationFrame(id);
+  }, []);
 
   /** 各组的 ghost（组尾渐收行）：按成员归属分流 */
   const ghostsOf = (n: SegNode & { type: 'group' }): ChatEntry[] => ghosts.filter((g) => n.entries.some((e) => e.key === g.key));
@@ -147,14 +185,7 @@ export function ToolSegBlock({
                 type="button"
                 className={`tool-group-head${isOpen ? ' open' : ''}`}
                 aria-expanded={isOpen}
-                onClick={() =>
-                  setExpanded((s) => {
-                    const next = new Set(s);
-                    if (next.has(n.gkey)) next.delete(n.gkey);
-                    else next.add(n.gkey);
-                    return next;
-                  })
-                }
+                onClick={(e) => toggleGroup(n.gkey, e.currentTarget)}
               >
                 <Icon size={12} strokeWidth={1.75} aria-hidden="true" />
                 {/* key=计数：计数增长即重挂重播 pop 动画（语言切换不换 key 不重播） */}

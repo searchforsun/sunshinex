@@ -16,7 +16,8 @@ export function useChatScroll(deps: {
  *  再触底恢复。useEffect 无依赖面=每渲染后跑,滚动判断在 onScroll 单点维护 */
 useEffect(() => {
   const el = chatScrollRef.current;
-  if (el !== null && chatStickRef.current) el.scrollTop = el.scrollHeight;
+  // 聚合头锚定窗口（ToolGroups dataset 旗）内挂起贴底回钉——折叠/展开期间头钮逐帧自钉视口位
+  if (el !== null && chatStickRef.current && el.dataset.groupAnchor !== '1') el.scrollTop = el.scrollHeight;
 });
 
 /** G14.212/G14.213 存档位恢复:种子落定(非 seeding 且条目非空)后 rAF 收敛滚动到存档距底位。
