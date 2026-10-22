@@ -1,9 +1,8 @@
-import { useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
 import { Archive, ChevronRight, Folder, FolderOpen, SquarePen, X } from 'lucide-react';
-import { sessionMetaLine, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
+import { sessionMetaLine, SessionRow as SessionRowView } from './project-menu-util';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
@@ -41,13 +40,13 @@ export interface ProjectsSectionProps {
   /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮 */
   readonly pinnedIds: ReadonlySet<string>;
   readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number }) => void;
+  /** 置顶会话的取消置顶(⋯ 菜单消费;可——已钉会话不在本列表,兜底面) */
+  readonly onUnpinRow?: (id: string) => void;
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, onUnpinRow, groupShowAll, onGroupShowMore } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
-  const [confirmId, setConfirmId] = useState('');
-  useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
   if (archiveMode === true) {
     /* 归档层(2026-10-21 用户裁定):组头=「归档会话」+X 退出(无折叠无归档/新增钮);列表体=归档行 */
     return (
@@ -215,12 +214,15 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                                 if (root === undefined) return;
                                 onAttach(root, sr.id, sr.updatedAt);
                               }}
-                              pin={root !== undefined ? {
-                                onPin: () => onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt }),
-                              } : undefined}
-                              confirmId={confirmId}
-                              onArm={() => setConfirmId(sr.id)}
-                              onConfirm={() => { setConfirmId(''); onArchiveRow(sr.id, true); }}
+                              menu={{
+                                items: () => [
+                                  { id: 'open', label: t('Open session', '打开会话'), onSelect: () => { if (root !== undefined) onAttach(root, sr.id, sr.updatedAt); } },
+                                  ...(pinnedIds.has(sr.id)
+                                    ? [{ id: 'unpin', label: t('Unpin session', '取消置顶'), onSelect: () => onUnpinRow?.(sr.id) }]
+                                    : [{ id: 'pin', label: t('Pin session', '置顶会话'), onSelect: () => onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt }) }]),
+                                  { id: 'archive', label: t('Archive session', '归档会话'), onSelect: () => onArchiveRow(sr.id, true) },
+                                ],
+                              }}
                             />
                           );
                             })}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Archive, ArchiveRestore, Folder, PanelRight } from 'lucide-react';
+import { Folder, MoreHorizontal, PanelRight } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
+import { SessionRowMenu } from '../../sidebar/session-row-menu';
 
 /** 会话顶栏(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):标题(空/改/显三态,点击重命名)
  *  + 动态计数钮(待办/任务板)+ 侧栏展开钮。标题编辑态与草稿留宿主。
@@ -92,12 +93,57 @@ export interface ChatTopbarProps {
   readonly onArchive: (archived: boolean) => void;
   readonly showExpandSidebar: boolean | undefined;
   readonly onExpandSidebar: (() => void) | undefined;
+  /** 会话档身份(置顶档寻址——journalId 跨重启稳定) */
+  readonly journalId?: string;
+  /** 会话工作区根(置顶条目快照字段) */
+  readonly root?: string;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, showExpandSidebar, onExpandSidebar } = props;
-  // 归档确认 morph(2026-10-21):首击显「确认」,再击才落归档——防误触;收起由确认完成(点外不复位可后续打磨)
-  const [confirming, setConfirming] = useState(false);
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, showExpandSidebar, onExpandSidebar } = props;
+  // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [pinned, setPinned] = useState(false);
+  const loadPinned = (): void => {
+    if (journalId === undefined) return;
+    conn.appPins().then(
+      (r) => setPinned(r.pins.some((p) => p.id === journalId)),
+      () => undefined,
+    );
+  };
+  const togglePin = (): void => {
+    if (journalId === undefined) return;
+    conn.appPins().then(
+      (r) => {
+        const rest = r.pins.filter((p) => p.id !== journalId);
+        const next = pinned ? rest : [...rest, { id: journalId, root: root ?? '', title: displayTitle, updatedAt: Date.now() }];
+        setPinned(!pinned);
+        void conn.saveAppPins(next).then(() => undefined, () => undefined);
+      },
+      () => undefined,
+    );
+  };
+  const menuItems = [
+    {
+      id: 'pin',
+      label: pinned ? t('Unpin session', '取消置顶会话') : t('Pin session', '置顶会话'),
+      disabled: running,
+      onSelect: () => {
+        togglePin();
+        loadPinned();
+      },
+    },
+    {
+      id: 'archive',
+      label: archived ? t('Unarchive session', '取消归档会话') : t('Archive session', '归档会话'),
+      disabled: running,
+      onSelect: () => {
+        if (archived) onArchive(false);
+        else onArchive(true);
+        loadPinned();
+      },
+    },
+  ];
   return (
     <header className="chat-topbar">
         {fixedTitle === '' ? (
@@ -135,28 +181,26 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           </span>
         )}
         <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
-        {archived ? (
-          <>
-            <span className="sx-archived-badge">{t('Archived', '已归档')}</span>
-            <button type="button" className="sx-iconbtn" data-tip={t('Unarchive', '撤销归档')}
-              aria-label={t('Unarchive', '撤销归档')} onClick={() => onArchive(false)}>
-              <ArchiveRestore size={14} strokeWidth={1.75} />
-            </button>
-          </>
-        ) : confirming ? (
-          <button type="button" className="sx-archive-confirm" aria-label={t('Confirm archive', '确认归档')}
-            disabled={running}
-            onClick={() => { setConfirming(false); onArchive(true); }}>
-            {t('Confirm', '确认')}
-          </button>
-        ) : (
-          // 归档门禁(spec §8 running 矩阵):运行中钮禁用+提示文案——daemon 409 之前的 UI 侧门禁
-          <button type="button" className="sx-iconbtn"
-            data-tip={running ? t('Stop the run before archiving', '先停止运行再归档') : t('Archive', '归档')}
-            aria-label={running ? t('Stop the run before archiving', '先停止运行再归档') : t('Archive', '归档')}
-            disabled={running} onClick={() => setConfirming(true)}>
-            <Archive size={14} strokeWidth={1.75} />
-          </button>
+        {/* ⋯ 会话操作钮(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用) */}
+        <button type="button" className="sx-iconbtn" data-tip={t('Session actions', '会话操作')}
+          aria-label={t('Session actions', '会话操作')}
+          onClick={(e) => {
+            e.stopPropagation();
+            loadPinned();
+            const r = e.currentTarget.getBoundingClientRect();
+            setMenu({ x: Math.round(r.right), y: Math.round(r.bottom) });
+          }}
+        >
+          <MoreHorizontal size={16} strokeWidth={1.75} />
+        </button>
+        {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
+        {menu !== null && (
+          <SessionRowMenu
+            x={menu.x}
+            y={menu.y}
+            onClose={() => setMenu(null)}
+            items={menuItems.map((it) => ({ ...it, disabled: it.disabled && running }))}
+          />
         )}
         {showExpandSidebar && (
           <button

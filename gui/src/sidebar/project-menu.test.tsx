@@ -192,29 +192,35 @@ describe('ProjectMenu G14.115 RECENTS 分页显形(默认 10 条,步进 10,收�
   });
 });
 
-describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', () => {
-  it('RECENTS 行 hover 归档钮:点击 morph 行内「确认」且 stopPropagation 不触发行 attach;确认→archiveSession(j1,true)+列表重拉(计数/Recents)', async () => {
+describe('ProjectMenu 会话行 ⋯ 快捷菜单(2026-10-22)+ 组头归档入口', () => {
+  it('RECENTS 行 ⋯ 钮:hover 显形,点击弹快捷菜单(打开/置顶/归档);行外 mousedown 关闭', async () => {
     const conn = makeConn();
     renderMenu(conn);
     await screen.findByText('demo goal');
-    const opensBefore = open.mock.calls.length;
-    // 归档钮点击:morph 为「确认」,不触发 attach 两步(stopPropagation)
-    fireEvent.click(screen.getByRole('button', { name: 'Archive j1' }));
-    expect(screen.queryByRole('button', { name: 'Archive j1' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Confirm archive j1' })).toBeDefined();
-    fireEvent.mouseDown(document.body); // 行外点击:取消确认(用户裁定),还原归档钮
-    expect(screen.getByRole('button', { name: 'Archive j1' })).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Confirm archive j1' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Archive j1' }));
-    expect(screen.getByRole('button', { name: 'Confirm archive j1' })).toBeDefined();
-    expect(open.mock.calls.length).toBe(opensBefore);
-    expect(conn.roots).toEqual([]); // 无 sessionsOf 拉(未展开组;attach 未发生)
-    // 确认点击:落库 archived=true + 重拉(workspaces=计数/Recents;组未展开故无 sessionsOf)
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm archive j1' }));
+    // ⋯ 钮:hover 显形(display 由 CSS 承载,jsdom 直查),基线无弹层
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions j1' }));
+    const menu = screen.getByRole('menu');
+    expect(menu).toBeDefined();
+    expect(within(menu).getByText('Open session')).toBeDefined();
+    expect(within(menu).getByText('Pin session')).toBeDefined();
+    expect(within(menu).getByText('Archive session')).toBeDefined();
+    // 行外 mousedown:菜单关闭(用户裁定交互)
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('RECENTS 行 ⋯ 菜单:置顶会话→onPinRow 快照落库;归档会话→archiveSession(j1,true)+列表重拉', async () => {
+    const conn = makeConn();
+    renderMenu(conn);
+    await screen.findByText('demo goal');
+    fireEvent.click(screen.getByRole('button', { name: 'More actions j1' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByText('Pin session'));
+    await waitFor(() => expect(conn.saveAppPins).toHaveBeenCalled()); // 置顶→钉档落盘(/app/pins)
+    // 再开菜单:归档会话
+    fireEvent.click(screen.getByRole('button', { name: 'More actions j1' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByText('Archive session'));
     await waitFor(() => expect(conn.archiveSession).toHaveBeenCalledWith('j1', true));
-    await waitFor(() => expect(conn.workspaces).toHaveBeenCalledTimes(2)); // 挂载 1 次 + 落库后重拉
-    expect(conn.roots).toEqual([]);
-    expect(open.mock.calls.length).toBe(opensBefore);
   });
 
   it('归档层入口:点组头归档钮→下侧整替为归档列表(覆盖项目/最近会话,组头换「归档会话」+X);点 X 退出还原', async () => {

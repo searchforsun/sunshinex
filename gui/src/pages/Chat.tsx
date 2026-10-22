@@ -376,6 +376,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onOpenTab={onOpenTab}
         archived={archived}
         onArchive={onArchive}
+        journalId={journalId}
+        root={root}
         showExpandSidebar={showExpandSidebar}
         onExpandSidebar={onExpandSidebar}
       />

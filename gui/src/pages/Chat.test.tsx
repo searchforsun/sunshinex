@@ -889,8 +889,8 @@ describe('G14.181 用户气泡限高折叠', () => {
   });
 });
 
-describe('顶栏归档三态(2026-10-21 T5)', () => {
-  it('顶栏归档:未归档显 Archive 钮→点击变确认→确认调 archiveSession(true);已归档显徽标+撤销钮', async () => {
+describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
+  it('⋯ 钮弹菜单:归档会话项调 archiveSession(true) 且徽标换面;已归档时项变取消归档', async () => {
     const archiveSession = vi.fn(() => Promise.resolve());
     const snapOf = (archived: boolean): unknown => ({
       messages: [],
@@ -904,27 +904,32 @@ describe('顶栏归档三态(2026-10-21 T5)', () => {
       lastSeq: 0,
       archived,
     });
-    // —— 未归档(快照 archived:false):Archive 钮在场 → 点击变「确认」→ 确认调 archiveSession(id,true) 且本地换徽标面 ——
+    const appPins = vi.fn(async () => ({ pins: [] }));
+    const saveAppPins = vi.fn(async () => undefined);
+    // —— 未归档(快照 archived:false):⋯ 钮 → 菜单「Archive session」→ archiveSession(id,true) + 徽标换面 ——
     const conn = connOf([]);
     (conn as unknown as Record<string, unknown>).archiveSession = archiveSession;
     (conn as unknown as Record<string, unknown>).sessionSnapshot = () => Promise.resolve(snapOf(false));
+    (conn as unknown as Record<string, unknown>).appPins = appPins;
+    (conn as unknown as Record<string, unknown>).saveAppPins = saveAppPins;
     const first = render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed(); // 播种落定(archived 播种已应用,确认击不发播种竞态)
-    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
+    fireEvent.click(screen.getByText('Archive session'));
     expect(archiveSession).toHaveBeenCalledWith('s1', true);
     expect(await screen.findByText('Archived')).toBeTruthy(); // 本地 archived 同步 → 徽标即刻换面
-    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull(); // 确认 morph 后归档钮退役
     first.unmount();
-    // —— 已归档(快照 archived:true):徽标 + 撤销钮;撤销调 archiveSession(id,false) 且徽标即撤 ——
+    // —— 已归档(快照 archived:true):徽标在;菜单项变「Unarchive session」→ archiveSession(id,false) ——
     const conn2 = connOf([]);
     (conn2 as unknown as Record<string, unknown>).archiveSession = archiveSession;
     (conn2 as unknown as Record<string, unknown>).sessionSnapshot = () => Promise.resolve(snapOf(true));
+    (conn2 as unknown as Record<string, unknown>).appPins = appPins;
+    (conn2 as unknown as Record<string, unknown>).saveAppPins = saveAppPins;
     render(<Chat conn={conn2} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     expect(await screen.findByText('Archived')).toBeTruthy();
     expect(document.querySelector('.sx-archived-badge')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Unarchive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
+    fireEvent.click(screen.getByText('Unarchive session'));
     expect(archiveSession).toHaveBeenCalledWith('s1', false);
-    expect(screen.queryByText('Archived')).toBeNull(); // 撤销即回未归档面(Archive 钮回归)
   });
 });

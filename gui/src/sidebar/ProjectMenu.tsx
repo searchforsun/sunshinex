@@ -522,6 +522,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               onArchiveRow={archiveRow}
               pinnedIds={pinnedIds}
               onPinRow={pinSessionRow}
+              onUnpinRow={unpinRow}
             />
           </>
         )}
