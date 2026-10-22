@@ -536,7 +536,6 @@ export function ToolEntryView({
         type="button"
         className="tool-summary"
         aria-expanded={isRead ? undefined : expanded}
-        data-tip={isRead ? t('Open in file tab', '在文件标签预览') : undefined}
         onClick={() => {
           if (isRead) onOpenFile?.(path!);
           else setExpanded((v) => !v);
