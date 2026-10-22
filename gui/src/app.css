@@ -1271,7 +1271,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tool-summary:hover .tool-chev, .tool-summary:focus-visible .tool-chev,.entry-tool.open .tool-chev { opacity: 1; }.entry-tool.open .tool-chev { transform: rotate(90deg); }
 .thinking-summary:hover .think-chev, .thinking-summary:focus-visible .think-chev,.entry-thinking.open .think-chev { opacity: 1; }.entry-thinking.open .think-chev { transform: rotate(90deg); }
 
-/* ===== G14.10 思考强度滑动块(welcome 模型弹层;原生 range 主题化) ===== */.effort-slider { display: flex; flex-direction: column; gap: 2px; padding: 4px 10px 8px; }.effort-slider input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; cursor: pointer; }.effort-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--fg-tertiary); }.effort-scale .effort-now { color: var(--fg-secondary); font-weight: 600; }
+/* ===== G14.10 思考强度滑动块(welcome 模型弹层;原生 range 主题化) ===== */.effort-slider { display: flex; flex-direction: column; gap: 2px; padding: 4px 10px 8px; }.effort-slider input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; cursor: pointer; background: transparent; }/* 2026-10-23 亮色适配:显式轨道绘制(原生 accent-color 未填充段不受主题变量控制,亮色下发黑) */
+.effort-slider input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--fill, 50%), color-mix(in srgb, var(--fg) 16%, transparent) var(--fill, 50%)); }
+.effort-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.effort-slider input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 16%, transparent); }
+.effort-slider input[type="range"]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
+.effort-slider input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border: none; border-radius: 50%; background: var(--accent); }.effort-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--fg-tertiary); }.effort-scale .effort-now { color: var(--fg-secondary); font-weight: 600; }
 
 /* ===== G14.13 会话流行距与 Working 分割线 ===== */
 /* 工具/思考行距收紧:条目间距 8px(≈行高),内容块(user/assistant)保持呼吸 */.chat { gap: 8px; }.entry-user, .entry-assistant { margin-top: 10px; }

@@ -1,9 +1,13 @@
 /** 思考强度档位(G14.14 共享):滑动块 0..5 与档位一一对应(daemon effort 白名单序) */
 export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+import type { CSSProperties } from 'react';
 
-/** 思考强度滑动块(G14.14 共享):欢迎页/会话菜单同一渲染——原生 range + 当值/两端刻度 */
+/** 思考强度滑动块(G14.14 共享):欢迎页/会话菜单同一渲染——原生 range + 当值/两端刻度。
+ *  2026-10-23:--fill 内联填充比例,轨道/滑钮改显式主题变量绘制(原生 accent-color 的
+ *  未填充段不受主题变量控制,亮色下发黑——用户实测病) */
 export function EffortSlider({ value, onChange }: { value: string; onChange: (v: string) => void }): JSX.Element {
   const idx = Math.max(0, EFFORTS.indexOf(value as (typeof EFFORTS)[number]));
+  const pct = Math.round((idx / (EFFORTS.length - 1)) * 100);
   return (
     <div className="effort-slider">
       <input
@@ -13,6 +17,7 @@ export function EffortSlider({ value, onChange }: { value: string; onChange: (v:
         step={1}
         aria-label="reasoning effort"
         value={idx}
+        style={{ '--fill': `${pct}%` } as CSSProperties}
         onChange={(e) => onChange(EFFORTS[Number(e.target.value)])}
       />
       <div className="effort-scale" aria-hidden="true">

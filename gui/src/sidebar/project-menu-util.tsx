@@ -42,6 +42,27 @@ export function FolderAddIcon({ size = 16, strokeWidth = 1.75 }: { size?: number
   );
 }
 
+/** 附加面板 + 钮图标(2026-10-23 用户裁定:沿用新建项目图标同款笔形——圆帽粗描 SVG,
+ *  退役文本字符「+」;居中十字,stroke 2 与 FolderAddIcon 同语言) */
+export function PlusAddIcon({ size = 16, strokeWidth = 2 }: { size?: number; strokeWidth?: number }): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5.5v13" />
+      <path d="M5.5 12h13" />
+    </svg>
+  );
+}
+
 /** G14.195 已读会话持久化(localStorage `sunshinex.seen-sessions`):id → 最近已读 updatedAt。
  *  刷新不再全员亮蓝点(原内存 Set「本次运行内」即清空);行 updatedAt 新于已读时刻即重新视为
  *  未读(真·未读)。容量封顶 200(超出丢最旧),存储满/禁用静默。 */

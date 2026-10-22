@@ -9,6 +9,7 @@ import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { EffortChip, EffortSlider } from '../effort-slider';
 import { FolderAddIcon } from '../sidebar/ProjectMenu';
+import { PlusAddIcon } from '../sidebar/project-menu-util';
 import type { WelcomeComposerConn } from './welcome-conn';
 
 /** 欢迎页 composer 独立模块（D32 中口径件批App-1 自 App.tsx 平移,行为零变化;
@@ -699,7 +700,7 @@ export function WelcomeComposer({
                 data-tip={t('Add skills, commands or files', '添加技能、命令或文件')}
                 onClick={() => setPlusOpen((v) => !v)}
               >
-                +
+                <PlusAddIcon size={16} />
               </button>
               {/* 审批模式:弹层锚按钮正上方(pill-anchor) */}
               <div className="pill-anchor">

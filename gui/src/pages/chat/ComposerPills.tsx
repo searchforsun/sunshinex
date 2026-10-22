@@ -5,6 +5,7 @@ import { ContextRing } from '../../context-ring';
 import { EffortChip, EffortSlider } from '../../effort-slider';
 import type { Connection, ConnectionState } from '../../connection';
 import { baseModelName } from './EntryViews';
+import { PlusAddIcon } from '../../sidebar/project-menu-util';
 // ModeIcon 值回引宿主(调用期解绑,EntryViews 同款先例;Chat 原路径再导出保 WelcomeComposer 消费)
 import { ModeIcon } from '../Chat';
 
@@ -34,7 +35,7 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
               data-tip={t('Add skills, commands or files', '添加技能、命令或文件')}
               onClick={() => setPillOpen((v) => (v === 'plus' ? null : 'plus'))}
             >
-              +
+              <PlusAddIcon size={16} />
             </button>
             {/* 审批模式:弹层锚按钮正上方(pill-anchor) */}
             <div className="pill-anchor">
