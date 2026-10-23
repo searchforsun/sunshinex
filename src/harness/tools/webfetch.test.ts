@@ -112,3 +112,44 @@ test('Harness 装配：无 SUNSHINE.md 时 webfetch 开箱可用', async () => {
     srv.close();
   }
 });
+
+// ---------- O1 网络护栏（HARNESS-BACKLOG P1）：超时 + 下载量上限 ----------
+
+test('webfetch O1:慢端点按旋钮超时失败（换回裸 fetch 无 signal 恒挂死,本例即红）', async () => {
+  // 不回包的 server:连接受理后挂住——无护栏时 executor 永等
+  const srv = await new Promise<{ url: string; close: () => void }>((resolve) => {
+    const s = http.createServer(() => {}); // 有意不 end 响应
+    s.listen(0, '127.0.0.1', () => {
+      const addr = s.address() as { port: number };
+      resolve({ url: `http://127.0.0.1:${addr.port}/`, close: () => s.close() });
+    });
+  });
+  const prev = process.env.SUNSHINEX_WEBFETCH_TIMEOUT_MS;
+  process.env.SUNSHINEX_WEBFETCH_TIMEOUT_MS = '300';
+  try {
+    const { registry, safety } = registryFor();
+    const r = await registry.execute('webfetch', { url: srv.url }, safety);
+    assert.ok(!r.ok, '超时必须失败而非挂死');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_WEBFETCH_TIMEOUT_MS;
+    else process.env.SUNSHINEX_WEBFETCH_TIMEOUT_MS = prev;
+    srv.close();
+  }
+});
+
+test('webfetch O1:下载量 2MB 上限流式截断(3MB 端点早断,不再全量读入)', async () => {
+  const srv = await startServer('z'.repeat(3 * 1024 * 1024));
+  try {
+    const { registry, safety } = registryFor();
+    const started = Date.now();
+    const r = await registry.execute('webfetch', { url: srv.url }, safety);
+    assert.ok(r.ok);
+    // 截断点=累计字节 ≥2MB 的那个 chunk 边界:文本长在 [2MB, 2MB+64K chunk 余量] 窗内
+    const len = r.value.stdout.length;
+    assert.ok(len >= 2 * 1024 * 1024, `截断在 2MB 之后(实长 ${len})`);
+    assert.ok(len < 3 * 1024 * 1024, '3MB 端点必须早断,不落全量');
+    assert.ok(Date.now() - started < 30_000, '截断路径秒级返回');
+  } finally {
+    srv.close();
+  }
+});

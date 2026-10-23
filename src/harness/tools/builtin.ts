@@ -30,6 +30,33 @@ import { resolveDataDir } from '../../config/data-dir';
 /** §9.3 快照过期回执文案（写链恒英文单语——CLAUDE.md §15；置于模块级避免每次 builtinTools 调用重建） */
 const SUNSHINE_STALE_NOTICE = 'SUNSHINE.md rewritten — session snapshot is stale until the next refresh point';
 
+/** webfetch 网络护栏（O1，HARNESS-BACKLOG P1）：网络调用必带超时（慢端点挂死整轮）+ 下载量上限
+ *  （大文件不再 res.text() 全量读入）。超时旋钮经 SUNSHINEX_WEBFETCH_TIMEOUT_MS 调用期注入（测试
+ *  可达性,缺省 30s——SUNSHINEX_MODEL_TIMEOUT_MS 同款旋钮先例）;上限 2MB 恒定（流式截断,连接早断） */
+const webfetchTimeoutMs = (): number => Number(process.env.SUNSHINEX_WEBFETCH_TIMEOUT_MS) || 30_000;
+const WEBFETCH_MAX_BYTES = 2 * 1024 * 1024;
+
+/** O1 下载量上限读法：流式读 body 累计字节数,超 cap 即 cancel（剩余字节不再下载）——cap 内文本与
+ *  旧 res.text() 逐字等价;输出预算截断/落盘归 fitOut/archive 层,与本护栏正交 */
+async function readBodyCapped(res: Response, cap: number): Promise<string> {
+  if (res.body === null) return '';
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    text += decoder.decode(value, { stream: true });
+    if (bytes >= cap) {
+      await reader.cancel().catch(() => {}); // 超限即断:取消读流,连接早释放
+      break;
+    }
+  }
+  return text;
+}
+
 /** exec 账本业务标签单点：命令首词（trim + 空白分段首段，空命令回退整串）——直接启动与超时转后台
  *  两条登记路径共用，防两处 `cmd.trim().split(...)` 各自漂移 */
 function execLabel(cmd: string): string {
@@ -391,13 +418,14 @@ export function builtinTools(
       },
       name: 'webfetch',
       description:
-        'Fetch a URL and return the raw response body (HTML pages come back as raw HTML markup, not extracted text; use grep/read on the saved file to extract content when needed); input { url }, http/https only (protocol floor enforced by the security guard); non-2xx responses fail with WEBFETCH_HTTP_<status>; oversized body is truncated and saved to disk (full output path shown in the result)',
+        'Fetch a URL and return the raw response body (HTML pages come back as raw HTML markup, not extracted text; use grep/read on the saved file to extract content when needed); input { url }, http/https only (protocol floor enforced by the security guard); request times out after 30s and the download is hard-capped at 2 MB; non-2xx responses fail with WEBFETCH_HTTP_<status>; oversized body is truncated and saved to disk (full output path shown in the result)',
       category: 'network',
       display: { verb: 'FETCH', targetFields: ['url'] },
       executor: async (input: ToolInput) => {
-        const res = await fetch(String(input.url ?? ''));
+        // O1:超时（AbortSignal 定时弃单）+ 下载量流式截断（readBodyCapped）——护栏面,预算截断/落盘仍归 fitOut/archive
+        const res = await fetch(String(input.url ?? ''), { signal: AbortSignal.timeout(webfetchTimeoutMs()) });
         if (!res.ok) throw new Error(`WEBFETCH_HTTP_${res.status}`);
-        const text = await res.text();
+        const text = await readBodyCapped(res, WEBFETCH_MAX_BYTES);
         return execOut(fitOut('webfetch', text));
       },
     },
