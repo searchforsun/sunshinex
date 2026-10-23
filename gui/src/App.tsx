@@ -579,8 +579,6 @@ function AppShell(): JSX.Element {
       ref={shellRef}
       style={{ '--menu-w': `${menuWidth}px`, '--sidebar-w': `${sidebarOccupied}px` } as CSSProperties}
     >
-      <ShellTitleBar />
-      <div className="sx-shell-body">
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
            Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
@@ -771,22 +769,9 @@ function AppShell(): JSX.Element {
           {opError}
         </div>
       )}
-      </div>
     </div>
   );
 }
 
-/** 桌面壳判定(Electron UA):真上嵌 −□× 窗控层,浏览器态零改动 */
+/** 桌面壳判定(Electron UA):标题条/品牌行拖拽、logo 显隐、WCO 让位等仅桌面态生效 */
 const IS_SHELL = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
-
-/** 桌面壳标题条(2026-10-23 用户裁定):原生菜单/标题栏退役后,品牌行 + 拖拽区嵌进 GUI 顶层;
- *  浏览器态不渲染(零改动)。−□× 为原生 WCO overlay,右侧预留区不布交互面 */
-function ShellTitleBar(): JSX.Element | null {
-  if (!IS_SHELL) return null;
-  return (
-    <div className="sx-titlebar">
-      <span className="sx-titlebar-logo" aria-hidden="true" />
-      <span className="sx-titlebar-name">sunshinex gui</span>
-    </div>
-  );
-}
