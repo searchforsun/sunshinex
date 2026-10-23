@@ -2153,6 +2153,9 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop .sx-tabstrip { padding-right: 120px; -webkit-app-region: drag; } /* 桌面:右留 [|]+−□× 四钮簇位 */
 .sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 40px; } /* web:固定 [|] 钉窗口右缘(占 W-34..W-8),页签内容止步让位 */
 .sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }
+/* 2026-10-24 用户实测:页签搜索弹窗行是 div[role=button](非真 button),落拖拽区致桌面点击变拖窗——
+   弹层子树整体豁免(弹窗面永不拖窗);newtab 弹层同口径防缝隙区吞点 */
+.sx-shell.sx-desktop .sx-tabstrip .sx-tabsearch, .sx-shell.sx-desktop .sx-tabstrip .sx-tabsearch *, .sx-shell.sx-desktop .sx-tabstrip .sx-menu-pop, .sx-shell.sx-desktop .sx-tabstrip .sx-menu-pop * { -webkit-app-region: no-drag; }
 /* 2026-10-23 用户裁定:①「+」弹窗提层保险(真根因=右栏 overflow 裁切,另修);
    ②web 旧 10px 内距规则已被上行 40px 让位取代 */
 .sx-strip-newtab .sx-menu-pop { z-index: 45; }
