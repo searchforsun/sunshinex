@@ -157,9 +157,9 @@ function seedWorkspace(root: string, userText: string): string {
 
 /** G14.38:右栏缺省折叠——面板外跳转前先展开(钮在 Chat 顶栏;已展开则空转) */
 async function expandPanel(): Promise<void> {
-  const btn = screen.queryByRole('button', { name: 'expand sidebar' });
-  if (btn !== null) {
-    fireEvent.click(btn);
+  // [|] 迁右上窗控簇(2026-10-23):右栏缺席才点全局切换钮
+  if (document.querySelector('.sx-sidebar') === null) {
+    fireEvent.click(screen.getByRole('button', { name: 'toggle side panel' }));
     await new Promise((r) => setTimeout(r, 300));
   }
 }

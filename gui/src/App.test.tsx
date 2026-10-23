@@ -432,8 +432,10 @@ const GROUP_HEAD = { name: /^root-a 1$/ }; // G8f 可读性:组头=basename(root
 /** G14.27:任务页不再默认开——测试经 new tab 菜单显式打开(单例判重,已开即聚焦) */
 /** G14.38:缺省折叠——条不在场时先点顶栏「展开侧边栏」(+钮在条上) */
 function expandSidebarIfCollapsed(): void {
-  const btn = document.querySelector('button[aria-label="expand sidebar"]');
-  if (btn !== null) fireEvent.click(btn);
+  // [|] 迁右上窗控簇(2026-10-23):右栏缺席才点全局切换钮(恒在场,展开态点它=收起)
+  if (document.querySelector('.sx-sidebar') === null) {
+    fireEvent.click(screen.getByRole('button', { name: 'toggle side panel' }));
+  }
 }
 
 function openTasksTab(): void {

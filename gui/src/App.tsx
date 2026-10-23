@@ -650,8 +650,6 @@ function AppShell(): JSX.Element {
                 onTodos={setSessionTodos}
                 onRenamed={() => setRecentVersion((v) => v + 1)}
                 onSessionsMutated={() => setRecentVersion((v) => v + 1)}
-                showExpandSidebar={tabState.collapsed && !IS_SHELL} /* [|] 自适应(用户裁定):web=顶栏最右;桌面=右上窗控簇左侧,顶栏不再重复 */
-                onExpandSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, false))}
                 onSideChat={startSideChat}
                 onOpenMemory={openMemoryTab}
                 onFork={onForkStable}
@@ -789,25 +787,29 @@ const winBridge = (): SunshinexWindowBridge | undefined =>
 
 /** 桌面窗控簇(2026-10-23 用户裁定):[|] 侧栏开关 + − □ × 自绘按钮——sx-iconbtn 同款圆角 hover,
  *  撤原生 WCO 方块;fixed 右上常驻(页签视图亦在场)。−□× 走 preload IPC,关闭=驻留 hide 语义 */
-function WindowControls({ onToggleRightSidebar }: { onToggleRightSidebar: () => void }): JSX.Element | null {
+function WindowControls({ onToggleRightSidebar }: { onToggleRightSidebar: () => void }): JSX.Element {
   const bridge = winBridge();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
-  if (!bridge) return null;
   return (
     <div className="sx-wincontrols">
+      {/* [|] 全局唯一切换钮(用户裁定):web/桌面恒渲染 */}
       <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
         <PanelRight size={14} strokeWidth={1.75} />
       </button>
-      <button type="button" className="sx-winbtn" aria-label="minimize window" onClick={() => bridge.minimize()}>
-        <Minus size={14} strokeWidth={1.75} />
-      </button>
-      <button type="button" className="sx-winbtn" aria-label={maximized ? 'restore window' : 'maximize window'} onClick={() => bridge.toggleMaximize()}>
-        {maximized ? <Copy size={12} strokeWidth={1.75} /> : <Square size={12} strokeWidth={1.75} />}
-      </button>
-      <button type="button" className="sx-winbtn" aria-label="close window" onClick={() => bridge.close()}>
-        <X size={14} strokeWidth={1.75} />
-      </button>
+      {bridge !== undefined && (
+        <>
+          <button type="button" className="sx-winbtn" aria-label="minimize window" onClick={() => bridge.minimize()}>
+            <Minus size={14} strokeWidth={1.75} />
+          </button>
+          <button type="button" className="sx-winbtn" aria-label={maximized ? 'restore window' : 'maximize window'} onClick={() => bridge.toggleMaximize()}>
+            {maximized ? <Copy size={12} strokeWidth={1.75} /> : <Square size={12} strokeWidth={1.75} />}
+          </button>
+          <button type="button" className="sx-winbtn" aria-label="close window" onClick={() => bridge.close()}>
+            <X size={14} strokeWidth={1.75} />
+          </button>
+        </>
+      )}
     </div>
   );
 }

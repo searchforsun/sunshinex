@@ -1356,7 +1356,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   transition: background var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter);
 }.sx-tab-empty-card:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 
-/* G14.28:右栏折叠时顶栏右侧的展开钮(顶栏 flex 尾部钉右);⋯ 菜单同轮退役 */.chat-expand { margin-left: auto; flex: none; }
+/* G14.28 展开钮已退役(2026-10-23:[|] 迁右上窗控簇) */
 
 /* G14.30 辅助对话窄面板:贴地壳(composer 钉底)+ pill 单行省略不换行;G14.2xx composer 与
    主对话 dock 同式(与流列同 token 对齐 +2px),面板宽时随阶梯限宽居中 */.sx-sidechat { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }.sx-sidechat .chat { flex: 1; min-height: 0; }.sx-sidechat .composer { width: min(calc(100% - 28px), calc(var(--chat-max) + 2px)); max-width: none; margin: 0 auto var(--thread-gutter); }.sx-sidechat .composer-pills { flex-wrap: nowrap; min-width: 0; }.sx-sidechat .composer-pill { white-space: nowrap; min-width: 0; overflow: hidden; flex: 0 1 auto; }
@@ -1677,7 +1677,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .chat-dyn-btn { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 2px 6px; border: none; border-radius: 9999px; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .chat-dyn-btn:hover { color: var(--fg); }
 .chat-dyn-btn .run-spinner { width: 9px; height: 9px; border-width: 1.5px; }
-.chat-dyn-buttons + .chat-expand { margin-left: 0; } /* 按钮组在场时收掉展开钮的 auto——聚拢贴右,不摊开 */
+
 
 /* ===== G14.178 后台任务卡片流:状态点色 + 展开详情行 ===== */
 /* G14.2xx 用户裁定三态语言(顶栏 run-spinner 同款灰转圈):运行=灰转圈(非蓝),完成=蓝点,
@@ -2112,6 +2112,6 @@ input.sx-setting-input { width: 100%; }
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
 .entry .entry-stream-tail { margin: 0; padding: 0; background: transparent; border: none; border-radius: 0; font: inherit; color: inherit; white-space: pre-wrap; }
 /* ===== 2026-10-23 用户裁定:自绘窗控簇(撤 WCO 方块)——[|] 侧栏开关 + − □ ×,
-   sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 4px; right: 6px; display: flex; align-items: center; gap: 2px; z-index: 90; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+   sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; -webkit-app-region: no-drag; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖) */
-.sx-shell.sx-desktop .sx-tabstrip { padding-right: 150px; -webkit-app-region: drag; }.sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop .sx-tabstrip { padding-right: 150px; -webkit-app-region: drag; }.sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 44px; } /* web:仅 [|] 一颗,右留位 */.sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }

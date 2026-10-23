@@ -873,7 +873,7 @@ describe('G14.177 顶栏动态计数按钮', () => {
     const seeds = [
       { seq: 1, kind: 'tool', md: '', name: 'todo_write', input: { todos: [{ text: '已完成项', status: 'completed' }, { text: '进行中项', status: 'in_progress' }, { text: '等待项', status: 'pending' }] }, result: { text: 'ok', ok: true } },
     ] as never;
-    const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     const btn = document.querySelector('.chat-dyn-btn');
     expect(btn?.textContent).toMatch(/2 (todos|待办)/); // 测试语言态双语 // 未完成=in_progress+pending
@@ -884,12 +884,12 @@ describe('G14.177 顶栏动态计数按钮', () => {
     const done = [
       { seq: 1, kind: 'tool', md: '', name: 'todo_write', input: { todos: [{ text: '已完成项', status: 'completed' }] }, result: { text: 'ok', ok: true } },
     ] as never;
-    render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     expect(document.querySelector('.chat-dyn-btn')).toBeNull();
     // G14.213 轮次收束(idle)即隐:待办未完结也隐
     first.unmount();
-    render(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} showExpandSidebar onOpenTab={onOpenTab} />);
+    render(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     expect(document.querySelector('.chat-dyn-btn')).toBeNull();
   });

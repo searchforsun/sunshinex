@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Folder, MoreHorizontal, PanelRight } from 'lucide-react';
+import { Folder, MoreHorizontal } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
@@ -92,8 +92,6 @@ export interface ChatTopbarProps {
   readonly archived: boolean;
   /** 归档/撤销归档上抛(落 conn.archiveSession;本地 archived 同步归宿主 Chat) */
   readonly onArchive: (archived: boolean) => void;
-  readonly showExpandSidebar: boolean | undefined;
-  readonly onExpandSidebar: (() => void) | undefined;
   /** 会话档身份(置顶档寻址——journalId 跨重启稳定) */
   readonly journalId?: string;
   /** 会话工作区根(置顶条目快照字段) */
@@ -103,7 +101,7 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, showExpandSidebar, onExpandSidebar } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -274,17 +272,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             ]}
           />
         )}
-        {showExpandSidebar && (
-          <button
-            type="button"
-            className="sx-iconbtn chat-expand"
-            aria-label="expand sidebar"
-            data-tip={t('Expand sidebar', '展开侧边栏')}
-            onClick={onExpandSidebar}
-          >
-            <PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        )}
+        {/* [|] 侧栏开关退役(2026-10-23 用户裁定):全局唯一切换钮=右上窗控簇(桌面)/固定右上钮(web) */}
     </header>
   );
 }
