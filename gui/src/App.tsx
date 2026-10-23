@@ -701,6 +701,7 @@ function AppShell(): JSX.Element {
                 }
                 openTabInSession(t, tabEntry(t).mintParams?.());
               }}
+              onToggleCollapse={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))}
               onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
               recentClosed={tabState.recentClosed}
               onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, openSessionId, i, PROBE))}
@@ -764,7 +765,7 @@ function AppShell(): JSX.Element {
           {opError}
         </div>
       )}
-      <WindowControls showSideToggle={page === 'chat'} onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
+      <WindowControls showFixedToggle={page === 'chat' && tabState.collapsed && !settingsOpen} onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
     </div>
   );
 }
@@ -784,14 +785,15 @@ const winBridge = (): SunshinexWindowBridge | undefined =>
 
 /** 桌面窗控簇(2026-10-23 用户裁定):[|] 侧栏开关 + − □ × 自绘按钮——sx-iconbtn 同款圆角 hover,
  *  撤原生 WCO 方块;fixed 右上常驻(页签视图亦在场)。−□× 走 preload IPC,关闭=驻留 hide 语义 */
-function WindowControls({ showSideToggle, onToggleRightSidebar }: { showSideToggle: boolean; onToggleRightSidebar: () => void }): JSX.Element {
+function WindowControls({ showFixedToggle, onToggleRightSidebar }: { showFixedToggle: boolean; onToggleRightSidebar: () => void }): JSX.Element {
   const bridge = winBridge();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
-  // 2026-10-23 用户裁定:[|] 仅对话页显示(欢迎/设置页无右栏);簇其余为窗口三钮(桌面态)
+  // [|] 显隐(2026-10-23 用户裁定):右栏打开=页签条自有 collapse 钮(条尾右缘);
+  // 右栏收起/欢迎/设置页=此固定补位钮(否则无重开入口);设置页打开时不补位
   return (
     <div className="sx-wincontrols">
-      {showSideToggle && (
+      {showFixedToggle && (
         <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
           <PanelRight size={14} strokeWidth={1.75} />
         </button>
