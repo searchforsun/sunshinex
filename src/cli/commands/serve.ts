@@ -1,10 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { GuiDaemon, LOOPBACK_HOST } from '../../serve/daemon';
+import { GuiDaemon, LOOPBACK_HOST, assembleGuiModel } from '../../serve/daemon';
 import { buildModel } from '../../runtime';
-import { parseEffort } from '../../model/adapter';
-import { ModelSwitcher } from '../../model/catalog';
-import { loadProviders } from '../../config/providers';
 import { resolveDataDir } from '../../config/data-dir';
 import { resolveDirArg } from '../index';
 import { t } from '../../i18n';
@@ -67,24 +64,14 @@ export async function runServe(args: CliArgs): Promise<void> {
     : fs.existsSync(path.join(pkgGui, 'index.html'))
       ? pkgGui
       : cwdGui; // 两级皆缺：保留旧口径（探测失败 → API-only hint）
-  // 多源多模型装配（G13 反馈轮对齐 TUI entry 形态）：settings providers 键展开为 /model 选择卡
-  // 数据面——此前 serve 只装单适配器，GUI 模型菜单恒空（choices []），「不支持选模型」即此缺口。
-  // providers 根取预选目录（缺省 cwd，同 TUI launchRoot 口径）；warnings 双语 stderr 透出。
-  // 缺省模型显式配置（SUNSHINEX_MODEL）才露 default 选项；未显式且配了 providers 时切首个源模型
-  // （TUI 同款防陷阱缺省）；--effort/env 缺省强度随装配级注入各源内芯。
+  // 多源多模型装配（G13 反馈轮对齐 TUI entry 形态；2026-10-23 收口为 serve/daemon 单点工厂）：
+  // providers 键展开为 /model 选择卡数据面;桌面壳同源调用（同束 ModelSwitcher,instanceof 注入闸恒真）。
+  // providers 根取预选目录（缺省 cwd,同 TUI launchRoot 口径）;缺省模型显式配置（SUNSHINEX_MODEL）
+  // 才露 default 选项;未显式且配了 providers 时切首个源模型（TUI 同款防陷阱缺省）。
   const providerRoot = preselect ?? process.cwd();
-  const providers = loadProviders(providerRoot);
-  for (const w of providers.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
-  const explicitDefault = (process.env.SUNSHINEX_MODEL ?? '').trim().length > 0;
-  const effortDef = parseEffort(typeof args.flags.effort === 'string' ? args.flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
-  const model = new ModelSwitcher({
-    choices: providers.choices,
-    default: buildModel(args.flags),
-    ...(explicitDefault ? { explicitDefault: true } : {}),
-    ...(effortDef ? { reasoningEffort: effortDef } : {}),
-  });
-  if (!explicitDefault && providers.choices.length > 0) model.switchTo(providers.choices[0]!.id);
-  const daemon = new GuiDaemon({ model, staticRoot });
+  const assembled = assembleGuiModel(buildModel(args.flags), providerRoot, args.flags);
+  for (const w of assembled.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
+  const daemon = new GuiDaemon({ model: assembled.model, staticRoot });
   const s = await daemon.start({ port, ...(tokenFlag !== undefined ? { token: tokenFlag } : {}) });
 
   // token 带外通道（§4.3）：写 <dataDir>/serve-token（dataDir 首启可能不存在，recursive 建）——工作区级

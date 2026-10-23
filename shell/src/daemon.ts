@@ -36,7 +36,21 @@ export async function startDaemon(paths: DaemonPaths, preferredPort?: number): P
     console.error('[shell] daemon entry missing loadSettingsChain export — settings chain skipped');
   }
 
-  const daemon = new GuiDaemon({ model: buildModel({}), staticRoot: paths.staticRoot });
+  // 多源多模型装配（2026-10-23 桌面「默认模型/无法选模型」根因修复）：壳侧 buildModel 是裸适配器
+  // （runtime.cjs 面,不包切换器）,daemon.cjs 的 instanceof ModelSwitcher 注入闸对跨束实例恒 false
+  // → modelSwitcher 恒 null,/model 恒 {choices:[]}。改用 daemon 束导出的同源工厂 assembleGuiModel
+  // （loadProviders + ModelSwitcher,与 GuiDaemon 同类）——须在 settings 链装载后调用
+  // （SUNSHINEX_MODEL/providers 均出自 settings）;warnings 与 CLI serve 同通道 stderr 透出。
+  let model: unknown = buildModel({});
+  if (typeof dm.assembleGuiModel === 'function') {
+    const assembled = dm.assembleGuiModel(model, process.cwd());
+    for (const w of assembled.warnings ?? []) console.error(`[shell] settings warning: ${w}`);
+    model = assembled.model;
+  } else {
+    console.error('[shell] daemon entry missing assembleGuiModel — model switching unavailable (stale bundle)');
+  }
+
+  const daemon = new GuiDaemon({ model, staticRoot: paths.staticRoot });
   // 端口偏好(2026-10-23):上一 launch 实际端口优先(origin 稳定=GUI localStorage 跨 launch 存续),
   // 被占即回落临时端口;偏好落盘由 main 侧负责
   if (preferredPort !== undefined) {

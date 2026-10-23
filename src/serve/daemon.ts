@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
-import { ModelAdapter } from '../model/adapter';
+import { ModelAdapter, parseEffort } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime, isShadowEvent } from './session';
@@ -17,6 +17,7 @@ import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
+import { loadProviders } from '../config/providers';
 import { projectSlug, projectsRoot, resolveDataDir } from '../config/data-dir';
 import {
   applySettings,
@@ -116,6 +117,31 @@ interface Route {
   path: string;
   auth: boolean;
   run: (req: http.IncomingMessage, res: http.ServerResponse, params: Record<string, string>) => Promise<void>;
+}
+
+/** 多源多模型装配单点（2026-10-23 桌面「默认模型/无法选模型」根因修复）：settings providers 键
+ *  展开为 ModelSwitcher——CLI serve 与桌面壳共用本工厂。同束结构性排除跨束 instanceof 坑：
+ *  壳形态 GuiDaemon 在 daemon.cjs、buildModel 在 runtime.cjs,两束各有一份 ModelSwitcher 类,
+ *  壳侧 `new (外部目录 ModelSwitcher)` 过不了 daemon 束的 `instanceof ModelSwitcher` 注入闸
+ *  （modelSwitcher 恒 null → /model 恒 {choices:[]}）;工厂与本文件同类 → instanceof 恒真。
+ *  explicitDefault=SUNSHINEX_MODEL 显式档;未显式且配了 providers 时切首个源模型（TUI 同款
+ *  防陷阱缺省）;effort 缺省随装配注入各源内芯;providers warnings 原样透出（调用方 i18n 打印）。 */
+export function assembleGuiModel(
+  model: ModelAdapter,
+  providerRoot: string,
+  flags?: Record<string, string | boolean | string[]>,
+): { model: ModelSwitcher; warnings: string[] } {
+  const providers = loadProviders(providerRoot);
+  const explicitDefault = (process.env.SUNSHINEX_MODEL ?? '').trim().length > 0;
+  const effortDef = parseEffort(typeof flags?.effort === 'string' ? flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
+  const sw = new ModelSwitcher({
+    choices: providers.choices,
+    default: model,
+    ...(explicitDefault ? { explicitDefault: true } : {}),
+    ...(effortDef ? { reasoningEffort: effortDef } : {}),
+  });
+  if (!explicitDefault && providers.choices.length > 0) sw.switchTo(providers.choices[0]!.id);
+  return { model: sw, warnings: providers.warnings };
 }
 
 /**
