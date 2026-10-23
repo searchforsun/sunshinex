@@ -232,7 +232,6 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         );
       })}
       </div>
-      {collapseBtn(true)}
       {/* G14.39:「+」弹窗跟随按钮、开在其下(相对锚容器;原 absolute right:8px 钉右缘) */}
       <div className="sx-strip-newtab" style={{ position: 'relative', display: 'inline-flex', flex: 'none' }} ref={menuAnchorRef}>
       <button
@@ -278,6 +277,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           })}
         </div>
       )}
+      {collapseBtn(true)}
       </div>
     </div>
   );
