@@ -21,9 +21,9 @@
 |---|---|---|
 | ① 工具 | ★★★★☆ | 统一执行面 + ACI 意识领先；缺「模型如何使用工具」的质量评估闭环（O6） |
 | ② 上下文（记忆） | ★★★★★ | 全链最强项：KV-cache 三段式比 Manus 文章所述更体系化；缺 recitation（O4） |
-| ③ 门禁（安全） | ★★★★☆ | 分层完整；网络工具无超时（O1）、进程内沙箱非 OS 级隔离（O7 登记取舍） |
+| ③ 门禁（安全） | ★★★★☆ | 分层完整；网络工具带超时+下载量护栏；进程内沙箱非 OS 级隔离（O7 登记取舍） |
 | ④ 评测（优化） | ★★★☆☆ | 结构性短板：观测面与护栏在，任务级质量评估为零（O3/O5） |
-| ⑤ 容错（恢复） | ★★★★☆ | fail-bounded + 诚实终态达业界水准；主链模型调用无自动重试（O2） |
+| ⑤ 容错（恢复） | ★★★★☆ | fail-bounded + 诚实终态达业界水准；主链模型调用带瞬时错自动重试 |
 
 ## 三、逐要素评估
 
@@ -31,7 +31,7 @@
 
 **已完成 / 做得好**
 
-- `ToolRegistry` 统一执行面：工具只声明不执行、安全链执行期注入；`derive()` 提供 fork 子集面（子代理工具面剔除 spawn 防递归派生）。10 个内置工具 + MCP 官方 SDK 三传输（stdio/http/sse）+ 握手身份校验，均有测试。
+- `ToolRegistry` 统一执行面：工具只声明不执行、安全链执行期注入；`derive()` 提供 fork 子集面（子代理工具面剔除 spawn 防递归派生）。23 项内置工具 + MCP 官方 SDK 三传输（stdio/http/sse）+ 握手身份校验，均有测试。
 - ACI 工程对标 Anthropic「在 SWE-bench 上花在优化工具上的时间多于整体提示词」：read 工具 `L100-125` 行段读取（越界钳制、非法形态报 `INVALID_ARG` 防呆而非模糊失败）；exec 溢出截断 + 全量落盘回显路径；结构化输出 action-schema 信封与提示词协议段逐行同源；工具清单按名排序进稳定段。
 
 **待优化**
@@ -60,7 +60,6 @@
 
 **待优化 / 登记取舍**
 
-- webfetch 裸 `fetch` 无超时无 AbortSignal（builtin.ts:151），且 `res.text()` 全量读入后才经出口预算截断——慢端点挂死整轮、大文件全量下载（O1）。
 - 进程内沙箱非 OS 级隔离：与主进程同权限域。dockerode 容器执行已在 GUI 可选增强登记（O7，保持登记不动）。
 - 并行「生成/筛查分离」guardrail（Anthropic 模式：独立模型实例审内容）不做：单机通用 agent 属过度设计（O8，登记不做）。
 
@@ -69,7 +68,7 @@
 **已完成 / 做得好**
 
 - `RunLedger` per-run 账本（steps/tokens/durationMs/route 落盘）。
-- 宽预算长任务缺省（Reactor 200 步、修正环 100 轮/1M tokens/2h、命令 1800s/32MB）+ `guardrailStop` 纯函数终止检查（超时→预算→迭代）。
+- 宽预算长任务缺省（Reactor 400 步、修正环 200 轮/2M tokens/24h、命令 1800s/32MB）+ `guardrailStop` 纯函数终止检查（超时→预算→迭代）。
 - 状态栏 cache/ctx/turns/steps 观测面（会话累计口径）；端点探针脚本（probe-usage-frames / probe-context-usage）；工程门禁 tsc strict + 全量测试 + selfcheck。
 
 **待优化**
@@ -87,14 +86,13 @@
 
 **待优化**
 
-- 主链模型调用无自动重试：超时/瞬时 5xx 直接 model-error 终局；判据侧有重试先例（nodes.ts:49 `MAX_JUDGE_RETRIES=3`）、主循环没有（O2，收 adapter 单点）。
 
 ## 四、待优化项清单
 
 | 编号 | 优先级 | 事项 | 归属 | 说明与依据 | 状态 |
 |---|---|---|---|---|---|
-| O1 | P1 | webfetch 加超时 + 下载量上限 | ③⑤ | builtin.ts:151 裸 fetch 无 AbortSignal，res.text() 先全量读入再截断；业界基线：网络调用必带超时；修复一行级 | open |
-| O2 | P1 | 模型调用自动重试（指数退避，仅 recoverable 类） | ⑤ | 主链 model-error 直终局 vs 判据侧 MAX_JUDGE_RETRIES=3 先例；收 adapter.ts 单点，长任务抗端点抖动 | open |
+| O1 | P1 | webfetch 加超时 + 下载量上限 | ③⑤ | builtin.ts:151 裸 fetch 无 AbortSignal，res.text() 先全量读入再截断；业界基线：网络调用必带超时；修复一行级 | closed（2026-10-24：AbortSignal 超时 30s〔SUNSHINEX_WEBFETCH_TIMEOUT_MS 旋钮〕+ 2MB 流式截断 readBodyCapped 连接早断；测试 2 例〔慢端点超时/3MB 端点早断〕） |
+| O2 | P1 | 模型调用自动重试（指数退避，仅 recoverable 类） | ⑤ | 主链 model-error 直终局 vs 判据侧 MAX_JUDGE_RETRIES=3 先例；收 adapter.ts 单点，长任务抗端点抖动 | closed（2026-10-24：doFetch 单点重试——瞬时网络错/5xx/429 退避 3 次上限〔retryDelayMs cfg 旋钮〕；fatal 4xx/本端硬顶超时/外部中断不重试；测试 3 例含判别力锚） |
 | O3 | P1 | 长任务基准集最小版（3–5 个固定任务 + 完成率/人工干预次数脚本化） | ④ | 决策载体已有：GOAL.md L31、ROADMAP L23/L130；五要素唯一结构性短板，从 0 未动工 | open |
 | O4 | P2 | Recitation：长循环周期性 goal 重申行（尾追承载） | ② | Manus todo.md 对标；零前缀击穿；先小实验验证收益再定形态 | open |
 | O5 | P2 | ledger.summary() 增量化 | ④ | 逐 id 全量重读 O(n)；随基准集批次顺手做 | open |
