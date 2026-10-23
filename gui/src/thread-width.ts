@@ -29,5 +29,7 @@ export function chatMaxFor(w: number): number {
 }
 
 /** 主对话区最小宽(.sx-main min-width 同值)——三栏拖拽的公共约束:被拖栏可加宽的上界=
- *  视口−另两栏−此值(中栏触底即停,任何栏不越视口;无固定最大宽,用户裁定) */
-export const MAIN_MIN_WIDTH = 440;
+ *  视口−另两栏−此值(中栏触底即停,任何栏不越视口;无固定最大宽,用户裁定)。
+ *  2026-10-24 用户裁定 440→320:模式 pill 窄端塌缩为纯图标后 composer 窄端可用,取 320;
+ *  CSS 侧 .sx-main min-width 与两处 max-width calc 的减数同值联动改 */
+export const MAIN_MIN_WIDTH = 320;

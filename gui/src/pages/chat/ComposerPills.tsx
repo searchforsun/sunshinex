@@ -44,11 +44,13 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
                 className="composer-pill"
                 aria-label="session mode"
                 aria-expanded={pillOpen === 'mode'}
+                data-tip={sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}
                 onClick={() => setPillOpen((v) => (v === 'mode' ? null : 'mode'))}
               >
                 <ModeIcon mode={sessMode} />
+                {/* 2026-10-24 用户裁定:主栏窄于阈值时标签/箭头 CSS 塌缩(sx-main-narrow),纯图标+tooltip 承载文案 */}
                 <span className="pill-label">{sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}</span>
-                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className="pill-chevron" />
               </button>
               {pillOpen === 'mode' && (
                 <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="session mode menu">

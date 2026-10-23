@@ -80,7 +80,7 @@ export const DEFAULT_TAB_WIDTH = 520;
 
 /** 拖拽调宽边界:只钳最小(spec §1 旧 200-720 上界退役;G14.2xx 用户裁定:三栏只留最小宽
  *  钳制,右栏可任意拖宽)——模块私有,setWidth 单点执行 */
-const MIN_TAB_WIDTH = 440; // G14.183/G14.196:与主对话 .sx-main min-width 同值(共用最小列宽,用户裁定)
+const MIN_TAB_WIDTH = 240; // 2026-10-24 用户裁定 440→240:右栏独立下限(页签条窄端 88px 可用,页签 56px 逐个滚动);与左栏 min-width 240 同值对齐
 
 /**
  * 判重/单例探针:T3 的 TAB_REGISTRY 装配真实现(registryProbe),测试桩同口径注入。

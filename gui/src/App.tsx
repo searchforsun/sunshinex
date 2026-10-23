@@ -589,6 +589,9 @@ function AppShell(): JSX.Element {
           '--chat-max',
           `${Math.round(chatMaxFor(entry.contentRect.width))}px`,
         );
+        // 2026-10-24 用户裁定:主栏窄于阈值(420)时模式 pill 塌缩纯图标——类挂主栏本体,
+        // CSS 收 .composer-pill 标签/箭头;420=pill 带标签态 composer 实测舒适下限
+        // (塌缩类最终以渲染期派生为准,见 return 处 shell 类;此处仅 RO 即时面,已退役)
       }
     });
     els.forEach((el) => ro.observe(el));
@@ -597,7 +600,13 @@ function AppShell(): JSX.Element {
 
   return (
     <div
-      className={IS_SHELL ? 'sx-shell sx-desktop' : 'sx-shell'}
+      className={[
+        IS_SHELL ? 'sx-shell sx-desktop' : 'sx-shell',
+        // 模式 pill 塌缩面(2026-10-24 用户裁定):主栏渲染宽=视口/zoom−菜单−右栏,窄于 420 塌缩
+        // 纯图标。渲染期派生——viewportW(resize 重渲)/menuWidth/tabStates(拖拽重渲)/换页全走
+        // 渲染,无 RO 重挂间隙漏事件面
+        viewportW / zoomScale() - menuWidth - sidebarOccupied < 420 ? 'sx-main-narrow' : '',
+      ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{ '--menu-w': `${menuWidth}px`, '--sidebar-w': `${sidebarOccupied}px` } as CSSProperties}
     >
