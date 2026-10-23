@@ -144,19 +144,20 @@ if (!app.requestSingleInstanceLock()) {
       console.error('[shell] global shortcut Alt+Shift+S registration failed');
     }
 
-    // 托盘（spec §1 生命周期）：图标=内嵌 16x16 PNG data URL；tooltip+两件套菜单。
-    // 菜单建成即静态（trayMenu(false)）——退出流程中的重复触发由 runQuit 幂等守卫吸收。
+    // 托盘（spec §1 生命周期）：图标=内嵌 PNG data URL；tooltip + 右键菜单。
+    // 2026-10-23 用户裁定:左键单击即弹主窗——setContextMenu 会让左键被菜单占用(点图标只出菜单
+    // 不出窗),故菜单改挂 right-click popUpContextMenu,left-click 单点 focusMainWindow。
     tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON_DATA_URL));
     tray.setToolTip('sunshinex');
-    tray.setContextMenu(
-      Menu.buildFromTemplate(
-        trayMenu(false, UI_LANG).map((item) => ({
-          label: item.label,
-          enabled: item.enabled,
-          click: item.id === 'show' ? focusMainWindow : runQuit,
-        })),
-      ),
+    const trayPopup = Menu.buildFromTemplate(
+      trayMenu(false, UI_LANG).map((item) => ({
+        label: item.label,
+        enabled: item.enabled,
+        click: item.id === 'show' ? focusMainWindow : runQuit,
+      })),
     );
+    tray.on('click', () => focusMainWindow());
+    tray.on('right-click', () => tray.popUpContextMenu(trayPopup));
 
     // smoke 分支（T4 冒烟门禁）：就绪信号 = did-finish-load（页面加载完成——渲染器起+静态资源服务通，
     // 语义等价且确定；ready-to-show 系首绘事件，发布链 spawn 环境曾不触发（仪表实证 url 已载/visible/loading:false
