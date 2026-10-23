@@ -2111,3 +2111,7 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
 .entry .entry-stream-tail { margin: 0; padding: 0; background: transparent; border: none; border-radius: 0; font: inherit; color: inherit; white-space: pre-wrap; }
+/* ===== 2026-10-23 用户裁定:自绘窗控簇(撤 WCO 方块)——[|] 侧栏开关 + − □ ×,
+   sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 4px; right: 6px; display: flex; align-items: center; gap: 2px; z-index: 90; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+/* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖) */
+.sx-shell.sx-desktop .sx-tabstrip { padding-right: 150px; -webkit-app-region: drag; }.sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }

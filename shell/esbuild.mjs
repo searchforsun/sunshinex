@@ -16,7 +16,7 @@ const appOnly = process.argv.includes('--app');
 // esbuild 无法静态解析，天然保外置——运行时按 resolveDaemonPaths 两态路径加载主仓 dist 产物。
 async function buildShellMain() {
   await build({
-    entryPoints: [path.join(pkgRoot, 'src/main.ts')],
+    entryPoints: [path.join(pkgRoot, 'src/main.ts'), path.join(pkgRoot, 'src/preload.ts')],
     outdir: path.join(pkgRoot, 'out'),
     outExtension: { '.js': '.cjs' },
     bundle: true,

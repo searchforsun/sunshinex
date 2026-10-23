@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { GitCompare, MessageCircle, ListTodo, FolderTree } from 'lucide-react';
+import { GitCompare, MessageCircle, ListTodo, FolderTree, Copy, Minus, PanelRight, Square, X } from 'lucide-react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import type { TodoItem } from '../../src/types';
@@ -769,9 +769,45 @@ function AppShell(): JSX.Element {
           {opError}
         </div>
       )}
+      <WindowControls onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
     </div>
   );
 }
 
 /** 桌面壳判定(Electron UA):标题条/品牌行拖拽、logo 显隐、WCO 让位等仅桌面态生效 */
 const IS_SHELL = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+
+/** 桌面窗控桥(preload 注入;浏览器态无此全局) */
+interface SunshinexWindowBridge {
+  minimize: () => void;
+  toggleMaximize: () => void;
+  close: () => void;
+  onMaximizedChange: (cb: (v: boolean) => void) => () => void;
+}
+const winBridge = (): SunshinexWindowBridge | undefined =>
+  IS_SHELL ? (window as unknown as { sunshinexWindow?: SunshinexWindowBridge }).sunshinexWindow : undefined;
+
+/** 桌面窗控簇(2026-10-23 用户裁定):[|] 侧栏开关 + − □ × 自绘按钮——sx-iconbtn 同款圆角 hover,
+ *  撤原生 WCO 方块;fixed 右上常驻(页签视图亦在场)。−□× 走 preload IPC,关闭=驻留 hide 语义 */
+function WindowControls({ onToggleRightSidebar }: { onToggleRightSidebar: () => void }): JSX.Element | null {
+  const bridge = winBridge();
+  const [maximized, setMaximized] = useState(false);
+  useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
+  if (!bridge) return null;
+  return (
+    <div className="sx-wincontrols">
+      <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
+        <PanelRight size={14} strokeWidth={1.75} />
+      </button>
+      <button type="button" className="sx-winbtn" aria-label="minimize window" onClick={() => bridge.minimize()}>
+        <Minus size={14} strokeWidth={1.75} />
+      </button>
+      <button type="button" className="sx-winbtn" aria-label={maximized ? 'restore window' : 'maximize window'} onClick={() => bridge.toggleMaximize()}>
+        {maximized ? <Copy size={12} strokeWidth={1.75} /> : <Square size={12} strokeWidth={1.75} />}
+      </button>
+      <button type="button" className="sx-winbtn" aria-label="close window" onClick={() => bridge.close()}>
+        <X size={14} strokeWidth={1.75} />
+      </button>
+    </div>
+  );
+}

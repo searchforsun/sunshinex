@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
@@ -99,7 +99,7 @@ if (!app.requestSingleInstanceLock()) {
     console.log(`[shell] daemon listening at http://${LOOPBACK}:${daemon.port} (token: ${daemon.token})`);
 
     // 2026-10-23 用户裁定三连:①窗口/任务栏图标=产品 logo;②原生菜单(File/Edit/View/Window)退役;
-    // ③无边框化——原生标题栏隐身,−□× 窗控走 WCO(titleBarOverlay)嵌入 GUI 顶栏层(GUI 侧画拖拽条)
+    // ③无边框化——原生标题栏隐身,−□× 由 GUI 自绘(应用按钮样式,preload 桥 IPC;WCO 方块样式退役)
     const win = new BrowserWindow({
       width: 1200,
       height: 800,
@@ -107,11 +107,31 @@ if (!app.requestSingleInstanceLock()) {
       minHeight: 600,
       icon: nativeImage.createFromDataURL(PRODUCT_LOGO_DATA_URL),
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#131313', symbolColor: '#e8e8e8', height: 36 },
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+      },
     });
     mainWindow = win;
     win.setMenu(null);
     Menu.setApplicationMenu(null); // 托盘右键菜单独立建template,不受应用菜单清空影响
+    // 窗控 IPC(渲染层 −□× 按钮):最小化/最大化切换/关闭(关闭走 close 事件=驻留 hide 语义);
+    // maximize/unmaximize 回推渲染层换 □/restore 字形
+    ipcMain.on('win:minimize', () => mainWindow?.minimize());
+    ipcMain.on('win:toggle-maximize', () => {
+      if (mainWindow === undefined) return;
+      if (mainWindow.isMaximized()) mainWindow.unmaximize();
+      else mainWindow.maximize();
+    });
+    ipcMain.on('win:close', () => mainWindow?.close());
+    const notifyMaximized = (): void => {
+      try {
+        mainWindow?.webContents.send('win:maximized', mainWindow.isMaximized());
+      } catch {
+        // 窗毁后回推即弃(驻留 hide 面不改注册表)
+      }
+    };
+    win.on('maximize', notifyMaximized);
+    win.on('unmaximize', notifyMaximized);
     win.loadURL(appUrl(daemon.port, daemon.token)).catch((err) => console.error('[shell] loadURL failed:', err));
 
     // Web 标签「外开」（H2-T3）：window.open / target=_blank 一律放行为原生新窗（同 session——
