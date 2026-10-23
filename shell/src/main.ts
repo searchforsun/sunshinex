@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
@@ -86,7 +87,22 @@ if (!app.requestSingleInstanceLock()) {
         process.resourcesPath,
         path.resolve(app.getAppPath(), '..'),
       );
-      daemon = await startDaemon(paths);
+      // 端口偏好落盘(2026-10-23):上次实际端口存 userData,本次优先复用——GUI origin 稳定,
+      // localStorage(语言/主题等)跨 launch 存续;被占自动回落临时端口并覆写偏好
+      const portFile = path.join(app.getPath('userData'), 'daemon-port.json');
+      let preferredPort: number | undefined;
+      try {
+        const saved = JSON.parse(fs.readFileSync(portFile, 'utf8')) as { port?: unknown };
+        if (typeof saved.port === 'number' && Number.isInteger(saved.port) && saved.port >= 1024) preferredPort = saved.port;
+      } catch {
+        // 首启无档:回落临时端口
+      }
+      daemon = await startDaemon(paths, preferredPort);
+      try {
+        fs.writeFileSync(portFile, JSON.stringify({ port: daemon.port }));
+      } catch {
+        // 落盘失败不阻启动(下次再回落临时端口)
+      }
     } catch (err) {
       // 同步记日志再弹原生错误框（Windows 上 showErrorBox 阻塞至确认）；exit 1 携码强退
       // （app.quit 无携码形参，退出码语义由 app.exit 承担）

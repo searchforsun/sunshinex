@@ -50,6 +50,9 @@ import {
 } from './daemon-wire';
 
 export { LOOPBACK_HOST } from './daemon-wire';
+// 壳装配序依赖(2026-10-23):桌面壳在 buildModel 前须跑 settings 链(全局 env 块=API key、
+// projectsDir、language)——CLI serve 同序先例 cli/index.ts;不导出则壳侧模型适配器构造期读空 env
+export { loadSettingsChain } from '../config/settings';
 export type { ApprovalFrame, AskFrame, ResetFrame, DaemonFrame } from './daemon-wire';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)

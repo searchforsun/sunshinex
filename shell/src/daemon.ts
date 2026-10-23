@@ -17,7 +17,7 @@ export interface ShellDaemon {
  * 两处皆无即抛（束装配错或入口选错，宁可启动期红也不静默 undefined 调用炸晚）。
  * 模型装配同 CLI serve 源头（buildModel 空旗标 = 缺省旋钮）；port 0 = 临时端口，回执取实际监听值。
  */
-export async function startDaemon(paths: DaemonPaths): Promise<ShellDaemon> {
+export async function startDaemon(paths: DaemonPaths, preferredPort?: number): Promise<ShellDaemon> {
   const dm = await import(url.pathToFileURL(paths.daemonEntry).href);
   const GuiDaemon = dm.GuiDaemon ?? dm.default?.GuiDaemon;
   if (GuiDaemon === undefined) throw new Error('daemon entry missing GuiDaemon export');
@@ -26,7 +26,27 @@ export async function startDaemon(paths: DaemonPaths): Promise<ShellDaemon> {
   const buildModel = rm.buildModel ?? rm.default?.buildModel;
   if (buildModel === undefined) throw new Error('runtime entry missing buildModel export');
 
+  // 2026-10-23 根因修复:CLI serve 同序(cli/index.ts:212)——settings 链先于模型装配装载。
+  // 全局 settings.json 携带 env 块(API key)、projectsDir、language:缺此步适配器构造期读空 env
+  // (「SUNSHINEX_API_KEY is not configured」)且 projectsRoot 落缺省目录(用户会话全不可见)、
+  // GUI 语言回落 en。projectRoot=壳进程 cwd(安装目录,无项目级 settings 即纯全局链)。
+  if (typeof dm.loadSettingsChain === 'function') {
+    dm.loadSettingsChain(process.cwd());
+  } else {
+    console.error('[shell] daemon entry missing loadSettingsChain export — settings chain skipped');
+  }
+
   const daemon = new GuiDaemon({ model: buildModel({}), staticRoot: paths.staticRoot });
+  // 端口偏好(2026-10-23):上一 launch 实际端口优先(origin 稳定=GUI localStorage 跨 launch 存续),
+  // 被占即回落临时端口;偏好落盘由 main 侧负责
+  if (preferredPort !== undefined) {
+    try {
+      const s = await daemon.start({ port: preferredPort });
+      return { port: s.port, token: s.token, close: () => daemon.close() };
+    } catch {
+      console.error(`[shell] preferred port ${preferredPort} busy — falling back to ephemeral port`);
+    }
+  }
   const s = await daemon.start({ port: 0 });
   return { port: s.port, token: s.token, close: () => daemon.close() };
 }
