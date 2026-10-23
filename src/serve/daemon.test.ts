@@ -729,6 +729,88 @@ test('⑫ tree:单层列举/忽略集/上限截断/判界 403/根缺省/404/400'
   });
 });
 
+// ---------- G14.2xx:tree?query= 全层级搜索(项目路径索引/名包含/忽略集跳过/有界截断/基目录锚定/环路防入) ----------
+
+test('⑫b tree 搜索:?query= 索引命中全层级/忽略集跳过/命中上限截断/refresh 强制重建/path 基目录锚定/符号链接环不入', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base, tmp } = ctx;
+    const root = path.join(tmp, 'root');
+    // fixture:deep/needle.ts(深层文件)、NeedleDir/inside.ts(目录命中+大小写不敏感)、
+    // node_modules/needle.ts(忽略集跳过)、fileB.ts(不命中);many/ 120 枚 needle-0xx(上限截断
+    // 靶,首段断言后建——不混入首搜索)
+    fs.mkdirSync(path.join(root, 'deep'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'deep', 'needle.ts'), 'x', 'utf8');
+    fs.mkdirSync(path.join(root, 'NeedleDir'));
+    fs.writeFileSync(path.join(root, 'NeedleDir', 'inside.ts'), 'x', 'utf8');
+    fs.mkdirSync(path.join(root, 'node_modules'));
+    fs.writeFileSync(path.join(root, 'node_modules', 'needle.ts'), 'x', 'utf8');
+    fs.writeFileSync(path.join(root, 'fileB.ts'), 'x', 'utf8');
+    const sid = await ctx.newSession(root);
+    const search = async (q: string, baseDir?: string, refresh?: boolean): Promise<Response> => {
+      const u = new URL(`${base}/session/${sid}/tree`);
+      u.searchParams.set('query', q);
+      if (baseDir !== undefined) u.searchParams.set('path', baseDir);
+      if (refresh === true) u.searchParams.set('refresh', '1');
+      return fetch(u, { headers: AUTH });
+    };
+
+    // —— 全层级命中:深层文件+目录(大小写不敏感,path=相对基目录 / 分隔);node_modules 跳过;
+    //    不命中条目不现;目录段先序,无 truncated ——
+    const r = await search('needle');
+    assert.equal(r.status, 200);
+    const body = (await r.json()) as { results: Array<{ path: string; name: string; kind: string }>; truncated?: boolean };
+    assert.deepEqual(body.results, [
+      { path: 'NeedleDir', name: 'NeedleDir', kind: 'dir' },
+      { path: 'deep/needle.ts', name: 'needle.ts', kind: 'file' },
+    ], '全层级命中:目录先序,忽略集跳过');
+
+    // —— TTL 内索引复用:many/ 此时建,不 refresh 仍旧索引 → 0 命中(缓存时效语义锚) ——
+    const many = path.join(root, 'many');
+    fs.mkdirSync(many);
+    for (let i = 0; i < 120; i++) fs.writeFileSync(path.join(many, `needle-${String(i).padStart(3, '0')}.ts`), 'x', 'utf8');
+    const rStale = await search('needle-0');
+    assert.equal(rStale.status, 200);
+    assert.equal(((await rStale.json()) as { results: unknown[] }).results.length, 0, 'TTL 内复用旧索引(夹具后建不可见)');
+
+    // —— 命中上限:refresh=1 强制重建 → needle-0xx 恰 100 枚(000-099)→ 恰 100 条 + truncated:true ——
+    const rCap = await search('needle-0', undefined, true);
+    assert.equal(rCap.status, 200);
+    const bCap = (await rCap.json()) as { results: Array<{ name: string }>; truncated?: boolean };
+    assert.equal(bCap.results.length, 100, '命中上限 100');
+    assert.equal(bCap.truncated, true, '超限带 truncated:true');
+    assert.equal(bCap.results[0].name, 'needle-000.ts', '截断保序:首项');
+    assert.equal(bCap.results[99].name, 'needle-099.ts', '截断保序:末项');
+
+    // —— path 基目录锚定:?query+?path=deep → 命中相对 deep 表出 ——
+    const rDeep = await search('needle', 'deep');
+    assert.equal(rDeep.status, 200);
+    assert.deepEqual(await rDeep.json(), { results: [{ path: 'needle.ts', name: 'needle.ts', kind: 'file' }] });
+
+    // —— 空 query 同义单层面(不触发搜索):root 直出 dirA/fileB 形 ——
+    const rEmpty = await search('');
+    assert.equal(rEmpty.status, 200);
+    const bEmpty = (await rEmpty.json()) as { entries?: unknown[]; results?: unknown };
+    assert.equal(bEmpty.results, undefined, '空 query 走单层列举面');
+    assert.equal(Array.isArray(bEmpty.entries), true, '空 query 应答 entries 形');
+
+    // —— 基目录不存在 404(判界/存在性与单层同口径) ——
+    const r404 = await search('needle', 'nope');
+    assert.equal(r404.status, 404);
+
+    // —— 符号链接环:root 自指链接命中后 realPath 已访不再入(死循环防;造链失败即跳过本段) ——
+    try {
+      const loop = path.join(root, 'needleLoop');
+      if (process.platform === 'win32') fs.symlinkSync(root, loop, 'junction');
+      else fs.symlinkSync(root, loop, 'dir');
+      const rLoop = await search('needleLoop', undefined, true);
+      assert.equal(rLoop.status, 200);
+      assert.deepEqual(await rLoop.json(), { results: [{ path: 'needleLoop', name: 'needleLoop', kind: 'dir' }] }, '环路不入:链接本体命中即止');
+    } catch {
+      // symlink 特权缺场:环路面留实现注释口径,不阻塞
+    }
+  });
+});
+
 // ---------- G8c T2:/settings 端点(GET effective 视图/来源分层 + PUT 结构化改写/自填槽清除重载) ----------
 
 /** /settings 响应 keys 行面 */

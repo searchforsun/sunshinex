@@ -237,9 +237,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             {/* G14.52:运行态圆点迁侧栏会话行左缘(顶栏不再双显) */}
           </span>
         )}
-        <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
         {/* ⋯ 会话操作钮(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)。
-            辅助对话不渲染(2026-10-23 用户裁定:fixedTitle==='' 即辅助会话,无会话级操作面) */}
+            辅助对话不渲染(2026-10-23 用户裁定:fixedTitle==='' 即辅助会话,无会话级操作面)。
+            2026-10-24 用户裁定:紧跟标题左聚(不再被计数钮的 auto 边距推到最右),计数钮居其右 */}
         {fixedTitle !== '' && (
           <button type="button" className="sx-iconbtn" data-tip={t('Session actions', '会话操作')}
             aria-label={t('Session actions', '会话操作')}
@@ -256,6 +256,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             <MoreHorizontal size={16} strokeWidth={1.75} />
           </button>
         )}
+        <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
         {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
         {menu !== null && fixedTitle !== '' && (
           <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />

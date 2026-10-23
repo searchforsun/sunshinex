@@ -625,26 +625,25 @@ describe('会话流尾部窗口(D48)', () => {
 
 
 describe('G14.31 轮折叠与辅助对话全新视图', () => {
-  it('Worked 行点击折叠/展开该轮工具行;chevron 元素恒在', async () => {
+  it('Worked 行点击折叠/展开该轮工具行;chevron 元素恒在(2026-10-24 裁定:完成即自动折叠——初始收合态)', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'model-start', ts: Date.now() });
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'c1', input: { command: 'ls' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'c1' } });
     fire({ type: 'done', text: 'fin', ts: Date.now(), payload: { steps: 1, tokensUsed: 10 } });
-    expect(document.querySelector('.entry-tool')).not.toBeNull();
     const runRow = document.querySelector('.entry-run.sealed')!;
-    expect(runRow.getAttribute('aria-expanded')).toBe('true');
+    expect(runRow.getAttribute('aria-expanded')).toBe('false'); // done 即自动折叠
     expect(runRow.querySelector('.run-chev')).not.toBeNull();
-    fireEvent.click(runRow);
     // G14.73:工具行保持挂载,包进收起的 seg-collapse(visibility hidden,平滑过渡)
     const collapsedSeg = document.querySelector('.seg-collapse:not(.open)');
     expect(collapsedSeg).not.toBeNull();
     expect(collapsedSeg?.querySelector('.entry-tool')).not.toBeNull();
-    expect(runRow.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(runRow);
+    fireEvent.click(runRow); // 展开
+    expect(runRow.getAttribute('aria-expanded')).toBe('true');
     expect(document.querySelector('.seg-collapse.open .entry-tool')).not.toBeNull(); // 再点展开
-    expect(document.querySelector('.seg-collapse:not(.open)')).toBeNull();
+    fireEvent.click(runRow); // 再收合
+    expect(document.querySelector('.seg-collapse:not(.open)')).not.toBeNull();
   });
 
   it('G14.166 spawn 折叠行带子智能体名(label 优先,回退 agent_id;无名只出动词)', async () => {
@@ -658,6 +657,23 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(rows[0]!.textContent).toContain('架构分析'); // label 同源(时间线卡/委派标签)
     expect(rows[1]!.textContent).toContain('reviewer'); // agent_id 兜底
     expect(rows[2]!.textContent).not.toMatch(/spawn\s+\S/); // 无名:只出动词,不编名
+  });
+
+  it('2026-10-24 create_teammate 折叠行带队友名(蓝色链接同 spawn,点击开 agent 页;运行态「正在创建队友 X」)', async () => {
+    const onOpenAgent = vi.fn();
+    render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
+    await flushed();
+    fire({ type: 'tool-call', text: 'create_teammate', ts: Date.now(), payload: { callId: 'tm1', input: { name: '分析-内核架构', prompt: 'x' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'tm1' } });
+    fire({ type: 'tool-call', text: 'create_teammate', ts: Date.now(), payload: { callId: 'tm2', input: { prompt: 'x' } } });
+    const rows = [...document.querySelectorAll('.entry-tool')];
+    expect(rows).toHaveLength(2);
+    const link = rows[0]!.querySelector('.tool-agent-link');
+    expect(link).not.toBeNull(); // 同 spawn 的名称链接(tool-agent-link=accent 蓝可点)
+    expect(link!.textContent).toContain('分析-内核架构');
+    fireEvent.click(link!);
+    expect(onOpenAgent).toHaveBeenCalledWith('分析-内核架构', '分析-内核架构', 'x');
+    expect(rows[1]!.textContent).toMatch(/创建队友|Creating teammate/); // 无名:只出动词
   });
 
   it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_task 标题;null=全部后台任务)', async () => {

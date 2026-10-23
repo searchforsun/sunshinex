@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
 import { t } from '../../i18n';
 import { zoomScale } from '../../ui-zoom';
@@ -43,6 +43,37 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
   return s;
 }
 
+/** 2026-10-24 用户裁定「完成后自动折叠工具/思考行」:sealed(封段,streaming 非 true)run key 集
+ *  ——主对话与子智能体转录页两处消费方各持 autoFolded ref,仅首见封段时并入折叠集(用户手动
+ *  展开不回折;会话重开/重放全量首见=历史轮一并折叠) */
+export function sealedRunKeys(entries: readonly ChatEntry[]): string[] {
+  return entries.filter((e) => e.kind === 'run' && e.streaming !== true).map((e) => e.key);
+}
+
+/** 自动折叠共用 hook:sealed run 首见并入 collapsedRuns(ref 去重防手动展开被回折) */
+export function useAutoCollapseRuns(
+  entries: readonly ChatEntry[],
+  setCollapsedRuns: Dispatch<SetStateAction<ReadonlySet<string>>>,
+): void {
+  const autoFoldedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const sealed = sealedRunKeys(entries).filter((k) => !autoFoldedRef.current.has(k));
+    if (sealed.length === 0) return;
+    for (const k of sealed) autoFoldedRef.current.add(k);
+    setCollapsedRuns((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const k of sealed) {
+        if (!next.has(k)) {
+          next.add(k);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [entries, setCollapsedRuns]);
+}
+
 export function useChatFold(deps: {
   readonly chat: ChatState;
   readonly setChat: Dispatch<SetStateAction<ChatState>>;
@@ -66,6 +97,8 @@ export function useChatFold(deps: {
  *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
  *  (phase 叙述/中间解释默认不露),展开轮时照常可见 */
 const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
+// 2026-10-24 用户裁定:轮次完成(sealed)自动折叠工具/思考行——手动展开不回折
+useAutoCollapseRuns(chat.entries, setCollapsedRuns);
 const toggleRun = useCallback((key: string): void => {
   setCollapsedRuns((prev) => {
     const next = new Set(prev);

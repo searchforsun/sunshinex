@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { createKernelRuntime } from '../session/runtime';
 import { resolveDataDir } from '../config/data-dir';
 import { parseTier } from '../runtime';
@@ -14,7 +15,6 @@ import type { Delegation } from '../delegation/projection';
 import { boardEventFrom } from '../tui/session';
 import type { SessionJournal, JournalEvent } from '../tui/session-journal';
 import * as fs from 'fs';
-import * as path from 'path';
 import type { SnapshotEntry } from '../tui/session-journal';
 import { SessionKernel, isShadowEvent, type KernelEvent, type SteerItem } from '../session/kernel';
 import { kernelEventRows } from '../session/seglog';
@@ -420,7 +420,20 @@ export class SessionRuntime {
 
   attachJournal(journal: SessionJournal): void {
     this.journal = journal;
+    this.syncTasksLedger();
     this.hookJournalSink();
+  }
+
+  /** 后台任务账本收养（2026-10-24 回溯裁定+严重 bug 修复）：daemon 会话 sun-id 每次 newSession
+   *  都新铸（journalId 才是稳定身份——GUI 打开会话=newSession+attach 两连）——账本路径不得在
+   *  装配期按 sun-id 定死,须在 journal 挂上时按 journalId 收养（装载回放+后续追加切到该文件）。
+   *  reset 换 Harness 后重收养（journal 仍在 SessionRuntime 身上）。幂等:重放对已在账条目零副作用 */
+  private syncTasksLedger(): void {
+    const journalId = this.journal?.currentId;
+    if (journalId === undefined) return;
+    this.runtimeImpl.harness.tasks.adoptLedger(
+      path.join(resolveDataDir(this.opts.root), 'tasks', `ledger-${journalId}.jsonl`),
+    );
   }
 
   /** journal 落盘订阅单点（单槽，后注册覆盖——attachJournal 重挂天然幂等不双写）：attach 与 reset 换新
@@ -683,7 +696,10 @@ export class SessionRuntime {
     await this.abortAndSettle();
     const old = this.runtimeImpl;
     this.runtimeImpl = this.assemble();
-    if (this.journal !== undefined) this.hookJournalSink();
+    if (this.journal !== undefined) {
+      this.hookJournalSink();
+      this.syncTasksLedger();
+    }
     await this.disposeRuntime(old);
     this.board = emptyBoard();
     this.delegations = [];

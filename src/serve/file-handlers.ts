@@ -22,6 +22,109 @@ const IGNORED = new Set(['.git', 'node_modules', 'dist', 'dist-gui']);
 /** tree 单层上限（G8b T4）：500 条；超限截断 + truncated:true（GUI 呈现「已截断」而非无界载荷） */
 const TREE_MAX_ENTRIES = 500;
 
+/** tree 递归搜索上限（?query= 全层级搜索）：命中 100 条——索引内存过滤的截断面；索引构建另有
+ *  更宽的目录/条目上限（INDEX_MAX_*），任一触顶索引标 truncated（GUI「已截断」而非无界漫游） */
+const SEARCH_MAX_RESULTS = 100;
+
+/** ?query= 搜索命中行：path=相对基目录的 / 分隔全路径（gitMap 查表/文件行 openTab/面包屑渲染
+ *  直用），name=末段名（图标/展示），kind 同单层口径 */
+export interface TreeSearchHit {
+  path: string;
+  name: string;
+  kind: 'dir' | 'file';
+}
+
+/** 项目路径索引（2026-10-24 用户裁定「为项目建立索引」）：按基目录缓存全树清单，TTL 内复用
+ *  ——搜索连打零 fs 成本；refresh=1 强制重建（GUI 刷新钮）。全层级=忽略集外一切（树未展开的
+ *  深层也可搜），构建上限宽于单层（大仓索引化，单次走栈成本换后续零成本） */
+interface ProjectPathIndex {
+  builtAt: number;
+  entries: TreeSearchHit[];
+  truncated: boolean;
+}
+const PATH_INDEX_TTL_MS = 10_000;
+const INDEX_MAX_DIRS = 20_000;
+const INDEX_MAX_ENTRIES = 50_000;
+const pathIndexCache = new Map<string, ProjectPathIndex>();
+
+/** 全树走栈（索引构建）：基目录 DFS，IGNORED 集恒跳过（与单层同口径），目录/条目双上限截断，
+ *  realPath 集防符号链接环。条目分型与单层同款（dirent 直取，非常规实体 statSync 跟随校正，
+ *  落空不枚举）。排序目录段先于文件段、同段 path 码点序——索引一次排序，过滤保序零重排。 */
+function walkTreeBounded(baseAbs: string, maxDirs: number, maxEntries: number): { entries: TreeSearchHit[]; truncated: boolean } {
+  const entries: TreeSearchHit[] = [];
+  let truncated = false;
+  let visited = 0;
+  const seen = new Set<string>([realPathOf(baseAbs) ?? baseAbs]);
+  const walk = (absDir: string, relDir: string): void => {
+    visited += 1;
+    let dirents: fs.Dirent[];
+    try {
+      dirents = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return; // 单层列举失败（权限面/竞态删除）：跳过该层继续其余分支
+    }
+    for (const d of dirents) {
+      if (entries.length >= maxEntries || visited >= maxDirs) {
+        truncated = true;
+        return;
+      }
+      if (IGNORED.has(d.name)) continue;
+      let kind: 'dir' | 'file' | undefined = d.isDirectory() ? 'dir' : d.isFile() ? 'file' : undefined;
+      if (kind === undefined) {
+        try {
+          const follow = fs.statSync(path.join(absDir, d.name));
+          kind = follow.isDirectory() ? 'dir' : follow.isFile() ? 'file' : undefined;
+        } catch {
+          kind = undefined;
+        }
+      }
+      if (kind === undefined) continue;
+      const p = relDir === '' ? d.name : `${relDir}/${d.name}`;
+      entries.push({ path: p, name: d.name, kind });
+      if (kind === 'dir') {
+        const absChild = path.join(absDir, d.name);
+        const real = realPathOf(absChild) ?? absChild;
+        if (seen.has(real)) continue; // 环路（符号链接指回祖先）：不再入
+        seen.add(real);
+        walk(absChild, p);
+      }
+    }
+  };
+  walk(baseAbs, '');
+  entries.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
+    return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+  });
+  return { entries, truncated };
+}
+
+/** ?query= 搜索：索引内存过滤（名包含，大小写不敏感；索引已排序，过滤保序=目录先/路径码点序）。
+ *  truncated 双来源：索引构建触顶（面级不完整）或命中截断（结果被裁） */
+function searchByIndex(baseAbs: string, query: string, refresh: boolean): { results: TreeSearchHit[]; truncated: boolean } {
+  const key = realPathOf(baseAbs) ?? baseAbs;
+  const now = Date.now();
+  const cached = pathIndexCache.get(key);
+  let index: ProjectPathIndex;
+  if (!refresh && cached !== undefined && now - cached.builtAt < PATH_INDEX_TTL_MS) {
+    index = cached;
+  } else {
+    const built = walkTreeBounded(baseAbs, INDEX_MAX_DIRS, INDEX_MAX_ENTRIES);
+    index = { builtAt: now, entries: built.entries, truncated: built.truncated };
+    pathIndexCache.set(key, index);
+  }
+  const needle = query.toLowerCase();
+  const results: TreeSearchHit[] = [];
+  let hitCap = false;
+  for (const e of index.entries) {
+    if (results.length >= SEARCH_MAX_RESULTS) {
+      hitCap = true;
+      break;
+    }
+    if (e.name.toLowerCase().includes(needle)) results.push(e);
+  }
+  return { results, truncated: index.truncated || hitCap };
+}
+
 /** 影子快照族（注册名小写口径）：write 与 edit 同走 writeSnapshot 缝捕获 pre-image——与
  *  modes.ts WRITE_TOOL_NAMES（规范名大写）是两个名域各表其面，第三支快照族工具两处同频 */
 const SNAPSHOT_TOOLS = new Set(['write', 'edit']);
@@ -173,6 +276,7 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
 
 export function handleTree(io: FileHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
   const url = urlOf(req);
+  const query = (url.searchParams.get('query') ?? '').trim(); // 非空 = 递归搜索面（全层级）
   const rel = url.searchParams.get('path') ?? ''; // 缺 path 与 ?path= 空串同义=会话 root
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
@@ -193,6 +297,12 @@ export function handleTree(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   }
   if (!st.isDirectory()) {
     io.send(res, 400, { error: 'not a directory' });
+    return;
+  }
+  if (query !== '') {
+    // ?query= 走项目路径索引（TTL 缓存；refresh=1 强制重建——GUI 刷新钮），内存过滤名包含
+    const r = searchByIndex(abs, query, url.searchParams.get('refresh') === '1');
+    io.send(res, 200, { results: r.results, ...(r.truncated ? { truncated: true } : {}) });
     return;
   }
   let dirents: fs.Dirent[];

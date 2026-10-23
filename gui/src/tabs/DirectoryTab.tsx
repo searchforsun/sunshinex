@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, RefreshCw, ChevronsDownUp, Search, X } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import type { Connection, TreeEntry } from '../connection';
+import type { Connection, TreeEntry, TreeSearchHit } from '../connection';
 import type { TabTypeId, TabParams } from './tab-state';
 import { FileIcon } from '../file-icon';
 import { t } from '../i18n';
@@ -10,7 +10,11 @@ import { t } from '../i18n';
  * G8b 目录标签体(T7):会话 root 的逐层惰拉树——G14.7 对齐 VSCode 资源管理器:
  * 头行(工作区名 + 刷新/全部折叠动作)+ 文件过滤框(VSCode「搜索文件」同位)+ 行树
  * (chevron/缩进参考线,--depth 供参考线背景;目录行免图标,文件行保 vscode-icons)。
- * 过滤非空:已加载层内按名包含匹配,命中文件自动可见(父层恒显)。目录行点击 = 惰拉
+ * G14.2xx 搜索改全层级:过滤非空 = 防抖 200ms 走 conn.searchTree 服务端项目路径索引
+ * (TTL 缓存,refresh=1 强制重建——刷新钮;忽略集外全层级,100 条有界,不受「已加载层」限),
+ * quick-open 式面包屑命中行(相对目录段暗淡 / 分隔,文件行末段亮;目录行 chevron 标识)——
+ * 文件行点击开文件标签,目录行点击回树面并逐层展开定位(原地显示到对应目录)。git 状态
+ * mount/刷新钮/每次提交搜索即重拉——多层级文件状态实时渲染。目录行点击 = 惰拉
  * 单层(展开态缓存保留,错误层重拉重试,G8e-T2),拖拽 = @目录引用(同文件行私有类型);
  * 文件行点击 = openTab('file', { path })。会话切换整体重置(G8b-T7 评审 #1)。
  */
@@ -36,6 +40,13 @@ type NodeState =
 /** 展开层缓存初始态:root 在途(mount 即拉);兼作会话切换重置态(模块级只读,可安全共享) */
 const INITIAL_NODES: ReadonlyMap<string, NodeState> = new Map([['', { status: 'loading' }]]);
 
+/** G14.2xx 全层级搜索态:idle=树面(renderLevel(''));loading/loaded/error=命中面(替代树面) */
+type SearchState =
+  | { readonly status: 'idle' }
+  | { readonly status: 'loading' }
+  | { readonly status: 'loaded'; readonly hits: readonly TreeSearchHit[]; readonly truncated: boolean }
+  | { readonly status: 'error'; readonly message: string };
+
 /** 展开集初始/重置态(模块级共享只读引用——mount 重置同引用 React bail out,零多余重渲染) */
 const INITIAL_EXPANDED: ReadonlySet<string> = new Set([]);
 
@@ -49,8 +60,12 @@ const childPath = (dirPath: string, name: string): string => (dirPath === '' ? n
 export function DirectoryTab({ conn, sessionId, root, openTab, locate }: DirectoryTabProps): JSX.Element {
   const [nodes, setNodes] = useState<ReadonlyMap<string, NodeState>>(INITIAL_NODES);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => INITIAL_EXPANDED);
-  /** G14.7 文件过滤(VSCode「搜索文件」同位):非空 = 已加载层内按名包含匹配 */
+  /** G14.7 文件过滤(VSCode「搜索文件」同位):非空 = 全层级服务端搜索(命中面替代树面) */
   const [filter, setFilter] = useState('');
+  /** G14.2xx 搜索态机(见 SearchState) */
+  const [search, setSearch] = useState<SearchState>({ status: 'idle' });
+  /** 搜索回包乱序守卫:仅最新 seq 可落态(防抖连打,慢包不覆盖新词结果) */
+  const searchSeq = useRef(0);
   /** G14.2xx 定位去重:同一路径只定位一次(重开同路径不重放) */
   const locatedRef = useRef<string | undefined>(undefined);
 
@@ -60,30 +75,56 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
 
   /** G14.112 git 状态映射(path → modified/untracked/deleted/renamed/ignored):树节点着色/徽标/暗淡 */
   const [gitMap, setGitMap] = useState<Record<string, string>>({});
+  /** 2026-10-24 状态新鲜度:git 状态重拉单点(mount/刷新钮/每次提交搜索顺带——多层级文件状态实时渲染面) */
+  const gitRefresh = useCallback((): void => {
+    (conn.gitStatus?.(sessionId) ?? Promise.resolve({ branch: '', map: {} })).then(
+      (r) => setGitMap(r.map ?? {}),
+      () => {},
+    );
+  }, [conn, sessionId]);
   /** mount/会话切换拉 root:整体重置(层缓存+展开集+过滤)再拉新会话 root */
   useEffect(() => {
     setNodes(INITIAL_NODES);
     setExpanded(INITIAL_EXPANDED);
     setFilter('');
-    (conn.gitStatus?.(sessionId) ?? Promise.resolve({ branch: '', map: {} })).then(
-      (r) => setGitMap(r.map ?? {}),
-      () => setGitMap({}),
-    );
+    gitRefresh();
     void conn.tree(sessionId).then(
       (r) => setNode('', { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
       (err: unknown) => setNode('', { status: 'error', message: err instanceof Error ? err.message : String(err) }),
     );
-  }, [conn, sessionId, setNode]);
+  }, [conn, sessionId, setNode, gitRefresh]);
 
-  /** 动作钮:刷新 = 整树重置重拉;全部折叠 = 清展开集(缓存保留) */
+  /** 搜索单点(防抖定时器/刷新钮共用):git 状态顺带重拉(文件状态实时渲染);refreshIndex=true
+   *  强制服务端索引重建。seq 守卫乱序回包(慢包不覆盖新词结果)。 */
+  const runSearch = useCallback(
+    (q: string, refreshIndex: boolean): void => {
+      const seq = ++searchSeq.current;
+      setSearch({ status: 'loading' });
+      gitRefresh();
+      (conn.searchTree?.(sessionId, q, refreshIndex) ?? Promise.resolve({ results: [] })).then(
+        (r) => {
+          if (searchSeq.current === seq) setSearch({ status: 'loaded', hits: r.results ?? [], truncated: r.truncated === true });
+        },
+        (err: unknown) => {
+          if (searchSeq.current === seq) setSearch({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+        },
+      );
+    },
+    [conn, sessionId, gitRefresh],
+  );
+
+  /** 动作钮:刷新 = 整树重置重拉 + git 状态重拉;搜索在场时强制索引重建重搜(服务端 refresh=1) */
   const refresh = useCallback((): void => {
     setNodes(new Map([['', { status: 'loading' }]]));
     setExpanded(new Set());
+    gitRefresh();
     void conn.tree(sessionId).then(
       (r) => setNode('', { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
       (err: unknown) => setNode('', { status: 'error', message: err instanceof Error ? err.message : String(err) }),
     );
-  }, [conn, sessionId, setNode]);
+    const q = filter.trim();
+    if (q !== '') runSearch(q, true);
+  }, [conn, sessionId, setNode, gitRefresh, filter, runSearch]);
 
   const collapseAll = useCallback((): void => setExpanded(new Set()), []);
 
@@ -105,6 +146,18 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
       );
     }
   }, [locate, conn, sessionId, setNode]);
+
+  /** G14.2xx 全层级搜索:filter 非空防抖 200ms → runSearch(服务端项目索引内存过滤,全层级
+   *  命中,GUI 不再受「已加载层」限);空串即刻回树面。 */
+  useEffect(() => {
+    const q = filter.trim();
+    if (q === '') {
+      setSearch({ status: 'idle' });
+      return;
+    }
+    const timer = setTimeout(() => runSearch(q, false), 200);
+    return () => clearTimeout(timer);
+  }, [filter, runSearch]);
 
   /** G14.143 目录级 git 聚合:变更文件的祖先目录标记聚合状态(modified 压过 untracked)——
    *  目录行名着色 + 右缘圆点(VSCode 同位) */
@@ -148,13 +201,91 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
     openTab('file', { path: filePath });
   };
 
-  /** 过滤匹配(G14.7):名包含(大小写不敏感);空串 = 全显 */
-  const matches = (name: string): boolean => {
-    const f = filter.trim().toLowerCase();
-    return f === '' || name.toLowerCase().includes(f);
+  /** G14.2xx 目录命中点击:回树面并逐层展开定位(祖先链全可见;层有缓存则免拉,toggleDir 同判) */
+  const openDirResult = (rel: string): void => {
+    setFilter('');
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length === 0) return;
+    const chain: string[] = [];
+    for (const seg of parts) chain.push(chain.length === 0 ? seg : chain[chain.length - 1] + '/' + seg);
+    setExpanded((s) => new Set([...s, ...chain]));
+    for (const dir of chain) {
+      const cached = nodes.get(dir);
+      if (cached !== undefined && cached.status === 'loaded') continue; // 缓存命中零请求
+      setNode(dir, { status: 'loading' });
+      void conn.tree(sessionId, dir).then(
+        (r) => setNode(dir, { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
+        (err: unknown) => setNode(dir, { status: 'error', message: err instanceof Error ? err.message : String(err) }),
+      );
+    }
   };
 
-  /** 递归渲染一层;过滤非空时未命中条目隐藏(命中文件照常可点) */
+  /** G14.2xx 命中面(VSCode quick-open 形):相对目录面包屑——目录段暗淡 / 分隔,文件行末段亮;
+   *  目录行(chevron 标识)点击回树面原地逐层展开定位,文件行点击开文件页签。git 装饰同树面
+   *  口径:ignored 整行灰/文件字母徽标/目录聚合圆点。 */
+  const renderSearch = (): JSX.Element => {
+    if (search.status === 'loading') {
+      return <div className="sx-tree-row sx-tree-status">{t('Searching…', '搜索中…')}</div>;
+    }
+    if (search.status === 'error') {
+      return <div className="sx-tree-row sx-tree-error">{search.message}</div>;
+    }
+    if (search.status === 'idle') return renderLevel('', 0); // 不可达(调用面 idle 才走树面)——类型收窄兜底
+    if (search.hits.length === 0) {
+      return <div className="sx-tree-row sx-tree-status">{t('No matches', '无匹配')}</div>;
+    }
+    return (
+      <>
+        {search.hits.map((h) => {
+          const gst = gitMap[h.path];
+          const dimmed = gst === 'ignored';
+          const badge = gst === 'modified' ? 'M' : gst === 'untracked' ? 'U' : gst === 'deleted' ? 'D' : gst === 'renamed' ? 'R' : null;
+          const dirGitSt = h.kind === 'dir' ? (gst === 'untracked' ? 'untracked' : dirGit[h.path]) : undefined;
+          const parts = h.path.split('/');
+          const isFile = h.kind === 'file';
+          const dirSegs = isFile ? parts.slice(0, -1) : parts; // 目录行整条都是目录段(全暗淡,同 quick-open)
+          const fileName = isFile ? parts[parts.length - 1]! : null;
+          return (
+            <button
+              key={h.path}
+              type="button"
+              className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}`}
+              style={indent(0)}
+              title={h.path}
+              onClick={() => (h.kind === 'dir' ? openDirResult(h.path) : openFile(h.path))}
+            >
+              {h.kind === 'dir' ? (
+                <ChevronRight size={16} strokeWidth={1.75} className="sx-tree-chevron" />
+              ) : (
+                <FileIcon path={h.name} size={16} />
+              )}
+              <span className="sx-tree-crumb">
+                {dirSegs.map((d, i) => {
+                  // 分隔符只出现在段间:目录行末段不缀尾斜杠(quick-open 同款);文件行末段是文件名,目录段全带分隔
+                  const sep = isFile || i < dirSegs.length - 1;
+                  return (
+                    <Fragment key={`${i}:${d}`}>
+                      <span className="sx-tree-crumb-dir" style={{ flexShrink: dirSegs.length - i }}>{d}</span>
+                      {sep && <span className="sx-tree-crumb-sep" aria-hidden="true">/</span>}
+                    </Fragment>
+                  );
+                })}
+                {fileName !== null && <span className="sx-tree-name">{fileName}</span>}
+              </span>
+              {dirGitSt !== undefined ? (
+                <span className={`sx-tree-dot st-${dirGitSt}`} aria-hidden="true" />
+              ) : (
+                badge !== null && <span className={`sx-tree-badge st-${gst}`}>{badge}</span>
+              )}
+            </button>
+          );
+        })}
+        {search.truncated && <div className="sx-tree-row sx-tree-truncated">…{t('truncated', '已截断')}</div>}
+      </>
+    );
+  };
+
+  /** 递归渲染一层(G14.2xx 起过滤面由 renderSearch 承担,此函数恒全量渲染) */
   const renderLevel = (dirPath: string, depth: number): JSX.Element => {
     const st = nodes.get(dirPath);
     if (st === undefined) return <></>;
@@ -172,7 +303,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
         </div>
       );
     }
-    const visible = st.entries.filter((e) => matches(e.name));
+    const visible = st.entries;
     return (
       <Fragment key={dirPath === '' ? '\u0000root' : dirPath}>
         {/* G14.7 修复:展开子层紧跟父行(原「子层集中尾渲染」把子项顶到列表末尾——VSCode 是就地展开) */}
@@ -205,7 +336,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
                   }}
                 >
                   <ChevronRight
-                    size={14}
+                    size={16}
                     strokeWidth={1.75}
                     className={`sx-tree-chevron${expanded.has(p) ? ' open' : ''}`}
                   />
@@ -231,7 +362,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
                 >
-                  <FileIcon path={e.name} />
+                  <FileIcon path={e.name} size={16} />
                   <span className="sx-tree-name">{e.name}</span>
                   {badge !== null && <span className={`sx-tree-badge st-${gst}`}>{badge}</span>}
                 </button>
@@ -267,9 +398,9 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
           </span>
         </div>
       )}
-      {/* 文件过滤(VSCode「搜索文件」同位) */}
+      {/* 文件过滤(VSCode「搜索文件」同位;G14.2xx 起非空即全层级服务端搜索) */}
       <div className="sx-tree-filter">
-        <Search size={12} strokeWidth={1.75} aria-hidden="true" />
+        <Search size={13} strokeWidth={1.75} aria-hidden="true" />
         <input
           aria-label="filter files"
           value={filter}
@@ -278,11 +409,11 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
         />
         {filter !== '' && (
           <button type="button" aria-label="clear filter" onClick={() => setFilter('')}>
-            <X size={12} strokeWidth={1.75} />
+            <X size={13} strokeWidth={1.75} />
           </button>
         )}
       </div>
-      {renderLevel('', 0)}
+      {search.status === 'idle' ? renderLevel('', 0) : renderSearch()}
     </div>
   );
 }

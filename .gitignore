@@ -43,3 +43,6 @@ default/
 
 # GUI 截图验收物料（G 线视觉轮的实机截图,过程产物不入库）
 .shots/
+
+# gui 页签布局运行时数据(桌面/本地 GUI 按工作区落盘的 tabState,运行时产物不入库)
+gui/sessions/

@@ -10,7 +10,7 @@ import { RunEntryView } from '../pages/chat/EntryViews';
 import { ToolSegBlock } from '../pages/chat/ToolGroups';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { runFooterMapOf, taskNameResolverOf } from '../pages/chat/use-chat-derived';
-import { collapsedHiddenKeys } from '../pages/chat/use-chat-fold';
+import { collapsedHiddenKeys, useAutoCollapseRuns } from '../pages/chat/use-chat-fold';
 import type { ChatEntry } from '../chat-reducer';
 
 /**
@@ -69,6 +69,8 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
   // collapsedRuns 本地态(只读面无恢复语义),hiddenKeys 走 collapsedHiddenKeys 纯函数单点
   // (与主对话 useChatFold 同源;段内中间 sealed assistant 一并随轮折叠)
   const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(() => new Set());
+  // 2026-10-24 用户裁定:轮次完成(sealed)自动折叠工具/思考行(主对话同款,手动展开不回折)
+  useAutoCollapseRuns(entries, setCollapsedRuns);
   const toggleRun = useCallback((key: string): void => {
     setCollapsedRuns((prev) => {
       const next = new Set(prev);

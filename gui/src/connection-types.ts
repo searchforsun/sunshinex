@@ -167,6 +167,21 @@ export interface TreeResp {
   truncated?: boolean;
 }
 
+/** GET /session/:id/tree?query= 命中行（全层级搜索）：path=相对基目录 / 分隔全路径（gitMap
+ *  查表/文件行 openTab 直用），name=末段名（图标/展示），kind 同 TreeEntry */
+export interface TreeSearchHit {
+  path: string;
+  name: string;
+  kind: 'dir' | 'file';
+}
+
+/** GET /session/:id/tree?query= 载荷（全层级搜索）：服务端递归有界应答（100 命中/4000 目录
+ *  截断）；truncated=true = 上限触顶——结果面「…已截断」标记的判据 */
+export interface TreeSearchResp {
+  results: TreeSearchHit[];
+  truncated?: boolean;
+}
+
 // ---------- G8c T7：设置面类型（gui 侧契约声明，字段形与 daemon T2-T6 应答同形；不引服务端类型） ----------
 
 /** GET /settings keys 行（T2，对齐 daemon effectiveKeyRow 产物）：value 恒取 env 槽（槽缺即

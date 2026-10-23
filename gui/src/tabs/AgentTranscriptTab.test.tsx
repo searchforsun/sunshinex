@@ -122,7 +122,7 @@ describe('AgentTranscriptTab 对标主对话', () => {
     expect(streamingAssistant!.querySelector('.run-footer')).toBeNull(); // 主对话运行中同款
   });
 
-  it('轮折叠:sealed run 条 role=button 可点,点击后该轮工具/思考行隐藏(chevron 展开)', () => {
+  it('轮折叠:sealed run 自动折叠(2026-10-24 裁定)——初始即收合,点击展开,再点收回', () => {
     let s: AgentActivities = {};
     s = applyAgentEvent(s, sub('model-start', 'an'));
     s = applyAgentEvent(s, sub('reasoning', 'an', '想想'));
@@ -136,10 +136,11 @@ describe('AgentTranscriptTab 对标主对话', () => {
     const runRow = container.querySelector<HTMLElement>('.entry-run.sealed');
     expect(runRow).not.toBeNull();
     expect(runRow!.getAttribute('role')).toBe('button'); // 可点击(此前无 onToggle 恒只读)
-    fireEvent.click(runRow!); // 折叠
-    expect(container.querySelector('.seg-collapse.open')).toBeNull(); // 段收合(closed 态)
-    const runRow2 = container.querySelector<HTMLElement>('.entry-run.sealed');
-    fireEvent.click(runRow2!); // 再展开
+    expect(container.querySelector('.seg-collapse.open')).toBeNull(); // 完成即自动折叠(初始收合态)
+    fireEvent.click(runRow!); // 展开
     expect(container.querySelector('.seg-collapse.open')).not.toBeNull();
+    const runRow2 = container.querySelector<HTMLElement>('.entry-run.sealed');
+    fireEvent.click(runRow2!); // 再收合
+    expect(container.querySelector('.seg-collapse.open')).toBeNull();
   });
 });

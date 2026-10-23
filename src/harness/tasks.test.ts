@@ -118,3 +118,109 @@ test('TaskRegistry.resolveId：板 id 归一单点——直接命中优先,旧 t
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ---------- 2026-10-24 回溯裁定:账本持久化(ledger-<sessionId>.jsonl,与会话绑定) ----------
+
+test('账本:submit/finish 追加行;新 registry 装载回放终态原样(endedAt/exitCode 随行)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tasks-lg1-'));
+  try {
+    const ledger = path.join(dir, 'tasks', 'ledger-s1.jsonl');
+    const r1 = new TaskRegistry(dir, ledger);
+    const t = r1.submit({ kind: 'exec', label: 'demo task' });
+    r1.finish(t.id, 'done', { exitCode: 0 });
+    assert.equal(r1.list().length, 1);
+
+    const rows = new TaskRegistry(dir, ledger).list();
+    assert.equal(rows.length, 1, '重放恰好一行');
+    assert.equal(rows[0]!.id, t.id);
+    assert.equal(rows[0]!.label, 'demo task');
+    assert.equal(rows[0]!.status, 'done', '终态原样回放');
+    assert.equal(rows[0]!.exitCode, 0);
+    assert.ok(rows[0]!.endedAt !== undefined && rows[0]!.endedAt >= t.startedAt, 'endedAt 随行回放');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('账本:孤儿 running 行装载即 stopped(异进程 pid 判定);同进程 running 保活,finish 序列翻转生效', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tasks-lg2-'));
+  try {
+    const ledger = path.join(dir, 'tasks', 'ledger-s2.jsonl');
+    fs.mkdirSync(path.dirname(ledger), { recursive: true });
+    const startedAt = Date.now() - 60_000;
+    fs.writeFileSync(
+      ledger,
+      [
+        // 异进程 pid:孤儿(进程已死)→装载即 stopped
+        `${JSON.stringify({ op: 'submit', pid: 999999, task: { id: 'orphan-1', kind: 'exec', label: 'orphan', status: 'running', outputFilePath: path.join(dir, 'tasks', 'orphan-1.log'), startedAt } })}\n`,
+        // 本进程 pid:别处活账(attach 收养场景)→保持 running,finish 行可翻转
+        `${JSON.stringify({ op: 'submit', pid: process.pid, task: { id: 'done-1', kind: 'exec', label: 'done', status: 'running', outputFilePath: path.join(dir, 'tasks', 'done-1.log'), startedAt } })}\n`,
+        `${JSON.stringify({ op: 'finish', id: 'done-1', status: 'done', endedAt: Date.now(), exitCode: 2 })}\n`,
+      ].join(''),
+      'utf8',
+    );
+    const rows = new TaskRegistry(dir, ledger).list();
+    assert.equal(rows.find((x) => x.id === 'orphan-1')!.status, 'stopped', '异进程 running 装载即 stopped');
+    assert.equal(rows.find((x) => x.id === 'done-1')!.status, 'done', '同进程 running 由 finish 行翻转');
+    assert.equal(rows.find((x) => x.id === 'done-1')!.exitCode, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('账本:adoptLedger 收养(journalId 稳定身份)——装载回放+后续追加切文件;幂等重放零副作用', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tasks-lg5-'));
+  try {
+    const journalLedger = path.join(dir, 'tasks', 'ledger-j1.jsonl');
+    fs.mkdirSync(path.dirname(journalLedger), { recursive: true });
+    fs.writeFileSync(
+      journalLedger,
+      `${JSON.stringify({ op: 'submit', pid: 999999, task: { id: 'hist-1', kind: 'exec', label: 'history', status: 'running', outputFilePath: path.join(dir, 'tasks', 'hist-1.log'), startedAt: Date.now() - 30_000 } })}\n`,
+      'utf8',
+    );
+    // 无账本构造(装配期)→attach 时按 journalId 收养
+    const r = new TaskRegistry(dir);
+    assert.equal(r.list().length, 0, '收养前空账本');
+    r.adoptLedger(journalLedger);
+    const hist = r.list().find((x) => x.id === 'hist-1');
+    assert.equal(hist!.status, 'stopped', '历史孤儿收养即 stopped');
+    // 收养后提交落 journal 账本(不再写装配期文件)
+    const t = r.submit({ kind: 'exec', label: 'post-adopt' });
+    assert.ok(fs.existsSync(journalLedger) && fs.readFileSync(journalLedger, 'utf8').includes('post-adopt'), '收养后追加进 journal 账本');
+    r.finish(t.id, 'done', { exitCode: 0 });
+    // 幂等重放:再收养同文件,已在账条目零副作用
+    r.adoptLedger(journalLedger);
+    const again = r.list().filter((x) => x.id === t.id);
+    assert.equal(again.length, 1, '重放不重复入账');
+    assert.equal(again[0]!.status, 'done', '重放不翻转已终态');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('账本:坏行/乱序行跳过不炸;无账本路径 = 纯内存零 ledger 文件', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tasks-lg3-'));
+  try {
+    const ledger = path.join(dir, 'tasks', 'ledger-s3.jsonl');
+    fs.mkdirSync(path.dirname(ledger), { recursive: true });
+    fs.writeFileSync(
+      ledger,
+      ['{ broken json', '{"op":"finish","id":"ghost","status":"done","endedAt":1}', '{}', ''].join('\n'),
+      'utf8',
+    );
+    assert.equal(new TaskRegistry(dir, ledger).list().length, 0, '坏行全跳过');
+
+    const dirPlain = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tasks-lg4-'));
+    try {
+      const rPlain = new TaskRegistry(dirPlain);
+      const t = rPlain.submit({ kind: 'exec', label: 'x' });
+      rPlain.finish(t.id, 'failed', { exitCode: 3 });
+      const ledgerFiles = fs.readdirSync(path.join(dirPlain, 'tasks')).filter((f) => f.startsWith('ledger'));
+      assert.equal(ledgerFiles.length, 0, '无路径零账本(既有形态)');
+    } finally {
+      fs.rmSync(dirPlain, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

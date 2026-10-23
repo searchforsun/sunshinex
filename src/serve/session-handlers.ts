@@ -171,11 +171,40 @@ export async function handleSessionCommand(io: SessionHandlerIo, req: http.Incom
 
 
 /** GET /session/:id/tasks(G10-C6 后台任务面板):账本行(脱敏——stop 句柄/文件路径不出端点) */
+/** 任务输出尾读（2026-10-24 后台任务面结果区）：末 4KB 有界读，头截断标 outputTruncated——
+ *  账本输出流式落 <dataDir>/tasks/<id>.log，结果(如果有)随 /tasks 行内联回（任务量小,逐行
+ *  尾读成本可控）;读失败(竞态删除/权限)缺字段,GUI 结果区即不示 */
+const TASK_TAIL_BYTES = 4096;
+function taskOutputTail(file: string): { outputTail: string; outputTruncated?: boolean } {
+  try {
+    const st = fs.statSync(file);
+    if (!st.isFile() || st.size === 0) return { outputTail: '' };
+    const start = Math.max(0, st.size - TASK_TAIL_BYTES);
+    const buf = Buffer.alloc(st.size - start);
+    const fd = fs.openSync(file, 'r');
+    try {
+      fs.readSync(fd, buf, 0, buf.length, start);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return { outputTail: buf.toString('utf8'), ...(start > 0 ? { outputTruncated: true } : {}) };
+  } catch {
+    return { outputTail: '' };
+  }
+}
+
 export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const rows = session.runtime.harness.tasks.list().map((t2) => ({
-    id: t2.id, kind: t2.kind, label: t2.label, status: t2.status, startedAt: t2.startedAt, ...(t2.exitCode !== undefined ? { exitCode: t2.exitCode } : {}),
+    id: t2.id,
+    kind: t2.kind,
+    label: t2.label,
+    status: t2.status,
+    startedAt: t2.startedAt,
+    ...(t2.endedAt !== undefined ? { endedAt: t2.endedAt } : {}),
+    ...(t2.exitCode !== undefined ? { exitCode: t2.exitCode } : {}),
+    ...taskOutputTail(t2.outputFilePath),
   }));
   io.send(res, 200, rows);
 }

@@ -19,6 +19,7 @@ import type {
   SkillsGroup,
   SnapshotResponse,
   TreeResp,
+  TreeSearchResp,
   WorkspaceRow,
 } from './connection-types';
 import type { SessionEvent } from '../../src/types';
@@ -108,8 +109,9 @@ export interface Connection {
   shadowEvents(id: string): Promise<{ events: SessionEvent[]; cut: number }>;
   /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板)。G14.2xx 用户裁定:本面只记录 exec 类
    *  真后台执行——subagent/teammate 账本行退役(子智能体/队友在任务板·agent 页签已有专面,双处
-   *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用) */
-  sessionTasks(id: string): Promise<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number }>>;
+   *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用)。endedAt=终态时刻(时长计算);
+   *  outputTail=输出末 4KB(结果区消费,outputTruncated=头截断) */
+  sessionTasks(id: string): Promise<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; endedAt?: number; exitCode?: number; outputTail?: string; outputTruncated?: boolean }>>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
   memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string; body: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
@@ -158,6 +160,9 @@ export interface Connection {
   /** GET /session/:id/tree?path=（G8b T4 目录面，path 缺省 = root 单层直读）：DirectoryTab 逐层
    *  惰拉的取数面；403 越界/404 不存在/400 非目录以 HTTP 失败抛错（消息含 status） */
   tree(sessionId: string, path?: string): Promise<TreeResp>;
+  /** GET /session/:id/tree?query=（全层级搜索）：服务端项目路径索引（TTL 缓存，refresh=true 强制
+   *  重建）内存过滤名包含（忽略集外全层级，100 命中有界，truncated 标截断）；403/404/400 同 tree */
+  searchTree(sessionId: string, query: string, refresh?: boolean): Promise<TreeSearchResp>;
   /** G8c T7 设置面方法族（T8/T9 Settings 面全数据面；签名与 task-7 brief 逐字对齐）。root 缺省
    *  = 无项目上下文的仅全局面（服务端同裁定：query 参整体省略，空串 root 不可靠）；写面恒项目级
    *  （400 缺 root），全局编辑走 raw */
@@ -419,7 +424,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionTasks(id: string) {
       // 白名单:只留 exec 类真后台执行(subagent/teammate 各有专面)——见接口注
-      return getJson<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; exitCode?: number }>>(
+      return getJson<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; endedAt?: number; exitCode?: number; outputTail?: string; outputTruncated?: boolean }>>(
         '/session/' + encodeURIComponent(id) + '/tasks',
       ).then((rows) => rows.filter((r) => r.kind === 'exec'));
     },
@@ -502,6 +507,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
       // path 缺省/root 省查询参(对齐 T4 缺省 '' 语义;dirpicker 同款)
       const query = path === undefined || path === '' ? '' : `?path=${encodeURIComponent(path)}`;
       return getJson<TreeResp>(`/session/${encodeURIComponent(sessionId)}/tree${query}`);
+    },
+    searchTree(sessionId: string, query: string, refresh?: boolean): Promise<TreeSearchResp> {
+      const qp = new URLSearchParams({ query });
+      if (refresh === true) qp.set('refresh', '1'); // 强制索引重建(刷新钮)
+      return getJson<TreeSearchResp>(`/session/${encodeURIComponent(sessionId)}/tree?${qp.toString()}`);
     },
     // ---- G8c T7 设置面：root 缺省省查询参（tree/dirpicker 同款——空串 root 服务端不可靠）；写面
     // root 缺省省 body 字段（newSession mode 同款）----
