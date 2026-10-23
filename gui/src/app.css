@@ -1401,7 +1401,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.39:条上「+」弹窗跟随按钮、开在其下(原 absolute right:8px 钉右缘) */
 /* 标签滚动区独立;+/弹窗在其外不被裁切 */
 /* G14.108 flex 布局:滚动区可收缩(min-width 0),+ 钮恒在视口内跟随其后——此前 block 布局
-   让 scroll 被内容撑开,标签多时 + 与整条溢出视口右缘 */.sx-tabstrip { display: flex; align-items: center; overflow: visible; }.sx-tabstrip-scroll { display: flex; align-items: center; gap: 2px; overflow-x: auto; min-width: 0; flex: 0 1 auto; scrollbar-width: none; } /* 2026-10-23 用户裁定:+ 紧跟最后一个标签页(Chrome 同款)——不伸展,溢出才收缩 */.sx-strip-newtab .sx-menu-pop { left: auto; right: 0; top: calc(100% + 4px); } /* G14.108 右对齐向左展开,不出视口 */
+   让 scroll 被内容撑开,标签多时 + 与整条溢出视口右缘 */.sx-tabstrip { display: flex; align-items: center; overflow: visible; }.sx-tabstrip-scroll { display: flex; align-items: center; gap: 2px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; } /* 2026-10-23 用户裁定:Chrome 同款页签宽度——滚动区伸展,页签按总宽均分(200 封顶/56 兜底)随总宽变窄连续收缩,+ 跟随末签、封顶余量留其右侧 */ /* 「+」弹层改 fixed 钉屏(组件内联坐标),原 absolute 右对齐规则退役 */
 
 /* G14.40:右栏拖宽把手可视化收窄(8px 命中区不变,高亮改 2px 细线居中) */.sx-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; }.sx-resizer:hover::before, .sx-resizer.active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); }.sx-resizer:hover, .sx-resizer.active { background: transparent; }
 

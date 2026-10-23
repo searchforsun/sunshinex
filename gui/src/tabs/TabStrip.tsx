@@ -49,6 +49,9 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     onReopenClosed,
   } = props;
   const [menuOpen, setMenuOpen] = useState(false);
+  /** 「+」弹层 fixed 钉屏坐标(2026-10-23:+ 入滚动区后 absolute 弹层会被 overflow-x 裁切;
+      开层瞬间以触发钮屏幕矩形定位,弹层右缘对齐钮右缘) */
+  const [popPos, setPopPos] = useState<{ top: number; right: number } | null>(null);
   // G14.2xx 标签搜索弹窗(最左触发,纵向列打开的/最近关闭的标签页)
   const [searchOpen, setSearchOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -143,7 +146,9 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           />
         )}
       </div>
-      {/* G14.39:标签滚动区独立(overflow-x auto 只裁标签);+/弹窗在滚动区外,弹窗不被条裁切 */}
+      {/* 2026-10-23 用户裁定:Chrome 同款页签宽度——滚动区伸展(flex:1 1 auto),页签按总宽
+          均分(200 封顶/56 兜底),随窗口/侧栏变窄连续收缩;+ 跟随末签,封顶余量留其右侧。
+          + 随之入滚动区(Chrome 同构,页签能分享总宽的前提);弹层 fixed 钉屏避开滚动区裁切 */}
       <div className="sx-tabstrip-scroll" ref={scrollRef}>
       {tabs.map((t) => {
         const entry = tabEntry(t.type);
@@ -206,22 +211,23 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           </button>
         );
       })}
-      </div>
-      {/* G14.39:「+」弹窗跟随按钮、开在其下(相对锚容器;原 absolute right:8px 钉右缘) */}
+      {/* + 锚容器(滚动区内);弹层开在其下,fixed 钉屏坐标=开层瞬间钮矩形 */}
       <div className="sx-strip-newtab" style={{ position: 'relative', display: 'inline-flex', flex: 'none' }} ref={menuAnchorRef}>
       <button
         type="button"
         aria-label="new tab"
         className="sx-iconbtn"
         disabled={disabled}
-        onClick={() => {
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setPopPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
           setMenuOpen((o) => !o);
         }}
       >
         <Plus size={16} strokeWidth={1.75} />
       </button>
-      {menuOpen && (
-        <div className="sx-menu-pop" role="menu" aria-label="new tab types">
+      {menuOpen && popPos !== null && (
+        <div className="sx-menu-pop" style={{ position: 'fixed', top: popPos.top, right: popPos.right }} role="menu" aria-label="new tab types">
           {GROUP_ORDER.map((g) => {
             // G14.159 文件/上下文不走「+」菜单:文件由目录树/工具行开档,上下文面板按需经命令;已有标签不受影响
             const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id));
@@ -252,6 +258,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           })}
         </div>
       )}
+      </div>
       </div>
     </div>
   );
