@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { MAIN_MIN_WIDTH } from './thread-width';
+import { zoomScale } from './ui-zoom';
 
 /** G12 左栏宽度偏好键（theme/ui-zoom 同族面私有持久化）。
  *  MIN 与 .sx-menu CSS min-width 240 同值:状态与 CSS 下限分叉会让视口护栏少算渲染宽
@@ -43,14 +44,15 @@ export function useMenuResize(
       el.classList.add('active');
       const startX = e.clientX;
       const occupied = getSidebarOccupied();
-      const startWidth = Math.min(menuWidth, window.innerWidth - occupied - MAIN_MIN_WIDTH);
+      // zoom 契约(ui-zoom.ts):innerWidth/clientX 视觉 px,宽度状态本地 px——上界与 delta 同 /zoomScale()
+      const startWidth = Math.min(menuWidth, window.innerWidth / zoomScale() - occupied - MAIN_MIN_WIDTH);
       shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
       let next = startWidth;
       const onMove = (ev: MouseEvent): void => {
         // 同右栏:菜单拖宽至中栏触底即停(右栏实际占宽计入,未渲染=0),右栏不越视口
         next = Math.max(
           MENU_WIDTH_MIN,
-          Math.min(window.innerWidth - occupied - MAIN_MIN_WIDTH, startWidth + ev.clientX - startX),
+          Math.min(window.innerWidth / zoomScale() - occupied - MAIN_MIN_WIDTH, startWidth + (ev.clientX - startX) / zoomScale()),
         );
         setMenuWidth(next);
       };

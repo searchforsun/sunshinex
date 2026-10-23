@@ -20,6 +20,7 @@ import type { SessionEvent } from '../../src/types';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { chatMaxFor, MAIN_MIN_WIDTH } from './thread-width';
+import { zoomScale } from './ui-zoom';
 import { useMenuResize } from './use-menu-resize';
 import { useAgentBuckets, useChatMemory, useShadowHydrationRefs, bindShadowHydration } from './use-agent-projections';
 
@@ -522,11 +523,15 @@ function AppShell(): JSX.Element {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   /** 右栏渲染期钳制宽=min(持久宽, 视口−菜单−440)——拖拽钳制只护拖拽中,本钳制护一切
-   *  渲染态(窗口缩窄/换页/历史残留);下限 MAIN_MIN 防极端视口下算负。--sidebar-w 与
-   *  aside width 同源吃钳后值,.sx-menu 的视口护栏不再被未钳残留宽挤瘪 */
+   *  渲染态(窗口缩窄/换页/历史残留)。下限 0(不得用 MAIN_MIN 托底!窄视口下托底会把上限
+   *  抬回 440 令整行溢出——2026-10-24 用户实测「刚好超视口四图标距离」即此);极端窄窗
+   *  右栏趋 0 可接受,横移由 .sx-shell overflow:clip 兜底。
+   *  2026-10-24 用户「拖出≈四图标宽」终审根因:html 根有 CSS zoom(ui-zoom),innerWidth 是
+   *  视觉 px 而样式宽是本地 px——差 zoomScale 倍,桌面 zoom≠1 时钳制整体放大失准(643×1.1=
+   *  707>视口);视觉测量写入本地样式处一律 /zoomScale() 归一(ui-zoom.ts 跨空间契约) */
   const sidebarRenderW = Math.min(
     tabState.width,
-    Math.max(MAIN_MIN_WIDTH, viewportW - menuWidth - MAIN_MIN_WIDTH),
+    Math.max(0, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH),
   );
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings 态)——落壳级 --sidebar-w 供 .sx-menu 的
    *  视口护栏消费(G14.2xx 结构性禁止越视口:两拖拽护栏各消费对方栏宽,零布局反馈环) */
@@ -544,14 +549,15 @@ function AppShell(): JSX.Element {
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    const startWidth = Math.min(tabState.width, window.innerWidth - menuWidth - MAIN_MIN_WIDTH);
+    const startWidth = Math.min(tabState.width, window.innerWidth / zoomScale() - menuWidth - MAIN_MIN_WIDTH);
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
     const onMove = (ev: MouseEvent): void => {
       // G14.2xx 用户裁定:无固定最大宽,但受中栏最小宽约束——中栏触底 440 即停,右栏不越视口
-      // (上界=视口−菜单−440;逐 move 实时取视口宽,min 440 由 setWidth 单点兜底)
-      const max = window.innerWidth - menuWidth - MAIN_MIN_WIDTH;
-      setTabStates((s) => setWidth(s, sessionId, Math.min(max, startWidth + startX - ev.clientX)));
+      // (上界=视口−菜单−440;逐 move 实时取视口宽,min 440 由 setWidth 单点兜底)。
+      // zoom 契约:clientX/startX 与上界均为视觉 px,宽度状态是本地 px——delta 与上界同 /zoomScale()
+      const max = window.innerWidth / zoomScale() - menuWidth - MAIN_MIN_WIDTH;
+      setTabStates((s) => setWidth(s, sessionId, Math.min(max, startWidth + (startX - ev.clientX) / zoomScale())));
     };
     const stop = (): void => {
       el.classList.remove('active');
