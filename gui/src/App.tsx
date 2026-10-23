@@ -701,9 +701,6 @@ function AppShell(): JSX.Element {
                 }
                 openTabInSession(t, tabEntry(t).mintParams?.());
               }}
-              onToggleCollapse={() =>
-                setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))
-              }
               onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
               recentClosed={tabState.recentClosed}
               onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, openSessionId, i, PROBE))}
@@ -791,9 +788,11 @@ function WindowControls({ onToggleRightSidebar }: { onToggleRightSidebar: () => 
   const bridge = winBridge();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
+  // 2026-10-23 用户裁定:簇内不放 [|]——侧栏开合由页签条自有 collapse 钮承担(展开=+ 后、
+  // 收起=迷你条),避免双钮重复;簇只承载窗口三钮(桌面态)
   return (
     <div className="sx-wincontrols">
-      {/* [|] 全局唯一切换钮(用户裁定):web/桌面恒渲染 */}
+      {/* [|] 侧栏开关(2026-10-23 用户裁定:唯一切换钮,−□× 左侧) */}
       <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
         <PanelRight size={14} strokeWidth={1.75} />
       </button>

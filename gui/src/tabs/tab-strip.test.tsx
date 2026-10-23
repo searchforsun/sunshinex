@@ -78,14 +78,12 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(handlers.onClose).toHaveBeenCalledWith('file:a.ts');
   });
 
-  it('「+」弹类型菜单,选中回调 onOpenType;「≫」折叠回调', () => {
+  it('「+」弹类型菜单,选中回调 onOpenType(折叠钮已迁右上窗控簇)', () => {
     const handlers = { ...base };
     render(<TabStrip {...handlers} tabs={[]} activeUid={null} collapsed={false} />);
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getAllByRole('menuitem', { name: /Todos|待办/ })[0]);
     expect(handlers.onOpenType).toHaveBeenCalledWith('tasks');
-    fireEvent.click(screen.getByRole('button', { name: 'collapse sidebar' }));
-    expect(handlers.onToggleCollapse).toHaveBeenCalled();
   });
 
   it('快捷键:Alt+W 关活动,Ctrl+Alt+→/← 切换', () => {
