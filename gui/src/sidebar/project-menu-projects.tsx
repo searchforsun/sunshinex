@@ -164,7 +164,6 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                       className={`workspace-toggle sx-group-head${root !== undefined && root === activeRoot ? ' active' : ''}`}
                       disabled={root === undefined}
                       aria-expanded={openSlug === row.slug}
-                      data-tip={root ?? 'root 未登记(历史工作区)——无法新建会话'}
                       onClick={() => onToggleGroup(row)}
                     >
                       <span className="sx-ws-folder" aria-hidden="true">
