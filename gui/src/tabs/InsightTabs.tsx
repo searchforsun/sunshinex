@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Trash2 } from 'lucide-react';
-import type { Connection } from '../connection';
+import type { Connection, SessionTaskRow } from '../connection';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
 
@@ -20,17 +20,6 @@ type CtxBreakdown = {
   free: number;
 };
 
-type TaskRow = {
-  id: string;
-  kind: string;
-  label: string;
-  status: string;
-  startedAt: number;
-  endedAt?: number;
-  exitCode?: number;
-  outputTail?: string;
-  outputTruncated?: boolean;
-};
 type MemoryRow = { slug: string; type: string; created: string; modified: string; description: string; body: string };
 
 function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; error: string; reload: () => void } {
@@ -106,7 +95,7 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
  *  不区分用户输入(turnGoal 退役)——单行=状态图标+运行时长+命令(一行省略)+创建时间;
  *  点击展开命令详情与结果(服务端输出尾读,结果区最大高度内部滚动)。运行中时长 1s 实时跳 */
 export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
-  const { data, error, reload } = useFetch<TaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
+  const { data, error, reload } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   // 运行时长实时:有 running 任务才起 1s 定时器(终态行用 endedAt 恒定,零无谓重渲染)
   const [now, setNow] = useState(Date.now());

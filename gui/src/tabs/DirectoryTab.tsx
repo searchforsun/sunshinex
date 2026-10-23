@@ -57,6 +57,14 @@ const indent = (depth: number): CSSProperties =>
 /** 子层 path 拼合:root 直出名,深层 `${父}/${name}`(与 tree?path= 相对口径一致) */
 const childPath = (dirPath: string, name: string): string => (dirPath === '' ? name : `${dirPath}/${name}`);
 
+/** 祖先链拼合(相对路径 → 逐级累计 path;locate 定位与搜索命中目录行两处同构) */
+const chainOf = (rel: string): string[] => {
+  const parts = rel.split('/').filter(Boolean);
+  const chain: string[] = [];
+  for (const seg of parts) chain.push(chain.length === 0 ? seg : chain[chain.length - 1] + '/' + seg);
+  return chain;
+};
+
 export function DirectoryTab({ conn, sessionId, root, openTab, locate }: DirectoryTabProps): JSX.Element {
   const [nodes, setNodes] = useState<ReadonlyMap<string, NodeState>>(INITIAL_NODES);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => INITIAL_EXPANDED);
@@ -79,20 +87,42 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
   const gitRefresh = useCallback((): void => {
     (conn.gitStatus?.(sessionId) ?? Promise.resolve({ branch: '', map: {} })).then(
       (r) => setGitMap(r.map ?? {}),
-      () => {},
+      // 拉取失败回空集:未知状态不显示徽标/暗淡——保留旧值会让上一会话的 M/U 徽标跨会话脏态
+      // (非权威辅助数据降级口径,不弹错误面)
+      () => setGitMap({}),
     );
   }, [conn, sessionId]);
+
+  /** root 单层拉取单点(mount/刷新钮两处同构;重置语义=恒重拉无缓存判定) */
+  const fetchRoot = useCallback((): void => {
+    void conn.tree(sessionId).then(
+      (r) => setNode('', { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
+      (err: unknown) => setNode('', { status: 'error', message: err instanceof Error ? err.message : String(err) }),
+    );
+  }, [conn, sessionId, setNode]);
+
+  /** 单层拉取单点(locate/命中目录行/toggleDir 三处同构);缓存判定归一口径=「已载或在途免拉,
+   *  错误层重试」(调用方判,与 toggleDir 既有口径一致——原 locate 恒重拉/命中行 loading 态重拉
+   *  两种漂移口径随之收编,重复请求消失、可见结果不变) */
+  const fetchLayer = useCallback(
+    (dir: string): void => {
+      setNode(dir, { status: 'loading' });
+      void conn.tree(sessionId, dir).then(
+        (r) => setNode(dir, { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
+        (err: unknown) => setNode(dir, { status: 'error', message: err instanceof Error ? err.message : String(err) }),
+      );
+    },
+    [conn, sessionId, setNode],
+  );
+
   /** mount/会话切换拉 root:整体重置(层缓存+展开集+过滤)再拉新会话 root */
   useEffect(() => {
     setNodes(INITIAL_NODES);
     setExpanded(INITIAL_EXPANDED);
     setFilter('');
     gitRefresh();
-    void conn.tree(sessionId).then(
-      (r) => setNode('', { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
-      (err: unknown) => setNode('', { status: 'error', message: err instanceof Error ? err.message : String(err) }),
-    );
-  }, [conn, sessionId, setNode, gitRefresh]);
+    fetchRoot();
+  }, [conn, sessionId, setNode, gitRefresh, fetchRoot]);
 
   /** 搜索单点(防抖定时器/刷新钮共用):git 状态顺带重拉(文件状态实时渲染);refreshIndex=true
    *  强制服务端索引重建。seq 守卫乱序回包(慢包不覆盖新词结果)。 */
@@ -118,13 +148,10 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
     setNodes(new Map([['', { status: 'loading' }]]));
     setExpanded(new Set());
     gitRefresh();
-    void conn.tree(sessionId).then(
-      (r) => setNode('', { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
-      (err: unknown) => setNode('', { status: 'error', message: err instanceof Error ? err.message : String(err) }),
-    );
+    fetchRoot();
     const q = filter.trim();
     if (q !== '') runSearch(q, true);
-  }, [conn, sessionId, setNode, gitRefresh, filter, runSearch]);
+  }, [conn, sessionId, setNode, gitRefresh, fetchRoot, filter, runSearch]);
 
   const collapseAll = useCallback((): void => setExpanded(new Set()), []);
 
@@ -133,19 +160,15 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
     if (locate === undefined || locate === '' || locatedRef.current === locate) return;
     locatedRef.current = locate;
     const rel = locate.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/^\/+/, '').replace(/\/+$/, '');
-    const parts = rel.split('/').filter(Boolean);
-    if (parts.length === 0) return;
-    const chain: string[] = [];
-    for (const seg of parts) chain.push(chain.length === 0 ? seg : chain[chain.length - 1] + '/' + seg);
+    const chain = chainOf(rel);
+    if (chain.length === 0) return;
     setExpanded((s) => new Set([...s, ...chain]));
     for (const dir of chain) {
-      setNode(dir, { status: 'loading' });
-      void conn.tree(sessionId, dir).then(
-        (r) => setNode(dir, { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
-        (err: unknown) => setNode(dir, { status: 'error', message: err instanceof Error ? err.message : String(err) }),
-      );
+      const cached = nodes.get(dir);
+      if (cached !== undefined && cached.status !== 'error') continue; // 已载/在途免拉(归一口径)
+      fetchLayer(dir);
     }
-  }, [locate, conn, sessionId, setNode]);
+  }, [locate, nodes, fetchLayer]);
 
   /** G14.2xx 全层级搜索:filter 非空防抖 200ms → runSearch(服务端项目索引内存过滤,全层级
    *  命中,GUI 不再受「已加载层」限);空串即刻回树面。 */
@@ -190,33 +213,22 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
     setExpanded((s) => new Set(s).add(dirPath));
     const cached = nodes.get(dirPath);
     if (cached !== undefined && cached.status !== 'error') return; // 缓存命中:收起再展开零请求
-    setNode(dirPath, { status: 'loading' });
-    void conn.tree(sessionId, dirPath).then(
-      (r) => setNode(dirPath, { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
-      (err: unknown) => setNode(dirPath, { status: 'error', message: err instanceof Error ? err.message : String(err) }),
-    );
+    fetchLayer(dirPath);
   };
 
   const openFile = (filePath: string): void => {
     openTab('file', { path: filePath });
   };
 
-  /** G14.2xx 目录命中点击:回树面并逐层展开定位(祖先链全可见;层有缓存则免拉,toggleDir 同判) */
+  /** G14.2xx 目录命中点击:回树面并逐层展开定位(祖先链全可见;缓存口径与 toggleDir 同源) */
   const openDirResult = (rel: string): void => {
     setFilter('');
-    const parts = rel.split('/').filter(Boolean);
-    if (parts.length === 0) return;
-    const chain: string[] = [];
-    for (const seg of parts) chain.push(chain.length === 0 ? seg : chain[chain.length - 1] + '/' + seg);
+    const chain = chainOf(rel);
     setExpanded((s) => new Set([...s, ...chain]));
     for (const dir of chain) {
       const cached = nodes.get(dir);
-      if (cached !== undefined && cached.status === 'loaded') continue; // 缓存命中零请求
-      setNode(dir, { status: 'loading' });
-      void conn.tree(sessionId, dir).then(
-        (r) => setNode(dir, { status: 'loaded', entries: r.entries, truncated: r.truncated === true }),
-        (err: unknown) => setNode(dir, { status: 'error', message: err instanceof Error ? err.message : String(err) }),
-      );
+      if (cached !== undefined && cached.status !== 'error') continue; // 已载/在途免拉(归一口径,原 loaded 才免拉近重复请求)
+      fetchLayer(dir);
     }
   };
 
@@ -252,7 +264,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
               type="button"
               className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}`}
               style={indent(0)}
-              title={h.path}
+              data-tip={h.path}
               onClick={() => (h.kind === 'dir' ? openDirResult(h.path) : openFile(h.path))}
             >
               {h.kind === 'dir' ? (

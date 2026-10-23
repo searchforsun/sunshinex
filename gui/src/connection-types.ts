@@ -184,6 +184,20 @@ export interface TreeSearchResp {
   truncated?: boolean;
 }
 
+/** GET /session/:id/tasks 行形（exec 类真后台执行账本，服务端已过滤 subagent/teammate 专面）：
+ *  endedAt=终态时刻（时长计算）；outputTail=输出末 4KB 尾读（结果区直示），outputTruncated=头截断 */
+export interface SessionTaskRow {
+  id: string;
+  kind: string;
+  label: string;
+  status: string;
+  startedAt: number;
+  endedAt?: number;
+  exitCode?: number;
+  outputTail?: string;
+  outputTruncated?: boolean;
+}
+
 // ---------- G8c T7：设置面类型（gui 侧契约声明，字段形与 daemon T2-T6 应答同形；不引服务端类型） ----------
 
 /** GET /settings keys 行（T2，对齐 daemon effectiveKeyRow 产物）：value 恒取 env 槽（槽缺即

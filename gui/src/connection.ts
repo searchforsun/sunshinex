@@ -15,6 +15,7 @@ import type {
   McpRow,
   McpRowInput,
   SessionRow,
+  SessionTaskRow,
   SettingsView,
   SkillsGroup,
   SnapshotResponse,
@@ -109,9 +110,8 @@ export interface Connection {
   shadowEvents(id: string): Promise<{ events: SessionEvent[]; cut: number }>;
   /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板)。G14.2xx 用户裁定:本面只记录 exec 类
    *  真后台执行——subagent/teammate 账本行退役(子智能体/队友在任务板·agent 页签已有专面,双处
-   *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用)。endedAt=终态时刻(时长计算);
-   *  outputTail=输出末 4KB(结果区消费,outputTruncated=头截断) */
-  sessionTasks(id: string): Promise<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; endedAt?: number; exitCode?: number; outputTail?: string; outputTruncated?: boolean }>>;
+   *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用)。行形 SessionTaskRow 单点(connection-types) */
+  sessionTasks(id: string): Promise<SessionTaskRow[]>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
   memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string; body: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
@@ -424,7 +424,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionTasks(id: string) {
       // 白名单:只留 exec 类真后台执行(subagent/teammate 各有专面)——见接口注
-      return getJson<Array<{ id: string; kind: string; label: string; status: string; startedAt: number; endedAt?: number; exitCode?: number; outputTail?: string; outputTruncated?: boolean }>>(
+      return getJson<SessionTaskRow[]>(
         '/session/' + encodeURIComponent(id) + '/tasks',
       ).then((rows) => rows.filter((r) => r.kind === 'exec'));
     },
