@@ -33,6 +33,7 @@ pnpm gui:build  # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
 | GUI 全量 | `pnpm --dir gui run test` | pretest 先 typecheck（`tsc --noEmit`）并编译主仓，vitest 全量＝单测 + e2e（起真 daemon，消费 `dist/serve/daemon` 发布形态）——gui 直接 import 主仓 TS 源保类型同源 |
 | GUI e2e 单跑 | `pnpm --dir gui run test:e2e` | pretest 先构建 dist-gui，只跑 e2e 文件（主仓 dist 须先在） |
 | 桌面壳 | `pnpm --filter sunshinex-shell run test`；冒烟 `pnpm shell:smoke` | 壳单测（vitest）；冒烟＝electron 真启动：起 → 页面加载完成 → 有序退，退出码判过 |
+| 真实模型 e2e | `node scripts/e2e-real.mjs` | **手动门**（花真金 token，不进门禁）：直答冒烟 + write 工具落盘闭环（脚本侧逐字验盘）两条场景，真适配器/流式/工具链/安全链全链只有此门能验；前提＝settings.json env 块已配密钥（D5 资产化） |
 
 联调辅助：`pnpm --dir gui run typecheck`（GUI TS 严格检查）；`pnpm --dir gui run dev`（vite 热迭代，`VITE_SERVE_URL=<daemon 地址>` 指向后端）；`pnpm cli serve` 起 GUI daemon → `http://127.0.0.1:7788/`（host 恒回环不对外；`--port=N` 覆盖 / `--port=0` 临时端口；缺省免鉴权，显式 `--token` 启用）。daemon 服务 dist-gui 静态产物——改完 GUI 源码须 `pnpm gui:build` 再刷新才生效（dev 热更免重建）。
 
