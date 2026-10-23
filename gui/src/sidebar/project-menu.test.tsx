@@ -79,7 +79,7 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     expect(await screen.findByText('p1')).toBeTruthy();
     expect(screen.getByText('p2')).toBeTruthy();
     expect(screen.getByText('harness-x')).toBeTruthy(); // 0 会话档照常入册(行文案=root basename, G14.189 回退)
-    expect((document.querySelector('[data-tip^="root 未登记"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector('.sx-group-head:disabled') as HTMLButtonElement).disabled).toBe(true); // root 缺场组禁用(路径 tooltip 已退役,disabled 即缺场标记)
     // 组行点击=展开:惰拉 sessionsOf,组内会话行在场(组行/RECENTS 行/recents 去重前同文——取首个)
     fireEvent.click(await screen.findByText('p1'));
     await waitFor(() => expect(conn.roots).toEqual(['D:/w/p1']));

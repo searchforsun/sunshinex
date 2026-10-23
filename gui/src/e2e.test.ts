@@ -32,10 +32,10 @@ import { GuiDaemon } from '../../dist/serve/daemon';
  *  会话行限「展开中的组」:两份组列表共享数据源,收起副本不可点(copy 到隐藏行会挂错 root) */
 async function findGroupByRoot(root: string): Promise<HTMLElement> {
   await waitFor(() => {
-    const btn = [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.tip === root);
+    const btn = [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.root === root);
     expect(btn !== undefined).toBe(true);
   }, { timeout: 5_000 });
-  return [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.tip === root) as HTMLElement;
+  return [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.root === root) as HTMLElement;
 }
 async function findOpenSessionRow(): Promise<HTMLElement> {
   await waitFor(() => expect(document.querySelectorAll('.sx-collapse.open [data-session-row]').length).toBeGreaterThan(0), { timeout: 5_000 });

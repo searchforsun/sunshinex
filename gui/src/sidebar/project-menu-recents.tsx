@@ -58,11 +58,12 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
             aria-hidden="true"
             className={`sx-side-chev${recentsOpen ? ' open' : ''}`}
           />
-          {/* 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧;点击开默认工作区欢迎页) */}
+          {/* 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧;点击开默认工作区欢迎页)。
+              aria 用旧名「new default chat」——与左上 sx-new-chat 主钮区分(测试 /new chat/i 判重) */}
           <button
             type="button"
             className="sx-iconbtn"
-            aria-label="new chat"
+            aria-label="new default chat"
             data-tip={t('New chat', '新对话')}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {

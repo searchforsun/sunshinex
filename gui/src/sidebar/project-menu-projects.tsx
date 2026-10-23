@@ -164,6 +164,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                       className={`workspace-toggle sx-group-head${root !== undefined && root === activeRoot ? ' active' : ''}`}
                       disabled={root === undefined}
                       aria-expanded={openSlug === row.slug}
+                      data-root={root} /* 2026-10-23:路径 tooltip 退役后,测试定位改走无视觉 data-root */
                       onClick={() => onToggleGroup(row)}
                     >
                       <span className="sx-ws-folder" aria-hidden="true">

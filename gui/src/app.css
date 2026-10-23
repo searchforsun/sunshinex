@@ -2102,3 +2102,5 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-23 用户裁定:组头 hover 无底色——共享 hover 规则(.sx-new-chat,.workspace-toggle.sx-group-head,
    .session-row… 同条 0-3-0)压过单类透明(0-2-0),以 0-4-0 末位压制;只压制组头成员,新对话/会话行高亮保留 */
 .workspace-row > .workspace-toggle.sx-group-head:hover { background: transparent; }
+/* ===== 2026-10-23 桌面壳标题条(用户裁定):原生菜单/标题栏退役,−□× 走 WCO 嵌入 =====
+   仅 Electron 态渲染(.sx-desktop 由 App 按 UA 加类);浏览器态零改动 */.sx-shell.sx-desktop { display: block; height: 100vh; }.sx-shell.sx-desktop > .sx-shell-body { display: flex; height: calc(100% - 36px); }.sx-titlebar { height: 36px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 160px 0 14px; -webkit-app-region: drag; background: var(--surface-under); user-select: none; }.sx-titlebar-logo { width: 14px; height: 14px; border-radius: 50%; background: #22d3ee; box-shadow: 0 0 8px rgba(34, 211, 238, 0.45); flex: none; }.sx-titlebar-name { font-size: 12px; color: var(--fg-secondary); letter-spacing: 0.3px; }

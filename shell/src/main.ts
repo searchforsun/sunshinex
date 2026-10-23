@@ -5,6 +5,7 @@ import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
 import { resolveUiLang, shouldHideOnClose, trayMenu, type UiLang } from './lib/lifecycle';
 import { TRAY_ICON_DATA_URL } from './lib/tray-icon';
+import { PRODUCT_LOGO_DATA_URL } from './lib/product-logo';
 import { startDaemon } from './daemon';
 import type { ShellDaemon } from './daemon';
 
@@ -97,8 +98,20 @@ if (!app.requestSingleInstanceLock()) {
     // 入口提示一行（沿 serve 惯例：port + token；回环字面量就地维护，见 lib/app-url.ts 头注）
     console.log(`[shell] daemon listening at http://${LOOPBACK}:${daemon.port} (token: ${daemon.token})`);
 
-    const win = new BrowserWindow({ width: 1200, height: 800, minWidth: 960, minHeight: 600 });
+    // 2026-10-23 用户裁定三连:①窗口/任务栏图标=产品 logo;②原生菜单(File/Edit/View/Window)退役;
+    // ③无边框化——原生标题栏隐身,−□× 窗控走 WCO(titleBarOverlay)嵌入 GUI 顶栏层(GUI 侧画拖拽条)
+    const win = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      minWidth: 960,
+      minHeight: 600,
+      icon: nativeImage.createFromDataURL(PRODUCT_LOGO_DATA_URL),
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { color: '#131313', symbolColor: '#e8e8e8', height: 36 },
+    });
     mainWindow = win;
+    win.setMenu(null);
+    Menu.setApplicationMenu(null); // 托盘右键菜单独立建template,不受应用菜单清空影响
     win.loadURL(appUrl(daemon.port, daemon.token)).catch((err) => console.error('[shell] loadURL failed:', err));
 
     // Web 标签「外开」（H2-T3）：window.open / target=_blank 一律放行为原生新窗（同 session——
