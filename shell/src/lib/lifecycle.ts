@@ -34,8 +34,8 @@ export function resolveUiLangFromSetting(value: string | undefined): UiLang | un
 }
 
 const TRAY_LABELS: Record<UiLang, { show: string; quit: string }> = {
-  en: { show: 'Show sunshinex', quit: 'Quit' },
-  zh: { show: '显示 sunshinex', quit: '退出' },
+  en: { show: 'Show Sunshinex', quit: 'Quit' },
+  zh: { show: '显示 Sunshinex', quit: '退出' },
 };
 
 export function trayMenu(quitting: boolean, lang: UiLang): TrayMenuItem[] {

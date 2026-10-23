@@ -186,7 +186,7 @@ if (!app.requestSingleInstanceLock()) {
     // 2026-10-23 用户裁定:左键单击即弹主窗——setContextMenu 会让左键被菜单占用(点图标只出菜单
     // 不出窗),故菜单改挂 right-click popUpContextMenu,left-click 单点 focusMainWindow。
     tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON_DATA_URL));
-    tray.setToolTip('sunshinex');
+    tray.setToolTip('Sunshinex');
     tray.on('click', () => focusMainWindow());
     // 右键即取当前语言重建菜单(设置页改语言 reloadSettingsChain 刷 SUNSHINEX_LANGUAGE 槽,无需重启)
     tray.on('right-click', () => {

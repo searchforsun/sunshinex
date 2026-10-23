@@ -93,7 +93,7 @@
   font: 14px/1.6 var(--font-ui);
 }button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }button:disabled { opacity: 0.5; pointer-events: none; }:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* 三栏壳(T5 消费;G12 左栏宽度可调:--menu-w 由 App 拖拽落值,clamp/持久化在壳) */.sx-shell { display: flex; height: 100%; }.sx-menu { width: var(--menu-w, 260px); min-width: 240px; max-width: calc(100vw - var(--sidebar-w, 0px) - 440px); /* 视口护栏:结构性禁止越视口(余量=中栏最小宽;非固定档位上限,G14.2xx 用户裁定) */ flex: none; background: var(--surface-under); display: flex; flex-direction: column; }
+/* 三栏壳(T5 消费;G12 左栏宽度可调:--menu-w 由 App 拖拽落值,clamp/持久化在壳) */.sx-shell { display: flex; height: 100%; overflow: clip; } /* 2026-10-23 越视口防线:三栏行超宽也只裁剪不横移(fixed 簇/弹层非文档流不受剪),与渲染期钳制双保险 */.sx-menu { width: var(--menu-w, 260px); min-width: 240px; max-width: calc(100vw - var(--sidebar-w, 0px) - 440px); /* 视口护栏:结构性禁止越视口(余量=中栏最小宽;非固定档位上限,G14.2xx 用户裁定) */ flex: none; background: var(--surface-under); display: flex; flex-direction: column; }
 /* 主面 = 浮层(surface)压在 under 侧栏上:左上大圆角 + 零分割线(层次靠明度差,spec §2) */.sx-main { flex: 1; min-width: 440px; /* G14.196 最小列宽(与侧栏 clamp 下限同值) */ display: flex; flex-direction: column; background: var(--surface); border-top-left-radius: var(--radius-lg); overflow: hidden; }
 /* G14.33:右栏与主面对话同底色(原 surface-under 明度差退役);中缝细条 = 左缘 1px 分割线,
    兼作拖宽把手落点(sx-resizer 仍在,hover 提亮);G14.2xx 用户裁定:无固定最大宽——视口护栏

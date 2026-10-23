@@ -510,11 +510,27 @@ function AppShell(): JSX.Element {
   }, [tabStates, openSessionId, connState, connInstance]);
 
   const tabState = tabStates[openSessionId] ?? emptyTabSession();
-  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings 态)——落壳级 --sidebar-w 供 .sx-menu 的
-   *  视口护栏消费(G14.2xx 结构性禁止越视口:两拖拽护栏各消费对方栏宽,零布局反馈环) */
-  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? tabState.width : 0;
   /** G12 左栏宽度可调(use-menu-resize 单点):菜单宽与拖宽手柄逻辑见钩子 */
   const { menuWidth, startMenuResize } = useMenuResize(shellRef, () => sidebarOccupied);
+  /** 视口宽跟踪(2026-10-23 越视口修复的数据源):持久宽只在拖拽中钳制,窗口缩窄/换页后
+   *  渲染态从不重钳——残留宽令 .sx-menu 被 max-width 挤成缝隙、三栏行整体溢出视口。
+   *  resize 即重渲,下方渲染期钳制以实时视口重算。 */
+  const [viewportW, setViewportW] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = (): void => setViewportW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  /** 右栏渲染期钳制宽=min(持久宽, 视口−菜单−440)——拖拽钳制只护拖拽中,本钳制护一切
+   *  渲染态(窗口缩窄/换页/历史残留);下限 MAIN_MIN 防极端视口下算负。--sidebar-w 与
+   *  aside width 同源吃钳后值,.sx-menu 的视口护栏不再被未钳残留宽挤瘪 */
+  const sidebarRenderW = Math.min(
+    tabState.width,
+    Math.max(MAIN_MIN_WIDTH, viewportW - menuWidth - MAIN_MIN_WIDTH),
+  );
+  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings 态)——落壳级 --sidebar-w 供 .sx-menu 的
+   *  视口护栏消费(G14.2xx 结构性禁止越视口:两拖拽护栏各消费对方栏宽,零布局反馈环) */
+  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? sidebarRenderW : 0;
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
@@ -549,7 +565,7 @@ function AppShell(): JSX.Element {
     window.addEventListener('mouseup', stop);
   };
 
-  const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabState.collapsed ? 32 : tabState.width) : 32;
+  const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabState.collapsed ? 32 : sidebarRenderW) : 32;
 
   /** G14.2xx 限宽动态化:--chat-max 不再钉 880px——ResizeObserver 分盯 .sx-main 与 .sx-sidebar,
    *  各按自身实时内容宽经 chatMaxFor 阶梯落内联值(同一策略覆盖主对话、欢迎页、辅助对话、

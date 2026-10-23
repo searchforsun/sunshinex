@@ -3,7 +3,7 @@
 # ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/（electron zip 本体）
 # ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/（winCodeSign/nsis 等 builder 二进制）
 appId: dev.sunshinex.app
-productName: sunshinex
+productName: Sunshinex
 directories:
   # 打包产物落 shell/release/（根 .gitignore 已忽略；NSIS 单安装包 sunshinex-<ver>-setup.exe）
   output: release
@@ -33,7 +33,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   # 业界惯例命名（kebab-case 无空格，URL/CLI 友好）：sunshinex-<ver>-setup.exe
-  artifactName: ${productName}-${version}-setup.${ext}
+  artifactName: sunshinex-${version}-setup.${ext}
 # node-pty 1.1.0 为 N-API（node-addon-api）构建，ABI 跨 Electron/Node 版本稳定；
 # H1/H2 壳冒烟（dev 态 Electron 主进程 in-process 加载同一二进制）已实证免重建——
 # 关闭 electron-builder 重编译（npmRebuild 走 node-gyp 全量重建，win 下慢且引入工具链依赖）
