@@ -650,7 +650,7 @@ function AppShell(): JSX.Element {
                 onTodos={setSessionTodos}
                 onRenamed={() => setRecentVersion((v) => v + 1)}
                 onSessionsMutated={() => setRecentVersion((v) => v + 1)}
-                showExpandSidebar={tabState.collapsed}
+                showExpandSidebar={tabState.collapsed && !IS_SHELL} /* [|] 自适应(用户裁定):web=顶栏最右;桌面=右上窗控簇左侧,顶栏不再重复 */
                 onExpandSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, false))}
                 onSideChat={startSideChat}
                 onOpenMemory={openMemoryTab}
