@@ -95,7 +95,7 @@
 | O2 | P1 | 模型调用自动重试（指数退避，仅 recoverable 类） | ⑤ | 主链 model-error 直终局 vs 判据侧 MAX_JUDGE_RETRIES=3 先例；收 adapter.ts 单点，长任务抗端点抖动 | closed（2026-10-24：doFetch 单点重试——瞬时网络错/5xx/429 退避 3 次上限〔retryDelayMs cfg 旋钮〕；fatal 4xx/本端硬顶超时/外部中断不重试；测试 3 例含判别力锚） |
 | O3 | P1 | 长任务基准集最小版（3–5 个固定任务 + 完成率/人工干预次数脚本化） | ④ | 决策载体已有：GOAL.md L31、ROADMAP L23/L130；五要素唯一结构性短板，从 0 未动工 | open |
 | O4 | P2 | Recitation：长循环周期性 goal 重申行（尾追承载） | ② | Manus todo.md 对标；零前缀击穿；先小实验验证收益再定形态 | open |
-| O5 | P2 | ledger.summary() 增量化 | ④ | 逐 id 全量重读 O(n)；随基准集批次顺手做 | open |
+| O5 | P2 | ledger.summary() 增量化 | ④ | 逐 id 全量重读 O(n)；随基准集批次顺手做 | closed（2026-10-24：runs/_summary 缓存档 record 增量维护、summary 单读 O(1)；校验面=索引长度,旧档无缓存/半写一次性重算回填自愈；测试 2 例〔零 run 文件读取判别力锚/迁移+自愈〕） |
 | O6 | P3 | 工具误用观测（模型用错工具的数据回流） | ①④ | Anthropic ACI 测试建议；依赖 O3 先落地 | open |
 | O7 | 登记 | OS 级沙箱（dockerode 容器执行） | ③ | 已在 GUI 可选增强登记，本机个人工具形态下保持登记不动 | 登记 |
 | O8 | 登记 | 并行生成/筛查分离 guardrail | ③ | Anthropic 模式；单机通用 agent 属过度设计，不做 | 不做 |

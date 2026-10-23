@@ -115,3 +115,58 @@ test('selfcheck 输出 usage 汇总行（空账本显示 0 runs 不崩溃）', (
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// ---------- O5：summary 增量化（缓存档 _summary；逐 id 全量重读 O(n) 随账本终身线性劣化收口） ----------
+
+/** 读计数代理：run 条目文件读取次数即 O(n)/O(1) 的判据面（换回旧逐 id 实现即红） */
+class CountingStore {
+  runFileReads = 0;
+  constructor(private inner: { read<T>(key: string, fallback: T): T; write<T>(key: string, value: T): void }) {}
+  read<T>(key: string, fallback: T): T {
+    if (key.startsWith('runs/run-')) this.runFileReads += 1;
+    return this.inner.read(key, fallback);
+  }
+  write<T>(key: string, value: T): void {
+    this.inner.write(key, value);
+  }
+}
+
+test('O5：缓存在座时 summary 零 run 文件读取（O(1) 判别力锚——换回逐 id 全量重读即红）', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ledger6-'));
+  try {
+    const counting = new CountingStore(new FileStore(path.join(tmp, '.data')));
+    const ledger = new RunLedger(counting);
+    ledger.record({ goal: 'a', done: true, steps: 1, tokensUsed: 30, durationMs: 5 });
+    ledger.record({ goal: 'b', done: true, steps: 2, tokensUsed: 70, durationMs: 5 });
+    counting.runFileReads = 0; // record 面读取不计,只量 summary
+    assert.deepEqual(ledger.summary(), { runs: 2, tokens: 100 });
+    assert.equal(counting.runFileReads, 0, '缓存命中:不逐 id 重读条目文件');
+    // 再 record 一条走增量维护,summary 仍零读取且合计正确
+    ledger.record({ goal: 'c', done: true, steps: 1, tokensUsed: 50, durationMs: 1 });
+    counting.runFileReads = 0;
+    assert.deepEqual(ledger.summary(), { runs: 3, tokens: 150 });
+    assert.equal(counting.runFileReads, 0);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('O5：旧档迁移（无 _summary）与半写自愈（缓存档 runs 不符）各一次性重算回填', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ledger7-'));
+  try {
+    const store = new FileStore(path.join(tmp, '.data'));
+    // 旧档形态:index + 条目在座、无 _summary 缓存档
+    store.write('runs/_index', ['run-old1', 'run-old2']);
+    store.write('runs/run-old1', { tokensUsed: 40 });
+    store.write('runs/run-old2', { tokensUsed: 60 });
+    const ledger = new RunLedger(store);
+    assert.deepEqual(ledger.summary(), { runs: 2, tokens: 100 }, '迁移:O(n) 重算出正确合计');
+    assert.deepEqual(store.read<{ runs: number; tokens: number }>('runs/_summary', null as never), { runs: 2, tokens: 100 }, '回填缓存档');
+    // 半写自愈:缓存档 runs 与索引长度不符 → 重算并修复
+    store.write('runs/_summary', { runs: 99, tokens: 1 });
+    assert.deepEqual(ledger.summary(), { runs: 2, tokens: 100 }, '校验面(索引长度)不符即重算自愈');
+    assert.deepEqual(store.read<{ runs: number; tokens: number }>('runs/_summary', null as never), { runs: 2, tokens: 100 });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
