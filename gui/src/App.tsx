@@ -764,7 +764,7 @@ function AppShell(): JSX.Element {
           {opError}
         </div>
       )}
-      <WindowControls onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
+      <WindowControls showSideToggle={page === 'chat'} onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
     </div>
   );
 }
@@ -784,18 +784,18 @@ const winBridge = (): SunshinexWindowBridge | undefined =>
 
 /** 桌面窗控簇(2026-10-23 用户裁定):[|] 侧栏开关 + − □ × 自绘按钮——sx-iconbtn 同款圆角 hover,
  *  撤原生 WCO 方块;fixed 右上常驻(页签视图亦在场)。−□× 走 preload IPC,关闭=驻留 hide 语义 */
-function WindowControls({ onToggleRightSidebar }: { onToggleRightSidebar: () => void }): JSX.Element {
+function WindowControls({ showSideToggle, onToggleRightSidebar }: { showSideToggle: boolean; onToggleRightSidebar: () => void }): JSX.Element {
   const bridge = winBridge();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
-  // 2026-10-23 用户裁定:簇内不放 [|]——侧栏开合由页签条自有 collapse 钮承担(展开=+ 后、
-  // 收起=迷你条),避免双钮重复;簇只承载窗口三钮(桌面态)
+  // 2026-10-23 用户裁定:[|] 仅对话页显示(欢迎/设置页无右栏);簇其余为窗口三钮(桌面态)
   return (
     <div className="sx-wincontrols">
-      {/* [|] 侧栏开关(2026-10-23 用户裁定:唯一切换钮,−□× 左侧) */}
-      <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
-        <PanelRight size={14} strokeWidth={1.75} />
-      </button>
+      {showSideToggle && (
+        <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
+          <PanelRight size={14} strokeWidth={1.75} />
+        </button>
+      )}
       {bridge !== undefined && (
         <>
           <button type="button" className="sx-winbtn" aria-label="minimize window" onClick={() => bridge.minimize()}>
