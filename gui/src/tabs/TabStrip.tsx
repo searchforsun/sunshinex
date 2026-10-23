@@ -8,6 +8,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { X, Plus, FileText, ChevronsDown } from 'lucide-react';
 import { t } from '../i18n';
+import { zoomScale } from '../ui-zoom';
 import { FileIcon, hasFileTypeIcon } from '../file-icon';
 import { TAB_REGISTRY, TAB_ICONS, tabEntry } from './registry';
 import { disambiguateTabTitles, type ClosedTab } from './tab-state';
@@ -220,7 +221,10 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         disabled={disabled}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          setPopPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+          // fixed 钉屏偏移按 ui-zoom 跨空间契约归一:gBCR/innerWidth 是视觉 px,fixed 样式吃
+          // 本地 px——zoom≠1 桌面不归一即漂移 zoom 倍(先例:821ea9d 两栏拖拽/db5bf3e④ tooltip)
+          const z = zoomScale();
+          setPopPos({ top: (r.bottom + 4) / z, right: (window.innerWidth - r.right) / z });
           setMenuOpen((o) => !o);
         }}
       >

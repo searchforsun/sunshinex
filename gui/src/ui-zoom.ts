@@ -6,7 +6,9 @@
  * 跨空间换算契约(zoom≠1 时的唯一坑,全局盘点结论):视口空间(gBCR/innerWidth/client 坐标,
  * 视觉 px)与元素本地空间(样式 px/scrollTop 等布局值 = 视觉/zoom)出现系数差——凡「视觉测量
  * 写入本地样式」处一律经 zoomScale() 归一(消费点:main.tsx 悬浮提示 tip 自身 zoom=1 不缩、
- * context-ring 弹层越界回推、Files 选区工具条定位、Chat dock 余垫/滚动校正/mermaid 盘点)。
+ * context-ring 弹层越界回推、Files 选区工具条定位、Chat dock 余垫/滚动校正/mermaid 盘点、
+ * SessionRowMenu fixed 弹层单点[ChatTopbar ⋯·归档确认/projects 移除确认三调用方]、
+ * TabStrip「+」弹层钉屏坐标)。
  */
 export type UiZoom = '0.9' | '1' | '1.1' | '1.25' | '1.5';
 
