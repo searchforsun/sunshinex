@@ -712,7 +712,8 @@ export function WelcomeComposer({
                   className="composer-pill"
                   aria-label="approval mode"
                   aria-expanded={modeOpen}
-                  data-tip={t('Approval mode for this session', '本会话的审批模式')}
+                  // D51 G-4:窄栏塌缩(sx-main-narrow)时 tooltip 承载当前模式名——与会话内 pill 同构
+                  data-tip={mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}
                   onClick={() => setModeOpen((v) => !v)}
                 >
                   {/* G14.133 分档图标与菜单同源(ModeIcon)——静态 Hand 两套渲染退役 */}
