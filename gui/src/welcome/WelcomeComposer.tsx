@@ -758,7 +758,7 @@ export function WelcomeComposer({
               <div className="pill-anchor">
               <button
                 type="button"
-                className="composer-pill"
+                className="composer-pill model-pill"
                 aria-label="model"
                 aria-expanded={modelOpen}
                 data-tip={selModel ?? defaultModel ?? undefined}

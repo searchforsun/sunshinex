@@ -130,7 +130,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
             <div className="pill-anchor">
               <button
                 type="button"
-                className="composer-pill"
+                className="composer-pill model-pill"
                 aria-label="session model"
                 aria-expanded={pillOpen === 'model'}
                 onClick={() => setPillOpen((v) => (v === 'model' ? null : 'model'))}

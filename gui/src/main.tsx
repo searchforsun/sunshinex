@@ -44,9 +44,11 @@ createRoot(root).render(
       iv = Math.max(8, Math.min(edge, window.innerWidth - tr.width - 8));
       it = Math.max(8, Math.min(r.top + r.height / 2 - tr.height / 2, window.innerHeight - tr.height - 8));
     } else {
+      // 2026-10-24 用户裁定:默认显示在锚点上方;顶层元素(顶部无空间,下方有)翻到下方;
+      // 特殊侧面位走 data-tip-pos="right"(既有)。旧实现 below 算而未用恒取 max=恒下方,此为根因
       const below = r.top < tr.height + 10;
       iv = Math.max(8, Math.min(r.left + r.width / 2 - tr.width / 2, window.innerWidth - tr.width - 8));
-      it = Math.max(8, Math.max(r.bottom + 6, r.top - tr.height - 6));
+      it = Math.max(8, below ? r.bottom + 6 : r.top - tr.height - 6);
     }
     it = Math.max(8, Math.min(it, window.innerHeight - tr.height - 8));
     // 先落意图位→回测实际视觉位→本地 px 一次性补差:根 zoom≠1 时 Chromium 对 fixed 偏移乘根
