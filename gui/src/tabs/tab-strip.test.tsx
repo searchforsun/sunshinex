@@ -6,7 +6,7 @@ import { ensureSession, openTab } from './tab-state';
 
 const base = {
   onSelect: vi.fn(), onClose: vi.fn(), onOpenType: vi.fn(),
-  onToggleCollapse: vi.fn(), onCycle: vi.fn(), onCloseActive: vi.fn(),
+  onCycle: vi.fn(), onCloseActive: vi.fn(),
 };
 
 describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web)', () => {
@@ -70,7 +70,7 @@ describe('TabStrip(spec §1 标签条)', () => {
     let s = ensureSession({}, 's1', registryProbe());
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, registryProbe());
     const handlers = { ...base, onSelect: vi.fn(), onClose: vi.fn() };
-    render(<TabStrip {...handlers} tabs={s.s1.tabs} activeUid={s.s1.activeUid} collapsed={false} />);
+    render(<TabStrip {...handlers} tabs={s.s1.tabs} activeUid={s.s1.activeUid} />);
     expect(screen.getByText('a.ts').closest('.sx-tab')?.className).toContain('sx-tab');
     fireEvent.click(screen.getByText('a.ts').closest('.sx-tab') as HTMLElement);
     expect(handlers.onSelect).toHaveBeenCalledWith('file:a.ts');
@@ -80,7 +80,7 @@ describe('TabStrip(spec §1 标签条)', () => {
 
   it('「+」弹类型菜单,选中回调 onOpenType(折叠钮已迁右上窗控簇)', () => {
     const handlers = { ...base };
-    render(<TabStrip {...handlers} tabs={[]} activeUid={null} collapsed={false} />);
+    render(<TabStrip {...handlers} tabs={[]} activeUid={null} />);
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getAllByRole('menuitem', { name: /Todos|待办/ })[0]);
     expect(handlers.onOpenType).toHaveBeenCalledWith('tasks');
@@ -88,7 +88,7 @@ describe('TabStrip(spec §1 标签条)', () => {
 
   it('快捷键:Alt+W 关活动,Ctrl+Alt+→/← 切换', () => {
     const handlers = { ...base };
-    render(<TabStrip {...handlers} tabs={[]} activeUid={null} collapsed={false} />);
+    render(<TabStrip {...handlers} tabs={[]} activeUid={null} />);
     fireEvent.keyDown(window, { key: 'w', altKey: true });
     expect(handlers.onCloseActive).toHaveBeenCalled();
     fireEvent.keyDown(window, { key: 'ArrowRight', ctrlKey: true, altKey: true });
@@ -99,7 +99,7 @@ describe('TabStrip(spec §1 标签条)', () => {
 
   it('disabled 态:+ 与标签不可点', () => {
     const handlers = { ...base };
-    render(<TabStrip {...handlers} tabs={[]} activeUid={null} collapsed={false} disabled />);
+    render(<TabStrip {...handlers} tabs={[]} activeUid={null} disabled />);
     expect((screen.getByRole('button', { name: 'new tab' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

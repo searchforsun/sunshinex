@@ -687,7 +687,6 @@ function AppShell(): JSX.Element {
             <TabStrip
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}
-              collapsed={tabState.collapsed || page !== 'chat'}
               disabled={page !== 'chat'}
               onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId, uid))}
               onReorder={(from, to) => setTabStates((s) => reorderTab(s, openSessionId, from, to))}
@@ -701,9 +700,7 @@ function AppShell(): JSX.Element {
                 }
                 openTabInSession(t, tabEntry(t).mintParams?.());
               }}
-              onToggleCollapse={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))}
-              onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
-              recentClosed={tabState.recentClosed}
+              onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}              recentClosed={tabState.recentClosed}
               onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, openSessionId, i, PROBE))}
               onCloseActive={() => {
                 const uid = tabState.activeUid;
@@ -765,13 +762,20 @@ function AppShell(): JSX.Element {
           {opError}
         </div>
       )}
-      <WindowControls showFixedToggle={page === 'chat' && tabState.collapsed && !settingsOpen} onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
+      {/* 2026-10-23 用户裁定:[|] 唯一渲染=本簇(web 贴窗口最右/桌面 −□× 左),对话页常驻
+          不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}
+      <WindowControls showSideToggle={page === 'chat' && !settingsOpen} onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
     </div>
   );
 }
 
-/** 桌面壳判定(Electron UA):标题条/品牌行拖拽、logo 显隐、WCO 让位等仅桌面态生效 */
-const IS_SHELL = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+/** 桌面壳判定(2026-10-23 用户实测修正):UA 含 Electron 不充分——ZCode 等 Electron 系
+ *  浏览器的内嵌页同样命中,致 web 误吃桌面让位(页签条 92px 幽灵簇位,[|] 不贴右缘);
+ *  须自家 preload 桥在场才算桌面壳(桥由 contextBridge 注入,先于页面脚本,模块期可判) */
+const IS_SHELL =
+  typeof navigator !== 'undefined' &&
+  navigator.userAgent.includes('Electron') &&
+  typeof (window as unknown as { sunshinexWindow?: unknown }).sunshinexWindow !== 'undefined';
 
 /** 桌面窗控桥(preload 注入;浏览器态无此全局) */
 interface SunshinexWindowBridge {
@@ -783,17 +787,17 @@ interface SunshinexWindowBridge {
 const winBridge = (): SunshinexWindowBridge | undefined =>
   IS_SHELL ? (window as unknown as { sunshinexWindow?: SunshinexWindowBridge }).sunshinexWindow : undefined;
 
-/** 桌面窗控簇(2026-10-23 用户裁定):[|] 侧栏开关 + − □ × 自绘按钮——sx-iconbtn 同款圆角 hover,
- *  撤原生 WCO 方块;fixed 右上常驻(页签视图亦在场)。−□× 走 preload IPC,关闭=驻留 hide 语义 */
-function WindowControls({ showFixedToggle, onToggleRightSidebar }: { showFixedToggle: boolean; onToggleRightSidebar: () => void }): JSX.Element {
+/** 桌面窗控簇:[|] 侧栏开关(唯一渲染——web 贴窗口最右/桌面 −□× 左,同件同尺寸不随收展
+ *  变形,页签条自有钮已退役)+ − □ × 自绘按钮(桌面态)——sx-iconbtn 同款圆角 hover,
+ *  撤原生 WCO 方块。−□× 走 preload IPC,关闭=驻留 hide 语义 */
+function WindowControls({ showSideToggle, onToggleRightSidebar }: { showSideToggle: boolean; onToggleRightSidebar: () => void }): JSX.Element {
   const bridge = winBridge();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
-  // [|] 显隐(2026-10-23 用户裁定):右栏打开=页签条自有 collapse 钮(条尾右缘);
-  // 右栏收起/欢迎/设置页=此固定补位钮(否则无重开入口);设置页打开时不补位
+  // [|] 仅对话页显示(欢迎/设置页无右栏);簇其余为窗口三钮(桌面态)
   return (
     <div className="sx-wincontrols">
-      {showFixedToggle && (
+      {showSideToggle && (
         <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
           <PanelRight size={14} strokeWidth={1.75} />
         </button>

@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { X, Plus, PanelLeft, PanelRight, FileText, ChevronsDown } from 'lucide-react';
+import { X, Plus, FileText, ChevronsDown } from 'lucide-react';
 import { t } from '../i18n';
 import { FileIcon, hasFileTypeIcon } from '../file-icon';
 import { TAB_REGISTRY, TAB_ICONS, tabEntry } from './registry';
@@ -16,14 +16,12 @@ import { TabSearchPop } from './TabSearchPop';
 export interface TabStripProps {
   readonly tabs: readonly import('./tab-state').TabInstance[];
   readonly activeUid: string | null;
-  readonly collapsed: boolean;
   readonly disabled?: boolean; // 无会话:整条灰
   readonly onSelect: (uid: string) => void;
   readonly onClose: (uid: string) => void;
   /** G14.111 拖拽重排回调(App 落 tabStates 数组重排) */
   readonly onReorder?: (fromUid: string, toUid: string) => void;
   readonly onOpenType: (type: import('./tab-state').TabTypeId) => void;
-  readonly onToggleCollapse: () => void;
   readonly onCycle: (dir: 1 | -1) => void;
   readonly onCloseActive: () => void;
   /** G14.2xx 标签搜索弹窗:最近关闭历史(App 持有)+按索引重开;缺场=弹窗无「最近关闭」节 */
@@ -40,13 +38,11 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   const {
     tabs,
     activeUid,
-    collapsed,
     disabled = false,
     onSelect,
     onClose,
     onReorder,
     onOpenType,
-    onToggleCollapse,
     onCycle,
     onCloseActive,
     recentClosed,
@@ -117,31 +113,10 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     return () => window.removeEventListener('keydown', onKey);
   }, [disabled, onCloseActive, onCycle]);
 
-  // G14.28:展开态钉最右侧(mlAuto);折叠态细条已由 App 整体不渲染(保留本钮兜底)
-  // disabled 整条降透明(本组件唯一内联样式,简报明文允许);G8e 三面:title 提示不可用因由
+  // 2026-10-23 用户裁定:折叠钮退役——[|] 唯一渲染=固定窗控簇(页签条自有钮与收起迷你条
+  // 双实现致切换变尺寸);本组件恒为展开态(App 仅在右栏展开时挂载)
   const stripStyle = disabled ? { opacity: 0.5 } : undefined;
   const stripTitle = disabled ? '先从左侧选择会话' : undefined;
-  const collapseBtn = (mlAuto: boolean) => (
-    <button
-      type="button"
-      aria-label="collapse sidebar"
-      className="sx-iconbtn"
-      style={mlAuto ? { marginLeft: 'auto' } : undefined}
-      disabled={disabled}
-      onClick={onToggleCollapse}
-    >
-      {collapsed ? <PanelLeft size={16} strokeWidth={1.75} /> : <PanelRight size={16} strokeWidth={1.75} />}
-    </button>
-  );
-
-  // collapsed 态:只渲染折叠钮一行(无标签/无「+」)
-  if (collapsed) {
-    return (
-      <div className="sx-tabstrip" ref={rootRef} style={stripStyle} data-tip={stripTitle}>
-        {collapseBtn(false)}
-      </div>
-    );
-  }
 
   return (
     <div className="sx-tabstrip" ref={rootRef} style={stripStyle} data-tip={stripTitle}>
@@ -278,7 +253,6 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         </div>
       )}
       </div>
-      {collapseBtn(true)}
     </div>
   );
 }
