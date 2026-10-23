@@ -1,4 +1,4 @@
-# SunshineX 使用手册（CLI + TUI）
+# Sunshinex 使用手册（CLI + TUI）
 
 终端里的 AI Agent：用自然语言下任务，模型流式作答、工具实时执行，写操作需你审批，复杂目标先规划后执行。
 

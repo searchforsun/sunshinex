@@ -1,6 +1,6 @@
-# SunshineX GUI 使用手册
+# Sunshinex GUI 使用手册
 
-图形界面版的 SunshineX：与 TUI（[MANUAL.md](MANUAL.md)）同一引擎，会话数据互通。
+图形界面版的 Sunshinex：与 TUI（[MANUAL.md](MANUAL.md)）同一引擎，会话数据互通。
 
 ## 安装
 

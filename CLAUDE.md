@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-本文件是 SunshineX 项目的 AI 协作规范，供智能体与开发者共同遵守。
+本文件是 Sunshinex 项目的 AI 协作规范，供智能体与开发者共同遵守。
 它是项目的「工作说明书」，优先于模型默认行为；冲突时以本文件为准。
 
 ## 1. 项目概览
 
-- 名称：SunshineX —— 通用 AI Agent 工程化骨架
+- 名称：Sunshinex —— 通用 AI Agent 工程化骨架
 - 范式：Harness / Loop / Graph 三层嵌套
 - 技术栈：TypeScript（strict）+ Node.js，CommonJS 模块
 - 定位：云端推理，本地负责编排、执行、安全与记忆

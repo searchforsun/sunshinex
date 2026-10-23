@@ -1,4 +1,4 @@
-# SunshineX
+# Sunshinex
 
 通用 AI Agent 工程化骨架：云端大模型负责推理，本地负责编排、执行、安全与记忆。采用 Harness / Loop / Graph 三层嵌套范式，对标 Claude Code / OpenAI Codex / Hermes。
 
