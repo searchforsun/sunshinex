@@ -173,6 +173,8 @@ export interface TreeSearchHit {
   path: string;
   name: string;
   kind: 'dir' | 'file';
+  /** git 忽略项(2026-10-24 用户裁定:搜索非忽略优先,忽略组殿后)——GUI 暗淡渲染判据 */
+  ignored?: boolean;
 }
 
 /** GET /session/:id/tree?query= 载荷（全层级搜索）：服务端递归有界应答（100 命中/4000 目录

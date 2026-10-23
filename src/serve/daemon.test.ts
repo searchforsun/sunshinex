@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
@@ -820,6 +821,46 @@ interface SettingsKeyRow {
   source: 'env' | 'project' | 'global' | 'default';
   envOverride: boolean;
 }
+
+// ---------- 2026-10-24 用户裁定:搜索非 git 忽略优先(忽略组殿后+ignored 标随行) ----------
+
+test('⑫c tree 搜索:git 忽略项殿后(check-ignore 判定,ignored 标随行;非仓库优雅降级为无忽略组)', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base, tmp } = ctx;
+    const root = path.join(tmp, 'root');
+    // fixture:git 仓库+.gitignore(ign-dir/ 与 *.ignlog);needle-top.ts 非忽略先行;
+    // ign-dir 忽略目录单行带标(内容不入索引——波次 BFS 忽略目录不入队),needle.ignlog 忽略文件带标
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, '.gitignore'), 'ign-dir/\n*.ignlog\n', 'utf8');
+    fs.writeFileSync(path.join(root, 'needle-top.ts'), 'x', 'utf8');
+    fs.mkdirSync(path.join(root, 'ign-dir'));
+    fs.writeFileSync(path.join(root, 'ign-dir', 'needle-deep.ts'), 'x', 'utf8');
+    fs.writeFileSync(path.join(root, 'needle.ignlog'), 'x', 'utf8');
+    execFileSync('git', ['-C', root, 'init'], { windowsHide: true });
+    const sid = await ctx.newSession(root);
+    const search = async (q: string): Promise<Array<{ path: string; ignored?: boolean }>> => {
+      const u = new URL(`${base}/session/${sid}/tree`);
+      u.searchParams.set('query', q);
+      const r = await fetch(u, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const b = (await r.json()) as { results: Array<{ path: string; ignored?: boolean }>; truncated?: boolean };
+      assert.notEqual(b.truncated, true, '小 fixture 无截断(truncated 缺省/false 均为未截断口径)');
+      return b.results.map((x) => ({ path: x.path, ignored: x.ignored === true }));
+    };
+    // 'needle':非忽略 needle-top 先行;忽略文件 needle.ignlog 殿后带标
+    assert.deepEqual(await search('needle'), [
+      { path: 'needle-top.ts', ignored: false },
+      { path: 'needle.ignlog', ignored: true },
+    ], '非忽略先行,忽略文件殿后带标');
+    // 'ign':忽略目录单行带标——其内容(needle-deep.ts)不入索引(波次 BFS 忽略目录不入队);
+    // .gitignore 自身含 ign 且非忽略,排正常组首位
+    assert.deepEqual(await search('ign'), [
+      { path: '.gitignore', ignored: false },
+      { path: 'ign-dir', ignored: true },
+      { path: 'needle.ignlog', ignored: true },
+    ], '忽略目录单行带标,内容不入索引');
+  });
+});
 
 /** /settings 响应整体(断言所需的子集面) */
 interface SettingsBody {

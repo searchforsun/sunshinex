@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import type { SessionRuntime } from './session';
@@ -27,11 +28,13 @@ const TREE_MAX_ENTRIES = 500;
 const SEARCH_MAX_RESULTS = 100;
 
 /** ?query= 搜索命中行：path=相对基目录的 / 分隔全路径（gitMap 查表/文件行 openTab/面包屑渲染
- *  直用），name=末段名（图标/展示），kind 同单层口径 */
+ *  直用），name=末段名（图标/展示），kind 同单层口径；ignored=git 忽略项（2026-10-24 用户裁定
+ *  「搜索优先显示非 git 忽略的文件和文件夹」——非忽略组先行,忽略组殿后并由 GUI 暗淡渲染） */
 export interface TreeSearchHit {
   path: string;
   name: string;
   kind: 'dir' | 'file';
+  ignored?: boolean;
 }
 
 /** 项目路径索引（2026-10-24 用户裁定「为项目建立索引」）：按基目录缓存全树清单，TTL 内复用
@@ -41,65 +44,106 @@ interface ProjectPathIndex {
   builtAt: number;
   entries: TreeSearchHit[];
   truncated: boolean;
+  /** git 忽略路径集(2026-10-24 用户裁定「搜索优先显示非忽略项」):索引构建期一次批量
+   *  `git check-ignore --stdin` 判得;git 缺席/非仓库/调失败 = 空集(全按非忽略,零降级行为) */
+  gitIgnored: Set<string>;
 }
 const PATH_INDEX_TTL_MS = 10_000;
 const INDEX_MAX_DIRS = 20_000;
 const INDEX_MAX_ENTRIES = 50_000;
 const pathIndexCache = new Map<string, ProjectPathIndex>();
 
-/** 全树走栈（索引构建）：基目录 DFS，IGNORED 集恒跳过（与单层同口径），目录/条目双上限截断，
- *  realPath 集防符号链接环。条目分型与单层同款（dirent 直取，非常规实体 statSync 跟随校正，
- *  落空不枚举）。排序目录段先于文件段、同段 path 码点序——索引一次排序，过滤保序零重排。 */
-function walkTreeBounded(baseAbs: string, maxDirs: number, maxEntries: number): { entries: TreeSearchHit[]; truncated: boolean } {
+/** 批量 git 忽略判定(单进程 check-ignore --stdin,零 shell 拼接):返回入参中被忽略的相对路径集。
+ *  git 缺席/基目录非仓库/任何失败 → 空集(优雅降级:忽略组为空,搜索行为与旧版一致) */
+function gitIgnoredPaths(baseAbs: string, paths: string[]): Set<string> {
+  if (paths.length === 0) return new Set();
+  try {
+    const out = execFileSync('git', ['-C', baseAbs, 'check-ignore', '--stdin', '-z', '--'], {
+      input: paths.join('\0'),
+      maxBuffer: 32 * 1024 * 1024,
+      windowsHide: true,
+    });
+    const set = new Set<string>();
+    for (const p of out.toString('utf8').split('\0')) if (p !== '') set.add(p);
+    return set;
+  } catch {
+    return new Set(); // 非零退出=无命中或非仓库;spawn 失败(无 git)同此——两类都优雅空集
+  }
+}
+
+/** 项目路径索引构建（2026-10-24 用户裁定「搜索优先显示非 git 忽略项」重构）：波次 BFS——每波
+ *  先枚举各目录子项,再对本波新路径批量 `git check-ignore` 一次判定;git 忽略目录只留本行标记
+ *  (ignored 集)**不入下波**——.pnpm-store/缓存类内容不再淹没索引(旧实现 50k 上限被忽略内容
+ *  烧穿,正常文件反被挤出索引),忽略目录自身仍可搜/可点开浏览。名称忽略集(.git 等)恒跳过。
+ *  目录/条目双上限截断,realPath 集防符号链接环。排序目录段先于文件段、同段 path 码点序。 */
+function walkTreeBounded(baseAbs: string, maxDirs: number, maxEntries: number): { entries: TreeSearchHit[]; truncated: boolean; gitIgnored: Set<string> } {
   const entries: TreeSearchHit[] = [];
+  const gitIgnored = new Set<string>();
   let truncated = false;
   let visited = 0;
   const seen = new Set<string>([realPathOf(baseAbs) ?? baseAbs]);
-  const walk = (absDir: string, relDir: string): void => {
-    visited += 1;
-    let dirents: fs.Dirent[];
-    try {
-      dirents = fs.readdirSync(absDir, { withFileTypes: true });
-    } catch {
-      return; // 单层列举失败（权限面/竞态删除）：跳过该层继续其余分支
+  let queue: Array<{ abs: string; rel: string }> = [{ abs: baseAbs, rel: '' }];
+  while (queue.length > 0) {
+    if (entries.length >= maxEntries || visited >= maxDirs) {
+      truncated = true;
+      break;
     }
-    for (const d of dirents) {
+    const nextQueue: Array<{ abs: string; rel: string }> = [];
+    const wavePaths: string[] = []; // 本波新条目相对路径(批量判 git 忽略)
+    for (const { abs: absDir, rel: relDir } of queue) {
+      visited += 1;
       if (entries.length >= maxEntries || visited >= maxDirs) {
         truncated = true;
-        return;
+        break;
       }
-      if (IGNORED.has(d.name)) continue;
-      let kind: 'dir' | 'file' | undefined = d.isDirectory() ? 'dir' : d.isFile() ? 'file' : undefined;
-      if (kind === undefined) {
-        try {
-          const follow = fs.statSync(path.join(absDir, d.name));
-          kind = follow.isDirectory() ? 'dir' : follow.isFile() ? 'file' : undefined;
-        } catch {
-          kind = undefined;
+      let dirents: fs.Dirent[];
+      try {
+        dirents = fs.readdirSync(absDir, { withFileTypes: true });
+      } catch {
+        continue; // 单层列举失败（权限面/竞态删除）：跳过该层继续其余分支
+      }
+      for (const d of dirents) {
+        if (entries.length >= maxEntries || visited >= maxDirs) {
+          truncated = true;
+          break;
+        }
+        if (IGNORED.has(d.name)) continue;
+        let kind: 'dir' | 'file' | undefined = d.isDirectory() ? 'dir' : d.isFile() ? 'file' : undefined;
+        if (kind === undefined) {
+          try {
+            const follow = fs.statSync(path.join(absDir, d.name));
+            kind = follow.isDirectory() ? 'dir' : follow.isFile() ? 'file' : undefined;
+          } catch {
+            kind = undefined;
+          }
+        }
+        if (kind === undefined) continue;
+        const p = relDir === '' ? d.name : `${relDir}/${d.name}`;
+        entries.push({ path: p, name: d.name, kind });
+        wavePaths.push(p);
+        if (kind === 'dir') {
+          const absChild = path.join(absDir, d.name);
+          const real = realPathOf(absChild) ?? absChild;
+          if (seen.has(real)) continue; // 环路（符号链接指回祖先）：不再入
+          seen.add(real);
+          nextQueue.push({ abs: absChild, rel: p });
         }
       }
-      if (kind === undefined) continue;
-      const p = relDir === '' ? d.name : `${relDir}/${d.name}`;
-      entries.push({ path: p, name: d.name, kind });
-      if (kind === 'dir') {
-        const absChild = path.join(absDir, d.name);
-        const real = realPathOf(absChild) ?? absChild;
-        if (seen.has(real)) continue; // 环路（符号链接指回祖先）：不再入
-        seen.add(real);
-        walk(absChild, p);
-      }
     }
-  };
-  walk(baseAbs, '');
+    // 本波批量判 git 忽略:忽略目录不入下波(内容不索引),路径入 gitIgnored 集(搜索降权+暗淡)
+    for (const p of gitIgnoredPaths(baseAbs, wavePaths)) gitIgnored.add(p);
+    queue = nextQueue.filter(({ rel }) => !gitIgnored.has(rel));
+  }
   entries.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
     return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
   });
-  return { entries, truncated };
+  return { entries, truncated, gitIgnored };
 }
 
-/** ?query= 搜索：索引内存过滤（名包含，大小写不敏感；索引已排序，过滤保序=目录先/路径码点序）。
- *  truncated 双来源：索引构建触顶（面级不完整）或命中截断（结果被裁） */
+/** ?query= 搜索：索引内存过滤（名包含，大小写不敏感）。2026-10-24 用户裁定「优先显示非 git
+ *  忽略的文件和文件夹」——两段收集:非忽略组先行(满 100 截),忽略组以余量殿后并带 ignored 标
+ *  (GUI 暗淡);组内保索引序(目录先/路径码点序)。truncated 双来源:索引构建触顶或任一组命中被裁 */
 function searchByIndex(baseAbs: string, query: string, refresh: boolean): { results: TreeSearchHit[]; truncated: boolean } {
   const key = realPathOf(baseAbs) ?? baseAbs;
   const now = Date.now();
@@ -109,20 +153,35 @@ function searchByIndex(baseAbs: string, query: string, refresh: boolean): { resu
     index = cached;
   } else {
     const built = walkTreeBounded(baseAbs, INDEX_MAX_DIRS, INDEX_MAX_ENTRIES);
-    index = { builtAt: now, entries: built.entries, truncated: built.truncated };
+    index = { builtAt: now, entries: built.entries, truncated: built.truncated, gitIgnored: built.gitIgnored };
     pathIndexCache.set(key, index);
   }
   const needle = query.toLowerCase();
-  const results: TreeSearchHit[] = [];
-  let hitCap = false;
+  const isIgnored = (e: TreeSearchHit): boolean => index.gitIgnored.has(e.path);
+  const normal: TreeSearchHit[] = [];
+  const ignoredHits: TreeSearchHit[] = [];
+  let normalCapped = false;
+  let ignoredCapped = false;
   for (const e of index.entries) {
-    if (results.length >= SEARCH_MAX_RESULTS) {
-      hitCap = true;
-      break;
+    if (!e.name.toLowerCase().includes(needle)) continue;
+    if (isIgnored(e)) {
+      if (ignoredHits.length < SEARCH_MAX_RESULTS) ignoredHits.push({ ...e, ignored: true });
+      else ignoredCapped = true;
+    } else if (normal.length < SEARCH_MAX_RESULTS) {
+      normal.push(e);
+    } else {
+      normalCapped = true;
     }
-    if (e.name.toLowerCase().includes(needle)) results.push(e);
+    if (normal.length >= SEARCH_MAX_RESULTS && ignoredHits.length >= SEARCH_MAX_RESULTS) break; // 两组俱满,索引余下无消费面
   }
-  return { results, truncated: index.truncated || hitCap };
+  const results = normal.concat(ignoredHits.slice(0, Math.max(0, SEARCH_MAX_RESULTS - normal.length)));
+  // truncated 保守口径(与并行会话钉测契约一致):任一组触顶即报截断——恰满 100 也报 true
+  // (GUI「已截断」提示略过报可接受;精确无漏语义会改钉测意图,不取)
+  return {
+    results,
+    truncated: index.truncated || normalCapped || ignoredCapped ||
+      normal.length >= SEARCH_MAX_RESULTS || ignoredHits.length >= SEARCH_MAX_RESULTS,
+  };
 }
 
 /** 影子快照族（注册名小写口径）：write 与 edit 同走 writeSnapshot 缝捕获 pre-image——与

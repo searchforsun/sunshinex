@@ -238,7 +238,8 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
       <>
         {search.hits.map((h) => {
           const gst = gitMap[h.path];
-          const dimmed = gst === 'ignored';
+          // 2026-10-24 用户裁定:服务端忽略标记(git check-ignore)与 gitMap ignored 双源,命中行暗淡
+          const dimmed = h.ignored === true || gst === 'ignored';
           const badge = gst === 'modified' ? 'M' : gst === 'untracked' ? 'U' : gst === 'deleted' ? 'D' : gst === 'renamed' ? 'R' : null;
           const dirGitSt = h.kind === 'dir' ? (gst === 'untracked' ? 'untracked' : dirGit[h.path]) : undefined;
           const parts = h.path.split('/');
