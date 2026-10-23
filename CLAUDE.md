@@ -89,7 +89,7 @@ src/
   serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v3 单档唯一写者链路 kernelEventRows）
   storage/            # 本地 JSON 存储底座；archive.ts（ArchiveStore 接口 + fs 实现，归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
-shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/NSIS 单安装包打包；daemon 以子进程装配，壳与主仓零编译期耦合）
+shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/无边框自绘窗控/NSIS 单安装包打包；daemon 进程内动态 import 装配，壳与主仓零编译期耦合）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
 agents/               # 用户子智能体目录（{id}/agent.md，装配期一次性加载 fail-fast）
 SUNSHINE.md          # 项目业务配置

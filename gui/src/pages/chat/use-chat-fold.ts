@@ -46,7 +46,7 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
 /** 2026-10-24 用户裁定「完成后自动折叠工具/思考行」:sealed(封段,streaming 非 true)run key 集
  *  ——主对话与子智能体转录页两处消费方各持 autoFolded ref,仅首见封段时并入折叠集(用户手动
  *  展开不回折;会话重开/重放全量首见=历史轮一并折叠) */
-export function sealedRunKeys(entries: readonly ChatEntry[]): string[] {
+function sealedRunKeys(entries: readonly ChatEntry[]): string[] {
   return entries.filter((e) => e.kind === 'run' && e.streaming !== true).map((e) => e.key);
 }
 
@@ -107,34 +107,7 @@ const toggleRun = useCallback((key: string): void => {
     return next;
   });
 }, []);
-const hiddenKeys = useMemo(() => {
-  const s = new Set<string>();
-  let hide = false;
-  /** 段内 sealed assistant 收集:段收口(run 再启/流尽)时除末条外入 hidden */
-  let segAssistants: string[] = [];
-  const closeSeg = (): void => {
-    if (hide) for (let i = 0; i < segAssistants.length - 1; i += 1) s.add(segAssistants[i]!);
-    segAssistants = [];
-  };
-  for (const e of chat.entries) {
-    if (e.kind === 'run') {
-      closeSeg();
-      hide = collapsedRuns.has(e.key);
-      continue;
-    }
-    if (e.kind === 'assistant') {
-      if (e.streaming !== true) segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
-      continue;
-    }
-    if (e.kind === 'user') {
-      closeSeg();
-      continue;
-    }
-    if (hide && (e.kind === 'tool' || e.kind === 'thinking')) s.add(e.key);
-  }
-  closeSeg();
-  return s;
-}, [chat.entries, collapsedRuns]);
+const hiddenKeys = useMemo(() => collapsedHiddenKeys(chat.entries, collapsedRuns), [chat.entries, collapsedRuns]);
 
 /** G14.48 展开/折叠不闪动:贴地(阅读位在底)→ 钉底,内容整体上移;未贴地 → 锚定被点行,
  *  内容整体下移——两侧永不同时动。capture 先于行内 toggle 记 preTop,动画收尾后再校正一次;

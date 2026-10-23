@@ -41,24 +41,17 @@ describe('resolveUiLangFromSetting(2026-10-23 托盘菜单跟应用语言设置)
 });
 
 describe('trayMenu', () => {
-  it('zh 态:显示/退出两项全 enabled,label 逐字', () => {
-    expect(trayMenu(false, 'zh')).toEqual([
-      { id: 'show', label: '显示 Sunshinex', enabled: true },
-      { id: 'quit', label: '退出', enabled: true },
+  it('zh 态:显示/退出两项,label 逐字', () => {
+    expect(trayMenu('zh')).toEqual([
+      { id: 'show', label: '显示 Sunshinex' },
+      { id: 'quit', label: '退出' },
     ]);
   });
 
   it('en 态:英文标签(纪律⑤ 外观双语)', () => {
-    expect(trayMenu(false, 'en')).toEqual([
-      { id: 'show', label: 'Show Sunshinex', enabled: true },
-      { id: 'quit', label: 'Quit', enabled: true },
-    ]);
-  });
-
-  it('收口中:label 原样,enabled 全 false(防退出流程中重复触发)', () => {
-    expect(trayMenu(true, 'zh')).toEqual([
-      { id: 'show', label: '显示 Sunshinex', enabled: false },
-      { id: 'quit', label: '退出', enabled: false },
+    expect(trayMenu('en')).toEqual([
+      { id: 'show', label: 'Show Sunshinex' },
+      { id: 'quit', label: 'Quit' },
     ]);
   });
 });

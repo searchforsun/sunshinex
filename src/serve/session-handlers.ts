@@ -189,6 +189,7 @@ function taskOutputTail(file: string): { outputTail: string; outputTruncated?: b
     }
     return { outputTail: buf.toString('utf8'), ...(start > 0 ? { outputTruncated: true } : {}) };
   } catch {
+    // 任务日志缺场（running 早期/已被清理）或读失败：尾读尽力而为，空尾不炸 /tasks 列表
     return { outputTail: '' };
   }
 }

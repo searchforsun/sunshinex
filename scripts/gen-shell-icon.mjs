@@ -2,7 +2,7 @@
 /**
  * 图标生成器（单一几何来源）：纯 node（零依赖）程序化产出全部壳侧图标——
  *   1. shell/assets/icon.ico        多尺寸 PNG-in-ICO（256/64/32/16,electron-builder + 任务栏/资源管理器）
- *   2. shell/assets/logo-64.png     64px 光栅参考件
+ *   2. shell/assets/logo-64.png     64px 光栅参考件（零运行时消费方,仅人工比对参考,勿当死资产删）
  *   3. shell/src/lib/product-logo.ts PRODUCT_LOGO_DATA_URL（64px,BrowserWindow 窗口图标）
  *   4. shell/src/lib/tray-icon.ts    TRAY_ICON_DATA_URL（32px,托盘——Windows 按 DPI 缩放,32 源比 16 原生平滑）
  *

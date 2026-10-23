@@ -209,6 +209,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
     ├── skills/                 # 自动沉淀的学习技能
     ├── worktrees/              # worktree 隔离工作树（见 5.5）与登记表 registry.json
     ├── runs/                   # 任务账本（/status 与状态栏统计）
+    ├── tasks/                  # 后台任务：任务日志 <id>.log + 会话账本 ledger-<journalId>.jsonl（重开/重启可回溯）
     ├── kb/                     # 知识库数据
     ├── tool-outputs/           # 超长工具输出的完整原文（正文只留预览 + 路径）
     └── archives/               # 压缩时折叠的链行归档
@@ -262,7 +263,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/plan <目标>` | 先规划后执行，见 5.1 |
 | `/status` | 会话与账本摘要 |
 | `/terminal-setup` | 一键配置终端键位：Windows Terminal 写入 Shift+Enter 换行绑定并解绑 Alt+Enter（写前备份、幂等）；未找到 WT 时给 VSCode 指引 |
-| `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径；后台 exec 与后台子智能体产生，模型以 `task_wait` 等待到终态并取回执、以 `task_stop` 工具停止） |
+| `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径，行内附输出末 4KB 尾读；账本随会话持久化，重开/重启可回溯；后台 exec 与后台子智能体产生，模型以 `task_wait` 等待到终态并取回执、以 `task_stop` 工具停止） |
 | `/skill` | 加载技能进上下文：选择卡列出可用技能（`↑`/`↓` 选择、输入即筛选、`Esc` 取消），选定即载入、本会话重复加载回执已加载 |
 | `/<技能id>` | 技能即命令：裸形式仅加载（语义同 `/skill` 选定）；带意图 `/<id> <意图>` 加载后一步派发任务；撞名内置命令的技能不注册（内置优先，仍经 `/skill` 卡加载）；命令 token=技能 id，限 `[a-z0-9][a-z0-9_-]*`；Tab 补全与 `/help` 技能段同步列出 |
 | `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |

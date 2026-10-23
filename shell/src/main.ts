@@ -95,6 +95,7 @@ if (!app.requestSingleInstanceLock()) {
       let preferredPort: number | undefined;
       try {
         const saved = JSON.parse(fs.readFileSync(portFile, 'utf8')) as { port?: unknown };
+        // 1024=特权端口下限:低位端口非用户态可绑,档里出现异常值时当无偏好处理
         if (typeof saved.port === 'number' && Number.isInteger(saved.port) && saved.port >= 1024) preferredPort = saved.port;
       } catch {
         // 首启无档:回落临时端口
@@ -109,7 +110,7 @@ if (!app.requestSingleInstanceLock()) {
       // 同步记日志再弹原生错误框（Windows 上 showErrorBox 阻塞至确认）；exit 1 携码强退
       // （app.quit 无携码形参，退出码语义由 app.exit 承担）
       console.error('[shell] daemon 启动失败:', err);
-      dialog.showErrorBox('sunshinex', `daemon 启动失败: ${err instanceof Error ? err.message : String(err)}`);
+      dialog.showErrorBox('Sunshinex', `daemon 启动失败: ${err instanceof Error ? err.message : String(err)}`);
       app.exit(1);
       return;
     }
@@ -186,18 +187,18 @@ if (!app.requestSingleInstanceLock()) {
     // 2026-10-23 用户裁定:左键单击即弹主窗——setContextMenu 会让左键被菜单占用(点图标只出菜单
     // 不出窗),故菜单改挂 right-click popUpContextMenu,left-click 单点 focusMainWindow。
     tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON_DATA_URL));
-    tray.setToolTip('Sunshinex');
-    tray.on('click', () => focusMainWindow());
+    const appTray = tray; // 闭包内用局部快照:模块级 let 的收窄不过回调(tsc TS18048)
+    appTray.setToolTip('Sunshinex');
+    appTray.on('click', () => focusMainWindow());
     // 右键即取当前语言重建菜单(设置页改语言 reloadSettingsChain 刷 SUNSHINEX_LANGUAGE 槽,无需重启)
-    tray.on('right-click', () => {
+    appTray.on('right-click', () => {
       const popup = Menu.buildFromTemplate(
-        trayMenu(false, trayLang()).map((item) => ({
+        trayMenu(trayLang()).map((item) => ({
           label: item.label,
-          enabled: item.enabled,
           click: item.id === 'show' ? focusMainWindow : runQuit,
         })),
       );
-      tray.popUpContextMenu(popup);
+      appTray.popUpContextMenu(popup);
     });
 
     // smoke 分支（T4 冒烟门禁）：就绪信号 = did-finish-load（页面加载完成——渲染器起+静态资源服务通，

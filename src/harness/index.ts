@@ -71,9 +71,6 @@ export interface HarnessOptions {
   /** KB 知识库实例（D18 整栈接线）：由装配根（runtime.ts buildDeps / selfcheck）经 assembleKnowledgeBase 构造注入；
    *  缺省 undefined → kb_search 维持 kb_not_configured 确定降级（「未配置」是合法确定态，非缺陷） */
   kb?: KnowledgeBase;
-  /** 后台任务账本路径（2026-10-24 回溯裁定,可选）：与会话绑定(ledger-<sessionId>.jsonl,daemon 注入)
-   *  ——提交/终态追加+构造装载回放,重启/重开会话可回溯;缺省 undefined = 纯内存(既有形态) */
-  tasksLedgerPath?: string;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -149,9 +146,9 @@ export class Harness {
     this.skills = createSkillsFacade(base);
     // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
     this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
-    // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;2026-10-24 起账本
-    // 可持久化(会话绑定 ledger-<sessionId>.jsonl,daemon 注入)——装载回放,重开/重启可回溯
-    this.tasks = new TaskRegistry(resolveDataDir(base), opts.tasksLedgerPath);
+    // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
+    // adoptLedger 收养（serve/session.ts syncTasksLedger,journalId 推导路径）——纯构造零注入面
+    this.tasks = new TaskRegistry(resolveDataDir(base));
     // memory 接缝注入记忆写入（规格 §4.4 落点表，原第 7 参）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
     // kb 接缝（D18 接线，原第 3 参）：装配根构造的 KnowledgeBase 注入——缺省 undefined 时 kb_search 按既有契约降级 kb_not_configured
     // 装配接缝具名注入（D25/H6）：原 13 位置参收敛为 opts 对象，接缝错位由编译期失配兜底（webSearch 生产不注入，缺键即省）

@@ -337,7 +337,7 @@ function AppShell(): JSX.Element {
           .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId })))
           .then(({ sessionId }) => openSession(sessionId, root, first.id));
       })
-      .catch(() => undefined);
+      .catch(showOpError); // 目录钮开失败可见化（fork/rewind 同口径;无会话项目走上面 first 守卫静默返回）
     // eslint 不入依赖(openSession 恒稳:仅 setter/refs;connInstance 由连接生命周期持有)
   }, [openRoot, openSessionId, openTabInSession, connInstance]);
   /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */
@@ -589,9 +589,8 @@ function AppShell(): JSX.Element {
           '--chat-max',
           `${Math.round(chatMaxFor(entry.contentRect.width))}px`,
         );
-        // 2026-10-24 用户裁定:主栏窄于阈值(420)时模式 pill 塌缩纯图标——类挂主栏本体,
-        // CSS 收 .composer-pill 标签/箭头;420=pill 带标签态 composer 实测舒适下限
-        // (塌缩类最终以渲染期派生为准,见 return 处 shell 类;此处仅 RO 即时面,已退役)
+        // RO 只承担限宽阶梯(--chat-max)即时写入;模式 pill 塌缩类不在此——渲染期派生
+        // (return 处 sx-main-narrow,viewportW/menuWidth/右栏占宽变化全走渲染重算)
       }
     });
     els.forEach((el) => ro.observe(el));
@@ -731,7 +730,8 @@ function AppShell(): JSX.Element {
                 }
                 openTabInSession(t, tabEntry(t).mintParams?.());
               }}
-              onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}              recentClosed={tabState.recentClosed}
+              onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId, d))}
+              recentClosed={tabState.recentClosed}
               onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, openSessionId, i, PROBE))}
               onCloseActive={() => {
                 const uid = tabState.activeUid;

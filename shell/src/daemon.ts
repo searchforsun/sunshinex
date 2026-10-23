@@ -57,8 +57,9 @@ export async function startDaemon(paths: DaemonPaths, preferredPort?: number): P
     try {
       const s = await daemon.start({ port: preferredPort });
       return { port: s.port, token: s.token, close: () => daemon.close() };
-    } catch {
-      console.error(`[shell] preferred port ${preferredPort} busy — falling back to ephemeral port`);
+    } catch (err) {
+      // 失败原因不断言为端口占用(EACCES/装配错同落此路径),携原 err 如实记日志
+      console.error(`[shell] preferred port ${preferredPort} unavailable — falling back to ephemeral port:`, err);
     }
   }
   const s = await daemon.start({ port: 0 });

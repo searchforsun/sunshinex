@@ -102,8 +102,6 @@ const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
 
 
-/** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
-
 /** pty 帧 S→C 下行单点（G8b T3）：readyState 判存——CLOSED/CLOSING 静默丢帧（断线窗口的输出
  *  靠重连 replay 补，不追赶） */
 function sendPtyFrame(ws: WebSocket, frame: { t: 'data' | 'exit'; b?: string; code?: number }): void {

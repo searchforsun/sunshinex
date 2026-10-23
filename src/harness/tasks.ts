@@ -5,7 +5,8 @@ import { CodedToolError } from './tools';
 import { slugify } from '../slug';
 import { utcCompactStamp } from '../idstamp';
 
-/** 后台任务记录（后台任务线规格 D2/D3）：账本进程内承载，不落盘不跨会话；输出流式追加 <dataDir>/tasks/<id>.log */
+/** 后台任务记录（后台任务线规格 D2/D3）：账本可选持久化（会话绑定 <dataDir>/tasks/ledger-<journalId>.jsonl，
+ *  submit 全量/finish 增量行、装载重放，见 TaskLedgerRow）；缺省纯内存。输出流式追加 <dataDir>/tasks/<id>.log */
 export interface BackgroundTask {
   id: string;
   kind: 'exec' | 'subagent';
@@ -35,7 +36,8 @@ type TaskLedgerRow =
 // id 业务段方言：label ASCII 化 slug ≤16 字符（正则链单点 src/slug.ts）；CJK 等非拉丁标签全折叠
 // 回退 kind（业务全称由 /tasks label 列与任务日志承载，id 段只做可读助记）
 
-/** 统一任务账本单点（后台任务线规格 D1/D10）：ID 空间/生命周期/状态统一承载；进程内 Map 不落盘不跨会话。
+/** 统一任务账本单点（后台任务线规格 D1/D10）：ID 空间/生命周期/状态统一承载；进程内 Map 为运行时真相，
+ *  可选账本持久化（构造装载/adoptLedger 收养，见 TaskLedgerRow）。
  *  ID=「业务段-时间段-随机段」（2026-10-03 用户裁决「b1 b2 没有业务和时间含义，容易重复」）：旧 b1
  *  进程计数器每会话归零，跨会话同 id 建档即 writeFileSync 截断覆盖旧任务日志=真数据损失；新方言对标
  *  newSessionId（UTC 紧凑时间戳+4 位随机尾），跨会话唯一且一眼可读「何时启动了什么」，撞 id 再生成兜底 */
@@ -70,7 +72,7 @@ export class TaskRegistry {
         if (parsed.op === 'submit' && typeof parsed.task?.id === 'string') row = parsed;
         else if (parsed.op === 'finish' && typeof parsed.id === 'string') row = parsed;
       } catch {
-        row = undefined;
+        row = undefined; // 坏行(崩溃截断/半写)跳过:回放尽力而为,单行不炸装配
       }
       if (row === undefined) continue;
       if (row.op === 'submit') {

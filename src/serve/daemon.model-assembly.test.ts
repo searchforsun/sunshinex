@@ -1,7 +1,9 @@
 /** assembleGuiModel 装配钉（2026-10-23 桌面「默认模型/无法选模型」根因件）：
  *  providers 展开进切换器 + 未显式缺省切首源（防陷阱）+ SUNSHINEX_MODEL 显式档不自动切；
  *  产物必须过同束 instanceof ModelSwitcher——壳/serve 分装面曾因跨束类拷贝致注入闸恒假
- *  （modelSwitcher 恒 null,/model 恒 {choices:[]}），此钉即该回归的断言面。 */
+ *  （modelSwitcher 恒 null,/model 恒 {choices:[]}）。判定限界：instanceof 断言在单束单测内
+ *  结构性恒真，判别力在行为钉；跨束恒假只在壳分装面复现，由装配单点（assembleGuiModel
+ *  与 GuiDaemon 同束）结构性排除。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
