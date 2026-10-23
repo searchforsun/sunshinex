@@ -51,6 +51,9 @@ interface ProjectPathIndex {
 const PATH_INDEX_TTL_MS = 10_000;
 const INDEX_MAX_DIRS = 20_000;
 const INDEX_MAX_ENTRIES = 50_000;
+/** 索引缓存容量上限（观察项清偿）：TTL 管新鲜度不管回收——长驻 daemon 多项目搜索原无界累积
+ *  （单条 ≤5 万路径条目）。超上限逐最旧插入项（Map 保序），被逐条目下次搜索原价重建（TTL 语义不变） */
+const PATH_INDEX_CACHE_CAP = 8;
 const pathIndexCache = new Map<string, ProjectPathIndex>();
 
 /** 批量 git 忽略判定(单进程 check-ignore --stdin,零 shell 拼接):返回入参中被忽略的相对路径集。
@@ -75,8 +78,10 @@ function gitIgnoredPaths(baseAbs: string, paths: string[]): Set<string> {
  *  先枚举各目录子项,再对本波新路径批量 `git check-ignore` 一次判定;git 忽略目录只留本行标记
  *  (ignored 集)**不入下波**——.pnpm-store/缓存类内容不再淹没索引(旧实现 50k 上限被忽略内容
  *  烧穿,正常文件反被挤出索引),忽略目录自身仍可搜/可点开浏览。名称忽略集(.git 等)恒跳过。
- *  目录/条目双上限截断,realPath 集防符号链接环。排序目录段先于文件段、同段 path 码点序。 */
-function walkTreeBounded(baseAbs: string, maxDirs: number, maxEntries: number): { entries: TreeSearchHit[]; truncated: boolean; gitIgnored: Set<string> } {
+ *  目录/条目双上限截断,realPath 集防符号链接环。排序目录段先于文件段、同段 path 码点序。
+ *  导出面:上限经参注入,截断分支由 file-handlers.test 直测锚（生产恒传 INDEX_MAX_* 缺省常量,
+ *  20k/50k 量级在单测内不可达——不注入则截断分支恒不可达,显式未覆盖档不合规）。 */
+export function walkTreeBounded(baseAbs: string, maxDirs: number, maxEntries: number): { entries: TreeSearchHit[]; truncated: boolean; gitIgnored: Set<string> } {
   const entries: TreeSearchHit[] = [];
   const gitIgnored = new Set<string>();
   let truncated = false;
@@ -155,6 +160,11 @@ function searchByIndex(baseAbs: string, query: string, refresh: boolean): { resu
     const built = walkTreeBounded(baseAbs, INDEX_MAX_DIRS, INDEX_MAX_ENTRIES);
     index = { builtAt: now, entries: built.entries, truncated: built.truncated, gitIgnored: built.gitIgnored };
     pathIndexCache.set(key, index);
+    while (pathIndexCache.size > PATH_INDEX_CACHE_CAP) {
+      const oldest = pathIndexCache.keys().next().value;
+      if (oldest === undefined) break;
+      pathIndexCache.delete(oldest);
+    }
   }
   const needle = query.toLowerCase();
   const isIgnored = (e: TreeSearchHit): boolean => index.gitIgnored.has(e.path);

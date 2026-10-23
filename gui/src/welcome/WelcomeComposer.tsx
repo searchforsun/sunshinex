@@ -331,6 +331,8 @@ export function WelcomeComposer({
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
+        {/* mark 几何手工镜像 scripts/gen-shell-icon.mjs（ORBIT_RX/RY、STROKE、CORE_R、TILT）——
+            改形两侧同步,生成面只认脚本单源(窗口图标/托盘/ico 由此回填) */}
         <svg className="welcome-logo" width="100" height="100" viewBox="0 0 72 72" fill="none" aria-hidden="true">
           <g transform="rotate(-15 36 36)">
             <g stroke="currentColor" strokeWidth="2.5">
