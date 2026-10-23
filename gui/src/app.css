@@ -1736,7 +1736,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .workspace-row { position: relative; }
 .workspace-row > .workspace-toggle.sx-group-head { width: auto; flex: 1; min-width: 0; padding-right: 8px; } /* 2026-10-23 双钮 flex 形态:组头收缩让行内两钮(⋯移除+新会话)靠右成列——flex:none+width:100% 会把钮顶出行外(重叠/裁切,用户实测病) */
 .workspace-row > .sx-iconbtn + .sx-iconbtn { margin-left: 2px; } /* 2026-10-23 双钮(⋯移除+新会话)flex 排布——G14.190 单钮 absolute 右锚退役(双钮同锚即重叠,用户实测病;组头 flex:1 已顶钮靠右) */
-.workspace-row { padding-right: 12px; } /* 2026-10-23 用户裁定:组头钮右缘整体左移,对齐会话行 12px 右 padding 的图标列 */
+.workspace-row { padding-right: 8px; } /* 2026-10-23 用户裁定:组头钮右缘对齐会话行归档钮列(.attach absolute right:8)——12 过左回调 */
 
 /* ===== 设置页重构轮(本轮):顶部项目选择器/外观行移除——分组卡片制/自绘弹层控件/逐项来源
    徽标+写回/save 分桶计数。追加段覆盖前置同名规则(同特异性后者胜);旧 .sx-settings-project/

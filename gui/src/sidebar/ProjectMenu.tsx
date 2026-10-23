@@ -81,12 +81,14 @@ export interface ProjectMenuProps {
   readonly onNewChat: () => void;
   /** 项目行「+」:回欢迎页并预选该项目与审批模式(G10-C16) */
   readonly onComposeIn: (root: string, mode?: 'auto' | 'manual') => void;
+  /** 组头目录钮(2026-10-23 用户裁定):开当前会话/项目第一会话的目录页签(宿主解析会话+开页签) */
+  readonly onOpenDirectory: (root: string) => void;
 }
 
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory } = props;
   const recentVersion = props.recentVersion ?? 0;
   const runningIds = props.runningIds ?? new Set<string>();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
@@ -520,6 +522,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           projectsOpen={projectsOpen}
           onToggleProjects={() => setProjectsOpen((v) => !v)}
           onRemoveWorkspace={removeWorkspace}
+          onOpenDirectory={onOpenDirectory}
           busy={busy}
           archiveMode={archiveOpen}
           onExitArchive={() => setArchiveOpen(false)}

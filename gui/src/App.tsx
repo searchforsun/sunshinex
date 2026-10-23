@@ -308,6 +308,37 @@ function AppShell(): JSX.Element {
   const openBoardTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
   const openTabType = useCallback((type: TabTypeId): void => { openTabInSession(type, {}); }, [openTabInSession]);
   const openMemoryTab = useCallback((): void => { openTabInSession('memory'); }, [openTabInSession]);
+  /** 组头目录钮排队旗(2026-10-23 用户裁定):跨会话打开链(newSession→attach→openSession)落位后
+   *  补开目录页签——openTabInSession 走 sessionRef,须等目标会话成为打开会话再消费 */
+  const pendingDirectoryTabRef = useRef(false);
+  useEffect(() => {
+    if (openSessionId === '' || !pendingDirectoryTabRef.current) return;
+    pendingDirectoryTabRef.current = false;
+    openTabInSession('directory', {});
+  }, [openSessionId, openTabInSession]);
+  /** 组头目录钮(2026-10-23 用户裁定):当前会话属该项目→直接开目录页签;否则打开项目第一个
+   *  会话(恢复链同款 newSession→attach→openSession,收编以返回 id 为准)后补开目录页签。
+   *  项目无会话钮不渲染(组头侧 sessionCount 门) */
+  const openProjectDirectory = useCallback((root: string): void => {
+    if (openRoot === root && openSessionId !== '') {
+      openTabInSession('directory', {});
+      return;
+    }
+    if (connInstance === null) return;
+    void Promise.resolve()
+      .then(() => connInstance.sessionsOf(root))
+      .then((rows) => {
+        const first = rows[0];
+        if (first === undefined) return;
+        pendingDirectoryTabRef.current = true;
+        return connInstance
+          .newSession(root)
+          .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId })))
+          .then(({ sessionId }) => openSession(sessionId, root, first.id));
+      })
+      .catch(() => undefined);
+    // eslint 不入依赖(openSession 恒稳:仅 setter/refs;connInstance 由连接生命周期持有)
+  }, [openRoot, openSessionId, openTabInSession, connInstance]);
   /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */
   const forkLatestRef = useRef(() => {});
   forkLatestRef.current = (): void => {
@@ -564,6 +595,7 @@ function AppShell(): JSX.Element {
               recentVersion={recentVersion}
               runningIds={runningIds}
               onOpenSession={openSession}
+              onOpenDirectory={openProjectDirectory}
               onOpenSettings={openSettings}
               onNewChat={() => {
                 setComposePresetRoot(null);

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
-import { Archive, ChevronRight, Folder, FolderOpen, MoreHorizontal, SquarePen, X } from 'lucide-react';
+import { Archive, ChevronRight, Folder, FolderOpen, FolderTree, MoreHorizontal, SquarePen, X } from 'lucide-react';
 import { sessionMetaLine, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 import { SessionRowMenu } from './session-row-menu';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
@@ -25,6 +25,8 @@ export interface ProjectsSectionProps {
   readonly onGroupShowMore: () => void;
   /** 移除工作区(2026-10-23 用户裁定):组头 ⋯→移除——仅摘出侧栏,数据保留;重新添加即原地加回 */
   readonly onRemoveWorkspace: (slug: string) => void;
+  /** 目录页签(2026-10-23 用户裁定):组头目录钮——开当前会话/项目第一会话的目录页签 */
+  readonly onOpenDirectory: (root: string) => void;
   readonly sessionsError: string;
   readonly activeRoot: string;
   readonly activeSessionId: string;
@@ -47,7 +49,7 @@ export interface ProjectsSectionProps {
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace, onOpenDirectory } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -188,6 +190,23 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                     >
                       <MoreHorizontal size={14} strokeWidth={1.75} />
                     </button>
+                    {/* 组头目录钮(2026-10-23 用户裁定):⋯ 与新会话之间——开当前会话/项目第一会话的
+                        目录页签;项目无会话不显示 */}
+                    {root !== undefined && row.sessionCount > 0 && (
+                      <button
+                        type="button"
+                        aria-label={`open directory ${row.slug}`}
+                        className="sx-iconbtn"
+                        data-tip={t('Open directory tab', '打开目录页签')}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenDirectory(root);
+                        }}
+                      >
+                        <FolderTree size={14} strokeWidth={1.75} />
+                      </button>
+                    )}
                     {root !== undefined && (
                       <button
                         type="button"

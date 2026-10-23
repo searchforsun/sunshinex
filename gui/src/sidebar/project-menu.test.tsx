@@ -65,6 +65,7 @@ function renderMenu(conn: ProjectMenuConn, props?: Partial<Parameters<typeof Pro
       onOpenSession={open}
       onNewChat={() => {}}
       onComposeIn={() => {}}
+      onOpenDirectory={() => {}}
       {...props}
     />,
   );
@@ -218,6 +219,19 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     await waitFor(() => expect(conn.workspaces).toHaveBeenCalledTimes(2)); // 挂载 1 次 + 落库后重拉
     expect(conn.roots).toEqual([]);
     expect(open.mock.calls.length).toBe(opensBefore);
+  });
+
+  it('组头目录钮(2026-10-23 用户裁定):有会话且 root 在场才渲染,点击上抛 onOpenDirectory(root);无会话/缺 root 不渲染', async () => {
+    const onOpenDirectory = vi.fn();
+    renderMenu(makeConn(), { onOpenDirectory });
+    await screen.findByText('p1');
+    // p1:root+1 会话 → 钮在,点击上抛 root
+    fireEvent.click(screen.getByRole('button', { name: 'open directory p1' }));
+    expect(onOpenDirectory).toHaveBeenCalledWith('D:/w/p1');
+    // p3-junk:0 会话 → 钮不渲染
+    expect(screen.queryByRole('button', { name: 'open directory p3-junk' })).toBeNull();
+    // p2:root 缺场(历史档) → 钮不渲染
+    expect(screen.queryByRole('button', { name: 'open directory p2' })).toBeNull();
   });
 
   it('组头 ⋯→移除工作区(2026-10-23 用户裁定):弹层项调 hideWorkspace(slug) 且清单重拉', async () => {
