@@ -2116,3 +2116,7 @@ input.sx-setting-input { width: 100%; }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖) */
 .sx-shell.sx-desktop .sx-tabstrip { padding-right: 92px; -webkit-app-region: drag; } /* 桌面:右留 −□× 三钮簇位(簇左缘=W-88,+2px 呼吸) */
 .sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 10px; } /* web:折叠钮离窗口右缘 10px,不裁切 */ /* 桌面:右留 −□× 三钮簇位(簇左缘=W-88,+2px 呼吸) */.sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }
+/* 2026-10-23 用户裁定:①「+」弹窗提层——默认 z:10 被右栏面板内容盖住;②web 折叠钮右缘内距
+   10px 显式化(不贴窗口边) */
+.sx-strip-newtab .sx-menu-pop { z-index: 45; }
+.sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 10px; }
