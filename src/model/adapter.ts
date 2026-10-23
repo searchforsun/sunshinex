@@ -78,6 +78,8 @@ export interface LLMConfig {
   contextWindow?: number;
   /** 缺省思考强度（SUNSHINEX_REASONING_EFFORT）：非法值忽略回缺省态（零穿参） */
   reasoningEffort?: ReasoningEffort;
+  /** O2 重试退避基值（毫秒,缺省 1000,指数 ×2 序列 1s/2s/4s）：测试/低延迟环境旋钮,生产恒缺省 */
+  retryDelayMs?: number;
 }
 
 /** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API，带超时控制 */
@@ -93,6 +95,7 @@ export class OpenAIAdapter implements ModelAdapter {
   private apiKey: string;
   private model: string;
   private timeoutMs: number;
+  private retryDelayMs: number;
   private effort: ReasoningEffort | undefined;
   /** effort 探测缓存（进程内会话级）：请求档 → 端点实际生效档；换请求档自动失效按新序列重探 */
   private effortResolved?: { requested: ReasoningEffort; resolved: ReasoningEffort };
@@ -106,6 +109,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.label = this.model;
     this.contextWindow = cfg.contextWindow ?? contextWindowEnv();
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
+    this.retryDelayMs = cfg.retryDelayMs ?? 1000;
     this.effort = cfg.reasoningEffort ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   }
 
@@ -114,18 +118,44 @@ export class OpenAIAdapter implements ModelAdapter {
     return this.effort;
   }
 
-  /** 请求体发送单点（超时/中断合并/错误形态统一） */
-  private doFetch(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
-    // 外部中断 signal 与超时合并（AbortSignal.any，Node ≥20.3）：用户 Esc/Ctrl+C 即刻中止在途请求
-    const merged = signal ? AbortSignal.any([ctrl.signal, signal]) : ctrl.signal;
-    return fetch(`${this.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify(body),
-      signal: merged,
-    }).finally(() => clearTimeout(timer));
+  /** 请求体发送单点（超时/中断合并/错误形态统一 + O2 瞬时错自动重试）。重试面=瞬时网络错
+   *  （连接重置/拒绝/DNS）与 5xx/429，指数退避 retryDelayMs×2 序列、3 次上限不含初次（判据侧
+   *  MAX_JUDGE_RETRIES=3 同口径）；**不重试**：fatal 4xx（调用方按响应报错,错误面带端点 detail）、
+   *  本端硬顶超时（AbortError——重试即数倍最坏延迟,保持直抛）、外部中断（signal aborted）。
+   *  chat/chatStream/effort 探测三路经此单点同源受益 */
+  private async doFetch(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; ; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, this.retryDelayMs * 2 ** (attempt - 1)));
+        if (signal?.aborted) throw new Error('Task interrupted');
+      }
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+      // 外部中断 signal 与超时合并（AbortSignal.any，Node ≥20.3）：用户 Esc/Ctrl+C 即刻中止在途请求
+      const merged = signal ? AbortSignal.any([ctrl.signal, signal]) : ctrl.signal;
+      let resp: Response;
+      try {
+        resp = await fetch(`${this.baseURL}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+          body: JSON.stringify(body),
+          signal: merged,
+        });
+      } catch (e) {
+        clearTimeout(timer);
+        if (signal?.aborted) throw new Error('Task interrupted');
+        if (e instanceof Error && e.name === 'AbortError') throw new Error('Model call timed out');
+        if (attempt < MAX_RETRIES) continue; // 瞬时网络错：退避重试
+        throw e;
+      }
+      clearTimeout(timer);
+      if ((resp.status >= 500 || resp.status === 429) && attempt < MAX_RETRIES) {
+        await resp.body?.cancel().catch(() => {}); // 释放连接,错误面由重试后的最终响应承担
+        continue;
+      }
+      return resp;
+    }
   }
 
   /** 非 ok 响应转错误：消息附端点响应体（截断 300 字符），供 effort 不支持识别与问题定位 */

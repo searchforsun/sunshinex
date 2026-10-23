@@ -20,7 +20,8 @@ function mockFetch(script: Array<{ status: number; body: unknown }>): { bodies: 
 }
 
 function adapter(): OpenAIAdapter {
-  return new OpenAIAdapter({ provider: 'openai', apiKey: 'k', model: 'm', baseURL: 'http://x/v1', timeoutMs: 5000 });
+  // retryDelayMs=1（O2 旋钮）:错误路径触发的重试退避零负担,测试只验语义不睡退避窗口
+  return new OpenAIAdapter({ provider: 'openai', apiKey: 'k', model: 'm', baseURL: 'http://x/v1', timeoutMs: 5000, retryDelayMs: 1 });
 }
 
 /** effort 穿参便捷调用：经 chat 面（effort 为请求级字段），返回答复正文 */
@@ -164,7 +165,10 @@ test('effort 网络/服务端错误不降级：非参数类错误照常抛出', 
       callEffort(adapter(), 'p', 'high'),
       /failed: 500/,
     );
-    assert.equal(m.bodies.length, 1, '500 不进入降级序列');
+    // O2 重试共存口径:5xx 在 doFetch 层退避重试后才上抛——本钉不变量=「非参数错误不进降级序列」,
+    // 真身=全部请求携带同一 effort(降级序列会逐档下行/改参),而非旧代理断言「恰调 1 次」
+    assert.ok(m.bodies.length >= 1);
+    for (const b of m.bodies) assert.equal((b as { reasoning_effort?: string }).reasoning_effort, 'high', '重试恒同 effort,未走降级序列');
   } finally {
     m.restore();
   }
