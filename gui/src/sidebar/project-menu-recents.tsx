@@ -10,8 +10,8 @@ import { RECENT_VISIBLE_DEFAULT, sessionMetaLine, SessionRow as SessionRowView, 
 export interface RecentsSectionProps {
   readonly recentsOpen: boolean;
   readonly onToggleRecents: () => void;
-  readonly defaultAnchorRoot: string | undefined;
-  readonly onComposeIn: (root: string, mode?: 'auto' | 'manual') => void;
+  /** 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧,点击开默认工作区欢迎页) */
+  readonly onNewChat: () => void;
   readonly recents: Array<SessionRow & { root: string; slug: string }> | null;
   readonly recentLimit: number;
   readonly onShowMore: () => void;
@@ -30,7 +30,7 @@ export interface RecentsSectionProps {
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, defaultAnchorRoot, onComposeIn, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
+  const { recentsOpen, onToggleRecents, onNewChat, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -58,20 +58,20 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
             aria-hidden="true"
             className={`sx-side-chev${recentsOpen ? ' open' : ''}`}
           />
-          {defaultAnchorRoot !== undefined && (
-            <button
-              type="button"
-              className="sx-iconbtn"
-              aria-label="new default chat"
-              data-tip={t('New chat in default workspace', '默认工作区新对话')}
-              onClick={(e) => {
-                e.stopPropagation();
-                onComposeIn(defaultAnchorRoot);
-              }}
-            >
-              <SquarePen size={14} strokeWidth={1.75} />
-            </button>
-          )}
+          {/* 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧;点击开默认工作区欢迎页) */}
+          <button
+            type="button"
+            className="sx-iconbtn"
+            aria-label="new chat"
+            data-tip={t('New chat', '新对话')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onNewChat();
+            }}
+          >
+            <SquarePen size={14} strokeWidth={1.75} />
+          </button>
         </div>
         <div className={`sx-collapse sx-collapse-recents${recentsOpen ? ' open' : ''}`}>
         <ul className="recent-list" aria-label="recent sessions">

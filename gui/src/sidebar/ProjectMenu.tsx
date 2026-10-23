@@ -97,10 +97,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [recentsOpen, setRecentsOpen] = useState(true);
   /** G14.115 最近会话逐步显形:默认 10 条,「显示更多」每次多放 10 条,「收起」/分区折叠复位 */
   const [recentLimit, setRecentLimit] = useState(RECENT_VISIBLE_DEFAULT);
-  /** G14.42 默认锚点工作区 root(RECENTS 头 ✎ 新建默认会话用;无注册行不示钮) */
-  const defaultAnchorRoot = (rows ?? []).find(
-    (r) => r.root !== undefined && r.root.split(/[\\/]+/).filter(Boolean).pop() === 'sunshinex-default',
-  )?.root;
   const [listError, setListError] = useState('');
   /** G14.51 浏览器态服务端目录选择弹层(添加工作区无桌面壳时) */
   const [dirOpen, setDirOpen] = useState(false);
@@ -572,8 +568,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                 setRecentsOpen((v) => !v);
                 setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
               }}
-              defaultAnchorRoot={defaultAnchorRoot}
-              onComposeIn={onComposeIn}
+              onNewChat={onNewChat}
               recents={recents}
               recentLimit={recentLimit}
               onShowMore={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v))}

@@ -2095,8 +2095,6 @@ input.sx-setting-input { width: 100%; }
 /* ===== D48 会话流尾部窗口:更早条目折叠为头部「显示更早」行(渐进回放) ===== */
 .chat-earlier { display: block; width: 100%; border: none; background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg-tertiary); font-size: 12px; padding: 8px 0; cursor: pointer; text-align: center; }
 .chat-earlier:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-/* 2026-10-23 用户裁定:项目组行 hover 整行高亮(含钮区)——:has(active) 透明豁免规则曾连带
-   吞掉 hover 底色(active 项目行 hover 全无底色,只剩钮盒);末位 !important 压过豁免与旧底色 */
-.workspace-item:hover > .workspace-row { background: color-mix(in srgb, var(--fg) 8%, transparent) !important; }
+/* 2026-10-23 二次裁定:组头本体不高亮,只有行尾按钮各自高亮(整行高亮撤销) */
 /* 2026-10-23 用户裁定:最近会话头折叠箭头贴标题(无右侧钮时 space-between 把箭头推到最右) */
 .sx-side-head-btn .sx-side-chev { margin-right: auto; }
