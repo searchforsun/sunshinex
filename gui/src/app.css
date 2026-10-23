@@ -2114,4 +2114,5 @@ input.sx-setting-input { width: 100%; }
 /* ===== 2026-10-23 用户裁定:自绘窗控簇(撤 WCO 方块)——[|] 侧栏开关 + − □ ×,
    sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; -webkit-app-region: no-drag; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖) */
-.sx-shell.sx-desktop .sx-tabstrip { padding-right: 118px; -webkit-app-region: drag; } /* 桌面:右留 −□× 三钮簇位 */.sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop .sx-tabstrip { padding-right: 92px; -webkit-app-region: drag; } /* 桌面:右留 −□× 三钮簇位(簇左缘=W-88,+2px 呼吸) */
+.sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 10px; } /* web:折叠钮离窗口右缘 10px,不裁切 */ /* 桌面:右留 −□× 三钮簇位(簇左缘=W-88,+2px 呼吸) */.sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }

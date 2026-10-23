@@ -277,8 +277,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           })}
         </div>
       )}
-      {collapseBtn(true)}
       </div>
+      {collapseBtn(true)}
     </div>
   );
 }
