@@ -146,18 +146,18 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 未读判定:行 updatedAt 新于已读时刻即未读 */
   const isUnseen = (id: string, updatedAt: number): boolean => (seenMap[id] ?? -1) < updatedAt;
   /** 已读档远端写(fire-and-forget):旧 daemon/测试桩未实现即静默跳过(探活口径同 sessionTasks) */
-  const saveSeenRemote = (m: SeenMap): void => {
+  const saveSeenRemote = useCallback((m: SeenMap): void => {
     if (typeof conn.saveAppSeen !== 'function') return;
     void conn.saveAppSeen(m).then(() => undefined, () => undefined);
-  };
-  const markSeen = (id: string, updatedAt: number): void =>
+  }, [conn]);
+  const markSeen = useCallback((id: string, updatedAt: number): void =>
     setSeenMap((prev) => {
       if ((prev[id] ?? -1) >= updatedAt) return prev;
       const next = { ...prev, [id]: updatedAt };
       persistSeenMap(next);
       saveSeenRemote(next); // 落底层(服务端权威+跨端共用;断链静默保持本地面)
       return next;
-    });
+    }), [saveSeenRemote]);
   /** 已读档装载:localStorage 即时面先行,服务端应答落定即接管并回写本地镜像(跨端权威收敛;
    *  断链/旧 daemon 保持本地不回退)。挂载与 recentVersion bump 各拉一次(bump 后服务端已
    *  收到标记为未读的 PUT,联动重拉读到的就是新档) */
@@ -396,10 +396,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     if (pins.some((p) => p.id === row.id)) return;
     persistPins([row, ...pins]); // 新钉居前
   }, [pins, persistPins]);
-  /** 会话行置顶钮消费面:行快照 → 钉条目入列(Projects/Recents 两组行共用) */
+  /** 会话行置顶钮消费面:行快照 → 钉条目入列(Projects/Recents 两组行共用)。
+   *  D49④ seen 对齐(2026-10-24 按推荐方案推进,问询未获答+连续「继续」,D47 先例同款可逆):
+   *  置顶即压已读戳到钉档同一时刻——与顶栏置顶同一不变量(钉组按钉档 updatedAt 判未读,
+   *  侧栏路径漏压=顶栏已修「钉组恒亮蓝点」实测病的同源分叉);已读则 no-op(markSeen 自守恒) */
   const pinSessionRow = useCallback(
-    (row: { id: string; root: string; title?: string; updatedAt: number }): void => pinRow(pinFromRow(row)),
-    [pinRow],
+    (row: { id: string; root: string; title?: string; updatedAt: number }): void => {
+      pinRow(pinFromRow(row));
+      markSeen(row.id, row.updatedAt);
+    },
+    [pinRow, markSeen],
   );
   const unpinRow = useCallback((id: string): void => {
     persistPins(pins.filter((p) => p.id !== id));
