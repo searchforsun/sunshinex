@@ -2099,3 +2099,6 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-23 二次裁定:组头本体不高亮,只有行尾按钮各自高亮(整行高亮撤销) */
 /* 2026-10-23 用户裁定:最近会话头折叠箭头贴标题(无右侧钮时 space-between 把箭头推到最右) */
 .sx-side-head-btn .sx-side-chev { margin-right: auto; }
+/* 2026-10-23 用户裁定:组头 hover 无底色——共享 hover 规则(.sx-new-chat,.workspace-toggle.sx-group-head,
+   .session-row… 同条 0-3-0)压过单类透明(0-2-0),以 0-4-0 末位压制;只压制组头成员,新对话/会话行高亮保留 */
+.workspace-row > .workspace-toggle.sx-group-head:hover { background: transparent; }
