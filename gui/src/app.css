@@ -727,10 +727,15 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* ===== G10-C4 composer pills 与排队 chips ===== */.composer-pills { display: flex; align-items: center; gap: 4px; position: relative; }.composer-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px; border-radius: var(--radius-sm);
-  color: var(--fg-secondary); font-size: 13px; cursor: pointer;
+  color: var(--fg-secondary); font-size: 13px; cursor: pointer; white-space: nowrap; min-width: 0;
 }.composer-pill:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
-/* 2026-10-24 用户裁定:主栏窄于 420(px,App 侧 sx-main-narrow 类)模式 pill 塌缩纯图标——标签/箭头隐藏,当前模式文案走 data-tip tooltip;宽态照常带标签 */
+/* 2026-10-24 用户裁定:主栏窄于 480(px,App 侧 sx-main-narrow 类)模式 pill 塌缩纯图标——标签/箭头隐藏,当前模式文案走 data-tip tooltip;宽态照常带标签。阈值 420→480:带标签态 composer 实测 ~460 起「完全访问」折行,塌缩须先于折行 */
 .sx-shell.sx-main-narrow .composer-pill .pill-label, .sx-shell.sx-main-narrow .composer-pill .pill-chevron { display: none; }
+/* 2026-10-24 用户裁定:pill 文本永不折行(「完全访/问」「glm-5.3-/flash」断字难看),窄端走省略号;模型名不隐藏只省略 */
+.composer-pills-right .composer-pill { min-width: 0; flex: 0 1 auto; }
+.composer-pills-right .composer-pill .pill-label { overflow: hidden; text-overflow: ellipsis; }
+.sx-menuitem.current { color: var(--accent); }
+.sx-menuitem.current::before { content: '✓ '; font-size: 11px; }
 /* pill 弹层:锚 .pill-anchor/.composer-pills,按钮正上方。显式清掉 .sx-menu-pop 的 top:36px/
    right:8px 缺省(双 top/bottom 拉伸令弹层塌缩错位——「下拉框不在按钮上侧」的根因) */.pill-pop { position: absolute; top: auto; right: auto; bottom: calc(100% + 4px); left: 0; z-index: 20; min-width: 160px; }
 /* 右组 pill(模型)的弹层:锚右缘向左展开,不越出卡右沿 */.pill-pop-right { left: auto; right: 0; }
@@ -2042,7 +2047,7 @@ input.sx-setting-input { width: 100%; }
 .sx-tab .sx-tab-title[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }.sx-tab > .iconify, .sx-tab > svg { flex: none; }
 
 /* ---- G14.2xx 标签搜索弹窗(chrome「搜索标签页」同位;最左触发,纵向两节:打开的/最近关闭的) ---- */
-.sx-tabsearch { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 320px; max-width: 86vw; max-height: 70vh; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); }
+.sx-tabsearch { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 280px; max-width: min(86vw, calc(100vw - var(--menu-w, 240px) - 24px)); max-height: 70vh; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); }
 .sx-tabsearch-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--surface-elevated); color: var(--fg-secondary); }
 .sx-tabsearch-head input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--fg); font: inherit; }
 .sx-tabsearch-head input::placeholder { color: var(--fg-tertiary); }

@@ -147,7 +147,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                       key={c.id}
                       type="button"
                       role="menuitem"
-                      className="sx-menuitem"
+                      className={`sx-menuitem${baseModelName(c.id) === baseModelName(modelInfo?.current) ? ' current' : ''}`}
                       disabled={c.id === modelInfo?.current}
                       data-tip={c.id}
                       onClick={() => {
@@ -158,6 +158,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                         conn.setSessionModel(sessionId, c.id).catch(() => {});
                       }}
                     >
+                      {/* 2026-10-24 用户裁定:弹层标当前选中模型(✓+强调色) */}
                       {baseModelName(c.id)}
                     </button>
                   ))}

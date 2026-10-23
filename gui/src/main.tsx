@@ -28,28 +28,34 @@ createRoot(root).render(
   const place = (): void => {
     if (tip === null || anchor === null) return;
     tip.textContent = anchor.getAttribute('data-tip') ?? '';
-    tip.style.zoom = '1'; // 提示泡不随根放缩:自身视口空间,与 gBCR/innerWidth 同域——定位数学保持零换算
+    tip.style.zoom = '1'; // 提示泡不随根放缩:自身视口空间
     tip.style.left = '0px';
     tip.style.top = '0px';
     const r = anchor.getBoundingClientRect();
     const tr = tip.getBoundingClientRect();
-    // G14.106/G14.188 data-tip-pos="right":贴侧栏右缘(主对话左缘)垂直居中——不盖会话行(用户裁定)
+    // 意图视觉位(与 gBCR/innerWidth 同域)
+    let iv: number;
+    let it: number;
+    // G14.106/G14.188 data-tip-pos="right":贴侧栏右缘(主对话左缘)垂直居中——不盖会话行(用户裁定);
+    // 2026-10-24 用户裁定 12→4:紧贴边线,不探入正文
     if (anchor.getAttribute('data-tip-pos') === 'right') {
       const menu = anchor.closest('.sx-menu');
-      const edge = menu !== null ? menu.getBoundingClientRect().right + 12 : r.right + 8;
-      let left = edge;
-      left = Math.max(8, Math.min(left, window.innerWidth - tr.width - 8));
-      let top = r.top + r.height / 2 - tr.height / 2;
-      top = Math.max(8, Math.min(top, window.innerHeight - tr.height - 8));
-      tip.style.left = `${Math.round(left)}px`;
-      tip.style.top = `${Math.round(top)}px`;
-      return;
+      const edge = menu !== null ? menu.getBoundingClientRect().right + 4 : r.right + 8;
+      iv = Math.max(8, Math.min(edge, window.innerWidth - tr.width - 8));
+      it = Math.max(8, Math.min(r.top + r.height / 2 - tr.height / 2, window.innerHeight - tr.height - 8));
+    } else {
+      const below = r.top < tr.height + 10;
+      iv = Math.max(8, Math.min(r.left + r.width / 2 - tr.width / 2, window.innerWidth - tr.width - 8));
+      it = Math.max(8, Math.max(r.bottom + 6, r.top - tr.height - 6));
     }
-    const below = r.top < tr.height + 10;
-    let left = r.left + r.width / 2 - tr.width / 2;
-    left = Math.max(8, Math.min(left, window.innerWidth - tr.width - 8));
-    tip.style.left = `${Math.round(left)}px`;
-    tip.style.top = `${Math.round(Math.max(8, below ? r.bottom + 6 : r.top - tr.height - 6))}px`;
+    it = Math.max(8, Math.min(it, window.innerHeight - tr.height - 8));
+    // 先落意图位→回测实际视觉位→本地 px 一次性补差:根 zoom≠1 时 Chromium 对 fixed 偏移乘根
+    // 缩放(2026-10-24 用户实测桌面 zoom1.1 下 tooltip 探入正文),此校正对任何缩放模型恒精确
+    tip.style.left = `${Math.round(iv)}px`;
+    tip.style.top = `${Math.round(it)}px`;
+    const ar = tip.getBoundingClientRect();
+    tip.style.left = `${Math.round(parseFloat(tip.style.left) + iv - ar.left)}px`;
+    tip.style.top = `${Math.round(parseFloat(tip.style.top) + it - ar.top)}px`;
   };
   const hide = (): void => {
     if (tip !== null) tip.remove();

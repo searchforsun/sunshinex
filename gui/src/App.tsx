@@ -602,10 +602,10 @@ function AppShell(): JSX.Element {
     <div
       className={[
         IS_SHELL ? 'sx-shell sx-desktop' : 'sx-shell',
-        // 模式 pill 塌缩面(2026-10-24 用户裁定):主栏渲染宽=视口/zoom−菜单−右栏,窄于 420 塌缩
-        // 纯图标。渲染期派生——viewportW(resize 重渲)/menuWidth/tabStates(拖拽重渲)/换页全走
-        // 渲染,无 RO 重挂间隙漏事件面
-        viewportW / zoomScale() - menuWidth - sidebarOccupied < 420 ? 'sx-main-narrow' : '',
+        // 模式 pill 塌缩面(2026-10-24 用户裁定):主栏渲染宽=视口/zoom−菜单−右栏,窄于 480 塌缩
+        // 纯图标(阈值 420→480:带标签态 composer ~460 起折行,塌缩须先于折行)。渲染期派生——
+        // viewportW(resize 重渲)/menuWidth/tabStates(拖拽重渲)/换页全走渲染,无 RO 重挂间隙漏事件面
+        viewportW / zoomScale() - menuWidth - sidebarOccupied < 480 ? 'sx-main-narrow' : '',
       ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{ '--menu-w': `${menuWidth}px`, '--sidebar-w': `${sidebarOccupied}px` } as CSSProperties}

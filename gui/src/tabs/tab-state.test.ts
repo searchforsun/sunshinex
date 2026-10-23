@@ -70,9 +70,9 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     expect(s2.s1.tabs).toHaveLength(1); // s1 未被 s2 操作扰动
   });
 
-  it('setWidth 只钳最小 240(2026-10-24 用户裁定 440→240,右栏独立下限),无最大宽;setCollapsed 切换', () => {
+  it('setWidth 只钳最小 208(2026-10-24 用户裁定 240→208 再收窄,搜索弹窗不截断),无最大宽;setCollapsed 切换', () => {
     const s = ensureSession({}, 's1', probe);
-    expect(setWidth(s, 's1', 99).s1.width).toBe(240);
+    expect(setWidth(s, 's1', 99).s1.width).toBe(208);
     expect(setWidth(s, 's1', 999).s1.width).toBe(999);
     expect(setWidth(s, 's1', 500).s1.width).toBe(500);
     expect(setCollapsed(s, 's1', true).s1.collapsed).toBe(true);
