@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { QUIT_STEPS, resolveUiLang, shouldHideOnClose, trayMenu } from './lifecycle';
+import { QUIT_STEPS, resolveUiLang, resolveUiLangFromSetting, shouldHideOnClose, trayMenu } from './lifecycle';
 
 describe('shouldHideOnClose', () => {
   it('非退出态关窗 → 驻留:隐藏而非真关闭', () => {
@@ -19,6 +19,24 @@ describe('resolveUiLang', () => {
     expect(resolveUiLang('en-US')).toBe('en');
     expect(resolveUiLang('de-DE')).toBe('en');
     expect(resolveUiLang('')).toBe('en');
+  });
+});
+
+describe('resolveUiLangFromSetting(2026-10-23 托盘菜单跟应用语言设置)', () => {
+  it('SUNSHINEX_LANGUAGE 槽值:zh/en 前缀归一,大小写与首尾空白容忍', () => {
+    expect(resolveUiLangFromSetting('zh')).toBe('zh');
+    expect(resolveUiLangFromSetting('en')).toBe('en');
+    expect(resolveUiLangFromSetting('ZH')).toBe('zh');
+    expect(resolveUiLangFromSetting(' en ')).toBe('en');
+    expect(resolveUiLangFromSetting('zh-CN')).toBe('zh');
+  });
+
+  it('未设/空串/异形值 → undefined(调用方回落 OS locale),不误判 en', () => {
+    expect(resolveUiLangFromSetting(undefined)).toBeUndefined();
+    expect(resolveUiLangFromSetting('')).toBeUndefined();
+    expect(resolveUiLangFromSetting('  ')).toBeUndefined();
+    expect(resolveUiLangFromSetting('fr')).toBeUndefined();
+    expect(resolveUiLangFromSetting('jp')).toBeUndefined();
   });
 });
 

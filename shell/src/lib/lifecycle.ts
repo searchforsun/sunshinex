@@ -23,6 +23,16 @@ export function resolveUiLang(locale: string): UiLang {
   return locale.toLowerCase().startsWith('zh') ? 'zh' : 'en';
 }
 
+/** 设置语言解析（2026-10-23 用户裁定:托盘菜单跟随应用语言设置而非 OS locale）——
+ *  settings.json language 键经 loadSettingsChain 装入 SUNSHINEX_LANGUAGE 槽,GUI 设置页
+ *  改语言经 reloadSettingsChain 运行时刷新该槽;'zh*' → zh,'en*' → en,未设/异形值
+ *  → undefined（调用方回落 resolveUiLang(app.getLocale())）。 */
+export function resolveUiLangFromSetting(value: string | undefined): UiLang | undefined {
+  const v = value?.trim().toLowerCase();
+  if (v === undefined || v === '') return undefined;
+  return v.startsWith('zh') ? 'zh' : v.startsWith('en') ? 'en' : undefined;
+}
+
 const TRAY_LABELS: Record<UiLang, { show: string; quit: string }> = {
   en: { show: 'Show sunshinex', quit: 'Quit' },
   zh: { show: '显示 sunshinex', quit: '退出' },

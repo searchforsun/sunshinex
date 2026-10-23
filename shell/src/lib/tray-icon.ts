@@ -1,11 +1,7 @@
 /**
- * 托盘图标（H2-T2）：内嵌 16x16 PNG 的 data URL——免二进制资产落地（单文件 bundle 友好，
- * esbuild 全内联无 external 资产面），主题青色同源；H3 打包面再换 .ico 多尺寸。
- *
- * 生成口径（100 字节，已程序内生成并逐像素校验）：
- *   - 16x16 RGBA（PNG colorType 6 / 8bit，deflate level 9）；
- *   - 中央 (7.5, 7.5) 半径 6.5 圆内像素 = #22d3ee 不透明（rgba 22 d3 ee ff）；
- *   - 圆外全透明（rgba 00 00 00 00）——透明底圆点。
+ * 托盘图标（H2-T2 → 2026-10-23 用户裁定三稿）：32x32 PNG data URL——产品 logo 同几何
+ * （黑圆角方 + 灰白轨道环核 mark,与窗口图标/ico 单一来源 scripts/gen-shell-icon.mjs 生成回填）,
+ * 32 源经 Windows DPI 缩放比 16 原生平滑;免二进制资产落地（单文件 bundle 友好）。
  */
 export const TRAY_ICON_DATA_URL =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAfUlEQVR42mNQuvyOgRLMMPwN4AdieyRMtAHxQHweiP+j4fdQOZwGgGzcD1W8HojzoTbrA/F8JIPkcRkA05wPVfQeimEaYAboYzNAH0kBAxYD8qFy+3F5QR7JgPlQA+2hGtcjaebHFwbxUBvRA+88euARigXkqOMf4UmZoAEAvT4Kvd4qxm8AAAAASUVORK5CYII=';
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABU0lEQVR42u1XuxGDMAx1rYqSCahTMAELMAGD0NExAYOwABMwAQ0tHSM4eT7EOTpDOAJxChc6OP/e05N4iRURqSWi17MiopGI9E0xLhgR4zL4g4jmG4FlzAum4sx/CW6TiNQiifYUlbq55h97QnkENxEIBAKnCOR5ruu61l3X6Wma3qLve900jU7T9HoCRVEYABsQJNq2XcOeB8lLCCAbO1tkCBW21mdZtq4vy/I7AgAfhmEFjuPYjCdJYg5H4F3uwzqogb2nCeBgBof8rnEE3l0kUBLMu+YOEUDGEhyBrGXzuaTmMpxWgJtMjh8hANJctlMEIBsOgIx7pXGVgMG3SnNYARyARuLGkyRkE2Idlw17j3jBLgGWGmXAp7VnTAzM6y8zIpiJ7XK26UgnxLxs2MuMCBlKF+RsQXLPmMKvYSDw9wS8/y33fjHxfjXzfjn1ej1/AgZgUPw3T95KAAAAAElFTkSuQmCC';

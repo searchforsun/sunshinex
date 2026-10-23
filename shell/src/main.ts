@@ -4,7 +4,7 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage,
 import { resolveDaemonPaths } from './lib/paths';
 import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
-import { resolveUiLang, shouldHideOnClose, trayMenu, type UiLang } from './lib/lifecycle';
+import { resolveUiLang, resolveUiLangFromSetting, shouldHideOnClose, trayMenu, type UiLang } from './lib/lifecycle';
 import { TRAY_ICON_DATA_URL } from './lib/tray-icon';
 import { PRODUCT_LOGO_DATA_URL } from './lib/product-logo';
 import { startDaemon } from './daemon';
@@ -15,8 +15,10 @@ const SMOKE_TOTAL_TIMEOUT_MS = 45_000; // 满载机器(发版验证链后)冷启
 /** daemon close 的有界等待（ms）：close 悬挂不阻塞退出——有界等待完仍按正常收口走 quit。
  *  H2-T2 抽公共：smoke 收口与 runQuit 退出序共用同一有界口径（原 SMOKE_CLOSE_TIMEOUT_MS）。 */
 const DAEMON_CLOSE_TIMEOUT_MS = 5_000;
-/** 外观语言单次决议（D33 纪律⑤）：托盘是壳唯一用户可见文案面，按宿主 locale 装配期定档、会话内恒定。 */
-const UI_LANG: UiLang = resolveUiLang(app.getLocale());
+/** 外观语言（D33 纪律⑤;2026-10-23 用户裁定改向):托盘是壳唯一用户可见文案面,跟随应用语言
+ *  设置——SUNSHINEX_LANGUAGE 槽(GUI 设置页写入,reloadSettingsChain 运行时刷新)优先,
+ *  OS locale 仅缺省兜底。取函数不取装配期常量:右键即取当前值,改语言无需重启。 */
+const trayLang = (): UiLang => resolveUiLangFromSetting(process.env.SUNSHINEX_LANGUAGE) ?? resolveUiLang(app.getLocale());
 
 let daemon: ShellDaemon | undefined;
 /** daemon 收口幂等守卫：已发起则后续调用直接跳过（smoke 与 runQuit 共用同一路收口） */
@@ -185,15 +187,18 @@ if (!app.requestSingleInstanceLock()) {
     // 不出窗),故菜单改挂 right-click popUpContextMenu,left-click 单点 focusMainWindow。
     tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON_DATA_URL));
     tray.setToolTip('sunshinex');
-    const trayPopup = Menu.buildFromTemplate(
-      trayMenu(false, UI_LANG).map((item) => ({
-        label: item.label,
-        enabled: item.enabled,
-        click: item.id === 'show' ? focusMainWindow : runQuit,
-      })),
-    );
     tray.on('click', () => focusMainWindow());
-    tray.on('right-click', () => tray.popUpContextMenu(trayPopup));
+    // 右键即取当前语言重建菜单(设置页改语言 reloadSettingsChain 刷 SUNSHINEX_LANGUAGE 槽,无需重启)
+    tray.on('right-click', () => {
+      const popup = Menu.buildFromTemplate(
+        trayMenu(false, trayLang()).map((item) => ({
+          label: item.label,
+          enabled: item.enabled,
+          click: item.id === 'show' ? focusMainWindow : runQuit,
+        })),
+      );
+      tray.popUpContextMenu(popup);
+    });
 
     // smoke 分支（T4 冒烟门禁）：就绪信号 = did-finish-load（页面加载完成——渲染器起+静态资源服务通，
     // 语义等价且确定；ready-to-show 系首绘事件，发布链 spawn 环境曾不触发（仪表实证 url 已载/visible/loading:false
