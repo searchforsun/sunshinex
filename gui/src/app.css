@@ -98,15 +98,15 @@
 /* 主面 = 浮层(surface)压在 under 侧栏上:左上大圆角 + 零分割线(层次靠明度差,spec §2) */.sx-main { flex: 1; min-width: calc(320px / var(--ui-zoom, 1)); /* 2026-10-24 用户裁定 440→320(模式 pill 窄端图标化联动,G14.196 同值面);zoom 子树 px=本地值,视觉下限 320 须 /--ui-zoom 归一(applyZoom 单点落值)——否则 600 窗 zoom1.1 时 240 菜单+352 视觉最小=616>600,主栏右溢 16px,输入卡居中偏右贴窗沿 */ display: flex; flex-direction: column; background: var(--surface); border-top-left-radius: var(--radius-lg); overflow: hidden; }
 /* G14.33:右栏与主面对话同底色(原 surface-under 明度差退役);中缝细条 = 左缘 1px 分割线,
    兼作拖宽把手落点(sx-resizer 仍在,hover 提亮);G14.2xx 用户裁定:无固定最大宽——视口护栏
-   max-width = 视口−菜单−320 结构性禁止越视口(中栏触底即停;持久化超宽/窗口缩窄同被钳) */.sx-sidebar { flex: none; max-width: calc(100vw - var(--menu-w, 260px) - 320px); background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; position: relative; }.sx-resizer { position: absolute; left: -4px; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 5; user-select: none; }.sx-resizer:hover, .sx-resizer.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+   max-width = 视口−菜单−320 结构性禁止越视口(中栏触底即停;持久化超宽/窗口缩窄同被钳) */.sx-sidebar { flex: none; max-width: calc(100vw - var(--menu-occ, 0px) - 320px); /* 2026-10-24:占位宽 --menu-occ(抽屉/关闭=0)——旧 --menu-w 在菜单抽屉浮出后仍挤侧栏破最小宽 */ background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; position: relative; }.sx-resizer { position: absolute; left: -4px; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 5; user-select: none; }.sx-resizer:hover, .sx-resizer.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 /* 浮窗抽屉(2026-10-24 用户裁定):视口窄于 1000 右栏转悬浮抽屉(fixed 右满高盖正文,z 低于
    窗控簇,左缘圆角+投影示悬浮层级);宽度仍走 inline(渲染期钳制)。注:本规则上方曾有孤儿
    注释尾巴(开头 /* 在往返编辑中丢失),裸文本致浏览器错误恢复吞掉本条——浮窗整模式静默
    半残(抽屉恒占布局宽,dock 补偿却按悬浮让位),2026-10-24 用户实测截图定位 */
-.sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; border-left: 1px solid var(--border); border-radius: var(--radius-lg) 0 0 var(--radius-lg); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); }
+.sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; border-left: 1px solid var(--border); border-radius: var(--radius-win) 0 0 var(--radius-win); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24 用户裁定:抽屉圆角对齐客户端 */
 /* 2026-10-24 三轮裁定:左菜单抽屉(<856 手动重开态)——fixed 左满高悬浮,宽走 --menu-w(渲染
    钳制值),右缘圆角+投影示层级;拖宽手柄抽屉态无意义隐藏。选中会话/设置/新会话即自动收(App 侧) */
-.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 85; max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); }
+.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 85; width: var(--menu-w); max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-win) var(--radius-win) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24:width 显式落 --menu-w(占位宽拆分后抽屉宽不受 --menu-occ 影响);圆角对齐客户端 */
 .sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
 /* 2026-10-24 用户裁定:欢迎页菜单关闭态左上角呼出钮(欢迎页无顶栏) */
 .sx-menu-reopen { position: absolute; top: 10px; left: 10px; z-index: 50; }
@@ -2085,7 +2085,7 @@ input.sx-setting-input { width: 100%; }
 .sx-tab .sx-tab-title[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }.sx-tab > .iconify, .sx-tab > svg { flex: none; }
 
 /* ---- G14.2xx 标签搜索弹窗(chrome「搜索标签页」同位;最左触发,纵向两节:打开的/最近关闭的) ---- */
-.sx-tabsearch { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 280px; max-width: min(86vw, calc(100vw - var(--menu-w, 240px) - 24px)); max-height: 70vh; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); }
+.sx-tabsearch { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 280px; max-width: min(86vw, calc(100vw - var(--menu-occ, 0px) - 24px)); max-height: 70vh; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); }
 .sx-tabsearch-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--surface-elevated); color: var(--fg-secondary); }
 .sx-tabsearch-head input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--fg); font: inherit; }
 .sx-tabsearch-head input::placeholder { color: var(--fg-tertiary); }
@@ -2183,6 +2183,7 @@ input.sx-setting-input { width: 100%; }
 /* ===== 2026-10-23 桌面壳(用户裁定):原生菜单/标题栏退役,−□× 走 WCO 嵌入右上;
    品牌行只显「SUNSHINEX」文字(logo 仅欢迎页/桌面图标/托盘),行即窗口拖拽区 ===== */
 .sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: drag; }
+.sx-shell.sx-desktop .sx-menu-head button { -webkit-app-region: no-drag; } /* 2026-10-24 用户实测「抽屉模式展开按钮不可用」根因:头部为窗拖拽区,按钮未摘 drag 全员吞点击 */
 .sx-shell.sx-desktop .sx-menu-head button { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; padding-right: 150px; }
 .sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { -webkit-app-region: no-drag; }

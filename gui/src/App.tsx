@@ -574,7 +574,7 @@ function AppShell(): JSX.Element {
     // 拖拽上界随态:分栏预留主栏最小宽;浮窗=覆盖层只留 24px 边距(不挤 composer,见 sidebarRenderW);
     // 下限 296 在 setWidth 单点(起拖定格,拖拽中无 resize 事件模式不翻转)
     const floating = sidebarFloating;
-    const cap = (): number => window.innerWidth / zoomScale() - menuRenderW - (floating ? 24 : MAIN_MIN_WIDTH);
+    const cap = (): number => window.innerWidth / zoomScale() - (menuFloating ? 0 : menuRenderW) - (floating ? 24 : MAIN_MIN_WIDTH);
     const startWidth = Math.min(tabState.width, cap());
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
@@ -631,7 +631,10 @@ function AppShell(): JSX.Element {
       ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{
-        '--menu-w': `${menuClosed ? 0 : menuRenderW}px`,
+        '--menu-w': `${menuRenderW}px`,
+        // 占位宽:抽屉(<856 浮窗)与关闭态=0——抽屉不入流,消费方(侧栏 max-width/tabsearch
+        // 视口钳)不得再被菜单宽挤压(2026-10-24 用户实测「菜单抽屉开着,右侧侧栏窄于最小宽」)
+        '--menu-occ': `${menuClosed || menuFloating ? 0 : menuRenderW}px`,
         '--sidebar-w': `${sidebarOccupied}px`,
       } as CSSProperties}
     >
