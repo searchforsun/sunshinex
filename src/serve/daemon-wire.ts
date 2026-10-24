@@ -34,6 +34,17 @@ export interface AskFrame {
   req: AskUserRequest;
 }
 
+/** plan 审批挂起帧（阶段三 plan-arm,spec §5.1）：planFlow 裁决卡——req={doc,items} 计划书全文+步骤
+ *  清单（纯数据直序列化,同 approval/ask 形态）;回执端点 `POST /plan-approval/:pid` {approved,feedback?}，
+ *  决策形 `{approved:boolean,feedback?:string}`（harness PlanDecision 同构）。无 seq——不入单调序列
+ *  （挂起非事件流成员,重连重发幂等,客户端以 pid 去重） */
+export interface PlanApprovalFrame {
+  kind: 'plan-approval';
+  sessionId: string;
+  pid: string;
+  req: { doc: string; items: string[] };
+}
+
 /** reset 通知帧（G4 裁定 7）：无 seq——GUI 收到即清该会话本地投影并重播种（sessionSnapshot） */
 export interface ResetFrame {
   kind: 'reset';
@@ -41,7 +52,7 @@ export interface ResetFrame {
 }
 
 /** daemon 下行帧全并集：pump 事件帧（有 seq）+ 挂起/reset 帧（无 seq）——广播面单点共用序列化 */
-export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | ResetFrame;
+export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | PlanApprovalFrame | ResetFrame;
 
 /** AskUserAnswer 回执载荷校验（G4）：三态字面核验——selected 需 string[]、custom 需非空 text、
  *  dismissed 无参；非法形态回 null（HTTP 面 400）。labels 空数组放行——类型面合法，工具执行面

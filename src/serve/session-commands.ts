@@ -13,7 +13,7 @@ import type { SessionRuntime } from './session';
  *  planFlow 等共享化逐批入列,GET /commands 消费面置灰判定同步。 */
 
 /** 当前通道支持集(gui 命令面板置灰判定源;随分支移植批扩) */
-export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete'] as const;
+export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete', '/plan'] as const;
 
 export type CommandRunResult = 'ok' | 'unsupported' | 'busy';
 
@@ -151,6 +151,26 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
     await s.teardown();
     purgeSession(dataDir, jid);
     return 'ok';
+  }
+
+  if (cmd === '/plan') {
+    // plan-arm（阶段三 spec §5.1）：/plan <目标> = 单选 plan 档(armed)+提交——submit 入口拦截转
+    // planFlow(TUI /plan 同构:规划→确认卡→批准落档→逐项执行)。档位切换 busy(运行中)/提交 409
+    // (流程在途)统一 busy 面归 HTTP 409;裸 /plan(缺目标)=只武装不提交(TUI 用法提示同构——后续
+    // 空闲提交经 armed 拦截自然进入规划流程)
+    if (s.setMode('plan') !== 'ok') return 'busy';
+    const goal = line.trim().split(/\s+/).slice(1).join(' ').trim();
+    if (goal.length === 0) {
+      notice(
+        t(
+          'Usage: /plan <goal> — plan numbered steps first, confirm, then execute step by step',
+          '用法：/plan <目标>——先规划产出编号步骤，确认后逐项执行',
+        ),
+      );
+      return 'ok';
+    }
+    const r = s.submit(goal);
+    return r.ok ? 'ok' : 'busy';
   }
 
   return 'unsupported';

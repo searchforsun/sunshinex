@@ -43,6 +43,8 @@ export interface SessionHandlerIo {
   /** 挂起回执路由（P6 §4：表在会话）——daemon 迭代会话表寻址,命中 false 即 404 */
   resolveApproval(pid: string, decision: 'allow' | 'always' | 'deny'): boolean;
   resolveAsk(pid: string, answer: AskUserAnswer): boolean;
+  /** plan 审批回执路由（阶段三 spec §5.1,沿既有审批路由同形）：decision={approved,feedback?} */
+  resolvePlanApproval(pid: string, decision: { approved: boolean; feedback?: string }): boolean;
 }
 
 export async function handleSubmit(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
@@ -496,6 +498,34 @@ export async function handleAskReply(io: SessionHandlerIo, req: http.IncomingMes
   }
   if (!io.resolveAsk(pid, answer)) {
     io.send(res, 404, { error: 'unknown pending ask' });
+    return;
+  }
+  io.send(res, 200, { ok: true });
+}
+
+/** POST /plan-approval/:pid {approved,feedback?}（阶段三 plan-arm,spec §5.1）：planFlow 裁决回执——
+ *  沿既有审批路由同形：approved 必布尔（400）、feedback 可选非空字符串（400）;命中且 kind 对
+ *  resolve+notice（会话面）+200;未知 pid/已决（重复回执）/kind 错配（plan 卡错打 approval 端点等）
+ *  统一 404 */
+export async function handlePlanApprovalReply(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = (parsed.body ?? {}) as { approved?: unknown; feedback?: unknown };
+  if (typeof body.approved !== 'boolean') {
+    io.send(res, 400, { error: 'approved must be a boolean' });
+    return;
+  }
+  if (body.feedback !== undefined && (typeof body.feedback !== 'string' || body.feedback.trim().length === 0)) {
+    io.send(res, 400, { error: 'feedback must be a non-empty string when present' });
+    return;
+  }
+  const decision = { approved: body.approved, ...(typeof body.feedback === 'string' ? { feedback: body.feedback } : {}) };
+  // P6 §4:回执路由到会话表(命中 false=未知 pid/kind 错配/已回执删除 → 404);notice 入转录在会话面
+  if (!io.resolvePlanApproval(pid, decision)) {
+    io.send(res, 404, { error: 'unknown pending plan approval' });
     return;
   }
   io.send(res, 200, { ok: true });

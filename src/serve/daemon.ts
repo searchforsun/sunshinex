@@ -362,6 +362,14 @@ export class GuiDaemon {
     return false;
   }
 
+  /** plan 审批回执路由（阶段三 spec §5.1,同构 approval/ask——pid 全局票据迭代寻址,命中 false 即 404） */
+  private resolvePlanApproval(pid: string, decision: { approved: boolean; feedback?: string }): boolean {
+    for (const session of this.sessions.values()) {
+      if (session.resolvePendingPlanApproval(pid, decision)) return true;
+    }
+    return false;
+  }
+
   /** 泵广播面（daemon 级单点）：帧序列化一次逐连接 send——同一连接的帧恒按 pump 调用序到达（ws
    *  内部发送缓冲有序，无需额外队列）；连接层按 sessionId 分发/过滤（T3）。G4：签名放宽至 DaemonFrame
    *  全并集（挂起/reset 帧与事件帧共用本序列化路径） */
@@ -661,6 +669,8 @@ export class GuiDaemon {
     // G4 挂起回执面：pid 为 daemon 级挂起票据（会话无关路由——pid 本身寻址，无会话维前缀）
     { method: 'POST', path: '/approval/:pid', auth: true, run: (req, res, p) => this.handleApprovalReply(req, res, p.pid) },
     { method: 'POST', path: '/ask/:pid/reply', auth: true, run: (req, res, p) => this.handleAskReply(req, res, p.pid) },
+    // plan 审批回执（阶段三 plan-arm,spec §5.1）：planFlow 裁决卡回执——{approved,feedback?}
+    { method: 'POST', path: '/plan-approval/:pid', auth: true, run: (req, res, p) => this.handlePlanApprovalReply(req, res, p.pid) },
     // T2 工作区注册表 + 恢复面：workspaces 扫描 / sessions 列档 / dirpicker 目录选择
     { method: 'GET', path: '/workspaces', auth: true, run: async (_req, res) => this.handleWorkspaces(res) },
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
@@ -1182,6 +1192,7 @@ export class GuiDaemon {
       defaultScratchRoot: () => this.defaultScratchRoot(),
       resolveApproval: (pid, decision) => this.resolveApproval(pid, decision),
       resolveAsk: (pid, answer) => this.resolveAsk(pid, answer),
+      resolvePlanApproval: (pid, decision) => this.resolvePlanApproval(pid, decision),
     };
   }
 
@@ -1256,6 +1267,10 @@ export class GuiDaemon {
 
   private async handleAskReply(req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
     await sessionHandlers.handleAskReply(this.sessionIo, req, res, pid);
+  }
+
+  private async handlePlanApprovalReply(req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
+    await sessionHandlers.handlePlanApprovalReply(this.sessionIo, req, res, pid);
   }
 
   private async handleSessionBtw(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
